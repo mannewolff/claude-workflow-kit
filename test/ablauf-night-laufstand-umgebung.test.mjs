@@ -1,5 +1,9 @@
+// Ablauf-Pruefung: Wiederholung des Sitzungsstarts, Kandidaten der Umsetzungsschleife und der Kette und der Rundenstand jedes Pakets stehen noch im Einstieg kit/night.mjs und zeigen sich nur am laufenden Runner.
+//
 // Umgebung oder Paket: ein Versuch fuer Umgebungsfehler des lebenden Laufs (Issue #1088,
-// Plan #1079 E13, E15).
+// Plan #1079 E13, E15). Zweiten Versuch, Vermerk und Anhalten selbst prueft
+// night-laufstand-umgebung.test.mjs im selben Prozess gegen kit/night/laufstand.mjs
+// (Issue #1225); hier bleibt, wie der Einstieg sie nutzt.
 //
 // Ein gescheiterter Board-Aufruf des Runners und ein Sitzungsstart, der mit Exit ungleich 0
 // endet, ohne dass die Sitzung ein einziges Ereignis gemeldet hat, sind Umgebung: Nach der

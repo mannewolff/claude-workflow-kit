@@ -12,7 +12,8 @@
  *
  * Abschnitte, die E17 nicht nennt, aber hier stehen: die Pfade der Nachbarn (NACHBAR_DIR
  * und die *_PATH-Konstanten) und die beiden Laufzeitpfade UMSETZUNG_LOCK und
- * KIT_STAND_MARKIERUNG, die `gitResteAusnahmen` braucht.
+ * KIT_STAND_MARKIERUNG, die `gitResteAusnahmen` braucht, und der Textvergleich
+ * `vergleicheText`, den der Teil laufstand und der Einstieg teilen (Issue #1225).
  *
  * Bewusst ohne eigene KIT_VERSION (Plan #1199, E19): Die Teile kommen im selben
  * Verzeichnis-Blob wie der Einstieg und werden nie einzeln verteilt.
@@ -110,6 +111,30 @@ export const DEFAULT_MAX_SESSIONS = 10;
 // --max der Kette zaehlt Ketten (Plan #638, A13): dieselben drei wie fruehere
 // Ausgangsdokumente je Nacht.
 export const DEFAULT_MAX_KETTEN = 3;
+
+// --- Textvergleich ---
+
+/**
+ * Der Vergleich fuer Textlisten: derselbe, den `sort` ohne Argument nimmt.
+ *
+ * Ausgeschrieben statt weggelassen, damit an jeder Fundstelle steht, dass die
+ * Reihenfolge Absicht ist (S2871). Bewusst **nicht** `localeCompare`: Dessen
+ * Reihenfolge haengt an der Locale der Maschine, und zwei Laeufe muessen
+ * ueberall dieselbe Liste ergeben — die Artnamen stehen im Nacht-Bericht.
+ *
+ * SYNC: dieselbe Funktion steckt in kit/checks.mjs, kit/befunde.mjs und
+ * kit/wirksamkeit.mjs — Aenderungen dort nachziehen. Die Kit-Werkzeuge sind
+ * bewusst eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440);
+ * geteilte Logik wird dupliziert und hier markiert.
+ *
+ * Exportiert, damit der Locale-Test sie direkt pruefen kann (Issue #493). Seit Issue #1225
+ * steht sie in den Grundlagen, weil der Teil laufstand sie braucht; der Einstieg
+ * exportiert sie unveraendert weiter.
+ */
+export function vergleicheText(a, b) {
+  if (a < b) return -1;
+  return a > b ? 1 : 0;
+}
 
 // --- Anbindung an spaetere Teile ---
 

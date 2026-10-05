@@ -243,16 +243,22 @@ if (runAsCli) auskunftOhneTeile(process.argv.slice(2));
 export const { loeseModusDefaults, schrittProtokollPfad, ERSATZ_GRUND, ANKER_FEHLT, OHNE_ARBEIT_UNBEKANNT,
   grundOhneArbeit, sicherheitsnetzGrund, einheitAnlegen, laufStempelReservieren, boardFehlertext, boardUmgebung,
   gitResteAusnahmen, gitRestePathspec, salvageSauberkeitsKommando, UMSETZUNG_LOCK,
-  KIT_STAND_MARKIERUNG } = await import("./night/grundlagen.mjs");
+  KIT_STAND_MARKIERUNG, vergleicheText } = await import("./night/grundlagen.mjs");
 // Was die uebrigen Abschnitte des Einstiegs aus den Grundlagen brauchen; exportiert war es nie
 // und bleibt es nicht.
 const { ZUSTAND, grundlagenAnbinden, NACHBAR_DIR, NACHBAR_BOARD, NACHBAR_CHECKS, NACHBAR_AUFWAND,
   NACHBAR_WIRKSAMKEIT, NACHBAR_BEFUNDE, BOARD_PATH, AUFWAND_PATH, WIRKSAMKEIT_PATH, BEFUNDE_PATH, CHECKS_PATH,
   DEFAULT_MODEL, parseArgs, log, schrittBeginnen, schrittEnden, schrittZweiterVersuch,
-  schrittProtokollieren, LETZTES_PROTOKOLL, fail, merkeHartenStopp, hefteStoppGrund, hefteStoppGrundAnLauf,
+  schrittProtokollieren, fail, merkeHartenStopp, hefteStoppGrund, hefteStoppGrundAnLauf,
   resteText, vermerkeOhneArbeit, einheitErgaenzen, laufMelden, ersteZeile, schreibeErgebnisstand,
   BOARD_MAX_BUFFER, board, boardRoh, gitReste, gitClean, lastCommitHash,
   ladeConfigMitOverrides } = await import("./night/grundlagen.mjs");
+export const { nightStandLaden, journalLesen, laufendeKarten, standSetzen, abgeben, staendeNachtragen,
+  hatSitzungsereignis, verwaisteLaeufeAbschliessen, waechterStartOptionen } = await import("./night/laufstand.mjs");
+const { LAUF_ORDNER, ABBRUCH_BUDGET_MS, RECHNER, laufPositionSetzen, LAUF_KONTEXT, anhaltenLaeuft, nightStandPruefen,
+  pulsSchreiben, laufstandStarten, laufAbbrechen, abbruchHandlerSetzen, zweiterVersuch, vermerkAnDieKarte,
+  anhaltenVermerken, laufAnhalten, sitzungsStartGescheitert, exitText, waechterLaufen, waechterStarten,
+  waechterBeenden } = await import("./night/laufstand.mjs");
 
 /**
  * Die Fence-Regel wird geteilt, nicht kopiert (Issue #308): board.mjs fuehrt sie als
@@ -418,26 +424,6 @@ export const nachbarn = {
 
 const MAX_ITERATIONS = 500; // Notbremse gegen Endlosschleifen, weit ueber jedem realen Lauf
 
-/**
- * Der Vergleich fuer Textlisten: derselbe, den `sort` ohne Argument nimmt.
- *
- * Ausgeschrieben statt weggelassen, damit an jeder Fundstelle steht, dass die
- * Reihenfolge Absicht ist (S2871). Bewusst **nicht** `localeCompare`: Dessen
- * Reihenfolge haengt an der Locale der Maschine, und zwei Laeufe muessen
- * ueberall dieselbe Liste ergeben — die Artnamen stehen im Nacht-Bericht.
- *
- * SYNC: dieselbe Funktion steckt in kit/checks.mjs, kit/befunde.mjs und
- * kit/wirksamkeit.mjs — Aenderungen dort nachziehen. Die Kit-Werkzeuge sind
- * bewusst eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440);
- * geteilte Logik wird dupliziert und hier markiert.
- *
- * Exportiert, damit der Locale-Test sie direkt pruefen kann (Issue #493).
- */
-export function vergleicheText(a, b) {
-  if (a < b) return -1;
-  return a > b ? 1 : 0;
-}
-
 // --- Logging: Laufzustand und Lauf-Abschluss ---
 //
 // Der Kern des Logging steht in kit/night/grundlagen.mjs (Issue #1224). Hier bleibt, was
@@ -445,9 +431,6 @@ export function vergleicheText(a, b) {
 // Laufzustand einzelner Laeufe, die Auswertungen und der Abschluss des Laufs, die Art des
 // Laufs und der Lauf-Kopf. Es wandert mit seinem Hauptaufrufer (Plan #1199, E17).
 
-// Laeuft gerade ein Abbruch (Issue #1084, E8)? Ein zweites Signal oder ein fail() aus dem
-// Abbruch heraus beginnt keinen zweiten.
-let ABBRUCH_LAEUFT = false;
 // Die Budgets der Kette, geladen in vorbereiten() — Modul-Zustand wie `config`, weil
 // ART_LABEL und die Stufen sie brauchen, ohne dass jede Funktion sie durchreicht.
 let KETTE_BUDGET = null;
@@ -768,204 +751,13 @@ function ergebnisstandAnlegen(args, aktivesLabel, jetztVorher) {
   };
 }
 
-// --- Laufstand: Journal, Puls, Abbruch (Issue #1084, Plan #1079 E5, E6, E8) ---
-
-// SYNC: dieselben Vorgaben stehen in templates/workflow.config.schema.json unter
-// `night.stand` (fristMin, pauseMin).
-const STAND_VORGABEN = Object.freeze({ fristMin: 10, pauseMin: 5 });
-// Journal und Puls eines Laufs liegen unter `.claude/lauf/<lauf>.jsonl` und
-// `.claude/lauf/<lauf>.puls`; `<lauf>` ist der Stempel des Laufberichts.
-const LAUF_ORDNER = join(".claude", "lauf");
-const PULS_TAKT_MS = 60_000;
-// Das kurze Budget der Board-Aufrufe im Abbruch (E8): Ein Ctrl-C soll binnen Sekunden am
-// Board stehen und nicht zwei Minuten auf ein langsames Board warten.
-const ABBRUCH_BUDGET_MS = 5_000;
-let PULS_DATEI = null;
-let PULS_TIMER = null;
-
-/**
- * Laedt `night.stand` mit Vorgaben und prueft ihn (E6). Rueckgabe `{ fristMin, pauseMin }`
- * oder `{ fehler }` mit dem Feldnamen. `pauseMin` muss unter `fristMin` liegen: Waehrend
- * der Pause vor dem einen Versuch schweigt der Puls, und ein lebender Lauf gaelte sonst
- * schon als verstummt. Die Labelnamen prueft `issue stand` in kit/board.mjs selbst.
- */
-export function nightStandLaden(cfg) {
-  const block = cfg?.night?.stand ?? {};
-  const stand = { ...STAND_VORGABEN };
-  for (const feld of Object.keys(STAND_VORGABEN)) {
-    const wert = block[feld];
-    if (wert === undefined) continue;
-    if (typeof wert !== "number" || !Number.isFinite(wert) || wert <= 0) {
-      return { fehler: `night.stand.${feld} muss eine Zahl groesser 0 sein, ist ${JSON.stringify(wert)}.` };
-    }
-    stand[feld] = wert;
-  }
-  if (stand.pauseMin >= stand.fristMin) {
-    return { fehler: `night.stand.pauseMin (${stand.pauseMin}) muss kleiner sein als night.stand.fristMin (${stand.fristMin}) — sonst gaelte ein lebender Lauf in der Pause vor seinem zweiten Versuch als verstummt.` };
-  }
-  return stand;
-}
-
-/** Haelt den Lauf mit dem Befund von `nightStandLaden` an, bevor er etwas veraendert. */
-function nightStandPruefen(cfg) {
-  const stand = nightStandLaden(cfg);
-  if (stand.fehler) fail(stand.fehler, "zustand");
-}
-
-const laufPfad = (repoRoot, lauf, endung) => join(repoRoot, LAUF_ORDNER, `${lauf}.${endung}`);
-
-/**
- * Haengt eine Zeile ans Journal, synchron. Ein Schreibfehler bricht nichts ab — wie beim
- * Ergebnisstand ist das Journal Protokoll, und der Board-Aufruf danach soll trotzdem
- * versucht werden.
- */
-function journalZeile(pfad, objekt) {
-  try {
-    mkdirSync(dirname(pfad), { recursive: true });
-    appendFileSync(pfad, JSON.stringify(objekt) + "\n", "utf-8");
-  } catch (err) {
-    log(`Journal ${pfad} nicht geschrieben: ${err.message}`);
-  }
-}
-
-/**
- * Liest ein Journal (E5). Drei Zeilenarten: `lauf` (Beginn und Abbruch des Laufs), `stand`
- * (ein Standwechsel, angelegt als "offen") und `quittung` (das Board hat den Stand mit
- * dieser Nummer angenommen). Nur angehaengt, nie umgeschrieben: Eine Zeile, die vor einem
- * Absturz stand, steht danach noch. Eine unlesbare Zeile — die halbe letzte nach einem
- * Absturz — wird uebergangen.
- *
- * Der Status eines Stands ist `geschrieben` mit Quittung, `ueberholt`, wenn ein spaeterer
- * Stand derselben Karte quittiert ist (`issue stand` ersetzt, ein Nachtrag des aelteren
- * ueberschriebe den neueren), sonst `offen`.
- */
-export function journalLesen(pfad) {
-  const lauf = [];
-  const staende = [];
-  const quittiert = new Set();
-  const zeilen = existsSync(pfad) ? readFileSync(pfad, "utf-8").split(/\r?\n/) : [];
-  for (const roh of zeilen) {
-    if (!roh.trim()) continue;
-    let zeile;
-    try {
-      zeile = JSON.parse(roh);
-    } catch {
-      continue;
-    }
-    if (zeile.art === "stand") staende.push(zeile);
-    else if (zeile.art === "quittung") quittiert.add(zeile.nr);
-    else if (zeile.art === "lauf") lauf.push(zeile);
-  }
-  const mitStatus = staende.map((z) => ({ ...z, status: quittiert.has(z.nr) ? "geschrieben" : "offen" }));
-  mitStatus.forEach((z, i) => {
-    if (z.status === "offen" && mitStatus.slice(i + 1).some((s) => s.karte === z.karte && s.status === "geschrieben")) {
-      z.status = "ueberholt";
-    }
-  });
-  return { lauf, staende: mitStatus };
-}
-
-/** Der letzte Journalstand je Karte. */
-function letzteZustaende(staende) {
-  const letzter = new Map();
-  for (const s of staende) letzter.set(s.karte, s.zustand);
-  return letzter;
-}
-
-/**
- * Die Karten, deren letzter Stand im Journal `laeuft` ist — sie zeigen einen Abbruch. Eine
- * abgegebene Karte (E3) faellt schon dadurch heraus: Ihr letzter Stand ist `abgegeben`.
- */
-export function laufendeKarten(staende) {
-  return [...letzteZustaende(staende)].filter(([, zustand]) => zustand === "laeuft").map(([karte]) => karte);
-}
-
-/** Der Rechner in der Lauf-ID (Plan #1113 E15): der Hostname bis zum ersten Punkt. */
-const RECHNER = hostname().split(".")[0];
-
-/**
- * Position der Karten im Lauf (E5): `{ k, n }` je Karte, gesetzt, sobald der Lauf seine
- * Auftraege kennt. Ein anderer Rechner schaetzt daraus, wie lange der Laufstand frisch bleibt.
- */
-const LAUF_POSITIONEN = new Map();
-
-/**
- * Die Kopfzeilen des Laufstands (E3, E5, E15): welcher Runner ihn haelt, wann er ihn
- * schrieb und an welcher Stelle seines Laufs die Karte steht. Aus der Journalzeile, damit
- * ein Nachtrag den Stand des Laufs traegt, der ihn schrieb. Eine Zeile aus einem Journal
- * vor #1186 hat keine Lauf-ID und bleibt ohne Kopf.
- */
-function laufstandText(zeile) {
-  if (!zeile.laufId) return zeile.text;
-  const kopf = [`Lauf-ID: ${zeile.laufId}`, `Stand: ${zeile.zeit}`];
-  if (zeile.position) kopf.push(`Position: ${zeile.position.k} von ${zeile.position.n}`);
-  return zeile.text ? `${zeile.text}\n\n${kopf.join("\n")}\n` : `${kopf.join("\n")}\n`;
-}
-
-/** Schreibt einen Journal-Stand ans Board und quittiert ihn; `true`, wenn das Board ihn annahm. */
-function standAnsBoard(pfad, zeile, { repoRoot, budgetMs }) {
-  // Mit Prozess-Id und Nummer: Zwei Runner teilen sich sonst die Zwischendatei.
-  const datei = join(tmpdir(), `${process.pid}-laufstand-${zeile.karte}-${zeile.nr}.md`);
-  writeFileSync(datei, laufstandText(zeile), "utf-8");
-  try {
-    const res = boardRoh("issue", "stand", zeile.karte, "--zustand", zeile.zustand, "--text-file", datei, { cwd: repoRoot, budgetMs });
-    if (res.status !== 0) {
-      log(`Laufstand #${zeile.karte} ${zeile.zustand} nicht geschrieben (${res.text.slice(0, 200)}) — bleibt offen im Journal und wird nachgetragen.`);
-      return false;
-    }
-    journalZeile(pfad, { art: "quittung", nr: zeile.nr, zeit: new Date().toISOString() });
-    return true;
-  } finally {
-    rmSync(datei, { force: true });
-  }
-}
-
-/**
- * Der Laufstand nennt das Protokoll des Schritts, der gerade an dieser Karte laeuft oder
- * zuletzt lief (Issue #1090, E16). Hier und nicht an jeder Aufrufstelle: So traegt auch der
- * Stand des Anhaltens den Pfad, und keiner der Wege vergisst ihn.
- */
-function mitProtokollZeile(karte, eintrag) {
-  const rel = LETZTES_PROTOKOLL.get(karte);
-  if (!rel) return eintrag;
-  const zeile = `Protokoll: ${rel}`;
-  return eintrag ? `${eintrag}\n\n${zeile}` : zeile;
-}
-
-/**
- * Der gemeinsame Schreibweg jedes Standwechsels (E5): erst die Journalzeile, dann
- * `issue stand`. Scheitert der Board-Aufruf, bleibt die Zeile offen und wird beim
- * naechsten Start nachgetragen. Rueckgabe `geschrieben`, `offen` oder `null` ohne Lauf
- * (der Trockenlauf hat keinen Stempel und schreibt keinen Stand).
- *
- * Jeder Aufruf traegt eine neue Zeit, und mit ihr erneuert der Laufstand seine Zeile
- * `Stand:` (Plan #1113 E5) — jeder Stufenwechsel geht hier durch.
- */
-export function standSetzen(karte, zustand, eintrag, { lauf = ZUSTAND.LAUF_STEMPEL, repoRoot = process.cwd(), budgetMs, position = LAUF_POSITIONEN.get(String(karte)) } = {}) {
-  if (!lauf) return null;
-  const pfad = laufPfad(repoRoot, lauf, "jsonl");
-  const text = mitProtokollZeile(String(karte), mitVersuchVermerk(String(karte), eintrag));
-  const zeile = {
-    art: "stand", nr: naechsteNr(pfad), zeit: new Date().toISOString(), karte: String(karte), zustand, text, status: "offen",
-    laufId: `${RECHNER}/${process.pid}/${lauf}`, ...(position ? { position } : {}),
-  };
-  journalZeile(pfad, zeile);
-  return standAnsBoard(pfad, zeile, { repoRoot, budgetMs }) ? "geschrieben" : "offen";
-}
-
-const naechsteNr = (pfad) => journalLesen(pfad).staende.reduce((max, s) => Math.max(max, Number(s.nr) || 0), 0) + 1;
-
-/**
- * Traegt eine Karte im Journal als `abgegeben` aus (Plan #1113 E3), ohne Board-Aufruf: Ein
- * anderer Runner haelt ihre Wurzel. Danach schreibt dieser Lauf nichts mehr an die Karte —
- * `laufendeKarten` und `staendeNachtragen` uebergehen sie, damit ein spaeterer Abbruch oder
- * Nachtrag den Laufstand des Gewinners nicht ueberschreibt.
- */
-export function abgeben(karte, { lauf = ZUSTAND.LAUF_STEMPEL, repoRoot = process.cwd() } = {}) {
-  if (!lauf) return;
-  const pfad = laufPfad(repoRoot, lauf, "jsonl");
-  journalZeile(pfad, { art: "stand", nr: naechsteNr(pfad), zeit: new Date().toISOString(), karte: String(karte), zustand: "abgegeben", text: "", status: "offen" });
-}
+// --- Wurzel belegt (Plan #1113, E5, E6) ---
+//
+// Laufstand, Puls, Abbruch, Umgebung und Waechter stehen seit Issue #1225 in
+// kit/night/laufstand.mjs. Hier bleibt, was aus dem Laufstand-Text liest, ob ein anderer
+// Runner eine fachliche Wurzel haelt: Es fragt Plan-Praefix, fachliche Quelle,
+// Prozess-Probe und die Budgets von Kette und Prueflauf und geht mit seinem Hauptaufrufer,
+// der Kette, in deren Teil (Plan #1199, E17).
 
 /** Reserve auf die Gesamtzeit-Obergrenze, bevor ein fremder Laufstand als verwaist gilt (E5). */
 const WURZEL_RESERVE_MS = 15 * 60_000;
@@ -1022,419 +814,6 @@ export function wurzelBelegt(F, issues, staende, jetzt, host, { budgets = { kett
     if (lebt) return { karte, laufId: kopf.laufId };
   }
   return null;
-}
-
-/**
- * Lebt der Lauf, dessen Puls hier liegt? Ein Puls ohne lesbare PID gilt als tot; EPERM
- * heisst, den Prozess gibt es, er gehoert nur einem anderen Benutzer.
- */
-function laufLebt(repoRoot, lauf) {
-  let pid;
-  try {
-    pid = JSON.parse(readFileSync(laufPfad(repoRoot, lauf, "puls"), "utf-8")).pid;
-  } catch {
-    return false;
-  }
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return err.code === "EPERM";
-  }
-}
-
-/**
- * Traegt offene Journalzeilen nach (E5) — beim Start jeder Betriebsart ausser dem
- * Trockenlauf, neben `berichteNachtragen`. Journale aufsteigend nach Name (der Stempel ist
- * die Zeit), darin in Zeilenfolge. Das Journal eines noch lebenden Laufs bleibt liegen:
- * Er schreibt selbst weiter, und ein Nachtrag von aussen koennte seinen neueren Stand mit
- * einem aelteren ueberschreiben. Idempotent, weil `issue stand` ersetzt.
- */
-export function staendeNachtragen(repoRoot = process.cwd()) {
-  const ordner = join(repoRoot, LAUF_ORDNER);
-  if (!existsSync(ordner)) return [];
-  const journale = readdirSync(ordner).filter((n) => n.endsWith(".jsonl")).sort(vergleicheText);
-  const nachgetragen = [];
-  for (const name of journale) {
-    const lauf = name.slice(0, -".jsonl".length);
-    if (laufLebt(repoRoot, lauf)) continue;
-    nachgetragen.push(...journalNachtragen(repoRoot, lauf));
-  }
-  return nachgetragen;
-}
-
-/** Traegt die offenen Zeilen EINES Journals nach, in Zeilenfolge — fuer Start und Waechter. */
-function journalNachtragen(repoRoot, lauf) {
-  const pfad = laufPfad(repoRoot, lauf, "jsonl");
-  const nachgetragen = [];
-  const staende = journalLesen(pfad).staende;
-  const letzter = letzteZustaende(staende);
-  // Eine abgegebene Karte gehoert einem anderen Runner (E3): keine ihrer Zeilen geht ans Board.
-  for (const zeile of staende.filter((s) => s.status === "offen" && letzter.get(s.karte) !== "abgegeben")) {
-    if (!standAnsBoard(pfad, zeile, { repoRoot })) continue;
-    nachgetragen.push({ lauf, nr: zeile.nr, karte: zeile.karte, zustand: zeile.zustand });
-    log(`Laufstand nachgetragen: #${zeile.karte} ${zeile.zustand} (Journal .claude/lauf/${lauf}.jsonl).`);
-  }
-  return nachgetragen;
-}
-
-/** Erneuert die Puls-Datei: Zeitstempel und PID (E6). Ohne Lauf ein Leerlauf. */
-function pulsSchreiben() {
-  if (!PULS_DATEI) return;
-  try {
-    writeFileSync(PULS_DATEI, JSON.stringify({ zeit: new Date().toISOString(), pid: process.pid }) + "\n", "utf-8");
-  } catch (err) {
-    log(`Puls ${PULS_DATEI} nicht geschrieben: ${err.message}`);
-  }
-}
-
-/**
- * Legt Journal und Puls dieses Laufs an und startet den Takt (E6). Nur mit Stempel, also
- * nie im Trockenlauf. `unref`: Der Takt haelt den Prozess nicht am Leben.
- */
-function laufstandStarten() {
-  if (!ZUSTAND.LAUF_STEMPEL) return;
-  PULS_DATEI = laufPfad(process.cwd(), ZUSTAND.LAUF_STEMPEL, "puls");
-  journalZeile(laufPfad(process.cwd(), ZUSTAND.LAUF_STEMPEL, "jsonl"), { art: "lauf", zeit: new Date().toISOString(), pid: process.pid, text: "begonnen" });
-  pulsSchreiben();
-  PULS_TIMER = setInterval(pulsSchreiben, Number(process.env.NIGHT_PULS_MS) || PULS_TAKT_MS);
-  PULS_TIMER.unref();
-}
-
-/**
- * Der eine Weg jedes Abbruchs, den der Prozess noch bemerkt (E8): Signal, Exception und
- * fail(). Erst synchron die Journalzeile "abgebrochen, <Grund>", dann jede Karte, die im
- * Journal laeuft, auf `abgebrochen` — mit dem Budget des Aufrufers —, dann der Laufbericht
- * mit seinem Abschluss, dann das Ende. Was das Board nicht annimmt, bleibt offen im
- * Journal und wird nachgetragen.
- */
-function laufAbbrechen(grund, { abschluss = "abgebrochen", budgetMs, exitCode = 1 } = {}) {
-  if (ABBRUCH_LAEUFT) process.exit(exitCode);
-  ABBRUCH_LAEUFT = true;
-  if (PULS_TIMER) clearInterval(PULS_TIMER);
-  const text = `abgebrochen, ${grund}`;
-  if (abschluss === "abgebrochen") log(`Lauf ${text}.`);
-  if (ZUSTAND.LAUF_STEMPEL) {
-    const pfad = laufPfad(process.cwd(), ZUSTAND.LAUF_STEMPEL, "jsonl");
-    const zeit = new Date().toISOString();
-    journalZeile(pfad, { art: "lauf", zeit, pid: process.pid, text });
-    for (const karte of laufendeKarten(journalLesen(pfad).staende)) {
-      standSetzen(karte, "abgebrochen", `${text} (um ${zeit})`, { budgetMs });
-    }
-  }
-  if (ZUSTAND.LAUF) {
-    ZUSTAND.LAUF.abschluss = abschluss;
-    if (abschluss === "abgebrochen") ZUSTAND.LAUF.fehlerText = text;
-    schreibeErgebnisstand();
-    laufMelden({ budgetMs });
-  }
-  waechterBeenden();
-  process.exit(exitCode);
-}
-
-/** Ein Abbruch durch einen Fehler, den niemand gefangen hat: Stack nach stderr, dann E8. */
-function abbruchDurchFehler(art, err) {
-  process.stderr.write(`${err?.stack ?? String(err)}\n`);
-  laufAbbrechen(`${art}: ${ersteZeile(err?.message ?? String(err))}`, { budgetMs: ABBRUCH_BUDGET_MS, exitCode: 1 });
-}
-
-/** Die vier Handler (E8) — nur im CLI-Start gesetzt, nie beim Import durch die Tests. */
-function abbruchHandlerSetzen() {
-  process.on("SIGINT", () => laufAbbrechen("SIGINT", { budgetMs: ABBRUCH_BUDGET_MS, exitCode: 130 }));
-  process.on("SIGTERM", () => laufAbbrechen("SIGTERM", { budgetMs: ABBRUCH_BUDGET_MS, exitCode: 143 }));
-  process.on("uncaughtException", (err) => abbruchDurchFehler("uncaughtException", err));
-  process.on("unhandledRejection", (err) => abbruchDurchFehler("unhandledRejection", err));
-  // Jeder Abbruch endet in process.exit und erreicht kein finally mehr: Die Markierung des
-  // festen Kit-Stands (Issue #1102, A4) faellt deshalb hier, synchron, bei jedem Ende.
-  process.on("exit", () => {
-    for (const baum of [...KIT_STAND_BAEUME]) kitStandFreigeben(baum);
-  });
-}
-
-// --- Umgebung oder Paket: ein Versuch (Issue #1088, Plan #1079 E13, E15) ---
-
-// Was der Lauf gerade bearbeitet: die Karte, an der ein Umgebungsfehler vermerkt wird, und
-// die Karten, die er als naechste aufnaehme. Kette und Umsetzungsnacht setzen beides; beim
-// Anhalten bekommen die naechsten "nicht begonnen" (E15).
-let LAUF_KONTEXT = { karte: null, kandidaten: () => [] };
-// Gesetzt, sobald der Lauf anhaelt: Ein Board-Aufruf, der dann scheitert, wirft, statt einen
-// zweiten Versuch und ein zweites Anhalten zu beginnen.
-let ANHALTEN_LAEUFT = false;
-// Je Karte der Vermerk "2. Versuch" — er steht in jedem weiteren Laufstand dieser Karte, bis
-// der Lauf endet, und wird nicht von der naechsten Stufe ueberschrieben.
-const VERSUCH_VERMERKE = new Map();
-
-/** Haengt den Vermerk "2. Versuch" der Karte an einen Laufstand-Text, hoechstens einmal. */
-function mitVersuchVermerk(karte, eintrag) {
-  const vermerk = VERSUCH_VERMERKE.get(karte);
-  if (!vermerk || eintrag.includes(vermerk)) return eintrag;
-  return eintrag ? `${eintrag}\n\n${vermerk}` : vermerk;
-}
-
-/** Die Pause vor dem zweiten Versuch: `night.stand.pauseMin`, ein unbrauchbarer Block faellt auf die Vorgabe. */
-function pauseMs() {
-  const stand = nightStandLaden(ZUSTAND.config);
-  return (stand.fehler ? STAND_VORGABEN.pauseMin : stand.pauseMin) * 60_000;
-}
-
-/**
- * Vermerkt einen Umgebungsfehler und wartet die Pause ab, synchron ueber `Atomics.wait` wie
- * in kit/checks.mjs: `board()` ist synchron, und ein asynchroner Umbau beruehrte jede
- * Aufrufstelle (E13). Der Puls davor und danach — waehrend der Pause schweigt der Takt, und
- * `pauseMin < fristMin` haelt den Waechter still.
- */
-function zweiterVersuch(grund) {
-  const ms = pauseMs();
-  const zeit = new Date().toISOString();
-  log(`Umgebungsfehler: ${grund} — 2. Versuch nach ${ms / 1000} s Pause.`);
-  if (ZUSTAND.LAUF_STEMPEL) journalZeile(laufPfad(process.cwd(), ZUSTAND.LAUF_STEMPEL, "jsonl"), { art: "lauf", zeit, pid: process.pid, text: `2. Versuch: ${ersteZeile(grund)}` });
-  if (LAUF_KONTEXT.karte) VERSUCH_VERMERKE.set(String(LAUF_KONTEXT.karte), `2. Versuch nach Umgebungsfehler um ${zeit}: ${ersteZeile(grund)}`);
-  pulsSchreiben();
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-  pulsSchreiben();
-}
-
-/**
- * Schreibt den letzten Stand der laufenden Karte erneut, jetzt mit dem Vermerk — nach einem
- * gelungenen zweiten Board-Versuch, denn waehrend des Ausfalls nahm das Board nichts an.
- * Eine Karte ohne Stand im Journal bekommt ihn mit dem naechsten Stand ihrer Runde.
- */
-function vermerkAnDieKarte() {
-  const karte = LAUF_KONTEXT.karte;
-  if (!karte || !ZUSTAND.LAUF_STEMPEL) return;
-  const letzter = journalLesen(laufPfad(process.cwd(), ZUSTAND.LAUF_STEMPEL, "jsonl")).staende.findLast((s) => s.karte === String(karte));
-  if (letzter && letzter.zustand !== "abgegeben") standSetzen(karte, letzter.zustand, letzter.text);
-}
-
-/**
- * Setzt die Staende des Anhaltens (E15): die laufende Karte auf `abgebrochen`, jede Karte,
- * die der Lauf als naechste aufgenommen haette, auf `wartet` mit "nicht begonnen", Grund und
- * Zeitpunkt. Was das Board nicht annimmt, bleibt offen im Journal. Lassen sich die naechsten
- * Karten nicht bestimmen, weil das Board schweigt, gilt dort ihr zuletzt sichtbarer Stand.
- */
-function anhaltenVermerken(grund) {
-  ANHALTEN_LAEUFT = true;
-  const zeit = new Date().toISOString();
-  const karte = LAUF_KONTEXT.karte ? String(LAUF_KONTEXT.karte) : null;
-  log(`Lauf haelt an: ${grund}`);
-  if (karte) standSetzen(karte, "abgebrochen", `abgebrochen, Umgebungsfehler um ${zeit}: ${grund}`, { budgetMs: ABBRUCH_BUDGET_MS });
-  let ids;
-  try {
-    ids = LAUF_KONTEXT.kandidaten().map(String);
-  } catch (err) {
-    log(`  Die naechsten Karten liessen sich nicht bestimmen (${ersteZeile(err.message)}) — am Board gilt ihr zuletzt sichtbarer Stand.`);
-    return;
-  }
-  for (const id of ids.filter((i) => i !== karte)) {
-    log(`  #${id} nicht begonnen.`);
-    standSetzen(id, "wartet", `nicht begonnen: der Lauf hielt um ${zeit} an — ${grund}`, { budgetMs: ABBRUCH_BUDGET_MS });
-  }
-}
-
-/**
- * Haelt den Lauf wegen der Umgebung an (E13, E15): Staende setzen, dann der Weg von fail().
- * Die Klasse bleibt die des Ausfalls — ein schweigendes Board ist `tracker`, ein
- * gescheiterter Sitzungsstart `umgebung`.
- */
-function laufAnhalten(grund, klasse = "umgebung") {
-  anhaltenVermerken(grund);
-  fail(`Lauf angehalten: ${grund}`, klasse);
-}
-
-/** Hat die Sitzung ein Ereignis in ihren Strom geschrieben, kam sie zustande (E13). */
-export function hatSitzungsereignis(stdout) {
-  return String(stdout ?? "").split("\n").some((zeile) => {
-    if (!zeile.trim().startsWith("{")) return false;
-    try {
-      return typeof JSON.parse(zeile)?.type === "string";
-    } catch {
-      return false;
-    }
-  });
-}
-
-/**
- * Ist dieser Sitzungsstart an der Umgebung gescheitert? Exit ungleich 0 ohne Zeitlimit und
- * ohne ein einziges Sitzungsereignis (E13). Die Kommando-Stufe meldet keine Ereignisse; dort
- * laesst sich Umgebung nicht von Paket trennen, und es bleibt beim harten Stopp ohne Versuch.
- */
-function sitzungsStartGescheitert(res, kommando) {
-  const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
-  if (timedOut || !(res.error || res.status !== 0)) return false;
-  return !kommando && !hatSitzungsereignis(res.stdout);
-}
-
-const exitText = (res) => (res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`);
-
-// --- Waechter: der verstummte Lauf (Issue #1085, Plan #1079 E7) ---
-
-// Der Takt, in dem der Waechter nachsieht; bei einer kuerzeren Frist (nur in Tests) die
-// Frist selbst, damit "Frist plus ein Pruefakt" eine kurze Zeit bleibt.
-const WAECHTER_TAKT_MS = 60_000;
-// Die PID des Waechters dieses Laufs; `laufAbschliessen` und `laufAbbrechen` beenden ihn.
-let WAECHTER_PID = null;
-
-/**
- * Die Frist in Millisekunden: `night.stand.fristMin`, im Test `KIT_NIGHT_WAECHTER_FRIST_S`
- * in Sekunden. Ein unbrauchbarer Block faellt auf die Vorgabe zurueck — der Runner hat ihn
- * vor dem Start schon abgewiesen, und der Waechter soll an ihm nicht scheitern.
- */
-function waechterFristMs(cfg, env = process.env) {
-  const sekunden = Number(env.KIT_NIGHT_WAECHTER_FRIST_S);
-  if (String(env.KIT_NIGHT_WAECHTER_FRIST_S ?? "").trim() && Number.isFinite(sekunden) && sekunden > 0) return sekunden * 1000;
-  const stand = nightStandLaden(cfg);
-  return (stand.fehler ? STAND_VORGABEN.fristMin : stand.fristMin) * 60_000;
-}
-
-const fristText = (ms) => (ms % 60_000 === 0 ? `${ms / 60_000} min` : `${ms / 1000} s`);
-
-/** Die Puls-Datei eines Laufs (`{ zeit, pid }`) oder `null`, wenn sie fehlt oder unlesbar ist. */
-function pulsLesen(repoRoot, lauf) {
-  try {
-    return JSON.parse(readFileSync(laufPfad(repoRoot, lauf, "puls"), "utf-8"));
-  } catch {
-    return null;
-  }
-}
-
-const laufberichtPfad = (repoRoot, lauf) => join(repoRoot, ".claude", `night-run-${lauf}.json`);
-
-/** Der Laufbericht eines Laufs oder `null`. */
-function laufberichtLesen(repoRoot, lauf) {
-  try {
-    return JSON.parse(readFileSync(laufberichtPfad(repoRoot, lauf), "utf-8"));
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Was der Waechter vorfindet: `beendet` (Journal weg oder Laufbericht mit Abschluss),
- * `lebt` oder `verstummt`. Verstummt nur, wenn der Puls aelter als die Frist ist UND die
- * PID des Runners nicht mehr lebt: Ein Lauf, der wegen synchroner Pruefungen lange
- * schweigt, aber lebt, gilt nie als verstummt (E7).
- */
-function waechterLage(repoRoot, lauf, fristMs) {
-  if (!existsSync(laufPfad(repoRoot, lauf, "jsonl"))) return "beendet";
-  const bericht = laufberichtLesen(repoRoot, lauf);
-  if (bericht && bericht.abschluss != null) return "beendet";
-  const alterMs = Date.now() - Date.parse(pulsLesen(repoRoot, lauf)?.zeit ?? "");
-  if (Number.isFinite(alterMs) && alterMs <= fristMs) return "lebt";
-  return laufLebt(repoRoot, lauf) ? "lebt" : "verstummt";
-}
-
-/**
- * Schliesst einen verstummten Lauf ab (E7): Journalzeile, jede Karte mit Journalstand
- * `laeuft` auf `abgebrochen`, offene Zeilen nachtragen, Laufbericht `abschluss:
- * "verstummt"` samt Einlieferung. Einen Neustart gibt es nicht — ein Neustart von aussen
- * waere ein Lauf ohne Geste (Kriterium 12 aus #1075).
- */
-function verstummtAbschliessen(repoRoot, lauf, fristMs) {
-  const text = `nicht beendet, letztes Lebenszeichen ${pulsLesen(repoRoot, lauf)?.zeit ?? "unbekannt"}, Frist ${fristText(fristMs)}`;
-  log(`Lauf ${lauf} verstummt: ${text}.`);
-  const pfad = laufPfad(repoRoot, lauf, "jsonl");
-  journalZeile(pfad, { art: "lauf", zeit: new Date().toISOString(), pid: process.pid, text: `verstummt, ${text}` });
-  for (const karte of laufendeKarten(journalLesen(pfad).staende)) {
-    standSetzen(karte, "abgebrochen", text, { lauf, repoRoot, budgetMs: ABBRUCH_BUDGET_MS });
-  }
-  journalNachtragen(repoRoot, lauf);
-  const bericht = laufberichtLesen(repoRoot, lauf);
-  if (!bericht || bericht.abschluss != null) return;
-  bericht.abschluss = "verstummt";
-  bericht.fehlerText = text;
-  for (const einheit of Array.isArray(bericht.einheiten) ? bericht.einheiten : []) {
-    if (einheit.ausgang == null || einheit.ausgang === "unbekannt") {
-      einheit.ausgang = "verstummt";
-      einheit.grund = text;
-    }
-  }
-  try {
-    writeFileSync(laufberichtPfad(repoRoot, lauf), JSON.stringify(bericht, null, 2) + "\n", "utf-8");
-  } catch (err) {
-    log(`Laufbericht ${lauf} nicht geschrieben: ${err.message}`);
-    return;
-  }
-  laufMelden({ budgetMs: ABBRUCH_BUDGET_MS, datei: laufberichtPfad(repoRoot, lauf), stand: bericht });
-}
-
-/**
- * Rueckfall beim Start (E7): Ein Journal, dessen Runner nicht mehr lebt und dessen
- * Laufbericht noch keinen Abschluss traegt, wird wie verstummt abgeschlossen — fuer den
- * Waechter, der mit dem Rechner gestorben ist. Ein Journal ohne Laufbericht bleibt dem
- * Nachtrag ueberlassen.
- */
-export function verwaisteLaeufeAbschliessen(repoRoot = process.cwd()) {
-  const ordner = join(repoRoot, LAUF_ORDNER);
-  if (!existsSync(ordner)) return [];
-  const fristMs = waechterFristMs(ZUSTAND.config);
-  const abgeschlossen = [];
-  for (const name of readdirSync(ordner).filter((n) => n.endsWith(".jsonl")).sort(vergleicheText)) {
-    const lauf = name.slice(0, -".jsonl".length);
-    if (laufLebt(repoRoot, lauf) || laufberichtLesen(repoRoot, lauf)?.abschluss !== null) continue;
-    verstummtAbschliessen(repoRoot, lauf, fristMs);
-    abgeschlossen.push(lauf);
-  }
-  return abgeschlossen;
-}
-
-/** Der Modus `--waechter <lauf>`: prueft im Takt, bis der Lauf beendet oder verstummt ist. */
-async function waechterLaufen(lauf) {
-  const repoRoot = process.cwd();
-  if (!lauf) return;
-  const configPath = join(repoRoot, ".claude", "workflow.config.json");
-  if (existsSync(configPath)) ZUSTAND.config = ladeConfigMitOverrides(configPath);
-  ZUSTAND.LOG_FILE = join(repoRoot, ".claude", `night-run-${lauf.slice(0, 10)}.log`);
-  ZUSTAND.LOG_KENNUNG = `${lauf}-waechter`;
-  const fristMs = waechterFristMs(ZUSTAND.config);
-  const taktMs = Math.min(WAECHTER_TAKT_MS, fristMs);
-  for (;;) {
-    await new Promise((r) => setTimeout(r, taktMs));
-    const lage = waechterLage(repoRoot, lauf, fristMs);
-    if (lage === "lebt") continue;
-    if (lage === "verstummt") verstummtAbschliessen(repoRoot, lauf, fristMs);
-    return;
-  }
-}
-
-/**
- * Startet den Waechter dieses Laufs als abgekoppelten Kindprozess und merkt seine PID im
- * Journal (E7). Nur mit Stempel, also nie im Trockenlauf; `KIT_NIGHT_WAECHTER=0`
- * unterdrueckt ihn (nur fuer Tests).
- */
-/**
- * Die `spawn`-Optionen des Waechters (Issue #1132, Plan #1128 E10). `detached` gilt auf jeder
- * Plattform: Unter Windows legt Node jedes nicht abgekoppelte Kind in ein Job-Objekt, das
- * mit dem Runner endet — der Waechter stuerbe mit genau dem Lauf, den er ueberwachen soll.
- * Das Konsolenfenster, das `detached` dort sonst bringt (#1123), unterdruecken
- * `windowsHide` und `stdio: "ignore"`; eine Ausgabe, die verloren gehen koennte, hat der
- * Waechter nicht.
- */
-export function waechterStartOptionen(cwd) {
-  return { cwd, detached: true, stdio: "ignore", windowsHide: true };
-}
-
-function waechterStarten() {
-  if (!ZUSTAND.LAUF_STEMPEL || process.env.KIT_NIGHT_WAECHTER === "0") return;
-  try {
-    const kind = spawn(process.execPath, [fileURLToPath(import.meta.url), "--waechter", ZUSTAND.LAUF_STEMPEL], waechterStartOptionen(process.cwd()));
-    kind.on("error", (err) => log(`Waechter nicht gestartet: ${err.message}`));
-    kind.unref();
-    WAECHTER_PID = kind.pid ?? null;
-  } catch (err) {
-    log(`Waechter nicht gestartet: ${err.message}`);
-    return;
-  }
-  journalZeile(laufPfad(process.cwd(), ZUSTAND.LAUF_STEMPEL, "jsonl"), { art: "lauf", zeit: new Date().toISOString(), pid: process.pid, waechterPid: WAECHTER_PID, text: "Waechter gestartet" });
-}
-
-/** Beendet den Waechter dieses Laufs mit SIGTERM; ohne Waechter ein Leerlauf. */
-function waechterBeenden() {
-  if (!WAECHTER_PID) return;
-  try {
-    process.kill(WAECHTER_PID, "SIGTERM");
-  } catch { /* schon beendet */ }
-  WAECHTER_PID = null;
 }
 
 // --- Der Umsetzungs-Lock (Plan #691, E10; Issue #696) ---
@@ -8881,10 +8260,10 @@ async function laufeEineKette(auftrag, nummer, args) {
   };
   // Haelt der Lauf wegen der Umgebung an, sind die naechsten die Pakete des Auftrags ohne
   // Ergebnis (E15).
-  LAUF_KONTEXT = {
+  Object.assign(LAUF_KONTEXT, {
     karte: String(karte.id),
     kandidaten: () => (kette.stufen.pakete?.ids ?? []).map(String).filter((id) => !paketUmgesetzt(leseKarte(id))),
-  };
+  });
   const aeltere = ketteBeginnen(kette, auftrag, nummer, args);
 
   let ergebnis;
@@ -9090,7 +8469,7 @@ function belegteWurzeln(alle, label) {
  */
 function vorabStandSetzen(args, auftraege) {
   if (args.dryRun) return { beansprucht: auftraege, abgegeben: [] };
-  auftraege.forEach((a, i) => LAUF_POSITIONEN.set(String(a.karte.id), { k: i + 1, n: auftraege.length }));
+  auftraege.forEach((a, i) => laufPositionSetzen(a.karte.id, { k: i + 1, n: auftraege.length }));
   return beanspruchen(auftraege);
 }
 
@@ -11019,7 +10398,7 @@ function rundenStandGrund(ausgang, { einheit, pruefung, res, commit }) {
  * steht der Stand schon (E15). Ein abgebrochenes Paket merkt sich der Lauf fuer das Gate.
  */
 function paketStandAbschliessen(top, ausgang, grund) {
-  if (ANHALTEN_LAEUFT) return;
+  if (anhaltenLaeuft()) return;
   const zustand = RUNDEN_STAND[ausgang] ?? "abgebrochen";
   if (zustand === "abgebrochen") ABGEBROCHENE_PAKETE.add(Number(top.id));
   standSetzen(top.id, zustand, `Runde beendet: ${ausgang} um ${new Date().toISOString()}\n\n${grund}`);
@@ -11085,7 +10464,7 @@ function lockFehlschlagVermerken(lauf) {
  */
 async function implementierungsSchleife(args, ctx, lauf) {
   let iterations = 0;
-  LAUF_KONTEXT = { karte: null, kandidaten: () => umsetzungsKandidaten(ctx) };
+  Object.assign(LAUF_KONTEXT, { karte: null, kandidaten: () => umsetzungsKandidaten(ctx) });
   while (lauf.sessions < args.max && iterations < MAX_ITERATIONS) {
     iterations++;
     LAUF_KONTEXT.karte = null;
@@ -11226,7 +10605,11 @@ async function main() {
   // Vor den Abbruch-Handlern: Ein Signal soll hier das Kind erreichen, nicht diesen Prozess beenden.
   const kindExit = await kitStandSchritt(args, process.argv.slice(2));
   if (kindExit !== null) process.exit(kindExit);
-  abbruchHandlerSetzen();
+  // Jeder Abbruch endet in process.exit und erreicht kein finally mehr: Die Markierung des
+  // festen Kit-Stands (Issue #1102, A4) faellt deshalb beim Ende, synchron.
+  abbruchHandlerSetzen({ beimEnde: () => {
+    for (const baum of [...KIT_STAND_BAEUME]) kitStandFreigeben(baum);
+  } });
 
   const ctx = vorbereiten(args);
   // Erst nach den Vorpruefungen (Issue #1200): Ein Start, der nicht laufen darf, raeumt nichts ab.
@@ -11298,7 +10681,7 @@ function auskunftOhneTeile(argv) {
 grundlagenAnbinden({
   pulsSchreiben,
   laufAbbrechen,
-  anhaltenLaeuft: () => ANHALTEN_LAEUFT,
+  anhaltenLaeuft,
   zweiterVersuch,
   vermerkAnDieKarte,
   laufAnhalten,
