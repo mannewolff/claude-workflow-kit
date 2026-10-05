@@ -288,3 +288,26 @@ test("ein uebernommenes rotes Ergebnis nennt die Verursacher weiter", () => {
     ]);
   });
 });
+
+// Die Verursachersuche wertet die abhaengigen Bereiche mit aus (Issue #1208, Plan #1199,
+// E15): Ohne sie nennte sie nach der Zerlegung in Teile zu wenige Karten.
+test("eine Karte, die Teil A aendert, ist Verursacherin des roten Teils B, der A importiert", () => {
+  const config = {
+    buildChecks: [{ cmd: "exit 1", areas: ["teilB"] }],
+    checkAreas: { teilA: ["kit/a.mjs"], teilB: ["kit/b.mjs"] },
+  };
+  mitRepo({ config }, (dir) => {
+    datei(dir, "kit/a.mjs", "export const a = 1;\n");
+    datei(dir, "kit/b.mjs", 'import { a } from "./a.mjs";\nexport const b = a;\n');
+    commit(dir, "Die Teile");
+    const basis = anker(dir);
+    datei(dir, "kit/a.mjs", "export const a = 2;\n");
+    const sha = commit(dir, "Teil A rechnet anders (Issue #920)");
+
+    pushLauf(dir, basis);
+
+    assert.deepEqual(zusammenfassung(dir).verursacher, [
+      { cmd: "exit 1", karten: [{ karte: "920", shas: [sha] }] },
+    ]);
+  });
+});

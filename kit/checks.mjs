@@ -845,6 +845,19 @@ function importeureErheben() {
   return importeure;
 }
 
+/** Eine Funktion ohne Argumente, die ihr Ergebnis beim ersten Aufruf rechnet und danach behaelt. */
+function einmal(fn) {
+  let gerechnet = false;
+  let wert;
+  return () => {
+    if (!gerechnet) {
+      wert = fn();
+      gerechnet = true;
+    }
+    return wert;
+  };
+}
+
 /**
  * Die Importeure mit Muster, die eine Datei erreichen, und deren Bereiche — die Kette
  * laeuft durch Importeure ohne Muster weiter und endet an jedem mit Muster. `besucht`
@@ -888,9 +901,9 @@ function importKette(start, importeure, bereichsdefinition) {
  *
  * `abgeleitet` traegt je Datei die Ableitung fuer den Abschlussbericht.
  */
-function ausImportenAbleiten(zuordnung, bereichsdefinition) {
+function ausImportenAbleiten(zuordnung, bereichsdefinition, importGraph = importeureErheben) {
   if (!zuordnung.ohneZuordnung.some((pfad) => JS_DATEI.test(pfad))) return { ...zuordnung, abgeleitet: [] };
-  const importeure = importeureErheben();
+  const importeure = importGraph();
   if (importeure === null) return { ...zuordnung, abgeleitet: [] };
   const beruehrt = new Set(zuordnung.beruehrt);
   const ohnePruefung = [...zuordnung.ohnePruefung];
@@ -913,6 +926,69 @@ function ausImportenAbleiten(zuordnung, bereichsdefinition) {
   }
   return { ...zuordnung, beruehrt, ohnePruefung, ohneZuordnung, ohneMuster: ohneZuordnung[0] ?? null, abgeleitet };
 }
+
+/**
+ * Die Bereiche, die eine Aenderung ueber Importe mitberuehrt (Issue #1208, Plan #1199, E3).
+ * Zerfaellt ein Werkzeug in Teile, bricht eine Aenderung an Teil A auch die Teile, die A
+ * importieren — ohne diese Ableitung liefe zu wenig, und das ist die unsichere Richtung.
+ *
+ * Die Kette laeuft Datei fuer Datei und transitiv: von jeder geaenderten Datei zu ihren
+ * Importeuren, von dort zu deren Importeuren, durch Dateien mit und ohne Muster. Jeder
+ * erreichte Importeur beruehrt seine Bereiche; `besucht` haelt einen Kreis auf. Ein neuer
+ * Bereich steht mit der Datei da, deren Import ihn erreichte, zuerst gefunden gewinnt.
+ *
+ * `importGraph` ist die Erhebung aus `importeureErheben` — dieselbe Literal-Erhebung wie
+ * fuer Dateien ohne Muster (#1181): statische und dynamische Importe mit literalem Pfad.
+ * Nicht literale Importe sieht sie NICHT, und das ist gewollt: die Nachbar-Importe des
+ * Nacht-Runners (`NACHBAR_*` ueber `pathToFileURL` in `kit/night.mjs`) und der
+ * Windows-Import von `board.mjs` in diesem Modul (`nachbarBoard`). Diese Kopplungen stehen
+ * weiter von Hand in den `areas` des Kommandos, dessen Teil den Nachbarn laedt (E3).
+ */
+function abhaengigeBereiche(beruehrt, importGraph, bereichsdefinition, startDateien) {
+  const besucht = new Set(startDateien);
+  const offen = [...startDateien].sort(vergleicheText);
+  const bekannt = new Set(beruehrt);
+  const abhaengig = [];
+  while (offen.length > 0) {
+    const ziel = offen.shift();
+    for (const importeur of [...(importGraph.get(ziel) ?? [])].sort(vergleicheText)) {
+      if (besucht.has(importeur)) continue;
+      besucht.add(importeur);
+      offen.push(importeur);
+      for (const bereich of bereichsTreffer(importeur, bereichsdefinition)) {
+        if (bekannt.has(bereich.name)) continue;
+        bekannt.add(bereich.name);
+        abhaengig.push({ bereich: bereich.name, ueber: ziel });
+      }
+    }
+  }
+  return abhaengig;
+}
+
+/**
+ * Erweitert eine Zuordnung um die abhaengigen Bereiche (Issue #1208). Ausgangspunkt ist
+ * jede geaenderte Datei ausser einer, die nur Blob-Zeilen aendert — die beruehrt nicht
+ * einmal ihre eigenen Bereiche. Scheitert die Erhebung, laesst sich nicht sagen, was
+ * abhaengt: Dann gilt die Zuordnung als nicht bestimmbar und zieht den vollen Umfang.
+ */
+function umAbhaengigeErweitern(zuordnung, geaendert, nurBlobs, bereichsdefinition, importGraph) {
+  const start = geaendert.filter((pfad) => !nurBlobs.has(pfad));
+  if (start.length === 0) return { ...zuordnung, abhaengig: [] };
+  const graph = importGraph();
+  if (graph === null) return { ...zuordnung, abhaengig: [], importeUnbekannt: true };
+  const abhaengig = abhaengigeBereiche(zuordnung.beruehrt, graph, bereichsdefinition, start);
+  const beruehrt = new Set(zuordnung.beruehrt);
+  for (const { bereich } of abhaengig) beruehrt.add(bereich);
+  return { ...zuordnung, beruehrt, abhaengig };
+}
+
+/** Die Berichtszeile eines abhaengigen Bereichs (Issue #1208). */
+function abhaengigZeile({ bereich, ueber }) {
+  return `Bereich ${bereich} beruehrt ueber Import von ${ueber}`;
+}
+
+/** Der Grund des vollen Umfangs, wenn sich die Importe nicht erheben liessen (Issue #1208). */
+const IMPORTE_UNBEKANNT_GRUND = "voller Umfang: die Importe liessen sich nicht erheben";
 
 /** Die Zeile einer Ableitung im Block `Fuer den Abschlussbericht:` (Issue #1181). */
 function ableitungsZeile({ pfad, ueber, bereiche, grund }) {
@@ -1144,7 +1220,7 @@ function auswahlEintrag(check, grund) {
  */
 function bauen({ basis, stufe, geaendert = [], bereiche = [], ohneZuordnung = [], ohnePruefung = [],
   laufen = [], ausgelassen = [], vollerUmfang = false, leeresPaket = false, bereichWahl = null,
-  abschluss = false, abgeleitet = [] }) {
+  abschluss = false, abgeleitet = [], abhaengig = [] }) {
   // `bereichWahl` traegt den Namen des Bereichs, auf den `--bereich` die Auswahl
   // eingegrenzt hat, sonst null. Das Feld ist kein Schmuck, sondern die Marke eines
   // TEILNACHWEISES: Ein Bereichslauf bestimmt `geaendert` und `hashes` weiterhin aus
@@ -1162,6 +1238,8 @@ function bauen({ basis, stufe, geaendert = [], bereiche = [], ohneZuordnung = []
   // Importen bekam — sonst fehlt das Feld, und die Zusammenfassung bleibt, wie sie war.
   const auswahl = { basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, laufen, ausgelassen, vollerUmfang, leeresPaket, bereichWahl, abschluss };
   if (abgeleitet.length > 0) auswahl.abgeleitet = abgeleitet;
+  // `abhaengig` (Issue #1208) aus demselben Grund nur, wenn ein Import einen Bereich mitberuehrt.
+  if (abhaengig.length > 0) auswahl.abhaengig = abhaengig;
   return auswahl;
 }
 
@@ -1205,16 +1283,28 @@ function planen(args) {
 
   const geaendert = geaenderteDateien(basis);
   const bereichsdefinition = bereicheVorbereiten(checkAreas);
-  const { beruehrt, ohneMuster, ohneZuordnung, ohnePruefung, blobBereiche, abgeleitet } = ausImportenAbleiten(
-    zuordnen(
-      geaendert,
+  const nurBlobs = nurBlobsGeaendert(basis, geaendert);
+  // Die Erhebung liest jede versionierte JavaScript-Datei; sie laeuft hoechstens einmal
+  // je Lauf, auch wenn beide Ableitungen sie brauchen.
+  const importGraph = einmal(importeureErheben);
+  const {
+    beruehrt, ohneMuster: ohneMusterDatei, ohneZuordnung, ohnePruefung, blobBereiche, abgeleitet, abhaengig, importeUnbekannt,
+  } = umAbhaengigeErweitern(
+    ausImportenAbleiten(
+      zuordnen(geaendert, bereichsdefinition, freistellungenVorbereiten(config.ohnePruefung), nurBlobs),
       bereichsdefinition,
-      freistellungenVorbereiten(config.ohnePruefung),
-      nurBlobsGeaendert(basis, geaendert),
+      importGraph,
     ),
+    geaendert,
+    nurBlobs,
     bereichsdefinition,
+    importGraph,
   );
   const bereiche = [...beruehrt].sort(vergleicheText);
+  // Laesst sich nicht sagen, was von der Aenderung abhaengt, gilt dasselbe wie fuer eine
+  // Datei ohne Muster: im Zweifel alles (E16). Der Grund sagt, welcher Zweifel es war.
+  const ohneMuster = ohneMusterDatei ?? (importeUnbekannt ? IMPORTE_UNBEKANNT_GRUND : null);
+  const zweifelGrund = ohneMusterDatei !== null ? ohneMusterGrund(ohneZuordnung) : IMPORTE_UNBEKANNT_GRUND;
 
   // Der BEREICHSLAUF (Issue #922, Plan #917, E3): Nicht der Diff sagt, welche
   // Bereiche beruehrt sind, sondern der Aufrufer. Das ist der sanktionierte Weg
@@ -1234,7 +1324,7 @@ function planen(args) {
   if (bereichWahl !== null) {
     const gewaehlt = new Set([bereichWahl]);
     return bauen({
-      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, bereichWahl, abschluss, abgeleitet,
+      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, bereichWahl, abschluss, abgeleitet, abhaengig,
       ...verteilen(checks, stufe, (check) => {
         const ergebnis = entscheidung(check, gewaehlt);
         return { laeuft: ergebnis.laeuft, grund: `Bereichslauf ${bereichWahl}: ${ergebnis.grund}` };
@@ -1243,7 +1333,7 @@ function planen(args) {
   }
 
   if (stufe === "merge") {
-    return freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, ohnePruefung, ohneMuster, beruehrt, blobBereiche, abschluss, abgeleitet });
+    return freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, ohnePruefung, ohneMuster, zweifelGrund, beruehrt, blobBereiche, abschluss, abgeleitet, abhaengig });
   }
 
   // Die Push-Stufe faehrt jede faellige Pruefung (Plan #753, E12;
@@ -1266,7 +1356,7 @@ function planen(args) {
   if (stufe === "push") {
     const grund = "Veroeffentlichungsstufe: voller Umfang";
     return bauen({
-      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, abschluss, abgeleitet,
+      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, abschluss, abgeleitet, abhaengig,
       ...verteilen(checks, stufe, () => ({ laeuft: true, grund }), abschluss),
     });
   }
@@ -1280,15 +1370,15 @@ function planen(args) {
   }
 
   if (ohneMuster !== null) {
-    const grund = ohneMusterGrund(ohneZuordnung);
+    const grund = zweifelGrund;
     return bauen({
-      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, vollerUmfang: true, abschluss, abgeleitet,
+      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, vollerUmfang: true, abschluss, abgeleitet, abhaengig,
       ...verteilen(checks, stufe, () => ({ laeuft: true, grund }), abschluss),
     });
   }
 
   return bauen({
-    basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, abschluss, abgeleitet,
+    basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, abschluss, abgeleitet, abhaengig,
     ...verteilen(checks, stufe, (check) => entscheidung(check, beruehrt, blobBereiche), abschluss),
   });
 }
@@ -1309,16 +1399,16 @@ function planen(args) {
  * `leeresPaket` bleibt false, auch ohne Aenderung: Die Merge-Pruefungen laufen, und
  * ein Bericht "keine Pruefung, weil nichts veraendert wurde" waere falsch.
  */
-function freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, ohnePruefung, ohneMuster, beruehrt, blobBereiche, abschluss, abgeleitet }) {
+function freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, ohnePruefung, ohneMuster, zweifelGrund, beruehrt, blobBereiche, abschluss, abgeleitet, abhaengig }) {
   const leer = geaendert.length === 0;
   const zweifel = !leer && ohneMuster !== null;
   const paketstufe = (check) => {
     if (leer) return { laeuft: false, grund: `leeres Paket: keine Aenderung seit ${basis}` };
-    if (zweifel) return { laeuft: true, grund: ohneMusterGrund(ohneZuordnung) };
+    if (zweifel) return { laeuft: true, grund: zweifelGrund };
     return entscheidung(check, beruehrt, blobBereiche);
   };
   return bauen({
-    basis, stufe: "merge", geaendert, bereiche, ohneZuordnung, ohnePruefung, vollerUmfang: zweifel, abschluss, abgeleitet,
+    basis, stufe: "merge", geaendert, bereiche, ohneZuordnung, ohnePruefung, vollerUmfang: zweifel, abschluss, abgeleitet, abhaengig,
     ...verteilen(checks, "merge", (check) => {
       if (check.stufe === "merge") return { laeuft: true, grund: "Freigabestufe: laeuft vor jeder Freigabe" };
       if (check.stufe === "push") return { laeuft: false, grund: "Stufe push, geprueft beim push main" };
@@ -2054,9 +2144,7 @@ export function haengendText(grenzeMs) {
  * ist nicht die, die es allein braeuchte.
  */
 function berichtszeilen(auswahl, laufen, { uebernommen = false, grenzeMs = PRUEFDAUER_OBERGRENZE_MS } = {}) {
-  const zeilen = auswahl.leeresPaket ? ["keine Pruefung, weil nichts veraendert wurde"] : [];
-  // Die Ableitung aus den Importen je Datei (Issue #1181): Sie erklaert die Auswahl darunter.
-  for (const a of auswahl.abgeleitet ?? []) zeilen.push(ableitungsZeile(a));
+  const zeilen = auswahlZeilen(auswahl);
   const vermerk = uebernommen ? ` (${UEBERNAHME_MARKE})` : "";
   for (const e of laufen) {
     const dauerMs = typeof e.dauerMs === "number" ? e.dauerMs : null;
@@ -2071,6 +2159,16 @@ function berichtszeilen(auswahl, laufen, { uebernommen = false, grenzeMs = PRUEF
     for (const hinweis of e.hinweise ?? []) zeilen.push(`hinweis: ${hinweis}`);
   }
   for (const e of auswahl.ausgelassen) zeilen.push(`ausgelassen: ${e.cmd} → ${e.grund}`);
+  return zeilen;
+}
+
+/** Die Zeilen, die die Auswahl erklaeren — sie stehen vor den Kommandos. */
+function auswahlZeilen(auswahl) {
+  const zeilen = auswahl.leeresPaket ? ["keine Pruefung, weil nichts veraendert wurde"] : [];
+  // Die Ableitung aus den Importen je Datei (Issue #1181): Sie erklaert die Auswahl darunter.
+  for (const a of auswahl.abgeleitet ?? []) zeilen.push(ableitungsZeile(a));
+  // Die Bereiche, die ein Import mitberuehrt, mit ihrem Weg (Issue #1208).
+  for (const a of auswahl.abhaengig ?? []) zeilen.push(abhaengigZeile(a));
   return zeilen;
 }
 
@@ -2558,9 +2656,13 @@ function kartenGruppen(basis) {
  * und eine Karte mit einer Datei ohne Muster loest im Prueflauf den vollen Umfang aus,
  * gilt hier also fuer jede rote Pruefung als beruehrt. Keine Karte zu nennen behauptete,
  * es gebe keinen Verdaechtigen; AK 4 verlangt bei Mehrdeutigkeit ausdruecklich alle.
+ *
+ * `gruppe.beruehrt` traegt dieselbe Ableitung wie die Auswahl (Issue #1208, Plan #1199,
+ * E15): Eine Karte, die Teil A aendert, beruehrt auch die Teile, die A importieren. Liessen
+ * sich die Importe nicht erheben, gilt die Karte wie bei einer Datei ohne Muster als beruehrt.
  */
 function gruppeTrifft(check, gruppe) {
-  if (gruppe.ohneMuster !== null) return true;
+  if (gruppe.ohneMuster !== null || gruppe.importeUnbekannt) return true;
   if (check.always || !check.areas) return true;
   return check.areas.some((name) => gruppe.beruehrt.has(name));
 }
@@ -2607,11 +2709,15 @@ function verursacherKarten(auswahl, roteEintraege) {
   const checks = (config.buildChecks ?? []).map((c) => normalisiere(c));
   const bereichsdefinition = bereicheVorbereiten(config.checkAreas ?? {});
   const freistellungen = freistellungenVorbereiten(config.ohnePruefung);
-  const gruppen = ermittelt.gruppen.map((gruppe) => ({
-    karte: gruppe.karte,
-    shas: gruppe.shas,
-    ...zuordnen([...gruppe.dateien], bereichsdefinition, freistellungen),
-  }));
+  const importGraph = einmal(importeureErheben);
+  const gruppen = ermittelt.gruppen.map((gruppe) => {
+    const dateien = [...gruppe.dateien];
+    return {
+      karte: gruppe.karte,
+      shas: gruppe.shas,
+      ...umAbhaengigeErweitern(zuordnen(dateien, bereichsdefinition, freistellungen), dateien, new Set(), bereichsdefinition, importGraph),
+    };
+  });
 
   return roteEintraege.map((e) => {
     const check = checks.find((c) => c.cmd === e.cmd) ?? {};

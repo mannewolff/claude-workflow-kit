@@ -290,3 +290,28 @@ test("[957] ausserhalb eines Repositories wirft die Erhebung weiterhin", () => {
     rmSync(draussen, { recursive: true, force: true });
   }
 });
+
+// --- Teile und Einstiege (Issue #1208, Plan #1199, E18) ---
+//
+// Zerfallen `kit/night.mjs` und `kit/board.mjs` in Teile unter `kit/night/` und
+// `kit/board/`, ist jeder Teil eine eigene Quelle. Ein Test, der den Teil laedt,
+// koppelt nur an ihn; einer, der den Einstieg laedt, koppelt an den Einstieg und
+// nicht an die Teile dahinter — die Kette laeuft nicht von Quelle zu Quelle, die
+// Teile erreicht die Auswahl ueber die abhaengigen Bereiche in kit/checks.mjs.
+
+test("[1208] Teile unter kit/night/ und kit/board/ sind eigene Quellen, der Einstieg koppelt an sich selbst", () => {
+  mitRepo({}, (dir) => {
+    for (const werkzeug of ["night", "board"]) {
+      datei(dir, `kit/${werkzeug}/grundlagen.mjs`, "export const g = 1;\n");
+      datei(dir, `kit/${werkzeug}.mjs`, `export { g } from "./${werkzeug}/grundlagen.mjs";\n`);
+      datei(dir, `test/${werkzeug}-teil.test.mjs`, `import { g } from "../kit/${werkzeug}/grundlagen.mjs";\nconsole.log(g);\n`);
+      datei(dir, `test/${werkzeug}-einstieg.test.mjs`, `import { g } from "../kit/${werkzeug}.mjs";\nconsole.log(g);\n`);
+    }
+
+    const tabelleDort = verflechtungErheben({ repoRoot: dir });
+    for (const werkzeug of ["night", "board"]) {
+      assert.deepEqual(tabelleDort.get(`test/${werkzeug}-teil.test.mjs`), [`kit/${werkzeug}/grundlagen.mjs`]);
+      assert.deepEqual(tabelleDort.get(`test/${werkzeug}-einstieg.test.mjs`), [`kit/${werkzeug}.mjs`]);
+    }
+  });
+});

@@ -121,3 +121,28 @@ test("[checks-1004] bereiche ohne Config bricht ab wie plan und run", () => {
     assert.match(res.stderr, /workflow\.config\.json/);
   });
 });
+
+// Ein Bereich, den ein Import mitberuehrt, steht mit seinem Weg im Bericht (Issue #1208, E3).
+test("[checks-1208] der Bericht nennt je abhaengigem Bereich den Import, ueber den er beruehrt ist", () => {
+  const config = {
+    buildChecks: [
+      { cmd: "node -e \"process.exit(0)\" # kern", areas: ["kern"] },
+      { cmd: "node -e \"process.exit(0)\" # teil", areas: ["teil"] },
+    ],
+    checkAreas: { kern: ["src/kern.mjs"], teil: ["src/teil.mjs"] },
+  };
+  mitRepo({ config }, (dir) => {
+    datei(dir, "src/kern.mjs", "export const k = 1;\n");
+    datei(dir, "src/teil.mjs", 'import { k } from "./kern.mjs";\nexport const t = k;\n');
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "stand");
+    datei(dir, "src/kern.mjs", "export const k = 2;\n");
+
+    const res = checks(dir, "run");
+
+    assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
+    const block = res.stdout.slice(res.stdout.indexOf("Fuer den Abschlussbericht:"));
+    assert.match(block, /Bereich teil beruehrt ueber Import von src\/kern\.mjs/);
+    assert.match(block, /gelaufen: node -e "process\.exit\(0\)" # teil → .* — Bereich teil beruehrt/);
+  });
+});
