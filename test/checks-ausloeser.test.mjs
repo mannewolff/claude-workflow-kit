@@ -37,12 +37,12 @@ const CONFIG = {
   checkAreas: { kern: ["src/**"], doku: ["docs/**"] },
 };
 
-test("[checks-1004] bereichsgebundene Kommandos tragen 'bereiche' mit den ausloesenden Bereichen", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[checks-1004] bereichsgebundene Kommandos tragen 'bereiche' mit den ausloesenden Bereichen", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "src/a.txt");
     datei(dir, "docs/b.md");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, res.stdout + res.stderr);
     assert.deepEqual(
@@ -54,11 +54,11 @@ test("[checks-1004] bereichsgebundene Kommandos tragen 'bereiche' mit den ausloe
   });
 });
 
-test("[checks-1004] ein Kommando ohne areas zaehlt als 'ohne-bereich', String wie always", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[checks-1004] ein Kommando ohne areas zaehlt als 'ohne-bereich', String wie always", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    run(dir);
+    await run(dir);
 
     for (const cmd of ["echo string", "echo immer"]) {
       const z = zeileVon(dir, cmd);
@@ -67,13 +67,13 @@ test("[checks-1004] ein Kommando ohne areas zaehlt als 'ohne-bereich', String wi
   });
 });
 
-test("[checks-1004] im vollen Umfang zaehlen nur bereichsgebundene Kommandos als 'ohne-zuordnung', mit den Dateien", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[checks-1004] im vollen Umfang zaehlen nur bereichsgebundene Kommandos als 'ohne-zuordnung', mit den Dateien", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "src/a.txt");
     datei(dir, "lose.txt");
     datei(dir, "mit,komma.txt");
 
-    run(dir);
+    await run(dir);
 
     const kern = zeileVon(dir, "echo kern");
     assert.equal(kern.ausloeser, "ohne-zuordnung");
@@ -87,11 +87,11 @@ test("[checks-1004] im vollen Umfang zaehlen nur bereichsgebundene Kommandos als
   });
 });
 
-test("[checks-1004] an der Push-Stufe zaehlen bereichsgebundene Kommandos als 'veroeffentlichung'", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[checks-1004] an der Push-Stufe zaehlen bereichsgebundene Kommandos als 'veroeffentlichung'", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    run(dir, "--stufe", "push");
+    await run(dir, "--stufe", "push");
 
     for (const cmd of ["echo kern", "echo doku", "echo push"]) {
       const z = zeileVon(dir, cmd);
@@ -101,11 +101,11 @@ test("[checks-1004] an der Push-Stufe zaehlen bereichsgebundene Kommandos als 'v
   });
 });
 
-test("[checks-1004] an der Freigabestufe zaehlt die Stufe merge als 'veroeffentlichung', die Paketstufe nach Bereichen", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[checks-1004] an der Freigabestufe zaehlt die Stufe merge als 'veroeffentlichung', die Paketstufe nach Bereichen", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    run(dir, "--stufe", "merge");
+    await run(dir, "--stufe", "merge");
 
     assert.equal(zeileVon(dir, "echo merge").ausloeser, "veroeffentlichung");
     const kern = zeileVon(dir, "echo kern");
@@ -113,9 +113,9 @@ test("[checks-1004] an der Freigabestufe zaehlt die Stufe merge als 'veroeffentl
   });
 });
 
-test("[checks-1004] ein nicht aufloesbarer Anker zaehlt als 'anker'", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
-    run(dir, "--since", "gibt-es-nicht");
+test("[checks-1004] ein nicht aufloesbarer Anker zaehlt als 'anker'", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
+    await run(dir, "--since", "gibt-es-nicht");
 
     const kern = zeileVon(dir, "echo kern");
     assert.deepEqual([kern.ausloeser, kern.bereiche, kern.dateien], ["anker", "", ""]);
@@ -123,11 +123,11 @@ test("[checks-1004] ein nicht aufloesbarer Anker zaehlt als 'anker'", () => {
   });
 });
 
-test("[checks-1004] --bereich zaehlt als 'bereiche' mit genau diesem Bereich", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[checks-1004] --bereich zaehlt als 'bereiche' mit genau diesem Bereich", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    run(dir, "--bereich", "doku");
+    await run(dir, "--bereich", "doku");
 
     const doku = zeileVon(dir, "echo doku");
     assert.deepEqual([doku.ausloeser, doku.bereiche], ["bereiche", "doku"]);
@@ -135,13 +135,13 @@ test("[checks-1004] --bereich zaehlt als 'bereiche' mit genau diesem Bereich", (
   });
 });
 
-test("[checks-1004] eine aeltere siebenspaltige Zeile bleibt neben den neuen stehen und lesbar", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[checks-1004] eine aeltere siebenspaltige Zeile bleibt neben den neuen stehen und lesbar", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "src/a.txt");
     const alt = "2026-09-01T00:00:00.000Z\techo frueher\tgruen\t7\tabschluss\t2026-09-01T00:00:00.000Z\t948";
     writeFileSync(ausfuehrungenPfad(dir), `${alt}\n`, "utf-8");
 
-    run(dir);
+    await run(dir);
 
     const zeilen = ausfuehrungen(dir);
     assert.equal(zeilen[0], alt, "die alte Zeile bleibt Zeichen fuer Zeichen stehen");

@@ -25,8 +25,8 @@ const CONFIG = {
   },
 };
 
-test("eine Datei ohne passendes Muster zieht den vollen Umfang und nennt sich beim Namen", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("eine Datei ohne passendes Muster zieht den vollen Umfang und nennt sich beim Namen", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "docs/neu.md");
 
     const ergebnis = plan(dir);
@@ -42,8 +42,8 @@ test("eine Datei ohne passendes Muster zieht den vollen Umfang und nennt sich be
   });
 });
 
-test("eine nicht zugeordnete Pruefung laeuft auch im Regelfall mit", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("eine nicht zugeordnete Pruefung laeuft auch im Regelfall mit", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir);
@@ -54,9 +54,9 @@ test("eine nicht zugeordnete Pruefung laeuft auch im Regelfall mit", () => {
   });
 });
 
-test("eine geloeschte Datei zaehlt als Aenderung", () => {
+test("eine geloeschte Datei zaehlt als Aenderung", async () => {
   // Eine geloeschte Datei richtet oft mehr an als eine geaenderte.
-  mitRepo({ config: CONFIG }, (dir) => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "backend/src/Service.java");
     git(dir, "add", "-A");
     git(dir, "commit", "-q", "-m", "Service");
@@ -71,8 +71,8 @@ test("eine geloeschte Datei zaehlt als Aenderung", () => {
   });
 });
 
-test("eine Umbenennung zaehlt mit beiden Pfaden", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("eine Umbenennung zaehlt mit beiden Pfaden", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/alt.tsx", "export const x = 1;\n");
     datei(dir, "backend/.keep", "");
     git(dir, "add", "-A");
@@ -88,12 +88,12 @@ test("eine Umbenennung zaehlt mit beiden Pfaden", () => {
   });
 });
 
-test("ein unbekannter Bereichsname endet mit Exit ungleich 0 und nennt die bekannten Schluessel", () => {
+test("ein unbekannter Bereichsname endet mit Exit ungleich 0 und nennt die bekannten Schluessel", async () => {
   const config = {
     buildChecks: [{ cmd: "npm run build", areas: ["frontnend"] }],
     checkAreas: CONFIG.checkAreas,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const res = checks(dir, "plan");

@@ -16,12 +16,10 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, copyFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { spawnSync } from "node:child_process";
 import {
-  CHECKS, mitRepo, plan, run, zusammenfassung, treeStand, datei, kommandos, eintrag,
+  mitRepo, plan, run, zusammenfassung, treeStand, datei, kommandos, eintrag,
 } from "./helpers/checks-repo.mjs";
 
 /** Ein Kommando, dessen Lauf sich an einer Datei ablesen laesst statt an der Ausgabe. */
@@ -41,7 +39,7 @@ const ERGEBNISSE = (liste) => liste.map((e) => e.ergebnis);
  */
 const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
-test("nur die ausgewaehlten Kommandos laufen, die ausgelassenen nennt die Ausgabe mit Grund", () => {
+test("nur die ausgewaehlten Kommandos laufen, die ausgelassenen nennt die Ausgabe mit Grund", async () => {
   const config = {
     buildChecks: [
       { cmd: marke("lief-frontend.txt"), areas: ["frontend"] },
@@ -49,10 +47,10 @@ test("nur die ausgewaehlten Kommandos laufen, die ausgelassenen nennt die Ausgab
     ],
     checkAreas: { frontend: ["frontend/**"], backend: ["backend/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, `run endete mit ${res.status}: ${res.stderr}`);
     assert.ok(gelaufen(dir, "lief-frontend.txt"), "die ausgewaehlte Pruefung ist nicht gelaufen");
@@ -64,7 +62,7 @@ test("nur die ausgewaehlten Kommandos laufen, die ausgelassenen nennt die Ausgab
   });
 });
 
-test("ein rotes Kommando bricht den Lauf ab: die nachfolgenden starten nicht, Exit ungleich 0", () => {
+test("ein rotes Kommando bricht den Lauf ab: die nachfolgenden starten nicht, Exit ungleich 0", async () => {
   const config = {
     buildChecks: [
       { cmd: marke("eins.txt"), always: true },
@@ -73,10 +71,10 @@ test("ein rotes Kommando bricht den Lauf ab: die nachfolgenden starten nicht, Ex
     ],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.notEqual(res.status, 0, "ein roter Check muss den Exit-Code rot faerben");
     assert.ok(gelaufen(dir, "eins.txt"), "das erste Kommando haette laufen muessen");
@@ -84,7 +82,7 @@ test("ein rotes Kommando bricht den Lauf ab: die nachfolgenden starten nicht, Ex
   });
 });
 
-test("ein roter Lauf hinterlaesst eine Zusammenfassung, die das rote Kommando ausweist", () => {
+test("ein roter Lauf hinterlaesst eine Zusammenfassung, die das rote Kommando ausweist", async () => {
   const config = {
     buildChecks: [
       { cmd: "echo eins", always: true },
@@ -93,10 +91,10 @@ test("ein roter Lauf hinterlaesst eine Zusammenfassung, die das rote Kommando au
     ],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    run(dir);
+    await run(dir);
     const summary = zusammenfassung(dir);
 
     assert.deepEqual(kommandos(summary.laufen), ["echo eins", "exit 1", "echo drei"]);
@@ -104,7 +102,7 @@ test("ein roter Lauf hinterlaesst eine Zusammenfassung, die das rote Kommando au
   });
 });
 
-test("die Zusammenfassung traegt Auswahl und Ergebnis — und der Working Tree bleibt unveraendert", () => {
+test("die Zusammenfassung traegt Auswahl und Ergebnis — und der Working Tree bleibt unveraendert", async () => {
   const config = {
     buildChecks: [
       { cmd: "echo build", areas: ["frontend"] },
@@ -112,11 +110,11 @@ test("die Zusammenfassung traegt Auswahl und Ergebnis — und der Working Tree b
     ],
     checkAreas: { frontend: ["frontend/**"], backend: ["backend/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
     const vorher = treeStand(dir);
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, res.stderr);
     assert.ok(
@@ -137,15 +135,15 @@ test("die Zusammenfassung traegt Auswahl und Ergebnis — und der Working Tree b
   });
 });
 
-test("leeres Paket: Exit 0, kein Kindprozess, Zusammenfassung trotzdem geschrieben", () => {
+test("leeres Paket: Exit 0, kein Kindprozess, Zusammenfassung trotzdem geschrieben", async () => {
   // "Keine Pruefung, weil nichts veraendert wurde" ist ein Ergebnis und kein Loch
   // (Kriterium 10 aus Issue #420) — es muss in der Datei stehen.
   const config = {
     buildChecks: [{ cmd: marke("nie.txt"), always: true }],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
-    const res = run(dir);
+  await mitRepo({ config }, async (dir) => {
+    const res = await run(dir);
 
     assert.equal(res.status, 0, `leeres Paket ist kein Fehler: ${res.stderr}`);
     assert.ok(!gelaufen(dir, "nie.txt"), "auf einem leeren Paket darf kein Kindprozess starten");
@@ -157,24 +155,24 @@ test("leeres Paket: Exit 0, kein Kindprozess, Zusammenfassung trotzdem geschrieb
   });
 });
 
-test("[checks-3] ein gruener Lauf stempelt einen ISO-Zeitpunkt in die Zusammenfassung", () => {
+test("[checks-3] ein gruener Lauf stempelt einen ISO-Zeitpunkt in die Zusammenfassung", async () => {
   // Der Zeitpunkt gehoert zum Nachweis, den die Nachweiszeile der Release-Skills
   // je Commit nennt (Plan #652, E7): Hash und Stempel bezeugen denselben Moment.
   const config = {
     buildChecks: [{ cmd: "echo gruen", always: true }],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, res.stderr);
     assert.match(zusammenfassung(dir).zeitpunkt, ISO_UTC);
   });
 });
 
-test("[checks-3] ein roter Lauf traegt den Zeitpunkt ebenfalls", () => {
+test("[checks-3] ein roter Lauf traegt den Zeitpunkt ebenfalls", async () => {
   const config = {
     buildChecks: [
       { cmd: "exit 1", always: true },
@@ -182,23 +180,23 @@ test("[checks-3] ein roter Lauf traegt den Zeitpunkt ebenfalls", () => {
     ],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.notEqual(res.status, 0, "ein roter Check muss den Exit-Code rot faerben");
     assert.match(zusammenfassung(dir).zeitpunkt, ISO_UTC);
   });
 });
 
-test("[checks-3] ein leeres Paket traegt den Zeitpunkt ebenfalls", () => {
+test("[checks-3] ein leeres Paket traegt den Zeitpunkt ebenfalls", async () => {
   const config = {
     buildChecks: [{ cmd: "echo nie", always: true }],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
-    const res = run(dir);
+  await mitRepo({ config }, async (dir) => {
+    const res = await run(dir);
 
     assert.equal(res.status, 0, `leeres Paket ist kein Fehler: ${res.stderr}`);
     const summary = zusammenfassung(dir);
@@ -207,27 +205,27 @@ test("[checks-3] ein leeres Paket traegt den Zeitpunkt ebenfalls", () => {
   });
 });
 
-test("laesst sich die Zusammenfassung nicht schreiben, endet run rot und nennt den Pfad", () => {
+test("laesst sich die Zusammenfassung nicht schreiben, endet run rot und nennt den Pfad", async () => {
   // Die Datei ist die Datenquelle des Runners — ihr Ausfall darf nicht
   // stillschweigend durchgehen, auch nicht bei gruenen Checks.
   const config = {
     buildChecks: [{ cmd: "echo gruen", always: true }],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
     // Ein Verzeichnis am Zielpfad blockiert das Schreiben auf jeder Plattform —
     // anders als ein Rechte-Entzug, der als root wirkungslos bliebe.
     mkdirSync(join(dir, ".claude", "checks-summary.json"), { recursive: true });
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.notEqual(res.status, 0, "eine nicht schreibbare Zusammenfassung muss rot enden");
     assert.match(res.stderr, /checks-summary\.json/, "die Meldung nennt den Pfad nicht");
   });
 });
 
-test("run und plan treffen dieselbe Auswahl", () => {
+test("run und plan treffen dieselbe Auswahl", async () => {
   const config = {
     buildChecks: [
       "echo lint", // String-Form: laeuft immer mit, aber mangels Entscheidung
@@ -237,11 +235,11 @@ test("run und plan treffen dieselbe Auswahl", () => {
     ],
     checkAreas: { frontend: ["frontend/**"], backend: ["backend/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const erwartet = plan(dir);
-    run(dir);
+    await run(dir);
     const summary = zusammenfassung(dir);
 
     assert.equal(summary.basis, erwartet.basis);
@@ -257,19 +255,4 @@ test("run und plan treffen dieselbe Auswahl", () => {
     );
     assert.deepEqual(summary.ausgelassen, erwartet.ausgelassen);
   });
-});
-
-test("die Nutzungshilfe nennt run und laeuft ohne Repo-Kontext", () => {
-  const dir = mkdtempSync(join(tmpdir(), "checks-nackt-run-"));
-  try {
-    const kopie = join(dir, "checks.mjs");
-    copyFileSync(CHECKS, kopie);
-
-    const res = spawnSync(process.execPath, [kopie, "--help"], { cwd: dir, encoding: "utf-8" });
-
-    assert.equal(res.status, 0, `--help endete mit ${res.status}: ${res.stderr}`);
-    assert.match(res.stdout, /\brun\b/, "die Nutzungshilfe nennt das Unterkommando run nicht");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
 });

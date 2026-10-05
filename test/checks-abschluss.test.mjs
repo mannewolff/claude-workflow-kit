@@ -49,8 +49,8 @@ const MIT_GUETE = {
   checkAreas: BEREICHE,
 };
 
-test("ohne --abschluss laufen die Pruefungen mit nichtBeimAbschluss unveraendert mit", () => {
-  mitRepo({ config: DREI }, (dir) => {
+test("ohne --abschluss laufen die Pruefungen mit nichtBeimAbschluss unveraendert mit", async () => {
+  await mitRepo({ config: DREI }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir);
@@ -61,8 +61,8 @@ test("ohne --abschluss laufen die Pruefungen mit nichtBeimAbschluss unveraendert
   });
 });
 
-test("--abschluss laesst beide Feldwerte mit sprechendem Grund aus", () => {
-  mitRepo({ config: DREI }, (dir) => {
+test("--abschluss laesst beide Feldwerte mit sprechendem Grund aus", async () => {
+  await mitRepo({ config: DREI }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir, "--abschluss", "946");
@@ -81,8 +81,8 @@ test("--abschluss laesst beide Feldwerte mit sprechendem Grund aus", () => {
   });
 });
 
-test("--abschluss ohne Kartennummer waehlt dieselbe Auswahl", () => {
-  mitRepo({ config: DREI }, (dir) => {
+test("--abschluss ohne Kartennummer waehlt dieselbe Auswahl", async () => {
+  await mitRepo({ config: DREI }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir, "--abschluss");
@@ -92,8 +92,8 @@ test("--abschluss ohne Kartennummer waehlt dieselbe Auswahl", () => {
   });
 });
 
-test("ein Wert am --abschluss, der keine Kartennummer ist, endet rot", () => {
-  mitRepo({ config: DREI }, (dir) => {
+test("ein Wert am --abschluss, der keine Kartennummer ist, endet rot", async () => {
+  await mitRepo({ config: DREI }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const res = checks(dir, "plan", "--abschluss", "vier");
@@ -103,11 +103,11 @@ test("ein Wert am --abschluss, der keine Kartennummer ist, endet rot", () => {
   });
 });
 
-test("der Grund steht auch in der Zusammenfassung des Laufs", () => {
-  mitRepo({ config: DREI }, (dir) => {
+test("der Grund steht auch in der Zusammenfassung des Laufs", async () => {
+  await mitRepo({ config: DREI }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir, "--abschluss", "946");
+    const res = await run(dir, "--abschluss", "946");
 
     assert.equal(res.status, 0, `der Lauf haette gruen sein muessen: ${res.stdout}${res.stderr}`);
     const summary = zusammenfassung(dir);
@@ -120,8 +120,8 @@ test("der Grund steht auch in der Zusammenfassung des Laufs", () => {
   });
 });
 
-test("beim Veroeffentlichen laeuft die ausgelassene Pruefung wieder mit", () => {
-  mitRepo({ config: DREI }, (dir) => {
+test("beim Veroeffentlichen laeuft die ausgelassene Pruefung wieder mit", async () => {
+  await mitRepo({ config: DREI }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir, "--stufe", "push");
@@ -130,8 +130,8 @@ test("beim Veroeffentlichen laeuft die ausgelassene Pruefung wieder mit", () => 
   });
 });
 
-test("--abschluss zusammen mit --stufe push oder merge endet rot", () => {
-  mitRepo({ config: DREI }, (dir) => {
+test("--abschluss zusammen mit --stufe push oder merge endet rot", async () => {
+  await mitRepo({ config: DREI }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     for (const stufe of ["push", "merge"]) {
@@ -145,8 +145,8 @@ test("--abschluss zusammen mit --stufe push oder merge endet rot", () => {
   });
 });
 
-test("--abschluss zusammen mit --bereich endet rot", () => {
-  mitRepo({ config: DREI }, (dir) => {
+test("--abschluss zusammen mit --bereich endet rot", async () => {
+  await mitRepo({ config: DREI }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const res = checks(dir, "plan", "--abschluss", "946", "--bereich", "frontend");
@@ -156,8 +156,8 @@ test("--abschluss zusammen mit --bereich endet rot", () => {
   });
 });
 
-test("die Guetemessung der Paketstufe wird im Abschlusslauf ausgelassen", () => {
-  mitRepo({ config: MIT_GUETE }, (dir) => {
+test("die Guetemessung der Paketstufe wird im Abschlusslauf ausgelassen", async () => {
+  await mitRepo({ config: MIT_GUETE }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir, "--abschluss", "946");
@@ -170,11 +170,11 @@ test("die Guetemessung der Paketstufe wird im Abschlusslauf ausgelassen", () => 
   });
 });
 
-test("die ausgelassene Guetemessung gilt nie als bestanden", () => {
-  mitRepo({ config: MIT_GUETE }, (dir) => {
+test("die ausgelassene Guetemessung gilt nie als bestanden", async () => {
+  await mitRepo({ config: MIT_GUETE }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir, "--abschluss", "946");
+    const res = await run(dir, "--abschluss", "946");
 
     assert.equal(res.status, 0, `der Lauf haette gruen sein muessen: ${res.stdout}${res.stderr}`);
     const guete = zusammenfassung(dir).guete;
@@ -184,8 +184,8 @@ test("die ausgelassene Guetemessung gilt nie als bestanden", () => {
   });
 });
 
-test("ohne --abschluss laeuft dieselbe Guetemessung wie bisher", () => {
-  mitRepo({ config: MIT_GUETE }, (dir) => {
+test("ohne --abschluss laeuft dieselbe Guetemessung wie bisher", async () => {
+  await mitRepo({ config: MIT_GUETE }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir);
@@ -195,7 +195,7 @@ test("ohne --abschluss laeuft dieselbe Guetemessung wie bisher", () => {
   });
 });
 
-test("eine Config ohne eine einzige Pruefung fuer den Abschluss faellt durch", () => {
+test("eine Config ohne eine einzige Pruefung fuer den Abschluss faellt durch", async () => {
   const ohneGate = {
     buildChecks: [
       { cmd: "echo zusammenspiel", always: true, nichtBeimAbschluss: "zusammenspiel" },
@@ -203,7 +203,7 @@ test("eine Config ohne eine einzige Pruefung fuer den Abschluss faellt durch", (
     ],
     checkAreas: BEREICHE,
   };
-  mitRepo({ config: ohneGate }, (dir) => {
+  await mitRepo({ config: ohneGate }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const res = checks(dir, "plan", "--abschluss", "946");
@@ -218,15 +218,15 @@ test("eine Config ohne eine einzige Pruefung fuer den Abschluss faellt durch", (
   });
 });
 
-test("bleibt ein Paketstufen-Eintrag ohne beides, ist die Config gueltig", () => {
-  mitRepo({ config: DREI }, (dir) => {
+test("bleibt ein Paketstufen-Eintrag ohne beides, ist die Config gueltig", async () => {
+  await mitRepo({ config: DREI }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     assert.deepEqual(kommandos(plan(dir, "--abschluss", "946").laufen), ["echo einheit"]);
   });
 });
 
-test("ein unbekannter Feldwert faellt durch, auch ohne --abschluss", () => {
+test("ein unbekannter Feldwert faellt durch, auch ohne --abschluss", async () => {
   const falsch = {
     buildChecks: [
       { cmd: "echo einheit", always: true },
@@ -234,7 +234,7 @@ test("ein unbekannter Feldwert faellt durch, auch ohne --abschluss", () => {
     ],
     checkAreas: BEREICHE,
   };
-  mitRepo({ config: falsch }, (dir) => {
+  await mitRepo({ config: falsch }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const res = checks(dir, "plan");
@@ -247,7 +247,7 @@ test("ein unbekannter Feldwert faellt durch, auch ohne --abschluss", () => {
   });
 });
 
-test("nichtBeimAbschluss an einem push- oder merge-Eintrag faellt durch", () => {
+test("nichtBeimAbschluss an einem push- oder merge-Eintrag faellt durch", async () => {
   for (const stufe of ["push", "merge"]) {
     const falsch = {
       buildChecks: [
@@ -256,7 +256,7 @@ test("nichtBeimAbschluss an einem push- oder merge-Eintrag faellt durch", () => 
       ],
       checkAreas: BEREICHE,
     };
-    mitRepo({ config: falsch }, (dir) => {
+    await mitRepo({ config: falsch }, async (dir) => {
       datei(dir, "frontend/src/App.tsx");
 
       const res = checks(dir, "plan");
@@ -267,12 +267,12 @@ test("nichtBeimAbschluss an einem push- oder merge-Eintrag faellt durch", () => 
   }
 });
 
-test("ein Abschlusslauf uebernimmt das Ergebnis eines vollen Laufs nicht", () => {
-  mitRepo({ config: DREI }, (dir) => {
+test("ein Abschlusslauf uebernimmt das Ergebnis eines vollen Laufs nicht", async () => {
+  await mitRepo({ config: DREI }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    assert.equal(run(dir).status, 0);
-    const res = run(dir, "--abschluss", "946");
+    assert.equal((await run(dir)).status, 0);
+    const res = await run(dir, "--abschluss", "946");
 
     assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
     assert.ok(!res.stdout.includes(UEBERNAHME_MARKE), "der Abschlusslauf hat ein fremdes Ergebnis uebernommen");
@@ -280,12 +280,12 @@ test("ein Abschlusslauf uebernimmt das Ergebnis eines vollen Laufs nicht", () =>
   });
 });
 
-test("ein voller Lauf uebernimmt das Ergebnis eines Abschlusslaufs nicht", () => {
-  mitRepo({ config: DREI }, (dir) => {
+test("ein voller Lauf uebernimmt das Ergebnis eines Abschlusslaufs nicht", async () => {
+  await mitRepo({ config: DREI }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    assert.equal(run(dir, "--abschluss", "946").status, 0);
-    const res = run(dir);
+    assert.equal((await run(dir, "--abschluss", "946")).status, 0);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
     assert.ok(!res.stdout.includes(UEBERNAHME_MARKE), "der volle Lauf hat ein eingegrenztes Ergebnis uebernommen");
@@ -296,20 +296,20 @@ test("ein voller Lauf uebernimmt das Ergebnis eines Abschlusslaufs nicht", () =>
   });
 });
 
-test("zwei Abschlusslaeufe auf demselben Stand uebernehmen einander", () => {
-  mitRepo({ config: DREI }, (dir) => {
+test("zwei Abschlusslaeufe auf demselben Stand uebernehmen einander", async () => {
+  await mitRepo({ config: DREI }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    assert.equal(run(dir, "--abschluss", "946").status, 0);
-    const res = run(dir, "--abschluss", "946");
+    assert.equal((await run(dir, "--abschluss", "946")).status, 0);
+    const res = await run(dir, "--abschluss", "946");
 
     assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
     assert.ok(res.stdout.includes(UEBERNAHME_MARKE), "derselbe Stand haette sein Ergebnis behalten muessen");
   });
 });
 
-test("die Hilfe nennt die Achse und den Schalter", () => {
-  mitRepo({ config: DREI }, (dir) => {
+test("die Hilfe nennt die Achse und den Schalter", async () => {
+  await mitRepo({ config: DREI }, async (dir) => {
     const res = checks(dir, "--help");
 
     assert.equal(res.status, 0);

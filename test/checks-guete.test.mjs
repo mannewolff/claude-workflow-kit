@@ -40,11 +40,11 @@ function gueteConfig(marke, eintragExtra = {}) {
   };
 }
 
-test("[checks-6] 84 % gegen Marke 80: gruen, und die Zeile nennt beide Werte", () => {
-  mitRepo({ config: gueteConfig(80) }, (dir) => {
+test("[checks-6] 84 % gegen Marke 80: gruen, und die Zeile nennt beide Werte", async () => {
+  await mitRepo({ config: gueteConfig(80) }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, `der Lauf haette gruen sein muessen: ${res.stdout}${res.stderr}`);
     assert.match(res.stdout, /Guete: 84 % erreicht, Marke 80 % — genuegt/);
@@ -52,13 +52,13 @@ test("[checks-6] 84 % gegen Marke 80: gruen, und die Zeile nennt beide Werte", (
   });
 });
 
-test("[checks-6] 84 % gegen Marke 90: rot, und der Lauf bricht wie bei jedem roten Kommando ab", () => {
+test("[checks-6] 84 % gegen Marke 90: rot, und der Lauf bricht wie bei jedem roten Kommando ab", async () => {
   const config = gueteConfig(90);
   config.buildChecks.push({ cmd: "echo x > danach.txt", always: true });
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.notEqual(res.status, 0, "eine verfehlte Marke muss den Exit-Code rot faerben");
     assert.match(res.stdout, /Guete: 84 % erreicht, Marke 90 % — unter der Marke/);
@@ -69,15 +69,15 @@ test("[checks-6] 84 % gegen Marke 90: rot, und der Lauf bricht wie bei jedem rot
   });
 });
 
-test("[checks-6] trifft das Muster nicht, ist das Ergebnis rot mit dem Grund im Text — nicht gruen", () => {
+test("[checks-6] trifft das Muster nicht, ist das Ergebnis rot mit dem Grund im Text — nicht gruen", async () => {
   const config = {
     buildChecks: [{ cmd: OHNE_ANTEIL, always: true, guete: { muster: MUSTER, marke: 80 } }],
     checkAreas: BEREICHE,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.notEqual(res.status, 0, "ein nicht auswertbares Ergebnis darf nie als bestanden gelten");
     assert.match(res.stdout, /Guete: kein auswertbares Ergebnis \(.+\)/);
@@ -88,15 +88,15 @@ test("[checks-6] trifft das Muster nicht, ist das Ergebnis rot mit dem Grund im 
   });
 });
 
-test("[checks-6] war das Kommando selbst rot, bleibt es rot, und die Guete-Zeile nennt den fehlenden Anteil", () => {
+test("[checks-6] war das Kommando selbst rot, bleibt es rot, und die Guete-Zeile nennt den fehlenden Anteil", async () => {
   const config = {
     buildChecks: [{ cmd: "exit 1", always: true, guete: { muster: MUSTER, marke: 80 } }],
     checkAreas: BEREICHE,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.notEqual(res.status, 0);
     assert.match(res.stdout, /kein Anteil erhoben/);
@@ -108,9 +108,9 @@ test("[checks-6] war das Kommando selbst rot, bleibt es rot, und die Guete-Zeile
   });
 });
 
-test("[checks-6] bei --stufe push laeuft die Guetemessung auch im unberuehrten Bereich", () => {
+test("[checks-6] bei --stufe push laeuft die Guetemessung auch im unberuehrten Bereich", async () => {
   const config = gueteConfig(80, { always: undefined, areas: ["backend"] });
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir, "--stufe", "push");
@@ -123,8 +123,8 @@ test("[checks-6] bei --stufe push laeuft die Guetemessung auch im unberuehrten B
   });
 });
 
-test("[checks-6] bei --stufe push laeuft die Guetemessung auch dann, wenn das Paket leer waere", () => {
-  mitRepo({ config: gueteConfig(80) }, (dir) => {
+test("[checks-6] bei --stufe push laeuft die Guetemessung auch dann, wenn das Paket leer waere", async () => {
+  await mitRepo({ config: gueteConfig(80) }, async (dir) => {
     const ergebnis = plan(dir, "--stufe", "push");
 
     // Seit Issue #849 faehrt die Push-Stufe ohnehin jede faellige Pruefung, und
@@ -144,8 +144,8 @@ test("[checks-6] bei --stufe push laeuft die Guetemessung auch dann, wenn das Pa
 // An der Freigabe hat die Messung keine Sonderrolle mehr (Issue #1000): Beim
 // `push main` lief sie fuer denselben Stand, und `merge production` gibt es nie ohne
 // ihn. Sie folgt der Auswahl der Freigabestufe wie jede andere Pruefung.
-test("[checks-6] bei --stufe merge laeuft eine Guetemessung der Push-Stufe nicht, mit Grund", () => {
-  mitRepo({ config: gueteConfig(80, { stufe: "push" }) }, (dir) => {
+test("[checks-6] bei --stufe merge laeuft eine Guetemessung der Push-Stufe nicht, mit Grund", async () => {
+  await mitRepo({ config: gueteConfig(80, { stufe: "push" }) }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir, "--stufe", "merge");
@@ -155,8 +155,8 @@ test("[checks-6] bei --stufe merge laeuft eine Guetemessung der Push-Stufe nicht
   });
 });
 
-test("[checks-6] bei --stufe merge folgt eine Guetemessung der Paketstufe der Bereichsauswahl", () => {
-  mitRepo({ config: gueteConfig(80) }, (dir) => {
+test("[checks-6] bei --stufe merge folgt eine Guetemessung der Paketstufe der Bereichsauswahl", async () => {
+  await mitRepo({ config: gueteConfig(80) }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir, "--stufe", "merge");
@@ -165,9 +165,9 @@ test("[checks-6] bei --stufe merge folgt eine Guetemessung der Paketstufe der Be
   });
 });
 
-test("[checks-6] an der Paketstufe gilt die normale Auswahl: ein unberuehrter Bereich laesst die Messung aus", () => {
+test("[checks-6] an der Paketstufe gilt die normale Auswahl: ein unberuehrter Bereich laesst die Messung aus", async () => {
   const config = gueteConfig(80, { always: undefined, areas: ["backend"] });
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir);
@@ -177,7 +177,7 @@ test("[checks-6] an der Paketstufe gilt die normale Auswahl: ein unberuehrter Be
   });
 });
 
-test("[checks-6] zwei Eintraege mit guete beenden das Kommando mit Exit ungleich 0", () => {
+test("[checks-6] zwei Eintraege mit guete beenden das Kommando mit Exit ungleich 0", async () => {
   const config = {
     buildChecks: [
       { cmd: "echo a", always: true, guete: { muster: MUSTER, marke: 80 } },
@@ -185,7 +185,7 @@ test("[checks-6] zwei Eintraege mit guete beenden das Kommando mit Exit ungleich
     ],
     checkAreas: BEREICHE,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     const res = checks(dir, "plan");
 
     assert.notEqual(res.status, 0, "zwei Guetemessungen duerfen nicht still durchgehen");
@@ -193,9 +193,9 @@ test("[checks-6] zwei Eintraege mit guete beenden das Kommando mit Exit ungleich
   });
 });
 
-test("[checks-6] ein guete-Eintrag mit stufe merge beendet das Kommando mit Exit ungleich 0", () => {
+test("[checks-6] ein guete-Eintrag mit stufe merge beendet das Kommando mit Exit ungleich 0", async () => {
   const config = gueteConfig(80, { stufe: "merge" });
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     const res = checks(dir, "plan");
 
     assert.notEqual(res.status, 0, "eine Messung erst an der Freigabestufe kaeme zu spaet");
@@ -203,11 +203,11 @@ test("[checks-6] ein guete-Eintrag mit stufe merge beendet das Kommando mit Exit
   });
 });
 
-test("[checks-6] die Zusammenfassung traegt das Feld guete mit allen fuenf Unterfeldern — auch beim gruenen Lauf", () => {
-  mitRepo({ config: gueteConfig(80) }, (dir) => {
+test("[checks-6] die Zusammenfassung traegt das Feld guete mit allen fuenf Unterfeldern — auch beim gruenen Lauf", async () => {
+  await mitRepo({ config: gueteConfig(80) }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    assert.equal(run(dir).status, 0);
+    assert.equal((await run(dir)).status, 0);
     const guete = zusammenfassung(dir).guete;
 
     assert.deepEqual(guete, {
@@ -220,25 +220,25 @@ test("[checks-6] die Zusammenfassung traegt das Feld guete mit allen fuenf Unter
   });
 });
 
-test("[checks-6] ohne guete-Eintrag traegt die Zusammenfassung kein guete-Feld", () => {
+test("[checks-6] ohne guete-Eintrag traegt die Zusammenfassung kein guete-Feld", async () => {
   const config = { buildChecks: ["echo lint"], checkAreas: BEREICHE };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    assert.equal(run(dir).status, 0);
+    assert.equal((await run(dir)).status, 0);
 
     assert.ok(!("guete" in zusammenfassung(dir)), "ein Projekt ohne Benennung bleibt unberuehrt");
   });
 });
 
-test("[checks-6] eine ausgelassene Guetemessung steht mit ihrem Grund im guete-Feld — nie als bestanden", () => {
+test("[checks-6] eine ausgelassene Guetemessung steht mit ihrem Grund im guete-Feld — nie als bestanden", async () => {
   // Auch die Auslassung an der Paketstufe ist ein Ergebnis und kein Loch: Wer
   // die Zusammenfassung liest, sieht, dass kein Anteil erhoben wurde.
   const config = gueteConfig(80, { always: undefined, areas: ["backend"] });
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    assert.equal(run(dir).status, 0);
+    assert.equal((await run(dir)).status, 0);
     const guete = zusammenfassung(dir).guete;
 
     assert.equal(guete.anteil, null);
@@ -262,15 +262,15 @@ const MISST_184 = `node -e "console.log('Killed 99 (184%)')"`;
 /** Ein Kommando, dessen Ausgabe nur Leerzeichen in die Gruppe legt. */
 const MISST_LEERZEICHEN = `node -e "console.log('Score:   84')"`;
 
-test("[checks-9] ein Anteil ueber 100 gilt als nicht auswertbar und faerbt den Lauf rot", () => {
+test("[checks-9] ein Anteil ueber 100 gilt als nicht auswertbar und faerbt den Lauf rot", async () => {
   const config = {
     buildChecks: [{ cmd: MISST_184, always: true, guete: { muster: MUSTER, marke: 80 } }],
     checkAreas: BEREICHE,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.notEqual(res.status, 0, "184 % ist kein Messwert und darf nicht als bestanden gelten");
     assert.match(res.stdout, /Guete: kein auswertbares Ergebnis \(.+\)/);
@@ -282,7 +282,7 @@ test("[checks-9] ein Anteil ueber 100 gilt als nicht auswertbar und faerbt den L
   });
 });
 
-test("[checks-9] ein negativer Anteil gilt ebenso als nicht auswertbar", () => {
+test("[checks-9] ein negativer Anteil gilt ebenso als nicht auswertbar", async () => {
   const config = {
     buildChecks: [{
       cmd: `node -e "console.log('Score: -5')"`,
@@ -291,25 +291,25 @@ test("[checks-9] ein negativer Anteil gilt ebenso als nicht auswertbar", () => {
     }],
     checkAreas: BEREICHE,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.notEqual(res.status, 0, "ein negativer Anteil darf nicht als bestanden gelten");
     assert.equal(zusammenfassung(dir).guete.anteil, null);
   });
 });
 
-test("[checks-9] eine leere Gruppe gegen Marke 0 ist rot — nicht gruen mit Anteil 0", () => {
+test("[checks-9] eine leere Gruppe gegen Marke 0 ist rot — nicht gruen mit Anteil 0", async () => {
   const config = {
     buildChecks: [{ cmd: OHNE_ANTEIL, always: true, guete: { muster: String.raw`(\d*)`, marke: 0 } }],
     checkAreas: BEREICHE,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.notEqual(res.status, 0, "eine leere Gruppe ist kein Messwert");
     assert.match(res.stdout, /Guete: kein auswertbares Ergebnis \(.+\)/);
@@ -320,7 +320,7 @@ test("[checks-9] eine leere Gruppe gegen Marke 0 ist rot — nicht gruen mit Ant
   });
 });
 
-test("[checks-9] eine Gruppe aus lauter Leerzeichen gegen Marke 0 ist rot", () => {
+test("[checks-9] eine Gruppe aus lauter Leerzeichen gegen Marke 0 ist rot", async () => {
   const config = {
     buildChecks: [{
       cmd: MISST_LEERZEICHEN,
@@ -329,10 +329,10 @@ test("[checks-9] eine Gruppe aus lauter Leerzeichen gegen Marke 0 ist rot", () =
     }],
     checkAreas: BEREICHE,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.notEqual(res.status, 0, "Leerzeichen sind kein Messwert");
     const guete = zusammenfassung(dir).guete;
@@ -342,7 +342,7 @@ test("[checks-9] eine Gruppe aus lauter Leerzeichen gegen Marke 0 ist rot", () =
   });
 });
 
-test("[checks-9] 100 % gegen Marke 100 bleibt gruen — die obere Grenze gehoert dazu", () => {
+test("[checks-9] 100 % gegen Marke 100 bleibt gruen — die obere Grenze gehoert dazu", async () => {
   const config = {
     buildChecks: [{
       cmd: `node -e "console.log('Killed 9 (100%)')"`,
@@ -351,17 +351,17 @@ test("[checks-9] 100 % gegen Marke 100 bleibt gruen — die obere Grenze gehoert
     }],
     checkAreas: BEREICHE,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, `100 % gegen Marke 100 haette gruen sein muessen: ${res.stdout}${res.stderr}`);
     assert.equal(zusammenfassung(dir).guete.anteil, 100);
   });
 });
 
-test("[checks-9] 0 % gegen Marke 0 bleibt gruen, solange die Null wirklich gemessen wurde", () => {
+test("[checks-9] 0 % gegen Marke 0 bleibt gruen, solange die Null wirklich gemessen wurde", async () => {
   const config = {
     buildChecks: [{
       cmd: `node -e "console.log('Killed 0 (0%)')"`,
@@ -370,10 +370,10 @@ test("[checks-9] 0 % gegen Marke 0 bleibt gruen, solange die Null wirklich gemes
     }],
     checkAreas: BEREICHE,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, `0 % gegen Marke 0 haette gruen sein muessen: ${res.stdout}${res.stderr}`);
     const guete = zusammenfassung(dir).guete;

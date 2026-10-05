@@ -38,8 +38,8 @@ function kette(dir, { cDynamisch = false } = {}) {
   committen(dir);
 }
 
-test("eine Aenderung an A trifft A, B und C", () => {
-  mitRepo({ config: KETTE }, (dir) => {
+test("eine Aenderung an A trifft A, B und C", async () => {
+  await mitRepo({ config: KETTE }, async (dir) => {
     kette(dir);
     datei(dir, "src/a.mjs", "export const a = 2;\n");
 
@@ -56,8 +56,8 @@ test("eine Aenderung an A trifft A, B und C", () => {
   });
 });
 
-test("eine Aenderung an C trifft nur C", () => {
-  mitRepo({ config: KETTE }, (dir) => {
+test("eine Aenderung an C trifft nur C", async () => {
+  await mitRepo({ config: KETTE }, async (dir) => {
     kette(dir);
     datei(dir, "src/c.mjs", 'import { b } from "./b.mjs";\nexport const c = b + 1;\n');
 
@@ -69,8 +69,8 @@ test("eine Aenderung an C trifft nur C", () => {
   });
 });
 
-test("ein Zyklus zwischen zwei Bereichen terminiert", () => {
-  mitRepo({ config: KETTE }, (dir) => {
+test("ein Zyklus zwischen zwei Bereichen terminiert", async () => {
+  await mitRepo({ config: KETTE }, async (dir) => {
     datei(dir, "src/a.mjs", 'import { b } from "./b.mjs";\nexport const a = 1;\n');
     datei(dir, "src/b.mjs", 'import { a } from "./a.mjs";\nexport const b = 1;\n');
     datei(dir, "src/c.mjs", "export const c = 1;\n");
@@ -84,8 +84,8 @@ test("ein Zyklus zwischen zwei Bereichen terminiert", () => {
   });
 });
 
-test("ein literaler dynamischer Import zaehlt", () => {
-  mitRepo({ config: KETTE }, (dir) => {
+test("ein literaler dynamischer Import zaehlt", async () => {
+  await mitRepo({ config: KETTE }, async (dir) => {
     kette(dir, { cDynamisch: true });
     datei(dir, "src/b.mjs", 'import { a } from "./a.mjs";\nexport const b = a + 1;\n');
 
@@ -96,8 +96,8 @@ test("ein literaler dynamischer Import zaehlt", () => {
   });
 });
 
-test("ein gemeinsamer Teil waehlt alle, und jede Berichtszeile nennt den Importweg", () => {
-  mitRepo({ config: config(["grundlagen", "x", "y", "z"]) }, (dir) => {
+test("ein gemeinsamer Teil waehlt alle, und jede Berichtszeile nennt den Importweg", async () => {
+  await mitRepo({ config: config(["grundlagen", "x", "y", "z"]) }, async (dir) => {
     datei(dir, "src/grundlagen.mjs", "export const g = 1;\n");
     for (const teil of ["x", "y", "z"]) {
       datei(dir, `src/${teil}.mjs`, `import { g } from "./grundlagen.mjs";\nexport const ${teil} = g;\n`);
@@ -109,7 +109,7 @@ test("ein gemeinsamer Teil waehlt alle, und jede Berichtszeile nennt den Importw
     assert.deepEqual(ergebnis.bereiche, ["grundlagen", "x", "y", "z"]);
     assert.deepEqual(kommandos(ergebnis.ausgelassen), []);
 
-    const res = run(dir);
+    const res = await run(dir);
     assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
     const zeilen = zusammenfassung(dir).berichtszeilen;
     for (const teil of ["x", "y", "z"]) {
@@ -119,8 +119,8 @@ test("ein gemeinsamer Teil waehlt alle, und jede Berichtszeile nennt den Importw
   });
 });
 
-test("eine Datei ohne Muster bleibt beim vollen Umfang mit Grund", () => {
-  mitRepo({ config: KETTE }, (dir) => {
+test("eine Datei ohne Muster bleibt beim vollen Umfang mit Grund", async () => {
+  await mitRepo({ config: KETTE }, async (dir) => {
     kette(dir);
     datei(dir, "src/c.mjs", 'import { b } from "./b.mjs";\nexport const c = b + 1;\n');
     datei(dir, "daten.txt", "ohne Muster\n");

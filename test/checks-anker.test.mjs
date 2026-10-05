@@ -10,11 +10,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, copyFileSync, rmSync } from "node:fs";
-import { spawnSync } from "node:child_process";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { mitRepo, plan, checks, datei, git, kommandos, CHECKS } from "./helpers/checks-repo.mjs";
+import { mitRepo, plan, checks, datei, git, kommandos } from "./helpers/checks-repo.mjs";
 
 const CONFIG = {
   buildChecks: [
@@ -27,8 +23,8 @@ const CONFIG = {
   },
 };
 
-test("ein committetes Paket gilt mit --since auf den Stand davor nicht als leer", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("ein committetes Paket gilt mit --since auf den Stand davor nicht als leer", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     const davor = git(dir, "rev-parse", "HEAD");
     datei(dir, "frontend/src/App.tsx");
     git(dir, "add", "-A");
@@ -44,8 +40,8 @@ test("ein committetes Paket gilt mit --since auf den Stand davor nicht als leer"
   });
 });
 
-test("ohne --since ist HEAD der Anker: der Commit selbst zaehlt dann nicht mehr", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("ohne --since ist HEAD der Anker: der Commit selbst zaehlt dann nicht mehr", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
     git(dir, "add", "-A");
     git(dir, "commit", "-q", "-m", "Arbeitspaket");
@@ -56,8 +52,8 @@ test("ohne --since ist HEAD der Anker: der Commit selbst zaehlt dann nicht mehr"
   });
 });
 
-test("ein nicht aufloesbarer Anker zieht den vollen Umfang", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("ein nicht aufloesbarer Anker zieht den vollen Umfang", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     const ergebnis = plan(dir, "--since", "gibtsnicht");
 
     assert.equal(ergebnis.vollerUmfang, true);
@@ -70,10 +66,10 @@ test("ein nicht aufloesbarer Anker zieht den vollen Umfang", () => {
   });
 });
 
-test("ein leerer Anker gilt wie ein nicht aufloesbarer, nie wie ein fehlender", () => {
+test("ein leerer Anker gilt wie ein nicht aufloesbarer, nie wie ein fehlender", async () => {
   // Sauberer, committeter Tree: Mit dem Default HEAD waere das Ergebnis
   // leeresPaket und keine Pruefung — genau der stille Ausfall aus Issue #427.
-  mitRepo({ config: CONFIG }, (dir) => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     const ergebnis = plan(dir, "--since", "");
 
     assert.equal(ergebnis.vollerUmfang, true);
@@ -82,31 +78,14 @@ test("ein leerer Anker gilt wie ein nicht aufloesbarer, nie wie ein fehlender", 
   });
 });
 
-test("fehlende Config endet mit Exit ungleich 0", () => {
+test("fehlende Config endet mit Exit ungleich 0", async () => {
   // Ein Kommando, das ohne Config stillschweigend "nichts zu pruefen" meldet,
   // zeigt in die unsichere Richtung.
-  mitRepo({ ohneConfig: true }, (dir) => {
+  await mitRepo({ ohneConfig: true }, async (dir) => {
     const res = checks(dir, "plan");
 
     assert.notEqual(res.status, 0);
     assert.match(res.stderr, /workflow\.config\.json/);
     assert.equal(res.stdout.trim(), "", "ohne Config darf kein JSON-Ergebnis entstehen");
   });
-});
-
-test("die Nutzungshilfe laeuft in einem leeren Verzeichnis ohne Config und ohne Repo", () => {
-  // Das Kit liefert seine Werkzeuge als eigenstaendig portable Einzeldateien aus:
-  // die Datei allein, ohne Repo-Kontext, muss antworten koennen.
-  const dir = mkdtempSync(join(tmpdir(), "checks-nackt-"));
-  try {
-    const kopie = join(dir, "checks.mjs");
-    copyFileSync(CHECKS, kopie);
-    for (const cliArgs of [[], ["--help"], ["-h"]]) {
-      const res = spawnSync(process.execPath, [kopie, ...cliArgs], { cwd: dir, encoding: "utf-8" });
-      assert.equal(res.status, 0, `checks.mjs ${cliArgs.join(" ")} endete mit ${res.status}: ${res.stderr}`);
-      assert.match(res.stdout, /plan/, "die Nutzungshilfe nennt das Unterkommando nicht");
-    }
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
 });

@@ -86,10 +86,15 @@ function aufloesen(datei, ziel) {
   return posix.normalize(posix.join(posix.dirname(datei), ziel));
 }
 
-/** Startet die Datei selbst ein Programm aus `kit/` oder `tools/`? Import-Angaben zaehlen nicht. */
+/**
+ * Startet die Datei selbst ein Programm aus `kit/` oder `tools/`? Import-Angaben zaehlen
+ * nicht und Kommentarzeilen auch nicht: Ein Helfer, der in seinem Kopf beschreibt, dass er
+ * `kit/checks.mjs` im selben Prozess ruft, startet es nicht (Issue #1212).
+ */
 function startetSelbst(text) {
   if (!CHILD_PROCESS.test(text)) return false;
-  const ohneImporte = text.replaceAll(/(?:from|import)[\s(]*["'][^"']+["']/g, "");
+  const ohneKommentare = text.split("\n").filter((zeile) => !kommentar(zeile)).join("\n");
+  const ohneImporte = ohneKommentare.replaceAll(/(?:from|import)[\s(]*["'][^"']+["']/g, "");
   return PROGRAMM.some((muster) => muster.test(ohneImporte));
 }
 

@@ -18,8 +18,8 @@ const CONFIG = {
   checkAreas: { frontend: ["frontend/**"] },
 };
 
-test("nichts veraendert: leeresPaket true und keine einzige Pruefung laeuft", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("nichts veraendert: leeresPaket true und keine einzige Pruefung laeuft", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     const ergebnis = plan(dir);
 
     assert.equal(ergebnis.leeresPaket, true);
@@ -30,8 +30,8 @@ test("nichts veraendert: leeresPaket true und keine einzige Pruefung laeuft", ()
   });
 });
 
-test("im leeren Paket wird auch die entschieden immer laufende Pruefung ausgelassen — mit Grund", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("im leeren Paket wird auch die entschieden immer laufende Pruefung ausgelassen — mit Grund", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     const ergebnis = plan(dir);
 
     assert.deepEqual(
@@ -44,8 +44,8 @@ test("im leeren Paket wird auch die entschieden immer laufende Pruefung ausgelas
   });
 });
 
-test("das leere Paket traegt trotzdem eine aufgeloeste Basis", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("das leere Paket traegt trotzdem eine aufgeloeste Basis", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     const ergebnis = plan(dir);
 
     assert.match(ergebnis.basis, /^[0-9a-f]{7,40}$/, `basis ist kein aufgeloester Commit: ${ergebnis.basis}`);

@@ -1,3 +1,5 @@
+// Ablauf-Pruefung: Die maschinenweite Sperre ordnet echte, gleichzeitige checks.mjs-Prozesse; sie entfaellt mit E12 (#1241), darum bleibt diese Datei unveraendert ein Ablauf (Issue #1212).
+//
 // Gleichzeitige Prueflaeufe auf einer Maschine laufen nacheinander (Issue #958).
 //
 // Anlass (kanban-kit, 2026-09-24, Lauf `night-run-2026-09-24-125914`): Zwei Runner
@@ -25,7 +27,8 @@ import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { mitSperre, SPERRE_ENV, SPERRE_GRENZE_ENV, SPERRE_GRENZE_FREMD_ENV, sperrPfad, sperrGrenzeMs, sperrGrenzeFremdMs } from "../kit/checks.mjs";
-import { repoAnlegen, datei, run, CHECKS, repoEntfernenTolerant } from "./helpers/checks-repo.mjs";
+import { repoAnlegen, datei, run, repoEntfernenTolerant } from "./helpers/checks-repo.mjs";
+import { CHECKS } from "./helpers/checks-ablauf.mjs";
 import "./helpers/checks-sperre.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -46,7 +49,7 @@ const FENSTER_MS = 400;
  * gegen genau das Ziel, zu dem dieses Paket angetreten ist.
  */
 const FENSTER = [
-  "// Generiert von test/checks-sperre.test.mjs (Issue #958) — kein Produktivcode.",
+  "// Generiert von test/ablauf-checks-sperre.test.mjs (Issue #958) — kein Produktivcode.",
   "import { appendFileSync } from 'node:fs';",
   "const pfad = process.env.FENSTER_DATEI;",
   "appendFileSync(pfad, `start ${Date.now()}\\n`);",
@@ -172,7 +175,7 @@ test("[checks-958-3] nach einem roten Kommando liegt keine Sperrdatei mehr", asy
   });
   try {
     datei(dir, "src/a.txt");
-    const res = run(dir, "--frisch");
+    const res = await run(dir, "--frisch");
     assert.notEqual(res.status, 0, "ein rotes Kommando muss den Lauf rot faerben");
     assert.equal(existsSync(sperre), false,
       "auch der rote Lauf gibt seine Sperre frei — sonst blockiert er jeden naechsten");
@@ -296,6 +299,7 @@ test("[checks-958-9] jede Testdatei, die checks.mjs faehrt, setzt einen eigenen 
     if (OHNE_LAUF.has(name)) continue;
     // Der Wegwerf-Helfer zieht den Sperrpfad selbst; sonst braucht die Datei ihn direkt.
     const deckt = text.includes("helpers/checks-repo.mjs")
+      || text.includes("helpers/checks-ablauf.mjs")
       || text.includes("helpers/checks-sperre.mjs");
     if (!deckt) fehlend.push(name);
   }

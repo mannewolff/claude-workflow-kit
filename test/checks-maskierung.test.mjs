@@ -17,7 +17,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mitRepo, run, datei, ausfuehrungen } from "./helpers/checks-repo.mjs";
-import { wirksamkeit } from "./helpers/wirksamkeit-fixture.mjs";
+import { auswerten } from "../kit/wirksamkeit.mjs";
 
 /** Eine Protokollzeile in ihre Spalten zerlegt (die drei hinteren seit Issue #948). */
 function spalten(zeile) {
@@ -26,17 +26,17 @@ function spalten(zeile) {
 }
 
 /** Ein Wegwerf-Repo mit genau diesem Kommando als einziger Pruefung. */
-function mitKommando(cmd, fn) {
+async function mitKommando(cmd, fn) {
   const config = { buildChecks: [{ cmd, always: true }], checkAreas: { kern: ["src/**"] } };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
-    fn(dir);
+    await fn(dir);
   });
 }
 
-test("[checks-10] ein mehrzeiliges Kommando bleibt genau eine Protokollzeile", () => {
-  mitKommando("echo a\necho b", (dir) => {
-    run(dir);
+test("[checks-10] ein mehrzeiliges Kommando bleibt genau eine Protokollzeile", async () => {
+  await mitKommando("echo a\necho b", async (dir) => {
+    await run(dir);
 
     const zeilen = ausfuehrungen(dir);
     assert.equal(zeilen.length, 1, "eine Ausfuehrung, eine Zeile");
@@ -47,9 +47,9 @@ test("[checks-10] ein mehrzeiliges Kommando bleibt genau eine Protokollzeile", (
   });
 });
 
-test("[checks-10] ein Tabulator im Kommando wird maskiert und macht keine fuenfte Spalte", () => {
-  mitKommando("echo a\tb", (dir) => {
-    run(dir);
+test("[checks-10] ein Tabulator im Kommando wird maskiert und macht keine fuenfte Spalte", async () => {
+  await mitKommando("echo a\tb", async (dir) => {
+    await run(dir);
 
     const zeilen = ausfuehrungen(dir);
     assert.equal(zeilen.length, 1);
@@ -60,9 +60,9 @@ test("[checks-10] ein Tabulator im Kommando wird maskiert und macht keine fuenft
   });
 });
 
-test("[checks-10] ein Backslash im Kommando wird verdoppelt, damit die Rueckwandlung eindeutig bleibt", () => {
-  mitKommando(String.raw`echo a\nb`, (dir) => {
-    run(dir);
+test("[checks-10] ein Backslash im Kommando wird verdoppelt, damit die Rueckwandlung eindeutig bleibt", async () => {
+  await mitKommando(String.raw`echo a\nb`, async (dir) => {
+    await run(dir);
 
     assert.equal(
       spalten(ausfuehrungen(dir)[0]).cmd,
@@ -72,23 +72,20 @@ test("[checks-10] ein Backslash im Kommando wird verdoppelt, damit die Rueckwand
   });
 });
 
-test("[checks-10] ein Kommando ohne Sonderzeichen steht unveraendert im Protokoll", () => {
-  mitKommando("echo eins", (dir) => {
-    run(dir);
+test("[checks-10] ein Kommando ohne Sonderzeichen steht unveraendert im Protokoll", async () => {
+  await mitKommando("echo eins", async (dir) => {
+    await run(dir);
 
     assert.equal(spalten(ausfuehrungen(dir)[0]).cmd, "echo eins", "die Form bestehender Protokolle bleibt");
   });
 });
 
-test("[checks-10] ein mehrzeiliges Kommando erscheint in der Auswertung als eine Pruefung mit einer Ausfuehrung", () => {
+test("[checks-10] ein mehrzeiliges Kommando erscheint in der Auswertung als eine Pruefung mit einer Ausfuehrung", async () => {
   const cmd = "echo a\necho b";
-  mitKommando(cmd, (dir) => {
-    assert.equal(run(dir).status, 0, "Vorbedingung: das Kommando laeuft gruen durch");
+  await mitKommando(cmd, async (dir) => {
+    assert.equal((await run(dir)).status, 0, "Vorbedingung: das Kommando laeuft gruen durch");
 
-    const res = wirksamkeit(dir, "auswerten");
-
-    assert.equal(res.status, 0, res.stderr);
-    const e = JSON.parse(res.stdout);
+    const e = auswerten(dir);
     assert.equal(e.protokoll.fehlerhafteZeilen, 0, "keine zerrissene Zeile");
     const p = e.pruefungen.find((x) => x.cmd === cmd);
     assert.ok(p, `die Pruefung steht unter ihrem echten Text: ${JSON.stringify(e.pruefungen.map((x) => x.cmd))}`);

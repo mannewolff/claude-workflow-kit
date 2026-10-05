@@ -10,7 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mitRepo, plan, run, zusammenfassung, datei } from "./helpers/checks-repo.mjs";
 
-test("[checks-4] zwei gruene Kommandos tragen je eine gemessene Dauer, die Summe steht in dauerGesamtMs", () => {
+test("[checks-4] zwei gruene Kommandos tragen je eine gemessene Dauer, die Summe steht in dauerGesamtMs", async () => {
   const config = {
     buildChecks: [
       { cmd: "echo eins", always: true },
@@ -18,10 +18,10 @@ test("[checks-4] zwei gruene Kommandos tragen je eine gemessene Dauer, die Summe
     ],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, res.stderr);
     const summary = zusammenfassung(dir);
@@ -34,7 +34,7 @@ test("[checks-4] zwei gruene Kommandos tragen je eine gemessene Dauer, die Summe
   });
 });
 
-test("[checks-4] ein roter erster Lauf misst nur das gestartete Kommando, der Rest traegt dauerMs: null", () => {
+test("[checks-4] ein roter erster Lauf misst nur das gestartete Kommando, der Rest traegt dauerMs: null", async () => {
   const config = {
     buildChecks: [
       { cmd: "exit 1", always: true },
@@ -42,10 +42,10 @@ test("[checks-4] ein roter erster Lauf misst nur das gestartete Kommando, der Re
     ],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.notEqual(res.status, 0, "ein roter Check muss den Exit-Code rot faerben");
     const summary = zusammenfassung(dir);
@@ -58,13 +58,13 @@ test("[checks-4] ein roter erster Lauf misst nur das gestartete Kommando, der Re
   });
 });
 
-test("[checks-4] leeres Paket traegt dauerGesamtMs: null, nicht 0", () => {
+test("[checks-4] leeres Paket traegt dauerGesamtMs: null, nicht 0", async () => {
   const config = {
     buildChecks: [{ cmd: "echo nie", always: true }],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
-    const res = run(dir);
+  await mitRepo({ config }, async (dir) => {
+    const res = await run(dir);
 
     assert.equal(res.status, 0, `leeres Paket ist kein Fehler: ${res.stderr}`);
     const summary = zusammenfassung(dir);
@@ -73,15 +73,15 @@ test("[checks-4] leeres Paket traegt dauerGesamtMs: null, nicht 0", () => {
   });
 });
 
-test("[checks-4] die Feldmenge der Zusammenfassung bleibt vollstaendig, dauerGesamtMs kommt hinzu", () => {
+test("[checks-4] die Feldmenge der Zusammenfassung bleibt vollstaendig, dauerGesamtMs kommt hinzu", async () => {
   const config = {
     buildChecks: [{ cmd: "echo eins", always: true }],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    run(dir);
+    await run(dir);
     const summary = zusammenfassung(dir);
 
     assert.deepEqual(
@@ -96,12 +96,12 @@ test("[checks-4] die Feldmenge der Zusammenfassung bleibt vollstaendig, dauerGes
   });
 });
 
-test("[checks-4] checks.mjs plan traegt weder dauerMs noch dauerGesamtMs — die Dauer entsteht erst bei run", () => {
+test("[checks-4] checks.mjs plan traegt weder dauerMs noch dauerGesamtMs — die Dauer entsteht erst bei run", async () => {
   const config = {
     buildChecks: [{ cmd: "echo eins", always: true }],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
 
     const ergebnis = plan(dir);
@@ -113,15 +113,15 @@ test("[checks-4] checks.mjs plan traegt weder dauerMs noch dauerGesamtMs — die
   });
 });
 
-test("[checks-4] die Fliesstext-Ausgabe von run bleibt unveraendert — keine Zeitzeile ausser 'Wartezeit:' im Berichtsblock", () => {
+test("[checks-4] die Fliesstext-Ausgabe von run bleibt unveraendert — keine Zeitzeile ausser 'Wartezeit:' im Berichtsblock", async () => {
   const config = {
     buildChecks: [{ cmd: "echo eins", always: true }],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, /\n\$ echo eins — als immer laufend festgelegt\n/);
@@ -138,7 +138,7 @@ test("[checks-4] die Fliesstext-Ausgabe von run bleibt unveraendert — keine Ze
 // zum Ergebnis. Heute laufen die Kommandos nacheinander, also ist sie mindestens die
 // Summe der Wartezeiten der Kommandos; laufen sie spaeter gleichzeitig, bleibt sie
 // die Zeit, auf die jemand gewartet hat, waehrend dauerGesamtMs die Summe bleibt.
-test("[checks-4] wartezeitMs ist die Wanduhr des Laufs, bei zwei wartenden Kommandos mindestens deren Summe", () => {
+test("[checks-4] wartezeitMs ist die Wanduhr des Laufs, bei zwei wartenden Kommandos mindestens deren Summe", async () => {
   const warten = (ms) => `node -e "setTimeout(() => {}, ${ms})"`;
   const config = {
     buildChecks: [
@@ -147,10 +147,10 @@ test("[checks-4] wartezeitMs ist die Wanduhr des Laufs, bei zwei wartenden Komma
     ],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, res.stderr);
     const summary = zusammenfassung(dir);

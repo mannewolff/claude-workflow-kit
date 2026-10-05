@@ -33,11 +33,11 @@ function config(extra = {}) {
   };
 }
 
-test("ein Hinweis-Eintrag mit Fund endet gruen und traegt die Funde im Eintrag und in der Zusammenfassung", () => {
-  mitRepo({ config: config() }, (dir) => {
+test("ein Hinweis-Eintrag mit Fund endet gruen und traegt die Funde im Eintrag und in der Zusammenfassung", async () => {
+  await mitRepo({ config: config() }, async (dir) => {
     werkzeug(dir, ["Pruefe 3 Dateien", "Hinweis: kit/a.mjs:4 — pfade: Schraegstrich", "Hinweis: test/b.test.mjs:9 — skips: Plattform-Skip"]);
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, res.stdout + res.stderr);
     const summary = zusammenfassung(dir);
@@ -51,11 +51,11 @@ test("ein Hinweis-Eintrag mit Fund endet gruen und traegt die Funde im Eintrag u
   });
 });
 
-test("die Funde stehen als hinweis-Zeilen in berichtszeilen und im Block fuer den Abschlussbericht", () => {
-  mitRepo({ config: config() }, (dir) => {
+test("die Funde stehen als hinweis-Zeilen in berichtszeilen und im Block fuer den Abschlussbericht", async () => {
+  await mitRepo({ config: config() }, async (dir) => {
     werkzeug(dir, ["Hinweis: kit/a.mjs:4 — pfade: Schraegstrich"]);
 
-    const res = run(dir);
+    const res = await run(dir);
 
     const zeile = "hinweis: kit/a.mjs:4 — pfade: Schraegstrich";
     assert.ok(zusammenfassung(dir).berichtszeilen.includes(zeile), JSON.stringify(zusammenfassung(dir).berichtszeilen));
@@ -64,11 +64,11 @@ test("die Funde stehen als hinweis-Zeilen in berichtszeilen und im Block fuer de
   });
 });
 
-test("ein Hinweis-Eintrag ohne Fund endet gruen mit leeren Hinweisen", () => {
-  mitRepo({ config: config() }, (dir) => {
+test("ein Hinweis-Eintrag ohne Fund endet gruen mit leeren Hinweisen", async () => {
+  await mitRepo({ config: config() }, async (dir) => {
     werkzeug(dir, ["Pruefe 3 Dateien", "keine Funde"]);
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, res.stdout + res.stderr);
     const summary = zusammenfassung(dir);
@@ -79,11 +79,11 @@ test("ein Hinweis-Eintrag ohne Fund endet gruen mit leeren Hinweisen", () => {
   });
 });
 
-test("ein Fehlermerkmal in einer Hinweiszeile faerbt den Eintrag nicht rot", () => {
-  mitRepo({ config: config() }, (dir) => {
+test("ein Fehlermerkmal in einer Hinweiszeile faerbt den Eintrag nicht rot", async () => {
+  await mitRepo({ config: config() }, async (dir) => {
     werkzeug(dir, [`Hinweis: kit/a.mjs:1 — kommandos: ${MERKMAL} im Text`]);
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, res.stdout + res.stderr);
     const gelaufen = eintrag(zusammenfassung(dir).laufen, WERKZEUG);
@@ -93,11 +93,11 @@ test("ein Fehlermerkmal in einer Hinweiszeile faerbt den Eintrag nicht rot", () 
   });
 });
 
-test("Exit 1 eines Hinweis-Werkzeugs bleibt gruen und meldet kein Scheitern", () => {
-  mitRepo({ config: config() }, (dir) => {
+test("Exit 1 eines Hinweis-Werkzeugs bleibt gruen und meldet kein Scheitern", async () => {
+  await mitRepo({ config: config() }, async (dir) => {
     werkzeug(dir, ["Hinweis: kit/a.mjs:2 — dateien: Doppelpunkt"], 1);
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, res.stdout + res.stderr);
     const gelaufen = eintrag(zusammenfassung(dir).laufen, WERKZEUG);
@@ -106,11 +106,11 @@ test("Exit 1 eines Hinweis-Werkzeugs bleibt gruen und meldet kein Scheitern", ()
   });
 });
 
-test("ein Absturz (Exit 2 und mehr) bleibt gruen und erscheint als genau eine Zeile Hinweis-Pruefung gescheitert", () => {
-  mitRepo({ config: config() }, (dir) => {
+test("ein Absturz (Exit 2 und mehr) bleibt gruen und erscheint als genau eine Zeile Hinweis-Pruefung gescheitert", async () => {
+  await mitRepo({ config: config() }, async (dir) => {
     werkzeug(dir, ["Hinweis: kit/a.mjs:2 — dateien: Doppelpunkt", "TypeError: kaputt"], 3);
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, res.stdout + res.stderr);
     const summary = zusammenfassung(dir);
@@ -124,12 +124,12 @@ test("ein Absturz (Exit 2 und mehr) bleibt gruen und erscheint als genau eine Ze
   });
 });
 
-test("der Abschlusslauf faehrt einen Hinweis-Eintrag mit always", () => {
-  mitRepo({ config: config() }, (dir) => {
+test("der Abschlusslauf faehrt einen Hinweis-Eintrag mit always", async () => {
+  await mitRepo({ config: config() }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
     werkzeug(dir, ["Hinweis: kit/a.mjs:4 — pfade: Schraegstrich"]);
 
-    const res = run(dir, "--abschluss", "1155");
+    const res = await run(dir, "--abschluss", "1155");
 
     assert.equal(res.status, 0, res.stdout + res.stderr);
     const summary = zusammenfassung(dir);
@@ -138,11 +138,11 @@ test("der Abschlusslauf faehrt einen Hinweis-Eintrag mit always", () => {
   });
 });
 
-test("die Push-Stufe faehrt einen Hinweis-Eintrag mit always", () => {
-  mitRepo({ config: config() }, (dir) => {
+test("die Push-Stufe faehrt einen Hinweis-Eintrag mit always", async () => {
+  await mitRepo({ config: config() }, async (dir) => {
     werkzeug(dir, ["Hinweis: kit/a.mjs:4 — pfade: Schraegstrich"]);
 
-    const res = run(dir, "--stufe", "push");
+    const res = await run(dir, "--stufe", "push");
 
     assert.equal(res.status, 0, res.stdout + res.stderr);
     const summary = zusammenfassung(dir);
@@ -151,12 +151,12 @@ test("die Push-Stufe faehrt einen Hinweis-Eintrag mit always", () => {
   });
 });
 
-test("ein uebernommener Lauf traegt die Hinweise weiter", () => {
-  mitRepo({ config: config() }, (dir) => {
+test("ein uebernommener Lauf traegt die Hinweise weiter", async () => {
+  await mitRepo({ config: config() }, async (dir) => {
     werkzeug(dir, ["Hinweis: kit/a.mjs:4 — pfade: Schraegstrich"]);
-    run(dir);
+    await run(dir);
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.match(res.stdout, /Stand unveraendert/);
     const summary = zusammenfassung(dir);
@@ -165,12 +165,12 @@ test("ein uebernommener Lauf traegt die Hinweise weiter", () => {
   });
 });
 
-test("ein gewoehnlicher Eintrag sammelt keine Hinweise", () => {
+test("ein gewoehnlicher Eintrag sammelt keine Hinweise", async () => {
   const cmd = "node hinweis-werkzeug.mjs";
-  mitRepo({ config: { buildChecks: [{ cmd, always: true }], checkAreas: BEREICHE } }, (dir) => {
+  await mitRepo({ config: { buildChecks: [{ cmd, always: true }], checkAreas: BEREICHE } }, async (dir) => {
     werkzeug(dir, ["Hinweis: kit/a.mjs:4 — pfade: Schraegstrich"]);
 
-    run(dir);
+    await run(dir);
 
     const summary = zusammenfassung(dir);
     assert.equal(eintrag(summary.laufen, cmd).hinweise, undefined);
@@ -178,9 +178,9 @@ test("ein gewoehnlicher Eintrag sammelt keine Hinweise", () => {
   });
 });
 
-test("ein unbekannter Wert fuer art bricht ab", () => {
-  mitRepo({ config: { buildChecks: [{ cmd: DANACH, art: "warnung" }], checkAreas: BEREICHE } }, (dir) => {
-    const res = run(dir);
+test("ein unbekannter Wert fuer art bricht ab", async () => {
+  await mitRepo({ config: { buildChecks: [{ cmd: DANACH, art: "warnung" }], checkAreas: BEREICHE } }, async (dir) => {
+    const res = await run(dir);
 
     assert.notEqual(res.status, 0);
     assert.match(res.stderr, /art/);

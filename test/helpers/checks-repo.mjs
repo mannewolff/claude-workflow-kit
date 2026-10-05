@@ -6,11 +6,15 @@
 // Loeschung, eine Umbenennung oder ein committetes Paket wirklich mitzaehlt.
 // Deshalb laeuft jeder Test gegen ein echtes, frisch angelegtes Repo im
 // Temp-Verzeichnis, nach dem Muster der night-*-Tests.
+//
+// Aufgerufen wird checks.mjs im selben Prozess, ueber `aufrufen` (Issue #1212, Plan
+// #1199 E6): Ein Node-Prozess je Aufruf kostete bei rund 300 Aufrufen der Suite mehr
+// als die Pruefungen selbst. Was nur als Prozess zu belegen ist — Signale, die
+// Kommandozeile, der Hook —, startet `helpers/checks-ablauf.mjs`.
 
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { setTimeout as schlafen } from "node:timers/promises";
 import assert from "node:assert/strict";
@@ -22,13 +26,8 @@ import assert from "node:assert/strict";
 // an ihm vorbeigehen.
 import "./checks-sperre.mjs";
 import { gitBashPfad } from "../../kit/board.mjs";
+import { aufrufen } from "../../kit/checks.mjs";
 import { lfAttribute } from "./zeilenenden.mjs";
-
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-
-export const CHECKS = join(repoRoot, "kit", "checks.mjs");
-export const GATE = join(repoRoot, ".githooks", "gate.mjs");
-export const HOOK = join(repoRoot, ".githooks", "pre-commit");
 
 /**
  * Die POSIX-Shell, mit der ein Test den Hook startet: `sh`, unter Windows die Git Bash,
@@ -55,63 +54,59 @@ export function git(dir, ...args) {
   return res.stdout.trim();
 }
 
-/** Roher Aufruf — fuer die Faelle, in denen der Exit-Code selbst der Befund ist. */
+/**
+ * Roher Aufruf im selben Prozess — fuer die Faelle, in denen der Exit-Code selbst der
+ * Befund ist. Ergebnis wie bei `spawnSync`: `{ status, stdout, stderr }`, fuer `run` als
+ * Promise. `env` ergaenzt die Umgebung des Testprozesses.
+ */
 export function checks(dir, ...cliArgs) {
-  return spawnSync(process.execPath, [CHECKS, ...cliArgs], { cwd: dir, encoding: "utf-8" });
+  return checksMit(dir, {}, ...cliArgs);
 }
 
-/** Der Ort des Fake-`git` im Wegwerf-Repo (Issue #504, #1136). */
-function fakeGitPfad(dir) {
-  return join(dir, "fakebin", "git.mjs");
+/** Derselbe Aufruf mit zusaetzlichen Umgebungsvariablen und optional eigenem git. */
+export function checksMit(dir, { env = {}, git: gitStarter } = {}, ...cliArgs) {
+  return aufrufen(cliArgs, { cwd: dir, env: { ...process.env, ...env }, git: gitStarter });
 }
+
+/** Die Fake-`git` je Wegwerf-Repo (Issue #504, #1136, #1212). */
+const FAKE_GIT = new Map();
 
 /**
- * Derselbe Aufruf, aber `CHECKS_GIT_FAKE` zeigt auf das Fake-`git` (Issue #504, #1136).
- * Nicht mehr ueber den PATH: Ein endungsloses sh-Skript ist unter Windows nicht
- * startbar, ein Node-Skript ueber den Test-Hook schon. Die uebrige Umgebung wird
- * durchgereicht — insbesondere NODE_V8_COVERAGE, sonst faende die Messung den
- * Kindprozess nicht.
+ * Derselbe Aufruf, aber mit dem Fake-`git`, das `fakeGitOhne` oder `fakeGitSetzen` fuer
+ * dieses Repo hinterlegt hat (Issue #504, #1136). Seit Issue #1212 im selben Prozess: Das
+ * Fake ist eine Funktion, die `aufrufen` statt des echten Starts von git bekommt.
  */
 export function checksMitFakeGit(dir, ...cliArgs) {
-  const env = { ...process.env, CHECKS_GIT_FAKE: fakeGitPfad(dir) };
-  return spawnSync(process.execPath, [CHECKS, ...cliArgs], { cwd: dir, encoding: "utf-8", env });
+  const fake = FAKE_GIT.get(dir);
+  assert.ok(fake, `kein Fake-git fuer ${dir} hinterlegt`);
+  return checksMit(dir, { git: fake }, ...cliArgs);
+}
+
+/** Hinterlegt `fake(args, optionen)` als git dieses Repos — Ergebnis wie `spawnSync`. */
+export function fakeGitSetzen(dir, fake) {
+  FAKE_GIT.set(dir, fake);
+}
+
+/** Das echte git, mit denselben Optionen, die checks.mjs uebergibt. */
+export function echtesGit(args, optionen) {
+  return spawnSync("git", args, optionen);
 }
 
 /**
- * Ein Fake-`git` als Node-Skript in `<dir>/fakebin`, das genau ein Unterkommando
- * scheitern laesst und alles andere an das echte git durchreicht (Issue #504, #1136).
- * Anders als ein Mock laesst es die uebrigen git-Aufrufe von checks.mjs unangetastet:
- * `rev-parse` loest weiter auf, nur der eine Schritt danach bricht ab — genau die
- * Reihenfolge, um die es in den Fehlerpfaden geht.
- *
- * Das echte git kommt aus dem PATH: Der Test-Hook `CHECKS_GIT_FAKE` laesst den PATH
- * unberuehrt, ein Selbstaufruf ist darum ausgeschlossen. stdin wird durchgereicht —
- * `hash-object --stdin-paths` liest die Pfade von dort.
+ * Ein Fake-`git`, das genau ein Unterkommando scheitern laesst und alles andere an das
+ * echte git durchreicht (Issue #504, #1136). Anders als ein Mock laesst es die uebrigen
+ * git-Aufrufe von checks.mjs unangetastet: `rev-parse` loest weiter auf, nur der eine
+ * Schritt danach bricht ab — genau die Reihenfolge, um die es in den Fehlerpfaden geht.
  *
  * `meldung: null` laesst das Unterkommando stumm scheitern — der Fall, in dem
  * checks.mjs seine Meldung ohne Zutun von git bilden muss.
  */
 export function fakeGitOhne(dir, unterkommando, meldung = "fake: absichtlich gescheitert") {
-  mkdirSync(join(dir, "fakebin"), { recursive: true });
-  const skript = [
-    "// Generiert von test/helpers/checks-repo.mjs (Issue #504, #1136) — kein Produktivcode.",
-    'import { spawnSync } from "node:child_process";',
-    "const argv = process.argv.slice(2);",
-    `if (argv[0] === ${JSON.stringify(unterkommando)}) {`,
-    meldung === null ? "  // stumm" : `  process.stderr.write(${JSON.stringify(meldung + "\n")});`,
-    "  process.exit(128);",
-    "}",
-    'const res = spawnSync("git", argv, { stdio: "inherit" });',
-    "if (res.error) {",
-    "  process.stderr.write(`${res.error.message}\\n`);",
-    "  process.exit(1);",
-    "}",
-    "process.exit(res.status ?? 1);",
-    "",
-  ].join("\n");
-  const pfad = fakeGitPfad(dir);
-  writeFileSync(pfad, skript, "utf-8");
-  return pfad;
+  fakeGitSetzen(dir, (args, optionen) => {
+    if (args[0] !== unterkommando) return echtesGit(args, optionen);
+    const stderr = meldung === null ? "" : `${meldung}\n`;
+    return { status: 128, signal: null, stdout: "", stderr };
+  });
 }
 
 /** Erfolgreicher `plan`-Aufruf, JSON geparst. */
@@ -258,35 +253,24 @@ export async function repoEntfernenTolerant(dir, { notiz = null, ...rest } = {})
   }
 }
 
+/**
+ * Legt ein Wegwerf-Repo an, ruft `fn(dir)` und raeumt danach ab. Gibt `fn` ein Promise
+ * zurueck — jeder Test, der `run` im selben Prozess ruft (Issue #1212) —, wird erst nach
+ * dessen Ende abgeraeumt, und `mitRepo` liefert dieses Promise.
+ */
 export function mitRepo(optionen, fn) {
   const dir = repoAnlegen(optionen);
+  const abraeumen = () => rmSync(dir, { recursive: true, force: true });
+  let ergebnis;
   try {
-    fn(dir);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
+    ergebnis = fn(dir);
+  } catch (fehler) {
+    abraeumen();
+    throw fehler;
   }
-}
-
-/**
- * Ruft das Commit-Gate im Wegwerf-Repo auf (Issue #470). `checks.mjs` liegt dort
- * unter `.claude/kit/`, wohin `gateEinbauen` es legt.
- */
-export function gate(dir, ...cliArgs) {
-  return spawnSync(process.execPath, [join(dir, ".githooks", "gate.mjs"), ...cliArgs], {
-    cwd: dir,
-    encoding: "utf-8",
-  });
-}
-
-/** Legt Hook und Gate im Wegwerf-Repo an — das macht sonst der Installer (#473). */
-export function gateEinbauen(dir, { checksOrt = ".claude/kit" } = {}) {
-  mkdirSync(join(dir, ".githooks"), { recursive: true });
-  writeFileSync(join(dir, ".githooks", "gate.mjs"), readFileSync(GATE, "utf-8"), "utf-8");
-  writeFileSync(join(dir, ".githooks", "pre-commit"), readFileSync(HOOK, "utf-8"), { mode: 0o755 });
-  if (checksOrt) {
-    mkdirSync(join(dir, checksOrt), { recursive: true });
-    writeFileSync(join(dir, checksOrt, "checks.mjs"), readFileSync(CHECKS, "utf-8"), "utf-8");
-  }
+  if (ergebnis instanceof Promise) return ergebnis.finally(abraeumen);
+  abraeumen();
+  return ergebnis;
 }
 
 /** Findet einen Eintrag aus `laufen` oder `ausgelassen` ueber sein Kommando. */

@@ -12,7 +12,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import * as boardModul from "../kit/board.mjs";
+import * as boardModul from "../kit/board/grundlagen.mjs";
 import { startOptionen, baumBeendenAufruf, kommandoStart } from "../kit/checks.mjs";
 
 test("[1123] unter Windows startet ein Kommando ohne Abkoppeln, auf POSIX in eigener Gruppe", () => {

@@ -29,8 +29,8 @@ const CONFIG = {
   },
 };
 
-test("jede Datei ohne Muster steht in ohneZuordnung und im Grund (Issue #1003)", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("jede Datei ohne Muster steht in ohneZuordnung und im Grund (Issue #1003)", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "a-ohne-muster.txt");
     datei(dir, "b-ohne-muster.txt");
     datei(dir, "frontend/src/App.tsx");
@@ -46,8 +46,8 @@ test("jede Datei ohne Muster steht in ohneZuordnung und im Grund (Issue #1003)",
   });
 });
 
-test("trifft jede Datei ein Muster, bleibt ohneZuordnung leer", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("trifft jede Datei ein Muster, bleibt ohneZuordnung leer", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir);
@@ -57,8 +57,8 @@ test("trifft jede Datei ein Muster, bleibt ohneZuordnung leer", () => {
   });
 });
 
-test("ein nicht aufloesbarer Anker erfindet keinen Eintrag in ohneZuordnung", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("ein nicht aufloesbarer Anker erfindet keinen Eintrag in ohneZuordnung", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir, "--since", "gibt-es-nicht");
@@ -68,8 +68,8 @@ test("ein nicht aufloesbarer Anker erfindet keinen Eintrag in ohneZuordnung", ()
   });
 });
 
-test("--bereich faehrt die Pruefgruppen genau dieses Bereichs", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("--bereich faehrt die Pruefgruppen genau dieses Bereichs", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     // Eine Datei ohne Muster: ohne das Flag zoege sie den vollen Umfang nach sich.
     datei(dir, "notizen.txt");
 
@@ -83,7 +83,7 @@ test("--bereich faehrt die Pruefgruppen genau dieses Bereichs", () => {
   });
 });
 
-test("run --bereich fuehrt genau die Kommandos dieses Bereichs aus", () => {
+test("run --bereich fuehrt genau die Kommandos dieses Bereichs aus", async () => {
   const config = {
     buildChecks: [
       { cmd: "echo x > lief-frontend.txt", areas: ["frontend"] },
@@ -91,10 +91,10 @@ test("run --bereich fuehrt genau die Kommandos dieses Bereichs aus", () => {
     ],
     checkAreas: CONFIG.checkAreas,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "backend/src/Service.java");
 
-    const res = run(dir, "--bereich", "frontend");
+    const res = await run(dir, "--bereich", "frontend");
 
     assert.equal(res.status, 0, `run endete mit ${res.status}: ${res.stderr}`);
     assert.ok(existsSync(join(dir, "lief-frontend.txt")), "die Pruefung des Bereichs ist nicht gelaufen");
@@ -102,9 +102,9 @@ test("run --bereich fuehrt genau die Kommandos dieses Bereichs aus", () => {
   });
 });
 
-test("ein unbekannter Bereichsname schlaegt fehl und nennt die konfigurierten Bereiche", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
-    const res = checks(dir, "run", "--bereich", "fronend");
+test("ein unbekannter Bereichsname schlaegt fehl und nennt die konfigurierten Bereiche", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
+    const res = await checks(dir, "run", "--bereich", "fronend");
 
     assert.notEqual(res.status, 0, "der unbekannte Bereich lief durch");
     assert.match(res.stderr, /fronend/);
@@ -113,8 +113,8 @@ test("ein unbekannter Bereichsname schlaegt fehl und nennt die konfigurierten Be
   });
 });
 
-test("ein fehlender Wert hinter --bereich ist derselbe Fehler wie ein falscher", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("ein fehlender Wert hinter --bereich ist derselbe Fehler wie ein falscher", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     const res = checks(dir, "plan", "--bereich");
 
     assert.notEqual(res.status, 0, "--bereich ohne Wert lief durch");
@@ -122,7 +122,7 @@ test("ein fehlender Wert hinter --bereich ist derselbe Fehler wie ein falscher",
   });
 });
 
-test("--bereich bleibt mit --stufe kombinierbar: die Kumulation gilt weiter", () => {
+test("--bereich bleibt mit --stufe kombinierbar: die Kumulation gilt weiter", async () => {
   const config = {
     buildChecks: [
       { cmd: "npm run build", areas: ["frontend"] },
@@ -131,7 +131,7 @@ test("--bereich bleibt mit --stufe kombinierbar: die Kumulation gilt weiter", ()
     ],
     checkAreas: CONFIG.checkAreas,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const paket = plan(dir, "--bereich", "frontend");
@@ -144,8 +144,8 @@ test("--bereich bleibt mit --stufe kombinierbar: die Kumulation gilt weiter", ()
   });
 });
 
-test("--bereich laesst --since unberuehrt: der Anker bestimmt weiter die Dateiliste", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("--bereich laesst --since unberuehrt: der Anker bestimmt weiter die Dateiliste", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir, "--bereich", "backend", "--since", "HEAD");
@@ -175,20 +175,20 @@ const CONFIG_LAUF = {
 // `--bereich`-Lauf zwar WENIGER Pruefungen faehrt, `geaendert` und `hashes` aber
 // weiterhin aus dem Anker bestimmt — er sah damit aus wie ein vollstaendiger Lauf.
 
-test("ein uneingeschraenkter Lauf uebernimmt das Ergebnis eines Bereichslaufs nicht", () => {
-  mitRepo({ config: CONFIG_LAUF }, (dir) => {
+test("ein uneingeschraenkter Lauf uebernimmt das Ergebnis eines Bereichslaufs nicht", async () => {
+  await mitRepo({ config: CONFIG_LAUF }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
     datei(dir, "backend/src/Main.java");
 
     // Erst eingegrenzt: nur die Frontend-Pruefung laeuft.
-    const eingegrenzt = run(dir, "--bereich", "frontend");
+    const eingegrenzt = await run(dir, "--bereich", "frontend");
     assert.equal(eingegrenzt.status, 0, `${eingegrenzt.stdout}${eingegrenzt.stderr}`);
     assert.equal(zusammenfassung(dir).bereichWahl, "frontend");
 
     // Dann uneingeschraenkt auf demselben Stand: Ohne den Vergleich der Eingrenzung
     // uebernaehme dieser Lauf das Ergebnis oben — Basis, Stufe, Dateien und Hashes
     // sind identisch —, und die faellige Backend-Pruefung liefe nie.
-    const voll = run(dir);
+    const voll = await run(dir);
     assert.doesNotMatch(voll.stdout, /Ergebnis uebernommen/, "der volle Lauf darf nicht uebernehmen");
     const nachher = zusammenfassung(dir);
     assert.equal(nachher.bereichWahl, null, "ohne --bereich traegt die Zusammenfassung null");
@@ -199,25 +199,25 @@ test("ein uneingeschraenkter Lauf uebernimmt das Ergebnis eines Bereichslaufs ni
   });
 });
 
-test("zwei Bereichslaeufe auf verschiedene Bereiche uebernehmen einander nicht", () => {
-  mitRepo({ config: CONFIG_LAUF }, (dir) => {
+test("zwei Bereichslaeufe auf verschiedene Bereiche uebernehmen einander nicht", async () => {
+  await mitRepo({ config: CONFIG_LAUF }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
     datei(dir, "backend/src/Main.java");
 
-    run(dir, "--bereich", "frontend");
-    const zweiter = run(dir, "--bereich", "backend");
+    await run(dir, "--bereich", "frontend");
+    const zweiter = await run(dir, "--bereich", "backend");
 
     assert.doesNotMatch(zweiter.stdout, /Ergebnis uebernommen/);
     assert.equal(zusammenfassung(dir).bereichWahl, "backend");
   });
 });
 
-test("derselbe Bereichslauf auf unveraendertem Stand uebernimmt weiterhin", () => {
-  mitRepo({ config: CONFIG_LAUF }, (dir) => {
+test("derselbe Bereichslauf auf unveraendertem Stand uebernimmt weiterhin", async () => {
+  await mitRepo({ config: CONFIG_LAUF }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    run(dir, "--bereich", "frontend");
-    const zweiter = run(dir, "--bereich", "frontend");
+    await run(dir, "--bereich", "frontend");
+    const zweiter = await run(dir, "--bereich", "frontend");
 
     // Die Wiederverwendung selbst bleibt unangetastet: Gleiche Eingrenzung, gleicher
     // Stand, gleiches Ergebnis (Issue #863).
@@ -254,17 +254,17 @@ const INSTALLER = [
 ].join("\n");
 
 /** Legt `install.mjs` an und committet es, damit der Diff gegen HEAD nur die Aenderung zeigt. */
-function mitInstaller(fn) {
-  mitRepo({ config: CONFIG_BLOBS }, (dir) => {
+async function mitInstaller(fn) {
+  await mitRepo({ config: CONFIG_BLOBS }, async (dir) => {
     datei(dir, "install.mjs", INSTALLER);
     git(dir, "add", "install.mjs");
     git(dir, "commit", "-q", "-m", "install.mjs");
-    fn(dir);
+    await fn(dir);
   });
 }
 
-test("nur Blob-Zeilen geaendert: installer bleibt unberuehrt, der Grund nennt 'install.mjs: nur Blobs'", () => {
-  mitInstaller((dir) => {
+test("nur Blob-Zeilen geaendert: installer bleibt unberuehrt, der Grund nennt 'install.mjs: nur Blobs'", async () => {
+  await mitInstaller(async (dir) => {
     datei(dir, "install.mjs", INSTALLER.replace("QUFB", "WFhY"));
     datei(dir, "frontend/src/App.tsx");
 
@@ -280,8 +280,8 @@ test("nur Blob-Zeilen geaendert: installer bleibt unberuehrt, der Grund nennt 'i
   });
 });
 
-test("eine Nicht-Blob-Zeile geaendert: installer ist beruehrt", () => {
-  mitInstaller((dir) => {
+test("eine Nicht-Blob-Zeile geaendert: installer ist beruehrt", async () => {
+  await mitInstaller(async (dir) => {
     datei(dir, "install.mjs", INSTALLER.replace("QUFB", "WFhY").replace("return 1;", "return 2;"));
 
     const ergebnis = plan(dir);
@@ -291,8 +291,8 @@ test("eine Nicht-Blob-Zeile geaendert: installer ist beruehrt", () => {
   });
 });
 
-test("eine neue Blob-Konstante: installer bleibt unberuehrt", () => {
-  mitInstaller((dir) => {
+test("eine neue Blob-Konstante: installer bleibt unberuehrt", async () => {
+  await mitInstaller(async (dir) => {
     datei(dir, "install.mjs", INSTALLER.replace("const SKILL_B_B64", "const SKILL_NEU_B64 = \"TkVV\";\nconst SKILL_B_B64"));
 
     const ergebnis = plan(dir);
@@ -303,8 +303,8 @@ test("eine neue Blob-Konstante: installer bleibt unberuehrt", () => {
   });
 });
 
-test("eine geloeschte Blob-Konstante: installer bleibt unberuehrt", () => {
-  mitInstaller((dir) => {
+test("eine geloeschte Blob-Konstante: installer bleibt unberuehrt", async () => {
+  await mitInstaller(async (dir) => {
     datei(dir, "install.mjs", INSTALLER.replace("const SKILL_B_B64 = \"QkJC\";\n", ""));
 
     const ergebnis = plan(dir);
@@ -315,8 +315,8 @@ test("eine geloeschte Blob-Konstante: installer bleibt unberuehrt", () => {
   });
 });
 
-test("ein neu angelegtes install.mjs beruehrt installer, auch wenn es nur Blobs traegt", () => {
-  mitRepo({ config: CONFIG_BLOBS }, (dir) => {
+test("ein neu angelegtes install.mjs beruehrt installer, auch wenn es nur Blobs traegt", async () => {
+  await mitRepo({ config: CONFIG_BLOBS }, async (dir) => {
     datei(dir, "install.mjs", "const SKILL_A_B64 = \"QUFB\";\n");
 
     const ergebnis = plan(dir);
@@ -325,7 +325,7 @@ test("ein neu angelegtes install.mjs beruehrt installer, auch wenn es nur Blobs 
   });
 });
 
-test("der Berichtsblock nennt 'install.mjs: nur Blobs' bei der Auslassung", () => {
+test("der Berichtsblock nennt 'install.mjs: nur Blobs' bei der Auslassung", async () => {
   const config = {
     buildChecks: [
       { cmd: "node -e \"process.exit(0)\" # installer", areas: ["installer"] },
@@ -333,14 +333,14 @@ test("der Berichtsblock nennt 'install.mjs: nur Blobs' bei der Auslassung", () =
     ],
     checkAreas: CONFIG_BLOBS.checkAreas,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "install.mjs", INSTALLER);
     git(dir, "add", "install.mjs");
     git(dir, "commit", "-q", "-m", "install.mjs");
     datei(dir, "install.mjs", INSTALLER.replace("QkJC", "WVlZ"));
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
     assert.match(res.stdout, /ausgelassen: node -e "process\.exit\(0\)" # installer → Bereich installer unberuehrt \(install\.mjs: nur Blobs\)/);
@@ -370,8 +370,8 @@ function committen(dir, nachricht = "stand") {
   git(dir, "commit", "-q", "-m", nachricht);
 }
 
-test("ein Helfer, den ein Test mit Muster importiert, erbt dessen Bereich (Issue #1181)", () => {
-  mitRepo({ config: CONFIG_IMPORTE }, (dir) => {
+test("ein Helfer, den ein Test mit Muster importiert, erbt dessen Bereich (Issue #1181)", async () => {
+  await mitRepo({ config: CONFIG_IMPORTE }, async (dir) => {
     datei(dir, "test/night-y.test.mjs", 'import { x } from "./helpers/x.mjs";\n');
     datei(dir, "test/board-z.test.mjs", 'import "node:test";\n');
     datei(dir, "test/helpers/x.mjs", "export const x = 1;\n");
@@ -386,7 +386,7 @@ test("ein Helfer, den ein Test mit Muster importiert, erbt dessen Bereich (Issue
     assert.deepEqual(kommandos(ergebnis.laufen), [NACHT]);
     assert.deepEqual(kommandos(ergebnis.ausgelassen), [BOARD]);
 
-    const res = run(dir);
+    const res = await run(dir);
     assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
     assert.ok(
       zusammenfassung(dir).berichtszeilen.includes("abgeleitet: test/helpers/x.mjs ueber test/night-y.test.mjs → nachtrunner"),
@@ -396,8 +396,8 @@ test("ein Helfer, den ein Test mit Muster importiert, erbt dessen Bereich (Issue
   });
 });
 
-test("ein Helfer ueber einen zweiten Helfer erbt den Bereich des Tests (Issue #1181)", () => {
-  mitRepo({ config: CONFIG_IMPORTE }, (dir) => {
+test("ein Helfer ueber einen zweiten Helfer erbt den Bereich des Tests (Issue #1181)", async () => {
+  await mitRepo({ config: CONFIG_IMPORTE }, async (dir) => {
     datei(dir, "test/night-y.test.mjs", 'const a = await import("./helpers/a.mjs");\n');
     datei(dir, "test/helpers/a.mjs", "export {\n  b,\n} from './b.mjs';\n");
     datei(dir, "test/helpers/b.mjs", "export const b = 1;\n");
@@ -415,8 +415,8 @@ test("ein Helfer ueber einen zweiten Helfer erbt den Bereich des Tests (Issue #1
   });
 });
 
-test("ein Helfer ohne Importeur loest keine Pruefung aus und sagt warum (Issue #1181)", () => {
-  mitRepo({ config: CONFIG_IMPORTE }, (dir) => {
+test("ein Helfer ohne Importeur loest keine Pruefung aus und sagt warum (Issue #1181)", async () => {
+  await mitRepo({ config: CONFIG_IMPORTE }, async (dir) => {
     datei(dir, "test/helpers/neu.mjs", "export const neu = 1;\n");
 
     const ergebnis = plan(dir);
@@ -426,14 +426,14 @@ test("ein Helfer ohne Importeur loest keine Pruefung aus und sagt warum (Issue #
     assert.deepEqual(kommandos(ergebnis.laufen), []);
     assert.deepEqual(ergebnis.ohnePruefung, [{ pfad: "test/helpers/neu.mjs", grund: "von keiner Datei importiert" }]);
 
-    const res = run(dir);
+    const res = await run(dir);
     assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
     assert.match(res.stdout, /Fuer den Abschlussbericht:[\s\S]*ohne Pruefung: test\/helpers\/neu\.mjs — von keiner Datei importiert/);
   });
 });
 
-test("ein Kreis zweier Helfer ohne Muster endet ohne Endlosschleife (Issue #1181)", () => {
-  mitRepo({ config: CONFIG_IMPORTE }, (dir) => {
+test("ein Kreis zweier Helfer ohne Muster endet ohne Endlosschleife (Issue #1181)", async () => {
+  await mitRepo({ config: CONFIG_IMPORTE }, async (dir) => {
     datei(dir, "test/helpers/a.mjs", 'import { b } from "./b.mjs";\nexport const a = 1;\n');
     datei(dir, "test/helpers/b.mjs", 'import { a } from "./a.mjs";\nexport const b = 1;\n');
     committen(dir);
@@ -449,8 +449,8 @@ test("ein Kreis zweier Helfer ohne Muster endet ohne Endlosschleife (Issue #1181
   });
 });
 
-test("eine Nicht-JavaScript-Datei ohne Muster zieht weiter den vollen Umfang (Issue #1181)", () => {
-  mitRepo({ config: CONFIG_IMPORTE }, (dir) => {
+test("eine Nicht-JavaScript-Datei ohne Muster zieht weiter den vollen Umfang (Issue #1181)", async () => {
+  await mitRepo({ config: CONFIG_IMPORTE }, async (dir) => {
     datei(dir, "test/night-y.test.mjs", 'const { x } = require("./helpers/x.cjs");\n');
     datei(dir, "test/helpers/x.cjs", "module.exports = { x: 1 };\n");
     committen(dir);

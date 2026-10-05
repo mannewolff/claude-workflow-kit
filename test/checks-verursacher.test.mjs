@@ -51,19 +51,19 @@ function commit(dir, betreff, ...rumpf) {
 }
 
 /** Der rote Push-Lauf ueber das Fenster ab `basis`. */
-function pushLauf(dir, basis) {
-  const res = run(dir, "--since", basis, "--stufe", "push");
+async function pushLauf(dir, basis) {
+  const res = await run(dir, "--since", basis, "--stufe", "push");
   assert.equal(res.status, 1, `der Lauf haette rot sein muessen: ${res.stdout}${res.stderr}`);
   return res;
 }
 
-test("genau eine beruehrte Karte steht als Verursacher da", () => {
-  mitRepo({ config: ROT_BACKEND }, (dir) => {
+test("genau eine beruehrte Karte steht als Verursacher da", async () => {
+  await mitRepo({ config: ROT_BACKEND }, async (dir) => {
     const basis = anker(dir);
     datei(dir, "backend/src/Dienst.java");
     const sha = commit(dir, "Der Dienst kennt den Fall (Issue #910)");
 
-    const res = pushLauf(dir, basis);
+    const res = await pushLauf(dir, basis);
 
     assert.deepEqual(zusammenfassung(dir).verursacher, [
       { cmd: "exit 1", karten: [{ karte: "910", shas: [sha] }] },
@@ -72,13 +72,13 @@ test("genau eine beruehrte Karte steht als Verursacher da", () => {
   });
 });
 
-test("die Kartennummer steht ergaenzend im Rumpf als Refs", () => {
-  mitRepo({ config: ROT_BACKEND }, (dir) => {
+test("die Kartennummer steht ergaenzend im Rumpf als Refs", async () => {
+  await mitRepo({ config: ROT_BACKEND }, async (dir) => {
     const basis = anker(dir);
     datei(dir, "backend/src/Dienst.java");
     const sha = commit(dir, "Ein Betreff ohne Nummer", "Beschreibung.\n\nRefs #911");
 
-    pushLauf(dir, basis);
+    await pushLauf(dir, basis);
 
     assert.deepEqual(zusammenfassung(dir).verursacher, [
       { cmd: "exit 1", karten: [{ karte: "911", shas: [sha] }] },
@@ -86,15 +86,15 @@ test("die Kartennummer steht ergaenzend im Rumpf als Refs", () => {
   });
 });
 
-test("mehrere beruehrte Karten werden alle genannt, die juengste zuerst", () => {
-  mitRepo({ config: ROT_BACKEND }, (dir) => {
+test("mehrere beruehrte Karten werden alle genannt, die juengste zuerst", async () => {
+  await mitRepo({ config: ROT_BACKEND }, async (dir) => {
     const basis = anker(dir);
     datei(dir, "backend/src/Eins.java");
     const alt = commit(dir, "Eins (Issue #901)");
     datei(dir, "backend/src/Zwei.java");
     const neu = commit(dir, "Zwei (Issue #902)");
 
-    const res = pushLauf(dir, basis);
+    const res = await pushLauf(dir, basis);
 
     assert.deepEqual(zusammenfassung(dir).verursacher, [
       {
@@ -109,15 +109,15 @@ test("mehrere beruehrte Karten werden alle genannt, die juengste zuerst", () => 
   });
 });
 
-test("zwei Commits derselben Karte sind eine Karte mit zwei Staenden", () => {
-  mitRepo({ config: ROT_BACKEND }, (dir) => {
+test("zwei Commits derselben Karte sind eine Karte mit zwei Staenden", async () => {
+  await mitRepo({ config: ROT_BACKEND }, async (dir) => {
     const basis = anker(dir);
     datei(dir, "backend/src/Eins.java");
     const erst = commit(dir, "Erster Stand (Issue #903)");
     datei(dir, "backend/src/Zwei.java");
     const zweit = commit(dir, "Zweiter Stand (Issue #903)");
 
-    pushLauf(dir, basis);
+    await pushLauf(dir, basis);
 
     assert.deepEqual(zusammenfassung(dir).verursacher, [
       { cmd: "exit 1", karten: [{ karte: "903", shas: [zweit, erst] }] },
@@ -125,13 +125,13 @@ test("zwei Commits derselben Karte sind eine Karte mit zwei Staenden", () => {
   });
 });
 
-test("beruehrt keine Karte die rote Pruefung, steht dort der ausdrueckliche Satz", () => {
-  mitRepo({ config: ROT_BACKEND }, (dir) => {
+test("beruehrt keine Karte die rote Pruefung, steht dort der ausdrueckliche Satz", async () => {
+  await mitRepo({ config: ROT_BACKEND }, async (dir) => {
     const basis = anker(dir);
     datei(dir, "frontend/src/App.tsx");
     commit(dir, "Nur im anderen Bereich (Issue #904)");
 
-    const res = pushLauf(dir, basis);
+    const res = await pushLauf(dir, basis);
 
     const satz = `Keine abgeschlossene Karte seit ${basis} beruehrt diese Pruefung.`;
     assert.deepEqual(zusammenfassung(dir).verursacher, [{ cmd: "exit 1", hinweis: satz }]);
@@ -139,13 +139,13 @@ test("beruehrt keine Karte die rote Pruefung, steht dort der ausdrueckliche Satz
   });
 });
 
-test("ein Commit ohne erkennbare Nummer erscheint als Commit ohne Karte", () => {
-  mitRepo({ config: ROT_BACKEND }, (dir) => {
+test("ein Commit ohne erkennbare Nummer erscheint als Commit ohne Karte", async () => {
+  await mitRepo({ config: ROT_BACKEND }, async (dir) => {
     const basis = anker(dir);
     datei(dir, "backend/src/Dienst.java");
     const sha = commit(dir, "Schnell dazwischen, ohne Karte");
 
-    const res = pushLauf(dir, basis);
+    const res = await pushLauf(dir, basis);
 
     assert.deepEqual(zusammenfassung(dir).verursacher, [
       { cmd: "exit 1", karten: [{ karte: null, shas: [sha] }] },
@@ -154,13 +154,13 @@ test("ein Commit ohne erkennbare Nummer erscheint als Commit ohne Karte", () => 
   });
 });
 
-test("eine Pruefung ohne areas gilt als von jeder Karte des Fensters beruehrt", () => {
-  mitRepo({ config: ROT_OHNE_AREAS }, (dir) => {
+test("eine Pruefung ohne areas gilt als von jeder Karte des Fensters beruehrt", async () => {
+  await mitRepo({ config: ROT_OHNE_AREAS }, async (dir) => {
     const basis = anker(dir);
     datei(dir, "frontend/src/App.tsx");
     const sha = commit(dir, "Weit weg von der Pruefung (Issue #905)");
 
-    pushLauf(dir, basis);
+    await pushLauf(dir, basis);
 
     assert.deepEqual(zusammenfassung(dir).verursacher, [
       { cmd: "exit 1", karten: [{ karte: "905", shas: [sha] }] },
@@ -168,13 +168,13 @@ test("eine Pruefung ohne areas gilt als von jeder Karte des Fensters beruehrt", 
   });
 });
 
-test("eine Karte mit einer Datei ohne Muster gilt fuer jede rote Pruefung als beruehrt", () => {
-  mitRepo({ config: ROT_BACKEND }, (dir) => {
+test("eine Karte mit einer Datei ohne Muster gilt fuer jede rote Pruefung als beruehrt", async () => {
+  await mitRepo({ config: ROT_BACKEND }, async (dir) => {
     const basis = anker(dir);
     datei(dir, "irgendwo/notiz.txt");
     const sha = commit(dir, "Eine Datei, die kein Muster trifft (Issue #906)");
 
-    pushLauf(dir, basis);
+    await pushLauf(dir, basis);
 
     assert.deepEqual(zusammenfassung(dir).verursacher, [
       { cmd: "exit 1", karten: [{ karte: "906", shas: [sha] }] },
@@ -182,26 +182,26 @@ test("eine Karte mit einer Datei ohne Muster gilt fuer jede rote Pruefung als be
   });
 });
 
-test("eine freigestellte Datei macht ihre Karte nicht zur Verdaechtigen", () => {
+test("eine freigestellte Datei macht ihre Karte nicht zur Verdaechtigen", async () => {
   const config = { ...ROT_BACKEND, ohnePruefung: [{ muster: "notizen/**", grund: "reine Notizen" }] };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     const basis = anker(dir);
     datei(dir, "notizen/gedanke.md");
     commit(dir, "Nur eine Notiz (Issue #907)");
 
-    pushLauf(dir, basis);
+    await pushLauf(dir, basis);
 
     const satz = `Keine abgeschlossene Karte seit ${basis} beruehrt diese Pruefung.`;
     assert.deepEqual(zusammenfassung(dir).verursacher, [{ cmd: "exit 1", hinweis: satz }]);
   });
 });
 
-test("ein nicht aufloesbarer Anker nennt seinen eigenen Satz statt einer Kartenliste", () => {
-  mitRepo({ config: ROT_BACKEND }, (dir) => {
+test("ein nicht aufloesbarer Anker nennt seinen eigenen Satz statt einer Kartenliste", async () => {
+  await mitRepo({ config: ROT_BACKEND }, async (dir) => {
     datei(dir, "backend/src/Dienst.java");
     commit(dir, "Ein Stand (Issue #908)");
 
-    const res = run(dir, "--since", "gibtsnicht", "--stufe", "push");
+    const res = await run(dir, "--since", "gibtsnicht", "--stufe", "push");
 
     assert.equal(res.status, 1, `der Lauf haette rot sein muessen: ${res.stdout}${res.stderr}`);
     const satz = "Verursacher nicht bestimmbar: Anker 'gibtsnicht' laesst sich nicht aufloesen";
@@ -210,13 +210,13 @@ test("ein nicht aufloesbarer Anker nennt seinen eigenen Satz statt einer Kartenl
   });
 });
 
-test("die Freigabestufe sucht nicht — dort ist die Basis HEAD selbst", () => {
-  mitRepo({ config: ROT_BACKEND }, (dir) => {
+test("die Freigabestufe sucht nicht — dort ist die Basis HEAD selbst", async () => {
+  await mitRepo({ config: ROT_BACKEND }, async (dir) => {
     const basis = anker(dir);
     datei(dir, "backend/src/Dienst.java");
     commit(dir, "Ein Stand (Issue #909)");
 
-    const res = run(dir, "--since", basis, "--stufe", "merge");
+    const res = await run(dir, "--since", basis, "--stufe", "merge");
 
     assert.equal(res.status, 1, `der Lauf haette rot sein muessen: ${res.stdout}${res.stderr}`);
     assert.equal(zusammenfassung(dir).verursacher, undefined);
@@ -224,13 +224,13 @@ test("die Freigabestufe sucht nicht — dort ist die Basis HEAD selbst", () => {
   });
 });
 
-test("die Paketstufe sucht nicht", () => {
-  mitRepo({ config: ROT_OHNE_AREAS }, (dir) => {
+test("die Paketstufe sucht nicht", async () => {
+  await mitRepo({ config: ROT_OHNE_AREAS }, async (dir) => {
     const basis = anker(dir);
     datei(dir, "backend/src/Dienst.java");
     commit(dir, "Ein Stand (Issue #912)");
 
-    const res = run(dir, "--since", basis);
+    const res = await run(dir, "--since", basis);
 
     assert.equal(res.status, 1, `der Lauf haette rot sein muessen: ${res.stdout}${res.stderr}`);
     assert.equal(zusammenfassung(dir).verursacher, undefined);
@@ -238,14 +238,14 @@ test("die Paketstufe sucht nicht", () => {
   });
 });
 
-test("ein gruener Push-Lauf nennt keine Verursacher", () => {
+test("ein gruener Push-Lauf nennt keine Verursacher", async () => {
   const config = { buildChecks: [{ cmd: "echo gruen", areas: ["backend"] }], checkAreas: BEREICHE };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     const basis = anker(dir);
     datei(dir, "backend/src/Dienst.java");
     commit(dir, "Ein Stand (Issue #913)");
 
-    const res = run(dir, "--since", basis, "--stufe", "push");
+    const res = await run(dir, "--since", basis, "--stufe", "push");
 
     assert.equal(res.status, 0, `der Lauf haette gruen sein muessen: ${res.stdout}${res.stderr}`);
     assert.equal(zusammenfassung(dir).verursacher, undefined);
@@ -253,14 +253,14 @@ test("ein gruener Push-Lauf nennt keine Verursacher", () => {
   });
 });
 
-test("ein gescheiterter git-Aufruf haelt den Lauf nicht an und nennt seinen Grund", () => {
-  mitRepo({ config: ROT_BACKEND }, (dir) => {
+test("ein gescheiterter git-Aufruf haelt den Lauf nicht an und nennt seinen Grund", async () => {
+  await mitRepo({ config: ROT_BACKEND }, async (dir) => {
     const basis = anker(dir);
     datei(dir, "backend/src/Dienst.java");
     commit(dir, "Ein Stand (Issue #914)");
     fakeGitOhne(dir, "log", "fake: git log verweigert");
 
-    const res = checksMitFakeGit(dir, "run", "--since", basis, "--stufe", "push");
+    const res = await checksMitFakeGit(dir, "run", "--since", basis, "--stufe", "push");
 
     assert.equal(res.status, 1, `der rote Befund bleibt der Ausgang: ${res.stdout}${res.stderr}`);
     const verursacher = zusammenfassung(dir).verursacher;
@@ -272,14 +272,14 @@ test("ein gescheiterter git-Aufruf haelt den Lauf nicht an und nennt seinen Grun
   });
 });
 
-test("ein uebernommenes rotes Ergebnis nennt die Verursacher weiter", () => {
-  mitRepo({ config: ROT_BACKEND }, (dir) => {
+test("ein uebernommenes rotes Ergebnis nennt die Verursacher weiter", async () => {
+  await mitRepo({ config: ROT_BACKEND }, async (dir) => {
     const basis = anker(dir);
     datei(dir, "backend/src/Dienst.java");
     const sha = commit(dir, "Ein Stand (Issue #915)");
 
-    pushLauf(dir, basis);
-    const zweiter = run(dir, "--since", basis, "--stufe", "push");
+    await pushLauf(dir, basis);
+    const zweiter = await run(dir, "--since", basis, "--stufe", "push");
 
     assert.equal(zweiter.status, 1, `das rote Ergebnis wird uebernommen: ${zweiter.stdout}`);
     assert.match(zweiter.stdout, /Ergebnis uebernommen/);
@@ -291,12 +291,12 @@ test("ein uebernommenes rotes Ergebnis nennt die Verursacher weiter", () => {
 
 // Die Verursachersuche wertet die abhaengigen Bereiche mit aus (Issue #1208, Plan #1199,
 // E15): Ohne sie nennte sie nach der Zerlegung in Teile zu wenige Karten.
-test("eine Karte, die Teil A aendert, ist Verursacherin des roten Teils B, der A importiert", () => {
+test("eine Karte, die Teil A aendert, ist Verursacherin des roten Teils B, der A importiert", async () => {
   const config = {
     buildChecks: [{ cmd: "exit 1", areas: ["teilB"] }],
     checkAreas: { teilA: ["kit/a.mjs"], teilB: ["kit/b.mjs"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "kit/a.mjs", "export const a = 1;\n");
     datei(dir, "kit/b.mjs", 'import { a } from "./a.mjs";\nexport const b = a;\n');
     commit(dir, "Die Teile");
@@ -304,7 +304,7 @@ test("eine Karte, die Teil A aendert, ist Verursacherin des roten Teils B, der A
     datei(dir, "kit/a.mjs", "export const a = 2;\n");
     const sha = commit(dir, "Teil A rechnet anders (Issue #920)");
 
-    pushLauf(dir, basis);
+    await pushLauf(dir, basis);
 
     assert.deepEqual(zusammenfassung(dir).verursacher, [
       { cmd: "exit 1", karten: [{ karte: "920", shas: [sha] }] },

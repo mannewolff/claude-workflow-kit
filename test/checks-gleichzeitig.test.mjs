@@ -19,14 +19,13 @@
 // einen Prueflauf setzt, erbt ihn sonst bis hierher, und mit `1` liefe der Test auf
 // das Ueberlappen nacheinander und waere rot, ohne dass `checks.mjs` schuld ist.
 
-import "./helpers/checks-sperre.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { aufrufen } from "../kit/checks.mjs";
 import {
-  CHECKS, mitRepo, zusammenfassung, datei, eintrag, ausfuehrungen,
+  checksMit, mitRepo, zusammenfassung, datei, eintrag, ausfuehrungen,
 } from "./helpers/checks-repo.mjs";
 
 /** Ein Kommando, das `ms` Millisekunden schlaeft und danach `text` ausgibt. */
@@ -41,19 +40,17 @@ function rot(text) {
 
 /** `run` mit festgelegter Grenze gleichzeitiger Pruefungen, unabhaengig von der Umgebung. */
 function runMit(dir, grenze = "2") {
-  return spawnSync(process.execPath, [CHECKS, "run"], {
-    cwd: dir, encoding: "utf-8", env: { ...process.env, KIT_CHECKS_GLEICHZEITIG: grenze },
-  });
+  return checksMit(dir, { env: { KIT_CHECKS_GLEICHZEITIG: grenze } }, "run");
 }
 
-test("zwei gekennzeichnete Kommandos laufen ueberlappend: die Wartezeit liegt unter der Summe ihrer Dauern", () => {
+test("zwei gekennzeichnete Kommandos laufen ueberlappend: die Wartezeit liegt unter der Summe ihrer Dauern", async () => {
   const a = schlaeft(1500, "a fertig");
   const b = schlaeft(1500, "b fertig");
   const config = { buildChecks: [{ cmd: a, gleichzeitig: true }, { cmd: b, gleichzeitig: true }] };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/x.txt");
 
-    const res = runMit(dir);
+    const res = await runMit(dir);
 
     assert.equal(res.status, 0, `run endete mit ${res.status}: ${res.stdout}${res.stderr}`);
     const z = zusammenfassung(dir);
@@ -63,14 +60,14 @@ test("zwei gekennzeichnete Kommandos laufen ueberlappend: die Wartezeit liegt un
   });
 });
 
-test("die Ausgabe erscheint in Config-Reihenfolge als geschlossene Bloecke, auch wenn das zweite zuerst endet", () => {
+test("die Ausgabe erscheint in Config-Reihenfolge als geschlossene Bloecke, auch wenn das zweite zuerst endet", async () => {
   const langsam = schlaeft(1200, "ausgabe-langsam");
   const schnell = schlaeft(10, "ausgabe-schnell");
   const config = { buildChecks: [{ cmd: langsam, gleichzeitig: true }, { cmd: schnell, gleichzeitig: true }] };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/x.txt");
 
-    const res = runMit(dir);
+    const res = await runMit(dir);
 
     assert.equal(res.status, 0, `run endete mit ${res.status}: ${res.stdout}${res.stderr}`);
     const out = res.stdout;
@@ -89,15 +86,15 @@ test("die Ausgabe erscheint in Config-Reihenfolge als geschlossene Bloecke, auch
   });
 });
 
-test("zwei rote gekennzeichnete Kommandos stehen beide rot da, ein nicht gekennzeichnetes danach startet nicht", () => {
+test("zwei rote gekennzeichnete Kommandos stehen beide rot da, ein nicht gekennzeichnetes danach startet nicht", async () => {
   const r1 = rot("rot-eins");
   const r2 = rot("rot-zwei");
   const danach = "echo x > lief.txt";
   const config = { buildChecks: [{ cmd: r1, gleichzeitig: true }, { cmd: r2, gleichzeitig: true }, danach] };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/x.txt");
 
-    const res = runMit(dir);
+    const res = await runMit(dir);
 
     assert.equal(res.status, 1, `ein roter Lauf endet mit 1, nicht ${res.status}`);
     const z = zusammenfassung(dir);
@@ -109,14 +106,14 @@ test("zwei rote gekennzeichnete Kommandos stehen beide rot da, ein nicht gekennz
   });
 });
 
-test("KIT_CHECKS_GLEICHZEITIG=1 faehrt die gekennzeichneten nacheinander", () => {
+test("KIT_CHECKS_GLEICHZEITIG=1 faehrt die gekennzeichneten nacheinander", async () => {
   const a = schlaeft(700, "a fertig");
   const b = schlaeft(700, "b fertig");
   const config = { buildChecks: [{ cmd: a, gleichzeitig: true }, { cmd: b, gleichzeitig: true }] };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/x.txt");
 
-    const res = runMit(dir, "1");
+    const res = await runMit(dir, "1");
 
     assert.equal(res.status, 0, `run endete mit ${res.status}: ${res.stdout}${res.stderr}`);
     const z = zusammenfassung(dir);
@@ -128,14 +125,14 @@ test("KIT_CHECKS_GLEICHZEITIG=1 faehrt die gekennzeichneten nacheinander", () =>
   });
 });
 
-test("ein gleichzeitig gelaufenes Kommando: Vermerk in der Berichtszeile, Feld in laufen[], Spalte im Protokoll", () => {
+test("ein gleichzeitig gelaufenes Kommando: Vermerk in der Berichtszeile, Feld in laufen[], Spalte im Protokoll", async () => {
   const a = schlaeft(10, "a");
   const b = schlaeft(10, "b");
   const config = { buildChecks: [{ cmd: a, gleichzeitig: true }, { cmd: b, gleichzeitig: true }] };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/x.txt");
 
-    const res = runMit(dir);
+    const res = await runMit(dir);
 
     assert.equal(res.status, 0, `run endete mit ${res.status}: ${res.stdout}${res.stderr}`);
     const z = zusammenfassung(dir);
@@ -153,22 +150,22 @@ test("ein gleichzeitig gelaufenes Kommando: Vermerk in der Berichtszeile, Feld i
   });
 });
 
-test("--help nennt KIT_CHECKS_GLEICHZEITIG und die Vorgabe 2", () => {
-  const res = spawnSync(process.execPath, [CHECKS, "--help"], { encoding: "utf-8" });
+test("--help nennt KIT_CHECKS_GLEICHZEITIG und die Vorgabe 2", async () => {
+  const res = aufrufen(["--help"]);
   assert.equal(res.status, 0);
   assert.match(res.stdout, /KIT_CHECKS_GLEICHZEITIG/);
   assert.match(res.stdout, /Vorgabe 2;/);
   assert.doesNotMatch(res.stdout, /sequenziell/, "die Hilfe spricht noch vom sequenziellen Lauf");
 });
 
-test("ohne Achse ist der Ablauf wie bisher: nacheinander, Abbruch beim ersten Rot", () => {
+test("ohne Achse ist der Ablauf wie bisher: nacheinander, Abbruch beim ersten Rot", async () => {
   const r = rot("rot-eins");
   const danach = "echo x > lief.txt";
   const config = { buildChecks: [r, { cmd: danach }] };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/x.txt");
 
-    const res = runMit(dir);
+    const res = await runMit(dir);
 
     assert.equal(res.status, 1);
     const z = zusammenfassung(dir);

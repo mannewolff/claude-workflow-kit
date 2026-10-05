@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import {
-  mitRepo, checks, run, zusammenfassung, datei, git, ausfuehrungen, gate, gateEinbauen,
+  mitRepo, checks, run, zusammenfassung, datei, git, ausfuehrungen,
 } from "./helpers/checks-repo.mjs";
 
 const ZAEHLER = "node .claude/zaehler.mjs";
@@ -51,14 +51,14 @@ function laeufe(dir) {
   }
 }
 
-test("[checks-11] ein zweiter run auf unveraendertem Stand startet kein Kommando und liefert denselben Exitcode", () => {
-  mitRepo({ config: mitZaehler() }, (dir) => {
+test("[checks-11] ein zweiter run auf unveraendertem Stand startet kein Kommando und liefert denselben Exitcode", async () => {
+  await mitRepo({ config: mitZaehler() }, async (dir) => {
     zaehlerAnlegen(dir);
     datei(dir, "src/a.txt");
 
-    const erster = run(dir);
+    const erster = await run(dir);
     const zeitpunkt = zusammenfassung(dir).zeitpunkt;
-    const zweiter = run(dir);
+    const zweiter = await run(dir);
 
     assert.equal(erster.status, 0, erster.stderr);
     assert.equal(laeufe(dir), 1, "der zweite Lauf darf das Kommando nicht erneut starten");
@@ -74,13 +74,13 @@ test("[checks-11] ein zweiter run auf unveraendertem Stand startet kein Kommando
   });
 });
 
-test("[checks-11] ein rotes Ergebnis wird ebenso uebernommen — mit Exitcode und rotem Kommando in der Meldung", () => {
-  mitRepo({ config: mitZaehler() }, (dir) => {
+test("[checks-11] ein rotes Ergebnis wird ebenso uebernommen — mit Exitcode und rotem Kommando in der Meldung", async () => {
+  await mitRepo({ config: mitZaehler() }, async (dir) => {
     zaehlerAnlegen(dir, 1);
     datei(dir, "src/a.txt");
 
-    const erster = run(dir);
-    const zweiter = run(dir);
+    const erster = await run(dir);
+    const zweiter = await run(dir);
 
     assert.notEqual(erster.status, 0, "Vorbedingung: der erste Lauf ist rot");
     assert.equal(laeufe(dir), 1, "derselbe Stand liefert dasselbe Rot, ein zweiter Lauf ist verschwendet");
@@ -89,94 +89,94 @@ test("[checks-11] ein rotes Ergebnis wird ebenso uebernommen — mit Exitcode un
   });
 });
 
-test("[checks-11] eine geaenderte Datei erzwingt einen echten Lauf", () => {
-  mitRepo({ config: mitZaehler() }, (dir) => {
+test("[checks-11] eine geaenderte Datei erzwingt einen echten Lauf", async () => {
+  await mitRepo({ config: mitZaehler() }, async (dir) => {
     zaehlerAnlegen(dir);
     datei(dir, "src/a.txt");
 
-    run(dir);
+    await run(dir);
     datei(dir, "src/a.txt", "anders\n");
-    run(dir);
+    await run(dir);
 
     assert.equal(laeufe(dir), 2);
   });
 });
 
-test("[checks-11] eine neue unversionierte Datei erzwingt einen echten Lauf", () => {
-  mitRepo({ config: mitZaehler() }, (dir) => {
+test("[checks-11] eine neue unversionierte Datei erzwingt einen echten Lauf", async () => {
+  await mitRepo({ config: mitZaehler() }, async (dir) => {
     zaehlerAnlegen(dir);
     datei(dir, "src/a.txt");
 
-    run(dir);
+    await run(dir);
     datei(dir, "src/b.txt");
-    run(dir);
+    await run(dir);
 
     assert.equal(laeufe(dir), 2);
   });
 });
 
-test("[checks-11] eine andere Stufe erzwingt einen echten Lauf", () => {
-  mitRepo({ config: mitZaehler() }, (dir) => {
+test("[checks-11] eine andere Stufe erzwingt einen echten Lauf", async () => {
+  await mitRepo({ config: mitZaehler() }, async (dir) => {
     zaehlerAnlegen(dir);
     datei(dir, "src/a.txt");
 
-    run(dir);
-    run(dir, "--stufe", "push");
+    await run(dir);
+    await run(dir, "--stufe", "push");
 
     assert.equal(laeufe(dir), 2);
   });
 });
 
-test("[checks-11] ein anderer Anker erzwingt einen echten Lauf", () => {
-  mitRepo({ config: mitZaehler() }, (dir) => {
+test("[checks-11] ein anderer Anker erzwingt einen echten Lauf", async () => {
+  await mitRepo({ config: mitZaehler() }, async (dir) => {
     zaehlerAnlegen(dir);
     datei(dir, "src/a.txt");
     git(dir, "add", "src/a.txt");
     git(dir, "commit", "-q", "-m", "paket");
     datei(dir, "src/b.txt");
 
-    run(dir);
-    run(dir, "--since", "HEAD~1");
+    await run(dir);
+    await run(dir, "--since", "HEAD~1");
 
     assert.equal(laeufe(dir), 2);
   });
 });
 
-test("[checks-11] eine geaenderte Config erzwingt einen echten Lauf", () => {
-  mitRepo({ config: mitZaehler() }, (dir) => {
+test("[checks-11] eine geaenderte Config erzwingt einen echten Lauf", async () => {
+  await mitRepo({ config: mitZaehler() }, async (dir) => {
     zaehlerAnlegen(dir);
     datei(dir, "src/a.txt");
 
-    run(dir);
+    await run(dir);
     // Nur der Config-Hash unterscheidet sich: Der Stand der Dateien, der Anker und
     // die Stufe bleiben, wie sie waren.
     const summary = zusammenfassung(dir);
     summary.configHash = "0".repeat(64);
     writeFileSync(join(dir, ".claude", "checks-summary.json"), JSON.stringify(summary, null, 2) + "\n", "utf-8");
-    run(dir);
+    await run(dir);
 
     assert.equal(laeufe(dir), 2, "eine andere Config ist ein anderer Stand");
   });
 });
 
-test("[checks-11] die Zusammenfassung traegt den Config-Hash als Feld", () => {
-  mitRepo({ config: mitZaehler() }, (dir) => {
+test("[checks-11] die Zusammenfassung traegt den Config-Hash als Feld", async () => {
+  await mitRepo({ config: mitZaehler() }, async (dir) => {
     zaehlerAnlegen(dir);
     datei(dir, "src/a.txt");
 
-    run(dir);
+    await run(dir);
 
     assert.match(zusammenfassung(dir).configHash, /^[0-9a-f]{64}$/);
   });
 });
 
-test("[checks-11] --frisch erzwingt einen echten Lauf", () => {
-  mitRepo({ config: mitZaehler() }, (dir) => {
+test("[checks-11] --frisch erzwingt einen echten Lauf", async () => {
+  await mitRepo({ config: mitZaehler() }, async (dir) => {
     zaehlerAnlegen(dir);
     datei(dir, "src/a.txt");
 
-    run(dir);
-    const res = run(dir, "--frisch");
+    await run(dir);
+    const res = await run(dir, "--frisch");
 
     assert.equal(laeufe(dir), 2);
     assert.doesNotMatch(res.stdout, /uebernommen/);
@@ -184,66 +184,50 @@ test("[checks-11] --frisch erzwingt einen echten Lauf", () => {
   });
 });
 
-test("[checks-11] eine nicht abgeschlossene Zusammenfassung wird nie uebernommen", () => {
-  mitRepo({ config: mitZaehler() }, (dir) => {
+test("[checks-11] eine nicht abgeschlossene Zusammenfassung wird nie uebernommen", async () => {
+  await mitRepo({ config: mitZaehler() }, async (dir) => {
     zaehlerAnlegen(dir);
     datei(dir, "src/a.txt");
 
-    run(dir);
+    await run(dir);
     const summary = zusammenfassung(dir);
     summary.abgeschlossen = false;
     writeFileSync(join(dir, ".claude", "checks-summary.json"), JSON.stringify(summary, null, 2) + "\n", "utf-8");
-    run(dir);
+    await run(dir);
 
     assert.equal(laeufe(dir), 2, "ein abgebrochener Lauf bezeugt keinen Stand");
   });
 });
 
-test("[checks-11] eine fehlende oder unlesbare Zusammenfassung laesst alles wie bisher laufen", () => {
-  mitRepo({ config: mitZaehler() }, (dir) => {
+test("[checks-11] eine fehlende oder unlesbare Zusammenfassung laesst alles wie bisher laufen", async () => {
+  await mitRepo({ config: mitZaehler() }, async (dir) => {
     zaehlerAnlegen(dir);
     datei(dir, "src/a.txt");
 
-    run(dir);
+    await run(dir);
     writeFileSync(join(dir, ".claude", "checks-summary.json"), "{kein json", "utf-8");
-    run(dir);
+    await run(dir);
 
     assert.equal(laeufe(dir), 2);
   });
 });
 
-test("[checks-11] ein uebernommener Lauf schreibt keine Zeile ins Ausfuehrungsprotokoll", () => {
-  mitRepo({ config: mitZaehler() }, (dir) => {
+test("[checks-11] ein uebernommener Lauf schreibt keine Zeile ins Ausfuehrungsprotokoll", async () => {
+  await mitRepo({ config: mitZaehler() }, async (dir) => {
     zaehlerAnlegen(dir);
     datei(dir, "src/a.txt");
 
-    run(dir);
+    await run(dir);
     const nachErstem = ausfuehrungen(dir).length;
-    run(dir);
+    await run(dir);
 
     assert.equal(nachErstem, 1, "Vorbedingung: der echte Lauf buchte seine Ausfuehrung");
     assert.equal(ausfuehrungen(dir).length, 1, "ein uebernommenes Ergebnis ist keine Ausfuehrung");
   });
 });
 
-test("[checks-11] das Commit-Gate nimmt die uebernommene Zusammenfassung an", () => {
-  mitRepo({ config: mitZaehler() }, (dir) => {
-    gateEinbauen(dir);
-    zaehlerAnlegen(dir);
-    datei(dir, "src/a.txt");
-
-    run(dir);
-    run(dir);
-    git(dir, "add", "src/a.txt");
-    const res = gate(dir, "pre-commit");
-
-    assert.equal(laeufe(dir), 1, "Vorbedingung: der zweite Lauf hat uebernommen");
-    assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
-  });
-});
-
-test("[checks-11] die Uebersicht nennt die Wiederverwendung und den Schalter", () => {
-  mitRepo({ config: mitZaehler() }, (dir) => {
+test("[checks-11] die Uebersicht nennt die Wiederverwendung und den Schalter", async () => {
+  await mitRepo({ config: mitZaehler() }, async (dir) => {
     const res = checks(dir, "--help");
 
     assert.equal(res.status, 0, res.stderr);

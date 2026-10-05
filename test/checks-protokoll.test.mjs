@@ -49,11 +49,11 @@ function eintragVon(dir, cmd) {
   return zusammenfassung(dir).laufen.find((e) => e.cmd === cmd);
 }
 
-test("[1196] ein roter Lauf legt genau die Ausgabe des roten Kommandos ab und nennt den Pfad", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[1196] ein roter Lauf legt genau die Ausgabe des roten Kommandos ab und nennt den Pfad", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     vorbereiten(dir, { rot: true });
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 1, `der Lauf haette rot sein muessen: ${res.stdout}`);
     const dateien = protokolle(dir);
@@ -74,15 +74,15 @@ test("[1196] ein roter Lauf legt genau die Ausgabe des roten Kommandos ab und ne
   });
 });
 
-test("[1196] ein zweiter echter Lauf, der gruen ist, leert den Ordner", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[1196] ein zweiter echter Lauf, der gruen ist, leert den Ordner", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     vorbereiten(dir, { rot: true });
-    run(dir);
+    await run(dir);
     assert.equal(protokolle(dir).length, 1, "Vorbedingung: eine Datei aus dem roten Lauf");
 
     // Der Schalter wird abgeschaltet, indem die Datei verschwindet.
     rmSync(join(dir, ".claude", "rot"));
-    const res = run(dir, "--frisch");
+    const res = await run(dir, "--frisch");
 
     assert.equal(res.status, 0, res.stdout);
     assert.deepEqual(protokolle(dir), []);
@@ -90,13 +90,13 @@ test("[1196] ein zweiter echter Lauf, der gruen ist, leert den Ordner", () => {
   });
 });
 
-test("[1196] ein uebernommener Lauf laesst Ordner und Feld stehen und nennt den Pfad erneut", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[1196] ein uebernommener Lauf laesst Ordner und Feld stehen und nennt den Pfad erneut", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     vorbereiten(dir, { rot: true });
-    run(dir);
+    await run(dir);
     const rel = eintragVon(dir, "node .claude/schalter.mjs").protokoll;
 
-    const zweiter = run(dir);
+    const zweiter = await run(dir);
 
     assert.match(zweiter.stdout, /Ergebnis uebernommen \(rot/);
     assert.equal(protokolle(dir).length, 1, "der Ordner bleibt stehen");
@@ -105,13 +105,13 @@ test("[1196] ein uebernommener Lauf laesst Ordner und Feld stehen und nennt den 
   });
 });
 
-test("[1196] ein nicht schreibbarer Ordner fuehrt zu einem Hinweis, nicht zu einem anderen Ausgang", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[1196] ein nicht schreibbarer Ordner fuehrt zu einem Hinweis, nicht zu einem anderen Ausgang", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     vorbereiten(dir, { rot: true });
     // Eine Datei an der Stelle des Ordners: Leeren und Ablegen scheitern auf jeder Plattform.
     datei(dir, ORDNER, "kein Ordner\n");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 1, "der Lauf bleibt rot wegen des roten Kommandos, nicht wegen des Ordners");
     assert.match(res.stderr, /Hinweis: .*checks-protokolle/);

@@ -61,11 +61,19 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/ablauf-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/ablauf-board-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-einstieg",
         "board-grundlagen"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/ablauf-checks-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-einstieg",
+        "pruefungen"
       ]
     },
     {
@@ -75,6 +83,7 @@
         "aufwand",
         "befunde",
         "board-einstieg",
+        "board-grundlagen",
         "installer",
         "nachtrunner",
         "preise",
@@ -222,13 +231,16 @@
       ".githooks/gate.mjs",
       "tools/verflechtung.mjs",
       "test/checks-*.test.mjs",
+      "test/ablauf-checks-*.test.mjs",
       "test/gate*.test.mjs",
       "test/guete-*.test.mjs",
       "test/plattform-*.test.mjs",
       "eslint.config.mjs",
+      "test/helpers/checks-ablauf.mjs",
       "test/helpers/checks-repo.mjs",
       "test/helpers/checks-sperre.mjs",
       "test/helpers/haenger.mjs",
+      "test/helpers/haenger-aufruf.mjs",
       "test/helpers/leichtigkeit.mjs",
       "test/helpers/leichtigkeit-ausnahmen.mjs",
       "test/helpers/wachstum.mjs",

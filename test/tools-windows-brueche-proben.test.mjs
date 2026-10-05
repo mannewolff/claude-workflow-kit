@@ -82,15 +82,15 @@ function probenAbweichungen(wurzel) {
   return abweichungen;
 }
 
-test("[1164] die Proben decken jede der sieben Arten ab", () => {
+test("[1164] die Proben decken jede der sieben Arten ab", async () => {
   assert.deepEqual([...new Set(Object.values(PROBEN))].sort(), [...ARTEN].sort());
 });
 
-test("[1164] (a) das Werkzeug meldet je Art genau den eingebauten Bruch mit Datei und Art, kein Gegenbeispiel", () => {
+test("[1164] (a) das Werkzeug meldet je Art genau den eingebauten Bruch mit Datei und Art, kein Gegenbeispiel", async () => {
   assert.deepEqual(probenAbweichungen(FIXTURES), []);
 });
 
-test("[1164] (a) verliert eine Fixture ihren Bruch, faellt die Probe auf", () => {
+test("[1164] (a) verliert eine Fixture ihren Bruch, faellt die Probe auf", async () => {
   const dir = mkdtempSync(join(tmpdir(), "windows-proben-"));
   try {
     cpSync(FIXTURES, dir, { recursive: true });
@@ -117,11 +117,11 @@ const HINWEIS_CONFIG = {
  * Faehrt checks.mjs mit den Argumenten im Wegwerf-Repo und gibt seine Zusammenfassung. Das
  * Paket aendert eine Datei: Ein leeres Paket faehrt beim Abschluss keine Pruefung.
  */
-function meldeort(...cliArgs) {
+async function meldeort(...cliArgs) {
   let summary = null;
-  mitRepo({ config: HINWEIS_CONFIG }, (dir) => {
+  await mitRepo({ config: HINWEIS_CONFIG }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
-    const res = run(dir, ...cliArgs);
+    const res = await run(dir, ...cliArgs);
     assert.equal(res.status, 0, res.stdout + res.stderr);
     summary = zusammenfassung(dir);
   });
@@ -131,9 +131,9 @@ function meldeort(...cliArgs) {
 const ERWARTET = funde(werkzeugLauf(FIXTURES).stdout);
 
 for (const [ort, cliArgs] of [["Paketabschluss", ["--abschluss", "1164"]], ["Veroeffentlichung", ["--stufe", "push"]]]) {
-  test(`[1164] (b) ${ort}: die eingebauten Brueche stehen in berichtszeilen und hinweise[], jeder Eintrag bleibt gruen`, () => {
+  test(`[1164] (b) ${ort}: die eingebauten Brueche stehen in berichtszeilen und hinweise[], jeder Eintrag bleibt gruen`, async () => {
     assert.equal(ERWARTET.length, Object.keys(PROBEN).length, ERWARTET.join("\n"));
-    const summary = meldeort(...cliArgs);
+    const summary = await meldeort(...cliArgs);
 
     assert.ok(summary.laufen.length > 0, "der Hinweis-Eintrag ist gelaufen");
     for (const e of summary.laufen) assert.equal(e.ergebnis, "gruen", JSON.stringify(e));
@@ -198,8 +198,8 @@ const FAKE_SESSION = [
   'node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null',
 ].join("\n");
 
-test("[1164] (c) der Nacht-Runner uebernimmt die eingebauten Brueche in Einheit, Log und Nachtbericht", () => {
-  const summary = meldeort("--abschluss", "1164");
+test("[1164] (c) der Nacht-Runner uebernimmt die eingebauten Brueche in Einheit, Log und Nachtbericht", async () => {
+  const summary = await meldeort("--abschluss", "1164");
   const dir = nachtProjekt(summary);
   try {
     const issue = board(dir, "issue", "create", "--title", "Paket mit Proben", "--body", "## Abhaengigkeiten\nKeine.");

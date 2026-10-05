@@ -116,6 +116,19 @@ test("Regel 1: ein Kindprozess ohne Programm aus kit/ oder tools/ und ein reiner
   assert.deepEqual(verstoesse, []);
 });
 
+test("Regel 1: ein Programmpfad, der nur in einem Kommentar steht, ist kein Start", () => {
+  const { verstoesse } = treffer({
+    "test/helpers/leicht.mjs": [
+      "// Ruft kit/checks.mjs im selben Prozess, statt es zu starten.",
+      " * Frueher startete dieser Helfer \"kit/checks.mjs\" als Kindprozess.",
+      'import { spawnSync } from "node:child_process";',
+      'export const git = (dir) => spawnSync("git", ["status"], { cwd: dir });',
+    ].join("\n"),
+    "test/checks-x.test.mjs": 'import { git } from "./helpers/leicht.mjs";\n',
+  });
+  assert.deepEqual(verstoesse, []);
+});
+
 // --- Regel 2: keine Pausen ---------------------------------------------------
 
 test("Regel 2: eine feste Pause wird gemeldet, in jeder ihrer Formen", () => {

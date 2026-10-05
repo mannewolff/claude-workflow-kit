@@ -135,6 +135,22 @@ import { createHash } from "node:crypto";
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
 const KIT_VERSION = "3.6.1";
 
+// --- Aufrufumgebung ----------------------------------------------------------
+
+/**
+ * Die Umgebung des laufenden Aufrufs (Issue #1212, Plan #1199 E6). Als CLI ist sie leer,
+ * und jeder Zugriff unten faellt auf den Prozess zurueck. `aufrufen` setzt sie fuer die
+ * Dauer eines Aufrufs im selben Prozess: Arbeitsverzeichnis, Umgebungsvariablen,
+ * Kommandozeile, Ausgabe und der Start von git. So treffen die Tests `plan` und `run`,
+ * ohne fuer jeden Aufruf einen Node-Prozess zu starten.
+ */
+let umgebung = {};
+
+const wurzel = () => umgebung.cwd ?? process.cwd();
+const umgebungsVariablen = () => umgebung.env ?? process.env;
+const aufStdout = (text) => (umgebung.stdout ? umgebung.stdout(text) : process.stdout.write(text));
+const aufStderr = (text) => (umgebung.stderr ? umgebung.stderr(text) : process.stderr.write(text));
+
 // Ort der Zusammenfassung, die `run` hinterlaesst (Issue #424, Entscheidung A4 des
 // Plans #421): derselbe Ort wie das Nachtprotokoll (`LOG_FILE` in night.mjs) — im
 // Projekt, aber hinter der Ignore-Regel `.claude/*`. Damit bleibt der Working Tree
@@ -201,7 +217,7 @@ const WARTEND_PRAEFIX = ".claude/vorhaben-wartend-";
  * statt ihn ein zweites Mal auszurechnen (Issue #428) — derselbe Grund, aus dem
  * `run` seine Auswahl von `plan` bezieht und nicht neu berechnet.
  */
-export function zusammenfassungPfad(root = process.cwd()) {
+export function zusammenfassungPfad(root = wurzel()) {
   return join(root, ...SUMMARY_DATEI.split("/"));
 }
 
@@ -530,32 +546,85 @@ function fail(nachricht) {
   throw new ChecksError(nachricht);
 }
 
+/** Meldet einen Fehler wie die Kommandozeile: `Fehler:` fuer den erwarteten, sonst `Unerwarteter Fehler:`. */
+function fehlerMelden(err) {
+  const prefix = err instanceof ChecksError ? "Fehler" : "Unerwarteter Fehler";
+  aufStderr(`${prefix}: ${err.message}\n`);
+}
+
+/**
+ * Ein Aufruf wie von der Kommandozeile, aber im selben Prozess (Issue #1212, Plan #1199
+ * E6). `argv` ist die Kommandozeile ohne `node checks.mjs`, `cwd` das Projekt. `env`
+ * ersetzt die Umgebungsvariablen, `git(args, optionen)` den Start von git — im Ergebnis
+ * wie `spawnSync`.
+ *
+ * Rueckgabe: `{ status, stdout, stderr }` wie bei einem Kindprozess, fuer `run` als
+ * Promise. Die Signal-Handler des CLI setzt ein solcher Aufruf nicht: Sie beendeten den
+ * aufrufenden Prozess. Zwei Aufrufe zugleich gehen nicht — die Umgebung gilt fuer das
+ * ganze Modul —, der zweite bricht darum mit einem Fehler ab.
+ */
+export function aufrufen(argv, { cwd, env = process.env, git: gitStarter } = {}) {
+  if (umgebung.aktiv) throw new Error("checks.mjs: aufrufen laeuft schon — zwei Aufrufe zugleich gehen nicht");
+  let stdout = "";
+  let stderr = "";
+  umgebung = {
+    aktiv: true,
+    cwd,
+    env,
+    argv,
+    git: gitStarter,
+    signale: false,
+    stdout: (text) => {
+      stdout += text;
+    },
+    stderr: (text) => {
+      stderr += text;
+    },
+  };
+  const ende = (status) => {
+    umgebung = {};
+    return { status, stdout, stderr };
+  };
+  const scheitern = (err) => {
+    fehlerMelden(err);
+    return ende(1);
+  };
+  let code;
+  try {
+    code = main(argv);
+  } catch (err) {
+    return scheitern(err);
+  }
+  return code instanceof Promise ? code.then(ende, scheitern) : ende(code);
+}
+
 /**
  * Wie git gestartet wird (Issue #1136). Der Test-Hook `CHECKS_GIT_FAKE` nach dem Muster
  * `NIGHT_CLAUDE_CMD` nennt ein Node-Skript, das statt git startet — mit dem laufenden
  * Node und ohne Shell, damit es auch unter Windows startbar ist, wo ein endungsloses
  * Fake im PATH es nicht waere. Ohne die Variable bleibt der Start, wie er war.
  */
-export function gitStart(args, env = process.env) {
+export function gitStart(args, env = umgebungsVariablen()) {
   const fake = env.CHECKS_GIT_FAKE;
   return fake ? { cmd: process.execPath, args: [fake, ...args] } : { cmd: "git", args };
 }
 
 function gitSpawn(args, optionen) {
+  if (umgebung.git) return umgebung.git(args, optionen);
   const start = gitStart(args);
   return spawnSync(start.cmd, start.args, optionen);
 }
 
 function git(...args) {
-  return gitSpawn(args, { cwd: process.cwd(), encoding: "utf-8" });
+  return gitSpawn(args, { cwd: wurzel(), encoding: "utf-8" });
 }
 
 // --- Config ----------------------------------------------------------------
 
 function ladeConfig() {
-  const pfad = join(process.cwd(), ".claude", "workflow.config.json");
+  const pfad = join(wurzel(), ".claude", "workflow.config.json");
   if (!existsSync(pfad)) {
-    fail(`Keine .claude/workflow.config.json unter ${process.cwd()} — bitte im Projekt-Root starten.`);
+    fail(`Keine .claude/workflow.config.json unter ${wurzel()} — bitte im Projekt-Root starten.`);
   }
   try {
     return JSON.parse(readFileSync(pfad, "utf-8"));
@@ -813,7 +882,7 @@ function* importZiele(pfad, text) {
 /** Der Text eines moeglichen Importeurs: leer, wenn er fehlt, `null` bei jedem anderen Lesefehler. */
 function importeurLesen(pfad) {
   try {
-    return readFileSync(join(process.cwd(), pfad), "utf-8");
+    return readFileSync(join(wurzel(), pfad), "utf-8");
   } catch (err) {
     return err.code === "ENOENT" ? "" : null;
   }
@@ -1505,7 +1574,7 @@ function bereicheAuswerten() {
 function settingsEnv() {
   const merged = {};
   for (const name of ["settings.json", "settings.local.json"]) {
-    const pfad = join(process.cwd(), ".claude", name);
+    const pfad = join(wurzel(), ".claude", name);
     if (!existsSync(pfad)) continue;
     try {
       const settings = JSON.parse(readFileSync(pfad, "utf-8"));
@@ -1578,7 +1647,7 @@ function startAusfuehren(start, env, { grenzeMs = Infinity, fristMs = HAENGEN_FR
     // Nur ueber die Gruppe erreicht ihn der Abbruch — ein Weg ueber die Prozessliste
     // (`ps`) scheitert in der Sandbox der Sessions. Damit die Gruppe beim Abbruch des
     // AUFRUFERS nicht verwaist, beendet `laufendeGruppenBeenden` sie mit (siehe dort).
-    const kind = spawn(start.befehl, start.args, { cwd: process.cwd(), env: { ...env, ...start.umgebung }, ...start.optionen, ...startOptionen() });
+    const kind = spawn(start.befehl, start.args, { cwd: wurzel(), env: { ...env, ...start.umgebung }, ...start.optionen, ...startOptionen() });
     if (kind.pid) LAUFENDE_GRUPPEN.add(kind.pid);
     kind.stdout.on("data", (stueck) => stdout.push(stueck));
     kind.stderr.on("data", (stueck) => stderr.push(stueck));
@@ -1643,7 +1712,7 @@ export function startOptionen(plattform = process.platform) {
  * `board` ist das Modul board.mjs (unter Windows Pflicht, `null`, wenn es fehlt); Plattform,
  * Umgebung und Dateisystem sind fuer die Tests injizierbar.
  */
-export function kommandoStart(cmd, { plattform = process.platform, board, env = process.env, existiert } = {}) {
+export function kommandoStart(cmd, { plattform = process.platform, board, env = umgebungsVariablen(), existiert } = {}) {
   if (plattform !== "win32") return { befehl: "/bin/sh", args: ["-c", cmd], optionen: {}, umgebung: {}, fehler: null };
   const nichtStartbar = (fehler) => ({ befehl: null, args: [], optionen: {}, umgebung: {}, fehler });
   if (!board) return nichtStartbar("board.mjs fehlt neben checks.mjs — ohne ihn findet checks.mjs unter Windows die Git Bash nicht.");
@@ -1761,7 +1830,7 @@ export function blobHashes(pfade) {
   const vorhanden = [];
   for (const pfad of pfade) {
     try {
-      lstatSync(join(process.cwd(), pfad));
+      lstatSync(join(wurzel(), pfad));
       vorhanden.push(pfad);
     } catch (err) {
       if (err.code !== "ENOENT") {
@@ -1773,7 +1842,7 @@ export function blobHashes(pfade) {
   if (vorhanden.length === 0) return hashes;
 
   const res = gitSpawn(["hash-object", "--stdin-paths"], {
-    cwd: process.cwd(),
+    cwd: wurzel(),
     encoding: "utf-8",
     input: `${vorhanden.join("\n")}\n`,
   });
@@ -1995,7 +2064,7 @@ function ausloeserBestimmen(auswahl, check) {
  * deren Ausfall `fail` ausloest, weil der Nacht-Runner aus ihr seine Entscheidung liest.
  */
 function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, herkunft, ausloeser, { gleichzeitig = false, jetzt = new Date() } = {}) {
-  const pfad = join(process.cwd(), ...AUSFUEHRUNGEN_DATEI.split("/"));
+  const pfad = join(wurzel(), ...AUSFUEHRUNGEN_DATEI.split("/"));
   const { anlass, lauf, karte } = herkunft;
   const hinten = [
     ausloeser.art, listeMaskieren(ausloeser.bereiche), listeMaskieren(ausloeser.dateien),
@@ -2009,7 +2078,7 @@ function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, herkunft, ausloeser, { gle
       "utf-8",
     );
   } catch (err) {
-    process.stderr.write(`Hinweis: Ausfuehrung nicht protokolliert (${pfad}): ${err.message}\n`);
+    aufStderr(`Hinweis: Ausfuehrung nicht protokolliert (${pfad}): ${err.message}\n`);
   }
 }
 
@@ -2031,7 +2100,7 @@ function dauerGesamt(laufen) {
  * Umgebungsvariable. Alles, was keine positive Zahl ist, faellt auf die Konstante
  * zurueck — dieselbe Haltung wie bei `sperrGrenzeMs`.
  */
-function pruefdauerObergrenzeMs(env = process.env) {
+function pruefdauerObergrenzeMs(env = umgebungsVariablen()) {
   const zahl = Number((env[OBERGRENZE_ENV] ?? "").trim());
   return Number.isFinite(zahl) && zahl > 0 ? zahl : PRUEFDAUER_OBERGRENZE_MS;
 }
@@ -2051,7 +2120,7 @@ function positiveZahl(env, name, vorgabe) {
  * `zeilen` sind Eintraege `{ cmd, ergebnis, dauerMs }`, wie `ausfuehrungenLesen` sie
  * liefert. Exportiert, damit die Tests die Rechnung ohne Subprozess pruefen.
  */
-export function haengeGrenzeMs(cmd, zeilen, env = process.env) {
+export function haengeGrenzeMs(cmd, zeilen, env = umgebungsVariablen()) {
   const mindest = positiveZahl(env, HAENGEN_MINDEST_ENV, HAENGEN_MINDEST_MS);
   const vorgabe = positiveZahl(env, HAENGEN_VORGABE_ENV, HAENGEN_VORGABE_MS);
   const dauern = zeilen
@@ -2066,7 +2135,7 @@ export function haengeGrenzeMs(cmd, zeilen, env = process.env) {
 }
 
 /** Die Frist zwischen SIGTERM und SIGKILL beim Abbruch (Issue #1077). */
-function haengenFristMs(env = process.env) {
+function haengenFristMs(env = umgebungsVariablen()) {
   return positiveZahl(env, HAENGEN_FRIST_ENV, HAENGEN_FRIST_MS);
 }
 
@@ -2079,7 +2148,7 @@ function haengenFristMs(env = process.env) {
 function ausfuehrungenLesen() {
   let text;
   try {
-    text = readFileSync(join(process.cwd(), ...AUSFUEHRUNGEN_DATEI.split("/")), "utf-8");
+    text = readFileSync(join(wurzel(), ...AUSFUEHRUNGEN_DATEI.split("/")), "utf-8");
   } catch {
     return [];
   }
@@ -2099,7 +2168,7 @@ function ausfuehrungenLesen() {
  * Umgebungsvariable uebersteuert. Alles, was keine positive ganze Zahl ist, faellt auf die
  * Vorgabe zurueck — dieselbe Haltung wie bei `pruefdauerObergrenzeMs`.
  */
-function gleichzeitigGrenze(env = process.env) {
+function gleichzeitigGrenze(env = umgebungsVariablen()) {
   const text = (env[GLEICHZEITIG_ENV] ?? "").trim();
   const zahl = Number(text);
   return /^\d+$/.test(text) && zahl > 0 ? zahl : GLEICHZEITIG_VORGABE;
@@ -2185,11 +2254,11 @@ function kurzname(cmd) {
  * Ablage ist eine Auskunft fuer den Menschen, keine Bedingung des Laufs.
  */
 function protokolleLeeren() {
-  const ordner = join(process.cwd(), ...PROTOKOLL_ORDNER.split("/"));
+  const ordner = join(wurzel(), ...PROTOKOLL_ORDNER.split("/"));
   try {
     for (const name of readdirSync(ordner)) unlinkSync(join(ordner, name));
   } catch (err) {
-    if (err.code !== "ENOENT") process.stderr.write(`Hinweis: ${PROTOKOLL_ORDNER} nicht geleert: ${err.message}\n`);
+    if (err.code !== "ENOENT") aufStderr(`Hinweis: ${PROTOKOLL_ORDNER} nicht geleert: ${err.message}\n`);
   }
 }
 
@@ -2201,13 +2270,13 @@ function protokolleLeeren() {
  */
 function protokollAblegen(nummer, cmd, ausgabe) {
   const relativ = `${PROTOKOLL_ORDNER}/${String(nummer).padStart(2, "0")}-${kurzname(cmd)}.log`;
-  const pfad = join(process.cwd(), ...relativ.split("/"));
+  const pfad = join(wurzel(), ...relativ.split("/"));
   try {
     mkdirSync(dirname(pfad), { recursive: true });
     writeFileSync(pfad, ausgabe, "utf-8");
     return relativ;
   } catch (err) {
-    process.stderr.write(`Hinweis: Ausgabe nicht abgelegt (${relativ}): ${err.message}\n`);
+    aufStderr(`Hinweis: Ausgabe nicht abgelegt (${relativ}): ${err.message}\n`);
     return null;
   }
 }
@@ -2226,7 +2295,7 @@ export function wartezeitZeile(wartezeitMs, wartezeitKarte) {
 }
 
 function berichtsblockSchreiben(zeilen, wartezeit) {
-  process.stdout.write(["", "Fuer den Abschlussbericht:", wartezeit, ...zeilen, ""].join("\n"));
+  aufStdout(["", "Fuer den Abschlussbericht:", wartezeit, ...zeilen, ""].join("\n"));
 }
 
 /**
@@ -2476,11 +2545,11 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
     ...(wartezeitKarte ? { wartezeitKarte } : {}),
   });
   const befund = ungruen === null ? "gruen" : `rot: ${ungruen.cmd}`;
-  process.stdout.write(
+  aufStdout(
     `Stand unveraendert seit ${original}: ${UEBERNAHME_MARKE} (${befund}). Neu pruefen mit --frisch.\n`,
   );
   berichtsblockSchreiben(zeilen, wartezeitZeile(wartezeitMs, wartezeitKarte));
-  process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
+  aufStdout(`\nZusammenfassung: ${pfad}\n`);
   return ungruen === null ? 0 : 1;
 }
 
@@ -2505,7 +2574,7 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
  * ihren Ablauf zeigt (ausfuehren, bewerten, festhalten) und nicht drei Urteile in
  * einer Verzweigungskette traegt.
  */
-function bewerten(eintrag, gruen, ausgabe, schreibe = (text) => process.stdout.write(text), code = null) {
+function bewerten(eintrag, gruen, ausgabe, schreibe = (text) => aufStdout(text), code = null) {
   if (eintrag.art === "hinweis") return hinweisBewerten(eintrag, ausgabe, code, schreibe);
   const merkmal = fehlermerkmal(ausgabe);
   if (merkmal !== null) {
@@ -2789,7 +2858,7 @@ function verursacherText(eintrag) {
  * `env` ist ein Parameter und kein Zugriff auf `process.env`, damit der Test beide
  * Faelle ohne Eingriff in die Prozessumgebung pruefen kann.
  */
-export function sperrPfad(env = process.env) {
+export function sperrPfad(env = umgebungsVariablen()) {
   const wert = (env[SPERRE_ENV] ?? "").trim();
   return wert === "" ? join(tmpdir(), SPERRE_DATEI) : wert;
 }
@@ -2799,7 +2868,7 @@ export function sperrPfad(env = process.env) {
  * — Text, 0, negativ —, faellt auf die Vorgabe zurueck: Eine Null waere keine
  * Obergrenze, sondern eine abgeschaltete Sperre.
  */
-export function sperrGrenzeMs(env = process.env) {
+export function sperrGrenzeMs(env = umgebungsVariablen()) {
   const zahl = Number((env[SPERRE_GRENZE_ENV] ?? "").trim());
   return Number.isFinite(zahl) && zahl > 0 ? zahl : SPERRE_GRENZE_VORGABE_MS;
 }
@@ -2808,7 +2877,7 @@ export function sperrGrenzeMs(env = process.env) {
  * Die Obergrenze, wenn ein fremdes Projekt die Sperre haelt (Issue #1177). Dieselben
  * Regeln wie bei `sperrGrenzeMs`: Was keine positive Zahl ist, faellt auf die Vorgabe.
  */
-export function sperrGrenzeFremdMs(env = process.env) {
+export function sperrGrenzeFremdMs(env = umgebungsVariablen()) {
   const zahl = Number((env[SPERRE_GRENZE_FREMD_ENV] ?? "").trim());
   return Number.isFinite(zahl) && zahl > 0 ? zahl : SPERRE_GRENZE_FREMD_VORGABE_MS;
 }
@@ -2914,7 +2983,7 @@ export function mitSperre(fn, {
   pfad = sperrPfad(),
   grenzeMs = sperrGrenzeMs(),
   grenzeFremdMs = sperrGrenzeFremdMs(),
-  melde = (satz) => process.stdout.write(satz),
+  melde = (satz) => aufStdout(satz),
   abstandMs = SPERRE_ABSTAND_MS,
   uhr = Date.now,
   schlafe = schlafeSync,
@@ -2922,9 +2991,9 @@ export function mitSperre(fn, {
   halter = {},
 } = {}) {
   const eigen = {
-    projekt: process.cwd(),
+    projekt: wurzel(),
     stufe: halter.stufe ?? "",
-    kommando: halter.kommando ?? ["checks.mjs", ...process.argv.slice(2)].join(" "),
+    kommando: halter.kommando ?? ["checks.mjs", ...(umgebung.argv ?? process.argv.slice(2))].join(" "),
   };
   const gehalten = sperreNehmen({ pfad, grenzeMs, grenzeFremdMs, melde, abstandMs, uhr, schlafe, lies, eigen });
   const freigeben = () => {
@@ -3113,7 +3182,7 @@ function halterEntfernen(pfad) {
  * Ergebnis, damit der Aufrufer nur einen Fall kennt.
  */
 async function ausfuehren(args) {
-  gruppenHandlerSetzen();
+  if (umgebung.signale !== false) gruppenHandlerSetzen();
   // Die Wartezeit laeuft ab dem Aufruf (Issue #1069, Plan #1066): Auch das Warten auf die
   // maschinenweite Sperre ist Warten des Pakets.
   const startNs = process.hrtime.bigint();
@@ -3121,7 +3190,7 @@ async function ausfuehren(args) {
   // bisherige Summe der Karte.
   const vorige = vorigeZusammenfassung();
   const auswahl = planen(args);
-  const env = { ...process.env, ...settingsEnv() };
+  const env = { ...umgebungsVariablen(), ...settingsEnv() };
 
   // VOR dem ersten Kommando (Issue #469): Der Hash bezeugt den Inhalt, der in die
   // Pruefung ging. Danach gehasht, bescheinigte er einen Stand, den kein Check
@@ -3147,7 +3216,7 @@ async function ausfuehren(args) {
   if (auswahl.stufe !== STUFEN[0]) {
     const hinzu = auswahl.laufen.filter((e) => e.stufe !== STUFEN[0]).map((e) => e.cmd);
     const liste = hinzu.length > 0 ? hinzu.join(", ") : "keine weitere Pruefung";
-    process.stdout.write(`Stufe ${auswahl.stufe}: zusaetzlich zur Paketstufe laeuft ${liste}\n`);
+    aufStdout(`Stufe ${auswahl.stufe}: zusaetzlich zur Paketstufe laeuft ${liste}\n`);
   }
 
   // VOR den Auslassungen (Issue #934): Eine Datei, zu der ausdruecklich nichts
@@ -3155,12 +3224,12 @@ async function ausfuehren(args) {
   // Sie muss in jedem Lauf dastehen, samt Grund — eine stille Ausnahme waere genau
   // die Sorte Auslassung, die niemandem auffaellt.
   for (const e of auswahl.ohnePruefung) {
-    process.stdout.write(`ohne Pruefung: ${e.pfad} — ${e.grund}\n`);
+    aufStdout(`ohne Pruefung: ${e.pfad} — ${e.grund}\n`);
   }
 
   // Vorab in den Bericht: Was nicht laeuft, ist genauso ein Ergebnis wie was laeuft.
   for (const e of auswahl.ausgelassen) {
-    process.stdout.write(`ausgelassen: ${e.cmd} — ${e.grund}\n`);
+    aufStdout(`ausgelassen: ${e.cmd} — ${e.grund}\n`);
   }
 
   // Nach den Auslassungen und vor dem ersten Kommando (Issue #863): Was nicht
@@ -3336,7 +3405,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
         // `nicht gestartet` — ein Abbruch mittendrin sieht damit nie gruen aus.
         schreibeStand(stand, false);
         while (naechsterBlock < erste.length && bloecke.has(erste[naechsterBlock])) {
-          process.stdout.write(bloecke.get(erste[naechsterBlock]));
+          aufStdout(bloecke.get(erste[naechsterBlock]));
           naechsterBlock += 1;
         }
       }
@@ -3348,8 +3417,8 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
     for (const eintrag of danach) {
       if (stand.rot) break;
       schreibeStand(stand, false);
-      process.stdout.write(`\n$ ${eintrag.cmd} — ${eintrag.grund}\n`);
-      await einKommando(eintrag, (text) => process.stdout.write(text), false);
+      aufStdout(`\n$ ${eintrag.cmd} — ${eintrag.grund}\n`);
+      await einKommando(eintrag, (text) => aufStdout(text), false);
     }
     stand.guete ??= gueteOhneLauf(stand.laufen, auswahl.ausgelassen);
     return stand;
@@ -3363,10 +3432,10 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   protokolleLeeren();
   let stand = null;
   if (rote !== null) {
-    process.stdout.write(`\n${TEILLAUF_ZEILE}: ${rote.join(", ")}\n`);
+    aufStdout(`\n${TEILLAUF_ZEILE}: ${rote.join(", ")}\n`);
     stand = await durchgang(new Set(rote));
     if (!stand.rot) {
-      process.stdout.write("\nTeillauf gruen — es folgt der volle Lauf als Nachweis\n");
+      aufStdout("\nTeillauf gruen — es folgt der volle Lauf als Nachweis\n");
       stand = null;
     }
   }
@@ -3378,7 +3447,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   // Ausfuehrungsprotokoll: Buchhaltung, keine Bedingung.
   stand.verursacher = verursacherKarten(auswahl, stand.laufen.filter((e) => e.ergebnis === "rot"));
   for (const e of stand.verursacher ?? []) {
-    process.stdout.write(`Verursacher (${e.cmd}): ${verursacherText(e)}\n`);
+    aufStdout(`Verursacher (${e.cmd}): ${verursacherText(e)}\n`);
   }
 
   // Die letzte Fassung, und die einzige mit `abgeschlossen: true`: Hier ist der Lauf
@@ -3397,7 +3466,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   wartezeit = { wartezeitMs, ...(wartezeitKarte ? { wartezeitKarte } : {}) };
   const pfad = schreibeStand(stand, true);
   berichtsblockSchreiben(zeilenVon(stand), wartezeitZeile(wartezeitMs, wartezeitKarte));
-  process.stdout.write(`\nZusammenfassung: ${pfad}\n`);
+  aufStdout(`\nZusammenfassung: ${pfad}\n`);
   return stand.rot ? 1 : 0;
 }
 
@@ -3495,17 +3564,15 @@ function parseArgs(rest) {
  * Rueckgabe: der Exitcode — fuer `run` als Promise (Issue #1070), fuer `plan` und
  * `bereiche` wie bisher als Zahl.
  */
-function main() {
-  const argv = process.argv.slice(2);
-
+function main(argv = process.argv.slice(2)) {
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
-    process.stdout.write(HELP);
-    process.exit(0);
+    aufStdout(HELP);
+    return 0;
   }
 
   const [command, ...rest] = argv;
   if (command === "plan") {
-    process.stdout.write(JSON.stringify(planen(parseArgs(rest)), null, 2) + "\n");
+    aufStdout(JSON.stringify(planen(parseArgs(rest)), null, 2) + "\n");
     return 0;
   }
   if (command === "run") return ausfuehren(parseArgs(rest));
@@ -3513,11 +3580,11 @@ function main() {
     // Kein Argument: Anteil und Inventar gelten fuer die Config und den versionierten
     // Stand, nicht fuer einen Anker. Ein uebergebenes Argument ist ein Irrtum.
     if (rest.length > 0) fail(`Unbekanntes Argument: '${rest[0]}'`);
-    process.stdout.write(JSON.stringify(bereicheAuswerten(), null, 2) + "\n");
+    aufStdout(JSON.stringify(bereicheAuswerten(), null, 2) + "\n");
     return 0;
   }
 
-  process.stdout.write(HELP);
+  aufStdout(HELP);
   return fail(`Unbekannter Befehl: '${command}'. Erwartet: plan, run oder bereiche`);
 }
 
@@ -3535,8 +3602,7 @@ if (runAsCli) {
     // exitCode statt process.exit: `run` faerbt den Lauf rot, ohne ihn abzuschneiden.
     process.exitCode = await main();
   } catch (err) {
-    const prefix = err instanceof ChecksError ? "Fehler" : "Unerwarteter Fehler";
-    process.stderr.write(`${prefix}: ${err.message}\n`);
+    fehlerMelden(err);
     process.exit(1);
   }
 }
