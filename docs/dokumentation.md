@@ -525,7 +525,7 @@ node einstellungen.mjs ~/ki-projects
 
 **Zehn Teile.** Die Oberfläche gliedert die Einstellungen in zehn Teile: Reviewer, Paarungen, Prüfstufen, Befunde, Prüfkommandos und Bereiche, Nacht-Kette, Aufwand, Wirksamkeit, Aufgabenstufen und einfache Gruppen. Änderungen sammeln sich innerhalb eines Teils in einer Arbeitskopie, bis sie gespeichert oder verworfen werden; der Fuß des Teils nennt, wie viele Änderungen offen sind und welche. Ein einzelner Wert ohne eigenen Teil — etwa `mainBranch` — bekommt ein Feld für sich.
 
-**Textblock in Dateischreibweise.** Als Textblock in der Schreibweise der Datei bleiben nur drei Fälle stehen: die beiden Nacht-Felder ohne eigene Eingabe — die Modellliste (`night.modelle`) und die abweichende Stufenregel (`night.stufenRegel`) —, die Test-Ablagen (`testAblagen`), deren Einträge zwei Formen kennen und darum in keine feste Tabelle passen, und Einstellungen, die das Kit nicht kennt. Für sie alle gibt es keinen eigenen der zehn Teile.
+**Textblock in Dateischreibweise.** Als Textblock in der Schreibweise der Datei bleiben nur vier Fälle stehen: die beiden Nacht-Felder ohne eigene Eingabe — die Modellliste (`night.modelle`) und die abweichende Stufenregel (`night.stufenRegel`) —, die Test-Ablagen (`testAblagen`), deren Einträge zwei Formen kennen und darum in keine feste Tabelle passen, der Ort des vollen Laufs vor `push main` (`pushPruefung`), der ein fester Wert oder ein Objekt ist, und Einstellungen, die das Kit nicht kennt. Für sie alle gibt es keinen eigenen der zehn Teile.
 
 **Aufgabenstufen.** Der Teil *Aufgabenstufen* pflegt `night.stufen` ohne JSON-Eingabe: je Stufe — schwer, mittel, leicht — eine Wahl zwischen *Keine*, *Modell* und *Kommando*. Zum Modell gehört die Gründlichkeit, die der Nachtlauf als `--effort` an die Claude-CLI gibt; „Voreinstellung“ überlässt sie ihr und schreibt kein Feld. Eine Stufe auf *Keine* zu stellen entfernt ihren Eintrag — der Nachtlauf weicht dann zur nächststärkeren Stufe aus. Neben einem fremden `kommando` gibt es keine Gründlichkeit, und der Wechsel dorthin nimmt `modell` und `effort` mit.
 
@@ -628,6 +628,13 @@ Branch für lokale Commits und Push (Schritt 8). Gilt teamweit; ein abweichender
 ### `productionBranch`
 
 Ziel-Branch für den PR in Schritt 9 (merge production). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+### `pushPruefung`
+
+Wo der volle Prüflauf vor 'push main' stattfindet. 'lokal' (Vorgabe): /push-main fährt ihn mit 'checks.mjs run --stufe push' auf dem eigenen Rechner. Ein Objekt mit ort 'buildDienst' verlegt ihn in den Build-Dienst des Projekts: /push-main pusht den Stand auf den Prüfzweig, wartet über 'board.mjs code ci-status --commit' auf das Ergebnis und pusht mainBranch nur bei Grün. Die Pflicht ist an beiden Orten dieselbe — grün vor dem Push; productionBranch bleibt unberührt. Der Build-Dienst muss auf dem Prüfzweig dieselben Pflichtprüfungen fahren wie der lokale Lauf der Stufe push. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert. (gültig: `lokal`)
+
+- `pushPruefung.ort` — Der Ort des vollen Laufs: der Build-Dienst des Projekts. (gültig: `buildDienst`)
+- `pushPruefung.zweig` — Der Prüfzweig, auf den /push-main den Stand vor dem Push pusht und den es danach wieder löscht. Nicht mainBranch und nicht productionBranch.
 
 ### `reviewScope`
 

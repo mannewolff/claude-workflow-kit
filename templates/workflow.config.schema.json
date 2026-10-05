@@ -301,6 +301,40 @@
       "description": "Ziel-Branch für den PR in Schritt 9 (merge production). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": "production"
     },
+    "pushPruefung": {
+      "description": "Wo der volle Prüflauf vor 'push main' stattfindet. 'lokal' (Vorgabe): /push-main fährt ihn mit 'checks.mjs run --stufe push' auf dem eigenen Rechner. Ein Objekt mit ort 'buildDienst' verlegt ihn in den Build-Dienst des Projekts: /push-main pusht den Stand auf den Prüfzweig, wartet über 'board.mjs code ci-status --commit' auf das Ergebnis und pusht mainBranch nur bei Grün. Die Pflicht ist an beiden Orten dieselbe — grün vor dem Push; productionBranch bleibt unberührt. Der Build-Dienst muss auf dem Prüfzweig dieselben Pflichtprüfungen fahren wie der lokale Lauf der Stufe push. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "default": "lokal",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "lokal"
+          ]
+        },
+        {
+          "type": "object",
+          "required": [
+            "ort",
+            "zweig"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ort": {
+              "type": "string",
+              "enum": [
+                "buildDienst"
+              ],
+              "description": "Der Ort des vollen Laufs: der Build-Dienst des Projekts."
+            },
+            "zweig": {
+              "type": "string",
+              "pattern": "^\\S+$",
+              "description": "Der Prüfzweig, auf den /push-main den Stand vor dem Push pusht und den es danach wieder löscht. Nicht mainBranch und nicht productionBranch."
+            }
+          }
+        }
+      ]
+    },
     "reviewScope": {
       "type": "string",
       "enum": [
@@ -1104,6 +1138,7 @@
     "mutationCommand": "",
     "mainBranch": "main",
     "productionBranch": "production",
+    "pushPruefung": "lokal",
     "reviewScope": "diff",
     "reviewModel": "claude-opus-4-8",
     "triggers": {

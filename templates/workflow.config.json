@@ -19,6 +19,7 @@
   "formatFixCommand": "",
   "mainBranch": "main",
   "productionBranch": "production",
+  "pushPruefung": "lokal",
   "reviewScope": "diff",
   "reviewModel": "claude-opus-4-8",
   "triggers": {

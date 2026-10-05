@@ -1327,7 +1327,35 @@ function planen(args) {
   const config = ladeConfig();
   const zuschnitt = zuschnittHinweise(config, (config.buildChecks ?? []).map((c) => normalisiere(c)));
   if (zuschnitt.length > 0) auswahl.zuschnitt = zuschnitt;
+  if (auswahl.stufe === "push") auswahl.pushPruefung = pushPruefung(config);
   return auswahl;
+}
+
+/**
+ * Wo der volle Lauf vor `push main` stattfindet (Issue #1216, Plan #1199 E14): `"lokal"`
+ * (Vorgabe) oder `{ ort: "buildDienst", zweig }`. `plan --stufe push` gibt den Wert aus,
+ * damit `/push-main` die Config nicht selbst liest.
+ *
+ * Ein ungueltiger Wert ist ein Fehler und nicht stillschweigend `lokal`: Wer den
+ * Build-Dienst meinte, bekaeme sonst einen lokalen Lauf, ohne es zu merken. Der Pruefzweig
+ * darf weder `mainBranch` noch `productionBranch` sein — `/push-main` pusht ihn vor dem
+ * Ergebnis und loescht ihn danach.
+ */
+function pushPruefung(config) {
+  const wert = config.pushPruefung ?? "lokal";
+  if (wert === "lokal") return wert;
+  const genannt = JSON.stringify(wert);
+  const objekt = wert !== null && typeof wert === "object" && !Array.isArray(wert);
+  const felder = objekt ? Object.keys(wert) : [];
+  if (!objekt || felder.length !== 2 || !felder.includes("ort") || !felder.includes("zweig") || wert.ort !== "buildDienst" || typeof wert.zweig !== "string" || !/^\S+$/.test(wert.zweig)) {
+    fail(`Ungueltiger Wert ${genannt} fuer pushPruefung. Erwartet: "lokal" oder { "ort": "buildDienst", "zweig": "<name>" }.`);
+  }
+  for (const [feld, vorgabe] of [["mainBranch", "main"], ["productionBranch", "production"]]) {
+    if (wert.zweig === (config[feld] ?? vorgabe)) {
+      fail(`pushPruefung: Der Pruefzweig '${wert.zweig}' ist ${feld}. Der Pruefzweig muss ein eigener Zweig sein.`);
+    }
+  }
+  return { ort: wert.ort, zweig: wert.zweig };
 }
 
 function auswahlPlanen(args) {

@@ -75,7 +75,10 @@ test("[skills-20] beide Ablauflisten fuehren Bump, Stempel und Changelog in dies
 
 test("[skills-20] beide Release-Skills fahren genau einen Prueflauf, und zwar mit Batch-Anker", () => {
   for (const pfad of [PUSH_MAIN, MERGE_PRODUCTION]) {
-    const text = lies(...pfad);
+    // Der Weg ueber den Build-Dienst (Issue #1216, Plan #1199 E14) zaehlt hier nicht mit:
+    // Dort faehrt der Build-Dienst den vollen Lauf, und der Skill selbst nur den Nachweis
+    // fuer die Release-Dateien — belegt in test/skills-push-main.test.mjs.
+    const text = lies(...pfad).replace(/\n## Weg über den Build-Dienst[\s\S]*?(?=\n## )/, "\n");
     const wo = pfad.join("/");
     const laeufe = [...text.matchAll(LAUF)];
     assert.equal(laeufe.length, 1, `${wo}: genau ein 'checks.mjs run' erwartet, gefunden ${laeufe.length}`);

@@ -79,9 +79,13 @@ test("[skills-19] bei keine faehrt der Lauf unveraendert weiter", () => {
 
 // Der pruefbare Anker dafuer, dass in `push-main` kein Gate steht: Nach dem Push ist der
 // Lauf zum eben gepushten Commit noch gar nicht fertig, und `push main` ist der haeufige
-// Trigger — ein Gate muesste warten.
-test("[skills-19] push-main ruft code ci-status nicht auf", () => {
-  assert.doesNotMatch(PUSH, /ci-status/, "`code ci-status` steht in push-main — dort gehoert kein Gate hin");
+// Trigger — ein Gate muesste warten. Seit Issue #1216 (Plan #1199 E14) gilt das fuer den
+// lokalen Weg: Der Weg ueber den Build-Dienst wartet bewusst auf `code ci-status`, weil
+// der Build-Dienst dort den vollen Lauf VOR dem Push auf mainBranch faehrt.
+test("[skills-19] push-main ruft code ci-status ausserhalb des Build-Dienst-Wegs nicht auf", () => {
+  const ohneBuildDienst = PUSH.replace(/\n## Weg über den Build-Dienst[\s\S]*?(?=\n## )/, "\n");
+  assert.notEqual(ohneBuildDienst, PUSH, "der Abschnitt „## Weg über den Build-Dienst“ fehlt");
+  assert.doesNotMatch(ohneBuildDienst, /ci-status/, "`code ci-status` steht im lokalen Weg von push-main — dort gehoert kein Gate hin");
 });
 
 test("[skills-19] push-main nennt stattdessen einen Hinweis auf merge production", () => {

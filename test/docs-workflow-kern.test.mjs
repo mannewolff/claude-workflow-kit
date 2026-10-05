@@ -13,7 +13,9 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
 
 // Die Grenze wandert nur mit einer beschlossenen Regel mit, nicht mit Zuwachs nebenbei:
-// Wer sie anhebt, fasst diesen Test an und begruendet es. Zuletzt +2 fuer den Laufstand
+// Wer sie anhebt, fasst diesen Test an und begruendet es. Zuletzt +1 fuer den Ort des vollen
+// Laufs vor `push main` (Issue #1216, Plan #1199/E14: der Satz steht als eigene Zeile im
+// Abschnitt der Pflichtchecks, damit dessen Stufenregel Wort fuer Wort bleibt). Davor +2 fuer den Laufstand
 // (Issue #1082, Plan #1079/E20: der Regeltext beschreibt ihn, bevor das Werkzeug ihn baut) —
 // ein Absatz im Nachtbetrieb-Block mit Labels, `## Laufstand` und den woertlichen
 // `wartet`-Formen, die eine Sitzung an ihrer eigenen Karte liest. Davor +4 fuer den gekennzeichneten
@@ -37,9 +39,9 @@ const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), 
 // die Artenliste, dann die Skills). Davor +9 fuer den Abschnitt "Wirksamkeit der
 // Pruefungen" (Issue #783, Plan #782/E11: der Regeltext steht vor dem Werkzeug) und +5
 // fuer die Regel zur wartenden Sitzung (Issue #774).
-test("die Vorlage bleibt unter 411 Zeilen", () => {
+test("die Vorlage bleibt unter 412 Zeilen", () => {
   const zeilen = VORLAGE.split("\n").length;
-  assert.ok(zeilen <= 411, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 411`);
+  assert.ok(zeilen <= 412, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 412`);
 });
 
 test("die gestrichenen Abschnitte sind weg", () => {
