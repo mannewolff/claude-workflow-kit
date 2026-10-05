@@ -124,7 +124,7 @@
  */
 
 import { lstatSync, existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, realpathSync, unlinkSync, linkSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { join, dirname, resolve, posix } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { spawn, spawnSync } from "node:child_process";
@@ -739,7 +739,7 @@ function zuordnen(dateien, bereichsdefinition, freistellungen = [], nurBlobs = n
   const ohnePruefung = [];
   const blobBereiche = new Set();
   for (const pfad of dateien) {
-    const treffer = bereichsdefinition.filter((b) => b.regexe.some((r) => r.test(pfad)));
+    const treffer = bereichsTreffer(pfad, bereichsdefinition);
     // Eine Datei mit nur gespiegelten Blob-Zeilen (Issue #1178) beruehrt ihre Bereiche
     // nicht; die Bereiche merkt sie sich, damit der Grund der Auslassung es sagt.
     if (treffer.length > 0 && nurBlobs.has(pfad)) {
@@ -763,6 +763,150 @@ function zuordnen(dateien, bereichsdefinition, freistellungen = [], nurBlobs = n
     ohneZuordnung.push(pfad);
   }
   return { beruehrt, ohneMuster: ohneZuordnung[0] ?? null, ohneZuordnung, ohnePruefung, blobBereiche };
+}
+
+/** Die Bereiche, deren Muster einen Pfad treffen. */
+function bereichsTreffer(pfad, bereichsdefinition) {
+  return bereichsdefinition.filter((b) => b.regexe.some((r) => r.test(pfad)));
+}
+
+// --- Ableitung aus den Importen (Issue #1181) --------------------------------
+
+const JS_DATEI = /\.(?:mjs|cjs|js)$/;
+// Die statischen Importformen: `import … from`/`export … from` (auch ueber mehrere
+// Zeilen), das blosse `import "x"`, `import("x")` und `require("x")`. Lieber eine
+// Erwaehnung zu viel als Importeur gezaehlt — das irrt zu mehr Pruefung.
+const IMPORT_FORMEN = [
+  /\b(?:import|export)\b[^;'"`]*?\bfrom\s*(["'])([^"'\n]+)\1/g,
+  /\bimport\s*(["'])([^"'\n]+)\1/g,
+  /\b(?:import|require)\s*\(\s*(["'])([^"'\n]+)\1\s*\)/g,
+];
+// Was `require` ohne Endung aufloest; ein ESM-Import nennt die Endung ohnehin.
+const OHNE_ENDUNG = [".js", ".mjs", ".cjs", "/index.js"];
+
+/** Die repo-relativen Pfade, auf die eine relative Importangabe zeigen kann — sonst keine. */
+function aufgeloest(pfad, angabe) {
+  if (!angabe.startsWith("./") && !angabe.startsWith("../")) return [];
+  const ziel = posix.normalize(posix.join(posix.dirname(pfad), angabe));
+  if (ziel.startsWith("../")) return [];
+  return JS_DATEI.test(ziel) ? [ziel] : [ziel, ...OHNE_ENDUNG.map((endung) => ziel + endung)];
+}
+
+/** Die repo-relativen Pfade, die eine Datei relativ importiert. */
+function* importZiele(pfad, text) {
+  for (const form of IMPORT_FORMEN) {
+    for (const treffer of text.matchAll(form)) yield* aufgeloest(pfad, treffer[2]);
+  }
+}
+
+/** Der Text eines moeglichen Importeurs: leer, wenn er fehlt, `null` bei jedem anderen Lesefehler. */
+function importeurLesen(pfad) {
+  try {
+    return readFileSync(join(process.cwd(), pfad), "utf-8");
+  } catch (err) {
+    return err.code === "ENOENT" ? "" : null;
+  }
+}
+
+/**
+ * Je Datei die versionierten JavaScript-Dateien, die sie importieren — oder `null`,
+ * wenn die Suche scheitert. Eine fehlende Datei (im Arbeitsbaum geloescht) importiert
+ * nichts mehr; jeder andere Lesefehler laesst einen Importeur womoeglich ungesehen und
+ * gilt darum als Scheitern.
+ *
+ * Nur `git ls-files` und nicht auch Ungetracktes: Eine neue Datei steht selbst in der
+ * Aenderung und waehlt ihre Bereiche dort.
+ */
+function importeureErheben() {
+  const ls = git("ls-files", "-z");
+  if (ls.status !== 0) return null;
+  const importeure = new Map();
+  for (const roh of ls.stdout.split("\0")) {
+    const pfad = roh.replaceAll("\\", "/");
+    if (!JS_DATEI.test(pfad)) continue;
+    const text = importeurLesen(pfad);
+    if (text === null) return null;
+    for (const ziel of importZiele(pfad, text)) {
+      if (!importeure.has(ziel)) importeure.set(ziel, new Set());
+      importeure.get(ziel).add(pfad);
+    }
+  }
+  return importeure;
+}
+
+/**
+ * Die Importeure mit Muster, die eine Datei erreichen, und deren Bereiche — die Kette
+ * laeuft durch Importeure ohne Muster weiter und endet an jedem mit Muster. `besucht`
+ * haelt einen Kreis auf.
+ */
+function importKette(start, importeure, bereichsdefinition) {
+  const besucht = new Set([start]);
+  const offen = [start];
+  const ueber = new Set();
+  const bereiche = new Set();
+  while (offen.length > 0) {
+    for (const importeur of importeure.get(offen.shift()) ?? []) {
+      if (besucht.has(importeur)) continue;
+      besucht.add(importeur);
+      const treffer = bereichsTreffer(importeur, bereichsdefinition);
+      if (treffer.length === 0) {
+        offen.push(importeur);
+        continue;
+      }
+      ueber.add(importeur);
+      for (const bereich of treffer) bereiche.add(bereich.name);
+    }
+  }
+  return {
+    direkt: importeure.get(start)?.size ?? 0,
+    ueber: [...ueber].sort(vergleicheText),
+    bereiche: [...bereiche].sort(vergleicheText),
+  };
+}
+
+/**
+ * Eine JavaScript-Datei ohne Muster erbt die Bereiche der Dateien, die sie importieren
+ * (Issue #1181). Ein neuer Test-Helfer trifft meist kein Muster und zog bisher den
+ * vollen Umfang nach sich; welche Pruefung er braucht, sagen die Tests, die ihn laden.
+ *
+ *   - Erreicht die Kette Importeure mit Muster, beruehrt die Datei deren Bereiche.
+ *   - Importiert sie niemand mit Muster, loest sie keine Pruefung aus und steht mit
+ *     Grund unter `ohnePruefung`: Ein Helfer, den kein Test laedt, bricht keinen.
+ *   - Andere Dateiarten und eine scheiternde Suche bleiben in `ohneZuordnung` und
+ *     ziehen wie bisher den vollen Umfang — die Auswahl irrt nur zu mehr Pruefung.
+ *
+ * `abgeleitet` traegt je Datei die Ableitung fuer den Abschlussbericht.
+ */
+function ausImportenAbleiten(zuordnung, bereichsdefinition) {
+  if (!zuordnung.ohneZuordnung.some((pfad) => JS_DATEI.test(pfad))) return { ...zuordnung, abgeleitet: [] };
+  const importeure = importeureErheben();
+  if (importeure === null) return { ...zuordnung, abgeleitet: [] };
+  const beruehrt = new Set(zuordnung.beruehrt);
+  const ohnePruefung = [...zuordnung.ohnePruefung];
+  const ohneZuordnung = [];
+  const abgeleitet = [];
+  for (const pfad of zuordnung.ohneZuordnung) {
+    if (!JS_DATEI.test(pfad)) {
+      ohneZuordnung.push(pfad);
+      continue;
+    }
+    const { direkt, ueber, bereiche } = importKette(pfad, importeure, bereichsdefinition);
+    if (bereiche.length > 0) {
+      for (const bereich of bereiche) beruehrt.add(bereich);
+      abgeleitet.push({ pfad, ueber, bereiche });
+      continue;
+    }
+    const grund = direkt === 0 ? "von keiner Datei importiert" : "von keiner Datei mit Muster importiert";
+    ohnePruefung.push({ pfad, grund });
+    abgeleitet.push({ pfad, ueber, bereiche, grund });
+  }
+  return { ...zuordnung, beruehrt, ohnePruefung, ohneZuordnung, ohneMuster: ohneZuordnung[0] ?? null, abgeleitet };
+}
+
+/** Die Zeile einer Ableitung im Block `Fuer den Abschlussbericht:` (Issue #1181). */
+function ableitungsZeile({ pfad, ueber, bereiche, grund }) {
+  if (bereiche.length === 0) return `ohne Pruefung: ${pfad} — ${grund}`;
+  return `abgeleitet: ${pfad} ueber ${ueber.join(", ")} → ${bereiche.join(", ")}`;
 }
 
 /** Wie viele unzugeordnete Dateien der Grund des vollen Umfangs hoechstens beim Namen nennt. */
@@ -989,7 +1133,7 @@ function auswahlEintrag(check, grund) {
  */
 function bauen({ basis, stufe, geaendert = [], bereiche = [], ohneZuordnung = [], ohnePruefung = [],
   laufen = [], ausgelassen = [], vollerUmfang = false, leeresPaket = false, bereichWahl = null,
-  abschluss = false }) {
+  abschluss = false, abgeleitet = [] }) {
   // `bereichWahl` traegt den Namen des Bereichs, auf den `--bereich` die Auswahl
   // eingegrenzt hat, sonst null. Das Feld ist kein Schmuck, sondern die Marke eines
   // TEILNACHWEISES: Ein Bereichslauf bestimmt `geaendert` und `hashes` weiterhin aus
@@ -1002,7 +1146,12 @@ function bauen({ basis, stufe, geaendert = [], bereiche = [], ohneZuordnung = []
   // Pruefungen aus und saehe ohne das Feld aus wie ein vollstaendiger. Zwei Leser brauchen
   // es — die Wiederverwendung (`frueheresErgebnis`) und die Auswertung, die je Karte
   // rechnet.
-  return { basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, laufen, ausgelassen, vollerUmfang, leeresPaket, bereichWahl, abschluss };
+  //
+  // `abgeleitet` (Issue #1181) steht nur da, wenn eine Datei ihre Bereiche aus den
+  // Importen bekam — sonst fehlt das Feld, und die Zusammenfassung bleibt, wie sie war.
+  const auswahl = { basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, laufen, ausgelassen, vollerUmfang, leeresPaket, bereichWahl, abschluss };
+  if (abgeleitet.length > 0) auswahl.abgeleitet = abgeleitet;
+  return auswahl;
 }
 
 function planen(args) {
@@ -1044,11 +1193,15 @@ function planen(args) {
   }
 
   const geaendert = geaenderteDateien(basis);
-  const { beruehrt, ohneMuster, ohneZuordnung, ohnePruefung, blobBereiche } = zuordnen(
-    geaendert,
-    bereicheVorbereiten(checkAreas),
-    freistellungenVorbereiten(config.ohnePruefung),
-    nurBlobsGeaendert(basis, geaendert),
+  const bereichsdefinition = bereicheVorbereiten(checkAreas);
+  const { beruehrt, ohneMuster, ohneZuordnung, ohnePruefung, blobBereiche, abgeleitet } = ausImportenAbleiten(
+    zuordnen(
+      geaendert,
+      bereichsdefinition,
+      freistellungenVorbereiten(config.ohnePruefung),
+      nurBlobsGeaendert(basis, geaendert),
+    ),
+    bereichsdefinition,
   );
   const bereiche = [...beruehrt].sort(vergleicheText);
 
@@ -1070,7 +1223,7 @@ function planen(args) {
   if (bereichWahl !== null) {
     const gewaehlt = new Set([bereichWahl]);
     return bauen({
-      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, bereichWahl, abschluss,
+      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, bereichWahl, abschluss, abgeleitet,
       ...verteilen(checks, stufe, (check) => {
         const ergebnis = entscheidung(check, gewaehlt);
         return { laeuft: ergebnis.laeuft, grund: `Bereichslauf ${bereichWahl}: ${ergebnis.grund}` };
@@ -1079,7 +1232,7 @@ function planen(args) {
   }
 
   if (stufe === "merge") {
-    return freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, ohnePruefung, ohneMuster, beruehrt, blobBereiche, abschluss });
+    return freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, ohnePruefung, ohneMuster, beruehrt, blobBereiche, abschluss, abgeleitet });
   }
 
   // Die Push-Stufe faehrt jede faellige Pruefung (Plan #753, E12;
@@ -1102,7 +1255,7 @@ function planen(args) {
   if (stufe === "push") {
     const grund = "Veroeffentlichungsstufe: voller Umfang";
     return bauen({
-      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, abschluss,
+      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, abschluss, abgeleitet,
       ...verteilen(checks, stufe, () => ({ laeuft: true, grund }), abschluss),
     });
   }
@@ -1118,13 +1271,13 @@ function planen(args) {
   if (ohneMuster !== null) {
     const grund = ohneMusterGrund(ohneZuordnung);
     return bauen({
-      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, vollerUmfang: true, abschluss,
+      basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, vollerUmfang: true, abschluss, abgeleitet,
       ...verteilen(checks, stufe, () => ({ laeuft: true, grund }), abschluss),
     });
   }
 
   return bauen({
-    basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, abschluss,
+    basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, abschluss, abgeleitet,
     ...verteilen(checks, stufe, (check) => entscheidung(check, beruehrt, blobBereiche), abschluss),
   });
 }
@@ -1145,7 +1298,7 @@ function planen(args) {
  * `leeresPaket` bleibt false, auch ohne Aenderung: Die Merge-Pruefungen laufen, und
  * ein Bericht "keine Pruefung, weil nichts veraendert wurde" waere falsch.
  */
-function freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, ohnePruefung, ohneMuster, beruehrt, blobBereiche, abschluss }) {
+function freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, ohnePruefung, ohneMuster, beruehrt, blobBereiche, abschluss, abgeleitet }) {
   const leer = geaendert.length === 0;
   const zweifel = !leer && ohneMuster !== null;
   const paketstufe = (check) => {
@@ -1154,7 +1307,7 @@ function freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, oh
     return entscheidung(check, beruehrt, blobBereiche);
   };
   return bauen({
-    basis, stufe: "merge", geaendert, bereiche, ohneZuordnung, ohnePruefung, vollerUmfang: zweifel, abschluss,
+    basis, stufe: "merge", geaendert, bereiche, ohneZuordnung, ohnePruefung, vollerUmfang: zweifel, abschluss, abgeleitet,
     ...verteilen(checks, "merge", (check) => {
       if (check.stufe === "merge") return { laeuft: true, grund: "Freigabestufe: laeuft vor jeder Freigabe" };
       if (check.stufe === "push") return { laeuft: false, grund: "Stufe push, geprueft beim push main" };
@@ -1891,6 +2044,8 @@ export function haengendText(grenzeMs) {
  */
 function berichtszeilen(auswahl, laufen, { uebernommen = false, grenzeMs = PRUEFDAUER_OBERGRENZE_MS } = {}) {
   const zeilen = auswahl.leeresPaket ? ["keine Pruefung, weil nichts veraendert wurde"] : [];
+  // Die Ableitung aus den Importen je Datei (Issue #1181): Sie erklaert die Auswahl darunter.
+  for (const a of auswahl.abgeleitet ?? []) zeilen.push(ableitungsZeile(a));
   const vermerk = uebernommen ? ` (${UEBERNAHME_MARKE})` : "";
   for (const e of laufen) {
     const dauerMs = typeof e.dauerMs === "number" ? e.dauerMs : null;

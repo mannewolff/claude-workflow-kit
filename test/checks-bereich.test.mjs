@@ -346,3 +346,121 @@ test("der Berichtsblock nennt 'install.mjs: nur Blobs' bei der Auslassung", () =
     assert.match(res.stdout, /ausgelassen: node -e "process\.exit\(0\)" # installer → Bereich installer unberuehrt \(install\.mjs: nur Blobs\)/);
   });
 });
+
+// Eine JavaScript-Datei ohne Muster erbt die Bereiche ihrer Importeure (Issue #1181).
+//
+// Ein neuer Test-Helfer trifft meist kein Muster und zog bisher den vollen Umfang nach
+// sich. Welche Pruefung er braucht, steht in den Dateien, die ihn importieren.
+
+const CONFIG_IMPORTE = {
+  buildChecks: [
+    { cmd: "node -e \"process.exit(0)\" # nachtrunner", areas: ["nachtrunner"] },
+    { cmd: "node -e \"process.exit(0)\" # board", areas: ["board"] },
+  ],
+  checkAreas: {
+    nachtrunner: ["test/night-*.test.mjs"],
+    board: ["test/board-*.test.mjs"],
+  },
+};
+const NACHT = "node -e \"process.exit(0)\" # nachtrunner";
+const BOARD = "node -e \"process.exit(0)\" # board";
+
+function committen(dir, nachricht = "stand") {
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", nachricht);
+}
+
+test("ein Helfer, den ein Test mit Muster importiert, erbt dessen Bereich (Issue #1181)", () => {
+  mitRepo({ config: CONFIG_IMPORTE }, (dir) => {
+    datei(dir, "test/night-y.test.mjs", 'import { x } from "./helpers/x.mjs";\n');
+    datei(dir, "test/board-z.test.mjs", 'import "node:test";\n');
+    datei(dir, "test/helpers/x.mjs", "export const x = 1;\n");
+    committen(dir);
+    datei(dir, "test/helpers/x.mjs", "export const x = 2;\n");
+
+    const ergebnis = plan(dir);
+
+    assert.equal(ergebnis.vollerUmfang, false);
+    assert.deepEqual(ergebnis.bereiche, ["nachtrunner"]);
+    assert.deepEqual(ergebnis.ohneZuordnung, []);
+    assert.deepEqual(kommandos(ergebnis.laufen), [NACHT]);
+    assert.deepEqual(kommandos(ergebnis.ausgelassen), [BOARD]);
+
+    const res = run(dir);
+    assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
+    assert.ok(
+      zusammenfassung(dir).berichtszeilen.includes("abgeleitet: test/helpers/x.mjs ueber test/night-y.test.mjs → nachtrunner"),
+      JSON.stringify(zusammenfassung(dir).berichtszeilen),
+    );
+    assert.match(res.stdout, /Fuer den Abschlussbericht:[\s\S]*abgeleitet: test\/helpers\/x\.mjs ueber test\/night-y\.test\.mjs → nachtrunner/);
+  });
+});
+
+test("ein Helfer ueber einen zweiten Helfer erbt den Bereich des Tests (Issue #1181)", () => {
+  mitRepo({ config: CONFIG_IMPORTE }, (dir) => {
+    datei(dir, "test/night-y.test.mjs", 'const a = await import("./helpers/a.mjs");\n');
+    datei(dir, "test/helpers/a.mjs", "export {\n  b,\n} from './b.mjs';\n");
+    datei(dir, "test/helpers/b.mjs", "export const b = 1;\n");
+    committen(dir);
+    datei(dir, "test/helpers/b.mjs", "export const b = 2;\n");
+
+    const ergebnis = plan(dir);
+
+    assert.equal(ergebnis.vollerUmfang, false);
+    assert.deepEqual(ergebnis.bereiche, ["nachtrunner"]);
+    assert.deepEqual(kommandos(ergebnis.laufen), [NACHT]);
+    assert.deepEqual(ergebnis.abgeleitet, [
+      { pfad: "test/helpers/b.mjs", ueber: ["test/night-y.test.mjs"], bereiche: ["nachtrunner"] },
+    ]);
+  });
+});
+
+test("ein Helfer ohne Importeur loest keine Pruefung aus und sagt warum (Issue #1181)", () => {
+  mitRepo({ config: CONFIG_IMPORTE }, (dir) => {
+    datei(dir, "test/helpers/neu.mjs", "export const neu = 1;\n");
+
+    const ergebnis = plan(dir);
+
+    assert.equal(ergebnis.vollerUmfang, false);
+    assert.deepEqual(ergebnis.bereiche, []);
+    assert.deepEqual(kommandos(ergebnis.laufen), []);
+    assert.deepEqual(ergebnis.ohnePruefung, [{ pfad: "test/helpers/neu.mjs", grund: "von keiner Datei importiert" }]);
+
+    const res = run(dir);
+    assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
+    assert.match(res.stdout, /Fuer den Abschlussbericht:[\s\S]*ohne Pruefung: test\/helpers\/neu\.mjs — von keiner Datei importiert/);
+  });
+});
+
+test("ein Kreis zweier Helfer ohne Muster endet ohne Endlosschleife (Issue #1181)", () => {
+  mitRepo({ config: CONFIG_IMPORTE }, (dir) => {
+    datei(dir, "test/helpers/a.mjs", 'import { b } from "./b.mjs";\nexport const a = 1;\n');
+    datei(dir, "test/helpers/b.mjs", 'import { a } from "./a.mjs";\nexport const b = 1;\n');
+    committen(dir);
+    datei(dir, "test/helpers/a.mjs", 'import { b } from "./b.mjs";\nexport const a = 2;\n');
+
+    const ergebnis = plan(dir);
+
+    assert.equal(ergebnis.vollerUmfang, false);
+    assert.deepEqual(ergebnis.bereiche, []);
+    assert.deepEqual(ergebnis.ohnePruefung, [
+      { pfad: "test/helpers/a.mjs", grund: "von keiner Datei mit Muster importiert" },
+    ]);
+  });
+});
+
+test("eine Nicht-JavaScript-Datei ohne Muster zieht weiter den vollen Umfang (Issue #1181)", () => {
+  mitRepo({ config: CONFIG_IMPORTE }, (dir) => {
+    datei(dir, "test/night-y.test.mjs", 'const { x } = require("./helpers/x.cjs");\n');
+    datei(dir, "test/helpers/x.cjs", "module.exports = { x: 1 };\n");
+    committen(dir);
+    datei(dir, "test/helpers/x.cjs", "module.exports = { x: 2 };\n");
+    datei(dir, "test/helpers/daten.json", "{}\n");
+
+    const ergebnis = plan(dir);
+
+    assert.equal(ergebnis.vollerUmfang, true);
+    assert.deepEqual(ergebnis.ohneZuordnung, ["test/helpers/daten.json"]);
+    assert.equal(eintrag(ergebnis.laufen, BOARD).grund, "voller Umfang: 'test/helpers/daten.json' trifft kein Muster");
+  });
+});
