@@ -14,16 +14,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, rmSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
+import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
+import { aufrufen } from "../kit/befunde.mjs";
 import { mitRepo, git, datei } from "./helpers/checks-repo.mjs";
-
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const BEFUNDE = join(repoRoot, "kit", "befunde.mjs");
 
 const FUND = [
   "#### WICHTIG",
@@ -39,7 +34,7 @@ function buchenCode(dir) {
   mkdirSync(join(dir, ".claude"), { recursive: true });
   const eingang = join(dir, ".claude", "befunde-eingang.md");
   writeFileSync(eingang, FUND, "utf-8");
-  const res = spawnSync(process.execPath, [BEFUNDE, "buchen", "--datei", eingang, "--stufe", "code", "--karte", "42"], { cwd: dir, encoding: "utf-8" });
+  const res = aufrufen(["buchen", "--datei", eingang, "--stufe", "code", "--karte", "42"], { cwd: dir });
   assert.equal(res.status, 0, res.stderr);
   return JSON.parse(res.stdout);
 }
@@ -140,41 +135,5 @@ test("nicht-vergleichbar: die Zusammenfassung fehlt oder ist unlesbar — gebuch
   });
 });
 
-test("portabel: befunde.mjs allein in einem leeren Verzeichnis — arten und pruefen laufen, buchen --stufe code meldet den fehlenden Nachbarn", () => {
-  const dir = mkdtempSync(join(tmpdir(), "befunde-allein-"));
-  try {
-    const allein = join(dir, "befunde.mjs");
-    copyFileSync(BEFUNDE, allein);
-
-    const arten = spawnSync(process.execPath, [allein, "arten"], { cwd: dir, encoding: "utf-8" });
-    assert.equal(arten.status, 0, arten.stderr);
-    assert.equal(JSON.parse(arten.stdout).ok, true);
-
-    writeFileSync(join(dir, "text.md"), FUND, "utf-8");
-    const pruefen = spawnSync(process.execPath, [allein, "pruefen", "--datei", "text.md"], { cwd: dir, encoding: "utf-8" });
-    assert.equal(pruefen.status, 0, pruefen.stderr);
-    assert.equal(JSON.parse(pruefen.stdout).ok, true);
-
-    const buchen = spawnSync(process.execPath, [allein, "buchen", "--datei", "text.md", "--stufe", "code", "--karte", "1"], { cwd: dir, encoding: "utf-8" });
-    assert.equal(buchen.status, 1, "der fehlende Nachbar ist ein Fehler, kein stiller Lauf");
-    const json = JSON.parse(buchen.stdout);
-    assert.equal(json.ok, false);
-    assert.match(json.fehler, /checks\.mjs/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("portabel: buchen ohne Nachbarn laeuft fuer die Stufen ohne Vergleichsstand weiter", () => {
-  const dir = mkdtempSync(join(tmpdir(), "befunde-allein-"));
-  try {
-    const allein = join(dir, "befunde.mjs");
-    copyFileSync(BEFUNDE, allein);
-    writeFileSync(join(dir, "text.md"), FUND, "utf-8");
-    const res = spawnSync(process.execPath, [allein, "buchen", "--datei", "text.md", "--stufe", "plan", "--karte", "1"], { cwd: dir, encoding: "utf-8" });
-    assert.equal(res.status, 0, res.stderr);
-    assert.equal(JSON.parse(res.stdout).geschrieben, 1);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+// Die Faelle ohne Nachbardatei checks.mjs stehen in test/ablauf-befunde-cli.test.mjs
+// (Issue #1213): Das Modul sucht den Nachbarn beim Laden.

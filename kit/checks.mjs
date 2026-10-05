@@ -1823,14 +1823,16 @@ export function fehlermerkmal(ausgabe) {
  *
  * Exportiert, damit befunde.mjs denselben Blob-Hash ermitteln kann, statt die
  * Frage ein zweites Mal zu implementieren (Issue #802) — derselbe Grund, aus dem
- * `zusammenfassungPfad` fuer night.mjs exportiert ist (Issue #428).
+ * `zusammenfassungPfad` fuer night.mjs exportiert ist (Issue #428). `root` ist das
+ * Projekt, gegen das die Pfade gelten: befunde.mjs nennt es, wenn es im selben Prozess
+ * fuer ein anderes Verzeichnis laeuft (Issue #1213).
  */
-export function blobHashes(pfade) {
+export function blobHashes(pfade, root = wurzel()) {
   const hashes = {};
   const vorhanden = [];
   for (const pfad of pfade) {
     try {
-      lstatSync(join(wurzel(), pfad));
+      lstatSync(join(root, pfad));
       vorhanden.push(pfad);
     } catch (err) {
       if (err.code !== "ENOENT") {
@@ -1842,7 +1844,7 @@ export function blobHashes(pfade) {
   if (vorhanden.length === 0) return hashes;
 
   const res = gitSpawn(["hash-object", "--stdin-paths"], {
-    cwd: wurzel(),
+    cwd: root,
     encoding: "utf-8",
     input: `${vorhanden.join("\n")}\n`,
   });

@@ -12,14 +12,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const BEFUNDE = join(repoRoot, "kit", "befunde.mjs");
+import { aufrufen } from "../kit/befunde.mjs";
 
 /** Ein Fundblock in der Form aus dem Regeltext, Bausteine je Test austauschbar. */
 function fund({ titel = "W — Ein Fund.", stand = "geprueft, bestaetigt", uebernahme = "uebernommen", art = "doppelung", marke = "WICHTIG", zusatz = [] } = {}) {
@@ -45,7 +42,7 @@ function buchen(dir, text, args = ["--stufe", "plan", "--karte", "797"]) {
   mkdirSync(join(dir, ".claude"), { recursive: true });
   const datei = join(dir, ".claude", "befunde-eingang.md");
   writeFileSync(datei, text, "utf-8");
-  return spawnSync(process.execPath, [BEFUNDE, "buchen", "--datei", datei, ...args], { cwd: dir, encoding: "utf-8" });
+  return aufrufen(["buchen", "--datei", datei, ...args], { cwd: dir });
 }
 
 function protokoll(dir) {
@@ -86,6 +83,19 @@ test("buchen schreibt nur Funde mit bestaetigter Gegenprobe und Uebernahmevermer
     const zeilen = protokoll(dir);
     assert.equal(zeilen.length, 1);
     assert.equal(zeilen[0].split("\t")[4], "luecke");
+  });
+});
+
+test("[befunde-1213] der Zeitpunkt der Buchung kommt aus der uebergebenen Uhr", () => {
+  mitDir((dir) => {
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    const datei = join(dir, ".claude", "befunde-eingang.md");
+    writeFileSync(datei, fund(), "utf-8");
+    const res = aufrufen(["buchen", "--datei", datei, "--stufe", "plan", "--karte", "797"],
+      { cwd: dir, jetzt: () => new Date("2026-10-05T08:00:00.000Z") });
+
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(protokoll(dir)[0].split("\t")[0], "2026-10-05T08:00:00.000Z");
   });
 });
 
@@ -265,7 +275,7 @@ test("ein Aufruf ohne Pflichtargument oder mit unbekannter Stufe wird mit JSON a
       ["buchen", "--datei", "x.md", "--stufe", "plan"],
       ["buchen", "--datei", "x.md", "--stufe", "commit", "--karte", "1"],
     ]) {
-      const res = spawnSync(process.execPath, [BEFUNDE, ...args], { cwd: dir, encoding: "utf-8" });
+      const res = aufrufen(args, { cwd: dir });
       assert.equal(res.status, 1, `Aufruf ${args.join(" ")} muss abgewiesen werden`);
       assert.equal(JSON.parse(res.stdout).ok, false);
     }

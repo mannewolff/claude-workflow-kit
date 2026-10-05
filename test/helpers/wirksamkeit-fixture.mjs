@@ -4,9 +4,11 @@
 // Sie laesst sich deshalb vollstaendig an Fixtures pruefen: ein Temp-Verzeichnis mit
 // .claude/ und darin das Ausfuehrungsprotokoll, genau wie ein echtes Projekt es traegt.
 //
-// Aufgerufen wird das ECHTE Werkzeug aus kit/ mit cwd im Fixture — nach demselben
-// Muster wie test/helpers/aufwand-fixture.mjs. Eine Kopie im Temp-Verzeichnis erzeugte
-// Coverage unter einem Pfad, den SonarCloud nicht auf die Repo-Datei abbildet.
+// Aufgerufen wird das ECHTE Werkzeug aus kit/ mit cwd im Fixture, im selben Prozess
+// ueber `aufrufen` (Issue #1213, Plan #1199 E6) — nach demselben Muster wie
+// test/helpers/aufwand-fixture.mjs. Board-Adapter und `checks.mjs bereiche` sind
+// Attrappen-Funktionen statt Kindprozessen; dass die Vorgabe wirklich die Kommandos
+// unter `.claude/kit/` startet, belegt test/ablauf-wirksamkeit-cli.test.mjs.
 //
 // Die Zeitstempel der Protokollzeilen entstehen RELATIV zur echten Jetzt-Zeit
 // (`vorTagen`): Das Fenster der Auswertung haengt an `new Date()` im Werkzeug, und ein
@@ -14,15 +16,11 @@
 // zaehlen, nutzen deshalb IDENTISCHE `vorTagen`-Werte je Tag — zwei knapp
 // verschiedene Werte koennten ueber eine Kalendertagsgrenze fallen.
 
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-
-export const WIRKSAMKEIT = join(repoRoot, "kit", "wirksamkeit.mjs");
+import { aufrufen } from "../../kit/wirksamkeit.mjs";
 
 const TAG_MS = 24 * 60 * 60 * 1000;
 
@@ -84,51 +82,50 @@ export function moved(tage, spalte) {
   return { type: "MOVED", createdAt: vorTagen(tage), detail: `Verschoben nach ${spalte}` };
 }
 
+/** Die Antwort auf einen Aufruf, dessen Kommando im Projekt fehlt — wie Node sie gibt. */
+function fehlt(name) {
+  return { status: 1, stdout: "", stderr: `Error: Cannot find module '.claude/kit/${name}'` };
+}
+
 /**
- * Das Fake-Board fuer die Ruecklaeuferquote (Issue #788): ein ECHTER Kindprozess
- * unter `.claude/kit/board.mjs` im Fixture — genau der Pfad, den kit/wirksamkeit.mjs
- * aufruft. Jeder Aufruf schreibt eine Zeile nach aufrufe.log; so belegt ein Test die
- * Zahl der gestarteten Kindprozesse, nicht die Zahl der Funktionsaufrufe.
+ * Das Fake-Board fuer die Ruecklaeuferquote (Issue #788): eine Attrappe an der Stelle des
+ * Kindprozesses `.claude/kit/board.mjs`. Jeder Aufruf landet in `aufrufe` — so belegt ein
+ * Test die Zahl der Board-Aufrufe, und die Vorgabe startet je Aufruf genau einen Prozess.
  *
- * Die Antwort kommt aus antwort.json: `exit` != 0 laesst den Prozess mit stderr
- * scheitern, sonst antwortet er in der Sammelform von `issue activity --ids` — je
- * angefragter Nummer der hinterlegte Verlauf, fuer eine unbekannte der Eintrag mit
- * Fehlergrund, wie listActivityMany es zusagt.
+ * `exit` != 0 laesst den Aufruf mit stderr scheitern, sonst antwortet er in der
+ * Sammelform von `issue activity --ids` — je angefragter Nummer der hinterlegte Verlauf,
+ * fuer eine unbekannte der Eintrag mit Fehlergrund, wie listActivityMany es zusagt.
  */
-const FAKE_BOARD = `import { appendFileSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-const hier = dirname(fileURLToPath(import.meta.url));
-const args = process.argv.slice(2);
-appendFileSync(join(hier, "aufrufe.log"), args.join(" ") + "\\n");
-const { verlaeufe, exit, stderr } = JSON.parse(readFileSync(join(hier, "antwort.json"), "utf-8"));
-if (exit) { process.stderr.write(stderr || "Fehler"); process.exit(exit); }
-const ids = (args[args.indexOf("--ids") + 1] ?? "").split(",").filter(Boolean);
-const antwort = {};
-for (const id of ids) antwort[id] = verlaeufe[id] ?? { fehler: \`Issue \${id} nicht gefunden\` };
-process.stdout.write(JSON.stringify(antwort));
-`;
+function fakeBoard({ verlaeufe = {}, exit = 0, stderr = "" }, aufrufe) {
+  return (args) => {
+    aufrufe.push(args.join(" "));
+    if (exit) return { status: exit, stdout: "", stderr: stderr || "Fehler" };
+    const ids = (args[args.indexOf("--ids") + 1] ?? "").split(",").filter(Boolean);
+    const antwort = {};
+    for (const id of ids) antwort[id] = verlaeufe[id] ?? { fehler: `Issue ${id} nicht gefunden` };
+    return { status: 0, stdout: JSON.stringify(antwort), stderr: "" };
+  };
+}
 
 /**
- * Der Fake fuer `checks.mjs bereiche` (Issue #1005): ein ECHTER Kindprozess unter
- * `.claude/kit/checks.mjs` im Fixture — genau der Pfad, den kit/wirksamkeit.mjs aufruft,
- * wie beim Fake-Board. Die Antwort kommt aus zuschnitt.json: `exit` != 0 laesst den
- * Prozess mit stderr scheitern, sonst gibt er `ausgabe` als JSON aus.
+ * Der Fake fuer `checks.mjs bereiche` (Issue #1005), wie das Fake-Board eine Attrappe an
+ * der Stelle des Kindprozesses. `exit` != 0 laesst den Aufruf mit stderr scheitern, sonst
+ * gibt er `ausgabe` als JSON aus.
  */
-const FAKE_CHECKS = `import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-const hier = dirname(fileURLToPath(import.meta.url));
-const { ausgabe, exit, stderr } = JSON.parse(readFileSync(join(hier, "zuschnitt.json"), "utf-8"));
-if (exit) { process.stderr.write(stderr || "Fehler"); process.exit(exit); }
-if (process.argv[2] !== "bereiche") { process.stderr.write("unerwartet: " + process.argv.slice(2).join(" ")); process.exit(2); }
-process.stdout.write(JSON.stringify(ausgabe));
-`;
+function fakeChecks({ ausgabe, exit = 0, stderr = "" }) {
+  return (args) => {
+    if (exit) return { status: exit, stdout: "", stderr: stderr || "Fehler" };
+    if (args[0] !== "bereiche") return { status: 2, stdout: "", stderr: `unerwartet: ${args.join(" ")}` };
+    return { status: 0, stdout: JSON.stringify(ausgabe), stderr: "" };
+  };
+}
 
-/** Die geloggten Aufrufe des Fake-Boards, eine Zeile je Kindprozess. */
+/** Die Attrappen und das Aufrufprotokoll je Wegwerf-Projekt. */
+const ATTRAPPEN = new Map();
+
+/** Die protokollierten Board-Aufrufe, eine Zeile je Aufruf. */
 export function boardAufrufe(dir) {
-  const pfad = join(dir, ".claude", "kit", "aufrufe.log");
-  return existsSync(pfad) ? readFileSync(pfad, "utf-8").split("\n").filter(Boolean) : [];
+  return ATTRAPPEN.get(dir)?.aufrufe ?? [];
 }
 
 /**
@@ -157,27 +154,27 @@ export function mitProjekt({ zeilen = [], config, bewegungen, board, zuschnitt }
     if (bewegungen !== undefined) {
       writeFileSync(join(dir, ".claude", "bewegungen.tsv"), bewegungen.map((z) => `${z}\n`).join(""), "utf-8");
     }
-    if (board !== undefined) {
-      const kitDir = join(dir, ".claude", "kit");
-      mkdirSync(kitDir, { recursive: true });
-      writeFileSync(join(kitDir, "board.mjs"), FAKE_BOARD, "utf-8");
-      writeFileSync(join(kitDir, "antwort.json"), JSON.stringify({ verlaeufe: {}, exit: 0, stderr: "", ...board }), "utf-8");
-    }
-    if (zuschnitt !== undefined) {
-      const kitDir = join(dir, ".claude", "kit");
-      mkdirSync(kitDir, { recursive: true });
-      writeFileSync(join(kitDir, "checks.mjs"), FAKE_CHECKS, "utf-8");
-      writeFileSync(join(kitDir, "zuschnitt.json"), JSON.stringify({ exit: 0, stderr: "", ...zuschnitt }), "utf-8");
-    }
+    const aufrufe = [];
+    ATTRAPPEN.set(dir, {
+      aufrufe,
+      board: board === undefined ? () => fehlt("board.mjs") : fakeBoard(board, aufrufe),
+      checks: zuschnitt === undefined ? () => fehlt("checks.mjs") : fakeChecks(zuschnitt),
+    });
     return fn(dir);
   } finally {
+    ATTRAPPEN.delete(dir);
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-/** Roher Aufruf — fuer die Faelle, in denen der Exit-Code selbst der Befund ist. */
+/**
+ * Roher Aufruf im selben Prozess — fuer die Faelle, in denen der Exit-Code selbst der
+ * Befund ist. Ergebnis wie bei `spawnSync`: `{ status, stdout, stderr }`. Board und
+ * `checks.mjs` sind die Attrappen, die `mitProjekt` fuer dieses Projekt hinterlegt hat.
+ */
 export function wirksamkeit(dir, ...cliArgs) {
-  return spawnSync(process.execPath, [WIRKSAMKEIT, ...cliArgs], { cwd: dir, encoding: "utf-8" });
+  const attrappen = ATTRAPPEN.get(dir) ?? { board: () => fehlt("board.mjs"), checks: () => fehlt("checks.mjs") };
+  return aufrufen(cliArgs, { cwd: dir, board: attrappen.board, checks: attrappen.checks });
 }
 
 /** Erfolgreicher `auswerten`-Aufruf, JSON von stdout geparst. */

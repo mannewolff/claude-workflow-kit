@@ -110,6 +110,21 @@ const BOARD_PATH = process.env.KIT_ROOT
   ? join(resolve(process.env.KIT_ROOT), ".claude", "kit", "board.mjs")
   : join(dirname(fileURLToPath(import.meta.url)), "board.mjs");
 
+// --- Aufrufumgebung ----------------------------------------------------------
+
+/**
+ * Die Umgebung des laufenden Aufrufs (Issue #1213, Plan #1199 E6), nach dem Muster von
+ * kit/checks.mjs. Als CLI ist sie leer, und jeder Zugriff unten faellt auf den Prozess
+ * zurueck. `aufrufen` setzt sie fuer die Dauer eines Aufrufs im selben Prozess:
+ * Arbeitsverzeichnis, Ausgabe, Uhr, der Start des Board-Adapters und der von git.
+ */
+let umgebung = {};
+
+const wurzel = () => umgebung.cwd ?? process.cwd();
+const jetzt = () => (umgebung.jetzt ? umgebung.jetzt() : new Date());
+const aufStdout = (text) => (umgebung.stdout ? umgebung.stdout(text) : process.stdout.write(text));
+const aufStderr = (text) => (umgebung.stderr ? umgebung.stderr(text) : process.stderr.write(text));
+
 /**
  * Die zwoelf Mangel-Arten. Grob statt feinmaschig (Nicht-Ziel des Fachkonzepts): Sie
  * decken die Fragen aller fuenf heutigen Rollen-Prompts ab und lassen sich in einem
@@ -548,7 +563,7 @@ const ISSUE_REVIEW_KOPF_RE = /^## (?:Issue|Fachplan|Plan)-Review, Runde \d+[^\S\
 export function pruefen(pfad) {
   let text;
   try {
-    text = readFileSync(pfad, "utf-8");
+    text = readFileSync(resolve(wurzel(), pfad), "utf-8");
   } catch (err) {
     fail(`Datei nicht lesbar: ${pfad} (${err.code || err.message}).`);
   }
@@ -671,7 +686,7 @@ function protokollZeilen(pfad) {
     return readFileSync(pfad, "utf-8").split(/\r?\n/).filter((z) => z !== "");
   } catch (err) {
     if (err.code !== "ENOENT") {
-      process.stderr.write(`Hinweis: Protokoll nicht lesbar (${pfad}): ${err.message}\n`);
+      aufStderr(`Hinweis: Protokoll nicht lesbar (${pfad}): ${err.message}\n`);
     }
     return [];
   }
@@ -696,7 +711,7 @@ function zaehleArten(zeilen) {
  */
 function schwelleLesen() {
   try {
-    const config = JSON.parse(readFileSync(join(process.cwd(), ...CONFIG_DATEI.split("/")), "utf-8"));
+    const config = JSON.parse(readFileSync(join(wurzel(), ...CONFIG_DATEI.split("/")), "utf-8"));
     const wert = config?.befunde?.schwelle;
     if (Number.isInteger(wert) && wert > 0) return wert;
   } catch { /* keine Config ist ein normaler Zustand — Vorgabe. */ }
@@ -710,7 +725,7 @@ function schwelleLesen() {
  */
 function nullpunktFuer(art) {
   try {
-    const daten = JSON.parse(readFileSync(join(process.cwd(), ...VORSCHLAEGE_DATEI.split("/")), "utf-8"));
+    const daten = JSON.parse(readFileSync(join(wurzel(), ...VORSCHLAEGE_DATEI.split("/")), "utf-8"));
     const wert = daten?.[art]?.nullpunkt;
     if (Number.isInteger(wert) && wert >= 0) return wert;
   } catch { /* keine Vorschlagsdatei ist der Regelfall — Nullpunkt null. */ }
@@ -718,7 +733,8 @@ function nullpunktFuer(art) {
 }
 
 function gitLauf(...args) {
-  return spawnSync("git", args, { cwd: process.cwd(), encoding: "utf-8" });
+  const optionen = { cwd: wurzel(), encoding: "utf-8" };
+  return umgebung.git ? umgebung.git(args, optionen) : spawnSync("git", args, optionen);
 }
 
 /**
@@ -731,7 +747,7 @@ function imVerknuepftenWorktree() {
   if (res.status !== 0) return false;
   const [gitDir, commonDir] = res.stdout.split("\n").map((z) => z.trim());
   if (!gitDir || !commonDir) return false;
-  return resolve(process.cwd(), gitDir) !== resolve(process.cwd(), commonDir);
+  return resolve(wurzel(), gitDir) !== resolve(wurzel(), commonDir);
 }
 
 /**
@@ -798,7 +814,7 @@ function heuteGeaendert(basis) {
  * dagegen nur ein nicht vergleichbarer Stand, keine Abweisung.
  */
 function vergleichsstandCode() {
-  const pfad = zusammenfassungPfad();
+  const pfad = zusammenfassungPfad(wurzel());
   let daten;
   try {
     daten = JSON.parse(readFileSync(pfad, "utf-8"));
@@ -812,7 +828,7 @@ function vergleichsstandCode() {
   if (daten.laufen.some((e) => e === null || typeof e !== "object" || e.ergebnis !== "gruen")) return "nicht-vergleichbar";
   try {
     const geaendert = heuteGeaendert(daten.basis);
-    const aktuell = blobHashes(geaendert);
+    const aktuell = blobHashes(geaendert, wurzel());
     for (const p of geaendert) {
       if (!(p in daten.hashes) || daten.hashes[p] !== aktuell[p]) return "nicht-vergleichbar";
     }
@@ -830,7 +846,7 @@ function spalte(wert) {
 export function buchen({ datei, stufe, karte }) {
   let text;
   try {
-    text = readFileSync(datei, "utf-8");
+    text = readFileSync(resolve(wurzel(), datei), "utf-8");
   } catch (err) {
     fail(`Datei nicht lesbar: ${datei} (${err.code || err.message}).`);
   }
@@ -849,10 +865,10 @@ export function buchen({ datei, stufe, karte }) {
     return zaehlt ? [{ fund, art }] : [];
   });
 
-  const pfad = join(process.cwd(), ...PROTOKOLL_DATEI.split("/"));
+  const pfad = join(wurzel(), ...PROTOKOLL_DATEI.split("/"));
   const bestand = zaehleArten(protokollZeilen(pfad));
 
-  const zeitpunkt = new Date().toISOString();
+  const zeitpunkt = jetzt().toISOString();
   const zeilen = buchbar.map(({ fund, art }) => [
     zeitpunkt, spalte(stufe), spalte(karte),
     spalte(rolleFuer(fund.zeile, koepfe, stufe)),
@@ -867,7 +883,7 @@ export function buchen({ datei, stufe, karte }) {
       mkdirSync(dirname(pfad), { recursive: true });
       appendFileSync(pfad, zeilen.map((z) => `${z}\n`).join(""), "utf-8");
     } catch (err) {
-      process.stderr.write(`Hinweis: Buchung nicht protokolliert (${pfad}): ${err.message}\n`);
+      aufStderr(`Hinweis: Buchung nicht protokolliert (${pfad}): ${err.message}\n`);
     }
   }
 
@@ -1000,9 +1016,13 @@ const KARTE_FEHLT = Symbol("karte-fehlt");
  * abgefangen werden — und die eine vergessene Stelle hinterliesse einen Vermerk ohne
  * Karte (die Zusage aus der Aufgabe: kein halb vermerkter Vorschlag).
  */
-function boardLauf(args, { karte = null } = {}) {
+function boardStarten(args) {
   if (!existsSync(BOARD_PATH)) fail(`board.mjs liegt nicht neben befunde.mjs (${BOARD_PATH}) — 'vorschlag' schreibt ueber den Board-Adapter.`);
-  const res = spawnSync(process.execPath, [BOARD_PATH, ...args], { cwd: process.cwd(), encoding: "utf-8" });
+  return spawnSync(process.execPath, [BOARD_PATH, ...args], { cwd: wurzel(), encoding: "utf-8" });
+}
+
+function boardLauf(args, { karte = null } = {}) {
+  const res = umgebung.board ? umgebung.board(args, { cwd: wurzel() }) : boardStarten(args);
   if (res.error) fail(`board.mjs liess sich nicht starten: ${res.error.message}`);
   if (res.status !== 0) {
     const grund = (res.stderr || res.stdout || "").trim().split(/\r?\n/)[0] || `Exit ${res.status}`;
@@ -1040,7 +1060,7 @@ function mitTextdatei(name, text, fn) {
 
 /** Der Pfad der Zustandsdatei im aktuellen Projekt. */
 function vorschlaegePfad() {
-  return join(process.cwd(), ...VORSCHLAEGE_DATEI.split("/"));
+  return join(wurzel(), ...VORSCHLAEGE_DATEI.split("/"));
 }
 
 /**
@@ -1132,7 +1152,7 @@ export function vorschlag({ art, abgelehnt }) {
   }
   const daten = vorschlaegeLesen();
   const alt = eintragVon(daten, zielArt);
-  const zeilen = protokollZeilen(join(process.cwd(), ...PROTOKOLL_DATEI.split("/")));
+  const zeilen = protokollZeilen(join(wurzel(), ...PROTOKOLL_DATEI.split("/")));
   const vorkommen = vorkommenFuer(zeilen, zielArt);
   const zaehlerstand = vorkommen.length;
 
@@ -1391,7 +1411,7 @@ function befundBestimmen(arten, code, schwelle) {
 }
 
 function schreibeDatei(datei, inhalt) {
-  const pfad = join(process.cwd(), ...datei.split("/"));
+  const pfad = join(wurzel(), ...datei.split("/"));
   try {
     mkdirSync(dirname(pfad), { recursive: true });
     writeFileSync(pfad, inhalt, "utf-8");
@@ -1405,7 +1425,7 @@ function schreibeDatei(datei, inhalt) {
  * `.claude/befunde.json` geht und auf stdout steht: eine Form, nicht zwei.
  */
 export function auswerten() {
-  const protokollPfad = join(process.cwd(), ...PROTOKOLL_DATEI.split("/"));
+  const protokollPfad = join(wurzel(), ...PROTOKOLL_DATEI.split("/"));
   const zeilen = protokollZeilen(protokollPfad);
   const { eintraege, fehlerhafteZeilen } = protokollLesen(zeilen);
   const vorschlaege = vorschlaegeLesen();
@@ -1437,7 +1457,7 @@ export function auswerten() {
 
   const ergebnis = {
     ok: true,
-    erzeugtAm: new Date().toISOString(),
+    erzeugtAm: jetzt().toISOString(),
     kitVersion: KIT_VERSION,
     protokoll: {
       datei: PROTOKOLL_DATEI,
@@ -1468,7 +1488,7 @@ export function auswerten() {
  */
 export function befund() {
   try {
-    return befundText(JSON.parse(readFileSync(join(process.cwd(), ...STAND_DATEI.split("/")), "utf-8")));
+    return befundText(JSON.parse(readFileSync(join(wurzel(), ...STAND_DATEI.split("/")), "utf-8")));
   } catch {
     return "";
   }
@@ -1537,25 +1557,67 @@ function parseVorschlagArgs(rest) {
 /** Immer JSON auf stdout — auch hier, wo der Aufruf abgewiesen wird. */
 function alsJson(bauen) {
   try {
-    process.stdout.write(JSON.stringify(bauen(), null, 2) + "\n");
+    aufStdout(JSON.stringify(bauen(), null, 2) + "\n");
     return 0;
   } catch (err) {
-    process.stdout.write(JSON.stringify({ ok: false, fehler: err.message }, null, 2) + "\n");
+    aufStdout(JSON.stringify({ ok: false, fehler: err.message }, null, 2) + "\n");
     return 1;
   }
 }
 
-function main() {
-  const argv = process.argv.slice(2);
+/** Der Fehler eines Aufrufs als stderr-Zeile: `Fehler:` fuer den erwarteten, sonst `Unerwarteter Fehler:`. */
+function fehlerZeile(err) {
+  const prefix = err instanceof BefundeError ? "Fehler" : "Unerwarteter Fehler";
+  return `${prefix}: ${err.message}\n`;
+}
 
+/**
+ * Ein Aufruf wie von der Kommandozeile, aber im selben Prozess (Issue #1213, Plan #1199
+ * E6). `argv` ist die Kommandozeile ohne `node befunde.mjs`, `cwd` das Projekt, `jetzt`
+ * die Uhr der Buchung und der Auswertung. `board(args, { cwd })` ersetzt den Start des
+ * Board-Adapters, `git(args, optionen)` den von git — beide im Ergebnis wie `spawnSync`.
+ *
+ * Rueckgabe: `{ status, stdout, stderr }` wie bei einem Kindprozess. Zwei Aufrufe zugleich
+ * gehen nicht — die Umgebung gilt fuer das ganze Modul —, der zweite bricht darum ab.
+ */
+export function aufrufen(argv, { cwd, jetzt: uhr, board, git } = {}) {
+  if (umgebung.aktiv) throw new Error("befunde.mjs: aufrufen laeuft schon — zwei Aufrufe zugleich gehen nicht");
+  let stdout = "";
+  let stderr = "";
+  umgebung = {
+    aktiv: true,
+    cwd,
+    jetzt: uhr,
+    board,
+    git,
+    stdout: (text) => {
+      stdout += text;
+    },
+    stderr: (text) => {
+      stderr += text;
+    },
+  };
+  let status;
+  try {
+    status = main(argv);
+  } catch (err) {
+    aufStderr(fehlerZeile(err));
+    status = 1;
+  } finally {
+    umgebung = {};
+  }
+  return { status, stdout, stderr };
+}
+
+function main(argv) {
   // Die einzigen beiden Textausgaben: Beide richten sich an einen Menschen am Terminal,
   // nicht an einen Aufrufer.
   if (argv[0] === "--help" || argv[0] === "-h") {
-    process.stdout.write(HELP);
+    aufStdout(HELP);
     return 0;
   }
   if (argv[0] === "--version") {
-    process.stdout.write(`${KIT_VERSION}\n`);
+    aufStdout(`${KIT_VERSION}\n`);
     return 0;
   }
 
@@ -1587,14 +1649,14 @@ function main() {
     // stderr und laesst stdout leer — sonst stuende eine Fehlermeldung dort, wo ein
     // Befund hingehoert (wie in kit/wirksamkeit.mjs).
     if (rest.length > 0) fail(`'befund' nimmt keine Argumente, bekam '${rest[0]}'.`);
-    process.stdout.write(befund());
+    aufStdout(befund());
     return 0;
   }
 
   // Auch der Aufruf ohne Kommando ist ein Fehler mit JSON-Ausgabe: Wer dieses Werkzeug
   // ruft, liest seine Ausgabe maschinell, und ein Hilfetext auf stdout waere dort ein
   // Parse-Fehler. Die Uebersicht geht deshalb nach stderr.
-  process.stderr.write(HELP);
+  aufStderr(HELP);
   return alsJson(() => fail(command === undefined
     ? `Kein Kommando. Erwartet: ${KOMMANDOS.join(", ")}.`
     : `Unbekannter Befehl: '${command}'. Erwartet: ${KOMMANDOS.slice(0, -1).join(", ")} oder ${KOMMANDOS.at(-1)}.`));
@@ -1611,10 +1673,9 @@ if (process.argv[1]) {
 }
 if (runAsCli) {
   try {
-    process.exitCode = main();
+    process.exitCode = main(process.argv.slice(2));
   } catch (err) {
-    const prefix = err instanceof BefundeError ? "Fehler" : "Unerwarteter Fehler";
-    process.stderr.write(`${prefix}: ${err.message}\n`);
+    process.stderr.write(fehlerZeile(err));
     process.exit(1);
   }
 }

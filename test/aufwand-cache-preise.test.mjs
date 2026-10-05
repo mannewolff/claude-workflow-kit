@@ -14,7 +14,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mitProjekt, lauf, einheit, auswerten, aufwandOhnePreise, bericht } from "./helpers/aufwand-fixture.mjs";
+import { mitProjekt, lauf, einheit, auswerten, bericht } from "./helpers/aufwand-fixture.mjs";
 
 // claude-opus-5 liegt in tier_5_25: cacheSchreiben5m 6,25 und cacheSchreiben1h 10 je
 // Million Token. Eingabe und Ausgabe stehen hier auf 0, damit allein der Cache zaehlt.
@@ -68,23 +68,9 @@ test("[aufwand-1] was die Teilung nicht deckt, faellt auf den Stunden-Satz und z
   });
 });
 
-test("[aufwand-1] fehlt kit/preise.mjs als Nachbardatei, entfaellt die Kostenteilung mit Vermerk", () => {
-  const laeufe = [lauf("2026-09-01-100000", {
-    einheiten: [einheit(1, { kostenUsd: 4.25 })],
-  })];
-  mitProjekt({ laeufe }, (dir) => {
-    const res = aufwandOhnePreise(dir, "auswerten");
-
-    assert.equal(res.status, 0, `ohne Preistabelle darf nichts abstuerzen: ${res.stderr}`);
-    const e = JSON.parse(res.stdout);
-    assert.equal(e.kosten.preistabelle, null, "ohne Nachbardatei gibt es keinen Stand der Tabelle");
-    assert.equal(e.kosten.lesenUsd.wert, null, "ohne Preise darf kein Satz geraten werden");
-    assert.equal(e.kosten.schreibenUsd.wert, null);
-    assert.equal(e.kosten.gesamtUsd.wert, 4.25, "der gemeldete Betrag bleibt bestimmbar");
-    assert.equal(e.kosten.nichtZuordenbarUsd.wert, 4.25);
-    assert.match(bericht(dir), /Preistabelle/i, "der Bericht nennt die fehlende Preistabelle nicht");
-  });
-});
+// Der Fall ohne Nachbardatei steht in test/ablauf-aufwand-cli.test.mjs: Die Preistabelle
+// wird beim Laden des Moduls gesucht, und das laesst sich nur an einer Kopie als Prozess
+// stellen (Issue #1213).
 
 test("[aufwand-1] liegt kit/preise.mjs daneben, nennt die Auswertung ihren Stand", () => {
   mitProjekt({ laeufe: [lauf("2026-09-01-100000", { einheiten: [einheit(1)] })] }, (dir) => {

@@ -77,6 +77,17 @@
       ]
     },
     {
+      "cmd": "node --test --test-concurrency=2 \"test/ablauf-aufwand-*.test.mjs\" \"test/ablauf-befunde-*.test.mjs\" \"test/ablauf-wirksamkeit-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "aufwand",
+        "befunde",
+        "preise",
+        "pruefungen",
+        "wirksamkeit"
+      ]
+    },
+    {
       "cmd": "node --test --test-concurrency=2 \"test/checks-*.test.mjs\" \"test/gate*.test.mjs\" \"test/guete-*.test.mjs\" \"test/aufwand-*.test.mjs\" \"test/wirksamkeit-*.test.mjs\" \"test/befunde-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
@@ -250,17 +261,20 @@
     "aufwand": [
       "kit/aufwand.mjs",
       "test/aufwand-*.test.mjs",
+      "test/ablauf-aufwand-*.test.mjs",
       "test/helpers/aufwand-fixture.mjs",
       "test/fixtures/aufwand/**"
     ],
     "wirksamkeit": [
       "kit/wirksamkeit.mjs",
       "test/wirksamkeit-*.test.mjs",
+      "test/ablauf-wirksamkeit-*.test.mjs",
       "test/helpers/wirksamkeit-fixture.mjs"
     ],
     "befunde": [
       "kit/befunde.mjs",
       "test/befunde-*.test.mjs",
+      "test/ablauf-befunde-*.test.mjs",
       "test/helpers/zeilenenden.mjs"
     ],
     "einstellungen": [

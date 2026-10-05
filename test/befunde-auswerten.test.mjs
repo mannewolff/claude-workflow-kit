@@ -16,14 +16,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const BEFUNDE = join(repoRoot, "kit", "befunde.mjs");
+import { aufrufen } from "../kit/befunde.mjs";
 
 /** Eine Protokollzeile in der Form, die `buchen` schreibt. */
 function zeile({ zeitpunkt = "2026-09-20T10:00:00.000Z", stufe = "plan", karte = "42", rolle = "pruefbarkeit", art = "luecke", marke = "WICHTIG", vergleichsstand = "-" } = {}) {
@@ -31,7 +28,7 @@ function zeile({ zeitpunkt = "2026-09-20T10:00:00.000Z", stufe = "plan", karte =
 }
 
 function befunde(dir, ...args) {
-  return spawnSync(process.execPath, [BEFUNDE, ...args], { cwd: dir, encoding: "utf-8" });
+  return aufrufen(args, { cwd: dir });
 }
 
 /** Ein Wegwerf-Projekt mit optionalem Protokoll und optionaler Vorschlagsdatei. */

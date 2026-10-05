@@ -648,9 +648,12 @@ function abschlusszeitErmitteln(zeilen, fenster, ausgelassenChecks) {
  * Der Zuschnitt der Bereiche aus `checks.mjs bereiche` ueber genau EINEN Kindprozess, wie
  * der Verlauf beim Board (E7). Ein Fehlschlag ist ein VERMERK, kein Abbruch: Laeufe und
  * Minuten stehen im Protokoll und bleiben auch ohne ihn lesbar.
+ *
+ * `checks(args, { cwd })` startet das Kommando und liefert ein Ergebnis wie `spawnSync`;
+ * die Vorgabe ist der Kindprozess, die Tests geben eine Attrappe (Issue #1213, Plan #1199 E6).
  */
-function zuschnittHolen(root) {
-  const res = spawnSync(process.execPath, [join(root, ...CHECKS_KOMMANDO), "bereiche"], { cwd: root, encoding: "utf-8" });
+function zuschnittHolen(root, checks) {
+  const res = checks(["bereiche"], { cwd: root });
   if (res.status !== 0) {
     const grund = (res.stderr || "").trim() || `das Kommando endete mit ${res.status ?? res.error?.message ?? "?"}`;
     return { fehler: grund };
@@ -838,14 +841,11 @@ function zielVon(detail, zuordnung) {
  * Der Aktivitaetsverlauf aller Kandidaten ueber genau EINEN Kindprozess (E13):
  * `issue activity --ids` holt die Kartenliste des Boards einmal statt je Karte —
  * gegen eine API, die drosselt. Ein Fehlschlag ist ein VERMERK, kein Abbruch (E9) —
- * auf dem Spiel steht eine Kennzahl, nicht ein Gate.
+ * auf dem Spiel steht eine Kennzahl, nicht ein Gate. `board` wie `checks` bei
+ * `zuschnittHolen`.
  */
-function verlaeufeHolen(root, ids) {
-  const res = spawnSync(
-    process.execPath,
-    [join(root, ...BOARD_KOMMANDO), "issue", "activity", "--ids", ids.join(",")],
-    { cwd: root, encoding: "utf-8" }
-  );
+function verlaeufeHolen(root, ids, board) {
+  const res = board(["issue", "activity", "--ids", ids.join(",")], { cwd: root });
   if (res.status !== 0) {
     const grund = (res.stderr || "").trim() || `der Adapter endete mit ${res.status ?? res.error?.message ?? "?"}`;
     return { fehler: grund };
@@ -868,7 +868,7 @@ function verlaeufeHolen(root, ids) {
  * NICHT null, E7) und `entfallen` (der Tracker fuehrt keinen Verlauf oder der
  * Board-Aufruf schlug fehl — mit Grund, E15/E9).
  */
-function ruecklaufErmitteln(root, einstellungen, fensterTage, jetztMs) {
+function ruecklaufErmitteln(root, einstellungen, fensterTage, jetztMs, board) {
   const protokoll = bewegungenLesen(root);
   const fenster = fensterBestimmen(protokoll.zeilen, fensterTage, jetztMs);
   const basis = {
@@ -900,7 +900,7 @@ function ruecklaufErmitteln(root, einstellungen, fensterTage, jetztMs) {
   basis.kandidaten = gewertet.kandidaten;
   if (gewertet.ids.length === 0) return { ...basis, status: "nichtBerechenbar" };
 
-  const geholt = verlaeufeHolen(root, gewertet.ids);
+  const geholt = verlaeufeHolen(root, gewertet.ids, board);
   if (geholt.fehler) {
     return { ...basis, status: "entfallen", grund: `der Verlaufs-Aufruf des Boards schlug fehl: ${geholt.fehler}` };
   }
@@ -1419,20 +1419,34 @@ function schreibeDatei(pfad, inhalt) {
   }
 }
 
+/** Ein Kommando des installierten Kits als Kindprozess — die Vorgabe fuer `board` und `checks`. */
+function kitKommando(pfad) {
+  return (args, { cwd }) => spawnSync(process.execPath, [join(cwd, ...pfad), ...args], { cwd, encoding: "utf-8" });
+}
+
 /**
  * Die Auswertung. Rueckgabe ist der vollstaendige Stand — dieselbe Struktur, die nach
  * `.claude/wirksamkeit.json` geht und auf stdout steht: eine Form, nicht zwei.
+ *
+ * `jetzt` ist die Uhr, an der das Fenster haengt; `board` und `checks` starten den
+ * Board-Adapter und `checks.mjs` des Projekts (Issue #1213, Plan #1199 E6). Ihre
+ * Vorgaben sind die Uhr des Rechners und die Kindprozesse unter `.claude/kit/`.
  */
-export function auswerten(root, { fenster: fensterArg } = {}) {
+export function auswerten(root, {
+  fenster: fensterArg,
+  jetzt = () => new Date(),
+  board = kitKommando(BOARD_KOMMANDO),
+  checks = kitKommando(CHECKS_KOMMANDO),
+} = {}) {
   const einstellungen = ladeEinstellungen(root);
   const fensterTage = fensterArg ?? einstellungen.fensterTage;
-  const jetztMs = Date.now();
+  const jetztMs = jetzt().getTime();
   const protokoll = protokollLesen(root);
   const fenster = fensterBestimmen(protokoll.zeilen, fensterTage, jetztMs);
   const pruefungen = aggregieren(protokoll.zeilen, einstellungen.buildCmds, fenster, einstellungen.hinweisCmds);
   const abschlusszeit = abschlusszeitErmitteln(protokoll.zeilen, fenster, einstellungen.abschlussAusgelassen);
-  const bereiche = bereicheErmitteln(protokoll.zeilen, fenster, einstellungen.buildCmds, zuschnittHolen(root));
-  const ruecklauf = ruecklaufErmitteln(root, einstellungen, fensterTage, jetztMs);
+  const bereiche = bereicheErmitteln(protokoll.zeilen, fenster, einstellungen.buildCmds, zuschnittHolen(root, checks));
+  const ruecklauf = ruecklaufErmitteln(root, einstellungen, fensterTage, jetztMs, board);
   const befund = [
     ...befundBestimmen(pruefungen, einstellungen.nieBeanstandetAb),
     ...ruecklaufBefund(ruecklauf, einstellungen),
@@ -1508,15 +1522,45 @@ function parseAuswertenArgs(rest) {
   return args;
 }
 
-function main() {
-  const argv = process.argv.slice(2);
+/** Der Fehler eines Aufrufs als stderr-Zeile: `Fehler:` fuer den erwarteten, sonst `Unerwarteter Fehler:`. */
+function fehlerZeile(err) {
+  const prefix = err instanceof WirksamkeitError ? "Fehler" : "Unerwarteter Fehler";
+  return `${prefix}: ${err.message}\n`;
+}
 
+/**
+ * Ein Aufruf wie von der Kommandozeile, aber im selben Prozess (Issue #1213, Plan #1199
+ * E6). `argv` ist die Kommandozeile ohne `node wirksamkeit.mjs`, `cwd` das Projekt;
+ * `jetzt`, `board` und `checks` gehen an `auswerten`. Rueckgabe wie bei `spawnSync`:
+ * `{ status, stdout, stderr }`.
+ *
+ * SYNC: dieselbe Funktion steht in kit/aufwand.mjs (#440).
+ */
+export function aufrufen(argv, { cwd = process.cwd(), ...abhaengigkeiten } = {}) {
+  let stdout = "";
+  let stderr = "";
+  const ausgabe = {
+    stdout: (text) => {
+      stdout += text;
+    },
+  };
+  let status;
+  try {
+    status = main(argv, { cwd, abhaengigkeiten, ...ausgabe });
+  } catch (err) {
+    stderr += fehlerZeile(err);
+    status = 1;
+  }
+  return { status, stdout, stderr };
+}
+
+function main(argv, { cwd, abhaengigkeiten = {}, stdout }) {
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
-    process.stdout.write(HELP);
+    stdout(HELP);
     return 0;
   }
   if (argv[0] === "--version") {
-    process.stdout.write(`${KIT_VERSION}\n`);
+    stdout(`${KIT_VERSION}\n`);
     return 0;
   }
 
@@ -1526,10 +1570,10 @@ function main() {
     // Kommandos wird maschinell gelesen. Ein Fliesstext-Fehler mittendrin machte aus
     // jedem Fehlerfall einen Parse-Fehler beim Aufrufer (wie in kit/aufwand.mjs).
     try {
-      process.stdout.write(JSON.stringify(auswerten(process.cwd(), parseAuswertenArgs(rest)), null, 2) + "\n");
+      stdout(JSON.stringify(auswerten(cwd, { ...parseAuswertenArgs(rest), ...abhaengigkeiten }), null, 2) + "\n");
       return 0;
     } catch (err) {
-      process.stdout.write(JSON.stringify({ ok: false, fehler: err.message }, null, 2) + "\n");
+      stdout(JSON.stringify({ ok: false, fehler: err.message }, null, 2) + "\n");
       return 1;
     }
   }
@@ -1538,11 +1582,11 @@ function main() {
     // weiter. Ein abgewiesener Aufruf schreibt deshalb nach stderr und laesst stdout
     // leer — sonst stuende eine Fehlermeldung dort, wo ein Befund hingehoert.
     if (rest.length > 0) fail(`'befund' nimmt keine Argumente, bekam '${rest[0]}'.`);
-    process.stdout.write(befund(process.cwd()));
+    stdout(befund(cwd));
     return 0;
   }
 
-  process.stdout.write(HELP);
+  stdout(HELP);
   return fail(`Unbekannter Befehl: '${command}'. Erwartet: auswerten oder befund`);
 }
 
@@ -1557,10 +1601,9 @@ if (process.argv[1]) {
 }
 if (runAsCli) {
   try {
-    process.exitCode = main();
+    process.exitCode = main(process.argv.slice(2), { cwd: process.cwd(), stdout: (text) => process.stdout.write(text) });
   } catch (err) {
-    const prefix = err instanceof WirksamkeitError ? "Fehler" : "Unerwarteter Fehler";
-    process.stderr.write(`${prefix}: ${err.message}\n`);
+    process.stderr.write(fehlerZeile(err));
     process.exit(1);
   }
 }

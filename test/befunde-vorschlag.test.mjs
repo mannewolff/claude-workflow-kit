@@ -7,56 +7,57 @@
 // Der Vorschlag ist eine Beobachtung, keine Entscheidung (AK 9): Ob daraus eine
 // maschinelle Pruefung wird, entscheidet der Mensch.
 //
-// Gemessen wird gegen einen STUB-Board-Adapter unter `<dir>/.claude/kit/board.mjs`,
-// den `befunde.mjs` ueber KIT_ROOT findet — dasselbe Test-Hook-Muster wie in
-// kit/night.mjs (Issue #189). So laeuft das ECHTE kit/befunde.mjs, und die drei
-// Antwortformen des Adapters (Nummer, Pool-Idee, Fehlschlag) sind ohne Netz pruefbar.
+// Gemessen wird gegen einen STUB-Board-Adapter, den `aufrufen` statt des Kindprozesses
+// board.mjs bekommt (Issue #1213, Plan #1199 E6). So laeuft das ECHTE kit/befunde.mjs im
+// selben Prozess, und die drei Antwortformen des Adapters (Nummer, Pool-Idee,
+// Fehlschlag) sind ohne Netz pruefbar.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const BEFUNDE = join(repoRoot, "kit", "befunde.mjs");
+import { aufrufen } from "../kit/befunde.mjs";
 
 /** Eine Protokollzeile, wie `befunde.mjs buchen` sie schreibt — sieben Spalten, Art in Spalte 5. */
 function zeile(art, { karte = "797", stufe = "plan", rolle = "reviewer", marke = "WICHTIG" } = {}) {
   return `2026-09-22T00:00:00.000Z\t${stufe}\t${karte}\t${rolle}\t${art}\t${marke}\t-`;
 }
 
+/** Je Wegwerf-Projekt der Stub und die Liste seiner Aufrufe. */
+const BOARDS = new Map();
+
 /**
- * Der Stub-Board-Adapter: schreibt jeden Aufruf als JSON-Zeile in `board-aufrufe.log`
- * und antwortet so, wie `antwort` es vorgibt. `exit` ungleich 0 stellt den
- * gescheiterten Board-Aufruf nach.
+ * Der Stub-Board-Adapter: haelt jeden Aufruf als `{ argv, text }` fest und antwortet so,
+ * wie `antwort` es vorgibt. `exit` ungleich 0 stellt den gescheiterten Board-Aufruf nach.
  *
  * Der Inhalt von `--body-file`/`--text-file` wandert MIT ins Protokoll: Die Datei liegt
  * in einem Wegwerf-Verzeichnis ausserhalb des Projekts und ist nach dem Aufruf weg —
  * der Test kaeme sonst nicht mehr an den uebergebenen Text.
  */
-function stubBoard({ antwort = { id: "812" }, exit = 0, kommentarFehler = null } = {}) {
-  return [
-    "import { appendFileSync, readFileSync } from 'node:fs';",
-    "const argv = process.argv.slice(2);",
-    "const i = argv.findIndex((a) => a === '--body-file' || a === '--text-file');",
-    "const text = i === -1 ? null : readFileSync(argv[i + 1], 'utf-8');",
-    String.raw`appendFileSync(process.env.STUB_LOG, JSON.stringify({ argv, text }) + '\n', 'utf-8');`,
+function stubBoard({ antwort = { id: "812" }, exit = 0, kommentarFehler = null } = {}, aufrufe) {
+  return (argv) => {
+    const i = argv.findIndex((a) => a === "--body-file" || a === "--text-file");
+    const text = i === -1 ? null : readFileSync(argv[i + 1], "utf-8");
+    aufrufe.push({ argv, text });
     // `kommentarFehler` laesst nur `issue comment` scheitern, mit genau dieser Meldung —
     // so meldet der Adapter eine Karte, die er nicht (mehr) aufloesen kann (Issue #1100).
-    `const kommentarFehler = ${JSON.stringify(kommentarFehler)};`,
-    String.raw`if (kommentarFehler !== null && argv[1] === 'comment') { process.stderr.write(kommentarFehler + '\n'); process.exit(1); }`,
-    `const exitCode = ${exit};`,
-    String.raw`if (exitCode !== 0) { process.stderr.write('Stub: Board nicht erreichbar\n'); process.exit(exitCode); }`,
-    `process.stdout.write(JSON.stringify(${JSON.stringify(antwort)}) + '\\n');`,
-  ].join("\n");
+    if (kommentarFehler !== null && argv[1] === "comment") return { status: 1, stdout: "", stderr: `${kommentarFehler}\n` };
+    if (exit !== 0) return { status: exit, stdout: "", stderr: "Stub: Board nicht erreichbar\n" };
+    return { status: 0, stdout: `${JSON.stringify(antwort)}\n`, stderr: "" };
+  };
+}
+
+/** Ersetzt den Stub eines Projekts; die bisherigen Aufrufe bleiben stehen. */
+function boardSetzen(dir, board) {
+  const eintrag = BOARDS.get(dir);
+  eintrag.stub = stubBoard(board, eintrag.aufrufe);
 }
 
 function setup({ protokoll = [], vorschlaege = null, config = null, board = {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "befunde-vorschlag-"));
-  mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
+  mkdirSync(join(dir, ".claude"), { recursive: true });
   if (protokoll.length > 0) {
     writeFileSync(join(dir, ".claude", "befunde.tsv"), protokoll.map((z) => `${z}\n`).join(""), "utf-8");
   }
@@ -65,7 +66,8 @@ function setup({ protokoll = [], vorschlaege = null, config = null, board = {} }
       typeof vorschlaege === "string" ? vorschlaege : JSON.stringify(vorschlaege, null, 2), "utf-8");
   }
   if (config) writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify(config), "utf-8");
-  writeFileSync(join(dir, ".claude", "kit", "board.mjs"), stubBoard(board), "utf-8");
+  BOARDS.set(dir, { aufrufe: [] });
+  boardSetzen(dir, board);
   return dir;
 }
 
@@ -74,25 +76,20 @@ function mitDir(einstellungen, fn) {
   try {
     fn(dir);
   } finally {
+    BOARDS.delete(dir);
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-/** Fuehrt `befunde.mjs vorschlag …` im Projekt aus; KIT_ROOT zeigt auf den Stub. */
+/** Fuehrt `befunde.mjs vorschlag …` im Projekt aus, gegen den Stub dieses Projekts. */
 function vorschlag(dir, ...args) {
-  const res = spawnSync(process.execPath, [BEFUNDE, "vorschlag", ...args], {
-    cwd: dir,
-    encoding: "utf-8",
-    env: { ...process.env, KIT_ROOT: dir, STUB_LOG: join(dir, "board-aufrufe.log") },
-  });
+  const res = aufrufen(["vorschlag", ...args], { cwd: dir, board: (argv) => BOARDS.get(dir).stub(argv) });
   return { ...res, json: JSON.parse(res.stdout) };
 }
 
 /** Die Board-Aufrufe dieses Laufs als `{ argv, text }`, in Reihenfolge. */
 function boardAufrufe(dir) {
-  const pfad = join(dir, "board-aufrufe.log");
-  if (!existsSync(pfad)) return [];
-  return readFileSync(pfad, "utf-8").split("\n").filter(Boolean).map((z) => JSON.parse(z));
+  return BOARDS.get(dir).aufrufe;
 }
 
 function zustand(dir) {
@@ -330,7 +327,7 @@ test("[befunde-vorschlag] ein gescheitertes Ergaenzen laesst den vermerkten Stan
   mitDir({ protokoll: DREI }, (dir) => {
     assert.equal(vorschlag(dir, "--art", "form").status, 0);
     // Ab jetzt antwortet der Stub mit Exit 1.
-    writeFileSync(join(dir, ".claude", "kit", "board.mjs"), stubBoard({ exit: 1 }), "utf-8");
+    boardSetzen(dir, { exit: 1 });
     writeFileSync(join(dir, ".claude", "befunde.tsv"),
       [...DREI, zeile("form")].map((z) => `${z}\n`).join(""), "utf-8");
 
@@ -460,7 +457,7 @@ test("[befunde-vorschlag] der Vorschlag einer Art laesst den Vermerk der anderen
 });
 
 test("[befunde-vorschlag] das Kommando steht im Hilfetext", () => {
-  const res = spawnSync(process.execPath, [BEFUNDE, "--help"], { encoding: "utf-8" });
+  const res = aufrufen(["--help"]);
   assert.equal(res.status, 0);
   assert.match(res.stdout, /vorschlag --art <art>/);
   assert.match(res.stdout, /vorschlag --abgelehnt <art>/);

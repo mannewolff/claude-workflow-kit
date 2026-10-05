@@ -273,6 +273,7 @@ test("[checks-958-8] --help nennt die Sperre und die Namen beider Umgebungsvaria
 // Muster, das "faehrt run" aus dem Quelltext erraet, wuerde entweder diese sieben
 // mitziehen (Laerm, den bald niemand liest) oder eine echte Fundstelle uebersehen.
 const OHNE_LAUF = new Map([
+  ["ablauf-wirksamkeit-cli.test.mjs", "legt nur einen Stub dieses Namens an, faehrt das echte nicht"],
   ["install-checks-blob.test.mjs", "faehrt nur --help, kein run"],
   ["night-checks-fehlt.test.mjs", "prueft gerade das FEHLEN von checks.mjs"],
   ["night-nachbarn-identitaet.test.mjs", "importiert checks.mjs als Modul"],
