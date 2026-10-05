@@ -16,7 +16,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -56,6 +56,7 @@ function setupProjekt() {
   mkdirSync(kit, { recursive: true });
   mkdirSync(join(dir, "helfer"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(kit, "board-echt.mjs"));
+  cpSync(join(repoRoot, "kit", "board"), join(kit, "board"), { recursive: true });
   const stoerung = join(dir, "helfer", "stoerung.json");
   writeFileSync(join(kit, "board.mjs"), [
     'import { readFileSync, writeFileSync, existsSync } from "node:fs";',

@@ -17,7 +17,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -51,6 +51,7 @@ function setupProjekt(buildChecks, extraConfig = {}) {
   const dir = mkdtempSync(join(tmpdir(), "night-salvage-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
   // Die Salvage-Vorpruefung faehrt seit Issue #919 `checks.mjs run` im Zielprojekt,
   // damit sie denselben Nachweis hinterlaesst, den das Commit-Gate liest. Ohne die
   // Datei im Fixture gaebe es keine Pflicht-Pruefung und damit keinen Rettungsversuch.

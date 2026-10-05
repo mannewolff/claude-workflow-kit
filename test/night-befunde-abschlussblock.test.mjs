@@ -27,7 +27,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -119,6 +119,7 @@ function setupProjekt(praefix, {
   const dir = mkdtempSync(join(tmpdir(), praefix));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
   if (aufwandStub !== null) writeFileSync(join(dir, ".claude", "kit", "aufwand.mjs"), aufwandStub);
   if (wirksamkeitStub !== null) writeFileSync(join(dir, ".claude", "kit", "wirksamkeit.mjs"), wirksamkeitStub);
   if (befundeStub !== null) writeFileSync(join(dir, ".claude", "kit", "befunde.mjs"), befundeStub);

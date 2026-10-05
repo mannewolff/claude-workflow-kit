@@ -12,7 +12,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createdFrom } from "../kit/board.mjs";
+import { createdFrom } from "../kit/board/grundlagen.mjs";
 
 test("UTC-Form mit Z wird auf den Kalendertag gekuerzt", () => {
   assert.deepEqual(createdFrom("2026-08-14T09:12:33Z"), { created: "2026-08-14" });

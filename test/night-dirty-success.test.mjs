@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -36,6 +36,7 @@ function setupProjekt() {
   const dir = mkdtempSync(join(tmpdir(), "night-dirty-success-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local",
     issueTracker: "local",

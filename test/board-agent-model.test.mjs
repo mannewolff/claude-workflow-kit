@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -54,6 +54,7 @@ function setupProjekt(host) {
   const dir = mkdtempSync(join(tmpdir(), "board-agent-model-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "toolbox", toolbox: { host },
   }, null, 2));

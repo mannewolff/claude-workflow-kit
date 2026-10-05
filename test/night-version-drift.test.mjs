@@ -14,7 +14,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -49,6 +49,7 @@ function setupProjekt(boardVersion) {
     boardSrc = boardSrc.replace(/(const KIT_VERSION = ")[^"]*(";)/, `$1${boardVersion}$2`);
   }
   writeFileSync(join(dir, ".claude", "kit", "board.mjs"), boardSrc);
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
 
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local",

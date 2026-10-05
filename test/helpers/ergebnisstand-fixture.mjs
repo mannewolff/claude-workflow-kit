@@ -17,7 +17,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, existsSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -42,6 +42,7 @@ export function setupProjekt(praefix, night = null) {
   const dir = mkdtempSync(join(tmpdir(), praefix));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"],
     local: { issuesDir: "issues" },
@@ -102,6 +103,7 @@ export function setupProjektMitMeldeCapture(praefix) {
   const dir = mkdtempSync(join(tmpdir(), praefix));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board-real.mjs"));
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
   writeFileSync(join(dir, ".claude", "kit", "board.mjs"), BOARD_STUB);
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"],

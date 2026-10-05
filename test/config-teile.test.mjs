@@ -348,13 +348,13 @@ test("jeder hervorgehobene Bereich steht in gekoppelteBereiche", { todo: "grobe 
     "hervorgehobene Bereiche ohne gemessene Kopplung als Grund — sie schneiden nichts mehr heraus",
   );
 
-  // Gegenprobe: Ohne den Eintrag `board` wird genau dieser Bereich gemeldet. Bliebe die
+  // Gegenprobe: Ohne den Eintrag `board-einstieg` wird genau dieser Bereich gemeldet. Bliebe die
   // Liste leer, hinge die Aussage oben an einer Hervorhebung, die es gar nicht gibt.
   const ohneBoard = {
     ...config,
-    gekoppelteBereiche: (config.gekoppelteBereiche ?? []).filter((e) => e.bereich !== "board"),
+    gekoppelteBereiche: (config.gekoppelteBereiche ?? []).filter((e) => e.bereich !== "board-einstieg"),
   };
-  assert.deepEqual(hervorgehobenOhneEintrag(auswertung, ohneBoard), ["board"]);
+  assert.deepEqual(hervorgehobenOhneEintrag(auswertung, ohneBoard), ["board-einstieg"]);
 });
 
 test("jeder Eintrag in gekoppelteBereiche ist in jeder Gruppe, die ihn nennt, gemessen gekoppelt", () => {

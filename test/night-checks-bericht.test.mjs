@@ -15,7 +15,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -56,6 +56,7 @@ function setupProjekt({ buildChecks = [KIT_CHECK, FRONTEND_CHECK], extraConfig =
   const dir = mkdtempSync(join(tmpdir(), "night-checksbericht-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
   // checks.mjs wird seit Issue #425 neben board.mjs und night.mjs ausgeliefert — der
   // Session-Fake ruft es genauso auf wie ein echter /implement-next-Lauf.
   copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));

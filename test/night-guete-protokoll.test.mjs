@@ -21,7 +21,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -68,6 +68,7 @@ function setupProjekt(buildChecks) {
   for (const datei of ["board.mjs", "checks.mjs"]) {
     copyFileSync(join(repoRoot, "kit", datei), join(dir, ".claude", "kit", datei));
   }
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks,
     checkAreas: { kit: ["kit/**"] }, local: { issuesDir: "issues" },

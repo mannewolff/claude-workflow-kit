@@ -12,7 +12,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { normalizeRepoName } from "../kit/board.mjs";
+import { normalizeRepoName } from "../kit/board/grundlagen.mjs";
 
 test("normalizeRepoName: HTTPS-URL mit und ohne .git", () => {
   assert.equal(

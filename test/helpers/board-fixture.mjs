@@ -28,6 +28,11 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { gitBashPfad } from "../../kit/board.mjs";
 
+// Die In-Process-Attrappe des Board-Adapters (Issue #1211, Plan #1199, E6). Sie liegt in
+// einem eigenen Helfer: Ein leichter Test laedt sie von dort, ohne mit dieser Fixture als
+// Ablauf-Pruefung zu gelten.
+export { boardAttrappe } from "./board-attrappe.mjs";
+
 export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const BOARD = join(repoRoot, "kit", "board.mjs");
 

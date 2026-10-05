@@ -961,13 +961,13 @@ export function teilFuer(pfad) {
 // Die heruntergeladene Datei hat keine Nachbardatei board.mjs, aus der sie importieren
 // könnte — darum eine dritte Kopie. test/workflow-config-merge.test.mjs hält alle drei gleich.
 
-// SYNC: dieselbe Liste in kit/board.mjs und kit/night.mjs — Änderungen dort nachziehen.
+// SYNC: dieselbe Liste in kit/board/grundlagen.mjs und kit/night.mjs — Änderungen dort nachziehen.
 const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewScope", "triggers", "toolbox.tokenFile"];
 
-// SYNC: dieselbe Zuordnung in kit/board.mjs und kit/night.mjs.
+// SYNC: dieselbe Zuordnung in kit/board/grundlagen.mjs und kit/night.mjs.
 const REVIEWER_PAAR = { reviewModel: "reviewCommand", reviewCommand: "reviewModel" };
 
-// SYNC: strukturgleich zu zerlegeAllowlist in kit/board.mjs und kit/night.mjs.
+// SYNC: strukturgleich zu zerlegeAllowlist in kit/board/grundlagen.mjs und kit/night.mjs.
 function zerlegeAllowlist(allowlist) {
   const erlaubteBlaetter = new Map();
   const erlaubteFelder = new Set();
@@ -983,7 +983,7 @@ function zerlegeAllowlist(allowlist) {
   return { erlaubteFelder, erlaubteBlaetter };
 }
 
-// SYNC: strukturgleich zu setzePersoenlichesFeld in kit/board.mjs — beim Reviewer-Paar
+// SYNC: strukturgleich zu setzePersoenlichesFeld in kit/board/grundlagen.mjs — beim Reviewer-Paar
 // weicht das Gegenstück, sofern die persönliche Datei es nicht selbst nennt.
 function setzePersoenlichesFeld(config, feld, wert, local) {
   config[feld] = wert;
@@ -991,7 +991,7 @@ function setzePersoenlichesFeld(config, feld, wert, local) {
   if (gegenstueck && !(gegenstueck in local)) delete config[gegenstueck];
 }
 
-// SYNC: strukturgleich zu mergeWorkflowConfig in kit/board.mjs.
+// SYNC: strukturgleich zu mergeWorkflowConfig in kit/board/grundlagen.mjs.
 export function mergeWorkflowConfig(shared, local) {
   const config = { ...shared };
   const ignored = [];

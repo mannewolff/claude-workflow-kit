@@ -45,12 +45,15 @@ test("[931] einstellungen-teile laedt die echte Projektkonfiguration", () => {
   assert.ok(quellen.includes("kit/einstellungen.mjs"), "der direkte Import fehlt");
 });
 
-test("[931] die board-Tests laden kit/board.mjs", () => {
-  // test/board-ui-* prueft kit/board-ui.mjs, nicht kit/board.mjs (Issue #1137).
+test("[931] die board-Tests laden kit/board.mjs oder einen seiner Teile", () => {
+  // test/board-ui-* prueft kit/board-ui.mjs, nicht kit/board.mjs (Issue #1137). Seit
+  // Issue #1211 (Plan #1199, E18) laden die Tests eines Teils den Teil unter kit/board/
+  // und nicht mehr den Einstieg.
   const boardTests = [...tabelle.keys()].filter((p) => p.startsWith("test/board-") && !p.startsWith("test/board-ui-"));
   assert.ok(boardTests.length > 0, "keine board-Tests in der Tabelle");
-  const ohneBoard = boardTests.filter((p) => !tabelle.get(p).includes("kit/board.mjs"));
-  assert.deepEqual(ohneBoard, [], "board-Tests ohne Kopplung an kit/board.mjs");
+  const laedtBoard = (quelle) => quelle === "kit/board.mjs" || quelle.startsWith("kit/board/");
+  const ohneBoard = boardTests.filter((p) => !tabelle.get(p).some(laedtBoard));
+  assert.deepEqual(ohneBoard, [], "board-Tests ohne Kopplung an kit/board.mjs oder einen Teil");
 });
 
 test("[931] night-kette-worktree laedt kit/night.mjs", () => {

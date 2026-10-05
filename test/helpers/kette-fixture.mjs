@@ -8,7 +8,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, rmSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -61,6 +61,7 @@ export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz 
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   mkdirSync(join(dir, "issues"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
   // Der Rueckweg der Befunde ruft `befunde.mjs vorschlag` als Kindprozess (Issue #804);
   // ohne die Kopie waere jeder Ketten-Test blind fuer den Vorschlag am Board.
   copyFileSync(join(repoRoot, "kit", "befunde.mjs"), join(dir, ".claude", "kit", "befunde.mjs"));

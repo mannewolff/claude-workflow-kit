@@ -15,7 +15,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -60,6 +60,7 @@ function setupProjekt(buildChecks) {
   for (const name of ["board.mjs", "checks.mjs"]) {
     copyFileSync(join(repoRoot, "kit", name), join(dir, ".claude", "kit", name));
   }
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
   mkdirSync(join(dir, ".githooks"), { recursive: true });
   copyFileSync(join(repoRoot, ".githooks", "gate.mjs"), join(dir, ".githooks", "gate.mjs"));
   writeFileSync(join(dir, ".githooks", "pre-commit"),

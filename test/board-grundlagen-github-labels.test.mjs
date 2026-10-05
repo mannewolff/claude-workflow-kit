@@ -11,7 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { labelMapFrom, withLabels } from "../kit/board.mjs";
+import { labelMapFrom, withLabels } from "../kit/board/grundlagen.mjs";
 
 // --- labelMapFrom: Rohantwort von `gh issue list --json number,labels` -> Map ---
 

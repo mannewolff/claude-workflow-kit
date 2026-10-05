@@ -6,7 +6,7 @@
       "cmd": "node --test --test-concurrency=2 \"test/night-kette-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
-        "board",
+        "board-einstieg",
         "installer",
         "nachtrunner"
       ]
@@ -15,7 +15,7 @@
       "cmd": "node --test --test-concurrency=2 \"test/board-a*.test.mjs\" \"test/board-b*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-d*.test.mjs\" \"test/board-i*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-m*.test.mjs\" \"test/board-n*.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-t*.test.mjs\" \"test/board-u*.test.mjs\" \"test/board-w*.test.mjs\" \"test/cli-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
-        "board",
+        "board-einstieg",
         "nachtrunner",
         "pruefungen"
       ]
@@ -26,7 +26,7 @@
       "areas": [
         "aufwand",
         "befunde",
-        "board",
+        "board-einstieg",
         "installer",
         "nachtrunner",
         "preise",
@@ -38,7 +38,7 @@
       "cmd": "node --test --test-concurrency=2 \"test/night-n*.test.mjs\" \"test/night-o*.test.mjs\" \"test/night-p*.test.mjs\" \"test/night-r*.test.mjs\" \"test/night-s*.test.mjs\" \"test/night-t*.test.mjs\" \"test/night-u*.test.mjs\" \"test/night-v*.test.mjs\" \"test/night-w*.test.mjs\" \"test/night-z*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
-        "board",
+        "board-einstieg",
         "installer",
         "nachtrunner",
         "pruefungen",
@@ -47,10 +47,25 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/board-g*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/board-ge*.test.mjs\" \"test/board-gi*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
-        "board"
+        "board-einstieg"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/board-grundlagen-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-grundlagen"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/ablauf-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-einstieg",
+        "board-grundlagen"
       ]
     },
     {
@@ -59,7 +74,7 @@
       "areas": [
         "aufwand",
         "befunde",
-        "board",
+        "board-einstieg",
         "installer",
         "nachtrunner",
         "preise",
@@ -73,7 +88,7 @@
       "cmd": "node --test --test-concurrency=2 \"test/migrate-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
-        "board",
+        "board-einstieg",
         "nachtrunner"
       ]
     },
@@ -83,7 +98,7 @@
       "areas": [
         "aufwand",
         "befunde",
-        "board",
+        "board-einstieg",
         "einstellungen",
         "frischer-checkout",
         "herkunft",
@@ -105,7 +120,8 @@
       "areas": [
         "aufwand",
         "befunde",
-        "board",
+        "board-einstieg",
+        "board-grundlagen",
         "einstellungen",
         "herkunft",
         "installer",
@@ -162,18 +178,44 @@
       "test/helpers/zeilenenden.mjs",
       "test/fixtures/auskunft/**"
     ],
-    "board": [
+    "board-einstieg": [
       "kit/board.mjs",
       "kit/board-ui.mjs",
       "tools/migrate-issues.mjs",
-      "test/board-*.test.mjs",
+      "test/board-a*.test.mjs",
+      "test/board-b*.test.mjs",
+      "test/board-c*.test.mjs",
+      "test/board-d*.test.mjs",
+      "test/board-ge*.test.mjs",
+      "test/board-gi*.test.mjs",
+      "test/board-i*.test.mjs",
+      "test/board-k*.test.mjs",
+      "test/board-l*.test.mjs",
+      "test/board-m*.test.mjs",
+      "test/board-n*.test.mjs",
+      "test/board-o*.test.mjs",
+      "test/board-p*.test.mjs",
+      "test/board-r*.test.mjs",
+      "test/board-s*.test.mjs",
+      "test/board-t*.test.mjs",
+      "test/board-u*.test.mjs",
+      "test/board-w*.test.mjs",
+      "test/ablauf-board-*.test.mjs",
       "test/migrate-*.test.mjs",
       "test/cli-*.test.mjs",
       "startboard.sh",
-      "test/helpers/board-*.mjs",
+      "test/helpers/board-ci-fixture.mjs",
+      "test/helpers/board-fixture.mjs",
+      "test/helpers/board-github-fixture.mjs",
+      "test/helpers/board-gitlab-fixture.mjs",
       "test/helpers/zeilenenden.mjs",
       "test/fixtures/cli-grammar.json",
       "test/fixtures/migrate-import-*.md"
+    ],
+    "board-grundlagen": [
+      "kit/board/grundlagen.mjs",
+      "test/board-grundlagen-*.test.mjs",
+      "test/helpers/board-attrappe.mjs"
     ],
     "pruefungen": [
       "kit/checks.mjs",
@@ -340,7 +382,7 @@
   ],
   "gekoppelteBereiche": [
     {
-      "bereich": "board",
+      "bereich": "board-einstieg",
       "grund": "Fast jede Testgruppe lädt kit/board.mjs (gemessen mit tools/verflechtung.mjs)."
     }
   ],

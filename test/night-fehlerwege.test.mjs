@@ -11,7 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -51,6 +51,7 @@ function setupProjekt({ config = {}, mitCommit = true, boardInhalt = null, alles
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   if (boardInhalt === null) {
     copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+    cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
     copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));
   } else {
     writeFileSync(join(dir, ".claude", "kit", "board.mjs"), boardInhalt, "utf-8");
@@ -127,6 +128,7 @@ test("ausserhalb eines git-Repos nennt der Abbruch den Projekt-Root", () => {
   try {
     mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
     copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+    cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
     writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
       codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
     }), "utf-8");

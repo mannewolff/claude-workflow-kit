@@ -16,14 +16,21 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, rmSync } from "node:fs";
+import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { setupProjekt, fakeCli, board, runBoard, aufrufe } from "./helpers/board-fixture.mjs";
+import { setupProjekt, fakeCli, board, aufrufe } from "./helpers/board-fixture.mjs";
 
 
-const BOARD_QUELLE = join(dirname(fileURLToPath(import.meta.url)), "..", "kit", "board.mjs");
+const KIT = join(dirname(fileURLToPath(import.meta.url)), "..", "kit");
+
+// Der Einstieg und seine Teile unter kit/board/ (Issue #1211): Die Regel gilt fuer das
+// ganze Werkzeug, nicht nur fuer die Datei, in der heute noch das meiste steht.
+const BOARD_QUELLEN = [
+  join(KIT, "board.mjs"),
+  ...readdirSync(join(KIT, "board")).filter((d) => d.endsWith(".mjs")).map((d) => join(KIT, "board", d)),
+];
 
 // Ein Body, der jede Quoting-Variante zum Stolpern bringt: Zeilenumbrueche (der
 // gemeldete Fall), ein Single Quote (POSIX-Escaping), ein Double Quote (cmd.exe),
@@ -55,8 +62,8 @@ function ohneKommentare(quelltext) {
     .join("\n");
 }
 
-test("kit/board.mjs setzt keine Kommandozeilen-Strings mehr ab", () => {
-  const quelle = ohneKommentare(readFileSync(BOARD_QUELLE, "utf-8"));
+test("kit/board.mjs und seine Teile setzen keine Kommandozeilen-Strings mehr ab", () => {
+  const quelle = BOARD_QUELLEN.map((pfad) => ohneKommentare(readFileSync(pfad, "utf-8"))).join("\n");
 
   assert.doesNotMatch(quelle, /\bshellQuote\b/,
     "shellQuote ist POSIX-only und muss ersatzlos entfallen sein");
@@ -71,19 +78,8 @@ test("kit/board.mjs setzt keine Kommandozeilen-Strings mehr ab", () => {
   }
 });
 
-// Ohne Shell meldet das Betriebssystem ein fehlendes CLI als ENOENT statt mit
-// "command not found" auf stderr. Die Meldung muss trotzdem sagen, was fehlt.
-test("Ein nicht installiertes CLI wird als solches gemeldet", () => {
-  const dir = setupProjekt({ codeHost: "github", issueTracker: "github" });
-  try {
-    // PATH auf ein Verzeichnis ohne gh — sonst greift ein echtes gh der Maschine.
-    const res = runBoard(dir, ["issue", "get", "1"], { PATH: join(dir, "leer") });
-    assert.equal(res.status, 1);
-    assert.match(res.stderr, /gh nicht gefunden — ist es installiert und im PATH\?/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+// Dass ein nicht installiertes CLI beim Namen genannt wird, belegt seit Issue #1211
+// board-grundlagen-shell.test.mjs im selben Prozess an `exec`.
 
 // --- 2. Verhalten: GitHub ---
 

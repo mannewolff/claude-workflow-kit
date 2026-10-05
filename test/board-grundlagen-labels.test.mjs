@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { labelNamesFrom } from "../kit/board.mjs";
+import { labelNamesFrom } from "../kit/board/grundlagen.mjs";
 
 test("GitLab-Form: Array von {name}-Objekten -> Namen", () => {
   assert.deepEqual(labelNamesFrom([{ name: "kit:nightrun" }, { name: "In review" }]), ["kit:nightrun", "In review"]);

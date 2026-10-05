@@ -14,7 +14,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync, cpSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 // Der Vorflug laeuft nur im Kettenmodus — sein Fixture steht schon bereit.
@@ -43,6 +43,7 @@ function setupProjekt() {
   const dir = mkdtempSync(join(tmpdir(), "night-auto-memory-"));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
   // Die Salvage-Vorpruefung faehrt seit Issue #919 `checks.mjs run` im Zielprojekt,
   // damit sie denselben Nachweis hinterlaesst, den das Commit-Gate liest. Ohne die
   // Datei im Fixture gaebe es keine Pflicht-Pruefung und damit keinen Rettungsversuch.

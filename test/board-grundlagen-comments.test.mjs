@@ -12,7 +12,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { normalizeComments } from "../kit/board.mjs";
+import { normalizeComments } from "../kit/board/grundlagen.mjs";
 
 test("GitHub-Form: author.login und createdAt werden gemappt", () => {
   const raw = [
