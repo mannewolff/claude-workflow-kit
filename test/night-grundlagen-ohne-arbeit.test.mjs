@@ -6,9 +6,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { grundOhneArbeit, OHNE_ARBEIT_UNBEKANNT } from "../kit/night.mjs";
+import { grundOhneArbeit, OHNE_ARBEIT_UNBEKANNT } from "../kit/night/grundlagen.mjs";
 
-/** Die Grenze, die `nachtlaufMeldung` beim Kappen zieht (`NACHTLAUF_NOWORKREASON_MAX`, `kit/board.mjs`). */
+/** Die Grenze, die `nachtlaufMeldung` beim Kappen zieht (`NACHTLAUF_NOWORKREASON_MAX`, `kit/board/melder.mjs`). */
 const NOWORKREASON_MAX = 300;
 
 /** Ein Name, der deutlich ueber `OHNE_ARBEIT_NAME_MAX` (80) hinausgeht. */

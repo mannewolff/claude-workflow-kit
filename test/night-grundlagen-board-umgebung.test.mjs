@@ -9,7 +9,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { boardUmgebung } from "../kit/night.mjs";
+import { boardUmgebung } from "../kit/night/grundlagen.mjs";
 
 test("Die Umgebung der Board-Aufrufe traegt das Nacht-Budget", () => {
   const env = boardUmgebung({ PATH: "/usr/bin" });

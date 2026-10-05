@@ -1,12 +1,15 @@
-// Test fuer das --help-Flag des Nacht-Runners (Issue #151).
-// --help (und -h) zeigt die Usage und endet mit Exit 0, BEVOR Config-/Board-
-// Checks laufen — es funktioniert also auch ausserhalb eines Projekt-Roots.
-// Ein unbekanntes Argument endet weiterhin mit Exit 1 und verweist auf --help.
+// Ablauf-Pruefung: --help und --version antwortet der Einstieg kit/night.mjs vor dem Laden seiner Teile, auch als einzeln kopierte Datei — das zeigt nur ein Start als Programm.
+//
+// Test fuer das --help-Flag des Nacht-Runners (Issue #151) und die Zusage aus Issue #170.
+// --help (und -h) zeigt die Usage und endet mit Exit 0, BEVOR Config-/Board-Checks laufen —
+// es funktioniert also auch ausserhalb eines Projekt-Roots. Seit Issue #1224 beantwortet der
+// Einstieg beide Flags, bevor er kit/night/grundlagen.mjs laedt (Plan #1199, E2). Wie der
+// Parser ein unbekanntes Argument abweist, prueft night-grundlagen-argumente im selben Prozess.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -33,10 +36,25 @@ test("--help zeigt die Usage und endet mit Exit 0, auch ohne Projekt-Root", () =
   assert.match(res.stdout, /caffeinate/, "Usage zeigt das caffeinate-Beispiel nicht");
 });
 
-test("-h ist die Kurzform von --help", () => {
-  const res = runOutsideProject("-h");
+test("-h ist die Kurzform von --help, auch hinter einem anderen Flag", () => {
+  const res = runOutsideProject("--max", "3", "-h");
   assert.equal(res.status, 0, `-h haette mit Exit 0 enden muessen: ${res.stderr}`);
   assert.match(res.stdout, /--max/, "Kurzform zeigt die Usage nicht");
+});
+
+test("[night-6] --version und --help antworten auch als einzeln kopierte Datei ohne kit/night/", () => {
+  const dir = mkdtempSync(join(tmpdir(), "night-einzeln-"));
+  try {
+    copyFileSync(nightPath, join(dir, "night.mjs"));
+    const version = spawnSync(process.execPath, [join(dir, "night.mjs"), "--version"], { cwd: dir, encoding: "utf-8" });
+    assert.equal(version.status, 0, version.stderr);
+    assert.match(version.stdout, /^night\.mjs \(claude-workflow-kit v\d+\.\d+\.\d+\)\n$/);
+    const hilfe = spawnSync(process.execPath, [join(dir, "night.mjs"), "--help"], { cwd: dir, encoding: "utf-8" });
+    assert.equal(hilfe.status, 0, hilfe.stderr);
+    assert.match(hilfe.stdout, /^Nacht-Runner:/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("unbekanntes Argument endet mit Exit 1 und verweist auf --help", () => {

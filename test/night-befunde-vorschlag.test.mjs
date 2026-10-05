@@ -147,8 +147,8 @@ test("[night-70] board.mjs ist nicht der einzige Kit-Nachbar, den die Kette brau
   const quelle = readFileSync(new URL("../kit/night.mjs", import.meta.url), "utf-8");
   assert.match(quelle, /befunde\.mjs vorschlag/,
     "der Aufruf muss in kit/night.mjs stehen");
-  assert.match(quelle, /BEFUNDE_PATH = process\.env\.KIT_ROOT/,
-    "der Pfad folgt demselben KIT_ROOT-Weg wie Board, Aufwand und Wirksamkeit");
+  // Dass BEFUNDE_PATH demselben KIT_ROOT-Weg folgt wie Board, Aufwand und Wirksamkeit,
+  // belegt seit Issue #1224 night-grundlagen-pfade an den Konstanten selbst.
 });
 
 test("[night-70] board bleibt unberuehrt: die Fixture-Karten sind weiter lesbar", () => {

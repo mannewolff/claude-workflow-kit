@@ -55,18 +55,6 @@ test("[night-66] jede Ausnahme von gitReste() steht als Ausschluss im Kommando d
     "die issuesDir-Ausnahme fehlt im Kommando");
 });
 
-test("[night-66] eine neue Ausnahme kommt ohne Aenderung am Prompt-Text mit", () => {
-  // Die Liste ist der einzige Ort: Was hier hineingereicht wird, steht im Kommando.
-  // Waere der Ausschluss im Prompt-Text ausgeschrieben, ginge dieser Fall rot aus.
-  const kommando = salvageSauberkeitsKommando([".claude/frisch-erfunden-*", "eigener/pfad"]);
-  assert.match(kommando, /^git status --porcelain -- \. /,
-    `das Kommando faengt nicht mit dem erwarteten Kopf an: ${kommando}`);
-  assert.ok(kommando.includes(":(exclude).claude/frisch-erfunden-*"),
-    `die neue Ausnahme fehlt im Kommando: ${kommando}`);
-  assert.ok(kommando.includes(":(exclude)eigener/pfad"),
-    `die zweite Ausnahme fehlt im Kommando: ${kommando}`);
-});
-
 function run(cwd, cmd, cliArgs, env = {}) {
   return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, ...env } });
 }

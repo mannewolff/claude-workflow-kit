@@ -4,7 +4,7 @@
 // `aufwand.mjs auskunft` Transkripte mit derselben Regel misst wie der Runner den
 // Live-Strom. Dieser Test laesst beide Fassungen ueber dieselben Fixtures laufen und
 // zeigt, dass eine abweichende Kopie auffaellt. Er steht unter night-*, weil die Gruppe
-// `night-a*` bei Aenderungen an beiden Dateien laeuft (Bereiche aufwand und nachtrunner).
+// `night-a*` bei Aenderungen an beiden Dateien laeuft (Bereiche aufwand und nacht-einstieg).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

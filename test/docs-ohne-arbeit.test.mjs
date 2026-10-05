@@ -4,8 +4,9 @@
 // Geprueft wird zweierlei: dass der Absatz alle sechs Faelle beider Lauf-Arten, den
 // Vorrang der Rueckstellung, den Rueckfall-Satz und die Sonderstellung des nicht
 // schreibbaren Locks nennt — und dass jeder woertlich zitierte Fallsatz so auch in
-// `kit/night.mjs` steht. Eine Doku, die einen Wortlaut nur ungefaehr wiedergibt, laesst
-// den Leser morgens einen Satz suchen, den es nicht gibt.
+// `kit/night/grundlagen.mjs` steht, wo sie seit Issue #1224 gebildet werden. Eine Doku, die
+// einen Wortlaut nur ungefaehr wiedergibt, laesst den Leser morgens einen Satz suchen, den
+// es nicht gibt.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -17,7 +18,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
 const DOKU = lies("docs", "dokumentation.md");
-const NIGHT = lies("kit", "night.mjs");
+const NIGHT = lies("kit", "night", "grundlagen.mjs");
 
 /** Die Darstellung — ab der fetten Ueberschrift bis zum naechsten Thema. Sie umfasst
  *  mehrere Absaetze: die Faelle, den Vorrang und den Sonderfall des Locks. */
@@ -28,7 +29,7 @@ const ABSATZ = (() => {
   return DOKU.slice(start, ende === -1 ? undefined : ende);
 })();
 
-// Die Fallsaetze, in der Form, in der sie in night.mjs stehen. Fragmente statt ganzer
+// Die Fallsaetze, in der Form, in der sie in night/grundlagen.mjs stehen. Fragmente statt ganzer
 // Saetze, weil die Saetze dort aus Template-Literalen mit Zahlen und Labels entstehen:
 // woertlich vergleichbar ist nur der feste Teil.
 const FALLSAETZE = [
@@ -49,10 +50,10 @@ test("[docs-ohne-arbeit-1] der Absatz existiert und fuehrt den ueberholten Kette
   );
 });
 
-test("[docs-ohne-arbeit-2] jeder zitierte Fallsatz steht wortgleich in kit/night.mjs", () => {
+test("[docs-ohne-arbeit-2] jeder zitierte Fallsatz steht wortgleich in kit/night/grundlagen.mjs", () => {
   for (const [fall, satz] of FALLSAETZE) {
     assert.ok(ABSATZ.includes(satz), `der Absatz zitiert den Fall '${fall}' nicht (${satz})`);
-    assert.ok(NIGHT.includes(satz), `der zitierte Satz zum Fall '${fall}' steht nicht in kit/night.mjs`);
+    assert.ok(NIGHT.includes(satz), `der zitierte Satz zum Fall '${fall}' steht nicht in kit/night/grundlagen.mjs`);
   }
 });
 

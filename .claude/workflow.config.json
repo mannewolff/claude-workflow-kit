@@ -12,7 +12,7 @@
         "board-melder",
         "board-wiederholung",
         "installer",
-        "nachtrunner"
+        "nacht-einstieg"
       ]
     },
     {
@@ -22,12 +22,12 @@
         "board-adapter",
         "board-einstieg",
         "board-grundlagen",
-        "nachtrunner",
+        "nacht-einstieg",
         "pruefungen"
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/night-a*.test.mjs\" \"test/night-b*.test.mjs\" \"test/night-c*.test.mjs\" \"test/night-d*.test.mjs\" \"test/night-e*.test.mjs\" \"test/night-f*.test.mjs\" \"test/night-g*.test.mjs\" \"test/night-h*.test.mjs\" \"test/night-i*.test.mjs\" \"test/night-kennzahlen.test.mjs\" \"test/night-ki*.test.mjs\" \"test/night-kl*.test.mjs\" \"test/night-l*.test.mjs\" \"test/night-m*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/night-a*.test.mjs\" \"test/night-b*.test.mjs\" \"test/night-c*.test.mjs\" \"test/night-d*.test.mjs\" \"test/night-e*.test.mjs\" \"test/night-f*.test.mjs\" \"test/night-ga*.test.mjs\" \"test/night-ge*.test.mjs\" \"test/night-gi*.test.mjs\" \"test/night-gu*.test.mjs\" \"test/night-h*.test.mjs\" \"test/night-i*.test.mjs\" \"test/night-kennzahlen.test.mjs\" \"test/night-ki*.test.mjs\" \"test/night-kl*.test.mjs\" \"test/night-l*.test.mjs\" \"test/night-m*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "aufwand",
@@ -38,7 +38,7 @@
         "board-melder",
         "board-wiederholung",
         "installer",
-        "nachtrunner",
+        "nacht-einstieg",
         "preise",
         "pruefungen",
         "sync"
@@ -54,7 +54,7 @@
         "board-melder",
         "board-wiederholung",
         "installer",
-        "nachtrunner",
+        "nacht-einstieg",
         "pruefungen",
         "skills-doku",
         "wirksamkeit"
@@ -149,6 +149,16 @@
       ]
     },
     {
+      "cmd": "node --test --test-concurrency=2 \"test/night-grundlagen-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-adapter",
+        "board-melder",
+        "nacht-einstieg",
+        "nacht-grundlagen"
+      ]
+    },
+    {
       "cmd": "node --test --test-concurrency=2 \"test/ablauf-board-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
@@ -162,8 +172,16 @@
         "board-melder",
         "board-testhinweise",
         "board-wiederholung",
-        "nachtrunner",
+        "nacht-einstieg",
         "pruefungen"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/ablauf-night-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "nacht-einstieg",
+        "nacht-grundlagen"
       ]
     },
     {
@@ -195,7 +213,7 @@
         "board-grundlagen",
         "board-wiederholung",
         "installer",
-        "nachtrunner",
+        "nacht-einstieg",
         "preise",
         "pruefungen",
         "sync",
@@ -209,7 +227,7 @@
       "areas": [
         "board-einstieg",
         "board-grundlagen",
-        "nachtrunner"
+        "nacht-einstieg"
       ]
     },
     {
@@ -226,7 +244,7 @@
         "herkunft",
         "installer",
         "konfiguration",
-        "nachtrunner",
+        "nacht-einstieg",
         "preise",
         "pruefungen",
         "skills-doku",
@@ -247,7 +265,8 @@
         "einstellungen",
         "herkunft",
         "installer",
-        "nachtrunner",
+        "nacht-einstieg",
+        "nacht-grundlagen",
         "pruefungen",
         "skills-doku",
         "sync",
@@ -290,9 +309,37 @@
   },
   "installCommand": "npm ci",
   "checkAreas": {
-    "nachtrunner": [
+    "nacht-einstieg": [
       "kit/night.mjs",
-      "test/night-*.test.mjs",
+      "test/night-kette-*.test.mjs",
+      "test/night-a*.test.mjs",
+      "test/night-b*.test.mjs",
+      "test/night-c*.test.mjs",
+      "test/night-d*.test.mjs",
+      "test/night-e*.test.mjs",
+      "test/night-f*.test.mjs",
+      "test/night-ga*.test.mjs",
+      "test/night-ge*.test.mjs",
+      "test/night-gi*.test.mjs",
+      "test/night-gu*.test.mjs",
+      "test/night-h*.test.mjs",
+      "test/night-i*.test.mjs",
+      "test/night-kennzahlen.test.mjs",
+      "test/night-ki*.test.mjs",
+      "test/night-kl*.test.mjs",
+      "test/night-l*.test.mjs",
+      "test/night-m*.test.mjs",
+      "test/night-n*.test.mjs",
+      "test/night-o*.test.mjs",
+      "test/night-p*.test.mjs",
+      "test/night-r*.test.mjs",
+      "test/night-s*.test.mjs",
+      "test/night-t*.test.mjs",
+      "test/night-u*.test.mjs",
+      "test/night-v*.test.mjs",
+      "test/night-w*.test.mjs",
+      "test/night-z*.test.mjs",
+      "test/ablauf-night-*.test.mjs",
       "test/helpers/ergebnisstand-fixture.mjs",
       "test/helpers/kette-fixture.mjs",
       "test/helpers/kette-umsetzung-fixture.mjs",
@@ -300,6 +347,10 @@
       "test/helpers/zeilenenden.mjs",
       "test/fixtures/auskunft/**",
       "test/helpers/msys-zerlegen.mjs"
+    ],
+    "nacht-grundlagen": [
+      "kit/night/grundlagen.mjs",
+      "test/night-grundlagen-*.test.mjs"
     ],
     "board-einstieg": [
       "kit/board.mjs",

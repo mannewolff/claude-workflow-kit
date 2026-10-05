@@ -7,8 +7,8 @@
 //
 // Der Grund ist im Bestand bereits bekannt: Jeder der sieben Abbruchwege schreibt eine
 // brauchbare Log-Zeile. Diese Tests messen, dass sie am Ergebnisstand ankommt — je
-// Abbruchweg einer, dazu die Kuerzung der Restliste und die drei Lagen des
-// Sicherheitsnetzes.
+// Abbruchweg einer, dazu die Kuerzung der Restliste. Die drei Lagen des Sicherheitsnetzes
+// prueft seit Issue #1224 night-grundlagen-logging im selben Prozess.
 //
 // Was jeder Abbruchweg-Test prueft, ist dreiteilig: der Grund steht an der ERWARTETEN
 // STELLE (Einheit der betroffenen Karte, sonst Lauf), er traegt den PROTOKOLLTEXT, und
@@ -28,7 +28,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-import { sicherheitsnetzGrund, ERSATZ_GRUND, ANKER_FEHLT } from "../kit/night.mjs";
+import { ERSATZ_GRUND } from "../kit/night.mjs";
 
 // Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
 // kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
@@ -277,46 +277,4 @@ test("[night-11] ohne moeglichen Salvage traegt der Dirty-Fehlschlag seine Fehls
     assert.doesNotMatch(grund, /SALVAGE/, "ohne moeglichen Salvage darf sein Text nicht auftauchen");
     assert.match(grund, /uebrig\.txt/, `die liegengebliebene Datei fehlt: ${grund}`);
   }, ["false"]);
-});
-
-// --- Das Sicherheitsnetz in seinen drei Lagen ---
-//
-// Reine Funktion mit explizitem Laufzustand: `laufAbschliessen` ist nicht exportiert,
-// und ein kompletter Lauf je Lage waere drei Nachtlaeufe fuer eine Fallunterscheidung.
-
-test("[night-11] Sicherheitsnetz (a): ohne Grund und ohne gemerkten Stoppgrund entsteht der Ersatztext", () => {
-  const lauf = { einheiten: [{ id: "1", ausgang: "harterStopp" }] };
-  assert.equal(sicherheitsnetzGrund(lauf, ""), ERSATZ_GRUND);
-  assert.equal(sicherheitsnetzGrund(lauf, null), ERSATZ_GRUND);
-});
-
-test("[night-11] Sicherheitsnetz (b): ohne Grund, aber mit gemerktem Stoppgrund kommt dessen Text plus der Ankervermerk", () => {
-  const lauf = { einheiten: [{ id: "1", ausgang: "harterStopp" }] };
-  const netz = sicherheitsnetzGrund(lauf, "HARTER STOPP: irgendetwas ist passiert.");
-  assert.match(netz, /HARTER STOPP: irgendetwas ist passiert\./, "der gemerkte Text fehlt");
-  assert.ok(netz.includes(ANKER_FEHLT), `der Vermerk zum fehlenden Uebergabe-Anker fehlt: ${netz}`);
-  assert.notEqual(netz, ERSATZ_GRUND, "mit gemerktem Grund darf der reine Ersatztext nicht entstehen");
-});
-
-test("[night-11] Sicherheitsnetz (c): der Grund einer FREMDEN Einheit unterdrueckt das Netz nicht", () => {
-  // Eine begruendet uebersprungene Einheit hat mit dem spaeteren Stopp nichts zu tun.
-  // Zaehlte ihr Grund, bliebe der eigentliche Stopp fuer immer unbegruendet — und die
-  // Datei saehe vollstaendig aus.
-  const lauf = {
-    einheiten: [
-      { id: "1", ausgang: "uebersprungen", grund: "traegt bereits einen Issue-Review-Marker" },
-      { id: "2", ausgang: "harterStopp" },
-    ],
-  };
-  assert.equal(sicherheitsnetzGrund(lauf, ""), ERSATZ_GRUND);
-  // Auch der Verweis auf eine Einheit OHNE Grund rettet nicht.
-  assert.equal(sicherheitsnetzGrund({ ...lauf, fehlerEinheit: "2" }, ""), ERSATZ_GRUND);
-});
-
-test("[night-11] das Sicherheitsnetz schweigt, wo ein Grund vorliegt", () => {
-  const amLauf = { einheiten: [], fehlerText: "git status schlug fehl" };
-  assert.equal(sicherheitsnetzGrund(amLauf, "etwas anderes"), null, "ein Lauf-Fehlertext genuegt");
-
-  const anDerEinheit = { einheiten: [{ id: "7", grund: "der echte Grund" }], fehlerEinheit: "7" };
-  assert.equal(sicherheitsnetzGrund(anDerEinheit, "etwas anderes"), null, "die referenzierte Einheit genuegt");
 });

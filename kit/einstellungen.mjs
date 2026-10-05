@@ -961,13 +961,13 @@ export function teilFuer(pfad) {
 // Die heruntergeladene Datei hat keine Nachbardatei board.mjs, aus der sie importieren
 // könnte — darum eine dritte Kopie. test/workflow-config-merge.test.mjs hält alle drei gleich.
 
-// SYNC: dieselbe Liste in kit/board/grundlagen.mjs und kit/night.mjs — Änderungen dort nachziehen.
+// SYNC: dieselbe Liste in kit/board/grundlagen.mjs und kit/night/grundlagen.mjs — Änderungen dort nachziehen.
 const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewScope", "triggers", "toolbox.tokenFile"];
 
-// SYNC: dieselbe Zuordnung in kit/board/grundlagen.mjs und kit/night.mjs.
+// SYNC: dieselbe Zuordnung in kit/board/grundlagen.mjs und kit/night/grundlagen.mjs.
 const REVIEWER_PAAR = { reviewModel: "reviewCommand", reviewCommand: "reviewModel" };
 
-// SYNC: strukturgleich zu zerlegeAllowlist in kit/board/grundlagen.mjs und kit/night.mjs.
+// SYNC: strukturgleich zu zerlegeAllowlist in kit/board/grundlagen.mjs und kit/night/grundlagen.mjs.
 function zerlegeAllowlist(allowlist) {
   const erlaubteBlaetter = new Map();
   const erlaubteFelder = new Set();

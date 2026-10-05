@@ -206,13 +206,13 @@ function configRoot() {
 // Punkt-Pfade greifen am Blatt, nicht am Elternobjekt: `toolbox.tokenFile` darf nicht das
 // ganze toolbox-Objekt ersetzen. Genau dieser Fehler hat in Issue #188 den Mock-Host mit
 // weggeraeumt und zwanzig Tests still ohne Token laufen lassen.
-// SYNC: dieselbe Liste und Logik steckt in kit/night.mjs und kit/einstellungen.mjs — Aenderungen dort nachziehen.
+// SYNC: dieselbe Liste und Logik steckt in kit/night/grundlagen.mjs und kit/einstellungen.mjs — Aenderungen dort nachziehen.
 const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewScope", "triggers", "toolbox.tokenFile"];
 
 // Das Reviewer-Paar (Issue #432): genau eines von reviewModel und reviewCommand gilt.
 // Beide Felder sind persoenlich ueberschreibbar — waere nur eines davon in der Allowlist,
 // koennte jemand seinen Claude-Reviewer lokal setzen, seinen Kommando-Reviewer aber nicht.
-// SYNC: dieselbe Zuordnung steckt in kit/night.mjs und kit/einstellungen.mjs.
+// SYNC: dieselbe Zuordnung steckt in kit/night/grundlagen.mjs und kit/einstellungen.mjs.
 const REVIEWER_PAAR = { reviewModel: "reviewCommand", reviewCommand: "reviewModel" };
 
 /**
@@ -255,7 +255,7 @@ function zerlegeAllowlist(allowlist) {
  * dann schon fuer sich ungueltig, und eines davon wegzuwerfen wuerde den Fehler
  * verstecken statt ihn der Schema-Pruefung zu ueberlassen.
  *
- * SYNC: strukturgleich in kit/night.mjs.
+ * SYNC: strukturgleich in kit/night/grundlagen.mjs.
  */
 function setzePersoenlichesFeld(config, feld, wert, local) {
   config[feld] = wert;

@@ -20,7 +20,8 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 test("die Allowlist steht in board.mjs und night.mjs identisch", () => {
   // SYNC-Paar: board.mjs und night.mjs sind eigenstaendige Werkzeuge, die Liste ist
   // bewusst dupliziert. Dieser Test haelt die Kopien zusammen. Beim Board-Werkzeug steht
-  // sie seit Issue #1211 in seinem Teil kit/board/grundlagen.mjs.
+  // sie seit Issue #1211 in seinem Teil kit/board/grundlagen.mjs, beim Nacht-Runner
+  // seit Issue #1224 in kit/night/grundlagen.mjs.
   const listeAus = (datei) => {
     const quelle = readFileSync(join(repoRoot, "kit", datei), "utf-8");
     const treffer = quelle.match(/const LOCAL_OVERRIDE_ALLOWLIST = (\[[^\]]*\]);/);
@@ -29,7 +30,7 @@ test("die Allowlist steht in board.mjs und night.mjs identisch", () => {
   };
   const board = listeAus("board/grundlagen.mjs");
   assert.ok(board.includes("reviewCommand"), "reviewCommand fehlt in der Allowlist von board/grundlagen.mjs");
-  assert.deepEqual(listeAus("night.mjs"), board);
+  assert.deepEqual(listeAus("night/grundlagen.mjs"), board);
   // Seit Issue #676 die dritte Kopie: die heruntergeladene Einstellungs-Oberflaeche hat
   // keine Nachbardatei, aus der sie importieren koennte.
   assert.deepEqual(listeAus("einstellungen.mjs"), board);
@@ -42,7 +43,7 @@ test("[einstellungen-3] REVIEWER_PAAR steht in board.mjs, night.mjs und einstell
     assert.ok(treffer, `REVIEWER_PAAR nicht in kit/${datei} gefunden`);
     return treffer[1].replaceAll(/\s+/g, "");
   };
-  assert.equal(paarAus("night.mjs"), paarAus("board/grundlagen.mjs"));
+  assert.equal(paarAus("night/grundlagen.mjs"), paarAus("board/grundlagen.mjs"));
   assert.equal(paarAus("einstellungen.mjs"), paarAus("board/grundlagen.mjs"));
 });
 

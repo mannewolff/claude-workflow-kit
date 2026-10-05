@@ -276,6 +276,7 @@ const OHNE_LAUF = new Map([
   ["ablauf-wirksamkeit-cli.test.mjs", "legt nur einen Stub dieses Namens an, faehrt das echte nicht"],
   ["install-checks-blob.test.mjs", "faehrt nur --help, kein run"],
   ["night-checks-fehlt.test.mjs", "prueft gerade das FEHLEN von checks.mjs"],
+  ["night-grundlagen-pfade.test.mjs", "vergleicht nur die Pfadkonstanten der Grundlagen"],
   ["night-nachbarn-identitaet.test.mjs", "importiert checks.mjs als Modul"],
   ["skills-regeln-im-werkzeug.test.mjs", "liest den Quelltext"],
   ["sync-blobs-skills.test.mjs", "vergleicht Blobs"],
