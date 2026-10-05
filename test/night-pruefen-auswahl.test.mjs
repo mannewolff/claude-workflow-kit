@@ -7,7 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pruefLaufAusschluss, waehlePruefLaufKandidaten, KLAEREN_LABEL } from "../kit/night.mjs";
+import { pruefLaufAusschluss, waehlePruefLaufKandidaten, beanspruchtGrund, KLAEREN_LABEL } from "../kit/night.mjs";
 
 const LABEL = "kit:pruefen";
 
@@ -97,4 +97,28 @@ test("[night-906] max null ist kein Deckel", () => {
 test("[night-906] eine leere Liste ist kein Fehler", () => {
   const r = waehlePruefLaufKandidaten([], LABEL, null);
   assert.deepEqual(r, { kandidaten: [], uebersprungen: [], liegengeblieben: [] });
+});
+
+// --- Belegte Wurzeln (Plan #1113, E8; Issue #1189) ---
+
+test("[night-1189] eine belegte Wurzel wird mit dem Grund aus Kriterium 3 ausgelassen und verbraucht keinen Platz", () => {
+  const issues = [
+    karte(1, "[Fachlich] Belegt"),
+    karte(2, "[Fachlich] Frei"),
+    karte(3, "[Plan] Ein Weg"),
+  ];
+  const belegt = (F) => (F === "1" ? { karte: "1", laufId: "dort/42/2026-10-05-010000" } : null);
+  const r = waehlePruefLaufKandidaten(issues, LABEL, 1, { belegt });
+  assert.deepEqual(ids(r), ["2"], "die belegte Wurzel zaehlt nicht gegen --max");
+  assert.deepEqual(r.liegengeblieben, []);
+  assert.deepEqual(r.uebersprungen.map((u) => u.id), ["1", "3"]);
+  assert.equal(r.uebersprungen[0].grund, beanspruchtGrund("dort/42/2026-10-05-010000"));
+  assert.match(r.uebersprungen[1].grund, /\[Plan\]/, "die uebrigen Ausschlussgruende bleiben");
+});
+
+test("[night-1189] die Belegung wird nur fuer pruefbare Karten gefragt", () => {
+  const gefragt = [];
+  const belegt = (F) => { gefragt.push(F); return null; };
+  waehlePruefLaufKandidaten([karte(1, "[Fachlich] Frei"), karte(2, "[Plan] Ein Weg")], LABEL, null, { belegt });
+  assert.deepEqual(gefragt, ["1"]);
 });

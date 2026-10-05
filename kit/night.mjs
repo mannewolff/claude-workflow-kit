@@ -7804,15 +7804,22 @@ export function pruefLaufAusschluss(issue, label) {
  * `max` darf `null` sein (E9: kein Zahlendeckel, begrenzt wird ueber die Budgets); dann
  * werden alle Kandidaten geliefert. Ab `max` bleiben sie liegen — das ist kein Ausschluss
  * und steht darum in `liegengeblieben`, nicht in `uebersprungen`.
+ *
+ * Nach den eigenen Gruenden steht die belegte Wurzel wie bei der Kette (Plan #1113, E8;
+ * Issue #1189): Eine gekennzeichnete fachliche Anforderung ist ihre eigene Wurzel, und
+ * `belegt(F)` liefert ihren lebenden Halter `{ karte, laufId }` oder `null`. Auch sie
+ * verbraucht keinen Platz.
  */
-export function waehlePruefLaufKandidaten(issues, label, max) {
+export function waehlePruefLaufKandidaten(issues, label, max, { belegt = () => null } = {}) {
   const alle = (issues || []).filter((i) => (i?.labels || []).includes(label));
   const kandidaten = [];
   const uebersprungen = [];
   const liegengeblieben = [];
   const deckel = Number.isFinite(max) ? max : Infinity;
   for (const issue of alle) {
-    const grund = pruefLaufAusschluss(issue, label);
+    const ausschluss = pruefLaufAusschluss(issue, label);
+    const halter = ausschluss === null ? belegt(String(issue.id)) : null;
+    const grund = halter ? beanspruchtGrund(halter.laufId) : ausschluss;
     if (grund !== null) uebersprungen.push({ id: String(issue.id), title: issue.title ?? "", grund });
     else if (kandidaten.length >= deckel) liegengeblieben.push({ id: String(issue.id), title: issue.title ?? "" });
     else kandidaten.push(issue);
@@ -7831,9 +7838,36 @@ export function waehlePruefLaufKandidaten(issues, label, max) {
  *
  * Zwoelf Hexstellen, nicht die ganzen vierundsechzig: Verglichen wird er von Menschen, und
  * innerhalb eines Laufs unterscheidet dieser Anfang jede Fassung.
+ *
+ * Der Laufstand gehoert nicht zur Fassung (Issue #1189): Der lokale Tracker haengt ihn an den
+ * Body, und der Lauf schreibt ihn selbst zwischen Kandidatenliste und Session. Ohne den
+ * Abzug nennte die Liste eine andere Fassung als die Einheit, obwohl niemand den Text
+ * geaendert hat.
  */
 export function pruefLaufFassung(body) {
-  return createHash("sha256").update(String(body ?? "")).digest("hex").slice(0, 12);
+  const ohneLaufstand = String(body ?? "")
+    .split(new RegExp(`(?=${LOKALER_KOMMENTARKOPF.source})`))
+    .filter((teil) => !new RegExp(`^${LOKALER_KOMMENTARKOPF.source}## Laufstand`).test(teil))
+    .join("");
+  return createHash("sha256").update(ohneLaufstand).digest("hex").slice(0, 12);
+}
+
+// Der Laufstand einer geprueften Karte je Ausgang (E8); alles Uebrige ist `abgebrochen`.
+const PRUEFLAUF_STAND = { geprueft: "fertig", klaeren: "wartet" };
+
+/**
+ * Der Laufstand am Ende einer Karte des Prueflaufs (Plan #1113, E8; Issue #1189): `fertig`
+ * bei geprueft, `wartet` bei klaeren mit der Frage, `abgebrochen` mit Grund bei
+ * unvollstaendig und bei einer Karte, die der Lauf nach der Auswahl nicht mehr prueft —
+ * etwa am Kostendeckel. Rueckgabe `{ zustand, text }` fuer `standSetzen`.
+ */
+export function pruefLaufStand({ ausgang, frage, schritt, grund }) {
+  const zustand = PRUEFLAUF_STAND[ausgang] ?? "abgebrochen";
+  const kopf = `Pruefung beendet: ${ausgang} um ${new Date().toISOString()}`;
+  if (ausgang === "klaeren") return { zustand, text: `${kopf}\n\nWartende Entscheidung: ${ersteZeile(frage ?? "")}` };
+  if (zustand === "fertig") return { zustand, text: kopf };
+  const erreicht = schritt ? `, erreichter Schritt: ${schritt}` : "";
+  return { zustand, text: `${kopf}${erreicht}\n\n${grund ?? "ohne Grund"}` };
 }
 
 /** Die ersten Zeilen der beiden Kommentare, die eine Pruefung an der Karte hinterlaesst. */
@@ -10000,7 +10034,8 @@ export function beanspruchen(auftraege, {
 /**
  * Wer haelt welche Wurzel (Issue #1188)? Gelesen werden nur Karten mit dem Label `laeuft`,
  * die eine Wurzel tragen koennen: eine gekennzeichnete Karte, ihre fachliche Quelle und
- * die Plaene zu ihr. Rueckgabe ist `belegt(F)` fuer `waehleKettenKandidaten`.
+ * die Plaene zu ihr. Rueckgabe ist `belegt(F)` fuer `waehleKettenKandidaten` und
+ * `waehlePruefLaufKandidaten`.
  */
 function belegteWurzeln(alle, label) {
   const wurzeln = new Set();
@@ -10023,8 +10058,9 @@ function belegteWurzeln(alle, label) {
 /**
  * Der Vorab-Stand (Issue #1090, E17), seit #1188 das Beanspruchen mit Bestaetigung: Stirbt
  * der Lauf in der Vorabpruefung, zeigt die Karte, dass er sie angenommen hatte
- * (Belegfall 1). Nicht im Trockenlauf — er veraendert kein Label —, und nie im Prueflauf,
- * der diesen Weg nicht geht. Der Laufstand vorher steht danach am Auftrag (E10).
+ * (Belegfall 1). Nicht im Trockenlauf — er veraendert kein Label. Seit #1189 geht auch der
+ * Prueflauf diesen Weg, mit seinen Karten als eigene Wurzel. Der Laufstand vorher steht
+ * danach am Auftrag (E10).
  */
 function vorabStandSetzen(args, auftraege) {
   if (args.dryRun) return { beansprucht: auftraege, abgegeben: [] };
@@ -10199,6 +10235,7 @@ async function pruefeEineKarte(lauf, issue, nummer) {
   if (!vorher) {
     const grund = "die Karte ist nicht lesbar — es lief keine Session, das Kennzeichen bleibt";
     log(`Pruefung ${nummer}/${lauf.gesamt}: Issue #${id} uebersprungen (${grund}).`);
+    pruefLaufStandSetzen(id, { ausgang: "uebersprungen", grund });
     einheitErgaenzen(einheit, { ausgang: "uebersprungen", grund });
     return { id, titel, ausgang: "uebersprungen", grund };
   }
@@ -10237,9 +10274,9 @@ async function pruefeEineKarte(lauf, issue, nummer) {
     // fuer einen Abbruch sagen nichts, was einer nicht sagt.
     wartendVermerken(id, PRUEFLAUF_STUFE, s.schlusstext);
   } else if (ergebnis.ausgang === "unvollstaendig") {
-    const grund = s.abbruch ?? "die Session endete, ohne den Fachplan-Review-Marker zu setzen";
-    pruefLaufRestVermerken(id, grund, ergebnis.schritt, neueKommentare(vorher, nachher));
+    pruefLaufRestVermerken(id, s.abbruch ?? PRUEFLAUF_OHNE_MARKER, ergebnis.schritt, neueKommentare(vorher, nachher));
   }
+  pruefLaufStandSetzen(id, { ...ergebnis, grund: s.abbruch ?? PRUEFLAUF_OHNE_MARKER });
 
   einheitErgaenzen(einheit, {
     ausgang: ergebnis.ausgang,
@@ -10258,6 +10295,15 @@ async function pruefeEineKarte(lauf, issue, nummer) {
   const zusatz = s.abbruch ? ` — ${s.abbruch}` : "";
   log(`  Pruefung #${id}: ${ergebnis.ausgang}${zusatz} (${s.kosten.kostenSumme.toFixed(2)} $).`);
   return { id, titel, fassung, ...ergebnis, ...(s.abbruch ? { grund: s.abbruch } : {}) };
+}
+
+/** Der Grund einer unvollstaendigen Pruefung, deren Session ohne Abbruch endete. */
+const PRUEFLAUF_OHNE_MARKER = "die Session endete, ohne den Fachplan-Review-Marker zu setzen";
+
+/** Setzt den Laufstand einer Karte des Prueflaufs nach ihrem Ausgang (E8). */
+function pruefLaufStandSetzen(id, ergebnis) {
+  const { zustand, text } = pruefLaufStand(ergebnis);
+  standSetzen(id, zustand, text);
 }
 
 /**
@@ -10348,6 +10394,7 @@ async function pruefLaufRunden(lauf, kandidaten, ergebnisse) {
         const grund = `Kostenbudget: ${lauf.kosten.kostenSumme.toFixed(2)} $ von ${lauf.budget.kostenUsd} $ nach Pruefung ${nummer}`;
         for (const rest of kandidaten.slice(nummer)) {
           pruefLaufOhneSession(ergebnisse, rest.id, rest.title ?? "", "uebersprungen", grund);
+          pruefLaufStandSetzen(rest.id, { ausgang: "uebersprungen", grund });
         }
         return;
       }
@@ -10376,8 +10423,14 @@ export async function laufePrueflauf(args) {
   for (const p of worktreesAufraeumen(repoRoot, PRUEFLAUF_PRAEFIX)) log(`Liegengebliebenen Worktree entfernt: ${p}`);
 
   const alle = board("issue", "list");
-  const auswahl = waehlePruefLaufKandidaten(alle, budget.label, args.max);
-  const { kandidaten, uebersprungen } = auswahl;
+  const gewaehlt = waehlePruefLaufKandidaten(alle, budget.label, args.max, { belegt: belegteWurzeln(alle, budget.label) });
+  // Direkt nach der Auswahl beanspruchen wie die Kette (Plan #1113, E8): Erst damit sieht
+  // eine Kette oder ein zweiter Prueflauf, dass dieser Lauf die Wurzel haelt. Wer die
+  // Bestaetigung verliert, weicht wie eine belegte Wurzel.
+  const { beansprucht, abgegeben } = vorabStandSetzen(args, gewaehlt.kandidaten.map((karte) => ({ karte, F: String(karte.id) })));
+  const kandidaten = beansprucht.map((a) => a.karte);
+  const uebersprungen = [...gewaehlt.uebersprungen, ...abgegeben];
+  const auswahl = { ...gewaehlt, kandidaten, uebersprungen };
   const ergebnisse = [];
   pruefLaufAuswahlMelden(args, budget, alle, auswahl, ergebnisse);
 

@@ -171,7 +171,9 @@ test("[protokoll-schritt] mit --dry-run entsteht kein Vorab-Stand", () => {
   });
 });
 
-test("[protokoll-schritt] im Prueflauf entsteht kein Vorab-Stand", () => {
+// Seit Issue #1189 (Plan #1113, E8) beansprucht der Prueflauf seine Karte wie die Kette und
+// schliesst ihren Laufstand nach dem Ausgang ab — vorher setzte er keinen.
+test("[protokoll-schritt] der Prueflauf beansprucht seine Karte und schliesst den Laufstand ab", () => {
   mitProjekt((dir) => {
     const G = fachplan(dir, "[Fachlich] Zu pruefen", PRUEF_LABEL, false);
     const env = {
@@ -180,9 +182,9 @@ test("[protokoll-schritt] im Prueflauf entsteht kein Vorab-Stand", () => {
     };
     const res = run(dir, ["--pruefen"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-    assert.ok(!board(dir, "issue", "get", G).labels.some((l) => l.startsWith("lauf:")));
-    assert.ok(!kartenText(dir, G).includes("## Laufstand"));
-    assert.deepEqual(journal(dir).filter((z) => z.art === "stand"), []);
+    assert.ok(!board(dir, "issue", "get", G).labels.some((l) => l.startsWith("lauf:")), "fertig traegt kein Laufstand-Label");
+    assert.ok(kartenText(dir, G).includes("## Laufstand"));
+    assert.deepEqual(journal(dir).filter((z) => z.art === "stand").map((z) => z.zustand), ["laeuft", "fertig"]);
   }, {}, "night-protokoll-", { pruefLauf: PRUEF_BUDGET });
 });
 
