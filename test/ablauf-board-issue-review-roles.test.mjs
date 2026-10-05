@@ -1,3 +1,5 @@
+// Ablauf-Pruefung: Die entfallenen Optionen und Befehle werden ueber fail() mit Exit 1 abgewiesen, und die Hilfe gibt nur das gestartete kit/board.mjs aus; das belegt nur ein Prozess.
+//
 // `issue-review roles` und `reviewers` nach Stufe 2 des Prozess-Umbaus (Plan #638, A15;
 // Issue #641).
 //
@@ -5,7 +7,9 @@
 // nur noch `--stufe` und `--author`; `--issue`, `--rolle` und `--ausschluss` werden
 // abgewiesen statt still uebergangen, und die Antwort traegt weder `runden` noch
 // `verzicht` noch `vorgabeQuelle`. `reviewers` gibt kein `rounds` mehr aus. Die
-// entfallenen Kommandos `label-sync` und `synthese-check` sind unbekannte Befehle.
+// entfallenen Kommandos `label-sync` und `synthese-check` sind unbekannte Befehle. Die
+// Antworten ohne die entfallenen Felder stehen seit Issue #1221 im selben Prozess in
+// `test/board-issue-review-befehle.test.mjs`.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -39,24 +43,6 @@ function mitProjekt(fn, extra = {}) {
   }
 }
 
-test("[board-6] roles liefert Stufe, Besetzung, Rollen und Auswahl — ohne runden, verzicht und vorgabeQuelle", () => {
-  mitProjekt((dir) => {
-    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "plan", "--author", "claude-opus-5"]);
-    assert.equal(res.status, 0, res.stderr);
-    const out = JSON.parse(res.stdout);
-    assert.equal(out.stufe, "plan");
-    assert.equal(out.reviewer, 1);
-    assert.deepEqual(out.rollen, ["architektur-bestand"]);
-    assert.equal(out.stufenQuelle, "stufen");
-    assert.equal(out.autor, "claude-opus-5");
-    assert.deepEqual(out.gewaehlt.map((r) => r.name), ["sonnet"]);
-    assert.equal(out.autorAufgeloest, true);
-    for (const feld of ["runden", "verzicht", "vorgabeQuelle", "entfall", "ausschlussUnbekannt"]) {
-      assert.equal(feld in out, false, `${feld} darf nicht mehr ausgegeben werden`);
-    }
-  });
-});
-
 for (const [option, wert] of [["--issue", "1"], ["--rolle", "synthese"], ["--ausschluss", "fable"]]) {
   test(`[board-6] roles weist ${option} mit Exit 1 ab und nennt die beiden bleibenden Optionen`, () => {
     mitProjekt((dir) => {
@@ -67,16 +53,6 @@ for (const [option, wert] of [["--issue", "1"], ["--rolle", "synthese"], ["--aus
     });
   });
 }
-
-test("[board-6] reviewers gibt kein rounds mehr aus", () => {
-  mitProjekt((dir) => {
-    const res = runBoard(dir, ["issue-review", "reviewers", "--author", "opus"]);
-    assert.equal(res.status, 0, res.stderr);
-    const out = JSON.parse(res.stdout);
-    assert.deepEqual(out.gewaehlt.map((r) => r.name), ["sonnet", "fable"]);
-    assert.equal("rounds" in out, false);
-  });
-});
 
 for (const kommando of ["label-sync", "synthese-check"]) {
   test(`[board-6] ${kommando} ist ein unbekannter issue-review-Befehl`, () => {

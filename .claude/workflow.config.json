@@ -15,7 +15,7 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/board-ac*.test.mjs\" \"test/board-b*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-i*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-m*.test.mjs\" \"test/board-n*.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-u*.test.mjs\" \"test/cli-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/board-ac*.test.mjs\" \"test/board-b*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-m*.test.mjs\" \"test/board-n*.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-u*.test.mjs\" \"test/cli-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
@@ -115,6 +115,17 @@
       ]
     },
     {
+      "cmd": "node --test --test-concurrency=2 \"test/board-issue-review-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-adapter",
+        "board-dokumente",
+        "board-grundlagen",
+        "board-issue-review",
+        "board-wiederholung"
+      ]
+    },
+    {
       "cmd": "node --test --test-concurrency=2 \"test/ablauf-board-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
@@ -123,6 +134,7 @@
         "board-einstieg",
         "board-geschuetzt",
         "board-grundlagen",
+        "board-issue-review",
         "board-testhinweise",
         "board-wiederholung",
         "nachtrunner",
@@ -183,6 +195,7 @@
         "befunde",
         "board-einstieg",
         "board-grundlagen",
+        "board-issue-review",
         "einstellungen",
         "frischer-checkout",
         "herkunft",
@@ -318,6 +331,10 @@
     "board-testhinweise": [
       "kit/board/testhinweise.mjs",
       "test/board-testhinweise-*.test.mjs"
+    ],
+    "board-issue-review": [
+      "kit/board/issue-review.mjs",
+      "test/board-issue-review-*.test.mjs"
     ],
     "pruefungen": [
       "kit/checks.mjs",

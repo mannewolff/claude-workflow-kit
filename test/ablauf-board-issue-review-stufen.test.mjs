@@ -1,4 +1,8 @@
-// Stufen der Pruefung: reviewStufen-Config und `issue-review roles` (Issue #278).
+// Ablauf-Pruefung: Ein kaputter reviewStufen-Block und fehlende Optionen von roles brechen ueber fail() mit Exit 1 ab, und Hilfe und Kopfkommentar gehoeren zum gestarteten kit/board.mjs; das belegt nur ein Prozess.
+//
+// Stufen der Pruefung: reviewStufen-Config und `issue-review roles` (Issue #278). Die
+// Antworten von roles und die Kuerzung in pickReviewers stehen seit Issue #1221 im selben
+// Prozess in `test/board-issue-review-*.test.mjs`.
 //
 // Die Pruefung hat drei Stufen mit unterschiedlichen Blickwinkeln und unterschiedlicher
 // Besetzung: fachlich und Plan je zwei Reviewer, das Arbeitspaket nur noch einen. Wer
@@ -16,7 +20,6 @@ import { rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { setupProjekt, runBoard, repoRoot } from "./helpers/board-fixture.mjs";
-import { pickReviewers } from "../kit/board.mjs";
 
 const OPUS = { name: "opus", kind: "claude", model: "claude-opus-5" };
 const SONNET = { name: "sonnet", kind: "claude", model: "claude-sonnet-5" };
@@ -45,85 +48,7 @@ function mitStufen(reviewStufen, fn, issueReview = REVIEW) {
   }
 }
 
-// --- pickReviewers: Kuerzung auch im pairs-Zweig ---
-
-test("pickReviewers: ein pairs-Eintrag wird auf die Anzahl gekuerzt", () => {
-  // Ohne diese Kuerzung liefe die Stufe `issue` mit zwei Reviewern statt mit einem.
-  const { gewaehlt, quelle, unterbesetzt } = pickReviewers(ALLE, "opus", 1, { opus: ["codex", "sonnet"] });
-  assert.deepEqual(gewaehlt.map((r) => r.name), ["codex"]);
-  assert.equal(quelle, "pairs");
-  assert.equal(unterbesetzt, false);
-});
-
-test("pickReviewers: die Kuerzung haelt die konfigurierte Reihenfolge ein", () => {
-  const { gewaehlt } = pickReviewers(ALLE, "sonnet", 1, { sonnet: ["fable", "codex"] });
-  assert.deepEqual(gewaehlt.map((r) => r.name), ["fable"]);
-});
-
 // --- CLI: roles ---
-
-test("issue-review roles: die Stufe issue laeuft mit genau einem Reviewer", () => {
-  mitStufen(STUFEN, (dir) => {
-    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "issue", "--author", "claude-opus-5"]);
-    assert.equal(res.status, 0, res.stderr);
-    const out = JSON.parse(res.stdout);
-    assert.equal(out.stufe, "issue");
-    assert.equal(out.reviewer, 1);
-    assert.deepEqual(out.rollen, ["pruefbarkeit"]);
-    // Der Punkt des Vorhabens: pairs.opus nennt zwei Namen, gewaehlt wird genau einer.
-    assert.equal(out.gewaehlt.length, 1);
-    assert.deepEqual(out.gewaehlt.map((r) => r.name), ["codex"]);
-  });
-});
-
-test("issue-review roles: fachlich und plan laufen mit zwei Reviewern", () => {
-  mitStufen(STUFEN, (dir) => {
-    for (const [stufe, rollen] of [["fachlich", STUFEN.fachlich.rollen], ["plan", STUFEN.plan.rollen]]) {
-      const out = JSON.parse(runBoard(dir, ["issue-review", "roles", "--stufe", stufe, "--author", "opus"]).stdout);
-      assert.equal(out.reviewer, 2, stufe);
-      assert.deepEqual(out.rollen, rollen, stufe);
-      assert.equal(out.gewaehlt.length, 2, stufe);
-    }
-  });
-});
-
-test("issue-review roles: die Modell-ID des Autors wird aufgeloest und schliesst ihn aus", () => {
-  mitStufen(STUFEN, (dir) => {
-    const out = JSON.parse(runBoard(dir, ["issue-review", "roles", "--stufe", "fachlich", "--author", "claude-opus-5"]).stdout);
-    assert.equal(out.autor, "claude-opus-5");
-    assert.equal(out.autorAufgeloest, true);
-    assert.equal(out.quelle, "pairs", "pairs.opus greift ueber die aufgeloeste Modell-ID");
-    assert.ok(!out.gewaehlt.some((r) => r.name === "opus"), "der Autor darf nicht sein eigener Reviewer sein");
-  });
-});
-
-test("issue-review roles: quelle bleibt die Auswahlquelle, stufenQuelle ist ein eigenes Feld", () => {
-  mitStufen(STUFEN, (dir) => {
-    const ausPairs = JSON.parse(runBoard(dir, ["issue-review", "roles", "--stufe", "plan", "--author", "opus"]).stdout);
-    assert.equal(ausPairs.quelle, "pairs");
-    assert.equal(ausPairs.stufenQuelle, "stufen");
-    // fable steht nicht in pairs -> die Reihenfolge-Regel waehlt.
-    const ausRegel = JSON.parse(runBoard(dir, ["issue-review", "roles", "--stufe", "plan", "--author", "fable"]).stdout);
-    assert.equal(ausRegel.quelle, "regel");
-    assert.equal(ausRegel.stufenQuelle, "stufen");
-  });
-});
-
-test("issue-review roles: ohne reviewStufen-Block gilt fuer jede Stufe die Rueckfallebene", () => {
-  // Ein Kit-Update darf keinem Bestandsprojekt den Review umbauen — dieselbe Vorsicht
-  // wie bei requiredBeforeReady, das per Default aus ist.
-  mitStufen(null, (dir) => {
-    for (const stufe of ["fachlich", "plan", "issue"]) {
-      const res = runBoard(dir, ["issue-review", "roles", "--stufe", stufe, "--author", "opus"]);
-      assert.equal(res.status, 0, res.stderr);
-      const out = JSON.parse(res.stdout);
-      assert.equal(out.reviewer, 2, stufe);
-      assert.deepEqual(out.rollen, ["vollstaendigkeit-pruefbarkeit", "scope-risiko-bestand"], stufe);
-      assert.equal(out.stufenQuelle, "default", stufe);
-      assert.equal(out.gewaehlt.length, 2, stufe);
-    }
-  });
-});
 
 test("issue-review roles: eine unbekannte Stufe bricht ab", () => {
   mitStufen(STUFEN, (dir) => {
@@ -214,23 +139,6 @@ test("reviewStufen: ein Block, der kein Objekt ist, bricht ab", () => {
     const res = runBoard(dir, ["issue-review", "roles", "--stufe", "fachlich", "--author", "opus"]);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /reviewStufen/);
-  });
-});
-
-// --- Bestandsverhalten ---
-
-test("issue-review reviewers, check und matrix laufen mit reviewStufen unveraendert", () => {
-  mitStufen(STUFEN, (dir) => {
-    const reviewers = JSON.parse(runBoard(dir, ["issue-review", "reviewers", "--author", "opus"]).stdout);
-    assert.deepEqual(reviewers.gewaehlt.map((r) => r.name), ["codex", "sonnet"]);
-    assert.equal(reviewers.quelle, "pairs");
-    assert.equal(reviewers.stufenQuelle, undefined, "reviewers kennt keine Stufen");
-
-    const check = JSON.parse(runBoard(dir, ["issue-review", "check", "--nur-pfad"]).stdout);
-    assert.equal(check.reviewers.length, 4);
-
-    const { matrix } = JSON.parse(runBoard(dir, ["issue-review", "matrix"]).stdout);
-    assert.deepEqual(matrix.find((m) => m.autor === "opus").reviewer, ["codex", "sonnet"]);
   });
 });
 

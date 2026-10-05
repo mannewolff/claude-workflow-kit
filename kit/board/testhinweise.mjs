@@ -6,8 +6,8 @@
  * Ein Teil von kit/board.mjs. Der Einstieg laedt ihn erst nach der Auskunft ueber
  * --version und --help und exportiert seine Namen unveraendert weiter. Dieser Teil
  * importiert nie aus dem Einstieg: Der Einstieg laedt die Teile, ein Rueckimport waere
- * ein Zyklus. `pruefeForm` bleibt im Einstieg, weil es die Stufe ueber `stufeAusTitel`
- * aus dem noch nicht ausgelagerten Teil issue-review bestimmt.
+ * ein Zyklus. `pruefeForm` bleibt im Einstieg; es bestimmt die Stufe ueber `stufeAusTitel`
+ * aus dem Teil issue-review.
  *
  * Bewusst ohne eigene KIT_VERSION (Plan #1199, E19): Die Teile kommen im selben
  * Verzeichnis-Blob wie der Einstieg und werden nie einzeln verteilt.

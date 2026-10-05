@@ -186,7 +186,7 @@ export function pruefeSchema(wert, schema = SCHEMA) {
 // Das Schema kennt nur das Reviewer-Paar als Regel über zwei Felder. Diese Regeln brechen
 // heute erst im Lauf; die Oberfläche soll sie vor dem Speichern nennen.
 
-// SYNC: Laufzeitregel in kit/board.mjs, validateReviewStufen — rollen.length gleich reviewer.
+// SYNC: Laufzeitregel in kit/board/issue-review.mjs, validateReviewStufen — rollen.length gleich reviewer.
 function regelRollenzahl(config) {
   const out = [];
   for (const [stufe, eintrag] of Object.entries(istObjekt(config.reviewStufen) ? config.reviewStufen : {})) {
@@ -198,7 +198,7 @@ function regelRollenzahl(config) {
   return out;
 }
 
-// Rein eine Hilfe der Oberfläche (Plan #721, Kriterium 4a) — kit/board.mjs prüft
+// Rein eine Hilfe der Oberfläche (Plan #721, Kriterium 4a) — kit/board/issue-review.mjs prüft
 // Rollennamen nicht gegen den Katalog, nur ihre Zahl, dass sie nicht leer und nicht doppelt
 // sind. Ein Name außerhalb des Katalogs bricht deshalb nichts im Nachtbetrieb; er hat nur
 // keinen Prompt in issue-review.
@@ -216,7 +216,7 @@ function regelRollenKatalog(config) {
   return out;
 }
 
-// SYNC: Laufzeitregel in kit/board.mjs, validatePairs — Namen aus reviewers, kein Autor prüft sich selbst.
+// SYNC: Laufzeitregel in kit/board/issue-review.mjs, validatePairs — Namen aus reviewers, kein Autor prüft sich selbst.
 function regelPaare(config) {
   const block = istObjekt(config.issueReview) ? config.issueReview : {};
   const bekannt = new Set((Array.isArray(block.reviewers) ? block.reviewers : []).map((r) => r?.name));
@@ -231,7 +231,7 @@ function regelPaare(config) {
   return out;
 }
 
-// SYNC: Laufzeitregel in kit/board.mjs, validateReviewers — dieselben drei Fälle, an denen
+// SYNC: Laufzeitregel in kit/board/issue-review.mjs, validateReviewers — dieselben drei Fälle, an denen
 // sie hart abbricht. `kind` fehlt hier bewusst: Das Schema führt an dem Feld ein `enum` und
 // meldet einen falschen Wert schon selbst. Ohne diese Regel speichert die Oberfläche eine
 // Config, die gültig aussieht und an der /issue-review danach abbricht (Issue #816).
@@ -540,7 +540,7 @@ export function zusatzregeln(config) {
  * Die Rollennamen, die eine Prüfstufe kennt — die Oberfläche bietet sie zur Wahl an.
  *
  * Nachbau statt Import: Diese Datei wird einzeln ausgeliefert und hat keine Nachbardatei.
- * Die beiden Vorgaberollen aus `REVIEW_STUFEN_DEFAULT` in `kit/board.mjs` stehen bewusst
+ * Die beiden Vorgaberollen aus `REVIEW_STUFEN_DEFAULT` in `kit/board/issue-review.mjs` stehen bewusst
  * nicht hier — sie sind die Bestandsvorgabe einer Config ohne `reviewStufen`-Block, keine
  * Rolle, zu der es einen Prompt gäbe (E5).
  */
@@ -573,7 +573,7 @@ function autorNachName(alle, autor) {
  * Nachbardatei zum Importieren. Gleich gehalten über den `SYNC:`-Kommentar auf beiden Seiten
  * und test/einstellungen-wirkung.test.mjs, das beide Fassungen gegeneinander hält.
  */
-// SYNC: das Original ist pickReviewers in kit/board.mjs — Änderungen dort nachziehen.
+// SYNC: das Original ist pickReviewers in kit/board/issue-review.mjs — Änderungen dort nachziehen.
 export function waehleReviewer(reviewers, autor, anzahl = 2, pairs = {}) {
   const alle = reviewers || [];
   const aufgeloest = autorNachName(alle, autor);
@@ -1485,13 +1485,13 @@ export function speichere(projekt, auftrag, optionen) {
 // und nicht im Browser-Skript, weil `SEITEN_SKRIPT` ein Zeichenketten-Literal ist, das kein
 // Test ausführt — dort läge die einzige Fassung dieser Regeln, die niemand prüft.
 
-// SYNC: REVIEW_STUFEN und REVIEW_STUFEN_DEFAULT in kit/board.mjs — Änderungen dort nachziehen.
+// SYNC: REVIEW_STUFEN und REVIEW_STUFEN_DEFAULT in kit/board/issue-review.mjs — Änderungen dort nachziehen.
 const STUFEN = ["fachlich", "plan", "issue"];
 const STUFEN_VORGABE = { reviewer: 2, rollen: ["vollstaendigkeit-pruefbarkeit", "scope-risiko-bestand"] };
 
 /**
  * Die Vorgabe für `reviewStufen` als Ganzes, wenn der Block in der Datei fehlt — dieselbe
- * Bestandsvorgabe für jede Stufe wie `REVIEW_STUFEN_DEFAULT` in `kit/board.mjs`. Sie steht
+ * Bestandsvorgabe für jede Stufe wie `REVIEW_STUFEN_DEFAULT` in `kit/board/issue-review.mjs`. Sie steht
  * als `vorgabe` am Eintrag des Pfads (Plan #721 E5), genau wie jeder andere Vorgabewert.
  */
 const REVIEW_STUFEN_VORGABE = Object.fromEntries(STUFEN.map((s) => [s, STUFEN_VORGABE]));
