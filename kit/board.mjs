@@ -1774,6 +1774,19 @@ export function agentModelHeader(env = process.env) {
   return model ? { "X-Agent-Model": model } : {};
 }
 
+/**
+ * Laufkennung fuer Board-Requests (Issue #1194). Reine Funktion ueber der Umgebung wie
+ * agentModelHeader: Ist KIT_NIGHT_RUN gesetzt (der Nacht-Runner setzt es auf den `start`
+ * seines Ergebnisstands, denselben Wert, den die Laufmeldung als `startedAt` sendet),
+ * tragen die Requests den Header X-Night-Run. Daran ordnet das Board jede Aktivitaet
+ * ihrem Lauf zu, auch wenn zwei Laeufe mit demselben Token gleichzeitig schreiben.
+ * Ohne die Variable — in jeder interaktiven Session — bleibt er weg.
+ */
+export function nightRunHeader(env = process.env) {
+  const lauf = (env.KIT_NIGHT_RUN || "").trim();
+  return lauf ? { "X-Night-Run": lauf } : {};
+}
+
 // ============================================================
 // Wiederholung gegen Ueberlast (Issue #834)
 // ============================================================
@@ -1990,7 +2003,8 @@ export function wiederholKommando(schluessel, argv = process.argv) {
  * Auth: Token per resolveToolboxToken() (TBX_TOKEN > toolbox.tokenFile > globaler tbx-Login,
  * #135); Host aus ~/.config/toolbox-cli/config.json (dieselbe Quelle wie das tbx-CLI, #367),
  * per config.toolbox.host ueberschreibbar. Alle Aufrufe tragen den Header X-Kanban-Token,
- * im Nachtbetrieb zusaetzlich X-Agent-Model als Selbstauskunft (siehe agentModelHeader).
+ * im Nachtbetrieb zusaetzlich X-Agent-Model als Selbstauskunft (siehe agentModelHeader) und
+ * X-Night-Run als Laufkennung (siehe nightRunHeader).
  *
  * number vs. DB-id: Der Workflow adressiert Issues ueber die Board-Anzeigenummer (#N). Move/Comment
  * brauchen die DB-id aus der Item-Response; sie wird intern per Board-Fetch aufgeloest.
@@ -2046,7 +2060,7 @@ export class ToolboxIssueTracker {
     const { host, token } = this._auth();
     const { idempotencyKey, ...rest } = options;
     const method = (rest.method || "GET").toUpperCase();
-    const headers = { ...rest.headers, "X-Kanban-Token": token, ...agentModelHeader() };
+    const headers = { ...rest.headers, "X-Kanban-Token": token, ...agentModelHeader(), ...nightRunHeader() };
     if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
     const budget = toolboxBudgetMs();
     const frist = this._jetzt() + budget;

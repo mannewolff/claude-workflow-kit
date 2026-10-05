@@ -2888,6 +2888,16 @@ function kitStandUmgebung() {
   return KIT_STAND_LAUF ? { KIT_STAND: KIT_STAND_LAUF.commit, KIT_STAND_PFAD: KIT_STAND_LAUF.pfad } : {};
 }
 
+/**
+ * Die Laufkennung jeder Sitzung (Issue #1194): `KIT_NIGHT_RUN` ist der `start` des
+ * Ergebnisstands, unveraendert als ISO-Zeitstempel — derselbe Wert, den die Laufmeldung
+ * als `startedAt` sendet. board.mjs schickt ihn als Header X-Night-Run mit, und das Board
+ * ordnet daran jede Karte ihrem Lauf zu. Leer ohne Ergebnisstand (--dry-run).
+ */
+function laufKennungUmgebung() {
+  return LAUF?.start ? { KIT_NIGHT_RUN: LAUF.start } : {};
+}
+
 /** Das Feld `kitStand` des Laufberichts (A7): `{ commit, ref, commitZeit }` oder `null`. */
 function kitStandFeld() {
   if (!KIT_STAND_LAUF) return null;
@@ -5475,6 +5485,9 @@ export async function runSession(issueId, args, opts = {}) {
       // Der feste Kit-Stand des Laufs (Issue #1102, A2): Commit-Hook und board.mjs der
       // Session fragen ihn zusammen mit der Markierung des Baums ab.
       ...kitStandUmgebung(),
+      // Die Laufkennung (Issue #1194): Das Board ordnet daran die Karten dieser Session
+      // ihrem Lauf zu, auch wenn ein zweiter Lauf mit demselben Token parallel schreibt.
+      ...laufKennungUmgebung(),
       // Die zweite Haelfte der Werkzeugsperre (Issue #668): Ohne `Monitor` faehrt die
       // Session ihren Pflichtcheck im Vordergrund — und liefe dann in das Zeitlimit des
       // Bash-Werkzeugs, das bei zehn Minuten endet. Ein voller `mvn verify` mit
@@ -6807,7 +6820,7 @@ async function runVorflugSession(args, prompt) {
   const gestartet = Date.now();
   const res = startfehler ? keinStart(startfehler) : await runProcess(cmd, cmdArgs, {
     issueId: "vorflug", timeoutMs, useStream: false, gitBash,
-    extraEnv: { ...umgebung, NIGHT_PROMPT: prompt, KIT_AGENT_MODEL: VORFLUG_MODEL, NIGHT_VORFLUG: "1" },
+    extraEnv: { ...umgebung, NIGHT_PROMPT: prompt, KIT_AGENT_MODEL: VORFLUG_MODEL, NIGHT_VORFLUG: "1", ...laufKennungUmgebung() },
   });
   if (LOG_FILE) {
     appendFileSync(LOG_FILE, `--- Vorflug-Session ---\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
