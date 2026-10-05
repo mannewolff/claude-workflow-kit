@@ -58,13 +58,6 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/board-ge*.test.mjs\"",
-      "gleichzeitig": true,
-      "areas": [
-        "board-einstieg"
-      ]
-    },
-    {
       "cmd": "node --test --test-concurrency=2 \"test/board-grundlagen-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
@@ -99,12 +92,24 @@
       ]
     },
     {
+      "cmd": "node --test --test-concurrency=2 \"test/board-geschuetzt-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-adapter",
+        "board-dokumente",
+        "board-geschuetzt",
+        "board-grundlagen",
+        "board-wiederholung"
+      ]
+    },
+    {
       "cmd": "node --test --test-concurrency=2 \"test/ablauf-board-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
         "board-dokumente",
         "board-einstieg",
+        "board-geschuetzt",
         "board-grundlagen",
         "board-wiederholung",
         "nachtrunner",
@@ -252,7 +257,6 @@
       "test/board-ac*.test.mjs",
       "test/board-b*.test.mjs",
       "test/board-c*.test.mjs",
-      "test/board-ge*.test.mjs",
       "test/board-i*.test.mjs",
       "test/board-k*.test.mjs",
       "test/board-l*.test.mjs",
@@ -293,6 +297,10 @@
     "board-dokumente": [
       "kit/board/dokumente.mjs",
       "test/board-dokumente-*.test.mjs"
+    ],
+    "board-geschuetzt": [
+      "kit/board/geschuetzt.mjs",
+      "test/board-geschuetzt-*.test.mjs"
     ],
     "pruefungen": [
       "kit/checks.mjs",

@@ -1,7 +1,7 @@
 // Die Erkennung geschuetzter Pfade (Issue #1041, Plan #987, Verifizierung 1).
 //
 // Zwei Naechte endeten hart, weil ein Paket eine Datei aendern sollte, die nur ein Mensch
-// schreiben darf. Diese Datei prueft das Fundament: die eine Stelle in kit/board.mjs, die
+// schreiben darf. Diese Datei prueft das Fundament: die eine Stelle in kit/board/geschuetzt.mjs, die
 // entscheidet, ob ein Paket einen geschuetzten Pfad beim Namen nennt. Formgates, Kommando
 // und Runner-Gate bauen darauf auf und pruefen sich in eigenen Dateien.
 //
@@ -21,7 +21,7 @@ import {
   trifftGeschuetzt,
   pfadTokens,
   geschuetzteTreffer,
-} from "../kit/board.mjs";
+} from "../kit/board/geschuetzt.mjs";
 
 const TICK = "`";
 const ERSTER = GESCHUETZTE_PFADE[0];
@@ -31,6 +31,7 @@ const PRUEFEINSTELLUNGEN = [".claude", "workflow.config.json"].join("/");
 // zaehlt jede Erwaehnung eines Quellpfads und hielte diese Datei sonst fuer einen Test des
 // Pruefkommandos, den es nicht laedt.
 const KOPIE_AUFRUF = ["node .claude/kit", "checks.mjs run"].join("/");
+const BOARD_QUELLE = ["kit", "board.mjs"].join("/");
 
 function leereWurzel() {
   return mkdtempSync(join(tmpdir(), "geschuetzt-leer-"));
@@ -64,10 +65,10 @@ test("[board-1041] die Vorgabeliste fuehrt Einstellungsdateien und das Hook-Verz
 
 test("[board-1041] die installierte Kopie trifft Werkzeuge, Skills und die CLAUDE-Dokumente, nicht die Quelle", () => {
   const trifftKopie = (token) => KOPIE_PFADE.some((e) => trifftGeschuetzt(token, e));
-  assert.equal(trifftKopie(".claude/kit/board.mjs"), true);
+  assert.equal(trifftKopie(`.claude/${BOARD_QUELLE}`), true);
   assert.equal(trifftKopie(".claude/skills/task/SKILL.md"), true);
   assert.equal(trifftKopie(".claude/CLAUDE-workflow.md"), true);
-  assert.equal(trifftKopie("kit/board.mjs"), false);
+  assert.equal(trifftKopie(BOARD_QUELLE), false);
   assert.equal(trifftKopie("skills/task/SKILL.md"), false);
   assert.equal(trifftKopie(".claude/CLAUDE.md"), false);
 });
@@ -98,7 +99,7 @@ test("[board-1041] trifftGeschuetzt: ein Glob aus deny trifft nach seinen Regeln
 
 test("[board-1041] trifftGeschuetzt: ein fremder Pfad trifft nicht", () => {
   for (const eintrag of GESCHUETZTE_PFADE) {
-    assert.equal(trifftGeschuetzt("kit/board.mjs", eintrag), false, eintrag);
+    assert.equal(trifftGeschuetzt(BOARD_QUELLE, eintrag), false, eintrag);
     assert.equal(trifftGeschuetzt(PRUEFEINSTELLUNGEN, eintrag), false, eintrag);
   }
   assert.equal(trifftGeschuetzt("/anders/x.txt", "/abs/**"), false);
@@ -166,9 +167,9 @@ test("[board-1041] eine unlesbare Einstellungsdatei liefert nur die Vorgabeliste
 // --- pfadTokens (E3) ----------------------------------------------------------
 
 test("[board-1041] pfadTokens liefert Backtick-Spans ohne Leerzeichen samt Zeile", () => {
-  const zeile = `Aendere ${TICK}kit/board.mjs${TICK} und ${TICK}node x.mjs run${TICK} sowie ${TICK}${TICK}a${TICK}b${TICK}${TICK}.`;
+  const zeile = `Aendere ${TICK}${BOARD_QUELLE}${TICK} und ${TICK}node x.mjs run${TICK} sowie ${TICK}${TICK}a${TICK}b${TICK}${TICK}.`;
   assert.deepEqual(pfadTokens([zeile, "ohne Token", `offen ${TICK}nie zu`]), [
-    { token: "kit/board.mjs", zeile, genannt: false },
+    { token: BOARD_QUELLE, zeile, genannt: false },
     { token: `a${TICK}b`, zeile, genannt: false },
   ]);
 });
@@ -264,7 +265,7 @@ test("[board-1041] deny-Muster der Wurzel greifen, relativ wie absolut genannt",
   try {
     const relativ = `- ${TICK}config/geheim.json${TICK} anpassen`;
     const absolut = `- ${TICK}${join(wurzel, "config/zwei.json")}${TICK} anpassen`;
-    const fremd = `- ${TICK}/abs/datei.txt${TICK} und ${TICK}kit/board.mjs${TICK}`;
+    const fremd = `- ${TICK}/abs/datei.txt${TICK} und ${TICK}${BOARD_QUELLE}${TICK}`;
     const body = paket({ aufgabe: [relativ, absolut, fremd].join("\n") });
     assert.deepEqual(geschuetzteTreffer(body, "Ein Paket", wurzel), [
       { pfad: "config/geheim.json", zeile: relativ },
@@ -304,7 +305,7 @@ test("[board-1041] ein leerer Body ergibt keine Treffer", () => {
 // einen Pfad unter der Wurzel an `${basis}/` und liess die relative Form weg; die relativ
 // normalisierte Sperrliste griff nicht. Geprueft mit `path.win32`, damit der Fall auch hier laeuft.
 test("[1124] tokenFormen liefert unter Windows die relative Form mit Schraegstrich", async () => {
-  const { tokenFormen } = await import("../kit/board.mjs");
+  const { tokenFormen } = await import("../kit/board/geschuetzt.mjs");
   const path = await import("node:path");
   const formen = tokenFormen(String.raw`C:\repo\config\zwei.json`, String.raw`C:\repo`, path.win32);
   assert.ok(formen.includes("config/zwei.json"), `relative Form fehlt: ${JSON.stringify(formen)}`);
@@ -313,7 +314,7 @@ test("[1124] tokenFormen liefert unter Windows die relative Form mit Schraegstri
 });
 
 test("[1124] ein Pfad ausserhalb der Wurzel bekommt keine relative Form", async () => {
-  const { tokenFormen } = await import("../kit/board.mjs");
+  const { tokenFormen } = await import("../kit/board/geschuetzt.mjs");
   const path = await import("node:path");
   const formen = tokenFormen(String.raw`D:\anderswo\zwei.json`, String.raw`C:\repo`, path.win32);
   assert.ok(!formen.some((f) => f.startsWith("..") || f === "anderswo/zwei.json"), `unerwartete relative Form: ${JSON.stringify(formen)}`);
