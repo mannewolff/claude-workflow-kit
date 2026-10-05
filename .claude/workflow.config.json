@@ -7,12 +7,13 @@
       "gleichzeitig": true,
       "areas": [
         "board-einstieg",
+        "board-wiederholung",
         "installer",
         "nachtrunner"
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/board-a*.test.mjs\" \"test/board-b*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-d*.test.mjs\" \"test/board-i*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-m*.test.mjs\" \"test/board-n*.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-t*.test.mjs\" \"test/board-u*.test.mjs\" \"test/board-w*.test.mjs\" \"test/cli-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/board-a*.test.mjs\" \"test/board-b*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-d*.test.mjs\" \"test/board-i*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-m*.test.mjs\" \"test/board-n*.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-t*.test.mjs\" \"test/board-u*.test.mjs\" \"test/board-we*.test.mjs\" \"test/cli-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-einstieg",
@@ -27,6 +28,7 @@
         "aufwand",
         "befunde",
         "board-einstieg",
+        "board-wiederholung",
         "installer",
         "nachtrunner",
         "preise",
@@ -39,6 +41,7 @@
       "gleichzeitig": true,
       "areas": [
         "board-einstieg",
+        "board-wiederholung",
         "installer",
         "nachtrunner",
         "pruefungen",
@@ -61,11 +64,20 @@
       ]
     },
     {
+      "cmd": "node --test --test-concurrency=2 \"test/board-wiederholung-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-grundlagen",
+        "board-wiederholung"
+      ]
+    },
+    {
       "cmd": "node --test --test-concurrency=2 \"test/ablauf-board-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-einstieg",
-        "board-grundlagen"
+        "board-grundlagen",
+        "board-wiederholung"
       ]
     },
     {
@@ -95,6 +107,7 @@
         "befunde",
         "board-einstieg",
         "board-grundlagen",
+        "board-wiederholung",
         "installer",
         "nachtrunner",
         "preise",
@@ -196,7 +209,8 @@
       "test/helpers/kette-umsetzung-fixture.mjs",
       "test/helpers/kitstand-fixture.mjs",
       "test/helpers/zeilenenden.mjs",
-      "test/fixtures/auskunft/**"
+      "test/fixtures/auskunft/**",
+      "test/helpers/msys-zerlegen.mjs"
     ],
     "board-einstieg": [
       "kit/board.mjs",
@@ -219,7 +233,7 @@
       "test/board-s*.test.mjs",
       "test/board-t*.test.mjs",
       "test/board-u*.test.mjs",
-      "test/board-w*.test.mjs",
+      "test/board-we*.test.mjs",
       "test/ablauf-board-*.test.mjs",
       "test/migrate-*.test.mjs",
       "test/cli-*.test.mjs",
@@ -236,6 +250,11 @@
       "kit/board/grundlagen.mjs",
       "test/board-grundlagen-*.test.mjs",
       "test/helpers/board-attrappe.mjs"
+    ],
+    "board-wiederholung": [
+      "kit/board/wiederholung.mjs",
+      "test/board-wiederholung-*.test.mjs",
+      "test/helpers/msys-zerlegen.mjs"
     ],
     "pruefungen": [
       "kit/checks.mjs",

@@ -20,7 +20,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { posixShell, sessionStart } from "../kit/night.mjs";
-import { spawnAufruf } from "../kit/board.mjs";
+import { spawnAufruf } from "../kit/board/wiederholung.mjs";
 
 const ARGUMENTE = [
   "/implement-next #1131",

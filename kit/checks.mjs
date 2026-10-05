@@ -1014,7 +1014,7 @@ function ausImportenAbleiten(zuordnung, bereichsdefinition, importGraph = import
  * fuer Dateien ohne Muster (#1181): statische und dynamische Importe mit literalem Pfad.
  * Nicht literale Importe sieht sie NICHT, und das ist gewollt: die Nachbar-Importe des
  * Nacht-Runners (`NACHBAR_*` ueber `pathToFileURL` in `kit/night.mjs`) und der
- * Windows-Import von `board.mjs` in diesem Modul (`nachbarBoard`). Diese Kopplungen stehen
+ * Windows-Import des Board-Teils wiederholung in diesem Modul (`nachbarBoard`). Diese Kopplungen stehen
  * weiter von Hand in den `areas` des Kommandos, dessen Teil den Nachbarn laedt (E3).
  */
 function abhaengigeBereiche(beruehrt, importGraph, bereichsdefinition, startDateien) {
@@ -1669,7 +1669,7 @@ function settingsEnv() {
  * Fusszeile und nicht irgendwo dazwischen.
  */
 function kommandoAusfuehren(cmd, env, grenzen = {}) {
-  // board.mjs nur unter Windows (Issue #1176): Dort steht die Suche nach der Git Bash.
+  // Der Board-Teil nur unter Windows (Issue #1176): Dort steht die Suche nach der Git Bash.
   const board = process.platform === "win32" ? nachbarBoard() : null;
   return Promise.resolve(board).then((geladen) => {
     const start = kommandoStart(cmd, { board: geladen, env });
@@ -1772,13 +1772,13 @@ export function startOptionen(plattform = process.platform) {
  * WSL-Starter. Fehlt sie, startet nichts, und `fehler` traegt die Meldung von `gitBashPfad`;
  * ein Rueckfall auf `cmd.exe` liefe still mit anderer Syntax.
  *
- * `board` ist das Modul board.mjs (unter Windows Pflicht, `null`, wenn es fehlt); Plattform,
+ * `board` ist der Board-Teil wiederholung (unter Windows Pflicht, `null`, wenn er fehlt); Plattform,
  * Umgebung und Dateisystem sind fuer die Tests injizierbar.
  */
 export function kommandoStart(cmd, { plattform = process.platform, board, env = umgebungsVariablen(), existiert } = {}) {
   if (plattform !== "win32") return { befehl: "/bin/sh", args: ["-c", cmd], optionen: {}, umgebung: {}, fehler: null };
   const nichtStartbar = (fehler) => ({ befehl: null, args: [], optionen: {}, umgebung: {}, fehler });
-  if (!board) return nichtStartbar("board.mjs fehlt neben checks.mjs — ohne ihn findet checks.mjs unter Windows die Git Bash nicht.");
+  if (!board) return nichtStartbar("Der Board-Teil wiederholung.mjs fehlt im Verzeichnis board/ neben checks.mjs — ohne ihn findet checks.mjs unter Windows die Git Bash nicht.");
   const { pfad, fehler } = board.gitBashPfad({ env, plattform, ...(existiert ? { existiert } : {}) });
   if (!pfad) return nichtStartbar(fehler);
   const aufruf = board.spawnAufruf(pfad, ["-c", cmd], { gitBash: true });
@@ -1786,13 +1786,15 @@ export function kommandoStart(cmd, { plattform = process.platform, board, env = 
 }
 
 /**
- * board.mjs neben dieser Datei, nur unter Windows geladen (Issue #1176): Dort steht die Suche
- * nach der Git Bash. Auf POSIX bleibt checks.mjs eine Einzeldatei ohne Nachbarn. Liefert
- * `null`, wenn der Nachbar fehlt oder nicht ladbar ist.
+ * Der Board-Teil wiederholung neben dieser Datei, nur unter Windows geladen (Issue
+ * #1176, seit Issue #1215 der Teil statt des Einstiegs): Dort steht die Suche nach der Git
+ * Bash. Auf POSIX bleibt checks.mjs eine Einzeldatei ohne Nachbarn. Liefert `null`, wenn der
+ * Nachbar fehlt oder nicht ladbar ist. Die Gruppe pruefungen nennt den Bereich
+ * board-wiederholung von Hand (Plan #1199, E3).
  */
 async function nachbarBoard() {
   try {
-    return await import(new URL("./board.mjs", import.meta.url).href);
+    return await import(new URL("./board/wiederholung.mjs", import.meta.url).href);
   } catch {
     return null;
   }

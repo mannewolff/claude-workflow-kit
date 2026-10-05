@@ -131,7 +131,7 @@
  *   NIGHT_SALVAGE     wird der Salvage-Session als Umgebungsvariable gesetzt
  *                     (Wert "1"), damit ein Fake-Hook die beiden Session-Arten
  *                     unterscheiden kann.
- *   NIGHT_NACHBAR_DIR Verzeichnis, aus dem night.mjs board.mjs und checks.mjs
+ *   NIGHT_NACHBAR_DIR Verzeichnis, aus dem night.mjs board.mjs, board/ und checks.mjs
  *                     laedt (statt neben der eigenen Datei). Nur fuer Tests.
  *   NIGHT_AUSWERTUNG_TIMEOUT_MS ueberschreibt das Zeitlimit der beiden
  *                     Auswertungen (Aufwand, Wirksamkeit), damit der
@@ -196,15 +196,23 @@ const NACHBAR_BEFUNDE = join(NACHBAR_DIR, "befunde.mjs");
  * `.catch` also nie — und die beiden Board-Importe dieser Datei zeigten unter Hook
  * auf verschiedene Dateien (Issue #498).
  */
-//
-// Ebenso geteilt und abgefangen: der Finder der Git Bash und die Startregel fuer Programme
-// unter Windows (Issue #1131, Plan #1128, E2). Fehlt der Nachbar, melden sie das wie jeder
-// andere Board-Zugriff — erst, wenn jemand sie wirklich braucht.
-const { fenceLauf, TOOLBOX_BUDGET_NACHT_MS, gitBashPfad, startbefehlFuer, spawnAufruf, GIT_BASH_UMGEBUNG } = await import(pathToFileURL(NACHBAR_BOARD).href).catch(() => {
-  const fehlt = () => {
+const { fenceLauf } = await import(pathToFileURL(NACHBAR_BOARD).href).catch(() => ({
+  fenceLauf: () => {
     throw new Error("board.mjs fehlt neben night.mjs — der Nacht-Runner braucht den Board-Adapter.");
+  },
+}));
+
+// Ebenso geteilt und abgefangen: das Budget der Board-Aufrufe, der Finder der Git Bash und
+// die Startregel fuer Programme unter Windows (Issue #1131, Plan #1128, E2). Sie kommen aus
+// dem Board-Teil, der sie fuehrt (Issue #1215, Plan #1199, E17), nicht aus dem Einstieg —
+// der Pfad ist so wenig literal wie NACHBAR_BOARD, deshalb nennen die Nacht-Gruppen den
+// Bereich board-wiederholung von Hand (E3). Fehlt der Teil, melden sie das wie jeder
+// andere Board-Zugriff — erst, wenn jemand sie wirklich braucht.
+const { TOOLBOX_BUDGET_NACHT_MS, gitBashPfad, startbefehlFuer, spawnAufruf, GIT_BASH_UMGEBUNG } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "wiederholung.mjs")).href).catch(() => {
+  const fehlt = () => {
+    throw new Error("board/wiederholung.mjs fehlt neben night.mjs — der Nacht-Runner braucht den Board-Adapter.");
   };
-  return { fenceLauf: fehlt, gitBashPfad: fehlt, startbefehlFuer: fehlt, spawnAufruf: fehlt, GIT_BASH_UMGEBUNG: {} };
+  return { gitBashPfad: fehlt, startbefehlFuer: fehlt, spawnAufruf: fehlt, GIT_BASH_UMGEBUNG: {} };
 });
 
 // Normalerweise liegt board.mjs neben dieser Datei in .claude/kit/. KIT_ROOT

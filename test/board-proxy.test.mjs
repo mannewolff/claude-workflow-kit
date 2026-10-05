@@ -2,9 +2,10 @@
 //
 // Nodes eingebautes `fetch` nutzt HTTPS_PROXY nur, wenn beim Start
 // NODE_USE_ENV_PROXY=1 gesetzt ist. Ohne den Schalter scheitert jeder Board-Aufruf
-// in der Sandbox mit "fetch failed". Drei Ebenen:
+// in der Sandbox mit "fetch failed". `proxyNeustartNoetig` als reine Funktion steht im
+// Board-Teil wiederholung und wird in test/board-wiederholung-entscheidungen.test.mjs
+// geprueft (Issue #1215). Hier:
 //
-//  1. `proxyNeustartNoetig` als reine Funktion.
 //  2. Der Neustart selbst ueber die CLI: Ein `--import`-Fuehler in den execArgv
 //     schreibt je Prozessstart eine Zeile. Zwei Zeilen heissen Neustart, und weil
 //     der Fuehler auch im Kind wirkt, ist zugleich belegt, dass die execArgv
@@ -18,7 +19,7 @@ import { rmSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
-import { ToolboxIssueTracker, proxyNeustartNoetig } from "../kit/board.mjs";
+import { ToolboxIssueTracker } from "../kit/board.mjs";
 import { sessionUmgebung } from "../kit/night.mjs";
 import { setupProjekt, BOARD } from "./helpers/board-fixture.mjs";
 
@@ -27,30 +28,6 @@ process.env.TBX_CONFIG_DIR = "/nicht/vorhanden";
 delete process.env.KIT_AGENT_MODEL;
 
 const PROXY = "http://127.0.0.1:9";
-
-// ============================================================
-// 1. proxyNeustartNoetig
-// ============================================================
-
-test("proxyNeustartNoetig: Proxy gesetzt, Schalter fehlt -> true", () => {
-  assert.equal(proxyNeustartNoetig({ HTTPS_PROXY: PROXY }), true);
-});
-
-test("proxyNeustartNoetig: Schalter gesetzt -> false", () => {
-  assert.equal(proxyNeustartNoetig({ HTTPS_PROXY: PROXY, NODE_USE_ENV_PROXY: "1" }), false);
-});
-
-test("proxyNeustartNoetig: keine Proxy-Variable -> false", () => {
-  assert.equal(proxyNeustartNoetig({}), false);
-});
-
-test("proxyNeustartNoetig: nur https_proxy (klein) -> true", () => {
-  assert.equal(proxyNeustartNoetig({ https_proxy: PROXY }), true);
-});
-
-test("proxyNeustartNoetig: leere Proxy-Variable -> false", () => {
-  assert.equal(proxyNeustartNoetig({ HTTPS_PROXY: "", https_proxy: "  " }), false);
-});
 
 // ============================================================
 // 2. Der Neustart ueber die CLI

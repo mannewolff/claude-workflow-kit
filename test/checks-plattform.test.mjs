@@ -12,7 +12,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import * as boardModul from "../kit/board/grundlagen.mjs";
+import * as boardModul from "../kit/board/wiederholung.mjs";
 import { startOptionen, baumBeendenAufruf, kommandoStart } from "../kit/checks.mjs";
 
 test("[1123] unter Windows startet ein Kommando ohne Abkoppeln, auf POSIX in eigener Gruppe", () => {
@@ -66,10 +66,10 @@ test("[1176] unter Windows ohne Git Bash startet nichts, die Meldung kommt von g
   assert.ok(start.fehler);
 });
 
-test("[1176] unter Windows ohne board.mjs daneben startet nichts und sagt warum", () => {
+test("[1176] unter Windows ohne den Board-Teil wiederholung daneben startet nichts und sagt warum", () => {
   const start = kommandoStart("npm test", { plattform: "win32", board: null });
   assert.equal(start.befehl, null);
-  assert.match(start.fehler, /board\.mjs/);
+  assert.match(start.fehler, /wiederholung\.mjs/);
 });
 
 test("[1176] auf POSIX bleibt /bin/sh mit -c", () => {
