@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { interpretToolboxCreateResponse } from "../kit/board.mjs";
+import { interpretToolboxCreateResponse } from "../kit/board/adapter.mjs";
 
 test("Alter Vertrag: number vorhanden -> Board-Karte mit Anzeigenummer", () => {
   const result = interpretToolboxCreateResponse({ id: 73, number: 42 });

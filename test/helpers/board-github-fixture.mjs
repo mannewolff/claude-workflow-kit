@@ -6,13 +6,20 @@
 // Fake-`gh` samt Basisantworten, die Project-Konfiguration und der Blick in den
 // Meta-Cache. Doppelt gepflegt wird davon nichts.
 //
+// Seit Issue #1217 rufen die drei Dateien den Adapter aus kit/board/adapter.mjs im
+// selben Prozess (`mitTracker`, `mitStderr`). `mitProjekt` bleibt fuer die Ablauf-Tests
+// (`board-auftrag`, `board-melden`), die den Einstieg weiter ueber `runBoard` starten.
+// Die Fixtures kommen aus `adapter-fixture.mjs`, nicht aus `board-fixture.mjs`: Wer diese
+// Datei laedt, soll beim Waechter nicht als Ablauf-Pruefung gelten.
+//
 // Diese Datei enthaelt selbst keine Tests. Der node:test-Runner laedt trotzdem alles
 // unter test/ und meldet sie als testlose Datei — das ist erwartet.
 
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
-import { setupProjekt, fakeCli } from "./board-fixture.mjs";
+import { setupProjekt, fakeCli, imProjekt } from "./adapter-fixture.mjs";
+import { resolveTracker, resolveCodeHost } from "../../kit/board/adapter.mjs";
 
 export const GITHUB = { codeHost: "github", issueTracker: "github", github: { projectNumber: 14 } };
 
@@ -59,6 +66,43 @@ export function mitProjekt(fn, { regeln = [], config = GITHUB } = {}) {
     return fn(dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Wie `mitProjekt`, aber im selben Prozess (Issue #1217): `fn` laeuft mit cwd im Fixture
+ * und der Umgebung von `runBoard` und bekommt Tracker und CodeHost zur Config. Ein
+ * CLI-Aufruf baut seinen Tracker jedes Mal neu; wer einen zweiten Aufruf nachstellt
+ * (Memo leer, nur der Datei-Cache bleibt), holt sich mit `resolveTracker(config)` einen
+ * frischen.
+ */
+export async function mitTracker(fn, { regeln = [], config = GITHUB, extraEnv = {} } = {}) {
+  const dir = setupProjekt(config, "board-github-");
+  fakeCli(dir, "gh", [...regeln, ...basisRegeln()]);
+  try {
+    return await imProjekt(dir, () => fn({ dir, config, tracker: resolveTracker(config), host: resolveCodeHost(config) }), extraEnv);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Schneidet mit, was `fn` auf stderr schreibt (Issue #1217). Die Adapter melden ihre
+ * Hinweise ueber `process.stderr.write`; im Kindprozess las der Test sie aus `res.stderr`.
+ * Liefert `{ wert, stderr }`; ein Fehler von `fn` geht unveraendert durch.
+ */
+export async function mitStderr(fn) {
+  const original = process.stderr.write;
+  let stderr = "";
+  process.stderr.write = (teil) => {
+    stderr += String(teil);
+    return true;
+  };
+  try {
+    const wert = await fn();
+    return { wert, stderr };
+  } finally {
+    process.stderr.write = original;
   }
 }
 

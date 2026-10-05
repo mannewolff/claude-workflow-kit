@@ -223,7 +223,7 @@ test("local: unbekanntes Issue meldet den Pfad", () => {
 // (mannewolff/kanban-kit#457). Seit kanban-kit#574 bietet sie genau das, die Sperre
 // ist gefallen. Was hier bleibt, ist die Gegenprobe dazu — der Adapter greift jetzt
 // zum Server, statt vorab abzuweisen. Die Routen selbst und ihre Kodierung pruefen
-// die Mock-Server-Tests in board-toolbox.test.mjs.
+// die Mock-Server-Tests in board-adapter-toolbox.test.mjs.
 test("toolbox: label greift zum Server, statt vorab abzuweisen", () => {
   const dir = setupProjekt(TOOLBOX, "board-label-tbx-");
   try {

@@ -1,16 +1,25 @@
-// Tests fuer den Toolbox-/kanbancompat-Adapter in kit/board.mjs (Issue #188).
+// Tests fuer den Toolbox-/kanbancompat-Adapter (Issue #188).
 //
-// Fuehrt das Muster aus board-create.test.mjs weiter: Statt gegen ein echtes Board
+// Fuehrt das Muster aus board-adapter-toolbox-create.test.mjs weiter: Statt gegen ein echtes Board
 // laeuft alles gegen einen lokalen HTTP-Mock auf 127.0.0.1. Geprueft werden alle fuenf
 // Board-Operationen, die Host-/Token-Aufloesung und die Fehlerpfade der API-Schicht
 // (nicht erreichbar, 401, Fehler mit und ohne JSON-Rumpf).
+//
+// Seit Issue #1217 (Plan #1199, E6) im selben Prozess gegen den Board-Teil
+// kit/board/adapter.mjs statt ueber den Einstieg als Kindprozess: Der Tracker entsteht wie
+// in `dispatchIssue` aus `loadConfig()` und `resolveTracker`, `imProjekt` stellt cwd und
+// Umgebung wie fuer den Kindprozess. Gerufen wird die Methode, die der jeweilige
+// Dispatch-Zweig ruft, mit dessen Argumenten; Fehlerpfade pruefen den geworfenen
+// BoardError statt Exit-Code und stderr.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
-import { setupProjekt, runBoardAsync, starteServer } from "./helpers/board-fixture.mjs";
+import { resolveTracker, ToolboxIssueTracker } from "../kit/board/adapter.mjs";
+import { BoardError, loadConfig } from "../kit/board/grundlagen.mjs";
+import { setupProjekt, starteServer, imProjekt } from "./helpers/adapter-fixture.mjs";
 
 // `createdAt` ist der Feldname, den der Kommentar-Endpunkt derselben API bereits
 // fuehrt (kanban-kit#449). Fuer die Karten-Route ist er zum Zeitpunkt von Issue #457
@@ -33,15 +42,15 @@ function gruppiert(karten) {
 }
 
 /**
- * Der Token fuer die Aufrufe, die einen brauchen. Er muss bei jedem runBoardAsync
- * ausdruecklich mitgegeben werden: Der Fixture-Helfer loescht TBX_TOKEN aus der
- * Umgebung, damit kein Token vom Entwicklerrechner durchschlaegt. Tests, die das
- * Fehlen oder eine andere Herkunft des Tokens pruefen, uebergeben stattdessen `{}`.
+ * Der Token fuer die Aufrufe, die einen brauchen. Er muss bei jedem Aufruf
+ * ausdruecklich mitgegeben werden: `imProjekt` loescht TBX_TOKEN aus der Umgebung,
+ * damit kein Token vom Entwicklerrechner durchschlaegt. Tests, die das Fehlen oder
+ * eine andere Herkunft des Tokens pruefen, uebergeben stattdessen `{}`.
  */
 const MIT_TOKEN = { TBX_TOKEN: "test-token" };
 
 /**
- * Startet Mock-Server und Fixture, ruft board.mjs auf und raeumt beides wieder ab.
+ * Startet Mock-Server und Fixture, ruft `fn` und raeumt beides wieder ab.
  * Der Host kommt per Config, der Token pro Aufruf (siehe MIT_TOKEN).
  */
 async function mitBoard(antwort, fn, { config = {} } = {}) {
@@ -57,6 +66,58 @@ async function mitBoard(antwort, fn, { config = {} } = {}) {
   } finally {
     rmSync(dir, { recursive: true, force: true });
     server.close();
+  }
+}
+
+/**
+ * Ruft den Tracker so, wie `dispatchIssue` ihn baut: Config aus dem Fixture, Auswahl
+ * ueber `resolveTracker`. Der Rueckgabewert ist das, was der Dispatch-Zweig ausgibt.
+ */
+function amBoard(dir, aufruf, extraEnv = MIT_TOKEN) {
+  return imProjekt(dir, () => aufruf(resolveTracker(loadConfig())), extraEnv);
+}
+
+/**
+ * Wie amBoard, aber mit gestellter Uhr (Issue #834): Die Fehlerpfade gegen einen
+ * kaputten oder toten Server wuerden sonst bei Wiederholbarkeit echt warten. `schlaf`
+ * schreibt die Uhr weiter und haelt die Wartezeiten fest; mit dem kurzen Budget aus
+ * `imProjekt` bleibt es wie im Kindprozess bei einem Versuch.
+ */
+async function amBoardMitUhr(dir, aufruf, extraEnv = MIT_TOKEN) {
+  let jetzt = 0;
+  const geschlafen = [];
+  const uhr = {
+    jetzt: () => jetzt,
+    schlaf: async (ms) => { geschlafen.push(ms); jetzt += ms; },
+    zufall: () => 0,
+    melde: () => {},
+  };
+  try {
+    return await imProjekt(dir, () => aufruf(new ToolboxIssueTracker(loadConfig(), uhr)), extraEnv);
+  } finally {
+    assert.deepEqual(geschlafen, [], "mit dem Test-Budget darf keine Wiederholung warten");
+  }
+}
+
+/** Erwartet einen BoardError, dessen Meldung auf `muster` passt. */
+async function wirftBoardError(versprechen, muster) {
+  await assert.rejects(versprechen, (e) => {
+    assert.ok(e instanceof BoardError, `BoardError erwartet, bekam ${e?.name}: ${e?.message}`);
+    assert.match(e.message, muster);
+    return true;
+  });
+}
+
+/** Faengt, was waehrend `fn` auf stderr geht — der Hinweisweg des Adapters. */
+async function mitStderr(fn) {
+  const teile = [];
+  const alt = process.stderr.write;
+  process.stderr.write = (teil) => { teile.push(String(teil)); return true; };
+  try {
+    const ergebnis = await fn();
+    return { ergebnis, stderr: teile.join("") };
+  } finally {
+    process.stderr.write = alt;
   }
 }
 
@@ -79,17 +140,14 @@ function standardAntwort(req) {
 
 test("list ohne Filter liefert alle Karten numerisch sortiert", async () => {
   await mitBoard(standardAntwort, async (dir) => {
-    const res = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
-    assert.equal(res.status, 0, res.stderr);
-    assert.deepEqual(JSON.parse(res.stdout).map((i) => i.id), ["3", "5", "7", "9"]);
+    const liste = await amBoard(dir, (t) => t.listIssues(undefined));
+    assert.deepEqual(liste.map((i) => i.id), ["3", "5", "7", "9"]);
   });
 });
 
 test("list --status behaelt die Board-Reihenfolge der Spalte", async () => {
   await mitBoard(standardAntwort, async (dir) => {
-    const res = await runBoardAsync(dir, ["issue", "list", "--status", "ready"], MIT_TOKEN);
-    assert.equal(res.status, 0, res.stderr);
-    assert.deepEqual(JSON.parse(res.stdout), [
+    assert.deepEqual(await amBoard(dir, (t) => t.listIssues("ready")), [
       { id: "7", title: "Karte 7", body: "Body 7", status: "ready", labels: [], type: "task" },
       { id: "9", title: "Karte 9", body: "Body 9", status: "ready", labels: [], type: "task" },
     ]);
@@ -102,8 +160,8 @@ test("list --status laesst Epics aussen vor", async () => {
   await mitBoard(
     (req) => (req.url === "/api/kanban/items" ? { status: 200, json: gruppiert(karten) } : null),
     async (dir) => {
-      const res = await runBoardAsync(dir, ["issue", "list", "--status", "ready"], MIT_TOKEN);
-      assert.deepEqual(JSON.parse(res.stdout).map((i) => i.id), ["7"]);
+      const liste = await amBoard(dir, (t) => t.listIssues("ready"));
+      assert.deepEqual(liste.map((i) => i.id), ["7"]);
     }
   );
 });
@@ -115,9 +173,8 @@ test("list ohne Filter laesst Epics ebenfalls aussen vor", async () => {
   await mitBoard(
     (req) => (req.url === "/api/kanban/items" ? { status: 200, json: gruppiert(karten) } : null),
     async (dir) => {
-      const res = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
-      assert.equal(res.status, 0, res.stderr);
-      assert.deepEqual(JSON.parse(res.stdout).map((i) => i.id), ["7"]);
+      const liste = await amBoard(dir, (t) => t.listIssues(undefined));
+      assert.deepEqual(liste.map((i) => i.id), ["7"]);
     }
   );
 });
@@ -128,8 +185,8 @@ test("list liefert type, auch bei einer Karte ohne type-Feld", async () => {
   await mitBoard(
     (req) => (req.url === "/api/kanban/items" ? { status: 200, json: gruppiert([karte(7, "READY")]) } : null),
     async (dir) => {
-      const res = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
-      assert.equal(JSON.parse(res.stdout)[0].type, "task");
+      const liste = await amBoard(dir, (t) => t.listIssues(undefined));
+      assert.equal(liste[0].type, "task");
     }
   );
 });
@@ -144,9 +201,7 @@ test("get auf ein Vorhaben liefert status null und type epic", async () => {
       return null;
     },
     async (dir) => {
-      const res = await runBoardAsync(dir, ["issue", "get", "8"], MIT_TOKEN);
-      assert.equal(res.status, 0, res.stderr);
-      const karte8 = JSON.parse(res.stdout);
+      const karte8 = await amBoard(dir, (t) => t.getIssue("8"));
       assert.equal(karte8.status, null);
       assert.equal(karte8.type, "epic");
     }
@@ -158,8 +213,8 @@ test("list bildet eine unbekannte Spalte auf status null ab", async () => {
   await mitBoard(
     (req) => (req.url === "/api/kanban/items" ? { status: 200, json: gruppiert([karte(7, "ARCHIV")]) } : null),
     async (dir) => {
-      const res = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
-      assert.equal(JSON.parse(res.stdout)[0].status, null);
+      const liste = await amBoard(dir, (t) => t.listIssues(undefined));
+      assert.equal(liste[0].status, null);
     }
   );
 });
@@ -174,9 +229,10 @@ test("get liefert die Karte samt Kommentaren", async () => {
       return null;
     },
     async (dir) => {
-      const res = await runBoardAsync(dir, ["issue", "get", "7"], MIT_TOKEN);
-      assert.equal(res.status, 0, res.stderr);
-      assert.deepEqual(JSON.parse(res.stdout), {
+      // JSON-Rundreise wie die Ausgabe des Dispatch: Ein Feld mit `undefined` faellt
+      // dort weg und darf hier nicht als Unterschied zaehlen.
+      const karte7 = JSON.parse(JSON.stringify(await amBoard(dir, (t) => t.getIssue("7"))));
+      assert.deepEqual(karte7, {
         id: "7", title: "Karte 7", body: "Body 7", status: "ready", labels: [], type: "task",
         comments: [{ author: "manne", body: "Ein Kommentar", createdAt: "2026-07-28T09:00:00Z", id: null }],
         created: "2026-08-14", // Anlagedatum aus createdAt (Issue #457)
@@ -191,19 +247,16 @@ test("get ueberlebt einen fehlenden Kommentar-Endpunkt", async () => {
   await mitBoard(
     (req) => (req.url === "/api/kanban/items" ? { status: 200, json: gruppiert(KARTEN) } : { status: 404, json: { message: "Not Found" } }),
     async (dir) => {
-      const res = await runBoardAsync(dir, ["issue", "get", "7"], MIT_TOKEN);
-      assert.equal(res.status, 0, res.stderr);
-      assert.deepEqual(JSON.parse(res.stdout).comments, []);
-      assert.match(res.stderr, /Kommentare nicht abrufbar/);
+      const { ergebnis, stderr } = await mitStderr(() => amBoardMitUhr(dir, (t) => t.getIssue("7")));
+      assert.deepEqual(ergebnis.comments, []);
+      assert.match(stderr, /Kommentare nicht abrufbar/);
     }
   );
 });
 
 test("get auf eine unbekannte Nummer schlaegt fehl", async () => {
   await mitBoard(standardAntwort, async (dir) => {
-    const res = await runBoardAsync(dir, ["issue", "get", "99"], MIT_TOKEN);
-    assert.equal(res.status, 1);
-    assert.match(res.stderr, /Issue 99 nicht gefunden/);
+    await wirftBoardError(amBoard(dir, (t) => t.getIssue("99")), /Issue 99 nicht gefunden/);
   });
 });
 
@@ -215,9 +268,7 @@ test("epics liefert Nummer, Shortcode und Fortschritt", async () => {
       ? { status: 200, json: [{ number: 4, title: "Grosses Ganzes", shortcode: "GG", progress: { total: 3, done: 1 } }, { id: 99, title: "Ohne Nummer" }] }
       : null),
     async (dir) => {
-      const res = await runBoardAsync(dir, ["issue", "epics"], MIT_TOKEN);
-      assert.equal(res.status, 0, res.stderr);
-      assert.deepEqual(JSON.parse(res.stdout), [
+      assert.deepEqual(await amBoard(dir, (t) => t.listEpics()), [
         { id: "4", title: "Grosses Ganzes", shortcode: "GG", progress: { total: 3, done: 1 } },
         { id: "99", title: "Ohne Nummer", shortcode: "", progress: { total: 0, done: 0 } },
       ]);
@@ -229,22 +280,23 @@ test("epics vertraegt eine Antwort, die kein Array ist", async () => {
   await mitBoard(
     (req) => (req.url === "/api/kanban/epics" ? { status: 200, json: { message: "keine Epics" } } : null),
     async (dir) => {
-      const res = await runBoardAsync(dir, ["issue", "epics"], MIT_TOKEN);
-      assert.equal(res.status, 0, res.stderr);
-      assert.deepEqual(JSON.parse(res.stdout), []);
+      assert.deepEqual(await amBoard(dir, (t) => t.listEpics()), []);
     }
   );
 });
 
 // --- Anlegen ---
+//
+// `issue create` reicht Titel und den aufgeloesten Body an `createIssue`; ohne Body-Quelle
+// setzt der Dispatch noch die Autor-Modell-Zeile davor. Die Tests ohne Body pruefen nur
+// Modus und Spalte des Payloads, deshalb geht hier nur der Titel mit.
 
 test("create legt eine Karte an und liefert die Board-Nummer", async () => {
   // Ausdruecklich im Pool-Modus: Seit Issue #313 ist das Direktanlegen die Vorgabe,
   // und dieser Test prueft den Payload OHNE `direct`.
   await mitBoard(standardAntwort, async (dir, requests, host) => {
-    const res = await runBoardAsync(dir, ["issue", "create", "--title", "Neu", "--body", "Autor-Modell: m\nText"], MIT_TOKEN);
-    assert.equal(res.status, 0, res.stderr);
-    assert.deepEqual(JSON.parse(res.stdout), { id: "7", url: `${host}/kanban` });
+    const angelegt = await amBoard(dir, (t) => t.createIssue({ title: "Neu", body: "Autor-Modell: m\nText" }));
+    assert.deepEqual(angelegt, { id: "7", url: `${host}/kanban` });
 
     const post = requests.find((r) => r.method === "POST" && r.url === "/api/kanban/items");
     // Weder `direct` noch `ideaStored`: Der Pool ist ausdruecklich gewaehlt, und das
@@ -260,9 +312,7 @@ test("create meldet eine Pool-Idee als pending", async () => {
   await mitBoard(
     (req) => (req.method === "POST" ? { status: 200, json: { id: 80 } } : standardAntwort(req)),
     async (dir, _requests, host) => {
-      const res = await runBoardAsync(dir, ["issue", "create", "--title", "Idee"], MIT_TOKEN);
-      assert.equal(res.status, 0, res.stderr);
-      assert.deepEqual(JSON.parse(res.stdout), {
+      assert.deepEqual(await amBoard(dir, (t) => t.createIssue({ title: "Idee" })), {
         id: null, ideaId: "80", pending: true, url: `${host}/kanban`,
         hinweis: "Als Idee im Projekt-Ideen-Pool angelegt; die Board-Nummer entsteht beim Einplanen.",
       });
@@ -276,8 +326,7 @@ test("create meldet eine Pool-Idee als pending", async () => {
 // des Nutzers, das Wire-Feld die API-Form von kanban-kit.
 test("create schickt bei toolbox.ideaStored: false ein direct: true", async () => {
   await mitBoard(standardAntwort, async (dir, requests) => {
-    const res = await runBoardAsync(dir, ["issue", "create", "--title", "Direkt ins Backlog"], MIT_TOKEN);
-    assert.equal(res.status, 0, res.stderr);
+    await amBoard(dir, (t) => t.createIssue({ title: "Direkt ins Backlog" }));
     const payload = JSON.parse(requests.find((r) => r.method === "POST").body);
     assert.equal(payload.direct, true);
     assert.ok(!("ideaStored" in payload), "das tote Wire-Feld darf nicht mehr mitgehen");
@@ -292,8 +341,7 @@ test("create schickt bei toolbox.ideaStored: false ein direct: true", async () =
 // deshalb am Default vorbeilaeuft.
 test("create schickt ohne toolbox.ideaStored ein direct: true", async () => {
   await mitBoard(standardAntwort, async (dir, requests) => {
-    const res = await runBoardAsync(dir, ["issue", "create", "--title", "Ohne Schluessel"], MIT_TOKEN);
-    assert.equal(res.status, 0, res.stderr);
+    await amBoard(dir, (t) => t.createIssue({ title: "Ohne Schluessel" }));
     const payload = JSON.parse(requests.find((r) => r.method === "POST").body);
     assert.equal(payload.direct, true, "ohne Angabe muss direkt angelegt werden");
     assert.ok(!("ideaStored" in payload), "das tote Wire-Feld darf nicht mitgehen");
@@ -303,8 +351,7 @@ test("create schickt ohne toolbox.ideaStored ein direct: true", async () => {
 
 test("create schickt bei toolbox.ideaStored: true weder direct noch ideaStored", async () => {
   await mitBoard(standardAntwort, async (dir, requests) => {
-    const res = await runBoardAsync(dir, ["issue", "create", "--title", "In den Pool"], MIT_TOKEN);
-    assert.equal(res.status, 0, res.stderr);
+    await amBoard(dir, (t) => t.createIssue({ title: "In den Pool" }));
     const payload = JSON.parse(requests.find((r) => r.method === "POST").body);
     assert.ok(!("direct" in payload), "ohne Direktwunsch kein direct");
     assert.ok(!("ideaStored" in payload));
@@ -318,14 +365,14 @@ test("create bricht ab, wenn direct angefordert war und keine Nummer kam", async
   await mitBoard(
     (req) => (req.method === "POST" ? { status: 200, json: { id: 80 } } : standardAntwort(req)),
     async (dir) => {
-      const res = await runBoardAsync(dir, ["issue", "create", "--title", "Direkt"], MIT_TOKEN);
-      assert.notEqual(res.status, 0, "muss scheitern statt pending zu melden");
-      assert.match(res.stderr, /Direktes Anlegen lieferte keine Board-Nummer/);
-      assert.ok(!/pending/.test(res.stdout), "kein pending im Erfolgskanal");
-      assert.ok(!/Ideen-Pool/.test(res.stdout), "kein Pool-Hinweis");
+      // Ein Wurf statt eines Ergebnisses: Es gibt kein `pending` und keinen
+      // Pool-Hinweis, die der Dispatch ausgeben koennte.
       // Ohne gesetzten Schluessel kann diesen Abbruch seit Issue #313 auch ein
       // Projekt sehen, das ihn nie kannte — die Meldung muss den Weg zurueck nennen.
-      assert.match(res.stderr, /toolbox\.ideaStored: true/);
+      await wirftBoardError(
+        amBoard(dir, (t) => t.createIssue({ title: "Direkt" })),
+        /Direktes Anlegen lieferte keine Board-Nummer.*toolbox\.ideaStored: true/s,
+      );
     },
   );
 });
@@ -333,9 +380,7 @@ test("create bricht ab, wenn direct angefordert war und keine Nummer kam", async
 // Aeltere Backends kennen weder Pool noch `direct` und liefern immer eine Nummer.
 test("create liefert im Pool-Modus eine Legacy-Nummer ohne Pool-Hinweis", async () => {
   await mitBoard(standardAntwort, async (dir, _requests, host) => {
-    const res = await runBoardAsync(dir, ["issue", "create", "--title", "Alt"], MIT_TOKEN);
-    assert.equal(res.status, 0, res.stderr);
-    assert.deepEqual(JSON.parse(res.stdout), { id: "7", url: `${host}/kanban` });
+    assert.deepEqual(await amBoard(dir, (t) => t.createIssue({ title: "Alt" })), { id: "7", url: `${host}/kanban` });
   }, { config: { toolbox: { ideaStored: true } } });
 });
 
@@ -343,9 +388,7 @@ test("create meldet eine unerwartete Antwortform als Fehler", async () => {
   await mitBoard(
     (req) => (req.method === "POST" ? { status: 200, json: { foo: "bar" } } : standardAntwort(req)),
     async (dir) => {
-      const res = await runBoardAsync(dir, ["issue", "create", "--title", "Kaputt"], MIT_TOKEN);
-      assert.equal(res.status, 1);
-      assert.match(res.stderr, /Unerwartete Create-Response/);
+      await wirftBoardError(amBoard(dir, (t) => t.createIssue({ title: "Kaputt" })), /Unerwartete Create-Response/);
     }
   );
 });
@@ -354,8 +397,7 @@ test("create meldet eine unerwartete Antwortform als Fehler", async () => {
 
 test("move schiebt die Karte ans Ende der Zielspalte", async () => {
   await mitBoard(standardAntwort, async (dir, requests) => {
-    const res = await runBoardAsync(dir, ["issue", "move", "7", "in_review"], MIT_TOKEN);
-    assert.equal(res.status, 0, res.stderr);
+    await amBoard(dir, (t) => t.moveIssue("7", "in_review"));
     const move = requests.find((r) => r.url === "/api/kanban/items/700/move");
     // IN_REVIEW ist leer -> Position 0.
     assert.deepEqual(JSON.parse(move.body), { column: "IN_REVIEW", position: 0 });
@@ -364,8 +406,7 @@ test("move schiebt die Karte ans Ende der Zielspalte", async () => {
 
 test("move in eine belegte Spalte haengt hinten an", async () => {
   await mitBoard(standardAntwort, async (dir, requests) => {
-    const res = await runBoardAsync(dir, ["issue", "move", "3", "ready"], MIT_TOKEN);
-    assert.equal(res.status, 0, res.stderr);
+    await amBoard(dir, (t) => t.moveIssue("3", "ready"));
     const move = requests.find((r) => r.url === "/api/kanban/items/300/move");
     // READY ist mit zwei Karten belegt -> Position 2.
     assert.deepEqual(JSON.parse(move.body), { column: "READY", position: 2 });
@@ -375,8 +416,7 @@ test("move in eine belegte Spalte haengt hinten an", async () => {
 // Ziel gleich Ausgangsspalte: die Karte darf nicht ans Ende springen.
 test("move innerhalb derselben Spalte haelt die Position", async () => {
   await mitBoard(standardAntwort, async (dir, requests) => {
-    const res = await runBoardAsync(dir, ["issue", "move", "9", "ready"], MIT_TOKEN);
-    assert.equal(res.status, 0, res.stderr);
+    await amBoard(dir, (t) => t.moveIssue("9", "ready"));
     const move = requests.find((r) => r.url === "/api/kanban/items/900/move");
     assert.deepEqual(JSON.parse(move.body), { column: "READY", position: 1 });
   });
@@ -386,8 +426,9 @@ test("move innerhalb derselben Spalte haelt die Position", async () => {
 
 test("comment schickt den Text an den Kommentar-Endpunkt", async () => {
   await mitBoard(standardAntwort, async (dir, requests) => {
-    const res = await runBoardAsync(dir, ["issue", "comment", "7", "--text", "## Abschlussbericht"], MIT_TOKEN);
-    assert.equal(res.status, 0, res.stderr);
+    // Ohne KIT_STAND haengt der Dispatch keine Kit-Stand-Zeile an: der Text geht
+    // unveraendert und ohne Schluessel von aussen an den Adapter.
+    await amBoard(dir, (t) => t.commentIssue("7", "## Abschlussbericht", undefined));
     const post = requests.find((r) => r.method === "POST" && r.url === "/api/kanban/items/700/comments");
     assert.deepEqual(JSON.parse(post.body), { body: "## Abschlussbericht" });
   });
@@ -405,8 +446,7 @@ test("comment schickt den Text an den Kommentar-Endpunkt", async () => {
 // traefe eine fremde Karte oder nichts.
 test("label add loest die Kartennummer in die interne ID auf", async () => {
   await mitBoard(standardAntwort, async (dir, requests) => {
-    const res = await runBoardAsync(dir, ["issue", "label", "add", "3", "review:offen"], MIT_TOKEN);
-    assert.equal(res.status, 0, res.stderr);
+    await amBoard(dir, (t) => t.labelIssue("3", "review:offen", "add"));
     const post = requests.find((r) => r.method === "POST" && r.url === "/api/kanban/items/300/labels");
     assert.ok(post, "POST auf die interne ID 300 erwartet");
   });
@@ -414,8 +454,7 @@ test("label add loest die Kartennummer in die interne ID auf", async () => {
 
 test("label add schickt den Namen als JSON-Rumpf", async () => {
   await mitBoard(standardAntwort, async (dir, requests) => {
-    const res = await runBoardAsync(dir, ["issue", "label", "add", "7", "review:offen"], MIT_TOKEN);
-    assert.equal(res.status, 0, res.stderr);
+    await amBoard(dir, (t) => t.labelIssue("7", "review:offen", "add"));
     const post = requests.find((r) => r.method === "POST" && r.url === "/api/kanban/items/700/labels");
     assert.deepEqual(JSON.parse(post.body), { name: "review:offen" });
   });
@@ -425,8 +464,7 @@ test("label add schickt den Namen als JSON-Rumpf", async () => {
 // Zeichen ausser Leerstring zu, und ein Pfadsegment truege einen Slash nicht.
 test("label remove nimmt den Namen im Query-Parameter", async () => {
   await mitBoard(standardAntwort, async (dir, requests) => {
-    const res = await runBoardAsync(dir, ["issue", "label", "remove", "7", "review:offen"], MIT_TOKEN);
-    assert.equal(res.status, 0, res.stderr);
+    await amBoard(dir, (t) => t.labelIssue("7", "review:offen", "remove"));
     const del = requests.find((r) => r.method === "DELETE" && r.url.startsWith("/api/kanban/items/700/labels"));
     assert.ok(del, "DELETE auf die Label-Route erwartet");
     assert.equal(del.url, "/api/kanban/items/700/labels?name=review%3Aoffen");
@@ -436,8 +474,7 @@ test("label remove nimmt den Namen im Query-Parameter", async () => {
 // Der Fall, an dem eine ungekapselte Query bricht.
 test("label remove kodiert einen Namen mit Schraegstrich", async () => {
   await mitBoard(standardAntwort, async (dir, requests) => {
-    const res = await runBoardAsync(dir, ["issue", "label", "remove", "7", "bereich/ui"], MIT_TOKEN);
-    assert.equal(res.status, 0, res.stderr);
+    await amBoard(dir, (t) => t.labelIssue("7", "bereich/ui", "remove"));
     const del = requests.find((r) => r.method === "DELETE" && r.url.startsWith("/api/kanban/items/700/labels"));
     assert.equal(del.url, "/api/kanban/items/700/labels?name=bereich%2Fui");
   });
@@ -453,8 +490,7 @@ test("Host kommt aus der tbx-Config, wenn er nicht in workflow.config.json steht
     writeFileSync(join(dir, "tbx-config", "config.json"), JSON.stringify({ host }));
     writeFileSync(join(dir, "tbx-config", "tokens.json"), JSON.stringify({ token: "gespeicherter-token" }));
 
-    const res = await runBoardAsync(dir, ["issue", "list"], {});
-    assert.equal(res.status, 0, res.stderr);
+    await amBoard(dir, (t) => t.listIssues(undefined), {});
     assert.equal(requests[0].headers["x-kanban-token"], "gespeicherter-token");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -465,9 +501,7 @@ test("Host kommt aus der tbx-Config, wenn er nicht in workflow.config.json steht
 test("Ohne Host bricht der Adapter mit Anleitung ab", async () => {
   const dir = setupProjekt({ codeHost: "local", issueTracker: "toolbox" }, "board-toolbox-");
   try {
-    const res = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
-    assert.equal(res.status, 1);
-    assert.match(res.stderr, /Kein Toolbox-Host gefunden.*tbx auth login/s);
+    await wirftBoardError(amBoard(dir, (t) => t.listIssues(undefined)), /Kein Toolbox-Host gefunden.*tbx auth login/s);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -480,9 +514,7 @@ test("Kaputte tbx-Config wird wie eine fehlende behandelt", async () => {
   try {
     mkdirSync(join(dir, "tbx-config"), { recursive: true });
     writeFileSync(join(dir, "tbx-config", "config.json"), "{kaputt");
-    const res = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
-    assert.equal(res.status, 1);
-    assert.match(res.stderr, /Kein Toolbox-Host gefunden/);
+    await wirftBoardError(amBoard(dir, (t) => t.listIssues(undefined)), /Kein Toolbox-Host gefunden/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -494,8 +526,8 @@ test("Token aus toolbox.tokenFile wird gelesen und getrimmt", async () => {
   try {
     mkdirSync(join(dir, "geheim"), { recursive: true });
     writeFileSync(join(dir, "geheim", "tbx.token"), "  datei-token\n");
-    const res = await runBoardAsync(dir, ["issue", "list"], {});
-    assert.equal(res.status, 0, res.stderr);
+    // Der Pfad ist relativ zum cwd — `imProjekt` stellt es ins Fixture.
+    await amBoard(dir, (t) => t.listIssues(undefined), {});
     assert.equal(requests[0].headers["x-kanban-token"], "datei-token");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -506,17 +538,16 @@ test("Token aus toolbox.tokenFile wird gelesen und getrimmt", async () => {
 // Secrets gehoeren nicht ins eingecheckte Repo: ein Klartext-Token bricht immer ab.
 test("Klartext-Token in der Config bricht ab", async () => {
   await mitBoard(standardAntwort, async (dir) => {
-    const res = await runBoardAsync(dir, ["issue", "list"], {});
-    assert.equal(res.status, 1);
-    assert.match(res.stderr, /kein Klartext-Token in workflow\.config\.json/);
+    await wirftBoardError(amBoard(dir, (t) => t.listIssues(undefined), {}), /kein Klartext-Token in workflow\.config\.json/);
   }, { config: { toolbox: { token: "geheim" } } });
 });
 
 test("Ohne jeden Token bricht der Adapter mit den drei Wegen ab", async () => {
   await mitBoard(standardAntwort, async (dir) => {
-    const res = await runBoardAsync(dir, ["issue", "list"], {});
-    assert.equal(res.status, 1);
-    assert.match(res.stderr, /Kein Toolbox-Token gefunden.*TBX_TOKEN.*tokenFile.*tbx auth login/s);
+    await wirftBoardError(
+      amBoard(dir, (t) => t.listIssues(undefined), {}),
+      /Kein Toolbox-Token gefunden.*TBX_TOKEN.*tokenFile.*tbx auth login/s,
+    );
   });
 });
 
@@ -528,10 +559,11 @@ test("Nicht erreichbarer Host nennt den Host in der Meldung", async () => {
   server.close();
   const dir = setupProjekt({ codeHost: "local", issueTracker: "toolbox", toolbox: { host } }, "board-toolbox-");
   try {
-    const res = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
-    assert.equal(res.status, 1);
     const hostMuster = host.replaceAll(/[.]/g, String.raw`\.`);
-    assert.match(res.stderr, new RegExp(`Toolbox-API nicht erreichbar \\(${hostMuster}\\)`));
+    await wirftBoardError(
+      amBoardMitUhr(dir, (t) => t.listIssues(undefined)),
+      new RegExp(`Toolbox-API nicht erreichbar \\(${hostMuster}\\)`),
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -539,9 +571,7 @@ test("Nicht erreichbarer Host nennt den Host in der Meldung", async () => {
 
 test("401 verweist auf einen erneuten tbx-Login", async () => {
   await mitBoard(() => ({ status: 401, json: { message: "unauthorized" } }), async (dir) => {
-    const res = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
-    assert.equal(res.status, 1);
-    assert.match(res.stderr, /Token ungueltig oder widerrufen/);
+    await wirftBoardError(amBoardMitUhr(dir, (t) => t.listIssues(undefined)), /Token ungueltig oder widerrufen/);
   });
 });
 
@@ -552,17 +582,13 @@ test("Fehlerantwort mit JSON-Rumpf zeigt Status UND dessen message", async () =>
   // nur mit ihm laesst sich ein fehlender Endpunkt von einem defekten
   // unterscheiden.
   await mitBoard(() => ({ status: 500, json: { message: "Board kaputt" } }), async (dir) => {
-    const res = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
-    assert.equal(res.status, 1);
-    assert.match(res.stderr, /Toolbox-API-Fehler: HTTP 500: Board kaputt/);
+    await wirftBoardError(amBoardMitUhr(dir, (t) => t.listIssues(undefined)), /Toolbox-API-Fehler: HTTP 500: Board kaputt/);
   });
 });
 
 test("Fehlerantwort ohne JSON-Rumpf faellt auf den HTTP-Status zurueck", async () => {
   await mitBoard(() => ({ status: 503, text: "Service Unavailable" }), async (dir) => {
-    const res = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
-    assert.equal(res.status, 1);
-    assert.match(res.stderr, /Toolbox-API-Fehler: HTTP 503/);
+    await wirftBoardError(amBoardMitUhr(dir, (t) => t.listIssues(undefined)), /Toolbox-API-Fehler: HTTP 503/);
   });
 });
 
@@ -578,9 +604,8 @@ test("get liefert die Labels als Namen-Array", async () => {
       ? { status: 200, json: gruppiert([karte(7, "READY", { labels: ["kit:nightrun", "fix"] })]) }
       : { status: 200, json: [] }),
     async (dir) => {
-      const res = await runBoardAsync(dir, ["issue", "get", "7"], MIT_TOKEN);
-      assert.equal(res.status, 0, res.stderr);
-      assert.deepEqual(JSON.parse(res.stdout).labels, ["kit:nightrun", "fix"]);
+      const karte7 = await amBoard(dir, (t) => t.getIssue("7"));
+      assert.deepEqual(karte7.labels, ["kit:nightrun", "fix"]);
     },
   );
 });
@@ -591,9 +616,8 @@ test("get ohne Label-Feld in der Antwort liefert ein leeres Array, nie undefined
       ? { status: 200, json: gruppiert([karte(7, "READY")]) }
       : { status: 200, json: [] }),
     async (dir) => {
-      const res = await runBoardAsync(dir, ["issue", "get", "7"], MIT_TOKEN);
-      assert.equal(res.status, 0, res.stderr);
-      assert.deepEqual(JSON.parse(res.stdout).labels, []);
+      const karte7 = await amBoard(dir, (t) => t.getIssue("7"));
+      assert.deepEqual(karte7.labels, []);
     },
   );
 });
@@ -604,14 +628,9 @@ test("get und list liefern fuer dieselbe Karte dieselben Labels", async () => {
       ? { status: 200, json: gruppiert([karte(7, "READY", { labels: [{ name: "kit:nightrun" }] })]) }
       : { status: 200, json: [] }),
     async (dir) => {
-      const geholt = await runBoardAsync(dir, ["issue", "get", "7"], MIT_TOKEN);
-      const gelistet = await runBoardAsync(dir, ["issue", "list"], MIT_TOKEN);
-      assert.equal(geholt.status, 0, geholt.stderr);
-      assert.equal(gelistet.status, 0, gelistet.stderr);
-      assert.deepEqual(
-        JSON.parse(geholt.stdout).labels,
-        JSON.parse(gelistet.stdout).find((i) => i.id === "7").labels,
-      );
+      const geholt = await amBoard(dir, (t) => t.getIssue("7"));
+      const gelistet = await amBoard(dir, (t) => t.listIssues(undefined));
+      assert.deepEqual(geholt.labels, gelistet.find((i) => i.id === "7").labels);
     },
   );
 });
@@ -630,9 +649,8 @@ test("get liefert das Anlagedatum als Kalendertag", async () => {
       ? { status: 200, json: gruppiert([karte(7, "READY")]) }
       : { status: 200, json: [] }),
     async (dir) => {
-      const res = await runBoardAsync(dir, ["issue", "get", "7"], MIT_TOKEN);
-      assert.equal(res.status, 0, res.stderr);
-      assert.match(JSON.parse(res.stdout).created, /^\d{4}-\d{2}-\d{2}$/);
+      const karte7 = await amBoard(dir, (t) => t.getIssue("7"));
+      assert.match(karte7.created, /^\d{4}-\d{2}-\d{2}$/);
     },
   );
 });
@@ -644,9 +662,8 @@ test("get nimmt auch created_at und created als Anlagefeld", async () => {
         ? { status: 200, json: gruppiert([karte(7, "READY", { createdAt: undefined, [feld]: "2026-08-14T23:30:00+02:00" })]) }
         : { status: 200, json: [] }),
       async (dir) => {
-        const res = await runBoardAsync(dir, ["issue", "get", "7"], MIT_TOKEN);
-        assert.equal(res.status, 0, res.stderr);
-        assert.equal(JSON.parse(res.stdout).created, "2026-08-14", `Feld ${feld}`);
+        const karte7 = await amBoard(dir, (t) => t.getIssue("7"));
+        assert.equal(karte7.created, "2026-08-14", `Feld ${feld}`);
       },
     );
   }
@@ -660,9 +677,10 @@ test("get ohne Anlagefeld in der Antwort laesst created weg", async () => {
       ? { status: 200, json: gruppiert([karte(7, "READY", { createdAt: undefined })]) }
       : { status: 200, json: [] }),
     async (dir) => {
-      const res = await runBoardAsync(dir, ["issue", "get", "7"], MIT_TOKEN);
-      assert.equal(res.status, 0, res.stderr);
-      assert.equal("created" in JSON.parse(res.stdout), false);
+      // Ueber die JSON-Rundreise wie in der Ausgabe des Dispatch: Ein `created:
+      // undefined` gaelte dort ebenfalls als weggelassen.
+      const karte7 = JSON.parse(JSON.stringify(await amBoard(dir, (t) => t.getIssue("7"))));
+      assert.equal("created" in karte7, false);
     },
   );
 });

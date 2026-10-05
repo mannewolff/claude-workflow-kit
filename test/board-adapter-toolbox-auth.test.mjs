@@ -1,11 +1,12 @@
-// Tests fuer die Pro-App-Token-Aufloesung in kit/board.mjs (Issue #135).
+// Tests fuer die Pro-App-Token-Aufloesung im Board-Teil kit/board/adapter.mjs (Issue #135,
+// seit Issue #1217 aus dem Teil statt aus dem Einstieg).
 // Laeuft mit dem eingebauten node:test — keine Dependency:  node --test
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
 
-import { resolveToolboxToken } from "../kit/board.mjs";
+import { resolveToolboxToken } from "../kit/board/adapter.mjs";
 
 // readFile-Fake: bildet Pfade auf Inhalte ab, wirft sonst wie readFileSync (ENOENT).
 function fakeReadFile(files) {

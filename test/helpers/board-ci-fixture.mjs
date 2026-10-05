@@ -5,36 +5,36 @@
 // begrenzte (Issue #836). Was beide brauchen, steht hier: das Fixture mit Fake-CLI und
 // die beiden Aufruf-Hilfen. Doppelt gepflegt wird davon nichts.
 //
+// Seit Issue #1217 rufen die Hilfen `getCiStatus` des CodeHosts aus kit/board/adapter.mjs
+// im selben Prozess, so wie `codeCiStatus` im Einstieg es tut. Deshalb laedt dieser Helfer
+// nur `adapter-fixture.mjs`: Wer `board-fixture.mjs` laedt, startet den Einstieg und gilt
+// beim Waechter als Ablauf-Pruefung. Die CLI-Form der Achse (fehlendes `--commit`, Hilfe)
+// prueft `ablauf-board-adapter-ci-status-cli.test.mjs` mit eigenem Aufruf.
+//
 // Diese Datei enthaelt selbst keine Tests. Der node:test-Runner laedt trotzdem alles
 // unter test/ und meldet sie als testlose Datei — das ist erwartet.
 
-import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 
-import { setupProjekt, fakeCli, runBoard, aufrufZeilen } from "./board-fixture.mjs";
+import { setupProjekt, fakeCli, imProjekt, aufrufZeilen } from "./adapter-fixture.mjs";
+import { resolveCodeHost } from "../../kit/board/adapter.mjs";
 
 export const SHA = "0123456789abcdef0123456789abcdef01234567";
 
-/** Legt ein Fixture mit Fake-CLI an, ruft `code ci-status` auf und raeumt auf. */
-export function ciStatus(config, cliName, regeln, { commitArg = SHA } = {}) {
+/**
+ * Legt ein Fixture mit Fake-CLI an, fragt den CI-Status zum SHA im selben Prozess ab
+ * und raeumt auf. Liefert das Urteil und die abgesetzten Kommandozeilen; scheitert der
+ * Adapter, wird das Promise mit seinem BoardError abgelehnt.
+ */
+export async function ciStatus(config, cliName, regeln) {
   const dir = setupProjekt(config, "board-ci-");
   if (cliName) fakeCli(dir, cliName, regeln);
   try {
-    const args = ["code", "ci-status"];
-    if (commitArg !== null) args.push("--commit");
-    if (typeof commitArg === "string") args.push(commitArg);
-    const res = runBoard(dir, args);
-    return { res, zeilen: cliName ? aufrufZeilen(dir, cliName) : [] };
+    const daten = await imProjekt(dir, () => resolveCodeHost(config).getCiStatus(SHA));
+    return { daten, zeilen: cliName ? aufrufZeilen(dir, cliName) : [] };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-}
-
-/** Erwartet Exit 0 und liefert die geparste Ausgabe samt Aufrufzeilen. */
-export function ciStatusOk(config, cliName, regeln) {
-  const { res, zeilen } = ciStatus(config, cliName, regeln);
-  assert.equal(res.status, 0, `Exit ${res.status}: ${res.stderr}`);
-  return { daten: JSON.parse(res.stdout), zeilen };
 }
 
 // Startzeit je Job (Issue #1151): `gh run view --json jobs` liefert `startedAt`, `glab ci

@@ -202,18 +202,24 @@ const { fenceLauf } = await import(pathToFileURL(NACHBAR_BOARD).href).catch(() =
   },
 }));
 
-// Ebenso geteilt und abgefangen: das Budget der Board-Aufrufe, der Finder der Git Bash und
-// die Startregel fuer Programme unter Windows (Issue #1131, Plan #1128, E2). Sie kommen aus
-// dem Board-Teil, der sie fuehrt (Issue #1215, Plan #1199, E17), nicht aus dem Einstieg —
-// der Pfad ist so wenig literal wie NACHBAR_BOARD, deshalb nennen die Nacht-Gruppen den
-// Bereich board-wiederholung von Hand (E3). Fehlt der Teil, melden sie das wie jeder
-// andere Board-Zugriff — erst, wenn jemand sie wirklich braucht.
-const { TOOLBOX_BUDGET_NACHT_MS, gitBashPfad, startbefehlFuer, spawnAufruf, GIT_BASH_UMGEBUNG } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "wiederholung.mjs")).href).catch(() => {
+// Ebenso geteilt und abgefangen: der Finder der Git Bash und die Startregel fuer Programme
+// unter Windows (Issue #1131, Plan #1128, E2). Sie kommen aus dem Board-Teil, der sie
+// fuehrt (Issue #1215, Plan #1199, E17), nicht aus dem Einstieg — der Pfad ist so wenig
+// literal wie NACHBAR_BOARD, deshalb nennen die Nacht-Gruppen den Bereich
+// board-wiederholung von Hand (E3). Fehlt der Teil, melden sie das wie jeder andere
+// Board-Zugriff — erst, wenn jemand sie wirklich braucht.
+const { gitBashPfad, startbefehlFuer, spawnAufruf, GIT_BASH_UMGEBUNG } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "wiederholung.mjs")).href).catch(() => {
   const fehlt = () => {
     throw new Error("board/wiederholung.mjs fehlt neben night.mjs — der Nacht-Runner braucht den Board-Adapter.");
   };
   return { gitBashPfad: fehlt, startbefehlFuer: fehlt, spawnAufruf: fehlt, GIT_BASH_UMGEBUNG: {} };
 });
+
+// Das Budget der Board-Aufrufe im Nachtbetrieb, aus dem Board-Teil adapter (Issue #1217):
+// Es gehoert zu den Toolbox-Aufrufen der Adapter. Der Pfad ist nicht literal, deshalb nennen
+// die Nacht-Gruppen den Bereich board-adapter von Hand (Plan #1199, E3). Fehlt der Teil,
+// bleibt das Budget offen, und sessionUmgebung setzt keines.
+const { TOOLBOX_BUDGET_NACHT_MS } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "adapter.mjs")).href).catch(() => ({}));
 
 // Normalerweise liegt board.mjs neben dieser Datei in .claude/kit/. KIT_ROOT
 // verlegt die Suche in ein anderes Projekt und ist ein Test-Hook (Issue #189,

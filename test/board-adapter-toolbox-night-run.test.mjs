@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { nightRunHeader, ToolboxIssueTracker } from "../kit/board.mjs";
+import { nightRunHeader, ToolboxIssueTracker } from "../kit/board/adapter.mjs";
 
 const START = "2026-10-05T08:43:57.123Z";
 

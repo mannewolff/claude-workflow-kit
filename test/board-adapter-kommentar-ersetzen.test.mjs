@@ -9,19 +9,20 @@
 //    zum doppelten Bericht. Die nachsichtigen Pfade bleiben fuer `issue get`.
 //  - `ersetzeKommentar(id, kommentarId, text)`.
 //
-// Die Adapter werden hier IM PROZESS gerufen (`resolveTracker`), weil es noch keinen
-// CLI-Befehl dafuer gibt — der kommt mit `issue melden`. gh und glab sind Fake-Binaries
-// im PATH dieses Prozesses; node:test startet je Datei einen eigenen Prozess.
+// Die Adapter werden hier IM PROZESS gerufen (`resolveTracker` aus dem Board-Teil
+// kit/board/adapter.mjs, Issue #1217), weil es noch keinen CLI-Befehl dafuer gab — der kam
+// mit `issue melden`. gh und glab sind Fake-Binaries im PATH dieses Prozesses; node:test
+// startet je Datei einen eigenen Prozess.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
-import { resolveTracker } from "../kit/board.mjs";
+import { resolveTracker } from "../kit/board/adapter.mjs";
 import {
-  setupProjekt, fakeCli, fakePath, aufrufe, starteServer, runBoardAsync, toolboxMitKommentaren, TEST_TOOLBOX_BUDGET_MS,
-} from "./helpers/board-fixture.mjs";
+  setupProjekt, fakeCli, fakePath, aufrufe, starteServer, toolboxMitKommentaren, TEST_TOOLBOX_BUDGET_MS,
+} from "./helpers/adapter-fixture.mjs";
 
 process.env.TBX_TOKEN = "test-token";
 process.env.TBX_CONFIG_DIR = "/nicht/vorhanden";
@@ -250,17 +251,12 @@ test("toolbox ohne PATCH-Route: ersetzeKommentar wirft und nennt die Route", asy
   });
 });
 
+// `issue get` ruft im Dispatch nur `getIssue` des Trackers; der nachsichtige Lesepfad
+// laesst sich darum im selben Prozess belegen wie bei GitLab oben.
 test("toolbox: kommentareStreng wirft bei scheiternder Lese-Route, issue get laeuft weiter mit []", async () => {
-  await mitToolbox({ leseRoute: false }, async (tracker, { host }) => {
+  await mitToolbox({ leseRoute: false }, async (tracker) => {
     await assert.rejects(() => tracker.kommentareStreng("7"), /HTTP 500/);
-
-    const dir = setupProjekt({ codeHost: "local", issueTracker: "toolbox", toolbox: { host } }, "board-ersetzen-get-");
-    try {
-      const res = await runBoardAsync(dir, ["issue", "get", "7"], { TBX_TOKEN: "test-token" });
-      assert.equal(res.status, 0, res.stderr);
-      assert.deepEqual(JSON.parse(res.stdout).comments, []);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    const geholt = await tracker.getIssue("7");
+    assert.deepEqual(geholt.comments, []);
   });
 });

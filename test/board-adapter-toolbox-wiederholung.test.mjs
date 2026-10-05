@@ -5,14 +5,15 @@
 //
 // Die Entscheidungen, die die Schleife der Reihe nach trifft, stehen als reine Funktionen
 // im Board-Teil wiederholung und werden in test/board-wiederholung-entscheidungen.test.mjs
-// geprueft (Issue #1215). Die Schleife
-// selbst gehoert zum Toolbox-Adapter, der noch im Einstieg steht; mit seinem Teil
-// (Plan #1199, E17) wechselt auch der Import dieser Datei.
+// geprueft (Issue #1215). Die Schleife selbst gehoert zum Toolbox-Adapter und kommt aus
+// seinem Teil kit/board/adapter.mjs (Issue #1217, Plan #1199, E17).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { ToolboxIssueTracker, BoardError, RUECKMELDUNG, TOOLBOX_UEBERLAST_TYPE, rueckmeldungFuer } from "../kit/board.mjs";
+import { ToolboxIssueTracker } from "../kit/board/adapter.mjs";
+import { BoardError, RUECKMELDUNG } from "../kit/board/grundlagen.mjs";
+import { TOOLBOX_UEBERLAST_TYPE, rueckmeldungFuer } from "../kit/board/wiederholung.mjs";
 
 // Der Token kommt aus der Umgebung dieses Testprozesses. node:test startet je
 // Datei einen eigenen Prozess, deshalb ist das kein Uebergriff auf andere Tests.

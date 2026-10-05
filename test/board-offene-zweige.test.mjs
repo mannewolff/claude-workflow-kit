@@ -67,7 +67,7 @@ test("code repo-name: ein leerer Remote faellt auf den Verzeichnisnamen zurueck"
 // _invalidateMetaCache: die Cache-Datei ist waehrend des Laufs verschwunden
 // ============================================================
 
-// Das Gegenstueck zum zerschossenen Cache aus board-github.test.mjs: Ein paralleler
+// Das Gegenstueck zum zerschossenen Cache aus board-adapter-github-projekt.test.mjs: Ein paralleler
 // Lauf kann die Datei auch ganz entfernen. Das Verwerfen des Caches findet dann
 // nichts mehr vor — und muss trotzdem durchlaufen, sonst kippt ein fremder Prozess
 // den move.

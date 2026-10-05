@@ -33,7 +33,7 @@ function standardAntwort(req) {
   return null;
 }
 
-/** Wie in board-toolbox.test.mjs: Mock-Server, Fixture, Aufraeumen. */
+/** Wie in board-adapter-toolbox.test.mjs: Mock-Server, Fixture, Aufraeumen. */
 async function mitBoard(antwort, fn, { config = {} } = {}) {
   const { server, requests, host } = await starteServer(antwort);
   const dir = setupProjekt(

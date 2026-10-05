@@ -6,7 +6,7 @@
 //
 // Alles im selben Prozess, ohne Server und ohne Kindprozess. Die Schleife selbst, die
 // diese Entscheidungen der Reihe nach trifft, gehoert zum Toolbox-Adapter und steht in
-// test/board-toolbox-wiederholung.test.mjs; was nur ueber die CLI sichtbar ist, in
+// test/board-adapter-toolbox-wiederholung.test.mjs; was nur ueber die CLI sichtbar ist, in
 // test/ablauf-board-wiederholung-cli.test.mjs.
 
 import { test } from "node:test";
