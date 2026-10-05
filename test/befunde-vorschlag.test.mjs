@@ -107,13 +107,13 @@ function wertVon(aufruf, flag) {
   return i === -1 ? null : aufruf.argv[i + 1];
 }
 
-const DREI = [zeile("luecke"), zeile("luecke"), zeile("luecke")];
+const DREI = [zeile("form"), zeile("form"), zeile("form")];
 
 // --- Anlegen ------------------------------------------------------------------
 
 test("[befunde-vorschlag] drei Vorkommen ergeben genau eine Idee am Board", () => {
   mitDir({ protokoll: DREI }, (dir) => {
-    const res = vorschlag(dir, "--art", "luecke");
+    const res = vorschlag(dir, "--art", "form");
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.json.ok, true);
     assert.equal(res.json.angelegt, true);
@@ -122,22 +122,22 @@ test("[befunde-vorschlag] drei Vorkommen ergeben genau eine Idee am Board", () =
     const aufrufe = boardAufrufe(dir);
     assert.equal(aufrufe.length, 1, "genau ein Board-Aufruf");
     assert.deepEqual(aufrufe[0].argv.slice(0, 2), ["issue", "create"]);
-    assert.equal(wertVon(aufrufe[0], "--title"), "[Idee] Maschinelle Pruefung fuer Mangel-Art luecke?");
+    assert.equal(wertVon(aufrufe[0], "--title"), "[Idee] Maschinelle Pruefung fuer Mangel-Art form?");
 
     assert.deepEqual(zustand(dir), {
-      luecke: { karte: "812", ideaId: null, stand: "offen", zaehlerstand: 3, nullpunkt: 0 },
+      form: { karte: "812", ideaId: null, stand: "offen", zaehlerstand: 3, nullpunkt: 0 },
     });
   });
 });
 
 test("[befunde-vorschlag] ein vierter Fund ergaenzt den offenen Vorschlag, statt einen zweiten anzulegen", () => {
   mitDir({ protokoll: DREI }, (dir) => {
-    assert.equal(vorschlag(dir, "--art", "luecke").status, 0);
+    assert.equal(vorschlag(dir, "--art", "form").status, 0);
     // Der vierte Fund kommt dazu, dann ein erneuter Aufruf.
     writeFileSync(join(dir, ".claude", "befunde.tsv"),
-      [...DREI, zeile("luecke", { karte: "805" })].map((z) => `${z}\n`).join(""), "utf-8");
+      [...DREI, zeile("form", { karte: "805" })].map((z) => `${z}\n`).join(""), "utf-8");
 
-    const res = vorschlag(dir, "--art", "luecke");
+    const res = vorschlag(dir, "--art", "form");
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.json.angelegt, false, "keine zweite Idee");
     assert.equal(res.json.ergaenzt, true);
@@ -145,19 +145,19 @@ test("[befunde-vorschlag] ein vierter Fund ergaenzt den offenen Vorschlag, statt
     const aufrufe = boardAufrufe(dir);
     assert.equal(aufrufe.length, 2, "create und comment, kein zweites create");
     assert.deepEqual(aufrufe[1].argv.slice(0, 3), ["issue", "comment", "812"]);
-    assert.equal(zustand(dir).luecke.zaehlerstand, 4, "der Vergleichspunkt wandert mit");
-    assert.equal(zustand(dir).luecke.karte, "812", "dieselbe Karte");
+    assert.equal(zustand(dir).form.zaehlerstand, 4, "der Vergleichspunkt wandert mit");
+    assert.equal(zustand(dir).form.karte, "812", "dieselbe Karte");
   });
 });
 
 test("[befunde-vorschlag] der Body nennt alle zugrunde liegenden Funde und den Satz zur Streuung", () => {
   const protokoll = [
-    zeile("luecke", { karte: "801", stufe: "fachlich", rolle: "po-blick", marke: "KRITISCH" }),
-    zeile("luecke", { karte: "802", stufe: "plan", rolle: "architektur-bestand", marke: "WICHTIG" }),
-    zeile("luecke", { karte: "803", stufe: "issue", rolle: "schnitt", marke: "HINWEIS" }),
+    zeile("form", { karte: "801", stufe: "fachlich", rolle: "po-blick", marke: "KRITISCH" }),
+    zeile("form", { karte: "802", stufe: "plan", rolle: "architektur-bestand", marke: "WICHTIG" }),
+    zeile("form", { karte: "803", stufe: "issue", rolle: "schnitt", marke: "HINWEIS" }),
   ];
   mitDir({ protokoll }, (dir) => {
-    assert.equal(vorschlag(dir, "--art", "luecke").status, 0);
+    assert.equal(vorschlag(dir, "--art", "form").status, 0);
     const body = boardAufrufe(dir)[0].text;
     assert.match(body, /Nicht alle Funde dieser Art sind mit derselben Pruefung zu fangen\./);
     for (const teil of ["801", "802", "803", "po-blick", "architektur-bestand", "schnitt",
@@ -174,9 +174,48 @@ test("[befunde-vorschlag] die Art 'sonstiges' fragt nach der Liste, nicht nach e
   });
 });
 
-test("[befunde-vorschlag] unterhalb der Schwelle entsteht nichts, und das ist kein Fehler", () => {
-  mitDir({ protokoll: [zeile("luecke"), zeile("luecke")] }, (dir) => {
+// Urteils-Arten (Issue #1182): Was ein Review beurteilt, faengt keine Maschine — der PO
+// hat die Frage dazu wiederholt abgelehnt, und eine Schwelle verschoebe sie nur.
+for (const art of ["luecke", "bestandsbehauptung", "unbeobachtbar", "widerspruch", "unbestimmt", "doppelung", "korrektheit", "test"]) {
+  test(`[befunde-vorschlag] die Urteils-Art '${art}' legt an der Schwelle nichts an und endet mit 0`, () => {
+    mitDir({ protokoll: [zeile(art), zeile(art), zeile(art)] }, (dir) => {
+      const res = vorschlag(dir, "--art", art);
+      assert.equal(res.status, 0, res.stderr);
+      assert.equal(res.json.ok, true);
+      assert.equal(res.json.angelegt, false);
+      assert.equal(res.json.ergaenzt, false);
+      assert.equal(res.json.vorschlag, false);
+      assert.match(res.json.grund, /Urteils-Art/);
+      assert.equal(boardAufrufe(dir).length, 0, "kein Board-Aufruf");
+      assert.equal(existsSync(join(dir, ".claude", "befunde-vorschlaege.json")), false, "kein Vermerk");
+    });
+  });
+}
+
+test("[befunde-vorschlag] eine Urteils-Art ergaenzt auch einen frueher offenen Vorschlag nicht", () => {
+  const vorschlaege = { luecke: { karte: "870", ideaId: null, stand: "offen", zaehlerstand: 3, nullpunkt: 0 } };
+  const protokoll = [...[1, 2, 3, 4, 5, 6].map(() => zeile("luecke"))];
+  mitDir({ protokoll, vorschlaege }, (dir) => {
     const res = vorschlag(dir, "--art", "luecke");
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(res.json.ergaenzt, false);
+    assert.equal(boardAufrufe(dir).length, 0);
+    assert.deepEqual(zustand(dir), vorschlaege, "der Vermerk bleibt unberuehrt");
+  });
+});
+
+for (const art of ["form", "konvention", "sicherheit"]) {
+  test(`[befunde-vorschlag] die pruefbare Art '${art}' fragt nach einer maschinellen Pruefung`, () => {
+    mitDir({ protokoll: [zeile(art), zeile(art), zeile(art)] }, (dir) => {
+      assert.equal(vorschlag(dir, "--art", art).status, 0);
+      assert.equal(wertVon(boardAufrufe(dir)[0], "--title"), `[Idee] Maschinelle Pruefung fuer Mangel-Art ${art}?`);
+    });
+  });
+}
+
+test("[befunde-vorschlag] unterhalb der Schwelle entsteht nichts, und das ist kein Fehler", () => {
+  mitDir({ protokoll: [zeile("form"), zeile("form")] }, (dir) => {
+    const res = vorschlag(dir, "--art", "form");
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.json.ok, true);
     assert.equal(res.json.erreicht, false);
@@ -187,8 +226,8 @@ test("[befunde-vorschlag] unterhalb der Schwelle entsteht nichts, und das ist ke
 });
 
 test("[befunde-vorschlag] die Schwelle kommt aus dem Config-Block befunde", () => {
-  mitDir({ protokoll: [zeile("luecke"), zeile("luecke")], config: { befunde: { schwelle: 2 } } }, (dir) => {
-    const res = vorschlag(dir, "--art", "luecke");
+  mitDir({ protokoll: [zeile("form"), zeile("form")], config: { befunde: { schwelle: 2 } } }, (dir) => {
+    const res = vorschlag(dir, "--art", "form");
     assert.equal(res.json.erreicht, true);
     assert.equal(res.json.angelegt, true);
   });
@@ -198,21 +237,21 @@ test("[befunde-vorschlag] die Schwelle kommt aus dem Config-Block befunde", () =
 
 test("[befunde-vorschlag] eine Pool-Idee wird mit ihrer ideaId vermerkt, Stand offen, Exit 0", () => {
   mitDir({ protokoll: DREI, board: { antwort: { id: null, ideaId: "idea-7f3", pending: true } } }, (dir) => {
-    const res = vorschlag(dir, "--art", "luecke");
+    const res = vorschlag(dir, "--art", "form");
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(zustand(dir), {
-      luecke: { karte: null, ideaId: "idea-7f3", stand: "offen", zaehlerstand: 3, nullpunkt: 0 },
+      form: { karte: null, ideaId: "idea-7f3", stand: "offen", zaehlerstand: 3, nullpunkt: 0 },
     });
   });
 });
 
 test("[befunde-vorschlag] eine Pool-Idee ohne Nummer laesst sich nicht ergaenzen — gemeldet, nicht gedoppelt", () => {
   mitDir({ protokoll: DREI, board: { antwort: { id: null, ideaId: "idea-7f3", pending: true } } }, (dir) => {
-    assert.equal(vorschlag(dir, "--art", "luecke").status, 0);
+    assert.equal(vorschlag(dir, "--art", "form").status, 0);
     writeFileSync(join(dir, ".claude", "befunde.tsv"),
-      [...DREI, zeile("luecke")].map((z) => `${z}\n`).join(""), "utf-8");
+      [...DREI, zeile("form")].map((z) => `${z}\n`).join(""), "utf-8");
 
-    const res = vorschlag(dir, "--art", "luecke");
+    const res = vorschlag(dir, "--art", "form");
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.json.angelegt, false, "keine zweite Idee");
     assert.equal(res.json.ergaenzt, false);
@@ -225,24 +264,24 @@ test("[befunde-vorschlag] eine Pool-Idee ohne Nummer laesst sich nicht ergaenzen
 
 test("[befunde-vorschlag] --abgelehnt setzt den Nullpunkt auf den Zaehlerstand und ruft das Board nicht", () => {
   mitDir({ protokoll: DREI }, (dir) => {
-    assert.equal(vorschlag(dir, "--art", "luecke").status, 0);
-    const res = vorschlag(dir, "--abgelehnt", "luecke");
+    assert.equal(vorschlag(dir, "--art", "form").status, 0);
+    const res = vorschlag(dir, "--abgelehnt", "form");
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.json.ok, true);
-    assert.equal(zustand(dir).luecke.stand, "abgelehnt");
-    assert.equal(zustand(dir).luecke.nullpunkt, 3);
+    assert.equal(zustand(dir).form.stand, "abgelehnt");
+    assert.equal(zustand(dir).form.nullpunkt, 3);
     assert.equal(boardAufrufe(dir).length, 1, "die Ablehnung ist ein Handgriff ohne Board-Aufruf");
   });
 });
 
 test("[befunde-vorschlag] nach der Ablehnung legt ein weiterer Fund keinen neuen Vorschlag an", () => {
   mitDir({ protokoll: DREI }, (dir) => {
-    vorschlag(dir, "--art", "luecke");
-    vorschlag(dir, "--abgelehnt", "luecke");
+    vorschlag(dir, "--art", "form");
+    vorschlag(dir, "--abgelehnt", "form");
     writeFileSync(join(dir, ".claude", "befunde.tsv"),
-      [...DREI, zeile("luecke")].map((z) => `${z}\n`).join(""), "utf-8");
+      [...DREI, zeile("form")].map((z) => `${z}\n`).join(""), "utf-8");
 
-    const res = vorschlag(dir, "--art", "luecke");
+    const res = vorschlag(dir, "--art", "form");
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.json.erreicht, false, "vier Vorkommen, Nullpunkt drei — die Schwelle ist nicht erreicht");
     assert.equal(res.json.angelegt, false);
@@ -252,27 +291,27 @@ test("[befunde-vorschlag] nach der Ablehnung legt ein weiterer Fund keinen neuen
 
 test("[befunde-vorschlag] erst ab dem Nullpunkt erneut erreichte Schwelle entsteht wieder ein Vorschlag", () => {
   mitDir({ protokoll: DREI }, (dir) => {
-    vorschlag(dir, "--art", "luecke");
-    vorschlag(dir, "--abgelehnt", "luecke");
+    vorschlag(dir, "--art", "form");
+    vorschlag(dir, "--abgelehnt", "form");
     writeFileSync(join(dir, ".claude", "befunde.tsv"),
-      [...DREI, zeile("luecke"), zeile("luecke"), zeile("luecke")].map((z) => `${z}\n`).join(""), "utf-8");
+      [...DREI, zeile("form"), zeile("form"), zeile("form")].map((z) => `${z}\n`).join(""), "utf-8");
 
-    const res = vorschlag(dir, "--art", "luecke");
+    const res = vorschlag(dir, "--art", "form");
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.json.erreicht, true, "sechs Vorkommen, Nullpunkt drei");
     assert.equal(res.json.angelegt, true);
-    assert.equal(zustand(dir).luecke.stand, "offen");
-    assert.equal(zustand(dir).luecke.nullpunkt, 3, "der Nullpunkt der Ablehnung bleibt stehen");
+    assert.equal(zustand(dir).form.stand, "offen");
+    assert.equal(zustand(dir).form.nullpunkt, 3, "der Nullpunkt der Ablehnung bleibt stehen");
     assert.equal(boardAufrufe(dir).filter((a) => a.argv[1] === "create").length, 2);
   });
 });
 
 test("[befunde-vorschlag] --abgelehnt ohne vermerkten Vorschlag setzt den Nullpunkt trotzdem", () => {
   mitDir({ protokoll: DREI }, (dir) => {
-    const res = vorschlag(dir, "--abgelehnt", "luecke");
+    const res = vorschlag(dir, "--abgelehnt", "form");
     assert.equal(res.status, 0, res.stderr);
-    assert.equal(zustand(dir).luecke.nullpunkt, 3);
-    assert.equal(zustand(dir).luecke.karte, null);
+    assert.equal(zustand(dir).form.nullpunkt, 3);
+    assert.equal(zustand(dir).form.karte, null);
   });
 });
 
@@ -280,7 +319,7 @@ test("[befunde-vorschlag] --abgelehnt ohne vermerkten Vorschlag setzt den Nullpu
 
 test("[befunde-vorschlag] ein gescheiterter Board-Aufruf laesst die Zustandsdatei unveraendert", () => {
   mitDir({ protokoll: DREI, board: { exit: 1 } }, (dir) => {
-    const res = vorschlag(dir, "--art", "luecke");
+    const res = vorschlag(dir, "--art", "form");
     assert.notEqual(res.status, 0, "ein Fehlschlag endet ungleich 0");
     assert.equal(res.json.ok, false, "auch der Fehlschlag ist JSON auf stdout");
     assert.equal(zustand(dir), null, "kein halb vermerkter Vorschlag");
@@ -289,16 +328,16 @@ test("[befunde-vorschlag] ein gescheiterter Board-Aufruf laesst die Zustandsdate
 
 test("[befunde-vorschlag] ein gescheitertes Ergaenzen laesst den vermerkten Stand unveraendert", () => {
   mitDir({ protokoll: DREI }, (dir) => {
-    assert.equal(vorschlag(dir, "--art", "luecke").status, 0);
+    assert.equal(vorschlag(dir, "--art", "form").status, 0);
     // Ab jetzt antwortet der Stub mit Exit 1.
     writeFileSync(join(dir, ".claude", "kit", "board.mjs"), stubBoard({ exit: 1 }), "utf-8");
     writeFileSync(join(dir, ".claude", "befunde.tsv"),
-      [...DREI, zeile("luecke")].map((z) => `${z}\n`).join(""), "utf-8");
+      [...DREI, zeile("form")].map((z) => `${z}\n`).join(""), "utf-8");
 
-    const res = vorschlag(dir, "--art", "luecke");
+    const res = vorschlag(dir, "--art", "form");
     assert.notEqual(res.status, 0);
     assert.equal(res.json.ok, false);
-    assert.equal(zustand(dir).luecke.zaehlerstand, 3, "der Vergleichspunkt bleibt auf dem Stand der Anlage");
+    assert.equal(zustand(dir).form.zaehlerstand, 3, "der Vergleichspunkt bleibt auf dem Stand der Anlage");
   });
 });
 
@@ -306,14 +345,14 @@ test("[befunde-vorschlag] ein gescheitertes Ergaenzen laesst den vermerkten Stan
 
 /** Ein Register, das auf eine Karte zeigt, die der Adapter nicht mehr aufloest. */
 const VERSCHWUNDEN = {
-  luecke: { karte: "870", ideaId: null, stand: "offen", zaehlerstand: 3, nullpunkt: 0 },
+  form: { karte: "870", ideaId: null, stand: "offen", zaehlerstand: 3, nullpunkt: 0 },
 };
 const NICHT_GEFUNDEN = "Fehler: Issue 870 nicht gefunden";
 
 test("[befunde-vorschlag] ist die vermerkte Karte weg, entsteht eine neue Idee nur mit den Funden danach", () => {
-  const protokoll = [...DREI, ...[1, 2, 3].map(() => zeile("luecke", { karte: "805" }))];
+  const protokoll = [...DREI, ...[1, 2, 3].map(() => zeile("form", { karte: "805" }))];
   mitDir({ protokoll, vorschlaege: VERSCHWUNDEN, board: { kommentarFehler: NICHT_GEFUNDEN } }, (dir) => {
-    const res = vorschlag(dir, "--art", "luecke");
+    const res = vorschlag(dir, "--art", "form");
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.json.angelegt, true);
     assert.equal(res.json.karte, "812");
@@ -325,15 +364,15 @@ test("[befunde-vorschlag] ist die vermerkte Karte weg, entsteht eine neue Idee n
     assert.ok(!body.includes("| 797 |"), "keine Fundzeile, die die alte Karte schon trug");
 
     assert.deepEqual(zustand(dir), {
-      luecke: { karte: "812", ideaId: null, stand: "offen", zaehlerstand: 6, nullpunkt: 3 },
+      form: { karte: "812", ideaId: null, stand: "offen", zaehlerstand: 6, nullpunkt: 3 },
     });
   });
 });
 
 test("[befunde-vorschlag] ist die vermerkte Karte weg und die neuen Funde reichen nicht, gilt sie als erledigt", () => {
-  const protokoll = [...DREI, zeile("luecke", { karte: "805" })];
+  const protokoll = [...DREI, zeile("form", { karte: "805" })];
   mitDir({ protokoll, vorschlaege: VERSCHWUNDEN, board: { kommentarFehler: NICHT_GEFUNDEN } }, (dir) => {
-    const res = vorschlag(dir, "--art", "luecke");
+    const res = vorschlag(dir, "--art", "form");
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.json.ok, true);
     assert.equal(res.json.angelegt, false);
@@ -343,17 +382,17 @@ test("[befunde-vorschlag] ist die vermerkte Karte weg und die neuen Funde reiche
 
     assert.deepEqual(boardAufrufe(dir).map((a) => a.argv[1]), ["comment"], "keine neue Karte");
     assert.deepEqual(zustand(dir), {
-      luecke: { karte: "870", ideaId: null, stand: "erledigt", zaehlerstand: 3, nullpunkt: 3 },
+      form: { karte: "870", ideaId: null, stand: "erledigt", zaehlerstand: 3, nullpunkt: 3 },
     });
   });
 });
 
 test("[befunde-vorschlag] ein anderer Fehlschlag beim Ergaenzen laesst das Register byte-gleich", () => {
-  const protokoll = [...DREI, zeile("luecke", { karte: "805" })];
+  const protokoll = [...DREI, zeile("form", { karte: "805" })];
   mitDir({ protokoll, vorschlaege: VERSCHWUNDEN, board: { kommentarFehler: "Fehler: HTTP 503 Service Unavailable" } }, (dir) => {
     const pfad = join(dir, ".claude", "befunde-vorschlaege.json");
     const vorher = readFileSync(pfad, "utf-8");
-    const res = vorschlag(dir, "--art", "luecke");
+    const res = vorschlag(dir, "--art", "form");
     assert.notEqual(res.status, 0);
     assert.equal(res.json.ok, false);
     assert.equal(readFileSync(pfad, "utf-8"), vorher);
@@ -362,20 +401,20 @@ test("[befunde-vorschlag] ein anderer Fehlschlag beim Ergaenzen laesst das Regis
 });
 
 test("[befunde-vorschlag] ein erledigter Vorschlag zaehlt ab seinem Nullpunkt und legt dann neu an", () => {
-  const vorschlaege = { luecke: { karte: "870", ideaId: null, stand: "erledigt", zaehlerstand: 3, nullpunkt: 3 } };
-  const protokoll = [...DREI, ...[1, 2, 3].map(() => zeile("luecke", { karte: "805" }))];
+  const vorschlaege = { form: { karte: "870", ideaId: null, stand: "erledigt", zaehlerstand: 3, nullpunkt: 3 } };
+  const protokoll = [...DREI, ...[1, 2, 3].map(() => zeile("form", { karte: "805" }))];
   mitDir({ protokoll, vorschlaege }, (dir) => {
-    const res = vorschlag(dir, "--art", "luecke");
+    const res = vorschlag(dir, "--art", "form");
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.json.angelegt, true);
     assert.deepEqual(boardAufrufe(dir).map((a) => a.argv[1]), ["create"], "kein Kommentar an die erledigte Karte");
-    assert.equal(zustand(dir).luecke.nullpunkt, 3);
+    assert.equal(zustand(dir).form.nullpunkt, 3);
   });
 });
 
 test("[befunde-vorschlag] eine unlesbare Zustandsdatei wird abgewiesen, statt ueberschrieben", () => {
   mitDir({ protokoll: DREI, vorschlaege: "{kein json" }, (dir) => {
-    const res = vorschlag(dir, "--art", "luecke");
+    const res = vorschlag(dir, "--art", "form");
     assert.notEqual(res.status, 0);
     assert.equal(res.json.ok, false);
     assert.equal(readFileSync(join(dir, ".claude", "befunde-vorschlaege.json"), "utf-8"), "{kein json");
@@ -385,11 +424,11 @@ test("[befunde-vorschlag] eine unlesbare Zustandsdatei wird abgewiesen, statt ue
 
 for (const [name, args] of [
   ["ohne --art und ohne --abgelehnt", []],
-  ["mit beiden zugleich", ["--art", "luecke", "--abgelehnt", "luecke"]],
+  ["mit beiden zugleich", ["--art", "form", "--abgelehnt", "form"]],
   ["mit einer unbekannten Art", ["--art", "gibtsnicht"]],
   ["mit einer unbekannten abgelehnten Art", ["--abgelehnt", "gibtsnicht"]],
   ["mit --art ohne Wert", ["--art"]],
-  ["mit einem unbekannten Argument", ["--art", "luecke", "--sonstwas"]],
+  ["mit einem unbekannten Argument", ["--art", "form", "--sonstwas"]],
 ]) {
   test(`[befunde-vorschlag] ein Aufruf ${name} wird abgewiesen, mit JSON auf stdout`, () => {
     mitDir({ protokoll: DREI }, (dir) => {
@@ -404,7 +443,7 @@ for (const [name, args] of [
 
 test("[befunde-vorschlag] ohne Protokolldatei ist der Zaehlerstand null und nichts entsteht", () => {
   mitDir({}, (dir) => {
-    const res = vorschlag(dir, "--art", "luecke");
+    const res = vorschlag(dir, "--art", "form");
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.json.zaehlerstand, 0);
     assert.equal(res.json.angelegt, false);
@@ -413,10 +452,10 @@ test("[befunde-vorschlag] ohne Protokolldatei ist der Zaehlerstand null und nich
 });
 
 test("[befunde-vorschlag] der Vorschlag einer Art laesst den Vermerk der anderen stehen", () => {
-  mitDir({ protokoll: [...DREI, zeile("doppelung"), zeile("doppelung"), zeile("doppelung")] }, (dir) => {
-    assert.equal(vorschlag(dir, "--art", "luecke").status, 0);
-    assert.equal(vorschlag(dir, "--art", "doppelung").status, 0);
-    assert.deepEqual(Object.keys(zustand(dir)).sort(), ["doppelung", "luecke"]);
+  mitDir({ protokoll: [...DREI, zeile("konvention"), zeile("konvention"), zeile("konvention")] }, (dir) => {
+    assert.equal(vorschlag(dir, "--art", "form").status, 0);
+    assert.equal(vorschlag(dir, "--art", "konvention").status, 0);
+    assert.deepEqual(Object.keys(zustand(dir)).sort(), ["form", "konvention"]);
   });
 });
 

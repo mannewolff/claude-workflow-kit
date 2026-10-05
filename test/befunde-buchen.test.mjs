@@ -137,6 +137,15 @@ test("die Rolle stammt aus dem jeweils letzten Reviewer-Kopf vor dem Fund", () =
   });
 });
 
+test("der Beispielkopf aus /issue-review Schritt 5 bucht seine Rolle (Issue #1182)", () => {
+  mitDir((dir) => {
+    const text = ["## Fachplan-Review, Runde 1", "", "### Reviewer 1: form-beobachtbarkeit, fable", "", fund()].join("\n");
+    const res = buchen(dir, text, ["--stufe", "fachlich", "--karte", "1180"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(protokoll(dir)[0].split("\t")[3], "form-beobachtbarkeit");
+  });
+});
+
 test("ohne Reviewer-Kopf steht 'unbekannt', bei --stufe code 'code-review'", () => {
   mitDir((dir) => {
     const res = buchen(dir, fund());
@@ -175,13 +184,13 @@ test("bei Schwelle drei meldet der dritte Fund einer Art 'erreicht', der zweite 
     vorbefuellen(dir, 1);
     const res = buchen(dir, fund());
     const json = JSON.parse(res.stdout);
-    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 2, nullpunkt: 0, erreicht: false }]);
+    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 2, nullpunkt: 0, erreicht: false, vorschlag: false }]);
   });
   mitDir((dir) => {
     vorbefuellen(dir, 2);
     const res = buchen(dir, fund());
     const json = JSON.parse(res.stdout);
-    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 3, nullpunkt: 0, erreicht: true }]);
+    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 3, nullpunkt: 0, erreicht: true, vorschlag: false }]);
   });
 });
 
@@ -191,7 +200,7 @@ test("ein Sprung ueber die Schwelle (zwei Funde in einem Aufruf) meldet ebenfall
     const text = [fund({ titel: "F1 — drei." }), fund({ titel: "F2 — vier." })].join("\n\n");
     const res = buchen(dir, text);
     const json = JSON.parse(res.stdout);
-    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 4, nullpunkt: 0, erreicht: true }]);
+    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 4, nullpunkt: 0, erreicht: true, vorschlag: false }]);
   });
 });
 
@@ -203,7 +212,7 @@ test("der Nullpunkt aus befunde-vorschlaege.json verschiebt die Schwelle", () =>
       JSON.stringify({ doppelung: { nullpunkt: 2 } }) + "\n", "utf-8");
     const res = buchen(dir, fund());
     const json = JSON.parse(res.stdout);
-    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 3, nullpunkt: 2, erreicht: false }]);
+    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 3, nullpunkt: 2, erreicht: false, vorschlag: false }]);
   });
 });
 
@@ -215,7 +224,24 @@ test("die Schwelle kommt aus dem Config-Block befunde.schwelle", () => {
     const res = buchen(dir, fund());
     const json = JSON.parse(res.stdout);
     assert.equal(json.schwelle, 1);
-    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 1, nullpunkt: 0, erreicht: true }]);
+    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 1, nullpunkt: 0, erreicht: true, vorschlag: false }]);
+  });
+});
+
+test("eine Urteils-Art meldet Stand und Schwelle weiter, aber vorschlag: false (Issue #1182)", () => {
+  mitDir((dir) => {
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    writeFileSync(join(dir, ".claude", "befunde.tsv"),
+      `${"2026-09-21T00:00:00.000Z\tplan\t1\tunbekannt\tluecke\tWICHTIG\t-\n".repeat(2)}`
+      + `${"2026-09-21T00:00:00.000Z\tplan\t1\tunbekannt\tform\tWICHTIG\t-\n".repeat(2)}`, "utf-8");
+    const text = [fund({ titel: "F1 — luecke.", art: "luecke" }), fund({ titel: "F2 — form.", art: "form" })].join("\n\n");
+    const res = buchen(dir, text);
+    assert.equal(res.status, 0, res.stderr);
+    const json = JSON.parse(res.stdout);
+    assert.deepEqual(json.arten, [
+      { art: "form", stand: 3, nullpunkt: 0, erreicht: true, vorschlag: true },
+      { art: "luecke", stand: 3, nullpunkt: 0, erreicht: true, vorschlag: false },
+    ]);
   });
 });
 

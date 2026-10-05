@@ -288,6 +288,52 @@ test("ein Text ohne jede Marke ergibt keine Funde und bleibt gruen", () => {
   });
 });
 
+// --- Reviewer-Kopf (Issue #1182) ----------------------------------------------
+//
+// Im Befunde-Kommentar von /issue-review (erste Zeile `## <Stufe>-Review, Runde <n>`)
+// steht vor jedem Fundblock der Kopf `### Reviewer <n>: <rolle>, <modell>` — sonst
+// bucht `buchen` die Rolle als „unbekannt". Der Code-Review aus /review traegt keinen
+// solchen Kopf und wird darum nicht beanstandet.
+
+test("[befunde-1182] ein Kopf in anderer Form wird als fehlender Reviewer-Kopf gemeldet", () => {
+  const text = ["## Fachplan-Review, Runde 1", "", "### Reviewer: fable, Rolle x", "", VOLLSTAENDIG].join("\n");
+  pruefe(text, (res, json) => {
+    assert.equal(res.status, 0, "kein Gate");
+    assert.deepEqual(json.funde[0].fehlt, ["reviewer-kopf"]);
+    assert.equal(json.eintraege.length, 1);
+    assert.equal(json.eintraege[0].angabe, "reviewer-kopf");
+    assert.match(json.eintraege[0].meldung, /Reviewer-Kopf/);
+    assert.match(json.eintraege[0].meldung, /### Reviewer <n>: <rolle>, <modell>/);
+    assert.equal(json.vollstaendig, 0);
+  });
+});
+
+test("[befunde-1182] der Kopf in der vorgeschriebenen Form bleibt ohne Eintrag", () => {
+  const text = ["## Fachplan-Review, Runde 1", "", "### Reviewer 1: form-beobachtbarkeit, fable", "", VOLLSTAENDIG].join("\n");
+  pruefe(text, (res, json) => {
+    assert.equal(res.status, 0);
+    assert.deepEqual(json.eintraege, []);
+    assert.equal(json.vollstaendig, 1);
+  });
+});
+
+test("[befunde-1182] nur der Fund vor dem ersten gueltigen Kopf ist ohne Reviewer-Kopf", () => {
+  const text = [
+    "## Plan-Review, Runde 2", "", VOLLSTAENDIG, "",
+    "### Reviewer 2: architektur-bestand, codex", "", VOLLSTAENDIG,
+  ].join("\n");
+  pruefe(text, (res, json) => {
+    assert.deepEqual(json.funde.map((f) => f.fehlt), [["reviewer-kopf"], []]);
+  });
+});
+
+test("[befunde-1182] ein Code-Review ohne Reviewer-Kopf wird nicht beanstandet", () => {
+  const text = ["## Code-Review (Schritt 7)", "", VOLLSTAENDIG].join("\n");
+  pruefe(text, (res, json) => {
+    assert.deepEqual(json.eintraege, []);
+  });
+});
+
 test("pruefen ohne --datei gibt JSON aus und endet ungleich 0", () => {
   const res = spawnSync(process.execPath, [BEFUNDE, "pruefen"], { cwd: repoRoot, encoding: "utf-8" });
 

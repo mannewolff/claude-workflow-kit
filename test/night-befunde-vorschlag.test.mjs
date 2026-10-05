@@ -25,12 +25,12 @@ function zeile(art) {
 }
 
 /** Die Fake-Zeile, die im Worktree eine Buchung hinterlaesst — wie `befunde buchen` es taete. */
-const BUCHUNG_IM_WORKTREE = String.raw`printf "2026-09-22T00:00:00.000Z\tplan\t2\treviewer\tluecke\tWICHTIG\t-\n" >> .claude/befunde.tsv`;
+const BUCHUNG_IM_WORKTREE = String.raw`printf "2026-09-22T00:00:00.000Z\tplan\t2\treviewer\tform\tWICHTIG\t-\n" >> .claude/befunde.tsv`;
 
 /** Zwei Vorkommen liegen schon in der Hauptkopie; das dritte bucht die Kette im Worktree. */
 function zweiInDerHauptkopie(dir) {
   writeFileSync(join(dir, ".claude", "befunde.tsv"),
-    [zeile("luecke"), zeile("luecke")].map((z) => `${z}\n`).join(""), "utf-8");
+    [zeile("form"), zeile("form")].map((z) => `${z}\n`).join(""), "utf-8");
 }
 
 /** Die Titel aller Karten des lokalen Trackers. */
@@ -65,14 +65,14 @@ test("[night-70] das dritte Vorkommen im Worktree laesst die Idee am Board entst
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const titel = kartenTitel(dir);
-    assert.ok(titel.includes("[Idee] Maschinelle Pruefung fuer Mangel-Art luecke?"),
+    assert.ok(titel.includes("[Idee] Maschinelle Pruefung fuer Mangel-Art form?"),
       `die Idee fehlt am Board:\n${titel.join("\n")}`);
-    assert.match(res.stdout, /Vorschlag fuer 'luecke' angelegt/,
+    assert.match(res.stdout, /Vorschlag fuer 'form' angelegt/,
       "der Runner protokolliert den Vorschlag");
 
     const vermerk = vorschlaege(dir);
-    assert.equal(vermerk.luecke.stand, "offen");
-    assert.equal(vermerk.luecke.zaehlerstand, 3);
+    assert.equal(vermerk.form.stand, "offen");
+    assert.equal(vermerk.form.zaehlerstand, 3);
     assert.ok(String(F), "Fachplan angelegt");
   });
 });
@@ -99,7 +99,7 @@ test("[night-70] ein Fehlschlag des Vorschlags haelt den Abbau nicht auf", () =>
     const res = run(dir, ["--kette"], kettenUmgebung(dir));
 
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-    assert.match(res.stdout, /Vorschlag fuer 'luecke' fehlgeschlagen/,
+    assert.match(res.stdout, /Vorschlag fuer 'form' fehlgeschlagen/,
       "der Fehlschlag steht als eine Zeile im Protokoll");
     assert.match(res.stdout, /der Abbau geht weiter/);
     assert.equal(readFileSync(join(dir, ".claude", "befunde-vorschlaege.json"), "utf-8"), "{kein json",
@@ -115,12 +115,12 @@ test("[night-70] ein Fehlschlag des Vorschlags haelt den Abbau nicht auf", () =>
 test("[night-70] jede zurueckgegebene Art bekommt ihren eigenen Aufruf", () => {
   mitProjekt((dir) => {
     writeFileSync(join(dir, ".claude", "befunde.tsv"),
-      [zeile("luecke"), zeile("luecke"), zeile("doppelung"), zeile("doppelung")]
+      [zeile("form"), zeile("form"), zeile("konvention"), zeile("konvention")]
         .map((z) => `${z}\n`).join(""), "utf-8");
     const F = fachplan(dir);
     const buchungen = [
       BUCHUNG_IM_WORKTREE,
-      String.raw`printf "2026-09-22T00:00:00.000Z\tplan\t2\treviewer\tdoppelung\tWICHTIG\t-\n" >> .claude/befunde.tsv`,
+      String.raw`printf "2026-09-22T00:00:00.000Z\tplan\t2\treviewer\tkonvention\tWICHTIG\t-\n" >> .claude/befunde.tsv`,
     ].join("; ");
     const env = umgebung(dir, { stufen: {
       plan: PLAN_ANLEGEN,
@@ -131,11 +131,11 @@ test("[night-70] jede zurueckgegebene Art bekommt ihren eigenen Aufruf", () => {
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const titel = kartenTitel(dir);
-    for (const art of ["luecke", "doppelung"]) {
+    for (const art of ["form", "konvention"]) {
       assert.ok(titel.includes(`[Idee] Maschinelle Pruefung fuer Mangel-Art ${art}?`),
         `die Idee zu '${art}' fehlt:\n${titel.join("\n")}`);
     }
-    assert.deepEqual(Object.keys(vorschlaege(dir)).sort(), ["doppelung", "luecke"]);
+    assert.deepEqual(Object.keys(vorschlaege(dir)).sort(), ["form", "konvention"]);
     assert.ok(String(F));
   });
 });

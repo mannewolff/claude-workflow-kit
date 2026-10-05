@@ -115,23 +115,39 @@ const BOARD_PATH = process.env.KIT_ROOT
  * decken die Fragen aller fuenf heutigen Rollen-Prompts ab und lassen sich in einem
  * Satz erklaeren. Die Reihenfolge ist die des Plans und bleibt stabil — die Skills
  * setzen die Liste woertlich in ihre Prompts ein.
+ *
+ * `vorschlag` sagt, welche Frage `vorschlag --art` an der Schwelle stellt (Issue #1182):
+ * `"pruefung"` fragt nach einer maschinellen Pruefung, `"liste"` nach einer Erweiterung
+ * der Artenliste, `null` stellt keine. Nach einer Pruefung fragen nur die Arten, deren
+ * Merkmal ein Werkzeug am Text oder Code erkennen kann; die uebrigen sind Urteile eines
+ * Reviews, und der PO hat die Frage dazu wiederholt abgelehnt. Eine hoehere Schwelle
+ * verschoebe dieselbe Karte nur.
  */
 const ARTEN = [
-  { name: "bestandsbehauptung", erklaerung: "Der geprueste Text behauptet etwas ueber den Bestand — eine Datei, eine Zeile, ein Verhalten —, das dort nicht so steht." },
-  { name: "unbeobachtbar", erklaerung: "Eine Zusage ist so formuliert, dass sich nicht beobachten laesst, ob sie erfuellt ist." },
-  { name: "widerspruch", erklaerung: "Zwei Stellen desselben Texts oder der Text und eine bindende Quelle sagen Verschiedenes." },
-  { name: "luecke", erklaerung: "Ein fuer das Ziel noetiger Fall, Schritt oder Bereich fehlt ganz." },
-  { name: "unbestimmt", erklaerung: "Eine Angabe laesst mehrere Auslegungen zu, und die Wahl aendert das Ergebnis." },
-  { name: "form", erklaerung: "Der Text verletzt eine vorgeschriebene Form — ein Abschnitt, ein Feld, eine Reihenfolge, ein Format." },
-  { name: "doppelung", erklaerung: "Dieselbe Aussage steht an zwei Orten, die auseinanderdriften koennen." },
-  { name: "korrektheit", erklaerung: "Der beschriebene oder geschriebene Weg fuehrt zu einem falschen Ergebnis." },
-  { name: "sicherheit", erklaerung: "Die Aenderung oeffnet einen Zugang, verraet ein Geheimnis oder umgeht eine Schranke." },
-  { name: "test", erklaerung: "Ein Beleg fehlt, prueft am Gegenstand vorbei oder kann gar nicht fehlschlagen." },
-  { name: "konvention", erklaerung: "Die Stelle weicht ohne Grund von einem im Projekt eingefuehrten Muster ab." },
-  { name: "sonstiges", erklaerung: "Auffang-Art fuer einen Fund, der in keine der elf anderen passt; ein Projekt ergaenzt keine eigenen Arten." },
+  { name: "bestandsbehauptung", vorschlag: null, erklaerung: "Der geprueste Text behauptet etwas ueber den Bestand — eine Datei, eine Zeile, ein Verhalten —, das dort nicht so steht." },
+  { name: "unbeobachtbar", vorschlag: null, erklaerung: "Eine Zusage ist so formuliert, dass sich nicht beobachten laesst, ob sie erfuellt ist." },
+  { name: "widerspruch", vorschlag: null, erklaerung: "Zwei Stellen desselben Texts oder der Text und eine bindende Quelle sagen Verschiedenes." },
+  { name: "luecke", vorschlag: null, erklaerung: "Ein fuer das Ziel noetiger Fall, Schritt oder Bereich fehlt ganz." },
+  { name: "unbestimmt", vorschlag: null, erklaerung: "Eine Angabe laesst mehrere Auslegungen zu, und die Wahl aendert das Ergebnis." },
+  { name: "form", vorschlag: "pruefung", erklaerung: "Der Text verletzt eine vorgeschriebene Form — ein Abschnitt, ein Feld, eine Reihenfolge, ein Format." },
+  { name: "doppelung", vorschlag: null, erklaerung: "Dieselbe Aussage steht an zwei Orten, die auseinanderdriften koennen." },
+  { name: "korrektheit", vorschlag: null, erklaerung: "Der beschriebene oder geschriebene Weg fuehrt zu einem falschen Ergebnis." },
+  { name: "sicherheit", vorschlag: "pruefung", erklaerung: "Die Aenderung oeffnet einen Zugang, verraet ein Geheimnis oder umgeht eine Schranke." },
+  { name: "test", vorschlag: null, erklaerung: "Ein Beleg fehlt, prueft am Gegenstand vorbei oder kann gar nicht fehlschlagen." },
+  { name: "konvention", vorschlag: "pruefung", erklaerung: "Die Stelle weicht ohne Grund von einem im Projekt eingefuehrten Muster ab." },
+  { name: "sonstiges", vorschlag: "liste", erklaerung: "Auffang-Art fuer einen Fund, der in keine der elf anderen passt; ein Projekt ergaenzt keine eigenen Arten." },
 ];
 
 const ARTEN_NAMEN = new Set(ARTEN.map((a) => a.name));
+
+/**
+ * Ob eine Art an der Schwelle einen Vorschlag erzeugt. Eine fremde Art — nur aus einer
+ * aelteren oder fremden Buchung moeglich — zaehlt als Urteils-Art: `vorschlag` nimmt
+ * sie ohnehin nicht an.
+ */
+function erzeugtVorschlag(art) {
+  return (ARTEN.find((a) => a.name === art)?.vorschlag ?? null) !== null;
+}
 
 const MARKEN = ["KRITISCH", "BLOCKER", "WICHTIG", "HINWEIS"];
 
@@ -270,6 +286,7 @@ const ANGABEN = {
   gegenprobe: "Die Zeile 'Gegenprobe: <Beobachtung, die den Fund widerlegen wuerde>' fehlt oder nennt vor ihrem Stand keine Beobachtung.",
   stand: "Der Stand der Gegenprobe fehlt — erwartet wird '— geprueft, bestaetigt' oder '— nicht geprueft' am Zeilenende.",
   art: "Die Zeile 'Art: <name>' fehlt; gueltig sind die Namen aus 'befunde arten'.",
+  "reviewer-kopf": "Vor dem Fund steht kein Reviewer-Kopf '### Reviewer <n>: <rolle>, <modell>' — ohne ihn bucht 'buchen' die Rolle als 'unbekannt'.",
 };
 
 // Die Dateien, mit denen dieses Werkzeug arbeitet. Hier oben und nicht bei
@@ -298,18 +315,24 @@ arten    Gibt die ${ARTEN.length} Mangel-Arten mit je einem erklaerenden Satz au
 pruefen  Liest einen Befunde-Text, erkennt die Fundbloecke an ihrer Schweregrad-Marke
          (${MARKEN.join(", ")}) und meldet je Fund die
          fehlenden der drei Pflichtangaben: die Gegenprobe, ihren Stand und die Art.
+         Im Befunde-Kommentar von /issue-review ('## <Stufe>-Review, Runde <n>')
+         meldet es dazu einen Fund ohne vorangehenden Reviewer-Kopf
+         '### Reviewer <n>: <rolle>, <modell>' als 'reviewer-kopf'.
          Exit 0 auch bei lauter unvollstaendigen Funden — aus der Form wird kein Gate.
          Ungleich 0 wird nur ein Aufruf, der nicht geht: fehlendes --datei, fehlende
          oder unlesbare Datei.
 buchen   Schreibt je Fund mit 'Gegenprobe: … — geprueft, bestaetigt' UND
          'Uebernahme: uebernommen' eine Zeile nach .claude/befunde.tsv — anhaengend,
          nie leerend — und meldet je beruehrter Art den neuen Zaehlerstand und ob die
-         Schwelle (Config-Block befunde.schwelle, Vorgabe ${SCHWELLE_VORGABE}) erreicht ist. Bei
+         Schwelle (Config-Block befunde.schwelle, Vorgabe ${SCHWELLE_VORGABE}) erreicht ist, dazu
+         mit 'vorschlag', ob die Art an der Schwelle einen Vorschlag erzeugt. Bei
          --stufe code steht in der letzten Spalte der Vergleichsstand der
          Pflichtpruefungen ('gruen' oder 'nicht-vergleichbar'), sonst '-'.
 vorschlag
          --art <art> legt am Board eine Idee an, sobald die Art oberhalb ihres
-         Nullpunkts die Schwelle erreicht; ein bereits offener Vorschlag wird
+         Nullpunkts die Schwelle erreicht — nur fuer form, konvention, sicherheit
+         (Frage nach einer Pruefung) und sonstiges (Frage nach der Artenliste); eine
+         Urteils-Art legt nichts an und endet mit 0; ein bereits offener Vorschlag wird
          ergaenzt statt gedoppelt. Unterhalb der Schwelle entsteht nichts, und das
          ist kein Fehler. --abgelehnt <art> vermerkt die Ablehnung und setzt den
          Nullpunkt auf den aktuellen Zaehlerstand — ein Handgriff ohne Board-Aufruf.
@@ -516,6 +539,12 @@ function meldung(angabe, gefundeneArt) {
   return ANGABEN[angabe];
 }
 
+// Die erste Zeile des Befunde-Kommentars von /issue-review Schritt 5:
+// '## <Issue|Fachplan|Plan>-Review, Runde <n>'. Nur dort verlangt `pruefen` den
+// Reviewer-Kopf (Issue #1182) — der Code-Review aus /review schreibt einen Text ohne
+// Reviewer-Koepfe, und `buchen` gibt ihm die Rolle `code-review` aus der Stufe.
+const ISSUE_REVIEW_KOPF_RE = /^## (?:Issue|Fachplan|Plan)-Review, Runde \d+[^\S\n]*$/m;
+
 export function pruefen(pfad) {
   let text;
   try {
@@ -524,9 +553,14 @@ export function pruefen(pfad) {
     fail(`Datei nicht lesbar: ${pfad} (${err.code || err.message}).`);
   }
 
+  // Der Reviewer-Kopf ist eine Angabe des Texts, nicht des Funds: `fehlendeAngaben`
+  // bleibt bei den drei Pflichtangaben, sonst fiele bei `buchen` jeder Fund ohne Kopf
+  // aus dem Protokoll, statt mit der Rolle 'unbekannt' gebucht zu werden.
+  const koepfe = ISSUE_REVIEW_KOPF_RE.test(text) ? reviewerKoepfe(text) : null;
   const eintraege = [];
   const funde = fundeLesen(text).map((fund) => {
     const { fehlt, art } = fehlendeAngaben(fund);
+    if (koepfe !== null && !koepfe.some((k) => k.zeile < fund.zeile)) fehlt.push("reviewer-kopf");
     for (const angabe of fehlt) {
       eintraege.push({
         fund: fund.nummer,
@@ -856,8 +890,9 @@ export function buchen({ datei, stufe, karte }) {
       const stand = (bestand.get(art) ?? 0) + beruehrt.get(art);
       const nullpunkt = nullpunktFuer(art);
       // `>=` oberhalb des Nullpunkts (E20), nicht `==`: Ein uebersprungener Stand
-      // verloere den Treffer sonst dauerhaft.
-      return { art, stand, nullpunkt, erreicht: stand - nullpunkt >= schwelle };
+      // verloere den Treffer sonst dauerhaft. `vorschlag` sagt den aufrufenden Skills,
+      // ob an der Schwelle ueberhaupt ein Vorschlag folgt (Issue #1182).
+      return { art, stand, nullpunkt, erreicht: stand - nullpunkt >= schwelle, vorschlag: erzeugtVorschlag(art) };
     }),
   };
 }
@@ -881,7 +916,7 @@ const AUTOR = "kit/befunde.mjs";
 
 /** Der Titel der Idee zu einer Art; `sonstiges` fragt nach der Liste, nicht nach einer Pruefung. */
 function vorschlagTitel(art) {
-  return art === "sonstiges"
+  return ARTEN.find((a) => a.name === art)?.vorschlag === "liste"
     ? "[Idee] Liste der Mangel-Arten erweitern?"
     : `[Idee] Maschinelle Pruefung fuer Mangel-Art ${art}?`;
 }
@@ -912,7 +947,7 @@ function vorkommenTabelle(vorkommen) {
  * einmal aufzuzaehlen truege die abgeraeumte Frage zurueck in die neue Idee.
  */
 function ideeBody(art, vorkommen, { zaehlerstand, nullpunkt, schwelle }) {
-  const frage = art === "sonstiges"
+  const frage = ARTEN.find((a) => a.name === art)?.vorschlag === "liste"
     ? `Die Auffang-Art \`sonstiges\` hat die Schwelle ${schwelle} erreicht. Das ist ein Hinweis darauf, dass die Liste der Mangel-Arten einen Fall nicht benennt, den die Reviewer regelmaessig finden — nicht darauf, dass eine Pruefung fehlt.`
     : `Die Mangel-Art \`${art}\` hat die Schwelle ${schwelle} erreicht. Lohnt sich daraus eine maschinelle Pruefung, die solche Funde kuenftig faengt, bevor ein Modell sie melden muss?`;
   return [
@@ -1073,6 +1108,16 @@ function kennungVon(antwort) {
  */
 export function vorschlag({ art, abgelehnt }) {
   const zielArt = art ?? abgelehnt;
+  // Eine Urteils-Art stellt keine Frage (Issue #1182) — weder neu noch als Ergaenzung
+  // eines frueher vermerkten Vorschlags. Kein Fehler: Die aufrufenden Skills rufen
+  // `vorschlag` je Art an der Schwelle, und ein Exit ungleich 0 waere ein Fehlschlag,
+  // den es nicht gibt. `--abgelehnt` bleibt erlaubt, es setzt nur einen Nullpunkt.
+  if (art !== null && !erzeugtVorschlag(art)) {
+    return {
+      ok: true, art, vorschlag: false, angelegt: false, ergaenzt: false,
+      grund: `'${art}' ist eine Urteils-Art — ein Review beurteilt sie, eine maschinelle Pruefung faengt sie nicht. Es entsteht kein Vorschlag.`,
+    };
+  }
   // Im Worktree eines Laufs wird nur gebucht (Issue #1028): Dort fehlen Protokoll und
   // Vorschlagsregister der Hauptkopie absichtlich, ein Vorschlag saehe ein leeres Register
   // und doppelte einen offenen. Den Vorschlag macht der Runner beim Abbau in der Hauptkopie.
@@ -1220,8 +1265,13 @@ function stufenVerteilung(eintraege) {
   return verteilung;
 }
 
-/** Der Vorschlag als ein Satzteil: Stand und, wenn vorhanden, wo er liegt. */
-function vorschlagText(vorschlag) {
+/**
+ * Der Vorschlag als ein Satzteil: Stand und, wenn vorhanden, wo er liegt. Eine
+ * Urteils-Art traegt keinen (Issue #1182) — auch dann nicht, wenn aus der Zeit davor
+ * noch ein offener vermerkt ist: Den ergaenzt `vorschlag` nicht mehr.
+ */
+function vorschlagText(art, vorschlag) {
+  if (ARTEN.find((a) => a.name === art)?.vorschlag === null) return "kein Vorschlag (Urteils-Art)";
   if (vorschlag === null) return "kein Vorschlag vermerkt";
   if (vorschlag.karte !== null) return `Vorschlag ${vorschlag.stand} (#${vorschlag.karte})`;
   if (vorschlag.ideaId !== null) return `Vorschlag ${vorschlag.stand} (Idee ${vorschlag.ideaId})`;
@@ -1274,7 +1324,7 @@ function berichtText(stand) {
     ...stand.arten.map((a) => [
       "", `\`${a.art}\``, a.vorkommen, ...BUCHEN_STUFEN.map((s) => a.stufen[s] ?? 0),
       a.code.gruen, a.code.nichtVergleichbar,
-      a.ueberNullpunkt, a.erreicht ? "ja" : "nein", vorschlagText(a.vorschlag), "",
+      a.ueberNullpunkt, a.erreicht ? "ja" : "nein", vorschlagText(a.art, a.vorschlag), "",
     ].join(" | ").trim()),
     "",
     "## Stufe code",
@@ -1326,7 +1376,7 @@ function befundBestimmen(arten, code, schwelle) {
       art: a.art,
       vorkommen: a.vorkommen,
       text: `\`${a.art}\`: ${a.vorkommen} Vorkommen${stufenText(a.stufen)}${schwellenteil}`
-        + ` — ${vorschlagText(a.vorschlag)}.`,
+        + ` — ${vorschlagText(a.art, a.vorschlag)}.`,
     };
   });
   if (befund.length > 0 && code.gruen + code.nichtVergleichbar > 0) {
