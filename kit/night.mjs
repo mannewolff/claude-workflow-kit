@@ -1334,16 +1334,19 @@ function laufBudget(args) {
  * Die Uhrzeit gehoert in den Dateinamen, weil das Textprotokoll eine Tagesdatei zum
  * Anhaengen ist, JSON aber nicht angehaengt werden kann — der zweite Lauf eines Tages
  * ueberschriebe sonst den ersten. Ohne Trennzeichen, weil Doppelpunkte unter Windows
- * in Dateinamen verboten sind; eine Kollision innerhalb derselben Sekunde ist
- * hingenommen.
+ * in Dateinamen verboten sind. Zwei Starts in derselben Sekunde trennt
+ * `laufStempelReservieren` (Issue #1190).
  */
-function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
+function ergebnisstandAnlegen(args, aktivesLabel, jetztVorher) {
   if (args.dryRun) return;
   const budgetStand = laufBudget(args);
+  const { stempel, jetzt, pfad, fehler } = laufStempelReservieren(process.cwd(), jetztVorher);
+  // Wie jeder Schreibfehler am Ergebnisstand bricht auch dieser den Lauf nicht ab: Der
+  // Stempel bleibt der zuletzt gebildete, die Kollision ist dann hingenommen wie frueher.
+  if (fehler) log(`Ergebnisstand konnte nicht reserviert werden: ${fehler}`);
   const iso = jetzt.toISOString();
-  const stempel = `${iso.slice(0, 10)}-${iso.slice(11, 19).replaceAll(":", "")}`;
   LAUF_STEMPEL = stempel;
-  ERGEBNIS_FILE = join(process.cwd(), ".claude", `night-run-${stempel}.json`);
+  ERGEBNIS_FILE = pfad;
   // Feldreihenfolge und Schluessel sind der Vertrag mit allen Auswertungen —
   // schemaFassung steht zuerst, damit ein Leser die Fassung kennt, bevor er den
   // Rest deutet.
@@ -1395,6 +1398,45 @@ function ergebnisstandAnlegen(args, aktivesLabel, jetzt) {
     // bleibt 1 (E9). `null` heisst: Der Lauf arbeitete mit der Kopie der Hauptkopie.
     kitStand: kitStandFeld(),
   };
+}
+
+/** Wie oft ein Start den Stempel nach einer Kollision hoechstens neu bildet (Plan #1113, E11). */
+const STEMPEL_NEUBILDUNGEN = 5;
+
+/**
+ * Reserviert den Lauf-Stempel, indem `.claude/night-run-<stempel>.json` exklusiv angelegt
+ * wird (Plan #1113, E11; Issue #1190). Findet ein Start die Datei schon vor, hat ein
+ * anderer Runner in derselben Sekunde begonnen: Er wartet bis zur naechsten vollen Sekunde
+ * und bildet den Stempel neu, hoechstens `STEMPEL_NEUBILDUNGEN`-mal. Das Format bleibt —
+ * es steht in Dateinamen, im Bericht-Lauf-Stempel und in Tests.
+ *
+ * Liefert Stempel, Pfad und die Zeit, aus der der Stempel gebildet wurde: Der Lauf-Kopf
+ * traegt sie als Start, damit beide nicht auseinanderfallen. Gelingt die Reservierung
+ * nicht — anderer Fehler als `EEXIST`, oder alle Neubildungen vergeben —, traegt das
+ * Ergebnis `fehler` und den zuletzt gebildeten Stempel; der Aufrufer bricht deshalb nicht
+ * ab. Uhr und Schlaf sind fuer die Tests einspeisbar.
+ */
+export function laufStempelReservieren(repoRoot, jetzt, {
+  uhr = () => new Date(),
+  warten = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms),
+} = {}) {
+  mkdirSync(join(repoRoot, ".claude"), { recursive: true });
+  for (let versuch = 0; ; versuch++) {
+    const iso = jetzt.toISOString();
+    const stempel = `${iso.slice(0, 10)}-${iso.slice(11, 19).replaceAll(":", "")}`;
+    const pfad = join(repoRoot, ".claude", `night-run-${stempel}.json`);
+    try {
+      writeFileSync(pfad, "{}\n", { encoding: "utf-8", flag: "wx" });
+      return { stempel, jetzt, pfad, fehler: null };
+    } catch (err) {
+      if (err.code !== "EEXIST") return { stempel, jetzt, pfad, fehler: `Lauf-Stempel ${stempel}: ${err.message}` };
+      if (versuch >= STEMPEL_NEUBILDUNGEN) {
+        return { stempel, jetzt, pfad, fehler: `Lauf-Stempel ${stempel} auch nach ${STEMPEL_NEUBILDUNGEN} Neubildungen schon vergeben` };
+      }
+      warten(1000 - (jetzt.getTime() % 1000));
+      jetzt = uhr();
+    }
+  }
 }
 
 /**
@@ -9287,10 +9329,21 @@ export function berichtSchreiben(zielId, text, { stempel = LAUF_STEMPEL, repoRoo
  * Traegt wartende Berichte nach — beim Start jeder Betriebsart, nach `vorbereiten`.
  * Aufsteigend nach Dateiname, jeder genau einmal; gelingt das Schreiben, ist die Datei
  * weg, sonst bleibt sie liegen und der Lauf geht weiter. Liefert die nachgetragenen Namen.
+ *
+ * Genau einmal auch bei zwei Runnern (Plan #1113, E12; Issue #1190): Vor dem Posten wird
+ * der Bericht auf `<name>.sendet-<pid>` umbenannt. Das Umbenennen ist atomar — wem es nicht
+ * gelingt, dem hat ein anderer Runner den Bericht abgenommen, und er ueberspringt ihn.
+ * Scheitert das Posten, wird zurueckbenannt. Eine `.sendet-`-Datei, deren Prozess nicht
+ * mehr lebt, benennt der naechste Start zurueck und traegt sie im selben Zug nach.
+ * `posten` und `pid` sind fuer die Tests einspeisbar.
  */
-export function berichteNachtragen(repoRoot = process.cwd()) {
+export function berichteNachtragen(repoRoot = process.cwd(), {
+  posten = (F, pfad) => boardRoh("issue", "comment", F, "--text-file", pfad),
+  pid = process.pid,
+} = {}) {
   const ordner = join(repoRoot, ".claude");
   if (!existsSync(ordner)) return [];
+  verwaisteSendungenZurueck(ordner);
   // Codepoint-Ordnung wie bisher (Issue #956, S2871): Die Berichte tragen den
   // Zeitstempel im Namen, aufsteigend nach Dateiname ist aufsteigend nach Zeit.
   const dateien = readdirSync(ordner)
@@ -9299,16 +9352,49 @@ export function berichteNachtragen(repoRoot = process.cwd()) {
   for (const name of dateien) {
     const F = name.slice(BERICHT_DATEI_PRAEFIX.length).split("-")[0];
     const pfad = join(ordner, name);
-    const res = boardRoh("issue", "comment", F, "--text-file", pfad);
+    const sendet = `${pfad}${SENDET_MARKE}${pid}`;
+    try {
+      renameSync(pfad, sendet);
+    } catch {
+      log(`Wartenden Nachtbericht uebersprungen: .claude/${name} — ein anderer Runner traegt ihn nach.`);
+      continue;
+    }
+    const res = posten(F, sendet);
     if (res.status === 0) {
-      rmSync(pfad, { force: true });
+      rmSync(sendet, { force: true });
       nachgetragen.push(name);
       log(`Wartenden Nachtbericht nachgetragen: .claude/${name} -> Kommentar an #${F}.`);
     } else {
+      renameSync(sendet, pfad);
       log(`Wartender Nachtbericht bleibt liegen: .claude/${name} — ${res.text.slice(0, 200)}`);
     }
   }
   return nachgetragen;
+}
+
+/** Die Marke zwischen Berichtsname und Prozess-Id eines gerade gesendeten Berichts (E12). */
+const SENDET_MARKE = ".sendet-";
+
+/**
+ * Benennt jede `.sendet-<pid>`-Datei zurueck, deren Prozess nicht mehr lebt (Plan #1113,
+ * E12): Ein Runner, der beim Posten starb, liess den Bericht unter dem Sendenamen liegen,
+ * und ohne Rueckbenennung truege ihn niemand mehr nach.
+ */
+function verwaisteSendungenZurueck(ordner) {
+  for (const n of readdirSync(ordner)) {
+    if (!n.startsWith(BERICHT_DATEI_PRAEFIX)) continue;
+    const stelle = n.lastIndexOf(SENDET_MARKE);
+    if (stelle < 0) continue;
+    const halter = pidAusInhalt(n.slice(stelle + SENDET_MARKE.length));
+    if (halter !== null && prozessLaeuft(halter)) continue;
+    const name = n.slice(0, stelle);
+    try {
+      renameSync(join(ordner, n), join(ordner, name));
+      log(`Verwaisten Nachtbericht zurueckbenannt: .claude/${n} -> .claude/${name} (Prozess ${halter ?? "unbekannt"} lebt nicht mehr).`);
+    } catch {
+      // Ein anderer Start benannte ihn im selben Augenblick zurueck — dann liegt er schon da.
+    }
+  }
 }
 
 /**
