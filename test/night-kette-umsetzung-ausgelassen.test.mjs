@@ -36,6 +36,10 @@ function lockBelegen(dir) {
   return process.pid;
 }
 
+// Ein Umsetzungsbudget von 60 ms: Die Kette wartet auf die belegte Sperre (Issue #1185),
+// hoechstens so lange wie ihr Budget — hier also kaum.
+const WARTEN_KURZ = { umsetzungMin: 0.001 };
+
 const fachplanText = (dir, F) => readFileSync(join(dir, "issues", `${F}.md`), "utf-8");
 
 test("[night-862] ein belegter Lock laesst die Kette unvollstaendig enden, nicht fertig", () => {
@@ -62,7 +66,7 @@ test("[night-862] ein belegter Lock laesst die Kette unvollstaendig enden, nicht
     stehenInBacklog(dir, einheit.stufen.pakete.ids);
     keinRestInArbeit(dir);
     assert.match(res.stdout, /Nacht-Kette beendet: 0 fertig, 1 unvollstaendig/);
-  });
+  }, WARTEN_KURZ);
 });
 
 test("[night-862] der Nachtbericht nennt Auslassung, Sperre und den Stand der Pakete", () => {
@@ -81,7 +85,7 @@ test("[night-862] der Nachtbericht nennt Auslassung, Sperre und den Stand der Pa
     assert.match(abschnitt, /- ausgelassen: /, "der Abschnitt Umsetzung nennt die Auslassung nicht");
     assert.match(abschnitt, new RegExp(`Prozess ${pid}`), "der Abschnitt Umsetzung nennt die Sperre nicht");
     assert.match(abschnitt, /die Pakete bleiben in Backlog/, "der Bericht sagt nicht, wo die Pakete liegen");
-  });
+  }, WARTEN_KURZ);
 });
 
 test("[night-862] eine unsaubere Hauptkopie endet ebenso unvollstaendig", () => {

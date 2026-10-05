@@ -2345,8 +2345,9 @@ function prozessLaeuft(pid) {
  *
  * Die beiden Aufrufer sind darauf verschieden angewiesen: Die Umsetzungsnacht (6861)
  * unterscheidet die Arten — belegt ist fuer sie ein ruhiger Lauf, ein Schreibfehler eine
- * Stoerung der Umgebung. Die Kettenstufe (5257) liest `art` nicht und faellt bei beiden
- * Arten auf Variante A zurueck, was fuer sie ein vorgesehener Ausgang ist.
+ * Stoerung der Umgebung. Die Kettenstufe wartet bei `belegt` im Rahmen ihres
+ * Umsetzungsbudgets (`aufUmsetzungWarten`, E10) und faellt erst danach, beim Schreibfehler
+ * sofort, auf Variante A zurueck, was fuer sie ein vorgesehener Ausgang ist.
  *
  * Wer `ok: false` bekommt, ruft `freigeben` nicht: Der Lock gehoert dann einem anderen Lauf.
  *
@@ -2383,6 +2384,42 @@ export function umsetzungLockNehmen(repoRoot) {
     verwaist = geraeumt.verwaist;
   }
   return lockBelegt(lockPid(pfad) ?? "unbekannt");
+}
+
+/** Der Takt, in dem eine Kette eine belegte Umsetzungssperre erneut versucht (E10). */
+export const UMSETZUNG_WARTEN_MS = 60 * 1000;
+
+/**
+ * Wartet auf eine belegte Umsetzungssperre (Plan #1113, E10): Bei `art: "belegt"` alle
+ * `UMSETZUNG_WARTEN_MS` ein neuer Versuch, bis `budgetMs` verbraucht ist. Die Wartezeit
+ * zaehlt zum Umsetzungsbudget der Stufe, ein eigenes Wartebudget gibt es nicht
+ * (PO-Antwort 4). Ein Schreibfehler wartet nicht — eine gestoerte Umgebung wird durch
+ * Warten nicht heil.
+ *
+ * Waehrend des Wartens steht der Laufstand auf `laeuft`, nicht auf `wartet`: Das ist der
+ * Zustand eines Halts, und eine wartende Kette belegt ihre Wurzel weiter (E6).
+ *
+ * Rueckgabe wie `umsetzungLockNehmen`; nach abgelaufenem Budget das letzte `belegt`, dessen
+ * Grund die Wartezeit nennt. Uhr, Sperre, Schlaf und Laufstand sind eingespeist.
+ */
+export async function aufUmsetzungWarten({ nehmen, jetzt, schlafen, budgetMs, standSetzen }) {
+  const start = jetzt();
+  let lock = nehmen();
+  let standGesetzt = false;
+  while (!lock.ok && lock.art === "belegt") {
+    const rest = budgetMs - (jetzt() - start);
+    if (rest <= 0) {
+      const minuten = Math.round((jetzt() - start) / 60000);
+      return { ...lock, grund: `${lock.grund}, ${minuten} min im Umsetzungsbudget gewartet` };
+    }
+    if (!standGesetzt) {
+      standSetzen("laeuft", `wartet auf die Umsetzung seit ${new Date(start).toISOString()}`);
+      standGesetzt = true;
+    }
+    await schlafen(Math.min(UMSETZUNG_WARTEN_MS, rest));
+    lock = nehmen();
+  }
+  return lock;
 }
 
 function lockBelegt(pid) {
@@ -8525,8 +8562,9 @@ async function umsetzungSchleife(kette, paketIds, lauf) {
  * die Session erfaehrt von der Variante nichts — sie sieht ein regulaeres Ready-Paket (E11).
  *
  * Ausgaenge: `fertig` auch bei erschoepftem Zeit- oder Kostenbudget (E14, die uebrigen
- * Pakete stehen als nicht begonnen im Bericht), `unvollstaendig` bei einem gehaltenen
- * Umsetzungs-Lock (Issue #696, der Rueckfall auf Variante A) und bei einer unsauberen
+ * Pakete stehen als nicht begonnen im Bericht), `unvollstaendig` bei einem Umsetzungs-Lock,
+ * der bis zum Ende des Umsetzungsbudgets gehalten blieb (Issue #696, #1185, der Rueckfall
+ * auf Variante A), und bei einer unsauberen
  * Hauptkopie vor dem ersten Paket (Issue #878, derselbe Rueckfall) — beide liefen gar
  * nicht erst an, siehe `umsetzungAusgelassen` (Issue #862) —, `angehalten` bei mindestens
  * einem angehaltenen Paket — aber ohne `haltAmAuftrag` (E17) —, `abgebrochen` nur beim
@@ -8567,7 +8605,14 @@ async function stufeUmsetzung(kette, paketIds) {
   // Variante A und laesst den Worktree bis zu ihrem eigenen Ende stehen. Und eine
   // Hauptkopie, in der gerade ein anderer Lauf baut, ist erwartbar unsauber: Der Lock ist
   // dafuer die genauere Auskunft als "nicht sauber" und der freundlichere Ausgang.
-  const lock = umsetzungLockNehmen(kette.repoRoot);
+  // Belegt wartet die Kette im Rahmen ihres Umsetzungsbudgets darauf (E10).
+  const lock = await aufUmsetzungWarten({
+    nehmen: () => umsetzungLockNehmen(kette.repoRoot),
+    jetzt: Date.now,
+    schlafen: (ms) => new Promise((r) => setTimeout(r, ms)),
+    budgetMs: lauf.budgetMs,
+    standSetzen: (zustand, text) => ketteStand(kette, zustand, text),
+  });
   if (!lock.ok) return umsetzungAusgelassen(kette, stand, paketIds, stufeStart, lock.grund);
   if (lock.hinweis) log(`  ${lock.hinweis}`);
 

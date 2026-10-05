@@ -299,7 +299,9 @@ test("[night-35] ein lebender Lock haelt die Umsetzungsstufe ab: die Kette endet
     }
     // Der fremde Lock bleibt unangetastet: Wer ihn nicht genommen hat, gibt ihn nicht frei.
     assert.equal(readFileSync(lockPfad(dir), "utf-8").trim(), String(process.pid));
-  });
+    // Ausgelassen erst nach dem Warten im eigenen Umsetzungsbudget (Issue #1185).
+    assert.match(einheit.grund, /im Umsetzungsbudget gewartet/);
+  }, { umsetzungMin: 0.001 });
 });
 
 test("[night-35] die Umsetzungsstufe haelt den Lock waehrend ihrer Sessions und gibt ihn am Ende frei", () => {
