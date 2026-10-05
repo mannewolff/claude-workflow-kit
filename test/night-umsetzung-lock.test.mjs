@@ -12,8 +12,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { UMSETZUNG_LOCK, umsetzungLockNehmen } from "../kit/night.mjs";
@@ -156,6 +156,111 @@ test("[night-35] belegt und Schreibfehler sind an `art` zu unterscheiden, nicht 
     assert.equal(erfolg.hinweis, null);
     assert.equal(typeof erfolg.freigeben, "function");
     erfolg.freigeben();
+  });
+});
+
+// --- Gleichzeitige Anlaeufe (Plan #1113, E9; Issue #1184) ---
+
+/**
+ * Laesst `anzahl` Prozesse gleichzeitig `umsetzungLockNehmen(dir)` rufen und liefert ihre
+ * Ergebnisse. Jeder Prozess laedt erst das Kit und meldet sich bereit; erst wenn alle bereit
+ * sind, gibt eine Startdatei sie frei, auf die sie im Leerlauf warten — so treffen die
+ * Anlaeufe so dicht wie moeglich aufeinander. Danach bleiben alle am Leben, bis jeder sein
+ * Ergebnis gemeldet hat: Ein Halter, der vorher endet, hinterliesse einen verwaisten Lock,
+ * und der zweite Anlauf naehme ihn zu Recht.
+ */
+async function gleichzeitig(dir, anzahl) {
+  const start = join(dir, "start.signal");
+  const ende = join(dir, "ende.signal");
+  const kit = new URL("../kit/night.mjs", import.meta.url).href;
+  const skript = [
+    `import { umsetzungLockNehmen } from ${JSON.stringify(kit)};`,
+    `import { existsSync } from "node:fs";`,
+    `const [dir, start, ende] = process.argv.slice(1);`,
+    `process.stdout.write("bereit\\n");`,
+    `while (!existsSync(start)) {}`,
+    `const r = umsetzungLockNehmen(dir);`,
+    `process.stdout.write(JSON.stringify({ ok: r.ok, art: r.art ?? null }) + "\\n");`,
+    `while (!existsSync(ende)) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);`,
+  ].join("\n");
+  const kinder = Array.from({ length: anzahl }, () => {
+    const kind = spawn(process.execPath, ["--input-type=module", "-e", skript, dir, start, ende], { stdio: ["ignore", "pipe", "pipe"] });
+    const zustand = { kind, zeilen: [], fehler: "" };
+    let puffer = "";
+    kind.stdout.on("data", (d) => {
+      puffer += d;
+      const teile = puffer.split("\n");
+      puffer = teile.pop();
+      zustand.zeilen.push(...teile);
+    });
+    kind.stderr.on("data", (d) => { zustand.fehler += d; });
+    zustand.beendet = new Promise((ok) => kind.on("close", ok));
+    return zustand;
+  });
+  const warten = async (bedingung) => {
+    const frist = Date.now() + 30_000;
+    while (!bedingung()) {
+      for (const k of kinder) assert.equal(k.kind.exitCode, null, `ein Anlauf endete vorzeitig: ${k.fehler}`);
+      assert.ok(Date.now() < frist, "die Anlaeufe meldeten sich nicht");
+      await new Promise((r) => setTimeout(r, 5));
+    }
+  };
+  try {
+    await warten(() => kinder.every((k) => k.zeilen.length >= 1));
+    writeFileSync(start, "");
+    await warten(() => kinder.every((k) => k.zeilen.length >= 2));
+    return kinder.map((k) => JSON.parse(k.zeilen[1]));
+  } finally {
+    writeFileSync(ende, "");
+    await Promise.all(kinder.map((k) => k.beendet));
+  }
+}
+
+/** Ein leeres Temp-Verzeichnis fuer asynchrone Einheitstests. */
+async function mitOrdnerAsync(fn) {
+  const dir = mkdtempSync(join(tmpdir(), "night-lock-"));
+  try {
+    await fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Wie oft ein Gleichzeitigkeits-Fall laeuft: Ein Rennen, das einmal gut ausgeht, beweist wenig. */
+const RUNDEN = 8;
+
+test("[night-35] zwei gleichzeitige Anlaeufe gegen eine freie Sperre: genau einer bekommt sie", async () => {
+  for (let runde = 0; runde < RUNDEN; runde++) {
+    await mitOrdnerAsync(async (dir) => {
+      mkdirSync(join(dir, ".claude"), { recursive: true });
+      const ergebnisse = await gleichzeitig(dir, 2);
+      assert.equal(ergebnisse.filter((r) => r.ok).length, 1, `Runde ${runde}: ${JSON.stringify(ergebnisse)}`);
+      assert.deepEqual(ergebnisse.filter((r) => !r.ok).map((r) => r.art), ["belegt"]);
+    });
+  }
+});
+
+test("[night-35] eine verwaiste Sperre uebernimmt genau einer von zwei Anlaeufen, und unter .claude/ bleibt nur die Sperre", async () => {
+  for (let runde = 0; runde < RUNDEN; runde++) {
+    await mitOrdnerAsync(async (dir) => {
+      lockSchreiben(dir, `${totePid()}\n`);
+      const ergebnisse = await gleichzeitig(dir, 2);
+      assert.equal(ergebnisse.filter((r) => r.ok).length, 1, `Runde ${runde}: ${JSON.stringify(ergebnisse)}`);
+      assert.deepEqual(readdirSync(join(dir, ".claude")), ["night-umsetzung.lock"]);
+    });
+  }
+});
+
+test("[night-35] freigeben laesst eine fremde Sperre stehen", () => {
+  mitOrdner((dir) => {
+    const res = umsetzungLockNehmen(dir);
+    assert.equal(res.ok, true, res.grund);
+    // Ein anderer Lauf hat die Sperre inzwischen uebernommen (etwa weil er diesen Lauf fuer
+    // tot hielt) — wer sie nicht mehr haelt, raeumt sie nicht weg.
+    const fremd = totePid();
+    lockSchreiben(dir, `${fremd}\n`);
+    res.freigeben();
+    assert.equal(readFileSync(lockPfad(dir), "utf-8").trim(), String(fremd), "die fremde Sperre wurde entfernt");
   });
 });
 

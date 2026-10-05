@@ -283,34 +283,21 @@ test("zwei Laeufe am selben Tag hinterlassen zwei Ergebnisstand-Dateien", async 
 });
 
 test("ein Schreibfehler des Ergebnisstands bricht den Lauf nicht ab, das Textprotokoll nennt ihn", () => {
-  // root ignoriert Verzeichnisrechte — der Schreibfehler waere nicht herstellbar.
-  if (process.getuid?.() === 0) return;
   const dir = setupProjekt("night-stand-eacces-");
   const claudeDir = join(dir, ".claude");
   try {
     const id = readyIssue(dir, "Laeuft trotz Schreibfehler");
-    // Die Tagesdatei des Textprotokolls vorab anlegen: Ihr Name ist vorhersagbar,
-    // und POSIX erlaubt das Anhaengen an eine bestehende Datei auch in einem nicht
-    // beschreibbaren Verzeichnis. Nur das Anlegen der JSON-Datei scheitert (EACCES).
     const logPfad = join(claudeDir, `night-run-${new Date().toISOString().slice(0, 10)}.log`);
-    writeFileSync(logPfad, "", "utf-8");
-    // Der Umsetzungs-Lock (Issue #696) aus demselben Grund vorab: Er liegt ebenfalls unter
-    // `.claude/`, und ein nicht schreibbarer Lock laesst die Umsetzung aus — dann liefe die
-    // Runde gar nicht erst, und dieser Test prueefte nicht mehr, was er prueft. Leer heisst
-    // verwaist, der Lauf nimmt ihn also selbst.
-    writeFileSync(join(claudeDir, "night-umsetzung.lock"), "", "utf-8");
-    if (process.platform === "win32") {
-      // Unter Windows sperrt das Read-only-Attribut ein Verzeichnis nicht gegen neue
-      // Dateien. Derselbe Fehlerpfad entsteht dort, wenn ein Verzeichnis steht, wo die
-      // JSON-Datei hin soll (EISDIR, Plan #1128 E7) — eines je Sekunde der naechsten zwei
-      // Minuten, denn der Name traegt die Startsekunde des Laufs.
-      const start = Date.now();
-      for (let s = 0; s < 120; s++) {
-        const iso = new Date(start + s * 1000).toISOString();
-        mkdirSync(join(claudeDir, `night-run-${iso.slice(0, 10)}-${iso.slice(11, 19).replaceAll(":", "")}.json`), { recursive: true });
-      }
-    } else {
-      chmodSync(claudeDir, 0o555);
+    // Der Schreibfehler entsteht, weil ein Verzeichnis steht, wo die JSON-Datei hin soll
+    // (EISDIR, Plan #1128 E7) — eines je Sekunde der naechsten zwei Minuten, denn der Name
+    // traegt die Startsekunde des Laufs. Frueher war `.claude/` hier unter POSIX schreib-
+    // geschuetzt; seit der Umsetzungs-Lock eine verwaiste Datei umbenennt statt sie zu
+    // ueberschreiben (Plan #1113, E9), liesse er sich dort nicht mehr nehmen, und die Runde
+    // liefe gar nicht erst. `.claude/` bleibt darum schreibbar, auf jeder Plattform.
+    const start = Date.now();
+    for (let s = 0; s < 120; s++) {
+      const iso = new Date(start + s * 1000).toISOString();
+      mkdirSync(join(claudeDir, `night-run-${iso.slice(0, 10)}-${iso.slice(11, 19).replaceAll(":", "")}.json`), { recursive: true });
     }
 
     const fake = `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`;
@@ -323,7 +310,6 @@ test("ein Schreibfehler des Ergebnisstands bricht den Lauf nicht ab, das Textpro
     const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
     assert.ok(inReview.includes(id), "die Runde haette trotzdem durchlaufen muessen");
   } finally {
-    chmodSync(claudeDir, 0o755);
     rmSync(dir, { recursive: true, force: true });
   }
 });

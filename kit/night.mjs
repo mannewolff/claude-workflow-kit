@@ -144,7 +144,7 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, realpathSync, rmSync, cpSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, realpathSync, rmSync, cpSync, readdirSync, renameSync, linkSync } from "node:fs";
 import { join, dirname, resolve, basename, relative, isAbsolute } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir, homedir, hostname, constants as osConstants } from "node:os";
@@ -2309,11 +2309,16 @@ export const UMSETZUNG_LOCK = ".claude/night-umsetzung.lock";
  */
 function lockPid(pfad) {
   try {
-    const pid = Number(readFileSync(pfad, "utf-8").trim());
-    return Number.isInteger(pid) && pid > 0 ? pid : null;
+    return pidAusInhalt(readFileSync(pfad, "utf-8"));
   } catch {
     return null;
   }
+}
+
+/** Die Prozess-Id aus dem Inhalt einer Lock-Datei, nach denselben Regeln wie `lockPid`. */
+function pidAusInhalt(inhalt) {
+  const pid = Number(inhalt.trim());
+  return Number.isInteger(pid) && pid > 0 ? pid : null;
 }
 
 /**
@@ -2344,34 +2349,145 @@ function prozessLaeuft(pid) {
  * Arten auf Variante A zurueck, was fuer sie ein vorgesehener Ausgang ist.
  *
  * Wer `ok: false` bekommt, ruft `freigeben` nicht: Der Lock gehoert dann einem anderen Lauf.
+ *
+ * Atomar (Plan #1113, E9): Die Datei entsteht mit `flag: "wx"` — von zwei Anlaeufen gegen
+ * eine freie Sperre legt sie genau einer an. Eine verwaiste Sperre wird nicht ueberschrieben,
+ * sondern auf einen eindeutigen Namen umbenannt und sofort geloescht; das Umbenennen gelingt
+ * nur einem von zwei Anlaeufen, die dieselbe verwaiste Datei sehen. Danach wird das Anlegen
+ * genau einmal wiederholt.
  */
 export function umsetzungLockNehmen(repoRoot) {
   const pfad = join(repoRoot, UMSETZUNG_LOCK);
-  const pid = lockPid(pfad);
-  if (pid !== null && prozessLaeuft(pid)) {
-    return { ok: false, art: "belegt", grund: `eine andere Umsetzung haelt ${UMSETZUNG_LOCK} (Prozess ${pid})` };
-  }
-  const verwaist = existsSync(pfad);
   try {
     mkdirSync(dirname(pfad), { recursive: true });
-    writeFileSync(pfad, `${process.pid}\n`, "utf-8");
   } catch (e) {
-    return { ok: false, art: "schreibfehler", grund: `${UMSETZUNG_LOCK} liess sich nicht schreiben (${e.message})` };
+    return lockSchreibfehler(e);
   }
-  return {
-    ok: true,
-    hinweis: verwaist ? `verwaisten Lock ${UMSETZUNG_LOCK} aufgeraeumt und selbst genommen` : null,
-    freigeben: () => {
-      try {
-        rmSync(pfad, { force: true });
-      } catch (e) {
-        // Gerufen wird das aus einem `finally`; ein Wurf von hier risse den ganzen Lauf
-        // mit, nach getaner Arbeit. Liegenbleiben ist unschaedlich — der naechste Lauf
-        // findet die Id dieses Prozesses vor und erkennt sie als verwaist.
-        log(`${UMSETZUNG_LOCK} liess sich nicht entfernen (${e.message}) — der naechste Lauf raeumt ihn als verwaist auf.`);
-      }
-    },
-  };
+  let verwaist = false;
+  for (let versuch = 0; versuch < 2; versuch++) {
+    try {
+      writeFileSync(pfad, `${process.pid}\n`, { encoding: "utf-8", flag: "wx" });
+      return {
+        ok: true,
+        hinweis: verwaist ? `verwaisten Lock ${UMSETZUNG_LOCK} aufgeraeumt und selbst genommen` : null,
+        freigeben: () => lockFreigeben(pfad),
+      };
+    } catch (e) {
+      if (e.code !== "EEXIST") return lockSchreibfehler(e);
+    }
+    // Ein zweites EEXIST heisst: Zwischen Wegraeumen und Anlegen kam ein anderer Anlauf
+    // zuvor. Seine Sperre ist frisch, und wiederholt wird genau einmal (E9).
+    if (versuch > 0) break;
+    const geraeumt = verwaistRaeumen(pfad);
+    if (geraeumt.ok === false) return geraeumt;
+    verwaist = geraeumt.verwaist;
+  }
+  return lockBelegt(lockPid(pfad) ?? "unbekannt");
+}
+
+function lockBelegt(pid) {
+  return { ok: false, art: "belegt", grund: `eine andere Umsetzung haelt ${UMSETZUNG_LOCK} (Prozess ${pid})` };
+}
+
+function lockSchreibfehler(e) {
+  return { ok: false, art: "schreibfehler", grund: `${UMSETZUNG_LOCK} liess sich nicht schreiben (${e.message})` };
+}
+
+/**
+ * Liest die vorgefundene Lock-Datei so, wie sie ueber ihren Halter entscheidet. Eine leere
+ * Datei kann die frische Sperre eines Anlaufs sein, der sie eben mit `wx` angelegt, seine Id
+ * aber noch nicht geschrieben hat; erst nach einem kurzen Moment gilt sie als verwaist.
+ */
+function lockGesehen(pfad) {
+  const inhalt = lockInhalt(pfad);
+  if (inhalt === null || inhalt.trim() !== "") return inhalt;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, LOCK_LEER_WARTEN_MS);
+  return lockInhalt(pfad);
+}
+
+/**
+ * Raeumt eine vorgefundene Sperre weg, wenn ihr Halter nicht mehr lebt (E9): umbenennen auf
+ * einen eindeutigen Namen, dann loeschen. Das Umbenennen gelingt nur einem von zwei
+ * Anlaeufen, die dieselbe verwaiste Datei sehen.
+ *
+ * Rueckgabe: `{ verwaist }` — `true`, wenn diese Datei weggeraeumt wurde, `false`, wenn sie
+ * schon weg war —, oder das `ok: false`-Ergebnis von `umsetzungLockNehmen`.
+ */
+function verwaistRaeumen(pfad) {
+  let gesehen;
+  try {
+    gesehen = lockGesehen(pfad);
+  } catch (e) {
+    return lockSchreibfehler(e);
+  }
+  if (gesehen === null) return { verwaist: false }; // inzwischen weg
+  const pid = pidAusInhalt(gesehen);
+  if (pid !== null && prozessLaeuft(pid)) return lockBelegt(pid);
+  const weg = `${pfad}.${process.pid}.${Date.now()}.verwaist`;
+  try {
+    renameSync(pfad, weg);
+  } catch (e) {
+    return e.code === "ENOENT" ? { verwaist: false } : lockSchreibfehler(e);
+  }
+  if (inhaltOderGesehen(weg, gesehen) !== gesehen) return zurueckholen(weg, pfad);
+  rmSync(weg, { force: true });
+  return { verwaist: true };
+}
+
+/** Der Inhalt der umbenannten Datei; unlesbar wie zuvor heisst: dieselbe verwaiste Datei. */
+function inhaltOderGesehen(weg, gesehen) {
+  try {
+    return lockInhalt(weg);
+  } catch {
+    return gesehen;
+  }
+}
+
+/**
+ * Weggeraeumt ist, was zwischen Lesen und Umbenennen an dieser Stelle lag. War das nicht mehr
+ * die verwaiste Datei, sondern die frische Sperre eines anderen Anlaufs, kommt sie zurueck —
+ * per `linkSync`, das eine inzwischen neu angelegte Sperre nicht ueberschreibt.
+ */
+function zurueckholen(weg, pfad) {
+  try {
+    linkSync(weg, pfad);
+  } catch {
+    // Liegt schon eine neue Sperre, haelt die; die zurueckgeholte waere eine zweite.
+  }
+  rmSync(weg, { force: true });
+  return lockBelegt(lockPid(pfad) ?? "unbekannt");
+}
+
+/** Wie lange eine leere Lock-Datei Zeit bekommt, die Id ihres Anlegers aufzunehmen. */
+const LOCK_LEER_WARTEN_MS = 50;
+
+/**
+ * Der rohe Inhalt einer Lock-Datei, null wenn sie fehlt. Jeder andere Lesefehler wirft:
+ * Ein Lock, der da ist, aber nicht lesbar, laesst sich auch nicht zuverlaessig nehmen.
+ */
+function lockInhalt(pfad) {
+  try {
+    return readFileSync(pfad, "utf-8");
+  } catch (e) {
+    if (e.code === "ENOENT") return null;
+    throw e;
+  }
+}
+
+/**
+ * Gibt den Umsetzungs-Lock frei — nur, wenn er noch die eigene Prozess-Id traegt. Hat ein
+ * anderer Lauf ihn inzwischen uebernommen, gehoert er ihm und bleibt liegen (E9).
+ */
+function lockFreigeben(pfad) {
+  if (lockPid(pfad) !== process.pid) return;
+  try {
+    rmSync(pfad, { force: true });
+  } catch (e) {
+    // Gerufen wird das aus einem `finally`; ein Wurf von hier risse den ganzen Lauf
+    // mit, nach getaner Arbeit. Liegenbleiben ist unschaedlich — der naechste Lauf
+    // findet die Id dieses Prozesses vor und erkennt sie als verwaist.
+    log(`${UMSETZUNG_LOCK} liess sich nicht entfernen (${e.message}) — der naechste Lauf raeumt ihn als verwaist auf.`);
+  }
 }
 
 /**
