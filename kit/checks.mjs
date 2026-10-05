@@ -486,7 +486,11 @@ bereiche
       seine Muster, in wie vielen der bereichsgebundenen Kommandos der
       Paketstufe er steht ('nennend' von 'von'), ob er hervorgehoben ist
       (in allen oder allen bis auf eines, ab ${HERVORHEBUNG_AB_KOMMANDOS} Kommandos) und
-      den Grund aus 'gekoppelteBereiche'. Dazu das Inventar: alle von git
+      den Grund aus 'gekoppelteBereiche'. Je Kommando ('kommandoUrteile'), wie
+      viele Bereiche es nennt und ob es breit ist (alle oder alle bis auf
+      einen, ab ${HERVORHEBUNG_AB_KOMMANDOS} Kommandos); ein breites Kommando ohne gekoppelten
+      Bereich steht in plan ('zuschnitt') und run als 'hinweis:' im Bericht.
+      Dazu das Inventar: alle von git
       versionierten Dateien ohne checkAreas-Treffer, getrennt in
       freigestellt (ohnePruefung, mit Grund) und ohne jede Zuordnung.
 
@@ -1312,7 +1316,21 @@ function bauen({ basis, stufe, geaendert = [], bereiche = [], ohneZuordnung = []
   return auswahl;
 }
 
+/**
+ * Die Auswahl samt den Hinweisen auf breite Kommandos (Issue #1214, E13). `zuschnitt`
+ * steht nur da, wenn es einen Hinweis gibt — sonst bleibt die Zusammenfassung, wie sie war.
+ * Die Hinweise haengen an der Config und nicht am Diff; darum stehen sie in jedem Weg der
+ * Auswahl, auch beim leeren Paket.
+ */
 function planen(args) {
+  const auswahl = auswahlPlanen(args);
+  const config = ladeConfig();
+  const zuschnitt = zuschnittHinweise(config, (config.buildChecks ?? []).map((c) => normalisiere(c)));
+  if (zuschnitt.length > 0) auswahl.zuschnitt = zuschnitt;
+  return auswahl;
+}
+
+function auswahlPlanen(args) {
   const config = ladeConfig();
   const checks = (config.buildChecks ?? []).map((c) => normalisiere(c));
   const checkAreas = config.checkAreas ?? {};
@@ -1488,6 +1506,50 @@ function freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, oh
 
 // --- Bereiche (Issue #1004) ------------------------------------------------
 
+/** Die bereichsgebundenen Kommandos der Paketstufe — die einzigen, die die Auswahl nach Bereichen trifft. */
+function bereichsgebunden(checks) {
+  return checks.filter((check) => check.stufe === STUFEN[0] && check.areas);
+}
+
+/** Bereich → Grund aus `gekoppelteBereiche` (E14). */
+function kopplungsgruende(config) {
+  return new Map((config.gekoppelteBereiche ?? []).map((e) => [e.bereich, e.grund]));
+}
+
+/**
+ * Das Urteil je Kommando (Issue #1214, Plan #1199, E13): Ein bereichsgebundenes Kommando
+ * der Paketstufe ist BREIT, wenn seine `areas` alle oder alle bis auf einen der Bereiche
+ * nennen und es mindestens `HERVORHEBUNG_AB_KOMMANDOS` solcher Kommandos gibt. Dann laeuft
+ * es bei (fast) jeder Aenderung — so zeigt sich eine schwere Suite eines Projekts, die das
+ * Urteil `hervorgehoben` je Bereich nicht sieht.
+ *
+ * `kopplungsgrund` traegt den Grund des ersten gekoppelten Bereichs, den das Kommando
+ * nennt, sonst null. Wie beim Bereich aendert er am Urteil nichts; er unterdrueckt nur
+ * die Hinweiszeile im Bericht (`zuschnittHinweise`).
+ */
+function kommandoUrteile(checks, checkAreas, kopplung) {
+  const gebunden = bereichsgebunden(checks);
+  const b = Object.keys(checkAreas).length;
+  return gebunden.map((check) => {
+    const genannt = new Set(check.areas.filter((name) => Object.hasOwn(checkAreas, name)));
+    const gekoppelt = [...genannt].find((name) => kopplung.get(name));
+    return {
+      cmd: check.cmd,
+      nennend: genannt.size,
+      von: b,
+      breit: gebunden.length >= HERVORHEBUNG_AB_KOMMANDOS && genannt.size >= b - 1,
+      kopplungsgrund: gekoppelt === undefined ? null : kopplung.get(gekoppelt),
+    };
+  });
+}
+
+/** Die Hinweise auf breite Kommandos ohne Kopplungsgrund, fuer den Berichtsblock (E13). */
+function zuschnittHinweise(config, checks) {
+  return kommandoUrteile(checks, config.checkAreas ?? {}, kopplungsgruende(config))
+    .filter((u) => u.breit && u.kopplungsgrund === null)
+    .map((u) => `${u.cmd} ist jedem Bereich zugeordnet und laeuft bei jeder Aenderung — Zuschnitt pruefen (checks.mjs bereiche)`);
+}
+
 /**
  * Anteil je Bereich und Inventar der versionierten Dateien (Issue #1004, Plan #1001, E7,
  * E8, E14) — die Rohdaten der Wirksamkeits-Auswertung.
@@ -1514,9 +1576,9 @@ function bereicheAuswerten() {
   const checkAreas = config.checkAreas ?? {};
   pruefeBereichsnamen(checks, checkAreas);
 
-  const gebunden = checks.filter((check) => check.stufe === STUFEN[0] && check.areas);
+  const gebunden = bereichsgebunden(checks);
   const m = gebunden.length;
-  const kopplung = new Map((config.gekoppelteBereiche ?? []).map((e) => [e.bereich, e.grund]));
+  const kopplung = kopplungsgruende(config);
   const bereiche = Object.entries(checkAreas).map(([name, muster]) => {
     const n = gebunden.filter((check) => check.areas.includes(name)).length;
     return {
@@ -1545,6 +1607,7 @@ function bereicheAuswerten() {
   return {
     kommandos: m,
     bereiche,
+    kommandoUrteile: kommandoUrteile(checks, checkAreas, kopplung),
     inventar: {
       dateien: dateien.length,
       ohneTreffer: ohneZuordnung.length + ohnePruefung.length,
@@ -2240,6 +2303,8 @@ function auswahlZeilen(auswahl) {
   for (const a of auswahl.abgeleitet ?? []) zeilen.push(ableitungsZeile(a));
   // Die Bereiche, die ein Import mitberuehrt, mit ihrem Weg (Issue #1208).
   for (const a of auswahl.abhaengig ?? []) zeilen.push(abhaengigZeile(a));
+  // Kommandos, die jedem Bereich zugeordnet sind (Issue #1214, E13).
+  for (const hinweis of auswahl.zuschnitt ?? []) zeilen.push(`hinweis: ${hinweis}`);
   return zeilen;
 }
 
