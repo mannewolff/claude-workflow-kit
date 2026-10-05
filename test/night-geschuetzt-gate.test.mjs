@@ -176,6 +176,50 @@ test("Gegenprobe: ein Paket ohne geschuetzten Pfad bekommt seine Session", () =>
   }
 });
 
+// --- Kennzeichnung (nur genannt) (Issue #1179) ---
+
+/** Ein Paket, das `genannt` nur erwaehnt und `geaendert` (falls gesetzt) aendert. */
+const erwaehnendesPaket = (genannt, geaendert) => [
+  "## Kontext",
+  "Ein Paket fuer den Test.",
+  "",
+  "## Aufgabe",
+  `In \`kit/board.mjs\` den Fall \`${genannt}\` (nur genannt) behandeln.`,
+  ...(geaendert ? [`In \`${geaendert}\` den Eintrag ergaenzen.`] : []),
+  "",
+  "## Akzeptanzkriterium",
+  "- Der Eintrag steht.",
+  "",
+  "## Abhaengigkeiten",
+  "Keine.",
+].join("\n");
+
+test("Kennzeichnung: ein nur genannter geschuetzter Pfad haelt nicht an, das Paket bekommt seine Session", () => {
+  const dir = setupProjekt();
+  try {
+    const id = readyPaket(dir, "Paket erwaehnt geschuetzte Datei", erwaehnendesPaket(PFAD));
+    const { res, aufrufe } = nacht(dir);
+    assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
+    assert.equal(spalte(dir, id), "in_review");
+    assert.ok(!aufrufe.some((a) => a[1] === "label" && a[4] === "kit:geschuetzt"), "ohne Treffer kein Label");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Kennzeichnung: ein gekennzeichneter und ein ungekennzeichneter Pfad ergeben genau einen Treffer", () => {
+  const dir = setupProjekt();
+  try {
+    const body = erwaehnendesPaket(PFAD, ZWEITER_PFAD);
+    const treffer = boardModul.geschuetzteTreffer(body, "Gemischtes Paket", dir);
+    assert.deepEqual(treffer.map((t) => t.pfad), [ZWEITER_PFAD]);
+    assert.deepEqual(boardModul.geschuetzteTreffer(paketBody(PFAD), "Paket", dir).map((t) => t.pfad), [PFAD],
+      "derselbe Pfad ohne Kennzeichnung bleibt ein Treffer");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // --- Board ohne Label ---
 
 test("Board ohne Label: Move und Kommentar stehen trotzdem, der Lauf geht weiter, der naechste Anlauf haelt erneut", () => {

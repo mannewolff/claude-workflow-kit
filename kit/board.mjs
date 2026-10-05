@@ -4476,11 +4476,16 @@ export function trifftGeschuetzt(token, eintrag) {
 
 const BACKTICK_LAUF = /`+/g;
 
+// Die Kennzeichnung einer blossen Erwaehnung (Issue #1179): unmittelbar hinter dem Span.
+const NUR_GENANNT = /^ \(nur genannt\)/;
+
 /**
  * Die Pfad-Token der Zeilen (E3): der Inhalt jedes Backtick-Spans ohne Leerraum, je mit der
  * Zeile, in der er steht. Gepaart wird wie in Markdown — ein Span endet am naechsten Lauf
  * gleicher Laenge, ein Lauf ohne Partner ist Text. Codebloecke gibt es hier nicht mehr: Die
  * Zeilen kommen aus `zerlegeAbschnitte`, `fenceLauf` bleibt die einzige Fence-Auslegung.
+ * `genannt` ist gesetzt, wenn unmittelbar hinter dem Span ` (nur genannt)` steht: Der Autor
+ * erwaehnt den Pfad, das Paket schreibt ihn nicht (Issue #1179).
  */
 export function pfadTokens(zeilen) {
   const tokens = [];
@@ -4495,7 +4500,8 @@ export function pfadTokens(zeilen) {
         continue;
       }
       const inhalt = zeile.slice(auf.index + auf[0].length, laeufe[zu].index);
-      if (inhalt !== "" && !/\s/.test(inhalt)) tokens.push({ token: inhalt, zeile });
+      const genannt = NUR_GENANNT.test(zeile.slice(laeufe[zu].index + laeufe[zu][0].length));
+      if (inhalt !== "" && !/\s/.test(inhalt)) tokens.push({ token: inhalt, zeile, genannt });
       i = zu + 1;
     }
   }
@@ -4526,7 +4532,8 @@ const GESCHUETZT_ABSCHNITTE = new Set(["aufgabe", "akzeptanzkriterium"]);
  * Namen nennt, gegen `geschuetztePfade(wurzel)`. Je Treffer der Pfad und die woertliche Zeile
  * (E17); derselbe Pfad in derselben Zeile zaehlt einmal. Ein absolut genanntes Token unter
  * der Wurzel wird auch relativ verglichen und umgekehrt, damit relative wie absolute Sperren
- * greifen. Ein `[Mensch]`-Titel liefert immer eine leere Liste (E8): Seine Aufgabe liegt
+ * greifen. Ein als ` (nur genannt)` gekennzeichneter Pfad zaehlt an dieser Stelle nicht
+ * (Issue #1179). Ein `[Mensch]`-Titel liefert immer eine leere Liste (E8): Seine Aufgabe liegt
  * ausserhalb des Repositories und ist genau die Handlung, die der Mensch vornehmen soll.
  */
 export function geschuetzteTreffer(body, title, wurzel) {
@@ -4534,7 +4541,7 @@ export function geschuetzteTreffer(body, title, wurzel) {
   const zeilen = zerlegeAbschnitte(body).abschnitte
     .filter((a) => GESCHUETZT_ABSCHNITTE.has(a.titel))
     .flatMap((a) => a.zeilen);
-  return listenTreffer(zeilen, geschuetztePfade(wurzel), wurzel);
+  return listenTreffer(zeilen, geschuetztePfade(wurzel), wurzel, { ohneGenannt: true });
 }
 
 // Halt-Kommentar und Freigabe (Issue #1045, Plan #987, E5, E11, E17). Der Text ist
@@ -4627,11 +4634,15 @@ export function geschuetztFreigabe(treffer, kommentare, labels) {
   });
 }
 
-/** Die Pfad-Token der Zeilen, die einen Eintrag der Liste treffen, je Pfad und Zeile einmal. */
-function listenTreffer(zeilen, liste, wurzel) {
+/**
+ * Die Pfad-Token der Zeilen, die einen Eintrag der Liste treffen, je Pfad und Zeile einmal.
+ * Mit `ohneGenannt` zaehlt ein als ` (nur genannt)` gekennzeichnetes Token nicht.
+ */
+function listenTreffer(zeilen, liste, wurzel, { ohneGenannt = false } = {}) {
   const treffer = [];
   const gesehen = new Set();
-  for (const { token, zeile } of pfadTokens(zeilen)) {
+  for (const { token, zeile, genannt } of pfadTokens(zeilen)) {
+    if (ohneGenannt && genannt) continue;
     const formen = tokenFormen(token, wurzel);
     if (!liste.some((eintrag) => formen.some((f) => trifftGeschuetzt(f, eintrag)))) continue;
     const schluessel = `${token}\n${zeile}`;
@@ -4788,7 +4799,8 @@ const KOPIE_MELDUNG = "Die installierte Kopie unter `.claude/kit/`/`.claude/skil
  *
  * I7 — `## Aufgabe` nennt mindestens einen Dateipfad als Backtick-Token; ohne ihn findet die
  * Erkennung nichts. I8 — ein Token aus Aufgabe oder Akzeptanzkriterium ist geschuetzt
- * (`geschuetzteTreffer`); die Aenderung gehoert als `[Mensch]`-Karte heraus. I9 — ein Token
+ * (`geschuetzteTreffer`); die Aenderung gehoert als `[Mensch]`-Karte heraus. Ein als
+ * ` (nur genannt)` gekennzeichnetes Token zaehlt fuer I7 und I8 nicht (Issue #1179). I9 — ein Token
  * nur aus `## Aufgabe` liegt in der installierten Kopie: Das Kriterium darf sie aufrufen
  * (`node .claude/kit/checks.mjs run`), bauen soll das Paket an der Quelle.
  *
@@ -4799,11 +4811,11 @@ function pruefeGeschuetzt(abschnitte, title, wurzel) {
   if (istMensch(title)) return [];
   const verstoesse = [];
   const aufgabe = abschnitte.find((a) => a.titel === "aufgabe")?.zeilen ?? [];
-  if (!pfadTokens(aufgabe).some(({ token }) => DATEIPFAD.test(token))) {
+  if (!pfadTokens(aufgabe).some(({ token, genannt }) => !genannt && DATEIPFAD.test(token))) {
     verstoesse.push({ gate: "I7", meldung: "'## Aufgabe' nennt keine Datei als Backtick-Pfad (z. B. `kit/board.mjs`) — ohne genannte Datei erkennt das Kit keine geschuetzte" });
   }
   const zeilen = abschnitte.filter((a) => GESCHUETZT_ABSCHNITTE.has(a.titel)).flatMap((a) => a.zeilen);
-  for (const { pfad, zeile } of listenTreffer(zeilen, geschuetztePfade(wurzel), wurzel)) {
+  for (const { pfad, zeile } of listenTreffer(zeilen, geschuetztePfade(wurzel), wurzel, { ohneGenannt: true })) {
     verstoesse.push({
       gate: "I8",
       meldung: `'${pfad}' ist geschuetzt, nur ein Mensch darf die Datei schreiben (Zeile: '${zeile.trim()}') — die Aenderung gehoert als eigene [Mensch]-Karte heraus, dieses Paket nennt die Datei dann nicht mehr`,

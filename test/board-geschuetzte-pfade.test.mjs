@@ -168,9 +168,14 @@ test("[board-1041] eine unlesbare Einstellungsdatei liefert nur die Vorgabeliste
 test("[board-1041] pfadTokens liefert Backtick-Spans ohne Leerzeichen samt Zeile", () => {
   const zeile = `Aendere ${TICK}kit/board.mjs${TICK} und ${TICK}node x.mjs run${TICK} sowie ${TICK}${TICK}a${TICK}b${TICK}${TICK}.`;
   assert.deepEqual(pfadTokens([zeile, "ohne Token", `offen ${TICK}nie zu`]), [
-    { token: "kit/board.mjs", zeile },
-    { token: `a${TICK}b`, zeile },
+    { token: "kit/board.mjs", zeile, genannt: false },
+    { token: `a${TICK}b`, zeile, genannt: false },
   ]);
+});
+
+test("[1179] pfadTokens kennzeichnet einen Span, dem unmittelbar ' (nur genannt)' folgt", () => {
+  const zeile = `${TICK}a.md${TICK} (nur genannt) und ${TICK}b.md${TICK}  (nur genannt) und ${TICK}c.md${TICK}`;
+  assert.deepEqual(pfadTokens([zeile]).map((t) => [t.token, t.genannt]), [["a.md", true], ["b.md", false], ["c.md", false]]);
 });
 
 test("[board-1041] pfadTokens paart Backticks wie Markdown, ein schliessender zaehlt nicht als oeffnender", () => {

@@ -186,3 +186,85 @@ test("die Hilfe zu check-form nennt I1 bis I9", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// --- Kennzeichnung (nur genannt) (Issue #1179, Idee #1121) ---------------------------
+//
+// Ein Paket, das ueber eine geschuetzte Datei spricht, ohne sie zu aendern, kennzeichnet
+// den Pfad mit ` (nur genannt)` unmittelbar hinter dem Backtick-Pfad. Dieser Pfad zaehlt
+// in dieser Zeile nicht als Treffer und fuer I7 nicht als geaenderte Datei.
+
+const GENANNT = " (nur genannt)";
+
+test("[1179] ein als (nur genannt) gekennzeichneter geschuetzter Pfad ergibt kein I8", () => {
+  mitWurzel((wurzel) => {
+    const aufgabe = `In \`kit/board.mjs\` die Erkennung fuer \`${EINSTELLUNGEN}\`${GENANNT} anpassen.`;
+    const r = pruefe(paket({ aufgabe }), "[Task] Etwas", wurzel);
+    assert.deepEqual(r, { ok: true, stufe: "issue", verstoesse: [] });
+  });
+});
+
+test("[1179] die Kennzeichnung wirkt auch im Akzeptanzkriterium", () => {
+  mitWurzel((wurzel) => {
+    const kriterium = `- Der Test liest \`${EINSTELLUNGEN}\`${GENANNT} nicht.`;
+    const r = pruefe(paket({ kriterium }), "[Task] Etwas", wurzel);
+    assert.equal(gate(r, "I8").length, 0);
+  });
+});
+
+test("[1179] derselbe Pfad ohne Kennzeichnung bleibt I8", () => {
+  mitWurzel((wurzel) => {
+    for (const aufgabe of [
+      `In \`${EINSTELLUNGEN}\` (nur erwaehnt) etwas aendern.`,
+      `In \`${EINSTELLUNGEN}\`  (nur genannt) etwas aendern.`,
+      `In \`${EINSTELLUNGEN}\` etwas aendern.`,
+    ]) {
+      const r = pruefe(paket({ aufgabe }), "[Task] Etwas", wurzel);
+      assert.equal(gate(r, "I8").length, 1, aufgabe);
+    }
+  });
+});
+
+test("[1179] ein zweites Vorkommen ohne Kennzeichnung bleibt ein Treffer, in derselben oder einer anderen Zeile", () => {
+  mitWurzel((wurzel) => {
+    const gleicheZeile = `\`${EINSTELLUNGEN}\`${GENANNT} lesen und \`${EINSTELLUNGEN}\` aendern.`;
+    const andereZeile = `- \`kit/board.mjs\` liest \`${EINSTELLUNGEN}\`${GENANNT}.\n- \`${EINSTELLUNGEN}\` ergaenzen.`;
+    for (const aufgabe of [gleicheZeile, andereZeile]) {
+      const r = pruefe(paket({ aufgabe }), "[Task] Etwas", wurzel);
+      assert.equal(gate(r, "I8").length, 1, aufgabe);
+    }
+  });
+});
+
+test("[1179] ein gekennzeichneter und ein ungekennzeichneter geschuetzter Pfad ergeben genau einen Treffer", () => {
+  mitWurzel((wurzel) => {
+    const zweiter = GESCHUETZTE_PFADE[1];
+    const aufgabe = `In \`kit/board.mjs\` \`${EINSTELLUNGEN}\`${GENANNT} lesen und \`${zweiter}\` ergaenzen.`;
+    const r = pruefe(paket({ aufgabe }), "[Task] Etwas", wurzel);
+    const i8 = gate(r, "I8");
+    assert.equal(i8.length, 1);
+    assert.ok(i8[0].meldung.startsWith(`'${zweiter}'`), i8[0].meldung);
+  });
+});
+
+test("[1179] I7 zaehlt einen gekennzeichneten Pfad nicht als geaenderte Datei", () => {
+  mitWurzel((wurzel) => {
+    const r = pruefe(paket({ aufgabe: `Den Fall \`${EINSTELLUNGEN}\`${GENANNT} behandeln.` }), "[Task] Etwas", wurzel);
+    assert.equal(gate(r, "I7").length, 1);
+    assert.equal(gate(r, "I8").length, 0);
+  });
+});
+
+test("[1179] der Body von #1120 mit (nur genannt) hinter beiden Einstellungsdateien besteht check-form ohne I8", () => {
+  mitWurzel((wurzel) => {
+    // Die Zeile, an der I8 am 2026-10-02 anschlug (Idee #1121), mit beiden Kennzeichnungen.
+    // Der Werkzeugpfad steht zusammengesetzt, nicht als Literal: Die Verflechtungserhebung
+    // (test/config-teile.test.mjs) zaehlt jede Erwaehnung eines Quellpfads als Kopplung.
+    const werkzeug = ["tools", "frischer-checkout.mjs"].join("/");
+    const zeile = `2. \`${werkzeug}\`, \`AUSNAHMEN\`: \`.claude/settings.json\` (nur genannt) und \`.claude/settings.local.json\` (nur genannt) mit dem Grund, ...`;
+    assert.ok(GESCHUETZTE_PFADE.includes(".claude/settings.json") && GESCHUETZTE_PFADE.includes(".claude/settings.local.json"));
+    const ohne = pruefe(paket({ aufgabe: zeile.replaceAll(GENANNT, "") }), "[Task] Etwas", wurzel);
+    assert.equal(gate(ohne, "I8").length, 2, "ohne Kennzeichnung schlaegt I8 zweimal an");
+    const mit = pruefe(paket({ aufgabe: zeile }), "[Task] Etwas", wurzel);
+    assert.deepEqual(mit, { ok: true, stufe: "issue", verstoesse: [] });
+  });
+});
