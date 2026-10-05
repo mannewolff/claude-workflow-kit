@@ -1611,6 +1611,63 @@ export function abgeben(karte, { lauf = LAUF_STEMPEL, repoRoot = process.cwd() }
   journalZeile(pfad, { art: "stand", nr: naechsteNr(pfad), zeit: new Date().toISOString(), karte: String(karte), zustand: "abgegeben", text: "", status: "offen" });
 }
 
+/** Reserve auf die Gesamtzeit-Obergrenze, bevor ein fremder Laufstand als verwaist gilt (E5). */
+const WURZEL_RESERVE_MS = 15 * 60_000;
+
+/**
+ * Die Gesamtzeit-Obergrenze einer Karte in Millisekunden (E5): die Summe der Kettenstufen
+ * oder das Budget des Prueflaufs. Der Laufstand nennt seine Laufart nicht; darum gilt die
+ * groessere — ein lebender Lauf darf nie als tot gelten, ein toter wartet nur laenger.
+ */
+function wurzelObergrenzeMs({ kette, pruefLauf }) {
+  const ketteMin = kette.planMin + kette.paketeMin + kette.reviewMin + kette.abdeckungMin + kette.umsetzungMin;
+  return Math.max(ketteMin, pruefLauf.pruefungMin) * 60_000;
+}
+
+/** Lauf-ID, Stand und Position aus einem Laufstand-Text (#1186) — `null` ohne Lauf-ID. */
+function laufstandKopf(text) {
+  const t = String(text ?? "");
+  const laufId = /^Lauf-ID:[^\S\n]*(\S+)[^\S\n]*$/m.exec(t)?.[1];
+  if (!laufId) return null;
+  const [host, pid] = laufId.split("/");
+  const stand = Date.parse(/^Stand:[^\S\n]*(\S+)[^\S\n]*$/m.exec(t)?.[1] ?? "");
+  const k = Number(/^Position:[^\S\n]*(\d+)[^\S\n]+von[^\S\n]+\d+[^\S\n]*$/m.exec(t)?.[1]);
+  return { laufId, host, pid: Number(pid), stand, k: k > 0 ? k : 1 };
+}
+
+/**
+ * Haelt ein lebender Runner die fachliche Wurzel `F` (Plan #1113, E5, E6)? Rein bis auf die
+ * Prozess-Probe auf demselben Rechner.
+ *
+ * Gewertet werden F selbst und jeder Plan (`isPlan`) mit `Fachliche Quelle:` F; Arbeitspakete
+ * tragen dieselbe Zeile, ihre Konkurrenz regelt aber die Umsetzungssperre. `staende` ordnet
+ * Kartennummern ihren Laufstand `{ zustand, text }` zu (Map oder Objekt). Nur `laeuft` mit
+ * Lauf-ID belegt; lebend heisst auf demselben Rechner (`host` wie in der Lauf-ID) ein
+ * laufender Prozess, von einem anderen Rechner aus ein `Stand:`, der juenger ist als Position
+ * mal Gesamtzeit-Obergrenze plus Reserve — Karte k kommt fruehestens nach k−1 Budgets dran.
+ *
+ * Rueckgabe `{ karte, laufId }` des ersten lebenden Halters, sonst `null`.
+ */
+export function wurzelBelegt(F, issues, staende, jetzt, host, { budgets = { kette: ladeKetteBudget({}), pruefLauf: ladePruefLaufBudget({}) } } = {}) {
+  const wurzel = String(F);
+  const standVon = (id) => (staende instanceof Map ? staende.get(id) : staende?.[id]);
+  const obergrenzeMs = wurzelObergrenzeMs(budgets);
+  const karten = (issues || [])
+    .filter((i) => String(i?.id) === wurzel || (isPlan(i?.title ?? "") && fachlicheQuelleVon(i?.body || "") === wurzel))
+    .map((i) => String(i.id));
+  for (const karte of karten) {
+    const stand = standVon(karte);
+    if (stand?.zustand !== "laeuft") continue;
+    const kopf = laufstandKopf(stand.text);
+    if (!kopf) continue;
+    const lebt = kopf.host === host
+      ? Number.isInteger(kopf.pid) && kopf.pid > 0 && prozessLaeuft(kopf.pid)
+      : Number.isFinite(kopf.stand) && jetzt.getTime() - kopf.stand < kopf.k * obergrenzeMs + WURZEL_RESERVE_MS;
+    if (lebt) return { karte, laufId: kopf.laufId };
+  }
+  return null;
+}
+
 /**
  * Lebt der Lauf, dessen Puls hier liegt? Ein Puls ohne lesbare PID gilt als tot; EPERM
  * heisst, den Prozess gibt es, er gehoert nur einem anderen Benutzer.
