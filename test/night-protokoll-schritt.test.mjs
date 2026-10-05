@@ -45,7 +45,9 @@ function starte(cwd, cliArgs, env) {
   return new Promise((resolve) => kind.on("close", (status) => resolve({ status, out })));
 }
 
-async function warteAuf(pruefung, ms = 20000) {
+// Grosszuegig, weil die Abfrage sofort zurueckkehrt, sobald die Bedingung erfuellt ist: Im
+// gruenen Fall kostet die Grenze nichts, unter Last riss die fruehere von 20 s (Issue #1197).
+async function warteAuf(pruefung, ms = 120_000) {
   const ende = Date.now() + ms;
   while (Date.now() < ende) {
     if (pruefung()) return;
@@ -64,8 +66,10 @@ test("[protokoll-schritt] Belegfall 5: Kette und Prueflauf gleichzeitig schreibe
       ...umgebung(dir, {
         stufen: {
           // Die Plan-Session der Kette wartet, bis die Pruef-Session gelaufen ist: So liegt
-          // die ganze Pruefung mitten in diesem einen Schritt der Kette.
-          plan: `n=0; while [ ! -f "$PRUEF_MARKE" ] && [ $n -lt 300 ]; do sleep 0.1; n=$((n+1)); done; ${PLAN_ANLEGEN}`,
+          // die ganze Pruefung mitten in diesem einen Schritt der Kette. Bleibt die Marke aus,
+          // endet die Stufe rot: Sonst entstuende der Plan vor der Pruefung, und der Belegfall
+          // pruefte still etwas anderes (Issue #1197).
+          plan: `n=0; while [ ! -f "$PRUEF_MARKE" ] && [ $n -lt 1200 ]; do sleep 0.1; n=$((n+1)); done; [ -f "$PRUEF_MARKE" ] || exit 1; ${PLAN_ANLEGEN}`,
           review: REVIEW_MARKER,
           pakete: PAKETE_ANLEGEN,
           pruefung: jePaket({ [G]: `${PRUEFUNG_GEPRUEFT}; touch "$PRUEF_MARKE"` }),
