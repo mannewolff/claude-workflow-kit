@@ -10,7 +10,6 @@
 export const AUSNAHMEN = {
   "ablauf-kennzeichnen": [
     "test/board-activity.test.mjs",
-    "test/board-bash-pruefen.test.mjs",
     "test/board-check-form-geschuetzt.test.mjs",
     "test/board-cli.test.mjs",
     "test/board-kartenreihenfolge.test.mjs",
@@ -170,7 +169,6 @@ export const AUSNAHMEN = {
     "test/night-waechter.test.mjs",
   ],
   "haenger-kennzeichnen": [
-    "test/board-bash-pruefen.test.mjs",
     "test/night-auskunft.test.mjs",
     "test/night-ergebnis-vorhanden.test.mjs",
     "test/night-fehlerwege.test.mjs",
@@ -194,7 +192,6 @@ export const AUSNAHMEN = {
     "test/night-zeiten.test.mjs",
   ],
   "import-aus-teil": [
-    "test/board-bash-pruefen.test.mjs",
     "test/board-check-form-geschuetzt.test.mjs",
     "test/board-mensch-praefix.test.mjs",
     "test/board-proxy.test.mjs",

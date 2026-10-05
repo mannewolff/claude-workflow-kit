@@ -16,7 +16,7 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/board-ac*.test.mjs\" \"test/board-b*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-mensch-*.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-u*.test.mjs\" \"test/cli-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/board-ac*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-mensch-*.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-u*.test.mjs\" \"test/cli-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
@@ -141,6 +141,14 @@
       ]
     },
     {
+      "cmd": "node --test --test-concurrency=2 \"test/board-hook-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-grundlagen",
+        "board-hook"
+      ]
+    },
+    {
       "cmd": "node --test --test-concurrency=2 \"test/ablauf-board-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
@@ -149,6 +157,7 @@
         "board-einstieg",
         "board-geschuetzt",
         "board-grundlagen",
+        "board-hook",
         "board-issue-review",
         "board-melder",
         "board-testhinweise",
@@ -297,7 +306,6 @@
       "kit/board-ui.mjs",
       "tools/migrate-issues.mjs",
       "test/board-ac*.test.mjs",
-      "test/board-b*.test.mjs",
       "test/board-c*.test.mjs",
       "test/board-i*.test.mjs",
       "test/board-k*.test.mjs",
@@ -354,6 +362,10 @@
     "board-melder": [
       "kit/board/melder.mjs",
       "test/board-melder-*.test.mjs"
+    ],
+    "board-hook": [
+      "kit/board/hook.mjs",
+      "test/board-hook-*.test.mjs"
     ],
     "pruefungen": [
       "kit/checks.mjs",
