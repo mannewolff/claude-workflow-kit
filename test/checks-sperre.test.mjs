@@ -24,7 +24,7 @@ import { existsSync, readFileSync, writeFileSync, mkdtempSync, rmSync, readdirSy
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { mitSperre, SPERRE_ENV, SPERRE_GRENZE_ENV, sperrPfad, sperrGrenzeMs } from "../kit/checks.mjs";
+import { mitSperre, SPERRE_ENV, SPERRE_GRENZE_ENV, SPERRE_GRENZE_FREMD_ENV, sperrPfad, sperrGrenzeMs, sperrGrenzeFremdMs } from "../kit/checks.mjs";
 import { repoAnlegen, datei, run, CHECKS, repoEntfernenTolerant } from "./helpers/checks-repo.mjs";
 import "./helpers/checks-sperre.mjs";
 
@@ -445,4 +445,122 @@ test("[checks-1070-1] mitSperre haelt die Sperre, solange das Promise laeuft, un
   } finally {
     rmSync(ablage, { recursive: true, force: true });
   }
+});
+
+// Wer die Sperre haelt, steht in einer Nebendatei `<sperre>.halter` (Issue #1177). Auf
+// ein fremdes Projekt wird nur kurz gewartet: Am 2026-10-02 wartete die
+// Abschlusspruefung von #1102 rund 20 Minuten auf einen Push-Lauf von kanban-kit und
+// scheiterte danach an der Sitzungsgrenze. Die Sperrdatei selbst bleibt bei der reinen
+// Prozess-Id — aeltere Kit-Versionen auf derselben Maschine lesen sie so (#999).
+
+const ZWANZIG_MINUTEN = 20 * 60 * 1000;
+const ZWEI_MINUTEN = 2 * 60 * 1000;
+
+/**
+ * Legt eine Sperre des (lebenden) Elternprozesses an, auf Wunsch mit Nebendatei, und
+ * faehrt `mitSperre` mit einer Uhr, die je Abfrage zehn Sekunden springt. Rueckgabe:
+ * die Protokollzeilen und die gewartete Zeit aus der Zeile "nach <ms> ms".
+ */
+function warteAufHalter({ halter, halterText } = {}) {
+  const ablage = mkdtempSync(join(tmpdir(), "sperre-1177-"));
+  const sperre = join(ablage, "halter.lock");
+  writeFileSync(sperre, `${process.ppid}\n`, "utf-8");
+  if (halter) writeFileSync(`${sperre}.halter`, JSON.stringify(halter), "utf-8");
+  if (halterText !== undefined) writeFileSync(`${sperre}.halter`, halterText, "utf-8");
+  const zeilen = [];
+  try {
+    let gelaufen = false;
+    mitSperre(() => { gelaufen = true; }, {
+      pfad: sperre, melde: (satz) => zeilen.push(satz), uhr: schrittUhr(10_000), schlafe: () => {},
+    });
+    assert.ok(gelaufen, "der Lauf muss nach der Obergrenze trotzdem fahren");
+    assert.equal(readFileSync(sperre, "utf-8").trim(), String(process.ppid), "die fremde Sperre bleibt liegen");
+    const ausgabe = zeilen.join("");
+    const treffer = /nach (\d+) ms noch belegt/.exec(ausgabe);
+    assert.ok(treffer, `die Zeile zum Ablauf der Obergrenze fehlt: ${ausgabe}`);
+    return { ausgabe, gewartet: Number(treffer[1]) };
+  } finally {
+    rmSync(ablage, { recursive: true, force: true });
+  }
+}
+
+function halterAngaben(ueberschrieben = {}) {
+  return {
+    projekt: process.cwd(), stufe: "push", kommando: "checks.mjs run --stufe push",
+    start: "2026-10-05T03:00:00.000Z", pid: process.ppid, ...ueberschrieben,
+  };
+}
+
+test("[checks-1177-1] auf ein fremdes Projekt wird nur 2 Minuten gewartet, beide Zeilen nennen den Halter", () => {
+  const { ausgabe, gewartet } = warteAufHalter({ halter: halterAngaben({ projekt: "/anderswo/kanban-kit" }) });
+  assert.ok(gewartet >= ZWEI_MINUTEN && gewartet < ZWEI_MINUTEN + 20_000,
+    `nach rund 2 Minuten muss der Lauf ohne Sperre fahren, nicht nach ${gewartet} ms: ${ausgabe}`);
+  const zeilen = ausgabe.trim().split("\n");
+  assert.match(zeilen[0], /es wird gewartet/);
+  for (const zeile of zeilen) {
+    assert.match(zeile, new RegExp(`Prozess ${process.ppid}\\b`), `die pid fehlt: ${zeile}`);
+    assert.match(zeile, /\/anderswo\/kanban-kit/, `das Projekt fehlt: ${zeile}`);
+    assert.match(zeile, /Stufe push/, `die Stufe fehlt: ${zeile}`);
+    assert.match(zeile, /2026-10-05T03:00:00\.000Z/, `die Startzeit fehlt: ${zeile}`);
+  }
+  assert.match(zeilen.at(-1), /faehrt ohne Sperre/);
+});
+
+test("[checks-1177-2] auf das eigene Projekt wird bis zu 20 Minuten gewartet", () => {
+  const { ausgabe, gewartet } = warteAufHalter({ halter: halterAngaben() });
+  assert.ok(gewartet >= ZWANZIG_MINUTEN && gewartet < ZWANZIG_MINUTEN + 20_000,
+    `beim eigenen Projekt gilt die bisherige Obergrenze, gewartet ${gewartet} ms: ${ausgabe}`);
+  assert.ok(ausgabe.includes(`Projekt ${process.cwd()},`), `die Zeile nennt das eigene Projekt: ${ausgabe}`);
+});
+
+test("[checks-1177-3] ohne oder mit unlesbarer Nebendatei gilt die bisherige Obergrenze und das Projekt ist unbekannt", () => {
+  for (const fall of [{}, { halterText: "{kein json" }]) {
+    const { ausgabe, gewartet } = warteAufHalter(fall);
+    assert.ok(gewartet >= ZWANZIG_MINUTEN && gewartet < ZWANZIG_MINUTEN + 20_000,
+      `ohne Beleg wird der Lastschutz nicht verkuerzt (${JSON.stringify(fall)}), gewartet ${gewartet} ms: ${ausgabe}`);
+    for (const zeile of ausgabe.trim().split("\n")) {
+      assert.match(zeile, /Projekt unbekannt/, `${JSON.stringify(fall)}: ${zeile}`);
+      assert.match(zeile, new RegExp(`Prozess ${process.ppid}\\b`), zeile);
+    }
+  }
+});
+
+test("[checks-1177-4] eine Nebendatei zu einer anderen Prozess-Id zaehlt wie keine", () => {
+  const { ausgabe, gewartet } = warteAufHalter({ halter: halterAngaben({ projekt: "/anderswo/kanban-kit", pid: totePid() }) });
+  assert.ok(gewartet >= ZWANZIG_MINUTEN, `eine fremde Nebendatei verkuerzt nichts, gewartet ${gewartet} ms: ${ausgabe}`);
+  assert.match(ausgabe, /Projekt unbekannt/);
+  assert.doesNotMatch(ausgabe, /kanban-kit/, `die Angaben eines anderen Halters gehoeren nicht in die Zeile: ${ausgabe}`);
+});
+
+test("[checks-1177-5] die Sperrdatei traegt nur die pid, die Nebendatei den Halter, die Freigabe raeumt beide", () => {
+  const ablage = mkdtempSync(join(tmpdir(), "sperre-1177-"));
+  const sperre = join(ablage, "eigen.lock");
+  try {
+    let gelaufen = false;
+    mitSperre(() => {
+      gelaufen = true;
+      assert.equal(readFileSync(sperre, "utf-8"), `${process.pid}\n`, "die Sperrdatei bleibt bei der reinen Prozess-Id");
+      const halter = JSON.parse(readFileSync(`${sperre}.halter`, "utf-8"));
+      assert.equal(halter.pid, process.pid);
+      assert.equal(halter.projekt, process.cwd());
+      assert.equal(halter.stufe, "merge");
+      assert.equal(halter.kommando, "checks.mjs run --stufe merge");
+      assert.ok(!Number.isNaN(Date.parse(halter.start)), `keine Startzeit: ${halter.start}`);
+    }, { pfad: sperre, melde: () => {}, halter: { stufe: "merge", kommando: "checks.mjs run --stufe merge" } });
+    assert.ok(gelaufen);
+    assert.equal(existsSync(sperre), false, "die Sperrdatei muss weg sein");
+    assert.equal(existsSync(`${sperre}.halter`), false, "die Nebendatei muss mit der Sperre gehen");
+  } finally {
+    rmSync(ablage, { recursive: true, force: true });
+  }
+});
+
+test("[checks-1177-6] die Obergrenze fuer fremde Projekte ist ueber die Umgebung zu setzen", () => {
+  assert.equal(SPERRE_GRENZE_FREMD_ENV, "KIT_CHECKS_LOCK_FOREIGN_TIMEOUT_MS");
+  assert.equal(sperrGrenzeFremdMs({}), ZWEI_MINUTEN);
+  assert.equal(sperrGrenzeFremdMs({ [SPERRE_GRENZE_FREMD_ENV]: "5000" }), 5000);
+  assert.equal(sperrGrenzeFremdMs({ [SPERRE_GRENZE_FREMD_ENV]: "0" }), ZWEI_MINUTEN);
+  assert.equal(sperrGrenzeFremdMs({ [SPERRE_GRENZE_FREMD_ENV]: "abc" }), ZWEI_MINUTEN);
+  const hilfe = spawnSync(process.execPath, [CHECKS, "--help"], { encoding: "utf-8" });
+  assert.match(hilfe.stdout, /KIT_CHECKS_LOCK_FOREIGN_TIMEOUT_MS/, "die Hilfe nennt die neue Umgebungsvariable");
 });

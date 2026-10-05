@@ -417,17 +417,21 @@ Stand unveraendert seit 2026-09-22T17:18:04.921Z: Ergebnis uebernommen (gruen). 
 
 | Vorgefunden | Was geschieht | Protokollzeile |
 |---|---|---|
-| ein **laufender** Prozess hält sie | es wird gewartet | `Sperre … haelt Prozess <pid> — es wird gewartet` |
+| ein **laufender** Prozess hält sie | es wird gewartet | `Sperre … haelt Prozess <pid>, Projekt <wurzel>, Stufe <s>, seit <start> — es wird gewartet` (ohne Nebendatei: `Prozess <pid>, Projekt unbekannt`) |
 | ihr Halter **lebt nicht mehr** | sie wird abgeräumt, der Lauf beginnt sofort | `Sperre … war verwaist (Prozess <pid> laeuft nicht) — abgeraeumt` |
 | sie ist lesbar, aber **kaputt** (leer, Text, keine gültige Prozess-Id) | ebenso abgeräumt | `Sperre … war kaputt (keine gueltige Prozess-Id) — abgeraeumt` |
 | sie lässt sich **nicht lesen** (etwa `EBUSY`, `EPERM`) | es wird gewartet wie bei einem laufenden Halter, die nächste Runde sieht neu nach | `Sperre … haelt ein unbekannter Halter (Lesefehler <Code>) — es wird gewartet` |
-| die **Obergrenze** ist abgelaufen | der Lauf fährt **trotzdem**, ohne Sperre | `Sperre … nach <ms> ms noch belegt (Prozess <pid>) — der Lauf faehrt ohne Sperre` |
+| die **Obergrenze** ist abgelaufen | der Lauf fährt **trotzdem**, ohne Sperre | `Sperre … nach <ms> ms noch belegt (Prozess <pid>, Projekt …) — der Lauf faehrt ohne Sperre` |
 
 Ein **Lesefehler** ist kein Beweis für eine kaputte Sperre: Unter Windows scheitert das Lesen einer frisch angelegten Sperre manchmal kurz, etwa während ein Virenscanner sie öffnet. Würde sie dann abgeräumt, führen zwei Läufe gleichzeitig. Eine dauerhaft unlesbare Sperre führt über die Obergrenze zu „fährt ohne Sperre" und wird nie gelöscht.
 
 Verwaist wird über die **Prozess-Id** erkannt und nicht über eine Verfallsfrist: Ein Prüflauf darf länger dauern als jede Schätzung, und ein zu kurzer Verfall gäbe genau die Gleichzeitigkeit frei, die die Sperre verhindern soll. `EPERM` beim Nachsehen heißt „der Prozess lebt und gehört einem anderen Nutzer" — das ist keine verwaiste Sperre.
 
 **Die Obergrenze liegt bei 20 Minuten** und ist über **`KIT_CHECKS_LOCK_TIMEOUT_MS`** zu setzen (Millisekunden; alles, was keine positive Zahl ist, fällt auf die Vorgabe zurück). Nach ihrem Ablauf läuft der Prüflauf **trotzdem** und sagt es in einer Zeile. Das ist Absicht und keine Lücke: **Die Sperre ist Vorsorge gegen Last, kein Korrektheitsgate.** Unbegrenzt zu warten liefe in das Rundenzeitlimit des Nacht-Runners, und der Lauf zählte dann als Fehlschlag der Karte statt als Wartezeit; rot zu melden wäre ein Fehlschlag, der nicht am Code liegt. Der Schaden einer Kollision ist ein roter Lauf — der Schaden eines verweigerten Laufs ist ein roter Lauf *ohne Ergebnis*.
+
+**Auf ein fremdes Projekt wird nur kurz gewartet: 2 Minuten.** Wer die Sperre nimmt, schreibt neben sie die Nebendatei `<sperre>.halter` — JSON mit Projektwurzel, Stufe, Kommando, Startzeit und Prozess-Id — und entfernt sie beim Freigeben mit der Sperre. Wer wartet, liest sie: Gehört der Halter (gleiche Prozess-Id wie in der Sperrdatei) zu einer **anderen Projektwurzel**, gilt die kurze Obergrenze, zu setzen über **`KIT_CHECKS_LOCK_FOREIGN_TIMEOUT_MS`** (Millisekunden, dieselben Regeln wie oben). Sonst bleibt es bei den 20 Minuten — auch, wenn die Nebendatei fehlt, sich nicht lesen lässt oder zu einer anderen Prozess-Id gehört: Dann nennt die Zeile „Projekt unbekannt", und ohne Beleg wird der Lastschutz nicht verkürzt. Die Wartezeile und die Zeile zum Ablauf der Obergrenze nennen Projekt, Stufe, Startzeit und Prozess-Id des Halters. Anlass war ein Nachtlauf (2026-10-02), dessen Abschlussprüfung rund 20 Minuten auf einen Push-Lauf eines anderen Projekts mit einem Mutationslauf wartete und danach an der Sitzungsgrenze scheiterte. Die Sperre bleibt dabei maschinenweit; begrenzt wird nur das Warten auf ein fremdes Projekt.
+
+Die Sperrdatei selbst trägt weiter **nur die Prozess-Id**: Projekte mit älteren Kit-Versionen auf derselben Maschine lesen sie so, hielten eine erweiterte Datei für kaputt und räumten sie ab.
 
 **Ein übernommenes Ergebnis wartet nie.** Hat sich der Stand nicht geändert (siehe [Unveränderter Stand](#unveränderter-stand-das-ergebnis-wird-übernommen)), fährt der Lauf kein Kommando und erzeugt keine Last — er nimmt die Sperre darum gar nicht erst.
 
