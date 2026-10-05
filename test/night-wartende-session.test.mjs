@@ -472,6 +472,15 @@ test("[night-52] wartendeSession wertet das Warten auf einen Menschen nicht als 
   assert.equal(wartendeSession("Issue #775 ist umgesetzt, committet und in In review."), false);
 });
 
+test("[night-52] wartendeSession trifft das Verb warten, nicht das Substantiv Warten (Issue #1207)", () => {
+  // Der Schlusstext der Review-Session aus Lauf 2026-10-05-121520: Er beschrieb eine
+  // Planaenderung, und das Substantiv hielt die Kette an.
+  assert.equal(wartendeSession("begrenztes Warten auf eine Bedingung ist nur in gekennzeichneten Ablauf-Prüfungen erlaubt"), false);
+  for (const text of ["Ich warte auf den Prüflauf", "Der Lauf wartet auf die Gruppe", "Wartet auf das Ergebnis.", "Warte auf den Lauf."]) {
+    assert.equal(wartendeSession(text), true, `nicht als wartend erkannt: ${text}`);
+  }
+});
+
 test("[night-52] die GO-Ausnahme trifft nur das grossgeschriebene Wort fuer sich", () => {
   // Ohne Wortgrenze verschluckte das „GO\" in ALGOL den ganzen Fall: Die Ausnahmeliste hat
   // Vorrang, und der wartende Schlusstext saehe aus wie Warten auf einen Menschen.
@@ -878,7 +887,9 @@ function kettenEinheit(dir, F) {
 test("[night-57] eine wartende Stufen-Session endet abgebrochen, mit Grund, Vermerk am Dokument der Stufe und Feld", () => {
   kette.mitProjekt((dir) => {
     const F = kette.fachplan(dir);
-    const env = kette.umgebung(dir, { stufen: { plan: kette.PLAN_ANLEGEN } });
+    // Ohne Plan: Ein entstandener Plan ist das Ergebnis der Stufe und hat Vorrang vor dem
+    // Schlusstext (Issue #1207).
+    const env = kette.umgebung(dir, { stufen: { plan: ":" } });
     const res = kette.run(dir, ["--kette"], { ...env, KETTE_RESULT_TEXT: KETTE_WARTE_TEXT });
     assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
 

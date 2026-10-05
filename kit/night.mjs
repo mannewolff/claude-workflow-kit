@@ -8202,6 +8202,23 @@ function wartendVermerken(dokId, stufe, schlusstext) {
 }
 
 /**
+ * Ob eine Stufen-Session als wartend endet — und wenn ja, mit Vermerk am Dokument der Stufe.
+ *
+ * Klingt der Schlusstext nach Warten, entscheidet `ergebnisDa` (Issue #1207): Liegt das
+ * Ergebnis der Stufe vor, endet die Session nicht als wartend, und eine Protokollzeile
+ * sagt, dass der Schlusstext nach Warten klang.
+ */
+function wartendBeendet(stufe, schlusstext, dokId, ergebnisDa) {
+  if (stufe === STUFE_OHNE_WARTEND_ERKENNUNG || !wartendeSession(schlusstext)) return false;
+  if (ergebnisDa?.()) {
+    log(`  Stufe ${stufe}: Schlusstext klang nach Warten, das Ergebnis liegt aber vor — die Session gilt als fertig.`);
+    return false;
+  }
+  if (dokId) wartendVermerken(dokId, stufe, schlusstext);
+  return true;
+}
+
+/**
  * Eine Session der Kette mit Zeit- und Kostenbudget (Plan #638, A5, A6).
  *
  * `stufeStart` und `budgetMs` beschreiben die Stufe: Jede Session bekommt als Timeout,
@@ -8213,8 +8230,13 @@ function wartendVermerken(dokId, stufe, schlusstext) {
  * `dokId` ist das Dokument der Stufe — der Fachplan, solange es keinen Plan gibt, sonst
  * der Plan oder das Paket in der Formpruefung. Nur eine wartende Sitzung braucht es
  * (Issue #778); eine Stufe ohne Dokument uebergibt nichts und bekommt keinen Vermerk.
+ *
+ * `ergebnisDa` prueft, ob das Ergebnis der Stufe nach der Session vorliegt (Issue #1207).
+ * Aufgerufen wird es nur, wenn der Schlusstext nach Warten klingt: Das Ergebnis ist ein
+ * Beleg, der Schlusstext nur ein Indiz. Liefert es `true`, endet die Session `fertig`,
+ * ohne Vermerk am Dokument.
  */
-async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, dokId = null) {
+async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, dokId = null, ergebnisDa = null) {
   const rest = budgetMs - (Date.now() - stufeStart);
   if (rest < KETTE_MINDEST_REST_MS) {
     return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe} erschoepft, bevor eine weitere Session starten konnte`, dauerMs: 0, kennzahlen: null, sitzungsAbbruch: true };
@@ -8244,9 +8266,7 @@ async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, dokId = 
   //
   // Vor dem Kostendeckel, weil der Grund der konkretere ist: Eine Kette, die beides
   // zugleich erreicht, soll morgens den Fall benennen und nicht den Betrag.
-  const schlusstext = leseErgebnisText(res.stdout);
-  if (stufe !== STUFE_OHNE_WARTEND_ERKENNUNG && wartendeSession(schlusstext)) {
-    if (dokId) wartendVermerken(dokId, stufe, schlusstext);
+  if (wartendBeendet(stufe, leseErgebnisText(res.stdout), dokId, ergebnisDa)) {
     // `wartend` reist am Ergebnis mit, statt ueber den Modul-Merker WARTEND_BEENDET zu
     // laufen: Der gehoert einer Implementierungs-RUNDE und wird vor jeder zurueckgesetzt
     // — unter Variante B saehe die Ketten-Einheit sonst den Befund einer Paket-Session.
@@ -8292,16 +8312,17 @@ async function stufePlan(kette) {
 
   const vorher = new Set(board("issue", "list").map((i) => String(i.id)));
   log(`  Stufe plan: /techplan #${F} (Budget ${budget.planMin} min).`);
+  // Das Ergebnis ist die Herkunftszeile, nicht der Session-Text (E2): nur neue
+  // [Plan]-Karten mit `Fachliche Quelle: Issue #F`; bei mehreren die hoechste Nummer.
+  const neuePlaene = () => board("issue", "list")
+    .filter((i) => !vorher.has(String(i.id)) && stammtAusErzeugung(i, F, "plan"))
+    .sort((a, b) => Number(b.id) - Number(a.id));
   // Dokument der Stufe ist der Fachplan: Der Plan entsteht erst in dieser Session.
-  const s = await ketteSession(kette, "plan", `/techplan #${F}`, stufeStart, budgetMs, F);
+  const s = await ketteSession(kette, "plan", `/techplan #${F}`, stufeStart, budgetMs, F, () => neuePlaene().length > 0);
   summe(s);
   if (s.ausgang !== "fertig") return s;
 
-  // Das Ergebnis ist die Herkunftszeile, nicht der Session-Text (E2): nur neue
-  // [Plan]-Karten mit `Fachliche Quelle: Issue #F`; bei mehreren die hoechste Nummer.
-  const neue = board("issue", "list")
-    .filter((i) => !vorher.has(String(i.id)) && stammtAusErzeugung(i, F, "plan"))
-    .sort((a, b) => Number(b.id) - Number(a.id));
+  const neue = neuePlaene();
   if (neue.length === 0) return { ausgang: "abgebrochen", grund: "kein Plan entstanden — die Session hat kein [Plan]-Dokument mit der Herkunftszeile angelegt" };
   stand.id = String(neue[0].id);
   stand.weitere = neue.slice(1).map((i) => String(i.id));
@@ -8437,7 +8458,14 @@ async function stufeReview(kette, planId) {
   kette.stufen.review = stand;
   const vorher = board("issue", "get", planId);
   log(`  Stufe review: /issue-review #${planId} (Budget ${budget.reviewMin} min).`);
-  const s = await ketteSession(kette, "review", `/issue-review #${planId}`, Date.now(), budget.reviewMin * 60 * 1000, planId);
+  // Ergebnis der Stufe ist eine Marker-Zeile, die nach der Session da und anders als vorher
+  // ist — neu oder mit neuem Datum (Issue #1207). Das Label `review:fertig` taugt dafuer
+  // nicht: Es kann von einer frueheren Pruefung stehen.
+  const markerNeu = () => {
+    const wert = planReviewWert(board("issue", "get", planId).body);
+    return wert !== null && wert !== planReviewWert(vorher.body);
+  };
+  const s = await ketteSession(kette, "review", `/issue-review #${planId}`, Date.now(), budget.reviewMin * 60 * 1000, planId, markerNeu);
   stand.dauerMs = s.dauerMs;
   stand.kennzahlen = s.kennzahlen;
   if (s.ausgang !== "fertig") {
@@ -8480,7 +8508,8 @@ async function stufePakete(kette, planId) {
   const vorherIds = new Set(board("issue", "list").map((i) => String(i.id)));
   const vorherPlan = board("issue", "get", planId);
   log(`  Stufe pakete: /issues #${planId} (Budget ${budget.paketeMin} min).`);
-  const s = await ketteSession(kette, "pakete", `/issues #${planId}`, stufeStart, budgetMs, planId);
+  const paketeEntstanden = () => board("issue", "list").some((i) => !vorherIds.has(String(i.id)) && stammtAusErzeugung(i, planId, "issue"));
+  const s = await ketteSession(kette, "pakete", `/issues #${planId}`, stufeStart, budgetMs, planId, paketeEntstanden);
   summe(s);
   if (s.ausgang !== "fertig") return s;
 
@@ -11027,7 +11056,11 @@ const GRUND_WARTEND =
 // Woertern (ALGOL, Logo) und zoege damit echte Faelle aus der Wertung — die Ausnahme hat
 // Vorrang, also ist ein Fehltreffer dort teurer als einer in der Musterliste.
 const WARTEN_MUSTER = [
-  /\bwarte[nt]?\s+auf\b/i,
+  // Case-sensitiv (Issue #1207): Das Verb steht klein ("warte", "wartet", "warten") oder
+  // gross am Satzanfang ("Warte", "Wartet"); "Warten" gross ist im Deutschen das
+  // Substantiv ("begrenztes Warten auf eine Bedingung") und beschreibt keinen Zustand der
+  // Sitzung. Die Versalform bleibt erkannt, wie vor der Schaerfung.
+  /\b(?:warte[nt]?|Wartet?|WARTE[NT]?)\s+(?:auf|AUF)\b/,
   /\bl(?:ae|ä)uft\s+noch\b/i,
   // "sobald … fertig ist" — die beiden Woerter stehen selten direkt beieinander
   // ("sobald der Lauf durch ist"), darum eine begrenzte Spanne dazwischen und keine
