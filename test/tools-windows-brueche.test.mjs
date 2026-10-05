@@ -467,7 +467,8 @@ test("[1160] Im Bestand kommen die Namen aus git ls-files, ohne echte Datei", ()
     assert.equal(git("init", "-q").status, 0);
     const blob = git("hash-object", "-w", "--stdin").stdout.trim();
     for (const name of ["kit/a.mjs", "kit/b|c.mjs"]) {
-      assert.equal(git("update-index", "--add", "--cacheinfo", `100644,${blob},${name}`).status, 0);
+      // git unter Windows weist den verbotenen Namen sonst wegen core.protectNTFS ab (#1172)
+      assert.equal(git("-c", "core.protectNTFS=false", "update-index", "--add", "--cacheinfo", `100644,${blob},${name}`).status, 0);
     }
     const r = lauf([], dir);
     assert.equal(r.status, 0, r.stderr);
