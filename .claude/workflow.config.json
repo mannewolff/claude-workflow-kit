@@ -123,6 +123,11 @@
       "always": true,
       "stufe": "push"
     },
+    {
+      "cmd": "node tools/windows-brueche.mjs",
+      "art": "hinweis",
+      "always": true
+    },
     "node tools/sync-blobs.mjs --check",
     "npx eslint kit tools test install.mjs .githooks"
   ],
