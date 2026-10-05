@@ -1,3 +1,6 @@
+// Ablauf-Pruefung: `--text -` liest stdin des Prozesses; ob das Lesen die Event-Schleife freigibt,
+// zeigt nur ein Prozess mit echter stdin.
+//
 // Tests fuer Text aus Datei und stdin (Issue #270).
 //
 // `issue comment --text "..."` und `issue update --body "..."` nahmen den Text nur
@@ -47,6 +50,19 @@ const HEIKEL = [
   "",
   "Letzte Zeile.",
 ].join("\n");
+
+
+/**
+ * Wartet, bis `lesen()` mindestens `anzahl` Ticks traegt, hoechstens `fristMs` lang. Laeuft die
+ * Frist ab, scheitert der Test mit Befund: Dann lief die Event-Schleife waehrend des Lesens nicht.
+ */
+async function warteAufTicks(lesen, anzahl, fristMs) {
+  const frist = Date.now() + fristMs;
+  while ((lesen().match(/tick/g) ?? []).length < anzahl) {
+    if (Date.now() >= frist) throw new Error(`nach ${fristMs} ms keine ${anzahl} Ticks — blockierendes Lesen: ${lesen()}`);
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
 
 test("issue comment --text-file setzt den Dateiinhalt bytegenau", () => {
   const [dir, id] = mitIssue();
@@ -147,10 +163,7 @@ test("--text - liest stdin, ohne die Event-Schleife zu blockieren", async () => 
   const ende = new Promise((aufloesen) => kind.on("close", aufloesen));
 
   // Warten, bis der Takt nachweislich waehrend des Lesens laeuft — dann erst Eingabe.
-  const frist = Date.now() + 10_000;
-  while ((stderr.match(/tick/g) ?? []).length < 3 && Date.now() < frist) {
-    await new Promise((r) => setTimeout(r, 20));
-  }
+  await warteAufTicks(() => stderr, 3, 10_000);
   const ticksVorEingabe = (stderr.match(/tick/g) ?? []).length;
   kind.stdin.end("x".repeat(200_000));
   const code = await ende;

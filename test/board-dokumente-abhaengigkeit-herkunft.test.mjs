@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { abhaengigkeitenMitHerkunft } from "../kit/board.mjs";
+import { abhaengigkeitenMitHerkunft } from "../kit/board/dokumente.mjs";
 
 const lesen = (...zeilen) => abhaengigkeitenMitHerkunft(`## Kontext\nText #99.\n\n## Abhängigkeiten\n${zeilen.join("\n")}\n`);
 

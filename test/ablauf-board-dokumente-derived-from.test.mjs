@@ -1,3 +1,6 @@
+// Ablauf-Pruefung: `--derived-from` wirkt nur ueber den Argument-Parser des Einstiegs und `issue
+// create`, das ueber process.exit abbricht.
+//
 // Tests fuer `issue create --derived-from` (Issue #356).
 //
 // Das Kit schreibt die Abstammung bisher nur als Body-Zeilen (`Plan: Issue #M`,

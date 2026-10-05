@@ -1,3 +1,6 @@
+// Ablauf-Pruefung: `issue move` schreibt das Bewegungsprotokoll im Projekt des Aufrufs und meldet
+// ueber stdout und Exitcode.
+//
 // Bewegungsprotokoll beim Verschieben einer Karte (Issue #786).
 //
 // Die Ruecklaeuferquote braucht einen Kandidatenfilter: Welche Karten hat das Kit

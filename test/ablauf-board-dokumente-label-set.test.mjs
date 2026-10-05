@@ -1,3 +1,6 @@
+// Ablauf-Pruefung: `issue label` prueft die Operanden vor dem Adapter und bricht mit Hilfetext
+// ueber process.exit ab.
+//
 // Labels schreiben: `issue label add|remove <id> <name>` (Issue #249).
 //
 // Bisher konnten die Adapter Labels nur LESEN (issue.labels). Ohne Schreibpfad gibt

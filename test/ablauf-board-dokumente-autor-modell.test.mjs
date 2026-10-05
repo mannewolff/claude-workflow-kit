@@ -1,3 +1,6 @@
+// Ablauf-Pruefung: Die Autor-Modell-Zeile wird in `issue create` erzwungen, das bei fehlender
+// Zeile ueber process.exit abbricht und nichts anlegt.
+//
 // Tests fuer die Autor-Modell-Leitplanke in `issue create` (Issue #266).
 //
 // Die Zeile `Autor-Modell:` im Kontext-Abschnitt war bis dahin reine

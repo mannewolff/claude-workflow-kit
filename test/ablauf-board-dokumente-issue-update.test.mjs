@@ -1,3 +1,6 @@
+// Ablauf-Pruefung: `issue update` liest Datei und stdin und bricht bei Fehlern ueber process.exit
+// ab.
+//
 // Tests fuer `board.mjs issue update` (Issue #237).
 //
 // Der Adapter konnte Issues anlegen, lesen, listen, verschieben und kommentieren —

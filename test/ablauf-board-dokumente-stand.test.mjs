@@ -1,3 +1,6 @@
+// Ablauf-Pruefung: `issue stand` liest die Kommentare streng und endet bei Unlesbarem ueber
+// process.exit, ohne zu schreiben.
+//
 // `issue stand` — Label und Laufstand-Kommentar einer Karte in einem Zug (Issue #1083,
 // Plan #1079 E1, E3, E4).
 //

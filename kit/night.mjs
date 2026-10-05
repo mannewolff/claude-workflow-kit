@@ -191,14 +191,18 @@ const NACHBAR_BEFUNDE = join(NACHBAR_DIR, "befunde.mjs");
  * wenn ihn wirklich jemand braucht. Ehrlich ist das, weil night.mjs ohne board.mjs
  * ohnehin nichts tun kann: Jeder Board-Zugriff startet sie als Subprozess.
  *
- * Ueber NACHBAR_BOARD und nicht ueber den literalen Spezifizierer "./board.mjs":
+ * Ueber NACHBAR_DIR und nicht ueber den literalen Spezifizierer "./board/dokumente.mjs":
  * Ein Literal haengt an keiner Pfadkonstante, NIGHT_NACHBAR_DIR erreichte dieses
- * `.catch` also nie — und die beiden Board-Importe dieser Datei zeigten unter Hook
- * auf verschiedene Dateien (Issue #498).
+ * `.catch` also nie — und die Board-Importe dieser Datei zeigten unter Hook auf
+ * verschiedene Dateien (Issue #498).
+ *
+ * Die Fence-Auslegung fuehrt seit Issue #1218 der Board-Teil dokumente (Plan #1199, E17);
+ * der Runner holt sie von dort und nicht aus dem Einstieg. Der Pfad ist nicht literal,
+ * deshalb nennen die Nacht-Gruppen den Bereich board-dokumente von Hand (E3).
  */
-const { fenceLauf } = await import(pathToFileURL(NACHBAR_BOARD).href).catch(() => ({
+const { fenceLauf } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "dokumente.mjs")).href).catch(() => ({
   fenceLauf: () => {
-    throw new Error("board.mjs fehlt neben night.mjs — der Nacht-Runner braucht den Board-Adapter.");
+    throw new Error("board/dokumente.mjs fehlt neben night.mjs — der Nacht-Runner braucht den Board-Adapter.");
   },
 }));
 
@@ -3777,7 +3781,7 @@ function abschnittLesen(body, ueberschrift) {
  * vorangestelltes Beispiel ausserhalb eines Fence bleibt damit wirkungslos.
  *
  * SYNC: `abhaengigkeitenLesen` in kit/board.mjs baut diese Lesung nach (`issue auftrag`,
- * Issue #1023). Der Gleichlauf-Test in test/board-auftrag.test.mjs faehrt beide ueber
+ * Issue #1023). Der Gleichlauf-Test in test/ablauf-board-dokumente-auftrag.test.mjs faehrt beide ueber
  * dieselben Fixtures.
  */
 export function parseDeps(body) {
@@ -10777,7 +10781,7 @@ export function laufeDryRun(args, ctx) {
  * SYNC: Die fuenf Backlog-Kommentare der Titel- und Label-Gates stehen ohne das Praefix
  * `Nachtlauf: ` als `AUFTRAG_BACKLOG_TEXTE` in kit/board.mjs (`issue auftrag`, Issue
  * #1023). Wer einen hier aendert, aendert ihn dort mit — der Gleichlauf-Test in
- * test/board-auftrag.test.mjs vergleicht beide Seiten.
+ * test/ablauf-board-dokumente-auftrag.test.mjs vergleicht beide Seiten.
  */
 export function pruefeIssueGates(top) {
   if (isFachlich(top.title)) {

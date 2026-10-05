@@ -1,3 +1,6 @@
+// Ablauf-Pruefung: `issue update` schreibt den Body und meldet ueber stdout und Exitcode des
+// Prozesses.
+//
 // `issue update` ohne die Pruefvorgabe-Leitplanke, und eine Bestandsconfig mit den
 // entfallenen Feldern (Plan #638, A15; Issue #641).
 //

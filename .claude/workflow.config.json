@@ -7,6 +7,7 @@
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
+        "board-dokumente",
         "board-einstieg",
         "board-wiederholung",
         "installer",
@@ -14,7 +15,7 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/board-ab*.test.mjs\" \"test/board-ac*.test.mjs\" \"test/board-au*.test.mjs\" \"test/board-b*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-d*.test.mjs\" \"test/board-i*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-m*.test.mjs\" \"test/board-n*.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-t*.test.mjs\" \"test/board-u*.test.mjs\" \"test/board-we*.test.mjs\" \"test/cli-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/board-ac*.test.mjs\" \"test/board-b*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-i*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-m*.test.mjs\" \"test/board-n*.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-u*.test.mjs\" \"test/cli-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
@@ -31,6 +32,7 @@
         "aufwand",
         "befunde",
         "board-adapter",
+        "board-dokumente",
         "board-einstieg",
         "board-wiederholung",
         "installer",
@@ -45,6 +47,7 @@
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
+        "board-dokumente",
         "board-einstieg",
         "board-wiederholung",
         "installer",
@@ -86,13 +89,26 @@
       ]
     },
     {
+      "cmd": "node --test --test-concurrency=2 \"test/board-dokumente-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-adapter",
+        "board-dokumente",
+        "board-grundlagen",
+        "board-wiederholung"
+      ]
+    },
+    {
       "cmd": "node --test --test-concurrency=2 \"test/ablauf-board-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
+        "board-dokumente",
         "board-einstieg",
         "board-grundlagen",
-        "board-wiederholung"
+        "board-wiederholung",
+        "nachtrunner",
+        "pruefungen"
       ]
     },
     {
@@ -233,12 +249,9 @@
       "kit/board.mjs",
       "kit/board-ui.mjs",
       "tools/migrate-issues.mjs",
-      "test/board-ab*.test.mjs",
       "test/board-ac*.test.mjs",
-      "test/board-au*.test.mjs",
       "test/board-b*.test.mjs",
       "test/board-c*.test.mjs",
-      "test/board-d*.test.mjs",
       "test/board-ge*.test.mjs",
       "test/board-i*.test.mjs",
       "test/board-k*.test.mjs",
@@ -249,9 +262,7 @@
       "test/board-p*.test.mjs",
       "test/board-r*.test.mjs",
       "test/board-s*.test.mjs",
-      "test/board-t*.test.mjs",
       "test/board-u*.test.mjs",
-      "test/board-we*.test.mjs",
       "test/ablauf-board-*.test.mjs",
       "test/migrate-*.test.mjs",
       "test/cli-*.test.mjs",
@@ -278,6 +289,10 @@
       "test/helpers/board-ci-fixture.mjs",
       "test/helpers/board-github-fixture.mjs",
       "test/helpers/board-gitlab-fixture.mjs"
+    ],
+    "board-dokumente": [
+      "kit/board/dokumente.mjs",
+      "test/board-dokumente-*.test.mjs"
     ],
     "pruefungen": [
       "kit/checks.mjs",

@@ -22,7 +22,8 @@ const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 const ISSUES = lies("skills", "issues", "SKILL.md");
 const PLAN = lies("skills", "techplan", "SKILL.md");
 const FACHPLAN = lies("skills", "fachplan", "SKILL.md");
-const BOARD = lies("kit", "board.mjs");
+// Der Sender von `issue create` steht seit Issue #1218 im Board-Teil dokumente.
+const BOARD = lies("kit", "board", "dokumente.mjs");
 
 /**
  * Der Rueckverweis-Abschnitt von skills/issues/SKILL.md, nach demselben Schnitt wie
@@ -119,7 +120,7 @@ test("die in den Skills genannte Schreibweise kennt board.mjs wirklich", () => {
   // Option nennen, die der Sender anders schreibt — und jeder Aufruf zur Laufzeit
   // scheiterte.
   assert.match(BOARD, /args\["derived-from"\]/,
-    "board.mjs liest kein args[\"derived-from\"] — Skill-Text und Sender sind auseinander");
+    "board/dokumente.mjs liest kein args[\"derived-from\"] — Skill-Text und Sender sind auseinander");
   for (const [name, text] of [["issues", ISSUES], ["plan", PLAN], ["fachplan", FACHPLAN]]) {
     assert.match(text, /--derived-from/, `${name}: Schreibweise weicht ab`);
   }

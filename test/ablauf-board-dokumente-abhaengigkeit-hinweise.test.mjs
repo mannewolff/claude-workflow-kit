@@ -1,3 +1,6 @@
+// Ablauf-Pruefung: Die Hinweise zu `## Abhaengigkeiten` haengen an `issue create` und `issue
+// update`; deren Handler schreiben JSON auf stdout und enden bei Fehlern ueber process.exit.
+//
 // Hinweise zum Abschnitt `## Abhaengigkeiten` beim Schreiben (Issue #1060, Plan #1057 E4, E5).
 //
 // Der Nachtlauf liest jede lokale `#N` im Abschnitt als Abhaengigkeit, auch in einer

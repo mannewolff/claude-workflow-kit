@@ -1,3 +1,6 @@
+// Ablauf-Pruefung: `issue check-form` fuehrt der Einstieg, und der Befund ist Ausgabe und Exitcode
+// des Prozesses.
+//
 // `issue check-form` — die maschinellen Formgates als Kommando (Issue #628).
 //
 // Was bisher ein Modell im Review pruefte (vier Ueberschriften in der richtigen

@@ -1,3 +1,6 @@
+// Ablauf-Pruefung: Die Notiz wird im echten Vault gesucht, und ein Abbruch endet ueber
+// process.exit — beobachtbar ist das nur am Prozess des Board-Werkzeugs.
+//
 // `kontext paths` FINDET die Projektnotiz, statt ihren Namen zu konstruieren (Issue #286).
 //
 // Der Vault gibt die Schreibweise vor, nicht der Repo-Name: Ein Verzeichnis
@@ -6,8 +9,7 @@
 // Dateisystem); auf einem Linux-Runner legt /document dann eine ZWEITE Notiz an, und
 // ab da laeuft die Historie doppelt weiter.
 //
-// Zweigeteilt wie board-kontext-paths: die reine Auswahlfunktion direkt, der
-// Dateisystem-Zugriff ueber den CLI-Mantel im Fixture.
+// Die reine Auswahl steht in test/board-dokumente-kontext-notiz.test.mjs (Issue #1218).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -17,7 +19,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
-import { pickNoteFile } from "../kit/board.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -53,56 +54,6 @@ function paths(dir, env, ...cliArgs) {
   assert.equal(res.status, 0, res.stderr);
   return JSON.parse(res.stdout);
 }
-
-// --- pickNoteFile: die reine Auswahl ---
-
-test("pickNoteFile: genau eine .md im Ordner ist die Notiz, egal wie sie heisst", () => {
-  assert.deepEqual(pickNoteFile(["Shell-App.md"], "shell-app.md"), { name: "Shell-App.md", kollision: null });
-});
-
-test("pickNoteFile: keine .md -> kein Name (Erstanlage)", () => {
-  assert.deepEqual(pickNoteFile([], "shell-app.md"), { name: null, kollision: null });
-  assert.deepEqual(pickNoteFile(["notiz.txt", "bild.png"], "shell-app.md"), { name: null, kollision: null });
-});
-
-test("pickNoteFile: bei mehreren zaehlt der case-insensitiv passende Name", () => {
-  const dateien = ["Board-App.md", "Shell-App.md", "Users-App.md"];
-  assert.equal(pickNoteFile(dateien, "shell-app.md").name, "Shell-App.md");
-});
-
-test("pickNoteFile: mehrere Dateien, keine passt -> kein Name", () => {
-  assert.deepEqual(
-    pickNoteFile(["Board-App.md", "Users-App.md"], "shell-app.md"),
-    { name: null, kollision: null },
-  );
-});
-
-// Zwei Dateien, die sich nur in der Gross-/Kleinschreibung unterscheiden: Welche
-// gemeint ist, kann das Werkzeug nicht wissen. Ein stiller Griff ins Ungewisse waere
-// genau der Fehler, den dieses Issue behebt.
-test("pickNoteFile: zwei case-insensitiv passende Namen sind eine Kollision", () => {
-  const ergebnis = pickNoteFile(["Shell-App.md", "shell-app.md"], "shell-app.md");
-  assert.equal(ergebnis.name, null);
-  assert.deepEqual(ergebnis.kollision, ["Shell-App.md", "shell-app.md"]);
-});
-
-// Im Multi-Repo-Fall teilen sich Dach- und Service-Notiz EIN Verzeichnis. Die
-// Kulanzregel "die einzige Datei ist es" wuerde beide auf dieselbe Datei zeigen
-// lassen — und /document schriebe den Service-Stand in die Dach-Notiz.
-test("pickNoteFile: im geteilten Ordner greift die Einzeldatei-Regel nicht", () => {
-  assert.deepEqual(
-    pickNoteFile(["Shell-App.md"], "mini-jira.md", { alleinstehend: false }),
-    { name: null, kollision: null },
-  );
-  assert.equal(
-    pickNoteFile(["Shell-App.md"], "shell-app.md", { alleinstehend: false }).name,
-    "Shell-App.md",
-  );
-});
-
-test("pickNoteFile: Endungen werden case-insensitiv erkannt", () => {
-  assert.equal(pickNoteFile(["Shell-App.MD"], "shell-app.md").name, "Shell-App.MD");
-});
 
 // --- CLI: projectNote ---
 

@@ -1,3 +1,6 @@
+// Ablauf-Pruefung: `issue create` liest Body-Datei und stdin und bricht bei Fehlern ueber
+// process.exit ab.
+//
 // Tests fuer `issue create` mit Body aus Datei oder stdin (Issue #271).
 //
 // Issue #270 hat comment und update umgestellt, create blieb zurueck. Der Beleg

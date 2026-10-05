@@ -1,3 +1,6 @@
+// Ablauf-Pruefung: `issue melden` legt den Bericht ab, zieht die Karte und raeumt Stuecke; der
+// Vertrag ist Ausgabe und Exitcode des Prozesses.
+//
 // `issue melden` — Abschlussbericht je Lauf idempotent ablegen und nach In review
 // ziehen (Issue #1022, Plan #1015 E2, E8, E9, E10).
 //

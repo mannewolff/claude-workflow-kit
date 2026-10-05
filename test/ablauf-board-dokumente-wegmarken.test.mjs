@@ -1,3 +1,6 @@
+// Ablauf-Pruefung: `issue move` schreibt die Wegmarken im Projekt des Aufrufs und meldet ueber
+// stdout und Exitcode.
+//
 // Wegmarken beim Verschieben einer Karte (Issue #733).
 //
 // Der Verbrauch einer interaktiven Sitzung soll einer Karte zugeordnet werden koennen,

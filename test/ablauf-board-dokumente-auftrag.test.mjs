@@ -1,3 +1,7 @@
+// Ablauf-Pruefung: `issue auftrag` bekommt die Erkennung geschuetzter Dateien vom Einstieg
+// hereingereicht und schreibt Markdown auf stdout; der Gleichlauf mit dem Nacht-Runner braucht
+// beide Programme.
+//
 // `issue auftrag` — Aufgabe, Voraussetzungen und das Urteil "darf beginnen" in einem Zug
 // (Issue #1023, Plan #1015 E2, E3, E5, E6).
 //
