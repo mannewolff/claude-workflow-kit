@@ -138,6 +138,9 @@
  *                     Timeout-Pfad schnell testbar ist.
  *   NIGHT_PULS_MS     ueberschreibt den Takt der Puls-Datei (Vorgabe eine Minute),
  *                     damit ein Test ihre Erneuerung sehen kann (Issue #1084).
+ *   NIGHT_BESTAETIGUNG_MS ueberschreibt die Bestaetigungsfrist des Beanspruchens
+ *                     (Vorgabe zehn Sekunden), damit nicht jeder Kettentest sie
+ *                     abwartet (Issue #1188).
  *   KIT_NIGHT_WAECHTER=0 unterdrueckt den Start des Waechters (Issue #1085).
  *   KIT_NIGHT_WAECHTER_FRIST_S setzt die Frist des Waechters in Sekunden statt
  *                     night.stand.fristMin (Issue #1085).
@@ -7979,8 +7982,12 @@ function kollisionsGrund(auftrag, juengster) {
  * nicht die der laufenden — das Kennzeichen hat der Mensch gesetzt, und eine Anforderung
  * soll auch dann nicht ersatzweise neu geplant werden, wenn der Plan daneben an einer
  * eigenen Voraussetzung scheitert.
+ *
+ * Vor den Kollisionen steht die belegte Wurzel (Plan #1113, E7; Issue #1188): `belegt(F)`
+ * liefert den lebenden Halter `{ karte, laufId }` oder `null`, wie `wurzelBelegt`. Auch sie
+ * verbraucht keinen Platz.
  */
-export function waehleKettenKandidaten(issues, label, max) {
+export function waehleKettenKandidaten(issues, label, max, { belegt = () => null } = {}) {
   const alle = (issues || []).filter((i) => (i?.labels || []).includes(label));
   const gruende = new Map();
   const auftraege = [];
@@ -8010,8 +8017,10 @@ export function waehleKettenKandidaten(issues, label, max) {
   const liegengeblieben = [];
   for (const auftrag of auftraege) {
     const id = String(auftrag.karte.id);
+    const halter = belegt(auftrag.F);
     const kollision = kollisionsGrund(auftrag, juengsterPlanZu(auftrag.F));
-    if (kollision !== null) gruende.set(id, kollision);
+    if (halter) gruende.set(id, beanspruchtGrund(halter.laufId));
+    else if (kollision !== null) gruende.set(id, kollision);
     else if (kandidaten.length >= max) liegengeblieben.push({ id, title: auftrag.karte.title ?? "" });
     else kandidaten.push(auftrag);
   }
@@ -9891,23 +9900,136 @@ function warneVorAltenLabels(issues) {
   }
 }
 
+/** Die Bestaetigungsfrist des Beanspruchens (Plan #1113, E4), ab dem eigenen Schreiben. */
+export const BESTAETIGUNGSFRIST_MS = 10_000;
+
+const bestaetigungsfristMs = () => (process.env.NIGHT_BESTAETIGUNG_MS !== undefined
+  ? Number(process.env.NIGHT_BESTAETIGUNG_MS)
+  : BESTAETIGUNGSFRIST_MS);
+
+/** Der Grund, mit dem ein Runner eine Wurzel auslaesst, die ein anderer haelt (Kriterium 3 aus #1014). */
+export const beanspruchtGrund = (laufId) => `bereits von einem laufenden Runner beansprucht (${laufId})`;
+
+/** Der Name des Labels `laeuft` aus `night.stand.labels` — dieselbe Vorgabe wie in kit/board.mjs. */
+const laeuftLabel = () => config?.night?.stand?.labels?.laeuft?.trim() || "lauf:laeuft";
+
 /**
- * Der Vorab-Stand (Issue #1090, E17): Stirbt der Lauf in der Vorabpruefung, zeigt die Karte,
- * dass er sie angenommen hatte (Belegfall 1). Nicht im Trockenlauf — er veraendert kein
- * Label —, und nie im Prueflauf, der diesen Weg nicht geht.
+ * Die Laufstand-Kommentare einer gelesenen Karte und ihr juengster Stand fuer
+ * `wurzelBelegt` — `zustand` ist `laeuft`, wenn die Karte das Label traegt.
+ */
+function laufstandDerKarte(karte) {
+  const texte = kommentareVon(karte).filter((k) => k.startsWith("## Laufstand"));
+  const zustand = (karte?.labels || []).includes(laeuftLabel()) ? "laeuft" : null;
+  return { texte, stand: texte.length > 0 ? { zustand, text: texte.at(-1) } : null };
+}
+
+/**
+ * Die erste Haelfte des Beanspruchens fuer eine Karte: lesen und, wenn kein lebender Runner
+ * sie haelt, unmittelbar danach `laeuft` schreiben. Rueckgabe `{ grund }` fuer eine
+ * ausgelassene Karte, sonst `{}`, mit `uebernommen`, wenn ein toter Halter abgeloest wurde.
+ */
+function lesenUndSchreiben(a, { lesen, schreiben, host, eintrag }) {
+  const id = String(a.karte.id);
+  const karte = lesen(id);
+  if (!karte) return { grund: "Laufstand nicht lesbar — nicht beansprucht" };
+  const { texte, stand } = laufstandDerKarte(karte);
+  const halter = wurzelBelegt(a.F, [karte], stand ? { [id]: stand } : {}, new Date(), host);
+  if (halter) return { grund: beanspruchtGrund(halter.laufId) };
+  const alt = stand?.zustand === "laeuft" ? laufstandKopf(stand.text) : null;
+  if (alt) log(`  #${id}: Wurzel #${a.F} uebernommen — der Runner ${alt.laufId} laeuft nicht mehr.`);
+  a.laufstandVorher = texte;
+  schreiben(id, "laeuft", eintrag);
+  return alt ? { uebernommen: { id, laufId: alt.laufId } } : {};
+}
+
+/**
+ * Beansprucht die Wurzeln der ausgewaehlten Auftraege am Board (Plan #1113, E3, E4, E7;
+ * Issue #1188). Das Board kennt kein bedingtes Schreiben, darum je Karte: lesen, schreiben,
+ * warten, wiederlesen.
  *
- * Der Stand ersetzt den Laufstand-Kommentar eines frueheren Laufs, und aus dem liest die
- * Kette, welche Stufen schon ein Ergebnis haben (E10). Er wird darum vorher am Auftrag
- * festgehalten.
+ * Traegt der gelesene Laufstand eine lebende Lauf-ID (`wurzelBelegt`), schreibt der Runner
+ * nicht und laesst die Karte aus. Sonst schreibt er unmittelbar `laeuft`; der gelesene
+ * Laufstand wird zu `laufstandVorher` (Grundlage von `ergebnisVorhanden`), nie einer mit
+ * lebender Lauf-ID. Haelt ihn ein Runner, der nicht mehr laeuft (E5), nennt das Protokoll
+ * die Uebernahme mit der alten Lauf-ID. Nach dem letzten Schreiben wartet er die Frist
+ * einmal fuer alle Karten ab — jede liegt so mindestens die Frist hinter ihrem Schreiben —
+ * und liest wieder: Gehoert der juengste Laufstand dann ihm, ist die Wurzel seine, denn
+ * `issue stand` ersetzt immer den juengsten und der letzte Schreiber gewinnt. Sonst traegt
+ * er die Karte im Journal als `abgegeben` aus und schreibt nichts mehr an sie.
+ *
+ * Eingespeist fuer die Tests: `lesen` (`issue get`), `schreiben` (`standSetzen`), `warten`,
+ * `abgeben`, die eigene `laufId` und der Rechner `host`. Rueckgabe `{ beansprucht,
+ * abgegeben, uebernommen }`; `abgegeben` traegt `{ id, title, grund }` wie `uebersprungen`.
+ */
+export function beanspruchen(auftraege, {
+  lesen = leseKarte,
+  schreiben = (karte, zustand, text) => standSetzen(karte, zustand, text),
+  warten = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms),
+  abgeben: austragen = (karte) => abgeben(karte),
+  laufId = `${RECHNER}/${process.pid}/${LAUF_STEMPEL}`,
+  host = RECHNER,
+  frist = bestaetigungsfristMs(),
+} = {}) {
+  const eintrag = `Lauf angenommen um ${new Date().toISOString()}, Vorabprüfung läuft`;
+  const geschrieben = [];
+  const abgegeben = [];
+  const uebernommen = [];
+  const auslassen = (a, grund) => abgegeben.push({ id: String(a.karte.id), title: a.karte.title ?? "", grund });
+  for (const a of auftraege) {
+    const gelesen = lesenUndSchreiben(a, { lesen, schreiben, host, eintrag });
+    if (gelesen.grund) auslassen(a, gelesen.grund);
+    else geschrieben.push(a);
+    if (gelesen.uebernommen) uebernommen.push(gelesen.uebernommen);
+  }
+  if (geschrieben.length > 0) warten(frist);
+  const beansprucht = [];
+  for (const a of geschrieben) {
+    const id = String(a.karte.id);
+    const karte = lesen(id);
+    const juengster = karte ? laufstandKopf(laufstandDerKarte(karte).stand?.text) : null;
+    if (juengster?.laufId === laufId) {
+      beansprucht.push(a);
+      continue;
+    }
+    austragen(id);
+    auslassen(a, karte ? beanspruchtGrund(juengster?.laufId ?? "ohne Lauf-ID") : "Bestaetigung nicht lesbar — nicht beansprucht");
+  }
+  return { beansprucht, abgegeben, uebernommen };
+}
+
+/**
+ * Wer haelt welche Wurzel (Issue #1188)? Gelesen werden nur Karten mit dem Label `laeuft`,
+ * die eine Wurzel tragen koennen: eine gekennzeichnete Karte, ihre fachliche Quelle und
+ * die Plaene zu ihr. Rueckgabe ist `belegt(F)` fuer `waehleKettenKandidaten`.
+ */
+function belegteWurzeln(alle, label) {
+  const wurzeln = new Set();
+  for (const i of alle.filter((k) => (k?.labels || []).includes(label))) {
+    wurzeln.add(String(i.id));
+    const quelle = isPlan(i?.title ?? "") ? fachlicheQuelleVon(i?.body || "") : null;
+    if (quelle) wurzeln.add(quelle);
+  }
+  const lesbar = (i) => wurzeln.has(String(i.id)) || (isPlan(i?.title ?? "") && wurzeln.has(fachlicheQuelleVon(i?.body || "")));
+  const staende = new Map();
+  for (const i of alle.filter((k) => (k?.labels || []).includes(laeuftLabel()) && lesbar(k))) {
+    const karte = leseKarte(i.id);
+    const stand = karte ? laufstandDerKarte(karte).stand : null;
+    if (stand) staende.set(String(i.id), stand);
+  }
+  const jetzt = new Date();
+  return (F) => wurzelBelegt(F, alle, staende, jetzt, RECHNER);
+}
+
+/**
+ * Der Vorab-Stand (Issue #1090, E17), seit #1188 das Beanspruchen mit Bestaetigung: Stirbt
+ * der Lauf in der Vorabpruefung, zeigt die Karte, dass er sie angenommen hatte
+ * (Belegfall 1). Nicht im Trockenlauf — er veraendert kein Label —, und nie im Prueflauf,
+ * der diesen Weg nicht geht. Der Laufstand vorher steht danach am Auftrag (E10).
  */
 function vorabStandSetzen(args, auftraege) {
-  if (args.dryRun) return;
-  const zeit = new Date().toISOString();
+  if (args.dryRun) return { beansprucht: auftraege, abgegeben: [] };
   auftraege.forEach((a, i) => LAUF_POSITIONEN.set(String(a.karte.id), { k: i + 1, n: auftraege.length }));
-  for (const a of auftraege) {
-    a.laufstandVorher = laufstandAmBoard(a.karte.id);
-    standSetzen(a.karte.id, "laeuft", `Lauf angenommen um ${zeit}, Vorabprüfung läuft`);
-  }
+  return beanspruchen(auftraege);
 }
 
 /**
@@ -9924,22 +10046,28 @@ export async function laufeKette(args) {
   }
   const alle = board("issue", "list");
   warneVorAltenLabels(alle);
-  const { kandidaten: auftraege, uebersprungen, liegengeblieben } = waehleKettenKandidaten(alle, budget.label, args.max);
-  // Vorflug, Nicht-gestartet-Kommentar und Tracker-Probe arbeiten mit Karten, nicht mit
-  // Auftraegen (Issue #895): Ihr Verhalten haengt an keiner der beiden Auftragsarten.
-  const kandidaten = auftraege.map((a) => a.karte);
-  uebersprungeneVerbuchen(uebersprungen, alle, budget.label, args.dryRun);
+  const auswahl = waehleKettenKandidaten(alle, budget.label, args.max, { belegt: belegteWurzeln(alle, budget.label) });
+  const { liegengeblieben } = auswahl;
+  uebersprungeneVerbuchen(auswahl.uebersprungen, alle, budget.label, args.dryRun);
   for (const l of liegengeblieben) {
     log(`  #${l.id} ${l.title} -> ueber --max ${args.max}, bleibt liegen.`);
     einheitErgaenzen(einheitAnlegen(l.id, l.title), { ausgang: "liegengeblieben" });
   }
+
+  // Direkt nach der Auswahl beanspruchen (E7): Wer die Bestaetigung verliert, weicht wie
+  // eine belegte Wurzel aus der Auswahl.
+  const { beansprucht: auftraege, abgegeben } = vorabStandSetzen(args, auswahl.kandidaten);
+  uebersprungeneVerbuchen(abgegeben, alle, budget.label, args.dryRun);
+  const uebersprungen = [...auswahl.uebersprungen, ...abgegeben];
+  // Vorflug, Nicht-gestartet-Kommentar und Tracker-Probe arbeiten mit Karten, nicht mit
+  // Auftraegen (Issue #895): Ihr Verhalten haengt an keiner der beiden Auftragsarten.
+  const kandidaten = auftraege.map((a) => a.karte);
   if (kandidaten.length === 0 && uebersprungen.length === 0 && !alle.some((i) => (i.labels || []).includes(budget.label))) {
     const vorhanden = [...new Set(alle.flatMap((i) => i.labels || []))];
     log(`WARNUNG: keine Karte traegt das Label '${budget.label}' — es wird nichts verarbeitet.`);
     log(`  Vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
   }
 
-  vorabStandSetzen(args, auftraege);
   // Der Reviewer-Vorflug bleibt (A16): Die Pruefer-Session braucht die Reviewer in ihrer
   // eigenen Sandbox, und die Vorflug-Session ist die einzige Probe dafuer.
   await fuehreVorflug(args, kandidaten, "--kette --dry-run", (grund) => ketteNichtGestartet(kandidaten, grund));

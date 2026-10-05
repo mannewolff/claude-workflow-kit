@@ -35,7 +35,7 @@ const ERFOLG = `node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_revie
 function run(cwd, cliArgs, env = {}) {
   return spawnSync(process.execPath, [NIGHT, ...cliArgs], {
     cwd, encoding: "utf-8",
-    env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, KIT_NIGHT_WAECHTER: "0", NIGHT_VORFLUG_CMD: "true", ...env },
+    env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, KIT_NIGHT_WAECHTER: "0", NIGHT_VORFLUG_CMD: "true", NIGHT_BESTAETIGUNG_MS: "0", ...env },
   });
 }
 

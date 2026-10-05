@@ -29,7 +29,7 @@ import "./helpers/checks-sperre.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 function run(cwd, cmd, cliArgs, env = {}) {
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_ROOT: cwd, ...env } });
+  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_ROOT: cwd, NIGHT_BESTAETIGUNG_MS: "0", ...env } });
 }
 
 function board(cwd, ...cliArgs) {

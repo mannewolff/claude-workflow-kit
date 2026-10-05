@@ -32,7 +32,7 @@ const LAUF_ALT = "2026-09-30-010000";
 
 function run(cwd, cmd, cliArgs, env = {}) {
   // NIGHT_VORFLUG_CMD: Die Kette startete sonst eine echte Vorflug-Session.
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, NIGHT_VORFLUG_CMD: "true", ...env } });
+  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, NIGHT_VORFLUG_CMD: "true", NIGHT_BESTAETIGUNG_MS: "0", ...env } });
 }
 
 function board(cwd, ...cliArgs) {

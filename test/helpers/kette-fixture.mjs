@@ -30,7 +30,7 @@ export const VORFLUG_OK = "cat <<'EOF'\n<<<VORFLUG\n{\"reviewers\":[],\"tracker\
 export function run(cwd, cliArgs, env = {}) {
   return spawnSync(process.execPath, [NIGHT, ...cliArgs], {
     cwd, encoding: "utf-8",
-    env: { ...process.env, KIT_ROOT: cwd, NIGHT_VORFLUG_CMD: VORFLUG_OK, NIGHT_KILL_GRACE_MS: "200", ...env },
+    env: { ...process.env, KIT_ROOT: cwd, NIGHT_VORFLUG_CMD: VORFLUG_OK, NIGHT_KILL_GRACE_MS: "200", NIGHT_BESTAETIGUNG_MS: "0", ...env },
   });
 }
 
