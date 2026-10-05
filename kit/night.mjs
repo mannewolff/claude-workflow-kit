@@ -147,7 +147,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, realpathSync, rmSync, cpSync, readdirSync } from "node:fs";
 import { join, dirname, resolve, basename, relative, isAbsolute } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { tmpdir, homedir, constants as osConstants } from "node:os";
+import { tmpdir, homedir, hostname, constants as osConstants } from "node:os";
 import { createHash } from "node:crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -2538,8 +2538,12 @@ export function worktreeAnlegen({ repoRoot, issueId = null, stempel, praefix = "
   // EINEN Worktree je Lauf an, und ein leeres Segment behauptete eine fehlende Nummer.
   const nummer = issueId === null ? "" : `${issueId}-`;
   const pfad = join(tmpdir(), `${worktreePraefix(repoRoot, praefix)}${nummer}${stempel}`);
+  // Der Halter steht vor dem Ordner: Ein zweiter Start dazwischen saehe sonst einen Ordner
+  // ohne Halter und raeumte ihn als verwaist ab (Plan #1113, E1).
+  writeFileSync(halterPfad(pfad), JSON.stringify({ host: hostname(), pid: process.pid, seit: new Date().toISOString() }) + "\n", "utf-8");
   const res = gitIm(repoRoot, ["worktree", "add", "--detach", pfad, ref]);
   if (res.status !== 0) {
+    rmSync(halterPfad(pfad), { force: true });
     throw new Error(`git worktree add schlug fehl: ${(res.stderr || res.stdout || "").trim()}`);
   }
   if (spiegeln) claudeSpiegeln(repoRoot, pfad);
@@ -2579,6 +2583,33 @@ export function worktreeEntfernen(pfad, repoRoot) {
   if (cwdLiegtIn(pfad)) process.chdir(repoRoot);
   gitIm(repoRoot, ["worktree", "remove", "--force", pfad]);
   rmSync(pfad, { recursive: true, force: true });
+  rmSync(halterPfad(pfad), { force: true });
+}
+
+/**
+ * Die Halter-Datei eines Worktrees oder Kit-Stands (Issue #1183, Plan #1113, E1): neben dem
+ * Ordner im Temp-Verzeichnis, nicht darin — so bleibt der Git-Baum und mit ihm `gitClean`
+ * unberuehrt, und der Ordnername samt Lauf-Stempel aendert sich nicht.
+ */
+const HALTER_ENDUNG = ".halter";
+
+function halterPfad(pfad) {
+  return `${pfad}${HALTER_ENDUNG}`;
+}
+
+/**
+ * Gehoert der Ordner noch einem laufenden Runner? Nur dann, wenn sein Halter lesbar ist,
+ * auf diesem Rechner geschrieben wurde und sein Prozess noch laeuft. Ein Ordner ohne Halter
+ * stammt aus der Zeit vor den Haltern und gilt als verwaist (E2).
+ */
+function halterLebt(pfad) {
+  let halter;
+  try {
+    halter = JSON.parse(readFileSync(halterPfad(pfad), "utf-8"));
+  } catch {
+    return false;
+  }
+  return halter?.host === hostname() && Number.isInteger(halter?.pid) && halter.pid > 0 && prozessLaeuft(halter.pid);
 }
 
 /**
@@ -2729,14 +2760,27 @@ function befundeZurueckUndVorschlagen(lauf) {
  * Geraeumt wird nur der eigene Praefix (`kette` als Vorgabe, `pruefung` fuer den
  * Prueflauf am Tag): Ein Lauf, der jeden Praefix abraeumte, zerstoerte den Worktree
  * des jeweils anderen, der gerade daneben laeuft.
+ *
+ * Innerhalb des Praefixes bleibt jeder Ordner stehen, dessen Halter einem laufenden Prozess
+ * auf diesem Rechner gehoert (Issue #1183): Ein zweiter Runner derselben Laufart in einer
+ * anderen Session raeumt nur die Reste abgestuerzter Laeufe ab. Die Liste nennt nur sie.
  */
 export function worktreesAufraeumen(repoRoot, praefixName = "kette") {
   gitIm(repoRoot, ["worktree", "prune"]);
   const praefix = worktreePraefix(repoRoot, praefixName);
   const entfernt = [];
-  for (const name of readdirSync(tmpdir())) {
-    if (!name.startsWith(praefix)) continue;
+  const namen = readdirSync(tmpdir()).filter((n) => n.startsWith(praefix));
+  for (const name of namen) {
     const pfad = join(tmpdir(), name);
+    if (name.endsWith(HALTER_ENDUNG)) {
+      // Ein Halter ohne Ordner ist der Rest eines Absturzes zwischen den beiden Loeschungen.
+      const ordner = pfad.slice(0, -HALTER_ENDUNG.length);
+      if (!existsSync(ordner) && !halterLebt(ordner)) rmSync(pfad, { force: true });
+      continue;
+    }
+    // Der Ordner eines lebenden Runners ist kein Rest (Issue #1183): Ihn zu raeumen zerstoerte
+    // die Arbeit einer Kette, die in einer anderen Session laeuft.
+    if (halterLebt(pfad)) continue;
     worktreeEntfernen(pfad, repoRoot);
     entfernt.push(pfad);
   }
@@ -2803,7 +2847,7 @@ export function kitStandErmitteln(repoRoot, mainBranch) {
  */
 export function kitStandBereitstellen(repoRoot, commit, laufart) {
   const praefix = `kitstand-${laufart}`;
-  worktreesAufraeumen(repoRoot, praefix);
+  for (const p of worktreesAufraeumen(repoRoot, praefix)) log(`Liegengebliebenen Kit-Stand entfernt: ${p}`);
   // Ein eigener Stempel: Der Lauf-Stempel entsteht erst im Kind.
   const stempel = `${new Date().toISOString().replaceAll(/[-:.TZ]/g, "")}-${process.pid}`;
   const pfad = worktreeAnlegen({ repoRoot, stempel, praefix, ref: commit, spiegeln: false });

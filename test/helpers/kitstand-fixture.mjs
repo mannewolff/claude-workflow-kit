@@ -152,7 +152,7 @@ export function laufStand(dir) {
 /** Die Stand-Worktrees dieses Fixtures unter dem Temp-Verzeichnis. */
 export function standWorktrees(dir) {
   const kennung = `-${basename(dir)}-`;
-  return readdirSync(tmpdir()).filter((n) => n.startsWith("kitstand-") && n.includes(kennung)).map((n) => join(tmpdir(), n));
+  return readdirSync(tmpdir()).filter((n) => n.startsWith("kitstand-") && n.includes(kennung) && !n.endsWith(".halter")).map((n) => join(tmpdir(), n));
 }
 
 /** Raeumt Fixture, origin und die Worktrees des Fixtures ab. */

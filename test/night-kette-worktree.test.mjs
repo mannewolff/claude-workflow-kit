@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync, realpathSync } from "node:fs";
 import { join, basename } from "node:path";
-import { tmpdir } from "node:os";
+import { tmpdir, hostname } from "node:os";
 import { worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen } from "../kit/night.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
@@ -42,13 +42,26 @@ function setupRepo() {
   return dir;
 }
 
+/** Die PID eines Prozesses, der schon beendet ist. */
+function totePid() {
+  return spawnSync(process.execPath, ["-e", ""]).pid;
+}
+
+/** Ueberschreibt den Halter so, als gehoere der Ordner einem abgestuerzten Runner. */
+function halterTot(pfad) {
+  writeFileSync(`${pfad}.halter`, JSON.stringify({ host: hostname(), pid: totePid(), seit: "2026-01-01T00:00:00.000Z" }));
+}
+
 function mitRepo(fn) {
   const dir = setupRepo();
   const angelegt = [];
   try {
     fn(dir, angelegt);
   } finally {
-    for (const p of angelegt) rmSync(p, { recursive: true, force: true });
+    for (const p of angelegt) {
+      rmSync(p, { recursive: true, force: true });
+      rmSync(`${p}.halter`, { force: true });
+    }
     rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -130,9 +143,11 @@ test("[night-17] worktreesAufraeumen entfernt liegengebliebene Worktrees dieses 
   mitRepo((dir, angelegt) => {
     const eigener = worktreeAnlegen({ repoRoot: dir, issueId: "1", stempel: "alt" });
     angelegt.push(eigener);
+    halterTot(eigener);
     // Ein "toter" Worktree: Ordner weg, Eintrag noch da — wie nach einem Absturz.
     const toter = worktreeAnlegen({ repoRoot: dir, issueId: "2", stempel: "tot" });
     angelegt.push(toter);
+    halterTot(toter);
     rmSync(toter, { recursive: true, force: true });
     const fremd = mkdtempSync(join(tmpdir(), "kette-anderesrepo-7-"));
     angelegt.push(fremd);
@@ -159,8 +174,10 @@ test("[night-908] worktreesAufraeumen raeumt nur den Praefix ab, der uebergeben 
   mitRepo((dir, angelegt) => {
     const kette = worktreeAnlegen({ repoRoot: dir, issueId: "1", stempel: "alt" });
     angelegt.push(kette);
+    halterTot(kette);
     const pruefung = worktreeAnlegen({ repoRoot: dir, issueId: "2", stempel: "alt", praefix: "pruefung" });
     angelegt.push(pruefung);
+    halterTot(pruefung);
 
     assert.deepEqual(worktreesAufraeumen(dir, "pruefung"), [pruefung],
       "nur der Worktree des uebergebenen Praefixes wird entfernt");
@@ -170,6 +187,62 @@ test("[night-908] worktreesAufraeumen raeumt nur den Praefix ab, der uebergeben 
     assert.deepEqual(worktreesAufraeumen(dir), [kette],
       "ohne Argument raeumt der Vorgabewert kette genau die Kette ab");
     assert.ok(!existsSync(kette));
+  });
+});
+
+test("[night-1183] worktreeAnlegen schreibt neben den Ordner einen Halter mit Rechner, PID und Beginn", () => {
+  mitRepo((dir, angelegt) => {
+    const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "1183", stempel: "halter" });
+    angelegt.push(pfad);
+    const halter = JSON.parse(readFileSync(`${pfad}.halter`, "utf-8"));
+    assert.equal(halter.host, hostname());
+    assert.equal(halter.pid, process.pid);
+    assert.ok(!Number.isNaN(Date.parse(halter.seit)), `seit ist kein Zeitpunkt: ${halter.seit}`);
+    assert.equal(git(pfad, "status", "--porcelain").trim(), "", "der Halter liegt ausserhalb des Git-Baums");
+  });
+});
+
+test("[night-1183] worktreeEntfernen loescht den Halter mit", () => {
+  mitRepo((dir, angelegt) => {
+    const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "1183", stempel: "weg" });
+    angelegt.push(pfad);
+    worktreeEntfernen(pfad, dir);
+    assert.ok(!existsSync(`${pfad}.halter`), "der Halter liegt noch");
+  });
+});
+
+test("[night-1183] ein Ordner mit lebendem Halter bleibt beim Aufraeumen stehen und erscheint nicht in der Liste", () => {
+  mitRepo((dir, angelegt) => {
+    const lebend = worktreeAnlegen({ repoRoot: dir, issueId: "1", stempel: "lebt" });
+    angelegt.push(lebend);
+    assert.deepEqual(worktreesAufraeumen(dir), [], "ein lebender Ordner ist kein Rest");
+    assert.ok(existsSync(lebend), "der Worktree des laufenden Runners bleibt");
+    assert.ok(existsSync(`${lebend}.halter`), "sein Halter bleibt");
+    assert.match(git(dir, "worktree", "list"), /kette-/, "sein Eintrag bleibt");
+  });
+});
+
+test("[night-1183] ein Ordner mit totem Halter wird samt Halter geraeumt", () => {
+  mitRepo((dir, angelegt) => {
+    const tot = worktreeAnlegen({ repoRoot: dir, issueId: "1", stempel: "tot" });
+    angelegt.push(tot);
+    halterTot(tot);
+    assert.deepEqual(worktreesAufraeumen(dir), [tot]);
+    assert.ok(!existsSync(tot));
+    assert.ok(!existsSync(`${tot}.halter`), "der Halter ist mit weg");
+  });
+});
+
+test("[night-1183] ein Ordner ohne Halter gilt als verwaist und wird geraeumt", () => {
+  mitRepo((dir, angelegt) => {
+    const alt = worktreeAnlegen({ repoRoot: dir, issueId: "1", stempel: "vorher" });
+    angelegt.push(alt);
+    rmSync(`${alt}.halter`);
+    const lebend = worktreeAnlegen({ repoRoot: dir, issueId: "2", stempel: "lebt" });
+    angelegt.push(lebend);
+    assert.deepEqual(worktreesAufraeumen(dir), [alt], "nur der Ordner ohne Halter ist ein Rest");
+    assert.ok(!existsSync(alt));
+    assert.ok(existsSync(lebend), "der lebende daneben bleibt");
   });
 });
 
