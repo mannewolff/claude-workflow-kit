@@ -176,7 +176,8 @@ test("roter Lauf: das rote Kommando mit Dauer, das nicht gestartete ohne", () =>
     const [rot, offen] = zusammenfassung(dir).laufen;
     const block = berichtsblock(res.stdout);
     assert.deepEqual(block, [
-      `gelaufen: ${ROT} → rot, ${dauerText(rot.dauerMs)} — ${rot.grund}`,
+      // Das rote Kommando nennt am Ende seine abgelegte Ausgabe (Issue #1196).
+      `gelaufen: ${ROT} → rot, ${dauerText(rot.dauerMs)} — ${rot.grund} — Ausgabe: ${rot.protokoll}`,
       `gelaufen: ${BAU} → nicht gestartet, Dauer nicht gemessen — ${offen.grund}`,
     ]);
     assert.deepEqual(zusammenfassung(dir).berichtszeilen, block);

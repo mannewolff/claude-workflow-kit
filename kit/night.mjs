@@ -2195,6 +2195,10 @@ export function gitResteAusnahmen(cfg = config) {
     // WIDERSPRUECHLICH" — der Nachweis der Pruefung machte die Rettung unmoeglich, die er
     // belegt. Nachweis einer Pruefung, kein Code-Zustand.
     ".claude/checks-summary.json", // SYNC: kit/checks.mjs schreibt ihn (SUMMARY_DATEI)
+    // Die abgelegten Ausgaben roter Pruefungen (Issue #1196), aus demselben Grund: Ohne den
+    // Ausschluss stoppte der Rest-Guard nach jedem roten Lauf in einem Projekt ohne den
+    // `.claude/*`-Block hart.
+    ".claude/checks-protokolle", // SYNC: kit/checks.mjs schreibt ihn (PROTOKOLL_ORDNER)
     ".claude/wirksamkeit.md", // SYNC: kit/wirksamkeit.mjs schreibt ihn
     ".claude/wirksamkeit.json", // SYNC: kit/wirksamkeit.mjs schreibt ihn
     // Die Befunde der Modell-Pruefungen (Plan #797; Issue #803) legen vier weitere Dateien

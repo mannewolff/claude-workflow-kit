@@ -123,7 +123,7 @@
  * traegt die Datei auch ihre eigene Minimal-Glob-Fassung statt eines Pakets.
  */
 
-import { lstatSync, existsSync, readFileSync, writeFileSync, appendFileSync, mkdirSync, realpathSync, unlinkSync, linkSync } from "node:fs";
+import { lstatSync, existsSync, readFileSync, readdirSync, writeFileSync, appendFileSync, mkdirSync, realpathSync, unlinkSync, linkSync } from "node:fs";
 import { join, dirname, resolve, posix } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -172,6 +172,13 @@ const SUMMARY_DATEI = ".claude/checks-summary.json";
 // bewusst eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440), geteilte
 // Konstanten werden dupliziert und hier markiert.
 const AUSFUEHRUNGEN_DATEI = ".claude/ausfuehrungen.tsv";
+
+// Die Ausgabe jedes nicht gruenen Kommandos des letzten echten Laufs (Issue #1196). Die
+// Werkzeugausgabe einer Session kappt die Mitte, und ohne die Datei fuhr sie nach einem
+// Rot die ganze Suite mit --frisch erneut, nur um sie umzuleiten. Wie die Zusammenfassung
+// ohne Historie: Jeder echte Lauf leert den Ordner, ein uebernommener laesst ihn stehen.
+// SYNC: kit/night.mjs nimmt den Ordner im Rest-Guard aus (gitReste).
+const PROTOKOLL_ORDNER = ".claude/checks-protokolle";
 
 // Altlast aus SDD, Rueckbau mit dem uebernaechsten Major (Plan #825, A5): Bis zum
 // Rueckbau von Spec-Driven Development legte `/techplan` wartende Vorhaben-Notizen hier
@@ -383,6 +390,10 @@ run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
       'nicht gestartet'. Erst die letzte Fassung
       traegt 'abgeschlossen': true. Ein Lauf, der an der Uhr oder mit seiner
       Session stirbt, hinterlaesst damit einen Stand, der nie ganz gruen ist.
+      Die Ausgabe jedes nicht gruenen Kommandos liegt vollstaendig unter
+      ${PROTOKOLL_ORDNER}/; die Berichtszeile und das Feld 'protokoll' in der
+      Zusammenfassung nennen den Pfad. Jeder echte Lauf leert den Ordner, ein
+      uebernommener laesst ihn stehen.
       Hat sich der Stand seit dem letzten Lauf nicht geaendert — gleicher Anker,
       gleiche Stufe, dieselben Dateien mit denselben Blob-Hashes, dieselbe
       Config —, laeuft kein Kommando: 'run' uebernimmt das Ergebnis des
@@ -2051,14 +2062,56 @@ function berichtszeilen(auswahl, laufen, { uebernommen = false, grenzeMs = PRUEF
     const dauerMs = typeof e.dauerMs === "number" ? e.dauerMs : null;
     const neben = e.gleichzeitig ? ` (${NEBEN_MARKE})` : "";
     const haengt = e.haengend ? " — " + haengendText(e.haengend.grenzeMs) : "";
+    // Am Ende der Zeile, weil das Ende einer gekappten Ausgabe stehen bleibt (Issue #1196).
+    const ablage = e.protokoll ? ` — Ausgabe: ${e.protokoll}` : "";
     zeilen.push(
-      `gelaufen: ${e.cmd} → ${e.ergebnis}, ${dauerText(dauerMs)}${neben}${vermerk} — ${e.grund}${obergrenzeZusatz(dauerMs, grenzeMs)}${haengt}`,
+      `gelaufen: ${e.cmd} → ${e.ergebnis}, ${dauerText(dauerMs)}${neben}${vermerk} — ${e.grund}${obergrenzeZusatz(dauerMs, grenzeMs)}${haengt}${ablage}`,
     );
     // Die Funde einer Hinweis-Pruefung direkt unter ihrer Zeile (Issue #1155, E11).
     for (const hinweis of e.hinweise ?? []) zeilen.push(`hinweis: ${hinweis}`);
   }
   for (const e of auswahl.ausgelassen) zeilen.push(`ausgelassen: ${e.cmd} → ${e.grund}`);
   return zeilen;
+}
+
+/** Ein Dateiname aus dem Kommando: Kleinbuchstaben und Ziffern, alles andere ein Strich. */
+function kurzname(cmd) {
+  let name = cmd.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).join("-").slice(0, 40);
+  while (name.endsWith("-")) name = name.slice(0, -1);
+  return name || "kommando";
+}
+
+/**
+ * Leert den Ordner der Ausgaben vor einem echten Lauf (Issue #1196). Geloescht werden die
+ * Dateien darin, nicht der Ordner selbst. Scheitert das, bleibt es bei einem Hinweis: Die
+ * Ablage ist eine Auskunft fuer den Menschen, keine Bedingung des Laufs.
+ */
+function protokolleLeeren() {
+  const ordner = join(process.cwd(), ...PROTOKOLL_ORDNER.split("/"));
+  try {
+    for (const name of readdirSync(ordner)) unlinkSync(join(ordner, name));
+  } catch (err) {
+    if (err.code !== "ENOENT") process.stderr.write(`Hinweis: ${PROTOKOLL_ORDNER} nicht geleert: ${err.message}\n`);
+  }
+}
+
+/**
+ * Legt die Ausgabe eines nicht gruenen Kommandos ab und gibt den Pfad relativ zum Projekt
+ * zurueck, oder `null`, wenn das Schreiben scheitert — dann mit einem Hinweis auf stderr,
+ * wie beim Ausfuehrungsprotokoll. `nummer` ist die Stelle in der Auswahl, damit die
+ * Dateien in Config-Reihenfolge stehen.
+ */
+function protokollAblegen(nummer, cmd, ausgabe) {
+  const relativ = `${PROTOKOLL_ORDNER}/${String(nummer).padStart(2, "0")}-${kurzname(cmd)}.log`;
+  const pfad = join(process.cwd(), ...relativ.split("/"));
+  try {
+    mkdirSync(dirname(pfad), { recursive: true });
+    writeFileSync(pfad, ausgabe, "utf-8");
+    return relativ;
+  } catch (err) {
+    process.stderr.write(`Hinweis: Ausgabe nicht abgelegt (${relativ}): ${err.message}\n`);
+    return null;
+  }
 }
 
 /**
@@ -3135,6 +3188,14 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
       stand.guete = bewertung.guete ?? stand.guete;
       eintrag.ergebnis = bewertung.bestanden ? "gruen" : "rot";
       schreibe(`-> ${eintrag.ergebnis}\n`);
+      if (!bewertung.bestanden) {
+        const haengeText = haengend ? `${haengendText(haengeMs)}\n` : "";
+        const ablage = protokollAblegen(stand.laufen.indexOf(eintrag) + 1, eintrag.cmd, ausgabe + haengeText);
+        if (ablage) {
+          eintrag.protokoll = ablage;
+          schreibe(`Ausgabe abgelegt: ${ablage}\n`);
+        }
+      }
       // Je beendetem Kommando und nicht am Ende (Issue #785): So traegt auch das rote
       // Kommando seine Zeile, das den Rest abbricht — es ist die Ausfuehrung, um die es der
       // Auswertung zu allererst geht.
@@ -3191,6 +3252,9 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   // Zuerst die zuletzt roten (Issue #1072, Plan #1066, A3): Bleiben sie rot, endet der
   // Aufruf damit — der volle Lauf braechte dasselbe Rot erst nach allen anderen. Werden
   // sie gruen, folgt im selben Aufruf genau einmal der volle Lauf als Nachweis.
+  // Nur ein echter Lauf leert die Ablage (Issue #1196); ein uebernommener endet vorher in
+  // `uebernehmen` und reicht die Pfade mit `laufen` weiter.
+  protokolleLeeren();
   let stand = null;
   if (rote !== null) {
     process.stdout.write(`\n${TEILLAUF_ZEILE}: ${rote.join(", ")}\n`);
