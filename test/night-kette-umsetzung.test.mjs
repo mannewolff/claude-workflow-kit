@@ -18,7 +18,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { KETTE_HALT_ANKER, KLAEREN_LABEL } from "../kit/night.mjs";
+import { KETTE_HALT_ANKER, KLAEREN_LABEL, pushVermerk } from "../kit/night.mjs";
 import {
   run, board, mitProjekt, umgebung, sessions, stand,
   PAKETE_MIT_ABHAENGIGKEIT, UMSETZUNG_ERFOLG, UMSETZUNG_HALT, jePaket,
@@ -209,6 +209,20 @@ test("[#1104] ein Paket mit (wartet auf Push) bleibt in Backlog, eines mit gewoe
     assert.equal(stufe.nichtBegonnen[0].grund, "wartet auf einen Push (Issue #3)");
     assert.equal(board(dir, "issue", "get", "0004").status, "backlog", "das wartende Paket wurde bewegt");
     assert.match(readFileSync(join(dir, "issues", `${F}.md`), "utf-8"), /wartet auf einen Push \(Issue #3\)/, "der Grund fehlt im Nachtbericht");
+    // Issue #1170: Das Warten steht an der Karte, und die Schlusszeile zaehlt das Paket,
+    // obwohl die Kette `fertig` ist.
+    const vermerk = /Nachtlauf: Paket wartet auf einen Push \(Issue #3\)\. Nach `push main` kann es nach Ready gezogen werden\./g;
+    assert.equal((board(dir, "issue", "get", "0004").body || "").match(vermerk)?.length, 1, "der Push-Vermerk steht nicht genau einmal am Paket");
+    assert.equal(einheit.ausgang, "fertig", einheit.grund);
+    assert.match(res.stdout, /Nacht-Kette beendet: 1 fertig, .* liegengeblieben, 1 Paket\(e\) nicht begonnen\./);
     keinRestInArbeit(dir);
   });
+});
+
+test("[#1170] ein zweiter Lauf schreibt keinen gleichlautenden Push-Vermerk dazu", () => {
+  const text = pushVermerk({ id: "4", comments: [] }, "Issue #3");
+  assert.match(text, /^Nachtlauf: .*wartet auf einen Push \(Issue #3\).*`push main`/);
+  assert.equal(pushVermerk({ id: "4", comments: [{ body: "frueher" }, { body: text }] }, "Issue #3"), null);
+  // Steht danach ein anderer Kommentar, ist der Vermerk nicht mehr der letzte.
+  assert.equal(pushVermerk({ id: "4", comments: [{ body: text }, { body: "spaeter" }] }, "Issue #3"), text);
 });

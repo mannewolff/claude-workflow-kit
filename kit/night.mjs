@@ -8128,10 +8128,14 @@ function paketeAbschliessen(stand, gezogen) {
   }
 }
 
+/** Die nicht begonnenen Pakete ueber alle Ketten des Laufs — fuer die Schlusszeile (Issue #1170). */
+let NICHT_BEGONNEN_GESAMT = 0;
+
 /** Fuehrt Pakete als nicht begonnen mit ihrem Grund — im Bericht und im Protokoll. */
 function paketeNichtBegonnen(stand, ids, grund) {
   for (const id of ids) {
     stand.nichtBegonnen.push({ id: String(id), grund });
+    NICHT_BEGONNEN_GESAMT++;
     log(`  Paket #${id} nicht begonnen: ${grund}.`);
   }
 }
@@ -8154,6 +8158,24 @@ function umsetzungBudgetGrund(kette, lauf) {
     return `Kostenbudget: ${kette.kosten.kostenSumme.toFixed(2)} $ von ${deckel} $ erschoepft`;
   }
   return null;
+}
+
+/**
+ * Der Vermerk am Paket, das auf einen Push wartet (Issue #1170) — sonst saehe der Mensch am
+ * Board nur ein ausgelassenes Paket. Je Lauf hoechstens einer: Traegt der letzte Kommentar
+ * der Karte schon denselben Vermerk, liefert die Funktion `null`.
+ */
+export function pushVermerk(karte, verweise) {
+  const text = `Nachtlauf: Paket wartet auf einen Push (${verweise}). Nach \`push main\` kann es nach Ready gezogen werden.`;
+  return kommentareVon(karte).at(-1)?.trim() === text ? null : text;
+}
+
+/** Schreibt den Push-Vermerk an die Karte; ein Fehlschlag haelt den Lauf nicht an. */
+function wartenAmBoardVermerken(karte, verweise) {
+  const text = pushVermerk(karte, verweise);
+  if (text === null) return;
+  const res = boardRoh("issue", "comment", String(karte.id), "--text", text);
+  if (res.status !== 0) log(`  Paket #${karte.id}: Push-Vermerk nicht geschrieben (${res.text.slice(0, 200)}) — bitte morgens sichten.`);
 }
 
 /**
@@ -8194,6 +8216,7 @@ async function umsetzePaket(kette, id, lauf, zaehler) {
   if (push.length > 0) {
     const verweise = push.map((n) => "Issue #" + n).join(", ");
     paketeNichtBegonnen(lauf.stand, [id], `wartet auf einen Push (${verweise})`);
+    wartenAmBoardVermerken(karte, verweise);
     return null;
   }
 
@@ -9551,7 +9574,7 @@ export async function laufeKette(args) {
     const ausgang = await laufeEineKette(auftrag, nummer, args);  // NOSONAR S9382: Ketten laufen einzeln, sonst raeumen sie sich die Worktrees weg
     zaehler[ausgang]++;
   }
-  log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.unvollstaendig} unvollstaendig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length} uebersprungen, ${liegengeblieben.length} liegengeblieben.`);
+  log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.unvollstaendig} unvollstaendig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length} uebersprungen, ${liegengeblieben.length} liegengeblieben, ${NICHT_BEGONNEN_GESAMT} Paket(e) nicht begonnen.`);
   log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Nach Variante A liegen die Pakete morgens in Backlog; Variante B (Label '${budget.varianteBLabel}') hat sie in derselben Nacht umgesetzt, sie stehen dann in In review. Protokoll: ${LOG_FILE}`);
   laufAbschliessen("regulaer");
   process.exit(0);
