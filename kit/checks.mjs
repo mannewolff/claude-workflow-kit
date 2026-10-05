@@ -333,8 +333,14 @@ const HAENGEN_FRIST_ENV = "KIT_CHECKS_HAENGEN_FRIST_MS";
 // #1066, A5, E3). Kein Config-Feld aus demselben Grund wie die Obergrenze: Die Zahl sagt
 // etwas ueber die Maschine, nicht ueber das Projekt. Die Umgebungsvariable uebersteuert
 // sie — `1` faehrt die gekennzeichneten nacheinander.
+//
+// Die Vorgabe ist 2, gemessen (Issue #1178, Idee #1119): Die grossen Testgruppen fahren
+// ihre Dateien ihrerseits parallel, und vier davon auf einmal machten jede fuenf- bis
+// sechsmal langsamer — Zeittests und die Haenger-Grenze rissen. Auf derselben Maschine
+// brauchte der volle Lauf mit 4 737–751 s und war zweimal rot, mit 1 929 s, mit 2 684 s
+// und war als einziger Wert stabil gruen.
 export const GLEICHZEITIG_ENV = "KIT_CHECKS_GLEICHZEITIG";
-const GLEICHZEITIG_VORGABE = 4;
+const GLEICHZEITIG_VORGABE = 2;
 
 // Der Vermerk hinter der Dauer einer gleichzeitig gelaufenen Pruefung (Issue #1071). Hier
 // oben, weil `HELP` ihn nennt.
@@ -358,7 +364,8 @@ run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
       Zusammenfassung nach ${SUMMARY_DATEI}. Zuerst laufen die mit
       'gleichzeitig' gekennzeichneten Pruefungen gleichzeitig, hoechstens
       ${GLEICHZEITIG_ENV} auf einmal (Vorgabe ${GLEICHZEITIG_VORGABE}; 1 faehrt sie
-      nacheinander). Diese Phase laeuft vollstaendig durch, damit alle roten
+      nacheinander; gemessen in Issue #1119: mit 2 am schnellsten und als
+      einziger Wert stabil). Diese Phase laeuft vollstaendig durch, damit alle roten
       bekannt sind; ihre Ausgabe steht je Pruefung als geschlossener Block in
       Config-Reihenfolge, und die Berichtszeile vermerkt bei der Dauer
       '(${NEBEN_MARKE})'. Danach laufen die uebrigen nacheinander in
@@ -726,12 +733,19 @@ export function bereicheVorbereiten(checkAreas) {
  * noch als unzugeordnet und traegt ihren Grund mit sich — die Ausnahme von der
  * Regel „im Zweifel laeuft alles" ist nur ertraeglich, wenn sie sich begruendet.
  */
-function zuordnen(dateien, bereichsdefinition, freistellungen = []) {
+function zuordnen(dateien, bereichsdefinition, freistellungen = [], nurBlobs = new Set()) {
   const beruehrt = new Set();
   const ohneZuordnung = [];
   const ohnePruefung = [];
+  const blobBereiche = new Set();
   for (const pfad of dateien) {
     const treffer = bereichsdefinition.filter((b) => b.regexe.some((r) => r.test(pfad)));
+    // Eine Datei mit nur gespiegelten Blob-Zeilen (Issue #1178) beruehrt ihre Bereiche
+    // nicht; die Bereiche merkt sie sich, damit der Grund der Auslassung es sagt.
+    if (treffer.length > 0 && nurBlobs.has(pfad)) {
+      for (const bereich of treffer) blobBereiche.add(bereich.name);
+      continue;
+    }
     // HIER wirkt der Vorrang aus Plan #930, E3: Trifft eine Datei beide Musterarten,
     // gewinnt `checkAreas`, und die Freistellung bleibt fuer sie wirkungslos. Die
     // Auswahl darf nur in eine Richtung irren, naemlich zu mehr Pruefung. Andersherum
@@ -748,7 +762,7 @@ function zuordnen(dateien, bereichsdefinition, freistellungen = []) {
     }
     ohneZuordnung.push(pfad);
   }
-  return { beruehrt, ohneMuster: ohneZuordnung[0] ?? null, ohneZuordnung, ohnePruefung };
+  return { beruehrt, ohneMuster: ohneZuordnung[0] ?? null, ohneZuordnung, ohnePruefung, blobBereiche };
 }
 
 /** Wie viele unzugeordnete Dateien der Grund des vollen Umfangs hoechstens beim Namen nennt. */
@@ -774,6 +788,39 @@ function freistellungenVorbereiten(ohnePruefung) {
 }
 
 // --- Aenderungen -----------------------------------------------------------
+
+// Die Datei mit den Blob-Konstanten und die Form einer solchen Zeile (Issue #1178).
+const BLOB_DATEI = "install.mjs";
+const BLOB_ZEILE = /^\s*(?:export\s+)?const\s+\w+_B64\s*=\s*"[^"]*";?\s*$/;
+// Der Vermerk im Grund einer Auslassung, die nur daran haengt.
+const NUR_BLOBS_VERMERK = `${BLOB_DATEI}: nur Blobs`;
+
+/**
+ * Die Dateien, deren Aenderung seit dem Anker nur aus Blob-Konstanten besteht (Issue
+ * #1178) — hoechstens `install.mjs`. `sync-blobs` aendert dort bei jeder Aenderung an
+ * einer Quelle die gespiegelte Zeile mit; die Quelle steht selbst im Diff und waehlt die
+ * Pruefungen, die sie braucht. Gilt nur, wenn JEDE geaenderte Zeile, hinzugefuegt oder
+ * entfernt, eine Blob-Konstante ist: Eine echte Aenderung am Installer loest seine
+ * Pruefungen weiter aus. Im Zweifel — kein Diff, ein Fehler, eine neue Datei ohne Stand
+ * am Anker — beruehrt die Datei ihre Bereiche wie jede andere.
+ */
+function nurBlobsGeaendert(basis, geaendert) {
+  if (!geaendert.includes(BLOB_DATEI)) return new Set();
+  const diff = git("diff", "--no-color", "--no-ext-diff", "-U0", basis, "--", BLOB_DATEI);
+  if (diff.status !== 0) return new Set();
+  let imAbschnitt = false;
+  let zeilen = 0;
+  for (const zeile of diff.stdout.split(/\r?\n/)) {
+    if (zeile.startsWith("@@")) {
+      imAbschnitt = true;
+      continue;
+    }
+    if (!imAbschnitt || !(zeile.startsWith("+") || zeile.startsWith("-"))) continue;
+    if (!BLOB_ZEILE.test(zeile.slice(1))) return new Set();
+    zeilen += 1;
+  }
+  return zeilen > 0 ? new Set([BLOB_DATEI]) : new Set();
+}
 
 function ankerAufloesen(refText) {
   // Der leere Wert wird gar nicht erst gefragt: Er ist die Spur einer
@@ -851,13 +898,15 @@ function bereichsText(namen) {
  * String und `always: true` laufen beide immer, meinen aber Verschiedenes —
  * vergessen gegen entschieden. Nur der Grund haelt das auseinander.
  */
-function entscheidung(check, beruehrt) {
+function entscheidung(check, beruehrt, blobBereiche = new Set()) {
   if (check.always) return { laeuft: true, grund: "als immer laufend festgelegt" };
   if (!check.areas) return { laeuft: true, grund: "nicht zugeordnet" };
   const treffer = check.areas.filter((name) => beruehrt.has(name));
-  return treffer.length > 0
-    ? { laeuft: true, grund: `${bereichsText(treffer)} beruehrt` }
-    : { laeuft: false, grund: `${bereichsText(check.areas)} unberuehrt` };
+  if (treffer.length > 0) return { laeuft: true, grund: `${bereichsText(treffer)} beruehrt` };
+  // Haette nur die Blob-Aenderung die Pruefung ausgeloest, sagt der Grund das (Issue
+  // #1178) — sonst saehe die Auslassung aus wie eine, an der nichts geaendert wurde.
+  const blobs = check.areas.some((name) => blobBereiche.has(name)) ? ` (${NUR_BLOBS_VERMERK})` : "";
+  return { laeuft: false, grund: `${bereichsText(check.areas)} unberuehrt${blobs}` };
 }
 
 /**
@@ -995,10 +1044,11 @@ function planen(args) {
   }
 
   const geaendert = geaenderteDateien(basis);
-  const { beruehrt, ohneMuster, ohneZuordnung, ohnePruefung } = zuordnen(
+  const { beruehrt, ohneMuster, ohneZuordnung, ohnePruefung, blobBereiche } = zuordnen(
     geaendert,
     bereicheVorbereiten(checkAreas),
     freistellungenVorbereiten(config.ohnePruefung),
+    nurBlobsGeaendert(basis, geaendert),
   );
   const bereiche = [...beruehrt].sort(vergleicheText);
 
@@ -1029,7 +1079,7 @@ function planen(args) {
   }
 
   if (stufe === "merge") {
-    return freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, ohnePruefung, ohneMuster, beruehrt, abschluss });
+    return freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, ohnePruefung, ohneMuster, beruehrt, blobBereiche, abschluss });
   }
 
   // Die Push-Stufe faehrt jede faellige Pruefung (Plan #753, E12;
@@ -1075,7 +1125,7 @@ function planen(args) {
 
   return bauen({
     basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, abschluss,
-    ...verteilen(checks, stufe, (check) => entscheidung(check, beruehrt), abschluss),
+    ...verteilen(checks, stufe, (check) => entscheidung(check, beruehrt, blobBereiche), abschluss),
   });
 }
 
@@ -1095,13 +1145,13 @@ function planen(args) {
  * `leeresPaket` bleibt false, auch ohne Aenderung: Die Merge-Pruefungen laufen, und
  * ein Bericht "keine Pruefung, weil nichts veraendert wurde" waere falsch.
  */
-function freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, ohnePruefung, ohneMuster, beruehrt, abschluss }) {
+function freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, ohnePruefung, ohneMuster, beruehrt, blobBereiche, abschluss }) {
   const leer = geaendert.length === 0;
   const zweifel = !leer && ohneMuster !== null;
   const paketstufe = (check) => {
     if (leer) return { laeuft: false, grund: `leeres Paket: keine Aenderung seit ${basis}` };
     if (zweifel) return { laeuft: true, grund: ohneMusterGrund(ohneZuordnung) };
-    return entscheidung(check, beruehrt);
+    return entscheidung(check, beruehrt, blobBereiche);
   };
   return bauen({
     basis, stufe: "merge", geaendert, bereiche, ohneZuordnung, ohnePruefung, vollerUmfang: zweifel, abschluss,

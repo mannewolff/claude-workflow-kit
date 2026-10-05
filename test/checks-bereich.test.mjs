@@ -16,7 +16,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { mitRepo, plan, run, checks, datei, kommandos, eintrag, zusammenfassung } from "./helpers/checks-repo.mjs";
+import { mitRepo, plan, run, checks, datei, git, kommandos, eintrag, zusammenfassung } from "./helpers/checks-repo.mjs";
 
 const CONFIG = {
   buildChecks: [
@@ -222,5 +222,127 @@ test("derselbe Bereichslauf auf unveraendertem Stand uebernimmt weiterhin", () =
     // Die Wiederverwendung selbst bleibt unangetastet: Gleiche Eingrenzung, gleicher
     // Stand, gleiches Ergebnis (Issue #863).
     assert.match(zweiter.stdout, /Ergebnis uebernommen/);
+  });
+});
+
+// --- install.mjs: nur Blobs (Issue #1178) ---
+//
+// `install.mjs` traegt Skills, Vorlagen und Kit-Dateien als Blob-Konstanten, je eine
+// Zeile, und `sync-blobs` aendert sie bei jeder Aenderung an einer Quelle mit. Die
+// Quelle selbst steht im Diff und waehlt ihre Pruefungen; die gespiegelte Blob-Zeile
+// sagt nichts Eigenes. Darum beruehrt `install.mjs` den Bereich nur, wenn mindestens
+// eine geaenderte Zeile KEINE Blob-Konstante ist.
+const CONFIG_BLOBS = {
+  buildChecks: [
+    { cmd: "node --test test/install-*.test.mjs", areas: ["installer"] },
+    { cmd: "npm run build", areas: ["frontend"] },
+  ],
+  checkAreas: {
+    installer: ["install.mjs"],
+    frontend: ["frontend/**"],
+  },
+};
+
+const INSTALLER = [
+  "#!/usr/bin/env node",
+  "const SKILL_A_B64 = \"QUFB\";",
+  "const SKILL_B_B64 = \"QkJC\";",
+  "function installieren() {",
+  "  return 1;",
+  "}",
+  "",
+].join("\n");
+
+/** Legt `install.mjs` an und committet es, damit der Diff gegen HEAD nur die Aenderung zeigt. */
+function mitInstaller(fn) {
+  mitRepo({ config: CONFIG_BLOBS }, (dir) => {
+    datei(dir, "install.mjs", INSTALLER);
+    git(dir, "add", "install.mjs");
+    git(dir, "commit", "-q", "-m", "install.mjs");
+    fn(dir);
+  });
+}
+
+test("nur Blob-Zeilen geaendert: installer bleibt unberuehrt, der Grund nennt 'install.mjs: nur Blobs'", () => {
+  mitInstaller((dir) => {
+    datei(dir, "install.mjs", INSTALLER.replace("QUFB", "WFhY"));
+    datei(dir, "frontend/src/App.tsx");
+
+    const ergebnis = plan(dir);
+
+    assert.deepEqual(ergebnis.bereiche, ["frontend"]);
+    assert.ok(ergebnis.geaendert.includes("install.mjs"), "install.mjs faellt aus dem Nachweis");
+    assert.deepEqual(kommandos(ergebnis.laufen), ["npm run build"]);
+    assert.equal(
+      eintrag(ergebnis.ausgelassen, "node --test test/install-*.test.mjs").grund,
+      "Bereich installer unberuehrt (install.mjs: nur Blobs)",
+    );
+  });
+});
+
+test("eine Nicht-Blob-Zeile geaendert: installer ist beruehrt", () => {
+  mitInstaller((dir) => {
+    datei(dir, "install.mjs", INSTALLER.replace("QUFB", "WFhY").replace("return 1;", "return 2;"));
+
+    const ergebnis = plan(dir);
+
+    assert.deepEqual(ergebnis.bereiche, ["installer"]);
+    assert.deepEqual(kommandos(ergebnis.laufen), ["node --test test/install-*.test.mjs"]);
+  });
+});
+
+test("eine neue Blob-Konstante: installer bleibt unberuehrt", () => {
+  mitInstaller((dir) => {
+    datei(dir, "install.mjs", INSTALLER.replace("const SKILL_B_B64", "const SKILL_NEU_B64 = \"TkVV\";\nconst SKILL_B_B64"));
+
+    const ergebnis = plan(dir);
+
+    assert.deepEqual(ergebnis.bereiche, []);
+    assert.deepEqual(kommandos(ergebnis.laufen), []);
+    assert.match(eintrag(ergebnis.ausgelassen, "node --test test/install-*.test.mjs").grund, /install\.mjs: nur Blobs/);
+  });
+});
+
+test("eine geloeschte Blob-Konstante: installer bleibt unberuehrt", () => {
+  mitInstaller((dir) => {
+    datei(dir, "install.mjs", INSTALLER.replace("const SKILL_B_B64 = \"QkJC\";\n", ""));
+
+    const ergebnis = plan(dir);
+
+    assert.deepEqual(ergebnis.bereiche, []);
+    assert.equal(ergebnis.vollerUmfang, false);
+    assert.match(eintrag(ergebnis.ausgelassen, "node --test test/install-*.test.mjs").grund, /install\.mjs: nur Blobs/);
+  });
+});
+
+test("ein neu angelegtes install.mjs beruehrt installer, auch wenn es nur Blobs traegt", () => {
+  mitRepo({ config: CONFIG_BLOBS }, (dir) => {
+    datei(dir, "install.mjs", "const SKILL_A_B64 = \"QUFB\";\n");
+
+    const ergebnis = plan(dir);
+
+    assert.deepEqual(ergebnis.bereiche, ["installer"]);
+  });
+});
+
+test("der Berichtsblock nennt 'install.mjs: nur Blobs' bei der Auslassung", () => {
+  const config = {
+    buildChecks: [
+      { cmd: "node -e \"process.exit(0)\" # installer", areas: ["installer"] },
+      { cmd: "node -e \"process.exit(0)\" # frontend", areas: ["frontend"] },
+    ],
+    checkAreas: CONFIG_BLOBS.checkAreas,
+  };
+  mitRepo({ config }, (dir) => {
+    datei(dir, "install.mjs", INSTALLER);
+    git(dir, "add", "install.mjs");
+    git(dir, "commit", "-q", "-m", "install.mjs");
+    datei(dir, "install.mjs", INSTALLER.replace("QkJC", "WVlZ"));
+    datei(dir, "frontend/src/App.tsx");
+
+    const res = run(dir);
+
+    assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
+    assert.match(res.stdout, /ausgelassen: node -e "process\.exit\(0\)" # installer → Bereich installer unberuehrt \(install\.mjs: nur Blobs\)/);
   });
 });

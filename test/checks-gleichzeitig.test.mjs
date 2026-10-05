@@ -2,7 +2,7 @@
 // A6, A8, E2, E3).
 //
 // Gekennzeichnete Pruefungen laufen in einer ersten Phase gleichzeitig, hoechstens
-// vier (`KIT_CHECKS_GLEICHZEITIG`), die uebrigen danach nacheinander wie bisher. Die
+// zwei (`KIT_CHECKS_GLEICHZEITIG`, Issue #1178), die uebrigen danach nacheinander wie bisher. Die
 // gleichzeitige Phase laeuft ganz durch, damit alle roten bekannt sind; die folgende
 // bricht beim ersten Rot ab und startet nach einem Rot der ersten Phase gar nicht.
 //
@@ -14,6 +14,10 @@
 // Die Zeiten sind bewusst grob: Zwei Kommandos zu je 1,5 s, deren Summe ueber der
 // Wanduhr des ganzen Laufs liegen muss. Ein Lauf nacheinander kommt daran nie vorbei,
 // einer gleichzeitig mit viel Luft.
+//
+// Jeder Lauf setzt `KIT_CHECKS_GLEICHZEITIG` selbst (Issue #1178): Wer den Wert fuer
+// einen Prueflauf setzt, erbt ihn sonst bis hierher, und mit `1` liefe der Test auf
+// das Ueberlappen nacheinander und waere rot, ohne dass `checks.mjs` schuld ist.
 
 import "./helpers/checks-sperre.mjs";
 import { test } from "node:test";
@@ -22,7 +26,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import {
-  CHECKS, mitRepo, run, zusammenfassung, datei, eintrag, ausfuehrungen, checks,
+  CHECKS, mitRepo, zusammenfassung, datei, eintrag, ausfuehrungen,
 } from "./helpers/checks-repo.mjs";
 
 /** Ein Kommando, das `ms` Millisekunden schlaeft und danach `text` ausgibt. */
@@ -35,10 +39,10 @@ function rot(text) {
   return `node -e "console.log('${text}'); process.exit(1)"`;
 }
 
-/** `run` mit zusaetzlicher Umgebung. */
-function runMit(dir, env) {
+/** `run` mit festgelegter Grenze gleichzeitiger Pruefungen, unabhaengig von der Umgebung. */
+function runMit(dir, grenze = "2") {
   return spawnSync(process.execPath, [CHECKS, "run"], {
-    cwd: dir, encoding: "utf-8", env: { ...process.env, ...env },
+    cwd: dir, encoding: "utf-8", env: { ...process.env, KIT_CHECKS_GLEICHZEITIG: grenze },
   });
 }
 
@@ -49,7 +53,7 @@ test("zwei gekennzeichnete Kommandos laufen ueberlappend: die Wartezeit liegt un
   mitRepo({ config }, (dir) => {
     datei(dir, "src/x.txt");
 
-    const res = run(dir);
+    const res = runMit(dir);
 
     assert.equal(res.status, 0, `run endete mit ${res.status}: ${res.stdout}${res.stderr}`);
     const z = zusammenfassung(dir);
@@ -66,7 +70,7 @@ test("die Ausgabe erscheint in Config-Reihenfolge als geschlossene Bloecke, auch
   mitRepo({ config }, (dir) => {
     datei(dir, "src/x.txt");
 
-    const res = run(dir);
+    const res = runMit(dir);
 
     assert.equal(res.status, 0, `run endete mit ${res.status}: ${res.stdout}${res.stderr}`);
     const out = res.stdout;
@@ -93,7 +97,7 @@ test("zwei rote gekennzeichnete Kommandos stehen beide rot da, ein nicht gekennz
   mitRepo({ config }, (dir) => {
     datei(dir, "src/x.txt");
 
-    const res = run(dir);
+    const res = runMit(dir);
 
     assert.equal(res.status, 1, `ein roter Lauf endet mit 1, nicht ${res.status}`);
     const z = zusammenfassung(dir);
@@ -112,7 +116,7 @@ test("KIT_CHECKS_GLEICHZEITIG=1 faehrt die gekennzeichneten nacheinander", () =>
   mitRepo({ config }, (dir) => {
     datei(dir, "src/x.txt");
 
-    const res = runMit(dir, { KIT_CHECKS_GLEICHZEITIG: "1" });
+    const res = runMit(dir, "1");
 
     assert.equal(res.status, 0, `run endete mit ${res.status}: ${res.stdout}${res.stderr}`);
     const z = zusammenfassung(dir);
@@ -131,7 +135,7 @@ test("ein gleichzeitig gelaufenes Kommando: Vermerk in der Berichtszeile, Feld i
   mitRepo({ config }, (dir) => {
     datei(dir, "src/x.txt");
 
-    const res = run(dir);
+    const res = runMit(dir);
 
     assert.equal(res.status, 0, `run endete mit ${res.status}: ${res.stdout}${res.stderr}`);
     const z = zusammenfassung(dir);
@@ -149,11 +153,11 @@ test("ein gleichzeitig gelaufenes Kommando: Vermerk in der Berichtszeile, Feld i
   });
 });
 
-test("--help nennt KIT_CHECKS_GLEICHZEITIG und die Vorgabe 4", () => {
+test("--help nennt KIT_CHECKS_GLEICHZEITIG und die Vorgabe 2", () => {
   const res = spawnSync(process.execPath, [CHECKS, "--help"], { encoding: "utf-8" });
   assert.equal(res.status, 0);
   assert.match(res.stdout, /KIT_CHECKS_GLEICHZEITIG/);
-  assert.match(res.stdout, /Vorgabe 4/);
+  assert.match(res.stdout, /Vorgabe 2;/);
   assert.doesNotMatch(res.stdout, /sequenziell/, "die Hilfe spricht noch vom sequenziellen Lauf");
 });
 
@@ -164,7 +168,7 @@ test("ohne Achse ist der Ablauf wie bisher: nacheinander, Abbruch beim ersten Ro
   mitRepo({ config }, (dir) => {
     datei(dir, "src/x.txt");
 
-    const res = checks(dir, "run");
+    const res = runMit(dir);
 
     assert.equal(res.status, 1);
     const z = zusammenfassung(dir);
