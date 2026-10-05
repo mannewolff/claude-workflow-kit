@@ -1442,7 +1442,7 @@ Ob committet wurde, sagt der Vergleich des Commit-Hashes vor und nach der Salvag
 
 Der Grund steht im Protokoll, im Board-Kommentar und im `grund` des Ergebnisstands — dieselbe Zeile an allen drei Orten. Damit `stop_reason` überhaupt vorliegt, fordert der Implementierungslauf die Stream-Ausgabe seit v1.54 **immer** an, auch bei abgeschaltetem Verlaufsprotokoll (`--verbose no`); das frühere Feld `kennzahlenHinweis` im Ergebnisstand ist damit entfallen.
 
-**Plattform-Shell für `buildChecks` und `formatFixCommand`.** Beide Werte sind frei konfigurierte Kommandozeilen und brauchen deshalb zwingend eine Shell — anders als die festen Kommandos des Board-Adapters, der seit v1.27 ganz ohne Shell auskommt. Der Runner startet sie in der Shell der jeweiligen Plattform: `/bin/sh` unter macOS und Linux, die ComSpec-Shell (im Regelfall `cmd.exe`) unter Windows. Bewusst nicht PowerShell — der Wert ist eine Nutzer-Konfiguration, und `cmd.exe` ist das, was beim Eintragen eines Build-Kommandos unter Windows erwartet wird; PowerShell hätte zudem eine eigene Operator-Syntax (kein `&&` vor Version 7). **Folge:** Deine `buildChecks` sind damit potenziell plattformspezifisch. Ein `mvn verify` oder `npm test` läuft überall; eine Verkettung mit `&&`, eine Pipe oder eine Umleitung wie `2>/dev/null` verhält sich unter `cmd.exe` anders oder gar nicht. Wer dasselbe Projekt auf beiden Welten nachts laufen lässt, hält die Kommandos am besten einfach und ohne Shell-Operatoren.
+**Plattform-Shell für `buildChecks` und `formatFixCommand`.** Beide Werte sind frei konfigurierte Kommandozeilen und brauchen deshalb zwingend eine Shell — anders als die festen Kommandos des Board-Adapters, der seit v1.27 ganz ohne Shell auskommt. Der Runner startet sie unter macOS und Linux in `/bin/sh`, unter Windows in der Git Bash, die das Kit dort ohnehin voraussetzt. **Folge:** Dieselbe Kommandozeile gilt auf macOS, Linux und Windows. Verkettung mit `&&`, Pipes, Umleitungen wie `2>/dev/null` und Variablen wie `X=1 npm test` schreibst du in POSIX-Syntax, einmal für alle Plattformen. Was unter Windows nicht mehr geht, ist `cmd.exe`-Syntax: `set X=1&& npm test`, `%VAR%` oder `dir` laufen in der Git Bash nicht. Kommandos wie `npm test`, `mvn verify` oder `node …` laufen unverändert. Wie du bestehende Kommandos umstellst, steht unter [Aktualisieren und mehrere Projekte](#aktualisieren-und-mehrere-projekte).
 
 **`formatFixCommand` — ein Formatverstoß darf keinen Lauf kippen.** Setzt du in der `workflow.config.json` ein Kommando, das Formatierung mechanisch repariert (`"formatFixCommand": "mvn spotless:apply"`, für Frontends etwa `"npx prettier --write ."`), dann läuft es bei roten Checks in der Salvage-Vorprüfung **genau einmal**, und die Checks werden **genau einmal** wiederholt. Werden sie dadurch grün, geht der Lauf weiter und das Protokoll weist den Eingriff mit `FORMAT-FIX angewendet` aus — kein stiller Eingriff. Bleiben sie rot, war das Format nicht die Ursache, und das Paket bricht ab, seine Reste gehen in den Stash. Hintergrund: Ein einzelner falsch umbrochener Javadoc-Kommentar hat einmal einen kompletten Nachtlauf beendet, obwohl die Arbeit korrekt war. Ein Formatverstoß ist deterministisch behebbar und sagt nichts über die fachliche Qualität — ein fehlgeschlagener Test dagegen schon, und mit ihm bricht das Paket ab. Ohne das Feld ändert sich nichts.
 
@@ -2191,6 +2191,18 @@ Ein nur prozessinterner Schlüssel machte jede Wiederholung von Hand zu einem ne
 ## Aktualisieren und mehrere Projekte
 
 Weil die Skills projekt-unabhängig sind und nur die Config projektlokal ist, aktualisierst du das Kit, indem du den Installer erneut laufen lässt. Deine Config bleibt erhalten (der Installer fragt dich, bevor er sie überschreibt).
+
+**Windows: `buildChecks` laufen über die Git Bash.** Bisher startete das Kit `buildChecks` und `formatFixCommand` unter Windows in der ComSpec-Shell; jetzt laufen sie dort wie auf macOS und Linux in einer POSIX-Shell (der Git Bash). Ein Kommando in Windows-Shell-Syntax bricht damit und muss umgeschrieben werden, zum Beispiel:
+
+```text
+vorher:  set CI=1&& npm test
+nachher: CI=1 npm test
+
+vorher:  if exist dist rmdir /s /q dist && npm run build
+nachher: rm -rf dist && npm run build
+```
+
+Kommandos ohne Shell-Syntax wie `npm test`, `mvn verify` oder `node …` bleiben, wie sie sind. Einen Schalter, der die alte Shell behält, gibt es nicht.
 
 In einem neuen Projekt brauchst du nur den Installer auszuführen oder die `workflow.config.json` aus einem bestehenden Projekt zu kopieren und die Branch-Namen anzupassen. Alle Skills sind sofort einsatzbereit.
 
