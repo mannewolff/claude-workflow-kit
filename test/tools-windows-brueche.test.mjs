@@ -885,7 +885,6 @@ const BEKANNTE_BRUECHE = [
   "test/board-github-schreiben.test.mjs — zeilenenden", // #1168
   "test/board-gitlab-listen.test.mjs — zeilenenden", // #1168
   "test/board-local.test.mjs — zeilenenden", // #1168
-  "test/board-melden.test.mjs — kommandos", // #1166
   "test/board-rest-luecken.test.mjs — zeilenenden", // #1168
   "test/board-ui-git.test.mjs — zeilenenden", // #1168
   "test/changelog-release-ablauf.test.mjs — zeilenenden", // #1168
@@ -938,8 +937,6 @@ const BEKANNTE_BRUECHE = [
   "test/night-prueflaeufe.test.mjs — zeilenenden", // #1168
   "test/night-pruefstand-felder.test.mjs — zeilenenden", // #1168
   "test/night-restzweige.test.mjs — zeilenenden", // #1168
-  "test/night-restzweige.test.mjs — kommandos", // #1166
-  "test/night-restzweige.test.mjs — kommandos", // #1166
   "test/night-review-gate.test.mjs — zeilenenden", // #1168
   "test/night-salvage-ausnahmen.test.mjs — zeilenenden", // #1168
   "test/night-salvage-endzustaende.test.mjs — zeilenenden", // #1168

@@ -16,6 +16,7 @@ import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync, accessSync
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { posixShell } from "./helpers/checks-repo.mjs";
 
 // Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
 // kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
@@ -199,8 +200,8 @@ test("ein Salvage mit Board-Zug, aber dirty Tree nennt beides getrennt", () => {
 // den Systemfehler nennen statt eines erfundenen Exit-Codes.
 
 function mitFakeBin(fn) {
-  const echtesGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf-8" }).stdout.trim();
-  const echtesSh = spawnSync("sh", ["-c", "command -v sh"], { encoding: "utf-8" }).stdout.trim();
+  const echtesGit = spawnSync(posixShell(), ["-c", "command -v git"], { encoding: "utf-8" }).stdout.trim();
+  const echtesSh = spawnSync(posixShell(), ["-c", "command -v sh"], { encoding: "utf-8" }).stdout.trim();
   // Der bin-Ordner liegt AUSSERHALB des Fixtures, damit der Working Tree sauber bleibt.
   const bin = mkdtempSync(join(tmpdir(), "night-rest-bin-"));
   writeFileSync(join(bin, "git"), `#!/bin/sh\nexec ${echtesGit} "$@"\n`, { mode: 0o755 });

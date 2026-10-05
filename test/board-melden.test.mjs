@@ -16,6 +16,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, rmSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { posixShell } from "./helpers/checks-repo.mjs";
 
 import {
   setupProjekt, runBoard, runBoardAsync, fakeCli, aufrufe, starteServer, toolboxMitKommentaren,
@@ -189,7 +190,7 @@ test(String.raw`ein ' im Bericht, als '\'' in der Shell geschrieben, kommt unver
     const ersatz = String.raw`'\''`;
     const maskiert = `'${text.replaceAll("'", ersatz)}'`;
     const env = { ...process.env, KIT_ROOT: dir, KIT_AGENT_MODEL: "fixture-modell", KIT_TOOLBOX_BUDGET_MS: TEST_TOOLBOX_BUDGET_MS };
-    const res = spawnSync("sh", ["-c", `"${process.execPath}" "${BOARD}" issue melden 5 --text ${maskiert}`],
+    const res = spawnSync(posixShell(), ["-c", `"${process.execPath}" "${BOARD}" issue melden 5 --text ${maskiert}`],
       { cwd: dir, encoding: "utf-8", env });
     ausgabe(res);
     assert.deepEqual(lokalKommentare(datei), [bericht(text)]);
