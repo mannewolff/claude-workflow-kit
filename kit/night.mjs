@@ -1509,18 +1509,48 @@ export function journalLesen(pfad) {
   return { lauf, staende: mitStatus };
 }
 
-/** Die Karten, deren letzter Stand im Journal `laeuft` ist — sie zeigen einen Abbruch. */
-function laufendeKarten(staende) {
+/** Der letzte Journalstand je Karte. */
+function letzteZustaende(staende) {
   const letzter = new Map();
   for (const s of staende) letzter.set(s.karte, s.zustand);
-  return [...letzter].filter(([, zustand]) => zustand === "laeuft").map(([karte]) => karte);
+  return letzter;
+}
+
+/**
+ * Die Karten, deren letzter Stand im Journal `laeuft` ist — sie zeigen einen Abbruch. Eine
+ * abgegebene Karte (E3) faellt schon dadurch heraus: Ihr letzter Stand ist `abgegeben`.
+ */
+export function laufendeKarten(staende) {
+  return [...letzteZustaende(staende)].filter(([, zustand]) => zustand === "laeuft").map(([karte]) => karte);
+}
+
+/** Der Rechner in der Lauf-ID (Plan #1113 E15): der Hostname bis zum ersten Punkt. */
+const RECHNER = hostname().split(".")[0];
+
+/**
+ * Position der Karten im Lauf (E5): `{ k, n }` je Karte, gesetzt, sobald der Lauf seine
+ * Auftraege kennt. Ein anderer Rechner schaetzt daraus, wie lange der Laufstand frisch bleibt.
+ */
+const LAUF_POSITIONEN = new Map();
+
+/**
+ * Die Kopfzeilen des Laufstands (E3, E5, E15): welcher Runner ihn haelt, wann er ihn
+ * schrieb und an welcher Stelle seines Laufs die Karte steht. Aus der Journalzeile, damit
+ * ein Nachtrag den Stand des Laufs traegt, der ihn schrieb. Eine Zeile aus einem Journal
+ * vor #1186 hat keine Lauf-ID und bleibt ohne Kopf.
+ */
+function laufstandText(zeile) {
+  if (!zeile.laufId) return zeile.text;
+  const kopf = [`Lauf-ID: ${zeile.laufId}`, `Stand: ${zeile.zeit}`];
+  if (zeile.position) kopf.push(`Position: ${zeile.position.k} von ${zeile.position.n}`);
+  return zeile.text ? `${zeile.text}\n\n${kopf.join("\n")}\n` : `${kopf.join("\n")}\n`;
 }
 
 /** Schreibt einen Journal-Stand ans Board und quittiert ihn; `true`, wenn das Board ihn annahm. */
 function standAnsBoard(pfad, zeile, { repoRoot, budgetMs }) {
   // Mit Prozess-Id und Nummer: Zwei Runner teilen sich sonst die Zwischendatei.
   const datei = join(tmpdir(), `${process.pid}-laufstand-${zeile.karte}-${zeile.nr}.md`);
-  writeFileSync(datei, zeile.text, "utf-8");
+  writeFileSync(datei, laufstandText(zeile), "utf-8");
   try {
     const res = boardRoh("issue", "stand", zeile.karte, "--zustand", zeile.zustand, "--text-file", datei, { cwd: repoRoot, budgetMs });
     if (res.status !== 0) {
@@ -1551,15 +1581,34 @@ function mitProtokollZeile(karte, eintrag) {
  * `issue stand`. Scheitert der Board-Aufruf, bleibt die Zeile offen und wird beim
  * naechsten Start nachgetragen. Rueckgabe `geschrieben`, `offen` oder `null` ohne Lauf
  * (der Trockenlauf hat keinen Stempel und schreibt keinen Stand).
+ *
+ * Jeder Aufruf traegt eine neue Zeit, und mit ihr erneuert der Laufstand seine Zeile
+ * `Stand:` (Plan #1113 E5) — jeder Stufenwechsel geht hier durch.
  */
-export function standSetzen(karte, zustand, eintrag, { lauf = LAUF_STEMPEL, repoRoot = process.cwd(), budgetMs } = {}) {
+export function standSetzen(karte, zustand, eintrag, { lauf = LAUF_STEMPEL, repoRoot = process.cwd(), budgetMs, position = LAUF_POSITIONEN.get(String(karte)) } = {}) {
   if (!lauf) return null;
   const pfad = laufPfad(repoRoot, lauf, "jsonl");
-  const nr = journalLesen(pfad).staende.reduce((max, s) => Math.max(max, Number(s.nr) || 0), 0) + 1;
   const text = mitProtokollZeile(String(karte), mitVersuchVermerk(String(karte), eintrag));
-  const zeile = { art: "stand", nr, zeit: new Date().toISOString(), karte: String(karte), zustand, text, status: "offen" };
+  const zeile = {
+    art: "stand", nr: naechsteNr(pfad), zeit: new Date().toISOString(), karte: String(karte), zustand, text, status: "offen",
+    laufId: `${RECHNER}/${process.pid}/${lauf}`, ...(position ? { position } : {}),
+  };
   journalZeile(pfad, zeile);
   return standAnsBoard(pfad, zeile, { repoRoot, budgetMs }) ? "geschrieben" : "offen";
+}
+
+const naechsteNr = (pfad) => journalLesen(pfad).staende.reduce((max, s) => Math.max(max, Number(s.nr) || 0), 0) + 1;
+
+/**
+ * Traegt eine Karte im Journal als `abgegeben` aus (Plan #1113 E3), ohne Board-Aufruf: Ein
+ * anderer Runner haelt ihre Wurzel. Danach schreibt dieser Lauf nichts mehr an die Karte —
+ * `laufendeKarten` und `staendeNachtragen` uebergehen sie, damit ein spaeterer Abbruch oder
+ * Nachtrag den Laufstand des Gewinners nicht ueberschreibt.
+ */
+export function abgeben(karte, { lauf = LAUF_STEMPEL, repoRoot = process.cwd() } = {}) {
+  if (!lauf) return;
+  const pfad = laufPfad(repoRoot, lauf, "jsonl");
+  journalZeile(pfad, { art: "stand", nr: naechsteNr(pfad), zeit: new Date().toISOString(), karte: String(karte), zustand: "abgegeben", text: "", status: "offen" });
 }
 
 /**
@@ -1606,7 +1655,10 @@ export function staendeNachtragen(repoRoot = process.cwd()) {
 function journalNachtragen(repoRoot, lauf) {
   const pfad = laufPfad(repoRoot, lauf, "jsonl");
   const nachgetragen = [];
-  for (const zeile of journalLesen(pfad).staende.filter((s) => s.status === "offen")) {
+  const staende = journalLesen(pfad).staende;
+  const letzter = letzteZustaende(staende);
+  // Eine abgegebene Karte gehoert einem anderen Runner (E3): keine ihrer Zeilen geht ans Board.
+  for (const zeile of staende.filter((s) => s.status === "offen" && letzter.get(s.karte) !== "abgegeben")) {
     if (!standAnsBoard(pfad, zeile, { repoRoot })) continue;
     nachgetragen.push({ lauf, nr: zeile.nr, karte: zeile.karte, zustand: zeile.zustand });
     log(`Laufstand nachgetragen: #${zeile.karte} ${zeile.zustand} (Journal .claude/lauf/${lauf}.jsonl).`);
@@ -1739,7 +1791,7 @@ function vermerkAnDieKarte() {
   const karte = LAUF_KONTEXT.karte;
   if (!karte || !LAUF_STEMPEL) return;
   const letzter = journalLesen(laufPfad(process.cwd(), LAUF_STEMPEL, "jsonl")).staende.findLast((s) => s.karte === String(karte));
-  if (letzter) standSetzen(karte, letzter.zustand, letzter.text);
+  if (letzter && letzter.zustand !== "abgegeben") standSetzen(karte, letzter.zustand, letzter.text);
 }
 
 /**
@@ -9794,6 +9846,7 @@ function warneVorAltenLabels(issues) {
 function vorabStandSetzen(args, auftraege) {
   if (args.dryRun) return;
   const zeit = new Date().toISOString();
+  auftraege.forEach((a, i) => LAUF_POSITIONEN.set(String(a.karte.id), { k: i + 1, n: auftraege.length }));
   for (const a of auftraege) {
     a.laufstandVorher = laufstandAmBoard(a.karte.id);
     standSetzen(a.karte.id, "laeuft", `Lauf angenommen um ${zeit}, Vorabprüfung läuft`);

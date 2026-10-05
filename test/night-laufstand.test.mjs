@@ -16,9 +16,9 @@ import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
+import { tmpdir, hostname } from "node:os";
 
-import { standSetzen, journalLesen, staendeNachtragen, nightStandLaden, boardUmgebung } from "../kit/night.mjs";
+import { standSetzen, abgeben, laufendeKarten, journalLesen, staendeNachtragen, nightStandLaden, boardUmgebung } from "../kit/night.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 // Unter Windows ist SIGTERM nicht abfangbar: `kill` beendet den Runner dort hart, ohne dass
@@ -144,6 +144,63 @@ test("ein spaeter geschriebener Stand derselben Karte ueberholt eine offene Zeil
     writeFileSync(pfad, `${readFileSync(pfad, "utf-8")}${JSON.stringify({ art: "stand", nr: 2, zeit: "2026-09-30T01:09:00.000Z", karte: id, zustand: "fertig", text: "neu", status: "offen" })}\n${JSON.stringify({ art: "quittung", nr: 2 })}\n`);
     assert.deepEqual(staendeNachtragen(dir), [], "die alte Zeile darf den neueren Stand nicht ueberschreiben");
     assert.equal(journalLesen(pfad).staende[0].status, "ueberholt");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Issue #1186 (Plan #1113 E3, E5, E15): Der Laufstand sagt, welcher Runner ihn haelt, wie
+// frisch er ist und an welcher Stelle seines Laufs die Karte steht.
+test("der Laufstand traegt Lauf-ID, Stand und Position", () => {
+  const dir = setupProjekt();
+  try {
+    const id = karte(dir, "Paket");
+    standSetzen(id, "laeuft", "Lauf angenommen", { lauf: "2026-10-01-010000", repoRoot: dir, position: { k: 2, n: 3 } });
+    const zeile = journalLesen(join(dir, ".claude", "lauf", "2026-10-01-010000.jsonl")).staende[0];
+    const text = laufstaende(dir, id)[0];
+    const host = hostname().split(".")[0];
+    assert.ok(!host.includes("."));
+    assert.ok(text.includes(`Lauf-ID: ${host}/${process.pid}/2026-10-01-010000\n`), text);
+    assert.ok(text.includes(`Stand: ${zeile.zeit}\n`), text);
+    assert.match(text, /\nPosition: 2 von 3\s*$/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("jeder Stufenwechsel erneuert Stand:", () => {
+  const dir = setupProjekt();
+  try {
+    const id = karte(dir, "Paket");
+    const opts = { lauf: "2026-10-01-010000", repoRoot: dir, position: { k: 1, n: 1 } };
+    standSetzen(id, "laeuft", "zuletzt begonnen: Plan", opts);
+    const warteBis = Date.now() + 5;
+    while (Date.now() < warteBis);
+    standSetzen(id, "laeuft", "zuletzt begonnen: Umsetzung", opts);
+    const [erste, zweite] = journalLesen(join(dir, ".claude", "lauf", "2026-10-01-010000.jsonl")).staende;
+    assert.ok(Date.parse(zweite.zeit) > Date.parse(erste.zeit));
+    const staende = laufstaende(dir, id);
+    assert.equal(staende.length, 1, "issue stand ersetzt den Laufstand");
+    assert.ok(staende[0].includes(`Stand: ${zweite.zeit}\n`), staende[0]);
+    assert.match(staende[0], /zuletzt begonnen: Umsetzung/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("eine abgegebene Karte gilt nicht als laufend und wird nicht nachgetragen", () => {
+  const dir = setupProjekt();
+  try {
+    const id = karte(dir, "Wurzel");
+    const pfad = altesJournal(dir, [[id, "laeuft", "Lauf angenommen"]]);
+    abgeben(id, { lauf: LAUF_ALT, repoRoot: dir });
+    const staende = journalLesen(pfad).staende;
+    assert.equal(staende.at(-1).zustand, "abgegeben");
+    assert.deepEqual(laufendeKarten(staende), []);
+    assert.deepEqual(staendeNachtragen(dir), []);
+    assert.deepEqual(laufstaende(dir, id), [], "abgegeben schreibt nichts ans Board, auch nicht nachtraeglich");
+    assert.deepEqual(board(dir, "issue", "get", id).labels, []);
+    assert.ok(!zeilen(pfad).some((z) => z.art === "quittung"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
