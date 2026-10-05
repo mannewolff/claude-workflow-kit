@@ -1,4 +1,6 @@
-// Der Worktree einer Nacht-Kette (Plan #638, A3; Issue #642).
+// Der Worktree einer Nacht-Kette (Plan #638, A3; Issue #642), im selben Prozess gegen den
+// Teil kit/night/kitstand.mjs (Issue #1226). Git laeuft echt — der Worktree ist das, was
+// hier belegt wird —, ob ein Halter lebt, sagt die eingesetzte Prozess-Probe (Plan #1199, E6).
 //
 // Die Kette arbeitet ausserhalb des Repos, unter dem Temp-Verzeichnis: Im Repo laege der
 // Worktree als untracked Verzeichnis im `git status` der Umsetzungsnacht. `.claude/` ist
@@ -11,7 +13,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync, realpathSync } from "node:fs";
 import { join, basename } from "node:path";
 import { tmpdir, hostname } from "node:os";
-import { worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen } from "../kit/night.mjs";
+import { worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen, kitstandAbhaengigkeiten } from "../kit/night/kitstand.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 function git(cwd, ...a) {
@@ -23,7 +25,7 @@ function git(cwd, ...a) {
 /** Ein Repo mit Commit, einer versionierten Datei und einem `.claude/` voller Lokalzustand. */
 function setupRepo() {
   const dir = mkdtempSync(join(tmpdir(), "nachtrepo-"));
-  mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
+  mkdirSync(join(dir, KOPIE), { recursive: true });
   writeFileSync(join(dir, ".gitignore"), ".claude/*\n!.claude/workflow.config.json\n");
   writeFileSync(join(dir, ".claude", "workflow.config.json"), "{\"codeHost\":\"local\",\"issueTracker\":\"local\"}\n");
   writeFileSync(join(dir, "README.md"), "hallo\n");
@@ -34,7 +36,7 @@ function setupRepo() {
   git(dir, "add", "-A");
   git(dir, "commit", "-q", "-m", "setup");
   // Lokalzustand, der NICHT im Repo liegt: Kit-Kopie, Token, Settings, Protokoll.
-  writeFileSync(join(dir, ".claude", "kit", "board.mjs"), "// kopie\n");
+  writeFileSync(join(dir, KOPIE, "board.mjs"), "// kopie\n");
   writeFileSync(join(dir, ".claude", "settings.local.json"), "{}\n");
   writeFileSync(join(dir, ".claude", "tbx.token"), "geheim\n");
   writeFileSync(join(dir, ".claude", "night-run-2026-09-14.log"), "protokoll\n");
@@ -42,14 +44,21 @@ function setupRepo() {
   return dir;
 }
 
-/** Die PID eines Prozesses, der schon beendet ist. */
-function totePid() {
-  return spawnSync(process.execPath, ["-e", ""]).pid;
-}
+// Die installierte Kit-Kopie unter `.claude/`, als ein Segment geschrieben.
+const KOPIE = ".claude/kit";
+
+// Eine Prozess-Id, die die eingesetzte Probe fuer tot erklaert; jede andere fragt das System.
+const TOTE_PID = 999_999;
+kitstandAbhaengigkeiten({
+  kill: (pid, signal) => {
+    if (pid === TOTE_PID) throw Object.assign(new Error(`kill ESRCH ${pid}`), { code: "ESRCH" });
+    return process.kill(pid, signal);
+  },
+});
 
 /** Ueberschreibt den Halter so, als gehoere der Ordner einem abgestuerzten Runner. */
 function halterTot(pfad) {
-  writeFileSync(`${pfad}.halter`, JSON.stringify({ host: hostname(), pid: totePid(), seit: "2026-01-01T00:00:00.000Z" }));
+  writeFileSync(`${pfad}.halter`, JSON.stringify({ host: hostname(), pid: TOTE_PID, seit: "2026-01-01T00:00:00.000Z" }));
 }
 
 function mitRepo(fn) {
@@ -75,7 +84,8 @@ test("[night-17] worktreeAnlegen legt den Worktree unter dem Temp-Verzeichnis an
     // Zeilenenden normalisiert: Git auf Windows-Runnern checkt mit CRLF aus; geprueft wird
     // der Stand von HEAD, nicht die Zeilenenden.
     assert.equal(readFileSync(join(pfad, "README.md"), "utf-8").replaceAll("\r\n", "\n"), "hallo\n", "der Worktree traegt den Stand von HEAD");
-    for (const datei of ["kit/board.mjs", "settings.local.json", "tbx.token", "workflow.config.json"]) {
+    assert.ok(existsSync(join(pfad, KOPIE, "board.mjs")), "die Kit-Kopie fehlt im Worktree");
+    for (const datei of ["settings.local.json", "tbx.token", "workflow.config.json"]) {
       assert.ok(existsSync(join(pfad, ".claude", datei)), `.claude/${datei} fehlt im Worktree`);
     }
     for (const datei of ["night-run-2026-09-14.log", "night-run-2026-09-14-010203.json"]) {
@@ -94,7 +104,7 @@ test("[night-68] der Spiegel filtert nur direkt unter .claude/ — Werkzeuge unt
     // beginnen. Ein Filter ueber den blossen Dateinamen liesse sie zurueck, und eine
     // Kettenstufe im Worktree riefe ins Leere.
     for (const werkzeug of ["aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"]) {
-      writeFileSync(join(dir, ".claude", "kit", werkzeug), `// ${werkzeug}\n`);
+      writeFileSync(join(dir, KOPIE, werkzeug), `// ${werkzeug}\n`);
     }
     // Und die Berichte, die in der Hauptkopie bleiben sollen — direkt unter `.claude/`.
     for (const bericht of ["aufwand.md", "aufwand.json", "wirksamkeit.md", "wirksamkeit.json", "bewegungen.tsv", "ausfuehrungen.tsv"]) {
@@ -105,7 +115,7 @@ test("[night-68] der Spiegel filtert nur direkt unter .claude/ — Werkzeuge unt
     angelegt.push(pfad);
 
     for (const werkzeug of ["board.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"]) {
-      assert.ok(existsSync(join(pfad, ".claude", "kit", werkzeug)), `.claude/kit/${werkzeug} fehlt im Worktree`);
+      assert.ok(existsSync(join(pfad, KOPIE, werkzeug)), `.claude/kit/${werkzeug} fehlt im Worktree`);
     }
     for (const bericht of ["aufwand.md", "aufwand.json", "wirksamkeit.md", "wirksamkeit.json", "bewegungen.tsv", "ausfuehrungen.tsv"]) {
       assert.ok(!existsSync(join(pfad, ".claude", bericht)), `.claude/${bericht} darf nicht in den Worktree`);
@@ -117,13 +127,13 @@ test("[night-68] ein Unterverzeichnis mit dem Namen eines Berichts kommt mit", (
   mitRepo((dir, angelegt) => {
     // `.claude/night-run-*` bleibt zurueck, aber nur direkt unter `.claude/`: Ein
     // gleichnamiger Pfad eine Ebene tiefer ist eine andere Datei.
-    mkdirSync(join(dir, ".claude", "kit", "night-run-hilfen"), { recursive: true });
-    writeFileSync(join(dir, ".claude", "kit", "night-run-hilfen", "x.mjs"), "// hilfe\n");
+    mkdirSync(join(dir, KOPIE, "night-run-hilfen"), { recursive: true });
+    writeFileSync(join(dir, KOPIE, "night-run-hilfen", "x.mjs"), "// hilfe\n");
 
     const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "824", stempel: "2026-09-21-010204" });
     angelegt.push(pfad);
 
-    assert.ok(existsSync(join(pfad, ".claude", "kit", "night-run-hilfen", "x.mjs")),
+    assert.ok(existsSync(join(pfad, KOPIE, "night-run-hilfen", "x.mjs")),
       "nur der Name direkt unter .claude/ entscheidet, nicht der Name irgendwo im Pfad");
   });
 });
@@ -166,7 +176,7 @@ test("[night-908] worktreeAnlegen legt mit dem Praefix pruefung einen eigenen Or
     const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "908", stempel: "2026-09-24-010203", praefix: "pruefung" });
     angelegt.push(pfad);
     assert.ok(pfad.startsWith(join(tmpdir(), `pruefung-${basename(dir)}-908-`)), `unerwarteter Pfad: ${pfad}`);
-    assert.ok(existsSync(join(pfad, ".claude", "kit", "board.mjs")), "der Spiegel gilt unveraendert");
+    assert.ok(existsSync(join(pfad, KOPIE, "board.mjs")), "der Spiegel gilt unveraendert");
   });
 });
 
@@ -263,7 +273,7 @@ test("[night-1036] worktreeAnlegen mit spiegeln: false laesst die ignorierten Da
     assert.ok(existsSync(pfad), "der Worktree fehlt");
     assert.deepEqual(readdirSync(join(pfad, ".claude")), ["workflow.config.json"],
       "unter .claude/ liegen nur versionierte Dateien");
-    assert.ok(!existsSync(join(pfad, ".claude", "kit", "board.mjs")), "die ignorierte Kit-Kopie darf nicht mitkommen");
+    assert.ok(!existsSync(join(pfad, KOPIE, "board.mjs")), "die ignorierte Kit-Kopie darf nicht mitkommen");
   });
 });
 
@@ -271,6 +281,6 @@ test("[night-1036] ohne spiegeln bleibt der Spiegel der Vorgabewert", () => {
   mitRepo((dir, angelegt) => {
     const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "1036", stempel: "gegen" });
     angelegt.push(pfad);
-    assert.ok(existsSync(join(pfad, ".claude", "kit", "board.mjs")), "die ignorierte Kit-Kopie wird weiter gespiegelt");
+    assert.ok(existsSync(join(pfad, KOPIE, "board.mjs")), "die ignorierte Kit-Kopie wird weiter gespiegelt");
   });
 });

@@ -10,7 +10,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { aufUmsetzungWarten, UMSETZUNG_WARTEN_MS } from "../kit/night.mjs";
+import { aufUmsetzungWarten, UMSETZUNG_WARTEN_MS } from "../kit/night/kitstand.mjs";
 
 const BELEGT = { ok: false, art: "belegt", grund: "eine andere Umsetzung haelt .claude/night-umsetzung.lock (Prozess 4711)" };
 const SCHREIBFEHLER = { ok: false, art: "schreibfehler", grund: ".claude/night-umsetzung.lock liess sich nicht schreiben (EACCES)" };

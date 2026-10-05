@@ -56,18 +56,21 @@ test("[931] die board-Tests laden kit/board.mjs oder einen seiner Teile", () => 
   assert.deepEqual(ohneBoard, [], "board-Tests ohne Kopplung an kit/board.mjs oder einen Teil");
 });
 
-test("[931] night-kette-worktree laedt kit/night.mjs", () => {
+test("[931] night-kitstand-worktree laedt den Teil kitstand des Nacht-Runners", () => {
   // Das Akzeptanzkriterium des Pakets nennt hier `kit/worktree.mjs`; der
-  // Bestand sagt das Gegenteil (Zeile 40 von kit/worktree.mjs importiert
-  // ./night.mjs, nicht umgekehrt, und die Worktree-Funktionen liegen in
-  // night.mjs). Geprueft wird die belegte Kopplung — eine erfundene bescheinigte
-  // dem spaeteren Schnitt eine Absicherung, die es nicht gibt.
-  const quellen = tabelle.get("test/night-kette-worktree.test.mjs");
-  assert.ok(quellen, "test/night-kette-worktree.test.mjs fehlt in der Tabelle");
-  assert.ok(
-    quellen.includes("kit/night.mjs"),
-    `erwartet: kit/night.mjs — erhoben: ${quellen.join(", ")}`,
-  );
+  // Bestand sagt das Gegenteil (kit/worktree.mjs importiert die Worktree-Funktionen,
+  // nicht umgekehrt). Seit Issue #1226 liegen sie im Teil kitstand unter kit/night/, und
+  // der Test importiert ihn statt des Einstiegs (Plan #1199, E18). Geprueft wird die
+  // belegte Kopplung — eine erfundene bescheinigte dem Schnitt eine Absicherung, die
+  // es nicht gibt.
+  //
+  // Der Pfad des Teils steht zusammengesetzt: Als Zeichenkette erwaehnt, zaehlte die
+  // Erhebung ihn als Quelle DIESES Tests, und jede Aenderung am Teil loeste die ganze
+  // Gruppe der Werkzeug-Tests aus — gelesen wird der Teil hier aber nie.
+  const teil = ["kit", "night", "kitstand.mjs"].join("/");
+  const quellen = tabelle.get("test/night-kitstand-worktree.test.mjs");
+  assert.ok(quellen, "test/night-kitstand-worktree.test.mjs fehlt in der Tabelle");
+  assert.ok(quellen.includes(teil), `erwartet: ${teil} — erhoben: ${quellen.join(", ")}`);
 });
 
 test("[931] die Kette laeuft durch test/helpers hindurch", () => {

@@ -27,7 +27,7 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/night-a*.test.mjs\" \"test/night-b*.test.mjs\" \"test/night-c*.test.mjs\" \"test/night-d*.test.mjs\" \"test/night-e*.test.mjs\" \"test/night-f*.test.mjs\" \"test/night-ga*.test.mjs\" \"test/night-ge*.test.mjs\" \"test/night-gi*.test.mjs\" \"test/night-gu*.test.mjs\" \"test/night-h*.test.mjs\" \"test/night-i*.test.mjs\" \"test/night-kennzahlen.test.mjs\" \"test/night-ki*.test.mjs\" \"test/night-kl*.test.mjs\" \"test/night-label*.test.mjs\" \"test/night-laufkennung.test.mjs\" \"test/night-laufmodell.test.mjs\" \"test/night-le*.test.mjs\" \"test/night-lu*.test.mjs\" \"test/night-m*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/night-a*.test.mjs\" \"test/night-b*.test.mjs\" \"test/night-c*.test.mjs\" \"test/night-d*.test.mjs\" \"test/night-e*.test.mjs\" \"test/night-f*.test.mjs\" \"test/night-ga*.test.mjs\" \"test/night-ge*.test.mjs\" \"test/night-gi*.test.mjs\" \"test/night-gu*.test.mjs\" \"test/night-h*.test.mjs\" \"test/night-i*.test.mjs\" \"test/night-kennzahlen.test.mjs\" \"test/night-kl*.test.mjs\" \"test/night-label*.test.mjs\" \"test/night-laufkennung.test.mjs\" \"test/night-laufmodell.test.mjs\" \"test/night-le*.test.mjs\" \"test/night-lu*.test.mjs\" \"test/night-m*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "aufwand",
@@ -168,6 +168,15 @@
       ]
     },
     {
+      "cmd": "node --test --test-concurrency=2 \"test/night-kitstand-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-adapter",
+        "nacht-grundlagen",
+        "nacht-kitstand"
+      ]
+    },
+    {
       "cmd": "node --test --test-concurrency=2 \"test/ablauf-board-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
@@ -192,7 +201,10 @@
         "board-einstieg",
         "nacht-einstieg",
         "nacht-grundlagen",
-        "nacht-laufstand"
+        "nacht-kitstand",
+        "nacht-laufstand",
+        "pruefungen",
+        "sync"
       ]
     },
     {
@@ -336,7 +348,6 @@
       "test/night-h*.test.mjs",
       "test/night-i*.test.mjs",
       "test/night-kennzahlen.test.mjs",
-      "test/night-ki*.test.mjs",
       "test/night-kl*.test.mjs",
       "test/night-label*.test.mjs",
       "test/night-laufkennung.test.mjs",
@@ -371,6 +382,10 @@
       "kit/night/laufstand.mjs",
       "test/night-laufstand-*.test.mjs",
       "test/helpers/laufstand-attrappe.mjs"
+    ],
+    "nacht-kitstand": [
+      "kit/night/kitstand.mjs",
+      "test/night-kitstand-*.test.mjs"
     ],
     "board-einstieg": [
       "kit/board.mjs",

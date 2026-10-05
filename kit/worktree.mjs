@@ -19,7 +19,7 @@
  *
  * KEIN ZWEITER WEG (Entscheidung des Pakets): Angelegt, gespiegelt und abgeraeumt wird mit
  * denselben Funktionen, die die Nacht-Kette benutzt — `worktreeAnlegen`,
- * `worktreeEntfernen`, `worktreesAufraeumen` und `befundeZurueck` aus `night.mjs`. Diese
+ * `worktreeEntfernen`, `worktreesAufraeumen` und `befundeZurueck` aus dem Teil `night/kitstand.mjs` (Issue #1226). Diese
  * Datei traegt darum bewusst eine Nachbar-Abhaengigkeit und ist keine fuer sich portable
  * Einzeldatei wie `aufwand.mjs` oder `befunde.mjs` (Muster #440): Zwei Wege, einen Worktree
  * vorzubereiten, laufen beim ersten Unterschied auseinander — und der Spiegel von
@@ -37,7 +37,7 @@ import { existsSync, copyFileSync, mkdirSync, readFileSync, appendFileSync, real
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen, befundeZurueck, nachziehenPruefen } from "./night.mjs";
+import { worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen, befundeZurueck, nachziehenPruefen } from "./night/kitstand.mjs";
 
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von

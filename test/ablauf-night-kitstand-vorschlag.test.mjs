@@ -1,3 +1,5 @@
+// Ablauf-Pruefung: Ob die Kette je Art an der Schwelle befunde.mjs vorschlag ruft und ein Fehlschlag den Abbau nicht aufhaelt, zeigt nur der echte Runner mit Worktree und lokalem Tracker.
+//
 // Der Vorschlag am Ende des Rueckwegs (Issue #804, night-70).
 //
 // Nach `befundeZurueck` ruft die Nacht-Kette fuer JEDE zurueckgegebene Mangel-Art
@@ -144,9 +146,10 @@ test("[night-70] board.mjs ist nicht der einzige Kit-Nachbar, den die Kette brau
   // Gegenprobe zur Fixture-Aenderung: Liegt befunde.mjs nicht neben board.mjs, findet
   // der Runner das Kommando nicht — der Test oben waere dann gruen aus dem falschen
   // Grund (Fehlschlag haelt nichts auf) und der Vorschlag nie geprueft.
-  const quelle = readFileSync(new URL("../kit/night.mjs", import.meta.url), "utf-8");
-  assert.match(quelle, /befunde\.mjs vorschlag/,
-    "der Aufruf muss in kit/night.mjs stehen");
+  // Der Aufruf steht seit Issue #1226 im Teil kitstand, mit dem Rueckweg der Befunde.
+  const quelle = readFileSync(new URL("../kit/night/kitstand.mjs", import.meta.url), "utf-8");
+  assert.match(quelle, /BEFUNDE_PATH, "vorschlag", "--art"/,
+    "der Aufruf muss im Teil kitstand stehen");
   // Dass BEFUNDE_PATH demselben KIT_ROOT-Weg folgt wie Board, Aufwand und Wirksamkeit,
   // belegt seit Issue #1224 night-grundlagen-pfade an den Konstanten selbst.
 });

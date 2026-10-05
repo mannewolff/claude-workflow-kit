@@ -1,4 +1,6 @@
-// Der Umsetzungs-Lock (Plan #691, E10; Issue #696).
+// Ablauf-Pruefung: Gleichzeitige Anlaeufe auf die Sperre brauchen getrennte Prozesse, und ob Kette und Umsetzungsnacht den Lock waehrend ihrer Sessions halten, zeigt nur der echte Runner.
+//
+// Der Umsetzungs-Lock im Lauf (Plan #691, E10; Issue #696).
 //
 // Kette und Umsetzungsnacht duerfen nebeneinander laufen, solange die Kette im Worktree
 // baut. Unter Variante B baut ihre Umsetzungsstufe in der Hauptkopie — zwei Laeufe, die
@@ -6,9 +8,9 @@
 // morgens niemand entwirrt. Beide Betriebsarten nehmen deshalb vor ihrer ersten
 // Umsetzungs-Session dieselbe Datei `.claude/night-umsetzung.lock` in der Hauptkopie.
 //
-// Geprueft wird in beiden Richtungen: als Einheit an `umsetzungLockNehmen` (lebender,
-// verwaister und unlesbarer Lock) und am ECHTEN kit/night.mjs gegen ein Temp-Repo mit
-// lokalem Tracker, wie in den uebrigen night-Tests.
+// Die Einheit `umsetzungLockNehmen` belegt test/night-kitstand-lock.test.mjs im selben
+// Prozess (Issue #1226). Hier bleiben die gleichzeitigen Anlaeufe aus getrennten Prozessen
+// und der Lock am ECHTEN kit/night.mjs gegen ein Temp-Repo mit lokalem Tracker.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -16,9 +18,9 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { UMSETZUNG_LOCK, umsetzungLockNehmen } from "../kit/night.mjs";
+import { UMSETZUNG_LOCK } from "../kit/night/grundlagen.mjs";
 import {
-  repoRoot, run, board, setupProjekt, mitProjekt, fachplan, umgebung, sessions, stand,
+  run, board, setupProjekt, mitProjekt, fachplan, umgebung, sessions, stand,
   fake, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
 } from "./helpers/kette-fixture.mjs";
 
@@ -57,16 +59,6 @@ function totePid() {
   return pid;
 }
 
-/** Ein leeres Temp-Verzeichnis fuer die Einheitstests. */
-function mitOrdner(fn) {
-  const dir = mkdtempSync(join(tmpdir(), "night-lock-"));
-  try {
-    fn(dir);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
 /**
  * Die Fake-Zeile, die eine Umsetzungs-Session vor ihrer Arbeit die Lage aufnehmen
  * laesst: der Inhalt des Locks und der Stand von `git status --porcelain`, beides in
@@ -84,81 +76,6 @@ function probeStand(dir) {
   return { lock: lies("lock-probe.txt").trim(), status: lies("status-probe.txt") };
 }
 
-// --- Die Einheit: umsetzungLockNehmen ---
-
-test("[night-35] ein Lock mit lebendem Prozess wird nicht genommen und nicht ueberschrieben", () => {
-  mitOrdner((dir) => {
-    lockSchreiben(dir, `${process.pid}\n`);
-    const res = umsetzungLockNehmen(dir);
-    assert.equal(res.ok, false);
-    assert.match(res.grund, /night-umsetzung\.lock/);
-    assert.match(res.grund, new RegExp(String(process.pid)));
-    assert.equal(readFileSync(lockPfad(dir), "utf-8").trim(), String(process.pid), "der fremde Lock wurde ueberschrieben");
-  });
-});
-
-test("[night-35] ein verwaister Lock wird aufgeraeumt und selbst genommen", () => {
-  mitOrdner((dir) => {
-    lockSchreiben(dir, `${totePid()}\n`);
-    const res = umsetzungLockNehmen(dir);
-    assert.equal(res.ok, true, res.grund);
-    assert.match(res.hinweis ?? "", /verwaist/i);
-    assert.equal(readFileSync(lockPfad(dir), "utf-8").trim(), String(process.pid));
-    res.freigeben();
-    assert.equal(existsSync(lockPfad(dir)), false, "der Lock wurde nicht freigegeben");
-  });
-});
-
-test("[night-35] eine nicht als Zahl lesbare Lock-Datei zaehlt als verwaist", () => {
-  // `0` steht ausdruecklich dabei: `process.kill(0, 0)` zielte auf die eigene
-  // Prozessgruppe und meldete damit immer einen lebenden Halter.
-  for (const inhalt of ["", "   ", "kaputt", "0", "-1", "1.5"]) {
-    mitOrdner((dir) => {
-      lockSchreiben(dir, inhalt);
-      const res = umsetzungLockNehmen(dir);
-      assert.equal(res.ok, true, `Inhalt ${JSON.stringify(inhalt)}: ${res.grund}`);
-      assert.equal(readFileSync(lockPfad(dir), "utf-8").trim(), String(process.pid));
-    });
-  }
-});
-
-test("[night-35] ein nicht schreibbarer Lock haelt die Umsetzung ab, statt sie ohne Lock laufen zu lassen", () => {
-  mitOrdner((dir) => {
-    // Ein Verzeichnis an der Stelle der Lock-Datei: lesbar ist es nicht als Zahl, also
-    // gilt es als verwaist — schreiben laesst es sich trotzdem nicht.
-    mkdirSync(lockPfad(dir), { recursive: true });
-    const res = umsetzungLockNehmen(dir);
-    assert.equal(res.ok, false);
-    assert.match(res.grund, /schreiben/);
-  });
-});
-
-test("[night-35] belegt und Schreibfehler sind an `art` zu unterscheiden, nicht am Wortlaut des Grundes", () => {
-  // Der Wortlaut eines Grundes ist Prosa und wird umformuliert; haengt die Einstufung
-  // einer ganzen Nacht daran, kippt sie bei der naechsten Umformulierung still.
-  mitOrdner((dir) => {
-    lockSchreiben(dir, `${process.pid}\n`);
-    const belegt = umsetzungLockNehmen(dir);
-    assert.equal(belegt.ok, false);
-    assert.equal(belegt.art, "belegt");
-    assert.match(belegt.grund, new RegExp(String(process.pid)));
-  });
-  mitOrdner((dir) => {
-    mkdirSync(lockPfad(dir), { recursive: true });
-    const fehler = umsetzungLockNehmen(dir);
-    assert.equal(fehler.ok, false);
-    assert.equal(fehler.art, "schreibfehler");
-    assert.match(fehler.grund, /schreiben/);
-  });
-  mitOrdner((dir) => {
-    const erfolg = umsetzungLockNehmen(dir);
-    assert.equal(erfolg.ok, true, erfolg.grund);
-    assert.equal(erfolg.hinweis, null);
-    assert.equal(typeof erfolg.freigeben, "function");
-    erfolg.freigeben();
-  });
-});
-
 // --- Gleichzeitige Anlaeufe (Plan #1113, E9; Issue #1184) ---
 
 /**
@@ -167,24 +84,25 @@ test("[night-35] belegt und Schreibfehler sind an `art` zu unterscheiden, nicht 
  * sind, gibt eine Startdatei sie frei, auf die sie im Leerlauf warten — so treffen die
  * Anlaeufe so dicht wie moeglich aufeinander. Danach bleiben alle am Leben, bis jeder sein
  * Ergebnis gemeldet hat: Ein Halter, der vorher endet, hinterliesse einen verwaisten Lock,
- * und der zweite Anlauf naehme ihn zu Recht.
+ * und der zweite Anlauf naehme ihn zu Recht. Das Ende gibt der Test, indem er stdin der
+ * Anlaeufe schliesst — sie warten darauf ohne Pause (Plan #1199, E7).
  */
 async function gleichzeitig(dir, anzahl) {
   const start = join(dir, "start.signal");
-  const ende = join(dir, "ende.signal");
-  const kit = new URL("../kit/night.mjs", import.meta.url).href;
+  const kit = new URL("../kit/night/kitstand.mjs", import.meta.url).href;
   const skript = [
     `import { umsetzungLockNehmen } from ${JSON.stringify(kit)};`,
     `import { existsSync } from "node:fs";`,
-    `const [dir, start, ende] = process.argv.slice(1);`,
+    `const [dir, start] = process.argv.slice(1);`,
     `process.stdout.write("bereit\\n");`,
     `while (!existsSync(start)) {}`,
     `const r = umsetzungLockNehmen(dir);`,
     `process.stdout.write(JSON.stringify({ ok: r.ok, art: r.art ?? null }) + "\\n");`,
-    `while (!existsSync(ende)) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);`,
+    `process.stdin.on("end", () => process.exit(0));`,
+    `process.stdin.resume();`,
   ].join("\n");
   const kinder = Array.from({ length: anzahl }, () => {
-    const kind = spawn(process.execPath, ["--input-type=module", "-e", skript, dir, start, ende], { stdio: ["ignore", "pipe", "pipe"] });
+    const kind = spawn(process.execPath, ["--input-type=module", "-e", skript, dir, start], { stdio: ["pipe", "pipe", "pipe"] });
     const zustand = { kind, zeilen: [], fehler: "" };
     let puffer = "";
     kind.stdout.on("data", (d) => {
@@ -197,7 +115,7 @@ async function gleichzeitig(dir, anzahl) {
     zustand.beendet = new Promise((ok) => kind.on("close", ok));
     return zustand;
   });
-  const warten = async (bedingung) => {
+  const warteAufMeldung = async (bedingung) => {
     const frist = Date.now() + 30_000;
     while (!bedingung()) {
       for (const k of kinder) assert.equal(k.kind.exitCode, null, `ein Anlauf endete vorzeitig: ${k.fehler}`);
@@ -206,12 +124,12 @@ async function gleichzeitig(dir, anzahl) {
     }
   };
   try {
-    await warten(() => kinder.every((k) => k.zeilen.length >= 1));
+    await warteAufMeldung(() => kinder.every((k) => k.zeilen.length >= 1));
     writeFileSync(start, "");
-    await warten(() => kinder.every((k) => k.zeilen.length >= 2));
+    await warteAufMeldung(() => kinder.every((k) => k.zeilen.length >= 2));
     return kinder.map((k) => JSON.parse(k.zeilen[1]));
   } finally {
-    writeFileSync(ende, "");
+    for (const k of kinder) k.kind.stdin.end();
     await Promise.all(kinder.map((k) => k.beendet));
   }
 }
@@ -249,24 +167,6 @@ test("[night-35] eine verwaiste Sperre uebernimmt genau einer von zwei Anlaeufen
       assert.deepEqual(readdirSync(join(dir, ".claude")), ["night-umsetzung.lock"]);
     });
   }
-});
-
-test("[night-35] freigeben laesst eine fremde Sperre stehen", () => {
-  mitOrdner((dir) => {
-    const res = umsetzungLockNehmen(dir);
-    assert.equal(res.ok, true, res.grund);
-    // Ein anderer Lauf hat die Sperre inzwischen uebernommen (etwa weil er diesen Lauf fuer
-    // tot hielt) — wer sie nicht mehr haelt, raeumt sie nicht weg.
-    const fremd = totePid();
-    lockSchreiben(dir, `${fremd}\n`);
-    res.freigeben();
-    assert.equal(readFileSync(lockPfad(dir), "utf-8").trim(), String(fremd), "die fremde Sperre wurde entfernt");
-  });
-});
-
-test("[night-35] der Lock ist kein Rest im Arbeitsbaum: die .gitignore des Kits deckt ihn", () => {
-  const res = spawnSync("git", ["check-ignore", "-q", UMSETZUNG_LOCK], { cwd: repoRoot, encoding: "utf-8" });
-  assert.equal(res.status, 0, `${UMSETZUNG_LOCK} ist im Kit nicht ignoriert — gitClean() saehe ihn als Rest`);
 });
 
 // --- Die Kette unter Variante B ---

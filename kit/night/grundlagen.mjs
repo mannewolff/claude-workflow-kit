@@ -136,6 +136,22 @@ export function vergleicheText(a, b) {
   return a > b ? 1 : 0;
 }
 
+// --- Die Art des Laufs ---
+
+/**
+ * Die Art des Laufs — der Wert des Feldes `art` (Issue #522).
+ *
+ * Seit Plan #638 gibt es hier nur die Implementierung; die Nacht-Kette bringt ihre
+ * eigene Art mit den Folgepaketen. Die Funktion bleibt, weil `art`, Routing-Label und
+ * die Startzeile weiterhin an einer Stelle entschieden werden sollen. Seit Issue #1226
+ * steht sie in den Grundlagen, weil der Teil kitstand die Laufart fuer den Praefix seines
+ * Stands braucht.
+ */
+export function laufArt(args) {
+  if (args?.pruefen) return "pruefung";
+  return args?.kette ? "kette" : "implementierung";
+}
+
 // --- Anbindung an spaetere Teile ---
 
 /**

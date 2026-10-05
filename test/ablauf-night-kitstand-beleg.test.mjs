@@ -1,3 +1,5 @@
+// Ablauf-Pruefung: Das Kriterium nennt eine ganze Nacht mit zwei Paketen und einen Prueflauf; was ihre Sitzungen sehen, zeigt nur der echte Runner mit Stand, Gate und sync-blobs.
+//
 // Kriterium 7 der fachlichen Quelle #1094, nachgestellt (Issue #1102, Plan #1101 E8).
 //
 // Fall 1: Eine Umsetzungsnacht mit zwei Paketen. Das erste aendert das Pruefwerkzeug
@@ -21,7 +23,7 @@ import { basename, join } from "node:path";
 // Der Runner faehrt ueber die Sitzungen `checks.mjs run`: ein eigener Sperrpfad je Testprozess (Issue #958).
 import "./helpers/checks-sperre.mjs";
 
-import { KIT_STAND_MARKIERUNG } from "../kit/night.mjs";
+import { KIT_STAND_MARKIERUNG } from "../kit/night/grundlagen.mjs";
 import {
   VORFLUG_OK, RESULT, GATE_MARKE, kitFixture, git, sha256, syncBlobs, runner, board, laufStand,
   standWorktrees, aufraeumen,

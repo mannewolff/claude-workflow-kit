@@ -58,7 +58,8 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { vergleicheText, worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen } from "../kit/night.mjs";
+import { vergleicheText } from "../kit/night/grundlagen.mjs";
+import { worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen } from "../kit/night/kitstand.mjs";
 
 /** Pfade, die bestimmungsgemaess fehlen duerfen, je mit Grund (E9). */
 export const AUSNAHMEN = {

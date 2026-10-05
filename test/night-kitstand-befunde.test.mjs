@@ -10,19 +10,17 @@
 //
 // Gerufen wird an beiden Abbaustellen der Kette: vor der Umsetzungsstufe und im
 // finally am Kettenende. Das Nullen von `kette.wt` nach dem ersten Abbau verhindert
-// das doppelte Anhaengen. Die Abbaustellen prueft der Test am ECHTEN kit/night.mjs
-// ueber das Ketten-Fixture; die Funktion selbst an einfachen Temp-Verzeichnissen.
+// das doppelte Anhaengen. Die Abbaustellen prueft test/ablauf-night-kitstand-befunde.test.mjs
+// am echten Runner ueber das Ketten-Fixture; die Funktion selbst steht hier, im
+// selben Prozess gegen den Teil kit/night/kitstand.mjs (Issue #1226), an einfachen
+// Temp-Verzeichnissen.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { befundeZurueck } from "../kit/night.mjs";
-import {
-  run, mitProjekt, fachplan, umgebung,
-  PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
-} from "./helpers/kette-fixture.mjs";
+import { befundeZurueck } from "../kit/night/kitstand.mjs";
 
 /** Eine Protokollzeile, wie `befunde.mjs buchen` sie schreibt — sieben Spalten, Art in Spalte 5. */
 function zeile(art) {
@@ -32,7 +30,7 @@ function zeile(art) {
 /**
  * Eine Hauptkopie und ein "Worktree" als Temp-Verzeichnisse. `befundeZurueck` liest
  * und schreibt nur unter `.claude/` — ein echter git-Worktree ist fuer die Funktion
- * selbst nicht noetig, die Abbaustellen pruefen die Ketten-Tests unten.
+ * selbst nicht noetig, die Abbaustellen prueft die Ablauf-Pruefung.
  */
 function setupPaar({ haupt = null, wt = null, config = null, vorschlaege = null } = {}) {
   const repo = mkdtempSync(join(tmpdir(), "befunde-haupt-"));
@@ -114,8 +112,8 @@ test("[night-69] die Schwelle kommt aus dem Config-Block befunde der Hauptkopie"
 
 test("[night-69] der Nullpunkt aus befunde-vorschlaege.json zaehlt wie bei buchen", () => {
   // Drei Vorkommen, aber der Nullpunkt einer frueheren Ablehnung liegt bei zwei:
-  // erst oberhalb davon zaehlt die Schwelle wieder — dieselbe Regel wie in
-  // kit/befunde.mjs (E11, E20).
+  // erst oberhalb davon zaehlt die Schwelle wieder — dieselbe Regel wie bei `buchen` in
+  // befunde.mjs, dort dupliziert und als SYNC markiert (E11, E20).
   mitPaar({
     haupt: [zeile("luecke"), zeile("luecke")], wt: [zeile("luecke")],
     vorschlaege: { luecke: { nullpunkt: 2 } },
@@ -141,55 +139,5 @@ test("[night-69] ein gescheitertes Anhaengen wirft nicht und wird als Hinweis pr
     assert.deepEqual(arten, [], "ohne Anhaengen gibt es keinen Schwellentreffer");
     assert.match(geschrieben.join(""), /Befunde aus dem Worktree nicht zurueckgeholt/,
       "der Fehlschlag muss im Protokoll stehen");
-  });
-});
-
-// --- Die beiden Abbaustellen der Kette ----------------------------------------
-
-/** Die Fake-Zeile, die im Worktree eine Buchung hinterlaesst — wie `befunde buchen` es taete. */
-const BUCHUNG_IM_WORKTREE = String.raw`printf "2026-09-22T00:00:00.000Z\tplan\t2\treviewer\tluecke\tWICHTIG\t-\n" >> .claude/befunde.tsv`;
-
-test("[night-69] der Abbau im finally am Kettenende holt die Buchungen der Review-Stufe zurueck", () => {
-  mitProjekt((dir) => {
-    // Zwei Vorkommen liegen schon in der Hauptkopie — der Spiegel traegt sie nicht in
-    // den Worktree, und die Kette darf sie beim Rueckholen nicht ueberschreiben.
-    const alt = [zeile("luecke"), zeile("luecke")];
-    writeFileSync(join(dir, ".claude", "befunde.tsv"), alt.map((z) => `${z}\n`).join(""));
-
-    const F = fachplan(dir);
-    const env = umgebung(dir, { stufen: {
-      plan: PLAN_ANLEGEN,
-      review: `${REVIEW_MARKER}; ${BUCHUNG_IM_WORKTREE}`,
-      pakete: PAKETE_ANLEGEN,
-    } });
-    const res = run(dir, ["--kette"], env);
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-
-    const zeilen = hauptZeilen(dir);
-    assert.equal(zeilen.length, 3, `die Buchung der Kette fehlt oder wurde gedoppelt:\n${zeilen.join("\n")}`);
-    assert.deepEqual(zeilen.slice(0, 2), alt, "die alten Zeilen stehen unveraendert voran");
-    assert.match(res.stdout, /Schwelle erreicht: luecke/,
-      "der Runner protokolliert die Arten, deren Gesamtstand die Schwelle erreicht");
-    assert.ok(String(F), "Fachplan angelegt"); // benutzt, damit die Nummer im Fehlerfall greifbar ist
-  });
-});
-
-test("[night-69] der Abbau vor der Umsetzungsstufe holt die Buchungen zurueck — und das finally haengt nicht noch einmal an", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir);
-    durchziehen(dir, F);
-    const env = umgebung(dir, { stufen: {
-      plan: PLAN_ANLEGEN,
-      review: REVIEW_MARKER,
-      pakete: `${PAKETE_ANLEGEN}; ${BUCHUNG_IM_WORKTREE}`,
-      umsetzung: UMSETZUNG_ERFOLG,
-    } });
-    const res = run(dir, ["--kette"], env);
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-
-    // Genau eine Zeile: Der Abbau vor der Umsetzungsstufe hat sie geholt, und das
-    // finally am Kettenende darf nach `kette.wt = null` nicht noch einmal anhaengen.
-    assert.deepEqual(hauptZeilen(dir), [zeile("luecke")],
-      "die Buchung muss genau einmal in der Hauptkopie stehen");
   });
 });
