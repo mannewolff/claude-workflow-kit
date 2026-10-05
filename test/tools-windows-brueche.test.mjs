@@ -865,21 +865,6 @@ test("[1157] Das Fixture traegt genau einen Bruch der Art skips", () => {
 // Je Fund ein Eintrag aus Datei und Art, ohne Zeile: Sonst braeche jede Bearbeitung einer
 // der Dateien diesen Test (Issue #1162).
 const BEKANNTE_BRUECHE = [
-  "install.mjs — zeilenenden", // #1167
-  "kit/befunde.mjs — zeilenenden", // #1167
-  "kit/befunde.mjs — zeilenenden", // #1167
-  "kit/board.mjs — zeilenenden", // #1167
-  "kit/board.mjs — zeilenenden", // #1167
-  "kit/board.mjs — zeilenenden", // #1167
-  "kit/checks.mjs — zeilenenden", // #1167
-  "kit/checks.mjs — zeilenenden", // #1167
-  "kit/night.mjs — zeilenenden", // #1167
-  "kit/night.mjs — zeilenenden", // #1167
-  "kit/night.mjs — zeilenenden", // #1167
-  "kit/night.mjs — zeilenenden", // #1167
-  "kit/wirksamkeit.mjs — zeilenenden", // #1167
-  "kit/worktree.mjs — zeilenenden", // #1167
-  "kit/worktree.mjs — zeilenenden", // #1167
   "test/befunde-vorschlag-worktree.test.mjs — zeilenenden", // #1168
   "test/board-check-form-testhinweise.test.mjs — zeilenenden", // #1168
   "test/board-github-schreiben.test.mjs — zeilenenden", // #1168
@@ -967,8 +952,6 @@ const BEKANNTE_BRUECHE = [
   "test/tools-windows-pruefung.test.mjs — zeilenenden", // #1168
   "test/workflow-config-merge.test.mjs — zeilenenden", // #1168
   "test/workflow-config-merge.test.mjs — zeilenenden", // #1168
-  "tools/frischer-checkout.mjs — zeilenenden", // #1167
-  "tools/frischer-checkout.mjs — zeilenenden", // #1167
 ];
 
 test("[1157] Der Bestand ist fundfrei bis auf die bekannten Brueche mit Karte (E15)", () => {

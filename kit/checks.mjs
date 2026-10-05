@@ -1412,7 +1412,7 @@ export function blobHashes(pfade) {
   if (res.status !== 0) {
     fail(`git hash-object schlug fehl: ${(res.stderr || "").trim()}`);
   }
-  const zeilen = res.stdout.split("\n").filter((z) => z.length > 0);
+  const zeilen = res.stdout.split(/\r?\n/).filter((z) => z.length > 0);
   if (zeilen.length !== vorhanden.length) {
     fail(`git hash-object lieferte ${zeilen.length} Hashes fuer ${vorhanden.length} Pfade.`);
   }
@@ -1716,7 +1716,7 @@ function ausfuehrungenLesen() {
     return [];
   }
   const zurueck = { "\\": "\\", t: "\t", n: "\n", r: "\r" };
-  return text.split("\n").filter(Boolean).map((zeile) => {
+  return text.split(/\r?\n/).filter(Boolean).map((zeile) => {
     const [, cmd = "", ergebnis = "", dauer = ""] = zeile.split("\t");
     return {
       cmd: cmd.replaceAll(/\\([\\tnr])/g, (_, z) => zurueck[z]),

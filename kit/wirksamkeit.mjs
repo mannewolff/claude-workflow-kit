@@ -435,7 +435,7 @@ function tabZeilenLesen(pfad, zeileAus) {
   }
   const zeilen = [];
   let fehlerhaft = 0;
-  for (const roh of inhalt.split("\n")) {
+  for (const roh of inhalt.split(/\r?\n/)) {
     if (roh === "") continue;
     const zeile = zeileAus(roh.split("\t"));
     if (zeile) zeilen.push(zeile);

@@ -634,7 +634,7 @@ function rolleFuer(fundZeile, koepfe, stufe) {
 /** Die vorhandenen Protokollzeilen; eine fehlende oder unlesbare Datei zaehlt als keine. */
 function protokollZeilen(pfad) {
   try {
-    return readFileSync(pfad, "utf-8").split("\n").filter((z) => z !== "");
+    return readFileSync(pfad, "utf-8").split(/\r?\n/).filter((z) => z !== "");
   } catch (err) {
     if (err.code !== "ENOENT") {
       process.stderr.write(`Hinweis: Protokoll nicht lesbar (${pfad}): ${err.message}\n`);
@@ -970,7 +970,7 @@ function boardLauf(args, { karte = null } = {}) {
   const res = spawnSync(process.execPath, [BOARD_PATH, ...args], { cwd: process.cwd(), encoding: "utf-8" });
   if (res.error) fail(`board.mjs liess sich nicht starten: ${res.error.message}`);
   if (res.status !== 0) {
-    const grund = (res.stderr || res.stdout || "").trim().split("\n")[0] || `Exit ${res.status}`;
+    const grund = (res.stderr || res.stdout || "").trim().split(/\r?\n/)[0] || `Exit ${res.status}`;
     // Die eine Ausnahme vom Werfen (Issue #1100): Wer eine `karte` nennt, bekommt deren
     // Fehlen als Wert zurueck. Erkannt wird allein die Meldung, die der lokale und der
     // Toolbox-Tracker dafuer liefern — ein Netz- oder Zugangsfehler wirft weiter.

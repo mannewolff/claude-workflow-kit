@@ -1623,7 +1623,7 @@ class LocalIssueTracker {
     const block = this._kommentarBloecke(raw).find((b) => b.id === String(kommentarId));
     if (!block) throw new BoardError(`Kommentar ${kommentarId} an Issue ${id} nicht gefunden.`);
     const lauf = text.match(/^Bericht-Lauf:.*$/m)?.[0];
-    if (lauf && !raw.slice(block.start, block.ende).split("\n").includes(lauf)) {
+    if (lauf && !raw.slice(block.start, block.ende).split(/\r?\n/).includes(lauf)) {
       throw new BoardError(`Kommentar ${kommentarId} an Issue ${id} traegt nicht die Zeile '${lauf}' — kein Ersetzen.`);
     }
     writeFileSync(p, raw.slice(0, block.start) + text + raw.slice(block.ende), "utf-8");
@@ -3467,7 +3467,7 @@ function laufkennung(id) {
   if (!existsSync(pfad)) return null;
   const gesucht = kartenSchluessel(id);
   let stempel = null;
-  for (const zeile of readFileSync(pfad, "utf-8").split("\n")) {
+  for (const zeile of readFileSync(pfad, "utf-8").split(/\r?\n/)) {
     const [zeit, karte, status] = zeile.replace(/\r$/, "").split("\t");
     if (status === "in_progress" && karte !== undefined && kartenSchluessel(karte) === gesucht) stempel = zeit;
   }
@@ -5821,7 +5821,7 @@ function probelauf(kommandozeile, start) {
     if (res.status === 0) return { ok: true };
     // Die Fehlermeldung des Werkzeugs ist die eigentliche Auskunft — sie sagt, ob ein
     // Modell fehlt, ein Token abgelaufen ist oder etwas ganz anderes klemmt.
-    const letzte = (res.stderr || "").trim().split("\n").findLast(Boolean);
+    const letzte = (res.stderr || "").trim().split(/\r?\n/).findLast(Boolean);
     return { ok: false, grund: (letzte || `Exit ${res.status}`).slice(0, 300) };
   }
   if (res.error) return { ok: false, grund: res.error.message };

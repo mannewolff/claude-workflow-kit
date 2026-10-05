@@ -1487,7 +1487,7 @@ export function journalLesen(pfad) {
   const lauf = [];
   const staende = [];
   const quittiert = new Set();
-  const zeilen = existsSync(pfad) ? readFileSync(pfad, "utf-8").split("\n") : [];
+  const zeilen = existsSync(pfad) ? readFileSync(pfad, "utf-8").split(/\r?\n/) : [];
   for (const roh of zeilen) {
     if (!roh.trim()) continue;
     let zeile;
@@ -2253,7 +2253,7 @@ export function salvageSauberkeitsKommando(ausnahmen = gitResteAusnahmen()) {
 function gitReste(cwd = process.cwd(), cfg = config) {
   const res = spawnSync("git", ["status", "--porcelain", ...gitRestePathspec(gitResteAusnahmen(cfg))], { encoding: "utf-8", cwd });
   if (res.status !== 0) fail("git status schlug fehl — bin ich im Projekt-Root eines git-Repos?");
-  return res.stdout.split("\n").filter((zeile) => zeile.trim() !== "");
+  return res.stdout.split(/\r?\n/).filter((zeile) => zeile.trim() !== "");
 }
 
 /**
@@ -2620,7 +2620,7 @@ function befundeArtenZaehlen(zeilen) {
 /** Die Zeilen einer `befunde.tsv`; eine fehlende oder unlesbare Datei zaehlt als keine. */
 function befundeZeilen(pfad) {
   try {
-    return readFileSync(pfad, "utf-8").split("\n").filter((z) => z !== "");
+    return readFileSync(pfad, "utf-8").split(/\r?\n/).filter((z) => z !== "");
   } catch {
     return [];
   }
@@ -11042,7 +11042,7 @@ async function werteRunde({ top, res, minutes, args, salvageAttempted, pruefung,
   const kommando = Boolean(sessionWahl?.kommando);
   if (!timedOut && (res.error || res.status !== 0) && (kommando || !hatSitzungsereignis(res.stdout))) {
     const exitInfo = exitText(res);
-    const detail = (res.stderr || res.stdout || "").trim().split("\n").slice(0, 3).join(" | ");
+    const detail = (res.stderr || res.stdout || "").trim().split(/\r?\n/).slice(0, 3).join(" | ");
     const kopf = `INFRASTRUKTUR-FEHLSCHLAG nach ${minutes} min (${exitInfo}): Session-Start gescheitert — harter Stopp, Issue #${top.id} bleibt unangetastet.`;
     log(`  ${kopf}`);
     if (detail) log(`  CLI-Meldung: ${detail}`);

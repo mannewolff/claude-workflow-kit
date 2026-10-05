@@ -75,7 +75,7 @@ function pfadIn(root, relativ) {
 function repoWurzel() {
   const res = spawnSync("git", ["worktree", "list", "--porcelain"], { encoding: "utf-8" });
   if (res.status !== 0) throw new Error(`kein git-Repo: ${(res.stderr || res.stdout || "").trim()}`);
-  const erste = res.stdout.split("\n").find((z) => z.startsWith("worktree "));
+  const erste = res.stdout.split(/\r?\n/).find((z) => z.startsWith("worktree "));
   if (!erste) throw new Error(`git worktree list nennt keine Hauptkopie: ${res.stdout.trim()}`);
   return erste.slice("worktree ".length).trim();
 }
@@ -187,7 +187,7 @@ function rueckweg(repoRoot, cliArgs) {
   let ausfuehrungen = 0;
   const protokoll = pfadIn(pfad, ANGEHAENGT);
   if (existsSync(protokoll)) {
-    const zeilen = readFileSync(protokoll, "utf-8").split("\n").filter((z) => z !== "");
+    const zeilen = readFileSync(protokoll, "utf-8").split(/\r?\n/).filter((z) => z !== "");
     if (zeilen.length > 0) {
       const protokollZiel = pfadIn(repoRoot, ANGEHAENGT);
       mkdirSync(dirname(protokollZiel), { recursive: true });
