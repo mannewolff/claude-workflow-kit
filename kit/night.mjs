@@ -3071,8 +3071,10 @@ function befundeZurueckUndVorschlagen(lauf) {
  * Innerhalb des Praefixes bleibt jeder Ordner stehen, dessen Halter einem laufenden Prozess
  * auf diesem Rechner gehoert (Issue #1183): Ein zweiter Runner derselben Laufart in einer
  * anderen Session raeumt nur die Reste abgestuerzter Laeufe ab. Die Liste nennt nur sie.
+ *
+ * `behalten` nimmt einen Ordner ausdruecklich aus — den eigenen Kit-Stand (Issue #1200).
  */
-export function worktreesAufraeumen(repoRoot, praefixName = "kette") {
+export function worktreesAufraeumen(repoRoot, praefixName = "kette", behalten = null) {
   gitIm(repoRoot, ["worktree", "prune"]);
   const praefix = worktreePraefix(repoRoot, praefixName);
   const entfernt = [];
@@ -3088,6 +3090,7 @@ export function worktreesAufraeumen(repoRoot, praefixName = "kette") {
     // Der Ordner eines lebenden Runners ist kein Rest (Issue #1183): Ihn zu raeumen zerstoerte
     // die Arbeit einer Kette, die in einer anderen Session laeuft.
     if (halterLebt(pfad)) continue;
+    if (behalten && resolve(pfad) === resolve(behalten)) continue;
     worktreeEntfernen(pfad, repoRoot);
     entfernt.push(pfad);
   }
@@ -3148,13 +3151,13 @@ export function kitStandErmitteln(repoRoot, mainBranch) {
  * das `sync-blobs` DIESES Stands laufen lassen, die Regeltexte nach `.claude/` kopieren.
  * Ein zweiter Weg mit eigener Dateiliste liefe beim ersten neuen Werkzeug auseinander.
  *
- * Vorab raeumt er den Stand derselben Laufart ab (E4): Nebeneinander laufende Laufarten
- * duerfen einander nichts wegraeumen. Scheitert ein Schritt, wirft die Funktion mit Grund
+ * Er raeumt nichts ab (Issue #1200): Liegengebliebene Staende derselben Laufart raeumt erst
+ * das Kind, wenn seine Vorpruefungen bestanden sind (`kitStaendeAufraeumen`) — ein Start,
+ * der ohnehin abbricht, soll nichts wegnehmen. Scheitert ein Schritt, wirft die Funktion mit Grund
  * und laesst keinen halben Stand liegen; den Abbruch entscheidet der Aufrufer (E2).
  */
 export function kitStandBereitstellen(repoRoot, commit, laufart) {
   const praefix = `kitstand-${laufart}`;
-  for (const p of worktreesAufraeumen(repoRoot, praefix)) log(`Liegengebliebenen Kit-Stand entfernt: ${p}`);
   // Ein eigener Stempel: Der Lauf-Stempel entsteht erst im Kind.
   const stempel = `${new Date().toISOString().replaceAll(/[-:.TZ]/g, "")}-${process.pid}`;
   const pfad = worktreeAnlegen({ repoRoot, stempel, praefix, ref: commit, spiegeln: false });
@@ -3216,6 +3219,18 @@ function kitStandAbgeben(baum) {
  */
 function kitStandInBaum(baum) {
   if (KIT_STAND_LAUF && !KIT_STAND_BAEUME.has(baum)) kitStandEinsetzen(KIT_STAND_LAUF, baum);
+}
+
+/**
+ * Raeumt die liegengebliebenen Staende der eigenen Laufart ab (E4, Issue #1200) — im Kind,
+ * erst nach `vorbereiten()`: Ein Start, der an den Vorpruefungen scheitert, hat dann nichts
+ * weggeraeumt. Der eigene Stand bleibt ausdruecklich stehen; nebeneinander laufende Laufarten
+ * raeumen einander nichts weg. Nichts im Dry-Run und nichts ohne Stand.
+ */
+function kitStaendeAufraeumen(args) {
+  if (args.dryRun || !KIT_STAND_LAUF) return;
+  const praefix = `kitstand-${laufArt(args)}`;
+  for (const p of worktreesAufraeumen(process.cwd(), praefix, KIT_STAND_LAUF.pfad)) log(`Liegengebliebenen Kit-Stand entfernt: ${p}`);
 }
 
 /** Die Startzeile des festen Kit-Stands (A7) — nichts ohne Stand. */
@@ -12285,6 +12300,8 @@ async function main() {
   abbruchHandlerSetzen();
 
   const ctx = vorbereiten(args);
+  // Erst nach den Vorpruefungen (Issue #1200): Ein Start, der nicht laufen darf, raeumt nichts ab.
+  kitStaendeAufraeumen(args);
   // Wartende Nachtberichte gehen vor jeder Betriebsart nach (Issue #645) — nicht im
   // Dry-Run, der nichts am Board veraendert. Offene Laufstaende aus dem Journal ebenso
   // (Issue #1084, E5) — nicht in vorbereiten(), das auch im Dry-Run laeuft.

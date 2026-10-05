@@ -17,10 +17,10 @@ import "./helpers/checks-sperre.mjs";
 
 import {
   kitStandErmitteln, kitStandBereitstellen, kitStandEinsetzen, kitStandFreigeben, istStandKind,
-  KIT_STAND_MARKIERUNG,
+  worktreesAufraeumen, KIT_STAND_MARKIERUNG,
 } from "../kit/night.mjs";
 import {
-  kitFixture, git, runner, laufStand, standWorktrees, aufraeumen,
+  kitFixture, git, runner, board, laufStand, standWorktrees, aufraeumen,
 } from "./helpers/kitstand-fixture.mjs";
 
 function mitFixture(optionen, fn) {
@@ -116,7 +116,8 @@ test("[kitstand-2] auch mit core.autocrlf=true bleibt der Stand-Worktree unverae
   });
 });
 
-test("[kitstand-2] vorab wird nur der eigene Praefix abgeraeumt", () => {
+// Issue #1200: Das Bereitstellen raeumt nichts mehr ab — das tut das Kind erst nach den Vorpruefungen.
+test("[kitstand-2] das Bereitstellen allein laesst einen fremden Stand derselben Laufart stehen", () => {
   mitFixture({}, ({ dir }) => {
     const base = basename(dir);
     const alt = join(tmpdir(), `kitstand-implementierung-${base}-alt`);
@@ -127,7 +128,7 @@ test("[kitstand-2] vorab wird nur der eigene Praefix abgeraeumt", () => {
     const { commit } = kitStandErmitteln(dir, "main");
     kitStandBereitstellen(dir, commit, "implementierung");
 
-    assert.equal(existsSync(alt), false, "der alte Stand derselben Laufart ist weg");
+    assert.ok(existsSync(alt), "der Stand derselben Laufart bleibt — auch ohne lebenden Halter");
     assert.ok(existsSync(kette), "der Stand der Kette gehoert der Kette");
     assert.ok(existsSync(pruefung), "fremde Praefixe bleiben unberuehrt");
   });
@@ -251,5 +252,52 @@ test("[kitstand-5] fehlt origin/main in einem Repo mit Kit-Quelle, bricht der La
     assert.match(res.stderr, /origin\/main/);
     assert.equal(existsSync(spur), false, "keine Sitzung");
     assert.deepEqual(standWorktrees(dir), []);
+  });
+});
+
+// --- Aufraeumen erst nach den Vorpruefungen (Issue #1200) ---
+
+test("[kitstand-6] ein Start, der an der Vorpruefung scheitert, laesst einen verwaisten Stand derselben Laufart stehen", () => {
+  mitFixture({}, ({ dir }) => {
+    const alt = join(tmpdir(), `kitstand-implementierung-${basename(dir)}-alt`);
+    mkdirSync(alt, { recursive: true });
+    board(dir, "issue", "create", "--title", "Ein Paket", "--body", "Autor-Modell: x");
+    board(dir, "issue", "move", "1", "in_progress");
+
+    const res = runner(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.notEqual(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    assert.match(`${res.stdout}${res.stderr}`, /In progress \(#0*1\)/);
+    assert.ok(existsSync(alt), "der Stand ohne lebenden Halter bleibt unangetastet");
+    assert.doesNotMatch(res.stdout, /Liegengebliebenen Kit-Stand entfernt/);
+  });
+});
+
+test("[kitstand-6] ein Start, der die Vorpruefungen besteht, raeumt den verwaisten Stand ab und behaelt den eigenen", () => {
+  mitFixture({}, ({ dir }) => {
+    const alt = join(tmpdir(), `kitstand-implementierung-${basename(dir)}-alt`);
+    mkdirSync(alt, { recursive: true });
+
+    const res = runner(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    assert.equal(existsSync(alt), false, "der verwaiste Stand ist weg");
+    assert.ok(res.stdout.includes(`Liegengebliebenen Kit-Stand entfernt: ${alt}`), res.stdout);
+    const staende = standWorktrees(dir);
+    assert.equal(staende.length, 1, `genau der eigene Stand bleibt: ${staende.join(", ")}`);
+    assert.ok(existsSync(join(staende[0], ".claude", "kit", "night.mjs")), "der eigene Stand steht noch");
+  });
+});
+
+test("[kitstand-6] der eigene Stand bleibt beim Aufraeumen ausdruecklich stehen, auch ohne lebenden Halter", () => {
+  mitFixture({}, ({ dir }) => {
+    const base = basename(dir);
+    const eigen = join(tmpdir(), `kitstand-implementierung-${base}-eigen`);
+    const alt = join(tmpdir(), `kitstand-implementierung-${base}-alt`);
+    for (const p of [eigen, alt]) mkdirSync(p, { recursive: true });
+
+    const entfernt = worktreesAufraeumen(dir, "kitstand-implementierung", eigen);
+
+    assert.deepEqual(entfernt, [alt]);
+    assert.ok(existsSync(eigen), "der eigene Stand bleibt");
+    assert.equal(existsSync(alt), false);
   });
 });
