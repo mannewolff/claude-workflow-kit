@@ -4842,23 +4842,32 @@ export function frischeStufenFelder(configPfad, stand) {
  * Dort fragt die Funktion `prozesse` — in `runProcess` die Suche nach der Marke der
  * Session, `sitzungsProzesse` (Issue #1144) — und wartet, bis sie nichts mehr findet. Ohne
  * `prozesse` gibt es dort nichts zu fragen, und sie meldet sofort `true`.
+ *
+ * Wirft `prozesse`, weil die Abfrage der Prozessliste scheiterte, geht der Grund an
+ * `vermerk` — ins Protokoll —, und die Funktion meldet `true` wie bei leerer Gruppe
+ * (Issue #1174): Die Runde laeuft weiter wie bisher, aber nicht mehr stumm.
  */
-export async function warteAufProzessgruppe(pgid, restMs, { pollMs = 200, jetzt = Date.now, plattform = process.platform, prozesse } = {}) {
+export async function warteAufProzessgruppe(pgid, restMs, { pollMs = 200, jetzt = Date.now, plattform = process.platform, prozesse, vermerk = () => {} } = {}) {
   if (!pgid || restMs <= 0) return true;
   if (plattform === "win32" && !prozesse) return true;
   const frist = jetzt() + restMs;
   // `ps -o pid= -g <pgid>` listet die Prozesse der Gruppe; leere Ausgabe heisst leer.
   // Ein Fehlschlag von ps (Gruppe schon weg, ps nicht da) gilt ebenfalls als leer: Diese
   // Wartezeit ist eine Vorsichtsmassnahme und darf keine Runde aufhalten, weil ein
-  // Werkzeug fehlt. Dieselbe Haltung hat die Suche unter Windows.
+  // Werkzeug fehlt. Unter Windows haelt die Runde ebenfalls nicht an, vermerkt den
+  // Fehlschlag aber (Issue #1174).
   const gruppeLaeuft = plattform === "win32" ? () => prozesse().length > 0 : () => {
     const res = spawnSync("ps", ["-o", "pid=", "-g", String(pgid)], { encoding: "utf-8" });
     if (res.error || res.status !== 0) return false;
     return (res.stdout || "").trim() !== "";
   };
-  while (gruppeLaeuft()) {
-    if (jetzt() >= frist) return false;
-    await new Promise((r) => setTimeout(r, pollMs));  // NOSONAR S9382: Abfragen in festem Takt
+  try {
+    while (gruppeLaeuft()) {
+      if (jetzt() >= frist) return false;
+      await new Promise((r) => setTimeout(r, pollMs));  // NOSONAR S9382: Abfragen in festem Takt
+    }
+  } catch (err) {
+    vermerk(`${err.message} — der Runner wartet nicht auf die Prozesse der Session.`);
   }
   return true;
 }
@@ -4947,23 +4956,52 @@ export function sitzungsPids(ausgabe) {
 }
 
 /**
- * Die Windows-PIDs der Prozesse, die die Marke einer Session tragen (Issue #1144). Ohne Git
- * Bash oder bei einer gescheiterten Suche eine leere Liste: Wie das Fehlen von `ps` auf
- * POSIX darf das Fehlen eines Werkzeugs keine Runde aufhalten.
+ * Faehrt `sitzungsSuche` in der Git Bash. Liefert das Ergebnis von `spawnSync` oder
+ * `{ fehler }`, wenn es keine Git Bash gibt.
  */
-function sitzungsProzesse(marke) {
+function sitzungsAbfrage(marke) {
   const shell = posixShell();
-  if (shell.fehler) return [];
+  if (shell.fehler) return { fehler: shell.fehler };
   const suche = sitzungsSuche(marke);
   const aufruf = spawnAufruf(shell.pfad, ["-c", suche.skript], shell);
-  const res = spawnSync(aufruf.befehl, aufruf.args, {
+  return spawnSync(aufruf.befehl, aufruf.args, {
     ...aufruf.optionen,
     encoding: "utf-8",
     windowsHide: true,
     env: { ...process.env, ...shell.umgebung, ...suche.umgebung },
   });
-  if (res.error || res.status !== 0) return [];
+}
+
+/**
+ * Die Windows-PIDs der Prozesse, die die Marke einer Session tragen (Issue #1144).
+ *
+ * Scheitert die Abfrage — keine Git Bash, Startfehler, Exitcode ungleich 0 —, wirft die
+ * Funktion (Issue #1174). Bis dahin lieferte sie eine leere Liste, und die war von "kein
+ * Prozess laeuft mehr" nicht zu unterscheiden: Der Runner ging weiter, ohne dass im
+ * Protokoll stand, dass er gar nicht nachsehen konnte. `abfrage` ist fuer die Tests
+ * injizierbar und liefert dieselbe Form wie `spawnSync`.
+ */
+export function sitzungsProzesse(marke, { abfrage = sitzungsAbfrage } = {}) {
+  const res = abfrage(marke);
+  const grund = res.fehler ?? res.error?.message ?? exitGrund(res);
+  if (grund) throw new Error(`Abfrage der Prozessliste gescheitert (${grund})`);
   return sitzungsPids(res.stdout);
+}
+
+/** Der Exitcode einer gescheiterten Abfrage samt erster Zeile von stderr, sonst `null`. */
+function exitGrund(res) {
+  if (res.status === 0) return null;
+  const zeile = String(res.stderr ?? "").trim().split(/\r?\n/)[0];
+  return zeile ? `Exitcode ${res.status}: ${zeile}` : `Exitcode ${res.status}`;
+}
+
+/** `sitzungsProzesse` fuer `killTree`: Dort genuegt bei gescheiterter Abfrage die Wurzel. */
+function sitzungsProzesseOderKeine(marke) {
+  try {
+    return sitzungsProzesse(marke);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -5062,7 +5100,7 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
     // scheitern und taskkill mit einem Exitcode ungleich 0; das ist der Normalfall, kein
     // Fehler.
     const killTree = (signal) => {
-      const aufruf = baumBeendenAufruf(child.pid, signal, process.platform, windows ? sitzungsProzesse(marke) : []);
+      const aufruf = baumBeendenAufruf(child.pid, signal, process.platform, windows ? sitzungsProzesseOderKeine(marke) : []);
       if (aufruf.taskkill) {
         spawnSync("taskkill", aufruf.taskkill, { stdio: "ignore", windowsHide: true });
         return;
@@ -5153,7 +5191,10 @@ function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extr
       // Warten haenge den Lauf genau an dem Baum auf, den er eben abgeraeumt hat.
       if (!timedOut) {
         const restMs = Math.max(0, timeoutMs - (Date.now() - gestartet));
-        const leer = await warteAufProzessgruppe(child.pid, restMs, windows ? { prozesse: () => sitzungsProzesse(marke) } : {});
+        const leer = await warteAufProzessgruppe(child.pid, restMs, {
+          vermerk: (text) => log(`  Hinweis: ${text}`),
+          ...(windows ? { prozesse: () => sitzungsProzesse(marke) } : {}),
+        });
         if (!leer) {
           log(`  Hinweis: Nach dem Ende der Session liefen noch Prozesse ihrer Gruppe, als die Frist ablief — die folgende Messung kann von ihnen gestoert sein.`);
         }

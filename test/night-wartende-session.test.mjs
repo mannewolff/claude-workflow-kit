@@ -37,7 +37,7 @@ import { tmpdir } from "node:os";
 
 import {
   wartendeSession, wartendVermerk, rundenGrund, bashZeitlimit, BASH_RESERVE_MS, WARTEND_ANKER, KETTE_ZUSATZ, REVIEW_REST_ANKER,
-  sessionUmgebung, SITZUNG_MARKE, sitzungsSuche, sitzungsPids, warteAufProzessgruppe, baumBeendenAufruf,
+  sessionUmgebung, SITZUNG_MARKE, sitzungsSuche, sitzungsPids, sitzungsProzesse, warteAufProzessgruppe, baumBeendenAufruf,
 } from "../kit/night.mjs";
 // Die Stufen der Nacht-Kette (night-57, night-58) laufen gegen dieselbe Fixture wie die
 // uebrigen Ketten-Tests. Als Namensraum eingebunden, weil dieser Datei eigene Helfer
@@ -195,9 +195,11 @@ test("[night-25] die Vorpruefung startet erst, wenn kein Prozess der Session meh
     // Seit Issue #1089 liegen die Dateien der Runde im Stash statt im Baum.
     const gesichert = spawnSync("git", ["ls-tree", "-r", "--name-only", "stash@{0}^3"], { cwd: dir, encoding: "utf-8" }).stdout.split("\n");
     assert.ok(gesichert.includes("bg-ende.txt"), "der Hintergrundlauf muss gelaufen sein, sonst prueft der Test nichts");
+    // Das Ende der Runner-Ausgabe steht in der Meldung (Issue #1174): Unter Windows ist sie
+    // der einzige Weg zu erfahren, ob die Suche nach der Marke scheiterte oder nichts fand.
     assert.ok(
       !gesichert.includes("verletzung.txt") && !existsSync(join(dir, "verletzung.txt")),
-      "die Vorpruefung lief, waehrend der Hintergrundlauf der Session noch lief",
+      `die Vorpruefung lief, waehrend der Hintergrundlauf der Session noch lief:\n${res.stdout.slice(-3000)}`,
     );
     // Seit Issue #1089 (E14) gehen die Reste in den Stash und die Karte ins Backlog.
     assert.equal(board(dir, "issue", "get", id).status, "backlog", "die Karte bliebe sonst in Ready und liefe erneut");
@@ -244,6 +246,69 @@ test("[night-25] unter Windows endet das Warten an der Frist, wenn ein Prozess d
     plattform: "win32", pollMs: 1, prozesse: () => [11], jetzt: () => (uhr += 300),
   });
   assert.equal(res, false);
+});
+
+// Die Erkennung selbst unter `plattform: "win32"` (Issue #1174): Die Abfrage ist
+// eingespielt und liefert aus einer festen Prozessliste die Windows-PIDs der Prozesse, die
+// die gesuchte Marke tragen — so, wie es die Suche in der Git Bash tut.
+const prozessListe = [
+  { winpid: 11, umgebung: { [SITZUNG_MARKE]: "marke-a" } },
+  { winpid: 12, umgebung: { [SITZUNG_MARKE]: "marke-b" } },
+  { winpid: 13, umgebung: {} },
+];
+const eingespielt = (liste) => (marke) => ({
+  status: 0,
+  stdout: liste.filter((p) => p.umgebung[SITZUNG_MARKE] === marke).map((p) => `${p.winpid}\n`).join(""),
+});
+
+test("[night-25] unter Windows erkennt der Runner die Prozesse mit der Marke der Session", () => {
+  assert.deepEqual(sitzungsProzesse("marke-a", { abfrage: eingespielt(prozessListe) }), [11]);
+  assert.deepEqual(sitzungsProzesse("marke-c", { abfrage: eingespielt(prozessListe) }), []);
+});
+
+test("[night-25] unter Windows wartet der Runner, solange ein Prozess mit der Marke laeuft", async () => {
+  const liste = [...prozessListe];
+  let gefragt = 0;
+  const abfrage = (marke) => {
+    gefragt += 1;
+    // Zweimal laeuft der Hintergrundlauf der Session noch, vor der dritten Abfrage endet er.
+    if (gefragt === 3) liste.splice(0, 1);
+    return eingespielt(liste)(marke);
+  };
+  const vermerke = [];
+  const leer = await warteAufProzessgruppe(4711, 60_000, {
+    plattform: "win32", pollMs: 1, prozesse: () => sitzungsProzesse("marke-a", { abfrage }), vermerk: (t) => vermerke.push(t),
+  });
+  assert.equal(leer, true);
+  assert.equal(gefragt, 3, "gewartet wird, bis kein Prozess mit der Marke mehr laeuft");
+  assert.deepEqual(vermerke, []);
+});
+
+test("[night-25] unter Windows geht der Runner sofort weiter, wenn kein Prozess die Marke traegt", async () => {
+  let gefragt = 0;
+  const abfrage = (marke) => (gefragt++, eingespielt(prozessListe)(marke));
+  const leer = await warteAufProzessgruppe(4711, 60_000, {
+    plattform: "win32", pollMs: 1, prozesse: () => sitzungsProzesse("marke-c", { abfrage }), vermerk: () => assert.fail("kein Vermerk"),
+  });
+  assert.equal(leer, true);
+  assert.equal(gefragt, 1);
+});
+
+test("[night-25] scheitert unter Windows die Abfrage der Prozessliste, steht das im Protokoll und der Runner geht weiter", async () => {
+  for (const [fall, abfrage] of [
+    ["Exitcode", () => ({ status: 2, stdout: "", stderr: "grep: kaputt" })],
+    ["Startfehler", () => ({ status: null, error: new Error("spawn ENOENT") })],
+    ["keine Git Bash", () => ({ fehler: "Git Bash nicht gefunden" })],
+  ]) {
+    assert.throws(() => sitzungsProzesse("marke-a", { abfrage }), /Prozessliste/, fall);
+    const vermerke = [];
+    const leer = await warteAufProzessgruppe(4711, 60_000, {
+      plattform: "win32", pollMs: 1, prozesse: () => sitzungsProzesse("marke-a", { abfrage }), vermerk: (t) => vermerke.push(t),
+    });
+    assert.equal(leer, true, `${fall}: der Runner macht weiter wie bisher`);
+    assert.equal(vermerke.length, 1, `${fall}: genau ein Vermerk`);
+    assert.match(vermerke[0], /Prozessliste/, fall);
+  }
 });
 
 test("[night-25] unter Windows beendet taskkill die Wurzel und die Prozesse mit der Marke der Session", () => {
