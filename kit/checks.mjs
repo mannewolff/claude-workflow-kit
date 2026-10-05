@@ -1206,12 +1206,8 @@ function settingsEnv() {
  * run build"), die Operatoren und Umleitungen enthalten darf. Ohne Shell gaebe es
  * das Feature nicht.
  *
- * Statt fest "sh" zu starten (das es unter Windows nicht gibt, Issue #199) waehlt
- * Node mit shell:true die Shell der Plattform: /bin/sh auf POSIX, die ComSpec-Shell
- * (im Regelfall cmd.exe) unter Windows. Bewusst nicht PowerShell: Der Wert ist eine
- * Nutzer-Konfiguration, und cmd.exe ist das, was ein Windows-Nutzer beim Eintragen
- * eines Build-Kommandos erwartet; PowerShell haette zudem eine eigene
- * Operator-Syntax (kein && vor Version 7).
+ * Die Shell ist auf POSIX /bin/sh, unter Windows die Git Bash (Issue #1176, vorher
+ * die ComSpec-Shell, Issue #199) — siehe `kommandoStart`.
  *
  * PATH-Aufloesung bewusst (S4036, Issue #183).
  *
@@ -1219,7 +1215,18 @@ function settingsEnv() {
  * durchgereicht: nur so steht sie garantiert zwischen der eigenen Kopf- und
  * Fusszeile und nicht irgendwo dazwischen.
  */
-function kommandoAusfuehren(cmd, env, { grenzeMs = Infinity, fristMs = HAENGEN_FRIST_MS } = {}) {
+function kommandoAusfuehren(cmd, env, grenzen = {}) {
+  // board.mjs nur unter Windows (Issue #1176): Dort steht die Suche nach der Git Bash.
+  const board = process.platform === "win32" ? nachbarBoard() : null;
+  return Promise.resolve(board).then((geladen) => {
+    const start = kommandoStart(cmd, { board: geladen, env });
+    if (start.fehler) return { gruen: false, ausgabe: `${start.fehler}\n`, haengend: false, code: null };
+    return startAusfuehren(start, env, grenzen);
+  });
+}
+
+/** Startet eine Kommandozeile nach `kommandoStart` und sammelt ihr Ergebnis ein. */
+function startAusfuehren(start, env, { grenzeMs = Infinity, fristMs = HAENGEN_FRIST_MS } = {}) {
   // Asynchron seit Issue #1070 (Plan #1066): Gleichzeitige Kindprozesse gehen mit
   // `spawnSync` nicht. Die Ausgabe bleibt, wie sie war — erst stdout, dann stderr —,
   // und wird als Ganzes dekodiert, damit kein Zeichen an einer Stueckgrenze zerfaellt.
@@ -1245,12 +1252,12 @@ function kommandoAusfuehren(cmd, env, { grenzeMs = Infinity, fristMs = HAENGEN_F
     // endlos. `ignore` ist /dev/null: Er sieht sofort Ende-der-Eingabe.
     //
     // Eine eigene Prozessgruppe (`detached`, Issue #1077; nur auf POSIX, siehe
-    // `startOptionen`, Issue #1123): Mit `shell: true` haengt der
-    // eigentliche Haenger als Enkel unter der Shell, etwa `node --test` -> `board.mjs`.
+    // `startOptionen`, Issue #1123): Gestartet wird die Shell, und der
+    // eigentliche Haenger haengt als Enkel unter ihr, etwa `node --test` -> `board.mjs`.
     // Nur ueber die Gruppe erreicht ihn der Abbruch — ein Weg ueber die Prozessliste
     // (`ps`) scheitert in der Sandbox der Sessions. Damit die Gruppe beim Abbruch des
     // AUFRUFERS nicht verwaist, beendet `laufendeGruppenBeenden` sie mit (siehe dort).
-    const kind = spawn(cmd, { cwd: process.cwd(), env, ...startOptionen() });
+    const kind = spawn(start.befehl, start.args, { cwd: process.cwd(), env: { ...env, ...start.umgebung }, ...start.optionen, ...startOptionen() });
     if (kind.pid) LAUFENDE_GRUPPEN.add(kind.pid);
     kind.stdout.on("data", (stueck) => stdout.push(stueck));
     kind.stderr.on("data", (stueck) => stderr.push(stueck));
@@ -1296,12 +1303,52 @@ const LAUFENDE_GRUPPEN = new Set();
  * zuverlaessig erreicht — in der CI fehlten dort Fehlermerkmale und Guete-Werte.
  */
 export function startOptionen(plattform = process.platform) {
-  return { shell: true, stdio: ["ignore", "pipe", "pipe"], detached: plattform !== "win32" };
+  return { stdio: ["ignore", "pipe", "pipe"], detached: plattform !== "win32" };
+}
+
+/**
+ * Wie eine konfigurierte Kommandozeile startet (Issue #1176). Liefert
+ * `{ befehl, args, optionen, umgebung, fehler }`; gestartet wird `befehl` mit `args`, dazu
+ * `optionen` zu den eigenen spawn-Optionen und `umgebung` zur eigenen Umgebung.
+ *
+ * Auf POSIX `/bin/sh -c <zeile>` — dasselbe, was Node mit der Shell-Option startete. Unter
+ * Windows die Git Bash statt `cmd.exe`: Die Kommandozeilen der Projekte und die Fixtures der
+ * Tests sind POSIX-Syntax, und unter `cmd.exe` liefen sie mit anderer Syntax und anderem
+ * Ergebnis. Gefunden wird sie ueber `gitBashPfad`, gestartet ueber `spawnAufruf` aus
+ * board.mjs (#1131, #1143) — nie `bash` ueber den PATH, das ist unter Windows haeufig der
+ * WSL-Starter. Fehlt sie, startet nichts, und `fehler` traegt die Meldung von `gitBashPfad`;
+ * ein Rueckfall auf `cmd.exe` liefe still mit anderer Syntax.
+ *
+ * `board` ist das Modul board.mjs (unter Windows Pflicht, `null`, wenn es fehlt); Plattform,
+ * Umgebung und Dateisystem sind fuer die Tests injizierbar.
+ */
+export function kommandoStart(cmd, { plattform = process.platform, board, env = process.env, existiert } = {}) {
+  if (plattform !== "win32") return { befehl: "/bin/sh", args: ["-c", cmd], optionen: {}, umgebung: {}, fehler: null };
+  const nichtStartbar = (fehler) => ({ befehl: null, args: [], optionen: {}, umgebung: {}, fehler });
+  if (!board) return nichtStartbar("board.mjs fehlt neben checks.mjs — ohne ihn findet checks.mjs unter Windows die Git Bash nicht.");
+  const { pfad, fehler } = board.gitBashPfad({ env, plattform, ...(existiert ? { existiert } : {}) });
+  if (!pfad) return nichtStartbar(fehler);
+  const aufruf = board.spawnAufruf(pfad, ["-c", cmd], { gitBash: true });
+  return { befehl: aufruf.befehl, args: aufruf.args, optionen: aufruf.optionen, umgebung: { ...board.GIT_BASH_UMGEBUNG }, fehler: null };
+}
+
+/**
+ * board.mjs neben dieser Datei, nur unter Windows geladen (Issue #1176): Dort steht die Suche
+ * nach der Git Bash. Auf POSIX bleibt checks.mjs eine Einzeldatei ohne Nachbarn. Liefert
+ * `null`, wenn der Nachbar fehlt oder nicht ladbar ist.
+ */
+async function nachbarBoard() {
+  try {
+    return await import(new URL("./board.mjs", import.meta.url).href);
+  } catch {
+    return null;
+  }
 }
 
 /**
  * Wie ein Baum beendet wird (Issue #1123): auf POSIX ein Signal an die Prozessgruppe, unter
- * Windows `taskkill /T /F`, denn ein Signal an die PID erreichte nur die `cmd.exe`, und ihre
+ * Windows `taskkill /T /F`, denn ein Signal an die PID erreichte nur die Shell (seit Issue
+ * #1176 die Git Bash), und ihre
  * Enkel hielten das Arbeitsverzeichnis fest. Unter Windows gibt es kein mildes SIGTERM fuer
  * einen Baum; beide Signale werden zum harten Abbruch.
  */

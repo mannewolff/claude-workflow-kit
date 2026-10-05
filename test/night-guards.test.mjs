@@ -16,7 +16,8 @@ import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, read
 import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
-import { findeImPath } from "../kit/board.mjs";
+import { findeImPath, gitBashPfad, GIT_BASH_UMGEBUNG } from "../kit/board.mjs";
+import { konfigKommandoStart } from "../kit/night.mjs";
 
 // Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
 // kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
@@ -540,8 +541,7 @@ test("Salvage-Vorpruefung: kaputtes settings.json faellt aus, settings.local.jso
 // --- Plattform-Shell der buildChecks (#199) ---
 
 // buildChecks und formatFixCommand sind frei konfigurierte Kommandozeilen und laufen
-// deshalb in der Shell der Plattform (shell:true) statt in einem fest verdrahteten sh,
-// das es unter Windows nicht gibt. Der Beleg dafuer ist ein Check, der ohne Shell gar
+// deshalb in einer Shell — /bin/sh auf POSIX, die Git Bash unter Windows (Issue #1176). Der Beleg dafuer ist ein Check, der ohne Shell gar
 // nicht ausfuehrbar waere: Operator-Verkettung und eine Umgebungsvariable.
 test("buildChecks laufen in einer Shell: Verkettung und Variablen werden ausgewertet", () => {
   const dir = setupProjekt("night-guard-shell-", {
@@ -570,6 +570,39 @@ test("buildChecks laufen in einer Shell: Verkettung und Variablen werden ausgewe
     assert.match(res.stdout, new RegExp(`Salvage erfolgreich[\\s\\S]*Issue #${id} in In review`));
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Unter Windows laufen buildChecks und formatFixCommand ueber die Git Bash statt ueber
+// `cmd.exe` (Issue #1176), auf POSIX ueber `/bin/sh`, beide mit der Kommandozeile als
+// `-c`-Argument. Ohne Git Bash startet nichts, und die Meldung ist die von `gitBashPfad`.
+const BASH_1176 = String.raw`C:\Program Files\Git\bin\bash.exe`;
+
+test("[1176] buildChecks und formatFixCommand starten unter Windows in der Git Bash mit -c", () => {
+  const start = konfigKommandoStart("mvn spotless:apply && echo ok", {
+    plattform: "win32",
+    env: { CLAUDE_CODE_GIT_BASH_PATH: BASH_1176 },
+    existiert: (p) => p === BASH_1176,
+  });
+  assert.equal(start.fehler, null);
+  assert.equal(start.befehl, BASH_1176);
+  assert.equal(start.args.length, 2);
+  assert.match(start.args[0], /^"?-c"?$/);
+  assert.match(start.args[1], /mvn spotless:apply && echo ok/);
+  assert.deepEqual(start.umgebung, { ...GIT_BASH_UMGEBUNG });
+});
+
+test("[1176] ohne Git Bash startet unter Windows nichts, die Meldung kommt von gitBashPfad", () => {
+  const start = konfigKommandoStart("mvn verify", { plattform: "win32", env: { PATH: "" }, existiert: () => false });
+  assert.equal(start.befehl, null);
+  assert.ok(start.fehler);
+  assert.equal(start.fehler, gitBashPfad({ env: { PATH: "" }, existiert: () => false }).fehler);
+});
+
+test("[1176] auf POSIX starten buildChecks und formatFixCommand unveraendert in /bin/sh", () => {
+  for (const plattform of ["linux", "darwin"]) {
+    const start = konfigKommandoStart("mvn verify && echo ok", { plattform });
+    assert.deepEqual(start, { befehl: "/bin/sh", args: ["-c", "mvn verify && echo ok"], optionen: {}, umgebung: {}, fehler: null });
   }
 });
 

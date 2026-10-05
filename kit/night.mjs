@@ -4618,6 +4618,35 @@ export function posixShell({ env = process.env, plattform = process.platform, ex
 }
 
 /**
+ * Wie eine konfigurierte Kommandozeile startet — buildChecks und formatFixCommand (Issue
+ * #1176). Liefert `{ befehl, args, optionen, umgebung, fehler }`; gestartet wird `befehl` mit
+ * `args`, dazu `optionen` zu den eigenen spawn-Optionen und `umgebung` zur eigenen Umgebung.
+ *
+ * Auf POSIX `/bin/sh -c <zeile>`, dasselbe wie vorher mit der Shell-Option von spawn. Unter Windows die
+ * Git Bash aus `posixShell` statt `cmd.exe` — dieselbe Regel wie `kommandoStart` in
+ * checks.mjs. Fehlt sie, startet nichts, und `fehler` ist die Meldung von `gitBashPfad`.
+ * `umgebung` reicht Plattform, Umgebung und Dateisystem an `posixShell` durch (Tests).
+ */
+export function konfigKommandoStart(kommando, umgebung = {}) {
+  const shell = posixShell(umgebung);
+  if (shell.fehler) return { befehl: null, args: [], optionen: {}, umgebung: {}, fehler: shell.fehler };
+  if (!shell.gitBash) return { befehl: "/bin/sh", args: ["-c", kommando], optionen: {}, umgebung: {}, fehler: null };
+  const aufruf = spawnAufruf(shell.pfad, ["-c", kommando], shell);
+  return { befehl: aufruf.befehl, args: aufruf.args, optionen: aufruf.optionen, umgebung: shell.umgebung, fehler: null };
+}
+
+/**
+ * Faehrt eine konfigurierte Kommandozeile synchron (Issue #1176) und liefert das Ergebnis von
+ * `spawnSync`; ohne Git Bash unter Windows `{ status: null, stdout: "", stderr: <Meldung> }`.
+ * PATH-Aufloesung bewusst (S4036, Issue #183).
+ */
+function konfigKommandoSync(kommando, env) {
+  const start = konfigKommandoStart(kommando);
+  if (start.fehler) return { status: null, stdout: "", stderr: `${start.fehler}\n` };
+  return spawnSync(start.befehl, start.args, { ...start.optionen, cwd: process.cwd(), encoding: "utf-8", env: { ...env, ...start.umgebung } });
+}
+
+/**
  * Die Kommandozeile einer Kommando-Stufe, wie sie in den Shell-String kommt (Issue #1143).
  *
  * Unter Windows ist das Programm oft ein Pfad mit Backslashes. Die Git Bash liest einen
@@ -5968,16 +5997,9 @@ function paketstufenChecks(cfg) {
 // run build"), die Operatoren und Umleitungen enthalten darf. Ohne Shell gaebe es das
 // Feature nicht.
 //
-// Statt fest "sh" zu starten (das es unter Windows nicht gibt, Issue #199) waehlt
-// Node mit shell:true die Shell der Plattform: /bin/sh auf POSIX, die ComSpec-Shell
-// (im Regelfall cmd.exe) unter Windows. Bewusst nicht PowerShell: Der Wert ist eine
-// Nutzer-Konfiguration, und cmd.exe ist das, was ein Windows-Nutzer beim Eintragen
-// eines Build-Kommandos erwartet; PowerShell haette zudem eine eigene Operator-Syntax
-// (kein && vor Version 7).
-//
-// Folge fuer die Konfiguration: buildChecks sind damit potenziell plattformspezifisch.
-// Ein `mvn verify` laeuft ueberall, eine Verkettung mit && oder eine Umleitung nicht
-// zwingend. Das steht so im Nachtbetrieb-Kapitel der Doku.
+// Die Shell ist /bin/sh auf POSIX und unter Windows die Git Bash (Issue #1176, vorher die
+// ComSpec-Shell, Issue #199) — siehe `konfigKommandoStart`. Damit gilt fuer die
+// buildChecks auf jeder Plattform dieselbe POSIX-Syntax.
 //
 // PATH-Aufloesung bewusst (S4036, Issue #183).
 //
@@ -6125,7 +6147,7 @@ function runBuildChecksSync(cfg) {
   for (const eintrag of paketstufenChecks(cfg)) {
     const cmd = typeof eintrag === "string" ? eintrag : eintrag.cmd;
     pulsSchreiben();
-    const res = spawnSync(cmd, { cwd: process.cwd(), encoding: "utf-8", env, shell: true });
+    const res = konfigKommandoSync(cmd, env);
     pulsSchreiben();
     const ausgabe = `${res.stdout || ""}${res.stderr || ""}`;
     output += `$ ${cmd}\n${ausgabe}`;
@@ -6209,9 +6231,11 @@ function verifyChecksForSalvage(cfg, karte) {
   if (!fixCmd) return { ok: false, output: first.output, formatFixCmd: null, rotesKommando: first.rotesKommando };
 
   log(`  buildChecks rot — einmaliger Format-Fix wird angewendet: ${fixCmd}`);
-  // fixCmd kommt aus der Config und braucht deshalb die Shell der Plattform
-  // (Issue #199). PATH-Aufloesung bewusst (S4036, Issue #183).
-  spawnSync(fixCmd, { cwd: process.cwd(), encoding: "utf-8", env: checkEnv(), shell: true });
+  // fixCmd kommt aus der Config und braucht deshalb eine Shell (Issue #199), unter Windows
+  // die Git Bash (Issue #1176). Startet sie nicht, steht das im Log, und der zweite
+  // Durchgang bleibt rot.
+  const fix = konfigKommandoSync(fixCmd, checkEnv());
+  if (fix.status === null && fix.stderr) log(`  Format-Fix nicht gestartet: ${fix.stderr.trim()}`);
 
   const second = runChecksCliSync(karte);
   if (!second.ok) return { ok: false, output: second.output, formatFixCmd: null, rotesKommando: second.rotesKommando };

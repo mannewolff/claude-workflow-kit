@@ -12,7 +12,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { startOptionen, baumBeendenAufruf } from "../kit/checks.mjs";
+import * as boardModul from "../kit/board.mjs";
+import { startOptionen, baumBeendenAufruf, kommandoStart } from "../kit/checks.mjs";
 
 test("[1123] unter Windows startet ein Kommando ohne Abkoppeln, auf POSIX in eigener Gruppe", () => {
   assert.equal(startOptionen("win32").detached, false);
@@ -20,7 +21,6 @@ test("[1123] unter Windows startet ein Kommando ohne Abkoppeln, auf POSIX in eig
   assert.equal(startOptionen("darwin").detached, true);
   for (const plattform of ["win32", "linux", "darwin"]) {
     const o = startOptionen(plattform);
-    assert.equal(o.shell, true, `${plattform}: ohne Shell gaebe es konfigurierte Kommandozeilen nicht`);
     assert.deepEqual(o.stdio, ["ignore", "pipe", "pipe"], `${plattform}: stdin ignore (Issue #1076), Ausgabe als Pipe`);
   }
 });
@@ -34,4 +34,53 @@ test("[1123] unter Windows beendet taskkill den ganzen Baum, fuer SIGTERM wie fu
 test("[1123] auf POSIX geht das Signal an die Prozessgruppe", () => {
   assert.deepEqual(baumBeendenAufruf(4711, "SIGTERM", "linux"), { pid: -4711, signal: "SIGTERM" });
   assert.deepEqual(baumBeendenAufruf(4711, "SIGKILL", "darwin"), { pid: -4711, signal: "SIGKILL" });
+});
+
+// --- Die Shell der konfigurierten Kommandozeilen (Issue #1176) ---
+//
+// Unter Windows laufen die buildChecks ueber die Git Bash statt ueber `cmd.exe`, mit der
+// Kommandozeile als `-c`-Argument; auf POSIX bleibt `/bin/sh`. Ohne Git Bash startet nichts,
+// und die Pruefung endet rot mit der Meldung von `gitBashPfad`.
+
+const BASH_1176 = String.raw`C:\Program Files\Git\bin\bash.exe`;
+
+test("[1176] unter Windows startet eine Kommandozeile in der Git Bash mit -c", () => {
+  const start = kommandoStart("npm test && echo ok", {
+    plattform: "win32",
+    board: boardModul,
+    env: { CLAUDE_CODE_GIT_BASH_PATH: BASH_1176 },
+    existiert: (p) => p === BASH_1176,
+  });
+  assert.equal(start.fehler, null);
+  assert.equal(start.befehl, BASH_1176);
+  assert.equal(start.args.length, 2);
+  assert.match(start.args[0], /^"?-c"?$/);
+  assert.match(start.args[1], /npm test && echo ok/);
+  assert.deepEqual(start.umgebung, { ...boardModul.GIT_BASH_UMGEBUNG });
+});
+
+test("[1176] unter Windows ohne Git Bash startet nichts, die Meldung kommt von gitBashPfad", () => {
+  const start = kommandoStart("npm test", { plattform: "win32", board: boardModul, env: { PATH: "" }, existiert: () => false });
+  assert.equal(start.befehl, null);
+  assert.equal(start.fehler, boardModul.gitBashPfad({ env: { PATH: "" }, existiert: () => false }).fehler);
+  assert.ok(start.fehler);
+});
+
+test("[1176] unter Windows ohne board.mjs daneben startet nichts und sagt warum", () => {
+  const start = kommandoStart("npm test", { plattform: "win32", board: null });
+  assert.equal(start.befehl, null);
+  assert.match(start.fehler, /board\.mjs/);
+});
+
+test("[1176] auf POSIX bleibt /bin/sh mit -c", () => {
+  for (const plattform of ["linux", "darwin"]) {
+    const start = kommandoStart("npm test && echo ok", { plattform, board: null });
+    assert.deepEqual(start, { befehl: "/bin/sh", args: ["-c", "npm test && echo ok"], optionen: {}, umgebung: {}, fehler: null });
+  }
+});
+
+test("[1176] die spawn-Optionen tragen keine Shell mehr", () => {
+  for (const plattform of ["win32", "linux", "darwin"]) {
+    assert.equal(startOptionen(plattform).shell, undefined, `${plattform}: die Shell waehlt kommandoStart`);
+  }
 });
