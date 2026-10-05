@@ -13,7 +13,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, copyFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, copyFileSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -80,3 +80,25 @@ test("alle Kit-Dateien tragen dieselbe Versionskonstante", () => {
       `kit/${datei} traegt einen anderen KIT_VERSION-Wert als kit/board.mjs`);
   }
 });
+
+// Plan #1199 E2: kit/night.mjs und kit/board.mjs werden Einstieg, ihre Teile liegen
+// kuenftig unter kit/night/ und kit/board/. Die Zusage aus #170 bleibt: Als einzeln
+// kopierte Datei, ohne ihr Teilverzeichnis daneben, beantwortet der Einstieg --version
+// und --help. Ein Teil, der vor dieser Auskunft geladen wuerde, liesse diesen Fall rot werden.
+for (const datei of ["night.mjs", "board.mjs"]) {
+  test(`[E2] ${datei} beantwortet als Einstieg ohne sein Teilverzeichnis --version und --help`, () => {
+    const dir = mkdtempSync(join(tmpdir(), "kit-einstieg-"));
+    try {
+      copyFileSync(join(repoRoot, "kit", datei), join(dir, datei));
+      assert.deepEqual(readdirSync(dir), [datei], "neben dem Einstieg darf nichts liegen");
+      for (const flag of ["--version", "--help"]) {
+        const res = spawnSync(process.execPath, [join(dir, datei), flag], { cwd: dir, encoding: "utf-8" });
+        assert.equal(res.status, 0, `${datei} ${flag} schlug fehl: ${res.stderr}`);
+        assert.doesNotMatch(res.stderr, /ERR_MODULE_NOT_FOUND|Cannot find module/,
+          `${datei} ${flag} laedt einen Teil vor der Auskunft: ${res.stderr}`);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}

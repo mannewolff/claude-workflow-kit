@@ -73,6 +73,8 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
     `const WIRKSAMKEIT_MJS_B64 = "";`,
     `const BEFUNDE_MJS_B64 = "";`,
     `const WORKTREE_MJS_B64 = "";`,
+    `const KIT_NIGHT_B64 = "";`,
+    `const KIT_BOARD_B64 = "";`,
     `const GATE_MJS_B64 = "";\nconst PRE_COMMIT_B64 = "";\nconst SKILLS_B64 = "";`,
     "",
   ].join("\n"));
@@ -416,3 +418,75 @@ test("[installer-14] --check meldet eine von Hand geaenderte Kopie unter .claude
 // Dass der Installer die Datei auch wirklich ins Zielprojekt schreibt, belegt
 // test/install-preise-blob.test.mjs an einem echten Installer-Lauf. Ein Regex auf
 // install.mjs waere hier die zweite, schwaechere Wahrheit ueber dieselbe Sache.
+
+// --- Teilverzeichnisse kit/night/ und kit/board/ (Issue #1209, Plan #1199 E1/E19) ---
+//
+// Die Teile kommen als Verzeichnis-Blob und tragen keinen eigenen Stempel: sync-blobs
+// verlangt in ihnen keine KIT_VERSION, kopiert sie aber wie die Werkzeuge nach .claude/kit/.
+
+function blobInhalt(dir, konstante) {
+  const b64 = readFileSync(join(dir, "install.mjs"), "utf-8").match(new RegExp(`const ${konstante} = "([^"]*)";`))[1];
+  return JSON.parse(Buffer.from(b64, "base64").toString("utf-8"));
+}
+
+test("[teile] ein Teil unter kit/night/ landet ungestempelt im Blob und in .claude/kit/night/", () => {
+  const dir = setupFixture("2.5.0", "2.5.0", { lokaleKopie: true });
+  try {
+    const probe = 'export const probe = "night";\n';
+    mkdirSync(join(dir, "kit", "night"), { recursive: true });
+    writeFileSync(join(dir, "kit", "night", "probe.mjs"), probe);
+
+    const res = syncBlobs(dir);
+    assert.equal(res.status, 0, `ein Teil ohne KIT_VERSION darf sync-blobs nicht abbrechen: ${res.stderr}${res.stdout}`);
+    assert.equal(readFileSync(join(dir, "kit", "night", "probe.mjs"), "utf-8"), probe, "der Teil wurde gestempelt");
+    assert.equal(readFileSync(join(dir, ".claude", "kit", "night", "probe.mjs"), "utf-8"), probe,
+      "der Teil fehlt in der Kopie unter .claude/kit/night/");
+    assert.deepEqual(blobInhalt(dir, "KIT_NIGHT_B64"), { "probe.mjs": probe });
+    assert.deepEqual(blobInhalt(dir, "KIT_BOARD_B64"), {}, "ein fehlendes kit/board/ ergibt einen leeren Blob");
+    assert.equal(existsSync(join(dir, ".claude", "kit", "board")), false, "ohne Teil entsteht kein Verzeichnis in der Kopie");
+    assert.equal(syncBlobs(dir, "--check").status, 0, "--check haette danach gruen sein muessen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[teile] --check wird rot, wenn ein Teil in der Kopie abweicht oder fehlt", () => {
+  const dir = setupFixture("2.5.0", "2.5.0", { lokaleKopie: true });
+  try {
+    mkdirSync(join(dir, "kit", "night"), { recursive: true });
+    mkdirSync(join(dir, "kit", "board"), { recursive: true });
+    writeFileSync(join(dir, "kit", "night", "probe.mjs"), "// night\n");
+    writeFileSync(join(dir, "kit", "board", "probe.mjs"), "// board\n");
+    assert.equal(syncBlobs(dir).status, 0);
+
+    writeFileSync(join(dir, ".claude", "kit", "night", "probe.mjs"), "von Hand verbogen\n");
+    rmSync(join(dir, ".claude", "kit", "board", "probe.mjs"));
+
+    const res = syncBlobs(dir, "--check");
+    assert.equal(res.status, 1, "--check haette die Teile melden muessen");
+    const meldung = res.stderr + res.stdout;
+    assert.match(meldung, /\.claude\/kit\/night\/probe\.mjs/, "die abweichende Kopie fehlt in der Meldung");
+    assert.match(meldung, /\.claude\/kit\/board\/probe\.mjs/, "die fehlende Kopie fehlt in der Meldung");
+    assert.doesNotMatch(meldung, /Blob-Drift/, "Blob-Drift faelschlich gemeldet");
+    assert.equal(readFileSync(join(dir, ".claude", "kit", "night", "probe.mjs"), "utf-8"), "von Hand verbogen\n",
+      "--check darf nichts schreiben");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[teile] --check wird rot, wenn ein geaenderter Teil noch nicht im Blob steht", () => {
+  const dir = setupFixture("2.5.0", "2.5.0");
+  try {
+    mkdirSync(join(dir, "kit", "night"), { recursive: true });
+    writeFileSync(join(dir, "kit", "night", "probe.mjs"), "// alt\n");
+    assert.equal(syncBlobs(dir).status, 0);
+    writeFileSync(join(dir, "kit", "night", "probe.mjs"), "// neu\n");
+
+    const res = syncBlobs(dir, "--check");
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /KIT_NIGHT_B64/, "die Meldung nennt die betroffene Konstante nicht");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

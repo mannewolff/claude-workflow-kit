@@ -188,6 +188,27 @@ test("[kitstand-3] Einsetzen ueberschreibt Kit, Skills und Regeltexte, loescht n
   });
 });
 
+test("[kitstand-3] Einsetzen bringt auch die Teile unter .claude/kit/night/ in den Baum (Issue #1209)", () => {
+  // Ohne git: Der Stand ist nur ein Verzeichnis mit installierter Kopie. kitStandEinsetzen
+  // kopiert .claude/kit/ rekursiv, ein Teil im Unterverzeichnis kommt deshalb mit.
+  const pfad = mkdtempSync(join(tmpdir(), "kitstand-teile-stand-"));
+  const baum = mkdtempSync(join(tmpdir(), "kitstand-teile-baum-"));
+  try {
+    mkdirSync(join(pfad, ".claude", "kit", "night"), { recursive: true });
+    mkdirSync(join(pfad, ".claude", "skills"), { recursive: true });
+    writeFileSync(join(pfad, ".claude", "kit", "night", "probe.mjs"), "// Teil des Stands\n");
+
+    kitStandEinsetzen({ commit: "abc", pfad }, baum);
+
+    assert.equal(readFileSync(join(baum, ".claude", "kit", "night", "probe.mjs"), "utf-8"), "// Teil des Stands\n",
+      "der Teil fehlt im eingesetzten Stand");
+  } finally {
+    kitStandFreigeben(baum);
+    rmSync(pfad, { recursive: true, force: true });
+    rmSync(baum, { recursive: true, force: true });
+  }
+});
+
 // --- Erkennung des Kindes (A2) ---
 
 test("[kitstand-4] Kind ist nur, wer KIT_STAND traegt UND aus dem Stand laeuft", () => {

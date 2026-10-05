@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
   mkdtempSync, mkdirSync, writeFileSync, readFileSync, symlinkSync,
-  rmSync, existsSync, statSync,
+  rmSync, existsSync, statSync, readdirSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -596,4 +596,38 @@ test("[kitstand-6] der ausgelieferte Hook startet das Gate des Stands nur mit Ma
     assert.equal(mit.status, 0, mit.stderr);
     assert.equal(readFileSync(spur, "utf-8"), "stand\n", "mit Markierung lief das Gate des Stands");
   });
+});
+
+// --- Teilverzeichnisse night/ und board/ (Issue #1209, Plan #1199 E1) ---
+//
+// Der Installer schreibt beide Verzeichnis-Blobs in Unterverzeichnisse des Kit-Verzeichnisses.
+// Ein leeres Verzeichnis ist zulaessig, solange noch kein Teil existiert; der Inhalt muss
+// genau dem Blob entsprechen.
+
+function teileImBlob(konstante) {
+  const src = readFileSync(INSTALLER, "utf-8");
+  const b64 = src.match(new RegExp(`const ${konstante} = "([^"]*)";`))[1];
+  return JSON.parse(Buffer.from(b64, "base64").toString("utf-8"));
+}
+
+test("[teile] der Installer legt night/ und board/ im Kit-Verzeichnis an, mit genau den Teilen des Blobs", () => {
+  mitFixture("install-teile-", (dir) => {
+    const res = installiere(dir, antworten("n"));
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    for (const [teil, konstante] of [["night", "KIT_NIGHT_B64"], ["board", "KIT_BOARD_B64"]]) {
+      const ziel = join(dir, ".claude", "kit", teil);
+      assert.ok(existsSync(ziel) && statSync(ziel).isDirectory(), `.claude/kit/${teil}/ fehlt`);
+      const erwartet = teileImBlob(konstante);
+      assert.deepEqual(readdirSync(ziel).sort(), Object.keys(erwartet).sort(), `.claude/kit/${teil}/ weicht vom Blob ab`);
+      for (const [datei, inhalt] of Object.entries(erwartet)) {
+        assert.equal(readFileSync(join(ziel, datei), "utf-8"), inhalt, `.claude/kit/${teil}/${datei} weicht vom Blob ab`);
+      }
+    }
+  });
+});
+
+test("[teile] die Teile stehen nicht in STAMPED", () => {
+  const sync = readFileSync(join(repoRoot, "tools", "sync-blobs.mjs"), "utf-8");
+  const stamped = sync.slice(sync.indexOf("const STAMPED"), sync.indexOf("\n", sync.indexOf("const STAMPED")));
+  assert.doesNotMatch(stamped, /night\/|board\//, "Teile tragen keinen Stempel (E19)");
 });
