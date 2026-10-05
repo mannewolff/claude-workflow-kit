@@ -363,3 +363,19 @@ test("[1153] Kindprozess --vorab: gescheiterter Push, Exit 2, Push-Folge ueber d
   assert.equal(JSON.parse(r.stdout.trim().split("\n").at(-1)).commit, sha);
   assert.deepEqual(pushes, ["push origin --delete windows-vorab", "push origin HEAD:refs/heads/windows-vorab"]);
 });
+
+test("[1171] Kindprozess --vorab: git laeuft mit LC_ALL=C, ein fehlender Zweig ist auch bei deutschem git harmlos", () => {
+  const meldung = `if (process.argv.includes("--delete")) { process.stderr.write(process.env.LC_ALL === "C" ? "error: unable to delete 'windows-vorab': remote ref does not exist" : "Fehler: Konnte 'windows-vorab' nicht löschen: Remote-Referenz existiert nicht."); process.exit(1); } process.stderr.write("rejected"); process.exit(1);`;
+  const { r, pushes } = vorabProzess(antwort([[JOB, "laeuft"]]), meldung);
+  const ergebnis = JSON.parse(r.stdout.trim().split("\n").at(-1));
+  assert.match(ergebnis.grund, /nicht anlegen/, ergebnis.grund);
+  assert.deepEqual(pushes, ["push origin --delete windows-vorab", "push origin HEAD:refs/heads/windows-vorab"]);
+});
+
+test("[1171] Kindprozess --vorab: ein anderer Loeschfehler bleibt ein Fehler", () => {
+  const { r, pushes } = vorabProzess(antwort([[JOB, "laeuft"]]), `process.stderr.write("ERROR: Permission to repo denied"); process.exit(1);`);
+  assert.equal(r.status, 2, r.stderr);
+  const ergebnis = JSON.parse(r.stdout.trim().split("\n").at(-1));
+  assert.match(ergebnis.grund, /nicht loeschen: ERROR: Permission to repo denied/);
+  assert.deepEqual(pushes, ["push origin --delete windows-vorab"]);
+});

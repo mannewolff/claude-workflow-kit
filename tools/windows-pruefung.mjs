@@ -226,18 +226,21 @@ export async function vorab(deps) {
   }
 }
 
+/** git meldet englisch, damit die Auswertung seiner Meldungen nicht an der Sprache haengt (Issue #1171). */
+const GIT_ENV = { ...process.env, LC_ALL: "C" };
+
 function standardDeps(cwd) {
   return {
     revParse: () => {
-      const r = spawnSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8" });
+      const r = spawnSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf8", env: GIT_ENV });
       return r.status === 0 ? r.stdout.trim() : "";
     },
     frageCiStatus: (sha) => frageCiStatus(cwd, sha, VORAB_ABFRAGE_FRIST_MS),
     push: (args) => {
       const ersatz = process.env.WINDOWS_PRUEFUNG_PUSH_CMD;
       const r = ersatz
-        ? spawnSync(process.execPath, [ersatz, ...args], { cwd, encoding: "utf8", timeout: PUSH_FRIST_MS })
-        : spawnSync("git", args, { cwd, encoding: "utf8", timeout: PUSH_FRIST_MS });
+        ? spawnSync(process.execPath, [ersatz, ...args], { cwd, encoding: "utf8", env: GIT_ENV, timeout: PUSH_FRIST_MS })
+        : spawnSync("git", args, { cwd, encoding: "utf8", env: GIT_ENV, timeout: PUSH_FRIST_MS });
       return { ok: !r.error && r.status === 0, stderr: r.error ? r.error.message : (r.stderr ?? "") };
     },
     jetzt: () => Date.now(),
@@ -269,7 +272,7 @@ function hook() {
     eingabe = null;
   }
   const cwd = process.cwd();
-  const rev = spawnSync("git", ["rev-parse", "--verify", "-q", "origin/main"], { cwd, encoding: "utf8" });
+  const rev = spawnSync("git", ["rev-parse", "--verify", "-q", "origin/main"], { cwd, encoding: "utf8", env: GIT_ENV });
   const sha = rev.status === 0 ? rev.stdout.trim() : "";
   if (!sha) return;
 
