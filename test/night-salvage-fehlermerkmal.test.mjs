@@ -23,6 +23,7 @@ import { tmpdir } from "node:os";
 // kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
@@ -57,6 +58,7 @@ function setupProjekt(buildChecks) {
     local: { issuesDir: "issues" },
   }, null, 2));
   writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\nsessions.log\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const [c, a] of [
     ["git", ["init", "-q"]],
     ["git", ["config", "user.email", "test@example.invalid"]],

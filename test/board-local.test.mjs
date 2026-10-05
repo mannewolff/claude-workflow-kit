@@ -11,6 +11,7 @@ import { spawnSync } from "node:child_process";
 import { join, basename } from "node:path";
 
 import { setupProjekt, runBoard, board } from "./helpers/board-fixture.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
 
@@ -293,6 +294,7 @@ test("comment haengt den Text mit Zeitstempel unten an", () => {
 // anderes.
 test("repo-name nutzt die origin-Remote, wenn es eine gibt", () => {
   mitProjekt((dir) => {
+    lfAttribute(join(dir, ".gitattributes"));
     for (const argumente of [
       ["init", "-q"],
       ["remote", "add", "origin", "https://example.invalid/besitzer/mein-repo.git"],

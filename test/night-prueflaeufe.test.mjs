@@ -27,6 +27,7 @@ import { UEBERNAHME_MARKE as CHECKS_UEBERNAHME_MARKE } from "../kit/checks.mjs";
 // kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 // Die buildChecks dieses Repos in Kurzform: zwei Gruppen als String, eine als Objekt mit
 // `cmd` — beide Formen muss der Beobachter lesen (E2).
@@ -475,6 +476,7 @@ function setupProjekt(praefix, buildChecks = ["true"]) {
     local: { issuesDir: "issues" },
   }, null, 2));
   writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*.log\n.claude/checks-summary.json\nbin/\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const [c, a] of [
     ["git", ["init", "-q"]],
     ["git", ["config", "user.email", "test@example.invalid"]],

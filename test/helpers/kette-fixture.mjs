@@ -19,6 +19,7 @@ import {
   HALT_FOLGESATZ, KLAEREN_LABEL, REVIEW_FERTIG_LABEL,
   PRUEFLAUF_BEFUNDE_ANKER, PRUEFLAUF_EINARBEITUNG_ANKER,
 } from "../../kit/night.mjs";
+import { lfAttribute } from "./zeilenenden.mjs";
 
 export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -82,6 +83,7 @@ export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz 
   // einem rohen `git add -A`, das diese Ausschluesse nicht kennt.
   writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\n.claude/checks-summary.json\n.claude/night-umsetzung.lock\n.claude/wegmarken.tsv\n.claude/bewegungen.tsv\n.claude/befunde.tsv\n.claude/befunde-vorschlaege.json\n.claude/befunde.md\n.claude/befunde.json\n.claude/lauf/\n.claude/protokolle/\nissues/\nhelfer/\n");
   writeFileSync(join(dir, "README.md"), "fixture\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
                    ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
     const res = spawnSync("git", a, { cwd: dir, encoding: "utf-8" });

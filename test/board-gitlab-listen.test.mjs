@@ -10,10 +10,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 
 import { runBoard, board, aufrufZeilen } from "./helpers/board-fixture.mjs";
 import { GITLAB_OPEN, mitProjekt } from "./helpers/board-gitlab-fixture.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 // --- Listen ---
 
@@ -153,6 +154,7 @@ test("comment legt eine Note an", () => {
 
 test("repo-name schneidet Besitzer und Repo aus der origin-URL", () => {
   mitProjekt((dir) => {
+    lfAttribute(join(dir, ".gitattributes"));
     for (const argumente of [
       ["init", "-q"],
       ["remote", "add", "origin", "https://gitlab.com/besitzer/mein-repo.git"],

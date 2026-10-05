@@ -21,6 +21,7 @@ import { tmpdir } from "node:os";
 
 import { cliStart } from "../install.mjs";
 import { posixShell, shellPfad } from "./helpers/checks-repo.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALLER = join(repoRoot, "install.mjs");
@@ -32,6 +33,7 @@ function fixture(praefix, { mitGit = true } = {}) {
   const dir = mkdtempSync(join(tmpdir(), praefix));
   mkdirSync(join(dir, "home"), { recursive: true });
   if (mitGit) {
+    lfAttribute(join(dir, ".gitattributes"));
     for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"], ["config", "user.name", "T"]]) {
       assert.equal(git(dir, ...a).status, 0);
     }

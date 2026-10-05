@@ -12,6 +12,7 @@ import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSy
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
@@ -36,6 +37,7 @@ function setupProjekt() {
     codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
   }, null, 2));
   writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\nsessions.log\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const [c, a] of [
     ["git", ["init", "-q"]],
     ["git", ["config", "user.email", "test@example.invalid"]],

@@ -22,6 +22,7 @@ import { findeImPath } from "../kit/board.mjs";
 // kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -52,6 +53,7 @@ function setupProjekt(praefix, config = {}) {
   // Alles, was die Tests selbst im Fixture ablegen, muss gitignored sein — sonst
   // schlaegt der Rest-Guard (#152) nach einer erfolgreichen Runde zu Recht an.
   writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*.log\nbin/\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const [c, a] of [
     ["git", ["init", "-q"]],
     ["git", ["config", "user.email", "test@example.invalid"]],

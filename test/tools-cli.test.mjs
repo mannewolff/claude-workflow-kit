@@ -16,6 +16,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "nod
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VERSION_TOOL = join(repoRoot, "tools", "version.mjs");
@@ -114,6 +115,7 @@ function mitGitInstall(praefix, { version = "1.26.0", committen = true, vorlauf 
     const res = spawnSync("git", args, { cwd: dir, encoding: "utf-8" });
     assert.equal(res.status, 0, `git ${args.join(" ")}: ${res.stderr}`);
   };
+  lfAttribute(join(dir, ".gitattributes"));
   git("init", "-q");
   git("config", "user.email", "test@example.invalid");
   git("config", "user.name", "Version Test");
@@ -280,6 +282,7 @@ function changelogFixture(praefix, { version = "1.17.0", commits = [] } = {}) {
     const res = spawnSync("git", args, { cwd: dir, encoding: "utf-8" });
     assert.equal(res.status, 0, `git ${args.join(" ")}: ${res.stderr}`);
   };
+  lfAttribute(join(dir, ".gitattributes"));
   git("init", "-q");
   git("config", "user.email", "test@example.invalid");
   git("config", "user.name", "Changelog Test");
@@ -336,6 +339,7 @@ test("changelog.mjs bricht ohne Startmarke in der Historie ab", () => {
   const dir = tempDir("changelog-nostart-");
   try {
     writeFileSync(join(dir, "install.mjs"), 'const VERSION = "1.17.0";\n', "utf-8");
+    lfAttribute(join(dir, ".gitattributes"));
     for (const args of [["init", "-q"], ["config", "user.email", "t@e.invalid"], ["config", "user.name", "T"],
       ["add", "-A"], ["commit", "-q", "-m", "Nur ein Commit ohne Marke"]]) {
       spawnSync("git", args, { cwd: dir, encoding: "utf-8" });

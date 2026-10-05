@@ -106,11 +106,11 @@ test("[checks-1004] das Inventar trennt freigestellte von unzugeordneten version
 
     const { inventar } = bereiche(dir);
 
-    // Versioniert: .gitignore, README.md, .claude/workflow.config.json, src/a.txt, docs/x.md, lose.txt.
-    assert.equal(inventar.dateien, 6, "gezaehlt wird, was git versioniert — die ungetrackte Datei nicht");
+    // Versioniert: .gitattributes, .gitignore, README.md, .claude/workflow.config.json, src/a.txt, docs/x.md, lose.txt.
+    assert.equal(inventar.dateien, 7, "gezaehlt wird, was git versioniert — die ungetrackte Datei nicht");
     assert.deepEqual(inventar.freigestellt, [{ pfad: "docs/x.md", grund: "reine Doku" }]);
-    assert.deepEqual(inventar.ohneZuordnung, [".gitignore", "README.md", "lose.txt"]);
-    assert.equal(inventar.ohneTreffer, 4, "freigestellte und unzugeordnete zusammen");
+    assert.deepEqual(inventar.ohneZuordnung, [".gitattributes", ".gitignore", "README.md", "lose.txt"]);
+    assert.equal(inventar.ohneTreffer, 5, "freigestellte und unzugeordnete zusammen");
   });
 });
 

@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 import { empfohlenesModell, aufgabenStufe, stufenEinstellung, stufeStartbar, modellFuerStufe, paketWahl, frischeStufenFelder } from "../kit/night.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -106,6 +107,7 @@ function setupProjekt(praefix, optionen = {}) {
   // Dirty-Guard stoppte den Lauf hart, bevor das zweite Paket ueberhaupt zieht.
   writeFileSync(join(dir, ".gitignore"),
     ".claude/night-run-*.log\n.claude/night-run-*.json\n.claude/workflow.config.json\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const [c, a] of [
     ["git", ["init", "-q"]],
     ["git", ["config", "user.email", "t@example.invalid"]],

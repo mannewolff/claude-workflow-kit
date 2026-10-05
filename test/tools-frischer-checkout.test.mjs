@@ -13,6 +13,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const werkzeug = join(repoRoot, "tools", "frischer-checkout.mjs");
@@ -38,6 +39,7 @@ function repoMit(dateien, config = {}) {
   schreibe(dir, ".gitignore", ".claude/*\n!.claude/workflow.config.json\n");
   schreibe(dir, ".claude/workflow.config.json", `${JSON.stringify(config)}\n`);
   for (const [name, inhalt] of Object.entries(dateien)) schreibe(dir, name, inhalt);
+  lfAttribute(join(dir, ".gitattributes"));
   git(dir, "init", "-q");
   git(dir, "config", "user.email", "t@example.invalid");
   git(dir, "config", "user.name", "T");

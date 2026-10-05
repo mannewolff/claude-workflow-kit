@@ -34,6 +34,7 @@ import { sicherheitsnetzGrund, ERSATZ_GRUND, ANKER_FEHLT } from "../kit/night.mj
 // kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
@@ -90,6 +91,7 @@ function setupProjekt(praefix, buildChecks = ["true"]) {
   // Pruef-Zusammenfassung bleiben ignoriert — sonst hinterliesse jeder Fake, der
   // prueft, einen Rest, und die erwartete Restliste bekaeme einen Eintrag zu viel.
   writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*.log\n.claude/checks-summary.json\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
                    ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
     assert.equal(run(dir, "git", a).status, 0);

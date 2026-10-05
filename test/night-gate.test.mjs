@@ -26,6 +26,7 @@ import { tmpdir } from "node:os";
 // kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -55,6 +56,7 @@ function setupProjekt({ buildChecks = ["true"] } = {}) {
   writeFileSync(join(dir, ".gitignore"), ".claude/*\n!.claude/workflow.config.json\nsessions.log\n");
   mkdirSync(join(dir, "kit"), { recursive: true });
   writeFileSync(join(dir, "kit", "bestand.txt"), "Bestand\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
                    ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
     assert.equal(run(dir, "git", a).status, 0);

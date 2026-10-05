@@ -30,6 +30,7 @@ import { ZEITLIMIT_ANKER, WARTEND_ANKER } from "../kit/night.mjs";
 
 // Die Sperre gegen echte Pflichtchecks aus einem Test heraus — wie in jedem night-Test.
 import "./helpers/checks-sperre.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
@@ -70,6 +71,7 @@ function setupProjekt(praefix, buildChecks) {
     local: { issuesDir: "issues" },
   }, null, 2));
   writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\n.claude/night-run-*.json\n.claude/checks-summary.json\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const [c, a] of [
     ["git", ["init", "-q"]],
     ["git", ["config", "user.email", "test@example.com"]],

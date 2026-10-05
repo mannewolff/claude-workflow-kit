@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import { writeFileSync, mkdirSync, chmodSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { setupProjekt, runBoard, runBoardAsync, starteServer, cmdAttrappe, MIT_DATEIRECHTEN } from "./helpers/board-fixture.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
 
@@ -160,6 +161,7 @@ test("code repo-name ohne origin-Remote liefert null statt zu raten", () => {
   try {
     // Ein git-Repo ohne origin: `git remote get-url origin` scheitert, und der
     // Adapter darf daraus keinen Namen erfinden.
+    lfAttribute(join(dir, ".gitattributes"));
     for (const args of [["init", "-q"], ["config", "user.email", "t@example.invalid"], ["config", "user.name", "T"]]) {
       assert.equal(spawnSync("git", args, { cwd: dir }).status, 0, `git ${args.join(" ")} schlug fehl`);
     }

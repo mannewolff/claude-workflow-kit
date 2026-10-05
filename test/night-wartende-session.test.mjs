@@ -48,6 +48,7 @@ import * as kette from "./helpers/kette-fixture.mjs";
 // kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
@@ -82,6 +83,7 @@ function setupProjekt(praefix, buildChecks) {
   // sieht der Rest-Guard sie als liegengebliebenen Rest — dieselbe Linie wie in
   // `night-ergebnisstand.test.mjs`.
   writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\n.claude/night-run-*.json\n.claude/checks-summary.json\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const [c, a] of [
     ["git", ["init", "-q"]],
     ["git", ["config", "user.email", "test@example.com"]],

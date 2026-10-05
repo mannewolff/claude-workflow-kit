@@ -20,6 +20,7 @@ import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSy
 import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -45,6 +46,7 @@ function setupProjekt(config = {}, praefix = "night-luecken-") {
   // Runner an seiner eigenen gitClean-Vorbedingung.
   writeFileSync(join(dir, ".gitignore"),
     ".claude/night-run-*.log\n.claude/workflow.config.local.json\nbin/\nclaude-aufruf\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
                    ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
     assert.equal(run(dir, "git", a).status, 0, `git ${a.join(" ")} schlug fehl`);

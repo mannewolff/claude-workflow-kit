@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 import { standSetzen, journalLesen, staendeNachtragen, nightStandLaden, boardUmgebung } from "../kit/night.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 // Unter Windows ist SIGTERM nicht abfangbar: `kill` beendet den Runner dort hart, ohne dass
 // sein Handler laeuft. Den Stand hinterlaesst dann der abgekoppelte Waechter (#1085, #1132),
@@ -48,6 +49,7 @@ function setupProjekt(extraConfig = {}) {
     codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" }, ...extraConfig,
   }, null, 2));
   writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\nsessions.log\nmarker\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const a of [["init", "-q"], ["config", "user.email", "test@example.invalid"], ["config", "user.name", "Night Test"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
     const res = run(dir, "git", a);
     assert.equal(res.status, 0, `git ${a.join(" ")} schlug fehl: ${res.stderr}`);

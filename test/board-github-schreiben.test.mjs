@@ -13,10 +13,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 
 import { runBoard, board, aufrufZeilen } from "./helpers/board-fixture.mjs";
 import { mitProjekt } from "./helpers/board-github-fixture.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 // --- Anlegen ---
 
@@ -108,6 +109,7 @@ test("repo-name faellt ohne nutzbares gh auf git-Remote und Verzeichnisnamen zur
   const gescheitertesGh = [{ match: "^repo view", stderr: "gh: not authenticated\n", exit: 1 }];
 
   mitProjekt((dir) => {
+    lfAttribute(join(dir, ".gitattributes"));
     for (const argumente of [
       ["init", "-q"],
       ["remote", "add", "origin", "https://example.invalid/besitzer/mein-repo.git"],

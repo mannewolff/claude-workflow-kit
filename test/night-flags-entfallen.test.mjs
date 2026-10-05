@@ -14,6 +14,7 @@ import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readdirSync, rmSyn
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -41,6 +42,7 @@ function setupProjekt(config = {}) {
     local: { issuesDir: "issues" }, ...config,
   }, null, 2));
   writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*.log\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
                    ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
     assert.equal(spawnSync("git", a, { cwd: dir, encoding: "utf-8" }).status, 0);

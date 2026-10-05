@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { REGELN, namenFunde, pruefeQuelle, skipFunde } from "../tools/windows-brueche.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const werkzeug = join(repoRoot, "tools", "windows-brueche.mjs");
@@ -462,6 +463,7 @@ test("[1160] Im Bestand kommen die Namen aus git ls-files, ohne echte Datei", ()
   const dir = wegwerf({});
   try {
     const git = (...args) => spawnSync("git", args, { cwd: dir, encoding: "utf-8" });
+    lfAttribute(join(dir, ".gitattributes"));
     assert.equal(git("init", "-q").status, 0);
     const blob = git("hash-object", "-w", "--stdin").stdout.trim();
     for (const name of ["kit/a.mjs", "kit/b|c.mjs"]) {
@@ -647,6 +649,9 @@ test("[1162] zeilenenden: git init mit .gitattributes oder autocrlf im selben He
   assert.deepEqual(zeilenFunde("test/a.test.mjs",
     "function repo(dir) {", "  git(dir, §G);", '  git(dir, "config", "core.autocrlf", "false");', "}"), []);
   assert.deepEqual(zeilenFunde("kit/a.mjs", "function repo(dir) {", "  git(dir, §G);", "}"), []);
+  // mehrzeilige Parameterliste: `} = {}) {` schliesst die Parameter, nicht die Funktion (#1168)
+  assert.deepEqual(zeilenFunde("test/a.test.mjs", "function repo(dir, {", "  stub = null,", "} = {}) {",
+    String.raw`  writeFileSync(join(dir, ".gitattributes"), "* text=auto eol=lf\n");`, "  git(dir, §G);", "}"), []);
   assert.deepEqual(zeilenFunde("test/a.test.mjs", 'const zeile = JSON.stringify({ subtype: §G });'), []);
   assert.deepEqual(zeilenFunde("test/a.test.mjs", "// Kein `git init`: git log scheitert"), []);
   // eine andere Funktion schreibt die .gitattributes: nicht derselbe Helfer
@@ -864,95 +869,7 @@ test("[1157] Das Fixture traegt genau einen Bruch der Art skips", () => {
 // der Bestand ist bis zur Reparatur nicht fundfrei. Wer repariert, streicht die Zeilen hier.
 // Je Fund ein Eintrag aus Datei und Art, ohne Zeile: Sonst braeche jede Bearbeitung einer
 // der Dateien diesen Test (Issue #1162).
-const BEKANNTE_BRUECHE = [
-  "test/befunde-vorschlag-worktree.test.mjs — zeilenenden", // #1168
-  "test/board-check-form-testhinweise.test.mjs — zeilenenden", // #1168
-  "test/board-github-schreiben.test.mjs — zeilenenden", // #1168
-  "test/board-gitlab-listen.test.mjs — zeilenenden", // #1168
-  "test/board-local.test.mjs — zeilenenden", // #1168
-  "test/board-rest-luecken.test.mjs — zeilenenden", // #1168
-  "test/board-ui-git.test.mjs — zeilenenden", // #1168
-  "test/changelog-release-ablauf.test.mjs — zeilenenden", // #1168
-  "test/helpers/checks-repo.mjs — zeilenenden", // #1168
-  "test/helpers/ergebnisstand-fixture.mjs — zeilenenden", // #1168
-  "test/helpers/ergebnisstand-fixture.mjs — zeilenenden", // #1168
-  "test/helpers/kette-fixture.mjs — zeilenenden", // #1168
-  "test/install-bereiche.test.mjs — zeilenenden", // #1168
-  "test/install-flow.test.mjs — zeilenenden", // #1168
-  "test/install-gate-hook.test.mjs — zeilenenden", // #1168
-  "test/install-protokoll-gitignore.test.mjs — zeilenenden", // #1168
-  "test/install-protokoll-gitignore.test.mjs — zeilenenden", // #1168
-  "test/install-protokoll-gitignore.test.mjs — zeilenenden", // #1168
-  "test/night-abschlussblock.test.mjs — zeilenenden", // #1168
-  "test/night-abschlussblock.test.mjs — zeilenenden", // #1168
-  "test/night-agent-model.test.mjs — zeilenenden", // #1168
-  "test/night-angehalten.test.mjs — zeilenenden", // #1168
-  "test/night-assignment.test.mjs — zeilenenden", // #1168
-  "test/night-auskunft.test.mjs — zeilenenden", // #1168
-  "test/night-auto-memory.test.mjs — zeilenenden", // #1168
-  "test/night-befunde-abschlussblock.test.mjs — zeilenenden", // #1168
-  "test/night-checks-bericht.test.mjs — zeilenenden", // #1168
-  "test/night-cli-wege.test.mjs — zeilenenden", // #1168
-  "test/night-dirty-failure.test.mjs — zeilenenden", // #1168
-  "test/night-dirty-success.test.mjs — zeilenenden", // #1168
-  "test/night-fachlich.test.mjs — zeilenenden", // #1168
-  "test/night-fehlerwege.test.mjs — zeilenenden", // #1168
-  "test/night-flags-entfallen.test.mjs — zeilenenden", // #1168
-  "test/night-gate.test.mjs — zeilenenden", // #1168
-  "test/night-geschuetzt-gate.test.mjs — zeilenenden", // #1168
-  "test/night-geschuetzt-halt.test.mjs — zeilenenden", // #1168
-  "test/night-guards.test.mjs — zeilenenden", // #1168
-  "test/night-guete-protokoll.test.mjs — zeilenenden", // #1168
-  "test/night-hinweise.test.mjs — zeilenenden", // #1168
-  "test/night-idee.test.mjs — zeilenenden", // #1168
-  "test/night-infra.test.mjs — zeilenenden", // #1168
-  "test/night-kette-worktree.test.mjs — zeilenenden", // #1168
-  "test/night-klaeren.test.mjs — zeilenenden", // #1168
-  "test/night-label-warn.test.mjs — zeilenenden", // #1168
-  "test/night-label.test.mjs — zeilenenden", // #1168
-  "test/night-laufmodell.test.mjs — zeilenenden", // #1168
-  "test/night-laufstand.test.mjs — zeilenenden", // #1168
-  "test/night-letzte-zweige.test.mjs — zeilenenden", // #1168
-  "test/night-luecken.test.mjs — zeilenenden", // #1168
-  "test/night-mensch.test.mjs — zeilenenden", // #1168
-  "test/night-modell.test.mjs — zeilenenden", // #1168
-  "test/night-nachtrest-stash.test.mjs — zeilenenden", // #1168
-  "test/night-nachweis-commit.test.mjs — zeilenenden", // #1168
-  "test/night-plan.test.mjs — zeilenenden", // #1168
-  "test/night-prueflaeufe.test.mjs — zeilenenden", // #1168
-  "test/night-pruefstand-felder.test.mjs — zeilenenden", // #1168
-  "test/night-restzweige.test.mjs — zeilenenden", // #1168
-  "test/night-review-gate.test.mjs — zeilenenden", // #1168
-  "test/night-salvage-ausnahmen.test.mjs — zeilenenden", // #1168
-  "test/night-salvage-endzustaende.test.mjs — zeilenenden", // #1168
-  "test/night-salvage-fehlermerkmal.test.mjs — zeilenenden", // #1168
-  "test/night-salvage-nachweis.test.mjs — zeilenenden", // #1168
-  "test/night-salvage-stream.test.mjs — zeilenenden", // #1168
-  "test/night-salvage.test.mjs — zeilenenden", // #1168
-  "test/night-stopp-grund.test.mjs — zeilenenden", // #1168
-  "test/night-stream-ohne-verbose.test.mjs — zeilenenden", // #1168
-  "test/night-timeout-group.test.mjs — zeilenenden", // #1168
-  "test/night-umgebung-paket.test.mjs — zeilenenden", // #1168
-  "test/night-verbose.test.mjs — zeilenenden", // #1168
-  "test/night-version-drift.test.mjs — zeilenenden", // #1168
-  "test/night-waechter.test.mjs — zeilenenden", // #1168
-  "test/night-wartende-session.test.mjs — zeilenenden", // #1168
-  "test/night-wirksamkeit-abschlussblock.test.mjs — zeilenenden", // #1168
-  "test/night-wirksamkeit-reste.test.mjs — zeilenenden", // #1168
-  "test/night-wirksamkeit-reste.test.mjs — zeilenenden", // #1168
-  "test/night-zeitabbruch-karte.test.mjs — zeilenenden", // #1168
-  "test/night-zeiten.test.mjs — zeilenenden", // #1168
-  "test/night-zustand-an-der-karte.test.mjs — zeilenenden", // #1168
-  "test/push-release-worktree.test.mjs — zeilenenden", // #1168
-  "test/tools-cli.test.mjs — zeilenenden", // #1168
-  "test/tools-cli.test.mjs — zeilenenden", // #1168
-  "test/tools-cli.test.mjs — zeilenenden", // #1168
-  "test/tools-frischer-checkout.test.mjs — zeilenenden", // #1168
-  "test/tools-windows-brueche.test.mjs — zeilenenden", // #1168
-  "test/tools-windows-pruefung.test.mjs — zeilenenden", // #1168
-  "test/workflow-config-merge.test.mjs — zeilenenden", // #1168
-  "test/workflow-config-merge.test.mjs — zeilenenden", // #1168
-];
+const BEKANNTE_BRUECHE = [];
 
 test("[1157] Der Bestand ist fundfrei bis auf die bekannten Brueche mit Karte (E15)", () => {
   const r = lauf([]);

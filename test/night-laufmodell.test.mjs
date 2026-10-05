@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 import { laufModell } from "../kit/night.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -72,6 +73,7 @@ function fixture({ night = null, lokal = null } = {}) {
   }, null, 2));
   if (lokal) writeFileSync(join(dir, ".claude", "workflow.config.local.json"), JSON.stringify(lokal, null, 2));
   writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\n.claude/night-run-*.json\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"], ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
     spawnSync("git", a, { cwd: dir, encoding: "utf-8" });
   }

@@ -17,6 +17,7 @@ import { spawnSync } from "node:child_process";
 
 import { pruefeForm } from "../kit/board.mjs";
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const PLAN_TITEL = "[Plan] Seitennavigation";
 
@@ -199,6 +200,7 @@ test("CLI ueber --body-file: im Git-Repo Exit 0 mit hinweise, auch aus einem Unt
       mkdirSync(join(dir, dirname(datei)), { recursive: true });
       writeFileSync(join(dir, datei), "export {};\n");
     }
+    lfAttribute(join(dir, ".gitattributes"));
     git(dir, "init", "-q");
     git(dir, "add", NAV, NAV_SPEC);
 

@@ -12,6 +12,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from "no
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const CHANGELOG = join(repoRoot, "tools", "changelog.mjs");
@@ -23,6 +24,7 @@ function git(dir, ...args) {
 /** Leeres Repo mit Identitaet und der Startmarke, ab der changelog.mjs liest. */
 function wegwerfRepo() {
   const dir = mkdtempSync(join(tmpdir(), "changelog-ablauf-"));
+  lfAttribute(join(dir, ".gitattributes"));
   git(dir, "init", "-q", "-b", "main");
   git(dir, "config", "user.email", "test@example.invalid");
   git(dir, "config", "user.name", "Test");

@@ -20,6 +20,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, exist
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const WERKZEUG = join(repoRoot, "kit", "worktree.mjs");
@@ -52,6 +53,7 @@ function setupRepo() {
   writeFileSync(join(dir, ".gitignore"), ".claude/*\n!.claude/workflow.config.json\n");
   writeFileSync(join(dir, ".claude", "workflow.config.json"), "{\"codeHost\":\"local\",\"issueTracker\":\"local\"}\n");
   writeFileSync(join(dir, "VERSION"), "1.0.0\n");
+  lfAttribute(join(dir, ".gitattributes"));
   git(dir, "init", "-q");
   git(dir, "config", "user.email", "t@example.invalid");
   git(dir, "config", "user.name", "T");

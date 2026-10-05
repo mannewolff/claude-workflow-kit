@@ -159,6 +159,7 @@
       "test/helpers/kette-fixture.mjs",
       "test/helpers/kette-umsetzung-fixture.mjs",
       "test/helpers/kitstand-fixture.mjs",
+      "test/helpers/zeilenenden.mjs",
       "test/fixtures/auskunft/**"
     ],
     "board": [
@@ -170,6 +171,7 @@
       "test/cli-*.test.mjs",
       "startboard.sh",
       "test/helpers/board-*.mjs",
+      "test/helpers/zeilenenden.mjs",
       "test/fixtures/cli-grammar.json",
       "test/fixtures/migrate-import-*.md"
     ],
@@ -186,6 +188,7 @@
       "test/helpers/checks-sperre.mjs",
       "test/helpers/haenger.mjs",
       "test/helpers/wachstum.mjs",
+      "test/helpers/zeilenenden.mjs",
       "test/fixtures/mvn-verify-*.log"
     ],
     "aufwand": [
@@ -201,7 +204,8 @@
     ],
     "befunde": [
       "kit/befunde.mjs",
-      "test/befunde-*.test.mjs"
+      "test/befunde-*.test.mjs",
+      "test/helpers/zeilenenden.mjs"
     ],
     "einstellungen": [
       "kit/einstellungen.mjs",
@@ -241,6 +245,7 @@
       "test/tools-*.test.mjs",
       "test/changelog*.test.mjs",
       "test/copy-*.test.mjs",
+      "test/helpers/zeilenenden.mjs",
       ".gitignore",
       "package.json",
       "package-lock.json"
@@ -263,6 +268,7 @@
       "test/push-*.test.mjs",
       "test/mitteilung-*.test.mjs",
       "test/vergleiche-*.test.mjs",
+      "test/helpers/zeilenenden.mjs",
       ".github/workflows/**",
       "docs-site/**",
       "package.json"

@@ -16,6 +16,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALLER = join(repoRoot, "install.mjs");
@@ -42,6 +43,7 @@ function installiere(dir, antworten) {
 test("[installer-12] der .gitignore-Block fuehrt beide Protokolle namentlich neben den Wegmarken", () => {
   const dir = fixture("install-protokolle-");
   try {
+    lfAttribute(join(dir, ".gitattributes"));
     spawnSync("git", ["init", "-q"], { cwd: dir, encoding: "utf-8" });
     const res = installiere(dir, PROJEKT_GITHUB);
     assert.equal(res.status, 0, res.stderr);
@@ -65,6 +67,7 @@ test("[installer-15] der Block fuehrt die beiden Befunde-Zustandsdateien, aber k
   // Plan-Pruefung zu #797).
   const dir = fixture("install-befunde-gitignore-");
   try {
+    lfAttribute(join(dir, ".gitattributes"));
     spawnSync("git", ["init", "-q"], { cwd: dir, encoding: "utf-8" });
     const res = installiere(dir, PROJEKT_GITHUB);
     assert.equal(res.status, 0, res.stderr);
@@ -88,6 +91,7 @@ test("[installer-16] der Block fuehrt die Stuecke von issue melden, und git igno
   // git nicht als Verzeichnisregel liest, stuende da und ignorierte nichts.
   const dir = fixture("install-berichte-gitignore-");
   try {
+    lfAttribute(join(dir, ".gitattributes"));
     spawnSync("git", ["init", "-q"], { cwd: dir, encoding: "utf-8" });
     const res = installiere(dir, PROJEKT_GITHUB);
     assert.equal(res.status, 0, res.stderr);

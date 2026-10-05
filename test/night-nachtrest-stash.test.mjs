@@ -22,6 +22,7 @@ import { tmpdir } from "node:os";
 // Eigener Sperrpfad je Testprozess (Issue #958): die Rettung faehrt das echte checks.mjs.
 import "./helpers/checks-sperre.mjs";
 import { UMSETZUNG_ERFOLG } from "./helpers/kette-fixture.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -57,6 +58,7 @@ function mitDir(fn) {
     }, null, 2));
     writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*\n.claude/checks-summary.json\n.claude/night-umsetzung.lock\n.claude/wegmarken.tsv\n.claude/bewegungen.tsv\n.claude/ausfuehrungen.tsv\n.claude/lauf/\n.claude/protokolle/\nissues/\nhelfer/\n");
     writeFileSync(join(dir, "code.txt"), "Bestand\n");
+    lfAttribute(join(dir, ".gitattributes"));
     git(dir, "init", "-q");
     git(dir, "config", "user.email", "test@example.invalid");
     git(dir, "config", "user.name", "Night Test");

@@ -12,6 +12,7 @@ import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, read
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -44,6 +45,7 @@ function setupProjekt() {
   // dieses Tests) sind gitignored, sonst waere der Tree nach dem Start dirty.
   writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\nsessions.log\n");
   // night.mjs verlangt einen sauberen Working Tree — alles committen.
+  lfAttribute(join(dir, ".gitattributes"));
   for (const [c, a] of [
     ["git", ["init", "-q"]],
     ["git", ["config", "user.email", "test@example.invalid"]],

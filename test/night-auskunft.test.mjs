@@ -23,6 +23,7 @@ import {
 // kit/checks.mjs ins Fixture, und ohne eigenen Pfad serialisierte die maschinenweite
 // Sperre die parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 /** Ein Bash-`tool_use`-Block. */
 function bash(command, id = "t1") {
@@ -248,6 +249,7 @@ function setupProjekt(praefix) {
     local: { issuesDir: "issues" },
   }, null, 2));
   writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*.log\n.claude/checks-summary.json\nbin/\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const [c, a] of [
     ["git", ["init", "-q"]],
     ["git", ["config", "user.email", "test@example.invalid"]],

@@ -24,6 +24,7 @@ import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSy
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 // Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
 // kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
@@ -102,6 +103,7 @@ function setupProjekt() {
   writeFileSync(join(dir, ".gitignore"), ".claude/*\n!.claude/workflow.config.json\nsessions.log\nchecklauf.log\n");
   mkdirSync(join(dir, "kit"), { recursive: true });
   writeFileSync(join(dir, "kit", "bestand.txt"), "Bestand\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
                    ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
     assert.equal(run(dir, "git", a).status, 0, `git ${a.join(" ")} schlug fehl`);

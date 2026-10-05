@@ -15,6 +15,7 @@ import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSy
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -57,6 +58,7 @@ function setupProjekt({ mitBoard = true, mitConfig = true, mitGit = true, config
   }
   writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\n");
   if (mitGit) {
+    lfAttribute(join(dir, ".gitattributes"));
     git(dir, "init", "-q");
     git(dir, "config", "user.email", "t@example.invalid");
     git(dir, "config", "user.name", "T");

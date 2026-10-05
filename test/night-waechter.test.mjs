@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 import { waechterStartOptionen } from "../kit/night.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -46,6 +47,7 @@ function setupProjekt() {
     codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
   }, null, 2));
   writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\nsessions.log\nmarker\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const a of [["init", "-q"], ["config", "user.email", "test@example.invalid"], ["config", "user.name", "Night Test"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
     const res = run(dir, "git", a);
     assert.equal(res.status, 0, `git ${a.join(" ")} schlug fehl: ${res.stderr}`);

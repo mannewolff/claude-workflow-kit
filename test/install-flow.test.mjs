@@ -27,6 +27,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, exist
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALLER = join(repoRoot, "install.mjs");
@@ -154,6 +155,7 @@ test("[installer-7] der Installer legt die Vorlagen bytegleich zur Repo-Vorlage 
 
 /** Legt ein echtes git-Repo im Fixture an, damit git check-ignore etwas zu pruefen hat. */
 function gitInit(dir) {
+  lfAttribute(join(dir, ".gitattributes"));
   spawnSync("git", ["init", "-q"], { cwd: dir, encoding: "utf-8" });
 }
 

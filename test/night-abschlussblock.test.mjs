@@ -35,6 +35,7 @@ import { worktreeAnlegen } from "../kit/night.mjs";
 // kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
@@ -117,6 +118,7 @@ function setupProjekt(praefix, { aufwandStub = stubMitErgebnis(ERGEBNIS_MIT_BEFU
   // sichtbar bleiben, sonst bewiese der Rest-Guard-Test unten nichts. Nur das
   // Textprotokoll und die Pruef-Zusammenfassung sind ignoriert.
   writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*.log\n.claude/checks-summary.json\nsessions.log\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const [c, a] of [
     ["git", ["init", "-q"]],
     ["git", ["config", "user.email", "test@example.invalid"]],
@@ -387,6 +389,7 @@ test("[night-47] der Spiegel nach .claude eines Worktrees laesst die Auswertung 
     writeFileSync(join(dir, ".gitignore"), ".claude/*\n!.claude/workflow.config.json\n");
     writeFileSync(join(dir, ".claude", "workflow.config.json"), '{"codeHost":"local","issueTracker":"local"}\n');
     writeFileSync(join(dir, "README.md"), "hallo\n");
+    lfAttribute(join(dir, ".gitattributes"));
     for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"], ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
       const res = spawnSync("git", a, { cwd: dir, encoding: "utf-8" });
       assert.equal(res.status, 0, `git ${a.join(" ")}: ${res.stderr}`);

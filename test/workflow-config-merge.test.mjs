@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
 import { mergeWorkflowConfig } from "../kit/board.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -252,6 +253,7 @@ function nightFixture(lokaleConfig) {
     writeFileSync(join(dir, ".claude", "workflow.config.local.json"), JSON.stringify(lokaleConfig, null, 2));
   }
   writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*.log\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"], ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
     spawnSync("git", a, { cwd: dir, encoding: "utf-8" });
   }
@@ -298,6 +300,7 @@ test("night.mjs: kaputte lokale Datei kippt den Lauf nicht", () => {
   }, null, 2));
   writeFileSync(join(dir, ".claude", "workflow.config.local.json"), "{ kaputt");
   writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*.log\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"], ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
     spawnSync("git", a, { cwd: dir, encoding: "utf-8" });
   }

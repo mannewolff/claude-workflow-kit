@@ -9,6 +9,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const BOARD_UI = resolve("kit/board-ui.mjs");
 
@@ -55,6 +56,7 @@ test("GO-Commit entsteht bei Leerzeichen, Anfuehrungszeichen und $ im Pfad, frem
   );
   writeFileSync(join(issuesDir, "7.md"), "---\nid: 7\ntitle: Probe\nstatus: backlog\n---\n\nText\n");
   writeFileSync(join(repo, "fremd.txt"), "alt\n");
+  lfAttribute(join(repo, ".gitattributes"));
   git(repo, "init", "-q");
   git(repo, "config", "user.email", "t@example.org");
   git(repo, "config", "user.name", "Test");

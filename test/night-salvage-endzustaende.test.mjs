@@ -28,6 +28,7 @@ import { tmpdir } from "node:os";
 // kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -74,6 +75,7 @@ function setupProjekt(praefix) {
   // Das Textprotokoll bleibt ignoriert; der Ergebnisstand ist ueber die pathspec von
   // gitReste() ohnehin kein Rest und bleibt hier lesbar.
   writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*.log\n.claude/checks-summary.json\n");
+  lfAttribute(join(dir, ".gitattributes"));
   git(dir, "init", "-q");
   git(dir, "config", "user.email", "t@example.invalid");
   git(dir, "config", "user.name", "T");

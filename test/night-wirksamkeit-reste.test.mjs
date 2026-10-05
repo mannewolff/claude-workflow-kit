@@ -20,6 +20,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { worktreeAnlegen } from "../kit/night.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
@@ -71,6 +72,7 @@ function setupProjekt() {
   // Bewusst ohne `.claude/*`: Protokoll und Kit-Kopie sind namentlich ausgenommen,
   // die vier Dateien der Auswertung sind es nicht.
   writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*\n.claude/kit/\nsessions.log\n");
+  lfAttribute(join(dir, ".gitattributes"));
   git(dir, "init", "-q");
   git(dir, "config", "user.email", "test@example.invalid");
   git(dir, "config", "user.name", "Night Test");
@@ -129,6 +131,7 @@ function setupWorktreeRepo() {
   writeFileSync(join(dir, ".gitignore"), ".claude/*\n!.claude/workflow.config.json\n");
   writeFileSync(join(dir, ".claude", "workflow.config.json"), "{\"codeHost\":\"local\",\"issueTracker\":\"local\"}\n");
   writeFileSync(join(dir, "README.md"), "hallo\n");
+  lfAttribute(join(dir, ".gitattributes"));
   git(dir, "init", "-q");
   git(dir, "config", "user.email", "t@example.invalid");
   git(dir, "config", "user.name", "T");

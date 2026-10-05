@@ -20,6 +20,7 @@ import { tmpdir } from "node:os";
 // kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
 // parallelen Testdateien gegeneinander.
 import "./helpers/checks-sperre.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -63,6 +64,7 @@ function setupProjekt({ config = {}, mitCommit = true, boardInhalt = null, alles
   // bespielbar, weil jede Datei als untracked zaehlt.
   writeFileSync(join(dir, ".gitignore"),
     allesIgnorieren ? "*\n" : ".claude/night-run-*.log\nsessions.log\n");
+  lfAttribute(join(dir, ".gitattributes"));
   git(dir, "init", "-q");
   git(dir, "config", "user.email", "t@example.invalid");
   git(dir, "config", "user.name", "T");

@@ -17,6 +17,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const BEFUNDE = join(repoRoot, "kit", "befunde.mjs");
@@ -56,6 +57,7 @@ function mitRepo(fn) {
   const kit = join(basis, "kit");
   try {
     mkdirSync(haupt);
+    lfAttribute(join(haupt, ".gitattributes"));
     git(haupt, "init", "-q");
     git(haupt, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "start");
     git(haupt, "worktree", "add", "-q", "--detach", wt);

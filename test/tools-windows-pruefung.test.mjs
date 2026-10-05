@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { STARTGRENZE_MS, exitCodeFuer, faelligeAbfrage, fristUeberschritten, meldungFuer, urteilFuer, vorab } from "../tools/windows-pruefung.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const werkzeug = join(repoRoot, "tools", "windows-pruefung.mjs");
@@ -98,6 +99,7 @@ function git(cwd, ...args) {
 function mitRepo(fakeQuelle, fn) {
   const wurzel = mkdtempSync(join(tmpdir(), "windows-pruefung-"));
   try {
+    lfAttribute(join(wurzel, ".gitattributes"));
     git(wurzel, "init", "-q");
     git(wurzel, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x");
     git(wurzel, "update-ref", "refs/remotes/origin/main", "HEAD");

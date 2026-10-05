@@ -406,7 +406,8 @@ function funktion(zeilen, i) {
   if (kopf === -1) return zeilen;
   const tiefe = einzug(zeilen[kopf]);
   let ende = kopf + 1;
-  while (ende < zeilen.length && !(einzug(zeilen[ende]) <= tiefe && /^\s*[})]/.test(zeilen[ende]))) ende++;
+  // `} = {}) {` schliesst eine mehrzeilige Parameterliste und oeffnet erst den Rumpf.
+  while (ende < zeilen.length && !(einzug(zeilen[ende]) <= tiefe && /^\s*[})]/.test(zeilen[ende]) && !/\{\s*$/.test(zeilen[ende]))) ende++;
   return zeilen.slice(kopf, ende + 1);
 }
 

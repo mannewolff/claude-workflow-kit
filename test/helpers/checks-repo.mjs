@@ -22,6 +22,7 @@ import assert from "node:assert/strict";
 // an ihm vorbeigehen.
 import "./checks-sperre.mjs";
 import { gitBashPfad } from "../../kit/board.mjs";
+import { lfAttribute } from "./zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -178,6 +179,7 @@ export function repoAnlegen({ config = {}, configText = null, ohneConfig = false
     const inhalt = configText ?? JSON.stringify(config, null, 2) + "\n";
     writeFileSync(join(dir, ".claude", "workflow.config.json"), inhalt, "utf-8");
   }
+  lfAttribute(join(dir, ".gitattributes"));
   git(dir, "init", "-q", "-b", "main");
   git(dir, "config", "user.email", "t@example.invalid");
   git(dir, "config", "user.name", "T");

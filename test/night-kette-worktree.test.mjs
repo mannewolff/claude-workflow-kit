@@ -12,6 +12,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { join, basename } from "node:path";
 import { tmpdir } from "node:os";
 import { worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen } from "../kit/night.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 function git(cwd, ...a) {
   const res = spawnSync("git", a, { cwd, encoding: "utf-8" });
@@ -26,6 +27,7 @@ function setupRepo() {
   writeFileSync(join(dir, ".gitignore"), ".claude/*\n!.claude/workflow.config.json\n");
   writeFileSync(join(dir, ".claude", "workflow.config.json"), "{\"codeHost\":\"local\",\"issueTracker\":\"local\"}\n");
   writeFileSync(join(dir, "README.md"), "hallo\n");
+  lfAttribute(join(dir, ".gitattributes"));
   git(dir, "init", "-q");
   git(dir, "config", "user.email", "t@example.invalid");
   git(dir, "config", "user.name", "T");
