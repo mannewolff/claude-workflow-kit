@@ -83,7 +83,13 @@ test("GO-Commit entsteht bei Leerzeichen, Anfuehrungszeichen und $ im Pfad, frem
     assert.doesNotMatch(imCommit, /fremd\.txt/);
     assert.equal(git(repo, "diff", "--cached", "--name-only").trim(), "fremd.txt");
   } finally {
+    // Unter Windows laesst sich das Verzeichnis nicht loeschen, solange board-ui darin sein
+    // Arbeitsverzeichnis hat; kill() stoesst das Ende nur an (Issue #1173).
+    const beendet = kind.exitCode !== null || kind.signalCode !== null
+      ? Promise.resolve()
+      : new Promise((ok) => kind.once("exit", ok));
     kind.kill();
-    rmSync(repo, { recursive: true, force: true });
+    await beendet;
+    rmSync(repo, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 });

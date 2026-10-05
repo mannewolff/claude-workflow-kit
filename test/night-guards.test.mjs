@@ -443,14 +443,20 @@ test("Zeitlimit: eine Session, die SIGTERM ignoriert, wird hart nachgesetzt", ()
 // ESRCH, und genau das darf den Runner nicht aus der Bahn werfen.
 test("Zeitlimit: ein Enkel in eigener Prozessgruppe blockiert das close-Event nicht", () => {
   const dir = setupProjekt("night-guard-enkel-");
+  // Die PID des Enkels liegt ausserhalb des Projekts: Eine Datei im Projekt waere ein
+  // unkommittierter Rest der Runde.
+  const pidDir = mkdtempSync(join(tmpdir(), "night-guard-enkel-pid-"));
+  const pidDatei = join(pidDir, "enkel.pid");
   try {
     const id = readyIssue(dir, "Haengt an einem Enkel");
-    const enkel = 'require("node:child_process").spawn(process.execPath, ["-e", "setTimeout(()=>{},2000)"], '
-      + '{ detached: true, stdio: "inherit" }).unref()';
+    const enkel = 'const k = require("node:child_process").spawn(process.execPath, ["-e", "setTimeout(()=>{},2000)"], '
+      + '{ detached: true, stdio: "inherit" }); k.unref(); '
+      + 'require("node:fs").writeFileSync(process.env.ENKEL_PID_DATEI, String(k.pid))';
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], {
       NIGHT_CLAUDE_CMD: `${JSON.stringify(process.execPath)} -e ${JSON.stringify(enkel)}`,
       NIGHT_TIMEOUT_MS: "300",
       NIGHT_KILL_GRACE_MS: "50",
+      ENKEL_PID_DATEI: pidDatei,
     });
 
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
@@ -459,10 +465,36 @@ test("Zeitlimit: ein Enkel in eigener Prozessgruppe blockiert das close-Event ni
   } finally {
     // Der Enkel hat sich vom Baum geloest und ueberlebt das Zeitlimit auf jeder Plattform
     // bis zu seinem Ende nach zwei Sekunden. Unter Windows haelt er solange das
-    // Verzeichnis fest; das Aufraeumen wartet darum auf ihn (Issue #1144).
-    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    // Verzeichnis fest, und rmSync wiederholt ein EBUSY auf dem Verzeichnis selbst nicht.
+    // Das Aufraeumen wartet darum auf sein Ende (Issue #1144, #1173); lebt er nach der
+    // Frist noch, ist das ein Befund und kein Aufraeumproblem.
+    const pid = existsSync(pidDatei) ? Number(readFileSync(pidDatei, "utf-8")) : null;
+    const beendet = pid === null || warteAufEnde(pid, 15_000);
+    if (!beendet) process.kill(pid);
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    rmSync(pidDir, { recursive: true, force: true });
+    assert.ok(beendet, `der Enkel ${pid} lebt 15 s nach seinem Start noch`);
   }
 });
+
+function lebt(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code === "EPERM";
+  }
+}
+
+// Wartet synchron, bis der Prozess `pid` beendet ist; `false` bei Ablauf der Frist.
+function warteAufEnde(pid, fristMs) {
+  const bis = Date.now() + fristMs;
+  while (lebt(pid)) {
+    if (Date.now() >= bis) return false;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100);
+  }
+  return true;
+}
 
 // --- settings-env der Salvage-Vorpruefung (#168) ---
 
