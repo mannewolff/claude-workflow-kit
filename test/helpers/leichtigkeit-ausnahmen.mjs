@@ -12,7 +12,6 @@ export const AUSNAHMEN = {
     "test/board-activity.test.mjs",
     "test/board-bash-pruefen.test.mjs",
     "test/board-check-form-geschuetzt.test.mjs",
-    "test/board-check-form-testhinweise.test.mjs",
     "test/board-cli.test.mjs",
     "test/board-issue-review.test.mjs",
     "test/board-kartenreihenfolge.test.mjs",
@@ -203,7 +202,6 @@ export const AUSNAHMEN = {
   "import-aus-teil": [
     "test/board-bash-pruefen.test.mjs",
     "test/board-check-form-geschuetzt.test.mjs",
-    "test/board-check-form-testhinweise.test.mjs",
     "test/board-issue-review.test.mjs",
     "test/board-mensch-praefix.test.mjs",
     "test/board-nightrun.test.mjs",
