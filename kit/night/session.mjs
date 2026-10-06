@@ -2666,15 +2666,17 @@ export function pruefLaufBudgetDefaults(config) {
 }
 
 /**
- * Die Variante einer Kette fuer eine Karte (Plan #691, E2/E3): "B", wenn die Karte
- * das Label aus `budget.varianteBLabel` traegt, sonst "A". Reine Funktion, nie ein
- * Wurf — die Variante ist eine Einordnung, kein Vorflug: eine Karte ohne `labels`,
- * ein leeres Label-Array und ein fehlendes `budget` ergeben alle "A".
+ * Die Variante einer Kette fuer eine Karte (Plan #691, E2/E3; Plan #1243, A3): "B" genau
+ * dann, wenn das wirksame Ziel (`zielVon`) mindestens `umsetzung` ist — das Label aus
+ * `budget.varianteBLabel` zaehlt dort als `umsetzung` —, sonst "A". Reine Funktion, nie
+ * ein Wurf — die Variante ist eine Einordnung, kein Vorflug: eine Karte ohne `labels`,
+ * ein leeres Label-Array und ein fehlendes `budget` ohne Ziel-Label ergeben alle "A".
  */
 export function varianteVon(issue, budget) {
-  const label = budget?.varianteBLabel;
-  if (!label) return "A";
-  return (issue?.labels || []).includes(label) ? "B" : "A";
+  const ziel = zielVon(issue, budget);
+  if (!ziel) return "A";
+  const rang = (z) => KETTE_ZIELE.findIndex((k) => k.ziel === z);
+  return rang(ziel) >= rang("umsetzung") ? "B" : "A";
 }
 
 // --- Ziel und Prueferzahl einer Karte (Plan #1243, A1, A3, E2; Issue #1244) ---

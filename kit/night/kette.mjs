@@ -43,7 +43,7 @@ import { ENTSCHEIDUNGEN_NAME, OFFENE_FRAGEN_NAME, OFFENE_FRAGEN_UEBERSCHRIFT, PO
   abschnittLesen, leseKarte, wartetAufPush } from "./abhaengigkeiten.mjs";
 import { flatten, kennzahlenAddieren, ketteBudgetDefaults, kostenAddieren, KETTE_BUDGET_DEFAULTS, ladeKetteBudget,
   ladeKetteUebergaenge, ladePruefLaufBudget, leseErgebnisText, leseKennzahlen, neueKommentare, runSession,
-  PLANREVIEW_LABELS, SESSION_ABHAENGIGKEITEN, varianteVon, ZIEL_LABEL_PRAEFIX } from "./session.mjs";
+  KETTE_ZIELE, PLANREVIEW_LABELS, pruefreihenVon, SESSION_ABHAENGIGKEITEN, varianteVon, zielVon, ZIEL_LABEL_PRAEFIX } from "./session.mjs";
 import { berichtFuerKette, berichtSchreiben, hatPlanReviewMarker, kommentareVon, planReviewWert,
   pruefBericht } from "./bericht.mjs";
 import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, geschuetztAmBoardVermerken, hatKlaerenLabel, laufeRunde,
@@ -2006,6 +2006,26 @@ function vorDerUmsetzung(kette, abdeckung) {
 }
 
 /**
+ * Endet die Kette nach `stufe` an ihrem Ziel (Plan #1243, A2)? Dann Ausgang `fertig` mit
+ * dem Vermerk `zielErreicht`, sonst `null`. Ohne Ziel nie. `push-vorbereitet` endet, bis
+ * die Stufe `vorbereitung` gebaut ist, nach `umsetzung` wie `umsetzung`.
+ */
+function amZiel(kette, stufe) {
+  if (!kette.ziel) return null;
+  const endstufe = KETTE_ZIELE.find((z) => z.ziel === kette.ziel)?.endstufe;
+  if (endstufe !== stufe && !(stufe === "umsetzung" && endstufe === "vorbereitung")) return null;
+  log(`  Ziel ${kette.ziel} erreicht nach ${stufe} — die Kette endet hier.`);
+  return { ausgang: "fertig", zielErreicht: true };
+}
+
+/** Endet die Kette nach `review`: am Ziel `plan` oder vor einem gesperrten Uebergang zu `pakete`. */
+function nachDemReview(kette, review) {
+  const amEnde = amZiel(kette, "review");
+  if (amEnde) return amEnde;
+  return uebergangGesperrt(kette, "reviewPakete", review) ? ketteWartet(kette, "pakete", uebergangNichtFreigegeben("reviewPakete")) : null;
+}
+
+/**
  * Die Stufen einer Kette in Reihenfolge; die erste, die nicht fertig wird, ist der
  * Ausgang der Kette (mit ihrem Namen fuer den Halt-Kommentar). Unter Variante B kommt
  * hinter `abdeckung` die fuenfte Stufe `umsetzung` dazu (Plan #691, E12).
@@ -2050,7 +2070,8 @@ async function stufenDerKette(kette) {
       },
     }));
     if (review.ausgang !== "fertig") return { ...review, stufe: "review" };
-    if (uebergangGesperrt(kette, "reviewPakete", review)) return ketteWartet(kette, "pakete", uebergangNichtFreigegeben("reviewPakete"));
+    const endeNachReview = nachDemReview(kette, review);
+    if (endeNachReview) return endeNachReview;
   }
   const pakete = await mitMeldung(() => stufeMitErgebnis(kette, "pakete", planId, {
     auftrag: { ...auftrag, planId },
@@ -2072,7 +2093,9 @@ async function stufenDerKette(kette) {
     },
   }));
   if (abdeckung.ausgang !== "fertig") return { ...abdeckung, stufe: "abdeckung" };
-  const ohneUmsetzung = vorDerUmsetzung(kette, abdeckung);
+  // Vor `vorDerUmsetzung`: Sonst wartete `ziel:pakete` bei `abdeckungUmsetzung: true` als
+  // Variante A auf eine Freigabe, statt an seinem Ziel zu enden.
+  const ohneUmsetzung = amZiel(kette, "abdeckung") ?? vorDerUmsetzung(kette, abdeckung);
   if (ohneUmsetzung) return ohneUmsetzung;
   // Die Paketliste kommt aus dem Stand der Stufe pakete (E16), nicht aus der
   // Ready-Spalte und nicht aus einer erneuten Abfrage nach Herkunft. Was davon schon
@@ -2092,7 +2115,7 @@ async function stufenDerKette(kette) {
     },
   });
   if (umsetzung.ausgang !== "fertig") return { ...umsetzung, stufe: "umsetzung" };
-  return { ausgang: "fertig" };
+  return amZiel(kette, "umsetzung") ?? { ausgang: "fertig" };
 }
 
 /**
@@ -2114,6 +2137,16 @@ function ketteBeginnen(kette, auftrag, nummer, args) {
   // Bericht mit Grund und einer neuen Geste, nicht zur stillen Wiederholung.
   abh.board("issue", "label", "remove", String(karte.id), kette.budget.label);
   log(`  Label '${kette.budget.label}' entfernt — jedes Setzen autorisiert genau eine Kette.`);
+  // Ziel und Prueferzahl gelten ebenso fuer genau diesen Lauf (E1): Sie stehen danach nur
+  // noch in der Kette, eine stehengebliebene Angabe wirkte sonst still in der naechsten.
+  kette.ziel = zielVon(karte, kette.budget);
+  kette.planReviewer = pruefreihenVon(karte);
+  const verbraucht = (karte.labels || []).filter((l) => String(l).startsWith(ZIEL_LABEL_PRAEFIX) || PLANREVIEW_LABELS.includes(l));
+  for (const label of verbraucht) abh.board("issue", "label", "remove", String(karte.id), label);
+  if (verbraucht.length > 0) {
+    const namen = verbraucht.map((l) => "'" + l + "'").join(", ");
+    log(`  Label ${namen} entfernt — Ziel ${kette.ziel ?? "keins"}, Pruefer ${kette.planReviewer ?? "nach Projekt"} festgehalten.`);
+  }
 
   if (auftrag.art === "plan") {
     kette.stufen.plan = { id: auftrag.planId, uebernommen: true, dauerMs: 0, kennzahlen: null, korrekturrunden: 0, weitere: [] };

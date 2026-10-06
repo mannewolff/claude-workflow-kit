@@ -1,12 +1,12 @@
 // Ziel und Prueferzahl einer Karte der Nacht-Kette (Plan #1243, A1, A3, E2; Issue #1244).
 //
-// zielVon und pruefreihenVon sind rein und an Fixtures pruefbar: kein Wurf, auch nicht
+// zielVon, pruefreihenVon und varianteVon sind rein und an Fixtures pruefbar: kein Wurf, auch nicht
 // ohne Labels oder Budget. Unpassende Kombinationen lehnt erst `zielAusschluss` in der
 // Auswahl ab (test/night-kette-ziel.test.mjs).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { KETTE_ZIELE, PLANREVIEW_LABELS, ZIEL_LABEL_PRAEFIX, pruefreihenVon, zielVon } from "../kit/night/session.mjs";
+import { KETTE_ZIELE, PLANREVIEW_LABELS, ZIEL_LABEL_PRAEFIX, pruefreihenVon, varianteVon, zielVon } from "../kit/night/session.mjs";
 
 const BUDGET = { varianteBLabel: "kit:durchziehen" };
 const karte = (...labels) => ({ labels: ["kit:night", ...labels] });
@@ -69,4 +69,31 @@ test("pruefreihenVon: planreview:1 ergibt 1, planreview:2 ergibt 2, ohne Angabe 
 
 test("pruefreihenVon: tragen beide, gilt 2 ohne Wurf", () => {
   assert.equal(pruefreihenVon(karte("planreview:1", "planreview:2")), 2);
+});
+
+// --- varianteVon mit Ziel (A3; Issue #1249) ---
+
+test("A3: varianteVon liefert B genau ab dem Ziel umsetzung", () => {
+  assert.equal(varianteVon(karte("ziel:plan"), BUDGET), "A");
+  assert.equal(varianteVon(karte("ziel:pakete"), BUDGET), "A");
+  assert.equal(varianteVon(karte("ziel:umsetzung"), BUDGET), "B");
+  assert.equal(varianteVon(karte("ziel:push-vorbereitet"), BUDGET), "B");
+});
+
+test("A3: varianteVon — kit:durchziehen plus ziel:plan ergibt B", () => {
+  assert.equal(varianteVon(karte("ziel:plan", "kit:durchziehen"), BUDGET), "B");
+  assert.equal(varianteVon(karte("ziel:pakete", "kit:durchziehen"), BUDGET), "B");
+});
+
+test("A3: varianteVon ohne Ziel wie heute", () => {
+  assert.equal(varianteVon(karte(), BUDGET), "A");
+  assert.equal(varianteVon(karte("kit:durchziehen"), BUDGET), "B");
+  assert.equal(varianteVon(karte("kit:durchziehen"), undefined), "A");
+  assert.equal(varianteVon({}, BUDGET), "A");
+  assert.equal(varianteVon(undefined, undefined), "A");
+});
+
+test("A3: varianteVon — ein Ziel-Label wirkt auch ohne Budget", () => {
+  assert.equal(varianteVon(karte("ziel:umsetzung"), undefined), "B");
+  assert.equal(varianteVon(karte("ziel:plan"), undefined), "A");
 });
