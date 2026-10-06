@@ -96,7 +96,9 @@ test("W3 haelt fest, dass jede Pruefung jeder Stufe einmal vor der Freigabe laeu
     "W3 beschreibt noch den Doppellauf aller drei Stufen vor der Freigabe");
   assert.match(regel, /Jede Pruefung jeder Stufe laeuft \*\*einmal\*\* vor der Freigabe/,
     "W3 sagt nicht, dass jede Pruefung einmal vor der Freigabe laeuft");
-  assert.match(regel, /Paket- und Push-Stufe beim `push main`, die Merge-Stufe beim `merge production`/,
+  // Seit Issue #1255 (Plan #1243, E14, E17) laeuft die Push-Stufe auch in der Vorbereitung
+  // der Nacht fuer den Commit, den push main unveraendert uebernimmt.
+  assert.match(regel, /Paket- und Push-Stufe beim `push main` oder in der Vorbereitung der Nacht[^;]*;[^;]*Prüfzweig; die Merge-Stufe laeuft beim `merge production`/,
     "W3 ordnet die Stufen nicht ihrem Lauf zu");
   assert.match(regel, /[Kk]eine Pflichtpruefung entfaellt[\s\S]{0,80}Gesamtprozess/,
     "W3 sagt nicht, dass keine Pflichtpruefung aus dem Gesamtprozess entfaellt");
