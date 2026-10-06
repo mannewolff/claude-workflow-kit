@@ -644,6 +644,8 @@ function berichtStufen(einheit, plan, pakete) {
   const stufen = einheit.stufen ?? {};
   const auftrag = berichtAuftragZeile(einheit);
   const zeilen = [...(auftrag ? [auftrag] : []), `- Variante: ${einheit.variante === "B" ? "B" : "A"}`];
+  // Unmittelbar nach der Variante (Plan #1243, E5): Die Endzeilen des Blocks bleiben fest.
+  if (einheit.ziel) zeilen.push(`- Ziel: ${einheit.ziel}`);
   zeilen.push(stufen.plan?.id ? berichtPlanZeile(stufen, plan) : "- Plan: keiner entstanden.");
   const ids = stufen.pakete?.ids ?? [];
   zeilen.push(ids.length > 0
@@ -697,6 +699,17 @@ function berichtHaltArten(einheit) {
   return { stoppFrage: arten.includes("klaeren"), geschuetzt: arten.filter((a) => a === "geschuetzt").length };
 }
 
+/**
+ * Die Zeilen unter `### Ausgang`. Blieb die Kette an der Projektgrenze vor ihrem Ziel stehen,
+ * steht das zusaetzlich zum Wartetext da, kein fuenfter Ausgang (Plan #1243, E6): Die
+ * Ausgaenge sind Vertrag mit der Laufmeldung.
+ */
+function berichtAusgang(einheit) {
+  const zeilen = [einheit.grund ? `${einheit.ausgang} — ${einheit.grund}` : String(einheit.ausgang)];
+  if (einheit.ziel && einheit.projektgrenze) zeilen.push(`an der Projektgrenze stehen geblieben, nicht am Ziel ${einheit.ziel}`);
+  return zeilen;
+}
+
 export function berichtBauen(einheit, {
   plan = null, pakete = [], einarbeitung = null, abdeckung = null, budget = {}, start, stempel, frage = null, jetzt = Date.now(),
   // Die Paket-Einheiten des Laufs und die Zielmarke (Issue #926): Der Bericht rechnet die
@@ -709,7 +722,7 @@ export function berichtBauen(einheit, {
   const stufen = einheit.stufen ?? {};
   const z = [`${BERICHT_ANKER} ${stempel ?? ZUSTAND.LAUF_STEMPEL ?? "ohne Stempel"}`, ""];
   z.push(
-    "### Ausgang", "", einheit.grund ? `${einheit.ausgang} — ${einheit.grund}` : String(einheit.ausgang), "",
+    "### Ausgang", "", ...berichtAusgang(einheit), "",
     "### Stufen", "", ...berichtStufen(einheit, plan, pakete), "",
   );
   if (einheit.variante === "B") z.push(...berichtUmsetzung(einheit, pakete, einheiten, ziel));

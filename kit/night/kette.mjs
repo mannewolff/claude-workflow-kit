@@ -1978,14 +1978,58 @@ const HALT_WARTET = `Halt: Frage wartet auf den Menschen — siehe \`${KETTE_HAL
  */
 function ketteStand(kette, zustand, kopf = null) {
   const s = kette.laufstand;
-  const zeilen = [
-    ...(kopf ? [kopf, ""] : []),
+  const zuletzt = [
     ...(s.begonnen ? [`zuletzt begonnen: ${s.begonnen}`] : []),
     ...(s.abgeschlossen ? [`zuletzt abgeschlossen: ${s.abgeschlossen}`] : []),
   ];
-  standSetzen(kette.karte.id, zustand, zeilen.join("\n"), { repoRoot: kette.repoRoot });
+  const bloecke = [kopf, zielZeilen(kette).join("\n"), zuletzt.join("\n")].filter(Boolean);
+  standSetzen(kette.karte.id, zustand, bloecke.join("\n\n"), { repoRoot: kette.repoRoot });
   kette.standGesetzt = true;
 }
+
+/**
+ * Die Zeilen unter dem Kopf jeder Fassung (Plan #1243, E5, E16): Nach dem Verbrauch der
+ * Labels beim Start liest das Board Ziel und Prueferzahl nur noch hier. Ohne Ziel und ohne
+ * `planreview:*` leer — dann bleibt der Laufstand wie vor #1251.
+ */
+function zielZeilen(kette) {
+  const grenze = grenzeVorZiel(kette);
+  return [
+    ...(kette.ziel ? [`Ziel: ${kette.ziel}`] : []),
+    ...(kette.planReviewer ? [`Prüfer: ${kette.planReviewer}`] : []),
+    ...(grenze ? [`Grenze: ${grenze}`] : []),
+  ];
+}
+
+// Die Stufen der Kette in fester Folge, je mit dem Uebergang, ueber den sie folgt (E5).
+const STUFEN_FOLGE = Object.freeze([
+  ["plan", null], ["review", "planReview"], ["pakete", "reviewPakete"], ["abdeckung", "paketeAbdeckung"],
+  ["umsetzung", "abdeckungUmsetzung"], ["vorbereitung", "umsetzungVorbereitung"],
+]);
+
+/**
+ * Die letzte erreichbare Stufe, wenn ein im Projekt gesperrter Uebergang (ausdrueckliches
+ * `false`) vor der Endstufe des Ziels liegt — sonst `null`. Beim Plan-Auftrag beginnt die
+ * Kette bei `pakete`; die Uebergaenge davor betreffen sie nicht.
+ */
+function grenzeVorZiel(kette) {
+  const endstufe = KETTE_ZIELE.find((z) => z.ziel === kette.ziel)?.endstufe;
+  if (!endstufe) return null;
+  const erste = STUFEN_FOLGE.findIndex(([stufe]) => stufe === (kette.art === "plan" ? "pakete" : "plan"));
+  for (let i = erste + 1; i < STUFEN_FOLGE.length; i++) {
+    if (kette.uebergaenge?.[STUFEN_FOLGE[i][1]] === false) return STUFEN_FOLGE[i - 1][0];
+    if (STUFEN_FOLGE[i][0] === endstufe) return null;
+  }
+  return null;
+}
+
+// Was nach dem Ende am Ziel dem Menschen gehoert (E5), je Ziel.
+const ALS_NAECHSTES = Object.freeze({
+  plan: "Plan lesen, dann `kit:night` an den Plan.",
+  pakete: "Pakete nach Ready ziehen.",
+  umsetzung: "Pakete in In review testen, dann `push main`.",
+  "push-vorbereitet": "Meldung der Vorbereitung lesen, dann `push main`.",
+});
 
 /** Der Laufstand zum Beginn einer Stufe. `ziel` ist die Karte, an der sie arbeitet. */
 function stufeBeginnt(kette, stufe, ziel) {
@@ -1997,7 +2041,7 @@ function stufeBeginnt(kette, stufe, ziel) {
 function stufeEndet(kette, stufe, ziel, ergebnis) {
   if (ergebnis.ausgang === "fertig") {
     kette.laufstand.abgeschlossen = `${stufenEintrag(stufe, "fertig", ziel)} um ${abh.jetzt().toISOString()}`;
-    ketteStand(kette, "fertig");
+    ketteStand(kette, "fertig", endetAmZiel(kette, stufe) ? `fertig bis ${kette.ziel}\nAls Nächstes: ${ALS_NAECHSTES[kette.ziel]}` : null);
   } else if (ergebnis.ausgang === "angehalten") {
     // Haelt ein Paket der Umsetzung an, steht die Frage am Paket, nicht an dieser Karte (E17).
     ketteStand(kette, "wartet", ergebnis.ohneHaltAmFachplan ? `Halt: ${ergebnis.grund}` : HALT_WARTET);
@@ -2077,6 +2121,14 @@ function ketteWartet(kette, stufe, text) {
 }
 
 /**
+ * Ende an der Projektgrenze vor `stufe`: derselbe Wartetext wie bisher, dazu der Vermerk
+ * `projektgrenze` fuer den Nachtbericht (E6) — kein eigener Ausgang.
+ */
+function anDerGrenze(kette, stufe, uebergang) {
+  return { ...ketteWartet(kette, stufe, uebergangNichtFreigegeben(uebergang)), projektgrenze: true };
+}
+
+/**
  * Endet die Kette nach der Abdeckung? Das GO steht an der Karte (`kit:durchziehen`), das
  * Projekt kann es nur zulassen (E12). Ohne Label endet sie `fertig`, nur ein gesetztes `true`
  * laesst sie auf die Freigabe der Karte warten; mit Label sperrt nur ein gesetztes `false`
@@ -2087,7 +2139,7 @@ function vorDerUmsetzung(kette, abdeckung) {
     return kette.uebergaenge.abdeckungUmsetzung === true ? ketteWartet(kette, "umsetzung", OHNE_FREIGABE_ZUR_UMSETZUNG) : { ausgang: "fertig" };
   }
   return uebergangGesperrt(kette, "abdeckungUmsetzung", abdeckung)
-    ? ketteWartet(kette, "umsetzung", uebergangNichtFreigegeben("abdeckungUmsetzung"))
+    ? anDerGrenze(kette, "umsetzung", "abdeckungUmsetzung")
     : null;
 }
 
@@ -2097,18 +2149,23 @@ function vorDerUmsetzung(kette, abdeckung) {
  * die Stufe `vorbereitung` gebaut ist, nach `umsetzung` wie `umsetzung`.
  */
 function amZiel(kette, stufe) {
-  if (!kette.ziel) return null;
-  const endstufe = KETTE_ZIELE.find((z) => z.ziel === kette.ziel)?.endstufe;
-  if (endstufe !== stufe && !(stufe === "umsetzung" && endstufe === "vorbereitung")) return null;
+  if (!endetAmZiel(kette, stufe)) return null;
   log(`  Ziel ${kette.ziel} erreicht nach ${stufe} — die Kette endet hier.`);
   return { ausgang: "fertig", zielErreicht: true };
+}
+
+/** Ist `stufe` die letzte Stufe zum Ziel der Kette? Eine Regel fuer `amZiel` und den Laufstand. */
+function endetAmZiel(kette, stufe) {
+  if (!kette.ziel) return false;
+  const endstufe = KETTE_ZIELE.find((z) => z.ziel === kette.ziel)?.endstufe;
+  return endstufe === stufe || (stufe === "umsetzung" && endstufe === "vorbereitung");
 }
 
 /** Endet die Kette nach `review`: am Ziel `plan` oder vor einem gesperrten Uebergang zu `pakete`. */
 function nachDemReview(kette, review) {
   const amEnde = amZiel(kette, "review");
   if (amEnde) return amEnde;
-  return uebergangGesperrt(kette, "reviewPakete", review) ? ketteWartet(kette, "pakete", uebergangNichtFreigegeben("reviewPakete")) : null;
+  return uebergangGesperrt(kette, "reviewPakete", review) ? anDerGrenze(kette, "pakete", "reviewPakete") : null;
 }
 
 /**
@@ -2146,7 +2203,7 @@ async function stufenDerKette(kette) {
     }));
     if (plan.ausgang !== "fertig") return { ...plan, stufe: "plan" };
     planId = plan.id;
-    if (uebergangGesperrt(kette, "planReview", plan)) return ketteWartet(kette, "review", uebergangNichtFreigegeben("planReview"));
+    if (uebergangGesperrt(kette, "planReview", plan)) return anDerGrenze(kette, "review", "planReview");
     const review = await mitMeldung(() => stufeMitErgebnis(kette, "review", planId, {
       auftrag: { ...auftrag, planId },
       laufen: () => stufeReview(kette, planId),
@@ -2169,7 +2226,7 @@ async function stufenDerKette(kette) {
     },
   }));
   if (pakete.ausgang !== "fertig") return { ...pakete, stufe: "pakete" };
-  if (uebergangGesperrt(kette, "paketeAbdeckung", pakete)) return ketteWartet(kette, "abdeckung", uebergangNichtFreigegeben("paketeAbdeckung"));
+  if (uebergangGesperrt(kette, "paketeAbdeckung", pakete)) return anDerGrenze(kette, "abdeckung", "paketeAbdeckung");
   const abdeckung = await mitMeldung(() => stufeMitErgebnis(kette, "abdeckung", planId, {
     auftrag: { ...auftrag, planId },
     laufen: () => stufeAbdeckung(kette, kette.F, planId, pakete.ids),
@@ -2311,6 +2368,7 @@ async function laufeEineKette(auftrag, nummer, args) {
       auftrag: kette.art,
       ...(kette.art === "plan" ? { fachplan: kette.F } : {}),
       variante: kette.variante,
+      ...zielFelder(kette, ergebnis),
       stufen: kette.stufen,
       ...(ueberholung.ueberholt.length > 0 ? { ueberholt: ueberholung.ueberholt } : {}),
       ...(ueberholung.ueberholtUnbestaetigt.length > 0 ? { ueberholtUnbestaetigt: ueberholung.ueberholtUnbestaetigt } : {}),
@@ -2336,6 +2394,12 @@ async function laufeEineKette(auftrag, nummer, args) {
   const zusatz = ergebnis.grund ? ` — ${ergebnis.grund}` : "";
   log(`  Kette zu Issue #${F}: ${ergebnis.ausgang}${zusatz} (${kette.kosten.kostenSumme.toFixed(2)} $).`);
   return ergebnis.ausgang;
+}
+
+/** Ziel und Projektgrenze fuer die Einheit, nur wenn gesetzt (E5, E6): Ohne Ziel bleibt der Bericht wie bisher. */
+function zielFelder(kette, ergebnis) {
+  if (!kette.ziel) return {};
+  return { ziel: kette.ziel, ...(ergebnis.projektgrenze ? { projektgrenze: true } : {}) };
 }
 
 /** Die Hinweise zu Labels, die es nicht mehr gibt (Fachplan #635, Kriterium 12). */
