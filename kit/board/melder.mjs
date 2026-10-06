@@ -308,6 +308,7 @@ export function nachtlaufMeldung(stand, jetzt = new Date()) {
     : null;
   const budget = nachtlaufBudget(stand);
   const abortReason = nachtlaufAbbruchGrund(stand);
+  const releasePreparation = nachtlaufVorbereitung(stand);
   return {
     startedAt: stand.start,
     kind: NACHTLAUF_ART,
@@ -334,6 +335,42 @@ export function nachtlaufMeldung(stand, jetzt = new Date()) {
     // #1085) — wie noWorkReason und budget:
     // Das Feld immer mitzuschicken liesse zwei Stellen ueber dieselbe Frage entscheiden.
     ...(abortReason !== null ? { abortReason } : {}),
+    // Nur, wo der Stand eine Vorbereitung der Veroeffentlichung fuehrt (Issue #1248, A7).
+    ...(releasePreparation !== null ? { releasePreparation } : {}),
+  };
+}
+
+// Das Ergebnis der Vorbereitung (A6) im Vertrag (A7).
+const VORBEREITUNG_RESULT = { gruen: "GREEN", "gruen-offen": "GREEN_PENDING", rot: "RED", "nicht-vorbereitet": "NOT_PREPARED" };
+
+/** Kartennummern als Zahlen; was keine Nummer ist, faellt heraus. */
+function vorbereitungKarten(liste) {
+  return (Array.isArray(liste) ? liste : []).filter((k) => /^\d+$/.test(String(k))).map(Number);
+}
+
+/**
+ * Die vorbereitete Veroeffentlichung fuer die Meldung (Issue #1248, Plan #1243, A7); `null`,
+ * wenn der Stand keine fuehrt. `stand.vorbereitung` hat die Form von
+ * `.claude/push-vorbereitung.json` (A6). `stages` traegt die Stufe nicht: Der Vertrag
+ * begrenzt sie auf vier.
+ *
+ * Ein unbekanntes Ergebnis laesst das Feld weg, statt die Meldung scheitern zu lassen — wie
+ * beim unbekannten Ausgang oben: Nachts fragt niemand, und die Datei aus A6 traegt es ohnehin.
+ */
+function nachtlaufVorbereitung(stand) {
+  const v = stand?.vorbereitung;
+  if (!v || typeof v !== "object") return null;
+  const result = VORBEREITUNG_RESULT[v.ergebnis];
+  if (!result) return null;
+  return {
+    result,
+    commitHash: typeof v.commit === "string" ? v.commit.slice(0, NACHTLAUF_COMMIT_MAX) : null,
+    version: typeof v.version === "string" ? v.version : null,
+    releaseFiles: v.releaseDateien === true,
+    pending: (Array.isArray(v.offen) ? v.offen : []).map(String),
+    cardNumbers: vorbereitungKarten(v.pakete),
+    redCheck: typeof v.rot?.pruefung === "string" ? v.rot.pruefung : null,
+    redCards: vorbereitungKarten(v.rot?.karten),
   };
 }
 
@@ -361,6 +398,7 @@ export async function nightrunMelden(args, {
   lesen = (pfad) => readFileSync(pfad, "utf-8"),
   senden = meldungSenden,
   jetzt = () => new Date(),
+  melde = (zeile) => process.stderr.write(`${zeile}\n`),
 } = {}) {
   if (config.issueTracker !== "toolbox") {
     throw new BoardError(`Einlieferung nur mit issueTracker toolbox moeglich, konfiguriert ist '${config.issueTracker}'.`);
@@ -372,8 +410,20 @@ export async function nightrunMelden(args, {
   } catch (e) {
     throw new BoardError(`Ergebnisstand ${args.datei} nicht lesbar: ${e.message}`);
   }
-  const antwort = await senden(config, nachtlaufMeldung(stand, jetzt()));
-  return { ok: true, outcome: antwort?.outcome ?? null };
+  const meldung = nachtlaufMeldung(stand, jetzt());
+  try {
+    const antwort = await senden(config, meldung);
+    return { ok: true, outcome: antwort?.outcome ?? null };
+  } catch (e) {
+    // Kennt die Gegenstelle `releasePreparation` noch nicht, weist sie die Meldung mit 400
+    // ab (Issue #1248, Plan #1243, E13). Die Laufmeldung darf an der Erweiterung nicht
+    // verloren gehen: genau ein Nachversuch ohne das Feld. Jeder andere Fehler bleibt.
+    if (!(e instanceof BoardError) || e.status !== 400 || !("releasePreparation" in meldung)) throw e;
+    const { releasePreparation, ...ohneFeld } = meldung;
+    melde(`Hinweis: Laufmeldung mit releasePreparation abgewiesen (HTTP 400), Nachversuch ohne das Feld: ${e.message.split("\n")[0]}`);
+    const antwort = await senden(config, ohneFeld);
+    return { ok: true, outcome: antwort?.outcome ?? null, rueckfall: "ohne releasePreparation nachgemeldet nach HTTP 400" };
+  }
 }
 
 export async function dispatchNightrun(command, args, hilfe) {

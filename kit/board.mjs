@@ -183,6 +183,9 @@ Nutzung:
   node board.mjs nightrun melden --datei <ergebnisstand.json>
       Liefert einen Ergebnisstand des Nacht-Runners an POST /api/kanban/night-runs ein
       (nur issueTracker toolbox); derselbe Lauf wird bei jeder Meldung ersetzt.
+      Fuehrt der Stand eine Vorbereitung der Veroeffentlichung, traegt die Meldung
+      releasePreparation; weist das Board sie mit HTTP 400 ab, meldet der Befehl genau
+      einmal ohne das Feld nach und vermerkt den Rueckfall in der Antwort ('rueckfall').
   node board.mjs sitzung melden [--protokoll <pfad>] [--complete]
       Meldet den Verbrauch der laufenden interaktiven Sitzung an dieselbe Route
       (kind/mode INTERACTIVE, Issue #734), aufgeteilt nach den Wegmarken aus
