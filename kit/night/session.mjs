@@ -2534,6 +2534,8 @@ export const KETTE_BUDGET_DEFAULTS = Object.freeze({
   reviewMin: 15,
   abdeckungMin: 10,
   umsetzungMin: 120,
+  // Frist der Vorbereitung des Push, Warten und Prueflauf eingeschlossen (Plan #1243, E8).
+  vorbereitungMin: 120,
   kostenUsd: 50,
   kostenUsdB: 150,
   korrekturrunden: 2,
@@ -2558,7 +2560,7 @@ export function ladeKetteBudget(config) {
     if (typeof block.varianteBLabel !== "string" || block.varianteBLabel.trim() === "") throw new Error("night.kette.varianteBLabel muss ein nicht leerer Text sein");
     budget.varianteBLabel = block.varianteBLabel.trim();
   }
-  for (const feld of ["planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "kostenUsd", "kostenUsdB", "korrekturrunden"]) {
+  for (const feld of ["planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "vorbereitungMin", "kostenUsd", "kostenUsdB", "korrekturrunden"]) {
     if (block[feld] === undefined) continue;
     const wert = block[feld];
     if (typeof wert !== "number" || !Number.isFinite(wert) || wert <= 0) {
@@ -2576,16 +2578,18 @@ export function ladeKetteBudget(config) {
 // ersten drei folgen nach Vorgabe. Der in die Umsetzung hat keine: `null` heisst „nicht
 // gesetzt“ und gilt wie vor #1087 — Variante A endet nach der Abdeckung, Variante B setzt
 // um (Issue #1105). Erst ein gesetzter Wert wirkt, und auch freigegeben nur zusammen mit
-// dem Variante-B-Label an der Karte.
+// dem Variante-B-Label an der Karte. Der in die Vorbereitung des Push folgt nach Vorgabe;
+// nur ein gesetztes `false` haelt an (Plan #1243, E7).
 export const KETTE_UEBERGAENGE_DEFAULTS = Object.freeze({
   planReview: true,
   reviewPakete: true,
   paketeAbdeckung: true,
   abdeckungUmsetzung: null,
+  umsetzungVorbereitung: true,
 });
 
 /**
- * Liest `night.kette.uebergaenge` — vier Wahrheitswerte, fehlende aus der Vorgabe
+ * Liest `night.kette.uebergaenge` — fuenf Wahrheitswerte, fehlende aus der Vorgabe
  * (`abdeckungUmsetzung` fehlend: `null`).
  *
  * Wirft wie `ladeKetteBudget` mit dem Feldnamen; ein unbekannter Schalter ist ebenso ein

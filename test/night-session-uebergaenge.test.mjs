@@ -18,14 +18,22 @@ import assert from "node:assert/strict";
 import { ladeKetteUebergaenge, KETTE_UEBERGAENGE_DEFAULTS } from "../kit/night/session.mjs";
 
 test("[night-uebergaenge] ladeKetteUebergaenge: ohne Feld die Vorgabe, abdeckungUmsetzung nicht gesetzt", () => {
-  assert.deepEqual(ladeKetteUebergaenge({}), { planReview: true, reviewPakete: true, paketeAbdeckung: true, abdeckungUmsetzung: null });
+  assert.deepEqual(ladeKetteUebergaenge({}), { planReview: true, reviewPakete: true, paketeAbdeckung: true, abdeckungUmsetzung: null, umsetzungVorbereitung: true });
   assert.deepEqual(ladeKetteUebergaenge({ night: { kette: {} } }), KETTE_UEBERGAENGE_DEFAULTS);
   assert.deepEqual(ladeKetteUebergaenge({ night: { kette: { uebergaenge: { planReview: false, abdeckungUmsetzung: true } } } }),
-    { planReview: false, reviewPakete: true, paketeAbdeckung: true, abdeckungUmsetzung: true });
+    { planReview: false, reviewPakete: true, paketeAbdeckung: true, abdeckungUmsetzung: true, umsetzungVorbereitung: true });
 });
 
 test("[night-uebergaenge] ladeKetteUebergaenge: ein Schalter, der kein Wahrheitswert ist, wirft mit Feldnamen", () => {
   assert.throws(() => ladeKetteUebergaenge({ night: { kette: { uebergaenge: { reviewPakete: "ja" } } } }), /night\.kette\.uebergaenge\.reviewPakete/);
   assert.throws(() => ladeKetteUebergaenge({ night: { kette: { uebergaenge: { planPakete: true } } } }), /night\.kette\.uebergaenge\.planPakete/);
   assert.throws(() => ladeKetteUebergaenge({ night: { kette: { uebergaenge: true } } }), /night\.kette\.uebergaenge/);
+});
+
+test("[night-uebergaenge] umsetzungVorbereitung: Vorgabe true, nur ein gesetztes false haelt an (Plan #1243, E7)", () => {
+  assert.equal(KETTE_UEBERGAENGE_DEFAULTS.umsetzungVorbereitung, true);
+  assert.equal(ladeKetteUebergaenge({ night: { kette: { uebergaenge: {} } } }).umsetzungVorbereitung, true);
+  assert.equal(ladeKetteUebergaenge({ night: { kette: { uebergaenge: { umsetzungVorbereitung: true } } } }).umsetzungVorbereitung, true);
+  assert.equal(ladeKetteUebergaenge({ night: { kette: { uebergaenge: { umsetzungVorbereitung: false } } } }).umsetzungVorbereitung, false);
+  assert.throws(() => ladeKetteUebergaenge({ night: { kette: { uebergaenge: { umsetzungVorbereitung: null } } } }), /night\.kette\.uebergaenge\.umsetzungVorbereitung/);
 });

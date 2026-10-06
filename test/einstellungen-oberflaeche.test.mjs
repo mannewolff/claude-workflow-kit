@@ -488,7 +488,7 @@ test("M6 zeigt bei einem leeren Feld den Vorgabewert blass, aus dem eingebettete
   assert.match(stueck, /vorgabe: ketteVorgabe\(feld\)/, "feldMitVorgabe bekommt den Vorgabewert nicht mitgeteilt");
   assert.match(stueck, /ketteFeldWert\(teil, "korrekturrunden"\)/, "Korrekturrunden bekommt keinen Vorgabewert");
   const felder = new Set([...stueck.matchAll(/\["(\w+)", "/g)].map((m) => m[1]));
-  for (const feld of ["label", "varianteBLabel", "planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "kostenUsd", "kostenUsdB"]) {
+  for (const feld of ["label", "varianteBLabel", "planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "vorbereitungMin", "kostenUsd", "kostenUsdB"]) {
     assert.ok(felder.has(feld), `${feld} steht in keiner Feldliste`);
   }
 });
@@ -660,17 +660,19 @@ test("[einstellungen-21] M2 bietet als Autor keinen Namen an, der schon eine eig
   assert.match(rumpf, /autoren\.indexOf\(n\) < 0/, "die Autorauswahl filtert die belegten Namen nicht");
 });
 
-// Die freigegebenen Uebergaenge (Issue #1087, Plan #1079 E12): vier Schalter in night.kette,
+// Die freigegebenen Uebergaenge (Issue #1087, Plan #1079 E12; Plan #1243 E7): fuenf Schalter in night.kette,
 // je eine eigene Zeile, gesetzt formtreu ueber ketteAendern.
-test("M6 bietet die vier Uebergaenge als eigene Zeilen mit den Vorgaben aus dem Schema an", () => {
+test("M6 bietet die fuenf Uebergaenge als eigene Zeilen mit den Vorgaben aus dem Schema an", () => {
   const stueck = SEITEN_BAUSTEINE.redaktorNachtKette;
   const erwartet = {
     planReview: vorgabeAus("night.kette.uebergaenge.planReview"),
     reviewPakete: vorgabeAus("night.kette.uebergaenge.reviewPakete"),
     paketeAbdeckung: vorgabeAus("night.kette.uebergaenge.paketeAbdeckung"),
     abdeckungUmsetzung: vorgabeAus("night.kette.uebergaenge.abdeckungUmsetzung"),
+    umsetzungVorbereitung: vorgabeAus("night.kette.uebergaenge.umsetzungVorbereitung"),
   };
-  assert.deepEqual(Object.values(erwartet), [true, true, true, undefined]);
+  assert.deepEqual(Object.values(erwartet), [true, true, true, undefined, true]);
+  assert.ok(stueck.includes("Umsetzung → Vorbereitung des Push folgt automatisch"), "die Zeile zur Vorbereitung fehlt");
   assert.ok(stueck.includes(`const UEBERGAENGE_VORGABEN_BROWSER = ${JSON.stringify(erwartet)};`), "die Vorgaben der Uebergaenge weichen vom Schema ab");
   assert.match(stueck, /ketteAendern\(teil, \{ uebergaenge: Object\.assign\(\{\}, uebergaengeVon\(teil\)/, "die Uebergaenge werden nicht formtreu gesetzt");
   assert.match(stueck, /ketteFeldZeile\("night\.kette\.uebergaenge\." \+ feld/, "die Uebergaenge haben keine eigene Zeile");

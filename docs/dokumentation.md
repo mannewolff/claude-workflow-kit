@@ -694,6 +694,7 @@ Der Nachtbetrieb. Die Nacht-Kette unter kette, die Liste erlaubter Modellnamen u
 - `night.kette.reviewMin` — Zeitbudget der Prüfer-Session am Plan in Minuten.
 - `night.kette.abdeckungMin` — Zeitbudget der Abdeckungs-Session in Minuten, die die Pakete gegen den Fachplan hält.
 - `night.kette.umsetzungMin` — Zeitbudget der Umsetzungsstufe (Variante B) in Minuten, über alle Implementierungs-Sessions der Kette.
+- `night.kette.vorbereitungMin` — Frist der Vorbereitung des Push in Minuten, Warten und Prüflauf eingeschlossen: So lange wartet sie höchstens, bis in der Nacht nichts mehr baut. Läuft die Frist ab, heißt das Ergebnis nicht-vorbereitet.
 - `night.kette.kostenUsd` — Kostenbudget je Kette in US-Dollar, summiert über alle Sessions der Kette; geprüft nach jeder Session.
 - `night.kette.kostenUsdB` — Kostenbudget je Kette in US-Dollar für die Umsetzungsstufe (Variante B), summiert über alle Sessions der Kette; geprüft nach jeder Session.
 - `night.kette.korrekturrunden` — Höchstzahl der Korrektursessions je Dokument nach einer roten Formprüfung.
@@ -702,6 +703,7 @@ Der Nachtbetrieb. Die Nacht-Kette unter kette, die Liste erlaubter Modellnamen u
 - `night.kette.uebergaenge.reviewPakete` — Nach der Prüfung des Plans folgen die Arbeitspakete automatisch.
 - `night.kette.uebergaenge.paketeAbdeckung` — Nach den Arbeitspaketen folgt die Abdeckung gegen die fachliche Anforderung automatisch.
 - `night.kette.uebergaenge.abdeckungUmsetzung` — Nach der Abdeckung folgt die Umsetzung automatisch. Wirkt nur zusammen mit dem Variante-B-Label an der Karte: Das GO lässt sich nie projektweit erteilen. Ohne Eintrag gilt das Verhalten von vor der Einstellung: Eine Karte mit dem Variante-B-Label wird umgesetzt, eine ohne endet nach der Abdeckung. Mit true wartet eine Karte ohne das Label mit 'wartet: Karte ohne Freigabe zur Umsetzung', mit false wartet eine Karte mit dem Label mit 'wartet: Übergang abdeckungUmsetzung im Projekt nicht freigegeben — weiter mit kit:night'.
+- `night.kette.uebergaenge.umsetzungVorbereitung` — Nach der Umsetzung folgt die Vorbereitung des Push automatisch, wenn das Ziel der Karte so weit reicht. Ein Projekt, das nichts sagt, lässt den Übergang zu; nur ein gesetztes false hält die Kette davor an. Eine in diesem Lauf vorgefundene Umsetzung sperrt nicht. Die Vorbereitung pusht nicht, das GO zum Push bleibt beim Menschen.
 - `night.stand` — Der Laufstand: wie eine Karte einer Kette oder Umsetzungsnacht ihren Stand am Board zeigt (board.mjs issue stand). Höchstens eines der drei Labels hängt, dazu genau ein Kommentar '## Laufstand'. Fehlt der Block oder ein Feld darin, gelten die Vorgaben.
 - `night.stand.labels` — Die Namen der drei Laufstand-Labels. Sie müssen am Board angelegt sein; ein fehlendes Label meldet der Adapter als Fehler.
 - `night.stand.labels.laeuft` — Label einer Karte, an der ein Lauf gerade arbeitet.
@@ -1504,6 +1506,7 @@ Andere neue Karten ohne die Herkunftszeile stehen als „nicht zuordenbar" im Be
       "paketeMin": 15,
       "abdeckungMin": 10,
       "umsetzungMin": 120,
+      "vorbereitungMin": 120,
       "kostenUsd": 50,
       "kostenUsdB": 150,
       "korrekturrunden": 2

@@ -41,7 +41,7 @@ test("[night-19] eine unsaubere Hauptkopie haelt die Kette nicht auf (Issue #878
 // Ergebnisstand sichtbar, ein vollstaendiger Block hinterlaesst keine Spur.
 const VOLLER_BLOCK = {
   label: "kit:night", varianteBLabel: "kit:durchziehen", planMin: 30, paketeMin: 25, reviewMin: 30,
-  abdeckungMin: 10, umsetzungMin: 120, kostenUsd: 50, kostenUsdB: 150, korrekturrunden: 2,
+  abdeckungMin: 10, umsetzungMin: 120, vorbereitungMin: 120, kostenUsd: 50, kostenUsdB: 150, korrekturrunden: 2,
 };
 
 test("[night-28] ohne gesetzte Budget-Felder traegt der Lauf-Kopf budgetAusDefault und das Protokoll die Hinweiszeile", () => {
@@ -51,7 +51,7 @@ test("[night-28] ohne gesetzte Budget-Felder traegt der Lauf-Kopf budgetAusDefau
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     const lauf = stand(dir);
     assert.deepEqual(lauf.budgetAusDefault,
-      ["label", "varianteBLabel", "planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "kostenUsd", "kostenUsdB", "korrekturrunden"]);
+      ["label", "varianteBLabel", "planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "vorbereitungMin", "kostenUsd", "kostenUsdB", "korrekturrunden"]);
     assert.deepEqual(Object.keys(lauf).slice(Object.keys(lauf).indexOf("budget"), Object.keys(lauf).indexOf("budget") + 2), ["budget", "budgetAusDefault"],
       "budgetAusDefault steht unmittelbar hinter budget");
     assert.match(res.stdout, /aus den Defaults: .*reviewMin=15.*night\.kette/);

@@ -680,6 +680,12 @@
               "default": 120,
               "description": "Zeitbudget der Umsetzungsstufe (Variante B) in Minuten, über alle Implementierungs-Sessions der Kette."
             },
+            "vorbereitungMin": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 120,
+              "description": "Frist der Vorbereitung des Push in Minuten, Warten und Prüflauf eingeschlossen: So lange wartet sie höchstens, bis in der Nacht nichts mehr baut. Läuft die Frist ab, heißt das Ergebnis nicht-vorbereitet."
+            },
             "kostenUsd": {
               "type": "number",
               "exclusiveMinimum": 0,
@@ -720,6 +726,11 @@
                 "abdeckungUmsetzung": {
                   "type": "boolean",
                   "description": "Nach der Abdeckung folgt die Umsetzung automatisch. Wirkt nur zusammen mit dem Variante-B-Label an der Karte: Das GO lässt sich nie projektweit erteilen. Ohne Eintrag gilt das Verhalten von vor der Einstellung: Eine Karte mit dem Variante-B-Label wird umgesetzt, eine ohne endet nach der Abdeckung. Mit true wartet eine Karte ohne das Label mit 'wartet: Karte ohne Freigabe zur Umsetzung', mit false wartet eine Karte mit dem Label mit 'wartet: Übergang abdeckungUmsetzung im Projekt nicht freigegeben — weiter mit kit:night'."
+                },
+                "umsetzungVorbereitung": {
+                  "type": "boolean",
+                  "default": true,
+                  "description": "Nach der Umsetzung folgt die Vorbereitung des Push automatisch, wenn das Ziel der Karte so weit reicht. Ein Projekt, das nichts sagt, lässt den Übergang zu; nur ein gesetztes false hält die Kette davor an. Eine in diesem Lauf vorgefundene Umsetzung sperrt nicht. Die Vorbereitung pusht nicht, das GO zum Push bleibt beim Menschen."
                 }
               },
               "additionalProperties": false
