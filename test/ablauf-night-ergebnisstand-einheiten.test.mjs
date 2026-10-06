@@ -12,8 +12,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 import {
   NIGHT, run, setupProjekt, setupProjektMitMeldeCapture, meldungen, readyIssue,
@@ -165,7 +166,10 @@ test("ein zurueckgestelltes Paket erscheint als eigene Einheit mit Grund, nicht 
 
 test("[night-43] der Lauf meldet sich sofort mit leerer Paketliste und ohne Abschluss, bevor ein Arbeitspaket gezogen wird", () => {
   const dir = setupProjektMitMeldeCapture("night-stand-start-melden-");
-  const captureFile = join(dir, "..", "night43-capture-melden.jsonl");
+  // Ein eigenes Verzeichnis je Fall (Issue #1258): Ein fester Name im gemeinsamen Temp-Verzeichnis
+  // liess parallele Laeufe die Meldungen des jeweils anderen mitlesen.
+  const captureDir = mkdtempSync(join(tmpdir(), "night43-capture-"));
+  const captureFile = join(captureDir, "melden.jsonl");
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
       { NIGHT_CLAUDE_CMD: "true", NIGHT_MELDEN_ERZWINGEN: "1", NIGHT43_CAPTURE: captureFile });
@@ -182,13 +186,14 @@ test("[night-43] der Lauf meldet sich sofort mit leerer Paketliste und ohne Absc
     assert.equal(gemeldet[1].complete, true, "die Endmeldung eines regulaeren Laufs ist abgeschlossen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
-    rmSync(captureFile, { force: true });
+    rmSync(captureDir, { recursive: true, force: true });
   }
 });
 
 test("[night-43] im Dry-Run bleibt die Startmeldung aus", () => {
   const dir = setupProjektMitMeldeCapture("night-stand-start-dry-");
-  const captureFile = join(dir, "..", "night43-capture-dry.jsonl");
+  const captureDir = mkdtempSync(join(tmpdir(), "night43-capture-"));
+  const captureFile = join(captureDir, "dry.jsonl");
   try {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--dry-run"],
       { NIGHT_CLAUDE_CMD: "true", NIGHT_MELDEN_ERZWINGEN: "1", NIGHT43_CAPTURE: captureFile });
@@ -197,6 +202,6 @@ test("[night-43] im Dry-Run bleibt die Startmeldung aus", () => {
     assert.deepEqual(meldungen(captureFile), [], "der Dry-Run legt keinen Ergebnisstand an, also gibt es nichts zu melden");
   } finally {
     rmSync(dir, { recursive: true, force: true });
-    rmSync(captureFile, { force: true });
+    rmSync(captureDir, { recursive: true, force: true });
   }
 });
