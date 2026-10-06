@@ -710,6 +710,7 @@
       "tools/copy-downloads-for-docs.mjs",
       "tools/windows-pruefung.mjs",
       "tools/windows-brueche.mjs",
+      "tools/lastbeleg.mjs",
       "test/fixtures/windows-brueche/**",
       ".githooks/pre-commit",
       "test/install-*.test.mjs",
