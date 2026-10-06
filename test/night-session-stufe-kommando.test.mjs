@@ -20,7 +20,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { runSession, stufeStartbar, posixShell } from "../kit/night.mjs";
+import { runSession, stufeStartbar, posixShell } from "../kit/night/session.mjs";
 
 // Die Pfade gehen in eine Shell-Kommandozeile und in die Umgebung eines sh-Skripts. Unter
 // Windows ist das die Git Bash (Issue #1131), und die nimmt Windows-Pfade mit Schraegstrichen;

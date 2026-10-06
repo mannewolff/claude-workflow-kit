@@ -5,13 +5,13 @@
 // allein das, was die Sitzung unterwegs gesagt hat — darum wird es live mitgelesen.
 //
 // Geprueft wird der exportierte, reine Beobachter an aufgezeichneten Stromzeilen, dieselbe
-// Linie wie `night-werkzeugzeit.test.mjs`. Die beiden Faelle, in denen `fortschritt` `null`
+// Linie wie `night-session-werkzeugzeit.test.mjs`. Die beiden Faelle, in denen `fortschritt` `null`
 // ist, gehen ueber `runSession`: Sie entstehen nicht im Beobachter, sondern daran, ob er
 // ueberhaupt angelegt wird.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fortschrittBeobachter, runSession } from "../kit/night.mjs";
+import { fortschrittBeobachter, runSession } from "../kit/night/session.mjs";
 
 /** Ein `assistant`-Ereignis mit einem Textblock. */
 function text(inhalt) {

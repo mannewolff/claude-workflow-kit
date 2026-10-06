@@ -339,7 +339,7 @@ export function einheitKosten(einheit) {
 // SYNC: `TOOL_RESULTS_PFAD`, `RUECKFRAGE_MUSTER`, `AUFBEREITUNG_PIPE` und `auskunftArt`
 // sind eine Kopie aus kit/night.mjs, wo das Original samt Beleg des Pfadmusters steht.
 // Kopie statt `import`: Diese Auswertung bleibt eine reine Leseoperation ohne den Runner
-// (Plan #745, E7). Den Gleichlauf haelt test/night-auskunft-gleichlauf.test.mjs — er
+// (Plan #745, E7). Den Gleichlauf haelt test/night-session-auskunft-gleichlauf.test.mjs — er
 // laesst beide Fassungen ueber dieselben Fixtures laufen.
 
 const TOOL_RESULTS_PFAD = "tool-results/";

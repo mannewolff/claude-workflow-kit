@@ -19,7 +19,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { posixShell, sessionStart } from "../kit/night.mjs";
+import { posixShell, sessionStart } from "../kit/night/session.mjs";
 import { spawnAufruf } from "../kit/board/wiederholung.mjs";
 
 const ARGUMENTE = [

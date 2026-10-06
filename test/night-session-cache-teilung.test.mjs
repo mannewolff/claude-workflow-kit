@@ -6,12 +6,12 @@
 // Ohne die Teilung waere die Kostenverteilung aus Kriterium 2 der Auswertung geraten.
 //
 // Geprueft wird die reine, exportierte Funktion — ohne Subprozess, wie in
-// night-kennzahlen.test.mjs.
+// night-session-kennzahlen.test.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { leseKennzahlen } from "../kit/night.mjs";
+import { leseKennzahlen } from "../kit/night/session.mjs";
 
 test("[night-45] ein result-Ereignis mit cache_creation liefert die Teilung als eigene Felder", () => {
   const zeile = JSON.stringify({

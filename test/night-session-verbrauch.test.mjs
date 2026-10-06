@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { verbrauchAddieren, verbrauchLeer, verbrauchOhneEinheit } from "../kit/night.mjs";
+import { verbrauchAddieren, verbrauchLeer, verbrauchOhneEinheit } from "../kit/night/session.mjs";
 
 const SESSION = { kostenUsd: 1.5, eingabeTokens: 10, ausgabeTokens: 20, cacheErzeugtTokens: 30, cacheGelesenTokens: 40 };
 

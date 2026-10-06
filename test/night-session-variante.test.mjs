@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { varianteVon } from "../kit/night.mjs";
+import { varianteVon } from "../kit/night/session.mjs";
 import {
   NIGHT, run, board, mitProjekt, fachplan, umgebung, sessions,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,

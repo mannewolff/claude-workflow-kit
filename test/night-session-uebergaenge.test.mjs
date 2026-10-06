@@ -16,7 +16,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ladeKetteUebergaenge, KETTE_UEBERGAENGE_DEFAULTS } from "../kit/night.mjs";
+import { ladeKetteUebergaenge, KETTE_UEBERGAENGE_DEFAULTS } from "../kit/night/session.mjs";
 import {
   run, board, mitProjekt, fachplan, umgebung, sessions, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,

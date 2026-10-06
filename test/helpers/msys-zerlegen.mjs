@@ -1,6 +1,6 @@
 // Die Zerlegung einer Windows-Kommandozeile durch die Git Bash (Issue #1143), fuer die Tests
 // von `spawnAufruf` (test/board-wiederholung-git-bash.test.mjs) und der Kommando-Stufe des
-// Nacht-Runners (test/night-git-bash.test.mjs).
+// Nacht-Runners (test/night-session-git-bash.test.mjs).
 //
 // Die Git Bash ist ein MSYS-Programm und zerlegt ihre Windows-Kommandozeile nicht nach den
 // Regeln, nach denen Node sie baut. `msysZerlegen` bildet die Zerlegung der MSYS-Laufzeit

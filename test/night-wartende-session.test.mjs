@@ -25,7 +25,7 @@
 // NIGHT_CLAUDE_CMD; nur der Test der CLI-Argumente faehrt den Produktivzweig ueber eine
 // Fake-CLI im PATH, weil der Test-Hook die Argumente gar nicht baut. Die drei neuen
 // Aussagen pruefen dagegen die exportierten reinen Funktionen ohne Subprozess — dieselbe
-// Linie wie `night-kennzahlen.test.mjs`.
+// Linie wie `night-session-kennzahlen.test.mjs`.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -105,7 +105,7 @@ function readyIssue(dir, titel) {
 }
 
 // Ein `result`-Ereignis, wie es die CLI am Ende einer Session schreibt. Die Felder sind
-// die aus einer echten Zeile (siehe night-kennzahlen.test.mjs); hier zaehlen nur die
+// die aus einer echten Zeile (siehe night-session-kennzahlen.test.mjs); hier zaehlen nur die
 // beiden, an denen der Grund haengt.
 const resultZeile = (stopReason, isError = false) =>
   `{"type":"result","is_error":${isError},"stop_reason":${JSON.stringify(stopReason)},` +

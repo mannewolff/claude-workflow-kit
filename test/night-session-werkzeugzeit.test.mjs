@@ -7,7 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { werkzeugZeitBeobachter } from "../kit/night.mjs";
+import { werkzeugZeitBeobachter } from "../kit/night/session.mjs";
 
 /** Ein `assistant`-Ereignis mit n `tool_use`-Bloecken, jeder mit eigener Id. */
 function toolUse(...ids) {

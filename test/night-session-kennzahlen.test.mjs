@@ -11,7 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { leseKennzahlen } from "../kit/night.mjs";
+import { leseKennzahlen } from "../kit/night/session.mjs";
 
 // --- Fixture ---
 //

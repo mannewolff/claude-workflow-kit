@@ -177,7 +177,7 @@ export const SUMMARY_GRUEN = `printf '%s' '{"laufen":[{"cmd":"true","ergebnis":"
   + " > .claude/checks-summary.json";
 export const SUMMARY_LEER = `printf '%s' '{"leeresPaket":true}' > .claude/checks-summary.json`;
 
-// Die `result`-Zeile aus dem Fixture von test/night-kennzahlen.test.mjs — echte
+// Die `result`-Zeile aus dem Fixture von test/night-session-kennzahlen.test.mjs — echte
 // Feldnamen aus einer echten Session, gekuerzt in den Textfeldern. Sie enthaelt keine
 // einfachen Anfuehrungszeichen und laesst sich darum im sh-Fake als Literal echoen.
 export const RESULT_ZEILE =

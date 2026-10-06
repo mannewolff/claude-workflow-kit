@@ -19,7 +19,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnAufruf, GIT_BASH_UMGEBUNG } from "../kit/board/wiederholung.mjs";
-import { posixShell, sessionStart } from "../kit/night.mjs";
+import { posixShell, sessionStart } from "../kit/night/session.mjs";
 import { msysZerlegen } from "./helpers/msys-zerlegen.mjs";
 
 const GIT = String.raw`C:\Program Files\Git`;

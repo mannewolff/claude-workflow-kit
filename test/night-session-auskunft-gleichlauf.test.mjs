@@ -10,7 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { auskunftArt as auskunftArtAufwand } from "../kit/aufwand.mjs";
-import { auskunftArt as auskunftArtNight, TOOL_RESULTS_PFAD } from "../kit/night.mjs";
+import { auskunftArt as auskunftArtNight, TOOL_RESULTS_PFAD } from "../kit/night/session.mjs";
 
 const tr = `/Users/x/.claude/projects/-p/0f0e/${TOOL_RESULTS_PFAD}b0x1.txt`;
 const bash = (command) => ({ type: "tool_use", id: "t", name: "Bash", input: { command } });

@@ -14,7 +14,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { vorflugPrompt, normalisiereVorflug } from "../kit/night.mjs";
+import { vorflugPrompt, normalisiereVorflug } from "../kit/night/session.mjs";
 
 // Seit Issue #986 ohne printf, ohne Pipe und ohne Umleitung: Claude Code nimmt einen
 // zusammengesetzten Befehl ab 2.1.277 nur noch aus der Sandbox, wenn jeder Teil zu einem

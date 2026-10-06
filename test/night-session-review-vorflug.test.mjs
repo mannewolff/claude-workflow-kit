@@ -7,7 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { trackerProbeId, parseVorflugBefund, normalisiereVorflug } from "../kit/night.mjs";
+import { trackerProbeId, parseVorflugBefund, normalisiereVorflug } from "../kit/night/session.mjs";
 
 test("trackerProbeId: der erste Kandidat gewinnt, sonst das erste Issue der Liste", () => {
   assert.equal(trackerProbeId([{ id: 7 }, { id: 9 }], [{ id: 1 }]), "7");

@@ -24,7 +24,8 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-import { gitResteAusnahmen, salvageSauberkeitsKommando, salvagePrompt } from "../kit/night.mjs";
+import { gitResteAusnahmen, salvageSauberkeitsKommando } from "../kit/night/grundlagen.mjs";
+import { salvagePrompt } from "../kit/night/session.mjs";
 
 // Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
 // kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die

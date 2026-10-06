@@ -14,10 +14,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
+import { einheitAnlegen } from "../kit/night/grundlagen.mjs";
 import {
-  auskunftArt, auskunftBeobachter, umsetzungsStart, einheitAnlegen, runSession, salvagePrompt,
+  auskunftArt, auskunftBeobachter, umsetzungsStart, runSession, salvagePrompt,
   TOOL_RESULTS_PFAD,
-} from "../kit/night.mjs";
+} from "../kit/night/session.mjs";
 
 // Ein eigener Sperrpfad je Testprozess (Issue #958): Die E2E-Faelle kopieren
 // kit/checks.mjs ins Fixture, und ohne eigenen Pfad serialisierte die maschinenweite
@@ -66,7 +67,7 @@ test("[night-1026] schreibende Board-Aufrufe sind keine Rueckfrage", () => {
     "gh issue comment 12 --body x",
     "gh api repos/o/r/pulls/3",
     "git status --porcelain",
-    "node --test test/night-auskunft.test.mjs",
+    "node --test test/night-session-auskunft.test.mjs",
   ];
   for (const cmd of faelle) assert.equal(auskunftArt(bash(cmd)), null, cmd);
 });

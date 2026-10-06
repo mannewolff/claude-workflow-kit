@@ -21,14 +21,19 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { permissionArgs } from "../kit/night.mjs";
+import { permissionArgs } from "../kit/night/session.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const quelle = readFileSync(join(repoRoot, "kit", "night.mjs"), "utf-8");
+// Die Quelle des Nacht-Runners ist der Einstieg samt seinen Teilen unter kit/night/ (Plan
+// #1199, E17): Die Aussagen unten gelten fuer den Runner als Ganzes, nicht fuer eine Datei.
+const quelle = [join(repoRoot, "kit", "night.mjs"),
+  ...readdirSync(join(repoRoot, "kit", "night")).filter((d) => d.endsWith(".mjs")).sort()
+    .map((d) => join(repoRoot, "kit", "night", d))]
+  .map((pfad) => readFileSync(pfad, "utf-8")).join("\n");
 
 test("[night-940] ohne --yolo laeuft die Session im auto mode, Rueckfragen werden abgelehnt", () => {
   assert.deepEqual(permissionArgs(false), [

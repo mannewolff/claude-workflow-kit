@@ -220,7 +220,7 @@ function mitFakeBin(fn) {
 // Der Fall setzt ein Dateisystem mit Ausfuehrungsrecht voraus (Issue #1144): Ohne es gibt
 // es kein EACCES, und die Shell-Skripte der Attrappe sind keine startbaren Programme. So
 // unter Windows; den Fall eines nicht startbaren claude dort — eine .cmd ohne sh-Huelle —
-// meldet `sessionStart` als Startfehler, belegt in `test/night-git-bash.test.mjs`.
+// meldet `sessionStart` als Startfehler, belegt in `test/night-session-git-bash.test.mjs`.
 function kenntAusfuehrungsrecht() {
   const dir = mkdtempSync(join(tmpdir(), "night-rest-xok-"));
   try {

@@ -14,7 +14,7 @@
 //
 // Alles mit injizierter Umgebung, Plattform und Dateisystem: Die Windows-Semantik ist so auf
 // jedem Host pruefbar. Wie der Nacht-Runner diese Regeln anwendet (posixShell, sessionStart),
-// prueft test/night-git-bash.test.mjs.
+// prueft test/night-session-git-bash.test.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

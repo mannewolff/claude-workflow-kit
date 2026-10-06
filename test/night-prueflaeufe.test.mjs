@@ -7,7 +7,7 @@
 // Drei Ebenen werden geprueft: `prueflaufBeobachter()` an aufgezeichneten Stromzeilen,
 // `prueflaeufeAddieren()` als reine Summe zweier Sessions, und der Weg in den
 // Ergebnisstand E2E ueber einen Nachtlauf mit Fake-Session — dieselbe Linie wie
-// night-zeiten.test.mjs.
+// night-session-zeiten.test.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -76,7 +76,7 @@ test("[night-924] drei gezielte Laeufe sind drei Prueflaeufe und keine vollstaen
   const erg = beobachte([
     [bashAufrufe(["t1", "node --test test/night-prueflaeufe.test.mjs"]), 1000],
     [toolResult("t1"), 1500],
-    [bashAufrufe(["t2", "node --test test/night-zeiten.test.mjs"]), 2000],
+    [bashAufrufe(["t2", "node --test test/night-session-zeiten.test.mjs"]), 2000],
     [toolResult("t2"), 2300],
     [bashAufrufe(["t3", "node --test test/checks-run.test.mjs"]), 3000],
     [toolResult("t3"), 3200],
@@ -108,7 +108,7 @@ test("[night-924] ein checks.mjs run --bereich ist der sanktionierte Gruppenlauf
 });
 
 test("[night-924] ein node --test auf eine einzelne Datei ist keine vollstaendige Gruppe", () => {
-  const erg = einAufruf("node --test test/night-zeiten.test.mjs");
+  const erg = einAufruf("node --test test/night-session-zeiten.test.mjs");
   assert.equal(erg.volle, 0);
   assert.equal(erg.volleNoetig, 0);
   assert.equal(erg.anzahl, 1, "gezaehlt wird er trotzdem — er ist ein Prueflauf der Arbeit");

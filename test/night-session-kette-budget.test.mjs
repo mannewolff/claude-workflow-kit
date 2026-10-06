@@ -7,7 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ladeKetteBudget, ketteBudgetDefaults, kostenAddieren, KETTE_BUDGET_DEFAULTS } from "../kit/night.mjs";
+import { ladeKetteBudget, ketteBudgetDefaults, kostenAddieren, KETTE_BUDGET_DEFAULTS } from "../kit/night/session.mjs";
 
 test("[night-18] ohne Block gelten die Startwerte aus Fachplan #635", () => {
   assert.deepEqual(ladeKetteBudget({}), {

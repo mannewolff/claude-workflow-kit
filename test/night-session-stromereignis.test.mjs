@@ -6,13 +6,13 @@
 // die beiden identischen als `javascript:S4144`.
 //
 // Geprueft wird die reine, exportierte Funktion — ohne Subprozess, Muster
-// `night-kennzahlen.test.mjs`. Dass sich am Verhalten der drei Nutzer nichts geaendert
+// `night-session-kennzahlen.test.mjs`. Dass sich am Verhalten der drei Nutzer nichts geaendert
 // hat, belegen deren eigene Tests, die fuer dieses Paket unveraendert bleiben.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { leseStromereignis } from "../kit/night.mjs";
+import { leseStromereignis } from "../kit/night/session.mjs";
 
 test("[night-960-1] ein bereits geparstes Objekt wird durchgereicht", () => {
   // Der Grund fuer diesen Zweig: Die Beobachter bekommen ihre Zeile teils schon

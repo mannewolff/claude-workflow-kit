@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, realpathSync } from "node:fs";
 import { join, delimiter } from "node:path";
 import { tmpdir } from "node:os";
-import { runSession, leseKennzahlen } from "../kit/night.mjs";
+import { runSession, leseKennzahlen } from "../kit/night/session.mjs";
 
 const ARGS = { model: "fixture-modell", timeoutMin: 1, yolo: false, verbose: false };
 
