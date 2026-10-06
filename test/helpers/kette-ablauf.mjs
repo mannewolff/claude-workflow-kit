@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 // Die Konstanten aus dem Runner selbst, nicht abgeschrieben: Der Fake der
 // Umsetzungs-Session soll genau das Label setzen und genau den Satz schreiben, an
-// denen der Runner den Halt erkennt (wie in night-angehalten.test.mjs).
+// denen der Runner den Halt erkennt (wie in ablauf-night-angehalten.test.mjs).
 import {
   HALT_FOLGESATZ, KLAEREN_LABEL, REVIEW_FERTIG_LABEL,
   PRUEFLAUF_BEFUNDE_ANKER, PRUEFLAUF_EINARBEITUNG_ANKER,

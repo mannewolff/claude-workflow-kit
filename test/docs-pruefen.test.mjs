@@ -14,15 +14,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  PRUEFLAUF_BUDGET_DEFAULTS,
-  PRUEFLAUF_REST_ANKER,
-  KLAEREN_LABEL,
-  REVIEW_FERTIG_LABEL,
-} from "../kit/night.mjs";
+import { PRUEFLAUF_BUDGET_DEFAULTS } from "../kit/night/session.mjs";
+import { PRUEFLAUF_REST_ANKER } from "../kit/night/tag.mjs";
+import { KLAEREN_LABEL } from "../kit/night/wartend.mjs";
+import { REVIEW_FERTIG_LABEL } from "../kit/night/kette.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
@@ -108,10 +105,8 @@ test("ein Absatz nennt die Grenze der Unberuehrtheit beim Tracker local", () => 
   assert.match(absatz, /Ergebnis und kein Rest|kein Rest/, "der Absatz sagt nicht, dass die Kartenaenderung das Ergebnis und kein Rest ist");
 });
 
-test("der dokumentierte Aufruf entspricht dem Programm: --help kennt --pruefen", () => {
-  const hilfe = execFileSync(process.execPath, [join(repoRoot, "kit", "night.mjs"), "--help"], { encoding: "utf-8" });
-  assert.match(hilfe, /^[ \t]+--pruefen\s/m, "night.mjs --help nennt --pruefen nicht");
-});
+// Dass night.mjs --help die Option --pruefen nennt, prueft ablauf-night-grundlagen-hilfe am
+// Programm (Issue #1235); den Aufruf in der Vorlage prueft der Fall darunter.
 
 test("der Prueflauf-Block der Vorlage nennt Geste, Aufruf, Ausgaenge und das Verhaeltnis zur Kette", () => {
   const idx = VORLAGE.indexOf("## Der Prueflauf");

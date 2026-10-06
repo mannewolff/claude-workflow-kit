@@ -1,0 +1,205 @@
+// Ablauf-Pruefung: die gitClean-Leitplanke greift nach einer echten Runde ueber git im Wegwerf-Repo; das zeigt nur der ganze Lauf.
+//
+// E2E fuer die gitClean-Leitplanke nach erfolgreicher Runde (Issue #152).
+// Eine Session, die ihr Issue erfolgreich nach In review bringt, aber unkommittete
+// Reste (z. B. Temp-Dateien) im Working Tree hinterlaesst, darf den Lauf nicht
+// stillschweigend fortsetzen: Der Muell wuerde die Diagnose der Folgerunde
+// vergiften. Der Runner stoppt darum nach einer erfolgreichen, aber schmutzigen
+// Runde hart — bevor die naechste Runde beginnt.
+// Laeuft komplett lokal: issueTracker "local" in einem Temp-Repo, Session-Fake via
+// NIGHT_CLAUDE_CMD.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync, cpSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
+
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
+// Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
+const NIGHT = join(repoRoot, "kit", "night.mjs");
+
+function run(cwd, cmd, cliArgs, env = {}) {
+  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, ...env } });
+}
+
+function board(cwd, ...cliArgs) {
+  const res = run(cwd, process.execPath, [join(cwd, ".claude", "kit", "board.mjs"), ...cliArgs]);
+  assert.equal(res.status, 0, `board.mjs ${cliArgs.join(" ")} schlug fehl: ${res.stderr}`);
+  return JSON.parse(res.stdout);
+}
+
+function setupProjekt() {
+  const dir = mkdtempSync(join(tmpdir(), "night-dirty-success-"));
+  mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
+  copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
+    codeHost: "local",
+    issueTracker: "local",
+    buildChecks: ["true"],
+    local: { issuesDir: "issues" },
+  }, null, 2));
+  writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\nsessions.log\n");
+  lfAttribute(join(dir, ".gitattributes"));
+  for (const [c, a] of [
+    ["git", ["init", "-q"]],
+    ["git", ["config", "user.email", "test@example.invalid"]],
+    ["git", ["config", "user.name", "Night Test"]],
+    ["git", ["add", "-A"]],
+    ["git", ["commit", "-q", "-m", "setup"]],
+  ]) {
+    const res = run(dir, c, a);
+    assert.equal(res.status, 0, `${c} ${a.join(" ")} schlug fehl: ${res.stderr}`);
+  }
+  return dir;
+}
+
+test("Nachtlauf: erfolgreiche Runde mit unkommittetem Rest stoppt hart vor der naechsten Runde", () => {
+  const dir = setupProjekt();
+  try {
+    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    const zweites = board(dir, "issue", "create", "--title", "Zweites Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    board(dir, "issue", "move", String(erstes.id), "ready");
+    board(dir, "issue", "move", String(zweites.id), "ready");
+
+    // Session-Fake: bringt das Issue nach in_review (Erfolg), laesst aber eine
+    // untracked Temp-Datei liegen — wie der reale kanban-kit#400-Fall.
+    const sessionLog = join(dir, "sessions.log");
+    const fake = `echo "$NIGHT_ISSUE_ID" >> ${JSON.stringify(sessionLog)}`
+      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`
+      + ` && echo rest > .tmp-report.md`;
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+
+    // Harter Stopp direkt nach der erfolgreichen, aber schmutzigen Runde.
+    assert.equal(res.status, 1, `night.mjs haette mit Exit 1 enden muessen: ${res.stderr}\n${res.stdout}`);
+    assert.match(res.stdout, /Erfolg/, "die Runde haette als Erfolg gemeldet werden muessen");
+    assert.match(res.stdout, /unkommittete Reste|harter Stopp/i, "kein Hinweis auf den Rest-Stopp");
+
+    // Erstes Issue erfolgreich in In review, zweites Issue NIE gestartet.
+    const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
+    assert.ok(inReview.includes(String(erstes.id)), "erstes Issue liegt nicht in In review");
+    const ready = board(dir, "issue", "list", "--status", "ready").map((i) => String(i.id));
+    assert.ok(ready.includes(String(zweites.id)), "zweites Issue haette in Ready bleiben muessen");
+    const sessions = readFileSync(sessionLog, "utf-8").trim().split("\n");
+    assert.deepEqual(sessions, [String(erstes.id)], "es lief nicht genau eine Session");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Der Gegenpol zum Rest-Stopp (Issue #546, Plan #545): Eine wartende
+// Vorhaben-Notiz entsteht beim Planen im Arbeitsbaum und wird erst beim naechsten
+// `push main` aufgehoben. Sie ist Vorhaben-Zustand und kein Code-Zustand, also
+// kein Rest — sonst hielte die erste geplante Notiz den Lauf an, genau die Klemme,
+// die das Vorhaben abschafft.
+//
+// Geprueft wird ueber den Runner-E2E-Weg wie oben: `gitClean()` ist nicht
+// exportiert und hat kein CLI-Kommando. Die `.gitignore` des Fixtures fuehrt
+// `.claude/*` NICHT — die Notiz ist fuer git also sichtbar, und nur der Ausschluss
+// im Code kann sie entschaerfen.
+test("[night-10] Nachtlauf: eine wartende Vorhaben-Notiz ist kein unkommittierter Rest", () => {
+  const dir = setupProjekt();
+  try {
+    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    const zweites = board(dir, "issue", "create", "--title", "Zweites Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    board(dir, "issue", "move", String(erstes.id), "ready");
+    board(dir, "issue", "move", String(zweites.id), "ready");
+
+    // Session-Fake: Erfolg, laesst aber eine wartende Vorhaben-Notiz liegen.
+    const sessionLog = join(dir, "sessions.log");
+    const fake = `echo "$NIGHT_ISSUE_ID" >> ${JSON.stringify(sessionLog)}`
+      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`
+      + ` && echo wartet > .claude/vorhaben-wartend-probe.md`;
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 0, `night.mjs haette weiterlaufen muessen: ${res.stderr}\n${res.stdout}`);
+    const inReview = new Set(board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id)));
+    assert.ok(inReview.has(String(erstes.id)) && inReview.has(String(zweites.id)),
+      "beide Issues haetten in In review landen muessen");
+    const sessions = readFileSync(sessionLog, "utf-8").trim().split("\n");
+    assert.deepEqual(sessions, [String(erstes.id), String(zweites.id)], "es liefen nicht beide Sessions");
+
+    // Die Notiz liegt weiter da und ist fuer git sichtbar — ohne den Ausschluss
+    // haette der Rest-Guard nach der ersten Runde hart gestoppt.
+    const stand = spawnSync("git", ["status", "--porcelain"], { cwd: dir, encoding: "utf-8" }).stdout;
+    assert.match(stand, /\.claude\/vorhaben-wartend-probe\.md/,
+      "git sieht die Notiz nicht — der Fall waere auch ohne den Ausschluss gruen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Nachtlauf: erfolgreiche Runde mit sauberem Tree laeuft weiter (Bestandsverhalten)", () => {
+  const dir = setupProjekt();
+  try {
+    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    const zweites = board(dir, "issue", "create", "--title", "Zweites Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    board(dir, "issue", "move", String(erstes.id), "ready");
+    board(dir, "issue", "move", String(zweites.id), "ready");
+
+    // Session-Fake: sauberer Erfolg ohne Reste — beide Runden laufen durch.
+    const sessionLog = join(dir, "sessions.log");
+    const fake = `echo "$NIGHT_ISSUE_ID" >> ${JSON.stringify(sessionLog)}`
+      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`;
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
+    const inReview = new Set(board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id)));
+    assert.ok(inReview.has(String(erstes.id)) && inReview.has(String(zweites.id)),
+      "beide Issues haetten in In review landen muessen");
+    const sessions = readFileSync(sessionLog, "utf-8").trim().split("\n");
+    assert.deepEqual(sessions, [String(erstes.id), String(zweites.id)], "es liefen nicht beide Sessions");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Derselbe Gegenpol wie bei der Vorhaben-Notiz oben, fuer die Wegmarken (Issue #733):
+// Jeder Zug nach In progress oder In review schreibt eine Zeile nach
+// `.claude/wegmarken.tsv` — real zwei je Runde, weil `/implement-next` die Karte erst
+// nach In progress und am Ende nach In review zieht. Waere das ein Rest, stoppte JEDE
+// erfolgreiche Runde hart, sobald `.gitignore` den `.claude/*`-Block nicht fuehrt. Damit
+// waere die Wegmarke eine Bedingung der Arbeit statt ihrer Buchhaltung — genau das
+// Gegenteil ihres Zwecks.
+//
+// Die `.gitignore` des Fixtures fuehrt `.claude/*` bewusst nicht; nur der Ausschluss im
+// Code kann die Datei entschaerfen.
+test("Nachtlauf: eine Wegmarke ist kein unkommittierter Rest", () => {
+  const dir = setupProjekt();
+  try {
+    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    const zweites = board(dir, "issue", "create", "--title", "Zweites Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    board(dir, "issue", "move", String(erstes.id), "ready");
+    board(dir, "issue", "move", String(zweites.id), "ready");
+
+    const sessionLog = join(dir, "sessions.log");
+    const fake = `echo "$NIGHT_ISSUE_ID" >> ${JSON.stringify(sessionLog)}`
+      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`;
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 0, `night.mjs haette weiterlaufen muessen: ${res.stderr}\n${res.stdout}`);
+    const sessions = readFileSync(sessionLog, "utf-8").trim().split("\n");
+    assert.deepEqual(sessions, [String(erstes.id), String(zweites.id)], "es liefen nicht beide Sessions");
+
+    // Vorbedingung des Tests: Die Wegmarken sind entstanden und fuer git sichtbar —
+    // sonst waere der Fall auch ohne den Ausschluss gruen.
+    // Der Session-Fake zieht je Runde einmal nach In review — zwei Runden, zwei Zeilen.
+    const zeilen = readFileSync(join(dir, ".claude", "wegmarken.tsv"), "utf-8").split("\n").filter(Boolean);
+    assert.equal(zeilen.length, 2, `unerwartete Zahl Wegmarken: ${zeilen.join(" | ")}`);
+    const stand = spawnSync("git", ["status", "--porcelain"], { cwd: dir, encoding: "utf-8" }).stdout;
+    assert.match(stand, /\.claude\/wegmarken\.tsv/,
+      "git sieht die Wegmarken-Datei nicht — der Fall waere auch ohne den Ausschluss gruen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

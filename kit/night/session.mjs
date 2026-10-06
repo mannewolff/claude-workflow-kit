@@ -250,7 +250,7 @@ function kommandoNormal(kommando) {
  * immer nur den letzten Lauf einer Session, und gefragt ist jeder einzelne Versuch.
  */
 // SYNC: dieselbe Marke steht in kit/checks.mjs als UEBERNAHME_MARKE und wird dort in die
-// Ausgabe geschrieben; ein Test in test/night-prueflaeufe.test.mjs haelt beide zusammen.
+// Ausgabe geschrieben; ein Test in test/ablauf-night-prueflaeufe.test.mjs haelt beide zusammen.
 export const UEBERNAHME_MARKE = "Ergebnis uebernommen";
 
 /**

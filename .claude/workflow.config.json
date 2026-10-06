@@ -23,21 +23,24 @@
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
+        "board-dokumente",
         "board-einstieg",
         "board-grundlagen",
+        "board-issue-review",
+        "board-testhinweise",
         "nacht-einstieg",
+        "nacht-wartend",
         "pruefungen"
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/night-abs*.test.mjs\" \"test/night-ag*.test.mjs\" \"test/night-an*.test.mjs\" \"test/night-as*.test.mjs\" \"test/night-au*.test.mjs\" \"test/night-bef*.test.mjs\" \"test/night-bo*.test.mjs\" \"test/night-c*.test.mjs\" \"test/night-d*.test.mjs\" \"test/night-e*.test.mjs\" \"test/night-f*.test.mjs\" \"test/night-ga*.test.mjs\" \"test/night-ge*.test.mjs\" \"test/night-gu*.test.mjs\" \"test/night-h*.test.mjs\" \"test/night-i*.test.mjs\" \"test/night-kl*.test.mjs\" \"test/night-label*.test.mjs\" \"test/night-laufkennung.test.mjs\" \"test/night-le*.test.mjs\" \"test/night-lu*.test.mjs\" \"test/night-m*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/night-abs*.test.mjs\" \"test/night-ag*.test.mjs\" \"test/night-an*.test.mjs\" \"test/night-as*.test.mjs\" \"test/night-au*.test.mjs\" \"test/night-bef*.test.mjs\" \"test/night-bo*.test.mjs\" \"test/night-c*.test.mjs\" \"test/night-d*.test.mjs\" \"test/night-e*.test.mjs\" \"test/night-f*.test.mjs\" \"test/night-ga*.test.mjs\" \"test/night-ge*.test.mjs\" \"test/night-gu*.test.mjs\" \"test/night-h*.test.mjs\" \"test/night-i*.test.mjs\" \"test/night-kl*.test.mjs\" \"test/night-label*.test.mjs\" \"test/night-le*.test.mjs\" \"test/night-lu*.test.mjs\" \"test/night-m*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "aufwand",
         "befunde",
         "board-adapter",
         "board-dokumente",
-        "board-einstieg",
         "board-melder",
         "board-wiederholung",
         "installer",
@@ -53,12 +56,13 @@
       "areas": [
         "board-adapter",
         "board-dokumente",
-        "board-einstieg",
         "board-melder",
         "board-wiederholung",
         "installer",
+        "nacht-abhaengigkeiten",
         "nacht-einstieg",
         "nacht-session",
+        "nacht-wartend",
         "pruefungen",
         "skills-doku",
         "wirksamkeit"
@@ -335,6 +339,7 @@
         "board-wiederholung",
         "installer",
         "nacht-einstieg",
+        "nacht-session",
         "preise",
         "pruefungen",
         "sync",
@@ -343,7 +348,7 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/migrate-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/migrate-*.test.mjs\" \"test/ablauf-migrate-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-einstieg",
@@ -353,6 +358,31 @@
     },
     {
       "cmd": "node --test --test-concurrency=2 \"test/install-*.test.mjs\" \"test/tools-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/derived-*.test.mjs\" \"test/copy-*.test.mjs\" \"test/sync-*.test.mjs\" \"test/kit-*.test.mjs\" \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\" \"test/plattform-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "aufwand",
+        "befunde",
+        "board-dokumente",
+        "board-einstieg",
+        "board-grundlagen",
+        "board-issue-review",
+        "einstellungen",
+        "frischer-checkout",
+        "herkunft",
+        "installer",
+        "konfiguration",
+        "nacht-einstieg",
+        "preise",
+        "pruefungen",
+        "skills-doku",
+        "sync",
+        "wirksamkeit",
+        "workflow-vorlage",
+        "worktree"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/ablauf-install-*.test.mjs\" \"test/ablauf-tools-*.test.mjs\" \"test/ablauf-changelog*.test.mjs\" \"test/ablauf-derived-*.test.mjs\" \"test/ablauf-copy-*.test.mjs\" \"test/ablauf-sync-*.test.mjs\" \"test/ablauf-kit-*.test.mjs\" \"test/ablauf-einstellungen-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "aufwand",
@@ -377,6 +407,33 @@
     },
     {
       "cmd": "node --test --test-concurrency=2 \"test/docs-*.test.mjs\" \"test/skills-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "aufwand",
+        "befunde",
+        "board-dokumente",
+        "board-einstieg",
+        "board-grundlagen",
+        "einstellungen",
+        "herkunft",
+        "installer",
+        "nacht-bericht",
+        "nacht-einstieg",
+        "nacht-grundlagen",
+        "nacht-kette",
+        "nacht-session",
+        "nacht-tag",
+        "nacht-wartend",
+        "pruefungen",
+        "skills-doku",
+        "sync",
+        "wirksamkeit",
+        "workflow-vorlage",
+        "worktree"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/ablauf-docs-*.test.mjs\" \"test/ablauf-workflow-*.test.mjs\" \"test/ablauf-push-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "aufwand",
@@ -450,7 +507,6 @@
       "test/night-i*.test.mjs",
       "test/night-kl*.test.mjs",
       "test/night-label*.test.mjs",
-      "test/night-laufkennung.test.mjs",
       "test/night-le*.test.mjs",
       "test/night-lu*.test.mjs",
       "test/night-m*.test.mjs",
@@ -529,6 +585,7 @@
       "test/board-u*.test.mjs",
       "test/ablauf-board-*.test.mjs",
       "test/migrate-*.test.mjs",
+      "test/ablauf-migrate-*.test.mjs",
       "test/cli-*.test.mjs",
       "startboard.sh",
       "test/helpers/board-fixture.mjs",
@@ -624,6 +681,7 @@
       "templates/workflow.config.json",
       "templates/workflow.config.schema.json",
       "test/einstellungen-*.test.mjs",
+      "test/ablauf-einstellungen-*.test.mjs",
       "test/config-*.test.mjs",
       "assets/fonts/*.woff2",
       "test/helpers/einstellungen-fixture.mjs",
@@ -637,11 +695,14 @@
       "tools/sync-blobs.mjs",
       "tools/version.mjs",
       "test/sync-*.test.mjs",
-      "test/kit-*.test.mjs"
+      "test/kit-*.test.mjs",
+      "test/ablauf-sync-*.test.mjs",
+      "test/ablauf-kit-*.test.mjs"
     ],
     "herkunft": [
       "tools/derived-from-report.mjs",
       "test/derived-*.test.mjs",
+      "test/ablauf-derived-*.test.mjs",
       "test/fixtures/board-snapshot-*.json"
     ],
     "installer": [
@@ -656,6 +717,10 @@
       "test/tools-*.test.mjs",
       "test/changelog*.test.mjs",
       "test/copy-*.test.mjs",
+      "test/ablauf-install-*.test.mjs",
+      "test/ablauf-tools-*.test.mjs",
+      "test/ablauf-changelog*.test.mjs",
+      "test/ablauf-copy-*.test.mjs",
       "test/helpers/zeilenenden.mjs",
       ".gitignore",
       "package.json",
@@ -677,6 +742,9 @@
       "test/docs-*.test.mjs",
       "test/workflow-*.test.mjs",
       "test/push-*.test.mjs",
+      "test/ablauf-docs-*.test.mjs",
+      "test/ablauf-workflow-*.test.mjs",
+      "test/ablauf-push-*.test.mjs",
       "test/mitteilung-*.test.mjs",
       "test/vergleiche-*.test.mjs",
       "test/helpers/zeilenenden.mjs",
@@ -693,7 +761,8 @@
     ],
     "frischer-checkout": [
       "tools/frischer-checkout*.mjs",
-      "test/tools-frischer-checkout*.test.mjs"
+      "test/tools-frischer-checkout*.test.mjs",
+      "test/ablauf-tools-frischer-checkout*.test.mjs"
     ]
   },
   "ohnePruefung": [
@@ -741,7 +810,7 @@
   "nurGeruest": [
     {
       "muster": "package.json",
-      "grund": "Genannt wird der Pfad nur in Kommentaren ueber Wegwerf-Projekte ('kein package.json'): test/install-settings-hooks.test.mjs, test/install-preise-blob.test.mjs, test/workflow-ci-trigger.test.mjs. Keine Testdatei liest die package.json dieses Repositories — gesucht wurde nach jedem Lesen ueber repoRoot (grep 'package' in test/)."
+      "grund": "Genannt wird der Pfad nur in Kommentaren ueber Wegwerf-Projekte ('kein package.json'): test/ablauf-install-settings-hooks.test.mjs, test/ablauf-install-preise-blob.test.mjs, test/workflow-ci-trigger.test.mjs. Keine Testdatei liest die package.json dieses Repositories — gesucht wurde nach jedem Lesen ueber repoRoot (grep 'package' in test/)."
     },
     {
       "muster": "CLAUDE.md",

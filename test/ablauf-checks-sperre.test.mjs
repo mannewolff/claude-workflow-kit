@@ -274,14 +274,14 @@ test("[checks-958-8] --help nennt die Sperre und die Namen beider Umgebungsvaria
 // mitziehen (Laerm, den bald niemand liest) oder eine echte Fundstelle uebersehen.
 const OHNE_LAUF = new Map([
   ["ablauf-wirksamkeit-cli.test.mjs", "legt nur einen Stub dieses Namens an, faehrt das echte nicht"],
-  ["install-checks-blob.test.mjs", "faehrt nur --help, kein run"],
+  ["ablauf-install-checks-blob.test.mjs", "faehrt nur --help, kein run"],
   ["night-checks-fehlt.test.mjs", "prueft gerade das FEHLEN von checks.mjs"],
   ["night-grundlagen-pfade.test.mjs", "vergleicht nur die Pfadkonstanten der Grundlagen"],
   ["night-nachbarn-identitaet.test.mjs", "importiert checks.mjs als Modul"],
   ["skills-regeln-im-werkzeug.test.mjs", "liest den Quelltext"],
-  ["sync-blobs-skills.test.mjs", "vergleicht Blobs"],
-  ["sync-blobs-stamp.test.mjs", "vergleicht Blobs"],
-  ["tools-cli.test.mjs", "vergleicht Blobs"],
+  ["ablauf-sync-blobs-skills.test.mjs", "vergleicht Blobs"],
+  ["ablauf-sync-blobs-stamp.test.mjs", "vergleicht Blobs"],
+  ["ablauf-tools-cli.test.mjs", "vergleicht Blobs"],
 ]);
 
 test("[checks-958-9] jede Testdatei, die checks.mjs faehrt, setzt einen eigenen Sperrpfad", () => {

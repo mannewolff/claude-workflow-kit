@@ -49,7 +49,7 @@ export function setupProjekt(praefix, night = null) {
     // Ein Board-Ausfall bekommt seit Issue #1088 einen zweiten Versuch nach der Pause.
     night: { stand: { pauseMin: 0.0001 }, ...night },
   }, null, 2));
-  // Bewusst OHNE `.claude/*` und ohne `*.json` (Muster aus night-guards.test.mjs:48):
+  // Bewusst OHNE `.claude/*` und ohne `*.json` (Muster aus ablauf-night-guards.test.mjs:48):
   // Die Ergebnisstand-Datei muss untracked sichtbar bleiben, sonst bewiese der
   // [night-3]-Test nichts. Die .log-Datei bleibt ignoriert, sonst fiele die
   // Gegenprobe schon am Textprotokoll statt an der JSON-Datei. Die

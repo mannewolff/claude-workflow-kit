@@ -3,7 +3,7 @@
 // Je Hinweis der Pruef-Zusammenfassung eine Zeile im Pruefblock und unter `### Umsetzung`
 // des Nachtberichts — gemeldet, nicht gewertet. Geprueft an den Funktionen des Teils
 // bericht im selben Prozess; wie der Runner die Hinweise aus der Zusammenfassung in den
-// Pruefstand uebernimmt, steht in test/night-hinweise.test.mjs.
+// Pruefstand uebernimmt, steht in test/ablauf-night-hinweise.test.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

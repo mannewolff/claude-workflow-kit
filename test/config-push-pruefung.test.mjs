@@ -61,7 +61,7 @@ test("pushPruefung: die Vorlage trägt die Vorgabe lokal", () => {
 
 test("pushPruefung: die Einstellungs-Referenz kennt den Schlüssel, seine Werte und seine Unterfelder", () => {
   // Die Referenz entsteht mit tools/config-referenz.mjs aus dem Schema; dass die Doku
-  // dem Werkzeug entspricht, hält test/docs-einstellungen.test.mjs fest.
+  // dem Werkzeug entspricht, hält test/ablauf-docs-einstellungen.test.mjs fest.
   const doku = readFileSync(join(repoRoot, "docs", "dokumentation.md"), "utf-8");
   assert.match(doku, /### `pushPruefung`\n\n[^\n]*\(gültig: `lokal`\)/, "Abschnitt oder Wert lokal fehlt");
   assert.match(doku, /- `pushPruefung\.ort` — [^\n]*\(gültig: `buildDienst`\)/, "Unterfeld ort fehlt");

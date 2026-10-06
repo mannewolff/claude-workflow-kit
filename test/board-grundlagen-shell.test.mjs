@@ -1,7 +1,7 @@
 // Die Shell des Board-Werkzeugs setzt Kommandos ohne Shell ab (Issue #196, Live-Befund
 // aus #195), belegt im selben Prozess (Issue #1211, Plan #1199, E6).
 //
-// Bis Issue #1211 standen diese Faelle in `board-shellfrei.test.mjs` und liefen ueber
+// Bis Issue #1211 standen diese Faelle in `ablauf-board-shellfrei.test.mjs` und liefen ueber
 // den Einstieg des Board-Werkzeugs als Kindprozess gegen ein gefaelschtes `gh` im PATH. Was dort belegt
 // wurde — die Argumente kommen als argv an, ein fehlendes CLI wird beim Namen genannt —,
 // ist eine Eigenschaft von `exec` und laesst sich an der Funktion selbst zeigen: Der

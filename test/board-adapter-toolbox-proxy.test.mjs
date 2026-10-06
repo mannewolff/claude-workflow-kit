@@ -5,7 +5,7 @@
 // Proxy-Variable gesetzt, nennt die Meldung am Ende der Wiederholschleife den Schalter.
 // Im selben Prozess gegen den Board-Teil kit/board/adapter.mjs, mit gestelltem `fetch` und
 // gestellter Uhr (Issue #1217, Plan #1199, E6). Der Neustart ueber die CLI und die Umgebung
-// der Nacht-Session stehen in test/board-proxy.test.mjs.
+// der Nacht-Session stehen in test/ablauf-board-proxy.test.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

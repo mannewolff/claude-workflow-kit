@@ -12,7 +12,7 @@
 // Korrekturversuch loeste denselben Fehler erneut aus.
 //
 // Geprueft wird die reine, exportierte Funktion. Die integrative Abdeckung ueber
-// echte Board-Issues bleibt in night-guards.test.mjs.
+// echte Board-Issues bleibt in ablauf-night-guards.test.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

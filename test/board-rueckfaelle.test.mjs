@@ -11,15 +11,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import {
-  normalizeRepoName,
-  normalizeComments,
-  resolveKontextPaths,
-  pickNoteFile,
-  pickLatestLog,
-  pickReviewers,
-  leseTextQuelle,
-} from "../kit/board.mjs";
+import { normalizeRepoName, normalizeComments } from "../kit/board/grundlagen.mjs";
+import { resolveKontextPaths, pickNoteFile, pickLatestLog, leseTextQuelle } from "../kit/board/dokumente.mjs";
+import { pickReviewers } from "../kit/board/issue-review.mjs";
 
 // ============================================================
 // normalizeRepoName: was kein Repository-Name ist

@@ -19,7 +19,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { herkunftAusBody, bestandsPruefung, ZUSTAENDE } from "../tools/derived-from-report.mjs";
-import { kontextGrenzen } from "../kit/board.mjs";
+import { kontextGrenzen } from "../kit/board/dokumente.mjs";
 
 /** Kurzschreibweise: nur was der Leser braucht. */
 const karte = (body, { id = "1", title = "Ein Arbeitspaket" } = {}) => ({ id, title, body });
@@ -205,9 +205,9 @@ test("ein Praefix mitten im Titel zaehlt nicht", () => {
   assert.equal(r.zustand, "fehlplatziert");
 });
 
-// --- der Export aus board.mjs ---
+// --- der Export aus dem Teil kit/board/dokumente.mjs ---
 
-test("kontextGrenzen ist aus kit/board.mjs importierbar", () => {
+test("kontextGrenzen ist aus kit/board/dokumente.mjs importierbar", () => {
   const text = "## Kontext\n\nPlan: Issue #363\n\n## Aufgabe\n";
   const grenzen = kontextGrenzen(text);
   assert.ok(grenzen, "kontextGrenzen liefert keine Grenzen");

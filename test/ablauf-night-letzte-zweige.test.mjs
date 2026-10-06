@@ -1,0 +1,136 @@
+// Ablauf-Pruefung: die Verzweigungen liegen im Lauf von night.mjs und enden mit Meldung und Exitcode des Programms.
+//
+// Die letzten erreichbaren Verzweigungen im Nacht-Runner (Issue #405).
+//
+// Vier Stellen, an denen ein Wert fehlen darf und der Runner trotzdem eine
+// brauchbare Auskunft geben muss: eine Config ohne `local`-Block, ein Lauf ohne
+// buildChecks, ein Vorflug-Kommando, das nicht startbar ist, und eine
+// Review-Session, deren CLI selbst scheitert.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, rmSync, cpSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+
+// Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
+// kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
+// parallelen Testdateien gegeneinander.
+import "./helpers/checks-sperre.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const NIGHT = join(repoRoot, "kit", "night.mjs");
+
+function run(cwd, cliArgs, env = {}) {
+  return spawnSync(process.execPath, [NIGHT, ...cliArgs], {
+    cwd, encoding: "utf-8",
+    env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, ...env },
+  });
+}
+
+function git(dir, ...args) {
+  const res = spawnSync("git", args, { cwd: dir, encoding: "utf-8" });
+  assert.equal(res.status, 0, `git ${args.join(" ")} schlug fehl: ${res.stderr}`);
+}
+
+function board(cwd, ...cliArgs) {
+  const res = spawnSync(process.execPath, [join(cwd, ".claude", "kit", "board.mjs"), ...cliArgs], {
+    cwd, encoding: "utf-8",
+    env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd },
+  });
+  assert.equal(res.status, 0, `board.mjs ${cliArgs.join(" ")} schlug fehl: ${res.stderr}`);
+  return JSON.parse(res.stdout);
+}
+
+function setupProjekt(config = {}, praefix = "night-letzte-") {
+  const dir = mkdtempSync(join(tmpdir(), praefix));
+  mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
+  copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));
+  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
+    codeHost: "local", issueTracker: "local", buildChecks: ["true"],
+    local: { issuesDir: "issues" }, ...config,
+  }, null, 2));
+  writeFileSync(join(dir, ".gitignore"), ".claude/*\n!.claude/workflow.config.json\nsessions.log\n");
+  lfAttribute(join(dir, ".gitattributes"));
+  git(dir, "init", "-q");
+  git(dir, "config", "user.email", "t@example.invalid");
+  git(dir, "config", "user.name", "T");
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "setup");
+  return dir;
+}
+
+function mitProjekt(fn, config, praefix) {
+  const dir = setupProjekt(config, praefix);
+  try {
+    fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function readyIssue(dir, titel = "Ein Issue") {
+  const issue = board(dir, "issue", "create", "--title", titel,
+    "--body", "## Kontext\n\nIssue-Review: x\n\n## Abhaengigkeiten\n\nKeine.\n");
+  board(dir, "issue", "move", String(issue.id), "ready");
+  return String(issue.id);
+}
+
+// ============================================================
+// Eine Config ohne local-Block
+// ============================================================
+
+test("ohne local-Block zaehlen die Board-Dateien im Default-Verzeichnis nicht als dirty", () => {
+  // gitClean nimmt beim lokalen Tracker das issuesDir aus der Config heraus. Fehlt
+  // der Block, muss der Default 'issues' gelten — sonst hielte der Runner jeden
+  // Board-Move fuer eine Code-Aenderung und stoppte sofort hart.
+  mitProjekt((dir) => {
+    const id = readyIssue(dir);
+    const fake = `node .claude/kit/checks.mjs run > /dev/null 2>&1 && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review`;
+
+    const res = run(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 0, `der Lauf haette durchlaufen muessen: ${res.stderr}${res.stdout}`);
+    assert.match(res.stdout, new RegExp(`Erfolg nach [\\d.]+ min.*Issue #${id} in In review`),
+      "die Runde wurde nicht als Erfolg gewertet");
+    assert.doesNotMatch(res.stdout, /HARTER STOPP/,
+      "ein Board-Move darf nicht als unkommittete Code-Aenderung zaehlen");
+  }, { local: undefined }, "night-letzte-ohne-local-");
+});
+
+// ============================================================
+// Ein Lauf ohne buildChecks
+// ============================================================
+
+test("ohne buildChecks ist der Salvage nicht moeglich, und der Lauf sagt es", () => {
+  // Mit --no-checks-ok laeuft die Nacht ohne Gate. Trifft sie dann auf eine Runde,
+  // die Arbeit liegen laesst, gibt es nichts zu verifizieren: Eine leere Pruefliste
+  // gilt als gruen, und der Salvage startet. Genau diese Kette muss halten, statt an
+  // `undefined` zu zerbrechen.
+  mitProjekt((dir) => {
+    readyIssue(dir);
+    const fake = [
+      'if [ -n "$NIGHT_SALVAGE" ]; then',
+      "  exit 0",
+      "else",
+      '  echo arbeit > "work.txt"',
+      "fi",
+    ].join("\n");
+
+    const res = run(dir, ["--label", "none", "--no-checks-ok"], { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 0, "die gescheiterte Runde haelt nur ihr Paket an (Issue #1089)");
+    assert.match(res.stdout, /SALVAGE-VERSUCH gestartet/,
+      "eine leere Pruefliste gilt als gruen — der Salvage haette starten muessen");
+  }, { buildChecks: [] }, "night-letzte-ohne-checks-");
+});
+
+// ============================================================
+// Eine Review-Session, deren CLI scheitert
+// ============================================================
+

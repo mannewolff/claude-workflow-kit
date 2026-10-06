@@ -77,7 +77,7 @@ function setupProjekt(praefix, buildChecks) {
   // `checks-summary.json` steht hier, seit ein Test dieser Datei eine erfolgreiche Runde
   // faehrt (night-55): Die Zusammenfassung entsteht im Arbeitsbaum, und ohne die Regel
   // sieht der Rest-Guard sie als liegengebliebenen Rest — dieselbe Linie wie in
-  // `night-ergebnisstand.test.mjs`.
+  // `ablauf-night-ergebnisstand.test.mjs`.
   writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\n.claude/night-run-*.json\n.claude/checks-summary.json\n");
   lfAttribute(join(dir, ".gitattributes"));
   for (const [c, a] of [

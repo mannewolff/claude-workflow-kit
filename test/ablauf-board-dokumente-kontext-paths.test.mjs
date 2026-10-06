@@ -5,7 +5,7 @@
 // Fixture-Projekt im Temp-Verzeichnis (siehe test/helpers/board-fixture.mjs). HOME und USERPROFILE
 // zeigen dabei in den Fixture-Ordner, damit os.homedir() nicht die echte globale
 // kontext.config.json des Entwicklerrechners findet (dieselbe Umlenkung wie in
-// test/install-flow.test.mjs, Issue #187 — USERPROFILE ist der Windows-Pfad).
+// test/ablauf-install-flow.test.mjs, Issue #187 — USERPROFILE ist der Windows-Pfad).
 //
 // Pfade werden nie als String mit "/" erwartet, sondern mit join() gebaut: Die
 // Testsuite laeuft in der CI auch unter Windows (Issue #197).

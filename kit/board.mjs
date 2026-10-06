@@ -236,17 +236,14 @@ export const { mergeKontextConfig, resolveKontextPaths, pickNoteFile, pickLatest
   abhaengigkeitsHinweise, ABSCHNITT_ZEILE } = await import("./board/dokumente.mjs");
 // Die Handler der issue-Befehle, die Kontext-Achse und die Abschnittszerlegung braucht der
 // Einstieg fuer Dispatch und Formpruefung; exportiert waren sie nie und bleiben es nicht.
-const { KONTEXT_DEFAULTS, loadKontextConfig, kontextRepoName, heute, normalisiereZeilenenden, issueCreate,
+const { KONTEXT_DEFAULTS, loadKontextConfig, kontextRepoName, heute, issueCreate,
   issueGet, issueList, issueEpics, issueActivity, issueMove, issueLabel,
-  issueComment, issueMelden, issueStand, issueAuftrag, issueUpdate, CHECK_FORM_WEGE,
-  zerlegeAbschnitte } = await import("./board/dokumente.mjs");
+  issueComment, issueMelden, issueStand, issueAuftrag, issueUpdate, CHECK_FORM_WEGE } = await import("./board/dokumente.mjs");
 export const { GESCHUETZTE_PFADE, KOPIE_PFADE, geschuetztePfade, trifftGeschuetzt, pfadTokens, tokenFormen,
   geschuetzteTreffer, GESCHUETZT_ANKER, GESCHUETZT_LABEL, GESCHUETZT_LABEL_GESETZT, GESCHUETZT_LABEL_NICHT_GESETZT,
   GESCHUETZT_ABGEWIESEN, abgewieseneTreffer, geschuetztKommentar, geschuetztFreigabe } = await import("./board/geschuetzt.mjs");
-// Die Formgates der Stufen braucht `pruefeForm`; exportiert waren sie nie und bleiben es nicht.
-const { pruefeFachlich, pruefePlan, pruefeIssue } = await import("./board/geschuetzt.mjs");
 export const { TEST_ABLAGEN_VORGABE, testAblagen, ablageAlsAusdruck, nennungsVerzeichnis, genannteDateien,
-  pruefeTestNennung } = await import("./board/testhinweise.mjs");
+  pruefeTestNennung, pruefeForm } = await import("./board/testhinweise.mjs");
 // Den Bestand fuer `issue check-form` braucht nur der Einstieg; exportiert war er nie.
 const { versionierteDateien } = await import("./board/testhinweise.mjs");
 export const { pickReviewers, kommandoVerfuegbar, stufeAusTitel } = await import("./board/issue-review.mjs");
@@ -295,48 +292,6 @@ function parseArgs(argv) {
 
 // Ein Handler je issue-Subbefehl: haelt die Argument-Validierung flach (auf Funktionsebene
 // statt tief in verschachtelten switch-cases) und damit die kognitive Komplexitaet niedrig.
-
-/**
- * Prueft ein Dokument gegen die maschinellen Formgates seiner Stufe (Issue #628).
- *
- * fachlich: F1 F2 F6 F7 F9 F11 aus CLAUDE-Fachplan.md. plan: P1 P2 P3 P6 P12 aus
- * CLAUDE-Plan.md (P4 braucht eine zweite Karte und bleibt Sache des Reviewers).
- * Arbeitspaket: I1 bis I9 — Abschnitte, Autor-Modell, Abhaengigkeiten als `#N`
- * oder `Keine.`, keine Herkunftszeile im Abhaengigkeiten-Abschnitt, bei verbindlicher
- * Vorlage ein Bildschirmfoto im Akzeptanzkriterium, keine Guetemessung im
- * Akzeptanzkriterium und keine Entscheidung im Kontext, die diese Konvention aufhebt;
- * dazu eine Datei als Backtick-Pfad in der Aufgabe (I7), keine geschuetzte Datei in
- * Aufgabe oder Kriterium (I8) und nicht die installierte Kopie in der Aufgabe (I9) —
- * ein `[Mensch]`-Paket besteht I7 bis I9. Die `[Urteil]`-Gates bleiben beim Reviewer.
- *
- * `config` braucht I6 — fuer die Guetekommandos des Projekts — und beim Plan die
- * Test-Ablagen (`testAblagen`). `wurzel` ist die Projektwurzel, deren Einstellungen I8
- * nach Schreibsperren liest; die Kommandozeile reicht die Wurzel der Config.
- *
- * Beim Plan kommen die Testhinweise dazu (Issue #1031): je eigener Test eines
- * gefuehrten Bausteins, den der Plan nicht nennt, ein Eintrag in `hinweise`, gegen den
- * Bestand `dateien`. Sie sind **kein Gate** — `ok` haengt allein an `verstoesse`, und
- * der Schluessel `hinweise` steht nur bei mindestens einem Treffer im Ergebnis.
- *
- * Beim Arbeitspaket haengt `issue check-form` die Hinweise zum Abschnitt
- * `## Abhaengigkeiten` an (`abhaengigkeitsHinweise`, Issue #1060) — nicht hier, weil sie
- * das Board nachschlagen und `pruefeForm` rein bleibt. Auch sie sind kein Gate.
- */
-export function pruefeForm(body, title, config = {}, dateien = [], wurzel = ".") {
-  const stufe = stufeAusTitel(title);
-  const { kopf, abschnitte } = zerlegeAbschnitte(body);
-  const alleZeilen = [...kopf, ...abschnitte.flatMap((a) => a.zeilen)];
-  let verstoesse;
-  if (stufe === "fachlich") verstoesse = pruefeFachlich(abschnitte, alleZeilen);
-  else if (stufe === "plan") verstoesse = pruefePlan(kopf, abschnitte, alleZeilen);
-  else verstoesse = pruefeIssue(abschnitte, config, title, wurzel);
-  const ergebnis = { ok: verstoesse.length === 0, stufe, verstoesse };
-  if (stufe === "plan") {
-    const hinweise = pruefeTestNennung(abschnitte, normalisiereZeilenenden(body), dateien, config);
-    if (hinweise.length > 0) ergebnis.hinweise = hinweise;
-  }
-  return ergebnis;
-}
 
 /** Weist einen Aufruf ab — mit JSON auf stdout, damit ein Aufrufer die Abweisung lesen kann. */
 function checkFormAbweisen(meldung) {

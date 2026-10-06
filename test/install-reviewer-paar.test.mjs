@@ -25,7 +25,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALLER = join(repoRoot, "install.mjs");
 const QUELLE = readFileSync(INSTALLER, "utf-8");
 
-// Wie HINWEIS in install-spec-altlast.test.mjs: Der Wortlaut steht als Konstante im
+// Wie HINWEIS in ablauf-install-spec-altlast.test.mjs: Der Wortlaut steht als Konstante im
 // Quelltext, der Test prueft ihn gegen die Quelle UND gegen die Ausgabe. Ohne den
 // festgelegten Text maesse der Test gegen die Wahl der Implementierung.
 const HINWEIS = "reviewModel entfaellt";

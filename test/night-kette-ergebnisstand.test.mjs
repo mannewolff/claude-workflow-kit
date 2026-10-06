@@ -2,8 +2,8 @@
 //
 // Dritte von drei Dateien zum Ergebnisstand (Issue #836): Diese Tests fahren ganze
 // Ketten, deshalb stehen sie fuer sich. Anlage und harte Stopps liegen in
-// `night-ergebnisstand.test.mjs`, die Einheiten je Arbeitspaket in
-// `night-ergebnisstand-einheiten.test.mjs`.
+// `ablauf-night-ergebnisstand.test.mjs`, die Einheiten je Arbeitspaket in
+// `ablauf-night-ergebnisstand-einheiten.test.mjs`.
 //
 // Seit Issue #1233 laufen diese Ketten im selben Prozess (`ketteImProzess`, Plan #1199, E6).
 // Die Meldung ans Board baut erst der Einstieg; ihr Beleg steht in

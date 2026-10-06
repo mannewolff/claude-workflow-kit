@@ -264,7 +264,7 @@ export function hatKlaerenLabel(issue) {
  * SYNC: `GESCHUETZT_LABEL` und `GESCHUETZT_ANKER` stehen gleichlautend in kit/board.mjs
  * (Issue #1045), wo `geschuetztKommentar` den Halt-Text baut und `geschuetztFreigabe` ihn
  * zurueckliest. Wer einen hier aendert, aendert ihn dort mit — der Gleichlauf-Test in
- * test/night-geschuetzt-gate.test.mjs vergleicht beide Seiten.
+ * test/ablauf-night-geschuetzt-gate.test.mjs vergleicht beide Seiten.
  */
 export const GESCHUETZT_LABEL = "kit:geschuetzt";
 export const GESCHUETZT_ANKER = "## Geschuetzte Datei";

@@ -6,8 +6,10 @@
  * Ein Teil von kit/board.mjs. Der Einstieg laedt ihn erst nach der Auskunft ueber
  * --version und --help und exportiert seine Namen unveraendert weiter. Dieser Teil
  * importiert nie aus dem Einstieg: Der Einstieg laedt die Teile, ein Rueckimport waere
- * ein Zyklus. `pruefeForm` bleibt im Einstieg; es bestimmt die Stufe ueber `stufeAusTitel`
- * aus dem Teil issue-review.
+ * ein Zyklus. Seit Issue #1235 steht hier auch `pruefeForm`: Es braucht die Formgates aus
+ * geschuetzt, die Stufe ueber `stufeAusTitel` aus issue-review und die Testhinweise dieses
+ * Teils, und ein Test der Formpruefung importiert es so aus einem Teil statt aus dem
+ * Einstieg (Plan #1199, E18).
  *
  * Bewusst ohne eigene KIT_VERSION (Plan #1199, E19): Die Teile kommen im selben
  * Verzeichnis-Blob wie der Einstieg und werden nie einzeln verteilt.
@@ -19,7 +21,9 @@
 import { basename, extname } from "node:path";
 import { spawnSync } from "node:child_process";
 
-import { escapeRegex } from "./geschuetzt.mjs";
+import { escapeRegex, pruefeFachlich, pruefePlan, pruefeIssue } from "./geschuetzt.mjs";
+import { zerlegeAbschnitte, normalisiereZeilenenden } from "./dokumente.mjs";
+import { stufeAusTitel } from "./issue-review.mjs";
 
 // ------------------------------------------------------------
 // Testhinweise fuer Plaene (Issue #1031, Plan #1029)
@@ -199,4 +203,46 @@ export function versionierteDateien() {
   });
   if (res.error || res.status !== 0) return [];
   return res.stdout.split("\0").filter((d) => d !== "");
+}
+
+/**
+ * Prueft ein Dokument gegen die maschinellen Formgates seiner Stufe (Issue #628).
+ *
+ * fachlich: F1 F2 F6 F7 F9 F11 aus CLAUDE-Fachplan.md. plan: P1 P2 P3 P6 P12 aus
+ * CLAUDE-Plan.md (P4 braucht eine zweite Karte und bleibt Sache des Reviewers).
+ * Arbeitspaket: I1 bis I9 — Abschnitte, Autor-Modell, Abhaengigkeiten als `#N`
+ * oder `Keine.`, keine Herkunftszeile im Abhaengigkeiten-Abschnitt, bei verbindlicher
+ * Vorlage ein Bildschirmfoto im Akzeptanzkriterium, keine Guetemessung im
+ * Akzeptanzkriterium und keine Entscheidung im Kontext, die diese Konvention aufhebt;
+ * dazu eine Datei als Backtick-Pfad in der Aufgabe (I7), keine geschuetzte Datei in
+ * Aufgabe oder Kriterium (I8) und nicht die installierte Kopie in der Aufgabe (I9) —
+ * ein `[Mensch]`-Paket besteht I7 bis I9. Die `[Urteil]`-Gates bleiben beim Reviewer.
+ *
+ * `config` braucht I6 — fuer die Guetekommandos des Projekts — und beim Plan die
+ * Test-Ablagen (`testAblagen`). `wurzel` ist die Projektwurzel, deren Einstellungen I8
+ * nach Schreibsperren liest; die Kommandozeile reicht die Wurzel der Config.
+ *
+ * Beim Plan kommen die Testhinweise dazu (Issue #1031): je eigener Test eines
+ * gefuehrten Bausteins, den der Plan nicht nennt, ein Eintrag in `hinweise`, gegen den
+ * Bestand `dateien`. Sie sind **kein Gate** — `ok` haengt allein an `verstoesse`, und
+ * der Schluessel `hinweise` steht nur bei mindestens einem Treffer im Ergebnis.
+ *
+ * Beim Arbeitspaket haengt `issue check-form` die Hinweise zum Abschnitt
+ * `## Abhaengigkeiten` an (`abhaengigkeitsHinweise`, Issue #1060) — nicht hier, weil sie
+ * das Board nachschlagen und `pruefeForm` rein bleibt. Auch sie sind kein Gate.
+ */
+export function pruefeForm(body, title, config = {}, dateien = [], wurzel = ".") {
+  const stufe = stufeAusTitel(title);
+  const { kopf, abschnitte } = zerlegeAbschnitte(body);
+  const alleZeilen = [...kopf, ...abschnitte.flatMap((a) => a.zeilen)];
+  let verstoesse;
+  if (stufe === "fachlich") verstoesse = pruefeFachlich(abschnitte, alleZeilen);
+  else if (stufe === "plan") verstoesse = pruefePlan(kopf, abschnitte, alleZeilen);
+  else verstoesse = pruefeIssue(abschnitte, config, title, wurzel);
+  const ergebnis = { ok: verstoesse.length === 0, stufe, verstoesse };
+  if (stufe === "plan") {
+    const hinweise = pruefeTestNennung(abschnitte, normalisiereZeilenenden(body), dateien, config);
+    if (hinweise.length > 0) ergebnis.hinweise = hinweise;
+  }
+  return ergebnis;
 }

@@ -1,6 +1,6 @@
 // Die Vergleichsfunktion fuer Textlisten (Issue #493, S2871).
 //
-// kit/checks.mjs, kit/befunde.mjs und kit/night.mjs fuehren je eine eigene
+// kit/checks.mjs, kit/befunde.mjs und kit/night/grundlagen.mjs fuehren je eine eigene
 // Fassung — die Dateien sind eigenstaendige Single-File-Tools ohne gemeinsames
 // Modul (#440). Der Test haelt die Zusage fest: sortiert wird mit dem
 // Standardvergleich und nicht mit localeCompare, dessen Reihenfolge an der
@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 
 import { vergleicheText as vergleicheTextChecks } from "../kit/checks.mjs";
 import { vergleicheText as vergleicheTextBefunde } from "../kit/befunde.mjs";
-import { vergleicheText as vergleicheTextNight } from "../kit/night.mjs";
+import { vergleicheText as vergleicheTextNight } from "../kit/night/grundlagen.mjs";
 
 // Die Eingabe trennt die beiden Vergleiche: Der Standardvergleich ordnet nach
 // UTF-16-Codepunkten, stellt also Grossbuchstaben vor Kleinbuchstaben und "ä"
@@ -27,7 +27,7 @@ test("vergleicheText in kit/befunde.mjs sortiert mit dem Standardvergleich, nich
   assert.deepEqual([...EINGABE].sort(vergleicheTextBefunde), ERWARTET);
 });
 
-test("vergleicheText in kit/night.mjs sortiert mit dem Standardvergleich, nicht nach Locale", () => {
+test("vergleicheText in kit/night/grundlagen.mjs sortiert mit dem Standardvergleich, nicht nach Locale", () => {
   assert.deepEqual([...EINGABE].sort(vergleicheTextNight), ERWARTET);
 });
 

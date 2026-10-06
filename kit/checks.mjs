@@ -1579,6 +1579,33 @@ function zuschnittHinweise(config, checks) {
 }
 
 /**
+ * Der Anteil je Bereich aus `bereicheAuswerten`, ohne Inventar: allein aus der Config, ohne
+ * git und ohne Datei zu lesen. Exportiert, damit test/config-teile.test.mjs dieselbe
+ * Hervorhebung im selben Prozess bekommt, statt `checks.mjs bereiche` zu starten (Issue #1235).
+ */
+export function anteilJeBereich(config) {
+  const checks = (config.buildChecks ?? []).map((c) => normalisiere(c));
+  const checkAreas = config.checkAreas ?? {};
+  pruefeBereichsnamen(checks, checkAreas);
+
+  const gebunden = bereichsgebunden(checks);
+  const m = gebunden.length;
+  const kopplung = kopplungsgruende(config);
+  const bereiche = Object.entries(checkAreas).map(([name, muster]) => {
+    const n = gebunden.filter((check) => check.areas.includes(name)).length;
+    return {
+      name,
+      muster: muster ?? [],
+      nennend: n,
+      von: m,
+      hervorgehoben: m >= HERVORHEBUNG_AB_KOMMANDOS && n >= m - 1,
+      kopplungsgrund: kopplung.get(name) ?? null,
+    };
+  });
+  return { checks, checkAreas, kopplung, kommandos: m, bereiche };
+}
+
+/**
  * Anteil je Bereich und Inventar der versionierten Dateien (Issue #1004, Plan #1001, E7,
  * E8, E14) — die Rohdaten der Wirksamkeits-Auswertung.
  *
@@ -1600,24 +1627,7 @@ function zuschnittHinweise(config, checks) {
  */
 function bereicheAuswerten() {
   const config = ladeConfig();
-  const checks = (config.buildChecks ?? []).map((c) => normalisiere(c));
-  const checkAreas = config.checkAreas ?? {};
-  pruefeBereichsnamen(checks, checkAreas);
-
-  const gebunden = bereichsgebunden(checks);
-  const m = gebunden.length;
-  const kopplung = kopplungsgruende(config);
-  const bereiche = Object.entries(checkAreas).map(([name, muster]) => {
-    const n = gebunden.filter((check) => check.areas.includes(name)).length;
-    return {
-      name,
-      muster: muster ?? [],
-      nennend: n,
-      von: m,
-      hervorgehoben: m >= HERVORHEBUNG_AB_KOMMANDOS && n >= m - 1,
-      kopplungsgrund: kopplung.get(name) ?? null,
-    };
-  });
+  const { checks, checkAreas, kopplung, kommandos: m, bereiche } = anteilJeBereich(config);
 
   const ls = git("ls-files", "-z");
   if (ls.status !== 0) fail(`git ls-files schlug fehl: ${gitGrund(ls)}`);
@@ -2578,7 +2588,7 @@ function rotesKommando(laufen) {
  * Werte des frueheren Laufs weiter, eine Spanne waere geerbt und nicht gemessen.
  */
 // SYNC: dieselbe Marke steht in kit/night.mjs als UEBERNAHME_MARKE; der Abgleich ist ein
-// Test in test/night-prueflaeufe.test.mjs. Ein Import waere die bessere Kopplung, aber
+// Test in test/ablauf-night-prueflaeufe.test.mjs. Ein Import waere die bessere Kopplung, aber
 // night.mjs laeuft in Projekten, die checks.mjs nicht mitinstalliert haben muessen.
 export const UEBERNAHME_MARKE = "Ergebnis uebernommen";
 

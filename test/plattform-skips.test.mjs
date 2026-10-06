@@ -50,7 +50,7 @@ test("[plattform-skips] die eingebauten Brueche unter test/fixtures/windows-brue
 test("[plattform-skips] die Faehigkeits-Skips nach E6 gelten nicht als Fund", () => {
   // root (checks-hash), Gross-/Kleinschreibung (board-luecken, ablauf-board-dokumente-kontext-notiz),
   // fehlende CLI (cli-grammar).
-  for (const datei of ["checks-hash.test.mjs", "board-luecken.test.mjs", "ablauf-board-dokumente-kontext-notiz.test.mjs", "cli-grammar.test.mjs"]) {
+  for (const datei of ["checks-hash.test.mjs", "ablauf-board-luecken.test.mjs", "ablauf-board-dokumente-kontext-notiz.test.mjs", "cli-grammar.test.mjs"]) {
     assert.deepEqual(fundeIn(datei), [], `${datei} traegt einen Plattform-Skip`);
   }
 });

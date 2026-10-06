@@ -36,7 +36,7 @@ test("[skills-984] jede Stelle nennt das Praefix `[Mensch]`", () => {
 // Seit Issue #1025 steht der Rueckgabe-Kommentar nur noch in kit/board.mjs; die
 // implement-Skills posten, was `issue auftrag` liefert.
 test("[skills-984] der Auftrag liefert den Rueckgabe-Kommentar des Menschenschritts", async () => {
-  const { AUFTRAG_BACKLOG_TEXTE } = await import("../kit/board.mjs");
+  const { AUFTRAG_BACKLOG_TEXTE } = await import("../kit/board/dokumente.mjs");
   const kommentar = AUFTRAG_BACKLOG_TEXTE.mensch("N");
   assert.match(kommentar, /^Menschenschritt —/, "der Kommentar beginnt nicht mit 'Menschenschritt —'");
   assert.match(kommentar, /wartet auf einen Menschen/i, "der Kommentar sagt nicht, dass die Karte wartet");

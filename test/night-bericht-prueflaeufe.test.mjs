@@ -4,7 +4,7 @@
 // `prueflaufZeilen` rechnet je Paket die gemessene Dauer und die Prueflaeufe gegen die
 // Zielmarke, und derselbe Block steht unter `### Umsetzung` des Nachtberichts. Geprueft an
 // den Funktionen des Teils bericht im selben Prozess; wie der Zaehler am Session-Strom die
-// Prueflaeufe misst, steht in test/night-prueflaeufe.test.mjs.
+// Prueflaeufe misst, steht in test/ablauf-night-prueflaeufe.test.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

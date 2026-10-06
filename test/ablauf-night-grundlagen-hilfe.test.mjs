@@ -34,6 +34,11 @@ test("--help zeigt die Usage und endet mit Exit 0, auch ohne Projekt-Root", () =
   }
   assert.match(res.stdout, /TBX_TOKEN/, "Usage zeigt das Night-Board-Beispiel nicht");
   assert.match(res.stdout, /caffeinate/, "Usage zeigt das caffeinate-Beispiel nicht");
+  // Die Aufrufe, die docs-nachtkette und docs-pruefen in der Doku belegen, nennt die Usage
+  // als eigene Option (Issue #1235: der Prozessstart steht nur noch hier).
+  for (const flag of ["--kette", "--pruefen"]) {
+    assert.match(res.stdout, new RegExp(`^[ \\t]+${flag}\\s`, "m"), `Usage nennt ${flag} nicht als Option`);
+  }
 });
 
 test("-h ist die Kurzform von --help, auch hinter einem anderen Flag", () => {

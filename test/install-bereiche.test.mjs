@@ -6,7 +6,7 @@
 // Pruefung die Zuordnung.
 //
 // Gefahren wird das echte install.mjs im Pipe-Modus, cwd und HOME im Wegwerf-
-// Verzeichnis — dieselben Vorkehrungen wie in test/install-flow.test.mjs.
+// Verzeichnis — dieselben Vorkehrungen wie in test/ablauf-install-flow.test.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

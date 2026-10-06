@@ -34,10 +34,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
-import { globZuRegex, bereicheVorbereiten } from "../kit/checks.mjs";
-// `checks.mjs bereiche` laeuft als Kindprozess (Issue #1008); der eigene Sperrpfad haelt
-// die Datei aus der maschinenweiten Sperre, wie jede andere, die checks.mjs startet.
-import "./helpers/checks-sperre.mjs";
+import { globZuRegex, bereicheVorbereiten, anteilJeBereich } from "../kit/checks.mjs";
 import { verflechtungErheben } from "../tools/verflechtung.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -293,17 +290,16 @@ test("jeder Eintrag von nurGeruest traegt ein Muster und einen Grund", () => {
 // es in beiden Richtungen: Ein hervorgehobener Bereich ohne Eintrag ist ein Zuschnitt,
 // der nichts mehr herausschneidet, und ein Eintrag ohne Kopplung ist eine Ausrede.
 //
-// Die Hervorhebung kommt aus `checks.mjs bereiche`, nicht aus einer zweiten Rechnung
+// Die Hervorhebung kommt aus `anteilJeBereich` in kit/checks.mjs, nicht aus einer zweiten Rechnung
 // hier: Dieselbe Regel zweimal beschrieben wiche ab der ersten Aenderung voneinander ab.
 
-/** Die Ausgabe von `checks.mjs bereiche` fuer die Config dieses Repos. */
+/**
+ * Der Anteil je Bereich, den `checks.mjs bereiche` meldet, fuer die Config dieses Repos —
+ * im selben Prozess ueber `anteilJeBereich`, dieselbe Funktion, die das Kommando ruft
+ * (Issue #1235, Plan #1199, E6).
+ */
 function bereicheAuswertung() {
-  const res = spawnSync(process.execPath, [join(repoRoot, "kit", "checks.mjs"), "bereiche"], {
-    cwd: repoRoot,
-    encoding: "utf-8",
-  });
-  assert.equal(res.status, 0, `checks.mjs bereiche schlug fehl: ${(res.stderr || "").trim()}`);
-  return JSON.parse(res.stdout);
+  return anteilJeBereich(config);
 }
 
 /** Hervorgehobene Bereiche, die `gekoppelteBereiche` der Config nicht nennt. */

@@ -70,7 +70,7 @@ test("[skills-962] keine Stelle schickt eine `[Idee]` mehr nach /techplan", () =
 // Seit Issue #1025 steht der Rueckgabe-Kommentar nur noch in kit/board.mjs; die
 // implement-Skills posten, was `issue auftrag` liefert.
 test("[skills-962] der Rueckgabe-Kommentar aus issue auftrag nennt beide Wege", async () => {
-  const { AUFTRAG_BACKLOG_TEXTE } = await import("../kit/board.mjs");
+  const { AUFTRAG_BACKLOG_TEXTE } = await import("../kit/board/dokumente.mjs");
   const idee = AUFTRAG_BACKLOG_TEXTE.idee("N");
   assert.match(idee, /^Idee —/, "der Kommentar beginnt nicht mit 'Idee —'");
   assert.match(idee, /Abw(?:ae|ä)gung/, "der Kommentar unterscheidet nicht nach Abwaegung");
