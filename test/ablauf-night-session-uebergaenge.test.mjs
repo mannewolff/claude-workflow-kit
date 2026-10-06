@@ -21,7 +21,7 @@ import { join } from "node:path";
 import {
   run, board, mitProjekt, fachplan, umgebung, sessions, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,
-} from "./helpers/kette-fixture.mjs";
+} from "./helpers/kette-ablauf.mjs";
 import { fachplanB } from "./helpers/kette-umsetzung-fixture.mjs";
 
 const ERZEUGEN = { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN };

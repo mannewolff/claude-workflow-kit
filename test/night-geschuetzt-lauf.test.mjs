@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   run, board, mitProjekt, umgebung, repoRoot, sessions, UMSETZUNG_ERFOLG,
-} from "./helpers/kette-fixture.mjs";
+} from "./helpers/kette-ablauf.mjs";
 import { ERZEUGEN, fachplanB, umsetzung, keinRestInArbeit } from "./helpers/kette-umsetzung-fixture.mjs";
 
 const boardModul = await import(pathToFileURL(join(repoRoot, "kit", "board.mjs")).href);

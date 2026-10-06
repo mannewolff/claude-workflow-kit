@@ -5,7 +5,7 @@
 // `.githooks/` —, fuehrt `.claude/*` in der `.gitignore` wie das Kit-Repo und hat ein
 // blosses `origin`, auf das sein Hauptstand gepusht ist. Die installierte Kopie unter
 // `.claude/` entsteht wie beim Menschen ueber `sync-blobs`, sie wird nicht committet —
-// anders als in `kette-fixture.mjs`, das seine Kit-Kopie versioniert.
+// anders als in `kette-ablauf.mjs`, das seine Kit-Kopie versioniert.
 //
 // Der Runner startet ohne KIT_ROOT, KIT_STAND und KIT_STAND_PFAD in der Umgebung: Er
 // soll seinen Stand selbst bilden, wie in einer echten Nacht.
@@ -23,7 +23,7 @@ import { tmpdir } from "node:os";
 export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 export const NIGHT = join(repoRoot, "kit", "night.mjs");
 
-/** Die Antwort einer Vorflug-Session, die alles erreicht (wie in kette-fixture.mjs). */
+/** Die Antwort einer Vorflug-Session, die alles erreicht (wie in kette-ablauf.mjs). */
 export const VORFLUG_OK = "cat <<'EOF'\n<<<VORFLUG\n{\"reviewers\":[],\"tracker\":{\"erreichbar\":true,\"geprueft\":\"issue list\"}}\nVORFLUG>>>\nEOF";
 
 /** Eine minimale `result`-Zeile, damit der Lauf Kosten und Ende der Session sieht. */

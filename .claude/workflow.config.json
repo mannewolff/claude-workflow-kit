@@ -6,16 +6,10 @@
       "cmd": "node --test --test-concurrency=2 \"test/night-kette-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
-        "board-adapter",
         "board-dokumente",
-        "board-einstieg",
-        "board-geschuetzt",
-        "board-melder",
-        "board-wiederholung",
-        "installer",
+        "board-grundlagen",
         "nacht-abhaengigkeiten",
         "nacht-bericht",
-        "nacht-einstieg",
         "nacht-grundlagen",
         "nacht-kette",
         "nacht-kitstand",
@@ -282,6 +276,7 @@
         "nacht-bericht",
         "nacht-einstieg",
         "nacht-grundlagen",
+        "nacht-kette",
         "nacht-kitstand",
         "nacht-laufstand",
         "nacht-session",
@@ -450,7 +445,8 @@
       "test/night-z*.test.mjs",
       "test/ablauf-night-*.test.mjs",
       "test/helpers/ergebnisstand-fixture.mjs",
-      "test/helpers/kette-fixture.mjs",
+      "test/helpers/kette-ablauf.mjs",
+      "test/helpers/kette-texte.mjs",
       "test/helpers/kette-umsetzung-fixture.mjs",
       "test/helpers/kitstand-fixture.mjs",
       "test/helpers/zeilenenden.mjs",
@@ -489,7 +485,9 @@
     ],
     "nacht-kette": [
       "kit/night/kette.mjs",
-      "test/night-kette-*.test.mjs"
+      "test/night-kette-*.test.mjs",
+      "test/helpers/kette-fixture.mjs",
+      "test/helpers/kette-texte.mjs"
     ],
     "board-einstieg": [
       "kit/board.mjs",

@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { KLAEREN_LABEL } from "../kit/night.mjs";
 import {
   VORFLUG_OK, run, board, mitProjekt, fachplan, sessions, stand, umgebung, pruefUmgebung,
-} from "./helpers/kette-fixture.mjs";
+} from "./helpers/kette-ablauf.mjs";
 
 const PRUEF_LABEL = "kit:pruefen";
 const BUDGET = { label: PRUEF_LABEL, pruefungMin: 25, kostenUsd: 25 };

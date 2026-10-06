@@ -37,7 +37,7 @@ import { KETTE_ZUSATZ, REVIEW_REST_ANKER } from "../kit/night.mjs";
 // Die Stufen der Nacht-Kette (night-57, night-58) laufen gegen dieselbe Fixture wie die
 // uebrigen Ketten-Tests. Als Namensraum eingebunden, weil dieser Datei eigene Helfer
 // gleichen Namens (`setupProjekt`, `board`, `run`, `stand`) schon gehoeren.
-import * as kette from "./helpers/kette-fixture.mjs";
+import * as kette from "./helpers/kette-ablauf.mjs";
 
 // Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
 // kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die

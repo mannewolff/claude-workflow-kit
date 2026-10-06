@@ -1,91 +1,60 @@
 // Aufruf, Dry-Run und Kandidatenwahl der Nacht-Kette (Plan #638, A13, E6; Issue #643).
+//
+// Seit Issue #1233 laufen die Ketten unten im selben Prozess (`ketteImProzess`, Plan #1199,
+// E6). Was nur der Einstieg belegt — Argumente, --help, der Config-Fehler eines kaputten
+// Budgets —, steht in `ablauf-night-kette-flags.test.mjs`.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
-import { join, basename } from "node:path";
+import { basename } from "node:path";
 import { tmpdir } from "node:os";
-import { waehleKettenKandidaten, korrekturPrompt } from "../kit/night/kette.mjs";
-import {
-  NIGHT, run, board, mitProjekt, fachplan, umgebung, sessions, stand, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
-} from "./helpers/kette-fixture.mjs";
+import { waehleKettenKandidaten, korrekturPrompt, REVIEW_FERTIG_LABEL } from "../kit/night/kette.mjs";
+import { ketteImProzess, fachplanKarte, jeStufe, planAnlegen, GLATT, KETTE_LABEL } from "./helpers/kette-fixture.mjs";
 
-test("[night-19] --kette mit --label wird abgewiesen: das Kettenlabel steht in der Config", () => {
-  mitProjekt((dir) => {
-    const res = run(dir, ["--kette", "--label", "kit:x"]);
-    assert.equal(res.status, 1);
-    assert.match(res.stderr, /--kette kennt kein --label/);
-    assert.match(res.stderr, /night\.kette\.label/);
-  });
+test("[night-19] --kette --dry-run nennt Kandidaten, Uebersprungene und Budget und legt weder Worktree noch Ergebnisstand an", async () => {
+  const offen = fachplanKarte("2", { titel: "[Fachlich] Mit offener Frage", labels: [KETTE_LABEL, REVIEW_FERTIG_LABEL, "kit:klaeren"] });
+  const r = await ketteImProzess({ karten: [fachplanKarte("1"), offen], argv: ["--dry-run"], sitzung: jeStufe({ plan: planAnlegen() }) });
+  assert.equal(r.code, 0, r.ausgabe);
+  assert.match(r.ausgabe, /#1 \[Fachlich\] Ein Anliegen -> Kette 1/);
+  assert.match(r.ausgabe, /#2 .*-> uebersprungen \(traegt kit:klaeren/);
+  assert.match(r.ausgabe, /Budget: Plan 20 min, Pakete 15 min, Review 15 min, Abdeckung 10 min, 50 \$ je Kette, 2 Korrekturrunde\(n\)/);
+  assert.match(r.ausgabe, /Dry-Run beendet: 1 Kette\(n\) wuerden laufen/);
+  assert.ok(r.karte("1").labels.includes(KETTE_LABEL), "der Dry-Run verbraucht kein Label");
+  assert.deepEqual(r.sitzungen, [], "der Dry-Run startet keine Session");
+  assert.ok(!r.gitAufrufe.some((a) => a.args[0] === "worktree" && a.args[1] === "add"), "der Dry-Run legt keinen Worktree an");
+  assert.ok(!readdirSync(tmpdir()).some((n) => n.startsWith(r.worktreePraefix)), "der Dry-Run legt keinen Worktree an");
 });
 
-test("[night-19] --help nennt --kette", () => {
-  const res = spawnSync(process.execPath, [NIGHT, "--help"], { encoding: "utf-8" });
-  assert.equal(res.status, 0);
-  assert.match(res.stdout, /--kette\s+Nacht-Kette/);
+test("[night-19] alte Routing-Labels loesen eine Hinweiszeile aus, ohne Wirkung", async () => {
+  const alt = fachplanKarte("1", { titel: "[Fachlich] Mit altem Label", labels: ["kit:nightplan", REVIEW_FERTIG_LABEL] });
+  const r = await ketteImProzess({ karten: [alt], argv: ["--dry-run"] });
+  assert.equal(r.code, 0, r.ausgabe);
+  assert.match(r.ausgabe, /Hinweis: #1 traegt das Label 'kit:nightplan', das es seit Stufe 2 nicht mehr gibt/);
+  assert.match(r.ausgabe, /WARNUNG: keine Karte traegt das Label 'kit:night'/);
+  assert.match(r.ausgabe, /Keine Kette zu fahren/);
 });
 
-test("[night-19] ein kaputtes Budget bricht vor dem Ergebnisstand mit dem Feldnamen ab", () => {
-  mitProjekt((dir) => {
-    const res = run(dir, ["--kette"]);
-    assert.equal(res.status, 1);
-    assert.match(res.stderr, /night\.kette\.planMin muss eine Zahl groesser 0 sein/);
-    assert.deepEqual(readdirSync(join(dir, ".claude")).filter((n) => n.startsWith("night-run-")), []);
-  }, { planMin: 0 });
-});
-
-test("[night-19] --kette --dry-run nennt Kandidaten, Uebersprungene und Budget und legt weder Worktree noch Ergebnisstand an", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir);
-    const offen = fachplan(dir, "[Fachlich] Mit offener Frage");
-    board(dir, "issue", "label", "add", offen, "kit:klaeren");
-    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN } });
-    const res = run(dir, ["--kette", "--dry-run"], env);
-    assert.equal(res.status, 0, res.stderr);
-    assert.match(res.stdout, new RegExp(`#${F} \\[Fachlich\\] Ein Anliegen -> Kette 1`));
-    assert.match(res.stdout, new RegExp(`#${offen} .*-> uebersprungen \\(traegt kit:klaeren`));
-    assert.match(res.stdout, /Budget: Plan 20 min, Pakete 15 min, Review 15 min, Abdeckung 10 min, 50 \$ je Kette, 2 Korrekturrunde\(n\)/);
-    assert.match(res.stdout, /Dry-Run beendet: 1 Kette\(n\) wuerden laufen/);
-    assert.ok(board(dir, "issue", "get", F).labels.includes("kit:night"), "der Dry-Run verbraucht kein Label");
-    assert.deepEqual(sessions(env.logPfad), [], "der Dry-Run startet keine Session");
-    assert.deepEqual(readdirSync(join(dir, ".claude")).filter((n) => /^night-run-.*\.json$/.test(n)), []);
-    assert.ok(!readdirSync(tmpdir()).some((n) => n.startsWith(`kette-${basename(dir)}-`)), "der Dry-Run legt keinen Worktree an");
-  });
-});
-
-test("[night-19] alte Routing-Labels loesen eine Hinweiszeile aus, ohne Wirkung", () => {
-  mitProjekt((dir) => {
-    const alt = fachplan(dir, "[Fachlich] Mit altem Label", "kit:nightplan");
-    const res = run(dir, ["--kette", "--dry-run"], umgebung(dir));
-    assert.equal(res.status, 0, res.stderr);
-    assert.match(res.stdout, new RegExp(`Hinweis: #${alt} traegt das Label 'kit:nightplan', das es seit Stufe 2 nicht mehr gibt`));
-    assert.match(res.stdout, /WARNUNG: keine Karte traegt das Label 'kit:night'/);
-    assert.match(res.stdout, /Keine Kette zu fahren/);
-  });
-});
-
-test("[night-19] mehrere Fachplaene laufen nacheinander in Listenreihenfolge, --max laesst den Rest liegen", () => {
-  mitProjekt((dir) => {
-    const a = fachplan(dir, "[Fachlich] Erstes");
-    const b = fachplan(dir, "[Fachlich] Zweites");
-    const c = fachplan(dir, "[Fachlich] Drittes");
-    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
-    const res = run(dir, ["--kette", "--max", "2"], env);
-    assert.equal(res.status, 0, res.stderr);
-    const lauf = stand(dir);
-    assert.equal(lauf.einheiten.find((e) => e.id === a).ausgang, "fertig");
-    assert.equal(lauf.einheiten.find((e) => e.id === b).ausgang, "fertig");
-    assert.equal(lauf.einheiten.find((e) => e.id === c).ausgang, "liegengeblieben");
-    assert.ok(board(dir, "issue", "get", c).labels.includes("kit:night"), "die liegengebliebene Karte behaelt ihr Label");
-    // Der Worktree heisst kette-<repo>-<F>-<datum>-<uhrzeit>; F steht vor dem Stempel.
-    const reihenfolge = sessions(env.logPfad).filter((s) => s.stufe === "plan")
-      .map((s) => /-(\d+)-\d{4}-\d{2}-\d{2}-\d{6}$/.exec(basename(s.cwd))?.[1]);
-    assert.deepEqual(reihenfolge, [a, b], "die Ketten liefen nicht in Listenreihenfolge");
-    assert.equal(lauf.einheiten.find((e) => e.id === b).kostenUsd, 4, "jede Kette hat ihr eigenes Budget");
-    assert.match(res.stdout, /Kette 1\/2: Issue #0001/);
-    assert.match(res.stdout, /Kette 2\/2: Issue #0002/);
-  });
+test("[night-19] mehrere Fachplaene laufen nacheinander in Listenreihenfolge, --max laesst den Rest liegen", async () => {
+  const karten = [
+    fachplanKarte("1", { titel: "[Fachlich] Erstes" }),
+    fachplanKarte("2", { titel: "[Fachlich] Zweites" }),
+    fachplanKarte("3", { titel: "[Fachlich] Drittes" }),
+  ];
+  const r = await ketteImProzess({ karten, argv: ["--max", "2"], sitzung: GLATT });
+  assert.equal(r.code, 0, r.ausgabe);
+  const einheit = (id) => r.lauf.einheiten.find((e) => e.id === id);
+  assert.equal(einheit("1").ausgang, "fertig");
+  assert.equal(einheit("2").ausgang, "fertig");
+  assert.equal(einheit("3").ausgang, "liegengeblieben");
+  assert.ok(r.karte("3").labels.includes(KETTE_LABEL), "die liegengebliebene Karte behaelt ihr Label");
+  // Der Worktree heisst kette-<repo>-<F>-<datum>-<uhrzeit>; F steht vor dem Stempel.
+  const reihenfolge = r.sitzungen.filter((s) => s.stufe === "plan")
+    .map((s) => /-(\d+)-\d{4}-\d{2}-\d{2}-\d{6}$/.exec(basename(s.cwd))?.[1]);
+  assert.deepEqual(reihenfolge, ["1", "2"], "die Ketten liefen nicht in Listenreihenfolge");
+  assert.equal(einheit("2").kostenUsd, 4, "jede Kette hat ihr eigenes Budget");
+  assert.match(r.ausgabe, /Kette 1\/2: Issue #1\b/);
+  assert.match(r.ausgabe, /Kette 2\/2: Issue #2\b/);
 });
 
 test("[night-19] waehleKettenKandidaten: nur Karten mit Label, in Reihenfolge, mit Grund je Ausschluss", () => {

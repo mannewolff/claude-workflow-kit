@@ -11,7 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync, readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { run, mitProjekt, fachplan, pruefUmgebung, PRUEFUNG_BEFUNDE } from "./helpers/kette-fixture.mjs";
+import { run, mitProjekt, fachplan, pruefUmgebung, PRUEFUNG_BEFUNDE } from "./helpers/kette-ablauf.mjs";
 
 const PRUEF_LABEL = "kit:pruefen";
 const BUDGET = { label: PRUEF_LABEL, pruefungMin: 25, kostenUsd: 25 };

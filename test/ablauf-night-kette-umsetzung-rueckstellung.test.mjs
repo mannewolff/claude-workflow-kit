@@ -1,3 +1,5 @@
+// Ablauf-Pruefung: Zeitablauf, technischer Fehler und Wurf einer Paket-Session treffen die Runde der Stufe umsetzung, die ihre Sessions selbst als Prozesse startet — nur im Lauf von kit/night.mjs beobachtbar.
+//
 // Rueckstellpflicht und Budgets der Stufe umsetzung (Plan #691, E4-E8, E11; Issue #695).
 //
 // Zweite von zwei Dateien zur Stufe (Issue #836): Was die Stufe gezogen hat und nicht in
@@ -5,7 +7,7 @@
 // Nacht ein GO, das niemand gegeben hat. Geprueft werden hier die Wege dorthin:
 // Zeitablauf, technischer Fehler, Wurf aus der Stufe heraus sowie die erschoepften
 // Budgets. Ablauf, Worktree und Paketauswahl liegen in
-// `night-kette-umsetzung.test.mjs`, die gemeinsamen Hilfen in
+// `ablauf-night-kette-umsetzung.test.mjs`, die gemeinsamen Hilfen in
 // `helpers/kette-umsetzung-fixture.mjs`.
 //
 // Wie in den uebrigen Ketten-Tests laeuft das ECHTE kit/night.mjs gegen ein Temp-Repo
@@ -13,7 +15,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { run, board, mitProjekt, umgebung, sessions, UMSETZUNG_ERFOLG } from "./helpers/kette-fixture.mjs";
+import { run, board, mitProjekt, umgebung, sessions, UMSETZUNG_ERFOLG } from "./helpers/kette-ablauf.mjs";
 import {
   ERZEUGEN, fachplanB, umsetzung, inSpalte, keinRestInArbeit, stehenInBacklog,
 } from "./helpers/kette-umsetzung-fixture.mjs";
@@ -21,7 +23,7 @@ import {
 test("[night-34] Rueckstellpflicht nach Zeitablauf: das gezogene Paket steht am Ende in Backlog", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
-    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: "sleep 5" } });
+    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: "sleep 5" } }); // # haengt — das Zeitlimit beendet die Paket-Session, der Test wartet nicht auf sie
     // Das kurze Limit gilt nur der Umsetzung (Issue #1080): Die vier erzeugenden Sessions
     // rissen es unter Last.
     const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "1500", NIGHT_TIMEOUT_STUFE: "umsetzung" });

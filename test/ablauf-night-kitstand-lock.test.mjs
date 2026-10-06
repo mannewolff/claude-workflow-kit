@@ -22,7 +22,7 @@ import { UMSETZUNG_LOCK } from "../kit/night/grundlagen.mjs";
 import {
   run, board, setupProjekt, mitProjekt, fachplan, umgebung, sessions, stand,
   fake, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
-} from "./helpers/kette-fixture.mjs";
+} from "./helpers/kette-ablauf.mjs";
 
 /** Die vier erzeugenden Stufen, wie sie jeder Ketten-Test braucht. */
 const ERZEUGEN = { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN };
@@ -238,7 +238,7 @@ test("[night-35] nach einem Wurf aus der Umsetzung heraus bleibt kein Lock liege
   mitProjekt((dir) => {
     fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    // Derselbe Test-Hook wie in night-kette-umsetzung: der Wurf trifft zwischen dem Zug
+    // Derselbe Test-Hook wie in ablauf-night-kette-umsetzung: der Wurf trifft zwischen dem Zug
     // nach Ready und der Session des ersten Pakets, also mitten in der Stufe.
     const res = run(dir, ["--kette"], { ...env, NIGHT_KETTE_WURF: "0003" });
     assert.notEqual(res.status, 0, "ein Wurf aus der Stufe heraus endet nicht regulaer");

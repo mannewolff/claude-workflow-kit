@@ -19,7 +19,7 @@ import { join } from "node:path";
 import {
   run, board, mitProjekt, umgebung, stand,
   PAKETE_MIT_ABHAENGIGKEIT, UMSETZUNG_ERFOLG, UMSETZUNG_HALT, jePaket,
-} from "./helpers/kette-fixture.mjs";
+} from "./helpers/kette-ablauf.mjs";
 import { ERZEUGEN, fachplanB, umsetzung } from "./helpers/kette-umsetzung-fixture.mjs";
 
 const BLOCK_KOPF = "Abhaengigkeiten, wie der Nachtlauf sie liest:";

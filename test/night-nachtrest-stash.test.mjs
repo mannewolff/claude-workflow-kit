@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 
 // Eigener Sperrpfad je Testprozess (Issue #958): die Rettung faehrt das echte checks.mjs.
 import "./helpers/checks-sperre.mjs";
-import { UMSETZUNG_ERFOLG } from "./helpers/kette-fixture.mjs";
+import { UMSETZUNG_ERFOLG } from "./helpers/kette-ablauf.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");

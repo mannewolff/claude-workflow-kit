@@ -2,127 +2,80 @@
 //
 // Jeder Abbruch ist ein Ausgang mit Grund im Ergebnisstand, kein Fehler des Laufs: Der
 // Runner endet mit Exit 0, das Label ist verbraucht, der naechste Kandidat kaeme dran.
+//
+// Seit Issue #1233 laufen diese Ketten im selben Prozess (`ketteImProzess`, Plan #1199, E6).
+// Das Zeitbudget einer haengenden Session und die Fehlstart-Wiederholung brauchen den
+// Einstieg und stehen in `ablauf-night-kette-budget-ablauf.test.mjs`.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  run, board, mitProjekt, fachplan, umgebung, sessions, stand, planBody, PLAN_ANLEGEN, FORM_REPARIEREN, REVIEW_MARKER, PAKETE_ANLEGEN,
+  ketteImProzess, fachplanKarte, jeStufe, planAnlegen, planBody, formReparieren, reviewMarker, paketeAnlegen,
 } from "./helpers/kette-fixture.mjs";
-import { nachtlaufMeldung } from "../kit/board.mjs";
 
-test("[night-19] ohne neuen Plan endet die Kette abgebrochen: kein Plan entstanden", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir);
-    const env = umgebung(dir, { stufen: {} });
-    const res = run(dir, ["--kette"], env);
-    assert.equal(res.status, 0, res.stderr);
-    const einheit = stand(dir).einheiten.find((e) => e.id === F);
-    assert.equal(einheit.ausgang, "abgebrochen");
-    assert.match(einheit.grund, /kein Plan entstanden/);
-    assert.equal(einheit.stufen.plan.id, null);
-    assert.ok(!board(dir, "issue", "get", F).labels.includes("kit:night"), "das Label ist trotzdem verbraucht");
-    assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["plan"]);
+test("[night-19] ohne neuen Plan endet die Kette abgebrochen: kein Plan entstanden", async () => {
+  const r = await ketteImProzess({ karten: [fachplanKarte("1")], sitzung: jeStufe({}) });
+  assert.equal(r.code, 0, r.ausgabe);
+  const einheit = r.lauf.einheiten.find((e) => e.id === "1");
+  assert.equal(einheit.ausgang, "abgebrochen");
+  assert.match(einheit.grund, /kein Plan entstanden/);
+  assert.equal(einheit.stufen.plan.id, null);
+  assert.ok(!r.karte("1").labels.includes("kit:night"), "das Label ist trotzdem verbraucht");
+  assert.deepEqual(r.sitzungen.map((s) => s.stufe), ["plan"]);
+});
+
+test("[night-19] eine rote Formpruefung loest eine Korrekturrunde aus; danach ist die Kette fertig", async () => {
+  const r = await ketteImProzess({
+    karten: [fachplanKarte("1")],
+    sitzung: jeStufe({ plan: planAnlegen(planBody({ ohneVerifizierung: true })), form: formReparieren(planBody()), review: reviewMarker, pakete: paketeAnlegen }),
   });
+  assert.equal(r.code, 0, r.ausgabe);
+  const einheit = r.lauf.einheiten.find((e) => e.id === "1");
+  assert.equal(einheit.ausgang, "fertig", einheit.grund);
+  assert.equal(einheit.stufen.plan.korrekturrunden, 1);
+  assert.deepEqual(r.sitzungen.map((s) => s.stufe), ["plan", "form", "review", "pakete", "abdeckung"]);
+  assert.match(r.ausgabe, /Formpruefung #2 rot .*Korrekturrunde 1 von 2/);
+  assert.match(r.ausgabe, /Formpruefung #2 gruen/);
 });
 
-test("[night-19] eine rote Formpruefung loest eine Korrekturrunde aus; danach ist die Kette fertig", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir);
-    const env = umgebung(dir, {
-      stufen: { plan: PLAN_ANLEGEN, form: FORM_REPARIEREN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN },
-      plan: planBody({ ohneVerifizierung: true }),
-      fix: planBody(),
-    });
-    const res = run(dir, ["--kette"], env);
-    assert.equal(res.status, 0, res.stderr);
-    const einheit = stand(dir).einheiten.find((e) => e.id === F);
-    assert.equal(einheit.ausgang, "fertig", einheit.grund);
-    assert.equal(einheit.stufen.plan.korrekturrunden, 1);
-    assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["plan", "form", "review", "pakete", "abdeckung"]);
-    assert.match(res.stdout, /Formpruefung #0002 rot .*Korrekturrunde 1 von 2/);
-    assert.match(res.stdout, /Formpruefung #0002 gruen/);
+test("[night-19] bleibt die Form nach den Korrekturrunden rot, endet die Kette abgebrochen", async () => {
+  const r = await ketteImProzess({
+    karten: [fachplanKarte("1")], kette: { korrekturrunden: 2 },
+    sitzung: jeStufe({ plan: planAnlegen(planBody({ ohneVerifizierung: true })), review: reviewMarker }),
   });
+  assert.equal(r.code, 0, r.ausgabe);
+  const einheit = r.lauf.einheiten.find((e) => e.id === "1");
+  assert.equal(einheit.ausgang, "abgebrochen");
+  assert.match(einheit.grund, /Form nach 2 Korrekturrunde\(n\) weiterhin verletzt \(#2\)/);
+  assert.equal(einheit.stufen.plan.korrekturrunden, 2);
+  assert.deepEqual(r.sitzungen.map((s) => s.stufe), ["plan", "form", "form"], "keine Review-Session nach dem Abbruch");
 });
 
-test("[night-19] bleibt die Form nach den Korrekturrunden rot, endet die Kette abgebrochen", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir);
-    const env = umgebung(dir, {
-      stufen: { plan: PLAN_ANLEGEN, form: ":", review: REVIEW_MARKER },
-      plan: planBody({ ohneVerifizierung: true }),
-    });
-    const res = run(dir, ["--kette"], env);
-    assert.equal(res.status, 0, res.stderr);
-    const einheit = stand(dir).einheiten.find((e) => e.id === F);
-    assert.equal(einheit.ausgang, "abgebrochen");
-    assert.match(einheit.grund, /Form nach 2 Korrekturrunde\(n\) weiterhin verletzt \(#0002\)/);
-    assert.equal(einheit.stufen.plan.korrekturrunden, 2);
-    assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["plan", "form", "form"], "keine Review-Session nach dem Abbruch");
-  }, { korrekturrunden: 2 });
-});
-
-test("[night-19] ueberschreiten die Kosten das Budget, endet die Kette nach der Session abgebrochen", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir);
-    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER }, kosten: 30 });
-    const res = run(dir, ["--kette"], env);
-    assert.equal(res.status, 0, res.stderr);
-    const einheit = stand(dir).einheiten.find((e) => e.id === F);
-    assert.equal(einheit.ausgang, "abgebrochen");
-    assert.match(einheit.grund, /Kostenbudget: 30\.00 \$ von 25 \$ nach der Stufe plan/);
-    assert.equal(einheit.kostenUsd, 30);
-    assert.equal(einheit.stufen.plan.id, "0002", "der Plan ist trotzdem angelegt worden");
-    assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["plan"], "die Review-Session darf nicht mehr starten");
-  }, { kostenUsd: 25 });
-});
-
-test("[night-19] eine Session ohne result-Ereignis zaehlt 0 und erhoeht kostenUnbekannt", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir);
-    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN }, ohneResult: true });
-    const res = run(dir, ["--kette"], env);
-    assert.equal(res.status, 0, res.stderr);
-    const einheit = stand(dir).einheiten.find((e) => e.id === F);
-    assert.equal(einheit.ausgang, "fertig");
-    assert.equal(einheit.kostenUsd, 0);
-    assert.equal(einheit.kostenUnbekannt, 4);
-    assert.equal(einheit.stufen.plan.kennzahlen, null);
+test("[night-19] ueberschreiten die Kosten das Budget, endet die Kette nach der Session abgebrochen", async () => {
+  const stufen = jeStufe({ plan: planAnlegen(), review: reviewMarker });
+  const r = await ketteImProzess({
+    karten: [fachplanKarte("1")], kette: { kostenUsd: 25 },
+    sitzung: (s) => ({ ...stufen(s), kosten: 30 }),
   });
+  assert.equal(r.code, 0, r.ausgabe);
+  const einheit = r.lauf.einheiten.find((e) => e.id === "1");
+  assert.equal(einheit.ausgang, "abgebrochen");
+  assert.match(einheit.grund, /Kostenbudget: 30\.00 \$ von 25 \$ nach der Stufe plan/);
+  assert.equal(einheit.kostenUsd, 30);
+  assert.equal(einheit.stufen.plan.id, "2", "der Plan ist trotzdem angelegt worden");
+  assert.deepEqual(r.sitzungen.map((s) => s.stufe), ["plan"], "die Review-Session darf nicht mehr starten");
 });
 
-test("[night-19] reisst eine Session das Zeitbudget der Stufe, endet die Kette abgebrochen mit Zeitbudget plan", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir);
-    const env = umgebung(dir, { stufen: { plan: "sleep 5; " + PLAN_ANLEGEN } });
-    const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "300" });
-    assert.equal(res.status, 0, res.stderr);
-    const lauf = stand(dir);
-    const einheit = lauf.einheiten.find((e) => e.id === F);
-    assert.equal(einheit.ausgang, "abgebrochen");
-    assert.match(einheit.grund, /Zeitbudget plan: die Session wurde nach [\d.]+ min am Limit beendet/);
-    // Eine erreichte Grenze ist kein Abbruch des Laufs (Issue #881): Der Lauf endet
-    // regulaer, und die Meldung ans Board traegt deshalb keinen abortReason — der
-    // Ausgang steht am roten Paket, nicht am Lauf.
-    assert.equal(lauf.abschluss, "regulaer");
-    assert.ok(!("abortReason" in nachtlaufMeldung(lauf)), "ein Zeitbudget stoppt die Kette, nicht den Lauf");
+test("[night-19] eine Session ohne result-Ereignis zaehlt 0 und erhoeht kostenUnbekannt", async () => {
+  const stufen = jeStufe({ plan: planAnlegen(), review: reviewMarker, pakete: paketeAnlegen });
+  const r = await ketteImProzess({
+    karten: [fachplanKarte("1")],
+    sitzung: (s) => ({ ...stufen(s), ohneResult: true }),
   });
-});
-
-// Seit Issue #1088 (Plan #1079 E13) ist ein Fehlstart — Exit ungleich 0 ohne ein Ereignis
-// der Session — ein Umgebungsfehler: ein zweiter Versuch nach der Pause, scheitert auch er,
-// haelt der Lauf an. Eine Session, die zustande kam und scheiterte, bleibt ein technischer
-// Fehler dieser Kette (test/night-kette-review-rest.test.mjs).
-test("[night-19] ein Fehlstart der Session bekommt einen zweiten Versuch, scheitert auch er, haelt der Lauf an", () => {
-  mitProjekt((dir) => {
-    fachplan(dir);
-    const env = umgebung(dir, { stufen: { plan: "exit 3" } });
-    const res = run(dir, ["--kette"], env);
-    assert.equal(res.status, 1, `${res.stdout}\n${res.stderr}`);
-    assert.equal(sessions(env.logPfad).filter((s) => s.stufe === "plan").length, 2, "der Fehlstart wurde nicht genau einmal wiederholt");
-    assert.match(res.stdout, /Umgebungsfehler: Sitzungsstart zu #\d+ gescheitert \(Exit 3\) — 2\. Versuch/);
-    const lauf = stand(dir);
-    assert.equal(lauf.abschluss, "harterStopp");
-    assert.equal(lauf.fehlerklasse, "umgebung");
-    assert.match(lauf.fehlerText, /Sitzungsstart der Stufe plan .* auch im 2\. Versuch gescheitert \(Exit 3\)/);
-  }, {}, "night-kette-", { night: { stand: { pauseMin: 0.0001 } } });
+  assert.equal(r.code, 0, r.ausgabe);
+  const einheit = r.lauf.einheiten.find((e) => e.id === "1");
+  assert.equal(einheit.ausgang, "fertig");
+  assert.equal(einheit.kostenUsd, 0);
+  assert.equal(einheit.kostenUnbekannt, 4);
+  assert.equal(einheit.stufen.plan.kennzahlen, null);
 });

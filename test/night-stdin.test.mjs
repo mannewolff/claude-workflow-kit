@@ -10,7 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   run, mitProjekt, fachplan, umgebung, sessions, stand, VORFLUG_OK,
-} from "./helpers/kette-fixture.mjs";
+} from "./helpers/kette-ablauf.mjs";
 
 test("[night-22] eine Session, die stdin bis zum Dateiende liest, endet sofort statt am Zeitlimit", () => {
   mitProjekt((dir) => {

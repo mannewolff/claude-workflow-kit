@@ -17,7 +17,7 @@ import { BERICHT_ANKER } from "../kit/night/bericht.mjs";
 import {
   run, board, mitProjekt, fachplan, umgebung, stand, boardFakeInstallieren, VORFLUG_KAPUTT,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
-} from "./helpers/kette-fixture.mjs";
+} from "./helpers/kette-ablauf.mjs";
 
 function wartende(dir) {
   return readdirSync(join(dir, ".claude")).filter((n) => n.startsWith("night-bericht-")).sort();

@@ -43,7 +43,7 @@ import { ENTSCHEIDUNGEN_NAME, OFFENE_FRAGEN_NAME, OFFENE_FRAGEN_UEBERSCHRIFT, PO
   abschnittLesen, leseKarte, wartetAufPush } from "./abhaengigkeiten.mjs";
 import { flatten, kennzahlenAddieren, ketteBudgetDefaults, kostenAddieren, KETTE_BUDGET_DEFAULTS, ladeKetteBudget,
   ladeKetteUebergaenge, ladePruefLaufBudget, leseErgebnisText, leseKennzahlen, neueKommentare, runSession,
-  varianteVon } from "./session.mjs";
+  SESSION_ABHAENGIGKEITEN, varianteVon } from "./session.mjs";
 import { berichtFuerKette, berichtSchreiben, hatPlanReviewMarker, kommentareVon, planReviewWert,
   pruefBericht } from "./bericht.mjs";
 import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, geschuetztAmBoardVermerken, hatKlaerenLabel, laufeRunde,
@@ -86,6 +86,37 @@ export function ketteAnbinden(haken) {
     anbindung[name] = fn;
   }
 }
+
+// --- Die Abhaengigkeiten des Kettenlaufs (Issue #1233, Plan #1199, E6) ---
+
+/**
+ * Was der Lauf der Kette von aussen braucht, jeweils mit der echten Implementierung als
+ * Vorgabe: `spawn` startet die Session einer Stufe und `spawnSync` fragt danach ihre
+ * Prozessgruppe ab (beide gehen an `runSession`), `jetzt` und `schlaf` sind Uhr und Warten
+ * (Budgets der Stufen, Bestaetigungsfrist des Beanspruchens), `board` und `boardRoh` die
+ * Aufrufe des Board-Werkzeugs, `gitClean` und `gitReste` der Blick auf die Hauptkopie vor
+ * der Umsetzung, `beenden` das Ende des Prozesses.
+ *
+ * `laufeKette` nimmt sie als Parameter, nach dem Muster von `ToolboxIssueTracker({ jetzt,
+ * schlaf, zufall })`: Ein Test im selben Prozess setzt Attrappen ein, der Runner ruft ohne.
+ * Die Teile, die die Kette ruft (Laufstand, Worktree, Bericht), haben ihre eigenen.
+ */
+export const KETTE_ABHAENGIGKEITEN = Object.freeze({
+  spawn: SESSION_ABHAENGIGKEITEN.spawn,
+  spawnSync: SESSION_ABHAENGIGKEITEN.spawnSync,
+  jetzt: () => new Date(),
+  schlaf: (ms) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); },
+  board,
+  boardRoh,
+  gitClean,
+  gitReste,
+  beenden: (code) => process.exit(code),
+});
+
+// Die Abhaengigkeiten des laufenden Laufs; `laufeKette` setzt sie fuer seine Dauer. Modul-
+// Zustand wie `anbindung`, weil die Stufen sie brauchen, ohne dass jede Funktion sie
+// durchreicht. Ausserhalb eines Laufs gelten die Vorgaben.
+const abh = { ...KETTE_ABHAENGIGKEITEN };
 
 // --- Die Budgets der Kette ---
 
@@ -711,10 +742,10 @@ const STUFE_OHNE_WARTEND_ERKENNUNG = "abdeckung";
  * Kommandozeile.
  */
 export function wartendVermerken(dokId, stufe, schlusstext) {
-  const pfad = join(tmpdir(), `night-wartend-${process.pid}-${dokId}-${ZUSTAND.LAUF_STEMPEL ?? Date.now()}.md`);
+  const pfad = join(tmpdir(), `night-wartend-${process.pid}-${dokId}-${ZUSTAND.LAUF_STEMPEL ?? abh.jetzt().getTime()}.md`);
   writeFileSync(pfad, wartendVermerk(schlusstext), "utf-8");
   try {
-    board("issue", "comment", String(dokId), "--text-file", pfad);
+    abh.board("issue", "comment", String(dokId), "--text-file", pfad);
     log(`  Stufe ${stufe}: ${GRUND_WARTEND} — Vermerk '${WARTEND_ANKER}' an #${dokId} geschrieben.`);
   } finally {
     rmSync(pfad, { force: true });
@@ -757,15 +788,15 @@ export function wartendBeendet(stufe, schlusstext, dokId, ergebnisDa) {
  * ohne Vermerk am Dokument.
  */
 async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, dokId = null, ergebnisDa = null) {
-  const rest = budgetMs - (Date.now() - stufeStart);
+  const rest = budgetMs - (abh.jetzt().getTime() - stufeStart);
   if (rest < KETTE_MINDEST_REST_MS) {
     return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe} erschoepft, bevor eine weitere Session starten konnte`, dauerMs: 0, kennzahlen: null, sitzungsAbbruch: true };
   }
-  const t = Date.now();
+  const t = abh.jetzt().getTime();
   const res = await runSession(kette.F, kette.args, {
     prompt: `${prompt}\n\n${stufe === "abdeckung" ? ABDECKUNG_ZUSATZ : KETTE_ZUSATZ}`, cwd: kette.wt, stream: true, stufe, timeoutMs: rest,
-  });
-  const dauerMs = Date.now() - t;
+  }, { spawn: abh.spawn, spawnSync: abh.spawnSync });
+  const dauerMs = abh.jetzt().getTime() - t;
   const minuten = (dauerMs / 60000).toFixed(1);
   const kennzahlen = leseKennzahlen(res.stdout);
   kostenAddieren(kette.kosten, kennzahlen);
@@ -824,17 +855,17 @@ function kostenErschoepft(kette) {
  */
 async function stufePlan(kette) {
   const { F, budget } = kette;
-  const stufeStart = Date.now();
+  const stufeStart = abh.jetzt().getTime();
   const budgetMs = budget.planMin * 60 * 1000;
   const stand = { id: null, dauerMs: 0, kennzahlen: null, korrekturrunden: 0, weitere: [] };
   kette.stufen.plan = stand;
   const summe = (s) => { stand.dauerMs += s.dauerMs; stand.kennzahlen = kennzahlenAddieren(stand.kennzahlen, s.kennzahlen); };
 
-  const vorher = new Set(board("issue", "list").map((i) => String(i.id)));
+  const vorher = new Set(abh.board("issue", "list").map((i) => String(i.id)));
   log(`  Stufe plan: /techplan #${F} (Budget ${budget.planMin} min).`);
   // Das Ergebnis ist die Herkunftszeile, nicht der Session-Text (E2): nur neue
   // [Plan]-Karten mit `Fachliche Quelle: Issue #F`; bei mehreren die hoechste Nummer.
-  const neuePlaene = () => board("issue", "list")
+  const neuePlaene = () => abh.board("issue", "list")
     .filter((i) => !vorher.has(String(i.id)) && stammtAusErzeugung(i, F, "plan"))
     .sort((a, b) => Number(b.id) - Number(a.id));
   // Dokument der Stufe ist der Fachplan: Der Plan entsteht erst in dieser Session.
@@ -854,7 +885,7 @@ async function stufePlan(kette) {
   if (form !== null) return form;
 
   // Die Stopp-Frage steht im Plan (A8): `## Offene Fragen` ohne `- Keine.`.
-  const body = board("issue", "get", stand.id).body;
+  const body = abh.board("issue", "get", stand.id).body;
   const grund = stoppFragenGrund(body);
   if (grund !== null) {
     return { ausgang: "angehalten", grund: `Stopp-Frage im Plan #${stand.id}`, dokId: stand.id, frage: abschnittText(body, OFFENE_FRAGEN_UEBERSCHRIFT) || grund };
@@ -873,7 +904,7 @@ async function stufePlan(kette) {
 async function formSicherstellen(kette, stand, stufeStart, budgetMs, summe) {
   const { budget } = kette;
   for (;;) {
-    const form = boardRoh("issue", "check-form", stand.id, { cwd: kette.wt });
+    const form = abh.boardRoh("issue", "check-form", stand.id, { cwd: kette.wt });
     if (!form.json) return { ausgang: "abgebrochen", grund: `technischer Fehler: check-form #${stand.id} lieferte kein JSON (${form.text.slice(0, 200)})` };
     // I8 ist kein Korrekturfall (Plan #987, E15): Die geschuetzte Datei verlangt eine
     // [Mensch]-Karte und eine Teilung, und der korrekturPrompt verbietet beides. Der Verstoss
@@ -919,11 +950,11 @@ export const TESTHINWEIS_ANKER = "## Testhinweise der Formpruefung";
  */
 function testhinweiseVermerken(dokId, hinweise) {
   if (!Array.isArray(hinweise) || hinweise.length === 0) return;
-  const pfad = join(tmpdir(), `night-testhinweise-${process.pid}-${dokId}-${ZUSTAND.LAUF_STEMPEL ?? Date.now()}.md`);
+  const pfad = join(tmpdir(), `night-testhinweise-${process.pid}-${dokId}-${ZUSTAND.LAUF_STEMPEL ?? abh.jetzt().getTime()}.md`);
   const text = [TESTHINWEIS_ANKER, "", ...hinweise.map((h) => `- ${h.meldung}`), ""].join("\n");
   writeFileSync(pfad, text, "utf-8");
   try {
-    const res = boardRoh("issue", "comment", dokId, "--text-file", pfad);
+    const res = abh.boardRoh("issue", "comment", dokId, "--text-file", pfad);
     if (res.status === 0) log(`  ${hinweise.length} Testhinweis(e) als Kommentar '${TESTHINWEIS_ANKER}' an Plan #${dokId} geschrieben.`);
     else log(`  Testhinweise an Plan #${dokId} nicht geschrieben (${res.text.slice(0, 200)}) — die Kette laeuft weiter.`);
   } finally {
@@ -949,7 +980,7 @@ export const REVIEW_REST_ANKER = "## Review unvollstaendig";
  * seinem Grund, die Spur ist Hinweis, kein Zustand.
  */
 function reviewRestVermerken(kette, planId, grund) {
-  const pfad = join(tmpdir(), `night-review-rest-${process.pid}-${planId}-${ZUSTAND.LAUF_STEMPEL ?? Date.now()}.md`);
+  const pfad = join(tmpdir(), `night-review-rest-${process.pid}-${planId}-${ZUSTAND.LAUF_STEMPEL ?? abh.jetzt().getTime()}.md`);
   const text = [
     REVIEW_REST_ANKER,
     "",
@@ -962,7 +993,7 @@ function reviewRestVermerken(kette, planId, grund) {
   ].join("\n");
   writeFileSync(pfad, text, "utf-8");
   try {
-    board("issue", "comment", planId, "--text-file", pfad);
+    abh.board("issue", "comment", planId, "--text-file", pfad);
     log(`  Review #${planId} abgebrochen, Befunde ohne Einarbeitung — Vermerk '${REVIEW_REST_ANKER}' an Plan #${planId} geschrieben.`);
   } finally {
     rmSync(pfad, { force: true });
@@ -976,21 +1007,21 @@ async function stufeReview(kette, planId) {
   const { budget } = kette;
   const stand = { dauerMs: 0, kennzahlen: null, marker: false };
   kette.stufen.review = stand;
-  const vorher = board("issue", "get", planId);
+  const vorher = abh.board("issue", "get", planId);
   log(`  Stufe review: /issue-review #${planId} (Budget ${budget.reviewMin} min).`);
   // Ergebnis der Stufe ist eine Marker-Zeile, die nach der Session da und anders als vorher
   // ist — neu oder mit neuem Datum (Issue #1207). Das Label `review:fertig` taugt dafuer
   // nicht: Es kann von einer frueheren Pruefung stehen.
   const markerNeu = () => {
-    const wert = planReviewWert(board("issue", "get", planId).body);
+    const wert = planReviewWert(abh.board("issue", "get", planId).body);
     return wert !== null && wert !== planReviewWert(vorher.body);
   };
-  const s = await ketteSession(kette, "review", `/issue-review #${planId}`, Date.now(), budget.reviewMin * 60 * 1000, planId, markerNeu);
+  const s = await ketteSession(kette, "review", `/issue-review #${planId}`, abh.jetzt().getTime(), budget.reviewMin * 60 * 1000, planId, markerNeu);
   stand.dauerMs = s.dauerMs;
   stand.kennzahlen = s.kennzahlen;
   if (s.ausgang !== "fertig") {
     // Auch beim Abbruch wird nachgesehen, was in der bezahlten Zeit entstanden ist.
-    const rest = board("issue", "get", planId);
+    const rest = abh.board("issue", "get", planId);
     stand.marker = hatPlanReviewMarker(rest.body);
     // Der eigene Vermerk der wartenden Sitzung zaehlt hier nicht (Issue #778): Er ist in
     // genau diesem Zweig kurz zuvor an den Plan gegangen, und ohne den Ausschluss
@@ -1000,7 +1031,7 @@ async function stufeReview(kette, planId) {
     return s;
   }
   if (kostenErschoepft(kette)) return kostenErschoepft(kette);
-  const nachher = board("issue", "get", planId);
+  const nachher = abh.board("issue", "get", planId);
   stand.marker = hatPlanReviewMarker(nachher.body);
   if (hatKlaerenLabel(nachher)) {
     const neue = neueKommentare(vorher, nachher);
@@ -1019,21 +1050,21 @@ async function stufeReview(kette, planId) {
  */
 async function stufePakete(kette, planId) {
   const { budget } = kette;
-  const stufeStart = Date.now();
+  const stufeStart = abh.jetzt().getTime();
   const budgetMs = budget.paketeMin * 60 * 1000;
   const stand = { ids: [], nichtZuordenbar: [], dauerMs: 0, kennzahlen: null, korrekturrunden: 0 };
   kette.stufen.pakete = stand;
   const summe = (s) => { stand.dauerMs += s.dauerMs; stand.kennzahlen = kennzahlenAddieren(stand.kennzahlen, s.kennzahlen); };
 
-  const vorherIds = new Set(board("issue", "list").map((i) => String(i.id)));
-  const vorherPlan = board("issue", "get", planId);
+  const vorherIds = new Set(abh.board("issue", "list").map((i) => String(i.id)));
+  const vorherPlan = abh.board("issue", "get", planId);
   log(`  Stufe pakete: /issues #${planId} (Budget ${budget.paketeMin} min).`);
-  const paketeEntstanden = () => board("issue", "list").some((i) => !vorherIds.has(String(i.id)) && stammtAusErzeugung(i, planId, "issue"));
+  const paketeEntstanden = () => abh.board("issue", "list").some((i) => !vorherIds.has(String(i.id)) && stammtAusErzeugung(i, planId, "issue"));
   const s = await ketteSession(kette, "pakete", `/issues #${planId}`, stufeStart, budgetMs, planId, paketeEntstanden);
   summe(s);
   if (s.ausgang !== "fertig") return s;
 
-  const neue = board("issue", "list").filter((i) => !vorherIds.has(String(i.id)));
+  const neue = abh.board("issue", "list").filter((i) => !vorherIds.has(String(i.id)));
   const pakete = neue.filter((i) => stammtAusErzeugung(i, planId, "issue"));
   stand.ids = pakete.map((i) => String(i.id));
   stand.nichtZuordenbar = neue.filter((i) => !stammtAusErzeugung(i, planId, "issue")).map((i) => String(i.id));
@@ -1041,7 +1072,7 @@ async function stufePakete(kette, planId) {
     log(`  Neue Karten ohne Herkunftszeile 'Plan: Issue #${planId}', nicht zuordenbar: ${stand.nichtZuordenbar.map((i) => "#" + i).join(", ")}.`);
   }
   if (pakete.length === 0) {
-    const nachherPlan = board("issue", "get", planId);
+    const nachherPlan = abh.board("issue", "get", planId);
     const halt = neueKommentare(vorherPlan, nachherPlan).find((k) => String(k).startsWith(ISSUES_HALT_KOPF));
     if (halt) {
       return { ausgang: "angehalten", grund: `Stopp-Frage beim Schneiden von #${planId}`, dokId: planId, frage: halt };
@@ -1072,10 +1103,10 @@ async function stufeAbdeckung(kette, fachplanId, planId, paketIds) {
   const { budget } = kette;
   const stand = { dauerMs: 0, kennzahlen: null, text: null };
   kette.stufen.abdeckung = stand;
-  const vorherKarten = board("issue", "list").length;
-  const vorherFachplan = board("issue", "get", fachplanId);
+  const vorherKarten = abh.board("issue", "list").length;
+  const vorherFachplan = abh.board("issue", "get", fachplanId);
   log(`  Stufe abdeckung: Pakete gegen Fachplan #${fachplanId} (Budget ${budget.abdeckungMin} min).`);
-  const s = await ketteSession(kette, "abdeckung", abdeckungPrompt(fachplanId, planId, paketIds), Date.now(), budget.abdeckungMin * 60 * 1000);
+  const s = await ketteSession(kette, "abdeckung", abdeckungPrompt(fachplanId, planId, paketIds), abh.jetzt().getTime(), budget.abdeckungMin * 60 * 1000);
   stand.dauerMs = s.dauerMs;
   stand.kennzahlen = s.kennzahlen;
   if (s.ausgang !== "fertig") {
@@ -1091,8 +1122,8 @@ async function stufeAbdeckung(kette, fachplanId, planId, paketIds) {
   }
   // Der Prompt verbietet Schreiben; ein Verstoss ist ein Befund fuer den Morgen, kein
   // Grund, die Pakete zu verwerfen.
-  const nachherKarten = board("issue", "list").length;
-  const nachherFachplan = board("issue", "get", fachplanId);
+  const nachherKarten = abh.board("issue", "list").length;
+  const nachherFachplan = abh.board("issue", "get", fachplanId);
   if (nachherKarten !== vorherKarten || neueKommentare(vorherFachplan, nachherFachplan).length > 0) {
     kette.abdeckungSchrieb = true;
     log("  Hinweis: die Abdeckungs-Session hat am Board geschrieben, obwohl sie nur lesen soll — steht im Ergebnisstand.");
@@ -1157,8 +1188,8 @@ function paketeAbschliessen(stand, gezogen) {
       continue;
     }
     stand.zurueckgestellt.push({ id, grund: `die Runde endete in ${status ?? "unbekanntem Zustand"} statt in In review` });
-    boardRoh("issue", "comment", id, "--text", UMSETZUNG_RUECKSTELLUNG);
-    const move = boardRoh("issue", "move", id, "backlog");
+    abh.boardRoh("issue", "comment", id, "--text", UMSETZUNG_RUECKSTELLUNG);
+    const move = abh.boardRoh("issue", "move", id, "backlog");
     log(move.status === 0
       ? `  Paket #${id} nach Backlog zurueckgestellt — es steht nicht in In review.`
       : `  Paket #${id} liess sich nicht zurueckstellen (${move.text.slice(0, 200)}) — bitte morgens sichten.`);
@@ -1186,7 +1217,7 @@ function paketeNichtBegonnen(stand, ids, grund) {
  * nur. Der Kostendeckel ist unter Variante B `kostenUsdB`.
  */
 function umsetzungBudgetGrund(kette, lauf) {
-  const restMs = lauf.budgetMs - (Date.now() - lauf.stufeStart);
+  const restMs = lauf.budgetMs - (abh.jetzt().getTime() - lauf.stufeStart);
   if (restMs < KETTE_MINDEST_REST_MS) {
     return `Zeitbudget umsetzung (${kette.budget.umsetzungMin} min) erschoepft, bevor eine weitere Session starten konnte`;
   }
@@ -1211,7 +1242,7 @@ export function pushVermerk(karte, verweise) {
 function wartenAmBoardVermerken(karte, verweise) {
   const text = pushVermerk(karte, verweise);
   if (text === null) return;
-  const res = boardRoh("issue", "comment", String(karte.id), "--text", text);
+  const res = abh.boardRoh("issue", "comment", String(karte.id), "--text", text);
   if (res.status !== 0) log(`  Paket #${karte.id}: Push-Vermerk nicht geschrieben (${res.text.slice(0, 200)}) — bitte morgens sichten.`);
 }
 
@@ -1240,7 +1271,7 @@ async function umsetzePaket(kette, id, lauf, zaehler) {
       geschuetztAmBoardVermerken(karte, gate);
     } else if (gate.unmet) {
       const text = gate.block ? `${gate.kommentar}\n\n${gate.block}` : gate.kommentar;
-      const res = boardRoh("issue", "comment", id, "--text", text);
+      const res = abh.boardRoh("issue", "comment", id, "--text", text);
       if (res.status !== 0) log(`  Paket #${id}: Abhaengigkeits-Kommentar nicht geschrieben (${res.text.slice(0, 200)}) — bitte morgens sichten.`);
     }
     paketeNichtBegonnen(lauf.stand, [id], gate.kommentar.replace(/^Nachtlauf:\s*/, ""));
@@ -1257,7 +1288,7 @@ async function umsetzePaket(kette, id, lauf, zaehler) {
     return null;
   }
 
-  board("issue", "move", id, "ready");
+  abh.board("issue", "move", id, "ready");
   lauf.gezogen.add(id);
   log(`  Paket #${id} nach Ready gezogen — Session ${zaehler} der Stufe umsetzung.`);
   // Test-Hook wie NIGHT_MELDEN_ERZWINGEN: Von aussen laesst sich hier sonst keine
@@ -1343,14 +1374,14 @@ async function umsetzungSchleife(kette, paketIds, lauf) {
 function umsetzungAusgelassen(kette, stand, paketIds, stufeStart, grund, zusatz = "") {
   paketeNichtBegonnen(stand, paketIds, grund);
   stand.ausgelassen = grund;
-  stand.dauerMs = Date.now() - stufeStart;
+  stand.dauerMs = abh.jetzt().getTime() - stufeStart;
   log(`  Stufe umsetzung ausgelassen: ${grund} — Rueckfall auf Variante A, die Pakete bleiben in Backlog.${zusatz}`);
   return { ausgang: "unvollstaendig", grund: `${UMSETZUNG_AUSGELASSEN_PRAEFIX}${grund}` };
 }
 
 async function stufeUmsetzung(kette, paketIds) {
   const { budget } = kette;
-  const stufeStart = Date.now();
+  const stufeStart = abh.jetzt().getTime();
   const stand = { umgesetzt: [], angehalten: [], haltArten: {}, zurueckgestellt: [], nichtBegonnen: [], dauerMs: 0 };
   kette.stufen.umsetzung = stand;
   const lauf = {
@@ -1393,8 +1424,8 @@ async function stufeUmsetzung(kette, paketIds) {
     // unsaubere Hauptkopie ist kein technischer Fehler, sondern ein Zustand, den nur ein
     // Mensch bereinigen kann. Die Arbeitspakete stehen fertig da, sie lassen sich heute
     // nacht nur nicht bauen — derselbe Rueckfall auf Variante A, und derselbe Ausgang.
-    if (!gitClean(kette.repoRoot)) {
-      const grund = `die Hauptkopie ist vor dem ersten Paket nicht sauber (${resteText(gitReste(kette.repoRoot))})`;
+    if (!abh.gitClean(kette.repoRoot)) {
+      const grund = `die Hauptkopie ist vor dem ersten Paket nicht sauber (${resteText(abh.gitReste(kette.repoRoot))})`;
       return umsetzungAusgelassen(kette, stand, paketIds, stufeStart, grund,
         " Bitte bereinigen und die Pakete selbst nach Ready ziehen.");
     }
@@ -1405,7 +1436,7 @@ async function stufeUmsetzung(kette, paketIds) {
     } finally {
       // Auch nach einem Wurf: Die Rueckstellpflicht ist der Grund fuer dieses finally.
       paketeAbschliessen(stand, lauf.gezogen);
-      stand.dauerMs = Date.now() - stufeStart;
+      stand.dauerMs = abh.jetzt().getTime() - stufeStart;
       for (const zeile of pruefBericht(lauf.pruefungen, ZUSTAND.LAUF?.einheiten ?? [], ZUSTAND.config?.night?.zielUmsetzungMin)) log(`  ${zeile}`);
     }
     if (ergebnis.ausgang === "fertig" && stand.angehalten.length > 0) {
@@ -1445,8 +1476,8 @@ function aeltereUeberholen(kette, aeltere, neuerPlan) {
     // Der Anker steht am Zeilenanfang des geschriebenen Textes und traegt den
     // Kettenstempel nicht — er bleibt ueber Laeufe hinweg wiedererkennbar.
     const anker = `Ueberholt durch Plan #${neuerPlan}`;
-    board("issue", "comment", id, "--text", `${anker} (Kette ${ZUSTAND.LAUF_STEMPEL ?? "ohne Stempel"}). Die naechste Kette begann von vorn; dieser Entwurf bleibt nur als Verlauf.`);
-    if (kommentareVon(board("issue", "get", id)).some((k) => k.includes(anker))) {
+    abh.board("issue", "comment", id, "--text", `${anker} (Kette ${ZUSTAND.LAUF_STEMPEL ?? "ohne Stempel"}). Die naechste Kette begann von vorn; dieser Entwurf bleibt nur als Verlauf.`);
+    if (kommentareVon(abh.board("issue", "get", id)).some((k) => k.includes(anker))) {
       ueberholt.push(id);
       log(`  Plan #${id} als ueberholt kommentiert (neuer Plan #${neuerPlan}).`);
     } else {
@@ -1510,7 +1541,7 @@ function haltAmAuftrag(kette, ergebnis) {
   // Bei jedem `angehalten` steht der Plan schon fest: Die Stufe `plan` setzt ihre Nummer,
   // bevor sie an einer Stopp-Frage halten kann, und der Plan-Auftrag bringt sie mit.
   const planId = kette.stufen.plan?.id ?? ergebnis.dokId;
-  const pfad = join(tmpdir(), `night-halt-${process.pid}-${ziel}-${ZUSTAND.LAUF_STEMPEL ?? Date.now()}.md`);
+  const pfad = join(tmpdir(), `night-halt-${process.pid}-${ziel}-${ZUSTAND.LAUF_STEMPEL ?? abh.jetzt().getTime()}.md`);
   const text = [
     KETTE_HALT_ANKER,
     "",
@@ -1523,8 +1554,8 @@ function haltAmAuftrag(kette, ergebnis) {
   ].join("\n");
   writeFileSync(pfad, text, "utf-8");
   try {
-    board("issue", "comment", ziel, "--text-file", pfad);
-    board("issue", "label", "add", ziel, KLAEREN_LABEL);
+    abh.board("issue", "comment", ziel, "--text-file", pfad);
+    abh.board("issue", "label", "add", ziel, KLAEREN_LABEL);
   } finally {
     rmSync(pfad, { force: true });
   }
@@ -1546,7 +1577,7 @@ function haltAmAuftrag(kette, ergebnis) {
  * verbraucht, denn es lief nichts. Ohne `fail`, weil der Aufrufer gleich selbst hart stoppt.
  */
 function ketteNichtGestartet(kandidaten, grund) {
-  const zeit = new Date().toISOString();
+  const zeit = abh.jetzt().toISOString();
   for (const k of kandidaten) {
     const ergebnis = standSetzen(k.id, "abgebrochen", `Kette nicht gestartet um ${zeit}: ${grund}`, { budgetMs: ABBRUCH_BUDGET_MS });
     log(ergebnis === "geschrieben"
@@ -1579,7 +1610,7 @@ function pruefungFehltKommentieren(u) {
     log(`  #${u.id}: Hinweis-Kommentar steht schon am Board — kein zweiter.`);
     return;
   }
-  const res = boardRoh("issue", "comment", String(u.id), "--text", `${KETTE_UNGEPRUEFT_ANKER}\n\n${u.grund}.\n`);
+  const res = abh.boardRoh("issue", "comment", String(u.id), "--text", `${KETTE_UNGEPRUEFT_ANKER}\n\n${u.grund}.\n`);
   log(res.status === 0
     ? `  #${u.id}: Hinweis-Kommentar geschrieben, Label bleibt.`
     : `  #${u.id}: Hinweis-Kommentar nicht geschrieben (${res.text.slice(0, 120)}).`);
@@ -1719,7 +1750,7 @@ export function paketUmgesetzt(issue) {
 
 /** Die Arbeitspakete zum Plan am Board, aufsteigend nach Nummer. */
 function paketeZumPlan(planId) {
-  return board("issue", "list")
+  return abh.board("issue", "list")
     .filter((i) => stammtAusErzeugung(i, planId, "issue"))
     .sort((a, b) => Number(a.id) - Number(b.id))
     .map((i) => String(i.id));
@@ -1742,7 +1773,7 @@ export function ergebnisVorhanden(stufe, auftrag) {
 /** Die fuenf Ergebnisregeln aus E9, je Stufe eine. */
 const ERGEBNIS_REGELN = {
   plan: (auftrag) => {
-    const plan = board("issue", "list")
+    const plan = abh.board("issue", "list")
       .filter((i) => PLAN_VORHANDEN_SPALTEN.has(i.status) && stammtAusErzeugung(i, auftrag.F, "plan"))
       .sort((a, b) => Number(b.id) - Number(a.id))[0];
     return plan ? { id: String(plan.id) } : null;
@@ -1795,14 +1826,14 @@ function ketteStand(kette, zustand, kopf = null) {
 
 /** Der Laufstand zum Beginn einer Stufe. `ziel` ist die Karte, an der sie arbeitet. */
 function stufeBeginnt(kette, stufe, ziel) {
-  kette.laufstand.begonnen = `${stufenEintrag(stufe, "begonnen", ziel)} um ${new Date().toISOString()}`;
+  kette.laufstand.begonnen = `${stufenEintrag(stufe, "begonnen", ziel)} um ${abh.jetzt().toISOString()}`;
   ketteStand(kette, "laeuft");
 }
 
 /** Der Laufstand zum Ende einer Stufe — `fertig`, oder ihr Abbruch beziehungsweise Halt. */
 function stufeEndet(kette, stufe, ziel, ergebnis) {
   if (ergebnis.ausgang === "fertig") {
-    kette.laufstand.abgeschlossen = `${stufenEintrag(stufe, "fertig", ziel)} um ${new Date().toISOString()}`;
+    kette.laufstand.abgeschlossen = `${stufenEintrag(stufe, "fertig", ziel)} um ${abh.jetzt().toISOString()}`;
     ketteStand(kette, "fertig");
   } else if (ergebnis.ausgang === "angehalten") {
     // Haelt ein Paket der Umsetzung an, steht die Frage am Paket, nicht an dieser Karte (E17).
@@ -2004,7 +2035,7 @@ function ketteBeginnen(kette, auftrag, nummer, args) {
     : `Kette ${nummer}/${args.max}: Issue #${kette.F} — ${karte.title}`);
   // Das Kennzeichen ist mit dem Start verbraucht (A2): Ein Abbruch fuehrt zu einem
   // Bericht mit Grund und einer neuen Geste, nicht zur stillen Wiederholung.
-  board("issue", "label", "remove", String(karte.id), kette.budget.label);
+  abh.board("issue", "label", "remove", String(karte.id), kette.budget.label);
   log(`  Label '${kette.budget.label}' entfernt — jedes Setzen autorisiert genau eine Kette.`);
 
   if (auftrag.art === "plan") {
@@ -2016,7 +2047,7 @@ function ketteBeginnen(kette, auftrag, nummer, args) {
   // keinen anderen, und der Ueberholt-Kommentar entfaellt.
   if (ergebnisVorhanden("plan", { F: kette.F })) return [];
   // VOR der Plan-Stufe gesammelt: Danach stuende der neue Plan mit in der Liste.
-  return board("issue", "list")
+  return abh.board("issue", "list")
     .filter((i) => stammtAusErzeugung(i, kette.F, "plan"))
     .map((i) => String(i.id));
 }
@@ -2032,7 +2063,7 @@ async function laufeEineKette(auftrag, nummer, args) {
   const F = String(auftrag.F);
   const einheit = einheitAnlegen(String(karte.id), karte.title);
   const kette = {
-    F, art: auftrag.art, karte, args, budget: KETTE_BUDGET, repoRoot: process.cwd(), wt: null, start: new Date(),
+    F, art: auftrag.art, karte, args, budget: KETTE_BUDGET, repoRoot: process.cwd(), wt: null, start: abh.jetzt(),
     kosten: { kostenSumme: 0, kostenUnbekannt: 0 }, kostenGrund: null, stufen: {},
     // Die Variante steht an der gekennzeichneten Karte, nicht an der Wurzel: Wer den
     // Plan durchziehen lassen will, zeichnet den Plan (Issue #895).
@@ -2051,7 +2082,7 @@ async function laufeEineKette(auftrag, nummer, args) {
 
   let ergebnis;
   try {
-    kette.wt = worktreeAnlegen({ repoRoot: kette.repoRoot, issueId: F, stempel: ZUSTAND.LAUF_STEMPEL ?? String(Date.now()) });
+    kette.wt = worktreeAnlegen({ repoRoot: kette.repoRoot, issueId: F, stempel: ZUSTAND.LAUF_STEMPEL ?? String(abh.jetzt().getTime()) });
     // Nach dem Spiegel: Der Stand ueberschreibt die gespiegelte Kopie der Hauptkopie (Issue #1102, A3).
     kitStandInBaum(kette.wt);
     trackerImWorktreeUmleiten(kette.wt, kette.repoRoot);
@@ -2155,7 +2186,7 @@ function lesenUndSchreiben(a, { lesen, schreiben, host, eintrag }) {
   const karte = lesen(id);
   if (!karte) return { grund: "Laufstand nicht lesbar — nicht beansprucht" };
   const { texte, stand } = laufstandDerKarte(karte);
-  const halter = wurzelBelegt(a.F, [karte], stand ? { [id]: stand } : {}, new Date(), host);
+  const halter = wurzelBelegt(a.F, [karte], stand ? { [id]: stand } : {}, abh.jetzt(), host);
   if (halter) return { grund: beanspruchtGrund(halter.laufId) };
   const alt = stand?.zustand === "laeuft" ? laufstandKopf(stand.text) : null;
   if (alt) log(`  #${id}: Wurzel #${a.F} uebernommen — der Runner ${alt.laufId} laeuft nicht mehr.`);
@@ -2186,13 +2217,13 @@ function lesenUndSchreiben(a, { lesen, schreiben, host, eintrag }) {
 export function beanspruchen(auftraege, {
   lesen = leseKarte,
   schreiben = (karte, zustand, text) => standSetzen(karte, zustand, text),
-  warten = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms),
+  warten = abh.schlaf,
   abgeben: austragen = (karte) => abgeben(karte),
   laufId = `${RECHNER}/${process.pid}/${ZUSTAND.LAUF_STEMPEL}`,
   host = RECHNER,
   frist = bestaetigungsfristMs(),
 } = {}) {
-  const eintrag = `Lauf angenommen um ${new Date().toISOString()}, Vorabprüfung läuft`;
+  const eintrag = `Lauf angenommen um ${abh.jetzt().toISOString()}, Vorabprüfung läuft`;
   const geschrieben = [];
   const abgegeben = [];
   const uebernommen = [];
@@ -2239,7 +2270,7 @@ export function belegteWurzeln(alle, label) {
     const stand = karte ? laufstandDerKarte(karte).stand : null;
     if (stand) staende.set(String(i.id), stand);
   }
-  const jetzt = new Date();
+  const jetzt = abh.jetzt();
   return (F) => wurzelBelegt(F, alle, staende, jetzt, RECHNER);
 }
 
@@ -2258,9 +2289,27 @@ export function vorabStandSetzen(args, auftraege) {
 
 /**
  * Programm Kette (Plan #638): Kandidaten, Vorflug, Dry-Run, dann Kette fuer Kette.
- * Beendet den Prozess selbst, wie der Dry-Run der Implementierung.
+ * Beendet den Prozess selbst, wie der Dry-Run der Implementierung — ueber `beenden`, und
+ * gibt dessen Rueckgabe zurueck.
+ *
+ * `abhaengigkeiten` ersetzt Eintraege aus `KETTE_ABHAENGIGKEITEN` fuer die Dauer des Laufs
+ * (Issue #1233, Plan #1199, E6); nicht genannte bleiben die echten. Danach gilt wieder der
+ * Stand davor.
  */
-export async function laufeKette(args) {
+export async function laufeKette(args, abhaengigkeiten = {}) {
+  for (const name of Object.keys(abhaengigkeiten)) {
+    if (!Object.hasOwn(KETTE_ABHAENGIGKEITEN, name)) throw new Error(`laufeKette kennt keine Abhaengigkeit '${name}'`);
+  }
+  const vorher = { ...abh };
+  Object.assign(abh, abhaengigkeiten);
+  try {
+    return await ketteFahren(args);
+  } finally {
+    Object.assign(abh, vorher);
+  }
+}
+
+async function ketteFahren(args) {
   const budget = KETTE_BUDGET;
   const repoRoot = process.cwd();
   const defaultsZeile = budgetDefaultsZeile(budget, KETTE_BUDGET_AUS_DEFAULT);
@@ -2268,7 +2317,7 @@ export async function laufeKette(args) {
   if (!args.dryRun) {
     for (const p of worktreesAufraeumen(repoRoot)) log(`Liegengebliebenen Worktree entfernt: ${p}`);
   }
-  const alle = board("issue", "list");
+  const alle = abh.board("issue", "list");
   warneVorAltenLabels(alle);
   const auswahl = waehleKettenKandidaten(alle, budget.label, args.max, { belegt: belegteWurzeln(alle, budget.label) });
   const { liegengeblieben } = auswahl;
@@ -2303,7 +2352,7 @@ export async function laufeKette(args) {
       vermerkeOhneArbeit("ketteKeinLabel", { label: budget.label });
     }
     anbindung.laufAbschliessen("regulaer");
-    process.exit(0);
+    return abh.beenden(0);
   }
 
   if (args.dryRun) {
@@ -2313,7 +2362,7 @@ export async function laufeKette(args) {
       log(`  #${a.karte.id} ${a.karte.title} -> Kette ${i + 1} (${art}Variante ${varianteVon(a.karte, budget)})`);
     });
     log(`Dry-Run beendet: ${auftraege.length} Kette(n) wuerden laufen — kein Worktree, kein Label veraendert.`);
-    process.exit(0);
+    return abh.beenden(0);
   }
 
   const zaehler = Object.fromEntries(KETTE_AUSGAENGE.map((a) => [a, 0]));
@@ -2326,5 +2375,5 @@ export async function laufeKette(args) {
   log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.unvollstaendig} unvollstaendig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length} uebersprungen, ${liegengeblieben.length} liegengeblieben, ${NICHT_BEGONNEN_GESAMT} Paket(e) nicht begonnen.`);
   log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Nach Variante A liegen die Pakete morgens in Backlog; Variante B (Label '${budget.varianteBLabel}') hat sie in derselben Nacht umgesetzt, sie stehen dann in In review. Protokoll: ${ZUSTAND.LOG_FILE}`);
   anbindung.laufAbschliessen("regulaer");
-  process.exit(0);
+  return abh.beenden(0);
 }

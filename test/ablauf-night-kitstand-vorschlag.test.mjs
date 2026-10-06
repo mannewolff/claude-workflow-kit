@@ -19,7 +19,7 @@ import { join } from "node:path";
 import {
   run, board, mitProjekt, fachplan, umgebung,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
-} from "./helpers/kette-fixture.mjs";
+} from "./helpers/kette-ablauf.mjs";
 
 /** Eine Protokollzeile, wie `befunde.mjs buchen` sie schreibt — sieben Spalten, Art in Spalte 5. */
 function zeile(art) {

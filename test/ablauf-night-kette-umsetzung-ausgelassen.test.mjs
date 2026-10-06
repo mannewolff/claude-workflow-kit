@@ -1,3 +1,5 @@
+// Ablauf-Pruefung: Umsetzungs-Lock, saubere Hauptkopie unter git und die Runde der Stufe umsetzung greifen erst im Lauf von kit/night.mjs ineinander.
+//
 // Eine Kette, die ihre bestellte Umsetzung nicht ausfuehren konnte (Issue #862).
 //
 // Unter Variante B laesst die Stufe umsetzung ihre Arbeit aus, wenn der Umsetzungs-Lock
@@ -20,7 +22,7 @@ import { UMSETZUNG_LOCK } from "../kit/night/grundlagen.mjs";
 import {
   run, board, mitProjekt, fachplan, umgebung, sessions, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,
-} from "./helpers/kette-fixture.mjs";
+} from "./helpers/kette-ablauf.mjs";
 import { ERZEUGEN, fachplanB, umsetzung, stehenInBacklog, keinRestInArbeit } from "./helpers/kette-umsetzung-fixture.mjs";
 
 /**

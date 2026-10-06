@@ -27,7 +27,7 @@ import { tmpdir } from "node:os";
 
 import {
   run as ketteRun, mitProjekt, umgebung, sessions, fachplan, stand, EREIGNIS, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
-} from "./helpers/kette-fixture.mjs";
+} from "./helpers/kette-ablauf.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");

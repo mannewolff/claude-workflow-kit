@@ -264,14 +264,14 @@ test("mit --dry-run --verbose entsteht keine Ergebnisstand-Datei", () => {
   }
 });
 
-test("zwei Laeufe am selben Tag hinterlassen zwei Ergebnisstand-Dateien", async () => {
+// Ohne Wartezeit dazwischen: Treffen beide Laeufe dieselbe Sekunde, bildet der zweite seinen
+// Stempel neu (`laufStempelReservieren`, Issue #1190). Die Neubildung selbst belegt
+// `night-grundlagen-stempel.test.mjs` mit eingespeister Uhr im selben Prozess (Issue #1233).
+test("zwei Laeufe am selben Tag hinterlassen zwei Ergebnisstand-Dateien", () => {
   const dir = setupProjekt("night-stand-zwei-");
   try {
     const erst = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: "true" });
     assert.equal(erst.status, 0, `${erst.stderr}\n${erst.stdout}`);
-    // Die Uhrzeit im Namen loest auf Sekunden auf — ohne Wartezeit koennten beide
-    // Laeufe denselben Namen treffen.
-    await new Promise((fertig) => setTimeout(fertig, 1100));
     const zweit = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: "true" });
     assert.equal(zweit.status, 0, `${zweit.stderr}\n${zweit.stdout}`);
 

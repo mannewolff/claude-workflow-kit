@@ -1,3 +1,5 @@
+// Ablauf-Pruefung: Die Stufe umsetzung faehrt jedes Paket ueber laufeRunde mit eigener Session, Commit und Pruef-Zusammenfassung in der echten Hauptkopie unter git — die Runde startet ihre Sessions selbst und laesst sich nur im Lauf von kit/night.mjs beobachten.
+//
 // Stufe umsetzung der Nacht-Kette unter Variante B (Plan #691, E4-E8, E14, E16-E18;
 // Issue #695).
 //
@@ -7,7 +9,7 @@
 //
 // Erste von zwei Dateien zur Stufe (Issue #836): Hier stehen Ablauf, Worktree und die
 // Auswahl der Pakete. Die Rueckstellpflicht und die Budgets liegen in
-// `night-kette-umsetzung-rueckstellung.test.mjs`, die gemeinsamen Hilfen in
+// `ablauf-night-kette-umsetzung-rueckstellung.test.mjs`, die gemeinsamen Hilfen in
 // `helpers/kette-umsetzung-fixture.mjs`.
 //
 // Wie in den uebrigen Ketten-Tests laeuft das ECHTE kit/night.mjs gegen ein Temp-Repo
@@ -23,7 +25,7 @@ import { KLAEREN_LABEL } from "../kit/night/wartend.mjs";
 import {
   run, board, mitProjekt, umgebung, sessions, stand,
   PAKETE_MIT_ABHAENGIGKEIT, UMSETZUNG_ERFOLG, UMSETZUNG_HALT, jePaket,
-} from "./helpers/kette-fixture.mjs";
+} from "./helpers/kette-ablauf.mjs";
 import {
   ERZEUGEN, fachplanB, umsetzung, inSpalte, keinRestInArbeit, stehenInBacklog,
 } from "./helpers/kette-umsetzung-fixture.mjs";

@@ -14,7 +14,7 @@ import { stoppFragenGrund } from "../kit/night/kette.mjs";
 const F = "```";
 
 const KONTEXT = ["## Kontext", "", "Autor-Modell: claude-opus-5", "Plan-Review: fable (2026-09-08)", ""];
-const KEINE_FRAGEN = ["## Offene Fragen", "", "- Keine. Der Plan bleibt in kit/night.mjs.", ""];
+const KEINE_FRAGEN = ["## Offene Fragen", "", "- Keine. Der Plan bleibt in src/plan.mjs.", ""];
 const OFFENE_FRAGE = ["## Offene Fragen", "", "- Soll der Ergebnisstand schon Einheiten tragen?", ""];
 const FRAGEN_KLEIN = ["## Offene Fragen", "", "- keine.", ""];
 const SCHLUSS = ["## Verifizierung", "", "- night.mjs laeuft.", ""];

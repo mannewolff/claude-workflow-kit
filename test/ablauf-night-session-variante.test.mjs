@@ -13,7 +13,7 @@ import { spawnSync } from "node:child_process";
 import {
   NIGHT, run, board, mitProjekt, fachplan, umgebung, sessions,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
-} from "./helpers/kette-fixture.mjs";
+} from "./helpers/kette-ablauf.mjs";
 
 test("[night-33] die Stufenfolge: Variante A endet nach abdeckung, unveraendert", () => {
   mitProjekt((dir) => {
@@ -33,7 +33,7 @@ test("[night-33] eine Karte mit dem Variante-B-Label fuehrt die Stufe umsetzung,
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, umsetzung: UMSETZUNG_ERFOLG } });
     const res = run(dir, ["--kette"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-    // Was die Stufe umsetzung im Einzelnen tut, prueft night-kette-umsetzung.test.mjs;
+    // Was die Stufe umsetzung im Einzelnen tut, prueft ablauf-night-kette-umsetzung.test.mjs;
     // hier steht nur die Weiche: Unter B kommt sie hinter abdeckung dazu.
     assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe),
       ["plan", "review", "pakete", "abdeckung", "umsetzung", "umsetzung"]);

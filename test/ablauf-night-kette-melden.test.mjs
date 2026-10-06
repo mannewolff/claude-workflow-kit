@@ -1,3 +1,5 @@
+// Ablauf-Pruefung: Die Meldung nach jeder Stufe geht ueber das Board-Werkzeug als eigenen Prozess (laufMelden ruft board.mjs nightrun melden); nur dessen Mitschnitt zeigt, was das Haus verliesse.
+//
 // Der Kettenlauf meldet sich nach jeder Stufe (Issue #794).
 //
 // kanban-kit erklaert einen nicht abgeschlossenen Lauf fuer verstummt, wenn laenger als
@@ -19,7 +21,7 @@ import { join, basename } from "node:path";
 import {
   repoRoot, run, mitProjekt, setupProjekt, fachplan, umgebung, stand,
   meldeCaptureInstallieren, PLAN_ANLEGEN, REVIEW_MARKER, REVIEW_HALT, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
-} from "./helpers/kette-fixture.mjs";
+} from "./helpers/kette-ablauf.mjs";
 
 /** Ein Fixture-Projekt mit dem meldung-abfangenden Board-Umweg; die Capture-Datei liegt daneben. */
 function mitCapture(fn, kette = {}) {

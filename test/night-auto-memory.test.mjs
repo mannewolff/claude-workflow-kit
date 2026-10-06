@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 // Der Vorflug laeuft nur im Kettenmodus — sein Fixture steht schon bereit.
 import {
   NIGHT, repoRoot, run as ketteRun, mitProjekt, fachplan, umgebung, VORFLUG_OK,
-} from "./helpers/kette-fixture.mjs";
+} from "./helpers/kette-ablauf.mjs";
 
 // Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
 // kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die

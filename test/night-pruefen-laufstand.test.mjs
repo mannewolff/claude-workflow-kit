@@ -18,7 +18,7 @@ import {
 import {
   NIGHT, run, board, mitProjekt, fachplan, sessions, stand, pruefUmgebung,
   PRUEFUNG_GEPRUEFT, PRUEFUNG_HALT, PRUEFUNG_BEFUNDE,
-} from "./helpers/kette-fixture.mjs";
+} from "./helpers/kette-ablauf.mjs";
 
 const PRUEF_LABEL = "kit:pruefen";
 const BUDGET = { label: PRUEF_LABEL, pruefungMin: 25, kostenUsd: 25 };

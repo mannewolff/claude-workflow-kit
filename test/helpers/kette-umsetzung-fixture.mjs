@@ -11,7 +11,7 @@
 
 import assert from "node:assert/strict";
 
-import { board, durchziehen, fachplan, stand, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN } from "./kette-fixture.mjs";
+import { board, durchziehen, fachplan, stand, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN } from "./kette-ablauf.mjs";
 
 /** Die vier erzeugenden Stufen, wie sie jeder dieser Tests braucht. */
 export const ERZEUGEN = { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN };

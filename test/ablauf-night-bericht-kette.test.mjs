@@ -17,7 +17,7 @@ import { BERICHT_ANKER, BERICHT_SCHLUSS } from "../kit/night/bericht.mjs";
 import {
   run, mitProjekt, fachplan, umgebung, stand, planBody,
   PLAN_ANLEGEN, REVIEW_MARKER, REVIEW_HALT, PAKETE_ANLEGEN, EINARBEITUNG_ZEILE_ABGELEHNT, PAKET_ENTSCHEIDUNG,
-} from "./helpers/kette-fixture.mjs";
+} from "./helpers/kette-ablauf.mjs";
 
 const RESULT_TEXT = "### Zuordnung 1 -> #0003. ### Ohne Paket Alle Kriterien sind abgebildet. ### Zuwachs Nichts Zusaetzliches.";
 const ABSCHNITTE = ["### Ausgang", "### Stufen", "### Entscheidungen der Nacht", "### Abgelehnte Befunde", "### Abdeckung gegen den Fachplan", "### Kennzahlen"];

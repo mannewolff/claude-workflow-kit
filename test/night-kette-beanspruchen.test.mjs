@@ -4,32 +4,37 @@
 // Das Board kennt kein bedingtes Schreiben. Der Schutz laeuft ueber den Laufstand: lesen,
 // schreiben, die Bestaetigungsfrist warten, wiederlesen. `issue stand` ersetzt immer den
 // juengsten Laufstand, darum gewinnt der letzte Schreiber. Geprueft mit eingespeistem
-// Board — zwei Runner teilen sich darin eine Karte —, die gescheiterte Vorbereitung ueber
-// das echte CLI am lokalen Tracker.
+// Board — zwei Runner teilen sich darin eine Karte —, die gescheiterte Vorbereitung und der
+// zweite Start neben einem lebenden Runner ueber `laufeKette` mit der Board-Attrappe.
+//
+// Seit Issue #1233 laufen auch diese beiden Kettenlaeufe im selben Prozess (`ketteImProzess`,
+// Plan #1199, E6); keiner braucht den Einstieg, darum gibt es zu dieser Datei keine
+// Ablauf-Pruefung.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, appendFileSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, appendFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir, hostname } from "node:os";
 
 import { beanspruchen, beanspruchtGrund, waehleKettenKandidaten, REVIEW_FERTIG_LABEL, BESTAETIGUNGSFRIST_MS } from "../kit/night/kette.mjs";
 import { abgeben, laufendeKarten, journalLesen, staendeNachtragen } from "../kit/night/laufstand.mjs";
-import { run, board, mitProjekt, fachplan, umgebung, VORFLUG_KAPUTT } from "./helpers/kette-fixture.mjs";
+import { ketteImProzess, fachplanKarte, KETTE_LABEL, UHR_START } from "./helpers/kette-fixture.mjs";
 
 const HOST = "hier";
 const laufIdVon = (name, pid = process.pid) => `${HOST}/${pid}/${name}`;
 
-/** Eine PID, deren Prozess sicher beendet ist. */
+/**
+ * Eine PID, zu der sicher kein Prozess laeuft: oberhalb der groessten PID unter Linux
+ * (2^22) und macOS (99998), und unter Windows kein Vielfaches von 4.
+ */
 function totePid() {
-  const res = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf-8" });
-  return Number(res.stdout);
+  return 2 ** 22 + 1;
 }
 
 /**
  * Ein Board mit Karten im Format von GitHub (Kommentare als Array). `issue stand` ersetzt
- * den juengsten Laufstand oder legt ihn an und setzt `lauf:laeuft` — wie kit/board.mjs.
+ * den juengsten Laufstand oder legt ihn an und setzt `lauf:laeuft` — wie `issue stand` des Board-Werkzeugs.
  */
 function fakeBoard(karten) {
   const ablage = new Map(karten.map((k) => [String(k.id), { labels: [], comments: [], ...k, id: String(k.id) }]));
@@ -204,33 +209,32 @@ test("die Auswahl ohne Angabe zu belegten Wurzeln bleibt wie bisher", () => {
   assert.deepEqual(waehleKettenKandidaten(karten, "kit:night", 5).kandidaten.map((a) => a.karte.id), ["1"]);
 });
 
-test("scheitert die Vorbereitung, bleibt die Kennzeichnung stehen und der Laufstand wird abgebrochen", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir, "[Fachlich] Die Wurzel");
-    const env = umgebung(dir);
-    const res = run(dir, ["--kette"], { ...env, NIGHT_VORFLUG_CMD: VORFLUG_KAPUTT });
-    assert.notEqual(res.status, 0, "ein kaputter Vorflug haelt den Lauf an");
-    const karte = board(dir, "issue", "get", F);
-    assert.ok(karte.labels.includes("kit:night"), `die Kennzeichnung muss stehen bleiben: ${karte.labels}`);
-    assert.ok(karte.labels.includes("lauf:abgebrochen"), `der Laufstand muss abgebrochen sein: ${karte.labels}`);
+test("scheitert die Vorbereitung, bleibt die Kennzeichnung stehen und der Laufstand wird abgebrochen", async () => {
+  const r = await ketteImProzess({
+    karten: [fachplanKarte("1", { titel: "[Fachlich] Die Wurzel" })],
+    vorflug: "Die Vorflug-Session lieferte kein Ergebnis",
   });
+  assert.notEqual(r.code, 0, "ein kaputter Vorflug haelt den Lauf an");
+  const karte = r.karte("1");
+  assert.ok(karte.labels.includes("kit:night"), `die Kennzeichnung muss stehen bleiben: ${karte.labels}`);
+  assert.ok(karte.labels.includes("lauf:abgebrochen"), `der Laufstand muss abgebrochen sein: ${karte.labels}`);
 });
 
-test("ein laufender Runner auf demselben Rechner: der zweite Start laesst die Wurzel aus und schreibt nichts", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir, "[Fachlich] Die Wurzel");
-    const datei = join(dir, "laufstand.md");
-    // Der Halter ist dieser Testprozess — er lebt, solange der Test laeuft.
-    const halter = `${hostname().split(".")[0]}/${process.pid}/2026-10-05-000000`;
-    writeFileSync(datei, `Lauf angenommen\n\nLauf-ID: ${halter}\nStand: ${new Date().toISOString()}\n`, "utf-8");
-    board(dir, "issue", "stand", F, "--zustand", "laeuft", "--text-file", datei);
-    rmSync(datei);
-    const env = umgebung(dir);
-    const res = run(dir, ["--kette"], env);
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-    assert.ok((res.stdout + res.stderr).includes(`bereits von einem laufenden Runner beansprucht (${halter})`), res.stdout);
-    const karte = board(dir, "issue", "get", F);
-    assert.ok(karte.labels.includes("kit:night"), "die Kennzeichnung bleibt");
-    assert.match(karte.body, new RegExp(halter), "der Laufstand des Halters bleibt stehen");
+test("ein laufender Runner auf demselben Rechner: der zweite Start laesst die Wurzel aus und schreibt nichts", async () => {
+  // Der Halter ist dieser Testprozess — er lebt, solange der Test laeuft.
+  const halter = `${hostname().split(".")[0]}/${process.pid}/2026-10-05-000000`;
+  const r = await ketteImProzess({
+    karten: [fachplanKarte("1", { titel: "[Fachlich] Die Wurzel" })],
+    vorher: ({ board }) => {
+      board("issue", "stand", "1", "--zustand", "laeuft", "--text", `Lauf angenommen\n\nLauf-ID: ${halter}\nStand: ${new Date(UHR_START).toISOString()}\n`);
+    },
   });
+  assert.equal(r.code, 0, r.ausgabe);
+  assert.ok(r.ausgabe.includes(`bereits von einem laufenden Runner beansprucht (${halter})`), r.ausgabe);
+  const karte = r.karte("1");
+  assert.ok(karte.labels.includes(KETTE_LABEL), "die Kennzeichnung bleibt");
+  const laufstaende = karte.comments.filter((c) => c.body.startsWith("## Laufstand"));
+  assert.equal(laufstaende.length, 1);
+  assert.match(laufstaende[0].body, new RegExp(halter), "der Laufstand des Halters bleibt stehen");
+  assert.deepEqual(r.sitzungen, [], "an der belegten Wurzel startet keine Session");
 });
