@@ -38,7 +38,8 @@ test("[night-21] nimmt der Tracker den Bericht nicht an, wartet er in der Hauptk
     assert.equal(einheit.bericht, join(".claude", datei));
     assert.match(readFileSync(join(dir, ".claude", datei), "utf-8"), new RegExp(`^${BERICHT_ANKER} `));
     assert.ok(!readFileSync(join(dir, "issues", `${F}.md`), "utf-8").includes(BERICHT_ANKER), "am Fachplan steht noch nichts");
-    assert.match(erster.stdout, /Nachtbericht konnte nicht an #0001 geschrieben werden .* liegt wartend unter \.claude\/night-bericht-/);
+    // Der Pfad ist ein Pfad der Plattform: unter Windows `.claude\night-bericht-…` (Issue #1261).
+    assert.match(erster.stdout, /Nachtbericht konnte nicht an #0001 geschrieben werden .* liegt wartend unter \.claude[\\/]night-bericht-/);
     // Kein Rest im Arbeitsbaum: dieselbe Ausnahme wie night-run-* — die Fixture-.gitignore deckt die Datei NICHT.
     const status = spawnSync("git", ["status", "--porcelain", "--", ".", ":(exclude)issues", ":(exclude).claude/night-bericht-*"], { cwd: dir, encoding: "utf-8" });
     assert.equal(status.stdout.trim(), "", "ausser dem wartenden Bericht liegt nichts im Baum");

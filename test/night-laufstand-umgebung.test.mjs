@@ -89,7 +89,9 @@ test("[E15] scheitert auch der zweite Versuch, haelt der Lauf an: abgebrochen un
     assert.equal(ZUSTAND.LAUF.fehlerklasse, "tracker");
     assert.match(ZUSTAND.LAUF.fehlerText, /^Lauf angehalten: board\.mjs issue get 7 schlug fehl.*\(auch im 2\. Versuch\)/s);
 
-    const nachKarte = Object.groupBy(staende(), (s) => s.karte);
+    // Von Hand gruppiert: Die CI faehrt Node 20, und dort fehlt das groupBy von Object (Issue #1261).
+    const nachKarte = {};
+    for (const s of staende()) nachKarte[s.karte] = [...(nachKarte[s.karte] ?? []), s];
     assert.equal(nachKarte["7"][0].zustand, "abgebrochen");
     assert.equal(nachKarte["7"][0].budgetMs, ABBRUCH_BUDGET_MS);
     assert.match(nachKarte["7"][0].text, /^abgebrochen, Umgebungsfehler um \S+: board\.mjs issue get 7 .*Board-Timeout/s);

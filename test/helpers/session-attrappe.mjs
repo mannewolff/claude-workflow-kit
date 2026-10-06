@@ -104,8 +104,12 @@ export const psLeer = () => ({ status: 0, stdout: "", stderr: "" });
  * jedes Signal an die Prozessgruppe als `{ pid, signal }`; `beimSignal(kind, signal)` darf auf
  * ein Signal antworten, etwa mit dem close-Ereignis. Die Antwort kommt wie bei einem echten
  * Prozess erst nach dem Aufruf von `kill`, nicht in ihm.
+ *
+ * `plattform` ist fest POSIX: Die Attrappen spielen Prozessgruppe, Signal und `ps`. Mit der
+ * echten Plattform naehme `runProcess` im Windows-Job der CI den Zweig mit `taskkill`, und
+ * kein Signal kaeme bei `killen` an (Issue #1261).
  */
-export function sessionAbh(drehbuch, { uhr = uhrAttrappe(), spawnSync = psLeer, beimSignal } = {}) {
+export function sessionAbh(drehbuch, { uhr = uhrAttrappe(), spawnSync = psLeer, beimSignal, plattform = "linux" } = {}) {
   const { spawn, aufrufe } = spawnAttrappe(drehbuch, { uhr });
   const signale = [];
   const killen = (pid, signal) => {
@@ -114,7 +118,7 @@ export function sessionAbh(drehbuch, { uhr = uhrAttrappe(), spawnSync = psLeer, 
     if (beimSignal) queueMicrotask(() => beimSignal(kind, signal));
   };
   return {
-    abh: { spawn, spawnSync, jetzt: uhr.jetzt, schlaf: uhr.schlaf, wecker: uhr.wecker, killen },
+    abh: { spawn, spawnSync, jetzt: uhr.jetzt, schlaf: uhr.schlaf, wecker: uhr.wecker, killen, plattform },
     aufrufe, signale, uhr,
   };
 }

@@ -1318,9 +1318,14 @@ function wecker(fn, ms) {
  *   schlaf     die Pause zwischen zwei Abfragen der Prozessgruppe
  *   wecker     die Stufen des Zeitlimits
  *   killen     das Signal an die Prozessgruppe (`process.kill`)
+ *   plattform  welcher Zweig das Zeitlimit und das Warten auf die Gruppe faehrt: auf POSIX
+ *              Prozessgruppe und `ps`, unter Windows `taskkill` und die Marke der Session.
+ *              Die Attrappen der Tests bilden POSIX nach und setzen sie darum fest, sonst
+ *              naehme der Windows-Job der CI den anderen Zweig (Issue #1261).
  */
 export const SESSION_ABHAENGIGKEITEN = Object.freeze({
   spawn, spawnSync, jetzt: Date.now, schlaf: warten, wecker, killen: (pid, signal) => process.kill(pid, signal),
+  plattform: process.platform,
 });
 
 /**
@@ -1536,7 +1541,7 @@ export function baumBeendenAufruf(pid, signal, plattform = process.platform, wei
 
 export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extraEnv, cwd, kommandoStufe, gitBash }, abh = {}) {
   // Die Abhaengigkeiten (Issue #1229, Plan #1199, E6): jede fehlende ist die echte.
-  const { spawn: starten, spawnSync: abfragen, jetzt, schlaf, wecker: wecken, killen } = { ...SESSION_ABHAENGIGKEITEN, ...abh };
+  const { spawn: starten, spawnSync: abfragen, jetzt, schlaf, wecker: wecken, killen, plattform } = { ...SESSION_ABHAENGIGKEITEN, ...abh };
   return new Promise((resolve) => {
     // detached: true gibt dem Kind eine eigene Prozessgruppe, damit das Zeitlimit den
     // ganzen Baum trifft und nicht nur den direkten Kindprozess (Issue #182). Ohne das
@@ -1551,11 +1556,11 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
     // Die Marke dieser Session (Issue #1144): Unter Windows findet der Runner an ihr die
     // Prozesse, die eine Prozessgruppe auf POSIX zusammenhaelt.
     const marke = sitzungsMarke();
-    const windows = process.platform === "win32";
+    const windows = plattform === "win32";
     const child = starten(aufruf.befehl, aufruf.args, {
       ...aufruf.optionen,
       env: sessionUmgebung(issueId, extraEnv, process.env, marke),
-      detached: process.platform !== "win32",
+      detached: !windows,
       // stdin geschlossen (Issue #620): Ohne Angabe waere es eine offene Pipe, die der
       // Runner nie schliesst — die CLI wartete je Session drei Sekunden auf Eingabe und
       // schrieb "no stdin data received" ins Protokoll. Niemand schreibt in stdin, der
@@ -1615,7 +1620,7 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
     // scheitern und taskkill mit einem Exitcode ungleich 0; das ist der Normalfall, kein
     // Fehler.
     const killTree = (signal) => {
-      const aufruf = baumBeendenAufruf(child.pid, signal, process.platform, windows ? sitzungsProzesseOderKeine(marke) : []);
+      const aufruf = baumBeendenAufruf(child.pid, signal, plattform, windows ? sitzungsProzesseOderKeine(marke) : []);
       if (aufruf.taskkill) {
         abfragen("taskkill", aufruf.taskkill, { stdio: "ignore", windowsHide: true });
         return;
@@ -1707,7 +1712,7 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
       if (!timedOut) {
         const restMs = Math.max(0, timeoutMs - (jetzt() - gestartet));
         const leer = await warteAufProzessgruppe(child.pid, restMs, {
-          jetzt, schlaf, spawnSync: abfragen,
+          jetzt, schlaf, spawnSync: abfragen, plattform,
           vermerk: (text) => log(`  Hinweis: ${text}`),
           ...(windows ? { prozesse: () => sitzungsProzesse(marke) } : {}),
         });

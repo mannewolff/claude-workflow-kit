@@ -59,7 +59,7 @@ test("Warten auf die Prozessgruppe: fragt ps im Takt, bis die Gruppe leer ist", 
     abfragen.push([befehl, ...args].join(" "));
     return { status: 0, stdout: antworten.shift() };
   };
-  const leer = await warteAufProzessgruppe(4711, 10_000, { pollMs: 200, jetzt: uhr.jetzt, schlaf: uhr.schlaf, spawnSync: ps });
+  const leer = await warteAufProzessgruppe(4711, 10_000, { pollMs: 200, jetzt: uhr.jetzt, schlaf: uhr.schlaf, spawnSync: ps, plattform: "linux" });
   assert.equal(leer, true);
   assert.deepEqual(abfragen, ["ps -o pid= -g 4711", "ps -o pid= -g 4711", "ps -o pid= -g 4711"]);
   assert.equal(uhr.jetzt() - 1_000_000, 400, "zweimal der Takt von 200 ms");
@@ -68,7 +68,7 @@ test("Warten auf die Prozessgruppe: fragt ps im Takt, bis die Gruppe leer ist", 
 test("Warten auf die Prozessgruppe: bei Ablauf der Frist false, ohne darueber hinaus zu warten", async () => {
   const uhr = uhrAttrappe();
   const leer = await warteAufProzessgruppe(4711, 1000, {
-    pollMs: 300, jetzt: uhr.jetzt, schlaf: uhr.schlaf, spawnSync: () => ({ status: 0, stdout: "123\n" }),
+    pollMs: 300, jetzt: uhr.jetzt, schlaf: uhr.schlaf, spawnSync: () => ({ status: 0, stdout: "123\n" }), plattform: "linux",
   });
   assert.equal(leer, false);
   assert.equal(uhr.jetzt() - 1_000_000, 1200, "die erste Abfrage nach Ablauf der Frist endet das Warten");
@@ -76,7 +76,7 @@ test("Warten auf die Prozessgruppe: bei Ablauf der Frist false, ohne darueber hi
 
 test("Warten auf die Prozessgruppe: ein gescheitertes ps gilt als leere Gruppe", async () => {
   const leer = await warteAufProzessgruppe(4711, 1000, {
-    schlaf: async () => assert.fail("kein Warten"), spawnSync: () => ({ status: 1, stdout: "", stderr: "ps: kaputt" }),
+    schlaf: async () => assert.fail("kein Warten"), spawnSync: () => ({ status: 1, stdout: "", stderr: "ps: kaputt" }), plattform: "linux",
   });
   assert.equal(leer, true);
 });

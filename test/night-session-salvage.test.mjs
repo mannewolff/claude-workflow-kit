@@ -138,7 +138,9 @@ test("Format-Fix: erst rote, nach dem Format-Kommando gruene Pruefungen — die 
     assert.equal(ergebnis.ok, true);
     assert.equal(ergebnis.formatFixCmd, "touch fixed.marker", "der Salvage-Prompt nennt das Format-Kommando");
     assert.deepEqual(aufrufe.map((a) => a.art), ["checks", "shell", "checks"]);
-    assert.ok(aufrufe[1].args.includes("touch fixed.marker"), `der Fix laeuft ueber die Shell: ${aufrufe[1].args.join(" ")}`);
+    // Enthalten statt gleich: Unter Windows steht jedes Argument der Git Bash in
+    // Anfuehrungszeichen (spawnAufruf, Issue #1143), auf POSIX nackt (Issue #1261).
+    assert.ok(aufrufe[1].args.some((a) => a.includes("touch fixed.marker")), `der Fix laeuft ueber die Shell: ${aufrufe[1].args.join(" ")}`);
     assert.match(text, /buildChecks rot — einmaliger Format-Fix wird angewendet: touch fixed\.marker/);
     assert.match(text, /FORMAT-FIX angewendet, buildChecks jetzt gruen/, "der angewendete Format-Fix muss im Protokoll sichtbar sein");
     assert.match(ergebnis.output, /alles gruen/, "die Ausgabe ist die des zweiten Durchgangs");

@@ -214,8 +214,13 @@ test("[night-857] eine waehrend des Pruefens gestorbene Session erscheint als ro
   // ungemessen. Seitdem liegt eine unabgeschlossene Fassung mit "nicht gestartet", und
   // der Runner sieht, was er sehen soll: eine Pruefung, die nicht durchkam.
   //
-  // `kill -9 $PPID` toetet aus dem Pruefkommando heraus dessen Elternprozess, also
-  // checks.mjs selbst — derselbe Tod wie durch die Uhr oder das Ende der Session.
+  // Das Pruefkommando toetet checks.mjs selbst mit `kill -9` — derselbe Tod wie durch die
+  // Uhr oder das Ende der Session. Die PID legt die Session ab, die checks.mjs im
+  // Hintergrund startet (`$!`); das Pruefkommando wartet, bis sie dasteht. Nicht
+  // `$PPID`: In der Git Bash unter Windows ist der Elternprozess eines von einem
+  // Windows-Prozess gestarteten bash fuer die Shell nicht sichtbar, `$PPID` ist dort 1
+  // (Issue #1261). Das Warten zaehlt mit, statt zu schlafen, und gibt nach einer festen
+  // Zahl Runden auf; dann endet das Kommando rot, und der Test zeigt die Zeile.
   // Die Marke `.gestorben` begrenzt das auf den ERSTEN Lauf: Jeder weitere Aufruf
   // desselben Kommandos — der Salvage-Vorlauf — laeuft gruen durch, statt den Runner
   // selbst zu erschlagen.
@@ -225,12 +230,17 @@ test("[night-857] eine waehrend des Pruefens gestorbene Session erscheint als ro
   // nach — dann stuende im Bericht das Ergebnis der Nachpruefung statt der Zustand,
   // um den es hier geht. Der Fall mit Commit steht in test/ablauf-night-bericht-nachweis.test.mjs.
   const buildChecks = [
-    { cmd: "if [ -f .gestorben ]; then exit 0; fi; touch .gestorben; kill -9 $PPID", areas: ["kit"] },
+    {
+      cmd: "if [ -f .gestorben ]; then exit 0; fi; touch .gestorben; "
+        + "i=0; until [ -s .checkspid ] || [ $i -ge 1000000 ]; do i=$((i+1)); done; kill -9 \"$(cat .checkspid)\"",
+      areas: ["kit"],
+    },
     FRONTEND_CHECK,
   ];
+  const checksImHintergrund = "node .claude/kit/checks.mjs run > /dev/null 2>&1 & echo $! > .checkspid; wait $!";
   // Das Ereignis im Strom: Die Session kam zustande, ihr Exit nach dem Tod von checks.mjs
   // ist kein Fehlstart (Issue #1088, E13).
-  const fake = [`echo '{"type":"system","subtype":"init"}'`, LOG_SESSION, 'echo arbeit > "kit/work-$NIGHT_ISSUE_ID.txt"', CHECKS_RUN].join("\n");
+  const fake = [`echo '{"type":"system","subtype":"init"}'`, LOG_SESSION, 'echo arbeit > "kit/work-$NIGHT_ISSUE_ID.txt"', checksImHintergrund].join("\n");
   mitProjekt((dir) => {
     const id = readyIssue(dir);
     issuesCommitten(dir);

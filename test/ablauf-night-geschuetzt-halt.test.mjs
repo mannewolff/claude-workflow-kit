@@ -247,8 +247,11 @@ for (const [art, fake, muster] of [
 // `tool_input.file_path` als absolutem Pfad. Abweisungen des Hooks `bash-pruefen` stehen in
 // derselben Liste mit `tool_name: "Bash"` und loesen den Auffang nicht aus.
 
+// Der Pfad mit Schraegstrichen (Issue #1261): Ein Windows-Pfad stuende sonst mit nackten
+// Backslashes im JSON (`C:\Users…`), die Zeile waere ungueltig, und der Auffang saehe keine
+// Abweisung. Windows nimmt den Schraegstrich als Trenner, `abgewieseneSchreibpfade` auch.
 const abweisung = (werkzeug, pfadAusdruck) =>
-  `{"type":"result","subtype":"success","is_error":false,"result":"ABGEWIESEN","permission_denials":[{"tool_name":"Bash","tool_use_id":"toolu_0","tool_input":{"command":"ls | head"}},{"tool_name":"${werkzeug}","tool_use_id":"toolu_1","tool_input":{"file_path":"'"${pfadAusdruck}"'","old_string":"a","new_string":"b"}}]}`;
+  `{"type":"result","subtype":"success","is_error":false,"result":"ABGEWIESEN","permission_denials":[{"tool_name":"Bash","tool_use_id":"toolu_0","tool_input":{"command":"ls | head"}},{"tool_name":"${werkzeug}","tool_use_id":"toolu_1","tool_input":{"file_path":"'"${pfadAusdruck.split("\\").join("/")}"'","old_string":"a","new_string":"b"}}]}`;
 
 /** Die Session des ersten Pakets laesst einen Rest liegen und meldet die Abweisung; jede andere schreibt nur ins Sitzungsprotokoll. */
 const auffangFake = (erstes, stream) =>
