@@ -242,6 +242,23 @@
       ]
     },
     {
+      "cmd": "node --test --test-concurrency=2 \"test/night-tag-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-dokumente",
+        "board-grundlagen",
+        "nacht-abhaengigkeiten",
+        "nacht-bericht",
+        "nacht-grundlagen",
+        "nacht-kette",
+        "nacht-kitstand",
+        "nacht-laufstand",
+        "nacht-session",
+        "nacht-tag",
+        "nacht-wartend"
+      ]
+    },
+    {
       "cmd": "node --test --test-concurrency=2 \"test/ablauf-board-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
@@ -280,6 +297,7 @@
         "nacht-kitstand",
         "nacht-laufstand",
         "nacht-session",
+        "nacht-tag",
         "nacht-wartend",
         "preise",
         "pruefungen",
@@ -488,6 +506,11 @@
       "test/night-kette-*.test.mjs",
       "test/helpers/kette-fixture.mjs",
       "test/helpers/kette-texte.mjs"
+    ],
+    "nacht-tag": [
+      "kit/night/tag.mjs",
+      "test/night-tag-*.test.mjs",
+      "test/helpers/tag-fixture.mjs"
     ],
     "board-einstieg": [
       "kit/board.mjs",

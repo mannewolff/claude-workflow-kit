@@ -1,6 +1,12 @@
 // Der Prueflauf am Tag: `node .claude/kit/night.mjs --pruefen` (Fachplan #899, Plan #904;
 // Issue #909).
 //
+// Ablauf-Pruefung: Was hier steht, sieht nur der echte Runner — der echte Worktree unter dem
+// Temp-Verzeichnis, die unberuehrte Hauptkopie, das Abraeumen allein des eigenen Praefixes,
+// die Meldung des Laufs und die Pruefung der Argumente und Budgets im Einstieg. Ausgaenge,
+// Kennzeichen, Vermerk, Kostendeckel und Laufstand belegt der Lauf im selben Prozess in
+// `night-tag-ablauf.test.mjs` und `night-tag-laufstand.test.mjs` (Issue #1234).
+//
 // Ein Durchlauf gegen ein Wegwerf-Repo mit lokalem Tracker, OHNE `--max` — der Lauf kennt
 // keinen Zahlendeckel, begrenzt wird er ueber seine Budgets (E9). Fuenf gekennzeichnete
 // fachliche Anforderungen gehen hinein, eine gekennzeichnete Plan-Karte wird uebersprungen.
@@ -13,10 +19,11 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
+import { KLAEREN_LABEL } from "../kit/night/wartend.mjs";
+import { REVIEW_FERTIG_LABEL } from "../kit/night/kette.mjs";
 import {
-  KLAEREN_LABEL, REVIEW_FERTIG_LABEL, PRUEFLAUF_REST_ANKER, PRUEFLAUF_BEFUNDE_ANKER,
-  pruefLaufFassung,
-} from "../kit/night.mjs";
+  PRUEFLAUF_REST_ANKER, PRUEFLAUF_BEFUNDE_ANKER, pruefLaufFassung,
+} from "../kit/night/tag.mjs";
 import {
   NIGHT, run, board, mitProjekt, fachplan, fachplanBody, sessions, stand,
   pruefUmgebung, FACHPLAN_MARKER, PRUEFUNG_GEPRUEFT, PRUEFUNG_HALT, PRUEFUNG_BEFUNDE, PRUEFUNG_FRAGE,
@@ -27,7 +34,7 @@ const BUDGET = { label: PRUEF_LABEL, pruefungMin: 25, kostenUsd: 25 };
 
 /** Ein Repo mit dem Wurzelblock `pruefLauf` — er steht nicht unter `night` (Plan #904, E12). */
 function mitPruefProjekt(fn, budget = BUDGET) {
-  mitProjekt(fn, {}, "night-pruefen-", { pruefLauf: budget });
+  mitProjekt(fn, {}, "night-tag-", { pruefLauf: budget });
 }
 
 /**
@@ -160,30 +167,6 @@ test("[night-909] ein Prueflauf ohne --max prueft alle gekennzeichneten Karten u
       rmSync(fremd, { recursive: true, force: true });
     }
   });
-});
-
-test("[night-909] ist das Kostenbudget erschoepft, gelten die restlichen Karten als uebersprungen und behalten ihr Kennzeichen", () => {
-  mitPruefProjekt((dir) => {
-    const k = karten(dir);
-    // 1,50 $ je Session: Nach der ersten ist der Deckel von 2 $ noch nicht gerissen, nach
-    // der zweiten schon — geprueft wird NACH jeder Session, nie mittendrin.
-    const env = pruefUmgebung(dir, { jeKarte: jeKarte(k), kosten: 1.5 });
-    const res = run(dir, ["--pruefen"], env);
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-
-    const lauf = stand(dir);
-    const einheit = (id) => lauf.einheiten.find((e) => e.id === id);
-    assert.equal(einheit(k.geprueft).ausgang, "geprueft", "die erste Karte lief noch");
-    assert.equal(einheit(k.halt).ausgang, "klaeren", "die zweite Karte lief noch");
-    for (const id of [k.ohneSpur, k.vorlauf, k.nurBefunde]) {
-      assert.equal(einheit(id).ausgang, "uebersprungen");
-      assert.match(einheit(id).grund, /Kostenbudget: 3\.00 \$ von 2 \$/);
-      assert.ok(board(dir, "issue", "get", id).labels.includes(PRUEF_LABEL),
-        `#${id}: eine wegen der Kosten uebersprungene Karte behaelt ihr Kennzeichen`);
-    }
-    assert.equal(sessions(env.logPfad).length, 2, "nach dem Deckel startet keine Session mehr");
-    assert.match(res.stdout, /Kostenbudget: 3\.00 \$ von 2 \$/);
-  }, { ...BUDGET, kostenUsd: 2 });
 });
 
 test("[night-909] der Prueflauf liefert seinen Ergebnisstand nicht ein und hinterlaesst keine Fehlzeile", () => {

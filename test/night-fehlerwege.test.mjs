@@ -202,7 +202,7 @@ test("eine Session, die ihr Zeitlimit reisst, ist KEIN Infrastruktur-Fehlschlag"
     // Ein Timeout ist ein fachlicher Fehlschlag: Das CLI lief, es wurde nur nicht
     // fertig. Das Issue wandert ins Backlog, der Lauf geht weiter.
     const res = run(dir, ["--label", "none"], {
-      NIGHT_CLAUDE_CMD: "sleep 30", NIGHT_TIMEOUT_MS: "300", NIGHT_KILL_GRACE_MS: "200",
+      NIGHT_CLAUDE_CMD: "sleep 30", NIGHT_TIMEOUT_MS: "300", NIGHT_KILL_GRACE_MS: "200", // # haengt — das Zeitlimit von 300 ms beendet die Session, der Test wartet die 30 s nicht ab
     });
 
     assert.doesNotMatch(res.stdout, /INFRASTRUKTUR-FEHLSCHLAG/,

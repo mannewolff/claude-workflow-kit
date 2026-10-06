@@ -419,7 +419,7 @@ test("Zeitlimit: eine Session, die SIGTERM ignoriert, wird hart nachgesetzt", ()
   try {
     const id = readyIssue(dir, "Reagiert nicht auf SIGTERM");
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], {
-      NIGHT_CLAUDE_CMD: "trap '' TERM; sleep 30",
+      NIGHT_CLAUDE_CMD: "trap '' TERM; sleep 30", // # haengt — das Zeitlimit setzt mit SIGKILL nach, der Test wartet die 30 s nicht ab
       NIGHT_TIMEOUT_MS: "300",
       NIGHT_KILL_GRACE_MS: "1",
     });

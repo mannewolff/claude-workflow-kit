@@ -7,7 +7,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { waehleKettenKandidaten, REVIEW_FERTIG_LABEL, KLAEREN_LABEL } from "../kit/night.mjs";
+import { waehleKettenKandidaten, REVIEW_FERTIG_LABEL } from "../kit/night/kette.mjs";
+import { KLAEREN_LABEL } from "../kit/night/wartend.mjs";
 
 const KETTENLABEL = "kit:night";
 

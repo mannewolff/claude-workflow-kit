@@ -7,7 +7,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pruefLaufAusschluss, waehlePruefLaufKandidaten, beanspruchtGrund, KLAEREN_LABEL } from "../kit/night.mjs";
+import { pruefLaufAusschluss, waehlePruefLaufKandidaten } from "../kit/night/tag.mjs";
+import { beanspruchtGrund } from "../kit/night/kette.mjs";
+import { KLAEREN_LABEL } from "../kit/night/wartend.mjs";
 
 const LABEL = "kit:pruefen";
 

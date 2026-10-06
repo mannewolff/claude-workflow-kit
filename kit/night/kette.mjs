@@ -14,7 +14,7 @@
  * (`wurzelBelegt`), das Kennzeichen `review:fertig`, was im Abschnitt des Nachtberichts
  * allein die Kette ruft, die Budgets der Kette samt ihrer Protokollzeile und das
  * Beanspruchen. Prueflauf und Probelauf nehmen sie von hier. Die Bausteine des Prueflaufs,
- * die im Abschnitt der Kette standen, bleiben bis zum Teil tag im Einstieg.
+ * die im Abschnitt der Kette standen, stehen seit Issue #1234 im Teil kit/night/tag.mjs.
  *
  * Den Abschluss des Laufs (`laufAbschliessen`) und den Reviewer-Vorflug (`fuehreVorflug`)
  * ruft die Kette, ohne sie zu importieren: Beide stehen im Einstieg, und ein Import waere ein
@@ -117,6 +117,23 @@ export const KETTE_ABHAENGIGKEITEN = Object.freeze({
 // Zustand wie `anbindung`, weil die Stufen sie brauchen, ohne dass jede Funktion sie
 // durchreicht. Ausserhalb eines Laufs gelten die Vorgaben.
 const abh = { ...KETTE_ABHAENGIGKEITEN };
+
+/**
+ * Setzt Abhaengigkeiten des Teils ausserhalb eines Kettenlaufs ein; nicht genannte behalten
+ * ihren Wert, ohne Argument gelten wieder alle Vorgaben. Nur fuer Tests: Der Prueflauf am Tag
+ * (kit/night/tag.mjs) ruft Beanspruchen, belegte Wurzel und Wartend-Vermerk von hier, und sein
+ * Test im selben Prozess braucht dafuer dieselben Attrappen (Issue #1234, E6).
+ */
+export function ketteAbhaengigkeiten(neu) {
+  if (neu === undefined) {
+    Object.assign(abh, KETTE_ABHAENGIGKEITEN);
+    return;
+  }
+  for (const [name, fn] of Object.entries(neu)) {
+    if (!Object.hasOwn(KETTE_ABHAENGIGKEITEN, name)) throw new Error(`ketteAbhaengigkeiten kennt keine Abhaengigkeit '${name}'`);
+    abh[name] = fn;
+  }
+}
 
 // --- Die Budgets der Kette ---
 
