@@ -4,22 +4,16 @@
 // Sie laesst sich deshalb vollstaendig an Fixtures pruefen: ein Temp-Verzeichnis mit
 // .claude/ und darin die Ergebnisstaende, genau wie ein echtes Projekt sie traegt.
 //
-// Aufgerufen wird das ECHTE Werkzeug aus kit/ mit cwd im Fixture — nach demselben
-// Muster wie test/helpers/checks-repo.mjs. Eine Kopie im Temp-Verzeichnis erzeugte
-// Coverage unter einem Pfad, den SonarCloud nicht auf die Repo-Datei abbildet; die
-// einzige Ausnahme ist `ohneNachbarPreise`, wo gerade die Nachbarschaft der Datei
-// die zu pruefende Frage ist.
+// Aufgerufen wird das ECHTE Werkzeug aus kit/ mit cwd im Fixture, im selben Prozess
+// ueber `aufrufen` (Issue #1213, Plan #1199 E6) — nach demselben Muster wie
+// test/helpers/checks-repo.mjs. Was nur als Prozess zu belegen ist (die fehlende
+// Nachbardatei preise.mjs, die Kommandozeile), steht in test/ablauf-aufwand-*.test.mjs.
 
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, rmSync, existsSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-
-export const AUFWAND = join(repoRoot, "kit", "aufwand.mjs");
-export const PREISE = join(repoRoot, "kit", "preise.mjs");
+import { aufrufen } from "../../kit/aufwand.mjs";
 
 /**
  * Ein Ergebnisstand mit den Feldern, die night.mjs schreibt. Alles ist ueberschreibbar,
@@ -131,22 +125,12 @@ export function mitProjekt({ laeufe = [], config }, fn) {
   }
 }
 
-/** Roher Aufruf — fuer die Faelle, in denen der Exit-Code selbst der Befund ist. */
-export function aufwand(dir, ...cliArgs) {
-  return spawnSync(process.execPath, [AUFWAND, ...cliArgs], { cwd: dir, encoding: "utf-8" });
-}
-
 /**
- * Derselbe Aufruf, aber aus einer Kopie ohne `preise.mjs` daneben. Nur dafuer gibt es
- * die Kopie: Die Nachbarschaft der Preistabelle ist hier die zu pruefende Frage, und
- * sie laesst sich nicht aus dem Repo heraus stellen.
+ * Roher Aufruf im selben Prozess — fuer die Faelle, in denen der Exit-Code selbst der
+ * Befund ist. Ergebnis wie bei `spawnSync`: `{ status, stdout, stderr }`.
  */
-export function aufwandOhnePreise(dir, ...cliArgs) {
-  const kopie = join(dir, "kit-ohne-preise");
-  mkdirSync(kopie, { recursive: true });
-  const ziel = join(kopie, "aufwand.mjs");
-  copyFileSync(AUFWAND, ziel);
-  return spawnSync(process.execPath, [ziel, ...cliArgs], { cwd: dir, encoding: "utf-8" });
+export function aufwand(dir, ...cliArgs) {
+  return aufrufen(cliArgs, { cwd: dir });
 }
 
 /** Erfolgreicher `auswerten`-Aufruf, JSON von stdout geparst. */

@@ -32,8 +32,8 @@ const CONFIG = {
   checkAreas: BEREICHE,
 };
 
-test("[checks-7] die Push-Stufe faehrt jede faellige Pruefung, auch im unberuehrten Bereich", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[checks-7] die Push-Stufe faehrt jede faellige Pruefung, auch im unberuehrten Bereich", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir, "--stufe", "push");
@@ -49,8 +49,8 @@ test("[checks-7] die Push-Stufe faehrt jede faellige Pruefung, auch im unberuehr
   });
 });
 
-test("[checks-7] die Push-Stufe faehrt jede faellige Pruefung, auch wenn das Paket leer ist", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[checks-7] die Push-Stufe faehrt jede faellige Pruefung, auch wenn das Paket leer ist", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     const ergebnis = plan(dir, "--stufe", "push");
 
     assert.equal(ergebnis.leeresPaket, false, "an der Push-Stufe greift die Leerpaket-Auslassung nicht");
@@ -60,8 +60,8 @@ test("[checks-7] die Push-Stufe faehrt jede faellige Pruefung, auch wenn das Pak
   });
 });
 
-test("[checks-7] vollerUmfang bleibt an der Push-Stufe false — sie ist eine Entscheidung, kein Zweifel", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[checks-7] vollerUmfang bleibt an der Push-Stufe false — sie ist eine Entscheidung, kein Zweifel", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir, "--stufe", "push");
@@ -70,8 +70,8 @@ test("[checks-7] vollerUmfang bleibt an der Push-Stufe false — sie ist eine En
   });
 });
 
-test("[checks-7] die Paketstufe grenzt unveraendert ein", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[checks-7] die Paketstufe grenzt unveraendert ein", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir);
@@ -84,8 +84,8 @@ test("[checks-7] die Paketstufe grenzt unveraendert ein", () => {
   });
 });
 
-test("[checks-7] die Paketstufe laesst bei leerem Paket unveraendert jede Pruefung aus", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[checks-7] die Paketstufe laesst bei leerem Paket unveraendert jede Pruefung aus", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     const ergebnis = plan(dir);
 
     assert.equal(ergebnis.leeresPaket, true);
@@ -93,10 +93,10 @@ test("[checks-7] die Paketstufe laesst bei leerem Paket unveraendert jede Pruefu
   });
 });
 
-test("[checks-7] die Freigabestufe faehrt nicht mehr alles: die Push-Stufe lief beim push main", () => {
+test("[checks-7] die Freigabestufe faehrt nicht mehr alles: die Push-Stufe lief beim push main", async () => {
   // Gegenstueck zur Push-Stufe (Issue #1000): Dort bleibt der volle Umfang, an der
   // Freigabe wird nur noch geprueft, was `push main` nicht geprueft hat.
-  mitRepo({ config: CONFIG }, (dir) => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir, "--stufe", "merge");
@@ -107,15 +107,15 @@ test("[checks-7] die Freigabestufe faehrt nicht mehr alles: die Push-Stufe lief 
   });
 });
 
-test("[checks-7] die Push-Stufe bestimmt basis, geaendert und hashes wie ein Lauf ohne das Flag", () => {
+test("[checks-7] die Push-Stufe bestimmt basis, geaendert und hashes wie ein Lauf ohne das Flag", async () => {
   // Der Nachweis, gegen den das Commit-Gate den Index prueft (gate-1), bleibt
   // aus dem Anker bestimmt — nur die Auswahl ist eine andere.
-  mitRepo({ config: CONFIG }, (dir) => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    assert.equal(run(dir).status, 0);
+    assert.equal((await run(dir)).status, 0);
     const ohneFlag = zusammenfassung(dir);
-    assert.equal(run(dir, "--stufe", "push").status, 0);
+    assert.equal((await run(dir, "--stufe", "push")).status, 0);
     const mitFlag = zusammenfassung(dir);
 
     assert.equal(mitFlag.basis, ohneFlag.basis);

@@ -174,7 +174,7 @@ test("[skills-1025] die vier implement-Skills holen den Auftrag mit issue auftra
 });
 
 test("[skills-1025] die Backlog-Kommentartexte stehen nur noch in kit/board.mjs, in keinem Skill", async () => {
-  const { AUFTRAG_BACKLOG_TEXTE } = await import("../kit/board.mjs");
+  const { AUFTRAG_BACKLOG_TEXTE } = await import("../kit/board/dokumente.mjs");
   for (const datei of STELLEN_AUFTRAG) {
     const text = lies(datei);
     for (const [art, textFn] of Object.entries(AUFTRAG_BACKLOG_TEXTE)) {

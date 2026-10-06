@@ -6,7 +6,7 @@
 // Pruefung die Zuordnung.
 //
 // Gefahren wird das echte install.mjs im Pipe-Modus, cwd und HOME im Wegwerf-
-// Verzeichnis — dieselben Vorkehrungen wie in test/install-flow.test.mjs.
+// Verzeichnis — dieselben Vorkehrungen wie in test/ablauf-install-flow.test.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -15,6 +15,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, exis
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALLER = join(repoRoot, "install.mjs");
@@ -87,6 +88,7 @@ test("Neuinstallation mit leerem buildChecks schreibt nur checkAreas und nennt '
 test("Die Bereichsfrage ist die letzte Frage der projektlokalen Installation", () => {
   mitFixture("install-bereiche-letzte-", (dir) => {
     // Mit Git-Repo, damit auch die Hook-Frage gestellt wird.
+    lfAttribute(join(dir, ".gitattributes"));
     for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"], ["config", "user.name", "T"]]) {
       assert.equal(spawnSync("git", a, { cwd: dir, encoding: "utf-8",
         env: { ...process.env, GIT_CONFIG_GLOBAL: join(dir, "home", ".gitconfig"), GIT_CONFIG_NOSYSTEM: "1" } }).status, 0);

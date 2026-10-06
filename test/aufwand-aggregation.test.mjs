@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { mitProjekt, lauf, einheit, pruefstand, auswerten, aufwand, bericht, stand } from "./helpers/aufwand-fixture.mjs";
+import { aufrufen } from "../kit/aufwand.mjs";
 
 /** Zehn Staende mit den vier Sonderfaellen, die das Paket ausdruecklich verlangt. */
 function zehnStaende() {
@@ -302,6 +303,16 @@ test("[aufwand-1] auswerten schreibt aufwand.md und aufwand.json und gibt JSON a
     assert.match(bericht(dir), /^# Aufwand/m);
     assert.equal(stand(dir).juengsterLauf, "2026-09-10-100000");
     assert.match(stand(dir).erzeugtAm, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+  });
+});
+
+test("[aufwand-1213] der Zeitstempel der Auswertung kommt aus der uebergebenen Uhr", () => {
+  mitProjekt({ laeufe: zehnStaende() }, (dir) => {
+    const res = aufrufen(["auswerten"], { cwd: dir, jetzt: () => new Date("2026-10-05T12:00:00.000Z") });
+
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(JSON.parse(res.stdout).erzeugtAm, "2026-10-05T12:00:00.000Z");
+    assert.equal(stand(dir).erzeugtAm, "2026-10-05T12:00:00.000Z");
   });
 });
 

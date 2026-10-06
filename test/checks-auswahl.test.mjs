@@ -21,8 +21,8 @@ const CONFIG = {
   },
 };
 
-test("ein beruehrter Bereich laesst seine Pruefung laufen, ein unberuehrter nicht", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("ein beruehrter Bereich laesst seine Pruefung laufen, ein unberuehrter nicht", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir);
@@ -39,12 +39,12 @@ test("ein beruehrter Bereich laesst seine Pruefung laufen, ein unberuehrter nich
   });
 });
 
-test("Mehrfachzuordnung: ein einziger beruehrter Bereich genuegt", () => {
+test("Mehrfachzuordnung: ein einziger beruehrter Bereich genuegt", async () => {
   const config = {
     buildChecks: [{ cmd: "npm test", areas: ["frontend", "backend"] }],
     checkAreas: CONFIG.checkAreas,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "backend/src/Service.java");
 
     const ergebnis = plan(dir);
@@ -55,7 +55,7 @@ test("Mehrfachzuordnung: ein einziger beruehrter Bereich genuegt", () => {
   });
 });
 
-test("ein Muster darf mehrere Bereiche treffen, alle stehen im Ergebnis", () => {
+test("ein Muster darf mehrere Bereiche treffen, alle stehen im Ergebnis", async () => {
   const config = {
     buildChecks: [
       { cmd: "npm run build", areas: ["frontend"] },
@@ -66,7 +66,7 @@ test("ein Muster darf mehrere Bereiche treffen, alle stehen im Ergebnis", () => 
       doku: ["**/*.md", "frontend/**"],
     },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir);
@@ -77,7 +77,7 @@ test("ein Muster darf mehrere Bereiche treffen, alle stehen im Ergebnis", () => 
   });
 });
 
-test("String und always laufen gleich, tragen aber verschiedene Gruende", () => {
+test("String und always laufen gleich, tragen aber verschiedene Gruende", async () => {
   const config = {
     buildChecks: [
       "npx eslint .",
@@ -86,7 +86,7 @@ test("String und always laufen gleich, tragen aber verschiedene Gruende", () => 
     ],
     checkAreas: CONFIG.checkAreas,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir);
@@ -102,12 +102,12 @@ test("String und always laufen gleich, tragen aber verschiedene Gruende", () => 
   });
 });
 
-test("ein Objekt nur mit cmd bedeutet dasselbe wie die String-Form", () => {
+test("ein Objekt nur mit cmd bedeutet dasselbe wie die String-Form", async () => {
   const config = {
     buildChecks: [{ cmd: "npx eslint ." }],
     checkAreas: CONFIG.checkAreas,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir);
@@ -117,8 +117,8 @@ test("ein Objekt nur mit cmd bedeutet dasselbe wie die String-Form", () => {
   });
 });
 
-test("leere buildChecks: nichts laeuft, nichts wird ausgelassen, die Bereiche stehen trotzdem da", () => {
-  mitRepo({ config: { buildChecks: [], checkAreas: CONFIG.checkAreas } }, (dir) => {
+test("leere buildChecks: nichts laeuft, nichts wird ausgelassen, die Bereiche stehen trotzdem da", async () => {
+  await mitRepo({ config: { buildChecks: [], checkAreas: CONFIG.checkAreas } }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir);
@@ -130,10 +130,10 @@ test("leere buildChecks: nichts laeuft, nichts wird ausgelassen, die Bereiche st
   });
 });
 
-test("Config ohne buildChecks und ohne checkAreas: voller Umfang, aber nichts zu laufen", () => {
+test("Config ohne buildChecks und ohne checkAreas: voller Umfang, aber nichts zu laufen", async () => {
   // Ohne einen einzigen Bereich trifft jede Aenderung kein Muster — das ist der
   // Zweifelsfall, und er zeigt sich als vollerUmfang, nicht als stilles Nichts.
-  mitRepo({ config: {} }, (dir) => {
+  await mitRepo({ config: {} }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir);

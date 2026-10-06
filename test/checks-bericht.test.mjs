@@ -11,12 +11,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
-  mitRepo, plan, run, datei, eintrag, zusammenfassung, CHECKS,
+  mitRepo, plan, run, checksMit, datei, eintrag, zusammenfassung,
 } from "./helpers/checks-repo.mjs";
 import {
   PRUEFDAUER_OBERGRENZE_MS, OBERGRENZE_ENV, obergrenzeZusatz, dauerText,
@@ -64,8 +63,8 @@ function wartezeitZeile(stdout) {
 
 // --- Grundtext des vollen Umfangs (E2) --------------------------------------
 
-test("zwei unzugeordnete Dateien stehen beide im Grund", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("zwei unzugeordnete Dateien stehen beide im Grund", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "a.txt");
     datei(dir, "b.txt");
 
@@ -75,8 +74,8 @@ test("zwei unzugeordnete Dateien stehen beide im Grund", () => {
   });
 });
 
-test("bei elf unzugeordneten Dateien nennt der Grund zehn und 'und 1 weitere', die Liste alle elf", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("bei elf unzugeordneten Dateien nennt der Grund zehn und 'und 1 weitere', die Liste alle elf", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     const namen = Array.from({ length: 11 }, (_, i) => `d${String(i + 1).padStart(2, "0")}.txt`);
     for (const n of namen) datei(dir, n);
 
@@ -88,8 +87,8 @@ test("bei elf unzugeordneten Dateien nennt der Grund zehn und 'und 1 weitere', d
   });
 });
 
-test("bei genau zehn Dateien stehen alle zehn ohne Zusatz", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("bei genau zehn Dateien stehen alle zehn ohne Zusatz", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     const namen = Array.from({ length: 10 }, (_, i) => `d${String(i + 1).padStart(2, "0")}.txt`);
     for (const n of namen) datei(dir, n);
 
@@ -102,7 +101,7 @@ test("bei genau zehn Dateien stehen alle zehn ohne Zusatz", () => {
 
 // --- Obergrenze (E3, E4) ----------------------------------------------------
 
-test("die Obergrenze ist eine Konstante von 30 s, und der Zusatz nennt die Ueberschreitung", () => {
+test("die Obergrenze ist eine Konstante von 30 s, und der Zusatz nennt die Ueberschreitung", async () => {
   assert.equal(PRUEFDAUER_OBERGRENZE_MS, 30_000);
   assert.equal(obergrenzeZusatz(30_000), "", "genau an der Grenze ist nichts ueberschritten");
   assert.equal(obergrenzeZusatz(31_000), " — Obergrenze 30 s um 1 s ueberschritten");
@@ -110,21 +109,19 @@ test("die Obergrenze ist eine Konstante von 30 s, und der Zusatz nennt die Ueber
   assert.equal(obergrenzeZusatz(null), "", "ohne Messung keine Ueberschreitung");
 });
 
-test("die Dauer steht in Sekunden mit einer Nachkommastelle, fehlend als 'Dauer nicht gemessen'", () => {
+test("die Dauer steht in Sekunden mit einer Nachkommastelle, fehlend als 'Dauer nicht gemessen'", async () => {
   assert.equal(dauerText(0), "0 s");
   assert.equal(dauerText(1234), "1.2 s");
   assert.equal(dauerText(30_000), "30 s");
   assert.equal(dauerText(null), "Dauer nicht gemessen");
 });
 
-test("eine Pruefung ueber der Grenze traegt den Zusatz und ueberObergrenzeMs, der Lauf bleibt gruen", () => {
+test("eine Pruefung ueber der Grenze traegt den Zusatz und ueberObergrenzeMs, der Lauf bleibt gruen", async () => {
   const langsam = "node -e \"setTimeout(() => {}, 300)\"";
-  mitRepo({ config: { buildChecks: [langsam] } }, (dir) => {
+  await mitRepo({ config: { buildChecks: [langsam] } }, async (dir) => {
     datei(dir, "a.txt");
 
-    const res = spawnSync(process.execPath, [CHECKS, "run"], {
-      cwd: dir, encoding: "utf-8", env: { ...process.env, [OBERGRENZE_ENV]: "100" },
-    });
+    const res = await checksMit(dir, { env: { [OBERGRENZE_ENV]: "100" } }, "run");
 
     assert.equal(res.status, 0, `die Ueberschreitung faerbt nicht rot:\n${res.stdout}${res.stderr}`);
     const [zeile] = berichtsblock(res.stdout);
@@ -135,11 +132,11 @@ test("eine Pruefung ueber der Grenze traegt den Zusatz und ueberObergrenzeMs, de
   });
 });
 
-test("eine Pruefung unter der Grenze traegt weder Zusatz noch ueberObergrenzeMs", () => {
-  mitRepo({ config: { buildChecks: [BAU] } }, (dir) => {
+test("eine Pruefung unter der Grenze traegt weder Zusatz noch ueberObergrenzeMs", async () => {
+  await mitRepo({ config: { buildChecks: [BAU] } }, async (dir) => {
     datei(dir, "a.txt");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, res.stderr);
     assert.doesNotMatch(res.stdout, /Obergrenze/);
@@ -149,11 +146,11 @@ test("eine Pruefung unter der Grenze traegt weder Zusatz noch ueberObergrenzeMs"
 
 // --- Berichtsblock (E1, E12) ------------------------------------------------
 
-test("gekuerzter Lauf: gelaufen mit Ergebnis, Dauer und Grund, ausgelassen mit Grund", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("gekuerzter Lauf: gelaufen mit Ergebnis, Dauer und Grund, ausgelassen mit Grund", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/App.tsx");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, res.stderr);
     const [lauf] = zusammenfassung(dir).laufen;
@@ -166,26 +163,27 @@ test("gekuerzter Lauf: gelaufen mit Ergebnis, Dauer und Grund, ausgelassen mit G
   });
 });
 
-test("roter Lauf: das rote Kommando mit Dauer, das nicht gestartete ohne", () => {
-  mitRepo({ config: { buildChecks: [ROT, BAU] } }, (dir) => {
+test("roter Lauf: das rote Kommando mit Dauer, das nicht gestartete ohne", async () => {
+  await mitRepo({ config: { buildChecks: [ROT, BAU] } }, async (dir) => {
     datei(dir, "a.txt");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 1);
     const [rot, offen] = zusammenfassung(dir).laufen;
     const block = berichtsblock(res.stdout);
     assert.deepEqual(block, [
-      `gelaufen: ${ROT} → rot, ${dauerText(rot.dauerMs)} — ${rot.grund}`,
+      // Das rote Kommando nennt am Ende seine abgelegte Ausgabe (Issue #1196).
+      `gelaufen: ${ROT} → rot, ${dauerText(rot.dauerMs)} — ${rot.grund} — Ausgabe: ${rot.protokoll}`,
       `gelaufen: ${BAU} → nicht gestartet, Dauer nicht gemessen — ${offen.grund}`,
     ]);
     assert.deepEqual(zusammenfassung(dir).berichtszeilen, block);
   });
 });
 
-test("leerer Lauf: der Block sagt, dass nichts veraendert wurde, und nennt die Auslassungen", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
-    const res = run(dir);
+test("leerer Lauf: der Block sagt, dass nichts veraendert wurde, und nennt die Auslassungen", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
+    const res = await run(dir);
 
     assert.equal(res.status, 0, res.stderr);
     const block = berichtsblock(res.stdout);
@@ -196,13 +194,13 @@ test("leerer Lauf: der Block sagt, dass nichts veraendert wurde, und nennt die A
   });
 });
 
-test("uebernommener Lauf: der Block traegt die Dauer des Ursprungslaufs und 'Ergebnis uebernommen'", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("uebernommener Lauf: der Block traegt die Dauer des Ursprungslaufs und 'Ergebnis uebernommen'", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/App.tsx");
-    assert.equal(run(dir).status, 0);
+    assert.equal((await run(dir)).status, 0);
     const [ursprung] = zusammenfassung(dir).laufen;
 
-    const zweiter = run(dir);
+    const zweiter = await run(dir);
 
     assert.equal(zweiter.status, 0, zweiter.stderr);
     const block = berichtsblock(zweiter.stdout);
@@ -215,16 +213,16 @@ test("uebernommener Lauf: der Block traegt die Dauer des Ursprungslaufs und 'Erg
   });
 });
 
-test("uebernommener Lauf ohne Dauer im Ursprung: 'Dauer nicht gemessen'", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("uebernommener Lauf ohne Dauer im Ursprung: 'Dauer nicht gemessen'", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/App.tsx");
-    assert.equal(run(dir).status, 0);
+    assert.equal((await run(dir)).status, 0);
     const pfad = join(dir, ".claude", "checks-summary.json");
     const alt = JSON.parse(readFileSync(pfad, "utf-8"));
     for (const e of alt.laufen) delete e.dauerMs;
     writeFileSync(pfad, JSON.stringify(alt, null, 2), "utf-8");
 
-    const zweiter = run(dir);
+    const zweiter = await run(dir);
 
     assert.equal(zweiter.status, 0, zweiter.stderr);
     assert.match(berichtsblock(zweiter.stdout)[0], /→ gruen, Dauer nicht gemessen \(Ergebnis uebernommen\) — /);
@@ -237,11 +235,11 @@ const ABSCHLUSS = {
   buildChecks: [BAU],
 };
 
-test("ohne Kartennummer: die Zeile nennt nur die Wartezeit, wartezeitKarte fehlt", () => {
-  mitRepo({ config: ABSCHLUSS }, (dir) => {
+test("ohne Kartennummer: die Zeile nennt nur die Wartezeit, wartezeitKarte fehlt", async () => {
+  await mitRepo({ config: ABSCHLUSS }, async (dir) => {
     datei(dir, "a.txt");
 
-    const res = run(dir, "--abschluss");
+    const res = await run(dir, "--abschluss");
 
     assert.equal(res.status, 0, res.stderr);
     const summary = zusammenfassung(dir);
@@ -250,11 +248,11 @@ test("ohne Kartennummer: die Zeile nennt nur die Wartezeit, wartezeitKarte fehlt
   });
 });
 
-test("mit Kartennummer: die Zeile nennt Wartezeit und Summe fuer die Karte", () => {
-  mitRepo({ config: ABSCHLUSS }, (dir) => {
+test("mit Kartennummer: die Zeile nennt Wartezeit und Summe fuer die Karte", async () => {
+  await mitRepo({ config: ABSCHLUSS }, async (dir) => {
     datei(dir, "a.txt");
 
-    const res = run(dir, "--abschluss", "7");
+    const res = await run(dir, "--abschluss", "7");
 
     assert.equal(res.status, 0, res.stderr);
     const summary = zusammenfassung(dir);
@@ -265,14 +263,14 @@ test("mit Kartennummer: die Zeile nennt Wartezeit und Summe fuer die Karte", () 
   });
 });
 
-test("zwei Laeufe derselben Karte: die Summe addiert, die Zahl der Laeufe zaehlt hoch", () => {
-  mitRepo({ config: ABSCHLUSS }, (dir) => {
+test("zwei Laeufe derselben Karte: die Summe addiert, die Zahl der Laeufe zaehlt hoch", async () => {
+  await mitRepo({ config: ABSCHLUSS }, async (dir) => {
     datei(dir, "a.txt");
-    assert.equal(run(dir, "--abschluss", "7").status, 0);
+    assert.equal((await run(dir, "--abschluss", "7")).status, 0);
     const erster = zusammenfassung(dir).wartezeitMs;
     datei(dir, "b.txt");
 
-    const res = run(dir, "--abschluss", "7");
+    const res = await run(dir, "--abschluss", "7");
 
     assert.equal(res.status, 0, res.stderr);
     const summary = zusammenfassung(dir);
@@ -285,13 +283,13 @@ test("zwei Laeufe derselben Karte: die Summe addiert, die Zahl der Laeufe zaehlt
   });
 });
 
-test("eine andere Karte beginnt die Summe neu", () => {
-  mitRepo({ config: ABSCHLUSS }, (dir) => {
+test("eine andere Karte beginnt die Summe neu", async () => {
+  await mitRepo({ config: ABSCHLUSS }, async (dir) => {
     datei(dir, "a.txt");
-    assert.equal(run(dir, "--abschluss", "7").status, 0);
+    assert.equal((await run(dir, "--abschluss", "7")).status, 0);
     datei(dir, "b.txt");
 
-    const res = run(dir, "--abschluss", "8");
+    const res = await run(dir, "--abschluss", "8");
 
     assert.equal(res.status, 0, res.stderr);
     const summary = zusammenfassung(dir);
@@ -299,13 +297,13 @@ test("eine andere Karte beginnt die Summe neu", () => {
   });
 });
 
-test("ein uebernommener Lauf zaehlt als Lauf ohne Zeit", () => {
-  mitRepo({ config: ABSCHLUSS }, (dir) => {
+test("ein uebernommener Lauf zaehlt als Lauf ohne Zeit", async () => {
+  await mitRepo({ config: ABSCHLUSS }, async (dir) => {
     datei(dir, "a.txt");
-    assert.equal(run(dir, "--abschluss", "7").status, 0);
+    assert.equal((await run(dir, "--abschluss", "7")).status, 0);
     const erster = zusammenfassung(dir).wartezeitMs;
 
-    const res = run(dir, "--abschluss", "7");
+    const res = await run(dir, "--abschluss", "7");
 
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, /Ergebnis uebernommen/);

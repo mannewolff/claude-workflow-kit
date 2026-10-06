@@ -35,6 +35,13 @@
  * `night.mjs` den Board-Adapter, fuehrt das Nacht-Kommando den Bereich `board`.
  * Beide Wege zugleich beschrieben dieselbe Regel zweimal.
  *
+ * Fuer die Teile von Nacht-Runner und Board-Werkzeug heisst das (Issue #1208, Plan
+ * #1199, E18): Jede Datei unter `kit/night/` und `kit/board/` ist eine eigene Quelle.
+ * Ein Test, der einen Teil laedt, koppelt an diesen Teil; ein Test, der den Einstieg
+ * `kit/night.mjs` oder `kit/board.mjs` laedt, koppelt an den Einstieg und damit an
+ * dessen Bereich — die Teile dahinter erreicht die Auswahl ueber die abhaengigen
+ * Bereiche aus `kit/checks.mjs`, nicht diese Tabelle.
+ *
  * Nutzung:
  *   node tools/verflechtung.mjs        Tabelle auf der Standardausgabe
  *   import { verflechtungErheben }     dieselbe Tabelle als Map
@@ -88,7 +95,7 @@ function imArbeitsstand(repoRoot) {
 }
 
 /** Die relativen Import-Ziele einer Datei — `from "…"`, `import("…")`, `export … from "…"`. */
-function importZiele(text) {
+export function importZiele(text) {
   const ziele = [];
   for (const treffer of text.matchAll(/(?:from|import)[\s(]*["']([^"']+)["']/g)) {
     const ziel = treffer[1];

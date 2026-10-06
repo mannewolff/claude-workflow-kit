@@ -2,7 +2,7 @@
 //
 // Sie pruefen Text, nicht Verhalten — was ein Skill tut, entscheidet das Modell, das
 // ihn liest. Wert haben sie trotzdem: Der mechanische Teil des Gates sitzt im
-// Nacht-Runner (test/night-plan.test.mjs), der interaktive allein in diesen Texten.
+// Nacht-Runner (test/ablauf-night-plan.test.mjs), der interaktive allein in diesen Texten.
 // Faellt die Passage bei einer Umformulierung heraus, implementiert /implement-next
 // wieder Plandokumente — und niemand merkt es, weil kein Code kaputtgeht.
 //
@@ -26,7 +26,7 @@ const SKILLS = [
 ];
 
 test("kit/board.mjs: der Rueckstellungs-Kommentar begruendet [Plan] mit /issues #N", async () => {
-  const { AUFTRAG_BACKLOG_TEXTE } = await import("../kit/board.mjs");
+  const { AUFTRAG_BACKLOG_TEXTE } = await import("../kit/board/dokumente.mjs");
   assert.equal(AUFTRAG_BACKLOG_TEXTE.plan("N"),
     "Plan-Dokument — wird nicht implementiert, bitte per /issues #N in Arbeitspakete ueberfuehren.");
 });

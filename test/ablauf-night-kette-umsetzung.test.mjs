@@ -1,0 +1,231 @@
+// Ablauf-Pruefung: Die Stufe umsetzung faehrt jedes Paket ueber laufeRunde mit eigener Session, Commit und Pruef-Zusammenfassung in der echten Hauptkopie unter git — die Runde startet ihre Sessions selbst und laesst sich nur im Lauf von kit/night.mjs beobachten.
+//
+// Stufe umsetzung der Nacht-Kette unter Variante B (Plan #691, E4-E8, E14, E16-E18;
+// Issue #695).
+//
+// Die fuenfte Stufe baut die Arbeitspakete des gekennzeichneten Fachplans selbst: Sie
+// baut zuvor den Worktree ab und arbeitet in der Hauptkopie, zieht jedes Paket einzeln
+// unmittelbar vor seiner Session nach Ready und wertet mit `laufeRunde` unveraendert.
+//
+// Erste von zwei Dateien zur Stufe (Issue #836): Hier stehen Ablauf, Worktree und die
+// Auswahl der Pakete. Die Rueckstellpflicht und die Budgets liegen in
+// `ablauf-night-kette-umsetzung-rueckstellung.test.mjs`, die gemeinsamen Hilfen in
+// `helpers/kette-umsetzung-fixture.mjs`.
+//
+// Wie in den uebrigen Ketten-Tests laeuft das ECHTE kit/night.mjs gegen ein Temp-Repo
+// mit lokalem Tracker; die Sessions sind Shell-Fakes ueber NIGHT_CLAUDE_CMD.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+import { KETTE_HALT_ANKER, pushVermerk } from "../kit/night/kette.mjs";
+import { KLAEREN_LABEL } from "../kit/night/wartend.mjs";
+import {
+  run, board, mitProjekt, umgebung, sessions, stand,
+  PAKETE_MIT_ABHAENGIGKEIT, UMSETZUNG_ERFOLG, UMSETZUNG_HALT, jePaket,
+} from "./helpers/kette-ablauf.mjs";
+import {
+  ERZEUGEN, fachplanB, umsetzung, inSpalte, keinRestInArbeit, stehenInBacklog,
+} from "./helpers/kette-umsetzung-fixture.mjs";
+
+
+test("[night-34] Variante B: die Stufe umsetzung laeuft hinter abdeckung und bringt die Pakete nach In review", () => {
+  mitProjekt((dir) => {
+    const F = fachplanB(dir);
+    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe),
+      ["plan", "review", "pakete", "abdeckung", "umsetzung", "umsetzung"],
+      "die Stufenfolge unter Variante B");
+
+    const { einheit, stufe } = umsetzung(dir, F);
+    assert.equal(einheit.ausgang, "fertig", einheit.grund);
+    assert.deepEqual(stufe.umgesetzt.map((e) => e.id), einheit.stufen.pakete.ids, "beide Pakete gelten als umgesetzt");
+    assert.deepEqual(stufe.angehalten, []);
+    assert.deepEqual(stufe.nichtBegonnen, []);
+    assert.deepEqual(stufe.zurueckgestellt, []);
+
+    assert.deepEqual(inSpalte(dir, "in_review"), einheit.stufen.pakete.ids, "die Pakete stehen in In review");
+    keinRestInArbeit(dir);
+
+    // Je Paket eine eigene Einheit — die, die `laufeRunde` ohnehin anlegt (night-4).
+    for (const id of einheit.stufen.pakete.ids) {
+      const e = stand(dir).einheiten.find((x) => x.id === id);
+      assert.ok(e, `keine Einheit fuer Paket #${id}`);
+      assert.equal(e.ausgang, "erfolg", `Paket #${id}: ${e.grund}`);
+      assert.ok(e.commit, `Paket #${id} traegt keinen Commit`);
+    }
+  });
+});
+
+test("[night-34] die Stufe umsetzung baut den Worktree vor dem ersten Paket ab und arbeitet in der Hauptkopie", () => {
+  mitProjekt((dir) => {
+    fachplanB(dir);
+    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const hauptkopie = realpathSync(dir);
+    const gelaufen = sessions(env.logPfad);
+    for (const s of gelaufen.filter((x) => x.stufe !== "umsetzung")) {
+      assert.notEqual(s.cwd, hauptkopie, `die Stufe ${s.stufe} lief in der Hauptkopie statt im Worktree`);
+      assert.equal(existsSync(s.cwd), false, `der Worktree der Stufe ${s.stufe} liegt noch: ${s.cwd}`);
+    }
+    for (const s of gelaufen.filter((x) => x.stufe === "umsetzung")) {
+      assert.equal(s.cwd, hauptkopie, "eine Umsetzungs-Session lief ausserhalb der Hauptkopie");
+    }
+    assert.match(res.stdout, /Worktree abgebaut/);
+
+    // Die Commits der Nacht liegen in der Hauptkopie — genau das, wofuer Variante B da ist.
+    const log = spawnSync("git", ["log", "--oneline"], { cwd: dir, encoding: "utf-8" });
+    assert.equal((log.stdout.match(/\(Fake\)/g) || []).length, 2, `die Commits fehlen: ${log.stdout}`);
+    const worktrees = spawnSync("git", ["worktree", "list"], { cwd: dir, encoding: "utf-8" });
+    assert.equal(worktrees.stdout.trim().split("\n").length, 1, `es blieb ein Worktree stehen: ${worktrees.stdout}`);
+  });
+});
+
+test("[night-34] eine unsaubere Hauptkopie vor dem ersten Paket: kein Paket wird gezogen, die Stufe faellt regulaer aus", () => {
+  mitProjekt((dir) => {
+    const F = fachplanB(dir);
+    // Die Abdeckungs-Session laesst einen Rest in der Hauptkopie liegen — sie laeuft im
+    // Worktree, der Rest entsteht dort also ueber den ausdruecklichen Pfad dorthin.
+    const schmutz = `echo rest > ${JSON.stringify(dir)}/rest.md`;
+    const env = umgebung(dir, { stufen: { ...ERZEUGEN, abdeckung: schmutz, umsetzung: UMSETZUNG_ERFOLG } });
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const { einheit, stufe } = umsetzung(dir, F);
+    // Kein Fehler, sondern ein Zustand, den der Mensch bereinigt (Issue #878): derselbe
+    // Ausgang wie beim gehaltenen Umsetzungs-Lock, der Grund steht an den Paketen. Seit
+    // Issue #862 ist dieser Ausgang `unvollstaendig` statt `fertig` — die Bestellung wurde
+    // nicht ausgefuehrt, und das darf am Morgen nicht wie ein gelungener Lauf aussehen.
+    assert.equal(einheit.ausgang, "unvollstaendig", einheit.grund);
+    assert.deepEqual(stufe.nichtBegonnen.map((p) => p.id), einheit.stufen.pakete.ids);
+    for (const paket of stufe.nichtBegonnen) {
+      assert.match(paket.grund, /nicht sauber/);
+      assert.match(paket.grund, /rest\.md/);
+    }
+    assert.match(res.stdout, /Stufe umsetzung ausgelassen: die Hauptkopie ist vor dem ersten Paket nicht sauber/);
+    assert.match(res.stdout, /Rueckfall auf Variante A/);
+    assert.equal(sessions(env.logPfad).filter((s) => s.stufe === "umsetzung").length, 0, "es lief eine Umsetzungs-Session");
+    stehenInBacklog(dir, einheit.stufen.pakete.ids);
+    keinRestInArbeit(dir);
+  });
+});
+
+test("[night-34] ein nicht selbst gezogenes Paket bleibt unangetastet in Ready", () => {
+  mitProjekt((dir) => {
+    fachplanB(dir);
+    // Eine Karte, die der Mensch selbst nach Ready gezogen hat — sie gehoert zu keinem
+    // Plan dieser Kette und darf von der Rueckstellpflicht nicht angefasst werden.
+    const fremd = String(board(dir, "issue", "create", "--title", "Von Hand gezogen", "--body", "## Abhängigkeiten\n\nKeine.\n").id);
+    board(dir, "issue", "move", fremd, "ready");
+
+    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const karte = board(dir, "issue", "get", fremd);
+    assert.equal(karte.status, "ready", "die fremde Karte wurde aus Ready geschoben");
+    assert.doesNotMatch(karte.body || "", /Nacht-Kette/, "die fremde Karte bekam einen Kommentar der Kette");
+    assert.deepEqual(inSpalte(dir, "in_progress"), []);
+  });
+});
+
+test("[night-34] ein Paket mit unerfuellter Abhaengigkeit wird nicht gezogen und gilt als nicht begonnen", () => {
+  mitProjekt((dir) => {
+    const F = fachplanB(dir);
+    // Das erste Paket haelt an einer Stopp-Frage an und bleibt damit in Backlog; das
+    // zweite haengt von ihm ab und faellt ueber pruefeIssueGates heraus (E6), das dritte
+    // ist unabhaengig und laeuft weiter.
+    const stufen = {
+      ...ERZEUGEN,
+      pakete: PAKETE_MIT_ABHAENGIGKEIT,
+      umsetzung: jePaket({ "0003": UMSETZUNG_HALT }, UMSETZUNG_ERFOLG),
+    };
+    const res = run(dir, ["--kette"], umgebung(dir, { stufen }));
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const { einheit, stufe } = umsetzung(dir, F);
+    assert.deepEqual(einheit.stufen.pakete.ids, ["0003", "0004", "0005"]);
+    assert.deepEqual(stufe.angehalten, ["0003"]);
+    assert.deepEqual(stufe.nichtBegonnen.map((p) => p.id), ["0004"]);
+    // Die Nummer steht so im Grund, wie `parseDeps` sie liest — als Zahl, ohne die
+    // fuehrenden Nullen des lokalen Trackers.
+    assert.match(stufe.nichtBegonnen[0].grund, /Abhaengigkeit #3 nicht erfuellt/);
+    assert.deepEqual(stufe.umgesetzt.map((e) => e.id), ["0005"], "das unabhaengige Paket lief nach dem Halt weiter");
+
+    // Das ausgelassene Paket wurde nie bewegt, traegt aber den Grund (Issue #1048, E14):
+    // den Abhaengigkeits-Kommentar, wie ihn der Einzellauf schreibt — genau einmal.
+    const ausgelassen = board(dir, "issue", "get", "0004");
+    assert.equal(ausgelassen.status, "backlog");
+    assert.equal((ausgelassen.body || "").match(/Nachtlauf: Abhaengigkeit #3 nicht erfuellt/g)?.length, 1,
+      "das ausgelassene Paket traegt den Abhaengigkeits-Kommentar nicht genau einmal");
+    keinRestInArbeit(dir);
+  });
+});
+
+test("[night-34] ein angehaltenes Paket laesst die Kette angehalten enden, ohne den Fachplan zu zeichnen", () => {
+  mitProjekt((dir) => {
+    const F = fachplanB(dir);
+    const stufen = { ...ERZEUGEN, umsetzung: jePaket({ "0003": UMSETZUNG_HALT }, UMSETZUNG_ERFOLG) };
+    const res = run(dir, ["--kette"], umgebung(dir, { stufen }));
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const { einheit, stufe } = umsetzung(dir, F);
+    assert.equal(einheit.ausgang, "angehalten", einheit.grund);
+    assert.deepEqual(stufe.angehalten, ["0003"]);
+    assert.deepEqual(stufe.umgesetzt.map((e) => e.id), ["0004"], "das zweite Paket lief nach dem Halt weiter");
+
+    // Das kit:klaeren traegt das Paket; ein zweites am Fachplan schloesse ihn aus der
+    // naechsten Kette aus (E17).
+    const fach = board(dir, "issue", "get", F);
+    assert.equal((fach.labels || []).includes(KLAEREN_LABEL), false, "der Fachplan wurde gezeichnet");
+    assert.ok((board(dir, "issue", "get", "0003").labels || []).includes(KLAEREN_LABEL), "das Paket traegt kit:klaeren nicht");
+    assert.doesNotMatch(fach.body || "", new RegExp(KETTE_HALT_ANKER), "der Fachplan traegt den Abschnitt 'Kette angehalten'");
+    keinRestInArbeit(dir);
+  });
+});
+
+// Issue #1104: Ein Paket, das das geaenderte Werkzeug eines anderen Pakets als Werkzeug
+// braucht, sagt es mit dem Zusatz `(wartet auf Push)` an seiner Verweiszeile. Seit #1102
+// arbeitet die Nacht mit dem Kit-Stand des letzten Pushs — das Werkzeug des ersten Pakets
+// wirkt also erst nach `push main`, auch wenn es schon in In review liegt. Die Kette zieht
+// ein solches Paket nicht nach Ready; ein Paket mit gewoehnlicher Verweiszeile schon.
+const PAKETE_WARTEN_AUF_PUSH = String.raw`m=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issues #\([0-9]*\).*|\1|p"); erste=""; for n in 1 2 3; do if [ "$n" = 1 ]; then dep="Keine."; elif [ "$n" = 2 ]; then dep="Issue #$erste (wartet auf Push)"; else dep="Issue #$erste"; fi; printf "## Kontext\n\nPlan: Issue #%s\nFachliche Quelle: Issue #%s\n\n## Aufgabe\n\nPaket %s in \`src/paket.mjs\`.\n\n## Akzeptanzkriterium\n\n- node --test\n\n## Abhängigkeiten\n\n%s\n" "$m" "$NIGHT_ISSUE_ID" "$n" "$dep" > "$KETTE_LOG.p$n.md"; id=$(node .claude/kit/board.mjs issue create --title "Paket $n" --body-file "$KETTE_LOG.p$n.md" | node -e 'const i=JSON.parse(require("fs").readFileSync(0,"utf8"));process.stdout.write(String(i.id))'); if [ "$n" = 1 ]; then erste="$id"; fi; done`;
+
+test("[#1104] ein Paket mit (wartet auf Push) bleibt in Backlog, eines mit gewoehnlicher Verweiszeile wird gezogen", () => {
+  mitProjekt((dir) => {
+    const F = fachplanB(dir);
+    const stufen = { ...ERZEUGEN, pakete: PAKETE_WARTEN_AUF_PUSH, umsetzung: UMSETZUNG_ERFOLG };
+    const res = run(dir, ["--kette"], umgebung(dir, { stufen }));
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const { einheit, stufe } = umsetzung(dir, F);
+    assert.deepEqual(einheit.stufen.pakete.ids, ["0003", "0004", "0005"]);
+    assert.deepEqual(stufe.umgesetzt.map((e) => e.id), ["0003", "0005"], "das wartende Paket lief nicht, die anderen schon");
+    assert.deepEqual(stufe.nichtBegonnen.map((p) => p.id), ["0004"]);
+    assert.equal(stufe.nichtBegonnen[0].grund, "wartet auf einen Push (Issue #3)");
+    assert.equal(board(dir, "issue", "get", "0004").status, "backlog", "das wartende Paket wurde bewegt");
+    assert.match(readFileSync(join(dir, "issues", `${F}.md`), "utf-8"), /wartet auf einen Push \(Issue #3\)/, "der Grund fehlt im Nachtbericht");
+    // Issue #1170: Das Warten steht an der Karte, und die Schlusszeile zaehlt das Paket,
+    // obwohl die Kette `fertig` ist.
+    const vermerk = /Nachtlauf: Paket wartet auf einen Push \(Issue #3\)\. Nach `push main` kann es nach Ready gezogen werden\./g;
+    assert.equal((board(dir, "issue", "get", "0004").body || "").match(vermerk)?.length, 1, "der Push-Vermerk steht nicht genau einmal am Paket");
+    assert.equal(einheit.ausgang, "fertig", einheit.grund);
+    assert.match(res.stdout, /Nacht-Kette beendet: 1 fertig, .* liegengeblieben, 1 Paket\(e\) nicht begonnen\./);
+    keinRestInArbeit(dir);
+  });
+});
+
+test("[#1170] ein zweiter Lauf schreibt keinen gleichlautenden Push-Vermerk dazu", () => {
+  const text = pushVermerk({ id: "4", comments: [] }, "Issue #3");
+  assert.match(text, /^Nachtlauf: .*wartet auf einen Push \(Issue #3\).*`push main`/);
+  assert.equal(pushVermerk({ id: "4", comments: [{ body: "frueher" }, { body: text }] }, "Issue #3"), null);
+  // Steht danach ein anderer Kommentar, ist der Vermerk nicht mehr der letzte.
+  assert.equal(pushVermerk({ id: "4", comments: [{ body: text }, { body: "spaeter" }] }, "Issue #3"), text);
+});

@@ -164,6 +164,11 @@ Wirksamkeit ihre Kennzahl je Karte nicht rechnen (Issue #951).
 
 Ein roter Lauf verhindert den Commit, wie bisher jeder rote Pflichtcheck.
 
+Eine Hinweis-Pruefung haelt dagegen nie an: Sie endet gruen und schreibt ihre Funde als
+`hinweis: <Datei und Grund>` in den Block `Fuer den Abschlussbericht:`. Die
+`hinweis:`-Zeilen gehen wortgetreu in den Berichtsteil Tests und Checks mit und halten die Fertigmeldung nicht an —
+kein Fix im selben Paket, keine Rueckfrage, kein Halt (Issue #1156).
+
 Das Kommando nennt in seiner Ausgabe die **gelaufenen und die ausgelassenen**
 Pruefungen, jeweils mit Grund. Beides gehoert in den Abschlussbericht (Schritt 6):
 Nur die Laeufe zu nennen genuegt nicht — dann muesste man die Auslassungen indirekt
@@ -239,6 +244,7 @@ Format des Abschlussberichts:
 - Wartezeit: <s> s, zusammen <s> s in <n> Laeufen fuer Karte #<n>   (ohne Kartennummer: Wartezeit: <s> s)
 - Teillauf: nur die zuletzt roten Pruefungen   (nur nach einem roten Teillauf)
 - gelaufen: <Kommando> → <Ergebnis>, <Dauer> — <Grund>
+- hinweis: <Datei und Grund>   (je Fund einer Hinweis-Pruefung, direkt unter ihrer Zeile)
 - ausgelassen: <Kommando> → <Grund>
 - bei `leeresPaket`: keine Pruefung, weil nichts veraendert wurde
 

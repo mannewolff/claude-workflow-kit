@@ -1,0 +1,286 @@
+// Der Worktree einer Nacht-Kette (Plan #638, A3; Issue #642), im selben Prozess gegen den
+// Teil kit/night/kitstand.mjs (Issue #1226). Git laeuft echt — der Worktree ist das, was
+// hier belegt wird —, ob ein Halter lebt, sagt die eingesetzte Prozess-Probe (Plan #1199, E6).
+//
+// Die Kette arbeitet ausserhalb des Repos, unter dem Temp-Verzeichnis: Im Repo laege der
+// Worktree als untracked Verzeichnis im `git status` der Umsetzungsnacht. `.claude/` ist
+// nicht versioniert; der Runner spiegelt es hinein — ohne `night-run-*`. Liegengebliebene
+// Worktrees eines Absturzes raeumt der naechste Start auf.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync, realpathSync } from "node:fs";
+import { join, basename } from "node:path";
+import { tmpdir, hostname } from "node:os";
+import { worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen, kitstandAbhaengigkeiten } from "../kit/night/kitstand.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
+
+function git(cwd, ...a) {
+  const res = spawnSync("git", a, { cwd, encoding: "utf-8" });
+  assert.equal(res.status, 0, `git ${a.join(" ")}: ${res.stderr}`);
+  return res.stdout;
+}
+
+/** Ein Repo mit Commit, einer versionierten Datei und einem `.claude/` voller Lokalzustand. */
+function setupRepo() {
+  const dir = mkdtempSync(join(tmpdir(), "nachtrepo-"));
+  mkdirSync(join(dir, KOPIE), { recursive: true });
+  writeFileSync(join(dir, ".gitignore"), ".claude/*\n!.claude/workflow.config.json\n");
+  writeFileSync(join(dir, ".claude", "workflow.config.json"), "{\"codeHost\":\"local\",\"issueTracker\":\"local\"}\n");
+  writeFileSync(join(dir, "README.md"), "hallo\n");
+  lfAttribute(join(dir, ".gitattributes"));
+  git(dir, "init", "-q");
+  git(dir, "config", "user.email", "t@example.invalid");
+  git(dir, "config", "user.name", "T");
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "setup");
+  // Lokalzustand, der NICHT im Repo liegt: Kit-Kopie, Token, Settings, Protokoll.
+  writeFileSync(join(dir, KOPIE, "board.mjs"), "// kopie\n");
+  writeFileSync(join(dir, ".claude", "settings.local.json"), "{}\n");
+  writeFileSync(join(dir, ".claude", "tbx.token"), "geheim\n");
+  writeFileSync(join(dir, ".claude", "night-run-2026-09-14.log"), "protokoll\n");
+  writeFileSync(join(dir, ".claude", "night-run-2026-09-14-010203.json"), "{}\n");
+  return dir;
+}
+
+// Die installierte Kit-Kopie unter `.claude/`, als ein Segment geschrieben.
+const KOPIE = ".claude/kit";
+
+// Eine Prozess-Id, die die eingesetzte Probe fuer tot erklaert; jede andere fragt das System.
+const TOTE_PID = 999_999;
+kitstandAbhaengigkeiten({
+  kill: (pid, signal) => {
+    if (pid === TOTE_PID) throw Object.assign(new Error(`kill ESRCH ${pid}`), { code: "ESRCH" });
+    return process.kill(pid, signal);
+  },
+});
+
+/** Ueberschreibt den Halter so, als gehoere der Ordner einem abgestuerzten Runner. */
+function halterTot(pfad) {
+  writeFileSync(`${pfad}.halter`, JSON.stringify({ host: hostname(), pid: TOTE_PID, seit: "2026-01-01T00:00:00.000Z" }));
+}
+
+function mitRepo(fn) {
+  const dir = setupRepo();
+  const angelegt = [];
+  try {
+    fn(dir, angelegt);
+  } finally {
+    for (const p of angelegt) {
+      rmSync(p, { recursive: true, force: true });
+      rmSync(`${p}.halter`, { force: true });
+    }
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("[night-17] worktreeAnlegen legt den Worktree unter dem Temp-Verzeichnis an und spiegelt .claude ohne night-run-*", () => {
+  mitRepo((dir, angelegt) => {
+    const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "635", stempel: "2026-09-14-010203" });
+    angelegt.push(pfad);
+    assert.ok(pfad.startsWith(join(tmpdir(), `kette-${basename(dir)}-635-`)), `unerwarteter Pfad: ${pfad}`);
+    assert.ok(!pfad.startsWith(dir), "der Worktree darf nicht im Repo liegen");
+    // Zeilenenden normalisiert: Git auf Windows-Runnern checkt mit CRLF aus; geprueft wird
+    // der Stand von HEAD, nicht die Zeilenenden.
+    assert.equal(readFileSync(join(pfad, "README.md"), "utf-8").replaceAll("\r\n", "\n"), "hallo\n", "der Worktree traegt den Stand von HEAD");
+    assert.ok(existsSync(join(pfad, KOPIE, "board.mjs")), "die Kit-Kopie fehlt im Worktree");
+    for (const datei of ["settings.local.json", "tbx.token", "workflow.config.json"]) {
+      assert.ok(existsSync(join(pfad, ".claude", datei)), `.claude/${datei} fehlt im Worktree`);
+    }
+    for (const datei of ["night-run-2026-09-14.log", "night-run-2026-09-14-010203.json"]) {
+      assert.ok(!existsSync(join(pfad, ".claude", datei)), `.claude/${datei} darf nicht mitkommen`);
+    }
+    assert.equal(git(dir, "status", "--porcelain").trim(), "", "die Hauptkopie bleibt sauber");
+    const liste = git(dir, "worktree", "list").replaceAll("\\", "/");
+    const erwartet = realpathSync.native(pfad).replaceAll("\\", "/");
+    assert.ok(liste.includes(erwartet), `Pfad ${erwartet} nicht in Worktree-Liste: ${liste}`);
+  });
+});
+
+test("[night-68] der Spiegel filtert nur direkt unter .claude/ — Werkzeuge unter .claude/kit/ kommen alle mit", () => {
+  mitRepo((dir, angelegt) => {
+    // Die Kit-Kopie traegt Werkzeuge, deren Namen wie die Berichte der Hauptkopie
+    // beginnen. Ein Filter ueber den blossen Dateinamen liesse sie zurueck, und eine
+    // Kettenstufe im Worktree riefe ins Leere.
+    for (const werkzeug of ["aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"]) {
+      writeFileSync(join(dir, KOPIE, werkzeug), `// ${werkzeug}\n`);
+    }
+    // Und die Berichte, die in der Hauptkopie bleiben sollen — direkt unter `.claude/`.
+    for (const bericht of ["aufwand.md", "aufwand.json", "wirksamkeit.md", "wirksamkeit.json", "bewegungen.tsv", "ausfuehrungen.tsv"]) {
+      writeFileSync(join(dir, ".claude", bericht), `stand ${bericht}\n`);
+    }
+
+    const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "824", stempel: "2026-09-21-010203" });
+    angelegt.push(pfad);
+
+    for (const werkzeug of ["board.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"]) {
+      assert.ok(existsSync(join(pfad, KOPIE, werkzeug)), `.claude/kit/${werkzeug} fehlt im Worktree`);
+    }
+    for (const bericht of ["aufwand.md", "aufwand.json", "wirksamkeit.md", "wirksamkeit.json", "bewegungen.tsv", "ausfuehrungen.tsv"]) {
+      assert.ok(!existsSync(join(pfad, ".claude", bericht)), `.claude/${bericht} darf nicht in den Worktree`);
+    }
+  });
+});
+
+test("[night-68] ein Unterverzeichnis mit dem Namen eines Berichts kommt mit", () => {
+  mitRepo((dir, angelegt) => {
+    // `.claude/night-run-*` bleibt zurueck, aber nur direkt unter `.claude/`: Ein
+    // gleichnamiger Pfad eine Ebene tiefer ist eine andere Datei.
+    mkdirSync(join(dir, KOPIE, "night-run-hilfen"), { recursive: true });
+    writeFileSync(join(dir, KOPIE, "night-run-hilfen", "x.mjs"), "// hilfe\n");
+
+    const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "824", stempel: "2026-09-21-010204" });
+    angelegt.push(pfad);
+
+    assert.ok(existsSync(join(pfad, KOPIE, "night-run-hilfen", "x.mjs")),
+      "nur der Name direkt unter .claude/ entscheidet, nicht der Name irgendwo im Pfad");
+  });
+});
+
+test("[night-17] worktreeEntfernen loescht Ordner und Eintrag", () => {
+  mitRepo((dir, angelegt) => {
+    const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "635", stempel: "s2" });
+    angelegt.push(pfad);
+    worktreeEntfernen(pfad, dir);
+    assert.ok(!existsSync(pfad), "der Ordner liegt noch");
+    assert.doesNotMatch(git(dir, "worktree", "list"), /kette-/, "der Eintrag steht noch in git worktree list");
+    assert.equal(git(dir, "status", "--porcelain").trim(), "");
+  });
+});
+
+test("[night-17] worktreesAufraeumen entfernt liegengebliebene Worktrees dieses Repos, fremde nicht", () => {
+  mitRepo((dir, angelegt) => {
+    const eigener = worktreeAnlegen({ repoRoot: dir, issueId: "1", stempel: "alt" });
+    angelegt.push(eigener);
+    halterTot(eigener);
+    // Ein "toter" Worktree: Ordner weg, Eintrag noch da — wie nach einem Absturz.
+    const toter = worktreeAnlegen({ repoRoot: dir, issueId: "2", stempel: "tot" });
+    angelegt.push(toter);
+    halterTot(toter);
+    rmSync(toter, { recursive: true, force: true });
+    const fremd = mkdtempSync(join(tmpdir(), "kette-anderesrepo-7-"));
+    angelegt.push(fremd);
+
+    const entfernt = worktreesAufraeumen(dir);
+    assert.deepEqual(entfernt.sort(), [eigener].sort(), "genau der liegengebliebene eigene Worktree wird entfernt");
+    assert.ok(!existsSync(eigener));
+    assert.ok(existsSync(fremd), "ein Ordner mit fremdem Praefix bleibt");
+    assert.doesNotMatch(git(dir, "worktree", "list"), /kette-/, "auch der tote Eintrag ist geprunt");
+    assert.ok(!readdirSync(tmpdir()).some((n) => n.startsWith(`kette-${basename(dir)}-`)));
+  });
+});
+
+test("[night-908] worktreeAnlegen legt mit dem Praefix pruefung einen eigenen Ordner an", () => {
+  mitRepo((dir, angelegt) => {
+    const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "908", stempel: "2026-09-24-010203", praefix: "pruefung" });
+    angelegt.push(pfad);
+    assert.ok(pfad.startsWith(join(tmpdir(), `pruefung-${basename(dir)}-908-`)), `unerwarteter Pfad: ${pfad}`);
+    assert.ok(existsSync(join(pfad, KOPIE, "board.mjs")), "der Spiegel gilt unveraendert");
+  });
+});
+
+test("[night-908] worktreesAufraeumen raeumt nur den Praefix ab, der uebergeben wurde", () => {
+  mitRepo((dir, angelegt) => {
+    const kette = worktreeAnlegen({ repoRoot: dir, issueId: "1", stempel: "alt" });
+    angelegt.push(kette);
+    halterTot(kette);
+    const pruefung = worktreeAnlegen({ repoRoot: dir, issueId: "2", stempel: "alt", praefix: "pruefung" });
+    angelegt.push(pruefung);
+    halterTot(pruefung);
+
+    assert.deepEqual(worktreesAufraeumen(dir, "pruefung"), [pruefung],
+      "nur der Worktree des uebergebenen Praefixes wird entfernt");
+    assert.ok(!existsSync(pruefung));
+    assert.ok(existsSync(kette), "der Worktree der laufenden Kette bleibt unberuehrt");
+
+    assert.deepEqual(worktreesAufraeumen(dir), [kette],
+      "ohne Argument raeumt der Vorgabewert kette genau die Kette ab");
+    assert.ok(!existsSync(kette));
+  });
+});
+
+test("[night-1183] worktreeAnlegen schreibt neben den Ordner einen Halter mit Rechner, PID und Beginn", () => {
+  mitRepo((dir, angelegt) => {
+    const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "1183", stempel: "halter" });
+    angelegt.push(pfad);
+    const halter = JSON.parse(readFileSync(`${pfad}.halter`, "utf-8"));
+    assert.equal(halter.host, hostname());
+    assert.equal(halter.pid, process.pid);
+    assert.ok(!Number.isNaN(Date.parse(halter.seit)), `seit ist kein Zeitpunkt: ${halter.seit}`);
+    assert.equal(git(pfad, "status", "--porcelain").trim(), "", "der Halter liegt ausserhalb des Git-Baums");
+  });
+});
+
+test("[night-1183] worktreeEntfernen loescht den Halter mit", () => {
+  mitRepo((dir, angelegt) => {
+    const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "1183", stempel: "weg" });
+    angelegt.push(pfad);
+    worktreeEntfernen(pfad, dir);
+    assert.ok(!existsSync(`${pfad}.halter`), "der Halter liegt noch");
+  });
+});
+
+test("[night-1183] ein Ordner mit lebendem Halter bleibt beim Aufraeumen stehen und erscheint nicht in der Liste", () => {
+  mitRepo((dir, angelegt) => {
+    const lebend = worktreeAnlegen({ repoRoot: dir, issueId: "1", stempel: "lebt" });
+    angelegt.push(lebend);
+    assert.deepEqual(worktreesAufraeumen(dir), [], "ein lebender Ordner ist kein Rest");
+    assert.ok(existsSync(lebend), "der Worktree des laufenden Runners bleibt");
+    assert.ok(existsSync(`${lebend}.halter`), "sein Halter bleibt");
+    assert.match(git(dir, "worktree", "list"), /kette-/, "sein Eintrag bleibt");
+  });
+});
+
+test("[night-1183] ein Ordner mit totem Halter wird samt Halter geraeumt", () => {
+  mitRepo((dir, angelegt) => {
+    const tot = worktreeAnlegen({ repoRoot: dir, issueId: "1", stempel: "tot" });
+    angelegt.push(tot);
+    halterTot(tot);
+    assert.deepEqual(worktreesAufraeumen(dir), [tot]);
+    assert.ok(!existsSync(tot));
+    assert.ok(!existsSync(`${tot}.halter`), "der Halter ist mit weg");
+  });
+});
+
+test("[night-1183] ein Ordner ohne Halter gilt als verwaist und wird geraeumt", () => {
+  mitRepo((dir, angelegt) => {
+    const alt = worktreeAnlegen({ repoRoot: dir, issueId: "1", stempel: "vorher" });
+    angelegt.push(alt);
+    rmSync(`${alt}.halter`);
+    const lebend = worktreeAnlegen({ repoRoot: dir, issueId: "2", stempel: "lebt" });
+    angelegt.push(lebend);
+    assert.deepEqual(worktreesAufraeumen(dir), [alt], "nur der Ordner ohne Halter ist ein Rest");
+    assert.ok(!existsSync(alt));
+    assert.ok(existsSync(lebend), "der lebende daneben bleibt");
+  });
+});
+
+test("[night-17] worktreeAnlegen wirft mit der git-Meldung, wenn kein Repo vorliegt", () => {
+  const kein = mkdtempSync(join(tmpdir(), "kette-kein-repo-"));
+  try {
+    assert.throws(() => worktreeAnlegen({ repoRoot: kein, issueId: "1", stempel: "x" }), /git worktree add schlug fehl/);
+  } finally {
+    rmSync(kein, { recursive: true, force: true });
+  }
+});
+
+test("[night-1036] worktreeAnlegen mit spiegeln: false laesst die ignorierten Dateien unter .claude/ zurueck", () => {
+  mitRepo((dir, angelegt) => {
+    // Der frische Checkout (Plan #1035): nur Versioniertes, kein Spiegel der Hauptkopie.
+    const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "1036", stempel: "frisch", praefix: "frisch", spiegeln: false });
+    angelegt.push(pfad);
+    assert.ok(existsSync(pfad), "der Worktree fehlt");
+    assert.deepEqual(readdirSync(join(pfad, ".claude")), ["workflow.config.json"],
+      "unter .claude/ liegen nur versionierte Dateien");
+    assert.ok(!existsSync(join(pfad, KOPIE, "board.mjs")), "die ignorierte Kit-Kopie darf nicht mitkommen");
+  });
+});
+
+test("[night-1036] ohne spiegeln bleibt der Spiegel der Vorgabewert", () => {
+  mitRepo((dir, angelegt) => {
+    const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "1036", stempel: "gegen" });
+    angelegt.push(pfad);
+    assert.ok(existsSync(join(pfad, KOPIE, "board.mjs")), "die ignorierte Kit-Kopie wird weiter gespiegelt");
+  });
+});

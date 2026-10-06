@@ -6,11 +6,13 @@
 // wertete das als Fehlschlag und schob die Karte ins Backlog, wo sie wie ein gescheitertes
 // Paket aussieht (belegter Fall: kanban-kit #1256 im Lauf night-run-2026-09-28).
 //
-// Geprueft wird hier die Erkennung, nicht das Gate — das fuehrt test/night-mensch.test.mjs.
+// Geprueft wird hier die Erkennung, nicht das Gate — das fuehrt test/ablauf-night-mensch.test.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { istMensch, istFachlich, istIdee, istPlan, stufeAusTitel, pruefeForm } from "../kit/board.mjs";
+import { istMensch, istFachlich, istIdee, istPlan } from "../kit/board/dokumente.mjs";
+import { stufeAusTitel } from "../kit/board/issue-review.mjs";
+import { pruefeForm } from "../kit/board/testhinweise.mjs";
 
 test("[board-984] `[Mensch]` wird so streng erkannt wie die drei anderen Praefixe", () => {
   for (const titel of [

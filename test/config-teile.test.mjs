@@ -34,10 +34,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
-import { globZuRegex, bereicheVorbereiten } from "../kit/checks.mjs";
-// `checks.mjs bereiche` laeuft als Kindprozess (Issue #1008); der eigene Sperrpfad haelt
-// die Datei aus der maschinenweiten Sperre, wie jede andere, die checks.mjs startet.
-import "./helpers/checks-sperre.mjs";
+import { globZuRegex, bereicheVorbereiten, anteilJeBereich, aufrufen } from "../kit/checks.mjs";
 import { verflechtungErheben } from "../tools/verflechtung.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -161,6 +158,19 @@ test("jede versionierte Quelldatei liegt in mindestens einem Teil", () => {
     [],
     "Quelldateien ohne Teil — jede Aenderung an ihnen loest den vollen Umfang aus",
   );
+});
+
+test("jede Datei unter kit/night/ und kit/board/ liegt in genau einem Teilbereich", () => {
+  // Die Teilzuordnung (Issue #1236, Plan #1199, E5): Ein Teil ist ein Bereich. Liegt eine
+  // Datei eines Teils in zwei Bereichen, loest ihre Aenderung die Pruefungen eines fremden
+  // Teils mit aus; liegt sie in keinem, zieht sie den vollen Umfang. Beides macht
+  // Kriterium 4 unwahr, ohne dass ein anderer Test es meldet.
+  const bereiche = bereicheVorbereiten(config.checkAreas ?? {});
+  const falsch = versionierte("kit/night", "kit/board")
+    .map((pfad) => ({ pfad, namen: bereiche.filter((b) => b.regexe.some((r) => r.test(pfad))).map((b) => b.name) }))
+    .filter(({ namen }) => namen.length !== 1)
+    .map(({ pfad, namen }) => `${pfad}: ${namen.length === 0 ? "kein Bereich" : namen.join(", ")}`);
+  assert.deepEqual(falsch, [], "Dateien eines Teils, die nicht in genau einem Bereich liegen");
 });
 
 test("keine Datei steht zugleich in ohnePruefung und in einem Teil", () => {
@@ -293,17 +303,16 @@ test("jeder Eintrag von nurGeruest traegt ein Muster und einen Grund", () => {
 // es in beiden Richtungen: Ein hervorgehobener Bereich ohne Eintrag ist ein Zuschnitt,
 // der nichts mehr herausschneidet, und ein Eintrag ohne Kopplung ist eine Ausrede.
 //
-// Die Hervorhebung kommt aus `checks.mjs bereiche`, nicht aus einer zweiten Rechnung
+// Die Hervorhebung kommt aus `anteilJeBereich` in kit/checks.mjs, nicht aus einer zweiten Rechnung
 // hier: Dieselbe Regel zweimal beschrieben wiche ab der ersten Aenderung voneinander ab.
 
-/** Die Ausgabe von `checks.mjs bereiche` fuer die Config dieses Repos. */
+/**
+ * Der Anteil je Bereich, den `checks.mjs bereiche` meldet, fuer die Config dieses Repos —
+ * im selben Prozess ueber `anteilJeBereich`, dieselbe Funktion, die das Kommando ruft
+ * (Issue #1235, Plan #1199, E6).
+ */
 function bereicheAuswertung() {
-  const res = spawnSync(process.execPath, [join(repoRoot, "kit", "checks.mjs"), "bereiche"], {
-    cwd: repoRoot,
-    encoding: "utf-8",
-  });
-  assert.equal(res.status, 0, `checks.mjs bereiche schlug fehl: ${(res.stderr || "").trim()}`);
-  return JSON.parse(res.stdout);
+  return anteilJeBereich(config);
 }
 
 /** Hervorgehobene Bereiche, die `gekoppelteBereiche` der Config nicht nennt. */
@@ -337,9 +346,9 @@ function eintraegeOhneKopplung(cfg, tabelle) {
   return ohne.sort();
 }
 
-// Mit den groben Gruppen (Issue #1068) sind mehrere Bereiche wieder hervorgehoben; der
-// feinere Zuschnitt kommt mit #1040 zurueck. Bis dahin zeigt der Fall die Absicht als offen.
-test("jeder hervorgehobene Bereich steht in gekoppelteBereiche", { todo: "grobe Gruppen bis #1040" }, () => {
+// Scharf seit Issue #1236: Nach der Zerlegung (Plan #1199) ist kein Bereich mehr
+// hervorgehoben, und der Eintrag fuer den Board-Einstieg ist entfallen.
+test("jeder hervorgehobene Bereich steht in gekoppelteBereiche", () => {
   const auswertung = bereicheAuswertung();
   assert.ok(auswertung.kommandos >= 3, "weniger als drei bereichsgebundene Kommandos — keine Hervorhebung messbar");
   assert.deepEqual(
@@ -348,18 +357,24 @@ test("jeder hervorgehobene Bereich steht in gekoppelteBereiche", { todo: "grobe 
     "hervorgehobene Bereiche ohne gemessene Kopplung als Grund — sie schneiden nichts mehr heraus",
   );
 
-  // Gegenprobe: Ohne den Eintrag `board` wird genau dieser Bereich gemeldet. Bliebe die
-  // Liste leer, hinge die Aussage oben an einer Hervorhebung, die es gar nicht gibt.
-  const ohneBoard = {
+  // Gegenprobe: Ein Bereich, den jedes bereichsgebundene Kommando fuehrt, wird ohne Eintrag
+  // gemeldet und mit Eintrag nicht. Ohne sie hinge die leere Liste oben an einer Pruefung,
+  // die gar nichts finden kann.
+  const ueberall = {
     ...config,
-    gekoppelteBereiche: (config.gekoppelteBereiche ?? []).filter((e) => e.bereich !== "board"),
+    checkAreas: { ...config.checkAreas, gegenprobe: ["gibt-es-nicht/**"] },
+    buildChecks: (config.buildChecks ?? []).map((eintrag) => (
+      typeof eintrag === "object" && eintrag.areas ? { ...eintrag, areas: [...eintrag.areas, "gegenprobe"] } : eintrag)),
   };
-  assert.deepEqual(hervorgehobenOhneEintrag(auswertung, ohneBoard), ["board"]);
+  const breit = anteilJeBereich(ueberall);
+  assert.deepEqual(hervorgehobenOhneEintrag(breit, ueberall), ["gegenprobe"]);
+  const mitEintrag = { ...ueberall, gekoppelteBereiche: [{ bereich: "gegenprobe", grund: "Gegenprobe" }] };
+  assert.deepEqual(hervorgehobenOhneEintrag(breit, mitEintrag), []);
 });
 
 test("jeder Eintrag in gekoppelteBereiche ist in jeder Gruppe, die ihn nennt, gemessen gekoppelt", () => {
-  assert.ok((config.gekoppelteBereiche ?? []).length > 0, ".claude/workflow.config.json traegt kein gekoppelteBereiche");
-  for (const eintrag of config.gekoppelteBereiche) {
+  // Die Liste darf leer sein (Issue #1236): Ohne hervorgehobenen Bereich braucht es keinen Eintrag.
+  for (const eintrag of config.gekoppelteBereiche ?? []) {
     assert.ok(eintrag.grund?.length > 0, `${eintrag.bereich} nennt keinen Grund`);
   }
 
@@ -378,7 +393,88 @@ test("jeder Eintrag in gekoppelteBereiche ist in jeder Gruppe, die ihn nennt, ge
     ...config,
     checkAreas: { ...config.checkAreas, gegenprobe: ["gibt-es-nicht/**"] },
     buildChecks: [{ ...erster, areas: [...erster.areas, "gegenprobe"] }, ...rest],
-    gekoppelteBereiche: [...config.gekoppelteBereiche, { bereich: "gegenprobe", grund: "Gegenprobe" }],
+    gekoppelteBereiche: [...(config.gekoppelteBereiche ?? []), { bereich: "gegenprobe", grund: "Gegenprobe" }],
   };
   assert.deepEqual(eintraegeOhneKopplung(mitUngekoppeltem, tabelle), [`gegenprobe: ${erster.cmd}`]);
+});
+
+// --- Kriterien 4 und 7 an der echten Config (Issue #1236, Plan #1199, E3, E5) ----------
+//
+// Die Auswahl selbst, nicht ein Nachbau: `checks.mjs plan --abschluss` im selben Prozess
+// (E6) gegen die versionierte Config und den Importgraphen dieses Repos. Nur git wird
+// ersetzt, und nur in der Frage, was sich geaendert hat — so misst die Probe eine Aenderung
+// an genau einer Datei, gleich was gerade im Arbeitsbaum liegt.
+
+/**
+ * Die Quelldatei eines Teils, wie `checkAreas` sie dem Bereich zuordnet — genau eine
+ * unter `kit/`. Die Probe nennt den Teil ueber seinen Bereich und nicht ueber einen
+ * Pfad: So haengt sie an der Teilzuordnung der Config, die sie belegen soll.
+ */
+function teilDatei(bereich) {
+  const quellen = (config.checkAreas?.[bereich] ?? []).filter((muster) => muster.startsWith("kit/"));
+  assert.equal(quellen.length, 1, `Bereich ${bereich} ordnet nicht genau eine Quelldatei unter kit/ zu: ${quellen.join(", ")}`);
+  return quellen[0];
+}
+
+/** Die Auswahl, als haette sich seit HEAD nur `pfad` geaendert. */
+function auswahlFuer(pfad) {
+  const git = (args, optionen) => {
+    if (args[0] === "diff" && args[1] === "--name-status") return { status: 0, stdout: `M\0${pfad}\0`, stderr: "" };
+    if (args[0] === "status") return { status: 0, stdout: "", stderr: "" };
+    return spawnSync("git", args, optionen);
+  };
+  const res = aufrufen(["plan", "--abschluss"], { cwd: repoRoot, git });
+  assert.equal(res.status, 0, `checks.mjs plan schlug fehl: ${res.stderr}`);
+  return JSON.parse(res.stdout);
+}
+
+/** Laeuft ein Eintrag der Config bei den beruehrten Bereichen auf der Paketstufe? */
+function erwartetLaufend(eintrag, bereiche) {
+  if (typeof eintrag === "string") return true;
+  if ((eintrag.stufe ?? "paket") !== "paket" || eintrag.nichtBeimAbschluss) return false;
+  if (eintrag.always || !eintrag.areas) return true;
+  return eintrag.areas.some((bereich) => bereiche.has(bereich));
+}
+
+test("Kriterien 4/7: eine Aenderung nur am Board-Teil testhinweise waehlt ihren Teil, die abhaengigen Bereiche und die Pflicht", () => {
+  const teil = teilDatei("board-testhinweise");
+  const auswahl = auswahlFuer(teil);
+  assert.equal(auswahl.vollerUmfang, false, "die Datei hat einen Teil — kein voller Umfang");
+  assert.deepEqual(auswahl.geaendert, [teil]);
+
+  // Beruehrt sind der eigene Bereich und genau die, die nach dem Importgraphen davon abhaengen.
+  const abhaengig = auswahl.abhaengig ?? [];
+  assert.ok(abhaengig.some((a) => a.bereich === "board-einstieg"), "der Board-Einstieg importiert den Teil — board-einstieg fehlt");
+  for (const a of abhaengig) assert.ok(a.ueber?.length > 0, `${a.bereich} nennt keinen Importweg`);
+  const bereiche = new Set(["board-testhinweise", ...abhaengig.map((a) => a.bereich)]);
+  assert.deepEqual(auswahl.bereiche, [...bereiche].sort());
+
+  const erwartet = (config.buildChecks ?? [])
+    .filter((eintrag) => erwartetLaufend(eintrag, bereiche))
+    .map((eintrag) => (typeof eintrag === "string" ? eintrag : eintrag.cmd));
+  assert.deepEqual(auswahl.laufen.map((e) => e.cmd).sort(), erwartet.sort());
+
+  // Die Teile, von denen testhinweise nur abhaengt, laufen nicht mit.
+  const ausgelassen = auswahl.ausgelassen.map((e) => e.cmd);
+  for (const fremd of ["board-grundlagen", "board-adapter", "nacht-kette", "nacht-tag"]) {
+    assert.ok(ausgelassen.some((cmd) => cmd.includes(`test/${fremd.replace("nacht-", "night-")}-*.test.mjs`)),
+      `die Gruppe des Teils ${fremd} laeuft mit, obwohl er nicht beruehrt ist`);
+  }
+  for (const eintrag of [...auswahl.laufen, ...auswahl.ausgelassen]) {
+    assert.ok(eintrag.grund?.length > 0, `${eintrag.cmd} traegt keinen Grund`);
+  }
+});
+
+test("Kriterium 7, Gegenprobe: eine neue Testdatei des Board-Teils testhinweise fehlt in der Auswahl einer Aenderung nur am Nacht-Teil tag", () => {
+  const neu = "test/board-testhinweise-x.test.mjs";
+  const erfasst = (eintrag) => [...eintrag.cmd.matchAll(/"([^"]+)"/g)].some((t) => globZuRegex(t[1]).test(neu));
+
+  const auswahl = auswahlFuer(teilDatei("nacht-tag"));
+  assert.equal(auswahl.vollerUmfang, false, "die Datei hat einen Teil — kein voller Umfang");
+  assert.ok(auswahl.bereiche.includes("nacht-tag"), `nacht-tag fehlt: ${auswahl.bereiche.join(", ")}`);
+  assert.deepEqual(auswahl.laufen.filter(erfasst).map((e) => e.cmd), [],
+    "ein laufendes Kommando erfasst die neue Testdatei des Teils testhinweise");
+
+  // Die Datei waere sonst gar nicht erfasst, und die Probe bewiese nichts.
+  assert.ok(auswahl.ausgelassen.some(erfasst), "kein Kommando der Config erfasst die neue Testdatei");
 });

@@ -34,7 +34,7 @@ function spalten(zeile) {
   return { zeit, cmd, ergebnis, dauerMs, anlass, lauf, karte };
 }
 
-test("[checks-7] ein Lauf haengt je ausgefuehrtem Kommando eine Zeile aus Zeit, Kommando, Ergebnis und Dauer an", () => {
+test("[checks-7] ein Lauf haengt je ausgefuehrtem Kommando eine Zeile aus Zeit, Kommando, Ergebnis und Dauer an", async () => {
   const config = {
     buildChecks: [
       { cmd: "echo eins", always: true },
@@ -43,10 +43,10 @@ test("[checks-7] ein Lauf haengt je ausgefuehrtem Kommando eine Zeile aus Zeit, 
     ],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.notEqual(res.status, 0, "das rote Kommando muss den Lauf rot faerben");
     const zeilen = ausfuehrungen(dir);
@@ -63,7 +63,7 @@ test("[checks-7] ein Lauf haengt je ausgefuehrtem Kommando eine Zeile aus Zeit, 
   });
 });
 
-test("[checks-7] ein nach dem roten Kommando nicht gestartetes schreibt keine Zeile", () => {
+test("[checks-7] ein nach dem roten Kommando nicht gestartetes schreibt keine Zeile", async () => {
   const config = {
     buildChecks: [
       { cmd: "exit 1", always: true },
@@ -71,10 +71,10 @@ test("[checks-7] ein nach dem roten Kommando nicht gestartetes schreibt keine Ze
     ],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    run(dir);
+    await run(dir);
 
     const zeilen = ausfuehrungen(dir);
     assert.equal(zeilen.length, 1, "'nicht gestartet' ist keine Ausfuehrung");
@@ -83,37 +83,37 @@ test("[checks-7] ein nach dem roten Kommando nicht gestartetes schreibt keine Ze
   });
 });
 
-test("[checks-7] zwei run-Runden einer Sitzung ergeben zwei Zeilensaetze — genau der Fall, den die Zusammenfassung verliert", () => {
+test("[checks-7] zwei run-Runden einer Sitzung ergeben zwei Zeilensaetze — genau der Fall, den die Zusammenfassung verliert", async () => {
   const config = {
     buildChecks: [{ cmd: "echo eins", always: true }],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    run(dir);
+    await run(dir);
     // `--frisch`, weil der Stand zwischen den Runden derselbe ist: Ohne den
     // Schalter uebernaehme die zweite Runde das Ergebnis der ersten (Issue #863)
     // und waere keine Ausfuehrung mehr. Gemeint ist hier die echte zweite Runde,
     // wie sie nach einem Fix entsteht.
-    run(dir, "--frisch");
+    await run(dir, "--frisch");
 
     assert.equal(ausfuehrungen(dir).length, 2, "die zweite Runde haengt an, statt die erste zu ersetzen");
     assert.equal(zusammenfassung(dir).laufen.length, 1, "die Zusammenfassung kennt nur die letzte Runde");
   });
 });
 
-test("[checks-7] eine bestehende Datei wird ergaenzt, nicht ueberschrieben", () => {
+test("[checks-7] eine bestehende Datei wird ergaenzt, nicht ueberschrieben", async () => {
   const config = {
     buildChecks: [{ cmd: "echo eins", always: true }],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
     const frueher = "2026-01-01T00:00:00.000Z\techo frueher\tgruen\t7";
     writeFileSync(ausfuehrungenPfad(dir), `${frueher}\n`, "utf-8");
 
-    run(dir);
+    await run(dir);
 
     const zeilen = ausfuehrungen(dir);
     assert.equal(zeilen.length, 2);
@@ -122,18 +122,18 @@ test("[checks-7] eine bestehende Datei wird ergaenzt, nicht ueberschrieben", () 
   });
 });
 
-test("[checks-7] ist das Protokoll nicht schreibbar, bleiben Ausgang und Ausgabe von run unveraendert", () => {
+test("[checks-7] ist das Protokoll nicht schreibbar, bleiben Ausgang und Ausgabe von run unveraendert", async () => {
   const config = {
     buildChecks: [{ cmd: "echo eins", always: true }],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
 
     // Beide Laeufe mit `--frisch`: Der Stand ist zwischen ihnen derselbe, und ein
     // uebernommenes Ergebnis ruehrte das Protokoll gar nicht erst an (Issue #863) —
     // der Fall, um den es hier geht, entstuende nie.
-    const ohneFehler = run(dir, "--frisch");
+    const ohneFehler = await run(dir, "--frisch");
     assert.equal(ohneFehler.status, 0, ohneFehler.stderr);
     assert.equal(ohneFehler.stderr, "", "Vorbedingung: der ungestoerte Lauf schweigt auf stderr");
 
@@ -142,7 +142,7 @@ test("[checks-7] ist das Protokoll nicht schreibbar, bleiben Ausgang und Ausgabe
     rmSync(ausfuehrungenPfad(dir), { force: true });
     mkdirSync(ausfuehrungenPfad(dir), { recursive: true });
 
-    const mitFehler = run(dir, "--frisch");
+    const mitFehler = await run(dir, "--frisch");
 
     assert.equal(mitFehler.status, ohneFehler.status, "der Exit-Code bleibt derselbe");
     // Die Zeile `Wartezeit:` (Issue #1069) misst die Wandzeit jedes Laufs und darf
@@ -157,12 +157,12 @@ test("[checks-7] ist das Protokoll nicht schreibbar, bleiben Ausgang und Ausgabe
   });
 });
 
-test("[checks-7] checks.mjs plan schreibt keine Zeile", () => {
+test("[checks-7] checks.mjs plan schreibt keine Zeile", async () => {
   const config = {
     buildChecks: [{ cmd: "echo eins", always: true }],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
 
     plan(dir);
@@ -171,11 +171,11 @@ test("[checks-7] checks.mjs plan schreibt keine Zeile", () => {
   });
 });
 
-test("[checks-7] die Zusammenfassung bleibt unveraendert — gruenes, rotes und leeres Paket", () => {
+test("[checks-7] die Zusammenfassung bleibt unveraendert — gruenes, rotes und leeres Paket", async () => {
   const FELDER = [
     "abgeschlossen", "abschluss", "ausgelassen", "basis", "bereichWahl", "bereiche", "berichtszeilen",
     "configHash",
-    "dauerGesamtMs", "geaendert", "hashes", "laufen", "leeresPaket", "ohnePruefung", "ohneZuordnung",
+    "dauerGesamtMs", "geaendert", "hashes", "hinweise", "laufen", "leeresPaket", "ohnePruefung", "ohneZuordnung",
     "stufe", "vollerUmfang", "wartezeitMs", "zeitpunkt",
   ];
   const faelle = [
@@ -188,10 +188,10 @@ test("[checks-7] die Zusammenfassung bleibt unveraendert — gruenes, rotes und 
       buildChecks: [{ cmd: fall.cmd, always: true }],
       checkAreas: { kern: ["src/**"] },
     };
-    mitRepo({ config }, (dir) => {
+    await mitRepo({ config }, async (dir) => {
       if (!fall.leer) datei(dir, "src/a.txt");
 
-      run(dir);
+      await run(dir);
 
       const summary = zusammenfassung(dir);
       assert.deepEqual(Object.keys(summary).sort(), FELDER, `Feldmenge im Fall '${fall.name}'`);
@@ -223,11 +223,11 @@ const DREI_CMD = {
   checkAreas: { kern: ["src/**"] },
 };
 
-test("[checks-7] ein Abschlusslauf mit Kartennummer traegt anlass, Laufkennung und Karte", () => {
-  mitRepo({ config: DREI_CMD }, (dir) => {
+test("[checks-7] ein Abschlusslauf mit Kartennummer traegt anlass, Laufkennung und Karte", async () => {
+  await mitRepo({ config: DREI_CMD }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    const res = run(dir, "--abschluss", "948");
+    const res = await run(dir, "--abschluss", "948");
 
     assert.equal(res.status, 0, res.stderr);
     const zeilen = ausfuehrungen(dir).map(spalten);
@@ -246,11 +246,11 @@ test("[checks-7] ein Abschlusslauf mit Kartennummer traegt anlass, Laufkennung u
   });
 });
 
-test("[checks-7] ein Abschlusslauf ohne Kartennummer laesst die Kartenspalte leer", () => {
-  mitRepo({ config: DREI_CMD }, (dir) => {
+test("[checks-7] ein Abschlusslauf ohne Kartennummer laesst die Kartenspalte leer", async () => {
+  await mitRepo({ config: DREI_CMD }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    const res = run(dir, "--abschluss");
+    const res = await run(dir, "--abschluss");
 
     assert.equal(res.status, 0, res.stderr);
     const zeilen = ausfuehrungen(dir).map(spalten);
@@ -263,12 +263,12 @@ test("[checks-7] ein Abschlusslauf ohne Kartennummer laesst die Kartenspalte lee
   });
 });
 
-test("[checks-7] ohne --abschluss steht die Stufe des Laufs als Anlass", () => {
+test("[checks-7] ohne --abschluss steht die Stufe des Laufs als Anlass", async () => {
   for (const [cliArgs, anlass] of [[[], "paket"], [["--stufe", "push"], "push"], [["--stufe", "merge"], "merge"]]) {
-    mitRepo({ config: DREI_CMD }, (dir) => {
+    await mitRepo({ config: DREI_CMD }, async (dir) => {
       datei(dir, "src/a.txt");
 
-      const res = run(dir, ...cliArgs);
+      const res = await run(dir, ...cliArgs);
 
       assert.equal(res.status, 0, res.stderr);
       const zeilen = ausfuehrungen(dir).map(spalten);
@@ -282,14 +282,14 @@ test("[checks-7] ohne --abschluss steht die Stufe des Laufs als Anlass", () => {
   }
 });
 
-test("[checks-7] ein Protokoll mit alten Zeilen ohne die drei Spalten bleibt lesbar", () => {
-  mitRepo({ config: DREI_CMD }, (dir) => {
+test("[checks-7] ein Protokoll mit alten Zeilen ohne die drei Spalten bleibt lesbar", async () => {
+  await mitRepo({ config: DREI_CMD }, async (dir) => {
     datei(dir, "src/a.txt");
     // Eine Zeile, wie sie vor Issue #948 entstand: vier Spalten, nichts dahinter.
     const alt = "2026-01-01T00:00:00.000Z\techo frueher\tgruen\t7";
     writeFileSync(ausfuehrungenPfad(dir), `${alt}\n`, "utf-8");
 
-    run(dir, "--abschluss", "948");
+    await run(dir, "--abschluss", "948");
 
     const zeilen = ausfuehrungen(dir);
     assert.equal(zeilen[0], alt, "die alte Zeile bleibt Zeichen fuer Zeichen stehen");

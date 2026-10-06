@@ -8,29 +8,30 @@
 //
 // Gemessen in einem ECHTEN verknuepften Worktree (`git worktree add`) — die Erkennung
 // haengt an `git rev-parse --git-dir` gegen `--git-common-dir`, und die unterscheiden
-// sich nur dort.
+// sich nur dort. befunde.mjs laeuft dabei im selben Prozess, der Board-Adapter ist eine
+// Attrappe (Issue #1213, Plan #1199 E6).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, realpathSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync, realpathSync } from "node:fs";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const BEFUNDE = join(repoRoot, "kit", "befunde.mjs");
+import { aufrufen } from "../kit/befunde.mjs";
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 function zeile(art) {
   return `2026-09-29T00:00:00.000Z\tplan\t1015\treviewer\t${art}\tWICHTIG\t-`;
 }
 
-/** Der Stub-Board-Adapter: protokolliert jeden Aufruf und antwortet mit einer Nummer. */
-const STUB_BOARD = [
-  "import { appendFileSync } from 'node:fs';",
-  String.raw`appendFileSync(process.env.STUB_LOG, JSON.stringify(process.argv.slice(2)) + '\n', 'utf-8');`,
-  String.raw`process.stdout.write(JSON.stringify({ id: "1099" }) + '\n');`,
-].join("\n");
+/** Der Stub-Board-Adapter: haelt jeden Aufruf in `aufrufe` fest und antwortet mit einer Nummer. */
+function stubBoard(aufrufe) {
+  return (argv) => {
+    aufrufe.push(argv);
+    return { status: 0, stdout: `${JSON.stringify({ id: "1099" })}\n`, stderr: "" };
+  };
+}
 
 function git(cwd, ...args) {
   const res = spawnSync("git", args, { cwd, encoding: "utf-8" });
@@ -45,38 +46,27 @@ function registerAnlegen(dir) {
     Array.from({ length: 4 }, () => `${zeile("konvention")}\n`).join(""), "utf-8");
 }
 
-/**
- * Ein Temp-Repo mit einem Commit und einem verknuepften Worktree daneben. Der Stub liegt
- * in einem eigenen Verzeichnis (KIT_ROOT), damit er in keinem der beiden Arbeitsbaeume steht.
- */
+/** Ein Temp-Repo mit einem Commit und einem verknuepften Worktree daneben. */
 function mitRepo(fn) {
   const basis = realpathSync(mkdtempSync(join(tmpdir(), "befunde-wt-")));
   const haupt = join(basis, "haupt");
   const wt = join(basis, "wt");
-  const kit = join(basis, "kit");
   try {
     mkdirSync(haupt);
+    lfAttribute(join(haupt, ".gitattributes"));
     git(haupt, "init", "-q");
     git(haupt, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "start");
     git(haupt, "worktree", "add", "-q", "--detach", wt);
-    mkdirSync(join(kit, ".claude", "kit"), { recursive: true });
-    writeFileSync(join(kit, ".claude", "kit", "board.mjs"), STUB_BOARD, "utf-8");
-    fn({ haupt, wt, kit, log: join(basis, "board.log") });
+    fn({ haupt, wt, aufrufe: [] });
   } finally {
     spawnSync("git", ["worktree", "remove", "--force", wt], { cwd: haupt });
     rmSync(basis, { recursive: true, force: true });
   }
 }
 
-function vorschlag({ kit, log }, cwd, ...args) {
-  const res = spawnSync(process.execPath, [BEFUNDE, "vorschlag", ...args], {
-    cwd, encoding: "utf-8", env: { ...process.env, KIT_ROOT: kit, STUB_LOG: log },
-  });
+function vorschlag({ aufrufe }, cwd, ...args) {
+  const res = aufrufen(["vorschlag", ...args], { cwd, board: stubBoard(aufrufe) });
   return { ...res, json: JSON.parse(res.stdout) };
-}
-
-function boardAufrufe(log) {
-  return existsSync(log) ? readFileSync(log, "utf-8").split("\n").filter(Boolean) : [];
 }
 
 test("[befunde-1028] vorschlag --art legt im Worktree nichts an und schreibt kein Register", () => {
@@ -89,7 +79,7 @@ test("[befunde-1028] vorschlag --art legt im Worktree nichts an und schreibt kei
     assert.equal(res.json.ergaenzt, false);
     assert.match(res.json.grund, /Worktree/);
     assert.match(res.json.grund, /Hauptkopie/);
-    assert.deepEqual(boardAufrufe(r.log), [], "kein Board-Aufruf");
+    assert.deepEqual(r.aufrufe, [], "kein Board-Aufruf");
     assert.equal(existsSync(join(r.wt, ".claude", "befunde-vorschlaege.json")), false,
       "das Register bleibt ungeschrieben");
   });
@@ -101,7 +91,7 @@ test("[befunde-1028] in der Hauptkopie desselben Repos entsteht der Vorschlag wi
     const res = vorschlag(r, r.haupt, "--art", "konvention");
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.json.angelegt, true);
-    assert.equal(boardAufrufe(r.log).length, 1);
+    assert.equal(r.aufrufe.length, 1);
     assert.equal(existsSync(join(r.haupt, ".claude", "befunde-vorschlaege.json")), true);
   });
 });
@@ -118,7 +108,7 @@ test("[befunde-1028] vorschlag --abgelehnt im Worktree endet ungleich 0 und verw
 });
 
 test("[befunde-1028] die Hilfe nennt die Worktree-Regel", () => {
-  const res = spawnSync(process.execPath, [BEFUNDE, "--help"], { encoding: "utf-8" });
+  const res = aufrufen(["--help"]);
   assert.equal(res.status, 0);
   assert.match(res.stdout, /Worktree/);
 });

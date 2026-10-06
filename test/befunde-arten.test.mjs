@@ -14,12 +14,12 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { aufrufen } from "../kit/befunde.mjs";
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const BEFUNDE = join(repoRoot, "kit", "befunde.mjs");
 
 // Die zwoelf Arten in der Reihenfolge des Arbeitspakets. Bewusst hier ausgeschrieben
 // und nicht aus dem Modul importiert: Ein Test, der seine Erwartung aus dem Pruefling
@@ -40,7 +40,7 @@ const ERWARTET = [
 ];
 
 function befunde(...args) {
-  return spawnSync(process.execPath, [BEFUNDE, ...args], { cwd: repoRoot, encoding: "utf-8" });
+  return aufrufen(args, { cwd: repoRoot });
 }
 
 test("arten gibt genau die zwoelf Arten mit je einem erklaerenden Satz aus", () => {

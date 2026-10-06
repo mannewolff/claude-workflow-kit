@@ -17,10 +17,11 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, existsSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
+import { lfAttribute } from "./zeilenenden.mjs";
 
 export const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 // Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
@@ -41,13 +42,14 @@ export function setupProjekt(praefix, night = null) {
   const dir = mkdtempSync(join(tmpdir(), praefix));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"],
     local: { issuesDir: "issues" },
     // Ein Board-Ausfall bekommt seit Issue #1088 einen zweiten Versuch nach der Pause.
     night: { stand: { pauseMin: 0.0001 }, ...night },
   }, null, 2));
-  // Bewusst OHNE `.claude/*` und ohne `*.json` (Muster aus night-guards.test.mjs:48):
+  // Bewusst OHNE `.claude/*` und ohne `*.json` (Muster aus ablauf-night-guards.test.mjs:48):
   // Die Ergebnisstand-Datei muss untracked sichtbar bleiben, sonst bewiese der
   // [night-3]-Test nichts. Die .log-Datei bleibt ignoriert, sonst fiele die
   // Gegenprobe schon am Textprotokoll statt an der JSON-Datei. Die
@@ -55,6 +57,7 @@ export function setupProjekt(praefix, night = null) {
   // `.claude/*` gedeckt, hier aber einzeln zu nennen — sonst hinterliesse jeder
   // Fake, der prueft, einen unsauberen Baum und der Rest-Guard schluege an.
   writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*.log\n.claude/checks-summary.json\nbin/\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const [c, a] of [
     ["git", ["init", "-q"]],
     ["git", ["config", "user.email", "test@example.invalid"]],
@@ -100,12 +103,14 @@ export function setupProjektMitMeldeCapture(praefix) {
   const dir = mkdtempSync(join(tmpdir(), praefix));
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board-real.mjs"));
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
   writeFileSync(join(dir, ".claude", "kit", "board.mjs"), BOARD_STUB);
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"],
     local: { issuesDir: "issues" },
   }, null, 2));
   writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*.log\n.claude/checks-summary.json\nbin/\n");
+  lfAttribute(join(dir, ".gitattributes"));
   for (const [c, a] of [
     ["git", ["init", "-q"]],
     ["git", ["config", "user.email", "test@example.invalid"]],
@@ -172,7 +177,7 @@ export const SUMMARY_GRUEN = `printf '%s' '{"laufen":[{"cmd":"true","ergebnis":"
   + " > .claude/checks-summary.json";
 export const SUMMARY_LEER = `printf '%s' '{"leeresPaket":true}' > .claude/checks-summary.json`;
 
-// Die `result`-Zeile aus dem Fixture von test/night-kennzahlen.test.mjs — echte
+// Die `result`-Zeile aus dem Fixture von test/night-session-kennzahlen.test.mjs — echte
 // Feldnamen aus einer echten Session, gekuerzt in den Textfeldern. Sie enthaelt keine
 // einfachen Anfuehrungszeichen und laesst sich darum im sh-Fake als Literal echoen.
 export const RESULT_ZEILE =

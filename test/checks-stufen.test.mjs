@@ -36,8 +36,8 @@ function stufen(liste) {
   return liste.map((e) => e.stufe);
 }
 
-test("[checks-5] ein unbekannter Stufenwert endet rot und nennt die drei zulaessigen", () => {
-  mitRepo({ config: DREI_STUFEN }, (dir) => {
+test("[checks-5] ein unbekannter Stufenwert endet rot und nennt die drei zulaessigen", async () => {
+  await mitRepo({ config: DREI_STUFEN }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const res = checks(dir, "plan", "--stufe", "abend");
@@ -49,8 +49,8 @@ test("[checks-5] ein unbekannter Stufenwert endet rot und nennt die drei zulaess
   });
 });
 
-test("[checks-5] --stufe ohne Wert endet rot und faellt nicht auf die Paketstufe zurueck", () => {
-  mitRepo({ config: DREI_STUFEN }, (dir) => {
+test("[checks-5] --stufe ohne Wert endet rot und faellt nicht auf die Paketstufe zurueck", async () => {
+  await mitRepo({ config: DREI_STUFEN }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const res = checks(dir, "plan", "--stufe");
@@ -59,7 +59,7 @@ test("[checks-5] --stufe ohne Wert endet rot und faellt nicht auf die Paketstufe
   });
 });
 
-test("[checks-5] ohne --stufe gilt die Paketstufe: String, Objekt ohne stufe und stufe 'paket' sind gleichwertig", () => {
+test("[checks-5] ohne --stufe gilt die Paketstufe: String, Objekt ohne stufe und stufe 'paket' sind gleichwertig", async () => {
   // Der Regressionsschutz des Pakets: Wer nichts angibt, bekommt genau die
   // Auswahl von vorher — und die drei Schreibweisen derselben Aussage muessen
   // in derselben Bahn landen, sonst waere die Stufenangabe eine stille
@@ -68,7 +68,7 @@ test("[checks-5] ohne --stufe gilt die Paketstufe: String, Objekt ohne stufe und
     buildChecks: ["echo a", { cmd: "echo b" }, { cmd: "echo c", stufe: "paket" }],
     checkAreas: BEREICHE,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir);
@@ -83,8 +83,8 @@ test("[checks-5] ohne --stufe gilt die Paketstufe: String, Objekt ohne stufe und
   });
 });
 
-test("[checks-5] die Paketstufe laesst eine Pruefung spaeterer Stufe mit Grund aus", () => {
-  mitRepo({ config: DREI_STUFEN }, (dir) => {
+test("[checks-5] die Paketstufe laesst eine Pruefung spaeterer Stufe mit Grund aus", async () => {
+  await mitRepo({ config: DREI_STUFEN }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir, "--stufe", "paket");
@@ -96,8 +96,8 @@ test("[checks-5] die Paketstufe laesst eine Pruefung spaeterer Stufe mit Grund a
   });
 });
 
-test("[checks-5] die Push-Stufe faehrt die Paketstufe mit, die Freigabestufe nicht", () => {
-  mitRepo({ config: DREI_STUFEN }, (dir) => {
+test("[checks-5] die Push-Stufe faehrt die Paketstufe mit, die Freigabestufe nicht", async () => {
+  await mitRepo({ config: DREI_STUFEN }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir, "--stufe", "push");
@@ -109,12 +109,12 @@ test("[checks-5] die Push-Stufe faehrt die Paketstufe mit, die Freigabestufe nic
   });
 });
 
-test("[checks-5] die Stufe greift vor der Bereichsauswahl: eine Push-Pruefung bleibt auch im beruehrten Bereich aus", () => {
+test("[checks-5] die Stufe greift vor der Bereichsauswahl: eine Push-Pruefung bleibt auch im beruehrten Bereich aus", async () => {
   const config = {
     buildChecks: [{ cmd: "echo e2e", areas: ["frontend"], stufe: "push" }],
     checkAreas: BEREICHE,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir);
@@ -142,8 +142,8 @@ const FREIGABE = {
 
 const PUSH_GRUND = "Stufe push, geprueft beim push main";
 
-test("[checks-5] die Freigabestufe faehrt die Merge-Pruefung und nur die Paketpruefung des beruehrten Bereichs", () => {
-  mitRepo({ config: FREIGABE }, (dir) => {
+test("[checks-5] die Freigabestufe faehrt die Merge-Pruefung und nur die Paketpruefung des beruehrten Bereichs", async () => {
+  await mitRepo({ config: FREIGABE }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir, "--stufe", "merge");
@@ -156,8 +156,8 @@ test("[checks-5] die Freigabestufe faehrt die Merge-Pruefung und nur die Paketpr
   });
 });
 
-test("[checks-5] an der Freigabestufe faehrt eine Datei ohne Bereich jede Paketpruefung, die Push-Pruefung nicht", () => {
-  mitRepo({ config: FREIGABE }, (dir) => {
+test("[checks-5] an der Freigabestufe faehrt eine Datei ohne Bereich jede Paketpruefung, die Push-Pruefung nicht", async () => {
+  await mitRepo({ config: FREIGABE }, async (dir) => {
     datei(dir, "CHANGELOG.md");
 
     const ergebnis = plan(dir, "--stufe", "merge");
@@ -169,8 +169,8 @@ test("[checks-5] an der Freigabestufe faehrt eine Datei ohne Bereich jede Paketp
   });
 });
 
-test("[checks-5] an der Freigabestufe ohne Aenderung laeuft nur die Merge-Pruefung", () => {
-  mitRepo({ config: DREI_STUFEN }, (dir) => {
+test("[checks-5] an der Freigabestufe ohne Aenderung laeuft nur die Merge-Pruefung", async () => {
+  await mitRepo({ config: DREI_STUFEN }, async (dir) => {
     const ergebnis = plan(dir, "--stufe", "merge");
 
     assert.equal(ergebnis.leeresPaket, false, "die Merge-Pruefung laeuft — das ist kein leeres Paket");
@@ -181,17 +181,17 @@ test("[checks-5] an der Freigabestufe ohne Aenderung laeuft nur die Merge-Pruefu
   });
 });
 
-test("[checks-5] die Freigabestufe bestimmt basis, geaendert und hashes wie ein Lauf ohne das Flag", () => {
+test("[checks-5] die Freigabestufe bestimmt basis, geaendert und hashes wie ein Lauf ohne das Flag", async () => {
   const config = {
     buildChecks: [{ cmd: "echo paket" }, { cmd: "echo release", stufe: "merge" }],
     checkAreas: BEREICHE,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    assert.equal(run(dir).status, 0);
+    assert.equal((await run(dir)).status, 0);
     const ohneFlag = zusammenfassung(dir);
-    assert.equal(run(dir, "--stufe", "merge").status, 0);
+    assert.equal((await run(dir, "--stufe", "merge")).status, 0);
     const mitFlag = zusammenfassung(dir);
 
     assert.equal(mitFlag.basis, ohneFlag.basis);
@@ -204,11 +204,11 @@ test("[checks-5] die Freigabestufe bestimmt basis, geaendert und hashes wie ein 
   });
 });
 
-test("[checks-5] die Push-Stufe nennt die hinzukommenden Pruefungen vor dem ersten Kommando", () => {
-  mitRepo({ config: DREI_STUFEN }, (dir) => {
+test("[checks-5] die Push-Stufe nennt die hinzukommenden Pruefungen vor dem ersten Kommando", async () => {
+  await mitRepo({ config: DREI_STUFEN }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir, "--stufe", "push");
+    const res = await run(dir, "--stufe", "push");
 
     assert.equal(res.status, 0, res.stderr);
     const ankuendigung = res.stdout.indexOf("Stufe push");
@@ -222,11 +222,11 @@ test("[checks-5] die Push-Stufe nennt die hinzukommenden Pruefungen vor dem erst
   });
 });
 
-test("[checks-5] die Paketstufe kuendigt nichts an — der haeufigste Lauf bleibt still", () => {
-  mitRepo({ config: DREI_STUFEN }, (dir) => {
+test("[checks-5] die Paketstufe kuendigt nichts an — der haeufigste Lauf bleibt still", async () => {
+  await mitRepo({ config: DREI_STUFEN }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, res.stderr);
     assert.doesNotMatch(res.stdout, /Stufe paket/, "die Paketstufe kuendigt eine Stufe an");
@@ -234,11 +234,11 @@ test("[checks-5] die Paketstufe kuendigt nichts an — der haeufigste Lauf bleib
   });
 });
 
-test("[checks-5] die Zusammenfassung traegt die Stufe des Laufs und je Eintrag dessen Stufe", () => {
-  mitRepo({ config: DREI_STUFEN }, (dir) => {
+test("[checks-5] die Zusammenfassung traegt die Stufe des Laufs und je Eintrag dessen Stufe", async () => {
+  await mitRepo({ config: DREI_STUFEN }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    assert.equal(run(dir, "--stufe", "push").status, 0);
+    assert.equal((await run(dir, "--stufe", "push")).status, 0);
     const summary = zusammenfassung(dir);
 
     assert.equal(summary.stufe, "push");
@@ -247,8 +247,8 @@ test("[checks-5] die Zusammenfassung traegt die Stufe des Laufs und je Eintrag d
   });
 });
 
-test("[checks-5] die Nutzungshilfe nennt --stufe mit allen drei Werten", () => {
-  mitRepo({ config: DREI_STUFEN }, (dir) => {
+test("[checks-5] die Nutzungshilfe nennt --stufe mit allen drei Werten", async () => {
+  await mitRepo({ config: DREI_STUFEN }, async (dir) => {
     const res = checks(dir, "--help");
 
     assert.equal(res.status, 0, res.stderr);

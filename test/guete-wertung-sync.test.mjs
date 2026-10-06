@@ -1,5 +1,5 @@
 // Die Nachbauten `gueteAuswerten` (Issue #817) und `fehlermerkmal` (Issue #859)
-// in kit/night.mjs gegen ihre Originale in kit/checks.mjs.
+// in kit/night/session.mjs gegen ihre Originale in kit/checks.mjs.
 //
 // Der Nacht-Runner prueft vor einem Rettungsversuch die Pflichtchecks selbst und
 // muss dabei zum selben Urteil kommen wie das Kommando, das der Mensch spaeter
@@ -18,7 +18,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { gueteAuswerten as ausChecks, fehlermerkmal as merkmalAusChecks } from "../kit/checks.mjs";
-import { gueteAuswerten as ausNight, fehlermerkmal as merkmalAusNight } from "../kit/night.mjs";
+import { gueteAuswerten as ausNight, fehlermerkmal as merkmalAusNight } from "../kit/night/session.mjs";
 
 const PROZENT = String.raw`\((\d+)%\)`;
 

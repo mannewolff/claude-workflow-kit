@@ -59,6 +59,20 @@ function buildDirJson(dir) {
   return result;
 }
 
+// Liest die Dateien eines flachen Ordners (z.B. kit/night/<datei>) zu { datei: inhalt }
+// ein — Grundlage der Verzeichnis-Blobs fuer die Teile (Issue #1209, Plan #1199 E1).
+// Ein fehlender Ordner ergibt {}: Solange es noch keinen Teil gibt, ist das Verzeichnis
+// leer, und git fuehrt kein leeres Verzeichnis.
+function buildFileJson(dir) {
+  const result = {};
+  if (!existsSync(dir)) return result;
+  for (const file of readdirSync(dir).sort(vergleicheText)) {
+    const filePath = join(dir, file);
+    if (statSync(filePath).isFile()) result[file] = readFileSync(filePath, "utf-8");
+  }
+  return result;
+}
+
 const BLOBS = [
   { constName: "CLAUDE_WORKFLOW_MD_B64", source: join(root, "templates", "CLAUDE-workflow.md") },
   { constName: "CLAUDE_FACHPLAN_MD_B64", source: join(root, "templates", "CLAUDE-Fachplan.md") },
@@ -100,6 +114,10 @@ const BLOBS = [
   // und dort soll das Gate gerade nicht liegen (Plan #467, A2).
   { constName: "GATE_MJS_B64", source: join(root, ".githooks", "gate.mjs") },
   { constName: "PRE_COMMIT_B64", source: join(root, ".githooks", "pre-commit") },
+  // Die Teile von night.mjs und board.mjs (Issue #1209, Plan #1199 E1): je ein
+  // Verzeichnis-Blob, damit ein neuer Teil weder den Installer noch diese Liste aendert.
+  { constName: "KIT_NIGHT_B64", sourceFiles: join(root, "kit", "night") },
+  { constName: "KIT_BOARD_B64", sourceFiles: join(root, "kit", "board") },
   { constName: "SKILLS_B64", sourceDir: join(root, "skills") },
 ];
 
@@ -112,6 +130,11 @@ const STAMPED = ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.
 // Download-Dateien (Issue #676, Plan #674 E1): gestempelt wie die Kit-Werkzeuge, aber ohne
 // Kopie nach .claude/kit/ — sie arbeiten ueber mehrere Projekte und gehoeren in keines.
 const STAMPED_DOWNLOADS = ["einstellungen.mjs"];
+
+// Teilverzeichnisse unter kit/ (Issue #1209, Plan #1199 E19): kopiert nach .claude/kit/<teil>/
+// wie die Werkzeuge, aber ungestempelt — KIT_VERSION steht nur im Einstieg. In STAMPED
+// brachen sie den Lauf ab, weil ein Teil keine Konstante traegt.
+const TEILE = ["night", "board"];
 
 // Das Schema, das die Einstellungs-Oberflaeche eingebettet traegt (Plan #674 E2). Eine
 // eigene Datei mitzuliefern widerspraeche dem Download als einzelne Datei.
@@ -175,8 +198,15 @@ const schemaDrift = [];
 let installSrc = readFileSync(INSTALL, "utf-8");
 const drift = [];
 
-for (const { constName, source, sourceDir } of BLOBS) {
-  const raw = sourceDir ? JSON.stringify(buildDirJson(sourceDir)) : readFileSync(source, "utf-8");
+function blobRohtext({ source, sourceDir, sourceFiles }) {
+  if (sourceDir) return JSON.stringify(buildDirJson(sourceDir));
+  if (sourceFiles) return JSON.stringify(buildFileJson(sourceFiles));
+  return readFileSync(source, "utf-8");
+}
+
+for (const eintrag of BLOBS) {
+  const { constName } = eintrag;
+  const raw = blobRohtext(eintrag);
   const expected = Buffer.from(raw, "utf-8").toString("base64");
   const re = new RegExp(`(const ${constName} = ")([A-Za-z0-9+/=]*)(";)`);
   const m = installSrc.match(re);
@@ -245,6 +275,19 @@ if (existsSync(LOCAL_KIT) && !laufStand) {
     if (ist !== soll) {
       copyDrift.push(`.claude/kit/${datei}`);
       if (!checkOnly) writeFileSync(ziel, soll, "utf-8");
+    }
+  }
+  // Die Teile: Ein Teil, der in der Kopie fehlt, ist Drift wie ein abweichender.
+  for (const teil of TEILE) {
+    for (const [datei, soll] of Object.entries(buildFileJson(join(root, "kit", teil)))) {
+      const ziel = join(LOCAL_KIT, teil, datei);
+      const ist = existsSync(ziel) ? readFileSync(ziel, "utf-8") : null;
+      if (ist === soll) continue;
+      copyDrift.push(`.claude/kit/${teil}/${datei}`);
+      if (!checkOnly) {
+        mkdirSync(dirname(ziel), { recursive: true });
+        writeFileSync(ziel, soll, "utf-8");
+      }
     }
   }
 }

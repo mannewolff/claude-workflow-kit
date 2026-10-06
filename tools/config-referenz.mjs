@@ -51,9 +51,14 @@ function entschaerft(text) {
   );
 }
 
-/** Gültige Werte eines Feldes in Klammern, leer ohne enum. */
+/**
+ * Gültige Werte eines Feldes in Klammern, leer ohne enum. Ein Feld, das einen festen
+ * Wert oder ein Objekt annimmt (`pushPruefung`: `lokal` oder `{ ort, zweig }`), trägt
+ * sein enum in einer oneOf-Variante — die Objekt-Variante steht in den Unterfeldern.
+ */
 function werte(knoten) {
-  const liste = knoten?.enum ?? knoten?.items?.enum;
+  const ausVarianten = (knoten?.oneOf ?? []).flatMap((v) => (Array.isArray(v?.enum) ? v.enum : []));
+  const liste = knoten?.enum ?? knoten?.items?.enum ?? (ausVarianten.length ? ausVarianten : undefined);
   if (!Array.isArray(liste)) return "";
   const genannt = liste.map((w) => "`" + w + "`").join(", ");
   return ` (gültig: ${genannt})`;

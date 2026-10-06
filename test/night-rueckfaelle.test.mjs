@@ -11,16 +11,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  hasReviewMarker,
-  reviewFreigabe,
-  hatKlaerenLabel,
-  parseDeps,
-  trackerProbeId,
-  parseVorflugBefund,
-  normalisiereVorflug,
-  neueKommentare,
-} from "../kit/night.mjs";
+import { hasReviewMarker, reviewFreigabe, hatKlaerenLabel } from "../kit/night/wartend.mjs";
+import { parseDeps } from "../kit/night/abhaengigkeiten.mjs";
+import { trackerProbeId, parseVorflugBefund, normalisiereVorflug, neueKommentare } from "../kit/night/session.mjs";
 
 const KONTEXT = (...zeilen) => ["## Kontext", "", ...zeilen, "", "## Aufgabe", "", "Text."].join("\n");
 

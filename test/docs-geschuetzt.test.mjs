@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { GESCHUETZT_LABEL, GESCHUETZT_ANKER } from "../kit/night.mjs";
+import { GESCHUETZT_LABEL, GESCHUETZT_ANKER } from "../kit/night/wartend.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (pfad) => readFileSync(join(repoRoot, pfad), "utf-8");

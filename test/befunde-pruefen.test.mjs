@@ -22,14 +22,14 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, copyFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
+import { aufrufen } from "../kit/befunde.mjs";
+
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const BEFUNDE = join(repoRoot, "kit", "befunde.mjs");
 
 /** Ein vollstaendiger Fund in der Form aus dem Regeltext. */
 const VOLLSTAENDIG = [
@@ -48,7 +48,7 @@ function pruefe(text, nachher) {
   try {
     const datei = join(dir, "befunde.md");
     writeFileSync(datei, text, "utf-8");
-    const res = spawnSync(process.execPath, [BEFUNDE, "pruefen", "--datei", datei], { cwd: dir, encoding: "utf-8" });
+    const res = aufrufen(["pruefen", "--datei", datei], { cwd: dir });
     nachher(res, JSON.parse(res.stdout), datei);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -288,8 +288,54 @@ test("ein Text ohne jede Marke ergibt keine Funde und bleibt gruen", () => {
   });
 });
 
+// --- Reviewer-Kopf (Issue #1182) ----------------------------------------------
+//
+// Im Befunde-Kommentar von /issue-review (erste Zeile `## <Stufe>-Review, Runde <n>`)
+// steht vor jedem Fundblock der Kopf `### Reviewer <n>: <rolle>, <modell>` — sonst
+// bucht `buchen` die Rolle als „unbekannt". Der Code-Review aus /review traegt keinen
+// solchen Kopf und wird darum nicht beanstandet.
+
+test("[befunde-1182] ein Kopf in anderer Form wird als fehlender Reviewer-Kopf gemeldet", () => {
+  const text = ["## Fachplan-Review, Runde 1", "", "### Reviewer: fable, Rolle x", "", VOLLSTAENDIG].join("\n");
+  pruefe(text, (res, json) => {
+    assert.equal(res.status, 0, "kein Gate");
+    assert.deepEqual(json.funde[0].fehlt, ["reviewer-kopf"]);
+    assert.equal(json.eintraege.length, 1);
+    assert.equal(json.eintraege[0].angabe, "reviewer-kopf");
+    assert.match(json.eintraege[0].meldung, /Reviewer-Kopf/);
+    assert.match(json.eintraege[0].meldung, /### Reviewer <n>: <rolle>, <modell>/);
+    assert.equal(json.vollstaendig, 0);
+  });
+});
+
+test("[befunde-1182] der Kopf in der vorgeschriebenen Form bleibt ohne Eintrag", () => {
+  const text = ["## Fachplan-Review, Runde 1", "", "### Reviewer 1: form-beobachtbarkeit, fable", "", VOLLSTAENDIG].join("\n");
+  pruefe(text, (res, json) => {
+    assert.equal(res.status, 0);
+    assert.deepEqual(json.eintraege, []);
+    assert.equal(json.vollstaendig, 1);
+  });
+});
+
+test("[befunde-1182] nur der Fund vor dem ersten gueltigen Kopf ist ohne Reviewer-Kopf", () => {
+  const text = [
+    "## Plan-Review, Runde 2", "", VOLLSTAENDIG, "",
+    "### Reviewer 2: architektur-bestand, codex", "", VOLLSTAENDIG,
+  ].join("\n");
+  pruefe(text, (res, json) => {
+    assert.deepEqual(json.funde.map((f) => f.fehlt), [["reviewer-kopf"], []]);
+  });
+});
+
+test("[befunde-1182] ein Code-Review ohne Reviewer-Kopf wird nicht beanstandet", () => {
+  const text = ["## Code-Review (Schritt 7)", "", VOLLSTAENDIG].join("\n");
+  pruefe(text, (res, json) => {
+    assert.deepEqual(json.eintraege, []);
+  });
+});
+
 test("pruefen ohne --datei gibt JSON aus und endet ungleich 0", () => {
-  const res = spawnSync(process.execPath, [BEFUNDE, "pruefen"], { cwd: repoRoot, encoding: "utf-8" });
+  const res = aufrufen(["pruefen"], { cwd: repoRoot });
 
   assert.notEqual(res.status, 0);
   const json = JSON.parse(res.stdout);
@@ -300,8 +346,7 @@ test("pruefen ohne --datei gibt JSON aus und endet ungleich 0", () => {
 test("eine fehlende Datei endet ungleich 0 und gibt trotzdem JSON aus", () => {
   const dir = mkdtempSync(join(tmpdir(), "befunde-fehlt-"));
   try {
-    const res = spawnSync(process.execPath, [BEFUNDE, "pruefen", "--datei", join(dir, "gibtsnicht.md")],
-      { cwd: dir, encoding: "utf-8" });
+    const res = aufrufen(["pruefen", "--datei", join(dir, "gibtsnicht.md")], { cwd: dir });
 
     assert.notEqual(res.status, 0, "eine fehlende Datei ist ein Aufruffehler, kein leerer Befund");
     const json = JSON.parse(res.stdout);
@@ -315,7 +360,7 @@ test("eine fehlende Datei endet ungleich 0 und gibt trotzdem JSON aus", () => {
 test("eine unlesbare Datei — ein Verzeichnis — endet ungleich 0 und gibt JSON aus", () => {
   const dir = mkdtempSync(join(tmpdir(), "befunde-unlesbar-"));
   try {
-    const res = spawnSync(process.execPath, [BEFUNDE, "pruefen", "--datei", dir], { cwd: dir, encoding: "utf-8" });
+    const res = aufrufen(["pruefen", "--datei", dir], { cwd: dir });
 
     assert.notEqual(res.status, 0);
     const json = JSON.parse(res.stdout);
@@ -326,25 +371,6 @@ test("eine unlesbare Datei — ein Verzeichnis — endet ungleich 0 und gibt JSO
   }
 });
 
-test("Portabilitaet: aus einem leeren Verzeichnis heraus laufen beide Kommandos", () => {
-  // Das Kit liefert seine Werkzeuge als eigenstaendig portable Einzeldateien aus: kein
-  // Repo-Kontext, keine Nachbardatei, keine Config. Ein Import auf eine Datei des
-  // Kit-Repos faellt hier sofort auf.
-  const dir = mkdtempSync(join(tmpdir(), "befunde-portabel-"));
-  try {
-    const kopie = join(dir, "befunde.mjs");
-    copyFileSync(BEFUNDE, kopie);
-    const datei = join(dir, "befunde.md");
-    writeFileSync(datei, VOLLSTAENDIG, "utf-8");
-
-    const arten = spawnSync(process.execPath, [kopie, "arten"], { cwd: dir, encoding: "utf-8" });
-    assert.equal(arten.status, 0, `arten lief nicht ohne Repo-Kontext: ${arten.stderr}`);
-    assert.equal(JSON.parse(arten.stdout).anzahl, 12);
-
-    const pruefen = spawnSync(process.execPath, [kopie, "pruefen", "--datei", datei], { cwd: dir, encoding: "utf-8" });
-    assert.equal(pruefen.status, 0, `pruefen lief nicht ohne Repo-Kontext: ${pruefen.stderr}`);
-    assert.equal(JSON.parse(pruefen.stdout).funde.length, 1);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
+// Der Lauf aus einem leeren Verzeichnis ohne Nachbardateien steht in
+// test/ablauf-befunde-cli.test.mjs: Ob checks.mjs daneben liegt, entscheidet das Modul
+// beim Laden, und das laesst sich nur an einer Kopie als Prozess stellen (Issue #1213).

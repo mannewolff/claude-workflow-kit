@@ -248,3 +248,29 @@ test("implement-test: der Hinweis auf den vollen Lauf nennt die Zeile 'Wartezeit
   const text = readFileSync(join(repoRoot, "skills", "implement-test", "SKILL.md"), "utf-8");
   assert.match(text, /`Wartezeit:`/);
 });
+
+// --- Zeilen hinweis: (Issue #1156, Plan #1150, E11/E12) -------------------------
+//
+// Eine Hinweis-Pruefung (Issue #1155) endet gruen und schreibt ihre Funde als
+// `hinweis: <zeile>` in den Block `Fuer den Abschlussbericht:`. Kennt das Format die
+// Zeile nicht, laesst der Bericht sie weg; haelt der Skill daran an, wird aus einer
+// Meldung ein Gate, das der Fachplan ausdruecklich nicht will (PO-Antworten 4 und 6).
+
+for (const name of ["implement-next", "implement-ready", "implement-done"]) {
+  test(`${name}: der Abschnitt Tests und Checks nennt die Zeile 'hinweis:' und sie haelt nicht an`, () => {
+    const text = readFileSync(join(repoRoot, "skills", name, "SKILL.md"), "utf-8");
+    assert.match(berichtsformat(text), /- hinweis: <Datei und Grund>/,
+      "das Berichtsformat nennt die Zeile `hinweis:` nicht");
+    assert.match(text, /`hinweis:`-Zeilen gehen wortgetreu in den Berichtsteil Tests und Checks mit und halten die Fertigmeldung nicht an/,
+      "es fehlt, dass die Hinweis-Zeilen mitgehen und die Fertigmeldung nicht anhalten");
+  });
+}
+
+test("push-main: Schritt 5 zeigt die Zeilen 'hinweis:' und haelt an ihnen nicht an", () => {
+  const text = skillText("push-main");
+  const schritt5 = text.slice(text.indexOf("### 5. "), text.indexOf("### 6. "));
+  assert.match(schritt5, /`hinweis:`-Zeilen/, "Schritt 5 nennt die Hinweis-Zeilen nicht");
+  assert.match(schritt5, /halten weder Commit noch Push an/,
+    "Schritt 5 sagt nicht, dass die Hinweis-Zeilen nicht anhalten");
+  assert.match(schritt5, /keine Freigabe/, "Schritt 5 sagt nicht, dass ein Hinweis keine Freigabe verlangt");
+});

@@ -16,7 +16,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   mitRepo, git, datei, plan, run, zusammenfassung, treeStand, kommandos, eintrag,
-  gate, gateEinbauen,
 } from "./helpers/checks-repo.mjs";
 
 const WARTEND = ".claude/vorhaben-wartend-probe.md";
@@ -45,18 +44,17 @@ const CONFIG_OHNE_CLAUDE = {
 };
 
 /**
- * Macht `.claude/vorhaben-wartend-*` fuer git sichtbar und stellt das Commit-Gate
- * bereit.
+ * Macht `.claude/vorhaben-wartend-*` fuer git sichtbar.
  *
- * Beide Vorbereitungen werden committet: Ungetrackt zaehlten die `.githooks`-
- * Dateien selbst als geaenderte Dateien und zogen jeden Lauf in den vollen Umfang
- * — also genau in den Zustand, den die Faelle hier auseinanderhalten sollen.
+ * Die Regel wird committet: Ungetrackt zaehlte die `.gitignore` selbst als
+ * geaenderte Datei und zoege jeden Lauf in den vollen Umfang — also genau in den
+ * Zustand, den die Faelle hier auseinanderhalten sollen. Was das Commit-Gate mit der
+ * Notiz macht, belegt `ablauf-checks-gate.test.mjs` (Issue #1212).
  */
 function wartendSichtbar(dir) {
-  gateEinbauen(dir);
   datei(dir, ".gitignore", ".claude/*\n!.claude/workflow.config.json\n!.claude/vorhaben-wartend-*\nfakebin/\n");
-  git(dir, "add", ".gitignore", ".githooks");
-  git(dir, "commit", "-q", "-m", "Gate und sichtbare wartende Notizen");
+  git(dir, "add", ".gitignore");
+  git(dir, "commit", "-q", "-m", "sichtbare wartende Notizen");
 }
 
 /** Der Nachweis, dass git die Datei sieht — sonst prueft der Fall nichts. */
@@ -65,8 +63,8 @@ function gitSiehtNotiz(dir) {
     "git sieht die wartende Notiz nicht — der Fall waere auch ohne den Filter gruen");
 }
 
-test("[checks-2] eine wartende Vorhaben-Notiz steht weder in geaendert noch in hashes", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[checks-2] eine wartende Vorhaben-Notiz steht weder in geaendert noch in hashes", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     wartendSichtbar(dir);
     datei(dir, "src/a.js", "// A\n");
     datei(dir, WARTEND, "# wartet\n");
@@ -74,14 +72,14 @@ test("[checks-2] eine wartende Vorhaben-Notiz steht weder in geaendert noch in h
 
     assert.deepEqual(plan(dir).geaendert, ["src/a.js"]);
 
-    const res = run(dir);
+    const res = await run(dir);
     assert.equal(res.status, 0, `checks.mjs run schlug fehl: ${res.stdout}${res.stderr}`);
     assert.deepEqual(Object.keys(zusammenfassung(dir).hashes), ["src/a.js"]);
   });
 });
 
-test("[checks-2] eine wartende Vorhaben-Notiz beruehrt keinen Bereich und loest keinen Bereichs-Check aus", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[checks-2] eine wartende Vorhaben-Notiz beruehrt keinen Bereich und loest keinen Bereichs-Check aus", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     wartendSichtbar(dir);
     datei(dir, "src/a.js", "// A\n");
     datei(dir, WARTEND, "# wartet\n");
@@ -96,8 +94,8 @@ test("[checks-2] eine wartende Vorhaben-Notiz beruehrt keinen Bereich und loest 
   });
 });
 
-test("[checks-2] ist die wartende Notiz die einzige Aenderung, ist das Paket leer", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[checks-2] ist die wartende Notiz die einzige Aenderung, ist das Paket leer", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     wartendSichtbar(dir);
     datei(dir, WARTEND, "# wartet\n");
     gitSiehtNotiz(dir);
@@ -109,20 +107,20 @@ test("[checks-2] ist die wartende Notiz die einzige Aenderung, ist das Paket lee
     assert.deepEqual(ergebnis.geaendert, []);
     assert.deepEqual(kommandos(ergebnis.laufen), [], "auf einem leeren Paket laeuft nichts");
 
-    const res = run(dir);
+    const res = await run(dir);
     assert.equal(res.status, 0, `checks.mjs run schlug fehl: ${res.stdout}${res.stderr}`);
     assert.deepEqual(zusammenfassung(dir).hashes, {}, "ein leeres Paket bezeugt keinen Stand");
   });
 });
 
-test("[checks-2] neben einer regulaeren Aenderung bleibt der Umfang eng, und deren Commit passiert das Gate", () => {
-  mitRepo({ config: CONFIG_OHNE_CLAUDE }, (dir) => {
+test("[checks-2] neben einer regulaeren Aenderung bleibt der Umfang eng", async () => {
+  await mitRepo({ config: CONFIG_OHNE_CLAUDE }, async (dir) => {
     wartendSichtbar(dir);
     datei(dir, "src/a.js", "// A\n");
     datei(dir, WARTEND, "# wartet\n");
     gitSiehtNotiz(dir);
 
-    const res = run(dir);
+    const res = await run(dir);
     assert.equal(res.status, 0, `checks.mjs run schlug fehl: ${res.stdout}${res.stderr}`);
 
     // Ohne den Filter trifft die Notiz kein Muster, `planen` kippt in den vollen
@@ -130,35 +128,11 @@ test("[checks-2] neben einer regulaeren Aenderung bleibt der Umfang eng, und der
     const summary = zusammenfassung(dir);
     assert.equal(summary.vollerUmfang, false, "die Notiz haette den vollen Umfang nicht ausloesen duerfen");
     assert.deepEqual(kommandos(summary.laufen), [QUELLE_CMD]);
-
-    // Der Commit der regulaeren Aenderung geht durch — die ungestagte Notiz
-    // erreicht das Gate ohnehin nicht, es liest nur `git diff --cached`.
-    git(dir, "add", "src/a.js");
-    const g = gate(dir, "pre-commit");
-    assert.equal(g.status, 0, `das Gate wies ab: ${g.stdout}${g.stderr}`);
   });
 });
 
-// Bewusst `[gate-1]` und nicht `[checks-2]`: Der Fall belegt bestehendes
-// Gate-Verhalten — ein Hash je gestagter Datei — und kein neues. Er ist der
-// Nachweis zu Plan #545, A11: Der Ausschluss traegt nur ausserhalb des Index.
-test("[gate-1] eine gestagte wartende Notiz weist das Gate weiterhin als nicht geprueft ab", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
-    wartendSichtbar(dir);
-    datei(dir, WARTEND, "# wartet\n");
-    run(dir);
-    git(dir, "add", WARTEND);
-
-    const g = gate(dir, "pre-commit");
-
-    assert.notEqual(g.status, 0, "eine gestagte Notiz darf nicht durchgehen");
-    assert.match(g.stderr, /vorhaben-wartend-probe\.md/);
-    assert.match(g.stderr, /nicht geprueft/);
-  });
-});
-
-test("[checks-2] der Filter greift am Praefix und nicht als Teilstring", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("[checks-2] der Filter greift am Praefix und nicht als Teilstring", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     wartendSichtbar(dir);
     // Dieselbe Namensform in einem Unterprojekt: Der Ausschluss in night.mjs
     // (`:(exclude).claude/vorhaben-wartend-*`) nimmt sie NICHT aus, also darf sie

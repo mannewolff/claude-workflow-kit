@@ -3,65 +3,343 @@
   "issueTracker": "toolbox",
   "buildChecks": [
     {
-      "cmd": "node --test \"test/night-kette-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/night-kette-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
-        "board",
-        "installer",
-        "nachtrunner"
+        "board-dokumente",
+        "board-grundlagen",
+        "nacht-abhaengigkeiten",
+        "nacht-bericht",
+        "nacht-grundlagen",
+        "nacht-kette",
+        "nacht-kitstand",
+        "nacht-laufstand",
+        "nacht-session",
+        "nacht-wartend"
       ]
     },
     {
-      "cmd": "node --test \"test/board-a*.test.mjs\" \"test/board-b*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-d*.test.mjs\" \"test/board-i*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-m*.test.mjs\" \"test/board-n*.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-t*.test.mjs\" \"test/board-u*.test.mjs\" \"test/board-w*.test.mjs\" \"test/cli-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/board-ac*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-mensch-*.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-u*.test.mjs\" \"test/cli-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
-        "board",
-        "nachtrunner",
+        "board-adapter",
+        "board-dokumente",
+        "board-einstieg",
+        "board-grundlagen",
+        "board-issue-review",
+        "board-testhinweise",
+        "nacht-einstieg",
+        "nacht-wartend",
         "pruefungen"
       ]
     },
     {
-      "cmd": "node --test \"test/night-a*.test.mjs\" \"test/night-b*.test.mjs\" \"test/night-c*.test.mjs\" \"test/night-d*.test.mjs\" \"test/night-e*.test.mjs\" \"test/night-f*.test.mjs\" \"test/night-g*.test.mjs\" \"test/night-h*.test.mjs\" \"test/night-i*.test.mjs\" \"test/night-kennzahlen.test.mjs\" \"test/night-ki*.test.mjs\" \"test/night-kl*.test.mjs\" \"test/night-l*.test.mjs\" \"test/night-m*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/night-abs*.test.mjs\" \"test/night-ag*.test.mjs\" \"test/night-an*.test.mjs\" \"test/night-as*.test.mjs\" \"test/night-au*.test.mjs\" \"test/night-bef*.test.mjs\" \"test/night-bo*.test.mjs\" \"test/night-c*.test.mjs\" \"test/night-d*.test.mjs\" \"test/night-e*.test.mjs\" \"test/night-f*.test.mjs\" \"test/night-ga*.test.mjs\" \"test/night-ge*.test.mjs\" \"test/night-gu*.test.mjs\" \"test/night-h*.test.mjs\" \"test/night-i*.test.mjs\" \"test/night-kl*.test.mjs\" \"test/night-label*.test.mjs\" \"test/night-le*.test.mjs\" \"test/night-lu*.test.mjs\" \"test/night-m*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "aufwand",
         "befunde",
-        "board",
+        "board-adapter",
+        "board-dokumente",
+        "board-melder",
+        "board-wiederholung",
         "installer",
-        "nachtrunner",
+        "nacht-einstieg",
         "preise",
         "pruefungen",
         "sync"
       ]
     },
     {
-      "cmd": "node --test \"test/night-n*.test.mjs\" \"test/night-o*.test.mjs\" \"test/night-p*.test.mjs\" \"test/night-r*.test.mjs\" \"test/night-s*.test.mjs\" \"test/night-t*.test.mjs\" \"test/night-u*.test.mjs\" \"test/night-v*.test.mjs\" \"test/night-w*.test.mjs\" \"test/night-z*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/night-n*.test.mjs\" \"test/night-p*.test.mjs\" \"test/night-r*.test.mjs\" \"test/night-st*.test.mjs\" \"test/night-v*.test.mjs\" \"test/night-wi*.test.mjs\" \"test/night-z*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
-        "board",
+        "board-adapter",
+        "board-dokumente",
+        "board-melder",
+        "board-wiederholung",
         "installer",
-        "nachtrunner",
+        "nacht-abhaengigkeiten",
+        "nacht-einstieg",
+        "nacht-session",
+        "nacht-wartend",
         "pruefungen",
         "skills-doku",
         "wirksamkeit"
       ]
     },
     {
-      "cmd": "node --test \"test/board-g*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/board-grundlagen-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
-        "board"
+        "board-grundlagen"
       ]
     },
     {
-      "cmd": "node --test \"test/checks-*.test.mjs\" \"test/gate*.test.mjs\" \"test/guete-*.test.mjs\" \"test/aufwand-*.test.mjs\" \"test/wirksamkeit-*.test.mjs\" \"test/befunde-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/board-wiederholung-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-grundlagen",
+        "board-wiederholung"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/board-adapter-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-adapter",
+        "board-grundlagen",
+        "board-wiederholung"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/board-dokumente-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-adapter",
+        "board-dokumente",
+        "board-grundlagen",
+        "board-wiederholung"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/board-geschuetzt-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-adapter",
+        "board-dokumente",
+        "board-geschuetzt",
+        "board-grundlagen",
+        "board-wiederholung"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/board-testhinweise-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-adapter",
+        "board-dokumente",
+        "board-geschuetzt",
+        "board-grundlagen",
+        "board-testhinweise",
+        "board-wiederholung"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/board-issue-review-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-adapter",
+        "board-dokumente",
+        "board-grundlagen",
+        "board-issue-review",
+        "board-wiederholung"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/board-melder-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-adapter",
+        "board-dokumente",
+        "board-grundlagen",
+        "board-melder",
+        "board-wiederholung",
+        "preise"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/board-hook-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-grundlagen",
+        "board-hook"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/night-grundlagen-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-adapter",
+        "board-melder",
+        "nacht-einstieg",
+        "nacht-grundlagen"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/night-laufstand-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-adapter",
+        "nacht-grundlagen",
+        "nacht-laufstand"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/night-kitstand-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-adapter",
+        "nacht-grundlagen",
+        "nacht-kitstand"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/night-abhaengigkeiten-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-dokumente",
+        "nacht-abhaengigkeiten",
+        "nacht-grundlagen"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/night-session-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "aufwand",
+        "board-adapter",
+        "board-einstieg",
+        "board-wiederholung",
+        "nacht-einstieg",
+        "nacht-grundlagen",
+        "nacht-kitstand",
+        "nacht-laufstand",
+        "nacht-session",
+        "preise",
+        "pruefungen"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/night-bericht-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-dokumente",
+        "board-wiederholung",
+        "nacht-abhaengigkeiten",
+        "nacht-bericht",
+        "nacht-grundlagen",
+        "nacht-kitstand",
+        "nacht-laufstand",
+        "nacht-session",
+        "pruefungen"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/night-wartend-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "aufwand",
+        "board-adapter",
+        "board-dokumente",
+        "board-geschuetzt",
+        "board-wiederholung",
+        "nacht-abhaengigkeiten",
+        "nacht-bericht",
+        "nacht-grundlagen",
+        "nacht-kitstand",
+        "nacht-laufstand",
+        "nacht-session",
+        "nacht-wartend",
+        "preise",
+        "pruefungen"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/night-tag-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-dokumente",
+        "board-grundlagen",
+        "nacht-abhaengigkeiten",
+        "nacht-bericht",
+        "nacht-grundlagen",
+        "nacht-kette",
+        "nacht-kitstand",
+        "nacht-laufstand",
+        "nacht-session",
+        "nacht-tag",
+        "nacht-wartend"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/ablauf-board-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-adapter",
+        "board-dokumente",
+        "board-einstieg",
+        "board-geschuetzt",
+        "board-grundlagen",
+        "board-hook",
+        "board-issue-review",
+        "board-melder",
+        "board-testhinweise",
+        "board-wiederholung",
+        "nacht-einstieg",
+        "pruefungen"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/ablauf-night-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "aufwand",
         "befunde",
-        "board",
+        "board-adapter",
+        "board-dokumente",
+        "board-einstieg",
+        "board-geschuetzt",
+        "board-melder",
+        "board-wiederholung",
         "installer",
-        "nachtrunner",
+        "nacht-abhaengigkeiten",
+        "nacht-bericht",
+        "nacht-einstieg",
+        "nacht-grundlagen",
+        "nacht-kette",
+        "nacht-kitstand",
+        "nacht-laufstand",
+        "nacht-session",
+        "nacht-tag",
+        "nacht-wartend",
+        "preise",
+        "pruefungen",
+        "sync",
+        "wirksamkeit"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/ablauf-checks-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-einstieg",
+        "pruefungen"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/ablauf-aufwand-*.test.mjs\" \"test/ablauf-befunde-*.test.mjs\" \"test/ablauf-wirksamkeit-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "aufwand",
+        "befunde",
+        "preise",
+        "pruefungen",
+        "wirksamkeit"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/checks-*.test.mjs\" \"test/gate*.test.mjs\" \"test/guete-*.test.mjs\" \"test/aufwand-*.test.mjs\" \"test/wirksamkeit-*.test.mjs\" \"test/befunde-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "aufwand",
+        "befunde",
+        "board-einstieg",
+        "board-grundlagen",
+        "board-wiederholung",
+        "installer",
+        "nacht-einstieg",
+        "nacht-session",
         "preise",
         "pruefungen",
         "sync",
@@ -70,26 +348,30 @@
       ]
     },
     {
-      "cmd": "node --test \"test/migrate-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/migrate-*.test.mjs\" \"test/ablauf-migrate-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
-        "board",
-        "nachtrunner"
+        "board-einstieg",
+        "board-grundlagen",
+        "nacht-einstieg"
       ]
     },
     {
-      "cmd": "node --test \"test/install-*.test.mjs\" \"test/tools-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/derived-*.test.mjs\" \"test/copy-*.test.mjs\" \"test/sync-*.test.mjs\" \"test/kit-*.test.mjs\" \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\" \"test/plattform-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/install-*.test.mjs\" \"test/tools-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/derived-*.test.mjs\" \"test/copy-*.test.mjs\" \"test/sync-*.test.mjs\" \"test/kit-*.test.mjs\" \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\" \"test/plattform-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "aufwand",
         "befunde",
-        "board",
+        "board-dokumente",
+        "board-einstieg",
+        "board-grundlagen",
+        "board-issue-review",
         "einstellungen",
         "frischer-checkout",
         "herkunft",
         "installer",
         "konfiguration",
-        "nachtrunner",
+        "nacht-einstieg",
         "preise",
         "pruefungen",
         "skills-doku",
@@ -100,16 +382,69 @@
       ]
     },
     {
-      "cmd": "node --test \"test/docs-*.test.mjs\" \"test/skills-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/ablauf-install-*.test.mjs\" \"test/ablauf-tools-*.test.mjs\" \"test/ablauf-changelog*.test.mjs\" \"test/ablauf-derived-*.test.mjs\" \"test/ablauf-copy-*.test.mjs\" \"test/ablauf-sync-*.test.mjs\" \"test/ablauf-kit-*.test.mjs\" \"test/ablauf-einstellungen-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "aufwand",
         "befunde",
-        "board",
+        "board-einstieg",
+        "board-grundlagen",
+        "board-issue-review",
+        "einstellungen",
+        "frischer-checkout",
+        "herkunft",
+        "installer",
+        "konfiguration",
+        "nacht-einstieg",
+        "preise",
+        "pruefungen",
+        "skills-doku",
+        "sync",
+        "wirksamkeit",
+        "workflow-vorlage",
+        "worktree"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/docs-*.test.mjs\" \"test/skills-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "aufwand",
+        "befunde",
+        "board-dokumente",
+        "board-einstieg",
+        "board-grundlagen",
         "einstellungen",
         "herkunft",
         "installer",
-        "nachtrunner",
+        "nacht-bericht",
+        "nacht-einstieg",
+        "nacht-grundlagen",
+        "nacht-kette",
+        "nacht-session",
+        "nacht-tag",
+        "nacht-wartend",
+        "pruefungen",
+        "skills-doku",
+        "sync",
+        "wirksamkeit",
+        "workflow-vorlage",
+        "worktree"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/ablauf-docs-*.test.mjs\" \"test/ablauf-workflow-*.test.mjs\" \"test/ablauf-push-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "aufwand",
+        "befunde",
+        "board-einstieg",
+        "board-grundlagen",
+        "einstellungen",
+        "herkunft",
+        "installer",
+        "nacht-einstieg",
+        "nacht-grundlagen",
         "pruefungen",
         "skills-doku",
         "sync",
@@ -122,6 +457,11 @@
       "cmd": "node tools/frischer-checkout.mjs",
       "always": true,
       "stufe": "push"
+    },
+    {
+      "cmd": "node tools/windows-brueche.mjs",
+      "art": "hinweis",
+      "always": true
     },
     "node tools/sync-blobs.mjs --check",
     "npx eslint kit tools test install.mjs .githooks"
@@ -147,56 +487,192 @@
   },
   "installCommand": "npm ci",
   "checkAreas": {
-    "nachtrunner": [
+    "nacht-einstieg": [
       "kit/night.mjs",
-      "test/night-*.test.mjs",
+      "test/night-abs*.test.mjs",
+      "test/night-ag*.test.mjs",
+      "test/night-an*.test.mjs",
+      "test/night-as*.test.mjs",
+      "test/night-au*.test.mjs",
+      "test/night-bef*.test.mjs",
+      "test/night-bo*.test.mjs",
+      "test/night-c*.test.mjs",
+      "test/night-d*.test.mjs",
+      "test/night-e*.test.mjs",
+      "test/night-f*.test.mjs",
+      "test/night-ga*.test.mjs",
+      "test/night-ge*.test.mjs",
+      "test/night-gu*.test.mjs",
+      "test/night-h*.test.mjs",
+      "test/night-i*.test.mjs",
+      "test/night-kl*.test.mjs",
+      "test/night-label*.test.mjs",
+      "test/night-le*.test.mjs",
+      "test/night-lu*.test.mjs",
+      "test/night-m*.test.mjs",
+      "test/night-n*.test.mjs",
+      "test/night-p*.test.mjs",
+      "test/night-r*.test.mjs",
+      "test/night-st*.test.mjs",
+      "test/night-v*.test.mjs",
+      "test/night-wi*.test.mjs",
+      "test/night-z*.test.mjs",
+      "test/ablauf-night-*.test.mjs",
       "test/helpers/ergebnisstand-fixture.mjs",
-      "test/helpers/kette-fixture.mjs",
+      "test/helpers/kette-ablauf.mjs",
+      "test/helpers/kette-texte.mjs",
       "test/helpers/kette-umsetzung-fixture.mjs",
       "test/helpers/kitstand-fixture.mjs",
-      "test/fixtures/auskunft/**"
+      "test/helpers/zeilenenden.mjs",
+      "test/fixtures/auskunft/**",
+      "test/helpers/msys-zerlegen.mjs"
     ],
-    "board": [
+    "nacht-grundlagen": [
+      "kit/night/grundlagen.mjs",
+      "test/night-grundlagen-*.test.mjs"
+    ],
+    "nacht-laufstand": [
+      "kit/night/laufstand.mjs",
+      "test/night-laufstand-*.test.mjs",
+      "test/helpers/laufstand-attrappe.mjs"
+    ],
+    "nacht-abhaengigkeiten": [
+      "kit/night/abhaengigkeiten.mjs",
+      "test/night-abhaengigkeiten-*.test.mjs"
+    ],
+    "nacht-kitstand": [
+      "kit/night/kitstand.mjs",
+      "test/night-kitstand-*.test.mjs"
+    ],
+    "nacht-session": [
+      "kit/night/session.mjs",
+      "test/night-session-*.test.mjs",
+      "test/helpers/session-attrappe.mjs"
+    ],
+    "nacht-bericht": [
+      "kit/night/bericht.mjs",
+      "test/night-bericht-*.test.mjs"
+    ],
+    "nacht-wartend": [
+      "kit/night/wartend.mjs",
+      "test/night-wartend-*.test.mjs"
+    ],
+    "nacht-kette": [
+      "kit/night/kette.mjs",
+      "test/night-kette-*.test.mjs",
+      "test/helpers/kette-fixture.mjs",
+      "test/helpers/kette-texte.mjs"
+    ],
+    "nacht-tag": [
+      "kit/night/tag.mjs",
+      "test/night-tag-*.test.mjs",
+      "test/helpers/tag-fixture.mjs"
+    ],
+    "board-einstieg": [
       "kit/board.mjs",
       "kit/board-ui.mjs",
       "tools/migrate-issues.mjs",
-      "test/board-*.test.mjs",
+      "test/board-ac*.test.mjs",
+      "test/board-c*.test.mjs",
+      "test/board-i*.test.mjs",
+      "test/board-k*.test.mjs",
+      "test/board-l*.test.mjs",
+      "test/board-mensch-*.test.mjs",
+      "test/board-o*.test.mjs",
+      "test/board-p*.test.mjs",
+      "test/board-r*.test.mjs",
+      "test/board-s*.test.mjs",
+      "test/board-u*.test.mjs",
+      "test/ablauf-board-*.test.mjs",
       "test/migrate-*.test.mjs",
+      "test/ablauf-migrate-*.test.mjs",
       "test/cli-*.test.mjs",
       "startboard.sh",
-      "test/helpers/board-*.mjs",
+      "test/helpers/board-fixture.mjs",
+      "test/helpers/zeilenenden.mjs",
       "test/fixtures/cli-grammar.json",
       "test/fixtures/migrate-import-*.md"
+    ],
+    "board-grundlagen": [
+      "kit/board/grundlagen.mjs",
+      "test/board-grundlagen-*.test.mjs",
+      "test/helpers/board-attrappe.mjs"
+    ],
+    "board-wiederholung": [
+      "kit/board/wiederholung.mjs",
+      "test/board-wiederholung-*.test.mjs",
+      "test/helpers/msys-zerlegen.mjs"
+    ],
+    "board-adapter": [
+      "kit/board/adapter.mjs",
+      "test/board-adapter-*.test.mjs",
+      "test/helpers/adapter-fixture.mjs",
+      "test/helpers/board-ci-fixture.mjs",
+      "test/helpers/board-github-fixture.mjs",
+      "test/helpers/board-gitlab-fixture.mjs"
+    ],
+    "board-dokumente": [
+      "kit/board/dokumente.mjs",
+      "test/board-dokumente-*.test.mjs"
+    ],
+    "board-geschuetzt": [
+      "kit/board/geschuetzt.mjs",
+      "test/board-geschuetzt-*.test.mjs"
+    ],
+    "board-testhinweise": [
+      "kit/board/testhinweise.mjs",
+      "test/board-testhinweise-*.test.mjs"
+    ],
+    "board-issue-review": [
+      "kit/board/issue-review.mjs",
+      "test/board-issue-review-*.test.mjs"
+    ],
+    "board-melder": [
+      "kit/board/melder.mjs",
+      "test/board-melder-*.test.mjs"
+    ],
+    "board-hook": [
+      "kit/board/hook.mjs",
+      "test/board-hook-*.test.mjs"
     ],
     "pruefungen": [
       "kit/checks.mjs",
       ".githooks/gate.mjs",
       "tools/verflechtung.mjs",
       "test/checks-*.test.mjs",
+      "test/ablauf-checks-*.test.mjs",
       "test/gate*.test.mjs",
       "test/guete-*.test.mjs",
       "test/plattform-*.test.mjs",
       "eslint.config.mjs",
+      "test/helpers/checks-ablauf.mjs",
       "test/helpers/checks-repo.mjs",
       "test/helpers/checks-sperre.mjs",
       "test/helpers/haenger.mjs",
+      "test/helpers/haenger-aufruf.mjs",
+      "test/helpers/leichtigkeit.mjs",
       "test/helpers/wachstum.mjs",
+      "test/helpers/zeilenenden.mjs",
       "test/fixtures/mvn-verify-*.log"
     ],
     "aufwand": [
       "kit/aufwand.mjs",
       "test/aufwand-*.test.mjs",
+      "test/ablauf-aufwand-*.test.mjs",
       "test/helpers/aufwand-fixture.mjs",
       "test/fixtures/aufwand/**"
     ],
     "wirksamkeit": [
       "kit/wirksamkeit.mjs",
       "test/wirksamkeit-*.test.mjs",
+      "test/ablauf-wirksamkeit-*.test.mjs",
       "test/helpers/wirksamkeit-fixture.mjs"
     ],
     "befunde": [
       "kit/befunde.mjs",
-      "test/befunde-*.test.mjs"
+      "test/befunde-*.test.mjs",
+      "test/ablauf-befunde-*.test.mjs",
+      "test/helpers/zeilenenden.mjs"
     ],
     "einstellungen": [
       "kit/einstellungen.mjs",
@@ -204,6 +680,7 @@
       "templates/workflow.config.json",
       "templates/workflow.config.schema.json",
       "test/einstellungen-*.test.mjs",
+      "test/ablauf-einstellungen-*.test.mjs",
       "test/config-*.test.mjs",
       "assets/fonts/*.woff2",
       "test/helpers/einstellungen-fixture.mjs",
@@ -217,11 +694,14 @@
       "tools/sync-blobs.mjs",
       "tools/version.mjs",
       "test/sync-*.test.mjs",
-      "test/kit-*.test.mjs"
+      "test/kit-*.test.mjs",
+      "test/ablauf-sync-*.test.mjs",
+      "test/ablauf-kit-*.test.mjs"
     ],
     "herkunft": [
       "tools/derived-from-report.mjs",
       "test/derived-*.test.mjs",
+      "test/ablauf-derived-*.test.mjs",
       "test/fixtures/board-snapshot-*.json"
     ],
     "installer": [
@@ -229,11 +709,19 @@
       "tools/changelog.mjs",
       "tools/copy-downloads-for-docs.mjs",
       "tools/windows-pruefung.mjs",
+      "tools/windows-brueche.mjs",
+      "tools/lastbeleg.mjs",
+      "test/fixtures/windows-brueche/**",
       ".githooks/pre-commit",
       "test/install-*.test.mjs",
       "test/tools-*.test.mjs",
       "test/changelog*.test.mjs",
       "test/copy-*.test.mjs",
+      "test/ablauf-install-*.test.mjs",
+      "test/ablauf-tools-*.test.mjs",
+      "test/ablauf-changelog*.test.mjs",
+      "test/ablauf-copy-*.test.mjs",
+      "test/helpers/zeilenenden.mjs",
       ".gitignore",
       "package.json",
       "package-lock.json"
@@ -254,8 +742,13 @@
       "test/docs-*.test.mjs",
       "test/workflow-*.test.mjs",
       "test/push-*.test.mjs",
+      "test/ablauf-docs-*.test.mjs",
+      "test/ablauf-workflow-*.test.mjs",
+      "test/ablauf-push-*.test.mjs",
       "test/mitteilung-*.test.mjs",
       "test/vergleiche-*.test.mjs",
+      "test/helpers/zeilenenden.mjs",
+      "test/fixtures/push-main-*.md",
       ".github/workflows/**",
       "docs-site/**",
       "package.json"
@@ -268,7 +761,8 @@
     ],
     "frischer-checkout": [
       "tools/frischer-checkout*.mjs",
-      "test/tools-frischer-checkout*.test.mjs"
+      "test/tools-frischer-checkout*.test.mjs",
+      "test/ablauf-tools-frischer-checkout*.test.mjs"
     ]
   },
   "ohnePruefung": [
@@ -316,17 +810,11 @@
   "nurGeruest": [
     {
       "muster": "package.json",
-      "grund": "Genannt wird der Pfad nur in Kommentaren ueber Wegwerf-Projekte ('kein package.json'): test/install-settings-hooks.test.mjs, test/install-preise-blob.test.mjs, test/workflow-ci-trigger.test.mjs. Keine Testdatei liest die package.json dieses Repositories — gesucht wurde nach jedem Lesen ueber repoRoot (grep 'package' in test/)."
+      "grund": "Genannt wird der Pfad nur in Kommentaren ueber Wegwerf-Projekte ('kein package.json'): test/ablauf-install-settings-hooks.test.mjs, test/ablauf-install-preise-blob.test.mjs, test/workflow-ci-trigger.test.mjs. Keine Testdatei liest die package.json dieses Repositories — gesucht wurde nach jedem Lesen ueber repoRoot (grep 'package' in test/)."
     },
     {
       "muster": "CLAUDE.md",
       "grund": "Einzige Fundstelle ist ein Kommentar in test/docs-nachtkette.test.mjs ueber das, was ein Nachtlauf nicht schreiben darf. Keine Testdatei liest die CLAUDE.md dieses Repositories; templates/CLAUDE-workflow.md dagegen wird von vielen Tests geprueft und traegt darum ein eigenes Muster nicht."
-    }
-  ],
-  "gekoppelteBereiche": [
-    {
-      "bereich": "board",
-      "grund": "Fast jede Testgruppe lädt kit/board.mjs (gemessen mit tools/verflechtung.mjs)."
     }
   ],
   "reviewCommand": "codex exec --model gpt-6-astra -c model_reasoning_effort=\"high\"",

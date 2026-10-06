@@ -1,7 +1,7 @@
 // Die Auskunftszeit in der Aufwands-Auswertung (Issue #1027, Plan #1015, E11 bis E13).
 //
 // Zwei Dinge werden belegt, der Gleichlauf der beiden `auskunftArt`-Fassungen steht in
-// test/night-auskunft-gleichlauf.test.mjs:
+// test/night-session-auskunft-gleichlauf.test.mjs:
 //
 //   Der Abschnitt "Auskuenfte" mittelt nur ueber Umsetzungseinheiten (E12) und nennt ihre
 //   Zahl. Alles andere steht in einer eigenen Zeile "keine Umsetzung". `auskunft: null`

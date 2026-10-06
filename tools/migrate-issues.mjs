@@ -43,8 +43,9 @@ import { tmpdir, homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 // Die Startregel fuer CLIs unter Windows (Issue #1135, Plan #1128, E8) steht genau einmal,
-// in kit/board.mjs — wie `istPlan` fuer tools/derived-from-report.mjs.
-import { startbefehlFuer } from "../kit/board.mjs";
+// im Board-Werkzeug — wie `istPlan` fuer tools/derived-from-report.mjs. Geholt wird sie aus
+// dem Teil kit/board/wiederholung.mjs, nicht aus dem Einstieg (Issue #1215).
+import { startbefehlFuer } from "../kit/board/wiederholung.mjs";
 
 const UNTERKOMMANDOS = new Set(["export", "import", "verify"]);
 const DEFAULT_OUT = join(tmpdir(), "claude-workflow-kit-migrationen");

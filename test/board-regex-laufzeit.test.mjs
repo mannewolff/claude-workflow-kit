@@ -20,13 +20,9 @@ import assert from "node:assert/strict";
 
 import { pruefeLinear } from "./helpers/wachstum.mjs";
 
-import {
-  fenceLauf,
-  nurAutorZeileTrifft,
-  autorModellSicherstellen,
-  AUTOR_MODELL_ZEILE,
-} from "../kit/board.mjs";
-import { REVIEW_MARKER_ZEILE, hasReviewMarker } from "../kit/night.mjs";
+import { fenceLauf, autorModellSicherstellen, AUTOR_MODELL_ZEILE } from "../kit/board/dokumente.mjs";
+import { nurAutorZeileTrifft } from "../kit/board/adapter.mjs";
+import { REVIEW_MARKER_ZEILE, hasReviewMarker } from "../kit/night/wartend.mjs";
 
 const GROSS = 16 * 1024;
 

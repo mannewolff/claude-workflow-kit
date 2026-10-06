@@ -12,14 +12,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const BEFUNDE = join(repoRoot, "kit", "befunde.mjs");
+import { aufrufen } from "../kit/befunde.mjs";
 
 /** Ein Fundblock in der Form aus dem Regeltext, Bausteine je Test austauschbar. */
 function fund({ titel = "W — Ein Fund.", stand = "geprueft, bestaetigt", uebernahme = "uebernommen", art = "doppelung", marke = "WICHTIG", zusatz = [] } = {}) {
@@ -45,7 +42,7 @@ function buchen(dir, text, args = ["--stufe", "plan", "--karte", "797"]) {
   mkdirSync(join(dir, ".claude"), { recursive: true });
   const datei = join(dir, ".claude", "befunde-eingang.md");
   writeFileSync(datei, text, "utf-8");
-  return spawnSync(process.execPath, [BEFUNDE, "buchen", "--datei", datei, ...args], { cwd: dir, encoding: "utf-8" });
+  return aufrufen(["buchen", "--datei", datei, ...args], { cwd: dir });
 }
 
 function protokoll(dir) {
@@ -86,6 +83,19 @@ test("buchen schreibt nur Funde mit bestaetigter Gegenprobe und Uebernahmevermer
     const zeilen = protokoll(dir);
     assert.equal(zeilen.length, 1);
     assert.equal(zeilen[0].split("\t")[4], "luecke");
+  });
+});
+
+test("[befunde-1213] der Zeitpunkt der Buchung kommt aus der uebergebenen Uhr", () => {
+  mitDir((dir) => {
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    const datei = join(dir, ".claude", "befunde-eingang.md");
+    writeFileSync(datei, fund(), "utf-8");
+    const res = aufrufen(["buchen", "--datei", datei, "--stufe", "plan", "--karte", "797"],
+      { cwd: dir, jetzt: () => new Date("2026-10-05T08:00:00.000Z") });
+
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(protokoll(dir)[0].split("\t")[0], "2026-10-05T08:00:00.000Z");
   });
 });
 
@@ -137,6 +147,15 @@ test("die Rolle stammt aus dem jeweils letzten Reviewer-Kopf vor dem Fund", () =
   });
 });
 
+test("der Beispielkopf aus /issue-review Schritt 5 bucht seine Rolle (Issue #1182)", () => {
+  mitDir((dir) => {
+    const text = ["## Fachplan-Review, Runde 1", "", "### Reviewer 1: form-beobachtbarkeit, fable", "", fund()].join("\n");
+    const res = buchen(dir, text, ["--stufe", "fachlich", "--karte", "1180"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(protokoll(dir)[0].split("\t")[3], "form-beobachtbarkeit");
+  });
+});
+
 test("ohne Reviewer-Kopf steht 'unbekannt', bei --stufe code 'code-review'", () => {
   mitDir((dir) => {
     const res = buchen(dir, fund());
@@ -175,13 +194,13 @@ test("bei Schwelle drei meldet der dritte Fund einer Art 'erreicht', der zweite 
     vorbefuellen(dir, 1);
     const res = buchen(dir, fund());
     const json = JSON.parse(res.stdout);
-    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 2, nullpunkt: 0, erreicht: false }]);
+    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 2, nullpunkt: 0, erreicht: false, vorschlag: false }]);
   });
   mitDir((dir) => {
     vorbefuellen(dir, 2);
     const res = buchen(dir, fund());
     const json = JSON.parse(res.stdout);
-    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 3, nullpunkt: 0, erreicht: true }]);
+    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 3, nullpunkt: 0, erreicht: true, vorschlag: false }]);
   });
 });
 
@@ -191,7 +210,7 @@ test("ein Sprung ueber die Schwelle (zwei Funde in einem Aufruf) meldet ebenfall
     const text = [fund({ titel: "F1 — drei." }), fund({ titel: "F2 — vier." })].join("\n\n");
     const res = buchen(dir, text);
     const json = JSON.parse(res.stdout);
-    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 4, nullpunkt: 0, erreicht: true }]);
+    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 4, nullpunkt: 0, erreicht: true, vorschlag: false }]);
   });
 });
 
@@ -203,7 +222,7 @@ test("der Nullpunkt aus befunde-vorschlaege.json verschiebt die Schwelle", () =>
       JSON.stringify({ doppelung: { nullpunkt: 2 } }) + "\n", "utf-8");
     const res = buchen(dir, fund());
     const json = JSON.parse(res.stdout);
-    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 3, nullpunkt: 2, erreicht: false }]);
+    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 3, nullpunkt: 2, erreicht: false, vorschlag: false }]);
   });
 });
 
@@ -215,7 +234,24 @@ test("die Schwelle kommt aus dem Config-Block befunde.schwelle", () => {
     const res = buchen(dir, fund());
     const json = JSON.parse(res.stdout);
     assert.equal(json.schwelle, 1);
-    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 1, nullpunkt: 0, erreicht: true }]);
+    assert.deepEqual(json.arten, [{ art: "doppelung", stand: 1, nullpunkt: 0, erreicht: true, vorschlag: false }]);
+  });
+});
+
+test("eine Urteils-Art meldet Stand und Schwelle weiter, aber vorschlag: false (Issue #1182)", () => {
+  mitDir((dir) => {
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    writeFileSync(join(dir, ".claude", "befunde.tsv"),
+      `${"2026-09-21T00:00:00.000Z\tplan\t1\tunbekannt\tluecke\tWICHTIG\t-\n".repeat(2)}`
+      + `${"2026-09-21T00:00:00.000Z\tplan\t1\tunbekannt\tform\tWICHTIG\t-\n".repeat(2)}`, "utf-8");
+    const text = [fund({ titel: "F1 — luecke.", art: "luecke" }), fund({ titel: "F2 — form.", art: "form" })].join("\n\n");
+    const res = buchen(dir, text);
+    assert.equal(res.status, 0, res.stderr);
+    const json = JSON.parse(res.stdout);
+    assert.deepEqual(json.arten, [
+      { art: "form", stand: 3, nullpunkt: 0, erreicht: true, vorschlag: true },
+      { art: "luecke", stand: 3, nullpunkt: 0, erreicht: true, vorschlag: false },
+    ]);
   });
 });
 
@@ -239,7 +275,7 @@ test("ein Aufruf ohne Pflichtargument oder mit unbekannter Stufe wird mit JSON a
       ["buchen", "--datei", "x.md", "--stufe", "plan"],
       ["buchen", "--datei", "x.md", "--stufe", "commit", "--karte", "1"],
     ]) {
-      const res = spawnSync(process.execPath, [BEFUNDE, ...args], { cwd: dir, encoding: "utf-8" });
+      const res = aufrufen(args, { cwd: dir });
       assert.equal(res.status, 1, `Aufruf ${args.join(" ")} muss abgewiesen werden`);
       assert.equal(JSON.parse(res.stdout).ok, false);
     }

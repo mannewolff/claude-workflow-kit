@@ -14,18 +14,15 @@
 //     Nutzungshilfe — und der Unterschied zwischen 'Fehler' und 'Unerwarteter
 //     Fehler'.
 //
-// Wo git scheitern muss, startet checks.mjs ueber den Test-Hook `CHECKS_GIT_FAKE` ein
-// Fake-`git` als Node-Skript (Issue #1136): Es reicht alles durch und faelscht genau
-// ein Unterkommando. Ohne die Variable startet checks.mjs das echte git.
+// Wo git scheitern muss, bekommt checks.mjs im selben Prozess ein Fake-`git` statt des
+// echten (Issue #1136, #1212): Es reicht alles durch und faelscht genau ein
+// Unterkommando. Ohne Fake startet checks.mjs das echte git. Dass ein Import das CLI
+// nicht startet, belegt `ablauf-checks-cli.test.mjs` — das geht nur als Prozess.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, rmSync, mkdtempSync } from "node:fs";
-import { spawnSync } from "node:child_process";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import {
-  CHECKS, mitRepo, plan, run, checks, checksMitFakeGit, fakeGitOhne,
+  mitRepo, plan, run, checks, checksMitFakeGit, fakeGitOhne, fakeGitSetzen, echtesGit,
   zusammenfassung, datei, kommandos, eintrag,
 } from "./helpers/checks-repo.mjs";
 import { vergleicheText, gitStart } from "../kit/checks.mjs";
@@ -35,13 +32,13 @@ const LEISE = "node -e \"process.exit(0)\"";
 
 // --- Test-Hook fuer git (Issue #1136) -----------------------------------------
 
-test("ohne CHECKS_GIT_FAKE startet checks.mjs das echte git mit unveraenderten Argumenten", () => {
+test("ohne CHECKS_GIT_FAKE startet checks.mjs das echte git mit unveraenderten Argumenten", async () => {
   assert.deepEqual(gitStart(["diff", "--name-only"], {}), { cmd: "git", args: ["diff", "--name-only"] });
   assert.deepEqual(gitStart(["status"], { CHECKS_GIT_FAKE: "" }), { cmd: "git", args: ["status"] },
     "eine leere Variable gilt als nicht gesetzt");
 });
 
-test("mit CHECKS_GIT_FAKE startet checks.mjs das Node-Skript mit dem laufenden Node", () => {
+test("mit CHECKS_GIT_FAKE startet checks.mjs das Node-Skript mit dem laufenden Node", async () => {
   assert.deepEqual(
     gitStart(["hash-object", "--stdin-paths"], { CHECKS_GIT_FAKE: "/x/git.mjs" }),
     { cmd: process.execPath, args: ["/x/git.mjs", "hash-object", "--stdin-paths"] },
@@ -50,10 +47,10 @@ test("mit CHECKS_GIT_FAKE startet checks.mjs das Node-Skript mit dem laufenden N
 
 // --- Abbrueche --------------------------------------------------------------
 
-test("eine kaputte workflow.config.json endet rot und nennt den Parser-Grund", () => {
+test("eine kaputte workflow.config.json endet rot und nennt den Parser-Grund", async () => {
   // Ein Kommando, das eine kaputte Config stillschweigend als leer liest, meldet
   // 'nichts zu pruefen' — der Fehler in die unsichere Richtung.
-  mitRepo({ configText: "{ \"buildChecks\": [\n" }, (dir) => {
+  await mitRepo({ configText: "{ \"buildChecks\": [\n" }, async (dir) => {
     const res = checks(dir, "plan");
 
     assert.notEqual(res.status, 0, "eine kaputte Config darf nicht durchgehen");
@@ -63,12 +60,12 @@ test("eine kaputte workflow.config.json endet rot und nennt den Parser-Grund", (
   });
 });
 
-test("buildChecks als String statt Array endet als 'Unerwarteter Fehler'", () => {
+test("buildChecks als String statt Array endet als 'Unerwarteter Fehler'", async () => {
   // Der Unterschied traegt die Diagnose: 'Fehler' ist eine Lage, die checks.mjs
   // kennt und benennt; 'Unerwarteter Fehler' ist ein Programmierfehler in der
   // Config, der ungefiltert durchschlaegt. Beides als 'Fehler' auszugeben naehme
   // dem Leser genau diese Unterscheidung.
-  mitRepo({ configText: "{ \"buildChecks\": \"npm test\" }\n" }, (dir) => {
+  await mitRepo({ configText: "{ \"buildChecks\": \"npm test\" }\n" }, async (dir) => {
     const res = checks(dir, "plan");
 
     assert.notEqual(res.status, 0);
@@ -76,8 +73,8 @@ test("buildChecks als String statt Array endet als 'Unerwarteter Fehler'", () =>
   });
 });
 
-test("scheitert git diff nach aufgeloestem Anker, endet der Lauf rot und nennt den Anker", () => {
-  mitRepo({ config: { buildChecks: [LEISE] } }, (dir) => {
+test("scheitert git diff nach aufgeloestem Anker, endet der Lauf rot und nennt den Anker", async () => {
+  await mitRepo({ config: { buildChecks: [LEISE] } }, async (dir) => {
     fakeGitOhne(dir, "diff", "fatal: fake diff");
     datei(dir, "a.txt", "A\n");
 
@@ -89,11 +86,11 @@ test("scheitert git diff nach aufgeloestem Anker, endet der Lauf rot und nennt d
   });
 });
 
-test("scheitert git status, endet der Lauf rot — obwohl git diff schon geliefert hat", () => {
+test("scheitert git status, endet der Lauf rot — obwohl git diff schon geliefert hat", async () => {
   // Der teure Fall: `rev-parse` und `diff` sind durch, die getrackten Aenderungen
   // stehen schon in der Menge. Ohne Abbruch fehlte nur das Ungetrackte, und der
   // Lauf saehe wie ein vollstaendiger aus.
-  mitRepo({ config: { buildChecks: [LEISE] } }, (dir) => {
+  await mitRepo({ config: { buildChecks: [LEISE] } }, async (dir) => {
     fakeGitOhne(dir, "status", "fatal: fake status");
 
     const res = checksMitFakeGit(dir, "plan");
@@ -104,12 +101,12 @@ test("scheitert git status, endet der Lauf rot — obwohl git diff schon geliefe
   });
 });
 
-test("scheitert git hash-object, endet run rot und schreibt keine Zusammenfassung", () => {
-  mitRepo({ config: { buildChecks: [LEISE] } }, (dir) => {
+test("scheitert git hash-object, endet run rot und schreibt keine Zusammenfassung", async () => {
+  await mitRepo({ config: { buildChecks: [LEISE] } }, async (dir) => {
     fakeGitOhne(dir, "hash-object", "fatal: fake hash-object");
     datei(dir, "a.txt", "A\n");
 
-    const res = checksMitFakeGit(dir, "run");
+    const res = await checksMitFakeGit(dir, "run");
 
     assert.notEqual(res.status, 0, "ohne Hashes darf das Commit-Gate keinen Nachweis bekommen");
     assert.match(res.stderr, /git hash-object schlug fehl/);
@@ -117,16 +114,16 @@ test("scheitert git hash-object, endet run rot und schreibt keine Zusammenfassun
   });
 });
 
-test("scheitert git hash-object stumm, traegt die Meldung trotzdem nur den Schritt", () => {
+test("scheitert git hash-object stumm, traegt die Meldung trotzdem nur den Schritt", async () => {
   // Ein Abbruch ohne stderr ist kein hypothetischer Fall: Endet der Prozess durch
   // ein Signal, ist `status` null und `stderr` leer. Ohne den Leerstring-Ersatz
   // stuende dort 'undefined' statt einer Meldung — und der eigentliche Abbruch
   // ginge in einem TypeError unter, der nichts mit git zu tun hat.
-  mitRepo({ config: { buildChecks: [LEISE] } }, (dir) => {
+  await mitRepo({ config: { buildChecks: [LEISE] } }, async (dir) => {
     fakeGitOhne(dir, "hash-object", null);
     datei(dir, "a.txt", "A\n");
 
-    const res = checksMitFakeGit(dir, "run");
+    const res = await checksMitFakeGit(dir, "run");
 
     assert.notEqual(res.status, 0);
     assert.match(res.stderr, /^Fehler: git hash-object schlug fehl: *$/m, `stderr war: ${res.stderr}`);
@@ -134,38 +131,57 @@ test("scheitert git hash-object stumm, traegt die Meldung trotzdem nur den Schri
   });
 });
 
-test("liefert git hash-object mehr Hashes als Pfade, endet run rot und nennt beide Zahlen", () => {
+test("liefert git hash-object mehr Hashes als Pfade, endet run rot und nennt beide Zahlen", async () => {
   // Ein Zeilenumbruch im Dateinamen: `--stdin-paths` liest zeilenweise, also wird
   // aus drei Pfaden eine Eingabe mit vier Zeilen und git antwortet mit vier
   // Hashes. Ohne den Abgleich bekaemen die Pfade fremde Hashes zugeordnet, und
   // das Commit-Gate pruefte gegen einen Nachweis, der nichts bezeugt.
-  mitRepo({ config: { buildChecks: [LEISE] } }, (dir) => {
+  //
+  // Windows verbietet den Zeilenumbruch im Dateinamen (Issue #1146). Dort reicht ein
+  // Fake-git dieselbe Eingabe mit einer Zeile mehr an das echte git weiter: drei
+  // Pfade, vier Zeilen, vier Hashes — dieselbe Lage, dieselbe Zusage.
+  await mitRepo({ config: { buildChecks: [LEISE] } }, async (dir) => {
     datei(dir, "a", "A\n");
     datei(dir, "b", "B\n");
-    datei(dir, "a\nb", "AB\n");
-
-    const res = run(dir);
+    let res;
+    if (process.platform === "win32") {
+      datei(dir, "c", "C\n");
+      fakeGitZeileMehr(dir);
+      res = await checksMitFakeGit(dir, "run");
+    } else {
+      datei(dir, "a\nb", "AB\n");
+      res = await run(dir);
+    }
 
     assert.notEqual(res.status, 0, "ein Zaehlabgleich, der nicht aufgeht, darf nicht durchgehen");
     assert.match(res.stderr, /git hash-object lieferte 4 Hashes fuer 3 Pfade/);
   });
 });
 
+/** Fake-git, das an `hash-object --stdin-paths` den ersten Pfad ein zweites Mal anhaengt. */
+function fakeGitZeileMehr(dir) {
+  fakeGitSetzen(dir, (args, optionen) => {
+    if (args[0] !== "hash-object") return echtesGit(args, optionen);
+    const pfade = optionen.input.split("\n").filter(Boolean);
+    return echtesGit(args, { ...optionen, input: `${[...pfade, pfade[0]].join("\n")}\n` });
+  });
+}
+
 // --- settingsEnv ------------------------------------------------------------
 
-test("eine kaputte settings.json laesst nur diese Quelle ausfallen, nicht den Lauf", () => {
+test("eine kaputte settings.json laesst nur diese Quelle ausfallen, nicht den Lauf", async () => {
   // Der Nachweis ist wichtiger als die Zeile: Ein Lauf, der beide Quellen
   // verwirft, waere ebenfalls 'weitergelaufen' — und die Variable aus der
   // intakten Datei fehlte still. Genau daran scheiterte kanban-kit #445.
   const config = {
     buildChecks: [{ cmd: "node -e \"process.exit(process.env.KIT_TEST_VAR === 'x' ? 0 : 1)\"", always: true }],
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, ".claude/settings.json", "{ das ist kein JSON\n");
     datei(dir, ".claude/settings.local.json", JSON.stringify({ env: { KIT_TEST_VAR: "x" } }) + "\n");
     datei(dir, "a.txt", "A\n");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, `die intakte Quelle haette durchkommen muessen: ${res.stdout}${res.stderr}`);
     const summary = zusammenfassung(dir);
@@ -173,36 +189,36 @@ test("eine kaputte settings.json laesst nur diese Quelle ausfallen, nicht den La
   });
 });
 
-test("settings.local.json gewinnt gegen settings.json beim selben Schluessel", () => {
+test("settings.local.json gewinnt gegen settings.json beim selben Schluessel", async () => {
   // Precedence wie in Claude Code. Die local-Datei ist gitignored und damit der
   // Ort fuer maschinenspezifische Werte — gaebe die geteilte Datei den Ausschlag,
   // waere die local-Datei wirkungslos, wo sie am noetigsten ist.
   const config = {
     buildChecks: [{ cmd: "node -e \"process.exit(process.env.KIT_TEST_VAR === 'lokal' ? 0 : 1)\"", always: true }],
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, ".claude/settings.json", JSON.stringify({ env: { KIT_TEST_VAR: "geteilt" } }) + "\n");
     datei(dir, ".claude/settings.local.json", JSON.stringify({ env: { KIT_TEST_VAR: "lokal" } }) + "\n");
     datei(dir, "a.txt", "A\n");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, `settings.local.json hat sich nicht durchgesetzt: ${res.stdout}${res.stderr}`);
   });
 });
 
-test("eine settings.json ohne env-Block und eine mit env als String kippen den Lauf nicht", () => {
+test("eine settings.json ohne env-Block und eine mit env als String kippen den Lauf nicht", async () => {
   // Beide Formen sind moeglich (settings.json traegt weit mehr als env), und
   // beide duerfen weder etwas beisteuern noch etwas kaputtmachen. Ein
   // `Object.assign` gegen einen String schriebe die Zeichen als Indizes in die
   // Umgebung — der Lauf saehe gruen aus und die Umgebung waere Unsinn.
   const config = { buildChecks: [{ cmd: "node -e \"process.exit(process.env['0'] === undefined ? 0 : 1)\"", always: true }] };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, ".claude/settings.json", JSON.stringify({ permissions: { allow: [] } }) + "\n");
     datei(dir, ".claude/settings.local.json", JSON.stringify({ env: "PATH=/nirgendwo" }) + "\n");
     datei(dir, "a.txt", "A\n");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, `ein env, das kein Objekt ist, darf nicht uebernommen werden: ${res.stdout}${res.stderr}`);
   });
@@ -210,7 +226,7 @@ test("eine settings.json ohne env-Block und eine mit env als String kippen den L
 
 // --- Muster und Grundtexte --------------------------------------------------
 
-test("ein Bereich ohne Musterliste trifft nichts und zieht den vollen Umfang", () => {
+test("ein Bereich ohne Musterliste trifft nichts und zieht den vollen Umfang", async () => {
   // `checkAreas: { name: null }` ist ein halb gepflegter Eintrag. Er darf nicht
   // werfen — aber er darf auch nicht heimlich alles treffen: Die Datei findet
   // dann kein Muster, und das ist der Ausgang 'mehr pruefen'.
@@ -218,7 +234,7 @@ test("ein Bereich ohne Musterliste trifft nichts und zieht den vollen Umfang", (
     buildChecks: [{ cmd: LEISE, areas: ["leer"] }],
     checkAreas: { leer: null },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
 
     const ergebnis = plan(dir);
@@ -229,7 +245,7 @@ test("ein Bereich ohne Musterliste trifft nichts und zieht den vollen Umfang", (
   });
 });
 
-test("mehrere Bereiche an einer Pruefung stehen im Grund im Plural — beruehrt wie unberuehrt", () => {
+test("mehrere Bereiche an einer Pruefung stehen im Grund im Plural — beruehrt wie unberuehrt", async () => {
   const config = {
     buildChecks: [
       { cmd: "echo zwei-beruehrt", areas: ["frontend", "backend"] },
@@ -239,7 +255,7 @@ test("mehrere Bereiche an einer Pruefung stehen im Grund im Plural — beruehrt 
       frontend: ["frontend/**"], backend: ["backend/**"], docs: ["docs/**"], infra: ["infra/**"],
     },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/App.tsx");
     datei(dir, "backend/Service.java");
 
@@ -251,7 +267,7 @@ test("mehrere Bereiche an einer Pruefung stehen im Grund im Plural — beruehrt 
   });
 });
 
-test("vergleicheText in kit/checks.mjs kennt drei Ausgaenge, auch die Gleichheit", () => {
+test("vergleicheText in kit/checks.mjs kennt drei Ausgaenge, auch die Gleichheit", async () => {
   // Der Gleichheitsfall faellt bei `sort` nie an, solange die Liste keine
   // Duplikate traegt — die 0 muss trotzdem stimmen, sonst waere die Ordnung
   // keine.
@@ -262,8 +278,8 @@ test("vergleicheText in kit/checks.mjs kennt drei Ausgaenge, auch die Gleichheit
 
 // --- CLI --------------------------------------------------------------------
 
-test("ein unbekanntes Argument endet rot und nennt es beim Namen", () => {
-  mitRepo({ config: { buildChecks: [LEISE] } }, (dir) => {
+test("ein unbekanntes Argument endet rot und nennt es beim Namen", async () => {
+  await mitRepo({ config: { buildChecks: [LEISE] } }, async (dir) => {
     const res = checks(dir, "plan", "--sinces", "HEAD");
 
     assert.notEqual(res.status, 0, "ein vertipptes Argument darf nicht stillschweigend wirkungslos bleiben");
@@ -271,11 +287,11 @@ test("ein unbekanntes Argument endet rot und nennt es beim Namen", () => {
   });
 });
 
-test("--since ohne Wert gilt wie ein leerer Wert: voller Umfang", () => {
+test("--since ohne Wert gilt wie ein leerer Wert: voller Umfang", async () => {
   // Steht `--since` am Ende, ist der Wert nicht 'nicht angegeben', sondern
   // fehlend — als Default HEAD gelesen liefe auf sauberem Tree keine einzige
   // Pruefung.
-  mitRepo({ config: { buildChecks: [LEISE] } }, (dir) => {
+  await mitRepo({ config: { buildChecks: [LEISE] } }, async (dir) => {
     const ergebnis = plan(dir, "--since");
 
     assert.equal(ergebnis.vollerUmfang, true);
@@ -285,8 +301,8 @@ test("--since ohne Wert gilt wie ein leerer Wert: voller Umfang", () => {
   });
 });
 
-test("ein unbekannter Befehl endet rot, nennt ihn und gibt die Nutzungshilfe aus", () => {
-  mitRepo({ config: { buildChecks: [LEISE] } }, (dir) => {
+test("ein unbekannter Befehl endet rot, nennt ihn und gibt die Nutzungshilfe aus", async () => {
+  await mitRepo({ config: { buildChecks: [LEISE] } }, async (dir) => {
     const res = checks(dir, "planx");
 
     assert.notEqual(res.status, 0);
@@ -296,11 +312,11 @@ test("ein unbekannter Befehl endet rot, nennt ihn und gibt die Nutzungshilfe aus
   });
 });
 
-test("kein Argument, --help und -h geben die Nutzungshilfe mit Exit 0 aus", () => {
+test("kein Argument, --help und -h geben die Nutzungshilfe mit Exit 0 aus", async () => {
   // Denselben Fall prueft checks-anker.test.mjs gegen eine Kopie der Datei, um
   // die Portabilitaet zu belegen. Hier laeuft das Original aus dem Repo, im
   // Repo-Kontext — die Nutzungshilfe darf auch dann nicht in `plan` abbiegen.
-  mitRepo({ config: { buildChecks: [LEISE] } }, (dir) => {
+  await mitRepo({ config: { buildChecks: [LEISE] } }, async (dir) => {
     for (const cliArgs of [[], ["--help"], ["-h"]]) {
       const res = checks(dir, ...cliArgs);
 
@@ -309,33 +325,4 @@ test("kein Argument, --help und -h geben die Nutzungshilfe mit Exit 0 aus", () =
       assert.match(res.stdout, /node checks\.mjs run/);
     }
   });
-});
-
-test("ist argv[1] nicht aufloesbar, laedt das Modul trotzdem und startet kein CLI", () => {
-  // Der Guard rechnet mit dem Symlink-Fall (macOS: /var -> /private/var). Loest
-  // sich argv[1] gar nicht auf, darf er nicht werfen: Das Modul steckte dann in
-  // einem Ladefehler, und ein Import — etwa aus der Testsuite — kaeme nie an.
-  const dir = mkdtempSync(join(tmpdir(), "checks-argv-"));
-  try {
-    const loader = join(dir, "loader.mjs");
-    writeFileSync(loader, [
-      "// Generiert von test/checks-luecken.test.mjs (Issue #504) — kein Produktivcode.",
-      String.raw`import { rmSync } from "node:fs";`,
-      String.raw`import { pathToFileURL } from "node:url";`,
-      // Sich selbst loeschen: Das Modul ist gelesen, argv[1] zeigt danach ins
-      // Leere — genau die Lage, die realpathSync scheitern laesst.
-      "rmSync(process.argv[1]);",
-      "await import(pathToFileURL(process.argv[2]).href);",
-      String.raw`process.stdout.write("geladen\n");`,
-      "",
-    ].join("\n"), "utf-8");
-
-    const res = spawnSync(process.execPath, [loader, CHECKS], { cwd: dir, encoding: "utf-8" });
-
-    assert.equal(res.status, 0, `der Import scheiterte: ${res.stderr}`);
-    assert.match(res.stdout, /geladen/);
-    assert.doesNotMatch(res.stdout, /node checks\.mjs/, "das Modul hat als CLI gestartet statt nur zu laden");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
 });

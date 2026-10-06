@@ -1,0 +1,331 @@
+// Ablauf-Pruefung: Gegenstand ist die Kopplung zwischen der Zusammenfassung, die das echte
+// checks.mjs schreibt, und dem Pruefteil, den der Runner daraus macht — ein von Hand
+// geschriebenes JSON froere genau das Format ein, um das es geht.
+//
+// Pruef-Zusammenfassungen im Lauf-Bericht des Nacht-Runners (Issue #428).
+//
+// Kriterium 11 aus Issue #420 verlangt die ausgelassenen Pruefungen an zwei Stellen:
+// am Arbeitspaket (Abschlussbericht, Issue #426) und im Bericht des Durchgangs. Der
+// Runner sieht von einer Session nur Exit-Code, Board-Zustand und Working Tree —
+// was INNERHALB der Session geprueft wurde, erfaehrt er ausschliesslich ueber die
+// Zusammenfassung, die `checks.mjs run` hinterlaesst (Issue #424).
+//
+// Die Tests fahren deshalb den ECHTEN `checks.mjs run` aus dem Session-Fake: Ein
+// von Hand geschriebenes JSON wuerde das Format einfrieren, das die andere Datei
+// pflegt — und genau die Kopplung, um die es geht, nicht pruefen. Nur der Fall
+// "alte Zusammenfassung" schreibt selbst, weil dort eine Datei gebraucht wird, die
+// KEINE Session dieses Laufs erzeugt hat.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+// Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
+// Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
+const NIGHT = join(repoRoot, "kit", "night.mjs");
+
+// Zwei Pruefungen mit Bereichszuordnung. Der Bereich 'board' ist bewusst KEINER
+// Pruefung zugeordnet: Beim lokalen Tracker sind Board-Moves Dateiaenderungen unter
+// issues/, und eine Datei ohne Muster loest in checks.mjs den vollen Umfang aus —
+// dann liefe die Auswahl im Test nie, um die es hier geht.
+const KIT_CHECK = { cmd: "echo kit-check", areas: ["kit"] };
+const FRONTEND_CHECK = { cmd: "echo frontend-check", areas: ["frontend"] };
+const CHECK_AREAS = { kit: ["kit/**"], frontend: ["frontend/**"], board: ["issues/**"] };
+
+function run(cwd, cmd, cliArgs, env = {}) {
+  return spawnSync(cmd, cliArgs, {
+    cwd, encoding: "utf-8",
+    env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, ...env },
+  });
+}
+
+function board(cwd, ...cliArgs) {
+  const res = run(cwd, process.execPath, [join(cwd, ".claude", "kit", "board.mjs"), ...cliArgs]);
+  assert.equal(res.status, 0, `board.mjs ${cliArgs.join(" ")} schlug fehl: ${res.stderr}`);
+  return JSON.parse(res.stdout);
+}
+
+function setupProjekt({ buildChecks = [KIT_CHECK, FRONTEND_CHECK], extraConfig = {} } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "night-checksbericht-"));
+  mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
+  copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  // checks.mjs wird seit Issue #425 neben board.mjs und night.mjs ausgeliefert — der
+  // Session-Fake ruft es genauso auf wie ein echter /implement-next-Lauf.
+  copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));
+  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
+    codeHost: "local",
+    issueTracker: "local",
+    buildChecks,
+    checkAreas: CHECK_AREAS,
+    local: { issuesDir: "issues" },
+    ...extraConfig,
+  }, null, 2));
+  // Dieselbe Ignore-Regel wie ein installiertes Projekt (Issue #208/#209): alles
+  // unter .claude/ ist lokaler Zustand. Ohne sie erschiene die Zusammenfassung als
+  // Tree-Aenderung, waehrend sie es im echten Projekt nie tut.
+  writeFileSync(join(dir, ".gitignore"), ".claude/*\n!.claude/workflow.config.json\nsessions.log\nchecklauf.log\n");
+  // Eine getrackte Datei im Bereich 'kit', damit es dort etwas zu aendern gibt.
+  mkdirSync(join(dir, "kit"), { recursive: true });
+  writeFileSync(join(dir, "kit", "bestand.txt"), "Bestand\n");
+  lfAttribute(join(dir, ".gitattributes"));
+  for (const a of [["init", "-q"], ["config", "user.email", "t@example.invalid"],
+                   ["config", "user.name", "T"], ["add", "-A"], ["commit", "-q", "-m", "setup"]]) {
+    assert.equal(run(dir, "git", a).status, 0);
+  }
+  return dir;
+}
+
+function readyIssue(dir, titel = "Ein Issue") {
+  const issue = board(dir, "issue", "create", "--title", titel, "--body", "## Abhaengigkeiten\nKeine.");
+  board(dir, "issue", "move", String(issue.id), "ready");
+  return String(issue.id);
+}
+
+// Die angelegten Issues committen: Sonst zaehlt checks.mjs die untrackten
+// issues/*.md zum Arbeitspaket der ersten Session — ein Zustand, den ein echtes
+// Projekt nicht hat, weil der Board-Stand dort laengst im Repo liegt.
+function issuesCommitten(dir) {
+  assert.equal(run(dir, "git", ["add", "-A"]).status, 0);
+  assert.equal(run(dir, "git", ["commit", "-q", "-m", "Issues"]).status, 0);
+}
+
+function mitProjekt(fn, optionen = {}) {
+  const dir = setupProjekt(optionen);
+  try {
+    fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const LOG_SESSION = 'echo "$NIGHT_ISSUE_ID" >> sessions.log';
+const CHECKS_RUN = "node .claude/kit/checks.mjs run > /dev/null 2>&1";
+const COMMIT = 'git add -A && git commit -q -m "arbeit (Issue #$NIGHT_ISSUE_ID)"';
+const NACH_IN_REVIEW = 'node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null';
+
+// Der Regelfall einer /implement-next-Session: arbeiten, pruefen, committen, Board
+// bewegen — in genau dieser Reihenfolge, denn die Pruefung misst gegen HEAD und
+// damit dieses eine Arbeitspaket (Issue #426).
+const FAKE_MIT_PRUEFUNG = [
+  LOG_SESSION,
+  'echo arbeit > "kit/work-$NIGHT_ISSUE_ID.txt"',
+  CHECKS_RUN,
+  COMMIT,
+  NACH_IN_REVIEW,
+].join("\n");
+
+// Dieselbe Runde ohne jede Pruefung — die Session hat `run` schlicht nicht gefahren.
+const FAKE_OHNE_PRUEFUNG = [LOG_SESSION, 'echo arbeit > "kit/work-$NIGHT_ISSUE_ID.txt"', COMMIT, NACH_IN_REVIEW].join("\n");
+
+// Eine Session, die nichts veraendert und trotzdem prueft: checks.mjs meldet
+// leeresPaket. Seit Issue #1089 schreibt der Runner vor der Session den Laufstand `laeuft`
+// an die Karte — in diesem Fixture eine versionierte Datei unter issues/. Die Session blendet
+// den Board-Stand fuer git darum aus, sonst zaehlte er als ihre Aenderung.
+const FAKE_LEERES_PAKET = [LOG_SESSION, "git update-index --assume-unchanged issues/*.md", CHECKS_RUN, NACH_IN_REVIEW].join("\n");
+
+function sessions(dir) {
+  const p = join(dir, "sessions.log");
+  return existsSync(p) ? readFileSync(p, "utf-8").trim().split("\n").filter(Boolean) : [];
+}
+
+// --- Die drei Zustaende einer Session ---
+
+test("eine Session mit Zusammenfassung erscheint mit ihren Auslassungen im Lauf-Bericht", () => {
+  mitProjekt((dir) => {
+    const id = readyIssue(dir);
+    issuesCommitten(dir);
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: FAKE_MIT_PRUEFUNG });
+
+    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
+    const zeile = res.stdout.split("\n").find((z) => z.includes(`Issue #${id}`) && z.includes("kit-check"));
+    assert.ok(zeile, `keine Pruef-Zeile fuer Issue #${id} im Bericht:\n${res.stdout}`);
+    assert.match(zeile, /echo kit-check/, "die gelaufene Pruefung fehlt in der Zeile");
+    assert.match(zeile, /gruen/, "das Ergebnis der gelaufenen Pruefung fehlt");
+    assert.match(zeile, /echo frontend-check/, "die ausgelassene Pruefung fehlt in der Zeile");
+    assert.match(zeile, /unberuehrt/, "der Grund der Auslassung fehlt in der Zeile");
+  });
+});
+
+test("eine Session ohne Zusammenfassung bricht den Lauf nicht ab, wird aber als ungeprueft ausgewiesen", () => {
+  mitProjekt((dir) => {
+    const eins = readyIssue(dir, "Eins");
+    const zwei = readyIssue(dir, "Zwei");
+    issuesCommitten(dir);
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: FAKE_OHNE_PRUEFUNG });
+
+    assert.equal(res.status, 0, `eine fehlende Zusammenfassung darf den Lauf nicht abbrechen: ${res.stdout}`);
+    assert.equal(sessions(dir).length, 2, "der Lauf haette mit dem zweiten Issue weitergehen muessen");
+    for (const id of [eins, zwei]) {
+      const zeile = res.stdout.split("\n").find((z) => z.includes(`Issue #${id}`) && /ungeprueft/.test(z));
+      assert.ok(zeile, `Issue #${id} wird nicht als ungeprueft ausgewiesen:\n${res.stdout}`);
+    }
+  });
+});
+
+test("eine Session mit leerem Paket erscheint ausdruecklich als solche, nicht als Leerzeile", () => {
+  mitProjekt((dir) => {
+    const id = readyIssue(dir);
+    issuesCommitten(dir);
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: FAKE_LEERES_PAKET });
+
+    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
+    const zeile = res.stdout.split("\n").find((z) => z.includes(`Issue #${id}`) && /leeres Paket|leeresPaket/.test(z));
+    assert.ok(zeile, `Issue #${id} wird nicht als leeres Paket ausgewiesen:\n${res.stdout}`);
+    assert.match(zeile, /nichts veraendert/, "der Grund 'nichts veraendert' fehlt");
+    assert.doesNotMatch(zeile, /ungeprueft/, "ein leeres Paket ist nicht dasselbe wie eine ungepruefte Session");
+  });
+});
+
+test("eine vor Session-Start liegende alte Zusammenfassung wird der neuen Session nicht zugerechnet", () => {
+  mitProjekt((dir) => {
+    const id = readyIssue(dir);
+    issuesCommitten(dir);
+    // Der Rest eines frueheren Laufs: eine Session, die vor ihrer Pruefung starb,
+    // oder schlicht der Vortag. Ohne Loeschen vor dem Start liesse sie die neue
+    // Session als geprueft erscheinen — das Gegenteil von Kriterium 11.
+    writeFileSync(join(dir, ".claude", "checks-summary.json"), JSON.stringify({
+      basis: "abc1234", geaendert: ["kit/altlast.txt"], bereiche: ["kit"],
+      laufen: [{ cmd: "echo altlast-vom-vortag", grund: "Bereich kit beruehrt", ergebnis: "gruen" }],
+      ausgelassen: [], vollerUmfang: false, leeresPaket: false,
+    }, null, 2) + "\n");
+
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: FAKE_OHNE_PRUEFUNG });
+
+    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
+    assert.doesNotMatch(res.stdout, /altlast-vom-vortag/,
+      "die Zusammenfassung eines frueheren Laufs wurde der neuen Session zugerechnet");
+    const zeile = res.stdout.split("\n").find((z) => z.includes(`Issue #${id}`) && /ungeprueft/.test(z));
+    assert.ok(zeile, `Issue #${id} haette als ungeprueft erscheinen muessen:\n${res.stdout}`);
+  });
+});
+
+test("[night-857] eine waehrend des Pruefens gestorbene Session erscheint als rot, nicht als ungeprueft", () => {
+  // Die gewollte Verschiebung aus Issue #857 (Fachplan #769, AK 4): Bis dahin schrieb
+  // checks.mjs seine Zusammenfassung erst nach der Schleife — ein Lauf, der dazwischen
+  // starb, hinterliess keine Datei und die Session galt als "ungeprueft", also als
+  // ungemessen. Seitdem liegt eine unabgeschlossene Fassung mit "nicht gestartet", und
+  // der Runner sieht, was er sehen soll: eine Pruefung, die nicht durchkam.
+  //
+  // Das Pruefkommando toetet checks.mjs selbst mit `kill -9` — derselbe Tod wie durch die
+  // Uhr oder das Ende der Session. Die PID legt die Session ab, die checks.mjs im
+  // Hintergrund startet (`$!`); das Pruefkommando wartet, bis sie dasteht. Nicht
+  // `$PPID`: In der Git Bash unter Windows ist der Elternprozess eines von einem
+  // Windows-Prozess gestarteten bash fuer die Shell nicht sichtbar, `$PPID` ist dort 1
+  // (Issue #1261). Das Warten zaehlt mit, statt zu schlafen, und gibt nach einer festen
+  // Zahl Runden auf; dann endet das Kommando rot, und der Test zeigt die Zeile.
+  // Die Marke `.gestorben` begrenzt das auf den ERSTEN Lauf: Jeder weitere Aufruf
+  // desselben Kommandos — der Salvage-Vorlauf — laeuft gruen durch, statt den Runner
+  // selbst zu erschlagen.
+  //
+  // Die Session committet hier bewusst NICHT (seit Issue #865): Gaebe es einen Commit,
+  // gehoerte die Zwischenfassung nachweislich nicht zu ihm, und der Runner pruefte
+  // nach — dann stuende im Bericht das Ergebnis der Nachpruefung statt der Zustand,
+  // um den es hier geht. Der Fall mit Commit steht in test/ablauf-night-bericht-nachweis.test.mjs.
+  const buildChecks = [
+    {
+      cmd: "if [ -f .gestorben ]; then exit 0; fi; touch .gestorben; "
+        + "i=0; until [ -s .checkspid ] || [ $i -ge 1000000 ]; do i=$((i+1)); done; kill -9 \"$(cat .checkspid)\"",
+      areas: ["kit"],
+    },
+    FRONTEND_CHECK,
+  ];
+  const checksImHintergrund = "node .claude/kit/checks.mjs run > /dev/null 2>&1 & echo $! > .checkspid; wait $!";
+  // Das Ereignis im Strom: Die Session kam zustande, ihr Exit nach dem Tod von checks.mjs
+  // ist kein Fehlstart (Issue #1088, E13).
+  const fake = [`echo '{"type":"system","subtype":"init"}'`, LOG_SESSION, 'echo arbeit > "kit/work-$NIGHT_ISSUE_ID.txt"', checksImHintergrund].join("\n");
+  mitProjekt((dir) => {
+    const id = readyIssue(dir);
+    issuesCommitten(dir);
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+
+    const zeile = res.stdout.split("\n").find((z) => z.includes(`Issue #${id}`) && /rot/.test(z));
+    assert.ok(zeile, `Issue #${id} erscheint nicht als rot:\n${res.stdout}`);
+    assert.doesNotMatch(zeile, /ungeprueft/,
+      "eine hinterlassene Zwischenfassung ist etwas anderes als eine fehlende Datei");
+    assert.match(zeile, /nicht gestartet/, `das unfertige Kommando fehlt in der Zeile: ${zeile}`);
+  }, { buildChecks });
+});
+
+// --- Der Bericht als Ganzes ---
+
+test("der Lauf-Bericht traegt je Session eine Zeile und darunter eine Summenzeile", () => {
+  mitProjekt((dir) => {
+    const eins = readyIssue(dir, "Eins");
+    const zwei = readyIssue(dir, "Zwei");
+    issuesCommitten(dir);
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: FAKE_MIT_PRUEFUNG });
+
+    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
+    const zeilen = res.stdout.split("\n");
+    const idxEins = zeilen.findIndex((z) => z.includes(`Issue #${eins}`) && z.includes("kit-check"));
+    const idxZwei = zeilen.findIndex((z) => z.includes(`Issue #${zwei}`) && z.includes("kit-check"));
+    const idxSumme = zeilen.findIndex((z) => /Summe/.test(z));
+    assert.ok(idxEins >= 0 && idxZwei >= 0, `nicht beide Sessions haben eine Zeile:\n${res.stdout}`);
+    assert.ok(idxSumme > idxEins && idxSumme > idxZwei,
+      `die Summenzeile fehlt oder steht nicht unter den Session-Zeilen:\n${res.stdout}`);
+    assert.match(zeilen[idxSumme], /2 Session/, "die Summenzeile nennt nicht beide Sessions");
+  });
+});
+
+// --- Salvage: der Umfang, den auch das Commit-Gate bezeugt ---
+
+test("[night-919] Salvage faehrt den Abschlussumfang von checks.mjs: beruehrte Bereiche, ohne spaetere Stufen", () => {
+  // Verhaltensnachweis statt Quelltext-Grep: verifyChecksForSalvage ist nicht
+  // exportiert. Alle Pruefungen protokollieren ihre Ausfuehrung; die Session fasst nur
+  // den Bereich 'kit' an.
+  //
+  // Drei Aussagen in einem Lauf: Die BEREICHSauswahl greift jetzt (der unberuehrte
+  // Bereich 'frontend' laeuft nicht mehr mit), die STUFENauswahl ebenso (der
+  // Push-Eintrag laeuft nicht, Plan #753, E13), und der Salvage faehrt den Umfang des
+  // Abschlusses, den er nachvollzieht — ohne `nichtBeimAbschluss` und ohne Guetemessung
+  // (Issue #950, Plan #944, E14).
+  //
+  // Die Bereichsauswahl ist die Aenderung aus Issue #919 und hebt Entscheidung A6 des
+  // Plans #421 auf (bis dahin: [night-48], 'ohne Bereichsauswahl'). Die Vorpruefung geht
+  // seitdem ueber `checks.mjs run`, weil nur dieser Lauf den Nachweis hinterlaesst, den
+  // das Commit-Gate liest — und mit dem Weg kommt dessen Auswahl. Eine eigene, weitere
+  // Auswahl waere wieder eine zweite Wahrheit ueber 'gruen', und genau daran scheiterte
+  // die Rettung im Vorfall vom 2026-09-24.
+  const buildChecks = [
+    { cmd: "echo kit >> checklauf.log", areas: ["kit"] },
+    { cmd: "echo frontend >> checklauf.log", areas: ["frontend"] },
+    { cmd: "echo push >> checklauf.log", stufe: "push" },
+    { cmd: "echo spaet >> checklauf.log", areas: ["kit"], nichtBeimAbschluss: "zusammenspiel" },
+    {
+      cmd: "echo guete >> checklauf.log",
+      areas: ["kit"],
+      guete: { muster: String.raw`\((\d+)%\)`, marke: 80 },
+    },
+  ];
+  mitProjekt((dir) => {
+    const id = readyIssue(dir);
+    issuesCommitten(dir);
+    // Die regulaere Runde hinterlaesst unkommittete Arbeit und bewegt das Board
+    // nicht — das Schadensbild aus Issue #167, das den Salvage ausloest.
+    const fake = [
+      LOG_SESSION,
+      'if [ -n "$NIGHT_SALVAGE" ]; then',
+      `  ${COMMIT} && ${NACH_IN_REVIEW}`,
+      "else",
+      '  echo arbeit > "kit/work-$NIGHT_ISSUE_ID.txt"',
+      "fi",
+    ].join("\n");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
+    assert.match(res.stdout, /SALVAGE-VERSUCH gestartet/, "der Salvage-Pfad lief nicht");
+    const laeufe = readFileSync(join(dir, "checklauf.log"), "utf-8").trim().split("\n");
+    assert.deepEqual(laeufe, ["kit"],
+      `nur die Pruefung des beruehrten Bereichs haette laufen duerfen, tatsaechlich: ${laeufe.join(", ")}`);
+    assert.ok(board(dir, "issue", "list", "--status", "in_review").some((i) => String(i.id) === id),
+      "das gerettete Issue haette in In review landen muessen");
+  }, { buildChecks });
+});

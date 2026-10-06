@@ -16,14 +16,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const BEFUNDE = join(repoRoot, "kit", "befunde.mjs");
+import { aufrufen } from "../kit/befunde.mjs";
 
 /** Eine Protokollzeile in der Form, die `buchen` schreibt. */
 function zeile({ zeitpunkt = "2026-09-20T10:00:00.000Z", stufe = "plan", karte = "42", rolle = "pruefbarkeit", art = "luecke", marke = "WICHTIG", vergleichsstand = "-" } = {}) {
@@ -31,7 +28,7 @@ function zeile({ zeitpunkt = "2026-09-20T10:00:00.000Z", stufe = "plan", karte =
 }
 
 function befunde(dir, ...args) {
-  return spawnSync(process.execPath, [BEFUNDE, ...args], { cwd: dir, encoding: "utf-8" });
+  return aufrufen(args, { cwd: dir });
 }
 
 /** Ein Wegwerf-Projekt mit optionalem Protokoll und optionaler Vorschlagsdatei. */
@@ -172,20 +169,20 @@ test("[befunde-auswerten] je Art stehen Vorkommen und Verteilung ueber die Stufe
 
 test("[befunde-auswerten] der Bericht nennt je Art den Stand eines vermerkten Vorschlags", () => {
   const zeilen = [
-    ...Array.from({ length: 3 }, () => zeile({ art: "luecke" })),
-    ...Array.from({ length: 2 }, () => zeile({ art: "doppelung" })),
+    ...Array.from({ length: 3 }, () => zeile({ art: "form" })),
+    ...Array.from({ length: 2 }, () => zeile({ art: "konvention" })),
   ];
   const vorschlaege = {
-    luecke: { karte: "812", ideaId: null, stand: "offen", zaehlerstand: 3, nullpunkt: 0 },
-    doppelung: { karte: "813", ideaId: null, stand: "abgelehnt", zaehlerstand: 2, nullpunkt: 2 },
+    form: { karte: "812", ideaId: null, stand: "offen", zaehlerstand: 3, nullpunkt: 0 },
+    konvention: { karte: "813", ideaId: null, stand: "abgelehnt", zaehlerstand: 2, nullpunkt: 2 },
   };
   mitProjekt({ zeilen, vorschlaege }, (dir) => {
     const stand = auswerten(dir);
 
-    assert.equal(stand.arten.find((a) => a.art === "luecke").vorschlag.stand, "offen");
-    assert.equal(stand.arten.find((a) => a.art === "luecke").vorschlag.karte, "812");
-    assert.equal(stand.arten.find((a) => a.art === "doppelung").vorschlag.stand, "abgelehnt");
-    assert.equal(stand.arten.find((a) => a.art === "form").vorschlag, null);
+    assert.equal(stand.arten.find((a) => a.art === "form").vorschlag.stand, "offen");
+    assert.equal(stand.arten.find((a) => a.art === "form").vorschlag.karte, "812");
+    assert.equal(stand.arten.find((a) => a.art === "konvention").vorschlag.stand, "abgelehnt");
+    assert.equal(stand.arten.find((a) => a.art === "sicherheit").vorschlag, null);
 
     const text = abschnitt(bericht(dir), "## Arten");
     assert.match(text, /offen/, "der offene Vorschlag steht nicht im Bericht");
@@ -230,10 +227,10 @@ test("[befunde-auswerten] fehlerhafte Protokollzeilen werden gezaehlt, nicht ged
 
 test("[befunde-befund] mit Vorkommen gibt der Befund je Art eine Zeile mit Zahl und Vorschlagsstand", () => {
   const zeilen = [
-    ...Array.from({ length: 3 }, () => zeile({ art: "luecke" })),
+    ...Array.from({ length: 3 }, () => zeile({ art: "form" })),
     zeile({ art: "test", stufe: "issue" }),
   ];
-  const vorschlaege = { luecke: { karte: "812", ideaId: null, stand: "offen", zaehlerstand: 3, nullpunkt: 0 } };
+  const vorschlaege = { form: { karte: "812", ideaId: null, stand: "offen", zaehlerstand: 3, nullpunkt: 0 } };
   mitProjekt({ zeilen, vorschlaege }, (dir) => {
     auswerten(dir);
 
@@ -243,10 +240,25 @@ test("[befunde-befund] mit Vorkommen gibt der Befund je Art eine Zeile mit Zahl 
     const [kopf, ...rest] = res.stdout.split("\n");
     assert.match(kopf, /Auswertung vom \d{4}-\d{2}-\d{2}T[\d:.]+Z/, `die Kopfzeile nennt das Datum nicht: ${kopf}`);
     const block = rest.join("\n");
-    assert.match(block, /luecke/, "die Art 'luecke' fehlt im Befundblock");
+    assert.match(block, /form/, "die Art 'form' fehlt im Befundblock");
     assert.match(block, /3/, "die Zahl der Vorkommen fehlt");
     assert.match(block, /offen/, "der Stand des Vorschlags fehlt");
     assert.match(block, /test/, "die zweite Art fehlt im Befundblock");
+  });
+});
+
+test("[befunde-befund] eine Urteils-Art nennt 'kein Vorschlag (Urteils-Art)' statt eines offenen Vorschlags", () => {
+  const zeilen = Array.from({ length: 3 }, () => zeile({ art: "luecke" }));
+  const vorschlaege = { luecke: { karte: "812", ideaId: null, stand: "offen", zaehlerstand: 3, nullpunkt: 0 } };
+  mitProjekt({ zeilen, vorschlaege }, (dir) => {
+    auswerten(dir);
+
+    const { stdout } = befunde(dir, "befund");
+
+    const zeileLuecke = stdout.split("\n").find((z) => /`luecke`/.test(z));
+    assert.ok(zeileLuecke, `die Art 'luecke' fehlt im Befundblock:\n${stdout}`);
+    assert.match(zeileLuecke, /kein Vorschlag \(Urteils-Art\)/);
+    assert.doesNotMatch(zeileLuecke, /offen/, "der alte Vermerk erscheint nicht als offener Vorschlag");
   });
 });
 

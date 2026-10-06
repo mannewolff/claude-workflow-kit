@@ -1,0 +1,17 @@
+# Eingebaute Brueche der Art kommandos in Markdown (Issue #1159, Plan #1150 E17)
+
+Die Endung .txt haelt die Datei aus der Dateiauswahl des Bestands; gelesen wird sie nur ueber --wurzel.
+
+## Bruch: $TMPDIR ohne Rueckfall (#1139)
+
+```bash
+cat > "$TMPDIR/bericht.md"
+```
+
+## Gegenbeispiel: $TMPDIR mit Rueckfall im selben Abschnitt
+
+Bleibt die Ausgabe von `printenv TMPDIR` leer (Git Bash unter Windows), gilt `cygpath -m "$TEMP"`.
+
+```bash
+cat > "$TMPDIR/bericht.md"
+```

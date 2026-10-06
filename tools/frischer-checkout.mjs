@@ -58,7 +58,8 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { vergleicheText, worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen } from "../kit/night.mjs";
+import { vergleicheText } from "../kit/night/grundlagen.mjs";
+import { worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen } from "../kit/night/kitstand.mjs";
 
 /** Pfade, die bestimmungsgemaess fehlen duerfen, je mit Grund (E9). */
 export const AUSNAHMEN = {
@@ -156,7 +157,7 @@ function endeVon(res) {
 /** Die letzten zehn Zeilen der Ausgabe als Folgezeilen eines Grundes, oder nichts. */
 function ausgabeEnde(res) {
   const ausgabe = `${res.stdout || ""}${res.stderr || ""}${res.error ? String(res.error) : ""}`.trim();
-  return ausgabe ? "\n" + ausgabe.split("\n").slice(-10).join("\n") : "";
+  return ausgabe ? "\n" + ausgabe.split(/\r?\n/).slice(-10).join("\n") : "";
 }
 
 /** Das `installCommand` der versionierten Config des frischen Stands, falls gesetzt. */
@@ -188,7 +189,7 @@ function suiteUmgebung(frisch, spurdatei) {
 
 function zeilenAus(datei) {
   if (!existsSync(datei)) return [];
-  return readFileSync(datei, "utf-8").split("\n").filter(Boolean).map((z) => JSON.parse(z));
+  return readFileSync(datei, "utf-8").split(/\r?\n/).filter(Boolean).map((z) => JSON.parse(z));
 }
 
 function merke(karte, datei, wert) {

@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { pickReviewers } from "../kit/board.mjs";
+import { pickReviewers } from "../kit/board/issue-review.mjs";
 import { waehleReviewer } from "../kit/einstellungen.mjs";
 
 const REVIEWER = [

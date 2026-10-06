@@ -38,7 +38,7 @@ rmSync(leer, { recursive: true, force: true });
 
 test("[night-6] ohne Nachbarn gelingt das Laden von night.mjs — erst der Aufruf wirft", () => {
   assert.equal(typeof night.nachbarn.fenceLauf, "function");
-  assert.throws(() => night.nachbarn.fenceLauf(), /board\.mjs fehlt neben night\.mjs/);
+  assert.throws(() => night.nachbarn.fenceLauf(), /board\/dokumente\.mjs fehlt neben night\.mjs/);
 });
 
 test("[night-6] ohne board.mjs setzt boardUmgebung kein Budget (Issue #1067)", () => {

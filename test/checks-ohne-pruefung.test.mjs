@@ -11,14 +11,14 @@
 //   - den Vorrang (E3): trifft eine Datei beide Musterarten, gewinnt `checkAreas`,
 //   - die Kopplung ans Commit-Gate (E2): `geaendert` und `hashes` bleiben, wie
 //     sie waren. Faellt die Datei dort heraus, weist das Gate jeden Commit ab,
-//     der sie mitbringt — die Beschleunigung haette das Gate zugemauert.
+//     der sie mitbringt — die Beschleunigung haette das Gate zugemauert. Den
+//     Commit durch das Gate selbst belegt `ablauf-checks-gate.test.mjs` (Issue #1212).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
   mitRepo, plan, run, datei, kommandos, eintrag, zusammenfassung,
-  git, gate, gateEinbauen,
 } from "./helpers/checks-repo.mjs";
 
 const GRUND = "Release-Protokoll; keine Pruefung liest seinen Inhalt";
@@ -40,8 +40,8 @@ const CONFIG = {
   ohnePruefung: [{ muster: "CHANGELOG.md", grund: GRUND }],
 };
 
-test("eine Datei mit ohnePruefung-Treffer zaehlt weder als beruehrt noch als ohneZuordnung", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("eine Datei mit ohnePruefung-Treffer zaehlt weder als beruehrt noch als ohneZuordnung", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "CHANGELOG.md", "## 1.0.1\n");
 
     const ergebnis = plan(dir);
@@ -54,10 +54,10 @@ test("eine Datei mit ohnePruefung-Treffer zaehlt weder als beruehrt noch als ohn
   });
 });
 
-test("ohne konfiguriertes ohnePruefung bleibt die Liste leer und die Datei zieht den vollen Umfang", () => {
+test("ohne konfiguriertes ohnePruefung bleibt die Liste leer und die Datei zieht den vollen Umfang", async () => {
   const { ohnePruefung, ...ohneFeld } = CONFIG;
   assert.ok(ohnePruefung, "die Vorlage traegt das Feld, das hier fehlen soll");
-  mitRepo({ config: ohneFeld }, (dir) => {
+  await mitRepo({ config: ohneFeld }, async (dir) => {
     datei(dir, "CHANGELOG.md", "## 1.0.1\n");
 
     const ergebnis = plan(dir);
@@ -68,35 +68,26 @@ test("ohne konfiguriertes ohnePruefung bleibt die Liste leer und die Datei zieht
   });
 });
 
-test("die Datei bleibt in geaendert und in hashes — das Commit-Gate laesst sie durch (E2)", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
-    // Erst committen, dann aendern: Sonst zaehlten Hook und Gate selbst als
-    // Aenderung dieses Pakets und die Zusammenfassung spraeche ueber sie mit.
-    gateEinbauen(dir);
-    git(dir, "add", "-A");
-    git(dir, "commit", "-q", "-m", "gate");
+test("die Datei bleibt in geaendert und in hashes — der Nachweis fuer das Commit-Gate (E2)", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "CHANGELOG.md", "## 1.0.1\n");
 
-    const res = run(dir);
+    const res = await run(dir);
     assert.equal(res.status, 0, res.stderr);
 
     const z = zusammenfassung(dir);
     assert.deepEqual(z.geaendert, ["CHANGELOG.md"], "die Datei bleibt im Nachweis");
     assert.deepEqual(Object.keys(z.hashes), ["CHANGELOG.md"], "und traegt weiter ihren Blob-Hash");
     assert.deepEqual(z.ohnePruefung, [{ pfad: "CHANGELOG.md", grund: GRUND }]);
-
-    git(dir, "add", "CHANGELOG.md");
-    const tor = gate(dir, "pre-commit");
-    assert.equal(tor.status, 0, `das Gate weist den Commit ab: ${tor.stdout}${tor.stderr}`);
   });
 });
 
-test("trifft eine Datei beide Musterarten, gewinnt checkAreas (E3)", () => {
+test("trifft eine Datei beide Musterarten, gewinnt checkAreas (E3)", async () => {
   const config = {
     ...CONFIG,
     ohnePruefung: [{ muster: "frontend/**", grund: "zu weit geratenes Muster" }],
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
     const ergebnis = plan(dir);
@@ -108,8 +99,8 @@ test("trifft eine Datei beide Musterarten, gewinnt checkAreas (E3)", () => {
   });
 });
 
-test("eine Datei ohne jedes Muster zieht weiter den vollen Umfang, auch neben einer pruefungsfreien", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("eine Datei ohne jedes Muster zieht weiter den vollen Umfang, auch neben einer pruefungsfreien", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "CHANGELOG.md", "## 1.0.1\n");
     datei(dir, "notizen.txt");
 
@@ -125,11 +116,11 @@ test("eine Datei ohne jedes Muster zieht weiter den vollen Umfang, auch neben ei
   });
 });
 
-test("run nennt jede pruefungsfreie Datei mit ihrem Grund, vor den Auslassungen", () => {
-  mitRepo({ config: CONFIG }, (dir) => {
+test("run nennt jede pruefungsfreie Datei mit ihrem Grund, vor den Auslassungen", async () => {
+  await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "CHANGELOG.md", "## 1.0.1\n");
 
-    const res = run(dir);
+    const res = await run(dir);
     assert.equal(res.status, 0, res.stderr);
 
     const zeile = `ohne Pruefung: CHANGELOG.md — ${GRUND}`;
@@ -141,16 +132,16 @@ test("run nennt jede pruefungsfreie Datei mit ihrem Grund, vor den Auslassungen"
   });
 });
 
-test("die pruefungsfreien Muster stehen im Config-Fingerabdruck", () => {
+test("die pruefungsfreien Muster stehen im Config-Fingerabdruck", async () => {
   // Sonst uebernaehme der naechste Lauf auf unveraendertem Stand das Ergebnis des
   // vorigen (Issue #863) — und zwar eines, das unter einer anderen Auswahl entstand.
   // Gehasht wird, woraus die Auswahl entsteht; seit diesem Paket gehoert `ohnePruefung`
   // dazu.
-  const hashVon = (config) => {
+  const hashVon = async (config) => {
     let wert = null;
-    mitRepo({ config }, (dir) => {
+    await mitRepo({ config }, async (dir) => {
       datei(dir, "CHANGELOG.md", "## 1.0.1\n");
-      const res = run(dir);
+      const res = await run(dir);
       assert.equal(res.status, 0, res.stderr);
       wert = zusammenfassung(dir).configHash;
     });
@@ -158,5 +149,5 @@ test("die pruefungsfreien Muster stehen im Config-Fingerabdruck", () => {
   };
 
   const anders = { ...CONFIG, ohnePruefung: [{ muster: "CHANGELOG.md", grund: "ein anderer Grund" }] };
-  assert.notEqual(hashVon(CONFIG), hashVon(anders), "ein anderer Grund ist eine andere Config");
+  assert.notEqual(await hashVon(CONFIG), await hashVon(anders), "ein anderer Grund ist eine andere Config");
 });

@@ -166,9 +166,10 @@ test("[einstellungen-7] fuer ein bekanntes zusammengesetztes Feld entsteht kein 
   assert.deepEqual(rufer, ["elemente", "redaktorText"]);
   assert.equal(TEILE.filter((t) => t.redaktor === "text").length, 1, "mehr als ein Teil zeigt die Dateischreibweise");
   // Benannte Ausnahmen neben night.modelle: bekannte zusammengesetzte Felder, die bewusst in
-  // Dateischreibweise bleiben (testAblagen, Issue #1032, A13 — zwei Eintragsformen).
+  // Dateischreibweise bleiben (testAblagen, Issue #1032, A13 — zwei Eintragsformen;
+  // pushPruefung, Issue #1216 — ein fester Wert oder ein Objekt).
   const textTeil = TEILE.find((t) => t.redaktor === "text");
-  assert.deepEqual(textTeil.pfade, ["night.modelle", "night.stufenRegel", "testAblagen"]);
+  assert.deepEqual(textTeil.pfade, ["night.modelle", "night.stufenRegel", "testAblagen", "pushPruefung"]);
   assert.equal(THEMEN.testAblagen, "Prüfungen");
   for (const pfad of ["buildChecks", "checkAreas", "reviewStufen", "night.kette", "issueReview.reviewers", "issueReview.pairs", "triggers"]) {
     const teil = TEILE.find((t) => t.pfade.includes(pfad));

@@ -84,6 +84,18 @@ Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt f
 Gelesen werden:
 - `mainBranch`: Ziel-Branch (Default: `main`)
 - `buildChecks`: Liste der Pflicht-Checks (dieselben, die `/local-check` ausführt)
+- `pushPruefung`: wo der volle Lauf stattfindet — `"lokal"` ist die Vorgabe, ein Objekt
+  `{ "ort": "buildDienst", "zweig": "<name>" }` verlegt ihn in den Build-Dienst. Der Skill
+  liest den Wert nicht selbst aus der Config, sondern aus dem Feld `pushPruefung` von:
+
+  ```bash
+  node .claude/kit/checks.mjs plan --stufe push
+  ```
+
+  Bei `"lokal"` gelten die Schritte unten unverändert. Bei `buildDienst` ersetzt der
+  Abschnitt „Weg über den Build-Dienst" den Prüflauf in Schritt 5 und den Push in
+  Schritt 7; alle anderen Schritte bleiben. Endet der Aufruf mit einem Fehler (ungültiger
+  Wert), hält der Skill an — kein Rückfall auf den lokalen Weg.
 
 ### 2. Stand prüfen
 
@@ -210,6 +222,11 @@ dann über das letzte Stück statt über den Batch, der gleich hinausgeht.
   und der Bericht sagt das: Der Bump ist seit Issue #656 idempotent, ein neuer Anlauf
   erzeugt ihn wieder — ein stehengebliebener Worktree wäre genau der Rest, den dieser Weg
   beseitigt.
+- **Hinweise werden gezeigt, nicht gewertet.** Eine Hinweis-Prüfung endet grün und
+  schreibt ihre Funde als `hinweis: <Datei und Grund>` in den Block `Fuer den
+  Abschlussbericht:`. Die `hinweis:`-Zeilen gehen unverändert in den Bericht an den
+  Menschen und halten weder Commit noch Push an — sie verlangen keine Freigabe
+  (Issue #1156).
 - Ist `buildChecks` leer: Hinweis „Keine buildChecks konfiguriert." und weiter zu
   Schritt 6 (kein Abbruch).
 
@@ -272,6 +289,19 @@ Push fährt allein die Commits aus Schritt 2.
 
 > `Schritt 7 von 9 — Push (laeuft)`
 
+**Vor-Push-Schritt.** Nennt `RELEASING.md` einen Vor-Push-Schritt, fährt der Skill ihn
+nach dem Commit (Schritt 6) und vor dem Push, im Worktree, **im Hintergrund**, und wartet
+auf dessen Ende — er kann länger laufen, als ein Werkzeugaufruf im Vordergrund darf, und
+endet nach seiner eigenen Frist von selbst. Seine Fortschrittszeilen und seine Schlusszeile
+zeigt der Skill, bevor er pusht. Er ist kein eigener Schritt: Die Zählung bleibt `von 9`.
+Nennt `RELEASING.md` keinen, oder gibt es keine `RELEASING.md`, entfällt er ersatzlos.
+
+- Exit 0 — weiter zum Push.
+- Exit 1 — die Prüfung ist rot. Der Skill zeigt das Ergebnis und fragt wörtlich:
+  „Vor-Push-Prüfung rot. Trotzdem pushen? (ja/nein)“ Nur `ja` pusht;
+  alles außer „ja“ heißt kein Push, weiter mit Schritt 8.
+- Jeder andere Exit — Halt ohne Push, mit der Meldung des Werkzeugs; weiter mit Schritt 8.
+
 Aus dem Worktree, der auf einem losgelösten `HEAD` steht:
 
 ```bash
@@ -286,8 +316,8 @@ der Lauf mit dieser Meldung, und der Mensch entscheidet.
 
 > `Schritt 8 von 9 — Rueckweg und Abbau (laeuft)`
 
-Die drei Schritte laufen **immer**, auch nach einem roten Prüflauf, einem Rebase-Konflikt
-oder einem abgewiesenen Push — ein liegengebliebener Worktree ist genau der Rest, den
+Die drei Schritte laufen **immer**, auch nach einem roten Prüflauf, einem Rebase-Konflikt,
+einem Halt im Vor-Push-Schritt oder einem abgewiesenen Push — ein liegengebliebener Worktree ist genau der Rest, den
 dieser Weg beseitigt.
 
 Erst das, was in der Hauptkopie weiterzählt:
@@ -346,10 +376,98 @@ den Bericht — ein Lauf ohne Commit sieht sonst aus wie ein Lauf mit Commit.
 `<mainBranch>` nachgezogen wurde oder mit welchem Grund nicht, und dass der
 Haupt-Working-Tree unberührt geblieben ist.
 
-**CI-Hinweis, abhängig vom `codeHost`.** Bei `github` und `gitlab` gehört in den Abschlussbericht: „Falls der Push einen CI-Lauf auslöst, wird er hier nicht gegatet; `merge production` prüft den Commit." Bei `local` entfällt der Hinweis ersatzlos. Der Zustand der CI wird hier **nicht abgefragt** — der Lauf zum eben gepushten Commit ist Sekunden später nie fertig, ein Gate müsste warten, und `push main` ist der häufige Trigger. Geprüft wird die CI am Release, in `/merge-production` (Issue #316).
+**CI-Hinweis, abhängig vom `codeHost`.** Bei `github` und `gitlab` gehört in den Abschlussbericht: „Falls der Push einen CI-Lauf auslöst, wird er hier nicht gegatet; `merge production` prüft den Commit." Einzige Ausnahme ist die Vor-Push-Prüfung aus Schritt 7, wenn `RELEASING.md` eine nennt: Ihr Ergebnis lag vor dem Push vor, und der Bericht nennt es. Bei `local` entfällt der Hinweis ersatzlos. Der Zustand der CI wird hier **nicht abgefragt** — der Lauf zum eben gepushten Commit ist Sekunden später nie fertig, ein Gate müsste warten, und `push main` ist der häufige Trigger. Geprüft wird die CI am Release, in `/merge-production` (Issue #316).
 
 Hinweis auf nächsten Schritt:
 > "Commit-Batch gepusht. Wenn der Test-Server automatisch zieht: dort prüfen. Dann auf Wunsch \`merge production\` für den PR nach production."
+
+## Weg über den Build-Dienst (`pushPruefung`)
+
+Gilt nur, wenn `checks.mjs plan --stufe push` in Schritt 1 `pushPruefung` als Objekt mit
+`"ort": "buildDienst"` meldet (Issue #1216, Plan #1199 E14). Der volle Lauf findet dann im
+Build-Dienst des Projekts statt statt auf diesem Rechner. **Die Pflicht ist dieselbe:**
+Grün vor dem Push auf `<mainBranch>`, ein Rot hält an, `productionBranch` bleibt
+unberührt. `<zweig>` ist der Wert aus `pushPruefung.zweig`. Schritte, Zählung `von 9` und
+Fortschrittszeilen bleiben; anders sind nur Schritt 5 und Schritt 7.
+
+**Was der Build-Dienst fahren muss.** Ein Push auf `<zweig>` startet dort den Lauf der
+Stufe `push` über den Batch:
+
+```bash
+node .claude/kit/checks.mjs run --stufe push --since "$(git merge-base HEAD origin/<mainBranch>)"
+```
+
+Diesen Job richtet das Projekt in seinem Build-Dienst ein — dieser Skill legt ihn nicht an.
+Weil der Lauf dort `checks.mjs` fährt, steht im Build-Log bei Rot dieselbe Zeile
+`Verursacher (<cmd>): …` wie beim lokalen Lauf.
+
+**Schritt 5 auf diesem Weg — Nachweis für den Commit.** Der volle Lauf fällt hier weg. Das
+Commit-Gate verlangt für die Release-Dateien aus Schritt 4 trotzdem einen grünen Lauf, der
+sie gesehen hat. Ihn liefert ein Lauf der Paketstufe über genau diese Dateien, im Worktree:
+
+```bash
+node .claude/kit/checks.mjs run --since HEAD
+```
+
+Rot hält an wie in Schritt 5: kein Commit, kein Push, weiter mit Schritt 8. Hat Schritt 4
+nichts erzeugt, meldet er `leeresPaket`, und Schritt 6 entfällt wie beschrieben.
+
+**Schritt 7 auf diesem Weg — Push über den Prüfzweig.** Der Vor-Push-Schritt aus
+`RELEASING.md` läuft wie beschrieben davor. Dann, aus dem Worktree:
+
+1. Den Stand auf den Prüfzweig pushen:
+
+   ```bash
+   git push origin HEAD:<zweig>
+   ```
+
+   Wird er abgewiesen, liegt auf `<zweig>` noch ein fremder Stand — der Lauf endet mit
+   dieser Meldung, weiter mit Schritt 8. Kein `--force`.
+2. Warten, bis der Build-Dienst fertig ist. `<sha>` ist `git rev-parse HEAD` im Worktree:
+
+   ```bash
+   node .claude/kit/board.mjs code ci-status --commit <sha>
+   ```
+
+   Der Aufruf wird alle 30 Sekunden wiederholt, solange `status` `laeuft` meldet, mit
+   einer **Frist von 60 Minuten**. Unmittelbar nach dem Push meldet er `laeuft`, weil der
+   Lauf noch nicht sichtbar ist — das ist kein Fehler. Läuft die Frist ab, ist das ein
+   Fehlschlag: kein Push auf `<mainBranch>`, weiter mit Schritt 8. Ein Fehlschlag des
+   Aufrufs selbst (Netz, Anmeldung) zählt genauso.
+3. `<mainBranch>` nur bei `gruen` pushen — mit demselben Kommando wie in Schritt 7:
+
+   ```bash
+   git push origin HEAD:<mainBranch>
+   ```
+
+   Für ihn gilt der Absatz zu `--force` und zum abgewiesenen Push aus Schritt 7.
+
+**Bei `rot` hält der Skill an wie bei einem roten Lauf in Schritt 5:** kein Push auf
+`<mainBranch>`, Meldung, welcher Job rot ist (die Liste `jobs` des Aufrufs), und die
+**Adresse des Build-Logs** zum Commit `<sha>` — dort stehen die rote Prüfung und die Zeile
+`Verursacher (<cmd>): …`. Bei `codeHost` `github` ist das
+`https://github.com/<repo>/commit/<sha>/checks`, bei `gitlab` die Pipeline-Seite des
+Projekts zum Commit (`<projekt-url>/-/pipelines?sha=<sha>`); `<repo>` nennt
+`node .claude/kit/board.mjs code repo-name`. Die Reparatur ist eine neue Karte, wie in
+Schritt 5.
+
+**Meldet der Aufruf `keine`**, hat das Projekt keinen Build-Dienst (`codeHost` `local`).
+Das ist ein Widerspruch in der Config: kein Push auf `<mainBranch>`, Meldung mit diesem
+Grund, weiter mit Schritt 8.
+
+**Schritt 8 auf diesem Weg** löscht zusätzlich den Prüfzweig, sobald er gepusht wurde — vor
+dem Rückweg, auch nach Rot, Fristablauf oder abgewiesenem Push:
+
+```bash
+git push origin --delete <zweig>
+```
+
+So beginnt der nächste Lauf auf einem leeren Prüfzweig und braucht nie `--force`. Scheitert
+das Löschen, steht es in einer Zeile im Bericht und hält den Abbau nicht auf.
+
+**Schritt 9 auf diesem Weg** nennt in der Nachweiszeile statt der lokalen Prüfungen den
+Build-Dienst: `<hash> — gedeckt von: Build-Dienst, Prüfzweig <zweig> (gruen, <Zeitpunkt>)`.
+Der CI-Hinweis entfällt — die CI hat vor dem Push gegatet.
 
 ## Was dieser Skill nicht tut
 
@@ -361,7 +479,9 @@ Hinweis auf nächsten Schritt:
   der Haupt-Tree schmutzig ist (Schritt 8)
 - Kein zweiter Commit und kein `--amend` auf diesem Weg
 - Keine Force-Pushes
-- Kein Push auf `production` oder andere Branches
+- Kein Push auf `production` oder andere Branches — ausgenommen der Vorab-Zweig, den ein Vor-Push-Schritt selbst anlegt und löscht
+- Kein Push auf den Prüfzweig außerhalb des Wegs über den Build-Dienst, und auf ihm kein
+  Push auf `<mainBranch>` ohne grünes Ergebnis des Build-Dienstes
 - Kein Push ohne vorherige Bestätigung durch den Menschen (Trigger-Phrase)
 - Kein automatischer Push nach Commit, nach grünem Check oder nach Review
 - Kein Halt wegen des Aufwands-, des Wirksamkeits- oder des Befunds zu den

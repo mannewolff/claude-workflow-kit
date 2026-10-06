@@ -22,7 +22,7 @@ function bereich(ausgabe, name) {
   return treffer;
 }
 
-test("[checks-1004] bereiche nennt je Bereich Muster und die Zahl der nennenden Paketstufen-Kommandos", () => {
+test("[checks-1004] bereiche nennt je Bereich Muster und die Zahl der nennenden Paketstufen-Kommandos", async () => {
   const config = {
     buildChecks: [
       "echo string",
@@ -33,7 +33,7 @@ test("[checks-1004] bereiche nennt je Bereich Muster und die Zahl der nennenden 
     ],
     checkAreas: { kern: ["src/**", "lib/*.js"], doku: ["docs/**"], leer: ["nie/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     const ausgabe = bereiche(dir);
 
     assert.equal(ausgabe.kommandos, 2, "nur bereichsgebundene Kommandos der Paketstufe zaehlen");
@@ -45,17 +45,17 @@ test("[checks-1004] bereiche nennt je Bereich Muster und die Zahl der nennenden 
   });
 });
 
-test("[checks-1004] bei zwei Kommandos ist kein Bereich hervorgehoben, auch einer in beiden nicht", () => {
+test("[checks-1004] bei zwei Kommandos ist kein Bereich hervorgehoben, auch einer in beiden nicht", async () => {
   const config = {
     buildChecks: [{ cmd: "echo a", areas: ["kern"] }, { cmd: "echo b", areas: ["kern"] }],
     checkAreas: { kern: ["src/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     assert.equal(bereich(bereiche(dir), "kern").hervorgehoben, false);
   });
 });
 
-test("[checks-1004] ab drei Kommandos ist ein Bereich in allen oder allen bis auf eines hervorgehoben", () => {
+test("[checks-1004] ab drei Kommandos ist ein Bereich in allen oder allen bis auf eines hervorgehoben", async () => {
   const config = {
     buildChecks: [
       { cmd: "echo a", areas: ["kern", "breit"] },
@@ -64,7 +64,7 @@ test("[checks-1004] ab drei Kommandos ist ein Bereich in allen oder allen bis au
     ],
     checkAreas: { kern: ["src/**"], breit: ["**/*.mjs"], doku: ["docs/**"] },
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     const ausgabe = bereiche(dir);
     assert.equal(bereich(ausgabe, "breit").hervorgehoben, true, "3 von 3");
     assert.equal(bereich(ausgabe, "kern").hervorgehoben, true, "2 von 3 ist alle bis auf eines");
@@ -73,7 +73,7 @@ test("[checks-1004] ab drei Kommandos ist ein Bereich in allen oder allen bis au
   });
 });
 
-test("[checks-1004] ein gekoppelter Bereich bleibt hervorgehoben und traegt seinen Grund", () => {
+test("[checks-1004] ein gekoppelter Bereich bleibt hervorgehoben und traegt seinen Grund", async () => {
   const config = {
     buildChecks: [
       { cmd: "echo a", areas: ["board"] },
@@ -83,20 +83,20 @@ test("[checks-1004] ein gekoppelter Bereich bleibt hervorgehoben und traegt sein
     checkAreas: { board: ["kit/board.mjs"], doku: ["docs/**"] },
     gekoppelteBereiche: [{ bereich: "board", grund: "Fast jede Testgruppe laedt kit/board.mjs." }],
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     const board = bereich(bereiche(dir), "board");
     assert.equal(board.hervorgehoben, true);
     assert.equal(board.kopplungsgrund, "Fast jede Testgruppe laedt kit/board.mjs.");
   });
 });
 
-test("[checks-1004] das Inventar trennt freigestellte von unzugeordneten versionierten Dateien", () => {
+test("[checks-1004] das Inventar trennt freigestellte von unzugeordneten versionierten Dateien", async () => {
   const config = {
     buildChecks: [{ cmd: "echo a", areas: ["kern"] }],
     checkAreas: { kern: ["src/**", ".claude/workflow.config.json"] },
     ohnePruefung: [{ muster: "docs/**", grund: "reine Doku" }, { muster: "src/**", grund: "wirkungslos" }],
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
     datei(dir, "docs/x.md");
     datei(dir, "lose.txt");
@@ -106,18 +106,43 @@ test("[checks-1004] das Inventar trennt freigestellte von unzugeordneten version
 
     const { inventar } = bereiche(dir);
 
-    // Versioniert: .gitignore, README.md, .claude/workflow.config.json, src/a.txt, docs/x.md, lose.txt.
-    assert.equal(inventar.dateien, 6, "gezaehlt wird, was git versioniert — die ungetrackte Datei nicht");
+    // Versioniert: .gitattributes, .gitignore, README.md, .claude/workflow.config.json, src/a.txt, docs/x.md, lose.txt.
+    assert.equal(inventar.dateien, 7, "gezaehlt wird, was git versioniert — die ungetrackte Datei nicht");
     assert.deepEqual(inventar.freigestellt, [{ pfad: "docs/x.md", grund: "reine Doku" }]);
-    assert.deepEqual(inventar.ohneZuordnung, [".gitignore", "README.md", "lose.txt"]);
-    assert.equal(inventar.ohneTreffer, 4, "freigestellte und unzugeordnete zusammen");
+    assert.deepEqual(inventar.ohneZuordnung, [".gitattributes", ".gitignore", "README.md", "lose.txt"]);
+    assert.equal(inventar.ohneTreffer, 5, "freigestellte und unzugeordnete zusammen");
   });
 });
 
-test("[checks-1004] bereiche ohne Config bricht ab wie plan und run", () => {
-  mitRepo({ ohneConfig: true }, (dir) => {
+test("[checks-1004] bereiche ohne Config bricht ab wie plan und run", async () => {
+  await mitRepo({ ohneConfig: true }, async (dir) => {
     const res = checks(dir, "bereiche");
     assert.notEqual(res.status, 0);
     assert.match(res.stderr, /workflow\.config\.json/);
+  });
+});
+
+// Ein Bereich, den ein Import mitberuehrt, steht mit seinem Weg im Bericht (Issue #1208, E3).
+test("[checks-1208] der Bericht nennt je abhaengigem Bereich den Import, ueber den er beruehrt ist", async () => {
+  const config = {
+    buildChecks: [
+      { cmd: "node -e \"process.exit(0)\" # kern", areas: ["kern"] },
+      { cmd: "node -e \"process.exit(0)\" # teil", areas: ["teil"] },
+    ],
+    checkAreas: { kern: ["src/kern.mjs"], teil: ["src/teil.mjs"] },
+  };
+  await mitRepo({ config }, async (dir) => {
+    datei(dir, "src/kern.mjs", "export const k = 1;\n");
+    datei(dir, "src/teil.mjs", 'import { k } from "./kern.mjs";\nexport const t = k;\n');
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "stand");
+    datei(dir, "src/kern.mjs", "export const k = 2;\n");
+
+    const res = await checks(dir, "run");
+
+    assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
+    const block = res.stdout.slice(res.stdout.indexOf("Fuer den Abschlussbericht:"));
+    assert.match(block, /Bereich teil beruehrt ueber Import von src\/kern\.mjs/);
+    assert.match(block, /gelaufen: node -e "process\.exit\(0\)" # teil → .* — Bereich teil beruehrt/);
   });
 });

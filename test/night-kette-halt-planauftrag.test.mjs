@@ -8,67 +8,73 @@
 // bitte in den Fachplan schreiben" fuehrte den Menschen dazu, die Antwort unter die Frage
 // zu setzen — dort liest `stoppFragenGrund` sie als weitere offene Frage, und der Plan
 // waere mit dem eigenen Antworttext als Ausschlussgrund uebersprungen.
+//
+// Seit Issue #1233 laufen die Ketten im selben Prozess (`ketteImProzess`, Plan #1199, E6);
+// keiner dieser Faelle braucht den Einstieg, darum gibt es zu dieser Datei keine Ablauf-Pruefung.
+// Was der Mensch nach dem Hinweis am Board tut, geschieht hier an den Karten der Attrappe.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { KETTE_HALT_ANKER, KLAEREN_LABEL, REVIEW_FERTIG_LABEL, planAusschluss, stoppFragenGrund } from "../kit/night.mjs";
+import { KETTE_HALT_ANKER, REVIEW_FERTIG_LABEL, planAusschluss, stoppFragenGrund } from "../kit/night/kette.mjs";
+import { KLAEREN_LABEL } from "../kit/night/wartend.mjs";
 import {
-  run, board, mitProjekt, fachplan, planauftrag, umgebung, stand, planBody,
-  PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_HALT,
+  ketteImProzess, fachplanKarte, planKarte, jeStufe, planAnlegen, planBody, reviewMarker, paketeHalt,
 } from "./helpers/kette-fixture.mjs";
 
 const KETTEN_LABEL = "kit:night";
-const karteText = (dir, id) => readFileSync(join(dir, "issues", `${id}.md`), "utf-8");
+/** Die Kommentare einer Karte nach dem Lauf, als ein Text. */
+const karteText = (r, id) => r.karte(id).comments.map((c) => c.body).join("\n");
 
 /** Der Halt-Kommentar einer Karte — der Text ab dem Anker. */
-function haltKommentar(dir, id) {
-  const text = karteText(dir, id);
+function haltKommentar(r, id) {
+  const text = karteText(r, id);
   const i = text.indexOf(KETTE_HALT_ANKER);
   assert.ok(i >= 0, `#${id} traegt keinen Halt-Kommentar`);
   return text.slice(i);
 }
 
-test("[night-896] eine Fachplan-Kette haelt an der gekennzeichneten Karte an — der fachlichen Anforderung", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir);
-    const env = umgebung(dir, {
-      stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER },
-      plan: planBody({ offeneFragen: "- Ist der neue Endpunkt eine Schnittstelle nach aussen?" }),
-    });
-    const res = run(dir, ["--kette"], env);
-    assert.equal(res.status, 0, res.stderr);
-
-    assert.ok(board(dir, "issue", "get", F).labels.includes(KLAEREN_LABEL), `${KLAEREN_LABEL} fehlt an #${F}`);
-    const kommentar = haltKommentar(dir, F);
-    assert.match(kommentar, /Ist der neue Endpunkt eine Schnittstelle nach aussen\?/);
-    // Der Plan ist der Ort der Entscheidung, nicht der Adressat des Kommentars.
-    assert.match(kommentar, /Plan #0002/);
-    assert.ok(!karteText(dir, "0002").includes(KETTE_HALT_ANKER), "der Halt gehoert an die gekennzeichnete Karte, nicht an den Plan");
-    assert.equal(stand(dir).einheiten.find((e) => e.id === F).ausgang, "angehalten");
-  });
+/** Eine Fachplan-Kette, deren Plan mit einer Stopp-Frage entsteht. */
+const mitStoppFrage = () => ketteImProzess({
+  karten: [fachplanKarte("1")],
+  sitzung: jeStufe({
+    plan: planAnlegen(planBody({ offeneFragen: "- Ist der neue Endpunkt eine Schnittstelle nach aussen?" })),
+    review: reviewMarker,
+  }),
 });
 
-test("[night-896] eine Plan-Kette haelt am Plan an, die fachliche Anforderung bleibt unberuehrt", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir, "[Fachlich] Die Wurzel", null);
-    const M = planauftrag(dir, F);
-    const res = run(dir, ["--kette"], umgebung(dir, { stufen: { pakete: PAKETE_HALT } }));
-    assert.equal(res.status, 0, res.stderr);
+test("[night-896] eine Fachplan-Kette haelt an der gekennzeichneten Karte an — der fachlichen Anforderung", async () => {
+  const r = await mitStoppFrage();
+  assert.equal(r.code, 0, r.ausgabe);
 
-    assert.ok(board(dir, "issue", "get", M).labels.includes(KLAEREN_LABEL), `${KLAEREN_LABEL} fehlt am Plan #${M}`);
-    const kommentar = haltKommentar(dir, M);
-    assert.match(kommentar, /Stufe pakete, Dokument #0002/);
-    assert.match(kommentar, /Kein Eingang für \/issues/);
-    // Die Anforderung traegt weder Label noch Kommentar: Sie hat das Kennzeichen nicht getragen.
-    assert.ok(!board(dir, "issue", "get", F).labels.includes(KLAEREN_LABEL), `${KLAEREN_LABEL} darf nicht an #${F} haengen`);
-    assert.ok(!karteText(dir, F).includes(KETTE_HALT_ANKER), `der Halt-Kommentar darf nicht an #${F} stehen`);
-    // Ein Plan, der seine Pruefung schon hinter sich hat, wird nicht erneut geschickt.
-    assert.doesNotMatch(kommentar, /\/issue-review/, "der Plan-Auftrag braucht den Pruefschritt nicht");
-    assert.equal(stand(dir).einheiten.find((e) => e.id === M).ausgang, "angehalten");
+  assert.ok(r.karte("1").labels.includes(KLAEREN_LABEL), `${KLAEREN_LABEL} fehlt an #1`);
+  const kommentar = haltKommentar(r, "1");
+  assert.match(kommentar, /Ist der neue Endpunkt eine Schnittstelle nach aussen\?/);
+  // Der Plan ist der Ort der Entscheidung, nicht der Adressat des Kommentars.
+  assert.match(kommentar, /Plan #2\b/);
+  assert.ok(!karteText(r, "2").includes(KETTE_HALT_ANKER), "der Halt gehoert an die gekennzeichnete Karte, nicht an den Plan");
+  assert.equal(r.lauf.einheiten.find((e) => e.id === "1").ausgang, "angehalten");
+});
+
+test("[night-896] eine Plan-Kette haelt am Plan an, die fachliche Anforderung bleibt unberuehrt", async () => {
+  const r = await ketteImProzess({
+    karten: [
+      fachplanKarte("1", { titel: "[Fachlich] Die Wurzel", labels: [REVIEW_FERTIG_LABEL] }),
+      planKarte("2", "1", { labels: [KETTEN_LABEL, REVIEW_FERTIG_LABEL] }),
+    ],
+    sitzung: jeStufe({ pakete: paketeHalt }),
   });
+  assert.equal(r.code, 0, r.ausgabe);
+
+  assert.ok(r.karte("2").labels.includes(KLAEREN_LABEL), `${KLAEREN_LABEL} fehlt am Plan #2`);
+  const kommentar = haltKommentar(r, "2");
+  assert.match(kommentar, /Stufe pakete, Dokument #2\b/);
+  assert.match(kommentar, /Kein Eingang für \/issues/);
+  // Die Anforderung traegt weder Label noch Kommentar: Sie hat das Kennzeichen nicht getragen.
+  assert.ok(!r.karte("1").labels.includes(KLAEREN_LABEL), `${KLAEREN_LABEL} darf nicht an #1 haengen`);
+  assert.ok(!karteText(r, "1").includes(KETTE_HALT_ANKER), "der Halt-Kommentar darf nicht an #1 stehen");
+  // Ein Plan, der seine Pruefung schon hinter sich hat, wird nicht erneut geschickt.
+  assert.doesNotMatch(kommentar, /\/issue-review/, "der Plan-Auftrag braucht den Pruefschritt nicht");
+  assert.equal(r.lauf.einheiten.find((e) => e.id === "2").ausgang, "angehalten");
 });
 
 // --- Der Hinweis gegen die Probe (Issue #896, Punkt 5) ---
@@ -113,35 +119,28 @@ function anweisungAus(kommentar) {
   return { entscheidungen: abschnitte[0], fragen: abschnitte[1], sollwert, planId, pruefen: kommentar.includes("/issue-review") };
 }
 
-test("[night-896] wer dem Hinweis wortgetreu folgt, hinterlaesst einen Plan, den planAusschluss annimmt", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir);
-    const env = umgebung(dir, {
-      stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER },
-      plan: planBody({ offeneFragen: "- Ist der neue Endpunkt eine Schnittstelle nach aussen?" }),
-    });
-    assert.equal(run(dir, ["--kette"], env).status, 0);
+test("[night-896] wer dem Hinweis wortgetreu folgt, hinterlaesst einen Plan, den planAusschluss annimmt", async () => {
+  const r = await mitStoppFrage();
+  assert.equal(r.code, 0, r.ausgabe);
 
-    const anweisung = anweisungAus(haltKommentar(dir, F));
-    const M = anweisung.planId;
-    // Gegenprobe zuerst: Vor der Bearbeitung lehnt der Runner den Plan ab.
-    assert.ok(planAusschluss(board(dir, "issue", "get", M), KETTEN_LABEL, board(dir, "issue", "list")) !== null);
+  const anweisung = anweisungAus(haltKommentar(r, "1"));
+  const M = anweisung.planId;
+  const plan = r.karte(M);
+  const fach = r.karte("1");
+  // Gegenprobe zuerst: Vor der Bearbeitung lehnt der Runner den Plan ab.
+  assert.ok(planAusschluss(structuredClone(plan), KETTEN_LABEL, structuredClone(r.karten)) !== null);
 
-    // Schritt fuer Schritt, genau wie der Hinweis es sagt.
-    let body = board(dir, "issue", "get", M).body;
-    body = abschnittErgaenzen(body, anweisung.entscheidungen, "- A2 — Der Endpunkt bleibt intern, weil ihn niemand sonst ruft.");
-    body = abschnittSetzen(body, anweisung.fragen, anweisung.sollwert);
-    const pfad = join(tmpdir(), `night-896-plan-${process.pid}.md`);
-    writeFileSync(pfad, body, "utf-8");
-    board(dir, "issue", "update", M, "--body-file", pfad);
-    if (anweisung.pruefen) board(dir, "issue", "label", "add", M, REVIEW_FERTIG_LABEL);
-    board(dir, "issue", "label", "remove", M, KLAEREN_LABEL);
-    board(dir, "issue", "label", "remove", F, KLAEREN_LABEL);
-    board(dir, "issue", "label", "add", M, KETTEN_LABEL);
+  // Schritt fuer Schritt, genau wie der Hinweis es sagt.
+  let body = plan.body;
+  body = abschnittErgaenzen(body, anweisung.entscheidungen, "- A2 — Der Endpunkt bleibt intern, weil ihn niemand sonst ruft.");
+  body = abschnittSetzen(body, anweisung.fragen, anweisung.sollwert);
+  plan.body = body;
+  if (anweisung.pruefen) plan.labels.push(REVIEW_FERTIG_LABEL);
+  plan.labels = plan.labels.filter((l) => l !== KLAEREN_LABEL);
+  fach.labels = fach.labels.filter((l) => l !== KLAEREN_LABEL);
+  plan.labels.push(KETTEN_LABEL);
 
-    const plan = board(dir, "issue", "get", M);
-    assert.equal(stoppFragenGrund(plan.body), null, "die Antwort darf nicht als offene Frage gelesen werden");
-    assert.equal(planAusschluss(plan, KETTEN_LABEL, board(dir, "issue", "list")), null,
-      "der Plan wird trotz befolgtem Hinweis abgelehnt");
-  });
+  assert.equal(stoppFragenGrund(plan.body), null, "die Antwort darf nicht als offene Frage gelesen werden");
+  assert.equal(planAusschluss(structuredClone(plan), KETTEN_LABEL, structuredClone(r.karten)), null,
+    "der Plan wird trotz befolgtem Hinweis abgelehnt");
 });

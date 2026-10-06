@@ -63,39 +63,39 @@ function fixtureText(name) {
 
 // --- Die Funktion selbst ----------------------------------------------------
 
-test("das erste Merkmal der Liste gilt, auch wenn das zweite fruehere Zeilen traegt", () => {
+test("das erste Merkmal der Liste gilt, auch wenn das zweite fruehere Zeilen traegt", async () => {
   assert.equal(fehlermerkmal(`x\n${MERKMAL_BAU}\ny\n${MERKMAL_STUFE}\n`), MERKMAL_STUFE);
   assert.equal(fehlermerkmal(`nur das zweite: ${MERKMAL_BAU}`), MERKMAL_BAU);
 });
 
-test("eine Ausgabe ohne Merkmal und die leere Ausgabe ergeben null", () => {
+test("eine Ausgabe ohne Merkmal und die leere Ausgabe ergeben null", async () => {
   assert.equal(fehlermerkmal("alles gut, 42 Tests gruen\n"), null);
   assert.equal(fehlermerkmal(""), null);
 });
 
-test("das echte gruene Maven-Log schlaegt nicht an", () => {
+test("das echte gruene Maven-Log schlaegt nicht an", async () => {
   // Der Fall, der die Pruefung wertlos machen wuerde, wenn er anschlaegt: ein
   // vollstaendiger gruener Lauf mit Warnungen, Testzeilen und Plugin-Ausgaben.
   assert.equal(fehlermerkmal(fixtureText("mvn-verify-gruen.log")), null);
 });
 
-test("das echte rote Maven-Log schlaegt an und nennt das erste Merkmal der Liste", () => {
+test("das echte rote Maven-Log schlaegt an und nennt das erste Merkmal der Liste", async () => {
   assert.equal(fehlermerkmal(fixtureText("mvn-verify-rot.log")), MERKMAL_STUFE);
 });
 
 // --- Im Lauf ----------------------------------------------------------------
 
 for (const [wie, merkmal] of [["ersten", MERKMAL_STUFE], ["zweiten", MERKMAL_BAU]]) {
-  test(`ein Kommando mit Rueckgabewert 0 und dem ${wie} Merkmal in der Ausgabe wird rot`, () => {
+  test(`ein Kommando mit Rueckgabewert 0 und dem ${wie} Merkmal in der Ausgabe wird rot`, async () => {
     const cmd = gibtAus(merkmal);
     const config = {
       buildChecks: [{ cmd, always: true }, { cmd: "echo x > danach.txt", always: true }],
       checkAreas: BEREICHE,
     };
-    mitRepo({ config }, (dir) => {
+    await mitRepo({ config }, async (dir) => {
       datei(dir, "frontend/src/App.tsx");
 
-      const res = run(dir);
+      const res = await run(dir);
 
       assert.notEqual(res.status, 0, "ein Fehlermerkmal muss den Exit-Code rot faerben");
       assert.match(res.stdout, /Fehlermerkmal in der Ausgabe/);
@@ -109,12 +109,12 @@ for (const [wie, merkmal] of [["ersten", MERKMAL_STUFE], ["zweiten", MERKMAL_BAU
   });
 }
 
-test("ein gruenes Kommando ohne Merkmal bleibt gruen und traegt das Feld nicht", () => {
+test("ein gruenes Kommando ohne Merkmal bleibt gruen und traegt das Feld nicht", async () => {
   const cmd = gibtAus("alles gut");
-  mitRepo({ config: { buildChecks: [{ cmd, always: true }], checkAreas: BEREICHE } }, (dir) => {
+  await mitRepo({ config: { buildChecks: [{ cmd, always: true }], checkAreas: BEREICHE } }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, "ein Lauf ohne Merkmal muss gruen bleiben");
     assert.doesNotMatch(res.stdout, /Fehlermerkmal/);
@@ -124,7 +124,7 @@ test("ein gruenes Kommando ohne Merkmal bleibt gruen und traegt das Feld nicht",
   });
 });
 
-test("ein Guete-Eintrag mit Fehlermerkmal wird nicht ausgewertet und nennt den Grund", () => {
+test("ein Guete-Eintrag mit Fehlermerkmal wird nicht ausgewertet und nennt den Grund", async () => {
   // Ohne diesen Zweig bescheinigte der Anteil aus der Ausgabe eine Messung, die
   // es nicht gab — dieselbe Begruendung wie beim roten Kommando, nur eine Stufe
   // frueher: Der Rueckgabewert war hier 0.
@@ -133,10 +133,10 @@ test("ein Guete-Eintrag mit Fehlermerkmal wird nicht ausgewertet und nennt den G
     buildChecks: [{ cmd, always: true, guete: { muster: String.raw`\((\d+)%\)`, marke: 80 } }],
     checkAreas: BEREICHE,
   };
-  mitRepo({ config }, (dir) => {
+  await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.notEqual(res.status, 0, "ein Fehlermerkmal muss den Lauf rot faerben");
     const guete = zusammenfassung(dir).guete;
@@ -153,24 +153,24 @@ test("ein Guete-Eintrag mit Fehlermerkmal wird nicht ausgewertet und nennt den G
 
 // --- Die echten Logs als Lauf ------------------------------------------------
 
-test("das gruene Maven-Log als Pruefkommando bleibt gruen", () => {
+test("das gruene Maven-Log als Pruefkommando bleibt gruen", async () => {
   const cmd = zeigt("mvn-verify-gruen.log");
-  mitRepo({ config: { buildChecks: [{ cmd, always: true }], checkAreas: BEREICHE } }, (dir) => {
+  await mitRepo({ config: { buildChecks: [{ cmd, always: true }], checkAreas: BEREICHE } }, async (dir) => {
     fixtureLegen(dir, "mvn-verify-gruen.log");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.equal(res.status, 0, "ein echtes gruenes Maven-Log darf nicht anschlagen");
     assert.equal(eintrag(zusammenfassung(dir).laufen, cmd).ergebnis, "gruen");
   });
 });
 
-test("das rote Maven-Log als Pruefkommando wird rot", () => {
+test("das rote Maven-Log als Pruefkommando wird rot", async () => {
   const cmd = zeigt("mvn-verify-rot.log");
-  mitRepo({ config: { buildChecks: [{ cmd, always: true }], checkAreas: BEREICHE } }, (dir) => {
+  await mitRepo({ config: { buildChecks: [{ cmd, always: true }], checkAreas: BEREICHE } }, async (dir) => {
     fixtureLegen(dir, "mvn-verify-rot.log");
 
-    const res = run(dir);
+    const res = await run(dir);
 
     assert.notEqual(res.status, 0, "ein echtes rotes Maven-Log muss den Lauf rot faerben");
     const gelaufen = eintrag(zusammenfassung(dir).laufen, cmd);

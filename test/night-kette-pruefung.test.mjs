@@ -7,19 +7,20 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  waehleKettenKandidaten, pruefungFehltGrund, UNGEPRUEFT_PRAEFIX, REVIEW_FERTIG_LABEL,
-  KETTE_UNGEPRUEFT_ANKER,
-} from "../kit/night.mjs";
-import {
-  run, board, mitProjekt, fachplan, umgebung, stand, boardFakeInstallieren,
-} from "./helpers/kette-fixture.mjs";
+import { waehleKettenKandidaten, pruefungFehltGrund, UNGEPRUEFT_PRAEFIX, REVIEW_FERTIG_LABEL, KETTE_UNGEPRUEFT_ANKER } from "../kit/night/kette.mjs";
+import { ketteImProzess, fachplanKarte, KETTE_LABEL } from "./helpers/kette-fixture.mjs";
+
+// Die Laeufe unten fahren `laufeKette` im selben Prozess (Issue #1233): Board, Uhr und
+// Vorflug sind Attrappen, die Karten stehen in einer Liste.
+
+const GEPRUEFT = (id, titel = "[Fachlich] Geprueft") => fachplanKarte(id, { titel });
+const UNGEPRUEFT = (id, titel = "[Fachlich] Ungeprueft") => fachplanKarte(id, { titel, labels: [KETTE_LABEL] });
+
+/** Die Kommentare einer Karte nach dem Lauf, als Texte. */
+const kommentare = (r, id) => r.karte(id).comments.map((c) => c.body);
 
 /** Wie oft der Anker des Hinweis-Kommentars an der Karte steht. */
-function ankerZaehlen(dir, id) {
-  const body = String(board(dir, "issue", "get", id).body || "");
-  return body.split(KETTE_UNGEPRUEFT_ANKER).length - 1;
-}
+const ankerZaehlen = (r, id) => kommentare(r, id).filter((k) => k.includes(KETTE_UNGEPRUEFT_ANKER)).length;
 
 test("[night-19] ohne review:fertig geht der Fachplan mit Grund und naechstem Schritt in uebersprungen", () => {
   const karten = [
@@ -61,141 +62,115 @@ test("[night-19] der Grundtext nennt das Kettenlabel aus der Config, nicht kit:n
   assert.ok(!grund.includes("kit:night"), `der feste Name kit:night steht im Grundtext: ${grund}`);
 });
 
-test("[night-19] der Dry-Run zeigt die Ablehnung mit Grund und naechstem Schritt vorab", () => {
-  mitProjekt((dir) => {
-    const geprueft = fachplan(dir, "[Fachlich] Geprueft");
-    const roh = fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
-    const res = run(dir, ["--kette", "--dry-run"], umgebung(dir));
-    assert.equal(res.status, 0, res.stderr);
-    assert.match(res.stdout, new RegExp(`#${geprueft} \\[Fachlich\\] Geprueft -> Kette 1`));
-    assert.match(res.stdout, new RegExp(`#${roh} .*-> uebersprungen \\(ungeprueft: Label 'review:fertig' fehlt`));
-    assert.match(res.stdout, new RegExp(`/issue-review #${roh} pruefen lassen`));
-    assert.match(res.stdout, /das Label kit:night bleibt dran/);
-    assert.match(res.stdout, /Dry-Run beendet: 1 Kette\(n\) wuerden laufen/);
-  });
+test("[night-19] der Dry-Run zeigt die Ablehnung mit Grund und naechstem Schritt vorab", async () => {
+  const r = await ketteImProzess({ karten: [GEPRUEFT("1"), UNGEPRUEFT("2")], argv: ["--dry-run"] });
+  assert.equal(r.code, 0);
+  assert.match(r.ausgabe, /#1 \[Fachlich\] Geprueft -> Kette 1/);
+  assert.match(r.ausgabe, /#2 .*-> uebersprungen \(ungeprueft: Label 'review:fertig' fehlt/);
+  assert.match(r.ausgabe, /\/issue-review #2 pruefen lassen/);
+  assert.match(r.ausgabe, /das Label kit:night bleibt dran/);
+  assert.match(r.ausgabe, /Dry-Run beendet: 1 Kette\(n\) wuerden laufen/);
 });
 
-test("[night-19] im Lauf behaelt die ungepruefte Karte ihr Kettenlabel und steht mit Grund im Ergebnisstand", () => {
-  mitProjekt((dir) => {
-    const roh = fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
-    const res = run(dir, ["--kette"], umgebung(dir));
-    assert.equal(res.status, 0, res.stderr);
-    assert.match(res.stdout, /Keine Kette zu fahren/);
-    const karte = board(dir, "issue", "get", roh);
-    assert.ok(karte.labels.includes("kit:night"), "das Kettenlabel ist verbraucht, obwohl keine Kette lief");
-    assert.ok(!karte.labels.includes(REVIEW_FERTIG_LABEL), "die Karte war ungeprueft");
-    const einheit = stand(dir).einheiten.find((e) => e.id === roh);
-    assert.equal(einheit.ausgang, "uebersprungen");
-    assert.ok(einheit.grund.startsWith(UNGEPRUEFT_PRAEFIX), `der Ergebnisstand nennt den Grund nicht: ${einheit.grund}`);
-  });
+test("[night-19] im Lauf behaelt die ungepruefte Karte ihr Kettenlabel und steht mit Grund im Ergebnisstand", async () => {
+  const r = await ketteImProzess({ karten: [UNGEPRUEFT("3")] });
+  assert.equal(r.code, 0);
+  assert.match(r.ausgabe, /Keine Kette zu fahren/);
+  const karte = r.karte("3");
+  assert.ok(karte.labels.includes(KETTE_LABEL), "das Kettenlabel ist verbraucht, obwohl keine Kette lief");
+  assert.ok(!karte.labels.includes(REVIEW_FERTIG_LABEL), "die Karte war ungeprueft");
+  const einheit = r.lauf.einheiten.find((e) => e.id === "3");
+  assert.equal(einheit.ausgang, "uebersprungen");
+  assert.ok(einheit.grund.startsWith(UNGEPRUEFT_PRAEFIX), `der Ergebnisstand nennt den Grund nicht: ${einheit.grund}`);
+  assert.deepEqual(r.abschluss, ["regulaer"]);
+  assert.deepEqual(r.sitzungen, [], "ohne Kandidaten startet keine Session");
 });
 
 // Der Lauf-Kopf vermerkt den Grund, statt ihn nur zu protokollieren (Issue #744), und
 // seit Issue #885 benennt der Satz den Fall: Die Karte dieser Lage traegt das
 // Kettenlabel, geht aber ungeprueft ueber `kettenAusschluss` nach `uebersprungen` —
 // also der Fall `ketteAlleUebersprungen`, nicht das fehlende Label.
-test("[night-44] eine Kette ohne Kandidaten vermerkt den Fall der uebersprungenen Karten als noWorkReason", () => {
-  mitProjekt((dir) => {
-    fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
-    const res = run(dir, ["--kette"], umgebung(dir));
-    assert.equal(res.status, 0, res.stderr);
-    assert.equal(
-      stand(dir).noWorkReason,
-      "Keine Kette zu fahren: alle 1 gekennzeichneten Karten mit dem Label 'kit:night' wurden uebersprungen, "
-      + "weil eine Voraussetzung fehlt.",
-    );
-  });
+test("[night-44] eine Kette ohne Kandidaten vermerkt den Fall der uebersprungenen Karten als noWorkReason", async () => {
+  const r = await ketteImProzess({ karten: [UNGEPRUEFT("1")] });
+  assert.equal(r.code, 0);
+  assert.equal(
+    r.lauf.noWorkReason,
+    "Keine Kette zu fahren: alle 1 gekennzeichneten Karten mit dem Label 'kit:night' wurden uebersprungen, "
+    + "weil eine Voraussetzung fehlt.",
+  );
 });
 
 // --- Der Kommentar an der abgelehnten Anforderung und der Hinweis auf das
 //     unbekannte Kennzeichen (Fachplan #702, Kriterien 4 und 8; Issue #719) ---
 
-test("[night-42] die abgelehnte Anforderung bekommt einmal den Kommentar mit Anker, Grund und Schritt", () => {
-  mitProjekt((dir) => {
-    const roh = fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
-    const res = run(dir, ["--kette"], umgebung(dir));
-    assert.equal(res.status, 0, res.stderr);
-    assert.equal(ankerZaehlen(dir, roh), 1, "der Hinweis-Kommentar steht nicht genau einmal an der Karte");
-    const body = String(board(dir, "issue", "get", roh).body || "");
-    assert.match(body, new RegExp(`/issue-review #${roh} pruefen lassen`));
-    assert.match(body, /das setzt review:fertig/);
-    assert.match(body, /das Label kit:night bleibt dran/);
-    assert.match(res.stdout, new RegExp(`#${roh}: Hinweis-Kommentar`));
-  });
+test("[night-42] die abgelehnte Anforderung bekommt einmal den Kommentar mit Anker, Grund und Schritt", async () => {
+  const r = await ketteImProzess({ karten: [UNGEPRUEFT("7")] });
+  assert.equal(r.code, 0);
+  assert.equal(ankerZaehlen(r, "7"), 1, "der Hinweis-Kommentar steht nicht genau einmal an der Karte");
+  const text = kommentare(r, "7").join("\n");
+  assert.match(text, /\/issue-review #7 pruefen lassen/);
+  assert.match(text, /das setzt review:fertig/);
+  assert.match(text, /das Label kit:night bleibt dran/);
+  assert.match(r.ausgabe, /#7: Hinweis-Kommentar geschrieben/);
 });
 
-test("[night-42] ein zweiter Lauf schreibt den Kommentar nicht noch einmal", () => {
-  mitProjekt((dir) => {
-    const roh = fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
-    assert.equal(run(dir, ["--kette"], umgebung(dir)).status, 0);
-    const res = run(dir, ["--kette"], umgebung(dir));
-    assert.equal(res.status, 0, res.stderr);
-    assert.equal(ankerZaehlen(dir, roh), 1, "der Folgelauf hat einen zweiten Kommentar geschrieben");
-    assert.match(res.stdout, /steht schon am Board/);
-  });
+test("[night-42] ein zweiter Lauf schreibt den Kommentar nicht noch einmal", async () => {
+  const erster = await ketteImProzess({ karten: [UNGEPRUEFT("7")] });
+  assert.equal(erster.code, 0);
+  const r = await ketteImProzess({ karten: structuredClone(erster.karten) });
+  assert.equal(r.code, 0);
+  assert.equal(ankerZaehlen(r, "7"), 1, "der Folgelauf hat einen zweiten Kommentar geschrieben");
+  assert.match(r.ausgabe, /steht schon am Board/);
 });
 
-test("[night-42] der Dry-Run zeigt die Ablehnung und schreibt keinen Kommentar", () => {
-  mitProjekt((dir) => {
-    const roh = fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
-    const res = run(dir, ["--kette", "--dry-run"], umgebung(dir));
-    assert.equal(res.status, 0, res.stderr);
-    assert.match(res.stdout, new RegExp(`#${roh} .*-> uebersprungen \\(${UNGEPRUEFT_PRAEFIX}`));
-    assert.equal(ankerZaehlen(dir, roh), 0, "der Dry-Run hat am Board geschrieben");
-  });
+test("[night-42] der Dry-Run zeigt die Ablehnung und schreibt keinen Kommentar", async () => {
+  const r = await ketteImProzess({ karten: [UNGEPRUEFT("7")], argv: ["--dry-run"] });
+  assert.equal(r.code, 0);
+  assert.match(r.ausgabe, new RegExp(`#7 .*-> uebersprungen \\(${UNGEPRUEFT_PRAEFIX}`));
+  assert.equal(ankerZaehlen(r, "7"), 0, "der Dry-Run hat am Board geschrieben");
+  assert.ok(!r.aufrufe.some((a) => a[1] === "comment" || a[1] === "stand"), "der Dry-Run schreibt nichts ans Board");
 });
 
-test("[night-42] ein fehlgeschlagener Board-Aufruf wird protokolliert und bricht den Lauf nicht ab", () => {
-  mitProjekt((dir) => {
-    const roh = fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
-    boardFakeInstallieren(dir);
-    const res = run(dir, ["--kette"], { ...umgebung(dir), BOARD_FAKE_ABLEHNEN: roh });
-    assert.equal(res.status, 0, `der Lauf ist am Board-Fehler gescheitert: ${res.stderr}`);
-    assert.match(res.stdout, new RegExp(`#${roh}: Hinweis-Kommentar nicht geschrieben`));
-    assert.equal(ankerZaehlen(dir, roh), 0);
-    assert.match(res.stdout, /Keine Kette zu fahren/);
+test("[night-42] ein fehlgeschlagener Board-Aufruf wird protokolliert und bricht den Lauf nicht ab", async () => {
+  const r = await ketteImProzess({
+    karten: [UNGEPRUEFT("7")],
+    ablehnen: (a) => a[1] === "comment" && a[2] === "7",
   });
+  assert.equal(r.code, 0, "der Lauf ist am Board-Fehler gescheitert");
+  assert.match(r.ausgabe, /#7: Hinweis-Kommentar nicht geschrieben/);
+  assert.equal(ankerZaehlen(r, "7"), 0);
+  assert.match(r.ausgabe, /Keine Kette zu fahren/);
 });
 
-test("[night-42] traegt keine Karte review:fertig, meldet der Lauf das unbekannte Kennzeichen", () => {
-  mitProjekt((dir) => {
-    fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
-    const res = run(dir, ["--kette"], umgebung(dir));
-    assert.equal(res.status, 0, res.stderr);
-    assert.match(res.stdout, /keine Karte am Board traegt 'review:fertig'/);
-    assert.match(res.stdout, /noch nicht angelegt/);
-    assert.match(res.stdout, /\/issue-review/);
-  });
+test("[night-42] traegt keine Karte review:fertig, meldet der Lauf das unbekannte Kennzeichen", async () => {
+  const r = await ketteImProzess({ karten: [UNGEPRUEFT("1")] });
+  assert.equal(r.code, 0);
+  assert.match(r.ausgabe, /keine Karte am Board traegt 'review:fertig'/);
+  assert.match(r.ausgabe, /noch nicht angelegt/);
+  assert.match(r.ausgabe, /\/issue-review/);
 });
 
-test("[night-42] der Hinweis erscheint auch in der Vorschau", () => {
-  mitProjekt((dir) => {
-    fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
-    const res = run(dir, ["--kette", "--dry-run"], umgebung(dir));
-    assert.equal(res.status, 0, res.stderr);
-    assert.match(res.stdout, /keine Karte am Board traegt 'review:fertig'/);
-  });
+test("[night-42] der Hinweis erscheint auch in der Vorschau", async () => {
+  const r = await ketteImProzess({ karten: [UNGEPRUEFT("1")], argv: ["--dry-run"] });
+  assert.equal(r.code, 0);
+  assert.match(r.ausgabe, /keine Karte am Board traegt 'review:fertig'/);
 });
 
-test("[night-42] der Hinweis bleibt aus, sobald eine Karte der Liste das Label traegt", () => {
-  mitProjekt((dir) => {
-    const roh = fachplan(dir, "[Fachlich] Ungeprueft", "kit:night", false);
-    fachplan(dir, "[Fachlich] Anderswo geprueft", null, true);
-    const res = run(dir, ["--kette"], umgebung(dir));
-    assert.equal(res.status, 0, res.stderr);
-    assert.ok(!/keine Karte am Board traegt/.test(res.stdout), `der Hinweis steht trotz vorhandenem Label:\n${res.stdout}`);
-    assert.equal(ankerZaehlen(dir, roh), 1, "die Ablehnung selbst bleibt kommentiert");
+test("[night-42] der Hinweis bleibt aus, sobald eine Karte der Liste das Label traegt", async () => {
+  const r = await ketteImProzess({
+    karten: [UNGEPRUEFT("1"), fachplanKarte("2", { titel: "[Fachlich] Anderswo geprueft", labels: [REVIEW_FERTIG_LABEL] })],
   });
+  assert.equal(r.code, 0);
+  assert.ok(!/keine Karte am Board traegt/.test(r.ausgabe), `der Hinweis steht trotz vorhandenem Label:\n${r.ausgabe}`);
+  assert.equal(ankerZaehlen(r, "1"), 1, "die Ablehnung selbst bleibt kommentiert");
 });
 
-test("[night-42] ohne Ablehnung wegen fehlender Pruefung bleibt der Hinweis aus", () => {
-  mitProjekt((dir) => {
-    const karte = fachplan(dir, "[Fachlich] Offene Frage", "kit:night", false);
-    board(dir, "issue", "label", "add", karte, "kit:klaeren");
-    const res = run(dir, ["--kette"], umgebung(dir));
-    assert.equal(res.status, 0, res.stderr);
-    assert.match(res.stdout, /traegt kit:klaeren/);
-    assert.ok(!/keine Karte am Board traegt/.test(res.stdout), `der Hinweis steht ohne Adressaten:\n${res.stdout}`);
-    assert.equal(ankerZaehlen(dir, karte), 0, "die Karte mit kit:klaeren wurde faelschlich kommentiert");
+test("[night-42] ohne Ablehnung wegen fehlender Pruefung bleibt der Hinweis aus", async () => {
+  const r = await ketteImProzess({
+    karten: [fachplanKarte("1", { titel: "[Fachlich] Offene Frage", labels: [KETTE_LABEL, "kit:klaeren"] })],
   });
+  assert.equal(r.code, 0);
+  assert.match(r.ausgabe, /traegt kit:klaeren/);
+  assert.ok(!/keine Karte am Board traegt/.test(r.ausgabe), `der Hinweis steht ohne Adressaten:\n${r.ausgabe}`);
+  assert.equal(ankerZaehlen(r, "1"), 0, "die Karte mit kit:klaeren wurde faelschlich kommentiert");
 });

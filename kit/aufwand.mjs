@@ -47,13 +47,13 @@
  */
 
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, realpathSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.6.0";
+const KIT_VERSION = "3.7.0";
 
 const CLAUDE_DIR = ".claude";
 const STAND_DATEI = "aufwand.json";
@@ -339,7 +339,7 @@ export function einheitKosten(einheit) {
 // SYNC: `TOOL_RESULTS_PFAD`, `RUECKFRAGE_MUSTER`, `AUFBEREITUNG_PIPE` und `auskunftArt`
 // sind eine Kopie aus kit/night.mjs, wo das Original samt Beleg des Pfadmusters steht.
 // Kopie statt `import`: Diese Auswertung bleibt eine reine Leseoperation ohne den Runner
-// (Plan #745, E7). Den Gleichlauf haelt test/night-auskunft-gleichlauf.test.mjs — er
+// (Plan #745, E7). Den Gleichlauf haelt test/night-session-auskunft-gleichlauf.test.mjs — er
 // laesst beide Fassungen ueber dieselben Fixtures laufen.
 
 const TOOL_RESULTS_PFAD = "tool-results/";
@@ -1569,7 +1569,7 @@ function schreibeDatei(pfad, inhalt) {
  * Die Auswertung. Rueckgabe ist der vollstaendige Stand — dieselbe Struktur, die nach
  * `.claude/aufwand.json` geht und auf stdout steht: eine Form, nicht zwei.
  */
-export function auswerten(root, { laeufe: grenzeArg } = {}) {
+export function auswerten(root, { laeufe: grenzeArg, jetzt = () => new Date() } = {}) {
   // Kriterium 13 gibt der Auswertung ein Zeitbudget. Sie misst sich deshalb selbst,
   // statt das einem `time` davor zu ueberlassen: So steht der Wert in jedem Lauf und
   // nicht nur dort, wo jemand daran gedacht hat.
@@ -1581,7 +1581,7 @@ export function auswerten(root, { laeufe: grenzeArg } = {}) {
   const { befund, nichtBestimmbar } = schwellenPruefen(a, einstellungen.schwellen);
 
   const ergebnis = {
-    erzeugtAm: new Date().toISOString(),
+    erzeugtAm: jetzt().toISOString(),
     juengsterLauf: staende[0]?.stempel ?? null,
     kitVersion: KIT_VERSION,
     laeufe: {
@@ -1640,8 +1640,9 @@ export function befund(root) {
  * Misst Transkript-Dateien (E13) und gibt je Datei eine Zeile und eine Gesamtzeile aus.
  * Rueckgabe `{ text, gemessen }`: `gemessen` ist false, sobald eine Datei nicht messbar
  * war — der Aufrufer macht daraus Exit 1, statt eine Summe fuer vollstaendig auszugeben.
+ * Ein relativer Pfad gilt gegen `cwd`; die Zeile nennt ihn, wie er uebergeben wurde.
  */
-export function auskunftMessen(pfade) {
+export function auskunftMessen(pfade, { cwd = process.cwd() } = {}) {
   const zeilen = [];
   let ms = 0;
   let aufrufe = 0;
@@ -1650,7 +1651,7 @@ export function auskunftMessen(pfade) {
   for (const pfad of pfade) {
     let inhalt;
     try {
-      inhalt = readFileSync(pfad, "utf-8");
+      inhalt = readFileSync(resolve(cwd, pfad), "utf-8");
     } catch (err) {
       zeilen.push(`${pfad}: nicht lesbar (${err.code ?? err.message}) — nicht gemessen`);
       nichtGemessen += 1;
@@ -1696,15 +1697,43 @@ function parseAuswertenArgs(rest) {
   return args;
 }
 
-function main() {
-  const argv = process.argv.slice(2);
+/** Der Fehler eines Aufrufs als stderr-Zeile: `Fehler:` fuer den erwarteten, sonst `Unerwarteter Fehler:`. */
+function fehlerZeile(err) {
+  const prefix = err instanceof AufwandError ? "Fehler" : "Unerwarteter Fehler";
+  return `${prefix}: ${err.message}\n`;
+}
 
+/**
+ * Ein Aufruf wie von der Kommandozeile, aber im selben Prozess (Issue #1213, Plan #1199
+ * E6). `argv` ist die Kommandozeile ohne `node aufwand.mjs`, `cwd` das Projekt, `jetzt`
+ * die Uhr fuer den Zeitstempel der Auswertung. Rueckgabe wie bei `spawnSync`:
+ * `{ status, stdout, stderr }`.
+ */
+export function aufrufen(argv, { cwd = process.cwd(), jetzt } = {}) {
+  let stdout = "";
+  let stderr = "";
+  const ausgabe = {
+    stdout: (text) => {
+      stdout += text;
+    },
+  };
+  let status;
+  try {
+    status = main(argv, { cwd, jetzt, ...ausgabe });
+  } catch (err) {
+    stderr += fehlerZeile(err);
+    status = 1;
+  }
+  return { status, stdout, stderr };
+}
+
+function main(argv, { cwd, jetzt, stdout }) {
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
-    process.stdout.write(HELP);
+    stdout(HELP);
     return 0;
   }
   if (argv[0] === "--version") {
-    process.stdout.write(`${KIT_VERSION}\n`);
+    stdout(`${KIT_VERSION}\n`);
     return 0;
   }
 
@@ -1715,10 +1744,10 @@ function main() {
     // Fliesstext-Fehler mittendrin machte aus jedem Fehlerfall einen Parse-Fehler
     // beim Aufrufer.
     try {
-      process.stdout.write(JSON.stringify(auswerten(process.cwd(), parseAuswertenArgs(rest)), null, 2) + "\n");
+      stdout(JSON.stringify(auswerten(cwd, { ...parseAuswertenArgs(rest), jetzt }), null, 2) + "\n");
       return 0;
     } catch (err) {
-      process.stdout.write(JSON.stringify({ ok: false, fehler: err.message }, null, 2) + "\n");
+      stdout(JSON.stringify({ ok: false, fehler: err.message }, null, 2) + "\n");
       return 1;
     }
   }
@@ -1727,18 +1756,18 @@ function main() {
     // weiter. Ein abgewiesener Aufruf schreibt deshalb nach stderr und laesst stdout
     // leer — sonst stuende eine Fehlermeldung im Laufprotokoll, wo ein Befund hingehoert.
     if (rest.length > 0) fail(`'befund' nimmt keine Argumente, bekam '${rest[0]}'.`);
-    process.stdout.write(befund(process.cwd()));
+    stdout(befund(cwd));
     return 0;
   }
 
   if (command === "auskunft") {
     if (rest.length === 0) fail("'auskunft' erwartet mindestens eine Transkript-Datei (*.jsonl).");
-    const { text, gemessen } = auskunftMessen(rest);
-    process.stdout.write(text);
+    const { text, gemessen } = auskunftMessen(rest, { cwd });
+    stdout(text);
     return gemessen ? 0 : 1;
   }
 
-  process.stdout.write(HELP);
+  stdout(HELP);
   return fail(`Unbekannter Befehl: '${command}'. Erwartet: auswerten, befund oder auskunft`);
 }
 
@@ -1753,10 +1782,9 @@ if (process.argv[1]) {
 }
 if (runAsCli) {
   try {
-    process.exitCode = main();
+    process.exitCode = main(process.argv.slice(2), { cwd: process.cwd(), stdout: (text) => process.stdout.write(text) });
   } catch (err) {
-    const prefix = err instanceof AufwandError ? "Fehler" : "Unerwarteter Fehler";
-    process.stderr.write(`${prefix}: ${err.message}\n`);
+    process.stderr.write(fehlerZeile(err));
     process.exit(1);
   }
 }

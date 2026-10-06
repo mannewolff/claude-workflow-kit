@@ -23,6 +23,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const nurBoard = mkdtempSync(join(tmpdir(), "night-ohne-checks-"));
 symlinkSync(join(repoRoot, "kit", "board.mjs"), join(nurBoard, "board.mjs"));
+// Die Fence-Auslegung holt der Runner seit Issue #1218 aus dem Teil board/dokumente.mjs.
+symlinkSync(join(repoRoot, "kit", "board"), join(nurBoard, "board"), "junction");
 assert.equal(existsSync(join(nurBoard, "checks.mjs")), false, "checks.mjs darf nicht existieren");
 
 process.env.NIGHT_NACHBAR_DIR = nurBoard;

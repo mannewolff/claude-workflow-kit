@@ -20,7 +20,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { GESCHUETZT_ANKER, GESCHUETZT_LABEL, HALT_FOLGESATZ } from "../kit/night.mjs";
+import { GESCHUETZT_ANKER, GESCHUETZT_LABEL, HALT_FOLGESATZ } from "../kit/night/wartend.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -181,4 +181,31 @@ test("[skills-1053] ohne die Leitplanke oder mit vertauschter Reihenfolge wird d
   const abschnitt = rueckfall(text, name);
   const vertauscht = abschnitt.replace(/issue move <id> backlog/, "issue move <id> anders");
   assert.throws(() => pruefeRueckfall(text.replace(abschnitt, vertauscht), name), /Move nach Backlog/);
+});
+
+// --- Kennzeichnung (nur genannt) in /issues und /task (Issue #1179) --------------------
+//
+// Beide Skills nennen die Kennzeichnung bei der Konvention „Geschuetzte Datei“, mit einem
+// Beispiel: einem Backtick-Pfad, dem unmittelbar ` (nur genannt)` folgt.
+
+const KENNZEICHNUNG_BEISPIEL = /`[^`\s]+` \(nur genannt\)/;
+
+function nenntKennzeichnung(text, name) {
+  const anfang = text.indexOf("Konvention „Geschuetzte Datei“");
+  assert.ok(anfang >= 0, `${name}: die Konvention „Geschuetzte Datei“ fehlt`);
+  const absatz = text.slice(anfang).split("\n")[0];
+  assert.ok(absatz.includes("`(nur genannt)`"), `${name}: die Kennzeichnung \`(nur genannt)\` fehlt bei der Konvention`);
+  assert.match(absatz, KENNZEICHNUNG_BEISPIEL, `${name}: kein Beispiel mit einem gekennzeichneten Backtick-Pfad`);
+}
+
+for (const name of ["issues", "task"]) {
+  test(`[skills-1179] ${name} nennt die Kennzeichnung (nur genannt) mit einem Beispiel`, () => {
+    nenntKennzeichnung(quelle(name), name);
+  });
+}
+
+test("[skills-1179] ohne Kennzeichnung oder ohne Beispiel wird die Pruefung rot", () => {
+  const text = quelle("issues");
+  assert.throws(() => nenntKennzeichnung(text.replaceAll("(nur genannt)", "(erwaehnt)"), "issues"), /Kennzeichnung/);
+  assert.throws(() => nenntKennzeichnung(text.replaceAll("` (nur genannt)", "`"), "issues"), /Beispiel/);
 });

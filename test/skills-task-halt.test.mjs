@@ -24,7 +24,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { HALT_FOLGESATZ } from "../kit/night.mjs";
+import { HALT_FOLGESATZ } from "../kit/night/wartend.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 

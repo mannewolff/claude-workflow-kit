@@ -4,74 +4,61 @@
 // result-Ereignis in den Ergebnisstand. Zeitbudget oder fehlender Text lassen die Kette
 // trotzdem fertig enden — die Abdeckung ist eine Auskunft, kein Tor. Schreibt die Session
 // doch am Board, steht das als abdeckungSchrieb in der Einheit.
+//
+// Seit Issue #1233 laufen diese Ketten im selben Prozess (`ketteImProzess`, Plan #1199, E6).
+// Das Zeitbudget einer haengenden Abdeckungs-Session braucht die echte Uhr und steht in
+// `ablauf-night-kette-abdeckung.test.mjs`.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { abdeckungPrompt, ABDECKUNG_PROMPT, ABDECKUNG_ZUSATZ, KETTE_ZUSATZ, leseErgebnisText } from "../kit/night.mjs";
+import { abdeckungPrompt, ABDECKUNG_PROMPT, ABDECKUNG_ZUSATZ, KETTE_ZUSATZ } from "../kit/night/kette.mjs";
+import { leseErgebnisText } from "../kit/night/session.mjs";
 import {
-  run, mitProjekt, fachplan, umgebung, sessions, stand,
-  PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, ABDECKUNG_SCHREIBT,
+  ketteImProzess, fachplanKarte, jeStufe, planAnlegen, reviewMarker, paketeAnlegen, abdeckungSchreibt,
 } from "./helpers/kette-fixture.mjs";
 
 const RESULT_TEXT = "### Zuordnung 1 -> #0003. ### Ohne Paket Alle Kriterien sind abgebildet. ### Zuwachs Nichts Zusaetzliches.";
 
-test("[night-20] der Text der Abdeckungs-Session steht in der Einheit", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir);
-    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
-    const res = run(dir, ["--kette"], { ...env, KETTE_RESULT_TEXT: RESULT_TEXT });
-    assert.equal(res.status, 0, res.stderr);
-    const einheit = stand(dir).einheiten.find((e) => e.id === F);
-    assert.equal(einheit.ausgang, "fertig", einheit.grund);
-    assert.equal(einheit.stufen.abdeckung.text, RESULT_TEXT);
-    assert.equal("grund" in einheit.stufen.abdeckung, false);
-    assert.equal("abdeckungSchrieb" in einheit, false);
-    assert.equal(einheit.kostenUsd, 4, "vier Sessions zu je 1 $");
-    assert.match(res.stdout, /Stufe abdeckung: Pakete gegen Fachplan #0001/);
+/** Jede Session liefert den Schlusstext, wie KETTE_RESULT_TEXT im Prozess. */
+const mitText = (stufen) => (s) => ({ ...stufen(s), ergebnis: RESULT_TEXT });
+
+test("[night-20] der Text der Abdeckungs-Session steht in der Einheit", async () => {
+  const r = await ketteImProzess({
+    karten: [fachplanKarte("1")],
+    sitzung: mitText(jeStufe({ plan: planAnlegen(), review: reviewMarker, pakete: paketeAnlegen })),
   });
+  assert.equal(r.code, 0, r.ausgabe);
+  const einheit = r.lauf.einheiten.find((e) => e.id === "1");
+  assert.equal(einheit.ausgang, "fertig", einheit.grund);
+  assert.equal(einheit.stufen.abdeckung.text, RESULT_TEXT);
+  assert.equal("grund" in einheit.stufen.abdeckung, false);
+  assert.equal("abdeckungSchrieb" in einheit, false);
+  assert.equal(einheit.kostenUsd, 4, "vier Sessions zu je 1 $");
+  assert.match(r.ausgabe, /Stufe abdeckung: Pakete gegen Fachplan #1/);
 });
 
-test("[night-20] schreibt die Abdeckungs-Session am Fachplan, steht abdeckungSchrieb in der Einheit — die Kette bleibt fertig", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir);
-    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, abdeckung: ABDECKUNG_SCHREIBT } });
-    const res = run(dir, ["--kette"], { ...env, KETTE_RESULT_TEXT: RESULT_TEXT });
-    assert.equal(res.status, 0, res.stderr);
-    const einheit = stand(dir).einheiten.find((e) => e.id === F);
-    assert.equal(einheit.ausgang, "fertig");
-    assert.equal(einheit.abdeckungSchrieb, true);
-    assert.match(res.stdout, /die Abdeckungs-Session hat am Board geschrieben/);
+test("[night-20] schreibt die Abdeckungs-Session am Fachplan, steht abdeckungSchrieb in der Einheit — die Kette bleibt fertig", async () => {
+  const r = await ketteImProzess({
+    karten: [fachplanKarte("1")],
+    sitzung: mitText(jeStufe({ plan: planAnlegen(), review: reviewMarker, pakete: paketeAnlegen, abdeckung: abdeckungSchreibt })),
   });
+  assert.equal(r.code, 0, r.ausgabe);
+  const einheit = r.lauf.einheiten.find((e) => e.id === "1");
+  assert.equal(einheit.ausgang, "fertig");
+  assert.equal(einheit.abdeckungSchrieb, true);
+  assert.match(r.ausgabe, /die Abdeckungs-Session hat am Board geschrieben/);
 });
 
-test("[night-20] ohne Text bleibt die Abdeckung null mit Grund, die Kette endet fertig", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir);
-    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
-    const res = run(dir, ["--kette"], env);
-    assert.equal(res.status, 0, res.stderr);
-    const einheit = stand(dir).einheiten.find((e) => e.id === F);
-    assert.equal(einheit.ausgang, "fertig");
-    assert.equal(einheit.stufen.abdeckung.text, null);
-    assert.match(einheit.stufen.abdeckung.grund, /lieferte keinen Text/);
+test("[night-20] ohne Text bleibt die Abdeckung null mit Grund, die Kette endet fertig", async () => {
+  const r = await ketteImProzess({
+    karten: [fachplanKarte("1")],
+    sitzung: jeStufe({ plan: planAnlegen(), review: reviewMarker, pakete: paketeAnlegen }),
   });
-});
-
-test("[night-20] reisst die Abdeckungs-Session ihr Zeitbudget, endet die Kette trotzdem fertig, der Grund steht an der Stufe", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir);
-    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, abdeckung: "sleep 5" } });
-    // Das kurze Limit gilt nur der Abdeckung (Issue #1080): Die drei Sessions davor
-    // rissen es unter Last, und der Test wurde rot, obwohl die Abdeckung richtig reagierte.
-    const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "1500", NIGHT_TIMEOUT_STUFE: "abdeckung" });
-    assert.equal(res.status, 0, res.stderr);
-    const einheit = stand(dir).einheiten.find((e) => e.id === F);
-    assert.equal(einheit.ausgang, "fertig", einheit.grund);
-    assert.equal(einheit.stufen.abdeckung.text, null);
-    assert.match(einheit.stufen.abdeckung.grund, /Zeitbudget abdeckung/);
-    assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["plan", "review", "pakete", "abdeckung"]);
-  });
+  assert.equal(r.code, 0, r.ausgabe);
+  const einheit = r.lauf.einheiten.find((e) => e.id === "1");
+  assert.equal(einheit.ausgang, "fertig");
+  assert.equal(einheit.stufen.abdeckung.text, null);
+  assert.match(einheit.stufen.abdeckung.grund, /lieferte keinen Text/);
 });
 
 test("[night-20] abdeckungPrompt nennt Fachplan, Plan und Pakete, verbietet Schreiben und verlangt die drei Abschnitte", () => {
@@ -92,25 +79,21 @@ test("[night-20] leseErgebnisText liest das result-Feld des letzten result-Ereig
   assert.equal(leseErgebnisText(undefined), null);
 });
 
-test("[night-20] die Abdeckungs-Session bekommt keinen Auftrag, ans Board zu schreiben — Plan, Review und Pakete tragen KETTE_ZUSATZ unveraendert", () => {
-  mitProjekt((dir) => {
-    fachplan(dir);
-    const mit = (stufe, befehl) => (befehl ? `${befehl}; ` : "") + String.raw`printf "%s" "$NIGHT_PROMPT" > "$KETTE_LOG.` + stufe + `"`;
-    const env = umgebung(dir, { stufen: {
-      plan: mit("plan", PLAN_ANLEGEN), review: mit("review", REVIEW_MARKER),
-      pakete: mit("pakete", PAKETE_ANLEGEN), abdeckung: mit("abdeckung"),
-    } });
-    const res = run(dir, ["--kette"], { ...env, KETTE_RESULT_TEXT: RESULT_TEXT });
-    assert.equal(res.status, 0, res.stderr);
-    for (const stufe of ["plan", "review", "pakete"]) {
-      const prompt = readFileSync(`${env.logPfad}.${stufe}`, "utf-8");
-      assert.ok(prompt.includes(KETTE_ZUSATZ), `KETTE_ZUSATZ fehlt an Stufe ${stufe}:\n${prompt}`);
-    }
-    const prompt = readFileSync(`${env.logPfad}.abdeckung`, "utf-8");
-    assert.ok(!prompt.includes("Schreibe dein Ergebnis ans Board"), prompt);
-    assert.doesNotMatch(prompt, /ans Board/);
-    assert.ok(prompt.includes(ABDECKUNG_ZUSATZ), prompt);
-    assert.match(prompt, /Beende deine Arbeit nicht, solange eine von dir angestossene lange Arbeit laeuft/);
-    assert.match(prompt, /Warte auf ihr Ergebnis oder brich sie ab/);
+test("[night-20] die Abdeckungs-Session bekommt keinen Auftrag, ans Board zu schreiben — Plan, Review und Pakete tragen KETTE_ZUSATZ unveraendert", async () => {
+  const r = await ketteImProzess({
+    karten: [fachplanKarte("1")],
+    sitzung: mitText(jeStufe({ plan: planAnlegen(), review: reviewMarker, pakete: paketeAnlegen })),
   });
+  assert.equal(r.code, 0, r.ausgabe);
+  const promptVon = (stufe) => r.sitzungen.find((s) => s.stufe === stufe).prompt;
+  for (const stufe of ["plan", "review", "pakete"]) {
+    const prompt = promptVon(stufe);
+    assert.ok(prompt.includes(KETTE_ZUSATZ), `KETTE_ZUSATZ fehlt an Stufe ${stufe}:\n${prompt}`);
+  }
+  const prompt = promptVon("abdeckung");
+  assert.ok(!prompt.includes("Schreibe dein Ergebnis ans Board"), prompt);
+  assert.doesNotMatch(prompt, /ans Board/);
+  assert.ok(prompt.includes(ABDECKUNG_ZUSATZ), prompt);
+  assert.match(prompt, /Beende deine Arbeit nicht, solange eine von dir angestossene lange Arbeit laeuft/);
+  assert.match(prompt, /Warte auf ihr Ergebnis oder brich sie ab/);
 });

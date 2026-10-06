@@ -334,10 +334,10 @@ test("[einstellungen-22] eine vollständige Reviewer-Liste bleibt ohne Befund", 
 });
 
 test("[einstellungen-22] die Regel trifft genau die drei Fälle, an denen validateReviewers abbricht", () => {
-  // Der Quelltext von kit/board.mjs ist hier das Maß: Jede Bedingung, an der er `fail` ruft,
+  // Der Quelltext von kit/board/issue-review.mjs ist hier das Maß: Jede Bedingung, an der er `fail` ruft,
   // hat hier ihren Befund. Läuft die Liste dort auseinander, fällt es an dieser Stelle auf —
   // sonst speichert die Oberfläche eine Config, die der Nachtlauf danach nicht mehr lädt.
-  const quelle = readFileSync(join(repoRoot, "kit", "board.mjs"), "utf-8");
+  const quelle = readFileSync(join(repoRoot, "kit", "board", "issue-review.mjs"), "utf-8");
   const rumpf = quelle.slice(quelle.indexOf("function validateReviewers(")).split("\n}")[0];
   assert.match(rumpf, /typeof r\.name !== "string" \|\| !r\.name/, "board.mjs prüft den Namen nicht mehr so");
   assert.match(rumpf, /r\.kind === "claude" && !r\.model/, "board.mjs prüft das Modell nicht mehr so");

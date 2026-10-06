@@ -3,16 +3,13 @@
 // E13; Issue #697; Kriterium 4 und 7 des Fachplans #681).
 //
 // berichtBauen bleibt eine reine Funktion ueber bereits gelesenen Karten (Fixture-Tests,
-// kein Board-Zugriff); ein Integrationstest gegen den echten Runner prueft zusaetzlich,
-// dass die Kette-Einheit des Ergebnisstands `variante` und die drei Listen traegt.
+// kein Board-Zugriff), geprueft am Teil bericht im selben Prozess. Dass die Kette-Einheit
+// des Ergebnisstands `variante` und die drei Listen traegt, prueft der Lauf in
+// test/ablauf-night-bericht-umsetzung.test.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { berichtBauen } from "../kit/night.mjs";
-import {
-  run, mitProjekt, fachplan, umgebung, stand,
-  PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
-} from "./helpers/kette-fixture.mjs";
+import { berichtBauen } from "../kit/night/bericht.mjs";
 
 // Vor der Variantenzeile steht seit Issue #896 der Auftrag: die gekennzeichnete Karte
 // selbst bei der fachlichen Anforderung, der Plan mit seiner Quelle beim Plan-Auftrag.
@@ -163,29 +160,4 @@ test("[night-36] ein Paket ohne Entscheidungen-Block und eines ohne Kommentare l
   let text;
   assert.doesNotThrow(() => { text = berichtBauen(einheit, { pakete, stempel: "s" }); });
   assert.match(text, /### Entscheidungen der Nacht\n\n- Keine\.\n/);
-});
-
-test("[night-36] [night-41] [night-42] die Kette-Einheit des Ergebnisstands traegt variante, die drei Listen und je umgesetztem Paket stufe, stufeVerwendet, modell und effort", () => {
-  mitProjekt((dir) => {
-    const F = fachplan(dir, "[Fachlich] Ein Anliegen");
-    durchziehen(dir, F);
-    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-
-    const einheit = stand(dir).einheiten.find((e) => e.id === F);
-    assert.equal(einheit.variante, "B");
-    assert.ok(Array.isArray(einheit.stufen.umsetzung.umgesetzt));
-    assert.ok(Array.isArray(einheit.stufen.umsetzung.angehalten));
-    assert.ok(Array.isArray(einheit.stufen.umsetzung.nichtBegonnen));
-    assert.deepEqual(einheit.stufen.umsetzung.umgesetzt.map((e) => e.id), einheit.stufen.pakete.ids);
-    for (const eintrag of einheit.stufen.umsetzung.umgesetzt) {
-      assert.ok("stufe" in eintrag, "traegt stufe");
-      assert.ok("stufeVerwendet" in eintrag, "traegt stufeVerwendet");
-      assert.ok("modell" in eintrag, "traegt modell");
-      // Die Gruendlichkeit der verwendeten Stufe (Issue #846) — wie die drei Felder
-      // daneben aus der Paket-Einheit, und ohne Stufe schlicht null.
-      assert.ok("effort" in eintrag, "traegt effort");
-    }
-  });
 });

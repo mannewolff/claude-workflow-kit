@@ -19,7 +19,7 @@
  *
  * KEIN ZWEITER WEG (Entscheidung des Pakets): Angelegt, gespiegelt und abgeraeumt wird mit
  * denselben Funktionen, die die Nacht-Kette benutzt — `worktreeAnlegen`,
- * `worktreeEntfernen`, `worktreesAufraeumen` und `befundeZurueck` aus `night.mjs`. Diese
+ * `worktreeEntfernen`, `worktreesAufraeumen` und `befundeZurueck` aus dem Teil `night/kitstand.mjs` (Issue #1226). Diese
  * Datei traegt darum bewusst eine Nachbar-Abhaengigkeit und ist keine fuer sich portable
  * Einzeldatei wie `aufwand.mjs` oder `befunde.mjs` (Muster #440): Zwei Wege, einen Worktree
  * vorzubereiten, laufen beim ersten Unterschied auseinander — und der Spiegel von
@@ -37,12 +37,12 @@ import { existsSync, copyFileSync, mkdirSync, readFileSync, appendFileSync, real
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen, befundeZurueck, nachziehenPruefen } from "./night.mjs";
+import { worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen, befundeZurueck, nachziehenPruefen } from "./night/kitstand.mjs";
 
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.6.0";
+const KIT_VERSION = "3.7.0";
 
 const HELP = `worktree.mjs (claude-workflow-kit v${KIT_VERSION}) — Worktree fuer die Release-Skills
 
@@ -75,7 +75,7 @@ function pfadIn(root, relativ) {
 function repoWurzel() {
   const res = spawnSync("git", ["worktree", "list", "--porcelain"], { encoding: "utf-8" });
   if (res.status !== 0) throw new Error(`kein git-Repo: ${(res.stderr || res.stdout || "").trim()}`);
-  const erste = res.stdout.split("\n").find((z) => z.startsWith("worktree "));
+  const erste = res.stdout.split(/\r?\n/).find((z) => z.startsWith("worktree "));
   if (!erste) throw new Error(`git worktree list nennt keine Hauptkopie: ${res.stdout.trim()}`);
   return erste.slice("worktree ".length).trim();
 }
@@ -187,7 +187,7 @@ function rueckweg(repoRoot, cliArgs) {
   let ausfuehrungen = 0;
   const protokoll = pfadIn(pfad, ANGEHAENGT);
   if (existsSync(protokoll)) {
-    const zeilen = readFileSync(protokoll, "utf-8").split("\n").filter((z) => z !== "");
+    const zeilen = readFileSync(protokoll, "utf-8").split(/\r?\n/).filter((z) => z !== "");
     if (zeilen.length > 0) {
       const protokollZiel = pfadIn(repoRoot, ANGEHAENGT);
       mkdirSync(dirname(protokollZiel), { recursive: true });

@@ -9,6 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mitProjekt, zeile, auswerten, pruefung, bericht } from "./helpers/wirksamkeit-fixture.mjs";
+import { auswerten as auswertenDirekt } from "../kit/wirksamkeit.mjs";
 
 const CONFIG = { buildChecks: ["node --test"] };
 
@@ -64,5 +65,28 @@ test("[wirksamkeit-4] eine Aussage aus einem einzigen Lauftag wird als solche be
   mitProjekt({ config: CONFIG, zeilen: [zeile({ tage: 2 })] }, (dir) => {
     auswerten(dir);
     assert.match(bericht(dir), /einem einzigen Lauftag/, "die Traglast eines einzelnen Lauftags steht nicht im Bericht");
+  });
+});
+
+test("[wirksamkeit-1213] das Fenster haengt an der uebergebenen Uhr, nicht an der des Rechners", () => {
+  // Feste Stempel statt `vorTagen`: Mit injizierter Uhr liegt das Fenster fest, und der
+  // Test belegt die Grenze unabhaengig vom Tag, an dem er laeuft (Issue #1213, Plan #1199 E6).
+  const jetzt = () => new Date("2026-03-31T12:00:00.000Z");
+  const ohneKindprozess = () => ({ status: 1, stdout: "", stderr: "nicht angefragt" });
+  mitProjekt({
+    config: CONFIG,
+    zeilen: [
+      zeile({ zeit: "2026-02-20T12:00:00.000Z", ergebnis: "rot" }),
+      zeile({ zeit: "2026-03-30T12:00:00.000Z", dauerMs: 2_000 }),
+    ],
+  }, (dir) => {
+    const e = auswertenDirekt(dir, { jetzt, board: ohneKindprozess, checks: ohneKindprozess });
+
+    assert.equal(e.erzeugtAm, "2026-03-31T12:00:00.000Z");
+    assert.equal(e.fenster.bis, "2026-03-31T12:00:00.000Z");
+    assert.equal(e.fenster.von, "2026-03-01T12:00:00.000Z");
+    const p = pruefung(e, "node --test");
+    assert.equal(p.ausfuehrungen, 1, "die Zeile vom 20. Februar liegt vor dem 30-Tage-Fenster");
+    assert.equal(p.dauerMs, 2_000);
   });
 });

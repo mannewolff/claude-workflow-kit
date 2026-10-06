@@ -75,7 +75,10 @@ test("[skills-20] beide Ablauflisten fuehren Bump, Stempel und Changelog in dies
 
 test("[skills-20] beide Release-Skills fahren genau einen Prueflauf, und zwar mit Batch-Anker", () => {
   for (const pfad of [PUSH_MAIN, MERGE_PRODUCTION]) {
-    const text = lies(...pfad);
+    // Der Weg ueber den Build-Dienst (Issue #1216, Plan #1199 E14) zaehlt hier nicht mit:
+    // Dort faehrt der Build-Dienst den vollen Lauf, und der Skill selbst nur den Nachweis
+    // fuer die Release-Dateien — belegt in test/skills-push-main.test.mjs.
+    const text = lies(...pfad).replace(/\n## Weg über den Build-Dienst[\s\S]*?(?=\n## )/, "\n");
     const wo = pfad.join("/");
     const laeufe = [...text.matchAll(LAUF)];
     assert.equal(laeufe.length, 1, `${wo}: genau ein 'checks.mjs run' erwartet, gefunden ${laeufe.length}`);
@@ -109,4 +112,52 @@ test("[skills-21] beide Release-Skills melden Fortschritt und weisen den Lauf je
     assert.match(text, /Schritt k von n/, `${wo}: die Fortschrittszeile ist nicht beschrieben`);
     assert.match(text, /zeitpunkt/, `${wo}: die Nachweiszeile nennt den Zeitpunkt des Laufs nicht`);
   }
+});
+
+// --- Der Vor-Push-Schritt (Issue #1154, Plan #1150, E6) ---
+
+/** Abschnitt `## Vor dem Push` von RELEASING.md bis zur naechsten Ueberschrift Ebene 2. */
+function vorDemPush() {
+  const text = lies("RELEASING.md");
+  const start = text.indexOf("## Vor dem Push");
+  assert.notEqual(start, -1, "RELEASING.md fuehrt keinen Abschnitt '## Vor dem Push'");
+  const ende = text.indexOf("\n## ", start + 1);
+  return { text, start, abschnitt: text.slice(start, ende === -1 ? undefined : ende) };
+}
+
+test("[skills-20] RELEASING.md nennt den Vor-Push-Schritt ausserhalb der Ablauflisten", () => {
+  const { text, start } = vorDemPush();
+  const ablauf = text.indexOf("## Ablauf");
+  const warum = text.indexOf("### Warum", ablauf);
+  assert.ok(start < ablauf || start > warum, "der Abschnitt steht zwischen '## Ablauf' und '### Warum'");
+  assert.doesNotMatch(ablauflisten(), /windows-pruefung/, "das Werkzeug steht in den Ablauflisten");
+});
+
+test("[skills-20] der Vor-Push-Schritt nennt das Kommando und die Exit-Bedeutungen", () => {
+  const { abschnitt } = vorDemPush();
+  assert.match(abschnitt, /node tools\/windows-pruefung\.mjs --vorab/, "das Kommando fehlt");
+  assert.match(abschnitt, /Exit 0/, "Exit 0 fehlt");
+  assert.match(abschnitt, /Exit 1/, "Exit 1 fehlt");
+  assert.match(abschnitt, /jeder andere Exit/i, "die Bedeutung aller anderen Exits fehlt");
+});
+
+test("[skills-20] die Arbeitsteilung nennt den Vor-Push-Schritt als Ausnahme", () => {
+  const listen = ablauflisten();
+  const absatz = listen.split(/\n\s*\n/).find((a) => /weder das\s+Festschreiben/.test(a));
+  assert.ok(absatz, "der Absatz zur Arbeitsteilung fehlt");
+  assert.match(absatz, /Vor-Push-Schritt/, "der Absatz nennt den Vor-Push-Schritt nicht");
+  assert.match(absatz, /Ausnahme/, "der Vor-Push-Schritt steht nicht als Ausnahme");
+  assert.match(absatz, /Wegwerf-Zweig/, "es steht nicht, dass er auf einen Wegwerf-Zweig legt");
+});
+
+test("[skills-20] die Rueckmeldung zur Windows-Pruefung nennt #316 und #1129 abgeloest, der Hook bleibt als Netz", () => {
+  const text = lies("RELEASING.md");
+  const start = text.indexOf("### Rueckmeldung zur Windows-Pruefung");
+  assert.notEqual(start, -1, "der Abschnitt zur Rueckmeldung fehlt");
+  const abschnitt = text.slice(start, text.indexOf("\n## ", start));
+  assert.match(abschnitt, /#316/, "#316 fehlt");
+  assert.match(abschnitt, /#1129/, "#1129 fehlt");
+  assert.match(abschnitt, /abgel(ö|oe)st/, "es steht nicht, dass die Festlegungen abgeloest sind");
+  assert.match(abschnitt, /Netz/, "es steht nicht, dass der Hook als Netz bleibt");
+  assert.match(abschnitt, /au(ß|ss)erhalb von `push main`/, "es steht nicht, fuer welche Pushes der Hook bleibt");
 });

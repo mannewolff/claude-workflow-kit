@@ -112,7 +112,14 @@
               "gleichzeitig": {
                 "type": "boolean",
                 "default": false,
-                "description": "Ob diese Prüfung in \"checks.mjs run\" neben anderen laufen darf. Gekennzeichnete Einträge laufen in einer ersten Phase gleichzeitig (höchstens vier, übersteuerbar über die Umgebungsvariable KIT_CHECKS_GLEICHZEITIG), die übrigen danach nacheinander in Config-Reihenfolge. Die gleichzeitige Phase läuft vollständig durch, damit alle roten bekannt sind; die nachfolgende bricht beim ersten Rot ab und startet nach einem Rot der ersten Phase nicht. Die Ausgabe steht je Prüfung als geschlossener Block in Config-Reihenfolge, und der Bericht vermerkt bei einer gleichzeitig gemessenen Dauer, dass sie neben anderen gemessen wurde. Nur für Prüfungen, die sich nicht gegenseitig stören (eigene Dateien, eigene Ports). Fehlendes Feld = false = die Prüfung läuft nacheinander wie bisher. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
+                "description": "Ob diese Prüfung in \"checks.mjs run\" neben anderen laufen darf. Gekennzeichnete Einträge laufen in einer ersten Phase gleichzeitig (höchstens zwei, übersteuerbar über die Umgebungsvariable KIT_CHECKS_GLEICHZEITIG), die übrigen danach nacheinander in Config-Reihenfolge. Die gleichzeitige Phase läuft vollständig durch, damit alle roten bekannt sind; die nachfolgende bricht beim ersten Rot ab und startet nach einem Rot der ersten Phase nicht. Die Ausgabe steht je Prüfung als geschlossener Block in Config-Reihenfolge, und der Bericht vermerkt bei einer gleichzeitig gemessenen Dauer, dass sie neben anderen gemessen wurde. Nur für Prüfungen, die sich nicht gegenseitig stören (eigene Dateien, eigene Ports). Fehlendes Feld = false = die Prüfung läuft nacheinander wie bisher. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
+              },
+              "art": {
+                "type": "string",
+                "enum": [
+                  "hinweis"
+                ],
+                "description": "Die Eintragsart. \"hinweis\" = die Prüfung meldet nur und hält nie an: Sie endet in \"checks.mjs run\" immer grün — mit Fund, ohne Fund und auch beim Absturz des Werkzeugs; Rückgabewert, Fehlermerkmale und Gütemessung werden für sie nicht ausgewertet. Jede Ausgabezeile der Form \"Hinweis: <text>\" steht in \"hinweise\" der Zusammenfassung und als \"hinweis: <text>\" im Block für den Abschlussbericht; endet das Werkzeug mit Exit 2 oder mehr, steht dort genau eine Zeile \"Hinweis-Pruefung gescheitert\" mit dem Kommando. Die Wirksamkeitsauswertung führt einen solchen Eintrag nicht als Pflichtprüfung. Fehlendes Feld = eine gewöhnliche Prüfung, deren Rot den Lauf anhält. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
               }
             },
             "required": [
@@ -293,6 +300,40 @@
       "minLength": 1,
       "description": "Ziel-Branch für den PR in Schritt 9 (merge production). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": "production"
+    },
+    "pushPruefung": {
+      "description": "Wo der volle Prüflauf vor 'push main' stattfindet. 'lokal' (Vorgabe): /push-main fährt ihn mit 'checks.mjs run --stufe push' auf dem eigenen Rechner. Ein Objekt mit ort 'buildDienst' verlegt ihn in den Build-Dienst des Projekts: /push-main pusht den Stand auf den Prüfzweig, wartet über 'board.mjs code ci-status --commit' auf das Ergebnis und pusht mainBranch nur bei Grün. Die Pflicht ist an beiden Orten dieselbe — grün vor dem Push; productionBranch bleibt unberührt. Der Build-Dienst muss auf dem Prüfzweig dieselben Pflichtprüfungen fahren wie der lokale Lauf der Stufe push. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "default": "lokal",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "lokal"
+          ]
+        },
+        {
+          "type": "object",
+          "required": [
+            "ort",
+            "zweig"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ort": {
+              "type": "string",
+              "enum": [
+                "buildDienst"
+              ],
+              "description": "Der Ort des vollen Laufs: der Build-Dienst des Projekts."
+            },
+            "zweig": {
+              "type": "string",
+              "pattern": "^\\S+$",
+              "description": "Der Prüfzweig, auf den /push-main den Stand vor dem Push pusht und den es danach wieder löscht. Nicht mainBranch und nicht productionBranch."
+            }
+          }
+        }
+      ]
     },
     "reviewScope": {
       "type": "string",
@@ -1097,6 +1138,7 @@
     "mutationCommand": "",
     "mainBranch": "main",
     "productionBranch": "production",
+    "pushPruefung": "lokal",
     "reviewScope": "diff",
     "reviewModel": "claude-opus-4-8",
     "triggers": {

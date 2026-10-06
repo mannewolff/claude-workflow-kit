@@ -15,17 +15,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  KETTE_BUDGET_DEFAULTS,
-  BERICHT_ANKER,
-  KETTE_HALT_ANKER,
-  REVIEW_FERTIG_LABEL,
-  KETTE_UNGEPRUEFT_ANKER,
-  grundOhneArbeit,
-} from "../kit/night.mjs";
+import { KETTE_BUDGET_DEFAULTS } from "../kit/night/session.mjs";
+import { BERICHT_ANKER } from "../kit/night/bericht.mjs";
+import { KETTE_HALT_ANKER, REVIEW_FERTIG_LABEL, KETTE_UNGEPRUEFT_ANKER } from "../kit/night/kette.mjs";
+import { grundOhneArbeit } from "../kit/night/grundlagen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
@@ -196,9 +191,9 @@ test("die Allowlist fuer fremde Reviewer steht unter dem Abschnitt zur Kette", (
   assert.ok(abschnitt.includes("#### Allowlist für fremde Reviewer"));
 });
 
-test("der dokumentierte Aufruf entspricht dem Programm: --help kennt --kette", () => {
-  const hilfe = execFileSync(process.execPath, [join(repoRoot, "kit", "night.mjs"), "--help"], { encoding: "utf-8" });
-  assert.match(hilfe, /^[ \t]+--kette\s/m, "night.mjs --help nennt --kette nicht");
+// Dass night.mjs --help die Option --kette nennt, prueft ablauf-night-grundlagen-hilfe am
+// Programm (Issue #1235); hier steht nur die Seite der Doku.
+test("der dokumentierte Aufruf steht in der Doku: node .claude/kit/night.mjs --kette", () => {
   const abschnitt = dokuAbschnitt(ABSCHNITT);
   assert.ok(abschnitt.includes("node .claude/kit/night.mjs --kette"), "der Aufruf steht nicht in der Doku");
 });
@@ -227,7 +222,7 @@ test("der Nachtbetrieb-Block der Vorlage nennt beide Routing-Labels und den Beri
 // Die Kopie unter .claude/ ist Installer-Ausgabe und liegt nicht im Repo. Ein Vergleich
 // hier waere lokal rot, bis jemand den Installer laeuft — und zwaenge eine Session, unter
 // .claude/ zu schreiben, was CLAUDE.md verbietet. Dass der Installer die Vorlage bytegleich
-// ausliefert, prueft install-flow.test.mjs ([installer-7]); dass der Blob in install.mjs
+// ausliefert, prueft ablauf-install-flow.test.mjs ([installer-7]); dass der Blob in install.mjs
 // zur Quelle passt, `node tools/sync-blobs.mjs --check`.
 
 test("der /techplan-Skill nennt den Runner-Aufruf --kette", () => {

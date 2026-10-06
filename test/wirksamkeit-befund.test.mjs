@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
-import { mitProjekt, zeile, wirksamkeit, auswerten, standPfad, hatStand } from "./helpers/wirksamkeit-fixture.mjs";
+import { mitProjekt, zeile, wirksamkeit, auswerten, standPfad, hatStand, pruefung } from "./helpers/wirksamkeit-fixture.mjs";
 
 const CONFIG = { buildChecks: ["node --test"] };
 
@@ -84,5 +84,36 @@ test("[wirksamkeit-2] befund weist ein ueberzaehliges Argument ab, ohne etwas au
     assert.notEqual(res.status, 0, "ein unbekanntes Argument gehoert abgewiesen");
     assert.equal(res.stdout, "", "auf stdout gehoert hier kein Text, den ein Skill weiterreicht");
     assert.match(res.stderr, /--fenster/);
+  });
+});
+
+// --- Hinweis-Pruefungen (Issue #1155, Plan #1150, E11) ---
+//
+// Ein Eintrag der Art `hinweis` endet in `checks.mjs run` immer gruen. Gezaehlt als
+// Pflichtpruefung, stuende er nach zehn Laeufen dauerhaft als "nie beanstandet" im
+// Befund — und ohne Lauf als "nicht gelaufen". Beides waere eine Aussage ueber eine
+// Pruefung, die gar nicht beanstanden kann.
+
+const HINWEIS = "node tools/windows-brueche.mjs";
+
+test("[wirksamkeit-2] ein Hinweis-Eintrag erzeugt keinen Befund nie beanstandet", () => {
+  const config = { buildChecks: [{ cmd: HINWEIS, always: true, art: "hinweis" }] };
+  const zeilen = Array.from({ length: 10 }, (_, i) => zeile({ tage: i + 1, cmd: HINWEIS }));
+  mitProjekt({ config, zeilen }, (dir) => {
+    const ergebnis = auswerten(dir);
+
+    assert.equal(pruefung(ergebnis, HINWEIS), undefined, JSON.stringify(ergebnis.pruefungen));
+    assert.deepEqual(ergebnis.befund, []);
+    assert.equal(wirksamkeit(dir, "befund").stdout, "");
+  });
+});
+
+test("[wirksamkeit-2] ein Hinweis-Eintrag ohne Lauf erscheint nicht als nicht gelaufen", () => {
+  const config = { buildChecks: ["node --test", { cmd: HINWEIS, art: "hinweis" }] };
+  mitProjekt({ config, zeilen: [zeile({ tage: 1 })] }, (dir) => {
+    const ergebnis = auswerten(dir);
+
+    assert.equal(pruefung(ergebnis, HINWEIS), undefined, JSON.stringify(ergebnis.pruefungen));
+    assert.equal(pruefung(ergebnis, "node --test").zustand, "nie beanstandet");
   });
 });

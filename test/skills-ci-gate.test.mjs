@@ -79,9 +79,13 @@ test("[skills-19] bei keine faehrt der Lauf unveraendert weiter", () => {
 
 // Der pruefbare Anker dafuer, dass in `push-main` kein Gate steht: Nach dem Push ist der
 // Lauf zum eben gepushten Commit noch gar nicht fertig, und `push main` ist der haeufige
-// Trigger — ein Gate muesste warten.
-test("[skills-19] push-main ruft code ci-status nicht auf", () => {
-  assert.doesNotMatch(PUSH, /ci-status/, "`code ci-status` steht in push-main — dort gehoert kein Gate hin");
+// Trigger — ein Gate muesste warten. Seit Issue #1216 (Plan #1199 E14) gilt das fuer den
+// lokalen Weg: Der Weg ueber den Build-Dienst wartet bewusst auf `code ci-status`, weil
+// der Build-Dienst dort den vollen Lauf VOR dem Push auf mainBranch faehrt.
+test("[skills-19] push-main ruft code ci-status ausserhalb des Build-Dienst-Wegs nicht auf", () => {
+  const ohneBuildDienst = PUSH.replace(/\n## Weg über den Build-Dienst[\s\S]*?(?=\n## )/, "\n");
+  assert.notEqual(ohneBuildDienst, PUSH, "der Abschnitt „## Weg über den Build-Dienst“ fehlt");
+  assert.doesNotMatch(ohneBuildDienst, /ci-status/, "`code ci-status` steht im lokalen Weg von push-main — dort gehoert kein Gate hin");
 });
 
 test("[skills-19] push-main nennt stattdessen einen Hinweis auf merge production", () => {
@@ -91,4 +95,62 @@ test("[skills-19] push-main nennt stattdessen einen Hinweis auf merge production
   assert.match(absatz, /nicht gegatet|kein Gate/i, "es steht nicht, dass hier nicht gegatet wird");
   // Ohne Code-Host gibt es keine CI, ueber die man hinweisen koennte.
   assert.match(absatz, /codeHost|local/, "der Hinweis haengt nicht am codeHost");
+});
+
+// Der Vor-Push-Schritt (Issue #1154, Plan #1150, E6 bis E8): Nennt `RELEASING.md` einen,
+// faehrt push-main ihn nach dem Commit und vor dem Push. Das Warten selbst lebt im
+// Werkzeug des Repos, nicht im Skill — darum bleibt push-main frei von `ci-status`.
+
+/** Abschnitt `### 7. Pushen` bis zur naechsten Ueberschrift derselben Ebene. */
+function schrittPush() {
+  const start = PUSH.indexOf("### 7. Pushen");
+  assert.notEqual(start, -1, "der Abschnitt `### 7. Pushen` fehlt");
+  const ende = PUSH.indexOf("\n### ", start + 1);
+  return PUSH.slice(start, ende === -1 ? undefined : ende);
+}
+
+test("[skills-19] Schritt 7 faehrt einen Vor-Push-Schritt aus RELEASING.md vor dem Push", () => {
+  const schritt = schrittPush();
+  const vorPush = schritt.search(/Vor-Push-Schritt/);
+  assert.notEqual(vorPush, -1, "Schritt 7 nennt keinen Vor-Push-Schritt");
+  const push = schritt.search(/git push origin HEAD:/);
+  assert.notEqual(push, -1, "der Push fehlt in Schritt 7");
+  assert.ok(vorPush < push, "der Vor-Push-Schritt steht hinter dem Push");
+  const absatz = absatzMit(schritt, /Vor-Push-Schritt/);
+  assert.match(absatz, /RELEASING\.md/, "es steht nicht, dass der Vor-Push-Schritt aus RELEASING.md kommt");
+  assert.match(absatz, /Hintergrund/, "es steht nicht, dass der Schritt im Hintergrund laeuft (E8)");
+  assert.match(absatz, /wartet/, "es steht nicht, dass der Skill auf das Ende wartet");
+});
+
+test("[skills-19] der Vor-Push-Schritt bewertet Exit 0, 1 und jeden anderen Exit", () => {
+  const schritt = schrittPush();
+  assert.match(schritt, /Exit 0[^\n]*Push/, "Exit 0 fuehrt nicht zum Push");
+  assert.match(
+    schritt,
+    /Vor-Push-Prüfung rot\. Trotzdem pushen\? \(ja\/nein\)/,
+    "die Rueckfrage bei Exit 1 fehlt woertlich",
+  );
+  const rot = absatzMit(schritt, /Trotzdem pushen/);
+  assert.match(rot, /Exit 1/, "die Rueckfrage haengt nicht an Exit 1");
+  assert.match(rot, /alles au(ß|ss)er „?`?ja`?“? .*kein Push/i, "der Default ohne `ja` ist nicht `kein Push`");
+  assert.match(schritt, /jeder andere Exit[^\n]*Halt ohne Push/i, "ein anderer Exit haelt nicht ohne Push an");
+});
+
+test("[skills-19] der Vor-Push-Schritt ist kein eigener Schritt der Fortschrittszeilen", () => {
+  assert.doesNotMatch(PUSH, /von 10/, "die Zaehlung ist nicht mehr `von 9` (E7)");
+  assert.match(schrittPush(), /Schritt 7 von 9 — Push/, "die Fortschrittszeile von Schritt 7 hat sich veraendert");
+});
+
+test("[skills-19] Force-Pushes bleiben verboten, der Vorab-Zweig ist die einzige Ausnahme beim Ziel", () => {
+  assert.match(PUSH, /^- Keine Force-Pushes$/m, "„Keine Force-Pushes“ steht nicht mehr woertlich im Skill");
+  const zeile = PUSH.split("\n").find((z) => /Kein Push auf .*andere Branches/.test(z));
+  assert.ok(zeile, "die Zeile zu anderen Branches fehlt");
+  assert.match(zeile, /ausgenommen der Vorab-Zweig/, "der Vorab-Zweig ist nicht als Ausnahme genannt");
+  assert.match(zeile, /anlegt und l(ö|oe)scht/, "es steht nicht, dass der Vor-Push-Schritt ihn selbst anlegt und loescht");
+});
+
+test("[skills-19] der CI-Hinweis nennt die Vor-Push-Pruefung als einzige Ausnahme", () => {
+  const absatz = absatzMit(PUSH, /CI-Lauf/);
+  assert.match(absatz, /Vor-Push-Prüfung/, "der CI-Hinweis nennt die Vor-Push-Pruefung nicht");
+  assert.match(absatz, /einzige Ausnahme/i, "die Vor-Push-Pruefung ist nicht als einzige Ausnahme genannt");
 });

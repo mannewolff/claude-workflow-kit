@@ -1,0 +1,9 @@
+// Eingebaute Brueche der Art skips (Issue #1157, Plan #1150 E17). Kein ausfuehrbarer Test:
+// Die Endung .txt haelt die Datei aus node --test und aus dem Waechter heraus.
+
+// Bruch: ein Test ueberspringt sich nach dem Plattformnamen.
+test("bricht", { skip: process.platform === "win32" }, () => {});
+
+// Gegenbeispiel: dieselbe Stelle mit Vermerk; die Plattformweiche steht in der Zeile selbst.
+// windows-ausnahme: Gegenbeispiel fuer einen vermerkten plattformgebundenen Zweig
+test("vermerkt", { skip: process.platform === "win32" }, () => {});
