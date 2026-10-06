@@ -6,7 +6,7 @@
 // fasst stdout heute nur noch fuer die CLI-Fehlermeldung an und verwirft es danach.
 //
 // Geprueft wird die reine, exportierte Funktion — ohne Subprozess, Muster
-// `night-parse-deps.test.mjs`. Der Einbau in den Ablauf kommt mit Issue #488.
+// `night-abhaengigkeiten-parse.test.mjs`. Der Einbau in den Ablauf kommt mit Issue #488.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

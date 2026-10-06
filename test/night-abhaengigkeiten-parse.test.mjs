@@ -17,8 +17,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseDeps } from "../kit/night.mjs";
-import { FENCE_ZEILE, fenceLauf } from "../kit/board.mjs";
+import { parseDeps } from "../kit/night/abhaengigkeiten.mjs";
+import { FENCE_ZEILE, fenceLauf } from "../kit/board/dokumente.mjs";
 
 const ZEILEN = (...z) => z.join("\n");
 

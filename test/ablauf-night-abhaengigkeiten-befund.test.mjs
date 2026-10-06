@@ -1,3 +1,5 @@
+// Ablauf-Pruefung: Ob der Runner ein Paket zurueckstellt, den Block an die Karte haengt, den Probelauf beschriftet und je Lauf jede Karte nur einmal abruft, zeigt nur der echte Runner mit seinem Gate gegen ein Board; den Befund selbst belegt night-abhaengigkeiten-befund im selben Prozess.
+//
 // Der Abhaengigkeitsbefund des Nachtlaufs (Issue #1062, Plan #1057 E6, E10, E11).
 //
 // Stellt der Lauf ein Paket wegen einer Abhaengigkeit zurueck, haengt unter der
