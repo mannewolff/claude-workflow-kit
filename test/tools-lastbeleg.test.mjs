@@ -275,3 +275,22 @@ test("roteTestdateien liest die roten Dateien aus der Ausgabe, jede einmal", () 
   ].join("\n");
   assert.deepEqual(roteTestdateien(ausgabe), ["test/rot.test.mjs", "test/tap.test.mjs"]);
 });
+
+test("vor sync-blobs stehen die Kopie-Verzeichnisse, die es im frischen Worktree sonst still auslaesst", async () => {
+  // sync-blobs schreibt .claude/kit/ und .claude/skills/ nur, wenn sie schon da sind (Issue #1239).
+  const vorhanden = [];
+  const a = aufbau({
+    antwort: (aufruf) => {
+      if (aufruf.cmd === "node tools/sync-blobs.mjs") {
+        vorhanden.push(["kit", "skills"].every((d) => existsSync(join(aufruf.cwd, ".claude", d))));
+      }
+      return { code: 0, ausgabe: "" };
+    },
+  });
+  try {
+    await lastbeleg(OPT, a.abh);
+    assert.deepEqual(vorhanden, [true, true]);
+  } finally {
+    a.aufraeumen();
+  }
+});

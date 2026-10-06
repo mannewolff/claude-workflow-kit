@@ -119,6 +119,11 @@ function installCommandVon(wt) {
 async function einrichten(wt, referenz, starter) {
   const kommandos = [installCommandVon(wt), "node tools/sync-blobs.mjs"].filter(Boolean);
   for (const cmd of kommandos) {
+    // sync-blobs fuellt die Dogfooding-Kopien nur, wenn ihre Verzeichnisse schon stehen; im
+    // frischen Worktree fehlen sie, und der Lauf faende `.claude/kit/checks.mjs` nicht (#1239).
+    if (cmd === "node tools/sync-blobs.mjs") {
+      for (const d of ["kit", "skills"]) mkdirSync(join(wt, ".claude", d), { recursive: true });
+    }
     const { code, ausgabe } = await starter({ art: "einrichten", cwd: wt, cmd, env: process.env });
     if (code !== 0) {
       const ende = (ausgabe || "").trim().split(/\r?\n/).slice(-10).join("\n");
