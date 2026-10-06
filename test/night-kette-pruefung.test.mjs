@@ -7,10 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  waehleKettenKandidaten, pruefungFehltGrund, UNGEPRUEFT_PRAEFIX, REVIEW_FERTIG_LABEL,
-  KETTE_UNGEPRUEFT_ANKER,
-} from "../kit/night.mjs";
+import { waehleKettenKandidaten, pruefungFehltGrund, UNGEPRUEFT_PRAEFIX, REVIEW_FERTIG_LABEL, KETTE_UNGEPRUEFT_ANKER } from "../kit/night/kette.mjs";
 import {
   run, board, mitProjekt, fachplan, umgebung, stand, boardFakeInstallieren,
 } from "./helpers/kette-fixture.mjs";

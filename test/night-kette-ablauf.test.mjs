@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import {
   run, board, mitProjekt, fachplan, umgebung, sessions, stand, planBody, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-fixture.mjs";
-import { TESTHINWEIS_ANKER } from "../kit/night.mjs";
+import { TESTHINWEIS_ANKER } from "../kit/night/kette.mjs";
 
 const PLAN_MIT_NOTIZ = `${PLAN_ANLEGEN}; printf "notiz" > .claude/vorhaben-wartend-plan-1.md`;
 

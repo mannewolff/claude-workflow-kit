@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { offeneFragenGrund, waehleKettenKandidaten, UNGEPRUEFT_PRAEFIX, REVIEW_FERTIG_LABEL } from "../kit/night.mjs";
+import { offeneFragenGrund, waehleKettenKandidaten, UNGEPRUEFT_PRAEFIX, REVIEW_FERTIG_LABEL } from "../kit/night/kette.mjs";
 
 // Der Code-Fence als Konstante: In einem Template-Literal waeren drei Backticks nicht
 // schreibbar, und die Fixtures sollen als Zeilenlisten lesbar bleiben.

@@ -13,7 +13,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { paketUmgesetzt } from "../kit/night.mjs";
+import { paketUmgesetzt } from "../kit/night/kette.mjs";
 import {
   run, board, mitProjekt, fachplan, planauftrag, planBody, umgebung, sessions, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,

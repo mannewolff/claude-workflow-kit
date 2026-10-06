@@ -106,7 +106,7 @@ test("[night-61] auch eine abgebrochene erste Stufe meldet, bevor die Kette ende
 // laeuft durch `mitMeldung`. Damit fuehrt kein Weg durch die Kette ueber zwei Stufen
 // ohne Meldung, gleich welchen Ausgang eine Stufe nimmt.
 test("[night-61] kein Weg durch stufenDerKette fuehrt ueber zwei Stufen ohne Meldung", () => {
-  const quelle = readFileSync(join(repoRoot, "kit", "night.mjs"), "utf-8");
+  const quelle = readFileSync(join(repoRoot, "kit", "night", "kette.mjs"), "utf-8");
   const beginn = quelle.indexOf("async function stufenDerKette(");
   assert.notEqual(beginn, -1, "stufenDerKette nicht gefunden");
   const rumpf = quelle.slice(beginn, quelle.indexOf("\n}\n", beginn));

@@ -16,7 +16,7 @@
 // Erste von drei Dateien zum Ergebnisstand (Issue #836): Hier stehen die Anlage der
 // Datei und der abgeschlossene harte Stopp. Die Einheiten je Arbeitspaket liegen in
 // `night-ergebnisstand-einheiten.test.mjs`, die Kennzahlen einer Kette in
-// `night-ergebnisstand-kette.test.mjs`, die gemeinsamen Hilfen in
+// `night-kette-ergebnisstand.test.mjs`, die gemeinsamen Hilfen in
 // `helpers/ergebnisstand-fixture.mjs`.
 
 import { test } from "node:test";

@@ -14,10 +14,8 @@ import { mkdtempSync, mkdirSync, appendFileSync, writeFileSync, rmSync } from "n
 import { join } from "node:path";
 import { tmpdir, hostname } from "node:os";
 
-import {
-  beanspruchen, beanspruchtGrund, waehleKettenKandidaten, abgeben, laufendeKarten, journalLesen, staendeNachtragen,
-  REVIEW_FERTIG_LABEL, BESTAETIGUNGSFRIST_MS,
-} from "../kit/night.mjs";
+import { beanspruchen, beanspruchtGrund, waehleKettenKandidaten, REVIEW_FERTIG_LABEL, BESTAETIGUNGSFRIST_MS } from "../kit/night/kette.mjs";
+import { abgeben, laufendeKarten, journalLesen, staendeNachtragen } from "../kit/night/laufstand.mjs";
 import { run, board, mitProjekt, fachplan, umgebung, VORFLUG_KAPUTT } from "./helpers/kette-fixture.mjs";
 
 const HOST = "hier";

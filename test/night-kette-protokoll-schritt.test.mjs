@@ -13,7 +13,8 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { KETTE_HALT_ANKER, KLAEREN_LABEL } from "../kit/night.mjs";
+import { KETTE_HALT_ANKER } from "../kit/night/kette.mjs";
+import { KLAEREN_LABEL } from "../kit/night/wartend.mjs";
 import {
   NIGHT, VORFLUG_OK, VORFLUG_KAPUTT, run, board, mitProjekt, setupProjekt, fachplan, umgebung,
   sessions, stand, jePaket, fachplanBody, FACHPLAN_MARKER,

@@ -11,7 +11,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 
-import { wurzelBelegt, ladeKetteBudget, ladePruefLaufBudget } from "../kit/night.mjs";
+import { wurzelBelegt } from "../kit/night/kette.mjs";
+import { ladeKetteBudget, ladePruefLaufBudget } from "../kit/night/session.mjs";
 
 const HOST = "hier";
 const FREMD = "dort";

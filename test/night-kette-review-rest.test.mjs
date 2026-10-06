@@ -13,7 +13,8 @@ import { join } from "node:path";
 import {
   run, mitProjekt, fachplan, umgebung, stand, sessions, board, PLAN_ANLEGEN, PAKETE_ANLEGEN, REVIEW_MARKER, EREIGNIS,
 } from "./helpers/kette-fixture.mjs";
-import { REVIEW_REST_ANKER, WARTEND_ANKER } from "../kit/night.mjs";
+import { REVIEW_REST_ANKER } from "../kit/night/kette.mjs";
+import { WARTEND_ANKER } from "../kit/night/wartend.mjs";
 
 /** Die Fake-Zeile der Stufe review: haengt die Befunde als Kommentar an den Plan aus dem Prompt. */
 const BEFUNDE = String.raw`id=$(printf "%s" "$NIGHT_PROMPT" | sed -n "s|^/issue-review #\([0-9]*\).*|\1|p"); node .claude/kit/board.mjs issue comment "$id" --text "Fund 1 (opus, WICHTIG): Kriterium 3 ist im Weg nicht abgebildet." >/dev/null`;

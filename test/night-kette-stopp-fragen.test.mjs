@@ -7,7 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stoppFragenGrund } from "../kit/night.mjs";
+import { stoppFragenGrund } from "../kit/night/kette.mjs";
 
 // Der Code-Fence als Konstante: In einem Template-Literal waeren drei Backticks nicht
 // schreibbar, und die Fixtures sollen als Zeilenlisten lesbar bleiben.

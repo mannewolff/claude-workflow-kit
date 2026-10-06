@@ -16,7 +16,7 @@ import {
   run, board, mitProjekt, fachplan, umgebung, stand, boardFakeInstallieren,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-fixture.mjs";
-import { UEBERHOLT_UNBESTAETIGT_GRUND as UNBESTAETIGT_GRUND } from "../kit/night.mjs";
+import { UEBERHOLT_UNBESTAETIGT_GRUND as UNBESTAETIGT_GRUND } from "../kit/night/kette.mjs";
 
 const RESULT_TEXT = "Alle Kriterien sind abgebildet.";
 

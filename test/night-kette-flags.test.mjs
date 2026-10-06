@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { join, basename } from "node:path";
 import { tmpdir } from "node:os";
-import { waehleKettenKandidaten, korrekturPrompt } from "../kit/night.mjs";
+import { waehleKettenKandidaten, korrekturPrompt } from "../kit/night/kette.mjs";
 import {
   NIGHT, run, board, mitProjekt, fachplan, umgebung, sessions, stand, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-fixture.mjs";

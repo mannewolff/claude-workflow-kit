@@ -7,7 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stammtAusErzeugung } from "../kit/night.mjs";
+import { stammtAusErzeugung } from "../kit/night/kette.mjs";
 
 // --- Die reine Funktion: stammtAusErzeugung ---
 

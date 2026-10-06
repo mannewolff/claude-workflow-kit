@@ -9,10 +9,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  fachlicheQuelleVon, planAusschluss, waehleKettenKandidaten,
-  pruefungFehltGrund, UNGEPRUEFT_PRAEFIX, REVIEW_FERTIG_LABEL, KLAEREN_LABEL,
-} from "../kit/night.mjs";
+import { fachlicheQuelleVon, planAusschluss, waehleKettenKandidaten, pruefungFehltGrund, UNGEPRUEFT_PRAEFIX, REVIEW_FERTIG_LABEL } from "../kit/night/kette.mjs";
+import { KLAEREN_LABEL } from "../kit/night/wartend.mjs";
 
 /** Ein Plandokument, das jede Probe besteht — einzelne Felder ueberschreibbar. */
 function plan(over = {}) {

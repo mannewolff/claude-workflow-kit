@@ -8,9 +8,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  waehleKettenKandidaten, UNGEPRUEFT_PRAEFIX, REVIEW_FERTIG_LABEL,
-} from "../kit/night.mjs";
+import { waehleKettenKandidaten, UNGEPRUEFT_PRAEFIX, REVIEW_FERTIG_LABEL } from "../kit/night/kette.mjs";
 import {
   run, board, mitProjekt, fachplan, planauftrag, umgebung, sessions, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,

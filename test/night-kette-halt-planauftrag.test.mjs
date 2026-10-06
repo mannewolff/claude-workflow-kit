@@ -14,7 +14,8 @@ import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { KETTE_HALT_ANKER, KLAEREN_LABEL, REVIEW_FERTIG_LABEL, planAusschluss, stoppFragenGrund } from "../kit/night.mjs";
+import { KETTE_HALT_ANKER, REVIEW_FERTIG_LABEL, planAusschluss, stoppFragenGrund } from "../kit/night/kette.mjs";
+import { KLAEREN_LABEL } from "../kit/night/wartend.mjs";
 import {
   run, board, mitProjekt, fachplan, planauftrag, umgebung, stand, planBody,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_HALT,

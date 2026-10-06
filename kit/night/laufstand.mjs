@@ -12,8 +12,8 @@
  *
  * Nicht hier, obwohl es im Abschnitt „Laufstand“ stand: `wurzelBelegt` mit
  * `laufstandKopf`. Es fragt Plan-Praefix, fachliche Quelle, Prozess-Probe und die Budgets
- * von Kette und Prueflauf und bleibt bis zum Teil seines Hauptaufrufers, der Kette, im
- * Einstieg.
+ * von Kette und Prueflauf und steht seit Issue #1232 im Teil seines Hauptaufrufers,
+ * kit/night/kette.mjs.
  *
  * Die Abhaengigkeiten nach aussen — Board-Aufruf, Uhr, die beiden Arten zu warten, der
  * Start des Waechters, die Prozess-Probe und das Ende des Prozesses — stehen an einer

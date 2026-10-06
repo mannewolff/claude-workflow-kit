@@ -9,10 +9,19 @@
         "board-adapter",
         "board-dokumente",
         "board-einstieg",
+        "board-geschuetzt",
         "board-melder",
         "board-wiederholung",
         "installer",
-        "nacht-einstieg"
+        "nacht-abhaengigkeiten",
+        "nacht-bericht",
+        "nacht-einstieg",
+        "nacht-grundlagen",
+        "nacht-kette",
+        "nacht-kitstand",
+        "nacht-laufstand",
+        "nacht-session",
+        "nacht-wartend"
       ]
     },
     {
@@ -27,7 +36,7 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/night-abs*.test.mjs\" \"test/night-ag*.test.mjs\" \"test/night-an*.test.mjs\" \"test/night-as*.test.mjs\" \"test/night-au*.test.mjs\" \"test/night-bea*.test.mjs\" \"test/night-bef*.test.mjs\" \"test/night-bo*.test.mjs\" \"test/night-c*.test.mjs\" \"test/night-d*.test.mjs\" \"test/night-e*.test.mjs\" \"test/night-f*.test.mjs\" \"test/night-ga*.test.mjs\" \"test/night-ge*.test.mjs\" \"test/night-gu*.test.mjs\" \"test/night-h*.test.mjs\" \"test/night-i*.test.mjs\" \"test/night-kl*.test.mjs\" \"test/night-label*.test.mjs\" \"test/night-laufkennung.test.mjs\" \"test/night-le*.test.mjs\" \"test/night-lu*.test.mjs\" \"test/night-m*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/night-abs*.test.mjs\" \"test/night-ag*.test.mjs\" \"test/night-an*.test.mjs\" \"test/night-as*.test.mjs\" \"test/night-au*.test.mjs\" \"test/night-bef*.test.mjs\" \"test/night-bo*.test.mjs\" \"test/night-c*.test.mjs\" \"test/night-d*.test.mjs\" \"test/night-e*.test.mjs\" \"test/night-f*.test.mjs\" \"test/night-ga*.test.mjs\" \"test/night-ge*.test.mjs\" \"test/night-gu*.test.mjs\" \"test/night-h*.test.mjs\" \"test/night-i*.test.mjs\" \"test/night-kl*.test.mjs\" \"test/night-label*.test.mjs\" \"test/night-laufkennung.test.mjs\" \"test/night-le*.test.mjs\" \"test/night-lu*.test.mjs\" \"test/night-m*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "aufwand",
@@ -45,7 +54,7 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/night-n*.test.mjs\" \"test/night-o*.test.mjs\" \"test/night-p*.test.mjs\" \"test/night-r*.test.mjs\" \"test/night-st*.test.mjs\" \"test/night-v*.test.mjs\" \"test/night-wi*.test.mjs\" \"test/night-wu*.test.mjs\" \"test/night-z*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/night-n*.test.mjs\" \"test/night-p*.test.mjs\" \"test/night-r*.test.mjs\" \"test/night-st*.test.mjs\" \"test/night-v*.test.mjs\" \"test/night-wi*.test.mjs\" \"test/night-z*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
@@ -410,13 +419,11 @@
   "checkAreas": {
     "nacht-einstieg": [
       "kit/night.mjs",
-      "test/night-kette-*.test.mjs",
       "test/night-abs*.test.mjs",
       "test/night-ag*.test.mjs",
       "test/night-an*.test.mjs",
       "test/night-as*.test.mjs",
       "test/night-au*.test.mjs",
-      "test/night-bea*.test.mjs",
       "test/night-bef*.test.mjs",
       "test/night-bo*.test.mjs",
       "test/night-c*.test.mjs",
@@ -435,13 +442,11 @@
       "test/night-lu*.test.mjs",
       "test/night-m*.test.mjs",
       "test/night-n*.test.mjs",
-      "test/night-o*.test.mjs",
       "test/night-p*.test.mjs",
       "test/night-r*.test.mjs",
       "test/night-st*.test.mjs",
       "test/night-v*.test.mjs",
       "test/night-wi*.test.mjs",
-      "test/night-wu*.test.mjs",
       "test/night-z*.test.mjs",
       "test/ablauf-night-*.test.mjs",
       "test/helpers/ergebnisstand-fixture.mjs",
@@ -481,6 +486,10 @@
     "nacht-wartend": [
       "kit/night/wartend.mjs",
       "test/night-wartend-*.test.mjs"
+    ],
+    "nacht-kette": [
+      "kit/night/kette.mjs",
+      "test/night-kette-*.test.mjs"
     ],
     "board-einstieg": [
       "kit/board.mjs",

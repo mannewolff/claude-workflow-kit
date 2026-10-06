@@ -108,10 +108,10 @@ test("Regel 1: ein Kindprozess ohne Programm aus kit/ oder tools/ und ein reiner
   const { verstoesse } = treffer({
     "test/night-git.test.mjs": [
       'import { spawnSync } from "node:child_process";',
-      'import { teil } from "../kit/night/kette.mjs";',
+      'import { teil } from "../kit/night/beispiel.mjs";',
       'spawnSync("git", ["status"]);',
     ].join("\n"),
-    "test/night-leicht.test.mjs": 'import { teil } from "../kit/night/kette.mjs";\n',
+    "test/night-leicht.test.mjs": 'import { teil } from "../kit/night/beispiel.mjs";\n',
   });
   assert.deepEqual(verstoesse, []);
 });
@@ -222,7 +222,7 @@ test("Regel 4: ein Import aus ../kit/night.mjs ohne Kennzeichnung wird gemeldet"
 
 test("Regel 4: ein Import aus dem Teil oder in einer Ablauf-Pruefung ist erlaubt", () => {
   const { verstoesse } = treffer({
-    "test/night-a.test.mjs": 'import { lauf } from "../kit/night/kette.mjs";\n',
+    "test/night-a.test.mjs": 'import { lauf } from "../kit/night/beispiel.mjs";\n',
     "test/night-b.test.mjs": `${KOPF}import { lauf } from "../kit/night.mjs";\n`,
   });
   assert.deepEqual(verstoesse, []);

@@ -15,7 +15,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { writeFileSync, mkdirSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { UMSETZUNG_LOCK, UMSETZUNG_AUSGELASSEN_PRAEFIX } from "../kit/night.mjs";
+import { UMSETZUNG_AUSGELASSEN_PRAEFIX } from "../kit/night/kette.mjs";
+import { UMSETZUNG_LOCK } from "../kit/night/grundlagen.mjs";
 import {
   run, board, mitProjekt, fachplan, umgebung, sessions, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,

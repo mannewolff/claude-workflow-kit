@@ -18,7 +18,8 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { KETTE_HALT_ANKER, KLAEREN_LABEL, pushVermerk } from "../kit/night.mjs";
+import { KETTE_HALT_ANKER, pushVermerk } from "../kit/night/kette.mjs";
+import { KLAEREN_LABEL } from "../kit/night/wartend.mjs";
 import {
   run, board, mitProjekt, umgebung, sessions, stand,
   PAKETE_MIT_ABHAENGIGKEIT, UMSETZUNG_ERFOLG, UMSETZUNG_HALT, jePaket,

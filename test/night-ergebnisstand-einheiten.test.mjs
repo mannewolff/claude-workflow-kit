@@ -5,7 +5,7 @@
 // Commit, End-Status, Pruefstand und Session-Kennzahlen. Dazu die Meldung, die schon vor
 // dem ersten Arbeitspaket hinausgeht. Anlage und harte Stopps liegen in
 // `night-ergebnisstand.test.mjs`, die Kennzahlen einer Kette in
-// `night-ergebnisstand-kette.test.mjs`, die gemeinsamen Hilfen in
+// `night-kette-ergebnisstand.test.mjs`, die gemeinsamen Hilfen in
 // `helpers/ergebnisstand-fixture.mjs`.
 
 import { test } from "node:test";
