@@ -1,284 +1,125 @@
-// E2E fuer den Salvage-Pfad (Issue #167).
+// Die Vorpruefung des Salvage (Issue #167, #168, #169, #919).
 //
-// Ausgangslage: Eine Nacht-Session startet einen langen Check im Hintergrund,
-// kuendigt an das Ergebnis abzuwarten und beendet trotzdem ihren Turn — eine
-// headless -p-Session hat keinen Folge-Turn, das Ergebnis geht verloren. Das
-// Board zeigt einen Fehlschlag, obwohl die Arbeit fertig ist (kanban-kit #438,
-// #436, #443 am 2026-07-27). Der Runner faengt das jetzt ab: bevor er bei
-// "nicht in In review UND dirty" hart stoppt, verifiziert er die buildChecks
-// selbst. Sind sie gruen, bekommt genau eine Salvage-Session die Chance, den
-// Zwischenstand gegen das Issue zu pruefen, zu committen und das Board zu
-// bewegen.
+// Endet eine Runde ohne Board-Ergebnis, aber mit Arbeit im Baum, faehrt der Runner die
+// Pflicht-Pruefungen selbst — ueber `checks.mjs run --abschluss <karte> --frisch`, damit
+// derselbe Nachweis entsteht, den das Commit-Gate liest (Issue #919). Sind sie rot und ist
+// ein `formatFixCommand` gesetzt, laeuft er genau einmal, und die Pruefungen laufen genau
+// einmal nach (Issue #169). Die Umgebung bekommt den env-Block aus `.claude/settings.json`
+// und `.claude/settings.local.json` dazu, wie Claude Code ihn seinen Bash-Aufrufen gibt
+// (Issue #168).
 //
-// Laeuft komplett lokal: issueTracker "local" in einem Temp-Repo, Session-Fake
-// via NIGHT_CLAUDE_CMD. Der Fake unterscheidet die Salvage-Session an der
-// Umgebungsvariablen NIGHT_SALVAGE.
+// Im selben Prozess (Issue #1229, Plan #1199, E6): `verifyChecksForSalvage` bekommt ein
+// `spawnSync`, das jeden Aufruf mitschreibt und ein vorgegebenes Ergebnis liefert. Wie der
+// Runner die Rettung danach anordnet, pruefen die Ablauf-Pruefungen in
+// test/ablauf-night-session-salvage.test.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-// Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
-// kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
-// parallelen Testdateien gegeneinander.
-import "./helpers/checks-sperre.mjs";
-import { lfAttribute } from "./helpers/zeilenenden.mjs";
+import { CHECKS_PATH } from "../kit/night/grundlagen.mjs";
+import { settingsEnv, verifyChecksForSalvage, salvagePrompt } from "../kit/night/session.mjs";
+import { stdoutFangen } from "./helpers/session-attrappe.mjs";
 
-
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-// Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
-// Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
-const NIGHT = join(repoRoot, "kit", "night.mjs");
-
-function run(cwd, cmd, cliArgs, env = {}) {
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, ...env } });
-}
-
-function board(cwd, ...cliArgs) {
-  const res = run(cwd, process.execPath, [join(cwd, ".claude", "kit", "board.mjs"), ...cliArgs]);
-  assert.equal(res.status, 0, `board.mjs ${cliArgs.join(" ")} schlug fehl: ${res.stderr}`);
-  return JSON.parse(res.stdout);
-}
-
-// buildChecks ist der Hebel dieses Tests: "true" simuliert gruene Pflichtchecks
-// (die Arbeit ist inhaltlich fertig), "false" rote (die Session ist wirklich
-// gescheitert).
-function setupProjekt(buildChecks, extraConfig = {}) {
+/** Ein Projektverzeichnis mit den genannten settings-Dateien; `fn` laeuft darin. */
+async function imProjekt(dateien, fn) {
   const dir = mkdtempSync(join(tmpdir(), "night-salvage-"));
-  mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
-  copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
-  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
-  // Die Salvage-Vorpruefung faehrt seit Issue #919 `checks.mjs run` im Zielprojekt,
-  // damit sie denselben Nachweis hinterlaesst, den das Commit-Gate liest. Ohne die
-  // Datei im Fixture gaebe es keine Pflicht-Pruefung und damit keinen Rettungsversuch.
-  copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));
-  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
-    codeHost: "local",
-    issueTracker: "local",
-    buildChecks,
-    local: { issuesDir: "issues" },
-    ...extraConfig,
-  }, null, 2));
-  writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\nsessions.log\nfixcount.log\nchecklauf.log\n");
-  lfAttribute(join(dir, ".gitattributes"));
-  for (const [c, a] of [
-    ["git", ["init", "-q"]],
-    ["git", ["config", "user.email", "test@example.invalid"]],
-    ["git", ["config", "user.name", "Night Test"]],
-    ["git", ["add", "-A"]],
-    ["git", ["commit", "-q", "-m", "setup"]],
-  ]) {
-    const res = run(dir, c, a);
-    assert.equal(res.status, 0, `${c} ${a.join(" ")} schlug fehl: ${res.stderr}`);
-  }
-  return dir;
-}
-
-// Session-Fake: die regulaere Runde hinterlaesst unkommittete Arbeit und bewegt
-// das Board NICHT — genau das Schadensbild der drei Vorfaelle. Die Datei traegt
-// die Issue-ID im Namen, damit jede Runde den Tree wirklich dirty macht (gleicher
-// Inhalt in derselben Datei waere nach dem ersten Commit wieder sauber).
-function fakeSession(sessionLog, salvageBody) {
-  return `echo "$NIGHT_ISSUE_ID" >> ${JSON.stringify(sessionLog)}\n`
-    + `if [ -n "$NIGHT_SALVAGE" ]; then\n`
-    + `  echo "salvage $NIGHT_ISSUE_ID" >> ${JSON.stringify(sessionLog)}\n`
-    + `  ${salvageBody}\n`
-    + `else\n`
-    + `  echo arbeit > "work-$NIGHT_ISSUE_ID.txt"\n`
-    + `fi\n`;
-}
-
-test("Salvage: rote buildChecks starten keine Rettung — die Reste gehen in den Stash, der Lauf geht weiter (Issue #1089)", () => {
-  const dir = setupProjekt(["false"]);
+  const vorher = process.cwd();
+  mkdirSync(join(dir, ".claude"), { recursive: true });
+  for (const [name, inhalt] of Object.entries(dateien)) writeFileSync(join(dir, ".claude", name), inhalt);
+  process.chdir(dir);
   try {
-    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    const zweites = board(dir, "issue", "create", "--title", "Zweites Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    board(dir, "issue", "move", String(erstes.id), "ready");
-    board(dir, "issue", "move", String(zweites.id), "ready");
-
-    const sessionLog = join(dir, "sessions.log");
-    const fake = fakeSession(sessionLog, "true");
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: fake });
-
-    assert.equal(res.status, 0, `ein gescheitertes Paket haelt nur sich an (E14): ${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, /FEHLSCHLAG[\s\S]*Working Tree dirty/,
-      "die bestehende Fehlschlag-Meldung fehlt");
-    assert.doesNotMatch(res.stdout, /SALVAGE-VERSUCH gestartet/,
-      "bei roten Checks darf keine Salvage-Session starten");
-    // Ohne formatFixCommand bleibt der Format-Fix-Pfad komplett aus (Issue #169).
-    assert.doesNotMatch(res.stdout, /FORMAT-FIX/,
-      "ohne formatFixCommand darf kein Format-Fix versucht werden");
-
-    // Nur die regulaeren Sessions liefen; beide Pakete liegen mit ihren Resten im Stash.
-    const sessions = readFileSync(sessionLog, "utf-8").trim().split("\n");
-    assert.deepEqual(sessions, [String(erstes.id), String(zweites.id)], "es liefen nicht genau die zwei regulaeren Sessions");
-    const backlog = board(dir, "issue", "list", "--status", "backlog").map((i) => String(i.id));
-    assert.deepEqual(backlog.sort(), [String(erstes.id), String(zweites.id)].sort());
-    const stashes = run(dir, "git", ["stash", "list"]).stdout;
-    assert.match(stashes, new RegExp(`nachtrest #${erstes.id} `));
-    assert.match(stashes, new RegExp(`nachtrest #${zweites.id} `));
+    return await fn(dir);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("Salvage: gruene buildChecks + erfolgreiche Salvage-Session setzen den Lauf fort", () => {
-  const dir = setupProjekt(["true"]);
-  try {
-    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    const zweites = board(dir, "issue", "create", "--title", "Zweites Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    board(dir, "issue", "move", String(erstes.id), "ready");
-    board(dir, "issue", "move", String(zweites.id), "ready");
-
-    const sessionLog = join(dir, "sessions.log");
-    // Die Salvage-Session tut, was der Prompt verlangt: committen und das Board bewegen.
-    const fake = fakeSession(sessionLog,
-      `git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"`
-      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`);
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: fake });
-
-    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, /SALVAGE-VERSUCH gestartet \(Checks extern verifiziert gruen\)/,
-      "die Salvage-Startzeile fehlt");
-    assert.doesNotMatch(res.stdout, /SALVAGE-VERSUCH gescheitert/,
-      "der Salvage war erfolgreich, darf also nicht als gescheitert gemeldet werden");
-
-    // Beide Issues gerettet, der Lauf lief bis zum Ende durch.
-    const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
-    assert.ok(inReview.includes(String(erstes.id)) && inReview.includes(String(zweites.id)),
-      `beide Issues haetten in In review landen muessen, sind aber: ${inReview.join(", ")}`);
-    const log = readFileSync(sessionLog, "utf-8");
-    assert.match(log, new RegExp(`salvage ${erstes.id}`), "fuer das erste Issue lief keine Salvage-Session");
-    assert.match(log, new RegExp(`salvage ${zweites.id}`), "fuer das zweite Issue lief keine Salvage-Session");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("Salvage: env-Block aus .claude/settings.json wird beim Vorpruefen der buildChecks gemergt", () => {
-  // buildChecks besteht nur, wenn die Variable ankommt — belegt, dass
-  // runBuildChecksSync sie aus settings.json mergt statt nur process.env zu
-  // erben (kanban-kit #445: DOCKER_HOST/TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE
-  // fehlten sonst, weil night.mjs ausserhalb von Claude Code laeuft).
-  const dir = setupProjekt(['test "$NIGHT_TEST_ENV_VAR" = "hello-from-settings"']);
-  try {
-    writeFileSync(join(dir, ".claude", "settings.json"),
-      JSON.stringify({ env: { NIGHT_TEST_ENV_VAR: "hello-from-settings" } }, null, 2));
-    // Committen, sonst meldet der gitClean()-Vorflug-Check faelschlich einen
-    // dirty Tree, noch bevor ueberhaupt eine Runde startet.
-    run(dir, "git", ["add", "-A"]);
-    run(dir, "git", ["commit", "-q", "-m", "settings.json ergaenzt"]);
-
-    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    board(dir, "issue", "move", String(erstes.id), "ready");
-
-    const sessionLog = join(dir, "sessions.log");
-    const fake = fakeSession(sessionLog,
-      `git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"`
-      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`);
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: fake });
-
-    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
-    assert.doesNotMatch(res.stdout, /Salvage nicht moeglich: buildChecks sind rot/,
-      "die settings.json-Variable haette die buildChecks gruen machen muessen");
-    assert.match(res.stdout, /SALVAGE-VERSUCH gestartet \(Checks extern verifiziert gruen\)/,
-      "die Salvage-Startzeile fehlt");
-
-    const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
-    assert.ok(inReview.includes(String(erstes.id)), "Issue haette in In review landen muessen");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-// Fuehrt einen Salvage-Lauf mit vorgegebenen settings-Dateien aus und liefert das
-// Runner-Ergebnis. Geteilt von den beiden settings.local.json-Faellen (Issue #168).
-function laufMitSettings(erwarteterWert, dateien) {
-  const dir = setupProjekt([`test "$NIGHT_TEST_ENV_VAR" = "${erwarteterWert}"`]);
-  try {
-    for (const [name, env] of Object.entries(dateien)) {
-      writeFileSync(join(dir, ".claude", name), JSON.stringify({ env }, null, 2));
-    }
-    // Committen, sonst meldet der gitClean()-Vorflug-Check faelschlich dirty.
-    run(dir, "git", ["add", "-A"]);
-    run(dir, "git", ["commit", "-q", "-m", "settings ergaenzt"]);
-
-    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    board(dir, "issue", "move", String(erstes.id), "ready");
-
-    const fake = fakeSession(join(dir, "sessions.log"),
-      `git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"`
-      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`);
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: fake });
-    const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
-    return { res, geretttet: inReview.includes(String(erstes.id)) };
-  } finally {
+    process.chdir(vorher);
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-test("Salvage: env-Block aus .claude/settings.local.json wird ebenfalls gemergt", () => {
+/**
+ * Ein `spawnSync`, das jeden Aufruf mitschreibt. `checks` liefert der Reihe nach die
+ * Exitcodes von `checks.mjs run`; ein Aufruf ueber die Shell (der Format-Fix) endet mit 0.
+ */
+function aufrufAttrappe(checks) {
+  const aufrufe = [];
+  const spawnSync = (befehl, args, optionen) => {
+    const checksLauf = args[0] === CHECKS_PATH;
+    aufrufe.push({ art: checksLauf ? "checks" : "shell", befehl, args, env: optionen.env });
+    if (!checksLauf) return { status: 0, stdout: "", stderr: "" };
+    const status = checks.shift();
+    return { status, stdout: status === 0 ? "alles gruen\n" : "rot: mvn verify\n", stderr: "" };
+  };
+  return { spawnSync, aufrufe };
+}
+
+const json = (wert) => JSON.stringify(wert);
+
+// --- settingsEnv (Issue #168) ------------------------------------------------------
+
+test("settingsEnv: der env-Block aus .claude/settings.json kommt in die Umgebung", async () => {
+  await imProjekt({ "settings.json": json({ env: { NIGHT_TEST_ENV_VAR: "hello-from-settings" } }) }, (dir) => {
+    assert.deepEqual(settingsEnv(dir), { NIGHT_TEST_ENV_VAR: "hello-from-settings" });
+  });
+});
+
+test("settingsEnv: der env-Block aus .claude/settings.local.json kommt ebenfalls hinein", async () => {
   // settings.local.json ist gitignored und damit der uebliche Ort fuer
   // maschinenspezifische Werte (z. B. ein Colima-Socket-Pfad). Claude Code liest
   // beide Dateien — die Vorpruefung muss das auch tun (Issue #168).
-  const { res, geretttet } = laufMitSettings("from-local", {
-    "settings.local.json": { NIGHT_TEST_ENV_VAR: "from-local" },
+  await imProjekt({ "settings.local.json": json({ env: { NIGHT_TEST_ENV_VAR: "from-local" } }) }, (dir) => {
+    assert.deepEqual(settingsEnv(dir), { NIGHT_TEST_ENV_VAR: "from-local" });
   });
-
-  assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
-  assert.doesNotMatch(res.stdout, /Salvage nicht moeglich: buildChecks sind rot/,
-    "die Variable aus settings.local.json haette die buildChecks gruen machen muessen");
-  assert.ok(geretttet, "Issue haette in In review landen muessen");
 });
 
-test("Salvage: settings.local.json gewinnt gegen settings.json (gleiche Precedence wie Claude Code)", () => {
-  const { res, geretttet } = laufMitSettings("from-local", {
-    "settings.json": { NIGHT_TEST_ENV_VAR: "from-shared" },
-    "settings.local.json": { NIGHT_TEST_ENV_VAR: "from-local" },
+test("settingsEnv: settings.local.json gewinnt gegen settings.json (gleiche Precedence wie Claude Code)", async () => {
+  await imProjekt({
+    "settings.json": json({ env: { NIGHT_TEST_ENV_VAR: "from-shared", NUR_GETEILT: "ja" } }),
+    "settings.local.json": json({ env: { NIGHT_TEST_ENV_VAR: "from-local" } }),
+  }, (dir) => {
+    assert.deepEqual(settingsEnv(dir), { NIGHT_TEST_ENV_VAR: "from-local", NUR_GETEILT: "ja" });
   });
-
-  assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
-  assert.doesNotMatch(res.stdout, /Salvage nicht moeglich: buildChecks sind rot/,
-    "bei gleichem Schluessel haette der Wert aus settings.local.json gewinnen muessen");
-  assert.ok(geretttet, "Issue haette in In review landen muessen");
 });
 
-test("Salvage: gescheiterte Salvage-Session ohne Commit hat eine eigene Log-Zeile, die Reste gehen in den Stash", () => {
-  const dir = setupProjekt(["true"]);
-  try {
-    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    const zweites = board(dir, "issue", "create", "--title", "Zweites Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    board(dir, "issue", "move", String(erstes.id), "ready");
-    board(dir, "issue", "move", String(zweites.id), "ready");
+test("settingsEnv: kaputtes JSON und ein fehlender env-Block lassen nur ihre Quelle ausfallen", async () => {
+  await imProjekt({
+    "settings.json": "{ kaputt",
+    "settings.local.json": json({ permissions: {} }),
+  }, (dir) => {
+    assert.deepEqual(settingsEnv(dir), {});
+  });
+});
 
-    const sessionLog = join(dir, "sessions.log");
-    // Die Salvage-Session laesst den Stand liegen (Diff passt nicht zum Issue).
-    const fake = fakeSession(sessionLog, "true");
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: fake });
+// --- verifyChecksForSalvage (Issue #919) ---------------------------------------------
 
-    assert.equal(res.status, 0, `ein gescheitertes Paket haelt nur sich an (E14): ${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, /SALVAGE-VERSUCH gestartet \(Checks extern verifiziert gruen\)/,
-      "die Salvage-Startzeile fehlt");
-    assert.match(res.stdout, /SALVAGE-VERSUCH gescheitert/,
-      "der Salvage-Fehlschlag braucht eine eigene, unterscheidbare Log-Zeile");
+test("Vorpruefung: faehrt checks.mjs run --abschluss <karte> --frisch, mit dem env-Block aus den settings", async () => {
+  await imProjekt({ "settings.json": json({ env: { NIGHT_TEST_ENV_VAR: "hello-from-settings" } }) }, () => {
+    const { spawnSync, aufrufe } = aufrufAttrappe([0]);
+    const ergebnis = verifyChecksForSalvage({}, 7, { spawnSync });
 
-    // Genau eine Salvage-Session je Issue, danach geht der Lauf weiter.
-    const log = readFileSync(sessionLog, "utf-8").trim().split("\n");
-    assert.deepEqual(log, [String(erstes.id), String(erstes.id), `salvage ${erstes.id}`, String(zweites.id), String(zweites.id), `salvage ${zweites.id}`],
-      `erwartet: je Issue regulaere Runde + genau eine Salvage-Runde, tatsaechlich: ${log.join(" / ")}`);
-    assert.match(run(dir, "git", ["stash", "list"]).stdout, new RegExp(`nachtrest #${erstes.id} `));
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+    assert.equal(ergebnis.ok, true);
+    assert.equal(ergebnis.formatFixCmd, null);
+    assert.equal(aufrufe.length, 1);
+    assert.equal(aufrufe[0].befehl, process.execPath);
+    assert.deepEqual(aufrufe[0].args, [CHECKS_PATH, "run", "--abschluss", "7", "--frisch"]);
+    assert.equal(aufrufe[0].env.NIGHT_TEST_ENV_VAR, "hello-from-settings",
+      "die Vorpruefung erbt nicht nur process.env, sie mergt den env-Block (kanban-kit #445)");
+    assert.ok(ergebnis.output.startsWith(`$ node ${CHECKS_PATH} run --abschluss 7 --frisch\nalles gruen`), ergebnis.output);
+  });
+});
+
+test("Vorpruefung: rote Pruefungen ohne formatFixCommand — kein Fix, das rote Kommando kommt aus dem Nachweis", async () => {
+  const nachweis = json({ laufen: [{ cmd: "true", ergebnis: "gruen" }, { cmd: "mvn verify", ergebnis: "rot" }], ausgelassen: [] });
+  await imProjekt({ "checks-summary.json": nachweis }, async () => {
+    const { spawnSync, aufrufe } = aufrufAttrappe([1]);
+    const { ergebnis, text } = await stdoutFangen(() => verifyChecksForSalvage({}, 7, { spawnSync }));
+
+    assert.equal(ergebnis.ok, false);
+    assert.equal(ergebnis.rotesKommando, "mvn verify");
+    assert.deepEqual(aufrufe.map((a) => a.art), ["checks"], "ohne formatFixCommand laeuft nur die Vorpruefung");
+    assert.doesNotMatch(text, /FORMAT-FIX/);
+  });
 });
 
 // --- Format-Fix (Issue #169) ---
@@ -286,168 +127,55 @@ test("Salvage: gescheiterte Salvage-Session ohne Commit hat eine eigene Log-Zeil
 // Beobachtet bei kanban-kit#463: ein einzelner Javadoc-Zeilenumbruch liess
 // Spotless rot laufen und stoppte damit einen ganzen Nachtlauf, obwohl die
 // Arbeit vollstaendig war. Ein Formatverstoss ist mechanisch und deterministisch
-// behebbar und sagt nichts ueber die fachliche Qualitaet — er darf einen Lauf
-// mit zwanzig wartenden Issues nicht beenden. Rote Checks mit inhaltlicher
-// Aussage (Testfehler, Lint) bleiben unveraendert ein harter Stopp.
+// behebbar und sagt nichts ueber die fachliche Qualitaet.
 
-test("Format-Fix: erst rote, nach dem Format-Kommando gruene Checks retten den Lauf", () => {
-  // Der buildCheck besteht erst, wenn die Marker-Datei existiert — das
-  // formatFixCommand legt sie an. Damit ist "erst rot, nach dem Fix gruen"
-  // deterministisch nachgestellt.
-  const dir = setupProjekt(["test -f fixed.marker"], { formatFixCommand: "touch fixed.marker" });
-  try {
-    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    const zweites = board(dir, "issue", "create", "--title", "Zweites Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    board(dir, "issue", "move", String(erstes.id), "ready");
-    board(dir, "issue", "move", String(zweites.id), "ready");
+test("Format-Fix: erst rote, nach dem Format-Kommando gruene Pruefungen — die Rettung darf beginnen", async () => {
+  await imProjekt({}, async () => {
+    const { spawnSync, aufrufe } = aufrufAttrappe([1, 0]);
+    const { ergebnis, text } = await stdoutFangen(() =>
+      verifyChecksForSalvage({ formatFixCommand: "  touch fixed.marker " }, 7, { spawnSync }));
 
-    const sessionLog = join(dir, "sessions.log");
-    const fake = fakeSession(sessionLog,
-      `git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"`
-      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`);
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: fake });
-
-    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, /FORMAT-FIX angewendet, buildChecks jetzt gruen/,
-      "der angewendete Format-Fix muss im Protokoll sichtbar sein");
-    assert.match(res.stdout, /SALVAGE-VERSUCH gestartet/, "der Salvage haette danach laufen muessen");
-
-    // Beide Issues gerettet: der Lauf wurde fortgesetzt statt gestoppt.
-    const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
-    assert.ok(inReview.includes(String(erstes.id)) && inReview.includes(String(zweites.id)),
-      `beide Issues haetten in In review landen muessen, sind aber: ${inReview.join(", ")}`);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+    assert.equal(ergebnis.ok, true);
+    assert.equal(ergebnis.formatFixCmd, "touch fixed.marker", "der Salvage-Prompt nennt das Format-Kommando");
+    assert.deepEqual(aufrufe.map((a) => a.art), ["checks", "shell", "checks"]);
+    assert.ok(aufrufe[1].args.includes("touch fixed.marker"), `der Fix laeuft ueber die Shell: ${aufrufe[1].args.join(" ")}`);
+    assert.match(text, /buildChecks rot — einmaliger Format-Fix wird angewendet: touch fixed\.marker/);
+    assert.match(text, /FORMAT-FIX angewendet, buildChecks jetzt gruen/, "der angewendete Format-Fix muss im Protokoll sichtbar sein");
+    assert.match(ergebnis.output, /alles gruen/, "die Ausgabe ist die des zweiten Durchgangs");
+  });
 });
 
-test("Format-Fix: hilft er nicht, bleibt das Paket gescheitert — und er lief genau einmal", () => {
-  // Das Format-Kommando protokolliert jeden Aufruf, die Checks bleiben rot.
-  // Belegt zugleich: keine Schleife, genau ein Versuch.
-  const dir = setupProjekt(["false"], { formatFixCommand: "echo lauf >> fixcount.log" });
-  try {
-    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    board(dir, "issue", "move", String(erstes.id), "ready");
+test("Format-Fix: hilft er nicht, bleibt die Vorpruefung rot — und er lief genau einmal", async () => {
+  await imProjekt({}, async () => {
+    const { spawnSync, aufrufe } = aufrufAttrappe([1, 1]);
+    const { ergebnis, text } = await stdoutFangen(() =>
+      verifyChecksForSalvage({ formatFixCommand: "echo lauf >> fixcount.log" }, 7, { spawnSync }));
 
-    const sessionLog = join(dir, "sessions.log");
-    const fake = fakeSession(sessionLog, "true");
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: fake });
-
-    assert.equal(res.status, 0, `ein gescheitertes Paket haelt nur sich an (E14): ${res.stderr}\n${res.stdout}`);
-    assert.doesNotMatch(res.stdout, /FORMAT-FIX angewendet/,
-      "der Fix hat nicht geholfen, darf also nicht als erfolgreich gemeldet werden");
-    assert.match(res.stdout, /FEHLSCHLAG[\s\S]*Working Tree dirty/, "die bestehende Fehlschlag-Meldung fehlt");
-
-    const laeufe = readFileSync(join(dir, "fixcount.log"), "utf-8").trim().split("\n");
-    assert.equal(laeufe.length, 1, `das Format-Kommando lief ${laeufe.length}x statt genau einmal`);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+    assert.equal(ergebnis.ok, false);
+    assert.equal(ergebnis.formatFixCmd, null);
+    assert.deepEqual(aufrufe.map((a) => a.art), ["checks", "shell", "checks"], "keine Schleife, genau ein Versuch");
+    assert.doesNotMatch(text, /FORMAT-FIX angewendet/, "der Fix hat nicht geholfen, darf also nicht als erfolgreich gemeldet werden");
+  });
 });
 
-// --- Die Guetemessung in der Vorpruefung (Issue #817, seit Issue #950 ausgelassen) ---
-//
-// Issue #817 liess die Vorpruefung die Guetemessung mitwerten: Ein Mutationstest mit
-// Exit 0 und 84 % gegen Marke 90 galt bis dahin als gruen, obwohl checks.mjs denselben
-// Lauf rot faerbt.
-//
-// Seit Issue #946 laesst der Abschluss einer Karte die Guetemessung aus — ihr Anteil
-// entsteht aus der vollstaendigen Testmenge, und ein Anteil aus einem verkuerzten Lauf
-// waere eine andere Groesse mit demselben Namen. Die Vorpruefung des Salvage faehrt den
-// Umfang genau dieses Abschlusses (Issue #950, Plan #944, E14) und laesst die Messung
-// darum ebenfalls aus: Eine Vorpruefung, die STRENGER waere als der Abschluss, den sie
-// nachvollzieht, waere der zweite Weg ueber denselben Vorgang.
-//
-// Die Marke ist damit nicht aufgegeben, sondern verschoben: Vor dem Veroeffentlichen
-// laeuft die Messung immer, an der Push-Stufe sogar bei leerem Paket (Issue #763).
+// --- Der Salvage-Prompt (Issue #672) ---------------------------------------------------
 
-/** Ein Eintrag mit Guetemessung: Exit 0, gemessene 84 %, Marke `marke`. */
-function gueteCheck(marke) {
-  return {
-    cmd: `node -e "console.log('Killed 5 (84%)')" && echo guete >> checklauf.log`,
-    guete: { muster: String.raw`\((\d+)%\)`, marke },
-  };
-}
-
-/** Wie oft die Guetemessung gelaufen ist. */
-function gueteLaeufe(dir) {
-  const p = join(dir, "checklauf.log");
-  return existsSync(p) ? readFileSync(p, "utf-8").trim().split("\n").filter(Boolean).length : 0;
-}
-
-test("[night-950] Salvage: eine verfehlte Marke haelt die Vorpruefung nicht auf — sie gehoert nicht zum Abschlussumfang", () => {
-  // Der Eintrag "true" daneben ist das Gate des Abschlusses: Ohne ihn startet der Lauf
-  // gar nicht (Start-Guard, Issue #950).
-  const dir = setupProjekt([gueteCheck(90), "true"]);
-  try {
-    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    board(dir, "issue", "move", String(erstes.id), "ready");
-
-    const sessionLog = join(dir, "sessions.log");
-    const fake = fakeSession(sessionLog,
-      `git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"`
-      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`);
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
-
-    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, /SALVAGE-VERSUCH gestartet \(Checks extern verifiziert gruen\)/,
-      "die ausgelassene Messung haette den Salvage nicht aufhalten duerfen");
-    assert.doesNotMatch(res.stdout, /84 % erreicht/,
-      "eine ausgelassene Messung darf keinen Anteil melden — sie hat nicht gemessen");
-    assert.equal(gueteLaeufe(dir), 0, "das Kommando der Guetemessung ist in der Vorpruefung gelaufen");
-    const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
-    assert.ok(inReview.includes(String(erstes.id)), "das gerettete Issue haette in In review landen muessen");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+test("[night-27] der Salvage-Prompt verlangt `git status --porcelain` vor dem Board-Zug", () => {
+  const prompt = salvagePrompt("7", "$ node checks.mjs run\nalles gruen", null);
+  const pruefung = prompt.indexOf("git status --porcelain");
+  const zug = prompt.indexOf("issue move");
+  assert.ok(pruefung >= 0, `der Prompt verlangt keine Sauberkeitspruefung:\n${prompt}`);
+  assert.ok(zug >= 0, `der Prompt nennt den Board-Zug nicht:\n${prompt}`);
+  assert.ok(pruefung < zug,
+    `die Sauberkeitspruefung steht hinter dem Board-Zug — genau die Reihenfolge, die #248 gekostet hat:\n${prompt}`);
 });
 
-test("[night-950] Salvage: auch ein nicht auswertbares Ergebnis ist kein Halt mehr — es wird nicht gemessen", () => {
-  const dir = setupProjekt([{
-    cmd: `node -e "console.log('BUILD SUCCESS')" && echo guete >> checklauf.log`,
-    guete: { muster: String.raw`\((\d+)%\)`, marke: 80 },
-  }, "true"]);
-  try {
-    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    board(dir, "issue", "move", String(erstes.id), "ready");
-
-    const sessionLog = join(dir, "sessions.log");
-    const fake = fakeSession(sessionLog,
-      `git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"`
-      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`);
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
-
-    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
-    assert.doesNotMatch(res.stdout, /kein auswertbares Ergebnis/,
-      "wo nicht gemessen wird, darf auch kein fehlender Messwert gemeldet werden");
-    assert.match(res.stdout, /SALVAGE-VERSUCH gestartet/, "der Salvage-Pfad lief nicht");
-    assert.equal(gueteLaeufe(dir), 0, "das Kommando der Guetemessung ist in der Vorpruefung gelaufen");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("[night-65] Salvage: ein Guete-Eintrag der Stufe push bleibt in der Vorpruefung aussen vor", () => {
-  // Die Stufenauswahl gilt unveraendert (Plan #753, E13): Was erst beim
-  // Veroeffentlichen faellig ist, haelt keinen Rettungsversuch auf.
-  const dir = setupProjekt([{ ...gueteCheck(90), stufe: "push" }, "true"]);
-  try {
-    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    board(dir, "issue", "move", String(erstes.id), "ready");
-
-    const sessionLog = join(dir, "sessions.log");
-    const fake = fakeSession(sessionLog,
-      `git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"`
-      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`);
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: fake });
-
-    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, /SALVAGE-VERSUCH gestartet \(Checks extern verifiziert gruen\)/,
-      "die Messung der Stufe push haette den Salvage nicht aufhalten duerfen");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+test("der Salvage-Prompt zitiert die letzten Zeilen der Vorpruefung und nennt einen angewendeten Format-Fix", () => {
+  const ausgabe = Array.from({ length: 20 }, (_, i) => `zeile ${i + 1}`).join("\n");
+  const prompt = salvagePrompt("7", ausgabe, "npm run format");
+  assert.match(prompt, /checks\.mjs run --abschluss 7 --frisch/);
+  assert.match(prompt, /zeile 6\nzeile 7/, "die letzten 15 Zeilen stehen im Prompt");
+  assert.doesNotMatch(prompt, /zeile 5\n/, "aeltere Zeilen fallen weg");
+  assert.match(prompt, /"npm run format"/, "die Formatierungsaenderungen gehoeren mit in den Commit");
+  assert.doesNotMatch(salvagePrompt("7", ausgabe, null), /Format-Kommando/);
 });

@@ -6,26 +6,17 @@
 // Drei Ebenen werden geprueft: `zeitenBauen()` ist die reine Feldkonstruktion (wie
 // `verbrauchAddieren`), `zeitenAddieren()` die reine Summe zweier Sessions (wie
 // `kennzahlenAddieren`), beide direkt an Fixtures pruefbar. Das Schreiben auf die Einheit
-// (`zeitenErfassen`, privat) ist E2E geprueft, wie `verbrauchErfassen` in
-// night-ergebnisstand.test.mjs — mit demselben `findLast`-Ziel-Muster: Ein zweiter
-// Aufruf fuer dieselbe Karte (Salvage) trifft dieselbe, juengste Einheit und addiert
-// seine Zeiten zu denen der ersten (Issue #820).
+// (`zeitenErfassen`, privat) ist ueber `runSession` im selben Prozess geprueft, mit einer
+// Attrappe statt der Session und einer eingesetzten Uhr (Issue #1229) — mit demselben
+// `findLast`-Ziel-Muster wie `verbrauchErfassen`: Ein zweiter Aufruf fuer dieselbe Karte
+// (Salvage) trifft dieselbe, juengste Einheit und addiert seine Zeiten zu denen der ersten
+// (Issue #820).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, rmSync, cpSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
 
-import { zeitenBauen, zeitenAddieren } from "../kit/night/session.mjs";
-
-// Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
-// kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
-// parallelen Testdateien gegeneinander.
-import "./helpers/checks-sperre.mjs";
-import { lfAttribute } from "./helpers/zeilenenden.mjs";
+import { zeitenBauen, zeitenAddieren, runSession, reviewerVorflug } from "../kit/night/session.mjs";
+import { sessionAbh, uhrAttrappe, mitLauf, ARGS } from "./helpers/session-attrappe.mjs";
 
 // ============================================================
 // zeitenBauen — reine Feldkonstruktion
@@ -141,215 +132,100 @@ test("[night-51] eine unvollstaendige Messung auf einer Seite macht die Summe nu
 });
 
 // ============================================================
-// zeitenErfassen — E2E: Einheit, Ziel und Ueberschreiben
+// zeitenErfassen — ueber runSession im selben Prozess (Issue #1229)
 // ============================================================
-
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const NIGHT = join(repoRoot, "kit", "night.mjs");
-
-function run(cwd, cmd, cliArgs, env = {}) {
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, ...env } });
-}
-
-function board(cwd, ...cliArgs) {
-  const res = run(cwd, process.execPath, [join(cwd, ".claude", "kit", "board.mjs"), ...cliArgs]);
-  assert.equal(res.status, 0, `board.mjs ${cliArgs.join(" ")} schlug fehl: ${res.stderr}`);
-  return JSON.parse(res.stdout);
-}
-
-function setupProjekt(praefix, buildChecks = ["true"]) {
-  const dir = mkdtempSync(join(tmpdir(), praefix));
-  mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
-  copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
-  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
-  // Die Salvage-Vorpruefung faehrt seit Issue #919 `checks.mjs run` im Zielprojekt,
-  // damit sie denselben Nachweis hinterlaesst, den das Commit-Gate liest. Ohne die
-  // Datei im Fixture gaebe es keine Pflicht-Pruefung und damit keinen Rettungsversuch.
-  copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));
-  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
-    codeHost: "local", issueTracker: "local", buildChecks,
-    local: { issuesDir: "issues" },
-  }, null, 2));
-  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*.log\n.claude/checks-summary.json\nbin/\n");
-  lfAttribute(join(dir, ".gitattributes"));
-  for (const [c, a] of [
-    ["git", ["init", "-q"]],
-    ["git", ["config", "user.email", "test@example.invalid"]],
-    ["git", ["config", "user.name", "Night Test"]],
-    ["git", ["add", "-A"]],
-    ["git", ["commit", "-q", "-m", "setup"]],
-  ]) {
-    const res = run(dir, c, a);
-    assert.equal(res.status, 0, `${c} ${a.join(" ")} schlug fehl: ${res.stderr}`);
-  }
-  return dir;
-}
-
-function readyIssue(dir, titel) {
-  const issue = board(dir, "issue", "create", "--title", titel, "--body", "## Abhaengigkeiten\nKeine.");
-  board(dir, "issue", "move", String(issue.id), "ready");
-  return String(issue.id);
-}
-
-function stand(dir) {
-  const dateien = readdirSync(join(dir, ".claude")).filter((n) => /^night-run-\d{4}-\d{2}-\d{2}-\d{6}\.json$/.test(n)).sort();
-  assert.equal(dateien.length, 1, `genau eine Ergebnisstand-Datei erwartet, gefunden: ${dateien.join(", ")}`);
-  return JSON.parse(readFileSync(join(dir, ".claude", dateien[0]), "utf-8"));
-}
-
-function einheit(dir, id) {
-  const s = stand(dir);
-  const treffer = s.einheiten.find((e) => String(e.id) === String(id));
-  assert.ok(treffer, `keine Einheit fuer Issue #${id} im Ergebnisstand: ${JSON.stringify(s.einheiten)}`);
-  return treffer;
-}
-
-const NACH_IN_REVIEW = 'node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null';
-const ARBEIT_UND_COMMIT = 'echo arbeit > "work-$NIGHT_ISSUE_ID.txt" && git add "work-$NIGHT_ISSUE_ID.txt"'
-  + ' && git commit -q -m "arbeit (Issue #$NIGHT_ISSUE_ID)"';
-const SUMMARY_GRUEN = `printf '%s' '{"laufen":[{"cmd":"true","ergebnis":"gruen","grund":"beruehrt"}],"ausgelassen":[]}'`
-  + " > .claude/checks-summary.json";
+//
+// Die Session ist eine Attrappe (`sessionAbh`): Sie spielt ihren Strom ab und stellt dabei
+// die Uhr, die `runSession` und `runProcess` eingesetzt bekommen. So ist jede Spanne genau
+// bekannt, und kein Kindprozess und keine Wartezeit sind noetig.
 
 const RESULT_ZEILE =
   '{"is_error":false,"duration_api_ms":296247,"num_turns":37,"stop_reason":"end_turn",' +
   '"total_cost_usd":2.4124460000000005,"usage":{"input_tokens":70,"output_tokens":17688},' +
   '"result":"Abschlussbericht gekuerzt.","type":"result"}';
-const RESULT_AUSGEBEN = `echo '${RESULT_ZEILE}'`;
 
-// Ein Schub mit einem tool_use und seinem tool_result: eine messbare Spanne dazwischen.
+// Ein Schub mit einem tool_use und seinem tool_result, 50 ms dazwischen.
 const SCHUB = [
-  `echo '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"true"}}]}}'`,
-  "sleep 0.05",
-  `echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}'`,
-].join("\n");
+  '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"true"}}]}}',
+  { ms: 50 },
+  '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}',
+];
 
-test("[night-51] nach einer Session mit Kennzahlen und Beobachter-Ergebnis traegt die Einheit zeiten mit allen sechs Feldern", () => {
-  const dir = setupProjekt("night-zeiten-regel-");
-  try {
-    const id = readyIssue(dir, "Volle Zeiten");
-    const fake = [SCHUB, RESULT_AUSGEBEN, SUMMARY_GRUEN, ARBEIT_UND_COMMIT, NACH_IN_REVIEW].join("\n");
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: fake });
-    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+/** Eine Session zu Karte 7 mit angefordertem Strom, wie die Runde sie faehrt. */
+function session(drehbuch, uhr = uhrAttrappe()) {
+  const { abh } = sessionAbh(drehbuch, { uhr });
+  return runSession("7", ARGS, { stream: true }, abh);
+}
 
-    const z = einheit(dir, id).zeiten;
+test("[night-51] nach einer Session mit Kennzahlen und Beobachter-Ergebnis traegt die Einheit zeiten mit allen sechs Feldern", async () => {
+  await mitLauf(["7"], async ({ einheit, stand }) => {
+    await session([{ ms: 10 }, ...SCHUB, RESULT_ZEILE, { ms: 5 }]);
+
+    const z = einheit("7").zeiten;
     assert.ok(z, "die Einheit traegt kein zeiten-Feld");
     assert.deepEqual(Object.keys(z).sort(), ["dauerMs", "nachdenkenMs", "nebenlaeufigeSchuebe", "offeneSchuebe", "werkzeugMs", "werkzeugSchuebe"]);
     assert.equal(z.nachdenkenMs, 296247, "nachdenkenMs ist apiDauerMs der Session");
-    assert.ok(typeof z.dauerMs === "number" && z.dauerMs > 0, `dauerMs muss eine positive Zahl sein: ${z.dauerMs}`);
-    assert.ok(typeof z.werkzeugMs === "number" && z.werkzeugMs > 0, `werkzeugMs haette gemessen sein muessen: ${z.werkzeugMs}`);
+    assert.equal(z.dauerMs, 65, "die Spanne der Session, gemessen an der eingesetzten Uhr");
+    assert.equal(z.werkzeugMs, 50, "die Spanne zwischen tool_use und tool_result");
     assert.equal(z.werkzeugSchuebe, 1);
     assert.equal(z.nebenlaeufigeSchuebe, 0);
     assert.equal(z.offeneSchuebe, 0, "jeder Schub hat sein tool_result bekommen");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+    assert.deepEqual(stand().einheiten[0].zeiten, z, "der Ergebnisstand traegt dieselben Zeiten");
+  });
 });
 
-test("[night-51] keine Kennzahlen: nachdenkenMs bleibt null, Werkzeugzeit und Dauer bleiben gemessen", () => {
-  const dir = setupProjekt("night-zeiten-ohne-kennzahlen-");
-  try {
-    const id = readyIssue(dir, "Ohne Kennzahlen");
+test("[night-51] keine Kennzahlen: nachdenkenMs bleibt null, Werkzeugzeit und Dauer bleiben gemessen", async () => {
+  await mitLauf(["7"], async ({ einheit }) => {
     // Kein result-Ereignis: leseKennzahlen() liefert null.
-    const fake = [SCHUB, SUMMARY_GRUEN, ARBEIT_UND_COMMIT, NACH_IN_REVIEW].join("\n");
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: fake });
-    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    await session([...SCHUB]);
 
-    const z = einheit(dir, id).zeiten;
+    const z = einheit("7").zeiten;
     assert.equal(z.nachdenkenMs, null, "ohne result-Ereignis bleibt nachdenkenMs null, nicht 0");
-    assert.ok(typeof z.werkzeugMs === "number" && z.werkzeugMs > 0, "die Werkzeugzeit bleibt gemessen");
-    assert.ok(typeof z.dauerMs === "number" && z.dauerMs > 0);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+    assert.equal(z.werkzeugMs, 50, "die Werkzeugzeit bleibt gemessen");
+    assert.equal(z.dauerMs, 50);
+  });
 });
 
-test("[night-51] Session ohne Karte (Vorflug) schreibt keine zeiten in irgendeine Einheit — genau eine Einheit im Stand", () => {
-  const dir = setupProjekt("night-zeiten-ohne-karte-");
-  try {
-    const id = readyIssue(dir, "Regulaeres Paket");
-    const fake = [SCHUB, RESULT_AUSGEBEN, SUMMARY_GRUEN, ARBEIT_UND_COMMIT, NACH_IN_REVIEW].join("\n");
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: fake });
-    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+test("[night-51] Session ohne Karte (Vorflug) schreibt keine zeiten in irgendeine Einheit", async () => {
+  await mitLauf(["7"], async ({ lauf }) => {
+    const { abh } = sessionAbh([...SCHUB, RESULT_ZEILE]);
+    await reviewerVorflug(ARGS, [], null, abh);
 
-    // Der Implementierungslauf faehrt keinen Vorflug (der ist der Kette vorbehalten) —
-    // dieser Test belegt darum, dass genau eine Einheit im Stand steht: die des
-    // bearbeiteten Pakets, keine zusaetzliche fuer eine Session ohne Karte.
-    const s = stand(dir);
-    assert.equal(s.einheiten.length, 1, `nur die eine Einheit des Pakets erwartet: ${JSON.stringify(s.einheiten)}`);
-    assert.equal(s.einheiten[0].id, id);
-    assert.ok(s.einheiten[0].zeiten, "die einzige Einheit traegt ihre Zeiten");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+    assert.equal(lauf.einheiten.length, 1, `keine Einheit fuer eine Session ohne Karte: ${JSON.stringify(lauf.einheiten)}`);
+    assert.equal(lauf.einheiten[0].zeiten, undefined, "die Vorflug-Session gehoert zu keiner Karte");
+  });
 });
 
-test("[night-51] laeuft dieselbe Karte mehrfach (Salvage), trifft es die juengste Einheit und addiert ihre Zeiten", () => {
-  // Rote buildChecks lassen die erste (regulaere) Session als dirty zurueck; gruene
-  // buildChecks (per Fake selbst geschrieben) erlauben danach den Salvage-Versuch — das
-  // ist der einzige Weg in diesem Runner, an dem eine Karte zwei Sessions bekommt
-  // (Issue #167), und beide muessen dieselbe (einzige) Einheit treffen.
-  const dir = setupProjekt("night-zeiten-mehrfach-", ["true"]);
-  try {
-    const id = readyIssue(dir, "Salvage-Kandidat");
-    const regulaer = [
-      SCHUB,
-      // duration_api_ms 1000: die regulaere Session, die nichts abschliesst.
-      `echo '{"type":"result","duration_api_ms":1000,"num_turns":1,"total_cost_usd":0.1}'`,
-      'echo dirty > "dirty-$NIGHT_ISSUE_ID.txt"',
-    ].join("\n");
-    const salvage = [
-      SCHUB, SCHUB,
-      // duration_api_ms 9000: die Salvage-Session, deutlich verschieden von der ersten.
-      `echo '{"type":"result","duration_api_ms":9000,"num_turns":2,"total_cost_usd":0.2}'`,
-      SUMMARY_GRUEN,
-      // git add -A statt nur work-$id.txt: nimmt die dirty-$id.txt der regulaeren
-      // Session mit, sonst bliebe der Baum nach dem Move unsauber.
-      'git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"',
-      NACH_IN_REVIEW,
-    ].join("\n");
-    const fake = `if [ -n "$NIGHT_SALVAGE" ]; then\n${salvage}\nelse\n${regulaer}\nfi`;
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: fake });
-    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+test("[night-51] laeuft dieselbe Karte mehrfach (Salvage), trifft es die juengste Einheit und addiert ihre Zeiten", async () => {
+  // Regulaere Runde und Salvage-Session sind zwei Sessions derselben Karte (Issue #167);
+  // beide muessen dieselbe, juengste Einheit treffen. Eine aeltere Einheit derselben Karte
+  // bleibt unberuehrt.
+  await mitLauf(["7", "8", "7"], async ({ lauf, einheit }) => {
+    // duration_api_ms 1000: die regulaere Session, die nichts abschliesst.
+    await session([...SCHUB, '{"type":"result","duration_api_ms":1000,"num_turns":1,"total_cost_usd":0.1}']);
+    // duration_api_ms 9000: die Salvage-Session, deutlich verschieden von der ersten.
+    await session([...SCHUB, ...SCHUB, '{"type":"result","duration_api_ms":9000,"num_turns":2,"total_cost_usd":0.2}']);
 
-    const s = stand(dir);
-    assert.equal(s.einheiten.length, 1, "regulaere und Salvage-Session teilen sich eine Einheit");
-    const z = einheit(dir, id).zeiten;
+    const z = einheit("7").zeiten;
     assert.equal(z.nachdenkenMs, 10000, "1000 der Runde plus 9000 der Rettung — die Einheit hat beides gekostet");
     assert.equal(z.werkzeugSchuebe, 3, "ein Schub der Runde plus zwei der Rettung");
     assert.equal(z.offeneSchuebe, 0);
-    assert.ok(z.werkzeugMs > 0);
-    assert.ok(typeof z.dauerMs === "number" && z.dauerMs > 0);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+    assert.equal(z.werkzeugMs, 150);
+    assert.equal(z.dauerMs, 150);
+    assert.equal(lauf.einheiten[0].zeiten, undefined, "die aeltere Einheit derselben Karte bleibt unberuehrt");
+  });
 });
 
-test("[night-51] misst eine der beiden Sessions unvollstaendig, bleibt das Feld in der Summe null", () => {
+test("[night-51] misst eine der beiden Sessions unvollstaendig, bleibt das Feld in der Summe null", async () => {
   // Wie oben, nur gibt die Salvage-Session kein result-Ereignis aus: ihre apiDauerMs fehlt.
   // Die 1000 der regulaeren Runde allein stehenzulassen, gaebe einen Teil als Ganzes aus.
-  const dir = setupProjekt("night-zeiten-summe-unvollstaendig-", ["true"]);
-  try {
-    const id = readyIssue(dir, "Salvage ohne Kennzahlen");
-    const regulaer = [
-      SCHUB,
-      `echo '{"type":"result","duration_api_ms":1000,"num_turns":1,"total_cost_usd":0.1}'`,
-      'echo dirty > "dirty-$NIGHT_ISSUE_ID.txt"',
-    ].join("\n");
-    const salvage = [
-      SCHUB,
-      SUMMARY_GRUEN,
-      'git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"',
-      NACH_IN_REVIEW,
-    ].join("\n");
-    const fake = `if [ -n "$NIGHT_SALVAGE" ]; then\n${salvage}\nelse\n${regulaer}\nfi`;
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: fake });
-    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+  await mitLauf(["7"], async ({ einheit }) => {
+    await session([...SCHUB, '{"type":"result","duration_api_ms":1000,"num_turns":1,"total_cost_usd":0.1}']);
+    await session([...SCHUB]);
 
-    const z = einheit(dir, id).zeiten;
+    const z = einheit("7").zeiten;
     assert.equal(z.nachdenkenMs, null, "ohne apiDauerMs der Rettung ist die Nachdenkzeit der Einheit unbekannt");
     assert.equal(z.werkzeugSchuebe, 2, "die gezaehlten Schuebe beider Sessions bleiben eine Summe");
-    assert.ok(typeof z.dauerMs === "number" && z.dauerMs > 0, "die Dauer war auf beiden Seiten gemessen");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+    assert.equal(z.dauerMs, 100, "die Dauer war auf beiden Seiten gemessen");
+  });
 });

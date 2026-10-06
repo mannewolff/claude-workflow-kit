@@ -3,28 +3,21 @@
 // Gemessen wird Zeit, nicht die Zahl der Rueckfragen: die Werkzeugspanne (tool_use bis
 // tool_result) jedes Aufrufs, der eine Rueckfrage ist oder deren Antwort aufbereitet.
 // Drei Ebenen: `auskunftArt()` als Klassifizierer, `auskunftBeobachter()` an
-// aufgezeichneten Stromzeilen, und der Weg in die Einheit des Ergebnisstands E2E ueber
-// einen Nachtlauf mit Fake-Session — dieselbe Linie wie night-prueflaeufe.test.mjs.
+// aufgezeichneten Stromzeilen, und der Weg in die Einheit des Ergebnisstands ueber
+// `runSession` im selben Prozess, mit einer Attrappe statt der Session (Issue #1229).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, rmSync, cpSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
 
 import { einheitAnlegen } from "../kit/night/grundlagen.mjs";
 import {
   auskunftArt, auskunftBeobachter, umsetzungsStart, runSession, salvagePrompt,
   TOOL_RESULTS_PFAD,
 } from "../kit/night/session.mjs";
-
-// Ein eigener Sperrpfad je Testprozess (Issue #958): Die E2E-Faelle kopieren
-// kit/checks.mjs ins Fixture, und ohne eigenen Pfad serialisierte die maschinenweite
-// Sperre die parallelen Testdateien gegeneinander.
-import "./helpers/checks-sperre.mjs";
-import { lfAttribute } from "./helpers/zeilenenden.mjs";
+import { sessionAbh, mitLauf, ARGS } from "./helpers/session-attrappe.mjs";
 
 /** Ein Bash-`tool_use`-Block. */
 function bash(command, id = "t1") {
@@ -224,133 +217,77 @@ test("[night-1026] das Umsetzungs-Merkmal haengt am Start mit /implement-*, nich
 });
 
 // ============================================================
-// E2E: Nachtlauf mit Fake-Session
+// Einheit des Ergebnisstands: ueber runSession im selben Prozess (Issue #1229)
 // ============================================================
-
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const NIGHT = join(repoRoot, "kit", "night.mjs");
-
-function run(cwd, cmd, cliArgs, env = {}) {
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, ...env } });
-}
-
-function board(cwd, ...cliArgs) {
-  const res = run(cwd, process.execPath, [join(cwd, ".claude", "kit", "board.mjs"), ...cliArgs]);
-  assert.equal(res.status, 0, `board.mjs ${cliArgs.join(" ")} schlug fehl: ${res.stderr}`);
-  return JSON.parse(res.stdout);
-}
-
-function setupProjekt(praefix) {
-  const dir = mkdtempSync(join(tmpdir(), praefix));
-  mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
-  copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
-  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
-  copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));
-  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
-    codeHost: "local", issueTracker: "local", buildChecks: ["true"],
-    local: { issuesDir: "issues" },
-  }, null, 2));
-  writeFileSync(join(dir, ".gitignore"), "*.log\n.claude/night-run-*.log\n.claude/checks-summary.json\nbin/\n");
-  lfAttribute(join(dir, ".gitattributes"));
-  for (const [c, a] of [
-    ["git", ["init", "-q"]],
-    ["git", ["config", "user.email", "test@example.invalid"]],
-    ["git", ["config", "user.name", "Night Test"]],
-    ["git", ["add", "-A"]],
-    ["git", ["commit", "-q", "-m", "setup"]],
-  ]) {
-    const res = run(dir, c, a);
-    assert.equal(res.status, 0, `${c} ${a.join(" ")} schlug fehl: ${res.stderr}`);
-  }
-  return dir;
-}
-
-function einheiten(dir) {
-  const dateien = readdirSync(join(dir, ".claude")).filter((n) => /^night-run-\d{4}-\d{2}-\d{2}-\d{6}\.json$/.test(n)).sort();
-  assert.equal(dateien.length, 1, `genau eine Ergebnisstand-Datei erwartet, gefunden: ${dateien.join(", ")}`);
-  return JSON.parse(readFileSync(join(dir, ".claude", dateien[0]), "utf-8")).einheiten;
-}
-
-const NACH_IN_REVIEW = 'node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null';
-const ARBEIT_UND_COMMIT = 'echo arbeit > "work-$NIGHT_ISSUE_ID.txt" && git add "work-$NIGHT_ISSUE_ID.txt"'
-  + ' && git commit -q -m "arbeit (Issue #$NIGHT_ISSUE_ID)"';
-const SUMMARY_GRUEN = `printf '%s' '{"laufen":[{"cmd":"true","ergebnis":"gruen","grund":"beruehrt"}],"ausgelassen":[]}'`
-  + " > .claude/checks-summary.json";
+//
+// Die Session ist eine Attrappe (`sessionAbh`), die ihren Strom abspielt und dabei die
+// eingesetzte Uhr stellt — dieselbe Linie wie night-session-zeiten.test.mjs.
 
 function schub(id, command) {
   return [
-    `echo '${JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id, name: "Bash", input: { command } }] } })}'`,
-    "sleep 0.05",
-    `echo '${JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content: "ok" }] } })}'`,
-  ].join("\n");
+    JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id, name: "Bash", input: { command } }] } }),
+    { ms: 50 },
+    JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content: "ok" }] } }),
+  ];
 }
 
-test("[night-1026] nach einer Umsetzungssession traegt die Einheit auskunft { ms, aufrufe } und umsetzung: true", () => {
-  const dir = setupProjekt("night-auskunft-stand-");
-  try {
-    const id = String(board(dir, "issue", "create", "--title", "Mit Auskunft", "--body", "## Abhaengigkeiten\nKeine.").id);
-    board(dir, "issue", "move", id, "ready");
-    const fake = [
-      schub("a1", "node .claude/kit/board.mjs issue auftrag 1"),
-      schub("a2", "git status --porcelain"),
-      SUMMARY_GRUEN, ARBEIT_UND_COMMIT, NACH_IN_REVIEW,
-    ].join("\n");
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
-    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+/** Die Umsetzungsrunde, wie der Runner sie faehrt: Strom angefordert, Prompt /implement-next. */
+function umsetzung(id, drehbuch) {
+  const { abh } = sessionAbh(drehbuch);
+  return runSession(id, ARGS, { stream: true, vordergrundCheck: true }, abh);
+}
 
-    const e = einheiten(dir).find((x) => x.id === id);
-    assert.ok(e, "keine Einheit fuer das Paket");
+test("[night-1026] nach einer Umsetzungssession traegt die Einheit auskunft { ms, aufrufe } und umsetzung: true", async () => {
+  await mitLauf(["7"], async ({ einheit, stand }) => {
+    await umsetzung("7", [
+      ...schub("a1", "node .claude/kit/board.mjs issue auftrag 1"),
+      ...schub("a2", "git status --porcelain"),
+    ]);
+
+    const e = einheit("7");
     assert.equal(e.umsetzung, true, "der Runner startet /implement-next — das ist eine Umsetzung");
-    assert.equal(e.auskunft.aufrufe, 1, "nur der Auftrag ist eine Auskunft");
-    assert.ok(e.auskunft.ms > 0, `die Spanne haette gemessen sein muessen: ${e.auskunft.ms}`);
-    const keys = Object.keys(e);
+    assert.deepEqual(e.auskunft, { ms: 50, aufrufe: 1 }, "nur der Auftrag ist eine Auskunft, mit seiner Spanne");
+    const keys = Object.keys(stand().einheiten[0]);
     assert.ok(keys.indexOf("auskunft") > keys.indexOf("ausgang"), `auskunft steht hinten: ${keys.join(", ")}`);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  });
 });
 
-test("[night-1026] eine beobachtete Session ohne Auskunftsaufruf traegt { ms: 0, aufrufe: 0 }", () => {
-  const dir = setupProjekt("night-auskunft-null-");
-  try {
-    const id = String(board(dir, "issue", "create", "--title", "Ohne Auskunft", "--body", "## Abhaengigkeiten\nKeine.").id);
-    board(dir, "issue", "move", id, "ready");
-    const fake = [SUMMARY_GRUEN, ARBEIT_UND_COMMIT, NACH_IN_REVIEW].join("\n");
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
-    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
-    const e = einheiten(dir).find((x) => x.id === id);
-    assert.deepEqual(e.auskunft, { ms: 0, aufrufe: 0 }, "gemessen und keine Auskunft ist ein Befund, keine Luecke");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+test("[night-1026] eine beobachtete Session ohne Auskunftsaufruf traegt { ms: 0, aufrufe: 0 }", async () => {
+  await mitLauf(["7"], async ({ einheit }) => {
+    await umsetzung("7", [...schub("g1", "git status")]);
+    assert.deepEqual(einheit("7").auskunft, { ms: 0, aufrufe: 0 }, "gemessen und keine Auskunft ist ein Befund, keine Luecke");
+  });
 });
 
-test("[night-1026] eine Einheit ohne Session bleibt auskunft: null und ist keine Umsetzung", () => {
-  const dir = setupProjekt("night-auskunft-ohne-session-");
-  try {
-    const id = String(board(dir, "issue", "create", "--title", "[Idee] Nur eine Idee", "--body", "## Abhaengigkeiten\nKeine.").id);
-    board(dir, "issue", "move", id, "ready");
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
-    const e = einheiten(dir).find((x) => x.id === id);
-    assert.ok(e, `keine Einheit fuer die Idee: ${res.stdout}`);
-    assert.equal(e.auskunft, null, "nicht beobachtet heisst nicht gemessen, nie 0");
-    assert.equal(e.umsetzung, false);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+test("[night-1026] eine Einheit ohne Session bleibt auskunft: null und ist keine Umsetzung", async () => {
+  // Karte 8 bekommt keine Session (im Lauf etwa eine Idee, die das Gate zurueckweist); die
+  // Session der Karte 7 daneben beruehrt ihre Einheit nicht.
+  await mitLauf(["8", "7"], async ({ einheit }) => {
+    await umsetzung("7", [...schub("a1", "node .claude/kit/board.mjs issue auftrag 7")]);
+    assert.equal(einheit("8").auskunft, null, "nicht beobachtet heisst nicht gemessen, nie 0");
+    assert.equal(einheit("8").umsetzung, false);
+  });
+});
+
+test("[night-1026] eine Salvage-Session addiert ihre Auskunft, ohne die Einheit zur Umsetzung zu machen", async () => {
+  await mitLauf(["7"], async ({ einheit }) => {
+    const { abh } = sessionAbh([...schub("s1", "node .claude/kit/board.mjs issue get 7")]);
+    await runSession("7", ARGS, { stream: true, prompt: salvagePrompt("7", "", null) }, abh);
+    assert.deepEqual(einheit("7").auskunft, { ms: 50, aufrufe: 1 });
+    assert.equal(einheit("7").umsetzung, false, "die Rettung einer Runde ist kein Umsetzungsstart");
+
+    await umsetzung("7", [...schub("a1", "node .claude/kit/board.mjs issue auftrag 7")]);
+    assert.deepEqual(einheit("7").auskunft, { ms: 100, aufrufe: 2 }, "zwei Sessions derselben Einheit addieren sich");
+    assert.equal(einheit("7").umsetzung, true);
+  });
 });
 
 test("[night-1026] eine Stufe ohne Strom liefert auskunft: null", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "night-auskunft-ohne-strom-"));
-  try {
-    const prog = join(dir, "stufen-programm");
-    writeFileSync(prog, "#!/bin/sh\necho fertig\n", { mode: 0o755 });
-    const res = await runSession("1", { model: "fixture-modell", timeoutMin: 1, yolo: false, verbose: false }, {
-      kommando: prog, aufgabenstufe: "leicht", stufenName: "lokal", prompt: "/implement-next #1",
-    });
-    assert.equal(res.status, 0, res.stderr);
-    assert.equal(res.auskunft, null, "ohne Strom gibt es nichts zu messen — 0 hiesse gemessen, keine");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const { abh, aufrufe } = sessionAbh(["fertig"]);
+  const res = await runSession("1", { ...ARGS, timeoutMin: 1 }, {
+    kommando: "stufen-programm", aufgabenstufe: "leicht", stufenName: "lokal", prompt: "/implement-next #1", stream: true,
+  }, abh);
+  assert.equal(res.status, 0, res.stderr);
+  assert.equal(aufrufe.length, 1, "die Stufe startete genau ein Programm");
+  assert.equal(res.auskunft, null, "ohne Strom gibt es nichts zu messen — 0 hiesse gemessen, keine");
 });

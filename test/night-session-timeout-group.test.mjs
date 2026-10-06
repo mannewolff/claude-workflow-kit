@@ -1,85 +1,34 @@
-// Timeout gegen ueberlebende Enkelprozesse (Issue #182).
+// Das Zeitlimit einer Session und das Warten auf ihre Prozessgruppe (Issue #182, #668).
 //
 // Der Runner killte beim Zeitlimit nur den direkten Kindprozess. Node loest das
 // close-Event aber erst auf, wenn alle stdio-Streams geschlossen sind — ein
-// Enkelprozess, der die geerbte Pipe offen haelt, verhindert das. Der Runner wartete
-// dann die volle Laufzeit ab, obwohl er laengst gekillt hatte.
+// Enkelprozess, der die geerbte Pipe offen haelt, verhindert das. Darum geht das Signal an
+// die ganze Prozessgruppe, und das Zeitlimit hat drei Stufen: SIGTERM, nach der Nachfrist
+// SIGKILL, nach einer weiteren Nachfrist loest der Runner selbst auf.
 //
-// Gemessen am 2026-07-29 (macOS, spawn + SIGTERM nach 300 ms, Kommando "sleep 5"):
-//   direkter Prozess, Einzel-Kill      close nach  307 ms
-//   Enkelprozess,     Einzel-Kill      close nach 5023 ms   <- der Bug
-//   Enkelprozess,     Gruppen-Kill     close nach  306 ms
-//
-// Das erklaert auch "lokal gruen, CI rot": Ob bei `sh -c "<einfaches Kommando>"` die
-// Shell sich per exec selbst ersetzt (dann gibt es keinen Enkel) oder als Elternprozess
-// stehen bleibt, haengt von der Shell-Implementierung ab und unterscheidet sich
-// zwischen macOS und dem Ubuntu-Runner.
-//
-// Produktiv ist derselbe Pfad betroffen: Der Kindprozess ist `claude`, und der startet
-// seinerseits Bash-Tool-Aufrufe wie `mvn verify`.
-//
-// Dieser Test erzwingt den Enkelprozess ueber "& wait" und ist damit auf jeder
-// Plattform aussagekraeftig. Unter Windows laeuft der Session-Fake ueber die Git Bash
-// (#1131), und den Baum beendet `taskkill /T /F` (#1132); dass kein Enkel ueberlebt, misst
-// der erste Test dort echt.
+// Im selben Prozess (Issue #1229, Plan #1199, E6): `runProcess` bekommt eine Attrappe als
+// `spawn`, eine Uhr fuer `jetzt` und `wecker`, ein `killen`, das die Signale mitschreibt,
+// und ein `ps` als `spawnSync`. Jede Stufe ist damit auf die Millisekunde bestimmt, und
+// kein Test wartet. Dass das Signal an die Gruppe den Enkel eines echten Prozessbaums
+// wirklich trifft, belegt test/ablauf-night-session-timeout-group.test.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { tmpdir } from "node:os";
 
-import { baumBeendenAufruf, warteAufProzessgruppe } from "../kit/night/session.mjs";
-import { lfAttribute } from "./helpers/zeilenenden.mjs";
+import { baumBeendenAufruf, warteAufProzessgruppe, runProcess } from "../kit/night/session.mjs";
+import { sessionAbh, uhrAttrappe, mitLauf, stdoutFangen } from "./helpers/session-attrappe.mjs";
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-// Das ECHTE Script aus dem Repo (nicht kopiert): nur so wird seine Coverage gemessen.
-// Die Isolation leistet cwd + KIT_ROOT auf das Fixture-Verzeichnis (Issue #189).
-const NIGHT = join(repoRoot, "kit", "night.mjs");
+const NACHFRIST = 5000;
 
-function run(cwd, cmd, cliArgs, env = {}) {
-  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, ...env } });
+/** Startet `runProcess` mit der Attrappe; das Ergebnis bleibt ein Promise. */
+function starte(drehbuch, { timeoutMs = 400, ...optionen } = {}) {
+  const teile = sessionAbh(drehbuch, optionen);
+  const ergebnis = runProcess("claude", ["-p", "x"], { issueId: "7", timeoutMs }, teile.abh);
+  return { ...teile, ergebnis };
 }
 
-function board(cwd, ...cliArgs) {
-  const res = run(cwd, process.execPath, [join(cwd, ".claude", "kit", "board.mjs"), ...cliArgs]);
-  assert.equal(res.status, 0, `board.mjs ${cliArgs.join(" ")} schlug fehl: ${res.stderr}`);
-  return JSON.parse(res.stdout);
-}
-
-function setupProjekt() {
-  const dir = mkdtempSync(join(tmpdir(), "night-killgroup-"));
-  mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
-  copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
-  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
-  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
-    codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
-  }, null, 2));
-  writeFileSync(join(dir, ".gitignore"), ".claude/night-run-*.log\n");
-  lfAttribute(join(dir, ".gitattributes"));
-  for (const [c, a] of [
-    ["git", ["init", "-q"]],
-    ["git", ["config", "user.email", "test@example.invalid"]],
-    ["git", ["config", "user.name", "Night Test"]],
-    ["git", ["add", "-A"]],
-    ["git", ["commit", "-q", "-m", "setup"]],
-  ]) {
-    const res = run(dir, c, a);
-    assert.equal(res.status, 0, `${c} ${a.join(" ")} schlug fehl: ${res.stderr}`);
-  }
-  return dir;
-}
-
-function lebt(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return err.code === "EPERM";
-  }
-}
+/** Laesst die Mikrotasks laufen, die das Drehbuch und die Zuhoerer anstossen. */
+const weiter = () => new Promise((r) => setImmediate(r));
 
 test("Baum beenden: unter Windows taskkill auf den Baum, auf POSIX ein Signal an die Gruppe", () => {
   assert.deepEqual(baumBeendenAufruf(4711, "SIGTERM", "win32"), { taskkill: ["/pid", "4711", "/T", "/F"] });
@@ -88,71 +37,149 @@ test("Baum beenden: unter Windows taskkill auf den Baum, auf POSIX ein Signal an
   assert.deepEqual(baumBeendenAufruf(4711, "SIGKILL", "darwin"), { pid: -4711, signal: "SIGKILL" });
 });
 
+// --- Warten auf die Prozessgruppe (Issue #668) ---------------------------------
+
 test("Warten auf die Prozessgruppe: unter Windows ohne Suche nach der Marke sofort zurueck", async () => {
-  // Die eigene PID als Gruppe: Auf POSIX liefe sie, das Warten liefe also bis zur Frist.
   // Unter Windows fragt die Funktion allein die Suche nach der Marke der Session
   // (Issue #1144, night-25); ohne sie gibt es dort nichts, worauf zu warten waere.
-  const beginn = Date.now();
-  assert.equal(await warteAufProzessgruppe(process.pid, 60_000, { plattform: "win32" }), true);
-  assert.ok(Date.now() - beginn < 1000, "unter Windows darf nicht gewartet werden");
+  const abfragen = [];
+  const schlaf = async () => assert.fail("unter Windows darf nicht gewartet werden");
+  const leer = await warteAufProzessgruppe(4711, 60_000, {
+    plattform: "win32", schlaf, spawnSync: (...a) => abfragen.push(a),
+  });
+  assert.equal(leer, true);
+  assert.deepEqual(abfragen, [], "ps wird unter Windows nicht gefragt");
 });
 
-test("Timeout: ueberlebender Enkelprozess haelt den Lauf nicht auf", () => {
-  const dir = setupProjekt();
-  // Der Enkel ist ein Node-Prozess, der seine PID ausserhalb des Repos ablegt: `$!` der Git
-  // Bash naennte unter Windows eine MSYS-PID statt der des Betriebssystems.
-  const aussen = mkdtempSync(join(tmpdir(), "night-killgroup-enkel-"));
-  const pidDatei = join(aussen, "enkel.pid").replaceAll("\\", "/");
-  const enkel = join(aussen, "enkel.mjs");
-  writeFileSync(enkel, `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(pidDatei)}, String(process.pid));\nsetInterval(() => {}, 1000);\n`);
+test("Warten auf die Prozessgruppe: fragt ps im Takt, bis die Gruppe leer ist", async () => {
+  const uhr = uhrAttrappe();
+  const antworten = ["123\n456\n", "456\n", ""];
+  const abfragen = [];
+  const ps = (befehl, args) => {
+    abfragen.push([befehl, ...args].join(" "));
+    return { status: 0, stdout: antworten.shift() };
+  };
+  const leer = await warteAufProzessgruppe(4711, 10_000, { pollMs: 200, jetzt: uhr.jetzt, schlaf: uhr.schlaf, spawnSync: ps });
+  assert.equal(leer, true);
+  assert.deepEqual(abfragen, ["ps -o pid= -g 4711", "ps -o pid= -g 4711", "ps -o pid= -g 4711"]);
+  assert.equal(uhr.jetzt() - 1_000_000, 400, "zweimal der Takt von 200 ms");
+});
+
+test("Warten auf die Prozessgruppe: bei Ablauf der Frist false, ohne darueber hinaus zu warten", async () => {
+  const uhr = uhrAttrappe();
+  const leer = await warteAufProzessgruppe(4711, 1000, {
+    pollMs: 300, jetzt: uhr.jetzt, schlaf: uhr.schlaf, spawnSync: () => ({ status: 0, stdout: "123\n" }),
+  });
+  assert.equal(leer, false);
+  assert.equal(uhr.jetzt() - 1_000_000, 1200, "die erste Abfrage nach Ablauf der Frist endet das Warten");
+});
+
+test("Warten auf die Prozessgruppe: ein gescheitertes ps gilt als leere Gruppe", async () => {
+  const leer = await warteAufProzessgruppe(4711, 1000, {
+    schlaf: async () => assert.fail("kein Warten"), spawnSync: () => ({ status: 1, stdout: "", stderr: "ps: kaputt" }),
+  });
+  assert.equal(leer, true);
+});
+
+test("Warten auf die Prozessgruppe: eine scheiternde Suche nach der Marke geht ins Protokoll und haelt nicht auf", async () => {
+  const vermerke = [];
+  const leer = await warteAufProzessgruppe(4711, 1000, {
+    plattform: "win32", prozesse: () => { throw new Error("Abfrage der Prozessliste gescheitert (Exitcode 1)"); },
+    vermerk: (t) => vermerke.push(t),
+  });
+  assert.equal(leer, true);
+  assert.equal(vermerke.length, 1);
+  assert.match(vermerke[0], /Abfrage der Prozessliste gescheitert .* der Runner wartet nicht auf die Prozesse der Session/);
+});
+
+// --- Die Stufen des Zeitlimits (Issue #182) ------------------------------------
+
+test("Zeitlimit: SIGTERM an die Gruppe; endet die Session darauf, kommt ETIMEDOUT zurueck", async () => {
+  const { ergebnis, signale, uhr } = starte([{ offen: true }], {
+    beimSignal: (kind, signal) => kind.emit("close", null, signal),
+    spawnSync: () => assert.fail("nach einem Zeitlimit wird nicht auf die Gruppe gewartet"),
+  });
+  await weiter();
+  uhr.vor(399);
+  assert.deepEqual(signale, [], "vor dem Zeitlimit kein Signal");
+  uhr.vor(1);
+  const res = await ergebnis;
+  assert.deepEqual(signale, [{ pid: -4242, signal: "SIGTERM" }], "das Signal geht an die Gruppe, nicht an die PID");
+  assert.equal(res.error.code, "ETIMEDOUT");
+  assert.equal(res.signal, "SIGTERM");
+  assert.equal(uhr.offen(), 0, "kein Wecker bleibt stehen");
+});
+
+test("Zeitlimit: ein SIGTERM-taubes Kommando wird hart nachgekillt", async () => {
+  const { ergebnis, signale, uhr } = starte([{ offen: true }], {
+    beimSignal: (kind, signal) => { if (signal === "SIGKILL") kind.emit("close", null, "SIGKILL"); },
+  });
+  await weiter();
+  uhr.vor(400);
+  uhr.vor(NACHFRIST - 1);
+  assert.deepEqual(signale.map((s) => s.signal), ["SIGTERM"], "die Nachfrist laeuft noch");
+  uhr.vor(1);
+  const res = await ergebnis;
+  assert.deepEqual(signale.map((s) => s.signal), ["SIGTERM", "SIGKILL"]);
+  assert.equal(res.error.code, "ETIMEDOUT");
+  assert.equal(uhr.offen(), 0);
+});
+
+test("Zeitlimit: bleibt auch nach SIGKILL das close-Ereignis aus, loest der Runner selbst auf", async () => {
+  // Ein Enkel, der die geerbte Pipe offen haelt, verhindert das close-Ereignis — der Runner
+  // darf darauf unter keinen Umstaenden unbegrenzt warten.
+  const { ergebnis, signale, uhr } = starte([{ offen: true }, "erste Zeile"]);
+  await weiter();
+  uhr.vor(400 + 2 * NACHFRIST);
+  const res = await ergebnis;
+  assert.deepEqual(signale.map((s) => s.signal), ["SIGTERM", "SIGKILL"]);
+  assert.equal(res.status, null);
+  assert.equal(res.signal, "SIGKILL");
+  assert.equal(res.error.code, "ETIMEDOUT");
+  assert.equal(res.stdout, "erste Zeile\n", "was bis dahin kam, bleibt erhalten");
+});
+
+test("Zeitlimit: die Nachfrist kommt aus NIGHT_KILL_GRACE_MS", async () => {
+  process.env.NIGHT_KILL_GRACE_MS = "600";
   try {
-    const issue = board(dir, "issue", "create", "--title", "Langsames-Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    board(dir, "issue", "move", String(issue.id), "ready");
-
-    // "& wait" erzwingt einen echten Enkelprozess: Die Shell bleibt Elternprozess,
-    // sleep haelt die geerbte stdout-Pipe. Ohne Gruppen-Kill laeuft der Runner die
-    // vollen 120 s, obwohl das Zeitlimit bei 400 ms liegt. Die Grenze muss nur unter der
-    // Schlafdauer liegen (Issue #1080): Unter Last brauchte allein der Runner-Start 27 s,
-    // und 20 s bei 30 s Schlaf riss ohne Fehler.
-    // Das Zeitlimit liegt ueber dem Start des Enkels, damit er seine PID sicher schreibt.
-    const node = JSON.stringify(process.execPath.replaceAll("\\", "/"));
-    const skript = JSON.stringify(enkel.replaceAll("\\", "/"));
-    const started = Date.now();
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: `${node} ${skript} & wait`, NIGHT_TIMEOUT_MS: "3000" });
-    const elapsed = Date.now() - started;
-
-    assert.ok(elapsed < 90000, `Timeout griff nicht — Enkelprozess hielt den Lauf auf (${elapsed} ms)`);
-    assert.equal(res.status, 0, "regulaeres Ende (kein harter Stopp) nach Timeout-Fehlschlag");
-    const backlog = board(dir, "issue", "list", "--status", "backlog").map((i) => String(i.id));
-    assert.ok(backlog.includes(String(issue.id)), "Issue haette nach Timeout im Backlog liegen muessen");
-    assert.ok(existsSync(pidDatei), `der Enkel hat seine PID nicht geschrieben: ${res.stdout}${res.stderr}`);
-    const pid = Number(readFileSync(pidDatei, "utf-8").trim());
-    assert.ok(pid > 0, "der Enkel hat keine PID geschrieben");
-    assert.equal(lebt(pid), false, `der Enkel ${pid} lebt nach dem Zeitlimit noch`);
+    const { ergebnis, signale, uhr } = starte([{ offen: true }]);
+    await weiter();
+    uhr.vor(400 + 600);
+    assert.deepEqual(signale.map((s) => s.signal), ["SIGTERM", "SIGKILL"]);
+    uhr.vor(600);
+    assert.equal((await ergebnis).signal, "SIGKILL");
   } finally {
-    rmSync(dir, { recursive: true, force: true });
-    rmSync(aussen, { recursive: true, force: true });
+    delete process.env.NIGHT_KILL_GRACE_MS;
   }
 });
 
-test("Timeout: ein SIGTERM-taubes Kommando wird hart nachgekillt", () => {
-  const dir = setupProjekt();
-  try {
-    const issue = board(dir, "issue", "create", "--title", "Taubes-Issue", "--body", "## Abhaengigkeiten\nKeine.");
-    board(dir, "issue", "move", String(issue.id), "ready");
+test("unter dem Zeitlimit: kein Signal, und der Wecker des Zeitlimits wird abgestellt", async () => {
+  const { ergebnis, signale, uhr } = starte(["fertig", { ms: 100 }, { ende: 0 }]);
+  const res = await ergebnis;
+  assert.equal(res.status, 0);
+  assert.equal(res.error, null);
+  assert.deepEqual(signale, []);
+  assert.equal(uhr.offen(), 0, "der Wecker des Zeitlimits ist abgestellt");
+});
 
-    // trap "" TERM ignoriert SIGTERM vollstaendig. Ohne harte Obergrenze wartet der
-    // Runner unbegrenzt — genau der Zustand, den ein Nachtlauf nie erreichen darf.
-    const started = Date.now();
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"],
-      { NIGHT_CLAUDE_CMD: 'trap "" TERM; sleep 120', NIGHT_TIMEOUT_MS: "400", NIGHT_KILL_GRACE_MS: "600" });
-    const elapsed = Date.now() - started;
+// --- Nach dem regulaeren Ende: Warten auf die Gruppe (Issue #668) --------------
 
-    // Unter der Schlafdauer, mit Reserve fuer Last (Issue #1080).
-    assert.ok(elapsed < 90000, `harte Obergrenze griff nicht — Lauf haengt (${elapsed} ms)`);
-    assert.equal(res.status, 0, "regulaeres Ende nach hartem Nachkillen");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+test("nach dem regulaeren Ende wartet der Runner auf die Gruppe, hoechstens fuer den Rest des Zeitlimits", async () => {
+  const ps = [];
+  const { ergebnis, uhr } = starte([{ ms: 100 }, { ende: 0 }], {
+    timeoutMs: 1000,
+    spawnSync: (befehl, args) => {
+      ps.push(args.join(" "));
+      return { status: 0, stdout: "999\n" };
+    },
+  });
+  await mitLauf([], async ({ protokoll }) => {
+    const { ergebnis: res } = await stdoutFangen(() => ergebnis);
+    assert.equal(res.status, 0);
+    // 100 ms Session, dann im Takt von 200 ms bis zur ersten Abfrage nach dem Ende des
+    // Zeitlimits: 100 + 5 × 200.
+    assert.equal(uhr.jetzt() - 1_000_000, 1100, "gewartet wird bis zum Ende des Zeitlimits, nicht laenger");
+    assert.ok(ps.every((a) => a === "-o pid= -g 4242"), "gefragt wird nach der Gruppe der Session");
+    assert.match(protokoll(), /Nach dem Ende der Session liefen noch Prozesse ihrer Gruppe, als die Frist ablief/);
+  });
 });

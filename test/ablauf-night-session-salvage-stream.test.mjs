@@ -1,3 +1,5 @@
+// Ablauf-Pruefung: Ob der Einstieg die Salvage-Session mit angefordertem Strom startet, sieht nur ein Lauf des echten Runners; runSession selbst prueft test/night-session-stream-ohne-verbose.test.mjs im selben Prozess.
+//
 // Die Salvage-Session fordert den Strom auch bei `--verbose no` an (Issue #871).
 //
 // `docs/dokumentation.md` sagt zu, dass weder die Verlaufsdatei noch die Kennzahlen an
@@ -81,10 +83,12 @@ function protokoll(dir) {
   return readFileSync(join(dir, ".claude", datei), "utf-8");
 }
 
-/** Ein Schub aus `tool_use` und `tool_result`, mit messbarer Spanne dazwischen. */
+/**
+ * Ein Schub aus `tool_use` und `tool_result`. Ohne Pause dazwischen (Issue #1229): Die Spanne
+ * darf 0 ms sein — belegt wird, DASS gemessen wurde, nicht wie lange.
+ */
 const SCHUB = [
   `echo '{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"true"}}]}}'`,
-  "sleep 0.05",
   `echo '{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}'`,
 ].join("\n");
 
@@ -134,7 +138,7 @@ test("[night-57] mit --verbose no laeuft auch die Salvage-Session ueber den Stro
     assert.equal(z.nachdenkenMs, 10000, "1000 der Runde plus 9000 der Rettung");
     assert.equal(z.werkzeugSchuebe, 3, "ein Schub der Runde plus zwei der Rettung — die Rettung wurde mitgemessen");
     assert.equal(z.offeneSchuebe, 0);
-    assert.ok(typeof z.werkzeugMs === "number" && z.werkzeugMs > 0,
+    assert.ok(typeof z.werkzeugMs === "number" && z.werkzeugMs >= 0,
       `werkzeugMs haette gemessen sein muessen: ${z.werkzeugMs}`);
 
     // Gemessen, nicht ausgegeben: mit --verbose no bleibt das Protokoll frei von

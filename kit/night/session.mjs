@@ -1082,10 +1082,10 @@ export function konfigKommandoStart(kommando, umgebung = {}) {
  * `spawnSync`; ohne Git Bash unter Windows `{ status: null, stdout: "", stderr: <Meldung> }`.
  * PATH-Aufloesung bewusst (S4036, Issue #183).
  */
-function konfigKommandoSync(kommando, env) {
+function konfigKommandoSync(kommando, env, abfragen = spawnSync) {
   const start = konfigKommandoStart(kommando);
   if (start.fehler) return { status: null, stdout: "", stderr: `${start.fehler}\n` };
-  return spawnSync(start.befehl, start.args, { ...start.optionen, cwd: process.cwd(), encoding: "utf-8", env: { ...env, ...start.umgebung } });
+  return abfragen(start.befehl, start.args, { ...start.optionen, cwd: process.cwd(), encoding: "utf-8", env: { ...env, ...start.umgebung } });
 }
 
 /**
@@ -1288,6 +1288,41 @@ export function frischeStufenFelder(configPfad, stand) {
 
 // --- Nacht-Session ---
 
+/** Die echte Pause fuer `schlaf`: wartet `ms` Millisekunden. */
+function warten(ms) {
+  return new Promise((r) => setTimeout(r, ms));  // NOSONAR S9382: Abfragen in festem Takt
+}
+
+/**
+ * Der echte Wecker fuer `wecker` (Issue #1229, Plan #1199, E6): ruft `fn` nach `ms`
+ * Millisekunden und liefert die Funktion, die ihn abstellt. Eine Funktion statt
+ * `setTimeout`/`clearTimeout` als Paar, damit ein Test einen einzigen Ersatz einsetzt und die
+ * Zeit von Hand weiterstellt.
+ */
+function wecker(fn, ms) {
+  const t = setTimeout(fn, ms);
+  return () => clearTimeout(t);
+}
+
+/**
+ * Die echten Abhaengigkeiten einer Session (Issue #1229, Plan #1199, E6), nach dem Muster von
+ * `ToolboxIssueTracker({ jetzt, schlaf, zufall })`: `runProcess`, `runSession`, der Vorflug
+ * und die Salvage-Vorpruefung nehmen sie als Parameter, und jede fehlende faellt auf diese
+ * Vorgabe. Ein Test setzt eine Attrappe fuer `spawn` und eine Uhr fuer `jetzt` und `wecker`
+ * ein und faehrt die Session im selben Prozess, ohne Kindprozess und ohne Wartezeit.
+ *
+ *   spawn      startet die Session (Rueckgabe wie `child_process.spawn`)
+ *   spawnSync  `ps` beim Warten auf die Gruppe, `taskkill` unter Windows und der Lauf von
+ *              `checks.mjs run` in der Salvage-Vorpruefung
+ *   jetzt      die Uhr in Millisekunden
+ *   schlaf     die Pause zwischen zwei Abfragen der Prozessgruppe
+ *   wecker     die Stufen des Zeitlimits
+ *   killen     das Signal an die Prozessgruppe (`process.kill`)
+ */
+export const SESSION_ABHAENGIGKEITEN = Object.freeze({
+  spawn, spawnSync, jetzt: Date.now, schlaf: warten, wecker, killen: (pid, signal) => process.kill(pid, signal),
+});
+
 /**
  * Wartet, bis in der Prozessgruppe einer beendeten Session kein Prozess mehr laeuft
  * (Issue #668).
@@ -1317,8 +1352,15 @@ export function frischeStufenFelder(configPfad, stand) {
  * Wirft `prozesse`, weil die Abfrage der Prozessliste scheiterte, geht der Grund an
  * `vermerk` — ins Protokoll —, und die Funktion meldet `true` wie bei leerer Gruppe
  * (Issue #1174): Die Runde laeuft weiter wie bisher, aber nicht mehr stumm.
+ *
+ * Uhr, Takt und die Abfrage von `ps` sind einsetzbar (Issue #1229, Plan #1199, E6): `jetzt`,
+ * `schlaf` und `spawnSync` haben die echte Implementierung als Vorgabe, und ein Test faehrt
+ * die Frist im selben Prozess, ohne eine Millisekunde zu warten.
  */
-export async function warteAufProzessgruppe(pgid, restMs, { pollMs = 200, jetzt = Date.now, plattform = process.platform, prozesse, vermerk = () => {} } = {}) {
+export async function warteAufProzessgruppe(pgid, restMs, {
+  pollMs = 200, jetzt = Date.now, schlaf = warten, spawnSync: abfragen = spawnSync,
+  plattform = process.platform, prozesse, vermerk = () => {},
+} = {}) {
   if (!pgid || restMs <= 0) return true;
   if (plattform === "win32" && !prozesse) return true;
   const frist = jetzt() + restMs;
@@ -1328,14 +1370,14 @@ export async function warteAufProzessgruppe(pgid, restMs, { pollMs = 200, jetzt 
   // Werkzeug fehlt. Unter Windows haelt die Runde ebenfalls nicht an, vermerkt den
   // Fehlschlag aber (Issue #1174).
   const gruppeLaeuft = plattform === "win32" ? () => prozesse().length > 0 : () => {
-    const res = spawnSync("ps", ["-o", "pid=", "-g", String(pgid)], { encoding: "utf-8" });
+    const res = abfragen("ps", ["-o", "pid=", "-g", String(pgid)], { encoding: "utf-8" });
     if (res.error || res.status !== 0) return false;
     return (res.stdout || "").trim() !== "";
   };
   try {
     while (gruppeLaeuft()) {
       if (jetzt() >= frist) return false;
-      await new Promise((r) => setTimeout(r, pollMs));  // NOSONAR S9382: Abfragen in festem Takt
+      await schlaf(pollMs);
     }
   } catch (err) {
     vermerk(`${err.message} — der Runner wartet nicht auf die Prozesse der Session.`);
@@ -1492,7 +1534,9 @@ export function baumBeendenAufruf(pid, signal, plattform = process.platform, wei
   return { pid: -pid, signal };
 }
 
-export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extraEnv, cwd, kommandoStufe, gitBash }) {
+export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extraEnv, cwd, kommandoStufe, gitBash }, abh = {}) {
+  // Die Abhaengigkeiten (Issue #1229, Plan #1199, E6): jede fehlende ist die echte.
+  const { spawn: starten, spawnSync: abfragen, jetzt, schlaf, wecker: wecken, killen } = { ...SESSION_ABHAENGIGKEITEN, ...abh };
   return new Promise((resolve) => {
     // detached: true gibt dem Kind eine eigene Prozessgruppe, damit das Zeitlimit den
     // ganzen Baum trifft und nicht nur den direkten Kindprozess (Issue #182). Ohne das
@@ -1508,7 +1552,7 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
     // Prozesse, die eine Prozessgruppe auf POSIX zusammenhaelt.
     const marke = sitzungsMarke();
     const windows = process.platform === "win32";
-    const child = spawn(aufruf.befehl, aufruf.args, {
+    const child = starten(aufruf.befehl, aufruf.args, {
       ...aufruf.optionen,
       env: sessionUmgebung(issueId, extraEnv, process.env, marke),
       detached: process.platform !== "win32",
@@ -1548,12 +1592,12 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
     const auskunft = useStream && !kommandoStufe ? auskunftBeobachter() : null;
     // Fuer die Restfrist, in der nach dem Ende der Session auf ihre Prozessgruppe
     // gewartet wird (Issue #668): Sie teilt sich das Zeitlimit mit der Session selbst.
-    const gestartet = Date.now();
+    const gestartet = jetzt();
 
     const done = (result) => {
       if (settled) return;
       settled = true;
-      timers.forEach(clearTimeout);
+      timers.forEach((abstellen) => abstellen());
       // An genau einer Stelle angehaengt, damit auch die Zeitlimit- und Fehlerpfade das
       // Gemessene mitbringen: Gerade eine abgebrochene Session ist die, bei der die
       // Werkzeugzeit erklaert, woran die Runde haengengeblieben ist.
@@ -1573,11 +1617,11 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
     const killTree = (signal) => {
       const aufruf = baumBeendenAufruf(child.pid, signal, process.platform, windows ? sitzungsProzesseOderKeine(marke) : []);
       if (aufruf.taskkill) {
-        spawnSync("taskkill", aufruf.taskkill, { stdio: "ignore", windowsHide: true });
+        abfragen("taskkill", aufruf.taskkill, { stdio: "ignore", windowsHide: true });
         return;
       }
       try {
-        process.kill(aufruf.pid, aufruf.signal);
+        killen(aufruf.pid, aufruf.signal);
       } catch {
         /* Prozess(gruppe) bereits weg */
       }
@@ -1604,14 +1648,14 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
     // wird nachgesetzt.
     const hartNachsetzen = () => {
       killTree("SIGKILL");
-      timers.push(setTimeout(selbstAufloesen, killGraceMs));
+      timers.push(wecken(selbstAufloesen, killGraceMs));
     };
     const zeitlimitErreicht = () => {
       timedOut = true;
       killTree("SIGTERM");
-      timers.push(setTimeout(hartNachsetzen, killGraceMs));
+      timers.push(wecken(hartNachsetzen, killGraceMs));
     };
-    timers.push(setTimeout(zeitlimitErreicht, timeoutMs));
+    timers.push(wecken(zeitlimitErreicht, timeoutMs));
 
     child.stdout?.on("data", (chunk) => {
       const text = chunk.toString();
@@ -1620,7 +1664,7 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
         // Der Zeitstempel je Zeile stammt aus ihrer ANKUNFT — daraus entsteht die Spanne,
         // und im gesammelten stdout am Ende steht sie nicht mehr. Ein Stempel je Chunk
         // genuegt: Die Zeilen eines Chunks sind zusammen eingetroffen.
-        const ts = Date.now();
+        const ts = jetzt();
         buf += text;
         let idx;
         while ((idx = buf.indexOf("\n")) >= 0) {
@@ -1647,7 +1691,7 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
       // beim Zeitlimit die abgeschnittene. Auch sie geht erst in die Messung, dann in die
       // Ausgabe.
       if (useStream && buf.trim()) {
-        const ts = Date.now();
+        const ts = jetzt();
         werkzeugzeit.zeile(buf, ts);
         prueflaufZaehler.zeile(buf, ts);
         fortschritt?.zeile(buf, ts);
@@ -1661,8 +1705,9 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
       // entfaellt das: Dort hat killTree die Gruppe gerade erledigt, und ein weiteres
       // Warten haenge den Lauf genau an dem Baum auf, den er eben abgeraeumt hat.
       if (!timedOut) {
-        const restMs = Math.max(0, timeoutMs - (Date.now() - gestartet));
+        const restMs = Math.max(0, timeoutMs - (jetzt() - gestartet));
         const leer = await warteAufProzessgruppe(child.pid, restMs, {
+          jetzt, schlaf, spawnSync: abfragen,
           vermerk: (text) => log(`  Hinweis: ${text}`),
           ...(windows ? { prozesse: () => sitzungsProzesse(marke) } : {}),
         });
@@ -1850,8 +1895,11 @@ function programmFehlt(res, { kommando, cmd, startfehler }) {
     : `die Shell "${cmd}" fuer die Kommando-Stufe wurde nicht gefunden`;
 }
 
-// Exportiert fuer die Kette und ihre Tests.
-export async function runSession(issueId, args, opts = {}) {
+// Exportiert fuer die Kette und ihre Tests. `abh` sind die Abhaengigkeiten aus
+// `SESSION_ABHAENGIGKEITEN` (Issue #1229, Plan #1199, E6); sie gehen unveraendert an
+// `runProcess`, und `jetzt` misst daneben die Session-Dauer.
+export async function runSession(issueId, args, opts = {}, abh = {}) {
+  const { jetzt } = { ...SESSION_ABHAENGIGKEITEN, ...abh };
   // NIGHT_TIMEOUT_STUFE (Issue #1080) beschraenkt NIGHT_TIMEOUT_MS auf die Sessions einer
   // Stufe. Ohne sie galt das kurze Testlimit JEDER Session einer Kette, und die Sessions,
   // die schnell sein sollten, rissen es unter Last — der Test wurde rot, obwohl die
@@ -1889,7 +1937,7 @@ export async function runSession(issueId, args, opts = {}) {
   });
   // Die Session-Dauer fuer die Zeiten-Erfassung (Issue #749): gemessen um genau den
   // Prozesslauf, wie Nachdenken (apiDauerMs) und Werkzeugarbeit (werkzeugzeit) es auch sind.
-  const gestartet = Date.now();
+  const gestartet = jetzt();
   // Laesst sich nichts starten — unter Windows ohne Git Bash oder bei einer claude.cmd ohne
   // sh-Huelle —, steht derselbe Befund da wie bei einem Spawn ohne Programm: ENOENT.
   const res = startfehler ? keinStart(startfehler) : await runProcess(cmd, cmdArgs, {
@@ -1940,7 +1988,7 @@ export async function runSession(issueId, args, opts = {}) {
       ...umgebung,
       ...opts.extraEnv,
     },
-  });
+  }, abh);
   if (!testCmd && res.error?.code === "ENOENT") programmFehlt(res, { kommando, cmd, startfehler });
   const sessionOutput = `--- Session-Output Issue #${issueId} ---\n${res.stdout || ""}${res.stderr || ""}\n`;
   if (ZUSTAND.LOG_FILE) appendFileSync(ZUSTAND.LOG_FILE, sessionOutput, "utf-8");
@@ -1949,7 +1997,7 @@ export async function runSession(issueId, args, opts = {}) {
   // Salvage und alle Stufen der Kette laufen hier durch.
   const kennzahlen = leseKennzahlen(res.stdout);
   verbrauchErfassen(issueId, kennzahlen);
-  zeitenErfassen(issueId, Date.now() - gestartet, kennzahlen, res.werkzeugzeit);
+  zeitenErfassen(issueId, jetzt() - gestartet, kennzahlen, res.werkzeugzeit);
   prueflaeufeErfassen(issueId, res.prueflaeufe);
   auskunftErfassen(issueId, res.auskunft, prompt);
   // Das wirksame Zeitlimit dieser Runde (Issue #976). Es wird hier oben gerechnet — aus
@@ -1966,7 +2014,7 @@ export async function runSession(issueId, args, opts = {}) {
   if (ZUSTAND.LAUF_STEMPEL && !opts.zweiterVersuch && sitzungsStartGescheitert(res, kommando)) {
     zweiterVersuch(`Sitzungsstart zu #${issueId} gescheitert (${exitText(res)})`);
     schrittZweiterVersuch();
-    const zweiter = await runSession(issueId, args, { ...opts, zweiterVersuch: true });
+    const zweiter = await runSession(issueId, args, { ...opts, zweiterVersuch: true }, abh);
     zweiter.zweiterVersuch = true;
     zweiter.umgebungGescheitert = sitzungsStartGescheitert(zweiter, kommando);
     return zweiter;
@@ -2065,13 +2113,13 @@ export const SALVAGE_TIMEOUT_MS = 10 * 60 * 1000;
 // nicht — ohne sie liefert runBuildChecksSync ein falsches Rot (beobachtet bei
 // kanban-kit #445: mvn verify schlug ohne die beiden Variablen mit Mockito-
 // MockMaker-Fehlern fehl, mit ihnen lief er sauber durch).
-export function settingsEnv() {
+export function settingsEnv(wurzel = process.cwd()) {
   // Precedence wie in Claude Code: settings.json zuerst, settings.local.json
   // gewinnt. Die local-Datei ist gitignored und damit der uebliche Ort fuer
   // maschinenspezifische Werte — genau die, die hier fehlen wuerden (Issue #168).
   const merged = {};
   for (const name of ["settings.json", "settings.local.json"]) {
-    const path = join(process.cwd(), ".claude", name);
+    const path = join(wurzel, ".claude", name);
     if (!existsSync(path)) continue;
     try {
       const settings = JSON.parse(readFileSync(path, "utf-8"));
@@ -2333,14 +2381,14 @@ const CHECKS_MAX_BUFFER = 256 * 1024 * 1024;
  * Das rote Kommando kommt aus dem Nachweis und nicht aus der Ausgabe: Die Datei sagt
  * es als Feld, ein Textmuster ueber der Ausgabe waere ein zweiter Rechenweg.
  */
-function runChecksCliSync(karte) {
+function runChecksCliSync(karte, abfragen) {
   if (!existsSync(CHECKS_PATH)) {
     return { ok: false, output: `${CHECKS_PATH} liegt nicht vor — die Pflicht-Pruefungen lassen sich nicht fahren.\n`, rotesKommando: null };
   }
   const cliArgs = [CHECKS_PATH, "run", "--abschluss", String(karte), "--frisch"];
   // Der Puls davor und danach (Issue #1084, E6): Der volle Pruefumfang blockiert den Takt.
   pulsSchreiben();
-  const res = spawnSync(process.execPath, cliArgs, {
+  const res = abfragen(process.execPath, cliArgs, {
     cwd: process.cwd(), encoding: "utf-8", env: checkEnv(), maxBuffer: CHECKS_MAX_BUFFER,
   });
   pulsSchreiben();
@@ -2363,8 +2411,12 @@ function runChecksCliSync(karte) {
 // Beide Durchgaenge gehen ueber `checks.mjs run --frisch` (Issue #919): Der zweite ist
 // der, dessen Nachweis am Ende liegenbleibt — er muss den Stand NACH dem Format-Fix
 // bezeugen, sonst wiese das Gate die Rettung wegen der geaenderten Blobs ab.
-export function verifyChecksForSalvage(cfg, karte) {
-  const first = runChecksCliSync(karte);
+//
+// `abh.spawnSync` startet beide Durchgaenge und den Format-Fix (Issue #1229, Plan #1199,
+// E6); ohne Angabe der echte.
+export function verifyChecksForSalvage(cfg, karte, abh = {}) {
+  const { spawnSync: abfragen } = { ...SESSION_ABHAENGIGKEITEN, ...abh };
+  const first = runChecksCliSync(karte, abfragen);
   if (first.ok) return { ok: true, output: first.output, formatFixCmd: null, rotesKommando: null };
 
   const fixCmd = (cfg.formatFixCommand || "").trim();
@@ -2374,10 +2426,10 @@ export function verifyChecksForSalvage(cfg, karte) {
   // fixCmd kommt aus der Config und braucht deshalb eine Shell (Issue #199), unter Windows
   // die Git Bash (Issue #1176). Startet sie nicht, steht das im Log, und der zweite
   // Durchgang bleibt rot.
-  const fix = konfigKommandoSync(fixCmd, checkEnv());
+  const fix = konfigKommandoSync(fixCmd, checkEnv(), abfragen);
   if (fix.status === null && fix.stderr) log(`  Format-Fix nicht gestartet: ${fix.stderr.trim()}`);
 
-  const second = runChecksCliSync(karte);
+  const second = runChecksCliSync(karte, abfragen);
   if (!second.ok) return { ok: false, output: second.output, formatFixCmd: null, rotesKommando: second.rotesKommando };
   log(`  FORMAT-FIX angewendet, buildChecks jetzt gruen — der Lauf geht weiter.`);
   return { ok: true, output: second.output, formatFixCmd: fixCmd, rotesKommando: null };
@@ -2811,7 +2863,8 @@ export function normalisiereVorflug(roh, reviewers) {
 }
 
 /** Startet die Vorflug-Session — dieselbe Bauart wie eine Review-Session (runProcess). */
-async function runVorflugSession(args, prompt) {
+async function runVorflugSession(args, prompt, abh = {}) {
+  const { jetzt } = { ...SESSION_ABHAENGIGKEITEN, ...abh };
   const testCmd = process.env.NIGHT_VORFLUG_CMD;
   let cmd, cmdArgs, umgebung, gitBash, startfehler;
   if (testCmd) {
@@ -2834,11 +2887,11 @@ async function runVorflugSession(args, prompt) {
   const timeoutMs = process.env.NIGHT_VORFLUG_TIMEOUT_MS
     ? Number(process.env.NIGHT_VORFLUG_TIMEOUT_MS)
     : VORFLUG_TIMEOUT_MS;
-  const gestartet = Date.now();
+  const gestartet = jetzt();
   const res = startfehler ? keinStart(startfehler) : await runProcess(cmd, cmdArgs, {
     issueId: "vorflug", timeoutMs, useStream: false, gitBash,
     extraEnv: { ...umgebung, NIGHT_PROMPT: prompt, KIT_AGENT_MODEL: VORFLUG_MODEL, NIGHT_VORFLUG: "1", ...laufKennungUmgebung() },
-  });
+  }, abh);
   if (ZUSTAND.LOG_FILE) {
     appendFileSync(ZUSTAND.LOG_FILE, `--- Vorflug-Session ---\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
   }
@@ -2846,7 +2899,7 @@ async function runVorflugSession(args, prompt) {
   verbrauchErfassen(null, kennzahlen);
   // issueId null: die Vorflug-Session gehoert zu keiner Karte, zeitenErfassen schreibt
   // darum nichts (derselbe Aufruf wie verbrauchErfassen, Issue #749).
-  zeitenErfassen(null, Date.now() - gestartet, kennzahlen, res.werkzeugzeit);
+  zeitenErfassen(null, jetzt() - gestartet, kennzahlen, res.werkzeugzeit);
   return { res, timeoutMs };
 }
 
@@ -2857,10 +2910,12 @@ async function runVorflugSession(args, prompt) {
  * der Runner die Vorflug-Session gar nicht erzeugen oder endet sie ohne auswertbaren Block,
  * steht das als `sessionStartbar: false` da. Ohne diesen Fall haette der Vorflug bei einem
  * kaputten Session-Start gar nichts zu sagen — und Schweigen liest sich am Ende wie ein OK.
+ *
+ * `abh` wie bei `runSession` (Issue #1229).
  */
-export async function reviewerVorflug(args, reviewers, trackerId) {
+export async function reviewerVorflug(args, reviewers, trackerId, abh = {}) {
   const kommandos = reviewers.filter((r) => r.kind === "command");
-  const { res, timeoutMs } = await runVorflugSession(args, vorflugPrompt(kommandos, trackerId));
+  const { res, timeoutMs } = await runVorflugSession(args, vorflugPrompt(kommandos, trackerId), abh);
 
   const gescheitert = (grund) => ({
     sessionStartbar: false,

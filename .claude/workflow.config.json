@@ -190,20 +190,16 @@
       "gleichzeitig": true,
       "areas": [
         "aufwand",
-        "befunde",
         "board-adapter",
-        "board-dokumente",
         "board-einstieg",
-        "board-melder",
         "board-wiederholung",
-        "installer",
         "nacht-einstieg",
         "nacht-grundlagen",
+        "nacht-kitstand",
+        "nacht-laufstand",
         "nacht-session",
         "preise",
-        "pruefungen",
-        "sync",
-        "wirksamkeit"
+        "pruefungen"
       ]
     },
     {
@@ -228,14 +224,24 @@
       "cmd": "node --test --test-concurrency=2 \"test/ablauf-night-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
+        "aufwand",
+        "befunde",
+        "board-adapter",
+        "board-dokumente",
         "board-einstieg",
+        "board-melder",
+        "board-wiederholung",
+        "installer",
         "nacht-abhaengigkeiten",
         "nacht-einstieg",
         "nacht-grundlagen",
         "nacht-kitstand",
         "nacht-laufstand",
+        "nacht-session",
+        "preise",
         "pruefungen",
-        "sync"
+        "sync",
+        "wirksamkeit"
       ]
     },
     {
@@ -423,7 +429,8 @@
     ],
     "nacht-session": [
       "kit/night/session.mjs",
-      "test/night-session-*.test.mjs"
+      "test/night-session-*.test.mjs",
+      "test/helpers/session-attrappe.mjs"
     ],
     "board-einstieg": [
       "kit/board.mjs",

@@ -1,3 +1,5 @@
+// Ablauf-Pruefung: Belegt wird der Nachweis, den das echte checks.mjs fuer das Commit-Gate hinterlaesst, und was die Salvage-Session des Runners davon zu sehen bekommt — das gibt es nur im Lauf.
+//
 // Die Salvage-Vorpruefung schreibt den Nachweis, den das Commit-Gate liest (Issue #919).
 //
 // Beobachtet in kanban-kit am 2026-09-24 (Lauf `night-run-2026-09-24-125914`): Die

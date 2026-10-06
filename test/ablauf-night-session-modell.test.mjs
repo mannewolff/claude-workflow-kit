@@ -1,0 +1,440 @@
+// Ablauf-Pruefung: Welches Modell eine Karte bekommt, entscheidet der Einstieg je Runde (paketWahl im Lauf, Einheit, Vorschau, Vorflug); erst die Fake-CLI im PATH zeigt, was dabei wirklich in --model und KIT_AGENT_MODEL ankommt.
+//
+// Das Modell einer Karte (Issue #665, Plan #663).
+//
+// Der Nacht-Runner startete jede Session mit demselben Modell — `args.model`, einmal fuer
+// den ganzen Lauf. Eine Empfehlung am Arbeitspaket hatte keine Wirkung. Jetzt laeuft die
+// Session einer Karte mit dem Modell dieser Karte.
+//
+// Die Liste erlaubter Namen aus `night.modelle` ist die EINZIGE Pruefung (Plan #663, E3).
+// Sie ist kein Komfort, sondern der Sicherheitskern: Ohne sie wanderte ein Wert aus einem
+// Issue-Body unbesehen in `argv`, und ein Paket mit
+// `Empfohlenes Modell: --dangerously-skip-permissions` waere ein Angriff ueber eine Karte.
+// Ein Name ausserhalb der Liste faellt auf das Modell des Laufs zurueck, mit Grund in der
+// Einheit. Ein Modell, das trotz gueltigen Namens nicht startet, bleibt ein Fehlschlag wie
+// heute — `werteRunde` behandelt jeden Nicht-Timeout-Exit ungleich 0 so, und "nicht
+// gestartet" waere von "abgestuerzt" nur durch Deutung von stderr zu unterscheiden.
+//
+// Die reinen Funktionen (empfohlenesModell, aufgabenStufe, stufenEinstellung,
+// stufeStartbar, modellFuerStufe, paketWahl, frischeStufenFelder) prueft seit Issue #1229
+// test/night-session-modell.test.mjs im selben Prozess.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, chmodSync, rmSync, cpSync } from "node:fs";
+import { join, dirname, delimiter } from "node:path";
+import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+
+import { lfAttribute } from "./helpers/zeilenenden.mjs";
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const NIGHT = join(repoRoot, "kit", "night.mjs");
+const ERLAUBT = ["claude-opus-5", "claude-sonnet-5"];
+
+// --- Der Runner: E2E gegen ein Temp-Repo ---
+
+function run(cwd, cmd, cliArgs, env = {}) {
+  return spawnSync(cmd, cliArgs, { cwd, encoding: "utf-8", env: { ...process.env, KIT_ROOT: cwd, ...env } });
+}
+
+function board(cwd, ...cliArgs) {
+  const res = run(cwd, process.execPath, [join(cwd, ".claude", "kit", "board.mjs"), ...cliArgs]);
+  assert.equal(res.status, 0, `board.mjs ${cliArgs.join(" ")} schlug fehl: ${res.stderr}`);
+  return JSON.parse(res.stdout);
+}
+
+/** Die Konfigurationsdatei des Fixtures — dieselbe Form wie die des Runners. */
+function schreibeConfig(dir, { modelle = ERLAUBT, buildChecks = ["true"], stufen = null } = {}) {
+  const night = { ...(modelle ? { modelle } : {}), ...(stufen ? { stufen } : {}) };
+  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
+    codeHost: "local",
+    issueTracker: "local",
+    buildChecks,
+    local: { issuesDir: "issues" },
+    ...(Object.keys(night).length > 0 ? { night } : {}),
+  }, null, 2));
+}
+
+function setupProjekt(praefix, optionen = {}) {
+  const dir = mkdtempSync(join(tmpdir(), praefix));
+  mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
+  copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
+  cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  schreibeConfig(dir, optionen);
+  // Die Konfigurationsdatei bleibt untracked (Issue #711): Der E19-Test schreibt sie
+  // waehrend des Laufs um, und eine getrackte Datei machte damit den Baum dirty — der
+  // Dirty-Guard stoppte den Lauf hart, bevor das zweite Paket ueberhaupt zieht.
+  writeFileSync(join(dir, ".gitignore"),
+    ".claude/night-run-*.log\n.claude/night-run-*.json\n.claude/workflow.config.json\n");
+  lfAttribute(join(dir, ".gitattributes"));
+  for (const [c, a] of [
+    ["git", ["init", "-q"]],
+    ["git", ["config", "user.email", "t@example.invalid"]],
+    ["git", ["config", "user.name", "T"]],
+    ["git", ["add", "-A"]],
+    ["git", ["commit", "-qm", "Fixture"]],
+  ]) {
+    const res = run(dir, c, a);
+    assert.equal(res.status, 0, `${c} ${a.join(" ")}: ${res.stderr}`);
+  }
+  return dir;
+}
+
+function readyIssue(dir, titel, empfehlung, stufe = null) {
+  // `Autor-Modell:` ist Pflicht im Body — `issue create` weist ihn sonst ab.
+  const zeile = empfehlung ? `Empfohlenes Modell: ${empfehlung}\n` : "";
+  const stufenZeile = stufe ? `Aufgabenstufe: ${stufe}\n` : "";
+  const body = `## Kontext\n\nAutor-Modell: claude-opus-5\n${zeile}${stufenZeile}\n## Abhaengigkeiten\nKeine.\n`;
+  const issue = board(dir, "issue", "create", "--title", titel, "--body", body);
+  board(dir, "issue", "move", String(issue.id), "ready");
+  return String(issue.id);
+}
+
+// Unter Windows findet das Kit ein Programm nur ueber eine Endung aus PATHEXT. Wie npm es
+// installiert, liegt daneben eine `.cmd`, und gestartet wird die sh-Datei ohne Endung ueber
+// die Git Bash (Issue #1131, E8). Die `.cmd` selbst laeuft nie; auf POSIX bleibt sie unbeachtet.
+function huelleFuerWindows(binDir, name) {
+  writeFileSync(join(binDir, `${name}.cmd`), "@rem Huelle: das Kit startet die sh-Datei daneben.\r\n");
+}
+
+/** Eine Fake-CLI im PATH, die Argumente und KIT_AGENT_MODEL mitschreibt. */
+function fakeCli(extra = "") {
+  const binDir = mkdtempSync(join(tmpdir(), "night-modell-bin-"));
+  const argLog = join(binDir, "args.txt");
+  writeFileSync(join(binDir, "claude"),
+    `#!/bin/sh\nprintf 'ARGS %s\\n' "$*" >> ${JSON.stringify(argLog)}\n` +
+    `printf 'AGENT %s\\n' "$KIT_AGENT_MODEL" >> ${JSON.stringify(argLog)}\n${extra}exit 0\n`);
+  chmodSync(join(binDir, "claude"), 0o755);
+  huelleFuerWindows(binDir, "claude");
+  return { binDir, argLog };
+}
+
+const staende = (dir) => readdirSync(join(dir, ".claude")).filter((n) => /^night-run-.*\.json$/.test(n)).sort();
+const leseStand = (dir) => JSON.parse(readFileSync(join(dir, ".claude", staende(dir)[0]), "utf-8"));
+
+test("[night-26] die Session startet mit dem Modell der Karte, in --model und KIT_AGENT_MODEL", () => {
+  const dir = setupProjekt("night-modell-karte-");
+  let bin = null;
+  try {
+    readyIssue(dir, "Empfiehlt sonnet", "claude-sonnet-5");
+    bin = fakeCli();
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const log = readFileSync(bin.argLog, "utf-8");
+    assert.match(log, /--model claude-sonnet-5/, `die Karte setzt das Modell nicht durch:\n${log}`);
+    assert.match(log, /AGENT claude-sonnet-5/, `KIT_AGENT_MODEL traegt nicht denselben Wert:\n${log}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});
+
+test("[night-4] die Einheit traegt Modell, Herkunft und Grund", () => {
+  const dir = setupProjekt("night-modell-einheit-");
+  let bin = null;
+  try {
+    readyIssue(dir, "Empfiehlt etwas Fremdes", "gpt-6-astra");
+    bin = fakeCli();
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    // Der Rueckfall: ein Name ausserhalb der Liste laeuft mit dem Modell des Laufs.
+    assert.match(readFileSync(bin.argLog, "utf-8"), /--model claude-opus-5/, "der Rueckfall greift nicht");
+
+    const einheit = leseStand(dir).einheiten[0];
+    assert.equal(einheit.modell, "claude-opus-5");
+    assert.equal(einheit.modellHerkunft, "lauf");
+    assert.ok(einheit.modellGrund && einheit.modellGrund.length > 0, "der Grund des Rueckfalls fehlt");
+    assert.match(einheit.modellGrund, /gpt-6-astra/, "der Grund nennt den abgewiesenen Namen nicht");
+
+    // Die Feldreihenfolge ist der Vertrag: die drei Felder stehen direkt nach titel.
+    const schluessel = Object.keys(einheit);
+    assert.deepEqual(schluessel.slice(0, 5), ["id", "titel", "modell", "modellHerkunft", "modellGrund"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});
+
+test("[night-26] ein Flag als Empfehlung kommt nicht in die Argumente", () => {
+  const dir = setupProjekt("night-modell-flag-");
+  let bin = null;
+  try {
+    readyIssue(dir, "Versucht ein Flag", "--dangerously-skip-permissions");
+    bin = fakeCli();
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const log = readFileSync(bin.argLog, "utf-8");
+    assert.doesNotMatch(log, /--dangerously-skip-permissions/, `der Wert aus der Karte steht in argv:\n${log}`);
+    assert.match(log, /--model claude-opus-5/, "der Rueckfall greift nicht");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});
+
+test("[night-26] eine leere Liste schaltet die Wirkung ab", () => {
+  const dir = setupProjekt("night-modell-leer-", { modelle: [] });
+  let bin = null;
+  try {
+    readyIssue(dir, "Empfiehlt sonnet", "claude-sonnet-5");
+    bin = fakeCli();
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.match(readFileSync(bin.argLog, "utf-8"), /--model claude-opus-5/, "ohne Liste gilt das Modell des Laufs");
+
+    const einheit = leseStand(dir).einheiten[0];
+    assert.equal(einheit.modellHerkunft, "lauf");
+    assert.equal(einheit.modellGrund, null, "eine leere Liste ist kein abgewiesener Name");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});
+
+test("[night-26] --dry-run nennt je Karte Modell und Herkunft", () => {
+  const dir = setupProjekt("night-modell-dry-");
+  try {
+    readyIssue(dir, "Empfiehlt sonnet", "claude-sonnet-5");
+    readyIssue(dir, "Empfiehlt nichts", null);
+    const res = run(dir, process.execPath, [NIGHT, "--dry-run", "--label", "none", "--model", "claude-opus-5"]);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.match(res.stdout, /Modell claude-sonnet-5 \(Karte\)/, `die Karte fehlt im Dry-Run:\n${res.stdout}`);
+    assert.match(res.stdout, /Modell claude-opus-5 \(Lauf\)/, `der Rueckfall fehlt im Dry-Run:\n${res.stdout}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Der Stufenweg im Lauf: E2E gegen ein Temp-Repo (Issue #711) ---
+
+test("[night-26] die Session startet mit dem Modell der Stufe, wenn die Karte keinen Namen nennt", () => {
+  const dir = setupProjekt("night-stufe-lauf-", { stufen: { schwer: { modell: "claude-sonnet-5" } } });
+  let bin = null;
+  try {
+    readyIssue(dir, "Leichtes Paket", null, "leicht");
+    bin = fakeCli();
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const log = readFileSync(bin.argLog, "utf-8");
+    assert.match(log, /--model claude-sonnet-5/, `die Stufe setzt das Modell nicht durch:\n${log}`);
+    assert.match(log, /AGENT claude-sonnet-5/, "KIT_AGENT_MODEL traegt nicht denselben Wert");
+
+    const einheit = leseStand(dir).einheiten[0];
+    assert.equal(einheit.stufe, "leicht", "die Einheit nennt die Stufe des Pakets");
+    assert.equal(einheit.stufeVerwendet, "schwer", "die Einheit nennt die Stufe, die das Modell gestellt hat");
+    assert.equal(einheit.modellHerkunft, "stufe");
+    assert.match(einheit.modellGrund, /leicht/, "der Grund nennt die uebersprungene Stufe leicht");
+    assert.match(einheit.modellGrund, /mittel/, "der Grund nennt die uebersprungene Stufe mittel");
+    // Die Protokollzeile der Runde nennt Stufe, eingesetztes Modell und den Ausweichgrund.
+    assert.match(res.stdout, /Aufgabenstufe leicht/, `die Protokollzeile nennt die Stufe nicht:\n${res.stdout}`);
+    assert.match(res.stdout, /claude-sonnet-5/, "die Protokollzeile nennt das eingesetzte Modell nicht");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});
+
+test("[night-26] ein Paket ohne startbare Stufe wird ohne Session verbucht, das naechste laeuft weiter", () => {
+  // Kriterium 10: Eine begonnene Umsetzung wird nie mit einem zweiten Modell wiederholt —
+  // darum faellt die Entscheidung VOR der Session, und das Paket kostet keine.
+  const dir = setupProjekt("night-stufe-unstartbar-", { stufen: { leicht: { kommando: "gibt-es-nicht-xyz-711 --auftrag" } } });
+  let bin = null;
+  try {
+    const ohneStart = readyIssue(dir, "Leicht und nicht startbar", null, "leicht");
+    const danach = readyIssue(dir, "Ohne Stufe", null, null);
+    bin = fakeCli();
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "2", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const einheiten = leseStand(dir).einheiten;
+    const gescheitert = einheiten.find((e) => e.id === ohneStart);
+    assert.equal(gescheitert.ausgang, "fehlschlag", "ein Paket ohne startbare Stufe ist ein Fehlschlag");
+    assert.match(gescheitert.grund, /gibt-es-nicht-xyz-711/, "der Grund nennt das nicht auffindbare Programm");
+    assert.equal(gescheitert.stufe, "leicht");
+    assert.equal(gescheitert.stufeVerwendet, null, "keine Stufe hat das Modell gestellt");
+    assert.ok(!gescheitert.kennzahlen, `ohne Session gibt es keine Kennzahlen: ${JSON.stringify(gescheitert.kennzahlen)}`);
+
+    // Genau eine Session, und zwar die des zweiten Pakets.
+    const log = readFileSync(bin.argLog, "utf-8");
+    assert.equal((log.match(/^ARGS /gm) || []).length, 1, `genau eine Session erwartet:\n${log}`);
+    assert.match(log, new RegExp(`/implement-next #${danach}`), "das naechste Ready-Paket lief nicht");
+    assert.ok(einheiten.find((e) => e.id === danach), "das naechste Paket fehlt im Ergebnisstand");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});
+
+test("[night-26] Modellname und Stufe zugleich: der Name laeuft, der Grund vermerkt beides", () => {
+  const dir = setupProjekt("night-stufe-doppelt-", { stufen: { leicht: { modell: "claude-opus-5" } } });
+  let bin = null;
+  try {
+    readyIssue(dir, "Nennt beides", "claude-sonnet-5", "leicht");
+    bin = fakeCli();
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.match(readFileSync(bin.argLog, "utf-8"), /--model claude-sonnet-5/, "der Name der Karte setzt sich nicht durch");
+
+    const einheit = leseStand(dir).einheiten[0];
+    assert.equal(einheit.modellHerkunft, "karte");
+    assert.equal(einheit.stufe, "leicht");
+    assert.equal(einheit.stufeVerwendet, null);
+    assert.ok(einheit.modellGrund && einheit.modellGrund.length > 0, "die doppelte Angabe ist nicht vermerkt");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});
+
+test("[night-26] ein abgewiesener Modellname laeuft auf dem Modell des Laufs, nicht auf dem der Stufe", () => {
+  const dir = setupProjekt("night-stufe-abgewiesen-", { stufen: { leicht: { modell: "claude-sonnet-5" } } });
+  let bin = null;
+  try {
+    readyIssue(dir, "Nennt einen Unbekannten", "claude-gibt-es-nicht", "leicht");
+    bin = fakeCli();
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const log = readFileSync(bin.argLog, "utf-8");
+    assert.match(log, /--model claude-opus-5/, "der Rueckfall endet nicht beim Modell des Laufs");
+    assert.doesNotMatch(log, /--model claude-sonnet-5/, "der abgewiesene Name faellt faelschlich auf die Stufe");
+    assert.equal(leseStand(dir).einheiten[0].modellHerkunft, "lauf");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});
+
+test("[night-26] eine Aenderung an night.stufen wirkt schon beim naechsten Paket desselben Laufs", () => {
+  // E19: Die Einstellung wird unmittelbar vor jedem Paket frisch gelesen. Ohne das saehe
+  // ein laufender Nachtlauf eine Aenderung erst am naechsten Abend.
+  const dir = setupProjekt("night-stufe-frisch-", { stufen: { leicht: { modell: "claude-opus-5" } } });
+  // Hilfsdateien liegen AUSSERHALB des Fixtures: Im Projektverzeichnis machten sie den
+  // Baum dirty, und der Dirty-Guard stoppte den Lauf nach der ersten Runde hart.
+  const hilf = mkdtempSync(join(tmpdir(), "night-stufe-frisch-hilf-"));
+  let bin = null;
+  try {
+    readyIssue(dir, "Erstes leichtes Paket", null, "leicht");
+    readyIssue(dir, "Zweites leichtes Paket", null, "leicht");
+    const neueConfig = join(hilf, "neue-config.json");
+    writeFileSync(neueConfig, JSON.stringify({
+      codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
+      night: { modelle: ERLAUBT, stufen: { leicht: { modell: "claude-sonnet-5" } } },
+    }, null, 2));
+    // Der Fake schreibt die Einstellung nach der ERSTEN Session um — genau die Lage, die
+    // E19 beschreibt: Ein Mensch aendert die Datei, waehrend der Lauf laeuft.
+    const marker = join(hilf, "erste-session.marker");
+    bin = fakeCli(
+      `if [ ! -f ${JSON.stringify(marker)} ]; then : > ${JSON.stringify(marker)};`
+      + ` cp ${JSON.stringify(neueConfig)} ${JSON.stringify(join(dir, ".claude", "workflow.config.json"))}; fi\n`);
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "2", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const modelle = (readFileSync(bin.argLog, "utf-8").match(/--model (\S+)/g) || []);
+    assert.deepEqual(modelle, ["--model claude-opus-5", "--model claude-sonnet-5"],
+      "das zweite Paket laeuft nicht mit der geaenderten Einstellung");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(hilf, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});
+
+// --- Vorschau und Vorflug (Issue #712, Plan #707) ---
+//
+// Der Stufenweg wirkt (#711), aber vor dem Lauf sah der Mensch nichts davon. `--dry-run`
+// nennt jetzt bei aktiver Einstellung je Ready-Paket die Stufe und das Modell, das
+// eingesetzt wuerde; ein eigener Vorflug meldet je belegter Stufe ohne Netz, ob sie
+// startbar ist — ohne den Lauf aufzuhalten (Kriterium 11).
+
+test("[night-39] --dry-run nennt je Paket Stufe und Modell, samt Ausweichen nach oben", () => {
+  const dir = setupProjekt("night-dryrun-stufen-", {
+    stufen: { leicht: { modell: "claude-sonnet-5" }, schwer: { modell: "claude-opus-5" } },
+  });
+  try {
+    readyIssue(dir, "Leichtes Paket", null, "leicht");
+    readyIssue(dir, "Mittleres Paket", null, "mittel");
+    readyIssue(dir, "Paket ohne Stufe", null, null);
+    const res = run(dir, process.execPath, [NIGHT, "--dry-run", "--label", "none", "--max", "3", "--model", "claude-opus-5"]);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    assert.match(res.stdout, /Leichtes Paket -> Session \d+, Stufe leicht, Modell claude-sonnet-5 \(Stufe leicht\)$/m,
+      `die belegte Stufe fehlt im Dry-Run:\n${res.stdout}`);
+    assert.match(res.stdout, /Mittleres Paket -> Session \d+, Stufe mittel nicht belegt, Modell claude-opus-5 \(Stufe schwer\)$/m,
+      `das Ausweichen nach oben fehlt im Dry-Run:\n${res.stdout}`);
+    assert.match(res.stdout, /Paket ohne Stufe -> Session \d+, Modell claude-opus-5 \(Lauf\)$/m,
+      `das Modell des Laufs fehlt im Dry-Run:\n${res.stdout}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[night-39] Gegenprobe: ohne night.stufen bleibt die Vorschau zeichengleich mit vor der Aenderung", () => {
+  const dir = setupProjekt("night-dryrun-gegenprobe-");
+  try {
+    readyIssue(dir, "Empfiehlt sonnet", "claude-sonnet-5");
+    readyIssue(dir, "Empfiehlt nichts", null);
+    const res = run(dir, process.execPath, [NIGHT, "--dry-run", "--label", "none", "--max", "2", "--model", "claude-opus-5"]);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    // Fester, woertlicher Text von vor der Aenderung — kein Vergleich gegen den eigenen Code.
+    assert.match(res.stdout, /Empfiehlt sonnet -> Session 1, Modell claude-sonnet-5 \(Karte\)$/m);
+    assert.match(res.stdout, /Empfiehlt nichts -> Session 2, Modell claude-opus-5 \(Lauf\)$/m);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[night-40] eine nicht startbare Stufe erzeugt eine Warnzeile im Vorflug, der Lauf beginnt trotzdem", () => {
+  const dir = setupProjekt("night-vorflug-stufen-", { stufen: { leicht: { kommando: "gibt-es-nicht-xyz-712 --auftrag" } } });
+  let bin = null;
+  try {
+    readyIssue(dir, "Leichtes Paket", null, "leicht");
+    bin = fakeCli();
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const warnungen = res.stdout.match(/WARNUNG: Stufe leicht nicht startbar: .*gibt-es-nicht-xyz-712.*/g) || [];
+    assert.equal(warnungen.length, 1, `genau eine Warnzeile erwartet:\n${res.stdout}`);
+
+    // Der Lauf beginnt trotzdem: Exit-Code und Ergebnisstand sind dieselben wie ohne
+    // Vorflug — das Paket selbst scheitert weiterhin ohne Session an derselben Stufe.
+    const einheit = leseStand(dir).einheiten[0];
+    assert.equal(einheit.ausgang, "fehlschlag");
+    assert.equal(einheit.stufe, "leicht");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});
+
+test("[night-40] ohne aktive Einstellung enthaelt die Ausgabe keine Stufen-Zeile", () => {
+  const dir = setupProjekt("night-vorflug-gegenprobe-");
+  let bin = null;
+  try {
+    readyIssue(dir, "Normales Paket", null);
+    bin = fakeCli();
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--model", "claude-opus-5"],
+      { PATH: `${bin.binDir}${delimiter}${process.env.PATH}` });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.doesNotMatch(res.stdout, /Stufe/, `keine Stufen-Zeile erwartet, aber:\n${res.stdout}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    if (bin) rmSync(bin.binDir, { recursive: true, force: true });
+  }
+});

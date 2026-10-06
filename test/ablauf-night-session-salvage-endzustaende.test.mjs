@@ -1,3 +1,5 @@
+// Ablauf-Pruefung: Die drei Endzustaende des Salvage unterscheidet der Einstieg (versucheSalvage in kit/night.mjs) an Commit, Board und Baum nach der Session — das gibt es nur im Lauf des echten Runners.
+//
 // Die drei harten Endzustaende des Salvage (Issue #672).
 //
 // Bis hierher fasste `versucheSalvage` alles, was kein Erfolg und keine rote
@@ -9,8 +11,9 @@
 //   - kein Commit, Board nicht bewegt   -> gescheitert (der alte Satz, jetzt eng)
 //   - Commit, Board nicht bewegt        -> unvollstaendig (der Commit ist da, die Karte nicht)
 //   - In review, Baum unsauber          -> widerspruechlich (die Karte luegt)
-// Dazu die Reihenfolge im Salvage-Prompt: erst committen, dann `git status
-// --porcelain`, und nur bei leerer Ausgabe das Board bewegen.
+// Die Reihenfolge im Salvage-Prompt — erst committen, dann `git status --porcelain`, und
+// nur bei leerer Ausgabe das Board bewegen — prueft seit Issue #1229
+// test/night-session-salvage.test.mjs am Prompt selbst.
 //
 // Wie im uebrigen Nachtlauf-Bestand laeuft das ECHTE kit/night.mjs aus dem Repo
 // gegen ein Fixture-Projekt mit lokalem Tracker (KIT_ROOT, Issue #189); die Sessions
@@ -216,30 +219,6 @@ test("[night-27] eine Salvage-Session ohne Commit und ohne Board-Zug bleibt 'ges
 });
 
 // ============================================================
-// Die Reihenfolge im Salvage-Prompt
-// ============================================================
-
-test("[night-27] der Salvage-Prompt verlangt `git status --porcelain` vor dem Board-Zug", () => {
-  mitProjekt("night-salvage-prompt-", (dir) => {
-    readyIssue(dir, "Runde ohne Board-Ergebnis");
-    // Der Prompt der Session steht ihr als NIGHT_PROMPT zur Verfuegung (Issue #620) —
-    // der Fake legt ihn ab, statt dass der Test die private Funktion aufruft.
-    run(dir, ["--label", "none"], {
-      // Unter .git/: Eine Datei im Baum ginge seit Issue #1089 mit den Resten in den Stash.
-      NIGHT_CLAUDE_CMD: fake('  printf \'%s\' "$NIGHT_PROMPT" > .git/prompt.txt'),
-    });
-
-    const prompt = readFileSync(join(dir, ".git", "prompt.txt"), "utf-8");
-    const pruefung = prompt.indexOf("git status --porcelain");
-    const zug = prompt.indexOf("issue move");
-    assert.ok(pruefung >= 0, `der Prompt verlangt keine Sauberkeitspruefung:\n${prompt}`);
-    assert.ok(zug >= 0, `der Prompt nennt den Board-Zug nicht:\n${prompt}`);
-    assert.ok(pruefung < zug,
-      `die Sauberkeitspruefung steht hinter dem Board-Zug — genau die Reihenfolge, die #248 gekostet hat:\n${prompt}`);
-  });
-});
-
-// ============================================================
 // Die Rundendauer enthaelt den Salvage (Code-Review zu #924)
 // ============================================================
 //
@@ -265,15 +244,19 @@ test("[night-27] die Rundendauer schliesst die Salvage-Session ein", () => {
     const id = readyIssue(dir);
     // Die regulaere Session endet unsauber (Datei ohne Commit) — das fuehrt in
     // werteRunde in den Dirty-Zweig und damit in den Salvage. Der Salvage-Fake
-    // braucht zwei Sekunden, committet und zieht die Karte.
-    const SALVAGE = `  sleep 2 && ${COMMIT} && ${MOVE_IN_REVIEW}`;
+    // committet und zieht die Karte.
+    const SALVAGE = `  ${COMMIT} && ${MOVE_IN_REVIEW}`;
     const res = run(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: fake(SALVAGE) });
     assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
 
+    // Gemessen ohne feste Pause (Issue #1229): `zeiten.dauerMs` ist die Summe beider
+    // Sessions, je um ihren Prozesslauf gemessen. Die Rundendauer umfasst sie nur, wenn sie
+    // nach der Rettung festgehalten wird — vorher waere sie die Dauer der Runde allein und
+    // laege unter der Summe, denn die Rettung startet board.mjs und git.
     const einheit = einheitDerKarte(dir, id);
     assert.ok(
-      einheit.dauerMs >= 2000,
-      `die Rundendauer muss die zwei Sekunden Salvage enthalten, war ${einheit.dauerMs} ms`,
+      einheit.dauerMs >= einheit.zeiten.dauerMs,
+      `die Rundendauer (${einheit.dauerMs} ms) muss beide Sessions enthalten (${einheit.zeiten.dauerMs} ms)`,
     );
     assert.ok(inReview(dir, id), "die Salvage-Session hat die Karte nach In review gezogen");
   });

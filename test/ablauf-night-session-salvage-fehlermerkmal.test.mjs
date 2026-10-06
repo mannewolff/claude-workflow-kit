@@ -1,3 +1,5 @@
+// Ablauf-Pruefung: Ob ein Exit 0 mit Fehlermerkmal die Rettung verhindert, entscheidet das echte checks.mjs im Zielprojekt, und erst der Runner zieht daraus den Ausgang der Runde.
+//
 // Die Salvage-Vorpruefung kennt die Fehlermerkmale wie checks.mjs (Issue #859).
 //
 // Vor einem Rettungsversuch faehrt der Runner die Pflichtchecks selbst, per
