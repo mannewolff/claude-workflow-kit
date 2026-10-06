@@ -179,6 +179,7 @@ Nutzung:
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
       Besetzung und Rollen der Stufe aus reviewStufen; der Autor faellt weg.
+      Bei --stufe plan setzt KIT_PLAN_REVIEWER (1 oder 2) die Pruefzahl vor reviewStufen.
   node board.mjs nightrun melden --datei <ergebnisstand.json>
       Liefert einen Ergebnisstand des Nacht-Runners an POST /api/kanban/night-runs ein
       (nur issueTracker toolbox); derselbe Lauf wird bei jeder Meldung ersetzt.

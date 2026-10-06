@@ -73,3 +73,22 @@ test("[board-6] die Hilfe nennt weder --issue noch label-sync noch synthese-chec
     assert.ok(res.stdout.includes("issue-review roles --stufe <fachlich|plan|issue> --author <modell>"));
   });
 });
+
+// KIT_PLAN_REVIEWER (Issue #1245, Plan #1243, A8): Die reine Bestimmung wirft einen
+// BoardError, erst der Befehl macht daraus fail — Exit 1 mit dem Grund belegt nur ein Prozess.
+
+test("[board-6] roles --stufe plan endet bei ungueltigem KIT_PLAN_REVIEWER mit Exit 1 und Grund", () => {
+  mitProjekt((dir) => {
+    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "plan", "--author", "claude-opus-5"], { KIT_PLAN_REVIEWER: "3" });
+    assert.equal(res.status, 1, `haette abgewiesen werden muessen: ${res.stdout}`);
+    assert.match(res.stderr, /Fehler: KIT_PLAN_REVIEWER '3' ist ungueltig — erlaubt sind 1 oder 2\./);
+  });
+});
+
+test("[board-6] roles --stufe plan endet bei KIT_PLAN_REVIEWER=2 mit nur einem Reviewer mit Exit 1 und Grund", () => {
+  mitProjekt((dir) => {
+    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "plan", "--author", "claude-opus-5"], { KIT_PLAN_REVIEWER: "2" });
+    assert.equal(res.status, 1, `haette abgewiesen werden muessen: ${res.stdout}`);
+    assert.match(res.stderr, /Fehler: planreview:2 verlangt zwei Reviewer, verfügbar ist einer/);
+  }, { issueReview: { reviewers: REVIEWERS.slice(0, 2) } });
+});
