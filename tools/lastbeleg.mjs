@@ -134,6 +134,13 @@ async function einrichten(wt, referenz, starter) {
   const datei = join(wt, referenz);
   if (!existsSync(datei)) throw new Error(`Referenzdatei fehlt im Worktree: ${referenz}`);
   appendFileSync(datei, `\n${MARKE}\n`);
+  // Wie ein echtes Kernpaket nach seiner Aenderung (Issue #1257): Ohne diesen Lauf stuenden
+  // Kopie und Blob auf dem Stand vor der Marke, und `sync-blobs --check` waere in jedem Beleg rot.
+  const nachher = await starter({ art: "einrichten", cwd: wt, cmd: "node tools/sync-blobs.mjs", env: process.env });
+  if (nachher.code !== 0) {
+    const ende = (nachher.ausgabe || "").trim().split(/\r?\n/).slice(-10).join("\n");
+    throw new Error(`Einrichten von ${wt}: 'node tools/sync-blobs.mjs' nach der Referenzaenderung endete mit ${nachher.code}${ende ? "\n" + ende : ""}`);
+  }
 }
 
 /** Tastet die Last ab, bis `fertig` sich erfuellt: eine Probe sofort, dann je Pause eine. */

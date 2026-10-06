@@ -126,7 +126,8 @@ test("ein gruener Lauf: Einrichtung, Referenzaenderung, gleichzeitiger Start und
     // der eben installierten Pruefsteuerung.
     for (const wt of a.angelegt) {
       const eigene = a.aufrufe.filter((x) => x.cwd === wt).map((x) => x.cmd);
-      assert.deepEqual(eigene, ["npm ci", "node tools/sync-blobs.mjs", "node .claude/kit/checks.mjs run --abschluss --frisch"]);
+      // sync-blobs zweimal: nach dem Einrichten und nach der Referenzaenderung (Issue #1257).
+      assert.deepEqual(eigene, ["npm ci", "node tools/sync-blobs.mjs", "node tools/sync-blobs.mjs", "node .claude/kit/checks.mjs run --abschluss --frisch"]);
       assert.match(beimStart.get(wt), /^export const x = 1;\n\n\/\/ lastbeleg: Referenzaenderung/);
     }
     // Jeder Lauf hat seine eigene Sperre: Gemessen wird das Nebeneinander, nicht das Anstellen.
@@ -289,7 +290,30 @@ test("vor sync-blobs stehen die Kopie-Verzeichnisse, die es im frischen Worktree
   });
   try {
     await lastbeleg(OPT, a.abh);
-    assert.deepEqual(vorhanden, [true, true]);
+    // Je Worktree zwei sync-blobs-Laeufe, vor und nach der Referenzaenderung (Issue #1257).
+    assert.deepEqual(vorhanden, [true, true, true, true]);
+  } finally {
+    a.aufraeumen();
+  }
+});
+
+test("[1257] nach der Referenzaenderung laeuft sync-blobs noch einmal, wie bei einem echten Kernpaket", async () => {
+  // Ohne den zweiten Lauf stuende die installierte Kopie auf dem Stand vor der Aenderung, und
+  // `sync-blobs --check` im Worktree waere in jedem Beleg rot (Issue #1257).
+  const gesehen = [];
+  const a = aufbau({
+    antwort: (aufruf) => {
+      if (aufruf.cmd === "node tools/sync-blobs.mjs") {
+        gesehen.push({ wt: aufruf.cwd, mitMarke: readFileSync(join(aufruf.cwd, REFERENZ), "utf-8").includes("lastbeleg:") });
+      }
+      return { code: 0, ausgabe: "" };
+    },
+  });
+  try {
+    await lastbeleg(OPT, a.abh);
+    for (const wt of new Set(gesehen.map((g) => g.wt))) {
+      assert.deepEqual(gesehen.filter((g) => g.wt === wt).map((g) => g.mitMarke), [false, true], wt);
+    }
   } finally {
     a.aufraeumen();
   }
