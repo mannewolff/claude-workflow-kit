@@ -3285,6 +3285,21 @@ function halterEntfernen(pfad) {
 }
 
 /**
+ * Die Umgebung der Pruefkommandos: die des Laufs ohne seinen Sperrpfad (Issue #1256).
+ *
+ * Der Sperrpfad gilt genau diesem Lauf. Ein Pruefkommando, das selbst `checks.mjs run`
+ * startet — jede Testdatei, die das Werkzeug prueft —, ist ein anderer Lauf. Erbte es den
+ * Pfad, naehme es die Sperre, die dieser Lauf gerade haelt, und wartete auf ihn: Im
+ * Lastbeleg mit eigenem Pfad je Lauf hingen so fuenf Testdateien bis zu 900 s, weil der
+ * Sperr-Helfer der Tests nur dann einen eigenen Pfad anlegt, wenn keiner gesetzt ist.
+ */
+function kommandoUmgebung(env) {
+  const ohne = { ...env };
+  delete ohne[SPERRE_ENV];
+  return ohne;
+}
+
+/**
  * `run`. Rueckgabe: ein Promise auf den Exitcode (Issue #1070) — auch beim uebernommenen
  * Ergebnis, damit der Aufrufer nur einen Fall kennt.
  */
@@ -3297,7 +3312,7 @@ async function ausfuehren(args) {
   // bisherige Summe der Karte.
   const vorige = vorigeZusammenfassung();
   const auswahl = planen(args);
-  const env = { ...umgebungsVariablen(), ...settingsEnv() };
+  const env = kommandoUmgebung({ ...umgebungsVariablen(), ...settingsEnv() });
 
   // VOR dem ersten Kommando (Issue #469): Der Hash bezeugt den Inhalt, der in die
   // Pruefung ging. Danach gehasht, bescheinigte er einen Stand, den kein Check

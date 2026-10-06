@@ -417,7 +417,7 @@ Stand unveraendert seit 2026-09-22T17:18:04.921Z: Ergebnis uebernommen (gruen). 
 
 **Der Anlass** war ein Abend mit zwei Nacht-Runnern auf einem Rechner (2026-09-24). Beide fuhren gleichzeitig ihre Prüfungen; die Suite des einen startet Hunderte Kindprozesse, die Load Average stieg auf 348, und `test:coverage` des anderen Projekts riss mit wechselnden Tests sein Zeitlimit. Beide Läufe wurden rot, ohne dass eine Änderung schuld war. Ein Zeitlimit im Projekt fängt das nicht ab: Die Ursache liegt außerhalb.
 
-**Wo sie liegt.** Im Temp-Verzeichnis des Nutzers, unter festem Namen, **unabhängig vom Projekt** — der Anlass sind zwei *Projekte* auf einer Maschine, und eine Datei im Repository sähe das andere Projekt nie. `node .claude/kit/checks.mjs --help` nennt den Pfad, den dein Lauf gerade benutzt. Die Umgebungsvariable **`KIT_CHECKS_LOCK`** setzt ihn um; ein leerer Wert zählt wie nicht gesetzt.
+**Wo sie liegt.** Im Temp-Verzeichnis des Nutzers, unter festem Namen, **unabhängig vom Projekt** — der Anlass sind zwei *Projekte* auf einer Maschine, und eine Datei im Repository sähe das andere Projekt nie. `node .claude/kit/checks.mjs --help` nennt den Pfad, den dein Lauf gerade benutzt. Die Umgebungsvariable **`KIT_CHECKS_LOCK`** setzt ihn um; ein leerer Wert zählt wie nicht gesetzt. Der Pfad gilt nur dem Lauf, der ihn liest: An seine Prüfkommandos gibt `checks.mjs` ihn nicht weiter (#1256). Startet ein Prüfkommando selbst `checks.mjs run`, etwa eine Testdatei des Kits, ist das ein anderer Lauf. Erbte er den Pfad, wartete er auf die Sperre, die der äußere Lauf gerade hält.
 
 **Was sie tut, wenn sie belegt ist:**
 
