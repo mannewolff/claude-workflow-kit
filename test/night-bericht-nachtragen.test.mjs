@@ -14,7 +14,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { berichteNachtragen } from "../kit/night.mjs";
+import { berichteNachtragen } from "../kit/night/bericht.mjs";
 
 function projekt(praefix) {
   const dir = mkdtempSync(join(tmpdir(), praefix));

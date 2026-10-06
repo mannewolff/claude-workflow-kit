@@ -27,7 +27,7 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/night-abs*.test.mjs\" \"test/night-ag*.test.mjs\" \"test/night-an*.test.mjs\" \"test/night-as*.test.mjs\" \"test/night-au*.test.mjs\" \"test/night-b*.test.mjs\" \"test/night-c*.test.mjs\" \"test/night-d*.test.mjs\" \"test/night-e*.test.mjs\" \"test/night-f*.test.mjs\" \"test/night-ga*.test.mjs\" \"test/night-ge*.test.mjs\" \"test/night-gu*.test.mjs\" \"test/night-h*.test.mjs\" \"test/night-i*.test.mjs\" \"test/night-kl*.test.mjs\" \"test/night-label*.test.mjs\" \"test/night-laufkennung.test.mjs\" \"test/night-le*.test.mjs\" \"test/night-lu*.test.mjs\" \"test/night-m*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/night-abs*.test.mjs\" \"test/night-ag*.test.mjs\" \"test/night-an*.test.mjs\" \"test/night-as*.test.mjs\" \"test/night-au*.test.mjs\" \"test/night-bea*.test.mjs\" \"test/night-bef*.test.mjs\" \"test/night-bo*.test.mjs\" \"test/night-c*.test.mjs\" \"test/night-d*.test.mjs\" \"test/night-e*.test.mjs\" \"test/night-f*.test.mjs\" \"test/night-ga*.test.mjs\" \"test/night-ge*.test.mjs\" \"test/night-gu*.test.mjs\" \"test/night-h*.test.mjs\" \"test/night-i*.test.mjs\" \"test/night-kl*.test.mjs\" \"test/night-label*.test.mjs\" \"test/night-laufkennung.test.mjs\" \"test/night-le*.test.mjs\" \"test/night-lu*.test.mjs\" \"test/night-m*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "aufwand",
@@ -55,6 +55,7 @@
         "board-wiederholung",
         "installer",
         "nacht-einstieg",
+        "nacht-session",
         "pruefungen",
         "skills-doku",
         "wirksamkeit"
@@ -203,6 +204,21 @@
       ]
     },
     {
+      "cmd": "node --test --test-concurrency=2 \"test/night-bericht-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-dokumente",
+        "board-wiederholung",
+        "nacht-abhaengigkeiten",
+        "nacht-bericht",
+        "nacht-grundlagen",
+        "nacht-kitstand",
+        "nacht-laufstand",
+        "nacht-session",
+        "pruefungen"
+      ]
+    },
+    {
       "cmd": "node --test --test-concurrency=2 \"test/ablauf-board-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
@@ -233,6 +249,7 @@
         "board-wiederholung",
         "installer",
         "nacht-abhaengigkeiten",
+        "nacht-bericht",
         "nacht-einstieg",
         "nacht-grundlagen",
         "nacht-kitstand",
@@ -377,7 +394,9 @@
       "test/night-an*.test.mjs",
       "test/night-as*.test.mjs",
       "test/night-au*.test.mjs",
-      "test/night-b*.test.mjs",
+      "test/night-bea*.test.mjs",
+      "test/night-bef*.test.mjs",
+      "test/night-bo*.test.mjs",
       "test/night-c*.test.mjs",
       "test/night-d*.test.mjs",
       "test/night-e*.test.mjs",
@@ -431,6 +450,10 @@
       "kit/night/session.mjs",
       "test/night-session-*.test.mjs",
       "test/helpers/session-attrappe.mjs"
+    ],
+    "nacht-bericht": [
+      "kit/night/bericht.mjs",
+      "test/night-bericht-*.test.mjs"
     ],
     "board-einstieg": [
       "kit/board.mjs",

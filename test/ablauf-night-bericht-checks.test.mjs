@@ -1,3 +1,7 @@
+// Ablauf-Pruefung: Gegenstand ist die Kopplung zwischen der Zusammenfassung, die das echte
+// checks.mjs schreibt, und dem Pruefteil, den der Runner daraus macht — ein von Hand
+// geschriebenes JSON froere genau das Format ein, um das es geht.
+//
 // Pruef-Zusammenfassungen im Lauf-Bericht des Nacht-Runners (Issue #428).
 //
 // Kriterium 11 aus Issue #420 verlangt die ausgelassenen Pruefungen an zwei Stellen:
@@ -223,7 +227,7 @@ test("[night-857] eine waehrend des Pruefens gestorbene Session erscheint als ro
   // Die Session committet hier bewusst NICHT (seit Issue #865): Gaebe es einen Commit,
   // gehoerte die Zwischenfassung nachweislich nicht zu ihm, und der Runner pruefte
   // nach — dann stuende im Bericht das Ergebnis der Nachpruefung statt der Zustand,
-  // um den es hier geht. Der Fall mit Commit steht in test/night-nachweis-commit.test.mjs.
+  // um den es hier geht. Der Fall mit Commit steht in test/ablauf-night-bericht-nachweis.test.mjs.
   const buildChecks = [
     { cmd: "if [ -f .gestorben ]; then exit 0; fi; touch .gestorben; kill -9 $PPID", areas: ["kit"] },
     FRONTEND_CHECK,

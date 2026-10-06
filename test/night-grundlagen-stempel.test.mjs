@@ -4,7 +4,7 @@
 // (`wx`). Findet ein Start die Datei schon vor, wartet er bis zur naechsten vollen Sekunde
 // und bildet den Stempel neu — hoechstens fuenfmal. Geprueft an der Funktion selbst, mit
 // eingespeister Uhr und eingespeistem Schlaf, ohne echte Sekunden. Seit Issue #1224 steht
-// sie in den Grundlagen; den Nachtrag wartender Berichte prueft night-stempel-bericht.
+// sie in den Grundlagen; den Nachtrag wartender Berichte prueft night-bericht-nachtragen.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

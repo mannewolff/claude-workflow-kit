@@ -11,7 +11,7 @@
 // Iteration erneut, und ein Auth-Fehler bekaeme den Kommentar "keine Pruefung
 // gefahren".
 //
-// Echtes `checks.mjs run` im Session-Fake wie in night-checks-bericht: Ein von Hand
+// Echtes `checks.mjs run` im Session-Fake wie in ablauf-night-bericht-checks: Ein von Hand
 // geschriebenes JSON froere das Format ein, das die andere Datei pflegt.
 
 import { test } from "node:test";

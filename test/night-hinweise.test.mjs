@@ -7,7 +7,8 @@
 // Nachtberichts — und wertet sie nicht: Eine Einheit mit Hinweisen bleibt erfolgreich.
 //
 // E2E wie test/night-pruefstand-felder.test.mjs: Der Fake schreibt die Zusammenfassung
-// selbst statt checks.mjs — gemessen wird, was der Runner aus der Datei macht.
+// selbst statt checks.mjs — gemessen wird, was der Runner aus der Datei macht. Die Zeilen
+// des Berichts selbst prueft test/night-bericht-hinweise.test.mjs im selben Prozess.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -16,7 +17,6 @@ import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, read
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
-import { berichtBauen, prueflaufZeilen } from "../kit/night.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -127,25 +127,5 @@ test("[night-1156] eine Zusammenfassung ohne hinweise ergibt keine Hinweis-Zeile
     assert.doesNotMatch(`${res.stdout}\n${res.stderr}`, /: hinweis: /);
   } finally {
     rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("[night-1156] der Nachtbericht nennt je Hinweis eine Zeile unter ### Umsetzung", () => {
-  const pakete = [{ id: "10", title: "P1" }];
-  const kette = {
-    id: "1", ausgang: "fertig", variante: "B",
-    stufen: { umsetzung: { umgesetzt: [{ id: "10", stufe: "leicht" }], angehalten: [], nichtBegonnen: [] } },
-  };
-  const einheiten = [{ id: "10", dauerMs: 60000, pruefung: { zustand: "geprueft", hinweise: HINWEISE } }];
-  const text = berichtBauen(kette, { pakete, einheiten, stempel: "s" });
-  const umsetzung = text.slice(text.indexOf("### Umsetzung"), text.indexOf("### Entscheidungen der Nacht"));
-  assert.match(umsetzung, /- Issue #10: hinweis: test\/a\.test\.mjs:12 — Plattform-Skip ohne Vermerk\n/);
-  assert.match(umsetzung, /- Issue #10: hinweis: kit\/b\.mjs:3 — Pfad in Mac-Schreibweise\n/);
-});
-
-test("[night-1156] ohne hinweise traegt der Pruefblock keine Hinweis-Zeile", () => {
-  for (const pruefung of [{ zustand: "geprueft" }, { zustand: "geprueft", hinweise: null }, { zustand: "geprueft", hinweise: [] }]) {
-    const zeilen = prueflaufZeilen([{ id: "10", dauerMs: 60000, pruefung }]);
-    assert.ok(!zeilen.some((z) => z.includes("hinweis:")), JSON.stringify(zeilen));
   }
 });

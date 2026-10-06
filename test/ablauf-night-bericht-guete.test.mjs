@@ -1,3 +1,6 @@
+// Ablauf-Pruefung: Dass die Guete-Zeile Protokoll und kein Gate ist, zeigt nur der Ausgang
+// eines echten Laufs mit und ohne guete-Feld.
+//
 // Die Guetemessung im Protokoll des Nacht-Runners (Issue #764, Plan #753,
 // fachliche Quelle #738).
 //
@@ -13,7 +16,7 @@
 // abgebildet (Issue #763) — der Ausgang eines Laufs darf sich dadurch, dass das
 // Feld in der Zusammenfassung steht, nicht aendern.
 //
-// Wie in test/night-checks-bericht.test.mjs faehrt der Session-Fake den ECHTEN
+// Wie in test/ablauf-night-bericht-checks.test.mjs faehrt der Session-Fake den ECHTEN
 // `checks.mjs run`: Ein von Hand geschriebenes JSON wuerde das Format einfrieren,
 // das die andere Datei pflegt — und genau die Kopplung, um die es geht, nicht
 // pruefen.

@@ -36,7 +36,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
 // Ein einziger Pflichtcheck im Bereich 'kit' — dasselbe Muster wie in
-// `night-nachweis-commit.test.mjs`: Ohne gruenen Nachweis greift der Nachweis-Guard,
+// `ablauf-night-bericht-nachweis.test.mjs`: Ohne gruenen Nachweis greift der Nachweis-Guard,
 // und die Runde waere aus einem anderen Grund kein Erfolg.
 const KIT_CHECK = { cmd: "echo kit >> checklauf.log", areas: ["kit"] };
 const CHECK_AREAS = { kit: ["kit/**"], board: ["issues/**"] };

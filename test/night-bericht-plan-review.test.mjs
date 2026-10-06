@@ -1,4 +1,4 @@
-// Haelt die Bedeutung der drei Plan-Review-Ausdruecke aus kit/night.mjs fest, die
+// Haelt die Bedeutung der drei Plan-Review-Ausdruecke aus kit/night/bericht.mjs fest, die
 // SonarQube als super-linear meldet (S8786, Issue #877).
 //
 // Es war dreimal derselbe Ausdruck an drei Stellen: zweimal als blosse Marker-Probe
@@ -20,7 +20,7 @@ import assert from "node:assert/strict";
 
 import { pruefeLinear } from "./helpers/wachstum.mjs";
 
-import { hatPlanReviewMarker, planReviewWert } from "../kit/night.mjs";
+import { hatPlanReviewMarker, planReviewWert } from "../kit/night/bericht.mjs";
 
 test("planReviewWert liest den Pruefer aus der Zeile", () => {
   assert.equal(planReviewWert("Plan-Review: fable"), "fable");

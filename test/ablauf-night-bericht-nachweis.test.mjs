@@ -1,3 +1,6 @@
+// Ablauf-Pruefung: Der fremde Nachweis entsteht nur, wenn eine Session nach dem Commit einen
+// echten checks.mjs-Lauf abbricht; ob der Runner dann nachprueft, zeigt nur der Lauf selbst.
+//
 // Der Pruefnachweis gilt nur, wenn er zum Commit des Pakets gehoert (Issue #865).
 //
 // Lauf #118 meldete ein Paket als Fehlschlag ("in In review, aber Nachweis rot"),
@@ -6,7 +9,7 @@
 // danach in `.claude/checks-summary.json`. Der Runner las die AKTUELLE Datei, ohne
 // zu fragen, ob sie den abgelieferten Stand gemessen hat.
 //
-// E2E wie test/night-checks-bericht.test.mjs, und aus demselben Grund mit dem
+// E2E wie test/ablauf-night-bericht-checks.test.mjs, und aus demselben Grund mit dem
 // ECHTEN checks.mjs: Die Kopplung zwischen der Datei, die checks.mjs schreibt, und
 // dem, was der Runner daraus macht, ist genau der Gegenstand dieser Tests.
 
@@ -33,9 +36,10 @@ const NIGHT = join(repoRoot, "kit", "night.mjs");
 //
 // Der Hinhalte-Zweig endet mit `exit 0`, statt danach weiterzulaufen: Der Abbruch
 // toetet checks.mjs, nicht das Kommando — ein durchlaufender Zweig traege seinen
-// Eintrag verwaist nach und verfaelschte die Zaehlung.
+// Eintrag verwaist nach und verfaelschte die Zaehlung. Bevor er haelt, meldet er sich
+// ueber die FIFO `.probe-fifo` bei der Session, die darauf wartet.
 const KIT_CHECK = {
-  cmd: "if [ -f .probe ]; then touch .probe-haelt; sleep 5; exit 0; fi; if [ -f .rot ]; then exit 1; fi; echo kit >> checklauf.log",
+  cmd: "if [ -f .probe ]; then echo haelt > .probe-fifo; sleep 5; exit 0; fi; if [ -f .rot ]; then exit 1; fi; echo kit >> checklauf.log", // # haengt — der Test bricht ihn ab und wartet nicht auf ihn
   areas: ["kit"],
 };
 // Der Bereich 'board' ist bewusst keinem Check zugeordnet: Board-Moves sind beim
@@ -46,7 +50,9 @@ const CHECK_AREAS = { kit: ["kit/**"], frontend: ["frontend/**"], board: ["issue
 function run(cwd, cmd, cliArgs, env = {}) {
   return spawnSync(cmd, cliArgs, {
     cwd, encoding: "utf-8",
-    env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, ...env },
+    // Die Frist der Session begrenzt das Warten auf die FIFO der Probe: Haelt der Check nie,
+    // endet die Runde nach zwei Minuten mit Befund statt nach der Vorgabe von 60.
+    env: { ...process.env, KIT_AGENT_MODEL: "fixture-modell", KIT_ROOT: cwd, NIGHT_TIMEOUT_MS: "120000", ...env },
   });
 }
 
@@ -70,7 +76,7 @@ function setupProjekt(buildChecks = [KIT_CHECK]) {
     local: { issuesDir: "issues" },
   }, null, 2));
   writeFileSync(join(dir, ".gitignore"),
-    ".claude/*\n!.claude/workflow.config.json\nsessions.log\nchecklauf.log\nspaet.log\nguete.log\n.probe\n.probe-haelt\n.rot\n");
+    ".claude/*\n!.claude/workflow.config.json\nsessions.log\nchecklauf.log\nspaet.log\nguete.log\n.probe\n.probe-fifo\n.rot\n");
   mkdirSync(join(dir, "kit"), { recursive: true });
   writeFileSync(join(dir, "kit", "bestand.txt"), "Bestand\n");
   lfAttribute(join(dir, ".gitattributes"));
@@ -128,18 +134,20 @@ const NACH_IN_REVIEW = 'node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" 
 // `abgeschlossen: false` und `nicht gestartet` hinterlassen.
 const ABGEBROCHENE_PROBE = [
   "touch .probe",
+  "mkfifo .probe-fifo",
   // Etwas im Bereich 'kit', damit die Probe ueberhaupt ein Kommando waehlt: Nach dem
   // Commit ist sonst nichts veraendert, und checks.mjs endete sofort mit leeresPaket.
   "touch kit/probe.txt",
   "node .claude/kit/checks.mjs run > /dev/null 2>&1 &",
   "PROBE_PID=$!",
-  // Warten, bis der Pflichtcheck der Probe haelt (`.probe-haelt`), statt einer festen
-  // Sekunde (Issue #1080). Unter Last kam der Abbruch sonst, bevor die Shell des Checks
-  // `.probe` geprueft hatte: `kill -9` trifft nur checks.mjs, die verwaiste Shell fand
-  // `.probe` danach nicht mehr und zaehlte einen dritten Lauf. Hoechstens 30 s.
-  "for i in $(seq 1 300); do [ -f .probe-haelt ] && break; sleep 0.1; done",
+  // Warten, bis der Pflichtcheck der Probe haelt, statt einer festen Sekunde (Issue #1080).
+  // Unter Last kam der Abbruch sonst, bevor die Shell des Checks `.probe` geprueft hatte:
+  // `kill -9` trifft nur checks.mjs, die verwaiste Shell fand `.probe` danach nicht mehr und
+  // zaehlte einen dritten Lauf. Das Lesen der FIFO blockiert, bis der Check schreibt — ohne
+  // Abfrageschleife; begrenzt ist es ueber NIGHT_TIMEOUT_MS der Session.
+  "read _ < .probe-fifo",
   "kill -9 $PROBE_PID",
-  "rm -f .probe .probe-haelt kit/probe.txt",
+  "rm -f .probe .probe-fifo kit/probe.txt",
 ].join("\n");
 
 test("[night-865] ein gruen gepruefter Commit gilt auch dann, wenn danach eine abgebrochene Probe die Zusammenfassung ueberschreibt", () => {

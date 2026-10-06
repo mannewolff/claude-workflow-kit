@@ -1,3 +1,6 @@
+// Ablauf-Pruefung: Das Nachtragen beim Start jeder Betriebsart, die Vorschau ohne Nachtrag und
+// der Vorflug vor der ersten Kette haengen an der Reihenfolge im Runner, nicht an einer Funktion.
+//
 // Wartende Nachtberichte und "Kette nicht gestartet" (Plan #638, A11; Issue #645).
 //
 // Nimmt der Tracker den Bericht nicht an, wartet er als `.claude/night-bericht-<F>-<stempel>.md`
@@ -10,7 +13,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { BERICHT_ANKER } from "../kit/night.mjs";
+import { BERICHT_ANKER } from "../kit/night/bericht.mjs";
 import {
   run, board, mitProjekt, fachplan, umgebung, stand, boardFakeInstallieren, VORFLUG_KAPUTT,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
