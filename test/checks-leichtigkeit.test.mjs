@@ -15,8 +15,7 @@
 //   4. Eine Testdatei, die keine Ablauf-Pruefung ist, importiert aus dem Teil unter
 //      `kit/night/` oder `kit/board/`, nicht aus dem Einstieg.
 //
-// Was heute noch verstoesst, steht in `helpers/leichtigkeit-ausnahmen.mjs`. Die Liste
-// darf nur schrumpfen: Ein Eintrag, der nicht mehr verstoesst, ist selbst ein Befund.
+// Die Regeln gelten fuer jede Testdatei, ohne Liste fuer Altlasten (Issue #1236).
 // Die Regeln selbst stehen in `helpers/leichtigkeit.mjs`; die Faelle unten belegen
 // jede an erfundenen Dateien im selben Prozess.
 
@@ -26,19 +25,13 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { REGELN, leichtigkeitPruefen, testdateienLesen, befundeAlsText } from "./helpers/leichtigkeit.mjs";
-import { AUSNAHMEN } from "./helpers/leichtigkeit-ausnahmen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-const KEINE = Object.fromEntries(REGELN.map((regel) => [regel, []]));
-
-/** Die Befunde einer erfundenen Dateimenge ohne Ausnahmen, als `regel datei`. */
-function treffer(dateien, ausnahmen = KEINE) {
-  const { verstoesse, veraltet } = leichtigkeitPruefen(new Map(Object.entries(dateien)), ausnahmen);
-  return {
-    verstoesse: verstoesse.map((v) => `${v.regel} ${v.datei}`),
-    veraltet: veraltet.map((v) => `${v.regel} ${v.datei}`),
-  };
+/** Die Befunde einer erfundenen Dateimenge, als `regel datei`. */
+function treffer(dateien) {
+  const { verstoesse } = leichtigkeitPruefen(new Map(Object.entries(dateien)));
+  return { verstoesse: verstoesse.map((v) => `${v.regel} ${v.datei}`) };
 }
 
 const KOPF = "// Ablauf-Pruefung: der Runner ist nur als Prozess beobachtbar.\n";
@@ -50,13 +43,13 @@ const STARTENDER_HELFER = [
   "export function nacht(dir) { return spawnSync(process.execPath, [NIGHT], { cwd: dir }); }",
 ].join("\n");
 
-test("der heutige Stand verstoesst nur, wo die Ausnahmeliste es nennt, und die Liste ist nicht veraltet", () => {
-  const befunde = leichtigkeitPruefen(testdateienLesen(repoRoot), AUSNAHMEN);
-  assert.equal(befunde.verstoesse.length + befunde.veraltet.length, 0, befundeAlsText(befunde));
+test("der heutige Stand verstoesst gegen keine Regel, in keiner Testdatei", () => {
+  const befunde = leichtigkeitPruefen(testdateienLesen(repoRoot));
+  assert.equal(befunde.verstoesse.length, 0, befundeAlsText(befunde));
 });
 
-test("die Ausnahmeliste fuehrt genau die vier Regeln", () => {
-  assert.deepEqual(Object.keys(AUSNAHMEN).sort(), [...REGELN].sort());
+test("der Waechter fuehrt genau die vier Regeln", () => {
+  assert.deepEqual([...REGELN].sort(), ["ablauf-kennzeichnen", "haenger-kennzeichnen", "import-aus-teil", "keine-pausen"]);
 });
 
 // --- Regel 1: Ablauf-Pruefung kennzeichnen -----------------------------------
@@ -196,7 +189,7 @@ test("Regel 2: eine injizierte Uhr ist keine Pause", () => {
 
 test("Regel 3: sleep 3 ohne # haengt wird gemeldet, mit # haengt nicht", () => {
   const { verstoesse } = treffer({
-    "test/a.test.mjs": 'const fake = "touch marker && sleep 3";\n',
+    "test/a.test.mjs": 'const fake = "touch marker && sleep 1";\n',
     "test/b.test.mjs": 'const fake = "touch marker && sleep 3 # haengt";\n',
     "test/helpers/c.mjs": 'export const FAKE = "sleep 0.05";\n',
   });
@@ -205,7 +198,7 @@ test("Regel 3: sleep 3 ohne # haengt wird gemeldet, mit # haengt nicht", () => {
 
 test("Regeln 2 und 3: eine Kommentarzeile ist weder Pause noch Haenger", () => {
   const { verstoesse } = treffer({
-    "test/a.test.mjs": "// Gemessen mit dem Kommando \"sleep 5\" und await setTimeout(5).\n",
+    "test/a.test.mjs": "// Gemessen mit dem Kommando \"sleep 1\" und await setTimeout(5).\n",
   });
   assert.deepEqual(verstoesse, []);
 });
@@ -228,25 +221,9 @@ test("Regel 4: ein Import aus dem Teil oder in einer Ablauf-Pruefung ist erlaubt
   assert.deepEqual(verstoesse, []);
 });
 
-// --- Ausnahmeliste -------------------------------------------------------------
-
-test("ein Eintrag in der Ausnahmeliste nimmt genau seinen Verstoss heraus", () => {
-  const ausnahmen = { ...KEINE, "haenger-kennzeichnen": ["test/a.test.mjs"] };
-  const { verstoesse, veraltet } = treffer({
-    "test/a.test.mjs": 'const fake = "sleep 3";\nawait setTimeout(5);\n',
-  }, ausnahmen);
-  assert.deepEqual(verstoesse, ["keine-pausen test/a.test.mjs"]);
-  assert.deepEqual(veraltet, []);
-});
-
-test("ein veralteter Ausnahmeeintrag wird gemeldet — auch fuer eine verschwundene Datei", () => {
-  const ausnahmen = { ...KEINE, "keine-pausen": ["test/a.test.mjs", "test/weg.test.mjs"] };
-  const { verstoesse, veraltet } = treffer({ "test/a.test.mjs": "const leicht = true;\n" }, ausnahmen);
-  assert.deepEqual(verstoesse, []);
-  assert.deepEqual(veraltet, ["keine-pausen test/a.test.mjs", "keine-pausen test/weg.test.mjs"]);
-});
+// --- Befundtext ----------------------------------------------------------------
 
 test("der Befundtext nennt Regel, Datei und Grund samt Zeile", () => {
-  const befunde = leichtigkeitPruefen(new Map([["test/a.test.mjs", 'x\nconst f = "sleep 3";\n']]), KEINE);
+  const befunde = leichtigkeitPruefen(new Map([["test/a.test.mjs", 'x\nconst f = "sleep 1";\n']]));
   assert.match(befundeAlsText(befunde), /haenger-kennzeichnen test\/a\.test\.mjs: Zeile 2/);
 });

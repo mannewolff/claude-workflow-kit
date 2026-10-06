@@ -34,29 +34,29 @@ import "./helpers/checks-sperre.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
- * Die Dauer des Pruefkommandos. Lang genug, dass ein zweiter Lauf seine Auswahl
- * (mehrere git-Aufrufe) fertig hat und die Sperre noch vorfindet — sonst pruefte der
- * erste Test nicht die Serialisierung, sondern zwei Laeufe, die sich nie begegneten.
- * Kurz genug, dass diese Datei nicht zur langsamsten der Suite wird.
+ * Ein Pruefkommando, das sein Ausfuehrungsfenster protokolliert. Ist `FREIGABE_DATEI`
+ * gesetzt, haelt es die Sperre, bis der Test diese Datei anlegt — und das tut er erst,
+ * wenn der andere Lauf "es wird gewartet" gemeldet hat. So begegnen sich die beiden
+ * Laeufe sicher, statt dass eine feste Dauer darauf hofft (Issue #1236, Plan #1199,
+ * E7). Bleibt die Freigabe aus, scheitert das Kommando nach der Frist mit Befund.
+ * Gewartet wird mit `Atomics.wait`, nicht mit einem Busy-Loop: Der belegte in einer
+ * CPU-gebundenen Suite echte Wandzeit.
  */
-const FENSTER_MS = 400;
-
-/**
- * Ein Pruefkommando, das sein Ausfuehrungsfenster protokolliert. Es SCHLAEFT, statt
- * einen Kern zu belegen: Die Frage dieses Tests ist, ob sich die Fenster
- * ueberschneiden, und dafuer zaehlt allein, wie lange das Kommando die Sperre haelt.
- * Ein Busy-Loop belegte in einer CPU-gebundenen Suite echte Wandzeit — er arbeitete
- * gegen genau das Ziel, zu dem dieses Paket angetreten ist.
- */
-const FENSTER = [
-  "// Generiert von test/ablauf-checks-sperre.test.mjs (Issue #958) — kein Produktivcode.",
-  "import { appendFileSync } from 'node:fs';",
-  "const pfad = process.env.FENSTER_DATEI;",
-  "appendFileSync(pfad, `start ${Date.now()}\\n`);",
-  `Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${FENSTER_MS});`,
-  "appendFileSync(pfad, `ende ${Date.now()}\\n`);",
-  "",
-].join("\n");
+const FENSTER = `// Generiert von test/ablauf-checks-sperre.test.mjs (Issue #958) — kein Produktivcode.
+import { appendFileSync, existsSync } from "node:fs";
+const pfad = process.env.FENSTER_DATEI;
+const freigabe = process.env.FREIGABE_DATEI;
+function warteAufFreigabe(fristMs) {
+  const ende = Date.now() + fristMs;
+  while (!existsSync(freigabe)) {
+    if (Date.now() > ende) throw new Error("keine Freigabe nach " + fristMs + " ms: " + freigabe);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+  }
+}
+appendFileSync(pfad, "start " + Date.now() + "\\n");
+if (freigabe) warteAufFreigabe(60000);
+appendFileSync(pfad, "ende " + Date.now() + "\\n");
+`;
 
 /** Ein Wegwerf-Projekt, dessen einziger Check sein Fenster protokolliert. */
 function fensterProjekt(fensterDatei) {
@@ -86,10 +86,16 @@ function starteLauf({ dir, fensterDatei }, sperre, weitereEnv = {}) {
     env: { ...process.env, [SPERRE_ENV]: sperre, FENSTER_DATEI: fensterDatei, ...weitereEnv },
   });
   let ausgabe = "";
-  proc.stdout.on("data", (stueck) => { ausgabe += stueck; });
-  proc.stderr.on("data", (stueck) => { ausgabe += stueck; });
+  let wartetGemeldet;
+  const wartet = new Promise((aufloesen) => { wartetGemeldet = aufloesen; });
+  const mitschreiben = (stueck) => {
+    ausgabe += stueck;
+    if (/es wird gewartet/.test(ausgabe)) wartetGemeldet();
+  };
+  proc.stdout.on("data", mitschreiben);
+  proc.stderr.on("data", mitschreiben);
   const fertig = new Promise((aufloesen) => proc.on("exit", (code) => aufloesen(code)));
-  return { proc, pid: proc.pid, fertig, ausgabe: () => ausgabe };
+  return { proc, pid: proc.pid, fertig, wartet, ausgabe: () => ausgabe };
 }
 
 /** Eine Prozess-Id, die es sicher nicht mehr gibt: die eines beendeten Kindprozesses. */
@@ -110,9 +116,15 @@ test("[checks-958-1] zwei gleichzeitige Laeufe in zwei Projekten laufen nacheina
     // bekommt, entscheidet das Rennen — die Zusicherungen lesen es hinterher aus den
     // Fenstern ab, statt es vorzugeben. Ein gestaffelter Start pruefte eine
     // Reihenfolge, die der Test selbst gesetzt hat.
-    const laufA = starteLauf(a, sperre);
-    const laufB = starteLauf(b, sperre);
-    const [codeA, codeB] = await Promise.all([laufA.fertig, laufB.fertig]);
+    // Wer die Sperre haelt, wartet auf die Freigabe; die kommt erst, wenn der andere
+    // Lauf das Warten gemeldet hat. Enden beide vorher, scheitert die Zusicherung unten.
+    const freigabe = { FREIGABE_DATEI: join(ablage, "frei") };
+    const laufA = starteLauf(a, sperre, freigabe);
+    const laufB = starteLauf(b, sperre, freigabe);
+    const beide = Promise.all([laufA.fertig, laufB.fertig]);
+    await Promise.race([laufA.wartet, laufB.wartet, beide]);
+    writeFileSync(freigabe.FREIGABE_DATEI, "", "utf-8");
+    const [codeA, codeB] = await beide;
     assert.equal(codeA, 0, `Lauf A ging nicht gruen aus: ${laufA.ausgabe()}`);
     assert.equal(codeB, 0, `Lauf B ging nicht gruen aus: ${laufB.ausgabe()}`);
 
@@ -433,7 +445,7 @@ test("[checks-1070-1] mitSperre haelt die Sperre, solange das Promise laeuft, un
       { pfad: sperre, melde: () => {} });
     assert.ok(laufend instanceof Promise, "ein Promise von fn kommt als Promise zurueck");
     // Ein paar Runden der Ereignisschleife: Die Sperre darf nicht mit der Rueckkehr von fn fallen.
-    await new Promise((weiter) => setTimeout(weiter, 20));
+    for (let runde = 0; runde < 3; runde++) await new Promise((weiter) => setImmediate(weiter));
     assert.ok(existsSync(sperre), "solange das Promise laeuft, muss die Sperrdatei liegen");
     assert.equal(readFileSync(sperre, "utf-8").trim(), String(process.pid));
     freigeben(7);
@@ -442,7 +454,7 @@ test("[checks-1070-1] mitSperre haelt die Sperre, solange das Promise laeuft, un
 
     const verworfen = mitSperre(async () => {
       assert.ok(existsSync(sperre), "auch im verwerfenden Lauf haelt die Sperre");
-      await new Promise((weiter) => setTimeout(weiter, 10));
+      await new Promise((weiter) => setImmediate(weiter));
       throw new Error("mitten im asynchronen Lauf");
     }, { pfad: sperre, melde: () => {} });
     await assert.rejects(verworfen, /mitten im asynchronen Lauf/);

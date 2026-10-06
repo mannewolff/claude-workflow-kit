@@ -7,7 +7,7 @@
 // Enkelprozess, der die geerbte Pipe offen haelt, verhindert das. Der Runner wartete
 // dann die volle Laufzeit ab, obwohl er laengst gekillt hatte.
 //
-// Gemessen am 2026-07-29 (macOS, spawn + SIGTERM nach 300 ms, Kommando "sleep 5"):
+// Gemessen am 2026-07-29 (macOS, spawn + SIGTERM nach 300 ms, Kommando sleep mit 5 s Laufzeit):
 //   direkter Prozess, Einzel-Kill      close nach  307 ms
 //   Enkelprozess,     Einzel-Kill      close nach 5023 ms   <- der Bug
 //   Enkelprozess,     Gruppen-Kill     close nach  306 ms

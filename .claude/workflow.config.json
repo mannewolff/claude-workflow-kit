@@ -651,7 +651,6 @@
       "test/helpers/haenger.mjs",
       "test/helpers/haenger-aufruf.mjs",
       "test/helpers/leichtigkeit.mjs",
-      "test/helpers/leichtigkeit-ausnahmen.mjs",
       "test/helpers/wachstum.mjs",
       "test/helpers/zeilenenden.mjs",
       "test/fixtures/mvn-verify-*.log"
@@ -815,12 +814,6 @@
     {
       "muster": "CLAUDE.md",
       "grund": "Einzige Fundstelle ist ein Kommentar in test/docs-nachtkette.test.mjs ueber das, was ein Nachtlauf nicht schreiben darf. Keine Testdatei liest die CLAUDE.md dieses Repositories; templates/CLAUDE-workflow.md dagegen wird von vielen Tests geprueft und traegt darum ein eigenes Muster nicht."
-    }
-  ],
-  "gekoppelteBereiche": [
-    {
-      "bereich": "board-einstieg",
-      "grund": "Fast jede Testgruppe lädt kit/board.mjs (gemessen mit tools/verflechtung.mjs)."
     }
   ],
   "reviewCommand": "codex exec --model gpt-6-astra -c model_reasoning_effort=\"high\"",

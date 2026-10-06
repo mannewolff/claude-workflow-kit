@@ -4,9 +4,8 @@
 // gegen erfundene Dateien. Die Pruefung ist statisch und arbeitet auf einer Map
 // `Pfad → Text`; darum laesst sie sich im selben Prozess an Beispielen belegen.
 //
-// Sie irrt bewusst in die strenge Richtung: Ein Fund zu viel kostet einen Eintrag in
-// der Ausnahmeliste oder eine Kennzeichnung, ein Fund zu wenig liesse eine schwere
-// Pruefung unbemerkt.
+// Sie irrt bewusst in die strenge Richtung: Ein Fund zu viel kostet eine Kennzeichnung,
+// ein Fund zu wenig liesse eine schwere Pruefung unbemerkt.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { join, posix } from "node:path";
@@ -20,7 +19,6 @@ export const REGELN = ["ablauf-kennzeichnen", "keine-pausen", "haenger-kennzeich
 const EIGENE = new Set([
   "test/checks-leichtigkeit.test.mjs",
   "test/helpers/leichtigkeit.mjs",
-  "test/helpers/leichtigkeit-ausnahmen.mjs",
 ]);
 
 const KENNZEICHNUNG = /^\/\/\s*Ablauf-Pruefung:\s*\S/;
@@ -175,7 +173,7 @@ function einstiegsImporte(datei, text) {
 }
 
 /**
- * Alle Verstoesse einer Dateimenge, ohne Ausnahmen.
+ * Alle Verstoesse einer Dateimenge, je Regel.
  *
  * @param {Map<string, string>} dateien repo-relativer Pfad → Text
  * @returns {Map<string, Map<string, string[]>>} Regel → Datei → Gruende
@@ -202,37 +200,25 @@ export function verstoesseErheben(dateien) {
 }
 
 /**
- * Die Verstoesse ausserhalb der Ausnahmeliste und die Eintraege der Liste, die nicht
- * mehr verstossen. Beide Listen sind nach Regel und Datei sortiert.
+ * Alle Verstoesse einer Dateimenge, nach Regel und Datei sortiert. Es gibt keine
+ * Ausnahmen: Seit Issue #1236 gilt jede Regel fuer jede Testdatei.
  *
  * @param {Map<string, string>} dateien
- * @param {Record<string, string[]>} ausnahmen Regel → Dateien
  */
-export function leichtigkeitPruefen(dateien, ausnahmen) {
-  const erhoben = verstoesseErheben(dateien);
+export function leichtigkeitPruefen(dateien) {
   const verstoesse = [];
-  const veraltet = [];
-  for (const regel of REGELN) {
-    const erlaubt = new Set(ausnahmen[regel] ?? []);
-    for (const [datei, gruende] of erhoben.get(regel)) {
-      if (!erlaubt.has(datei)) verstoesse.push({ regel, datei, gruende });
-    }
-    for (const datei of erlaubt) {
-      if (!erhoben.get(regel).has(datei)) veraltet.push({ regel, datei });
-    }
+  for (const [regel, je] of verstoesseErheben(dateien)) {
+    for (const [datei, gruende] of je) verstoesse.push({ regel, datei, gruende });
   }
   const ordnung = (a, b) => vergleicheText(`${a.regel} ${a.datei}`, `${b.regel} ${b.datei}`);
-  return { verstoesse: verstoesse.sort(ordnung), veraltet: veraltet.sort(ordnung) };
+  return { verstoesse: verstoesse.sort(ordnung) };
 }
 
 /** Die Befunde als Text fuer die Fehlermeldung des Tests. */
-export function befundeAlsText({ verstoesse, veraltet }) {
+export function befundeAlsText({ verstoesse }) {
   const zeilen = [];
   for (const { regel, datei, gruende } of verstoesse) {
     for (const grund of gruende) zeilen.push(`${regel} ${datei}: ${grund}`);
-  }
-  for (const { regel, datei } of veraltet) {
-    zeilen.push(`${regel} ${datei}: verstoesst nicht mehr — Eintrag aus test/helpers/leichtigkeit-ausnahmen.mjs streichen`);
   }
   return zeilen.join("\n");
 }
