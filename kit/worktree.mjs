@@ -16,6 +16,8 @@
  *   node .claude/kit/worktree.mjs entfernen <pfad>
  *   node .claude/kit/worktree.mjs nachziehen-pruefen
  *   node .claude/kit/worktree.mjs rueckweg <pfad>
+ *   node .claude/kit/worktree.mjs vorbereitung-festhalten <pfad> --ergebnis <e> [--offen "<Text>"]... [--fetch <f>]
+ *   node .claude/kit/worktree.mjs vorbereitung-pruefen [--verwerfen]
  *
  * KEIN ZWEITER WEG (Entscheidung des Pakets): Angelegt, gespiegelt und abgeraeumt wird mit
  * denselben Funktionen, die die Nacht-Kette benutzt — `worktreeAnlegen`,
@@ -37,7 +39,9 @@ import { existsSync, copyFileSync, mkdirSync, readFileSync, appendFileSync, real
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen, befundeZurueck, nachziehenPruefen } from "./night/kitstand.mjs";
+import {
+  worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen, befundeZurueck, nachziehenPruefen, vorbereitungFesthalten, vorbereitungPruefen,
+} from "./night/kitstand.mjs";
 
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
@@ -51,6 +55,15 @@ const HELP = `worktree.mjs (claude-workflow-kit v${KIT_VERSION}) — Worktree fu
   entfernen <pfad>                                      Worktree abbauen
   nachziehen-pruefen                                    Darf das lokale main rebased werden?
   rueckweg <pfad>                                       Zusammenfassung, Ausfuehrungen, Befunde zurueck
+  vorbereitung-festhalten <pfad> --ergebnis <gruen|gruen-offen|rot>
+      [--offen "<Text>"]... [--fetch <ok|fehlgeschlagen>]
+                                                        Haelt die naechtliche Vorbereitung fest:
+                                                        Referenz refs/kit/push-vorbereitet auf
+                                                        HEAD des Worktrees, Datei
+                                                        .claude/push-vorbereitung.json
+  vorbereitung-pruefen [--verwerfen]                    Darf /push-main den vorbereiteten Stand
+                                                        uebernehmen? Kein eigenes git fetch.
+                                                        --verwerfen loescht Datei und Referenz
 
 Die letzte Zeile der Ausgabe ist immer JSON.
 `;
@@ -199,12 +212,33 @@ function rueckweg(repoRoot, cliArgs) {
   return { ok: true, zusammenfassung, ausfuehrungen, befundeArten: befundeZurueck(pfad, repoRoot) };
 }
 
+/** Alle Werte eines wiederholbaren Flags, in Reihenfolge. */
+function flagWerte(cliArgs, name) {
+  const werte = [];
+  for (let i = 0; i < cliArgs.length - 1; i += 1) if (cliArgs[i] === name) werte.push(cliArgs[i + 1]);
+  return werte;
+}
+
+/** Ruft nur `vorbereitungFesthalten` auf (Plan #1243, Plan-Review Runde 2, Fund 7). */
+function vorbereitungFesthaltenAufruf(repoRoot, cliArgs) {
+  const pfad = cliArgs[0];
+  if (!pfad || pfad.startsWith("--")) throw new Error("vorbereitung-festhalten braucht den Pfad des Worktrees");
+  const ergebnis = flagWert(cliArgs, "--ergebnis");
+  if (ergebnis === null) throw new Error("vorbereitung-festhalten braucht --ergebnis <gruen|gruen-offen|rot>");
+  const fetch = flagWert(cliArgs, "--fetch") ?? "ok";
+  return { ok: true, ...vorbereitungFesthalten({ repoRoot, pfad, ergebnis, offen: flagWerte(cliArgs, "--offen"), fetch }) };
+}
+
 function fuehreAus(kommando, cliArgs) {
   if (kommando === "nachziehen-pruefen") return { ok: true, ...nachziehenPruefen(repoWurzel()) };
   if (kommando === "anlegen") return anlegen(repoWurzel(), cliArgs);
   if (kommando === "entfernen") return entfernen(repoWurzel(), cliArgs);
   if (kommando === "rueckweg") return rueckweg(repoWurzel(), cliArgs);
-  throw new Error(`unbekanntes Kommando '${kommando}' — bekannt sind anlegen, entfernen, nachziehen-pruefen, rueckweg`);
+  if (kommando === "vorbereitung-festhalten") return vorbereitungFesthaltenAufruf(repoWurzel(), cliArgs);
+  if (kommando === "vorbereitung-pruefen") {
+    return { ok: true, ...vorbereitungPruefen({ repoRoot: repoWurzel(), verwerfen: cliArgs.includes("--verwerfen") }) };
+  }
+  throw new Error(`unbekanntes Kommando '${kommando}' — bekannt sind anlegen, entfernen, nachziehen-pruefen, rueckweg, vorbereitung-festhalten, vorbereitung-pruefen`);
 }
 
 function main() {

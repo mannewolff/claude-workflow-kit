@@ -32,6 +32,7 @@ import {
 } from "node:fs";
 import { join, dirname, basename, resolve, relative, isAbsolute } from "node:path";
 import { tmpdir, hostname, constants as osConstants } from "node:os";
+import { fileURLToPath } from "node:url";
 
 import {
   ZUSTAND, UMSETZUNG_LOCK, KIT_STAND_MARKIERUNG, BEFUNDE_PATH, BOARD_MAX_BUFFER, log, fail, ersteZeile, gitReste,
@@ -50,6 +51,8 @@ const VORGABEN = Object.freeze({
   jetzt: () => new Date(),
   schlaf: (ms) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); },
   kill: (pid, signal) => process.kill(pid, signal),
+  // Der Weg der Push-Stufe im Baum `pfad`: `"lokal"` oder `{ ort: "buildDienst", zweig }`.
+  pushWeg: (pfad) => pushWegAusPlan(pfad),
 });
 const abh = { ...VORGABEN };
 
@@ -365,6 +368,198 @@ export function nachziehenPruefen(repoRoot = process.cwd()) {
     return { nachziehen: false, grund: `die Hauptkopie traegt unkommittierte Aenderungen: ${reste.join(", ")}` };
   }
   return { nachziehen: true, grund: null };
+}
+
+// --- Die vorbereitete Veroeffentlichung (Plan #1243, A5, A6, E10; Issue #1246) ---
+//
+// Die Nacht faehrt den Weg von `/push-main` bis zum lokalen Commit `chore: vX.Y.Z` in einem
+// eigenen Worktree und pusht nicht. Was sie ergab, haelt `vorbereitungFesthalten` ueber den
+// Abbau des Worktrees und ueber jeden Tracker hinaus fest — als lokale Referenz, die den
+// Commit haelt, und als Datei in der Hauptkopie. Morgens urteilt `vorbereitungPruefen` an
+// Commit-Hashes, ob `/push-main` den Stand uebernimmt. Das Urteil spricht das Kommando,
+// nicht das Modell (A5).
+
+/** Die lokale Referenz auf den vorbereiteten Commit — nie gepusht (A6). */
+export const VORBEREITUNG_REFERENZ = "refs/kit/push-vorbereitet";
+/** Die feste, kartenuebergreifende Stelle in der Hauptkopie (A6). */
+export const VORBEREITUNG_DATEI = ".claude/push-vorbereitung.json";
+
+const VORBEREITUNG_ERGEBNISSE = ["gruen", "gruen-offen", "rot"];
+const VORBEREITUNG_FETCH = ["ok", "fehlgeschlagen"];
+
+/**
+ * Der Weg der Push-Stufe, wie `checks.mjs plan --stufe push` ihn meldet (E17) — dieselbe
+ * Auskunft, die `/push-main` liest, statt die Config ein zweites Mal auszulegen. Gefragt
+ * wird im Worktree, mit der `checks.mjs` neben diesem Teil.
+ */
+function pushWegAusPlan(pfad) {
+  const checks = join(dirname(fileURLToPath(import.meta.url)), "..", "checks.mjs");
+  const res = abh.spawnSync(process.execPath, [checks, "plan", "--stufe", "push"], { cwd: pfad, encoding: "utf-8" });
+  if (res.status !== 0) {
+    throw new Error(`checks.mjs plan --stufe push schlug fehl: ${ersteZeile((res.stderr || res.stdout || res.error?.message || "").trim())}`);
+  }
+  return JSON.parse(res.stdout).pushPruefung ?? "lokal";
+}
+
+/** Der Commit hinter `ref` oder `null`, wenn es ihn nicht gibt. */
+function commitVon(baum, ref) {
+  const res = gitIm(baum, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+  return res.status === 0 ? res.stdout.trim() : null;
+}
+
+function vorbereitungMainBranch(repoRoot) {
+  return configVonPlatte(repoRoot)?.mainBranch || "main";
+}
+
+/** Die Kartennummern aller `(Issue #N)`-Betreffe zwischen `origin` und `commit`, aelteste zuerst (E11). */
+function paketeZwischen(repoRoot, origin, commit) {
+  const res = gitIm(repoRoot, ["log", "--reverse", "--format=%s", origin ? `${origin}..${commit}` : commit]);
+  if (res.status !== 0) throw new Error(`git log fuer die Pakete schlug fehl: ${ersteZeile((res.stderr || "").trim())}`);
+  const pakete = [];
+  for (const betreff of res.stdout.split(/\r?\n/)) {
+    const treffer = /\(Issue #(\d+)\)/.exec(betreff);
+    if (treffer && !pakete.includes(treffer[1])) pakete.push(treffer[1]);
+  }
+  return pakete;
+}
+
+/** Die Kartennummern der Verursacher, ohne Commits ohne Karte und ohne Doppel. */
+function verursacherKartennummern(verursacher) {
+  const nummern = verursacher.flatMap((v) => (v.karten ?? []).map((k) => k.karte)).filter((k) => k !== null);
+  return [...new Set(nummern)];
+}
+
+/**
+ * Was die Zusammenfassung des Worktrees bezeugt: `{ ergebnis, stufe, rot }`. Gruen ist nur
+ * ein zu Ende gefahrener Lauf ohne rote und ohne ungestartete Pruefung. Fehlt die Datei
+ * oder ist sie unlesbar, ist das Ergebnis rot — ohne Nachweis gibt es nichts zu uebernehmen.
+ *
+ * `rot` traegt die Verursacher nach `verursacherKarten` (E11): Nennt eine rote Pruefung
+ * statt Karten einen `hinweis`, oder laesst sich gar keine Karte zuordnen, gelten alle
+ * Pakete des Stands.
+ */
+function zusammenfassungBezeugt(pfad, pakete) {
+  let daten = null;
+  try {
+    daten = JSON.parse(readFileSync(join(pfad, ".claude", "checks-summary.json"), "utf-8"));
+  } catch {
+    // keine oder unlesbare Zusammenfassung: unten rot
+  }
+  const laufen = Array.isArray(daten?.laufen) ? daten.laufen : [];
+  const offen = laufen.filter((e) => e.ergebnis === "rot" || e.ergebnis === "nicht gestartet");
+  if (daten?.abgeschlossen === true && offen.length === 0) return { ergebnis: "gruen", stufe: daten.stufe ?? null, rot: null };
+
+  const roteCmds = laufen.filter((e) => e.ergebnis === "rot").map((e) => e.cmd);
+  const verursacher = (Array.isArray(daten?.verursacher) ? daten.verursacher : []).filter((v) => roteCmds.includes(v.cmd));
+  const hinweise = verursacher.filter((v) => v.hinweis !== undefined).map((v) => v.hinweis);
+  const karten = verursacherKartennummern(verursacher);
+  let hinweis = hinweise.length > 0 ? hinweise.join(" ") : null;
+  if (daten === null || daten.abgeschlossen !== true) hinweis = "keine abgeschlossene Zusammenfassung im Worktree";
+  const alle = hinweis !== null || karten.length === 0;
+  return {
+    ergebnis: "rot",
+    stufe: daten?.stufe ?? null,
+    rot: { pruefung: roteCmds.length > 0 ? roteCmds.join(", ") : null, karten: alle ? pakete : karten, hinweis },
+  };
+}
+
+/**
+ * Haelt die vorbereitete Veroeffentlichung fest (A6) und gibt den geschriebenen Inhalt zurueck.
+ *
+ * Das Ergebnis der Zusammenfassung gilt; weicht das uebergebene ab, steht das in
+ * `abweichung`. Bezeugt die Zusammenfassung nur die Paketstufe und laeuft der volle Lauf im
+ * Build-Dienst (E17), ist Gruen hoechstens `gruen-offen`, und der Build-Dienst-Punkt steht
+ * vor jedem uebergebenen offenen Punkt. Ohne Release-Commit ist `commit` der Stand, auf dem
+ * der Worktree steht — ohne `RELEASING.md` also `basis` (E15).
+ */
+export function vorbereitungFesthalten({ repoRoot, pfad, ergebnis, offen = [], fetch = "ok", env = process.env }) {
+  if (!VORBEREITUNG_ERGEBNISSE.includes(ergebnis)) {
+    throw new Error(`--ergebnis '${ergebnis}' ist unbekannt — erwartet ${VORBEREITUNG_ERGEBNISSE.join(", ")}`);
+  }
+  if (!VORBEREITUNG_FETCH.includes(fetch)) {
+    throw new Error(`--fetch '${fetch}' ist unbekannt — erwartet ${VORBEREITUNG_FETCH.join(", ")}`);
+  }
+  const mainBranch = vorbereitungMainBranch(repoRoot);
+  const commit = commitVon(pfad, "HEAD");
+  if (!commit) throw new Error(`der Worktree ${pfad} hat keinen HEAD`);
+  const basis = commitVon(repoRoot, `refs/heads/${mainBranch}`);
+  const origin = commitVon(repoRoot, `refs/remotes/origin/${mainBranch}`);
+  const pakete = paketeZwischen(repoRoot, origin, commit);
+  const betreff = gitIm(pfad, ["show", "-s", "--format=%s", commit]).stdout.trim();
+  const version = /^chore: v(\S+)$/.exec(betreff)?.[1] ?? null;
+
+  const bezeugt = zusammenfassungBezeugt(pfad, pakete);
+  const uebergebenGruen = ergebnis !== "rot";
+  const abweichung = uebergebenGruen === (bezeugt.ergebnis === "gruen")
+    ? null
+    : `uebergeben ${ergebnis}, Zusammenfassung ${bezeugt.ergebnis} — es gilt die Zusammenfassung`;
+
+  const offenGesamt = [...offen];
+  let endErgebnis = bezeugt.ergebnis;
+  if (endErgebnis === "gruen") {
+    const weg = abh.pushWeg(pfad);
+    if (weg?.ort === "buildDienst" && bezeugt.stufe === "paket") {
+      offenGesamt.unshift(`voller Lauf im Build-Dienst (Prüfzweig ${weg.zweig})`);
+    }
+    if (offenGesamt.length > 0 || ergebnis === "gruen-offen") endErgebnis = "gruen-offen";
+  }
+
+  gitIm(repoRoot, ["update-ref", VORBEREITUNG_REFERENZ, commit]);
+  const inhalt = {
+    ergebnis: endErgebnis,
+    commit,
+    basis,
+    origin,
+    version,
+    releaseDateien: existsSync(join(pfad, "RELEASING.md")) && version !== null,
+    offen: offenGesamt,
+    pakete,
+    rot: bezeugt.rot,
+    fetch,
+    zeitpunkt: abh.jetzt().toISOString(),
+    laufId: env.KIT_NIGHT_RUN || null,
+    kitStand: env.KIT_STAND || null,
+    abweichung,
+  };
+  const ziel = join(repoRoot, ...VORBEREITUNG_DATEI.split("/"));
+  mkdirSync(dirname(ziel), { recursive: true });
+  writeFileSync(ziel, JSON.stringify(inhalt, null, 2) + "\n", "utf-8");
+  return inhalt;
+}
+
+/**
+ * Darf `/push-main` den vorbereiteten Stand uebernehmen (E10)? Ja nur, wenn das lokale
+ * `<mainBranch>` noch auf `basis` steht, `origin/<mainBranch>` auf `origin`, die Referenz
+ * auf `commit` und das Ergebnis `gruen` oder `gruen-offen` ist. Kein eigenes `git fetch` —
+ * das holt der Skill vorher.
+ *
+ * Rueckgabe: `{ uebernehmen, grund, commit, offen, zeitpunkt }`. Mit `verwerfen` stattdessen
+ * Datei und Referenz loeschen: `{ verworfen: { datei, referenz } }`, je ob es sie gab.
+ */
+export function vorbereitungPruefen({ repoRoot, verwerfen = false }) {
+  const pfad = join(repoRoot, ...VORBEREITUNG_DATEI.split("/"));
+  if (verwerfen) {
+    const datei = existsSync(pfad);
+    rmSync(pfad, { force: true });
+    const referenz = commitVon(repoRoot, VORBEREITUNG_REFERENZ) !== null;
+    if (referenz) gitIm(repoRoot, ["update-ref", "-d", VORBEREITUNG_REFERENZ]);
+    return { verworfen: { datei, referenz } };
+  }
+
+  let daten;
+  try {
+    daten = JSON.parse(readFileSync(pfad, "utf-8"));
+  } catch {
+    return { uebernehmen: false, grund: `keine vorbereitete Veroeffentlichung (${VORBEREITUNG_DATEI} fehlt oder ist unlesbar)`, commit: null, offen: [], zeitpunkt: null };
+  }
+  const urteil = (grund) => ({ uebernehmen: grund === null, grund, commit: daten.commit ?? null, offen: daten.offen ?? [], zeitpunkt: daten.zeitpunkt ?? null });
+  const mainBranch = vorbereitungMainBranch(repoRoot);
+  if (daten.ergebnis !== "gruen" && daten.ergebnis !== "gruen-offen") return urteil(`Ergebnis ${daten.ergebnis} — nur gruen und gruen-offen werden uebernommen`);
+  const kurz = (c) => (c ? c.slice(0, 12) : "nichts");
+  if (commitVon(repoRoot, `refs/heads/${mainBranch}`) !== daten.basis) return urteil(`${mainBranch} steht nicht mehr auf ${kurz(daten.basis)}`);
+  if (commitVon(repoRoot, `refs/remotes/origin/${mainBranch}`) !== daten.origin) return urteil(`origin/${mainBranch} steht nicht mehr auf ${kurz(daten.origin)}`);
+  if (commitVon(repoRoot, VORBEREITUNG_REFERENZ) !== daten.commit) return urteil(`${VORBEREITUNG_REFERENZ} zeigt nicht auf ${kurz(daten.commit)}`);
+  return urteil(null);
 }
 
 // --- Worktree je Kette (Plan #638, A3) ---
