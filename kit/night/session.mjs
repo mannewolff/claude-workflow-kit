@@ -2673,6 +2673,51 @@ export function varianteVon(issue, budget) {
   return (issue?.labels || []).includes(label) ? "B" : "A";
 }
 
+// --- Ziel und Prueferzahl einer Karte (Plan #1243, A1, A3, E2; Issue #1244) ---
+
+// Die Ziele in der festen Reihenfolge der Stufen, je mit der Stufe, nach der die Kette
+// endet (A2). Die Labels sind bewusst nicht konfigurierbar (A1): kanban-kit liest sie fest.
+export const KETTE_ZIELE = Object.freeze([
+  Object.freeze({ ziel: "plan", endstufe: "review" }),
+  Object.freeze({ ziel: "pakete", endstufe: "abdeckung" }),
+  Object.freeze({ ziel: "umsetzung", endstufe: "umsetzung" }),
+  Object.freeze({ ziel: "push-vorbereitet", endstufe: "vorbereitung" }),
+]);
+export const ZIEL_LABEL_PRAEFIX = "ziel:";
+export const PLANREVIEW_LABELS = Object.freeze(["planreview:1", "planreview:2"]);
+
+/**
+ * Das wirksame Ziel einer Karte (A3): das weiter reichende aus Ziel-Label und dem Label
+ * aus `budget.varianteBLabel`, das als `umsetzung` zaehlt. Ohne beides `null` — dann
+ * bleibt es beim heutigen Verhalten. Rein wie `varianteVon`: Ein unbekanntes `ziel:*`
+ * zaehlt nicht, mehrere Ziel-Labels lehnt erst `zielAusschluss` ab, hier gilt das
+ * weiteste.
+ */
+export function zielVon(karte, budget) {
+  const labels = karte?.labels || [];
+  const durchziehen = budget?.varianteBLabel;
+  let rang = -1;
+  KETTE_ZIELE.forEach(({ ziel }, i) => {
+    if (labels.includes(`${ZIEL_LABEL_PRAEFIX}${ziel}`)) rang = Math.max(rang, i);
+  });
+  if (durchziehen && labels.includes(durchziehen)) {
+    rang = Math.max(rang, KETTE_ZIELE.findIndex((z) => z.ziel === "umsetzung"));
+  }
+  return rang < 0 ? null : KETTE_ZIELE[rang].ziel;
+}
+
+/**
+ * Wie viele Modelle den Plan pruefen sollen (E2): 1 oder 2 aus `planreview:*`, ohne
+ * Angabe `null` — dann gilt die Einstellung des Projekts. Tragen beide, gilt 2; abgelehnt
+ * wird die Karte erst in `zielAusschluss`.
+ */
+export function pruefreihenVon(karte) {
+  const labels = karte?.labels || [];
+  if (labels.includes(PLANREVIEW_LABELS[1])) return 2;
+  if (labels.includes(PLANREVIEW_LABELS[0])) return 1;
+  return null;
+}
+
 // --- Reviewer-Vorflug in einer Session (Issue #269) ---
 //
 // Warum nicht `board.mjs issue-review check`: Dieser Probelauf laeuft im Runner-Prozess

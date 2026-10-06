@@ -43,7 +43,7 @@ import { ENTSCHEIDUNGEN_NAME, OFFENE_FRAGEN_NAME, OFFENE_FRAGEN_UEBERSCHRIFT, PO
   abschnittLesen, leseKarte, wartetAufPush } from "./abhaengigkeiten.mjs";
 import { flatten, kennzahlenAddieren, ketteBudgetDefaults, kostenAddieren, KETTE_BUDGET_DEFAULTS, ladeKetteBudget,
   ladeKetteUebergaenge, ladePruefLaufBudget, leseErgebnisText, leseKennzahlen, neueKommentare, runSession,
-  SESSION_ABHAENGIGKEITEN, varianteVon } from "./session.mjs";
+  PLANREVIEW_LABELS, SESSION_ABHAENGIGKEITEN, varianteVon, ZIEL_LABEL_PRAEFIX } from "./session.mjs";
 import { berichtFuerKette, berichtSchreiben, hatPlanReviewMarker, kommentareVon, planReviewWert,
   pruefBericht } from "./bericht.mjs";
 import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, geschuetztAmBoardVermerken, hatKlaerenLabel, laufeRunde,
@@ -299,6 +299,16 @@ export function pruefungFehltGrund(id, kettenLabel) {
  * der andere, die Reviewer waren nicht erreichbar.
  */
 export const KETTE_UNGEPRUEFT_ANKER = "## Kette nicht gestartet: Pruefung fehlt";
+
+/**
+ * Das feste Praefix jedes Grundes einer unpassenden Ziel- oder Pruefer-Einstellung (Plan
+ * #1243, A9; Issue #1244) — wie `UNGEPRUEFT_PRAEFIX` erkennt `uebersprungeneVerbuchen`
+ * daran die Karten, die einen Hinweis bekommen.
+ */
+export const ZIEL_UNPASSEND_PRAEFIX = "unpassende Einstellung: ";
+
+/** Der Anker des einmaligen Hinweises an einer solchen Karte, gebaut wie `KETTE_UNGEPRUEFT_ANKER`. */
+export const KETTE_ZIEL_ANKER = "## Kette nicht gestartet: unpassende Einstellung";
 
 
 // --- Stopp-Fragen und Herkunft erzeugter Dokumente ---
@@ -578,6 +588,37 @@ export function planAusschluss(issue, kettenLabel, karten) {
   return null;
 }
 
+/**
+ * Der Grund, aus dem Ziel- oder Pruefer-Labels an einer Karte nicht passen — `null`, wenn
+ * sie passen (Plan #1243, A9, E3; Issue #1244).
+ *
+ * `art` ist die Auftragsart aus `auftragsartVon`, `plan` beim Fachplan-Auftrag das
+ * Plandokument zur Anforderung (sonst `null`). Die Regeln sind die aus E3, in ihrer
+ * Reihenfolge: Widersprueche an der Karte selbst zuerst, dann was an der Kartenart nicht
+ * passt. Jeder Grund nennt den naechsten Schritt; die Labels nimmt nur der Mensch ab.
+ */
+export function zielAusschluss(karte, art, plan) {
+  const labels = karte?.labels || [];
+  const schritt = "die Karte behaelt ihre Labels";
+  const ziele = labels.filter((l) => String(l).startsWith(ZIEL_LABEL_PRAEFIX));
+  if (ziele.length > 1) {
+    return `${ZIEL_UNPASSEND_PRAEFIX}mehr als ein Ziel (${ziele.join(", ")}) — alle bis auf eines abnehmen; ${schritt}`;
+  }
+  const pruefer = PLANREVIEW_LABELS.filter((l) => labels.includes(l));
+  if (pruefer.length > 1) {
+    return `${ZIEL_UNPASSEND_PRAEFIX}${pruefer.join(" und ")} zugleich — eines abnehmen; ${schritt}`;
+  }
+  if (art === "plan" && labels.includes(`${ZIEL_LABEL_PRAEFIX}plan`)) {
+    return `${ZIEL_UNPASSEND_PRAEFIX}${ZIEL_LABEL_PRAEFIX}plan an einem Plandokument — der Plan steht schon; ein weiter reichendes Ziel setzen oder das Label abnehmen; ${schritt}`;
+  }
+  if (art === "plan" && pruefer.length === 1) {
+    return `${ZIEL_UNPASSEND_PRAEFIX}${pruefer[0]} an einem Plandokument — die Prueferzahl gilt nur an der fachlichen Anforderung; das Label abnehmen; ${schritt}`;
+  }
+  if (art === "fachplan" && pruefer.length === 1 && plan && hatPlanReviewMarker(plan.body || "")) {
+    return `${ZIEL_UNPASSEND_PRAEFIX}${pruefer[0]}, aber Plan #${plan.id} ist schon geprueft — das Label abnehmen oder das Kettenlabel an den Plan setzen; ${schritt}`;
+  }
+  return null;
+}
 
 /** Der Grund an einer gekennzeichneten Karte, die keine der beiden Auftragsarten traegt. */
 const KEINE_AUFTRAGSART_GRUND = "weder [Fachlich] noch [Plan] — das Kennzeichen gilt an der fachlichen Anforderung oder am Plandokument";
@@ -619,6 +660,23 @@ function kollisionsGrund(auftrag, juengster) {
     return `zur fachlichen Quelle #${auftrag.F} ist ein juengerer Plan gekennzeichnet — #${juengster.id} laeuft an seiner Stelle`;
   }
   return null;
+}
+
+/**
+ * Der juengste Plan des Boards zur fachlichen Anforderung `F`, gekennzeichnet oder nicht —
+ * `null`, wenn es keinen gibt. Fuer `zielAusschluss`: Ob ein Plan schon geprueft ist, haengt
+ * nicht an seinem Kettenlabel.
+ */
+function juengsterPlanAmBoard(issues, F) {
+  return (issues || [])
+    .filter((i) => isPlan(i?.title ?? "") && fachlicheQuelleVon(i?.body || "") === String(F))
+    .sort((a, b) => Number(b.id) - Number(a.id))[0] ?? null;
+}
+
+/** Der Ausschluss je Auftragsart, danach die unpassende Einstellung (Issue #1244) — `null`, wenn die Karte laeuft. */
+function ausschlussGrund(issue, art, label, issues) {
+  const grund = art === "plan" ? planAusschluss(issue, label, issues) : kettenAusschluss(issue, label);
+  return grund ?? zielAusschluss(issue, art, art === "fachplan" ? juengsterPlanAmBoard(issues, issue.id) : null);
 }
 
 /**
@@ -667,7 +725,7 @@ export function waehleKettenKandidaten(issues, label, max, { belegt = () => null
       gruende.set(String(issue.id), KEINE_AUFTRAGSART_GRUND);
       continue;
     }
-    const grund = art === "plan" ? planAusschluss(issue, label, issues || []) : kettenAusschluss(issue, label);
+    const grund = ausschlussGrund(issue, art, label, issues || []);
     if (grund === null) auftraege.push(auftragAus(issue, art));
     else gruende.set(String(issue.id), grund);
   }
@@ -1617,17 +1675,17 @@ function ketteNichtGestartet(kandidaten, grund) {
  * versucht, haengte der Karte den Hinweis mehrfach an. Ein gescheiterter Board-Aufruf
  * wird protokolliert und haelt den Lauf nicht auf — der Kommentar ist Hinweis, kein Gate.
  */
-function pruefungFehltKommentieren(u) {
+function pruefungFehltKommentieren(u, anker = KETTE_UNGEPRUEFT_ANKER) {
   const karte = leseKarte(u.id);
   if (!karte) {
     log(`  #${u.id}: Hinweis-Kommentar nicht geschrieben (Karte nicht lesbar).`);
     return;
   }
-  if (kommentareVon(karte).some((k) => k.includes(KETTE_UNGEPRUEFT_ANKER))) {
+  if (kommentareVon(karte).some((k) => k.includes(anker))) {
     log(`  #${u.id}: Hinweis-Kommentar steht schon am Board — kein zweiter.`);
     return;
   }
-  const res = abh.boardRoh("issue", "comment", String(u.id), "--text", `${KETTE_UNGEPRUEFT_ANKER}\n\n${u.grund}.\n`);
+  const res = abh.boardRoh("issue", "comment", String(u.id), "--text", `${anker}\n\n${u.grund}.\n`);
   log(res.status === 0
     ? `  #${u.id}: Hinweis-Kommentar geschrieben, Label bleibt.`
     : `  #${u.id}: Hinweis-Kommentar nicht geschrieben (${res.text.slice(0, 120)}).`);
@@ -1671,6 +1729,8 @@ function uebersprungeneVerbuchen(uebersprungen, alle, kettenLabel, dryRun) {
     // Der Dry-Run schreibt nichts ans Board; der Hinweis auf das Kennzeichen kommt
     // auch dort, er ist nur eine Protokollzeile.
     if (!dryRun && abgelehnt.includes(u)) pruefungFehltKommentieren(u);
+    // Die unpassende Einstellung (Issue #1244, A9) auf demselben Weg, mit eigenem Anker.
+    if (!dryRun && String(u.grund).startsWith(ZIEL_UNPASSEND_PRAEFIX)) pruefungFehltKommentieren(u, KETTE_ZIEL_ANKER);
   }
   hinweisAufUnbekanntesKennzeichen(alle, abgelehnt, kettenLabel);
 }
