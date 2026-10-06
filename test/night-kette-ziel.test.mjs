@@ -264,3 +264,23 @@ test("A3: ohne Ziel endet Variante A ohne Freigabe-Einstellung nach abdeckung, o
   assert.equal(einheitVon(r, F).ausgang, "fertig");
   assert.doesNotMatch(r.ausgabe, /Ziel .* erreicht/);
 });
+
+// --- Die Prueferzahl erreicht die Review-Session (A8; Issue #1252) ---
+
+test("A8: mit planreview:2 bekommt nur die Review-Session KIT_PLAN_REVIEWER=2", async () => {
+  const r = await ketteImProzess({ karten: [fachMit("ziel:pakete", "planreview:2")], sitzung: GLATT });
+  assert.equal(r.code, 0, r.ausgabe);
+  const review = r.sitzungen.filter((s) => s.stufe === "review");
+  assert.equal(review.length, 1);
+  assert.equal(review[0].planReviewer, "2");
+  for (const s of r.sitzungen.filter((x) => x.stufe !== "review")) {
+    assert.equal(s.planReviewer, undefined, `Stufe ${s.stufe} bekam KIT_PLAN_REVIEWER`);
+  }
+});
+
+test("A8: ohne planreview:* fehlt KIT_PLAN_REVIEWER auch in der Review-Session", async () => {
+  const r = await ketteImProzess({ karten: [fachMit("ziel:plan")], sitzung: GLATT });
+  assert.equal(r.code, 0, r.ausgabe);
+  assert.ok(r.sitzungen.some((s) => s.stufe === "review"), "keine Review-Session");
+  for (const s of r.sitzungen) assert.equal(s.planReviewer, undefined, `Stufe ${s.stufe} bekam KIT_PLAN_REVIEWER`);
+});

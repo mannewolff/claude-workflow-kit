@@ -865,8 +865,12 @@ export function wartendBeendet(stufe, schlusstext, dokId, ergebnisDa) {
  * Aufgerufen wird es nur, wenn der Schlusstext nach Warten klingt: Das Ergebnis ist ein
  * Beleg, der Schlusstext nur ein Indiz. Liefert es `true`, endet die Session `fertig`,
  * ohne Vermerk am Dokument.
+ *
+ * `extraEnv` geht unveraendert an `runSession` (Plan #1243, A6, A8; Issue #1252). Es traegt
+ * nur `KIT_PLAN_REVIEWER` der Review-Stufe; `KIT_NIGHT_RUN` und `KIT_STAND` setzt
+ * `runSession` fuer jede Session selbst.
  */
-async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, dokId = null, ergebnisDa = null) {
+async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, { dokId = null, ergebnisDa = null, extraEnv } = {}) {
   const rest = budgetMs - (abh.jetzt().getTime() - stufeStart);
   if (rest < KETTE_MINDEST_REST_MS) {
     return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe} erschoepft, bevor eine weitere Session starten konnte`, dauerMs: 0, kennzahlen: null, sitzungsAbbruch: true };
@@ -874,6 +878,7 @@ async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, dokId = 
   const t = abh.jetzt().getTime();
   const res = await runSession(kette.F, kette.args, {
     prompt: `${prompt}\n\n${stufe === "abdeckung" ? ABDECKUNG_ZUSATZ : KETTE_ZUSATZ}`, cwd: kette.wt, stream: true, stufe, timeoutMs: rest,
+    ...(extraEnv ? { extraEnv } : {}),
   }, { spawn: abh.spawn, spawnSync: abh.spawnSync });
   const dauerMs = abh.jetzt().getTime() - t;
   const minuten = (dauerMs / 60000).toFixed(1);
@@ -948,7 +953,7 @@ async function stufePlan(kette) {
     .filter((i) => !vorher.has(String(i.id)) && stammtAusErzeugung(i, F, "plan"))
     .sort((a, b) => Number(b.id) - Number(a.id));
   // Dokument der Stufe ist der Fachplan: Der Plan entsteht erst in dieser Session.
-  const s = await ketteSession(kette, "plan", `/techplan #${F}`, stufeStart, budgetMs, F, () => neuePlaene().length > 0);
+  const s = await ketteSession(kette, "plan", `/techplan #${F}`, stufeStart, budgetMs, { dokId: F, ergebnisDa: () => neuePlaene().length > 0 });
   summe(s);
   if (s.ausgang !== "fertig") return s;
 
@@ -1007,7 +1012,7 @@ async function formSicherstellen(kette, stand, stufeStart, budgetMs, summe) {
     }
     stand.korrekturrunden++;
     log(`  Formpruefung #${stand.id} rot (${verstoesse}) — Korrekturrunde ${stand.korrekturrunden} von ${budget.korrekturrunden}.`);
-    const k = await ketteSession(kette, "form", korrekturPrompt(stand.id, zuKorrigieren), stufeStart, budgetMs, stand.id);
+    const k = await ketteSession(kette, "form", korrekturPrompt(stand.id, zuKorrigieren), stufeStart, budgetMs, { dokId: stand.id });
     summe(k);
     if (k.ausgang !== "fertig") return k;
     if (kostenErschoepft(kette)) return kostenErschoepft(kette);
@@ -1095,7 +1100,9 @@ async function stufeReview(kette, planId) {
     const wert = planReviewWert(abh.board("issue", "get", planId).body);
     return wert !== null && wert !== planReviewWert(vorher.body);
   };
-  const s = await ketteSession(kette, "review", `/issue-review #${planId}`, abh.jetzt().getTime(), budget.reviewMin * 60 * 1000, planId, markerNeu);
+  const s = await ketteSession(kette, "review", `/issue-review #${planId}`, abh.jetzt().getTime(), budget.reviewMin * 60 * 1000, {
+    dokId: planId, ergebnisDa: markerNeu, extraEnv: kette.planReviewer ? { KIT_PLAN_REVIEWER: String(kette.planReviewer) } : undefined,
+  });
   stand.dauerMs = s.dauerMs;
   stand.kennzahlen = s.kennzahlen;
   if (s.ausgang !== "fertig") {
@@ -1139,7 +1146,7 @@ async function stufePakete(kette, planId) {
   const vorherPlan = abh.board("issue", "get", planId);
   log(`  Stufe pakete: /issues #${planId} (Budget ${budget.paketeMin} min).`);
   const paketeEntstanden = () => abh.board("issue", "list").some((i) => !vorherIds.has(String(i.id)) && stammtAusErzeugung(i, planId, "issue"));
-  const s = await ketteSession(kette, "pakete", `/issues #${planId}`, stufeStart, budgetMs, planId, paketeEntstanden);
+  const s = await ketteSession(kette, "pakete", `/issues #${planId}`, stufeStart, budgetMs, { dokId: planId, ergebnisDa: paketeEntstanden });
   summe(s);
   if (s.ausgang !== "fertig") return s;
 

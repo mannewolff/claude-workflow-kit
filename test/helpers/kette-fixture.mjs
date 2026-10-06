@@ -198,7 +198,7 @@ class HarterStopp extends Error {}
  * - `karten`: das Board zu Beginn (Reihenfolge = Board-Reihenfolge)
  * - `argv`: Argumente hinter `--kette`, etwa `["--dry-run"]` oder `["--max", "2"]`
  * - `kette`, `config`: der Block `night.kette` und weitere Felder der Config
- * - `sitzung(s)`: das Drehbuch je Session; `s` traegt `stufe`, `issue`, `prompt`, `cwd`, `modell` und das
+ * - `sitzung(s)`: das Drehbuch je Session; `s` traegt `stufe`, `issue`, `prompt`, `cwd`, `modell`, `planReviewer` und das
  *   Board der Attrappe. Rueckgabe `{ zeilen, kosten, ergebnis, ohneResult, ende }`, alles
  *   wahlweise; ohne `ohneResult` folgt den Zeilen das result-Ereignis.
  * - `formPruefung(karte)`: die Antwort von `issue check-form`, Vorgabe `formNachAbschnitten()`
@@ -223,7 +223,7 @@ export async function ketteImProzess({
   const { git, aufrufe: gitAufrufe } = gitAttrappe();
   const sitzungen = [];
   const { spawn } = spawnAttrappe((aufruf) => {
-    const s = { stufe: stufeVon(aufruf.env), issue: aufruf.env.NIGHT_ISSUE_ID, prompt: aufruf.env.NIGHT_PROMPT, cwd: aufruf.cwd, modell: aufruf.env.KIT_AGENT_MODEL };
+    const s = { stufe: stufeVon(aufruf.env), issue: aufruf.env.NIGHT_ISSUE_ID, prompt: aufruf.env.NIGHT_PROMPT, cwd: aufruf.cwd, modell: aufruf.env.KIT_AGENT_MODEL, planReviewer: aufruf.env.KIT_PLAN_REVIEWER };
     sitzungen.push(s);
     const antwort = sitzung({ ...s, board: kb.board }) ?? {};
     return [
