@@ -45,7 +45,7 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/night-n*.test.mjs\" \"test/night-o*.test.mjs\" \"test/night-p*.test.mjs\" \"test/night-r*.test.mjs\" \"test/night-st*.test.mjs\" \"test/night-v*.test.mjs\" \"test/night-w*.test.mjs\" \"test/night-z*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/night-n*.test.mjs\" \"test/night-o*.test.mjs\" \"test/night-p*.test.mjs\" \"test/night-r*.test.mjs\" \"test/night-st*.test.mjs\" \"test/night-v*.test.mjs\" \"test/night-wi*.test.mjs\" \"test/night-wu*.test.mjs\" \"test/night-z*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
@@ -219,6 +219,26 @@
       ]
     },
     {
+      "cmd": "node --test --test-concurrency=2 \"test/night-wartend-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "aufwand",
+        "board-adapter",
+        "board-dokumente",
+        "board-geschuetzt",
+        "board-wiederholung",
+        "nacht-abhaengigkeiten",
+        "nacht-bericht",
+        "nacht-grundlagen",
+        "nacht-kitstand",
+        "nacht-laufstand",
+        "nacht-session",
+        "nacht-wartend",
+        "preise",
+        "pruefungen"
+      ]
+    },
+    {
       "cmd": "node --test --test-concurrency=2 \"test/ablauf-board-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
@@ -245,6 +265,7 @@
         "board-adapter",
         "board-dokumente",
         "board-einstieg",
+        "board-geschuetzt",
         "board-melder",
         "board-wiederholung",
         "installer",
@@ -255,6 +276,7 @@
         "nacht-kitstand",
         "nacht-laufstand",
         "nacht-session",
+        "nacht-wartend",
         "preise",
         "pruefungen",
         "sync",
@@ -418,7 +440,8 @@
       "test/night-r*.test.mjs",
       "test/night-st*.test.mjs",
       "test/night-v*.test.mjs",
-      "test/night-w*.test.mjs",
+      "test/night-wi*.test.mjs",
+      "test/night-wu*.test.mjs",
       "test/night-z*.test.mjs",
       "test/ablauf-night-*.test.mjs",
       "test/helpers/ergebnisstand-fixture.mjs",
@@ -454,6 +477,10 @@
     "nacht-bericht": [
       "kit/night/bericht.mjs",
       "test/night-bericht-*.test.mjs"
+    ],
+    "nacht-wartend": [
+      "kit/night/wartend.mjs",
+      "test/night-wartend-*.test.mjs"
     ],
     "board-einstieg": [
       "kit/board.mjs",

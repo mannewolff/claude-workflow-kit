@@ -378,6 +378,12 @@ export const ZUSTAND = {
   // Hauptschleife heraus aufgerufen.
   config: null,
 
+  // Der Pfad, aus dem `config` stammt (Issue #711), gesetzt neben ihr. Die Runde liest
+  // `night.stufen` und `night.stufenRegel` unmittelbar vor jedem Paket von dort neu; ohne
+  // den gemerkten Pfad muesste sie ihn ein zweites Mal zusammensetzen, und zwei Herleitungen
+  // desselben Pfades liefen bei der ersten Aenderung auseinander.
+  CONFIG_PATH: null,
+
   // Die Kennung des Laufs in jeder Zeile des Tagesprotokolls (Issue #1090, E16). Laufen Kette
   // und Prueflauf gleichzeitig, schreiben sie in dieselbe Tagesdatei; erst die Kennung trennt
   // ihre Zeilen. Gesetzt nur im Waechter, der einen fremden Lauf beobachtet — sonst ist sie

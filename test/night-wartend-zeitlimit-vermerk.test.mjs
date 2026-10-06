@@ -3,7 +3,7 @@
 // Am Zeitlimit wird die Sitzung samt Prozessgruppe gekillt. Was der Morgen an der Karte
 // liest, entscheidet, ob er den Abbruch von einem inhaltlichen Fehlschlag unterscheiden
 // kann — darum ist der Text hier eine reine Funktion und an Fixtures pruefbar, dieselbe
-// Linie wie `wartendVermerk` in `night-wartende-session.test.mjs`.
+// Linie wie `wartendVermerk` in `night-wartend-sitzung.test.mjs`.
 //
 // Die Grenze im Vermerk ist das WIRKSAME Zeitlimit der Runde und nicht `args.timeoutMin`:
 // Ein Lauf unter `NIGHT_TIMEOUT_MS` lauge den Vermerk sonst an. Dass `runSession` es
@@ -11,7 +11,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { zeitlimitVermerk, ZEITLIMIT_ANKER, runSession } from "../kit/night.mjs";
+import { zeitlimitVermerk, ZEITLIMIT_ANKER } from "../kit/night/wartend.mjs";
+import { runSession } from "../kit/night/session.mjs";
 
 /** Die Form, die `fortschrittBeobachter().ergebnis()` liefert (Issue #975). */
 const auskunft = (zeilen, gesehen = zeilen.length) => ({ zeilen, gesehen });
@@ -80,9 +81,9 @@ test("[night-976-10] der Abschnitt zum Arbeitsverzeichnis fehlt ohne Pfade und s
   const ohne = zeitlimitVermerk(60, auskunft(ZEILEN));
   assert.ok(!ohne.includes("### Im Arbeitsverzeichnis"), "eine Meldung ueber nichts ist keine");
 
-  const mit = zeitlimitVermerk(60, auskunft(ZEILEN), ["kit/night.mjs", "test/x.test.mjs"]);
+  const mit = zeitlimitVermerk(60, auskunft(ZEILEN), ["kit/night/wartend.mjs", "test/x.test.mjs"]);
   assert.match(mit, /### Im Arbeitsverzeichnis/);
-  assert.ok(mit.includes("kit/night.mjs"));
+  assert.ok(mit.includes("kit/night/wartend.mjs"));
   assert.ok(mit.includes("test/x.test.mjs"));
 });
 

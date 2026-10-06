@@ -1,3 +1,7 @@
+// Ablauf-Pruefung: Werkzeugsperre, Warten auf die Prozessgruppe, Salvage und Stash und die
+// Stufen der Kette haengen am Zusammenspiel von Runner, Session-Prozess, git und Board; die
+// Bausteine pruefen night-wartend-sitzung und night-session-sitzungsprozesse im selben Prozess.
+//
 // Die wartende Session (Issue #668).
 //
 // Ausgangslage, dreimal in zwei Naechten beobachtet (kanban-kit #891, #899, #900): Eine
@@ -6,26 +10,19 @@
 // -p-Session keinen Folge-Turn hat. Der Runner sammelt sie ein, findet die Karte nicht in
 // In review und den Baum dirty und wertet die Runde als Fehlschlag. Die Arbeit war fertig.
 //
-// Fuenf Dinge werden hier festgehalten:
+// Festgehalten werden hier die Ablaeufe:
 //   night-25 — der Runner sperrt der Session das Werkzeug, mit dem sie wartend enden kann,
 //              hebt ihr Bash-Zeitlimit knapp unter das Rundenzeitlimit und misst erst, wenn
 //              kein Prozess ihrer Gruppe mehr laeuft.
-//   night-91 — die Reserve zwischen beiden Grenzen, damit die Session den Tod ihres
-//              Befehls ueberlebt und ihn melden kann (Issue #902).
 //   night-24 — endet sie dennoch ohne Commit, sagt das Protokoll WARUM, unterscheidbar
 //              von Zeitlimit, Abbruch und rotem Pflichtcheck.
-//   night-52 — am Schlusstext erkennt der Runner, ob die Sitzung auf eine SELBST
-//              angestossene Arbeit gewartet hat; das Warten auf einen Menschen zaehlt nicht.
-//   night-53 — der Grund dieses Falls steht in `rundenGrund` hinter dem roten Pflichtcheck
-//              und vor dem regulaeren Ende.
-//   night-54 — der Vermerk am Paket nennt den Fall, den gekuerzten Schlusstext und die
-//              Reste im Arbeitsverzeichnis.
+//   night-55 bis night-58 — die wartende Sitzung in Rueckstellung, Salvage und Kette.
 //
 // Laeuft komplett lokal: issueTracker "local" in einem Temp-Repo, Session-Fake via
 // NIGHT_CLAUDE_CMD; nur der Test der CLI-Argumente faehrt den Produktivzweig ueber eine
-// Fake-CLI im PATH, weil der Test-Hook die Argumente gar nicht baut. Die drei neuen
-// Aussagen pruefen dagegen die exportierten reinen Funktionen ohne Subprozess — dieselbe
-// Linie wie `night-session-kennzahlen.test.mjs`.
+// Fake-CLI im PATH, weil der Test-Hook die Argumente gar nicht baut. Die reinen Bausteine
+// (night-52 bis night-54, night-91 und die Prozesssuche unter Windows) stehen seit Issue
+// #1231 in night-wartend-sitzung.test.mjs und night-session-sitzungsprozesse.test.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -35,10 +32,8 @@ import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-import {
-  wartendeSession, wartendVermerk, rundenGrund, bashZeitlimit, BASH_RESERVE_MS, WARTEND_ANKER, KETTE_ZUSATZ, REVIEW_REST_ANKER,
-  sessionUmgebung, SITZUNG_MARKE, sitzungsSuche, sitzungsPids, sitzungsProzesse, warteAufProzessgruppe, baumBeendenAufruf,
-} from "../kit/night.mjs";
+import { WARTEND_ANKER } from "../kit/night/wartend.mjs";
+import { KETTE_ZUSATZ, REVIEW_REST_ANKER } from "../kit/night.mjs";
 // Die Stufen der Nacht-Kette (night-57, night-58) laufen gegen dieselbe Fixture wie die
 // uebrigen Ketten-Tests. Als Namensraum eingebunden, weil dieser Datei eigene Helfer
 // gleichen Namens (`setupProjekt`, `board`, `run`, `stand`) schon gehoeren.
@@ -155,25 +150,6 @@ test("[night-25] der Runner startet die Session ohne Monitor-Werkzeug und mit ge
   }
 });
 
-// --- night-91: die Reserve zwischen Bash-Limit und Rundenzeitlimit (Issue #902) ---
-
-test("[night-91] das Bash-Limit laesst der Session eine Reserve zum Melden", () => {
-  // Eine Stunde Runde: die feste Reserve von zehn Minuten greift, weil sie unter den
-  // 20 Prozent (12 Minuten) liegt.
-  assert.equal(bashZeitlimit(60 * 60 * 1000), 50 * 60 * 1000);
-  // Eine Minute Runde: jetzt greift der Anteil, sonst bliebe nichts uebrig.
-  assert.equal(bashZeitlimit(60 * 1000), 48 * 1000);
-  assert.equal(BASH_RESERVE_MS, 10 * 60 * 1000);
-});
-
-test("[night-91] das Bash-Limit bleibt positiv und stets unter dem Rundenzeitlimit", () => {
-  for (const timeoutMs of [2, 5, 100, 1000, 60 * 1000, 40 * 60 * 1000, 60 * 60 * 1000]) {
-    const grenze = bashZeitlimit(timeoutMs);
-    assert.ok(grenze >= 1, `nicht positiv bei ${timeoutMs}: ${grenze}`);
-    assert.ok(grenze < timeoutMs, `nicht unter dem Rundenzeitlimit bei ${timeoutMs}: ${grenze}`);
-  }
-});
-
 // --- night-25: die Wartezeit auf die Prozessgruppe ---
 
 test("[night-25] die Vorpruefung startet erst, wenn kein Prozess der Session mehr laeuft", () => {
@@ -188,7 +164,10 @@ test("[night-25] die Vorpruefung startet erst, wenn kein Prozess der Session meh
     const id = readyIssue(dir, "Laesst einen Hintergrundlauf zurueck");
     // Die Session: macht den Baum dirty, startet einen Hintergrundlauf und endet sofort —
     // das Muster aus #900, nur ohne die 13 Minuten dazwischen.
-    const fake = "echo arbeit > arbeit.txt; (sleep 1; echo fertig > bg-ende.txt) & exit 0";
+    // Der Hintergrundlauf endet erst, wenn die Shell der Session nicht mehr da ist — bis der
+    // Runner sie eingesammelt hat, steht sie als Zombie und `kill -0` gelingt. So laeuft er
+    // sicher ueber das Ende der Session hinaus, ohne feste Pause.
+    const fake = "echo arbeit > arbeit.txt; (while kill -0 $ 2>/dev/null; do :; done; echo fertig > bg-ende.txt) & exit 0";
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], { NIGHT_CLAUDE_CMD: fake });
     assert.equal(res.status, 0, `seit Issue #1089 haelt das gescheiterte Paket nur sich an:\n${res.stdout}\n${res.stderr}`);
@@ -207,118 +186,6 @@ test("[night-25] die Vorpruefung startet erst, wenn kein Prozess der Session meh
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-});
-
-// Unter Windows gibt es keine Prozessgruppe (Issue #1144). Die Prozesse einer Session
-// erkennt der Runner dort an ihrer Marke in der Umgebung; die Suche ist injiziert, damit
-// das Warten auf jedem Rechner pruefbar ist.
-
-test("[night-25] jede Session traegt eine eigene Marke in der Umgebung", () => {
-  const erste = sessionUmgebung(42, {}, {});
-  const zweite = sessionUmgebung(42, {}, {});
-  assert.match(erste[SITZUNG_MARKE], /^[\w-]+$/, "die Marke fehlt oder enthaelt Zeichen, die die Git Bash umdeuten koennte");
-  assert.notEqual(erste[SITZUNG_MARKE], zweite[SITZUNG_MARKE], "zwei Sessions duerfen nicht dieselbe Marke tragen");
-  assert.equal(sessionUmgebung(42, {}, {}, "fest")[SITZUNG_MARKE], "fest");
-});
-
-test("[night-25] die Suche liest die Marke aus der Umgebung der MSYS-Prozesse und nennt ihre Windows-PID", () => {
-  const suche = sitzungsSuche("marke-1");
-  assert.equal(suche.umgebung.KIT_SITZUNG_SUCHE, "marke-1");
-  assert.match(suche.skript, /\/proc\/\[0-9\]\*/);
-  assert.match(suche.skript, new RegExp(`grep -qzx "${SITZUNG_MARKE}=\\$KIT_SITZUNG_SUCHE"`));
-  assert.match(suche.skript, /winpid/);
-  // Die Suche selbst traegt die Marke nur unter anderem Namen — sonst faende sie sich.
-  assert.ok(!(SITZUNG_MARKE in suche.umgebung));
-  assert.deepEqual(sitzungsPids("4711\n\n 815 \nkeine-pid\n0\n"), [4711, 815]);
-  assert.deepEqual(sitzungsPids(""), []);
-});
-
-test("[night-25] unter Windows wartet der Runner, bis kein Prozess mit der Marke der Session mehr laeuft", async () => {
-  const antworten = [[11, 12], [12], []];
-  let gefragt = 0;
-  const prozesse = () => antworten[Math.min(gefragt++, antworten.length - 1)];
-  assert.equal(await warteAufProzessgruppe(4711, 60_000, { plattform: "win32", pollMs: 1, prozesse }), true);
-  assert.equal(gefragt, 3, "gewartet wird, bis die Suche nichts mehr findet");
-});
-
-test("[night-25] unter Windows endet das Warten an der Frist, wenn ein Prozess der Session weiterlaeuft", async () => {
-  let uhr = 0;
-  const res = await warteAufProzessgruppe(4711, 1000, {
-    plattform: "win32", pollMs: 1, prozesse: () => [11], jetzt: () => (uhr += 300),
-  });
-  assert.equal(res, false);
-});
-
-// Die Erkennung selbst unter `plattform: "win32"` (Issue #1174): Die Abfrage ist
-// eingespielt und liefert aus einer festen Prozessliste die Windows-PIDs der Prozesse, die
-// die gesuchte Marke tragen — so, wie es die Suche in der Git Bash tut.
-const prozessListe = [
-  { winpid: 11, umgebung: { [SITZUNG_MARKE]: "marke-a" } },
-  { winpid: 12, umgebung: { [SITZUNG_MARKE]: "marke-b" } },
-  { winpid: 13, umgebung: {} },
-];
-const eingespielt = (liste) => (marke) => ({
-  status: 0,
-  stdout: liste.filter((p) => p.umgebung[SITZUNG_MARKE] === marke).map((p) => `${p.winpid}\n`).join(""),
-});
-
-test("[night-25] unter Windows erkennt der Runner die Prozesse mit der Marke der Session", () => {
-  assert.deepEqual(sitzungsProzesse("marke-a", { abfrage: eingespielt(prozessListe) }), [11]);
-  assert.deepEqual(sitzungsProzesse("marke-c", { abfrage: eingespielt(prozessListe) }), []);
-});
-
-test("[night-25] unter Windows wartet der Runner, solange ein Prozess mit der Marke laeuft", async () => {
-  const liste = [...prozessListe];
-  let gefragt = 0;
-  const abfrage = (marke) => {
-    gefragt += 1;
-    // Zweimal laeuft der Hintergrundlauf der Session noch, vor der dritten Abfrage endet er.
-    if (gefragt === 3) liste.splice(0, 1);
-    return eingespielt(liste)(marke);
-  };
-  const vermerke = [];
-  const leer = await warteAufProzessgruppe(4711, 60_000, {
-    plattform: "win32", pollMs: 1, prozesse: () => sitzungsProzesse("marke-a", { abfrage }), vermerk: (t) => vermerke.push(t),
-  });
-  assert.equal(leer, true);
-  assert.equal(gefragt, 3, "gewartet wird, bis kein Prozess mit der Marke mehr laeuft");
-  assert.deepEqual(vermerke, []);
-});
-
-test("[night-25] unter Windows geht der Runner sofort weiter, wenn kein Prozess die Marke traegt", async () => {
-  let gefragt = 0;
-  const abfrage = (marke) => (gefragt++, eingespielt(prozessListe)(marke));
-  const leer = await warteAufProzessgruppe(4711, 60_000, {
-    plattform: "win32", pollMs: 1, prozesse: () => sitzungsProzesse("marke-c", { abfrage }), vermerk: () => assert.fail("kein Vermerk"),
-  });
-  assert.equal(leer, true);
-  assert.equal(gefragt, 1);
-});
-
-test("[night-25] scheitert unter Windows die Abfrage der Prozessliste, steht das im Protokoll und der Runner geht weiter", async () => {
-  for (const [fall, abfrage] of [
-    ["Exitcode", () => ({ status: 2, stdout: "", stderr: "grep: kaputt" })],
-    ["Startfehler", () => ({ status: null, error: new Error("spawn ENOENT") })],
-    ["keine Git Bash", () => ({ fehler: "Git Bash nicht gefunden" })],
-  ]) {
-    assert.throws(() => sitzungsProzesse("marke-a", { abfrage }), /Prozessliste/, fall);
-    const vermerke = [];
-    const leer = await warteAufProzessgruppe(4711, 60_000, {
-      plattform: "win32", pollMs: 1, prozesse: () => sitzungsProzesse("marke-a", { abfrage }), vermerk: (t) => vermerke.push(t),
-    });
-    assert.equal(leer, true, `${fall}: der Runner macht weiter wie bisher`);
-    assert.equal(vermerke.length, 1, `${fall}: genau ein Vermerk`);
-    assert.match(vermerke[0], /Prozessliste/, fall);
-  }
-});
-
-test("[night-25] unter Windows beendet taskkill die Wurzel und die Prozesse mit der Marke der Session", () => {
-  assert.deepEqual(baumBeendenAufruf(4711, "SIGTERM", "win32", [11, 12]),
-    { taskkill: ["/pid", "4711", "/pid", "11", "/pid", "12", "/T", "/F"] });
-  // Die Wurzel steht nur einmal da, auch wenn die Suche sie mitfindet.
-  assert.deepEqual(baumBeendenAufruf(4711, "SIGKILL", "win32", [4711]), { taskkill: ["/pid", "4711", "/T", "/F"] });
-  // Auf POSIX trifft das Signal an die Gruppe dieselben Prozesse; weitere PIDs gibt es dort nicht.
-  assert.deepEqual(baumBeendenAufruf(4711, "SIGTERM", "linux", [11]), { pid: -4711, signal: "SIGTERM" });
 });
 
 // --- night-24: der Grund im Protokoll ---
@@ -354,7 +221,7 @@ test("[night-24] eine am Zeitlimit beendete Session bekommt einen anderen Grund"
   try {
     readyIssue(dir, "Laeuft in das Zeitlimit");
     // Schreibt zuerst, haengt dann — so ist der Baum dirty UND das Zeitlimit greift.
-    const fake = "echo arbeit > arbeit.txt; sleep 30";
+    const fake = "echo arbeit > arbeit.txt; sleep 30 # haengt";
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], {
       NIGHT_CLAUDE_CMD: fake,
@@ -412,9 +279,9 @@ test("[night-24] eine rote Vorpruefung nennt das Kommando und seine Ausgabe", ()
   }
 });
 
-// --- night-52, night-53, night-54: die Bausteine der wartenden Sitzung (Issue #775) ---
+// --- Wortlaut und Ergebnis-Ereignis der wartenden Sitzung (Issue #775) ---
 //
-// Der Wortlaut steht hier ein zweites Mal — absichtlich, wie bei den vier Gruenden
+// Der Wortlaut steht hier ein weiteres Mal — absichtlich, wie bei den vier Gruenden
 // darueber: Der Test ist die Gegenprobe zur Konstanten. Wer sie umformuliert, aendert
 // einen Text, der zugleich in Protokoll, Board-Kommentar und Ergebnisstand steht, und
 // soll das an einem roten Test merken.
@@ -425,134 +292,6 @@ const WARTEND_WORTLAUT =
 const resultZeileMitText = (stopReason, text, isError = false) =>
   `{"type":"result","is_error":${isError},"stop_reason":${JSON.stringify(stopReason)},` +
   `"total_cost_usd":0.5,"duration_api_ms":1000,"num_turns":7,"result":${JSON.stringify(text)}}`;
-
-test("[night-52] wartendeSession erkennt die Wendungen der Musterliste", () => {
-  for (const text of [
-    "Ich warte auf den Abschluss von mvn verify.",
-    "Der Pflichtcheck laeuft noch.",
-    "Der Testlauf laeuft im Hintergrund weiter.",
-    "Ich melde mich, sobald der Lauf fertig ist.",
-    "Das Ergebnis steht noch aus.",
-    // Gross-/Kleinschreibung spielt keine Rolle: dieselbe Wendung, anderer Satzanfang.
-    "WARTE AUF das Ende des Mutationstests.",
-    // "im Hintergrund" mit einem Warteverb im Praesens: genau der Fall, um den es geht.
-    "Die Tests laufen im Hintergrund, ich melde mich.",
-  ]) {
-    assert.equal(wartendeSession(text), true, `nicht als wartend erkannt: ${text}`);
-  }
-});
-
-test("[night-52] wartendeSession wertet im Hintergrund abgeschlossene Arbeit nicht als Warten", () => {
-  // "im Hintergrund" allein sagt nichts ueber den Zeitpunkt: Dieselbe Wendung steht im
-  // Rueckblick einer fertigen Sitzung. Ohne Warteverb im Praesens galt eine erledigte
-  // Runde als abgebrochen, und ihr Paket bekam den Vermerk der wartenden Sitzung.
-  for (const text of [
-    "Die Tests liefen im Hintergrund und sind inzwischen erfolgreich abgeschlossen.",
-    "Fertig. Die Checks liefen im Hintergrund durch, alles gruen, committet.",
-    "alles im Hintergrund erledigt",
-  ]) {
-    assert.equal(wartendeSession(text), false, `abgeschlossene Arbeit als Warten gewertet: ${text}`);
-  }
-});
-
-test("[night-52] wartendeSession wertet das Warten auf einen Menschen nicht als eigenen Fall", () => {
-  for (const text of [
-    "Ich warte auf deine Antwort zur offenen Frage.",
-    "Ich warte auf Rueckmeldung aus dem Team.",
-    "Ich warte auf die Freigabe des Vorgehens.",
-    "Ich warte auf dein GO.",
-    "Ich warte auf Klaerung der offenen Frage.",
-    "Ich warte auf das Review durch einen Menschen.",
-  ]) {
-    assert.equal(wartendeSession(text), false, `Warten auf einen Menschen faelschlich gewertet: ${text}`);
-  }
-  // Kein Schlusstext, kein Fall — `leseErgebnisText` liefert bei leerem Text `null`.
-  assert.equal(wartendeSession(null), false);
-  assert.equal(wartendeSession(""), false);
-  // Eine Sitzung, die schlicht fertig ist, wartet auf nichts.
-  assert.equal(wartendeSession("Issue #775 ist umgesetzt, committet und in In review."), false);
-});
-
-test("[night-52] wartendeSession trifft das Verb warten, nicht das Substantiv Warten (Issue #1207)", () => {
-  // Der Schlusstext der Review-Session aus Lauf 2026-10-05-121520: Er beschrieb eine
-  // Planaenderung, und das Substantiv hielt die Kette an.
-  assert.equal(wartendeSession("begrenztes Warten auf eine Bedingung ist nur in gekennzeichneten Ablauf-Prüfungen erlaubt"), false);
-  for (const text of ["Ich warte auf den Prüflauf", "Der Lauf wartet auf die Gruppe", "Wartet auf das Ergebnis.", "Warte auf den Lauf."]) {
-    assert.equal(wartendeSession(text), true, `nicht als wartend erkannt: ${text}`);
-  }
-});
-
-test("[night-52] die GO-Ausnahme trifft nur das grossgeschriebene Wort fuer sich", () => {
-  // Ohne Wortgrenze verschluckte das „GO\" in ALGOL den ganzen Fall: Die Ausnahmeliste hat
-  // Vorrang, und der wartende Schlusstext saehe aus wie Warten auf einen Menschen.
-  assert.equal(wartendeSession("Der ALGOL-Uebersetzer laeuft noch."), true);
-  // Dasselbe eine Ebene feiner: Gross-/Kleinschreibung und der Bindestrich unterscheiden
-  // das kurze GO des Menschen von einem Wortbestandteil.
-  assert.equal(wartendeSession("Der Go-Test laeuft noch."), true);
-  assert.equal(wartendeSession("Der GO-Baustein laeuft noch."), true);
-  // Und das kurze GO selbst bleibt die Ausnahme, die es war.
-  assert.equal(wartendeSession("Ich warte auf dein GO."), false);
-});
-
-test("[night-53] rundenGrund liefert den neuen Grund beim regulaeren Ende einer wartenden Sitzung", () => {
-  const res = { stdout: resultZeileMitText("end_turn", "Der Pflichtcheck laeuft noch im Hintergrund.") };
-  assert.equal(rundenGrund(res, { zustand: "gruen" }), WARTEND_WORTLAUT);
-});
-
-test("[night-53] eine regulaer beendete Sitzung ohne Warten behaelt ihren bisherigen Grund", () => {
-  const res = { stdout: resultZeileMitText("end_turn", "Alles erledigt, nichts steht offen.") };
-  assert.equal(rundenGrund(res, { zustand: "gruen" }), "Grund: Session regulaer beendet ohne Commit (end_turn)");
-});
-
-test("[night-53] Zeitlimit, is_error und roter Pflichtcheck stehen vor dem neuen Grund", () => {
-  const wartend = "Der Pflichtcheck laeuft noch im Hintergrund.";
-  const stdout = resultZeileMitText("end_turn", wartend);
-
-  assert.equal(
-    rundenGrund({ stdout, error: { code: "ETIMEDOUT" } }, { zustand: "gruen" }),
-    "Grund: Session am Zeitlimit beendet",
-  );
-  assert.equal(
-    rundenGrund({ stdout: resultZeileMitText("end_turn", wartend, true) }, { zustand: "gruen" }),
-    "Grund: Session mit is_error beendet",
-  );
-  assert.match(
-    rundenGrund({ stdout }, { zustand: "rot", rotesKommando: "npm test" }),
-    /^Grund: Pflichtcheck rot — npm test \(Session\)$/,
-  );
-});
-
-test("[night-53] ohne regulaeres Ende bleibt es beim unbekannten Ergebnis", () => {
-  // Der Zweig verfeinert `end_turn` und loest ihn nicht ab: Ein anderer stop_reason sagt
-  // ueber den Ausgang zu wenig, um den Fall zu behaupten.
-  const res = { stdout: resultZeileMitText("max_tokens", "Der Pflichtcheck laeuft noch im Hintergrund.") };
-  assert.equal(rundenGrund(res, { zustand: "gruen" }), "Grund: Session ohne auswertbares Ergebnis-Ereignis beendet");
-});
-
-test("[night-54] der Vermerk nennt Anker, Fall, gekuerzten Stand und die Reste", () => {
-  assert.equal(WARTEND_ANKER, "## Nachtlauf: wartende Sitzung");
-
-  const lang = `Stand: ${"A".repeat(2500)}`;
-  const vermerk = wartendVermerk(lang, ["kit/night.mjs", "test/night-wartende-session.test.mjs"]);
-
-  assert.ok(vermerk.startsWith(WARTEND_ANKER), `der Anker fehlt am Anfang:\n${vermerk}`);
-  assert.ok(vermerk.includes(WARTEND_WORTLAUT), `der Fall steht nicht im Wortlaut der Konstanten:\n${vermerk}`);
-  assert.ok(vermerk.includes(lang.slice(0, 2000)), "der Schlusstext fehlt bis zur Grenze");
-  assert.ok(!vermerk.includes(lang.slice(0, 2001)), "der Schlusstext wird nicht auf 2.000 Zeichen gekuerzt");
-  assert.match(vermerk, /kit\/night\.mjs/, "die Reste im Arbeitsverzeichnis fehlen");
-  assert.match(vermerk, /test\/night-wartende-session\.test\.mjs/, "die Reste im Arbeitsverzeichnis fehlen");
-});
-
-test("[night-54] bei leerer Pfadliste entfaellt die Zeile zu den Resten ersatzlos", () => {
-  const vermerk = wartendVermerk("Der Pflichtcheck laeuft noch im Hintergrund.");
-
-  assert.ok(vermerk.includes(WARTEND_WORTLAUT));
-  assert.ok(vermerk.includes("Der Pflichtcheck laeuft noch im Hintergrund."));
-  // „keine Reste\" waere eine Meldung ueber etwas, das es nicht gibt — im
-  // Rueckstellungsfall ist der Baum ohnehin sauber.
-  assert.doesNotMatch(vermerk, /Rest/i, `der Vermerk meldet die leere Liste:\n${vermerk}`);
-  assert.doesNotMatch(vermerk, /Arbeitsverzeichnis/i, `der Vermerk meldet die leere Liste:\n${vermerk}`);
-});
 
 // --- night-55: der Rueckstellungsweg bei sauberem Arbeitsbaum (Issue #776) ---
 //

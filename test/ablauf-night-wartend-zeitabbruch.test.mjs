@@ -1,3 +1,7 @@
+// Ablauf-Pruefung: Ein Zeitabbruch entsteht erst, wenn der Runner die Session samt
+// Prozessgruppe an der Uhr toetet; Vermerk, Salvage und Einheit haengen an diesem Ablauf.
+// Den Vermerkstext selbst prueft night-wartend-zeitlimit-vermerk im selben Prozess.
+//
 // Der Zeitabbruch an der Karte (Issue #977, Plan #974).
 //
 // Issue #976 hat den Vermerkstext gebaut, aber niemand schrieb ihn an eine Karte: Im
@@ -16,7 +20,7 @@
 // Salvage-Session, deren Fake darum nur kurz arbeitet.
 //
 // Laeuft komplett lokal: issueTracker "local" in einem Temp-Repo, Session-Fake via
-// NIGHT_CLAUDE_CMD — dieselbe Anlage wie `night-wartende-session.test.mjs`.
+// NIGHT_CLAUDE_CMD — dieselbe Anlage wie `ablauf-night-wartend-runde.test.mjs`.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -26,7 +30,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-import { ZEITLIMIT_ANKER, WARTEND_ANKER } from "../kit/night.mjs";
+import { ZEITLIMIT_ANKER, WARTEND_ANKER } from "../kit/night/wartend.mjs";
 
 // Die Sperre gegen echte Pflichtchecks aus einem Test heraus — wie in jedem night-Test.
 import "./helpers/checks-sperre.mjs";
@@ -42,7 +46,7 @@ const NIGHT = join(repoRoot, "kit", "night.mjs");
 const TIMEOUT_MS = 2500;
 
 // Der Wortlaut der Konstanten, hier ein zweites Mal — dieselbe Linie wie in
-// `night-wartende-session.test.mjs`: Der Test ist die Gegenprobe zur Konstanten.
+// `ablauf-night-wartend-runde.test.mjs`: Der Test ist die Gegenprobe zur Konstanten.
 const ZEITLIMIT_WORTLAUT = "Grund: Session am Zeitlimit beendet";
 const DEFERRED_WORTLAUT =
   "Session ohne In-review-Ergebnis beendet — Issue zurueckgestellt, Lauf ging mit dem naechsten Issue weiter.";
@@ -132,7 +136,7 @@ test("[night-977-1] ein Zeitabbruch bei sauberem Baum traegt Vermerk, Grund und 
   try {
     const id = readyIssue(dir, "Laeuft in das Zeitlimit, ohne etwas anzufassen");
     // Meldet erst seinen Stand, dann haengt er: sauberer Baum, erzwungenes Zeitlimit.
-    const fake = `echo '${fortschrittZeile(AK1)}'; sleep 30`;
+    const fake = `echo '${fortschrittZeile(AK1)}'; sleep 30 # haengt`;
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], {
       NIGHT_CLAUDE_CMD: fake,
@@ -206,7 +210,7 @@ test("[night-977-2] ein Zeitabbruch bei unsauberem Baum bricht das Paket ab (Iss
   const dir = setupProjekt("night-zeit-dirty-", ["false"]);
   try {
     const id = readyIssue(dir, "Laeuft in das Zeitlimit und laesst Arbeit liegen");
-    const fake = `echo '${fortschrittZeile(AK1)}'; echo arbeit > arbeit.txt; sleep 30`;
+    const fake = `echo '${fortschrittZeile(AK1)}'; echo arbeit > arbeit.txt; sleep 30 # haengt`;
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], {
       NIGHT_CLAUDE_CMD: fake,
@@ -252,7 +256,7 @@ function salvageFake(salvageTeil) {
     "else",
     `  echo '${fortschrittZeile(AK1)}'`,
     '  echo arbeit > "work-$NIGHT_ISSUE_ID.txt"',
-    "  sleep 30",
+    "  sleep 30 # haengt",
     "fi",
   ].join("\n");
 }
