@@ -550,13 +550,34 @@ function auskunftOhneTeile(argv) {
   }
 }
 
+/**
+ * Spricht der Tracker dieses Projekts selbst ueber fetch (Issue #1259)? Nur der
+ * Toolbox-Adapter tut das; GitHub und GitLab gehen ueber ihre CLIs, der lokale Tracker
+ * liest Dateien. Gelesen wird allein das Feld aus der geteilten Config, ohne Overrides und
+ * Hinweise: Der volle Weg schriebe seine Hinweise sonst vor und nach dem Neustart.
+ *
+ * Fehlt die Config oder laesst sie sich nicht lesen, bleibt es beim Neustart wie vor
+ * #1259 — die sichere Richtung, denn ein unnoetiger Neustart kostet nur Zeit. Der
+ * Gewinn: In der Sandbox zahlte jeder Board-Aufruf zwei Prozessstarts, im Lastbeleg mehr
+ * als die Haelfte der Zeit einer Ablauf-Pruefung des Nacht-Runners.
+ */
+function trackerSprichtFetch() {
+  try {
+    const roh = JSON.parse(readFileSync(join(configWurzel(), ".claude", "workflow.config.json"), "utf-8"));
+    return (roh.issueTracker ?? roh.provider) === "toolbox";
+  } catch {
+    return true;
+  }
+}
+
 async function main() {
   const argv = process.argv.slice(2);
 
   // Hinter einem Proxy (Sandbox von Claude Code) erreicht Nodes fetch das Board nur mit
   // NODE_USE_ENV_PROXY=1 beim Start (Issue #998). Hilfe und --version brauchen kein
-  // Netz und sind darum schon beantwortet (auskunftOhneTeile).
-  if (proxyNeustartNoetig(process.env)) {
+  // Netz und sind darum schon beantwortet (auskunftOhneTeile). Ein Tracker ohne fetch
+  // braucht den Neustart ebenso wenig (Issue #1259).
+  if (proxyNeustartNoetig(process.env) && trackerSprichtFetch()) {
     const kind = spawnSync(process.execPath, [...process.execArgv, ...process.argv.slice(1)], {
       stdio: "inherit",
       env: { ...process.env, NODE_USE_ENV_PROXY: "1" },

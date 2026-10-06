@@ -54,21 +54,35 @@ function starts(dir, cliArgs, env) {
 }
 
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
+// Nur der Toolbox-Tracker spricht selbst ueber fetch; nur er braucht den Neustart (Issue #1259).
+const TOOLBOX = { codeHost: "local", issueTracker: "toolbox", toolbox: { host: "https://board.invalid", boardId: "1" } };
 
-test("hinter einem Proxy startet board.mjs genau einmal neu, mit dem Schalter und den execArgv", () => {
+test("hinter einem Proxy startet board.mjs mit dem Toolbox-Tracker genau einmal neu, mit dem Schalter und den execArgv", () => {
+  const dir = setupProjekt(TOOLBOX, "board-proxy-");
+  try {
+    const { zeilen } = starts(dir, ["issue", "gibtsnicht"], { HTTPS_PROXY: PROXY });
+    assert.deepEqual(zeilen, ["-", "1"], "erwartet: Elternprozess ohne, Kind mit NODE_USE_ENV_PROXY=1");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[1259] mit einem Tracker ohne fetch startet board.mjs hinter einem Proxy nicht neu", () => {
+  // Jeder Neustart kostet einen zweiten Prozessstart je Board-Aufruf; in der Sandbox zahlte
+  // ihn jeder Aufruf, auch der lokale Tracker der Tests, der gar kein Netz braucht.
   const dir = setupProjekt(LOKAL, "board-proxy-");
   try {
     const { res, zeilen } = starts(dir, ["issue", "list"], { HTTPS_PROXY: PROXY });
     assert.equal(res.status, 0, res.stderr);
-    assert.deepEqual(zeilen, ["-", "1"], "erwartet: Elternprozess ohne, Kind mit NODE_USE_ENV_PROXY=1");
-    assert.deepEqual(JSON.parse(res.stdout), [], "die Ausgabe des Kinds kommt durch");
+    assert.deepEqual(zeilen, ["-"], "erwartet: ein einziger Prozessstart");
+    assert.deepEqual(JSON.parse(res.stdout), []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test("der Exitcode des Kinds wird durchgereicht", () => {
-  const dir = setupProjekt(LOKAL, "board-proxy-");
+  const dir = setupProjekt(TOOLBOX, "board-proxy-");
   try {
     const { res, zeilen } = starts(dir, ["issue", "gibtsnicht"], { HTTPS_PROXY: PROXY });
     assert.equal(zeilen.length, 2);
