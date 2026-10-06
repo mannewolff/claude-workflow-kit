@@ -36,8 +36,8 @@ import { ZUSTAND, NACHBAR_DIR, log, board, boardRoh, einheitAnlegen, einheitErga
   laufMelden, resteText, schreibeErgebnisstand, schrittBeginnen, schrittEnden, vergleicheText,
   vermerkeOhneArbeit } from "./grundlagen.mjs";
 import { ABBRUCH_BUDGET_MS, LAUF_KONTEXT, LAUF_ORDNER, RECHNER, abgeben, exitText, journalLesen, laufAnhalten,
-  laufPositionSetzen, standSetzen } from "./laufstand.mjs";
-import { aufUmsetzungWarten, befundeZurueckUndVorschlagen, kitStandAbgeben, kitStandInBaum, prozessLaeuft,
+  laufLebt, laufPositionSetzen, pulsZustandSetzen, standSetzen } from "./laufstand.mjs";
+import { UMSETZUNG_WARTEN_MS, aufUmsetzungWarten, befundeZurueckUndVorschlagen, kitStandAbgeben, kitStandInBaum, prozessLaeuft,
   umsetzungLockNehmen, worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen } from "./kitstand.mjs";
 import { ENTSCHEIDUNGEN_NAME, OFFENE_FRAGEN_NAME, OFFENE_FRAGEN_UEBERSCHRIFT, PO_FRAGEN_NAME, PO_FRAGEN_UEBERSCHRIFT,
   abschnittLesen, leseKarte, wartetAufPush } from "./abhaengigkeiten.mjs";
@@ -93,7 +93,8 @@ export function ketteAnbinden(haken) {
  * Was der Lauf der Kette von aussen braucht, jeweils mit der echten Implementierung als
  * Vorgabe: `spawn` startet die Session einer Stufe und `spawnSync` fragt danach ihre
  * Prozessgruppe ab (beide gehen an `runSession`), `jetzt` und `schlaf` sind Uhr und Warten
- * (Budgets der Stufen, Bestaetigungsfrist des Beanspruchens), `board` und `boardRoh` die
+ * (Budgets der Stufen, Bestaetigungsfrist des Beanspruchens), `schlafen` das asynchrone
+ * Warten auf Umsetzungssperre und Vorbereitung, `board` und `boardRoh` die
  * Aufrufe des Board-Werkzeugs, `gitClean` und `gitReste` der Blick auf die Hauptkopie vor
  * der Umsetzung, `beenden` das Ende des Prozesses.
  *
@@ -106,6 +107,9 @@ export const KETTE_ABHAENGIGKEITEN = Object.freeze({
   spawnSync: SESSION_ABHAENGIGKEITEN.spawnSync,
   jetzt: () => new Date(),
   schlaf: (ms) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); },
+  // Das Warten ueber Minuten (Plan #1243, E8): asynchron, damit Puls-Takt, Abbruch-Handler
+  // und Laufmeldung waehrenddessen weiterlaufen. `schlaf` bleibt der Bestaetigungsfrist.
+  schlafen: (ms) => new Promise((r) => setTimeout(r, ms)),
   board,
   boardRoh,
   gitClean,
@@ -1473,7 +1477,7 @@ async function stufeUmsetzung(kette, paketIds) {
   const lock = await aufUmsetzungWarten({
     nehmen: () => umsetzungLockNehmen(kette.repoRoot),
     jetzt: Date.now,
-    schlafen: (ms) => new Promise((r) => setTimeout(r, ms)),
+    schlafen: abh.schlafen,
     budgetMs: lauf.budgetMs,
     standSetzen: (zustand, text) => ketteStand(kette, zustand, text),
   });
@@ -1638,6 +1642,88 @@ function haltAmAuftrag(kette, ergebnis) {
   // eine Frage wartet und kein technischer Abbruch vorliegt — auch wenn die Kette ausserhalb
   // einer Stufe anhielt.
   ketteStand(kette, "wartet", HALT_WARTET);
+}
+
+// --- Warten auf die Vorbereitung der Veroeffentlichung (Plan #1243, E8; Issue #1250) ---
+
+// Die Phase im Puls, solange ein Lauf in seiner Vorbereitung wartet. Ein solcher Lauf baut
+// nicht und zaehlt fuer andere Wartende nicht mit, sonst verklemmten sich zwei Vorbereitungen.
+const PHASE_VORBEREITUNG_WARTET = "vorbereitung-wartet";
+
+/**
+ * Die fremden Laeufe dieses Projekts, die gerade bauen: lebende Pulse unter `.claude/lauf/`,
+ * ohne den eigenen, ohne Prueflauf (`art: pruefung`, er baut nicht) und ohne einen Lauf, der
+ * selbst in seiner Vorbereitung wartet.
+ */
+function bauendeLaeufe(repoRoot) {
+  const ordner = join(repoRoot, LAUF_ORDNER);
+  if (!existsSync(ordner)) return [];
+  const bauend = [];
+  for (const name of readdirSync(ordner).filter((n) => n.endsWith(".puls")).sort(vergleicheText)) {
+    const lauf = name.slice(0, -".puls".length);
+    if (lauf === ZUSTAND.LAUF_STEMPEL) continue;
+    let puls;
+    try {
+      puls = JSON.parse(readFileSync(join(ordner, name), "utf-8"));
+    } catch {
+      continue;
+    }
+    if (puls?.art === "pruefung" || puls?.phase === PHASE_VORBEREITUNG_WARTET) continue;
+    if (laufLebt(repoRoot, lauf)) bauend.push(`${lauf} (Prozess ${puls.pid})`);
+  }
+  return bauend;
+}
+
+/**
+ * Wartet, bis in der Nacht nichts mehr baut (Kriterium 13): bis dieser Lauf die
+ * Umsetzungssperre haelt und kein fremder Lauf dieses Projekts mehr baut — im Takt der
+ * Umsetzungssperre, hoechstens `fristMin` (Vorgabe `vorbereitungMin` der Kette).
+ *
+ * Erst die Pulse, dann die Sperre, dann noch einmal die Pulse: Wer die Sperre haelt, waehrend
+ * er auf eine andere Kette wartet, hielte sie von ihrer Umsetzung ab, und ein Lauf, der
+ * zwischen erstem Blick und Sperre beginnt, faellt erst beim zweiten auf. Baut dann doch
+ * einer, geht die Sperre zurueck.
+ *
+ * Fuer die Dauer des Wartens steht `phase: vorbereitung-wartet` im eigenen Puls, danach nicht
+ * mehr, auch nach Fristablauf. Bei Erfolg kommt die Sperre wie aus `umsetzungLockNehmen`
+ * zurueck und bleibt gehalten; frei gibt sie der Aufrufer nach der Vorbereitung — so laufen
+ * zwei Vorbereitungen nacheinander. Nach Fristablauf `{ ok: false, grund }` ohne Sperre, ein
+ * Schreibfehler der Sperre kommt sofort zurueck.
+ */
+export async function aufVorbereitungWarten(kette, { fristMin = kette.budget?.vorbereitungMin ?? KETTE_BUDGET_DEFAULTS.vorbereitungMin } = {}) {
+  const fristMs = fristMin * 60 * 1000;
+  const start = abh.jetzt().getTime();
+  pulsZustandSetzen({ phase: PHASE_VORBEREITUNG_WARTET });
+  try {
+    for (;;) {
+      const versuch = vorbereitungVersuchen(kette.repoRoot);
+      if (versuch.lock) return versuch.lock;
+      const rest = fristMs - (abh.jetzt().getTime() - start);
+      if (rest <= 0) return { ok: false, grund: `${versuch.hindernis} — Frist ${fristMin} min fuer die Vorbereitung abgelaufen` };
+      await abh.schlafen(Math.min(UMSETZUNG_WARTEN_MS, rest));
+    }
+  } finally {
+    pulsZustandSetzen({ phase: undefined });
+  }
+}
+
+/**
+ * Ein Versuch von `aufVorbereitungWarten`: `{ lock }` mit der gehaltenen Sperre oder einem
+ * Schreibfehler, der nicht wartet, sonst `{ hindernis }` mit dem Grund, weiter zu warten.
+ */
+function vorbereitungVersuchen(repoRoot) {
+  const bauendText = (bauend) => `es baut noch: ${bauend.join(", ")}`;
+  let bauend = bauendeLaeufe(repoRoot);
+  if (bauend.length > 0) return { hindernis: bauendText(bauend) };
+  const lock = umsetzungLockNehmen(repoRoot);
+  if (!lock.ok) return lock.art === "belegt" ? { hindernis: lock.grund } : { lock };
+  bauend = bauendeLaeufe(repoRoot);
+  if (bauend.length > 0) {
+    lock.freigeben();
+    return { hindernis: bauendText(bauend) };
+  }
+  if (lock.hinweis) log(`  ${lock.hinweis}`);
+  return { lock };
 }
 
 // --- Der Nachtbericht am Fachplan (Plan #638, A10, A11; Issue #645) ---
