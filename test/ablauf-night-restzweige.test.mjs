@@ -20,10 +20,6 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { posixShell } from "./helpers/checks-repo.mjs";
 
-// Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
-// kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
-// parallelen Testdateien gegeneinander.
-import "./helpers/checks-sperre.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 

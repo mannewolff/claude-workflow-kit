@@ -130,9 +130,6 @@ test("ein gruener Lauf: Einrichtung, Referenzaenderung, gleichzeitiger Start und
       assert.deepEqual(eigene, ["npm ci", "node tools/sync-blobs.mjs", "node tools/sync-blobs.mjs", "node .claude/kit/checks.mjs run --abschluss --frisch"]);
       assert.match(beimStart.get(wt), /^export const x = 1;\n\n\/\/ lastbeleg: Referenzaenderung/);
     }
-    // Jeder Lauf hat seine eigene Sperre: Gemessen wird das Nebeneinander, nicht das Anstellen.
-    const sperren = a.aufrufe.filter((x) => x.art === "lauf").map((x) => x.env.KIT_CHECKS_LOCK);
-    assert.equal(new Set(sperren).size, 2);
 
     const { verzeichnis, json, md } = protokollVon(a.ablage);
     assert.match(verzeichnis, /^lastbeleg-\d{14}-\d+$/);

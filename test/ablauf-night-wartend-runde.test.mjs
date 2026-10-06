@@ -39,10 +39,6 @@ import { KETTE_ZUSATZ, REVIEW_REST_ANKER } from "../kit/night.mjs";
 // gleichen Namens (`setupProjekt`, `board`, `run`, `stand`) schon gehoeren.
 import * as kette from "./helpers/kette-ablauf.mjs";
 
-// Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
-// kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
-// parallelen Testdateien gegeneinander.
-import "./helpers/checks-sperre.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");

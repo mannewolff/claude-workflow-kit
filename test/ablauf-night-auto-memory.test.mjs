@@ -24,10 +24,6 @@ import {
   NIGHT, repoRoot, run as ketteRun, mitProjekt, fachplan, umgebung, VORFLUG_OK,
 } from "./helpers/kette-ablauf.mjs";
 
-// Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
-// kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
-// parallelen Testdateien gegeneinander.
-import "./helpers/checks-sperre.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 function run(cwd, cmd, cliArgs, env = {}) {

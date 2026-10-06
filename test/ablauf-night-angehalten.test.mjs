@@ -32,10 +32,6 @@ import { tmpdir } from "node:os";
 // Eine Abschrift im Test bliebe gruen, waehrend Skill und Runner auseinanderliefen.
 import { HALT_FOLGESATZ, KLAEREN_LABEL } from "../kit/night.mjs";
 
-// Ein eigener Sperrpfad je Testprozess (Issue #958): Dieser Test faehrt das echte
-// kit/checks.mjs, und ohne eigenen Pfad serialisierte die maschinenweite Sperre die
-// parallelen Testdateien gegeneinander.
-import "./helpers/checks-sperre.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");

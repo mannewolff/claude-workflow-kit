@@ -25,7 +25,6 @@ import {
   HALT_FOLGESATZ, KLAEREN_LABEL, GESCHUETZT_LABEL, GESCHUETZT_ANKER,
 } from "../kit/night.mjs";
 
-import "./helpers/checks-sperre.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");

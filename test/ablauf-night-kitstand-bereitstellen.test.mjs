@@ -16,8 +16,6 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 
-// Der Runner faehrt ueber die Sitzungen `checks.mjs run`: ein eigener Sperrpfad je Testprozess (Issue #958).
-import "./helpers/checks-sperre.mjs";
 
 import { KIT_STAND_MARKIERUNG } from "../kit/night/grundlagen.mjs";
 import { kitStandErmitteln, kitStandBereitstellen } from "../kit/night/kitstand.mjs";

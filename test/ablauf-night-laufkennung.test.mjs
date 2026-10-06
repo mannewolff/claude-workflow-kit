@@ -17,9 +17,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-// Ein eigener Sperrpfad je Testprozess (Issue #958): Die Salvage-Vorpruefung faehrt das
-// echte kit/checks.mjs.
-import "./helpers/checks-sperre.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 import { nachtlaufMeldung } from "../kit/board.mjs";
 

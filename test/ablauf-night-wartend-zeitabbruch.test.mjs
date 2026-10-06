@@ -32,8 +32,6 @@ import { tmpdir } from "node:os";
 
 import { ZEITLIMIT_ANKER, WARTEND_ANKER } from "../kit/night/wartend.mjs";
 
-// Die Sperre gegen echte Pflichtchecks aus einem Test heraus — wie in jedem night-Test.
-import "./helpers/checks-sperre.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");

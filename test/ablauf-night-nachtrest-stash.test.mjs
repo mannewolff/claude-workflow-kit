@@ -21,8 +21,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-// Eigener Sperrpfad je Testprozess (Issue #958): die Rettung faehrt das echte checks.mjs.
-import "./helpers/checks-sperre.mjs";
 import { UMSETZUNG_ERFOLG } from "./helpers/kette-ablauf.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 

@@ -16,9 +16,8 @@
  *   2. In jedem dieselbe Referenzaenderung uncommittet im Arbeitsbaum: eine Kommentarzeile in
  *      `--referenz`. Ohne sie saehe `checks.mjs` gegen `HEAD` ein leeres Paket.
  *   3. Je Runde startet in allen gleichzeitig `node .claude/kit/checks.mjs run --abschluss
- *      --frisch`. Jeder Lauf bekommt seinen eigenen Sperrpfad (`KIT_CHECKS_LOCK`): Gemessen
- *      wird das Nebeneinander, nicht das Anstellen an der rechnerweiten Sperre, die nach dem
- *      Beleg entfaellt (#1241).
+ *      --frisch`. Gemessen wird das Nebeneinander; eine rechnerweite Sperre, an der sich die
+ *      Laeufe anstellten, gibt es seit #1241 nicht mehr.
  *   4. Je Lauf Dauer und Ergebnis, dazu `os.loadavg()` alle 5 s.
  *   5. Eine rote Testdatei faehrt danach einmal allein. Ist sie allein gruen, steht sie als
  *      Wackelpruefung im Protokoll — der Lauf bleibt rot (E11): benennen, nicht wiederholen.
@@ -160,7 +159,7 @@ async function lastAbtasten(abh, fertig) {
 /** Ein Lauf: Dauer und Ergebnis; bei Rot die Testdateien, die allein gruen sind. */
 async function einLauf({ wt, nr, runde, verzeichnis, opt, abh }) {
   const start = abh.jetzt();
-  const env = { ...process.env, KIT_CHECKS_LOCK: join(verzeichnis, `sperre-lauf-${nr}.lock`) };
+  const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
   const { code, ausgabe } = await abh.starter({ art: "lauf", cwd: wt, cmd: LAUF_KOMMANDO, env });
   const dauerS = Math.round((abh.jetzt() - start) / 100) / 10;
