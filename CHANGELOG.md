@@ -2,6 +2,20 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [3.7.1] - 2026-10-06
+- Regeltext und Dokumentation beschreiben Ziel-Labels, planreview und die Vorbereitung der Veröffentlichung (#1255)
+- Die Nacht-Kette bereitet die Veröffentlichung am Ende des Laufs vor und meldet das Ergebnis an jeder Karte (#1254)
+- /push-main bereitet nachts ohne Push vor und übernimmt morgens einen unveränderten Stand (#1253)
+- Review-Stufe der Kette gibt planreview als KIT_PLAN_REVIEWER an die Session (#1252)
+- Laufstand und Nachtbericht zeigen Ziel, Projektgrenze und das Ende am Ziel (#1251)
+- Die Vorbereitung wartet befristet, bis in der Nacht nichts mehr baut (#1250)
+- Ziel einer Karte bestimmt Variante und Ende der Nacht-Kette (#1249)
+- Laufmeldung traegt releasePreparation und meldet nach einer Abweisung ohne das Feld nach (#1248)
+- Uebergang umsetzungVorbereitung und Frist vorbereitungMin in Runner, Schema und Einstellungen (#1247)
+- worktree.mjs haelt eine vorbereitete Veroeffentlichung fest und prueft morgens ihre Uebernahme (#1246)
+- issue-review roles uebernimmt die Prueferzahl der Stufe plan aus KIT_PLAN_REVIEWER (#1245)
+- Auswahl der Nacht-Kette liest Ziel und Prueferzahl und lehnt unpassende Einstellungen ab (#1244)
+
 ## [3.7.0] - 2026-10-06
 - CI unter Node 20 und Windows wieder gruen nach der Nacht-Zerlegung (#1261)
 - Rechnerweite Pruefsperre entfernt (#1241)
