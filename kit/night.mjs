@@ -174,6 +174,12 @@ Flags:
                      eigenen Worktree, mit Nachtbericht am Fachplan. Ein zweites Label
                      aus night.kette.varianteBLabel (Default kit:durchziehen) waehlt
                      Variante B statt Variante A; ohne dieses Label laeuft Variante A.
+                     Ein Ziel-Label bestimmt, wo die Kette endet: ziel:plan, ziel:pakete,
+                     ziel:umsetzung oder ziel:push-vorbereitet. planreview:1 oder
+                     planreview:2 an der Anforderung legt fest, wie viele Modelle den
+                     Plan pruefen. Mit ziel:push-vorbereitet folgt nach allen Ketten
+                     einmal die Stufe vorbereitung: /push-main vorbereiten, ohne Push,
+                     Ergebnis in .claude/push-vorbereitung.json und als Nachtbericht.
                      --max zaehlt Ketten (Default 3); --label gilt hier nicht, das
                      Label kommt aus der Config. Budgets in night.kette.
   --pruefen          Prueflauf am Tag statt Implementierung: je [Fachlich]-Issue mit dem

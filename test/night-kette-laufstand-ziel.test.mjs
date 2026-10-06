@@ -11,7 +11,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { REVIEW_FERTIG_LABEL } from "../kit/night/kette.mjs";
-import { ketteImProzess, fachplanKarte, planKarte, planBody, paketBody, KETTE_LABEL, GLATT } from "./helpers/kette-fixture.mjs";
+import { ketteImProzess, fachplanKarte, planKarte, planBody, paketBody, jeStufe, vorbereitungAblegen, KETTE_LABEL, GLATT } from "./helpers/kette-fixture.mjs";
 
 const F = "1";
 const P = "2";
@@ -67,8 +67,10 @@ test("E5: ziel:pakete endet mit fertig bis pakete, ohne planreview:* keine Zeile
 });
 
 test("E5: ziel:umsetzung und ziel:push-vorbereitet enden mit fertig bis und ihrem Satz", async () => {
+  // push-vorbereitet endet erst nach der Vorbereitung des Laufs (Issue #1254), die die Datei ablegt.
+  const sitzung = jeStufe({ vorbereitung: vorbereitungAblegen() });
   for (const ziel of ["umsetzung", "push-vorbereitet"]) {
-    const r = await ketteImProzess({ karten: bisAbdeckungVorhanden(fachMit(`ziel:${ziel}`)), sitzung: GLATT, kette: { uebergaenge: { abdeckungUmsetzung: true } } });
+    const r = await ketteImProzess({ karten: bisAbdeckungVorhanden(fachMit(`ziel:${ziel}`)), sitzung, kette: { uebergaenge: { abdeckungUmsetzung: true } } });
     assert.equal(r.code, 0, r.ausgabe);
     assert.ok(letzterStand(r).startsWith(`fertig bis ${ziel}\n${ALS_NAECHSTES[ziel]}\n\nZiel: ${ziel}\n`), letzterStand(r));
   }

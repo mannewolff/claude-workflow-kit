@@ -1019,6 +1019,12 @@ export function gitResteAusnahmen(cfg = ZUSTAND.config) {
     // Ein wartender Nachtbericht (Issue #645) liegt in der Hauptkopie, bis der Tracker ihn
     // annimmt — Protokoll-Zustand wie `night-run-*`, und aus demselben Grund hier ausgeschlossen.
     ".claude/night-bericht-*",
+    // Die vorbereitete Veroeffentlichung (Plan #1243, A6; Issue #1254) liegt in der
+    // Hauptkopie, bis `/push-main` sie morgens uebernimmt oder verwirft — Protokoll-Zustand
+    // wie der wartende Nachtbericht darueber, und aus demselben Grund hier ausgeschlossen.
+    // SYNC: derselbe Pfad steckt als VORBEREITUNG_DATEI in kit/night/kitstand.mjs, das von
+    // diesem Teil importiert; ein Rueckimport waere ein Zyklus.
+    ".claude/push-vorbereitung.json",
     // Der Umsetzungs-Lock (Issue #696) liegt waehrend jeder Umsetzung in der Hauptkopie:
     // Laufzeit-Zustand, kein Code-Zustand. Der Ausschluss steht hier aus demselben Grund wie
     // das Protokoll darueber — nachgewiesen, nicht angenommen: Ohne ihn stoppte der

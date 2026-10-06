@@ -37,7 +37,7 @@ import { ZUSTAND, NACHBAR_DIR, log, board, boardRoh, einheitAnlegen, einheitErga
   vermerkeOhneArbeit } from "./grundlagen.mjs";
 import { ABBRUCH_BUDGET_MS, LAUF_KONTEXT, LAUF_ORDNER, RECHNER, abgeben, exitText, journalLesen, laufAnhalten,
   laufLebt, laufPositionSetzen, pulsZustandSetzen, standSetzen } from "./laufstand.mjs";
-import { UMSETZUNG_WARTEN_MS, aufUmsetzungWarten, befundeZurueckUndVorschlagen, kitStandAbgeben, kitStandInBaum, prozessLaeuft,
+import { UMSETZUNG_WARTEN_MS, VORBEREITUNG_DATEI, aufUmsetzungWarten, befundeZurueckUndVorschlagen, kitStandAbgeben, kitStandInBaum, prozessLaeuft,
   umsetzungLockNehmen, worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen } from "./kitstand.mjs";
 import { ENTSCHEIDUNGEN_NAME, OFFENE_FRAGEN_NAME, OFFENE_FRAGEN_UEBERSCHRIFT, PO_FRAGEN_NAME, PO_FRAGEN_UEBERSCHRIFT,
   abschnittLesen, leseKarte, wartetAufPush } from "./abhaengigkeiten.mjs";
@@ -45,7 +45,7 @@ import { flatten, kennzahlenAddieren, ketteBudgetDefaults, kostenAddieren, KETTE
   ladeKetteUebergaenge, ladePruefLaufBudget, leseErgebnisText, leseKennzahlen, neueKommentare, runSession,
   KETTE_ZIELE, PLANREVIEW_LABELS, pruefreihenVon, SESSION_ABHAENGIGKEITEN, varianteVon, zielVon, ZIEL_LABEL_PRAEFIX } from "./session.mjs";
 import { berichtFuerKette, berichtSchreiben, hatPlanReviewMarker, kommentareVon, planReviewWert,
-  pruefBericht } from "./bericht.mjs";
+  pruefBericht, vorbereitungsBericht } from "./bericht.mjs";
 import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, geschuetztAmBoardVermerken, hatKlaerenLabel, laufeRunde,
   pruefeIssueGates, rundenMerker, wartendVermerk, wartendeSession } from "./wartend.mjs";
 
@@ -1733,6 +1733,94 @@ function vorbereitungVersuchen(repoRoot) {
   return { lock };
 }
 
+// --- Die Vorbereitung der Veroeffentlichung (Plan #1243, A4, A5, A6, E12, E17; Issue #1254) ---
+
+// Der Auftrag der Session: der Modus `vorbereiten` von /push-main (#1253). Er legt seinen
+// Worktree selbst an und haelt das Ergebnis ueber `worktree.mjs vorbereitung-festhalten` fest.
+const VORBEREITUNG_PROMPT = "/push-main vorbereiten";
+
+/** Das Ergebnis einer Vorbereitung, die keinen Stand dieses Laufs festhielt. */
+const nichtVorbereitet = (grund) => ({ ergebnis: "nicht-vorbereitet", grund });
+
+/**
+ * Liest `.claude/push-vorbereitung.json` aus der Hauptkopie und prueft, dass sie aus diesem
+ * Lauf stammt: dieselbe Laufkennung (`KIT_NIGHT_RUN`, der `start` des Ergebnisstands) und ein
+ * Zeitpunkt nicht vor dem Beginn der Vorbereitung. Fehlt sie oder ist sie fremd, heisst das
+ * Ergebnis `nicht-vorbereitet` mit Grund — eine Datei aus einer frueheren Nacht ist keine
+ * Aussage ueber diesen Stand.
+ */
+function vorbereitungLesen(repoRoot, seit) {
+  let daten;
+  try {
+    daten = JSON.parse(readFileSync(join(repoRoot, ...VORBEREITUNG_DATEI.split("/")), "utf-8"));
+  } catch {
+    return nichtVorbereitet(`${VORBEREITUNG_DATEI} fehlt oder ist unlesbar — die Session hat keinen Stand festgehalten`);
+  }
+  const laufId = ZUSTAND.LAUF?.start ?? null;
+  if (daten?.laufId !== laufId) {
+    return nichtVorbereitet(`${VORBEREITUNG_DATEI} stammt aus einem anderen Lauf (laufId ${daten?.laufId ?? "keine"}, erwartet ${laufId})`);
+  }
+  const zeit = Date.parse(daten.zeitpunkt);
+  if (Number.isNaN(zeit) || zeit < seit.getTime()) {
+    return nichtVorbereitet(`${VORBEREITUNG_DATEI} traegt den Zeitpunkt ${daten.zeitpunkt ?? "keiner"}, vor dem Beginn der Vorbereitung um ${seit.toISOString()}`);
+  }
+  return daten;
+}
+
+/**
+ * Wartet, faehrt die Session und liest ihr Ergebnis — alles innerhalb von `fristMin` ab
+ * `start` (E8: Warten und Pruefung eingeschlossen). Die Umsetzungssperre haelt sie vom Ende
+ * des Wartens bis nach dem Lesen und gibt sie in jedem Fall frei, auch nach einem Wurf.
+ */
+async function vorbereitungFahren(kette, start, fristMin) {
+  const lock = await aufVorbereitungWarten(kette, { fristMin });
+  if (!lock.ok) return nichtVorbereitet(lock.grund);
+  try {
+    // In der Hauptkopie (A5): Den Worktree legt der Skill an. KIT_NIGHT_RUN und KIT_STAND
+    // setzt `runSession` wie fuer jede Session, ohne eigenes `extraEnv` (A6).
+    const session = await ketteSession({ ...kette, wt: kette.repoRoot }, "vorbereitung", VORBEREITUNG_PROMPT, start.getTime(), fristMin * 60 * 1000);
+    const daten = vorbereitungLesen(kette.repoRoot, start);
+    if (daten.ergebnis === "nicht-vorbereitet" && session.ausgang !== "fertig") return nichtVorbereitet(`${session.grund}; ${daten.grund}`);
+    return daten;
+  } catch (e) {
+    return nichtVorbereitet(`technischer Fehler: ${e.message}`);
+  } finally {
+    lock.freigeben();
+  }
+}
+
+/**
+ * Die Stufe `vorbereitung` des Laufs (A4): einmal nach allen Ketten, fuer alle Ketten, deren
+ * Umsetzung mit Ziel `push-vorbereitet` fertig wurde. Sie wartet, bis nichts mehr baut, faehrt
+ * die Session `/push-main vorbereiten` in der Hauptkopie und prueft deren Datei. Jede
+ * ausloesende Karte bekommt die Stufenzeilen im Laufstand und einen eigenen Nachtbericht
+ * `— Vorbereitung` mit derselben Meldung (E12); das Ergebnis steht als `vorbereitung` im
+ * Ergebnisstand. Ein `gruen-offen` mit dem Build-Dienst-Punkt geht unveraendert weiter, und
+ * gepusht wird nie (E17).
+ */
+export async function vorbereitungLaufen(ketten) {
+  const erste = ketten[0];
+  const start = abh.jetzt();
+  const fristMin = erste.budget?.vorbereitungMin ?? KETTE_BUDGET_DEFAULTS.vorbereitungMin;
+  const karten = ketten.map((k) => String(k.karte.id));
+  log(`Vorbereitung der Veroeffentlichung fuer ${karten.map((id) => "#" + id).join(", ")}: hoechstens ${fristMin} min, Warten eingeschlossen.`);
+  for (const k of ketten) stufeBeginnt(k, "vorbereitung", k.karte.id);
+  const vorbereitung = { ...(await vorbereitungFahren(erste, start, fristMin)), karten };
+  const vorbereitet = vorbereitung.ergebnis !== "nicht-vorbereitet";
+  const grund = vorbereitung.grund ? ` — ${vorbereitung.grund}` : "";
+  log(`  Vorbereitung: ${vorbereitung.ergebnis}${grund}.`);
+  for (const k of ketten) {
+    stufeEndet(k, "vorbereitung", k.karte.id, vorbereitet ? { ausgang: "fertig" } : { ausgang: "abgebrochen", grund: vorbereitung.grund });
+    if (vorbereitet) log(`  Ziel ${k.ziel} erreicht nach vorbereitung — #${k.karte.id}.`);
+    // Mit eigenem Stempel: Ein wartender Bericht der Kette liegt sonst unter demselben Namen.
+    berichtSchreiben(String(k.karte.id), vorbereitungsBericht(k.karte, vorbereitung),
+      { stempel: `${ZUSTAND.LAUF_STEMPEL}-vorbereitung`, repoRoot: k.repoRoot });
+  }
+  if (ZUSTAND.LAUF) ZUSTAND.LAUF.vorbereitung = vorbereitung;
+  schreibeErgebnisstand();
+  return vorbereitung;
+}
+
 // --- Der Nachtbericht am Fachplan (Plan #638, A10, A11; Issue #645) ---
 //
 // Der Bericht selbst steht seit Issue #1230 im Teil kit/night/bericht.mjs (Plan #1199,
@@ -2152,8 +2240,8 @@ function vorDerUmsetzung(kette, abdeckung) {
 
 /**
  * Endet die Kette nach `stufe` an ihrem Ziel (Plan #1243, A2)? Dann Ausgang `fertig` mit
- * dem Vermerk `zielErreicht`, sonst `null`. Ohne Ziel nie. `push-vorbereitet` endet, bis
- * die Stufe `vorbereitung` gebaut ist, nach `umsetzung` wie `umsetzung`.
+ * dem Vermerk `zielErreicht`, sonst `null`. Ohne Ziel nie. `push-vorbereitet` endet nach
+ * der Stufe `vorbereitung`, die der Lauf nach allen Ketten faehrt (`vorbereitungLaufen`).
  */
 function amZiel(kette, stufe) {
   if (!endetAmZiel(kette, stufe)) return null;
@@ -2165,7 +2253,20 @@ function amZiel(kette, stufe) {
 function endetAmZiel(kette, stufe) {
   if (!kette.ziel) return false;
   const endstufe = KETTE_ZIELE.find((z) => z.ziel === kette.ziel)?.endstufe;
-  return endstufe === stufe || (stufe === "umsetzung" && endstufe === "vorbereitung");
+  return endstufe === stufe;
+}
+
+/**
+ * Nach der fertigen Umsetzung (Plan #1243, A4, E7): Mit Ziel `push-vorbereitet` meldet die
+ * Kette `vorbereitung: true` — die Stufe selbst laeuft einmal je Lauf nach allen Ketten —,
+ * oder sie wartet vor einem im Projekt gesperrten Uebergang. Sonst endet sie wie bisher.
+ */
+function nachDerUmsetzung(kette, umsetzung) {
+  if (KETTE_ZIELE.find((z) => z.ziel === kette.ziel)?.endstufe !== "vorbereitung") {
+    return amZiel(kette, "umsetzung") ?? { ausgang: "fertig" };
+  }
+  if (uebergangGesperrt(kette, "umsetzungVorbereitung", umsetzung)) return anDerGrenze(kette, "vorbereitung", "umsetzungVorbereitung");
+  return { ausgang: "fertig", vorbereitung: true };
 }
 
 /** Endet die Kette nach `review`: am Ziel `plan` oder vor einem gesperrten Uebergang zu `pakete`. */
@@ -2265,7 +2366,7 @@ async function stufenDerKette(kette) {
     },
   });
   if (umsetzung.ausgang !== "fertig") return { ...umsetzung, stufe: "umsetzung" };
-  return amZiel(kette, "umsetzung") ?? { ausgang: "fertig" };
+  return nachDerUmsetzung(kette, umsetzung);
 }
 
 /**
@@ -2315,8 +2416,11 @@ function ketteBeginnen(kette, auftrag, nummer, args) {
 /**
  * Eine Kette zu einem Auftrag: Label verbrauchen, Worktree, Stufen, Einheit.
  *
- * Rueckgabe ist der Ausgang der Kette. Der Worktree wird in jedem Fall entfernt — auch
- * nach einem Wurf mitten in einer Stufe; ein liegengebliebener raeumt der naechste Start.
+ * Rueckgabe ist `{ ausgang, vorbereitung, kette }` (Plan #1243, Plan-Review Runde 2, Fund 2):
+ * der Ausgang der Kette, ob sie die Vorbereitung des Laufs ausloest, und die Kette selbst,
+ * deren Karte und Laufstand die Vorbereitung danach fortschreibt. Der Worktree wird in jedem
+ * Fall entfernt — auch nach einem Wurf mitten in einer Stufe; ein liegengebliebener raeumt
+ * der naechste Start.
  */
 async function laufeEineKette(auftrag, nummer, args) {
   const karte = auftrag.karte;
@@ -2400,7 +2504,7 @@ async function laufeEineKette(auftrag, nummer, args) {
   }
   const zusatz = ergebnis.grund ? ` — ${ergebnis.grund}` : "";
   log(`  Kette zu Issue #${F}: ${ergebnis.ausgang}${zusatz} (${kette.kosten.kostenSumme.toFixed(2)} $).`);
-  return ergebnis.ausgang;
+  return { ausgang: ergebnis.ausgang, vorbereitung: ergebnis.vorbereitung === true, kette };
 }
 
 /** Ziel und Projektgrenze fuer die Einheit, nur wenn gesetzt (E5, E6): Ohne Ziel bleibt der Bericht wie bisher. */
@@ -2576,6 +2680,25 @@ export async function laufeKette(args, abhaengigkeiten = {}) {
   }
 }
 
+/**
+ * Die Ketten nacheinander, danach einmal die Vorbereitung fuer die, die sie ausloesen
+ * (Plan #1243, A4) — erst dann baut dieser Runner nichts mehr. Rueckgabe sind die Ausgaenge
+ * gezaehlt.
+ */
+async function kettenUndVorbereitung(auftraege, args) {
+  const zaehler = Object.fromEntries(KETTE_AUSGAENGE.map((a) => [a, 0]));
+  const ausloesend = [];
+  let nummer = 0;
+  for (const auftrag of auftraege) {
+    nummer++;
+    const { ausgang, vorbereitung, kette } = await laufeEineKette(auftrag, nummer, args);  // NOSONAR S9382: Ketten laufen einzeln, sonst raeumen sie sich die Worktrees weg
+    zaehler[ausgang]++;
+    if (vorbereitung) ausloesend.push(kette);
+  }
+  if (ausloesend.length > 0) await vorbereitungLaufen(ausloesend);
+  return zaehler;
+}
+
 async function ketteFahren(args) {
   const budget = KETTE_BUDGET;
   const repoRoot = process.cwd();
@@ -2632,13 +2755,7 @@ async function ketteFahren(args) {
     return abh.beenden(0);
   }
 
-  const zaehler = Object.fromEntries(KETTE_AUSGAENGE.map((a) => [a, 0]));
-  let nummer = 0;
-  for (const auftrag of auftraege) {
-    nummer++;
-    const ausgang = await laufeEineKette(auftrag, nummer, args);  // NOSONAR S9382: Ketten laufen einzeln, sonst raeumen sie sich die Worktrees weg
-    zaehler[ausgang]++;
-  }
+  const zaehler = await kettenUndVorbereitung(auftraege, args);
   log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.unvollstaendig} unvollstaendig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length} uebersprungen, ${liegengeblieben.length} liegengeblieben, ${NICHT_BEGONNEN_GESAMT} Paket(e) nicht begonnen.`);
   log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Nach Variante A liegen die Pakete morgens in Backlog; Variante B (Label '${budget.varianteBLabel}') hat sie in derselben Nacht umgesetzt, sie stehen dann in In review. Protokoll: ${ZUSTAND.LOG_FILE}`);
   anbindung.laufAbschliessen("regulaer");

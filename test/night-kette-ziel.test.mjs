@@ -14,7 +14,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { KETTE_ZIEL_ANKER, REVIEW_FERTIG_LABEL, ZIEL_UNPASSEND_PRAEFIX, waehleKettenKandidaten, zielAusschluss } from "../kit/night/kette.mjs";
-import { ketteImProzess, fachplanKarte, planKarte, planBody, paketBody, KETTE_LABEL, GLATT } from "./helpers/kette-fixture.mjs";
+import { ketteImProzess, fachplanKarte, planKarte, planBody, paketBody, jeStufe, vorbereitungAblegen, KETTE_LABEL, GLATT } from "./helpers/kette-fixture.mjs";
 
 const fach = (...labels) => ({ id: "1", title: "[Fachlich] Anliegen", labels: [KETTE_LABEL, ...labels] });
 const plan = (...labels) => ({ id: "2", title: "[Plan] Weg", labels: [KETTE_LABEL, ...labels] });
@@ -215,17 +215,27 @@ test("A2: ziel:pakete endet auch bei abdeckungUmsetzung: true mit fertig statt z
   assert.match(r.ausgabe, /Ziel pakete erreicht nach abdeckung/);
 });
 
-test("A2: ziel:umsetzung und ziel:push-vorbereitet enden nach umsetzung mit fertig", async () => {
-  for (const ziel of ["umsetzung", "push-vorbereitet"]) {
-    const r = await ketteImProzess({ karten: bisAbdeckungVorhanden(fachMit(`ziel:${ziel}`)), sitzung: GLATT, kette: { uebergaenge: { abdeckungUmsetzung: true } } });
-    assert.equal(r.code, 0, r.ausgabe);
-    assert.deepEqual(r.sitzungen, []);
-    const einheit = einheitVon(r, F);
-    assert.equal(einheit.variante, "B", ziel);
-    assert.equal(einheit.ausgang, "fertig", einheit.grund);
-    assert.equal(einheit.stufen.umsetzung.vorgefunden, true, ziel);
-    assert.match(r.ausgabe, new RegExp(`Ziel ${ziel} erreicht nach umsetzung`));
-  }
+test("A2: ziel:umsetzung endet nach umsetzung mit fertig", async () => {
+  const r = await ketteImProzess({ karten: bisAbdeckungVorhanden(fachMit("ziel:umsetzung")), sitzung: GLATT, kette: { uebergaenge: { abdeckungUmsetzung: true } } });
+  assert.equal(r.code, 0, r.ausgabe);
+  assert.deepEqual(r.sitzungen, []);
+  const einheit = einheitVon(r, F);
+  assert.equal(einheit.variante, "B");
+  assert.equal(einheit.ausgang, "fertig", einheit.grund);
+  assert.equal(einheit.stufen.umsetzung.vorgefunden, true);
+  assert.match(r.ausgabe, /Ziel umsetzung erreicht nach umsetzung/);
+});
+
+test("A2: ziel:push-vorbereitet endet nach der Vorbereitung des Laufs mit fertig (Issue #1254)", async () => {
+  const r = await ketteImProzess({ karten: bisAbdeckungVorhanden(fachMit("ziel:push-vorbereitet")), sitzung: jeStufe({ vorbereitung: vorbereitungAblegen() }), kette: { uebergaenge: { abdeckungUmsetzung: true } } });
+  assert.equal(r.code, 0, r.ausgabe);
+  assert.deepEqual(stufenVon(r), ["vorbereitung"]);
+  const einheit = einheitVon(r, F);
+  assert.equal(einheit.variante, "B");
+  assert.equal(einheit.ausgang, "fertig", einheit.grund);
+  assert.equal(einheit.stufen.umsetzung.vorgefunden, true);
+  assert.doesNotMatch(r.ausgabe, /Ziel push-vorbereitet erreicht nach umsetzung/);
+  assert.match(r.ausgabe, /Ziel push-vorbereitet erreicht nach vorbereitung/);
 });
 
 test("A3: kit:durchziehen plus ziel:plan laeuft bis zur Umsetzung", async () => {

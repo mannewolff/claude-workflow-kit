@@ -32,7 +32,7 @@ import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 
 import { ZUSTAND, NACHBAR_CHECKS, log, boardRoh, vergleicheText } from "./grundlagen.mjs";
-import { pidAusInhalt, prozessLaeuft, kitStandZeile } from "./kitstand.mjs";
+import { VORBEREITUNG_DATEI, pidAusInhalt, prozessLaeuft, kitStandZeile } from "./kitstand.mjs";
 import { abschnittLesen, leseKarte } from "./abhaengigkeiten.mjs";
 import { endlicheZahl, lesePruefung, paketstufenChecks, runBuildChecksSync,
   LOKALER_KOMMENTARKOPF } from "./session.mjs";
@@ -762,6 +762,49 @@ export function berichtBauen(einheit, {
   }
   if (kitStand) z.push(kitStandZeile(kitStand), "");
   z.push(BERICHT_SCHLUSS, "");
+  return z.join("\n");
+}
+
+// Die Ergebnisse der Vorbereitung im Wortlaut des Fachplans (#1192, Kriterium 16).
+const VORBEREITUNG_ERGEBNIS_TEXT = Object.freeze({
+  gruen: "grün", "gruen-offen": "grün, Prüfung offen", rot: "rot", "nicht-vorbereitet": "nicht vorbereitet",
+});
+
+const kartenListe = (ids) => ((ids ?? []).length > 0 ? ids.map((id) => `#${id}`).join(", ") : "keine");
+
+/**
+ * Der eigene Nachtbericht der Vorbereitung an einer ausloesenden Karte (Plan #1243, E12;
+ * Issue #1254): Ergebnis, gepruefter Stand, Pakete, offene Pruefungen samt Build-Dienst-Punkt
+ * (E17) und eine rote Pruefung mit ihren Verursachern. `vorbereitung` hat die Form von
+ * `.claude/push-vorbereitung.json`; bei `nicht-vorbereitet` traegt sie nur `grund`. Der
+ * Bericht der Kette bleibt unberuehrt — er steht zu diesem Zeitpunkt schon an der Karte.
+ * Die Karte nennt der Text nicht: Er steht an ihr, und die Meldung gilt dem ganzen Stand.
+ */
+export function vorbereitungsBericht(_karte, vorbereitung, { stempel = ZUSTAND.LAUF_STEMPEL } = {}) {
+  const v = vorbereitung ?? {};
+  const ergebnis = VORBEREITUNG_ERGEBNIS_TEXT[v.ergebnis] ?? String(v.ergebnis);
+  const z = [`${BERICHT_ANKER} ${stempel ?? "ohne Stempel"} — Vorbereitung`, ""];
+  const releaseText = v.releaseDateien ? `bereit (v${v.version})` : "nicht erzeugt";
+  z.push("### Ergebnis", "", v.grund ? `${ergebnis} — ${v.grund}` : ergebnis, "");
+  if (v.ergebnis !== "nicht-vorbereitet") {
+    z.push("### Geprüfter Stand", "",
+      `- Commit: ${v.commit ?? "unbekannt"} (Basis ${v.basis ?? "unbekannt"}, origin/main-Stand ${v.origin ?? "unbekannt"})`,
+      `- Versionsvermerk und Änderungsnotiz: ${releaseText}`,
+      `- Abgleich mit origin: ${v.fetch === "fehlgeschlagen" ? "fehlgeschlagen, geprüft gegen den vorhandenen Stand" : "ok"}`,
+      `- Zeitpunkt: ${v.zeitpunkt ?? "unbekannt"}`,
+      ...(v.abweichung ? [`- Abweichung: ${v.abweichung}`] : []),
+      "",
+      "### Pakete im Stand", "", kartenListe(v.pakete), "",
+      "### Offene Prüfungen", "", ...((v.offen ?? []).length > 0 ? v.offen.map((o) => `- ${o}`) : ["- keine"]), "");
+    if (v.rot) {
+      z.push("### Rote Prüfung", "",
+        `- Prüfung: ${v.rot.pruefung ?? "unbekannt"}`,
+        `- Verursacher: ${kartenListe(v.rot.karten)}`,
+        ...(v.rot.hinweis ? [`- Hinweis: ${v.rot.hinweis}`] : []),
+        "");
+    }
+  }
+  z.push(`Die Meldung gilt dem ganzen Stand und steht auch in ${VORBEREITUNG_DATEI}. Gepusht wurde nichts.`, "");
   return z.join("\n");
 }
 
