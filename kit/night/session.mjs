@@ -32,6 +32,10 @@ import { ZUSTAND, NACHBAR_CHECKS, CHECKS_PATH, DEFAULT_MODEL, log,
   salvageSauberkeitsKommando } from "./grundlagen.mjs";
 import { pulsSchreiben, zweiterVersuch, sitzungsStartGescheitert, exitText } from "./laufstand.mjs";
 import { kitStandUmgebung, laufKennungUmgebung } from "./kitstand.mjs";
+// Die Variablen, die der Runner seinen Sessions setzt (Issue #1282). Die Liste steht in einem
+// eigenen Blatt-Modul, weil checks.mjs sie liest und dieser Teil checks.mjs laedt.
+import { LAUF_VARIABLEN, ohneLaufVariablen } from "./laufvariablen.mjs";
+export { LAUF_VARIABLEN, ohneLaufVariablen };
 
 // Der Ort der Pruef-Zusammenfassung kommt aus checks.mjs und wird NICHT nachgerechnet (Issue
 // #428). Bedingt und mit werfendem Ersatz wie im Einstieg: Fehlt der Nachbar, wirft der Stub
@@ -1901,9 +1905,9 @@ export function settingsEnv(wurzel = process.cwd()) {
 // kein Blocker fuer die Salvage-Entscheidung. Die Kindprozess-Umgebung bekommt
 // zusaetzlich den env-Block aus .claude/settings.json gemergt (siehe settingsEnv).
 // Umgebung fuer die eigenen Kindprozesse (Vorpruefung und Format-Fix): process.env
-// plus der gemergte settings-env-Block.
+// plus der gemergte settings-env-Block, ohne die Variablen eines Laufs (Issue #1282).
 function checkEnv() {
-  return { ...process.env, ...settingsEnv() };
+  return { ...ohneLaufVariablen(process.env), ...settingsEnv() };
 }
 
 /**

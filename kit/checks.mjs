@@ -128,6 +128,10 @@ import { createHash } from "node:crypto";
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
 const KIT_VERSION = "3.8.0";
 
+// Die Variablen, die der Nacht-Runner seinen Sessions setzt (Issue #1282), aus dem Blatt-Modul
+// neben session.mjs. Fehlt der Nachbar, bleibt die Umgebung, wie sie ist.
+const { ohneLaufVariablen = (env) => ({ ...env }) } = await import("./night/laufvariablen.mjs").catch(() => ({}));
+
 // --- Aufrufumgebung ----------------------------------------------------------
 
 /**
@@ -2825,7 +2829,9 @@ async function ausfuehren(args) {
   // bisherige Summe der Karte.
   const vorige = vorigeZusammenfassung();
   const auswahl = planen(args);
-  const env = { ...umgebungsVariablen(), ...settingsEnv() };
+  // Ohne die Variablen des Nachtlaufs (Issue #1282): Was ein Pruefkommando misst, haengt
+  // nicht davon ab, ob es nachts laeuft. settings.json und die Kommandozeile setzen weiter.
+  const env = { ...ohneLaufVariablen(umgebungsVariablen()), ...settingsEnv() };
 
   // VOR dem ersten Kommando (Issue #469): Der Hash bezeugt den Inhalt, der in die
   // Pruefung ging. Danach gehasht, bescheinigte er einen Stand, den kein Check
