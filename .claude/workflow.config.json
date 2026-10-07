@@ -544,6 +544,7 @@
     ],
     "nacht-session": [
       "kit/night/session.mjs",
+      "kit/night/laufvariablen.mjs",
       "test/night-session-*.test.mjs",
       "test/helpers/session-attrappe.mjs"
     ],

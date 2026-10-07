@@ -48,13 +48,17 @@ test("der Lebenszyklus-Eintrag nennt beide Dokumentarten", () => {
   assert.match(eintrag, /Plandokument/, "die Plandokumente fehlen");
 });
 
-test("der Lebenszyklus-Eintrag nennt beide Board-Wege als Bewegung des Menschen", () => {
+// Plan #1283 (Issue #1284): Done bleibt Geste des Menschen, nach In review zieht das
+// Kit die Ursprungsdokumente, sobald der Plan durch ist. Die Klammer entfaellt.
+test("der Lebenszyklus-Eintrag nennt Done als Geste des Menschen und In review als Zug des Kits", () => {
   const eintrag = lebenszyklusEintrag(DOKU);
   assert.match(eintrag, /Mensch/, "wer die Karte bewegt, steht nicht da");
   assert.match(eintrag, /Backlog/, "die Ausgangsspalte fehlt");
-  assert.match(eintrag, /direkt nach Done/i, "der direkte Weg nach Done fehlt");
-  assert.match(eintrag, /In review/, "der Weg ueber In review als Klammer fehlt");
-  assert.match(eintrag, /gleichwertig/i, "die Gleichwertigkeit der beiden Wege steht nicht da");
+  assert.match(eintrag, /nach Done/, "der Weg nach Done fehlt");
+  assert.match(eintrag, /alles gebaut, Review dran/, "die Bedeutung von In review fehlt");
+  assert.match(eintrag, /In review[^.]*setzt das Kit/, "dass das Kit In review setzt, steht nicht da");
+  assert.doesNotMatch(eintrag, /Klammer/, "der Eintrag nennt noch die Klammer");
+  assert.doesNotMatch(eintrag, /gleichwertig/i, "der Eintrag nennt noch zwei gleichwertige Wege");
 });
 
 // Die Falle des Verfahrens: Die Nacht-Kette (`night.mjs --kette`) liest ausschliesslich
@@ -102,8 +106,18 @@ for (const [name, inhalt] of beide) {
     assert.ok(absatz, "kein Plandokumente-Absatz gefunden");
     assert.match(absatz, /Mensch/, "der Mensch als alleiniger Akteur fehlt");
     assert.match(absatz, /Done/, "Done wird nicht erwaehnt");
-    assert.match(absatz, /In review/, "die Klammer in In review fehlt");
+    assert.match(absatz, /In review/, "In review fehlt");
     assert.match(absatz, /Arbeitspakete/, "der Bezug auf die Arbeitspakete fehlt");
+  });
+
+  test(`${name}: In review zieht das Kit, wenn der Plan durch ist — keine Klammer mehr`, () => {
+    const absatz = planAbsatz(inhalt);
+    assert.match(absatz, /Done setzt der Mensch/, "Done als Geste des Menschen fehlt");
+    assert.match(absatz, /zieht das Kit/, "der Zug des Kits nach In review fehlt");
+    assert.match(absatz, /Plan durch ist/, "die Bedingung (Plan durch) fehlt");
+    assert.match(absatz, /alles gebaut, Review dran/, "die Bedeutung von In review fehlt");
+    assert.doesNotMatch(absatz, /Klammer/, "der Absatz nennt noch die Klammer");
+    assert.doesNotMatch(absatz, /kein Skill bewegt es von selbst/, "der alte Satz steht noch da");
   });
 }
 
