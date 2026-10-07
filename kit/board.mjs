@@ -68,7 +68,7 @@ import { spawnSync } from "node:child_process";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.7.1";
+const KIT_VERSION = "3.7.2";
 
 
 const HELP = `board.mjs — Board-Adapter fuer das claude-workflow-kit
