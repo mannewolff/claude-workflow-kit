@@ -2226,18 +2226,6 @@ Ein nur prozessinterner Schlüssel machte jede Wiederholung von Hand zu einem ne
 
 Weil die Skills projekt-unabhängig sind und nur die Config projektlokal ist, aktualisierst du das Kit, indem du den Installer erneut laufen lässt. Deine Config bleibt erhalten (der Installer fragt dich, bevor er sie überschreibt).
 
-**Windows: `buildChecks` laufen über die Git Bash.** Bisher startete das Kit `buildChecks` und `formatFixCommand` unter Windows in der ComSpec-Shell; jetzt laufen sie dort wie auf macOS und Linux in einer POSIX-Shell (der Git Bash). Ein Kommando in Windows-Shell-Syntax bricht damit und muss umgeschrieben werden, zum Beispiel:
-
-```text
-vorher:  set CI=1&& npm test
-nachher: CI=1 npm test
-
-vorher:  if exist dist rmdir /s /q dist && npm run build
-nachher: rm -rf dist && npm run build
-```
-
-Kommandos ohne Shell-Syntax wie `npm test`, `mvn verify` oder `node …` bleiben, wie sie sind. Einen Schalter, der die alte Shell behält, gibt es nicht.
-
 In einem neuen Projekt brauchst du nur den Installer auszuführen oder die `workflow.config.json` aus einem bestehenden Projekt zu kopieren und die Branch-Namen anzupassen. Alle Skills sind sofort einsatzbereit.
 
 Arbeiten mehrere Projekte gegen denselben Toolbox-/kanban-kit-Tracker, bekommt jedes Projekt sein eigenes, projekt-/board-gebundenes Token: per `TBX_TOKEN`-Umgebungsvariable oder per `toolbox.tokenFile` in der Config (gitignorete Datei, kein Klartext-Token in der geteilten `workflow.config.json`). Precedence und ein Beispiel stehen im Abschnitt [Toolbox (privates Setup)](#toolbox-privates-setup).

@@ -545,8 +545,8 @@ export function aufrufen(argv, { cwd, env = process.env, git: gitStarter } = {})
 /**
  * Wie git gestartet wird (Issue #1136). Der Test-Hook `CHECKS_GIT_FAKE` nach dem Muster
  * `NIGHT_CLAUDE_CMD` nennt ein Node-Skript, das statt git startet — mit dem laufenden
- * Node und ohne Shell, damit es auch unter Windows startbar ist, wo ein endungsloses
- * Fake im PATH es nicht waere. Ohne die Variable bleibt der Start, wie er war.
+ * Node und ohne Shell, damit das Fake weder ein x-Bit noch einen Platz im PATH
+ * braucht. Ohne die Variable bleibt der Start, wie er war.
  */
 export function gitStart(args, env = umgebungsVariablen()) {
   const fake = env.CHECKS_GIT_FAKE;
@@ -1123,8 +1123,8 @@ function geaenderteDateien(basis) {
   if (status.status !== 0) fail(`git status schlug fehl: ${status.stderr.trim()}`);
   for (const pfad of untracktePfade(status.stdout)) dateien.add(pfad);
 
-  // Nach dem Trenner-Normalisieren gefiltert: Unter Windows kaeme der Pfad sonst
-  // mit Backslash und der Praefix-Vergleich ginge daneben.
+  // Nach dem Trenner-Normalisieren gefiltert: Kaeme ein Pfad mit Backslash, ginge
+  // der Praefix-Vergleich sonst daneben.
   return [...dateien]
     .map((p) => p.replaceAll("\\", "/"))
     .filter((p) => !p.startsWith(WARTEND_PRAEFIX))
@@ -1803,8 +1803,8 @@ export function fehlermerkmal(ausgabe) {
  * vorhanden gilt und nicht stillschweigend zum Tombstone wird.
  *
  * Gehasht wird ueber `git hash-object --stdin-paths`, also EIN Prozess statt einer
- * je Datei: Bei vollem Umfang stehen leicht hundert Pfade in `geaendert`, und die
- * CI faehrt eine Windows-Matrix, wo Prozessstarts teuer sind. Der Aufruf traegt
+ * je Datei: Bei vollem Umfang stehen leicht hundert Pfade in `geaendert`, und jeder
+ * Prozessstart kostet. Der Aufruf traegt
  * die Pfade und nicht den Inhalt, damit gits Filterkette (`autocrlf`, `clean`)
  * greift — sonst passte der Hash nicht zu dem Blob, den `git ls-files --stage`
  * dem Gate zeigt.

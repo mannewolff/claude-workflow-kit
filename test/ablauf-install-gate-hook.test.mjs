@@ -125,8 +125,7 @@ function mitFixture(praefix, fn, optionen = {}) {
 
 /**
  * Der Nachweis, dass git den installierten Hook wirklich ausfuehrt: Ein Commit ohne
- * Pruef-Zusammenfassung weist das Gate ab. Windows kennt kein x-Bit; dort ist dies der
- * Beleg der Ausfuehrbarkeit (Plan #1128 E7).
+ * Pruef-Zusammenfassung weist das Gate ab (Plan #1128 E7).
  */
 function gitFuehrtHookAus(dir) {
   const res = git(dir, "commit", "--allow-empty", "-q", "-m", "probe");
@@ -171,11 +170,8 @@ test("[installer-2] das ausgelieferte gate.mjs laeuft im Zielprojekt ohne Import
 test("[installer-2] pre-commit ist ausfuehrbar", () => {
   mitFixture("install-gate-x-", (dir) => {
     installiere(dir, antworten("j"));
-    if (process.platform !== "win32") {
-      const mode = statSync(join(dir, ".githooks", "pre-commit")).mode;
-      // windows-ausnahme: Windows kennt kein x-Bit; dort zaehlt allein, dass git den Hook ausfuehrt
-      assert.equal((mode & 0o111) !== 0, true, "der Hook muss ausfuehrbar sein");
-    }
+    const mode = statSync(join(dir, ".githooks", "pre-commit")).mode;
+    assert.equal((mode & 0o111) !== 0, true, "der Hook muss ausfuehrbar sein");
     gitFuehrtHookAus(dir);
   });
 });
@@ -248,11 +244,7 @@ test("ein scheiterndes chmod haelt den Installer nicht auf (Windows-Rueckfall)",
     // diese Zeile bestuende der Test auch dann, wenn die Ersetzung gar nicht griffe.
     const hookDatei = join(dir, ".githooks", "pre-commit");
     assert.ok(existsSync(hookDatei), "und er liegt auch wirklich da");
-    // Unter Windows gibt es kein x-Bit zu vermissen; dort zaehlt, dass git den Hook
-    // auch ohne chmod ausfuehrt — genau dafuer ist der Rueckfall da.
-    if (process.platform === "win32") gitFuehrtHookAus(dir);
-    // windows-ausnahme: Windows kennt kein x-Bit; dort zaehlt der Zweig darueber
-    else assert.equal(statSync(hookDatei).mode & 0o111, 0, "ohne chmod darf kein x-Bit gesetzt sein");
+    assert.equal(statSync(hookDatei).mode & 0o111, 0, "ohne chmod darf kein x-Bit gesetzt sein");
   });
 });
 

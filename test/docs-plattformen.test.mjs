@@ -1,4 +1,3 @@
-// Issue #1139: Vorlage und Skills fangen ein leeres TMPDIR unter Git Bash ab (Plan #1128, E11).
 // Issue #1267: Der Rückfall für ein leeres TMPDIR ist /tmp, nicht cygpath (Plan #1265, E8).
 // Issue #1266: Die Plattformzusage lautet macOS, Linux und Windows über WSL2 (Plan #1265, E9).
 import { test } from 'node:test';
@@ -11,9 +10,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const lies = (p) => readFileSync(join(ROOT, p), 'utf8');
 
 const ZUSAGEN = ['README.md', 'docs/dokumentation.md', 'docs/index.md', 'docs/quickstart.md'];
-// Die übrigen Windows-Stellen im Handbuch räumen die Modulpakete ab; bis dahin gilt
-// die Freiheit von Git Bash und cygpath dort nur für den Abschnitt Voraussetzungen.
-const OHNE_GIT_BASH = ['README.md', 'docs/index.md', 'docs/quickstart.md'];
+// Issue #1275: Seit der Rest-Durchsicht gilt das auch für das ganze Handbuch.
+const OHNE_GIT_BASH = ['README.md', 'docs/dokumentation.md', 'docs/index.md', 'docs/quickstart.md'];
 
 const abschnitt = (text, ueberschrift) => {
   const start = text.indexOf(`\n## ${ueberschrift}\n`);
