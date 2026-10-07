@@ -294,3 +294,106 @@ test("A8: ohne planreview:* fehlt KIT_PLAN_REVIEWER auch in der Review-Session",
   assert.ok(r.sitzungen.some((s) => s.stufe === "review"), "keine Review-Session");
   for (const s of r.sitzungen) assert.equal(s.planReviewer, undefined, `Stufe ${s.stufe} bekam KIT_PLAN_REVIEWER`);
 });
+
+// --- Frischer Stand beim Kettenstart (Issue #1263) ---
+//
+// Die zweite Kette eines Laufs startet oft eine Stunde nach der Auswahl. Was der Mensch in
+// der Zwischenzeit an ihrer Karte aendert, gilt: Die Session der ersten Kette setzt die
+// Labels der zweiten Karte um, wie es der Mensch am Board taete.
+
+const ERSTE = "1";
+const ZWEITE = "5";
+const zweiteKarte = (...labels) => fachplanKarte(ZWEITE, { titel: "[Fachlich] Zweites", labels: [KETTE_LABEL, REVIEW_FERTIG_LABEL, ...labels] });
+
+/** GLATT fuer beide Ketten; die Plan-Session der ersten aendert vorher die Labels der zweiten. */
+function zwischendurch(aendern) {
+  let geaendert = false;
+  return (s) => {
+    if (!geaendert && s.issue === ERSTE && s.stufe === "plan") {
+      geaendert = true;
+      aendern(s.board);
+    }
+    return GLATT(s);
+  };
+}
+
+/** Der Index des letzten Aufrufs, mit dem die Session die zweite Karte geaendert hat. */
+const nachAenderung = (r, ...letzter) => r.aufrufe.slice(r.aufrufe.findLastIndex((a) => a.join(" ") === ["issue", "label", ...letzter].join(" ")) + 1);
+const abnahmenAn = (aufrufe, id) => aufrufe.filter((a) => a[1] === "label" && a[2] === "remove" && a[3] === id).map((a) => a[4]);
+// Ohne Uebergang zur Umsetzung: Eine Kette, die faelschlich mit dem alten Ziel umsetzung
+// fuehre, endet so vor der Umsetzung, statt die Stufe ausserhalb der Attrappe zu fahren.
+const ketteMit = (karten, sitzung, ablehnen) => ketteImProzess({ karten, argv: ["--max", "2"], sitzung, ablehnen, kette: { uebergaenge: { abdeckungUmsetzung: false } } });
+
+test("#1263: wechselt das Ziel nach Laufbeginn, faehrt die Kette das neue und nimmt es ab", async () => {
+  const sitzung = zwischendurch((board) => {
+    board("issue", "label", "remove", ZWEITE, "ziel:umsetzung");
+    board("issue", "label", "add", ZWEITE, "ziel:pakete");
+  });
+  const r = await ketteMit([fachMit("ziel:plan"), zweiteKarte("ziel:umsetzung")], sitzung);
+  assert.equal(r.code, 0, r.ausgabe);
+  const einheit = einheitVon(r, ZWEITE);
+  assert.equal(einheit.ausgang, "fertig", einheit.grund);
+  assert.equal(einheit.ziel, "pakete");
+  assert.equal(einheit.variante, "A");
+  assert.deepEqual(abnahmenAn(nachAenderung(r, "add", ZWEITE, "ziel:pakete"), ZWEITE), [KETTE_LABEL, "ziel:pakete"]);
+  assert.deepEqual(r.karte(ZWEITE).labels.filter((l) => l.startsWith("ziel:")), []);
+  assert.match(r.ausgabe, /Label 'ziel:pakete' entfernt — Ziel pakete, Pruefer nach Projekt festgehalten/);
+  assert.match(r.ausgabe, /Ziel pakete erreicht nach abdeckung/);
+});
+
+test("#1263: ist kit:night beim Kettenstart weg, ist die Kette uebersprungen — kein Label abgenommen, kein Worktree", async () => {
+  const sitzung = zwischendurch((board) => board("issue", "label", "remove", ZWEITE, KETTE_LABEL));
+  const r = await ketteMit([fachMit("ziel:plan"), zweiteKarte("ziel:pakete")], sitzung);
+  assert.equal(r.code, 0, r.ausgabe);
+  const einheit = einheitVon(r, ZWEITE);
+  assert.equal(einheit.ausgang, "uebersprungen");
+  assert.match(einheit.grund, /Startkennzeichen nach Laufbeginn zurückgenommen/);
+  assert.deepEqual(abnahmenAn(nachAenderung(r, "remove", ZWEITE, KETTE_LABEL), ZWEITE), []);
+  assert.ok(r.karte(ZWEITE).labels.includes("ziel:pakete"), "das Ziel-Label wurde abgenommen");
+  assert.ok(!r.sitzungen.some((s) => s.issue === ZWEITE), "die Kette lief");
+  assert.ok(!r.gitAufrufe.some((a) => a.args.includes("worktree") && a.args.includes("add") && a.args.some((x) => String(x).includes(`-${ZWEITE}-`))), "ein Worktree entstand");
+});
+
+test("#1263: tragen beim Kettenstart zwei ziel:*, ist die Kette uebersprungen — mit Hinweis, ohne Label-Abnahme", async () => {
+  const sitzung = zwischendurch((board) => board("issue", "label", "add", ZWEITE, "ziel:plan"));
+  const r = await ketteMit([fachMit("ziel:plan"), zweiteKarte("ziel:pakete")], sitzung);
+  assert.equal(r.code, 0, r.ausgabe);
+  const einheit = einheitVon(r, ZWEITE);
+  assert.equal(einheit.ausgang, "uebersprungen");
+  assert.ok(einheit.grund.startsWith(ZIEL_UNPASSEND_PRAEFIX), einheit.grund);
+  assert.equal(ankerZaehlen(r, ZWEITE), 1);
+  assert.deepEqual(abnahmenAn(nachAenderung(r, "add", ZWEITE, "ziel:plan"), ZWEITE), []);
+  assert.deepEqual(r.karte(ZWEITE).labels.filter((l) => l === KETTE_LABEL || l.startsWith("ziel:")), [KETTE_LABEL, "ziel:pakete", "ziel:plan"]);
+  assert.ok(!r.sitzungen.some((s) => s.issue === ZWEITE), "die Kette lief");
+});
+
+test("#1263: scheitert das frische Lesen, laeuft die Kette mit dem Stand vom Laufbeginn und vermerkt den Rueckfall", async () => {
+  let gestartet = false;
+  const sitzung = (s) => {
+    if (s.issue === ERSTE) gestartet = true;
+    return GLATT(s);
+  };
+  // Nur einmal: das erste Lesen der zweiten Karte nach dem Start der ersten Kette ist das beim Kettenstart.
+  let abgelehnt = false;
+  const ablehnen = (args) => {
+    if (abgelehnt || !gestartet || args.join(" ") !== `issue get ${ZWEITE}`) return false;
+    abgelehnt = true;
+    return true;
+  };
+  const r = await ketteMit([fachMit("ziel:plan"), zweiteKarte("ziel:pakete")], sitzung, ablehnen);
+  assert.equal(r.code, 0, r.ausgabe);
+  const einheit = einheitVon(r, ZWEITE);
+  assert.equal(einheit.ausgang, "fertig", einheit.grund);
+  assert.equal(einheit.ziel, "pakete");
+  assert.match(r.ausgabe, /#5 nicht frisch lesbar .* Stand vom Laufbeginn/);
+  assert.deepEqual(abnahmenAn(r.aufrufe, ZWEITE), [KETTE_LABEL, "ziel:pakete"]);
+});
+
+test("#1263: ohne Aenderung nach Laufbeginn bleibt der Kettenstart wie bisher", async () => {
+  const r = await ketteMit([fachMit("ziel:plan"), zweiteKarte("ziel:pakete", "planreview:1")], GLATT);
+  assert.equal(r.code, 0, r.ausgabe);
+  assert.equal(einheitVon(r, ZWEITE).ausgang, "fertig");
+  assert.deepEqual(abnahmenAn(r.aufrufe, ZWEITE), [KETTE_LABEL, "ziel:pakete", "planreview:1"]);
+  assert.match(r.ausgabe, /Ziel pakete, Pruefer 1 festgehalten/);
+  assert.doesNotMatch(r.ausgabe, /nicht frisch lesbar/);
+});

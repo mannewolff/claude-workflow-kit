@@ -2413,6 +2413,57 @@ function ketteBeginnen(kette, auftrag, nummer, args) {
     .map((i) => String(i.id));
 }
 
+/** Der Grund einer Kette, deren Karte beim Start das Startkennzeichen nicht mehr traegt (Issue #1263). */
+export const KENNZEICHEN_ZURUECK_GRUND = "Startkennzeichen nach Laufbeginn zurückgenommen";
+
+/**
+ * Die gekennzeichnete Karte, wie sie beim Start der Kette am Board steht (Issue #1263):
+ * `{ karte }` zum Fahren oder `{ grund }`, wenn die Kette nicht laufen darf.
+ *
+ * Die Auswahl gehoert dem Laufbeginn, die Labels dem Kettenstart: Die zweite Kette eines
+ * Laufs startet oft eine Stunde spaeter, und was der Mensch bis dahin an Kennzeichen, Ziel
+ * oder Prueferzahl aendert, gilt (Plan #1243, E1). Nimmt er das Kennzeichen zurueck oder
+ * ist die Einstellung jetzt unpassend (E3), hat er das GO fuer diesen Stand zurueckgezogen.
+ * Scheitert das Lesen, gilt der Stand vom Laufbeginn — ein Board-Fehler verhindert keine
+ * Kette, die sonst liefe.
+ */
+function karteBeimStart(auftrag) {
+  const alt = auftrag.karte;
+  let karte;
+  let plan = null;
+  try {
+    karte = abh.board("issue", "get", String(alt.id));
+    const labels = karte?.labels || [];
+    // Den Plan braucht `zielAusschluss` nur fuer `planreview:*` an einer Anforderung.
+    if (auftrag.art === "fachplan" && PLANREVIEW_LABELS.some((l) => labels.includes(l))) {
+      plan = juengsterPlanAmBoard(abh.board("issue", "list"), alt.id);
+    }
+  } catch (e) {
+    log(`  #${alt.id} nicht frisch lesbar (${e.message}) — die Kette faehrt mit dem Stand vom Laufbeginn.`);
+    return { karte: alt };
+  }
+  if (!(karte?.labels || []).includes(KETTE_BUDGET.label)) return { grund: KENNZEICHEN_ZURUECK_GRUND };
+  const grund = zielAusschluss(karte, auftrag.art, plan);
+  return grund ? { grund } : { karte: { ...alt, ...karte } };
+}
+
+/**
+ * Eine Kette, die beim Start nicht mehr laufen darf (Issue #1263): verbucht wie eine beim
+ * Laufbeginn uebersprungene Karte, mit dem Hinweis nach A9, ohne Label-Abnahme und ohne
+ * Worktree. Der Vorab-Stand `laeuft` aus dem Beanspruchen wird zu `Kette nicht gestartet`
+ * wie nach einem gescheiterten Vorflug; die `zuletzt`-Zeilen des Laufstands davor bleiben,
+ * denn an ihnen findet der naechste Lauf vorhandene Ergebnisse (`ergebnisVorhanden`).
+ */
+function ketteNichtMehrFreigegeben(auftrag, nummer, args, grund) {
+  const { id, title } = auftrag.karte;
+  log(`Kette ${nummer}/${args.max}: #${id} beim Start nicht mehr freigegeben.`);
+  uebersprungeneVerbuchen([{ id: String(id), title: title ?? "", grund }], [], KETTE_BUDGET.label, false);
+  const zuletzt = String((auftrag.laufstandVorher ?? []).at(-1) ?? "").split("\n").filter((z) => z.startsWith("zuletzt "));
+  const text = [`Kette nicht gestartet um ${abh.jetzt().toISOString()}: ${grund}`, zuletzt.join("\n")].filter(Boolean).join("\n\n");
+  standSetzen(id, "abgebrochen", text, { budgetMs: ABBRUCH_BUDGET_MS });
+  return { ausgang: "uebersprungen", vorbereitung: false, kette: null };
+}
+
 /**
  * Eine Kette zu einem Auftrag: Label verbrauchen, Worktree, Stufen, Einheit.
  *
@@ -2421,8 +2472,19 @@ function ketteBeginnen(kette, auftrag, nummer, args) {
  * deren Karte und Laufstand die Vorbereitung danach fortschreibt. Der Worktree wird in jedem
  * Fall entfernt — auch nach einem Wurf mitten in einer Stufe; ein liegengebliebener raeumt
  * der naechste Start.
+ *
+ * Ziel, Variante, Prueferzahl und die abzunehmenden Labels kommen aus dem Stand beim Start,
+ * nicht aus der Liste des Laufbeginns (Issue #1263); ist die Karte dann nicht mehr
+ * freigegeben, ist der Ausgang `uebersprungen` und `kette` ist `null`.
  */
 async function laufeEineKette(auftrag, nummer, args) {
+  const start = karteBeimStart(auftrag);
+  if (start.grund) return ketteNichtMehrFreigegeben(auftrag, nummer, args, start.grund);
+  return ketteMitKarte({ ...auftrag, karte: start.karte }, nummer, args);
+}
+
+/** Der Rumpf von `laufeEineKette`, mit der Karte vom Kettenstart. */
+async function ketteMitKarte(auftrag, nummer, args) {
   const karte = auftrag.karte;
   const F = String(auftrag.F);
   const einheit = einheitAnlegen(String(karte.id), karte.title);
@@ -2686,7 +2748,8 @@ export async function laufeKette(args, abhaengigkeiten = {}) {
  * gezaehlt.
  */
 async function kettenUndVorbereitung(auftraege, args) {
-  const zaehler = Object.fromEntries(KETTE_AUSGAENGE.map((a) => [a, 0]));
+  // `uebersprungen` zaehlt die Ketten, die beim Start nicht mehr freigegeben waren (Issue #1263).
+  const zaehler = Object.fromEntries([...KETTE_AUSGAENGE, "uebersprungen"].map((a) => [a, 0]));
   const ausloesend = [];
   let nummer = 0;
   for (const auftrag of auftraege) {
@@ -2756,7 +2819,7 @@ async function ketteFahren(args) {
   }
 
   const zaehler = await kettenUndVorbereitung(auftraege, args);
-  log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.unvollstaendig} unvollstaendig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length} uebersprungen, ${liegengeblieben.length} liegengeblieben, ${NICHT_BEGONNEN_GESAMT} Paket(e) nicht begonnen.`);
+  log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.unvollstaendig} unvollstaendig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length + zaehler.uebersprungen} uebersprungen, ${liegengeblieben.length} liegengeblieben, ${NICHT_BEGONNEN_GESAMT} Paket(e) nicht begonnen.`);
   log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Nach Variante A liegen die Pakete morgens in Backlog; Variante B (Label '${budget.varianteBLabel}') hat sie in derselben Nacht umgesetzt, sie stehen dann in In review. Protokoll: ${ZUSTAND.LOG_FILE}`);
   anbindung.laufAbschliessen("regulaer");
   return abh.beenden(0);
