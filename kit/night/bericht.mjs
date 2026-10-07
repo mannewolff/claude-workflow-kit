@@ -34,6 +34,7 @@ import { tmpdir } from "node:os";
 import { ZUSTAND, NACHBAR_CHECKS, log, boardRoh, vergleicheText } from "./grundlagen.mjs";
 import { VORBEREITUNG_DATEI, pidAusInhalt, prozessLaeuft, kitStandZeile } from "./kitstand.mjs";
 import { abschnittLesen, leseKarte } from "./abhaengigkeiten.mjs";
+import { COLUMN_DEFAULTS } from "../board/grundlagen.mjs";
 import { endlicheZahl, lesePruefung, paketstufenChecks, runBuildChecksSync,
   LOKALER_KOMMENTARKOPF } from "./session.mjs";
 
@@ -610,6 +611,88 @@ function berichtUmsetzung(einheit, pakete, einheiten, ziel) {
   ];
 }
 
+const URSPRUNG_ERLEDIGT = new Set(["in_review", "done"]);
+const spaltenText = (spalte) => COLUMN_DEFAULTS[spalte] ?? spalte;
+const ursprungName = (d) => (d.art === "fachlich" ? `fachliche Anforderung #${d.id}` : `Plan #${d.id}`);
+
+/** Die Zeile eines Ursprungsdokuments: gewandert, lag bereits, bleibt oder nicht bewegt. */
+function ursprungDokumentZeile(d, vorher, fehler) {
+  const davor = vorher[d.id] ?? null;
+  if (davor && URSPRUNG_ERLEDIGT.has(davor)) return `- ${ursprungName(d)}: lag bereits in ${spaltenText(davor)}.`;
+  if (davor && d.spalte === "in_review") return `- ${ursprungName(d)}: nach In review gewandert.`;
+  if (d.aktion === "bleibt") return `- ${ursprungName(d)}: bleibt in ${spaltenText(davor ?? d.spalte ?? "unbekannter Spalte")} — ${d.grund}.`;
+  if (d.aktion === "wandert") {
+    const f = (fehler ?? []).find((x) => String(x.id) === String(d.id));
+    const warum = f ? " (" + f.grund + ")" : "";
+    return `- ${ursprungName(d)}: nicht nach In review bewegt${warum} — nachziehen: \`node .claude/kit/board.mjs issue move ${d.id} in_review\`.`;
+  }
+  return `- ${ursprungName(d)}: ${d.aktion}.`;
+}
+
+/** Warum ein Paket fehlt, aus dem Stand der Umsetzungsstufe (Kriterium 5 des Fachplans #1279). */
+function fehlendGrund(umsetzung, id) {
+  const gleich = (e) => String(e && typeof e === "object" ? e.id : e) === String(id);
+  if (umsetzung.ausgelassen) return `nicht begonnen (Umsetzung ausgelassen: ${umsetzung.ausgelassen})`;
+  const zurueck = (umsetzung.zurueckgestellt ?? []).find(gleich);
+  if (zurueck) return `gescheitert und zurück im Backlog (${zurueck.grund})`;
+  if ((umsetzung.angehalten ?? []).some(gleich)) return "an einer Stopp-Frage angehalten";
+  const offen = (umsetzung.nichtBegonnen ?? []).find(gleich);
+  if (offen) return /^wartet auf einen Push/.test(offen.grund ?? "") ? `wartet auf Push (${offen.grund})` : `nicht begonnen (${offen.grund})`;
+  return "von der Umsetzung dieser Kette nicht erfasst";
+}
+
+/** Die Zeilen fuer eine Kette, deren Umsetzung nicht begonnen hat: Dokumente bleiben, Pakete mit Spalte. */
+function ursprungOhneUmsetzung(einheit, plan, pakete) {
+  const stufen = einheit.stufen ?? {};
+  const planId = stufen.plan?.id ?? (einheit.auftrag === "plan" ? einheit.id : null);
+  const anforderung = einheit.auftrag === "plan" ? einheit.fachplan : einheit.id;
+  const namen = [...(planId ? [`Plan #${planId}`] : []), ...(anforderung ? [`fachliche Anforderung #${anforderung}`] : [])];
+  const planSpalte = plan?.status ? ` (Plan #${planId} in ${spaltenText(plan.status)})` : "";
+  const ids = stufen.pakete?.ids ?? [];
+  const paketText = (id) => {
+    const status = pakete.find((k) => String(k.id) === String(id))?.status;
+    return status ? `${paketBezeichnung(pakete, id)} in ${spaltenText(status)}` : paketBezeichnung(pakete, id);
+  };
+  return [
+    `- ${namen.join(", ") || "die Ursprungsdokumente"}: bleiben in ihrer Spalte${planSpalte} — Kette ${einheit.ausgang} in Stufe ${einheit.stufe}, die Umsetzung hat nicht begonnen.`,
+    `- Pakete: ${ids.length > 0 ? ids.map(paketText).join(", ") : "noch nicht geschnitten"}.`,
+  ];
+}
+
+/**
+ * Der Abschnitt `### Ursprungsdokumente`, unter demselben Tor wie `### Umsetzung` (Issue #1289,
+ * Plan #1283 E8): ob Plan und Anforderung nach In review gewandert sind und, wenn nicht, warum
+ * — mit den fehlenden Paketen (Kriterien 5 und 7 des Fachplans #1279). Der Stand liegt unter
+ * `stufen.umsetzung.ursprung`: `{ vorher: {<nr>: spalte}, auswertung }` mit der Ausgabe von
+ * `issue ursprung`, oder `{ fehler }`. Gewandert heisst: vorher ausserhalb von In review/Done,
+ * laut Auswertung jetzt in In review. Fehlt der Stand, hat die Umsetzung nicht begonnen —
+ * es sei denn, sie lief und hat ihn nicht festgehalten; das sagt der Bericht dann so.
+ */
+function berichtUrsprung(einheit, plan, pakete) {
+  const umsetzung = einheit.stufen?.umsetzung;
+  const ursprung = umsetzung?.ursprung;
+  const z = ["### Ursprungsdokumente", ""];
+  if (!ursprung) {
+    if (umsetzung && !einheit.stufe) z.push("- nicht feststellbar: die Kette hat den Stand der Ursprungsdokumente nicht festgehalten.");
+    else z.push(...ursprungOhneUmsetzung(einheit, plan, pakete));
+    return [...z, ""];
+  }
+  if (ursprung.fehler) return [...z, `- nicht feststellbar: ${ursprung.fehler}.`, ""];
+  const a = ursprung.auswertung ?? {};
+  const dokumente = a.dokumente ?? [];
+  if (dokumente.length === 0) z.push(`- Plan #${a.plan}: ${a.grund ?? "keine Ursprungsdokumente festgestellt"}.`);
+  for (const d of dokumente) z.push(ursprungDokumentZeile(d, ursprung.vorher ?? {}, a.fehler));
+  if ((a.fehlend ?? []).length > 0) {
+    z.push("- fehlende Pakete:");
+    for (const k of a.fehlend) {
+      const titel = k.titel ?? pakete.find((p) => String(p.id) === String(k.id))?.title;
+      const bezeichnung = titel ? `#${k.id} ${titel}` : `#${k.id}`;
+      z.push(`  - ${bezeichnung} in ${spaltenText(k.spalte)}: ${fehlendGrund(umsetzung, k.id)}`);
+    }
+  }
+  return [...z, ""];
+}
+
 /**
  * Die erste Zeile der Stufen: welcher Auftrag diese Kette war (Issue #896) — `null`, wenn
  * die Einheit keine der beiden Arten ausweist.
@@ -755,7 +838,7 @@ export function berichtBauen(einheit, {
     "### Ausgang", "", ...berichtAusgang(einheit, pakete), "",
     "### Stufen", "", ...berichtStufen(einheit, plan, pakete), "",
   );
-  if (einheit.variante === "B") z.push(...berichtUmsetzung(einheit, pakete, einheiten, ziel));
+  if (einheit.variante === "B") z.push(...berichtUmsetzung(einheit, pakete, einheiten, ziel), ...berichtUrsprung(einheit, plan, pakete));
 
   const entscheidungen = berichtEntscheidungen(stufen, plan, pakete);
   z.push("### Entscheidungen der Nacht", "");
