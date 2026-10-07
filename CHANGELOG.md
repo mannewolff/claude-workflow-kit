@@ -2,7 +2,7 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
-## [3.7.2] - 2026-10-07
+## [3.8.0] - 2026-10-07
 - Der Puls des Nacht-Runners wird atomar geschrieben (#1262)
 
 ## [3.7.1] - 2026-10-06
