@@ -2233,6 +2233,10 @@ export function salvagePrompt(issueId, checksOutput, formatFixCmd) {
     `   c) NUR wenn diese Ausgabe leer ist, bewege das Board und kommentiere:`,
     `      node .claude/kit/board.mjs issue move ${issueId} in_review`,
     `      node .claude/kit/board.mjs issue comment ${issueId} --text "..."`,
+    // Issue #1287 (Plan #1283 A2): War es das letzte Paket, hat der Zug Plan und
+    // Anforderung nachgezogen — gelesen wird das Ergebnis im Kommentar der Rettung.
+    `      Nennt die Ausgabe von issue move ein Feld \`ursprung\`, stehen dessen Zeilen im`,
+    `      Kommentar: je Dokument die Aktion mit Grund, je Eintrag unter fehler Grund und Kommando.`,
     `   d) Ist die Ausgabe NICHT leer, bleibt das Board unberuehrt: nicht verschieben,`,
     `      nicht kommentieren, sondern die liegengebliebenen Pfade in deiner Ausgabe benennen.`,
     `4. Passt der Stand nicht zum Issue oder wirkt unvollstaendig: NICHT committen,`,

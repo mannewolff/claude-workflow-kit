@@ -118,3 +118,18 @@ test("[board-9] ist die Wegmarke nicht schreibbar, wird die Karte trotzdem versc
     assert.match(readFileSync(join(dir, "issues", "0001.md"), "utf-8"), /status: in_progress/);
   });
 });
+
+// Ursprungsdokumente (Issue #1287, Plan #1283 E9): Zieht der Zug des letzten Pakets Plan und
+// Anforderung nach In review, bekommen sie keine Wegmarke — eine in_review-Wegmarke ohne
+// in_progress waere fuer den Melder Rauschen.
+test("[ursprung] Zuege der Dokumente schreiben keine Wegmarke (E9)", () => {
+  mitProjekt((dir) => {
+    board(dir, "issue", "create", "--title", "[Fachlich] Anforderung", "--body", "## Ziel\nz");
+    board(dir, "issue", "create", "--title", "[Plan] Plan", "--body", "Fachliche Quelle: Issue #0001\n\n## Ziel\nz");
+    board(dir, "issue", "create", "--title", "Paket", "--body", "## Kontext\nPlan: Issue #0002\n\n## Aufgabe\na");
+    const e = board(dir, "issue", "move", "0003", "in_review");
+    assert.deepEqual(e.ursprung.dokumente.map((d) => d.aktion), ["wandert", "wandert"], "Vorbedingung: die Dokumente wandern");
+
+    assert.deepEqual(wegmarken(dir).map((z) => z.split("\t").slice(1)), [["0003", "in_review"]]);
+  });
+});

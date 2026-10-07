@@ -170,6 +170,18 @@ test("[night-27] der Salvage-Prompt verlangt `git status --porcelain` vor dem Bo
     `die Sauberkeitspruefung steht hinter dem Board-Zug — genau die Reihenfolge, die #248 gekostet hat:\n${prompt}`);
 });
 
+// Issue #1287 (Plan #1283 A2): Zieht der Zug des Pakets Plan und Anforderung nach, nennt die
+// Ausgabe von `issue move` das Feld `ursprung` — und der Kommentar der Rettung traegt es.
+test("[ursprung] der Salvage-Prompt verlangt nach dem Board-Zug die Zeilen aus `ursprung` im Kommentar", () => {
+  const prompt = salvagePrompt("7", "alles gruen", null);
+  const zug = prompt.indexOf("issue move 7 in_review");
+  const ursprung = prompt.indexOf("Feld `ursprung`");
+  assert.ok(zug >= 0 && ursprung > zug, `der Satz zu ursprung fehlt oder steht vor dem Zug:\n${prompt}`);
+  assert.ok(ursprung < prompt.indexOf("   d)"), `der Satz steht nicht im Schritt c):\n${prompt}`);
+  const satz = prompt.slice(ursprung).split("\n").slice(0, 2).join(" ");
+  assert.ok(satz.includes("Kommentar"), `die Zeilen gehoeren in den Kommentar:\n${satz}`);
+});
+
 test("der Salvage-Prompt zitiert die letzten Zeilen der Vorpruefung und nennt einen angewendeten Format-Fix", () => {
   const ausgabe = Array.from({ length: 20 }, (_, i) => `zeile ${i + 1}`).join("\n");
   const prompt = salvagePrompt("7", ausgabe, "npm run format");

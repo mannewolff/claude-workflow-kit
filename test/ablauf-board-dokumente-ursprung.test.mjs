@@ -14,15 +14,17 @@ import { setupProjekt, board } from "./helpers/board-fixture.mjs";
 test("issue ursprung gibt die Auswertung als JSON aus und bewegt nichts", () => {
   const dir = setupProjekt({ codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } }, "board-ursprung-");
   try {
+    // Das Paket kommt nach In review, bevor es den Plan gibt: Seit Issue #1287 zoege der Zug
+    // sonst Plan und Anforderung selbst nach, und es bliebe nichts zu zeigen, was wandert.
     board(dir, "issue", "create", "--title", "[Fachlich] Anforderung", "--body", "## Ziel\nz");
+    board(dir, "issue", "create", "--title", "Paket", "--body", "Plan: Issue #0003\n\n## Aufgabe\na");
+    board(dir, "issue", "move", "0002", "in_review");
     board(dir, "issue", "create", "--title", "[Plan] Plan", "--body", "Fachliche Quelle: Issue #0001\n\n## Ziel\nz");
-    board(dir, "issue", "create", "--title", "Paket", "--body", "Plan: Issue #0002\n\n## Aufgabe\na");
-    board(dir, "issue", "move", "0003", "in_review");
-    const e = board(dir, "issue", "ursprung", "0002");
-    assert.equal(e.plan, "2");
+    const e = board(dir, "issue", "ursprung", "0003");
+    assert.equal(e.plan, "3");
     assert.equal(e.durch, true);
-    assert.deepEqual(e.dokumente.map((d) => [d.id, d.art, d.aktion]), [["2", "plan", "wandert"], ["1", "fachlich", "wandert"]]);
-    assert.equal(board(dir, "issue", "get", "0002").status, "backlog");
+    assert.deepEqual(e.dokumente.map((d) => [d.id, d.art, d.aktion]), [["3", "plan", "wandert"], ["1", "fachlich", "wandert"]]);
+    assert.equal(board(dir, "issue", "get", "0003").status, "backlog");
     assert.equal(board(dir, "issue", "get", "0001").status, "backlog");
   } finally {
     rmSync(dir, { recursive: true, force: true });

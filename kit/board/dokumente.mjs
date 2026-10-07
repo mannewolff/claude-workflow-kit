@@ -647,8 +647,14 @@ export async function issueMove(tracker, args) {
   // Bewegungsprotokoll gilt dasselbe — es saehe sonst Ruecklaeufer, die es nicht gab.
   wegmarkeSchreiben(id, toStatus);
   bewegungSchreiben(id, toStatus);
-  out({ ok: true, id, status: toStatus });
+  // Nach dem eigenen Zug, wie in `issue melden` (Issue #1287, Plan #1283 A2, E1): Auch die
+  // Rettung und ein Zug des Menschen nach Done koennen das letzte Paket sein. Gezogen wird
+  // nur nach In review; kein Fehler hier aendert Exit-Code oder Zug des Pakets (A8).
+  const ursprung = URSPRUNG_AUSLOESER.has(toStatus) ? await ursprungDesPakets(tracker, id) : null;
+  out({ ok: true, id, status: toStatus, ...(ursprung ? { ursprung } : {}) });
 }
+
+const URSPRUNG_AUSLOESER = new Set(["in_review", "done"]);
 
 /**
  * `issue ursprung <plan>` (Issue #1285, Plan #1283 A11): Ist der Plan durch, und welche
@@ -1070,6 +1076,31 @@ function ursprungAbschnittText(ergebnis) {
 }
 
 /**
+ * Zieht nach dem Zug eines Pakets dessen Ursprungsdokumente nach (Issue #1286, #1287, Plan
+ * #1283 A2, A3, A8). Liefert die Auswertung samt `fehler`, oder null, wenn die Karte keine
+ * `Plan:`-Zeile traegt oder selbst ein Dokument ist: Der Zug eines `[Plan]`- oder
+ * `[Fachlich]`-Dokuments loest nichts aus. Wirft nie.
+ */
+async function ursprungDesPakets(tracker, id) {
+  let karte;
+  try {
+    karte = await tracker.getIssue(id);
+  } catch (e) {
+    return { plan: null, durch: false, grund: `Paket nicht lesbar (${e.message})`, fehlend: [], dokumente: [],
+      fehler: [{ id: kartenSchluessel(id), art: "Paket nicht lesbar", grund: e.message }] };
+  }
+  if (istPlan(karte.title) || istFachlich(karte.title)) return null;
+  const planNr = herkunftNummern(karte.body ?? "", "Plan")[0];
+  if (planNr === undefined) return null;
+  try {
+    return await ursprungNachziehen(tracker, planNr);
+  } catch (e) {
+    return { plan: planNr, durch: false, grund: e.message, fehlend: [], dokumente: [],
+      fehler: [{ id: planNr, art: "Nachziehen gescheitert", grund: e.message }] };
+  }
+}
+
+/**
  * Zieht nach dem Zug des Pakets dessen Ursprungsdokumente nach und nennt sie im Bericht
  * dieses Laufs (Issue #1286, Plan #1283 A1, A3, A8, A9, E6, E7). Liefert die Auswertung samt
  * `fehler` fuer die Ausgabe, oder null, wenn das Paket keine `Plan:`-Zeile traegt.
@@ -1081,22 +1112,8 @@ function ursprungAbschnittText(ergebnis) {
  * Kommentar (E7); ihre Zuege buchen weder Wegmarke noch Bewegung (E9).
  */
 async function ursprungMelden(tracker, id, laufZeile) {
-  let planNr;
-  try {
-    planNr = herkunftNummern((await tracker.getIssue(id)).body ?? "", "Plan")[0];
-  } catch (e) {
-    return { plan: null, durch: false, grund: `Paket nicht lesbar (${e.message})`, fehlend: [], dokumente: [],
-      fehler: [{ id: kartenSchluessel(id), art: "Paket nicht lesbar", grund: e.message }] };
-  }
-  if (planNr === undefined) return null;
-
-  let ergebnis;
-  try {
-    ergebnis = await ursprungNachziehen(tracker, planNr);
-  } catch (e) {
-    ergebnis = { plan: planNr, durch: false, grund: e.message, fehlend: [], dokumente: [],
-      fehler: [{ id: planNr, art: "Nachziehen gescheitert", grund: e.message }] };
-  }
+  const ergebnis = await ursprungDesPakets(tracker, id);
+  if (ergebnis === null || ergebnis.plan === null) return ergebnis;
   if (!ergebnis.durch && ergebnis.fehler.length === 0) return ergebnis;
 
   try {

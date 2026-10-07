@@ -49,7 +49,9 @@ test("[night-34] Variante B: die Stufe umsetzung laeuft hinter abdeckung und bri
     assert.deepEqual(stufe.nichtBegonnen, []);
     assert.deepEqual(stufe.zurueckgestellt, []);
 
-    assert.deepEqual(inSpalte(dir, "in_review"), einheit.stufen.pakete.ids, "die Pakete stehen in In review");
+    // Mit dem letzten Paket wandern Anforderung und Plan mit (Issue #1287, Kriterium 1).
+    assert.deepEqual(inSpalte(dir, "in_review"), [F, einheit.stufen.plan.id, ...einheit.stufen.pakete.ids].sort(),
+      "die Pakete und ihre Ursprungsdokumente stehen in In review");
     keinRestInArbeit(dir);
 
     // Je Paket eine eigene Einheit — die, die `laufeRunde` ohnehin anlegt (night-4).
