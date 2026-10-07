@@ -3,18 +3,29 @@
 // Keine rechnerweite Pruefsperre mehr (Issue #1241, Plan #1199 E12): Zwei Laeufe zweier
 // Projekte laufen nebeneinander, keiner meldet eine Wartezeile. Die Pruefung der Quelle
 // steht in test/checks-ohne-sperre.test.mjs.
+//
+// Nachgewiesen wird ueber einen Treffpunkt statt ueber die Uhr: Jeder Lauf hinterlegt ein
+// Zeichen und wartet auf das des anderen, sodass nur ein Warten aufeinander den Test rot macht,
+// nicht ein langsamer Prozessstart (Issue #1278).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { CHECKS } from "./helpers/checks-ablauf.mjs";
 import { repoAnlegen, datei } from "./helpers/checks-repo.mjs";
 
-// Schreibt Beginn und Ende in eine Datei und wartet dazwischen kurz: So laesst sich ablesen,
-// ob die beiden Laeufe gleichzeitig liefen.
-const ZEITEN = String.raw`node -e "const fs=require('fs');fs.appendFileSync('zeiten.txt','start '+Date.now()+'\n');setTimeout(()=>fs.appendFileSync('zeiten.txt','ende '+Date.now()+'\n'),400)"`;
+// Hinterlegt das eigene Zeichen im Treffpunkt und wartet in 20-ms-Schritten auf das des
+// anderen Laufs; nach 1000 Schritten (20 s) endet es rot. Die Frist dient nur dem Abbruch.
+function treffen(treffpunkt, eigen, anderer) {
+  const code = `const fs=require('fs'),p=require('path'),t='${treffpunkt}';`
+    + `fs.writeFileSync(p.join(t,'${eigen}'),'');let n=0;`
+    + `const i=setInterval(()=>{if(fs.existsSync(p.join(t,'${anderer}'))){clearInterval(i);process.exit(0)}`
+    + `if(++n>=1000){console.error('Zeichen von ${anderer} fehlt');process.exit(1)}},20)`;
+  return `node -e "${code}"`;
+}
 
 function lauf(dir) {
   return new Promise((fertig) => {
@@ -26,15 +37,10 @@ function lauf(dir) {
   });
 }
 
-function zeiten(dir) {
-  const zeilen = readFileSync(join(dir, "zeiten.txt"), "utf-8").trim().split("\n");
-  const wert = (art) => Number(zeilen.find((z) => z.startsWith(art)).split(" ")[1]);
-  return { start: wert("start"), ende: wert("ende") };
-}
-
 test("[1241] zwei gleichzeitige Laeufe zweier Projekte warten nicht aufeinander", async () => {
-  const a = repoAnlegen({ config: { buildChecks: [ZEITEN] } });
-  const b = repoAnlegen({ config: { buildChecks: [ZEITEN] } });
+  const treffpunkt = mkdtempSync(join(tmpdir(), "treffpunkt-"));
+  const a = repoAnlegen({ config: { buildChecks: [treffen(treffpunkt, "a", "b")] } });
+  const b = repoAnlegen({ config: { buildChecks: [treffen(treffpunkt, "b", "a")] } });
   try {
     datei(a, "src/a.txt");
     datei(b, "src/b.txt");
@@ -45,11 +51,9 @@ test("[1241] zwei gleichzeitige Laeufe zweier Projekte warten nicht aufeinander"
       assert.equal(res.status, 0, res.ausgabe);
       assert.doesNotMatch(res.ausgabe, /Sperre|es wird gewartet/, res.ausgabe);
     }
-    const za = zeiten(a);
-    const zb = zeiten(b);
-    assert.ok(za.start < zb.ende && zb.start < za.ende, `die Laeufe ueberlappen nicht: ${JSON.stringify({ za, zb })}`);
   } finally {
     rmSync(a, { recursive: true, force: true });
     rmSync(b, { recursive: true, force: true });
+    rmSync(treffpunkt, { recursive: true, force: true });
   }
 });
