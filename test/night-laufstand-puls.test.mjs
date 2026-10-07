@@ -10,7 +10,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, readdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 
 import { laufstandStarten, pulsSchreiben, pulsZustandSetzen, laufLebt, LAUF_ORDNER } from "../kit/night/laufstand.mjs";
@@ -83,4 +83,47 @@ test("[night-1250] laufLebt ist exportiert und wertet weiter allein die PID", as
     assert.equal(laufLebt(dir, "unlesbar"), false, "ein unlesbarer Puls gilt als lebend");
     assert.equal(laufLebt(dir, "fehlt"), false, "ein fehlender Puls gilt als lebend");
   });
+});
+
+// --- Der Puls wird atomar geschrieben (Issue #1262) ---
+//
+// `writeFileSync` leert die Datei und schreibt sie dann. Stirbt der Runner dazwischen oder
+// liest der Waechter genau dann, steht kein Lebenszeichen mehr da. Darum entsteht der Puls
+// in einer temporaeren Datei daneben und ersetzt den alten erst mit dem Umbenennen.
+
+const pulsOrdner = (dir) => readdirSync(join(dir, LAUF_ORDNER));
+
+test("[night-1262] nach jedem Schreiben liegt keine temporaere Datei, der Puls ist gueltiges JSON", async () => {
+  await mitProjekt(({ dir }) => {
+    starten("kette");
+    pulsZustandSetzen({ phase: "vorbereitung-wartet" });
+    pulsSchreiben();
+    pulsSchreiben();
+    const reste = pulsOrdner(dir).filter((n) => n.endsWith(".tmp"));
+    assert.deepEqual(reste, [], "eine temporaere Datei blieb liegen");
+    const puls = pulsLesen(dir);
+    assert.equal(puls.pid, process.pid);
+    assert.ok(puls.zeit, "der Puls traegt keine Zeit");
+    assert.equal(puls.phase, "vorbereitung-wartet");
+  });
+});
+
+test("[night-1262] scheitert das Umbenennen, bleibt der alte Puls stehen und keine temporaere Datei", async () => {
+  const umbenannt = [];
+  let scheitern = false;
+  const umbenennen = (von, nach) => {
+    if (scheitern) throw Object.assign(new Error("EPERM: rename"), { code: "EPERM" });
+    umbenannt.push([von, nach]);
+    renameSync(von, nach);
+  };
+  await mitProjekt(({ dir }) => {
+    starten("kette");
+    const vorher = readFileSync(join(dir, LAUF_ORDNER, `${LAUF}.puls`), "utf-8");
+    assert.ok(umbenannt.length > 0, "der Puls entstand nicht ueber das Umbenennen");
+    assert.match(umbenannt[0][0], /\.tmp$/, "geschrieben wird zuerst in eine temporaere Datei");
+    scheitern = true;
+    pulsZustandSetzen({ phase: "vorbereitung-wartet" });
+    assert.equal(readFileSync(join(dir, LAUF_ORDNER, `${LAUF}.puls`), "utf-8"), vorher, "der alte Puls wurde angetastet");
+    assert.deepEqual(pulsOrdner(dir).filter((n) => n.endsWith(".tmp")), [], "eine temporaere Datei blieb liegen");
+  }, { abh: { umbenennen } });
 });

@@ -28,7 +28,7 @@
  */
 
 import { spawn as kindStarten } from "node:child_process";
-import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, rmSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, renameSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir, hostname } from "node:os";
@@ -53,6 +53,8 @@ const VORGABEN = Object.freeze({
   spawn: kindStarten,
   kill: (pid, signal) => process.kill(pid, signal),
   beenden: (code) => process.exit(code),
+  // Das Umbenennen, mit dem der Puls die alte Fassung ersetzt (Issue #1262).
+  umbenennen: renameSync,
 });
 const abh = { ...VORGABEN };
 
@@ -341,12 +343,21 @@ function journalNachtragen(repoRoot, lauf) {
 /**
  * Erneuert die Puls-Datei: Zeitstempel und PID (E6), dazu `art` und `phase`, soweit gesetzt
  * (Plan #1243, E8). Ohne Lauf ein Leerlauf.
+ *
+ * Atomar (Issue #1262): erst eine temporaere Datei daneben, dann das Umbenennen. Ein
+ * `writeFileSync` auf den Puls leerte ihn zuerst; stirbt der Runner dazwischen oder liest der
+ * Waechter genau dann, stuende kein Lebenszeichen da, und ein lebender Lauf koennte als
+ * verstummt gelten. Scheitert ein Schritt, bleibt der alte Puls stehen und die temporaere
+ * Datei wird entfernt.
  */
 export function pulsSchreiben() {
   if (!PULS_DATEI) return;
+  const temporaer = `${PULS_DATEI}.${process.pid}.tmp`;
   try {
-    writeFileSync(PULS_DATEI, JSON.stringify({ zeit: isoJetzt(), pid: process.pid, ...PULS_ZUSTAND }) + "\n", "utf-8");
+    writeFileSync(temporaer, JSON.stringify({ zeit: isoJetzt(), pid: process.pid, ...PULS_ZUSTAND }) + "\n", "utf-8");
+    abh.umbenennen(temporaer, PULS_DATEI);
   } catch (err) {
+    try { rmSync(temporaer, { force: true }); } catch { /* bleibt liegen, der Puls zaehlt nur .puls */ }
     log(`Puls ${PULS_DATEI} nicht geschrieben: ${err.message}`);
   }
 }
