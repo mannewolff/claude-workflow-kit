@@ -313,6 +313,8 @@ export function toolboxMitKommentaren({ karten, kommentare, patchRoute = true, l
     const zug = req.url.match(/^\/api\/kanban\/items\/(\d+)\/move$/);
     if (zug && req.method === "PUT") {
       if (zustand.moveRoute === false) return { status: 500, json: { message: "Zug kaputt" } };
+      // Zug nur fuer einzelne Karten kaputt (Item-IDs): Die uebrigen ziehen weiter.
+      if (zustand.moveKaputt?.includes(Number(zug[1]))) return { status: 500, json: { message: "Zug kaputt" } };
       const karte = karten.find((k) => String(k.id) === zug[1]);
       if (!karte) return { status: 404, json: { message: "Karte nicht gefunden" } };
       karte.column = JSON.parse(koerper).column;
