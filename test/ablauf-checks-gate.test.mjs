@@ -20,7 +20,7 @@ import { writeFileSync, readFileSync, mkdirSync, rmSync, chmodSync, existsSync }
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { mitRepo, git, run, datei, posixShell, shellPfad } from "./helpers/checks-repo.mjs";
+import { mitRepo, git, run, datei, posixShell } from "./helpers/checks-repo.mjs";
 import { gate, gateEinbauen, GATE, HOOK } from "./helpers/checks-ablauf.mjs";
 
 const LEISE = { buildChecks: ["node -e \"process.exit(0)\""] };
@@ -234,7 +234,7 @@ function ohnePath() {
 }
 
 test("[gate-1] der Hook ist POSIX-sh, ausfuehrbar und faellt ohne node sichtbar aus", async () => {
-  const syntax = spawnSync(posixShell(), ["-n", shellPfad(HOOK)], { encoding: "utf-8" });
+  const syntax = spawnSync(posixShell(), ["-n", HOOK], { encoding: "utf-8" });
   assert.equal(syntax.status, 0, `sh -n meldete: ${syntax.stderr}`);
   assert.match(readFileSync(HOOK, "utf-8"), /^#!\/bin\/sh/);
 
@@ -243,7 +243,7 @@ test("[gate-1] der Hook ist POSIX-sh, ausfuehrbar und faellt ohne node sichtbar 
     chmodSync(join(dir, ".githooks", "pre-commit"), 0o755);
     // Aufruf aus einem anderen Arbeitsverzeichnis und mit PATH ohne node: Der Hook
     // muss gate.mjs relativ zu sich selbst finden und den Ausfall melden.
-    const res = spawnSync(posixShell(), [shellPfad(join(dir, ".githooks", "pre-commit"))], {
+    const res = spawnSync(posixShell(), [join(dir, ".githooks", "pre-commit")], {
       cwd: dir,
       encoding: "utf-8",
       env: { ...ohnePath(), PATH: "/nonexistent" },
@@ -324,7 +324,7 @@ function fremderStand(dir) {
 }
 
 function hookMitStand(dir, env) {
-  return spawnSync(posixShell(), [shellPfad(join(dir, ".githooks", "pre-commit"))], { cwd: dir, encoding: "utf-8", env: { ...process.env, ...env } });
+  return spawnSync(posixShell(), [join(dir, ".githooks", "pre-commit")], { cwd: dir, encoding: "utf-8", env: { ...process.env, ...env } });
 }
 
 test("[kitstand-6] mit Markierung und KIT_STAND_PFAD startet der Hook das Gate des Stands", async () => {

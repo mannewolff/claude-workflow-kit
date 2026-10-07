@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, chmodSync, rmSync } from "node:fs";
+import { existsSync, chmodSync } from "node:fs";
 import { join } from "node:path";
 
 import { blobHashes } from "../kit/checks.mjs";
@@ -130,23 +130,10 @@ test("[checks-8] blobHashes ist exportiert und liefert denselben Hash wie git ha
   });
 });
 
-/**
- * Macht `geheim.txt` fuer `git hash-object` unlesbar. Unter Windows wirkt chmod nicht als
- * Leseschutz; dort steht ein Verzeichnis an Stelle der committeten Datei, und
- * hash-object scheitert an derselben Stelle (Plan #1128 E7).
- */
+/** Macht `geheim.txt` fuer `git hash-object` unlesbar. */
 function unlesbarMachen(dir) {
-  if (process.platform !== "win32") {
-    datei(dir, "geheim.txt", "x\n");
-    // windows-ausnahme: unter Windows steht im Zweig darunter ein Verzeichnis an Stelle der Datei
-    chmodSync(join(dir, "geheim.txt"), 0o000);
-  } else {
-    datei(dir, "geheim.txt", "x\n");
-    git(dir, "add", "geheim.txt");
-    git(dir, "commit", "-q", "-m", "geheim");
-    rmSync(join(dir, "geheim.txt"));
-    datei(dir, "geheim.txt/innen.txt", "y\n");
-  }
+  datei(dir, "geheim.txt", "x\n");
+  chmodSync(join(dir, "geheim.txt"), 0o000);
 }
 
 // Als root greifen POSIX-Rechte nicht — eine Faehigkeit, kein Plattformname (Plan #1128 E6).
@@ -159,7 +146,7 @@ test("[checks-1] ein vorhandener, aber unlesbarer Pfad beendet den Lauf rot", { 
       assert.match(res.stderr, /geheim\.txt/);
       assert.equal(existsSync(join(dir, ".claude", "checks-summary.json")), false);
     } finally {
-      if (process.platform !== "win32") chmodSync(join(dir, "geheim.txt"), 0o644);
+      chmodSync(join(dir, "geheim.txt"), 0o644);
     }
   });
 });

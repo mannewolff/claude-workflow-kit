@@ -872,7 +872,14 @@ test("[1157] Das Fixture traegt genau einen Bruch der Art skips", () => {
 // der Bestand ist bis zur Reparatur nicht fundfrei. Wer repariert, streicht die Zeilen hier.
 // Je Fund ein Eintrag aus Datei und Art, ohne Zeile: Sonst braeche jede Bearbeitung einer
 // der Dateien diesen Test (Issue #1162).
-const BEKANNTE_BRUECHE = [];
+//
+// Seit dem Ende von nativem Windows (Plan #1265) sind diese Stellen keine Brueche mehr,
+// sondern die POSIX-Fassung ohne Weiche (Issue #1268). Sie stehen hier, bis Issue #1272
+// das Werkzeug samt diesem Test entfernt.
+const BEKANNTE_BRUECHE = [
+  "kit/checks.mjs — prozesse",
+  "test/checks-hash.test.mjs — dateien",
+];
 
 test("[1157] Der Bestand ist fundfrei bis auf die bekannten Brueche mit Karte (E15)", () => {
   const r = lauf([]);

@@ -22,7 +22,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 
 import { cliStart } from "../install.mjs";
-import { posixShell, shellPfad } from "./helpers/checks-repo.mjs";
+import { posixShell } from "./helpers/checks-repo.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -580,7 +580,7 @@ function standMitSpur(dir) {
 }
 
 function hook(dir, env) {
-  return spawnSync(posixShell(), [shellPfad(join(dir, ".githooks", "pre-commit"))], { cwd: dir, encoding: "utf-8", env: { ...process.env, ...env } });
+  return spawnSync(posixShell(), [join(dir, ".githooks", "pre-commit")], { cwd: dir, encoding: "utf-8", env: { ...process.env, ...env } });
 }
 
 test("[kitstand-6] der ausgelieferte Hook startet das Gate des Stands nur mit Markierung", () => {

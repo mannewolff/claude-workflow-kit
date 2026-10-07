@@ -10,7 +10,7 @@ import { spawn } from "node:child_process";
 import { readFileSync, existsSync, copyFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  mitRepo, repoAnlegen, run, zusammenfassung, datei, git, prozessbaumBeenden, repoEntfernenTolerant,
+  mitRepo, repoAnlegen, run, zusammenfassung, datei, git, repoEntfernenTolerant,
 } from "./helpers/checks-repo.mjs";
 import { CHECKS, gate, gateEinbauen } from "./helpers/checks-ablauf.mjs";
 
@@ -90,13 +90,11 @@ test("[checks-8] ein Lauf, der waehrend eines Kommandos stirbt, hinterlaesst ein
   // Tod eines Kindprozesses.
   const dir = repoAnlegen({ config });
   let kind = null;
-  // Ausserhalb des `try`, weil das Aufraeumen im `finally` die pid des Laufs braucht.
-  let proc = null;
   try {
     datei(dir, "werkzeug/langsam.mjs", LANGSAM);
     datei(dir, "src/a.txt");
 
-    proc = spawn(process.execPath, [CHECKS, "run"], { cwd: dir });
+    const proc = spawn(process.execPath, [CHECKS, "run"], { cwd: dir });
     proc.stdout.resume();
     proc.stderr.resume();
     await warteAuf(() => kommandoPid(dir) !== null, "das erste Pruefkommando lief nicht an");
@@ -113,18 +111,12 @@ test("[checks-8] ein Lauf, der waehrend eines Kommandos stirbt, hinterlaesst ein
     assert.equal(typeof fassung.hashes, "object");
     assert.notEqual(fassung.hashes, null);
   } finally {
-    // Erst die Prozesse, dann das Verzeichnis: Unter Windows haelt das ueberlebende
-    // Kommando sein Arbeitsverzeichnis offen, und das Loeschen scheitert mit EBUSY.
-    // `beendeKommando` trifft ueber die pid aus `laeuft.txt` nur das node-Kommando;
-    // die `cmd.exe`, die `checks.mjs` wegen `shell: true` dazwischenstellt, kennt es
-    // nie — SIGKILL beendet unter Windows keinen Prozessbaum. `prozessbaumBeenden`
-    // holt sie ueber `taskkill /T` nach, und die Wiederholungen des Entfernens warten
-    // den Rest ab: Die Shell gibt das Verzeichnis erst kurz nach ihrem Kind frei
-    // (Issue #873, #874). Bleibt es trotzdem belegt, wird das notiert und nicht
-    // geworfen — die Zusicherungen oben sind durch, und das Aufraeumen eines
-    // Wegwerf-Verzeichnisses darf ihr Ergebnis nicht kippen (Issue #892).
+    // Erst das Kommando, dann das Verzeichnis: Das haengende Kommando ueberlebt den Kill
+    // des Laufs, `beendeKommando` trifft es ueber die pid aus `laeuft.txt` (Issue #873).
+    // Bleibt das Verzeichnis trotzdem belegt, wird das notiert und nicht geworfen — die
+    // Zusicherungen oben sind durch, und das Aufraeumen eines Wegwerf-Verzeichnisses darf
+    // ihr Ergebnis nicht kippen (Issue #892).
     await beendeKommando(kind);
-    prozessbaumBeenden(proc?.pid);
     await repoEntfernenTolerant(dir, { notiz: (satz) => t.diagnostic(satz) });
   }
 });
