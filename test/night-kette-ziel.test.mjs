@@ -187,6 +187,17 @@ test("E1: ohne Ziel und ohne planreview:* nimmt der Start nur kit:night ab", asy
   assert.doesNotMatch(r.ausgabe, /festgehalten/);
 });
 
+/**
+ * Eine Kette mit Ziel `plan` oder `pakete` baut nichts: Ihr Nachtbericht traegt keinen
+ * Abschnitt Ursprungsdokumente, und sie haelt keinen Stand dazu fest (Issue #1290, E8).
+ */
+function ohneUrsprungsabschnitt(r) {
+  const berichte = r.karte(F).comments.map((c) => c.body).filter((b) => b.includes("### Ausgang"));
+  assert.ok(berichte.length > 0, "kein Nachtbericht an der Karte");
+  for (const b of berichte) assert.doesNotMatch(b, /### Ursprungsdokumente/);
+  assert.equal(einheitVon(r, F).stufen.umsetzung, undefined, "die Stufe umsetzung lief");
+}
+
 test("A2: ziel:plan endet nach review mit fertig, ohne Stufe pakete", async () => {
   const r = await ketteImProzess({ karten: [fachMit("ziel:plan")], sitzung: GLATT });
   assert.equal(r.code, 0, r.ausgabe);
@@ -196,6 +207,7 @@ test("A2: ziel:plan endet nach review mit fertig, ohne Stufe pakete", async () =
   assert.equal(einheit.variante, "A");
   assert.equal(einheit.stufen.pakete, undefined, "die Stufe pakete lief");
   assert.match(r.ausgabe, /Ziel plan erreicht nach review/);
+  ohneUrsprungsabschnitt(r);
 });
 
 test("A2: ziel:pakete endet nach abdeckung mit fertig", async () => {
@@ -204,6 +216,7 @@ test("A2: ziel:pakete endet nach abdeckung mit fertig", async () => {
   assert.deepEqual(stufenVon(r), ["plan", "review", "pakete", "abdeckung"]);
   assert.equal(einheitVon(r, F).ausgang, "fertig");
   assert.match(r.ausgabe, /Ziel pakete erreicht nach abdeckung/);
+  ohneUrsprungsabschnitt(r);
 });
 
 test("A2: ziel:pakete endet auch bei abdeckungUmsetzung: true mit fertig statt zu warten", async () => {

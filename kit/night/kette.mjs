@@ -2383,6 +2383,7 @@ async function stufenDerKette(kette) {
   // Ready-Spalte und nicht aus einer erneuten Abfrage nach Herkunft. Was davon schon
   // umgesetzt ist, laeuft nicht noch einmal (E9).
   const paketIds = kette.stufen.pakete?.ids ?? [];
+  const ursprungVorher = ursprungSpalten([planId, kette.F]);
   const umsetzung = await stufeMitErgebnis(kette, "umsetzung", planId, {
     auftrag: { ...auftrag, planId, paketIds },
     laufen: async () => {
@@ -2396,8 +2397,52 @@ async function stufenDerKette(kette) {
       return { ausgang: "fertig", vorgefunden: true };
     },
   });
+  ursprungFesthalten(kette, planId, ursprungVorher);
   if (umsetzung.ausgang !== "fertig") return { ...umsetzung, stufe: "umsetzung" };
   return nachDerUmsetzung(kette, umsetzung);
+}
+
+const ohneFuehrendeNullen = (id) => String(id).replace(/^0+(?=\d)/, "");
+
+/**
+ * Die Spalten von Plan und Anforderung beim Eintritt in die Stufe umsetzung, `{<nr>: spalte}`
+ * mit der Nummer ohne fuehrende Nullen, wie sie `issue ursprung` nennt. Eine nicht lesbare
+ * Karte fehlt; der Bericht nennt sie dann ohne Vergleich.
+ */
+function ursprungSpalten(ids) {
+  const vorher = {};
+  for (const id of new Set(ids.filter(Boolean).map(String))) {
+    const status = leseKarte(id)?.status;
+    if (status) vorher[ohneFuehrendeNullen(id)] = status;
+  }
+  return vorher;
+}
+
+/**
+ * Der Stand der Ursprungsdokumente nach der Stufe umsetzung (Issue #1290, Plan #1283 A10,
+ * A11): an einer Stelle hinter `stufeMitErgebnis`, gleich ob die Stufe lief, ausgelassen oder
+ * vorgefunden wurde, als `stufen.umsetzung.ursprung` — `{ vorher, auswertung }` mit der
+ * Ausgabe von `issue ursprung <plan>`, oder `{ fehler }`. Nur lesend und ueber `boardRoh`:
+ * Ein Lesefehler haelt die Kette nicht an, `abh.board` liesse den Lauf nach dem zweiten
+ * Versuch anhalten.
+ */
+function ursprungFesthalten(kette, planId, vorher) {
+  const stand = kette.stufen.umsetzung;
+  if (!stand) return;
+  let res;
+  try {
+    res = abh.boardRoh("issue", "ursprung", String(planId));
+  } catch (e) {
+    res = { status: 1, json: null, text: e.message };
+  }
+  if (res.status === 0 && res.json) {
+    stand.ursprung = { vorher, auswertung: res.json };
+    log(`  Ursprungsdokumente zu Plan #${planId}: ${res.json.durch ? "Plan durch" : res.json.grund ?? "Plan nicht durch"}.`);
+  } else {
+    const grund = res.text || "Exit " + res.status;
+    stand.ursprung = { fehler: `issue ursprung ${planId} nicht lesbar (${grund})` };
+    log(`  Ursprungsdokumente zu Plan #${planId}: ${stand.ursprung.fehler}.`);
+  }
 }
 
 /**

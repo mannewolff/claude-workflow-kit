@@ -629,9 +629,15 @@ function ursprungDokumentZeile(d, vorher, fehler) {
   return `- ${ursprungName(d)}: ${d.aktion}.`;
 }
 
-/** Warum ein Paket fehlt, aus dem Stand der Umsetzungsstufe (Kriterium 5 des Fachplans #1279). */
+const ohneNullen = (id) => String(id).replace(/^0+(?=\d)/, "");
+
+/**
+ * Warum ein Paket fehlt, aus dem Stand der Umsetzungsstufe (Kriterium 5 des Fachplans #1279).
+ * Verglichen ohne fuehrende Nullen: Die Stufe fuehrt die Nummern des Trackers (lokal `0003`),
+ * `issue ursprung` nennt sie ohne (Issue #1290).
+ */
 function fehlendGrund(umsetzung, id) {
-  const gleich = (e) => String(e && typeof e === "object" ? e.id : e) === String(id);
+  const gleich = (e) => ohneNullen(e && typeof e === "object" ? e.id : e) === ohneNullen(id);
   if (umsetzung.ausgelassen) return `nicht begonnen (Umsetzung ausgelassen: ${umsetzung.ausgelassen})`;
   const zurueck = (umsetzung.zurueckgestellt ?? []).find(gleich);
   if (zurueck) return `gescheitert und zurück im Backlog (${zurueck.grund})`;
