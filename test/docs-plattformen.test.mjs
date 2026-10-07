@@ -1,4 +1,5 @@
 // Issue #1139: Vorlage und Skills fangen ein leeres TMPDIR unter Git Bash ab (Plan #1128, E11).
+// Issue #1267: Der Rückfall für ein leeres TMPDIR ist /tmp, nicht cygpath (Plan #1265, E8).
 // Issue #1266: Die Plattformzusage lautet macOS, Linux und Windows über WSL2 (Plan #1265, E9).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -83,9 +84,11 @@ const TRANSPORT = [
 ];
 
 for (const datei of TRANSPORT) {
-  test(`${datei} nennt neben printenv TMPDIR den Rückfall cygpath`, () => {
+  test(`${datei} nennt neben printenv TMPDIR den Rückfall /tmp und kein cygpath`, () => {
     const text = lies(datei);
     assert.ok(text.includes('printenv TMPDIR'));
-    assert.ok(text.includes('cygpath -m "$TEMP"'));
+    assert.ok(text.includes('(Linux und WSL2 ohne Sandbox)'));
+    assert.ok(text.includes('`/tmp`'));
+    assert.doesNotMatch(text, /cygpath/);
   });
 }
