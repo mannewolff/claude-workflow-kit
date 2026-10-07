@@ -702,7 +702,6 @@
       "install.mjs",
       "tools/changelog.mjs",
       "tools/copy-downloads-for-docs.mjs",
-      "tools/windows-pruefung.mjs",
       "tools/lastbeleg.mjs",
       ".githooks/pre-commit",
       "test/install-*.test.mjs",

@@ -1,11 +1,9 @@
-// Tests fuer die Trigger der CI-Workflows (Issue #891, #1152).
+// Tests fuer die Trigger der CI-Workflows (Issue #891, #1274).
 //
 // Der Guard blob-sync-check lief dreimal auf demselben Inhalt: Push auf main, PR
-// main -> production und Push auf production. Mit der Matrix aus zwei Plattformen
-// waren das sechs Jobs, von denen vier nichts Neues finden konnten. Geblieben sind
-// der Push auf main (beide Plattformen) und der PR nach main (nur Ubuntu).
-// Seit #1152 kommt der Push auf den Vorab-Zweig windows-vorab dazu, ebenfalls mit
-// beiden Plattformen: Dort laeuft Windows vor der Veroeffentlichung auf main (#1147).
+// main -> production und Push auf production. Geblieben sind der Push auf main und
+// der PR nach main. Seit #1274 faehrt der Job nur noch auf Ubuntu, ohne Matrix und
+// ohne Vorab-Zweig (Plan #1265, E14).
 //
 // Geprueft wird die Workflow-Datei als Text, nicht ueber einen YAML-Parser: js-yaml
 // liegt nur transitiv unter node_modules und steht in keiner devDependency der
@@ -39,29 +37,15 @@ test("[ci-trigger] blob-sync-check triggert weder auf Push noch auf PR nach prod
 
 test("[ci-trigger] blob-sync-check triggert auf main, bei Push und bei Pull Request", () => {
   const block = onBlock(lies("blob-sync-check.yml"));
-  assert.match(block, /push:[ \t]*\n[ \t]*branches: \[main, windows-vorab\]/);
+  assert.match(block, /push:[ \t]*\n[ \t]*branches: \[main\]/);
   assert.match(block, /pull_request:[ \t]*\n[ \t]*branches: \[main\]/);
 });
 
-test("[ci-trigger] blob-sync-check triggert auf Pushes nach windows-vorab, nicht auf PRs dorthin", () => {
-  const block = onBlock(lies("blob-sync-check.yml"));
-  const push = block.match(/push:[ \t]*\n[ \t]*branches: \[([^\]]*)\]/);
-  assert.ok(push, `kein push.branches im on-Block:\n${block}`);
-  assert.ok(push[1].split(",").map((b) => b.trim()).includes("windows-vorab"), `windows-vorab fehlt in push.branches: [${push[1]}]`);
-  const pr = block.match(/pull_request:[ \t]*\n[ \t]*branches: \[([^\]]*)\]/);
-  assert.ok(pr && !pr[1].includes("windows-vorab"), `windows-vorab steht in pull_request.branches:\n${block}`);
-});
-
-test("[ci-trigger] die Matrix faehrt Windows bei jedem Push, Pull Requests nur Ubuntu", () => {
+test("[ci-trigger] blob-sync-check nennt weder Windows noch eine Matrix (Issue #1274)", () => {
   const text = lies("blob-sync-check.yml");
-  const osZeile = text.split(/\r?\n/).find((z) => z.trim().startsWith("os:"));
-  assert.ok(osZeile, "keine os:-Zeile gefunden");
-  // Bedingung allein am Ereignis, nicht am Zweig: dann gilt sie fuer main und windows-vorab.
-  assert.match(
-    osZeile,
-    /github\.event_name == 'push' && fromJSON\('\["ubuntu-latest","windows-latest"\]'\) \|\| fromJSON\('\["ubuntu-latest"\]'\)/,
-  );
-  assert.ok(!osZeile.includes("github.ref"), `die Matrix haengt am Zweig: ${osZeile}`);
+  assert.doesNotMatch(text, /windows/i, "die Workflow-Datei nennt noch Windows");
+  assert.doesNotMatch(text, /matrix/i, "die Workflow-Datei nennt noch eine Matrix");
+  assert.match(text, /runs-on: ubuntu-latest/, "der Job laeuft nicht fest auf ubuntu-latest");
 });
 
 test("[ci-trigger] sonarqube triggert unveraendert nur auf main", () => {

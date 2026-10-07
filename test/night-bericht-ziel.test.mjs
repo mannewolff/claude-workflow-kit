@@ -97,7 +97,7 @@ test("E12: gruen nennt Ergebnis, geprueften Stand, Version, Pakete und keine off
 });
 
 test("E17: gruen-offen nennt jeden offenen Punkt unveraendert, den Build-Dienst-Punkt zuerst", () => {
-  const offen = ["voller Lauf im Build-Dienst (Prüfzweig kit-pruefung/x)", "Windows-Vorabprüfung"];
+  const offen = ["voller Lauf im Build-Dienst (Prüfzweig kit-pruefung/x)", "Sichtprüfung der Oberfläche"];
   const text = vb({ ergebnis: "gruen-offen", offen });
   assert.match(text, /### Ergebnis\n\ngrün, Prüfung offen\n/);
   assert.ok(text.includes(`### Offene Prüfungen\n\n- ${offen[0]}\n- ${offen[1]}\n`), text);

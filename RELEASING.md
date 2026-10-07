@@ -42,54 +42,6 @@ git config core.hooksPath .githooks
 Ohne diesen Schritt weist nichts einen Commit ohne Pruefnachweis ab; es bleibt allein
 die nachtraegliche Wertung im Nacht-Runner (Issue #471).
 
-Die Rueckmeldung zur Windows-Pruefung (Issue #1129) laeuft als Hook in
-`.claude/settings.json`. Die Datei ist nicht versioniert, und schreiben darf sie nur der
-Mensch. Deshalb stehen die beiden Eintraege hier, wortgetreu unter `"hooks"`:
-
-```json
-"SessionStart": [
-  { "hooks": [{ "type": "command", "command": "node tools/windows-pruefung.mjs --hook" }] }
-],
-"UserPromptSubmit": [
-  { "hooks": [{ "type": "command", "command": "node tools/windows-pruefung.mjs --hook" }] }
-]
-```
-
-### Rueckmeldung zur Windows-Pruefung
-
-Fuer die Windows-Pruefung des Kit-Repositorys sind #316 und #1129 abgeloest: `push main`
-wartet vor dem Push auf sie (Abschnitt "Vor dem Push" unten, Issue #1154). Ein roter Job
-`check (windows-latest)` faellt damit vor der Veroeffentlichung auf, nicht erst beim CI-Gate
-in `/merge-production`. Der Hook bleibt als Netz fuer Pushes ausserhalb von `push main`,
-etwa einen Push von Hand. Gemeldet wird dann beim naechsten Schritt: Der Hook
-fragt `code ci-status` fuer `origin/main` ab, ohne Fetch und mit einer Frist von fuenf
-Sekunden. Ein rotes Ergebnis meldet er einmal je Sitzung und bei jedem Sitzungsstart
-erneut. Ergebnis und Abfragezeit haelt er in `.claude/windows-pruefung.json`. Laeuft der Job
-noch, fragt er fruehestens nach zwei Minuten wieder. Scheitert die Abfrage, schweigt er.
-
-## Vor dem Push
-
-Ein Vor-Push-Schritt: `push main` faehrt ihn nach seinem Commit und vor dem Push auf
-`main`, im Hintergrund, und wartet auf sein Ende (Plan #1150, E6 bis E8):
-
-```bash
-node tools/windows-pruefung.mjs --vorab
-```
-
-Das Werkzeug prueft den fertigen Commit in der gehosteten Pruefung unter Windows. Liegt fuer
-ihn schon ein Ergebnis vor, gilt es ohne Push. Sonst legt es den Stand auf den Wegwerf-Zweig
-`windows-vorab` (loeschen, dann neu anlegen, ohne Force-Push), fragt alle 30 Sekunden ab und
-schreibt je Abfrage eine Fortschrittszeile. Die Frist betraegt 30 Minuten ab dem Start des
-Windows-Jobs; danach endet es von selbst.
-
-- Exit 0 — gruen, `push main` pusht.
-- Exit 1 — rot, gepusht wird nur nach ausdruecklicher Freigabe des Menschen.
-- Jeder andere Exit — kein verwertbares Ergebnis (Frist abgelaufen, Abfrage oder Vorab-Push
-  gescheitert): Halt ohne Push, mit der Meldung des Werkzeugs.
-
-Zielprojekte bekommen diesen Schritt nicht: Er steht nur in dieser Datei, und `push main`
-faehrt allgemein jeden Vor-Push-Schritt, den eine `RELEASING.md` nennt.
-
 ## Ablauf
 
 Die Listen unten fuehren nur die **Erzeugungsschritte**. Prueflauf, Festschreiben und
@@ -98,9 +50,7 @@ alles bis zum ersten festschreibenden Schritt, dann genau einen Prueflauf ueber 
 fertigen Stand, dann genau einen Commit. Deshalb ordnet diese Datei weder das
 Festschreiben noch das Veroeffentlichen noch den Prueflauf an — taete sie es, gaebe es
 zwei Stellen, die dasselbe anordnen, und eine fremde `RELEASING.md` braeuchte Wissen
-ueber das Commit-Gate. Einzige Ausnahme ist der Vor-Push-Schritt (Abschnitt "Vor
-dem Push" oben): Er veroeffentlicht nichts auf `main`, sondern legt den Stand auf einen
-Wegwerf-Zweig fuer die gehostete Pruefung.
+ueber das Commit-Gate.
 
 **Bei `push main`** (ausgeloest durch `.claude/skills/push-main/SKILL.md`):
 1. `node tools/version.mjs --patch`
