@@ -611,6 +611,7 @@
     ],
     "board-dokumente": [
       "kit/board/dokumente.mjs",
+      "kit/board/ursprung.mjs",
       "test/board-dokumente-*.test.mjs"
     ],
     "board-geschuetzt": [

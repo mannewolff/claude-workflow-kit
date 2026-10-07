@@ -43,7 +43,17 @@
  *   node board.mjs issue auftrag <id> [--spalte ready|in_progress] [--json]
  *       Aufgabe, Voraussetzungen und das Urteil "darf beginnen" in einem Zug, rein
  *       lesend (Issue #1023). Ausgabe Markdown, mit --json als JSON.
- *   node board.mjs issue label add <id> <name>
+ *   node board.mjs issue ursprung <plan>
+ *       Ist der Plan durch, und welche Ursprungsdokumente wandern nach In review
+ *       (Issue #1285)? Rein lesend, Ausgabe JSON.
+ *   node board.mjs issue ursprung <plan>
+      Stand der Ursprungsdokumente eines Plans (Issue #1285, Plan #1283): durch heisst,
+      mindestens ein Paket ('Plan: Issue #M') liegt in In review oder Done und keines in
+      Backlog, Ready oder In progress. Je Dokument (Plan, fachliche Anforderung aus
+      'Fachliche Quelle:') die Aktion wandert | lag bereits in In review | lag bereits
+      in Done | bleibt, mit Grund. Rein lesend, bewegt nichts. Ausgabe: { plan, durch,
+      grund, fehlend: [{ id, titel, spalte }], dokumente: [{ id, art, spalte, aktion, grund }] }.
+  node board.mjs issue label add <id> <name>
  *   node board.mjs issue label remove <id> <name>
  *       Zeichnet ein Issue (z. B. kit:klaeren). Nicht fuer Status-Labels — die
  *       aendert `issue move` (Issue #249).
@@ -133,6 +143,13 @@ Nutzung:
       Ausgabe: Markdown mit sieben '##'-Gliedern -- die einzige Ausnahme von JSON auf
       stdout; --json liefert dieselben Glieder als Felder. Exit 0 auch bei 'darf nicht
       beginnen', Exit 1 nur, wenn das Paket nicht lesbar ist.
+  node board.mjs issue ursprung <plan>
+      Stand der Ursprungsdokumente eines Plans (Issue #1285, Plan #1283): durch heisst,
+      mindestens ein Paket ('Plan: Issue #M') liegt in In review oder Done und keines in
+      Backlog, Ready oder In progress. Je Dokument (Plan, fachliche Anforderung aus
+      'Fachliche Quelle:') die Aktion wandert | lag bereits in In review | lag bereits
+      in Done | bleibt, mit Grund. Rein lesend, bewegt nichts. Ausgabe: { plan, durch,
+      grund, fehlend: [{ id, titel, spalte }], dokumente: [{ id, art, spalte, aktion, grund }] }.
   node board.mjs issue label add <id> <name>
   node board.mjs issue label remove <id> <name>
       Zeichnet ein Issue (z. B. kit:klaeren). Status-Labels aendert \`issue move\`.
@@ -242,7 +259,7 @@ export const { mergeKontextConfig, resolveKontextPaths, pickNoteFile, pickLatest
 // Einstieg fuer Dispatch und Formpruefung; exportiert waren sie nie und bleiben es nicht.
 const { KONTEXT_DEFAULTS, loadKontextConfig, kontextRepoName, heute, issueCreate,
   issueGet, issueList, issueEpics, issueActivity, issueMove, issueLabel,
-  issueComment, issueMelden, issueStand, issueAuftrag, issueUpdate, CHECK_FORM_WEGE } = await import("./board/dokumente.mjs");
+  issueComment, issueMelden, issueStand, issueAuftrag, issueUrsprung, issueUpdate, CHECK_FORM_WEGE } = await import("./board/dokumente.mjs");
 export const { GESCHUETZTE_PFADE, KOPIE_PFADE, geschuetztePfade, trifftGeschuetzt, pfadTokens, tokenFormen,
   geschuetzteTreffer, GESCHUETZT_ANKER, GESCHUETZT_LABEL, GESCHUETZT_LABEL_GESETZT, GESCHUETZT_LABEL_NICHT_GESETZT,
   GESCHUETZT_ABGEWIESEN, abgewieseneTreffer, geschuetztKommentar, geschuetztFreigabe } = await import("./board/geschuetzt.mjs");
@@ -399,6 +416,7 @@ async function dispatchIssue(command, args) {
     case "melden":  return issueMelden(tracker, args);
     case "stand":   return issueStand(tracker, config, args);
     case "auftrag": return issueAuftrag(tracker, args, AUFTRAG_GESCHUETZT);
+    case "ursprung": return issueUrsprung(tracker, args);
     case "label":   return issueLabel(tracker, config, args, HELP);
     case "check-form": return issueCheckForm(tracker, config, args);
     case "check-geschuetzt": return issueCheckGeschuetzt(tracker, args);

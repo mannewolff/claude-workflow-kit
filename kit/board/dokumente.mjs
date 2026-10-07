@@ -30,6 +30,9 @@ import { homedir } from "node:os";
 import { VALID_STATUSES, COLUMN_DEFAULTS, columnLabels, BoardError, fail, out, configWurzel,
   readWorkflowConfig } from "./grundlagen.mjs";
 import { GitHubIssueTracker, resolveCodeHost } from "./adapter.mjs";
+// Zyklus mit Absicht: ursprung.mjs liest Karten und Herkunftszeilen von hier. Beide Seiten
+// rufen sich erst zur Laufzeit, keine liest beim Laden einen Wert der anderen.
+import { ursprungLesen } from "./ursprung.mjs";
 
 // ============================================================
 // Kontext-Achse (Vault-Pfade fuer /kontext und /document, Issue #202)
@@ -645,6 +648,16 @@ export async function issueMove(tracker, args) {
   wegmarkeSchreiben(id, toStatus);
   bewegungSchreiben(id, toStatus);
   out({ ok: true, id, status: toStatus });
+}
+
+/**
+ * `issue ursprung <plan>` (Issue #1285, Plan #1283 A11): Ist der Plan durch, und welche
+ * Ursprungsdokumente wandern? Rein lesend — gibt die Auswertung aus und bewegt nichts.
+ */
+export async function issueUrsprung(tracker, args) {
+  const id = args._[0];
+  if (!id) fail("Plan-Nummer ist erforderlich: board.mjs issue ursprung <plan>");
+  out(await ursprungLesen(tracker, id));
 }
 
 const LABEL_AKTIONEN = ["add", "remove"];
@@ -1312,7 +1325,7 @@ const ohneFuehrendeNullen = (id) => String(id).replace(/^0+(?=\d)/, "");
  * der Nummer trennt #30 von #300. Verglichen wird ohne fuehrende Nullen, weil der lokale
  * Tracker seine Nummern mit ihnen schreibt.
  */
-function herkunftNummern(body, feld) {
+export function herkunftNummern(body, feld) {
   // `[^\S\n]` statt `\s`: `\s*$` duerfte mit dem m-Flag ueber Zeilenumbrueche laufen.
   const zeile = new RegExp(String.raw`^[^\S\n]*${feld}:[^\S\n]*Issue[^\S\n]*#(\d+)[^\S\n]*$`, "gm");
   return [...normalisiereZeilenenden(body).matchAll(zeile)].map((m) => ohneFuehrendeNullen(m[1]));
@@ -1451,7 +1464,7 @@ async function auftragFachlicherAnlass(tracker, karte, plan, luecken) {
  * Listen auch den Body. GitHub liefert dort keinen Body; die Bodies kommen deshalb aus
  * `listAlleMitBody`, und eine Karte, die in keiner Spaltenliste steht, hat Spalte `null`.
  */
-async function auftragAlleKarten(tracker, spaltenListen) {
+export async function auftragAlleKarten(tracker, spaltenListen) {
   for (const s of VALID_STATUSES) {
     if (!spaltenListen.has(s)) spaltenListen.set(s, await tracker.listIssues(s));
   }
