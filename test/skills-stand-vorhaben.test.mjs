@@ -44,3 +44,21 @@ for (const skill of ["implement-ready", "implement-next"]) {
 test("[skills-26] beide Skills tragen den Abschnitt wortgleich", () => {
   assert.equal(abschnitt(lies("implement-next")), abschnitt(lies("implement-ready")));
 });
+
+// Die Ursprungsdokumente zieht issue melden selbst nach (Issue #1288, Plan #1283, A9).
+const URSPRUNG_SATZ = "Die Ursprungsdokumente zieht `issue melden` selbst nach: Die Abschlussmeldung nennt die Zeilen aus dem Feld `ursprung` seiner Ausgabe (gewandert, lag bereits, nicht nachgezogen samt Kommando), und die Session bewegt Plan und fachliche Anforderung nie selbst.";
+
+for (const skill of ["implement-ready", "implement-next"]) {
+  test(`[skills-26] ${skill}: der Abschnitt nennt das Feld ursprung und das Verhaeltnis der Urteile`, () => {
+    const s = abschnitt(lies(skill));
+    assert.ok(s.includes(URSPRUNG_SATZ), "der Satz zum Feld ursprung fehlt");
+    assert.match(s, /`ursprung\.durch`/);
+  });
+}
+
+test("[skills-26] implement-done: der Satz zum Feld ursprung steht nach issue melden", () => {
+  const t = lies("implement-done");
+  const melden = t.indexOf("node .claude/kit/board.mjs issue melden <id>");
+  const satz = t.indexOf(URSPRUNG_SATZ);
+  assert.ok(melden > 0 && satz > melden, "der Satz fehlt oder steht vor issue melden");
+});

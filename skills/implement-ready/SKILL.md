@@ -271,6 +271,8 @@ Hat dieser Lauf das letzte offene Paket eines Vorhabens nach In review gebracht 
 
 Die fachliche Quelle kommt aus der Zeile `Fachliche Quelle: Issue #N` des Plans `#M`, geholt mit `node .claude/kit/board.mjs issue get <N>` — nie aus dem Gespräch. Grün heißt „erfüllt, was aufgeschrieben wurde", nicht „erfüllt, was gemeint war"; wer das Fehlende weiter unten liest, hält das Vorhaben für fertig. Ein Paket ohne `Plan:`-Zeile gehört zu keinem Vorhaben, der Abschnitt entfällt. Unbeaufsichtigt steht derselbe Abschnitt am Anfang des Abschlussberichts des letzten Pakets.
 
+Die Ursprungsdokumente zieht `issue melden` selbst nach: Die Abschlussmeldung nennt die Zeilen aus dem Feld `ursprung` seiner Ausgabe (gewandert, lag bereits, nicht nachgezogen samt Kommando), und die Session bewegt Plan und fachliche Anforderung nie selbst. Das Urteil der Session gilt für den Abschnitt `## Stand des Vorhabens`, das des Kits für die Bewegung; beide folgen derselben Spaltenregel, und weichen sie ab (`ursprung.durch` ist false, obwohl der Abschnitt steht), nennt die Abschlussmeldung das.
+
 ## Verhalten bei leerem Ready
 
 > "Ready ist leer. Alle Issues in In review. Ich warte auf dein GO für den nächsten Batch."
