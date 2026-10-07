@@ -1,2 +1,0 @@
-docs/notiz:entwurf.md
-docs/notiz-entwurf.md

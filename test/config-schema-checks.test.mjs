@@ -778,8 +778,8 @@ test("gleichzeitig: eine Zeichenkette ist ungueltig", () => {
 // vertipptes Feld, das die Pruefung still zur gewoehnlichen machte.
 
 test("art: der Wert hinweis ist gueltig", () => {
-  assert.deepEqual(pruefe(eintragSchema, { cmd: "node tools/windows-brueche.mjs", always: true, art: "hinweis" }), []);
-  assert.deepEqual(pruefe(eintragSchema, { cmd: "node tools/windows-brueche.mjs", areas: ["kit"], stufe: "push", art: "hinweis" }), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "node tools/beispiel-hinweis.mjs", always: true, art: "hinweis" }), []);
+  assert.deepEqual(pruefe(eintragSchema, { cmd: "node tools/beispiel-hinweis.mjs", areas: ["kit"], stufe: "push", art: "hinweis" }), []);
 });
 
 test("art: ein anderer Wert ist ungueltig", () => {

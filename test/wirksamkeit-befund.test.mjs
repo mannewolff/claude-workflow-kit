@@ -94,7 +94,7 @@ test("[wirksamkeit-2] befund weist ein ueberzaehliges Argument ab, ohne etwas au
 // Befund — und ohne Lauf als "nicht gelaufen". Beides waere eine Aussage ueber eine
 // Pruefung, die gar nicht beanstanden kann.
 
-const HINWEIS = "node tools/windows-brueche.mjs";
+const HINWEIS = "node tools/beispiel-hinweis.mjs";
 
 test("[wirksamkeit-2] ein Hinweis-Eintrag erzeugt keinen Befund nie beanstandet", () => {
   const config = { buildChecks: [{ cmd: HINWEIS, always: true, art: "hinweis" }] };
