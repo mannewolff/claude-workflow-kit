@@ -216,11 +216,9 @@ test("[night-857] eine waehrend des Pruefens gestorbene Session erscheint als ro
   //
   // Das Pruefkommando toetet checks.mjs selbst mit `kill -9` — derselbe Tod wie durch die
   // Uhr oder das Ende der Session. Die PID legt die Session ab, die checks.mjs im
-  // Hintergrund startet (`$!`); das Pruefkommando wartet, bis sie dasteht. Nicht
-  // `$PPID`: In der Git Bash unter Windows ist der Elternprozess eines von einem
-  // Windows-Prozess gestarteten bash fuer die Shell nicht sichtbar, `$PPID` ist dort 1
-  // (Issue #1261). Das Warten zaehlt mit, statt zu schlafen, und gibt nach einer festen
-  // Zahl Runden auf; dann endet das Kommando rot, und der Test zeigt die Zeile.
+  // Hintergrund startet (`$!`); das Pruefkommando wartet, bis sie dasteht. Das Warten
+  // zaehlt mit, statt zu schlafen, und gibt nach einer festen Zahl Runden auf; dann endet
+  // das Kommando rot, und der Test zeigt die Zeile.
   // Die Marke `.gestorben` begrenzt das auf den ERSTEN Lauf: Jeder weitere Aufruf
   // desselben Kommandos — der Salvage-Vorlauf — laeuft gruen durch, statt den Runner
   // selbst zu erschlagen.

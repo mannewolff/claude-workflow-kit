@@ -645,9 +645,9 @@ function claudeSpiegeln(repoRoot, pfad) {
   // Die oberste Ebene geht der Runner selbst durch und kopiert jeden uebrigen Eintrag ohne
   // Filter (Issue #832). Bis dahin entschied ein `cpSync`-Filter ueber den Pfad von `src`
   // relativ zu `.claude/` — und das hing daran, dass `cpSync` ihn in derselben Schreibweise
-  // uebergibt wie die Quelle. Unter Windows tat es das nicht (Kurzname des Temp-Verzeichnisses), der
-  // Filter liess alles durch, und die Protokolle landeten im Worktree. Ohne Pfadvergleich
-  // gibt es keine Schreibweise, die abweichen kann.
+  // uebergibt wie die Quelle. Tat es das nicht (etwa ein Kurzname des Temp-Verzeichnisses),
+  // liess der Filter alles durch, und die Protokolle landeten im Worktree. Ohne
+  // Pfadvergleich gibt es keine Schreibweise, die abweichen kann.
   for (const eintrag of readdirSync(quelle, { withFileTypes: true })) {
     if (bleibtInHauptkopie(eintrag.name)) continue;
     cpSync(join(quelle, eintrag.name), join(ziel, eintrag.name), { recursive: true, force: true });
@@ -712,10 +712,10 @@ function cwdLiegtIn(pfad) {
  *
  * Steht das Arbeitsverzeichnis des Prozesses IM Worktree, wechselt die Funktion zuerst
  * hinaus nach `repoRoot` (Issue #955): Genau so rufen die Release-Skills den Abbau, und
- * Windows sperrt das Loeschen eines Verzeichnisses, in dem ein Prozess steht (EBUSY) —
- * POSIX erlaubt es, die CI auf `windows-latest` stand daran rot. `repoRoot` ist immer
- * vorhanden und der Ort, an dem der Worktree-Eintrag gefuehrt wird. Der Wechsel geschieht
- * NUR in diesem Fall: Wer von aussen aufraeumt, soll sein cwd nicht wechseln sehen.
+ * ein Prozess soll nicht in einem Verzeichnis stehen, das unter ihm geloescht wird; ein
+ * Dateisystem, das das Loeschen dann sperrt (EBUSY), liesse den Abbau scheitern.
+ * `repoRoot` ist immer vorhanden und der Ort, an dem der Worktree-Eintrag gefuehrt wird.
+ * Der Wechsel geschieht NUR in diesem Fall: Wer von aussen aufraeumt, soll sein cwd nicht wechseln sehen.
  */
 export function worktreeEntfernen(pfad, repoRoot) {
   if (cwdLiegtIn(pfad)) process.chdir(repoRoot);

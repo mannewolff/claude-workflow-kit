@@ -274,8 +274,8 @@ export const { leseStromereignis, werkzeugZeitBeobachter, UEBERNAHME_MARKE, prue
   TOOL_RESULTS_PFAD, auskunftArt, auskunftBeobachter, umsetzungsStart, leseKennzahlen, kennzahlenAddieren, verbrauchLeer,
   verbrauchAddieren, verbrauchOhneEinheit, zeitenBauen, zeitenAddieren, prueflaeufeAddieren, kostenAddieren,
   leseErgebnisText, empfohlenesModell, aufgabenStufe, stufenEinstellung, konfigKommandoStart, stufeStartbar,
-  modellFuerStufe, paketWahl, frischeStufenFelder, warteAufProzessgruppe, sessionUmgebung, SITZUNG_MARKE, sitzungsSuche,
-  sitzungsPids, sitzungsProzesse, baumBeendenAufruf, permissionArgs, BASH_RESERVE_MS, bashZeitlimit, sessionStart,
+  modellFuerStufe, paketWahl, frischeStufenFelder, warteAufProzessgruppe, sessionUmgebung, baumBeendenAufruf,
+  permissionArgs, BASH_RESERVE_MS, bashZeitlimit, sessionStart,
   runSession, lesePruefung, gueteAuswerten, fehlermerkmal, salvagePrompt, laufModell, KETTE_BUDGET_DEFAULTS,
   ladeKetteBudget, KETTE_UEBERGAENGE_DEFAULTS, ladeKetteUebergaenge, ketteBudgetDefaults, PRUEFLAUF_BUDGET_DEFAULTS,
   ladePruefLaufBudget, pruefLaufBudgetDefaults, varianteVon, trackerProbeId, vorflugPrompt, parseVorflugBefund,
@@ -671,8 +671,8 @@ function laufBudget(args) {
  *
  * Die Uhrzeit gehoert in den Dateinamen, weil das Textprotokoll eine Tagesdatei zum
  * Anhaengen ist, JSON aber nicht angehaengt werden kann — der zweite Lauf eines Tages
- * ueberschriebe sonst den ersten. Ohne Trennzeichen, weil Doppelpunkte unter Windows
- * in Dateinamen verboten sind. Zwei Starts in derselben Sekunde trennt
+ * ueberschriebe sonst den ersten. Ohne Trennzeichen, weil Doppelpunkte in Dateinamen
+ * nicht ueberall erlaubt sind. Zwei Starts in derselben Sekunde trennt
  * `laufStempelReservieren` (Issue #1190).
  */
 function ergebnisstandAnlegen(args, aktivesLabel, jetztVorher) {
@@ -813,7 +813,7 @@ export function pruefeSettingsSyntax(pfade) {
 /**
  * Der Vorflug ueber die drei Dateien, die jede Nacht-Session liest — in jeder
  * Betriebsart: harter Stopp ohne Dry-Run, im Dry-Run nur berichtet (wie der Reviewer-
- * Vorflug). Home ueber homedir() wie in board.mjs (unter Windows USERPROFILE, #187).
+ * Vorflug). Home ueber homedir() wie in board.mjs, nicht ueber HOME (#187).
  * settingsEnv() bleibt daneben tolerant: fuer eine Datei, die erst waehrend des Laufs
  * unbrauchbar wird.
  */

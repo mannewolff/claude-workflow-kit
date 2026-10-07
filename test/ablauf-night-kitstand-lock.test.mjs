@@ -48,8 +48,7 @@ function lockSchreiben(dir, inhalt) {
 /**
  * Die Id eines Prozesses, den es sicher nicht mehr gibt: ein node-Prozess, der seine
  * eigene Nummer meldet und danach beendet ist. Eine geratene Zahl koennte einem fremden
- * laufenden Prozess gehoeren. Nicht `sh -c 'echo $'`: In der Git Bash ist `$` eine
- * MSYS-Nummer und nicht die Windows-Prozess-Id (Issue #1134).
+ * laufenden Prozess gehoeren.
  */
 function totePid() {
   const res = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf-8" });

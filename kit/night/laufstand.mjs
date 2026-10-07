@@ -698,15 +698,12 @@ export async function waechterLaufen(lauf, repoRoot = process.cwd()) {
 }
 
 /**
- * Die `spawn`-Optionen des Waechters (Issue #1132, Plan #1128 E10). `detached` gilt auf jeder
- * Plattform: Unter Windows legt Node jedes nicht abgekoppelte Kind in ein Job-Objekt, das
- * mit dem Runner endet — der Waechter stuerbe mit genau dem Lauf, den er ueberwachen soll.
- * Das Konsolenfenster, das `detached` dort sonst bringt (#1123), unterdruecken
- * `windowsHide` und `stdio: "ignore"`; eine Ausgabe, die verloren gehen koennte, hat der
- * Waechter nicht.
+ * Die `spawn`-Optionen des Waechters (Issue #1132, Plan #1128 E10). `detached` loest ihn vom
+ * Runner, damit er nicht mit genau dem Lauf endet, den er ueberwachen soll. `stdio: "ignore"`,
+ * weil der Waechter keine Ausgabe hat, die verloren gehen koennte.
  */
 export function waechterStartOptionen(cwd) {
-  return { cwd, detached: true, stdio: "ignore", windowsHide: true };
+  return { cwd, detached: true, stdio: "ignore" };
 }
 
 /**

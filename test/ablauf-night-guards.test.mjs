@@ -449,9 +449,8 @@ test("Zeitlimit: ein Enkel in eigener Prozessgruppe blockiert das close-Event ni
       "der Runner muss das Zeitlimit selbst aufloesen, statt auf das close-Event zu warten");
   } finally {
     // Der Enkel hat sich vom Baum geloest und ueberlebt das Zeitlimit auf jeder Plattform
-    // bis zu seinem Ende nach zwei Sekunden. Unter Windows haelt er solange das
-    // Verzeichnis fest, und rmSync wiederholt ein EBUSY auf dem Verzeichnis selbst nicht.
-    // Das Aufraeumen wartet darum auf sein Ende (Issue #1144, #1173); lebt er nach der
+    // bis zu seinem Ende nach zwei Sekunden. Das Aufraeumen wartet auf sein Ende, damit
+    // kein Prozess mehr im Verzeichnis steht (Issue #1144, #1173); lebt er nach der
     // Frist noch, ist das ein Befund und kein Aufraeumproblem.
     const pid = existsSync(pidDatei) ? Number(readFileSync(pidDatei, "utf-8")) : null;
     let befund = null;
@@ -564,11 +563,9 @@ test("buildChecks laufen in einer Shell: Verkettung und Variablen werden ausgewe
 
 // buildChecks und formatFixCommand laufen ueber `/bin/sh` mit der Kommandozeile als
 // `-c`-Argument (Issue #1176).
-test("[1176] auf POSIX starten buildChecks und formatFixCommand unveraendert in /bin/sh", () => {
-  for (const plattform of ["linux", "darwin"]) {
-    const start = konfigKommandoStart("mvn verify && echo ok", { plattform });
-    assert.deepEqual(start, { befehl: "/bin/sh", args: ["-c", "mvn verify && echo ok"], optionen: {}, umgebung: {}, fehler: null });
-  }
+test("[1176] buildChecks und formatFixCommand starten unveraendert in /bin/sh", () => {
+  const start = konfigKommandoStart("mvn verify && echo ok");
+  assert.deepEqual(start, { befehl: "/bin/sh", args: ["-c", "mvn verify && echo ok"], optionen: {}, umgebung: {}, fehler: null });
 });
 
 // --- Verbose-Stream ---

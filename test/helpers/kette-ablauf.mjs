@@ -173,9 +173,6 @@ export function planauftrag(dir, F, { titel = "[Plan] Ein fertiger Weg", label =
  * nicht genannt ist, tut nichts. Jede Session protokolliert Stufe, cwd und
  * KIT_AGENT_MODEL in `$KETTE_LOG` und liefert ein result-Ereignis mit `$KETTE_KOSTEN`.
  *
- * Das Arbeitsverzeichnis schreibt node und nicht `pwd -P`: In der Git Bash liefert `pwd`
- * die Form /c/..., die mit realpathSync unter Windows nicht vergleichbar ist (Issue #1134).
- *
  * Die vier erzeugenden Stufen nennt der Runner in NIGHT_KETTE_STUFE. Die Sessions der
  * Stufe `umsetzung` bekommen sie NICHT gesetzt — sie sehen ein regulaeres Ready-Paket
  * und erfahren von der Variante nichts (Plan #691, E11). Der Fake benennt sie deshalb

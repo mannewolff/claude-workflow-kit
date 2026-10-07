@@ -21,8 +21,8 @@
 // Laeuft komplett lokal: issueTracker "local" in einem Temp-Repo, Session-Fake via
 // NIGHT_CLAUDE_CMD; nur der Test der CLI-Argumente faehrt den Produktivzweig ueber eine
 // Fake-CLI im PATH, weil der Test-Hook die Argumente gar nicht baut. Die reinen Bausteine
-// (night-52 bis night-54, night-91 und die Prozesssuche unter Windows) stehen seit Issue
-// #1231 in night-wartend-sitzung.test.mjs und night-session-sitzungsprozesse.test.mjs.
+// (night-52 bis night-54, night-91) stehen seit Issue #1231 in night-wartend-sitzung.test.mjs
+// und night-session-sitzungsprozesse.test.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -120,9 +120,6 @@ test("[night-25] der Runner startet die Session ohne Monitor-Werkzeug und mit ge
       `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(argLog)}\n` +
       `printf 'MAX=%s\\nDEFAULT=%s\\n' "$BASH_MAX_TIMEOUT_MS" "$BASH_DEFAULT_TIMEOUT_MS" >> ${JSON.stringify(envLog)}\nexit 0\n`);
     chmodSync(join(binDir, "claude"), 0o755);
-    // Unter Windows findet das Kit `claude` nur ueber die `.cmd` daneben und startet dann
-    // diese sh-Datei ueber die Git Bash (Issue #1131, E8). Die `.cmd` laeuft nie.
-    writeFileSync(join(binDir, "claude.cmd"), "@rem Huelle: das Kit startet die sh-Datei daneben.\r\n");
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1", "--timeout-min", "40"], {
       PATH: `${binDir}${delimiter}${process.env.PATH}`,
@@ -171,8 +168,7 @@ test("[night-25] die Vorpruefung startet erst, wenn kein Prozess der Session meh
     // Seit Issue #1089 liegen die Dateien der Runde im Stash statt im Baum.
     const gesichert = spawnSync("git", ["ls-tree", "-r", "--name-only", "stash@{0}^3"], { cwd: dir, encoding: "utf-8" }).stdout.split("\n");
     assert.ok(gesichert.includes("bg-ende.txt"), "der Hintergrundlauf muss gelaufen sein, sonst prueft der Test nichts");
-    // Das Ende der Runner-Ausgabe steht in der Meldung (Issue #1174): Unter Windows ist sie
-    // der einzige Weg zu erfahren, ob die Suche nach der Marke scheiterte oder nichts fand.
+    // Das Ende der Runner-Ausgabe steht in der Meldung (Issue #1174).
     assert.ok(
       !gesichert.includes("verletzung.txt") && !existsSync(join(dir, "verletzung.txt")),
       `die Vorpruefung lief, waehrend der Hintergrundlauf der Session noch lief:\n${res.stdout.slice(-3000)}`,

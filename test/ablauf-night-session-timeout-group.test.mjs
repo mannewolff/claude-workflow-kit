@@ -21,9 +21,7 @@
 // seinerseits Bash-Tool-Aufrufe wie `mvn verify`.
 //
 // Dieser Test erzwingt den Enkelprozess ueber "& wait" und ist damit auf jeder
-// Plattform aussagekraeftig. Unter Windows laeuft der Session-Fake ueber die Git Bash
-// (#1131), und den Baum beendet `taskkill /T /F` (#1132); dass kein Enkel ueberlebt, misst
-// der erste Test dort echt.
+// Plattform aussagekraeftig.
 //
 // Seit Issue #1229 stehen hier nur die beiden Faelle am echten Prozessbaum. Die Stufen des
 // Zeitlimits, das Warten auf die Gruppe und der Aufruf zum Beenden des Baums sind in
@@ -88,8 +86,7 @@ function lebt(pid) {
 
 test("Timeout: ueberlebender Enkelprozess haelt den Lauf nicht auf", () => {
   const dir = setupProjekt();
-  // Der Enkel ist ein Node-Prozess, der seine PID ausserhalb des Repos ablegt: `$!` der Git
-  // Bash naennte unter Windows eine MSYS-PID statt der des Betriebssystems.
+  // Der Enkel ist ein Node-Prozess, der seine PID ausserhalb des Repos ablegt.
   const aussen = mkdtempSync(join(tmpdir(), "night-killgroup-enkel-"));
   const pidDatei = join(aussen, "enkel.pid").replaceAll("\\", "/");
   const enkel = join(aussen, "enkel.mjs");

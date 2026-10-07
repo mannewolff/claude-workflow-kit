@@ -1252,20 +1252,15 @@ function wecker(fn, ms) {
  * ein und faehrt die Session im selben Prozess, ohne Kindprozess und ohne Wartezeit.
  *
  *   spawn      startet die Session (Rueckgabe wie `child_process.spawn`)
- *   spawnSync  `ps` beim Warten auf die Gruppe, `taskkill` unter Windows und der Lauf von
- *              `checks.mjs run` in der Salvage-Vorpruefung
+ *   spawnSync  `ps` beim Warten auf die Gruppe und der Lauf von `checks.mjs run` in der
+ *              Salvage-Vorpruefung
  *   jetzt      die Uhr in Millisekunden
  *   schlaf     die Pause zwischen zwei Abfragen der Prozessgruppe
  *   wecker     die Stufen des Zeitlimits
  *   killen     das Signal an die Prozessgruppe (`process.kill`)
- *   plattform  welcher Zweig das Zeitlimit und das Warten auf die Gruppe faehrt: auf POSIX
- *              Prozessgruppe und `ps`, unter Windows `taskkill` und die Marke der Session.
- *              Die Attrappen der Tests bilden POSIX nach und setzen sie darum fest, sonst
- *              naehme der Windows-Job der CI den anderen Zweig (Issue #1261).
  */
 export const SESSION_ABHAENGIGKEITEN = Object.freeze({
   spawn, spawnSync, jetzt: Date.now, schlaf: warten, wecker, killen: (pid, signal) => process.kill(pid, signal),
-  plattform: process.platform,
 });
 
 /**
@@ -1289,43 +1284,27 @@ export const SESSION_ABHAENGIGKEITEN = Object.freeze({
  * verhindern soll. Rueckgabe: `true`, wenn die Gruppe leer ist, `false` bei Ablauf der
  * Frist — der Aufrufer protokolliert das, haelt den Lauf aber nicht an.
  *
- * Windows kennt diese Prozessgruppen nicht (`runProcess` setzt `detached` dort nicht).
- * Dort fragt die Funktion `prozesse` — in `runProcess` die Suche nach der Marke der
- * Session, `sitzungsProzesse` (Issue #1144) — und wartet, bis sie nichts mehr findet. Ohne
- * `prozesse` gibt es dort nichts zu fragen, und sie meldet sofort `true`.
- *
- * Wirft `prozesse`, weil die Abfrage der Prozessliste scheiterte, geht der Grund an
- * `vermerk` — ins Protokoll —, und die Funktion meldet `true` wie bei leerer Gruppe
- * (Issue #1174): Die Runde laeuft weiter wie bisher, aber nicht mehr stumm.
- *
  * Uhr, Takt und die Abfrage von `ps` sind einsetzbar (Issue #1229, Plan #1199, E6): `jetzt`,
  * `schlaf` und `spawnSync` haben die echte Implementierung als Vorgabe, und ein Test faehrt
  * die Frist im selben Prozess, ohne eine Millisekunde zu warten.
  */
 export async function warteAufProzessgruppe(pgid, restMs, {
   pollMs = 200, jetzt = Date.now, schlaf = warten, spawnSync: abfragen = spawnSync,
-  plattform = process.platform, prozesse, vermerk = () => {},
 } = {}) {
   if (!pgid || restMs <= 0) return true;
-  if (plattform === "win32" && !prozesse) return true;
   const frist = jetzt() + restMs;
   // `ps -o pid= -g <pgid>` listet die Prozesse der Gruppe; leere Ausgabe heisst leer.
   // Ein Fehlschlag von ps (Gruppe schon weg, ps nicht da) gilt ebenfalls als leer: Diese
   // Wartezeit ist eine Vorsichtsmassnahme und darf keine Runde aufhalten, weil ein
-  // Werkzeug fehlt. Unter Windows haelt die Runde ebenfalls nicht an, vermerkt den
-  // Fehlschlag aber (Issue #1174).
-  const gruppeLaeuft = plattform === "win32" ? () => prozesse().length > 0 : () => {
+  // Werkzeug fehlt.
+  const gruppeLaeuft = () => {
     const res = abfragen("ps", ["-o", "pid=", "-g", String(pgid)], { encoding: "utf-8" });
     if (res.error || res.status !== 0) return false;
     return (res.stdout || "").trim() !== "";
   };
-  try {
-    while (gruppeLaeuft()) {
-      if (jetzt() >= frist) return false;
-      await schlaf(pollMs);
-    }
-  } catch (err) {
-    vermerk(`${err.message} — der Runner wartet nicht auf die Prozesse der Session.`);
+  while (gruppeLaeuft()) {
+    if (jetzt() >= frist) return false;
+    await schlaf(pollMs);
   }
   return true;
 }
@@ -1355,126 +1334,29 @@ export async function warteAufProzessgruppe(pgid, restMs, {
  * NODE_USE_ENV_PROXY (Issue #998): In der Sandbox geht der Netzverkehr ueber einen Proxy,
  * und Nodes fetch nutzt ihn nur mit diesem Schalter beim Start. Ohne ihn scheitern
  * board.mjs, checks.mjs und Projektskripte der Session mit "fetch failed".
- *
- * SITZUNG_MARKE (Issue #1144): je Session ein eigener Wert, den jeder ihrer Prozesse erbt.
- * Unter Windows gibt es keine Prozessgruppe, und an der Marke erkennt der Runner dort, was
- * von der Session noch laeuft — siehe `sitzungsProzesse`.
  */
-export function sessionUmgebung(issueId, extraEnv, basis = process.env, marke = sitzungsMarke()) {
+export function sessionUmgebung(issueId, extraEnv, basis = process.env) {
   return {
     ...basis,
     NIGHT_ISSUE_ID: String(issueId),
     CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1",
     NODE_USE_ENV_PROXY: "1",
-    [SITZUNG_MARKE]: marke,
     ...extraEnv,
   };
 }
 
-/** Der Name der Umgebungsvariable, die die Prozesse einer Session kennzeichnet (Issue #1144). */
-export const SITZUNG_MARKE = "NIGHT_SITZUNG";
-
-let sitzungsZaehler = 0;
-
-/**
- * Eine Marke, die keine andere Session dieses oder eines anderen Runners traegt: PID des
- * Runners, laufende Nummer, Startzeit. Nur Ziffern, Buchstaben und Bindestriche — die Git
- * Bash deutet einen Wert, der wie ein Pfad aussieht, sonst beim Start um.
- */
-function sitzungsMarke() {
-  sitzungsZaehler += 1;
-  return `s${process.pid}-${sitzungsZaehler}-${Date.now()}`;
-}
-
-/**
- * Die Suche nach den Prozessen einer Session unter Windows (Issue #1144). Windows kennt
- * keine Prozessgruppe, und eine Elternkette reisst, sobald ein Zwischenglied endet: Die
- * Session beendet sich, ihr Hintergrundlauf lebt weiter und nennt als Eltern eine PID, die
- * es nicht mehr gibt. Was bleibt, ist die geerbte Umgebung. Die MSYS-Laufzeit der Git Bash
- * legt sie fuer jeden ihrer Prozesse unter `/proc/<pid>/environ` offen, dazu dessen
- * Windows-PID unter `/proc/<pid>/winpid`.
- *
- * Gesucht wird die Zeile `NIGHT_SITZUNG=<marke>`. Die Marke kommt unter anderem Namen in
- * die Umgebung der Suche, sonst faende die Suche sich selbst. Erreicht werden die Prozesse
- * der Git Bash und die Programme, die sie gerade ausfuehrt — darunter die Bash-Aufrufe von
- * Claude Code und alles, was sie starten. Ein Windows-Programm, das ein anderes
- * Windows-Programm startet und vor ihm endet, hinterlaesst ein Kind ohne Eintrag; das ist
- * dieselbe Luecke wie auf POSIX ein Enkel, der eine eigene Prozessgruppe aufmacht.
- */
-export function sitzungsSuche(marke) {
-  return {
-    skript: `for d in /proc/[0-9]*; do grep -qzx "${SITZUNG_MARKE}=$KIT_SITZUNG_SUCHE" "$d/environ" 2>/dev/null && cat "$d/winpid" 2>/dev/null; done; true`,
-    umgebung: { KIT_SITZUNG_SUCHE: marke },
-  };
-}
-
-/** Die Windows-PIDs aus der Ausgabe von `sitzungsSuche`, eine je Zeile (Issue #1144). */
-export function sitzungsPids(ausgabe) {
-  return String(ausgabe ?? "").split("\n").map((z) => Number(z.trim())).filter((pid) => Number.isInteger(pid) && pid > 0);
-}
-
-/** Faehrt `sitzungsSuche` in `sh` und liefert das Ergebnis von `spawnSync`. */
-function sitzungsAbfrage(marke) {
-  const suche = sitzungsSuche(marke);
-  return spawnSync("sh", ["-c", suche.skript], {
-    encoding: "utf-8",
-    windowsHide: true,
-    env: { ...process.env, ...suche.umgebung },
-  });
-}
-
-/**
- * Die Windows-PIDs der Prozesse, die die Marke einer Session tragen (Issue #1144).
- *
- * Scheitert die Abfrage — keine Git Bash, Startfehler, Exitcode ungleich 0 —, wirft die
- * Funktion (Issue #1174). Bis dahin lieferte sie eine leere Liste, und die war von "kein
- * Prozess laeuft mehr" nicht zu unterscheiden: Der Runner ging weiter, ohne dass im
- * Protokoll stand, dass er gar nicht nachsehen konnte. `abfrage` ist fuer die Tests
- * injizierbar und liefert dieselbe Form wie `spawnSync`.
- */
-export function sitzungsProzesse(marke, { abfrage = sitzungsAbfrage } = {}) {
-  const res = abfrage(marke);
-  const grund = res.fehler ?? res.error?.message ?? exitGrund(res);
-  if (grund) throw new Error(`Abfrage der Prozessliste gescheitert (${grund})`);
-  return sitzungsPids(res.stdout);
-}
-
-/** Der Exitcode einer gescheiterten Abfrage samt erster Zeile von stderr, sonst `null`. */
-function exitGrund(res) {
-  if (res.status === 0) return null;
-  const zeile = String(res.stderr ?? "").trim().split(/\r?\n/)[0];
-  return zeile ? `Exitcode ${res.status}: ${zeile}` : `Exitcode ${res.status}`;
-}
-
-/** `sitzungsProzesse` fuer `killTree`: Dort genuegt bei gescheiterter Abfrage die Wurzel. */
-function sitzungsProzesseOderKeine(marke) {
-  try {
-    return sitzungsProzesse(marke);
-  } catch {
-    return [];
-  }
-}
-
 /**
  * Wie der Baum einer Session beendet wird (Issue #1132, Plan #1128 E10, Muster
- * `kit/checks.mjs` aus #1123): auf POSIX ein Signal an die Prozessgruppe, unter Windows
- * `taskkill /T /F`, denn ein Signal an die PID erreichte nur den direkten Kindprozess, und
- * seine Enkel hielten die geerbte Pipe offen. Unter Windows gibt es kein mildes SIGTERM fuer
- * einen Baum; beide Stufen des Zeitlimits werden zum harten Abbruch.
+ * `kit/checks.mjs` aus #1123): ein Signal an die Prozessgruppe, denn ein Signal an die PID
+ * erreichte nur den direkten Kindprozess, und seine Enkel hielten die geerbte Pipe offen.
  */
-export function baumBeendenAufruf(pid, signal, plattform = process.platform, weitere = []) {
-  if (plattform === "win32") {
-    // `weitere` sind die Prozesse mit der Marke der Session (Issue #1144): Ist die Wurzel
-    // schon fort, reicht `taskkill /T` von ihr aus nicht mehr bis zu ihnen.
-    const pids = [...new Set([pid, ...weitere].map(String))];
-    return { taskkill: [...pids.flatMap((p) => ["/pid", p]), "/T", "/F"] };
-  }
+export function baumBeendenAufruf(pid, signal) {
   return { pid: -pid, signal };
 }
 
 export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extraEnv, cwd, kommandoStufe }, abh = {}) {
   // Die Abhaengigkeiten (Issue #1229, Plan #1199, E6): jede fehlende ist die echte.
-  const { spawn: starten, spawnSync: abfragen, jetzt, schlaf, wecker: wecken, killen, plattform } = { ...SESSION_ABHAENGIGKEITEN, ...abh };
+  const { spawn: starten, spawnSync: abfragen, jetzt, schlaf, wecker: wecken, killen } = { ...SESSION_ABHAENGIGKEITEN, ...abh };
   return new Promise((resolve) => {
     // detached: true gibt dem Kind eine eigene Prozessgruppe, damit das Zeitlimit den
     // ganzen Baum trifft und nicht nur den direkten Kindprozess (Issue #182). Ohne das
@@ -1483,13 +1365,9 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
     // wartet dann die volle Laufzeit ab, obwohl er laengst gekillt hat.
     // Gemessen: Enkelprozess mit Einzel-Kill 5023 ms statt 307 ms bei 300 ms Limit.
     // Kein unref(): Der Runner soll weiterhin auf das Kind warten.
-    // Die Marke dieser Session (Issue #1144): Unter Windows findet der Runner an ihr die
-    // Prozesse, die eine Prozessgruppe auf POSIX zusammenhaelt.
-    const marke = sitzungsMarke();
-    const windows = plattform === "win32";
     const child = starten(cmd, cmdArgs, {
-      env: sessionUmgebung(issueId, extraEnv, process.env, marke),
-      detached: !windows,
+      env: sessionUmgebung(issueId, extraEnv, process.env),
+      detached: true,
       // stdin geschlossen (Issue #620): Ohne Angabe waere es eine offene Pipe, die der
       // Runner nie schliesst — die CLI wartete je Session drei Sekunden auf Eingabe und
       // schrieb "no stdin data received" ins Protokoll. Niemand schreibt in stdin, der
@@ -1544,16 +1422,10 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
       });
     };
 
-    // Signal an die ganze Prozessgruppe (negative PID, POSIX), unter Windows `taskkill`
-    // auf den Baum (Issue #1132). Ein bereits beendeter Prozess laesst kill mit ESRCH
-    // scheitern und taskkill mit einem Exitcode ungleich 0; das ist der Normalfall, kein
-    // Fehler.
+    // Signal an die ganze Prozessgruppe (negative PID, Issue #1132). Ein bereits beendeter
+    // Prozess laesst kill mit ESRCH scheitern; das ist der Normalfall, kein Fehler.
     const killTree = (signal) => {
-      const aufruf = baumBeendenAufruf(child.pid, signal, plattform, windows ? sitzungsProzesseOderKeine(marke) : []);
-      if (aufruf.taskkill) {
-        abfragen("taskkill", aufruf.taskkill, { stdio: "ignore", windowsHide: true });
-        return;
-      }
+      const aufruf = baumBeendenAufruf(child.pid, signal);
       try {
         killen(aufruf.pid, aufruf.signal);
       } catch {
@@ -1641,9 +1513,7 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
       if (!timedOut) {
         const restMs = Math.max(0, timeoutMs - (jetzt() - gestartet));
         const leer = await warteAufProzessgruppe(child.pid, restMs, {
-          jetzt, schlaf, spawnSync: abfragen, plattform,
-          vermerk: (text) => log(`  Hinweis: ${text}`),
-          ...(windows ? { prozesse: () => sitzungsProzesse(marke) } : {}),
+          jetzt, schlaf, spawnSync: abfragen,
         });
         if (!leer) {
           log(`  Hinweis: Nach dem Ende der Session liefen noch Prozesse ihrer Gruppe, als die Frist ablief — die folgende Messung kann von ihnen gestoert sein.`);
