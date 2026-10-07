@@ -6,9 +6,9 @@ GitHub, GitLab und ein vollstaendig lokaler Modus werden unterstuetzt — lokal 
 
 ## Installation
 
-Voraussetzungen: macOS, Linux oder Windows, [Claude Code](https://claude.ai/code), Node.js 18+, `gh` CLI (GitHub) oder `glab` CLI (GitLab).
+Voraussetzungen: macOS, Linux oder Windows über WSL2, [Claude Code](https://claude.ai/code), Node.js 18+, `gh` CLI (GitHub) oder `glab` CLI (GitLab).
 
-> **Unter Windows: Git Bash (Git for Windows) ist Voraussetzung; WSL gilt als Linux.**
+> **Unter Windows: WSL2.** Wie du es einrichtest, steht in der Anleitung [Windows über WSL2](docs/wsl2.md).
 
 ```bash
 node install.mjs

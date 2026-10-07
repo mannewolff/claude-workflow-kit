@@ -34,6 +34,7 @@ export default defineConfig({
         text: "Einstieg",
         items: [
           { text: "5-Minuten-Guide", link: "/quickstart" },
+          { text: "Windows über WSL2", link: "/wsl2" },
           { text: "Lokal arbeiten (kein Remote, kein Board)", link: "/lokal" },
         ],
       },

@@ -12,9 +12,9 @@ Der Kernprozess hat neun Schritte. Schritt 1 ist deine Anforderung; die KI über
 
 ## Voraussetzungen
 
-**Node.js 18 oder neuer.** Der Installer ist in Node geschrieben und läuft damit auf macOS, Windows und Linux ohne Abhängigkeit zu einem bestimmten Shell-Ökosystem.
+**Node.js 18 oder neuer.** Der Installer ist in Node geschrieben und läuft damit auf macOS, Linux und Windows über WSL2 ohne Abhängigkeit zu einem bestimmten Shell-Ökosystem.
 
-**Windows: Git Bash.** Das Kit läuft auf macOS, Linux und Windows im selben Umfang. Unter Windows ist Git Bash (Git for Windows) Voraussetzung; WSL gilt als Linux.
+**Windows: WSL2.** Das Kit läuft auf macOS, Linux und Windows über WSL2 im selben Umfang. Unter Windows arbeitet es in WSL2; wie du es einrichtest, steht in der Anleitung [Windows über WSL2](/wsl2).
 
 **git.** Claude Code und der gesamte Prozess setzen git voraus. Ohne git-Repository funktioniert kein Skill.
 

@@ -4,10 +4,12 @@ Du hast einen Prozess für die KI-gestützte Entwicklung, und du willst ihn in C
 
 ## Voraussetzungen
 
+- macOS, Linux oder Windows über WSL2
 - Node.js ab Version 18
 - git
 - Claude Code installiert
 - Je nach Issue-Tracker: `gh` (GitHub CLI) oder `glab` (GitLab CLI), authentifiziert — oder gar nichts, wenn du den lokalen Modus wählst
+- Unter Windows: WSL2, siehe [Windows über WSL2](/wsl2)
 
 ## Installieren
 

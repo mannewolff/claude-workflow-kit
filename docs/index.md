@@ -13,7 +13,7 @@ hero:
       link: /dokumentation
 features:
   - title: Ein Installer
-    details: Node-Script, läuft auf macOS, Linux und Windows (mit Git Bash). Neun Fragen, fertig.
+    details: Node-Script, läuft auf macOS, Linux und Windows über WSL2. Neun Fragen, fertig.
   - title: Sechzehn Skills
     details: Planung, Issues, Implementierung, Review, Dokumentation — alles abgedeckt.
   - title: GitHub, GitLab oder lokal
