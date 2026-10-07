@@ -526,8 +526,7 @@
       "test/helpers/kette-umsetzung-fixture.mjs",
       "test/helpers/kitstand-fixture.mjs",
       "test/helpers/zeilenenden.mjs",
-      "test/fixtures/auskunft/**",
-      "test/helpers/msys-zerlegen.mjs"
+      "test/fixtures/auskunft/**"
     ],
     "nacht-grundlagen": [
       "kit/night/grundlagen.mjs",
@@ -602,8 +601,7 @@
     ],
     "board-wiederholung": [
       "kit/board/wiederholung.mjs",
-      "test/board-wiederholung-*.test.mjs",
-      "test/helpers/msys-zerlegen.mjs"
+      "test/board-wiederholung-*.test.mjs"
     ],
     "board-adapter": [
       "kit/board/adapter.mjs",

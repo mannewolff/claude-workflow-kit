@@ -24,7 +24,7 @@ import { spawnSync, execFile } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { fakePath, GIT_BASH_ENV, TEST_TOOLBOX_BUDGET_MS } from "./adapter-fixture.mjs";
+import { fakePath, TEST_TOOLBOX_BUDGET_MS } from "./adapter-fixture.mjs";
 
 // Die In-Process-Attrappe des Board-Adapters (Issue #1211, Plan #1199, E6). Sie liegt in
 // einem eigenen Helfer: Ein leichter Test laedt sie von dort, ohne mit dieser Fixture als
@@ -34,7 +34,7 @@ export { boardAttrappe } from "./board-attrappe.mjs";
 // Ebenso die leichten Fixtures der Adapter-Tests (Issue #1217): Sie stehen in
 // adapter-fixture.mjs, die Ablauf-Tests laden sie unveraendert von hier.
 export {
-  TEST_TOOLBOX_BUDGET_MS, fakePath, GIT_BASH_ENV, cmdAttrappe, MIT_DATEIRECHTEN, setupProjekt, schreibeConfig,
+  TEST_TOOLBOX_BUDGET_MS, fakePath, MIT_DATEIRECHTEN, setupProjekt, schreibeConfig,
   imProjekt, starteServer, fakeCli, aufrufe, aufrufZeilen, toolboxMitKommentaren,
 } from "./adapter-fixture.mjs";
 
@@ -54,7 +54,6 @@ export function runBoard(dir, cliArgs, extraEnv = {}, spawnOpts = {}) {
   delete env.TBX_TOKEN;
   Object.assign(env, {
     PATH: fakePath(dir),
-    ...GIT_BASH_ENV,
     KIT_ROOT: dir,
     TBX_CONFIG_DIR: join(dir, "tbx-config"),
     // Fester Wert statt Loeschen (Issue #266): `issue create` verlangt seit der
@@ -98,7 +97,6 @@ export function runBoardAsync(dir, cliArgs, extraEnv = {}, stdinText = "") {
   delete env.TBX_TOKEN;
   Object.assign(env, {
     PATH: fakePath(dir),
-    ...GIT_BASH_ENV,
     KIT_ROOT: dir,
     TBX_CONFIG_DIR: join(dir, "tbx-config"),
     KIT_AGENT_MODEL: "fixture-modell", // siehe runBoard (Issue #266)

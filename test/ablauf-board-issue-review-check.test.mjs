@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { rmSync, writeFileSync, mkdirSync, chmodSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { setupProjekt, runBoard, cmdAttrappe } from "./helpers/board-fixture.mjs";
+import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
 
 const OPUS = { name: "opus", kind: "claude", model: "claude-opus-5" };
 const SONNET = { name: "sonnet", kind: "claude", model: "claude-sonnet-5" };
@@ -43,9 +43,7 @@ test("issue-review reviewers: --author ohne Wert bricht mit Meldung ab", () => {
  * `rumpf` ersetzt den Standard-Rumpf (`exit 0`) — der Probelauf aus Issue #262
  * braucht Kommandos, die scheitern, haengen oder stdin mitschreiben.
  *
- * Startbar ist ein Fake auf POSIX ueber das X-Bit, unter Windows ueber die `.cmd`-Attrappe
- * daneben (Issue #1135, E8). Darum bekommt nur ein ausfuehrbarer Modus die Attrappe: Ein
- * nur lesbares Fake ist dann auf beiden Plattformen kein Kommando.
+ * Startbar ist ein Fake ueber das X-Bit: Ein nur lesbares Fake ist kein Kommando.
  */
 function fakeBinary(dir, name, modus = 0o755, rumpf = "exit 0") {
   const binDir = join(dir, "fakebin");
@@ -53,7 +51,6 @@ function fakeBinary(dir, name, modus = 0o755, rumpf = "exit 0") {
   const pfad = join(binDir, name);
   writeFileSync(pfad, `#!/bin/sh\n${rumpf}\n`);
   chmodSync(pfad, modus);
-  if (modus & 0o111) cmdAttrappe(pfad);
 }
 
 test("issue-review check: fehlendes Kommando wird mit Grund gemeldet, Exit bleibt 0", () => {

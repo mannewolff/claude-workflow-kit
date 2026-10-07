@@ -199,8 +199,8 @@ function readKontextConfigFile(pfad) {
 }
 
 // Eigene Suche statt loadConfig(): Das ist kontext.config.json, nicht
-// workflow.config.json. Home ueber homedir() und nicht ueber HOME — unter Windows
-// liest homedir() USERPROFILE (Issue #187).
+// workflow.config.json. Home ueber homedir() und nicht ueber HOME — homedir() findet das
+// Heimatverzeichnis auch ohne gesetztes HOME (Issue #187).
 export function loadKontextConfig() {
   return mergeKontextConfig(
     readKontextConfigFile(join(homedir(), ".claude", "kontext.config.json")),

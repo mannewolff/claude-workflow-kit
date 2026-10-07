@@ -42,10 +42,6 @@ import { join, resolve } from "node:path";
 import { tmpdir, homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 
-// Die Startregel fuer CLIs unter Windows (Issue #1135, Plan #1128, E8) steht genau einmal,
-// im Board-Werkzeug — wie `istPlan` fuer tools/derived-from-report.mjs. Geholt wird sie aus
-// dem Teil kit/board/wiederholung.mjs, nicht aus dem Einstieg (Issue #1215).
-import { startbefehlFuer } from "../kit/board/wiederholung.mjs";
 
 const UNTERKOMMANDOS = new Set(["export", "import", "verify"]);
 const DEFAULT_OUT = join(tmpdir(), "claude-workflow-kit-migrationen");
@@ -93,16 +89,10 @@ class CliError extends MigrateError {}
 // maxBuffer weit ueber dem Node-Default von 1 MB: Eine Seite Issues samt Bodies und
 // Kommentaren sprengt ihn muehelos, und die Ueberschreitung kaeme als ENOBUFS —
 // also als Abbruch mitten im teuren Export.
-//
-// Den Startbefehl bestimmt `startbefehlFuer` wie in kit/board.mjs: Unter Windows startet
-// eine `.cmd`-Huelle ueber ihre sh-Huelle in der Git Bash, nie ueber `shell: true`.
 function exec(datei, args) {
-  const start = startbefehlFuer(datei);
-  if (start.fehler) throw new MigrateError(start.fehler);
-  const res = spawnSync(start.befehl, [...start.vorArgs, ...args], {
+  const res = spawnSync(datei, args, {
     encoding: "utf-8",
     maxBuffer: 64 * 1024 * 1024,
-    env: { ...process.env, ...start.umgebung },
   });
   if (res.error) {
     throw new MigrateError(res.error.code === "ENOENT"

@@ -224,7 +224,7 @@ export const { VALID_STATUSES, COLUMN_DEFAULTS, columnLabels, isStateColumn, exe
   gitRemoteUrl, normalizeRepoName, RUECKMELDUNG, BoardError, fail, out, sleep,
   mergeWorkflowConfig, configWurzel, readWorkflowConfig, loadConfig, labelNamesFrom,
   labelMapFrom, withLabels, normalizeComments, createdFrom, labelToStatus, findeImPath,
-  umgebungsWert, GIT_BASH_UMGEBUNG, gitBashPfad, spawnAufruf, startbefehlFuer } = await import("./board/grundlagen.mjs");
+  umgebungsWert } = await import("./board/grundlagen.mjs");
 export const { TOOLBOX_UEBERLAST_TYPE, TOOLBOX_BUDGET_NACHT_MS, toolboxBudgetMs, toolboxVersuchMs,
   proxyNeustartNoetig, proxyGesetzt, PROXY_HINWEIS, netzfehlerArt, darfWiederholen, rueckmeldungFuer,
   wartezeitMs, VERLAUF_GLEICHZEITIG, hoechstensGleichzeitig, wiederholKommando } = await import("./board/wiederholung.mjs");

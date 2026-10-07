@@ -93,16 +93,9 @@ test("jeder andere Label-Fehler wird unveraendert durchgereicht", async () => {
 // Eine Textdatei, die sich nicht lesen laesst
 // ============================================================
 
-// Unter Windows wirkt chmod nicht als Leseschutz. Derselbe Fehlerpfad wird dort ueber
-// ein Verzeichnis an Stelle der Datei ausgeloest (EISDIR), Plan #1128 E7.
 function unlesbarMachen(datei) {
-  if (process.platform === "win32") {
-    mkdirSync(datei);
-  } else {
-    writeFileSync(datei, "Inhalt\n", "utf-8");
-    // windows-ausnahme: unter Windows steht im Zweig darueber ein Verzeichnis an Stelle der Datei
-    chmodSync(datei, 0o000);
-  }
+  writeFileSync(datei, "Inhalt\n", "utf-8");
+  chmodSync(datei, 0o000);
 }
 
 test("eine unlesbare --text-file wird von einer fehlenden unterschieden", () => {
@@ -115,12 +108,12 @@ test("eine unlesbare --text-file wird von einer fehlenden unterschieden", () => 
     const res = runBoard(dir, ["issue", "comment", String(issue.id), "--text-file", datei]);
 
     assert.notEqual(res.status, 0, "eine unlesbare Datei haette den Aufruf scheitern lassen muessen");
-    assert.match(res.stderr, /ist nicht lesbar \((EACCES|EISDIR)\)/,
+    assert.match(res.stderr, /ist nicht lesbar \(EACCES\)/,
       "der Unterschied zu 'nicht gefunden' ist die halbe Diagnose und fehlt");
     assert.doesNotMatch(res.stderr, /nicht gefunden/,
       "eine vorhandene Datei darf nicht als fehlend gemeldet werden");
   } finally {
-    if (existsSync(datei) && process.platform !== "win32") chmodSync(datei, 0o644);
+    if (existsSync(datei)) chmodSync(datei, 0o644);
     rmSync(dir, { recursive: true, force: true });
   }
 });

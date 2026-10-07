@@ -36,7 +36,7 @@ function spawnAttrappe(antwort = { status: 0, stdout: "", stderr: "" }) {
   return { spawn, aufrufe };
 }
 
-const POSIX = { plattform: "linux", env: { PATH: "/usr/bin" } };
+const POSIX = { env: { PATH: "/usr/bin" } };
 
 test("exec reicht jedes Argument byte-genau als eigenes argv-Element weiter, ohne Shell", () => {
   const { spawn, aufrufe } = spawnAttrappe({ status: 0, stdout: "ok\n", stderr: "" });
@@ -78,33 +78,6 @@ test("execJSON liest die Ausgabe als JSON", () => {
   assert.deepEqual(execJSON("gh", ["issue", "view"], { spawn, ...POSIX }), { id: 42 });
 });
 
-test("unter Windows startet ein .cmd-CLI ueber seine sh-Huelle in der Git Bash", () => {
-  // Die Startregel aus Issue #1135 (Plan #1128, E8) gilt auch fuer exec: kein cmd.exe.
-  const vorhanden = new Set([
-    String.raw`C:\npm\gh.CMD`,
-    String.raw`C:\npm\gh`,
-    String.raw`C:\Git\bin\bash.exe`,
-  ]);
-  const env = { PATH: String.raw`C:\npm`, PATHEXT: ".EXE;.CMD", CLAUDE_CODE_GIT_BASH_PATH: String.raw`C:\Git\bin\bash.exe` };
-  const { spawn, aufrufe } = spawnAttrappe();
-
-  exec("gh", ["issue", "list"], { spawn, env, plattform: "win32", existiert: (p) => vorhanden.has(p) });
-
-  assert.equal(aufrufe[0].befehl, String.raw`C:\Git\bin\bash.exe`);
-  assert.equal(aufrufe[0].optionen.env.MSYS_NO_PATHCONV, "1", "die Umgebung der Git Bash fehlt");
-  assert.equal(aufrufe[0].optionen.shell, undefined);
-});
-
-test("exec meldet ein unter Windows nicht startbares CLI, ohne zu starten", () => {
-  const { spawn, aufrufe } = spawnAttrappe();
-  const vorhanden = new Set([String.raw`C:\npm\gh.CMD`]);
-  assert.throws(
-    () => exec("gh", [], { spawn, env: { PATH: String.raw`C:\npm`, PATHEXT: ".CMD" }, plattform: "win32", existiert: (p) => vorhanden.has(p) }),
-    /ohne sh-Huelle daneben/,
-  );
-  assert.equal(aufrufe.length, 0);
-});
-
 // Kommentarzeilen raus, bevor geprueft wird: Die Begruendungen im Quelltext nennen die
 // alten Konstrukte ausdruecklich ("frueher mit 2>/dev/null ..."), und diese Erklaerung
 // ist der Sinn der Sache — der Test darf sie nicht verbieten.
@@ -119,8 +92,8 @@ test("die Grundlagen setzen keine Kommandozeilen-Strings ab", () => {
   const quelle = ohneKommentare(readFileSync(GRUNDLAGEN, "utf-8"));
   assert.doesNotMatch(quelle, /\bshellQuote\b/, "shellQuote ist POSIX-only und muss ersatzlos entfallen sein");
   assert.doesNotMatch(quelle, /\bexecSync\s*\(/,
-    "execSync fuehrt ueber eine Shell aus (cmd.exe unter Windows) — spawnSync mit Argument-Array verwenden");
+    "execSync fuehrt ueber eine Shell aus — spawnSync mit Argument-Array verwenden");
   for (const muster of [/2>\/dev\/null/, /\$\(pwd\)/, /\bbasename\s+\$/]) {
-    assert.doesNotMatch(quelle, muster, `POSIX-Shell-Syntax ${muster} laeuft unter Windows nicht`);
+    assert.doesNotMatch(quelle, muster, `Shell-Syntax ${muster} gehoert nicht in einen Start ohne Shell`);
   }
 });
