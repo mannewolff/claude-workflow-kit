@@ -874,11 +874,17 @@ test("[1157] Das Fixture traegt genau einen Bruch der Art skips", () => {
 // der Dateien diesen Test (Issue #1162).
 //
 // Seit dem Ende von nativem Windows (Plan #1265) sind diese Stellen keine Brueche mehr,
-// sondern die POSIX-Fassung ohne Weiche (Issue #1268). Sie stehen hier, bis Issue #1272
-// das Werkzeug samt diesem Test entfernt.
+// sondern die POSIX-Fassung ohne Weiche (Issue #1268, #1269). Sie stehen hier, bis Issue
+// #1272 das Werkzeug samt diesem Test entfernt.
 const BEKANNTE_BRUECHE = [
   "kit/checks.mjs — prozesse",
+  "kit/night/session.mjs — kommandos",
+  "kit/night/session.mjs — kommandos",
+  "test/ablauf-night-guards.test.mjs — kommandos",
+  "test/ablauf-night-session-modell.test.mjs — fakes",
   "test/checks-hash.test.mjs — dateien",
+  "test/night-session-modell.test.mjs — fakes",
+  "test/night-session-shell-rundlauf.test.mjs — kommandos",
 ];
 
 test("[1157] Der Bestand ist fundfrei bis auf die bekannten Brueche mit Karte (E15)", () => {

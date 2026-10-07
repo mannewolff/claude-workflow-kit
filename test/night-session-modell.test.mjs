@@ -73,13 +73,6 @@ test("[night-26] die Zeile ist am Zeilenanfang verankert", () => {
   assert.equal(empfohlenesModell("siehe Empfohlenes Modell: claude-opus-5\n", ERLAUBT).modell, null);
 });
 
-// Unter Windows findet das Kit ein Programm nur ueber eine Endung aus PATHEXT. Wie npm es
-// installiert, liegt daneben eine `.cmd`, und gestartet wird die sh-Datei ohne Endung ueber
-// die Git Bash (Issue #1131, E8). Die `.cmd` selbst laeuft nie; auf POSIX bleibt sie unbeachtet.
-function huelleFuerWindows(binDir, name) {
-  writeFileSync(join(binDir, `${name}.cmd`), "@rem Huelle: das Kit startet die sh-Datei daneben.\r\n");
-}
-
 // --- Die Stufenwahl (Issue #709, Plan #707) ---
 //
 // Vier Funktionen ohne Aufrufer: Die Stufe eines Pakets, die normalisierte Einstellung,
@@ -198,7 +191,6 @@ function programmImPfad(name) {
   const binDir = mkdtempSync(join(tmpdir(), "night-stufe-bin-"));
   writeFileSync(join(binDir, name), "#!/bin/sh\nexit 0\n");
   chmodSync(join(binDir, name), 0o755);
-  huelleFuerWindows(binDir, name);
   return binDir;
 }
 

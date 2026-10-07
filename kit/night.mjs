@@ -273,7 +273,7 @@ const { satisfiedIds } = await import("./night/abhaengigkeiten.mjs");
 export const { leseStromereignis, werkzeugZeitBeobachter, UEBERNAHME_MARKE, prueflaufBeobachter, fortschrittBeobachter,
   TOOL_RESULTS_PFAD, auskunftArt, auskunftBeobachter, umsetzungsStart, leseKennzahlen, kennzahlenAddieren, verbrauchLeer,
   verbrauchAddieren, verbrauchOhneEinheit, zeitenBauen, zeitenAddieren, prueflaeufeAddieren, kostenAddieren,
-  leseErgebnisText, empfohlenesModell, aufgabenStufe, stufenEinstellung, posixShell, konfigKommandoStart, stufeStartbar,
+  leseErgebnisText, empfohlenesModell, aufgabenStufe, stufenEinstellung, konfigKommandoStart, stufeStartbar,
   modellFuerStufe, paketWahl, frischeStufenFelder, warteAufProzessgruppe, sessionUmgebung, SITZUNG_MARKE, sitzungsSuche,
   sitzungsPids, sitzungsProzesse, baumBeendenAufruf, permissionArgs, BASH_RESERVE_MS, bashZeitlimit, sessionStart,
   runSession, lesePruefung, gueteAuswerten, fehlermerkmal, salvagePrompt, laufModell, KETTE_BUDGET_DEFAULTS,

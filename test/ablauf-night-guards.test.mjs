@@ -15,10 +15,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, rmSync, symlinkSync, existsSync, cpSync } from "node:fs";
-import { join, dirname, delimiter } from "node:path";
+import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
-import { findeImPath, gitBashPfad, GIT_BASH_UMGEBUNG } from "../kit/board.mjs";
 import { konfigKommandoStart } from "../kit/night.mjs";
 
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
@@ -318,31 +317,17 @@ function binMitClaude(dir, claudeScript) {
   mkdirSync(binDir, { recursive: true });
   // git und sh muessen erreichbar bleiben (gitClean, buildChecks) — der PATH wird
   // ersetzt, nicht ergaenzt, damit ein echtes claude auf der Maschine nie greift.
-  let pfadListe = [binDir];
-  if (process.platform !== "win32") {
-    for (const werkzeug of ["git", "sh", "node"]) {
-      // windows-ausnahme: POSIX-Zweig; unter Windows stehen stattdessen die Ordner von git und node im PATH
-      const pfad = spawnSync("sh", ["-c", `command -v ${werkzeug}`], { encoding: "utf-8" }).stdout.trim();
-      assert.ok(pfad, `${werkzeug} nicht im PATH gefunden`);
-      symlinkSync(pfad, join(binDir, werkzeug));
-    }
-  } else {
-    // Unter Windows braucht ein Symlink auf eine Datei ein Privileg, und eine Kopie von
-    // git.exe faende ihre Installation nicht mehr. Deshalb stehen die Ordner von git und
-    // node im PATH; die Git Bash findet das Kit von git.exe aus (Issue #1131, E1).
-    const git = findeImPath("git", { path: process.env.PATH, pathext: process.env.PATHEXT });
-    assert.ok(git, "git nicht im PATH gefunden");
-    pfadListe = [binDir, dirname(git), dirname(process.execPath)];
+  for (const werkzeug of ["git", "sh", "node"]) {
+    const pfad = spawnSync("sh", ["-c", `command -v ${werkzeug}`], { encoding: "utf-8" }).stdout.trim();
+    assert.ok(pfad, `${werkzeug} nicht im PATH gefunden`);
+    symlinkSync(pfad, join(binDir, werkzeug));
   }
   if (claudeScript !== null) {
     const pfad = join(binDir, "claude");
     writeFileSync(pfad, claudeScript, "utf-8");
     spawnSync("chmod", ["+x", pfad]);
-    // Unter Windows findet das Kit `claude` nur ueber die `.cmd` daneben und startet dann
-    // diese sh-Datei ueber die Git Bash (Issue #1131, E8). Die `.cmd` laeuft nie.
-    writeFileSync(`${pfad}.cmd`, "@rem Huelle: das Kit startet die sh-Datei daneben.\r\n");
   }
-  return pfadListe.join(delimiter);
+  return binDir;
 }
 
 test("Ohne Test-Hook ruft der Runner claude mit Prompt, Modell und Permission-Modus", () => {
@@ -545,7 +530,7 @@ test("Salvage-Vorpruefung: kaputtes settings.json faellt aus, settings.local.jso
 // --- Plattform-Shell der buildChecks (#199) ---
 
 // buildChecks und formatFixCommand sind frei konfigurierte Kommandozeilen und laufen
-// deshalb in einer Shell — /bin/sh auf POSIX, die Git Bash unter Windows (Issue #1176). Der Beleg dafuer ist ein Check, der ohne Shell gar
+// deshalb in einer Shell — /bin/sh (Issue #1176). Der Beleg dafuer ist ein Check, der ohne Shell gar
 // nicht ausfuehrbar waere: Operator-Verkettung und eine Umgebungsvariable.
 test("buildChecks laufen in einer Shell: Verkettung und Variablen werden ausgewertet", () => {
   const dir = setupProjekt("night-guard-shell-", {
@@ -577,32 +562,8 @@ test("buildChecks laufen in einer Shell: Verkettung und Variablen werden ausgewe
   }
 });
 
-// Unter Windows laufen buildChecks und formatFixCommand ueber die Git Bash statt ueber
-// `cmd.exe` (Issue #1176), auf POSIX ueber `/bin/sh`, beide mit der Kommandozeile als
-// `-c`-Argument. Ohne Git Bash startet nichts, und die Meldung ist die von `gitBashPfad`.
-const BASH_1176 = String.raw`C:\Program Files\Git\bin\bash.exe`;
-
-test("[1176] buildChecks und formatFixCommand starten unter Windows in der Git Bash mit -c", () => {
-  const start = konfigKommandoStart("mvn spotless:apply && echo ok", {
-    plattform: "win32",
-    env: { CLAUDE_CODE_GIT_BASH_PATH: BASH_1176 },
-    existiert: (p) => p === BASH_1176,
-  });
-  assert.equal(start.fehler, null);
-  assert.equal(start.befehl, BASH_1176);
-  assert.equal(start.args.length, 2);
-  assert.match(start.args[0], /^"?-c"?$/);
-  assert.match(start.args[1], /mvn spotless:apply && echo ok/);
-  assert.deepEqual(start.umgebung, { ...GIT_BASH_UMGEBUNG });
-});
-
-test("[1176] ohne Git Bash startet unter Windows nichts, die Meldung kommt von gitBashPfad", () => {
-  const start = konfigKommandoStart("mvn verify", { plattform: "win32", env: { PATH: "" }, existiert: () => false });
-  assert.equal(start.befehl, null);
-  assert.ok(start.fehler);
-  assert.equal(start.fehler, gitBashPfad({ env: { PATH: "" }, existiert: () => false }).fehler);
-});
-
+// buildChecks und formatFixCommand laufen ueber `/bin/sh` mit der Kommandozeile als
+// `-c`-Argument (Issue #1176).
 test("[1176] auf POSIX starten buildChecks und formatFixCommand unveraendert in /bin/sh", () => {
   for (const plattform of ["linux", "darwin"]) {
     const start = konfigKommandoStart("mvn verify && echo ok", { plattform });

@@ -27,23 +27,11 @@ import { existsSync, readFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { ZUSTAND, NACHBAR_DIR, NACHBAR_CHECKS, CHECKS_PATH, DEFAULT_MODEL, log,
+import { ZUSTAND, NACHBAR_CHECKS, CHECKS_PATH, DEFAULT_MODEL, log,
   schrittZweiterVersuch, schrittProtokollieren, fail, schreibeErgebnisstand, ladeConfigMitOverrides,
   salvageSauberkeitsKommando } from "./grundlagen.mjs";
 import { pulsSchreiben, zweiterVersuch, sitzungsStartGescheitert, exitText } from "./laufstand.mjs";
 import { kitStandUmgebung, laufKennungUmgebung } from "./kitstand.mjs";
-
-// Der Finder der Git Bash und die Startregel fuer Programme unter Windows (Issue #1131, Plan
-// #1128, E2) kommen aus dem Board-Teil wiederholung, der sie fuehrt (Issue #1215). Abgefangen
-// wie im Einstieg: Fehlt der Teil, melden sie das erst, wenn jemand sie wirklich braucht. Der
-// Pfad ist nicht literal, deshalb nennt die Gruppe dieses Teils den Bereich board-wiederholung
-// von Hand (E3).
-const { gitBashPfad, startbefehlFuer, spawnAufruf, GIT_BASH_UMGEBUNG } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "wiederholung.mjs")).href).catch(() => {
-  const fehlt = () => {
-    throw new Error("board/wiederholung.mjs fehlt neben night.mjs — der Nacht-Runner braucht den Board-Adapter.");
-  };
-  return { gitBashPfad: fehlt, startbefehlFuer: fehlt, spawnAufruf: fehlt, GIT_BASH_UMGEBUNG: {} };
-});
 
 // Der Ort der Pruef-Zusammenfassung kommt aus checks.mjs und wird NICHT nachgerechnet (Issue
 // #428). Bedingt und mit werfendem Ersatz wie im Einstieg: Fehlt der Nachbar, wirft der Stub
@@ -1043,63 +1031,23 @@ export function stufenEinstellung(config) {
 const ZUWEISUNG = /^[A-Za-z_]\w*=/;
 
 /**
- * Die POSIX-Shell des Kits (Issue #1131, Plan #1128, E1): `sh` auf POSIX, unter Windows die
- * Git Bash, gefunden ueber `gitBashPfad` aus board.mjs. Liefert `{ pfad, fehler, umgebung }`;
- * `umgebung` gehoert in die Umgebung jedes Starts ueber diese Shell. Die Git Bash traegt dazu
- * `gitBash: true`, und ihr Start geht ueber `spawnAufruf` aus board.mjs (Issue #1143).
- *
- * Nie `bash` ueber den PATH: Unter Windows ist das haeufig der WSL-Starter in System32.
- * Plattform, Umgebung und Dateisystem sind injizierbar, damit beide Wege auf jedem Host
- * pruefbar sind.
- */
-export function posixShell({ env = process.env, plattform = process.platform, existiert } = {}) {
-  if (plattform !== "win32") return { pfad: "sh", fehler: null, umgebung: {} };
-  const { pfad, fehler } = gitBashPfad({ env, plattform, ...(existiert ? { existiert } : {}) });
-  if (!pfad) return { pfad, fehler, umgebung: {} };
-  return { pfad, fehler, umgebung: { ...GIT_BASH_UMGEBUNG }, gitBash: true };
-}
-
-/**
  * Wie eine konfigurierte Kommandozeile startet — buildChecks und formatFixCommand (Issue
  * #1176). Liefert `{ befehl, args, optionen, umgebung, fehler }`; gestartet wird `befehl` mit
  * `args`, dazu `optionen` zu den eigenen spawn-Optionen und `umgebung` zur eigenen Umgebung.
  *
- * Auf POSIX `/bin/sh -c <zeile>`, dasselbe wie vorher mit der Shell-Option von spawn. Unter Windows die
- * Git Bash aus `posixShell` statt `cmd.exe` — dieselbe Regel wie `kommandoStart` in
- * checks.mjs. Fehlt sie, startet nichts, und `fehler` ist die Meldung von `gitBashPfad`.
- * `umgebung` reicht Plattform, Umgebung und Dateisystem an `posixShell` durch (Tests).
+ * `/bin/sh -c <zeile>`, dasselbe wie vorher mit der Shell-Option von spawn.
  */
-export function konfigKommandoStart(kommando, umgebung = {}) {
-  const shell = posixShell(umgebung);
-  if (shell.fehler) return { befehl: null, args: [], optionen: {}, umgebung: {}, fehler: shell.fehler };
-  if (!shell.gitBash) return { befehl: "/bin/sh", args: ["-c", kommando], optionen: {}, umgebung: {}, fehler: null };
-  const aufruf = spawnAufruf(shell.pfad, ["-c", kommando], shell);
-  return { befehl: aufruf.befehl, args: aufruf.args, optionen: aufruf.optionen, umgebung: shell.umgebung, fehler: null };
+export function konfigKommandoStart(kommando) {
+  return { befehl: "/bin/sh", args: ["-c", kommando], optionen: {}, umgebung: {}, fehler: null };
 }
 
 /**
  * Faehrt eine konfigurierte Kommandozeile synchron (Issue #1176) und liefert das Ergebnis von
- * `spawnSync`; ohne Git Bash unter Windows `{ status: null, stdout: "", stderr: <Meldung> }`.
- * PATH-Aufloesung bewusst (S4036, Issue #183).
+ * `spawnSync`. PATH-Aufloesung bewusst (S4036, Issue #183).
  */
 function konfigKommandoSync(kommando, env, abfragen = spawnSync) {
   const start = konfigKommandoStart(kommando);
-  if (start.fehler) return { status: null, stdout: "", stderr: `${start.fehler}\n` };
   return abfragen(start.befehl, start.args, { ...start.optionen, cwd: process.cwd(), encoding: "utf-8", env: { ...env, ...start.umgebung } });
-}
-
-/**
- * Die Kommandozeile einer Kommando-Stufe, wie sie in den Shell-String kommt (Issue #1143).
- *
- * Unter Windows ist das Programm oft ein Pfad mit Backslashes. Die Git Bash liest einen
- * ungequoteten Backslash als Maskierung, und aus `C:\Users\anna\prog` wuerde
- * `C:Usersannaprog`. Im Programmwort — dem ersten Wort nach den fuehrenden Zuweisungen,
- * dieselbe Zerlegung wie in `stufeStartbar` — stehen darum Schraegstriche, die die Git Bash
- * als Windows-Pfad nimmt. Der Rest der Zeile bleibt woertlich, auf POSIX die ganze Zeile.
- */
-function kommandoFuerShell(kommando, plattform = process.platform) {
-  if (plattform !== "win32") return kommando;
-  return kommando.replace(/^(\s*(?:[A-Za-z_]\w*=\S*\s+)*)(\S+)/, (_, zuweisungen, programm) => zuweisungen + programm.replaceAll("\\", "/"));
 }
 
 /**
@@ -1111,17 +1059,14 @@ function kommandoFuerShell(kommando, plattform = process.platform) {
  *
  *   - `modell`: Der Name steht in `night.modelle` (E18). Dieselbe eine Liste wie bei
  *     `empfohlenesModell`; zwei Listen nebeneinander liefen auseinander.
- *   - `kommando`: Die POSIX-Shell des Kits ist da — unter Windows die Git Bash (Issue #1131)
- *     —, und das erste Wort nach den fuehrenden Zuweisungen ist ueber **dieselbe Shell**
- *     auffindbar, die spaeter startet. `command -v` statt einer eigenen PATH-Suche, damit
- *     auch Builtins und Funktionen gelten — eine halbe Nachbildung der Shell scheitert still
- *     am ersten Sonderfall.
- *
- * `umgebung` reicht Plattform, Umgebung und Dateisystem an `posixShell` durch (Tests).
+ *   - `kommando`: Das erste Wort nach den fuehrenden Zuweisungen ist ueber **dieselbe Shell**
+ *     auffindbar, die spaeter startet (`sh`). `command -v` statt einer eigenen PATH-Suche,
+ *     damit auch Builtins und Funktionen gelten — eine halbe Nachbildung der Shell scheitert
+ *     still am ersten Sonderfall.
  *
  * Rueckgabe `{ ok, grund }`; `grund` ist bei `ok: true` immer `null`.
  */
-export function stufeStartbar(eintrag, erlaubteModelle, umgebung = {}) {
+export function stufeStartbar(eintrag, erlaubteModelle) {
   const modell = alsText(eintrag?.modell);
   const kommando = alsText(eintrag?.kommando);
 
@@ -1133,20 +1078,15 @@ export function stufeStartbar(eintrag, erlaubteModelle, umgebung = {}) {
 
   if (!kommando) return { ok: false, grund: "weder modell noch kommando gesetzt" };
 
-  const shell = posixShell(umgebung);
-  if (shell.fehler) return { ok: false, grund: shell.fehler };
-
-  const woerter = kommandoFuerShell(kommando.trim(), umgebung.plattform).split(/\s+/);
+  const woerter = kommando.trim().split(/\s+/);
   const programm = woerter.find((w) => !ZUWEISUNG.test(w));
   if (!programm) return { ok: false, grund: `die Kommandozeile "${kommando}" nennt nur Umgebung und kein Programm` };
 
   // Das Wort steht als Argument daneben und nie im Shell-String — dieselbe Trennung wie
   // beim spaeteren Start (E9), damit die Pruefung nicht zur Einsetzungsluecke wird.
-  const aufruf = spawnAufruf(shell.pfad, ["-c", 'command -v -- "$1" >/dev/null', "sh", programm], shell);
-  const res = spawnSync(aufruf.befehl, aufruf.args, {
-    ...aufruf.optionen,
+  const res = spawnSync("sh", ["-c", 'command -v -- "$1" >/dev/null', "sh", programm], {
     encoding: "utf-8",
-    env: { ...process.env, ...shell.umgebung },
+    env: process.env,
   });
   if (res.error) return { ok: false, grund: `die Shell fuer "${programm}" liess sich nicht starten: ${res.error.message}` };
   if (res.status !== 0) return { ok: false, grund: `das Programm "${programm}" ist ueber die Shell nicht auffindbar` };
@@ -1473,20 +1413,13 @@ export function sitzungsPids(ausgabe) {
   return String(ausgabe ?? "").split("\n").map((z) => Number(z.trim())).filter((pid) => Number.isInteger(pid) && pid > 0);
 }
 
-/**
- * Faehrt `sitzungsSuche` in der Git Bash. Liefert das Ergebnis von `spawnSync` oder
- * `{ fehler }`, wenn es keine Git Bash gibt.
- */
+/** Faehrt `sitzungsSuche` in `sh` und liefert das Ergebnis von `spawnSync`. */
 function sitzungsAbfrage(marke) {
-  const shell = posixShell();
-  if (shell.fehler) return { fehler: shell.fehler };
   const suche = sitzungsSuche(marke);
-  const aufruf = spawnAufruf(shell.pfad, ["-c", suche.skript], shell);
-  return spawnSync(aufruf.befehl, aufruf.args, {
-    ...aufruf.optionen,
+  return spawnSync("sh", ["-c", suche.skript], {
     encoding: "utf-8",
     windowsHide: true,
-    env: { ...process.env, ...shell.umgebung, ...suche.umgebung },
+    env: { ...process.env, ...suche.umgebung },
   });
 }
 
@@ -1539,7 +1472,7 @@ export function baumBeendenAufruf(pid, signal, plattform = process.platform, wei
   return { pid: -pid, signal };
 }
 
-export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extraEnv, cwd, kommandoStufe, gitBash }, abh = {}) {
+export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbose, extraEnv, cwd, kommandoStufe }, abh = {}) {
   // Die Abhaengigkeiten (Issue #1229, Plan #1199, E6): jede fehlende ist die echte.
   const { spawn: starten, spawnSync: abfragen, jetzt, schlaf, wecker: wecken, killen, plattform } = { ...SESSION_ABHAENGIGKEITEN, ...abh };
   return new Promise((resolve) => {
@@ -1550,15 +1483,11 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
     // wartet dann die volle Laufzeit ab, obwohl er laengst gekillt hat.
     // Gemessen: Enkelprozess mit Einzel-Kill 5023 ms statt 307 ms bei 300 ms Limit.
     // Kein unref(): Der Runner soll weiterhin auf das Kind warten.
-    // Ueber die Git Bash mit selbst geschriebener Kommandozeile (Issue #1143), sonst
-    // unveraendert.
-    const aufruf = spawnAufruf(cmd, cmdArgs, { gitBash });
     // Die Marke dieser Session (Issue #1144): Unter Windows findet der Runner an ihr die
     // Prozesse, die eine Prozessgruppe auf POSIX zusammenhaelt.
     const marke = sitzungsMarke();
     const windows = plattform === "win32";
-    const child = starten(aufruf.befehl, aufruf.args, {
-      ...aufruf.optionen,
+    const child = starten(cmd, cmdArgs, {
       env: sessionUmgebung(issueId, extraEnv, process.env, marke),
       detached: !windows,
       // stdin geschlossen (Issue #620): Ohne Angabe waere es eine offene Pipe, die der
@@ -1784,26 +1713,19 @@ export function permissionArgs(yolo) {
  * Drei Wege, und ihre Reihenfolge ist Teil der Sache:
  *
  *   1. `NIGHT_CLAUDE_CMD` — der Test-Hook. Er behaelt seinen Vorrang vor beiden anderen
- *      Zweigen; die Testsuite ersetzt damit die ganze Session. Er laeuft ueber
- *      `posixShell()` (Issue #1131): Die Fake-Skripte sind POSIX-Shell, unter Windows
- *      startet sie die Git Bash.
+ *      Zweigen; die Testsuite ersetzt damit die ganze Session. Er laeuft ueber `sh`: Die
+ *      Fake-Skripte sind POSIX-Shell.
  *   2. `kommando` — das Programm der Stufe (Plan #707, E9). Der Auftrag steht als Argument
  *      daneben und erreicht das Programm ueber `"$@"`; er wird **nie** in den Shell-String
  *      eingesetzt. Eine Einsetzung waere die Einsetzungsluecke im eigenen Haus: Ein Auftrag
  *      mit Anfuehrungszeichen oder Backtick liefe dann als Shell-Kommando.
  *      Eine POSIX-Shell statt einer eigenen Zerlegung der Kommandozeile (E17) — sie darf
  *      Anfuehrungszeichen und fuehrende NAME=WERT-Zuweisungen tragen, und eine halbe
- *      Nachbildung der Shell scheitert still am ersten Sonderfall. Das ist `posixShell()`:
- *      `sh` auf POSIX, die Git Bash unter Windows (Issue #1131).
+ *      Nachbildung der Shell scheitert still am ersten Sonderfall. Das ist `sh`.
  *      `--model` entfaellt hier: Das Programm ist nicht `claude` und kennt das Flag nicht.
- *   3. sonst `claude --model <name>`, gestartet nach `startbefehlFuer` (Issue #1131, E8):
- *      unter Windows eine npm-Huelle `claude.cmd` ueber ihre sh-Huelle in der Git Bash.
+ *   3. sonst `claude --model <name>`.
  *
- * Zurueck kommt `{ cmd, cmdArgs, umgebung, startfehler }`. `umgebung` gehoert zusaetzlich in
- * die Umgebung des Starts; `startfehler` ist gesetzt, wenn sich gar nichts starten laesst —
- * dann ist `cmd` null. Ein Start ueber die Git Bash traegt `gitBash: true` und geht ueber
- * `spawnAufruf` (Issue #1143). `env` ist die Umgebung, in der Shell und Programm gesucht
- * werden; `plattform` und `existiert` sind wie bei `posixShell` injizierbar (Tests).
+ * Zurueck kommt `{ cmd, cmdArgs }`.
  *
  * NIGHT_PROMPT und der geschlossene stdin (Issue #620) haengen an `runProcess()` und gelten
  * darum in jedem der drei Wege.
@@ -1832,13 +1754,10 @@ export function bashZeitlimit(timeoutMs) {
   return Math.max(1, timeoutMs - reserve);
 }
 
-export function sessionStart({ testCmd, kommando, prompt, modell, args, opts, env = process.env, plattform = process.platform, existiert }) {
-  const suche = { env, plattform, ...(existiert ? { existiert } : {}) };
+export function sessionStart({ testCmd, kommando, prompt, modell, args, opts }) {
   if (testCmd || kommando) {
-    const shell = posixShell(suche);
-    if (shell.fehler) return { cmd: null, cmdArgs: [], umgebung: {}, startfehler: shell.fehler };
-    const cmdArgs = testCmd ? ["-c", testCmd] : ["-c", `${kommandoFuerShell(kommando, plattform)} "$@"`, "sh", prompt];
-    return { cmd: shell.pfad, cmdArgs, umgebung: shell.umgebung, ...(shell.gitBash ? { gitBash: true } : {}), startfehler: null };
+    const cmdArgs = testCmd ? ["-c", testCmd] : ["-c", `${kommando} "$@"`, "sh", prompt];
+    return { cmd: "sh", cmdArgs };
   }
 
   const permArgs = permissionArgs(args.yolo);
@@ -1858,46 +1777,26 @@ export function sessionStart({ testCmd, kommando, prompt, modell, args, opts, en
   // Flag gilt die Voreinstellung der CLI, und eine Stufe ohne `effort` faehrt damit
   // zeichengleich zu vorher.
   const effortArgs = alsText(opts.effort) ? ["--effort", opts.effort] : [];
-  const start = startbefehlFuer("claude", suche);
   return {
-    cmd: start.befehl,
-    cmdArgs: [...start.vorArgs, "-p", prompt, "--model", modell, ...permArgs, ...streamArgs, ...werkzeugArgs, ...effortArgs],
-    umgebung: start.umgebung,
-    ...(start.gitBash ? { gitBash: true } : {}),
-    startfehler: start.fehler,
-  };
-}
-
-/**
- * Das Ergebnis eines Starts, der gar nicht erst stattfand (Issue #1131): dieselbe Form wie das
- * von `runProcess`, mit ENOENT wie ein Spawn ohne Programm. So greifen die bestehenden
- * Fehlerwege unveraendert.
- */
-function keinStart(grund) {
-  const error = Object.assign(new Error(grund), { code: "ENOENT", vorStart: true });
-  return {
-    status: null, signal: null, error, stdout: "", stderr: "",
-    werkzeugzeit: null, prueflaeufe: null, fortschritt: null, auskunft: null,
+    cmd: "claude",
+    cmdArgs: ["-p", prompt, "--model", modell, ...permArgs, ...streamArgs, ...werkzeugArgs, ...effortArgs],
   };
 }
 
 /**
  * Ein ENOENT beim Start einer Session (Issue #710, #1131).
  *
- * Im Kommando-Zweig bedeutet es allein, dass die Shell selbst fehlt — `sh` auf POSIX, die Git
- * Bash unter Windows. Ein von der Shell nicht gefundenes Programm endet mit Exit 127 und ist
+ * Im Kommando-Zweig bedeutet es allein, dass die Shell `sh` selbst fehlt. Ein von der Shell nicht gefundenes Programm endet mit Exit 127 und ist
  * bereits von `stufeStartbar` vor dem Start gefangen (E8). Darum kein `fail()` wie beim
  * fehlenden claude-CLI: Der Aufrufer soll nach oben ausweichen koennen, statt den ganzen Lauf
  * an einer Stufe zu verlieren, die nur dieses eine Paket betrifft.
  */
-function programmFehlt(res, { kommando, cmd, startfehler }) {
+function programmFehlt(res, { kommando, cmd }) {
   if (!kommando) {
-    fail(startfehler || "claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?", "umgebung");
+    fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?", "umgebung");
     return;
   }
-  res.startfehler = startfehler
-    ? `die Shell fuer die Kommando-Stufe wurde nicht gefunden: ${startfehler}`
-    : `die Shell "${cmd}" fuer die Kommando-Stufe wurde nicht gefunden`;
+  res.startfehler = `die Shell "${cmd}" fuer die Kommando-Stufe wurde nicht gefunden`;
 }
 
 // Exportiert fuer die Kette und ihre Tests. `abh` sind die Abhaengigkeiten aus
@@ -1935,22 +1834,16 @@ export async function runSession(issueId, args, opts = {}, abh = {}) {
     ? (alsText(opts.stufenName) || `stufe-${alsText(opts.aufgabenstufe) || "unbekannt"}`)
     : modell;
   const testCmd = process.env.NIGHT_CLAUDE_CMD;
-  // Shell und Programm werden in der Umgebung gesucht, die auch die Session bekommt
-  // (Issue #1131) — ein PATH aus `opts.extraEnv` gilt fuer beides.
-  const { cmd, cmdArgs, umgebung, gitBash, startfehler } = sessionStart({
-    testCmd, kommando, prompt, modell, args, opts, env: { ...process.env, ...opts.extraEnv },
-  });
+  const { cmd, cmdArgs } = sessionStart({ testCmd, kommando, prompt, modell, args, opts });
   // Die Session-Dauer fuer die Zeiten-Erfassung (Issue #749): gemessen um genau den
   // Prozesslauf, wie Nachdenken (apiDauerMs) und Werkzeugarbeit (werkzeugzeit) es auch sind.
   const gestartet = jetzt();
-  // Laesst sich nichts starten — unter Windows ohne Git Bash oder bei einer claude.cmd ohne
-  // sh-Huelle —, steht derselbe Befund da wie bei einem Spawn ohne Programm: ENOENT.
-  const res = startfehler ? keinStart(startfehler) : await runProcess(cmd, cmdArgs, {
+  const res = await runProcess(cmd, cmdArgs, {
     // Verarbeitet wird der Strom, sobald er angefordert ist — dieselbe Bedingung wie in
     // `sessionStart` (Issue #748). Bisher stand hier `args.verbose` allein, und damit lag
     // der Strom jedes normalen Nachtlaufs unausgewertet als Block in `res.stdout`.
     // `verbose` daneben steuert nur noch die Ausgabe der Ereignisse.
-    issueId, timeoutMs, useStream: args.verbose || opts.stream, verbose: args.verbose, cwd: opts.cwd, gitBash,
+    issueId, timeoutMs, useStream: args.verbose || opts.stream, verbose: args.verbose, cwd: opts.cwd,
     // Die Kommando-Stufe beobachtet ihren Fortschritt nicht (Issue #975): Ihr Programm
     // kennt das Strom-Format nicht, und ein leeres Ergebnis waere eine Aussage ueber eine
     // Sitzung, die nie beobachtet wurde.
@@ -1988,13 +1881,10 @@ export async function runSession(issueId, args, opts = {}, abh = {}) {
             return { BASH_MAX_TIMEOUT_MS: grenze, BASH_DEFAULT_TIMEOUT_MS: grenze };
           })()
         : {}),
-      // Die Umgebung der Git Bash (Issue #1131): unter Windows ohne Pfadumwandlung der
-      // Argumente, auf POSIX leer.
-      ...umgebung,
       ...opts.extraEnv,
     },
   }, abh);
-  if (!testCmd && res.error?.code === "ENOENT") programmFehlt(res, { kommando, cmd, startfehler });
+  if (!testCmd && res.error?.code === "ENOENT") programmFehlt(res, { kommando, cmd });
   const sessionOutput = `--- Session-Output Issue #${issueId} ---\n${res.stdout || ""}${res.stderr || ""}\n`;
   if (ZUSTAND.LOG_FILE) appendFileSync(ZUSTAND.LOG_FILE, sessionOutput, "utf-8");
   schrittProtokollieren(sessionOutput);
@@ -2190,9 +2080,8 @@ export function paketstufenChecks(cfg) {
 // run build"), die Operatoren und Umleitungen enthalten darf. Ohne Shell gaebe es das
 // Feature nicht.
 //
-// Die Shell ist /bin/sh auf POSIX und unter Windows die Git Bash (Issue #1176, vorher die
-// ComSpec-Shell, Issue #199) — siehe `konfigKommandoStart`. Damit gilt fuer die
-// buildChecks auf jeder Plattform dieselbe POSIX-Syntax.
+// Die Shell ist /bin/sh (Issue #1176) — siehe `konfigKommandoStart`. Damit gilt fuer die
+// buildChecks dieselbe POSIX-Syntax.
 //
 // PATH-Aufloesung bewusst (S4036, Issue #183).
 //
@@ -2428,9 +2317,8 @@ export function verifyChecksForSalvage(cfg, karte, abh = {}) {
   if (!fixCmd) return { ok: false, output: first.output, formatFixCmd: null, rotesKommando: first.rotesKommando };
 
   log(`  buildChecks rot — einmaliger Format-Fix wird angewendet: ${fixCmd}`);
-  // fixCmd kommt aus der Config und braucht deshalb eine Shell (Issue #199), unter Windows
-  // die Git Bash (Issue #1176). Startet sie nicht, steht das im Log, und der zweite
-  // Durchgang bleibt rot.
+  // fixCmd kommt aus der Config und braucht deshalb eine Shell (Issue #199). Startet sie
+  // nicht, steht das im Log, und der zweite Durchgang bleibt rot.
   const fix = konfigKommandoSync(fixCmd, checkEnv(), abfragen);
   if (fix.status === null && fix.stderr) log(`  Format-Fix nicht gestartet: ${fix.stderr.trim()}`);
 
@@ -2922,31 +2810,27 @@ export function normalisiereVorflug(roh, reviewers) {
 async function runVorflugSession(args, prompt, abh = {}) {
   const { jetzt } = { ...SESSION_ABHAENGIGKEITEN, ...abh };
   const testCmd = process.env.NIGHT_VORFLUG_CMD;
-  let cmd, cmdArgs, umgebung, gitBash, startfehler;
+  let cmd, cmdArgs;
   if (testCmd) {
-    // Wie bei NIGHT_CLAUDE_CMD ueber `posixShell()`: Dieser Zweig ist ausschliesslich der
-    // Test-Hook, und die Fake-Skripte der Testsuite sind POSIX-Shell — unter Windows startet
-    // sie die Git Bash (Issue #1131).
-    const shell = posixShell();
-    ({ pfad: cmd, umgebung, gitBash, fehler: startfehler } = shell);
+    // Wie bei NIGHT_CLAUDE_CMD ueber `sh`: Dieser Zweig ist ausschliesslich der Test-Hook, und
+    // die Fake-Skripte der Testsuite sind POSIX-Shell.
+    cmd = "sh";
     cmdArgs = ["-c", testCmd];
   } else {
     const permArgs = permissionArgs(args.yolo);
-    // Der Start von `claude` folgt derselben Regel wie in der Runde (Issue #1131, E8).
-    const start = startbefehlFuer("claude");
-    ({ befehl: cmd, umgebung, gitBash, fehler: startfehler } = start);
+    cmd = "claude";
     // stream-json seit Issue #669: Nur so meldet die Vorflug-Session ihren Verbrauch, und
     // sie ist die Session ohne Karte, deren Mengen den Rest des Laufs ausmachen. Der
     // Befund-Block steht dann im Text des result-Ereignisses (siehe reviewerVorflug).
-    cmdArgs = [...start.vorArgs, "-p", prompt, "--model", VORFLUG_MODEL, "--output-format", "stream-json", "--verbose", ...permArgs];
+    cmdArgs = ["-p", prompt, "--model", VORFLUG_MODEL, "--output-format", "stream-json", "--verbose", ...permArgs];
   }
   const timeoutMs = process.env.NIGHT_VORFLUG_TIMEOUT_MS
     ? Number(process.env.NIGHT_VORFLUG_TIMEOUT_MS)
     : VORFLUG_TIMEOUT_MS;
   const gestartet = jetzt();
-  const res = startfehler ? keinStart(startfehler) : await runProcess(cmd, cmdArgs, {
-    issueId: "vorflug", timeoutMs, useStream: false, gitBash,
-    extraEnv: { ...umgebung, NIGHT_PROMPT: prompt, KIT_AGENT_MODEL: VORFLUG_MODEL, NIGHT_VORFLUG: "1", ...laufKennungUmgebung() },
+  const res = await runProcess(cmd, cmdArgs, {
+    issueId: "vorflug", timeoutMs, useStream: false,
+    extraEnv: { NIGHT_PROMPT: prompt, KIT_AGENT_MODEL: VORFLUG_MODEL, NIGHT_VORFLUG: "1", ...laufKennungUmgebung() },
   }, abh);
   if (ZUSTAND.LOG_FILE) {
     appendFileSync(ZUSTAND.LOG_FILE, `--- Vorflug-Session ---\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
@@ -2981,11 +2865,7 @@ export async function reviewerVorflug(args, reviewers, trackerId, abh = {}) {
   });
 
   if (res.error?.code === "ETIMEDOUT") return gescheitert(`Zeitlimit von ${timeoutMs} ms ueberschritten`);
-  if (res.error?.code === "ENOENT") {
-    // Ein Startfehler vor dem Spawn traegt seinen eigenen Grund (Issue #1131): fehlende Git
-    // Bash oder eine claude.cmd ohne sh-Huelle.
-    return gescheitert(res.error.vorStart ? res.error.message : "claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?");
-  }
+  if (res.error?.code === "ENOENT") return gescheitert("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?");
   if (res.error) return gescheitert(res.error.message);
 
   // Im Strom steht der Befund im Text des result-Ereignisses; ohne Strom (Test-Fakes, eine
