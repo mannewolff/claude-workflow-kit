@@ -45,7 +45,7 @@ import { flatten, kennzahlenAddieren, ketteBudgetDefaults, kostenAddieren, KETTE
   ladeKetteUebergaenge, ladePruefLaufBudget, leseErgebnisText, leseKennzahlen, neueKommentare, runSession,
   KETTE_ZIELE, PLANREVIEW_LABELS, pruefreihenVon, SESSION_ABHAENGIGKEITEN, varianteVon, zielVon, ZIEL_LABEL_PRAEFIX } from "./session.mjs";
 import { berichtFuerKette, berichtSchreiben, hatPlanReviewMarker, kommentareVon, planReviewWert,
-  pruefBericht, vorbereitungsBericht } from "./bericht.mjs";
+  pruefBericht, vorbereitungsBericht, wartendeMenschenschritte } from "./bericht.mjs";
 import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, geschuetztAmBoardVermerken, hatKlaerenLabel, laufeRunde,
   pruefeIssueGates, rundenMerker, wartendVermerk, wartendeSession } from "./wartend.mjs";
 
@@ -60,10 +60,12 @@ const {
   istFachlich: isFachlich,
   istPlan: isPlan,
   istIdee: isIdee,
+  istMensch: isMensch,
 } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "dokumente.mjs")).href).catch(() => ({
   istFachlich: praefixFehlt("[Fachlich]"),
   istPlan: praefixFehlt("[Plan]"),
   istIdee: praefixFehlt("[Idee]"),
+  istMensch: praefixFehlt("[Mensch]"),
 }));
 
 // --- Anbindung an den Einstieg (Plan #1199, E16) ---
@@ -1285,13 +1287,31 @@ function paketeAbschliessen(stand, gezogen) {
 /** Die nicht begonnenen Pakete ueber alle Ketten des Laufs — fuer die Schlusszeile (Issue #1170). */
 let NICHT_BEGONNEN_GESAMT = 0;
 
-/** Fuehrt Pakete als nicht begonnen mit ihrem Grund — im Bericht und im Protokoll. */
-function paketeNichtBegonnen(stand, ids, grund) {
+/** Die offenen Menschenschritte ueber alle Ketten des Laufs — fuer die Schlusszeile (Issue #1281). */
+const MENSCHENSCHRITTE_OFFEN = new Set();
+
+/**
+ * Fuehrt Pakete als nicht begonnen mit ihrem Grund — im Bericht und im Protokoll. `zusatz`
+ * traegt, was `wartendeMenschenschritte` liest (Issue #1281): `mensch` beim Menschenschritt,
+ * `unmet` bei unerfuellten Abhaengigkeiten.
+ */
+function paketeNichtBegonnen(stand, ids, grund, zusatz = {}) {
   for (const id of ids) {
-    stand.nichtBegonnen.push({ id: String(id), grund });
+    stand.nichtBegonnen.push({ id: String(id), grund, ...zusatz });
     NICHT_BEGONNEN_GESAMT++;
+    if (zusatz.mensch) MENSCHENSCHRITTE_OFFEN.add(String(id));
     log(`  Paket #${id} nicht begonnen: ${grund}.`);
   }
+}
+
+/**
+ * Was ein Gate fuer `wartendeMenschenschritte` am Eintrag hinterlaesst (Issue #1281): den
+ * Menschenschritt an derselben Pruefung wie das Gate, nicht am Grundtext, sonst die
+ * unerfuellten Abhaengigkeiten.
+ */
+function gateZusatz(karte, gate) {
+  if (isMensch(karte.title)) return { mensch: true };
+  return gate.unmet ? { unmet: gate.unmet.map(String) } : {};
 }
 
 /**
@@ -1360,7 +1380,7 @@ async function umsetzePaket(kette, id, lauf, zaehler) {
       const res = abh.boardRoh("issue", "comment", id, "--text", text);
       if (res.status !== 0) log(`  Paket #${id}: Abhaengigkeits-Kommentar nicht geschrieben (${res.text.slice(0, 200)}) — bitte morgens sichten.`);
     }
-    paketeNichtBegonnen(lauf.stand, [id], gate.kommentar.replace(/^Nachtlauf:\s*/, ""));
+    paketeNichtBegonnen(lauf.stand, [id], gate.kommentar.replace(/^Nachtlauf:\s*/, ""), gateZusatz(karte, gate));
     return null;
   }
   // Wartet das Paket auf einen Push (Issue #1104), zieht die Kette es nicht nach Ready: Es
@@ -2126,6 +2146,17 @@ const ALS_NAECHSTES = Object.freeze({
   "push-vorbereitet": "Meldung der Vorbereitung lesen, dann `push main`.",
 });
 
+/**
+ * Die Zeile `Als Nächstes:` am Ziel. Wartet ein Menschenschritt (Issue #1281), ist er der
+ * naechste Handgriff — nicht der Text aus ALS_NAECHSTES, der die Kette fuer erledigt ausgibt.
+ */
+function alsNaechstes(kette) {
+  const wartend = wartendeMenschenschritte(kette.stufen?.umsetzung);
+  if (wartend.length === 0) return ALS_NAECHSTES[kette.ziel];
+  const haengen = new Set(wartend.flatMap((w) => w.haengen));
+  return `Menschenschritt ${wartend.map((w) => "#" + w.id).join(", ")} erledigen, dann kit:night an #${kette.karte.id} — ${haengen.size} Paket(e) hängen daran.`;
+}
+
 /** Der Laufstand zum Beginn einer Stufe. `ziel` ist die Karte, an der sie arbeitet. */
 function stufeBeginnt(kette, stufe, ziel) {
   kette.laufstand.begonnen = `${stufenEintrag(stufe, "begonnen", ziel)} um ${abh.jetzt().toISOString()}`;
@@ -2136,7 +2167,7 @@ function stufeBeginnt(kette, stufe, ziel) {
 function stufeEndet(kette, stufe, ziel, ergebnis) {
   if (ergebnis.ausgang === "fertig") {
     kette.laufstand.abgeschlossen = `${stufenEintrag(stufe, "fertig", ziel)} um ${abh.jetzt().toISOString()}`;
-    ketteStand(kette, "fertig", endetAmZiel(kette, stufe) ? `fertig bis ${kette.ziel}\nAls Nächstes: ${ALS_NAECHSTES[kette.ziel]}` : null);
+    ketteStand(kette, "fertig", endetAmZiel(kette, stufe) ? `fertig bis ${kette.ziel}\nAls Nächstes: ${alsNaechstes(kette)}` : null);
   } else if (ergebnis.ausgang === "angehalten") {
     // Haelt ein Paket der Umsetzung an, steht die Frage am Paket, nicht an dieser Karte (E17).
     ketteStand(kette, "wartet", ergebnis.ohneHaltAmFachplan ? `Halt: ${ergebnis.grund}` : HALT_WARTET);
@@ -2818,8 +2849,10 @@ async function ketteFahren(args) {
     return abh.beenden(0);
   }
 
+  MENSCHENSCHRITTE_OFFEN.clear();
   const zaehler = await kettenUndVorbereitung(auftraege, args);
-  log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.unvollstaendig} unvollstaendig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length + zaehler.uebersprungen} uebersprungen, ${liegengeblieben.length} liegengeblieben, ${NICHT_BEGONNEN_GESAMT} Paket(e) nicht begonnen.`);
+  const menschenschritte = MENSCHENSCHRITTE_OFFEN.size > 0 ? `, ${MENSCHENSCHRITTE_OFFEN.size} Menschenschritt(e) offen` : "";
+  log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.unvollstaendig} unvollstaendig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length + zaehler.uebersprungen} uebersprungen, ${liegengeblieben.length} liegengeblieben, ${NICHT_BEGONNEN_GESAMT} Paket(e) nicht begonnen${menschenschritte}.`);
   log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Nach Variante A liegen die Pakete morgens in Backlog; Variante B (Label '${budget.varianteBLabel}') hat sie in derselben Nacht umgesetzt, sie stehen dann in In review. Protokoll: ${ZUSTAND.LOG_FILE}`);
   anbindung.laufAbschliessen("regulaer");
   return abh.beenden(0);

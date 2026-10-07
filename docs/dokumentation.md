@@ -1546,7 +1546,7 @@ Die Minuten gelten je Stufe (Korrekturrunden zählen gegen ihre Stufe), `kostenU
 | `ziel:umsetzung` | `umsetzung` | Pakete in In review testen, dann `push main`. Die Kette hat die Pakete selbst nach Ready gezogen und umgesetzt, wie unter Variante B. |
 | `ziel:push-vorbereitet` | `vorbereitung` | Meldung der Vorbereitung lesen, dann `push main`. Zusätzlich liegen Versionsvermerk und Änderungsnotiz als geprüfter Commit bereit, siehe [/push-main](#push-main). |
 
-Die letzte Spalte steht nach dem Ende am Ziel wörtlich im [Laufstand](#der-laufstand), in der Zeile `Als Nächstes:` unter dem Kopf `fertig bis <Ziel>`.
+Die letzte Spalte steht nach dem Ende am Ziel wörtlich im [Laufstand](#der-laufstand), in der Zeile `Als Nächstes:` unter dem Kopf `fertig bis <Ziel>`. Wartet unter den nicht begonnenen Paketen ein Menschenschritt (`[Mensch]`-Karte), lautet sie stattdessen `Menschenschritt #<N> erledigen, dann kit:night an #<Karte> — <K> Paket(e) hängen daran.`, und der Nachtbericht führt unter `### Ausgang` unter `fertig` je Menschenschritt die Zeile `wartet auf Menschenschritt #<N> <Titel> — daran hängen #A, #B, …` (auch die Pakete, die nur mittelbar über andere daran hängen).
 
 **Das GO steckt im Ziel.** Ein Ziel ab `umsetzung` ist zugleich das GO für die Pakete dieser Karte, genau wie `kit:durchziehen`. Das bleibt gültig und zählt als `ziel:umsetzung`; tragen beide an einer Karte, gilt das weiter reichende. Ohne eines von beiden zieht die Nacht kein Paket nach Ready. Den Push gibt auch `ziel:push-vorbereitet` nicht frei: Er bleibt deine Trigger-Phrase `push main`.
 

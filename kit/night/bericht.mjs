@@ -700,13 +700,43 @@ function berichtHaltArten(einheit) {
 }
 
 /**
+ * Die Menschenschritte unter den nicht begonnenen Paketen einer Umsetzung, je mit den
+ * Paketen, die an ihm haengen (Issue #1281) — in der Folge der Liste `nichtBegonnen`.
+ *
+ * Erkannt wird ein Menschenschritt am Feld `mensch`, das die Kette aus `istMensch` setzt,
+ * nicht am Grundtext. Es haengt jedes nicht begonnene Paket daran, dessen unerfuellte
+ * Abhaengigkeiten (`unmet`) direkt oder ueber andere nicht begonnene Pakete auf ihn
+ * zurueckgehen: Im Anlass hing #1275 nur ueber #1274 an #1273.
+ */
+export function wartendeMenschenschritte(stand) {
+  const nicht = (stand?.nichtBegonnen ?? []).map((e) => ({ ...e, id: String(e.id), unmet: (e.unmet ?? []).map(String) }));
+  return nicht.filter((e) => e.mensch).map(({ id }) => {
+    const erreicht = new Set([id]);
+    for (let neu = true; neu;) {
+      neu = false;
+      for (const e of nicht) {
+        if (erreicht.has(e.id) || !e.unmet.some((d) => erreicht.has(d))) continue;
+        erreicht.add(e.id);
+        neu = true;
+      }
+    }
+    return { id, haengen: nicht.map((e) => e.id).filter((n) => n !== id && erreicht.has(n)) };
+  });
+}
+
+/**
  * Die Zeilen unter `### Ausgang`. Blieb die Kette an der Projektgrenze vor ihrem Ziel stehen,
  * steht das zusaetzlich zum Wartetext da, kein fuenfter Ausgang (Plan #1243, E6): Die
- * Ausgaenge sind Vertrag mit der Laufmeldung.
+ * Ausgaenge sind Vertrag mit der Laufmeldung. Ebenso je wartendem Menschenschritt eine
+ * Zeile (Issue #1281) — dort, wo der Mensch zuerst liest, nicht nur unter `nicht begonnen`.
  */
-function berichtAusgang(einheit) {
+function berichtAusgang(einheit, pakete) {
   const zeilen = [einheit.grund ? `${einheit.ausgang} — ${einheit.grund}` : String(einheit.ausgang)];
   if (einheit.ziel && einheit.projektgrenze) zeilen.push(`an der Projektgrenze stehen geblieben, nicht am Ziel ${einheit.ziel}`);
+  for (const { id, haengen } of wartendeMenschenschritte(einheit.stufen?.umsetzung)) {
+    const daran = haengen.length > 0 ? `daran hängen ${haengen.map((n) => "#" + n).join(", ")}` : "daran hängt kein weiteres Paket";
+    zeilen.push(`wartet auf Menschenschritt ${paketBezeichnung(pakete, id)} — ${daran}`);
+  }
   return zeilen;
 }
 
@@ -722,7 +752,7 @@ export function berichtBauen(einheit, {
   const stufen = einheit.stufen ?? {};
   const z = [`${BERICHT_ANKER} ${stempel ?? ZUSTAND.LAUF_STEMPEL ?? "ohne Stempel"}`, ""];
   z.push(
-    "### Ausgang", "", ...berichtAusgang(einheit), "",
+    "### Ausgang", "", ...berichtAusgang(einheit, pakete), "",
     "### Stufen", "", ...berichtStufen(einheit, plan, pakete), "",
   );
   if (einheit.variante === "B") z.push(...berichtUmsetzung(einheit, pakete, einheiten, ziel));

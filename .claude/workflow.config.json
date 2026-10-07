@@ -219,9 +219,11 @@
         "nacht-abhaengigkeiten",
         "nacht-bericht",
         "nacht-grundlagen",
+        "nacht-kette",
         "nacht-kitstand",
         "nacht-laufstand",
         "nacht-session",
+        "nacht-wartend",
         "pruefungen"
       ]
     },
