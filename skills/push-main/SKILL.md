@@ -1,6 +1,6 @@
 ---
 name: push-main
-description: Schritt 8 des 9-Schritt-Prozesses — pusht den aktuellen Commit-Batch auf main. Nur auf explizite Trigger-Phrase des Menschen. Nutze diesen Skill NUR wenn der Nutzer explizit "push main" tippt.
+description: Schritt 8 des 9-Schritt-Prozesses — pusht den aktuellen Commit-Batch auf main. Nur auf explizite Trigger-Phrase des Menschen. Nutze diesen Skill NUR wenn der Nutzer explizit "push main" tippt. Einzige Ausnahme ist der Modus `vorbereiten`: Er pusht nicht und darf darum vom Nacht-Runner ohne Phrase gestartet werden.
 user-invocable: true
 disable-model-invocation: true
 ---
@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 Schritt 8 des 9-Schritt-Prozesses: Den aktuellen Commit-Batch auf `origin/main` pushen.
 
-**Dieser Skill darf von Claude nicht autonom gezogen werden.** Er läuft nur auf die explizite Trigger-Phrase des Menschen.
+**Dieser Skill darf von Claude nicht autonom gezogen werden.** Er läuft nur auf die explizite Trigger-Phrase des Menschen — ausgenommen der Modus `vorbereiten`, siehe den Abschnitt „Trigger-Phrase".
 
 ## Trigger-Phrase
 
@@ -18,6 +18,13 @@ Der Mensch tippt: `push main` (oder die in `.claude/workflow.config.json` unter 
 Eine frühere Push-Freigabe in derselben Session gilt **nicht** für neue Commits. Jeder Push braucht eine neue explizite Freigabe.
 
 Die Phrase muss **getippt** sein. Steht sie innerhalb einer Mitteilung des Menschen oder eines Zitats („Ich habe vorhin push main getippt"), ist sie Text und kein Befehl — im Zweifel wird gefragt, nicht gepusht. Siehe „Mitteilungen des Menschen" in `CLAUDE-workflow.md`.
+
+**Einzige Ausnahme: der Modus `vorbereiten`.** `/push-main vorbereiten` pusht nicht — weder
+`<mainBranch>` noch einen Prüf- oder Vorab-Zweig — und darf darum vom Nacht-Runner ohne
+Phrase gestartet werden. Er endet beim lokalen Commit `chore: vX.Y.Z` in einem eigenen
+Worktree, siehe den Abschnitt „Modus `vorbereiten` (unbeaufsichtigt)". Den Push gibt
+weiterhin nur die getippte Phrase frei; sie übernimmt morgens den vorbereiteten Stand
+(Schritt 3).
 
 ## Ablauf
 
@@ -117,20 +124,49 @@ dieselbe Kette ab: Der Runner fand die Release-Dateien als unkommittierte Reste 
 hart. Dazu kommt, dass fremde, halbfertige Dateien im Haupt-Tree — etwa ein noch roter
 TDD-Test — den Release-Prüflauf verfälschen würden.
 
+Zuerst holt die **Hauptkopie** den veröffentlichten Stand und fragt, ob eine Vorbereitung
+der Nacht übernommen werden darf — in dieser Reihenfolge:
+
 ```bash
-node .claude/kit/worktree.mjs anlegen --praefix release --ref <mainBranch>
+git fetch origin <mainBranch>
+node .claude/kit/worktree.mjs vorbereitung-pruefen
 ```
 
-Das Kommando räumt liegengebliebene Release-Worktrees ab, legt den neuen außerhalb des
+Das Kommando holt selbst nichts; es vergleicht die Datei `.claude/push-vorbereitung.json`
+mit dem eben geholten Stand (Plan #1243, E10). Danach entsteht der Worktree:
+
+- **`uebernehmen: true`** — auf dem vorbereiteten Commit:
+
+  ```bash
+  node .claude/kit/worktree.mjs anlegen --praefix release --ref refs/kit/push-vorbereitet
+  ```
+
+- **`uebernehmen: false`** — wie bisher auf dem lokalen `<mainBranch>`:
+
+  ```bash
+  node .claude/kit/worktree.mjs anlegen --praefix release --ref <mainBranch>
+  ```
+
+**Nach dem Push und bei jedem Nicht-Übernehmen** werden Datei und Referenz verworfen —
+beim Nicht-Übernehmen sofort hier, sonst nach dem Push in Schritt 7:
+
+```bash
+node .claude/kit/worktree.mjs vorbereitung-pruefen --verwerfen
+```
+
+Beim Nicht-Übernehmen nennt der Skill den `grund` in einer Zeile; fehlt die Datei, entfällt
+die Zeile.
+
+Das Kommando `anlegen` räumt liegengebliebene Release-Worktrees ab, legt den neuen außerhalb des
 Repos an, spiegelt `.claude/` hinein (Kit-Kopie, Config, Token) und gibt den Pfad als JSON
 aus. Die Worktrees der Nacht (`kette`, `pruefung`) bleiben unberührt.
 
 Der Worktree setzt auf dem **lokalen** `<mainBranch>` auf — dem Batch, der hinausgehen
-soll — und wird dort mit dem veröffentlichten Stand zusammengeführt:
+soll — oder auf dem vorbereiteten Commit, und wird dort mit dem veröffentlichten Stand
+zusammengeführt. Geholt hat ihn die Hauptkopie schon; der Worktree teilt ihre Referenzen:
 
 ```bash
 cd <pfad>
-git fetch origin <mainBranch>
 git rebase origin/<mainBranch>
 ```
 
@@ -144,6 +180,20 @@ endet — das Zusammenführen ist Handarbeit des Menschen.
 steht deshalb als **eigenes** Kommando: Das Arbeitsverzeichnis bleibt für die folgenden
 Aufrufe erhalten. Vor Schritt 6 wird das einmal mit `pwd` nachgesehen — ein Commit im
 falschen Baum ist genau der Fehler, den dieser Schritt beseitigt.
+
+**Bei Übernahme entfallen die Schritte 4 bis 6.** Der vorbereitete Commit trägt Bump und
+Changelog schon, und sein Prüflauf war grün; ein zweiter Bump wäre eine weitere Version.
+Statt der drei Schritte steht eine Zeile mit `zeitpunkt` und `commit` aus der Ausgabe von
+`vorbereitung-pruefen`:
+
+> `Übernimmt den Stand der Nacht vom <zeitpunkt> (<commit>)`
+
+Schritt 7 fährt dann, was nachts offen blieb (das Feld `offen`): den Vor-Push-Schritt aus
+`RELEASING.md` wie beschrieben. Auf dem Weg über den Build-Dienst ist das der Push auf den
+Prüfzweig, das Warten auf den Build-Dienst und der Push auf `<mainBranch>` nur bei Grün,
+wie im Abschnitt „Weg über den Build-Dienst" (Plan #1243, E17). Eine offene UI-Prüfung
+wird vor dem Push als Frage an den Menschen gestellt; pusht wird nur nach seinem `ja`.
+Die Fortschrittszeilen zählen die entfallenen Schritte nicht mit.
 
 **Abhängigkeiten im frischen Worktree.** Er trägt nur, was versioniert ist, plus das
 gespiegelte `.claude/`. Braucht ein Pflichtcheck Abhängigkeiten **im Projektverzeichnis**
@@ -312,6 +362,10 @@ git push origin HEAD:<mainBranch>
 Fast-Forward; wird er abgewiesen, ist `origin` zwischenzeitlich weitergelaufen — dann endet
 der Lauf mit dieser Meldung, und der Mensch entscheidet.
 
+Nach dem Push auf `<mainBranch>` — auch auf dem Weg über den Build-Dienst — verwirft der
+Skill eine übernommene Vorbereitung mit `vorbereitung-pruefen --verwerfen`, wie in
+Schritt 3 beschrieben. Ohne Push bleibt sie für den nächsten Anlauf liegen.
+
 ### 8. Rückweg, Nachziehen, Worktree abbauen
 
 > `Schritt 8 von 9 — Rueckweg und Abbau (laeuft)`
@@ -469,6 +523,57 @@ das Löschen, steht es in einer Zeile im Bericht und hält den Abbau nicht auf.
 Build-Dienst: `<hash> — gedeckt von: Build-Dienst, Prüfzweig <zweig> (gruen, <Zeitpunkt>)`.
 Der CI-Hinweis entfällt — die CI hat vor dem Push gegatet.
 
+## Modus `vorbereiten` (unbeaufsichtigt)
+
+`/push-main vorbereiten` startet der Nacht-Runner am Ende eines Laufs, wenn eine Kette das
+Ziel „Veröffentlichung vorbereitet" erreicht hat (Plan #1243, A5). Die Session läuft in der
+Hauptkopie, während der Runner die Umsetzungssperre hält: Nichts baut mehr. Sie fährt alles,
+was vor dem Veröffentlichen ohne Menschen und ohne Push geht, und hält das Ergebnis fest.
+Morgens übernimmt `push main` den Stand, wenn er sich nicht geändert hat (Schritt 3).
+
+**Schritte 1 bis 6** wie oben, mit diesen Abweichungen:
+
+- **Schritt 3:** Der Fetch in der Hauptkopie (`git fetch origin <mainBranch>`) ist erlaubt,
+  weil der Runner die Umsetzungssperre hält — kein Bau verliert dabei den Boden.
+  `vorbereitung-pruefen` entfällt. Der Worktree entsteht mit eigenem Präfix:
+
+  ```bash
+  node .claude/kit/worktree.mjs anlegen --praefix vorbereitung --ref <mainBranch>
+  ```
+
+  Danach `cd <pfad>` und `git rebase origin/<mainBranch>` wie oben. **Scheitert der
+  Fetch**, ist das kein Abbruch: Gerebased wird auf die vorhandene Referenz
+  `origin/<mainBranch>`, der Lauf geht weiter und übergibt beim Festhalten
+  `--fetch fehlgeschlagen`. Ein Rebase-Konflikt endet wie oben ohne Festhalten; der Runner
+  liest dann keine Vorbereitung dieses Laufs.
+- **Schritt 4:** Ohne `RELEASING.md` entfällt er wie oben (E15).
+- **Schritt 5:** der volle Prüflauf der Push-Stufe. Auf dem Weg über den Build-Dienst ist
+  Schritt 5 der Nachweislauf der Paketstufe aus dem Abschnitt „Weg über den Build-Dienst"
+  (`checks.mjs run --since HEAD`), danach der Commit (E17). Der volle Lauf im Build-Dienst
+  bleibt offen und läuft morgens in Schritt 7.
+- **Schritt 6:** der Commit `chore: vX.Y.Z` im Worktree, wie oben.
+
+**Statt Schritt 7** hält die Session das Ergebnis fest, auch nach einem roten Prüflauf:
+
+```bash
+node .claude/kit/worktree.mjs vorbereitung-festhalten <pfad> --ergebnis <gruen|gruen-offen|rot>
+```
+
+- Nach einem gescheiterten Fetch zusätzlich `--fetch fehlgeschlagen`.
+- Der Vor-Push-Schritt aus `RELEASING.md` und eine UI-Prüfung, die nach `/local-check`,
+  Schritt 3, nötig ist, gehen je als `--offen "<Text>"` mit. **Gestartet werden sie nicht**
+  (E9): Ob ein Vor-Push-Schritt pusht, ist nachts nicht prüfbar. Mit einem offenen Punkt
+  heißt das Ergebnis `gruen-offen`.
+- Den Build-Dienst-Punkt setzt das Kommando selbst — die Session übergibt ihn nicht.
+
+**Danach Schritt 8 ohne Nachziehen:** `rueckweg` und `entfernen` wie oben,
+`nachziehen-pruefen` und das Rebase des lokalen `<mainBranch>` entfallen. Schritt 9 meldet
+das Ergebnis von `vorbereitung-festhalten`.
+
+**Kein Push** — weder auf `<mainBranch>`, noch auf den Prüfzweig, noch auf einen
+Vorab-Zweig: kein Prüfzweig, kein Vorab-Zweig, kein Tag. Der Modus endet beim lokalen
+Commit im Worktree; was nur mit einem Push ginge, ist offen.
+
 ## Was dieser Skill nicht tut
 
 - Kein Commit und kein Push bei einem roten Prüflauf (Schritt 5)
@@ -483,6 +588,7 @@ Der CI-Hinweis entfällt — die CI hat vor dem Push gegatet.
 - Kein Push auf den Prüfzweig außerhalb des Wegs über den Build-Dienst, und auf ihm kein
   Push auf `<mainBranch>` ohne grünes Ergebnis des Build-Dienstes
 - Kein Push ohne vorherige Bestätigung durch den Menschen (Trigger-Phrase)
+- Kein Push im Modus `vorbereiten`, auch nicht auf den Prüfzweig oder einen Vorab-Zweig
 - Kein automatischer Push nach Commit, nach grünem Check oder nach Review
 - Kein Halt wegen des Aufwands-, des Wirksamkeits- oder des Befunds zu den
   Modell-Prüfungen: Alle drei sind **kein Gate**, weder ihr Inhalt noch ihr Fehlschlag

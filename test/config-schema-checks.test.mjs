@@ -798,3 +798,22 @@ test("art: das enum und die Beschreibung stehen am Feld im Schema", () => {
     "die Beschreibung endet nicht mit der Standardformel"
   );
 });
+
+// Plan #1243, E7/E8 (Issue #1247): der Uebergang in die Vorbereitung und ihre Frist.
+test("night.kette: umsetzungVorbereitung ist ein Wahrheitswert mit Vorgabe true", () => {
+  const feld = schema.properties.night.properties.kette.properties.uebergaenge.properties.umsetzungVorbereitung;
+  assert.ok(feld, "night.kette.uebergaenge.umsetzungVorbereitung fehlt im Schema");
+  assert.equal(feld.type, "boolean");
+  assert.equal(feld.default, true);
+  assert.deepEqual(pruefe(schema, { ...beispielConfig, night: { ...beispielConfig.night, kette: { uebergaenge: { umsetzungVorbereitung: "nein" } } } }).length > 0, true);
+});
+
+test("night.kette: vorbereitungMin ist eine Zahl groesser 0 mit Vorgabe 120", () => {
+  const feld = schema.properties.night.properties.kette.properties.vorbereitungMin;
+  assert.ok(feld, "night.kette.vorbereitungMin fehlt im Schema");
+  assert.equal(feld.type, "number");
+  assert.equal(feld.default, 120);
+  assert.equal(feld.exclusiveMinimum, 0);
+  assert.deepEqual(pruefe(schema, { ...beispielConfig, night: { ...beispielConfig.night, kette: { vorbereitungMin: 90 } } }), []);
+  assert.ok(pruefe(schema, { ...beispielConfig, night: { ...beispielConfig.night, kette: { vorbereitungMin: 0 } } }).length > 0, "eine Frist von 0 faellt nicht durch");
+});

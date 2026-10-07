@@ -155,7 +155,7 @@ import { homedir } from "node:os";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.7.0";
+const KIT_VERSION = "3.8.0";
 
 // SYNC: Die Vorgaben fuer --model und --label stehen als DEFAULT_MODEL und DEFAULT_LABEL in
 // kit/night/grundlagen.mjs. Der Text steht hier, weil --help antwortet, bevor ein Teil
@@ -174,6 +174,12 @@ Flags:
                      eigenen Worktree, mit Nachtbericht am Fachplan. Ein zweites Label
                      aus night.kette.varianteBLabel (Default kit:durchziehen) waehlt
                      Variante B statt Variante A; ohne dieses Label laeuft Variante A.
+                     Ein Ziel-Label bestimmt, wo die Kette endet: ziel:plan, ziel:pakete,
+                     ziel:umsetzung oder ziel:push-vorbereitet. planreview:1 oder
+                     planreview:2 an der Anforderung legt fest, wie viele Modelle den
+                     Plan pruefen. Mit ziel:push-vorbereitet folgt nach allen Ketten
+                     einmal die Stufe vorbereitung: /push-main vorbereiten, ohne Push,
+                     Ergebnis in .claude/push-vorbereitung.json und als Nachtbericht.
                      --max zaehlt Ketten (Default 3); --label gilt hier nicht, das
                      Label kommt aus der Config. Budgets in night.kette.
   --pruefen          Prueflauf am Tag statt Implementierung: je [Fachlich]-Issue mit dem

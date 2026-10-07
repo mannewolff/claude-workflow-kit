@@ -68,7 +68,7 @@ import { spawnSync } from "node:child_process";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.7.0";
+const KIT_VERSION = "3.8.0";
 
 
 const HELP = `board.mjs — Board-Adapter fuer das claude-workflow-kit
@@ -179,9 +179,13 @@ Nutzung:
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
       Besetzung und Rollen der Stufe aus reviewStufen; der Autor faellt weg.
+      Bei --stufe plan setzt KIT_PLAN_REVIEWER (1 oder 2) die Pruefzahl vor reviewStufen.
   node board.mjs nightrun melden --datei <ergebnisstand.json>
       Liefert einen Ergebnisstand des Nacht-Runners an POST /api/kanban/night-runs ein
       (nur issueTracker toolbox); derselbe Lauf wird bei jeder Meldung ersetzt.
+      Fuehrt der Stand eine Vorbereitung der Veroeffentlichung, traegt die Meldung
+      releasePreparation; weist das Board sie mit HTTP 400 ab, meldet der Befehl genau
+      einmal ohne das Feld nach und vermerkt den Rueckfall in der Antwort ('rueckfall').
   node board.mjs sitzung melden [--protokoll <pfad>] [--complete]
       Meldet den Verbrauch der laufenden interaktiven Sitzung an dieselbe Route
       (kind/mode INTERACTIVE, Issue #734), aufgeteilt nach den Wegmarken aus

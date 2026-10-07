@@ -36,16 +36,16 @@ import { ZUSTAND, NACHBAR_DIR, log, board, boardRoh, einheitAnlegen, einheitErga
   laufMelden, resteText, schreibeErgebnisstand, schrittBeginnen, schrittEnden, vergleicheText,
   vermerkeOhneArbeit } from "./grundlagen.mjs";
 import { ABBRUCH_BUDGET_MS, LAUF_KONTEXT, LAUF_ORDNER, RECHNER, abgeben, exitText, journalLesen, laufAnhalten,
-  laufPositionSetzen, standSetzen } from "./laufstand.mjs";
-import { aufUmsetzungWarten, befundeZurueckUndVorschlagen, kitStandAbgeben, kitStandInBaum, prozessLaeuft,
+  laufLebt, laufPositionSetzen, pulsZustandSetzen, standSetzen } from "./laufstand.mjs";
+import { UMSETZUNG_WARTEN_MS, VORBEREITUNG_DATEI, aufUmsetzungWarten, befundeZurueckUndVorschlagen, kitStandAbgeben, kitStandInBaum, prozessLaeuft,
   umsetzungLockNehmen, worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen } from "./kitstand.mjs";
 import { ENTSCHEIDUNGEN_NAME, OFFENE_FRAGEN_NAME, OFFENE_FRAGEN_UEBERSCHRIFT, PO_FRAGEN_NAME, PO_FRAGEN_UEBERSCHRIFT,
   abschnittLesen, leseKarte, wartetAufPush } from "./abhaengigkeiten.mjs";
 import { flatten, kennzahlenAddieren, ketteBudgetDefaults, kostenAddieren, KETTE_BUDGET_DEFAULTS, ladeKetteBudget,
   ladeKetteUebergaenge, ladePruefLaufBudget, leseErgebnisText, leseKennzahlen, neueKommentare, runSession,
-  SESSION_ABHAENGIGKEITEN, varianteVon } from "./session.mjs";
+  KETTE_ZIELE, PLANREVIEW_LABELS, pruefreihenVon, SESSION_ABHAENGIGKEITEN, varianteVon, zielVon, ZIEL_LABEL_PRAEFIX } from "./session.mjs";
 import { berichtFuerKette, berichtSchreiben, hatPlanReviewMarker, kommentareVon, planReviewWert,
-  pruefBericht } from "./bericht.mjs";
+  pruefBericht, vorbereitungsBericht } from "./bericht.mjs";
 import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, geschuetztAmBoardVermerken, hatKlaerenLabel, laufeRunde,
   pruefeIssueGates, rundenMerker, wartendVermerk, wartendeSession } from "./wartend.mjs";
 
@@ -93,7 +93,8 @@ export function ketteAnbinden(haken) {
  * Was der Lauf der Kette von aussen braucht, jeweils mit der echten Implementierung als
  * Vorgabe: `spawn` startet die Session einer Stufe und `spawnSync` fragt danach ihre
  * Prozessgruppe ab (beide gehen an `runSession`), `jetzt` und `schlaf` sind Uhr und Warten
- * (Budgets der Stufen, Bestaetigungsfrist des Beanspruchens), `board` und `boardRoh` die
+ * (Budgets der Stufen, Bestaetigungsfrist des Beanspruchens), `schlafen` das asynchrone
+ * Warten auf Umsetzungssperre und Vorbereitung, `board` und `boardRoh` die
  * Aufrufe des Board-Werkzeugs, `gitClean` und `gitReste` der Blick auf die Hauptkopie vor
  * der Umsetzung, `beenden` das Ende des Prozesses.
  *
@@ -106,6 +107,9 @@ export const KETTE_ABHAENGIGKEITEN = Object.freeze({
   spawnSync: SESSION_ABHAENGIGKEITEN.spawnSync,
   jetzt: () => new Date(),
   schlaf: (ms) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); },
+  // Das Warten ueber Minuten (Plan #1243, E8): asynchron, damit Puls-Takt, Abbruch-Handler
+  // und Laufmeldung waehrenddessen weiterlaufen. `schlaf` bleibt der Bestaetigungsfrist.
+  schlafen: (ms) => new Promise((r) => setTimeout(r, ms)),
   board,
   boardRoh,
   gitClean,
@@ -299,6 +303,16 @@ export function pruefungFehltGrund(id, kettenLabel) {
  * der andere, die Reviewer waren nicht erreichbar.
  */
 export const KETTE_UNGEPRUEFT_ANKER = "## Kette nicht gestartet: Pruefung fehlt";
+
+/**
+ * Das feste Praefix jedes Grundes einer unpassenden Ziel- oder Pruefer-Einstellung (Plan
+ * #1243, A9; Issue #1244) — wie `UNGEPRUEFT_PRAEFIX` erkennt `uebersprungeneVerbuchen`
+ * daran die Karten, die einen Hinweis bekommen.
+ */
+export const ZIEL_UNPASSEND_PRAEFIX = "unpassende Einstellung: ";
+
+/** Der Anker des einmaligen Hinweises an einer solchen Karte, gebaut wie `KETTE_UNGEPRUEFT_ANKER`. */
+export const KETTE_ZIEL_ANKER = "## Kette nicht gestartet: unpassende Einstellung";
 
 
 // --- Stopp-Fragen und Herkunft erzeugter Dokumente ---
@@ -578,6 +592,37 @@ export function planAusschluss(issue, kettenLabel, karten) {
   return null;
 }
 
+/**
+ * Der Grund, aus dem Ziel- oder Pruefer-Labels an einer Karte nicht passen — `null`, wenn
+ * sie passen (Plan #1243, A9, E3; Issue #1244).
+ *
+ * `art` ist die Auftragsart aus `auftragsartVon`, `plan` beim Fachplan-Auftrag das
+ * Plandokument zur Anforderung (sonst `null`). Die Regeln sind die aus E3, in ihrer
+ * Reihenfolge: Widersprueche an der Karte selbst zuerst, dann was an der Kartenart nicht
+ * passt. Jeder Grund nennt den naechsten Schritt; die Labels nimmt nur der Mensch ab.
+ */
+export function zielAusschluss(karte, art, plan) {
+  const labels = karte?.labels || [];
+  const schritt = "die Karte behaelt ihre Labels";
+  const ziele = labels.filter((l) => String(l).startsWith(ZIEL_LABEL_PRAEFIX));
+  if (ziele.length > 1) {
+    return `${ZIEL_UNPASSEND_PRAEFIX}mehr als ein Ziel (${ziele.join(", ")}) — alle bis auf eines abnehmen; ${schritt}`;
+  }
+  const pruefer = PLANREVIEW_LABELS.filter((l) => labels.includes(l));
+  if (pruefer.length > 1) {
+    return `${ZIEL_UNPASSEND_PRAEFIX}${pruefer.join(" und ")} zugleich — eines abnehmen; ${schritt}`;
+  }
+  if (art === "plan" && labels.includes(`${ZIEL_LABEL_PRAEFIX}plan`)) {
+    return `${ZIEL_UNPASSEND_PRAEFIX}${ZIEL_LABEL_PRAEFIX}plan an einem Plandokument — der Plan steht schon; ein weiter reichendes Ziel setzen oder das Label abnehmen; ${schritt}`;
+  }
+  if (art === "plan" && pruefer.length === 1) {
+    return `${ZIEL_UNPASSEND_PRAEFIX}${pruefer[0]} an einem Plandokument — die Prueferzahl gilt nur an der fachlichen Anforderung; das Label abnehmen; ${schritt}`;
+  }
+  if (art === "fachplan" && pruefer.length === 1 && plan && hatPlanReviewMarker(plan.body || "")) {
+    return `${ZIEL_UNPASSEND_PRAEFIX}${pruefer[0]}, aber Plan #${plan.id} ist schon geprueft — das Label abnehmen oder das Kettenlabel an den Plan setzen; ${schritt}`;
+  }
+  return null;
+}
 
 /** Der Grund an einer gekennzeichneten Karte, die keine der beiden Auftragsarten traegt. */
 const KEINE_AUFTRAGSART_GRUND = "weder [Fachlich] noch [Plan] — das Kennzeichen gilt an der fachlichen Anforderung oder am Plandokument";
@@ -619,6 +664,23 @@ function kollisionsGrund(auftrag, juengster) {
     return `zur fachlichen Quelle #${auftrag.F} ist ein juengerer Plan gekennzeichnet — #${juengster.id} laeuft an seiner Stelle`;
   }
   return null;
+}
+
+/**
+ * Der juengste Plan des Boards zur fachlichen Anforderung `F`, gekennzeichnet oder nicht —
+ * `null`, wenn es keinen gibt. Fuer `zielAusschluss`: Ob ein Plan schon geprueft ist, haengt
+ * nicht an seinem Kettenlabel.
+ */
+function juengsterPlanAmBoard(issues, F) {
+  return (issues || [])
+    .filter((i) => isPlan(i?.title ?? "") && fachlicheQuelleVon(i?.body || "") === String(F))
+    .sort((a, b) => Number(b.id) - Number(a.id))[0] ?? null;
+}
+
+/** Der Ausschluss je Auftragsart, danach die unpassende Einstellung (Issue #1244) — `null`, wenn die Karte laeuft. */
+function ausschlussGrund(issue, art, label, issues) {
+  const grund = art === "plan" ? planAusschluss(issue, label, issues) : kettenAusschluss(issue, label);
+  return grund ?? zielAusschluss(issue, art, art === "fachplan" ? juengsterPlanAmBoard(issues, issue.id) : null);
 }
 
 /**
@@ -667,7 +729,7 @@ export function waehleKettenKandidaten(issues, label, max, { belegt = () => null
       gruende.set(String(issue.id), KEINE_AUFTRAGSART_GRUND);
       continue;
     }
-    const grund = art === "plan" ? planAusschluss(issue, label, issues || []) : kettenAusschluss(issue, label);
+    const grund = ausschlussGrund(issue, art, label, issues || []);
     if (grund === null) auftraege.push(auftragAus(issue, art));
     else gruende.set(String(issue.id), grund);
   }
@@ -803,8 +865,12 @@ export function wartendBeendet(stufe, schlusstext, dokId, ergebnisDa) {
  * Aufgerufen wird es nur, wenn der Schlusstext nach Warten klingt: Das Ergebnis ist ein
  * Beleg, der Schlusstext nur ein Indiz. Liefert es `true`, endet die Session `fertig`,
  * ohne Vermerk am Dokument.
+ *
+ * `extraEnv` geht unveraendert an `runSession` (Plan #1243, A6, A8; Issue #1252). Es traegt
+ * nur `KIT_PLAN_REVIEWER` der Review-Stufe; `KIT_NIGHT_RUN` und `KIT_STAND` setzt
+ * `runSession` fuer jede Session selbst.
  */
-async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, dokId = null, ergebnisDa = null) {
+async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, { dokId = null, ergebnisDa = null, extraEnv } = {}) {
   const rest = budgetMs - (abh.jetzt().getTime() - stufeStart);
   if (rest < KETTE_MINDEST_REST_MS) {
     return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe} erschoepft, bevor eine weitere Session starten konnte`, dauerMs: 0, kennzahlen: null, sitzungsAbbruch: true };
@@ -812,6 +878,7 @@ async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, dokId = 
   const t = abh.jetzt().getTime();
   const res = await runSession(kette.F, kette.args, {
     prompt: `${prompt}\n\n${stufe === "abdeckung" ? ABDECKUNG_ZUSATZ : KETTE_ZUSATZ}`, cwd: kette.wt, stream: true, stufe, timeoutMs: rest,
+    ...(extraEnv ? { extraEnv } : {}),
   }, { spawn: abh.spawn, spawnSync: abh.spawnSync });
   const dauerMs = abh.jetzt().getTime() - t;
   const minuten = (dauerMs / 60000).toFixed(1);
@@ -886,7 +953,7 @@ async function stufePlan(kette) {
     .filter((i) => !vorher.has(String(i.id)) && stammtAusErzeugung(i, F, "plan"))
     .sort((a, b) => Number(b.id) - Number(a.id));
   // Dokument der Stufe ist der Fachplan: Der Plan entsteht erst in dieser Session.
-  const s = await ketteSession(kette, "plan", `/techplan #${F}`, stufeStart, budgetMs, F, () => neuePlaene().length > 0);
+  const s = await ketteSession(kette, "plan", `/techplan #${F}`, stufeStart, budgetMs, { dokId: F, ergebnisDa: () => neuePlaene().length > 0 });
   summe(s);
   if (s.ausgang !== "fertig") return s;
 
@@ -945,7 +1012,7 @@ async function formSicherstellen(kette, stand, stufeStart, budgetMs, summe) {
     }
     stand.korrekturrunden++;
     log(`  Formpruefung #${stand.id} rot (${verstoesse}) — Korrekturrunde ${stand.korrekturrunden} von ${budget.korrekturrunden}.`);
-    const k = await ketteSession(kette, "form", korrekturPrompt(stand.id, zuKorrigieren), stufeStart, budgetMs, stand.id);
+    const k = await ketteSession(kette, "form", korrekturPrompt(stand.id, zuKorrigieren), stufeStart, budgetMs, { dokId: stand.id });
     summe(k);
     if (k.ausgang !== "fertig") return k;
     if (kostenErschoepft(kette)) return kostenErschoepft(kette);
@@ -1033,7 +1100,9 @@ async function stufeReview(kette, planId) {
     const wert = planReviewWert(abh.board("issue", "get", planId).body);
     return wert !== null && wert !== planReviewWert(vorher.body);
   };
-  const s = await ketteSession(kette, "review", `/issue-review #${planId}`, abh.jetzt().getTime(), budget.reviewMin * 60 * 1000, planId, markerNeu);
+  const s = await ketteSession(kette, "review", `/issue-review #${planId}`, abh.jetzt().getTime(), budget.reviewMin * 60 * 1000, {
+    dokId: planId, ergebnisDa: markerNeu, extraEnv: kette.planReviewer ? { KIT_PLAN_REVIEWER: String(kette.planReviewer) } : undefined,
+  });
   stand.dauerMs = s.dauerMs;
   stand.kennzahlen = s.kennzahlen;
   if (s.ausgang !== "fertig") {
@@ -1077,7 +1146,7 @@ async function stufePakete(kette, planId) {
   const vorherPlan = abh.board("issue", "get", planId);
   log(`  Stufe pakete: /issues #${planId} (Budget ${budget.paketeMin} min).`);
   const paketeEntstanden = () => abh.board("issue", "list").some((i) => !vorherIds.has(String(i.id)) && stammtAusErzeugung(i, planId, "issue"));
-  const s = await ketteSession(kette, "pakete", `/issues #${planId}`, stufeStart, budgetMs, planId, paketeEntstanden);
+  const s = await ketteSession(kette, "pakete", `/issues #${planId}`, stufeStart, budgetMs, { dokId: planId, ergebnisDa: paketeEntstanden });
   summe(s);
   if (s.ausgang !== "fertig") return s;
 
@@ -1415,7 +1484,7 @@ async function stufeUmsetzung(kette, paketIds) {
   const lock = await aufUmsetzungWarten({
     nehmen: () => umsetzungLockNehmen(kette.repoRoot),
     jetzt: Date.now,
-    schlafen: (ms) => new Promise((r) => setTimeout(r, ms)),
+    schlafen: abh.schlafen,
     budgetMs: lauf.budgetMs,
     standSetzen: (zustand, text) => ketteStand(kette, zustand, text),
   });
@@ -1582,6 +1651,176 @@ function haltAmAuftrag(kette, ergebnis) {
   ketteStand(kette, "wartet", HALT_WARTET);
 }
 
+// --- Warten auf die Vorbereitung der Veroeffentlichung (Plan #1243, E8; Issue #1250) ---
+
+// Die Phase im Puls, solange ein Lauf in seiner Vorbereitung wartet. Ein solcher Lauf baut
+// nicht und zaehlt fuer andere Wartende nicht mit, sonst verklemmten sich zwei Vorbereitungen.
+const PHASE_VORBEREITUNG_WARTET = "vorbereitung-wartet";
+
+/**
+ * Die fremden Laeufe dieses Projekts, die gerade bauen: lebende Pulse unter `.claude/lauf/`,
+ * ohne den eigenen, ohne Prueflauf (`art: pruefung`, er baut nicht) und ohne einen Lauf, der
+ * selbst in seiner Vorbereitung wartet.
+ */
+function bauendeLaeufe(repoRoot) {
+  const ordner = join(repoRoot, LAUF_ORDNER);
+  if (!existsSync(ordner)) return [];
+  const bauend = [];
+  for (const name of readdirSync(ordner).filter((n) => n.endsWith(".puls")).sort(vergleicheText)) {
+    const lauf = name.slice(0, -".puls".length);
+    if (lauf === ZUSTAND.LAUF_STEMPEL) continue;
+    let puls;
+    try {
+      puls = JSON.parse(readFileSync(join(ordner, name), "utf-8"));
+    } catch {
+      continue;
+    }
+    if (puls?.art === "pruefung" || puls?.phase === PHASE_VORBEREITUNG_WARTET) continue;
+    if (laufLebt(repoRoot, lauf)) bauend.push(`${lauf} (Prozess ${puls.pid})`);
+  }
+  return bauend;
+}
+
+/**
+ * Wartet, bis in der Nacht nichts mehr baut (Kriterium 13): bis dieser Lauf die
+ * Umsetzungssperre haelt und kein fremder Lauf dieses Projekts mehr baut — im Takt der
+ * Umsetzungssperre, hoechstens `fristMin` (Vorgabe `vorbereitungMin` der Kette).
+ *
+ * Erst die Pulse, dann die Sperre, dann noch einmal die Pulse: Wer die Sperre haelt, waehrend
+ * er auf eine andere Kette wartet, hielte sie von ihrer Umsetzung ab, und ein Lauf, der
+ * zwischen erstem Blick und Sperre beginnt, faellt erst beim zweiten auf. Baut dann doch
+ * einer, geht die Sperre zurueck.
+ *
+ * Fuer die Dauer des Wartens steht `phase: vorbereitung-wartet` im eigenen Puls, danach nicht
+ * mehr, auch nach Fristablauf. Bei Erfolg kommt die Sperre wie aus `umsetzungLockNehmen`
+ * zurueck und bleibt gehalten; frei gibt sie der Aufrufer nach der Vorbereitung — so laufen
+ * zwei Vorbereitungen nacheinander. Nach Fristablauf `{ ok: false, grund }` ohne Sperre, ein
+ * Schreibfehler der Sperre kommt sofort zurueck.
+ */
+export async function aufVorbereitungWarten(kette, { fristMin = kette.budget?.vorbereitungMin ?? KETTE_BUDGET_DEFAULTS.vorbereitungMin } = {}) {
+  const fristMs = fristMin * 60 * 1000;
+  const start = abh.jetzt().getTime();
+  pulsZustandSetzen({ phase: PHASE_VORBEREITUNG_WARTET });
+  try {
+    for (;;) {
+      const versuch = vorbereitungVersuchen(kette.repoRoot);
+      if (versuch.lock) return versuch.lock;
+      const rest = fristMs - (abh.jetzt().getTime() - start);
+      if (rest <= 0) return { ok: false, grund: `${versuch.hindernis} — Frist ${fristMin} min fuer die Vorbereitung abgelaufen` };
+      await abh.schlafen(Math.min(UMSETZUNG_WARTEN_MS, rest));
+    }
+  } finally {
+    pulsZustandSetzen({ phase: undefined });
+  }
+}
+
+/**
+ * Ein Versuch von `aufVorbereitungWarten`: `{ lock }` mit der gehaltenen Sperre oder einem
+ * Schreibfehler, der nicht wartet, sonst `{ hindernis }` mit dem Grund, weiter zu warten.
+ */
+function vorbereitungVersuchen(repoRoot) {
+  const bauendText = (bauend) => `es baut noch: ${bauend.join(", ")}`;
+  let bauend = bauendeLaeufe(repoRoot);
+  if (bauend.length > 0) return { hindernis: bauendText(bauend) };
+  const lock = umsetzungLockNehmen(repoRoot);
+  if (!lock.ok) return lock.art === "belegt" ? { hindernis: lock.grund } : { lock };
+  bauend = bauendeLaeufe(repoRoot);
+  if (bauend.length > 0) {
+    lock.freigeben();
+    return { hindernis: bauendText(bauend) };
+  }
+  if (lock.hinweis) log(`  ${lock.hinweis}`);
+  return { lock };
+}
+
+// --- Die Vorbereitung der Veroeffentlichung (Plan #1243, A4, A5, A6, E12, E17; Issue #1254) ---
+
+// Der Auftrag der Session: der Modus `vorbereiten` von /push-main (#1253). Er legt seinen
+// Worktree selbst an und haelt das Ergebnis ueber `worktree.mjs vorbereitung-festhalten` fest.
+const VORBEREITUNG_PROMPT = "/push-main vorbereiten";
+
+/** Das Ergebnis einer Vorbereitung, die keinen Stand dieses Laufs festhielt. */
+const nichtVorbereitet = (grund) => ({ ergebnis: "nicht-vorbereitet", grund });
+
+/**
+ * Liest `.claude/push-vorbereitung.json` aus der Hauptkopie und prueft, dass sie aus diesem
+ * Lauf stammt: dieselbe Laufkennung (`KIT_NIGHT_RUN`, der `start` des Ergebnisstands) und ein
+ * Zeitpunkt nicht vor dem Beginn der Vorbereitung. Fehlt sie oder ist sie fremd, heisst das
+ * Ergebnis `nicht-vorbereitet` mit Grund — eine Datei aus einer frueheren Nacht ist keine
+ * Aussage ueber diesen Stand.
+ */
+function vorbereitungLesen(repoRoot, seit) {
+  let daten;
+  try {
+    daten = JSON.parse(readFileSync(join(repoRoot, ...VORBEREITUNG_DATEI.split("/")), "utf-8"));
+  } catch {
+    return nichtVorbereitet(`${VORBEREITUNG_DATEI} fehlt oder ist unlesbar — die Session hat keinen Stand festgehalten`);
+  }
+  const laufId = ZUSTAND.LAUF?.start ?? null;
+  if (daten?.laufId !== laufId) {
+    return nichtVorbereitet(`${VORBEREITUNG_DATEI} stammt aus einem anderen Lauf (laufId ${daten?.laufId ?? "keine"}, erwartet ${laufId})`);
+  }
+  const zeit = Date.parse(daten.zeitpunkt);
+  if (Number.isNaN(zeit) || zeit < seit.getTime()) {
+    return nichtVorbereitet(`${VORBEREITUNG_DATEI} traegt den Zeitpunkt ${daten.zeitpunkt ?? "keiner"}, vor dem Beginn der Vorbereitung um ${seit.toISOString()}`);
+  }
+  return daten;
+}
+
+/**
+ * Wartet, faehrt die Session und liest ihr Ergebnis — alles innerhalb von `fristMin` ab
+ * `start` (E8: Warten und Pruefung eingeschlossen). Die Umsetzungssperre haelt sie vom Ende
+ * des Wartens bis nach dem Lesen und gibt sie in jedem Fall frei, auch nach einem Wurf.
+ */
+async function vorbereitungFahren(kette, start, fristMin) {
+  const lock = await aufVorbereitungWarten(kette, { fristMin });
+  if (!lock.ok) return nichtVorbereitet(lock.grund);
+  try {
+    // In der Hauptkopie (A5): Den Worktree legt der Skill an. KIT_NIGHT_RUN und KIT_STAND
+    // setzt `runSession` wie fuer jede Session, ohne eigenes `extraEnv` (A6).
+    const session = await ketteSession({ ...kette, wt: kette.repoRoot }, "vorbereitung", VORBEREITUNG_PROMPT, start.getTime(), fristMin * 60 * 1000);
+    const daten = vorbereitungLesen(kette.repoRoot, start);
+    if (daten.ergebnis === "nicht-vorbereitet" && session.ausgang !== "fertig") return nichtVorbereitet(`${session.grund}; ${daten.grund}`);
+    return daten;
+  } catch (e) {
+    return nichtVorbereitet(`technischer Fehler: ${e.message}`);
+  } finally {
+    lock.freigeben();
+  }
+}
+
+/**
+ * Die Stufe `vorbereitung` des Laufs (A4): einmal nach allen Ketten, fuer alle Ketten, deren
+ * Umsetzung mit Ziel `push-vorbereitet` fertig wurde. Sie wartet, bis nichts mehr baut, faehrt
+ * die Session `/push-main vorbereiten` in der Hauptkopie und prueft deren Datei. Jede
+ * ausloesende Karte bekommt die Stufenzeilen im Laufstand und einen eigenen Nachtbericht
+ * `— Vorbereitung` mit derselben Meldung (E12); das Ergebnis steht als `vorbereitung` im
+ * Ergebnisstand. Ein `gruen-offen` mit dem Build-Dienst-Punkt geht unveraendert weiter, und
+ * gepusht wird nie (E17).
+ */
+export async function vorbereitungLaufen(ketten) {
+  const erste = ketten[0];
+  const start = abh.jetzt();
+  const fristMin = erste.budget?.vorbereitungMin ?? KETTE_BUDGET_DEFAULTS.vorbereitungMin;
+  const karten = ketten.map((k) => String(k.karte.id));
+  log(`Vorbereitung der Veroeffentlichung fuer ${karten.map((id) => "#" + id).join(", ")}: hoechstens ${fristMin} min, Warten eingeschlossen.`);
+  for (const k of ketten) stufeBeginnt(k, "vorbereitung", k.karte.id);
+  const vorbereitung = { ...(await vorbereitungFahren(erste, start, fristMin)), karten };
+  const vorbereitet = vorbereitung.ergebnis !== "nicht-vorbereitet";
+  const grund = vorbereitung.grund ? ` — ${vorbereitung.grund}` : "";
+  log(`  Vorbereitung: ${vorbereitung.ergebnis}${grund}.`);
+  for (const k of ketten) {
+    stufeEndet(k, "vorbereitung", k.karte.id, vorbereitet ? { ausgang: "fertig" } : { ausgang: "abgebrochen", grund: vorbereitung.grund });
+    if (vorbereitet) log(`  Ziel ${k.ziel} erreicht nach vorbereitung — #${k.karte.id}.`);
+    // Mit eigenem Stempel: Ein wartender Bericht der Kette liegt sonst unter demselben Namen.
+    berichtSchreiben(String(k.karte.id), vorbereitungsBericht(k.karte, vorbereitung),
+      { stempel: `${ZUSTAND.LAUF_STEMPEL}-vorbereitung`, repoRoot: k.repoRoot });
+  }
+  if (ZUSTAND.LAUF) ZUSTAND.LAUF.vorbereitung = vorbereitung;
+  schreibeErgebnisstand();
+  return vorbereitung;
+}
+
 // --- Der Nachtbericht am Fachplan (Plan #638, A10, A11; Issue #645) ---
 //
 // Der Bericht selbst steht seit Issue #1230 im Teil kit/night/bericht.mjs (Plan #1199,
@@ -1617,17 +1856,17 @@ function ketteNichtGestartet(kandidaten, grund) {
  * versucht, haengte der Karte den Hinweis mehrfach an. Ein gescheiterter Board-Aufruf
  * wird protokolliert und haelt den Lauf nicht auf — der Kommentar ist Hinweis, kein Gate.
  */
-function pruefungFehltKommentieren(u) {
+function pruefungFehltKommentieren(u, anker = KETTE_UNGEPRUEFT_ANKER) {
   const karte = leseKarte(u.id);
   if (!karte) {
     log(`  #${u.id}: Hinweis-Kommentar nicht geschrieben (Karte nicht lesbar).`);
     return;
   }
-  if (kommentareVon(karte).some((k) => k.includes(KETTE_UNGEPRUEFT_ANKER))) {
+  if (kommentareVon(karte).some((k) => k.includes(anker))) {
     log(`  #${u.id}: Hinweis-Kommentar steht schon am Board — kein zweiter.`);
     return;
   }
-  const res = abh.boardRoh("issue", "comment", String(u.id), "--text", `${KETTE_UNGEPRUEFT_ANKER}\n\n${u.grund}.\n`);
+  const res = abh.boardRoh("issue", "comment", String(u.id), "--text", `${anker}\n\n${u.grund}.\n`);
   log(res.status === 0
     ? `  #${u.id}: Hinweis-Kommentar geschrieben, Label bleibt.`
     : `  #${u.id}: Hinweis-Kommentar nicht geschrieben (${res.text.slice(0, 120)}).`);
@@ -1671,6 +1910,8 @@ function uebersprungeneVerbuchen(uebersprungen, alle, kettenLabel, dryRun) {
     // Der Dry-Run schreibt nichts ans Board; der Hinweis auf das Kennzeichen kommt
     // auch dort, er ist nur eine Protokollzeile.
     if (!dryRun && abgelehnt.includes(u)) pruefungFehltKommentieren(u);
+    // Die unpassende Einstellung (Issue #1244, A9) auf demselben Weg, mit eigenem Anker.
+    if (!dryRun && String(u.grund).startsWith(ZIEL_UNPASSEND_PRAEFIX)) pruefungFehltKommentieren(u, KETTE_ZIEL_ANKER);
   }
   hinweisAufUnbekanntesKennzeichen(alle, abgelehnt, kettenLabel);
 }
@@ -1832,14 +2073,58 @@ const HALT_WARTET = `Halt: Frage wartet auf den Menschen — siehe \`${KETTE_HAL
  */
 function ketteStand(kette, zustand, kopf = null) {
   const s = kette.laufstand;
-  const zeilen = [
-    ...(kopf ? [kopf, ""] : []),
+  const zuletzt = [
     ...(s.begonnen ? [`zuletzt begonnen: ${s.begonnen}`] : []),
     ...(s.abgeschlossen ? [`zuletzt abgeschlossen: ${s.abgeschlossen}`] : []),
   ];
-  standSetzen(kette.karte.id, zustand, zeilen.join("\n"), { repoRoot: kette.repoRoot });
+  const bloecke = [kopf, zielZeilen(kette).join("\n"), zuletzt.join("\n")].filter(Boolean);
+  standSetzen(kette.karte.id, zustand, bloecke.join("\n\n"), { repoRoot: kette.repoRoot });
   kette.standGesetzt = true;
 }
+
+/**
+ * Die Zeilen unter dem Kopf jeder Fassung (Plan #1243, E5, E16): Nach dem Verbrauch der
+ * Labels beim Start liest das Board Ziel und Prueferzahl nur noch hier. Ohne Ziel und ohne
+ * `planreview:*` leer — dann bleibt der Laufstand wie vor #1251.
+ */
+function zielZeilen(kette) {
+  const grenze = grenzeVorZiel(kette);
+  return [
+    ...(kette.ziel ? [`Ziel: ${kette.ziel}`] : []),
+    ...(kette.planReviewer ? [`Prüfer: ${kette.planReviewer}`] : []),
+    ...(grenze ? [`Grenze: ${grenze}`] : []),
+  ];
+}
+
+// Die Stufen der Kette in fester Folge, je mit dem Uebergang, ueber den sie folgt (E5).
+const STUFEN_FOLGE = Object.freeze([
+  ["plan", null], ["review", "planReview"], ["pakete", "reviewPakete"], ["abdeckung", "paketeAbdeckung"],
+  ["umsetzung", "abdeckungUmsetzung"], ["vorbereitung", "umsetzungVorbereitung"],
+]);
+
+/**
+ * Die letzte erreichbare Stufe, wenn ein im Projekt gesperrter Uebergang (ausdrueckliches
+ * `false`) vor der Endstufe des Ziels liegt — sonst `null`. Beim Plan-Auftrag beginnt die
+ * Kette bei `pakete`; die Uebergaenge davor betreffen sie nicht.
+ */
+function grenzeVorZiel(kette) {
+  const endstufe = KETTE_ZIELE.find((z) => z.ziel === kette.ziel)?.endstufe;
+  if (!endstufe) return null;
+  const erste = STUFEN_FOLGE.findIndex(([stufe]) => stufe === (kette.art === "plan" ? "pakete" : "plan"));
+  for (let i = erste + 1; i < STUFEN_FOLGE.length; i++) {
+    if (kette.uebergaenge?.[STUFEN_FOLGE[i][1]] === false) return STUFEN_FOLGE[i - 1][0];
+    if (STUFEN_FOLGE[i][0] === endstufe) return null;
+  }
+  return null;
+}
+
+// Was nach dem Ende am Ziel dem Menschen gehoert (E5), je Ziel.
+const ALS_NAECHSTES = Object.freeze({
+  plan: "Plan lesen, dann `kit:night` an den Plan.",
+  pakete: "Pakete nach Ready ziehen.",
+  umsetzung: "Pakete in In review testen, dann `push main`.",
+  "push-vorbereitet": "Meldung der Vorbereitung lesen, dann `push main`.",
+});
 
 /** Der Laufstand zum Beginn einer Stufe. `ziel` ist die Karte, an der sie arbeitet. */
 function stufeBeginnt(kette, stufe, ziel) {
@@ -1851,7 +2136,7 @@ function stufeBeginnt(kette, stufe, ziel) {
 function stufeEndet(kette, stufe, ziel, ergebnis) {
   if (ergebnis.ausgang === "fertig") {
     kette.laufstand.abgeschlossen = `${stufenEintrag(stufe, "fertig", ziel)} um ${abh.jetzt().toISOString()}`;
-    ketteStand(kette, "fertig");
+    ketteStand(kette, "fertig", endetAmZiel(kette, stufe) ? `fertig bis ${kette.ziel}\nAls Nächstes: ${ALS_NAECHSTES[kette.ziel]}` : null);
   } else if (ergebnis.ausgang === "angehalten") {
     // Haelt ein Paket der Umsetzung an, steht die Frage am Paket, nicht an dieser Karte (E17).
     ketteStand(kette, "wartet", ergebnis.ohneHaltAmFachplan ? `Halt: ${ergebnis.grund}` : HALT_WARTET);
@@ -1931,6 +2216,14 @@ function ketteWartet(kette, stufe, text) {
 }
 
 /**
+ * Ende an der Projektgrenze vor `stufe`: derselbe Wartetext wie bisher, dazu der Vermerk
+ * `projektgrenze` fuer den Nachtbericht (E6) — kein eigener Ausgang.
+ */
+function anDerGrenze(kette, stufe, uebergang) {
+  return { ...ketteWartet(kette, stufe, uebergangNichtFreigegeben(uebergang)), projektgrenze: true };
+}
+
+/**
  * Endet die Kette nach der Abdeckung? Das GO steht an der Karte (`kit:durchziehen`), das
  * Projekt kann es nur zulassen (E12). Ohne Label endet sie `fertig`, nur ein gesetztes `true`
  * laesst sie auf die Freigabe der Karte warten; mit Label sperrt nur ein gesetztes `false`
@@ -1941,8 +2234,46 @@ function vorDerUmsetzung(kette, abdeckung) {
     return kette.uebergaenge.abdeckungUmsetzung === true ? ketteWartet(kette, "umsetzung", OHNE_FREIGABE_ZUR_UMSETZUNG) : { ausgang: "fertig" };
   }
   return uebergangGesperrt(kette, "abdeckungUmsetzung", abdeckung)
-    ? ketteWartet(kette, "umsetzung", uebergangNichtFreigegeben("abdeckungUmsetzung"))
+    ? anDerGrenze(kette, "umsetzung", "abdeckungUmsetzung")
     : null;
+}
+
+/**
+ * Endet die Kette nach `stufe` an ihrem Ziel (Plan #1243, A2)? Dann Ausgang `fertig` mit
+ * dem Vermerk `zielErreicht`, sonst `null`. Ohne Ziel nie. `push-vorbereitet` endet nach
+ * der Stufe `vorbereitung`, die der Lauf nach allen Ketten faehrt (`vorbereitungLaufen`).
+ */
+function amZiel(kette, stufe) {
+  if (!endetAmZiel(kette, stufe)) return null;
+  log(`  Ziel ${kette.ziel} erreicht nach ${stufe} — die Kette endet hier.`);
+  return { ausgang: "fertig", zielErreicht: true };
+}
+
+/** Ist `stufe` die letzte Stufe zum Ziel der Kette? Eine Regel fuer `amZiel` und den Laufstand. */
+function endetAmZiel(kette, stufe) {
+  if (!kette.ziel) return false;
+  const endstufe = KETTE_ZIELE.find((z) => z.ziel === kette.ziel)?.endstufe;
+  return endstufe === stufe;
+}
+
+/**
+ * Nach der fertigen Umsetzung (Plan #1243, A4, E7): Mit Ziel `push-vorbereitet` meldet die
+ * Kette `vorbereitung: true` — die Stufe selbst laeuft einmal je Lauf nach allen Ketten —,
+ * oder sie wartet vor einem im Projekt gesperrten Uebergang. Sonst endet sie wie bisher.
+ */
+function nachDerUmsetzung(kette, umsetzung) {
+  if (KETTE_ZIELE.find((z) => z.ziel === kette.ziel)?.endstufe !== "vorbereitung") {
+    return amZiel(kette, "umsetzung") ?? { ausgang: "fertig" };
+  }
+  if (uebergangGesperrt(kette, "umsetzungVorbereitung", umsetzung)) return anDerGrenze(kette, "vorbereitung", "umsetzungVorbereitung");
+  return { ausgang: "fertig", vorbereitung: true };
+}
+
+/** Endet die Kette nach `review`: am Ziel `plan` oder vor einem gesperrten Uebergang zu `pakete`. */
+function nachDemReview(kette, review) {
+  const amEnde = amZiel(kette, "review");
+  if (amEnde) return amEnde;
+  return uebergangGesperrt(kette, "reviewPakete", review) ? anDerGrenze(kette, "pakete", "reviewPakete") : null;
 }
 
 /**
@@ -1980,7 +2311,7 @@ async function stufenDerKette(kette) {
     }));
     if (plan.ausgang !== "fertig") return { ...plan, stufe: "plan" };
     planId = plan.id;
-    if (uebergangGesperrt(kette, "planReview", plan)) return ketteWartet(kette, "review", uebergangNichtFreigegeben("planReview"));
+    if (uebergangGesperrt(kette, "planReview", plan)) return anDerGrenze(kette, "review", "planReview");
     const review = await mitMeldung(() => stufeMitErgebnis(kette, "review", planId, {
       auftrag: { ...auftrag, planId },
       laufen: () => stufeReview(kette, planId),
@@ -1990,7 +2321,8 @@ async function stufenDerKette(kette) {
       },
     }));
     if (review.ausgang !== "fertig") return { ...review, stufe: "review" };
-    if (uebergangGesperrt(kette, "reviewPakete", review)) return ketteWartet(kette, "pakete", uebergangNichtFreigegeben("reviewPakete"));
+    const endeNachReview = nachDemReview(kette, review);
+    if (endeNachReview) return endeNachReview;
   }
   const pakete = await mitMeldung(() => stufeMitErgebnis(kette, "pakete", planId, {
     auftrag: { ...auftrag, planId },
@@ -2002,7 +2334,7 @@ async function stufenDerKette(kette) {
     },
   }));
   if (pakete.ausgang !== "fertig") return { ...pakete, stufe: "pakete" };
-  if (uebergangGesperrt(kette, "paketeAbdeckung", pakete)) return ketteWartet(kette, "abdeckung", uebergangNichtFreigegeben("paketeAbdeckung"));
+  if (uebergangGesperrt(kette, "paketeAbdeckung", pakete)) return anDerGrenze(kette, "abdeckung", "paketeAbdeckung");
   const abdeckung = await mitMeldung(() => stufeMitErgebnis(kette, "abdeckung", planId, {
     auftrag: { ...auftrag, planId },
     laufen: () => stufeAbdeckung(kette, kette.F, planId, pakete.ids),
@@ -2012,7 +2344,9 @@ async function stufenDerKette(kette) {
     },
   }));
   if (abdeckung.ausgang !== "fertig") return { ...abdeckung, stufe: "abdeckung" };
-  const ohneUmsetzung = vorDerUmsetzung(kette, abdeckung);
+  // Vor `vorDerUmsetzung`: Sonst wartete `ziel:pakete` bei `abdeckungUmsetzung: true` als
+  // Variante A auf eine Freigabe, statt an seinem Ziel zu enden.
+  const ohneUmsetzung = amZiel(kette, "abdeckung") ?? vorDerUmsetzung(kette, abdeckung);
   if (ohneUmsetzung) return ohneUmsetzung;
   // Die Paketliste kommt aus dem Stand der Stufe pakete (E16), nicht aus der
   // Ready-Spalte und nicht aus einer erneuten Abfrage nach Herkunft. Was davon schon
@@ -2032,7 +2366,7 @@ async function stufenDerKette(kette) {
     },
   });
   if (umsetzung.ausgang !== "fertig") return { ...umsetzung, stufe: "umsetzung" };
-  return { ausgang: "fertig" };
+  return nachDerUmsetzung(kette, umsetzung);
 }
 
 /**
@@ -2054,6 +2388,16 @@ function ketteBeginnen(kette, auftrag, nummer, args) {
   // Bericht mit Grund und einer neuen Geste, nicht zur stillen Wiederholung.
   abh.board("issue", "label", "remove", String(karte.id), kette.budget.label);
   log(`  Label '${kette.budget.label}' entfernt — jedes Setzen autorisiert genau eine Kette.`);
+  // Ziel und Prueferzahl gelten ebenso fuer genau diesen Lauf (E1): Sie stehen danach nur
+  // noch in der Kette, eine stehengebliebene Angabe wirkte sonst still in der naechsten.
+  kette.ziel = zielVon(karte, kette.budget);
+  kette.planReviewer = pruefreihenVon(karte);
+  const verbraucht = (karte.labels || []).filter((l) => String(l).startsWith(ZIEL_LABEL_PRAEFIX) || PLANREVIEW_LABELS.includes(l));
+  for (const label of verbraucht) abh.board("issue", "label", "remove", String(karte.id), label);
+  if (verbraucht.length > 0) {
+    const namen = verbraucht.map((l) => "'" + l + "'").join(", ");
+    log(`  Label ${namen} entfernt — Ziel ${kette.ziel ?? "keins"}, Pruefer ${kette.planReviewer ?? "nach Projekt"} festgehalten.`);
+  }
 
   if (auftrag.art === "plan") {
     kette.stufen.plan = { id: auftrag.planId, uebernommen: true, dauerMs: 0, kennzahlen: null, korrekturrunden: 0, weitere: [] };
@@ -2072,8 +2416,11 @@ function ketteBeginnen(kette, auftrag, nummer, args) {
 /**
  * Eine Kette zu einem Auftrag: Label verbrauchen, Worktree, Stufen, Einheit.
  *
- * Rueckgabe ist der Ausgang der Kette. Der Worktree wird in jedem Fall entfernt — auch
- * nach einem Wurf mitten in einer Stufe; ein liegengebliebener raeumt der naechste Start.
+ * Rueckgabe ist `{ ausgang, vorbereitung, kette }` (Plan #1243, Plan-Review Runde 2, Fund 2):
+ * der Ausgang der Kette, ob sie die Vorbereitung des Laufs ausloest, und die Kette selbst,
+ * deren Karte und Laufstand die Vorbereitung danach fortschreibt. Der Worktree wird in jedem
+ * Fall entfernt — auch nach einem Wurf mitten in einer Stufe; ein liegengebliebener raeumt
+ * der naechste Start.
  */
 async function laufeEineKette(auftrag, nummer, args) {
   const karte = auftrag.karte;
@@ -2132,6 +2479,7 @@ async function laufeEineKette(auftrag, nummer, args) {
       auftrag: kette.art,
       ...(kette.art === "plan" ? { fachplan: kette.F } : {}),
       variante: kette.variante,
+      ...zielFelder(kette, ergebnis),
       stufen: kette.stufen,
       ...(ueberholung.ueberholt.length > 0 ? { ueberholt: ueberholung.ueberholt } : {}),
       ...(ueberholung.ueberholtUnbestaetigt.length > 0 ? { ueberholtUnbestaetigt: ueberholung.ueberholtUnbestaetigt } : {}),
@@ -2156,7 +2504,13 @@ async function laufeEineKette(auftrag, nummer, args) {
   }
   const zusatz = ergebnis.grund ? ` — ${ergebnis.grund}` : "";
   log(`  Kette zu Issue #${F}: ${ergebnis.ausgang}${zusatz} (${kette.kosten.kostenSumme.toFixed(2)} $).`);
-  return ergebnis.ausgang;
+  return { ausgang: ergebnis.ausgang, vorbereitung: ergebnis.vorbereitung === true, kette };
+}
+
+/** Ziel und Projektgrenze fuer die Einheit, nur wenn gesetzt (E5, E6): Ohne Ziel bleibt der Bericht wie bisher. */
+function zielFelder(kette, ergebnis) {
+  if (!kette.ziel) return {};
+  return { ziel: kette.ziel, ...(ergebnis.projektgrenze ? { projektgrenze: true } : {}) };
 }
 
 /** Die Hinweise zu Labels, die es nicht mehr gibt (Fachplan #635, Kriterium 12). */
@@ -2326,6 +2680,25 @@ export async function laufeKette(args, abhaengigkeiten = {}) {
   }
 }
 
+/**
+ * Die Ketten nacheinander, danach einmal die Vorbereitung fuer die, die sie ausloesen
+ * (Plan #1243, A4) — erst dann baut dieser Runner nichts mehr. Rueckgabe sind die Ausgaenge
+ * gezaehlt.
+ */
+async function kettenUndVorbereitung(auftraege, args) {
+  const zaehler = Object.fromEntries(KETTE_AUSGAENGE.map((a) => [a, 0]));
+  const ausloesend = [];
+  let nummer = 0;
+  for (const auftrag of auftraege) {
+    nummer++;
+    const { ausgang, vorbereitung, kette } = await laufeEineKette(auftrag, nummer, args);  // NOSONAR S9382: Ketten laufen einzeln, sonst raeumen sie sich die Worktrees weg
+    zaehler[ausgang]++;
+    if (vorbereitung) ausloesend.push(kette);
+  }
+  if (ausloesend.length > 0) await vorbereitungLaufen(ausloesend);
+  return zaehler;
+}
+
 async function ketteFahren(args) {
   const budget = KETTE_BUDGET;
   const repoRoot = process.cwd();
@@ -2382,13 +2755,7 @@ async function ketteFahren(args) {
     return abh.beenden(0);
   }
 
-  const zaehler = Object.fromEntries(KETTE_AUSGAENGE.map((a) => [a, 0]));
-  let nummer = 0;
-  for (const auftrag of auftraege) {
-    nummer++;
-    const ausgang = await laufeEineKette(auftrag, nummer, args);  // NOSONAR S9382: Ketten laufen einzeln, sonst raeumen sie sich die Worktrees weg
-    zaehler[ausgang]++;
-  }
+  const zaehler = await kettenUndVorbereitung(auftraege, args);
   log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.unvollstaendig} unvollstaendig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length} uebersprungen, ${liegengeblieben.length} liegengeblieben, ${NICHT_BEGONNEN_GESAMT} Paket(e) nicht begonnen.`);
   log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Nach Variante A liegen die Pakete morgens in Backlog; Variante B (Label '${budget.varianteBLabel}') hat sie in derselben Nacht umgesetzt, sie stehen dann in In review. Protokoll: ${ZUSTAND.LOG_FILE}`);
   anbindung.laufAbschliessen("regulaer");

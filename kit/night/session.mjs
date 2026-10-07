@@ -2534,6 +2534,8 @@ export const KETTE_BUDGET_DEFAULTS = Object.freeze({
   reviewMin: 15,
   abdeckungMin: 10,
   umsetzungMin: 120,
+  // Frist der Vorbereitung des Push, Warten und Prueflauf eingeschlossen (Plan #1243, E8).
+  vorbereitungMin: 120,
   kostenUsd: 50,
   kostenUsdB: 150,
   korrekturrunden: 2,
@@ -2558,7 +2560,7 @@ export function ladeKetteBudget(config) {
     if (typeof block.varianteBLabel !== "string" || block.varianteBLabel.trim() === "") throw new Error("night.kette.varianteBLabel muss ein nicht leerer Text sein");
     budget.varianteBLabel = block.varianteBLabel.trim();
   }
-  for (const feld of ["planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "kostenUsd", "kostenUsdB", "korrekturrunden"]) {
+  for (const feld of ["planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "vorbereitungMin", "kostenUsd", "kostenUsdB", "korrekturrunden"]) {
     if (block[feld] === undefined) continue;
     const wert = block[feld];
     if (typeof wert !== "number" || !Number.isFinite(wert) || wert <= 0) {
@@ -2576,16 +2578,18 @@ export function ladeKetteBudget(config) {
 // ersten drei folgen nach Vorgabe. Der in die Umsetzung hat keine: `null` heisst „nicht
 // gesetzt“ und gilt wie vor #1087 — Variante A endet nach der Abdeckung, Variante B setzt
 // um (Issue #1105). Erst ein gesetzter Wert wirkt, und auch freigegeben nur zusammen mit
-// dem Variante-B-Label an der Karte.
+// dem Variante-B-Label an der Karte. Der in die Vorbereitung des Push folgt nach Vorgabe;
+// nur ein gesetztes `false` haelt an (Plan #1243, E7).
 export const KETTE_UEBERGAENGE_DEFAULTS = Object.freeze({
   planReview: true,
   reviewPakete: true,
   paketeAbdeckung: true,
   abdeckungUmsetzung: null,
+  umsetzungVorbereitung: true,
 });
 
 /**
- * Liest `night.kette.uebergaenge` — vier Wahrheitswerte, fehlende aus der Vorgabe
+ * Liest `night.kette.uebergaenge` — fuenf Wahrheitswerte, fehlende aus der Vorgabe
  * (`abdeckungUmsetzung` fehlend: `null`).
  *
  * Wirft wie `ladeKetteBudget` mit dem Feldnamen; ein unbekannter Schalter ist ebenso ein
@@ -2662,15 +2666,62 @@ export function pruefLaufBudgetDefaults(config) {
 }
 
 /**
- * Die Variante einer Kette fuer eine Karte (Plan #691, E2/E3): "B", wenn die Karte
- * das Label aus `budget.varianteBLabel` traegt, sonst "A". Reine Funktion, nie ein
- * Wurf — die Variante ist eine Einordnung, kein Vorflug: eine Karte ohne `labels`,
- * ein leeres Label-Array und ein fehlendes `budget` ergeben alle "A".
+ * Die Variante einer Kette fuer eine Karte (Plan #691, E2/E3; Plan #1243, A3): "B" genau
+ * dann, wenn das wirksame Ziel (`zielVon`) mindestens `umsetzung` ist — das Label aus
+ * `budget.varianteBLabel` zaehlt dort als `umsetzung` —, sonst "A". Reine Funktion, nie
+ * ein Wurf — die Variante ist eine Einordnung, kein Vorflug: eine Karte ohne `labels`,
+ * ein leeres Label-Array und ein fehlendes `budget` ohne Ziel-Label ergeben alle "A".
  */
 export function varianteVon(issue, budget) {
-  const label = budget?.varianteBLabel;
-  if (!label) return "A";
-  return (issue?.labels || []).includes(label) ? "B" : "A";
+  const ziel = zielVon(issue, budget);
+  if (!ziel) return "A";
+  const rang = (z) => KETTE_ZIELE.findIndex((k) => k.ziel === z);
+  return rang(ziel) >= rang("umsetzung") ? "B" : "A";
+}
+
+// --- Ziel und Prueferzahl einer Karte (Plan #1243, A1, A3, E2; Issue #1244) ---
+
+// Die Ziele in der festen Reihenfolge der Stufen, je mit der Stufe, nach der die Kette
+// endet (A2). Die Labels sind bewusst nicht konfigurierbar (A1): kanban-kit liest sie fest.
+export const KETTE_ZIELE = Object.freeze([
+  Object.freeze({ ziel: "plan", endstufe: "review" }),
+  Object.freeze({ ziel: "pakete", endstufe: "abdeckung" }),
+  Object.freeze({ ziel: "umsetzung", endstufe: "umsetzung" }),
+  Object.freeze({ ziel: "push-vorbereitet", endstufe: "vorbereitung" }),
+]);
+export const ZIEL_LABEL_PRAEFIX = "ziel:";
+export const PLANREVIEW_LABELS = Object.freeze(["planreview:1", "planreview:2"]);
+
+/**
+ * Das wirksame Ziel einer Karte (A3): das weiter reichende aus Ziel-Label und dem Label
+ * aus `budget.varianteBLabel`, das als `umsetzung` zaehlt. Ohne beides `null` — dann
+ * bleibt es beim heutigen Verhalten. Rein wie `varianteVon`: Ein unbekanntes `ziel:*`
+ * zaehlt nicht, mehrere Ziel-Labels lehnt erst `zielAusschluss` ab, hier gilt das
+ * weiteste.
+ */
+export function zielVon(karte, budget) {
+  const labels = karte?.labels || [];
+  const durchziehen = budget?.varianteBLabel;
+  let rang = -1;
+  KETTE_ZIELE.forEach(({ ziel }, i) => {
+    if (labels.includes(`${ZIEL_LABEL_PRAEFIX}${ziel}`)) rang = Math.max(rang, i);
+  });
+  if (durchziehen && labels.includes(durchziehen)) {
+    rang = Math.max(rang, KETTE_ZIELE.findIndex((z) => z.ziel === "umsetzung"));
+  }
+  return rang < 0 ? null : KETTE_ZIELE[rang].ziel;
+}
+
+/**
+ * Wie viele Modelle den Plan pruefen sollen (E2): 1 oder 2 aus `planreview:*`, ohne
+ * Angabe `null` — dann gilt die Einstellung des Projekts. Tragen beide, gilt 2; abgelehnt
+ * wird die Karte erst in `zielAusschluss`.
+ */
+export function pruefreihenVon(karte) {
+  const labels = karte?.labels || [];
+  if (labels.includes(PLANREVIEW_LABELS[1])) return 2;
+  if (labels.includes(PLANREVIEW_LABELS[0])) return 1;
+  return null;
 }
 
 // --- Reviewer-Vorflug in einer Session (Issue #269) ---

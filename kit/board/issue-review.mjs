@@ -17,7 +17,7 @@
 
 import { spawnSync } from "node:child_process";
 
-import { fail, out, loadConfig, findeImPath, umgebungsWert, spawnAufruf, startbefehlFuer } from "./grundlagen.mjs";
+import { BoardError, fail, out, loadConfig, findeImPath, umgebungsWert, spawnAufruf, startbefehlFuer } from "./grundlagen.mjs";
 import { istFachlich, istPlan } from "./dokumente.mjs";
 
 // ============================================================
@@ -46,6 +46,12 @@ const REVIEW_STUFEN = ["fachlich", "plan", "issue"];
 // darf keinem Bestandsprojekt den Review umbauen, dieselbe Vorsicht wie bei
 // `requiredBeforeReady`, das per Default aus ist.
 const REVIEW_STUFEN_DEFAULT = { reviewer: 2, rollen: ["vollstaendigkeit-pruefbarkeit", "scope-risiko-bestand"] };
+
+// Die Rollen der Stufe plan, aus denen eine vom Lauf erhoehte Pruefzahl aufgefuellt wird
+// (Issue #1245). Abgeschrieben statt importiert: kit/einstellungen.mjs ist ein Download
+// und wird nicht nach .claude/kit/ gespiegelt (Plan #1243, Review-Fund 1).
+// SYNC: ROLLEN_KATALOG.plan in kit/einstellungen.mjs
+const PLAN_ROLLEN = ["architektur-bestand", "schnitt-abhaengigkeiten"];
 
 /**
  * Uebersetzt einen Autor-Wert auf einen Reviewer-Kurznamen (Issue #241).
@@ -188,6 +194,36 @@ function validateReviewStufen(block) {
   return { stufen, stufenQuelle: "stufen" };
 }
 
+/**
+ * Pruefzahl der Stufe plan aus dem Lauf (Issue #1245, Plan #1243, A8 und E2).
+ *
+ * Der Runner traegt `planreview:<n>` als KIT_PLAN_REVIEWER in die Review-Session; der
+ * Wert gilt vor `reviewStufen`, ohne die Config zu aendern. Die Rollen kommen aus dem
+ * Config-Eintrag `eintrag`, gekuerzt auf die Zahl oder aus PLAN_ROLLEN aufgefuellt.
+ * `verfuegbar` ist die Zahl der Reviewer, die fuer diesen Autor in Frage kommen.
+ *
+ * Rein und werfend statt `fail` (A8): Ein Test prueft jeden Fall im selben Prozess.
+ * Zwei verlangt und nur einer verfuegbar ist ein Fehler, kein `unterbesetzt` — sonst
+ * liefe die Pruefung still mit einem Modell (Review-Fund 6). Ohne Wert: `null`.
+ */
+export function planReviewerAusLauf({ env = process.env, eintrag, verfuegbar }) {
+  const wert = env.KIT_PLAN_REVIEWER;
+  if (wert === undefined || wert === "") return null;
+  if (wert !== "1" && wert !== "2") {
+    throw new BoardError(`KIT_PLAN_REVIEWER '${wert}' ist ungueltig — erlaubt sind 1 oder 2.`);
+  }
+  const reviewer = Number(wert);
+  if (reviewer > verfuegbar) {
+    throw new BoardError("planreview:2 verlangt zwei Reviewer, verfügbar ist einer");
+  }
+  const rollen = eintrag.rollen.slice(0, reviewer);
+  for (const rolle of PLAN_ROLLEN) {
+    if (rollen.length >= reviewer) break;
+    if (!rollen.includes(rolle)) rollen.push(rolle);
+  }
+  return { reviewer, rollen, stufenQuelle: "lauf" };
+}
+
 // Die Config ist injizierbar (Plan #1199, E6): Ein Test reicht sie im selben Prozess
 // herein, statt dafuer ein Fixture-Verzeichnis und einen Kindprozess zu brauchen.
 function issueReviewConfig(config = loadConfig()) {
@@ -307,7 +343,8 @@ export function issueReviewReviewers(args, config = loadConfig()) {
  *
  * Zwei Quellen, zwei Felder: `quelle` bleibt die Quelle der Reviewer-AUSWAHL
  * ("pairs" | "regel", Bestandsverhalten), `stufenQuelle` nennt die Herkunft der
- * STUFENBESETZUNG ("stufen" | "default").
+ * STUFENBESETZUNG ("stufen" | "default", bei der Stufe plan auch "lauf" aus
+ * KIT_PLAN_REVIEWER, Issue #1245).
  *
  * `--issue`, `--rolle` und `--ausschluss` sind mit der Pruefvorgabe und der
  * Synthese-Pruefung entfallen. Sie werden abgewiesen statt still uebergangen: Ein
@@ -315,7 +352,7 @@ export function issueReviewReviewers(args, config = loadConfig()) {
  */
 const ROLES_ENTFALLEN = ["issue", "rolle", "ausschluss"];
 
-export function issueReviewRoles(args, config = loadConfig()) {
+export function issueReviewRoles(args, config = loadConfig(), env = process.env) {
   for (const option of ROLES_ENTFALLEN) {
     if (args[option] !== undefined) {
       fail(`--${option} gibt es seit Stufe 2 des Prozess-Umbaus nicht mehr — roles kennt nur --stufe und --author.`);
@@ -330,12 +367,17 @@ export function issueReviewRoles(args, config = loadConfig()) {
   if (!autor) fail("--author fehlt — ohne Autor greifen weder pairs noch der Selbstausschluss.");
 
   const { reviewers, pairs, reviewStufen } = issueReviewConfig(config);
-  const { reviewer, rollen } = reviewStufen.stufen[stufe];
+  // Bei der Stufe plan schlaegt die Pruefzahl des Laufs die Config (Issue #1245).
+  // Verfuegbar ist, wen die Auswahl fuer zwei Plaetze faende — dieselbe Wahl wie unten.
+  const ausLauf = stufe === "plan"
+    ? planReviewerAusLauf({ env, eintrag: reviewStufen.stufen.plan, verfuegbar: pickReviewers(reviewers, autor, 2, pairs).gewaehlt.length })
+    : null;
+  const { reviewer, rollen, stufenQuelle } = ausLauf ?? { ...reviewStufen.stufen[stufe], stufenQuelle: reviewStufen.stufenQuelle };
   return {
     stufe,
     reviewer,
     rollen,
-    stufenQuelle: reviewStufen.stufenQuelle,
+    stufenQuelle,
     autor,
     ...pickReviewers(reviewers, autor, reviewer, pairs),
   };
@@ -418,7 +460,14 @@ export function dispatchIssueReview(command, args, hilfe) {
     case "reviewers": return out(issueReviewReviewers(args));
     case "check": return out(issueReviewCheck(args));
     case "matrix": return out(issueReviewMatrix());
-    case "roles": return out(issueReviewRoles(args));
+    case "roles":
+      // Den BoardError der Pruefzahl aus dem Lauf macht erst der Befehl zu fail (A8).
+      try {
+        return out(issueReviewRoles(args));
+      } catch (err) {
+        if (err instanceof BoardError) return fail(err.message);
+        throw err;
+      }
     default:
       process.stdout.write(hilfe);
       fail(`Unbekannter issue-review-Befehl: '${command}'`);

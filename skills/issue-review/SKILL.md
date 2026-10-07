@@ -46,7 +46,7 @@ Lies `Autor-Modell:` (Arbeitspaket: `## Kontext`; fachliche Anforderung: `## Zie
 node .claude/kit/board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
 ```
 
-`gewaehlt[i]` wird mit `rollen[i]` gepaart; gestartet wird ausschließlich, was in `gewaehlt` steht. `unterbesetzt: true` läuft trotzdem und steht in Zeile 2 des Kommentars; `quelle` (`pairs` | `regel`) und ein `autorAufgeloest: false` gehören ebenfalls dorthin.
+Die Prüferzahl der Stufe `plan` kann ein Lauf über `KIT_PLAN_REVIEWER` setzen; die Session übernimmt die Ausgabe des Kommandos und zählt nicht selbst. `gewaehlt[i]` wird mit `rollen[i]` gepaart; gestartet wird ausschließlich, was in `gewaehlt` steht. `unterbesetzt: true` läuft trotzdem und steht in Zeile 2 des Kommentars; `quelle` (`pairs` | `regel`) und ein `autorAufgeloest: false` gehören ebenfalls dorthin.
 
 ### 4. Reviewer starten
 Jeder Reviewer bekommt denselben unveränderten Body und seine Rolle: `kind: claude` als Subagent mit dem konfigurierten Modell, `kind: command` als CLI mit dem Prompt über stdin. Jede Rolle trägt die Streich-Frage — Ergänzen ist leichter als Streichen, und ein Dokument, das nach dem Review doppelt so lang ist, ist nicht besser.

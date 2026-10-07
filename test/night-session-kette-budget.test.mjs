@@ -12,7 +12,7 @@ import { ladeKetteBudget, ketteBudgetDefaults, kostenAddieren, KETTE_BUDGET_DEFA
 test("[night-18] ohne Block gelten die Startwerte aus Fachplan #635", () => {
   assert.deepEqual(ladeKetteBudget({}), {
     label: "kit:night", varianteBLabel: "kit:durchziehen", planMin: 20, paketeMin: 15, reviewMin: 15,
-    abdeckungMin: 10, umsetzungMin: 120, kostenUsd: 50, kostenUsdB: 150, korrekturrunden: 2,
+    abdeckungMin: 10, umsetzungMin: 120, vorbereitungMin: 120, kostenUsd: 50, kostenUsdB: 150, korrekturrunden: 2,
   });
   assert.deepEqual(ladeKetteBudget(undefined), { ...KETTE_BUDGET_DEFAULTS });
   assert.deepEqual(ladeKetteBudget({ night: {} }), { ...KETTE_BUDGET_DEFAULTS });
@@ -30,13 +30,18 @@ test("[night-18] jedes Feld laesst sich einzeln ueberschreiben, der Rest bleibt 
   assert.equal(budget.korrekturrunden, 2);
 });
 
+test("[night-18] vorbereitungMin: Vorgabe 120, ein gesetzter Wert gilt (Plan #1243, E8)", () => {
+  assert.equal(KETTE_BUDGET_DEFAULTS.vorbereitungMin, 120);
+  assert.equal(ladeKetteBudget({ night: { kette: { vorbereitungMin: 45 } } }).vorbereitungMin, 45);
+});
+
 for (const [feld, wert] of [["planMin", 0], ["paketeMin", -5], ["reviewMin", Number.NaN], ["abdeckungMin", "10"], ["kostenUsd", Number.POSITIVE_INFINITY]]) {
   test(`[night-18] ${feld} = ${String(wert)} wird mit Feldname abgewiesen`, () => {
     assert.throws(() => ladeKetteBudget({ night: { kette: { [feld]: wert } } }), new RegExp(`night\\.kette\\.${feld} muss eine Zahl groesser 0 sein`));
   });
 }
 
-for (const [feld, wert] of [["umsetzungMin", 0], ["umsetzungMin", -5], ["umsetzungMin", Number.POSITIVE_INFINITY], ["umsetzungMin", "120"], ["kostenUsdB", 0], ["kostenUsdB", -5], ["kostenUsdB", Number.POSITIVE_INFINITY], ["kostenUsdB", "150"]]) {
+for (const [feld, wert] of [["umsetzungMin", 0], ["umsetzungMin", -5], ["umsetzungMin", Number.POSITIVE_INFINITY], ["umsetzungMin", "120"], ["kostenUsdB", 0], ["kostenUsdB", -5], ["kostenUsdB", Number.POSITIVE_INFINITY], ["kostenUsdB", "150"], ["vorbereitungMin", 0], ["vorbereitungMin", -5], ["vorbereitungMin", Number.POSITIVE_INFINITY], ["vorbereitungMin", "120"]]) {
   test(`[night-18] ${feld} = ${String(wert)} wird mit Feldname abgewiesen`, () => {
     assert.throws(() => ladeKetteBudget({ night: { kette: { [feld]: wert } } }), new RegExp(`night\\.kette\\.${feld} muss eine Zahl groesser 0 sein`));
   });
@@ -71,16 +76,16 @@ test("[night-18] kostenAddieren summiert Zahlen und zaehlt fehlende Werte als 0 
 });
 
 // Die Herkunft der Budgets (Issue #659): welche Felder aus den Defaults stammen.
-test("[night-28] ketteBudgetDefaults ohne Block nennt alle zehn Felder", () => {
+test("[night-28] ketteBudgetDefaults ohne Block nennt alle elf Felder", () => {
   assert.deepEqual(ketteBudgetDefaults({}),
-    ["label", "varianteBLabel", "planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "kostenUsd", "kostenUsdB", "korrekturrunden"]);
+    ["label", "varianteBLabel", "planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "vorbereitungMin", "kostenUsd", "kostenUsdB", "korrekturrunden"]);
   assert.deepEqual(ketteBudgetDefaults(undefined), ketteBudgetDefaults({ night: {} }));
 });
 
 test("[night-28] ketteBudgetDefaults mit vollstaendigem Block liefert eine leere Liste", () => {
   const kette = {
     label: "kit:night", varianteBLabel: "kit:durchziehen", planMin: 30, paketeMin: 25, reviewMin: 30,
-    abdeckungMin: 10, umsetzungMin: 120, kostenUsd: 50, kostenUsdB: 150, korrekturrunden: 2,
+    abdeckungMin: 10, umsetzungMin: 120, vorbereitungMin: 120, kostenUsd: 50, kostenUsdB: 150, korrekturrunden: 2,
   };
   assert.deepEqual(ketteBudgetDefaults({ night: { kette } }), []);
 });
@@ -88,7 +93,7 @@ test("[night-28] ketteBudgetDefaults mit vollstaendigem Block liefert eine leere
 test("[night-28] ketteBudgetDefaults nennt genau das eine fehlende Feld", () => {
   const kette = {
     label: "kit:night", varianteBLabel: "kit:durchziehen", planMin: 30, paketeMin: 25, abdeckungMin: 10,
-    umsetzungMin: 120, kostenUsd: 50, kostenUsdB: 150, korrekturrunden: 2,
+    umsetzungMin: 120, vorbereitungMin: 120, kostenUsd: 50, kostenUsdB: 150, korrekturrunden: 2,
   };
   assert.deepEqual(ketteBudgetDefaults({ night: { kette } }), ["reviewMin"]);
 });
@@ -96,6 +101,6 @@ test("[night-28] ketteBudgetDefaults nennt genau das eine fehlende Feld", () => 
 test("[night-28] ketteBudgetDefaults liefert die Felder in der Reihenfolge von ladeKetteBudget", () => {
   const kette = { korrekturrunden: 2, planMin: 30, label: "kit:night" };
   assert.deepEqual(ketteBudgetDefaults({ night: { kette } }),
-    ["varianteBLabel", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "kostenUsd", "kostenUsdB"]);
+    ["varianteBLabel", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "vorbereitungMin", "kostenUsd", "kostenUsdB"]);
   assert.deepEqual(Object.keys(ladeKetteBudget({})).filter((f) => ketteBudgetDefaults({}).includes(f)), ketteBudgetDefaults({}));
 });

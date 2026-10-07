@@ -157,6 +157,32 @@ test("403, 404 und 409 brechen sofort ab", async () => {
   }
 });
 
+// Issue #1248 (Plan #1243, E13): Der Fehler traegt den HTTP-Status als Feld, damit ein
+// Aufrufer eine Abweisung erkennt, ohne den Meldungstext zu lesen.
+test("Der BoardError nach einer 400-Antwort traegt status 400, Meldungstext und Rueckmeldung bleiben", async () => {
+  const s = stelleTracker(() => ({ status: 400, json: { message: "unbekanntes Feld" } }));
+  try {
+    const e = await fehlerVon(s.tracker, "/api/kanban/night-runs", { method: "POST" });
+    assert.equal(s.requests.length, 1);
+    assert.ok(e instanceof BoardError);
+    assert.equal(e.status, 400);
+    assert.match(e.message, /^Toolbox-API-Fehler: .*HTTP 400/);
+    assert.equal(e.rueckmeldung, RUECKMELDUNG.NICHT_AUSGEFUEHRT);
+  } finally {
+    s.aufraeumen();
+  }
+});
+
+test("Ohne Antwort traegt der BoardError status null", async () => {
+  const s = stelleTracker(() => ({ wirf: netzfehler("ECONNREFUSED") }));
+  try {
+    const e = await fehlerVon(s.tracker, "/api/kanban/items");
+    assert.equal(e.status, null);
+  } finally {
+    s.aufraeumen();
+  }
+});
+
 test("401 behaelt seine Sonderbehandlung und wird nie wiederholt", async () => {
   const s = stelleTracker(() => ({ status: 401, json: { message: "nope" } }));
   try {

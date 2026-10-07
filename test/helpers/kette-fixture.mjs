@@ -198,20 +198,21 @@ class HarterStopp extends Error {}
  * - `karten`: das Board zu Beginn (Reihenfolge = Board-Reihenfolge)
  * - `argv`: Argumente hinter `--kette`, etwa `["--dry-run"]` oder `["--max", "2"]`
  * - `kette`, `config`: der Block `night.kette` und weitere Felder der Config
- * - `sitzung(s)`: das Drehbuch je Session; `s` traegt `stufe`, `issue`, `prompt`, `cwd`, `modell` und das
+ * - `sitzung(s)`: das Drehbuch je Session; `s` traegt `stufe`, `issue`, `prompt`, `cwd`, `modell`, `planReviewer`, `laufId` und das
  *   Board der Attrappe. Rueckgabe `{ zeilen, kosten, ergebnis, ohneResult, ende }`, alles
  *   wahlweise; ohne `ohneResult` folgt den Zeilen das result-Ereignis.
  * - `formPruefung(karte)`: die Antwort von `issue check-form`, Vorgabe `formNachAbschnitten()`
  * - `ablehnen(cliArgs)`: laesst einen Board-Aufruf scheitern; `schlucken(cliArgs)` nimmt ihn an, ohne zu speichern
  * - `vorflug`: `null` fuer einen gruenen Reviewer-Vorflug, sonst der Grund seines Scheiterns
  * - `vorher({ dir, board })`: laeuft nach dem Aufbau und vor der Kette
+ * - `nachher({ dir })`: laeuft nach der Kette und vor dem Raeumen; die Rueckgabe steht in `nachher`
  *
  * Liefert `{ code, ausgabe, karten, karte(id), aufrufe, sitzungen, lauf, journal, vorflug,
- * abschluss, gitAufrufe, worktreePraefix }`; das Temp-Verzeichnis ist danach geraeumt.
+ * abschluss, gitAufrufe, worktreePraefix, nachher }`; das Temp-Verzeichnis ist danach geraeumt.
  */
 export async function ketteImProzess({
   karten = [], argv = [], kette = {}, config = {}, sitzung = () => ({}),
-  formPruefung = formNachAbschnitten(), ablehnen, schlucken, vorflug = null, vorher = null,
+  formPruefung = formNachAbschnitten(), ablehnen, schlucken, vorflug = null, vorher = null, nachher = null,
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "night-kette-prozess-"));
   const cwdVorher = process.cwd();
@@ -219,11 +220,12 @@ export async function ketteImProzess({
   const uhr = uhrAttrappe(UHR_START);
   const jetzt = () => new Date(uhr.jetzt());
   const schlaf = (ms) => { uhr.vor(ms); };
+  const schlafen = async (ms) => { uhr.vor(ms); };
   const kb = ketteBoard(karten, { jetzt, formPruefung, ablehnen, schlucken });
   const { git, aufrufe: gitAufrufe } = gitAttrappe();
   const sitzungen = [];
   const { spawn } = spawnAttrappe((aufruf) => {
-    const s = { stufe: stufeVon(aufruf.env), issue: aufruf.env.NIGHT_ISSUE_ID, prompt: aufruf.env.NIGHT_PROMPT, cwd: aufruf.cwd, modell: aufruf.env.KIT_AGENT_MODEL };
+    const s = { stufe: stufeVon(aufruf.env), issue: aufruf.env.NIGHT_ISSUE_ID, prompt: aufruf.env.NIGHT_PROMPT, cwd: aufruf.cwd, modell: aufruf.env.KIT_AGENT_MODEL, planReviewer: aufruf.env.KIT_PLAN_REVIEWER, laufId: aufruf.env.KIT_NIGHT_RUN };
     sitzungen.push(s);
     const antwort = sitzung({ ...s, board: kb.board }) ?? {};
     return [
@@ -277,7 +279,7 @@ export async function ketteImProzess({
     const { text: ausgabe } = await stdoutFangen(async () => {
       try {
         code = await laufeKette(args, {
-          spawn, spawnSync: psLeer, jetzt, schlaf, board: kb.board, boardRoh: kb.boardRoh,
+          spawn, spawnSync: psLeer, jetzt, schlaf, schlafen, board: kb.board, boardRoh: kb.boardRoh,
           gitClean: () => true, gitReste: () => [], beenden: (c) => c,
         });
       } catch (e) {
@@ -289,6 +291,7 @@ export async function ketteImProzess({
       code, ausgabe, karten: kb.karten, karte: kb.karte, aufrufe: kb.aufrufe, sitzungen,
       lauf: ZUSTAND.LAUF, journal: journalLesen(dir), vorflug: vorflugStand, abschluss, gitAufrufe,
       worktreePraefix: `kette-${dir.split(/[\\/]/).at(-1)}-`,
+      nachher: nachher ? nachher({ dir }) : null,
     };
   } finally {
     process.chdir(cwdVorher);
@@ -406,6 +409,25 @@ export function formNachAbschnitten({ hinweise = () => [] } = {}) {
     if (pflicht.test(karte.body)) return { ok: true, verstoesse: [], hinweise: hinweise(karte) };
     const meldung = plan ? "Abschnitt '## Verifizierung' fehlt" : "Abschnitt '## Abhängigkeiten' fehlt";
     return { ok: false, verstoesse: [{ gate: plan ? "P5" : "I4", meldung }], hinweise: [] };
+  };
+}
+
+/** Die Datei der vorbereiteten Veroeffentlichung, wie `vorbereitungFesthalten` sie schreibt (Plan #1243, A6). */
+export const VORBEREITUNG_GRUEN = Object.freeze({
+  ergebnis: "gruen", commit: "c0ffee1234567890", basis: "ba5e000000000000", origin: "0r1g1n0000000000", version: "3.8.0",
+  releaseDateien: true, offen: [], pakete: ["3", "4"], rot: null, fetch: "ok", kitStand: null, abweichung: null,
+});
+
+/**
+ * Stufe vorbereitung: legt `.claude/push-vorbereitung.json` in der Hauptkopie ab, mit der
+ * Laufkennung aus der Umgebung der Session und einem Zeitpunkt eine Stunde nach Uhrbeginn —
+ * so, wie `/push-main vorbereiten` sie ueber `worktree.mjs vorbereitung-festhalten` hinterlaesst.
+ */
+export function vorbereitungAblegen(felder = {}) {
+  return (s) => {
+    mkdirSync(join(s.cwd, ".claude"), { recursive: true });
+    const inhalt = { ...VORBEREITUNG_GRUEN, zeitpunkt: new Date(UHR_START + 3_600_000).toISOString(), laufId: s.laufId ?? null, ...felder };
+    writeFileSync(join(s.cwd, ".claude", "push-vorbereitung.json"), JSON.stringify(inhalt, null, 2) + "\n");
   };
 }
 

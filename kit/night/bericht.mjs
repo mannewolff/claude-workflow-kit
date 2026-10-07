@@ -32,7 +32,7 @@ import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 
 import { ZUSTAND, NACHBAR_CHECKS, log, boardRoh, vergleicheText } from "./grundlagen.mjs";
-import { pidAusInhalt, prozessLaeuft, kitStandZeile } from "./kitstand.mjs";
+import { VORBEREITUNG_DATEI, pidAusInhalt, prozessLaeuft, kitStandZeile } from "./kitstand.mjs";
 import { abschnittLesen, leseKarte } from "./abhaengigkeiten.mjs";
 import { endlicheZahl, lesePruefung, paketstufenChecks, runBuildChecksSync,
   LOKALER_KOMMENTARKOPF } from "./session.mjs";
@@ -644,6 +644,8 @@ function berichtStufen(einheit, plan, pakete) {
   const stufen = einheit.stufen ?? {};
   const auftrag = berichtAuftragZeile(einheit);
   const zeilen = [...(auftrag ? [auftrag] : []), `- Variante: ${einheit.variante === "B" ? "B" : "A"}`];
+  // Unmittelbar nach der Variante (Plan #1243, E5): Die Endzeilen des Blocks bleiben fest.
+  if (einheit.ziel) zeilen.push(`- Ziel: ${einheit.ziel}`);
   zeilen.push(stufen.plan?.id ? berichtPlanZeile(stufen, plan) : "- Plan: keiner entstanden.");
   const ids = stufen.pakete?.ids ?? [];
   zeilen.push(ids.length > 0
@@ -697,6 +699,17 @@ function berichtHaltArten(einheit) {
   return { stoppFrage: arten.includes("klaeren"), geschuetzt: arten.filter((a) => a === "geschuetzt").length };
 }
 
+/**
+ * Die Zeilen unter `### Ausgang`. Blieb die Kette an der Projektgrenze vor ihrem Ziel stehen,
+ * steht das zusaetzlich zum Wartetext da, kein fuenfter Ausgang (Plan #1243, E6): Die
+ * Ausgaenge sind Vertrag mit der Laufmeldung.
+ */
+function berichtAusgang(einheit) {
+  const zeilen = [einheit.grund ? `${einheit.ausgang} — ${einheit.grund}` : String(einheit.ausgang)];
+  if (einheit.ziel && einheit.projektgrenze) zeilen.push(`an der Projektgrenze stehen geblieben, nicht am Ziel ${einheit.ziel}`);
+  return zeilen;
+}
+
 export function berichtBauen(einheit, {
   plan = null, pakete = [], einarbeitung = null, abdeckung = null, budget = {}, start, stempel, frage = null, jetzt = Date.now(),
   // Die Paket-Einheiten des Laufs und die Zielmarke (Issue #926): Der Bericht rechnet die
@@ -709,7 +722,7 @@ export function berichtBauen(einheit, {
   const stufen = einheit.stufen ?? {};
   const z = [`${BERICHT_ANKER} ${stempel ?? ZUSTAND.LAUF_STEMPEL ?? "ohne Stempel"}`, ""];
   z.push(
-    "### Ausgang", "", einheit.grund ? `${einheit.ausgang} — ${einheit.grund}` : String(einheit.ausgang), "",
+    "### Ausgang", "", ...berichtAusgang(einheit), "",
     "### Stufen", "", ...berichtStufen(einheit, plan, pakete), "",
   );
   if (einheit.variante === "B") z.push(...berichtUmsetzung(einheit, pakete, einheiten, ziel));
@@ -749,6 +762,49 @@ export function berichtBauen(einheit, {
   }
   if (kitStand) z.push(kitStandZeile(kitStand), "");
   z.push(BERICHT_SCHLUSS, "");
+  return z.join("\n");
+}
+
+// Die Ergebnisse der Vorbereitung im Wortlaut des Fachplans (#1192, Kriterium 16).
+const VORBEREITUNG_ERGEBNIS_TEXT = Object.freeze({
+  gruen: "grün", "gruen-offen": "grün, Prüfung offen", rot: "rot", "nicht-vorbereitet": "nicht vorbereitet",
+});
+
+const kartenListe = (ids) => ((ids ?? []).length > 0 ? ids.map((id) => `#${id}`).join(", ") : "keine");
+
+/**
+ * Der eigene Nachtbericht der Vorbereitung an einer ausloesenden Karte (Plan #1243, E12;
+ * Issue #1254): Ergebnis, gepruefter Stand, Pakete, offene Pruefungen samt Build-Dienst-Punkt
+ * (E17) und eine rote Pruefung mit ihren Verursachern. `vorbereitung` hat die Form von
+ * `.claude/push-vorbereitung.json`; bei `nicht-vorbereitet` traegt sie nur `grund`. Der
+ * Bericht der Kette bleibt unberuehrt — er steht zu diesem Zeitpunkt schon an der Karte.
+ * Die Karte nennt der Text nicht: Er steht an ihr, und die Meldung gilt dem ganzen Stand.
+ */
+export function vorbereitungsBericht(_karte, vorbereitung, { stempel = ZUSTAND.LAUF_STEMPEL } = {}) {
+  const v = vorbereitung ?? {};
+  const ergebnis = VORBEREITUNG_ERGEBNIS_TEXT[v.ergebnis] ?? String(v.ergebnis);
+  const z = [`${BERICHT_ANKER} ${stempel ?? "ohne Stempel"} — Vorbereitung`, ""];
+  const releaseText = v.releaseDateien ? `bereit (v${v.version})` : "nicht erzeugt";
+  z.push("### Ergebnis", "", v.grund ? `${ergebnis} — ${v.grund}` : ergebnis, "");
+  if (v.ergebnis !== "nicht-vorbereitet") {
+    z.push("### Geprüfter Stand", "",
+      `- Commit: ${v.commit ?? "unbekannt"} (Basis ${v.basis ?? "unbekannt"}, origin/main-Stand ${v.origin ?? "unbekannt"})`,
+      `- Versionsvermerk und Änderungsnotiz: ${releaseText}`,
+      `- Abgleich mit origin: ${v.fetch === "fehlgeschlagen" ? "fehlgeschlagen, geprüft gegen den vorhandenen Stand" : "ok"}`,
+      `- Zeitpunkt: ${v.zeitpunkt ?? "unbekannt"}`,
+      ...(v.abweichung ? [`- Abweichung: ${v.abweichung}`] : []),
+      "",
+      "### Pakete im Stand", "", kartenListe(v.pakete), "",
+      "### Offene Prüfungen", "", ...((v.offen ?? []).length > 0 ? v.offen.map((o) => `- ${o}`) : ["- keine"]), "");
+    if (v.rot) {
+      z.push("### Rote Prüfung", "",
+        `- Prüfung: ${v.rot.pruefung ?? "unbekannt"}`,
+        `- Verursacher: ${kartenListe(v.rot.karten)}`,
+        ...(v.rot.hinweis ? [`- Hinweis: ${v.rot.hinweis}`] : []),
+        "");
+    }
+  }
+  z.push(`Die Meldung gilt dem ganzen Stand und steht auch in ${VORBEREITUNG_DATEI}. Gepusht wurde nichts.`, "");
   return z.join("\n");
 }
 

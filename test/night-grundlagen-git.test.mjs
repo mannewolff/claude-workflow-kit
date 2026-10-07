@@ -34,6 +34,12 @@ test("die Ausnahmen nennen die Laufzeitpfade des Kits, beim lokalen Tracker auch
   assert.equal(gitResteAusnahmen({ issueTracker: "local", local: { issuesDir: "karten" } })[0], "karten");
 });
 
+test("[night-1254] die vorbereitete Veroeffentlichung stoppt den Rest-Guard nicht", () => {
+  const ausnahmen = gitResteAusnahmen({ issueTracker: "github" });
+  assert.ok(ausnahmen.includes(".claude/push-vorbereitung.json"), "die Datei der Vorbereitung fehlt in den Ausnahmen");
+  assert.ok(gitRestePathspec(ausnahmen).includes(":(exclude).claude/push-vorbereitung.json"));
+});
+
 test("die Ausnahmen folgen ohne Argument der geladenen Config", () => {
   const vorher = ZUSTAND.config;
   try {

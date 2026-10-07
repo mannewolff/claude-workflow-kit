@@ -1353,14 +1353,22 @@ export class ToolboxIssueTracker {
     return `\n${PROXY_HINWEIS}`;
   }
 
-  /** Der Fehler am Ende der Schleife — mit Rueckmeldung und, wo noetig, dem Weg zurueck. */
+  /**
+   * Der Fehler am Ende der Schleife — mit Rueckmeldung und, wo noetig, dem Weg zurueck.
+   * `status` traegt den HTTP-Status der letzten Antwort, ohne Antwort `null` (Issue #1248,
+   * Plan #1243, E13): Ein Aufrufer erkennt eine Abweisung daran, nicht am Meldungstext.
+   */
   _fehler({ status, netz, wurf, grund, method, path, idempotencyKey, host }) {
     const rueckmeldung = rueckmeldungFuer({ status, netz, method });
     const basis = wurf
       ? `Toolbox-API nicht erreichbar (${host}): ${wurf.message}${this._proxyZusatz(netz)}`
       : `Toolbox-API-Fehler: ${grund}`;
-    if (rueckmeldung !== RUECKMELDUNG.AUSGANG_UNKLAR) return new BoardError(basis, rueckmeldung);
-    return new BoardError(`${basis}\n${this._unklarHinweis(method, path, idempotencyKey)}`, rueckmeldung);
+    const text = rueckmeldung === RUECKMELDUNG.AUSGANG_UNKLAR
+      ? `${basis}\n${this._unklarHinweis(method, path, idempotencyKey)}`
+      : basis;
+    const fehler = new BoardError(text, rueckmeldung);
+    fehler.status = status;
+    return fehler;
   }
 
   /**

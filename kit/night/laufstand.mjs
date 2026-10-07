@@ -28,7 +28,7 @@
  */
 
 import { spawn as kindStarten } from "node:child_process";
-import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, rmSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync, rmSync, readdirSync, renameSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir, hostname } from "node:os";
@@ -53,6 +53,8 @@ const VORGABEN = Object.freeze({
   spawn: kindStarten,
   kill: (pid, signal) => process.kill(pid, signal),
   beenden: (code) => process.exit(code),
+  // Das Umbenennen, mit dem der Puls die alte Fassung ersetzt (Issue #1262).
+  umbenennen: renameSync,
 });
 const abh = { ...VORGABEN };
 
@@ -87,6 +89,9 @@ const PULS_TAKT_MS = 60_000;
 export const ABBRUCH_BUDGET_MS = 5_000;
 let PULS_DATEI = null;
 let PULS_TIMER = null;
+// `art` und `phase` des Pulses (Plan #1243, E8): Zustand des Teils, nicht Argumente, weil der
+// Takt `pulsSchreiben()` ohne Angabe ruft und die Datei jedes Mal neu schreibt.
+const PULS_ZUSTAND = {};
 // Laeuft gerade ein Abbruch (Issue #1084, E8)? Ein zweites Signal oder ein fail() aus dem
 // Abbruch heraus beginnt keinen zweiten.
 let ABBRUCH_LAEUFT = false;
@@ -284,7 +289,7 @@ export function abgeben(karte, { lauf = ZUSTAND.LAUF_STEMPEL, repoRoot = process
  * Lebt der Lauf, dessen Puls hier liegt? Ein Puls ohne lesbare PID gilt als tot; EPERM
  * heisst, den Prozess gibt es, er gehoert nur einem anderen Benutzer.
  */
-function laufLebt(repoRoot, lauf) {
+export function laufLebt(repoRoot, lauf) {
   let pid;
   try {
     pid = JSON.parse(readFileSync(laufPfad(repoRoot, lauf, "puls"), "utf-8")).pid;
@@ -335,14 +340,41 @@ function journalNachtragen(repoRoot, lauf) {
   return nachgetragen;
 }
 
-/** Erneuert die Puls-Datei: Zeitstempel und PID (E6). Ohne Lauf ein Leerlauf. */
+/**
+ * Erneuert die Puls-Datei: Zeitstempel und PID (E6), dazu `art` und `phase`, soweit gesetzt
+ * (Plan #1243, E8). Ohne Lauf ein Leerlauf.
+ *
+ * Atomar (Issue #1262): erst eine temporaere Datei daneben, dann das Umbenennen. Ein
+ * `writeFileSync` auf den Puls leerte ihn zuerst; stirbt der Runner dazwischen oder liest der
+ * Waechter genau dann, stuende kein Lebenszeichen da, und ein lebender Lauf koennte als
+ * verstummt gelten. Scheitert ein Schritt, bleibt der alte Puls stehen und die temporaere
+ * Datei wird entfernt.
+ */
 export function pulsSchreiben() {
   if (!PULS_DATEI) return;
+  const temporaer = `${PULS_DATEI}.${process.pid}.tmp`;
   try {
-    writeFileSync(PULS_DATEI, JSON.stringify({ zeit: isoJetzt(), pid: process.pid }) + "\n", "utf-8");
+    writeFileSync(temporaer, JSON.stringify({ zeit: isoJetzt(), pid: process.pid, ...PULS_ZUSTAND }) + "\n", "utf-8");
+    abh.umbenennen(temporaer, PULS_DATEI);
   } catch (err) {
+    try { rmSync(temporaer, { force: true }); } catch { /* bleibt liegen, der Puls zaehlt nur .puls */ }
     log(`Puls ${PULS_DATEI} nicht geschrieben: ${err.message}`);
   }
+}
+
+/**
+ * Setzt `art` und `phase` des Pulses (Plan #1243, E8) und schreibt ihn sofort. Geaendert
+ * wird nur, was genannt ist; ein genanntes `undefined` nimmt das Feld zurueck. `art` ist die
+ * Laufart (`pruefung` beim Prueflauf), `phase` ist `vorbereitung-wartet`, solange der Lauf
+ * in seiner Vorbereitung auf das Ende der anderen wartet. Beides lesen fremde Laeufe.
+ */
+export function pulsZustandSetzen(neu) {
+  for (const feld of ["art", "phase"]) {
+    if (!Object.hasOwn(neu, feld)) continue;
+    if (neu[feld] === undefined) delete PULS_ZUSTAND[feld];
+    else PULS_ZUSTAND[feld] = neu[feld];
+  }
+  pulsSchreiben();
 }
 
 /**
@@ -352,6 +384,8 @@ export function pulsSchreiben() {
 export function laufstandStarten() {
   if (!ZUSTAND.LAUF_STEMPEL) return;
   PULS_DATEI = laufPfad(process.cwd(), ZUSTAND.LAUF_STEMPEL, "puls");
+  // Die Laufart steht im Laufbericht, den der Einstieg davor anlegt (`laufArt`, E8).
+  if (ZUSTAND.LAUF?.art) PULS_ZUSTAND.art = ZUSTAND.LAUF.art;
   journalZeile(laufPfad(process.cwd(), ZUSTAND.LAUF_STEMPEL, "jsonl"), { art: "lauf", zeit: isoJetzt(), pid: process.pid, text: "begonnen" });
   pulsSchreiben();
   PULS_TIMER = setInterval(pulsSchreiben, Number(process.env.NIGHT_PULS_MS) || PULS_TAKT_MS);
@@ -711,6 +745,7 @@ export function laufstandZuruecksetzen() {
   if (PULS_TIMER) clearInterval(PULS_TIMER);
   PULS_TIMER = null;
   PULS_DATEI = null;
+  for (const feld of Object.keys(PULS_ZUSTAND)) delete PULS_ZUSTAND[feld];
   ABBRUCH_LAEUFT = false;
   ANHALTEN_LAEUFT = false;
   WAECHTER_PID = null;
