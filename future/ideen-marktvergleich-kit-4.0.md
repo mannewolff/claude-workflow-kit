@@ -17,16 +17,14 @@ Am Board liegt jede Idee als `[Idee] Task: …` oder `[Idee] Fachlich: …` mit 
 | 5 | Aufwandsbericht über die letzten N Läufe je Stufe und Aufgabenstufe | klärt, wohin die 20 Minuten je Paket gehen; Nr. 13, 18, 28, 29, 30 hängen daran | P-1 | Task |
 | 6 | Reviewer-Rollen als Agentendateien unter `.claude/agents/`, nur lesend | „Reviewer ändert nichts“ wird Grenze statt Bitte, weniger Kontext | P-5, L-1 | Fachlich |
 | 7 | Wiederholungsbremse: dreimal rot mit demselben Merkmal beendet das Paket | spart bis zu 60 Minuten je festgefahrenem Paket | P-7 | Fachlich |
-| 8 | Nachweis je Commit als Trailer, `/push-main` weist Commits ohne Nachweis ab | `--no-verify` fällt spätestens beim Push auf | F-3.3, L-2 | Fachlich |
+| 12 | Installer schlägt `pushPruefung: buildDienst` und Branch Protection vor (am 08.10. von PRIO II hochgestuft) | serverseitiges Gate wird Normalfall; einziger Schutz gegen `git push` an `/push-main` vorbei | F-3.1/2 | Fachlich |
 | 9 | Wackelnde Prüfungen erkennen und in der Wirksamkeit zählen | so etwas wie der Windows-Timing-Test fällt beim ersten Mal auf | neu | Fachlich |
-| 10 | `--yolo`-Läufe in Nachtbericht und Leitstand sichtbar machen | ungeschützter Lauf fällt sofort auf | F-1 | Task |
 
 ## PRIO II: Härte, Durchsatz, Kosten
 
 | Nr. | Idee | Nutzen | Quelle | Weg |
 |---|---|---|---|---|
 | 11 | Werkzeuggrenzen je Kettenstufe (Positivliste plus PreToolUse-Hook für Kit- und geschützte Dateien) | B3 gilt auch für Nacht-Sessions | F-1 | Fachlich |
-| 12 | Installer schlägt `pushPruefung: buildDienst` und Branch Protection vor | serverseitiges Gate wird Normalfall | F-3.1/2 | Fachlich |
 | 13 | Parallele Umsetzung unabhängiger Pakete mit gemeinsamer Prüfwarteschlange | größter Hebel für den Durchsatz; erst nach Nr. 5, Q-4, Q-6 | P-2, L-4 | Fachlich |
 | 14 | Abnahmetests aus dem Fachplan als Holdout, geschrieben von einem fremden Modell | Verhalten gegen die Anforderung statt gegen die eigenen Tests; Q-7 zuerst | F-4, L-3 | Fachlich |
 | 15 | Kontextdiät: Regeltext in Kern und Kapitel je Bahn | weniger Token, Regeln gehen nicht im Rauschen unter | P-4, L-5, R-5 | Fachlich |
@@ -59,11 +57,13 @@ Am Board liegt jede Idee als `[Idee] Task: …` oder `[Idee] Fachlich: …` mit 
 | 37 | Korrekturkarte bei roter CI nach `push main` | schließt den Kreis nach dem Push | neu | Fachlich |
 | 38 | Sonar-Gate für agentische KI als Vorlage | härtestes Gate am Markt, fertig zum Einschalten | F-3.4 | Task |
 | 39 | Wirksamkeit öffentlich belegen | Zahlen, die der Konkurrenz fehlen; nach Nr. 22 | F-12, L-10 | Fachlich |
+| 10 | `--yolo` aus dem Nacht-Runner entfernen (am 08.10. umentschieden: statt „sichtbar machen“, PRIO I → PRIO III; der Schalter wurde nie genutzt) | eine Leitplanke wird hart statt weich | F-1 | Task |
 
 ## Nice-To-Have
 
 | Nr. | Idee | Quelle | Weg |
 |---|---|---|---|
+| 8 | Nachweis je Commit als Trailer (am 08.10. von PRIO I herabgestuft: `/push-main` prüft den Inhalt des ganzen Batches schon vor dem Push; offen bleiben nur einzeln ungeprüfte Zwischenstände in der Historie) | F-3.3, L-2 | Fachlich |
 | 40 | Kleinere Lücken im Leitstand schließen | F-13 | Task |
 | 41 | Zugang für Dritte (englischer Quickstart, Beispielprojekt); hängt an Q-1 | F-11 | Fachlich |
 | 42 | Fortgeschriebene Verhaltensbeschreibung im Repository; hängt an Q-3 | F-8 | Fachlich |
