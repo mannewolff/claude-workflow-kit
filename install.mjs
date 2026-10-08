@@ -17,7 +17,7 @@
 import { createInterface } from "node:readline";
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, chmodSync, realpathSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { resolve, join, dirname, basename, win32 as pfadWin32, posix as pfadPosix } from "node:path";
+import { resolve, join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 
@@ -354,8 +354,8 @@ const GITLAB_LABELS = [
 /**
  * Wie ein CLI gestartet wird (Issue #1136). Der Test-Hook `fakeVariable` nach dem Muster
  * `NIGHT_CLAUDE_CMD` (`INSTALL_GLAB_FAKE`, `INSTALL_GIT_FAKE`) nennt ein Node-Skript, das
- * statt des CLI startet — mit dem laufenden Node und ohne Shell, damit es auch unter
- * Windows startbar ist. Ohne die Variable bleibt der Start, wie er war.
+ * statt des CLI startet — mit dem laufenden Node und ohne Shell. Ohne die Variable
+ * bleibt der Start, wie er war.
  *
  * Fehlt das Skript, wird sein Pfad selbst gestartet: Der Start scheitert dann mit ENOENT
  * wie bei einem fehlenden CLI, statt dass Node mit "Cannot find module" endet — nur so
@@ -616,10 +616,8 @@ function aktiverHookVorhanden() {
  * Aufloesung auf beiden Seiten verglichen man Schreibweisen statt Verzeichnisse:
  * Auf macOS zeigt schon `/tmp` auf `/private/tmp`.
  *
- * `realpathSync.native` und nicht `realpathSync`: Nur die native Variante loest unter
- * Windows die 8.3-Kurznamen auf (`RUNNER~1` -> `runneradmin`). git meldet den langen
- * Namen, ein Pfad aus der Umgebung traegt oft den kurzen — ohne diese Aufloesung
- * standen zwei Schreibweisen desselben Verzeichnisses nebeneinander (Issue #873).
+ * `realpathSync.native`: die Aufloesung des Betriebssystems selbst, damit git und
+ * die Umgebung dieselbe Schreibweise desselben Verzeichnisses liefern (Issue #873).
  */
 function aufgeloest(pfad) {
   try { return realpathSync.native(pfad); } catch { /* existiert (noch) nicht */ }
@@ -627,22 +625,11 @@ function aufgeloest(pfad) {
 }
 
 /**
- * Meinen `a` und `b` dasselbe Verzeichnis — nach den Regeln von `plattform`?
- *
- * Unter Windows sind `/` und `\` derselbe Trenner und Gross-/Kleinschreibung ist kein
- * Unterschied: git liefert `D:/a/repo`, `join` baut `D:\a\repo`, und der
- * Laufwerksbuchstabe kommt mal so, mal so. Ein Zeichenkettenvergleich hielt das
- * eigene Gate dort fuer einen fremden Hook-Manager (Issue #873). Unter POSIX gehoert
- * die Schreibweise dagegen zum Namen — dort wird nur normalisiert.
- *
- * Die Plattform ist ein Parameter und keine Abfrage im Rumpf: So ist die
- * Windows-Regel auf jedem Host pruefbar und nicht nur dort, wo sie wirkt.
+ * Meinen `a` und `b` dasselbe Verzeichnis? Verglichen werden die normalisierten Pfade,
+ * nicht der Wortlaut (Issue #873); die Gross-/Kleinschreibung gehoert zum Namen.
  */
-export function pfadeGleich(a, b, plattform = process.platform) {
-  if (plattform === "win32") {
-    return pfadWin32.resolve(a).toLowerCase() === pfadWin32.resolve(b).toLowerCase();
-  }
-  return pfadPosix.resolve(a) === pfadPosix.resolve(b);
+export function pfadeGleich(a, b) {
+  return resolve(a) === resolve(b);
 }
 
 /**
@@ -745,7 +732,7 @@ function schreibeHookDatei(hookTarget) {
   try {
     chmodSync(hookTarget, 0o755);
   } catch {
-    // Windows kennt kein x-Bit; chmod ist dort wirkungslos und kein Grund abzubrechen.
+    // Ein Dateisystem ohne x-Bit ist kein Grund abzubrechen; der Hook liegt trotzdem da.
   }
   console.log(`✓ pre-commit geschrieben: ${hookTarget}`);
 }
@@ -1006,7 +993,36 @@ function schreibeTeile(kitDir) {
   }
 }
 
+/**
+ * Die Abbruchmeldung unter nativem Windows (Issue #1276, Plan #1265 E3). "ab" und nicht
+ * "seit": Der `npx`-Weg zieht `main`, die Abweisung kann kurz vor dem Release wirken.
+ */
+const WINDOWS_ABWEISUNG = Object.freeze([
+  "claude-workflow-kit unterstützt natives Windows ab Version 4.0.0 nicht mehr.",
+  "Richte das Kit in WSL2 ein: https://docs.mwolff.org/wsl2",
+]);
+
+/**
+ * Die einzige Stelle, an der das Kit natives Windows noch erkennt (Fachplan #1264,
+ * Kriterien 6 und 9; Plan #1265 E1, E2, E4). Node meldet unter Git Bash, MSYS und
+ * Cygwin-Node `win32`, unter WSL2 `linux`: Die eine Bedingung weist genau die Wege ab,
+ * die das Kit nicht unterstuetzt, und laesst WSL2 durch. Liefert die Zeilen der
+ * Abbruchmeldung oder `null`; die Plattform ist ein Parameter, damit die Abweisung auf
+ * jedem Host pruefbar ist.
+ */
+export function windowsAbweisung(plattform = process.platform) {
+  return plattform === "win32" ? [...WINDOWS_ABWEISUNG] : null;
+}
+
 async function main() {
+  // Vor allem anderen, auch vor --version und dem Lesen von stdin (E1): Unter nativem
+  // Windows geschieht nichts am Projekt, und keine Ausgabe steht vor der Meldung.
+  const abweisung = windowsAbweisung();
+  if (abweisung) {
+    process.stderr.write(`${abweisung.join("\n")}\n`);
+    process.exit(1);
+  }
+
   if (process.argv.includes("--version")) {
     console.log(`claude-workflow-kit install.mjs v${VERSION}`);
     process.exit(0);
