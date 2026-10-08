@@ -90,7 +90,7 @@ test("[skills-20] beide Release-Skills fahren genau einen Prueflauf, und zwar mi
     // Basis, und der Nachweis spraeche ueber das letzte Stueck statt ueber den Batch.
     const zeile = text.slice(laeufe[0].index).split("\n")[0];
     assert.match(zeile, /--since/, `${wo}: der Lauf traegt keinen Anker: ${zeile}`);
-    assert.match(zeile, /git merge-base/, `${wo}: der Anker ist nicht der Batch-Anker: ${zeile}`);
+    assert.match(zeile, /git (-C <pfad> )?merge-base/, `${wo}: der Anker ist nicht der Batch-Anker: ${zeile}`);
   }
 });
 
@@ -99,7 +99,8 @@ test("[skills-20] beide Release-Skills schreiben genau einen Commit fest", () =>
     const text = lies(...pfad);
     const wo = pfad.join("/");
     // Gezaehlt werden ausfuehrbare Commit-Zeilen, nicht Erwaehnungen im Fliesstext.
-    const commits = [...text.matchAll(/^git commit /gm)];
+    // Im Worktree mit `-C <pfad>` (Issue #1372).
+    const commits = [...text.matchAll(/^git (-C <pfad> )?commit /gm)];
     assert.equal(commits.length, 1, `${wo}: genau ein 'git commit' erwartet, gefunden ${commits.length}`);
     assert.doesNotMatch(text, /git commit --amend/, `${wo}: kein Amend mehr auf diesem Weg`);
   }

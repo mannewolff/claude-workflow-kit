@@ -77,7 +77,7 @@ test("Schritt 3: Fetch, dann vorbereitung-pruefen, dann anlegen", () => {
   assert.match(SCHRITT3, /anlegen --praefix release --ref refs\/kit\/push-vorbereitet/,
     "bei Übernahme entsteht der Worktree nicht auf der vorbereiteten Referenz");
   assert.match(SCHRITT3, /anlegen --praefix release --ref <mainBranch>/, "ohne Übernahme fehlt der heutige Weg");
-  assert.match(SCHRITT3, /git rebase origin\/<mainBranch>/, "das Rebase im Worktree fehlt");
+  assert.match(SCHRITT3, /git -C <pfad> rebase origin\/<mainBranch>/, "das Rebase im Worktree fehlt");
 });
 
 test("im Modus vorbereiten wird erst unter gehaltener Umsetzungssperre geholt, ein Fehlschlag hält nicht an", () => {
@@ -97,7 +97,7 @@ test("im Modus vorbereiten ist auf dem Weg über den Build-Dienst Schritt 5 der 
   const m = flach(MODUS);
   assert.match(m, /Weg über den Build-Dienst/, "der Modus nennt den Weg über den Build-Dienst nicht");
   assert.match(m, /Nachweislauf der Paketstufe/, "der Modus nennt den Nachweislauf der Paketstufe nicht");
-  assert.match(m, /checks\.mjs run --since HEAD/, "der Modus nennt das Kommando des Nachweislaufs nicht");
+  assert.match(m, /checks\.mjs run --in <pfad> --since HEAD/, "der Modus nennt das Kommando des Nachweislaufs nicht");
   assert.match(m, /Build-Dienst-Punkt setzt das Kommando selbst/, "der Modus lässt die Session den Build-Dienst-Punkt setzen");
 });
 

@@ -10,7 +10,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync, realpathSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, readdirSync, realpathSync, symlinkSync } from "node:fs";
 import { join, basename } from "node:path";
 import { tmpdir, hostname } from "node:os";
 import { worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen, kitstandAbhaengigkeiten } from "../kit/night/kitstand.mjs";
@@ -79,7 +79,7 @@ test("[night-17] worktreeAnlegen legt den Worktree unter dem Temp-Verzeichnis an
   mitRepo((dir, angelegt) => {
     const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "635", stempel: "2026-09-14-010203" });
     angelegt.push(pfad);
-    assert.ok(pfad.startsWith(join(tmpdir(), `kette-${basename(dir)}-635-`)), `unerwarteter Pfad: ${pfad}`);
+    assert.ok(pfad.startsWith(join(realpathSync(tmpdir()), `kette-${basename(dir)}-635-`)), `unerwarteter Pfad: ${pfad}`);
     assert.ok(!pfad.startsWith(dir), "der Worktree darf nicht im Repo liegen");
     // Zeilenenden normalisiert: Git auf Windows-Runnern checkt mit CRLF aus; geprueft wird
     // der Stand von HEAD, nicht die Zeilenenden.
@@ -175,7 +175,7 @@ test("[night-908] worktreeAnlegen legt mit dem Praefix pruefung einen eigenen Or
   mitRepo((dir, angelegt) => {
     const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "908", stempel: "2026-09-24-010203", praefix: "pruefung" });
     angelegt.push(pfad);
-    assert.ok(pfad.startsWith(join(tmpdir(), `pruefung-${basename(dir)}-908-`)), `unerwarteter Pfad: ${pfad}`);
+    assert.ok(pfad.startsWith(join(realpathSync(tmpdir()), `pruefung-${basename(dir)}-908-`)), `unerwarteter Pfad: ${pfad}`);
     assert.ok(existsSync(join(pfad, KOPIE, "board.mjs")), "der Spiegel gilt unveraendert");
   });
 });
@@ -282,5 +282,64 @@ test("[night-1036] ohne spiegeln bleibt der Spiegel der Vorgabewert", () => {
     const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "1036", stempel: "gegen" });
     angelegt.push(pfad);
     assert.ok(existsSync(join(pfad, KOPIE, "board.mjs")), "die ignorierte Kit-Kopie wird weiter gespiegelt");
+  });
+});
+
+/**
+ * Setzt das Temp-Verzeichnis fuer die Dauer von `fn` auf einen Symlink, wie es auf macOS
+ * `/tmp` und `/var` sind (Issue #1372). `os.tmpdir()` liest `TMPDIR` bei jedem Aufruf.
+ */
+/* eslint-disable sonarjs/publicly-writable-directories -- Der Test setzt TMPDIR absichtlich auf
+   einen Symlink in ein eigenes, mit mkdtemp angelegtes Verzeichnis und stellt den Wert danach
+   zurueck; genau diesen Fall soll er pruefen. */
+function mitSymlinkTemp(fn) {
+  const echt = realpathSync(mkdtempSync(join(tmpdir(), "echt-temp-")));
+  const verweis = join(realpathSync(tmpdir()), `verweis-temp-${process.pid}-${Date.now()}`);
+  symlinkSync(echt, verweis, "dir");
+  const vorher = process.env.TMPDIR;
+  process.env.TMPDIR = verweis;
+  try {
+    fn({ echt, verweis });
+  } finally {
+    if (vorher === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = vorher;
+    rmSync(verweis, { force: true });
+    rmSync(echt, { recursive: true, force: true });
+  }
+}
+/* eslint-enable sonarjs/publicly-writable-directories */
+
+test("[night-1372] worktreeAnlegen liefert den realpath, auch wenn das Temp-Verzeichnis ein Symlink ist", () => {
+  mitRepo((dir, angelegt) => {
+    mitSymlinkTemp(({ echt }) => {
+      const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "1372", stempel: "symlink", praefix: "release" });
+      angelegt.push(pfad);
+      assert.equal(pfad, realpathSync(pfad), "der Pfad laeuft ueber einen Symlink");
+      assert.ok(pfad.startsWith(echt), `unerwarteter Pfad: ${pfad}`);
+      assert.ok(existsSync(`${pfad}.halter`), "der Halter liegt nicht neben dem Ordner");
+      worktreeEntfernen(pfad, dir);
+      assert.ok(!existsSync(pfad));
+    });
+  });
+});
+
+test("[night-1372] worktreesAufraeumen erkennt unter einem Symlink-Temp den behaltenen Ordner und liefert realpaths", () => {
+  mitRepo((dir, angelegt) => {
+    mitSymlinkTemp(({ verweis }) => {
+      const behalten = worktreeAnlegen({ repoRoot: dir, issueId: "1", stempel: "stand" });
+      angelegt.push(behalten);
+      halterTot(behalten);
+      const rest = worktreeAnlegen({ repoRoot: dir, issueId: "2", stempel: "rest" });
+      angelegt.push(rest);
+      halterTot(rest);
+
+      // Der behaltene Ordner, wie ihn ein frueherer Lauf ueber den Symlink notiert haette.
+      const ueberVerweis = join(verweis, basename(behalten));
+      // Geraeumt wird nur der andere, gemeldet als realpath — so, wie worktreeAnlegen ihn lieferte.
+      assert.deepEqual(worktreesAufraeumen(dir, "kette", ueberVerweis), [rest]);
+      assert.ok(!existsSync(rest), "der verwaiste Ordner blieb stehen");
+      assert.ok(existsSync(behalten), "der behaltene Ordner wurde geraeumt");
+      worktreeEntfernen(behalten, dir);
+    });
   });
 });

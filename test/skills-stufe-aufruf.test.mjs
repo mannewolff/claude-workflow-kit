@@ -55,7 +55,7 @@ test("[skills-31] /push-main ruft die Pruefungen mit --stufe push und dem Batch-
   // Ohne den Weg ueber den Build-Dienst (Issue #1216): Dessen Aufrufe belegt
   // test/skills-push-main.test.mjs.
   const zeilen = aufrufzeilen(skill("push-main").replace(/\n## Weg über den Build-Dienst[\s\S]*?(?=\n## )/, "\n"));
-  const passend = zeilen.filter((z) => z.includes("--stufe push") && z.includes("git merge-base"));
+  const passend = zeilen.filter((z) => z.includes("--stufe push") && /git (-C <pfad> )?merge-base/.test(z));
   assert.equal(passend.length, zeilen.length,
     `nicht jeder Aufruf traegt --stufe push und den merge-base-Anker: ${zeilen.join(" | ")}`);
 });

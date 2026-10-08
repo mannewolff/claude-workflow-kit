@@ -90,7 +90,8 @@ test("[release-1] anlegen setzt auf dem uebergebenen Ref auf und spiegelt .claud
     assert.equal(stand.ok, true);
     angelegt.push(stand.pfad);
 
-    assert.ok(stand.pfad.startsWith(join(tmpdir(), `release-${basename(dir)}-`)), `unerwarteter Pfad: ${stand.pfad}`);
+    // Der Pfad ist der realpath (Issue #1372).
+    assert.ok(stand.pfad.startsWith(join(realpathSync(tmpdir()), `release-${basename(dir)}-`)), `unerwarteter Pfad: ${stand.pfad}`);
     assert.ok(!stand.pfad.startsWith(dir), "der Worktree darf nicht im Repo liegen");
     // Der Ref entscheidet den Stand: `veroeffentlicht` traegt noch 1.0.0.
     assert.equal(readFileSync(join(stand.pfad, "VERSION"), "utf-8").replaceAll("\r\n", "\n"), "1.0.0\n");

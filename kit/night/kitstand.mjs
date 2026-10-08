@@ -670,12 +670,15 @@ function claudeSpiegeln(repoRoot, pfad) {
  * `spiegeln: false` laesst `.claude/` ungespiegelt: Der Worktree ist dann ein frischer
  * Checkout mit nur versionierten Dateien, wie ihn die Pruefung der Push-Stufe braucht
  * (Plan #1035).
+ *
+ * Der Pfad ist der realpath (Issue #1372): Ueber den macOS-Symlink des Temp-Verzeichnisses
+ * scheitert `npm ci --prefix <pfad>`.
  */
 export function worktreeAnlegen({ repoRoot, issueId = null, stempel, praefix = "kette", ref = "HEAD", spiegeln = true }) {
   // Ohne Kartennummer bleibt das Segment ganz weg (Plan #904, E11): Der Prueflauf legt
   // EINEN Worktree je Lauf an, und ein leeres Segment behauptete eine fehlende Nummer.
   const nummer = issueId === null ? "" : `${issueId}-`;
-  const pfad = join(tmpdir(), `${worktreePraefix(repoRoot, praefix)}${nummer}${stempel}`);
+  const pfad = join(tempWurzel(), `${worktreePraefix(repoRoot, praefix)}${nummer}${stempel}`);
   // Der Halter steht vor dem Ordner: Ein zweiter Start dazwischen saehe sonst einen Ordner
   // ohne Halter und raeumte ihn als verwaist ab (Plan #1113, E1).
   writeFileSync(halterPfad(pfad), JSON.stringify({ host: hostname(), pid: process.pid, seit: abh.jetzt().toISOString() }) + "\n", "utf-8");
@@ -686,6 +689,24 @@ export function worktreeAnlegen({ repoRoot, issueId = null, stempel, praefix = "
   }
   if (spiegeln) claudeSpiegeln(repoRoot, pfad);
   return pfad;
+}
+
+/**
+ * Das Temp-Verzeichnis als realpath (Issue #1372). Auf macOS fuehrt `tmpdir()` ueber den
+ * Symlink `/var` bzw. `/tmp`, und `npm ci --prefix <pfad>` scheitert an einem solchen Pfad
+ * mit „Missing: … from lock file“. Ueber den realpath laeuft es durch.
+ */
+function tempWurzel() {
+  return realpathSync(tmpdir());
+}
+
+/** `pfad` aufgeloest, wenn es ihn gibt, sonst nur normalisiert. */
+function echterPfad(pfad) {
+  try {
+    return realpathSync(pfad);
+  } catch {
+    return resolve(pfad);
+  }
 }
 
 /**
@@ -909,9 +930,10 @@ export function worktreesAufraeumen(repoRoot, praefixName = "kette", behalten = 
   gitIm(repoRoot, ["worktree", "prune"]);
   const praefix = worktreePraefix(repoRoot, praefixName);
   const entfernt = [];
-  const namen = readdirSync(tmpdir()).filter((n) => n.startsWith(praefix));
+  const wurzel = tempWurzel();
+  const namen = readdirSync(wurzel).filter((n) => n.startsWith(praefix));
   for (const name of namen) {
-    const pfad = join(tmpdir(), name);
+    const pfad = join(wurzel, name);
     if (name.endsWith(HALTER_ENDUNG)) {
       // Ein Halter ohne Ordner ist der Rest eines Absturzes zwischen den beiden Loeschungen.
       const ordner = pfad.slice(0, -HALTER_ENDUNG.length);
@@ -921,7 +943,9 @@ export function worktreesAufraeumen(repoRoot, praefixName = "kette", behalten = 
     // Der Ordner eines lebenden Runners ist kein Rest (Issue #1183): Ihn zu raeumen zerstoerte
     // die Arbeit einer Kette, die in einer anderen Session laeuft.
     if (halterLebt(pfad)) continue;
-    if (behalten && resolve(pfad) === resolve(behalten)) continue;
+    // Ueber den realpath (Issue #1372): Gelistet wird unter dem realpath des Temp-Verzeichnisses,
+    // und ein frueher notierter Pfad kann noch ueber den Symlink laufen.
+    if (behalten && pfad === echterPfad(behalten)) continue;
     worktreeEntfernen(pfad, repoRoot);
     entfernt.push(pfad);
   }

@@ -166,8 +166,7 @@ soll — oder auf dem vorbereiteten Commit, und wird dort mit dem veröffentlich
 zusammengeführt. Geholt hat ihn die Hauptkopie schon; der Worktree teilt ihre Referenzen:
 
 ```bash
-cd <pfad>
-git rebase origin/<mainBranch>
+git -C <pfad> rebase origin/<mainBranch>
 ```
 
 Das Rebase ist nötig, weil ein früherer Worktree-Release seinen Commit nur auf `origin`
@@ -176,10 +175,21 @@ gelegt hat; ohne es liefe der Push ins `non-fast-forward`. Schon übernommene Co
 kein Push. Der Skill meldet die Konfliktdateien, entfernt den Worktree (Schritt 8) und
 endet — das Zusammenführen ist Handarbeit des Menschen.
 
-**Alle Kommandos der Schritte 4 bis 7 laufen in diesem Worktree.** Der `cd`-Aufruf oben
-steht deshalb als **eigenes** Kommando: Das Arbeitsverzeichnis bleibt für die folgenden
-Aufrufe erhalten. Vor Schritt 6 wird das einmal mit `pwd` nachgesehen — ein Commit im
-falschen Baum ist genau der Fehler, den dieser Schritt beseitigt.
+**Alle Kommandos der Schritte 4 bis 7 laufen in diesem Worktree — ohne `cd`.** Claude Code
+setzt das Arbeitsverzeichnis außerhalb der erlaubten Verzeichnisse nach jedem Aufruf zurück,
+und ein zusammengesetzter Aufruf mit vorangestelltem `cd` fällt nicht mehr unter
+`sandbox.excludedCommands` — der Prüflauf liefe in der Sandbox (Issue #1372). Darum nennt
+jeder Aufruf den Worktree selbst und steht allein:
+
+- **git:** `git -C <pfad> …`
+- **der Prüflauf:** `checks.mjs run --in <pfad> …` (Schritt 5)
+- **jedes andere Kommando**, etwa aus `RELEASING.md`:
+  `node .claude/kit/worktree.mjs im <pfad> -- <kommando> [argumente]` — es startet das
+  Kommando ohne Shell mit dem Worktree als Arbeitsverzeichnis und reicht Ausgabe und
+  Exitcode durch.
+
+Ein Commit im falschen Baum ist genau der Fehler, den dieser Schritt beseitigt; mit `-C`
+und `--in` steht der Baum in jedem Aufruf.
 
 **Bei Übernahme entfallen die Schritte 4 bis 6.** Der vorbereitete Commit trägt Bump und
 Changelog schon, und sein Prüflauf war grün; ein zweiter Bump wäre eine weitere Version.
@@ -216,7 +226,9 @@ scheitert, wird nie als grüner Lauf gemeldet und nie ausgelassen.
 Prüfe, ob im Repo-Root eine `RELEASING.md` liegt.
 - **Ja:** Führe die dort unter dem Push-Trigger (`push main`) beschriebenen Schritte aus —
   **bis zum ersten festschreibenden Schritt**, also typischerweise Bump, Stempel und
-  Changelog. Nicht committen, nicht pushen: Das kommt aus Schritt 5 und 6.
+  Changelog. Nicht committen, nicht pushen: Das kommt aus Schritt 5 und 6. Jeder Schritt
+  läuft im Worktree über `node .claude/kit/worktree.mjs im <pfad> -- <kommando>`, etwa
+  `node .claude/kit/worktree.mjs im <pfad> -- node tools/version.mjs --patch`.
 - **Nein:** Nichts weiter tun — direkt weiter zu Schritt 5.
 
 **Fremde `RELEASING.md`.** Die Grenze ist der erste Schritt, der festschreibt oder
@@ -235,8 +247,10 @@ ausschließlich in der `RELEASING.md` des jeweiligen Repos.
 Jetzt liegen alle Dateien des Wegs auf der Platte: die Release-Dateien aus Schritt 4 — **im
 Worktree**, und dort misst der Lauf sie. Genau diesen Stand misst **ein** Lauf:
 
+Der Lauf misst mit `--in` im Worktree (Issue #1372):
+
 ```bash
-node .claude/kit/checks.mjs run --stufe push --since "$(git merge-base HEAD origin/<mainBranch>)"
+node .claude/kit/checks.mjs run --in <pfad> --stufe push --since "$(git -C <pfad> merge-base HEAD origin/<mainBranch>)"
 ```
 
 `<mainBranch>` ist der Wert aus der Config (Default: `main`).
@@ -293,7 +307,7 @@ von `/issue-review` —, ergänzt den Befunde-Text je Fundblock um die Zeile
 Transportregel als eigene Datei außerhalb des Projektverzeichnisses:
 
 ```bash
-node .claude/kit/befunde.mjs buchen --datei <tmpdir>/<id>-buchung.md --stufe code --karte <id>
+node .claude/kit/worktree.mjs im <pfad> -- node .claude/kit/befunde.mjs buchen --datei <tmpdir>/<id>-buchung.md --stufe code --karte <id>
 ```
 
 **Gebucht wird im Worktree**, weil der Vergleichsstand die Zusammenfassung des Prüflaufs
@@ -316,11 +330,11 @@ Nummer** und zählt in keiner Fortschrittszeile mit.
 
 > `Schritt 6 von 9 — Commit (laeuft)`
 
-**Im Worktree** — einmal `pwd` davor, siehe Schritt 3.
+**Im Worktree** — jedes git-Kommando mit `-C <pfad>`, siehe Schritt 3.
 
 ```bash
-git add <die Dateien aus Schritt 4>
-git commit -m "<Betreff nach der Regel unten>"
+git -C <pfad> add <die Dateien aus Schritt 4>
+git -C <pfad> commit -m "<Betreff nach der Regel unten>"
 ```
 
 **Betreff.** Hat Schritt 4 Release-Dateien erzeugt: `chore: vX.Y.Z` mit der Kennung aus
@@ -340,7 +354,8 @@ Push fährt allein die Commits aus Schritt 2.
 > `Schritt 7 von 9 — Push (laeuft)`
 
 **Vor-Push-Schritt.** Nennt `RELEASING.md` einen Vor-Push-Schritt, fährt der Skill ihn
-nach dem Commit (Schritt 6) und vor dem Push, im Worktree, **im Hintergrund**, und wartet
+nach dem Commit (Schritt 6) und vor dem Push, im Worktree über
+`node .claude/kit/worktree.mjs im <pfad> -- <kommando>`, **im Hintergrund**, und wartet
 auf dessen Ende — er kann länger laufen, als ein Werkzeugaufruf im Vordergrund darf, und
 endet nach seiner eigenen Frist von selbst. Seine Fortschrittszeilen und seine Schlusszeile
 zeigt der Skill, bevor er pusht. Er ist kein eigener Schritt: Die Zählung bleibt `von 9`.
@@ -355,7 +370,7 @@ Nennt `RELEASING.md` keinen, oder gibt es keine `RELEASING.md`, entfällt er ers
 Aus dem Worktree, der auf einem losgelösten `HEAD` steht:
 
 ```bash
-git push origin HEAD:<mainBranch>
+git -C <pfad> push origin HEAD:<mainBranch>
 ```
 
 **Kein `--force`, auch nicht nach dem Rebase.** Der Push ist nach Schritt 3 ein
@@ -460,7 +475,7 @@ Commit-Gate verlangt für die Release-Dateien aus Schritt 4 trotzdem einen grün
 sie gesehen hat. Ihn liefert ein Lauf der Paketstufe über genau diese Dateien, im Worktree:
 
 ```bash
-node .claude/kit/checks.mjs run --since HEAD
+node .claude/kit/checks.mjs run --in <pfad> --since HEAD
 ```
 
 Rot hält an wie in Schritt 5: kein Commit, kein Push, weiter mit Schritt 8. Hat Schritt 4
@@ -472,12 +487,12 @@ nichts erzeugt, meldet er `leeresPaket`, und Schritt 6 entfällt wie beschrieben
 1. Den Stand auf den Prüfzweig pushen:
 
    ```bash
-   git push origin HEAD:<zweig>
+   git -C <pfad> push origin HEAD:<zweig>
    ```
 
    Wird er abgewiesen, liegt auf `<zweig>` noch ein fremder Stand — der Lauf endet mit
    dieser Meldung, weiter mit Schritt 8. Kein `--force`.
-2. Warten, bis der Build-Dienst fertig ist. `<sha>` ist `git rev-parse HEAD` im Worktree:
+2. Warten, bis der Build-Dienst fertig ist. `<sha>` ist die Ausgabe von `git -C <pfad> rev-parse HEAD`:
 
    ```bash
    node .claude/kit/board.mjs code ci-status --commit <sha>
@@ -491,7 +506,7 @@ nichts erzeugt, meldet er `leeresPaket`, und Schritt 6 entfällt wie beschrieben
 3. `<mainBranch>` nur bei `gruen` pushen — mit demselben Kommando wie in Schritt 7:
 
    ```bash
-   git push origin HEAD:<mainBranch>
+   git -C <pfad> push origin HEAD:<mainBranch>
    ```
 
    Für ihn gilt der Absatz zu `--force` und zum abgewiesenen Push aus Schritt 7.
@@ -513,7 +528,7 @@ Grund, weiter mit Schritt 8.
 dem Rückweg, auch nach Rot, Fristablauf oder abgewiesenem Push:
 
 ```bash
-git push origin --delete <zweig>
+git -C <pfad> push origin --delete <zweig>
 ```
 
 So beginnt der nächste Lauf auf einem leeren Prüfzweig und braucht nie `--force`. Scheitert
@@ -541,7 +556,7 @@ Morgens übernimmt `push main` den Stand, wenn er sich nicht geändert hat (Schr
   node .claude/kit/worktree.mjs anlegen --praefix vorbereitung --ref <mainBranch>
   ```
 
-  Danach `cd <pfad>` und `git rebase origin/<mainBranch>` wie oben. **Scheitert der
+  Danach `git -C <pfad> rebase origin/<mainBranch>` wie oben. **Scheitert der
   Fetch**, ist das kein Abbruch: Gerebased wird auf die vorhandene Referenz
   `origin/<mainBranch>`, der Lauf geht weiter und übergibt beim Festhalten
   `--fetch fehlgeschlagen`. Ein Rebase-Konflikt endet wie oben ohne Festhalten; der Runner
@@ -549,7 +564,7 @@ Morgens übernimmt `push main` den Stand, wenn er sich nicht geändert hat (Schr
 - **Schritt 4:** Ohne `RELEASING.md` entfällt er wie oben (E15).
 - **Schritt 5:** der volle Prüflauf der Push-Stufe. Auf dem Weg über den Build-Dienst ist
   Schritt 5 der Nachweislauf der Paketstufe aus dem Abschnitt „Weg über den Build-Dienst"
-  (`checks.mjs run --since HEAD`), danach der Commit (E17). Der volle Lauf im Build-Dienst
+  (`checks.mjs run --in <pfad> --since HEAD`), danach der Commit (E17). Der volle Lauf im Build-Dienst
   bleibt offen und läuft morgens in Schritt 7.
 - **Schritt 6:** der Commit `chore: vX.Y.Z` im Worktree, wie oben.
 
