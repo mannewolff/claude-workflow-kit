@@ -2,6 +2,16 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [4.0.1] - 2026-10-08
+- Doku-Tests auf Skillzahl und Sidebar-Anker der Doku-Seite ausdehnen (#1340)
+- future aus der Probeliste genommen
+- Wurde geändert beim groomen
+- Aufwandsauswertung um Verteilung je Laufart und Aufgabenstufe erweitern (#1339)
+- Konzeptdokumente nach konzepte/ verschieben und historische Texte markieren (#1338)
+- Modell-IDs der Config-Vorlage vereinheitlichen und gegen die Preistabelle prüfen (#1337)
+- Sidebar und Beschreibung der Doku-Seite auf sechzehn Skills korrigieren (#1336)
+- Erweiterungsdokument für Version 5.0
+
 ## [4.0.0] - 2026-10-08
 - Natives Windows wird ab 4.0.0 nicht mehr unterstützt; Umzug nach WSL2: docs.mwolff.org/wsl2#umzug-von-nativem-windows (#1276)
 - Kette hält den Stand der Ursprungsdokumente nach der Umsetzungsstufe fest (#1290)
