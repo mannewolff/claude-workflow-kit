@@ -92,6 +92,22 @@ test("die Sidebar traegt Links mit Anker — sonst prueft dieser Test nichts", (
   assert.ok(ankerLinks(readFileSync(CONFIG, "utf-8")).length > 0);
 });
 
+test("beide Seitenleisten tragen Links mit Anker — die englische gegen docs/en/ (Issue #1370)", () => {
+  // Die englische Seitenleiste verlinkt `/en/dokumentation#…`; ihr Anker wird gegen
+  // `docs/en/dokumentation.md` geprueft. Fehlte eine der beiden Seitenleisten, prueften
+  // die Faelle hier nur noch die halbe Doku.
+  const seiten = new Set(ankerLinks(readFileSync(CONFIG, "utf-8")).map((l) => l.seite));
+  assert.ok(seiten.has("dokumentation"), "keine Anker-Links der deutschen Seitenleiste gefunden");
+  assert.ok(seiten.has("en/dokumentation"), "keine Anker-Links der englischen Seitenleiste gefunden");
+});
+
+test("Gegenprobe: ein deutscher Anker in der englischen Seitenleiste wird als tot erkannt", () => {
+  const config = `{ text: "Three lanes", link: "/en/dokumentation#drei-bahnen" },`;
+  assert.deepEqual(toteAnker(config, echteSeite), [
+    'en/dokumentation#drei-bahnen ("Three lanes"): kein solcher Anker auf docs/en/dokumentation.md',
+  ]);
+});
+
 test("jeder Sidebar-Anker in docs-site/.vitepress/config.ts zeigt auf eine Ueberschrift", () => {
   assert.deepEqual(toteAnker(readFileSync(CONFIG, "utf-8"), echteSeite), []);
 });
