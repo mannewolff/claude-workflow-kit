@@ -24,6 +24,7 @@ Unverändert bleiben in beiden Sprachen Befehle, Labels, Titel-Präfixe der Kart
 | Karte | card |
 | Laufstand | run status |
 | Leitplanke | guardrail |
+| Mitteilung | statement |
 | Nachtbetrieb | night mode |
 | Nacht-Kette | night chain |
 | Nacht-Runner | night runner |
