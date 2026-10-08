@@ -1,5 +1,7 @@
 # Das Werkzeug, das ich brauche, gibt es nicht
 
+Text vom 29.06.2026, Stand vor Kit 1.5.0. Zahlen und Plattformen beschreiben den damaligen Stand.
+
 Alle reden von Agenten. Ein Agent plant. Ein Agent schreibt das Issue. Ein Agent codet. Ein Agent reviewt. Ein Agent prüft die Security. Jede Woche ein neues Tool, das einen Schritt mehr übernimmt.
 
 Ich habe einen Prozess für die KI-gestützte Entwicklung. Neun Schritte, vom ersten Plan bis zum Release. Als ich nach einer Tool-Unterstützung dafür gesucht habe, ist mir etwas aufgefallen: Das Werkzeug, das ich brauche, baut gerade niemand.

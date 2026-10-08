@@ -18,7 +18,7 @@ Die Kette ruft in `stufeReview` den Prompt `/issue-review #<planId>` auf. Der Sk
 
 Das funktioniert. Es hat drei Kanten.
 
-Die erste Kante ist die Werkzeugliste. Ein Claude-Subagent erbt, was die aufrufende Session darf, und die Nacht-Session läuft mit `--permission-mode acceptEdits`. Der Reviewer könnte also Dateien ändern. Er tut es nicht, weil im Prompt steht, dass er Befunde melden soll. Ich halte das für die schwächste Stelle des Aufbaus: Anti-Pattern 9 sagt, dass ein Modell nicht entscheidet, ob etwas durchgeht. Der gleiche Gedanke gilt eine Ebene tiefer. Ein Modell sollte auch nicht selbst entscheiden, ob es schreibt.
+Die erste Kante ist die Werkzeugliste. Ein Claude-Subagent erbt, was die aufrufende Session darf, und die Nacht-Session läuft im Auto-Modus (`--permission-mode auto --permission-prompts none`, siehe `permissionArgs` in `kit/night/session.mjs`). Der Auto-Modus wendet die Allowlist an, zieht aber keine Werkzeuggrenze für Reviewer. Der Reviewer könnte also Dateien ändern. Er tut es nicht, weil im Prompt steht, dass er Befunde melden soll. Ich halte das für die schwächste Stelle des Aufbaus: Anti-Pattern 9 sagt, dass ein Modell nicht entscheidet, ob etwas durchgeht. Der gleiche Gedanke gilt eine Ebene tiefer. Ein Modell sollte auch nicht selbst entscheiden, ob es schreibt.
 
 Die zweite Kante ist der Weg des Prompts. Der Rollentext steht im SKILL.md, also muss die aufrufende Session das SKILL.md lesen, den passenden Block heraussuchen und ihn an den Subagenten weitergeben. Bei fünf Rollen sind das rund hundert Zeilen, die bei jedem Lauf durch den Kontext der Session wandern, damit am Ende eine davon gebraucht wird.
 

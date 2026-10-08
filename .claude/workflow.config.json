@@ -790,16 +790,8 @@
       "grund": "Herkunftsnotiz zu den Schriftdateien; keine Pruefung liest sie."
     },
     {
-      "muster": "konzept-rollen-als-agenten.md",
-      "grund": "Notizdokument in der Wurzel; keine Pruefung liest seinen Inhalt."
-    },
-    {
-      "muster": "prozess-pruefstand.md",
-      "grund": "Notizdokument in der Wurzel; keine Pruefung liest seinen Inhalt."
-    },
-    {
-      "muster": "prozess-pruefstand-nachtlauf.md",
-      "grund": "Notizdokument in der Wurzel; keine Pruefung liest seinen Inhalt."
+      "muster": "konzepte/**",
+      "grund": "Notizdokumente; keine Prüfung liest ihren Inhalt."
     }
   ],
   "nurGeruest": [
