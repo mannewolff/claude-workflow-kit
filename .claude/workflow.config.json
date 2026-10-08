@@ -350,6 +350,14 @@
       ]
     },
     {
+      "cmd": "node --test test/checks-leichtigkeit.test.mjs",
+      "gleichzeitig": true,
+      "areas": [
+        "pruefungen",
+        "testdateien"
+      ]
+    },
+    {
       "cmd": "node --test --test-concurrency=2 \"test/migrate-*.test.mjs\" \"test/ablauf-migrate-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
@@ -761,6 +769,10 @@
       "tools/frischer-checkout*.mjs",
       "test/tools-frischer-checkout*.test.mjs",
       "test/ablauf-tools-frischer-checkout*.test.mjs"
+    ],
+    "testdateien": [
+      "test/**/*.test.mjs",
+      "test/helpers/**"
     ]
   },
   "ohnePruefung": [

@@ -55,9 +55,9 @@ Most tests check in the same process: They import the part and call its function
 - **Group:** In the kit, flow checks live in files `test/ablauf-*.test.mjs` and run in check commands of their own, separate from the lightweight tests. Their `areas` name the areas of all programs the flow starts — so the process coupling is captured without a config key of its own, and the coupling gate checks it.
 
 ### The guard's rules
-<!-- de: 0596b933425d -->
+<!-- de: d11910aa0bda -->
 
-The guard test `test/checks-leichtigkeit.test.mjs` checks every test file, without an exception list:
+The guard test `test/checks-leichtigkeit.test.mjs` checks every test file, without an exception list. It runs as a check of its own with the area `testdateien` and therefore with every new or changed file under `test/`, not only in the full scope (Issue #1374):
 
 1. **Mark flow checks:** Whoever starts a child process from `kit/` or `tools/` — directly or via an import chain through `test/helpers/` — carries the line `// Ablauf-Pruefung:` with a reason.
 2. **No pauses:** no fixed waiting time (`await setTimeout(…)`, `pause(ms)` without a condition). A bounded wait for a condition (`warteAuf(pruefung, ms)`) is allowed only in a marked flow check and fails with a finding when the deadline expires.

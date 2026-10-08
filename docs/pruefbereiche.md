@@ -49,7 +49,7 @@ Die meisten Tests prüfen im selben Prozess: Sie importieren den Teil und rufen 
 
 ### Die Regeln des Wächters
 
-Der Wächtertest `test/checks-leichtigkeit.test.mjs` prüft jede Testdatei, ohne Ausnahmeliste:
+Der Wächtertest `test/checks-leichtigkeit.test.mjs` prüft jede Testdatei, ohne Ausnahmeliste. Er läuft als eigene Prüfung mit dem Bereich `testdateien` und damit bei jeder neuen oder geänderten Datei unter `test/` mit, nicht erst im vollen Umfang (Issue #1374):
 
 1. **Ablauf-Prüfung kennzeichnen:** Wer einen Kindprozess aus `kit/` oder `tools/` startet — direkt oder über eine Importkette durch `test/helpers/` —, trägt die Zeile `// Ablauf-Pruefung:` mit Grund.
 2. **Keine Pausen:** keine feste Wartezeit (`await setTimeout(…)`, `pause(ms)` ohne Bedingung). Ein begrenztes Warten auf eine Bedingung (`warteAuf(pruefung, ms)`) ist nur in einer gekennzeichneten Ablauf-Prüfung erlaubt und scheitert bei Fristablauf mit Befund.
