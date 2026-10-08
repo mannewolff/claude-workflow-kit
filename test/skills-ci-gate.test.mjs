@@ -113,7 +113,7 @@ test("[skills-19] Schritt 7 faehrt einen Vor-Push-Schritt aus RELEASING.md vor d
   const schritt = schrittPush();
   const vorPush = schritt.search(/Vor-Push-Schritt/);
   assert.notEqual(vorPush, -1, "Schritt 7 nennt keinen Vor-Push-Schritt");
-  const push = schritt.search(/git push origin HEAD:/);
+  const push = schritt.search(/git -C <pfad> push origin HEAD:/);
   assert.notEqual(push, -1, "der Push fehlt in Schritt 7");
   assert.ok(vorPush < push, "der Vor-Push-Schritt steht hinter dem Push");
   const absatz = absatzMit(schritt, /Vor-Push-Schritt/);

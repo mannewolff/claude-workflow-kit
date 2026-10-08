@@ -35,7 +35,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, copyFileSync, mkdirSync, readFileSync, appendFileSync, realpathSync } from "node:fs";
+import { existsSync, copyFileSync, mkdirSync, readFileSync, appendFileSync, realpathSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -46,7 +46,7 @@ import {
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "4.0.0";
+const KIT_VERSION = "4.1.0";
 
 const HELP = `worktree.mjs (claude-workflow-kit v${KIT_VERSION}) — Worktree fuer die Release-Skills
 
@@ -64,8 +64,12 @@ const HELP = `worktree.mjs (claude-workflow-kit v${KIT_VERSION}) — Worktree fu
   vorbereitung-pruefen [--verwerfen]                    Darf /push-main den vorbereiteten Stand
                                                         uebernehmen? Kein eigenes git fetch.
                                                         --verwerfen loescht Datei und Referenz
+  im <pfad> -- <kommando> [argumente]                   Startet <kommando> mit <pfad> als
+                                                        Arbeitsverzeichnis, ohne Shell; Ausgabe
+                                                        und Exitcode des Kommandos gehen durch
 
-Die letzte Zeile der Ausgabe ist immer JSON.
+Die letzte Zeile der Ausgabe ist immer JSON — ausser bei 'im', das die Ausgabe des
+Kommandos durchreicht und nur bei einem eigenen Fehler JSON schreibt.
 `;
 
 /** Die Dateien, die der Rueckweg ANHAENGT (Buchhaltung, nie ersetzen). */
@@ -229,6 +233,25 @@ function vorbereitungFesthaltenAufruf(repoRoot, cliArgs) {
   return { ok: true, ...vorbereitungFesthalten({ repoRoot, pfad, ergebnis, offen: flagWerte(cliArgs, "--offen"), fetch }) };
 }
 
+/**
+ * `im <pfad> -- <kommando> [argumente]` (Issue #1372): Die Release-Skills fahren die
+ * Schritte aus RELEASING.md im Worktree, ohne `cd`. Claude Code setzt das
+ * Arbeitsverzeichnis ausserhalb der erlaubten Verzeichnisse nach jedem Aufruf zurueck, und
+ * `cd <pfad> && …` fiele nicht mehr unter `sandbox.excludedCommands`. Gestartet wird ohne
+ * Shell — die Argumente gehen woertlich durch —, mit geerbter Ausgabe; der Rueckgabewert
+ * ist der Exitcode des Kommandos.
+ */
+function imWorktree(cliArgs) {
+  const [pfad, trenner, programm, ...argumente] = cliArgs;
+  if (!pfad || pfad === "--" || trenner !== "--" || !programm) {
+    throw new Error("im braucht <pfad> -- <kommando> [argumente]");
+  }
+  if (!existsSync(pfad) || !statSync(pfad).isDirectory()) throw new Error(`im: '${pfad}' ist kein Verzeichnis`);
+  const res = spawnSync(programm, argumente, { cwd: pfad, stdio: "inherit" });
+  if (res.error) throw new Error(`im: '${programm}' liess sich nicht starten (${res.error.message})`);
+  return res.status ?? 1;
+}
+
 function fuehreAus(kommando, cliArgs) {
   if (kommando === "nachziehen-pruefen") return { ok: true, ...nachziehenPruefen(repoWurzel()) };
   if (kommando === "anlegen") return anlegen(repoWurzel(), cliArgs);
@@ -238,7 +261,7 @@ function fuehreAus(kommando, cliArgs) {
   if (kommando === "vorbereitung-pruefen") {
     return { ok: true, ...vorbereitungPruefen({ repoRoot: repoWurzel(), verwerfen: cliArgs.includes("--verwerfen") }) };
   }
-  throw new Error(`unbekanntes Kommando '${kommando}' — bekannt sind anlegen, entfernen, nachziehen-pruefen, rueckweg, vorbereitung-festhalten, vorbereitung-pruefen`);
+  throw new Error(`unbekanntes Kommando '${kommando}' — bekannt sind anlegen, entfernen, im, nachziehen-pruefen, rueckweg, vorbereitung-festhalten, vorbereitung-pruefen`);
 }
 
 function main() {
@@ -248,6 +271,10 @@ function main() {
     return;
   }
   try {
+    if (kommando === "im") {
+      process.exitCode = imWorktree(cliArgs);
+      return;
+    }
     process.stdout.write(`${JSON.stringify(fuehreAus(kommando, cliArgs))}\n`);
   } catch (err) {
     process.stdout.write(`${JSON.stringify({ ok: false, fehler: err.message })}\n`);

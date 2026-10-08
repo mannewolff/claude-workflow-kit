@@ -170,3 +170,111 @@ test("die Beschreibung des Textblocks in Dateischreibweise nennt Modellliste und
   assert.match(absatz, /night\.modelle/);
   assert.match(absatz, /nicht kennt/);
 });
+
+// Die englische Einstellungs-Referenz (Issue #1356, Plan #1348 E8): Die Uebersetzung
+// liegt in tools/config-referenz.en.json, je Einstellung mit dem Hash der deutschen
+// Beschreibung. Sie gilt erst, wenn docs/en/dokumentation.md beide Marker traegt.
+
+const UEBERSETZUNG = join(repoRoot, "tools", "config-referenz.en.json");
+const EN_KOPF = "# Documentation\n\n## All settings\n\n<!-- einstellungen:start -->\n<!-- einstellungen:ende -->\n\nTail.\n";
+
+function mitEnglisch(fn) {
+  return mitKopie((dir) => {
+    mkdirSync(join(dir, "tools"));
+    mkdirSync(join(dir, "docs", "en"));
+    copyFileSync(UEBERSETZUNG, join(dir, "tools", "config-referenz.en.json"));
+    writeFileSync(join(dir, "docs", "en", "dokumentation.md"), EN_KOPF);
+    return fn(dir);
+  });
+}
+
+function englischerAbschnitt(dir) {
+  const text = readFileSync(join(dir, "docs", "en", "dokumentation.md"), "utf-8");
+  return text.slice(text.indexOf("<!-- einstellungen:start -->"), text.indexOf("<!-- einstellungen:ende -->"));
+}
+
+test("[1356] die Uebersetzung deckt jede Einstellung des Schemas mit Text und 12-stelligem Hash", () => {
+  // Vollstaendig gegen das Schema: Traegt die englische Datei die Marker, nennt --check
+  // jede Einstellung ohne Eintrag. Ein gruener Lauf auf der Repo-Kopie heisst darum,
+  // dass jeder Pfad, den referenz() ausgibt, uebersetzt und aktuell ist.
+  const eintraege = JSON.parse(readFileSync(UEBERSETZUNG, "utf-8"));
+  for (const [pfad, e] of Object.entries(eintraege)) {
+    assert.equal(typeof e.text, "string", `${pfad}: text fehlt`);
+    assert.ok(e.text.trim().length > 0, `${pfad}: text leer`);
+    assert.match(e.de, /^[0-9a-f]{12}$/, `${pfad}: Hash nicht 12-stellig`);
+  }
+  mitEnglisch((dir) => {
+    const res = lauf(["--check"], dir);
+    assert.equal(res.status, 1, "ohne geschriebenen Abschnitt muss --check rot sein");
+    assert.doesNotMatch(res.stderr, /englischer Eintrag fehlt|Hash veraltet/);
+    assert.equal(lauf([], dir).status, 0);
+    const res2 = lauf(["--check"], dir);
+    assert.equal(res2.status, 0, `${res2.stdout}\n${res2.stderr}`);
+  });
+});
+
+test("[1356] ein fehlender englischer Eintrag macht --check rot und nennt die Einstellung", () => {
+  mitEnglisch((dir) => {
+    const pfad = join(dir, "tools", "config-referenz.en.json");
+    const eintraege = JSON.parse(readFileSync(pfad, "utf-8"));
+    delete eintraege["night.kette.planMin"];
+    writeFileSync(pfad, JSON.stringify(eintraege, null, 2));
+    const res = lauf(["--check"], dir);
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /night\.kette\.planMin: englischer Eintrag fehlt/);
+  });
+});
+
+test("[1356] eine geaenderte deutsche Beschreibung macht den Hash veraltet, --check nennt die Einstellung", () => {
+  mitEnglisch((dir) => {
+    assert.equal(lauf([], dir).status, 0);
+    const pfad = join(dir, "templates", "workflow.config.schema.json");
+    const schema = JSON.parse(readFileSync(pfad, "utf-8"));
+    schema.properties.mainBranch.description = "Eine neue Beschreibung.";
+    writeFileSync(pfad, JSON.stringify(schema, null, 2));
+    const res = lauf(["--check"], dir);
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /mainBranch: Hash veraltet/);
+    assert.doesNotMatch(res.stderr, /codeHost/);
+  });
+});
+
+test("[1356] die englische Ausgabe traegt englischen Rahmentext, kein 'gültig' und keinen deutschen Hinweissatz", () => {
+  mitEnglisch((dir) => {
+    assert.equal(lauf([], dir).status, 0);
+    const abschnitt = englischerAbschnitt(dir);
+    assert.match(abschnitt, /_This section is generated from `templates\/workflow\.config\.schema\.json`/);
+    assert.match(abschnitt, /\(valid: `github`, `gitlab`, `local`\)/);
+    assert.doesNotMatch(abschnitt, /gültig/);
+    assert.doesNotMatch(abschnitt, /Dieser Abschnitt entsteht/);
+    // Die Einstellungsnamen bleiben unuebersetzt.
+    assert.match(abschnitt, /^### `mainBranch`$/m);
+    assert.match(abschnitt, /^- `night\.kette\.planMin` — /m);
+  });
+});
+
+test("[1356] geschrieben wird nur zwischen den Markern der englischen Datei, die deutsche bleibt unberuehrt", () => {
+  mitEnglisch((dir) => {
+    const de = readFileSync(join(dir, "docs", "dokumentation.md"), "utf-8");
+    assert.equal(lauf([], dir).status, 0);
+    const text = readFileSync(join(dir, "docs", "en", "dokumentation.md"), "utf-8");
+    assert.ok(text.startsWith("# Documentation\n\n## All settings\n\n<!-- einstellungen:start -->\n"));
+    assert.ok(text.endsWith("<!-- einstellungen:ende -->\n\nTail.\n"));
+    assert.match(englischerAbschnitt(dir), /Branch for local commits and push \(step 8\)\./);
+    assert.equal(readFileSync(join(dir, "docs", "dokumentation.md"), "utf-8"), de);
+    const erst = text;
+    assert.equal(lauf([], dir).status, 0);
+    assert.equal(readFileSync(join(dir, "docs", "en", "dokumentation.md"), "utf-8"), erst);
+  });
+});
+
+test("[1356] ohne Marker in der englischen Datei bleibt sie unberuehrt und --check prueft keine Uebersetzung", () => {
+  mitEnglisch((dir) => {
+    const en = join(dir, "docs", "en", "dokumentation.md");
+    writeFileSync(en, "# Documentation\n\nNo markers yet.\n");
+    writeFileSync(join(dir, "tools", "config-referenz.en.json"), "{}");
+    assert.equal(lauf(["--check"], dir).status, 0);
+    assert.equal(lauf([], dir).status, 0);
+    assert.equal(readFileSync(en, "utf-8"), "# Documentation\n\nNo markers yet.\n");
+  });
+});

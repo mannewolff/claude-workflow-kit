@@ -4,8 +4,8 @@
  *
  * Macht aus den Ergebnisstaenden der unbeaufsichtigten Laeufe eine Aussage darueber, wo
  * die Zeit und das Geld eines Prozesslaufs hingehen: `auswerten` liest sie, aggregiert
- * Zeit, Pruefungen, Umfang, Kosten und den Aufwand je Aufgabenstufe (Issue #848)
- * und schreibt `.claude/aufwand.md` (fuer Menschen)
+ * Zeit, Pruefungen, Umfang, Kosten, den Aufwand je Aufgabenstufe (Issue #848) und die
+ * Verteilung je Laufart und Aufgabenstufe (Issue #1339) und schreibt `.claude/aufwand.md` (fuer Menschen)
  * und `.claude/aufwand.json` (fuer die zwei Ausgabestellen). `befund` gibt allein den
  * Befundblock als Text aus.
  *
@@ -53,7 +53,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "4.0.0";
+const KIT_VERSION = "4.1.0";
 
 const CLAUDE_DIR = ".claude";
 const STAND_DATEI = "aufwand.json";
@@ -95,7 +95,8 @@ const HELP = `aufwand.mjs (claude-workflow-kit v${KIT_VERSION}) — Aufwand des 
   node aufwand.mjs auskunft <transkript…>
 
 auswerten  Liest die juengsten Ergebnisstaende aus ${CLAUDE_DIR}/, aggregiert Zeit,
-           Pruefungen, Umfang, Kosten, den Aufwand je Aufgabenstufe und die Zeit
+           Pruefungen, Umfang, Kosten, den Aufwand je Aufgabenstufe, die Verteilung
+           je Laufart und Aufgabenstufe (Median, 90. Perzentil) und die Zeit
            fuer Board-Auskuenfte je Umsetzungseinheit (Abschnitt Auskuenfte) und schreibt
            ${CLAUDE_DIR}/${BERICHT_DATEI} sowie
            ${CLAUDE_DIR}/${STAND_DATEI}. Die Ausgabe auf stdout ist immer JSON —
@@ -463,6 +464,8 @@ function sammlerAnlegen() {
       keineUmsetzung: { einheiten: 0, ms: reihe(), laeufe: new Set() },
       nichtGemessen: { einheiten: 0, laeufe: new Set() },
     },
+    // Die Einzelwerte je Laufart und Aufgabenstufe (Issue #1339).
+    verteilung: new Map(),
     unvollstaendig: [],
     einheitenGesamt: 0,
   };
@@ -846,6 +849,157 @@ function stufenErgebnis(s) {
     }));
 }
 
+// --- Verteilung je Laufart und Aufgabenstufe (Issue #1339) ---------------------
+//
+// Die Summen oben sagen, wie viel Zeit insgesamt verging, nicht, wie sie sich ueber die
+// Pakete verteilt. Hier werden darum die EINZELWERTE gefuehrt, je Laufart (`art`) und darin
+// je Aufgabenstufe. Die Kettenstufe (plan, review, pakete, ...) steht an keiner Einheit und
+// laesst sich deshalb nicht als Gruppe fuehren.
+
+/** Die Reihe einer Verteilung: alle Einzelwerte plus die Laeufe, die sie tragen. */
+function werteReihe() {
+  return { werte: [], laeufe: new Set() };
+}
+
+function wertMerken(r, wert, laufId) {
+  const n = zahl(wert);
+  if (n === null) return;
+  r.werte.push(n);
+  r.laeufe.add(laufId);
+}
+
+/**
+ * Das p-Perzentil nach Nearest-Rank: der Wert auf Rang ceil(p * n) der sortierten Reihe.
+ * Kein Interpolieren — jeder ausgegebene Wert ist damit ein tatsaechlich gemessener.
+ */
+function rangWert(sortiert, p) {
+  return sortiert[Math.max(1, Math.ceil(p * sortiert.length)) - 1];
+}
+
+/** Die Verteilung als Ergebnis; ohne Wert `null` mit "nicht gemessen" — nie 0. */
+function verteilungFertig(r) {
+  if (r.werte.length === 0) return { anzahl: 0, median: null, p90: null, laeufe: 0, text: NICHT_GEMESSEN };
+  const sortiert = [...r.werte].sort((a, b) => a - b);
+  return { anzahl: sortiert.length, median: rangWert(sortiert, 0.5), p90: rangWert(sortiert, 0.9), laeufe: r.laeufe.size };
+}
+
+function verteilungSammler(art, stufe) {
+  return {
+    art,
+    stufe,
+    einheiten: { anzahl: 0, laeufe: new Set() },
+    dauer: werteReihe(),
+    nachdenken: werteReihe(),
+    werkzeug: werteReihe(),
+    rest: werteReihe(),
+    prueflaeufe: werteReihe(),
+    zeitabbrueche: { abbrueche: 0, versuche: 0, laeufe: new Set() },
+  };
+}
+
+/**
+ * Die Prueflaeufe einer Einheit: Arbeit plus Abschluss. Fehlt das Feld oder einer der
+ * beiden Zaehler, ist die Einheit nicht gemessen — `null`, nie 0.
+ */
+function prueflaeufeJePaket(einheit) {
+  const arbeit = zahl(einheit?.prueflaeufe?.arbeit?.anzahl);
+  const abschluss = zahl(einheit?.prueflaeufe?.abschluss?.anzahl);
+  return arbeit === null || abschluss === null ? null : arbeit + abschluss;
+}
+
+/**
+ * Eine Einheit in ihre Gruppe.
+ *
+ * Die Dauer ist `einheit.dauerMs`, die Rundendauer des Runners — dieselbe wie in
+ * `stufeErfassen` und `zielmarkeErfassen`. Der Rest dagegen entsteht wie in `zeitErfassen`
+ * aus `zeiten.dauerMs`: Nachdenken und Werkzeug sind Teilmengen der Session-Dauer, nicht
+ * der Runde. Ein negativer Rest (nebenlaeufig) traegt nichts bei.
+ *
+ * Die Zeitabbrueche zaehlen wie in `zielmarkeErfassen`: je Einheit mit Pruefstand, und
+ * davon die mit `zeitlimitBeendet`.
+ */
+function verteilungErfassen(s, einheit, stempel) {
+  const art = typeof einheit?.art === "string" ? einheit.art : "ohne Laufart";
+  const stufe = typeof einheit?.stufeVerwendet === "string" ? einheit.stufeVerwendet : null;
+  const schluessel = `${art} ${stufe ?? ""}`;
+  const g = s.verteilung.get(schluessel) ?? verteilungSammler(art, stufe);
+  g.einheiten.anzahl += 1;
+  g.einheiten.laeufe.add(stempel);
+  wertMerken(g.dauer, einheit?.dauerMs, stempel);
+  const z = einheit?.zeiten ?? {};
+  const nachdenken = zahl(z.nachdenkenMs);
+  const werkzeug = zahl(z.werkzeugMs);
+  const sessionDauer = zahl(z.dauerMs);
+  wertMerken(g.nachdenken, nachdenken, stempel);
+  wertMerken(g.werkzeug, werkzeug, stempel);
+  if (sessionDauer !== null && nachdenken !== null && werkzeug !== null && sessionDauer - nachdenken - werkzeug >= 0) {
+    wertMerken(g.rest, sessionDauer - nachdenken - werkzeug, stempel);
+  }
+  wertMerken(g.prueflaeufe, prueflaeufeJePaket(einheit), stempel);
+  if (einheit?.pruefung) {
+    g.zeitabbrueche.versuche += 1;
+    g.zeitabbrueche.laeufe.add(stempel);
+    if (einheit.zeitlimitBeendet === true) g.zeitabbrueche.abbrueche += 1;
+  }
+  s.verteilung.set(schluessel, g);
+}
+
+const ZEITARTEN = [["nachdenken", "Nachdenken"], ["werkzeug", "Werkzeug"], ["rest", "Rest"]];
+
+/**
+ * Die dominierende Zeitart: der groesste der drei Mediane. Fehlt einer, ist sie nicht
+ * bestimmbar — ein fehlender Median als 0 gelesen machte die anderen kuenstlich gross.
+ * Bei Gleichstand gewinnt die fruehere in der Reihenfolge Nachdenken, Werkzeug, Rest.
+ */
+function dominierendeZeitart(zeiten) {
+  const fehlend = ZEITARTEN.filter(([schluessel]) => zeiten[schluessel].median === null).map(([, name]) => name);
+  if (fehlend.length > 0) {
+    return { zeitart: null, text: "nicht bestimmbar", grund: `${fehlend.join(", ")} nicht gemessen` };
+  }
+  let beste = ZEITARTEN[0];
+  for (const kandidat of ZEITARTEN.slice(1)) {
+    if (zeiten[kandidat[0]].median > zeiten[beste[0]].median) beste = kandidat;
+  }
+  return { zeitart: beste[0], text: beste[1], grund: null };
+}
+
+function zeitabbruchErgebnis(z) {
+  if (z.versuche === 0) return { anteil: null, abbrueche: 0, versuche: 0, laeufe: 0, text: NICHT_GEMESSEN };
+  return { anteil: z.abbrueche / z.versuche, abbrueche: z.abbrueche, versuche: z.versuche, laeufe: z.laeufe.size };
+}
+
+/**
+ * Die Verteilung als Ergebnis: je Laufart ein Block, darin die Stufen in derselben
+ * Reihenfolge wie in `stufenErgebnis` — "ohne Stufe" am Ende.
+ */
+function verteilungErgebnis(s) {
+  const jeArt = new Map();
+  for (const g of s.verteilung.values()) {
+    const zeiten = { nachdenken: verteilungFertig(g.nachdenken), werkzeug: verteilungFertig(g.werkzeug), rest: verteilungFertig(g.rest) };
+    const zeile = {
+      stufe: g.stufe,
+      einheiten: { wert: g.einheiten.anzahl, laeufe: g.einheiten.laeufe.size },
+      dauerMs: verteilungFertig(g.dauer),
+      nachdenkenMs: zeiten.nachdenken,
+      werkzeugMs: zeiten.werkzeug,
+      restMs: zeiten.rest,
+      prueflaeufe: verteilungFertig(g.prueflaeufe),
+      dominierend: dominierendeZeitart(zeiten),
+      zeitabbrueche: zeitabbruchErgebnis(g.zeitabbrueche),
+    };
+    jeArt.set(g.art, [...(jeArt.get(g.art) ?? []), zeile]);
+  }
+  return [...jeArt.entries()]
+    .sort(([a], [b]) => vergleicheText(a, b))
+    .map(([art, stufen]) => ({
+      art,
+      stufen: stufen.sort((a, b) => {
+        if ((a.stufe === null) !== (b.stufe === null)) return a.stufe === null ? 1 : -1;
+        return vergleicheText(a.stufe ?? "", b.stufe ?? "");
+      }),
+    }));
+}
+
 /**
  * Warum ein Lauf als unvollstaendig gilt. Er wird deshalb NICHT verworfen — er geht mit
  * dem ein, was er traegt: Verworfen saehen die Summen vollstaendig aus und waeren zu
@@ -877,6 +1031,7 @@ function standErfassen(s, { stempel, daten }) {
     stufeErfassen(s, einheit, stempel);
     zielmarkeErfassen(s, einheit, stempel, marke);
     auskunftErfassen(s, einheit, stempel);
+    verteilungErfassen(s, einheit, stempel);
   }
   // Was zu keiner Karte gehoert (Vorflug, Kette) — nur der Runner kennt diesen Rest.
   messen(s.kosten.nichtZuordenbar, daten?.verbrauchOhneEinheit?.kostenUsd, stempel);
@@ -948,6 +1103,7 @@ function aggregieren(staende) {
     jeStufe: stufenErgebnis(s),
     zielmarke: zielmarkeErgebnis(s),
     auskuenfte: auskuenfteErgebnis(s),
+    verteilung: verteilungErgebnis(s),
   };
 }
 
@@ -1166,6 +1322,7 @@ export function berichtText(e) {
   return [
     ...berichtKopf(e),
     ...berichtZeit(e),
+    ...berichtVerteilung(e),
     ...berichtPruefungen(e),
     ...berichtUmfang(e),
     ...berichtKosten(e),
@@ -1456,6 +1613,63 @@ function berichtAuskuenfte(e) {
   return zeilen;
 }
 
+/** Median und 90. Perzentil mit ihrer Traglast; ohne Wert steht "nicht gemessen" allein. */
+function verteilungZelle(v, formatieren) {
+  if (v.median === null) return NICHT_GEMESSEN;
+  return `${formatieren(v.median)} / ${formatieren(v.p90)} (${v.anzahl} Werte, ${laufText(v.laeufe)})`;
+}
+
+function dominierendZelle(d) {
+  return d.zeitart === null ? `${d.text} (${d.grund})` : d.text;
+}
+
+function zeitabbruchZelle(z) {
+  if (z.anteil === null) return NICHT_GEMESSEN;
+  return `${prozent(z.anteil)} (${z.abbrueche} von ${z.versuche}, ${laufText(z.laeufe)})`;
+}
+
+/**
+ * Die Verteilung je Laufart und Aufgabenstufe (Issue #1339): eine Tabelle je Laufart.
+ * Der Absatz darunter sagt, wie die Zahlen entstehen — ohne ihn laese sich der Median
+ * als Mittelwert und die fehlende Kettenstufe als vergessene Spalte.
+ */
+function berichtVerteilung(e) {
+  const zeilen = ["## Verteilung", ""];
+  if (e.verteilung.length === 0) {
+    zeilen.push("Keine Einheit in den einbezogenen Staenden — es gibt keine Verteilung.", "");
+    return zeilen;
+  }
+  for (const block of e.verteilung) {
+    zeilen.push(
+      `### Laufart ${block.art}`, "",
+      "| Stufe | Einheiten | Dauer | Nachdenken | Werkzeug | Rest | Prueflaeufe je Paket | Dominierende Zeitart | Zeitabbrueche |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+      ...block.stufen.map((z) => "| " + [
+        z.stufe ?? "ohne Stufe",
+        zaehlzelle(z.einheiten),
+        verteilungZelle(z.dauerMs, dauer),
+        verteilungZelle(z.nachdenkenMs, dauer),
+        verteilungZelle(z.werkzeugMs, dauer),
+        verteilungZelle(z.restMs, dauer),
+        verteilungZelle(z.prueflaeufe, String),
+        dominierendZelle(z.dominierend),
+        zeitabbruchZelle(z.zeitabbrueche),
+      ].join(" | ") + " |"),
+      ""
+    );
+  }
+  zeilen.push(
+    "Je Zelle Median / 90. Perzentil nach Nearest-Rank — jeder Wert ist ein tatsaechlich gemessener. "
+    + "Die Dauer ist die Rundendauer des Runners, der Rest die Session-Dauer abzueglich Nachdenken und Werkzeug. "
+    + "Die dominierende Zeitart ist der groesste der drei Mediane. Prueflaeufe je Paket zaehlen Arbeit und "
+    + "Abschluss; eine Einheit ohne diese Angabe geht nicht als 0 ein. Zeitabbrueche zaehlen je Einheit mit "
+    + "Pruefstand wie in der Zielmarke. Die Kettenstufe (Plan, Review, Pakete, ...) wird an der Einheit nicht "
+    + "erfasst und laesst sich deshalb nicht getrennt ausweisen.",
+    ""
+  );
+  return zeilen;
+}
+
 function berichtBefund(e) {
   const zeilen = ["## Befund", ""];
   if (e.befund.length === 0) zeilen.push("Keine der vier Schwellen ist ueberschritten.", "");
@@ -1607,6 +1821,8 @@ export function auswerten(root, { laeufe: grenzeArg, jetzt = () => new Date() } 
     zielmarke: a.zielmarke,
     // Ebenso hinten angehaengt (Issue #1027).
     auskuenfte: a.auskuenfte,
+    // Ebenso hinten angehaengt (Issue #1339).
+    verteilung: a.verteilung,
     schwellen: einstellungen.schwellen,
     nichtBestimmbar,
     // Immer gesetzt, auch leer: Eine neuere Auswertung ohne Befund loescht damit den

@@ -28,33 +28,52 @@ const lies = (...teile) => readFileSync(join(repoRoot, ...teile), "utf-8");
 // Er steht bewusst in keiner Skill-Tabelle und zaehlt deshalb nicht mit.
 const WEGWEISER = new Set(["plan"]);
 
-const ZAEHLWORT = "sechzehn";
-const ALTE_ZAEHLUNG = /vierzehn Skills|zw(ö|oe)lf Skills|f(ü|ue)nfzehn Skills/i;
-
-const DATEIEN = [
-  ["docs", "dokumentation.md"],
-  ["docs", "quickstart.md"],
-  ["docs", "index.md"],
+// Die englische Fassung zaehlt mit "sixteen" (Issue #1370); die Konfiguration traegt beide
+// Beschreibungen und steht deshalb in beiden Listen.
+const SPRACHEN = [
+  {
+    zaehlwort: "sechzehn",
+    alteZaehlung: /vierzehn Skills|zw(ö|oe)lf Skills|f(ü|ue)nfzehn Skills/i,
+    dateien: [
+      ["docs", "dokumentation.md"],
+      ["docs", "quickstart.md"],
+      ["docs", "index.md"],
+      // Die Doku-Seite selbst: Beschreibung und Sidebar (Issue #1340).
+      ["docs-site", ".vitepress", "config.ts"],
+    ],
+  },
+  {
+    zaehlwort: "sixteen",
+    alteZaehlung: /fourteen skills|twelve skills|fifteen skills/i,
+    dateien: [
+      ["docs", "en", "dokumentation.md"],
+      ["docs", "en", "quickstart.md"],
+      ["docs", "en", "index.md"],
+      ["docs-site", ".vitepress", "config.ts"],
+    ],
+  },
 ];
 
-for (const teile of DATEIEN) {
-  const pfad = teile.join("/");
+for (const { zaehlwort, alteZaehlung, dateien } of SPRACHEN) {
+  for (const teile of dateien) {
+    const pfad = teile.join("/");
 
-  test(`${pfad} nennt keine alte Skill-Zaehlung mehr`, () => {
-    assert.doesNotMatch(
-      lies(...teile),
-      ALTE_ZAEHLUNG,
-      `${pfad}: eine alte Zaehlung steht noch da — zwei Zahlen fuer dieselbe Menge`,
-    );
-  });
+    test(`${pfad} nennt keine alte Skill-Zaehlung mehr (${zaehlwort})`, () => {
+      assert.doesNotMatch(
+        lies(...teile),
+        alteZaehlung,
+        `${pfad}: eine alte Zaehlung steht noch da — zwei Zahlen fuer dieselbe Menge`,
+      );
+    });
 
-  test(`${pfad} nennt die Skill-Zahl als '${ZAEHLWORT} Skills'`, () => {
-    assert.match(
-      lies(...teile),
-      new RegExp(`${ZAEHLWORT} Skills`, "i"),
-      `${pfad}: das Zaehlwort '${ZAEHLWORT} Skills' fehlt`,
-    );
-  });
+    test(`${pfad} nennt die Skill-Zahl als '${zaehlwort} Skills'`, () => {
+      assert.match(
+        lies(...teile),
+        new RegExp(`${zaehlwort} Skills`, "i"),
+        `${pfad}: das Zaehlwort '${zaehlwort} Skills' fehlt`,
+      );
+    });
+  }
 }
 
 test("die Skill-Tabelle der Kurzanleitung fuehrt jeden Skill genau einmal", () => {

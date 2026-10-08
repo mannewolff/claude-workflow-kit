@@ -1,7 +1,7 @@
 # Prozess-Umbau, Stufe 1: handlungsfähig werden
 
-Stand: 2026-09-13. Grundlage: `prozess-pruefstand-nachtlauf.md` (Abschnitte 8 und 9)
-und die Arbeitsliste `prozess-pruefstand.md` vom 2026-09-10. Dieses Dokument ist der
+Stand: 2026-09-13. Grundlage: `konzepte/prozess-pruefstand-nachtlauf.md` (Abschnitte 8 und 9)
+und die Arbeitsliste `konzepte/prozess-pruefstand.md` vom 2026-09-10. Dieses Dokument ist der
 Umsetzungsplan; die Diagnose steht dort und wird hier nicht wiederholt.
 
 Der Umbau hat zwei Stufen. **Stufe 1** schreibt Regeln und Skills um, damit der
@@ -101,7 +101,7 @@ Vier Pakete. Jedes hängt an T1, T5 und T6 zusätzlich an T8.
 
 Zwei Pakete nach Welle 2.
 
-9. **T9 `CLAUDE-workflow.md` halbieren** nach der Tabelle aus `prozess-pruefstand.md`:
+9. **T9 `CLAUDE-workflow.md` halbieren** nach der Tabelle aus `konzepte/prozess-pruefstand.md`:
    Prüfstufen, Zustandslabels, `Pruefung:`-Absatz, Nachtbetrieb und Gates W1 bis W4
    wandern aus. Die vier Drift-Stellen werden dabei behoben; `docs/dokumentation.md` und
    die Doku-Tests folgen.

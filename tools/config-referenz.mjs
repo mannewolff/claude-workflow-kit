@@ -9,12 +9,21 @@
  * ist die Quelle, dieser Abschnitt ist ihr Abbild. Geschrieben wird ausschließlich
  * zwischen den beiden Markern; der übrige Text der Doku bleibt unberührt.
  *
+ * Zwei Sprachen (Issue #1356, Plan #1348 E8): Die deutsche Fassung ist wortgleich mit der
+ * Oberfläche, die englische in docs/en/dokumentation.md eine geprüfte Übersetzung. Sie
+ * steht in tools/config-referenz.en.json — je Einstellung der englische Text und der Hash
+ * der deutschen Beschreibung — und nicht im Schema, das in jedes Projekt installiert wird.
+ * Ändert sich eine deutsche Beschreibung, passt ihr Hash nicht mehr, und --check nennt die
+ * Einstellung. Geschrieben und geprüft wird die englische Fassung erst, wenn
+ * docs/en/dokumentation.md beide Marker trägt.
+ *
  * Nutzung:
  *   node tools/config-referenz.mjs           Abschnitt neu schreiben
  *   node tools/config-referenz.mjs --check   nur vergleichen, Exit 1 bei Abweichung
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -24,6 +33,8 @@ const root = process.env.KIT_ROOT
   : resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SCHEMA = join(root, "templates", "workflow.config.schema.json");
 const DOKU = join(root, "docs", "dokumentation.md");
+const DOKU_EN = join(root, "docs", "en", "dokumentation.md");
+const UEBERSETZUNG = join(root, "tools", "config-referenz.en.json");
 const START = "<!-- einstellungen:start -->";
 const ENDE = "<!-- einstellungen:ende -->";
 
@@ -51,63 +62,137 @@ function entschaerft(text) {
   );
 }
 
-/**
- * Gültige Werte eines Feldes in Klammern, leer ohne enum. Ein Feld, das einen festen
- * Wert oder ein Objekt annimmt (`pushPruefung`: `lokal` oder `{ ort, zweig }`), trägt
- * sein enum in einer oneOf-Variante — die Objekt-Variante steht in den Unterfeldern.
- */
-function werte(knoten) {
+/** Die Liste der gültigen Werte eines Feldes, `undefined` ohne enum. */
+function werteListe(knoten) {
   const ausVarianten = (knoten?.oneOf ?? []).flatMap((v) => (Array.isArray(v?.enum) ? v.enum : []));
   const liste = knoten?.enum ?? knoten?.items?.enum ?? (ausVarianten.length ? ausVarianten : undefined);
-  if (!Array.isArray(liste)) return "";
-  const genannt = liste.map((w) => "`" + w + "`").join(", ");
-  return ` (gültig: ${genannt})`;
+  return Array.isArray(liste) ? liste : undefined;
 }
 
-/** Die verschachtelten Felder unter einem Wurzelfeld als Listenzeilen. */
-function unterfelder(knoten, pfad, zeilen = []) {
-  if (!knoten || typeof knoten !== "object") return zeilen;
-  if (knoten.items && typeof knoten.items === "object") {
-    if (typeof knoten.items.description === "string") zeilen.push(`- \`${pfad}[]\` — ${entschaerft(knoten.items.description)}`);
-    unterfelder(knoten.items, `${pfad}[]`, zeilen);
+/**
+ * Jede Einstellung, die der Abschnitt ausgibt, in Ausgabereihenfolge: Pfad
+ * (`root.feld.unterfeld`, `[]` für Listeneinträge, `*` für freie Schlüssel), deutsche
+ * Beschreibung, gültige Werte, Wurzelfeld oder nicht. Ein Feld, das einen festen Wert oder
+ * ein Objekt annimmt (`pushPruefung`: `lokal` oder `{ ort, zweig }`), trägt sein enum in
+ * einer oneOf-Variante — die Objekt-Variante steht in den Unterfeldern.
+ */
+function eintraege(schema) {
+  const liste = [];
+  function unterfelder(knoten, pfad) {
+    if (!knoten || typeof knoten !== "object") return;
+    if (knoten.items && typeof knoten.items === "object") {
+      if (typeof knoten.items.description === "string") liste.push({ pfad: `${pfad}[]`, text: knoten.items.description });
+      unterfelder(knoten.items, `${pfad}[]`);
+    }
+    for (const variante of knoten.oneOf ?? []) unterfelder(variante, pfad);
+    for (const [name, kind] of Object.entries(knoten.properties ?? {})) {
+      const p = `${pfad}.${name}`;
+      if (typeof kind.description === "string") liste.push({ pfad: p, text: kind.description, werte: werteListe(kind) });
+      unterfelder(kind, p);
+    }
+    const zusatz = knoten.additionalProperties;
+    if (zusatz && typeof zusatz === "object") unterfelder(zusatz, `${pfad}.*`);
   }
-  for (const variante of knoten.oneOf ?? []) unterfelder(variante, pfad, zeilen);
-  for (const [name, kind] of Object.entries(knoten.properties ?? {})) {
-    const p = `${pfad}.${name}`;
-    if (typeof kind.description === "string") zeilen.push(`- \`${p}\` — ${entschaerft(kind.description)}${werte(kind)}`);
-    unterfelder(kind, p, zeilen);
-  }
-  const zusatz = knoten.additionalProperties;
-  if (zusatz && typeof zusatz === "object") unterfelder(zusatz, `${pfad}.*`, zeilen);
-  return zeilen;
-}
-
-/** Der Abschnitt zwischen den Markern, ohne die Marker selbst. */
-function referenz(schema) {
-  const teile = ["", "_Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node tools/config-referenz.mjs`; Änderungen gehören ins Schema, nicht hierher._", ""];
   for (const [feld, knoten] of Object.entries(schema.properties ?? {})) {
     if (feld === "version") continue;
-    teile.push(`### \`${feld}\``, "", `${entschaerft(knoten.description ?? "")}${werte(knoten)}`, "");
-    const zeilen = unterfelder(knoten, feld);
-    if (zeilen.length) teile.push(...zeilen, "");
+    liste.push({ pfad: feld, text: knoten.description ?? "", werte: werteListe(knoten), wurzel: true });
+    unterfelder(knoten, feld);
   }
+  return liste;
+}
+
+/** Der Hash einer deutschen Beschreibung, nach demselben Verfahren wie die Seitenstempel (Plan #1348 E5). */
+function stempelVon(text) {
+  return createHash("sha256").update(String(text).replaceAll("\r\n", "\n").replaceAll("\r", "\n")).digest("hex").slice(0, 12);
+}
+
+/** Der Rahmentext, der nicht aus dem Schema stammt, je Sprache (Plan-Review #1348, Fund 7). */
+const RAHMEN = {
+  de: {
+    hinweis: "_Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node tools/config-referenz.mjs`; Änderungen gehören ins Schema, nicht hierher._",
+    gueltig: "gültig",
+  },
+  en: {
+    hinweis: "_This section is generated from `templates/workflow.config.schema.json` by `node tools/config-referenz.mjs`; changes belong in the schema, not here._",
+    gueltig: "valid",
+  },
+};
+
+/** Der Abschnitt zwischen den Markern, ohne die Marker selbst; `texte` liefert die Beschreibung je Eintrag. */
+function referenz(liste, sprache, texte) {
+  const rahmen = RAHMEN[sprache];
+  const werte = (w) => (w ? ` (${rahmen.gueltig}: ${w.map((x) => "`" + x + "`").join(", ")})` : "");
+  const teile = ["", rahmen.hinweis, ""];
+  let offen = false;
+  for (const e of liste) {
+    const text = entschaerft(texte(e));
+    if (e.wurzel) {
+      if (offen) teile.push("");
+      teile.push(`### \`${e.pfad}\``, "", `${text}${werte(e.werte)}`, "");
+      offen = false;
+    } else {
+      teile.push(`- \`${e.pfad}\` — ${text}${werte(e.werte)}`);
+      offen = true;
+    }
+  }
+  if (offen) teile.push("");
   return teile.join("\n");
+}
+
+/** Liest eine Doku-Datei und gibt die Lage der Marker zurück; `null`, wenn ein Marker fehlt. */
+function marker(text) {
+  const a = text.indexOf(START);
+  const b = text.indexOf(ENDE);
+  return a < 0 || b < a ? null : { a, b };
+}
+
+function ersetzt(text, { a, b }, abschnitt) {
+  return text.slice(0, a + START.length) + abschnitt + text.slice(b);
 }
 
 const nurPruefen = process.argv.includes("--check");
 const schema = JSON.parse(readFileSync(SCHEMA, "utf-8"));
+const liste = eintraege(schema);
 const doku = readFileSync(DOKU, "utf-8");
-const a = doku.indexOf(START);
-const b = doku.indexOf(ENDE);
-if (a < 0) fehler(`Marker ${START} fehlt in docs/dokumentation.md`);
-if (b < a) fehler(`Marker ${ENDE} fehlt in docs/dokumentation.md oder steht vor ${START}`);
-const neu = doku.slice(0, a + START.length) + referenz(schema) + doku.slice(b);
+const lage = marker(doku);
+if (doku.indexOf(START) < 0) fehler(`Marker ${START} fehlt in docs/dokumentation.md`);
+if (!lage) fehler(`Marker ${ENDE} fehlt in docs/dokumentation.md oder steht vor ${START}`);
+const neu = ersetzt(doku, lage, referenz(liste, "de", (e) => e.text));
 
-if (neu === doku) {
+// Die englische Fassung gilt erst, wenn docs/en/dokumentation.md beide Marker trägt; bis
+// dahin bleibt alles wie vor Issue #1356.
+const dokuEn = existsSync(DOKU_EN) ? readFileSync(DOKU_EN, "utf-8") : null;
+const lageEn = dokuEn === null ? null : marker(dokuEn);
+let neuEn = null;
+const luecken = [];
+if (lageEn) {
+  const uebersetzung = existsSync(UEBERSETZUNG) ? JSON.parse(readFileSync(UEBERSETZUNG, "utf-8")) : {};
+  for (const e of liste) {
+    const eintrag = uebersetzung[e.pfad];
+    if (!eintrag || typeof eintrag.text !== "string") luecken.push(`${e.pfad}: englischer Eintrag fehlt`);
+    else if (eintrag.de !== stempelVon(e.text)) luecken.push(`${e.pfad}: Hash veraltet, erwartet ${stempelVon(e.text)} — die deutsche Beschreibung hat sich geändert`);
+  }
+  if (!luecken.length) neuEn = ersetzt(dokuEn, lageEn, referenz(liste, "en", (e) => uebersetzung[e.pfad].text));
+}
+
+const lueckenListe = luecken.map((l) => `  - ${l}`).join("\n");
+const abweichend = [];
+if (neu !== doku) abweichend.push("docs/dokumentation.md");
+if (neuEn !== null && neuEn !== dokuEn) abweichend.push("docs/en/dokumentation.md");
+
+if (nurPruefen) {
+  if (luecken.length) {
+    fehler(`englische Einstellungs-Referenz unvollständig (tools/config-referenz.en.json):\n${lueckenListe}`);
+  }
+  if (abweichend.length) {
+    fehler(`Abschnitt „Alle Einstellungen" weicht vom Schema ab (${abweichend.join(", ")}) — node tools/config-referenz.mjs ausführen.`);
+  }
   process.stdout.write("Abschnitt „Alle Einstellungen\" ist aktuell.\n");
-} else if (nurPruefen) {
-  fehler("Abschnitt „Alle Einstellungen\" weicht vom Schema ab — node tools/config-referenz.mjs ausführen.");
 } else {
-  writeFileSync(DOKU, neu, "utf-8");
-  process.stdout.write("Abschnitt „Alle Einstellungen\" geschrieben.\n");
+  if (neu !== doku) writeFileSync(DOKU, neu, "utf-8");
+  if (neuEn !== null && neuEn !== dokuEn) writeFileSync(DOKU_EN, neuEn, "utf-8");
+  if (luecken.length) {
+    fehler(`englischer Abschnitt nicht geschrieben, tools/config-referenz.en.json unvollständig:\n${lueckenListe}`);
+  }
+  process.stdout.write(abweichend.length ? `Abschnitt „Alle Einstellungen" geschrieben (${abweichend.join(", ")}).\n` : "Abschnitt „Alle Einstellungen\" ist aktuell.\n");
 }

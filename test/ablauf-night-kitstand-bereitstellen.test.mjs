@@ -12,7 +12,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -139,7 +139,8 @@ test("[kitstand-6] ein Start, der die Vorpruefungen besteht, raeumt den verwaist
     const res = runner(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.equal(existsSync(alt), false, "der verwaiste Stand ist weg");
-    assert.ok(res.stdout.includes(`Liegengebliebenen Kit-Stand entfernt: ${alt}`), res.stdout);
+    // Gemeldet wird der realpath (Issue #1372).
+    assert.ok(res.stdout.includes(`Liegengebliebenen Kit-Stand entfernt: ${join(realpathSync(tmpdir()), basename(alt))}`), res.stdout);
     const staende = standWorktrees(dir);
     assert.equal(staende.length, 1, `genau der eigene Stand bleibt: ${staende.join(", ")}`);
     assert.ok(existsSync(join(staende[0], ".claude", "kit", "night.mjs")), "der eigene Stand steht noch");

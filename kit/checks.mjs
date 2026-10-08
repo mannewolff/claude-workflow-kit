@@ -99,8 +99,8 @@
  * darum haengt das Gate des Abschlusses (mindestens ein Paketstufen-Eintrag, der weder
  * `nichtBeimAbschluss` noch `guete` traegt) am Schalter statt an jedem Aufruf.
  *
- * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>] [--stufe <s>] [--bereich <name>] [--abschluss [n]]
- *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>] [--bereich <name>] [--abschluss [n]] [--frisch]
+ * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>] [--stufe <s>] [--bereich <name>] [--abschluss [n]] [--in <pfad>]
+ *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>] [--bereich <name>] [--abschluss [n]] [--frisch] [--in <pfad>]
  *                          node .claude/kit/checks.mjs bereiche
  *
  * `bereiche` (Issue #1004, Plan #1001) rechnet keine Auswahl, sondern den Zuschnitt: je
@@ -118,7 +118,7 @@
  */
 
 import { lstatSync, existsSync, readFileSync, readdirSync, writeFileSync, appendFileSync, mkdirSync, realpathSync, unlinkSync } from "node:fs";
-import { join, dirname, posix } from "node:path";
+import { join, dirname, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -126,7 +126,7 @@ import { createHash } from "node:crypto";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "4.0.0";
+const KIT_VERSION = "4.1.0";
 
 // Die Variablen, die der Nacht-Runner seinen Sessions setzt (Issue #1282), aus dem Blatt-Modul
 // neben session.mjs. Fehlt der Nachbar, bleibt die Umgebung, wie sie ist.
@@ -338,8 +338,8 @@ const HERVORHEBUNG_AB_KOMMANDOS = 3;
 
 const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Pruefungen
 
-  node checks.mjs plan [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]]
-  node checks.mjs run  [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]] [--frisch]
+  node checks.mjs plan [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]] [--in <pfad>]
+  node checks.mjs run  [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]] [--frisch] [--in <pfad>]
   node checks.mjs bereiche
 
 plan  Gibt als JSON aus, welche buildChecks nach dem aktuellen Arbeitspaket
@@ -472,6 +472,10 @@ bereiche
                   mit den zuletzt roten fahren, sondern alle faelligen
                   Kommandos wirklich fahren — etwa beim Verdacht auf einen
                   wackligen Test.
+  --in <pfad>     Arbeitsverzeichnis des Laufs statt des Prozess-Arbeits-
+                  verzeichnisses: Config, Anker, Kommandos und Zusammenfassung
+                  gelten dort. Fuer den Worktree der Release-Skills — so steht
+                  der Aufruf allein und braucht kein 'cd'.
   --help, -h      Diese Uebersicht (laeuft als einziger Aufruf ohne Config).
 
 Gelesen wird .claude/workflow.config.json im Arbeitsverzeichnis: 'buildChecks'
@@ -3188,12 +3192,33 @@ function parseArgs(rest) {
       // Wirkt nur bei `run`; bei `plan` laeuft ohnehin nichts. Kein Fehler dort,
       // weil der Schalter nur in die sichere Richtung zeigt — mehr pruefen.
       args.frisch = true;
+    } else if (rest[i] === "--in") {
+      // Das Arbeitsverzeichnis des Laufs (Issue #1372). Ein fehlender oder ungueltiger
+      // Wert bricht ab: Der Lauf maesse sonst still den falschen Baum.
+      args.in = rest[i + 1] ?? "";
+      i += 1;
     } else {
       fail(`Unbekanntes Argument: '${rest[i]}'`);
     }
     i += 1;
   }
   pruefeKombinationen(args);
+  return args;
+}
+
+/**
+ * Setzt das Arbeitsverzeichnis des Laufs auf `--in` (Issue #1372), aufgeloest gegen das
+ * bisherige. Alles, was der Lauf liest und schreibt, geht ueber `wurzel()`.
+ */
+function arbeitsverzeichnisSetzen(args) {
+  if (args.in === undefined) return args;
+  const ziel = resolve(wurzel(), args.in);
+  let istVerzeichnis = false;
+  try {
+    istVerzeichnis = args.in !== "" && lstatSync(realpathSync(ziel)).isDirectory();
+  } catch { /* fehlt -> Fehler unten */ }
+  if (!istVerzeichnis) fail(`--in '${args.in}' ist kein Verzeichnis.`);
+  umgebung.cwd = ziel;
   return args;
 }
 
@@ -3209,10 +3234,10 @@ function main(argv = process.argv.slice(2)) {
 
   const [command, ...rest] = argv;
   if (command === "plan") {
-    aufStdout(JSON.stringify(planen(parseArgs(rest)), null, 2) + "\n");
+    aufStdout(JSON.stringify(planen(arbeitsverzeichnisSetzen(parseArgs(rest))), null, 2) + "\n");
     return 0;
   }
-  if (command === "run") return ausfuehren(parseArgs(rest));
+  if (command === "run") return ausfuehren(arbeitsverzeichnisSetzen(parseArgs(rest)));
   if (command === "bereiche") {
     // Kein Argument: Anteil und Inventar gelten fuer die Config und den versionierten
     // Stand, nicht fuer einen Anker. Ein uebergebenes Argument ist ein Irrtum.

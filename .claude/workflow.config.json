@@ -350,6 +350,14 @@
       ]
     },
     {
+      "cmd": "node --test test/checks-leichtigkeit.test.mjs",
+      "gleichzeitig": true,
+      "areas": [
+        "pruefungen",
+        "testdateien"
+      ]
+    },
+    {
       "cmd": "node --test --test-concurrency=2 \"test/migrate-*.test.mjs\" \"test/ablauf-migrate-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
@@ -675,6 +683,7 @@
     "einstellungen": [
       "kit/einstellungen.mjs",
       "tools/config-referenz.mjs",
+      "tools/config-referenz.en.json",
       "templates/workflow.config.json",
       "templates/workflow.config.schema.json",
       "test/einstellungen-*.test.mjs",
@@ -746,6 +755,8 @@
       "test/fixtures/push-main-*.md",
       ".github/workflows/**",
       "docs-site/**",
+      "docs-site/sprachen.json",
+      "tools/sprachfassungen.mjs",
       "package.json"
     ],
     "konfiguration": [
@@ -758,9 +769,17 @@
       "tools/frischer-checkout*.mjs",
       "test/tools-frischer-checkout*.test.mjs",
       "test/ablauf-tools-frischer-checkout*.test.mjs"
+    ],
+    "testdateien": [
+      "test/**/*.test.mjs",
+      "test/helpers/**"
     ]
   },
   "ohnePruefung": [
+    {
+      "muster": "future/**",
+      "grund": "Dort sind Anforderungsdokumente roh enthalten"
+    },
     {
       "muster": "CHANGELOG.md",
       "grund": "Release-Protokoll; keine Pruefung liest seinen Inhalt — die Changelog-Tests legen sich ihr eigenes Protokoll in einem Wegwerfprojekt an."
@@ -790,16 +809,8 @@
       "grund": "Herkunftsnotiz zu den Schriftdateien; keine Pruefung liest sie."
     },
     {
-      "muster": "konzept-rollen-als-agenten.md",
-      "grund": "Notizdokument in der Wurzel; keine Pruefung liest seinen Inhalt."
-    },
-    {
-      "muster": "prozess-pruefstand.md",
-      "grund": "Notizdokument in der Wurzel; keine Pruefung liest seinen Inhalt."
-    },
-    {
-      "muster": "prozess-pruefstand-nachtlauf.md",
-      "grund": "Notizdokument in der Wurzel; keine Pruefung liest seinen Inhalt."
+      "muster": "konzepte/**",
+      "grund": "Notizdokumente; keine Prüfung liest ihren Inhalt."
     }
   ],
   "nurGeruest": [

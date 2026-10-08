@@ -12,7 +12,7 @@
 
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -275,10 +275,12 @@ test("[kitstand-6] der eigene Stand bleibt beim Aufraeumen ausdruecklich stehen,
 
     const entfernt = worktreesAufraeumen(dir, "kitstand-implementierung", eigen);
 
-    assert.deepEqual(entfernt, [alt]);
+    // Gemeldet wird der realpath (Issue #1372): Gelistet wird unter dem realpath des Temp-Verzeichnisses.
+    const altEcht = join(realpathSync(tmpdir()), basename(alt));
+    assert.deepEqual(entfernt, [altEcht]);
     assert.ok(existsSync(eigen), "der eigene Stand bleibt");
     assert.ok(existsSync(kette), "eine andere Laufart raeumt einander nichts weg");
     assert.equal(existsSync(alt), false);
-    assert.deepEqual(aufrufe, ["worktree prune", `worktree remove --force ${alt}`]);
+    assert.deepEqual(aufrufe, ["worktree prune", `worktree remove --force ${altEcht}`]);
   });
 });

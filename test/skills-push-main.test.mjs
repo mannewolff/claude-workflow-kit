@@ -62,15 +62,15 @@ test("auf dem Build-Dienst-Weg fährt der Build-Dienst die Stufe push, der Skill
   const laeufe = BUILDDIENST.split("\n").filter((z) => z.startsWith("node ") && z.includes("checks.mjs run"));
   assert.deepEqual(laeufe, [
     'node .claude/kit/checks.mjs run --stufe push --since "$(git merge-base HEAD origin/<mainBranch>)"',
-    "node .claude/kit/checks.mjs run --since HEAD",
+    "node .claude/kit/checks.mjs run --in <pfad> --since HEAD",
   ]);
   assert.match(BUILDDIENST, /Commit-Gate/, "der Grund für den Nachweis-Lauf fehlt");
 });
 
 test("der Build-Dienst-Weg pusht erst den Prüfzweig, wartet über code ci-status --commit und pusht mainBranch nur bei Grün", () => {
-  const pruefzweig = BUILDDIENST.search(/git push origin HEAD:<zweig>/);
+  const pruefzweig = BUILDDIENST.search(/git -C <pfad> push origin HEAD:<zweig>/);
   const warten = BUILDDIENST.search(/board\.mjs code ci-status --commit/);
-  const haupt = BUILDDIENST.search(/git push origin HEAD:<mainBranch>/);
+  const haupt = BUILDDIENST.search(/git -C <pfad> push origin HEAD:<mainBranch>/);
   assert.notEqual(pruefzweig, -1, "der Push auf den Prüfzweig fehlt");
   assert.notEqual(warten, -1, "das Warten über `code ci-status --commit` fehlt");
   assert.notEqual(haupt, -1, "der Push auf mainBranch fehlt");
@@ -90,5 +90,14 @@ test("der Build-Dienst-Weg kennt eine Frist und den Fall ohne Build-Dienst", () 
 
 test("der Prüfzweig wird ohne --force gepusht und in Schritt 8 gelöscht", () => {
   assert.doesNotMatch(BUILDDIENST, /git push[^\n]*--force/, "der Build-Dienst-Weg pusht mit --force");
-  assert.match(BUILDDIENST, /git push origin --delete <zweig>/, "der Prüfzweig wird nicht gelöscht");
+  assert.match(BUILDDIENST, /git -C <pfad> push origin --delete <zweig>/, "der Prüfzweig wird nicht gelöscht");
+});
+
+test("[1372] push-main und merge-production verlangen kein cd in den Worktree", () => {
+  const merge = lies("skills", "merge-production", "SKILL.md");
+  for (const [name, text] of [["push-main", PUSH], ["merge-production", merge]]) {
+    assert.doesNotMatch(text, /^cd <pfad>/m, `${name}: ein Schritt verlangt cd <pfad>`);
+    assert.doesNotMatch(text, /Arbeitsverzeichnis bleibt/, `${name}: der Satz zum erhaltenen Arbeitsverzeichnis steht noch`);
+    assert.match(text, /checks\.mjs run --in <pfad>/, `${name}: der Prüflauf nennt den Worktree nicht über --in`);
+  }
 });
