@@ -762,6 +762,10 @@
   },
   "ohnePruefung": [
     {
+      "muster": "future/**",
+      "grund": "Dort sind Anforderungsdokumente roh enthalten"
+    },
+    {
       "muster": "CHANGELOG.md",
       "grund": "Release-Protokoll; keine Pruefung liest seinen Inhalt — die Changelog-Tests legen sich ihr eigenes Protokoll in einem Wegwerfprojekt an."
     },
