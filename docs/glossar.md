@@ -17,6 +17,7 @@ Unverändert bleiben in beiden Sprachen Befehle, Labels, Titel-Präfixe der Kart
 | Einstellung | setting |
 | Einstellungs-Oberfläche | settings interface |
 | Entscheiden statt fragen | decide instead of asking |
+| Ergebnisstand | result state |
 | fachliche Anforderung | business requirement |
 | Fachkonzept | business concept |
 | geschützte Datei | protected file |
@@ -24,6 +25,7 @@ Unverändert bleiben in beiden Sprachen Befehle, Labels, Titel-Präfixe der Kart
 | Karte | card |
 | Laufstand | run status |
 | Leitplanke | guardrail |
+| Menschenschritt | human step |
 | Mitteilung | statement |
 | Nachtbetrieb | night mode |
 | Nacht-Kette | night chain |
@@ -40,8 +42,10 @@ Unverändert bleiben in beiden Sprachen Befehle, Labels, Titel-Präfixe der Kart
 | Stufe (einer Prüfung) | stage (of a check) |
 | Teil | part |
 | Überführungsgrad | degree of transfer |
+| Umsetzungsnacht | implementation night |
 | Ursprungsdokument | origin document |
 | Urteilsregel | judgement rule |
+| Vorflug | pre-flight |
 | Vorhaben | initiative |
 | Wirksamkeit | effectiveness |
 | Zusammenspiel-Prüfung | integration check |

@@ -1,5 +1,5 @@
 # Glossary
-<!-- de: a7411aa838f5 -->
+<!-- de: 32d45771aefc -->
 
 The documentation is available in German and in English. This table maps the kit's concept terms between the two: The English version uses the terms from the left column and gives the German term in parentheses at its first occurrence on a page.
 
@@ -18,6 +18,7 @@ Left unchanged in both languages are commands, labels, the title prefixes of car
 | setting | Einstellung |
 | settings interface | Einstellungs-Oberfläche |
 | decide instead of asking | Entscheiden statt fragen |
+| result state | Ergebnisstand |
 | business requirement | fachliche Anforderung |
 | business concept | Fachkonzept |
 | protected file | geschützte Datei |
@@ -25,6 +26,7 @@ Left unchanged in both languages are commands, labels, the title prefixes of car
 | card | Karte |
 | run status | Laufstand |
 | guardrail | Leitplanke |
+| human step | Menschenschritt |
 | statement | Mitteilung |
 | night mode | Nachtbetrieb |
 | night chain | Nacht-Kette |
@@ -41,8 +43,10 @@ Left unchanged in both languages are commands, labels, the title prefixes of car
 | stage (of a check) | Stufe (einer Prüfung) |
 | part | Teil |
 | degree of transfer | Überführungsgrad |
+| implementation night | Umsetzungsnacht |
 | origin document | Ursprungsdokument |
 | judgement rule | Urteilsregel |
+| pre-flight | Vorflug |
 | initiative | Vorhaben |
 | effectiveness | Wirksamkeit |
 | integration check | Zusammenspiel-Prüfung |
