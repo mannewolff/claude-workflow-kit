@@ -1,8 +1,16 @@
+<script setup lang="ts">
+import { computed } from "vue";
+import { useData } from "vitepress";
+
+const { lang } = useData();
+const englisch = computed(() => lang.value.startsWith("en"));
+</script>
+
 <template>
   <div class="legal-footer">
-    <a href="https://mwolff.org/impressum" target="_blank" rel="noopener">Impressum</a>
+    <a href="https://mwolff.org/impressum" target="_blank" rel="noopener">{{ englisch ? "Legal notice" : "Impressum" }}</a>
     <span aria-hidden="true">·</span>
-    <a href="https://mwolff.org/datenschutz" target="_blank" rel="noopener">Datenschutz</a>
+    <a href="https://mwolff.org/datenschutz" target="_blank" rel="noopener">{{ englisch ? "Privacy" : "Datenschutz" }}</a>
   </div>
 </template>
 

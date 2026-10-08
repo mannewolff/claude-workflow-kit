@@ -7,6 +7,8 @@ const srcExclude = sprachen.englischAktiv ? [] : ["en/**", "glossar.md"];
 
 export default defineConfig({
   title: "claude-workflow-kit",
+  // Ohne Angabe setzt VitePress "en-US"; die Fußzeile liest lang (Issue #1369).
+  lang: "de",
   description:
     "Sechzehn Skills für KI-gestützte Entwicklung mit Claude Code: GitHub, GitLab oder lokal, mit drei bewussten menschlichen Stop-Punkten.",
   appearance: false,

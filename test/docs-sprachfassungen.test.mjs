@@ -316,3 +316,37 @@ test("bei englischAktiv true ist ein blosses Anfangsstueck eine Abweichung", () 
     { aktiv: true }
   );
 });
+
+// Sprachwahl (Plan #1348, E3): nur ein Umschalten des Locale-Praefixes bei
+// gleichem uebrigem Pfad gilt als gewaehlte Sprache.
+const { sprachwahl } = await import("../docs-site/.vitepress/theme/sprachwahl.mjs");
+
+test("sprachwahl: /en/wsl2 nach /wsl2 liefert de", () => {
+  assert.equal(sprachwahl("/en/wsl2", "/wsl2"), "de");
+});
+
+test("sprachwahl: /wsl2 nach /en/wsl2 liefert en", () => {
+  assert.equal(sprachwahl("/wsl2", "/en/wsl2"), "en");
+});
+
+test("sprachwahl: Wechsel zwischen zwei Seiten derselben Sprache liefert null", () => {
+  assert.equal(sprachwahl("/wsl2", "/quickstart"), null);
+  assert.equal(sprachwahl("/en/wsl2", "/en/quickstart"), null);
+});
+
+test("sprachwahl: Wechsel auf eine andere Seite der anderen Sprache liefert null", () => {
+  assert.equal(sprachwahl("/wsl2", "/en/quickstart"), null);
+  assert.equal(sprachwahl("/en/wsl2", "/quickstart"), null);
+});
+
+test("sprachwahl: / nach /en/ liefert en", () => {
+  assert.equal(sprachwahl("/", "/en/"), "en");
+});
+
+test("sprachwahl: /index.html, / und .html-Endungen gelten gleich", () => {
+  assert.equal(sprachwahl("/index.html", "/en/"), "en");
+  assert.equal(sprachwahl("/en/index.html", "/"), "de");
+  assert.equal(sprachwahl("/wsl2.html", "/en/wsl2"), "en");
+  assert.equal(sprachwahl("/en/wsl2.html", "/wsl2.html"), "de");
+  assert.equal(sprachwahl("/en", "/"), "de");
+});
