@@ -2,6 +2,27 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [4.0.2] - 2026-10-08
+- Wächtertest läuft bei jeder geänderten Testdatei mit (#1374)
+- Release-Arbeitsbaum: Prüflauf und Push ohne cd und ohne Symlink-Pfad (#1372)
+- Kopfzeile Ablauf-Pruefung in test/docs-sprachfassungen.test.mjs ergänzen (#1373)
+- Zweisprachige Doku aktivieren: Locales, Weiterleitung, Schalter (#1370)
+- Sprachwahl merken und Fußzeile je Sprache (#1369)
+- Dokumentation auf Englisch, Teil 9: Issue-Tracker bis Lizenz (#1368)
+- Dokumentation auf Englisch, Teil 8: Laufstand bis Was bewusst nicht im Kit ist (#1367)
+- Dokumentation auf Englisch, Teil 7: Geschützte Datei bis Nacht-Kette (#1366)
+- Dokumentation auf Englisch, Teil 6: Nachtbetrieb bis Permissions (#1365)
+- Dokumentation auf Englisch, Teil 5: Drei Bahnen bis Prüflauf (#1364)
+- Dokumentation auf Englisch, Teil 4: Skills bis Mitteilungen (#1363)
+- Dokumentation auf Englisch, Teil 3: Oberfläche und Alle Einstellungen (#1362)
+- Dokumentation auf Englisch, Teil 2: Die Config-Datei (#1361)
+- Dokumentation auf Englisch, Teil 1: Konzept bis Vault (#1360)
+- Restliche kleine Seiten und historische Hinweisseiten auf Englisch (#1359)
+- Seiten lokal, regeln-im-werkzeug und pruefbereiche auf Englisch (#1358)
+- Glossar und Einstiegsseiten auf Englisch (#1357)
+- Englische Einstellungs-Referenz aus config-referenz.mjs (#1356)
+- Prüfwerkzeug für Sprachfassungen und Schalter englischAktiv (#1355)
+
 ## [4.0.1] - 2026-10-08
 - Doku-Tests auf Skillzahl und Sidebar-Anker der Doku-Seite ausdehnen (#1340)
 - future aus der Probeliste genommen

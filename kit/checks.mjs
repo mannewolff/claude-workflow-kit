@@ -126,7 +126,7 @@ import { createHash } from "node:crypto";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "4.0.1";
+const KIT_VERSION = "4.0.2";
 
 // Die Variablen, die der Nacht-Runner seinen Sessions setzt (Issue #1282), aus dem Blatt-Modul
 // neben session.mjs. Fehlt der Nachbar, bleibt die Umgebung, wie sie ist.
