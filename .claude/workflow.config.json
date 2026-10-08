@@ -746,6 +746,8 @@
       "test/fixtures/push-main-*.md",
       ".github/workflows/**",
       "docs-site/**",
+      "docs-site/sprachen.json",
+      "tools/sprachfassungen.mjs",
       "package.json"
     ],
     "konfiguration": [

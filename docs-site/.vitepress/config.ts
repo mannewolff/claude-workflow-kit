@@ -1,4 +1,9 @@
 import { defineConfig } from "vitepress";
+import sprachen from "../sprachen.json";
+
+// Bis zur Aktivierung bleiben die englischen Seiten und das Glossar ungebaut, die
+// deutsche Doku unverändert sichtbar (Issue #1355, Plan #1348 E6, E10).
+const srcExclude = sprachen.englischAktiv ? [] : ["en/**", "glossar.md"];
 
 export default defineConfig({
   title: "claude-workflow-kit",
@@ -6,6 +11,7 @@ export default defineConfig({
     "Sechzehn Skills für KI-gestützte Entwicklung mit Claude Code: GitHub, GitLab oder lokal, mit drei bewussten menschlichen Stop-Punkten.",
   appearance: false,
   srcDir: "../docs",
+  srcExclude,
   outDir: ".vitepress/dist",
 
   themeConfig: {

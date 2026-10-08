@@ -32,6 +32,11 @@ jobs:
         working-directory: docs-site
         run: npm ci
 
+      - name: Sprachfassungen und Einstellungs-Referenz pruefen
+        run: |
+          node tools/sprachfassungen.mjs --check
+          node tools/config-referenz.mjs --check
+
       - name: VitePress Build ausfuehren
         working-directory: docs-site
         run: npm run build
