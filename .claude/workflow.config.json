@@ -675,6 +675,7 @@
     "einstellungen": [
       "kit/einstellungen.mjs",
       "tools/config-referenz.mjs",
+      "tools/config-referenz.en.json",
       "templates/workflow.config.json",
       "templates/workflow.config.schema.json",
       "test/einstellungen-*.test.mjs",
