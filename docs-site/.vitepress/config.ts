@@ -3,7 +3,7 @@ import { defineConfig } from "vitepress";
 export default defineConfig({
   title: "claude-workflow-kit",
   description:
-    "Zwölf Skills für KI-gestützte Entwicklung mit Claude Code — GitHub, GitLab oder lokal, mit drei bewussten menschlichen Stop-Punkten.",
+    "Sechzehn Skills für KI-gestützte Entwicklung mit Claude Code: GitHub, GitLab oder lokal, mit drei bewussten menschlichen Stop-Punkten.",
   appearance: false,
   srcDir: "../docs",
   outDir: ".vitepress/dist",
@@ -44,7 +44,7 @@ export default defineConfig({
           { text: "Konzept & Voraussetzungen", link: "/dokumentation" },
           { text: "Installation & Config", link: "/dokumentation#die-config-datei" },
           { text: "Issue-Tracker & Code-Host", link: "/dokumentation#issue-tracker-und-code-host" },
-          { text: "Die zwölf Skills", link: "/dokumentation#die-zwolf-skills-und-der-9-schritt-kernprozess" },
+          { text: "Die sechzehn Skills", link: "/dokumentation#die-sechzehn-skills-und-der-9-schritt-kernprozess" },
           { text: "Vollständiger Durchlauf", link: "/dokumentation#ein-vollstandiger-durchlauf" },
           { text: "Zwei Bahnen", link: "/dokumentation#zwei-bahnen" },
           { text: "Menschliche Stop-Punkte", link: "/dokumentation#die-drei-menschlichen-stop-punkte" },
