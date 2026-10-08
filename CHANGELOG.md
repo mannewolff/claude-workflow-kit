@@ -2,7 +2,7 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
-## [3.8.1] - 2026-10-08
+## [4.0.0] - 2026-10-08
 - Natives Windows wird ab 4.0.0 nicht mehr unterstützt; Umzug nach WSL2: docs.mwolff.org/wsl2#umzug-von-nativem-windows (#1276)
 - Kette hält den Stand der Ursprungsdokumente nach der Umsetzungsstufe fest (#1290)
 - Nachtbericht: Abschnitt Ursprungsdokumente für Ketten unter Variante B (#1289)
