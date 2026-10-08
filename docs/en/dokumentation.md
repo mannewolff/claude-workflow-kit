@@ -1663,3 +1663,301 @@ Reviewers with `kind: "claude"` run as subagents and need no permission. A revie
 ```
 
 The entry names the **tool**, not the full command line — for the same reason as with the buildChecks above (prefix matching). Whoever has configured several foreign CLIs enters each one individually. A setup with exclusively `kind: "claude"` reviewers needs none of this.
+
+### The run status
+<!-- de: 4bcd7299093a -->
+
+**The state of a run is on the board, not in the process.** Until then it lived in the running runner: If the process died, the knowledge died with it, because the night report is only written at the exit, and a crash is not an exit. That is why every card of a chain or implementation night carries its own state, visible without a look into the log.
+
+**Three labels and a comment.** The card carries at most one of the three labels `lauf:laeuft`, `lauf:abgebrochen` and `lauf:wartet`, plus exactly one comment `## Laufstand` (run status), which is replaced at every change. It names the last step begun and the last step completed, each with a point in time. The comment is a board, not a history; the night report remains the history. Whoever wants to know *what* happened in a night reads the report; whoever wants to know *where* a card stands now reads the run status.
+
+**Abort and halt can be told apart.** `lauf:abgebrochen` means: technically aborted, repeating is enough. `lauf:wartet` says verbatim in the run status what the card is waiting for, in one of three forms:
+
+- `wartet: Übergang <x> im Projekt nicht freigegeben — weiter mit kit:night` (waits: transition not released in the project — continue with kit:night) — the project has not released the transition (see below);
+- `wartet: Karte ohne Freigabe zur Umsetzung` (waits: card without release for implementation) — the transition into the implementation is released, but the card carries no `kit:durchziehen`;
+- „Halt: Frage wartet auf den Menschen — siehe `## Kette angehalten`“ (halt: question waits for the human — see `## Kette angehalten`) — a halt on the content. The path for it via `kit:klaeren` and the comment `## Kette angehalten` stays as it is.
+
+**Goal, number of reviewers and limit.** If the card carried a goal or a `planreview:*` at the start, their values are in every version below the header, because the labels themselves are used up by then: `Ziel: <plan|pakete|umsetzung|push-vorbereitet>` (goal), `Prüfer: <1|2>` (reviewers) and, if the project blocks a transition before the goal, `Grenze: <letzte erreichbare Stufe>` (limit: last reachable stage). If the chain ends at its goal, the header reads `fertig bis <Ziel>` (finished up to goal), and below it is the line `Als Nächstes:` (next) with the step that now belongs to you (see [How far a chain runs](/en/dokumentation#how-far-a-chain-runs-the-goal)). Without a goal and without `planreview:*` the run status looks as it did before.
+
+**One log per step.** Every step of a card — a stage of the chain, an implementation round, a check of the check run — additionally writes its runner lines and the output of its session to `.claude/protokolle/<lauf>/<karte>-<stufe>.log`, a second attempt to `<karte>-<stufe>-v2.log`. The run status names the path in the line `Protokoll:` (log). That way the log of a step stands apart from other runs running at the same time. The daily log `.claude/night-run-<datum>.log` remains and carries the run ID in every line in the brackets of the timestamp: `[<Zeitpunkt> <lauf>]`.
+
+**Repeat with the same gesture.** There is no command of its own for a single step. `kit:night` on the card starts the chain at the first stage without a result: What is already there — plan, review note, packages, coverage, implemented packages in In review — counts as done and is not created twice, even if the previous run then failed at the clock or at the board. An existing plan counts as a result as long as it is not in Done; a fresh plan is only created once the old one is in Done. Whoever wants a new plan closes the old plan.
+
+**Release transitions individually.** Which transitions of the chain may follow automatically is set by the project in `night.kette.uebergaenge`, with the four switches `planReview`, `reviewPakete`, `paketeAbdeckung` and `abdeckungUmsetzung`. The kit's default releases the first three. For `abdeckungUmsetzung` there is no default: Without an entry the behaviour from before the setting applies, a chain with `kit:durchziehen` implements after the coverage, one without ends there `fertig` (finished). `abdeckungUmsetzung` only works together with `kit:durchziehen` on the card: The GO can never be given project-wide, it stays on the individual card. An explicit `false` stops a chain with `kit:durchziehen` before the implementation, a `true` lets a chain without the label end with `wartet: Karte ohne Freigabe zur Umsetzung`. A blocked transition ends with `lauf:wartet` in the first form above.
+
+**One attempt, only for the living run.** An automatic attempt only exists for environment errors, as long as the run is alive: The board was not reachable, or a session did not come about. Then the run tries the step again exactly once after a pause, and the run status notes „2. Versuch“ (2nd attempt). If that fails too, the run halts visibly. A session that came about and ended without a result, at the time limit or without proof is a package error and gets no attempt. A dead run is not repeated: It cannot repeat itself, and a restart from outside would be a run without a gesture. After the deadline its cards show „nicht beendet“ (not finished), and it continues with `kit:night`.
+
+#### The watchdog
+<!-- de: a582e9f94c54 -->
+
+Who notices a run that died without saying goodbye, and when it counts as silent.
+
+At the start of the run the runner starts a detached watchdog (Wächter), which checks every minute. For this the run writes a sign of life to its pulse file `.claude/lauf/<lauf>.puls` every minute. It only counts as silent once this sign of life is older than the deadline `night.stand.fristMin` (default 10 minutes) **and** the runner process no longer exists. A run that is alive therefore never counts as silent, even if a step writes no pulse for a long time. If the run is silent, the watchdog sets every card still on `laeuft` to `lauf:abgebrochen` with `nicht beendet, letztes Lebenszeichen <zeit>, Frist <n> min` (not finished, last sign of life, deadline) and ends. There is no restart. If the watchdog died with the computer, the next run makes up for it at its start.
+
+#### The journal
+<!-- de: 9284a7775bf3 -->
+
+What a run records along the way so that its state survives the process.
+
+Every run writes every state, before it hands it to the board, as a line into its journal `.claude/lauf/<lauf>.jsonl`. If the board does not accept a state, the line stays open, and on the board the last visible state applies. Open lines are filled in as soon as the board answers again: in the same run at the next state, otherwise at the start of the next run. The log names every catch-up with „Laufstand nachgetragen“ (run status filled in). The journal is the memory of the run; you only have to read it if the board remained owing a state.
+
+**Partial cut.** If the stage `pakete` dies in the middle of the cut, the card carries „pakete begonnen für #M“ (packages begun for #M) without „pakete fertig für #M“ (packages finished for #M). The next run then does not repeat the stage, but shows `lauf:abgebrochen` with „Teilschnitt vorhanden (#a, #b) — eine Wiederholung legte doppelt an; Teilschnitt am Board aufräumen, dann erneut kit:night“ (partial cut present — a repetition would create duplicates; clean up the partial cut on the board, then kit:night again). Cleaning up means: close or delete the named packages on the board, then put `kit:night` on the card again. Packages without any run status entry, for example created by hand, are not a partial cut.
+
+**Leftovers in the stash.** If a failed package leaves changes in the working tree and the salvage does not succeed, they lie in the stash `nachtrest #<id> <lauf>`, and the run status of the package names it. You get them back with `git stash list` and `git stash apply stash@{<n>}`; once the package is done, `git stash drop stash@{<n>}` clears the entry.
+
+#### The evidence cases
+<!-- de: 5db5fb255472 -->
+
+For every evidence case (Belegfall) of the business requirement: what state the card shows on the board afterwards and with which gesture it continues.
+
+| Case | Card state afterwards | Way forward |
+|---|---|---|
+| Without a trace: the run dies in the pre-check | first `lauf:laeuft` with „Lauf angenommen um …, Vorabprüfung läuft“ (run accepted at …, pre-check running), after the deadline `lauf:abgebrochen` with `nicht beendet, letztes Lebenszeichen <zeit>, Frist <n> min` | read the log, fix the cause, then put `kit:night` on the card again |
+| Aborted although finished: the review stage exceeds the time budget, the review note is already in the plan | `lauf:abgebrochen` with the reason; the run status names the last completed step | put `kit:night` on the card again: The stage counts as found, the chain starts at the first stage without a result |
+| Outcome unknown: the board is briefly unreachable | if the attempt after the pause succeeds, the state of the card with „2. Versuch“; if it fails, `lauf:abgebrochen` with `abgebrochen, Umgebungsfehler um <zeit>: …` (aborted, environment error at), the remaining cards of the run `lauf:wartet` with `nicht begonnen: der Lauf hielt um <zeit> an — …` (not begun: the run halted at) | after a successful attempt nothing; otherwise, once the board answers again, start the run again or put `kit:night` on the chain again |
+| A package halts the night: session without commit, time limit or waiting session | only this package `lauf:abgebrochen` with reason, it goes to the backlog; dependent packages `lauf:wartet` with „hängt an #N (abgebrochen in diesem Lauf)“ (depends on #N, aborted in this run); leftovers in the stash `nachtrest #<id> <lauf>`; the remaining packages keep running | read the reason, fetch leftovers from the stash if needed, improve the package and pull it back to Ready |
+| Interleaved logs: chain and check run run at the same time | every run status names in the line `Protokoll:` the file `.claude/protokolle/<lauf>/<karte>-<stufe>.log` of its step | open the named file; in the daily log the run ID in `[<Zeitpunkt> <lauf>]` separates the runs |
+
+### Running with a local model
+<!-- de: 832819589c2e -->
+
+> **Untested.** This section describes a path that follows from the architecture of the runner and should work without any change to the kit — but it has **not been tried in practice** here. Neither was LiteLLM set up nor was a run made against a local model. Take it as a reasoned proposal, not as a report of experience.
+
+The idea: have simple issues built at night by a local model, while review and demanding issues keep running via Anthropic.
+
+**Why a proxy is needed.** Claude Code speaks exclusively the Anthropic Messages API; local runners such as Ollama speak the OpenAI format. A translator belongs in between — [LiteLLM](https://docs.litellm.ai/) is the usual choice. Two things are differently reliable here: That Claude Code can point to an endpoint of its own via `ANTHROPIC_BASE_URL` is [officially documented](https://code.claude.com/docs/en/llm-gateway) (gateway pattern), as is `--model` per call. Operating a local model behind this endpoint, by contrast, is community terrain and not supported by Anthropic.
+
+A minimal LiteLLM configuration:
+
+```yaml
+model_list:
+  - model_name: lokal-qwen
+    litellm_params:
+      model: ollama/qwen2.5-coder:14b
+      api_base: http://localhost:11434
+```
+
+**Mixed operation: put the variable in front of the command, do not export it.**
+
+```bash
+ANTHROPIC_BASE_URL=http://localhost:4000 \
+  node .claude/kit/night.mjs --model lokal-qwen --label kit:lokal --max 3
+```
+
+`ANTHROPIC_BASE_URL` acts globally for a process, `--model`, by contrast, per call — that sounds like an obstacle to mixed operation, but here it is not one. The runner starts every session as a child process of its own and passes `process.env` through. If you put the variable **in front of the night run command**, it applies exclusively to its sessions; an interactive Claude Code session running in parallel stays untouched. An `export` in the `.zshrc` would break exactly that — then your interactive work would also run via the proxy.
+
+**Split via labels.** The [routing label](/en/dokumentation#night-mode) is enough for the separation, no new flag is needed: Give the simple issues a label of their own (say `kit:lokal`) and run two runs one after the other — one with the local model and this label, a regular one with `kit:nightrun`.
+
+**The review stays untouched.** `/review` uses the `reviewModel` from the `workflow.config.json` and is completely decoupled from the night run model. What a local model built at night is still examined by the strong model in the morning.
+
+**Where the limits are — unvarnished.** A night session must be able to do more than write code: It must call tools reliably (board operations via `board.mjs`, file edits, Git), sustain a multi-stage chain and commit cleanly at the end. In our experience small models break exactly at that, not at the programming itself. Projects with sharp gates — mutation tests, coverage ratchets, multi-stage build chains — are realistically out of reach for a small local model. The sensible area of use is changes without a test obligation: documentation, text corrections, configuration values, small mechanical adjustments.
+
+**What protects you when it goes wrong.** Nothing broken gets into the repo: The [salvage pre-check](/en/dokumentation#night-mode) runs the mandatory checks itself before anything is committed at all, after red checks the leftovers of a package go into the stash instead of into the next commit, and the leftover guard ends the run as soon as a successful round leaves uncommitted leftovers. A failed local run costs you electricity and time, not the code base.
+
+**Getting started.** Begin with a single documentation issue:
+
+```bash
+ANTHROPIC_BASE_URL=http://localhost:4000 \
+  node .claude/kit/night.mjs --model lokal-qwen --label kit:lokal --max 1
+```
+
+The progress log shows you every tool call of the session without further ado. From it you see within minutes whether the model handles the board operations cleanly — that is the quickest feasibility test, and it decides the question before you invest a whole night.
+
+**Morning ritual:** Read the log (`.claude/night-run-<datum>.log`: issue, duration, result, commit per round) — the same state is additionally available for evaluation as `.claude/night-run-<datum>-<uhrzeit>.json` next to it —, then as always `/review` → your own test → `push main`. Deferred issues are in the backlog with a comment.
+
+## Effort of the process
+<!-- de: 4c66b3f30b69 -->
+
+Since issue #748/#749 every result state of a night session (`.claude/night-run-<datum>-<uhrzeit>.json`) already carries duration, cost, quantity, model and check status. `node .claude/kit/aufwand.mjs auswerten` reads the most recent of them, aggregates time, checks, scope, cost and the effort per task level and writes from this `.claude/aufwand.md` (for humans) and `.claude/aufwand.json` (for the two output places below). The tool only says what stands out — never what to do, and it stays silent when nothing stands out.
+
+**Where the finding appears.** In exactly two places, and both together: as a closing block in the run log `.claude/night-run-<datum>.log`, which every unattended run writes itself at the end, and in the skill `/push-main`, which runs `node .claude/kit/aufwand.mjs befund` before the first step and shows the output. Both are necessary: If night mode starts without any human involvement in future, perhaps nobody reads the run report any more; publishing, by contrast, remains a step that a human triggers themselves.
+
+**By task level.** The report carries a section of its own that shows one line per pair of task level and thoroughness (`effort`): units, duration, cost, red check states and rework, every number with the number of runs that carry it. That way a level can be compared before and after a change of its thoroughness, without running a comparison run of its own for it. The same block is in `.claude/aufwand.json` as `jeStufe`.
+
+**What counts as rework there.** A unit whose final status is not `in_review` **or** whose check status was red. Counted are exclusively work packages with a started session — recognisable by `art: "implementierung"` and a field `endStatus`. Units without a session (skipped, left lying, deferred) and the units of the night chain carry neither final status nor check status; counted as rework, they would all be one, and the rate would only measure how often a gate held. The costs of this table are the amounts reported per unit, not the calculated division from the section "Kosten" (cost). A line "ohne Stufe" (without level) is at the end: It collects states before issue #711 and cards whose model did not come via a level.
+
+**Distribution.** The sums say how much time passed in total, not how it is distributed across the packages. The section "Verteilung" (distribution) therefore shows per kind of run (`implementierung`, `kette`, `pruefung`) a table with one line per task level ("ohne Stufe" at the end): for duration, thinking, tool work, rest and check runs per package the median and the 90th percentile, each with the number of values and of runs behind it. The calculation is nearest-rank, so every value output is one that was actually measured. The dominant kind of time is the largest of the three medians thinking, tool and rest; if one of them is missing, "nicht bestimmbar" (not determinable) stands there together with the kind of time that is not measured. Check runs per package add up `prueflaeufe.arbeit.anzahl` and `prueflaeufe.abschluss.anzahl`; a unit without this information does not count as 0. Added to that is the share of time-limit aborts, counted as for the target mark. The **chain stage** (plan, review, packages, coverage, implementation) is not recorded on the unit and therefore cannot be shown separately; the chain units are together under the kind of run `kette`. The same block is in `.claude/aufwand.json` as `verteilung`.
+
+**The target mark of the implementation.** A report block of its own, "Zielmarke der Umsetzung" (target mark of the implementation), shows how many implementations exceed the target mark: of how many measured implementations how many lie above it, by how much on average and at the maximum. The average is taken over the **exceedances** and not over all attempts — whoever averaged in the ones that were kept would get a number that falls with every further good package without a single bad one having got better. Counting is per **attempt**, not per package: A package in two attempts counts twice, and it is precisely the second attempt that is expensive. The mark comes from the **run header** of the respective state (`zielUmsetzungMin`) and not from today's configuration; states without this information — every one before v3.3 — stand separately and go into none of these numbers. The same block is in `.claude/aufwand.json` as `zielmarke`. It says what was counted and nothing about why: No cause follows from an exceeded mark.
+
+**Time-limit aborts stand separately and go into no average.** An implementation whose unit carries `zeitlimitBeendet` (see [The time-limit abort](/en/dokumentation#the-time-limit-abort)) counts solely as a time-limit abort — in no attempt, in no series, in no average. Its completion time is unknown: The session was aborted at the clock, and how long it would still have needed nobody knows. Kept as an exceedance it would shift the average by a value that no measurement carries — reporting an estimate as a measurement would be wrong. The report therefore names their number in a sentence of its own. If there is no basis at all, "nicht gemessen" (not measured) stands there and no 0.
+
+**Lookups.** A report block of its own, "Auskünfte" (lookups), shows per implementation unit the time spent on fetching and taking apart board lookups, in minutes and with the number of calls — measured by the night runner as the span from the tool call to its result for every query to the board and every processing of its answer; thinking time does not count. Below it is the average over the implementation units together with the number of units that carry it. An implementation unit is one whose session started with `/implement-next`, `/implement-ready`, `/implement-test` or `/implement-done`; all others (chain, creating cards, check runs) stand in a line of their own "keine Umsetzung" (no implementation) and do not go into the average. A unit without measurement (`auskunft: null`) and one from a state before issue #1026 without the field stand as "nicht gemessen" and never go into the average as 0. The same block is in `.claude/aufwand.json` as `auskuenfte`.
+
+**Measuring transcripts afterwards.** `node .claude/kit/aufwand.mjs auskunft <transkript…>` measures Claude Code transcripts (`*.jsonl` under `~/.claude/projects/<projekt>/`) with **the same** rule as the night runner — that way a reference value can be determined from a run that lay before the measurement. The output names minutes and calls per file and in total, with several files also the average per file. A file that cannot be read or one without timestamps is reported explicitly and not counted as 0; the command then ends with exit 1.
+
+**No gate.** The finding holds up neither a run nor `/push-main`. A failure of the evaluation is a log line, not an abort.
+
+**Changing the number of runs and the thresholds.** Both are in the optional block `aufwand` of the `.claude/workflow.config.json` (see [All settings](/en/dokumentation#all-settings)) — if the block or a field in it is missing, the built-in defaults apply, so an existing project gets the evaluation without further setup. `aufwand.laeufe` determines how many of the most recent result states are included; `aufwand.schwellen` carries the four limit values (`pruefungAnteil`, `eingrenzungOhneWirkung`, `werkzeugAnteil`, `schreibkostenAnteil`) from which a finding appears. In the settings interface the block is under the topic "Nachtbetrieb" (night mode).
+
+## Consumption of interactive sessions
+<!-- de: abc7e20ecb06 -->
+
+The night run reports its consumption itself (see above). For the sessions in which you sit at the computer yourself, the **session reporter** (Sitzungs-Melder) does that: `board.mjs sitzung melden` reads the session transcript of Claude Code, sums input, output and cache tokens and delivers them via the same route as the runner — `POST /api/kanban/night-runs`, only with `kind`/`mode` **INTERACTIVE** and the start time of the session as the key. It takes the path of the transcript from `--protokoll` or as `transcript_path` from the body that a Claude Code hook passes in on stdin.
+
+**Who calls it.** Nobody by hand. With a project-local installation the installer enters two entries into the `hooks` block of `.claude/settings.json`, and Claude Code calls the reporter by itself:
+
+| Event | Call | Effect |
+|---|---|---|
+| `Stop` | `node .claude/kit/board.mjs sitzung melden` | ongoing, `complete: false`, throttled to one report per five minutes |
+| `SessionEnd` | `node .claude/kit/board.mjs sitzung melden --complete` | final, `complete: true` — afterwards the waypoint file is empty |
+
+The entries are in the **project** file and not in the user settings under `~/.claude`: The target project comes from the binding of the token in the working directory, and a user-wide setting would report from every directory — including every foreign one.
+
+The installer **supplements** the file, it does not replace it: `env`, `sandbox`, `permissions` and foreign hook entries stay in place, and a second run changes nothing more. If `settings.json` is not a readable JSON object, it does not touch it and names the two entries to add by hand — what it cannot read, it cannot preserve either.
+
+**If the reporter stays silent** although token and tracker are right, a look at the sandbox is worthwhile: If it runs in the project, the call needs a network release — `node .claude/kit/board.mjs*` in `sandbox.excludedCommands` of the same file (see "Kit-Skripte mit Board-Zugriff", kit scripts with board access). Without it the reporter gets as far as the delivery and fails there with `nicht-eingeliefert` (not delivered); that does not disturb the session, only the consumption is missing. `sandbox.network.excludedCommands` is not a key of Claude Code and is silently ignored.
+
+**Switching off.** Delete the respective entry from the `hooks` block in `.claude/settings.json`: both for completely, only the one under `Stop` for "only at the end of the session". The file is not versioned, so the decision applies to your machine. A later installer run enters the deleted entry again — whoever wants to silence the reporter permanently takes away its precondition instead of the hook: Without a project-bound token in the working directory and with every `issueTracker` except `toolbox` it stays silent by itself and says so too (`kein-token`, `kein-board` — no token, no board).
+
+**The known gap: worktrees.** An interactive session in a `git worktree` does **not** report. A freshly created worktree carries only the versioned files, and `.claude/*` is excluded via `.gitignore`: Missing there are `settings.json` — that is, the hook — and `.claude/kit/` — that is, the reporter. For the worktrees of the night chain this has no consequences, because `KIT_AGENT_MODEL` is set there and the reporter would stay silent anyway; the runner reports these sessions itself. Whoever, by contrast, creates a worktree by hand and works in it will not find this consumption in the control centre (Leitstand). Remedy by hand: copy `.claude/settings.json` and `.claude/kit/` over from the main working tree.
+
+**Assignment to cards.** `issue move` notes every move to *In progress* and *In review* with a timestamp in `.claude/wegmarken.tsv` (waypoints). The reporter divides the session sum among the cards by these timestamps. What lies between no two waypoints it reports as a rest without a card number — it is in the session sum, but in no card. The same applies to periods in which **two cards were open at the same time**: If two sessions run in the same directory, their waypoints mix in one file, and an assignment would be guessed. It is omitted.
+
+**When it reports.** At the end of the session with `complete: true` — afterwards the waypoint file is empty. In between ongoing with `complete: false`, throttled to at most one report per five minutes: Reporting only at the end would lose every crashed session, unthrottled every move would create an HTTP call.
+
+**When it does not report.** With `KIT_AGENT_MODEL` set the reporter stays completely silent — this session was started by the night runner and it already reports it itself; a second path would count it twice. Without a project-bound access token in the working directory it reports nothing either; the target project comes from the binding of the token and not from the call. Both end without an error: The reporter is bookkeeping, not a condition, and must never disturb a session. For the same reason a failed delivery has no consequences — the waypoints stay in place, the next attempt still sees the same stretch.
+
+**The price table needs maintenance.** The session transcript carries no dollar amount, only token quantities. The amount is therefore calculated, with the rates from **`kit/preise.mjs`** (in the installed project: `.claude/kit/preise.mjs`). The file carries in its header the date of its state and the source the numbers come from. **It goes out of date by itself:** A new model is missing from it, and then the reporter reports **no** amount for the affected sum — never a 0 and never an estimated one. The token quantities are there anyway. Whoever sees a missing amount in the control centre adds the model to `MODELL_STUFEN` and sets `PREISE_STAND` anew; the levels themselves only change when Anthropic changes the prices. If the file is missing entirely — for example next to an individually copied `board.mjs` —, the reporter keeps running, just without an amount.
+
+## Guardrails instead of prompts
+<!-- de: 84c0cd0fc383 -->
+
+A language model reproduces the most frequent pattern of its training corpus, not the most current one. An API deprecated months ago still stands in millions of lines of old code as the normal way; the deprecation notice is an edge case against this mass. The result is an error in thinking, materialised many times over: the same outdated or deprecated idiom, rolled out across all call sites — and often only visible late in an external analysis.
+
+For such recurring, class-wide errors the same principle applies as with the coverage gate: a **hard guardrail that fails in the mandatory gate**, instead of a prompt or a document that asks. A prompt to discipline is skipped under time pressure; a lint or compiler rule in the `buildChecks`, which agent and CI run through anyway, cannot commit green in the first place. Concretely:
+
+- **The guardrail derives from existing annotations** instead of keeping a hand-maintained blacklist that itself goes out of date: `@typescript-eslint/no-deprecated` reads JSDoc `@deprecated`, Java reports every deprecated API as a build error with `-Xlint:deprecation` and `-Werror`. The analyzer scales with the ecosystem, the list only with the discipline of its upkeep.
+- **The gate is the main catch, SonarQube or similar the safety net.** The round trip via main catches reliably, but late — the error is then already on main. The check belongs at the front, in `/local-check` and `/implement-ready`, where the agent runs it before completion.
+- **The concrete rule catalogue lives in the respective project** (`buildChecks` in the config, lint setup in the repo), not in the kit. The kit only anchors the transferable principle.
+
+**The yardstick behind it: "rule in the text or rule in the tool".** It is in `CLAUDE-workflow.md` and applies to every instruction supplied: An **operating instruction** (Bedienvorgabe) — whether it is followed can be read from output or result, a tool could carry it out in the reader's place — belongs in the tool; a **judgement rule** (Urteilsregel), which demands a decision in the individual case, stays in the text. Mixed rules are taken apart, not rounded. Which rule of `/local-check` has moved where according to this yardstick is listed in [Rules in the tool](/en/regeln-im-werkzeug) — line by line, with kind, degree of transfer (Überführungsgrad) and new place.
+
+**The borderline case: when no guardrail can be had.** Some things cannot be measured — whether a model believed a statement instead of looking it up, for instance. There the declared self-report takes the place of the gate: The fixed answer form „Mitteilung übernommen, ungeprüft — …“ (statement adopted, unchecked) from [Statements: believe instead of checking](/en/dokumentation#statements-believe-instead-of-checking) forces nothing, but makes every violation a visible contradiction. Visible contradiction instead of a gate — the same principle, only with the weaker means, because the stronger one does not exist here.
+
+## Issue review across multiple models
+<!-- de: fe45e30104da -->
+
+A document is the source of truth for the next step. An error in it propagates, and the author does not see it, because they have in their head the context from which the document arose. `/issue-review` has models read it that did **not** write it: They deliver findings, and the session that called the skill works them in or rejects them with one sentence. Findings are support, not a gate — whether a stage is finished is said by a command or a human, never by a model marker.
+
+### Three check stages — the check moves up
+<!-- de: 2a37d6748cb5 -->
+
+Which stage applies is decided by the title prefix, and every stage leaves its own trace:
+
+| Stage | Checks | Proof |
+|---|---|---|
+| `fachlich` | a `[Fachlich]` issue — the business requirement from [/fachplan](/en/dokumentation#fachplan) | `Fachplan-Review: …` |
+| `plan` | a `[Plan]` issue — the plan document from [/techplan](/en/dokumentation#techplan) | `Plan-Review: …` |
+| `issue` | a technical work package from [/issues](/en/dokumentation#issues) | `Issue-Review: …` |
+| `issue` | a `[Task]` work package from [/task](/en/dokumentation#task) — `[Task]` is **not a document prefix** | `Issue-Review: …` |
+
+**Where the proof is:** for the work package in the section `## Kontext`, for the business requirement in the section `## Ziel` next to `Autor-Modell:`, for the plan document before `## Ziel` next to `Plan-Modell:`. The marker is a trace, not a release: No skill reads it as a condition for the next step.
+
+**The call is always the same: `/issue-review #N`.** There is deliberately no command of its own per stage — which one applies, the skill reads from the title prefix. That applies interactively just as in night mode; the difference is only whether it asks before writing. Without a number the skill takes all `[Fachlich]` and `[Plan]` documents from the backlog that do not yet carry a marker of their stage. It only checks work packages with an explicit number: The normal case is Ready without a package review, and what a package does wrong is caught by the build gates and the code review. `[Idee]` is always excluded.
+
+**Why upwards.** The reach of an error grows downwards: An error in the business requirement propagates into the plan, from there into every work package and into all code. Errors found earlier are cheaper to fix and prevent the most.
+
+**Why the work package no longer needs a reviewer of its own.** Scope, dependencies and collateral damage in the existing code are decided in the plan, not in the individual package; the former scope role has therefore moved as `schnitt-abhaengigkeiten` to the plan stage, where it has the whole cut in front of it.
+
+**Form before content.** The yardstick of every stage is its format: the four story sections, the six plan headings, the four sections of the work package. The form is not checked by a model but by `issue check-form` (see [Board adapter](/en/dokumentation#board-adapter)); the session fixes violations before a reviewer starts. The plan document carries exactly these headings in this order:
+
+```markdown
+## Ziel
+## Betroffene Bereiche
+## Architektonische Entscheidungen
+## Geplante Änderungen
+## Offene Fragen
+## Verifizierung
+```
+
+### Procedure
+<!-- de: c0d48a188f00 -->
+
+Pre-flight with `issue-review check`, then `issue check-form <id>`, then `issue-review roles --stufe <stufe> --author <modell>` for roles and staffing. Every reviewer gets the same body and its role: `form-beobachtbarkeit` and `abgrenzung` for the business requirement, `architektur-bestand` (the senior who knows the existing code) for the plan, `pruefbarkeit` for the work package; every role carries the cut question "What can go?". The plan reviewer additionally gets the body of the card named in `Fachliche Quelle:` — from the board, never from the conversation — and the path of a `Vorlage:` line; with it, it also checks whether the plan delivers every goal, every acceptance criterion and every answered question of the source. Without a source this input is dropped. The findings go as a comment `## <Stufe>-Review, Runde 1` (review, round 1) to the document. Then the calling session works in every finding or rejects it with one sentence, according to the rule "decide instead of asking" (Entscheiden statt fragen) from `CLAUDE-workflow.md`: interactively after a word of approval, unattended directly; only a finding of the stop class halts and marks the document with `kit:klaeren`. The new body goes via `issue update`, together with the marker line of the stage — unattended with the addition `, Nachtlauf` (night run) — and a comment `## Einarbeitung, Runde 1` (incorporation, round 1) with the list adopted / rejected and reason. One round, no second: Further rounds, in our experience, find matters of taste.
+
+### Configuration
+<!-- de: 376aec61213b -->
+
+The installer puts `.claude/workflow.config.example.json` next to the real config; take the `issueReview` block from it. **The installer does not write it itself** — `reviewers` depends on which CLIs are on the machine, and `pairs` is a decision. A reviewer is an adapter: `kind: claude` runs as a subagent with the configured `model`, `kind: command` as any CLI with the prompt via stdin and the answer on stdout — Codex, Gemini, a script of your own. Who reviews whom is in `pairs`; otherwise the rule "the foremost reviewers that are not the author" applies. The assignment is shown by `issue-review matrix`.
+
+```json
+"reviewStufen": {
+  "fachlich": { "reviewer": 2, "rollen": ["form-beobachtbarkeit", "abgrenzung"] },
+  "plan":     { "reviewer": 1, "rollen": ["architektur-bestand"] },
+  "issue":    { "reviewer": 1, "rollen": ["pruefbarkeit"] }
+}
+```
+
+Existing installations **without** a `reviewStufen` block keep the old staffing with two reviewers per stage; only an explicitly written block activates the staffing per stage. A kit update therefore does not change the review procedure in passing.
+
+## Spec-Driven Development
+<!-- de: 17654a71f796 -->
+
+Spec-Driven Development has been dropped since kit version **v3.0.0** (plan #825). The kit no longer keeps a specification under `specs/`: no `## Spec-Wirkung` (spec effect) on work packages, no statement IDs in test names, no updating and no gate at the push, no initiative notes. `/push-main` therefore has seven steps instead of nine.
+
+**A project that still carries a `spec` block keeps running unchanged.** No tool evaluates the block any more. The installer takes it over during an update and says once that it can be removed; the settings interface reports it as an unknown field and allows saving. Block, directory `specs/` and a leftover `.claude/vorhaben-wartend-*.md` can be deleted. `[ID]` prefixes in test names do no harm and may stay.
+
+## Team config and personal deviations
+<!-- de: fcc1f83b14ca -->
+
+The same question as above, one level deeper: What belongs in the repository, and what may everyone have differently for themselves?
+
+`.claude/workflow.config.json` used to lie outside the repository — the installer entered `.claude/` into the `.gitignore`. That gave every team member their own version of the fields that must be the same for everyone. `buildChecks` decides what counts as green; `columns` decides where issues land. And a deviating `columns` version does not lead to an error but to an empty issue list — that is the unpleasant part.
+
+The config therefore consists of two files:
+
+| File | Place | Content |
+|---|---|---|
+| `.claude/workflow.config.json` | **in the repository** | everything that applies to the team |
+| `.claude/workflow.config.local.json` | local, gitignored | personal deviations |
+
+From the local file only these fields win:
+
+| Field | Why personal |
+|---|---|
+| `reviewModel` | the choice of model for the review is a matter of taste and budget |
+| `reviewCommand` | the alternative to `reviewModel`: whoever reviews with a foreign CLI has installed it locally |
+| `reviewScope` | some prefer to read the full source text |
+| `triggers` | typing habit for the three stop phrases |
+| `toolbox.tokenFile` | points to a token in one's own file system |
+
+Everything else is ignored and reported on stderr.
+
+**The reviewer pair deviates as a pair.** `reviewModel` and `reviewCommand` are an either-or decision — exactly one of them applies. If the personal file sets one of the two, the other disappears from the result, even if it comes from the shared config. Without this exception to field-by-field merging the normal case — the team runs the Claude default, one person reviews with `codex` — would have a config with both fields and would violate the rule that the schema enforces.
+
+**Why the strictness?** If `buildChecks` could be overridden locally, everyone could configure their gate away, and the separation would be cosmetics instead of a guardrail. The obvious objection — you can still edit the shared file locally — is true, but misses the point: Then it shows up in `git status`. A visible deviation is something different from one that is invisible by design.
+
+The `.gitignore` block the installer writes:
+
+```
+.claude/*
+!.claude/workflow.config.json
+.claude/workflow.config.local.json
+.claude/board-meta-cache.json
+```
+
+The first line must read `.claude/*`, **not** `.claude/`. Git does not evaluate a `!` negation pattern if the directory itself is excluded — it does not even enter it. With `.claude/` the exception would remain ineffective, and the error feels like "forgot to commit". Whoever writes the block by hand builds it wrong exactly once and searches for a long time.
+
+**Existing projects:** The next `install.mjs` run automatically replaces an existing `.claude/` line with the block; your own `.claude` rules stay untouched and the installer only outputs a recommendation. After that a human must commit `.claude/workflow.config.json` once — the installer cannot do that for you.
+
+## One file, one writer
+<!-- de: 8398ae580471 -->
+
+The same principle, applied to memory instead of code: **Every file in the memory vault that a skill writes to automatically belongs to exactly one repo.** What is shared is read — or only written after explicit consent.
+
+The occasion is a setup with several repos on a shared vault, say five microservices. The knowledge is to be shared, not the authority to write. As long as all sessions of a day write into the same log file, conflict copies arise in a synchronised vault, and with parallel sessions the second overwrites the section of the first. Both are noticed late, because nobody reads their daily log again.
+
+Two consequences run through the kit from this:
+
+- **The daily log becomes project-specific.** The field `logPath` makes the file name configurable (`Log/{date}-{project}.md`), so that every repo gets its own file. That applies not only to microservices: **As soon as any two projects use the same vault, `logPath` should be set** — the default `Log/{date}.md` is one file per day, not per project. Details in the [`kontext.config.json` reference](/en/kontext-config-reference).
+- **`/document` never writes the shared umbrella note by itself.** It is the only shared place of writing and therefore deliberately not automated: Only in the case of a cross-service effect does the skill ask once, with the concrete entry text, and only writes after consent. Otherwise the conflict surface would only be moved from the log into the note.
+
+The difference from the guardrail principle above is the kind of stop: There a gate fails mechanically, here a skill asks a human. The reason is the same — the decision whether a system-wide insight belongs in the shared note cannot be made by a rule.
+
+## What is deliberately not in the kit
+<!-- de: aca615ac0b04 -->
+
+**Security gates belong in the CI, not in a skill.** gitleaks finds secrets, Semgrep or SpotBugs find SQL concatenation and missing input validation. A deterministic tool shares no blind spot with any language model. A red build blocks the push mechanically, more reliably than any model. The review skill complements these tools, it does not replace them.
+
+**No multi-tool adapter.** The concept is transferable, the format is not. Codex reads `AGENTS.md`, Cursor `.cursor/rules`. If you want to use several engines, you need the skill library in several formats in parallel in the repo. That is feasible, but not part of this kit.

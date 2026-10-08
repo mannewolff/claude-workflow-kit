@@ -12,6 +12,7 @@ Unverändert bleiben in beiden Sprachen Befehle, Labels, Titel-Präfixe der Kart
 | Aufgabenstufe | task level |
 | Bahn | lane |
 | Bedienvorgabe | operating instruction |
+| Belegfall | evidence case |
 | Bereich (einer Prüfung) | area (of a check) |
 | Board-Adapter | board adapter |
 | Einstellung | setting |
@@ -25,6 +26,7 @@ Unverändert bleiben in beiden Sprachen Befehle, Labels, Titel-Präfixe der Kart
 | Karte | card |
 | Laufstand | run status |
 | Leitplanke | guardrail |
+| Leitstand | control centre |
 | Menschenschritt | human step |
 | Mitteilung | statement |
 | Nachtbetrieb | night mode |
@@ -37,6 +39,7 @@ Unverändert bleiben in beiden Sprachen Befehle, Labels, Titel-Präfixe der Kart
 | Prüfbereich | check area |
 | Prüflauf | check run |
 | Prüfung | check |
+| Sitzungs-Melder | session reporter |
 | Spalte | column |
 | Stop-Punkt | stop point |
 | Stopp-Klasse | stop class |
@@ -49,6 +52,7 @@ Unverändert bleiben in beiden Sprachen Befehle, Labels, Titel-Präfixe der Kart
 | Variante (einer Kette) | variant (of a chain) |
 | Vorflug | pre-flight |
 | Vorhaben | initiative |
+| Wächter | watchdog |
 | wartende Sitzung | waiting session |
 | Wirksamkeit | effectiveness |
 | Ziel (einer Kette) | goal (of a chain) |

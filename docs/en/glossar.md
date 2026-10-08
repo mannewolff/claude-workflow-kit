@@ -1,5 +1,5 @@
 # Glossary
-<!-- de: 71e1e88263b2 -->
+<!-- de: 51576c616e75 -->
 
 The documentation is available in German and in English. This table maps the kit's concept terms between the two: The English version uses the terms from the left column and gives the German term in parentheses at its first occurrence on a page.
 
@@ -13,6 +13,7 @@ Left unchanged in both languages are commands, labels, the title prefixes of car
 | task level | Aufgabenstufe |
 | lane | Bahn |
 | operating instruction | Bedienvorgabe |
+| evidence case | Belegfall |
 | area (of a check) | Bereich (einer Prüfung) |
 | board adapter | Board-Adapter |
 | setting | Einstellung |
@@ -26,6 +27,7 @@ Left unchanged in both languages are commands, labels, the title prefixes of car
 | card | Karte |
 | run status | Laufstand |
 | guardrail | Leitplanke |
+| control centre | Leitstand |
 | human step | Menschenschritt |
 | statement | Mitteilung |
 | night mode | Nachtbetrieb |
@@ -38,6 +40,7 @@ Left unchanged in both languages are commands, labels, the title prefixes of car
 | check area | Prüfbereich |
 | check run | Prüflauf |
 | check | Prüfung |
+| session reporter | Sitzungs-Melder |
 | column | Spalte |
 | stop point | Stop-Punkt |
 | stop class | Stopp-Klasse |
@@ -50,6 +53,7 @@ Left unchanged in both languages are commands, labels, the title prefixes of car
 | variant (of a chain) | Variante (einer Kette) |
 | pre-flight | Vorflug |
 | initiative | Vorhaben |
+| watchdog | Wächter |
 | waiting session | wartende Sitzung |
 | effectiveness | Wirksamkeit |
 | goal (of a chain) | Ziel (einer Kette) |
