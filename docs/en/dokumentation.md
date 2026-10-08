@@ -1122,3 +1122,120 @@ Because the assumed scope is in the answer, a misclassification is immediately v
 **At night there are no statements**, because there is nobody to make them; text in the prompt of an unattended run may look like one, but is none.
 
 The binding wording of the rule is in `CLAUDE-workflow.md`, section "Mitteilungen des Menschen" (statements of the human) — this description does not put a second version next to it.
+
+## Three lanes
+<!-- de: 1d974153750e -->
+
+Not every task needs the full 9-step process. The kit distinguishes three lanes (Bahnen):
+
+**Lane 1 — small change.** Exactly one file, one asset or one config value; no database migration; no new or changed endpoint; no data model; at most one module affected; no security-relevant logic. Implement directly, one commit, no push without a trigger phrase — no plan, no issue, no GO. This commit, too, requires a green `node .claude/kit/checks.mjs run` on the state to be committed: The commit gate is mechanical and knows no lane.
+
+**Lane 2 — feature.** Outside lane 1, as soon as there is something to weigh up — or it is unclear whether there is something to weigh up. Full process: `/techplan` → `/issues` → GO → `/implement-ready`. Typical: a data model with several defensible cuts, an endpoint whose contract is still open, a migration with a question about the way back.
+
+**Lane 3 — `[Task]`.** Above the trivial, but without anything to weigh up. No business concept (Fachkonzept), no plan, no breakdown: a single work package (Arbeitspaket) with the title prefix `[Task]`, created with [/task](/en/dokumentation#task) after you confirm the route — then reviewed and released like any other package. Typical: a renaming across several files, a rejected tool finding, a mechanical follow-up job.
+
+**The selection rule, in this order:**
+
+1. If the counting lane-1 rule applies **and there is nothing to weigh up**, lane 1 applies.
+2. Otherwise the need to weigh up decides: There is something to weigh up when **several defensible routes** are open. A finding with exactly one correct outcome is not a trade-off. With something to weigh up, lane 2 applies, without it lane 3.
+3. If it is **unclear** whether there is something to weigh up, lane 2 applies.
+
+Size alone therefore no longer decides, and that is the actual change compared with earlier: A change to twelve files without a trade-off is lane 3; an architectural change to a single file where several cuts are defensible is lane 2. The old version of lane 2, in contrast, counted features — data model, endpoint, migration, security, more than one module — and thus sent even the unambiguous through the full process.
+
+When in doubt, lane 2 applies; that also covers an unclear need to weigh up. Before every new task the AI names the lane out loud ("Das ist Bahn 1/2/3, ich …" — "This is lane 1/2/3, I …") — examples: swapping an icon or favicon, a text correction or a config default are lane 1; a renaming across several files without a trade-off is lane 3; a new table, a new endpoint or a new UI feature are lane 2.
+
+**A special case worth naming: rejection as a valid result.** A tool reports a finding, and the finding is defensibly rejected — that, too, is work, and it is typical lane-3 work. So that the rejection holds, the acceptance criterion of such a `[Task]` is the **versioned suppression rule** that the tool itself evaluates, with the justification right next to it: The tool reads the rule, the justification addresses humans and later sessions. In the kit the pattern lives in `sonar-project.properties` — the exclusion of the rule `javascript:S4036` as a versioned line, with a written-out explanation above it of why it is defensible. A rejection marked as "accepted" by hand in the web UI, in contrast, does not hold: The next finding of the same kind arises outside of it. Such a task is verified by running the same tool again — the rejected finding stays away, **and an independent control finding is still reported**; without it, a silent tool cannot be told apart from an effective exclusion. If a tool lacks a versionable route, developing one belongs in an initiative (Vorhaben) of its own, and no cross-tool register is created — it would be a second list next to the rule files that none of the tools reads.
+
+## PO loop: business and technical issues
+<!-- de: 2ff33472a971 -->
+
+In practice a product owner (or a proxy PO in the company) feeds in the requirements — and wants to accept the plan on the business side before any technology is designed. For this the kit optionally separates two kinds of issue, following the discovery/delivery pattern — the PO loop (PO-Schleife):
+
+- **Business issues** (title prefix `[Fachlich]`, created with [/fachplan](/en/dokumentation#fachplan)): describe the what and why in PO language — story format with goal, business acceptance criteria, non-goals and open questions. They are **groomed** on the board — the negotiation with the PO takes place **in the body** (answers and additions directly in the text), not in comments — and are **never implemented**.
+- **Technical issues** (four-section format as before): arise only when the PO says "that's it" — then `/techplan #N` reads the business issue **with its complete body** as the source of requirements, and `/issues` cuts the technical issues from it.
+
+**The flow:**
+
+1. `/fachplan <requirement>` → business issue in the backlog (or in the idea pool, see below).
+2. Groom directly on the issue until the PO gives the business approval.
+3. `/techplan #N` → technical plan from the business issue.
+4. `/issues` → technical issues; each carries the back references **in the context section**.
+5. From here on the normal route: GO, `/implement-ready` or night mode (Nachtbetrieb), review, push.
+
+**The rules behind it:**
+
+- **Two back references, both in the context.** The chain should be readable at every point — from the work package to the plan, from the plan to the business requirement (fachliche Anforderung). That is why the technical issues carry, one below the other, in this order:
+
+  ```
+  Plan: Issue #M
+  Fachliche Quelle: Issue #N
+  ```
+
+  The `Plan:` line only arises when a `[Plan]` issue exists as a source; if the plan was merely approved in the same session, it is left out. It is independent of `Plan-Modell:` — that one names the **author** of the plan, this one its **location**.
+- **Never in the dependencies — neither of them.** An `Issue #N` reference in the dependencies section would be treated by the night runner (Nacht-Runner) as an unmet dependency. The business issue only becomes Done when its technical children are finished, and the plan document (Plandokument) never becomes Done through implementation — all children would stay deferred for good (chicken and egg).
+- **Business issues never go to Ready.** Ready means implementable. If one lands there anyway, the mechanical guardrail (Leitplanke) takes effect: `/implement-ready`, `/implement-next` and the night runner put it back into the backlog with a comment, without starting a session. The same gate applies to **ideas** (title prefix `[Idee]`) — a raw idea is a requirement, not a work package — and to **plan documents** (title prefix `[Plan]`): A plan describes a route, it is not a task and must first be broken down into work packages with `/issues`. And it applies to **human steps** (title prefix `[Mensch]`): a work package whose task lies outside the repository — a setting in a web interface, an account, an access, an approval. Unlike the other three it is not a document and falls into the stage `issue` in `issue check-form`; only nobody but the human can carry it out, and its comment therefore says that the card (Karte) is waiting and has not failed.
+- **Life cycle:** The **human** moves business issues and plan documents out of the backlog only **to Done** or not at all; the guardrails only push them back out of Ready. **In review** means for them "everything built, review is due", and this column (Spalte) is set by the kit: As soon as a plan is through — at least one package verifiably in In review or Done, none in Backlog, Ready or In progress —, it pulls the plan document and the business requirement there, the requirement only once every one of its plans not marked as superseded is through. Whatever already lies in In review or Done stays. It makes no difference which route built the last package: night chain (Nacht-Kette), implementation night or a session during the day. If a package then goes back from review, the document stays where it is.
+
+  **There is a trap that goes with it:** The night chain (`night.mjs --kette`) reads only the backlog column and also places the plan and the packages there. Whoever moves a business issue out of the backlog **before** its chain takes it away from the night run — it is then no longer a candidate, and without anything failing. The way out is the interactive route with an explicit number — `/techplan #N`, `/issue-review #N`, `/issues #M` —: It works **independently of column and existing marker**. That is exactly what makes it the way out.
+- **Recognition via the title (stage 1):** The `[Fachlich]` prefix works with all four trackers without changing an adapter. A real label axis (labels exist in GitHub, GitLab and kanban-kit — the board adapter (Board-Adapter) interface just does not pass them through yet) is planned as an expansion stage.
+- **An idea has exactly two routes forward.** If it calls for a **trade-off**, `/fachplan #N` turns it into a business requirement; if there is **nothing to weigh up** or the human has already decided, it becomes exactly one work package with `/task #N`. Which case applies is decided by the human with the call — whether there is something to weigh up is exactly the question a human answers, and a skill that answered it for itself would make the decision it is meant to hand over. Both skills name the other route in their rejection, so that a wrong call does not lead nowhere. The route straight into a technical plan does not count: It would skip the point at which the goal is decided.
+- **Placement in kanban-kit:** New business issues land there in the project's idea pool — pool = unsifted raw requirement, scheduling into the backlog = in business work (from then on addressable and groomable), `/techplan #N` = approved on the business side.
+
+Without a PO the loop is invisible: calling `/techplan` directly remains the normal route.
+
+## The check run
+<!-- de: ca254d544ef4 -->
+
+**A run during the day that has several marked business requirements reviewed one after another.** Reviewing during the day is a conversation: Every finding wants to be discussed, every question of the stop class (Stopp-Klasse) answered. The check run (Prüflauf) takes exactly that off your hands — mark requirements, start the run, look later. For each card a session `/issue-review #N` runs without anyone answering in between; afterwards every card shows where things stand: reviewed and ready, or a decision is waiting. Everything outside the stop class was decided by the review and recorded in the document. **This sorting is the gain.**
+
+The run belongs to the **day** and therefore has a chapter of its own, not under [Night mode](/en/dokumentation#night-mode): It runs alongside the working human and alongside a night chain, and it is not tripped up by an unclean working tree or by a package in In progress. It has exactly one relation to the night chain: It **establishes the chain's prerequisite** — a card left reviewed carries the `review:fertig` that the chain requires. The **chain label** remains the human's gesture; the check run never sets it.
+
+**The gesture:** the label `kit:pruefen` on the business requirement (label name from `pruefLauf.label`, see [All settings](/en/dokumentation#prueflauf); to be created on the board once). The run **consumes it** immediately before the session for this card — every setting of it authorises exactly one review; an abort leads to a note with the reason and a new gesture, not to a silent repetition. Together with the marker it also removes a `review:fertig` from a previous run: Only this way does the state after the session answer the question about **this** review and not about an earlier one. It **never** removes `kit:klaeren` — only a human may do that, otherwise a run would give itself its own approval.
+
+**Fixed kit state.** Like every unattended run, the check run works with a fixed state of the kit: At the start it binds itself to the commit that `origin/<mainBranch>` points to — the last push, read without `git fetch`. Fixed are thus the tools including the check before every commit, the skills and the rule texts; whatever a package of the same night changes in them only takes effect after `push main`. The object of the check remains the project's configuration and its tests; they come from the state of the respective package. The state appears as the line `Kit-Stand: <commit> (origin/<mainBranch> vom <Zeit>)` (kit state: commit, origin/mainBranch as of time) in the run report (`kitStand` in `.claude/night-run-*.json`), in the night report and on every comment of the run. After a run in the main copy, its installed copy stays at its state until `node tools/sync-blobs.mjs` brings it to the working copy; until then `sync-blobs --check` names it as outdated.
+
+**Start:**
+
+```bash
+node .claude/kit/night.mjs --pruefen
+```
+
+The run **has no preview** — `--pruefen --dry-run` is rejected, and `/issue-review --dry-run` shows documents and reviewers anyway. What will run is in the candidate list that the run logs before the first session. `--label` does not apply here (the marker comes from the config), and neither do `--kette` and `--pruefen` together: Those are two runs with budgets, labels and worktrees of their own. `--max N` is allowed, but **not needed** — the run is limited by its budgets, not by a number; without `--max` there is no numeric cap.
+
+**The candidates:** every card that carries the marker and has the title `[Fachlich]`. **Without a column condition**, unlike the night chain: A business document never goes to Ready, and the gesture applies to the card, not to its location. Whatever carries the marker but is not reviewed appears in the list as `uebersprungen` (skipped) with a reason and **keeps its marker**: a `[Plan]` document or a work package (the check run applies to business requirements only) and a card with `kit:klaeren` (a question is waiting there for a human, and a second review does not answer it). Cards above a set `--max` count as `liegengeblieben` (left over) — that is not an exclusion. If not a single card carries the marker, the run says so and names the existing labels. Before the first review the **reviewer pre-flight** runs as with the chain: If it fails, every candidate gets the comment `Pruefung nicht gestartet` (review not started) with a reason and keeps its marker — nothing ran.
+
+**The worktree:** one per **run**, not per card (`pruefung-…` under the temp directory, a prefix of its own next to that of the chain). The sessions read and write on the board, not in the working tree; a worktree per card would cost time for a separation without a subject. After the run it is removed; a left-over one is cleared by the next start — only one with **its** prefix and only if its runner is no longer alive, so that a concurrently running check run or night chain keeps its own. Like the chain, the check run claims every root with the run status (Laufstand) `läuft` (running) together with the run ID and leaves out one claimed by a live runner (see "One runner per root" in the chapter Night mode).
+
+**Per card:** Immediately before the session the run forms the fingerprint of the **version** read (twelve hex digits from the card text) and names it in the candidate list, the log and the result. That way it is clear afterwards *what* was reviewed: Whoever changes the text during the review sees from the fingerprint that the review read a different version. The run reads the result from the **difference** between the board traces before and after the session, never from the state afterwards alone — a card reviewed again already carries markers and findings from the previous run. An abort only ends this card; the next one is up.
+
+**Three results, each with its trace on the board:**
+
+| Result | Trace on the card | what is next |
+|---|---|---|
+| reviewed | business plan review marker in the body and the label `review:fertig`, findings and their incorporation as comments | nothing — the card meets the admission prerequisite of the night chain |
+| pending decision | `kit:klaeren` and the question as a comment; the text of the requirement stays **unchanged** | answer the question and remove `kit:klaeren` — both by hand |
+| incomplete | the comment `## Pruefung unvollstaendig` (review incomplete) with reason, step reached (`gestartet`, `befunde`, `eingearbeitet` — started, findings, incorporated) and the route forward | run `/issue-review #N` by hand |
+
+The third outcome is shown separately and is neither of the first two: The review has then been paid for, its findings are on the board, but the body carries no marker — without the note the card would later look untouched. A session that started a long piece of work and ended while waiting for it instead only gets the note `## Nachtlauf: wartende Sitzung` (night run: waiting session); two comments for one abort say nothing that one does not say.
+
+**Budgets** are in the root block `pruefLauf` of `.claude/workflow.config.json` — not under `night`, because the run belongs to the day. If the block or a field in it is missing, these starting values apply:
+
+```json
+{
+  "pruefLauf": {
+    "label": "kit:pruefen",
+    "pruefungMin": 25,
+    "kostenUsd": 25
+  }
+}
+```
+
+`pruefungMin` is the time budget **per reviewer session**; it is above that of the plan stage of the chain because the business stage runs two reviewers. `kostenUsd` is the cost budget **per run**, summed over all sessions and checked **after** every session, never in the middle — a half-read review would be the more expensive mistake. Once it is exhausted, the remaining cards count as skipped and keep their marker.
+
+**The result list is on the console** (and in the log `.claude/night-run-<datum>.log`), because the run belongs to the day: Whoever starts it sees its result. One line per card with number, title, result and version — for a pending decision also the question, for an abort the step reached —, below it a sum line over the five outcomes. The [result state as JSON](/en/dokumentation#night-mode) arises as with every unattended run, with one unit per card including outcome, version, duration and key figures.
+
+**What the run does not do.** It moves **no card** between columns, pulls nothing to Ready, sets no chain label and removes no `kit:klaeren`. Nor does it change anything about the review itself: Who reviews, in which role and with which questions stays as it is — it is the same review as by hand, only without the conversation. And it answers no question that belongs to a human; it sorts.
+
+**The limit of being untouched.** The run leaves no change in the project — the state of the working directory is the same before and after the run, even if someone works in it in the meantime. One exception belongs to this, and it is none: With the tracker `local` the board lies **in the repo**, and the config in the worktree points to `issues/` of the main copy so that the sessions write there. These cards therefore change — that is the **result and not a leftover**. Everything outside the board stays untouched.
+
+**Afterwards:** A card left reviewed meets the admission prerequisite of the night chain — the **GO remains yours**: The chain label is still set by a human. If the result is available before the nightly selection, the chain runs the same evening, otherwise next time.
