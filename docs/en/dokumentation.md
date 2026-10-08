@@ -1961,3 +1961,489 @@ The difference from the guardrail principle above is the kind of stop: There a g
 **Security gates belong in the CI, not in a skill.** gitleaks finds secrets, Semgrep or SpotBugs find SQL concatenation and missing input validation. A deterministic tool shares no blind spot with any language model. A red build blocks the push mechanically, more reliably than any model. The review skill complements these tools, it does not replace them.
 
 **No multi-tool adapter.** The concept is transferable, the format is not. Codex reads `AGENTS.md`, Cursor `.cursor/rules`. If you want to use several engines, you need the skill library in several formats in parallel in the repo. That is feasible, but not part of this kit.
+
+## Issue tracker and code host
+<!-- de: 45d9d940f602 -->
+
+The kit supports GitHub, GitLab and a fully local mode. The choice is made along two independent axes: `codeHost` (for pull requests and repo detection) and `issueTracker` (for issues and board movements). Both can point to different platforms.
+
+### Tracker switch of this repository: kanban-kit and GitHub archive
+<!-- de: f9fd3da7ca47 -->
+
+Since 11 August 2026 this repository keeps its issues in **kanban-kit**, no longer in GitHub. The adapter and config value for it is `issueTracker: "toolbox"`; `kanban-kit` is the product name and not a valid value. The code host remains `codeHost: "github"`.
+
+**GitHub Issues remain enabled.** They are no longer used for new work, but they are the archive: The 218 issues already closed at the time of the move stayed there, and existing commit messages with `#N` thereby keep a reachable historical target. Whoever switches off the issue system there takes away the commit history's point of reference.
+
+**Gaps in the kanban-kit numbering are intended.** Only the issues open on the cut-off date were migrated, with their original numbers. The gaps in between have two causes: closed issues that did not move along, and pull request numbers that share the same number space with the issues. Between `#164` and `#247`, for instance, lie 70 closed issues and 12 PRs, but not a single open issue.
+
+**Migrated cards are recognisable.** They carry `externalKey: github#N` and in the body a two-line origin header naming the source and the original column:
+
+```
+> Quelle: https://github.com/<owner>/<repo>/issues/<N>
+> Ursprüngliche Spalte: <Spaltenname oder keine>
+```
+
+The header is written by the migration tool exactly like this: `Quelle` is the source, `Ursprüngliche Spalte` the original column (column name or none). It names the column even if kanban-kit does not know it. The GitHub board had a sixth column `Zurückgestellt` (deferred), which was mapped to `BACKLOG`; without the header these cards would look like normal work in the backlog.
+
+**The number counter starts above the old number space.** At the time of the move the highest GitHub number ever assigned was 296, and `next_card_number` was set to 298. The counter must never be reset below this start value: Otherwise a new card would get a number already taken on GitHub, and `#150` would denote two different things.
+
+**`tools/migrate-issues.mjs`** was the tool of the move and remains useful for stragglers. It has three runs: `export` (reads GitHub), `import` (writes kanban-kit, idempotent via `externalKey`) and `verify` (compares both sides as a gate). It is not part of the ongoing workflow — for new work, `/issues` creates directly in kanban-kit.
+
+### Transferring a single GitHub issue afterwards
+<!-- de: 31d107666717 -->
+
+The normal case after a move: Someone from outside reports a bug on GitHub, because the repository is public there. The issue is to go into kanban-kit without losing the reporter.
+
+```bash
+node tools/migrate-issues.mjs export
+```
+
+```bash
+node tools/migrate-issues.mjs import --file <exportdatei> --from 302 --to 302 --yes
+```
+
+`--from N --to N` with the same number fetches exactly one issue. What is preserved in the process, which copy-paste does not achieve:
+
+- The **source reference** is in the body as a header (`> Quelle: …`), so the GitHub discussion remains reachable.
+- The **comments** move along, each with author and date. For an outside report, that is exactly the value — the reporter's wording remains readable.
+- The import is **idempotent** via `externalKey`: A second run creates nothing twice.
+- The **original number** stays. References from commit messages still point to the same ticket.
+
+Two restrictions. `export` reads **all** open issues, not just the desired one — there is no filter on the export side. And before the very first `--yes` run of a project, the tool demands a complete `--dry-run`; in a repo that has the move behind it, this condition is met.
+
+If number and comments do not matter, it also works without the tool: read `gh issue view <N> --json title,body` and create the body via `board.mjs issue create --body -`. Then, however, the source reference is missing, and whoever later wants to know who reported it will no longer find out — for an outside report that is the wrong way.
+
+### Prerequisites per configuration
+<!-- de: 6bcc83f06a70 -->
+
+| Value | CLI | Authentication |
+|------|-----|-------------------|
+| `github` | `gh` (GitHub CLI) | `gh auth login` |
+| `gitlab` | `glab` (GitLab CLI) | `glab auth login` |
+| `local` | none | none |
+
+### Board adapter
+<!-- de: 5c8ef124fe98 -->
+
+All board operations run through `.claude/kit/board.mjs`. The adapter has two main areas:
+
+- **Issue tracker interface:** `issue create`, `issue list`, `issue get`, `issue activity`, `issue move`, `issue comment`, `issue melden`, `issue auftrag`, `issue ursprung`, `issue epics`
+- **Code host interface:** `code repo-name`, `code pr`
+
+**`issue list` returns work packages, `issue epics` returns initiatives.** The separation is strict: Initiatives never appear in `issue list`, not even without a status filter. They are brackets over several cards, not work — whoever counts them in a list of open issues takes them for work packages with a thin description. `issue epics` returns them with their short code and progress (`#360 [HER] … 8/8`), that is with the information an initiative actually carries.
+
+**An initiative has no status.** `issue get` returns `status: null` for it, not `backlog`. The reason lies in the server: It does not let an initiative be positioned on the board via `move` at all („Epics werden nicht auf dem Board positioniert“ — epics are not positioned on the board). A status that no `move` can ever change would be a claim about something that does not exist; `null` means "has none".
+
+**Comments carry their ID.** Every entry in `comments` of `issue get` has the fields `author`, `body`, `createdAt` and `id`. `id` is the identifier under which the comment can be replaced on the platform: for GitHub the numeric REST ID from the anchor `#issuecomment-<n>` (not the GraphQL node ID `IC_…`), for GitLab the note ID, for toolbox the comment ID of the API, for the local tracker the running number of the appended `**Kommentar**` block. If the platform provides none, it says `id: null`. `issue get` remains lenient here: If the comment route is not reachable, the card comes with `comments: []` and a hint on stderr.
+
+**`issue melden` files the completion report and moves to In review — in one call.** `node .claude/kit/board.mjs issue melden <id> --text '<bericht>'` replaces the sequence of `issue move … in_review`, intermediate file and `issue comment --text-file`. The output is `{ "ok": true, "id", "bericht": "angelegt" | "ersetzt" | "unveraendert", "status": "in_review" }` (created, replaced, unchanged). A `'` in the report is written in the shell as `'\''`; the command files the text unchanged. `--text-file <pfad>` remains for manual calls.
+
+- **Idempotent per run.** The filed report carries as its last line `Bericht-Lauf: <stempel>`. The stamp is the time of the card's most recent move to `in_progress` from `.claude/bewegungen.tsv` — not from `.claude/wegmarken.tsv`, which `sitzung melden --complete` empties. If the command already finds one with the same line among the comments, it writes nothing if the content is the same (`unveraendert`) and replaces it otherwise (`ersetzt`); otherwise it creates one (`angelegt`). Reports with a different `Bericht-Lauf` line, that is from earlier runs, remain untouched. If there is no `in_progress` move of the card at all, the call ends with exit 1 without writing anything.
+- **First the filing, then the move.** The comments are read strictly: If that is not possible, the call ends with exit 1, writes no report and leaves the card where it is — a state read as empty would otherwise lead to a duplicate report. If the filing fails, the card stays in In progress. Only after the filing does the command move to In review and record the move like `issue move` in `.claude/wegmarken.tsv` and `.claude/bewegungen.tsv`.
+- **Splitting.** For reports over 6,000 characters, `issue melden <id> --teil <n> --text '…'` writes only piece `n` to `.claude/berichte/<id>.<n>.md`, without board access; a repetition overwrites the piece. `issue melden <id>` without `--text` assembles the pieces in numerical order, each on a new line, files, moves and only then clears the pieces. If the completion fails, they stay in place, and the repetition is the same completion call. The command rejects `--text` alongside existing pieces of the same card. `.claude/berichte/` is in the installer's `.gitignore` block and is exempt from the night runner's leftover guard.
+- **toolbox without PATCH route.** An older Toolbox instance does not know `PATCH /api/kanban/items/<item>/comments/<kommentar>`. If a changed report has to be replaced there, the call ends with exit 1, the message names the missing route, and no second report is created. The card stays in In progress. An unchanged report does not need the route.
+
+**`issue ursprung` evaluates whether a plan is through.** `node .claude/kit/board.mjs issue ursprung <plan-nr>` returns as JSON whether the plan is through, which packages are missing and where the plan document and business requirement belong. The command is purely reading: It moves no card and writes no comment.
+
+**`issue auftrag` returns what an implementation needs before the start — in one call.** `node .claude/kit/board.mjs issue auftrag <id>` replaces the follow-up queries about column, prefix, label, protected files and dependencies. The command is purely reading: It moves no card and writes no comment.
+
+- **Verdict and consequence.** The check runs in this order: If the card is not in Ready, the verdict is „darf nicht beginnen“ (must not begin) with consequence `bleibt` and the reason „liegt nicht (mehr) in Ready“ (is not (or no longer) in Ready). If the title carries `[Fachlich]`, `[Idee]`, `[Plan]` or `[Mensch]` or the card the label `kit:klaeren`, the consequence is `backlog`, and the output contains verbatim the comment the session attaches to the card before moving it to the backlog. The same text is in the night runner with the prefix `Nachtlauf: `. Next come the protected files, in the same order as in the night runner. If the card carries the label `kit:geschuetzt`, the consequence is `backlog` with a comment of its own: A human action is waiting, and the label stays, because only the human may remove it. If the package names a protected file in its task or acceptance criterion and the human has not released it, the consequence is `geschuetzt`. The comment is then verbatim the halt text that `issue check-geschuetzt` returns as `kommentar`, still without the label line. The reason names the steps: card to backlog, `issue label add <id> kit:geschuetzt`, in case of a failure report it and carry on, then the comment with the last line `Label kit:geschuetzt gesetzt` or `Label kit:geschuetzt nicht gesetzt` (label set, label not set). A released card goes on to the prerequisites. If a prerequisite is unfulfilled or cannot be determined, the consequence is `bleibt` again. Otherwise the verdict is „darf beginnen“ (may begin) with consequence `beginnen`.
+- **`--spalte in_progress`** expects the card in In progress instead of Ready — for `/implement-done` and the continuation after `/implement-test`.
+- **Task.** Title, complete body, labels, column and the card's comments. A returned card thus shows its review findings.
+- **Plan decisions.** The command finds the plan via the whole line `Plan: Issue #M` in the package. The context line `Plan-Entscheidungen: E1, E3` selects. Output is the wording of each named entry from `## Architektonische Entscheidungen` of the plan: the line `- E<n>:` together with its indented continuation lines. `Plan-Entscheidungen: Keine.` means the package invokes no decision. If the line is missing (legacy stock), all E entries of the plan come with the explicit sentence that the package names no selection. Only this one line is searched, not the free text of the package.
+- **Business occasion.** The source is the line `Fachliche Quelle: Issue #N` in the package, otherwise the same line in the plan. Output are `## Ziel` and `## Fachliche Akzeptanzkriterien` of the source verbatim (code blocks in them remain content) and the sentence „Voller Text: `node .claude/kit/board.mjs issue get <N>`“ (full text: …). An implementation does not have to read the rest of the text.
+- **Siblings.** All other cards with the whole line `Plan: Issue #M` of the same plan, across all five columns, each with number, title and column. The line rule is the night runner's: A mention in running text does not count, and `#30` is not `#300`. The column comes from the board's column lists. For GitHub these provide no body; the command therefore reads the bodies via `gh issue list --state all`. Without a plan it says „kein Vorhaben“ (no initiative).
+- **Prerequisites.** Every `#N` in the section `## Abhängigkeiten`, read as in the night runner, with number, title, column and finding: `unerfuellt` (unfulfilled) in Backlog, Ready or In progress, otherwise `erfuellt` (fulfilled) — also in In review and Done, archived or no longer on the board at all. A number the tracker does not know appears with `Spalte: keine` as fulfilled; a typo is therefore only noticed when writing, as the hint `unbekannt` from `issue check-form`. `nicht feststellbar` (cannot be determined) means: The board does not answer — fetching the card or its column fails for another reason. Then the card stays where it is. For GitHub the command looks for the column in the same column lists as for the siblings; a card that is in no column counts as fulfilled.
+- **Gaps.** Every piece of information that cannot be determined appears explicitly under gaps. That concerns a package without a plan („kein Vorhaben“), an unreadable plan and a named `E<n>` that is missing in the plan. Likewise a missing business source, a missing section `## Ziel` or `## Fachliche Akzeptanzkriterien`, and a sibling that is in no column (column „nicht feststellbar“). Added to that are a column of the package that cannot be determined and every prerequisite that cannot be determined. A gap is never silent; without a gap it says „Keine.“ (none).
+- **Output.** The default is Markdown with seven `##` parts in fixed order: Urteil, Aufgabe, Plan-Entscheidungen, Fachlicher Anlass, Geschwister, Voraussetzungen, Lücken (verdict, task, plan decisions, business occasion, siblings, prerequisites, gaps). Body, comments, goal and criteria are fenced in code blocks. `--json` returns the same parts as fields (`urteil`, `aufgabe`, `planEntscheidungen` with `plan`, `auswahl`, `hinweis`, `eintraege`; `fachlicherAnlass` with `quelle`, `herkunft`, `ziel`, `kriterien`, `vollerText`; `geschwister` with `plan`, `hinweis`, `karten`; `voraussetzungen`, `luecken`). This is the only exception to "output: JSON on stdout".
+- **Exit code.** 0 also for „darf nicht beginnen“, because that is information and not an error. 1 only if the package itself cannot be read.
+
+Only the trackers **local** and **toolbox** know initiatives. With **github** and **gitlab**, `issue epics` rejects with a message naming both capable trackers — there the failure is the normal case, and callers like `/kontext` skip it silently.
+
+**Form check: `issue check-form`.** The mechanical gates from the registers `CLAUDE-Fachplan.md` and `CLAUDE-Plan.md` are checked by a command, not a model: `node .claude/kit/board.mjs issue check-form <id>` against a card, or `issue check-form --body-file <pfad> --title "<titel>"` against a file before it is created. The stage comes from the title prefix. Checked are, for `[Fachlich]`, F1, F2, F6, F7, F9 and F11, for `[Plan]` P1, P2, P3, P6 and P12, for the work package (with or without `[Task]`, likewise for `[Mensch]`) I1 to I5: the four sections in order with `## Abhängigkeiten` last, `Autor-Modell:` in the context, dependencies as `Keine.` or `#N`, no origin line in the dependencies section, and, with a line `Vorlage: <Pfad> — verbindlich` in the context, an acceptance via screenshot in the acceptance criterion. Added to these are I7 to I9: `## Aufgabe` names at least one file as a backtick path (I7), no named file is protected (I8, against the locks from the settings of the project root; a path immediately followed by `(nur genannt)` (only mentioned) is a mere mention and counts in this line neither for I8 nor for I7 — for instance ``die Liste `AUSNAHMEN` um `.claude/settings.json` (nur genannt) ergänzen``; the same exception applies in the night runner's gate and in `issue auftrag`), and `## Aufgabe` does not name the installed copy under `.claude/kit/` instead of the source (I9). A `[Mensch]` package passes all three — its task lies outside the repository. In the form stage of the chain, I8 is not a correction case: The violation is logged, and the card runs into the gate for protected files in the implementation stage; I7 and I9 are corrected by the chain. Which protected files a package names, whether it is released and what the halt comment says is returned by `issue check-geschuetzt <id>`; `--pfad <pfad>` (also several times) adds a path that was rejected when writing. Reading is done without code blocks and with umlauts in both spellings. The output is always JSON with `ok`, `stufe` and `verstoesse`; in case of violations the command ends with exit 1, a rejected call carries `fehler`. The `[Urteil]` gates remain the reviewer's business, and the command never writes to the board. For `[Plan]` the test hints are added: If the plan lists in `## Betroffene Bereiche` or `## Geplante Änderungen` a building block that has a test of its own, and it names this test nowhere, there is one entry `{ baustein, test, meldung }` under `hinweise` per unnamed test. Which tests belong to a building block is said by the locations of the setting `testAblagen` (without it the defaults for TypeScript and Java, `[]` switches off); the stock is the versioned files (`git ls-files`). For the work package, `hinweise` holds the dependency hints `{ art, nummer, stelle, meldung }` with `art` `schreibweise` or `dokument`; `issue create` and `issue update` return them after writing as well (see [/issues](#issues)). The `hinweise` are not part of `ok` and never lead to exit 1, and without a hit the key is missing entirely.
+
+**Templates through the chain.** If the human brings a design draft, a mockup or a sketch, `/fachplan`, `/techplan` and `/issues` carry it on as the line `Vorlage: <Pfad> — verbindlich | Anregung` (template: binding | suggestion): in the goal of the business plan, in the head of the plan, in the context of every package that touches a view. "Binding" means: The plan decides no design question against the template, every affected package names the place in the template and is accepted via a screenshot next to it, and `/fachplan` asks whether the project's design source should be switched over first. Without this trace a template evaporates between the stages — all checks green, and the view looks as before.
+
+The skills call only the adapter — they know nothing about `gh` or `glab`. You can change `issueTracker` and `codeHost` in the config at any time; all skills adapt on their next call.
+
+**Processing order = board order.** `issue list --status <spalte>` returns the issues in the order of the board column (top first), not numerically — so you control the processing of `/implement-ready` by drag and drop in the Ready column. Implemented per tracker: GitHub via the manual project order of `gh project item-list` (applies to the standard board view; a view with its own sorting displays differently from what the API returns), GitLab via `--order relative_position`, the own Kanban via the column position of the API. Two deliberate exceptions: the local file tracker knows no positions and stays numerical, and `issue list` without a status filter stays stably numerical everywhere (there is no board order across columns). Consequence: The processing order depends on the board state and is no longer deterministically numerical — that is intended.
+
+#### Origin on the board: `--derived-from`
+<!-- de: 1ac69762b21f -->
+
+`issue create` optionally accepts `--derived-from <nummer>` and sends the **project-wide card number** of the **nearest ancestor** along as the field `derivedFrom`. That way the board knows the chain business plan → plan → work package as data and does not have to piece it together from description texts.
+
+Only **one** reference is ever set, the one to the next higher stage — the rest follows from walking along the chain. Who sets it:
+
+| Skill | Reference |
+|---|---|
+| `/fachplan` | **never** — the business requirement is the root and has no ancestor |
+| `/task` | **never** — a `[Task]` has no ancestor; it stands in no chain at all, not even as a root |
+| `/techplan` | to the `[Fachlich]` issue if the plan came from `/techplan #N`; for a plan from the chat none at all |
+| `/issues` | to the `[Plan]` issue, failing that to the business issue, otherwise none at all |
+
+The adapter checks the form before every network call: Whatever is not a positive integer ends with exit 1 — explicitly also the **bare flag** without a value, which would otherwise pass as `1`. Whether the number exists, points to the card itself or closes a cycle is checked by the server; the upper limit is its business as well and is deliberately not rebuilt here.
+
+**Only `kanbancompat` evaluates the field.** GitHub, GitLab and local accept the option without an error and do not transmit it — no abort, no changed output. A skill can therefore set it regardless of the configured tracker.
+
+**The option only takes effect on creation.** There is no adding it later: A board-less pool idea is unreachable for the adapter (no `get`, no `comment`, no `update`), and a repeated ingest onto the same card discards the value.
+
+#### The gap: a tracker without the field stays silent
+<!-- de: 81168c70b3b4 -->
+
+If the call runs against an instance that does not yet know `derivedFrom`, the unknown key is **silently** ignored: The call ends with **exit 0**, the card is created, and the origin is missing — without an error, without a warning, without a difference in the output.
+
+**This is known and deliberately not safeguarded.** The obvious safeguard would be an echo: read back after creation and check whether the value arrived. Exactly that fails in the most important case — a board-less **pool idea** is not readable, its response carries no echo. A safeguard that does not take effect there would be worse than a named gap: It would create trust that does not hold in the decisive case.
+
+In practice this means: **A successful `issue create` is no proof that the origin was set.** Whoever wants to know for sure reads the card on the board — provided it has a number.
+
+#### Why the body lines stay alongside
+<!-- de: 2eac7f7521a4 -->
+
+The origin is there twice: as a field on the board and as a line in the body (`Plan: Issue #M`, `Fachliche Quelle: Issue #N`, both in the context section). That is no duplication, but two forms with different durability.
+
+The field is the **queryable** form — the board groups by it without taking bodies apart. The lines are the **lasting** one: A **project change deletes the origin** on the board, and in both directions — that of the moved card and that of all cards **pointing to it**. The reason is the uniqueness of the numbers: They are assigned project-wide, a carried-over reference would point to a foreign card after the move. The body lines survive that, because they are text.
+
+On top of that, `github`, `gitlab` and `local` do not know such a field at all. Whoever later deletes the lines as redundant loses the origin at the first move — and in three of four trackers immediately.
+
+#### Evaluating the origin: derived-from-report
+<!-- de: 4ef1488b860d -->
+
+`tools/derived-from-report.mjs` reads the body lines back and shows for every card which reference it would get — as preparation for a possible backfill of the stock. The cards come via stdin, the tool does not fetch them itself:
+
+```bash
+node .claude/kit/board.mjs issue list | node tools/derived-from-report.mjs
+node .claude/kit/board.mjs issue list | node tools/derived-from-report.mjs --json
+node tools/derived-from-report.mjs --help
+```
+
+Without a flag, a readable summary is produced with a counter per state and a list of the cards that need attention. `--json` outputs the same data raw so that a later migration can process it. That the cards are handed over instead of fetched has three reasons: It is testable without a mock server, it works for **every** tracker instead of only for kanbancompat, and the same snapshot can be evaluated twice.
+
+**The tool writes nothing** — neither to the board nor to the file system. It is a dry run and remains one as long as there is no **write path** for `derivedFrom`: The field is set on creation and never changed afterwards. Whether and how the stock is backfilled depends on a decision in the kanban-kit project and is filed as idea **#355**.
+
+**Where to look depends on the document type** — otherwise the state `fehlplatziert` seems arbitrary:
+
+| Document | Valid location |
+|---|---|
+| Work package | section `## Kontext` |
+| `[Plan]` document | head area before `## Ziel`, i.e. before the first `##` heading |
+
+Plan documents have no context section at all; a reader who only knows that one would overlook every intermediate stage of the chain. In both cases only lines **outside code fences** count — an issue that shows the convention as an example must not invent a reference.
+
+Exactly one state results per card:
+
+| State | Meaning |
+|---|---|
+| `vorfahr` | exactly one unambiguous reference, the target card exists |
+| `keiner` | no reference line — the card would stay empty. **No error**, but the normal case for everything created before the convention |
+| `unbekannt` | the reference names a number that does not exist in the handed-over set of cards |
+| `selbstverweis` | the reference points to the card itself |
+| `mehrdeutig` | several lines of the same type with different numbers — no guessing here |
+| `fehlplatziert` | a reference line is outside the valid location while there is none there |
+
+With `unbekannt` and `selbstverweis` the result additionally carries the field `gelesen` with the number that was pointed to.
+
+**What this is good for was shown by the first run:** Of 47 cards with a reference, zero were misplaced and zero ambiguous — but **14 pointed to two ancestors that no longer existed on the board**. A migration would have failed on this, because the server rejects unknown numbers on creation. That is exactly what the dry run is for.
+
+### Local mode
+<!-- de: 83c4bcb53de7 -->
+
+With `issueTracker: local` the adapter creates issues as Markdown files in `issues/`:
+
+```
+issues/
+  0001.md
+  0002.md
+```
+
+Every file has YAML frontmatter:
+
+```markdown
+---
+id: 1
+status: backlog
+title: Example issue
+created: 2026-07-01
+---
+
+## Kontext
+…
+
+## Aufgabe
+…
+
+## Akzeptanzkriterium
+…
+
+## Abhängigkeiten
+Keine.
+```
+
+The section headings in the body are those of the four-section format and stay German, because the tools read them. The status (`backlog | ready | in_progress | in_review | done`) is in the frontmatter. No board API, no label setup.
+
+### What differs with GitLab
+<!-- de: 7f952698b9fa -->
+
+**Pull request is called merge request.** `/merge-production` creates a merge request instead of a pull request on GitLab.
+
+**Board status via label.** GitLab maps the five columns via labels: `~Backlog`, `~Ready`, `~In progress`, `~In review`, `~Done`. The installer creates the labels automatically if you confirm with "j" during setup. You have to create the board view itself (Issues → Boards → "Add list") once manually in the GitLab UI.
+
+### Setting the configuration
+<!-- de: 92c13380938a -->
+
+```json
+{
+  "codeHost": "github",
+  "issueTracker": "local",
+  ...
+  "local": { "issuesDir": "issues" },
+  "github": { "projectNumber": 11 }
+}
+```
+
+You can change both fields manually at any time. All skills read them on their next call.
+
+### Toolbox (private setup)
+<!-- de: ac419091bb37 -->
+
+Not a publicly promoted kit feature: Toolbox is a personal Kanban tool of the author (own backend, own frontend), used by the author as an issue tracker. The installer does not ask about it, and this section serves primarily for the author's own reference — not as a general recommendation.
+
+`codeHost` stays independent of it (usually `github` or `gitlab`): Toolbox is only an issue tracker, not a code host; pull requests still run via the platform configured there.
+
+```json
+{
+  "codeHost": "github",
+  "issueTracker": "toolbox",
+  "toolbox": { "host": "https://toolbox.mwolff.org" }
+}
+```
+
+**Authentication** runs via a personal Kanban access token (PAT), not via the Keycloak login of the Toolbox web interface. Every call carries the token in the header `X-Kanban-Token`; it acts exclusively on `/api/kanban/**`. Setting up the `tbx` CLI and token management are part of the Toolbox project itself, not of this kit.
+
+`board.mjs` resolves the token in three ways — the first hit wins:
+
+1. **`TBX_TOKEN`** (environment variable): highest priority. Handy for passing a token per terminal session or per call without writing anything into the project — that way you switch, for example, an entire night run to a night board of its own (see [Night mode](#night-mode)).
+2. **`toolbox.tokenFile`** in `workflow.config.json`: path (relative to the project directory) to a file that contains only the token. That way every app gets its own project/board-bound token. The token file belongs in `.gitignore` — only the path is checked in, never the secret.
+3. **Global `tbx` login** (fallback, previous behaviour): create a token in the Toolbox web UI, run `tbx auth login`. The token is then under `~/.config/toolbox-cli/tokens.json` (can be overridden via `TBX_CONFIG_DIR`) and applies to all projects on the machine that use neither of the other two ways.
+
+**No plain-text token in `workflow.config.json`.** The config is checked in and shared. If a `toolbox.token` is in it in plain text, `board.mjs` aborts with a clear message instead of silently using the secret — use `TBX_TOKEN` or `toolbox.tokenFile`.
+
+**Behind a proxy** — for instance in the Claude Code sandbox, which routes network traffic via `HTTPS_PROXY` — Node's built-in `fetch` only uses the proxy if `NODE_USE_ENV_PROXY=1` is set at start; otherwise every board call ends with "fetch failed" (Node's message when the request could not be sent). If `HTTPS_PROXY` (or `https_proxy`) is set and the switch is not, `board.mjs` therefore restarts itself once with `NODE_USE_ENV_PROXY=1` (help and `--version` excepted), and the night runner sets the variable for every session. Your own Node calls with network access need the variable just the same. If a call behind a proxy still fails at name resolution or connection, the error message names this remedy — the way is the variable, not leaving the sandbox (Issue #998).
+
+**Example: a second app with its own token on the same kanban-kit.** The server supports project/board-bound tokens: create a second token in the admin UI and bind it to project 2/board 2. In the second project, then either set `TBX_TOKEN` or point in the config to a gitignored token file:
+
+```json
+{
+  "codeHost": "github",
+  "issueTracker": "toolbox",
+  "toolbox": {
+    "host": "https://toolbox.mwolff.org",
+    "tokenFile": ".claude/tbx.token"
+  }
+}
+```
+
+```bash
+echo "<token-from-the-admin-ui>" > .claude/tbx.token
+echo ".claude/tbx.token" >> .gitignore
+```
+
+The global `tbx` login of app 1 stays untouched — app 1 keeps falling back to `tokens.json`, app 2 uses its own token from the file. Host resolution is independent of this (`toolbox.host` in the config, otherwise the host from the `tbx` login).
+
+**Column names are fixed.** Unlike GitHub and GitLab, the five statuses (`backlog`, `ready`, `in_progress`, `in_review`, `done`) cannot be renamed here via `columns` in the config — internally they are mapped 1:1 to Toolbox's Kanban columns `BACKLOG`, `READY`, `IN_PROGRESS`, `IN_REVIEW`, `DONE`.
+
+**New issues land directly in the backlog.** Against a kanban-kit ≥ 1.5, `issue create` creates the card immediately with its board number — it is right away in the Backlog column and addressable via `#N` from then on. That is the default; a project does not have to configure anything for it.
+
+**`ideaStored: true` steers into the project idea pool instead.** Then a board-less idea is created: It appears in no column, and the board number only exists once you schedule it. The adapter reports this back honestly (`ideaId` + `pending: true` instead of a number, with a hint text); a response without a usable identifier aborts hard. Scheduling is deliberately reserved for you — it is the same human review as the former pulling up from the idea store.
+
+The switch is called `ideaStored` in the config, but the field on the wire is `direct`: A missing `ideaStored` or one set to `false` sends `direct: true`, an `ideaStored: true` sends nothing at all. The formerly sent wire field `ideaStored` goes over the wire in **no** case any more — the server ignores it anyway.
+
+Four cases, so that it is clear what happens when:
+
+| Config | Sent | Result |
+|---|---|---|
+| not set | `direct: true` | card in the backlog, with number |
+| `ideaStored: false` | `direct: true` | card in the backlog, with number |
+| `ideaStored: true` | no `direct` | idea in the pool, `ideaId` + `pending` |
+| legacy backend without `direct` | irrelevant | as before: number returned |
+
+If creation is direct — that is, in the regular case — but only an `ideaId` comes back, `issue create` **aborts** instead of reporting `pending`: Otherwise the call would look successful while the card has no number. The message names `ideaStored: true` as the way into pool mode. Older backends (original Toolbox, kanban-kit before 1.5) behave unchanged; GitHub and GitLab trackers are not affected by any of this.
+
+#### Retries, idempotency keys and the three outcomes
+<!-- de: 7f7b14ee2668 -->
+
+A night run sends hundreds of board commands in a row. Since kanban-kit 2.5 the board limits them per person and rejects with `429`, `Retry-After` (seconds) and the problem detail `type: urn:manban:overload`. Without a counterpart in the adapter, the run aborts at some point and leaves a half-processed chain behind.
+
+That is why every Toolbox call has a **time limit per attempt** (10 seconds), a **retry loop** with growing waiting time and jitter, and an **overall budget**: 30 seconds interactively, 120 seconds with `KIT_AGENT_MODEL` set — the same signal as for the header `X-Agent-Model`. At night nobody sits next to it who would be bothered by two minutes; interactively, half a minute is the limit of what is bearable. `Retry-After` beats the own schedule: The server knows better when its window is open again.
+
+**`KIT_TOOLBOX_BUDGET_MS`** sets the overall budget explicitly in milliseconds and beats both regular values; only a positive integer value counts, everything else falls back to the rule. The variable is meant for tests that start `board.mjs` as a process of its own against a server answering persistently with errors — there the waiting is real, and without a short budget every call costs the full two minutes. It deliberately takes effect everywhere and not only under test: An unnamed back door that changes behaviour would be worse than a documented adjusting screw.
+
+**Retries happen only where it is safe:**
+
+| Case | Retry | Why |
+|---|---|---|
+| `429` with `type: urn:manban:overload` | yes, for every method | A rejection has executed nothing |
+| `429` without this `type` | no | Says nothing about the outcome |
+| `5xx` for `GET`, `PUT`, `DELETE` | yes | Without consequence, or the same result on repetition |
+| `5xx` for `POST` **with** `Idempotency-Key` | yes | The same key executes the effect at most once |
+| `5xx` for `POST` **without** key | no | Otherwise a night-run message would be duplicated after a `502` of the proxy |
+| timeout, connection drop | yes | The likely failure mode under full load |
+| connection refused (`ECONNREFUSED`, `ENOTFOUND`) | no | Demonstrably no call went out |
+| `401` | never | A revoked token does not become valid by waiting |
+| any other status (`403`, `404`, `409` …) | no | Reported immediately |
+
+Every retry attempt writes a line to stderr (`board: POST /api/kanban/items — Versuch 2 endete mit HTTP 503, erneut in 1000 ms (Frist 120 s)` — attempt 2 ended with HTTP 503, again in 1000 ms, deadline 120 s). Whoever watches a night run can thus tell waiting from hanging. The successful call reports nothing — one line per board command would drown exactly this signal.
+
+**The three outcomes.** Every aborted call says what became of its effect:
+
+- **ausgeführt** (executed) — the server answered with `2xx`.
+- **nicht ausgeführt** (not executed) — an answered rejection (`4xx`) or demonstrably no call that went out. Repeating is safe.
+- **Ausgang unklar** (outcome unclear) — a writing call went out and got no usable answer (timeout, connection drop or `5xx`), and the budget is exhausted. The effect may have occurred.
+
+The third value is deliberately not a special case of the second: A timeout reported as „nicht ausgeführt“ invites exactly the repetition that attaches a completion report to the board a second time.
+
+**The key comes back from outside.** `POST /api/kanban/items` and `POST /api/kanban/items/{id}/comments` — the two endpoints that evaluate it on the server side — carry an `Idempotency-Key`. It is created per job and stays the same across all attempts. The message for „Ausgang unklar“ names it together with the complete command for the repetition:
+
+```
+Toolbox-API-Fehler: HTTP 502
+Ausgang unklar: POST /api/kanban/items/700/comments ging hinaus, blieb aber ohne
+verwertbare Antwort — die Wirkung kann eingetreten sein. Schluessel: 5f2c-…-91ab.
+Mit genau diesem Schluessel wiederholen — derselbe Schluessel fuehrt die Wirkung
+hoechstens einmal aus:
+  node .claude/kit/board.mjs issue comment 7 --text-file /tmp/7-bericht.md --idempotency-key 5f2c-…-91ab
+```
+
+The message says: Toolbox API error; outcome unclear — the call went out but got no usable answer, the effect may have occurred; repeat with exactly this key, because the same key executes the effect at most once.
+
+A key internal to the process only would turn every manual repetition into a new job. That is why `issue create` and `issue comment` accept it again via **`--idempotency-key <wert>`**. Without the switch the behaviour stays unchanged. A call without a key — `/labels`, `/night-runs` — says so explicitly in the message and refers to checking on the board.
+
+**Other backends.** For servers without the overload `type`, nothing changes: `429` without `urn:manban:overload` is not retried, and the header `Idempotency-Key` is ignored there. With the trackers `github`, `gitlab` and `local`, the call accepts `--idempotency-key` without consequence.
+
+## Updating and multiple projects
+<!-- de: be26643cf235 -->
+
+Because the skills are project-independent and only the config is project-local, you update the kit by running the installer again. Your config is preserved (the installer asks you before overwriting it).
+
+In a new project you only need to run the installer or copy `workflow.config.json` from an existing project and adjust the branch names. All skills are ready to use immediately.
+
+If several projects work against the same Toolbox/kanban-kit tracker, each project gets its own project/board-bound token: via the `TBX_TOKEN` environment variable or via `toolbox.tokenFile` in the config (gitignored file, no plain-text token in the shared `workflow.config.json`). Precedence and an example are in the section [Toolbox (private setup)](#toolbox-private-setup).
+
+## Troubleshooting
+<!-- de: e73e098a89dd -->
+
+**The skills do not show up in `/help`.**
+Did you restart Claude Code after the installation? The skills are loaded at start. Also check whether the files are in the right directory: `~/.claude/skills/` for a global installation, `.claude/skills/` for a project-local one.
+
+**`/implement-ready` does nothing or reports "Ready ist leer".**
+("Ready is empty".) At least one issue must be in the Ready column (GitHub) or marked with the label `~Ready` (GitLab). The skill processes only Ready, it does not pull any issues forward from the backlog.
+
+**`/review` produces thin or overly general findings.**
+Check `reviewScope` in the config. With `diff` the reviewer sees only the changed lines. For larger refactorings, switch to `full`. In very large repos `full` can overload the context window; then better use `diff` and add manually selected file paths in the review prompt.
+
+**`/push-main` does not happen, or the AI does not ask for it.**
+The skill is locked against autonomous invocation. You have to type the exact trigger phrase (by default `push main`). An earlier approval in the same session does not apply to new commits.
+
+**`/kontext` or `/document` reports an error.**
+Check whether `kontext.config.json` exists (globally in `~/.claude/` or locally in `.claude/`). Both skills also run without a vault in degraded mode. If you use `codeHost: github` or `issueTracker: github`, `gh` must be authenticated. If you use `gitlab`, `glab` needs `auth login`. In local mode there is no external CLI dependency.
+
+## kontext.config.json: reference
+<!-- de: aa2a976ed958 -->
+
+Configures the `/kontext` skill (session start) and the `/document` skill (session end). Both read the same file, so you specify the vault path and always files only once.
+
+### Why two config files?
+<!-- de: dff531742346 -->
+
+`workflow.config.json` is repo-specific: build commands, branch names, review model. It belongs in the repo and is shared with the team. Everyone who clones the repo has the same process basis.
+
+`kontext.config.json` is personal: your memory vault, your always files. It points to your local infrastructure and does not belong in the repo. Two developers in the same repo have different vaults and different profile files.
+
+### Storage locations
+<!-- de: 2f74f211b749 -->
+
+| Path | Purpose |
+|------|-------|
+| `~/.claude/kontext.config.json` | Global, applies to all projects on this machine |
+| `.claude/kontext.config.json` | Project-local, overrides individual fields of the global config |
+
+The files are **merged field by field, local fields win**. Fields not in the local config are inherited from the global one. If no config is found, `/kontext` and `/document` run in degraded mode.
+
+### Fields
+<!-- de: 3e7a8e755ff9 -->
+
+| Field | Type | Required | Description |
+|------|-----|---------|--------------|
+| `vault` | `string` | optional | Absolute path to the memory vault. Without this field the skill runs in degraded mode. |
+| `always` | `string[]` | optional | Files relative to the `vault` root that are always read (e.g. profile, working rules) |
+| `projectDocs` | `string[]` | optional | Files or glob patterns relative to the project directory. Fallback: `["CLAUDE-*", ".claude/CLAUDE-*"]` |
+| `project` | `string` | optional | Override for the vault project name, only needed if the repo name and the vault folder name differ |
+| `logPath` | `string` | optional | Template for the daily log file, relative to the `vault` root. Placeholders `{date}` and `{project}`. Default: `"Log/{date}.md"` |
+| `parentProject` | `string` | optional | Umbrella project over several service repos (multi-repo setup) |
+
+**You need `logPath` as soon as more than one project uses the same vault** — regardless of whether the projects have anything to do with each other. The default `Log/{date}.md` is one file per **day**, not per project: Without `{project}` in the template, all sessions of a day end up in the same file, and `kontext last-log` may return the entry of a foreign project as the predecessor at the next `/document`. Two independent repos on one vault are already enough for that.
+
+`parentProject` is independent of this and only meant for **multi-repo systems** in which several service repos belong to one whole (see below). Whoever runs a dozen independent projects on one vault sets `logPath` and leaves out `parentProject`.
+
+The complete setup with vault structure and example config is in the [`kontext.config.json` reference](/en/kontext-config-reference); the principle behind it under [One file, one writer](#one-file-one-writer).
+
+### What happens without a vault?
+<!-- de: c0319328d3e4 -->
+
+If `vault` is not set or no config file is found, both skills continue in degraded mode:
+
+`/kontext` loads the initiatives via the board adapter and reads `projectDocs` from the repo. At the end a hint appears: "Kein Vault konfiguriert, arbeite ohne persistentes Memory." (no vault configured, working without persistent memory).
+
+`/document` writes the daily log to `docs/session-log/YYYY-MM-DD.md` in the project directory. At the end: "Kein Vault konfiguriert. Log ins Projektverzeichnis geschrieben." (no vault configured, log written to the project directory).
+
+Degraded mode is the right entry point if you want to try out the kit without first setting up a vault infrastructure. For lasting cross-project memory you enter the `vault` path in `~/.claude/kontext.config.json`.
+
+### Glob patterns in projectDocs
+<!-- de: 31f8a80c6229 -->
+
+`projectDocs` supports glob patterns. The skill expands them via `find` in the project directory:
+
+```bash
+find . -maxdepth 1 -name "CLAUDE-*" -type f
+find .claude -maxdepth 1 -name "CLAUDE-*" -type f
+```
+
+Patterns without hits are silently skipped (no error, no abort).
+
+### Checking paths without starting a skill
+<!-- de: f04a33734ee7 -->
+
+The target paths are computed by the board adapter, not by the skill prompt:
+
+```bash
+node .claude/kit/board.mjs kontext paths
+```
+
+The output names the daily log, the project note and — in a multi-repo setup — the umbrella note, each as an absolute path. If they are correct here, they are correct in the skill as well. The project name is determined in the order `--project` → `project` from the config → repo name → directory name; if the repo name differs from the vault folder name, you enter the correct name as the `project` field in the local config.
+
+`node .claude/kit/board.mjs kontext last-log` additionally returns the most recent existing log entry of the same project — `/document` thereby picks up from the previous entry instead of starting from zero.
+
+### Examples
+<!-- de: bbc9c7de8965 -->
+
+Global config (create once, applies to all projects on this machine):
+
+```json
+{
+  "vault": "/path/to/your/memory-vault",
+  "always": ["Index.md", "Profil.md"],
+  "projectDocs": ["CLAUDE-*", ".claude/CLAUDE-*"]
+}
+```
+
+Local config (only create if the repo name and the vault project name differ):
+
+```json
+{
+  "project": "MyProject"
+}
+```
+
+## License
+<!-- de: 574befe785b2 -->
+
+MIT. The kit is free to use, modify and redistribute.
