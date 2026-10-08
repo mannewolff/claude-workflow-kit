@@ -17,7 +17,7 @@
 
 import { spawnSync } from "node:child_process";
 
-import { BoardError, fail, out, loadConfig, findeImPath, umgebungsWert, spawnAufruf, startbefehlFuer } from "./grundlagen.mjs";
+import { BoardError, fail, out, loadConfig, findeImPath, umgebungsWert } from "./grundlagen.mjs";
 import { istFachlich, istPlan } from "./dokumente.mjs";
 
 // ============================================================
@@ -242,24 +242,13 @@ function issueReviewConfig(config = loadConfig()) {
 
 
 // Verfuegbarkeit eines Kommandos: Das erste Wort muss als startbare Datei auffindbar
-// sein. `command -v` waere kuerzer, gibt es unter cmd.exe aber nicht (Issue #196).
-// Liefert zusaetzlich den aufgeloesten Pfad und den Startbefehl dazu — der Probelauf
-// unten startet damit, statt noch einmal zu suchen. Unter Windows steckt in `pfad` die
-// Endung aus PATHEXT, und ein per npm installiertes `codex.cmd` startet ueber seine
-// sh-Huelle in der Git Bash (Issue #1135, E8); fehlt die Huelle, steht das in
-// `start.fehler`. Umgebung, Plattform und Dateisystem sind injizierbar wie bei
-// `startbefehlFuer`.
-export function kommandoVerfuegbar(kommandozeile, { env = process.env, plattform = process.platform, existiert, ausfuehrbar } = {}) {
+// sein — eine Dateisystem-Pruefung statt `command -v`, das eine Shell braucht (Issue #196).
+// Liefert zusaetzlich den aufgeloesten Pfad — der Probelauf unten startet damit, statt
+// noch einmal zu suchen. Umgebung und Dateisystem sind injizierbar wie bei `findeImPath`.
+export function kommandoVerfuegbar(kommandozeile, { env = process.env, existiert, ausfuehrbar } = {}) {
   const datei = kommandozeile.trim().split(/\s+/)[0];
-  const pfad = findeImPath(datei, {
-    platform: plattform,
-    path: umgebungsWert(env, "PATH"),
-    pathext: umgebungsWert(env, "PATHEXT"),
-    existiert,
-    ausfuehrbar,
-  });
-  if (pfad === null) return { datei, ok: false, pfad, start: null };
-  return { datei, ok: true, pfad, start: startbefehlFuer(pfad, { env, plattform, existiert }) };
+  const pfad = findeImPath(datei, { path: umgebungsWert(env, "PATH"), existiert, ausfuehrbar });
+  return { datei, ok: pfad !== null, pfad };
 }
 
 // Ein Prompt, der nichts verlangt: Der Probelauf startet ein frei konfiguriertes
@@ -287,23 +276,16 @@ const PROBE_TIMEOUT_MS = Number(process.env.KIT_PROBE_TIMEOUT_MS) || 60_000;
  * Ohne Shell, wie alles in dieser Datei (Issue #196): Die Kommandozeile wird am
  * Whitespace zerlegt und als argv uebergeben. Dieselbe Annahme wie in
  * kommandoVerfuegbar — eine Reviewer-Kommandozeile mit Quotes oder Pipes ist damit
- * nicht abgedeckt, und das ist der Preis dafuer, dass es unter Windows laeuft.
- * Gestartet wird nach `start` aus kommandoVerfuegbar (Issue #1135, E8).
+ * nicht abgedeckt, und das ist der Preis dafuer, dass keine Shell dazwischen steht.
+ * Gestartet wird `pfad` aus kommandoVerfuegbar.
  *
  * `spawn`, Prompt, Zeitlimit und Umgebung sind injizierbar (Plan #1199, E6): Ein Test
  * reicht ein Ergebnis von spawnSync herein und belegt jeden Ausgang im selben Prozess,
  * ohne Attrappe, die haengt oder abstuerzt.
  */
-export function probelauf(kommandozeile, start, { spawn = spawnSync, prompt = PROBE_PROMPT, timeoutMs = PROBE_TIMEOUT_MS, env = process.env } = {}) {
+export function probelauf(kommandozeile, pfad, { spawn = spawnSync, prompt = PROBE_PROMPT, timeoutMs = PROBE_TIMEOUT_MS, env = process.env } = {}) {
   const argumente = kommandozeile.trim().split(/\s+/).slice(1);
-  const aufruf = spawnAufruf(start.befehl, [...start.vorArgs, ...argumente], start);
-  const res = spawn(aufruf.befehl, aufruf.args, {
-    ...aufruf.optionen,
-    input: prompt,
-    encoding: "utf-8",
-    timeout: timeoutMs,
-    env: { ...env, ...start.umgebung },
-  });
+  const res = spawn(pfad, argumente, { input: prompt, encoding: "utf-8", timeout: timeoutMs, env });
   if (res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM") {
     return { ok: false, grund: `Zeitlimit von ${timeoutMs} ms ueberschritten` };
   }
@@ -421,12 +403,10 @@ export function issueReviewCheck(args = {}, { config = loadConfig(), verfuegbar 
   const ergebnis = reviewers.map((r) => {
     const basis = { name: r.name, kind: r.kind, umgebung: CHECK_UMGEBUNG };
     if (r.kind === "claude") return { ...basis, verfuegbar: true };
-    const { datei, ok, start } = verfuegbar(r.command);
+    const { datei, ok, pfad } = verfuegbar(r.command);
     if (!ok) return { ...basis, verfuegbar: false, geprueft: "pfad", grund: `${datei} nicht im PATH` };
-    // Im PATH, aber nicht startbar: eine `.cmd` ohne sh-Huelle unter Windows (E8).
-    if (start.fehler) return { ...basis, verfuegbar: false, geprueft: "pfad", grund: start.fehler };
     if (nurPfad) return { ...basis, verfuegbar: true, geprueft: "pfad" };
-    const lauf = probe(r.command, start);
+    const lauf = probe(r.command, pfad);
     return lauf.ok
       ? { ...basis, verfuegbar: true, geprueft: "probelauf" }
       : { ...basis, verfuegbar: false, geprueft: "probelauf", grund: lauf.grund };

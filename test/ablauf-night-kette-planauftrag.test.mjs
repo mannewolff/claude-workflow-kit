@@ -33,7 +33,8 @@ test("[night-895] Variante B am Plan: hinter abdeckung laeuft die Stufe umsetzun
     const einheit = stand(dir).einheiten.find((e) => e.id === M);
     assert.equal(einheit.variante, "B", "die Variante steht am Plan, nicht an der Wurzel");
     assert.equal(einheit.ausgang, "fertig", einheit.grund);
+    // Mit dem letzten Paket wandern Anforderung und Plan mit (Issue #1287, Kriterium 1).
     assert.deepEqual(board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id)),
-      einheit.stufen.pakete.ids, "die Pakete stehen nach Variante B in In review");
+      [F, M, ...einheit.stufen.pakete.ids].sort(), "die Pakete und ihre Ursprungsdokumente stehen nach Variante B in In review");
   });
 });

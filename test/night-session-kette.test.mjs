@@ -25,8 +25,6 @@ async function mitOrdner(fn) {
   }
 }
 
-// Das Arbeitsverzeichnis schreibt node und nicht `pwd`: In der Git Bash liefert `pwd` die
-// Form /c/..., die realpathSync unter Windows nicht kennt (Issue #1133).
 test("[night-18] runSession startet den Fake im uebergebenen cwd und setzt NIGHT_KETTE_STUFE neben KIT_AGENT_MODEL", async () => {
   await mitOrdner(async (dir) => {
     const worktree = join(dir, "wt");
@@ -72,9 +70,6 @@ function fakeClaude(dir) {
     `echo '{"type":"result","total_cost_usd":1.25,"duration_api_ms":10,"num_turns":2}'`,
     "",
   ].join("\n"), { mode: 0o755 });
-  // Unter Windows findet das Kit `claude` nur ueber die `.cmd` daneben und startet dann
-  // diese sh-Datei ueber die Git Bash (Issue #1131, E8). Die `.cmd` laeuft nie.
-  writeFileSync(join(bin, "claude.cmd"), "@rem Huelle: das Kit startet die sh-Datei daneben.\r\n");
   return bin;
 }
 

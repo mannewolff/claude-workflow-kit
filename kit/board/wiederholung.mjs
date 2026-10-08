@@ -1,7 +1,6 @@
 /**
- * board/wiederholung.mjs — Wiederholung gegen Ueberlast, Git Bash und Spawn (Issue #1215,
- * Plan #1199, E17): die Regeln, nach denen ein Board-Aufruf wiederholt wird, und die
- * Startregeln fuer Programme unter Windows.
+ * board/wiederholung.mjs — Wiederholung gegen Ueberlast (Issue #1215, Plan #1199, E17):
+ * die Regeln, nach denen ein Board-Aufruf wiederholt wird.
  *
  * Ein Teil von kit/board.mjs. Der Einstieg laedt ihn erst nach der Auskunft ueber
  * --version und --help und exportiert seine Namen unveraendert weiter. Dieser Teil
@@ -9,7 +8,7 @@
  * ein Zyklus.
  *
  * Der Nacht-Runner und checks.mjs laden diesen Teil als Nachbarn ueber einen nicht
- * literalen Pfad (NACHBAR_DIR, #498; Windows-Import, #1176). Die Importanalyse sieht das
+ * literalen Pfad (NACHBAR_DIR, #498, #1176). Die Importanalyse sieht das
  * nicht; die Kopplung steht darum von Hand in den `areas` der Pruefkommandos (E3).
  *
  * Bewusst ohne eigene KIT_VERSION (Plan #1199, E19): Die Teile kommen im selben
@@ -20,16 +19,6 @@
  */
 
 import { RUECKMELDUNG } from "./grundlagen.mjs";
-
-// ============================================================
-// Git Bash und Spawn
-// ============================================================
-
-// Die Suche nach der Git Bash und die Startregel stehen in grundlagen.mjs, denn `exec` dort
-// startet jedes Programm ueber `startbefehlFuer`. Lagen sie hier, importierte grundlagen.mjs
-// aus diesem Teil und dieser aus grundlagen.mjs — ein Zyklus. Die Nachbarn laden sie
-// trotzdem von hier: Fuer sie ist dieser Teil die Adresse von Git Bash und Spawn.
-export { GIT_BASH_UMGEBUNG, gitBashPfad, spawnAufruf, startbefehlFuer } from "./grundlagen.mjs";
 
 // ============================================================
 // Wiederholung gegen Ueberlast (Issue #834)

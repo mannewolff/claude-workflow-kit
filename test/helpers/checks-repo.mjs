@@ -18,27 +18,12 @@ import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as schlafen } from "node:timers/promises";
 import assert from "node:assert/strict";
-import { gitBashPfad } from "../../kit/board.mjs";
 import { aufrufen } from "../../kit/checks.mjs";
 import { lfAttribute } from "./zeilenenden.mjs";
 
-/**
- * Die POSIX-Shell, mit der ein Test den Hook startet: `sh`, unter Windows die Git Bash,
- * die das Kit dort voraussetzt (Issue #1138, Plan #1128 E7).
- */
+/** Die POSIX-Shell, mit der ein Test den Hook startet (Issue #1138). */
 export function posixShell() {
-  if (process.platform !== "win32") return "sh";
-  const { pfad, fehler } = gitBashPfad();
-  if (!pfad) throw new Error(fehler);
-  return pfad;
-}
-
-/**
- * Ein Pfad, wie ihn die Shell als Argument braucht: Unter Windows mit `/` — `dirname "$0"`
- * im Hook trennt nur dort.
- */
-export function shellPfad(pfad) {
-  return process.platform === "win32" ? pfad.replaceAll("\\", "/") : pfad;
+  return "sh";
 }
 
 export function git(dir, ...args) {
@@ -178,28 +163,6 @@ export function repoAnlegen({ config = {}, configText = null, ohneConfig = false
 
 /** Die Fehlercodes, die Windows liefert, solange noch ein Handle auf dem Verzeichnis liegt. */
 const BELEGT = new Set(["EBUSY", "EPERM", "ENOTEMPTY"]);
-
-/**
- * Beendet unter Windows den ganzen Prozessbaum eines Laufs (Issue #874).
- *
- * `checks.mjs` startet seine Pruefkommandos mit `shell: true`; unter Windows steht
- * damit eine `cmd.exe` zwischen Lauf und Kommando. Ein SIGKILL auf den Lauf beendet
- * dort keinen Prozessbaum — die Shell ueberlebt als Waise und haelt das
- * Arbeitsverzeichnis offen. `taskkill /T /F` raeumt sie mit ab.
- *
- * Fehler sind kein Testfehler: Der Prozess kann laengst weg sein, und die Funktion
- * laeuft im `finally`, wo sie das Ergebnis des Tests nicht ueberschreiben darf.
- * Rueckgabe: ob ein Aufruf abgesetzt wurde — allein zur Pruefbarkeit.
- */
-export function prozessbaumBeenden(pid, { plattform = process.platform, kill = spawnSync } = {}) {
-  if (plattform !== "win32" || !pid) return false;
-  try {
-    kill("taskkill", ["/pid", String(pid), "/T", "/F"], { stdio: "ignore" });
-  } catch {
-    // schon weg
-  }
-  return true;
-}
 
 /**
  * Entfernt ein Wegwerf-Verzeichnis und wartet dabei ab, bis Windows es freigibt

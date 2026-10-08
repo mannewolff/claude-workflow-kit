@@ -6,7 +6,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spawnSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { readFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { checksMit, mitRepo, repoAnlegen, datei, eintrag, zusammenfassung, ausfuehrungen } from "./helpers/checks-repo.mjs";
@@ -86,14 +86,8 @@ test("wird checks.mjs selbst beendet, endet die laufende Pruefung samt Enkel mit
     await warteAuf(() => enkelPid(dir) !== null, 30_000, "der Enkel startete nicht");
     const pid = enkelPid(dir);
     const ende = new Promise((weiter) => kind.once("exit", weiter));
-    // Windows kennt kein abfangbares SIGTERM — `kind.kill` waere dort ein harter Abbruch
-    // ohne Handler. Dort beendet der Aufrufer den ganzen Baum, und genau das ist die
-    // Zusage dieses Tests auf der Plattform. Auf POSIX reicht checks.mjs SIGTERM weiter.
-    if (process.platform === "win32") {
-      spawnSync("taskkill", ["/pid", String(kind.pid), "/T", "/F"], { stdio: "ignore" });
-    } else {
-      kind.kill("SIGTERM");
-    }
+    // checks.mjs reicht SIGTERM an die Gruppen seiner Pruefungen weiter.
+    kind.kill("SIGTERM");
     await ende;
     await warteAuf(() => !lebt(pid), 5_000, `der Enkel ${pid} lebt nach dem Ende von checks.mjs noch`);
   } finally {

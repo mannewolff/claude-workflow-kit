@@ -107,74 +107,18 @@ test("pickReviewers: die Anzahl ist einstellbar", () => {
 
 // --- findeImPath (Issue #231) ---
 //
-// Plattform und Dateisystem werden injiziert, damit die Windows-Semantik ohne Windows
-// pruefbar ist. Genau das war die Luecke: Der alte Verfuegbarkeits-Check startete einen
-// Prozess, und ob der unter Windows startet, laesst sich unter POSIX nicht nachstellen.
+// PATH und Dateisystem werden injiziert: Die Pruefung laeuft ohne echte Dateien.
 
 // Baut eine `existiert`-Funktion aus einer Liste vorhandener Pfade.
-//
-// Bewusst case-insensitiv: PATHEXT liefert die Endungen in Grossschreibung (.CMD),
-// die installierte Datei heisst `codex.cmd`. Auf einem echten Windows-Dateisystem
-// trifft `existsSync` sie trotzdem — ein case-sensitiver Fake wuerde einen Fehler
-// behaupten, den es dort nicht gibt. Fuer die POSIX-Faelle aendert es nichts, dort
-// stimmen die Namen exakt ueberein.
 function fs_mit(...pfade) {
-  const vorhanden = new Set(pfade.map((p) => p.toLowerCase()));
-  return (p) => vorhanden.has(p.toLowerCase());
+  const vorhanden = new Set(pfade);
+  return (p) => vorhanden.has(p);
 }
 
-const WIN = {
-  platform: "win32",
-  pathext: ".COM;.EXE;.BAT;.CMD",
-  path: String.raw`C:\bin;C:\npm`,
-};
-// `ausfuehrbar` gehoert zur Grundausstattung: Unter POSIX prueft findeImPath das
-// X-Bit, und die Fixture-Pfade existieren real nicht — ohne Injektion wuerde der
-// echte accessSync jeden Treffer wieder verwerfen.
-const POSIX = { platform: "linux", path: "/usr/bin:/usr/local/bin", ausfuehrbar: () => true };
-
-test("findeImPath: win32 findet 'codex' als codex.cmd", () => {
-  // Der Kernfall, an dem die fruehere Implementierung scheiterte.
-  // Verglichen wird case-insensitiv: Zurueck kommt der aus PATHEXT gebildete Pfad
-  // (.CMD), die Datei heisst .cmd — auf einem Windows-Dateisystem derselbe Pfad.
-  const treffer = findeImPath("codex", { ...WIN, existiert: fs_mit(String.raw`C:\npm\codex.cmd`) });
-  assert.equal(treffer?.toLowerCase(), String.raw`c:\npm\codex.cmd`);
-});
-
-test("findeImPath: win32 haelt die PATHEXT-Reihenfolge ein", () => {
-  // .EXE steht in PATHEXT vor .CMD — liegen beide da, gewinnt .EXE.
-  const treffer = findeImPath("codex", {
-    ...WIN,
-    existiert: fs_mit(String.raw`C:\bin\codex.CMD`, String.raw`C:\bin\codex.EXE`),
-  });
-  assert.equal(treffer, String.raw`C:\bin\codex.EXE`);
-});
-
-test("findeImPath: win32 durchsucht die PATH-Eintraege in ihrer Reihenfolge", () => {
-  const treffer = findeImPath("codex", {
-    ...WIN,
-    existiert: fs_mit(String.raw`C:\bin\codex.CMD`, String.raw`C:\npm\codex.CMD`),
-  });
-  assert.equal(treffer, String.raw`C:\bin\codex.CMD`);
-});
-
-test("findeImPath: win32 ergaenzt einen Namen mit Endung nicht noch einmal", () => {
-  // 'codex.exe' darf nicht zu 'codex.exe.CMD' werden.
-  const treffer = findeImPath("codex.exe", { ...WIN, existiert: fs_mit(String.raw`C:\bin\codex.exe`) });
-  assert.equal(treffer, String.raw`C:\bin\codex.exe`);
-  const daneben = findeImPath("codex.exe", { ...WIN, existiert: fs_mit(String.raw`C:\bin\codex.exe.CMD`) });
-  assert.equal(daneben, null);
-});
-
-test("findeImPath: win32 ohne PATHEXT nutzt die Windows-Default-Liste", () => {
-  const treffer = findeImPath("codex", {
-    platform: "win32",
-    path: String.raw`C:\bin`,
-    pathext: undefined,
-    existiert: fs_mit(String.raw`C:\bin\codex.CMD`),
-  });
-  assert.equal(treffer, String.raw`C:\bin\codex.CMD`);
-});
+// `ausfuehrbar` gehoert zur Grundausstattung: findeImPath prueft das X-Bit, und die
+// Fixture-Pfade existieren real nicht — ohne Injektion wuerde der echte accessSync jeden
+// Treffer wieder verwerfen.
+const POSIX = { path: "/usr/bin:/usr/local/bin", ausfuehrbar: () => true };
 
 test("findeImPath: posix probiert keine Endungen", () => {
   const nackt = findeImPath("codex", { ...POSIX, existiert: fs_mit("/usr/bin/codex") });
@@ -183,33 +127,20 @@ test("findeImPath: posix probiert keine Endungen", () => {
   assert.equal(mitEndung, null);
 });
 
-test("findeImPath: der PATH-Trenner haengt an der Plattform", () => {
-  // Unter win32 trennt ';' — ein ':' im Pfad ist dort Teil des Laufwerksbuchstabens.
-  assert.equal(
-    findeImPath("codex", { ...WIN, path: String.raw`C:\a;C:\b`, existiert: fs_mit(String.raw`C:\b\codex.CMD`) }),
-    String.raw`C:\b\codex.CMD`,
-  );
+test("findeImPath: der PATH trennt mit ':'", () => {
   assert.equal(
     findeImPath("codex", { ...POSIX, path: "/a:/b", existiert: fs_mit("/b/codex") }),
     "/b/codex",
   );
 });
 
-test("findeImPath: der Trenner im Ergebnis folgt der uebergebenen Plattform, nicht dem Host", () => {
-  // Die Invariante, an der der Windows-Job gescheitert ist: join() aus node:path ist
-  // immer die Variante des LAUFENDEN Hosts. Dieser Test faellt auf, egal auf welcher
-  // Seite jemand sie wieder einbaut — er laeuft unter POSIX und Windows gleich.
-  const win = findeImPath("codex", { ...WIN, path: String.raw`C:\bin`, existiert: () => true });
-  assert.ok(win.includes("\\"), `win32-Ergebnis ohne Backslash: ${win}`);
-  assert.ok(!win.includes("/"), `win32-Ergebnis mit Slash: ${win}`);
-
+test("findeImPath: der Treffer setzt Verzeichnis und Name mit '/' zusammen", () => {
   const posix = findeImPath("codex", { ...POSIX, path: "/usr/bin", existiert: () => true });
   assert.equal(posix, "/usr/bin/codex");
 });
 
 test("findeImPath: nicht gefunden liefert null", () => {
   assert.equal(findeImPath("gibtsnicht", { ...POSIX, existiert: () => false }), null);
-  assert.equal(findeImPath("gibtsnicht", { ...WIN, existiert: () => false }), null);
 });
 
 test("findeImPath: ein Pfad in der Eingabe wird direkt geprueft, ohne PATH-Suche", () => {
@@ -241,73 +172,22 @@ test("findeImPath: posix verlangt zusaetzlich das Ausfuehrbar-Bit", () => {
   assert.equal(treffer, null);
 });
 
-test("findeImPath: win32 prueft kein Ausfuehrbar-Bit", () => {
-  // Unter Windows entscheidet die Endung, nicht ein Modus-Bit.
-  const treffer = findeImPath("codex", {
-    ...WIN,
-    existiert: fs_mit(String.raw`C:\bin\codex.CMD`),
-    ausfuehrbar: () => false,
-  });
-  assert.equal(treffer, String.raw`C:\bin\codex.CMD`);
-});
-
-// --- Startregel des Reviewer-Starts (Issue #1135, Plan #1128, E8) ---
-//
-// Ein per npm installiertes `codex` liegt unter Windows als `codex.cmd`, und Node startet
-// eine `.cmd` ohne Shell nicht (CVE-2024-27980). npm legt daneben eine sh-Huelle ohne
-// Endung an; die startet das Kit ueber die Git Bash. Die Plattform ist injiziert, damit
-// die Windows-Regel auch dort belegt ist, wo der Test nicht unter Windows laeuft.
-const NPM = String.raw`C:\Users\m\AppData\Roaming\npm`;
-const GIT = String.raw`C:\Program Files\Git`;
-const GIT_BASH = String.raw`C:\Program Files\Git\bin\bash.exe`;
-const WIN_START = {
-  plattform: "win32",
-  env: { Path: `${NPM};${GIT}\\cmd`, PATHEXT: ".COM;.EXE;.BAT;.CMD" },
-};
-
-test("kommandoVerfuegbar: win32 startet codex.cmd mit sh-Huelle ueber die Git Bash", () => {
-  const { ok, start } = kommandoVerfuegbar("codex exec --model gpt-5", {
-    ...WIN_START,
-    existiert: fs_mit(`${NPM}\\codex.cmd`, `${NPM}\\codex`, `${GIT}\\cmd\\git.exe`, GIT_BASH),
-  });
-  assert.equal(ok, true);
-  assert.equal(start.fehler, null);
-  assert.equal(start.befehl, GIT_BASH);
-  assert.deepEqual(start.vorArgs, [`${NPM}\\codex`]);
-  assert.equal(start.umgebung.MSYS_NO_PATHCONV, "1");
-});
-
-test("kommandoVerfuegbar: win32 startet eine .exe direkt", () => {
-  const { ok, start } = kommandoVerfuegbar("codex exec", {
-    ...WIN_START,
-    existiert: fs_mit(`${NPM}\\codex.exe`, `${NPM}\\codex.cmd`, `${NPM}\\codex`),
-  });
-  assert.equal(ok, true);
-  assert.equal(start.fehler, null);
-  assert.equal(start.befehl.toLowerCase(), `${NPM}\\codex.exe`.toLowerCase());
-  assert.deepEqual(start.vorArgs, []);
-});
-
-test("kommandoVerfuegbar: win32 meldet eine .cmd ohne sh-Huelle als nicht startbar", () => {
-  const { ok, start } = kommandoVerfuegbar("codex exec", {
-    ...WIN_START,
-    existiert: fs_mit(`${NPM}\\codex.cmd`, `${GIT}\\cmd\\git.exe`, GIT_BASH),
-  });
-  assert.equal(ok, true, "die Datei liegt im PATH — nur starten laesst sie sich nicht");
-  assert.equal(start.befehl, null);
-  assert.match(start.fehler, /ohne sh-Huelle daneben vor und ist nicht ohne cmd\.exe startbar/);
-});
-
-test("kommandoVerfuegbar: POSIX startet den gefundenen Pfad unveraendert", () => {
-  const { ok, pfad, start } = kommandoVerfuegbar("codex exec", {
-    plattform: "linux",
+test("kommandoVerfuegbar: POSIX liefert den gefundenen Pfad unveraendert", () => {
+  const { ok, pfad } = kommandoVerfuegbar("codex exec", {
     env: { PATH: "/usr/local/bin:/usr/bin" },
     existiert: fs_mit("/usr/bin/codex"),
     ausfuehrbar: () => true,
   });
   assert.equal(ok, true);
   assert.equal(pfad, "/usr/bin/codex");
-  assert.deepEqual(start, { befehl: "/usr/bin/codex", vorArgs: [], umgebung: {}, fehler: null });
+});
+
+test("kommandoVerfuegbar: ein Kommando ausserhalb des PATH ist nicht verfuegbar", () => {
+  const ergebnis = kommandoVerfuegbar("codex exec", {
+    env: { PATH: "/usr/bin" },
+    existiert: () => false,
+  });
+  assert.deepEqual(ergebnis, { datei: "codex", ok: false, pfad: null });
 });
 
 test("findeImPath: leerer PATH liefert null statt zu werfen", () => {

@@ -126,7 +126,11 @@ import { createHash } from "node:crypto";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "3.8.0";
+const KIT_VERSION = "4.0.0";
+
+// Die Variablen, die der Nacht-Runner seinen Sessions setzt (Issue #1282), aus dem Blatt-Modul
+// neben session.mjs. Fehlt der Nachbar, bleibt die Umgebung, wie sie ist.
+const { ohneLaufVariablen = (env) => ({ ...env }) } = await import("./night/laufvariablen.mjs").catch(() => ({}));
 
 // --- Aufrufumgebung ----------------------------------------------------------
 
@@ -545,8 +549,8 @@ export function aufrufen(argv, { cwd, env = process.env, git: gitStarter } = {})
 /**
  * Wie git gestartet wird (Issue #1136). Der Test-Hook `CHECKS_GIT_FAKE` nach dem Muster
  * `NIGHT_CLAUDE_CMD` nennt ein Node-Skript, das statt git startet — mit dem laufenden
- * Node und ohne Shell, damit es auch unter Windows startbar ist, wo ein endungsloses
- * Fake im PATH es nicht waere. Ohne die Variable bleibt der Start, wie er war.
+ * Node und ohne Shell, damit das Fake weder ein x-Bit noch einen Platz im PATH
+ * braucht. Ohne die Variable bleibt der Start, wie er war.
  */
 export function gitStart(args, env = umgebungsVariablen()) {
   const fake = env.CHECKS_GIT_FAKE;
@@ -953,8 +957,7 @@ function ausImportenAbleiten(zuordnung, bereichsdefinition, importGraph = import
  * `importGraph` ist die Erhebung aus `importeureErheben` — dieselbe Literal-Erhebung wie
  * fuer Dateien ohne Muster (#1181): statische und dynamische Importe mit literalem Pfad.
  * Nicht literale Importe sieht sie NICHT, und das ist gewollt: die Nachbar-Importe des
- * Nacht-Runners (`NACHBAR_*` ueber `pathToFileURL` in `kit/night.mjs`) und der
- * Windows-Import des Board-Teils wiederholung in diesem Modul (`nachbarBoard`). Diese Kopplungen stehen
+ * Nacht-Runners (`NACHBAR_*` ueber `pathToFileURL` in `kit/night.mjs`). Diese Kopplungen stehen
  * weiter von Hand in den `areas` des Kommandos, dessen Teil den Nachbarn laedt (E3).
  */
 function abhaengigeBereiche(beruehrt, importGraph, bereichsdefinition, startDateien) {
@@ -1124,8 +1127,8 @@ function geaenderteDateien(basis) {
   if (status.status !== 0) fail(`git status schlug fehl: ${status.stderr.trim()}`);
   for (const pfad of untracktePfade(status.stdout)) dateien.add(pfad);
 
-  // Nach dem Trenner-Normalisieren gefiltert: Unter Windows kaeme der Pfad sonst
-  // mit Backslash und der Praefix-Vergleich ginge daneben.
+  // Nach dem Trenner-Normalisieren gefiltert: Kaeme ein Pfad mit Backslash, ginge
+  // der Praefix-Vergleich sonst daneben.
   return [...dateien]
     .map((p) => p.replaceAll("\\", "/"))
     .filter((p) => !p.startsWith(WARTEND_PRAEFIX))
@@ -1637,8 +1640,7 @@ function settingsEnv() {
  * run build"), die Operatoren und Umleitungen enthalten darf. Ohne Shell gaebe es
  * das Feature nicht.
  *
- * Die Shell ist auf POSIX /bin/sh, unter Windows die Git Bash (Issue #1176, vorher
- * die ComSpec-Shell, Issue #199) — siehe `kommandoStart`.
+ * Die Shell ist /bin/sh — siehe `kommandoStart`.
  *
  * PATH-Aufloesung bewusst (S4036, Issue #183).
  *
@@ -1647,13 +1649,7 @@ function settingsEnv() {
  * Fusszeile und nicht irgendwo dazwischen.
  */
 function kommandoAusfuehren(cmd, env, grenzen = {}) {
-  // Der Board-Teil nur unter Windows (Issue #1176): Dort steht die Suche nach der Git Bash.
-  const board = process.platform === "win32" ? nachbarBoard() : null;
-  return Promise.resolve(board).then((geladen) => {
-    const start = kommandoStart(cmd, { board: geladen, env });
-    if (start.fehler) return { gruen: false, ausgabe: `${start.fehler}\n`, haengend: false, code: null };
-    return startAusfuehren(start, env, grenzen);
-  });
+  return startAusfuehren(kommandoStart(cmd), env, grenzen);
 }
 
 /** Startet eine Kommandozeile nach `kommandoStart` und sammelt ihr Ergebnis ein. */
@@ -1682,13 +1678,12 @@ function startAusfuehren(start, env, { grenzeMs = Infinity, fristMs = HAENGEN_FR
     // eigene zu bekommen — etwa `board.mjs … --text -` in einem Test —, wartete darauf
     // endlos. `ignore` ist /dev/null: Er sieht sofort Ende-der-Eingabe.
     //
-    // Eine eigene Prozessgruppe (`detached`, Issue #1077; nur auf POSIX, siehe
-    // `startOptionen`, Issue #1123): Gestartet wird die Shell, und der
+    // Eine eigene Prozessgruppe (`detached`, Issue #1077, siehe `startOptionen`): Gestartet wird die Shell, und der
     // eigentliche Haenger haengt als Enkel unter ihr, etwa `node --test` -> `board.mjs`.
     // Nur ueber die Gruppe erreicht ihn der Abbruch — ein Weg ueber die Prozessliste
     // (`ps`) scheitert in der Sandbox der Sessions. Damit die Gruppe beim Abbruch des
     // AUFRUFERS nicht verwaist, beendet `laufendeGruppenBeenden` sie mit (siehe dort).
-    const kind = spawn(start.befehl, start.args, { cwd: wurzel(), env: { ...env, ...start.umgebung }, ...start.optionen, ...startOptionen() });
+    const kind = spawn(start.befehl, start.args, { cwd: wurzel(), env, ...startOptionen() });
     if (kind.pid) LAUFENDE_GRUPPEN.add(kind.pid);
     kind.stdout.on("data", (stueck) => stdout.push(stueck));
     kind.stderr.on("data", (stueck) => stderr.push(stueck));
@@ -1728,78 +1723,32 @@ function haengerAbbrechen(pid, fristMs, uhren, fertig) {
 const LAUFENDE_GRUPPEN = new Set();
 
 /**
- * Die `spawn`-Optionen eines Kommandos (Issue #1123). Die eigene Prozessgruppe (`detached`,
- * Issue #1077) gibt es nur auf POSIX: Unter Windows gibt es keine Gruppen, und ein
- * abgekoppelter Prozess bekommt ein eigenes Konsolenfenster, dessen Ausgabe die Pipe nicht
- * zuverlaessig erreicht — in der CI fehlten dort Fehlermerkmale und Guete-Werte.
+ * Die `spawn`-Optionen eines Kommandos (Issue #1123): eine eigene Prozessgruppe (`detached`,
+ * Issue #1077), damit ein Haenger samt Enkeln abgebrochen werden kann.
  */
-export function startOptionen(plattform = process.platform) {
-  return { stdio: ["ignore", "pipe", "pipe"], detached: plattform !== "win32" };
+export function startOptionen() {
+  return { stdio: ["ignore", "pipe", "pipe"], detached: true };
 }
 
 /**
- * Wie eine konfigurierte Kommandozeile startet (Issue #1176). Liefert
- * `{ befehl, args, optionen, umgebung, fehler }`; gestartet wird `befehl` mit `args`, dazu
- * `optionen` zu den eigenen spawn-Optionen und `umgebung` zur eigenen Umgebung.
- *
- * Auf POSIX `/bin/sh -c <zeile>` — dasselbe, was Node mit der Shell-Option startete. Unter
- * Windows die Git Bash statt `cmd.exe`: Die Kommandozeilen der Projekte und die Fixtures der
- * Tests sind POSIX-Syntax, und unter `cmd.exe` liefen sie mit anderer Syntax und anderem
- * Ergebnis. Gefunden wird sie ueber `gitBashPfad`, gestartet ueber `spawnAufruf` aus
- * board.mjs (#1131, #1143) — nie `bash` ueber den PATH, das ist unter Windows haeufig der
- * WSL-Starter. Fehlt sie, startet nichts, und `fehler` traegt die Meldung von `gitBashPfad`;
- * ein Rueckfall auf `cmd.exe` liefe still mit anderer Syntax.
- *
- * `board` ist der Board-Teil wiederholung (unter Windows Pflicht, `null`, wenn er fehlt); Plattform,
- * Umgebung und Dateisystem sind fuer die Tests injizierbar.
+ * Wie eine konfigurierte Kommandozeile startet (Issue #1176): `/bin/sh -c <zeile>` —
+ * dasselbe, was Node mit der Shell-Option startete. Liefert `{ befehl, args }`.
  */
-export function kommandoStart(cmd, { plattform = process.platform, board, env = umgebungsVariablen(), existiert } = {}) {
-  if (plattform !== "win32") return { befehl: "/bin/sh", args: ["-c", cmd], optionen: {}, umgebung: {}, fehler: null };
-  const nichtStartbar = (fehler) => ({ befehl: null, args: [], optionen: {}, umgebung: {}, fehler });
-  if (!board) return nichtStartbar("Der Board-Teil wiederholung.mjs fehlt im Verzeichnis board/ neben checks.mjs — ohne ihn findet checks.mjs unter Windows die Git Bash nicht.");
-  const { pfad, fehler } = board.gitBashPfad({ env, plattform, ...(existiert ? { existiert } : {}) });
-  if (!pfad) return nichtStartbar(fehler);
-  const aufruf = board.spawnAufruf(pfad, ["-c", cmd], { gitBash: true });
-  return { befehl: aufruf.befehl, args: aufruf.args, optionen: aufruf.optionen, umgebung: { ...board.GIT_BASH_UMGEBUNG }, fehler: null };
+export function kommandoStart(cmd) {
+  return { befehl: "/bin/sh", args: ["-c", cmd] };
 }
 
 /**
- * Der Board-Teil wiederholung neben dieser Datei, nur unter Windows geladen (Issue
- * #1176, seit Issue #1215 der Teil statt des Einstiegs): Dort steht die Suche nach der Git
- * Bash. Auf POSIX bleibt checks.mjs eine Einzeldatei ohne Nachbarn. Liefert `null`, wenn der
- * Nachbar fehlt oder nicht ladbar ist. Die Gruppe pruefungen nennt den Bereich
- * board-wiederholung von Hand (Plan #1199, E3).
+ * Wie ein Baum beendet wird (Issue #1123): ein Signal an die Prozessgruppe, denn ein Signal
+ * an die PID erreichte nur die Shell, und ihre Enkel hielten das Arbeitsverzeichnis fest.
  */
-async function nachbarBoard() {
-  try {
-    return await import(new URL("./board/wiederholung.mjs", import.meta.url).href);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Wie ein Baum beendet wird (Issue #1123): auf POSIX ein Signal an die Prozessgruppe, unter
- * Windows `taskkill /T /F`, denn ein Signal an die PID erreichte nur die Shell (seit Issue
- * #1176 die Git Bash), und ihre
- * Enkel hielten das Arbeitsverzeichnis fest. Unter Windows gibt es kein mildes SIGTERM fuer
- * einen Baum; beide Signale werden zum harten Abbruch.
- */
-export function baumBeendenAufruf(pid, signal, plattform = process.platform) {
-  if (plattform === "win32") return { taskkill: ["/pid", String(pid), "/T", "/F"] };
+export function baumBeendenAufruf(pid, signal) {
   return { pid: -pid, signal };
 }
 
-/**
- * Ein Signal an die Prozessgruppe `pid`, unter Windows `taskkill` auf den Baum. Ein Baum,
- * der schon fort ist, wird uebergangen.
- */
+/** Ein Signal an die Prozessgruppe `pid`. Ein Baum, der schon fort ist, wird uebergangen. */
 function gruppeSignal(pid, signal) {
   const aufruf = baumBeendenAufruf(pid, signal);
-  if (aufruf.taskkill) {
-    spawnSync("taskkill", aufruf.taskkill, { stdio: "ignore", windowsHide: true });
-    return;
-  }
   try {
     process.kill(aufruf.pid, aufruf.signal);
   } catch {
@@ -1858,8 +1807,8 @@ export function fehlermerkmal(ausgabe) {
  * vorhanden gilt und nicht stillschweigend zum Tombstone wird.
  *
  * Gehasht wird ueber `git hash-object --stdin-paths`, also EIN Prozess statt einer
- * je Datei: Bei vollem Umfang stehen leicht hundert Pfade in `geaendert`, und die
- * CI faehrt eine Windows-Matrix, wo Prozessstarts teuer sind. Der Aufruf traegt
+ * je Datei: Bei vollem Umfang stehen leicht hundert Pfade in `geaendert`, und jeder
+ * Prozessstart kostet. Der Aufruf traegt
  * die Pfade und nicht den Inhalt, damit gits Filterkette (`autocrlf`, `clean`)
  * greift — sonst passte der Hash nicht zu dem Blob, den `git ls-files --stage`
  * dem Gate zeigt.
@@ -2880,7 +2829,9 @@ async function ausfuehren(args) {
   // bisherige Summe der Karte.
   const vorige = vorigeZusammenfassung();
   const auswahl = planen(args);
-  const env = { ...umgebungsVariablen(), ...settingsEnv() };
+  // Ohne die Variablen des Nachtlaufs (Issue #1282): Was ein Pruefkommando misst, haengt
+  // nicht davon ab, ob es nachts laeuft. settings.json und die Kommandozeile setzen weiter.
+  const env = { ...ohneLaufVariablen(umgebungsVariablen()), ...settingsEnv() };
 
   // VOR dem ersten Kommando (Issue #469): Der Hash bezeugt den Inhalt, der in die
   // Pruefung ging. Danach gehasht, bescheinigte er einen Stand, den kein Check

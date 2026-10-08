@@ -970,9 +970,8 @@ export function boardRoh(...cliArgs) {
 // Start eines Kommandos ohne absoluten Pfad. Die Regel ist hier nicht erfuellbar,
 // ohne mehr kaputtzumachen als sie schuetzt:
 //
-//   - Absolute Pfade brechen die zugesagte Portabilitaet. Das Kit laeuft auf Mac,
-//     Windows und Linux; /usr/bin/git existiert unter Windows nicht, und je nach
-//     Installation liegt git auch unter /opt/homebrew/bin.
+//   - Absolute Pfade brechen die zugesagte Portabilitaet: Je nach System und
+//     Installation liegt git unter /usr/bin, /usr/local/bin oder /opt/homebrew/bin.
 //   - Ein kontrollierter env.PATH ist kein Fix: Die Regel beanstandet nicht, WELCHEN
 //     PATH der Prozess bekommt, sondern DASS ueber PATH aufgeloest wird.
 //   - Die sh -c-Aufrufe (runBuildChecksSync, Format-Fix) fuehren frei konfigurierte

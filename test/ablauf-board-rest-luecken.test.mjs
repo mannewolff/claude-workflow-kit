@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { writeFileSync, mkdirSync, chmodSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { setupProjekt, runBoard, runBoardAsync, starteServer, cmdAttrappe, MIT_DATEIRECHTEN } from "./helpers/board-fixture.mjs";
+import { setupProjekt, runBoard, runBoardAsync, starteServer, MIT_DATEIRECHTEN } from "./helpers/board-fixture.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
@@ -188,7 +188,6 @@ function fakeBinary(dir, name, rumpf) {
   mkdirSync(binDir, { recursive: true });
   const p = join(binDir, name);
   writeFileSync(p, `#!/bin/sh\n${rumpf}\n`, { mode: 0o755 });
-  cmdAttrappe(p); // unter Windows startet das Kit die sh-Datei ueber die Git Bash (Issue #1135)
 }
 
 function mitReviewer(command, rumpf, fn, name = "fake") {
@@ -227,9 +226,7 @@ test("probelauf: ein durch Signal gestorbenes Kommando gilt nicht als verfuegbar
     assert.equal(res.status, 0, "check bleibt eine Auskunft, kein Gate");
     const befund = JSON.parse(res.stdout).reviewers[0];
     assert.equal(befund.verfuegbar, false, "ein Absturz darf nicht als verfuegbar gelten");
-    // Unter Windows gibt es keine Signale: Die Git Bash endet mit einem Exit-Code, und den
-    // nennt der Befund (Issue #1135).
-    assert.match(befund.grund, process.platform === "win32" ? /Exit \d+/ : /Signal SIGSEGV/,
+    assert.match(befund.grund, /Signal SIGSEGV/,
       "die Todesart wird nicht benannt");
   });
 });

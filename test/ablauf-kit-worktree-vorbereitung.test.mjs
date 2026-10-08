@@ -65,13 +65,13 @@ test("vorbereitung-festhalten, vorbereitung-pruefen und --verwerfen als Prozess"
   const s = setup();
   const env = { KIT_NIGHT_RUN: "2026-10-07T01:00:00.000Z", KIT_STAND: "abc123" };
 
-  const fest = werkzeug(s.repo, env, "vorbereitung-festhalten", s.pfad, "--ergebnis", "gruen", "--offen", "Windows-Vorabpruefung", "--fetch", "fehlgeschlagen");
+  const fest = werkzeug(s.repo, env, "vorbereitung-festhalten", s.pfad, "--ergebnis", "gruen", "--offen", "Sichtpruefung der Oberflaeche", "--fetch", "fehlgeschlagen");
   assert.equal(fest.status, 0, JSON.stringify(fest.stand));
   assert.equal(fest.stand.ok, true);
   assert.equal(fest.stand.ergebnis, "gruen-offen");
   assert.equal(fest.stand.commit, s.commit);
   assert.equal(fest.stand.version, "2.0.0");
-  assert.deepEqual(fest.stand.offen, ["Windows-Vorabpruefung"]);
+  assert.deepEqual(fest.stand.offen, ["Sichtpruefung der Oberflaeche"]);
   assert.deepEqual(fest.stand.pakete, ["21"]);
   assert.equal(fest.stand.fetch, "fehlgeschlagen");
   assert.equal(fest.stand.laufId, "2026-10-07T01:00:00.000Z");
@@ -81,7 +81,7 @@ test("vorbereitung-festhalten, vorbereitung-pruefen und --verwerfen als Prozess"
   const urteil = werkzeug(s.repo, {}, "vorbereitung-pruefen");
   assert.equal(urteil.status, 0);
   assert.deepEqual(urteil.stand, {
-    ok: true, uebernehmen: true, grund: null, commit: s.commit, offen: ["Windows-Vorabpruefung"], zeitpunkt: fest.stand.zeitpunkt,
+    ok: true, uebernehmen: true, grund: null, commit: s.commit, offen: ["Sichtpruefung der Oberflaeche"], zeitpunkt: fest.stand.zeitpunkt,
   });
 
   const weg = werkzeug(s.repo, {}, "vorbereitung-pruefen", "--verwerfen");

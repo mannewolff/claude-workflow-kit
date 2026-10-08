@@ -190,6 +190,8 @@ node .claude/kit/board.mjs issue melden <id>
 
 Die letzte Zeile `Bericht-Lauf: <stempel>` setzt das Kit; die Session schreibt sie nicht. An ihr erkennt `issue melden` den Bericht dieses Laufs: Eine Wiederholung legt keinen zweiten an, sondern lässt ihn bei gleichem Inhalt stehen und ersetzt ihn bei geändertem. **Scheitert die Meldung**, ist die Karte nicht bewegt, und die Ausgabe nennt den Grund. Die Wiederholung ist der Abschlussaufruf allein — bei der Stückform `issue melden <id>` ohne `--text`, die Stücke liegen noch; bei der Einzelform derselbe Aufruf mit `--text`. Warum `issue melden` von der Transportregel ausgenommen ist, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board".
 
+Die Ursprungsdokumente zieht `issue melden` selbst nach: Die Abschlussmeldung nennt die Zeilen aus dem Feld `ursprung` seiner Ausgabe (gewandert, lag bereits, nicht nachgezogen samt Kommando), und die Session bewegt Plan und fachliche Anforderung nie selbst.
+
 Format des Abschlussberichts:
 
 ```

@@ -24,11 +24,6 @@ import { tmpdir } from "node:os";
 
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
-// Unter Windows ist SIGTERM nicht abfangbar: `kill` beendet den Runner dort hart, ohne dass
-// sein Handler laeuft. Den Stand hinterlaesst dann der abgekoppelte Waechter (#1085, #1132),
-// und genau das prueft der Signal-Test auf dieser Plattform.
-const SIGTERM_ABFANGBAR = process.platform !== "win32";
-
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 const LAUF_ALT = "2026-09-30-010000";
@@ -156,7 +151,7 @@ test("Puls wird erneuert, und SIGTERM hinterlaesst Journal, Kartenstand und Lauf
   try {
     const id = karte(dir, "Paket", ["kit:nightrun"]);
     board(dir, "issue", "move", id, "ready");
-    runner = starteRunner(dir, { NIGHT_CLAUDE_CMD: HAENGENDE_SITZUNG, NIGHT_PULS_MS: "100", ...(SIGTERM_ABFANGBAR ? {} : { KIT_NIGHT_WAECHTER_FRIST_S: "1" }) });
+    runner = starteRunner(dir, { NIGHT_CLAUDE_CMD: HAENGENDE_SITZUNG, NIGHT_PULS_MS: "100" });
 
     await warteAuf(() => existsSync(join(dir, "marker")), "die Sitzung meldete sich nicht");
     const pulsPfad = join(dir, ".claude", "lauf", readdirSync(join(dir, ".claude", "lauf")).find((n) => n.endsWith(".puls")));
@@ -168,12 +163,6 @@ test("Puls wird erneuert, und SIGTERM hinterlaesst Journal, Kartenstand und Lauf
     const { code } = await runner.ende;
     const ausgabe = runner.ausgabe();
     runner = null;
-    if (!SIGTERM_ABFANGBAR) {
-      await warteAuf(() => laufbericht(dir).abschluss === "verstummt", "der Waechter schloss den Lauf nicht ab");
-      assert.deepEqual(lauflabels(dir, id), ["lauf:abgebrochen"]);
-      assert.match(laufstaende(dir, id).at(-1), /nicht beendet, letztes Lebenszeichen/);
-      return;
-    }
     assert.equal(code, 143, ausgabe);
 
     const journalName = readdirSync(join(dir, ".claude", "lauf")).find((n) => n.endsWith(".jsonl"));

@@ -138,9 +138,7 @@ test("Format-Fix: erst rote, nach dem Format-Kommando gruene Pruefungen — die 
     assert.equal(ergebnis.ok, true);
     assert.equal(ergebnis.formatFixCmd, "touch fixed.marker", "der Salvage-Prompt nennt das Format-Kommando");
     assert.deepEqual(aufrufe.map((a) => a.art), ["checks", "shell", "checks"]);
-    // Enthalten statt gleich: Unter Windows steht jedes Argument der Git Bash in
-    // Anfuehrungszeichen (spawnAufruf, Issue #1143), auf POSIX nackt (Issue #1261).
-    assert.ok(aufrufe[1].args.some((a) => a.includes("touch fixed.marker")), `der Fix laeuft ueber die Shell: ${aufrufe[1].args.join(" ")}`);
+    assert.ok(aufrufe[1].args.includes("touch fixed.marker"), `der Fix laeuft ueber die Shell: ${aufrufe[1].args.join(" ")}`);
     assert.match(text, /buildChecks rot — einmaliger Format-Fix wird angewendet: touch fixed\.marker/);
     assert.match(text, /FORMAT-FIX angewendet, buildChecks jetzt gruen/, "der angewendete Format-Fix muss im Protokoll sichtbar sein");
     assert.match(ergebnis.output, /alles gruen/, "die Ausgabe ist die des zweiten Durchgangs");
@@ -170,6 +168,18 @@ test("[night-27] der Salvage-Prompt verlangt `git status --porcelain` vor dem Bo
   assert.ok(zug >= 0, `der Prompt nennt den Board-Zug nicht:\n${prompt}`);
   assert.ok(pruefung < zug,
     `die Sauberkeitspruefung steht hinter dem Board-Zug — genau die Reihenfolge, die #248 gekostet hat:\n${prompt}`);
+});
+
+// Issue #1287 (Plan #1283 A2): Zieht der Zug des Pakets Plan und Anforderung nach, nennt die
+// Ausgabe von `issue move` das Feld `ursprung` — und der Kommentar der Rettung traegt es.
+test("[ursprung] der Salvage-Prompt verlangt nach dem Board-Zug die Zeilen aus `ursprung` im Kommentar", () => {
+  const prompt = salvagePrompt("7", "alles gruen", null);
+  const zug = prompt.indexOf("issue move 7 in_review");
+  const ursprung = prompt.indexOf("Feld `ursprung`");
+  assert.ok(zug >= 0 && ursprung > zug, `der Satz zu ursprung fehlt oder steht vor dem Zug:\n${prompt}`);
+  assert.ok(ursprung < prompt.indexOf("   d)"), `der Satz steht nicht im Schritt c):\n${prompt}`);
+  const satz = prompt.slice(ursprung).split("\n").slice(0, 2).join(" ");
+  assert.ok(satz.includes("Kommentar"), `die Zeilen gehoeren in den Kommentar:\n${satz}`);
 });
 
 test("der Salvage-Prompt zitiert die letzten Zeilen der Vorpruefung und nennt einen angewendeten Format-Fix", () => {

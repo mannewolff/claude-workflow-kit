@@ -92,13 +92,6 @@ function readyIssue(dir, titel, empfehlung, stufe = null) {
   return String(issue.id);
 }
 
-// Unter Windows findet das Kit ein Programm nur ueber eine Endung aus PATHEXT. Wie npm es
-// installiert, liegt daneben eine `.cmd`, und gestartet wird die sh-Datei ohne Endung ueber
-// die Git Bash (Issue #1131, E8). Die `.cmd` selbst laeuft nie; auf POSIX bleibt sie unbeachtet.
-function huelleFuerWindows(binDir, name) {
-  writeFileSync(join(binDir, `${name}.cmd`), "@rem Huelle: das Kit startet die sh-Datei daneben.\r\n");
-}
-
 /** Eine Fake-CLI im PATH, die Argumente und KIT_AGENT_MODEL mitschreibt. */
 function fakeCli(extra = "") {
   const binDir = mkdtempSync(join(tmpdir(), "night-modell-bin-"));
@@ -107,7 +100,6 @@ function fakeCli(extra = "") {
     `#!/bin/sh\nprintf 'ARGS %s\\n' "$*" >> ${JSON.stringify(argLog)}\n` +
     `printf 'AGENT %s\\n' "$KIT_AGENT_MODEL" >> ${JSON.stringify(argLog)}\n${extra}exit 0\n`);
   chmodSync(join(binDir, "claude"), 0o755);
-  huelleFuerWindows(binDir, "claude");
   return { binDir, argLog };
 }
 

@@ -69,10 +69,8 @@ function startAttrappe(pid = 4242) {
   return { spawn, starts };
 }
 
-test("der Waechter startet abgekoppelt und ohne Fenster", () => {
-  // `detached` auch unter Windows: Dort endete ein nicht abgekoppeltes Kind mit dem
-  // Job-Objekt des Runners, also genau dann, wenn der Waechter gebraucht wird.
-  assert.deepEqual(waechterStartOptionen("/repo"), { cwd: "/repo", detached: true, stdio: "ignore", windowsHide: true });
+test("der Waechter startet abgekoppelt und ohne Ausgabe", () => {
+  assert.deepEqual(waechterStartOptionen("/repo"), { cwd: "/repo", detached: true, stdio: "ignore" });
 });
 
 test("waechterStarten startet den Einstieg mit --waechter und merkt die PID im Journal", async () => {

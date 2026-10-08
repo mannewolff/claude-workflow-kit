@@ -161,3 +161,138 @@ test("[night-36] ein Paket ohne Entscheidungen-Block und eines ohne Kommentare l
   assert.doesNotThrow(() => { text = berichtBauen(einheit, { pakete, stempel: "s" }); });
   assert.match(text, /### Entscheidungen der Nacht\n\n- Keine\.\n/);
 });
+
+// Der Abschnitt `### Ursprungsdokumente` (Issue #1289, Plan #1283 E8, Kriterien 4, 5 und 7
+// des Fachplans #1279): eine reine Funktion ueber `stufen.umsetzung.ursprung` — die Spalten
+// vor der Umsetzung (`vorher`) und die Ausgabe von `issue ursprung` (`auswertung`).
+const ursprungAbschnitt = (text) => {
+  const start = text.indexOf("### Ursprungsdokumente\n");
+  if (start < 0) return null;
+  const ende = text.indexOf("\n### ", start + 1);
+  return text.slice(start, ende < 0 ? undefined : ende);
+};
+
+const durchAuswertung = (spalten) => ({
+  plan: "5", durch: true, grund: null, fehlend: [],
+  dokumente: [
+    { id: "5", art: "plan", spalte: spalten.plan, aktion: `lag bereits in ${spalten.planName}`, grund: null },
+    { id: "4", art: "fachlich", spalte: spalten.fach, aktion: `lag bereits in ${spalten.fachName}`, grund: null },
+  ],
+});
+
+test("[night-1289] ein Dokument, das vorher ausserhalb von In review lag und jetzt dort liegt, ist gewandert", () => {
+  const einheit = {
+    id: "4", ausgang: "fertig", variante: "B",
+    stufen: { umsetzung: { umgesetzt: [], ursprung: {
+      vorher: { 5: "ready", 4: "backlog" },
+      auswertung: durchAuswertung({ plan: "in_review", planName: "In review", fach: "in_review", fachName: "In review" }),
+    } } },
+  };
+  const abschnitt = ursprungAbschnitt(berichtBauen(einheit, { stempel: "s" }));
+  assert.equal(abschnitt,
+    "### Ursprungsdokumente\n\n- Plan #5: nach In review gewandert.\n- fachliche Anforderung #4: nach In review gewandert.\n");
+});
+
+test("[night-1289] ein Dokument, das vorher schon in In review oder Done lag, lag bereits dort", () => {
+  const einheit = {
+    id: "4", ausgang: "fertig", variante: "B",
+    stufen: { umsetzung: { umgesetzt: [], ursprung: {
+      vorher: { 5: "in_review", 4: "done" },
+      auswertung: durchAuswertung({ plan: "in_review", planName: "In review", fach: "done", fachName: "Done" }),
+    } } },
+  };
+  const abschnitt = ursprungAbschnitt(berichtBauen(einheit, { stempel: "s" }));
+  assert.match(abschnitt, /- Plan #5: lag bereits in In review\.\n/);
+  assert.match(abschnitt, /- fachliche Anforderung #4: lag bereits in Done\.\n/);
+});
+
+test("[night-1289] ein Plan, der nicht durch ist, laesst die Dokumente stehen und nennt je fehlendem Paket Spalte und Grund", () => {
+  const pakete = [{ id: "10", title: "P1" }, { id: "11", title: "P2" }, { id: "12", title: "P3" }, { id: "13", title: "P4" }];
+  const grund = "Plan #5 nicht durch: #10 in Backlog, #11 in Backlog, #12 in Backlog, #13 in Backlog";
+  const einheit = {
+    id: "4", ausgang: "fertig", variante: "B",
+    stufen: { umsetzung: {
+      umgesetzt: [],
+      zurueckgestellt: [{ id: "10", grund: "die Runde endete in backlog statt in In review" }],
+      nichtBegonnen: [{ id: "11", grund: "wartet auf einen Push (#9)" }, { id: "12", grund: "Abhaengigkeit #10 nicht erfuellt" }],
+      ursprung: {
+        vorher: { 5: "ready", 4: "backlog" },
+        auswertung: {
+          plan: "5", durch: false, grund,
+          fehlend: ["10", "11", "12", "13"].map((id) => ({ id, titel: `P${Number(id) - 9}`, spalte: "backlog" })),
+          dokumente: [
+            { id: "5", art: "plan", spalte: "ready", aktion: "bleibt", grund },
+            { id: "4", art: "fachlich", spalte: "backlog", aktion: "bleibt", grund },
+          ],
+        },
+      },
+    } },
+  };
+  const abschnitt = ursprungAbschnitt(berichtBauen(einheit, { pakete, stempel: "s" }));
+  assert.match(abschnitt, new RegExp(`- Plan #5: bleibt in Ready — ${grund}\\.\\n`));
+  assert.match(abschnitt, new RegExp(`- fachliche Anforderung #4: bleibt in Backlog — ${grund}\\.\\n`));
+  assert.match(abschnitt, /- fehlende Pakete:\n/);
+  assert.match(abschnitt, / {2}- #10 P1 in Backlog: gescheitert und zurück im Backlog \(die Runde endete in backlog statt in In review\)\n/);
+  assert.match(abschnitt, / {2}- #11 P2 in Backlog: wartet auf Push \(wartet auf einen Push \(#9\)\)\n/);
+  assert.match(abschnitt, / {2}- #12 P3 in Backlog: nicht begonnen \(Abhaengigkeit #10 nicht erfuellt\)\n/);
+  assert.match(abschnitt, / {2}- #13 P4 in Backlog: von der Umsetzung dieser Kette nicht erfasst\n/);
+});
+
+test("[night-1289] eine ausgelassene Umsetzung ist der Grund jedes fehlenden Pakets", () => {
+  const grund = "Plan #5 nicht durch: #10 in Backlog";
+  const einheit = {
+    id: "4", ausgang: "fertig", variante: "B",
+    stufen: { umsetzung: {
+      ausgelassen: "Lock belegt", umgesetzt: [],
+      ursprung: {
+        vorher: { 5: "backlog" },
+        auswertung: { plan: "5", durch: false, grund, fehlend: [{ id: "10", titel: "P1", spalte: "backlog" }],
+          dokumente: [{ id: "5", art: "plan", spalte: "backlog", aktion: "bleibt", grund }] },
+      },
+    } },
+  };
+  const abschnitt = ursprungAbschnitt(berichtBauen(einheit, { stempel: "s" }));
+  assert.match(abschnitt, / {2}- #10 P1 in Backlog: nicht begonnen \(Umsetzung ausgelassen: Lock belegt\)\n/);
+});
+
+test("[night-1289] eine nicht feststellbare Auswertung und ein Fehler beim Lesen stehen im Bericht", () => {
+  const grund = "nicht feststellbar: Karten nicht lesbar (Netz weg)";
+  const nichtFeststellbar = {
+    id: "4", ausgang: "fertig", variante: "B",
+    stufen: { umsetzung: { umgesetzt: [], ursprung: { vorher: {}, auswertung: { plan: "5", durch: false, grund, fehlend: [], dokumente: [] } } } },
+  };
+  assert.equal(ursprungAbschnitt(berichtBauen(nichtFeststellbar, { stempel: "s" })),
+    `### Ursprungsdokumente\n\n- Plan #5: ${grund}.\n`);
+
+  const fehler = { id: "4", ausgang: "fertig", variante: "B", stufen: { umsetzung: { umgesetzt: [], ursprung: { fehler: "issue ursprung endete mit Exit 1" } } } };
+  assert.equal(ursprungAbschnitt(berichtBauen(fehler, { stempel: "s" })),
+    "### Ursprungsdokumente\n\n- nicht feststellbar: issue ursprung endete mit Exit 1.\n");
+});
+
+test("[night-1289] eine Kette, die vor der Umsetzung angehalten hat, nennt Ausgang, Stufe und die Pakete", () => {
+  const pakete = [{ id: "10", title: "P1", status: "backlog" }];
+  const einheit = {
+    id: "4", ausgang: "angehalten", stufe: "review", variante: "B", grund: "Stopp-Frage aus dem Review von #5",
+    stufen: { plan: { id: "5" }, pakete: { ids: ["10"] } },
+  };
+  const abschnitt = ursprungAbschnitt(berichtBauen(einheit, { plan: { id: "5", title: "[Plan] X", status: "ready" }, pakete, stempel: "s" }));
+  assert.match(abschnitt, /- Plan #5, fachliche Anforderung #4: bleiben in ihrer Spalte \(Plan #5 in Ready\) — Kette angehalten in Stufe review, die Umsetzung hat nicht begonnen\.\n/);
+  assert.match(abschnitt, /- Pakete: #10 P1 in Backlog\.\n/);
+});
+
+test("[night-1289] eine Kette, die vor dem Schneiden abgebrochen ist, nennt die Pakete als noch nicht geschnitten", () => {
+  const einheit = {
+    id: "5", ausgang: "abgebrochen", stufe: "plan", variante: "B", auftrag: "plan", fachplan: "4",
+    stufen: { plan: { id: "5" } },
+  };
+  const abschnitt = ursprungAbschnitt(berichtBauen(einheit, { stempel: "s" }));
+  assert.match(abschnitt, /- Plan #5, fachliche Anforderung #4: bleiben in ihrer Spalte — Kette abgebrochen in Stufe plan, die Umsetzung hat nicht begonnen\.\n/);
+  assert.match(abschnitt, /- Pakete: noch nicht geschnitten\.\n/);
+});
+
+test("[night-1289] unter Variante A (Ziel plan oder pakete) gibt es keinen Abschnitt Ursprungsdokumente", () => {
+  for (const ziel of ["plan", "pakete"]) {
+    const text = berichtBauen({ id: "4", ausgang: "fertig", ziel, stufen: { plan: { id: "5" }, pakete: { ids: ["10"] } } }, { stempel: "s" });
+    assert.equal(ursprungAbschnitt(text), null, `Ziel ${ziel} schreibt keinen Abschnitt`);
+  }
+});

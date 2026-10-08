@@ -2,6 +2,29 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [4.0.0] - 2026-10-08
+- Natives Windows wird ab 4.0.0 nicht mehr unterstützt; Umzug nach WSL2: docs.mwolff.org/wsl2#umzug-von-nativem-windows (#1276)
+- Kette hält den Stand der Ursprungsdokumente nach der Umsetzungsstufe fest (#1290)
+- Nachtbericht: Abschnitt Ursprungsdokumente für Ketten unter Variante B (#1289)
+- Bau-Skills nennen die gewanderten Ursprungsdokumente aus issue melden (#1288)
+- issue move und Rettungs-Session ziehen die Ursprungsdokumente nach (#1287)
+- issue melden zieht die Ursprungsdokumente nach und meldet sie im Abschlussbericht (#1286)
+- Auswertung der Ursprungsdokumente und Kommando issue ursprung (#1285)
+- Regeltext: Ursprungsdokumente wandern nach In review, wenn der Plan durch ist (#1284)
+- Prüfkommandos erben die Umgebung des Nachtlaufs nicht (#1282)
+- Wartende Menschenschritte im Laufstand und unter Ausgang (#1281)
+- Test zu parallelen Prüfläufen weist fehlende Sperre über einen Treffpunkt nach (#1278)
+- Rest-Durchsicht: letzte Windows-Erwähnungen außerhalb des Installers (#1275)
+- Release und CI ohne Windows-Prüfung (#1274)
+- Werkzeug windows-brueche samt Fixtures, Tests und buildCheck entfernt (#1272)
+- kit/board: Programmstart ohne Git Bash, PATHEXT und startbefehlFuer (#1271)
+- kit/night: Prozessgruppe, Sitzungssuche und Baum-Abbruch ohne Windows-Zweig (#1270)
+- kit/night: Session- und Kommandostart ohne Git Bash (#1269)
+- kit/checks.mjs ohne Windows-Zweige bei Shellstart und Prozessbaum-Abbruch (#1268)
+- TMPDIR-Rückfall /tmp statt cygpath, CI-Gate ohne windows-latest (#1267)
+- Anleitung „Windows über WSL2“ und Plattformsatz macOS, Linux, WSL2 (#1266)
+- Jede Kette liest Ziel und Startkennzeichen beim eigenen Start frisch (#1263)
+
 ## [3.8.0] - 2026-10-07
 - Der Puls des Nacht-Runners wird atomar geschrieben (#1262)
 

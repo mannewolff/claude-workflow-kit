@@ -555,3 +555,170 @@ test("[kitstand-zeile] traegt der Text schon eine Kit-Stand-Zeile, entsteht kein
     assert.deepEqual(lokalKommentare(datei), [`Nachtrag.\n\n${vorhanden}`, `Bericht.\n\n${vorhanden}\n\n${LAUF}`]);
   });
 });
+
+// --- Ursprungsdokumente (Issue #1286, Plan #1283 A1, A3, A8, A9, E6, E7, E9) ---
+//
+// Bringt `issue melden` das letzte offene Paket eines Plans nach In review, zieht es Plan und
+// fachliche Anforderung nach und nennt sie im Abschlussbericht unter `### Ursprungsdokumente`,
+// vor `Kit-Stand:`/`Bericht-Lauf:`. Ein Fehler dabei aendert den Exit-Code nicht (A8); kein
+// Dokument-Zug bucht Wegmarke oder Bewegung (E9); Plan und Anforderung bekommen keinen
+// Kommentar (E7).
+
+const ABSCHNITT = "### Ursprungsdokumente";
+
+/**
+ * Lokales Vorhaben: 0001 Anforderung, 0002 Plan, 0003 Paket (in In progress gezogen), mit
+ * `zweitesPaket` dazu 0004 im Backlog.
+ */
+function mitVorhaben(fn, { zweitesPaket = false } = {}) {
+  const dir = setupProjekt(LOKAL, "board-melden-ursprung-");
+  const nimm = (...a) => ausgabe(runBoard(dir, a));
+  try {
+    nimm("issue", "create", "--title", "[Fachlich] Anforderung", "--body", "## Ziel\nz");
+    nimm("issue", "create", "--title", "[Plan] Plan", "--body", "Fachliche Quelle: Issue #0001\n\n## Ziel\nz");
+    nimm("issue", "create", "--title", "Paket", "--body", "## Kontext\nPlan: Issue #0002\nPlan-Entscheidungen: E1\n\n## Aufgabe\na");
+    if (zweitesPaket) nimm("issue", "create", "--title", "Paket zwei", "--body", "## Kontext\nPlan: Issue #0002\n\n## Aufgabe\nb");
+    nimm("issue", "move", "0003", "in_progress");
+    const karte = (nr) => join(dir, "issues", `${nr}.md`);
+    return fn({ dir, nimm, karte });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const zeilenFuer = (dir, nr) => [...bewegungen(dir), ...(existsSync(join(dir, ".claude", "wegmarken.tsv"))
+  ? readFileSync(join(dir, ".claude", "wegmarken.tsv"), "utf-8").split("\n").filter(Boolean) : [])]
+  .filter((z) => z.split("\t")[1] === nr || z.split("\t")[1] === nr.padStart(4, "0"));
+
+test("[ursprung] letztes Paket: Plan und Anforderung in In review, Abschnitt vor Bericht-Lauf, Ausgabe traegt ursprung", () => {
+  mitVorhaben(({ dir, nimm, karte }) => {
+    const e = nimm("issue", "melden", "0003", "--text", "Alles gruen.");
+    assert.equal(e.bericht, "angelegt");
+    assert.equal(e.status, "in_review");
+    assert.equal(e.ursprung.plan, "2");
+    assert.equal(e.ursprung.durch, true);
+    assert.deepEqual(e.ursprung.dokumente.map((d) => [d.id, d.aktion]), [["2", "wandert"], ["1", "wandert"]]);
+    assert.deepEqual(e.ursprung.fehler, []);
+    assert.equal(lokalStatus(karte("0002")), "in_review");
+    assert.equal(lokalStatus(karte("0001")), "in_review");
+
+    const [k] = lokalKommentare(karte("0003"));
+    const zeilen = k.split("\n");
+    assert.equal(zeilen.at(-1).startsWith("Bericht-Lauf: "), true, "Bericht-Lauf bleibt die letzte Zeile");
+    assert.ok(k.startsWith("Alles gruen.\n\n### Ursprungsdokumente\n"), k);
+    assert.ok(zeilen.indexOf(ABSCHNITT) < zeilen.length - 1);
+    assert.match(k, /Plan #2: nach In review gewandert/);
+    assert.match(k, /Fachliche Anforderung #1: nach In review gewandert/);
+
+    // E7: kein Kommentar an Plan oder Anforderung; E9: keine Buchung fuer die Dokumente.
+    assert.deepEqual(lokalKommentare(karte("0002")), []);
+    assert.deepEqual(lokalKommentare(karte("0001")), []);
+    assert.deepEqual(zeilenFuer(dir, "1"), []);
+    assert.deepEqual(zeilenFuer(dir, "2"), []);
+  });
+});
+
+test("[ursprung] der Abschnitt steht auch vor einer Kit-Stand-Zeile", () => {
+  mitVorhaben(({ dir, karte }) => {
+    markierung(dir);
+    ausgabe(runBoard(dir, ["issue", "melden", "0003", "--text", "Gruen."], { KIT_STAND: STAND }));
+    const zeilen = lokalKommentare(karte("0003"))[0].split("\n");
+    assert.deepEqual(zeilen.slice(-2), [STAND_ZEILE, zeilen.at(-1)]);
+    assert.ok(zeilen.at(-1).startsWith("Bericht-Lauf: "));
+    assert.ok(zeilen.indexOf(ABSCHNITT) > 0 && zeilen.indexOf(ABSCHNITT) < zeilen.indexOf(STAND_ZEILE));
+  });
+});
+
+test("[ursprung] Paket mitten im Vorhaben: kein Abschnitt, Dokumente bleiben", () => {
+  mitVorhaben(({ nimm, karte }) => {
+    const e = nimm("issue", "melden", "0003", "--text", "Gruen.");
+    assert.equal(e.ursprung.durch, false);
+    assert.deepEqual(e.ursprung.fehler, []);
+    assert.ok(!lokalKommentare(karte("0003"))[0].includes(ABSCHNITT));
+    assert.equal(lokalStatus(karte("0002")), "backlog");
+    assert.equal(lokalStatus(karte("0001")), "backlog");
+  }, { zweitesPaket: true });
+});
+
+test("[ursprung] Wiederholung mit gleichem und geaendertem Text: der Abschnitt bleibt und meldet weiter gewandert", () => {
+  mitVorhaben(({ nimm, karte }) => {
+    nimm("issue", "melden", "0003", "--text", "Erste Fassung.");
+    const abschnitt = (k) => k.slice(k.indexOf(ABSCHNITT), k.lastIndexOf("\n\nBericht-Lauf:"));
+    const erst = abschnitt(lokalKommentare(karte("0003"))[0]);
+    assert.match(erst, /gewandert/);
+
+    const gleich = nimm("issue", "melden", "0003", "--text", "Erste Fassung.");
+    assert.equal(gleich.bericht, "unveraendert");
+    assert.deepEqual(gleich.ursprung.dokumente.map((d) => d.aktion), ["lag bereits in In review", "lag bereits in In review"]);
+    assert.equal(lokalKommentare(karte("0003")).length, 1);
+    assert.equal(abschnitt(lokalKommentare(karte("0003"))[0]), erst);
+
+    const anders = nimm("issue", "melden", "0003", "--text", "Zweite Fassung.");
+    assert.equal(anders.bericht, "ersetzt");
+    const [k] = lokalKommentare(karte("0003"));
+    assert.ok(k.startsWith("Zweite Fassung.\n\n### Ursprungsdokumente\n"), k);
+    assert.equal(abschnitt(k), erst);
+    assert.ok(!k.includes("lag bereits"));
+    assert.equal(k.split(ABSCHNITT).length, 2, "genau ein Abschnitt");
+  });
+});
+
+test("[ursprung] ohne Plan-Zeile: keine ursprung-Ausgabe, kein Abschnitt", () => {
+  mitLokal((dir, datei) => {
+    const e = ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Gruen."]));
+    assert.deepEqual(e, { ok: true, id: "5", bericht: "angelegt", status: "in_review" });
+    assert.deepEqual(lokalKommentare(datei), [bericht("Gruen.")]);
+  });
+});
+
+// Toolbox: Plan (Nr. 8) und Anforderung (Nr. 9) neben dem Paket 7 aus `mitToolbox`.
+async function mitToolboxVorhaben(optionen, fn) {
+  const plan = { id: 800, number: 8, title: "[Plan] Plan", body: "Fachliche Quelle: Issue #9\n\n## Ziel\nz", column: "BACKLOG", position: 0 };
+  const anforderung = { id: 900, number: 9, title: "[Fachlich] Anforderung", body: "## Ziel\nz", column: "BACKLOG", position: 1 };
+  const karte = { id: 700, number: 7, title: "Karte 7", body: "## Kontext\nPlan: Issue #8\n\n## Aufgabe\na", column: "IN_PROGRESS", position: 0 };
+  const kommentare = {};
+  const zustand = optionen.zustand ?? {};
+  const { server, host } = await starteServer(toolboxMitKommentaren({ karten: [karte, plan, anforderung], kommentare, zustand, ...optionen }));
+  const dir = setupProjekt({ codeHost: "local", issueTracker: "toolbox", toolbox: { host } }, "board-melden-tbx-ursprung-");
+  schreibeBewegungen(dir, "7");
+  const melden = (...rest) => runBoardAsync(dir, ["issue", "melden", "7", ...rest], { TBX_TOKEN: "test-token" });
+  try {
+    return await fn({ melden, karte, plan, anforderung, kommentare, dir });
+  } finally {
+    server.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("[ursprung] Dokument nicht bewegbar: Exit 0, Paket in In review, Fehler mit Kommando im Abschnitt", async () => {
+  await mitToolboxVorhaben({ zustand: { moveKaputt: [800] } }, async ({ melden, karte, plan, anforderung, kommentare, dir }) => {
+    const e = ausgabe(await melden("--text", "Gruen."));
+    assert.equal(karte.column, "IN_REVIEW");
+    assert.equal(plan.column, "BACKLOG");
+    assert.equal(anforderung.column, "IN_REVIEW", "ein gescheiterter Zug haelt den anderen nicht auf");
+    assert.equal(e.ursprung.fehler.length, 1);
+    assert.equal(e.ursprung.fehler[0].art, "Dokument nicht bewegt");
+    assert.equal(e.ursprung.fehler[0].kommando, "node .claude/kit/board.mjs issue move 8 in_review");
+    const [k] = kommentare[700].map((c) => c.body);
+    assert.match(k, /### Ursprungsdokumente/);
+    assert.match(k, /Plan #8: Dokument nicht bewegt .*node \.claude\/kit\/board\.mjs issue move 8 in_review/);
+    assert.match(k, /Fachliche Anforderung #9: nach In review gewandert/);
+    assert.equal(kommentare[800], undefined, "kein Kommentar am Plan");
+    assert.equal(kommentare[900], undefined, "kein Kommentar an der Anforderung");
+    assert.deepEqual(zeilenFuer(dir, "8"), []);
+    assert.deepEqual(zeilenFuer(dir, "9"), []);
+  });
+});
+
+test("[ursprung] toolbox ohne PATCH-Route: Dokumente gewandert, Fehler 'Abschnitt nicht geschrieben' ohne Kommando, Exit 0", async () => {
+  await mitToolboxVorhaben({ patchRoute: false }, async ({ melden, karte, plan, anforderung, kommentare }) => {
+    const e = ausgabe(await melden("--text", "Gruen."));
+    assert.equal(karte.column, "IN_REVIEW");
+    assert.equal(plan.column, "IN_REVIEW");
+    assert.equal(anforderung.column, "IN_REVIEW");
+    assert.equal(e.ursprung.fehler.length, 1);
+    assert.equal(e.ursprung.fehler[0].art, "Abschnitt nicht geschrieben");
+    assert.equal(e.ursprung.fehler[0].kommando, undefined);
+    assert.deepEqual(kommentare[700].map((c) => c.body), [bericht("Gruen.")]);
+  });
+});

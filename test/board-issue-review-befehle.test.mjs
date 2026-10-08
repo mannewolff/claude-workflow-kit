@@ -145,9 +145,9 @@ test("issue-review matrix nimmt auch Autoren auf, die nur in pairs stehen", () =
 // liefern wuerde, `probe` das Ergebnis des Probelaufs. Ein Aufruf, der nicht sein darf,
 // scheitert am Wurf.
 
-const START = { befehl: "/fake/bin/x", vorArgs: [], umgebung: {}, fehler: null };
-const IM_PATH = (kommando) => ({ datei: kommando.split(" ")[0], ok: true, pfad: "/fake/bin/x", start: START });
-const NICHT_IM_PATH = (kommando) => ({ datei: kommando.split(" ")[0], ok: false, pfad: null, start: null });
+const PFAD = "/fake/bin/x";
+const IM_PATH = (kommando) => ({ datei: kommando.split(" ")[0], ok: true, pfad: PFAD });
+const NICHT_IM_PATH = (kommando) => ({ datei: kommando.split(" ")[0], ok: false, pfad: null });
 const KEIN_AUFRUF = () => { throw new Error("darf nicht aufgerufen werden"); };
 const FAKE = { name: "fake", kind: "command", command: "meinfake --flag" };
 
@@ -178,23 +178,13 @@ test("issue-review check: ein Kommando ausserhalb des PATH wird mit Grund gemeld
   assert.match(eintrag.grund, /meinfake nicht im PATH/);
 });
 
-test("issue-review check: ein Kommando im PATH, das nicht startbar ist, bekommt keinen Probelauf", () => {
-  // Eine `.cmd` ohne sh-Huelle unter Windows (Issue #1135, E8).
-  const fehler = "codex.cmd liegt ohne sh-Huelle daneben vor und ist nicht ohne cmd.exe startbar";
-  const verfuegbar = () => ({ datei: "meinfake", ok: true, pfad: "x.cmd", start: { ...START, befehl: null, fehler } });
-  const befund = issueReviewCheck({}, { config: mitReview({ reviewers: [FAKE] }), verfuegbar, probe: KEIN_AUFRUF });
-  assert.equal(befund.reviewers[0].verfuegbar, false);
-  assert.equal(befund.reviewers[0].geprueft, "pfad");
-  assert.equal(befund.reviewers[0].grund, fehler);
-});
-
 test("issue-review check: ein startbares Kommando wird durch einen Probelauf bestaetigt", () => {
   const gesehen = [];
-  const probe = (kommando, start) => { gesehen.push([kommando, start]); return { ok: true }; };
+  const probe = (kommando, pfad) => { gesehen.push([kommando, pfad]); return { ok: true }; };
   const befund = issueReviewCheck({}, { config: mitReview({ reviewers: [FAKE] }), verfuegbar: IM_PATH, probe });
   assert.equal(befund.alleVerfuegbar, true);
   assert.deepEqual(befund.reviewers[0], { name: "fake", kind: "command", umgebung: "runner", verfuegbar: true, geprueft: "probelauf" });
-  assert.deepEqual(gesehen, [["meinfake --flag", START]], "der Probelauf startet nach dem Startbefehl der PATH-Suche");
+  assert.deepEqual(gesehen, [["meinfake --flag", PFAD]], "der Probelauf startet den Pfad der PATH-Suche");
 });
 
 test("issue-review check: ein scheiternder Probelauf macht das Kommando unverfuegbar", () => {
@@ -235,38 +225,38 @@ function spawnMit(ergebnis) {
 
 test("probelauf: Exit 0 ist verfuegbar, der Prompt geht ueber stdin mit Zeitlimit", () => {
   const { spawn, aufrufe } = spawnMit({ status: 0, stderr: "" });
-  const lauf = probelauf("meinfake exec --flag", { ...START, umgebung: { EIGEN: "1" } }, { spawn, prompt: "P\n", timeoutMs: 1234, env: { PATH: "/p" } });
+  const lauf = probelauf("meinfake exec --flag", PFAD, { spawn, prompt: "P\n", timeoutMs: 1234, env: { PATH: "/p" } });
   assert.deepEqual(lauf, { ok: true });
   assert.equal(aufrufe.length, 1);
   assert.equal(aufrufe[0].befehl, "/fake/bin/x");
-  assert.deepEqual(aufrufe[0].args, ["exec", "--flag"], "das erste Wort ersetzt der Startbefehl");
+  assert.deepEqual(aufrufe[0].args, ["exec", "--flag"], "das erste Wort ersetzt der Pfad");
   assert.equal(aufrufe[0].optionen.input, "P\n");
   assert.equal(aufrufe[0].optionen.timeout, 1234);
-  assert.deepEqual(aufrufe[0].optionen.env, { PATH: "/p", EIGEN: "1" });
+  assert.deepEqual(aufrufe[0].optionen.env, { PATH: "/p" });
 });
 
 test("probelauf: ohne Vorgabe ist der Prompt die harmlose Bitte um OK", () => {
   // Exakt, nicht nur nicht-leer: Der Prompt laesst sich ueber KIT_PROBE_PROMPT ersetzen,
   // ohne die Variable muss er unveraendert bleiben (Issue #393).
   const { spawn, aufrufe } = spawnMit({ status: 0 });
-  probelauf("meinfake", START, { spawn });
+  probelauf("meinfake", PFAD, { spawn });
   assert.equal(aufrufe[0].optionen.input, "Antworte nur mit dem Wort OK.\n");
 });
 
 test("probelauf: ein scheiterndes Kommando liefert seine letzte stderr-Zeile als Grund", () => {
   // Der Fall aus dem Befund vom 2026-08-08: startbar, aber nicht benutzbar.
   const { spawn } = spawnMit({ status: 1, stderr: "Warnung\nmodel is not supported for this account\n\n" });
-  assert.deepEqual(probelauf("x", START, { spawn }), { ok: false, grund: "model is not supported for this account" });
+  assert.deepEqual(probelauf("x", PFAD, { spawn }), { ok: false, grund: "model is not supported for this account" });
 });
 
 test("probelauf: ohne stderr nennt der Grund den Exit-Status", () => {
   const { spawn } = spawnMit({ status: 3, stderr: "" });
-  assert.deepEqual(probelauf("x", START, { spawn }), { ok: false, grund: "Exit 3" });
+  assert.deepEqual(probelauf("x", PFAD, { spawn }), { ok: false, grund: "Exit 3" });
 });
 
 test("probelauf: der Grund ist auf 300 Zeichen gekuerzt", () => {
   const { spawn } = spawnMit({ status: 1, stderr: "x".repeat(500) });
-  assert.equal(probelauf("x", START, { spawn }).grund.length, 300);
+  assert.equal(probelauf("x", PFAD, { spawn }).grund.length, 300);
 });
 
 test("probelauf: bei EPIPE gewinnt die Fehlermeldung des Werkzeugs", () => {
@@ -274,7 +264,7 @@ test("probelauf: bei EPIPE gewinnt die Fehlermeldung des Werkzeugs", () => {
   // Prompt geschrieben ist. spawnSync meldet dann EPIPE *zusaetzlich* zum Exit-Status.
   const epipe = Object.assign(new Error("spawnSync /fake/bin/x EPIPE"), { code: "EPIPE" });
   const { spawn } = spawnMit({ status: 1, stderr: "model is not supported for this account\n", error: epipe });
-  const lauf = probelauf("x", START, { spawn });
+  const lauf = probelauf("x", PFAD, { spawn });
   assert.equal(lauf.ok, false);
   assert.match(lauf.grund, /model is not supported/);
   assert.doesNotMatch(lauf.grund, /EPIPE/, "EPIPE ist der Nebeneffekt, nicht der Grund");
@@ -284,26 +274,26 @@ test("probelauf: Exit 0 mit EPIPE ist ein Erfolg", () => {
   // Die Gegenrichtung: Ein Kommando, das stdin nicht liest, bleibt verfuegbar.
   const epipe = Object.assign(new Error("EPIPE"), { code: "EPIPE" });
   const { spawn } = spawnMit({ status: 0, stderr: "", error: epipe });
-  assert.deepEqual(probelauf("x", START, { spawn }), { ok: true });
+  assert.deepEqual(probelauf("x", PFAD, { spawn }), { ok: true });
 });
 
 test("probelauf: ein haengendes Kommando laeuft ins Zeitlimit", () => {
   const zeit = Object.assign(new Error("spawnSync ETIMEDOUT"), { code: "ETIMEDOUT" });
   const { spawn } = spawnMit({ status: null, signal: "SIGTERM", error: zeit });
-  assert.deepEqual(probelauf("x", START, { spawn, timeoutMs: 300 }), { ok: false, grund: "Zeitlimit von 300 ms ueberschritten" });
+  assert.deepEqual(probelauf("x", PFAD, { spawn, timeoutMs: 300 }), { ok: false, grund: "Zeitlimit von 300 ms ueberschritten" });
   // SIGTERM allein reicht: spawnSync beendet ein Kommando beim Zeitlimit mit diesem Signal.
-  assert.match(probelauf("x", START, { spawn: () => ({ status: null, signal: "SIGTERM" }), timeoutMs: 300 }).grund, /Zeitlimit/);
+  assert.match(probelauf("x", PFAD, { spawn: () => ({ status: null, signal: "SIGTERM" }), timeoutMs: 300 }).grund, /Zeitlimit/);
 });
 
 test("probelauf: ein per Signal gestorbenes Kommando gilt als Ausfall", () => {
   // Der dritte Zustand neben "gelaufen" und "nie gestartet": kein Exit-Status, kein
   // error — nur ein Signal. Ohne eigenen Zweig fiele er auf ok: true durch (Issue #393).
   const { spawn } = spawnMit({ status: null, signal: "SIGSEGV" });
-  assert.deepEqual(probelauf("x", START, { spawn }), { ok: false, grund: "Durch Signal SIGSEGV beendet" });
+  assert.deepEqual(probelauf("x", PFAD, { spawn }), { ok: false, grund: "Durch Signal SIGSEGV beendet" });
 });
 
 test("probelauf: ein Startfehler ohne Status ist der Grund", () => {
   const enoent = Object.assign(new Error("spawnSync /fake/bin/x ENOENT"), { code: "ENOENT" });
   const { spawn } = spawnMit({ status: null, signal: null, error: enoent });
-  assert.deepEqual(probelauf("x", START, { spawn }), { ok: false, grund: "spawnSync /fake/bin/x ENOENT" });
+  assert.deepEqual(probelauf("x", PFAD, { spawn }), { ok: false, grund: "spawnSync /fake/bin/x ENOENT" });
 });

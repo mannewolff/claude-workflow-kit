@@ -44,9 +44,8 @@ Diese Commits kommen in den PR-Body als Änderungsübersicht.
 ### 3. CI-Status prüfen (Gate — vor dem Release)
 
 Die `buildChecks` sind ein gutes Gate, aber sie messen nur, was diese Maschine messen
-kann. Die CI prüft **mehr**: Dieses Repo fährt seit Issue #196 einen zweiten Job auf
-`windows-latest`. Am 2026-08-13 ging v1.38.0 nach production, während genau dieser Job
-fehlschlug — die Information lag vor, sie wurde nur nie abgerufen (Issue #316).
+kann. Die CI prüft **mehr**. Am 2026-08-13 ging v1.38.0 nach production, während ein
+CI-Job rot war — die Information lag vor, sie wurde nur nie abgerufen (Issue #316).
 
 Geprüft wird der Stand, der gleich hinausgeht:
 

@@ -30,6 +30,9 @@ import { homedir } from "node:os";
 import { VALID_STATUSES, COLUMN_DEFAULTS, columnLabels, BoardError, fail, out, configWurzel,
   readWorkflowConfig } from "./grundlagen.mjs";
 import { GitHubIssueTracker, resolveCodeHost } from "./adapter.mjs";
+// Zyklus mit Absicht: ursprung.mjs liest Karten und Herkunftszeilen von hier. Beide Seiten
+// rufen sich erst zur Laufzeit, keine liest beim Laden einen Wert der anderen.
+import { ursprungLesen, ursprungNachziehen } from "./ursprung.mjs";
 
 // ============================================================
 // Kontext-Achse (Vault-Pfade fuer /kontext und /document, Issue #202)
@@ -199,8 +202,8 @@ function readKontextConfigFile(pfad) {
 }
 
 // Eigene Suche statt loadConfig(): Das ist kontext.config.json, nicht
-// workflow.config.json. Home ueber homedir() und nicht ueber HOME — unter Windows
-// liest homedir() USERPROFILE (Issue #187).
+// workflow.config.json. Home ueber homedir() und nicht ueber HOME — homedir() findet das
+// Heimatverzeichnis auch ohne gesetztes HOME (Issue #187).
 export function loadKontextConfig() {
   return mergeKontextConfig(
     readKontextConfigFile(join(homedir(), ".claude", "kontext.config.json")),
@@ -644,7 +647,23 @@ export async function issueMove(tracker, args) {
   // Bewegungsprotokoll gilt dasselbe — es saehe sonst Ruecklaeufer, die es nicht gab.
   wegmarkeSchreiben(id, toStatus);
   bewegungSchreiben(id, toStatus);
-  out({ ok: true, id, status: toStatus });
+  // Nach dem eigenen Zug, wie in `issue melden` (Issue #1287, Plan #1283 A2, E1): Auch die
+  // Rettung und ein Zug des Menschen nach Done koennen das letzte Paket sein. Gezogen wird
+  // nur nach In review; kein Fehler hier aendert Exit-Code oder Zug des Pakets (A8).
+  const ursprung = URSPRUNG_AUSLOESER.has(toStatus) ? await ursprungDesPakets(tracker, id) : null;
+  out({ ok: true, id, status: toStatus, ...(ursprung ? { ursprung } : {}) });
+}
+
+const URSPRUNG_AUSLOESER = new Set(["in_review", "done"]);
+
+/**
+ * `issue ursprung <plan>` (Issue #1285, Plan #1283 A11): Ist der Plan durch, und welche
+ * Ursprungsdokumente wandern? Rein lesend — gibt die Auswertung aus und bewegt nichts.
+ */
+export async function issueUrsprung(tracker, args) {
+  const id = args._[0];
+  if (!id) fail("Plan-Nummer ist erforderlich: board.mjs issue ursprung <plan>");
+  out(await ursprungLesen(tracker, id));
 }
 
 const LABEL_AKTIONEN = ["add", "remove"];
@@ -894,6 +913,43 @@ function stueckeZusammensetzen(stuecke) {
 
 const vergleichbar = (text) => String(text ?? "").replaceAll("\r\n", "\n").trimEnd();
 
+// Abschnitt `### Ursprungsdokumente` im Abschlussbericht (Issue #1286, Plan #1283 A9, E6).
+// Er steht unmittelbar vor dem Schwanz aus `Kit-Stand:` und `Bericht-Lauf:`; `issue melden`
+// schreibt ihn nach dem Zug, und `berichtAblegen` fuehrt ihn bei einer Wiederholung mit.
+const URSPRUNG_ABSCHNITT = "### Ursprungsdokumente";
+
+// Index der ersten Zeile des Schwanzes: die letzten Zeilen, die mit `Kit-Stand:` oder
+// `Bericht-Lauf:` beginnen oder leer sind, ohne fuehrende Leerzeilen.
+function schwanzBeginn(zeilen) {
+  let beginn = zeilen.length;
+  for (let i = zeilen.length - 1; i >= 0; i--) {
+    const z = zeilen[i];
+    if (z.trim() !== "" && !z.startsWith(KIT_STAND_PRAEFIX) && !z.startsWith(BERICHT_LAUF)) break;
+    if (z.trim() !== "") beginn = i;
+  }
+  return beginn;
+}
+
+/** `{ ohne, abschnitt }`: der Bericht ohne den Abschnitt und der Abschnitt selbst oder null. */
+function ursprungAbtrennen(body) {
+  const zeilen = String(body ?? "").replaceAll("\r\n", "\n").split("\n");
+  const kopf = zeilen.indexOf(URSPRUNG_ABSCHNITT);
+  const ende = schwanzBeginn(zeilen);
+  if (kopf === -1 || kopf >= ende) return { ohne: body, abschnitt: null };
+  const vorher = zeilen.slice(0, kopf).join("\n").trimEnd();
+  return {
+    ohne: `${vorher}\n\n${zeilen.slice(ende).join("\n")}`,
+    abschnitt: zeilen.slice(kopf, ende).join("\n").trimEnd(),
+  };
+}
+
+/** Haengt den Abschnitt vor den Schwanz aus `Kit-Stand:`/`Bericht-Lauf:`. */
+function ursprungEinhaengen(body, abschnitt) {
+  const zeilen = String(body).replaceAll("\r\n", "\n").split("\n");
+  const ende = schwanzBeginn(zeilen);
+  return `${zeilen.slice(0, ende).join("\n").trimEnd()}\n\n${abschnitt}\n\n${zeilen.slice(ende).join("\n")}`;
+}
+
 // `issue melden <id> --teil <n> --text '…'`: nur das Stueck ablegen, kein Board-Zugriff.
 async function meldenStueck(id, args, hatText) {
   if (!/^\d+$/.test(String(args.teil)) || Number(args.teil) < 1) {
@@ -925,11 +981,14 @@ async function berichtAblegen(tracker, id, text, laufZeile) {
   }
   const dieserLauf = kommentare.filter((c) => String(c.body ?? "").replaceAll("\r", "").split("\n").includes(laufZeile));
   try {
-    if (dieserLauf.some((c) => vergleichbar(c.body) === vergleichbar(neu))) return "unveraendert";
+    // Ein Abschnitt `### Ursprungsdokumente` gehoert nicht zum Text der Session: Er zaehlt
+    // beim Vergleich nicht und bleibt beim Ersetzen unveraendert stehen (E6).
+    if (dieserLauf.some((c) => vergleichbar(ursprungAbtrennen(c.body).ohne) === vergleichbar(neu))) return "unveraendert";
     if (dieserLauf.length > 0) {
       const ziel = dieserLauf.at(-1);
       if (ziel.id == null) throw new BoardError("der Bericht dieses Laufs traegt keine Kommentar-ID.");
-      await tracker.ersetzeKommentar(id, ziel.id, neu);
+      const { abschnitt } = ursprungAbtrennen(ziel.body);
+      await tracker.ersetzeKommentar(id, ziel.id, abschnitt ? ursprungEinhaengen(neu, abschnitt) : neu);
       return "ersetzt";
     }
     await tracker.commentIssue(id, neu);
@@ -992,7 +1051,82 @@ export async function issueMelden(tracker, args) {
   if (stuecke.length > 0) {
     try { rmdirSync(resolve(".claude", BERICHTE_ORDNER)); } catch { /* nicht leer — Stuecke anderer Karten */ }
   }
-  out({ ok: true, id, bericht, status: "in_review" });
+  const ursprung = await ursprungMelden(tracker, id, `${BERICHT_LAUF} ${stempel}`);
+  out({ ok: true, id, bericht, status: "in_review", ...(ursprung ? { ursprung } : {}) });
+}
+
+// Ein Grund kann mehrzeilig sein (Adapter-Meldungen); im Listenpunkt steht er auf einer Zeile.
+const einzeilig = (text) => String(text ?? "").replaceAll(/\s+/g, " ").trim();
+
+function ursprungZeile(d, fehler) {
+  const name = d.art === "plan" ? `Plan #${d.id}` : `Fachliche Anforderung #${d.id}`;
+  if (fehler) return `- ${name}: ${fehler.art} (${einzeilig(fehler.grund)}) — nachziehen mit \`${fehler.kommando}\``;
+  if (d.aktion === "wandert") return `- ${name}: nach In review gewandert`;
+  if (d.aktion === "bleibt") return `- ${name}: bleibt — ${einzeilig(d.grund)}`;
+  return `- ${name}: ${d.aktion}`;
+}
+
+function ursprungAbschnittText(ergebnis) {
+  const zeilen = [URSPRUNG_ABSCHNITT];
+  for (const d of ergebnis.dokumente) zeilen.push(ursprungZeile(d, ergebnis.fehler.find((f) => f.id === d.id)));
+  for (const f of ergebnis.fehler.filter((f) => !ergebnis.dokumente.some((d) => d.id === f.id))) {
+    zeilen.push(`- ${f.art}: ${einzeilig(f.grund)}`);
+  }
+  return zeilen.join("\n");
+}
+
+/**
+ * Zieht nach dem Zug eines Pakets dessen Ursprungsdokumente nach (Issue #1286, #1287, Plan
+ * #1283 A2, A3, A8). Liefert die Auswertung samt `fehler`, oder null, wenn die Karte keine
+ * `Plan:`-Zeile traegt oder selbst ein Dokument ist: Der Zug eines `[Plan]`- oder
+ * `[Fachlich]`-Dokuments loest nichts aus. Wirft nie.
+ */
+async function ursprungDesPakets(tracker, id) {
+  let karte;
+  try {
+    karte = await tracker.getIssue(id);
+  } catch (e) {
+    return { plan: null, durch: false, grund: `Paket nicht lesbar (${e.message})`, fehlend: [], dokumente: [],
+      fehler: [{ id: kartenSchluessel(id), art: "Paket nicht lesbar", grund: e.message }] };
+  }
+  if (istPlan(karte.title) || istFachlich(karte.title)) return null;
+  const planNr = herkunftNummern(karte.body ?? "", "Plan")[0];
+  if (planNr === undefined) return null;
+  try {
+    return await ursprungNachziehen(tracker, planNr);
+  } catch (e) {
+    return { plan: planNr, durch: false, grund: e.message, fehlend: [], dokumente: [],
+      fehler: [{ id: planNr, art: "Nachziehen gescheitert", grund: e.message }] };
+  }
+}
+
+/**
+ * Zieht nach dem Zug des Pakets dessen Ursprungsdokumente nach und nennt sie im Bericht
+ * dieses Laufs (Issue #1286, Plan #1283 A1, A3, A8, A9, E6, E7). Liefert die Auswertung samt
+ * `fehler` fuer die Ausgabe, oder null, wenn das Paket keine `Plan:`-Zeile traegt.
+ *
+ * Der Abschnitt entsteht nur, wenn der Plan durch ist oder das Nachziehen scheiterte, und
+ * nur, wenn der Bericht noch keinen traegt: Eine Wiederholung saehe die Dokumente schon in
+ * In review und meldete „lag bereits“ statt „gewandert“. Kein Fehler hier aendert den
+ * Exit-Code (A8) — das Paket liegt schon in In review. Plan und Anforderung bekommen keinen
+ * Kommentar (E7); ihre Zuege buchen weder Wegmarke noch Bewegung (E9).
+ */
+async function ursprungMelden(tracker, id, laufZeile) {
+  const ergebnis = await ursprungDesPakets(tracker, id);
+  if (ergebnis === null || ergebnis.plan === null) return ergebnis;
+  if (!ergebnis.durch && ergebnis.fehler.length === 0) return ergebnis;
+
+  try {
+    const kommentare = await tracker.kommentareStreng(id);
+    const ziel = kommentare.findLast((c) => String(c.body ?? "").replaceAll("\r", "").split("\n").includes(laufZeile));
+    if (!ziel || ziel.id == null) throw new BoardError("Bericht dieses Laufs nicht gefunden.");
+    if (ursprungAbtrennen(ziel.body).abschnitt === null) {
+      await tracker.ersetzeKommentar(id, ziel.id, ursprungEinhaengen(ziel.body, ursprungAbschnittText(ergebnis)));
+    }
+  } catch (e) {
+    ergebnis.fehler.push({ id: kartenSchluessel(id), art: "Abschnitt nicht geschrieben", grund: e.message });
+  }
+  return ergebnis;
 }
 
 // ============================================================
@@ -1312,7 +1446,7 @@ const ohneFuehrendeNullen = (id) => String(id).replace(/^0+(?=\d)/, "");
  * der Nummer trennt #30 von #300. Verglichen wird ohne fuehrende Nullen, weil der lokale
  * Tracker seine Nummern mit ihnen schreibt.
  */
-function herkunftNummern(body, feld) {
+export function herkunftNummern(body, feld) {
   // `[^\S\n]` statt `\s`: `\s*$` duerfte mit dem m-Flag ueber Zeilenumbrueche laufen.
   const zeile = new RegExp(String.raw`^[^\S\n]*${feld}:[^\S\n]*Issue[^\S\n]*#(\d+)[^\S\n]*$`, "gm");
   return [...normalisiereZeilenenden(body).matchAll(zeile)].map((m) => ohneFuehrendeNullen(m[1]));
@@ -1451,7 +1585,7 @@ async function auftragFachlicherAnlass(tracker, karte, plan, luecken) {
  * Listen auch den Body. GitHub liefert dort keinen Body; die Bodies kommen deshalb aus
  * `listAlleMitBody`, und eine Karte, die in keiner Spaltenliste steht, hat Spalte `null`.
  */
-async function auftragAlleKarten(tracker, spaltenListen) {
+export async function auftragAlleKarten(tracker, spaltenListen) {
   for (const s of VALID_STATUSES) {
     if (!spaltenListen.has(s)) spaltenListen.set(s, await tracker.listIssues(s));
   }

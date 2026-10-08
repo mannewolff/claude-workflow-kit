@@ -22,7 +22,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   mitRepo, run, zusammenfassung, datei,
-  prozessbaumBeenden, repoEntfernenHartnaeckig, repoEntfernenTolerant,
+  repoEntfernenHartnaeckig, repoEntfernenTolerant,
 } from "./helpers/checks-repo.mjs";
 
 const CHECK_AREAS = { kern: ["src/**"] };
@@ -134,29 +134,6 @@ test("[checks-8] ein vollstaendiger Lauf endet mit abgeschlossen: true — auch 
         `Fall '${fall.name}': ein zu Ende gefahrener Lauf ist abgeschlossen, auch wenn er rot endet`);
     });
   }
-});
-
-test("[checks-8] prozessbaumBeenden ruft taskkill nur unter Windows", async () => {
-  const rufe = [];
-  const kill = (...args) => rufe.push(args);
-
-  assert.equal(prozessbaumBeenden(4711, { plattform: "win32", kill }), true);
-  assert.equal(rufe.length, 1, "unter Windows muss taskkill genau einmal laufen");
-  assert.equal(rufe[0][0], "taskkill");
-  assert.deepEqual(rufe[0][1], ["/pid", "4711", "/T", "/F"],
-    "ohne /T bleibt die cmd.exe zwischen Lauf und Kommando am Leben");
-
-  assert.equal(prozessbaumBeenden(4711, { plattform: "darwin", kill }), false);
-  assert.equal(prozessbaumBeenden(null, { plattform: "win32", kill }), false);
-  assert.equal(rufe.length, 1, "ausserhalb von Windows und ohne pid faellt kein Aufruf an");
-});
-
-test("[checks-8] prozessbaumBeenden schluckt den Fehler eines laengst toten Prozesses", async () => {
-  const kill = () => { throw new Error("taskkill: Prozess nicht gefunden"); };
-
-  // Kein Testfehler: Die Funktion laeuft im `finally` und darf das Ergebnis des
-  // Tests nicht ueberschreiben.
-  assert.equal(prozessbaumBeenden(4711, { plattform: "win32", kill }), true);
 });
 
 test("[checks-8] repoEntfernenHartnaeckig wiederholt, bis das Loeschen gelingt", async () => {

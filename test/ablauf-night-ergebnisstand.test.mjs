@@ -213,9 +213,6 @@ test("[night-2] der Implementierungslauf ruft die CLI mit --output-format stream
     const argLog = join(binDir, "cli-args.txt");
     writeFileSync(join(binDir, "claude"), `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(argLog)}\nexit 0\n`);
     chmodSync(join(binDir, "claude"), 0o755);
-    // Unter Windows findet das Kit `claude` nur ueber die `.cmd` daneben und startet dann
-    // diese sh-Datei ueber die Git Bash (Issue #1131, E8). Die `.cmd` laeuft nie.
-    writeFileSync(join(binDir, "claude.cmd"), "@rem Huelle: das Kit startet die sh-Datei daneben.\r\n");
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--max", "1"], {
       PATH: `${binDir}${delimiter}${process.env.PATH}`,

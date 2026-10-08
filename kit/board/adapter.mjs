@@ -491,9 +491,9 @@ function githubStatusName(status, config) {
 // CI-Status (Achse `code ci-status`, Issue #316)
 // ============================================================
 
-// Ein lokal gruener Lauf sagt nichts ueber die CI: Dieses Repo faehrt seit Issue #196
-// einen zweiten Job auf windows-latest, und genau der war rot, als v1.37.0 und v1.38.0
-// nach production gingen. Die Auskunft gehoert in den Adapter und nicht als `gh`-Aufruf
+// Ein lokal gruener Lauf sagt nichts ueber die CI: Die CI kann Jobs fahren, die lokal nicht
+// laufen, und ein solcher Job war rot, als v1.37.0 und v1.38.0 nach production gingen.
+// Die Auskunft gehoert in den Adapter und nicht als `gh`-Aufruf
 // in einen Skill-Text — die Skills sind provider-unabhaengig, und `gh run list` gibt es
 // bei GitLab und im lokalen Modus nicht.
 
@@ -513,8 +513,8 @@ function ciErgebnis(wert, gruen, rot) {
 
 /**
  * Startzeit eines Jobs als ISO-Zeichenkette oder `null`, solange er nicht gestartet ist
- * (Issue #1151). Ab ihr zaehlt die Frist, mit der `push main` auf die Windows-Pruefung
- * wartet (Plan #1150, E4). gh gibt fuer einen nie gestarteten Job die Null-Zeit
+ * (Issue #1151). Ab ihr zaehlt die Frist, mit der `push main` auf einen CI-Job wartet
+ * (Plan #1150, E4). gh gibt fuer einen nie gestarteten Job die Null-Zeit
  * `0001-01-01T00:00:00Z` aus — sie ist kein Start.
  */
 function ciStartzeit(wert) {

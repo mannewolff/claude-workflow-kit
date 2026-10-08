@@ -23,12 +23,13 @@ import { spawnSync } from "node:child_process";
 import { KETTE_HALT_ANKER, pushVermerk } from "../kit/night/kette.mjs";
 import { KLAEREN_LABEL } from "../kit/night/wartend.mjs";
 import {
-  run, board, mitProjekt, umgebung, sessions, stand,
+  run, board, mitProjekt, umgebung, sessions, stand, fachplan, planauftrag, durchziehen,
   PAKETE_MIT_ABHAENGIGKEIT, UMSETZUNG_ERFOLG, UMSETZUNG_HALT, jePaket,
 } from "./helpers/kette-ablauf.mjs";
 import {
   ERZEUGEN, fachplanB, umsetzung, inSpalte, keinRestInArbeit, stehenInBacklog,
 } from "./helpers/kette-umsetzung-fixture.mjs";
+import { planBody } from "./helpers/kette-texte.mjs";
 
 
 test("[night-34] Variante B: die Stufe umsetzung laeuft hinter abdeckung und bringt die Pakete nach In review", () => {
@@ -49,7 +50,9 @@ test("[night-34] Variante B: die Stufe umsetzung laeuft hinter abdeckung und bri
     assert.deepEqual(stufe.nichtBegonnen, []);
     assert.deepEqual(stufe.zurueckgestellt, []);
 
-    assert.deepEqual(inSpalte(dir, "in_review"), einheit.stufen.pakete.ids, "die Pakete stehen in In review");
+    // Mit dem letzten Paket wandern Anforderung und Plan mit (Issue #1287, Kriterium 1).
+    assert.deepEqual(inSpalte(dir, "in_review"), [F, einheit.stufen.plan.id, ...einheit.stufen.pakete.ids].sort(),
+      "die Pakete und ihre Ursprungsdokumente stehen in In review");
     keinRestInArbeit(dir);
 
     // Je Paket eine eigene Einheit — die, die `laufeRunde` ohnehin anlegt (night-4).
@@ -228,4 +231,125 @@ test("[#1170] ein zweiter Lauf schreibt keinen gleichlautenden Push-Vermerk dazu
   assert.equal(pushVermerk({ id: "4", comments: [{ body: "frueher" }, { body: text }] }, "Issue #3"), null);
   // Steht danach ein anderer Kommentar, ist der Vermerk nicht mehr der letzte.
   assert.equal(pushVermerk({ id: "4", comments: [{ body: text }, { body: "spaeter" }] }, "Issue #3"), text);
+});
+
+// --- Stand der Ursprungsdokumente nach der Umsetzungsstufe (Issue #1290, Plan #1283 A10, E8) ---
+//
+// Die Kette liest hinter der Stufe umsetzung `issue ursprung <plan>` und legt das Ergebnis
+// mit den Spalten von vorher unter `stufen.umsetzung.ursprung` ab; der Nachtbericht macht
+// daraus den Abschnitt `### Ursprungsdokumente`. Die Session-Attrappen schliessen Pakete
+// mit `issue move … in_review` ab, diese Tests belegen also den Weg ueber `issue move`.
+
+const ohneNullen = (id) => String(id).replace(/^0+(?=\d)/, "");
+
+/** Der Abschnitt `### Ursprungsdokumente` des juengsten Nachtberichts an der Karte, sonst null. */
+function ursprungAbschnitt(dir, F) {
+  const text = readFileSync(join(dir, "issues", `${F}.md`), "utf-8");
+  const teile = text.split("### Ursprungsdokumente");
+  if (teile.length < 2) return null;
+  return teile.at(-1).split(/\n### /)[0];
+}
+
+/** Ein Fachplan unter Variante B mit dem Label `ziel:<ziel>`. */
+function fachplanMitZiel(dir, ziel) {
+  const F = fachplanB(dir);
+  board(dir, "issue", "label", "add", F, `ziel:${ziel}`);
+  return F;
+}
+
+test("[#1290] Ziel umsetzung: mit dem letzten Paket wandern Plan und Anforderung, der Nachtbericht nennt sie als gewandert", () => {
+  mitProjekt((dir) => {
+    const F = fachplanMitZiel(dir, "umsetzung");
+    const res = run(dir, ["--kette"], umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } }));
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const { einheit, stufe } = umsetzung(dir, F);
+    assert.equal(einheit.ausgang, "fertig", einheit.grund);
+    const P = einheit.stufen.plan.id;
+    assert.deepEqual(Object.keys(stufe.ursprung.vorher).sort(), [ohneNullen(F), ohneNullen(P)].sort(), "die Spalten von vorher fehlen");
+    for (const spalte of Object.values(stufe.ursprung.vorher)) assert.ok(!["in_review", "done"].includes(spalte), `vorher schon ${spalte}`);
+    assert.equal(stufe.ursprung.auswertung.durch, true);
+    for (const id of [F, P]) assert.equal(board(dir, "issue", "get", id).status, "in_review", `#${id} ist nicht gewandert`);
+
+    const abschnitt = ursprungAbschnitt(dir, F);
+    assert.ok(abschnitt, "der Nachtbericht hat keinen Abschnitt Ursprungsdokumente");
+    assert.match(abschnitt, new RegExp(`- Plan #${ohneNullen(P)}: nach In review gewandert\\.`));
+    assert.match(abschnitt, new RegExp(`- fachliche Anforderung #${ohneNullen(F)}: nach In review gewandert\\.`));
+  });
+});
+
+test("[#1290] ein Paket zurueck im Backlog: die Dokumente bleiben, der Bericht nennt Paket und Grund", () => {
+  mitProjekt((dir) => {
+    const F = fachplanMitZiel(dir, "umsetzung");
+    // Ein Fehlstart ohne Ereignis: zweiter Versuch, dann der harte Stopp; das gezogene Paket
+    // geht zurueck nach Backlog (wie night-34 in der Rueckstellungs-Datei).
+    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: "exit 3" } });
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const { einheit, stufe } = umsetzung(dir, F);
+    const P = einheit.stufen.plan.id;
+    const [erstes] = einheit.stufen.pakete.ids;
+    assert.deepEqual(stufe.zurueckgestellt.map((p) => p.id), [erstes]);
+    assert.equal(stufe.ursprung.auswertung.durch, false);
+    for (const id of [F, P]) assert.notEqual(board(dir, "issue", "get", id).status, "in_review", `#${id} ist gewandert`);
+
+    const abschnitt = ursprungAbschnitt(dir, F);
+    assert.ok(abschnitt, "der Nachtbericht hat keinen Abschnitt Ursprungsdokumente");
+    assert.match(abschnitt, new RegExp(`- Plan #${ohneNullen(P)}: bleibt in `));
+    assert.match(abschnitt, new RegExp(`- fachliche Anforderung #${ohneNullen(F)}: bleibt in `));
+    assert.match(abschnitt, new RegExp(`#${ohneNullen(erstes)} Paket 1 in Backlog: gescheitert und zurück im Backlog \\(`),
+      `das gescheiterte Paket fehlt mit Grund:\n${abschnitt}`);
+  }, {}, "night-kette-", { night: { stand: { pauseMin: 0.0001 } } });
+});
+
+test("[#1290] eine vorgefundene Umsetzung haelt den Stand der Ursprungsdokumente ebenso fest", () => {
+  mitProjekt((dir) => {
+    // Plan-Auftrag mit fertig gebauten Paketen: plan, review, pakete und abdeckung liegen
+    // vor, die Umsetzung ebenso (alle Pakete in In review) — die Stufe laeuft ueber `vorfinden`.
+    const F = fachplan(dir, "[Fachlich] Ein Anliegen", null);
+    const P = planauftrag(dir, F, { body: planBody().replace("Plan-Modell: fixture-modell", "Plan-Modell: fixture-modell\nPlan-Review: opus (2026-09-28, Nachtlauf)") });
+    durchziehen(dir, P);
+    board(dir, "issue", "label", "add", P, "ziel:umsetzung");
+    const pakete = [1, 2].map((n) => String(board(dir, "issue", "create", "--title", `Paket ${n}`, "--body",
+      `## Kontext\n\nPlan: Issue #${P}\nFachliche Quelle: Issue #${F}\n\n## Aufgabe\n\nPaket ${n}.\n\n## Akzeptanzkriterium\n\n- node --test\n\n## Abhängigkeiten\n\nKeine.\n`).id));
+    for (const id of pakete) board(dir, "issue", "move", id, "in_review");
+    // Das letzte Paket zog die Dokumente schon mit (Issue #1287); zurueck, damit die Kette
+    // den Plan als Auftrag annimmt.
+    for (const id of [F, P]) board(dir, "issue", "move", id, "backlog");
+    board(dir, "issue", "comment", P, "--text", `## Laufstand\n\nzuletzt abgeschlossen: abdeckung fertig für #${P} um 2026-09-28T03:05:00.000Z`);
+
+    const env = umgebung(dir, { stufen: { umsetzung: UMSETZUNG_ERFOLG } });
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    assert.deepEqual(sessions(env.logPfad), [], "es lief eine Session, obwohl alles vorlag");
+
+    const einheit = stand(dir).einheiten.find((e) => e.id === P);
+    assert.ok(einheit, `keine Einheit fuer Plan #${P}`);
+    const stufe = einheit.stufen.umsetzung;
+    assert.equal(stufe.vorgefunden, true, "die Umsetzung lief nicht ueber vorfinden");
+    assert.ok(stufe.ursprung, "die vorgefundene Umsetzung haelt keinen Stand der Ursprungsdokumente fest");
+    assert.equal(stufe.ursprung.auswertung.durch, true);
+    const abschnitt = ursprungAbschnitt(dir, P);
+    assert.ok(abschnitt, "der Nachtbericht hat keinen Abschnitt Ursprungsdokumente");
+    assert.match(abschnitt, new RegExp(`- Plan #${ohneNullen(P)}: `));
+  });
+});
+
+test("[#1290] Ziel push-vorbereitet mit roter Vorbereitung: die Dokumente bleiben in In review (Kriterium 6)", () => {
+  mitProjekt((dir) => {
+    const F = fachplanMitZiel(dir, "push-vorbereitet");
+    // Die Session der Vorbereitung tut nichts: keine Datei, also nicht vorbereitet.
+    const res = run(dir, ["--kette"], umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } }));
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    assert.match(res.stdout, /Vorbereitung: nicht-vorbereitet/);
+
+    const { einheit, stufe } = umsetzung(dir, F);
+    const P = einheit.stufen.plan.id;
+    assert.equal(stufe.ursprung.auswertung.durch, true);
+    for (const id of [F, P]) assert.equal(board(dir, "issue", "get", id).status, "in_review", `#${id} liegt nicht in In review`);
+    const abschnitt = ursprungAbschnitt(dir, F);
+    assert.ok(abschnitt, "der Nachtbericht hat keinen Abschnitt Ursprungsdokumente");
+    assert.match(abschnitt, new RegExp(`- Plan #${ohneNullen(P)}: nach In review gewandert\\.`));
+  });
 });

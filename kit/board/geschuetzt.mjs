@@ -161,8 +161,8 @@ export function pfadTokens(zeilen) {
 /**
  * Das Token, wie es steht, absolut und — liegt es unter der Wurzel — relativ zu ihr, mit `/`
  * geschrieben wie die Sperrliste. Die relative Form entsteht ueber `relative` des Pfadmoduls
- * (Issue #1124): Unter Windows trennt `resolve` mit `\`, und ein Vergleich auf `${basis}/` liess
- * sie dort weg. `pfad` ist fuer Tests austauschbar (`path.win32`).
+ * (Issue #1124) statt ueber einen Vergleich auf `${basis}/`, der vom Trennzeichen des
+ * Pfadmoduls abhinge. `pfad` ist fuer Tests austauschbar.
  */
 export function tokenFormen(token, wurzel, pfad = path) {
   const basis = pfad.resolve(wurzel);

@@ -127,10 +127,10 @@ test("festhalten haelt einen gescheiterten Fetch fest", () => {
 test("festhalten mit offenen Punkten ergibt gruen-offen", () => {
   const s = setup();
   zusammenfassung(s.pfad);
-  festhalten(s, { ergebnis: "gruen-offen", offen: ["Windows-Vorabpruefung"] });
+  festhalten(s, { ergebnis: "gruen-offen", offen: ["Sichtpruefung der Oberflaeche"] });
   const datei = gelesen(s);
   assert.equal(datei.ergebnis, "gruen-offen");
-  assert.deepEqual(datei.offen, ["Windows-Vorabpruefung"]);
+  assert.deepEqual(datei.offen, ["Sichtpruefung der Oberflaeche"]);
 });
 
 test("ein rotes Ergebnis nennt die rote Pruefung und die Verursacher-Karten", () => {
@@ -189,10 +189,10 @@ test("Build-Dienst mit gruener Paketstufe ergibt gruen-offen, der Build-Dienst-P
   const s = setup();
   kitstandAbhaengigkeiten({ pushWeg: () => ({ ort: "buildDienst", zweig: "kit-pruefung" }) });
   zusammenfassung(s.pfad, { stufe: "paket" });
-  festhalten(s, { ergebnis: "gruen", offen: ["Windows-Vorabpruefung"] });
+  festhalten(s, { ergebnis: "gruen", offen: ["Sichtpruefung der Oberflaeche"] });
   const datei = gelesen(s);
   assert.equal(datei.ergebnis, "gruen-offen");
-  assert.deepEqual(datei.offen, ["voller Lauf im Build-Dienst (Prüfzweig kit-pruefung)", "Windows-Vorabpruefung"]);
+  assert.deepEqual(datei.offen, ["voller Lauf im Build-Dienst (Prüfzweig kit-pruefung)", "Sichtpruefung der Oberflaeche"]);
 });
 
 test("Build-Dienst mit roter Paketstufe bleibt rot (E17)", () => {
@@ -215,7 +215,7 @@ test("festhalten weist ein unbekanntes Ergebnis und einen unbekannten Fetch-Wert
 function vorbereitet() {
   const s = setup();
   zusammenfassung(s.pfad);
-  festhalten(s, { ergebnis: "gruen-offen", offen: ["Windows-Vorabpruefung"] });
+  festhalten(s, { ergebnis: "gruen-offen", offen: ["Sichtpruefung der Oberflaeche"] });
   return s;
 }
 
@@ -225,7 +225,7 @@ test("pruefen: ein unveraenderter Stand wird uebernommen", () => {
     uebernehmen: true,
     grund: null,
     commit: s.vorbereitet,
-    offen: ["Windows-Vorabpruefung"],
+    offen: ["Sichtpruefung der Oberflaeche"],
     zeitpunkt: JETZT.toISOString(),
   });
 });

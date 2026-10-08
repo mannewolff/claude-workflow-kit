@@ -377,7 +377,7 @@ test("[night-1254] der Ergebnisstand traegt vorbereitung", async () => {
 });
 
 test("[night-1254] E17: gruen-offen mit Build-Dienst-Punkt geht unveraendert in Bericht und Ergebnisstand", async () => {
-  const offen = ["voller Lauf im Build-Dienst (Prüfzweig kit-pruefung/vorbereitung)", "Windows-Vorabprüfung (windows-pruefung.mjs --vorab)"];
+  const offen = ["voller Lauf im Build-Dienst (Prüfzweig kit-pruefung/vorbereitung)", "Sichtprüfung der Oberfläche (push-main)"];
   const r = await ketteImProzess({ karten: bisAbdeckung("1", "2", ["3", "4"], [ZIEL_PV]), kette: B_FREI, sitzung: jeStufe({ vorbereitung: vorbereitungAblegen({ ergebnis: "gruen-offen", offen }) }) });
   assert.equal(r.code, 0, r.ausgabe);
   assert.equal(r.lauf.vorbereitung.ergebnis, "gruen-offen");

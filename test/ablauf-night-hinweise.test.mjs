@@ -25,7 +25,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
 
 const HINWEISE = [
-  { cmd: "node tools/windows-brueche.mjs", zeilen: ["test/a.test.mjs:12 — Plattform-Skip ohne Vermerk", "kit/b.mjs:3 — Pfad in Mac-Schreibweise"] },
+  { cmd: "node tools/beispiel-hinweis.mjs", zeilen: ["test/a.test.mjs:12 — Plattform-Skip ohne Vermerk", "kit/b.mjs:3 — Pfad in Mac-Schreibweise"] },
 ];
 
 function run(cwd, cmd, cliArgs, env = {}) {

@@ -133,3 +133,77 @@ test("[board-17] ist das Protokoll nicht schreibbar, wird die Karte trotzdem ver
     assert.match(readFileSync(join(dir, "issues", "0001.md"), "utf-8"), /status: backlog/);
   });
 });
+
+// --- Ursprungsdokumente beim Zug des letzten Pakets (Issue #1287, Plan #1283 A2, E1, E9) ---
+//
+// Nicht jedes Paket endet ueber `issue melden`: Die Rettungs-Session zieht per
+// `issue move <id> in_review`, und ein Mensch kann das letzte Paket per Kommando nach Done
+// ziehen. Beide Zuege ziehen Plan und Anforderung nach — nur nach In review, nie nach Done
+// (Kriterium 8), und ohne Zeile im Bewegungsprotokoll (E9).
+
+function lokalStatus(dir, nr) {
+  return readFileSync(join(dir, "issues", `${nr}.md`), "utf-8").match(/^status: (\S+)$/m)[1];
+}
+
+const zeilenVon = (zeilen, nr) => zeilen.filter((z) => ["", "000"].some((p) => z.split("\t")[1] === `${p}${nr}`));
+
+/** 0001 Anforderung, 0002 Plan, 0003 Paket; `anforderungBody` ersetzt den Text der Anforderung. */
+function mitVorhaben(fn, { anforderungBody = "## Ziel\nz" } = {}) {
+  mitProjekt((dir) => {
+    board(dir, "issue", "create", "--title", "[Fachlich] Anforderung", "--body", anforderungBody);
+    board(dir, "issue", "create", "--title", "[Plan] Plan", "--body", "Fachliche Quelle: Issue #0001\n\n## Ziel\nz");
+    board(dir, "issue", "create", "--title", "Paket", "--body", "## Kontext\nPlan: Issue #0002\n\n## Aufgabe\na");
+    fn(dir);
+  });
+}
+
+test("[ursprung] letztes Paket per issue move in_review: Plan und Anforderung in In review, Ausgabe traegt ursprung", () => {
+  mitVorhaben((dir) => {
+    const e = board(dir, "issue", "move", "0003", "in_review");
+    assert.equal(e.status, "in_review");
+    assert.equal(e.ursprung.plan, "2");
+    assert.equal(e.ursprung.durch, true);
+    assert.deepEqual(e.ursprung.dokumente.map((d) => [d.id, d.aktion]), [["2", "wandert"], ["1", "wandert"]]);
+    assert.deepEqual(e.ursprung.fehler, []);
+    assert.equal(lokalStatus(dir, "0003"), "in_review");
+    assert.equal(lokalStatus(dir, "0002"), "in_review");
+    assert.equal(lokalStatus(dir, "0001"), "in_review");
+  });
+});
+
+test("[ursprung] letztes Paket per issue move done: Dokumente in In review, keines in Done", () => {
+  mitVorhaben((dir) => {
+    const e = board(dir, "issue", "move", "0003", "done");
+    assert.equal(e.status, "done");
+    assert.equal(e.ursprung.durch, true);
+    assert.equal(lokalStatus(dir, "0003"), "done", "das Paket selbst liegt, wohin es gezogen wurde");
+    assert.equal(lokalStatus(dir, "0002"), "in_review");
+    assert.equal(lokalStatus(dir, "0001"), "in_review");
+  });
+});
+
+// Die Anforderung traegt selbst eine Plan-Zeile und zaehlt damit als Paket des Plans:
+// Ohne die Praefix-Pruefung machte ihr Zug nach Done den Plan durch und zoege ihn nach.
+test("[ursprung] der Zug eines [Plan]- oder [Fachlich]-Dokuments selbst loest nichts aus", () => {
+  mitVorhaben((dir) => {
+    const paket = board(dir, "issue", "move", "0003", "in_review");
+    assert.equal(paket.ursprung.durch, false, "die Anforderung mit Plan-Zeile liegt noch im Backlog");
+    assert.equal(lokalStatus(dir, "0002"), "backlog");
+
+    assert.deepEqual(board(dir, "issue", "move", "0001", "done"), { ok: true, id: "0001", status: "done" });
+    assert.equal(lokalStatus(dir, "0002"), "backlog", "der Plan bleibt, obwohl alle seine Pakete erledigt sind");
+
+    assert.deepEqual(board(dir, "issue", "move", "0002", "in_review"), { ok: true, id: "0002", status: "in_review" });
+    assert.equal(lokalStatus(dir, "0001"), "done");
+  }, { anforderungBody: "## Ziel\nz\nPlan: Issue #0002" });
+});
+
+test("[ursprung] Zuege der Dokumente schreiben keine Zeile in bewegungen.tsv (E9)", () => {
+  mitVorhaben((dir) => {
+    board(dir, "issue", "move", "0003", "in_review");
+    assert.equal(lokalStatus(dir, "0002"), "in_review", "Vorbedingung: die Dokumente sind gewandert");
+    assert.deepEqual(zeilenVon(bewegungen(dir), "3").map((z) => z.split("\t")[2]), ["in_review"]);
+    assert.deepEqual(zeilenVon(bewegungen(dir), "2"), []);
+    assert.deepEqual(zeilenVon(bewegungen(dir), "1"), []);
+  });
+});

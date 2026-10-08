@@ -20,7 +20,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 
-import { stufenEinstellung, paketWahl, sessionStart, berichtBauen, posixShell } from "../kit/night.mjs";
+import { stufenEinstellung, paketWahl, sessionStart, berichtBauen } from "../kit/night.mjs";
 import {
   NIGHT, run, setupProjekt, readyIssue, einheit,
   SUMMARY_GRUEN, ARBEIT_UND_COMMIT, NACH_IN_REVIEW,
@@ -97,8 +97,6 @@ test("[night-42] beim Modell des Laufs ist die Gruendlichkeit null", () => {
   assert.equal(ohneEinstellung.effort, null);
 });
 
-// Eine Kommando-Stufe ist seit Issue #1131 auch unter Windows startbar: Sie laeuft dort ueber
-// die Git Bash, und `sh` ist darin auffindbar.
 test("[night-42] eine Kommando-Stufe traegt keine Gruendlichkeit", () => {
   // Das Schema verbietet effort neben kommando (Issue #845). Die Wahl verlaesst sich
   // nicht darauf: Ein fremdes Programm kennt das Flag nicht, und `sessionStart` setzt es
@@ -132,7 +130,7 @@ test("[night-42] im Kommando-Zweig steht --effort nie", () => {
   // Das Programm ist nicht `claude` und kennt das Flag nicht — dieselbe Begruendung wie
   // beim Weglassen von --model.
   const { cmd, cmdArgs } = start({ effort: "max" }, "mein-runner");
-  assert.equal(cmd, posixShell().pfad);
+  assert.equal(cmd, "sh");
   assert.ok(!cmdArgs.includes("--effort"), `--effort im Kommando-Zweig: ${cmdArgs.join(" ")}`);
 });
 
@@ -140,7 +138,7 @@ test("[night-42] der Test-Hook bleibt unberuehrt", () => {
   const { cmd, cmdArgs } = sessionStart({
     testCmd: "true", kommando: null, prompt: "p", modell: "claude-sonnet-5", args: {}, opts: { effort: "max" },
   });
-  assert.equal(cmd, posixShell().pfad);
+  assert.equal(cmd, "sh");
   assert.deepEqual(cmdArgs, ["-c", "true"]);
 });
 

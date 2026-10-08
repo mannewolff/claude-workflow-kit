@@ -22,7 +22,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  mitRepo, plan, run, checks, checksMitFakeGit, fakeGitOhne, fakeGitSetzen, echtesGit,
+  mitRepo, plan, run, checks, checksMitFakeGit, fakeGitOhne,
   zusammenfassung, datei, kommandos, eintrag,
 } from "./helpers/checks-repo.mjs";
 import { vergleicheText, gitStart } from "../kit/checks.mjs";
@@ -136,36 +136,16 @@ test("liefert git hash-object mehr Hashes als Pfade, endet run rot und nennt bei
   // aus drei Pfaden eine Eingabe mit vier Zeilen und git antwortet mit vier
   // Hashes. Ohne den Abgleich bekaemen die Pfade fremde Hashes zugeordnet, und
   // das Commit-Gate pruefte gegen einen Nachweis, der nichts bezeugt.
-  //
-  // Windows verbietet den Zeilenumbruch im Dateinamen (Issue #1146). Dort reicht ein
-  // Fake-git dieselbe Eingabe mit einer Zeile mehr an das echte git weiter: drei
-  // Pfade, vier Zeilen, vier Hashes — dieselbe Lage, dieselbe Zusage.
   await mitRepo({ config: { buildChecks: [LEISE] } }, async (dir) => {
     datei(dir, "a", "A\n");
     datei(dir, "b", "B\n");
-    let res;
-    if (process.platform === "win32") {
-      datei(dir, "c", "C\n");
-      fakeGitZeileMehr(dir);
-      res = await checksMitFakeGit(dir, "run");
-    } else {
-      datei(dir, "a\nb", "AB\n");
-      res = await run(dir);
-    }
+    datei(dir, "a\nb", "AB\n");
+    const res = await run(dir);
 
     assert.notEqual(res.status, 0, "ein Zaehlabgleich, der nicht aufgeht, darf nicht durchgehen");
     assert.match(res.stderr, /git hash-object lieferte 4 Hashes fuer 3 Pfade/);
   });
 });
-
-/** Fake-git, das an `hash-object --stdin-paths` den ersten Pfad ein zweites Mal anhaengt. */
-function fakeGitZeileMehr(dir) {
-  fakeGitSetzen(dir, (args, optionen) => {
-    if (args[0] !== "hash-object") return echtesGit(args, optionen);
-    const pfade = optionen.input.split("\n").filter(Boolean);
-    return echtesGit(args, { ...optionen, input: `${[...pfade, pfade[0]].join("\n")}\n` });
-  });
-}
 
 // --- settingsEnv ------------------------------------------------------------
 

@@ -30,26 +30,12 @@ function starte(drehbuch, { timeoutMs = 400, ...optionen } = {}) {
 /** Laesst die Mikrotasks laufen, die das Drehbuch und die Zuhoerer anstossen. */
 const weiter = () => new Promise((r) => setImmediate(r));
 
-test("Baum beenden: unter Windows taskkill auf den Baum, auf POSIX ein Signal an die Gruppe", () => {
-  assert.deepEqual(baumBeendenAufruf(4711, "SIGTERM", "win32"), { taskkill: ["/pid", "4711", "/T", "/F"] });
-  assert.deepEqual(baumBeendenAufruf(4711, "SIGKILL", "win32"), { taskkill: ["/pid", "4711", "/T", "/F"] });
-  assert.deepEqual(baumBeendenAufruf(4711, "SIGTERM", "linux"), { pid: -4711, signal: "SIGTERM" });
-  assert.deepEqual(baumBeendenAufruf(4711, "SIGKILL", "darwin"), { pid: -4711, signal: "SIGKILL" });
+test("Baum beenden: ein Signal an die Gruppe", () => {
+  assert.deepEqual(baumBeendenAufruf(4711, "SIGTERM"), { pid: -4711, signal: "SIGTERM" });
+  assert.deepEqual(baumBeendenAufruf(4711, "SIGKILL"), { pid: -4711, signal: "SIGKILL" });
 });
 
 // --- Warten auf die Prozessgruppe (Issue #668) ---------------------------------
-
-test("Warten auf die Prozessgruppe: unter Windows ohne Suche nach der Marke sofort zurueck", async () => {
-  // Unter Windows fragt die Funktion allein die Suche nach der Marke der Session
-  // (Issue #1144, night-25); ohne sie gibt es dort nichts, worauf zu warten waere.
-  const abfragen = [];
-  const schlaf = async () => assert.fail("unter Windows darf nicht gewartet werden");
-  const leer = await warteAufProzessgruppe(4711, 60_000, {
-    plattform: "win32", schlaf, spawnSync: (...a) => abfragen.push(a),
-  });
-  assert.equal(leer, true);
-  assert.deepEqual(abfragen, [], "ps wird unter Windows nicht gefragt");
-});
 
 test("Warten auf die Prozessgruppe: fragt ps im Takt, bis die Gruppe leer ist", async () => {
   const uhr = uhrAttrappe();
@@ -59,7 +45,7 @@ test("Warten auf die Prozessgruppe: fragt ps im Takt, bis die Gruppe leer ist", 
     abfragen.push([befehl, ...args].join(" "));
     return { status: 0, stdout: antworten.shift() };
   };
-  const leer = await warteAufProzessgruppe(4711, 10_000, { pollMs: 200, jetzt: uhr.jetzt, schlaf: uhr.schlaf, spawnSync: ps, plattform: "linux" });
+  const leer = await warteAufProzessgruppe(4711, 10_000, { pollMs: 200, jetzt: uhr.jetzt, schlaf: uhr.schlaf, spawnSync: ps });
   assert.equal(leer, true);
   assert.deepEqual(abfragen, ["ps -o pid= -g 4711", "ps -o pid= -g 4711", "ps -o pid= -g 4711"]);
   assert.equal(uhr.jetzt() - 1_000_000, 400, "zweimal der Takt von 200 ms");
@@ -68,7 +54,7 @@ test("Warten auf die Prozessgruppe: fragt ps im Takt, bis die Gruppe leer ist", 
 test("Warten auf die Prozessgruppe: bei Ablauf der Frist false, ohne darueber hinaus zu warten", async () => {
   const uhr = uhrAttrappe();
   const leer = await warteAufProzessgruppe(4711, 1000, {
-    pollMs: 300, jetzt: uhr.jetzt, schlaf: uhr.schlaf, spawnSync: () => ({ status: 0, stdout: "123\n" }), plattform: "linux",
+    pollMs: 300, jetzt: uhr.jetzt, schlaf: uhr.schlaf, spawnSync: () => ({ status: 0, stdout: "123\n" }),
   });
   assert.equal(leer, false);
   assert.equal(uhr.jetzt() - 1_000_000, 1200, "die erste Abfrage nach Ablauf der Frist endet das Warten");
@@ -76,20 +62,9 @@ test("Warten auf die Prozessgruppe: bei Ablauf der Frist false, ohne darueber hi
 
 test("Warten auf die Prozessgruppe: ein gescheitertes ps gilt als leere Gruppe", async () => {
   const leer = await warteAufProzessgruppe(4711, 1000, {
-    schlaf: async () => assert.fail("kein Warten"), spawnSync: () => ({ status: 1, stdout: "", stderr: "ps: kaputt" }), plattform: "linux",
+    schlaf: async () => assert.fail("kein Warten"), spawnSync: () => ({ status: 1, stdout: "", stderr: "ps: kaputt" }),
   });
   assert.equal(leer, true);
-});
-
-test("Warten auf die Prozessgruppe: eine scheiternde Suche nach der Marke geht ins Protokoll und haelt nicht auf", async () => {
-  const vermerke = [];
-  const leer = await warteAufProzessgruppe(4711, 1000, {
-    plattform: "win32", prozesse: () => { throw new Error("Abfrage der Prozessliste gescheitert (Exitcode 1)"); },
-    vermerk: (t) => vermerke.push(t),
-  });
-  assert.equal(leer, true);
-  assert.equal(vermerke.length, 1);
-  assert.match(vermerke[0], /Abfrage der Prozessliste gescheitert .* der Runner wartet nicht auf die Prozesse der Session/);
 });
 
 // --- Die Stufen des Zeitlimits (Issue #182) ------------------------------------

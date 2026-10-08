@@ -20,7 +20,6 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, chmodS
 import { join, dirname, delimiter } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
-import { gitBashPfad } from "../../kit/board/grundlagen.mjs";
 
 /**
  * Das Budget der Toolbox-Wiederholschleife fuer jeden Prozess, den die Tests starten
@@ -33,32 +32,10 @@ import { gitBashPfad } from "../../kit/board/grundlagen.mjs";
 export const TEST_TOOLBOX_BUDGET_MS = "200";
 
 /**
- * Der PATH eines Fixtures: `fakebin` vor dem PATH des Rechners, getrennt nach der
- * Plattform (`;` unter Windows, `:` sonst — Issue #1135).
+ * Der PATH eines Fixtures: `fakebin` vor dem PATH des Rechners.
  */
 export function fakePath(dir) {
   return `${join(dir, "fakebin")}${delimiter}${process.env.PATH}`;
-}
-
-/**
- * Die echte Git Bash, festgehalten, bevor ein Fixture ein Fake-`git` in den PATH legt
- * (Issue #1135). Unter Windows startet das Kit ein Fake ueber seine sh-Huelle in der Git
- * Bash und findet die ueber die `git.exe` im PATH (Plan #1128, E8). Ein Fake-`git` im
- * Fixture laege dort vor der echten und fuehrte die Suche ins Leere; mit der Variablen
- * entfaellt sie. Auf POSIX gibt es keine Git Bash zu suchen.
- */
-const ECHTE_GIT_BASH = process.platform === "win32" ? gitBashPfad().pfad : null;
-export const GIT_BASH_ENV = ECHTE_GIT_BASH ? { CLAUDE_CODE_GIT_BASH_PATH: ECHTE_GIT_BASH } : {};
-
-/**
- * Legt neben ein endungsloses Fake die `.cmd`-Attrappe (Issue #1135). Unter Windows
- * findet die Suche im PATH nur Dateien mit einer Endung aus PATHEXT; das Kit startet dann
- * nicht die `.cmd`, sondern die sh-Huelle daneben ueber die Git Bash (Plan #1128, E8) —
- * genau so, wie npm ein CLI unter Windows ablegt. Auf POSIX bleibt die Attrappe liegen,
- * ohne dass sie jemand liest.
- */
-export function cmdAttrappe(pfad) {
-  writeFileSync(`${pfad}.cmd`, "@rem Huelle: das Kit startet die sh-Datei daneben.\r\n");
 }
 
 /**
@@ -119,7 +96,6 @@ export function schreibeConfig(dir, config) {
 export async function imProjekt(dir, fn, extraEnv = {}) {
   const umgebung = {
     PATH: fakePath(dir),
-    ...GIT_BASH_ENV,
     TBX_TOKEN: undefined,
     TBX_CONFIG_DIR: join(dir, "tbx-config"),
     KIT_AGENT_MODEL: "fixture-modell",
@@ -213,7 +189,6 @@ export function fakeCli(dir, name, regeln) {
   const cliPfad = join(binDir, name);
   writeFileSync(cliPfad, wrapper);
   chmodSync(cliPfad, 0o755);
-  cmdAttrappe(cliPfad);
 }
 
 /** Die Argumentlisten aller Aufrufe eines Fake-Binaries, in Aufrufreihenfolge. */
@@ -338,6 +313,8 @@ export function toolboxMitKommentaren({ karten, kommentare, patchRoute = true, l
     const zug = req.url.match(/^\/api\/kanban\/items\/(\d+)\/move$/);
     if (zug && req.method === "PUT") {
       if (zustand.moveRoute === false) return { status: 500, json: { message: "Zug kaputt" } };
+      // Zug nur fuer einzelne Karten kaputt (Item-IDs): Die uebrigen ziehen weiter.
+      if (zustand.moveKaputt?.includes(Number(zug[1]))) return { status: 500, json: { message: "Zug kaputt" } };
       const karte = karten.find((k) => String(k.id) === zug[1]);
       if (!karte) return { status: 404, json: { message: "Karte nicht gefunden" } };
       karte.column = JSON.parse(koerper).column;

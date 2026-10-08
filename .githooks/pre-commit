@@ -3,7 +3,7 @@
 #
 # Delegiert sofort an Node: Die Logik gehoert nach gate.mjs, weil sie testbar sein
 # muss — ein Shell-Skript waere im Suite-Bestand ein Fremdkoerper. POSIX-sh, damit
-# dieselbe Datei auf der Windows-Matrix laeuft, wo git seine eigene sh mitbringt.
+# dieselbe Datei mit jeder sh laeuft, die git aufruft.
 #
 # Faellt node aus oder fehlt gate.mjs, endet der Hook mit Exit ungleich 0: Ein
 # nicht lauffaehiges Gate laesst nicht durch.

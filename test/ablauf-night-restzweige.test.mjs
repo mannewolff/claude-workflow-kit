@@ -143,11 +143,7 @@ test("eine per Signal gestorbene Session nennt das Signal statt eines leeren Exi
     const res = run(dir, ["--label", "none"], { NIGHT_CLAUDE_CMD: "kill -9 $$" });
 
     assert.equal(res.status, 1, "ein Fehlstart haette hart stoppen muessen");
-    // Unter Windows gibt es keine Signale (Issue #1144): Die Git Bash meldet ihren
-    // Selbstabschuss als Exit-Code, und die Meldung nennt ihn statt eines erfundenen
-    // Signalnamens. Leer ist sie auch dort nicht.
-    const ursache = process.platform === "win32" ? String.raw`Exit \d+` : "Exit SIGKILL";
-    assert.match(res.stdout, new RegExp(String.raw`INFRASTRUKTUR-FEHLSCHLAG nach [\d.]+ min \(${ursache}\)`),
+    assert.match(res.stdout, /INFRASTRUKTUR-FEHLSCHLAG nach [\d.]+ min \(Exit SIGKILL\)/,
       "das Signal fehlt in der Meldung");
     assert.doesNotMatch(res.stdout, /Exit null|Exit undefined/,
       "ohne Exit-Code darf dort kein leerer Wert stehen");
@@ -216,9 +212,7 @@ function mitFakeBin(fn) {
 }
 
 // Der Fall setzt ein Dateisystem mit Ausfuehrungsrecht voraus (Issue #1144): Ohne es gibt
-// es kein EACCES, und die Shell-Skripte der Attrappe sind keine startbaren Programme. So
-// unter Windows; den Fall eines nicht startbaren claude dort — eine .cmd ohne sh-Huelle —
-// meldet `sessionStart` als Startfehler, belegt in `test/night-session-git-bash.test.mjs`.
+// es kein EACCES, und die Shell-Skripte der Attrappe sind keine startbaren Programme.
 function kenntAusfuehrungsrecht() {
   const dir = mkdtempSync(join(tmpdir(), "night-rest-xok-"));
   try {

@@ -219,9 +219,11 @@
         "nacht-abhaengigkeiten",
         "nacht-bericht",
         "nacht-grundlagen",
+        "nacht-kette",
         "nacht-kitstand",
         "nacht-laufstand",
         "nacht-session",
+        "nacht-wartend",
         "pruefungen"
       ]
     },
@@ -357,7 +359,7 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/install-*.test.mjs\" \"test/tools-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/derived-*.test.mjs\" \"test/copy-*.test.mjs\" \"test/sync-*.test.mjs\" \"test/kit-*.test.mjs\" \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\" \"test/plattform-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/install-*.test.mjs\" \"test/tools-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/derived-*.test.mjs\" \"test/copy-*.test.mjs\" \"test/sync-*.test.mjs\" \"test/kit-*.test.mjs\" \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "aufwand",
@@ -396,6 +398,8 @@
         "installer",
         "konfiguration",
         "nacht-einstieg",
+        "nacht-laufstand",
+        "nacht-session",
         "preise",
         "pruefungen",
         "skills-doku",
@@ -458,11 +462,6 @@
       "always": true,
       "stufe": "push"
     },
-    {
-      "cmd": "node tools/windows-brueche.mjs",
-      "art": "hinweis",
-      "always": true
-    },
     "node tools/sync-blobs.mjs --check",
     "npx eslint kit tools test install.mjs .githooks"
   ],
@@ -524,8 +523,7 @@
       "test/helpers/kette-umsetzung-fixture.mjs",
       "test/helpers/kitstand-fixture.mjs",
       "test/helpers/zeilenenden.mjs",
-      "test/fixtures/auskunft/**",
-      "test/helpers/msys-zerlegen.mjs"
+      "test/fixtures/auskunft/**"
     ],
     "nacht-grundlagen": [
       "kit/night/grundlagen.mjs",
@@ -546,6 +544,7 @@
     ],
     "nacht-session": [
       "kit/night/session.mjs",
+      "kit/night/laufvariablen.mjs",
       "test/night-session-*.test.mjs",
       "test/helpers/session-attrappe.mjs"
     ],
@@ -600,8 +599,7 @@
     ],
     "board-wiederholung": [
       "kit/board/wiederholung.mjs",
-      "test/board-wiederholung-*.test.mjs",
-      "test/helpers/msys-zerlegen.mjs"
+      "test/board-wiederholung-*.test.mjs"
     ],
     "board-adapter": [
       "kit/board/adapter.mjs",
@@ -613,6 +611,7 @@
     ],
     "board-dokumente": [
       "kit/board/dokumente.mjs",
+      "kit/board/ursprung.mjs",
       "test/board-dokumente-*.test.mjs"
     ],
     "board-geschuetzt": [
@@ -643,7 +642,6 @@
       "test/ablauf-checks-*.test.mjs",
       "test/gate*.test.mjs",
       "test/guete-*.test.mjs",
-      "test/plattform-*.test.mjs",
       "eslint.config.mjs",
       "test/helpers/checks-ablauf.mjs",
       "test/helpers/checks-repo.mjs",
@@ -708,10 +706,7 @@
       "install.mjs",
       "tools/changelog.mjs",
       "tools/copy-downloads-for-docs.mjs",
-      "tools/windows-pruefung.mjs",
-      "tools/windows-brueche.mjs",
       "tools/lastbeleg.mjs",
-      "test/fixtures/windows-brueche/**",
       ".githooks/pre-commit",
       "test/install-*.test.mjs",
       "test/tools-*.test.mjs",

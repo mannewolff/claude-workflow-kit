@@ -141,3 +141,23 @@ test("[night-862] eine Kette ohne bestellte Umsetzung bleibt vom belegten Lock u
     assert.equal(board(dir, "issue", "get", F).status, "backlog");
   });
 });
+
+test("[#1290] eine ausgelassene Umsetzung nennt im Abschnitt Ursprungsdokumente den Grund an jedem Paket", () => {
+  mitProjekt((dir) => {
+    const F = fachplanB(dir);
+    lockBelegen(dir);
+    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const { einheit, stufe } = umsetzung(dir, F);
+    assert.ok(stufe.ursprung, "die ausgelassene Umsetzung haelt keinen Stand der Ursprungsdokumente fest");
+    assert.equal(stufe.ursprung.auswertung.durch, false);
+    const abschnitt = fachplanText(dir, F).split("### Ursprungsdokumente").at(-1).split(/\n### /)[0];
+    assert.match(abschnitt, /: bleibt in /, "die Dokumente stehen nicht als bleibend im Abschnitt");
+    for (const id of einheit.stufen.pakete.ids) {
+      assert.match(abschnitt, new RegExp(`#${Number(id)} Paket \\d in Backlog: nicht begonnen \\(Umsetzung ausgelassen: `),
+        `Paket #${id} ohne den Grund der Auslassung:\n${abschnitt}`);
+    }
+  }, WARTEN_KURZ);
+});
