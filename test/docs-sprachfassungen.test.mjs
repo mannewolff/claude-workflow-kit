@@ -1,3 +1,5 @@
+// Ablauf-Pruefung: tools/sprachfassungen.mjs exportiert nichts und liest den Wurzelpfad aus KIT_ROOT; Pruefung und Exitcode zeigt nur der Start als Programm.
+//
 // tools/sprachfassungen.mjs haelt die deutsche und die englische Doku gleich (Issue #1355,
 // Plan #1348 E5, E6, E9). Der erste Fall prueft das Repo selbst und laeuft darum in jedem
 // Prueflauf vor dem Commit mit (E7); die Fixture-Faelle unter KIT_ROOT zeigen je Abweichung
