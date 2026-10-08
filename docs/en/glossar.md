@@ -1,5 +1,5 @@
 # Glossary
-<!-- de: 4933df065e08 -->
+<!-- de: 7ed623cd69f7 -->
 
 The documentation is available in German and in English. This table maps the kit's concept terms between the two: The English version uses the terms from the left column and gives the German term in parentheses at its first occurrence on a page.
 
@@ -7,10 +7,13 @@ Left unchanged in both languages are commands, labels, the title prefixes of car
 
 | English | German |
 |---------|--------|
+| flow check | Ablauf-Prüfung |
 | completion report | Abschlussbericht |
 | work package | Arbeitspaket |
 | task level | Aufgabenstufe |
 | lane | Bahn |
+| operating instruction | Bedienvorgabe |
+| area (of a check) | Bereich (einer Prüfung) |
 | board adapter | Board-Adapter |
 | setting | Einstellung |
 | settings interface | Einstellungs-Oberfläche |
@@ -35,7 +38,10 @@ Left unchanged in both languages are commands, labels, the title prefixes of car
 | stop point | Stop-Punkt |
 | stop class | Stopp-Klasse |
 | stage (of a check) | Stufe (einer Prüfung) |
+| part | Teil |
+| degree of transfer | Überführungsgrad |
 | origin document | Ursprungsdokument |
+| judgement rule | Urteilsregel |
 | initiative | Vorhaben |
 | effectiveness | Wirksamkeit |
 | integration check | Zusammenspiel-Prüfung |

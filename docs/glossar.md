@@ -6,10 +6,13 @@ Unverändert bleiben in beiden Sprachen Befehle, Labels, Titel-Präfixe der Kart
 
 | Deutsch | Englisch |
 |---------|----------|
+| Ablauf-Prüfung | flow check |
 | Abschlussbericht | completion report |
 | Arbeitspaket | work package |
 | Aufgabenstufe | task level |
 | Bahn | lane |
+| Bedienvorgabe | operating instruction |
+| Bereich (einer Prüfung) | area (of a check) |
 | Board-Adapter | board adapter |
 | Einstellung | setting |
 | Einstellungs-Oberfläche | settings interface |
@@ -34,7 +37,10 @@ Unverändert bleiben in beiden Sprachen Befehle, Labels, Titel-Präfixe der Kart
 | Stop-Punkt | stop point |
 | Stopp-Klasse | stop class |
 | Stufe (einer Prüfung) | stage (of a check) |
+| Teil | part |
+| Überführungsgrad | degree of transfer |
 | Ursprungsdokument | origin document |
+| Urteilsregel | judgement rule |
 | Vorhaben | initiative |
 | Wirksamkeit | effectiveness |
 | Zusammenspiel-Prüfung | integration check |
