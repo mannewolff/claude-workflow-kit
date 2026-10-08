@@ -21,7 +21,7 @@
   "productionBranch": "production",
   "pushPruefung": "lokal",
   "reviewScope": "diff",
-  "reviewModel": "claude-opus-4-8",
+  "reviewModel": "claude-opus-5",
   "triggers": {
     "go": "GO",
     "push": "push main",
