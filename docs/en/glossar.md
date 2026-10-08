@@ -1,5 +1,5 @@
 # Glossary
-<!-- de: 32d45771aefc -->
+<!-- de: 71e1e88263b2 -->
 
 The documentation is available in German and in English. This table maps the kit's concept terms between the two: The English version uses the terms from the left column and gives the German term in parentheses at its first occurrence on a page.
 
@@ -32,6 +32,7 @@ Left unchanged in both languages are commands, labels, the title prefixes of car
 | night chain | Nacht-Kette |
 | night runner | Nacht-Runner |
 | package stage | Paketstufe |
+| plan order | Plan-Auftrag |
 | plan document | Plandokument |
 | PO loop | PO-Schleife |
 | check area | Prüfbereich |
@@ -46,7 +47,10 @@ Left unchanged in both languages are commands, labels, the title prefixes of car
 | implementation night | Umsetzungsnacht |
 | origin document | Ursprungsdokument |
 | judgement rule | Urteilsregel |
+| variant (of a chain) | Variante (einer Kette) |
 | pre-flight | Vorflug |
 | initiative | Vorhaben |
+| waiting session | wartende Sitzung |
 | effectiveness | Wirksamkeit |
+| goal (of a chain) | Ziel (einer Kette) |
 | integration check | Zusammenspiel-Prüfung |

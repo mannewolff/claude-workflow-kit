@@ -31,6 +31,7 @@ Unverändert bleiben in beiden Sprachen Befehle, Labels, Titel-Präfixe der Kart
 | Nacht-Kette | night chain |
 | Nacht-Runner | night runner |
 | Paketstufe | package stage |
+| Plan-Auftrag | plan order |
 | Plandokument | plan document |
 | PO-Schleife | PO loop |
 | Prüfbereich | check area |
@@ -45,7 +46,10 @@ Unverändert bleiben in beiden Sprachen Befehle, Labels, Titel-Präfixe der Kart
 | Umsetzungsnacht | implementation night |
 | Ursprungsdokument | origin document |
 | Urteilsregel | judgement rule |
+| Variante (einer Kette) | variant (of a chain) |
 | Vorflug | pre-flight |
 | Vorhaben | initiative |
+| wartende Sitzung | waiting session |
 | Wirksamkeit | effectiveness |
+| Ziel (einer Kette) | goal (of a chain) |
 | Zusammenspiel-Prüfung | integration check |
