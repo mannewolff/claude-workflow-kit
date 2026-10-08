@@ -35,6 +35,8 @@ const DATEIEN = [
   ["docs", "dokumentation.md"],
   ["docs", "quickstart.md"],
   ["docs", "index.md"],
+  // Die Doku-Seite selbst: Beschreibung und Sidebar (Issue #1340).
+  ["docs-site", ".vitepress", "config.ts"],
 ];
 
 for (const teile of DATEIEN) {

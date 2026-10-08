@@ -46,7 +46,7 @@ export default defineConfig({
           { text: "Issue-Tracker & Code-Host", link: "/dokumentation#issue-tracker-und-code-host" },
           { text: "Die sechzehn Skills", link: "/dokumentation#die-sechzehn-skills-und-der-9-schritt-kernprozess" },
           { text: "Vollständiger Durchlauf", link: "/dokumentation#ein-vollstandiger-durchlauf" },
-          { text: "Zwei Bahnen", link: "/dokumentation#zwei-bahnen" },
+          { text: "Drei Bahnen", link: "/dokumentation#drei-bahnen" },
           { text: "Menschliche Stop-Punkte", link: "/dokumentation#die-drei-menschlichen-stop-punkte" },
           { text: "Was nicht im Kit ist", link: "/dokumentation#was-bewusst-nicht-im-kit-ist" },
           { text: "Regeln im Werkzeug", link: "/regeln-im-werkzeug" },
