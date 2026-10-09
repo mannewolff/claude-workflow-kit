@@ -68,6 +68,9 @@
   node board.mjs issue-review check [--nur-pfad]
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
+  node board.mjs issue-review pruefauftrag --rolle <rolle> --datei <ziel> (--id <N> | --material-datei <pfad>)
+      Montiert den Pruefauftrag eines Pruefers aus kit/rollen/<rolle>.md (Issue #1380).
+      Nicht zu verwechseln mit 'issue auftrag <id>', dem Umsetzungsauftrag einer Karte.
  */
 
 import { readFileSync, readdirSync, realpathSync } from "node:fs";
@@ -197,6 +200,13 @@ Nutzung:
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
       Besetzung und Rollen der Stufe aus reviewStufen; der Autor faellt weg.
       Bei --stufe plan setzt KIT_PLAN_REVIEWER (1 oder 2) die Pruefzahl vor reviewStufen.
+  node board.mjs issue-review pruefauftrag --rolle <rolle> --datei <ziel> (--id <N> | --material-datei <pfad>)
+      Pruefauftrag fuer einen Pruefer, nicht der Umsetzungsauftrag von 'issue auftrag <id>'.
+      Setzt kit/rollen/<rolle>.md mit Artenliste und Dokument (--id: vom Board, samt
+      'Fachliche Quelle:' und 'Vorlage:') oder Material (--material-datei; bei code-review
+      mit .claude/checks-summary.json) in die Datei --datei. Ausgabe { ok, rolle, datei,
+      zeichen }; Fehler (Exit 1) rolle-fehlt mit pfad, platzhalter-offen, material-fehlt,
+      dokument-nicht-lesbar.
   node board.mjs nightrun melden --datei <ergebnisstand.json>
       Liefert einen Ergebnisstand des Nacht-Runners an POST /api/kanban/night-runs ein
       (nur issueTracker toolbox); derselbe Lauf wird bei jeder Meldung ersetzt.
@@ -615,7 +625,7 @@ async function main() {
   } else if (axis === "code") {
     await dispatchCode(command, args);
   } else if (axis === "issue-review") {
-    dispatchIssueReview(command, args, HELP);
+    await dispatchIssueReview(command, args, HELP);
   } else if (axis === "kontext") {
     await dispatchKontext(command, args);
   } else if (axis === "nightrun") {

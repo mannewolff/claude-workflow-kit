@@ -1,7 +1,7 @@
 /**
  * board/issue-review.mjs — Issue-Review-Achse des Board-Werkzeugs (Issue #1221, Plan #1199, E17):
  * Reviewer-Auswahl, Pruefstufen, Verfuegbarkeit mit Probelauf und die Befehle
- * `issue-review reviewers | roles | matrix | check`.
+ * `issue-review reviewers | roles | matrix | check | pruefauftrag`.
  *
  * Ein Teil von kit/board.mjs. Der Einstieg laedt ihn erst nach der Auskunft ueber
  * --version und --help und exportiert seine Namen unveraendert weiter. Dieser Teil
@@ -16,9 +16,13 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { BoardError, fail, out, loadConfig, findeImPath, umgebungsWert } from "./grundlagen.mjs";
-import { istFachlich, istPlan } from "./dokumente.mjs";
+import { BoardError, fail, out, loadConfig, findeImPath, umgebungsWert, configWurzel } from "./grundlagen.mjs";
+import { istFachlich, istPlan, herkunftNummern, normalisiereZeilenenden } from "./dokumente.mjs";
+import { resolveTracker } from "./adapter.mjs";
 
 // ============================================================
 // Issue-Review-Achse (Issue #220)
@@ -429,6 +433,161 @@ export function issueReviewCheck(args = {}, { config = loadConfig(), verfuegbar 
     : { reviewers: ergebnis, alleVerfuegbar: ergebnis.every((r) => r.verfuegbar) };
 }
 
+// ============================================================
+// Pruefauftrag (Issue #1380, Plan #1375 A3, E2, E3, E7)
+// ============================================================
+//
+// Den Auftrag eines Pruefers setzt das Kit zusammen, nicht die Sitzung: Platzhalter fuellen
+// ist eine Bedienvorgabe und gehoert ins Werkzeug. Die Sitzung sieht nur Pfad und
+// Zeichenzahl, und alle Pruefer einer Rolle bekommen denselben Wortlaut. Der Name grenzt
+// sich von `issue auftrag <id>` ab, dem Umsetzungsauftrag einer Karte.
+
+// Die Rollen liegen neben dem Teil board/, in der Quelle wie in der Kopie unter .claude/kit/.
+const ROLLEN_VERZEICHNIS = join(dirname(fileURLToPath(import.meta.url)), "..", "rollen");
+const ROLLEN_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const CHECKS_SUMMARY = join(".claude", "checks-summary.json");
+// Platzhalter und Blockmarken der Rollendateien: `{{NAME}}`, `{{#NAME}}`, `{{/NAME}}`.
+const PLATZHALTER = /\{\{([#/]?[A-Z_]+)\}\}/g;
+
+function liesDatei(pfad) {
+  return existsSync(pfad) ? readFileSync(pfad, "utf-8") : null;
+}
+
+const mitZeilenende = (text) => (text.endsWith("\n") ? text : `${text}\n`);
+
+// `Vorlage: <Pfad> — verbindlich | Anregung` (Issue #683); der Pfad darf in Backticks stehen.
+// Zeilenweise statt eines `^…$`-Ausdrucks mit m-Flag (sonarjs/slow-regex).
+function vorlagePfad(...bodies) {
+  for (const body of bodies) {
+    if (body === null) continue;
+    for (const zeile of normalisiereZeilenenden(body).split("\n")) {
+      const rest = zeile.trimStart();
+      if (!rest.startsWith("Vorlage:")) continue;
+      const pfad = rest.slice("Vorlage:".length).trim().split(/\s/)[0].replaceAll("`", "");
+      if (pfad) return pfad;
+    }
+  }
+  return null;
+}
+
+/**
+ * Entfernt jeden Block `{{#NAME}}…{{/NAME}}` samt Zeilenumbruch (E3): den direkt dahinter,
+ * sonst den direkt davor — so bleibt weder eine Leerzeile noch ein angeklebter Satz.
+ * Steht der Inhalt fest, entfallen nur die Blockmarken.
+ */
+function block(text, name, behalten) {
+  const auf = `{{#${name}}}`;
+  const zu = `{{/${name}}}`;
+  let ergebnis = text;
+  let start = ergebnis.indexOf(auf);
+  while (start !== -1) {
+    const ende = ergebnis.indexOf(zu, start);
+    if (ende === -1) break;
+    let von = start;
+    if (behalten) {
+      ergebnis = ergebnis.slice(0, start) + ergebnis.slice(start + auf.length, ende) + ergebnis.slice(ende + zu.length);
+    } else {
+      let bis = ende + zu.length;
+      if (ergebnis[bis] === "\n") bis += 1;
+      else if (ergebnis[von - 1] === "\n") von -= 1;
+      ergebnis = ergebnis.slice(0, von) + ergebnis.slice(bis);
+    }
+    start = ergebnis.indexOf(auf, von);
+  }
+  return ergebnis;
+}
+
+/** Holt Dokument, fachliche Quelle und Vorlage vom Board; `null` heisst: entfaellt. */
+async function dokumentWerte(tracker, id) {
+  const lesen = async (nr) => {
+    try {
+      return { body: (await tracker.getIssue(String(nr))).body ?? "" };
+    } catch (e) {
+      return { fehler: { ok: false, fehler: "dokument-nicht-lesbar", id: String(nr), grund: e.message } };
+    }
+  };
+  const dokument = await lesen(id);
+  if (dokument.fehler) return dokument;
+  const quelleNr = herkunftNummern(dokument.body, "Fachliche Quelle")[0] ?? null;
+  const quelle = quelleNr === null ? null : await lesen(quelleNr);
+  if (quelle?.fehler) return quelle;
+  return {
+    werte: {
+      ISSUE_BODY: dokument.body,
+      QUELLE_BODY: quelle?.body ?? null,
+      VORLAGE_PFAD: vorlagePfad(dokument.body, quelle?.body ?? null),
+    },
+  };
+}
+
+// Ein Aufruffehler wirft, statt den Prozess zu beenden: Der Test laeuft im selben Prozess,
+// und `dispatchIssueReview` macht daraus wie bei `roles` ein `fail`.
+function fehlerArg(meldung) {
+  throw new BoardError(`issue-review pruefauftrag: ${meldung}`);
+}
+
+function pruefauftragArgumente(args) {
+  const wert = (name) => (args[name] === true ? fehlerArg(`--${name} braucht einen Wert`) : args[name]);
+  const eingang = { rolle: wert("rolle"), datei: wert("datei"), id: wert("id"), material: wert("material-datei") };
+  if (!eingang.rolle) fehlerArg("--rolle fehlt");
+  if (!ROLLEN_NAME.test(eingang.rolle)) fehlerArg(`--rolle '${eingang.rolle}' ist kein Rollenname (Kleinbuchstaben, Ziffern, Bindestrich)`);
+  if (!eingang.datei) fehlerArg("--datei fehlt");
+  if (Boolean(eingang.id) === Boolean(eingang.material)) fehlerArg("entweder --id <N> oder --material-datei <pfad> angeben");
+  return eingang;
+}
+
+/**
+ * Setzt die Werte in den Rahmen der Rolle. Erst die Bloecke, dann die Platzhalter in einem
+ * Durchgang: Was eingesetzt wird, wird nicht noch einmal gelesen — ein Dokument darf selbst
+ * `{{…}}` enthalten. Rueckgabe `{ text }` oder `{ offen }`.
+ */
+function montiere(rahmen, werte) {
+  let text = block(normalisiereZeilenenden(rahmen), "VORLAGE", werte.VORLAGE_PFAD != null);
+  text = block(text, "QUELLE", werte.QUELLE_BODY != null);
+  const offen = [...new Set([...text.matchAll(PLATZHALTER)].map((m) => m[1]))].filter((name) => werte[name] == null);
+  if (offen.length > 0) return { offen };
+  return { text: text.replaceAll(PLATZHALTER, (_, name) => werte[name]) };
+}
+
+/**
+ * Montiert den Pruefauftrag einer Rolle in die Datei `--datei` (A3).
+ *
+ * Eingang entweder `--id <N>` (Dokument vom Board, `Fachliche Quelle:` und `Vorlage:`
+ * aufgeloest) oder `--material-datei <pfad>` (Code-Pruefung). Fehlt die Rollendatei,
+ * antwortet der Befehl `rolle-fehlt` mit Pfad — der Skill bucht das als Ausfall dieses
+ * Pruefers. Bleibt ein Platzhalter ausserhalb der Bloecke offen, entsteht keine Datei:
+ * Ein halb gefuellter Auftrag saehe am Board aus wie ein vollstaendiger (E3).
+ */
+export async function issueReviewPruefauftrag(args, { config = loadConfig(), board = null, lies = liesDatei } = {}) {
+  const { rolle, datei, id, material } = pruefauftragArgumente(args);
+  const pfad = join(ROLLEN_VERZEICHNIS, `${rolle}.md`);
+  const rahmen = lies(pfad);
+  if (rahmen === null) return { ok: false, fehler: "rolle-fehlt", rolle, pfad };
+
+  let werte;
+  if (id) {
+    const ergebnis = await dokumentWerte(board ?? resolveTracker(config), id);
+    if (ergebnis.fehler) return ergebnis.fehler;
+    werte = ergebnis.werte;
+  } else {
+    const inhalt = lies(material);
+    if (inhalt === null) return { ok: false, fehler: "material-fehlt", pfad: material };
+    werte = { REVIEW_MATERIAL: inhalt };
+  }
+  const { arten } = await import("../befunde.mjs");
+  werte.ARTEN = arten().arten.map((a) => `${a.name} — ${a.erklaerung}`).join("\n");
+
+  const { text, offen } = montiere(rahmen, werte);
+  if (offen) return { ok: false, fehler: "platzhalter-offen", rolle, platzhalter: offen };
+
+  // Die lokale Pruefung kann ein Pruefer ohne Ausfuehrungsrecht nicht selbst erzeugen (E7).
+  const summary = rolle === "code-review" ? lies(join(configWurzel(), CHECKS_SUMMARY)) : null;
+  const auftrag = summary === null ? text : `${mitZeilenende(text)}--- LOKALE PRUEFUNG ---\n${mitZeilenende(summary)}`;
+
+  writeFileSync(datei, auftrag);
+  return { ok: true, rolle, datei, zeichen: auftrag.length };
+}
+
 /**
  * Die Pruefstufe aus dem Titel-Praefix, wie sie auch `/issue-review` bestimmt.
  *
@@ -442,8 +601,20 @@ export function stufeAusTitel(title) {
 }
 
 // Die Hilfe kommt vom Einstieg herein: Sie steht dort, und ein Import von dort waere ein Zyklus.
-export function dispatchIssueReview(command, args, hilfe) {
+export async function dispatchIssueReview(command, args, hilfe) {
   switch (command) {
+    case "pruefauftrag": {
+      let antwort;
+      try {
+        antwort = await issueReviewPruefauftrag(args);
+      } catch (err) {
+        if (err instanceof BoardError) return fail(err.message);
+        throw err;
+      }
+      out(antwort);
+      if (!antwort.ok) process.exitCode = 1;
+      return;
+    }
     case "reviewers": return out(issueReviewReviewers(args));
     case "check": return out(issueReviewCheck(args));
     case "matrix": return out(issueReviewMatrix());

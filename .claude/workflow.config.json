@@ -129,6 +129,7 @@
       "cmd": "node --test --test-concurrency=2 \"test/board-issue-review-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
+        "befunde",
         "board-adapter",
         "board-dokumente",
         "board-grundlagen",
