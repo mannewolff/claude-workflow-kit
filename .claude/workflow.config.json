@@ -181,6 +181,7 @@
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
+        "nacht-bericht",
         "nacht-grundlagen",
         "nacht-kitstand"
       ]

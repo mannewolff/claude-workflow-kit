@@ -430,9 +430,13 @@ function verursacherKartennummern(verursacher) {
 }
 
 /**
- * Was die Zusammenfassung des Worktrees bezeugt: `{ ergebnis, stufe, rot }`. Gruen ist nur
- * ein zu Ende gefahrener Lauf ohne rote und ohne ungestartete Pruefung. Fehlt die Datei
+ * Was die Zusammenfassung des Worktrees bezeugt: `{ ergebnis, stufe, rot, gewackelt }`. Gruen
+ * ist nur ein zu Ende gefahrener Lauf ohne rote und ohne ungestartete Pruefung. Fehlt die Datei
  * oder ist sie unlesbar, ist das Ergebnis rot — ohne Nachweis gibt es nichts zu uebernehmen.
+ *
+ * `gewackelt` nennt die Kommandos, die in diesem Lauf gewackelt haben — allein aus
+ * `laufen[].gewackelt`, nie aus `gewackeltKarte`, das auch Wackler voriger Laeufe traegt
+ * (Plan #1395, E14, Fund 3).
  *
  * `rot` traegt die Verursacher nach `verursacherKarten` (E11): Nennt eine rote Pruefung
  * statt Karten einen `hinweis`, oder laesst sich gar keine Karte zuordnen, gelten alle
@@ -447,7 +451,8 @@ function zusammenfassungBezeugt(pfad, pakete) {
   }
   const laufen = Array.isArray(daten?.laufen) ? daten.laufen : [];
   const offen = laufen.filter((e) => e.ergebnis === "rot" || e.ergebnis === "nicht gestartet");
-  if (daten?.abgeschlossen === true && offen.length === 0) return { ergebnis: "gruen", stufe: daten.stufe ?? null, rot: null };
+  const gewackelt = laufen.filter((e) => e?.gewackelt).map((e) => e.cmd);
+  if (daten?.abgeschlossen === true && offen.length === 0) return { ergebnis: "gruen", stufe: daten.stufe ?? null, rot: null, gewackelt };
 
   const roteCmds = laufen.filter((e) => e.ergebnis === "rot").map((e) => e.cmd);
   const verursacher = (Array.isArray(daten?.verursacher) ? daten.verursacher : []).filter((v) => roteCmds.includes(v.cmd));
@@ -460,7 +465,25 @@ function zusammenfassungBezeugt(pfad, pakete) {
     ergebnis: "rot",
     stufe: daten?.stufe ?? null,
     rot: { pruefung: roteCmds.length > 0 ? roteCmds.join(", ") : null, karten: alle ? pakete : karten, hinweis },
+    gewackelt,
   };
+}
+
+/**
+ * Die offenen Punkte eines gruenen Stands: zuerst der Build-Dienst-Punkt (E17), dann die
+ * uebergebenen, dahinter je Wackler dieses Laufs sein Punkt (Plan #1395, E14).
+ */
+function offenePunkte(pfad, bezeugt, offen) {
+  const punkte = [...offen];
+  const weg = abh.pushWeg(pfad);
+  if (weg?.ort === "buildDienst" && bezeugt.stufe === "paket") {
+    punkte.unshift(`voller Lauf im Build-Dienst (Prüfzweig ${weg.zweig})`);
+  }
+  for (const cmd of bezeugt.gewackelt) {
+    const punkt = `Gewackelt: ${cmd} — Entscheidung beim push main`;
+    if (!punkte.includes(punkt)) punkte.push(punkt);
+  }
+  return punkte;
 }
 
 /**
@@ -469,8 +492,11 @@ function zusammenfassungBezeugt(pfad, pakete) {
  * Das Ergebnis der Zusammenfassung gilt; weicht das uebergebene ab, steht das in
  * `abweichung`. Bezeugt die Zusammenfassung nur die Paketstufe und laeuft der volle Lauf im
  * Build-Dienst (E17), ist Gruen hoechstens `gruen-offen`, und der Build-Dienst-Punkt steht
- * vor jedem uebergebenen offenen Punkt. Ohne Release-Commit ist `commit` der Stand, auf dem
- * der Worktree steht — ohne `RELEASING.md` also `basis` (E15).
+ * vor jedem uebergebenen offenen Punkt. Hat in diesem Lauf eine Pruefung gewackelt, ist Gruen
+ * ebenso `gruen-offen`, und je Wackler steht hinter den uebergebenen Punkten
+ * `Gewackelt: <cmd> — Entscheidung beim push main` — nachts fragt niemand, die Entscheidung
+ * faellt beim `push main` des Menschen (Plan #1395, E14). Ohne Release-Commit ist `commit`
+ * der Stand, auf dem der Worktree steht — ohne `RELEASING.md` also `basis` (E15).
  */
 export function vorbereitungFesthalten({ repoRoot, pfad, ergebnis, offen = [], fetch = "ok", env = process.env }) {
   if (!VORBEREITUNG_ERGEBNISSE.includes(ergebnis)) {
@@ -494,15 +520,9 @@ export function vorbereitungFesthalten({ repoRoot, pfad, ergebnis, offen = [], f
     ? null
     : `uebergeben ${ergebnis}, Zusammenfassung ${bezeugt.ergebnis} — es gilt die Zusammenfassung`;
 
-  const offenGesamt = [...offen];
+  const offenGesamt = bezeugt.ergebnis === "gruen" ? offenePunkte(pfad, bezeugt, offen) : [...offen];
   let endErgebnis = bezeugt.ergebnis;
-  if (endErgebnis === "gruen") {
-    const weg = abh.pushWeg(pfad);
-    if (weg?.ort === "buildDienst" && bezeugt.stufe === "paket") {
-      offenGesamt.unshift(`voller Lauf im Build-Dienst (Prüfzweig ${weg.zweig})`);
-    }
-    if (offenGesamt.length > 0 || ergebnis === "gruen-offen") endErgebnis = "gruen-offen";
-  }
+  if (endErgebnis === "gruen" && (offenGesamt.length > 0 || ergebnis === "gruen-offen")) endErgebnis = "gruen-offen";
 
   gitIm(repoRoot, ["update-ref", VORBEREITUNG_REFERENZ, commit]);
   const inhalt = {

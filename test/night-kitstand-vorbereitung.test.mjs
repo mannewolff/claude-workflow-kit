@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 import { vorbereitungFesthalten, vorbereitungPruefen, kitstandAbhaengigkeiten } from "../kit/night/kitstand.mjs";
+import { vorbereitungsBericht } from "../kit/night/bericht.mjs";
 
 const DATEI = join(".claude", "push-vorbereitung.json");
 const REFERENZ = "refs/kit/push-vorbereitet";
@@ -201,6 +202,73 @@ test("Build-Dienst mit roter Paketstufe bleibt rot (E17)", () => {
   rot(s.pfad, [{ cmd: "npm test", karten: [{ karte: "11", shas: ["abc"] }] }]);
   festhalten(s, { ergebnis: "rot" });
   assert.equal(gelesen(s).ergebnis, "rot");
+});
+
+// --- Wackler in der Vorbereitung (Plan #1395, E14; Issue #1400) ---
+
+const WACKLER = { cmd: "npm test", ergebnis: "gruen", gewackelt: { erstDauerMs: 1200, protokoll: null } };
+
+test("ein Wackler macht aus Gruen gruen-offen und setzt den offenen Punkt (E14)", () => {
+  const s = setup();
+  zusammenfassung(s.pfad, { laufen: [WACKLER, { cmd: "npm run lint", ergebnis: "gruen" }] });
+  festhalten(s, { ergebnis: "gruen" });
+  const datei = gelesen(s);
+  assert.equal(datei.ergebnis, "gruen-offen");
+  assert.deepEqual(datei.offen, ["Gewackelt: npm test — Entscheidung beim push main"]);
+  assert.equal(datei.abweichung, null);
+  assert.equal("gewackelt" in datei, false);
+});
+
+test("je Wackler ein Punkt, nach dem Build-Dienst-Punkt und den uebergebenen (E14, E17)", () => {
+  const s = setup();
+  kitstandAbhaengigkeiten({ pushWeg: () => ({ ort: "buildDienst", zweig: "kit-pruefung" }) });
+  zusammenfassung(s.pfad, { stufe: "paket", laufen: [WACKLER, { ...WACKLER, cmd: "npm run lint" }] });
+  festhalten(s, { ergebnis: "gruen", offen: ["Sichtpruefung der Oberflaeche"] });
+  assert.deepEqual(gelesen(s).offen, [
+    "voller Lauf im Build-Dienst (Prüfzweig kit-pruefung)",
+    "Sichtpruefung der Oberflaeche",
+    "Gewackelt: npm test — Entscheidung beim push main",
+    "Gewackelt: npm run lint — Entscheidung beim push main",
+  ]);
+});
+
+test("der Vorbereitungsbericht nennt den Wackler unter Offene Prüfungen (E14)", () => {
+  const s = setup();
+  zusammenfassung(s.pfad, { laufen: [WACKLER] });
+  const text = vorbereitungsBericht("12", festhalten(s), { stempel: "lauf-1" });
+  assert.ok(text.includes("### Offene Prüfungen\n\n- Gewackelt: npm test — Entscheidung beim push main\n"), text);
+  assert.doesNotMatch(text, /### Gewackelte Prüfungen/);
+});
+
+test("gewackeltKarte einer vorigen Zusammenfassung erzeugt keinen Punkt (Fund 3)", () => {
+  const s = setup();
+  zusammenfassung(s.pfad, { gewackeltKarte: [{ cmd: "npm test", zeitpunkt: "2026-10-06T22:00:00.000Z", karte: "11" }] });
+  festhalten(s, { ergebnis: "gruen" });
+  const datei = gelesen(s);
+  assert.equal(datei.ergebnis, "gruen");
+  assert.deepEqual(datei.offen, []);
+});
+
+test("ein Wackler neben einer roten Pruefung laesst den Stand rot", () => {
+  const s = setup();
+  zusammenfassung(s.pfad, {
+    laufen: [WACKLER, { cmd: "npm run lint", ergebnis: "rot" }],
+    verursacher: [{ cmd: "npm run lint", karten: [{ karte: "12", shas: ["abc"] }] }],
+  });
+  festhalten(s, { ergebnis: "rot" });
+  const datei = gelesen(s);
+  assert.equal(datei.ergebnis, "rot");
+  assert.deepEqual(datei.offen, []);
+});
+
+test("pruefen: der Wackler kommt nur als offener Punkt zurueck (Fund 8)", () => {
+  const s = setup();
+  zusammenfassung(s.pfad, { laufen: [WACKLER] });
+  festhalten(s);
+  const urteil = vorbereitungPruefen({ repoRoot: s.repo });
+  assert.equal(urteil.uebernehmen, true);
+  assert.deepEqual(Object.keys(urteil).sort(), ["commit", "grund", "offen", "uebernehmen", "zeitpunkt"]);
+  assert.deepEqual(urteil.offen, ["Gewackelt: npm test — Entscheidung beim push main"]);
 });
 
 test("festhalten weist ein unbekanntes Ergebnis und einen unbekannten Fetch-Wert ab", () => {
