@@ -414,6 +414,26 @@ function festgefahrenZeile(einheit) {
 }
 
 /**
+ * Die Wackler der Nacht je Pruefung (Issue #1399, Plan #1395, E11): jeder Eintrag in
+ * `pruefung.gewackelt` ist ein Fall, die Karten stehen in der Reihenfolge der Einheiten.
+ * Ohne Wackler keine Zeile.
+ */
+function gewackeltZeilen(pakete) {
+  const jePruefung = new Map();
+  for (const e of pakete) {
+    for (const w of e.pruefung?.gewackelt ?? []) {
+      if (typeof w?.cmd !== "string") continue;
+      const stand = jePruefung.get(w.cmd) ?? { faelle: 0, karten: [] };
+      stand.faelle += 1;
+      if (!stand.karten.includes(String(e.id))) stand.karten.push(String(e.id));
+      jePruefung.set(w.cmd, stand);
+    }
+  }
+  return [...jePruefung].map(([cmd, { faelle, karten }]) =>
+    `- Gewackelt: ${cmd} — ${faelle} Fälle (Issue #${karten.join(", #")})`);
+}
+
+/**
  * Die Prueflaeufe je Paket und die Summe gegen die Zielmarke — derselbe Block in BEIDEN
  * Berichten (E6): im `pruefBericht` der Umsetzungsnacht und unter `### Umsetzung` des
  * Kettenberichts. Der Anlassfall — ein Paket von 43 Minuten — lief in einer
@@ -447,6 +467,7 @@ export function prueflaufZeilen(einheiten, ziel = undefined) {
       for (const zeile of h?.zeilen ?? []) zeilen.push(`- Issue #${e.id}: hinweis: ${zeile}`);
     }
   }
+  zeilen.push(...gewackeltZeilen(pakete));
   const erreicht = pakete.filter((e) => (endlicheZahl(e.dauerMs) ?? Infinity) <= marke * 60000).length;
   zeilen.push(`- ${erreicht} von ${pakete.length} Paketen unter ${marke} Minuten.`);
   return zeilen;

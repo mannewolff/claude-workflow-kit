@@ -1913,6 +1913,10 @@ export function lesePruefung(issueId) {
       // und der `zustand` bleibt, was `laufen` sagt. Ein Stand vor Issue #1155 fuehrt das
       // Feld nicht, darum `null` und nicht `[]`.
       hinweise: Array.isArray(daten.hinweise) ? daten.hinweise : null,
+      // Die Wackler der Karte, `[{ cmd, zeitpunkt, karte }]` (Issue #1399, Plan #1395, E11):
+      // je Fall ein Eintrag, auch aus frueheren Abschlusslaeufen derselben Karte. Ohne das
+      // Feld (Lauf ohne Kartennummer, Stand vor Issue #1397) `null` und nicht `[]`.
+      gewackelt: Array.isArray(daten.gewackeltKarte) ? daten.gewackeltKarte : null,
     };
     // Die Guetemessung (Issue #764): Das Feld steht nur da, wenn das Projekt eine Messung
     // benannt hat — dann aber in jedem Zustand, auch beim leeren Paket und beim roten Lauf

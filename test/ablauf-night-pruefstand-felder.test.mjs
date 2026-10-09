@@ -212,3 +212,27 @@ test("[night-46] ungeprueft (keine Zusammenfassungsdatei) bleibt unveraendert", 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("[night-1399] gewackeltKarte der Zusammenfassung steht als gewackelt im Prüfstand, ohne das Feld null", () => {
+  const dir = setupProjekt("night-pruefstand-gewackelt-");
+  try {
+    const mit = readyIssue(dir, "Mit Wackler");
+    const ohne = readyIssue(dir, "Ohne Wackler");
+    const faelle = [{ cmd: "npm test", zeitpunkt: "2026-10-09T01:00:00.000Z", karte: "x" }];
+    const zusammenfassung = (k) => ({
+      laufen: [{ cmd: "true", ergebnis: "gruen", grund: "beruehrt" }], ausgelassen: [],
+      ...(k === "mit" ? { gewackeltKarte: faelle } : {}),
+    });
+    const fake = [
+      `if [ "$NIGHT_ISSUE_ID" = "${mit}" ]; then ${summary(zusammenfassung("mit"))}; else ${summary(zusammenfassung("ohne"))}; fi`,
+      ARBEIT_UND_COMMIT, NACH_IN_REVIEW,
+    ].join("\n");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: fake });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    assert.deepEqual(einheit(dir, mit).pruefung.gewackelt, faelle);
+    assert.equal(einheit(dir, ohne).pruefung.gewackelt, null, "ohne das Feld weiss der Stand nichts ueber Wackler");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

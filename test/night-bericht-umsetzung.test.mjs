@@ -318,3 +318,32 @@ test("[night-1391] ein festgefahrenes Paket fehlt unter den Ursprungsdokumenten 
   assert.match(text, /- festgefahren: #10 P1 \(npm test, 3 Versuche: test\/a\.test\.mjs: erwartet 2\)\.\n- nicht begonnen: keine\n/);
   assert.match(ursprungAbschnitt(text), / {2}- #10 P1 in Backlog: an einer Pruefung festgefahren und zurück im Backlog \(npm test\)\n/);
 });
+
+// --- Gewackelte Pruefungen im Nachtbericht (Issue #1399, Plan #1395, E11) ---
+
+const wackler = (cmd, karte) => ({ cmd, zeitpunkt: "2026-10-09T01:00:00.000Z", karte });
+const paketEinheit = (id, gewackelt) => ({ id, ausgang: "erfolg", dauerMs: 60000, pruefung: { laufen: [], gewackelt } });
+
+test("[night-1399] unter ### Umsetzung steht jede gewackelte Pruefung mit Zahl der Faelle und Karten", () => {
+  const einheit = {
+    id: "1", ausgang: "fertig", variante: "B",
+    stufen: { umsetzung: { umgesetzt: [{ id: "10" }, { id: "11" }], angehalten: [], nichtBegonnen: [] } },
+  };
+  const einheiten = [
+    paketEinheit("10", [wackler("npm test", "10"), wackler("npm run lint", "10")]),
+    paketEinheit("11", [wackler("npm test", "11")]),
+  ];
+  const text = berichtBauen(einheit, { pakete: [{ id: "10", title: "P1" }, { id: "11", title: "P2" }], einheiten, stempel: "s" });
+  assert.match(text, /- Issue #11: Dauer[^\n]*\n- Gewackelt: npm test — 2 Fälle \(Issue #10, #11\)\n- Gewackelt: npm run lint — 1 Fälle \(Issue #10\)\n/);
+});
+
+test("[night-1399] ohne Wackler steht unter ### Umsetzung keine Gewackelt-Zeile", () => {
+  const einheit = {
+    id: "1", ausgang: "fertig", variante: "B",
+    stufen: { umsetzung: { umgesetzt: [{ id: "10" }], angehalten: [], nichtBegonnen: [] } },
+  };
+  const einheiten = [paketEinheit("10", null), paketEinheit("11", [])];
+  const text = berichtBauen(einheit, { pakete: [{ id: "10", title: "P1" }], einheiten, stempel: "s" });
+  assert.match(text, /Prueflaeufe und Zielmarke:/);
+  assert.doesNotMatch(text, /Gewackelt:/);
+});

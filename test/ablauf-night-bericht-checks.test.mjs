@@ -327,3 +327,45 @@ test("[night-919] Salvage faehrt den Abschlussumfang von checks.mjs: beruehrte B
       "das gerettete Issue haette in In review landen muessen");
   }, { buildChecks });
 });
+
+// --- Gewackelte Pruefungen im Bericht der Umsetzungsnacht (Issue #1399) ---
+
+// Rot beim ersten Lauf je Karte, gruen bei der Wiederholung: Die Marke liegt unter
+// .claude/ und ist darum kein Teil des Pakets.
+const WACKEL_CHECK = {
+  cmd: 'test -f ".claude/wackel-$NIGHT_ISSUE_ID" || { touch ".claude/wackel-$NIGHT_ISSUE_ID"; exit 1; }',
+  areas: ["kit"],
+};
+const FAKE_MIT_ABSCHLUSS = [
+  LOG_SESSION,
+  'echo arbeit > "kit/work-$NIGHT_ISSUE_ID.txt"',
+  'node .claude/kit/checks.mjs run --abschluss "$NIGHT_ISSUE_ID" > /dev/null 2>&1',
+  COMMIT,
+  NACH_IN_REVIEW,
+].join("\n");
+
+test("[night-1399] der Bericht der Umsetzungsnacht nennt jede gewackelte Pruefung mit Zahl der Faelle und Karten", () => {
+  mitProjekt((dir) => {
+    const eins = readyIssue(dir, "Eins");
+    const zwei = readyIssue(dir, "Zwei");
+    issuesCommitten(dir);
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: FAKE_MIT_ABSCHLUSS });
+
+    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
+    const zeile = res.stdout.split("\n").find((z) => z.includes("Gewackelt:"));
+    assert.ok(zeile, `keine Gewackelt-Zeile im Bericht:\n${res.stdout}`);
+    assert.ok(zeile.endsWith(`- Gewackelt: ${WACKEL_CHECK.cmd} — 2 Fälle (Issue #${eins}, #${zwei})`), zeile);
+  }, { buildChecks: [WACKEL_CHECK] });
+});
+
+test("[night-1399] ohne Wackler nennt der Bericht der Umsetzungsnacht keine Gewackelt-Zeile", () => {
+  mitProjekt((dir) => {
+    readyIssue(dir);
+    issuesCommitten(dir);
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: FAKE_MIT_ABSCHLUSS });
+
+    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
+    assert.match(res.stdout, /Prueflaeufe und Zielmarke:/);
+    assert.doesNotMatch(res.stdout, /Gewackelt:/);
+  });
+});
