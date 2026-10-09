@@ -538,11 +538,12 @@ export function zusatzregeln(config) {
 // ============================================================
 
 /**
- * Die Rollennamen, die eine Prüfstufe kennt — die Oberfläche bietet sie zur Wahl an.
+ * Die Rollennamen, die eine Prüfstufe kennt — die Oberfläche bietet sie zur Wahl an. Jede
+ * Rolle steht mit ihrem Prompt als Datei `kit/rollen/<rolle>.md`.
  *
  * Nachbau statt Import: Diese Datei wird einzeln ausgeliefert und hat keine Nachbardatei.
+ * SYNC: die Rollen samt Prompt stehen unter kit/rollen/ — eine neue oder umbenannte Rolle hier nachziehen.
  */
-// SYNC: die Rollen samt Prompt stehen in skills/issue-review/SKILL.md — Änderungen dort nachziehen.
 export const ROLLEN_KATALOG = {
   fachlich: ["form-beobachtbarkeit", "abgrenzung"],
   plan: ["architektur-bestand", "schnitt-abhaengigkeiten"],

@@ -49,101 +49,19 @@ node .claude/kit/board.mjs issue-review roles --stufe <fachlich|plan|issue> --au
 Die Prüferzahl der Stufe `plan` kann ein Lauf über `KIT_PLAN_REVIEWER` setzen; die Session übernimmt die Ausgabe des Kommandos und zählt nicht selbst. `gewaehlt[i]` wird mit `rollen[i]` gepaart; gestartet wird ausschließlich, was in `gewaehlt` steht. `unterbesetzt: true` läuft trotzdem und steht in Zeile 2 des Kommentars; `quelle` (`pairs` | `regel`) und ein `autorAufgeloest: false` gehören ebenfalls dorthin.
 
 ### 4. Reviewer starten
-Jeder Reviewer bekommt denselben unveränderten Body und seine Rolle: `kind: claude` als Subagent mit dem konfigurierten Modell, `kind: command` als CLI mit dem Prompt über stdin. Jede Rolle trägt die Streich-Frage — Ergänzen ist leichter als Streichen, und ein Dokument, das nach dem Review doppelt so lang ist, ist nicht besser.
-
-**Die Artenliste wird nicht abgeschrieben.** Vor dem Start füllt die Session `{{ARTEN}}` in jedem Prompt aus der Ausgabe von `node .claude/kit/befunde.mjs arten` — je Art eine Zeile aus Name und erklärendem Satz —, genau wie `{{ISSUE_BODY}}` und `{{QUELLE_BODY}}`. Zwei Orte für denselben Wortlaut driften auseinander, sobald eine Art hinzukommt oder ihren Namen wechselt.
-
-**Die Form des Stands wird mitgegeben.** Wie die Artenliste gehört auch diese Regel in jeden Prompt, den die Session füllt: Die Gegenprobe-Zeile schließt am Zeilenende wörtlich mit `— geprueft, bestaetigt` oder `— nicht geprueft` (Umlaute erlaubt). Varianten wie „— geprueft, es gibt keine" oder „— geprueft, nicht haltbar" werden von der Formprüfung abgewiesen; die Begründung gehört als eigener Satz davor, nicht hinter den Strich.
-
-Beispiel: `Gegenprobe: Ein Satz X im Body hätte den Fund widerlegt; es gibt keinen. — geprueft, bestaetigt`
-
 Unmittelbar vor dem Start nimmt die Session ein vorhandenes Label ab: `node .claude/kit/board.mjs issue label remove <id> review:fertig`. Hängt es nicht an der Karte, ist das kein Fehler. Endet der Lauf danach vorzeitig, bleibt das Label ab — der Marker im Body sagt weiter, was geprüft wurde; die Zusammenfassung nennt das Label als abgenommen und nicht wieder gesetzt.
 
-**Rolle `pruefbarkeit`** (Stufe `issue`):
-```
-Du prüfst ein Arbeitspaket, das gleich implementiert werden soll. Du kennst die Entstehungsgeschichte nicht — das ist gewollt: Genau diese Lücke sollst du finden. Den Bestand darfst du lesen.
-1. Ist jedes Akzeptanzkriterium maschinell prüfbar (Kommando, Dateizustand, Testergebnis)? Was ein menschliches Urteil braucht, gehört in den Block "### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)".
-2. Ist "fertig" eindeutig, oder bleibt Interpretationsspielraum?
-3. Fehlen Randfälle, Fehlerpfade, Rückwärtskompatibilität?
-4. Was kann RAUS? Welcher Satz, welches Kriterium trägt nichts?
-Für jeden Fund ein Block mit diesen Angaben:
-- Schweregrad BLOCKER / WICHTIG / HINWEIS als fette Kopfzeile
-- Ort (Abschnitt, zitierter Satz) und ein konkreter Formulierungsvorschlag
-- Gegenprobe: <Beobachtung, die den Fund widerlegen würde> — geprüft, bestätigt (hast du sie nicht angestellt: — nicht geprüft)
-- Art: <name> aus dieser Liste, nur der Name:
-{{ARTEN}}
-Einen Fund, den deine eigene Gegenprobe widerlegt hat, meldest du nicht.
-Wenn du nichts findest, schreibe das ausdrücklich hin.
---- ISSUE ---
-{{ISSUE_BODY}}
+Jeder Reviewer `<n>` aus `gewaehlt` bekommt seinen Prüfauftrag als Datei. Das Kit montiert ihn aus der Rolle unter `kit/rollen/<rolle>.md`, der Artenliste und dem unveränderten Body, beim Plan samt `Fachliche Quelle:` und `Vorlage:`; die Session schreibt keinen Rollentext ab und füllt nichts selbst ein:
+```bash
+node .claude/kit/board.mjs issue-review pruefauftrag --rolle <rolle> --id <id> --datei <tmpdir>/<id>-auftrag-<n>.md
 ```
 
-**Rolle `form-beobachtbarkeit`** (Stufe `fachlich`, erster Reviewer):
-```
-Du prüfst eine fachliche Anforderung, aus der gleich ein technischer Plan entstehen soll. Du kennst das Gespräch mit dem Product Owner nicht — das ist gewollt. Maßstab ist das Story-Format: Ziel, Fachliche Akzeptanzkriterien, Nicht-Ziele, Offene Fragen an den PO.
-1. Trägt jeder Abschnitt Inhalt statt Platzhalter? Eine fertig gegroomte Anforderung ohne offene Fragen ist in Ordnung.
-2. Ist jedes Akzeptanzkriterium AUS NUTZERSICHT BEOBACHTBAR? Woran merkt ein Mensch, der die Software benutzt, dass es erfüllt ist?
-3. Steht Technik drin, wo keine hingehört — Dateien, Architektur, Implementierungsdetails?
-4. Ist das Ziel als Nutzerwirkung formuliert, oder beschreibt es eine Lösung?
-5. Was kann RAUS? Welcher Satz, welches Kriterium trägt nichts?
-Für jeden Fund ein Block mit diesen Angaben:
-- Schweregrad BLOCKER / WICHTIG / HINWEIS als fette Kopfzeile
-- Fundstelle mit Zitat und ein konkreter Formulierungsvorschlag
-- Gegenprobe: <Beobachtung, die den Fund widerlegen würde> — geprüft, bestätigt (hast du sie nicht angestellt: — nicht geprüft)
-- Art: <name> aus dieser Liste, nur der Name:
-{{ARTEN}}
-Einen Fund, den deine eigene Gegenprobe widerlegt hat, meldest du nicht.
-Wenn du nichts findest, schreibe das ausdrücklich hin.
---- ANFORDERUNG ---
-{{ISSUE_BODY}}
+Bei `kind: claude` startet die Session das Agent-Tool mit `subagent_type: kit-pruefer` und dem Modell aus `reviewers[].model`; der Auftrag lautet nur `Lies <tmpdir>/<id>-auftrag-<n>.md`, mit wörtlichem Pfad. Der Agent darf nur lesen, seine Abschlussnachricht ist der Befund. Bei `kind: command` startet das Kit das fremde Werkzeug an seiner Lesegrenze, die Antwort steht danach in der Ausgabedatei:
+```bash
+node .claude/kit/board.mjs issue-review start --reviewer <name> --auftrag <tmpdir>/<id>-auftrag-<n>.md --ausgabe <tmpdir>/<id>-antwort-<n>.md
 ```
 
-**Rolle `abgrenzung`** (Stufe `fachlich`, zweiter Reviewer):
-```
-Du prüfst eine fachliche Anforderung, aus der gleich ein technischer Plan entstehen soll. Du kennst die Entstehungsgeschichte nicht — das ist gewollt.
-1. Widersprechen sich Ziele und Nicht-Ziele? Verlangt ein Kriterium etwas, das ein Nicht-Ziel ausschließt?
-2. Fehlt eine Scope-Grenze? Was könnte jemand hineinlesen, das nicht gemeint ist?
-3. Ist eine offene Frage durch Ziel, Kriterium, Nicht-Ziel oder eine im Body dokumentierte PO-Antwort bereits entschieden? Unterstelle keine Entscheidungen, die nicht im Body stehen.
-4. Fehlt eine Frage, die vor dem Plan beantwortet sein muss? Wo müsste ein Planer raten?
-5. Was kann RAUS? Welcher Teil gehört nicht in diese Anforderung?
-Für jeden Fund ein Block mit diesen Angaben:
-- Schweregrad BLOCKER / WICHTIG / HINWEIS als fette Kopfzeile
-- Fundstelle mit Zitat und ein konkreter Formulierungsvorschlag
-- Gegenprobe: <Beobachtung, die den Fund widerlegen würde> — geprüft, bestätigt (hast du sie nicht angestellt: — nicht geprüft)
-- Art: <name> aus dieser Liste, nur der Name:
-{{ARTEN}}
-Einen Fund, den deine eigene Gegenprobe widerlegt hat, meldest du nicht.
-Wenn du nichts findest, schreibe das ausdrücklich hin.
---- ANFORDERUNG ---
-{{ISSUE_BODY}}
-```
-
-**Rolle `architektur-bestand`** (Stufe `plan`, erster Reviewer — der Senior, der den Bestand kennt):
-```
-Du prüfst einen technischen Plan, aus dem gleich Arbeitspakete entstehen. Du kennst das Gespräch nicht, aus dem er stammt. Den Bestand darfst und sollst du lesen: Schlag im Repository nach.
-1. Stimmt jede Behauptung über den Bestand? Existieren die genannten Dateien, Funktionen, Kommandos und Konfigurationsfelder, und heißen sie so?
-2. Trägt jede Entscheidung unter "Architektonische Entscheidungen" eine Begründung, die man angreifen kann?
-3. Widerspricht eine Entscheidung einer erkennbaren Konvention des Projekts?
-4. Was bricht, das der Plan nicht nennt — welches Verhalten, welcher Test, welche Kopie?
-5. Was fehlt im Zuschnitt, und was kann RAUS?
-6. Stellt der Plan her, was die fachliche Quelle verlangt — jedes Ziel, jedes Akzeptanzkriterium, jede beantwortete Frage, und bei verbindlicher Vorlage deren Aussehen? Die Vorlage liegt unter {{VORLAGE_PFAD}}; lies sie.
-Für jeden Fund ein Block mit diesen Angaben:
-- Schweregrad BLOCKER / WICHTIG / HINWEIS als fette Kopfzeile
-- Fundstelle mit Zitat und ein konkreter Formulierungsvorschlag; bei Behauptungen über den Bestand die Datei und Stelle, an der du nachgesehen hast
-- Gegenprobe: <Beobachtung, die den Fund widerlegen würde> — geprüft, bestätigt (hast du sie nicht angestellt: — nicht geprüft)
-- Art: <name> aus dieser Liste, nur der Name:
-{{ARTEN}}
-Einen Fund, den deine eigene Gegenprobe widerlegt hat, meldest du nicht.
-Wenn du nichts findest, schreibe das ausdrücklich hin.
---- PLAN ---
-{{ISSUE_BODY}}
---- FACHLICHE QUELLE ---
-{{QUELLE_BODY}}
-```
-
-**Die fachliche Quelle im Plan-Review.** Trägt der Plan `Fachliche Quelle: Issue #N`, holt die Session den Body dieser Karte mit `node .claude/kit/board.mjs issue get <N>` — wie den Plan selbst, nie aus dem Gesprächsverlauf — und setzt ihn für `{{QUELLE_BODY}}` ein; `{{VORLAGE_PFAD}}` ist der Pfad aus einer `Vorlage:`-Zeile im Plan oder in der Quelle. Fehlt die Quelle, entfallen der Abschnitt `--- FACHLICHE QUELLE ---` und Frage 6 ohne Vermerk; fehlt eine Vorlage, entfällt nur der Satz zur Vorlage. Ohne diesen Eingang prüft der Reviewer, ob der Plan zum Code passt, aber nicht, ob er das Ziel herstellt, für das er entstand.
-
-**Rolle `schnitt-abhaengigkeiten`** (Stufe `plan`, zweiter Reviewer — nur, wenn `reviewStufen.plan.reviewer` zwei vorsieht): derselbe Prompt wie `architektur-bestand`, aber mit den Fragen: Lässt sich der Plan in einzeln abschließbare Pakete zerlegen? Welche Reihenfolge erzwingt er, und steht sie im Plan? Ist ein Teil zu groß für einen Plan? Sagt „Verifizierung", WIE geprüft wird?
+Scheitert `pruefauftrag` oder `start` (Exit 1, etwa `rolle-fehlt` oder `keine-lesegrenze`), ist das ein Ausfall dieses Reviewers in Zeile 2 des Befunde-Kommentars, mit dem Fehler aus der Ausgabe; die Prüfung läuft ohne ihn weiter. Einen Ersatzweg gibt es nicht — keinen selbst geschriebenen Prompt, keinen Start am Kit vorbei.
 
 ### 5. Befunde ans Board
 Ein Kommentar je Lauf. Erste Zeile wörtlich `## <Stufe>-Review, Runde 1` mit `Issue`, `Fachplan` oder `Plan`; Zeile 2 nennt Ausfall, Unterbesetzung oder den Regelvorschlag beim Autor-Modell, sonst bleibt sie leer; darunter je Reviewer der Kopf wörtlich `### Reviewer <n>: <rolle>, <modell>`, etwa `### Reviewer 1: form-beobachtbarkeit, fable`, und darunter seine Funde. Aus diesem Kopf bucht `buchen` die Rolle; in anderer Form fällt sie auf „unbekannt“. Datei `<tmpdir>/<id>-befunde.md`, dann die Form der Funde prüfen:
@@ -151,7 +69,7 @@ Ein Kommentar je Lauf. Erste Zeile wörtlich `## <Stufe>-Review, Runde 1` mit `I
 node .claude/kit/befunde.mjs pruefen --datei <tmpdir>/<id>-befunde.md
 ```
 
-Meldet das Kommando fehlende Angaben, fordert die Session sie beim liefernden Reviewer genau **einmal** nach und schreibt die Datei neu. Den fehlenden `reviewer-kopf` setzt die Session selbst, ohne Nachforderung — der Kopf stammt von ihr, nicht vom Reviewer. Bleibt eine Angabe danach aus, trägt der betroffene Fundblock die Zeile `Angaben: unvollstaendig`. **Kein Gate:** Weder eine fehlende Angabe noch eine ausgebliebene Nachlieferung hält den Lauf auf; scheitert das Kommando selbst, steht das als eine Zeile in Zeile 2 des Kommentars. Der Kommentar geht in jedem dieser Fälle ans Board:
+Meldet das Kommando fehlende Angaben, fordert die Session sie beim liefernden Reviewer genau **einmal** nach und schreibt die Datei neu. Den fehlenden `reviewer-kopf` setzt die Session selbst, ohne Nachforderung — der Kopf stammt von ihr, nicht vom Reviewer; einen Kopf ohne gelaufenen Reviewer schreibt sie nie. Bleibt eine Angabe danach aus, trägt der betroffene Fundblock die Zeile `Angaben: unvollstaendig`. **Kein Gate:** Weder eine fehlende Angabe noch eine ausgebliebene Nachlieferung hält den Lauf auf; scheitert das Kommando selbst, steht das als eine Zeile in Zeile 2 des Kommentars. Der Kommentar geht in jedem dieser Fälle ans Board:
 ```bash
 node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-befunde.md
 ```
@@ -186,7 +104,7 @@ node .claude/kit/befunde.mjs buchen --datei <tmpdir>/<id>-buchung.md --stufe <fa
 node .claude/kit/befunde.mjs vorschlag --art <a>
 ```
 
-Danach das Label als sichtbare Spur am Board: `node .claude/kit/board.mjs issue label add <id> review:fertig`. Es ist eine Spur, keine Freigabe, und meint den Stand des Marker-Datums. Trifft ein Fund die Stopp-Klasse und wird `kit:klaeren` gesetzt, entfaellt `review:fertig`. Ist das Label am Board nicht definiert, meldet der Skill die Fehlermeldung des Adapters und läuft weiter; Body, Marker und Kommentare stehen dann trotzdem, und die Zusammenfassung nennt das fehlende Label. Die Nacht-Kette verlangt dieses Label als Voraussetzung, bevor sie eine fachliche Anforderung oder ein Plandokument aufnimmt; die Spur bleibt trotzdem nur Spur, keine Freigabe. Das Label bezeugt allein die Pruefung durch die Modelle — **nicht**, dass der PO die Fragen unter `## Offene Fragen an den PO` beantwortet hat; die Reviewer duerfen sie ausdruecklich nicht beantworten. Die Kette verlangt beides: Eine Anforderung mit `review:fertig` und offenen Fragen wird mit Grund uebersprungen, bis in der **ersten** Zeile des Abschnitts ein Vermerk steht, der mit `Keine` beginnt — beantwortete Fragen allein genuegen nicht, die Kette liest nur diese eine Zeile. Wird eine Anforderung nach der Pruefung wesentlich geaendert, das Label abnehmen oder neu pruefen lassen — der naechtliche Lauf erkennt eine nachtraegliche Aenderung nicht.
+Danach das Label als sichtbare Spur am Board: `node .claude/kit/board.mjs issue label add <id> review:fertig`. Es ist eine Spur, keine Freigabe, und meint den Stand des Marker-Datums. Trifft ein Fund die Stopp-Klasse und wird `kit:klaeren` gesetzt, entfaellt `review:fertig`. Meldet `befunde.mjs pruefen` den Eintrag `keine-pruefer`, wird `review:fertig` nicht gesetzt: Ohne einen einzigen gelaufenen Reviewer ist die Stufe nicht geprüft, und die Zusammenfassung nennt das. Ist das Label am Board nicht definiert, meldet der Skill die Fehlermeldung des Adapters und läuft weiter; Body, Marker und Kommentare stehen dann trotzdem, und die Zusammenfassung nennt das fehlende Label. Die Nacht-Kette verlangt dieses Label als Voraussetzung, bevor sie eine fachliche Anforderung oder ein Plandokument aufnimmt; die Spur bleibt trotzdem nur Spur, keine Freigabe. Das Label bezeugt allein die Pruefung durch die Modelle — **nicht**, dass der PO die Fragen unter `## Offene Fragen an den PO` beantwortet hat; die Reviewer duerfen sie ausdruecklich nicht beantworten. Die Kette verlangt beides: Eine Anforderung mit `review:fertig` und offenen Fragen wird mit Grund uebersprungen, bis in der **ersten** Zeile des Abschnitts ein Vermerk steht, der mit `Keine` beginnt — beantwortete Fragen allein genuegen nicht, die Kette liest nur diese eine Zeile. Wird eine Anforderung nach der Pruefung wesentlich geaendert, das Label abnehmen oder neu pruefen lassen — der naechtliche Lauf erkennt eine nachtraegliche Aenderung nicht.
 
 ### 7. Abschluss
 Zusammenfassung je Dokument: Stufe, Zahl der Funde, übernommen / abgelehnt, Zahl der **gebuchten** Funde und die dabei entstandenen oder ergänzten **Vorschläge** (bei einem Fehlschlag der Buchung dessen eine Zeile), Marker und `review:fertig` gesetzt, Label abgenommen und nicht wieder gesetzt, oder `kit:klaeren`, übersprungene Dokumente mit Grund. Dann: Ready ist das GO des Menschen — der Marker gibt nichts frei.
