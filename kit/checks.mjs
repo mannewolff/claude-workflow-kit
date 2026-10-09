@@ -443,6 +443,12 @@ run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
       'dauerMs' ist die Summe beider Laeufe; die Bremse zaehlt das Paar als
       einen Versuch. Hinweis-Pruefungen werden nie wiederholt. Teillauf und
       voller Lauf wiederholen je hoechstens einmal.
+      Mit --abschluss <n> fuehrt die Zusammenfassung die Wackler der Karte
+      (Feld 'gewackeltKarte': [{ cmd, zeitpunkt, karte }]), fortgeschrieben
+      ueber die Laeufe derselben Karte und bei anderer Karte neu begonnen;
+      ohne Kartennummer fehlt das Feld. Ein Fall aus einem frueheren Lauf steht
+      im Bericht als 'Gewackelt: <Kommando> → erst rot, dann gruen (früherer
+      Lauf vom <zeitpunkt>)'.
       Als rotes Kommando nennt jede Meldung das erste mit Ergebnis 'rot', erst
       ohne ein solches das erste ungruene.
       Am Ende steht der Block 'Fuer den Abschlussbericht:' mit fertigen Zeilen
@@ -2468,12 +2474,23 @@ export function haengendText(grenzeMs) {
  * Kommando traegt `(neben anderen gemessen)` hinter der Dauer (Issue #1071): Seine Dauer
  * ist nicht die, die es allein braeuchte.
  */
-function berichtszeilen(auswahl, laufen, { uebernommen = false, grenzeMs = PRUEFDAUER_OBERGRENZE_MS } = {}) {
+function berichtszeilen(auswahl, laufen, { uebernommen = false, grenzeMs = PRUEFDAUER_OBERGRENZE_MS, frueher = [] } = {}) {
   const zeilen = auswahlZeilen(auswahl);
   const vermerk = uebernommen ? ` (${UEBERNAHME_MARKE})` : "";
-  for (const e of laufen) zeilen.push(...gelaufenZeilen(e, vermerk, grenzeMs));
+  for (const e of laufen) {
+    zeilen.push(...gelaufenZeilen(e, vermerk, grenzeMs));
+    // Die Wackler derselben Karte aus frueheren Laeufen unter der Zeile ihrer Pruefung
+    // (Issue #1397, E12).
+    for (const w of frueher.filter((x) => x.cmd === e.cmd)) zeilen.push(frueherGewackeltZeile(w));
+  }
+  // Eine Pruefung, die in diesem Lauf nicht ausgewaehlt ist, verliert ihren Fall nicht.
+  for (const w of frueher.filter((x) => !laufen.some((e) => e.cmd === x.cmd))) zeilen.push(frueherGewackeltZeile(w));
   for (const e of auswahl.ausgelassen) zeilen.push(`ausgelassen: ${e.cmd} → ${e.grund}`);
   return zeilen;
+}
+
+function frueherGewackeltZeile(w) {
+  return `Gewackelt: ${w.cmd} → erst rot, dann gruen (früherer Lauf vom ${w.zeitpunkt})`;
 }
 
 /** Die Zeilen eines gelaufenen Kommandos: `gelaufen:`, darunter `Gewackelt:` und seine Hinweise. */
@@ -2585,6 +2602,31 @@ function wartezeitKarteNach(vorige, karte, zuschlagMs) {
   return weiter
     ? { karte, summeMs: alt.summeMs + zuschlagMs, laeufe: alt.laeufe + 1 }
     : { karte, summeMs: zuschlagMs, laeufe: 1 };
+}
+
+/**
+ * Die Wackler der Karte bis vorher (Issue #1397, Plan #1395, E11) — die Faelle aus der
+ * vorigen Zusammenfassung, die dieselbe Karte tragen, oder `undefined` ohne Kartennummer:
+ * Ein Lauf vor `push main` oder `merge production` erbt nie die Liste einer Karte, und
+ * das Feld fehlt. Nach dem Muster von `wartezeitKarteNach`; bei anderer Karte leer.
+ */
+function gewackeltKarteVorher(vorige, karte) {
+  if (karte === undefined) return undefined;
+  const alt = Array.isArray(vorige?.gewackeltKarte) ? vorige.gewackeltKarte : [];
+  return alt.filter((w) => w?.karte === karte && typeof w.cmd === "string");
+}
+
+/**
+ * Die Wackler der Karte nach diesem Lauf: die von vorher und dahinter je gewackelter
+ * Pruefung dieses Laufs ein Fall `{ cmd, zeitpunkt, karte }`. `undefined` ohne Kartennummer.
+ */
+function gewackeltKarteNach(vorher, karte, laufen, zeitpunkt) {
+  if (vorher === undefined) return undefined;
+  const neu = [];
+  for (const e of laufen) {
+    if (e?.gewackelt && !neu.some((w) => w.cmd === e.cmd)) neu.push({ cmd: e.cmd, zeitpunkt, karte });
+  }
+  return [...vorher, ...neu];
 }
 
 /**
@@ -2785,9 +2827,15 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
   // Die Zeilen tragen die Dauer des URSPRUNGSLAUFS aus der frueheren Zusammenfassung
   // (Issue #1003, E12): Auch ein uebernommener Lauf gehoert in den Bericht, und ohne
   // Block muesste die Session ihn aus Einzelfeldern nachbauen.
+  // Die Wackler der Karte gehen unveraendert weiter (Issue #1397, E11): Eine Uebernahme
+  // faehrt nichts. Die Faelle des uebernommenen Laufs stehen schon an seinen Eintraegen.
+  const gewackeltKarte = gewackeltKarteVorher(vorige, karte);
   const zeilen = [
     ...(frueher.teillauf === true ? [TEILLAUF_ZEILE] : []),
-    ...berichtszeilen(auswahl, frueher.laufen, { uebernommen: true, grenzeMs: pruefdauerObergrenzeMs() }),
+    ...berichtszeilen(auswahl, frueher.laufen, {
+      uebernommen: true, grenzeMs: pruefdauerObergrenzeMs(),
+      frueher: (gewackeltKarte ?? []).filter((w) => w.zeitpunkt !== original),
+    }),
   ];
   // Ein uebernommener Lauf zaehlt als Lauf ohne Zeit (Issue #1069): Seine Wanduhr steht
   // in `wartezeitMs`, in die Summe der Karte geht sie nicht ein.
@@ -2816,6 +2864,7 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
     ...(wartezeitKarte ? { wartezeitKarte } : {}),
     // Eine Uebernahme faehrt nichts und zaehlt darum nicht (Issue #1388, E3): unveraendert weiter.
     ...(vorige?.festgefahren ? { festgefahren: vorige.festgefahren } : {}),
+    ...(gewackeltKarte ? { gewackeltKarte } : {}),
   });
   const befund = ungruen === null ? "gruen" : `rot: ${ungruen.cmd}`;
   aufStdout(
@@ -3238,9 +3287,14 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   // Teillauf ruecken dessen Ergebnisse in die Basis, damit der volle Lauf danach auf ihnen
   // aufsetzt und nicht auf dem Stand vor dem Aufruf.
   let festgefahrenBasis = vorige?.festgefahren;
+  // Die Wackler der Karte (Issue #1397, Plan #1395, E11): die aus frueheren Laeufen
+  // derselben Karte, dahinter die dieses Aufrufs — die des Teillaufs eingeschlossen, auch
+  // in den Fassungen, bevor der volle Lauf sie an seine Eintraege uebernommen hat.
+  const gewackeltVorher = gewackeltKarteVorher(vorige, args.karte);
+  let wacklerTeillauf = [];
   const zeilenVon = (stand) => [
     ...(stand.teillauf ? [TEILLAUF_ZEILE] : []),
-    ...berichtszeilen(auswahl, stand.laufen, { grenzeMs }),
+    ...berichtszeilen(auswahl, stand.laufen, { grenzeMs, frueher: gewackeltVorher ?? [] }),
   ];
   const schreibeStand = (stand, abgeschlossen) => schreibeZusammenfassung({
     ...auswahl, laufen: stand.laufen, zeitpunkt, hashes, configHash, abgeschlossen,
@@ -3251,6 +3305,9 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
     berichtszeilen: zeilenVon(stand),
     ...wartezeit,
     festgefahren: festgefahrenNach(festgefahrenBasis, stand.laufen),
+    ...(gewackeltVorher
+      ? { gewackeltKarte: gewackeltKarteNach(gewackeltVorher, args.karte, [...stand.laufen, ...wacklerTeillauf], zeitpunkt) }
+      : {}),
   });
 
   // Ein Durchgang ueber die ausgewaehlten Kommandos — alle oder, beim Teillauf, nur die
@@ -3397,7 +3454,6 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   // Die Wackler des Teillaufs (Issue #1396, E4): Teillauf und voller Lauf sind je ein
   // Durchgang mit hoechstens einer Wiederholung; was im Teillauf gewackelt hat, geht in den
   // vollen Lauf ueber wie `festgefahrenBasis` — sonst verschwaende er mit dessen Eintraegen.
-  let wacklerTeillauf = [];
   if (rote !== null) {
     aufStdout(`\n${TEILLAUF_ZEILE}: ${rote.join(", ")}\n`);
     stand = await durchgang(new Set(rote));

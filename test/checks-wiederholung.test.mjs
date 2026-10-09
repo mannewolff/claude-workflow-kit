@@ -300,3 +300,89 @@ test("die Bremse zaehlt das Paar Rot und Rot als einen Versuch, mit dem Abdruck 
     assert.equal(folge.fehler, a.fehler);
   });
 });
+
+// Die Wackler je Karte (Issue #1397, Plan #1395, E11, E12): `gewackeltKarte` wird ueber die
+// Abschlusslaeufe derselben Karte fortgeschrieben, bei anderer Karte neu begonnen und ohne
+// Kartennummer nie uebernommen.
+
+test("gewackeltKarte: fortgeschrieben ueber zwei Abschlusslaeufe derselben Karte, frueherer Fall im Bericht", async () => {
+  await mitAufbau(async (dir) => {
+    rotFuer(dir, "a", 1);
+    const erster = await run(dir, "--abschluss", "7");
+    assert.equal(erster.status, 0, erster.stdout);
+    const z1 = zusammenfassung(dir);
+    assert.deepEqual(z1.gewackeltKarte, [{ cmd: A, zeitpunkt: z1.zeitpunkt, karte: z1.wartezeitKarte.karte }]);
+    assert.equal(Object.keys(z1).at(-1), "gewackeltKarte", "das Feld steht hinten");
+    assert.ok(!berichtsblock(erster.stdout).some((zeile) => zeile.includes("früherer Lauf")));
+
+    rotFuer(dir, "b", 1);
+    datei(dir, "src/a.txt", "weiter\n");
+    const zweiter = await run(dir, "--abschluss", "7");
+
+    assert.equal(zweiter.status, 0, zweiter.stdout);
+    const z2 = zusammenfassung(dir);
+    const karte = z1.wartezeitKarte.karte;
+    assert.deepEqual(z2.gewackeltKarte, [
+      { cmd: A, zeitpunkt: z1.zeitpunkt, karte },
+      { cmd: B, zeitpunkt: z2.zeitpunkt, karte },
+    ]);
+    const block = berichtsblock(zweiter.stdout);
+    const frueher = `Gewackelt: ${A} → erst rot, dann gruen (früherer Lauf vom ${z1.zeitpunkt})`;
+    const i = block.findIndex((zeile) => zeile.startsWith(`gelaufen: ${A} → gruen`));
+    assert.equal(block[i + 1], frueher, block.join("\n"));
+    assert.equal(block.filter((zeile) => zeile.startsWith("Gewackelt:")).length, 2, block.join("\n"));
+    assert.ok(z2.berichtszeilen.includes(frueher));
+  });
+});
+
+test("gewackeltKarte: Neubeginn bei anderer Karte", async () => {
+  await mitAufbau(async (dir) => {
+    rotFuer(dir, "a", 1);
+    await run(dir, "--abschluss", "7");
+    assert.equal(zusammenfassung(dir).gewackeltKarte.length, 1);
+
+    datei(dir, "src/a.txt", "andere Karte\n");
+    const res = await run(dir, "--abschluss", "8");
+
+    assert.equal(res.status, 0, res.stdout);
+    assert.deepEqual(zusammenfassung(dir).gewackeltKarte, []);
+    assert.ok(!berichtsblock(res.stdout).some((zeile) => zeile.startsWith("Gewackelt:")));
+  });
+});
+
+test("gewackeltKarte: Uebernahme reicht das Feld unveraendert weiter, ohne neue Protokollzeile", async () => {
+  await mitAufbau(async (dir) => {
+    rotFuer(dir, "a", 1);
+    await run(dir, "--abschluss", "7");
+    const vorher = zusammenfassung(dir).gewackeltKarte;
+    assert.equal(vorher.length, 1);
+    const zeilenVorher = ausfuehrungen(dir).length;
+    gefahren(dir);
+
+    const res = await run(dir, "--abschluss", "7");
+
+    assert.equal(res.status, 0, res.stdout);
+    assert.match(res.stdout, /Ergebnis uebernommen/);
+    assert.deepEqual(gefahren(dir), []);
+    assert.deepEqual(zusammenfassung(dir).gewackeltKarte, vorher);
+    assert.equal(ausfuehrungen(dir).length, zeilenVorher);
+    const block = berichtsblock(res.stdout);
+    assert.equal(block.filter((zeile) => zeile.startsWith("Gewackelt:")).length, 1, block.join("\n"));
+    assert.ok(!block.some((zeile) => zeile.includes("früherer Lauf")), block.join("\n"));
+  });
+});
+
+test("gewackeltKarte: --stufe push --wiederholen nach einer Karte erbt nichts", async () => {
+  await mitAufbau(async (dir) => {
+    rotFuer(dir, "a", 1);
+    await run(dir, "--abschluss", "7");
+    assert.ok(zusammenfassung(dir).gewackeltKarte);
+
+    datei(dir, "src/a.txt", "vor dem push\n");
+    const res = await run(dir, "--stufe", "push", "--wiederholen");
+
+    assert.equal(res.status, 0, res.stdout);
+    assert.equal(zusammenfassung(dir).gewackeltKarte, undefined);
+    assert.ok(!berichtsblock(res.stdout).some((zeile) => zeile.startsWith("Gewackelt:")));
+  });
+});
