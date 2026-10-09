@@ -1,7 +1,7 @@
 /**
  * board/issue-review.mjs — Issue-Review-Achse des Board-Werkzeugs (Issue #1221, Plan #1199, E17):
  * Reviewer-Auswahl, Pruefstufen, Verfuegbarkeit mit Probelauf und die Befehle
- * `issue-review reviewers | roles | matrix | check | pruefauftrag`.
+ * `issue-review reviewers | roles | matrix | check | pruefauftrag | start`.
  *
  * Ein Teil von kit/board.mjs. Der Einstieg laedt ihn erst nach der Auskunft ueber
  * --version und --help und exportiert seine Namen unveraendert weiter. Dieser Teil
@@ -17,7 +17,7 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { BoardError, fail, out, loadConfig, findeImPath, umgebungsWert, configWurzel } from "./grundlagen.mjs";
@@ -252,6 +252,67 @@ function issueReviewConfig(config = loadConfig()) {
 }
 
 
+// ============================================================
+// Lesegrenze fremder Pruefer (Issue #1381, Plan #1375, A5, A6)
+// ============================================================
+//
+// Ein fremder Pruefer darf nur lesen. Die Grenze setzt das Kit, nicht die Bitte im Auftrag:
+// Es haengt die Argumente der Lesegrenze als letzte an die Kommandozeile. Das Kit kennt
+// fremde Werkzeuge nicht, darum zwei Quellen — eine kleine Tabelle fuer bekannte Werkzeuge
+// und das Feld `lesegrenze` (bzw. `reviewLesegrenze` fuer reviewCommand), das sie schlaegt.
+
+const LESEGRENZE_TABELLE = { codex: ["--sandbox", "read-only"] };
+
+// Die Lesegrenze eines Claude-Pruefers ist der Leser-Agent mit der Positivliste Read, Grep, Glob.
+const CLAUDE_LESEGRENZE = "kit-pruefer";
+
+const woerter = (text) => text.trim().split(/\s+/).filter(Boolean);
+
+/** Argumente der Lesegrenze, `null` heisst: keine bekannt. Ein leeres Feld ist keine Grenze. */
+export function lesegrenzeVon({ command, lesegrenze }) {
+  if (typeof lesegrenze === "string" && lesegrenze.trim()) return woerter(lesegrenze);
+  return LESEGRENZE_TABELLE[basename(woerter(command)[0] ?? "")] ?? null;
+}
+
+// Schalter, die die Grenze aufheben oder ueberschreiben koennen (A6, Review-Fund 7). Erkannt
+// werden auch die Formen mit `=` und mit angehaengtem Wert (`-sX`, `-cX`, `-pX`).
+const AUFHEBEND = new Set(["--full-auto", "--dangerously-bypass-approvals-and-sandbox"]);
+
+function optionswert(argumente, i, lang, kurz) {
+  const t = argumente[i];
+  if (t === lang || t === kurz) return argumente[i + 1] ?? "";
+  if (t.startsWith(`${lang}=`)) return t.slice(lang.length + 1);
+  if (t.startsWith(kurz) && !t.startsWith("--")) return t.slice(kurz.length);
+  return null;
+}
+
+/** Der erste Schalter in `argumente`, der die Lesegrenze aufhebt, sonst `null`. */
+function aufhebenderSchalter(argumente) {
+  for (let i = 0; i < argumente.length; i += 1) {
+    const t = argumente[i];
+    if (AUFHEBEND.has(t)) return t;
+    const sandbox = optionswert(argumente, i, "--sandbox", "-s");
+    if (sandbox !== null && sandbox !== "read-only") return `${t} ${sandbox}`.trim();
+    const schluessel = optionswert(argumente, i, "--config", "-c");
+    if (schluessel?.startsWith("sandbox")) return `${t} ${schluessel}`.trim();
+    if (optionswert(argumente, i, "--profile", "-p") !== null) return t;
+  }
+  return null;
+}
+
+/**
+ * Argumente fuer den Start ohne Shell: Kommandozeile ohne erstes Wort, dahinter die
+ * Lesegrenze. Antwort `{ argumente, lesegrenze }` oder `{ fehler, grund[, schalter] }`.
+ */
+function startArgumente(command, lesegrenze) {
+  const grenze = lesegrenzeVon({ command, lesegrenze });
+  if (grenze === null) return { fehler: "keine-lesegrenze", grund: "keine Lesegrenze" };
+  const argumente = [...woerter(command).slice(1), ...grenze];
+  const schalter = aufhebenderSchalter(argumente);
+  if (schalter !== null) return { fehler: "lesegrenze-aufgehoben", schalter, grund: `'${schalter}' hebt die Lesegrenze auf` };
+  return { argumente, lesegrenze: grenze.join(" ") };
+}
+
 // Verfuegbarkeit eines Kommandos: Das erste Wort muss als startbare Datei auffindbar
 // sein — eine Dateisystem-Pruefung statt `command -v`, das eine Shell braucht (Issue #196).
 // Liefert zusaetzlich den aufgeloesten Pfad — der Probelauf unten startet damit, statt
@@ -370,6 +431,9 @@ export function issueReviewRoles(args, config = loadConfig(), env = process.env)
     stufe,
     reviewer,
     rollen,
+    // Je Rolle, ob ihr Wortlaut unter kit/rollen/ liegt (Issue #1381): Fehlt er, faellt der
+    // Pruefer dieser Rolle aus, und der Skill bucht das in Zeile 2.
+    rollenDateien: rollenDateien(rollen),
     stufenQuelle,
     autor,
     ...pickReviewers(reviewers, autor, reviewer, pairs),
@@ -410,10 +474,21 @@ export function issueReviewCheck(args = {}, { config = loadConfig(), verfuegbar 
   // ein Probelauf zu teuer oder unerwuenscht ist. Das Feld `geprueft` macht in beiden
   // Faellen sichtbar, worauf sich die Aussage stuetzt.
   const nurPfad = args["nur-pfad"] === true;
-  const { reviewers } = issueReviewConfig(config);
+  const { reviewers, reviewStufen } = issueReviewConfig(config);
+  // Fehlende Rollendateien aller Stufen (Issue #1381): Ein Pruefer ohne Rolle faellt im
+  // Review aus — hier steht es vorher, auch wenn kein Reviewer konfiguriert ist.
+  const rollen = Object.entries(reviewStufen.stufen).flatMap(([stufe, { rollen: namen }]) =>
+    rollenDateien(namen).filter((r) => !r.rolleVorhanden).map(({ rolle, pfad }) => ({ stufe, rolle, pfad })));
   const ergebnis = reviewers.map((r) => {
     const basis = { name: r.name, kind: r.kind, umgebung: CHECK_UMGEBUNG };
-    if (r.kind === "claude") return { ...basis, verfuegbar: true };
+    if (r.kind === "claude") return { ...basis, lesegrenze: CLAUDE_LESEGRENZE, verfuegbar: true };
+    // Ohne Lesegrenze startet `issue-review start` nicht (A6) — der Pruefer ist dann nicht
+    // verfuegbar, gleich ob das Werkzeug liefe.
+    const start = startArgumente(r.command, r.lesegrenze);
+    if (start.fehler) {
+      return { ...basis, lesegrenze: start.fehler === "keine-lesegrenze" ? null : lesegrenzeVon(r).join(" "), verfuegbar: false, geprueft: "lesegrenze", grund: start.grund };
+    }
+    Object.assign(basis, { lesegrenze: start.lesegrenze });
     const { datei, ok, pfad } = verfuegbar(r.command);
     if (!ok) return { ...basis, verfuegbar: false, geprueft: "pfad", grund: `${datei} nicht im PATH` };
     if (nurPfad) return { ...basis, verfuegbar: true, geprueft: "pfad" };
@@ -429,8 +504,8 @@ export function issueReviewCheck(args = {}, { config = loadConfig(), verfuegbar 
   // Dieselbe Fehlerklasse wie beim [Idee]-Gate (Issue #192): eine vorhersehbare Lage
   // gehoert ins Gate, nicht in einen Prompt.
   return reviewers.length === 0
-    ? { reviewers: [], alleVerfuegbar: false, grund: "issueReview.reviewers ist leer oder fehlt — Block aus .claude/workflow.config.example.json uebernehmen" }
-    : { reviewers: ergebnis, alleVerfuegbar: ergebnis.every((r) => r.verfuegbar) };
+    ? { reviewers: [], alleVerfuegbar: false, grund: "issueReview.reviewers ist leer oder fehlt — Block aus .claude/workflow.config.example.json uebernehmen", rollen }
+    : { reviewers: ergebnis, alleVerfuegbar: ergebnis.every((r) => r.verfuegbar), rollen };
 }
 
 // ============================================================
@@ -448,6 +523,14 @@ const ROLLEN_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const CHECKS_SUMMARY = join(".claude", "checks-summary.json");
 // Platzhalter und Blockmarken der Rollendateien: `{{NAME}}`, `{{#NAME}}`, `{{/NAME}}`.
 const PLATZHALTER = /\{\{([#/]?[A-Z_]+)\}\}/g;
+
+/** Pfad und Vorhandensein der Rollendatei je Rollenname. */
+function rollenDateien(namen) {
+  return namen.map((rolle) => {
+    const pfad = join(ROLLEN_VERZEICHNIS, `${rolle}.md`);
+    return { rolle, pfad, rolleVorhanden: existsSync(pfad) };
+  });
+}
 
 function liesDatei(pfad) {
   return existsSync(pfad) ? readFileSync(pfad, "utf-8") : null;
@@ -588,6 +671,73 @@ export async function issueReviewPruefauftrag(args, { config = loadConfig(), boa
   return { ok: true, rolle, datei, zeichen: auftrag.length };
 }
 
+// ============================================================
+// Start eines fremden Pruefers (Issue #1381, Plan #1375, A4, A6)
+// ============================================================
+
+// Die Antwort eines Pruefers kann lang sein; der Vorgabewert von spawnSync (1 MiB) schnitte sie ab.
+const START_PUFFER = 64 * 1024 * 1024;
+// Ausschnitt aus stderr bei einem Ausfall: das Ende, dort steht die Fehlermeldung.
+const STDERR_AUSSCHNITT = 1000;
+
+function fehlerStart(meldung) {
+  throw new BoardError(`issue-review start: ${meldung}`);
+}
+
+const pflichtwert = (args, name) => (args[name] === true || !args[name] ? fehlerStart(`--${name} fehlt`) : args[name]);
+
+/** Wer startet: ein `kind: command`-Reviewer oder das persoenliche reviewCommand. */
+function startPruefer(args, config) {
+  const wert = (name) => (args[name] === true ? fehlerStart(`--${name} braucht einen Wert`) : args[name]);
+  const codeReview = args["code-review"] === true;
+  const name = args.reviewer === undefined ? undefined : wert("reviewer");
+  if (codeReview === Boolean(name)) fehlerStart("entweder --reviewer <name> oder --code-review angeben");
+  if (codeReview) {
+    if (!config.reviewCommand) fehlerStart("--code-review braucht reviewCommand in der Config");
+    return { name: "reviewCommand", command: config.reviewCommand, lesegrenze: config.reviewLesegrenze };
+  }
+  const { reviewers } = issueReviewConfig(config);
+  const reviewer = reviewers.find((r) => r.name === name);
+  if (!reviewer) fehlerStart(`'${name}' steht nicht in issueReview.reviewers`);
+  if (reviewer.kind !== "command") fehlerStart(`'${name}' hat kind '${reviewer.kind}' — Claude-Pruefer laufen ueber den Agenten kit-pruefer`);
+  return reviewer;
+}
+
+/** Das Ende von stderr, bei einem Lauf ohne Exit-Status der Startfehler oder das Signal. */
+function ausfallGrund(res) {
+  if (res.status !== null) return res.stderr || "";
+  return res.error ? res.error.message : `Durch Signal ${res.signal} beendet`;
+}
+
+/**
+ * Startet einen fremden Pruefer mit Lesegrenze (A4): Auftrag ueber stdin, Antwort aus stdout
+ * in `--ausgabe`. Gestartet wird ohne Shell wie im Probelauf — die Kommandozeile wird am
+ * Leerraum zerlegt, Quotes und Pipes traegt sie nicht. Ohne bekannte Lesegrenze oder mit einem
+ * Schalter, der sie aufhebt, startet nichts (A6). Exit ungleich 0 ist ein Ausfall mit dem Ende
+ * von stderr; die Ausgabedatei entsteht dann nicht, damit kein halber Befund als ganzer gilt.
+ */
+export function issueReviewStart(args, { config = loadConfig(), spawn = spawnSync, verfuegbar = kommandoVerfuegbar, env = process.env } = {}) {
+  const pruefer = startPruefer(args, config);
+  const auftrag = pflichtwert(args, "auftrag");
+  const ausgabe = pflichtwert(args, "ausgabe");
+  const reviewer = pruefer.name;
+
+  const start = startArgumente(pruefer.command, pruefer.lesegrenze);
+  if (start.fehler) return { ok: false, reviewer, ...start };
+  const prompt = liesDatei(auftrag);
+  if (prompt === null) return { ok: false, reviewer, fehler: "auftrag-fehlt", pfad: auftrag };
+  const { datei, ok, pfad } = verfuegbar(pruefer.command);
+  if (!ok) return { ok: false, reviewer, fehler: "nicht-im-path", grund: `${datei} nicht im PATH` };
+
+  const res = spawn(pfad, start.argumente, { input: prompt, encoding: "utf-8", env, maxBuffer: START_PUFFER });
+  if (res.status !== 0) {
+    return { ok: false, reviewer, fehler: "ausfall", exit: res.status, stderr: ausfallGrund(res).trim().slice(-STDERR_AUSSCHNITT) };
+  }
+  const antwort = res.stdout ?? "";
+  writeFileSync(ausgabe, antwort);
+  return { ok: true, reviewer, lesegrenze: start.lesegrenze, ausgabe, zeichen: antwort.length };
+}
+
 /**
  * Die Pruefstufe aus dem Titel-Praefix, wie sie auch `/issue-review` bestimmt.
  *
@@ -600,21 +750,25 @@ export function stufeAusTitel(title) {
   return "issue";
 }
 
+// `pruefauftrag` und `start`: Ein Aufruffehler wirft und wird zu fail, eine Antwort mit
+// `ok: false` gibt der Befehl aus und endet mit Exit 1.
+async function antwortMitExit(befehl) {
+  let antwort;
+  try {
+    antwort = await befehl();
+  } catch (err) {
+    if (err instanceof BoardError) return fail(err.message);
+    throw err;
+  }
+  out(antwort);
+  if (!antwort.ok) process.exitCode = 1;
+}
+
 // Die Hilfe kommt vom Einstieg herein: Sie steht dort, und ein Import von dort waere ein Zyklus.
 export async function dispatchIssueReview(command, args, hilfe) {
   switch (command) {
-    case "pruefauftrag": {
-      let antwort;
-      try {
-        antwort = await issueReviewPruefauftrag(args);
-      } catch (err) {
-        if (err instanceof BoardError) return fail(err.message);
-        throw err;
-      }
-      out(antwort);
-      if (!antwort.ok) process.exitCode = 1;
-      return;
-    }
+    case "pruefauftrag": return antwortMitExit(() => issueReviewPruefauftrag(args));
+    case "start": return antwortMitExit(() => issueReviewStart(args));
     case "reviewers": return out(issueReviewReviewers(args));
     case "check": return out(issueReviewCheck(args));
     case "matrix": return out(issueReviewMatrix());

@@ -191,7 +191,7 @@ test("check: eine ausfuehrbare Datei ohne Programmformat meldet ihren Startfehle
       "der Fall ist als Signal-Tod gemeldet worden, obwohl ein Fehler vorlag");
   }, {
     ...LOKAL,
-    issueReview: { rounds: 1, reviewers: [{ name: "kaputt", kind: "command", command: "kein-programm --flag" }] },
+    issueReview: { rounds: 1, reviewers: [{ name: "kaputt", kind: "command", command: "kein-programm --flag", lesegrenze: "--nur-lesen" }] },
   }, "board-offen-enoexec-");
 });
 
@@ -222,7 +222,7 @@ test("check: ein Shebang auf einen fehlenden Interpreter meldet den Startfehler"
       "der Fall ist als Signal-Tod gemeldet worden, obwohl ein Fehler vorlag");
   }, {
     ...LOKAL,
-    issueReview: { rounds: 1, reviewers: [{ name: "kaputt", kind: "command", command: "kein-interpreter --flag" }] },
+    issueReview: { rounds: 1, reviewers: [{ name: "kaputt", kind: "command", command: "kein-interpreter --flag", lesegrenze: "--nur-lesen" }] },
   }, "board-offen-enoent-");
 });
 

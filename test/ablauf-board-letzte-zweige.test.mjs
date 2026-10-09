@@ -104,7 +104,7 @@ test("check: ein Kommando ausserhalb des PATH wird VOR dem Probelauf abgefangen"
       "die Meldung nennt das fehlende Werkzeug nicht");
   }, {
     ...LOKAL,
-    issueReview: { rounds: 1, reviewers: [{ name: "fehlt", kind: "command", command: "gibt-es-garantiert-nicht --flag" }] },
+    issueReview: { rounds: 1, reviewers: [{ name: "fehlt", kind: "command", command: "gibt-es-garantiert-nicht --flag", lesegrenze: "--nur-lesen" }] },
   }, "board-letzte-probe-enoent-");
 });
 

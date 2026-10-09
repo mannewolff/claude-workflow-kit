@@ -96,3 +96,12 @@ test("[board-6] roles --stufe plan endet bei KIT_PLAN_REVIEWER=2 mit nur einem R
     assert.match(res.stderr, /Fehler: planreview:2 verlangt zwei Reviewer, verfügbar ist einer/);
   }, { issueReview: { reviewers: REVIEWERS.slice(0, 2) } });
 });
+
+test("[board-6] roles nennt je Rolle, ob ihre Datei vorliegt", () => {
+  mitProjekt((dir) => {
+    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "issue", "--author", "claude-opus-5"]);
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.deepEqual(out.rollenDateien.map((r) => [r.rolle, r.rolleVorhanden]), [["gibtsnicht", false]]);
+  }, { reviewStufen: { ...STUFEN, issue: { reviewer: 1, rollen: ["gibtsnicht"] } } });
+});

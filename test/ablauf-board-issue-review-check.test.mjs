@@ -59,7 +59,7 @@ test("issue-review check: fehlendes Kommando wird mit Grund gemeldet, Exit bleib
   // Bewusst ein Fantasiename statt 'codex': Auf einem Rechner, auf dem das echte CLI
   // installiert ist, wuerde der Test sonst gruen behaupten, was er nicht geprueft hat
   // (genau so ist er beim Bauen einmal umgekippt).
-  const fehlt = { name: "gibtsnicht", kind: "command", command: "gibtsnicht-xyz --flag" };
+  const fehlt = { name: "gibtsnicht", kind: "command", command: "gibtsnicht-xyz --flag", lesegrenze: "--nur-lesen" };
   mitReview({ reviewers: [OPUS, fehlt] }, (dir) => {
     const res = runBoard(dir, ["issue-review", "check"]);
     assert.equal(res.status, 0, res.stderr);
@@ -72,7 +72,7 @@ test("issue-review check: fehlendes Kommando wird mit Grund gemeldet, Exit bleib
 });
 
 test("issue-review check: vorhandenes Kommando gilt als verfuegbar", () => {
-  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "meinfake --flag" }] }, (dir) => {
+  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "meinfake --flag", lesegrenze: "--nur-lesen" }] }, (dir) => {
     fakeBinary(dir, "meinfake");
     const res = runBoard(dir, ["issue-review", "check"]);
     assert.equal(res.status, 0, res.stderr);
@@ -84,7 +84,7 @@ test("issue-review check: vorhandenes Kommando gilt als verfuegbar", () => {
 test("issue-review check: eine nicht ausfuehrbare Datei gilt nicht als Kommando", () => {
   // Deckt den echten accessSync-Pfad ab (Issue #231): Die Datei liegt im PATH, ist
   // aber nur lesbar. Der fruehere Prozessstart fing das implizit ab.
-  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "nurlesbar --flag" }] }, (dir) => {
+  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "nurlesbar --flag", lesegrenze: "--nur-lesen" }] }, (dir) => {
     fakeBinary(dir, "nurlesbar", 0o644);
     const res = runBoard(dir, ["issue-review", "check"]);
     assert.equal(res.status, 0, res.stderr);
@@ -97,7 +97,7 @@ test("issue-review check: eine nicht ausfuehrbare Datei gilt nicht als Kommando"
 });
 
 test("issue-review check: der Probeprompt erreicht das Kommando ueber stdin", () => {
-  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "liest --flag" }] }, (dir) => {
+  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "liest --flag", lesegrenze: "--nur-lesen" }] }, (dir) => {
     const mitschrift = join(dir, "stdin.txt");
     fakeBinary(dir, "liest", 0o755, `cat > ${JSON.stringify(mitschrift)}\nexit 0`);
     const res = runBoard(dir, ["issue-review", "check"]);
@@ -108,6 +108,57 @@ test("issue-review check: der Probeprompt erreicht das Kommando ueber stdin", ()
     // bleibt. `length > 0` haette auch ein versehentlich ueberschriebener Prompt
     // erfuellt (Issue #393).
     assert.equal(readFileSync(mitschrift, "utf-8"), "Antworte nur mit dem Wort OK.\n");
+  });
+});
+
+test("issue-review check: ein Kommando ohne Lesegrenze ist nicht verfuegbar, Exit bleibt 0", () => {
+  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "meinfake --flag" }] }, (dir) => {
+    fakeBinary(dir, "meinfake");
+    const res = runBoard(dir, ["issue-review", "check"]);
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.equal(out.alleVerfuegbar, false);
+    assert.equal(out.reviewers[0].grund, "keine Lesegrenze");
+    assert.deepEqual(out.rollen, []);
+  });
+});
+
+// --- start (Issue #1381, Plan #1375, A4) ---
+//
+// Einmal echt: Das Kit startet das Werkzeug ohne Shell, der Auftrag geht ueber stdin, stdout
+// landet in der Ausgabedatei, die Lesegrenze steht als letztes Argument.
+
+test("issue-review start: der Pruefer liest den Auftrag von stdin, die Antwort steht in --ausgabe", () => {
+  mitReview({ reviewers: [{ name: "fake", kind: "command", command: "antwortet --flag", lesegrenze: "--nur-lesen" }] }, (dir) => {
+    const argv = join(dir, "argv.txt");
+    fakeBinary(dir, "antwortet", 0o755, `printf '%s\\n' "$@" > ${JSON.stringify(argv)}\nprintf 'ANTWORT:'\ncat`);
+    writeFileSync(join(dir, "auftrag.md"), "AUFTRAG\n");
+    const res = runBoard(dir, ["issue-review", "start", "--reviewer", "fake", "--auftrag", "auftrag.md", "--ausgabe", "antwort.md"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(JSON.parse(res.stdout).ok, true);
+    assert.equal(readFileSync(join(dir, "antwort.md"), "utf-8"), "ANTWORT:AUFTRAG\n");
+    assert.equal(readFileSync(argv, "utf-8"), "--flag\n--nur-lesen\n");
+  });
+});
+
+test("issue-review start: ein aufhebender Schalter endet mit Exit 1, ohne zu starten", () => {
+  mitReview({ reviewers: [{ name: "astra", kind: "command", command: "schreibt exec -c sandbox_mode=\"danger-full-access\"", lesegrenze: "--sandbox read-only" }] }, (dir) => {
+    const spur = join(dir, "gestartet.txt");
+    fakeBinary(dir, "schreibt", 0o755, `touch ${JSON.stringify(spur)}`);
+    writeFileSync(join(dir, "auftrag.md"), "AUFTRAG\n");
+    const res = runBoard(dir, ["issue-review", "start", "--reviewer", "astra", "--auftrag", "auftrag.md", "--ausgabe", "antwort.md"]);
+    assert.equal(res.status, 1);
+    assert.equal(JSON.parse(res.stdout).fehler, "lesegrenze-aufgehoben");
+    assert.equal(existsSync(spur), false, "das Werkzeug wurde gestartet");
+    assert.equal(existsSync(join(dir, "antwort.md")), false);
+  });
+});
+
+test("issue-review start: ein Aufruffehler endet mit Exit 1 und Meldung", () => {
+  mitReview({ reviewers: ALLE }, (dir) => {
+    const res = runBoard(dir, ["issue-review", "start", "--auftrag", "a.md", "--ausgabe", "b.md"]);
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /--reviewer <name> oder --code-review/);
   });
 });
 
@@ -136,6 +187,7 @@ test("Die Hilfe nennt die issue-review-Achse", () => {
     const res = runBoard(dir, ["--help"]);
     assert.match(res.stdout, /issue-review reviewers/);
     assert.match(res.stdout, /issue-review check/);
+    assert.match(res.stdout, /issue-review start --reviewer <name> \| --code-review --auftrag <datei> --ausgabe <datei>/);
   });
 });
 

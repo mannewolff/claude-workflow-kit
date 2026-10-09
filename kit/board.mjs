@@ -71,6 +71,8 @@
   node board.mjs issue-review pruefauftrag --rolle <rolle> --datei <ziel> (--id <N> | --material-datei <pfad>)
       Montiert den Pruefauftrag eines Pruefers aus kit/rollen/<rolle>.md (Issue #1380).
       Nicht zu verwechseln mit 'issue auftrag <id>', dem Umsetzungsauftrag einer Karte.
+  node board.mjs issue-review start --reviewer <name> | --code-review --auftrag <datei> --ausgabe <datei>
+      Startet einen fremden Pruefer ohne Shell mit angehaengter Lesegrenze (Issue #1381).
  */
 
 import { readFileSync, readdirSync, realpathSync } from "node:fs";
@@ -196,8 +198,11 @@ Nutzung:
   node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
   node board.mjs issue-review reviewers --author <modell>
   node board.mjs issue-review check [--nur-pfad]
+      Je Reviewer die Lesegrenze; kind command ohne sie ist nicht verfuegbar ('keine
+      Lesegrenze'). 'rollen' nennt die fehlenden Rollendateien aller Stufen.
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
+      'rollenDateien' nennt je Rolle pfad und rolleVorhanden.
       Besetzung und Rollen der Stufe aus reviewStufen; der Autor faellt weg.
       Bei --stufe plan setzt KIT_PLAN_REVIEWER (1 oder 2) die Pruefzahl vor reviewStufen.
   node board.mjs issue-review pruefauftrag --rolle <rolle> --datei <ziel> (--id <N> | --material-datei <pfad>)
@@ -207,6 +212,15 @@ Nutzung:
       mit .claude/checks-summary.json) in die Datei --datei. Ausgabe { ok, rolle, datei,
       zeichen }; Fehler (Exit 1) rolle-fehlt mit pfad, platzhalter-offen, material-fehlt,
       dokument-nicht-lesbar.
+  node board.mjs issue-review start --reviewer <name> | --code-review --auftrag <datei> --ausgabe <datei>
+      Startet einen fremden Pruefer (kind command; --code-review: reviewCommand) ohne Shell:
+      Auftrag ueber stdin, stdout in --ausgabe. Die Lesegrenze steht als letztes Argument —
+      aus lesegrenze bzw. reviewLesegrenze, sonst aus der Tabelle (codex: --sandbox read-only).
+      Braucht 'node .claude/kit/board.mjs*' in sandbox.excludedCommands. Ausgabe { ok,
+      reviewer, lesegrenze, ausgabe, zeichen }; Fehler (Exit 1) keine-lesegrenze,
+      lesegrenze-aufgehoben mit schalter (--full-auto, --dangerously-bypass-approvals-and-
+      sandbox, --sandbox/-s ausser read-only, -c sandbox_mode, --profile/-p), auftrag-fehlt,
+      nicht-im-path, ausfall mit exit und stderr-Ausschnitt.
   node board.mjs nightrun melden --datei <ergebnisstand.json>
       Liefert einen Ergebnisstand des Nacht-Runners an POST /api/kanban/night-runs ein
       (nur issueTracker toolbox); derselbe Lauf wird bei jeder Meldung ersetzt.

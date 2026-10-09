@@ -154,7 +154,7 @@ const PFAD = "/fake/bin/x";
 const IM_PATH = (kommando) => ({ datei: kommando.split(" ")[0], ok: true, pfad: PFAD });
 const NICHT_IM_PATH = (kommando) => ({ datei: kommando.split(" ")[0], ok: false, pfad: null });
 const KEIN_AUFRUF = () => { throw new Error("darf nicht aufgerufen werden"); };
-const FAKE = { name: "fake", kind: "command", command: "meinfake --flag" };
+const FAKE = { name: "fake", kind: "command", command: "meinfake --flag", lesegrenze: "--nur-lesen" };
 
 test("issue-review check: claude-Reviewer gelten ohne PATH-Suche und Probelauf als verfuegbar", () => {
   const befund = issueReviewCheck({}, { config: mitReview({ reviewers: [OPUS, SONNET] }), verfuegbar: KEIN_AUFRUF, probe: KEIN_AUFRUF });
@@ -188,7 +188,7 @@ test("issue-review check: ein startbares Kommando wird durch einen Probelauf bes
   const probe = (kommando, pfad) => { gesehen.push([kommando, pfad]); return { ok: true }; };
   const befund = issueReviewCheck({}, { config: mitReview({ reviewers: [FAKE] }), verfuegbar: IM_PATH, probe });
   assert.equal(befund.alleVerfuegbar, true);
-  assert.deepEqual(befund.reviewers[0], { name: "fake", kind: "command", umgebung: "runner", verfuegbar: true, geprueft: "probelauf" });
+  assert.deepEqual(befund.reviewers[0], { name: "fake", kind: "command", umgebung: "runner", lesegrenze: "--nur-lesen", verfuegbar: true, geprueft: "probelauf" });
   assert.deepEqual(gesehen, [["meinfake --flag", PFAD]], "der Probelauf startet den Pfad der PATH-Suche");
 });
 
@@ -213,6 +213,56 @@ test("issue-review check: jeder Befund nennt die Umgebung 'runner'", () => {
   const befund = issueReviewCheck({}, { config: mitReview({ reviewers: [OPUS, FAKE] }), verfuegbar: IM_PATH, probe: () => ({ ok: true }) });
   assert.equal(befund.reviewers.length, 2);
   for (const r of befund.reviewers) assert.equal(r.umgebung, "runner", `${r.name} traegt die falsche Umgebung`);
+});
+
+// --- check: Lesegrenze und Rollendateien (Issue #1381, Plan #1375, A5, A6) ---
+
+test("issue-review check meldet die Lesegrenze je Reviewer", () => {
+  const codex = { name: "gpt-astra", kind: "command", command: "codex exec" };
+  const befund = issueReviewCheck({}, { config: mitReview({ reviewers: [OPUS, codex, FAKE] }), verfuegbar: IM_PATH, probe: () => ({ ok: true }) });
+  const zeile = (name) => befund.reviewers.find((r) => r.name === name);
+  assert.equal(zeile("gpt-astra").lesegrenze, "--sandbox read-only", "codex aus der Tabelle");
+  assert.equal(zeile("fake").lesegrenze, "--nur-lesen", "aus dem Feld");
+  assert.equal(zeile("opus").lesegrenze, "kit-pruefer", "ein Claude-Pruefer liest ueber den Leser-Agenten");
+  assert.equal(befund.alleVerfuegbar, true);
+});
+
+test("issue-review check: ohne Lesegrenze ist ein Kommando nicht verfuegbar, ohne PATH-Suche und Probelauf", () => {
+  const ohne = { name: "ohne", kind: "command", command: "fremdtool run" };
+  const befund = issueReviewCheck({}, { config: mitReview({ reviewers: [ohne] }), verfuegbar: KEIN_AUFRUF, probe: KEIN_AUFRUF });
+  assert.equal(befund.alleVerfuegbar, false);
+  assert.deepEqual(befund.reviewers[0], { name: "ohne", kind: "command", umgebung: "runner", lesegrenze: null, verfuegbar: false, geprueft: "lesegrenze", grund: "keine Lesegrenze" });
+});
+
+test("issue-review check: ein Schalter, der die Lesegrenze aufhebt, macht das Kommando unverfuegbar", () => {
+  const frei = { name: "frei", kind: "command", command: "codex exec -c sandbox_mode=\"danger-full-access\"" };
+  const befund = issueReviewCheck({}, { config: mitReview({ reviewers: [frei] }), verfuegbar: KEIN_AUFRUF, probe: KEIN_AUFRUF });
+  assert.equal(befund.reviewers[0].verfuegbar, false);
+  assert.equal(befund.reviewers[0].geprueft, "lesegrenze");
+  assert.match(befund.reviewers[0].grund, /sandbox_mode/);
+});
+
+test("issue-review check meldet fehlende Rollendateien aller Stufen", () => {
+  const stufen = { ...STUFEN, issue: { reviewer: 1, rollen: ["gibtsnicht"] } };
+  const befund = issueReviewCheck({}, { config: mitReview({ reviewers: [OPUS] }, stufen) });
+  assert.deepEqual(befund.rollen.map((r) => [r.stufe, r.rolle]), [["issue", "gibtsnicht"]]);
+  assert.match(befund.rollen[0].pfad, /rollen[\\/]gibtsnicht\.md$/);
+});
+
+test("issue-review check: die Rollen der Rueckfallebene liegen alle als Datei vor", () => {
+  assert.deepEqual(issueReviewCheck({}, { config: mitReview({ reviewers: [OPUS] }) }).rollen, []);
+  // Auch ohne Reviewer, damit eine fehlende Rolle nie hinter dem leeren Block verschwindet.
+  assert.deepEqual(issueReviewCheck({}, { config: {} }).rollen, []);
+});
+
+// --- roles: rolleVorhanden (Issue #1381) ---
+
+test("issue-review roles meldet je gewaehlter Rolle rolleVorhanden", () => {
+  const antwort = issueReviewRoles({ stufe: "fachlich", author: "opus" }, config);
+  assert.deepEqual(antwort.rollenDateien.map((r) => [r.rolle, r.rolleVorhanden]), [["form-beobachtbarkeit", true], ["abgrenzung", true]]);
+  const fehlt = issueReviewRoles({ stufe: "issue", author: "opus" }, mitReview({ reviewers: ALLE }, { ...STUFEN, issue: { reviewer: 1, rollen: ["gibtsnicht"] } }));
+  assert.deepEqual(fehlt.rollenDateien.map((r) => [r.rolle, r.rolleVorhanden]), [["gibtsnicht", false]]);
+  assert.match(fehlt.rollenDateien[0].pfad, /gibtsnicht\.md$/);
 });
 
 // --- Probelauf (Issue #262, #393) ---
