@@ -22,8 +22,12 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-import { prueflaufBeobachter, prueflaeufeAddieren, runSession, UEBERNAHME_MARKE } from "../kit/night/session.mjs";
-import { UEBERNAHME_MARKE as CHECKS_UEBERNAHME_MARKE } from "../kit/checks.mjs";
+import {
+  festgefahrenBeobachter, FESTGEFAHREN_MARKE, prueflaufBeobachter, prueflaeufeAddieren, runSession, UEBERNAHME_MARKE,
+} from "../kit/night/session.mjs";
+import {
+  FESTGEFAHREN_MARKE as CHECKS_FESTGEFAHREN_MARKE, UEBERNAHME_MARKE as CHECKS_UEBERNAHME_MARKE,
+} from "../kit/checks.mjs";
 
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
@@ -446,5 +450,108 @@ test("[night-924] eine Stufe ohne Strom liefert prueflaeufe: null — nicht geme
     assert.equal(res.werkzeugzeit, null, "dieselbe Regel wie bei der Werkzeugzeit");
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+// ============================================================
+// festgefahrenBeobachter — die Bremsmarke im Strom (Issue #1389, Plan #1386, E7)
+// ============================================================
+
+/** Die Ausgabe eines gebremsten `checks.mjs run`, wie `bremsen()` sie schreibt. */
+const GEBREMST = `${FESTGEFAHREN_MARKE} npm test — test/a.test.mjs: erwartet 2\n`
+  + "3-mal gleich gescheitert; es laeuft keine Pruefung mehr (Exit 3).\n\nZusammenfassung: .claude/checks-summary.json\n";
+
+/** Fuettert den Beobachter und liefert, was er gemeldet hat. */
+function bremsungen(paare) {
+  const gemeldet = [];
+  const b = festgefahrenBeobachter((info) => gemeldet.push(info));
+  for (const [zeile, ts] of paare) b.zeile(zeile, ts);
+  return gemeldet;
+}
+
+test("[night-1389] die Bremsmarke des Beobachters ist die des Kommandos", () => {
+  assert.equal(FESTGEFAHREN_MARKE, CHECKS_FESTGEFAHREN_MARKE,
+    "zwei Fassungen derselben Marke, und der Runner sieht die Bremse nicht mehr");
+});
+
+test("[night-1389] ein gebremster Prueflauf meldet Pruefung, Fehler und Versuche", () => {
+  const gemeldet = bremsungen([
+    [bashAufrufe(["t1", "node .claude/kit/checks.mjs run --abschluss 7"]), 1000],
+    [toolResult("t1", `Exit code 3\n${GEBREMST}`), 1100],
+  ]);
+  assert.deepEqual(gemeldet, [{ pruefung: "npm test", fehler: "test/a.test.mjs: erwartet 2", versuche: 3 }]);
+});
+
+test("[night-1389] auch die Blockform des tool_result und ein Bereichslauf werden gelesen", () => {
+  const gemeldet = bremsungen([
+    [bashAufrufe(["t1", "node .claude/kit/checks.mjs run --bereich board"]), 1000],
+    [JSON.stringify({
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "t1", content: [{ type: "text", text: GEBREMST }] }] },
+    }), 1100],
+  ]);
+  assert.equal(gemeldet.length, 1);
+  assert.equal(gemeldet[0].pruefung, "npm test");
+});
+
+test("[night-1389] die Marke im Ergebnis eines anderen Aufrufs bremst nicht", () => {
+  // Wer die Quelle liest oder nach der Marke sucht, hat sie im Ergebnis — und ist nicht festgefahren.
+  const gemeldet = bremsungen([
+    [bashAufrufe(["t1", "grep -n 'Pruefung festgefahren' kit/checks.mjs"], ["t2", "node .claude/kit/checks.mjs plan"]), 1000],
+    [toolResult("t1", GEBREMST), 1100],
+    [toolResult("t2", GEBREMST), 1100],
+  ]);
+  assert.deepEqual(gemeldet, []);
+});
+
+test("[night-1389] ein Prueflauf ohne Marke meldet nichts, eine zweite Marke nur einmal", () => {
+  assert.deepEqual(bremsungen([
+    [bashAufrufe(["t1", "node .claude/kit/checks.mjs run"]), 1000],
+    [toolResult("t1", "gelaufen: npm test → rot"), 1100],
+  ]), []);
+  assert.equal(bremsungen([
+    [bashAufrufe(["t1", "node .claude/kit/checks.mjs run"], ["t2", "node .claude/kit/checks.mjs run"]), 1000],
+    [toolResult("t1", GEBREMST), 1100],
+    [toolResult("t2", GEBREMST), 1200],
+  ]).length, 1, "die Sitzung endet ohnehin — eine zweite Meldung waere eine zweite Beendigung");
+});
+
+test("[night-1389] nach der Bremsmarke endet die Sitzung vor dem Zeitlimit, ohne ETIMEDOUT", async () => {
+  const fake = [
+    schub("c1", "node .claude/kit/checks.mjs run --abschluss 1").split("\n")[0],
+    `printf '%s\\n' '${JSON.stringify({
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "c1", content: GEBREMST }] },
+    })}'`,
+    "sleep 30", // # haengt — die Bremse beendet die Sitzung, der Test wartet die 30 s nicht ab
+  ].join("\n");
+  const vorher = { cmd: process.env.NIGHT_CLAUDE_CMD, timeout: process.env.NIGHT_TIMEOUT_MS, grace: process.env.NIGHT_KILL_GRACE_MS };
+  process.env.NIGHT_CLAUDE_CMD = fake;
+  process.env.NIGHT_TIMEOUT_MS = "20000";
+  process.env.NIGHT_KILL_GRACE_MS = "500";
+  try {
+    const start = Date.now();
+    const res = await runSession("1", { model: "fixture-modell", timeoutMin: 1, yolo: false, verbose: false }, { stream: true });
+    const dauer = Date.now() - start;
+    assert.ok(dauer < 10_000, `die Sitzung lief ${dauer} ms — bis an das Zeitlimit statt bis zur Bremse`);
+    assert.deepEqual(res.festgefahren, { pruefung: "npm test", fehler: "test/a.test.mjs: erwartet 2", versuche: 3 });
+    assert.notEqual(res.error?.code, "ETIMEDOUT", "eine Bremsung ist kein Zeitablauf");
+  } finally {
+    for (const [name, wert] of [["NIGHT_CLAUDE_CMD", vorher.cmd], ["NIGHT_TIMEOUT_MS", vorher.timeout], ["NIGHT_KILL_GRACE_MS", vorher.grace]]) {
+      if (wert === undefined) delete process.env[name];
+      else process.env[name] = wert;
+    }
+  }
+});
+
+test("[night-1389] eine Sitzung ohne Bremsmarke traegt festgefahren: null", async () => {
+  const vorher = process.env.NIGHT_CLAUDE_CMD;
+  process.env.NIGHT_CLAUDE_CMD = schub("c1", "node .claude/kit/checks.mjs run");
+  try {
+    const res = await runSession("1", { model: "fixture-modell", timeoutMin: 1, yolo: false, verbose: false }, { stream: true });
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(res.festgefahren, null);
+  } finally {
+    if (vorher === undefined) delete process.env.NIGHT_CLAUDE_CMD;
+    else process.env.NIGHT_CLAUDE_CMD = vorher;
   }
 });
