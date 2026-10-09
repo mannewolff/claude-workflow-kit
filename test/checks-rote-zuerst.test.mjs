@@ -78,7 +78,8 @@ test("roter Lauf, Korrektur: derselbe Aufruf faehrt zuerst nur das rote Kommando
     rotMachen(dir, "b");
     const erster = await run(dir, "--abschluss", "7");
     assert.equal(erster.status, 1, erster.stdout);
-    assert.deepEqual(gefahren(dir), ["a", "b"]);
+    // Der Abschlusslauf wiederholt das rote einmal (Issue #1396).
+    assert.deepEqual(gefahren(dir), ["a", "b", "b"]);
 
     gruenMachen(dir, "b");
     datei(dir, "src/a.txt", "korrigiert\n");

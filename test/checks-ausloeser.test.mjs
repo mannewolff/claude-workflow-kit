@@ -79,7 +79,7 @@ test("[checks-1004] im vollen Umfang zaehlen nur bereichsgebundene Kommandos als
     assert.equal(kern.ausloeser, "ohne-zuordnung");
     assert.equal(kern.bereiche, "");
     assert.equal(kern.dateien, String.raw`lose.txt,mit\,komma.txt`, "ein Komma im Pfad steht maskiert");
-    assert.equal(ausfuehrungen(dir)[0].split("\t").length, 11, "die Zeile hat genau elf Spalten");
+    assert.equal(ausfuehrungen(dir)[0].split("\t").length, 12, "die Zeile hat genau zwoelf Spalten");
     assert.equal(zeileVon(dir, "echo doku").ausloeser, "ohne-zuordnung", "auch der unberuehrte Bereich lief nur wegen der Luecke");
     // Es waere auch ohne die fehlende Zuordnung gelaufen — die Minuten gehoeren nicht der Luecke.
     const string = zeileVon(dir, "echo string");

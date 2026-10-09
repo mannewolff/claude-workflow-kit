@@ -145,7 +145,8 @@ test("ein gleichzeitig gelaufenes Kommando: Vermerk in der Berichtszeile, Feld i
     const zeilen = ausfuehrungen(dir);
     assert.equal(zeilen.length, 2);
     for (const zeile of zeilen) {
-      assert.equal(zeile.split("\t").at(-1), "gleichzeitig", `die Protokollzeile traegt hinten nicht die Spalte: ${zeile}`);
+      // Spalte 11; dahinter steht seit Issue #1396 die Spalte der Wiederholung.
+      assert.equal(zeile.split("\t")[10], "gleichzeitig", `die Protokollzeile traegt nicht die Spalte: ${zeile}`);
     }
   });
 });
