@@ -409,6 +409,22 @@ Stand unveraendert seit 2026-09-22T17:18:04.921Z: Ergebnis uebernommen (gruen). 
 
 **Warum das im Werkzeug steht.** Die Nacht-Läufe zeigten Sessions, die denselben grünen `run` drei- bis neunmal je Arbeitspaket starteten — meist ohne Änderung dazwischen, oft nur, um die Ausgabe anders zu filtern. Die Regel „schreib die Ausgabe einmal in eine Datei und lies daraus" steht seit Langem im Skilltext und wirkte nicht. Nach dem Maßstab „Regel im Text oder Regel im Werkzeug" gehört sie damit hierher.
 
+### Wackelnde Prüfungen: einmal wiederholt
+
+Manche Prüfungen sind auf demselben Stand mal grün, mal rot, etwa ein Test, der von der Uhrzeit, der Last der Maschine oder der Reihenfolge abhängt. Damit eine solche Prüfung kein Paket zu Unrecht scheitern lässt und trotzdem auffällt, wiederholt `checks.mjs run` an den Stellen, an denen ein Ergebnis über ein Paket oder eine Veröffentlichung entscheidet, jede rote Prüfung **genau einmal** auf demselben Stand.
+
+**Wo wiederholt wird.** In der Abschlussprüfung eines Pakets (`--abschluss`), im Prüflauf vor `push main` und vor `merge production` (beide mit `--wiederholen`) und im Nachweislauf, den die Vorbereitung der Nacht auf dem Weg über den Build-Dienst fährt. Wiederholt wird nur die rote Prüfung, nicht der ganze Lauf, und zwar sofort, bevor der Rest des Laufs weiterläuft. Teillauf und voller Lauf wiederholen je höchstens einmal; Hinweis-Prüfungen werden nie wiederholt.
+
+**Was dabei herauskommt.** Rot und dann grün heißt: Die Prüfung hat **gewackelt**. Sie gilt als bestanden, die Ausgabe nennt sie mit Namen, und der Berichtsblock führt unter ihrer Zeile `gelaufen:` die Zeile `Gewackelt: <Kommando> → erst rot, dann gruen`, mit dem Pfad der Ausgabe des ersten Laufs (Zusatz `-erstlauf`). Rot und wieder rot bleibt rot, wie ohne Wiederholung.
+
+**Wie gezählt wird.** Beide Läufe kommen ins Ausführungsprotokoll `.claude/ausfuehrungen.tsv`, gekennzeichnet als `erstlauf` und `wiederholung`, und zählen beide als Ausführung mit ihrer Dauer. Die [Wirksamkeitsauswertung](#wirksamkeit) wertet sie als Paar: Rot und grün ist ein **Wackler** und keine Beanstandung, Rot und rot ist eine Beanstandung, Rot ohne Wiederholung zählt wie bisher als Beanstandung. Ein übernommenes Ergebnis erzeugt keinen Fall. Der Nachtbericht nennt jede Prüfung, die in der Nacht gewackelt hat, mit der Zahl der Fälle.
+
+**Halt vor dem Veröffentlichen.** Hat im Prüflauf vor `push main` oder `merge production` eine Prüfung gewackelt, hält der Skill nach dem grünen Lauf und vor dem Commit an, nennt die Prüfung und fragt „Trotzdem fortfahren? (ja/nein)“. Nur `ja` fährt fort. Nachts fragt niemand: Die Vorbereitung macht aus Grün `gruen-offen` und vermerkt `Gewackelt: <Kommando> — Entscheidung beim push main` als offenen Punkt, den `push main` am Morgen vor dem Push fragt.
+
+**Der Reparaturkandidat.** Ab **drei Wacklern** im Zeitfenster ist eine Prüfung in der Wirksamkeitsauswertung als Kandidat für eine Reparatur gekennzeichnet. `node .claude/kit/wirksamkeit.mjs kandidaten` nennt je solcher Prüfung eine Zeile `Reparaturkandidat: <cmd> — <n> Wackler im Zeitfenster`. Vor `push main` und `merge production` werden sie genannt, halten aber nicht an. Die Schwelle ist fest und nicht einstellbar.
+
+**Die Grenzen.** Während der Umsetzung, also in jedem `checks.mjs run` ohne `--abschluss` und ohne `--wiederholen`, in `/local-check` und am Commit-Gate, läuft jede Prüfung wie bisher genau einmal. Der Job im Build-Dienst fährt `--stufe push` ohne den Schalter und wiederholt nicht, ebenso wenig die Nachprüfung des Nacht-Runners. Ein Wackeln zeigt sich also nur dort, wo bewusst wiederholt wird; auf unverändertem Stand übernimmt das Kit das Ergebnis, statt neu zu prüfen.
+
 ### Keine Sperre zwischen Prüfläufen
 
 Mehrere Prüfläufe auf derselben Maschine laufen **nebeneinander**, auch aus verschiedenen Projekten. Bis #1241 nahm `checks.mjs run` vor seinem ersten Kommando eine maschinenweite Sperre im Temp-Verzeichnis, und ein zweiter Lauf wartete auf den ersten (#958, #1177). Sie entstand, weil die Prüfungen damals so schwer waren, dass zwei gleichzeitige Läufe den Rechner überfuhren. Seit die Werkzeuge in Teile zerlegt, die Prüfungen leichter und je Kommando auf zwei gleichzeitige Testdateien begrenzt sind (Vorhaben #1198), wird sie nicht mehr gebraucht: Der Lastbeleg mit drei gleichzeitigen Abschlussläufen war grün, jeder in rund sieben Minuten (#1239). Die Umgebungsvariablen `KIT_CHECKS_LOCK`, `KIT_CHECKS_LOCK_TIMEOUT_MS` und `KIT_CHECKS_LOCK_FOREIGN_TIMEOUT_MS` liest das Werkzeug nicht mehr; ein gesetzter Wert bleibt ohne Wirkung.
@@ -954,6 +970,8 @@ Pusht den aktuellen Commit-Batch auf den main-Branch. Diesen Skill tippst nur du
 Ein roter `/local-check` aus Schritt 6 blockiert diesen Schritt mechanisch: Du hast keinen grünen Pflicht-Check, also kein Push.
 
 **Gefahren wird die Stufe `push`** — der Skill ruft `checks.mjs run --stufe push` auf und fährt damit die Paketstufe **und** alles, was dein Projekt für den Zeitpunkt des Veröffentlichens vorgesehen hat (siehe [Gestaffelte Prüfungen](#gestaffelte-prüfungen-stufe)). Und zwar **jede** dieser Prüfungen: Vor dem Push wird keine mehr nach Bereichen ausgewählt, und ein leeres Paket lässt hier nichts aus. Dieser Lauf dauert spürbar länger als der vor dem Commit; das Kommando nennt vorab, was gegenüber der Paketstufe hinzukommt.
+
+**Ein Wackler hält an.** Der Lauf fährt mit `--wiederholen`: Eine rote Prüfung wird einmal auf demselben Stand wiederholt, und hat eine dabei gewackelt, fragt der Skill vor dem Commit „Trotzdem fortfahren? (ja/nein)“ (siehe [Wackelnde Prüfungen](#wackelnde-prüfungen-einmal-wiederholt)).
 
 **Vor-Push-Schritt aus `RELEASING.md`.** Nennt die `RELEASING.md` deines Repos einen Vor-Push-Schritt, fährt der Skill ihn nach seinem Commit und vor dem Push, im Hintergrund, und wartet auf sein Ende. Exit 0 heißt Push; Exit 1 heißt rot, und gepusht wird nur, wenn du die Rückfrage „Vor-Push-Prüfung rot. Trotzdem pushen? (ja/nein)“ mit `ja` beantwortest; jeder andere Exit hält ohne Push an. Ohne solchen Schritt wartet `push main` nicht auf die CI.
 

@@ -428,6 +428,23 @@ Stand unveraendert seit 2026-09-22T17:18:04.921Z: Ergebnis uebernommen (gruen). 
 
 **Why this is in the tool.** The night runs showed sessions that started the same green `run` three to nine times per work package — mostly without a change in between, often only to filter the output differently. The rule "write the output to a file once and read from there" has been in the skill text for a long time and did not work. By the yardstick "rule in the text or rule in the tool", it therefore belongs here.
 
+### Flaky checks: repeated once
+<!-- de: a3325e933627 -->
+
+Some checks are green one time and red the next on the same state, such as a test that depends on the time of day, the load on the machine or the order of execution. So that such a check does not fail a package unjustly and still gets noticed, `checks.mjs run` repeats every red check **exactly once** on the same state wherever a result decides about a package or a release.
+
+**Where a check is repeated.** In the closing check of a package (`--abschluss`), in the check run before `push main` and before `merge production` (both with `--wiederholen`) and in the evidence run that the night's preparation runs on the path through the build service. Only the red check is repeated, not the whole run, and immediately, before the rest of the run continues. The partial run and the full run each repeat at most once; advisory checks are never repeated.
+
+**What comes out of it.** Red and then green means: the check **flaked**. It counts as passed, the output names it, and the report block carries, below its `gelaufen:` line, the line `Gewackelt: <Kommando> → erst rot, dann gruen` ("flaked: `<command>` → first red, then green"), with the path of the first run's output (suffix `-erstlauf`). Red and red again stays red, as without a repetition.
+
+**How it is counted.** Both runs go into the execution log `.claude/ausfuehrungen.tsv`, marked as `erstlauf` and `wiederholung`, and both count as an execution with their duration. The [effectiveness evaluation](/en/dokumentation#wirksamkeit) treats them as a pair: red and green is a **flake** and not a finding, red and red is a finding, red without a repetition counts as a finding as before. A carried-over result produces no case. The night report names every check that flaked during the night, with the number of cases.
+
+**Stop before publishing.** If a check flaked in the check run before `push main` or `merge production`, the skill stops after the green run and before the commit, names the check and asks „Trotzdem fortfahren? (ja/nein)“ (continue anyway? (yes/no)). Only `ja` continues. At night nobody asks: the preparation turns green into `gruen-offen` and records `Gewackelt: <Kommando> — Entscheidung beim push main` (flaked: `<command>` — decision at push main) as an open item, which `push main` asks about in the morning before the push.
+
+**The repair candidate.** From **three flakes** within the time window, a check is marked in the effectiveness evaluation as a candidate for repair. `node .claude/kit/wirksamkeit.mjs kandidaten` prints one line `Reparaturkandidat: <cmd> — <n> Wackler im Zeitfenster` (repair candidate: `<cmd>` — `<n>` flakes in the time window) per such check. Before `push main` and `merge production` they are named but do not stop the run. The threshold is fixed and not configurable.
+
+**The limits.** During implementation, that is in every `checks.mjs run` without `--abschluss` and without `--wiederholen`, in `/local-check` and at the commit gate, every check runs exactly once as before. The job in the build service runs `--stufe push` without the switch and does not repeat, nor does the night runner's re-check. A flake therefore only shows where a repetition is deliberate; on an unchanged state the kit carries over the result instead of checking anew.
+
 ### No lock between check runs
 <!-- de: 12ffba6cae58 -->
 
@@ -984,7 +1001,7 @@ The skill opens a new Claude session without the implementation context of the c
 Depending on `reviewScope`, the reviewer gets the diff or all files in the repo. The review brief is assembled by `issue-review pruefauftrag` from the role `kit/rollen/code-review.md` and this material. It is read by the reader agent `kit-pruefer` with the model from `reviewModel` or, if `reviewCommand` is set, by the third-party CLI that `issue-review start --code-review` starts at its read boundary (`reviewLesegrenze`). If either call fails, `/review` aborts visibly, without a comment and without a move to In review. The findings land as a comment in the issue or PR. For security patterns that require a corpus-driven approach (secrets scan, SQL concatenation, missing input validation), the skill does not rely on the model alone. These checks belong in your CI.
 
 ### /push-main
-<!-- de: 7a612b209c0c -->
+<!-- de: 24785e7d3709 -->
 
 
 **Step 8, after the review, on your explicit command.**
@@ -994,6 +1011,8 @@ Pushes the current commit batch to the main branch. Only you type this skill. It
 A red `/local-check` from step 6 blocks this step mechanically: you have no green mandatory check, so no push.
 
 **The stage `push` is run** — the skill calls `checks.mjs run --stufe push` and thereby runs the package stage **and** everything your project has scheduled for the moment of publishing (see [Staged checks](/en/dokumentation#staged-checks-stufe)). And **every one** of these checks: before the push, none is selected by area any more, and an empty package omits nothing here. This run takes noticeably longer than the one before the commit; the command names in advance what is added compared with the package stage.
+
+**A flaky check stops the run.** The run uses `--wiederholen`: a red check is repeated once on the same state, and if one flaked in the process, the skill asks „Trotzdem fortfahren? (ja/nein)“ (continue anyway? (yes/no)) before the commit (see [Flaky checks](/en/dokumentation#flaky-checks-repeated-once)).
 
 **Pre-push step from `RELEASING.md`.** If your repo's `RELEASING.md` names a pre-push step, the skill runs it after its commit and before the push, in the background, and waits for it to end. Exit 0 means push; exit 1 means red, and the push happens only if you answer the question „Vor-Push-Prüfung rot. Trotzdem pushen? (ja/nein)“ (pre-push check red. Push anyway? (yes/no)) with `ja`; any other exit stops without a push. Without such a step, `push main` does not wait for the CI.
 
