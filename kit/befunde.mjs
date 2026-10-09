@@ -332,7 +332,8 @@ pruefen  Liest einen Befunde-Text, erkennt die Fundbloecke an ihrer Schweregrad-
          fehlenden der drei Pflichtangaben: die Gegenprobe, ihren Stand und die Art.
          Im Befunde-Kommentar von /issue-review ('## <Stufe>-Review, Runde <n>')
          meldet es dazu einen Fund ohne vorangehenden Reviewer-Kopf
-         '### Reviewer <n>: <rolle>, <modell>' als 'reviewer-kopf'.
+         '### Reviewer <n>: <rolle>, <modell>' als 'reviewer-kopf', und traegt
+         der Text gar keinen solchen Kopf, unter 'meldungen' 'keine-pruefer'.
          Exit 0 auch bei lauter unvollstaendigen Funden — aus der Form wird kein Gate.
          Ungleich 0 wird nur ein Aufruf, der nicht geht: fehlendes --datei, fehlende
          oder unlesbare Datei.
@@ -560,6 +561,8 @@ function meldung(angabe, gefundeneArt) {
 // Reviewer-Koepfe, und `buchen` gibt ihm die Rolle `code-review` aus der Stufe.
 const ISSUE_REVIEW_KOPF_RE = /^## (?:Issue|Fachplan|Plan)-Review, Runde \d+[^\S\n]*$/m;
 
+const MELDUNG_KEINE_PRUEFER = "Der Text traegt keinen einzigen Reviewer-Kopf '### Reviewer <n>: <rolle>, <modell>' — kein Pruefer lief, die Pruefung gilt nicht als erledigt (review:fertig wird nicht gesetzt).";
+
 export function pruefen(pfad) {
   let text;
   try {
@@ -589,11 +592,19 @@ export function pruefen(pfad) {
     return { nummer: fund.nummer, marke: fund.marke, titel: fund.titel, zeile: fund.zeile, art, fehlt };
   });
 
+  // Kriterium 8 (Issue #1342, Plan #1375 E6, Issue #1382): Traegt der Befunde-Text von
+  // /issue-review keinen einzigen Reviewer-Kopf, lief kein Pruefer — Schritt 6 setzt
+  // `review:fertig` dann nicht. Eine Angabe des Texts, darum neben den Eintraegen je Fund.
+  const meldungen = koepfe !== null && koepfe.length === 0
+    ? [{ angabe: "keine-pruefer", meldung: MELDUNG_KEINE_PRUEFER }]
+    : [];
+
   return {
     ok: true,
     datei: pfad,
     funde,
     eintraege,
+    meldungen,
     vollstaendig: funde.filter((f) => f.fehlt.length === 0).length,
     unvollstaendig: funde.filter((f) => f.fehlt.length > 0).length,
   };
