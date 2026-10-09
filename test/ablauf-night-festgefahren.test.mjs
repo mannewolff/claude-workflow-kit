@@ -144,6 +144,8 @@ test("[night-1390] festgefahren mit Aenderungen: kein Salvage, Stash, Vermerk, B
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.ok(Date.now() - start < TIMEOUT_MS, "die Sitzung lief bis an die Zeitgrenze statt bis zur Bremse");
     assert.doesNotMatch(res.stdout, /HARTER STOPP|INFRASTRUKTUR/);
+    // Die Schlusszeile: festgefahren nach abgebrochen, nur weil N > 0 (Issue #1391).
+    assert.match(res.stdout, /Nacht-Runner beendet: 1 erfolgreich, 0 zurueckgestellt, 0 ohne gueltigen Nachweis, 2 Session\(s\) gestartet, 0 angehalten, 1 festgefahren\./);
     assert.ok(res.stdout.includes(GRUND_WORTLAUT), `der Grund fehlt im Protokoll:\n${res.stdout}`);
 
     // Kein Rettungsversuch: Er liefe nur erneut gegen dieselbe rote Pruefung.
@@ -196,6 +198,8 @@ test("[night-1390] scheitert der Stash, endet die Nacht mit hartem Stopp", () =>
     assert.deepEqual(sitzungen(log), [fest], "nach dem harten Stopp lief noch ein Paket oder eine Rettung");
     assert.equal(spalte(dir, danach), "ready");
     assert.equal(einheit(dir, fest).ausgang, "harterStopp");
+    // Kein festgefahrenes Paket gezaehlt: Die Schlusszeile nennt keines (Issue #1391).
+    assert.match(res.stdout, /Nacht-Runner beendet: .*, 0 angehalten, HARTER STOPP\./);
   });
 });
 
@@ -216,6 +220,8 @@ test("[night-1390] festgefahren bei sauberem Baum: kein Stash, Vermerk unter dem
     assert.ok(!("zeitlimitBeendet" in e), JSON.stringify(e));
     assert.equal(Object.keys(e).at(-1), "festgefahren");
     assert.ok(labels(dir, fest).includes("lauf:abgebrochen"), `Labels #${fest}: ${labels(dir, fest)}`);
+    // Die Schlusszeile nennt das festgefahrene Paket (Issue #1391, Plan #1386, E13).
+    assert.match(res.stdout, /Nacht-Runner beendet: 0 erfolgreich, 0 zurueckgestellt, 0 ohne gueltigen Nachweis, 1 Session\(s\) gestartet, 0 angehalten, 1 festgefahren\./);
   });
 });
 

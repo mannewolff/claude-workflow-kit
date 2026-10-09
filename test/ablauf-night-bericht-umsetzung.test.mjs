@@ -11,6 +11,7 @@ import {
   run, mitProjekt, fachplan, umgebung, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
 } from "./helpers/kette-ablauf.mjs";
+import { prueflaufZeilen } from "../kit/night/bericht.mjs";
 
 test("[night-36] [night-41] [night-42] die Kette-Einheit des Ergebnisstands traegt variante, die drei Listen und je umgesetztem Paket stufe, stufeVerwendet, modell und effort", () => {
   mitProjekt((dir) => {
@@ -35,4 +36,34 @@ test("[night-36] [night-41] [night-42] die Kette-Einheit des Ergebnisstands trae
       assert.ok("effort" in eintrag, "traegt effort");
     }
   });
+});
+
+// --- Der Ausgang festgefahren im Pruefbericht (Issue #1391, Plan #1386, E13) ---
+//
+// Je Bremsung eine Zeile mit Pruefung, Laufzeit, Zeitgrenze und der gesparten Zeit als
+// Schaetzung. Die Schaetzung steht nicht in der Einheit (E8), der Bericht rechnet sie aus
+// `zeitgrenzeMs - dauerMs`, nie unter 0.
+
+function festgefahreneEinheit(dauerMs, zeitgrenzeMs) {
+  return {
+    id: "0007", ausgang: "festgefahren", dauerMs, pruefung: { laufen: [] },
+    festgefahren: { pruefung: "npm test", fehler: "test/a.test.mjs: erwartet 2", versuche: 3, zeitgrenzeMs },
+  };
+}
+
+test("[night-1391] eine festgefahrene Einheit erscheint mit Pruefung, Laufzeit, Zeitgrenze und gesparter Zeit", () => {
+  const zeilen = prueflaufZeilen([festgefahreneEinheit(12 * 60000, 60 * 60000)]);
+  const zeile = zeilen.find((z) => z.includes("festgefahren"));
+  assert.ok(zeile, zeilen.join("\n"));
+  assert.equal(zeile, "- Issue #0007: festgefahren an npm test (3 Versuche), Laufzeit 12.0 min, Zeitgrenze 60.0 min, gesparte Zeit (Schaetzung) 48.0 min");
+});
+
+test("[night-1391] liegt die Laufzeit ueber der Zeitgrenze, ist die gesparte Zeit 0", () => {
+  const zeile = prueflaufZeilen([festgefahreneEinheit(61 * 60000, 60 * 60000)]).find((z) => z.includes("festgefahren"));
+  assert.match(zeile, /, gesparte Zeit \(Schaetzung\) 0\.0 min$/);
+});
+
+test("[night-1391] eine Einheit ohne Bremsung bekommt keine Zeile festgefahren", () => {
+  const zeilen = prueflaufZeilen([{ id: "0008", ausgang: "erfolg", dauerMs: 60000, pruefung: { laufen: [] } }]);
+  assert.ok(!zeilen.some((z) => z.includes("festgefahren")), zeilen.join("\n"));
 });
