@@ -760,6 +760,7 @@ Night mode. The night chain under kette, the list of allowed model names under m
 - `night.stufen.leicht.kommando` — Command line of a foreign program for this level — a project artefact with the same level of trust as reviewCommand; the pattern ^claude- does not apply here.
 - `night.stufen.leicht.name` — The program's self-description next to kommando.
 - `night.stufenRegel` — Replaces the built-in rule by which /issues and /task determine the level of a work package. If the field is missing or the text is empty, the kit's rule applies.
+- `night.festgefahrenNach` — Number of identically failed runs of the same check after which an unattended session is stopped at the next check call; interactively the same number only produces a hint. Switching it off is not intended — if the field is missing, the default applies.
 - `night.zielUmsetzungMin` — Target for the duration of an implementation in minutes; the report shows how many packages stayed below it. The target applies to the chain's implementation stage and to the implementation night, which is why it sits next to night.kette and not inside it. Switching it off is not intended — if the field is missing, the default applies.
 
 ### `pruefLauf`

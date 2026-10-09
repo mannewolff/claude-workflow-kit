@@ -990,6 +990,12 @@
           "type": "string",
           "description": "Ersetzt die mitgelieferte Regel, nach der /issues und /task die Stufe eines Arbeitspakets bestimmen. Fehlt das Feld oder ist der Text leer, gilt die Regel des Kits."
         },
+        "festgefahrenNach": {
+          "type": "integer",
+          "minimum": 2,
+          "default": 3,
+          "description": "Zahl gleich gescheiterter Läufe derselben Prüfung, nach der eine unbeaufsichtigte Sitzung beim nächsten Prüfaufruf gebremst wird; interaktiv gibt dieselbe Zahl nur einen Hinweis. Abschalten ist nicht vorgesehen — fehlt das Feld, gilt die Vorgabe."
+        },
         "zielUmsetzungMin": {
           "type": "integer",
           "exclusiveMinimum": 0,

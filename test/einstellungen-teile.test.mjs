@@ -90,7 +90,7 @@ test("[einstellungen-9] die benannten Teile des Entwurfs tragen Titel und Thema,
   assert.deepEqual(teilNach("m4").pfade, ["buildChecks", "checkAreas", "ohnePruefung", "nurGeruest", "gekoppelteBereiche"]);
   // m5 (Spezifikation) entfiel mit Spec-Driven Development (Plan #825, Issue #830).
   assert.equal(teilNach("m5"), undefined);
-  assert.deepEqual(teilNach("m6").pfade, ["night.kette", "night.zielUmsetzungMin", "night.stand"]);
+  assert.deepEqual(teilNach("m6").pfade, ["night.kette", "night.zielUmsetzungMin", "night.festgefahrenNach", "night.stand"]);
   for (const kennung of ["m7", "wert", "text"]) assert.equal(teilNach(kennung).thema, null, kennung);
 });
 
@@ -181,6 +181,16 @@ test("[einstellungen-9] ohne eigenen Eintrag steht die Zielmarke mit der Vorgabe
   assert.equal(eintrag.team, undefined, "die Konfiguration traegt das Feld gar nicht");
   assert.equal(eintrag.gilt, undefined, "ohne Eintrag gilt kein eigener Wert");
   assert.equal(vorgabeAus("night.zielUmsetzungMin"), 10, "dann greift die Vorgabe aus dem Schema");
+});
+
+// Die Bremse fuer festgefahrene Pakete (Issue #1387, Plan #1386 E11): eine Zahl gleich
+// gescheiterter Prueflaeufe, bearbeitet im Nacht-Teil m6 neben der Zielmarke.
+test("[einstellungen-9] night.festgefahrenNach gehoert zu m6 und traegt die Vorgabe 3", () => {
+  assert.equal(teilFuer("night.festgefahrenNach").kennung, "m6");
+  const knoten = SCHEMA.properties.night.properties.festgefahrenNach;
+  assert.equal(knoten.type, "integer");
+  assert.equal(knoten.minimum, 2);
+  assert.equal(vorgabeAus("night.festgefahrenNach"), 3);
 });
 
 // Der Prueflauf-Block (Issue #905, Plan #904 E5): drei einfache Felder, deshalb kein
