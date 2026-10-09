@@ -29,10 +29,18 @@
  * zieht, ohne dass das Kit sie je bewegt hat, erzeugt keine Protokollzeile und wird
  * nie Kandidat — sie fehlt in Zaehler und Nenner. Der Bericht nennt das sichtbar.
  *
- * DREI ZUSTAENDE JE PRUEFUNG, streng getrennt: ausgefuehrt mit Beanstandungen,
- * ausgefuehrt und nie beanstandet, nicht gelaufen. "Nicht gelaufen" loest nie einen
- * Befund aus und wird nie als "nie beanstandet" dargestellt — eine Pruefung, die gar
- * nicht lief, hat weder Wirksamkeit noch Wirkungslosigkeit bewiesen.
+ * VIER ZUSTAENDE JE PRUEFUNG, streng getrennt: ausgefuehrt mit Beanstandungen,
+ * ausgefuehrt und gewackelt, ausgefuehrt und nie beanstandet, nicht gelaufen. "Nicht
+ * gelaufen" loest nie einen Befund aus und wird nie als "nie beanstandet" dargestellt —
+ * eine Pruefung, die gar nicht lief, hat weder Wirksamkeit noch Wirkungslosigkeit
+ * bewiesen. "Gewackelt" (Issue #1398) heisst: mindestens ein Wackler, keine Beanstandung —
+ * eine Pruefung, die rot war, ist nie "nie beanstandet".
+ *
+ * WACKLER (Issue #1398, Plan #1395, E9): Die zwoelfte Protokollspalte markiert die beiden
+ * Laeufe einer wiederholten Pruefung. Gepaart wird je Laufkennung und Pruefung in
+ * Zeitfolge; Rot und Gruen ist ein Wackler und keine Beanstandung. Ab
+ * REPARATUR_AB_WACKLERN im Fenster ist die Pruefung ein Reparaturkandidat; `kandidaten`
+ * nennt sie aus dem letzten Stand, ohne neu zu rechnen.
  *
  * DAS FENSTER traegt seinen eigenen Anfang (E2): `jetzt − fensterTage`, nach vorne
  * abgeschnitten am Erhebungsbeginn — dem fruehesten Zeitstempel im Protokoll. Beginnt
@@ -52,6 +60,7 @@
  *
  * Aufruf im Projekt-Root:  node .claude/kit/wirksamkeit.mjs auswerten [--fenster <tage>]
  *                          node .claude/kit/wirksamkeit.mjs befund
+ *                          node .claude/kit/wirksamkeit.mjs kandidaten
  *
  * Keine Laufzeitabhaengigkeit ausserhalb der Node-Standardbibliothek — das Kit liefert
  * seine Werkzeuge als eigenstaendig portable Einzeldateien aus.
@@ -140,6 +149,15 @@ const VORGABE_QUOTE_AB_PAKETEN = 10;
 
 const TAG_MS = 24 * 60 * 60 * 1000;
 
+// Ab so vielen Wacklern im Fenster ist eine Pruefung ein Kandidat fuer eine Reparatur
+// (Issue #1398, Plan #1395, E10). Bewusst kein Config-Feld: Der PO hat die Zahl festgelegt.
+const REPARATUR_AB_WACKLERN = 3;
+
+// SYNC: `ausfuehrungSchreiben` in kit/checks.mjs setzt diese Werte in die zwoelfte Spalte
+// (Issue #1396, Plan #1395, E8): an den roten ersten Lauf und an seine Wiederholung.
+const ERSTLAUF = "erstlauf";
+const WIEDERHOLUNG = "wiederholung";
+
 // Was im Protokoll als Ausfuehrung zaehlt (E4): eine Zeile mit `gruen` oder `rot`.
 // Beanstandet heisst `rot`. Jede andere Zeile ist fehlerhaft und wird gezaehlt statt
 // gedeutet — auch ein kuenftiger dritter Ergebniswert faellt so auf, statt still eine
@@ -171,6 +189,7 @@ const HELP = `wirksamkeit.mjs (claude-workflow-kit v${KIT_VERSION}) — Wirksamk
 
   node wirksamkeit.mjs auswerten [--fenster <tage>]
   node wirksamkeit.mjs befund
+  node wirksamkeit.mjs kandidaten
 
 auswerten  Liest ${CLAUDE_DIR}/${AUSFUEHRUNGEN_DATEI}, aggregiert je Pruefkommando
            Ausfuehrungen, Beanstandungen und Dauer ueber das Zeitfenster, rechnet die
@@ -187,6 +206,10 @@ befund     Gibt den Befundblock aus ${CLAUDE_DIR}/${STAND_DATEI} als Text aus, m
            Datum der Auswertung und Fenster in der Kopfzeile. Liegt kein Befund vor,
            fehlt die Datei oder ist sie unlesbar, bleibt die Ausgabe leer. Exit immer
            0 — der Befund ist kein Gate.
+kandidaten Nennt je Pruefung, die ${CLAUDE_DIR}/${STAND_DATEI} als Reparaturkandidat
+           kennzeichnet (ab ${REPARATUR_AB_WACKLERN} Wacklern im Fenster), eine Zeile
+           'Reparaturkandidat: <cmd> — <n> Wackler im Zeitfenster'. Rechnet nicht neu;
+           ohne Kandidaten oder ohne Datei bleibt die Ausgabe leer. Exit immer 0.
 
   --fenster <tage>  Laenge des Zeitfensters in Tagen (Vorgabe ${VORGABE_FENSTER_TAGE}).
                     Sticht den Config-Block.
@@ -415,6 +438,9 @@ function protokollLesen(root) {
       dateien: listeLesen(teile[9]),
       // Die elfte Spalte aus Issue #1071: Ohne sie gilt die Dauer als nacheinander gemessen.
       gleichzeitig: teile[10] === "gleichzeitig",
+      // Die zwoelfte Spalte aus Issue #1396: `erstlauf`, `wiederholung` oder `null` —
+      // ohne sie zaehlt die Zeile wie vorher.
+      wiederholung: teile[11] === ERSTLAUF || teile[11] === WIEDERHOLUNG ? teile[11] : null,
     };
   });
 }
@@ -521,19 +547,24 @@ function zeilenbilanz(protokoll, fenster) {
  * `dauerMs` bleibt ohne Ausfuehrung `null` und heisst "nicht gemessen" — nie 0. Eine
  * 0 behauptete, es sei nichts verbraucht worden, und saehe aus wie gemessen (dieselbe
  * Regel wie in kit/aufwand.mjs).
+ *
+ * WACKLER (Issue #1398, E9): Ein gepaarter erster Lauf ist keine Beanstandung; seine
+ * Wiederholung zaehlt gruen als Wackler, rot als Beanstandung. Beide Zeilen zaehlen als
+ * Ausfuehrungen und mit ihrer Dauer. Ein erster Lauf ohne Partner zaehlt wie jede rote Zeile.
  */
 function aggregieren(zeilen, buildCmds, fenster, hinweisCmds = []) {
   const hinweis = new Set(hinweisCmds);
+  const { gepaarteErstlaeufe, gepaarteWiederholungen } = paaren(zeilen);
+  const neu = (cmd, vorgeschrieben) =>
+    ({ cmd, vorgeschrieben, ausfuehrungen: 0, beanstandungen: 0, wackler: 0, dauerMs: null, tage: new Set() });
   const jeCmd = new Map();
-  for (const cmd of buildCmds) {
-    jeCmd.set(cmd, { cmd, vorgeschrieben: true, ausfuehrungen: 0, beanstandungen: 0, dauerMs: null, tage: new Set() });
-  }
+  for (const cmd of buildCmds) jeCmd.set(cmd, neu(cmd, true));
   for (const z of zeilen) {
     if (!imFenster(z.zeitMs, fenster) || hinweis.has(z.cmd)) continue;
-    const p = jeCmd.get(z.cmd)
-      ?? { cmd: z.cmd, vorgeschrieben: false, ausfuehrungen: 0, beanstandungen: 0, dauerMs: null, tage: new Set() };
+    const p = jeCmd.get(z.cmd) ?? neu(z.cmd, false);
     p.ausfuehrungen += 1;
-    if (z.ergebnis === "rot") p.beanstandungen += 1;
+    if (gepaarteWiederholungen.has(z) && z.ergebnis === "gruen") p.wackler += 1;
+    else if (z.ergebnis === "rot" && !gepaarteErstlaeufe.has(z)) p.beanstandungen += 1;
     p.dauerMs = (p.dauerMs ?? 0) + z.dauerMs;
     p.tage.add(z.tag);
     jeCmd.set(z.cmd, p);
@@ -548,16 +579,49 @@ function aggregieren(zeilen, buildCmds, fenster, hinweisCmds = []) {
       vorgeschrieben: p.vorgeschrieben,
       ausfuehrungen: p.ausfuehrungen,
       beanstandungen: p.beanstandungen,
+      wackler: p.wackler,
+      reparaturkandidat: p.wackler >= REPARATUR_AB_WACKLERN,
       dauerMs: p.dauerMs,
       lauftage: p.tage.size,
     }))
     .sort((a, b) => b.ausfuehrungen - a.ausfuehrungen || vergleicheText(a.cmd, b.cmd));
 }
 
-/** Der Zustand einer Pruefung — genau einer der drei, "nicht gelaufen" zuerst geprueft. */
+/**
+ * Die Paare aus erstem Lauf und Wiederholung (Issue #1398, Plan #1395, E9): je Laufkennung
+ * und Kommando in Zeitfolge ein `erstlauf` mit der naechsten `wiederholung`. Teillauf und
+ * voller Lauf derselben Laufkennung ergeben so getrennte Paare. Gepaart wird ueber das
+ * ganze Protokoll und nicht nur das Fenster — ein Paar ueber die Fenstergrenze bleibt ein
+ * Paar, gezaehlt wird jede Zeile nur, wenn sie selbst im Fenster liegt.
+ *
+ * Bei gleichem Zeitpunkt entscheidet die Reihenfolge in der Datei (stabile Sortierung):
+ * `checks.mjs` schreibt den ersten Lauf vor seiner Wiederholung.
+ */
+function paaren(zeilen) {
+  const gepaarteErstlaeufe = new Set();
+  const gepaarteWiederholungen = new Set();
+  const offen = new Map();
+  const markiert = zeilen.filter((z) => z.wiederholung !== null).sort((a, b) => a.zeitMs - b.zeitMs);
+  for (const z of markiert) {
+    const schluessel = `${z.lauf}\t${z.cmd}`;
+    if (z.wiederholung === ERSTLAUF) {
+      offen.set(schluessel, z);
+      continue;
+    }
+    const erster = offen.get(schluessel);
+    if (erster === undefined) continue;
+    offen.delete(schluessel);
+    gepaarteErstlaeufe.add(erster);
+    gepaarteWiederholungen.add(z);
+  }
+  return { gepaarteErstlaeufe, gepaarteWiederholungen };
+}
+
+/** Der Zustand einer Pruefung — genau einer der vier, "nicht gelaufen" zuerst geprueft. */
 function zustandVon(p) {
   if (p.ausfuehrungen === 0) return "nicht gelaufen";
-  return p.beanstandungen > 0 ? "beanstandet" : "nie beanstandet";
+  if (p.beanstandungen > 0) return "beanstandet";
+  return p.wackler > 0 ? "gewackelt" : "nie beanstandet";
 }
 
 /**
@@ -1091,6 +1155,7 @@ function lauftagText(n) {
 /** Der Zustand einer Pruefung, wie er in der Tabelle steht. */
 function zustandText(p) {
   if (p.zustand === "nicht gelaufen") return "nicht gelaufen";
+  if (p.zustand === "gewackelt") return "ausgefuehrt, gewackelt";
   return p.zustand === "beanstandet" ? "ausgefuehrt, mit Beanstandungen" : "ausgefuehrt, nie beanstandet";
 }
 
@@ -1144,12 +1209,16 @@ function berichtPruefungen(e) {
   }
   const zeilen = [
     "## Pruefungen", "",
-    "| Kommando | Zustand | Ausfuehrungen | Beanstandungen | Dauer | Lauftage |",
-    "| --- | --- | --- | --- | --- | --- |",
+    "| Kommando | Zustand | Ausfuehrungen | Beanstandungen | Wackler | Dauer | Lauftage |",
+    "| --- | --- | --- | --- | --- | --- | --- |",
     ...e.pruefungen.map((p) =>
-      `| \`${p.cmd}\` | ${zustandText(p)} | ${p.ausfuehrungen} | ${p.beanstandungen} | ${dauer(p.dauerMs)} | ${p.lauftage} |`),
+      `| \`${p.cmd}\` | ${zustandText(p)} | ${p.ausfuehrungen} | ${p.beanstandungen} | ${p.wackler ?? 0} | ${dauer(p.dauerMs)} | ${p.lauftage} |`),
     "",
   ];
+  // Je Reparaturkandidat eine Zeile (Issue #1398, E10) — dieselbe Form, die `kandidaten` ausgibt.
+  for (const p of e.pruefungen.filter((p) => p.reparaturkandidat)) {
+    zeilen.push(`Reparaturkandidat: \`${p.cmd}\` — ${kandidatText(p)} (ab ${REPARATUR_AB_WACKLERN}).`);
+  }
   // Die Traglast in Worten (AK 7): Eine Zeile aus einem einzigen Lauftag ist eine
   // Momentaufnahme — das steht ausdruecklich da, nicht nur als 1 in einer Spalte.
   for (const p of e.pruefungen.filter((p) => p.ausfuehrungen > 0 && p.lauftage === 1)) {
@@ -1408,6 +1477,23 @@ export function befundText(stand) {
   return [kopf, ...befund.map((b) => `- ${b.text}`)].join("\n") + "\n";
 }
 
+/** Die Zahl der Wackler eines Reparaturkandidaten in Worten. */
+function kandidatText(p) {
+  return `${p.wackler} Wackler im Zeitfenster`;
+}
+
+/**
+ * Die Reparaturkandidaten als Text, eine Zeile je Kandidat (Issue #1398, Plan #1395, E15).
+ * Gefiltert wird `pruefungen` — eine eigene Liste daneben waere eine zweite Wahrheit.
+ */
+export function kandidatenText(stand) {
+  const pruefungen = Array.isArray(stand?.pruefungen) ? stand.pruefungen : [];
+  return pruefungen
+    .filter((p) => p?.reparaturkandidat === true)
+    .map((p) => `Reparaturkandidat: ${p.cmd} — ${kandidatText(p)}\n`)
+    .join("");
+}
+
 // --- Kommandos ---------------------------------------------------------------
 
 function schreibeDatei(pfad, inhalt) {
@@ -1504,9 +1590,25 @@ export function befund(root) {
   }
 }
 
+/**
+ * Die Reparaturkandidaten aus dem letzten Stand. Liest allein `.claude/wirksamkeit.json`
+ * und rechnet nicht neu (E15): `push main` und `merge production` sollen den Stand der
+ * letzten Auswertung nennen. Nie ein Fehler — eine fehlende oder unlesbare Datei heisst
+ * wie bei `befund` "nichts zu nennen".
+ */
+export function kandidaten(root) {
+  try {
+    return kandidatenText(JSON.parse(readFileSync(join(root, CLAUDE_DIR, STAND_DATEI), "utf-8")));
+  } catch {
+    return "";
+  }
+}
+
 // --- CLI ---------------------------------------------------------------------
 
-// SYNC: `parseAuswertenArgs` und `main` stehen gleichlautend in kit/aufwand.mjs (#440).
+// SYNC: `parseAuswertenArgs` und `main` stehen gleichlautend in kit/aufwand.mjs (#440) —
+// bis auf die Unterkommandos neben `auswerten` und `befund`: dort `auskunft`, hier
+// `kandidaten` (Issue #1398).
 function parseAuswertenArgs(rest) {
   const args = {};
   let i = 0;
@@ -1585,9 +1687,15 @@ function main(argv, { cwd, abhaengigkeiten = {}, stdout }) {
     stdout(befund(cwd));
     return 0;
   }
+  if (command === "kandidaten") {
+    // Wie `befund`: stdout traegt nur, was ein Skill weiterreicht.
+    if (rest.length > 0) fail(`'kandidaten' nimmt keine Argumente, bekam '${rest[0]}'.`);
+    stdout(kandidaten(cwd));
+    return 0;
+  }
 
   stdout(HELP);
-  return fail(`Unbekannter Befehl: '${command}'. Erwartet: auswerten oder befund`);
+  return fail(`Unbekannter Befehl: '${command}'. Erwartet: auswerten, befund oder kandidaten`);
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).

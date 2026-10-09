@@ -94,3 +94,46 @@ test("[wirksamkeit-1213] die Kommandozeile setzt bei einem abgewiesenen Aufruf E
     assert.match(res.stderr, /^Fehler: 'befund' nimmt keine Argumente/);
   });
 });
+
+/** Legt `.claude/wirksamkeit.json` mit den genannten Pruefungen an. */
+function standAnlegen(dir, pruefungen) {
+  writeFileSync(join(dir, ".claude", "wirksamkeit.json"), JSON.stringify({ pruefungen }), "utf-8");
+}
+
+test("[wirksamkeit-1398] kandidaten gibt je Reparaturkandidat eine Zeile aus und rechnet nicht neu", () => {
+  mitProjekt({ ausfuehrungen: [`${vorTagen(1)}\tnode --test\tgruen\t1000`] }, (dir) => {
+    standAnlegen(dir, [
+      { cmd: "node --test", wackler: 4, reparaturkandidat: true },
+      { cmd: "npx eslint .", wackler: 2, reparaturkandidat: false },
+      { cmd: "npm run build", wackler: 3, reparaturkandidat: true },
+    ]);
+    const res = cli(dir, "kandidaten");
+
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(res.stdout,
+      "Reparaturkandidat: node --test — 4 Wackler im Zeitfenster\n"
+      + "Reparaturkandidat: npm run build — 3 Wackler im Zeitfenster\n");
+    assert.equal(existsSync(join(dir, ".claude", "wirksamkeit.md")), false, "kandidaten hat neu ausgewertet");
+  });
+});
+
+test("[wirksamkeit-1398] kandidaten bleibt ohne Kandidaten und ohne Datei leer mit Exit 0", () => {
+  mitProjekt({}, (dir) => {
+    const ohneDatei = cli(dir, "kandidaten");
+    assert.equal(ohneDatei.status, 0, ohneDatei.stderr);
+    assert.equal(ohneDatei.stdout, "");
+
+    standAnlegen(dir, [{ cmd: "node --test", wackler: 2, reparaturkandidat: false }]);
+    const ohneKandidaten = cli(dir, "kandidaten");
+    assert.equal(ohneKandidaten.status, 0, ohneKandidaten.stderr);
+    assert.equal(ohneKandidaten.stdout, "");
+  });
+});
+
+test("[wirksamkeit-1398] ein unbekannter Befehl nennt kandidaten unter den erwarteten", () => {
+  mitProjekt({}, (dir) => {
+    const res = cli(dir, "gibtsnicht");
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /Erwartet: auswerten, befund oder kandidaten/);
+  });
+});
