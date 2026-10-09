@@ -274,3 +274,19 @@ test("push-main: Schritt 5 zeigt die Zeilen 'hinweis:' und haelt an ihnen nicht 
     "Schritt 5 sagt nicht, dass die Hinweis-Zeilen nicht anhalten");
   assert.match(schritt5, /keine Freigabe/, "Schritt 5 sagt nicht, dass ein Hinweis keine Freigabe verlangt");
 });
+
+// --- Einmalige Wiederholung und Zeile Gewackelt: (Issue #1402, Plan #1395, E2/E12) ---
+//
+// Die Abschlusspruefung wiederholt eine rote Pruefung selbst einmal (Issue #1396).
+// Wiederholt die Session sie zusaetzlich, laeuft dieselbe Pruefung dreimal; laesst
+// sie die Zeile `Gewackelt:` weg, fehlt im Bericht, was Kriterium 2 verlangt.
+
+for (const name of ["implement-next", "implement-ready", "implement-done", "implement-test"]) {
+  test(`${name}: die Pruefregel nennt die Wiederholung der Abschlusspruefung und die Zeile 'Gewackelt:'`, () => {
+    const text = readFileSync(join(repoRoot, "skills", name, "SKILL.md"), "utf-8");
+    assert.match(text, /wiederholt eine rote Prüfung selbst einmal/,
+      "es fehlt, dass die Abschlusspruefung eine rote Pruefung selbst einmal wiederholt");
+    assert.match(text, /`Gewackelt:`-Zeile geht wortgetreu in den Bericht/,
+      "es fehlt, dass die Zeile `Gewackelt:` wortgetreu in den Bericht geht");
+  });
+}
