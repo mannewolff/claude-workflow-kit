@@ -267,8 +267,8 @@ test("[einstellungen-11] ohne Paarungen geht die Beispielbesetzung vom ersten Re
 test("[einstellungen-11] ohne reviewStufen-Block gilt die Bestandsvorgabe", () => {
   const fachlich = abgeleitet(ohne(BEISPIEL, "reviewStufen"), "m3").beispiel.fachlich;
   assert.deepEqual(fachlich.pruefer, [
-    { name: "fable", rolle: "vollstaendigkeit-pruefbarkeit" },
-    { name: "gpt-astra", rolle: "scope-risiko-bestand" },
+    { name: "fable", rolle: "form-beobachtbarkeit" },
+    { name: "gpt-astra", rolle: "abgrenzung" },
   ]);
 });
 
@@ -312,10 +312,8 @@ test("[einstellungen-9] ein Projekt ohne reviewStufen-Block liefert die Vorgabe 
     assert.equal(eintrag.team, undefined, "reviewStufen steht als Team-Wert da, obwohl die Datei den Block nicht traegt");
     assert.equal(eintrag.gilt, undefined);
     for (const stufe of ["fachlich", "plan", "issue"]) {
-      assert.deepEqual(eintrag.vorgabe[stufe].rollen, ["vollstaendigkeit-pruefbarkeit", "scope-risiko-bestand"]);
-      for (const rolle of eintrag.vorgabe[stufe].rollen) {
-        assert.ok(!(ROLLEN_KATALOG[stufe] ?? []).includes(rolle), `'${rolle}' sollte kein Katalogeintrag von ${stufe} sein`);
-      }
+      assert.deepEqual(eintrag.vorgabe[stufe].rollen, ROLLEN_KATALOG[stufe]);
+      assert.equal(eintrag.vorgabe[stufe].reviewer, ROLLEN_KATALOG[stufe].length);
     }
   });
 });

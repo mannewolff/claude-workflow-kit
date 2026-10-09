@@ -95,14 +95,19 @@ test("issue-review roles: quelle bleibt die Auswahlquelle, stufenQuelle ist ein 
 });
 
 test("issue-review roles: ohne reviewStufen-Block gilt fuer jede Stufe die Rueckfallebene", () => {
-  // Ein Kit-Update darf keinem Bestandsprojekt den Review umbauen — dieselbe Vorsicht
-  // wie bei requiredBeforeReady, das per Default aus ist.
-  for (const stufe of ["fachlich", "plan", "issue"]) {
+  // Die Rueckfallebene nennt je Stufe die Rollen aus ROLLEN_KATALOG (Plan #1375, E5):
+  // Ohne Rollendatei fiele sonst jeder Pruefer eines Projekts ohne reviewStufen aus.
+  const erwartet = {
+    fachlich: ["form-beobachtbarkeit", "abgrenzung"],
+    plan: ["architektur-bestand", "schnitt-abhaengigkeiten"],
+    issue: ["pruefbarkeit"],
+  };
+  for (const [stufe, rollen] of Object.entries(erwartet)) {
     const antwort = issueReviewRoles({ stufe, author: "opus" }, mitReview({ reviewers: ALLE, pairs: PAARE }));
-    assert.equal(antwort.reviewer, 2, stufe);
-    assert.deepEqual(antwort.rollen, ["vollstaendigkeit-pruefbarkeit", "scope-risiko-bestand"], stufe);
+    assert.equal(antwort.reviewer, rollen.length, stufe);
+    assert.deepEqual(antwort.rollen, rollen, stufe);
     assert.equal(antwort.stufenQuelle, "default", stufe);
-    assert.equal(antwort.gewaehlt.length, 2, stufe);
+    assert.equal(antwort.gewaehlt.length, rollen.length, stufe);
   }
 });
 

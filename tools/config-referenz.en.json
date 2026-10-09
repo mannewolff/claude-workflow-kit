@@ -268,8 +268,8 @@
     "text": "Explicit mapping author -> reviewer. If the author is listed here, their entry wins over the order rule. Without pairs the rule always picks the frontmost entries — a foreign model further back would never get its turn. A name that does not exist in reviewers and an author who names themselves are hard errors."
   },
   "reviewStufen": {
-    "de": "d8139ff90b8d",
-    "text": "Staffing and perspective of the three review levels: the functional concern, the plan to get there, the single work package. While issueReview describes WHO reviews at all, this states how many review per level and in which roles. 'rollen' must contain exactly 'reviewer' distinct, non-empty names — otherwise a hard error. If the whole block is missing, every level uses reviewer 2 with the roles 'vollstaendigkeit-pruefbarkeit' and 'scope-risiko-bestand'; if only one level is missing in an existing block, that is an error. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "12c81da555c8",
+    "text": "Staffing and perspective of the three review levels: the functional concern, the plan to get there, the single work package. While issueReview describes WHO reviews at all, this states how many review per level and in which roles. 'rollen' must contain exactly 'reviewer' distinct, non-empty names — otherwise a hard error. If the whole block is missing, each level uses the roles of the role catalogue with one reviewer per role: fachlich 'form-beobachtbarkeit' and 'abgrenzung', plan 'architektur-bestand' and 'schnitt-abhaengigkeiten', issue 'pruefbarkeit'; if only one level is missing in an existing block, that is an error. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "reviewStufen.fachlich": {
     "de": "217f375f402c",

@@ -541,7 +541,7 @@
     },
     "reviewStufen": {
       "type": "object",
-      "description": "Besetzung und Blickwinkel der drei Prüfstufen: das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Während issueReview beschreibt, WER überhaupt prüft, steht hier, wie viele und mit welchen Rollen je Stufe geprüft wird. 'rollen' muss genau 'reviewer' verschiedene, nicht leere Namen enthalten — sonst harter Fehler. Fehlt der gesamte Block, gilt für jede Stufe reviewer 2 mit den Rollen 'vollstaendigkeit-pruefbarkeit' und 'scope-risiko-bestand'; fehlt nur eine Stufe im vorhandenen Block, ist das ein Fehler. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Besetzung und Blickwinkel der drei Prüfstufen: das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Während issueReview beschreibt, WER überhaupt prüft, steht hier, wie viele und mit welchen Rollen je Stufe geprüft wird. 'rollen' muss genau 'reviewer' verschiedene, nicht leere Namen enthalten — sonst harter Fehler. Fehlt der gesamte Block, gelten je Stufe die Rollen des Rollenkatalogs mit einem Reviewer je Rolle: fachlich 'form-beobachtbarkeit' und 'abgrenzung', plan 'architektur-bestand' und 'schnitt-abhaengigkeiten', issue 'pruefbarkeit'; fehlt nur eine Stufe im vorhandenen Block, ist das ein Fehler. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "properties": {
         "fachlich": {
           "type": "object",

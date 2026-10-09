@@ -670,7 +670,7 @@ Issue-Review über mehrere Modelle. Reviewer, die das Dokument nicht geschrieben
 
 ### `reviewStufen`
 
-Besetzung und Blickwinkel der drei Prüfstufen: das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Während issueReview beschreibt, WER überhaupt prüft, steht hier, wie viele und mit welchen Rollen je Stufe geprüft wird. 'rollen' muss genau 'reviewer' verschiedene, nicht leere Namen enthalten — sonst harter Fehler. Fehlt der gesamte Block, gilt für jede Stufe reviewer 2 mit den Rollen 'vollstaendigkeit-pruefbarkeit' und 'scope-risiko-bestand'; fehlt nur eine Stufe im vorhandenen Block, ist das ein Fehler. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+Besetzung und Blickwinkel der drei Prüfstufen: das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Während issueReview beschreibt, WER überhaupt prüft, steht hier, wie viele und mit welchen Rollen je Stufe geprüft wird. 'rollen' muss genau 'reviewer' verschiedene, nicht leere Namen enthalten — sonst harter Fehler. Fehlt der gesamte Block, gelten je Stufe die Rollen des Rollenkatalogs mit einem Reviewer je Rolle: fachlich 'form-beobachtbarkeit' und 'abgrenzung', plan 'architektur-bestand' und 'schnitt-abhaengigkeiten', issue 'pruefbarkeit'; fehlt nur eine Stufe im vorhandenen Block, ist das ein Fehler. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
 
 - `reviewStufen.fachlich` — Prüfung des fachlichen Anliegens ([Fachlich]-Issue), bevor daraus ein Plan wird.
 - `reviewStufen.fachlich.reviewer` — Wie viele Reviewer diese Stufe prüfen.
@@ -1818,7 +1818,7 @@ Der Installer legt `.claude/workflow.config.example.json` neben die echte Config
 }
 ```
 
-Bestehende Installationen **ohne** `reviewStufen`-Block behalten die alte Besetzung mit zwei Reviewern je Stufe; erst ein ausdrücklich geschriebener Block aktiviert die Stufen-Besetzung. Ein Kit-Update ändert das Prüfverfahren also nicht im Vorbeigehen.
+Bestehende Installationen **ohne** `reviewStufen`-Block prüfen je Stufe mit den Rollen des Rollenkatalogs, ein Reviewer je Rolle: fachlich `form-beobachtbarkeit` und `abgrenzung`, Plan `architektur-bestand` und `schnitt-abhaengigkeiten`, Arbeitspaket `pruefbarkeit`. Jede dieser Rollen hat ihren Wortlaut unter `kit/rollen/`, darum fällt ohne Block kein Prüfer aus. Wer eine andere Besetzung will, schreibt den Block ausdrücklich.
 
 ## Spec-Driven Development
 

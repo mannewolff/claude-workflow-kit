@@ -82,13 +82,13 @@ test("[einstellungen-20] die erste Aenderung ohne reviewStufen-Block legt auch d
     const seite = await reviewThema(s);
     const { m3, plaetze } = stufen(seite);
 
-    // Die Stufe issue von der Bestandsvorgabe (2 Pruefer) auf einen Pruefer stellen.
-    seite.klick(seite.alle(plaetze[2], (e) => e.tagName === "BUTTON" && e.textContent === "−")[0]);
+    // Die Stufe plan von der Bestandsvorgabe (2 Pruefer) auf einen Pruefer stellen.
+    seite.klick(seite.alle(plaetze[1], (e) => e.tagName === "BUTTON" && e.textContent === "−")[0]);
     seite.klick(seite.knopf(m3, "Speichern"));
     await seite.ruhe();
 
     const datei = konfig(s);
-    assert.deepEqual(datei.reviewStufen.issue, { reviewer: 1, rollen: [...ROLLEN_KATALOG.issue] }, "die bearbeitete Stufe traegt nicht ihre Katalogrollen");
+    assert.deepEqual(datei.reviewStufen.plan, { reviewer: 1, rollen: ROLLEN_KATALOG.plan.slice(0, 1) }, "die bearbeitete Stufe traegt nicht ihre Katalogrollen");
     assert.deepEqual(pruefe(datei, {}).filter((b) => b.art === "fehler"), [], "die erste Aenderung hat einen Fehler geschrieben");
   });
 });

@@ -608,7 +608,7 @@ test("jede Property im Schema traegt eine nicht leere description", () => {
 
 test("keine description ist transliteriert oder verweist auf ein Issue", () => {
   // Bezeichner in Anfuehrungszeichen oder Backticks bleiben, wie sie heissen
-  // ('vollstaendigkeit-pruefbarkeit' ist ein Rollenname, kein Text).
+  // ('form-beobachtbarkeit' ist ein Rollenname, kein Text).
   const WOERTER = /\b\w*(fuer|ueber|koennen|wuerde|pruef|schluessel|geaendert|ausfuehr)\w*/i;
   const funde = [];
   for (const text of alleBeschreibungen(schema)) {

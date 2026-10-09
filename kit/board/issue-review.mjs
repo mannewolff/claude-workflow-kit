@@ -41,11 +41,16 @@ const REVIEWER_KINDS = ["claude", "command"];
 // und Plan mit je zwei Reviewern, das Arbeitspaket mit einem.
 const REVIEW_STUFEN = ["fachlich", "plan", "issue"];
 
-// Rueckfallebene, wenn `reviewStufen` ganz fehlt: das Verhalten vor dieser Aenderung —
-// zwei Reviewer mit den beiden Rollen, die /issue-review schon kennt. Ein Kit-Update
-// darf keinem Bestandsprojekt den Review umbauen, dieselbe Vorsicht wie bei
-// `requiredBeforeReady`, das per Default aus ist.
-const REVIEW_STUFEN_DEFAULT = { reviewer: 2, rollen: ["vollstaendigkeit-pruefbarkeit", "scope-risiko-bestand"] };
+// Rueckfallebene, wenn `reviewStufen` ganz fehlt: je Stufe die Rollen des Rollenkatalogs,
+// ein Reviewer je Rolle (Plan #1375, E5). Jede Rolle braucht ihren Wortlaut unter
+// kit/rollen/ — eine Vorgaberolle ohne Datei liesse jeden Pruefer eines Projekts ohne
+// `reviewStufen` ausfallen. Die Stufe issue hat nur eine Rolle und darum einen Pruefer.
+// SYNC: STUFEN_VORGABE in kit/einstellungen.mjs
+const REVIEW_STUFEN_DEFAULT = {
+  fachlich: { reviewer: 2, rollen: ["form-beobachtbarkeit", "abgrenzung"] },
+  plan: { reviewer: 2, rollen: ["architektur-bestand", "schnitt-abhaengigkeiten"] },
+  issue: { reviewer: 1, rollen: ["pruefbarkeit"] },
+};
 
 // Die Rollen der Stufe plan, aus denen eine vom Lauf erhoehte Pruefzahl aufgefuellt wird
 // (Issue #1245). Abgeschrieben statt importiert: kit/einstellungen.mjs ist ein Download
@@ -165,7 +170,7 @@ function validateReviewers(reviewers) {
 // SYNC: die Regel rollen.length === reviewer prueft kit/einstellungen.mjs (regelRollenzahl) vor dem Speichern.
 function validateReviewStufen(block) {
   if (block === undefined || block === null) {
-    return { stufen: Object.fromEntries(REVIEW_STUFEN.map((s) => [s, REVIEW_STUFEN_DEFAULT])), stufenQuelle: "default" };
+    return { stufen: Object.fromEntries(REVIEW_STUFEN.map((s) => [s, REVIEW_STUFEN_DEFAULT[s]])), stufenQuelle: "default" };
   }
   if (typeof block !== "object" || Array.isArray(block)) {
     fail(`reviewStufen: muss ein Objekt mit den Stufen ${REVIEW_STUFEN.join(", ")} sein.`);

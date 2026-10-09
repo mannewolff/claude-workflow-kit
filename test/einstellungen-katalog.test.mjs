@@ -31,10 +31,3 @@ for (const [stufe, rollen] of Object.entries(ROLLEN_KATALOG)) {
     }
   });
 }
-
-test("[einstellungen-13] der Katalog nennt die beiden Vorgaberollen nicht", () => {
-  const alle = new Set(Object.values(ROLLEN_KATALOG).flat());
-  for (const vorgabe of ["vollstaendigkeit-pruefbarkeit", "scope-risiko-bestand"]) {
-    assert.ok(!alle.has(vorgabe), `'${vorgabe}' ist Bestandsvorgabe, keine Wahl`);
-  }
-});

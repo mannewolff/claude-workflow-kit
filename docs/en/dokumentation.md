@@ -695,7 +695,7 @@ Issue review across several models. Reviewers who did not write the document rea
 
 ### `reviewStufen`
 
-Staffing and perspective of the three review levels: the functional concern, the plan to get there, the single work package. While issueReview describes WHO reviews at all, this states how many review per level and in which roles. 'rollen' must contain exactly 'reviewer' distinct, non-empty names — otherwise a hard error. If the whole block is missing, every level uses reviewer 2 with the roles 'vollstaendigkeit-pruefbarkeit' and 'scope-risiko-bestand'; if only one level is missing in an existing block, that is an error. Applies team-wide; a different value in workflow.config.local.json is ignored.
+Staffing and perspective of the three review levels: the functional concern, the plan to get there, the single work package. While issueReview describes WHO reviews at all, this states how many review per level and in which roles. 'rollen' must contain exactly 'reviewer' distinct, non-empty names — otherwise a hard error. If the whole block is missing, each level uses the roles of the role catalogue with one reviewer per role: fachlich 'form-beobachtbarkeit' and 'abgrenzung', plan 'architektur-bestand' and 'schnitt-abhaengigkeiten', issue 'pruefbarkeit'; if only one level is missing in an existing block, that is an error. Applies team-wide; a different value in workflow.config.local.json is ignored.
 
 - `reviewStufen.fachlich` — Review of the functional concern ([Fachlich] issue) before a plan is made from it.
 - `reviewStufen.fachlich.reviewer` — How many reviewers review this level.
@@ -1879,7 +1879,7 @@ Which stage applies is decided by the title prefix, and every stage leaves its o
 Pre-flight with `issue-review check`, then `issue check-form <id>`, then `issue-review roles --stufe <stufe> --author <modell>` for roles and staffing. Every reviewer gets the same body and its role: `form-beobachtbarkeit` and `abgrenzung` for the business requirement, `architektur-bestand` (the senior who knows the existing code) for the plan, `pruefbarkeit` for the work package; every role carries the cut question "What can go?". The plan reviewer additionally gets the body of the card named in `Fachliche Quelle:` — from the board, never from the conversation — and the path of a `Vorlage:` line; with it, it also checks whether the plan delivers every goal, every acceptance criterion and every answered question of the source. Without a source this input is dropped. The findings go as a comment `## <Stufe>-Review, Runde 1` (review, round 1) to the document. Then the calling session works in every finding or rejects it with one sentence, according to the rule "decide instead of asking" (Entscheiden statt fragen) from `CLAUDE-workflow.md`: interactively after a word of approval, unattended directly; only a finding of the stop class halts and marks the document with `kit:klaeren`. The new body goes via `issue update`, together with the marker line of the stage — unattended with the addition `, Nachtlauf` (night run) — and a comment `## Einarbeitung, Runde 1` (incorporation, round 1) with the list adopted / rejected and reason. One round, no second: Further rounds, in our experience, find matters of taste.
 
 ### Configuration
-<!-- de: 376aec61213b -->
+<!-- de: a8086c36c4ed -->
 
 The installer puts `.claude/workflow.config.example.json` next to the real config; take the `issueReview` block from it. **The installer does not write it itself** — `reviewers` depends on which CLIs are on the machine, and `pairs` is a decision. A reviewer is an adapter: `kind: claude` runs as a subagent with the configured `model`, `kind: command` as any CLI with the prompt via stdin and the answer on stdout — Codex, Gemini, a script of your own. Who reviews whom is in `pairs`; otherwise the rule "the foremost reviewers that are not the author" applies. The assignment is shown by `issue-review matrix`.
 
@@ -1891,7 +1891,7 @@ The installer puts `.claude/workflow.config.example.json` next to the real confi
 }
 ```
 
-Existing installations **without** a `reviewStufen` block keep the old staffing with two reviewers per stage; only an explicitly written block activates the staffing per stage. A kit update therefore does not change the review procedure in passing.
+Existing installations **without** a `reviewStufen` block review each stage with the roles of the role catalogue, one reviewer per role: functional `form-beobachtbarkeit` and `abgrenzung`, plan `architektur-bestand` and `schnitt-abhaengigkeiten`, work package `pruefbarkeit`. Each of these roles has its wording under `kit/rollen/`, so no reviewer drops out without the block. Anyone who wants a different staffing writes the block explicitly.
 
 ## Spec-Driven Development
 <!-- de: 17654a71f796 -->
