@@ -123,3 +123,31 @@ test("[skills-20] RELEASING.md nennt weder windows-pruefung noch windows-vorab",
   assert.doesNotMatch(text, /windows-vorab/, "RELEASING.md nennt noch den Zweig windows-vorab");
   assert.doesNotMatch(text, /## Vor dem Push/, "RELEASING.md fuehrt noch den Abschnitt '## Vor dem Push'");
 });
+
+// --- Wackler vor dem Veroeffentlichen (Issue #1401, Plan #1395 E2, E13, E15) ---
+
+test("[1401] beide Release-Skills wiederholen im einen Prueflauf und fragen nach einem Wackler vor dem Commit", () => {
+  for (const [pfad, stufe, commit, bericht] of [
+    [PUSH_MAIN, "push", "### 6. Der eine Commit", "### 9. Bestätigung"],
+    [MERGE_PRODUCTION, "merge", "### 7. Der eine Commit", "### 12. PR/MR-URL"],
+  ]) {
+    const text = lies(...pfad).replaceAll("\r\n", "\n");
+    const wo = pfad.join("/");
+    const ohneBuildDienst = text.replace(/\n## Weg über den Build-Dienst[\s\S]*?(?=\n## )/, "\n");
+    const zeile = ohneBuildDienst.slice(ohneBuildDienst.search(LAUF)).split("\n")[0];
+    assert.match(zeile, new RegExp(`--stufe ${stufe} --wiederholen `), `${wo}: --wiederholen steht nicht neben --stufe ${stufe}: ${zeile}`);
+
+    // Ab dem Prueflauf gesucht: push main stellt dieselbe Frage auch bei der Uebernahme (Schritt 3).
+    const lauf = text.search(LAUF);
+    const frage = text.indexOf("Trotzdem fortfahren? (ja/nein)", lauf);
+    assert.ok(frage > lauf && frage < text.indexOf(commit), `${wo}: die Rückfrage steht nicht zwischen Prüflauf und Commit`);
+    const kandidaten = text.indexOf("node .claude/kit/wirksamkeit.mjs kandidaten", lauf);
+    assert.ok(kandidaten > lauf && kandidaten < text.indexOf(commit), `${wo}: wirksamkeit.mjs kandidaten fehlt vor dem Commit`);
+
+    const schluss = text.slice(text.indexOf(bericht));
+    const ende = schluss.search(/\n## /);
+    const abschnitt = ende < 0 ? schluss : schluss.slice(0, ende);
+    assert.match(abschnitt, /Gewackelt/, `${wo}: der Schlussbericht nennt die Wackler nicht`);
+    assert.match(abschnitt, /Reparaturkandidat/, `${wo}: der Schlussbericht nennt die Reparaturkandidaten nicht`);
+  }
+});

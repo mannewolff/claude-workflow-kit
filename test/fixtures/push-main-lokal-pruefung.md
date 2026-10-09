@@ -8,10 +8,15 @@ Worktree**, und dort misst der Lauf sie. Genau diesen Stand misst **ein** Lauf:
 Der Lauf misst mit `--in` im Worktree (Issue #1372):
 
 ```bash
-node .claude/kit/checks.mjs run --in <pfad> --stufe push --since "$(git -C <pfad> merge-base HEAD origin/<mainBranch>)"
+node .claude/kit/checks.mjs run --in <pfad> --stufe push --wiederholen --since "$(git -C <pfad> merge-base HEAD origin/<mainBranch>)"
 ```
 
 `<mainBranch>` ist der Wert aus der Config (Default: `main`).
+
+**`--wiederholen`: eine rote Prüfung einmal auf demselben Stand** (Plan #1395, E2). Ist sie
+bei der Wiederholung grün, gilt sie als bestanden und hat gewackelt; der Berichtsblock
+trägt unter ihrer Zeile `gelaufen:` die Zeile `Gewackelt: <cmd> → erst rot, dann gruen`.
+Bleibt sie rot, ist sie rot wie bisher.
 
 **Dieser Skill fährt die Push-Stufe, und die fährt den vollen Umfang.** Es laufen
 zusätzlich zu den Prüfungen der Paketstufe alle, die ihr Projekt für den Zeitpunkt des
@@ -51,6 +56,32 @@ dann über das letzte Stück statt über den Batch, der gleich hinausgeht.
   (Issue #1156).
 - Ist `buildChecks` leer: Hinweis „Keine buildChecks konfiguriert." und weiter zu
   Schritt 6 (kein Abbruch).
+
+**Nach einem Wackler hält der Skill vor dem Commit an** (Plan #1395, E13). Unmittelbar
+nach dem grünen Lauf, vor Schritt 6, liest er den Block `Fuer den Abschlussbericht:`
+**dieses** Laufs. Auslöser ist allein eine Zeile `Gewackelt:` ohne den Zusatz
+`(früherer Lauf vom …)` — sie steht für das Feld `gewackelt` an einem Eintrag in
+`laufen[]` dieses Laufs. Nie ausgelöst wird der Halt durch `gewackeltKarte` oder eine
+vorige Zusammenfassung. Dann, in dieser Reihenfolge:
+
+1. Die gewackelten Prüfungen mit Namen nennen, die `Gewackelt:`-Zeilen unverändert.
+2. Die Reparaturkandidaten holen und nennen (Plan #1395, E15):
+
+   ```bash
+   node .claude/kit/wirksamkeit.mjs kandidaten
+   ```
+
+   Es liest `.claude/wirksamkeit.json` der Hauptkopie und gibt je Kandidat eine Zeile
+   `Reparaturkandidat: <cmd> — <n> Wackler im Zeitfenster` aus; leere Ausgabe heißt kein
+   Kandidat.
+3. Wörtlich fragen: „Trotzdem fortfahren? (ja/nein)“ Nur `ja` fährt fort mit Schritt 6.
+   Alles andere endet wie ein roter Lauf: kein Commit, kein Push, weiter mit Schritt 8,
+   der Worktree wird abgebaut.
+
+`checks.mjs run` endet in diesem Fall mit Exitcode 0 — die Prüfung ist bestanden, die
+Entscheidung liegt beim Menschen. **Ohne Wackler** ruft der Skill `wirksamkeit.mjs
+kandidaten` ebenfalls, an derselben Stelle: Reparaturkandidaten ohne Wackler werden genannt,
+halten aber nicht an.
 
 Warum überhaupt noch ein Lauf, wenn `/implement-ready` und `/local-check` je Issue schon
 prüften: Der Nachweis gehört zum **Commit**, und die Dateien aus Schritt 4 hat kein

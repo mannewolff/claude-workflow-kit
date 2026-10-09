@@ -62,7 +62,7 @@ test("auf dem Build-Dienst-Weg fährt der Build-Dienst die Stufe push, der Skill
   const laeufe = BUILDDIENST.split("\n").filter((z) => z.startsWith("node ") && z.includes("checks.mjs run"));
   assert.deepEqual(laeufe, [
     'node .claude/kit/checks.mjs run --stufe push --since "$(git merge-base HEAD origin/<mainBranch>)"',
-    "node .claude/kit/checks.mjs run --in <pfad> --since HEAD",
+    "node .claude/kit/checks.mjs run --in <pfad> --since HEAD --wiederholen",
   ]);
   assert.match(BUILDDIENST, /Commit-Gate/, "der Grund für den Nachweis-Lauf fehlt");
 });
@@ -100,4 +100,37 @@ test("[1372] push-main und merge-production verlangen kein cd in den Worktree", 
     assert.doesNotMatch(text, /Arbeitsverzeichnis bleibt/, `${name}: der Satz zum erhaltenen Arbeitsverzeichnis steht noch`);
     assert.match(text, /checks\.mjs run --in <pfad>/, `${name}: der Prüflauf nennt den Worktree nicht über --in`);
   }
+});
+
+// --- Wackler vor push main (Issue #1401, Plan #1395 E2, E3, E13, E15, E18) ---
+
+const SCHRITT5 = abschnitt(PUSH, "### 5. Der eine Prüflauf");
+const SCHRITT9 = abschnitt(PUSH, "### 9. Bestätigung");
+
+test("[1401] Schritt 5 wiederholt eine rote Prüfung: --wiederholen neben --stufe push", () => {
+  assert.match(SCHRITT5, /^node \.claude\/kit\/checks\.mjs run --in <pfad> --stufe push --wiederholen --since /m,
+    "der Prüflauf in Schritt 5 trägt --wiederholen nicht neben --stufe push");
+});
+
+test("[1401] nach einem Wackler fragt Schritt 5 vor dem Commit und nennt die Reparaturkandidaten", () => {
+  const s = SCHRITT5.replaceAll(/\s+/g, " ");
+  assert.match(s, /Trotzdem fortfahren\? \(ja\/nein\)/, "die Rückfrage fehlt in Schritt 5");
+  assert.match(s, /node \.claude\/kit\/wirksamkeit\.mjs kandidaten/, "Schritt 5 ruft wirksamkeit.mjs kandidaten nicht");
+  assert.match(s, /`Gewackelt:`/, "Schritt 5 nennt die Gewackelt-Zeile nicht als Auslöser");
+  assert.match(s, /gewackeltKarte/, "Schritt 5 grenzt gewackeltKarte nicht aus");
+  assert.match(s, /Nur `ja` fährt fort/, "Schritt 5 sagt nicht, dass nur ja fortfährt");
+  assert.match(s, /Reparaturkandidaten ohne Wackler[^.]*halten aber nicht an/, "Kandidaten ohne Wackler halten an");
+  assert.ok(PUSH.indexOf("Trotzdem fortfahren? (ja/nein)") < PUSH.indexOf("### 6. Der eine Commit"),
+    "die Rückfrage steht nicht vor dem Commit");
+});
+
+test("[1401] der Job des Build-Dienstes bleibt ohne --wiederholen", () => {
+  const job = BUILDDIENST.split("\n").find((z) => z.includes("checks.mjs run --stufe push"));
+  assert.ok(job, "der Job des Build-Dienstes fehlt");
+  assert.doesNotMatch(job, /--wiederholen/, "der Job des Build-Dienstes trägt --wiederholen");
+});
+
+test("[1401] Schritt 9 nennt Gewackelt und Reparaturkandidaten", () => {
+  assert.match(SCHRITT9, /Gewackelt/, "Schritt 9 nennt die Wackler nicht");
+  assert.match(SCHRITT9, /Reparaturkandidat/, "Schritt 9 nennt die Reparaturkandidaten nicht");
 });

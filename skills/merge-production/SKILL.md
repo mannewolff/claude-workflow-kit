@@ -179,7 +179,7 @@ Commit und darum einen Lauf.
 Der Lauf misst mit `--in` im Worktree (Issue #1372):
 
 ```bash
-node .claude/kit/checks.mjs run --in <pfad> --stufe merge --since "$(git -C <pfad> merge-base HEAD origin/<mainBranch>)"
+node .claude/kit/checks.mjs run --in <pfad> --stufe merge --wiederholen --since "$(git -C <pfad> merge-base HEAD origin/<mainBranch>)"
 ```
 
 **Dieser Skill fährt die Freigabestufe, und sie prüft nur, was `push main` nicht geprüft
@@ -203,6 +203,36 @@ Merge-Prüfungen, und die Release-Dateien bekämen keine Paketprüfung.
 Ein roter Lauf hält an: kein Commit, kein Push, kein PR. Der Bump aus Schritt 5 bleibt im
 Worktree stehen, und der Worktree wird trotzdem **abgebaut** (Schritt 8) — der Bump ist seit
 Issue #656 idempotent, ein neuer Anlauf erzeugt ihn wieder.
+
+**`--wiederholen`: eine rote Prüfung einmal auf demselben Stand** (Plan #1395, E2). Ist sie
+bei der Wiederholung grün, gilt sie als bestanden und hat gewackelt; der Berichtsblock
+trägt unter ihrer Zeile `gelaufen:` die Zeile `Gewackelt: <cmd> → erst rot, dann gruen`.
+
+**Nach einem Wackler hält der Skill vor dem Commit an** (Plan #1395, E13) — der Commit in
+Schritt 7 pusht schon auf `<mainBranch>`, „vor dem Pull Request“ heißt hier also vor dem
+Commit. Unmittelbar nach dem grünen Lauf liest er den Block `Fuer den Abschlussbericht:`
+**dieses** Laufs. Auslöser ist allein eine Zeile `Gewackelt:` ohne den Zusatz
+`(früherer Lauf vom …)` — sie steht für das Feld `gewackelt` an einem Eintrag in
+`laufen[]` dieses Laufs. Nie ausgelöst wird der Halt durch `gewackeltKarte` oder eine
+vorige Zusammenfassung. Dann, in dieser Reihenfolge:
+
+1. Die gewackelten Prüfungen mit Namen nennen, die `Gewackelt:`-Zeilen unverändert.
+2. Die Reparaturkandidaten holen und nennen (Plan #1395, E15):
+
+   ```bash
+   node .claude/kit/wirksamkeit.mjs kandidaten
+   ```
+
+   Es liest `.claude/wirksamkeit.json` der Hauptkopie und gibt je Kandidat eine Zeile
+   `Reparaturkandidat: <cmd> — <n> Wackler im Zeitfenster` aus; leere Ausgabe heißt kein
+   Kandidat.
+3. Wörtlich fragen: „Trotzdem fortfahren? (ja/nein)“ Nur `ja` fährt fort mit Schritt 7.
+   Alles andere endet wie ein roter Lauf: kein Commit, kein Push, kein PR, weiter mit
+   Schritt 8, der Worktree wird abgebaut.
+
+`checks.mjs run` endet in diesem Fall mit Exitcode 0. **Ohne Wackler** ruft der Skill
+`wirksamkeit.mjs kandidaten` ebenfalls, an derselben Stelle: Reparaturkandidaten ohne
+Wackler werden genannt, halten aber nicht an.
 
 ### 7. Der eine Commit
 
@@ -345,6 +375,10 @@ mit Release.
 Gib die URL aus dem Adapter-Output aus, gefolgt von den Kommandos aus Schritt 9
 und 11 in **einem** Code-Block. Der Merge ist Mannes Aufgabe — Claude merged nicht,
 und den Tag setzt er ebenfalls selbst.
+
+Davor nennt die Rückmeldung jede `Gewackelt:`-Zeile des Prüflaufs unverändert samt der
+Antwort des Menschen auf die Rückfrage und jede Zeile `Reparaturkandidat:` aus
+`wirksamkeit.mjs kandidaten` (Schritt 6). Ohne beides entfällt der Absatz.
 
 > "PR/MR erstellt: <URL>. Der Merge nach production liegt bei dir.
 > Nach dem Merge der Tag:"
