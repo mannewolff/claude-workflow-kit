@@ -336,6 +336,19 @@ export const NEBEN_MARKE = "neben anderen gemessen";
 // auf eines" — die Regel sagte dann nichts mehr. Hier oben, weil `HELP` sie nennt.
 const HERVORHEBUNG_AB_KOMMANDOS = 3;
 
+// Nach so vielen gleich gescheiterten Laeufen derselben Pruefung gilt eine Sitzung als
+// festgefahren (Issue #1388, Plan #1386, E11) — Rueckfall, wenn `night.festgefahrenNach`
+// fehlt oder kein gueltiger Wert ist. Hier oben, weil `HELP` sie nennt.
+// SYNC: die Vorgabe von night.festgefahrenNach in templates/workflow.config.schema.json.
+const FESTGEFAHREN_VORGABE = 3;
+const FESTGEFAHREN_MINDEST = 2;
+
+/**
+ * Die Marke, mit der ein gebremster Lauf beginnt (Issue #1388, Plan #1386, E6). Als
+ * Konstante, weil zwei Leser sie suchen: der Beobachter in der Sitzung und der Runner.
+ */
+export const FESTGEFAHREN_MARKE = "Pruefung festgefahren:";
+
 const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Pruefungen
 
   node checks.mjs plan [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]] [--in <pfad>]
@@ -362,6 +375,21 @@ run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
       Treffer faerbt die Pruefung rot, auch bei Rueckgabewert 0 — kein
       Config-Feld schaltet das ab. Ein falsches Rot ist die sichere Richtung:
       Das Kommando irrt nur in eine Richtung, mehr pruefen.
+      Jedes rote Kommando traegt in laufen[] seinen Fehlerabdruck ('fehler'):
+      die gescheiterten Testnamen (node:test, Jest/Vitest, Maven Surefire),
+      sonst die erste Fehlerzeile, ohne Zeitstempel, Dauern, temporaere Pfade
+      und Zufallswerte. Das Feld 'festgefahren' der Zusammenfassung zaehlt je
+      Kommando die gleich gescheiterten echten Laeufe hintereinander; gruen oder
+      ein anderer Abdruck setzt die Folge zurueck, eine Uebernahme zaehlt nicht.
+      Ab night.festgefahrenNach gleichen Fehlschlaegen (Vorgabe
+      ${FESTGEFAHREN_VORGABE}) gilt die Pruefung als festgefahren. Unbeaufsichtigt
+      (KIT_AGENT_MODEL gesetzt) kuendigt der Lauf das als letzten erlaubten
+      Versuch an, und der naechste Aufruf faehrt nichts mehr, auch mit
+      --frisch: Er gibt '${FESTGEFAHREN_MARKE} <Kommando> — <Fehler>' aus, laesst
+      die vorige Zusammenfassung stehen, ergaenzt allein
+      'festgefahren.ausgeloest' und endet mit Exit 3. Interaktiv bremst nichts;
+      der Lauf gibt nur 'Hinweis: festgefahren an <Kommando> — <n>-mal gleich
+      gescheitert (<Fehler>)' auf stderr aus.
       Die Zusammenfassung BEGLEITET den Lauf: Sie entsteht vor dem ersten
       Kommando und wird vor jedem weiteren und nach jedem gleichzeitig
       gelaufenen ueberschrieben; ein laufendes Kommando steht darin noch auf
@@ -1799,6 +1827,201 @@ export function fehlermerkmal(ausgabe) {
   return FEHLERMERKMALE.find((merkmal) => ausgabe.includes(merkmal)) ?? null;
 }
 
+// --- Festgefahrene Pruefung (Issue #1388, Plan #1386) -------------------------
+
+// Die Orte temporaerer Dateien, die laengeren zuerst: `/private/tmp/` enthaelt `/tmp/`. Aus
+// Segmenten gebaut, weil sie hier nur gesucht und nie beschrieben werden — als Literal hielte
+// sie die Lint-Regel fuer oeffentlich beschreibbare Verzeichnisse fuer einen Schreibort.
+const TEMP_ORTE = [["private", "var", "folders"], ["var", "folders"], ["private", "tmp"], ["tmp"]]
+  .map((segmente) => `/${segmente.join("/")}/`);
+
+/** Ersetzt jeden Pfad, der an einem der `orte` beginnt, bis zum naechsten Leerraum, Anfuehrungszeichen oder `)`. */
+function tempPfadeErsetzen(text, orte) {
+  let t = text;
+  for (const ort of orte) {
+    let ab = t.indexOf(ort);
+    while (ab >= 0) {
+      let bis = ab + ort.length;
+      while (bis < t.length && !/[\s'"`)]/.test(t[bis])) bis += 1;
+      t = `${t.slice(0, ab)}<tmp>${t.slice(bis)}`;
+      ab = t.indexOf(ort, ab + 5);
+    }
+  }
+  return t;
+}
+
+/**
+ * Ersetzt, was von Lauf zu Lauf wechselt, ohne etwas ueber den Fehler zu sagen (E4):
+ * Uhrzeiten samt Zeitzone, Daten, temporaere Pfade, UUIDs, Hexfolgen ab 8 Zeichen und
+ * Dauern. Ein ISO-Zeitstempel wird so zu `<datum>T<zeit>`. Die Reihenfolge zaehlt — der
+ * Pfad und die UUID vor der Hexfolge, die sonst Teile von ihnen fraesse.
+ */
+function abdruckNormalisieren(text, tmpdir) {
+  let ort = typeof tmpdir === "string" ? tmpdir : "";
+  while (ort.endsWith("/")) ort = ort.slice(0, -1);
+  const orte = ort === "" ? TEMP_ORTE : [`${ort}/`, ...TEMP_ORTE];
+  return tempPfadeErsetzen(text, orte)
+    .replaceAll(/\d{1,2}:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:?\d\d)?/g, "<zeit>")
+    .replaceAll(/\d{4}-\d\d-\d\d/g, "<datum>")
+    .replaceAll(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "<id>")
+    .replaceAll(/\b[0-9a-f]{8,}\b/gi, "<hex>")
+    .replaceAll(/\b\d+(?:\.\d+)?\s?m?s\b/g, "<dauer>");
+}
+
+/** Der Testname ohne angehaengte Dauer, `(<dauer>)` wie bei node:test und Jest, `<dauer>` wie bei Vitest. */
+function ohneDauer(name) {
+  for (const ende of ["(<dauer>)", "<dauer>"]) {
+    if (name.endsWith(ende)) return name.slice(0, -ende.length).trim();
+  }
+  return name.trim();
+}
+
+/** node:test TAP: `not ok <n> - <name>`; die Direktive hinter ` # ` gehoert nicht zum Namen. */
+function tapName(zeile) {
+  if (!zeile.startsWith("not ok ")) return undefined;
+  const strich = zeile.indexOf(" - ");
+  if (strich < 0) return undefined;
+  const name = zeile.slice(strich + 3);
+  const direktive = name.indexOf(" # ");
+  return direktive < 0 ? name : name.slice(0, direktive);
+}
+
+/** node:test Spec (`✖`), Jest (`✕`, `●`) und Vitest (`×`), ohne die Kopfzeile der Spec-Zusammenfassung. */
+function markenName(zeile) {
+  if (!["✖ ", "✕ ", "× ", "● "].some((marke) => zeile.startsWith(marke))) return undefined;
+  const name = zeile.slice(2).trim();
+  return name === "failing tests:" ? undefined : name;
+}
+
+/** Maven Surefire: die Zeile mit `<<< FAILURE!` oder `<<< ERROR!`, bei der Klassenzeile die Klasse hinter ` in `. */
+function surefireName(zeile) {
+  const pfeil = zeile.indexOf("<<< ");
+  if (pfeil < 0 || !(zeile.includes("<<< FAILURE!") || zeile.includes("<<< ERROR!"))) return undefined;
+  const nachher = zeile.slice(pfeil);
+  const klasse = nachher.lastIndexOf(" in ");
+  if (klasse >= 0) return nachher.slice(klasse + 4);
+  let name = zeile.slice(0, pfeil);
+  const zeit = name.indexOf("Time elapsed");
+  if (zeit >= 0) name = name.slice(0, zeit);
+  if (name.startsWith("[ERROR]")) name = name.slice("[ERROR]".length);
+  name = name.trim();
+  return name.endsWith("--") ? name.slice(0, -2) : name;
+}
+
+/** Die gescheiterten Testnamen der normalisierten Zeilen, je Name einmal. */
+function testnamen(zeilen) {
+  const namen = new Set();
+  for (const zeile of zeilen) {
+    const z = zeile.trimStart();
+    const name = tapName(z) ?? markenName(z) ?? surefireName(z);
+    const rein = name === undefined ? "" : ohneDauer(name);
+    if (rein !== "") namen.add(rein);
+  }
+  return namen;
+}
+
+const FEHLERKENNUNG = /error|fehler|failed/i;
+
+/**
+ * Der Fehlerabdruck einer roten Ausgabe (Issue #1388, Plan #1386, E4): woran zwei
+ * Fehlschlaege als "auf dieselbe Weise" erkennbar sind. Die sortierte Menge der
+ * gescheiterten Testnamen, mit ` | ` verbunden; ohne erkannte Testnamen die erste Zeile mit
+ * Fehlerkennung (`error`, `fehler`, `failed` oder ein Treffer aus `FEHLERMERKMALE`), sonst
+ * die erste nicht leere. Alles zuvor normalisiert, damit Dauer und Zufall nicht zaehlen.
+ */
+export function fehlschlagAbdruck(ausgabe, { tmpdir = umgebungsVariablen().TMPDIR } = {}) {
+  const zeilen = abdruckNormalisieren(String(ausgabe ?? ""), tmpdir)
+    .split("\n")
+    .map((z) => (z.endsWith("\r") ? z.slice(0, -1) : z));
+  const namen = testnamen(zeilen);
+  if (namen.size > 0) return [...namen].sort(vergleicheText).join(" | ");
+  const fehlerzeile = zeilen.find((z) => FEHLERKENNUNG.test(z) || FEHLERMERKMALE.some((m) => z.includes(m)));
+  return (fehlerzeile ?? zeilen.find((z) => z.trim() !== "") ?? "").trim();
+}
+
+/**
+ * Die Folgen gleicher Fehlschlaege nach einem Lauf (Issue #1388, Plan #1386, E3): je `cmd`
+ * der Abdruck und wie oft er hintereinander kam. Ein rotes Kommando mit demselben Abdruck
+ * zaehlt weiter, mit einem anderen beginnt es bei 1; ein gruenes verliert seine Folge; ein
+ * nicht gefahrenes (`nicht gestartet`) bleibt, wie es war. `vorige` ist das Feld
+ * `festgefahren` der vorigen Zusammenfassung; eine dort ausgeloeste Bremse traegt der neue
+ * Stand nicht weiter.
+ */
+export function festgefahrenNach(vorige, laufen) {
+  const folgen = gueltigeFolgen(vorige?.folgen);
+  for (const e of laufen ?? []) {
+    if (e?.ergebnis === "gruen") {
+      delete folgen[e.cmd];
+    } else if (e?.ergebnis === "rot") {
+      const fehler = typeof e.fehler === "string" ? e.fehler : "";
+      const bisher = folgen[e.cmd];
+      folgen[e.cmd] = { fehler, versuche: bisher?.fehler === fehler ? bisher.versuche + 1 : 1 };
+    }
+  }
+  return { folgen };
+}
+
+/** Die lesbaren Folgen einer vorigen Zusammenfassung, als Kopie; alles andere faellt weg. */
+function gueltigeFolgen(alt) {
+  const folgen = {};
+  if (alt === null || typeof alt !== "object") return folgen;
+  for (const [cmd, f] of Object.entries(alt)) {
+    if (typeof f?.fehler === "string" && Number.isInteger(f.versuche)) folgen[cmd] = { ...f };
+  }
+  return folgen;
+}
+
+/** Die Grenze aus `night.festgefahrenNach`, sonst die Vorgabe (E11). */
+function festgefahrenGrenze() {
+  const wert = ladeConfig().night?.festgefahrenNach;
+  return Number.isInteger(wert) && wert >= FESTGEFAHREN_MINDEST ? wert : FESTGEFAHREN_VORGABE;
+}
+
+/** Unbeaufsichtigt heisst im ganzen Kit: `KIT_AGENT_MODEL` ist gesetzt (E5, wie `kit/board/hook.mjs`). */
+function unbeaufsichtigt() {
+  const modell = umgebungsVariablen().KIT_AGENT_MODEL;
+  return typeof modell === "string" && modell.trim() !== "";
+}
+
+/**
+ * Die Bremse (E6): Hat ein ausgewaehltes Kommando die Grenze erreicht, faehrt
+ * unbeaufsichtigt nichts. Die vorige Zusammenfassung bleibt, wie sie ist — das Commit-Gate
+ * sieht weiter den roten Stand —, und bekommt allein `festgefahren.ausgeloest`. Rueckgabe:
+ * der Exitcode 3 oder `null`, wenn nicht gebremst wird.
+ */
+function bremsen(auswahl, vorige) {
+  if (!unbeaufsichtigt()) return null;
+  const folgen = vorige?.festgefahren?.folgen;
+  if (folgen === null || typeof folgen !== "object") return null;
+  const grenze = festgefahrenGrenze();
+  const fest = auswahl.laufen.find((e) => Object.hasOwn(folgen, e.cmd) && folgen[e.cmd]?.versuche >= grenze);
+  if (!fest) return null;
+  const { fehler, versuche } = folgen[fest.cmd];
+  const ausgeloest = { pruefung: fest.cmd, fehler, versuche, zeitpunkt: new Date().toISOString() };
+  const pfad = schreibeZusammenfassung({ ...vorige, festgefahren: { ...vorige.festgefahren, ausgeloest } });
+  aufStdout(`${FESTGEFAHREN_MARKE} ${fest.cmd} — ${fehler}\n`);
+  aufStdout(`${versuche}-mal gleich gescheitert; es laeuft keine Pruefung mehr (Exit 3).\n`);
+  aufStdout(`\nZusammenfassung: ${pfad}\n`);
+  return 3;
+}
+
+/**
+ * Die Zeilen ueber die festgefahrenen Kommandos dieses Laufs (E6, E12): unbeaufsichtigt die
+ * Ankuendigung des letzten erlaubten Versuchs, interaktiv den Hinweis — beides auf stderr,
+ * als Zeile des Werkzeugs und nicht als Eintrag in `hinweise`.
+ */
+function festgefahrenMelden(laufen, festgefahren) {
+  const grenze = festgefahrenGrenze();
+  const ohneAufsicht = unbeaufsichtigt();
+  for (const e of laufen) {
+    const f = festgefahren.folgen[e.cmd];
+    if (e.ergebnis !== "rot" || !f || f.versuche < grenze) continue;
+    aufStderr(ohneAufsicht
+      ? `Letzter erlaubter Versuch: ${e.cmd} ist ${f.versuche}-mal gleich gescheitert (${f.fehler}) — der naechste Aufruf faehrt nichts und endet mit Exit 3.\n`
+      : `Hinweis: festgefahren an ${e.cmd} — ${f.versuche}-mal gleich gescheitert (${f.fehler})\n`);
+  }
+}
+
 /**
  * Blob-Hash je Pfad — der Nachweis, gegen den das Commit-Gate den Index prueft.
  *
@@ -2543,6 +2766,8 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
     berichtszeilen: zeilen,
     wartezeitMs,
     ...(wartezeitKarte ? { wartezeitKarte } : {}),
+    // Eine Uebernahme faehrt nichts und zaehlt darum nicht (Issue #1388, E3): unveraendert weiter.
+    ...(vorige?.festgefahren ? { festgefahren: vorige.festgefahren } : {}),
   });
   const befund = ungruen === null ? "gruen" : `rot: ${ungruen.cmd}`;
   aufStdout(
@@ -2833,6 +3058,10 @@ async function ausfuehren(args) {
   // bisherige Summe der Karte.
   const vorige = vorigeZusammenfassung();
   const auswahl = planen(args);
+  // Nach der Auswahl und vor Uebernahme und `--frisch` (Issue #1388, Plan #1386, E6): Eine
+  // festgefahrene Pruefung bekommt unbeaufsichtigt kein Ergebnis mehr, auch kein uebernommenes.
+  const gebremst = bremsen(auswahl, vorige);
+  if (gebremst !== null) return gebremst;
   // Ohne die Variablen des Nachtlaufs (Issue #1282): Was ein Pruefkommando misst, haengt
   // nicht davon ab, ob es nachts laeuft. settings.json und die Kommandozeile setzen weiter.
   const env = { ...ohneLaufVariablen(umgebungsVariablen()), ...settingsEnv() };
@@ -2955,6 +3184,12 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   if (args.karte !== undefined && vorige?.wartezeitKarte?.karte === args.karte) {
     wartezeit = { wartezeitKarte: vorige.wartezeitKarte };
   }
+  // Die Folgen gleicher Fehlschlaege (Issue #1388, Plan #1386, E2, E3), fortgeschrieben aus
+  // der vorigen Zusammenfassung wie die Wartezeit der Karte. Jede Fassung rechnet sie aus der
+  // Basis und dem Stand neu — ein noch nicht gefahrenes Kommando aendert nichts. Nach einem
+  // Teillauf ruecken dessen Ergebnisse in die Basis, damit der volle Lauf danach auf ihnen
+  // aufsetzt und nicht auf dem Stand vor dem Aufruf.
+  let festgefahrenBasis = vorige?.festgefahren;
   const zeilenVon = (stand) => [
     ...(stand.teillauf ? [TEILLAUF_ZEILE] : []),
     ...berichtszeilen(auswahl, stand.laufen, { grenzeMs }),
@@ -2967,6 +3202,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
     hinweise: hinweiseVon(stand.laufen),
     berichtszeilen: zeilenVon(stand),
     ...wartezeit,
+    festgefahren: festgefahrenNach(festgefahrenBasis, stand.laufen),
   });
 
   // Ein Durchgang ueber die ausgewaehlten Kommandos — alle oder, beim Teillauf, nur die
@@ -3011,6 +3247,9 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
           eintrag.protokoll = ablage;
           schreibe(`Ausgabe abgelegt: ${ablage}\n`);
         }
+        // Der Fehlerabdruck (Issue #1388, E4): woran der naechste Lauf erkennt, ob dieselbe
+        // Pruefung auf dieselbe Weise scheitert.
+        eintrag.fehler = fehlschlagAbdruck(ausgabe);
       }
       // Je beendetem Kommando und nicht am Ende (Issue #785): So traegt auch das rote
       // Kommando seine Zeile, das den Rest abbricht — es ist die Ausfuehrung, um die es der
@@ -3077,6 +3316,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
     stand = await durchgang(new Set(rote));
     if (!stand.rot) {
       aufStdout("\nTeillauf gruen — es folgt der volle Lauf als Nachweis\n");
+      festgefahrenBasis = festgefahrenNach(festgefahrenBasis, stand.laufen);
       stand = null;
     }
   }
@@ -3106,6 +3346,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   const wartezeitKarte = wartezeitKarteNach(vorige, args.karte, wartezeitMs);
   wartezeit = { wartezeitMs, ...(wartezeitKarte ? { wartezeitKarte } : {}) };
   const pfad = schreibeStand(stand, true);
+  festgefahrenMelden(stand.laufen, festgefahrenNach(festgefahrenBasis, stand.laufen));
   berichtsblockSchreiben(zeilenVon(stand), wartezeitZeile(wartezeitMs, wartezeitKarte));
   aufStdout(`\nZusammenfassung: ${pfad}\n`);
   return stand.rot ? 1 : 0;
