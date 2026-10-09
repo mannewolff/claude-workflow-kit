@@ -43,7 +43,7 @@ import { LAUF_KONTEXT, anhaltenLaeuft, anhaltenVermerken, exitText, hatSitzungse
 import { umsetzungLockNehmen, kitStandAbgeben, kitStandInBaum } from "./kitstand.mjs";
 import { abhaengigkeitsBefund, abhaengigkeitsBlock, parseDeps, gateKarte, kreisLogZeile, leseKarte,
   satisfiedIds } from "./abhaengigkeiten.mjs";
-import { frischeStufenFelder, leseErgebnisText, leseKennzahlen, neueKommentare, paketWahl, runSession,
+import { frischeStufenFelder, leseErgebnisText, leseKennzahlen, lesePruefung, neueKommentare, paketWahl, runSession,
   salvagePrompt, stufenEinstellung, SALVAGE_TIMEOUT_MS, verifyChecksForSalvage } from "./session.mjs";
 import { bewertePruefung, verwerfeZusammenfassung, kommentareVon } from "./bericht.mjs";
 
@@ -148,6 +148,12 @@ let ZEITLIMIT_BEENDET = false;
 // und der Rueckgabewert bleibt das Zaehlwort `angehalten`. Vor jeder Session zurueckgesetzt.
 let HALT_ART = null;
 
+// Die Bremse der laufenden Runde (Issue #1390, Plan #1386, E8): `{ pruefung, fehler, versuche,
+// zeitgrenzeMs }`, sobald die Runde als `festgefahren` ausgewertet ist, sonst `null`. Derselbe
+// Modul-Merker wie HALT_ART und aus demselben Grund; gesetzt erst, wenn der Ausgang feststeht —
+// ein Stash, der scheitert, ist ein harter Stopp und traegt das Feld nicht.
+let FESTGEFAHREN = null;
+
 /**
  * Die Merker der zuletzt ausgewerteten Runde: wartend, Zeitabbruch und die Art des Halts —
  * `"klaeren"`, `"geschuetzt"` oder `null`. Die Kette liest die Art des Halts nach einer
@@ -161,12 +167,14 @@ export function rundenMerker() {
  * Setzt die Merker vor einer Runde zurueck. Der Merker der wartenden Sitzung gehoert dieser
  * einen Runde (Issue #776): Ohne das Zuruecksetzen truege die naechste Einheit den Befund der
  * vorigen — und im Ergebnisstand stuende eine Runde als wartend, die es nie war. Ebenso der
- * Merker des Zeitabbruchs (Issue #977) und die Art des Halts (Issue #1050).
+ * Merker des Zeitabbruchs (Issue #977), die Art des Halts (Issue #1050) und die Bremse
+ * (Issue #1390).
  */
 export function rundenMerkerZuruecksetzen() {
   WARTEND_BEENDET = false;
   ZEITLIMIT_BEENDET = false;
   HALT_ART = null;
+  FESTGEFAHREN = null;
 }
 
 const MAX_ITERATIONS = 500; // Notbremse gegen Endlosschleifen, weit ueber jedem realen Lauf
@@ -602,6 +610,9 @@ const GRUND_END_TURN = "Grund: Session regulaer beendet ohne Commit (end_turn)";
 const GRUND_ZEITLIMIT = "Grund: Session am Zeitlimit beendet";
 const GRUND_IS_ERROR = "Grund: Session mit is_error beendet";
 const GRUND_UNBEKANNT = "Grund: Session ohne auswertbares Ergebnis-Ereignis beendet";
+// Die Bremse von `checks.mjs` hat die Sitzung beendet (Issue #1390, Plan #1386, E8) — vor der
+// Zeitgrenze und nicht an ihr.
+const GRUND_FESTGEFAHREN = "Grund: Session an einer Pruefung festgefahren";
 const grundCheckRot = (kommando, quelle) => `Grund: Pflichtcheck rot — ${kommando} (${quelle})`;
 
 // --- Die wartende Sitzung (Plan #773, Issue #775) ---
@@ -843,6 +854,41 @@ export function zeitlimitVermerk(grenzeMin, fortschritt, pfade = []) {
 }
 
 /**
+ * Der Anker des Vermerks an einem festgefahrenen Paket (Issue #1390, Plan #1386, E9) — neben
+ * `ZEITLIMIT_ANKER` und aus demselben Grund woertlich: Die implement-Skills nennen ihn.
+ */
+export const FESTGEFAHREN_ANKER = "## Nachtlauf: an einer Pruefung festgefahren";
+
+/**
+ * Der Vermerk, den eine Bremsung am Arbeitspaket hinterlaesst (Issue #1390, Plan #1386, E9).
+ *
+ * Reine Funktion wie `zeitlimitVermerk`: die Angaben der Bremse `{ pruefung, fehler,
+ * versuche }`, die Laufzeit bis zum Abbruch und die Grenze in Minuten hinein, Text heraus.
+ * Den Ort der gesicherten Aenderungen nennt er nicht — den Stash-Namen stellt `resteSichern`
+ * voran (Review-Fund 4); bei sauberem Baum (`sauber`) sagt er selbst, dass nichts zu sichern
+ * war. Eine fehlende Angabe steht als "nicht bekannt" da, nie als erfundener Wert.
+ */
+export function festgefahrenVermerk(info, laufzeitMin, grenzeMin, sauber = false) {
+  const versuche = Number.isInteger(info?.versuche) ? `${info.versuche}-mal gleich gescheitert` : "nicht bekannt";
+  const laufzeit = laufzeitMin === null || laufzeitMin === undefined || laufzeitMin === "" ? "nicht bekannt" : `${laufzeitMin} Minuten`;
+  const teile = [
+    FESTGEFAHREN_ANKER,
+    "",
+    `${GRUND_FESTGEFAHREN} — die Bremse hat die Sitzung vor ihrer Zeitgrenze beendet.`,
+    "",
+    `- Pruefung: ${info?.pruefung || "nicht bekannt"}`,
+    `- Fehler: ${info?.fehler || "nicht bekannt"}`,
+    `- Versuche: ${versuche}`,
+    `- Laufzeit bis zum Abbruch: ${laufzeit}`,
+    `- Zeitgrenze der Sitzung: ${grenzeText(grenzeMin)}`,
+    "",
+    "Fuer das Paket beginnt kein Rettungsversuch; es kommt erst nach einem neuen GO wieder dran.",
+  ];
+  if (sauber) teile.push("", "Gesichert wurde nichts: keine Aenderungen im Arbeitsverzeichnis.");
+  return `${teile.join("\n")}\n`;
+}
+
+/**
  * Warum hat diese Runde nichts abgeschlossen (Issue #668)?
  *
  * Reine Funktion ueber dem Ergebnis von `runSession` und der Pruef-Zusammenfassung der
@@ -856,9 +902,13 @@ export function zeitlimitVermerk(grenzeMin, fortschritt, pfade = []) {
  * die regulaer endet, ohne zu warten, behaelt `GRUND_END_TURN`. Ein anderer `stop_reason`
  * sagt ueber den Ausgang zu wenig, um den Fall zu behaupten.
  *
+ * Die Bremse steht vor dem Zeitlimit (Issue #1390): Sie beendet die Sitzung auf demselben
+ * Weg, und ein `SIGTERM` laese sich sonst als Zeitabbruch.
+ *
  * Exportiert fuer die Tests.
  */
 export function rundenGrund(res, pruefung) {
+  if (res?.festgefahren) return GRUND_FESTGEFAHREN;
   if (res?.error?.code === "ETIMEDOUT" || res?.signal === "SIGTERM") return GRUND_ZEITLIMIT;
   const kennzahlen = leseKennzahlen(res?.stdout);
   if (kennzahlen?.isError === true) return GRUND_IS_ERROR;
@@ -899,12 +949,17 @@ export function rundenGrund(res, pruefung) {
  * `leseErgebnisText` liefert `null`, und ohne Schlusstext ist `wartendeSession` nie wahr.
  */
 function rueckstellungsGrund(res, pruefung) {
+  // Die Bremse zuerst (Issue #1390, Review-Fund 2): Sie endet wie am Zeitlimit.
+  if (res?.festgefahren) return GRUND_FESTGEFAHREN;
   if (wartendeSession(leseErgebnisText(res?.stdout))) return GRUND_WARTEND;
   if (rundenGrund(res, pruefung) === GRUND_ZEITLIMIT) return GRUND_ZEITLIMIT;
   return null;
 }
 
-function rundenVermerk(grund, res, pfade = []) {
+// `minutes` traegt nur der Vermerk der Bremse (Issue #1390): Er nennt die Laufzeit bis zum
+// Abbruch, und ein leeres `pfade` heisst dort, dass der Baum sauber war.
+function rundenVermerk(grund, res, pfade = [], minutes = null) {
+  if (grund === GRUND_FESTGEFAHREN) return festgefahrenVermerk(res.festgefahren, minutes, grenzeMinuten(res), pfade.length === 0);
   if (grund === GRUND_WARTEND) return wartendVermerk(leseErgebnisText(res?.stdout), pfade);
   if (grund === GRUND_ZEITLIMIT) return zeitlimitVermerk(grenzeMinuten(res), res?.fortschritt, pfade);
   return null;
@@ -965,6 +1020,9 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pru
   // vermerkte keinen Halt, haelt der Runner das Paket selbst an.
   const auffang = geschuetztAuffangen(top, res, minutes);
   if (auffang) return auffang;
+  // Die Bremse (Issue #1390, E9): kein Salvage — er liefe nur erneut gegen dieselbe rote
+  // Pruefung —, sondern gleich der Stash.
+  if (res?.festgefahren) return festgefahrenSichern(top, minutes, res);
   if (!salvageAttempted.has(String(top.id))) {
     salvageAttempted.add(String(top.id));
     const salvage = await versucheSalvage(top, args, sessionWahl, res, pruefung);
@@ -992,6 +1050,29 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pru
   // `gitReste()`, denn der Baum ist unsauber.
   const vermerk = rundenVermerk(grund, res, abh.gitReste());
   return resteSichern(top, `${satz} ${resteText(abh.gitReste())}`, `Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen. ${grund}.`, vermerk);
+}
+
+/** Merkt die Bremse fuer die Einheit (Issue #1390, E8) — erst, wenn der Ausgang feststeht. */
+function festgefahrenMerken(res) {
+  const { pruefung, fehler, versuche } = res.festgefahren;
+  FESTGEFAHREN = { pruefung, fehler, versuche, zeitgrenzeMs: res.timeoutMs ?? null };
+}
+
+/**
+ * Die gebremste Runde mit unsauberem Baum (Issue #1390, Plan #1386, E9): `resteSichern`
+ * unveraendert — Stash `nachtrest #<id> <lauf>`, Kommentar mit dem Stash vorn, Backlog; misslingt
+ * der Stash, harter Stopp. Nur die Rueckgabe `abgebrochen` wird zu `festgefahren`.
+ */
+function festgefahrenSichern(top, minutes, res) {
+  const { pruefung } = res.festgefahren;
+  const satz = `FESTGEFAHREN nach ${minutes} min: Issue #${top.id} — ${GRUND_FESTGEFAHREN} (${pruefung}); kein Salvage, Working Tree dirty.`;
+  log(`  ${satz}`);
+  const vermerk = rundenVermerk(GRUND_FESTGEFAHREN, res, abh.gitReste(), minutes);
+  const ausgang = resteSichern(top, `${satz} ${resteText(abh.gitReste())}`,
+    `Nachtlauf: Die Sitzung hat sich an einer Pruefung festgefahren und wurde vor ihrer Zeitgrenze beendet. ${GRUND_FESTGEFAHREN}.`, vermerk);
+  if (ausgang !== "abgebrochen") return ausgang;
+  festgefahrenMerken(res);
+  return "festgefahren";
 }
 
 // Die Werkzeuge, mit denen eine Session Dateien schreibt. Abweisungen anderer Werkzeuge —
@@ -1178,8 +1259,8 @@ function resteSichern(top, grund, kommentar, vermerk = null) {
 /**
  * Wertet aus, was eine Implementierungs-Runde hinterlassen hat (Issue #404).
  *
- * Rueckgabe: `"erfolg"`, `"fehlschlag"`, `"hardStop"`, `"angehalten"` (Issue #572)
- * oder `"deferred"`. Die Worte sind die Zaehler des Laufs; der Unterschied zwischen
+ * Rueckgabe: `"erfolg"`, `"fehlschlag"`, `"hardStop"`, `"angehalten"` (Issue #572),
+ * `"abgebrochen"`, `"festgefahren"` (Issue #1390) oder `"deferred"`. Die Worte sind die Zaehler des Laufs; der Unterschied zwischen
  * ihnen ist das Signal, das der Morgen liest.
  */
 /**
@@ -1259,11 +1340,22 @@ function zeitlimitFelder() {
   return ZEITLIMIT_BEENDET ? { zeitlimitBeendet: true } : {};
 }
 
+/**
+ * Das Feld `festgefahren` fuer die Einheit — oder gar keines (Issue #1390, Plan #1386, E8):
+ * Pruefung, Fehler, Versuche und die Zeitgrenze der Runde. Die Laufzeit bis zum Abbruch ist
+ * das vorhandene `dauerMs`; die geschaetzte gesparte Zeit rechnet der Bericht.
+ */
+function festgefahrenFelder() {
+  return FESTGEFAHREN ? { festgefahren: FESTGEFAHREN } : {};
+}
+
 function ausgangsFelder(ausgang) {
   if (ausgang === "deferred") return { ausgang: "zurueckgestellt", grund: DEFERRED_GRUND };
   if (ausgang === "hardStop") return { ausgang: "harterStopp" };
   // Das Paket ist an sich selbst gescheitert, seine Reste liegen im Stash (Issue #1089).
   if (ausgang === "abgebrochen") return { ausgang, grund: ABBRUCH_GRUND };
+  // Die Bremse hat die Sitzung beendet (Issue #1390, E8) — ein eigener Ausgang.
+  if (ausgang === "festgefahren") return { ausgang, grund: GRUND_FESTGEFAHREN };
   // `angehalten` braucht keinen eigenen Zweig (Issue #572): Der Default liefert
   // `{ ausgang: "angehalten" }`, und einen Grund traegt der Halt nicht — er steht
   // als Kommentar der Session an der Karte, und eine zweite Fassung waere eine
@@ -1319,7 +1411,10 @@ const HALT_STAND_TEXT = {
  * Exportiert fuer die Tests: Mit eingesetztem Board und git pruefen sie die Auswertung im
  * selben Prozess (Plan #1199, E6).
  */
-export async function werteRunde({ top, res, minutes, args, salvageAttempted, pruefung, vorher, sessionWahl }) {
+export async function werteRunde({ top, res: sitzung, minutes, args, salvageAttempted, pruefung, vorher, sessionWahl }) {
+  // Die Bremse (Issue #1390, Plan #1386, E7): aus dem Strom (`res.festgefahren`), sonst —
+  // ohne Strom — aus der Zusammenfassung, die die Sitzung hinterliess.
+  const res = sitzung?.festgefahren ? sitzung : { ...sitzung, festgefahren: bremseAusZusammenfassung(top.id) };
   // Der Zustand kommt vom Einzelabruf an der Karte, nicht aus der Sammelliste
   // `issue list --status in_review` (Issue #927): Im Lauf night-run-2026-09-25-061517
   // fuehrte die Liste eine Karte nicht, die nachweislich in In review stand — die
@@ -1346,7 +1441,9 @@ export async function werteRunde({ top, res, minutes, args, salvageAttempted, pr
   // nach dem einen Versuch in runSession: Eine Sitzung, die zustande kam und mit Exit
   // ungleich 0 endete, ist ein Paketfehler und geht den Weg jeder Runde ohne Ergebnis.
   // Die Kommando-Stufe meldet keine Ereignisse und bleibt beim harten Stopp.
-  const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
+  // Eine gebremste Sitzung zaehlt wie ein Zeitlimit (Issue #1390): Sie kann erst auf SIGKILL
+  // enden und ist dann kein gescheiterter Sitzungsstart.
+  const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM" || Boolean(res.festgefahren);
   const kommando = Boolean(sessionWahl?.kommando);
   if (!timedOut && (res.error || res.status !== 0) && (kommando || !hatSitzungsereignis(res.stdout))) {
     const exitInfo = exitText(res);
@@ -1375,6 +1472,18 @@ export async function werteRunde({ top, res, minutes, args, salvageAttempted, pr
   }
 
   return stelleRundeZurueck(top, res, minutes, pruefung);
+}
+
+/**
+ * Die ausgeloeste Bremse aus der Zusammenfassung der Sitzung, `{ pruefung, fehler, versuche }`
+ * oder `null` (Issue #1390, E7) — der Rueckfall fuer eine Sitzung ohne Strom, deren Ende der
+ * Runner nicht selbst gesehen hat. `checks.mjs` schreibt das Feld nur unbeaufsichtigt.
+ */
+function bremseAusZusammenfassung(issueId) {
+  const ausgeloest = lesePruefung(issueId).roh?.festgefahren?.ausgeloest;
+  if (!ausgeloest || typeof ausgeloest.pruefung !== "string") return null;
+  const { pruefung, fehler, versuche } = ausgeloest;
+  return { pruefung, fehler: typeof fehler === "string" ? fehler : "", versuche: Number.isInteger(versuche) ? versuche : null };
 }
 
 /**
@@ -1428,6 +1537,15 @@ function werteInReview(top, minutes, pruefung) {
  */
 function stelleRundeZurueck(top, res, minutes, pruefung) {
   const grund = rueckstellungsGrund(res, pruefung);
+  // Die Bremse bei sauberem Baum (Issue #1390, E9): kein Stash, derselbe Vermerk, der selbst
+  // sagt, dass nichts zu sichern war — und ein eigener Ausgang statt der Rueckstellung.
+  if (grund === GRUND_FESTGEFAHREN) {
+    log(`  FESTGEFAHREN nach ${minutes} min: Issue #${top.id} — ${grund} (${res.festgefahren.pruefung}); Tree sauber — Issue ins Backlog, weiter.`);
+    abh.board("issue", "comment", String(top.id), "--text", rundenVermerk(grund, res, [], minutes));
+    abh.board("issue", "move", String(top.id), "backlog");
+    festgefahrenMerken(res);
+    return "festgefahren";
+  }
   if (grund === GRUND_WARTEND) WARTEND_BEENDET = true;
   if (grund === GRUND_ZEITLIMIT) ZEITLIMIT_BEENDET = true;
   // Der Grund steht VOR dem Zustand — dieselbe Ordnung wie im Dirty-Zweig (Issue #668):
@@ -1667,6 +1785,8 @@ async function rundeLaufen(top, args, salvageAttempted, pruefungen) {
     ...zeitlimitFelder(),
     // Die Art des Halts (Issue #1050), nur beim Halt — sonst WEG, wie die beiden davor.
     ...(ausgang === "angehalten" && HALT_ART ? { haltArt: HALT_ART } : {}),
+    // Die Bremse (Issue #1390), nur beim Ausgang festgefahren — sonst WEG.
+    ...festgefahrenFelder(),
   });
   paketStandAbschliessen(top, ausgang, rundenStandGrund(ausgang, { einheit, pruefung, res, commit: commitNachher }));
   return ausgang;
@@ -1681,6 +1801,8 @@ function rundenStandGrund(ausgang, { einheit, pruefung, res, commit }) {
   if (ausgang === "angehalten") return HALT_STAND_TEXT[HALT_ART ?? "klaeren"];
   if (ausgang === "deferred") return `${rundenGrund(res, pruefung)}; die Karte ging ins Backlog, der Lauf weiter`;
   if (ausgang === "fehlschlag") return nachweisMangel(pruefung) ?? ZUSTAND_UNLESBAR_GRUND;
+  // Mit Stash nennt ABBRUCH_GRUND ihn (Issue #1390); bei sauberem Baum bleibt der Grund allein.
+  if (ausgang === "festgefahren") return ABBRUCH_GRUND || `${GRUND_FESTGEFAHREN}; die Karte ging ins Backlog, der Lauf weiter`;
   return einheit.grund ?? ZUSTAND.STOPP_GRUND;
 }
 
@@ -1840,7 +1962,8 @@ export async function laufeImplementierung(args, ctx) {
     // die Woerter des Laufs stehen. `angehalten` (Issue #572) ist kein Fehlschlag und
     // keine Rueckstellung: Es steht als eigener Zaehler daneben, damit der Morgen die
     // wartende Entscheidung nicht in der Rueckstellungszahl sucht.
-    zaehler: { erfolg: 0, deferred: 0, fehlschlag: 0, angehalten: 0, abgebrochen: 0 },
+    // `festgefahren` (Issue #1390) ebenso: die Runden, die die Bremse beendet hat.
+    zaehler: { erfolg: 0, deferred: 0, fehlschlag: 0, angehalten: 0, abgebrochen: 0, festgefahren: 0 },
     // Genau ein Salvage-Versuch pro Issue und Lauf (#167).
     salvageAttempted: new Set(),
     // Der Fall, an dem die Schleife ohne Paket endete (Issue #887) — gemerkt in der
@@ -1881,5 +2004,6 @@ export async function laufeImplementierung(args, ctx) {
     ohneNachweis: zaehler.fehlschlag,
     angehalten: zaehler.angehalten,
     abgebrochen: zaehler.abgebrochen,
+    festgefahren: zaehler.festgefahren,
   };
 }
