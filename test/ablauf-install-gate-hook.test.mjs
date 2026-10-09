@@ -604,11 +604,11 @@ function teileImBlob(konstante) {
   return JSON.parse(Buffer.from(b64, "base64").toString("utf-8"));
 }
 
-test("[teile] der Installer legt night/ und board/ im Kit-Verzeichnis an, mit genau den Teilen des Blobs", () => {
+test("[teile] der Installer legt night/, board/ und rollen/ im Kit-Verzeichnis an, mit genau den Teilen des Blobs", () => {
   mitFixture("install-teile-", (dir) => {
     const res = installiere(dir, antworten("n"));
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
-    for (const [teil, konstante] of [["night", "KIT_NIGHT_B64"], ["board", "KIT_BOARD_B64"]]) {
+    for (const [teil, konstante] of [["night", "KIT_NIGHT_B64"], ["board", "KIT_BOARD_B64"], ["rollen", "KIT_ROLLEN_B64"]]) {
       const ziel = join(dir, ".claude", "kit", teil);
       assert.ok(existsSync(ziel) && statSync(ziel).isDirectory(), `.claude/kit/${teil}/ fehlt`);
       const erwartet = teileImBlob(konstante);

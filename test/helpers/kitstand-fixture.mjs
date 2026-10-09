@@ -1,7 +1,7 @@
 // Gemeinsame Hilfen der Tests zum festen Kit-Stand (Issue #1102, Plan #1101).
 //
 // Das Fixture ist ein Kit-Repo im Kleinen (E8): Es traegt die Kit-Quelle vollstaendig,
-// soweit `tools/sync-blobs.mjs` sie liest — `install.mjs`, `kit/`, `skills/`, `templates/`,
+// soweit `tools/sync-blobs.mjs` sie liest — `install.mjs`, `kit/`, `skills/`, `agents/`, `templates/`,
 // `.githooks/` —, fuehrt `.claude/*` in der `.gitignore` wie das Kit-Repo und hat ein
 // blosses `origin`, auf das sein Hauptstand gepusht ist. Die installierte Kopie unter
 // `.claude/` entsteht wie beim Menschen ueber `sync-blobs`, sie wird nicht committet —
@@ -72,7 +72,7 @@ export function kitFixture({ mitKitQuelle = true, ohneOrigin = false, config = {
   const dir = mkdtempSync(join(tmpdir(), praefix));
   const origin = mkdtempSync(join(tmpdir(), `${praefix}origin-`));
   if (mitKitQuelle) {
-    for (const teil of ["install.mjs", "kit", "skills", "templates"]) {
+    for (const teil of ["install.mjs", "kit", "skills", "agents", "templates"]) {
       cpSync(join(repoRoot, teil), join(dir, teil), { recursive: true });
     }
     mkdirSync(join(dir, "tools"), { recursive: true });

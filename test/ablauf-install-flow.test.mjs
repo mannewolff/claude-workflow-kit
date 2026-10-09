@@ -268,6 +268,46 @@ test("Projektlokaler Install weist darauf hin, dass workflow.config.json committ
 
 // --- Globaler Install ---
 
+// --- Rollen und Leser-Agent (Issue #1377, Plan #1375) ---
+//
+// Fachliches Kriterium 7: Wer das Kit installiert, bekommt die Pruefrollen ohne weiteren
+// Handgriff — global wie projektweit. Verglichen wird bytegleich mit der Quelle im Repo.
+
+function rollenUndAgentPruefen(targetBase) {
+  const rollen = readdirSync(join(repoRoot, "kit", "rollen")).filter((n) => n.endsWith(".md"));
+  assert.ok(rollen.length > 0, "das Repo traegt keine Rollen unter kit/rollen/");
+  for (const rolle of rollen) {
+    const ziel = join(targetBase, "kit", "rollen", rolle);
+    assert.ok(existsSync(ziel), `${rolle} fehlt unter ${join(targetBase, "kit", "rollen")}`);
+    assert.ok(readFileSync(ziel).equals(readFileSync(join(repoRoot, "kit", "rollen", rolle))), `${rolle} weicht ab`);
+  }
+  const agent = join(targetBase, "agents", "kit-pruefer.md");
+  assert.ok(existsSync(agent), `der Leser-Agent fehlt unter ${join(targetBase, "agents")}`);
+  assert.ok(readFileSync(agent).equals(readFileSync(join(repoRoot, "agents", "kit-pruefer.md"))), "kit-pruefer.md weicht ab");
+}
+
+test("Rollen und Leser-Agent landen projektweit unter .claude/", () => {
+  const dir = fixture("install-rollen-projekt-");
+  try {
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    rollenUndAgentPruefen(join(dir, ".claude"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Rollen und Leser-Agent landen global unter ~/.claude/", () => {
+  const dir = fixture("install-rollen-global-");
+  try {
+    const res = installiere(dir, ["global", "github", "github", "", "", "", "", "", ""]);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    rollenUndAgentPruefen(join(dir, "home", ".claude"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("Globaler Install schreibt nach HOME und legt kontext.config.json mit Vault an", () => {
   const dir = fixture("install-global-");
   try {

@@ -12,13 +12,13 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 
 
 import { KIT_STAND_MARKIERUNG } from "../kit/night/grundlagen.mjs";
-import { kitStandErmitteln, kitStandBereitstellen } from "../kit/night/kitstand.mjs";
+import { kitStandErmitteln, kitStandBereitstellen, kitStandEinsetzen, kitStandFreigeben } from "../kit/night/kitstand.mjs";
 import {
   kitFixture, git, runner, board, laufStand, standWorktrees, aufraeumen,
 } from "./helpers/kitstand-fixture.mjs";
@@ -44,12 +44,34 @@ test("[kitstand-2] bereitgestellt wird eine installierte Kopie des Pushs in eine
     for (const datei of [
       [".claude", "kit", "night.mjs"], [".claude", "kit", "checks.mjs"], [".claude", "kit", "board.mjs"],
       [".claude", "skills", "issue-review", "SKILL.md"], [".claude", "CLAUDE-workflow.md"], [".githooks", "gate.mjs"],
+      [".claude", "kit", "rollen", "code-review.md"], [".claude", "agents", "kit-pruefer.md"],
     ]) {
       assert.ok(existsSync(join(pfad, ...datei)), `${datei.join("/")} fehlt im Stand`);
     }
     // Die Arbeitskopie steht hier noch auf dem Push.
     assert.equal(readFileSync(join(pfad, ".claude", "kit", "checks.mjs"), "utf-8"),
       readFileSync(join(dir, "kit", "checks.mjs"), "utf-8"), "die Kopie ist die Quelle des Pushs");
+  });
+});
+
+// Issue #1377: Der Leser-Agent liegt unter .claude/agents/, nicht unter kit/ oder skills/ —
+// ohne eigenen Schritt fehlte er in jeder Sitzung eines unbeaufsichtigten Laufs.
+test("[kitstand-3] der eingesetzte Kit-Stand traegt agents neben kit und skills", () => {
+  mitFixture({}, ({ dir }) => {
+    const { commit } = kitStandErmitteln(dir, "main");
+    const pfad = kitStandBereitstellen(dir, commit, "implementierung");
+    const baum = mkdtempSync(join(tmpdir(), "kitstand-agents-"));
+    try {
+      kitStandEinsetzen({ commit, pfad }, baum);
+      for (const teil of ["kit", "skills", "agents"]) {
+        assert.ok(existsSync(join(baum, ".claude", teil)), `.claude/${teil} fehlt im eingesetzten Stand`);
+      }
+      assert.equal(readFileSync(join(baum, ".claude", "agents", "kit-pruefer.md"), "utf-8"),
+        readFileSync(join(dir, "agents", "kit-pruefer.md"), "utf-8"), "der Agent ist der des Stands");
+    } finally {
+      kitStandFreigeben(baum);
+      rmSync(baum, { recursive: true, force: true });
+    }
   });
 });
 

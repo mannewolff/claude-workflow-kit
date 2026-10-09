@@ -1002,7 +1002,7 @@ export function kitStandErmitteln(repoRoot, mainBranch) {
 
 /**
  * Stellt den Stand bereit (A1): ein abgeloester Worktree auf `commit` mit einer installierten
- * Kopie, gebaut auf dem Weg des Menschen — `.claude/kit/` und `.claude/skills/` anlegen,
+ * Kopie, gebaut auf dem Weg des Menschen — `.claude/kit/`, `.claude/skills/` und `.claude/agents/` anlegen,
  * das `sync-blobs` DIESES Stands laufen lassen, die Regeltexte nach `.claude/` kopieren.
  * Ein zweiter Weg mit eigener Dateiliste liefe beim ersten neuen Werkzeug auseinander.
  *
@@ -1019,6 +1019,7 @@ export function kitStandBereitstellen(repoRoot, commit, laufart) {
   try {
     mkdirSync(join(pfad, ".claude", "kit"), { recursive: true });
     mkdirSync(join(pfad, ".claude", "skills"), { recursive: true });
+    mkdirSync(join(pfad, ".claude", "agents"), { recursive: true });
     // KIT_ROOT ueberschrieben: Eine ererbte Variable liesse sync-blobs in den fremden Root schreiben.
     const res = abh.spawnSync(process.execPath, [join(pfad, "tools", "sync-blobs.mjs")], {
       cwd: pfad, encoding: "utf-8", env: { ...process.env, KIT_ROOT: pfad },
@@ -1039,14 +1040,16 @@ export function kitStandBereitstellen(repoRoot, commit, laufart) {
 
 /**
  * Setzt den Stand in einen Baum ein, in dem Sitzungen laufen (A3): `.claude/kit/*`,
- * `.claude/skills/*` und `.claude/CLAUDE-*.md` des Stands. Es wird nur ueberschrieben, nichts
- * geloescht — was `sync-blobs` nicht schreibt, gehoert nicht zum Stand und bleibt. Danach
- * die Markierung `{ commit, pfad, pid, seit }` (A4).
+ * `.claude/skills/*`, `.claude/agents/*` und `.claude/CLAUDE-*.md` des Stands. Es wird nur
+ * ueberschrieben, nichts geloescht — was `sync-blobs` nicht schreibt, gehoert nicht zum Stand
+ * und bleibt. Danach die Markierung `{ commit, pfad, pid, seit }` (A4). Ein Stand ohne
+ * `.claude/agents/` (vor Issue #1377 bereitgestellt) setzt keine Agenten ein.
  */
 export function kitStandEinsetzen(stand, baum) {
   const quelle = join(stand.pfad, ".claude");
   const ziel = join(baum, ".claude");
-  for (const teil of ["kit", "skills"]) {
+  for (const teil of ["kit", "skills", "agents"]) {
+    if (teil === "agents" && !existsSync(join(quelle, teil))) continue;
     cpSync(join(quelle, teil), join(ziel, teil), { recursive: true, force: true });
   }
   for (const name of readdirSync(quelle).filter((n) => /^CLAUDE-.*\.md$/.test(n))) {
