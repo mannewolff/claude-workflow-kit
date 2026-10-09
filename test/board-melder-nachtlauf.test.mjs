@@ -217,6 +217,22 @@ test("[night-862] unvollstaendig ist gelb und ohne Fehlerklasse, in beiden Lauf-
   }
 });
 
+// Ein an einer Pruefung festgefahrenes Paket (Issue #1392, Plan #1386, E15). kanban-kit
+// kennt den Ausgang noch nicht; bis zur eigenen Fehlerklasse meldet die Bruecke ihn als
+// rote Pruefung statt als UNEXPECTED_STATE, Pruefung und Fehler stehen im Auszug.
+test("[night-1392] festgefahren meldet RED/CHECKS_RED mit Grund, Pruefung und Fehler im Auszug", () => {
+  const e = {
+    id: "9", titel: "F", ausgang: "festgefahren", grund: "Grund: Session an einer Pruefung festgefahren",
+    festgefahren: { pruefung: "node --test", fehler: "test/a.test.mjs: erwartet 1" + "x".repeat(5000), versuche: 3 },
+  };
+  const item = nachtlaufMeldung(stand("implementierung", [e]), JETZT).items[0];
+  assert.deepEqual([item.state, item.errorClass], ["RED", "CHECKS_RED"]);
+  assert.match(item.excerpt, /festgefahren/);
+  assert.match(item.excerpt, /node --test/);
+  assert.match(item.excerpt, /erwartet 1/);
+  assert.equal(item.excerpt.length, 4000);
+});
+
 // Eine Einheit, der ihr Ausgang noch fehlt, ist ein laufender Vorgang und kein Befund
 // (Issue #794). `einheitAnlegen` traegt bis zum Ergebnis den Platzhalter "unbekannt" ein;
 // waehrend der Planungsphase einer Kette stuende der Fachplan damit als rotes Paket in

@@ -83,6 +83,10 @@ const NACHTLAUF_FEST = {
   // vorgesehenen Ausgang eine Stoerung machte; ohne Fehlerklasse, weil keine der
   // vorhandenen ihn trifft — den Grund traegt der `excerpt` der Einheit.
   unvollstaendig: ["YELLOW", null],
+  // Bruecke (Issue #1392, Plan #1386, E15): kanban-kit kennt den Ausgang noch nicht. Bis zur
+  // eigenen Fehlerklasse meldet er als rote Pruefung statt als UNEXPECTED_STATE; Pruefung
+  // und Fehler traegt der `excerpt` (nachtlaufAuszug).
+  festgefahren: ["RED", "CHECKS_RED"],
   fertig: ["GREEN", null],
 };
 
@@ -113,6 +117,18 @@ function nachtlaufFarbe(einheit) {
     return zeile?.[ausgang] ?? ["RED", "UNEXPECTED_STATE"];
   }
   return ["RED", "UNEXPECTED_STATE"];
+}
+
+/** Der Auszug einer Einheit: ihr Grund, beim festgefahrenen Paket dazu Pruefung und Fehler. */
+function nachtlaufAuszug(e) {
+  const gefuellt = (text) => typeof text === "string" && text !== "";
+  const grund = gefuellt(e.grund) ? e.grund : null;
+  const f = e.ausgang === "festgefahren" ? e.festgefahren : null;
+  const teile = [grund];
+  if (f && gefuellt(f.pruefung)) teile.push(`Pruefung: ${f.pruefung}`);
+  if (f && gefuellt(f.fehler)) teile.push(`Fehler: ${f.fehler}`);
+  const text = teile.filter((t) => t !== null).join("\n");
+  return text === "" ? null : text.slice(0, NACHTLAUF_AUSZUG_MAX);
 }
 
 /** Eine endliche Zahl oder `null` — die Waehrung aller gemeldeten Kennzahlen. */
@@ -285,7 +301,6 @@ export function nachtlaufMeldung(stand, jetzt = new Date()) {
     .slice(0, NACHTLAUF_EINHEITEN_MAX)
     .map((e) => {
       const [state, errorClass] = nachtlaufFarbe(e);
-      const grund = typeof e.grund === "string" && e.grund !== "" ? e.grund : null;
       const stages = nachtlaufStages(e);
       return {
         cardNumber: Number(e.id),
@@ -295,7 +310,7 @@ export function nachtlaufMeldung(stand, jetzt = new Date()) {
         errorClass,
         durationMs: nachtlaufDauer(e),
         commitHash: typeof e.commit === "string" ? e.commit.slice(0, NACHTLAUF_COMMIT_MAX) : null,
-        excerpt: grund === null ? null : grund.slice(0, NACHTLAUF_AUSZUG_MAX),
+        excerpt: nachtlaufAuszug(e),
         usage: nachtlaufUsage(e.verbrauch, nachtlaufKennzahlen(e)),
         // Nur, wo der Stand Stufen fuehrt (Issue #808) — ein Implementierungs-Paket
         // meldet das Feld gar nicht erst, wie noWorkReason am Lauf-Kopf.
