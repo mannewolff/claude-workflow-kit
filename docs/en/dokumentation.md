@@ -1520,6 +1520,23 @@ Three states of the progress are distinguished and appear differently in the tex
 
 **The yardstick of the estimate is the time limit of *one session*** — `--timeout-min`, default 60 minutes, also in the night chain, where every session starts with the same limit. Expressly **not** meant is `night.kette.umsetzungMin`: That is the budget of the whole implementation stage, is only checked between two sessions and says nothing about a single package. Nor is the target mark `night.zielUmsetzungMin` meant — it is a benchmark for the evaluation, not an abort limit.
 
+### The stuck package
+<!-- de: 025a5a67e2d4 -->
+
+**A session that fails at the same check again and again ends before its time limit.** Until then such a package ran on until the clock stopped it, by default after 60 minutes: The session changed something, the check stayed red, for the same reason as before. The time was missing for the other packages of the night, and in the morning the package only carried the note about the time limit, not what it was stuck on. Since then the check tool brakes by itself.
+
+**Counting is per check.** `checks.mjs run` remembers its failure fingerprint for every red command: the names of the failed tests, for a check without test names such as a build the first error message. Timestamps, durations, temporary paths and random values are ignored. If the same check fails in a row with the same fingerprint, its sequence grows; green results of other checks do not interrupt it. It only ends when exactly this check turns green or fails differently — a different test than before counts as progress. Every real run via `checks.mjs run` counts as an attempt, partial runs included; an adopted result does not count, nor does a test the session starts outside the tool.
+
+**The limit is `night.festgefahrenNach`**, default 3. When the sequence reaches it, the run announces the last allowed attempt. Unattended (`KIT_AGENT_MODEL` set) the next call runs nothing any more, not even with `--frisch`: It prints `Pruefung festgefahren: <Kommando> — <Fehler>` (check stuck), leaves the previous summary in place, adds only `festgefahren.ausgeloest` and ends with exit code 3. The brake is a rule of the tool, not a request to the model: The session gets no check result any more. The night runner recognises the mark in the stream and ends the session.
+
+**What the runner does afterwards.** No rescue attempt begins for the package; it would only run against the same red check again. If there are changes in the working directory, it secures them as for every aborted package in the stash `nachtrest #<id> <lauf>`; if that fails, the night ends with a hard stop. The package gets the run status `lauf:abgebrochen` with the reason `Grund: Session an einer Pruefung festgefahren` (session stuck at a check) and goes to the backlog, the other packages continue on a clean state. There is no label of its own.
+
+**How you recognise it in the morning.** The package carries a note under the anchor `## Nachtlauf: an einer Pruefung festgefahren` (night run: stuck at a check). It names the check, the recurring error, the number of attempts, the running time up to the abort and the time limit of the session; the stash name is in the comment before it, and if there was nothing to secure, the note says so itself. In the night report the package appears as an outcome of its own: in the check report a line `festgefahren an <Prüfung> (<n> Versuche)` with running time, time limit and `gesparte Zeit (Schaetzung)` (saved time, estimate), under the chain's `### Umsetzung` in the list „festgefahren“, and the runner's closing line counts `, N festgefahren`. That separates it from the time-limit abort and from the waiting session: There the time ran out or the session waited; here it demonstrably hung at a check.
+
+**How to continue.** Read the error in the note, find the leftovers with `git stash list` and get them back with `git stash apply stash@{<n>}`, improve the package or cut it differently and pull it back to Ready — only your new GO lets it run again. Once it is done, `git stash drop stash@{<n>}` clears the entry.
+
+**Interactively nothing aborts.** If `KIT_AGENT_MODEL` is empty, after the last allowed and every further identical failure the run only prints `Hinweis: festgefahren an <Kommando> — <n>-mal gleich gescheitert (<Fehler>)` (hint: stuck at a command, failed the same way n times); result and exit code stay the same, you decide.
+
 ### Second mode: the night chain
 <!-- de: 7917d98cdeac -->
 
@@ -1716,7 +1733,7 @@ Every run writes every state, before it hands it to the board, as a line into it
 **Leftovers in the stash.** If a failed package leaves changes in the working tree and the salvage does not succeed, they lie in the stash `nachtrest #<id> <lauf>`, and the run status of the package names it. You get them back with `git stash list` and `git stash apply stash@{<n>}`; once the package is done, `git stash drop stash@{<n>}` clears the entry.
 
 #### The evidence cases
-<!-- de: 5db5fb255472 -->
+<!-- de: 3fafe4c52e7d -->
 
 For every evidence case (Belegfall) of the business requirement: what state the card shows on the board afterwards and with which gesture it continues.
 
@@ -1726,6 +1743,7 @@ For every evidence case (Belegfall) of the business requirement: what state the 
 | Aborted although finished: the review stage exceeds the time budget, the review note is already in the plan | `lauf:abgebrochen` with the reason; the run status names the last completed step | put `kit:night` on the card again: The stage counts as found, the chain starts at the first stage without a result |
 | Outcome unknown: the board is briefly unreachable | if the attempt after the pause succeeds, the state of the card with „2. Versuch“; if it fails, `lauf:abgebrochen` with `abgebrochen, Umgebungsfehler um <zeit>: …` (aborted, environment error at), the remaining cards of the run `lauf:wartet` with `nicht begonnen: der Lauf hielt um <zeit> an — …` (not begun: the run halted at) | after a successful attempt nothing; otherwise, once the board answers again, start the run again or put `kit:night` on the chain again |
 | A package halts the night: session without commit, time limit or waiting session | only this package `lauf:abgebrochen` with reason, it goes to the backlog; dependent packages `lauf:wartet` with „hängt an #N (abgebrochen in diesem Lauf)“ (depends on #N, aborted in this run); leftovers in the stash `nachtrest #<id> <lauf>`; the remaining packages keep running | read the reason, fetch leftovers from the stash if needed, improve the package and pull it back to Ready |
+| A package gets stuck: the same check fails `night.festgefahrenNach` times the same way, long before the time limit | only this package `lauf:abgebrochen` with `Grund: Session an einer Pruefung festgefahren`, note `## Nachtlauf: an einer Pruefung festgefahren` with check, error and attempts, it goes to the backlog; leftovers in the stash `nachtrest #<id> <lauf>`; in the night report the outcome of its own `festgefahren`, not time limit or waiting session; the remaining packages keep running | read the error in the note, fetch leftovers from the stash if needed, improve the package and pull it back to Ready |
 | Interleaved logs: chain and check run run at the same time | every run status names in the line `Protokoll:` the file `.claude/protokolle/<lauf>/<karte>-<stufe>.log` of its step | open the named file; in the daily log the run ID in `[<Zeitpunkt> <lauf>]` separates the runs |
 
 ### Running with a local model
