@@ -350,3 +350,29 @@ test("[einstellungen-22] die Regel trifft genau die drei Fälle, an denen valida
     assert.equal(anPfad(mitReviewern([reviewer]), `issueReview.reviewers[0].${feld}`).length, 1, `${feld} wird nicht gemeldet`);
   }
 });
+
+// --- lesegrenze und reviewLesegrenze (Issue #1379, Plan #1375 A5) ---
+
+test("lesegrenze wird bei einem command-Reviewer angenommen, bei einem claude-Reviewer abgewiesen", () => {
+  assert.deepEqual(fehler(mitReviewern([{ name: "gpt", kind: "command", command: "codex exec", lesegrenze: "--sandbox read-only" }])), []);
+  const befunde = mitReviewern([{ name: "opus", kind: "claude", model: "claude-opus-5", lesegrenze: "--sandbox read-only" }]);
+  assert.equal(anPfad(befunde, "issueReview.reviewers[0].lesegrenze").length, 1, JSON.stringify(befunde));
+  assert.match(anPfad(befunde, "issueReview.reviewers[0].lesegrenze")[0].grund, /command/);
+});
+
+test("eine lesegrenze, die kein String ist, wird abgewiesen", () => {
+  const befunde = mitReviewern([{ name: "gpt", kind: "command", command: "codex exec", lesegrenze: 1 }]);
+  assert.ok(fehler(befunde).some((b) => b.pfad === "issueReview.reviewers[0].lesegrenze"), JSON.stringify(befunde));
+});
+
+test("reviewLesegrenze wird als String neben reviewCommand angenommen", () => {
+  const basis = { codeHost: "local", issueTracker: "local", reviewCommand: "codex exec", reviewLesegrenze: "--sandbox read-only" };
+  assert.deepEqual(fehler(pruefe(basis, null)), []);
+  assert.ok(fehler(pruefe({ ...basis, reviewLesegrenze: 3 }, null)).some((b) => b.pfad === "reviewLesegrenze"));
+});
+
+test("validateReviewers prüft lesegrenze wie die Oberfläche", () => {
+  const quelle = readFileSync(join(repoRoot, "kit", "board", "issue-review.mjs"), "utf-8");
+  const rumpf = quelle.slice(quelle.indexOf("function validateReviewers(")).split("\n}")[0];
+  assert.match(rumpf, /r\.lesegrenze !== undefined && r\.kind !== "command"/, "board.mjs prüft lesegrenze nicht mehr so");
+});

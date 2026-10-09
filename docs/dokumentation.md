@@ -616,7 +616,11 @@ Die Claude-Variante des Reviewer-Paares reviewModel/reviewCommand: Modell-ID fü
 
 ### `reviewCommand`
 
-Die Fremd-Variante des Reviewer-Paares reviewModel/reviewCommand: Kommandozeile einer fremden CLI (z.B. 'codex exec --model gpt-5'), die den Review-Prompt über stdin bekommt und ihre Antwort auf stdout schreibt. Genau eines der beiden Felder ist gesetzt; 'gesetzt' heißt, dass der Schlüssel vorhanden ist — ein Leer-String ist ungültig, nicht 'nicht gesetzt'. Darf in workflow.config.local.json persönlich überschrieben werden.
+Die Fremd-Variante des Reviewer-Paares reviewModel/reviewCommand: Kommandozeile einer fremden CLI (z.B. 'codex exec --model gpt-5'), die den Review-Prompt über stdin bekommt und ihre Antwort auf stdout schreibt. Sie wird ohne Shell am Leerraum zerlegt: Anführungszeichen, Pipes und Variablen wirken nicht. Genau eines der beiden Felder ist gesetzt; 'gesetzt' heißt, dass der Schlüssel vorhanden ist — ein Leer-String ist ungültig, nicht 'nicht gesetzt'. Darf in workflow.config.local.json persönlich überschrieben werden.
+
+### `reviewLesegrenze`
+
+Gehört zu reviewCommand: der Nur-Lese-Schalter der fremden CLI, den das Kit an die Kommandozeile hängt (z.B. '--sandbox read-only'), am Leerraum zerlegt wie reviewCommand. Für codex kennt das Kit den Schalter selbst; für jedes andere Werkzeug steht er hier. Darf in workflow.config.local.json persönlich überschrieben werden; setzt die persönliche Datei reviewModel, weicht reviewLesegrenze mit reviewCommand.
 
 ### `triggers`
 
@@ -665,7 +669,8 @@ Issue-Review über mehrere Modelle. Reviewer, die das Dokument nicht geschrieben
 - `issueReview.reviewers[].name` — Kurzname, wird mit dem Autor-Modell des Issues verglichen.
 - `issueReview.reviewers[].kind` — 'claude' läuft als Subagent über das Agent-Tool, 'command' als beliebiges fremdes CLI (Prompt über stdin). (gültig: `claude`, `command`)
 - `issueReview.reviewers[].model` — Nur bei kind 'claude': Modell-Identifier.
-- `issueReview.reviewers[].command` — Nur bei kind 'command': Kommandozeile, z.B. 'codex exec --model gpt-5'.
+- `issueReview.reviewers[].command` — Nur bei kind 'command': Kommandozeile, z.B. 'codex exec --model gpt-5'. Sie wird ohne Shell am Leerraum zerlegt: Anführungszeichen, Pipes und Variablen wirken nicht.
+- `issueReview.reviewers[].lesegrenze` — Nur bei kind 'command': der Nur-Lese-Schalter des fremden Werkzeugs, den das Kit an die Kommandozeile hängt (z.B. '--sandbox read-only'), am Leerraum zerlegt wie command. Für codex kennt das Kit den Schalter selbst; für jedes andere Werkzeug steht er hier. Bei kind 'claude' ist das Feld ein Fehler.
 - `issueReview.pairs` — Explizite Zuordnung Autor -> Reviewer. Steht der Autor hier, gewinnt sein Eintrag über die Reihenfolge-Regel. Ohne pairs wählt die Regel immer die vordersten Einträge — ein hinten stehendes fremdes Modell käme nie zum Zug. Ein Name, den es in reviewers nicht gibt, und ein Autor, der sich selbst nennt, sind harte Fehler.
 
 ### `reviewStufen`
@@ -1845,13 +1850,14 @@ Aus der lokalen Datei gewinnen nur diese Felder:
 |---|---|
 | `reviewModel` | Modellwahl fürs Review ist Geschmack und Budget |
 | `reviewCommand` | die Alternative zu `reviewModel`: wer mit fremder CLI reviewt, hat sie lokal installiert |
+| `reviewLesegrenze` | gehört zu `reviewCommand`: der Nur-Lese-Schalter der lokal installierten CLI |
 | `reviewScope` | manche lesen lieber den vollen Quelltext |
 | `triggers` | Tippgewohnheit für die drei Stop-Phrasen |
 | `toolbox.tokenFile` | zeigt auf ein Token im eigenen Dateisystem |
 
 Alles andere wird ignoriert und auf stderr gemeldet.
 
-**Das Reviewer-Paar weicht als Paar.** `reviewModel` und `reviewCommand` sind eine Oder-Entscheidung — genau eines gilt. Setzt die persönliche Datei eines der beiden, verschwindet das andere aus dem Ergebnis, auch wenn es aus der geteilten Config kommt. Ohne diese Ausnahme vom feldweisen Mischen hätte der Normalfall — das Team fährt den Claude-Default, einer reviewt mit `codex` — eine Config mit beiden Feldern und verletzte die Regel, die das Schema durchsetzt.
+**Das Reviewer-Paar weicht als Paar.** `reviewModel` und `reviewCommand` sind eine Oder-Entscheidung — genau eines gilt. Setzt die persönliche Datei eines der beiden, verschwindet das andere aus dem Ergebnis, auch wenn es aus der geteilten Config kommt. Ohne diese Ausnahme vom feldweisen Mischen hätte der Normalfall — das Team fährt den Claude-Default, einer reviewt mit `codex` — eine Config mit beiden Feldern und verletzte die Regel, die das Schema durchsetzt. `reviewLesegrenze` steht dabei auf der Seite von `reviewCommand`: Setzt die persönliche Datei `reviewModel`, weichen beide, denn eine Lesegrenze ohne Kommando ist bedeutungslos. Eine persönliche `reviewLesegrenze` allein verdrängt `reviewModel` nicht.
 
 **Warum die Härte?** Wäre `buildChecks` lokal überschreibbar, könnte sich jeder sein Gate wegkonfigurieren, und die Trennung wäre Kosmetik statt Leitplanke. Der naheliegende Einwand — man kann die geteilte Datei ja trotzdem lokal editieren — stimmt, trifft aber nicht: Dann steht sie in `git status`. Sichtbare Abweichung ist etwas anderes als per Design unsichtbare.
 

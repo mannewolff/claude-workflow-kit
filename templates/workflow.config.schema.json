@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "claude-workflow-kit workflow.config",
-  "description": "Projekt-spezifische Konfiguration für die claude-workflow-kit-Skill-Bibliothek. Liegt als .claude/workflow.config.json im Repository und gilt teamweit. Persönliche Abweichungen gehören in .claude/workflow.config.local.json (nicht im Repository); daraus gewinnen nur reviewModel, reviewCommand, reviewScope, triggers und toolbox.tokenFile, alles andere wird ignoriert und gemeldet. Setzt die persönliche Datei eines der beiden Reviewer-Felder, weicht das andere aus der geteilten Config — die Oder-Regel gilt auch nach dem Merge.",
+  "description": "Projekt-spezifische Konfiguration für die claude-workflow-kit-Skill-Bibliothek. Liegt als .claude/workflow.config.json im Repository und gilt teamweit. Persönliche Abweichungen gehören in .claude/workflow.config.local.json (nicht im Repository); daraus gewinnen nur reviewModel, reviewCommand, reviewLesegrenze, reviewScope, triggers und toolbox.tokenFile, alles andere wird ignoriert und gemeldet. Setzt die persönliche Datei eines der beiden Reviewer-Felder, weicht das andere aus der geteilten Config — die Oder-Regel gilt auch nach dem Merge; mit reviewModel weicht auch reviewLesegrenze.",
   "type": "object",
   "properties": {
     "version": {
@@ -354,7 +354,11 @@
     "reviewCommand": {
       "type": "string",
       "minLength": 1,
-      "description": "Die Fremd-Variante des Reviewer-Paares reviewModel/reviewCommand: Kommandozeile einer fremden CLI (z.B. 'codex exec --model gpt-5'), die den Review-Prompt über stdin bekommt und ihre Antwort auf stdout schreibt. Genau eines der beiden Felder ist gesetzt; 'gesetzt' heißt, dass der Schlüssel vorhanden ist — ein Leer-String ist ungültig, nicht 'nicht gesetzt'. Darf in workflow.config.local.json persönlich überschrieben werden."
+      "description": "Die Fremd-Variante des Reviewer-Paares reviewModel/reviewCommand: Kommandozeile einer fremden CLI (z.B. 'codex exec --model gpt-5'), die den Review-Prompt über stdin bekommt und ihre Antwort auf stdout schreibt. Sie wird ohne Shell am Leerraum zerlegt: Anführungszeichen, Pipes und Variablen wirken nicht. Genau eines der beiden Felder ist gesetzt; 'gesetzt' heißt, dass der Schlüssel vorhanden ist — ein Leer-String ist ungültig, nicht 'nicht gesetzt'. Darf in workflow.config.local.json persönlich überschrieben werden."
+    },
+    "reviewLesegrenze": {
+      "type": "string",
+      "description": "Gehört zu reviewCommand: der Nur-Lese-Schalter der fremden CLI, den das Kit an die Kommandozeile hängt (z.B. '--sandbox read-only'), am Leerraum zerlegt wie reviewCommand. Für codex kennt das Kit den Schalter selbst; für jedes andere Werkzeug steht er hier. Darf in workflow.config.local.json persönlich überschrieben werden; setzt die persönliche Datei reviewModel, weicht reviewLesegrenze mit reviewCommand."
     },
     "triggers": {
       "type": "object",
@@ -518,7 +522,11 @@
               },
               "command": {
                 "type": "string",
-                "description": "Nur bei kind 'command': Kommandozeile, z.B. 'codex exec --model gpt-5'."
+                "description": "Nur bei kind 'command': Kommandozeile, z.B. 'codex exec --model gpt-5'. Sie wird ohne Shell am Leerraum zerlegt: Anführungszeichen, Pipes und Variablen wirken nicht."
+              },
+              "lesegrenze": {
+                "type": "string",
+                "description": "Nur bei kind 'command': der Nur-Lese-Schalter des fremden Werkzeugs, den das Kit an die Kommandozeile hängt (z.B. '--sandbox read-only'), am Leerraum zerlegt wie command. Für codex kennt das Kit den Schalter selbst; für jedes andere Werkzeug steht er hier. Bei kind 'claude' ist das Feld ein Fehler."
               }
             },
             "required": [

@@ -641,7 +641,11 @@ The Claude variant of the reviewer pair reviewModel/reviewCommand: model ID for 
 
 ### `reviewCommand`
 
-The foreign variant of the reviewer pair reviewModel/reviewCommand: command line of a foreign CLI (e.g. 'codex exec --model gpt-5') that receives the review prompt via stdin and writes its answer to stdout. Exactly one of the two fields is set; 'set' means the key is present — an empty string is invalid, not 'not set'. May be overridden personally in workflow.config.local.json.
+The foreign variant of the reviewer pair reviewModel/reviewCommand: command line of a foreign CLI (e.g. 'codex exec --model gpt-5') that receives the review prompt via stdin and writes its answer to stdout. It is split at whitespace without a shell: quotes, pipes and variables have no effect. Exactly one of the two fields is set; 'set' means the key is present — an empty string is invalid, not 'not set'. May be overridden personally in workflow.config.local.json.
+
+### `reviewLesegrenze`
+
+Belongs to reviewCommand: the read-only switch of the foreign CLI that the kit appends to the command line (e.g. '--sandbox read-only'), split at whitespace like reviewCommand. For codex the kit knows the switch itself; for any other tool it goes here. May be overridden personally in workflow.config.local.json; if the personal file sets reviewModel, reviewLesegrenze gives way together with reviewCommand.
 
 ### `triggers`
 
@@ -690,7 +694,8 @@ Issue review across several models. Reviewers who did not write the document rea
 - `issueReview.reviewers[].name` — Short name, compared with the issue's author model.
 - `issueReview.reviewers[].kind` — 'claude' runs as a subagent via the Agent tool, 'command' as any foreign CLI (prompt via stdin). (valid: `claude`, `command`)
 - `issueReview.reviewers[].model` — Only for kind 'claude': model identifier.
-- `issueReview.reviewers[].command` — Only for kind 'command': command line, e.g. 'codex exec --model gpt-5'.
+- `issueReview.reviewers[].command` — Only for kind 'command': command line, e.g. 'codex exec --model gpt-5'. It is split at whitespace without a shell: quotes, pipes and variables have no effect.
+- `issueReview.reviewers[].lesegrenze` — Only for kind 'command': the read-only switch of the foreign tool that the kit appends to the command line (e.g. '--sandbox read-only'), split at whitespace like command. For codex the kit knows the switch itself; for any other tool it goes here. For kind 'claude' the field is an error.
 - `issueReview.pairs` — Explicit mapping author -> reviewer. If the author is listed here, their entry wins over the order rule. Without pairs the rule always picks the frontmost entries — a foreign model further back would never get its turn. A name that does not exist in reviewers and an author who names themselves are hard errors.
 
 ### `reviewStufen`
@@ -1901,7 +1906,7 @@ Spec-Driven Development has been dropped since kit version **v3.0.0** (plan #825
 **A project that still carries a `spec` block keeps running unchanged.** No tool evaluates the block any more. The installer takes it over during an update and says once that it can be removed; the settings interface reports it as an unknown field and allows saving. Block, directory `specs/` and a leftover `.claude/vorhaben-wartend-*.md` can be deleted. `[ID]` prefixes in test names do no harm and may stay.
 
 ## Team config and personal deviations
-<!-- de: fcc1f83b14ca -->
+<!-- de: bea5460f06a3 -->
 
 The same question as above, one level deeper: What belongs in the repository, and what may everyone have differently for themselves?
 
@@ -1920,13 +1925,14 @@ From the local file only these fields win:
 |---|---|
 | `reviewModel` | the choice of model for the review is a matter of taste and budget |
 | `reviewCommand` | the alternative to `reviewModel`: whoever reviews with a foreign CLI has installed it locally |
+| `reviewLesegrenze` | belongs to `reviewCommand`: the read-only switch of the locally installed CLI |
 | `reviewScope` | some prefer to read the full source text |
 | `triggers` | typing habit for the three stop phrases |
 | `toolbox.tokenFile` | points to a token in one's own file system |
 
 Everything else is ignored and reported on stderr.
 
-**The reviewer pair deviates as a pair.** `reviewModel` and `reviewCommand` are an either-or decision — exactly one of them applies. If the personal file sets one of the two, the other disappears from the result, even if it comes from the shared config. Without this exception to field-by-field merging the normal case — the team runs the Claude default, one person reviews with `codex` — would have a config with both fields and would violate the rule that the schema enforces.
+**The reviewer pair deviates as a pair.** `reviewModel` and `reviewCommand` are an either-or decision — exactly one of them applies. If the personal file sets one of the two, the other disappears from the result, even if it comes from the shared config. Without this exception to field-by-field merging the normal case — the team runs the Claude default, one person reviews with `codex` — would have a config with both fields and would violate the rule that the schema enforces. `reviewLesegrenze` sits on the side of `reviewCommand`: if the personal file sets `reviewModel`, both give way, because a read limit without a command is meaningless. A personal `reviewLesegrenze` on its own does not displace `reviewModel`.
 
 **Why the strictness?** If `buildChecks` could be overridden locally, everyone could configure their gate away, and the separation would be cosmetics instead of a guardrail. The obvious objection — you can still edit the shared file locally — is true, but misses the point: Then it shows up in `git status`. A visible deviation is something different from one that is invisible by design.
 

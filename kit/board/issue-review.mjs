@@ -152,6 +152,8 @@ function validateReviewers(reviewers) {
     }
     if (r.kind === "claude" && !r.model) fail(`${wo} ('${r.name}'): 'model' fehlt.`);
     if (r.kind === "command" && !r.command) fail(`${wo} ('${r.name}'): 'command' fehlt.`);
+    if (r.lesegrenze !== undefined && r.kind !== "command") fail(`${wo} ('${r.name}'): 'lesegrenze' gilt nur bei kind 'command'.`);
+    if (r.lesegrenze !== undefined && typeof r.lesegrenze !== "string") fail(`${wo} ('${r.name}'): 'lesegrenze' muss ein Text sein.`);
   });
   return reviewers;
 }

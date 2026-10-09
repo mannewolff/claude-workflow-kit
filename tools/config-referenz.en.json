@@ -160,8 +160,12 @@
     "text": "The Claude variant of the reviewer pair reviewModel/reviewCommand: model ID for the reviewer subagent (Opus pin). Must be a valid Claude model identifier. Exactly one of the two fields is set — a foreign CLI belongs in reviewCommand. May be overridden personally in workflow.config.local.json."
   },
   "reviewCommand": {
-    "de": "46e4a8fda345",
-    "text": "The foreign variant of the reviewer pair reviewModel/reviewCommand: command line of a foreign CLI (e.g. 'codex exec --model gpt-5') that receives the review prompt via stdin and writes its answer to stdout. Exactly one of the two fields is set; 'set' means the key is present — an empty string is invalid, not 'not set'. May be overridden personally in workflow.config.local.json."
+    "de": "7776a745a703",
+    "text": "The foreign variant of the reviewer pair reviewModel/reviewCommand: command line of a foreign CLI (e.g. 'codex exec --model gpt-5') that receives the review prompt via stdin and writes its answer to stdout. It is split at whitespace without a shell: quotes, pipes and variables have no effect. Exactly one of the two fields is set; 'set' means the key is present — an empty string is invalid, not 'not set'. May be overridden personally in workflow.config.local.json."
+  },
+  "reviewLesegrenze": {
+    "de": "b427f19042bc",
+    "text": "Belongs to reviewCommand: the read-only switch of the foreign CLI that the kit appends to the command line (e.g. '--sandbox read-only'), split at whitespace like reviewCommand. For codex the kit knows the switch itself; for any other tool it goes here. May be overridden personally in workflow.config.local.json; if the personal file sets reviewModel, reviewLesegrenze gives way together with reviewCommand."
   },
   "triggers": {
     "de": "87c3e16bc4ef",
@@ -260,8 +264,12 @@
     "text": "Only for kind 'claude': model identifier."
   },
   "issueReview.reviewers[].command": {
-    "de": "5b408bf66aa1",
-    "text": "Only for kind 'command': command line, e.g. 'codex exec --model gpt-5'."
+    "de": "5d587f6f3a15",
+    "text": "Only for kind 'command': command line, e.g. 'codex exec --model gpt-5'. It is split at whitespace without a shell: quotes, pipes and variables have no effect."
+  },
+  "issueReview.reviewers[].lesegrenze": {
+    "de": "d7ce4fe68673",
+    "text": "Only for kind 'command': the read-only switch of the foreign tool that the kit appends to the command line (e.g. '--sandbox read-only'), split at whitespace like command. For codex the kit knows the switch itself; for any other tool it goes here. For kind 'claude' the field is an error."
   },
   "issueReview.pairs": {
     "de": "bd302160d56e",

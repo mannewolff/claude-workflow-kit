@@ -155,6 +155,42 @@ test("mergeWorkflowConfig: lokales reviewModel entfernt das geteilte reviewComma
   assert.equal("reviewCommand" in config, false, "reviewCommand muss beim Merge weichen");
 });
 
+// --- reviewLesegrenze gehoert zum Kommando (Issue #1379, Plan #1375 E11) ---
+//
+// Eine Lesegrenze ohne Kommando ist bedeutungslos. Das Paar wird darum zur Gruppe
+// {reviewModel} <-> {reviewCommand, reviewLesegrenze}: Wer persoenlich auf Claude wechselt,
+// nimmt die Lesegrenze des Team-Kommandos nicht mit.
+
+test("mergeWorkflowConfig: reviewLesegrenze ist persoenlich ueberschreibbar", () => {
+  const { config, ignored } = mergeWorkflowConfig(
+    { ...GETEILT_KOMMANDO, reviewLesegrenze: "--sandbox read-only" },
+    { reviewLesegrenze: "--sandbox workspace-read" },
+  );
+  assert.equal(config.reviewLesegrenze, "--sandbox workspace-read");
+  assert.equal(config.reviewCommand, "codex exec --model gpt-5");
+  assert.deepEqual(ignored, []);
+});
+
+test("mergeWorkflowConfig: lokales reviewModel verdraengt reviewCommand und reviewLesegrenze", () => {
+  const { config } = mergeWorkflowConfig(
+    { ...GETEILT_KOMMANDO, reviewLesegrenze: "--sandbox read-only" },
+    { reviewModel: "claude-sonnet-5" },
+  );
+  assert.equal(config.reviewModel, "claude-sonnet-5");
+  assert.equal("reviewCommand" in config, false);
+  assert.equal("reviewLesegrenze" in config, false, "die Lesegrenze des Team-Kommandos muss mit weichen");
+});
+
+test("mergeWorkflowConfig: lokales reviewCommand mit reviewLesegrenze verdraengt reviewModel", () => {
+  const { config } = mergeWorkflowConfig(GETEILT, {
+    reviewCommand: "codex exec --model gpt-5",
+    reviewLesegrenze: "--sandbox read-only",
+  });
+  assert.equal("reviewModel" in config, false);
+  assert.equal(config.reviewCommand, "codex exec --model gpt-5");
+  assert.equal(config.reviewLesegrenze, "--sandbox read-only");
+});
+
 // --- ladeConfigDatei: die persoenliche Datei neben der geteilten ---
 
 /**

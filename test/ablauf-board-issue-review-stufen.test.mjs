@@ -159,3 +159,32 @@ test("Der Kopfkommentar von board.mjs nennt dieselbe Syntax", () => {
   const kopf = readFileSync(join(repoRoot, "kit", "board.mjs"), "utf-8").split("*/")[0];
   assert.ok(kopf.includes(SYNTAX), "Syntax fehlt im Kopfkommentar von kit/board.mjs");
 });
+
+// --- lesegrenze je Reviewer (Issue #1379, Plan #1375 A5) ---
+//
+// Die Lesegrenze ist der Nur-Lese-Schalter eines fremden Werkzeugs. Bei einem Claude-Reviewer
+// gibt es kein Kommando, an das er gehaengt werden koennte — dort waere das Feld still
+// wirkungslos und sahe aus wie eine Absicherung, die es nicht gibt.
+
+test("issueReview.reviewers: lesegrenze bei kind claude bricht ab, bei kind command nicht", () => {
+  const mitClaude = { ...REVIEW, reviewers: [{ ...OPUS, lesegrenze: "--sandbox read-only" }, SONNET, FABLE, CODEX] };
+  mitStufen(STUFEN, (dir) => {
+    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "issue", "--author", "sonnet"]);
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /issueReview\.reviewers\[0\] \('opus'\): 'lesegrenze' gilt nur bei kind 'command'/);
+  }, mitClaude);
+  const mitKommando = { ...REVIEW, reviewers: [OPUS, SONNET, FABLE, { ...CODEX, lesegrenze: "--sandbox read-only" }] };
+  mitStufen(STUFEN, (dir) => {
+    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "issue", "--author", "opus"]);
+    assert.equal(res.status, 0, res.stderr);
+  }, mitKommando);
+});
+
+test("issueReview.reviewers: eine lesegrenze, die kein String ist, bricht ab", () => {
+  const kaputt = { ...REVIEW, reviewers: [OPUS, SONNET, FABLE, { ...CODEX, lesegrenze: ["--sandbox"] }] };
+  mitStufen(STUFEN, (dir) => {
+    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "issue", "--author", "opus"]);
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /issueReview\.reviewers\[3\] \('codex'\): 'lesegrenze' muss ein Text sein/);
+  }, kaputt);
+});
