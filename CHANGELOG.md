@@ -2,6 +2,16 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [Unreleased]
+- Schalter: /issue-review und /review prüfen über kit/rollen/, pruefauftrag und kit-pruefer (#1383)
+- befunde pruefen meldet keine-pruefer ohne Reviewer-Kopf (#1382)
+- issue-review start mit Lesegrenze; check und roles melden Lesegrenze und Rollendateien (#1381)
+- issue-review pruefauftrag: Prüfauftrag aus Rollendatei montieren (#1380)
+- Config-Felder lesegrenze und reviewLesegrenze, Reviewer-Paar als Gruppe (#1379)
+- Rückfallebene der Review-Stufen auf die Rollen aus ROLLEN_KATALOG (#1378)
+- Rollen und Leser-Agent ausliefern: sync-blobs, Installer, Kit-Stand (#1377)
+- Prüfrollen als Dateien unter kit/rollen/ und Leser-Agent kit-pruefer (#1376)
+
 ## [4.1.0] - 2026-10-08
 - Wächtertest läuft bei jeder geänderten Testdatei mit (#1374)
 - Release-Arbeitsbaum: Prüflauf und Push ohne cd und ohne Symlink-Pfad (#1372)

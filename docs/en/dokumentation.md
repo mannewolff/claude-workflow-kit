@@ -954,11 +954,11 @@ Which issue is next is decided by the argument. `/implement-next` without an arg
 Delimitation: `/implement-ready` works through the whole column in one session; `/implement-test` and `/implement-done` split an issue into a red and a green phase; `/implement-next` does one complete issue and then stops. Interactively it is the "do exactly one" variant — it plays its main role in [night mode](/en/dokumentation#night-mode), where the night runner starts a fresh session with exactly this skill for each issue.
 
 ### /issue-review
-<!-- de: 771e76229b27 -->
+<!-- de: 20d3e0670364 -->
 
 **Tool alongside the process — has the business plan and the plan read by other models.**
 
-Models that did not write the document deliver findings as a comment; the calling session incorporates them or rejects them with one sentence, writes the stage's marker as a trace and sets the label `review:fertig` as a visible trace on the board (to be created once per board; a finding of the stop class sets `kit:klaeren` instead). Which roles and how many reviewers is said by `reviewStufen`; `issue check-form` checks the form beforehand. Work packages are reviewed only on explicit request; the rule is Ready, not a package review. Details under [Issue review across multiple models](/en/dokumentation#issue-review-across-multiple-models).
+Models that did not write the document deliver findings as a comment; the calling session incorporates them or rejects them with one sentence, writes the stage's marker as a trace and sets the label `review:fertig` as a visible trace on the board (to be created once per board; a finding of the stop class sets `kit:klaeren` instead). Which roles and how many reviewers is said by `reviewStufen`; `issue check-form` checks the form beforehand. Every reviewer gets its review brief as a file that `issue-review pruefauftrag` assembles from the role under `kit/rollen/`; a Claude reviewer reads it as the reader agent `kit-pruefer`, a third-party one runs via `issue-review start` at its read boundary. Neither of them can change anything. Work packages are reviewed only on explicit request; the rule is Ready, not a package review. Details under [Issue review across multiple models](/en/dokumentation#issue-review-across-multiple-models).
 
 `review:fertig` is at the same time a prerequisite of the night chain: without the label on the business plan, the chain skips the requirement (see [Second mode: the night chain](/en/dokumentation#second-mode-the-night-chain)). The label remains a mere trace and does not release the content — if a requirement is still changed substantially after the review, remove the label or have the requirement reviewed again; the nightly run does not detect a later change.
 
@@ -974,13 +974,13 @@ The skill calls `node .claude/kit/checks.mjs run --since "$(git merge-base HEAD 
 The output is a checklist with green ticks or a red stop; omitted checks appear in it as a line of their own with their reason, so that a shortened run does not look like a complete one. A red check blocks the rest of the process. There are no exceptions and no overriding.
 
 ### /review
-<!-- de: aec27cbca22c -->
+<!-- de: 137a45e48e3e -->
 
 **Step 7, after the local check.**
 
 The skill opens a new Claude session without the implementation context of the current session. A reviewer who does not know how the code came about reads it as a stranger and sees problems that the implementer does not notice.
 
-Depending on `reviewScope`, the reviewer gets the diff or all files in the repo (with the model from `reviewModel`). The findings land as a comment in the issue or PR. For security patterns that require a corpus-driven approach (secrets scan, SQL concatenation, missing input validation), the skill does not rely on the model alone. These checks belong in your CI.
+Depending on `reviewScope`, the reviewer gets the diff or all files in the repo. The review brief is assembled by `issue-review pruefauftrag` from the role `kit/rollen/code-review.md` and this material. It is read by the reader agent `kit-pruefer` with the model from `reviewModel` or, if `reviewCommand` is set, by the third-party CLI that `issue-review start --code-review` starts at its read boundary (`reviewLesegrenze`). If either call fails, `/review` aborts visibly, without a comment and without a move to In review. The findings land as a comment in the issue or PR. For security patterns that require a corpus-driven approach (secrets scan, SQL concatenation, missing input validation), the skill does not rely on the model alone. These checks belong in your CI.
 
 ### /push-main
 <!-- de: 7a612b209c0c -->
@@ -1654,9 +1654,11 @@ The card then keeps all its labels and gets once the comment `## Kette nicht ges
 A business plan order for one requirement and a plan order for another, by contrast, both run in the same night — the rules only apply within the same root. A card that gives way uses up no `--max` slot.
 
 #### Allowlist for third-party reviewers
-<!-- de: 1e6f0f235388 -->
+<!-- de: 324056d8f427 -->
 
-Reviewers with `kind: "claude"` run as subagents and need no permission. A reviewer with **`kind: "command"`**, by contrast, runs via Bash — and if it is not in the allowlist, a permission prompt appears at night that nobody answers. That is not an error with a log line: **The session hangs until the timeout.** So enter the tool before the first review run starts:
+Reviewers with `kind: "claude"` run as the reader agent `kit-pruefer` and need no permission. A reviewer with **`kind: "command"`** is no longer started through the session's Bash during the review, but by the kit: `node .claude/kit/board.mjs issue-review start` starts the third-party tool itself, at its read boundary. For this the review needs the entry for `board.mjs` in the allowlist and `node .claude/kit/board.mjs*` in `sandbox.excludedCommands` (see "Kit scripts with board access") — otherwise the tool runs in the session's sandbox, without network. The review needs no entry of its own for the tool.
+
+The **pre-flight of the night runner**, by contrast, still checks the reviewers by starting the third-party command directly, and therefore still needs the entry for the tool. If it is missing, a permission prompt appears at night that nobody answers. That is not an error with a log line: **The session hangs until the timeout.** Enter both before the first review run starts:
 
 ```json
 {
@@ -1669,7 +1671,7 @@ Reviewers with `kind: "claude"` run as subagents and need no permission. A revie
 }
 ```
 
-The entry names the **tool**, not the full command line — for the same reason as with the buildChecks above (prefix matching). Whoever has configured several foreign CLIs enters each one individually. A setup with exclusively `kind: "claude"` reviewers needs none of this.
+The entry names the **tool**, not the full command line — for the same reason as with the buildChecks above (prefix matching). Whoever has configured several foreign CLIs enters each one individually. A setup with exclusively `kind: "claude"` reviewers does not need the tool entry.
 
 ### The run status
 <!-- de: 4bcd7299093a -->
@@ -1879,14 +1881,30 @@ Which stage applies is decided by the title prefix, and every stage leaves its o
 ```
 
 ### Procedure
-<!-- de: c0d48a188f00 -->
+<!-- de: 7aa8e1713bb6 -->
 
-Pre-flight with `issue-review check`, then `issue check-form <id>`, then `issue-review roles --stufe <stufe> --author <modell>` for roles and staffing. Every reviewer gets the same body and its role: `form-beobachtbarkeit` and `abgrenzung` for the business requirement, `architektur-bestand` (the senior who knows the existing code) for the plan, `pruefbarkeit` for the work package; every role carries the cut question "What can go?". The plan reviewer additionally gets the body of the card named in `Fachliche Quelle:` — from the board, never from the conversation — and the path of a `Vorlage:` line; with it, it also checks whether the plan delivers every goal, every acceptance criterion and every answered question of the source. Without a source this input is dropped. The findings go as a comment `## <Stufe>-Review, Runde 1` (review, round 1) to the document. Then the calling session works in every finding or rejects it with one sentence, according to the rule "decide instead of asking" (Entscheiden statt fragen) from `CLAUDE-workflow.md`: interactively after a word of approval, unattended directly; only a finding of the stop class halts and marks the document with `kit:klaeren`. The new body goes via `issue update`, together with the marker line of the stage — unattended with the addition `, Nachtlauf` (night run) — and a comment `## Einarbeitung, Runde 1` (incorporation, round 1) with the list adopted / rejected and reason. One round, no second: Further rounds, in our experience, find matters of taste.
+Pre-flight with `issue-review check`, then `issue check-form <id>`, then `issue-review roles --stufe <stufe> --author <modell>` for roles and staffing. Every reviewer gets the same body and its role: `form-beobachtbarkeit` and `abgrenzung` for the business requirement, `architektur-bestand` (the senior who knows the existing code) and `schnitt-abhaengigkeiten` for the plan, `pruefbarkeit` for the work package; every role carries the cut question "What can go?". The plan reviewer additionally gets the body of the card named in `Fachliche Quelle:` — from the board, never from the conversation — and the path of a `Vorlage:` line; with it, it also checks whether the plan delivers every goal, every acceptance criterion and every answered question of the source. Without a source this input is dropped.
+
+**The review brief is created in the kit, not in the session.** `node .claude/kit/board.mjs issue-review pruefauftrag --rolle <rolle> --id <id> --datei <pfad>` assembles it from the role file, the list of finding types and the unchanged body, for the plan together with source and template, and writes it to a file outside the project. The session copies no role text and fills in nothing itself. A Claude reviewer starts as the agent `kit-pruefer` with the model from `reviewers[].model`; its brief reads only `Lies <pfad>`. A third-party reviewer starts via `node .claude/kit/board.mjs issue-review start --reviewer <name> --auftrag <pfad> --ausgabe <pfad>`: the kit passes the brief via stdin, appends the read boundary to the command line and writes the answer to the output file. If either call fails — for instance with `rolle-fehlt` or `keine-lesegrenze` —, this reviewer drops out, the failure appears in line 2 of the findings comment, and the review continues without it. There is no fallback with a self-written prompt.
+
+The findings go as a comment `## <Stufe>-Review, Runde 1` (review, round 1) to the document. If not a single reviewer ran, `befunde.mjs pruefen` reports the entry `keine-pruefer`, and `review:fertig` is not set: the stage then counts as not reviewed. Then the calling session works in every finding or rejects it with one sentence, according to the rule "decide instead of asking" (Entscheiden statt fragen) from `CLAUDE-workflow.md`: interactively after a word of approval, unattended directly; only a finding of the stop class halts and marks the document with `kit:klaeren`. The new body goes via `issue update`, together with the marker line of the stage — unattended with the addition `, Nachtlauf` (night run) — and a comment `## Einarbeitung, Runde 1` (incorporation, round 1) with the list adopted / rejected and reason. One round, no second: Further rounds, in our experience, find matters of taste.
 
 ### Configuration
-<!-- de: a8086c36c4ed -->
+<!-- de: 0f25ed0f863c -->
 
-The installer puts `.claude/workflow.config.example.json` next to the real config; take the `issueReview` block from it. **The installer does not write it itself** — `reviewers` depends on which CLIs are on the machine, and `pairs` is a decision. A reviewer is an adapter: `kind: claude` runs as a subagent with the configured `model`, `kind: command` as any CLI with the prompt via stdin and the answer on stdout — Codex, Gemini, a script of your own. Who reviews whom is in `pairs`; otherwise the rule "the foremost reviewers that are not the author" applies. The assignment is shown by `issue-review matrix`.
+The installer puts `.claude/workflow.config.example.json` next to the real config; take the `issueReview` block from it. **The installer does not write it itself** — `reviewers` depends on which CLIs are on the machine, and `pairs` is a decision. A reviewer is an adapter: `kind: claude` runs as the reader agent `kit-pruefer` with the configured `model`, `kind: command` as any CLI with the prompt via stdin and the answer on stdout — Codex, Gemini, a script of your own. Who reviews whom is in `pairs`; otherwise the rule "the foremost reviewers that are not the author" applies. The assignment is shown by `issue-review matrix`.
+
+**Roles as files.** Every role has its wording in exactly one place: `kit/rollen/<rolle>.md` — `form-beobachtbarkeit`, `abgrenzung`, `architektur-bestand`, `schnitt-abhaengigkeiten`, `pruefbarkeit` and `code-review` for `/review`. Installer and update place the files under `.claude/kit/rollen/`. Whoever changes the wording of a role changes it for every reviewer of that role, whatever the model. If a role file is missing, only that reviewer drops out. `issue-review roles` and `issue-review check` also name the role files.
+
+**Read only, for every reviewer.** A Claude reviewer runs as the agent `kit-pruefer`, whose tools are restricted to `Read, Grep, Glob`: it can read and search, but cannot write a file or run a command, even if its brief asks for it. A third-party reviewer gets the same boundary through its tool's read-only switch, the **read boundary** (Lesegrenze):
+
+- For `codex` the kit knows the switch itself (`--sandbox read-only`), from a built-in table.
+- For every other tool it is in the reviewer's field `lesegrenze` in `issueReview.reviewers`, for the code review with `reviewCommand` in the field `reviewLesegrenze`. A set field beats the table.
+- Command and read boundary are split at whitespace without a shell: quotes, pipes and variables have no effect. The read boundary comes last on the command line.
+- If the command carries a switch that can lift or override the boundary (`--full-auto`, `--dangerously-bypass-approvals-and-sandbox`, a `--sandbox` with a value other than `read-only`, a `--config sandbox…`, a `--profile`), nothing starts: `lesegrenze-aufgehoben`.
+- Without a known read boundary the reviewer does not start (`keine-lesegrenze`); `issue-review check` then reports it as unavailable.
+
+`issue-review start` relies on `node .claude/kit/board.mjs*` in `sandbox.excludedCommands` — the third-party tool inherits the environment of `board.mjs` and needs network (see [Allowlist for third-party reviewers](/en/dokumentation#allowlist-for-third-party-reviewers)).
 
 ```json
 "reviewStufen": {
