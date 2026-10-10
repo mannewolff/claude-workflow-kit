@@ -62,6 +62,12 @@
  *   node board.mjs code ci-status --commit <sha>
  *       Zustand der CI fuer genau diesen Commit (Issue #316). Dispatcht ueber
  *       resolveCodeHost — die Achse haengt am codeHost, nicht am issueTracker.
+ *   node board.mjs code schutz status | einrichten [--zweig <z>] | aussetzen --in <pfad>
+ *                              | wiederherstellen | nachpruefen [--zweig <z>]
+ *       Schutz von Haupt- und Veroeffentlichungszweig (Issue #1408, Plan #1405). status
+ *       meldet { geschuetzt, fehlt, ungeprueft }, einrichten schaltet nach der Probe auf
+ *       dem Pruefzweig scharf, aussetzen ist der Notfallweg hinter dem Notfall-Gate.
+ *       einrichten, aussetzen und nachpruefen sind mit KIT_AGENT_MODEL gesperrt.
  *   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
   node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
   node board.mjs issue-review reviewers --author <modell>
@@ -194,6 +200,22 @@ Nutzung:
       rot vor laeuft vor gruen; 'keine' nur bei codeHost local, ein am Host noch
       unsichtbarer Lauf ist 'laeuft'. 'gestartet' ist die Startzeit des Jobs (ISO) oder
       null, solange er nicht gestartet ist (Issue #1151).
+  node board.mjs code schutz status
+  node board.mjs code schutz einrichten --zweig <z>
+  node board.mjs code schutz aussetzen --in <pfad>
+  node board.mjs code schutz wiederherstellen
+  node board.mjs code schutz nachpruefen [--zweig <z>]
+      Schutz von Haupt- und Veroeffentlichungszweig per Ruleset (Issue #1408).
+      status: { geschuetzt, fehlt, ungeprueft }, Exit 0 auch bei geschuetzt false.
+      einrichten: Probe — der Kopf von origin/<mainBranch> geht auf den Pruefzweig
+      (Vorgabe pushPruefung.zweig, sonst kit-pruefung; ein schon vorhandener bricht
+      ab), Warten im 30-s-Takt bis 5 min auf den Lauf und 60 min auf seinen
+      Abschluss, Zweig danach geloescht. Ergebnis scharf | offen | anleitung |
+      nicht moeglich. aussetzen: Notfallweg, nur nach gruenem Lauf der Stufe push
+      im Worktree <pfad>; setzt das Ruleset des Hauptzweigs auf disabled.
+      wiederherstellen: wieder active, scheitert es Exit 1 mit dem Kommando zum
+      Wiederholen. nachpruefen: Kopf erneut auf den Pruefzweig, Ergebnis des
+      Build-Dienstes. einrichten, aussetzen, nachpruefen mit KIT_AGENT_MODEL gesperrt.
   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
   node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
   node board.mjs issue-review reviewers --author <modell>
@@ -302,7 +324,9 @@ export const { pruefeBashZeile, pruefeHintergrund } = await import("./board/hook
 // Den Befehlsverteiler des Hooks braucht nur Dispatch; exportiert war er nie.
 const { dispatchHook } = await import("./board/hook.mjs");
 export const { SCHUTZ_AUSGESETZT, NACHPRUEFEN_KOMMANDO, NACHT_GESPERRT, rulesetSoll, schutzZustand, anleitung,
-  notfallGate, nachtSperre } = await import("./board/schutz.mjs");
+  notfallGate, nachtSperre, probe, einrichten, nachpruefen } = await import("./board/schutz.mjs");
+// Den Namen eines Rulesets braucht nur `code schutz aussetzen|wiederherstellen`; exportiert war er nie.
+const { rulesetName } = await import("./board/adapter.mjs");
 
 // --- Argument-Parser ---
 
@@ -471,12 +495,68 @@ async function codeCiStatus(host, args) {
   out(await host.getCiStatus(String(args.commit)));
 }
 
+const SCHUTZ_AKTIONEN = ["status", "einrichten", "aussetzen", "wiederherstellen", "nachpruefen"];
+const WIEDERHERSTELLEN_KOMMANDO = "node .claude/kit/board.mjs code schutz wiederherstellen";
+
+/** Der Pruefzweig der Probe (E5): `--zweig`, sonst `pushPruefung.zweig`, sonst `kit-pruefung`. */
+function schutzZweig(config, args) {
+  if (args.zweig === true) fail("--zweig braucht einen Wert");
+  return args.zweig || config.pushPruefung?.zweig || "kit-pruefung";
+}
+
+/** Aussetzen und Wiederherstellen brauchen einen Code-Host mit Schutz. */
+function schutzVerlangen(host) {
+  const unterstuetzt = typeof host.schutzUnterstuetzt === "function"
+    ? host.schutzUnterstuetzt()
+    : { ja: false, grund: "Der Code-Host kennt keinen Schutz." };
+  if (!unterstuetzt.ja) fail(unterstuetzt.grund);
+}
+
+/**
+ * `code schutz <aktion>` (Issue #1408, Plan #1405, A10). `einrichten`, `aussetzen` und
+ * `nachpruefen` pushen oder aendern den Code-Host und laufen darum durch die Nacht-Sperre
+ * (E8); `status` und `wiederherstellen` nicht.
+ */
+async function codeSchutz(host, config, args) {
+  const aktion = args._[0];
+  if (!SCHUTZ_AKTIONEN.includes(aktion)) {
+    process.stdout.write(HELP);
+    fail(`Unbekannte schutz-Aktion: '${aktion ?? ""}'. Erwartet: ${SCHUTZ_AKTIONEN.join(" | ")}`);
+  }
+  nachtSperre(aktion);
+  const mainBranch = config.mainBranch || "main";
+  switch (aktion) {
+    case "status":      return out(await schutzZustand(host, config));
+    case "einrichten":  return out(await einrichten(host, config, schutzZweig(config, args)));
+    case "nachpruefen": return out(await nachpruefen(host, config, schutzZweig(config, args)));
+    case "aussetzen": {
+      if (typeof args.in !== "string") fail("--in <pfad> ist erforderlich: der Worktree mit dem gruenen Lauf der Stufe push");
+      schutzVerlangen(host);
+      const gate = await notfallGate(args.in);
+      if (!gate.ok) fail(`Notfallweg verweigert: ${gate.grund}`);
+      return out(await host.setRulesetEnforcement(rulesetName(mainBranch), "disabled"));
+    }
+    default: {
+      schutzVerlangen(host);
+      try {
+        return out(await host.setRulesetEnforcement(rulesetName(mainBranch), "active"));
+      } catch (e) {
+        // E10: Der Schutz bleibt ausgesetzt, bis dieser Aufruf gelingt — `status` nennt es.
+        fail(`Wiederherstellen gescheitert, der Schutz des Hauptzweigs bleibt ausgesetzt: ${e.message}\n`
+          + `Wiederholen: ${WIEDERHERSTELLEN_KOMMANDO}`);
+      }
+    }
+  }
+}
+
 async function dispatchCode(command, args) {
-  const host = resolveCodeHost(loadConfig());
+  const config = loadConfig();
+  const host = resolveCodeHost(config);
   switch (command) {
     case "repo-name": return codeRepoName(host);
     case "pr":        return codePr(host, args);
     case "ci-status": return codeCiStatus(host, args);
+    case "schutz":    return codeSchutz(host, config, args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter code-Befehl: '${command}'`);

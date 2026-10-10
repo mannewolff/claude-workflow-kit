@@ -4,7 +4,8 @@
 // Projekt geschuetzt ist (E1, A7, A9, E10), beschreibt das Soll der Rulesets (A2, A8) samt
 // Anleitung fuer den Menschen ohne Admin-Recht (A9), haelt den Notfallweg an einem gruenen
 // lokalen Lauf der Stufe push fest (E9) und sperrt die schreibenden Aktionen in der Nacht
-// (E8). Der Host ist hier ein gefaelschtes Objekt mit den Methoden aus Issue #1406: Die
+// (E8). Seit Issue #1408 dazu die Probe auf dem Pruefzweig (A3, E6, E7), `einrichten` mit
+// seinen vier Ergebnissen (A4) und `nachpruefen` (A7). Der Host ist hier ein gefaelschtes Objekt mit den Methoden aus Issue #1406: Die
 // `gh`-Aufrufe dahinter prueft `board-adapter-schutz-github.test.mjs`.
 
 import { test } from "node:test";
@@ -14,7 +15,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 
-import { rulesetSoll, schutzZustand, anleitung, notfallGate, nachtSperre, NACHPRUEFEN_KOMMANDO } from "../kit/board/schutz.mjs";
+import { rulesetSoll, schutzZustand, anleitung, notfallGate, nachtSperre, NACHPRUEFEN_KOMMANDO, probe, einrichten,
+  nachpruefen } from "../kit/board/schutz.mjs";
 
 const SHA = "a".repeat(40);
 const JOBS = ["check", "lint"];
@@ -260,4 +262,206 @@ test("[schutz] nachtSperre: ohne KIT_AGENT_MODEL alles erlaubt, Vorgabe ist proc
   } finally {
     if (vorher === undefined) delete process.env.KIT_AGENT_MODEL; else process.env.KIT_AGENT_MODEL = vorher;
   }
+});
+
+// --- probe, einrichten, nachpruefen (Issue #1408: A3, A4, A7, E6, E7) ---
+//
+// Der Host ist gefaelscht, die Uhr auch: `schlafe` rueckt `jetzt` vor, statt zu warten.
+// So laufen die Fristen von 5 und 60 Minuten ohne echte Wartezeit (Entscheidung im Paket).
+
+const KOPF_SHA = "b".repeat(40);
+const ZWEIG = "kit-pruefung";
+
+function job(name, ergebnis) { return { name, ergebnis, gestartet: null }; }
+
+/**
+ * Ein Host fuer die Probe: `ciFolge` liefert je Abfrage den naechsten CI-Status (der letzte
+ * bleibt stehen), `admin` und `upsertFehler` steuern den Schluss von `einrichten`.
+ */
+function probeHost({ ciFolge = [{ status: "gruen", jobs: [job("check", "gruen"), job("lint", "gruen")] }],
+  admin = true, adminFehler = null, upsertFehler = null, ciFehler = null, unterstuetzt = { ja: true } } = {}) {
+  const aufrufe = [];
+  let i = 0;
+  return {
+    aufrufe,
+    schutzUnterstuetzt: () => unterstuetzt,
+    hatAdminRecht: async () => {
+      aufrufe.push("hatAdminRecht");
+      if (adminFehler) throw adminFehler;
+      return admin;
+    },
+    getCiStatus: async (commit, zweig) => {
+      aufrufe.push(`getCiStatus ${commit} ${zweig ?? ""}`.trim());
+      if (ciFehler) throw ciFehler;
+      const ci = ciFolge[Math.min(i, ciFolge.length - 1)];
+      i += 1;
+      return ci;
+    },
+    pushRef: async (sha, zweig) => { aufrufe.push(`pushRef ${sha} ${zweig}`); },
+    deleteRef: async (zweig) => { aufrufe.push(`deleteRef ${zweig}`); },
+    upsertRuleset: async (soll) => {
+      aufrufe.push(`upsertRuleset ${soll.zweig}`);
+      if (upsertFehler) throw upsertFehler;
+      return { name: soll.name, angelegt: true };
+    },
+  };
+}
+
+/** Optionen mit falscher Uhr; `zeilen` sammelt die Fortschrittszeilen. */
+function uhr({ belegt = false, kopf = KOPF_SHA } = {}) {
+  let t = 0;
+  const zeilen = [];
+  const schlaefe = [];
+  return {
+    zeilen,
+    schlaefe,
+    jetzt: () => t,
+    schlafe: async (ms) => { schlaefe.push(ms); t += ms; },
+    melde: (z) => zeilen.push(z),
+    zweigBelegt: () => belegt,
+    kopfVon: () => kopf,
+  };
+}
+
+const LEER = { status: "laeuft", jobs: [] };
+const LAEUFT = { status: "laeuft", jobs: [job("check", "laeuft")] };
+
+test("[schutz] probe: pusht den Kopf von origin/main, fragt mit Zweigfilter und loescht den Zweig", async () => {
+  const h = probeHost();
+  const o = uhr();
+  const ergebnis = await probe(h, CONFIG, ZWEIG, o);
+  assert.deepEqual(ergebnis.jobs, ["check", "lint"]);
+  assert.equal(ergebnis.gefunden, true);
+  assert.equal(ergebnis.abgeschlossen, true);
+  assert.deepEqual(h.aufrufe, [`pushRef ${KOPF_SHA} ${ZWEIG}`, `getCiStatus ${KOPF_SHA} ${ZWEIG}`, `deleteRef ${ZWEIG}`]);
+});
+
+test("[schutz] probe: wartet im 30-Sekunden-Takt mit einer Fortschrittszeile je Minute", async () => {
+  const h = probeHost({ ciFolge: [LEER, LEER, LAEUFT, LAEUFT, LAEUFT, { status: "rot", jobs: [job("check", "rot")] }] });
+  const o = uhr();
+  const ergebnis = await probe(h, CONFIG, ZWEIG, o);
+  assert.deepEqual(ergebnis.jobs, ["check"]);
+  assert.ok(o.schlaefe.every((ms) => ms === 30_000), `Takt: ${o.schlaefe}`);
+  assert.equal(o.schlaefe.length, 5);
+  // 150 Sekunden gewartet: zwei volle Minuten, zwei Zeilen.
+  assert.equal(o.zeilen.length, 2);
+  assert.match(o.zeilen[0], /1 min/);
+});
+
+test("[schutz] probe: ohne Lauf binnen 5 Minuten nicht gefunden, Zweig trotzdem geloescht", async () => {
+  const h = probeHost({ ciFolge: [LEER] });
+  const o = uhr();
+  const ergebnis = await probe(h, CONFIG, ZWEIG, o);
+  assert.equal(ergebnis.gefunden, false);
+  assert.deepEqual(ergebnis.jobs, []);
+  assert.ok(o.jetzt() >= 5 * 60_000 && o.jetzt() < 6 * 60_000, `gewartet: ${o.jetzt()}`);
+  assert.equal(h.aufrufe.at(-1), `deleteRef ${ZWEIG}`);
+});
+
+test("[schutz] probe: ein Lauf ohne Abschluss binnen 60 Minuten ist gefunden, aber nicht abgeschlossen", async () => {
+  const h = probeHost({ ciFolge: [LAEUFT] });
+  const o = uhr();
+  const ergebnis = await probe(h, CONFIG, ZWEIG, o);
+  assert.equal(ergebnis.gefunden, true);
+  assert.equal(ergebnis.abgeschlossen, false);
+  assert.ok(o.jetzt() >= 60 * 60_000 && o.jetzt() < 61 * 60_000, `gewartet: ${o.jetzt()}`);
+  assert.equal(h.aufrufe.at(-1), `deleteRef ${ZWEIG}`);
+});
+
+test("[schutz] probe: vorhandener Pruefzweig bricht ohne Push ab (E7)", async () => {
+  const h = probeHost();
+  await assert.rejects(probe(h, CONFIG, ZWEIG, uhr({ belegt: true })), /kit-pruefung.*(vorhanden|belegt)/);
+  assert.deepEqual(h.aufrufe, []);
+});
+
+test("[schutz] probe: ein Fehler beim Warten loescht den Zweig trotzdem", async () => {
+  const h = probeHost({ ciFehler: new Error("gh run list: HTTP 502") });
+  await assert.rejects(probe(h, CONFIG, ZWEIG, uhr()), /HTTP 502/);
+  assert.equal(h.aufrufe.at(-1), `deleteRef ${ZWEIG}`);
+});
+
+test("[schutz] einrichten: scharf — Rulesets fuer main und production mit den Jobs der Probe", async () => {
+  const h = probeHost();
+  const ergebnis = await einrichten(h, CONFIG, ZWEIG, uhr());
+  assert.equal(ergebnis.ergebnis, "scharf");
+  assert.deepEqual(ergebnis.jobs, ["check", "lint"]);
+  assert.deepEqual(h.aufrufe.filter((a) => a.startsWith("upsertRuleset")), ["upsertRuleset main", "upsertRuleset production"]);
+});
+
+test("[schutz] einrichten: eine rote Probe schaltet ebenfalls scharf (A4)", async () => {
+  const h = probeHost({ ciFolge: [{ status: "rot", jobs: [job("check", "rot"), job("lint", "gruen")] }] });
+  const ergebnis = await einrichten(h, CONFIG, ZWEIG, uhr());
+  assert.equal(ergebnis.ergebnis, "scharf");
+  assert.deepEqual(ergebnis.jobs, ["check", "lint"]);
+});
+
+test("[schutz] einrichten: ohne productionBranch nur das Ruleset des Hauptzweigs", async () => {
+  const h = probeHost();
+  const { productionBranch, ...ohne } = CONFIG;
+  assert.ok(productionBranch);
+  const ergebnis = await einrichten(h, ohne, ZWEIG, uhr());
+  assert.equal(ergebnis.ergebnis, "scharf");
+  assert.deepEqual(h.aufrufe.filter((a) => a.startsWith("upsertRuleset")), ["upsertRuleset main"]);
+});
+
+test("[schutz] einrichten: offen ohne Lauf binnen 5 Minuten, mit dem offenen Schritt, ohne Ruleset", async () => {
+  const h = probeHost({ ciFolge: [LEER] });
+  const ergebnis = await einrichten(h, CONFIG, ZWEIG, uhr());
+  assert.equal(ergebnis.ergebnis, "offen");
+  assert.match(ergebnis.schritt, /checks\.mjs run --stufe push --since "\$\(git merge-base HEAD origin\/main\)"/);
+  assert.match(ergebnis.schritt, /kit-pruefung/);
+  assert.equal(h.aufrufe.some((a) => a.startsWith("upsertRuleset")), false);
+});
+
+test("[schutz] einrichten: anleitung ohne Admin-Recht, mit dem Text aus anleitung und ohne Ruleset", async () => {
+  const h = probeHost({ admin: false });
+  const ergebnis = await einrichten(h, CONFIG, ZWEIG, uhr());
+  assert.equal(ergebnis.ergebnis, "anleitung");
+  assert.equal(ergebnis.anleitung, anleitung([rulesetSoll("main", ["check", "lint"], "haupt"),
+    rulesetSoll("production", ["check", "lint"], "veroeffentlichung")]));
+  assert.equal(h.aufrufe.some((a) => a.startsWith("upsertRuleset")), false);
+});
+
+test("[schutz] einrichten: anleitung bei 403 des Code-Hosts", async () => {
+  const fehler = Object.assign(new Error("gh api: (HTTP 403)"), { httpStatus: 403 });
+  const h = probeHost({ upsertFehler: fehler });
+  const ergebnis = await einrichten(h, CONFIG, ZWEIG, uhr());
+  assert.equal(ergebnis.ergebnis, "anleitung");
+  assert.match(ergebnis.anleitung, /Settings → Rules → Rulesets/);
+});
+
+test("[schutz] einrichten: nicht moeglich ohne origin/main, ohne Push", async () => {
+  const h = probeHost();
+  const ergebnis = await einrichten(h, CONFIG, ZWEIG, uhr({ kopf: null }));
+  assert.equal(ergebnis.ergebnis, "nicht moeglich");
+  assert.match(ergebnis.grund, /origin\/main/);
+  assert.deepEqual(h.aufrufe, []);
+});
+
+test("[schutz] einrichten: nicht moeglich bei Fehlschlag von gh, mit Grund und ohne Aenderung", async () => {
+  const h = probeHost({ adminFehler: new Error("gh: command not found") });
+  const ergebnis = await einrichten(h, CONFIG, ZWEIG, uhr());
+  assert.equal(ergebnis.ergebnis, "nicht moeglich");
+  assert.match(ergebnis.grund, /command not found/);
+  assert.equal(h.aufrufe.some((a) => a.startsWith("pushRef") || a.startsWith("upsertRuleset")), false);
+});
+
+test("[schutz] einrichten: nicht moeglich bei einem Code-Host ohne Schutz", async () => {
+  const h = probeHost({ unterstuetzt: { ja: false, grund: "Kein Schutz bei local." } });
+  const ergebnis = await einrichten(h, CONFIG, ZWEIG, uhr());
+  assert.deepEqual(ergebnis, { ergebnis: "nicht moeglich", grund: "Kein Schutz bei local." });
+});
+
+test("[schutz] nachpruefen: pusht den Kopf erneut, wartet mit Zweigfilter und loescht den Zweig (A7)", async () => {
+  const h = probeHost();
+  const ergebnis = await nachpruefen(h, CONFIG, ZWEIG, uhr());
+  assert.equal(ergebnis.commit, KOPF_SHA);
+  assert.equal(ergebnis.status, "gruen");
+  assert.deepEqual(h.aufrufe, [`pushRef ${KOPF_SHA} ${ZWEIG}`, `getCiStatus ${KOPF_SHA} ${ZWEIG}`, `deleteRef ${ZWEIG}`]);
+});
+
+test("[schutz] einrichten: ein vorhandener Pruefzweig bricht ab, statt nicht moeglich zu melden (E7)", async () => {
+  const h = probeHost();
+  await assert.rejects(einrichten(h, CONFIG, ZWEIG, uhr({ belegt: true })), /schon vorhanden/);
+  assert.equal(h.aufrufe.some((a) => a.startsWith("pushRef")), false);
 });

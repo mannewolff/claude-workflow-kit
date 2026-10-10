@@ -1,7 +1,8 @@
 /**
  * board/schutz.mjs — der Schutz von Haupt- und Veroeffentlichungszweig ohne Host-Details
  * (Issue #1407, Plan #1405): Zustand ableiten, Ruleset-Soll, Anleitung, Notfall-Gate und
- * Nacht-Sperre.
+ * Nacht-Sperre; dazu die Probe auf dem Pruefzweig, `einrichten` und `nachpruefen`
+ * (Issue #1408), die `code schutz` im Einstieg ruft.
  *
  * Ein Teil von kit/board.mjs. Der Einstieg laedt ihn erst nach der Auskunft ueber
  * --version und --help und exportiert seine Namen unveraendert weiter. Dieser Teil
@@ -9,7 +10,9 @@
  * ein Zyklus.
  *
  * Alles, was den Code-Host betrifft, geht ueber die Operationen des Adapters (Issue #1406):
- * `schutzUnterstuetzt`, `getRulesets`, `getCiStatus`. Das Notfall-Gate laedt
+ * `schutzUnterstuetzt`, `getRulesets`, `getCiStatus`, `hatAdminRecht`, `upsertRuleset`,
+ * `pushRef`, `deleteRef`. Nur ob der Pruefzweig auf origin schon steht und wo
+ * `origin/<mainBranch>` steht, fragt dieser Teil `git` selbst. Das Notfall-Gate laedt
  * `kit/checks.mjs` und `kit/night/kitstand.mjs` erst beim Aufruf: Jeder andere Aufruf von
  * board.mjs braucht sie nicht, und sie liegen in jeder Installation neben board.mjs.
  *
@@ -263,4 +266,185 @@ export function nachtSperre(aktion, env = process.env) {
     throw new BoardError(`code schutz ${aktion} ist ohne Aufsicht gesperrt (KIT_AGENT_MODEL gesetzt): `
       + "Die Aktion pusht oder aendert den Code-Host, und die Nacht pusht nie. Nur status ist erlaubt.");
   }
+}
+
+// --- Probe, Einrichten, Nachpruefen (Issue #1408) ---
+
+// E6: Takt und Fristen der Probe, dieselben wie beim Warten in /push-main.
+const PROBE_TAKT_MS = 30_000;
+const PROBE_FRIST_LAUF_MS = 5 * 60_000;
+const PROBE_FRIST_ABSCHLUSS_MS = 60 * 60_000;
+const MINUTE_MS = 60_000;
+
+/**
+ * Ob `zweig` auf origin schon steht. `git ls-remote --exit-code` endet mit 2, wenn kein
+ * Ref passt; jeder andere Fehlschlag ist ein Fehler und kein „frei" — sonst ueberschriebe
+ * die Probe einen laufenden `push main` (E7).
+ */
+function zweigAufOrigin(zweig) {
+  const res = spawnSync("git", ["ls-remote", "--exit-code", "--heads", "origin", zweig], { encoding: "utf-8" });
+  if (res.status === 0) return true;
+  if (res.status === 2) return false;
+  throw new BoardError(`git ls-remote --heads origin ${zweig}: ${(res.stderr || res.error?.message || "").trim()}`);
+}
+
+function vorgaben(optionen) {
+  return {
+    takt: PROBE_TAKT_MS,
+    fristLauf: PROBE_FRIST_LAUF_MS,
+    fristAbschluss: PROBE_FRIST_ABSCHLUSS_MS,
+    jetzt: Date.now,
+    schlafe: (ms) => new Promise((fertig) => setTimeout(fertig, ms)),
+    melde: (zeile) => process.stderr.write(`${zeile}\n`),
+    zweigBelegt: zweigAufOrigin,
+    kopfVon: kopfAusGit,
+    ...optionen,
+  };
+}
+
+/** Ein Lauf ist abgeschlossen, wenn er Jobs hat und keiner mehr laeuft. */
+function abgeschlossen(ci) {
+  const jobs = ci?.jobs || [];
+  return jobs.length > 0 && jobs.every((j) => j.ergebnis !== "laeuft");
+}
+
+/**
+ * Die Probe (A3, E6, E7): pusht den Kopf von `origin/<mainBranch>` auf den Pruefzweig und
+ * wartet, ob der Build-Dienst dort laeuft — hoechstens `fristLauf` auf den ersten Lauf, bis
+ * `fristAbschluss` auf dessen Abschluss, im Takt `takt` mit einer Fortschrittszeile je
+ * Minute. Gefragt wird mit Zweigfilter: Laeufe anderer Ausloeser am selben Commit zaehlen
+ * nicht. Der Pruefzweig wird danach geloescht, auch bei einem Fehler. Ein schon stehender
+ * Pruefzweig bricht ab, ohne Push und ohne Ueberschreiben.
+ *
+ * Liefert `{ commit, gefunden, abgeschlossen, jobs: [Namen], ci }`; `jobs` nennt nur die
+ * Jobs eines abgeschlossenen Laufs, gruen wie rot (A4). Takt, Fristen, Uhr, Schlaf,
+ * Meldung, Zweig- und Kopfabfrage sind fuer die Tests in `optionen` ersetzbar.
+ */
+export async function probe(host, config, zweig, optionen = {}) {
+  const o = vorgaben(optionen);
+  const mainBranch = config?.mainBranch || "main";
+  const commit = o.kopfVon(mainBranch);
+  if (!commit) throw new BoardError(`origin/${mainBranch} fehlt im lokalen Repository — erst git fetch origin ${mainBranch}.`);
+  if (o.zweigBelegt(zweig)) {
+    const fehler = new BoardError(`Der Pruefzweig '${zweig}' ist auf origin schon vorhanden — vielleicht laeuft dort ein push main. `
+      + "Die Probe ueberschreibt ihn nicht; erst wenn er weg ist, erneut aufrufen.");
+    fehler.pruefzweigBelegt = true;
+    throw fehler;
+  }
+  await host.pushRef(commit, zweig);
+  try {
+    const ci = await warteAufLauf(host, commit, zweig, o);
+    const fertig = abgeschlossen(ci);
+    return {
+      commit,
+      gefunden: (ci?.jobs || []).length > 0,
+      abgeschlossen: fertig,
+      jobs: fertig ? ci.jobs.map((j) => j.name) : [],
+      ci,
+    };
+  } finally {
+    await host.deleteRef(zweig);
+  }
+}
+
+async function warteAufLauf(host, commit, zweig, o) {
+  const start = o.jetzt();
+  let minuten = 0;
+  for (;;) {
+    const ci = await host.getCiStatus(commit, zweig);
+    const vergangen = o.jetzt() - start;
+    if (abgeschlossen(ci)) return ci;
+    const gefunden = (ci?.jobs || []).length > 0;
+    if (!gefunden && vergangen >= o.fristLauf) return ci;
+    if (vergangen >= o.fristAbschluss) return ci;
+    await o.schlafe(o.takt);
+    const jetzt = Math.floor((o.jetzt() - start) / MINUTE_MS);
+    if (jetzt > minuten) {
+      minuten = jetzt;
+      o.melde(`Probe auf ${zweig}: ${minuten} min gewartet, ${gefunden ? "Lauf laeuft" : "noch kein Lauf"}`);
+    }
+  }
+}
+
+/** Der Schritt, der offen bleibt, wenn der Build-Dienst auf dem Pruefzweig nicht laeuft (A4). */
+function offenerSchritt(mainBranch, zweig) {
+  return `Der Build-Dienst muss bei einem Push auf den Pruefzweig '${zweig}' den Lauf der Stufe push fahren: `
+    + `node .claude/kit/checks.mjs run --stufe push --since "$(git merge-base HEAD origin/${mainBranch})"`;
+}
+
+/**
+ * Richtet den Schutz ein (A3, A4, A9). Liefert eines von vier Ergebnissen:
+ * - `nicht moeglich` mit `grund`: Code-Host ohne Schutz, `origin/<mainBranch>` fehlt oder
+ *   `gh` schlaegt fehl — ohne Aenderung am Code-Host;
+ * - `offen` mit `schritt`: Der Build-Dienst lief auf dem Pruefzweig nicht (zu Ende);
+ * - `anleitung` mit `anleitung`: ohne Admin-Recht oder bei 403 — der Mensch richtet ein;
+ * - `scharf`: Rulesets fuer `mainBranch` und, falls gesetzt, `productionBranch` stehen.
+ * Eine rote Probe schaltet ebenfalls scharf: Gefragt ist, ob der Build-Dienst laeuft, nicht
+ * ob der Stand gruen ist (A4). Ein schon stehender Pruefzweig bricht mit BoardError ab (E7).
+ */
+export async function einrichten(host, config, zweig, optionen = {}) {
+  const unterstuetzt = typeof host.schutzUnterstuetzt === "function"
+    ? host.schutzUnterstuetzt()
+    : { ja: false, grund: "Der Code-Host kennt keinen Schutz." };
+  if (!unterstuetzt.ja) return { ergebnis: "nicht moeglich", grund: unterstuetzt.grund };
+
+  const o = vorgaben(optionen);
+  const mainBranch = config?.mainBranch || "main";
+  if (!o.kopfVon(mainBranch)) {
+    return { ergebnis: "nicht moeglich", grund: `origin/${mainBranch} fehlt — ohne Remote-Stand gibt es nichts zu pruefen.` };
+  }
+
+  let admin;
+  let ergebnis;
+  try {
+    admin = await host.hatAdminRecht();
+    ergebnis = await probe(host, config, zweig, o);
+  } catch (e) {
+    if (e.pruefzweigBelegt) throw e;
+    return { ergebnis: "nicht moeglich", grund: e.message };
+  }
+  if (!ergebnis.abgeschlossen) {
+    const wie = ergebnis.gefunden ? "lief nicht binnen 60 Minuten zu Ende" : "fuhr binnen 5 Minuten keinen Lauf";
+    return { ergebnis: "offen", grund: `Der Build-Dienst ${wie} auf '${zweig}'.`, schritt: offenerSchritt(mainBranch, zweig) };
+  }
+
+  return scharfSchalten(host, config, ergebnis.jobs, admin);
+}
+
+/**
+ * Der Schluss von `einrichten` nach einer abgeschlossenen Probe: Rulesets fuer `mainBranch`
+ * und, falls gesetzt, `productionBranch` — oder die Anleitung, wenn das Admin-Recht fehlt
+ * oder der Code-Host mit 403 abweist (A9).
+ */
+async function scharfSchalten(host, config, jobs, admin) {
+  const soll = [rulesetSoll(config?.mainBranch || "main", jobs, "haupt")];
+  if (config?.productionBranch) soll.push(rulesetSoll(config.productionBranch, jobs, "veroeffentlichung"));
+  const zurAnleitung = (grund) => ({ ergebnis: "anleitung", grund, jobs, anleitung: anleitung(soll) });
+  if (!admin) return zurAnleitung("Ohne Admin-Recht am Repository richtet das Kit nichts ein.");
+  const rulesets = [];
+  for (const s of soll) {
+    try {
+      rulesets.push(await host.upsertRuleset(s));
+    } catch (e) {
+      if (e.httpStatus === 403) return zurAnleitung(`Der Code-Host wies das Einrichten ab (403): ${e.message}`);
+      throw e;
+    }
+  }
+  return { ergebnis: "scharf", jobs, rulesets };
+}
+
+/**
+ * Prueft einen Stand auf dem Hauptzweig nach, der ohne Nachweis des Build-Dienstes dorthin
+ * kam (A7): derselbe Weg wie die Probe — Kopf erneut auf den Pruefzweig, warten mit
+ * Zweigfilter, Zweig loeschen. Liefert `{ commit, zweig, status, jobs }`; `status` ist das
+ * Urteil des Build-Dienstes oder `offen`, wenn kein Lauf zu Ende kam.
+ */
+export async function nachpruefen(host, config, zweig, optionen = {}) {
+  const ergebnis = await probe(host, config, zweig, optionen);
+  return {
+    commit: ergebnis.commit,
+    zweig,
+    status: ergebnis.abgeschlossen ? ergebnis.ci.status : "offen",
+    jobs: ergebnis.ci?.jobs || [],
+  };
 }
