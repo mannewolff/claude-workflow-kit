@@ -534,6 +534,31 @@ The captured number counts as a percentage, like the `marke` — one unit, not t
 
 **The measurement belongs to its stage, not into an acceptance criterion.** A work package that writes the mutation run into the card as a criterion runs it once per package instead of once per publication — and thereby costs the round time the package lacks; such a full run drove a night round exactly into the round time limit, including a lost final message. `issue check-form` therefore rejects a package whose `## Akzeptanzkriterium` names `mutationCommand` or the command of the `guete` entry (gate I6); the right place is a `buildChecks` entry with `stufe: push`.
 
+## Language of the kit
+<!-- de: ccfcd9d85b1a -->
+
+The kit can be set to German or English per project. The setting is called [`language`](#language), with the values `de` and `en`; if it is missing, German applies. A new project chooses its language with the installer's first question, `Sprache / Language [de/en] (de)`. An existing project stays German after every update until you switch it.
+
+**Both names of every setting are valid.** Every setting has an English name and a German legacy name, for example `language` and `sprache`. The kit reads both, in `workflow.config.json` as well as in `workflow.config.local.json`; if both are present, the name in the project language applies. When the kit writes a config, it uses the names of the project language. Which names exist is listed under [All settings](#all-settings). The German legacy names remain valid throughout versions 4 and 5. In English projects they can be dropped at the earliest with version 6, and only after an announcement.
+
+**Switching.** You switch an existing project in the project folder:
+
+```bash
+node install.mjs --language en
+```
+
+`--sprache en` is equivalent. The installer first creates a backup of the config, `.claude/workflow.config.json.vor-umstellung`, holding the state before the switch. Then it sets the language setting and renames the settings in `workflow.config.json` and `workflow.config.local.json` to the names of the new language. Fixed values that the kit itself defines also get their name in the new language; values you chose yourself, such as your own label names, stay as they are. The switch does not touch labels and title prefixes on the board; the kit understands both names there. Without a switch, everything keeps running as before.
+
+**The report.** At the end the installer lists under `Umbenannt` (renamed) every renamed setting with its old and new name. Under `Offen` (open) it names what the switch does not take care of: config fields holding a kit label of the other language, cards with a title prefix of the other language, kit labels of the new language that are on no card and may still be missing on the board, and that skills and rule texts stay German until the kit ships them in English. If the board cannot be reached, the report says so, and the switch applies anyway.
+
+**Going back.** The last line of the report names the way back:
+
+```bash
+node install.mjs --language de
+```
+
+It renames the settings back to the German names. If you need exactly the state before the switch, copy the backup back to `.claude/workflow.config.json`.
+
 ## Settings through the interface
 <!-- de: 5640e7dafde7 -->
 

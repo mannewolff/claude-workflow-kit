@@ -14,7 +14,7 @@ You have a process for AI-assisted development, and you want to make it executab
 - On Windows: WSL2, see [Windows via WSL2](/en/wsl2)
 
 ## Installing
-<!-- de: 82a0e58ef195 -->
+<!-- de: 2bd52903b384 -->
 
 Download the installer and start it in the project folder:
 
@@ -29,7 +29,9 @@ Or in one step:
 node <(curl -s https://docs.mwolff.org/install.mjs)
 ```
 
-The installer asks seven things:
+For a new project, the installer first asks for the language of the kit: `de` (German, the default) or `en` (English). An existing project keeps its language; you switch it with `node install.mjs --language en` (see [Language of the kit](/en/dokumentation#language-of-the-kit)).
+
+Then the installer asks seven things:
 
 1. Global or only for this project
 2. Code host: `github`, `gitlab` or `local`

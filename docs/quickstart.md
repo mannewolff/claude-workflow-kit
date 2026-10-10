@@ -26,7 +26,9 @@ Oder in einem Schritt:
 node <(curl -s https://docs.mwolff.org/install.mjs)
 ```
 
-Der Installer fragt sieben Dinge:
+Ein neues Projekt fragt der Installer zuerst nach der Sprache des Kits: `de` (Deutsch, Vorgabe) oder `en` (Englisch). Ein bestehendes Projekt behält seine Sprache; umgestellt wird es mit `node install.mjs --language en` (siehe [Sprache](/dokumentation#sprache)).
+
+Danach fragt der Installer sieben Dinge:
 
 1. Global oder nur für dieses Projekt
 2. Code-Host: `github`, `gitlab` oder `local`

@@ -510,6 +510,30 @@ Die erfasste Zahl gilt als Prozentwert, wie die `marke` — eine Einheit, keine 
 
 **Die Messung gehört an ihre Stufe, nicht in ein Akzeptanzkriterium.** Ein Arbeitspaket, das den Mutationslauf als Kriterium in die Karte schreibt, fährt ihn einmal je Paket statt einmal je Veröffentlichung — und kostet damit die Rundenzeit, die dem Paket fehlt; ein solcher Vollauf hat eine Nacht-Runde exakt ins Rundenzeitlimit gefahren, samt verlorener Schlussmeldung. `issue check-form` weist ein Paket deshalb ab, dessen `## Akzeptanzkriterium` `mutationCommand` oder das Kommando des `guete`-Eintrags nennt (Gate I6); der richtige Ort ist ein `buildChecks`-Eintrag mit `stufe: push`.
 
+## Sprache
+
+Das Kit lässt sich je Projekt auf Deutsch oder Englisch stellen. Die Einstellung heißt [`language`](#language), mit den Werten `de` und `en`; fehlt sie, gilt Deutsch. Ein neues Projekt wählt die Sprache mit der ersten Frage des Installers, `Sprache / Language [de/en] (de)`. Ein bestehendes Projekt bleibt nach jedem Update deutsch, bis du es umstellst.
+
+**Beide Namen jeder Einstellung gelten.** Jede Einstellung hat einen englischen Namen und einen deutschen Altnamen, etwa `language` und `sprache`. Das Kit liest beide, in `workflow.config.json` wie in `workflow.config.local.json`; stehen beide da, gilt der Name der Projektsprache. Schreibt das Kit eine Config, verwendet es die Namen der Projektsprache. Welche Namen es gibt, steht unter [Alle Einstellungen](#alle-einstellungen). Die deutschen Altnamen bleiben über die Versionen 4 und 5 gültig. In englischen Projekten können sie frühestens mit Version 6 entfallen, und erst nach Ankündigung.
+
+**Umstellen.** Ein bestehendes Projekt stellst du im Projektordner um:
+
+```bash
+node install.mjs --language en
+```
+
+`--sprache en` ist gleichwertig. Der Installer legt zuerst eine Sicherung der Config an, `.claude/workflow.config.json.vor-umstellung`, mit dem Stand vor der Umstellung. Dann setzt er die Spracheinstellung und benennt die Einstellungen in `workflow.config.json` und `workflow.config.local.json` in die Namen der neuen Sprache um. Feste Werte, die das Kit selbst vorgibt, bekommen ebenfalls ihren Namen in der neuen Sprache; selbst gewählte Werte wie eigene Labelnamen bleiben, wie sie sind. Labels und Titel-Präfixe am Board fasst die Umstellung nicht an; das Kit versteht dort beide Namen. Ohne Umstellung läuft alles weiter wie bisher.
+
+**Der Bericht.** Am Ende listet der Installer unter `Umbenannt` jede umbenannte Einstellung mit altem und neuem Namen. Unter `Offen` nennt er, was die Umstellung nicht erledigt: Config-Felder mit einem Kit-Label der anderen Sprache, Karten mit einem Titel-Präfix der anderen Sprache, Kit-Labels der neuen Sprache, die auf keiner Karte stehen und am Board vielleicht noch fehlen, und dass Skills und Regeltexte deutsch bleiben, bis das Kit sie auf Englisch mitbringt. Ist das Board nicht erreichbar, steht das dort, und die Umstellung gilt trotzdem.
+
+**Zurück.** Die letzte Zeile des Berichts nennt den Rückweg:
+
+```bash
+node install.mjs --language de
+```
+
+Er benennt die Einstellungen wieder in die deutschen Namen um. Wer genau den Stand vor der Umstellung braucht, kopiert die Sicherung zurück auf `.claude/workflow.config.json`.
+
 ## Einstellungen über die Oberfläche
 
 Statt die Config-Dateien von Hand zu bearbeiten, lassen sich die Prozess-Einstellungen über eine lokale Oberfläche pflegen. Sie wird **nicht installiert**, sondern als einzelne Datei heruntergeladen: [einstellungen.mjs](https://docs.mwolff.org/einstellungen.mjs). Sie arbeitet über alle Projekte unter einem Ordner und gehört deshalb in keines.
