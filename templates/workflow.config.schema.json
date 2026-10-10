@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "claude-workflow-kit workflow.config",
-  "description": "Projekt-spezifische Konfiguration für die claude-workflow-kit-Skill-Bibliothek. Liegt als .claude/workflow.config.json im Repository und gilt teamweit. Persönliche Abweichungen gehören in .claude/workflow.config.local.json (nicht im Repository); daraus gewinnen nur reviewModel, reviewCommand, reviewScope, triggers und toolbox.tokenFile, alles andere wird ignoriert und gemeldet. Setzt die persönliche Datei eines der beiden Reviewer-Felder, weicht das andere aus der geteilten Config — die Oder-Regel gilt auch nach dem Merge.",
+  "description": "Projekt-spezifische Konfiguration für die claude-workflow-kit-Skill-Bibliothek. Liegt als .claude/workflow.config.json im Repository und gilt teamweit. Persönliche Abweichungen gehören in .claude/workflow.config.local.json (nicht im Repository); daraus gewinnen nur reviewModel, reviewCommand, reviewLesegrenze, reviewScope, triggers und toolbox.tokenFile, alles andere wird ignoriert und gemeldet. Setzt die persönliche Datei eines der beiden Reviewer-Felder, weicht das andere aus der geteilten Config — die Oder-Regel gilt auch nach dem Merge; mit reviewModel weicht auch reviewLesegrenze.",
   "type": "object",
   "properties": {
     "version": {
@@ -302,7 +302,7 @@
       "default": "production"
     },
     "pushPruefung": {
-      "description": "Wo der volle Prüflauf vor 'push main' stattfindet. 'lokal' (Vorgabe): /push-main fährt ihn mit 'checks.mjs run --stufe push' auf dem eigenen Rechner. Ein Objekt mit ort 'buildDienst' verlegt ihn in den Build-Dienst des Projekts: /push-main pusht den Stand auf den Prüfzweig, wartet über 'board.mjs code ci-status --commit' auf das Ergebnis und pusht mainBranch nur bei Grün. Die Pflicht ist an beiden Orten dieselbe — grün vor dem Push; productionBranch bleibt unberührt. Der Build-Dienst muss auf dem Prüfzweig dieselben Pflichtprüfungen fahren wie der lokale Lauf der Stufe push. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Wo der volle Prüflauf vor 'push main' stattfindet. 'lokal' (Vorgabe): /push-main fährt ihn mit 'checks.mjs run --stufe push' auf dem eigenen Rechner. Ein Objekt mit ort 'buildDienst' verlegt ihn in den Build-Dienst des Projekts: /push-main pusht den Stand auf den Prüfzweig, wartet über 'board.mjs code ci-status --commit' auf das Ergebnis und pusht mainBranch nur bei Grün. Die Pflicht ist an beiden Orten dieselbe — grün vor dem Push; productionBranch bleibt unberührt. Der Build-Dienst muss auf dem Prüfzweig dieselben Pflichtprüfungen fahren wie der lokale Lauf der Stufe push. Den Schutz von Haupt- und Veröffentlichungszweig richtet 'board.mjs code schutz einrichten' ein; der Installer schreibt 'pushPruefung' erst, wenn dessen Probe auf dem Prüfzweig bestanden ist. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": "lokal",
       "oneOf": [
         {
@@ -354,7 +354,11 @@
     "reviewCommand": {
       "type": "string",
       "minLength": 1,
-      "description": "Die Fremd-Variante des Reviewer-Paares reviewModel/reviewCommand: Kommandozeile einer fremden CLI (z.B. 'codex exec --model gpt-5'), die den Review-Prompt über stdin bekommt und ihre Antwort auf stdout schreibt. Genau eines der beiden Felder ist gesetzt; 'gesetzt' heißt, dass der Schlüssel vorhanden ist — ein Leer-String ist ungültig, nicht 'nicht gesetzt'. Darf in workflow.config.local.json persönlich überschrieben werden."
+      "description": "Die Fremd-Variante des Reviewer-Paares reviewModel/reviewCommand: Kommandozeile einer fremden CLI (z.B. 'codex exec --model gpt-5'), die den Review-Prompt über stdin bekommt und ihre Antwort auf stdout schreibt. Sie wird ohne Shell am Leerraum zerlegt: Anführungszeichen, Pipes und Variablen wirken nicht. Genau eines der beiden Felder ist gesetzt; 'gesetzt' heißt, dass der Schlüssel vorhanden ist — ein Leer-String ist ungültig, nicht 'nicht gesetzt'. Darf in workflow.config.local.json persönlich überschrieben werden."
+    },
+    "reviewLesegrenze": {
+      "type": "string",
+      "description": "Gehört zu reviewCommand: der Nur-Lese-Schalter der fremden CLI, den das Kit an die Kommandozeile hängt (z.B. '--sandbox read-only'), am Leerraum zerlegt wie reviewCommand. Für codex kennt das Kit den Schalter selbst; für jedes andere Werkzeug steht er hier. Darf in workflow.config.local.json persönlich überschrieben werden; setzt die persönliche Datei reviewModel, weicht reviewLesegrenze mit reviewCommand."
     },
     "triggers": {
       "type": "object",
@@ -518,7 +522,11 @@
               },
               "command": {
                 "type": "string",
-                "description": "Nur bei kind 'command': Kommandozeile, z.B. 'codex exec --model gpt-5'."
+                "description": "Nur bei kind 'command': Kommandozeile, z.B. 'codex exec --model gpt-5'. Sie wird ohne Shell am Leerraum zerlegt: Anführungszeichen, Pipes und Variablen wirken nicht."
+              },
+              "lesegrenze": {
+                "type": "string",
+                "description": "Nur bei kind 'command': der Nur-Lese-Schalter des fremden Werkzeugs, den das Kit an die Kommandozeile hängt (z.B. '--sandbox read-only'), am Leerraum zerlegt wie command. Für codex kennt das Kit den Schalter selbst; für jedes andere Werkzeug steht er hier. Bei kind 'claude' ist das Feld ein Fehler."
               }
             },
             "required": [
@@ -541,7 +549,7 @@
     },
     "reviewStufen": {
       "type": "object",
-      "description": "Besetzung und Blickwinkel der drei Prüfstufen: das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Während issueReview beschreibt, WER überhaupt prüft, steht hier, wie viele und mit welchen Rollen je Stufe geprüft wird. 'rollen' muss genau 'reviewer' verschiedene, nicht leere Namen enthalten — sonst harter Fehler. Fehlt der gesamte Block, gilt für jede Stufe reviewer 2 mit den Rollen 'vollstaendigkeit-pruefbarkeit' und 'scope-risiko-bestand'; fehlt nur eine Stufe im vorhandenen Block, ist das ein Fehler. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Besetzung und Blickwinkel der drei Prüfstufen: das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Während issueReview beschreibt, WER überhaupt prüft, steht hier, wie viele und mit welchen Rollen je Stufe geprüft wird. 'rollen' muss genau 'reviewer' verschiedene, nicht leere Namen enthalten — sonst harter Fehler. Fehlt der gesamte Block, gelten je Stufe die Rollen des Rollenkatalogs mit einem Reviewer je Rolle: fachlich 'form-beobachtbarkeit' und 'abgrenzung', plan 'architektur-bestand' und 'schnitt-abhaengigkeiten', issue 'pruefbarkeit'; fehlt nur eine Stufe im vorhandenen Block, ist das ein Fehler. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "properties": {
         "fachlich": {
           "type": "object",
@@ -981,6 +989,12 @@
         "stufenRegel": {
           "type": "string",
           "description": "Ersetzt die mitgelieferte Regel, nach der /issues und /task die Stufe eines Arbeitspakets bestimmen. Fehlt das Feld oder ist der Text leer, gilt die Regel des Kits."
+        },
+        "festgefahrenNach": {
+          "type": "integer",
+          "minimum": 2,
+          "default": 3,
+          "description": "Zahl gleich gescheiterter Läufe derselben Prüfung, nach der eine unbeaufsichtigte Sitzung beim nächsten Prüfaufruf gebremst wird; interaktiv gibt dieselbe Zahl nur einen Hinweis. Abschalten ist nicht vorgesehen — fehlt das Feld, gilt die Vorgabe."
         },
         "zielUmsetzungMin": {
           "type": "integer",

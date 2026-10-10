@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { BERICHT_ANKER, BERICHT_SCHLUSS } from "../kit/night/bericht.mjs";
 import {
-  run, mitProjekt, fachplan, umgebung, stand, planBody,
+  run, mitProjekt, fachplan, umgebung, stand, planBody, durchziehen, jePaket, UMSETZUNG_ERFOLG,
   PLAN_ANLEGEN, REVIEW_MARKER, REVIEW_HALT, PAKETE_ANLEGEN, EINARBEITUNG_ZEILE_ABGELEHNT, PAKET_ENTSCHEIDUNG,
 } from "./helpers/kette-ablauf.mjs";
 
@@ -109,5 +109,45 @@ test("[night-21] eine Stopp-Frage im Plan haelt vor dem Review an — der Berich
     assert.match(text, /### Offene Stopp-Frage\n\n- Ist der Endpunkt ein Vertrag nach aussen\?/);
     assert.match(text, /### Abgelehnte Befunde\n\n- keine Einarbeitung gefunden/);
     assert.match(text, /Marker fehlt\./);
+  });
+});
+
+// --- Der Ausgang festgefahren unter ### Umsetzung (Issue #1391, Plan #1386, E13) ---
+
+/** Eine Umsetzungs-Session, die die Bremse ausloest: die Zusammenfassung traegt `festgefahren.ausgeloest`. */
+const UMSETZUNG_FESTGEFAHREN = String.raw`printf '%s' '{"laufen":[],"festgefahren":{"folgen":{},"ausgeloest":{"pruefung":"npm test","fehler":"test/a.test.mjs: erwartet 2","versuche":3,"zeitpunkt":"2026-10-09T03:00:00.000Z"}}}' > .claude/checks-summary.json`;
+
+test("[night-1391] ein festgefahrenes Paket steht unter ### Umsetzung in der Liste festgefahren, nicht unter nicht begonnen", () => {
+  mitProjekt((dir) => {
+    const F = fachplan(dir);
+    durchziehen(dir, F);
+    const env = umgebung(dir, {
+      stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, umsetzung: jePaket({ "0003": UMSETZUNG_FESTGEFAHREN }, UMSETZUNG_ERFOLG) },
+    });
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+
+    const einheit = stand(dir).einheiten.find((e) => e.id === F);
+    const stufe = einheit.stufen.umsetzung;
+    assert.deepEqual(stufe.festgefahren.map((e) => e.id), ["0003"], JSON.stringify(stufe));
+    assert.deepEqual(stufe.zurueckgestellt, [], "das festgefahrene Paket gilt nicht als zurueckgestellt");
+    assert.deepEqual(stufe.umgesetzt.map((e) => e.id), ["0004"], "das naechste Paket laeuft normal weiter");
+
+    const text = fachplanText(dir, F);
+    const umsetzung = text.slice(text.indexOf("### Umsetzung"));
+    assert.match(umsetzung, /- festgefahren: #0003 Paket 1 \(npm test, 3 Versuche: test\/a\.test\.mjs: erwartet 2\)\./, umsetzung);
+    assert.match(umsetzung, /- nicht begonnen: keine\n/, umsetzung);
+    assert.match(umsetzung, /- Issue #0003: festgefahren an npm test \(3 Versuche\), Laufzeit [\d.]+ min, Zeitgrenze [\d.]+ min, gesparte Zeit \(Schaetzung\) [\d.]+ min/, umsetzung);
+  });
+});
+
+test("[night-1391] ohne Bremsung steht unter ### Umsetzung festgefahren: keine", () => {
+  mitProjekt((dir) => {
+    const F = fachplan(dir);
+    durchziehen(dir, F);
+    const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, umsetzung: UMSETZUNG_ERFOLG } });
+    const res = run(dir, ["--kette"], env);
+    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+    assert.match(fachplanText(dir, F), /- angehalten: keine\n- festgefahren: keine\n- nicht begonnen: keine\n/);
   });
 });

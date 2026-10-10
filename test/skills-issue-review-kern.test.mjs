@@ -15,6 +15,8 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SKILL = readFileSync(join(repoRoot, "skills", "issue-review", "SKILL.md"), "utf-8");
+const rolle = (name) => readFileSync(join(repoRoot, "kit", "rollen", `${name}.md`), "utf-8");
+const DOKUMENT_ROLLEN = ["pruefbarkeit", "form-beobachtbarkeit", "abgrenzung", "architektur-bestand", "schnitt-abhaengigkeiten"];
 
 /** Alle Codebloecke in Dokumentreihenfolge; `sprache` filtert auf die Kennung nach dem Fence. */
 function codebloecke(sprache = null) {
@@ -34,26 +36,46 @@ test("[skills-13] der Skill bleibt unter 205 Zeilen", () => {
   assert.ok(zeilen < 205, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 205`);
 });
 
-// Die Form des Stands (Issue #915): Sechs von sieben Gegenproben eines Laufs waren
-// formfremd, weil der Skill die Form nur in der Angabenliste zeigte. Der Wortlaut steht
-// an einer Stelle — nicht in den vier Rollen-Prompts, die sonst auseinanderdriften.
-test("[skills-13] der Skill nennt die Form des Stands als verbindlich, an einer Stelle", () => {
-  const a = SKILL.indexOf("**Die Form des Stands wird mitgegeben.**");
-  assert.ok(a > 0, "der Absatz zur Form des Stands fehlt");
-  assert.ok(a > SKILL.indexOf("### 4. Reviewer starten") && a < SKILL.indexOf("**Rolle `pruefbarkeit`**"),
-    "der Absatz steht nicht im Abschnitt 'Reviewer starten' vor den Rollen");
-  const absatz = SKILL.slice(a, SKILL.indexOf("\n\n**Rolle", a));
-  assert.match(absatz, /am Zeilenende/);
-  assert.match(absatz, /`— geprueft, bestaetigt`/);
-  assert.match(absatz, /`— nicht geprueft`/);
-  assert.match(absatz, /abgewiesen/, "der Absatz sagt nicht, dass Varianten abgewiesen werden");
-  assert.match(absatz, /eigener Satz davor/, "der Absatz verweist die Begruendung nicht vor den Strich");
-  assert.match(absatz, /^Beispiel: `Gegenprobe: .+ — geprueft, bestaetigt`$/m, "das Beispiel in tragender Form fehlt");
-  assert.match(absatz, /[Ww]ie die Artenliste/, "der Absatz sagt nicht, dass die Session ihn mitgibt");
-  // Die vier Rollen-Prompts bleiben unveraendert: kein zweiter Ort fuer denselben Wortlaut.
-  for (const p of codebloecke().filter((b) => b.includes("{{ISSUE_BODY}}"))) {
-    assert.doesNotMatch(p, /Zeilenende/, "ein Rollen-Prompt wiederholt die Formregel");
+// Die Form des Stands (Issue #915) stand bis Issue #1383 als Absatz im Skill, den die
+// Session in jeden Prompt mitgab. Seit dem Schalter traegt jede Rollendatei sie selbst
+// (test/rollen-rahmen.test.mjs prueft den gemeinsamen Wortlaut); der Skill sagt nichts mehr dazu.
+test("[skills-13] die Form des Stands steht in den Rollendateien, nicht im Skill", () => {
+  assert.equal(SKILL.includes("**Die Form des Stands wird mitgegeben.**"), false, "der Absatz zur Form des Stands steht noch im Skill");
+  for (const name of DOKUMENT_ROLLEN) {
+    const text = rolle(name);
+    assert.match(text, /am Zeilenende/, `${name}: die Formregel fehlt`);
+    assert.match(text, /`— geprueft, bestaetigt`/, `${name}: der bestaetigte Stand fehlt`);
+    assert.match(text, /`— nicht geprueft`/, `${name}: der ungepruefte Stand fehlt`);
   }
+});
+
+// Der Schalter (Issue #1383, Plan #1375 E8): Ab hier traegt der Skill keinen Rollentext
+// mehr. Die Rollen stehen allein unter kit/rollen/, montiert wird der Auftrag vom Kit.
+test("[skills-1383] der Skill traegt keinen Rollentext mehr", () => {
+  assert.equal(SKILL.includes("Du prüfst"), false, "ein Rollentext 'Du prüfst …' steht noch im Skill");
+  assert.doesNotMatch(SKILL, /\*\*Rolle `[a-z-]+`\*\*/, "ein Block 'Rolle `…`' steht noch im Skill");
+  for (const platzhalter of ["{{ARTEN}}", "{{ISSUE_BODY}}", "{{QUELLE_BODY}}", "{{VORLAGE_PFAD}}"]) {
+    assert.equal(SKILL.includes(platzhalter), false, `der Platzhalter ${platzhalter} steht noch im Skill`);
+  }
+  assert.equal(SKILL.includes("befunde.mjs arten"), false, "die Anweisung, {{ARTEN}} selbst zu fuellen, steht noch im Skill");
+  assert.equal(SKILL.includes("**Die fachliche Quelle im Plan-Review.**"), false, "der Absatz zur fachlichen Quelle steht noch im Skill");
+});
+
+test("[skills-1383] Schritt 4 montiert je Reviewer den Auftrag und startet ueber kit-pruefer oder start", () => {
+  const i = SKILL.indexOf("### 4. Reviewer starten");
+  assert.ok(i > 0, "Schritt 4 fehlt");
+  const schritt = SKILL.slice(i, SKILL.indexOf("\n### 5.", i));
+  const bash = [...schritt.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]).join("\n");
+  assert.match(bash, /^node \.claude\/kit\/board\.mjs issue-review pruefauftrag --rolle <rolle> --id <id> --datei <tmpdir>\/<id>-auftrag-<n>\.md$/m,
+    "der Aufruf von pruefauftrag fehlt oder weicht ab");
+  assert.match(bash, /^node \.claude\/kit\/board\.mjs issue-review start --reviewer <name> --auftrag <tmpdir>\/<id>-auftrag-<n>\.md --ausgabe <tmpdir>\/<id>-antwort-<n>\.md$/m,
+    "der Aufruf von start fuer kind command fehlt oder weicht ab");
+  assert.match(schritt, /`kind: claude`[\s\S]{0,300}`subagent_type: kit-pruefer`/, "kind claude laeuft nicht ueber kit-pruefer");
+  assert.match(schritt, /`reviewers\[\]\.model`/, "das Modell kommt nicht aus reviewers[].model");
+  assert.match(schritt, /`Lies <tmpdir>\/<id>-auftrag-<n>\.md`/, "der Auftrag an den Subagenten ist nicht 'Lies <pfad>'");
+  assert.match(schritt, /`kind: command`/, "kind command ist nicht genannt");
+  assert.match(schritt, /Scheitert `pruefauftrag` oder `start`[\s\S]{0,300}Ausfall[\s\S]{0,200}Zeile 2/,
+    "ein Fehlschlag von pruefauftrag oder start ist kein Ausfall in Zeile 2");
 });
 
 test("[skills-13] gestrichene Regeln kommen im Skill nicht mehr vor", () => {
@@ -91,17 +113,14 @@ test("[skills-13] die Reviewer kommen aus roles mit Stufe und Autor", () => {
   assert.match(SKILL, /gestartet wird ausschließlich, was in `gewaehlt` steht/);
 });
 
-test("[skills-13] die vier Rollen stehen als Prompt-Bloecke mit Streich-Frage und Platzhalter", () => {
-  const prompts = codebloecke().filter((b) => b.includes("{{ISSUE_BODY}}"));
-  assert.ok(prompts.length >= 4, `nur ${prompts.length} Prompt-Bloecke mit {{ISSUE_BODY}}`);
-  for (const rolle of ["pruefbarkeit", "form-beobachtbarkeit", "abgrenzung", "architektur-bestand"]) {
-    assert.match(SKILL, new RegExp("\\*\\*Rolle `" + rolle + "`\\*\\*"), `Rolle ${rolle} fehlt`);
-  }
-  for (const p of prompts) {
-    assert.match(p, /RAUS/, "ein Prompt traegt die Streich-Frage nicht");
-    assert.match(p, /BLOCKER \/ WICHTIG \/ HINWEIS/, "ein Prompt nennt die Schweregrade nicht");
-    assert.doesNotMatch(p, /Klasse|gate|alternativen|korrektur/, "ein Prompt verlangt noch eine Fundklasse");
-    assert.ok(p.split("\n").length <= 25, "ein Prompt ist laenger als 25 Zeilen");
+test("[skills-13] jede Dokument-Rolle steht als Datei mit Streich-Frage und Platzhalter", () => {
+  for (const name of DOKUMENT_ROLLEN) {
+    const p = rolle(name);
+    assert.match(p, /\{\{ISSUE_BODY\}\}/, `${name}: der Platzhalter fuer das Dokument fehlt`);
+    assert.match(p, /RAUS/, `${name}: die Streich-Frage fehlt`);
+    assert.match(p, /BLOCKER \/ WICHTIG \/ HINWEIS/, `${name}: die Schweregrade fehlen`);
+    assert.doesNotMatch(p, /Klasse|gate|alternativen|korrektur/, `${name}: verlangt noch eine Fundklasse`);
+    assert.ok(p.split("\n").length <= 25, `${name}: laenger als 25 Zeilen`);
   }
 });
 
@@ -152,7 +171,7 @@ test("[skills-13] review:fertig ist eine sichtbare Spur am Board, abgenommen vor
   const add = SKILL.indexOf("issue label add <id> review:fertig");
   assert.ok(remove > 0, "das Abnehmen fehlt");
   assert.ok(add > 0, "das Setzen fehlt");
-  assert.ok(remove > SKILL.indexOf("### 4. Reviewer starten") && remove < SKILL.indexOf("**Rolle `pruefbarkeit`**"),
+  assert.ok(remove > SKILL.indexOf("### 4. Reviewer starten") && remove < SKILL.indexOf("issue-review pruefauftrag"),
     "das Abnehmen steht nicht unmittelbar vor dem Reviewer-Start");
   assert.ok(add > SKILL.indexOf("issue comment <id> --text-file <tmpdir>/<id>-einarbeitung.md"),
     "das Setzen steht nicht nach dem Einarbeitungs-Kommentar");
@@ -170,23 +189,27 @@ test("[skills-13] review:fertig ist eine sichtbare Spur am Board, abgenommen vor
 });
 
 // Die fachliche Quelle im Plan-Review (Issue #684): Der Reviewer prueft nicht nur, ob der
-// Plan zum Code passt, sondern ob er herstellt, was die Quelle verlangt.
-test("[skills-25] der Plan-Prompt traegt die fachliche Quelle, die Vorlage und eine sechste Frage", () => {
-  const plan = codebloecke().find((b) => b.includes("Du prüfst einen technischen Plan"));
-  assert.ok(plan, "der Plan-Prompt fehlt");
-  assert.match(plan, /^6\. Stellt der Plan her, was die fachliche Quelle verlangt/m);
+// Plan zum Code passt, sondern ob er herstellt, was die Quelle verlangt. Seit Issue #1383
+// steht das in der Rollendatei, und `pruefauftrag --id` loest Quelle und Vorlage selbst auf.
+test("[skills-25] die Rolle architektur-bestand traegt die fachliche Quelle, die Vorlage und eine sechste Frage", () => {
+  const plan = rolle("architektur-bestand");
+  assert.match(plan, /6\. Stellt der Plan her, was die fachliche Quelle verlangt/);
   assert.match(plan, /jedes Ziel, jedes Akzeptanzkriterium, jede beantwortete Frage/);
   assert.match(plan, /\{\{VORLAGE_PFAD\}\}/);
-  assert.match(plan, /^--- FACHLICHE QUELLE ---\n\{\{QUELLE_BODY\}\}$/m);
+  assert.match(plan, /--- FACHLICHE QUELLE ---\n\{\{QUELLE_BODY\}\}/);
   assert.ok(plan.indexOf("--- PLAN ---") < plan.indexOf("--- FACHLICHE QUELLE ---"), "die Quelle steht hinter dem Plan");
 });
 
-test("[skills-25] der Skill sagt, woher der Body der Quelle kommt und wann er entfaellt", () => {
-  const a = SKILL.indexOf("**Die fachliche Quelle im Plan-Review.**");
-  assert.ok(a > 0, "der Absatz zur fachlichen Quelle fehlt");
-  const absatz = SKILL.slice(a, SKILL.indexOf("\n\n", a));
-  assert.match(absatz, /node \.claude\/kit\/board\.mjs issue get <N>/);
-  assert.match(absatz, /nie aus dem Gesprächsverlauf/);
-  assert.match(absatz, /Fehlt die Quelle, entfallen/);
-  assert.match(absatz, /`Vorlage:`/);
+test("[skills-25] der Skill holt die Quelle nicht selbst, das montiert pruefauftrag", () => {
+  const i = SKILL.indexOf("### 4. Reviewer starten");
+  const schritt = SKILL.slice(i, SKILL.indexOf("\n### 5.", i));
+  assert.match(schritt, /`Fachliche Quelle:`/, "Schritt 4 sagt nicht, dass die fachliche Quelle mitkommt");
+  assert.match(schritt, /`Vorlage:`/, "Schritt 4 sagt nicht, dass die Vorlage mitkommt");
+  assert.doesNotMatch(SKILL, /issue get <N>/, "der Skill holt die Quelle noch selbst");
+});
+
+test("[skills-1383] Schritt 6 setzt review:fertig nicht, wenn pruefen keine-pruefer meldet", () => {
+  const i = SKILL.indexOf("### 6. Einarbeiten");
+  const schritt = SKILL.slice(i, SKILL.indexOf("\n### 7.", i));
+  assert.match(schritt, /Meldet `befunde\.mjs pruefen` den Eintrag `keine-pruefer`, wird `review:fertig` nicht gesetzt/);
 });

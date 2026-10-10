@@ -140,8 +140,8 @@
     "text": "Target branch for the PR in step 9 (merge production). Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "pushPruefung": {
-    "de": "c6270fa8d5f8",
-    "text": "Where the full check run before 'push main' takes place. 'lokal' (default): /push-main runs it with 'checks.mjs run --stufe push' on your own machine. An object with ort 'buildDienst' moves it to the project's build service: /push-main pushes the state to the check branch, waits for the result via 'board.mjs code ci-status --commit' and pushes mainBranch only on green. The obligation is the same in both places — green before the push; productionBranch stays untouched. On the check branch the build service must run the same mandatory checks as the local run of stage push. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "e29cd17678fb",
+    "text": "Where the full check run before 'push main' takes place. 'lokal' (default): /push-main runs it with 'checks.mjs run --stufe push' on your own machine. An object with ort 'buildDienst' moves it to the project's build service: /push-main pushes the state to the check branch, waits for the result via 'board.mjs code ci-status --commit' and pushes mainBranch only on green. The obligation is the same in both places — green before the push; productionBranch stays untouched. On the check branch the build service must run the same mandatory checks as the local run of stage push. Protection of the main and release branches is set up by 'board.mjs code schutz einrichten'; the installer writes 'pushPruefung' only after its probe on the check branch has passed. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "pushPruefung.ort": {
     "de": "a35216b866c3",
@@ -160,8 +160,12 @@
     "text": "The Claude variant of the reviewer pair reviewModel/reviewCommand: model ID for the reviewer subagent (Opus pin). Must be a valid Claude model identifier. Exactly one of the two fields is set — a foreign CLI belongs in reviewCommand. May be overridden personally in workflow.config.local.json."
   },
   "reviewCommand": {
-    "de": "46e4a8fda345",
-    "text": "The foreign variant of the reviewer pair reviewModel/reviewCommand: command line of a foreign CLI (e.g. 'codex exec --model gpt-5') that receives the review prompt via stdin and writes its answer to stdout. Exactly one of the two fields is set; 'set' means the key is present — an empty string is invalid, not 'not set'. May be overridden personally in workflow.config.local.json."
+    "de": "7776a745a703",
+    "text": "The foreign variant of the reviewer pair reviewModel/reviewCommand: command line of a foreign CLI (e.g. 'codex exec --model gpt-5') that receives the review prompt via stdin and writes its answer to stdout. It is split at whitespace without a shell: quotes, pipes and variables have no effect. Exactly one of the two fields is set; 'set' means the key is present — an empty string is invalid, not 'not set'. May be overridden personally in workflow.config.local.json."
+  },
+  "reviewLesegrenze": {
+    "de": "b427f19042bc",
+    "text": "Belongs to reviewCommand: the read-only switch of the foreign CLI that the kit appends to the command line (e.g. '--sandbox read-only'), split at whitespace like reviewCommand. For codex the kit knows the switch itself; for any other tool it goes here. May be overridden personally in workflow.config.local.json; if the personal file sets reviewModel, reviewLesegrenze gives way together with reviewCommand."
   },
   "triggers": {
     "de": "87c3e16bc4ef",
@@ -260,16 +264,20 @@
     "text": "Only for kind 'claude': model identifier."
   },
   "issueReview.reviewers[].command": {
-    "de": "5b408bf66aa1",
-    "text": "Only for kind 'command': command line, e.g. 'codex exec --model gpt-5'."
+    "de": "5d587f6f3a15",
+    "text": "Only for kind 'command': command line, e.g. 'codex exec --model gpt-5'. It is split at whitespace without a shell: quotes, pipes and variables have no effect."
+  },
+  "issueReview.reviewers[].lesegrenze": {
+    "de": "d7ce4fe68673",
+    "text": "Only for kind 'command': the read-only switch of the foreign tool that the kit appends to the command line (e.g. '--sandbox read-only'), split at whitespace like command. For codex the kit knows the switch itself; for any other tool it goes here. For kind 'claude' the field is an error."
   },
   "issueReview.pairs": {
     "de": "bd302160d56e",
     "text": "Explicit mapping author -> reviewer. If the author is listed here, their entry wins over the order rule. Without pairs the rule always picks the frontmost entries — a foreign model further back would never get its turn. A name that does not exist in reviewers and an author who names themselves are hard errors."
   },
   "reviewStufen": {
-    "de": "d8139ff90b8d",
-    "text": "Staffing and perspective of the three review levels: the functional concern, the plan to get there, the single work package. While issueReview describes WHO reviews at all, this states how many review per level and in which roles. 'rollen' must contain exactly 'reviewer' distinct, non-empty names — otherwise a hard error. If the whole block is missing, every level uses reviewer 2 with the roles 'vollstaendigkeit-pruefbarkeit' and 'scope-risiko-bestand'; if only one level is missing in an existing block, that is an error. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "12c81da555c8",
+    "text": "Staffing and perspective of the three review levels: the functional concern, the plan to get there, the single work package. While issueReview describes WHO reviews at all, this states how many review per level and in which roles. 'rollen' must contain exactly 'reviewer' distinct, non-empty names — otherwise a hard error. If the whole block is missing, each level uses the roles of the role catalogue with one reviewer per role: fachlich 'form-beobachtbarkeit' and 'abgrenzung', plan 'architektur-bestand' and 'schnitt-abhaengigkeiten', issue 'pruefbarkeit'; if only one level is missing in an existing block, that is an error. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "reviewStufen.fachlich": {
     "de": "217f375f402c",
@@ -486,6 +494,10 @@
   "night.stufenRegel": {
     "de": "ede9fc502320",
     "text": "Replaces the built-in rule by which /issues and /task determine the level of a work package. If the field is missing or the text is empty, the kit's rule applies."
+  },
+  "night.festgefahrenNach": {
+    "de": "c186941bfe13",
+    "text": "Number of identically failed runs of the same check after which an unattended session is stopped at the next check call; interactively the same number only produces a hint. Switching it off is not intended — if the field is missing, the default applies."
   },
   "night.zielUmsetzungMin": {
     "de": "8c908a466929",

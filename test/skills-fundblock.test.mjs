@@ -1,10 +1,11 @@
 // Der Fundblock in den Prompts von /issue-review und /review (Issue #801).
 //
 // `befunde.mjs` kennt die Form eines Funds, aber ein Reviewer liefert sie nur, wenn sein
-// Prompt sie verlangt. Diese Datei prueft den Skill-TEXT unter `skills/`, nicht die
-// Dogfooding-Kopie: Beide Skills geben denselben Block vor — Gegenprobe mit Stand und
-// Art aus der ueber `befunde arten` eingesetzten Liste —, keiner schreibt eine Art ab,
-// und beide pruefen die Form, bevor der Kommentar ans Board geht.
+// Prompt sie verlangt. Seit dem Schalter (Issue #1383) stehen die Prompts als Rollendateien
+// unter `kit/rollen/`, und `issue-review pruefauftrag` setzt die Artenliste ein. Diese Datei
+// prueft beides: Jede Rolle traegt denselben Block — Gegenprobe mit Stand und Art aus der
+// eingesetzten Liste —, keine Rolle und kein Skill schreibt eine Art ab, die Skills tragen
+// keinen Prompt mehr, und beide pruefen die Form, bevor der Kommentar ans Board geht.
 //
 // Dass ein Prompt ein Modell tatsaechlich dazu bringt, die Angaben zu liefern, ist ein
 // Urteil ueber Textwirkung und steht als manueller Pruefpunkt am Arbeitspaket.
@@ -19,54 +20,47 @@ import { arten } from "../kit/befunde.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ISSUE_REVIEW = readFileSync(join(repoRoot, "skills", "issue-review", "SKILL.md"), "utf-8");
 const REVIEW = readFileSync(join(repoRoot, "skills", "review", "SKILL.md"), "utf-8");
+const rolle = (name) => readFileSync(join(repoRoot, "kit", "rollen", `${name}.md`), "utf-8");
 
-/** Alle Codebloecke eines Skill-Texts in Dokumentreihenfolge. */
-function codebloecke(text) {
-  return [...text.matchAll(/```([a-z]*)\n([\s\S]*?)```/g)].map((m) => m[2]);
-}
+const DOKUMENT_ROLLEN = ["pruefbarkeit", "form-beobachtbarkeit", "abgrenzung", "architektur-bestand", "schnitt-abhaengigkeiten"];
+const ROLLEN_PROMPTS = DOKUMENT_ROLLEN.map((name) => [name, rolle(name)]);
+const CODE_PROMPT = rolle("code-review");
+const ALLE_PROMPTS = [...ROLLEN_PROMPTS, ["code-review", CODE_PROMPT]];
 
-const ROLLEN_PROMPTS = codebloecke(ISSUE_REVIEW).filter((b) => b.includes("{{ISSUE_BODY}}"));
-const CODE_PROMPT = codebloecke(REVIEW).find((b) => b.includes("{{REVIEW_MATERIAL}}"));
-const ALLE_PROMPTS = [...ROLLEN_PROMPTS, CODE_PROMPT];
-
-test("[skills-37] der alte Satz steht in keinem der vier Rollen-Prompts mehr", () => {
-  assert.equal(ISSUE_REVIEW.includes("Für jeden Fund: Schweregrad"), false,
-    "der alte Satz 'Für jeden Fund: Schweregrad …' steht noch im Skill");
+test("[skills-37] der alte Satz steht in keiner Rolle und keinem Skill mehr", () => {
+  for (const [name, text] of [...ALLE_PROMPTS, ["issue-review", ISSUE_REVIEW]]) {
+    assert.equal(text.includes("Für jeden Fund: Schweregrad"), false,
+      `${name}: der alte Satz 'Für jeden Fund: Schweregrad …' steht noch da`);
+  }
 });
 
-test("[skills-37] fuenf Prompts tragen den Fundblock", () => {
-  assert.equal(ROLLEN_PROMPTS.length, 4, `es sind ${ROLLEN_PROMPTS.length} Rollen-Prompts statt vier`);
-  assert.ok(CODE_PROMPT, "der Review-Prompt mit {{REVIEW_MATERIAL}} fehlt");
-  for (const p of ALLE_PROMPTS) {
-    assert.match(p, /^-?[ \t]*Gegenprobe:/m, "ein Prompt verlangt keine Gegenprobe-Zeile");
-    assert.match(p, /widerlegen würde/, "ein Prompt sagt nicht, was die Gegenprobe ist");
-    assert.match(p, /geprüft, bestätigt/, "ein Prompt nennt den bestaetigten Stand nicht");
-    assert.match(p, /nicht geprüft/, "ein Prompt nennt den ungeprueften Stand nicht");
-    assert.match(p, /^-?[ \t]*Art:/m, "ein Prompt verlangt keine Art-Zeile");
-    assert.match(p, /\{\{ARTEN\}\}/, "ein Prompt setzt die Artenliste nicht ueber den Platzhalter ein");
+test("[skills-37] sechs Rollendateien tragen den Fundblock", () => {
+  assert.match(CODE_PROMPT, /\{\{REVIEW_MATERIAL\}\}/, "die Rolle code-review traegt {{REVIEW_MATERIAL}} nicht");
+  for (const [name, p] of ALLE_PROMPTS) {
+    assert.match(p, /^-?[ \t]*Gegenprobe:/m, `${name}: verlangt keine Gegenprobe-Zeile`);
+    assert.match(p, /widerlegen würde/, `${name}: sagt nicht, was die Gegenprobe ist`);
+    assert.match(p, /geprüft, bestätigt/, `${name}: nennt den bestaetigten Stand nicht`);
+    assert.match(p, /nicht geprüft/, `${name}: nennt den ungeprueften Stand nicht`);
+    assert.match(p, /^-?[ \t]*Art:/m, `${name}: verlangt keine Art-Zeile`);
+    assert.match(p, /\{\{ARTEN\}\}/, `${name}: setzt die Artenliste nicht ueber den Platzhalter ein`);
     assert.match(p, /eigene Gegenprobe widerlegt hat, meldest du nicht/,
-      "ein Prompt sagt nicht, dass ein widerlegter Fund nicht gemeldet wird");
+      `${name}: sagt nicht, dass ein widerlegter Fund nicht gemeldet wird`);
   }
 });
 
-test("[skills-37] jede Zeichenkette des Blocks trifft genau fuenfmal ueber beide Skills", () => {
-  const beide = ISSUE_REVIEW + REVIEW;
-  for (const zeichenkette of ["Art:", "eigene Gegenprobe widerlegt hat, meldest du nicht"]) {
-    assert.equal(beide.split(zeichenkette).length - 1, 5,
-      `'${zeichenkette}' steht nicht genau fuenfmal — fuenf Prompts, fuenf Treffer`);
+test("[skills-37] jede Zeichenkette des Blocks steht je Rolle genau einmal und in keinem Skill", () => {
+  for (const zeichenkette of ["Art:", "eigene Gegenprobe widerlegt hat, meldest du nicht", "{{ARTEN}}"]) {
+    for (const [name, p] of ALLE_PROMPTS) {
+      assert.equal(p.split(zeichenkette).length - 1, 1, `${name}: '${zeichenkette}' steht nicht genau einmal`);
+    }
+    for (const [name, text] of [["issue-review", ISSUE_REVIEW], ["review", REVIEW]]) {
+      assert.equal(text.includes(zeichenkette), false, `${name}: '${zeichenkette}' steht noch im Skill`);
+    }
   }
-  // 'Gegenprobe:' steht einmal mehr: im Beispiel der Formregel von `/issue-review`, das
-  // zeigt, wie eine tragende Zeile aussieht. Ein sechster Ort ist die Grenze — was
-  // darueber hinausgeht, waere wieder ein Wortlaut an mehreren Stellen.
-  assert.equal(beide.split("Gegenprobe:").length - 1, 6,
-    "'Gegenprobe:' steht nicht fuenfmal in den Prompts plus einmal im Beispiel der Formregel");
-  // Der Platzhalter steht je Skill einmal mehr: im Absatz, der sagt, woraus er gefuellt wird.
-  assert.equal(beide.split("{{ARTEN}}").length - 1, 7,
-    "'{{ARTEN}}' steht nicht fuenfmal in den Prompts plus einmal je Fuell-Absatz");
 });
 
-test("[skills-37] keiner der Skills nennt eine Mangel-Art im eigenen Wortlaut", () => {
-  for (const [name, text] of [["issue-review", ISSUE_REVIEW], ["review", REVIEW]]) {
+test("[skills-37] weder Skill noch Rolle nennt eine Mangel-Art im eigenen Wortlaut", () => {
+  for (const [name, text] of [["issue-review", ISSUE_REVIEW], ["review", REVIEW], ...ALLE_PROMPTS]) {
     for (const art of ["bestandsbehauptung", "unbeobachtbar", "widerspruch", "doppelung"]) {
       assert.equal(text.includes(art), false,
         `${name} schreibt die Art '${art}' ab, statt den Platzhalter zu setzen`);
@@ -74,28 +68,26 @@ test("[skills-37] keiner der Skills nennt eine Mangel-Art im eigenen Wortlaut", 
   }
 });
 
-test("[skills-37] beide Skills sagen, dass der Platzhalter aus `befunde arten` gefuellt wird", () => {
+test("[skills-1383] beide Skills lassen den Auftrag von pruefauftrag montieren, statt ihn selbst zu fuellen", () => {
   for (const [name, text] of [["issue-review", ISSUE_REVIEW], ["review", REVIEW]]) {
-    const absatz = text.split("\n").find((z) => z.includes("{{ARTEN}}") && z.includes("befunde.mjs arten"));
-    assert.ok(absatz, `${name} sagt nicht, dass {{ARTEN}} aus 'befunde.mjs arten' gefuellt wird`);
+    assert.match(text, /issue-review pruefauftrag --rolle /, `${name}: ruft pruefauftrag nicht auf`);
+    assert.equal(text.includes("befunde.mjs arten"), false, `${name}: fuellt die Artenliste noch selbst`);
   }
 });
 
 test("[skills-37] der gefuellte Platzhalter traegt alle zwoelf Arten woertlich", () => {
   const liste = arten().arten.map((a) => `- ${a.name} — ${a.erklaerung}`).join("\n");
-  const gefuellt = ROLLEN_PROMPTS[0].replace("{{ARTEN}}", liste);
+  const gefuellt = ROLLEN_PROMPTS[0][1].replace("{{ARTEN}}", liste);
   for (const a of arten().arten) {
     assert.ok(gefuellt.includes(a.name), `die Art '${a.name}' fehlt im gefuellten Prompt`);
   }
   assert.equal(arten().anzahl, 12, "die Artenliste zaehlt nicht mehr zwoelf Arten");
 });
 
-test("[skills-37] die fuenfte Rolle erbt den Block ueber den unveraenderten Verweis", () => {
-  assert.match(ISSUE_REVIEW,
-    /\*\*Rolle `schnitt-abhaengigkeiten`\*\*[\s\S]{0,200}derselbe Prompt wie `architektur-bestand`/,
-    "der Verweis der Rolle schnitt-abhaengigkeiten auf architektur-bestand ist gebrochen");
-  assert.equal(ISSUE_REVIEW.split("derselbe Prompt wie `architektur-bestand`").length - 1, 1,
-    "der Verweis steht nicht genau einmal");
+test("[skills-1383] schnitt-abhaengigkeiten traegt den Block selbst, nicht ueber einen Verweis", () => {
+  assert.equal(ISSUE_REVIEW.includes("derselbe Prompt wie `architektur-bestand`"), false,
+    "der Verweis der Rolle schnitt-abhaengigkeiten auf architektur-bestand steht noch im Skill");
+  assert.doesNotMatch(rolle("schnitt-abhaengigkeiten"), /architektur-bestand/, "die Rolle verweist noch auf architektur-bestand");
 });
 
 test("[skills-37] beide Skills pruefen die Form genau einmal, vor ihrem Board-Kommentar", () => {
@@ -103,9 +95,11 @@ test("[skills-37] beide Skills pruefen die Form genau einmal, vor ihrem Board-Ko
     ["issue-review", ISSUE_REVIEW, "issue comment <id> --text-file <tmpdir>/<id>-befunde.md"],
     ["review", REVIEW, "issue comment <ISSUE-NUMMER> --text-file <tmpdir>/id-review.md"],
   ]) {
-    const treffer = text.split("befunde.mjs pruefen").length - 1;
+    // Gezaehlt wird der Aufruf, nicht jede Nennung: Schritt 6 von /issue-review nennt das
+    // Kommando noch einmal, wenn er auf seine Meldung `keine-pruefer` verweist (Issue #1383).
+    const treffer = text.split("befunde.mjs pruefen --datei").length - 1;
     assert.equal(treffer, 1, `${name} ruft 'befunde.mjs pruefen' ${treffer}-mal statt genau einmal`);
-    assert.ok(text.indexOf("befunde.mjs pruefen") < text.indexOf(kommentar),
+    assert.ok(text.indexOf("befunde.mjs pruefen --datei") < text.indexOf(kommentar),
       `${name} prueft die Form erst nach dem Board-Kommentar`);
     assert.match(text, /befunde\.mjs pruefen --datei/, `${name} ruft 'pruefen' ohne --datei`);
   }

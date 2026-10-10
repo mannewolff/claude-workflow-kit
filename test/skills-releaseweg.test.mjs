@@ -123,3 +123,56 @@ test("[skills-20] RELEASING.md nennt weder windows-pruefung noch windows-vorab",
   assert.doesNotMatch(text, /windows-vorab/, "RELEASING.md nennt noch den Zweig windows-vorab");
   assert.doesNotMatch(text, /## Vor dem Push/, "RELEASING.md fuehrt noch den Abschnitt '## Vor dem Push'");
 });
+
+// --- Wackler vor dem Veroeffentlichen (Issue #1401, Plan #1395 E2, E13, E15) ---
+
+test("[1401] beide Release-Skills wiederholen im einen Prueflauf und fragen nach einem Wackler vor dem Commit", () => {
+  for (const [pfad, stufe, commit, bericht] of [
+    [PUSH_MAIN, "push", "### 6. Der eine Commit", "### 9. Bestätigung"],
+    [MERGE_PRODUCTION, "merge", "### 7. Der eine Commit", "### 12. PR/MR-URL"],
+  ]) {
+    const text = lies(...pfad).replaceAll("\r\n", "\n");
+    const wo = pfad.join("/");
+    const ohneBuildDienst = text.replace(/\n## Weg über den Build-Dienst[\s\S]*?(?=\n## )/, "\n");
+    const zeile = ohneBuildDienst.slice(ohneBuildDienst.search(LAUF)).split("\n")[0];
+    assert.match(zeile, new RegExp(`--stufe ${stufe} --wiederholen `), `${wo}: --wiederholen steht nicht neben --stufe ${stufe}: ${zeile}`);
+
+    // Ab dem Prueflauf gesucht: push main stellt dieselbe Frage auch bei der Uebernahme (Schritt 3).
+    const lauf = text.search(LAUF);
+    const frage = text.indexOf("Trotzdem fortfahren? (ja/nein)", lauf);
+    assert.ok(frage > lauf && frage < text.indexOf(commit), `${wo}: die Rückfrage steht nicht zwischen Prüflauf und Commit`);
+    const kandidaten = text.indexOf("node .claude/kit/wirksamkeit.mjs kandidaten", lauf);
+    assert.ok(kandidaten > lauf && kandidaten < text.indexOf(commit), `${wo}: wirksamkeit.mjs kandidaten fehlt vor dem Commit`);
+
+    const schluss = text.slice(text.indexOf(bericht));
+    const ende = schluss.search(/\n## /);
+    const abschnitt = ende < 0 ? schluss : schluss.slice(0, ende);
+    assert.match(abschnitt, /Gewackelt/, `${wo}: der Schlussbericht nennt die Wackler nicht`);
+    assert.match(abschnitt, /Reparaturkandidat/, `${wo}: der Schlussbericht nennt die Reparaturkandidaten nicht`);
+  }
+});
+
+// --- Prüfzweig-Push in merge production (Issue #1410, Plan #1405 A11) ---
+
+/** Ein nummerierter Schritt `### <n>. …` bis zur naechsten Ueberschrift derselben oder hoeheren Ebene. */
+function schritt(text, n) {
+  const start = text.search(new RegExp(`^### ${n}\\. `, "m"));
+  assert.notEqual(start, -1, `Schritt ${n} fehlt`);
+  const rest = text.slice(start + 4);
+  const ende = rest.search(/\n#{1,3} /);
+  return ende < 0 ? text.slice(start) : text.slice(start, start + 4 + ende);
+}
+
+test("[1410] Schritt 7 von merge production pusht bei pushPruefung im Build-Dienst über den Prüfzweig-Weg von push-main", () => {
+  const s = schritt(lies(...MERGE_PRODUCTION).replaceAll("\r\n", "\n"), 7).replaceAll(/\s+/g, " ");
+  assert.match(s, /pushPruefung/, "Schritt 7 nennt pushPruefung nicht");
+  assert.match(s, /Build-Dienst/, "Schritt 7 nennt den Build-Dienst nicht");
+  assert.match(s, /\/push-main[^.]*„Weg über den Build-Dienst“/, "Schritt 7 verweist nicht auf den Abschnitt „Weg über den Build-Dienst“ von /push-main");
+  assert.match(s, /[Oo]hne `pushPruefung` im Build-Dienst[^.]*direkt/, "Schritt 7 sagt nicht, dass ohne pushPruefung direkt gepusht wird");
+});
+
+test("[1410] Schritt 8 von merge production löscht den Prüfzweig, auch nach abgewiesenem Push", () => {
+  const s = schritt(lies(...MERGE_PRODUCTION).replaceAll("\r\n", "\n"), 8);
+  assert.match(s, /git -C <pfad> push origin --delete <zweig>/, "Schritt 8 löscht den Prüfzweig nicht");
+  assert.match(s.replaceAll(/\s+/g, " "), /auch nach[^.]*abgewiesenem Push/, "Schritt 8 löscht den Prüfzweig nicht auch nach abgewiesenem Push");
+});

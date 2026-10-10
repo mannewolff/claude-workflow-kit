@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { zeitlimitVermerk, ZEITLIMIT_ANKER } from "../kit/night/wartend.mjs";
+import { festgefahrenVermerk, FESTGEFAHREN_ANKER, zeitlimitVermerk, ZEITLIMIT_ANKER } from "../kit/night/wartend.mjs";
 import { runSession } from "../kit/night/session.mjs";
 
 /** Die Form, die `fortschrittBeobachter().ergebnis()` liefert (Issue #975). */
@@ -124,4 +124,43 @@ test("[night-976-12] ein gesetztes NIGHT_TIMEOUT_MS kommt im Ergebnis an", async
     delete process.env.NIGHT_CLAUDE_CMD;
     delete process.env.NIGHT_TIMEOUT_MS;
   }
+});
+
+// --- Der Vermerk eines festgefahrenen Pakets (Issue #1390, Plan #1386, E9) ---
+//
+// Daneben, weil er dieselbe Anlage hat: reine Funktion, Text heraus, an Fixtures pruefbar.
+// Den Stash-Namen nennt er nicht — den stellt `resteSichern` voran (Review-Fund 4).
+
+const GEBREMST = { pruefung: "npm test", fehler: "test/a.test.mjs: erwartet 2", versuche: 3 };
+
+test("[night-1390] der Vermerk traegt den eigenen Anker und den Grund, nicht den des Zeitlimits", () => {
+  const text = festgefahrenVermerk(GEBREMST, "4.2", 60);
+  assert.equal(FESTGEFAHREN_ANKER, "## Nachtlauf: an einer Pruefung festgefahren");
+  assert.equal(text.split("\n")[0], FESTGEFAHREN_ANKER);
+  assert.match(text, /Grund: Session an einer Pruefung festgefahren/);
+  assert.ok(!text.includes(ZEITLIMIT_ANKER), "eine Bremsung ist kein Zeitabbruch");
+  assert.doesNotMatch(text, /Session am Zeitlimit beendet/);
+});
+
+test("[night-1390] der Vermerk nennt Pruefung, Fehler, Versuche, Laufzeit und Zeitgrenze", () => {
+  const text = festgefahrenVermerk(GEBREMST, "4.2", 60);
+  assert.ok(text.includes("npm test"), text);
+  assert.ok(text.includes("test/a.test.mjs: erwartet 2"), text);
+  assert.match(text, /Versuche: 3/);
+  assert.match(text, /Laufzeit bis zum Abbruch: 4\.2 Minuten/);
+  assert.match(text, /Zeitgrenze der Sitzung: 60 Minuten/);
+  assert.doesNotMatch(text, /nachtrest|Stash/, "den Ort der Sicherung stellt resteSichern voran, nicht der Vermerk");
+});
+
+test("[night-1390] bei sauberem Baum meldet der Vermerk, dass nichts zu sichern war", () => {
+  assert.match(festgefahrenVermerk(GEBREMST, "1.0", 60, true), /keine Aenderungen im Arbeitsverzeichnis/);
+  assert.doesNotMatch(festgefahrenVermerk(GEBREMST, "1.0", 60), /keine Aenderungen im Arbeitsverzeichnis/);
+});
+
+test("[night-1390] fehlende Angaben werden benannt statt erfunden", () => {
+  const text = festgefahrenVermerk({ pruefung: "npm test", fehler: "", versuche: null }, null, null);
+  assert.ok(!/null|undefined|NaN/.test(text), text);
+  assert.match(text, /Grenze nicht bekannt/);
+  assert.match(text, /Versuche: nicht bekannt/);
+  assert.match(text, /Laufzeit bis zum Abbruch: nicht bekannt/);
 });

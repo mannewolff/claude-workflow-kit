@@ -97,7 +97,7 @@ test("im Modus vorbereiten ist auf dem Weg über den Build-Dienst Schritt 5 der 
   const m = flach(MODUS);
   assert.match(m, /Weg über den Build-Dienst/, "der Modus nennt den Weg über den Build-Dienst nicht");
   assert.match(m, /Nachweislauf der Paketstufe/, "der Modus nennt den Nachweislauf der Paketstufe nicht");
-  assert.match(m, /checks\.mjs run --in <pfad> --since HEAD/, "der Modus nennt das Kommando des Nachweislaufs nicht");
+  assert.match(m, /checks\.mjs run --in <pfad> --since HEAD --wiederholen/, "der Modus nennt das Kommando des Nachweislaufs mit --wiederholen nicht");
   assert.match(m, /Build-Dienst-Punkt setzt das Kommando selbst/, "der Modus lässt die Session den Build-Dienst-Punkt setzen");
 });
 
@@ -120,4 +120,15 @@ test("nach dem Push und bei jedem Nicht-Übernehmen wird verworfen", () => {
   assert.match(PUSH, /node \.claude\/kit\/worktree\.mjs vorbereitung-pruefen --verwerfen/, "--verwerfen fehlt");
   const s = flach(PUSH);
   assert.match(s, /Nach dem Push und bei jedem Nicht-Übernehmen/, "der Skill sagt nicht, wann verworfen wird");
+});
+
+test("[1401] ein offener Wackler aus der Nacht wird vor dem Push in Schritt 7 mit der Frage aus Schritt 5 erfragt", () => {
+  const s = flach(SCHRITT3);
+  assert.match(s, /`Gewackelt: <cmd> — Entscheidung beim push main`/, "Schritt 3 nennt den offenen Wackler-Punkt nicht");
+  assert.match(s, /Gewackelt: <cmd>[^.]*Schritt 7[^.]*Frage aus Schritt 5|Gewackelt: <cmd>[^.]*Frage aus Schritt 5[^.]*Schritt 7/,
+    "der Wackler-Punkt wird nicht in Schritt 7 mit der Frage aus Schritt 5 erfragt");
+});
+
+test("[1401] im Modus vorbereiten hält ein Wackler nicht an, er wird zum offenen Punkt", () => {
+  assert.match(flach(MODUS), /Wackler[^.]*offenen Punkt/, "der Modus sagt nicht, was aus einem Wackler wird");
 });

@@ -27,10 +27,43 @@ test("der Reviewer-Start unterscheidet nach Reviewer-Art", () => {
     "der Skill kennt das Feld reviewCommand ueberhaupt nicht");
   assert.match(SKILL, /reviewModel[\s\S]{0,600}Agent-Tool/,
     "der Claude-Pfad ist nicht mehr an reviewModel gebunden");
-  assert.match(SKILL, /reviewCommand[\s\S]{0,600}\bstdin\b/,
-    "der Kommando-Pfad nennt stdin nicht — der Prompt darf kein Argument sein");
-  assert.match(SKILL, /reviewCommand[\s\S]{0,600}\bstdout\b/,
-    "der Kommando-Pfad sagt nicht, woher die Antwort kommt");
+  assert.match(SKILL, /reviewCommand[\s\S]{0,600}issue-review start --code-review/,
+    "der Kommando-Pfad laeuft nicht ueber issue-review start --code-review");
+});
+
+// Der Schalter (Issue #1383, Plan #1375 E8, E10): Schritt 2 montiert den Auftrag aus
+// kit/rollen/code-review.md und startet den Pruefer nur lesend — Claude als Subagent
+// kit-pruefer mit reviewModel, ein fremdes Werkzeug ueber `issue-review start`.
+function schritt(nummer) {
+  const i = SKILL.indexOf(`### ${nummer}.`);
+  assert.ok(i > 0, `Schritt ${nummer} fehlt`);
+  return SKILL.slice(i, SKILL.indexOf("\n### ", i + 1));
+}
+const bash = (text) => [...text.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]).join("\n");
+
+test("[skills-1383] Schritt 1 schreibt das Material nach <tmpdir>/review-material.txt", () => {
+  const eins = schritt(1);
+  assert.match(bash(eins), /git diff origin\/<mainBranch>\.\.\.HEAD > <tmpdir>\/review-material\.txt/,
+    "der Diff geht nicht in die Materialdatei");
+  assert.match(eins, /printenv TMPDIR/, "Schritt 1 bestimmt <tmpdir> nicht");
+});
+
+test("[skills-1383] Schritt 2 laeuft ueber pruefauftrag und kit-pruefer bzw. start --code-review", () => {
+  const zwei = schritt(2);
+  const kommandos = bash(zwei);
+  assert.match(kommandos, /^node \.claude\/kit\/board\.mjs issue-review pruefauftrag --rolle code-review --material-datei <tmpdir>\/review-material\.txt --datei <tmpdir>\/review-auftrag\.md$/m,
+    "der Aufruf von pruefauftrag fehlt oder weicht ab");
+  assert.match(kommandos, /^node \.claude\/kit\/board\.mjs issue-review start --code-review --auftrag <tmpdir>\/review-auftrag\.md --ausgabe <tmpdir>\/review-antwort\.md$/m,
+    "der Aufruf von start --code-review fehlt oder weicht ab");
+  assert.match(zwei, /`reviewModel`[\s\S]{0,400}`subagent_type: kit-pruefer`/, "reviewModel laeuft nicht ueber kit-pruefer");
+  assert.match(zwei, /`Lies <tmpdir>\/review-auftrag\.md`/, "der Auftrag an den Subagenten ist nicht 'Lies <pfad>'");
+});
+
+test("[skills-1383] /review traegt keinen Prompt-Block und keinen Weg ueber die Plattform-Shell mehr", () => {
+  assert.equal(SKILL.includes("Du bist Code-Reviewer"), false, "der Prompt steht noch im Skill");
+  assert.equal(SKILL.includes("{{REVIEW_MATERIAL}}"), false, "der Platzhalter steht noch im Skill");
+  assert.equal(SKILL.includes("Plattform-Shell"), false, "der Satz zum Weg ueber die Plattform-Shell steht noch im Skill");
+  assert.doesNotMatch(SKILL, /<reviewCommand> </, "das Kommando wird noch selbst mit stdin-Umleitung gestartet");
 });
 
 test("der Ausfallpfad steht woertlich da: kein Spaltenwechsel, kein Board-Kommentar", () => {

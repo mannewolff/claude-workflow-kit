@@ -47,8 +47,15 @@
  * Verhalten bei Fehlschlag einer Runde (Issue nicht in In review):
  *   - Session-Exit != 0 (kein Timeout) -> Infrastruktur-Fehler (Auth, CLI kaputt):
  *     harter Stopp, Issue bleibt unangetastet (kein Kommentar, kein Backlog-Move)
- *   - Working Tree dirty  -> Salvage-Versuch (siehe unten), sonst harter Stopp
+ *   - Working Tree dirty  -> Salvage-Versuch (siehe unten); kommt er nicht zustande
+ *     oder endet ohne Commit, liegen die Reste im Stash `nachtrest #<id> <lauf>`, das
+ *     Issue geht mit Vermerk ins Backlog, Laufstand `abgebrochen`, und der Lauf geht
+ *     weiter (Issue #1089). Harter Stopp nur, wenn der Stash scheitert oder ein Commit
+ *     der Rettung unvollstaendig sein kann
  *   - Working Tree sauber -> Issue mit Kommentar zurueck ins Backlog, weiter
+ *   - Bremse (Issue #1388-#1390): Faehrt die Session dieselbe Pruefung zu oft gleich
+ *     rot, beendet der Runner sie vor der Zeitgrenze. Ausgang `festgefahren`: kein
+ *     Salvage, Reste wie oben im Stash, Vermerk mit Pruefung und Fehler, Backlog, weiter
  *
  * Salvage (Issue #167): Eine Session, die einen langen Check im Hintergrund
  * startet und ihren Turn beendet, bevor das Ergebnis da ist, verliert es — eine
@@ -59,12 +66,12 @@
  * Commit-Gate liest. Sind sie gruen,
  * bekommt genau eine Salvage-Session pro Issue die Chance, den Zwischenstand
  * gegen das Issue zu pruefen, zu committen und erst bei sauberem Arbeitsbaum das
- * Board zu bewegen. Rote Checks -> harter Stopp. Endet die Session nicht mit
- * sauberem Baum UND der Karte in In review, stoppt der Lauf ebenfalls hart und
- * unterscheidet dabei drei Endzustaende (Issue #672): kein Commit und kein
- * Board-Zug (gescheitert), Commit ohne Board-Zug (unvollstaendig) und In review
- * bei unsauberem Baum (widerspruechlich). Immer an; ein Opt-out-Flag waere in der
- * Praxis wirkungslos, weil man es nachts vergisst.
+ * Board zu bewegen. Rote Checks -> kein Salvage, die Reste gehen in den Stash.
+ * Endet die Session nicht mit sauberem Baum UND der Karte in In review, unterscheidet
+ * der Runner drei Endzustaende (Issue #672): kein Commit und kein Board-Zug (Stash wie
+ * oben, Issue #1089), Commit ohne Board-Zug (unvollstaendig) und In review bei
+ * unsauberem Baum (widerspruechlich) — die beiden letzten stoppen hart. Immer an; ein
+ * Opt-out-Flag waere in der Praxis wirkungslos, weil man es nachts vergisst.
  * Die Vorpruefung mergt den env-Block aus .claude/settings.json und
  * .claude/settings.local.json (local gewinnt, wie in Claude Code) in die eigene
  * Kindprozess-Umgebung (settingsEnv/runBuildChecksSync) — sonst fehlen
@@ -155,7 +162,7 @@ import { homedir } from "node:os";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "4.1.0";
+const KIT_VERSION = "4.2.0";
 
 // SYNC: Die Vorgaben fuer --model und --label stehen als DEFAULT_MODEL und DEFAULT_LABEL in
 // kit/night/grundlagen.mjs. Der Text steht hier, weil --help antwortet, bevor ein Teil
@@ -1302,7 +1309,9 @@ async function main() {
   // gebrochen, ohne dass sich an ihrer Aussage etwas geaendert haette.
   // Nur wenn es sie gab (Issue #1089): Die Label-Tests matchen die Zeile bis `angehalten.`.
   const abgebrochen = ergebnis.abgebrochen ? ", " + ergebnis.abgebrochen + " abgebrochen mit Resten im Stash" : "";
-  log(`Nacht-Runner beendet: ${ergebnis.succeeded} erfolgreich, ${ergebnis.deferred} zurueckgestellt, ${ergebnis.ohneNachweis ?? 0} ohne gueltigen Nachweis, ${ergebnis.sessions} Session(s) gestartet, ${ergebnis.angehalten ?? 0} angehalten${abgebrochen}${ergebnis.hardStop ? ", HARTER STOPP" : ""}.`);
+  // Ebenso nur, wenn es sie gab (Issue #1391, Plan #1386, E13): die von der Bremse beendeten Runden.
+  const festgefahren = ergebnis.festgefahren ? ", " + ergebnis.festgefahren + " festgefahren" : "";
+  log(`Nacht-Runner beendet: ${ergebnis.succeeded} erfolgreich, ${ergebnis.deferred} zurueckgestellt, ${ergebnis.ohneNachweis ?? 0} ohne gueltigen Nachweis, ${ergebnis.sessions} Session(s) gestartet, ${ergebnis.angehalten ?? 0} angehalten${abgebrochen}${festgefahren}${ergebnis.hardStop ? ", HARTER STOPP" : ""}.`);
   for (const zeile of pruefBericht(ergebnis.pruefungen, ZUSTAND.LAUF?.einheiten ?? [], ZUSTAND.config?.night?.zielUmsetzungMin)) log(zeile);
   log(`Morgen-Ritual: /review -> Test -> push main. Protokoll: ${ZUSTAND.LOG_FILE}`);
   process.exit(ergebnis.hardStop ? 1 : 0);

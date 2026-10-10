@@ -1258,12 +1258,24 @@ function rundeVerbuchen(kette, id) {
  * dieselben Werte, die `laufeRunde` in der Paket-Einheit ablegt (Issue #713). Die
  * Paket-Einheit steht in `LAUF.einheiten`; ohne sie (Dry-Run, toter Ergebnisstand)
  * tragen alle drei `null`.
+ *
+ * Ein Paket, das die Bremse beendet hat, faellt in die eigene Liste `festgefahren` mit
+ * Pruefung, Fehler und Versuchen (Issue #1391, Plan #1386, E13) — auch das liest die
+ * Paket-Einheit, wie fuer `umgesetzt`. Unter "nicht begonnen" verloere der Bericht, woran
+ * es hing; seine Karte hat der Runner schon mit Vermerk nach Backlog gelegt.
  */
 function paketeAbschliessen(stand, gezogen) {
+  stand.festgefahren ??= [];
   for (const id of gezogen) {
     const status = leseKarte(id)?.status ?? null;
+    const einheit = ZUSTAND.LAUF?.einheiten.findLast((e) => e.id === String(id));
+    // Nur in Backlog: Liegt die Karte woanders, gilt weiter die Rueckstellpflicht darunter.
+    if (status === "backlog" && einheit?.ausgang === "festgefahren" && einheit.festgefahren) {
+      const { pruefung, fehler, versuche } = einheit.festgefahren;
+      stand.festgefahren.push({ id, pruefung, fehler, versuche });
+      continue;
+    }
     if (status === "in_review") {
-      const einheit = ZUSTAND.LAUF?.einheiten.findLast((e) => e.id === String(id));
       stand.umgesetzt.push({
         id, stufe: einheit?.stufe ?? null, stufeVerwendet: einheit?.stufeVerwendet ?? null, modell: einheit?.modell ?? null,
         effort: einheit?.effort ?? null,
@@ -1488,7 +1500,7 @@ function umsetzungAusgelassen(kette, stand, paketIds, stufeStart, grund, zusatz 
 async function stufeUmsetzung(kette, paketIds) {
   const { budget } = kette;
   const stufeStart = abh.jetzt().getTime();
-  const stand = { umgesetzt: [], angehalten: [], haltArten: {}, zurueckgestellt: [], nichtBegonnen: [], dauerMs: 0 };
+  const stand = { umgesetzt: [], angehalten: [], haltArten: {}, festgefahren: [], zurueckgestellt: [], nichtBegonnen: [], dauerMs: 0 };
   kette.stufen.umsetzung = stand;
   const lauf = {
     stand, gezogen: new Set(), salvageAttempted: new Set(), pruefungen: [],

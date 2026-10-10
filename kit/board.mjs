@@ -62,12 +62,23 @@
  *   node board.mjs code ci-status --commit <sha>
  *       Zustand der CI fuer genau diesen Commit (Issue #316). Dispatcht ueber
  *       resolveCodeHost — die Achse haengt am codeHost, nicht am issueTracker.
+ *   node board.mjs code schutz status | einrichten [--zweig <z>] | aussetzen --in <pfad>
+ *                              | wiederherstellen | nachpruefen [--zweig <z>]
+ *       Schutz von Haupt- und Veroeffentlichungszweig (Issue #1408, Plan #1405). status
+ *       meldet { geschuetzt, fehlt, ungeprueft }, einrichten schaltet nach der Probe auf
+ *       dem Pruefzweig scharf, aussetzen ist der Notfallweg hinter dem Notfall-Gate.
+ *       einrichten, aussetzen und nachpruefen sind mit KIT_AGENT_MODEL gesperrt.
  *   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
   node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
   node board.mjs issue-review reviewers --author <modell>
   node board.mjs issue-review check [--nur-pfad]
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
+  node board.mjs issue-review pruefauftrag --rolle <rolle> --datei <ziel> (--id <N> | --material-datei <pfad>)
+      Montiert den Pruefauftrag eines Pruefers aus kit/rollen/<rolle>.md (Issue #1380).
+      Nicht zu verwechseln mit 'issue auftrag <id>', dem Umsetzungsauftrag einer Karte.
+  node board.mjs issue-review start --reviewer <name> | --code-review --auftrag <datei> --ausgabe <datei>
+      Startet einen fremden Pruefer ohne Shell mit angehaengter Lesegrenze (Issue #1381).
  */
 
 import { readFileSync, readdirSync, realpathSync } from "node:fs";
@@ -78,7 +89,7 @@ import { spawnSync } from "node:child_process";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "4.1.0";
+const KIT_VERSION = "4.2.0";
 
 
 const HELP = `board.mjs — Board-Adapter fuer das claude-workflow-kit
@@ -189,14 +200,49 @@ Nutzung:
       rot vor laeuft vor gruen; 'keine' nur bei codeHost local, ein am Host noch
       unsichtbarer Lauf ist 'laeuft'. 'gestartet' ist die Startzeit des Jobs (ISO) oder
       null, solange er nicht gestartet ist (Issue #1151).
+  node board.mjs code schutz status
+  node board.mjs code schutz einrichten --zweig <z>
+  node board.mjs code schutz aussetzen --in <pfad>
+  node board.mjs code schutz wiederherstellen
+  node board.mjs code schutz nachpruefen [--zweig <z>]
+      Schutz von Haupt- und Veroeffentlichungszweig per Ruleset (Issue #1408).
+      status: { geschuetzt, fehlt, ungeprueft }, Exit 0 auch bei geschuetzt false.
+      einrichten: Probe — der Kopf von origin/<mainBranch> geht auf den Pruefzweig
+      (Vorgabe pushPruefung.zweig, sonst kit-pruefung; ein schon vorhandener bricht
+      ab), Warten im 30-s-Takt bis 5 min auf den Lauf und 60 min auf seinen
+      Abschluss, Zweig danach geloescht. Ergebnis scharf | offen | anleitung |
+      nicht moeglich. aussetzen: Notfallweg, nur nach gruenem Lauf der Stufe push
+      im Worktree <pfad>; setzt das Ruleset des Hauptzweigs auf disabled.
+      wiederherstellen: wieder active, scheitert es Exit 1 mit dem Kommando zum
+      Wiederholen. nachpruefen: Kopf erneut auf den Pruefzweig, Ergebnis des
+      Build-Dienstes. einrichten, aussetzen, nachpruefen mit KIT_AGENT_MODEL gesperrt.
   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
   node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
   node board.mjs issue-review reviewers --author <modell>
   node board.mjs issue-review check [--nur-pfad]
+      Je Reviewer die Lesegrenze; kind command ohne sie ist nicht verfuegbar ('keine
+      Lesegrenze'). 'rollen' nennt die fehlenden Rollendateien aller Stufen.
   node board.mjs issue-review matrix
   node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
+      'rollenDateien' nennt je Rolle pfad und rolleVorhanden.
       Besetzung und Rollen der Stufe aus reviewStufen; der Autor faellt weg.
       Bei --stufe plan setzt KIT_PLAN_REVIEWER (1 oder 2) die Pruefzahl vor reviewStufen.
+  node board.mjs issue-review pruefauftrag --rolle <rolle> --datei <ziel> (--id <N> | --material-datei <pfad>)
+      Pruefauftrag fuer einen Pruefer, nicht der Umsetzungsauftrag von 'issue auftrag <id>'.
+      Setzt kit/rollen/<rolle>.md mit Artenliste und Dokument (--id: vom Board, samt
+      'Fachliche Quelle:' und 'Vorlage:') oder Material (--material-datei; bei code-review
+      mit .claude/checks-summary.json) in die Datei --datei. Ausgabe { ok, rolle, datei,
+      zeichen }; Fehler (Exit 1) rolle-fehlt mit pfad, platzhalter-offen, material-fehlt,
+      dokument-nicht-lesbar.
+  node board.mjs issue-review start --reviewer <name> | --code-review --auftrag <datei> --ausgabe <datei>
+      Startet einen fremden Pruefer (kind command; --code-review: reviewCommand) ohne Shell:
+      Auftrag ueber stdin, stdout in --ausgabe. Die Lesegrenze steht als letztes Argument —
+      aus lesegrenze bzw. reviewLesegrenze, sonst aus der Tabelle (codex: --sandbox read-only).
+      Braucht 'node .claude/kit/board.mjs*' in sandbox.excludedCommands. Ausgabe { ok,
+      reviewer, lesegrenze, ausgabe, zeichen }; Fehler (Exit 1) keine-lesegrenze,
+      lesegrenze-aufgehoben mit schalter (--full-auto, --dangerously-bypass-approvals-and-
+      sandbox, --sandbox/-s ausser read-only, -c sandbox_mode, --profile/-p), auftrag-fehlt,
+      nicht-im-path, ausfall mit exit und stderr-Ausschnitt.
   node board.mjs nightrun melden --datei <ergebnisstand.json>
       Liefert einen Ergebnisstand des Nacht-Runners an POST /api/kanban/night-runs ein
       (nur issueTracker toolbox); derselbe Lauf wird bei jeder Meldung ersetzt.
@@ -277,6 +323,10 @@ const { dispatchNightrun, dispatchSitzung } = await import("./board/melder.mjs")
 export const { pruefeBashZeile, pruefeHintergrund } = await import("./board/hook.mjs");
 // Den Befehlsverteiler des Hooks braucht nur Dispatch; exportiert war er nie.
 const { dispatchHook } = await import("./board/hook.mjs");
+export const { SCHUTZ_AUSGESETZT, NACHPRUEFEN_KOMMANDO, NACHT_GESPERRT, rulesetSoll, schutzZustand, anleitung,
+  notfallGate, nachtSperre, probe, einrichten, nachpruefen } = await import("./board/schutz.mjs");
+// Den Namen eines Rulesets braucht nur `code schutz aussetzen|wiederherstellen`; exportiert war er nie.
+const { rulesetName } = await import("./board/adapter.mjs");
 
 // --- Argument-Parser ---
 
@@ -445,12 +495,68 @@ async function codeCiStatus(host, args) {
   out(await host.getCiStatus(String(args.commit)));
 }
 
+const SCHUTZ_AKTIONEN = ["status", "einrichten", "aussetzen", "wiederherstellen", "nachpruefen"];
+const WIEDERHERSTELLEN_KOMMANDO = "node .claude/kit/board.mjs code schutz wiederherstellen";
+
+/** Der Pruefzweig der Probe (E5): `--zweig`, sonst `pushPruefung.zweig`, sonst `kit-pruefung`. */
+function schutzZweig(config, args) {
+  if (args.zweig === true) fail("--zweig braucht einen Wert");
+  return args.zweig || config.pushPruefung?.zweig || "kit-pruefung";
+}
+
+/** Aussetzen und Wiederherstellen brauchen einen Code-Host mit Schutz. */
+function schutzVerlangen(host) {
+  const unterstuetzt = typeof host.schutzUnterstuetzt === "function"
+    ? host.schutzUnterstuetzt()
+    : { ja: false, grund: "Der Code-Host kennt keinen Schutz." };
+  if (!unterstuetzt.ja) fail(unterstuetzt.grund);
+}
+
+/**
+ * `code schutz <aktion>` (Issue #1408, Plan #1405, A10). `einrichten`, `aussetzen` und
+ * `nachpruefen` pushen oder aendern den Code-Host und laufen darum durch die Nacht-Sperre
+ * (E8); `status` und `wiederherstellen` nicht.
+ */
+async function codeSchutz(host, config, args) {
+  const aktion = args._[0];
+  if (!SCHUTZ_AKTIONEN.includes(aktion)) {
+    process.stdout.write(HELP);
+    fail(`Unbekannte schutz-Aktion: '${aktion ?? ""}'. Erwartet: ${SCHUTZ_AKTIONEN.join(" | ")}`);
+  }
+  nachtSperre(aktion);
+  const mainBranch = config.mainBranch || "main";
+  switch (aktion) {
+    case "status":      return out(await schutzZustand(host, config));
+    case "einrichten":  return out(await einrichten(host, config, schutzZweig(config, args)));
+    case "nachpruefen": return out(await nachpruefen(host, config, schutzZweig(config, args)));
+    case "aussetzen": {
+      if (typeof args.in !== "string") fail("--in <pfad> ist erforderlich: der Worktree mit dem gruenen Lauf der Stufe push");
+      schutzVerlangen(host);
+      const gate = await notfallGate(args.in);
+      if (!gate.ok) fail(`Notfallweg verweigert: ${gate.grund}`);
+      return out(await host.setRulesetEnforcement(rulesetName(mainBranch), "disabled"));
+    }
+    default: {
+      schutzVerlangen(host);
+      try {
+        return out(await host.setRulesetEnforcement(rulesetName(mainBranch), "active"));
+      } catch (e) {
+        // E10: Der Schutz bleibt ausgesetzt, bis dieser Aufruf gelingt — `status` nennt es.
+        fail(`Wiederherstellen gescheitert, der Schutz des Hauptzweigs bleibt ausgesetzt: ${e.message}\n`
+          + `Wiederholen: ${WIEDERHERSTELLEN_KOMMANDO}`);
+      }
+    }
+  }
+}
+
 async function dispatchCode(command, args) {
-  const host = resolveCodeHost(loadConfig());
+  const config = loadConfig();
+  const host = resolveCodeHost(config);
   switch (command) {
     case "repo-name": return codeRepoName(host);
     case "pr":        return codePr(host, args);
     case "ci-status": return codeCiStatus(host, args);
+    case "schutz":    return codeSchutz(host, config, args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter code-Befehl: '${command}'`);
@@ -615,7 +721,7 @@ async function main() {
   } else if (axis === "code") {
     await dispatchCode(command, args);
   } else if (axis === "issue-review") {
-    dispatchIssueReview(command, args, HELP);
+    await dispatchIssueReview(command, args, HELP);
   } else if (axis === "kontext") {
     await dispatchKontext(command, args);
   } else if (axis === "nightrun") {

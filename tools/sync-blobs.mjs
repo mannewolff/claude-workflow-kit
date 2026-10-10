@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * sync-blobs.mjs — haelt die Base64-Blobs in install.mjs synchron mit templates/, kit/ und skills/
+ * sync-blobs.mjs — haelt die Base64-Blobs in install.mjs synchron mit templates/, kit/, skills/ und agents/
  * und stempelt die Kit-Version in die Kit-Dateien (Issue #171).
  *
  * Nutzung:
@@ -118,7 +118,11 @@ const BLOBS = [
   // Verzeichnis-Blob, damit ein neuer Teil weder den Installer noch diese Liste aendert.
   { constName: "KIT_NIGHT_B64", sourceFiles: join(root, "kit", "night") },
   { constName: "KIT_BOARD_B64", sourceFiles: join(root, "kit", "board") },
+  // Die Pruefrollen (Issue #1377, Plan #1375 A1): ein Teil wie night/ und board/.
+  { constName: "KIT_ROLLEN_B64", sourceFiles: join(root, "kit", "rollen") },
   { constName: "SKILLS_B64", sourceDir: join(root, "skills") },
+  // Der Leser-Agent der Pruefer (Issue #1377, Plan #1375 A2): eine flache Quelle neben skills/.
+  { constName: "AGENTS_B64", sourceFiles: join(root, "agents") },
 ];
 
 // Dateien, die den Kit-Stand als KIT_VERSION tragen (Issue #170/#171).
@@ -134,7 +138,7 @@ const STAMPED_DOWNLOADS = ["einstellungen.mjs"];
 // Teilverzeichnisse unter kit/ (Issue #1209, Plan #1199 E19): kopiert nach .claude/kit/<teil>/
 // wie die Werkzeuge, aber ungestempelt — KIT_VERSION steht nur im Einstieg. In STAMPED
 // brachen sie den Lauf ab, weil ein Teil keine Konstante traegt.
-const TEILE = ["night", "board"];
+const TEILE = ["night", "board", "rollen"];
 
 // Das Schema, das die Einstellungs-Oberflaeche eingebettet traegt (Plan #674 E2). Eine
 // eigene Datei mitzuliefern widerspraeche dem Download als einzelne Datei.
@@ -264,7 +268,7 @@ function lebendeMarkierung() {
 
 const laufStand = lebendeMarkierung();
 const laufStandZeile = laufStand
-  ? `Kopie gehört dem Lauf auf ${String(laufStand.commit ?? "unbekannt").slice(0, 12)} — .claude/kit/ und .claude/skills/ bleiben unberuehrt.`
+  ? `Kopie gehört dem Lauf auf ${String(laufStand.commit ?? "unbekannt").slice(0, 12)} — .claude/kit/, .claude/skills/ und .claude/agents/ bleiben unberuehrt.`
   : null;
 
 if (existsSync(LOCAL_KIT) && !laufStand) {
@@ -307,6 +311,23 @@ if (existsSync(LOCAL_KIT) && !laufStand) {
 const LOCAL_SKILLS = join(root, ".claude", "skills");
 const SKILLS_SRC = join(root, "skills");
 
+// Schreibt eine Kopie unter .claude/skills/ oder .claude/agents/. Sichtbar scheitern statt
+// still weiterlaufen: Genau diese Sperre war der Anlass von Issue #213, und ein verschluckter
+// Fehler waere derselbe Fehler eine Ebene tiefer.
+function kopieSchreiben(ziel, soll, ordner) {
+  try {
+    mkdirSync(dirname(ziel), { recursive: true });
+    writeFileSync(ziel, soll, "utf-8");
+  } catch (err) {
+    process.stderr.write(
+      `Fehler: ${ziel} liess sich nicht schreiben (${err.code || err.message}).\n` +
+      `Steht ${ordner} unter Schreibschutz? Dann die Sandbox-Ausnahme setzen ` +
+      `oder die Datei von Hand kopieren.\n`
+    );
+    process.exit(1);
+  }
+}
+
 if (existsSync(LOCAL_SKILLS) && existsSync(SKILLS_SRC) && !laufStand) {
   for (const name of readdirSync(SKILLS_SRC, { withFileTypes: true })) {
     if (!name.isDirectory()) continue;
@@ -318,22 +339,24 @@ if (existsSync(LOCAL_SKILLS) && existsSync(SKILLS_SRC) && !laufStand) {
     if (ist === soll) continue;
 
     copyDrift.push(`.claude/skills/${name.name}/SKILL.md`);
-    if (!checkOnly) {
-      try {
-        mkdirSync(dirname(ziel), { recursive: true });
-        writeFileSync(ziel, soll, "utf-8");
-      } catch (err) {
-        // Sichtbar scheitern statt still weiterlaufen: Genau diese Sperre war der
-        // Anlass des Issues, und ein verschluckter Fehler waere derselbe Fehler
-        // eine Ebene tiefer.
-        process.stderr.write(
-          `Fehler: ${ziel} liess sich nicht schreiben (${err.code || err.message}).\n` +
-          `Steht .claude/skills/ unter Schreibschutz? Dann die Sandbox-Ausnahme setzen ` +
-          `oder die Datei von Hand kopieren.\n`
-        );
-        process.exit(1);
-      }
-    }
+    if (!checkOnly) kopieSchreiben(ziel, soll, ".claude/skills/");
+  }
+}
+
+// --- Dogfooding-Kopie unter .claude/agents/ (Issue #1377, Plan #1375 A2) ---
+//
+// Der Leser-Agent der Pruefer, bewacht wie die Skills darueber. Massgeblich ist, ob es eine
+// installierte Kopie gibt — `.claude/skills/` —, nicht `.claude/agents/` selbst: Das
+// Verzeichnis entsteht erst mit dem ersten Agenten, und ein fehlender Agent ist Drift.
+const LOCAL_AGENTS = join(root, ".claude", "agents");
+
+if (existsSync(LOCAL_SKILLS) && !laufStand) {
+  for (const [datei, soll] of Object.entries(buildFileJson(join(root, "agents")))) {
+    const ziel = join(LOCAL_AGENTS, datei);
+    const ist = existsSync(ziel) ? readFileSync(ziel, "utf-8") : null;
+    if (ist === soll) continue;
+    copyDrift.push(`.claude/agents/${datei}`);
+    if (!checkOnly) kopieSchreiben(ziel, soll, ".claude/agents/");
   }
 }
 

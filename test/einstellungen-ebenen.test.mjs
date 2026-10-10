@@ -82,6 +82,16 @@ test("[einstellungen-3] eine Team-Änderung lässt die persönliche Datei unber�
   assert.deepEqual(r.lokal, lokal);
 });
 
+test("reviewLesegrenze ist persönlich erlaubt und gehört zur Gruppe von reviewCommand (Issue #1379, Plan #1375 E11)", () => {
+  const team = { codeHost: "github", reviewCommand: "codex exec", reviewLesegrenze: "--sandbox read-only" };
+  assert.equal(ebenen(team, null).reviewLesegrenze.persoenlichErlaubt, true);
+  assert.equal(ebenen(team, { reviewLesegrenze: "--x" }).reviewLesegrenze.gilt, "--x");
+  const claude = ebenen(team, { reviewModel: "claude-sonnet-5" });
+  assert.equal(claude.reviewCommand.gilt, undefined, "lokales reviewModel verdrängt reviewCommand");
+  assert.equal(claude.reviewLesegrenze.gilt, undefined, "lokales reviewModel verdrängt reviewLesegrenze");
+  assert.equal(ebenen(TEAM, { reviewCommand: "codex exec" }).reviewModel.gilt, undefined, "lokales reviewCommand verdrängt reviewModel");
+});
+
 test("[einstellungen-3] nach dem Entfernen einer Abweichung gilt wieder der Teamwert, auch beim Reviewer-Paar", () => {
   const lokal = { reviewScope: "full", reviewCommand: "codex exec" };
   assert.equal(ebenen(TEAM, lokal).reviewModel.gilt, undefined, "lokales reviewCommand verdrängt reviewModel");

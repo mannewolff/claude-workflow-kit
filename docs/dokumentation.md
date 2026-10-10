@@ -73,6 +73,19 @@ Der Installer stellt neun Fragen — bei globaler Installation folgt eine zehnte
 
 **10. Vault-Pfad (nur bei globaler Installation).** Pfad zum Memory-Vault für /kontext und /document. Leer lassen überspringt den Schritt; mit Pfad schreibt der Installer die globale `~/.claude/kontext.config.json`.
 
+**Schutz des Hauptzweigs (nach der Code-Host-Frage).** Bei `github` und projektlokaler Installation stellt der Installer drei weitere Fragen: ob das Projekt einen Build-Dienst (GitHub Actions) hat, ob er die Prüfung vor dem Push dorthin verlegen und Haupt- und Veröffentlichungszweig schützen soll, und welcher Prüfzweig dafür gilt (Vorgabe `kit-pruefung`). Die beiden Ja/Nein-Fragen sind mit Ja vorausgewählt. Ein Nein lässt alles wie bisher, und der Installer sagt in einem Satz, dass ein Push an `push main` vorbei ungeprüft durchkommt. In den übrigen Fällen fragt er nicht, sondern nennt nur einen Satz: Bei `gitlab` wird der Schutz noch nicht eingerichtet, bei `local` bleibt die Prüfung auf dem eigenen Rechner, und bei globaler Installation verweist er auf `node install.mjs --schutz` im Projekt, weil der Schutz je Repository gilt.
+
+Mit Ja ruft der Installer `node .claude/kit/board.mjs code schutz einrichten --zweig <zweig>` auf. Das Kommando pusht zuerst als Probe den Stand von `origin/<mainBranch>` auf den Prüfzweig und wartet, ob der Build-Dienst dort die Pflichtprüfungen fährt; das kann einige Minuten dauern. Sein Ergebnis ist eines von vier:
+
+| Ergebnis | Bedeutung | `pushPruefung` |
+|---|---|---|
+| `scharf` | Probe bestanden, die Rulesets für Haupt- und Veröffentlichungszweig sind gesetzt. | wird eingetragen |
+| `anleitung` | Probe bestanden, aber die Rulesets ließen sich nicht setzen, etwa ohne Admin-Rechte. Die Ausgabe nennt jeden Schritt mit seinem Ort bei GitHub. | wird eingetragen |
+| `offen` | Der Build-Dienst fuhr auf dem Prüfzweig keinen Lauf oder wurde nicht fertig. Die Ausgabe beschreibt, was dort laufen muss. | bleibt unverändert |
+| `nicht moeglich` | Der Code-Host kennt keinen Schutz, oder `origin/<mainBranch>` fehlt. | bleibt unverändert |
+
+**Nachträglich: `node install.mjs --schutz`.** Ein bestehendes Projekt schaltet den Schutz ein, ohne das Kit neu zu installieren. Der Aufruf stellt nur die Schutzfragen, ruft `code schutz einrichten` und ändert in `.claude/workflow.config.json` allein `pushPruefung`; alle anderen Einstellungen und Kit-Dateien bleiben unangetastet. Er setzt eine installierte `board.mjs` voraus, die `code schutz` schon kennt. Ob ein Projekt geschützt ist, sagt danach jederzeit `node .claude/kit/board.mjs code schutz status` (siehe [Board-Adapter](#board-adapter)).
+
 Der Installer kopiert die sechzehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung sowie die beiden Gate-Register `CLAUDE-Fachplan.md` und `CLAUDE-Plan.md` ab und schreibt den Board-Adapter in `.claude/kit/board.mjs`. Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
 
 Die frühere lokale Kanban-GUI (`board-ui.mjs`) ist eingestellt.
@@ -409,6 +422,22 @@ Stand unveraendert seit 2026-09-22T17:18:04.921Z: Ergebnis uebernommen (gruen). 
 
 **Warum das im Werkzeug steht.** Die Nacht-Läufe zeigten Sessions, die denselben grünen `run` drei- bis neunmal je Arbeitspaket starteten — meist ohne Änderung dazwischen, oft nur, um die Ausgabe anders zu filtern. Die Regel „schreib die Ausgabe einmal in eine Datei und lies daraus" steht seit Langem im Skilltext und wirkte nicht. Nach dem Maßstab „Regel im Text oder Regel im Werkzeug" gehört sie damit hierher.
 
+### Wackelnde Prüfungen: einmal wiederholt
+
+Manche Prüfungen sind auf demselben Stand mal grün, mal rot, etwa ein Test, der von der Uhrzeit, der Last der Maschine oder der Reihenfolge abhängt. Damit eine solche Prüfung kein Paket zu Unrecht scheitern lässt und trotzdem auffällt, wiederholt `checks.mjs run` an den Stellen, an denen ein Ergebnis über ein Paket oder eine Veröffentlichung entscheidet, jede rote Prüfung **genau einmal** auf demselben Stand.
+
+**Wo wiederholt wird.** In der Abschlussprüfung eines Pakets (`--abschluss`), im Prüflauf vor `push main` und vor `merge production` (beide mit `--wiederholen`) und im Nachweislauf, den die Vorbereitung der Nacht auf dem Weg über den Build-Dienst fährt. Wiederholt wird nur die rote Prüfung, nicht der ganze Lauf, und zwar sofort, bevor der Rest des Laufs weiterläuft. Teillauf und voller Lauf wiederholen je höchstens einmal; Hinweis-Prüfungen werden nie wiederholt.
+
+**Was dabei herauskommt.** Rot und dann grün heißt: Die Prüfung hat **gewackelt**. Sie gilt als bestanden, die Ausgabe nennt sie mit Namen, und der Berichtsblock führt unter ihrer Zeile `gelaufen:` die Zeile `Gewackelt: <Kommando> → erst rot, dann gruen`, mit dem Pfad der Ausgabe des ersten Laufs (Zusatz `-erstlauf`). Rot und wieder rot bleibt rot, wie ohne Wiederholung.
+
+**Wie gezählt wird.** Beide Läufe kommen ins Ausführungsprotokoll `.claude/ausfuehrungen.tsv`, gekennzeichnet als `erstlauf` und `wiederholung`, und zählen beide als Ausführung mit ihrer Dauer. Die [Wirksamkeitsauswertung](#wirksamkeit) wertet sie als Paar: Rot und grün ist ein **Wackler** und keine Beanstandung, Rot und rot ist eine Beanstandung, Rot ohne Wiederholung zählt wie bisher als Beanstandung. Ein übernommenes Ergebnis erzeugt keinen Fall. Der Nachtbericht nennt jede Prüfung, die in der Nacht gewackelt hat, mit der Zahl der Fälle.
+
+**Halt vor dem Veröffentlichen.** Hat im Prüflauf vor `push main` oder `merge production` eine Prüfung gewackelt, hält der Skill nach dem grünen Lauf und vor dem Commit an, nennt die Prüfung und fragt „Trotzdem fortfahren? (ja/nein)“. Nur `ja` fährt fort. Nachts fragt niemand: Die Vorbereitung macht aus Grün `gruen-offen` und vermerkt `Gewackelt: <Kommando> — Entscheidung beim push main` als offenen Punkt, den `push main` am Morgen vor dem Push fragt.
+
+**Der Reparaturkandidat.** Ab **drei Wacklern** im Zeitfenster ist eine Prüfung in der Wirksamkeitsauswertung als Kandidat für eine Reparatur gekennzeichnet. `node .claude/kit/wirksamkeit.mjs kandidaten` nennt je solcher Prüfung eine Zeile `Reparaturkandidat: <cmd> — <n> Wackler im Zeitfenster`. Vor `push main` und `merge production` werden sie genannt, halten aber nicht an. Die Schwelle ist fest und nicht einstellbar.
+
+**Die Grenzen.** Während der Umsetzung, also in jedem `checks.mjs run` ohne `--abschluss` und ohne `--wiederholen`, in `/local-check` und am Commit-Gate, läuft jede Prüfung wie bisher genau einmal. Der Job im Build-Dienst fährt `--stufe push` ohne den Schalter und wiederholt nicht, ebenso wenig die Nachprüfung des Nacht-Runners. Ein Wackeln zeigt sich also nur dort, wo bewusst wiederholt wird; auf unverändertem Stand übernimmt das Kit das Ergebnis, statt neu zu prüfen.
+
 ### Keine Sperre zwischen Prüfläufen
 
 Mehrere Prüfläufe auf derselben Maschine laufen **nebeneinander**, auch aus verschiedenen Projekten. Bis #1241 nahm `checks.mjs run` vor seinem ersten Kommando eine maschinenweite Sperre im Temp-Verzeichnis, und ein zweiter Lauf wartete auf den ersten (#958, #1177). Sie entstand, weil die Prüfungen damals so schwer waren, dass zwei gleichzeitige Läufe den Rechner überfuhren. Seit die Werkzeuge in Teile zerlegt, die Prüfungen leichter und je Kommando auf zwei gleichzeitige Testdateien begrenzt sind (Vorhaben #1198), wird sie nicht mehr gebraucht: Der Lastbeleg mit drei gleichzeitigen Abschlussläufen war grün, jeder in rund sieben Minuten (#1239). Die Umgebungsvariablen `KIT_CHECKS_LOCK`, `KIT_CHECKS_LOCK_TIMEOUT_MS` und `KIT_CHECKS_LOCK_FOREIGN_TIMEOUT_MS` liest das Werkzeug nicht mehr; ein gesetzter Wert bleibt ohne Wirkung.
@@ -601,7 +630,7 @@ Ziel-Branch für den PR in Schritt 9 (merge production). Gilt teamweit; ein abwe
 
 ### `pushPruefung`
 
-Wo der volle Prüflauf vor 'push main' stattfindet. 'lokal' (Vorgabe): /push-main fährt ihn mit 'checks.mjs run --stufe push' auf dem eigenen Rechner. Ein Objekt mit ort 'buildDienst' verlegt ihn in den Build-Dienst des Projekts: /push-main pusht den Stand auf den Prüfzweig, wartet über 'board.mjs code ci-status --commit' auf das Ergebnis und pusht mainBranch nur bei Grün. Die Pflicht ist an beiden Orten dieselbe — grün vor dem Push; productionBranch bleibt unberührt. Der Build-Dienst muss auf dem Prüfzweig dieselben Pflichtprüfungen fahren wie der lokale Lauf der Stufe push. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert. (gültig: `lokal`)
+Wo der volle Prüflauf vor 'push main' stattfindet. 'lokal' (Vorgabe): /push-main fährt ihn mit 'checks.mjs run --stufe push' auf dem eigenen Rechner. Ein Objekt mit ort 'buildDienst' verlegt ihn in den Build-Dienst des Projekts: /push-main pusht den Stand auf den Prüfzweig, wartet über 'board.mjs code ci-status --commit' auf das Ergebnis und pusht mainBranch nur bei Grün. Die Pflicht ist an beiden Orten dieselbe — grün vor dem Push; productionBranch bleibt unberührt. Der Build-Dienst muss auf dem Prüfzweig dieselben Pflichtprüfungen fahren wie der lokale Lauf der Stufe push. Den Schutz von Haupt- und Veröffentlichungszweig richtet 'board.mjs code schutz einrichten' ein; der Installer schreibt 'pushPruefung' erst, wenn dessen Probe auf dem Prüfzweig bestanden ist. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert. (gültig: `lokal`)
 
 - `pushPruefung.ort` — Der Ort des vollen Laufs: der Build-Dienst des Projekts. (gültig: `buildDienst`)
 - `pushPruefung.zweig` — Der Prüfzweig, auf den /push-main den Stand vor dem Push pusht und den es danach wieder löscht. Nicht mainBranch und nicht productionBranch.
@@ -616,7 +645,11 @@ Die Claude-Variante des Reviewer-Paares reviewModel/reviewCommand: Modell-ID fü
 
 ### `reviewCommand`
 
-Die Fremd-Variante des Reviewer-Paares reviewModel/reviewCommand: Kommandozeile einer fremden CLI (z.B. 'codex exec --model gpt-5'), die den Review-Prompt über stdin bekommt und ihre Antwort auf stdout schreibt. Genau eines der beiden Felder ist gesetzt; 'gesetzt' heißt, dass der Schlüssel vorhanden ist — ein Leer-String ist ungültig, nicht 'nicht gesetzt'. Darf in workflow.config.local.json persönlich überschrieben werden.
+Die Fremd-Variante des Reviewer-Paares reviewModel/reviewCommand: Kommandozeile einer fremden CLI (z.B. 'codex exec --model gpt-5'), die den Review-Prompt über stdin bekommt und ihre Antwort auf stdout schreibt. Sie wird ohne Shell am Leerraum zerlegt: Anführungszeichen, Pipes und Variablen wirken nicht. Genau eines der beiden Felder ist gesetzt; 'gesetzt' heißt, dass der Schlüssel vorhanden ist — ein Leer-String ist ungültig, nicht 'nicht gesetzt'. Darf in workflow.config.local.json persönlich überschrieben werden.
+
+### `reviewLesegrenze`
+
+Gehört zu reviewCommand: der Nur-Lese-Schalter der fremden CLI, den das Kit an die Kommandozeile hängt (z.B. '--sandbox read-only'), am Leerraum zerlegt wie reviewCommand. Für codex kennt das Kit den Schalter selbst; für jedes andere Werkzeug steht er hier. Darf in workflow.config.local.json persönlich überschrieben werden; setzt die persönliche Datei reviewModel, weicht reviewLesegrenze mit reviewCommand.
 
 ### `triggers`
 
@@ -665,12 +698,13 @@ Issue-Review über mehrere Modelle. Reviewer, die das Dokument nicht geschrieben
 - `issueReview.reviewers[].name` — Kurzname, wird mit dem Autor-Modell des Issues verglichen.
 - `issueReview.reviewers[].kind` — 'claude' läuft als Subagent über das Agent-Tool, 'command' als beliebiges fremdes CLI (Prompt über stdin). (gültig: `claude`, `command`)
 - `issueReview.reviewers[].model` — Nur bei kind 'claude': Modell-Identifier.
-- `issueReview.reviewers[].command` — Nur bei kind 'command': Kommandozeile, z.B. 'codex exec --model gpt-5'.
+- `issueReview.reviewers[].command` — Nur bei kind 'command': Kommandozeile, z.B. 'codex exec --model gpt-5'. Sie wird ohne Shell am Leerraum zerlegt: Anführungszeichen, Pipes und Variablen wirken nicht.
+- `issueReview.reviewers[].lesegrenze` — Nur bei kind 'command': der Nur-Lese-Schalter des fremden Werkzeugs, den das Kit an die Kommandozeile hängt (z.B. '--sandbox read-only'), am Leerraum zerlegt wie command. Für codex kennt das Kit den Schalter selbst; für jedes andere Werkzeug steht er hier. Bei kind 'claude' ist das Feld ein Fehler.
 - `issueReview.pairs` — Explizite Zuordnung Autor -> Reviewer. Steht der Autor hier, gewinnt sein Eintrag über die Reihenfolge-Regel. Ohne pairs wählt die Regel immer die vordersten Einträge — ein hinten stehendes fremdes Modell käme nie zum Zug. Ein Name, den es in reviewers nicht gibt, und ein Autor, der sich selbst nennt, sind harte Fehler.
 
 ### `reviewStufen`
 
-Besetzung und Blickwinkel der drei Prüfstufen: das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Während issueReview beschreibt, WER überhaupt prüft, steht hier, wie viele und mit welchen Rollen je Stufe geprüft wird. 'rollen' muss genau 'reviewer' verschiedene, nicht leere Namen enthalten — sonst harter Fehler. Fehlt der gesamte Block, gilt für jede Stufe reviewer 2 mit den Rollen 'vollstaendigkeit-pruefbarkeit' und 'scope-risiko-bestand'; fehlt nur eine Stufe im vorhandenen Block, ist das ein Fehler. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+Besetzung und Blickwinkel der drei Prüfstufen: das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Während issueReview beschreibt, WER überhaupt prüft, steht hier, wie viele und mit welchen Rollen je Stufe geprüft wird. 'rollen' muss genau 'reviewer' verschiedene, nicht leere Namen enthalten — sonst harter Fehler. Fehlt der gesamte Block, gelten je Stufe die Rollen des Rollenkatalogs mit einem Reviewer je Rolle: fachlich 'form-beobachtbarkeit' und 'abgrenzung', plan 'architektur-bestand' und 'schnitt-abhaengigkeiten', issue 'pruefbarkeit'; fehlt nur eine Stufe im vorhandenen Block, ist das ein Fehler. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
 
 - `reviewStufen.fachlich` — Prüfung des fachlichen Anliegens ([Fachlich]-Issue), bevor daraus ein Plan wird.
 - `reviewStufen.fachlich.reviewer` — Wie viele Reviewer diese Stufe prüfen.
@@ -730,6 +764,7 @@ Der Nachtbetrieb. Die Nacht-Kette unter kette, die Liste erlaubter Modellnamen u
 - `night.stufen.leicht.kommando` — Kommandozeile eines fremden Programms für diese Stufe — ein Projekt-Artefakt derselben Vertrauensstufe wie reviewCommand, das pattern ^claude- gilt hier nicht.
 - `night.stufen.leicht.name` — Selbstauskunft des Programms neben kommando.
 - `night.stufenRegel` — Ersetzt die mitgelieferte Regel, nach der /issues und /task die Stufe eines Arbeitspakets bestimmen. Fehlt das Feld oder ist der Text leer, gilt die Regel des Kits.
+- `night.festgefahrenNach` — Zahl gleich gescheiterter Läufe derselben Prüfung, nach der eine unbeaufsichtigte Sitzung beim nächsten Prüfaufruf gebremst wird; interaktiv gibt dieselbe Zahl nur einen Hinweis. Abschalten ist nicht vorgesehen — fehlt das Feld, gilt die Vorgabe.
 - `night.zielUmsetzungMin` — Zielmarke für die Dauer einer Umsetzung in Minuten; der Bericht weist aus, wie viele Pakete darunter blieben. Die Marke gilt für die Umsetzungsstufe der Kette und für die Umsetzungsnacht, darum steht sie neben night.kette und nicht darin. Abschalten ist nicht vorgesehen — fehlt das Feld, gilt die Vorgabe.
 
 ### `pruefLauf`
@@ -916,7 +951,7 @@ Abgrenzung: `/implement-ready` arbeitet die ganze Spalte in einer Session ab; `/
 
 **Werkzeug neben dem Prozess — lässt Fachplan und Plan von fremden Modellen lesen.**
 
-Modelle, die das Dokument nicht geschrieben haben, liefern Befunde als Kommentar; die aufrufende Session arbeitet sie ein oder lehnt sie mit einem Satz ab, schreibt den Marker der Stufe als Spur und setzt das Label `review:fertig` als sichtbare Spur am Board (je Board einmal anzulegen; ein Fund der Stopp-Klasse setzt stattdessen `kit:klaeren`). Welche Rollen und wie viele Reviewer, sagt `reviewStufen`; die Form prüft vorher `issue check-form`. Arbeitspakete werden nur auf ausdrücklichen Aufruf geprüft; der Regelfall ist Ready, kein Paket-Review. Details unter [Issue-Review über mehrere Modelle](#issue-review-über-mehrere-modelle).
+Modelle, die das Dokument nicht geschrieben haben, liefern Befunde als Kommentar; die aufrufende Session arbeitet sie ein oder lehnt sie mit einem Satz ab, schreibt den Marker der Stufe als Spur und setzt das Label `review:fertig` als sichtbare Spur am Board (je Board einmal anzulegen; ein Fund der Stopp-Klasse setzt stattdessen `kit:klaeren`). Welche Rollen und wie viele Reviewer, sagt `reviewStufen`; die Form prüft vorher `issue check-form`. Jeder Reviewer bekommt seinen Prüfauftrag als Datei, die `issue-review pruefauftrag` aus der Rolle unter `kit/rollen/` montiert; ein Claude-Reviewer liest ihn als Leser-Agent `kit-pruefer`, ein fremder läuft über `issue-review start` an seiner Lesegrenze. Ändern kann keiner von beiden etwas. Arbeitspakete werden nur auf ausdrücklichen Aufruf geprüft; der Regelfall ist Ready, kein Paket-Review. Details unter [Issue-Review über mehrere Modelle](#issue-review-über-mehrere-modelle).
 
 `review:fertig` ist zugleich Voraussetzung der Nacht-Kette: Ohne das Label am Fachplan überspringt die Kette die Anforderung (siehe [Zweiter Modus: die Nacht-Kette](#zweiter-modus-die-nacht-kette)). Das Label bleibt reine Spur und gibt den Inhalt nicht frei — wird eine Anforderung nach der Prüfung noch wesentlich geändert, das Label abnehmen oder die Anforderung neu prüfen lassen; der nächtliche Lauf erkennt eine nachträgliche Änderung nicht.
 
@@ -936,7 +971,7 @@ Die Ausgabe ist eine Checklist mit grünen Häkchen oder rotem Stopp; ausgelasse
 
 Der Skill öffnet eine neue Claude-Session ohne den Implementierungskontext der aktuellen Session. Ein Reviewer, der den Entstehungsweg nicht kennt, liest den Code als Fremder und sieht Probleme, die dem Implementierer nicht auffallen.
 
-Je nach `reviewScope` bekommt der Reviewer den Diff oder alle Dateien im Repo (im Modell aus `reviewModel`). Die Befunde landen als Kommentar im Issue oder PR. Für Security-Muster, die einen korpusgetriebenen Ansatz erfordern (Secrets-Scan, SQL-Konkatenation, fehlendes Input-Validation), verlässt sich der Skill nicht allein auf das Modell. Diese Prüfungen gehören in dein CI.
+Je nach `reviewScope` bekommt der Reviewer den Diff oder alle Dateien im Repo. Den Prüfauftrag montiert `issue-review pruefauftrag` aus der Rolle `kit/rollen/code-review.md` und diesem Material. Gelesen wird er vom Leser-Agenten `kit-pruefer` im Modell aus `reviewModel` oder, bei gesetztem `reviewCommand`, von der fremden CLI, die `issue-review start --code-review` an ihrer Lesegrenze (`reviewLesegrenze`) startet. Scheitert einer der beiden Aufrufe, bricht `/review` sichtbar ab, ohne Kommentar und ohne Zug nach In review. Die Befunde landen als Kommentar im Issue oder PR. Für Security-Muster, die einen korpusgetriebenen Ansatz erfordern (Secrets-Scan, SQL-Konkatenation, fehlendes Input-Validation), verlässt sich der Skill nicht allein auf das Modell. Diese Prüfungen gehören in dein CI.
 
 ### /push-main
 
@@ -949,6 +984,8 @@ Ein roter `/local-check` aus Schritt 6 blockiert diesen Schritt mechanisch: Du h
 
 **Gefahren wird die Stufe `push`** — der Skill ruft `checks.mjs run --stufe push` auf und fährt damit die Paketstufe **und** alles, was dein Projekt für den Zeitpunkt des Veröffentlichens vorgesehen hat (siehe [Gestaffelte Prüfungen](#gestaffelte-prüfungen-stufe)). Und zwar **jede** dieser Prüfungen: Vor dem Push wird keine mehr nach Bereichen ausgewählt, und ein leeres Paket lässt hier nichts aus. Dieser Lauf dauert spürbar länger als der vor dem Commit; das Kommando nennt vorab, was gegenüber der Paketstufe hinzukommt.
 
+**Ein Wackler hält an.** Der Lauf fährt mit `--wiederholen`: Eine rote Prüfung wird einmal auf demselben Stand wiederholt, und hat eine dabei gewackelt, fragt der Skill vor dem Commit „Trotzdem fortfahren? (ja/nein)“ (siehe [Wackelnde Prüfungen](#wackelnde-prüfungen-einmal-wiederholt)).
+
 **Vor-Push-Schritt aus `RELEASING.md`.** Nennt die `RELEASING.md` deines Repos einen Vor-Push-Schritt, fährt der Skill ihn nach seinem Commit und vor dem Push, im Hintergrund, und wartet auf sein Ende. Exit 0 heißt Push; Exit 1 heißt rot, und gepusht wird nur, wenn du die Rückfrage „Vor-Push-Prüfung rot. Trotzdem pushen? (ja/nein)“ mit `ja` beantwortest; jeder andere Exit hält ohne Push an. Ohne solchen Schritt wartet `push main` nicht auf die CI.
 
 **Vorbereitet in der Nacht: der Modus `vorbereiten`.** Eine Nacht-Kette mit dem Ziel `ziel:push-vorbereitet` (siehe [Wie weit eine Kette läuft](#wie-weit-eine-kette-läuft-das-ziel)) startet am Ende des Laufs `/push-main vorbereiten` — als einzigen Aufruf dieses Skills ohne deine Trigger-Phrase, denn er pusht nicht. Die Session arbeitet in einem eigenen Worktree auf dem lokalen `main`, gerebased auf `origin/main`, und fährt alles, was vor dem Veröffentlichen ohne dich und ohne Push geht: die Erzeugungsschritte aus `RELEASING.md` (Versionsvermerk, Änderungsnotiz), den vollen Prüflauf der Stufe `push` und den lokalen Commit. Kein Push — weder auf `main` noch auf einen Prüf- oder Vorab-Zweig, kein Tag. Was einen Menschen oder einen Push braucht, etwa der Vor-Push-Schritt aus `RELEASING.md` oder eine Sichtprüfung der Oberfläche, wird nicht gestartet, sondern steht als offen in der Meldung. Das Ergebnis heißt `gruen`, `gruen-offen` (grün, Prüfung offen) oder `rot` und liegt an der festen Stelle `.claude/push-vorbereitung.json`, der Commit unter `refs/kit/push-vorbereitet`.
@@ -956,6 +993,14 @@ Ein roter `/local-check` aus Schritt 6 blockiert diesen Schritt mechanisch: Du h
 **Die Übernahme am Morgen.** Tippst du `push main`, fragt der Skill zuerst, ob er die Vorbereitung übernehmen darf. Er tut es nur, wenn ihr Ergebnis `gruen` oder `gruen-offen` war und sich seither nichts geändert hat: Dein lokales `main`, `origin/main` und der vorbereitete Commit stehen noch dort, wo die Nacht sie gesehen hat. Dann prüft er nicht erneut, erzeugt Versionsvermerk und Änderungsnotiz kein zweites Mal und schreibt `Übernimmt den Stand der Nacht vom <zeitpunkt> (<commit>)`. Was nachts offen blieb, holt er vor dem Push nach; eine offene Sichtprüfung fragt er dich. Ist der Stand rot oder geändert, nennt er den Grund in einer Zeile und läuft wie ohne Vorbereitung, mit vollem Prüflauf. Nach dem Push und bei jedem Nicht-Übernehmen verwirft er Datei und Referenz.
 
 **Auf dem Weg über den Build-Dienst.** Fährt dein Projekt den vollen Lauf mit `pushPruefung` im Build-Dienst, kann die Nacht ihn nicht fahren, ohne auf den Prüfzweig zu pushen. Die Vorbereitung fährt dann nur den Nachweislauf der Paketstufe über die Release-Dateien und committet; das Ergebnis heißt bei Grün `gruen-offen`, und der erste offene Punkt lautet `voller Lauf im Build-Dienst (Prüfzweig <zweig>)`. Morgens übernimmt `push main` den Commit wie oben, pusht ihn auf den Prüfzweig, wartet auf den Build-Dienst und pusht `main` nur bei Grün.
+
+**Der Notfallweg: `/push-main notfall`.** Fällt der Build-Dienst aus, während der Code-Host den Hauptzweig schützt, kann der Inhaber des Repositories trotzdem veröffentlichen. Voraussetzung ist ein voller grüner Lauf der Stufe `push` auf dem eigenen Rechner als Ersatzprüfung: Der Skill fährt ihn wie auf dem lokalen Weg, auch wenn `pushPruefung` den Build-Dienst nennt, und ein roter Lauf hält an. Danach, in dieser Reihenfolge:
+
+1. `node .claude/kit/board.mjs code schutz aussetzen --in <pfad>` — setzt das Ruleset des Hauptzweigs nur aus, wenn die Prüf-Zusammenfassung des Worktrees einen grünen Lauf der Stufe `push` für genau diesen Stand bezeugt. Aussetzen kann bei GitHub nur, wer Admin-Rechte hat.
+2. Der Push auf den Hauptzweig, ohne `--force`.
+3. `node .claude/kit/board.mjs code schutz wiederherstellen` — sofort, gleich wie der Push ausging. Scheitert es, ist der Lauf ein Fehlschlag, auch nach gelungenem Push; bis zur Wiederholung steht der Hauptzweig ungeschützt, und `code schutz status` nennt das.
+
+Der Notfallweg läuft **nur interaktiv** und braucht wie jeder Push die getippte Trigger-Phrase. Ist `KIT_AGENT_MODEL` gesetzt, hält der Skill vor dem ersten Schritt an. Der Stand, der so ohne Nachweis des Build-Dienstes auf den Hauptzweig kam, steht in `code schutz status` unter `ungeprueft`, bis `code schutz nachpruefen` ihn im Build-Dienst grün geprüft hat.
 
 ### Test-Server prüfen (menschlich, zwischen Schritt 8 und 9)
 
@@ -968,6 +1013,8 @@ Nach dem Push zieht der Test-Server automatisch oder du deployest manuell. Du pr
 Erstellt einen Pull Request (GitHub) oder Merge Request (GitLab) von main nach production. Auch dieser Skill ist gegen autonome Invocation gesperrt. Den finalen Merge führst du selbst im PR/MR durch, denn du bist es, der auf dem Test-Server geprüft hat, dass das Ergebnis stimmt.
 
 **Vor dem PR steht ein CI-Gate.** Der Skill holt sich per `node .claude/kit/board.mjs code ci-status --commit <sha>` den Zustand der CI für den Stand auf `origin/main` — vor Versionsbump, Commit und PR. Bei **rot** entsteht **kein PR**: Der Skill nennt die roten Jobs mit Namen und endet; ein Exit-Code 1 der Achse zählt genauso. Läuft die CI noch, fragt er genau einmal nach, und nur ein `ja` fährt fort. Hat ein Projekt keine CI (`codeHost: local`), meldet die Achse `keine` und der Lauf geht unverändert weiter.
+
+**Der Release-Commit geht über den Prüfzweig.** Steht `pushPruefung` auf dem Build-Dienst, pusht der Skill den Release-Commit nicht direkt auf `main`: Ein geschützter Hauptzweig wiese ihn ab, denn er trägt die Pflichtprüfungen noch nicht. Der Skill pusht ihn wie `push main` zuerst auf den Prüfzweig, wartet auf den Build-Dienst und pusht `main` nur bei Grün. Endet dieser Weg ohne Push auf `main` — rot, Frist abgelaufen oder Push abgewiesen —, entsteht kein PR. Ohne `pushPruefung` im Build-Dienst bleibt es beim direkten Push.
 
 **Vorher steht ein Halt: erst `push main`.** Es gibt nie ein `merge production` ohne vorheriges `push main`. Trägt dein lokales `main` Commits, die nicht auf `origin/main` liegen, endet der Skill vor dem Worktree mit der Meldung „Erst `push main` — dieser Stand ist noch nicht veröffentlicht und nicht geprüft.“
 
@@ -1457,6 +1504,22 @@ Drei Zustände des Standes werden unterschieden und stehen verschieden im Text: 
 
 **Maßstab der Einschätzung ist die Zeitgrenze *einer Sitzung*** — `--timeout-min`, Vorgabe 60 Minuten, auch in der Nacht-Kette, wo jede Session mit derselben Grenze startet. Ausdrücklich **nicht** gemeint ist `night.kette.umsetzungMin`: Das ist das Budget der ganzen Umsetzungsstufe, wird nur zwischen zwei Sessions geprüft und sagt über ein einzelnes Paket nichts. Ebenso wenig gemeint ist die Zielmarke `night.zielUmsetzungMin` — sie ist eine Messlatte für die Auswertung, keine Abbruchgrenze.
 
+### Das festgefahrene Paket
+
+**Eine Sitzung, die immer wieder an derselben Prüfung scheitert, endet vor ihrer Zeitgrenze.** Bis dahin lief ein solches Paket weiter, bis die Uhr es stoppte, standardmäßig nach 60 Minuten: Die Sitzung änderte etwas, die Prüfung blieb rot, aus demselben Grund wie vorher. Die Zeit fehlte den übrigen Paketen der Nacht, und morgens stand am Paket nur der Vermerk zur Zeitgrenze, nicht, woran es hing. Seither bremst das Prüfwerkzeug selbst.
+
+**Gezählt wird je Prüfung.** `checks.mjs run` merkt sich zu jedem roten Kommando seinen Fehlerabdruck: die Namen der gescheiterten Tests, bei einer Prüfung ohne Testnamen wie einem Build die erste Fehlermeldung. Zeitstempel, Dauern, temporäre Pfade und Zufallswerte bleiben dabei außer Acht. Scheitert dieselbe Prüfung hintereinander mit demselben Abdruck, wächst ihre Folge; grüne Ergebnisse anderer Prüfungen unterbrechen sie nicht. Sie endet erst, wenn genau diese Prüfung grün wird oder anders scheitert — ein anderer Test als zuvor gilt als Fortschritt. Als Versuch zählt jeder echte Lauf über `checks.mjs run`, Teilläufe eingeschlossen; ein übernommenes Ergebnis zählt nicht, ebenso wenig ein Test, den die Sitzung außerhalb des Werkzeugs startet.
+
+**Die Grenze ist `night.festgefahrenNach`**, Vorgabe 3. Erreicht die Folge sie, kündigt der Lauf den letzten erlaubten Versuch an. Unbeaufsichtigt (gesetztes `KIT_AGENT_MODEL`) fährt der nächste Aufruf nichts mehr, auch nicht mit `--frisch`: Er gibt `Pruefung festgefahren: <Kommando> — <Fehler>` aus, lässt die vorige Zusammenfassung stehen, ergänzt allein `festgefahren.ausgeloest` und endet mit Exitcode 3. Die Bremse ist eine Regel des Werkzeugs, keine Bitte an das Modell: Die Sitzung bekommt kein Prüfergebnis mehr. Der Nacht-Runner erkennt die Marke im Strom und beendet die Sitzung.
+
+**Was der Runner danach tut.** Für das Paket beginnt kein Rettungsversuch, der liefe nur erneut gegen dieselbe rote Prüfung. Liegen Änderungen im Arbeitsverzeichnis, sichert er sie wie bei jedem abgebrochenen Paket im Stash `nachtrest #<id> <lauf>`; misslingt das, endet die Nacht mit einem harten Stopp. Das Paket bekommt den Laufstand `lauf:abgebrochen` mit dem Grund `Grund: Session an einer Pruefung festgefahren` und geht ins Backlog, die übrigen Pakete laufen auf sauberem Stand weiter. Ein eigenes Label gibt es nicht.
+
+**Woran du es morgens erkennst.** Am Paket hängt ein Vermerk unter dem Anker `## Nachtlauf: an einer Pruefung festgefahren`. Er nennt die Prüfung, den wiederkehrenden Fehler, die Zahl der Versuche, die Laufzeit bis zum Abbruch und die Zeitgrenze der Sitzung; den Stash-Namen trägt der Kommentar davor, und war nichts zu sichern, sagt der Vermerk das selbst. Im Nachtbericht steht das Paket als eigener Ausgang: im Prüfbericht eine Zeile `festgefahren an <Prüfung> (<n> Versuche)` mit Laufzeit, Zeitgrenze und `gesparte Zeit (Schaetzung)`, unter `### Umsetzung` der Kette in der Liste „festgefahren“, und die Schlusszeile des Runners zählt `, N festgefahren`. Vom Zeitabbruch und von der wartenden Sitzung ist es damit getrennt: Dort ging die Zeit aus oder die Sitzung wartete; hier hing sie nachweislich an einer Prüfung.
+
+**Weiter geht es so.** Den Fehler im Vermerk lesen, die Reste mit `git stash list` suchen und mit `git stash apply stash@{<n>}` zurückholen, das Paket nachbessern oder anders schneiden und es wieder nach Ready ziehen — erst dein neues GO lässt es wieder laufen. Ist es erledigt, räumt `git stash drop stash@{<n>}` den Eintrag.
+
+**Interaktiv bricht nichts ab.** Ist `KIT_AGENT_MODEL` leer, gibt der Lauf nach dem letzten erlaubten und jedem weiteren gleichen Fehlschlag nur `Hinweis: festgefahren an <Kommando> — <n>-mal gleich gescheitert (<Fehler>)` aus; Ergebnis und Exitcode bleiben, du entscheidest.
+
 ### Zweiter Modus: die Nacht-Kette
 
 **Seit dem Prozess-Umbau (September 2026) gibt es zwei Betriebsarten: die Umsetzungsnacht oben und die Nacht-Kette.** Die früheren Modi Review und Erzeugung sind mit Stufe 2 des Umbaus aus dem Runner entfallen; die Prüfkette dahinter — Marker als Gate, Fundklassen, Synthese, Routing-Label je Stufe — ging schon mit Stufe 1 (Umsetzungsplan in `docs/prozess-umbau-stufe-1.md`). Die Kette ersetzt beide: Eine fachliche Anforderung geht abends hinein, morgens liegen ein geprüfter Plan, die Arbeitspakete und ein Bericht an ihr vor — oder ein fertiger Plan geht hinein und kommt als Arbeitspakete wieder heraus (siehe [Ein fertiger Plan als Auftrag](#ein-fertiger-plan-als-auftrag)). Was danach mit den Paketen geschieht, entscheidet die **Variante** der gekennzeichneten Karte: Unter **Variante A** implementiert die Kette **nichts** — die Pakete bleiben im Backlog, das GO nach Ready ist weiterhin deins, und die Umsetzung ist die Nacht danach. Unter **Variante B** zieht die Kette die Pakete selbst nach Ready und setzt sie in derselben Nacht um — dein GO liegt dann bereits in der Kennzeichnung der Karte, nicht mehr im einzelnen Zug nach Ready.
@@ -1590,7 +1653,9 @@ Ein Fachplan-Auftrag zu einer Anforderung und ein Plan-Auftrag zu einer anderen 
 
 #### Allowlist für fremde Reviewer
 
-Reviewer mit `kind: "claude"` laufen als Subagenten und brauchen keine Permission. Ein Reviewer mit **`kind: "command"`** läuft dagegen über Bash — und steht er nicht in der Allowlist, erscheint nachts ein Permission-Prompt, den niemand beantwortet. Das ist kein Fehler mit Log-Zeile: **Die Session hängt bis zum Timeout.** Trag das Werkzeug deshalb ein, bevor der erste Review-Lauf startet:
+Reviewer mit `kind: "claude"` laufen als Leser-Agent `kit-pruefer` und brauchen keine Permission. Ein Reviewer mit **`kind: "command"`** wird im Review nicht mehr über die Bash der Session gestartet, sondern vom Kit: `node .claude/kit/board.mjs issue-review start` startet das fremde Werkzeug selbst, an seiner Lesegrenze. Dafür braucht der Review den Eintrag für `board.mjs` in der Allowlist und `node .claude/kit/board.mjs*` in `sandbox.excludedCommands` (siehe „Kit-Skripte mit Board-Zugriff“) — sonst läuft das Werkzeug in der Sandbox der Session, ohne Netz. Einen eigenen Eintrag für das Werkzeug braucht der Review nicht.
+
+Der **Vorflug des Nacht-Runners** prüft die Reviewer dagegen weiter, indem er das fremde Kommando direkt startet, und braucht den Eintrag für das Werkzeug deshalb weiterhin. Fehlt er, erscheint nachts ein Permission-Prompt, den niemand beantwortet. Das ist kein Fehler mit Log-Zeile: **Die Session hängt bis zum Timeout.** Trag beides ein, bevor der erste Review-Lauf startet:
 
 ```json
 {
@@ -1603,7 +1668,7 @@ Reviewer mit `kind: "claude"` laufen als Subagenten und brauchen keine Permissio
 }
 ```
 
-Der Eintrag nennt das **Werkzeug**, nicht die volle Kommandozeile — aus demselben Grund wie bei den buildChecks oben (Präfix-Matching). Wer mehrere fremde CLIs konfiguriert hat, trägt jedes einzeln ein. Ein Setup mit ausschließlich `kind: "claude"`-Reviewern braucht davon nichts.
+Der Eintrag nennt das **Werkzeug**, nicht die volle Kommandozeile — aus demselben Grund wie bei den buildChecks oben (Präfix-Matching). Wer mehrere fremde CLIs konfiguriert hat, trägt jedes einzeln ein. Ein Setup mit ausschließlich `kind: "claude"`-Reviewern braucht den Werkzeug-Eintrag nicht.
 
 ### Der Laufstand
 
@@ -1653,6 +1718,7 @@ Für jeden Belegfall der fachlichen Anforderung: welchen Stand die Karte danach 
 | Abgebrochen, obwohl fertig: die Prüfstufe reißt das Zeitbudget, der Prüfvermerk steht schon im Plan | `lauf:abgebrochen` mit dem Grund; der Laufstand nennt den zuletzt abgeschlossenen Schritt | `kit:night` erneut an die Karte: Die Stufe gilt als vorgefunden, die Kette setzt bei der ersten Stufe ohne Ergebnis an |
 | Ausgang unbekannt: das Board ist kurz nicht erreichbar | gelingt der Versuch nach der Pause, der Stand der Karte mit „2. Versuch“; scheitert er, `lauf:abgebrochen` mit `abgebrochen, Umgebungsfehler um <zeit>: …`, die übrigen Karten des Laufs `lauf:wartet` mit `nicht begonnen: der Lauf hielt um <zeit> an — …` | nach einem gelungenen Versuch nichts; sonst, wenn das Board wieder antwortet, den Lauf erneut starten bzw. `kit:night` erneut an die Kette |
 | Ein Paket hält die Nacht an: Sitzung ohne Commit, Zeitgrenze oder wartende Sitzung | nur dieses Paket `lauf:abgebrochen` mit Grund, es geht ins Backlog; abhängige Pakete `lauf:wartet` mit „hängt an #N (abgebrochen in diesem Lauf)“; Reste im Stash `nachtrest #<id> <lauf>`; die übrigen Pakete laufen weiter | Grund lesen, Reste bei Bedarf aus dem Stash holen, das Paket nachbessern und wieder nach Ready ziehen |
+| Ein Paket fährt sich fest: dieselbe Prüfung scheitert `night.festgefahrenNach`-mal auf dieselbe Weise, lange vor der Zeitgrenze | nur dieses Paket `lauf:abgebrochen` mit `Grund: Session an einer Pruefung festgefahren`, Vermerk `## Nachtlauf: an einer Pruefung festgefahren` mit Prüfung, Fehler und Versuchen, es geht ins Backlog; Reste im Stash `nachtrest #<id> <lauf>`; im Nachtbericht der eigene Ausgang `festgefahren`, nicht Zeitgrenze oder wartende Sitzung; die übrigen Pakete laufen weiter | Fehler im Vermerk lesen, Reste bei Bedarf aus dem Stash holen, das Paket nachbessern und wieder nach Ready ziehen |
 | Verschränkte Protokolle: Kette und Prüflauf laufen gleichzeitig | jeder Laufstand nennt in der Zeile `Protokoll:` die Datei `.claude/protokolle/<lauf>/<karte>-<stufe>.log` seines Schritts | die genannte Datei öffnen; im Tagesprotokoll trennt die Lauf-Kennung in `[<Zeitpunkt> <lauf>]` die Läufe |
 
 ### Mit einem lokalen Modell fahren
@@ -1804,11 +1870,27 @@ Welche Stufe greift, entscheidet das Titel-Präfix, und jede Stufe hinterlässt 
 
 ### Ablauf
 
-Vorflug mit `issue-review check`, dann `issue check-form <id>`, dann `issue-review roles --stufe <stufe> --author <modell>` für Rollen und Besetzung. Jeder Reviewer bekommt denselben Body und seine Rolle: `form-beobachtbarkeit` und `abgrenzung` für die fachliche Anforderung, `architektur-bestand` (der Senior, der den Bestand kennt) für den Plan, `pruefbarkeit` für das Arbeitspaket; jede Rolle trägt die Streich-Frage „Was kann raus?". Der Plan-Reviewer bekommt zusätzlich den Body der in `Fachliche Quelle:` genannten Karte — vom Board, nie aus dem Gespräch — und den Pfad einer `Vorlage:`-Zeile; er prüft damit auch, ob der Plan jedes Ziel, jedes Akzeptanzkriterium und jede beantwortete Frage der Quelle herstellt. Ohne Quelle entfällt dieser Eingang. Die Befunde gehen als Kommentar `## <Stufe>-Review, Runde 1` ans Dokument. Danach arbeitet die aufrufende Session jeden Fund ein oder lehnt ihn mit einem Satz ab, nach der Regel „Entscheiden statt fragen" aus `CLAUDE-workflow.md`: interaktiv nach einem Wort der Zustimmung, unbeaufsichtigt direkt; nur ein Fund der Stopp-Klasse hält an und zeichnet das Dokument mit `kit:klaeren`. Der neue Body geht über `issue update`, dazu die Marker-Zeile der Stufe — unbeaufsichtigt mit dem Zusatz `, Nachtlauf` — und ein Kommentar `## Einarbeitung, Runde 1` mit der Liste übernommen / abgelehnt und Grund. Eine Runde, keine zweite: Weitere Runden finden erfahrungsgemäß Geschmacksfragen.
+Vorflug mit `issue-review check`, dann `issue check-form <id>`, dann `issue-review roles --stufe <stufe> --author <modell>` für Rollen und Besetzung. Jeder Reviewer bekommt denselben Body und seine Rolle: `form-beobachtbarkeit` und `abgrenzung` für die fachliche Anforderung, `architektur-bestand` (der Senior, der den Bestand kennt) und `schnitt-abhaengigkeiten` für den Plan, `pruefbarkeit` für das Arbeitspaket; jede Rolle trägt die Streich-Frage „Was kann raus?". Der Plan-Reviewer bekommt zusätzlich den Body der in `Fachliche Quelle:` genannten Karte — vom Board, nie aus dem Gespräch — und den Pfad einer `Vorlage:`-Zeile; er prüft damit auch, ob der Plan jedes Ziel, jedes Akzeptanzkriterium und jede beantwortete Frage der Quelle herstellt. Ohne Quelle entfällt dieser Eingang.
+
+**Der Prüfauftrag entsteht im Kit, nicht in der Session.** `node .claude/kit/board.mjs issue-review pruefauftrag --rolle <rolle> --id <id> --datei <pfad>` montiert ihn aus der Rollendatei, der Liste der Fund-Arten und dem unveränderten Body, beim Plan samt Quelle und Vorlage, und schreibt ihn in eine Datei außerhalb des Projekts. Die Session schreibt keinen Rollentext ab und füllt nichts selbst ein. Ein Claude-Reviewer startet als Agent `kit-pruefer` mit dem Modell aus `reviewers[].model`; sein Auftrag lautet nur `Lies <pfad>`. Ein fremder Reviewer startet über `node .claude/kit/board.mjs issue-review start --reviewer <name> --auftrag <pfad> --ausgabe <pfad>`: Das Kit reicht den Auftrag über stdin, hängt die Lesegrenze an die Kommandozeile und schreibt die Antwort in die Ausgabedatei. Scheitert einer der beiden Aufrufe — etwa mit `rolle-fehlt` oder `keine-lesegrenze` —, fällt dieser Reviewer aus, der Ausfall steht in Zeile 2 des Befunde-Kommentars, und die Prüfung läuft ohne ihn weiter. Einen Ersatzweg mit selbst geschriebenem Prompt gibt es nicht.
+
+Die Befunde gehen als Kommentar `## <Stufe>-Review, Runde 1` ans Dokument. Ist kein einziger Reviewer gelaufen, meldet `befunde.mjs pruefen` den Eintrag `keine-pruefer`, und `review:fertig` wird nicht gesetzt: Die Stufe gilt dann als nicht geprüft. Danach arbeitet die aufrufende Session jeden Fund ein oder lehnt ihn mit einem Satz ab, nach der Regel „Entscheiden statt fragen" aus `CLAUDE-workflow.md`: interaktiv nach einem Wort der Zustimmung, unbeaufsichtigt direkt; nur ein Fund der Stopp-Klasse hält an und zeichnet das Dokument mit `kit:klaeren`. Der neue Body geht über `issue update`, dazu die Marker-Zeile der Stufe — unbeaufsichtigt mit dem Zusatz `, Nachtlauf` — und ein Kommentar `## Einarbeitung, Runde 1` mit der Liste übernommen / abgelehnt und Grund. Eine Runde, keine zweite: Weitere Runden finden erfahrungsgemäß Geschmacksfragen.
 
 ### Konfiguration
 
-Der Installer legt `.claude/workflow.config.example.json` neben die echte Config; daraus den `issueReview`-Block übernehmen. **Der Installer schreibt ihn nicht selbst** — `reviewers` hängt davon ab, welche CLIs auf der Maschine liegen, und `pairs` ist eine Entscheidung. Ein Reviewer ist ein Adapter: `kind: claude` läuft als Subagent mit dem konfigurierten `model`, `kind: command` als beliebiges CLI mit dem Prompt über stdin und der Antwort auf stdout — Codex, Gemini, ein eigenes Skript. Wer wen prüft, steht in `pairs`; sonst greift die Regel „die vordersten Reviewer, die nicht der Autor sind". Die Zuordnung zeigt `issue-review matrix`.
+Der Installer legt `.claude/workflow.config.example.json` neben die echte Config; daraus den `issueReview`-Block übernehmen. **Der Installer schreibt ihn nicht selbst** — `reviewers` hängt davon ab, welche CLIs auf der Maschine liegen, und `pairs` ist eine Entscheidung. Ein Reviewer ist ein Adapter: `kind: claude` läuft als Leser-Agent `kit-pruefer` mit dem konfigurierten `model`, `kind: command` als beliebiges CLI mit dem Prompt über stdin und der Antwort auf stdout — Codex, Gemini, ein eigenes Skript. Wer wen prüft, steht in `pairs`; sonst greift die Regel „die vordersten Reviewer, die nicht der Autor sind". Die Zuordnung zeigt `issue-review matrix`.
+
+**Rollen als Dateien.** Jede Rolle hat ihren Wortlaut an genau einer Stelle: `kit/rollen/<rolle>.md` — `form-beobachtbarkeit`, `abgrenzung`, `architektur-bestand`, `schnitt-abhaengigkeiten`, `pruefbarkeit` und `code-review` für `/review`. Installer und Update legen die Dateien unter `.claude/kit/rollen/` ab. Wer den Wortlaut einer Rolle ändert, ändert ihn für jeden Reviewer dieser Rolle, gleich welches Modell. Fehlt eine Rollendatei, fällt nur dieser Reviewer aus. `issue-review roles` und `issue-review check` nennen die Rollendateien mit.
+
+**Nur lesen, für jeden Reviewer.** Ein Claude-Reviewer läuft als Agent `kit-pruefer`, dessen Werkzeuge auf `Read, Grep, Glob` beschränkt sind: Er kann lesen und suchen, aber keine Datei schreiben und keinen Befehl ausführen, auch wenn sein Auftrag es verlangt. Ein fremder Reviewer bekommt dieselbe Grenze über den Nur-Lese-Schalter seines Werkzeugs, die **Lesegrenze**:
+
+- Für `codex` kennt das Kit den Schalter selbst (`--sandbox read-only`), aus einer eingebauten Tabelle.
+- Für jedes andere Werkzeug steht er im Feld `lesegrenze` des Reviewers in `issueReview.reviewers`, für den Code-Review mit `reviewCommand` im Feld `reviewLesegrenze`. Ein gesetztes Feld schlägt die Tabelle.
+- Kommando und Lesegrenze werden ohne Shell am Leerraum zerlegt: Anführungszeichen, Pipes und Variablen wirken nicht. Die Lesegrenze steht als letztes an der Kommandozeile.
+- Trägt das Kommando einen Schalter, der die Grenze aufheben oder überschreiben kann (`--full-auto`, `--dangerously-bypass-approvals-and-sandbox`, ein `--sandbox` mit anderem Wert als `read-only`, ein `--config sandbox…`, ein `--profile`), startet nichts: `lesegrenze-aufgehoben`.
+- Ohne bekannte Lesegrenze startet der Reviewer nicht (`keine-lesegrenze`); `issue-review check` meldet ihn dann als nicht verfügbar.
+
+`issue-review start` setzt auf `node .claude/kit/board.mjs*` in `sandbox.excludedCommands` auf — das fremde Werkzeug erbt die Umgebung von `board.mjs` und braucht Netz (siehe [Allowlist für fremde Reviewer](#allowlist-für-fremde-reviewer)).
 
 ```json
 "reviewStufen": {
@@ -1818,7 +1900,7 @@ Der Installer legt `.claude/workflow.config.example.json` neben die echte Config
 }
 ```
 
-Bestehende Installationen **ohne** `reviewStufen`-Block behalten die alte Besetzung mit zwei Reviewern je Stufe; erst ein ausdrücklich geschriebener Block aktiviert die Stufen-Besetzung. Ein Kit-Update ändert das Prüfverfahren also nicht im Vorbeigehen.
+Bestehende Installationen **ohne** `reviewStufen`-Block prüfen je Stufe mit den Rollen des Rollenkatalogs, ein Reviewer je Rolle: fachlich `form-beobachtbarkeit` und `abgrenzung`, Plan `architektur-bestand` und `schnitt-abhaengigkeiten`, Arbeitspaket `pruefbarkeit`. Jede dieser Rollen hat ihren Wortlaut unter `kit/rollen/`, darum fällt ohne Block kein Prüfer aus. Wer eine andere Besetzung will, schreibt den Block ausdrücklich.
 
 ## Spec-Driven Development
 
@@ -1845,13 +1927,14 @@ Aus der lokalen Datei gewinnen nur diese Felder:
 |---|---|
 | `reviewModel` | Modellwahl fürs Review ist Geschmack und Budget |
 | `reviewCommand` | die Alternative zu `reviewModel`: wer mit fremder CLI reviewt, hat sie lokal installiert |
+| `reviewLesegrenze` | gehört zu `reviewCommand`: der Nur-Lese-Schalter der lokal installierten CLI |
 | `reviewScope` | manche lesen lieber den vollen Quelltext |
 | `triggers` | Tippgewohnheit für die drei Stop-Phrasen |
 | `toolbox.tokenFile` | zeigt auf ein Token im eigenen Dateisystem |
 
 Alles andere wird ignoriert und auf stderr gemeldet.
 
-**Das Reviewer-Paar weicht als Paar.** `reviewModel` und `reviewCommand` sind eine Oder-Entscheidung — genau eines gilt. Setzt die persönliche Datei eines der beiden, verschwindet das andere aus dem Ergebnis, auch wenn es aus der geteilten Config kommt. Ohne diese Ausnahme vom feldweisen Mischen hätte der Normalfall — das Team fährt den Claude-Default, einer reviewt mit `codex` — eine Config mit beiden Feldern und verletzte die Regel, die das Schema durchsetzt.
+**Das Reviewer-Paar weicht als Paar.** `reviewModel` und `reviewCommand` sind eine Oder-Entscheidung — genau eines gilt. Setzt die persönliche Datei eines der beiden, verschwindet das andere aus dem Ergebnis, auch wenn es aus der geteilten Config kommt. Ohne diese Ausnahme vom feldweisen Mischen hätte der Normalfall — das Team fährt den Claude-Default, einer reviewt mit `codex` — eine Config mit beiden Feldern und verletzte die Regel, die das Schema durchsetzt. `reviewLesegrenze` steht dabei auf der Seite von `reviewCommand`: Setzt die persönliche Datei `reviewModel`, weichen beide, denn eine Lesegrenze ohne Kommando ist bedeutungslos. Eine persönliche `reviewLesegrenze` allein verdrängt `reviewModel` nicht.
 
 **Warum die Härte?** Wäre `buildChecks` lokal überschreibbar, könnte sich jeder sein Gate wegkonfigurieren, und die Trennung wäre Kosmetik statt Leitplanke. Der naheliegende Einwand — man kann die geteilte Datei ja trotzdem lokal editieren — stimmt, trifft aber nicht: Dann steht sie in `git status`. Sichtbare Abweichung ist etwas anderes als per Design unsichtbare.
 
@@ -1948,7 +2031,17 @@ Wenn Nummer und Kommentare nicht zählen, geht es auch ohne das Werkzeug: `gh is
 Alle Board-Operationen laufen über `.claude/kit/board.mjs`. Der Adapter hat zwei Hauptbereiche:
 
 - **Issue-Tracker-Interface:** `issue create`, `issue list`, `issue get`, `issue activity`, `issue move`, `issue comment`, `issue melden`, `issue auftrag`, `issue ursprung`, `issue epics`
-- **Code-Host-Interface:** `code repo-name`, `code pr`
+- **Code-Host-Interface:** `code repo-name`, `code pr`, `code schutz`
+
+**`code schutz` richtet den Schutz von Haupt- und Veröffentlichungszweig ein und gibt Auskunft darüber.** Fünf Aktionen, jede mit JSON auf stdout:
+
+- `node .claude/kit/board.mjs code schutz status` — der Zustand als `{ geschuetzt, fehlt, ungeprueft }`. `fehlt` nennt jeden fehlenden Teil, etwa ein nicht gesetztes oder ausgesetztes Ruleset. `ungeprueft` ist `null` oder `{ commit, kommando }`: der Stand auf dem Hauptzweig, dem ein grüner Nachweis des Build-Dienstes fehlt, samt dem Kommando, das ihn nachholt. Exit 0 auch bei `geschuetzt: false`, wie bei `code ci-status`.
+- `code schutz einrichten [--zweig <z>]` — Probe auf dem Prüfzweig, danach die Rulesets; Ergebnis `scharf`, `anleitung`, `offen` oder `nicht moeglich` (siehe [Installation](#installation)). Ohne `--zweig` gilt `pushPruefung.zweig`, sonst `kit-pruefung`.
+- `code schutz aussetzen --in <pfad>` — setzt das Ruleset des Hauptzweigs aus, nur bei einem grünen Lauf der Stufe `push` im Worktree `<pfad>`; Teil des Notfallwegs von [/push-main](#push-main).
+- `code schutz wiederherstellen` — schaltet das Ruleset wieder scharf. Scheitert es, bleibt der Schutz ausgesetzt, und die Meldung nennt das Kommando zum Wiederholen.
+- `code schutz nachpruefen [--zweig <z>]` — lässt den Build-Dienst den aktuellen Stand des Hauptzweigs über den Prüfzweig nachträglich prüfen, etwa nach dem Notfallweg.
+
+`einrichten`, `aussetzen` und `nachpruefen` pushen oder ändern den Code-Host. Bei gesetztem `KIT_AGENT_MODEL`, also ohne Aufsicht, brechen sie darum ab; `status` bleibt erlaubt. Die Nacht pusht nie, und die Sperre sitzt im Werkzeug statt nur im Skilltext.
 
 **`issue list` liefert Arbeitspakete, `issue epics` liefert Vorhaben.** Die Trennung ist scharf: Vorhaben erscheinen in `issue list` nie, auch nicht ohne Status-Filter. Sie sind Klammern über mehreren Karten, keine Arbeit — wer sie in einer Liste offener Issues mitzählt, hält sie für Arbeitspakete mit dünner Beschreibung. `issue epics` liefert sie mit Kürzel und Fortschritt (`#360 [HER] … 8/8`), also mit der Information, die ein Vorhaben tatsächlich trägt.
 

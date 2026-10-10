@@ -36,7 +36,7 @@ The core process has nine steps. Step 1 is your requirement; the AI takes over s
 **`kontext.config.json` for /kontext and /document (optional).** Both skills also run without this file, in degraded mode. If you want persistent cross-project memory: With a global installation the installer asks for the vault path and creates the file automatically; with a project-local installation you create it manually. Details in the section [kontext.config.json](/en/dokumentation#kontext-config-json-reference).
 
 ## Installation
-<!-- de: 0e67b6dac800 -->
+<!-- de: 575f856daeff -->
 
 Change into your project folder and run:
 
@@ -76,6 +76,19 @@ The installer asks nine questions — with a global installation a tenth follows
 **9. Commit gate (project-local only).** Whether the installer hooks in the commit gate, i.e. sets `git config core.hooksPath .githooks` — see [The commit gate](#the-commit-gate). The question only appears if neither another `core.hooksPath` is in effect nor an active file lies in the hooks directory; the default is no.
 
 **10. Vault path (global installation only).** Path to the memory vault for /kontext and /document. Leaving it empty skips the step; with a path the installer writes the global `~/.claude/kontext.config.json`.
+
+**Protecting the main branch (after the code host question).** With `github` and a project-local installation, the installer asks three more questions: whether the project has a build service (GitHub Actions), whether it should move the check before the push there and protect the main and release branches, and which check branch to use (default `kit-pruefung`). Both yes/no questions are preselected with yes. A no leaves everything as before, and the installer says in one sentence that a push bypassing `push main` gets through unchecked. In the other cases it does not ask but states one sentence: with `gitlab` the protection is not set up yet, with `local` the check stays on your own machine, and with a global installation it points to `node install.mjs --schutz` in the project, because protection applies per repository.
+
+With yes, the installer calls `node .claude/kit/board.mjs code schutz einrichten --zweig <zweig>`. The command first pushes the state of `origin/<mainBranch>` to the check branch as a probe and waits to see whether the build service runs the mandatory checks there; this can take a few minutes. Its result is one of four:
+
+| Result | Meaning | `pushPruefung` |
+|---|---|---|
+| `scharf` | Probe passed, the rulesets for the main and release branches are set. | is written |
+| `anleitung` | Probe passed, but the rulesets could not be set, for example without admin rights. The output names every step with its place on GitHub. | is written |
+| `offen` | The build service ran nothing on the check branch or did not finish. The output describes what has to run there. | stays unchanged |
+| `nicht moeglich` | The code host knows no protection, or `origin/<mainBranch>` is missing. | stays unchanged |
+
+**Later: `node install.mjs --schutz`.** An existing project switches protection on without reinstalling the kit. The call asks only the protection questions, calls `code schutz einrichten` and changes nothing in `.claude/workflow.config.json` but `pushPruefung`; all other settings and kit files stay untouched. It requires an installed `board.mjs` that already knows `code schutz`. Whether a project is protected is then reported at any time by `node .claude/kit/board.mjs code schutz status` (see [Board adapter](#board-adapter)).
 
 The installer copies the sixteen skills, writes a `.claude/workflow.config.json` with your answers, places a `CLAUDE-workflow.md` with the process description as well as the two gate registers `CLAUDE-Fachplan.md` and `CLAUDE-Plan.md`, and writes the board adapter to `.claude/kit/board.mjs`. With GitLab it additionally asks whether it should create the five labels automatically. No background process, no service, no registry entries.
 
@@ -428,6 +441,23 @@ Stand unveraendert seit 2026-09-22T17:18:04.921Z: Ergebnis uebernommen (gruen). 
 
 **Why this is in the tool.** The night runs showed sessions that started the same green `run` three to nine times per work package — mostly without a change in between, often only to filter the output differently. The rule "write the output to a file once and read from there" has been in the skill text for a long time and did not work. By the yardstick "rule in the text or rule in the tool", it therefore belongs here.
 
+### Flaky checks: repeated once
+<!-- de: a3325e933627 -->
+
+Some checks are green one time and red the next on the same state, such as a test that depends on the time of day, the load on the machine or the order of execution. So that such a check does not fail a package unjustly and still gets noticed, `checks.mjs run` repeats every red check **exactly once** on the same state wherever a result decides about a package or a release.
+
+**Where a check is repeated.** In the closing check of a package (`--abschluss`), in the check run before `push main` and before `merge production` (both with `--wiederholen`) and in the evidence run that the night's preparation runs on the path through the build service. Only the red check is repeated, not the whole run, and immediately, before the rest of the run continues. The partial run and the full run each repeat at most once; advisory checks are never repeated.
+
+**What comes out of it.** Red and then green means: the check **flaked**. It counts as passed, the output names it, and the report block carries, below its `gelaufen:` line, the line `Gewackelt: <Kommando> → erst rot, dann gruen` ("flaked: `<command>` → first red, then green"), with the path of the first run's output (suffix `-erstlauf`). Red and red again stays red, as without a repetition.
+
+**How it is counted.** Both runs go into the execution log `.claude/ausfuehrungen.tsv`, marked as `erstlauf` and `wiederholung`, and both count as an execution with their duration. The [effectiveness evaluation](/en/dokumentation#wirksamkeit) treats them as a pair: red and green is a **flake** and not a finding, red and red is a finding, red without a repetition counts as a finding as before. A carried-over result produces no case. The night report names every check that flaked during the night, with the number of cases.
+
+**Stop before publishing.** If a check flaked in the check run before `push main` or `merge production`, the skill stops after the green run and before the commit, names the check and asks „Trotzdem fortfahren? (ja/nein)“ (continue anyway? (yes/no)). Only `ja` continues. At night nobody asks: the preparation turns green into `gruen-offen` and records `Gewackelt: <Kommando> — Entscheidung beim push main` (flaked: `<command>` — decision at push main) as an open item, which `push main` asks about in the morning before the push.
+
+**The repair candidate.** From **three flakes** within the time window, a check is marked in the effectiveness evaluation as a candidate for repair. `node .claude/kit/wirksamkeit.mjs kandidaten` prints one line `Reparaturkandidat: <cmd> — <n> Wackler im Zeitfenster` (repair candidate: `<cmd>` — `<n>` flakes in the time window) per such check. Before `push main` and `merge production` they are named but do not stop the run. The threshold is fixed and not configurable.
+
+**The limits.** During implementation, that is in every `checks.mjs run` without `--abschluss` and without `--wiederholen`, in `/local-check` and at the commit gate, every check runs exactly once as before. The job in the build service runs `--stufe push` without the switch and does not repeat, nor does the night runner's re-check. A flake therefore only shows where a repetition is deliberate; on an unchanged state the kit carries over the result instead of checking anew.
+
 ### No lock between check runs
 <!-- de: 12ffba6cae58 -->
 
@@ -626,7 +656,7 @@ Target branch for the PR in step 9 (merge production). Applies team-wide; a diff
 
 ### `pushPruefung`
 
-Where the full check run before 'push main' takes place. 'lokal' (default): /push-main runs it with 'checks.mjs run --stufe push' on your own machine. An object with ort 'buildDienst' moves it to the project's build service: /push-main pushes the state to the check branch, waits for the result via 'board.mjs code ci-status --commit' and pushes mainBranch only on green. The obligation is the same in both places — green before the push; productionBranch stays untouched. On the check branch the build service must run the same mandatory checks as the local run of stage push. Applies team-wide; a different value in workflow.config.local.json is ignored. (valid: `lokal`)
+Where the full check run before 'push main' takes place. 'lokal' (default): /push-main runs it with 'checks.mjs run --stufe push' on your own machine. An object with ort 'buildDienst' moves it to the project's build service: /push-main pushes the state to the check branch, waits for the result via 'board.mjs code ci-status --commit' and pushes mainBranch only on green. The obligation is the same in both places — green before the push; productionBranch stays untouched. On the check branch the build service must run the same mandatory checks as the local run of stage push. Protection of the main and release branches is set up by 'board.mjs code schutz einrichten'; the installer writes 'pushPruefung' only after its probe on the check branch has passed. Applies team-wide; a different value in workflow.config.local.json is ignored. (valid: `lokal`)
 
 - `pushPruefung.ort` — The place of the full run: the project's build service. (valid: `buildDienst`)
 - `pushPruefung.zweig` — The check branch to which /push-main pushes the state before the push and which it deletes again afterwards. Not mainBranch and not productionBranch.
@@ -641,7 +671,11 @@ The Claude variant of the reviewer pair reviewModel/reviewCommand: model ID for 
 
 ### `reviewCommand`
 
-The foreign variant of the reviewer pair reviewModel/reviewCommand: command line of a foreign CLI (e.g. 'codex exec --model gpt-5') that receives the review prompt via stdin and writes its answer to stdout. Exactly one of the two fields is set; 'set' means the key is present — an empty string is invalid, not 'not set'. May be overridden personally in workflow.config.local.json.
+The foreign variant of the reviewer pair reviewModel/reviewCommand: command line of a foreign CLI (e.g. 'codex exec --model gpt-5') that receives the review prompt via stdin and writes its answer to stdout. It is split at whitespace without a shell: quotes, pipes and variables have no effect. Exactly one of the two fields is set; 'set' means the key is present — an empty string is invalid, not 'not set'. May be overridden personally in workflow.config.local.json.
+
+### `reviewLesegrenze`
+
+Belongs to reviewCommand: the read-only switch of the foreign CLI that the kit appends to the command line (e.g. '--sandbox read-only'), split at whitespace like reviewCommand. For codex the kit knows the switch itself; for any other tool it goes here. May be overridden personally in workflow.config.local.json; if the personal file sets reviewModel, reviewLesegrenze gives way together with reviewCommand.
 
 ### `triggers`
 
@@ -690,12 +724,13 @@ Issue review across several models. Reviewers who did not write the document rea
 - `issueReview.reviewers[].name` — Short name, compared with the issue's author model.
 - `issueReview.reviewers[].kind` — 'claude' runs as a subagent via the Agent tool, 'command' as any foreign CLI (prompt via stdin). (valid: `claude`, `command`)
 - `issueReview.reviewers[].model` — Only for kind 'claude': model identifier.
-- `issueReview.reviewers[].command` — Only for kind 'command': command line, e.g. 'codex exec --model gpt-5'.
+- `issueReview.reviewers[].command` — Only for kind 'command': command line, e.g. 'codex exec --model gpt-5'. It is split at whitespace without a shell: quotes, pipes and variables have no effect.
+- `issueReview.reviewers[].lesegrenze` — Only for kind 'command': the read-only switch of the foreign tool that the kit appends to the command line (e.g. '--sandbox read-only'), split at whitespace like command. For codex the kit knows the switch itself; for any other tool it goes here. For kind 'claude' the field is an error.
 - `issueReview.pairs` — Explicit mapping author -> reviewer. If the author is listed here, their entry wins over the order rule. Without pairs the rule always picks the frontmost entries — a foreign model further back would never get its turn. A name that does not exist in reviewers and an author who names themselves are hard errors.
 
 ### `reviewStufen`
 
-Staffing and perspective of the three review levels: the functional concern, the plan to get there, the single work package. While issueReview describes WHO reviews at all, this states how many review per level and in which roles. 'rollen' must contain exactly 'reviewer' distinct, non-empty names — otherwise a hard error. If the whole block is missing, every level uses reviewer 2 with the roles 'vollstaendigkeit-pruefbarkeit' and 'scope-risiko-bestand'; if only one level is missing in an existing block, that is an error. Applies team-wide; a different value in workflow.config.local.json is ignored.
+Staffing and perspective of the three review levels: the functional concern, the plan to get there, the single work package. While issueReview describes WHO reviews at all, this states how many review per level and in which roles. 'rollen' must contain exactly 'reviewer' distinct, non-empty names — otherwise a hard error. If the whole block is missing, each level uses the roles of the role catalogue with one reviewer per role: fachlich 'form-beobachtbarkeit' and 'abgrenzung', plan 'architektur-bestand' and 'schnitt-abhaengigkeiten', issue 'pruefbarkeit'; if only one level is missing in an existing block, that is an error. Applies team-wide; a different value in workflow.config.local.json is ignored.
 
 - `reviewStufen.fachlich` — Review of the functional concern ([Fachlich] issue) before a plan is made from it.
 - `reviewStufen.fachlich.reviewer` — How many reviewers review this level.
@@ -755,6 +790,7 @@ Night mode. The night chain under kette, the list of allowed model names under m
 - `night.stufen.leicht.kommando` — Command line of a foreign program for this level — a project artefact with the same level of trust as reviewCommand; the pattern ^claude- does not apply here.
 - `night.stufen.leicht.name` — The program's self-description next to kommando.
 - `night.stufenRegel` — Replaces the built-in rule by which /issues and /task determine the level of a work package. If the field is missing or the text is empty, the kit's rule applies.
+- `night.festgefahrenNach` — Number of identically failed runs of the same check after which an unattended session is stopped at the next check call; interactively the same number only produces a hint. Switching it off is not intended — if the field is missing, the default applies.
 - `night.zielUmsetzungMin` — Target for the duration of an implementation in minutes; the report shows how many packages stayed below it. The target applies to the chain's implementation stage and to the implementation night, which is why it sits next to night.kette and not inside it. Switching it off is not intended — if the field is missing, the default applies.
 
 ### `pruefLauf`
@@ -949,11 +985,11 @@ Which issue is next is decided by the argument. `/implement-next` without an arg
 Delimitation: `/implement-ready` works through the whole column in one session; `/implement-test` and `/implement-done` split an issue into a red and a green phase; `/implement-next` does one complete issue and then stops. Interactively it is the "do exactly one" variant — it plays its main role in [night mode](/en/dokumentation#night-mode), where the night runner starts a fresh session with exactly this skill for each issue.
 
 ### /issue-review
-<!-- de: 771e76229b27 -->
+<!-- de: 20d3e0670364 -->
 
 **Tool alongside the process — has the business plan and the plan read by other models.**
 
-Models that did not write the document deliver findings as a comment; the calling session incorporates them or rejects them with one sentence, writes the stage's marker as a trace and sets the label `review:fertig` as a visible trace on the board (to be created once per board; a finding of the stop class sets `kit:klaeren` instead). Which roles and how many reviewers is said by `reviewStufen`; `issue check-form` checks the form beforehand. Work packages are reviewed only on explicit request; the rule is Ready, not a package review. Details under [Issue review across multiple models](/en/dokumentation#issue-review-across-multiple-models).
+Models that did not write the document deliver findings as a comment; the calling session incorporates them or rejects them with one sentence, writes the stage's marker as a trace and sets the label `review:fertig` as a visible trace on the board (to be created once per board; a finding of the stop class sets `kit:klaeren` instead). Which roles and how many reviewers is said by `reviewStufen`; `issue check-form` checks the form beforehand. Every reviewer gets its review brief as a file that `issue-review pruefauftrag` assembles from the role under `kit/rollen/`; a Claude reviewer reads it as the reader agent `kit-pruefer`, a third-party one runs via `issue-review start` at its read boundary. Neither of them can change anything. Work packages are reviewed only on explicit request; the rule is Ready, not a package review. Details under [Issue review across multiple models](/en/dokumentation#issue-review-across-multiple-models).
 
 `review:fertig` is at the same time a prerequisite of the night chain: without the label on the business plan, the chain skips the requirement (see [Second mode: the night chain](/en/dokumentation#second-mode-the-night-chain)). The label remains a mere trace and does not release the content — if a requirement is still changed substantially after the review, remove the label or have the requirement reviewed again; the nightly run does not detect a later change.
 
@@ -969,16 +1005,16 @@ The skill calls `node .claude/kit/checks.mjs run --since "$(git merge-base HEAD 
 The output is a checklist with green ticks or a red stop; omitted checks appear in it as a line of their own with their reason, so that a shortened run does not look like a complete one. A red check blocks the rest of the process. There are no exceptions and no overriding.
 
 ### /review
-<!-- de: aec27cbca22c -->
+<!-- de: 137a45e48e3e -->
 
 **Step 7, after the local check.**
 
 The skill opens a new Claude session without the implementation context of the current session. A reviewer who does not know how the code came about reads it as a stranger and sees problems that the implementer does not notice.
 
-Depending on `reviewScope`, the reviewer gets the diff or all files in the repo (with the model from `reviewModel`). The findings land as a comment in the issue or PR. For security patterns that require a corpus-driven approach (secrets scan, SQL concatenation, missing input validation), the skill does not rely on the model alone. These checks belong in your CI.
+Depending on `reviewScope`, the reviewer gets the diff or all files in the repo. The review brief is assembled by `issue-review pruefauftrag` from the role `kit/rollen/code-review.md` and this material. It is read by the reader agent `kit-pruefer` with the model from `reviewModel` or, if `reviewCommand` is set, by the third-party CLI that `issue-review start --code-review` starts at its read boundary (`reviewLesegrenze`). If either call fails, `/review` aborts visibly, without a comment and without a move to In review. The findings land as a comment in the issue or PR. For security patterns that require a corpus-driven approach (secrets scan, SQL concatenation, missing input validation), the skill does not rely on the model alone. These checks belong in your CI.
 
 ### /push-main
-<!-- de: 7a612b209c0c -->
+<!-- de: 4350d4756702 -->
 
 
 **Step 8, after the review, on your explicit command.**
@@ -989,6 +1025,8 @@ A red `/local-check` from step 6 blocks this step mechanically: you have no gree
 
 **The stage `push` is run** — the skill calls `checks.mjs run --stufe push` and thereby runs the package stage **and** everything your project has scheduled for the moment of publishing (see [Staged checks](/en/dokumentation#staged-checks-stufe)). And **every one** of these checks: before the push, none is selected by area any more, and an empty package omits nothing here. This run takes noticeably longer than the one before the commit; the command names in advance what is added compared with the package stage.
 
+**A flaky check stops the run.** The run uses `--wiederholen`: a red check is repeated once on the same state, and if one flaked in the process, the skill asks „Trotzdem fortfahren? (ja/nein)“ (continue anyway? (yes/no)) before the commit (see [Flaky checks](/en/dokumentation#flaky-checks-repeated-once)).
+
 **Pre-push step from `RELEASING.md`.** If your repo's `RELEASING.md` names a pre-push step, the skill runs it after its commit and before the push, in the background, and waits for it to end. Exit 0 means push; exit 1 means red, and the push happens only if you answer the question „Vor-Push-Prüfung rot. Trotzdem pushen? (ja/nein)“ (pre-push check red. Push anyway? (yes/no)) with `ja`; any other exit stops without a push. Without such a step, `push main` does not wait for the CI.
 
 **Prepared at night: the mode `vorbereiten`.** A night chain with the goal `ziel:push-vorbereitet` (see [How far a chain runs](/en/dokumentation#how-far-a-chain-runs-the-goal)) starts `/push-main vorbereiten` at the end of the run — as the only call of this skill without your trigger phrase, because it does not push. The session works in a worktree of its own on the local `main`, rebased onto `origin/main`, and runs everything that can be done before publishing without you and without a push: the generation steps from `RELEASING.md` (version note, change note), the full check run of the stage `push` and the local commit. No push — neither to `main` nor to a check or preview branch, no tag. Whatever needs a human or a push, such as the pre-push step from `RELEASING.md` or a visual check of the interface, is not started but stated as open in the message. The result is called `gruen`, `gruen-offen` (green, check open) or `rot` and lies at the fixed location `.claude/push-vorbereitung.json`, the commit under `refs/kit/push-vorbereitet`.
@@ -997,19 +1035,29 @@ A red `/local-check` from step 6 blocks this step mechanically: you have no gree
 
 **On the path through the build service.** If your project runs the full run with `pushPruefung` in the build service, the night cannot run it without pushing to the check branch. The preparation then runs only the evidence run of the package stage over the release files and commits; on green the result is called `gruen-offen`, and the first open item reads `voller Lauf im Build-Dienst (Prüfzweig <zweig>)` (full run in the build service, check branch `<branch>`). In the morning, `push main` takes over the commit as above, pushes it to the check branch, waits for the build service and pushes `main` only on green.
 
+**The emergency path: `/push-main notfall`.** If the build service fails while the code host protects the main branch, the owner of the repository can still publish. The prerequisite is a full green run of stage `push` on your own machine as a substitute check: the skill runs it as on the local path, even if `pushPruefung` names the build service, and a red run stops. After that, in this order:
+
+1. `node .claude/kit/board.mjs code schutz aussetzen --in <pfad>` — suspends the ruleset of the main branch only if the check summary of the worktree attests a green run of stage `push` for exactly this state. On GitHub only someone with admin rights can suspend it.
+2. The push to the main branch, without `--force`.
+3. `node .claude/kit/board.mjs code schutz wiederherstellen` — immediately, however the push went. If it fails, the run is a failure, even after a successful push; until it is repeated the main branch stands unprotected, and `code schutz status` says so.
+
+The emergency path runs **only interactively** and, like every push, needs the typed trigger phrase. If `KIT_AGENT_MODEL` is set, the skill stops before the first step. The state that reached the main branch this way without evidence from the build service appears in `code schutz status` under `ungeprueft` until `code schutz nachpruefen` has checked it green in the build service.
+
 ### Checking the test server (human, between step 8 and step 9)
 <!-- de: 2940a24483a9 -->
 
 After the push, the test server picks up the change automatically or you deploy manually. You check the result in the browser: the golden path, critical edge cases, no visible regressions. Only after this check do you go to step 9.
 
 ### /merge-production
-<!-- de: 66caa7c113be -->
+<!-- de: 42f55c17f7f8 -->
 
 **Step 9, after the test server check, on your explicit command.**
 
 Creates a pull request (GitHub) or merge request (GitLab) from main to production. This skill, too, is locked against autonomous invocation. You carry out the final merge yourself in the PR/MR, because you are the one who checked on the test server that the result is right.
 
 **Before the PR there is a CI gate.** The skill uses `node .claude/kit/board.mjs code ci-status --commit <sha>` to fetch the CI state for the state on `origin/main` — before the version bump, commit and PR. On **red**, **no PR** is created: the skill names the red jobs by name and ends; an exit code 1 of the axis counts the same. If the CI is still running, it asks exactly once, and only a `ja` (yes) continues. If a project has no CI (`codeHost: local`), the axis reports `keine` (none) and the run continues unchanged.
+
+**The release commit goes through the check branch.** If `pushPruefung` names the build service, the skill does not push the release commit directly to `main`: a protected main branch would reject it, because it does not carry the mandatory checks yet. Like `push main`, the skill pushes it to the check branch first, waits for the build service and pushes `main` only on green. If this path ends without a push to `main` — red, deadline expired or push rejected — no PR is created. Without `pushPruefung` in the build service, the direct push stays.
 
 **Before that there is a stop: `push main` first.** There is never a `merge production` without a preceding `push main`. If your local `main` carries commits that are not on `origin/main`, the skill ends before the worktree with the message „Erst `push main` — dieser Stand ist noch nicht veröffentlicht und nicht geprüft.“ (`push main` first — this state is not yet published and not checked.)
 
@@ -1514,6 +1562,23 @@ Three states of the progress are distinguished and appear differently in the tex
 
 **The yardstick of the estimate is the time limit of *one session*** — `--timeout-min`, default 60 minutes, also in the night chain, where every session starts with the same limit. Expressly **not** meant is `night.kette.umsetzungMin`: That is the budget of the whole implementation stage, is only checked between two sessions and says nothing about a single package. Nor is the target mark `night.zielUmsetzungMin` meant — it is a benchmark for the evaluation, not an abort limit.
 
+### The stuck package
+<!-- de: 025a5a67e2d4 -->
+
+**A session that fails at the same check again and again ends before its time limit.** Until then such a package ran on until the clock stopped it, by default after 60 minutes: The session changed something, the check stayed red, for the same reason as before. The time was missing for the other packages of the night, and in the morning the package only carried the note about the time limit, not what it was stuck on. Since then the check tool brakes by itself.
+
+**Counting is per check.** `checks.mjs run` remembers its failure fingerprint for every red command: the names of the failed tests, for a check without test names such as a build the first error message. Timestamps, durations, temporary paths and random values are ignored. If the same check fails in a row with the same fingerprint, its sequence grows; green results of other checks do not interrupt it. It only ends when exactly this check turns green or fails differently — a different test than before counts as progress. Every real run via `checks.mjs run` counts as an attempt, partial runs included; an adopted result does not count, nor does a test the session starts outside the tool.
+
+**The limit is `night.festgefahrenNach`**, default 3. When the sequence reaches it, the run announces the last allowed attempt. Unattended (`KIT_AGENT_MODEL` set) the next call runs nothing any more, not even with `--frisch`: It prints `Pruefung festgefahren: <Kommando> — <Fehler>` (check stuck), leaves the previous summary in place, adds only `festgefahren.ausgeloest` and ends with exit code 3. The brake is a rule of the tool, not a request to the model: The session gets no check result any more. The night runner recognises the mark in the stream and ends the session.
+
+**What the runner does afterwards.** No rescue attempt begins for the package; it would only run against the same red check again. If there are changes in the working directory, it secures them as for every aborted package in the stash `nachtrest #<id> <lauf>`; if that fails, the night ends with a hard stop. The package gets the run status `lauf:abgebrochen` with the reason `Grund: Session an einer Pruefung festgefahren` (session stuck at a check) and goes to the backlog, the other packages continue on a clean state. There is no label of its own.
+
+**How you recognise it in the morning.** The package carries a note under the anchor `## Nachtlauf: an einer Pruefung festgefahren` (night run: stuck at a check). It names the check, the recurring error, the number of attempts, the running time up to the abort and the time limit of the session; the stash name is in the comment before it, and if there was nothing to secure, the note says so itself. In the night report the package appears as an outcome of its own: in the check report a line `festgefahren an <Prüfung> (<n> Versuche)` with running time, time limit and `gesparte Zeit (Schaetzung)` (saved time, estimate), under the chain's `### Umsetzung` in the list „festgefahren“, and the runner's closing line counts `, N festgefahren`. That separates it from the time-limit abort and from the waiting session: There the time ran out or the session waited; here it demonstrably hung at a check.
+
+**How to continue.** Read the error in the note, find the leftovers with `git stash list` and get them back with `git stash apply stash@{<n>}`, improve the package or cut it differently and pull it back to Ready — only your new GO lets it run again. Once it is done, `git stash drop stash@{<n>}` clears the entry.
+
+**Interactively nothing aborts.** If `KIT_AGENT_MODEL` is empty, after the last allowed and every further identical failure the run only prints `Hinweis: festgefahren an <Kommando> — <n>-mal gleich gescheitert (<Fehler>)` (hint: stuck at a command, failed the same way n times); result and exit code stay the same, you decide.
+
 ### Second mode: the night chain
 <!-- de: 7917d98cdeac -->
 
@@ -1649,9 +1714,11 @@ The card then keeps all its labels and gets once the comment `## Kette nicht ges
 A business plan order for one requirement and a plan order for another, by contrast, both run in the same night — the rules only apply within the same root. A card that gives way uses up no `--max` slot.
 
 #### Allowlist for third-party reviewers
-<!-- de: 1e6f0f235388 -->
+<!-- de: 324056d8f427 -->
 
-Reviewers with `kind: "claude"` run as subagents and need no permission. A reviewer with **`kind: "command"`**, by contrast, runs via Bash — and if it is not in the allowlist, a permission prompt appears at night that nobody answers. That is not an error with a log line: **The session hangs until the timeout.** So enter the tool before the first review run starts:
+Reviewers with `kind: "claude"` run as the reader agent `kit-pruefer` and need no permission. A reviewer with **`kind: "command"`** is no longer started through the session's Bash during the review, but by the kit: `node .claude/kit/board.mjs issue-review start` starts the third-party tool itself, at its read boundary. For this the review needs the entry for `board.mjs` in the allowlist and `node .claude/kit/board.mjs*` in `sandbox.excludedCommands` (see "Kit scripts with board access") — otherwise the tool runs in the session's sandbox, without network. The review needs no entry of its own for the tool.
+
+The **pre-flight of the night runner**, by contrast, still checks the reviewers by starting the third-party command directly, and therefore still needs the entry for the tool. If it is missing, a permission prompt appears at night that nobody answers. That is not an error with a log line: **The session hangs until the timeout.** Enter both before the first review run starts:
 
 ```json
 {
@@ -1664,7 +1731,7 @@ Reviewers with `kind: "claude"` run as subagents and need no permission. A revie
 }
 ```
 
-The entry names the **tool**, not the full command line — for the same reason as with the buildChecks above (prefix matching). Whoever has configured several foreign CLIs enters each one individually. A setup with exclusively `kind: "claude"` reviewers needs none of this.
+The entry names the **tool**, not the full command line — for the same reason as with the buildChecks above (prefix matching). Whoever has configured several foreign CLIs enters each one individually. A setup with exclusively `kind: "claude"` reviewers does not need the tool entry.
 
 ### The run status
 <!-- de: 4bcd7299093a -->
@@ -1708,7 +1775,7 @@ Every run writes every state, before it hands it to the board, as a line into it
 **Leftovers in the stash.** If a failed package leaves changes in the working tree and the salvage does not succeed, they lie in the stash `nachtrest #<id> <lauf>`, and the run status of the package names it. You get them back with `git stash list` and `git stash apply stash@{<n>}`; once the package is done, `git stash drop stash@{<n>}` clears the entry.
 
 #### The evidence cases
-<!-- de: 5db5fb255472 -->
+<!-- de: 3fafe4c52e7d -->
 
 For every evidence case (Belegfall) of the business requirement: what state the card shows on the board afterwards and with which gesture it continues.
 
@@ -1718,6 +1785,7 @@ For every evidence case (Belegfall) of the business requirement: what state the 
 | Aborted although finished: the review stage exceeds the time budget, the review note is already in the plan | `lauf:abgebrochen` with the reason; the run status names the last completed step | put `kit:night` on the card again: The stage counts as found, the chain starts at the first stage without a result |
 | Outcome unknown: the board is briefly unreachable | if the attempt after the pause succeeds, the state of the card with „2. Versuch“; if it fails, `lauf:abgebrochen` with `abgebrochen, Umgebungsfehler um <zeit>: …` (aborted, environment error at), the remaining cards of the run `lauf:wartet` with `nicht begonnen: der Lauf hielt um <zeit> an — …` (not begun: the run halted at) | after a successful attempt nothing; otherwise, once the board answers again, start the run again or put `kit:night` on the chain again |
 | A package halts the night: session without commit, time limit or waiting session | only this package `lauf:abgebrochen` with reason, it goes to the backlog; dependent packages `lauf:wartet` with „hängt an #N (abgebrochen in diesem Lauf)“ (depends on #N, aborted in this run); leftovers in the stash `nachtrest #<id> <lauf>`; the remaining packages keep running | read the reason, fetch leftovers from the stash if needed, improve the package and pull it back to Ready |
+| A package gets stuck: the same check fails `night.festgefahrenNach` times the same way, long before the time limit | only this package `lauf:abgebrochen` with `Grund: Session an einer Pruefung festgefahren`, note `## Nachtlauf: an einer Pruefung festgefahren` with check, error and attempts, it goes to the backlog; leftovers in the stash `nachtrest #<id> <lauf>`; in the night report the outcome of its own `festgefahren`, not time limit or waiting session; the remaining packages keep running | read the error in the note, fetch leftovers from the stash if needed, improve the package and pull it back to Ready |
 | Interleaved logs: chain and check run run at the same time | every run status names in the line `Protokoll:` the file `.claude/protokolle/<lauf>/<karte>-<stufe>.log` of its step | open the named file; in the daily log the run ID in `[<Zeitpunkt> <lauf>]` separates the runs |
 
 ### Running with a local model
@@ -1874,14 +1942,30 @@ Which stage applies is decided by the title prefix, and every stage leaves its o
 ```
 
 ### Procedure
-<!-- de: c0d48a188f00 -->
+<!-- de: 7aa8e1713bb6 -->
 
-Pre-flight with `issue-review check`, then `issue check-form <id>`, then `issue-review roles --stufe <stufe> --author <modell>` for roles and staffing. Every reviewer gets the same body and its role: `form-beobachtbarkeit` and `abgrenzung` for the business requirement, `architektur-bestand` (the senior who knows the existing code) for the plan, `pruefbarkeit` for the work package; every role carries the cut question "What can go?". The plan reviewer additionally gets the body of the card named in `Fachliche Quelle:` — from the board, never from the conversation — and the path of a `Vorlage:` line; with it, it also checks whether the plan delivers every goal, every acceptance criterion and every answered question of the source. Without a source this input is dropped. The findings go as a comment `## <Stufe>-Review, Runde 1` (review, round 1) to the document. Then the calling session works in every finding or rejects it with one sentence, according to the rule "decide instead of asking" (Entscheiden statt fragen) from `CLAUDE-workflow.md`: interactively after a word of approval, unattended directly; only a finding of the stop class halts and marks the document with `kit:klaeren`. The new body goes via `issue update`, together with the marker line of the stage — unattended with the addition `, Nachtlauf` (night run) — and a comment `## Einarbeitung, Runde 1` (incorporation, round 1) with the list adopted / rejected and reason. One round, no second: Further rounds, in our experience, find matters of taste.
+Pre-flight with `issue-review check`, then `issue check-form <id>`, then `issue-review roles --stufe <stufe> --author <modell>` for roles and staffing. Every reviewer gets the same body and its role: `form-beobachtbarkeit` and `abgrenzung` for the business requirement, `architektur-bestand` (the senior who knows the existing code) and `schnitt-abhaengigkeiten` for the plan, `pruefbarkeit` for the work package; every role carries the cut question "What can go?". The plan reviewer additionally gets the body of the card named in `Fachliche Quelle:` — from the board, never from the conversation — and the path of a `Vorlage:` line; with it, it also checks whether the plan delivers every goal, every acceptance criterion and every answered question of the source. Without a source this input is dropped.
+
+**The review brief is created in the kit, not in the session.** `node .claude/kit/board.mjs issue-review pruefauftrag --rolle <rolle> --id <id> --datei <pfad>` assembles it from the role file, the list of finding types and the unchanged body, for the plan together with source and template, and writes it to a file outside the project. The session copies no role text and fills in nothing itself. A Claude reviewer starts as the agent `kit-pruefer` with the model from `reviewers[].model`; its brief reads only `Lies <pfad>`. A third-party reviewer starts via `node .claude/kit/board.mjs issue-review start --reviewer <name> --auftrag <pfad> --ausgabe <pfad>`: the kit passes the brief via stdin, appends the read boundary to the command line and writes the answer to the output file. If either call fails — for instance with `rolle-fehlt` or `keine-lesegrenze` —, this reviewer drops out, the failure appears in line 2 of the findings comment, and the review continues without it. There is no fallback with a self-written prompt.
+
+The findings go as a comment `## <Stufe>-Review, Runde 1` (review, round 1) to the document. If not a single reviewer ran, `befunde.mjs pruefen` reports the entry `keine-pruefer`, and `review:fertig` is not set: the stage then counts as not reviewed. Then the calling session works in every finding or rejects it with one sentence, according to the rule "decide instead of asking" (Entscheiden statt fragen) from `CLAUDE-workflow.md`: interactively after a word of approval, unattended directly; only a finding of the stop class halts and marks the document with `kit:klaeren`. The new body goes via `issue update`, together with the marker line of the stage — unattended with the addition `, Nachtlauf` (night run) — and a comment `## Einarbeitung, Runde 1` (incorporation, round 1) with the list adopted / rejected and reason. One round, no second: Further rounds, in our experience, find matters of taste.
 
 ### Configuration
-<!-- de: 376aec61213b -->
+<!-- de: 0f25ed0f863c -->
 
-The installer puts `.claude/workflow.config.example.json` next to the real config; take the `issueReview` block from it. **The installer does not write it itself** — `reviewers` depends on which CLIs are on the machine, and `pairs` is a decision. A reviewer is an adapter: `kind: claude` runs as a subagent with the configured `model`, `kind: command` as any CLI with the prompt via stdin and the answer on stdout — Codex, Gemini, a script of your own. Who reviews whom is in `pairs`; otherwise the rule "the foremost reviewers that are not the author" applies. The assignment is shown by `issue-review matrix`.
+The installer puts `.claude/workflow.config.example.json` next to the real config; take the `issueReview` block from it. **The installer does not write it itself** — `reviewers` depends on which CLIs are on the machine, and `pairs` is a decision. A reviewer is an adapter: `kind: claude` runs as the reader agent `kit-pruefer` with the configured `model`, `kind: command` as any CLI with the prompt via stdin and the answer on stdout — Codex, Gemini, a script of your own. Who reviews whom is in `pairs`; otherwise the rule "the foremost reviewers that are not the author" applies. The assignment is shown by `issue-review matrix`.
+
+**Roles as files.** Every role has its wording in exactly one place: `kit/rollen/<rolle>.md` — `form-beobachtbarkeit`, `abgrenzung`, `architektur-bestand`, `schnitt-abhaengigkeiten`, `pruefbarkeit` and `code-review` for `/review`. Installer and update place the files under `.claude/kit/rollen/`. Whoever changes the wording of a role changes it for every reviewer of that role, whatever the model. If a role file is missing, only that reviewer drops out. `issue-review roles` and `issue-review check` also name the role files.
+
+**Read only, for every reviewer.** A Claude reviewer runs as the agent `kit-pruefer`, whose tools are restricted to `Read, Grep, Glob`: it can read and search, but cannot write a file or run a command, even if its brief asks for it. A third-party reviewer gets the same boundary through its tool's read-only switch, the **read boundary** (Lesegrenze):
+
+- For `codex` the kit knows the switch itself (`--sandbox read-only`), from a built-in table.
+- For every other tool it is in the reviewer's field `lesegrenze` in `issueReview.reviewers`, for the code review with `reviewCommand` in the field `reviewLesegrenze`. A set field beats the table.
+- Command and read boundary are split at whitespace without a shell: quotes, pipes and variables have no effect. The read boundary comes last on the command line.
+- If the command carries a switch that can lift or override the boundary (`--full-auto`, `--dangerously-bypass-approvals-and-sandbox`, a `--sandbox` with a value other than `read-only`, a `--config sandbox…`, a `--profile`), nothing starts: `lesegrenze-aufgehoben`.
+- Without a known read boundary the reviewer does not start (`keine-lesegrenze`); `issue-review check` then reports it as unavailable.
+
+`issue-review start` relies on `node .claude/kit/board.mjs*` in `sandbox.excludedCommands` — the third-party tool inherits the environment of `board.mjs` and needs network (see [Allowlist for third-party reviewers](/en/dokumentation#allowlist-for-third-party-reviewers)).
 
 ```json
 "reviewStufen": {
@@ -1891,7 +1975,7 @@ The installer puts `.claude/workflow.config.example.json` next to the real confi
 }
 ```
 
-Existing installations **without** a `reviewStufen` block keep the old staffing with two reviewers per stage; only an explicitly written block activates the staffing per stage. A kit update therefore does not change the review procedure in passing.
+Existing installations **without** a `reviewStufen` block review each stage with the roles of the role catalogue, one reviewer per role: functional `form-beobachtbarkeit` and `abgrenzung`, plan `architektur-bestand` and `schnitt-abhaengigkeiten`, work package `pruefbarkeit`. Each of these roles has its wording under `kit/rollen/`, so no reviewer drops out without the block. Anyone who wants a different staffing writes the block explicitly.
 
 ## Spec-Driven Development
 <!-- de: 17654a71f796 -->
@@ -1901,7 +1985,7 @@ Spec-Driven Development has been dropped since kit version **v3.0.0** (plan #825
 **A project that still carries a `spec` block keeps running unchanged.** No tool evaluates the block any more. The installer takes it over during an update and says once that it can be removed; the settings interface reports it as an unknown field and allows saving. Block, directory `specs/` and a leftover `.claude/vorhaben-wartend-*.md` can be deleted. `[ID]` prefixes in test names do no harm and may stay.
 
 ## Team config and personal deviations
-<!-- de: fcc1f83b14ca -->
+<!-- de: bea5460f06a3 -->
 
 The same question as above, one level deeper: What belongs in the repository, and what may everyone have differently for themselves?
 
@@ -1920,13 +2004,14 @@ From the local file only these fields win:
 |---|---|
 | `reviewModel` | the choice of model for the review is a matter of taste and budget |
 | `reviewCommand` | the alternative to `reviewModel`: whoever reviews with a foreign CLI has installed it locally |
+| `reviewLesegrenze` | belongs to `reviewCommand`: the read-only switch of the locally installed CLI |
 | `reviewScope` | some prefer to read the full source text |
 | `triggers` | typing habit for the three stop phrases |
 | `toolbox.tokenFile` | points to a token in one's own file system |
 
 Everything else is ignored and reported on stderr.
 
-**The reviewer pair deviates as a pair.** `reviewModel` and `reviewCommand` are an either-or decision — exactly one of them applies. If the personal file sets one of the two, the other disappears from the result, even if it comes from the shared config. Without this exception to field-by-field merging the normal case — the team runs the Claude default, one person reviews with `codex` — would have a config with both fields and would violate the rule that the schema enforces.
+**The reviewer pair deviates as a pair.** `reviewModel` and `reviewCommand` are an either-or decision — exactly one of them applies. If the personal file sets one of the two, the other disappears from the result, even if it comes from the shared config. Without this exception to field-by-field merging the normal case — the team runs the Claude default, one person reviews with `codex` — would have a config with both fields and would violate the rule that the schema enforces. `reviewLesegrenze` sits on the side of `reviewCommand`: if the personal file sets `reviewModel`, both give way, because a read limit without a command is meaningless. A personal `reviewLesegrenze` on its own does not displace `reviewModel`.
 
 **Why the strictness?** If `buildChecks` could be overridden locally, everyone could configure their gate away, and the separation would be cosmetics instead of a guardrail. The obvious objection — you can still edit the shared file locally — is true, but misses the point: Then it shows up in `git status`. A visible deviation is something different from one that is invisible by design.
 
@@ -2025,12 +2110,22 @@ If number and comments do not matter, it also works without the tool: read `gh i
 | `local` | none | none |
 
 ### Board adapter
-<!-- de: 5c8ef124fe98 -->
+<!-- de: 27679803a2ff -->
 
 All board operations run through `.claude/kit/board.mjs`. The adapter has two main areas:
 
 - **Issue tracker interface:** `issue create`, `issue list`, `issue get`, `issue activity`, `issue move`, `issue comment`, `issue melden`, `issue auftrag`, `issue ursprung`, `issue epics`
-- **Code host interface:** `code repo-name`, `code pr`
+- **Code host interface:** `code repo-name`, `code pr`, `code schutz`
+
+**`code schutz` sets up protection of the main and release branches and reports on it.** Five actions, each with JSON on stdout:
+
+- `node .claude/kit/board.mjs code schutz status` — the state as `{ geschuetzt, fehlt, ungeprueft }`. `fehlt` names every missing part, for example a ruleset that is not set or is suspended. `ungeprueft` is `null` or `{ commit, kommando }`: the state on the main branch that lacks green evidence from the build service, together with the command that catches up on it. Exit 0 even with `geschuetzt: false`, as with `code ci-status`.
+- `code schutz einrichten [--zweig <z>]` — probe on the check branch, then the rulesets; result `scharf`, `anleitung`, `offen` or `nicht moeglich` (see [Installation](#installation)). Without `--zweig`, `pushPruefung.zweig` applies, otherwise `kit-pruefung`.
+- `code schutz aussetzen --in <pfad>` — suspends the ruleset of the main branch, only with a green run of stage `push` in the worktree `<pfad>`; part of the emergency path of [/push-main](#push-main).
+- `code schutz wiederherstellen` — switches the ruleset back on. If it fails, protection stays suspended, and the message names the command to repeat.
+- `code schutz nachpruefen [--zweig <z>]` — has the build service check the current state of the main branch afterwards via the check branch, for example after the emergency path.
+
+`einrichten`, `aussetzen` and `nachpruefen` push or change the code host. With `KIT_AGENT_MODEL` set, i.e. unattended, they therefore abort; `status` stays allowed. The night never pushes, and the lock sits in the tool rather than only in the skill text.
 
 **`issue list` returns work packages, `issue epics` returns initiatives.** The separation is strict: Initiatives never appear in `issue list`, not even without a status filter. They are brackets over several cards, not work — whoever counts them in a list of open issues takes them for work packages with a thin description. `issue epics` returns them with their short code and progress (`#360 [HER] … 8/8`), that is with the information an initiative actually carries.
 

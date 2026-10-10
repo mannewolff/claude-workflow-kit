@@ -530,9 +530,22 @@ test("M6 bietet die Zielmarke night.zielUmsetzungMin mit der Vorgabe aus dem Sch
   assert.match(stueck, /zeilenGruppe\("night\.zielUmsetzungMin"/, "die Zielmarke hat keine eigene Zeile");
 });
 
+// Die Bremse fuer festgefahrene Pakete (Issue #1387) steht wie die Zielmarke neben
+// night.kette und hat darum ihre eigene Zeile.
+test("M6 bietet night.festgefahrenNach mit der Vorgabe aus dem Schema an", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorNachtKette;
+  assert.ok(
+    stueck.includes(`const FESTGEFAHREN_VORGABE = ${JSON.stringify(vorgabeAus("night.festgefahrenNach"))};`),
+    "die Vorgabe der Bremse im Browser-Skript weicht vom Schema ab oder fehlt",
+  );
+  assert.match(stueck, /setzeWert\(teil, "night\.festgefahrenNach"/, "die Bremse landet nicht in der Arbeitskopie");
+  assert.match(stueck, /wertVon\(teil, "night\.festgefahrenNach"\)/, "die Bremse wird nicht aus der Arbeitskopie gelesen");
+  assert.match(stueck, /zeilenGruppe\("night\.festgefahrenNach"/, "die Bremse hat keine eigene Zeile");
+});
+
 test("M6 bearbeitet night.kette samt Zielmarke und Laufstand und braucht keinen Folgepfad; night.modelle bleibt in Dateischreibweise", () => {
   const m6 = TEILE.find((t) => t.kennung === "m6");
-  assert.deepEqual(m6.pfade, ["night.kette", "night.zielUmsetzungMin", "night.stand"]);
+  assert.deepEqual(m6.pfade, ["night.kette", "night.zielUmsetzungMin", "night.festgefahrenNach", "night.stand"]);
   assert.equal(m6.folgen, undefined);
   assert.equal(TEILE.find((t) => t.pfade.includes("night.modelle")).redaktor, "text");
 });

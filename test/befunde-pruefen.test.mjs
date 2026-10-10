@@ -334,6 +334,45 @@ test("[befunde-1182] ein Code-Review ohne Reviewer-Kopf wird nicht beanstandet",
   });
 });
 
+// --- Keine Pruefer (Issue #1382) -----------------------------------------------
+//
+// Kriterium 8 (Issue #1342): Laeuft kein einziger Pruefer, wird `review:fertig` nicht
+// gesetzt. Ein Befunde-Text von /issue-review ohne jeden Reviewer-Kopf meldet darum
+// `keine-pruefer` in `meldungen` — neben den Eintraegen je Fund, Exit 0 wie dort.
+
+test("[befunde-1382] ein Issue-Review ohne Reviewer-Kopf meldet keine-pruefer", () => {
+  const text = ["## Plan-Review, Runde 1", "", VOLLSTAENDIG].join("\n");
+  pruefe(text, (res, json) => {
+    assert.equal(res.status, 0, "kein Gate");
+    assert.deepEqual(json.meldungen.map((m) => m.angabe), ["keine-pruefer"]);
+    assert.match(json.meldungen[0].meldung, /Reviewer-Kopf/);
+  });
+});
+
+test("[befunde-1382] ein Issue-Review ganz ohne Funde und ohne Kopf meldet keine-pruefer", () => {
+  pruefe("## Issue-Review, Runde 3\n\nKeine Funde.\n", (res, json) => {
+    assert.equal(res.status, 0);
+    assert.deepEqual(json.funde, []);
+    assert.deepEqual(json.meldungen.map((m) => m.angabe), ["keine-pruefer"]);
+  });
+});
+
+test("[befunde-1382] mit mindestens einem Reviewer-Kopf fehlt keine-pruefer", () => {
+  const text = ["## Fachplan-Review, Runde 1", "", "### Reviewer 1: form-beobachtbarkeit, fable", "", "Keine Funde."].join("\n");
+  pruefe(text, (res, json) => {
+    assert.deepEqual(json.meldungen, []);
+  });
+});
+
+test("[befunde-1382] ein Code-Review meldet nie keine-pruefer", () => {
+  pruefe(["## Code-Review (Schritt 7)", "", VOLLSTAENDIG].join("\n"), (res, json) => {
+    assert.deepEqual(json.meldungen, []);
+  });
+  pruefe("## Code-Review (Schritt 7)\n\nKeine Funde.\n", (res, json) => {
+    assert.deepEqual(json.meldungen, []);
+  });
+});
+
 test("pruefen ohne --datei gibt JSON aus und endet ungleich 0", () => {
   const res = aufrufen(["pruefen"], { cwd: repoRoot });
 

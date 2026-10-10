@@ -23,7 +23,7 @@ const INSTALLER = join(repoRoot, "install.mjs");
 
 // Der kuerzeste Weg durch die Fragen: projektlokal, GitHub, alle Defaults — dieselbe
 // Antwortfolge wie in ablauf-install-flow.test.mjs.
-const PROJEKT_GITHUB = ["projekt", "github", "github", "", "", "", "", "", ""];
+const PROJEKT_GITHUB = ["projekt", "github", "j", "n", "github", "", "", "", "", "", ""];
 
 function fixture(praefix) {
   const dir = mkdtempSync(join(tmpdir(), praefix));

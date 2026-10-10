@@ -48,7 +48,7 @@ test("[night-36] der Abschnitt Umsetzung nennt alle drei Listen mit Paketnummern
   const text = berichtBauen(einheit, { pakete, stempel: "s" });
   assert.match(
     text,
-    /### Umsetzung\n\n- umgesetzt: #10 P1 \(Aufgabenstufe leicht, Modell fixture-modell\)\.\n- angehalten: #11 P2\.\n- nicht begonnen: #12 P3 \(Abhaengigkeit #9 nicht erfuellt\), #13 P4 \(die Runde endete in backlog statt in In review\)\.\n/,
+    /### Umsetzung\n\n- umgesetzt: #10 P1 \(Aufgabenstufe leicht, Modell fixture-modell\)\.\n- angehalten: #11 P2\.\n- festgefahren: keine\n- nicht begonnen: #12 P3 \(Abhaengigkeit #9 nicht erfuellt\), #13 P4 \(die Runde endete in backlog statt in In review\)\.\n/,
   );
 });
 
@@ -95,7 +95,7 @@ test("[night-41] ein angehaltenes und ein nicht begonnenes Paket erscheinen im h
     },
   };
   const text = berichtBauen(einheit, { pakete, stempel: "s" });
-  assert.match(text, /- angehalten: #11 P2\.\n- nicht begonnen: #12 P3 \(Abhaengigkeit #9 nicht erfuellt\)\.\n/);
+  assert.match(text, /- angehalten: #11 P2\.\n- festgefahren: keine\n- nicht begonnen: #12 P3 \(Abhaengigkeit #9 nicht erfuellt\)\.\n/);
 });
 
 test("[night-41] fehlen die neuen Felder in der Einheit, erscheint das Paket als 'ohne Stufe' und die Funktion wirft nicht", () => {
@@ -115,7 +115,7 @@ test("[night-36] leere Listen im Abschnitt Umsetzung stehen als 'keine', nicht w
     stufen: { umsetzung: { umgesetzt: [], angehalten: [], nichtBegonnen: [], zurueckgestellt: [] } },
   };
   const text = berichtBauen(einheit, { stempel: "s" });
-  assert.match(text, /### Umsetzung\n\n- umgesetzt: keine\n- angehalten: keine\n- nicht begonnen: keine\n/);
+  assert.match(text, /### Umsetzung\n\n- umgesetzt: keine\n- angehalten: keine\n- festgefahren: keine\n- nicht begonnen: keine\n/);
 });
 
 test("[night-36] unter Variante A gibt es keinen Abschnitt Umsetzung", () => {
@@ -295,4 +295,55 @@ test("[night-1289] unter Variante A (Ziel plan oder pakete) gibt es keinen Absch
     const text = berichtBauen({ id: "4", ausgang: "fertig", ziel, stufen: { plan: { id: "5" }, pakete: { ids: ["10"] } } }, { stempel: "s" });
     assert.equal(ursprungAbschnitt(text), null, `Ziel ${ziel} schreibt keinen Abschnitt`);
   }
+});
+
+test("[night-1391] ein festgefahrenes Paket fehlt unter den Ursprungsdokumenten mit seiner Pruefung", () => {
+  const grund = "es fehlen Pakete";
+  const einheit = {
+    id: "4", ausgang: "fertig", variante: "B", stufe: "umsetzung",
+    stufen: { plan: { id: "5" }, umsetzung: {
+      umgesetzt: [], angehalten: [], nichtBegonnen: [], zurueckgestellt: [],
+      festgefahren: [{ id: "10", pruefung: "npm test", fehler: "test/a.test.mjs: erwartet 2", versuche: 3 }],
+      ursprung: {
+        vorher: { 5: "ready", 4: "backlog" },
+        auswertung: {
+          plan: "5", durch: false, grund,
+          fehlend: [{ id: "10", titel: "P1", spalte: "backlog" }],
+          dokumente: [{ id: "5", art: "plan", spalte: "ready", aktion: "bleibt", grund }],
+        },
+      },
+    } },
+  };
+  const text = berichtBauen(einheit, { pakete: [{ id: "10", title: "P1" }], stempel: "s" });
+  assert.match(text, /- festgefahren: #10 P1 \(npm test, 3 Versuche: test\/a\.test\.mjs: erwartet 2\)\.\n- nicht begonnen: keine\n/);
+  assert.match(ursprungAbschnitt(text), / {2}- #10 P1 in Backlog: an einer Pruefung festgefahren und zurück im Backlog \(npm test\)\n/);
+});
+
+// --- Gewackelte Pruefungen im Nachtbericht (Issue #1399, Plan #1395, E11) ---
+
+const wackler = (cmd, karte) => ({ cmd, zeitpunkt: "2026-10-09T01:00:00.000Z", karte });
+const paketEinheit = (id, gewackelt) => ({ id, ausgang: "erfolg", dauerMs: 60000, pruefung: { laufen: [], gewackelt } });
+
+test("[night-1399] unter ### Umsetzung steht jede gewackelte Pruefung mit Zahl der Faelle und Karten", () => {
+  const einheit = {
+    id: "1", ausgang: "fertig", variante: "B",
+    stufen: { umsetzung: { umgesetzt: [{ id: "10" }, { id: "11" }], angehalten: [], nichtBegonnen: [] } },
+  };
+  const einheiten = [
+    paketEinheit("10", [wackler("npm test", "10"), wackler("npm run lint", "10")]),
+    paketEinheit("11", [wackler("npm test", "11")]),
+  ];
+  const text = berichtBauen(einheit, { pakete: [{ id: "10", title: "P1" }, { id: "11", title: "P2" }], einheiten, stempel: "s" });
+  assert.match(text, /- Issue #11: Dauer[^\n]*\n- Gewackelt: npm test — 2 Fälle \(Issue #10, #11\)\n- Gewackelt: npm run lint — 1 Fälle \(Issue #10\)\n/);
+});
+
+test("[night-1399] ohne Wackler steht unter ### Umsetzung keine Gewackelt-Zeile", () => {
+  const einheit = {
+    id: "1", ausgang: "fertig", variante: "B",
+    stufen: { umsetzung: { umgesetzt: [{ id: "10" }], angehalten: [], nichtBegonnen: [] } },
+  };
+  const einheiten = [paketEinheit("10", null), paketEinheit("11", [])];
+  const text = berichtBauen(einheit, { pakete: [{ id: "10", title: "P1" }], einheiten, stempel: "s" });
+  assert.match(text, /Prueflaeufe und Zielmarke:/);
+  assert.doesNotMatch(text, /Gewackelt:/);
 });

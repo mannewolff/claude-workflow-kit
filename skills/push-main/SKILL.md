@@ -26,6 +26,9 @@ Worktree, siehe den Abschnitt „Modus `vorbereiten` (unbeaufsichtigt)". Den Pus
 weiterhin nur die getippte Phrase frei; sie übernimmt morgens den vorbereiteten Stand
 (Schritt 3).
 
+**Der Notfallweg `/push-main notfall`** braucht die getippte Phrase wie jeder Push und läuft
+nur interaktiv, siehe den Abschnitt „Notfallweg (`notfall`)".
+
 ## Ablauf
 
 **Fortschritt melden.** Jeder Schritt beginnt mit einer Zeile `Schritt k von n — <Name> (laeuft)`.
@@ -203,6 +206,10 @@ Schritt 7 fährt dann, was nachts offen blieb (das Feld `offen`): den Vor-Push-S
 Prüfzweig, das Warten auf den Build-Dienst und der Push auf `<mainBranch>` nur bei Grün,
 wie im Abschnitt „Weg über den Build-Dienst" (Plan #1243, E17). Eine offene UI-Prüfung
 wird vor dem Push als Frage an den Menschen gestellt; pusht wird nur nach seinem `ja`.
+Ein offener Punkt `Gewackelt: <cmd> — Entscheidung beim push main` (ein Wackler im Lauf
+der Nacht, Plan #1395, E14) wird wie jeder offene Punkt vor dem Push in Schritt 7 erfragt,
+mit der Frage aus Schritt 5: Der Skill nennt die Prüfung und die Reparaturkandidaten aus
+`wirksamkeit.mjs kandidaten` und fragt „Trotzdem fortfahren? (ja/nein)“; nur `ja` pusht.
 Die Fortschrittszeilen zählen die entfallenen Schritte nicht mit.
 
 **Abhängigkeiten im frischen Worktree.** Er trägt nur, was versioniert ist, plus das
@@ -250,10 +257,15 @@ Worktree**, und dort misst der Lauf sie. Genau diesen Stand misst **ein** Lauf:
 Der Lauf misst mit `--in` im Worktree (Issue #1372):
 
 ```bash
-node .claude/kit/checks.mjs run --in <pfad> --stufe push --since "$(git -C <pfad> merge-base HEAD origin/<mainBranch>)"
+node .claude/kit/checks.mjs run --in <pfad> --stufe push --wiederholen --since "$(git -C <pfad> merge-base HEAD origin/<mainBranch>)"
 ```
 
 `<mainBranch>` ist der Wert aus der Config (Default: `main`).
+
+**`--wiederholen`: eine rote Prüfung einmal auf demselben Stand** (Plan #1395, E2). Ist sie
+bei der Wiederholung grün, gilt sie als bestanden und hat gewackelt; der Berichtsblock
+trägt unter ihrer Zeile `gelaufen:` die Zeile `Gewackelt: <cmd> → erst rot, dann gruen`.
+Bleibt sie rot, ist sie rot wie bisher.
 
 **Dieser Skill fährt die Push-Stufe, und die fährt den vollen Umfang.** Es laufen
 zusätzlich zu den Prüfungen der Paketstufe alle, die ihr Projekt für den Zeitpunkt des
@@ -293,6 +305,32 @@ dann über das letzte Stück statt über den Batch, der gleich hinausgeht.
   (Issue #1156).
 - Ist `buildChecks` leer: Hinweis „Keine buildChecks konfiguriert." und weiter zu
   Schritt 6 (kein Abbruch).
+
+**Nach einem Wackler hält der Skill vor dem Commit an** (Plan #1395, E13). Unmittelbar
+nach dem grünen Lauf, vor Schritt 6, liest er den Block `Fuer den Abschlussbericht:`
+**dieses** Laufs. Auslöser ist allein eine Zeile `Gewackelt:` ohne den Zusatz
+`(früherer Lauf vom …)` — sie steht für das Feld `gewackelt` an einem Eintrag in
+`laufen[]` dieses Laufs. Nie ausgelöst wird der Halt durch `gewackeltKarte` oder eine
+vorige Zusammenfassung. Dann, in dieser Reihenfolge:
+
+1. Die gewackelten Prüfungen mit Namen nennen, die `Gewackelt:`-Zeilen unverändert.
+2. Die Reparaturkandidaten holen und nennen (Plan #1395, E15):
+
+   ```bash
+   node .claude/kit/wirksamkeit.mjs kandidaten
+   ```
+
+   Es liest `.claude/wirksamkeit.json` der Hauptkopie und gibt je Kandidat eine Zeile
+   `Reparaturkandidat: <cmd> — <n> Wackler im Zeitfenster` aus; leere Ausgabe heißt kein
+   Kandidat.
+3. Wörtlich fragen: „Trotzdem fortfahren? (ja/nein)“ Nur `ja` fährt fort mit Schritt 6.
+   Alles andere endet wie ein roter Lauf: kein Commit, kein Push, weiter mit Schritt 8,
+   der Worktree wird abgebaut.
+
+`checks.mjs run` endet in diesem Fall mit Exitcode 0 — die Prüfung ist bestanden, die
+Entscheidung liegt beim Menschen. **Ohne Wackler** ruft der Skill `wirksamkeit.mjs
+kandidaten` ebenfalls, an derselben Stelle: Reparaturkandidaten ohne Wackler werden genannt,
+halten aber nicht an.
 
 Warum überhaupt noch ein Lauf, wenn `/implement-ready` und `/local-check` je Issue schon
 prüften: Der Nachweis gehört zum **Commit**, und die Dateien aus Schritt 4 hat kein
@@ -441,6 +479,11 @@ Der Zeitpunkt ist der Punkt: Er sagt, ob der Nachweis zu diesem Stand gehört od
 einem früheren Lauf stammt. Hat Schritt 6 keinen Commit erzeugt, gehört auch **das** in
 den Bericht — ein Lauf ohne Commit sieht sonst aus wie ein Lauf mit Commit.
 
+**Wackler und Reparaturkandidaten.** Der Bericht nennt jede `Gewackelt:`-Zeile des
+Prüflaufs unverändert samt der Antwort des Menschen auf die Rückfrage und jede Zeile
+`Reparaturkandidat:` aus `wirksamkeit.mjs kandidaten` (Schritt 5). Ohne beides entfällt
+der Absatz.
+
 **In den Bericht gehören außerdem:** der Pfad des Worktrees und sein Abbau, ob das lokale
 `<mainBranch>` nachgezogen wurde oder mit welchem Grund nicht, und dass der
 Haupt-Working-Tree unberührt geblieben ist.
@@ -475,8 +518,11 @@ Commit-Gate verlangt für die Release-Dateien aus Schritt 4 trotzdem einen grün
 sie gesehen hat. Ihn liefert ein Lauf der Paketstufe über genau diese Dateien, im Worktree:
 
 ```bash
-node .claude/kit/checks.mjs run --in <pfad> --since HEAD
+node .claude/kit/checks.mjs run --in <pfad> --since HEAD --wiederholen
 ```
+
+Mit `--wiederholen` wie in Schritt 5 (Plan #1395, E3), und ein Wackler hält vor dem Commit
+an wie dort. Der Job des Build-Dienstes oben bleibt ohne den Schalter (E18).
 
 Rot hält an wie in Schritt 5: kein Commit, kein Push, weiter mit Schritt 8. Hat Schritt 4
 nichts erzeugt, meldet er `leeresPaket`, und Schritt 6 entfällt wie beschrieben.
@@ -502,7 +548,9 @@ nichts erzeugt, meldet er `leeresPaket`, und Schritt 6 entfällt wie beschrieben
    einer **Frist von 60 Minuten**. Unmittelbar nach dem Push meldet er `laeuft`, weil der
    Lauf noch nicht sichtbar ist — das ist kein Fehler. Läuft die Frist ab, ist das ein
    Fehlschlag: kein Push auf `<mainBranch>`, weiter mit Schritt 8. Ein Fehlschlag des
-   Aufrufs selbst (Netz, Anmeldung) zählt genauso.
+   Aufrufs selbst (Netz, Anmeldung) zählt genauso. In beiden Fällen nennt der Skill dem
+   Inhaber den Notfallweg `/push-main notfall` als Möglichkeit, falls der Build-Dienst
+   ausgefallen ist (Abschnitt „Notfallweg“), und startet ihn nicht selbst.
 3. `<mainBranch>` nur bei `gruen` pushen — mit demselben Kommando wie in Schritt 7:
 
    ```bash
@@ -538,6 +586,70 @@ das Löschen, steht es in einer Zeile im Bericht und hält den Abbau nicht auf.
 Build-Dienst: `<hash> — gedeckt von: Build-Dienst, Prüfzweig <zweig> (gruen, <Zeitpunkt>)`.
 Der CI-Hinweis entfällt — die CI hat vor dem Push gegatet.
 
+## Notfallweg (`notfall`)
+
+`/push-main notfall` veröffentlicht, wenn der Build-Dienst ausfällt und der Code-Host den
+Hauptzweig schützt (Plan #1405, A6). Am Schutz vorbei kommt nur der Inhaber des
+Repositories: Aussetzen kann bei GitHub nur, wer Admin-Rechte hat — das setzt der Code-Host
+durch, nicht das Kit. Die Rulesets tragen keine dauerhafte Umgehung; der Schutz fällt nur
+für diesen einen Push weg.
+
+**Nur interaktiv.** Ist `KIT_AGENT_MODEL` gesetzt, hält der Skill vor Schritt 1 an — kein
+Worktree, kein Lauf, kein Push. `code schutz aussetzen` bricht ohne Aufsicht ohnehin ab
+(E8); der Halt im Skill kommt dem zuvor. Auch hier braucht es die getippte Trigger-Phrase
+des Menschen.
+
+**Schritte 1 bis 6 wie auf dem lokalen Weg**, auch wenn `pushPruefung` den Build-Dienst
+nennt: Schritt 5 ist der volle lokale Lauf der Stufe `push` mit `--wiederholen` im
+Worktree, die Ersatzprüfung für den ausgefallenen Build-Dienst. Ein roter Lauf hält an wie
+dort. Ein Wackler hält vor dem Commit an und wird erfragt wie dort.
+
+**Statt Schritt 7**, aus dem Worktree, in dieser Reihenfolge:
+
+1. Der Vor-Push-Schritt aus `RELEASING.md` wie in Schritt 7, aber **kein „Trotzdem pushen?“**: Jedes Ergebnis außer Exit 0 hält ohne Push an,
+   weiter mit Schritt 8. Der Notfallweg läuft nur nach grünem Lauf, ohne Ausnahme.
+2. Den Schutz aussetzen:
+
+   ```bash
+   node .claude/kit/board.mjs code schutz aussetzen --in <pfad>
+   ```
+
+   Das Kommando setzt das Ruleset des Hauptzweigs nur aus, wenn die Prüf-Zusammenfassung
+   des Worktrees einen grünen Lauf der Stufe `push` für genau diesen Stand bezeugt.
+   Verweigert es, endet der Lauf ohne Push mit seiner Meldung, weiter mit Schritt 8.
+3. Pushen — mit demselben Kommando wie in Schritt 7, kein `--force`:
+
+   ```bash
+   git -C <pfad> push origin HEAD:<mainBranch>
+   ```
+
+4. **Sofort** den Schutz wiederherstellen, auch nach abgewiesenem Push — gleich, wie der
+   Push ausging:
+
+   ```bash
+   node .claude/kit/board.mjs code schutz wiederherstellen
+   ```
+
+   Scheitert `wiederherstellen`, ist der Lauf ein Fehlschlag, auch wenn der Push gelang
+   (E10): Der Skill meldet es so und nennt das Kommando zum Wiederholen
+   (`node .claude/kit/board.mjs code schutz wiederherstellen`). Bis es gelingt, steht der
+   Hauptzweig ungeschützt, und `code schutz status` nennt das unter `fehlt`.
+
+Danach Schritt 8 wie oben, auch nach einem Halt.
+
+**Schritt 9 auf diesem Weg** nennt in der Nachweiszeile den lokalen Lauf wie auf dem
+lokalen Weg und dazu, dass der Stand über den Notfallweg kam. In die Abschlussmeldung gehört
+die Ausgabe von:
+
+```bash
+node .claude/kit/board.mjs code schutz status
+```
+
+Nennt sie unter `ungeprueft` den eben gepushten Commit, sagt die Meldung dazu, dass der
+Build-Dienst ihn nachträglich prüfen kann, sobald er wieder läuft, mit dem Kommando
+`node .claude/kit/board.mjs code schutz nachpruefen`. Bis dahin bleibt der Stand als
+Ausnahme sichtbar.
+
 ## Modus `vorbereiten` (unbeaufsichtigt)
 
 `/push-main vorbereiten` startet der Nacht-Runner am Ende eines Laufs, wenn eine Kette das
@@ -564,8 +676,10 @@ Morgens übernimmt `push main` den Stand, wenn er sich nicht geändert hat (Schr
 - **Schritt 4:** Ohne `RELEASING.md` entfällt er wie oben (E15).
 - **Schritt 5:** der volle Prüflauf der Push-Stufe. Auf dem Weg über den Build-Dienst ist
   Schritt 5 der Nachweislauf der Paketstufe aus dem Abschnitt „Weg über den Build-Dienst"
-  (`checks.mjs run --in <pfad> --since HEAD`), danach der Commit (E17). Der volle Lauf im Build-Dienst
-  bleibt offen und läuft morgens in Schritt 7.
+  (`checks.mjs run --in <pfad> --since HEAD --wiederholen`), danach der Commit (E17). Der volle Lauf im Build-Dienst
+  bleibt offen und läuft morgens in Schritt 7. Ein Wackler hält nachts nicht an und wird
+  nicht erfragt: `vorbereitung-festhalten` macht aus ihm selbst einen offenen Punkt
+  `Gewackelt: <cmd> — Entscheidung beim push main` (Plan #1395, E14).
 - **Schritt 6:** der Commit `chore: vX.Y.Z` im Worktree, wie oben.
 
 **Statt Schritt 7** hält die Session das Ergebnis fest, auch nach einem roten Prüflauf:

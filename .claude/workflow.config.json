@@ -129,6 +129,7 @@
       "cmd": "node --test --test-concurrency=2 \"test/board-issue-review-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
+        "befunde",
         "board-adapter",
         "board-dokumente",
         "board-grundlagen",
@@ -180,6 +181,7 @@
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
+        "nacht-bericht",
         "nacht-grundlagen",
         "nacht-kitstand"
       ]
@@ -418,7 +420,7 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/docs-*.test.mjs\" \"test/skills-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/docs-*.test.mjs\" \"test/skills-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\" \"test/rollen-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "aufwand",
@@ -611,7 +613,9 @@
     ],
     "board-adapter": [
       "kit/board/adapter.mjs",
+      "kit/board/schutz.mjs",
       "test/board-adapter-*.test.mjs",
+      "test/board-schutz.test.mjs",
       "test/helpers/adapter-fixture.mjs",
       "test/helpers/board-ci-fixture.mjs",
       "test/helpers/board-github-fixture.mjs",
@@ -757,7 +761,10 @@
       "docs-site/**",
       "docs-site/sprachen.json",
       "tools/sprachfassungen.mjs",
-      "package.json"
+      "package.json",
+      "kit/rollen/**",
+      "agents/**",
+      "test/rollen-*.test.mjs"
     ],
     "konfiguration": [
       ".claude/workflow.config.json"

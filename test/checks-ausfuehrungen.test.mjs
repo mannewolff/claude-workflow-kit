@@ -175,7 +175,8 @@ test("[checks-7] die Zusammenfassung bleibt unveraendert — gruenes, rotes und 
   const FELDER = [
     "abgeschlossen", "abschluss", "ausgelassen", "basis", "bereichWahl", "bereiche", "berichtszeilen",
     "configHash",
-    "dauerGesamtMs", "geaendert", "hashes", "hinweise", "laufen", "leeresPaket", "ohnePruefung", "ohneZuordnung",
+    "dauerGesamtMs", "festgefahren", "geaendert", "hashes", "hinweise", "laufen", "leeresPaket", "ohnePruefung",
+    "ohneZuordnung",
     "stufe", "vollerUmfang", "wartezeitMs", "zeitpunkt",
   ];
   const faelle = [

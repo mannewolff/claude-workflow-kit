@@ -60,6 +60,18 @@ test("vom Reviewer-Paar gilt genau eines (Issue #432)", () => {
   assert.equal(beide.reviewModel, "y", "stehen beide lokal, bleiben beide");
 });
 
+test("reviewLesegrenze ist persoenlich und weicht mit reviewCommand (Issue #1379, Plan #1375 E11)", () => {
+  const team = { reviewCommand: "codex exec", reviewLesegrenze: "--sandbox read-only" };
+  const eigen = laden(configs(team, { reviewLesegrenze: "--sandbox x" }));
+  assert.equal(eigen.config.reviewLesegrenze, "--sandbox x");
+  assert.deepEqual(eigen.hinweise, [], "reviewLesegrenze darf nicht als teamweit gemeldet werden");
+  const claude = laden(configs(team, { reviewModel: "claude-sonnet-5" })).config;
+  assert.equal("reviewCommand" in claude, false);
+  assert.equal("reviewLesegrenze" in claude, false, "die Lesegrenze des Team-Kommandos muss mit weichen");
+  const kommando = laden(configs({ reviewModel: "claude" }, { reviewCommand: "codex exec" })).config;
+  assert.equal("reviewModel" in kommando, false);
+});
+
 test("aus einem Block gilt nur das freigegebene Blatt", () => {
   const { config, hinweise } = laden(configs(
     { toolbox: { baseUrl: "https://team", tokenFile: "team.token" } },

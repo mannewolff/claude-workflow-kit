@@ -94,13 +94,23 @@
  * Buchhaltung ueber einen bereits gefallenen Befund — ihr eigenes Scheitern steht als
  * Grund an der Stelle der Karten und aendert am Ausgang des Laufs nichts.
  *
+ * Faehrt der Lauf mit `--abschluss` oder `--wiederholen`, wird eine rote Pruefung genau
+ * EINMAL auf demselben Stand wiederholt (Issue #1396, Plan #1395, E2–E8): unmittelbar im
+ * selben Ablaufplatz, bevor der Rest der Phase ueber Abbruch oder Weiterlauf entscheidet.
+ * Rot und Gruen ist ein Wackler — der Eintrag bleibt `gruen` und traegt `gewackelt`, die
+ * Ausgabe des ersten Laufs liegt mit dem Zusatz `-erstlauf` in der Ablage. Rot und Rot
+ * bleibt `rot` und traegt `wiederholt: true`. Einen dritten Ergebniswert gibt es nicht:
+ * Gate und Runner lesen allein `ergebnis !== "gruen"`. Die Stufe allein loest nichts aus —
+ * der Job des Build-Dienstes faehrt `--stufe push` ohne den Schalter und wiederholt nicht,
+ * und jeder Lauf waehrend der Umsetzung laeuft wie bisher genau einmal.
+ *
  * Auch hier ist die Richtung einseitig: Wer `--abschluss` VERGISST, prueft mehr. Darum
  * bleibt jeder Commit von Hand und jeder Aufruf aus `/local-check` unveraendert, und
  * darum haengt das Gate des Abschlusses (mindestens ein Paketstufen-Eintrag, der weder
  * `nichtBeimAbschluss` noch `guete` traegt) am Schalter statt an jedem Aufruf.
  *
  * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>] [--stufe <s>] [--bereich <name>] [--abschluss [n]] [--in <pfad>]
- *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>] [--bereich <name>] [--abschluss [n]] [--frisch] [--in <pfad>]
+ *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>] [--bereich <name>] [--abschluss [n]] [--wiederholen] [--frisch] [--in <pfad>]
  *                          node .claude/kit/checks.mjs bereiche
  *
  * `bereiche` (Issue #1004, Plan #1001) rechnet keine Auswahl, sondern den Zuschnitt: je
@@ -126,7 +136,7 @@ import { createHash } from "node:crypto";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "4.1.0";
+const KIT_VERSION = "4.2.0";
 
 // Die Variablen, die der Nacht-Runner seinen Sessions setzt (Issue #1282), aus dem Blatt-Modul
 // neben session.mjs. Fehlt der Nachbar, bleibt die Umgebung, wie sie ist.
@@ -336,10 +346,23 @@ export const NEBEN_MARKE = "neben anderen gemessen";
 // auf eines" — die Regel sagte dann nichts mehr. Hier oben, weil `HELP` sie nennt.
 const HERVORHEBUNG_AB_KOMMANDOS = 3;
 
+// Nach so vielen gleich gescheiterten Laeufen derselben Pruefung gilt eine Sitzung als
+// festgefahren (Issue #1388, Plan #1386, E11) — Rueckfall, wenn `night.festgefahrenNach`
+// fehlt oder kein gueltiger Wert ist. Hier oben, weil `HELP` sie nennt.
+// SYNC: die Vorgabe von night.festgefahrenNach in templates/workflow.config.schema.json.
+const FESTGEFAHREN_VORGABE = 3;
+const FESTGEFAHREN_MINDEST = 2;
+
+/**
+ * Die Marke, mit der ein gebremster Lauf beginnt (Issue #1388, Plan #1386, E6). Als
+ * Konstante, weil zwei Leser sie suchen: der Beobachter in der Sitzung und der Runner.
+ */
+export const FESTGEFAHREN_MARKE = "Pruefung festgefahren:";
+
 const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Pruefungen
 
   node checks.mjs plan [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]] [--in <pfad>]
-  node checks.mjs run  [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]] [--frisch] [--in <pfad>]
+  node checks.mjs run  [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]] [--wiederholen] [--frisch] [--in <pfad>]
   node checks.mjs bereiche
 
 plan  Gibt als JSON aus, welche buildChecks nach dem aktuellen Arbeitspaket
@@ -362,6 +385,21 @@ run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
       Treffer faerbt die Pruefung rot, auch bei Rueckgabewert 0 — kein
       Config-Feld schaltet das ab. Ein falsches Rot ist die sichere Richtung:
       Das Kommando irrt nur in eine Richtung, mehr pruefen.
+      Jedes rote Kommando traegt in laufen[] seinen Fehlerabdruck ('fehler'):
+      die gescheiterten Testnamen (node:test, Jest/Vitest, Maven Surefire),
+      sonst die erste Fehlerzeile, ohne Zeitstempel, Dauern, temporaere Pfade
+      und Zufallswerte. Das Feld 'festgefahren' der Zusammenfassung zaehlt je
+      Kommando die gleich gescheiterten echten Laeufe hintereinander; gruen oder
+      ein anderer Abdruck setzt die Folge zurueck, eine Uebernahme zaehlt nicht.
+      Ab night.festgefahrenNach gleichen Fehlschlaegen (Vorgabe
+      ${FESTGEFAHREN_VORGABE}) gilt die Pruefung als festgefahren. Unbeaufsichtigt
+      (KIT_AGENT_MODEL gesetzt) kuendigt der Lauf das als letzten erlaubten
+      Versuch an, und der naechste Aufruf faehrt nichts mehr, auch mit
+      --frisch: Er gibt '${FESTGEFAHREN_MARKE} <Kommando> — <Fehler>' aus, laesst
+      die vorige Zusammenfassung stehen, ergaenzt allein
+      'festgefahren.ausgeloest' und endet mit Exit 3. Interaktiv bremst nichts;
+      der Lauf gibt nur 'Hinweis: festgefahren an <Kommando> — <n>-mal gleich
+      gescheitert (<Fehler>)' auf stderr aus.
       Die Zusammenfassung BEGLEITET den Lauf: Sie entsteht vor dem ersten
       Kommando und wird vor jedem weiteren und nach jedem gleichzeitig
       gelaufenen ueberschrieben; ein laufendes Kommando steht darin noch auf
@@ -393,6 +431,24 @@ run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
       3 min, ohne Historie 15 min. Die ganze Prozessgruppe bekommt SIGTERM, nach
       5 s SIGKILL; die Pruefung steht rot mit 'haengend: nach <s> s Grenze
       abgebrochen' (Feld 'haengend' in laufen[]).
+      Mit --abschluss oder --wiederholen wird jede rote Pruefung genau einmal
+      auf demselben Stand wiederholt, sofort und vor dem Abbruch der Phase:
+      'Wiederholung: <Kommando> war rot — einmal auf demselben Stand
+      wiederholt'. Rot und gruen endet mit '-> gewackelt (erst rot, dann
+      gruen)': Ergebnis 'gruen', Feld 'gewackelt' ({ erstDauerMs, protokoll }),
+      die Ausgabe des ersten Laufs unter ${PROTOKOLL_ORDNER}/ mit dem Zusatz
+      '-erstlauf' und im Bericht die Zeile 'Gewackelt: <Kommando> → erst rot,
+      dann gruen — Ausgabe des ersten Laufs: <pfad>'. Rot und rot endet mit
+      '-> rot, auch bei der Wiederholung': Ergebnis 'rot', Feld 'wiederholt'.
+      'dauerMs' ist die Summe beider Laeufe; die Bremse zaehlt das Paar als
+      einen Versuch. Hinweis-Pruefungen werden nie wiederholt. Teillauf und
+      voller Lauf wiederholen je hoechstens einmal.
+      Mit --abschluss <n> fuehrt die Zusammenfassung die Wackler der Karte
+      (Feld 'gewackeltKarte': [{ cmd, zeitpunkt, karte }]), fortgeschrieben
+      ueber die Laeufe derselben Karte und bei anderer Karte neu begonnen;
+      ohne Kartennummer fehlt das Feld. Ein Fall aus einem frueheren Lauf steht
+      im Bericht als 'Gewackelt: <Kommando> → erst rot, dann gruen (früherer
+      Lauf vom <zeitpunkt>)'.
       Als rotes Kommando nennt jede Meldung das erste mit Ergebnis 'rot', erst
       ohne ein solches das erste ungruene.
       Am Ende steht der Block 'Fuer den Abschlussbericht:' mit fertigen Zeilen
@@ -423,8 +479,9 @@ run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
       Jede Ausfuehrung haengt eine Zeile an ${AUSFUEHRUNGEN_DATEI}; hinten
       stehen ihr Ausloeser (bereiche | ohne-bereich | ohne-zuordnung |
       veroeffentlichung | anker), die ausloesenden Bereiche und beim vollen
-      Umfang die Dateien ohne Muster, als letztes 'gleichzeitig', wenn die
-      Dauer neben anderen Pruefungen gemessen wurde.
+      Umfang die Dateien ohne Muster, dann 'gleichzeitig', wenn die
+      Dauer neben anderen Pruefungen gemessen wurde, als letztes 'erstlauf'
+      oder 'wiederholung' an den beiden Laeufen einer wiederholten Pruefung.
 bereiche
       Gibt als JSON aus, wie die Bereiche zugeschnitten sind: je Bereich
       seine Muster, in wie vielen der bereichsgebundenen Kommandos der
@@ -468,6 +525,11 @@ bereiche
                   --bereich (zwei Eingrenzungen in einem Lauf). Gesetzt wird
                   der Schalter allein vom Abschluss einer Karte: Wer ihn
                   vergisst, prueft mehr.
+  --wiederholen   Nur fuer 'run': eine rote Pruefung einmal auf demselben Stand
+                  wiederholen, wie es --abschluss ohnehin tut. Fuer den Lauf vor
+                  push main und merge production, zusammen mit --stufe. Bei
+                  'plan' angenommen und ohne Wirkung, mit --abschluss erlaubt
+                  und wirkungslos.
   --frisch        Nur fuer 'run': kein Ergebnis uebernehmen und keinen Teillauf
                   mit den zuletzt roten fahren, sondern alle faelligen
                   Kommandos wirklich fahren — etwa beim Verdacht auf einen
@@ -1275,6 +1337,10 @@ function planen(args) {
   const zuschnitt = zuschnittHinweise(config, (config.buildChecks ?? []).map((c) => normalisiere(c)));
   if (zuschnitt.length > 0) auswahl.zuschnitt = zuschnitt;
   if (auswahl.stufe === "push") auswahl.pushPruefung = pushPruefung(config);
+  // Ob eine rote Pruefung einmal wiederholt wird (Issue #1396, Plan #1395, E2): allein bei
+  // `--abschluss` oder `--wiederholen`, nie wegen der Stufe. Das Feld fehlt sonst, und die
+  // Zusammenfassung bleibt, wie sie war.
+  if (args.abschluss === true || args.wiederholen === true) auswahl.wiederholen = true;
   return auswahl;
 }
 
@@ -1799,6 +1865,201 @@ export function fehlermerkmal(ausgabe) {
   return FEHLERMERKMALE.find((merkmal) => ausgabe.includes(merkmal)) ?? null;
 }
 
+// --- Festgefahrene Pruefung (Issue #1388, Plan #1386) -------------------------
+
+// Die Orte temporaerer Dateien, die laengeren zuerst: `/private/tmp/` enthaelt `/tmp/`. Aus
+// Segmenten gebaut, weil sie hier nur gesucht und nie beschrieben werden — als Literal hielte
+// sie die Lint-Regel fuer oeffentlich beschreibbare Verzeichnisse fuer einen Schreibort.
+const TEMP_ORTE = [["private", "var", "folders"], ["var", "folders"], ["private", "tmp"], ["tmp"]]
+  .map((segmente) => `/${segmente.join("/")}/`);
+
+/** Ersetzt jeden Pfad, der an einem der `orte` beginnt, bis zum naechsten Leerraum, Anfuehrungszeichen oder `)`. */
+function tempPfadeErsetzen(text, orte) {
+  let t = text;
+  for (const ort of orte) {
+    let ab = t.indexOf(ort);
+    while (ab >= 0) {
+      let bis = ab + ort.length;
+      while (bis < t.length && !/[\s'"`)]/.test(t[bis])) bis += 1;
+      t = `${t.slice(0, ab)}<tmp>${t.slice(bis)}`;
+      ab = t.indexOf(ort, ab + 5);
+    }
+  }
+  return t;
+}
+
+/**
+ * Ersetzt, was von Lauf zu Lauf wechselt, ohne etwas ueber den Fehler zu sagen (E4):
+ * Uhrzeiten samt Zeitzone, Daten, temporaere Pfade, UUIDs, Hexfolgen ab 8 Zeichen und
+ * Dauern. Ein ISO-Zeitstempel wird so zu `<datum>T<zeit>`. Die Reihenfolge zaehlt — der
+ * Pfad und die UUID vor der Hexfolge, die sonst Teile von ihnen fraesse.
+ */
+function abdruckNormalisieren(text, tmpdir) {
+  let ort = typeof tmpdir === "string" ? tmpdir : "";
+  while (ort.endsWith("/")) ort = ort.slice(0, -1);
+  const orte = ort === "" ? TEMP_ORTE : [`${ort}/`, ...TEMP_ORTE];
+  return tempPfadeErsetzen(text, orte)
+    .replaceAll(/\d{1,2}:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:?\d\d)?/g, "<zeit>")
+    .replaceAll(/\d{4}-\d\d-\d\d/g, "<datum>")
+    .replaceAll(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "<id>")
+    .replaceAll(/\b[0-9a-f]{8,}\b/gi, "<hex>")
+    .replaceAll(/\b\d+(?:\.\d+)?\s?m?s\b/g, "<dauer>");
+}
+
+/** Der Testname ohne angehaengte Dauer, `(<dauer>)` wie bei node:test und Jest, `<dauer>` wie bei Vitest. */
+function ohneDauer(name) {
+  for (const ende of ["(<dauer>)", "<dauer>"]) {
+    if (name.endsWith(ende)) return name.slice(0, -ende.length).trim();
+  }
+  return name.trim();
+}
+
+/** node:test TAP: `not ok <n> - <name>`; die Direktive hinter ` # ` gehoert nicht zum Namen. */
+function tapName(zeile) {
+  if (!zeile.startsWith("not ok ")) return undefined;
+  const strich = zeile.indexOf(" - ");
+  if (strich < 0) return undefined;
+  const name = zeile.slice(strich + 3);
+  const direktive = name.indexOf(" # ");
+  return direktive < 0 ? name : name.slice(0, direktive);
+}
+
+/** node:test Spec (`✖`), Jest (`✕`, `●`) und Vitest (`×`), ohne die Kopfzeile der Spec-Zusammenfassung. */
+function markenName(zeile) {
+  if (!["✖ ", "✕ ", "× ", "● "].some((marke) => zeile.startsWith(marke))) return undefined;
+  const name = zeile.slice(2).trim();
+  return name === "failing tests:" ? undefined : name;
+}
+
+/** Maven Surefire: die Zeile mit `<<< FAILURE!` oder `<<< ERROR!`, bei der Klassenzeile die Klasse hinter ` in `. */
+function surefireName(zeile) {
+  const pfeil = zeile.indexOf("<<< ");
+  if (pfeil < 0 || !(zeile.includes("<<< FAILURE!") || zeile.includes("<<< ERROR!"))) return undefined;
+  const nachher = zeile.slice(pfeil);
+  const klasse = nachher.lastIndexOf(" in ");
+  if (klasse >= 0) return nachher.slice(klasse + 4);
+  let name = zeile.slice(0, pfeil);
+  const zeit = name.indexOf("Time elapsed");
+  if (zeit >= 0) name = name.slice(0, zeit);
+  if (name.startsWith("[ERROR]")) name = name.slice("[ERROR]".length);
+  name = name.trim();
+  return name.endsWith("--") ? name.slice(0, -2) : name;
+}
+
+/** Die gescheiterten Testnamen der normalisierten Zeilen, je Name einmal. */
+function testnamen(zeilen) {
+  const namen = new Set();
+  for (const zeile of zeilen) {
+    const z = zeile.trimStart();
+    const name = tapName(z) ?? markenName(z) ?? surefireName(z);
+    const rein = name === undefined ? "" : ohneDauer(name);
+    if (rein !== "") namen.add(rein);
+  }
+  return namen;
+}
+
+const FEHLERKENNUNG = /error|fehler|failed/i;
+
+/**
+ * Der Fehlerabdruck einer roten Ausgabe (Issue #1388, Plan #1386, E4): woran zwei
+ * Fehlschlaege als "auf dieselbe Weise" erkennbar sind. Die sortierte Menge der
+ * gescheiterten Testnamen, mit ` | ` verbunden; ohne erkannte Testnamen die erste Zeile mit
+ * Fehlerkennung (`error`, `fehler`, `failed` oder ein Treffer aus `FEHLERMERKMALE`), sonst
+ * die erste nicht leere. Alles zuvor normalisiert, damit Dauer und Zufall nicht zaehlen.
+ */
+export function fehlschlagAbdruck(ausgabe, { tmpdir = umgebungsVariablen().TMPDIR } = {}) {
+  const zeilen = abdruckNormalisieren(String(ausgabe ?? ""), tmpdir)
+    .split("\n")
+    .map((z) => (z.endsWith("\r") ? z.slice(0, -1) : z));
+  const namen = testnamen(zeilen);
+  if (namen.size > 0) return [...namen].sort(vergleicheText).join(" | ");
+  const fehlerzeile = zeilen.find((z) => FEHLERKENNUNG.test(z) || FEHLERMERKMALE.some((m) => z.includes(m)));
+  return (fehlerzeile ?? zeilen.find((z) => z.trim() !== "") ?? "").trim();
+}
+
+/**
+ * Die Folgen gleicher Fehlschlaege nach einem Lauf (Issue #1388, Plan #1386, E3): je `cmd`
+ * der Abdruck und wie oft er hintereinander kam. Ein rotes Kommando mit demselben Abdruck
+ * zaehlt weiter, mit einem anderen beginnt es bei 1; ein gruenes verliert seine Folge; ein
+ * nicht gefahrenes (`nicht gestartet`) bleibt, wie es war. `vorige` ist das Feld
+ * `festgefahren` der vorigen Zusammenfassung; eine dort ausgeloeste Bremse traegt der neue
+ * Stand nicht weiter.
+ */
+export function festgefahrenNach(vorige, laufen) {
+  const folgen = gueltigeFolgen(vorige?.folgen);
+  for (const e of laufen ?? []) {
+    if (e?.ergebnis === "gruen") {
+      delete folgen[e.cmd];
+    } else if (e?.ergebnis === "rot") {
+      const fehler = typeof e.fehler === "string" ? e.fehler : "";
+      const bisher = folgen[e.cmd];
+      folgen[e.cmd] = { fehler, versuche: bisher?.fehler === fehler ? bisher.versuche + 1 : 1 };
+    }
+  }
+  return { folgen };
+}
+
+/** Die lesbaren Folgen einer vorigen Zusammenfassung, als Kopie; alles andere faellt weg. */
+function gueltigeFolgen(alt) {
+  const folgen = {};
+  if (alt === null || typeof alt !== "object") return folgen;
+  for (const [cmd, f] of Object.entries(alt)) {
+    if (typeof f?.fehler === "string" && Number.isInteger(f.versuche)) folgen[cmd] = { ...f };
+  }
+  return folgen;
+}
+
+/** Die Grenze aus `night.festgefahrenNach`, sonst die Vorgabe (E11). */
+function festgefahrenGrenze() {
+  const wert = ladeConfig().night?.festgefahrenNach;
+  return Number.isInteger(wert) && wert >= FESTGEFAHREN_MINDEST ? wert : FESTGEFAHREN_VORGABE;
+}
+
+/** Unbeaufsichtigt heisst im ganzen Kit: `KIT_AGENT_MODEL` ist gesetzt (E5, wie `kit/board/hook.mjs`). */
+function unbeaufsichtigt() {
+  const modell = umgebungsVariablen().KIT_AGENT_MODEL;
+  return typeof modell === "string" && modell.trim() !== "";
+}
+
+/**
+ * Die Bremse (E6): Hat ein ausgewaehltes Kommando die Grenze erreicht, faehrt
+ * unbeaufsichtigt nichts. Die vorige Zusammenfassung bleibt, wie sie ist — das Commit-Gate
+ * sieht weiter den roten Stand —, und bekommt allein `festgefahren.ausgeloest`. Rueckgabe:
+ * der Exitcode 3 oder `null`, wenn nicht gebremst wird.
+ */
+function bremsen(auswahl, vorige) {
+  if (!unbeaufsichtigt()) return null;
+  const folgen = vorige?.festgefahren?.folgen;
+  if (folgen === null || typeof folgen !== "object") return null;
+  const grenze = festgefahrenGrenze();
+  const fest = auswahl.laufen.find((e) => Object.hasOwn(folgen, e.cmd) && folgen[e.cmd]?.versuche >= grenze);
+  if (!fest) return null;
+  const { fehler, versuche } = folgen[fest.cmd];
+  const ausgeloest = { pruefung: fest.cmd, fehler, versuche, zeitpunkt: new Date().toISOString() };
+  const pfad = schreibeZusammenfassung({ ...vorige, festgefahren: { ...vorige.festgefahren, ausgeloest } });
+  aufStdout(`${FESTGEFAHREN_MARKE} ${fest.cmd} — ${fehler}\n`);
+  aufStdout(`${versuche}-mal gleich gescheitert; es laeuft keine Pruefung mehr (Exit 3).\n`);
+  aufStdout(`\nZusammenfassung: ${pfad}\n`);
+  return 3;
+}
+
+/**
+ * Die Zeilen ueber die festgefahrenen Kommandos dieses Laufs (E6, E12): unbeaufsichtigt die
+ * Ankuendigung des letzten erlaubten Versuchs, interaktiv den Hinweis — beides auf stderr,
+ * als Zeile des Werkzeugs und nicht als Eintrag in `hinweise`.
+ */
+function festgefahrenMelden(laufen, festgefahren) {
+  const grenze = festgefahrenGrenze();
+  const ohneAufsicht = unbeaufsichtigt();
+  for (const e of laufen) {
+    const f = festgefahren.folgen[e.cmd];
+    if (e.ergebnis !== "rot" || !f || f.versuche < grenze) continue;
+    aufStderr(ohneAufsicht
+      ? `Letzter erlaubter Versuch: ${e.cmd} ist ${f.versuche}-mal gleich gescheitert (${f.fehler}) — der naechste Aufruf faehrt nichts und endet mit Exit 3.\n`
+      : `Hinweis: festgefahren an ${e.cmd} — ${f.versuche}-mal gleich gescheitert (${f.fehler})\n`);
+  }
+}
+
 /**
  * Blob-Hash je Pfad — der Nachweis, gegen den das Commit-Gate den Index prueft.
  *
@@ -2054,19 +2315,22 @@ function ausloeserBestimmen(auswahl, check) {
  * Weg und aus demselben Grund: `ausloeser`, `bereiche` und `dateien` — siehe
  * `ausloeserBestimmen`. Seit Issue #1071 (Plan #1066) folgt als elfte die Spalte
  * `gleichzeitig`: der Text `gleichzeitig`, wenn die Dauer neben anderen Pruefungen gemessen
- * wurde, sonst leer. Eine Zeile hat damit elf Spalten, eine aeltere vier, sieben oder zehn.
+ * wurde, sonst leer. Seit Issue #1396 (Plan #1395, E8) folgt als zwoelfte die Spalte
+ * `wiederholung`: `erstlauf` an der Zeile des roten ersten Laufs einer wiederholten Pruefung,
+ * `wiederholung` an der Zeile ihrer Wiederholung, sonst leer. Eine Zeile hat damit zwoelf
+ * Spalten, eine aeltere vier, sieben, zehn oder elf.
  *
  * Scheitert das Schreiben, bleibt es bei einem Hinweis auf stderr: Das Protokoll ist
  * Buchhaltung, keine Bedingung — dieselbe Haltung wie bei der Wegmarke in board.mjs.
  * Ausgang und Ausgabe von `run` bleiben davon unberuehrt; anders als die Zusammenfassung,
  * deren Ausfall `fail` ausloest, weil der Nacht-Runner aus ihr seine Entscheidung liest.
  */
-function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, herkunft, ausloeser, { gleichzeitig = false, jetzt = new Date() } = {}) {
+function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, herkunft, ausloeser, { gleichzeitig = false, wiederholung = "", jetzt = new Date() } = {}) {
   const pfad = join(wurzel(), ...AUSFUEHRUNGEN_DATEI.split("/"));
   const { anlass, lauf, karte } = herkunft;
   const hinten = [
     ausloeser.art, listeMaskieren(ausloeser.bereiche), listeMaskieren(ausloeser.dateien),
-    gleichzeitig ? "gleichzeitig" : "",
+    gleichzeitig ? "gleichzeitig" : "", wiederholung,
   ].join("\t");
   try {
     mkdirSync(dirname(pfad), { recursive: true });
@@ -2210,22 +2474,45 @@ export function haengendText(grenzeMs) {
  * Kommando traegt `(neben anderen gemessen)` hinter der Dauer (Issue #1071): Seine Dauer
  * ist nicht die, die es allein braeuchte.
  */
-function berichtszeilen(auswahl, laufen, { uebernommen = false, grenzeMs = PRUEFDAUER_OBERGRENZE_MS } = {}) {
+function berichtszeilen(auswahl, laufen, { uebernommen = false, grenzeMs = PRUEFDAUER_OBERGRENZE_MS, frueher = [] } = {}) {
   const zeilen = auswahlZeilen(auswahl);
   const vermerk = uebernommen ? ` (${UEBERNAHME_MARKE})` : "";
   for (const e of laufen) {
-    const dauerMs = typeof e.dauerMs === "number" ? e.dauerMs : null;
-    const neben = e.gleichzeitig ? ` (${NEBEN_MARKE})` : "";
-    const haengt = e.haengend ? " — " + haengendText(e.haengend.grenzeMs) : "";
-    // Am Ende der Zeile, weil das Ende einer gekappten Ausgabe stehen bleibt (Issue #1196).
-    const ablage = e.protokoll ? ` — Ausgabe: ${e.protokoll}` : "";
-    zeilen.push(
-      `gelaufen: ${e.cmd} → ${e.ergebnis}, ${dauerText(dauerMs)}${neben}${vermerk} — ${e.grund}${obergrenzeZusatz(dauerMs, grenzeMs)}${haengt}${ablage}`,
-    );
-    // Die Funde einer Hinweis-Pruefung direkt unter ihrer Zeile (Issue #1155, E11).
-    for (const hinweis of e.hinweise ?? []) zeilen.push(`hinweis: ${hinweis}`);
+    zeilen.push(...gelaufenZeilen(e, vermerk, grenzeMs));
+    // Die Wackler derselben Karte aus frueheren Laeufen unter der Zeile ihrer Pruefung
+    // (Issue #1397, E12).
+    for (const w of frueher.filter((x) => x.cmd === e.cmd)) zeilen.push(frueherGewackeltZeile(w));
   }
+  // Eine Pruefung, die in diesem Lauf nicht ausgewaehlt ist, verliert ihren Fall nicht.
+  for (const w of frueher.filter((x) => !laufen.some((e) => e.cmd === x.cmd))) zeilen.push(frueherGewackeltZeile(w));
   for (const e of auswahl.ausgelassen) zeilen.push(`ausgelassen: ${e.cmd} → ${e.grund}`);
+  return zeilen;
+}
+
+function frueherGewackeltZeile(w) {
+  return `Gewackelt: ${w.cmd} → erst rot, dann gruen (früherer Lauf vom ${w.zeitpunkt})`;
+}
+
+/** Die Zeilen eines gelaufenen Kommandos: `gelaufen:`, darunter `Gewackelt:` und seine Hinweise. */
+function gelaufenZeilen(e, vermerk, grenzeMs) {
+  const dauerMs = typeof e.dauerMs === "number" ? e.dauerMs : null;
+  const neben = e.gleichzeitig ? ` (${NEBEN_MARKE})` : "";
+  const haengt = e.haengend ? " — " + haengendText(e.haengend.grenzeMs) : "";
+  // Am Ende der Zeile, weil das Ende einer gekappten Ausgabe stehen bleibt (Issue #1196).
+  const ablage = e.protokoll ? ` — Ausgabe: ${e.protokoll}` : "";
+  // Rot auch bei der Wiederholung (Issue #1396, E12): Der Leser sieht, dass nicht ein
+  // einzelner Ausreisser den Lauf rot gemacht hat.
+  const ergebnis = e.wiederholt === true ? "rot, auch bei der Wiederholung" : e.ergebnis;
+  const zeilen = [
+    `gelaufen: ${e.cmd} → ${ergebnis}, ${dauerText(dauerMs)}${neben}${vermerk} — ${e.grund}${obergrenzeZusatz(dauerMs, grenzeMs)}${haengt}${ablage}`,
+  ];
+  // Der Wackler direkt unter seiner Zeile (Issue #1396, E12, E17).
+  if (e.gewackelt) {
+    const erstlauf = e.gewackelt.protokoll ? ` — Ausgabe des ersten Laufs: ${e.gewackelt.protokoll}` : "";
+    zeilen.push(`Gewackelt: ${e.cmd} → erst rot, dann gruen${erstlauf}`);
+  }
+  // Die Funde einer Hinweis-Pruefung direkt unter ihrer Zeile (Issue #1155, E11).
+  for (const hinweis of e.hinweise ?? []) zeilen.push(`hinweis: ${hinweis}`);
   return zeilen;
 }
 
@@ -2266,10 +2553,11 @@ function protokolleLeeren() {
  * Legt die Ausgabe eines nicht gruenen Kommandos ab und gibt den Pfad relativ zum Projekt
  * zurueck, oder `null`, wenn das Schreiben scheitert — dann mit einem Hinweis auf stderr,
  * wie beim Ausfuehrungsprotokoll. `nummer` ist die Stelle in der Auswahl, damit die
- * Dateien in Config-Reihenfolge stehen.
+ * Dateien in Config-Reihenfolge stehen. `zusatz` haengt am Namen — `-erstlauf` fuer den
+ * roten ersten Lauf einer wiederholten Pruefung (Issue #1396, E17).
  */
-function protokollAblegen(nummer, cmd, ausgabe) {
-  const relativ = `${PROTOKOLL_ORDNER}/${String(nummer).padStart(2, "0")}-${kurzname(cmd)}.log`;
+function protokollAblegen(nummer, cmd, ausgabe, zusatz = "") {
+  const relativ = `${PROTOKOLL_ORDNER}/${String(nummer).padStart(2, "0")}-${kurzname(cmd)}${zusatz}.log`;
   const pfad = join(wurzel(), ...relativ.split("/"));
   try {
     mkdirSync(dirname(pfad), { recursive: true });
@@ -2314,6 +2602,31 @@ function wartezeitKarteNach(vorige, karte, zuschlagMs) {
   return weiter
     ? { karte, summeMs: alt.summeMs + zuschlagMs, laeufe: alt.laeufe + 1 }
     : { karte, summeMs: zuschlagMs, laeufe: 1 };
+}
+
+/**
+ * Die Wackler der Karte bis vorher (Issue #1397, Plan #1395, E11) — die Faelle aus der
+ * vorigen Zusammenfassung, die dieselbe Karte tragen, oder `undefined` ohne Kartennummer:
+ * Ein Lauf vor `push main` oder `merge production` erbt nie die Liste einer Karte, und
+ * das Feld fehlt. Nach dem Muster von `wartezeitKarteNach`; bei anderer Karte leer.
+ */
+function gewackeltKarteVorher(vorige, karte) {
+  if (karte === undefined) return undefined;
+  const alt = Array.isArray(vorige?.gewackeltKarte) ? vorige.gewackeltKarte : [];
+  return alt.filter((w) => w?.karte === karte && typeof w.cmd === "string");
+}
+
+/**
+ * Die Wackler der Karte nach diesem Lauf: die von vorher und dahinter je gewackelter
+ * Pruefung dieses Laufs ein Fall `{ cmd, zeitpunkt, karte }`. `undefined` ohne Kartennummer.
+ */
+function gewackeltKarteNach(vorher, karte, laufen, zeitpunkt) {
+  if (vorher === undefined) return undefined;
+  const neu = [];
+  for (const e of laufen) {
+    if (e?.gewackelt && !neu.some((w) => w.cmd === e.cmd)) neu.push({ cmd: e.cmd, zeitpunkt, karte });
+  }
+  return [...vorher, ...neu];
 }
 
 /**
@@ -2378,7 +2691,9 @@ function listenGleich(a, b) {
   return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((wert, i) => wert === b[i]);
 }
 
-function hashesGleich(a, b) {
+// Exportiert fuer das Notfall-Gate in board/schutz.mjs (Plan #1405, E9): Wann ein Stand
+// derselbe ist, legt nur diese Stelle fest.
+export function hashesGleich(a, b) {
   if (a === null || typeof a !== "object" || b === null || typeof b !== "object") return false;
   const alt = Object.keys(a);
   const neu = Object.keys(b);
@@ -2514,9 +2829,15 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
   // Die Zeilen tragen die Dauer des URSPRUNGSLAUFS aus der frueheren Zusammenfassung
   // (Issue #1003, E12): Auch ein uebernommener Lauf gehoert in den Bericht, und ohne
   // Block muesste die Session ihn aus Einzelfeldern nachbauen.
+  // Die Wackler der Karte gehen unveraendert weiter (Issue #1397, E11): Eine Uebernahme
+  // faehrt nichts. Die Faelle des uebernommenen Laufs stehen schon an seinen Eintraegen.
+  const gewackeltKarte = gewackeltKarteVorher(vorige, karte);
   const zeilen = [
     ...(frueher.teillauf === true ? [TEILLAUF_ZEILE] : []),
-    ...berichtszeilen(auswahl, frueher.laufen, { uebernommen: true, grenzeMs: pruefdauerObergrenzeMs() }),
+    ...berichtszeilen(auswahl, frueher.laufen, {
+      uebernommen: true, grenzeMs: pruefdauerObergrenzeMs(),
+      frueher: (gewackeltKarte ?? []).filter((w) => w.zeitpunkt !== original),
+    }),
   ];
   // Ein uebernommener Lauf zaehlt als Lauf ohne Zeit (Issue #1069): Seine Wanduhr steht
   // in `wartezeitMs`, in die Summe der Karte geht sie nicht ein.
@@ -2543,6 +2864,9 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
     berichtszeilen: zeilen,
     wartezeitMs,
     ...(wartezeitKarte ? { wartezeitKarte } : {}),
+    // Eine Uebernahme faehrt nichts und zaehlt darum nicht (Issue #1388, E3): unveraendert weiter.
+    ...(vorige?.festgefahren ? { festgefahren: vorige.festgefahren } : {}),
+    ...(gewackeltKarte ? { gewackeltKarte } : {}),
   });
   const befund = ungruen === null ? "gruen" : `rot: ${ungruen.cmd}`;
   aufStdout(
@@ -2833,6 +3157,10 @@ async function ausfuehren(args) {
   // bisherige Summe der Karte.
   const vorige = vorigeZusammenfassung();
   const auswahl = planen(args);
+  // Nach der Auswahl und vor Uebernahme und `--frisch` (Issue #1388, Plan #1386, E6): Eine
+  // festgefahrene Pruefung bekommt unbeaufsichtigt kein Ergebnis mehr, auch kein uebernommenes.
+  const gebremst = bremsen(auswahl, vorige);
+  if (gebremst !== null) return gebremst;
   // Ohne die Variablen des Nachtlaufs (Issue #1282): Was ein Pruefkommando misst, haengt
   // nicht davon ab, ob es nachts laeuft. settings.json und die Kommandozeile setzen weiter.
   const env = { ...ohneLaufVariablen(umgebungsVariablen()), ...settingsEnv() };
@@ -2955,9 +3283,20 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   if (args.karte !== undefined && vorige?.wartezeitKarte?.karte === args.karte) {
     wartezeit = { wartezeitKarte: vorige.wartezeitKarte };
   }
+  // Die Folgen gleicher Fehlschlaege (Issue #1388, Plan #1386, E2, E3), fortgeschrieben aus
+  // der vorigen Zusammenfassung wie die Wartezeit der Karte. Jede Fassung rechnet sie aus der
+  // Basis und dem Stand neu — ein noch nicht gefahrenes Kommando aendert nichts. Nach einem
+  // Teillauf ruecken dessen Ergebnisse in die Basis, damit der volle Lauf danach auf ihnen
+  // aufsetzt und nicht auf dem Stand vor dem Aufruf.
+  let festgefahrenBasis = vorige?.festgefahren;
+  // Die Wackler der Karte (Issue #1397, Plan #1395, E11): die aus frueheren Laeufen
+  // derselben Karte, dahinter die dieses Aufrufs — die des Teillaufs eingeschlossen, auch
+  // in den Fassungen, bevor der volle Lauf sie an seine Eintraege uebernommen hat.
+  const gewackeltVorher = gewackeltKarteVorher(vorige, args.karte);
+  let wacklerTeillauf = [];
   const zeilenVon = (stand) => [
     ...(stand.teillauf ? [TEILLAUF_ZEILE] : []),
-    ...berichtszeilen(auswahl, stand.laufen, { grenzeMs }),
+    ...berichtszeilen(auswahl, stand.laufen, { grenzeMs, frueher: gewackeltVorher ?? [] }),
   ];
   const schreibeStand = (stand, abgeschlossen) => schreibeZusammenfassung({
     ...auswahl, laufen: stand.laufen, zeitpunkt, hashes, configHash, abgeschlossen,
@@ -2967,6 +3306,10 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
     hinweise: hinweiseVon(stand.laufen),
     berichtszeilen: zeilenVon(stand),
     ...wartezeit,
+    festgefahren: festgefahrenNach(festgefahrenBasis, stand.laufen),
+    ...(gewackeltVorher
+      ? { gewackeltKarte: gewackeltKarteNach(gewackeltVorher, args.karte, [...stand.laufen, ...wacklerTeillauf], zeitpunkt) }
+      : {}),
   });
 
   // Ein Durchgang ueber die ausgewaehlten Kommandos — alle oder, beim Teillauf, nur die
@@ -2983,41 +3326,79 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
     };
     schreibeStand(stand, false);
 
-    // Ein Kommando fahren, bewerten und festhalten — fuer beide Phasen dieselbe Bahn.
-    // `schreibe` nimmt alles auf, was zum Kommando gehoert: in der nachfolgenden Phase
-    // geht es sofort nach stdout, in der gleichzeitigen in den Block des Kommandos.
-    const einKommando = async (eintrag, schreibe, nebenAnderen) => {
+    // Ein Kommando einmal fahren und bewerten. `haengend` und `fehlermerkmal` gelten dem Lauf,
+    // der entscheidet — nach einer Wiederholung ihr, darum vorher geraeumt.
+    const fahren = async (eintrag, schreibe) => {
+      delete eintrag.haengend;
+      delete eintrag.fehlermerkmal;
       const start = process.hrtime.bigint();
       const haengeMs = haengeGrenzeMs(eintrag.cmd, historie, env);
       const { gruen, ausgabe, haengend, code } = await kommandoAusfuehren(eintrag.cmd, env,
         { grenzeMs: haengeMs, fristMs: haengenFristMs(env) });
-      eintrag.dauerMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6);
+      const dauerMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6);
       // Das Feld fehlt ohne Abbruch (Issue #1077) — wie `ueberObergrenzeMs`.
       if (haengend) eintrag.haengend = { grenzeMs: haengeMs };
-      // Nur vermerkt, nie rot (Issue #1003, E4): Das Feld fehlt unter der Grenze ganz.
-      if (eintrag.dauerMs > grenzeMs) eintrag.ueberObergrenzeMs = eintrag.dauerMs - grenzeMs;
-      // Das Feld fehlt, wenn das Kommando allein lief (Issue #1071) — wie `ueberObergrenzeMs`.
-      if (nebenAnderen) eintrag.gleichzeitig = true;
       schreibe(ausgabe);
-      if (haengend) schreibe(`${haengendText(haengeMs)}\n`);
+      const haengeText = haengend ? `${haengendText(haengeMs)}\n` : "";
+      if (haengend) schreibe(haengeText);
       const bewertung = bewerten(eintrag, gruen, ausgabe, schreibe, code);
       stand.guete = bewertung.guete ?? stand.guete;
-      eintrag.ergebnis = bewertung.bestanden ? "gruen" : "rot";
-      schreibe(`-> ${eintrag.ergebnis}\n`);
-      if (!bewertung.bestanden) {
-        const haengeText = haengend ? `${haengendText(haengeMs)}\n` : "";
-        const ablage = protokollAblegen(stand.laufen.indexOf(eintrag) + 1, eintrag.cmd, ausgabe + haengeText);
-        if (ablage) {
-          eintrag.protokoll = ablage;
-          schreibe(`Ausgabe abgelegt: ${ablage}\n`);
-        }
+      return { bestanden: bewertung.bestanden, dauerMs, ausgabe, abgelegt: ausgabe + haengeText };
+    };
+
+    // Ablage und Fehlerabdruck eines roten Ergebnisses.
+    const rotFesthalten = (eintrag, nummer, lauf, schreibe) => {
+      const ablage = protokollAblegen(nummer, eintrag.cmd, lauf.abgelegt);
+      if (ablage) {
+        eintrag.protokoll = ablage;
+        schreibe(`Ausgabe abgelegt: ${ablage}\n`);
       }
-      // Je beendetem Kommando und nicht am Ende (Issue #785): So traegt auch das rote
-      // Kommando seine Zeile, das den Rest abbricht — es ist die Ausfuehrung, um die es der
-      // Auswertung zu allererst geht.
-      ausfuehrungSchreiben(eintrag.cmd, eintrag.ergebnis, eintrag.dauerMs, herkunft, ausloeserVon(eintrag.cmd),
-        { gleichzeitig: nebenAnderen });
-      if (!bewertung.bestanden) stand.rot = true;
+      // Der Fehlerabdruck (Issue #1388, E4): woran der naechste Lauf erkennt, ob dieselbe
+      // Pruefung auf dieselbe Weise scheitert — nach einer Wiederholung der ihre (E7).
+      eintrag.fehler = fehlschlagAbdruck(lauf.ausgabe);
+    };
+
+    // Ein Kommando fahren, bewerten und festhalten — fuer beide Phasen dieselbe Bahn.
+    // `schreibe` nimmt alles auf, was zum Kommando gehoert: in der nachfolgenden Phase
+    // geht es sofort nach stdout, in der gleichzeitigen in den Block des Kommandos.
+    //
+    // Ist der erste Lauf rot und `auswahl.wiederholen` gesetzt, faehrt es im selben
+    // Ablaufplatz genau einmal erneut (Issue #1396, Plan #1395, E4, E6) — vor jeder
+    // Entscheidung ueber Abbruch oder Weiterlauf, damit ein Wackler den Rest der Phase nicht
+    // anhaelt. Der Eintrag behaelt ein einziges `ergebnis`, das der Wiederholung (E5).
+    const einKommando = async (eintrag, schreibe, nebenAnderen) => {
+      const nummer = stand.laufen.indexOf(eintrag) + 1;
+      // Das Feld fehlt, wenn das Kommando allein lief (Issue #1071) — wie `ueberObergrenzeMs`.
+      if (nebenAnderen) eintrag.gleichzeitig = true;
+      // Je beendetem Lauf und nicht am Ende (Issue #785): So traegt auch das rote Kommando
+      // seine Zeile, das den Rest abbricht. Beide Laeufe einer Wiederholung bekommen eine
+      // eigene, markiert in Spalte 12 (E8).
+      const zeile = (lauf, wiederholung) => ausfuehrungSchreiben(eintrag.cmd, lauf.bestanden ? "gruen" : "rot",
+        lauf.dauerMs, herkunft, ausloeserVon(eintrag.cmd), { gleichzeitig: nebenAnderen, wiederholung });
+      const erster = await fahren(eintrag, schreibe);
+      let lauf = erster;
+      let erstlauf = null;
+      if (!erster.bestanden && auswahl.wiederholen === true) {
+        // Die rote Ausgabe bleibt liegen (E17): Wer die Pruefung spaeter repariert, braucht sie.
+        erstlauf = protokollAblegen(nummer, eintrag.cmd, erster.abgelegt, "-erstlauf");
+        if (erstlauf) schreibe(`Ausgabe des ersten Laufs abgelegt: ${erstlauf}\n`);
+        zeile(erster, "erstlauf");
+        schreibe(`Wiederholung: ${eintrag.cmd} war rot — einmal auf demselben Stand wiederholt\n`);
+        lauf = await fahren(eintrag, schreibe);
+      }
+      const wiederholt = lauf !== erster;
+      // Beide Laeufe kosten Zeit (E5): die Summe.
+      eintrag.dauerMs = wiederholt ? erster.dauerMs + lauf.dauerMs : lauf.dauerMs;
+      // Nur vermerkt, nie rot (Issue #1003, E4): Das Feld fehlt unter der Grenze ganz.
+      if (eintrag.dauerMs > grenzeMs) eintrag.ueberObergrenzeMs = eintrag.dauerMs - grenzeMs;
+      eintrag.ergebnis = lauf.bestanden ? "gruen" : "rot";
+      schreibe(`-> ${ausgangText(eintrag.ergebnis, wiederholt)}\n`);
+      if (!lauf.bestanden) rotFesthalten(eintrag, nummer, lauf, schreibe);
+      zeile(lauf, wiederholt ? "wiederholung" : "");
+      // Hinten angehaengt (E5): Gate und Runner lesen weiter allein `ergebnis`.
+      if (wiederholt && lauf.bestanden) eintrag.gewackelt = { erstDauerMs: erster.dauerMs, protokoll: erstlauf };
+      if (wiederholt && !lauf.bestanden) eintrag.wiederholt = true;
+      if (!lauf.bestanden) stand.rot = true;
     };
 
     // Zwei Phasen (Issue #1071, Plan #1066, A1, A2, A6): zuerst die mit `gleichzeitig`
@@ -3072,15 +3453,23 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   // `uebernehmen` und reicht die Pfade mit `laufen` weiter.
   protokolleLeeren();
   let stand = null;
+  // Die Wackler des Teillaufs (Issue #1396, E4): Teillauf und voller Lauf sind je ein
+  // Durchgang mit hoechstens einer Wiederholung; was im Teillauf gewackelt hat, geht in den
+  // vollen Lauf ueber wie `festgefahrenBasis` — sonst verschwaende er mit dessen Eintraegen.
   if (rote !== null) {
     aufStdout(`\n${TEILLAUF_ZEILE}: ${rote.join(", ")}\n`);
     stand = await durchgang(new Set(rote));
     if (!stand.rot) {
       aufStdout("\nTeillauf gruen — es folgt der volle Lauf als Nachweis\n");
+      festgefahrenBasis = festgefahrenNach(festgefahrenBasis, stand.laufen);
+      wacklerTeillauf = stand.laufen.filter((e) => e.gewackelt);
       stand = null;
     }
   }
-  stand ??= await durchgang(null);
+  if (stand === null) {
+    stand = await durchgang(null);
+    wacklerUebernehmen(stand.laufen, wacklerTeillauf);
+  }
 
   // Nach dem roten Befund und vor der letzten Fassung (Issue #947): Die Suche erklaert
   // einen Befund, der schon gefallen ist, und aendert am Ausgang des Laufs nichts — auch
@@ -3106,9 +3495,27 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   const wartezeitKarte = wartezeitKarteNach(vorige, args.karte, wartezeitMs);
   wartezeit = { wartezeitMs, ...(wartezeitKarte ? { wartezeitKarte } : {}) };
   const pfad = schreibeStand(stand, true);
+  festgefahrenMelden(stand.laufen, festgefahrenNach(festgefahrenBasis, stand.laufen));
   berichtsblockSchreiben(zeilenVon(stand), wartezeitZeile(wartezeitMs, wartezeitKarte));
   aufStdout(`\nZusammenfassung: ${pfad}\n`);
   return stand.rot ? 1 : 0;
+}
+
+/**
+ * Haengt die Wackler des Teillaufs an die Eintraege des vollen Laufs (Issue #1396, E4) —
+ * an jeden, der nicht selbst gewackelt hat.
+ */
+function wacklerUebernehmen(laufen, wackler) {
+  for (const w of wackler) {
+    const e = laufen.find((x) => x.cmd === w.cmd);
+    if (e && !e.gewackelt) e.gewackelt = w.gewackelt;
+  }
+}
+
+/** Was hinter `-> ` steht (Issue #1396, E12): nach einer Wiederholung mit beiden Ergebnissen. */
+function ausgangText(ergebnis, wiederholt) {
+  if (!wiederholt) return ergebnis;
+  return ergebnis === "gruen" ? "gewackelt (erst rot, dann gruen)" : "rot, auch bei der Wiederholung";
 }
 
 // --- CLI -------------------------------------------------------------------
@@ -3152,6 +3559,13 @@ function pruefeKombinationen(args) {
   }
 }
 
+/**
+ * Die Schalter ohne Wert, die nur bei `run` wirken: `--frisch` und `--wiederholen` (Issue
+ * #1396, E3). Bei `plan` angenommen und ohne Wirkung — kein Fehler dort, weil beide nur in
+ * die sichere Richtung zeigen: mehr pruefen.
+ */
+const NUR_RUN_SCHALTER = { "--frisch": "frisch", "--wiederholen": "wiederholen" };
+
 function parseArgs(rest) {
   const args = {};
   let i = 0;
@@ -3188,10 +3602,8 @@ function parseArgs(rest) {
         args.karte = karte;
         i += 1;
       }
-    } else if (rest[i] === "--frisch") {
-      // Wirkt nur bei `run`; bei `plan` laeuft ohnehin nichts. Kein Fehler dort,
-      // weil der Schalter nur in die sichere Richtung zeigt — mehr pruefen.
-      args.frisch = true;
+    } else if (Object.hasOwn(NUR_RUN_SCHALTER, rest[i])) {
+      args[NUR_RUN_SCHALTER[rest[i]]] = true;
     } else if (rest[i] === "--in") {
       // Das Arbeitsverzeichnis des Laufs (Issue #1372). Ein fehlender oder ungueltiger
       // Wert bricht ab: Der Lauf maesse sonst still den falschen Baum.
@@ -3234,7 +3646,9 @@ function main(argv = process.argv.slice(2)) {
 
   const [command, ...rest] = argv;
   if (command === "plan") {
-    aufStdout(JSON.stringify(planen(arbeitsverzeichnisSetzen(parseArgs(rest))), null, 2) + "\n");
+    // `--wiederholen` wirkt nur bei `run` (Issue #1396, E3): Die Auswahl von `plan` bleibt dieselbe.
+    const { wiederholen, ...args } = parseArgs(rest);
+    aufStdout(JSON.stringify(planen(arbeitsverzeichnisSetzen(args)), null, 2) + "\n");
     return 0;
   }
   if (command === "run") return ausfuehren(arbeitsverzeichnisSetzen(parseArgs(rest)));

@@ -192,7 +192,7 @@ function fakeBinary(dir, name, rumpf) {
 
 function mitReviewer(command, rumpf, fn, name = "fake") {
   const dir = setupProjekt(
-    { ...LOKAL, issueReview: { rounds: 1, reviewers: [{ name, kind: "command", command }] } },
+    { ...LOKAL, issueReview: { rounds: 1, reviewers: [{ name, kind: "command", command, lesegrenze: "--nur-lesen" }] } },
     "board-rest-probe-",
   );
   try {

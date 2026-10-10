@@ -378,6 +378,10 @@ export function zielUmsetzungMin(wert) {
  * ihr Teil — dieselbe Haltung wie beim fehlenden Zaehler, und die Zeile bleibt kurz.
  */
 function prueflaufPaketZeile(einheit) {
+  return [prueflaufZahlenZeile(einheit), ...festgefahrenZeile(einheit)];
+}
+
+function prueflaufZahlenZeile(einheit) {
   const kopf = `- Issue #${einheit.id}: Dauer ${minutenText(einheit.dauerMs)} min`;
   const arbeit = einheit.prueflaeufe?.arbeit;
   // "nicht gemessen" und keine Null (E9): Eine 0 hiesse, die Session habe nichts geprueft —
@@ -391,6 +395,42 @@ function prueflaufPaketZeile(einheit) {
   const summeText = summe === null ? "" : `, Abschluss-Wartezeit zusammen ${minutenText(summe)} min`;
   return `${kopf}, Prueflaeufe ${arbeit.anzahl ?? 0} (volle ${arbeit.volle ?? 0}, `
     + `Gruppenlaeufe ${arbeit.volleNoetig ?? 0})${abschlussText}${letzterText}${summeText}`;
+}
+
+/**
+ * Die Zeile einer Bremsung (Issue #1391, Plan #1386, E13): Pruefung, Laufzeit bis zum
+ * Abbruch, Zeitgrenze der Sitzung und die Differenz als geschaetzte gesparte Zeit — nie
+ * unter 0. Die Schaetzung wird hier gerechnet und nicht in der Einheit gespeichert (E8).
+ * Ohne Bremsung keine Zeile.
+ */
+function festgefahrenZeile(einheit) {
+  const f = einheit.festgefahren;
+  if (einheit.ausgang !== "festgefahren" || !f) return [];
+  const dauer = endlicheZahl(einheit.dauerMs) ?? 0;
+  const grenze = endlicheZahl(f.zeitgrenzeMs) ?? 0;
+  return [`- Issue #${einheit.id}: festgefahren an ${f.pruefung} (${f.versuche ?? 0} Versuche), `
+    + `Laufzeit ${minutenText(dauer)} min, Zeitgrenze ${minutenText(grenze)} min, `
+    + `gesparte Zeit (Schaetzung) ${minutenText(Math.max(0, grenze - dauer))} min`];
+}
+
+/**
+ * Die Wackler der Nacht je Pruefung (Issue #1399, Plan #1395, E11): jeder Eintrag in
+ * `pruefung.gewackelt` ist ein Fall, die Karten stehen in der Reihenfolge der Einheiten.
+ * Ohne Wackler keine Zeile.
+ */
+function gewackeltZeilen(pakete) {
+  const jePruefung = new Map();
+  for (const e of pakete) {
+    for (const w of e.pruefung?.gewackelt ?? []) {
+      if (typeof w?.cmd !== "string") continue;
+      const stand = jePruefung.get(w.cmd) ?? { faelle: 0, karten: [] };
+      stand.faelle += 1;
+      if (!stand.karten.includes(String(e.id))) stand.karten.push(String(e.id));
+      jePruefung.set(w.cmd, stand);
+    }
+  }
+  return [...jePruefung].map(([cmd, { faelle, karten }]) =>
+    `- Gewackelt: ${cmd} — ${faelle} Fälle (Issue #${karten.join(", #")})`);
 }
 
 /**
@@ -416,7 +456,7 @@ export function prueflaufZeilen(einheiten, ziel = undefined) {
   if (pakete.length === 0) return ["Prueflaeufe und Zielmarke: keine Umsetzung gemessen."];
   const zeilen = ["Prueflaeufe und Zielmarke:"];
   for (const e of pakete) {
-    zeilen.push(prueflaufPaketZeile(e));
+    zeilen.push(...prueflaufPaketZeile(e));
     // Jede Datei mit Namen (E8): Eine Zahl sagte nicht, wo das Loch ist. Der Abschluss
     // bleibt davon unberuehrt — die Luecke ist ein Befund, kein rotes Ergebnis.
     const ohne = e.pruefung?.ohneZuordnung ?? [];
@@ -427,6 +467,7 @@ export function prueflaufZeilen(einheiten, ziel = undefined) {
       for (const zeile of h?.zeilen ?? []) zeilen.push(`- Issue #${e.id}: hinweis: ${zeile}`);
     }
   }
+  zeilen.push(...gewackeltZeilen(pakete));
   const erreicht = pakete.filter((e) => (endlicheZahl(e.dauerMs) ?? Infinity) <= marke * 60000).length;
   zeilen.push(`- ${erreicht} von ${pakete.length} Paketen unter ${marke} Minuten.`);
   return zeilen;
@@ -544,11 +585,14 @@ function paketBezeichnung(pakete, id) {
 }
 
 /**
- * Der Abschnitt `### Umsetzung`, ausschliesslich unter Variante B (Issue #697): die drei
- * Listen umgesetzt / angehalten / nicht begonnen, jede mit `keine` statt Weglassen. Die
- * Rueckstellungen (`zurueckgestellt` — gezogen, aber ohne In-review-Ergebnis) zaehlen im
- * Bericht zu "nicht begonnen": Kriterium 4 des Fachplans #681 nennt genau drei Zustaende,
- * und fuer den Menschen zaehlt an dieser Stelle nur, ob ein Paket in Review liegt.
+ * Der Abschnitt `### Umsetzung`, ausschliesslich unter Variante B (Issue #697): die
+ * Listen umgesetzt / angehalten / festgefahren / nicht begonnen, jede mit `keine` statt
+ * Weglassen. Die Rueckstellungen (`zurueckgestellt` — gezogen, aber ohne In-review-Ergebnis)
+ * zaehlen im Bericht zu "nicht begonnen": Kriterium 4 des Fachplans #681 nennt drei
+ * Zustaende, und fuer den Menschen zaehlt an dieser Stelle nur, ob ein Paket in Review
+ * liegt. Ein von der Bremse beendetes Paket steht dagegen in einer eigenen Liste "festgefahren"
+ * mit Pruefung und Fehler (Issue #1391, Plan #1386, E13): Unter "nicht begonnen" verloere der
+ * Mensch, woran es hing.
  */
 function berichtUmsetzungMitGrund(pakete, id, grund) {
   const bezeichnung = paketBezeichnung(pakete, id);
@@ -577,6 +621,11 @@ function berichtUmsetzungStufe(eintrag) {
   return modell ? `${stufeText}, Modell ${modell}${effortText}` : `${stufeText}${effortText}`;
 }
 
+/** `#<id> <Titel> (<Pruefung>, <n> Versuche: <Fehler>)` — ein festgefahrenes Paket im Bericht. */
+function berichtFestgefahrenEintrag(pakete, eintrag) {
+  return `${paketBezeichnung(pakete, eintrag.id)} (${eintrag.pruefung}, ${eintrag.versuche ?? 0} Versuche: ${eintrag.fehler})`;
+}
+
 function berichtUmsetzungEintrag(pakete, eintrag) {
   const id = eintrag && typeof eintrag === "object" ? eintrag.id : eintrag;
   return `${paketBezeichnung(pakete, id)} (${berichtUmsetzungStufe(eintrag)})`;
@@ -588,6 +637,10 @@ function berichtUmsetzung(einheit, pakete, einheiten, ziel) {
   const umgesetzt = stand.umgesetzt ?? [];
   const umgesetztText = umgesetzt.length > 0
     ? `${umgesetzt.map((e) => berichtUmsetzungEintrag(pakete, e)).join(", ")}.`
+    : "keine";
+  const festgefahren = stand.festgefahren ?? [];
+  const festgefahrenText = festgefahren.length > 0
+    ? `${festgefahren.map((e) => berichtFestgefahrenEintrag(pakete, e)).join(", ")}.`
     : "keine";
   const nichtBegonnen = [...(stand.nichtBegonnen ?? []), ...(stand.zurueckgestellt ?? [])];
   const nichtBegonnenText = nichtBegonnen.length > 0
@@ -602,6 +655,7 @@ function berichtUmsetzung(einheit, pakete, einheiten, ziel) {
     ...(stand.ausgelassen ? [`- ausgelassen: ${stand.ausgelassen} — die Pakete bleiben in Backlog.`] : []),
     `- umgesetzt: ${umgesetztText}`,
     `- angehalten: ${liste(stand.angehalten ?? [])}`,
+    `- festgefahren: ${festgefahrenText}`,
     `- nicht begonnen: ${nichtBegonnenText}`,
     // Die Prueflaeufe und die Zielmarke (Issue #926, E6) — derselbe Block, den die
     // Umsetzungsnacht ins Protokoll schreibt. Beide Berichtsorte nennen dieselben Zahlen,
@@ -642,6 +696,8 @@ function fehlendGrund(umsetzung, id) {
   const zurueck = (umsetzung.zurueckgestellt ?? []).find(gleich);
   if (zurueck) return `gescheitert und zurück im Backlog (${zurueck.grund})`;
   if ((umsetzung.angehalten ?? []).some(gleich)) return "an einer Stopp-Frage angehalten";
+  const fest = (umsetzung.festgefahren ?? []).find(gleich);
+  if (fest) return `an einer Pruefung festgefahren und zurück im Backlog (${fest.pruefung})`;
   const offen = (umsetzung.nichtBegonnen ?? []).find(gleich);
   if (offen) return /^wartet auf einen Push/.test(offen.grund ?? "") ? `wartet auf Push (${offen.grund})` : `nicht begonnen (${offen.grund})`;
   return "von der Umsetzung dieser Kette nicht erfasst";

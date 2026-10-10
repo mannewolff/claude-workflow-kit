@@ -25,7 +25,10 @@ import { tmpdir } from "node:os";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-function setupFixture({ skills = { beispiel: "# Beispiel-Skill\n" }, kopien = null } = {}) {
+function setupFixture({
+  skills = { beispiel: "# Beispiel-Skill\n" }, kopien = null,
+  agenten = { "kit-pruefer.md": "# Leser\n" }, agentKopien = null,
+} = {}) {
   const dir = mkdtempSync(join(tmpdir(), "sync-skills-"));
   mkdirSync(join(dir, "tools"), { recursive: true });
   mkdirSync(join(dir, "kit"), { recursive: true });
@@ -63,9 +66,11 @@ function setupFixture({ skills = { beispiel: "# Beispiel-Skill\n" }, kopien = nu
     'const WORKTREE_MJS_B64 = "";',
     'const KIT_NIGHT_B64 = "";',
     'const KIT_BOARD_B64 = "";',
+    'const KIT_ROLLEN_B64 = "";',
     'const GATE_MJS_B64 = "";',
     'const PRE_COMMIT_B64 = "";',
     'const SKILLS_B64 = "";',
+    'const AGENTS_B64 = "";',
     "",
   ].join("\n"));
 
@@ -79,6 +84,13 @@ function setupFixture({ skills = { beispiel: "# Beispiel-Skill\n" }, kopien = nu
       mkdirSync(join(dir, ".claude", "skills", name), { recursive: true });
       if (inhalt !== null) writeFileSync(join(dir, ".claude", "skills", name, "SKILL.md"), inhalt);
     }
+  }
+  // Der Leser-Agent (Issue #1377): eine flache Quelle agents/, Kopie unter .claude/agents/.
+  mkdirSync(join(dir, "agents"), { recursive: true });
+  for (const [datei, inhalt] of Object.entries(agenten)) writeFileSync(join(dir, "agents", datei), inhalt);
+  if (agentKopien) {
+    mkdirSync(join(dir, ".claude", "agents"), { recursive: true });
+    for (const [datei, inhalt] of Object.entries(agentKopien)) writeFileSync(join(dir, ".claude", "agents", datei), inhalt);
   }
   return dir;
 }
@@ -277,4 +289,70 @@ test("[kitstand-5] ohne Markierung bleibt alles beim Alten, auch mit KIT_STAND i
     assert.doesNotMatch(res.stdout, /Kopie gehört dem Lauf/);
     assert.equal(readFileSync(join(dir, ".claude", "skills", "beispiel", "SKILL.md"), "utf-8"), "# Beispiel-Skill\n");
   }, { kopien: { beispiel: "alt\n" } });
+});
+
+// --- Rollen und Leser-Agent (Issue #1377, Plan #1375) ---
+//
+// Die Rollen reisen als Teil wie kit/night/ und kit/board/: Blob KIT_ROLLEN_B64 und Kopie
+// nach .claude/kit/rollen/. Der Leser-Agent ist eine eigene, flache Quelle agents/: Blob
+// AGENTS_B64 und Kopie nach .claude/agents/, bewacht wie die Kopie der Skills.
+
+/** Liest den Blob `name` aus der install.mjs des Fixtures als JSON. */
+function blobLesen(dir, name) {
+  const m = readFileSync(join(dir, "install.mjs"), "utf-8").match(new RegExp(`const ${name} = "([A-Za-z0-9+/=]*)";`));
+  assert.ok(m, `${name} fehlt in install.mjs`);
+  return JSON.parse(Buffer.from(m[1], "base64").toString("utf-8"));
+}
+
+test("der Teil rollen und der Blob AGENTS_B64 werden erzeugt", () => {
+  mitFixture((dir) => {
+    mkdirSync(join(dir, "kit", "rollen"), { recursive: true });
+    writeFileSync(join(dir, "kit", "rollen", "code-review.md"), "# Code-Review\n");
+
+    const res = syncBlobs(dir);
+
+    assert.equal(res.status, 0, res.stderr);
+    assert.deepEqual(blobLesen(dir, "KIT_ROLLEN_B64"), { "code-review.md": "# Code-Review\n" });
+    assert.deepEqual(blobLesen(dir, "AGENTS_B64"), { "kit-pruefer.md": "# Leser\n" });
+    assert.equal(readFileSync(join(dir, ".claude", "kit", "rollen", "code-review.md"), "utf-8"), "# Code-Review\n",
+      "die Rollen gehoeren in die Kopie unter .claude/kit/rollen/");
+    assert.equal(readFileSync(join(dir, ".claude", "agents", "kit-pruefer.md"), "utf-8"), "# Leser\n",
+      "eine fehlende Agenten-Kopie entsteht wie ein fehlender Skill");
+  }, { kopien: { beispiel: "# Beispiel-Skill\n" } });
+});
+
+test("--check meldet die abweichende Agenten-Kopie, ohne sie zu schreiben", () => {
+  mitFixture((dir) => {
+    const res = syncBlobs(dir, "--check");
+
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /Lokale Kopie veraltet: .*\.claude\/agents\/kit-pruefer\.md/);
+    assert.equal(readFileSync(join(dir, ".claude", "agents", "kit-pruefer.md"), "utf-8"), "alt\n",
+      "--check darf nichts schreiben");
+  }, { kopien: { beispiel: "# Beispiel-Skill\n" }, agentKopien: { "kit-pruefer.md": "alt\n" } });
+});
+
+test("eine gleiche Agenten-Kopie wird nicht gemeldet, ohne installierte Kopie entsteht keine", () => {
+  mitFixture((dir) => {
+    const res = syncBlobs(dir, "--check");
+    assert.doesNotMatch(res.stdout + res.stderr, /\.claude\/agents\//);
+  }, { kopien: { beispiel: "# Beispiel-Skill\n" }, agentKopien: { "kit-pruefer.md": "# Leser\n" } });
+
+  mitFixture((dir) => {
+    const res = syncBlobs(dir);
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(existsSync(join(dir, ".claude", "agents")), false,
+      "ein frischer Clone ohne .claude/skills/ bekommt keine Agenten-Kopie");
+  });
+});
+
+test("[kitstand-5] eine lebende Markierung laesst auch die Agenten-Kopie stehen", () => {
+  mitFixture((dir) => {
+    markieren(dir, process.pid);
+
+    const res = syncBlobs(dir);
+
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(readFileSync(join(dir, ".claude", "agents", "kit-pruefer.md"), "utf-8"), "alt\n");
+  }, { kopien: { beispiel: "alt\n" }, agentKopien: { "kit-pruefer.md": "alt\n" } });
 });

@@ -30,7 +30,7 @@ const QUELLE = join(repoRoot, "kit", "checks.mjs");
 
 // Der kuerzeste Weg durch die Fragen: projektlokal, GitHub, alle Defaults. Die letzte
 // Leerzeile ist die Spec-Frage (leer = Nein, Issue #439).
-const PROJEKT_GITHUB = ["projekt", "github", "github", "", "", "", "", "", ""];
+const PROJEKT_GITHUB = ["projekt", "github", "j", "n", "github", "", "", "", "", "", ""];
 
 function fixture(praefix) {
   const dir = mkdtempSync(join(tmpdir(), praefix));

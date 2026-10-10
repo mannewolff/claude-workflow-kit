@@ -62,7 +62,7 @@ test("auf dem Build-Dienst-Weg fährt der Build-Dienst die Stufe push, der Skill
   const laeufe = BUILDDIENST.split("\n").filter((z) => z.startsWith("node ") && z.includes("checks.mjs run"));
   assert.deepEqual(laeufe, [
     'node .claude/kit/checks.mjs run --stufe push --since "$(git merge-base HEAD origin/<mainBranch>)"',
-    "node .claude/kit/checks.mjs run --in <pfad> --since HEAD",
+    "node .claude/kit/checks.mjs run --in <pfad> --since HEAD --wiederholen",
   ]);
   assert.match(BUILDDIENST, /Commit-Gate/, "der Grund für den Nachweis-Lauf fehlt");
 });
@@ -100,4 +100,83 @@ test("[1372] push-main und merge-production verlangen kein cd in den Worktree", 
     assert.doesNotMatch(text, /Arbeitsverzeichnis bleibt/, `${name}: der Satz zum erhaltenen Arbeitsverzeichnis steht noch`);
     assert.match(text, /checks\.mjs run --in <pfad>/, `${name}: der Prüflauf nennt den Worktree nicht über --in`);
   }
+});
+
+// --- Wackler vor push main (Issue #1401, Plan #1395 E2, E3, E13, E15, E18) ---
+
+const SCHRITT5 = abschnitt(PUSH, "### 5. Der eine Prüflauf");
+const SCHRITT9 = abschnitt(PUSH, "### 9. Bestätigung");
+
+test("[1401] Schritt 5 wiederholt eine rote Prüfung: --wiederholen neben --stufe push", () => {
+  assert.match(SCHRITT5, /^node \.claude\/kit\/checks\.mjs run --in <pfad> --stufe push --wiederholen --since /m,
+    "der Prüflauf in Schritt 5 trägt --wiederholen nicht neben --stufe push");
+});
+
+test("[1401] nach einem Wackler fragt Schritt 5 vor dem Commit und nennt die Reparaturkandidaten", () => {
+  const s = SCHRITT5.replaceAll(/\s+/g, " ");
+  assert.match(s, /Trotzdem fortfahren\? \(ja\/nein\)/, "die Rückfrage fehlt in Schritt 5");
+  assert.match(s, /node \.claude\/kit\/wirksamkeit\.mjs kandidaten/, "Schritt 5 ruft wirksamkeit.mjs kandidaten nicht");
+  assert.match(s, /`Gewackelt:`/, "Schritt 5 nennt die Gewackelt-Zeile nicht als Auslöser");
+  assert.match(s, /gewackeltKarte/, "Schritt 5 grenzt gewackeltKarte nicht aus");
+  assert.match(s, /Nur `ja` fährt fort/, "Schritt 5 sagt nicht, dass nur ja fortfährt");
+  assert.match(s, /Reparaturkandidaten ohne Wackler[^.]*halten aber nicht an/, "Kandidaten ohne Wackler halten an");
+  assert.ok(PUSH.indexOf("Trotzdem fortfahren? (ja/nein)") < PUSH.indexOf("### 6. Der eine Commit"),
+    "die Rückfrage steht nicht vor dem Commit");
+});
+
+test("[1401] der Job des Build-Dienstes bleibt ohne --wiederholen", () => {
+  const job = BUILDDIENST.split("\n").find((z) => z.includes("checks.mjs run --stufe push"));
+  assert.ok(job, "der Job des Build-Dienstes fehlt");
+  assert.doesNotMatch(job, /--wiederholen/, "der Job des Build-Dienstes trägt --wiederholen");
+});
+
+test("[1401] Schritt 9 nennt Gewackelt und Reparaturkandidaten", () => {
+  assert.match(SCHRITT9, /Gewackelt/, "Schritt 9 nennt die Wackler nicht");
+  assert.match(SCHRITT9, /Reparaturkandidat/, "Schritt 9 nennt die Reparaturkandidaten nicht");
+});
+
+// --- Notfallweg bei Ausfall des Build-Dienstes (Issue #1410, Plan #1405 A6, E8, E10) ---
+
+const NOTFALL = abschnitt(PUSH, "## Notfallweg (`notfall`)");
+
+test("[1410] der Notfallweg hat einen eigenen Abschnitt, und die Trigger-Phrase nennt ihn", () => {
+  assert.ok(NOTFALL, "Abschnitt „## Notfallweg (`notfall`)“ fehlt");
+  assert.match(abschnitt(PUSH, "## Trigger-Phrase"), /`\/push-main notfall`/, "die Trigger-Phrase nennt `/push-main notfall` nicht");
+});
+
+test("[1410] der Notfallweg setzt den Schutz vor dem Push aus und stellt ihn danach wieder her", () => {
+  // Der volle Lauf ist Schritt 5 des lokalen Wegs; ein zweites `checks.mjs run` im Text
+  // braeche „ein Lauf“ in test/skills-releaseweg.test.mjs.
+  const voll = NOTFALL.search(/Schritt 5/);
+  assert.match(NOTFALL, /Stufe `push`/, "der Notfallweg nennt die Stufe push nicht");
+  assert.match(NOTFALL, /`--wiederholen`/, "der Notfallweg nennt --wiederholen nicht");
+  const aus = NOTFALL.search(/board\.mjs code schutz aussetzen --in <pfad>/);
+  const push = NOTFALL.search(/git -C <pfad> push origin HEAD:<mainBranch>/);
+  const wieder = NOTFALL.search(/board\.mjs code schutz wiederherstellen/);
+  assert.notEqual(voll, -1, "der volle lokale Lauf (Schritt 5) fehlt");
+  assert.notEqual(aus, -1, "`code schutz aussetzen --in <pfad>` fehlt");
+  assert.notEqual(push, -1, "der Push auf mainBranch fehlt");
+  assert.notEqual(wieder, -1, "`code schutz wiederherstellen` fehlt");
+  assert.ok(voll < aus && aus < push && push < wieder, "die Reihenfolge Lauf → aussetzen → Push → wiederherstellen stimmt nicht");
+  assert.match(NOTFALL, /auch nach[^.]*abgewiesenem Push/, "es steht nicht, dass auch nach abgewiesenem Push wiederhergestellt wird");
+});
+
+test("[1410] der Notfallweg hält bei gesetztem KIT_AGENT_MODEL an und fragt nicht „Trotzdem pushen?“", () => {
+  assert.match(NOTFALL, /KIT_AGENT_MODEL/, "der Halt bei gesetztem KIT_AGENT_MODEL fehlt");
+  assert.match(NOTFALL, /nur interaktiv/i, "es steht nicht, dass der Notfallweg nur interaktiv läuft");
+  assert.match(NOTFALL, /[Kk]ein „Trotzdem pushen\?“/, "der Ausschluss der Rückfrage „Trotzdem pushen?“ fehlt");
+});
+
+test("[1410] der Notfallweg meldet ein gescheitertes Wiederherstellen mit Kommando und nennt den Schutzstand", () => {
+  const s = NOTFALL.replaceAll(/\s+/g, " ");
+  assert.match(s, /scheitert `wiederherstellen`[^.]*Fehlschlag/i, "ein gescheitertes Wiederherstellen ist kein Fehlschlag");
+  assert.match(NOTFALL, /board\.mjs code schutz status/, "`code schutz status` fehlt in der Abschlussmeldung");
+  assert.match(s, /`ungeprueft`[\s\S]{0,300}code schutz nachpruefen/, "der Hinweis auf `code schutz nachpruefen` bei `ungeprueft` fehlt");
+});
+
+test("[1410] der Notfallweg nennt ci-status nicht, der Build-Dienst-Weg nennt den Notfallweg", () => {
+  assert.doesNotMatch(NOTFALL, /ci-status/, "der Notfallweg nennt ci-status");
+  const s = BUILDDIENST.replaceAll(/\s+/g, " ");
+  assert.match(s, /Notfallweg/, "der Build-Dienst-Weg nennt den Notfallweg nicht");
+  assert.match(s, /Notfallweg[^.]*nicht selbst|nicht selbst[^.]*Notfallweg/, "es steht nicht, dass der Skill den Notfallweg nicht selbst startet");
 });

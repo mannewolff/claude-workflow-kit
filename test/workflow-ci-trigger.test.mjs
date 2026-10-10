@@ -1,9 +1,15 @@
-// Tests fuer die Trigger der CI-Workflows (Issue #891, #1274).
+// Tests fuer die Trigger der CI-Workflows (Issue #891, #1274, #1411).
 //
 // Der Guard blob-sync-check lief dreimal auf demselben Inhalt: Push auf main, PR
 // main -> production und Push auf production. Geblieben sind der Push auf main und
 // der PR nach main. Seit #1274 faehrt der Job nur noch auf Ubuntu, ohne Matrix und
 // ohne Vorab-Zweig (Plan #1265, E14).
+//
+// Seit #1411 ist der Job das Gate vor dem Push ueber den Pruefzweig kit-pruefung
+// (Plan #1405, A12): Push auf main und kit-pruefung, Pull Request auf main und
+// production, kein Push auf production. Er faehrt den vollen Lauf der Stufe push
+// gegen den Anker `git merge-base HEAD origin/main` — dafuer braucht der Checkout
+// die volle Historie und vorab `git fetch origin main`.
 //
 // Geprueft wird die Workflow-Datei als Text, nicht ueber einen YAML-Parser: js-yaml
 // liegt nur transitiv unter node_modules und steht in keiner devDependency der
@@ -30,15 +36,27 @@ function onBlock(text) {
   return rest.slice(0, ende === -1 ? rest.length : ende).join("\n");
 }
 
-test("[ci-trigger] blob-sync-check triggert weder auf Push noch auf PR nach production", () => {
+test("[ci-trigger] blob-sync-check triggert bei Push auf main und kit-pruefung, bei PR auf main und production", () => {
   const block = onBlock(lies("blob-sync-check.yml"));
-  assert.ok(!block.includes("production"), `production steht noch im on-Block:\n${block}`);
+  assert.match(block, /push:[ \t]*\n[ \t]*branches: \[main, kit-pruefung\]/);
+  assert.match(block, /pull_request:[ \t]*\n[ \t]*branches: \[main, production\]/);
 });
 
-test("[ci-trigger] blob-sync-check triggert auf main, bei Push und bei Pull Request", () => {
+test("[ci-trigger] blob-sync-check hat keinen Push-Ausloeser auf production", () => {
   const block = onBlock(lies("blob-sync-check.yml"));
-  assert.match(block, /push:[ \t]*\n[ \t]*branches: \[main\]/);
-  assert.match(block, /pull_request:[ \t]*\n[ \t]*branches: \[main\]/);
+  const push = block.match(/push:[ \t]*\n[ \t]*branches: \[([^\]]*)\]/);
+  assert.ok(push, `kein Push-Ausloeser gefunden:\n${block}`);
+  assert.ok(!push[1].includes("production"), `Push-Ausloeser nennt production: ${push[1]}`);
+});
+
+test("[ci-trigger] blob-sync-check holt die volle Historie und origin/main vor dem Lauf der Stufe push", () => {
+  const text = lies("blob-sync-check.yml");
+  assert.match(text, /fetch-depth: 0/, "der Checkout holt nicht die volle Historie");
+  const holen = text.indexOf("git fetch origin main");
+  const lauf = text.search(/checks\.mjs run --stufe push --since "\$\(git merge-base HEAD origin\/main\)"/);
+  assert.notEqual(holen, -1, "git fetch origin main fehlt");
+  assert.notEqual(lauf, -1, "der Lauf der Stufe push mit dem Anker merge-base fehlt");
+  assert.ok(holen < lauf, "git fetch origin main steht nicht vor dem Lauf der Stufe push");
 });
 
 test("[ci-trigger] blob-sync-check nennt weder Windows noch eine Matrix (Issue #1274)", () => {

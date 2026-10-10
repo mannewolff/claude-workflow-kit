@@ -62,8 +62,11 @@ export function isStateColumn(status, config) {
 // Start und Umgebung sind injizierbar (Issue #1211, Plan #1199, E6): So belegt ein Test
 // im selben Prozess, womit gestartet wird, statt das Werkzeug als Kindprozess gegen ein
 // gefaelschtes CLI im PATH laufen zu lassen.
-export function exec(datei, args = [], { spawn = spawnSync, env = process.env } = {}) {
-  const res = spawn(datei, args, { encoding: "utf-8", env });
+//
+// `input` geht als Standardeingabe an den Prozess (Issue #1406): Ein JSON-Koerper fuer
+// `gh api --input -` braucht so weder eine Zwischendatei noch eine Shell.
+export function exec(datei, args = [], { spawn = spawnSync, env = process.env, input } = {}) {
+  const res = spawn(datei, args, input === undefined ? { encoding: "utf-8", env } : { encoding: "utf-8", env, input });
   if (res.error) {
     // Haeufigster Fall: das CLI ist nicht installiert (ENOENT).
     throw new Error(res.error.code === "ENOENT"
@@ -194,13 +197,17 @@ function configRoot() {
 // ganze toolbox-Objekt ersetzen. Genau dieser Fehler hat in Issue #188 den Mock-Host mit
 // weggeraeumt und zwanzig Tests still ohne Token laufen lassen.
 // SYNC: dieselbe Liste und Logik steckt in kit/night/grundlagen.mjs und kit/einstellungen.mjs — Aenderungen dort nachziehen.
-const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewScope", "triggers", "toolbox.tokenFile"];
+const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewLesegrenze", "reviewScope", "triggers", "toolbox.tokenFile"];
 
 // Das Reviewer-Paar (Issue #432): genau eines von reviewModel und reviewCommand gilt.
 // Beide Felder sind persoenlich ueberschreibbar — waere nur eines davon in der Allowlist,
 // koennte jemand seinen Claude-Reviewer lokal setzen, seinen Kommando-Reviewer aber nicht.
+// Das Paar ist eine Gruppe (Issue #1379, Plan #1375 E11): {reviewModel} <-> {reviewCommand,
+// reviewLesegrenze}. Eine Lesegrenze ohne Kommando ist bedeutungslos — wer persoenlich auf
+// Claude wechselt, nimmt die des Team-Kommandos nicht mit. Eine Lesegrenze allein verdraengt
+// reviewModel dagegen nicht: Sie waehlt keinen Reviewer, sie schraenkt einen ein.
 // SYNC: dieselbe Zuordnung steckt in kit/night/grundlagen.mjs und kit/einstellungen.mjs.
-const REVIEWER_PAAR = { reviewModel: "reviewCommand", reviewCommand: "reviewModel" };
+const REVIEWER_PAAR = { reviewModel: ["reviewCommand", "reviewLesegrenze"], reviewCommand: ["reviewModel"] };
 
 /**
  * Mergt die persoenliche Config in die geteilte, aber nur an den erlaubten Pfaden.
@@ -246,8 +253,9 @@ function zerlegeAllowlist(allowlist) {
  */
 function setzePersoenlichesFeld(config, feld, wert, local) {
   config[feld] = wert;
-  const gegenstueck = REVIEWER_PAAR[feld];
-  if (gegenstueck && !(gegenstueck in local)) delete config[gegenstueck];
+  for (const gegenstueck of REVIEWER_PAAR[feld] ?? []) {
+    if (!(gegenstueck in local)) delete config[gegenstueck];
+  }
 }
 
 export function mergeWorkflowConfig(shared, local) {

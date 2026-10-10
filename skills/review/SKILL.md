@@ -34,70 +34,48 @@ Fehlt `reviewScope`, nutze `"diff"` als Default und weise darauf hin.
 
 ### 1. Review-Material zusammenstellen
 
-**Bei `reviewScope: "diff"`:**
-```bash
-git diff origin/<mainBranch>...HEAD
-```
-`<mainBranch>` ist der Wert aus der Config (Default: `main`). Falls kein Remote-Commit existiert: `git diff HEAD~1 HEAD` (letzter Commit).
-
-**Bei `reviewScope: "full"`:**
-Alle relevanten Quelltext-Dateien lesen (keine Build-Artefakte, keine `node_modules`, keine `.git`-Inhalte).
-
-### 2. Reviewer starten
-
-Welcher der beiden Wege gilt, entscheidet das gesetzte Feld aus der Vorbedingung:
-
-**Bei gesetztem `reviewModel` — Subagent über das Agent-Tool:**
-- **Modell:** Wert aus `reviewModel` (Opus-Pin)
-- **Isolation:** frische Session, kein Implementierungs-Kontext
-- **Prompt:** der Text unten, befüllt mit dem Review-Material aus Schritt 1
-
-**Bei gesetztem `reviewCommand` — das konfigurierte Kommando starten**, den Prompt **über stdin** übergeben, die Antwort von stdout lesen:
-
-```bash
-<reviewCommand> < prompt.txt
-```
-
-Nicht als Argument. Ein Diff mit Backticks, Anführungszeichen und Zeilenumbrüchen durch eine Kommandozeile zu quoten ist genau der Fehler, den Issue #196 aus `board.mjs` entfernt hat; dasselbe Muster trägt der Kommando-Reviewer in `/issue-review` (Issue #270). Die Kommandozeile ist frei konfiguriert und läuft deshalb über die Plattform-Shell — dieselbe Abgrenzung wie bei `buildChecks` in `night.mjs` (Issue #199). Das Agent-Tool kommt hier nicht zum Einsatz: Es kennt nur Claude-Modelle, und ein `reviewCommand` durch dieses Werkzeug zu reichen wäre ein stiller Ausfall.
-
-**Ausfallpfad: Endet das Kommando mit Exit ungleich 0, bricht `/review` ab** — mit sichtbarer Fehlermeldung einschließlich eines stderr-Ausschnitts. Das Issue wechselt dabei **nicht** nach In review, und es entsteht **kein Board-Kommentar**. Ein Review, der nicht lief, darf keine Spur hinterlassen, die wie eine Prüfung aussieht: Ein Kommentar unter „Code-Review (Schritt 7)" ohne Befunde liest sich wie ein sauberer Durchlauf, und ein Issue in *In review* behauptet, die Prüfung sei erledigt. Beides wäre schlechter als der sichtbare Abbruch.
-
-**Prompt für beide Wege** — der folgende Text, befüllt mit dem Review-Material aus Schritt 1:
-
-```
-Du bist Code-Reviewer. Du hast keinen Kontext über die Implementierungs-Session und das ist gewollt — du bringst einen frischen Blick.
-
-Überprüfe das folgende Material und berichte über:
-1. Korrektheit: Logikfehler, Edge Cases, falsche Annahmen
-2. Sicherheit: Injections, fehlende Validierung, Secrets im Code, unsichere Patterns
-3. Qualität: fehlende Tests, unklare Benennung, unnötige Komplexität
-4. Architektur: Brüche gegen erkennbare Konventionen, unnötige Abhängigkeiten
-
-Für jeden Fund ein Block mit diesen Angaben:
-- Schweregrad KRITISCH / WICHTIG / HINWEIS als fette Kopfzeile
-- Datei und Zeile (wenn aus dem Material ableitbar), konkrete Beschreibung des Problems und ein Vorschlag zur Behebung
-- Gegenprobe: <Beobachtung, die den Fund widerlegen würde> — geprüft, bestätigt (hast du sie nicht angestellt: — nicht geprüft)
-- Art: <name> aus dieser Liste, nur der Name:
-{{ARTEN}}
-Einen Fund, den deine eigene Gegenprobe widerlegt hat, meldest du nicht.
-
-Wenn du nichts findest: schreibe das explizit, nicht "alles gut".
-
---- REVIEW-MATERIAL ---
-{{REVIEW_MATERIAL}}
-```
-
-Ersetze `{{REVIEW_MATERIAL}}` durch das tatsächliche Diff oder den Quelltext. **Die Artenliste wird nicht abgeschrieben:** `{{ARTEN}}` füllt die Session vor dem Start aus der Ausgabe von `node .claude/kit/befunde.mjs arten` — je Art eine Zeile aus Name und erklärendem Satz. Zwei Orte für denselben Wortlaut driften auseinander, sobald eine Art hinzukommt oder ihren Namen wechselt.
-
-### 3. Ergebnis dokumentieren
-
-Schreibe die Befunde als Kommentar ans aktuelle Issue:
+Das Material geht in eine Datei außerhalb des Projektverzeichnisses:
 
 ```bash
 printenv TMPDIR
 ```
 
-Bleibt die Ausgabe von `printenv TMPDIR` leer (Linux und WSL2 ohne Sandbox), gilt `/tmp` als `<tmpdir>`.
+Bleibt die Ausgabe von `printenv TMPDIR` leer (Linux und WSL2 ohne Sandbox), gilt `/tmp` als `<tmpdir>`. Der Pfad steht in jedem Aufruf wörtlich.
+
+**Bei `reviewScope: "diff"`:**
+```bash
+git diff origin/<mainBranch>...HEAD > <tmpdir>/review-material.txt
+```
+`<mainBranch>` ist der Wert aus der Config (Default: `main`). Falls kein Remote-Commit existiert: `git diff HEAD~1 HEAD > <tmpdir>/review-material.txt` (letzter Commit).
+
+**Bei `reviewScope: "full"`:**
+Alle relevanten Quelltext-Dateien (keine Build-Artefakte, keine `node_modules`, keine `.git`-Inhalte) nacheinander in `<tmpdir>/review-material.txt`, jede mit einer Kopfzeile `=== <pfad> ===` davor.
+
+### 2. Reviewer starten
+
+Den Prüfauftrag montiert das Kit aus der Rolle `kit/rollen/code-review.md`, der Artenliste und dem Material aus Schritt 1; die Session schreibt keinen Prompt und füllt nichts selbst ein:
+
+```bash
+node .claude/kit/board.mjs issue-review pruefauftrag --rolle code-review --material-datei <tmpdir>/review-material.txt --datei <tmpdir>/review-auftrag.md
+```
+
+Welcher der beiden Wege gilt, entscheidet das gesetzte Feld aus der Vorbedingung:
+
+**Bei gesetztem `reviewModel` — Subagent über das Agent-Tool** mit `subagent_type: kit-pruefer` und dem Modell aus `reviewModel` (Opus-Pin), in frischer Session ohne Implementierungs-Kontext. Der Auftrag lautet nur `Lies <tmpdir>/review-auftrag.md`, mit wörtlichem Pfad. Der Agent darf nur lesen, seine Abschlussnachricht ist der Befund.
+
+**Bei gesetztem `reviewCommand` — das Kit startet das konfigurierte Kommando** an seiner Lesegrenze (`reviewLesegrenze`), den Auftrag über stdin, die Antwort von stdout in die Ausgabedatei:
+
+```bash
+node .claude/kit/board.mjs issue-review start --code-review --auftrag <tmpdir>/review-auftrag.md --ausgabe <tmpdir>/review-antwort.md
+```
+
+Das Agent-Tool kommt hier nicht zum Einsatz: Es kennt nur Claude-Modelle, und ein `reviewCommand` durch dieses Werkzeug zu reichen wäre ein stiller Ausfall.
+
+**Ausfallpfad: Endet `pruefauftrag` oder `start` mit Exit ungleich 0, bricht `/review` ab** — mit sichtbarer Fehlermeldung einschließlich des Fehlers aus der Ausgabe, bei `start` samt stderr-Ausschnitt. Das Issue wechselt dabei **nicht** nach In review, und es entsteht **kein Board-Kommentar**. Ein Review, der nicht lief, darf keine Spur hinterlassen, die wie eine Prüfung aussieht: Ein Kommentar unter „Code-Review (Schritt 7)" ohne Befunde liest sich wie ein sauberer Durchlauf, und ein Issue in *In review* behauptet, die Prüfung sei erledigt. Beides wäre schlechter als der sichtbare Abbruch.
+
+### 3. Ergebnis dokumentieren
+
+Schreibe die Befunde als Kommentar ans aktuelle Issue:
 
 ```bash
 cat  > <tmpdir>/id-review.md <<'TEIL1'

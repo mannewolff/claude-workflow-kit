@@ -378,6 +378,71 @@ export function prueflaufBeobachter(buildChecks) {
   };
 }
 
+/**
+ * Die Marke, mit der ein gebremster `checks.mjs run` beginnt (Issue #1389, Plan #1386, E7):
+ * `Pruefung festgefahren: <Kommando> — <Fehler>`, in der Zeile danach
+ * `<n>-mal gleich gescheitert`.
+ */
+// SYNC: dieselbe Marke steht in kit/checks.mjs als FESTGEFAHREN_MARKE und wird dort in die
+// Ausgabe geschrieben; ein Test in test/ablauf-night-prueflaeufe.test.mjs haelt beide zusammen.
+export const FESTGEFAHREN_MARKE = "Pruefung festgefahren:";
+
+/**
+ * Liest die Bremsmarke aus dem Text eines Prueflaufs: `{ pruefung, fehler, versuche }` oder
+ * `null`. Getrennt wird am ersten Gedankenstrich — ein Kommando traegt keinen, ein Fehler
+ * vielleicht. Fehlt die Zeile mit den Versuchen, steht `null` statt einer geratenen Zahl.
+ */
+function festgefahrenLesen(text) {
+  const zeilen = text.split("\n");
+  const idx = zeilen.findIndex((z) => z.startsWith(FESTGEFAHREN_MARKE));
+  if (idx < 0) return null;
+  const rest = zeilen[idx].slice(FESTGEFAHREN_MARKE.length).trim();
+  const trenner = rest.indexOf(" — ");
+  const pruefung = trenner < 0 ? rest : rest.slice(0, trenner);
+  const fehler = trenner < 0 ? "" : rest.slice(trenner + 3);
+  const versuche = /^(\d+)-mal gleich gescheitert/.exec(zeilen[idx + 1] ?? "");
+  return { pruefung, fehler, versuche: versuche ? Number(versuche[1]) : null };
+}
+
+/**
+ * Beobachtet denselben Strom wie `prueflaufBeobachter` und meldet die Bremse von
+ * `checks.mjs run` (Issue #1389, Plan #1386, E7): Traegt das Ergebnis eines Prueflaufs die
+ * Bremsmarke, ruft er `gebremst({ pruefung, fehler, versuche })` — genau einmal, denn die
+ * Sitzung endet darauf ohnehin.
+ *
+ * Gelesen werden nur die Ergebnisse von `checks.mjs run`, gleich ob Abschluss- oder
+ * Bereichslauf: Nur dort entsteht die Marke. Wer die Quelle liest oder nach ihr sucht, hat
+ * sie ebenfalls im Ergebnis und ist nicht festgefahren.
+ */
+export function festgefahrenBeobachter(gebremst) {
+  const offen = new Set();
+  let gemeldet = false;
+
+  const aufrufGesehen = (block) => {
+    if (block?.type !== "tool_use" || block.name !== "Bash") return;
+    if (typeof block.id !== "string" || block.id === "") return;
+    const art = prueflaufArt(block.input?.command, new Set(), new Set());
+    if (art === "abschluss" || art === "bereich") offen.add(block.id);
+  };
+
+  const ergebnisGesehen = (block) => {
+    if (block?.type !== "tool_result" || !offen.delete(block.tool_use_id)) return;
+    const info = festgefahrenLesen(ergebnisText(block));
+    if (!info || gemeldet) return;
+    gemeldet = true;
+    gebremst(info);
+  };
+
+  return {
+    zeile(roh) {
+      const obj = leseStromereignis(roh);
+      if (!obj || !Array.isArray(obj.message?.content)) return;
+      const behandle = obj.type === "assistant" ? aufrufGesehen : ergebnisGesehen;
+      for (const block of obj.message.content) behandle(block);
+    },
+  };
+}
+
 // --- Fortschrittszeilen am Session-Strom (Issue #975, Plan #974) ---
 
 // Der Anker, mit dem eine Sitzung ihren eigenen Stand meldet. Ihn zu schreiben ist Auftrag
@@ -1386,6 +1451,10 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
     let stderr = "";
     let buf = "";
     let timedOut = false;
+    // Die Bremse von `checks.mjs` (Issue #1389, Plan #1386, E7): `{ pruefung, fehler,
+    // versuche }`, sobald der Beobachter die Marke gesehen hat. Beendet wird wie am
+    // Zeitlimit, aber mit eigenem Flag — eine Bremsung ist kein Zeitablauf.
+    let festgefahren = null;
     let settled = false;
     const timers = [];
     // Nur angelegt, wenn der Strom auch angefordert ist (Issue #748). Ohne Strom gibt es
@@ -1423,6 +1492,7 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
         prueflaeufe: prueflaufZaehler ? prueflaufZaehler.ergebnis() : null,
         fortschritt: fortschritt ? fortschritt.ergebnis() : null,
         auskunft: auskunft ? auskunft.ergebnis() : null,
+        festgefahren,
       });
     };
 
@@ -1450,7 +1520,7 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
     const selbstAufloesen = () => done({
       status: null,
       signal: "SIGKILL",
-      error: Object.assign(new Error("timeout"), { code: "ETIMEDOUT" }),
+      error: festgefahren ? null : Object.assign(new Error("timeout"), { code: "ETIMEDOUT" }),
       stdout,
       stderr,
     });
@@ -1461,11 +1531,23 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
       timers.push(wecken(selbstAufloesen, killGraceMs));
     };
     const zeitlimitErreicht = () => {
+      // Laeuft die Beendigung der Bremse schon, bleibt es ihre (Issue #1389).
+      if (festgefahren) return;
       timedOut = true;
       killTree("SIGTERM");
       timers.push(wecken(hartNachsetzen, killGraceMs));
     };
     timers.push(wecken(zeitlimitErreicht, timeoutMs));
+    // Derselbe Weg wie am Zeitlimit — SIGTERM, Nachfrist, SIGKILL —, nur frueher.
+    const festgefahrenErreicht = (info) => {
+      if (timedOut || festgefahren) return;
+      festgefahren = info;
+      killTree("SIGTERM");
+      timers.push(wecken(hartNachsetzen, killGraceMs));
+    };
+    // Fuenfter Beobachter (Issue #1389), mit derselben Bedingung wie der dritte: Die
+    // Kommando-Stufe faehrt kein `checks.mjs` im Strom, den man lesen koennte.
+    const bremse = useStream && !kommandoStufe ? festgefahrenBeobachter(festgefahrenErreicht) : null;
 
     child.stdout?.on("data", (chunk) => {
       const text = chunk.toString();
@@ -1484,6 +1566,7 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
           // Kein Beobachter in der Kommando-Stufe (Issue #975) — dort bleibt das Feld null.
           fortschritt?.zeile(zeile, ts);
           auskunft?.zeile(zeile, ts);
+          bremse?.zeile(zeile);
           // Getrennt von der Messung (Issue #748): Ausgegeben wird nur bei --verbose,
           // gemessen wird immer, sobald der Strom angefordert ist.
           if (verbose) emitVerbose(issueId, zeile);
@@ -1506,6 +1589,7 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
         prueflaufZaehler.zeile(buf, ts);
         fortschritt?.zeile(buf, ts);
         auskunft?.zeile(buf, ts);
+        bremse?.zeile(buf);
         if (verbose) emitVerbose(issueId, buf);
       }
       const error = timedOut
@@ -1513,8 +1597,9 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
         : null;
       // Erst messen, wenn niemand mehr arbeitet (Issue #668). Nach einem Zeitlimit
       // entfaellt das: Dort hat killTree die Gruppe gerade erledigt, und ein weiteres
-      // Warten haenge den Lauf genau an dem Baum auf, den er eben abgeraeumt hat.
-      if (!timedOut) {
+      // Warten haenge den Lauf genau an dem Baum auf, den er eben abgeraeumt hat. Nach
+      // einer Bremsung ebenso (Issue #1389) — sie nimmt denselben Weg.
+      if (!timedOut && !festgefahren) {
         const restMs = Math.max(0, timeoutMs - (jetzt() - gestartet));
         const leer = await warteAufProzessgruppe(child.pid, restMs, {
           jetzt, schlaf, spawnSync: abfragen,
@@ -1828,6 +1913,10 @@ export function lesePruefung(issueId) {
       // und der `zustand` bleibt, was `laufen` sagt. Ein Stand vor Issue #1155 fuehrt das
       // Feld nicht, darum `null` und nicht `[]`.
       hinweise: Array.isArray(daten.hinweise) ? daten.hinweise : null,
+      // Die Wackler der Karte, `[{ cmd, zeitpunkt, karte }]` (Issue #1399, Plan #1395, E11):
+      // je Fall ein Eintrag, auch aus frueheren Abschlusslaeufen derselben Karte. Ohne das
+      // Feld (Lauf ohne Kartennummer, Stand vor Issue #1397) `null` und nicht `[]`.
+      gewackelt: Array.isArray(daten.gewackeltKarte) ? daten.gewackeltKarte : null,
     };
     // Die Guetemessung (Issue #764): Das Feld steht nur da, wenn das Projekt eine Messung
     // benannt hat — dann aber in jedem Zustand, auch beim leeren Paket und beim roten Lauf

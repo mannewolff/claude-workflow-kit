@@ -54,6 +54,7 @@
       "korrekturrunden": 2
     },
     "zielUmsetzungMin": 10,
+    "festgefahrenNach": 3,
     "modelle": [
       "claude-opus-5",
       "claude-sonnet-5"

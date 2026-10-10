@@ -49,8 +49,8 @@ coverage/
 # Die Regel dahinter: Was install.mjs schreibt, gehoert nicht ins Repo. Der Installer
 # ueberschreibt es beim naechsten Lauf ohnehin, und jeder soll selbst entscheiden, ob er
 # neu installiert — eine versionierte Kopie nimmt ihm die Entscheidung ab und driftet
-# bis dahin. Das betrifft die CLAUDE*.md-Dateien, .claude/skills/ und .claude/kit/;
-# Quelle sind templates/, skills/ und kit/.
+# bis dahin. Das betrifft die CLAUDE*.md-Dateien, .claude/skills/, .claude/agents/ und
+# .claude/kit/; Quelle sind templates/, skills/, agents/ und kit/.
 # workflow.config.json ist die eine Ausnahme, und zwar begruendet: Der Installer
 # ueberschreibt sie nicht, er MERGT sie ({...DEFAULTS, ...existingConfig, <abgefragt>}).
 # Sie ist Team-Einstellung, kein Generat.

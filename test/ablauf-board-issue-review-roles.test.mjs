@@ -67,9 +67,13 @@ for (const kommando of ["label-sync", "synthese-check"]) {
 test("[board-6] die Hilfe nennt weder --issue noch label-sync noch synthese-check", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["--help"]);
-    for (const wort of ["--issue <N>", "--rolle", "--ausschluss", "label-sync", "synthese-check"]) {
+    for (const wort of ["--issue <N>", "--ausschluss", "label-sync", "synthese-check"]) {
       assert.ok(!res.stdout.includes(wort), `die Hilfe nennt '${wort}' noch`);
     }
+    // `--rolle` gehoert seit Issue #1380 zu `pruefauftrag`, aber nicht mehr zu `roles`.
+    const rolesZeilen = res.stdout.split("\n").filter((z) => z.includes("issue-review roles"));
+    assert.ok(rolesZeilen.length > 0);
+    assert.ok(rolesZeilen.every((z) => !z.includes("--rolle")), "die Hilfe nennt bei roles noch '--rolle'");
     assert.ok(res.stdout.includes("issue-review roles --stufe <fachlich|plan|issue> --author <modell>"));
   });
 });
@@ -91,4 +95,13 @@ test("[board-6] roles --stufe plan endet bei KIT_PLAN_REVIEWER=2 mit nur einem R
     assert.equal(res.status, 1, `haette abgewiesen werden muessen: ${res.stdout}`);
     assert.match(res.stderr, /Fehler: planreview:2 verlangt zwei Reviewer, verfügbar ist einer/);
   }, { issueReview: { reviewers: REVIEWERS.slice(0, 2) } });
+});
+
+test("[board-6] roles nennt je Rolle, ob ihre Datei vorliegt", () => {
+  mitProjekt((dir) => {
+    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "issue", "--author", "claude-opus-5"]);
+    assert.equal(res.status, 0, res.stderr);
+    const out = JSON.parse(res.stdout);
+    assert.deepEqual(out.rollenDateien.map((r) => [r.rolle, r.rolleVorhanden]), [["gibtsnicht", false]]);
+  }, { reviewStufen: { ...STUFEN, issue: { reviewer: 1, rollen: ["gibtsnicht"] } } });
 });

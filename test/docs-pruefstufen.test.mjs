@@ -134,7 +134,10 @@ test("die Doku nennt die Rueckwaertskompatibilitaet ohne reviewStufen-Block", ()
   const ohneReferenz = DOKU.replace(/<!-- einstellungen:start -->[\s\S]*?<!-- einstellungen:ende -->/, "");
   const absatz = ohneReferenz.split(/\n\n/).find((a) => /reviewStufen/.test(a) && /ohne/i.test(a));
   assert.ok(absatz, "kein Absatz zum Verhalten ohne reviewStufen-Block");
-  assert.match(absatz, /zwei/i, "die bisherige Besetzung mit zwei Reviewern ist nicht genannt");
+  // Die Rueckfallebene nennt je Stufe die Rollen des Katalogs (Plan #1375, E5).
+  for (const rolle of ["form-beobachtbarkeit", "abgrenzung", "architektur-bestand", "schnitt-abhaengigkeiten", "pruefbarkeit"]) {
+    assert.ok(absatz.includes(`\`${rolle}\``), `die Rolle ${rolle} der Rueckfallebene ist nicht genannt`);
+  }
   assert.match(absatz, /bestehend|Bestands/i, "der Bezug auf bestehende Installationen fehlt");
 });
 

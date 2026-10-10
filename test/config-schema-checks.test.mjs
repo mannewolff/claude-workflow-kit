@@ -608,7 +608,7 @@ test("jede Property im Schema traegt eine nicht leere description", () => {
 
 test("keine description ist transliteriert oder verweist auf ein Issue", () => {
   // Bezeichner in Anfuehrungszeichen oder Backticks bleiben, wie sie heissen
-  // ('vollstaendigkeit-pruefbarkeit' ist ein Rollenname, kein Text).
+  // ('form-beobachtbarkeit' ist ein Rollenname, kein Text).
   const WOERTER = /\b\w*(fuer|ueber|koennen|wuerde|pruef|schluessel|geaendert|ausfuehr)\w*/i;
   const funde = [];
   for (const text of alleBeschreibungen(schema)) {
@@ -816,4 +816,15 @@ test("night.kette: vorbereitungMin ist eine Zahl groesser 0 mit Vorgabe 120", ()
   assert.equal(feld.exclusiveMinimum, 0);
   assert.deepEqual(pruefe(schema, { ...beispielConfig, night: { ...beispielConfig.night, kette: { vorbereitungMin: 90 } } }), []);
   assert.ok(pruefe(schema, { ...beispielConfig, night: { ...beispielConfig.night, kette: { vorbereitungMin: 0 } } }).length > 0, "eine Frist von 0 faellt nicht durch");
+});
+
+// Plan #1386, E11 (Issue #1387): die Bremse fuer festgefahrene Pakete.
+test("night.festgefahrenNach: Ganzzahl ab 2 mit Vorgabe 3", () => {
+  const feld = schema.properties.night.properties.festgefahrenNach;
+  assert.ok(feld, "night.festgefahrenNach fehlt im Schema");
+  assert.equal(feld.type, "integer");
+  assert.equal(feld.default, 3);
+  assert.equal(feld.minimum, 2);
+  assert.deepEqual(pruefe(schema, { ...beispielConfig, night: { ...beispielConfig.night, festgefahrenNach: 3 } }), []);
+  assert.ok(pruefe(schema, { ...beispielConfig, night: { ...beispielConfig.night, festgefahrenNach: 1 } }).length > 0, "der Wert 1 faellt nicht durch");
 });

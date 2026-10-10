@@ -1168,13 +1168,15 @@ export function lastCommitHash(cwd = process.cwd(), { spawn = spawnSync } = {}) 
 // Fuer den Runner ist die Allowlist besonders wichtig: Die Pruefung auf leere
 // buildChecks weiter unten ist sein einziges Gate. Waere das Feld lokal
 // ueberschreibbar, koennte ein Nachtlauf ohne jede Absicherung durchlaufen.
-const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewScope", "triggers", "toolbox.tokenFile"];
+const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewLesegrenze", "reviewScope", "triggers", "toolbox.tokenFile"];
 
 // Das Reviewer-Paar (Issue #432): genau eines von reviewModel und reviewCommand gilt.
 // Beide sind persoenlich ueberschreibbar — sonst koennte jemand seinen Claude-Reviewer
 // lokal setzen, seinen Kommando-Reviewer aber nicht.
+// Das Paar ist eine Gruppe (Issue #1379, Plan #1375 E11): {reviewModel} <-> {reviewCommand,
+// reviewLesegrenze}; eine Lesegrenze allein verdraengt reviewModel nicht.
 // SYNC: dieselbe Zuordnung steckt in kit/board/grundlagen.mjs und kit/einstellungen.mjs.
-const REVIEWER_PAAR = { reviewModel: "reviewCommand", reviewCommand: "reviewModel" };
+const REVIEWER_PAAR = { reviewModel: ["reviewCommand", "reviewLesegrenze"], reviewCommand: ["reviewModel"] };
 
 // SYNC: strukturgleich zu zerlegeAllowlist in kit/board.mjs.
 // Zerlegt die Allowlist in die zwei Formen, in denen sie abgefragt wird: ganze Felder
@@ -1231,8 +1233,9 @@ export function ladeConfigMitOverrides(sharedPfad) {
  */
 function setzePersoenlichesFeld(config, feld, wert, local) {
   config[feld] = wert;
-  const gegenstueck = REVIEWER_PAAR[feld];
-  if (gegenstueck && !(gegenstueck in local)) delete config[gegenstueck];
+  for (const gegenstueck of REVIEWER_PAAR[feld] ?? []) {
+    if (!(gegenstueck in local)) delete config[gegenstueck];
+  }
 }
 
 function mischeErlaubteFelder(shared, local) {
