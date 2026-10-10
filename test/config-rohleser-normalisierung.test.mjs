@@ -31,6 +31,13 @@ const CONFIG_NAME = /workflow\.config|CONFIG_DATEI/;
  */
 const LADER = new Set(["kit/board/grundlagen.mjs", "kit/night/grundlagen.mjs"]);
 
+/**
+ * Das Namen-Register liest nur das Wurzelfeld der Sprache, und `projektSprache` kennt beide
+ * Namen (`language`, `sprache`). Es darf nichts importieren: install.mjs laedt es als
+ * data:-URL, die keinen relativen Import aufloest (Issue #1440).
+ */
+const SPRACHLESER = new Set(["kit/board/namen.mjs"]);
+
 function mjsDateien(ordner) {
   return readdirSync(ordner, { withFileTypes: true }).flatMap((e) => {
     const pfad = join(ordner, e.name);
@@ -66,7 +73,7 @@ function configLeser() {
   const funde = [];
   for (const pfad of mjsDateien(KIT)) {
     const ort = relative(ROOT, pfad).split("\\").join("/");
-    if (LADER.has(ort)) continue;
+    if (LADER.has(ort) || SPRACHLESER.has(ort)) continue;
     const zeilen = readFileSync(pfad, "utf-8").split("\n");
     zeilen.forEach((zeile, i) => {
       if (istKommentar(zeile) || !zeile.includes("JSON.parse(")) return;
