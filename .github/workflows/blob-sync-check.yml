@@ -41,7 +41,7 @@ jobs:
       - name: Node einrichten
         uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       # eslint und die Lint-Tests brauchen node_modules (Issue #996).
