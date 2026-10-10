@@ -945,5 +945,9 @@
   "toolbox": {
     "host": "https://kanban.mwolff.org",
     "ideaStored": false
+  },
+  "pushPruefung": {
+    "ort": "buildDienst",
+    "zweig": "kit-pruefung"
   }
 }
