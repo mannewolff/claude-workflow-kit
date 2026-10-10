@@ -151,3 +151,28 @@ test("[1401] beide Release-Skills wiederholen im einen Prueflauf und fragen nach
     assert.match(abschnitt, /Reparaturkandidat/, `${wo}: der Schlussbericht nennt die Reparaturkandidaten nicht`);
   }
 });
+
+// --- Prüfzweig-Push in merge production (Issue #1410, Plan #1405 A11) ---
+
+/** Ein nummerierter Schritt `### <n>. …` bis zur naechsten Ueberschrift derselben oder hoeheren Ebene. */
+function schritt(text, n) {
+  const start = text.search(new RegExp(`^### ${n}\\. `, "m"));
+  assert.notEqual(start, -1, `Schritt ${n} fehlt`);
+  const rest = text.slice(start + 4);
+  const ende = rest.search(/\n#{1,3} /);
+  return ende < 0 ? text.slice(start) : text.slice(start, start + 4 + ende);
+}
+
+test("[1410] Schritt 7 von merge production pusht bei pushPruefung im Build-Dienst über den Prüfzweig-Weg von push-main", () => {
+  const s = schritt(lies(...MERGE_PRODUCTION).replaceAll("\r\n", "\n"), 7).replaceAll(/\s+/g, " ");
+  assert.match(s, /pushPruefung/, "Schritt 7 nennt pushPruefung nicht");
+  assert.match(s, /Build-Dienst/, "Schritt 7 nennt den Build-Dienst nicht");
+  assert.match(s, /\/push-main[^.]*„Weg über den Build-Dienst“/, "Schritt 7 verweist nicht auf den Abschnitt „Weg über den Build-Dienst“ von /push-main");
+  assert.match(s, /[Oo]hne `pushPruefung` im Build-Dienst[^.]*direkt/, "Schritt 7 sagt nicht, dass ohne pushPruefung direkt gepusht wird");
+});
+
+test("[1410] Schritt 8 von merge production löscht den Prüfzweig, auch nach abgewiesenem Push", () => {
+  const s = schritt(lies(...MERGE_PRODUCTION).replaceAll("\r\n", "\n"), 8);
+  assert.match(s, /git -C <pfad> push origin --delete <zweig>/, "Schritt 8 löscht den Prüfzweig nicht");
+  assert.match(s.replaceAll(/\s+/g, " "), /auch nach[^.]*abgewiesenem Push/, "Schritt 8 löscht den Prüfzweig nicht auch nach abgewiesenem Push");
+});

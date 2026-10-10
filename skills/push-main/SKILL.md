@@ -26,6 +26,9 @@ Worktree, siehe den Abschnitt „Modus `vorbereiten` (unbeaufsichtigt)". Den Pus
 weiterhin nur die getippte Phrase frei; sie übernimmt morgens den vorbereiteten Stand
 (Schritt 3).
 
+**Der Notfallweg `/push-main notfall`** braucht die getippte Phrase wie jeder Push und läuft
+nur interaktiv, siehe den Abschnitt „Notfallweg (`notfall`)".
+
 ## Ablauf
 
 **Fortschritt melden.** Jeder Schritt beginnt mit einer Zeile `Schritt k von n — <Name> (laeuft)`.
@@ -545,7 +548,9 @@ nichts erzeugt, meldet er `leeresPaket`, und Schritt 6 entfällt wie beschrieben
    einer **Frist von 60 Minuten**. Unmittelbar nach dem Push meldet er `laeuft`, weil der
    Lauf noch nicht sichtbar ist — das ist kein Fehler. Läuft die Frist ab, ist das ein
    Fehlschlag: kein Push auf `<mainBranch>`, weiter mit Schritt 8. Ein Fehlschlag des
-   Aufrufs selbst (Netz, Anmeldung) zählt genauso.
+   Aufrufs selbst (Netz, Anmeldung) zählt genauso. In beiden Fällen nennt der Skill dem
+   Inhaber den Notfallweg `/push-main notfall` als Möglichkeit, falls der Build-Dienst
+   ausgefallen ist (Abschnitt „Notfallweg“), und startet ihn nicht selbst.
 3. `<mainBranch>` nur bei `gruen` pushen — mit demselben Kommando wie in Schritt 7:
 
    ```bash
@@ -580,6 +585,70 @@ das Löschen, steht es in einer Zeile im Bericht und hält den Abbau nicht auf.
 **Schritt 9 auf diesem Weg** nennt in der Nachweiszeile statt der lokalen Prüfungen den
 Build-Dienst: `<hash> — gedeckt von: Build-Dienst, Prüfzweig <zweig> (gruen, <Zeitpunkt>)`.
 Der CI-Hinweis entfällt — die CI hat vor dem Push gegatet.
+
+## Notfallweg (`notfall`)
+
+`/push-main notfall` veröffentlicht, wenn der Build-Dienst ausfällt und der Code-Host den
+Hauptzweig schützt (Plan #1405, A6). Am Schutz vorbei kommt nur der Inhaber des
+Repositories: Aussetzen kann bei GitHub nur, wer Admin-Rechte hat — das setzt der Code-Host
+durch, nicht das Kit. Die Rulesets tragen keine dauerhafte Umgehung; der Schutz fällt nur
+für diesen einen Push weg.
+
+**Nur interaktiv.** Ist `KIT_AGENT_MODEL` gesetzt, hält der Skill vor Schritt 1 an — kein
+Worktree, kein Lauf, kein Push. `code schutz aussetzen` bricht ohne Aufsicht ohnehin ab
+(E8); der Halt im Skill kommt dem zuvor. Auch hier braucht es die getippte Trigger-Phrase
+des Menschen.
+
+**Schritte 1 bis 6 wie auf dem lokalen Weg**, auch wenn `pushPruefung` den Build-Dienst
+nennt: Schritt 5 ist der volle lokale Lauf der Stufe `push` mit `--wiederholen` im
+Worktree, die Ersatzprüfung für den ausgefallenen Build-Dienst. Ein roter Lauf hält an wie
+dort. Ein Wackler hält vor dem Commit an und wird erfragt wie dort.
+
+**Statt Schritt 7**, aus dem Worktree, in dieser Reihenfolge:
+
+1. Der Vor-Push-Schritt aus `RELEASING.md` wie in Schritt 7, aber **kein „Trotzdem pushen?“**: Jedes Ergebnis außer Exit 0 hält ohne Push an,
+   weiter mit Schritt 8. Der Notfallweg läuft nur nach grünem Lauf, ohne Ausnahme.
+2. Den Schutz aussetzen:
+
+   ```bash
+   node .claude/kit/board.mjs code schutz aussetzen --in <pfad>
+   ```
+
+   Das Kommando setzt das Ruleset des Hauptzweigs nur aus, wenn die Prüf-Zusammenfassung
+   des Worktrees einen grünen Lauf der Stufe `push` für genau diesen Stand bezeugt.
+   Verweigert es, endet der Lauf ohne Push mit seiner Meldung, weiter mit Schritt 8.
+3. Pushen — mit demselben Kommando wie in Schritt 7, kein `--force`:
+
+   ```bash
+   git -C <pfad> push origin HEAD:<mainBranch>
+   ```
+
+4. **Sofort** den Schutz wiederherstellen, auch nach abgewiesenem Push — gleich, wie der
+   Push ausging:
+
+   ```bash
+   node .claude/kit/board.mjs code schutz wiederherstellen
+   ```
+
+   Scheitert `wiederherstellen`, ist der Lauf ein Fehlschlag, auch wenn der Push gelang
+   (E10): Der Skill meldet es so und nennt das Kommando zum Wiederholen
+   (`node .claude/kit/board.mjs code schutz wiederherstellen`). Bis es gelingt, steht der
+   Hauptzweig ungeschützt, und `code schutz status` nennt das unter `fehlt`.
+
+Danach Schritt 8 wie oben, auch nach einem Halt.
+
+**Schritt 9 auf diesem Weg** nennt in der Nachweiszeile den lokalen Lauf wie auf dem
+lokalen Weg und dazu, dass der Stand über den Notfallweg kam. In die Abschlussmeldung gehört
+die Ausgabe von:
+
+```bash
+node .claude/kit/board.mjs code schutz status
+```
+
+Nennt sie unter `ungeprueft` den eben gepushten Commit, sagt die Meldung dazu, dass der
+Build-Dienst ihn nachträglich prüfen kann, sobald er wieder läuft, mit dem Kommando
+`node .claude/kit/board.mjs code schutz nachpruefen`. Bis dahin bleibt der Stand als
+Ausnahme sichtbar.
 
 ## Modus `vorbereiten` (unbeaufsichtigt)
 

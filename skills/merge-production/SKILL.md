@@ -273,12 +273,33 @@ git -C <pfad> push origin HEAD:<mainBranch>
 ein Fast-Forward. Wird er abgewiesen, ist `origin` zwischenzeitlich weitergelaufen — dann
 endet der Lauf ohne PR mit dieser Meldung, und der Mensch entscheidet.
 
+**Bei `pushPruefung` im Build-Dienst geht der Push nicht direkt auf `<mainBranch>`**
+(Plan #1405, A11). Hat das Projekt den Schutz eingerichtet, weist der Code-Host einen
+Commit ab, der die Pflichtprüfungen nicht trägt — und der Release-Commit trägt sie noch
+nicht. Den Wert liest der Skill wie /push-main aus dem Feld `pushPruefung` von
+`node .claude/kit/checks.mjs plan --stufe push`. Meldet es ein Objekt mit
+`"ort": "buildDienst"`, pusht der Skill `HEAD` über den Prüfzweig-Ablauf aus /push-main,
+Abschnitt „Weg über den Build-Dienst“, Schritt 7 auf diesem Weg: erst auf den Prüfzweig
+`<zweig>`, warten auf den Build-Dienst, `<mainBranch>` nur bei Grün. Der Ablauf steht nur
+dort und wird hier nicht wiederholt. Jedes Ende dieses Ablaufs ohne Push auf
+`<mainBranch>` — Rot, Fristablauf, abgewiesener Push — endet hier ohne PR, weiter mit
+Schritt 8. Ohne `pushPruefung` im Build-Dienst bleibt es beim direkten Push oben.
+
 ### 8. Rückweg, Nachziehen, Worktree abbauen
 
 > `Schritt 8 von 12 — Rueckweg und Abbau (laeuft)`
 
 Die drei Schritte laufen **immer**, auch nach einem roten Prüflauf oder einem abgewiesenen
 Push — ein liegengebliebener Worktree ist genau der Rest, den dieser Weg beseitigt.
+
+**Auf dem Weg über den Build-Dienst** löscht der Skill vorher den Prüfzweig, sobald er
+gepusht wurde — auch nach Rot, Fristablauf oder abgewiesenem Push:
+
+```bash
+git -C <pfad> push origin --delete <zweig>
+```
+
+Scheitert das Löschen, steht es in einer Zeile im Bericht und hält den Abbau nicht auf.
 
 ```bash
 node .claude/kit/worktree.mjs rueckweg <pfad>
