@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * sync-blobs.mjs — haelt die Base64-Blobs in install.mjs synchron mit templates/, kit/, skills/ und agents/
+ * sync-blobs.mjs — haelt die Base64-Blobs in install.mjs synchron mit templates/, kit/, skills/, agents/ und en/
  * und stempelt die Kit-Version in die Kit-Dateien (Issue #171).
  *
  * Nutzung:
@@ -42,17 +42,23 @@ function vergleicheText(a, b) {
   return a > b ? 1 : 0;
 }
 
+// Eine versteckte Datei gehoert in keinen Blob: weder das .gitkeep, das den leeren Spiegel en/
+// im Repo haelt (Issue #1464), noch ein .DS_Store, den der Finder ablegt.
+const versteckt = (datei) => datei.startsWith(".");
+
 // Liest einen Ordner mit einer Unterordner-Ebene (z.B. skills/<name>/<datei>)
 // zu { name: { datei: inhalt } } ein — Grundlage fuer einen gemeinsamen Blob.
+// Ein fehlender Ordner ergibt {} wie bei buildFileJson: Der Spiegel en/skills/ kann fehlen.
 function buildDirJson(dir) {
   const result = {};
+  if (!existsSync(dir)) return result;
   for (const entry of readdirSync(dir).sort(vergleicheText)) {
     const entryDir = join(dir, entry);
     if (!statSync(entryDir).isDirectory()) continue;
     const files = {};
     for (const file of readdirSync(entryDir).sort(vergleicheText)) {
       const filePath = join(entryDir, file);
-      if (statSync(filePath).isFile()) files[file] = readFileSync(filePath, "utf-8");
+      if (!versteckt(file) && statSync(filePath).isFile()) files[file] = readFileSync(filePath, "utf-8");
     }
     result[entry] = files;
   }
@@ -68,7 +74,7 @@ function buildFileJson(dir) {
   if (!existsSync(dir)) return result;
   for (const file of readdirSync(dir).sort(vergleicheText)) {
     const filePath = join(dir, file);
-    if (statSync(filePath).isFile()) result[file] = readFileSync(filePath, "utf-8");
+    if (!versteckt(file) && statSync(filePath).isFile()) result[file] = readFileSync(filePath, "utf-8");
   }
   return result;
 }
@@ -128,6 +134,13 @@ const BLOBS = [
   { constName: "SKILLS_B64", sourceDir: join(root, "skills") },
   // Der Leser-Agent der Pruefer (Issue #1377, Plan #1375 A2): eine flache Quelle neben skills/.
   { constName: "AGENTS_B64", sourceFiles: join(root, "agents") },
+  // Der Spiegel en/ (Issue #1464, Plan #1420 E17): je Quelle ein englischer Blob neben dem
+  // deutschen. Der Installer waehlt je Projektsprache und faellt fuer eine fehlende englische
+  // Fassung auf die deutsche zurueck. Nicht skills/en/: buildDirJson buke den Ordner als Skill.
+  { constName: "SKILLS_EN_B64", sourceDir: join(root, "en", "skills") },
+  { constName: "TEMPLATES_EN_B64", sourceFiles: join(root, "en", "templates") },
+  { constName: "AGENTS_EN_B64", sourceFiles: join(root, "en", "agents") },
+  { constName: "KIT_ROLLEN_EN_B64", sourceFiles: join(root, "en", "kit", "rollen") },
 ];
 
 // Dateien, die den Kit-Stand als KIT_VERSION tragen (Issue #170/#171).

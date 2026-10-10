@@ -83,6 +83,10 @@ function setupFixture({
     'const PRE_COMMIT_B64 = "";',
     'const SKILLS_B64 = "";',
     'const AGENTS_B64 = "";',
+    'const SKILLS_EN_B64 = "";',
+    'const TEMPLATES_EN_B64 = "";',
+    'const AGENTS_EN_B64 = "";',
+    'const KIT_ROLLEN_EN_B64 = "";',
     "",
   ].join("\n"));
 

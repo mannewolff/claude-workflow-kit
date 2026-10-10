@@ -35,14 +35,13 @@ test("install.mjs liefert beide Register aus und legt sie neben CLAUDE-workflow.
     assert.ok(m[1].length > 0, `${konstante} ist leer — sync-blobs.mjs wurde nicht gelaufen`);
   }
   // targetBase ist ~/.claude (global) oder ./.claude (lokal); beide Register muessen
-  // denselben Weg gehen wie CLAUDE-workflow.md, sonst laedt `/kontext` sie nie.
-  for (const [datei] of REGISTER) {
-    assert.match(
-      install,
-      new RegExp(`join\\(targetBase, "${datei}"\\)`),
-      `install.mjs legt ${datei} nicht in targetBase ab`
-    );
+  // denselben Weg gehen wie CLAUDE-workflow.md, sonst laedt `/kontext` sie nie. Seit Issue
+  // #1464 ist der Weg die Tabelle REGELTEXTE, die schreibeRegeltexte unter targetBase ablegt.
+  assert.match(install, /"CLAUDE-workflow\.md": CLAUDE_WORKFLOW_MD_B64/);
+  for (const eintrag of ['"CLAUDE-Fachplan.md": CLAUDE_FACHPLAN_MD_B64', '"CLAUDE-Plan.md": CLAUDE_PLAN_MD_B64']) {
+    assert.ok(install.includes(eintrag), `install.mjs fuehrt ${eintrag} nicht unter den Regeltexten`);
   }
+  assert.match(install, /const ziel = join\(targetBase, datei\);/, "die Regeltexte liegen in targetBase");
 });
 
 test("Jedes Register nennt seine Gates nummeriert und markiert sie", () => {

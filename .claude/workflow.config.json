@@ -781,6 +781,7 @@
       "tools/sprachfassungen.mjs",
       "package.json",
       "kit/rollen/**",
+      "en/**",
       "agents/**",
       "test/rollen-*.test.mjs"
     ],

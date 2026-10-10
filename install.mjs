@@ -107,6 +107,17 @@ const SKILLS_B64 = "eyJkb2N1bWVudCI6eyJTS0lMTC5tZCI6Ii0tLVxubmFtZTogZG9jdW1lbnRc
 //   node tools/sync-blobs.mjs        (Pruefung: node tools/sync-blobs.mjs --check)
 const AGENTS_B64 = "eyJraXQtcHJ1ZWZlci5tZCI6Ii0tLVxubmFtZToga2l0LXBydWVmZXJcbmRlc2NyaXB0aW9uOiBQcsO8ZmVyIGRlcyBLaXRzIGbDvHIgRmFjaHBsYW4sIFBsYW4sIEFyYmVpdHNwYWtldCB1bmQgQ29kZSDigJQgbGllc3QgZGVuIFByw7xmYXVmdHJhZyBhdXMgZGVyIGdlbmFubnRlbiBEYXRlaSB1bmQgbWVsZGV0IEJlZnVuZGUsIG9obmUgZXR3YXMgenUgw6RuZGVybi5cbnRvb2xzOiBSZWFkLCBHcmVwLCBHbG9iXG4tLS1cblxuTGllcyBkZWluZW4gQXVmdHJhZyBhdXMgZGVyIERhdGVpLCBkaWUgZGlyIGdlbmFubnQgd2lyZCwgdW5kIGbDvGhyZSBpaG4gYXVzLiBEdSDDpG5kZXJzdCBuaWNodHM6IGtlaW5lIERhdGVpLCBrZWluIEJvYXJkLCBrZWluZW4gQmVmZWhsLiBEZWluZSBCZWZ1bmRlIGxpZWZlcnN0IGR1IHZvbGxzdMOkbmRpZyBhbHMgQWJzY2hsdXNzbmFjaHJpY2h0LlxuIn0=";
 
+// --- Der Spiegel en/ (Issue #1464, Plan #1420 E17) ---
+// Die englischen Fassungen, je Quelle ein Blob in derselben Form wie der deutsche: en/skills/,
+// en/templates/, en/agents/ und en/kit/rollen/. Was dort fehlt, installiert ein englisches
+// Projekt deutsch und nennt es (fassungWaehlen).
+// SYNC: Nach jeder Aenderung unter en/ neu generieren:
+//   node tools/sync-blobs.mjs        (Pruefung: node tools/sync-blobs.mjs --check)
+const SKILLS_EN_B64 = "e30=";
+const TEMPLATES_EN_B64 = "e30=";
+const AGENTS_EN_B64 = "e30=";
+const KIT_ROLLEN_EN_B64 = "e30=";
+
 // --- Defaults (eingebettet, damit install.mjs als Single-File portabel ist) ---
 const schema = {
   defaults: {
@@ -297,7 +308,29 @@ function skillsBlobLesen() {
   return blob;
 }
 
-function copySkills(targetDir) {
+const blobJson = (b64) => (b64 ? JSON.parse(Buffer.from(b64, "base64").toString("utf-8")) : {});
+
+/**
+ * Die Fassungen in der Projektsprache (Issue #1464, Plan #1420 E17). Ein deutsches Projekt
+ * bekommt `deutsch`. Ein englisches bekommt je Name die Fassung aus dem Spiegel en/, sonst die
+ * deutsche — `rueckfall` nennt dann die Namen, die deutsch bleiben; ein Name nur im Spiegel
+ * kommt dazu. Gleich fuer Skills ({ name: { datei: inhalt } }) wie fuer Dateien ({ datei: inhalt }).
+ */
+export function fassungWaehlen(deutsch, englisch, sprache) {
+  if (sprache !== "en") return { dateien: deutsch, rueckfall: [] };
+  return {
+    dateien: { ...deutsch, ...englisch },
+    rueckfall: Object.keys(deutsch).filter((name) => !Object.hasOwn(englisch, name)),
+  };
+}
+
+/** Die Berichtszeile zu einem Rueckfall auf Deutsch unter `pfad`; keine, wenn es keinen gibt. */
+function rueckfallZeilen(pfad, rueckfall) {
+  return rueckfall.length > 0 ? [t("deutscheFassung", { pfad, namen: rueckfall.join(", ") })] : [];
+}
+
+// Liefert die Zahl der kopierten Skills und die Berichtszeile der deutsch gebliebenen.
+function copySkills(targetDir, sprache) {
   // Einzige Quelle: der eingebettete Blob (Single-File-Portabilitaet). Den
   // Rueckfall auf ein skills/ neben dem Installer gibt es seit Issue #499 nicht
   // mehr — er war unerreichbar: SKILLS_B64 ist eine versionierte Konstante dieser
@@ -313,17 +346,19 @@ function copySkills(targetDir) {
     }
   }
 
+  const { dateien: skillsWahl, rueckfall } = fassungWaehlen(skillsBlob, blobJson(SKILLS_EN_B64), sprache);
+
   // Die Namen kommen aus dem Blob, frueher standen sie als feste Liste hier. Genau
   // daran ist /issue-review gescheitert: Der Skill lag im Blob, fehlte aber in der
   // Liste — und wurde in KEINEM per Installer eingerichteten Projekt jemals angelegt,
   // lautlos. Eine Liste, die man beim Hinzufuegen eines Skills pflegen muss, wird
   // irgendwann vergessen; der wiederkehrende Fehler gehoert mechanisch ausgeschlossen
   // statt der Sorgfalt ueberlassen (Leitplanken-Prinzip, Issue #122).
-  const skills = Object.keys(skillsBlob);
+  const skills = Object.keys(skillsWahl);
 
   let copied = 0;
   for (const skill of skills) {
-    const files = skillsBlob[skill];
+    const files = skillsWahl[skill];
     if (Object.keys(files).length === 0) {
       // Ohne Pfadangabe — es gibt keinen Pfad mehr. Stumm ueberspringen waere
       // schlimmer: Der Skill fehlte im Zielprojekt, ohne dass es jemand saehe.
@@ -346,7 +381,30 @@ function copySkills(targetDir) {
     console.error(t("keinSkill"));
     process.exit(1);
   }
-  return copied;
+  return { anzahl: copied, rueckfall: rueckfallZeilen(targetDir, rueckfall) };
+}
+
+// Die Regeltexte neben CLAUDE-workflow.md (die Gate-Register): `/kontext` laedt sie ueber
+// projectDocs (".claude/CLAUDE-*").
+const REGELTEXTE = Object.freeze({
+  "CLAUDE-workflow.md": CLAUDE_WORKFLOW_MD_B64,
+  "CLAUDE-Fachplan.md": CLAUDE_FACHPLAN_MD_B64,
+  "CLAUDE-Plan.md": CLAUDE_PLAN_MD_B64,
+});
+
+/** Legt die Regeltexte in der Projektsprache unter `targetBase` ab (Issue #1464). */
+function schreibeRegeltexte(targetBase, sprache) {
+  const deutsch = Object.fromEntries(Object.entries(REGELTEXTE).map(([datei, b64]) => [datei, Buffer.from(b64, "base64").toString("utf-8")]));
+  // Nur die Regeltexte: en/templates/ spiegelt templates/ und kann Vorlagen tragen, die der
+  // Installer nicht als Regeltext ablegt.
+  const englisch = Object.fromEntries(Object.entries(blobJson(TEMPLATES_EN_B64)).filter(([datei]) => Object.hasOwn(deutsch, datei)));
+  const { dateien, rueckfall } = fassungWaehlen(deutsch, englisch, sprache);
+  for (const [datei, inhalt] of Object.entries(dateien)) {
+    const ziel = join(targetBase, datei);
+    writeFileSync(ziel, inhalt, "utf-8");
+    console.log(t("abgelegt", { datei, pfad: ziel }));
+  }
+  return rueckfallZeilen(targetBase, rueckfall);
 }
 
 // --- GitLab Label Setup ---
@@ -632,7 +690,7 @@ export const TEXTE = Object.freeze({
     spracheGesetzt: "✓ Sprache gesetzt: {feld}: {ziel}",
     umbenannt: "\nUmbenannt ({anzahl}):",
     offen: "\nOffen ({anzahl}):",
-    skillsDeutsch: "Skills und Regeltexte bleiben deutsch, bis das Kit sie auf Englisch mitbringt.",
+    deutscheFassung: "Deutsch installiert, die englische Fassung fehlt — {pfad}: {namen}",
     zurueck: "\nZurück: node install.mjs --language {ziel}",
     reviewerWiderspruch: "  Diese Config traegt beide Reviewer — gelten kann nur einer: reviewModel entfaellt,",
     reviewCommandBleibt: "  reviewCommand bleibt: {kommando}",
@@ -777,7 +835,7 @@ export const TEXTE = Object.freeze({
     spracheGesetzt: "✓ Language set: {feld}: {ziel}",
     umbenannt: "\nRenamed ({anzahl}):",
     offen: "\nOpen ({anzahl}):",
-    skillsDeutsch: "Skills and rule texts stay German until the kit ships them in English.",
+    deutscheFassung: "Installed in German, no English version yet — {pfad}: {namen}",
     zurueck: "\nBack: node install.mjs --language {ziel}",
     reviewerWiderspruch: "  This config carries both reviewers — only one can apply: reviewModel is dropped,",
     reviewCommandBleibt: "  reviewCommand stays: {kommando}",
@@ -944,8 +1002,9 @@ function umstellSprache(argv) {
  * `node install.mjs --language en|de` (E12): stellt ein bestehendes Projekt um. Sichert die
  * Config nach `workflow.config.json.vor-umstellung`, benennt Schluessel und Aufzaehlungswerte
  * in Config und Override-Datei um, setzt das Sprachfeld und listet, was umbenannt wurde und
- * was offen bleibt. Labelwerte aendert sie nicht (E7), Skills und Regeltexte bleiben deutsch,
- * bis das Kit sie auf Englisch mitbringt.
+ * was offen bleibt. Labelwerte aendert sie nicht (E7). Skills, Regeltexte, Pruefer und
+ * Pruefrollen legt sie in der neuen Sprache ab; was davon deutsch bleibt, steht unter "Offen"
+ * (Issue #1464).
  */
 function umstellModus(ziel) {
   const configPfad = resolve(".claude", "workflow.config.json");
@@ -961,6 +1020,7 @@ function umstellModus(ziel) {
   writeFileSync(configPfad, JSON.stringify(config, null, 2) + "\n", "utf-8");
   console.log(t("sicherung", { pfad: `${configPfad}.vor-umstellung` }));
   console.log(t("spracheGesetzt", { feld: SPRACHFELD[ziel], ziel }));
+  const rueckfall = schreibeSprachfassungen(resolve(".claude"), ziel);
 
   const zeilen = liste.map(umbenennungsZeile);
   const lokalPfad = resolve(".claude", "workflow.config.local.json");
@@ -972,8 +1032,7 @@ function umstellModus(ziel) {
   console.log(t("umbenannt", { anzahl: zeilen.length }));
   for (const z of zeilen) console.log(`  ${z}`);
 
-  const offen = [...offeneLabels(normalisiereConfig(config).config, ziel), ...boardBestand(ziel)];
-  if (ziel === "en") offen.push(t("skillsDeutsch"));
+  const offen = [...offeneLabels(normalisiereConfig(config).config, ziel), ...boardBestand(ziel), ...rueckfall];
   console.log(t("offen", { anzahl: offen.length }));
   for (const z of offen) console.log(`  ${z}`);
   console.log(t("zurueck", { ziel: ziel === "en" ? "de" : "en" }));
@@ -1550,28 +1609,61 @@ function schreibeEinstiege(kitDir) {
 // (Issue #1209, Plan #1199 E1). Die Einstiege laden ihre Teile aus diesen Unterverzeichnissen.
 // Das Verzeichnis entsteht auch leer: Dann gibt es noch keinen Teil, und ein neuer Teil
 // braucht spaeter keine Aenderung an dieser Stelle.
-function schreibeTeile(kitDir) {
-  for (const [teil, blob] of [["night", KIT_NIGHT_B64], ["board", KIT_BOARD_B64], ["rollen", KIT_ROLLEN_B64]]) {
-    const teilDir = join(kitDir, teil);
-    mkdirSync(teilDir, { recursive: true });
-    const dateien = JSON.parse(Buffer.from(blob, "base64").toString("utf-8"));
-    for (const [datei, inhalt] of Object.entries(dateien)) {
-      writeFileSync(join(teilDir, datei), inhalt, "utf-8");
-    }
-    console.log(t("teileGeschrieben", { teil, anzahl: Object.keys(dateien).length, pfad: teilDir }));
+// Die Pruefrollen in rollen/ kommen in der Projektsprache (Issue #1464); die Rueckgabe ist ihre
+// Berichtszeile.
+function schreibeTeile(kitDir, sprache) {
+  for (const [teil, blob] of [["night", KIT_NIGHT_B64], ["board", KIT_BOARD_B64]]) schreibeTeil(kitDir, teil, blobJson(blob));
+  return schreibeRollen(kitDir, sprache);
+}
+
+function schreibeTeil(kitDir, teil, dateien) {
+  const teilDir = join(kitDir, teil);
+  mkdirSync(teilDir, { recursive: true });
+  for (const [datei, inhalt] of Object.entries(dateien)) {
+    writeFileSync(join(teilDir, datei), inhalt, "utf-8");
   }
+  console.log(t("teileGeschrieben", { teil, anzahl: Object.keys(dateien).length, pfad: teilDir }));
+  return teilDir;
+}
+
+function schreibeRollen(kitDir, sprache) {
+  const { dateien, rueckfall } = fassungWaehlen(blobJson(KIT_ROLLEN_B64), blobJson(KIT_ROLLEN_EN_B64), sprache);
+  return rueckfallZeilen(schreibeTeil(kitDir, "rollen", dateien), rueckfall);
 }
 
 // Schreibt die Agenten nach agents/ des Ziels (Issue #1377, Plan #1375 A2), nach dem Muster
 // von copySkills: Die Namen kommen aus dem Blob, eine Liste gibt es nicht. Claude Code liest
 // <targetBase>/agents/ global wie projektweit.
-function copyAgents(targetDir) {
+function copyAgents(targetDir, sprache) {
   mkdirSync(targetDir, { recursive: true });
-  const dateien = JSON.parse(Buffer.from(AGENTS_B64, "base64").toString("utf-8"));
+  const { dateien, rueckfall } = fassungWaehlen(blobJson(AGENTS_B64), blobJson(AGENTS_EN_B64), sprache);
   for (const [datei, inhalt] of Object.entries(dateien)) {
     writeFileSync(join(targetDir, datei), inhalt, "utf-8");
   }
   console.log(t("agentenGeschrieben", { anzahl: Object.keys(dateien).length, pfad: targetDir }));
+  return rueckfallZeilen(targetDir, rueckfall);
+}
+
+// Nennt am Schluss der Installation, was deutsch blieb; eine eigene Funktion, damit main()
+// unter der Komplexitaetsschwelle bleibt (Issue #404).
+function meldeRueckfall(zeilen) {
+  if (zeilen.length > 0) console.log(`\n${zeilen.join("\n")}`);
+}
+
+/**
+ * Was die Umstellung in der neuen Sprache ablegt (Issue #1464, Plan #1420 E12): Skills,
+ * Regeltexte, Pruefer und Pruefrollen — dieselben Wege wie die Installation, sonst nichts aus
+ * dem Kit. Die Rueckgabe sind die Berichtszeilen dessen, was deutsch bleibt.
+ */
+function schreibeSprachfassungen(targetBase, sprache) {
+  console.log(t("kopiereSkills", { pfad: join(targetBase, "skills") }));
+  const skills = copySkills(join(targetBase, "skills"), sprache);
+  return [
+    ...skills.rueckfall,
+    ...schreibeRegeltexte(targetBase, sprache),
+    ...copyAgents(join(targetBase, "agents"), sprache),
+    ...schreibeRollen(join(targetBase, "kit"), sprache),
+  ];
 }
 
 /**
@@ -1707,13 +1799,13 @@ async function main() {
     : resolve(".claude");
   const skillsTarget = join(targetBase, "skills");
   const configTarget = join(targetBase, "workflow.config.json");
-  const workflowMdTarget = join(targetBase, "CLAUDE-workflow.md");
-  const fachplanMdTarget = join(targetBase, "CLAUDE-Fachplan.md");
-  const planMdTarget = join(targetBase, "CLAUDE-Plan.md");
+  // Die Sprache dieses Laufs steht seit spracheDesLaufs fest; Skills, Regeltexte, Pruefer und
+  // Pruefrollen kommen in ihr, was davon deutsch bleibt, nennt der Schluss (Issue #1464).
+  const projektSpracheLauf = prozessSprache();
 
   // --- Skills kopieren ---
   console.log(t("kopiereSkills", { pfad: skillsTarget }));
-  const skillAnzahl = copySkills(skillsTarget);
+  const { anzahl: skillAnzahl, rueckfall } = copySkills(skillsTarget, projektSpracheLauf);
 
   // --- Config schreiben ---
   // Basis sind die DEFAULTS (fuellen echte Luecken), darueber die bestehende Config
@@ -1767,15 +1859,8 @@ async function main() {
     console.log(t("geschrieben", { datei: "kontext.config.json", pfad: kontextConfigTarget }));
   }
 
-  // --- CLAUDE-workflow.md ablegen ---
-  writeFileSync(workflowMdTarget, Buffer.from(CLAUDE_WORKFLOW_MD_B64, "base64").toString("utf-8"), "utf-8");
-  console.log(t("abgelegt", { datei: "CLAUDE-workflow.md", pfad: workflowMdTarget }));
-
-  // --- Gate-Register ablegen ---
-  writeFileSync(fachplanMdTarget, Buffer.from(CLAUDE_FACHPLAN_MD_B64, "base64").toString("utf-8"), "utf-8");
-  console.log(t("abgelegt", { datei: "CLAUDE-Fachplan.md", pfad: fachplanMdTarget }));
-  writeFileSync(planMdTarget, Buffer.from(CLAUDE_PLAN_MD_B64, "base64").toString("utf-8"), "utf-8");
-  console.log(t("abgelegt", { datei: "CLAUDE-Plan.md", pfad: planMdTarget }));
+  // --- CLAUDE-workflow.md und die Gate-Register ablegen ---
+  rueckfall.push(...schreibeRegeltexte(targetBase, projektSpracheLauf));
 
   // --- Beispiel-Config ablegen ---
   //
@@ -1853,8 +1938,7 @@ async function main() {
 
   schreibeEinstiege(kitDir);
 
-  schreibeTeile(kitDir);
-  copyAgents(join(targetBase, "agents"));
+  rueckfall.push(...schreibeTeile(kitDir, projektSpracheLauf), ...copyAgents(join(targetBase, "agents"), projektSpracheLauf));
   richteSchutzEin(kitDir, configTarget, schutzZweig);
 
   schreibeCommitGate(scope, hooks);
@@ -1865,6 +1949,7 @@ async function main() {
     ensureSitzungsHooks(targetBase);
   }
 
+  meldeRueckfall(rueckfall);
   console.log(t("fertig"));
   console.log(t("neueSession"));
   // Gezaehlt statt behauptet: Das Zahlwort stand hier zweimal falsch (zuletzt

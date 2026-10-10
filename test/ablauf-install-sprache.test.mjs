@@ -67,8 +67,8 @@ const KARTEN = [
   { id: "9", title: "[Plan] Plan", status: "ready", labels: [] },
 ];
 
-function installiere(dir, argv, extraEnv = {}, antworten = []) {
-  return spawnSync(process.execPath, [INSTALLER, ...argv], {
+function installiere(dir, argv, extraEnv = {}, antworten = [], installer = INSTALLER) {
+  return spawnSync(process.execPath, [installer, ...argv], {
     cwd: dir,
     input: antworten.join("\n") + "\n",
     encoding: "utf-8",
@@ -120,7 +120,7 @@ test("--language en legt die Sicherung an, benennt Config und Override-Datei um 
     assert.match(fehlend, /kit:protected/, "ein englisches Label, das auf keiner Karte steht, wird genannt");
     assert.doesNotMatch(fehlend, /kit:clarify/, "ein englisches Label, das am Board steht, fehlt nicht");
     assert.doesNotMatch(fehlend, /kit:night/, "ein Label, das in beiden Sprachen gleich heisst, ist nicht offen");
-    assert.match(res.stdout, /Skills und Regeltexte bleiben deutsch/);
+    assert.doesNotMatch(res.stdout, /Skills und Regeltexte bleiben deutsch/, "die Umstellung bringt Skills und Regeltexte selbst mit");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -197,6 +197,108 @@ test("Ein neues englisches Projekt bekommt englische Schluessel", () => {
     assert.equal(c.language, "en");
     assert.deepEqual(c.pushCheck, { location: "buildService", branch: "pruefzweig" });
     assert.equal("pushPruefung" in c, false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Skills und Regeltexte je Projektsprache (Issue #1464, Plan #1420 E12, E17) ---
+//
+// Der Spiegel en/ reist als eigene Blobs in install.mjs. Solange er leer ist, hat keine Datei
+// eine englische Fassung; die Faelle unten brauchen aber beides, eine englische und eine
+// fehlende. Darum laeuft eine Kopie des Installers, deren Spiegel-Blobs einen Teil tragen —
+// genau so, wie tools/sync-blobs.mjs sie aus en/ backt.
+
+const SPIEGEL = {
+  SKILLS_EN_B64: { fachplan: { "SKILL.md": "# Requirement (en)\n" } },
+  TEMPLATES_EN_B64: { "CLAUDE-workflow.md": "# Workflow (en)\n" },
+  AGENTS_EN_B64: { "kit-pruefer.md": "# Checker (en)\n" },
+  KIT_ROLLEN_EN_B64: { "code-review.md": "# Code review (en)\n" },
+};
+
+function installerMitSpiegel(dir) {
+  let src = readFileSync(INSTALLER, "utf-8");
+  for (const [konstante, inhalt] of Object.entries(SPIEGEL)) {
+    const re = new RegExp(`(const ${konstante} = ")[A-Za-z0-9+/=]*(";)`);
+    assert.match(src, re, konstante);
+    src = src.replace(re, `$1${Buffer.from(JSON.stringify(inhalt), "utf-8").toString("base64")}$2`);
+  }
+  mkdirSync(join(dir, "verteilt"), { recursive: true });
+  const pfad = join(dir, "verteilt", "install.mjs");
+  writeFileSync(pfad, src);
+  return pfad;
+}
+
+const deutscheQuelle = (...teile) => readFileSync(join(repoRoot, ...teile), "utf-8");
+const installiert = (dir, ...teile) => readFileSync(join(dir, ".claude", ...teile), "utf-8");
+
+/** Englische Fassung, wo der Spiegel sie traegt, sonst die deutsche. */
+function assertFassungen(dir, sprache) {
+  const en = sprache === "en";
+  assert.equal(installiert(dir, "skills", "fachplan", "SKILL.md"), en ? "# Requirement (en)\n" : deutscheQuelle("skills", "fachplan", "SKILL.md"));
+  assert.equal(installiert(dir, "skills", "techplan", "SKILL.md"), deutscheQuelle("skills", "techplan", "SKILL.md"), "ohne englische Fassung deutsch");
+  assert.equal(installiert(dir, "CLAUDE-workflow.md"), en ? "# Workflow (en)\n" : deutscheQuelle("templates", "CLAUDE-workflow.md"));
+  assert.equal(installiert(dir, "CLAUDE-Plan.md"), deutscheQuelle("templates", "CLAUDE-Plan.md"));
+  assert.equal(installiert(dir, "agents", "kit-pruefer.md"), en ? "# Checker (en)\n" : deutscheQuelle("agents", "kit-pruefer.md"));
+  assert.equal(installiert(dir, "kit", "rollen", "code-review.md"), en ? "# Code review (en)\n" : deutscheQuelle("kit", "rollen", "code-review.md"));
+  assert.equal(installiert(dir, "kit", "rollen", "pruefbarkeit.md"), deutscheQuelle("kit", "rollen", "pruefbarkeit.md"));
+}
+
+const NEU = ["projekt", "github", "j", "j", "pruefzweig", "github", "", "", "", "", "", "", ""];
+const schutzFake = (dir) => {
+  const skript = join(dir, "schutz-fake.mjs");
+  writeFileSync(skript, 'console.log(JSON.stringify({ ergebnis: "scharf", grund: "Attrappe" }));\n');
+  return { INSTALL_SCHUTZ_FAKE: skript };
+};
+
+test("Ein neues englisches Projekt bekommt die englischen Fassungen unter den gewohnten Pfaden, fehlende deutsch und genannt", () => {
+  const dir = fixture("install-fassung-en-");
+  try {
+    const res = installiere(dir, [], schutzFake(dir), ["en", ...NEU], installerMitSpiegel(dir));
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assertFassungen(dir, "en");
+
+    const rueckfall = res.stdout.split("\n").filter((z) => z.includes("Installed in German"));
+    const skills = rueckfall.find((z) => z.includes(join(dir, ".claude", "skills"))) ?? "";
+    assert.match(skills, /\btechplan\b/);
+    assert.doesNotMatch(skills, /\bfachplan\b/, "eine englische Fassung ist kein Rueckfall");
+    const regeltexte = rueckfall.find((z) => z.includes("CLAUDE-Plan.md")) ?? "";
+    assert.doesNotMatch(regeltexte, /CLAUDE-workflow\.md/);
+    assert.ok(rueckfall.some((z) => z.includes("pruefbarkeit.md") && !z.includes("code-review.md")), "die Pruefrollen werden genannt");
+    assert.ok(!rueckfall.some((z) => z.includes("kit-pruefer.md")), "der Pruefer hat eine englische Fassung");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Ein neues deutsches Projekt bekommt die deutschen Fassungen und keinen Rueckfall-Hinweis", () => {
+  const dir = fixture("install-fassung-de-");
+  try {
+    const res = installiere(dir, [], schutzFake(dir), ["de", ...NEU], installerMitSpiegel(dir));
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assertFassungen(dir, "de");
+    assert.doesNotMatch(res.stdout, /Deutsch installiert|Installed in German/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Die Umstellung tauscht Skills und Regeltexte, hin und zurueck, und nennt, was deutsch bleibt", () => {
+  const dir = deutschesProjekt("install-umstellung-fassung-");
+  try {
+    const installer = installerMitSpiegel(dir);
+    const hin = installiere(dir, ["--language", "en"], boardFake(dir, KARTEN), [], installer);
+    assert.equal(hin.status, 0, `${hin.stderr}\n${hin.stdout}`);
+    assertFassungen(dir, "en");
+    // Berichtet wird in der Sprache vor der Umstellung, die Liste steht unter "Offen".
+    const offen = hin.stdout.slice(hin.stdout.indexOf("Offen ("));
+    assert.match(offen, /Deutsch installiert.*skills: .*\btechplan\b/);
+    assert.equal(existsSync(join(dir, ".claude", "kit", "board.mjs")), false, "die Umstellung schreibt nur die Sprachfassungen");
+
+    const zurueck = installiere(dir, ["--language", "de"], boardFake(dir, KARTEN), [], installer);
+    assert.equal(zurueck.status, 0, `${zurueck.stderr}\n${zurueck.stdout}`);
+    assertFassungen(dir, "de");
+    assert.doesNotMatch(zurueck.stdout, /Deutsch installiert|Installed in German/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
