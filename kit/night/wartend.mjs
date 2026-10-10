@@ -67,13 +67,19 @@ const {
   istIdee: boardTeilFehlt("dokumente.mjs", "das Praefix [Idee]"),
   istMensch: boardTeilFehlt("dokumente.mjs", "das Praefix [Mensch]"),
 }));
-const { geschuetzteTreffer, geschuetztKommentar, geschuetztFreigabe } = await import(
+// Die Labels mit Freigaberecht samt ihrer Erkennung unter beiden Namen ebenso (Issue #1424,
+// Plan #1420 E8). Fehlt der Teil, bleiben die beiden Namen leer: Jede Pruefung, nach der sie
+// gebraucht wuerden, wirft vorher.
+const { geschuetzteTreffer, geschuetztKommentar, geschuetztFreigabe, traegtLabel,
+  GESCHUETZT_LABEL: geschuetztLabel, KLAEREN_LABEL: klaerenLabel } = await import(
   pathToFileURL(join(NACHBAR_DIR, "board", "geschuetzt.mjs")).href,
 ).catch(() => ({
   geschuetzteTreffer: boardTeilFehlt("geschuetzt.mjs", "die Erkennung geschuetzter Dateien"),
   geschuetztKommentar: boardTeilFehlt("geschuetzt.mjs", "der Halt-Kommentar fuer geschuetzte Dateien"),
   geschuetztFreigabe: boardTeilFehlt("geschuetzt.mjs", "die Freigabe geschuetzter Dateien"),
+  traegtLabel: boardTeilFehlt("geschuetzt.mjs", "die Erkennung der Kit-Labels"),
 }));
+export { traegtLabel };
 
 // --- Abhaengigkeiten nach aussen (Plan #1199, E6) ---
 
@@ -252,11 +258,14 @@ export const GATE_ABLEHNUNG = {
  * Die beiden Labelsorten leisten Verschiedenes: `review:*` **beschreibt** einen
  * abgeleiteten Zustand und ist jederzeit neu berechenbar, `kit:klaeren`
  * **entscheidet** und bleibt stehen, bis ein Mensch es abnimmt.
+ *
+ * Name und Erkennung kommen aus dem Register (Issue #1424): Der Halt gilt unter jedem Namen
+ * des Labels, auch unter `kit:clarify`.
  */
-export const KLAEREN_LABEL = "kit:klaeren";
+export const KLAEREN_LABEL = klaerenLabel;
 
 export function hatKlaerenLabel(issue) {
-  return (issue?.labels || []).includes(KLAEREN_LABEL);
+  return traegtLabel(issue?.labels, "klaeren");
 }
 
 /**
@@ -269,12 +278,13 @@ export function hatKlaerenLabel(issue) {
  * diesem Namen kommt im Runner darum nicht vor. Ein eigenes Label und nicht `kit:klaeren`,
  * weil hier nichts zu entscheiden, sondern etwas zu tun ist.
  *
- * SYNC: `GESCHUETZT_LABEL` und `GESCHUETZT_ANKER` stehen gleichlautend in kit/board.mjs
- * (Issue #1045), wo `geschuetztKommentar` den Halt-Text baut und `geschuetztFreigabe` ihn
- * zurueckliest. Wer einen hier aendert, aendert ihn dort mit — der Gleichlauf-Test in
- * test/ablauf-night-geschuetzt-gate.test.mjs vergleicht beide Seiten.
+ * `GESCHUETZT_LABEL` kommt samt Erkennung unter beiden Namen aus kit/board/geschuetzt.mjs
+ * und damit aus dem Register (Issue #1424). SYNC: `GESCHUETZT_ANKER` steht gleichlautend in
+ * kit/board.mjs (Issue #1045), wo `geschuetztKommentar` den Halt-Text baut und
+ * `geschuetztFreigabe` ihn zurueckliest. Wer ihn hier aendert, aendert ihn dort mit — der
+ * Gleichlauf-Test in test/ablauf-night-geschuetzt-gate.test.mjs vergleicht beide Seiten.
  */
-export const GESCHUETZT_LABEL = "kit:geschuetzt";
+export const GESCHUETZT_LABEL = geschuetztLabel;
 export const GESCHUETZT_ANKER = "## Geschuetzte Datei";
 // Die Zeile, mit der `issue check-geschuetzt --pfad` einen beim Schreiben abgewiesenen Pfad
 // fuehrt (Issue #1053). Der Auffang aus #1051 erkennt daran, dass der Pfad aus dem Stream der
@@ -282,7 +292,7 @@ export const GESCHUETZT_ANKER = "## Geschuetzte Datei";
 export const GESCHUETZT_ABGEWIESEN = "beim Schreiben abgewiesen";
 
 export function hatGeschuetztLabel(issue) {
-  return (issue?.labels || []).includes(GESCHUETZT_LABEL);
+  return traegtLabel(issue?.labels, "geschuetzt");
 }
 
 // Der Kommentar des Label-Gates. SYNC: Ohne das Praefix `Nachtlauf: ` steht er als

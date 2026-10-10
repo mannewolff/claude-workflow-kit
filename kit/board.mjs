@@ -309,6 +309,8 @@ const { KONTEXT_DEFAULTS, loadKontextConfig, kontextRepoName, heute, issueCreate
 export const { GESCHUETZTE_PFADE, KOPIE_PFADE, geschuetztePfade, trifftGeschuetzt, pfadTokens, tokenFormen,
   geschuetzteTreffer, GESCHUETZT_ANKER, GESCHUETZT_LABEL, GESCHUETZT_LABEL_GESETZT, GESCHUETZT_LABEL_NICHT_GESETZT,
   GESCHUETZT_ABGEWIESEN, abgewieseneTreffer, geschuetztKommentar, geschuetztFreigabe } = await import("./board/geschuetzt.mjs");
+// Erkennt ein Label unter jedem seiner Namen (Issue #1424); exportiert war es nie.
+const { traegtLabel } = await import("./board/geschuetzt.mjs");
 export const { TEST_ABLAGEN_VORGABE, testAblagen, ablageAlsAusdruck, nennungsVerzeichnis, genannteDateien,
   pruefeTestNennung, pruefeForm } = await import("./board/testhinweise.mjs");
 // Den Bestand fuer `issue check-form` braucht nur der Einstieg; exportiert war er nie.
@@ -429,7 +431,7 @@ async function issueCheckGeschuetzt(tracker, args) {
     ...geschuetzteTreffer(issue.body || "", issue.title || "", configWurzel()),
     ...abgewieseneTreffer(args.werte?.pfad ?? [], configWurzel()),
   ];
-  const label = labels.includes(GESCHUETZT_LABEL);
+  const label = traegtLabel(labels, "geschuetzt");
   const freigegeben = geschuetztFreigabe(treffer, kommentare, labels);
   const ok = freigegeben || (treffer.length === 0 && !label);
   out({ ok, treffer, label, freigegeben, handlung: geschuetztHandlung(treffer, label, freigegeben), kommentar: treffer.length > 0 ? geschuetztKommentar(treffer) : null });

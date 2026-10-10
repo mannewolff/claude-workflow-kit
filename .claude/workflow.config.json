@@ -112,7 +112,9 @@
         "board-dokumente",
         "board-geschuetzt",
         "board-grundlagen",
-        "board-wiederholung"
+        "board-wiederholung",
+        "nacht-kette",
+        "nacht-wartend"
       ]
     },
     {
@@ -296,6 +298,7 @@
         "board-dokumente",
         "board-einstieg",
         "board-geschuetzt",
+        "board-grundlagen",
         "board-melder",
         "board-wiederholung",
         "installer",

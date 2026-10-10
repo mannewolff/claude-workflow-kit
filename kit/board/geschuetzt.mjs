@@ -21,6 +21,7 @@ import path, { join } from "node:path";
 import { homedir } from "node:os";
 
 import { istMensch, zerlegeAbschnitte, CHECK_FORM_ABSCHNITTE } from "./dokumente.mjs";
+import { SPRACHEN, erkenneLabel, labelName } from "./namen.mjs";
 
 // ============================================================
 // Geschuetzte Pfade (Issue #1041, Plan #987, fachliche Quelle #868)
@@ -200,9 +201,29 @@ export function geschuetzteTreffer(body, title, wurzel) {
 // `geschuetztKommentar`, und `kit/night.mjs` prueft seine eigenen Konstanten gegen diese.
 
 export const GESCHUETZT_ANKER = "## Geschuetzte Datei";
-export const GESCHUETZT_LABEL = "kit:geschuetzt";
-export const GESCHUETZT_LABEL_GESETZT = `Label ${GESCHUETZT_LABEL} gesetzt`;
-export const GESCHUETZT_LABEL_NICHT_GESETZT = `Label ${GESCHUETZT_LABEL} nicht gesetzt`;
+
+// Die Labels mit Freigaberecht kommen aus dem Register (Issue #1424, Plan #1420 E3, E8).
+// Geschrieben wird der deutsche Name, bis das Schreiben in der Projektsprache folgt; erkannt
+// wird jeder Name derselben Sache — sonst gaebe ein Mensch unter `kit:protected` etwas frei,
+// das das Kit nicht sieht, oder das Kit uebersaehe einen Halt.
+export const GESCHUETZT_LABEL = labelName("geschuetzt", "de");
+export const KLAEREN_LABEL = labelName("klaeren", "de");
+export const GESCHUETZT_LABEL_GESETZT = freigabeZeile(GESCHUETZT_LABEL, true);
+export const GESCHUETZT_LABEL_NICHT_GESETZT = freigabeZeile(GESCHUETZT_LABEL, false);
+
+/** Die Label-Zeile des Halt-Kommentars, die den Ausgang von `label add` vermerkt (E11). */
+function freigabeZeile(label, gesetzt) {
+  return `Label ${label} ${gesetzt ? "gesetzt" : "nicht gesetzt"}`;
+}
+
+// Die Label-Zeilen unter jedem Namen von `kit:geschuetzt`, zum Zuruecklesen.
+const ZEILEN_GESETZT = SPRACHEN.map((s) => freigabeZeile(labelName("geschuetzt", s), true));
+const ZEILEN_NICHT_GESETZT = SPRACHEN.map((s) => freigabeZeile(labelName("geschuetzt", s), false));
+
+/** Traegt die Liste ein Label der Sache aus dem Register, gleich unter welchem Namen? */
+export function traegtLabel(labels, sache) {
+  return (labels || []).some((name) => erkenneLabel(name) === sache);
+}
 // Die zitierte Zeile eines Pfads, den der Schutz beim Schreiben abwies (Issue #1053, E13):
 // Die Aufgabe nennt ihn gerade nicht, es gibt keine Zeile aus dem Paket zu zitieren.
 export const GESCHUETZT_ABGEWIESEN = "beim Schreiben abgewiesen";
@@ -264,20 +285,21 @@ export function geschuetztKommentar(treffer) {
 /** Die Pfade der Listenzeilen eines Halt-Kommentars, oder null, wenn er nicht freigeben kann. */
 function freigegebenePfade(body) {
   const zeilen = String(body ?? "").replaceAll("\r", "").split("\n").map((z) => z.trimEnd());
-  if (!zeilen.includes(GESCHUETZT_ANKER) || !zeilen.includes(GESCHUETZT_LABEL_GESETZT)) return null;
-  if (zeilen.includes(GESCHUETZT_LABEL_NICHT_GESETZT)) return null;
+  if (!zeilen.includes(GESCHUETZT_ANKER) || !ZEILEN_GESETZT.some((z) => zeilen.includes(z))) return null;
+  if (ZEILEN_NICHT_GESETZT.some((z) => zeilen.includes(z))) return null;
   return new Set(zeilen.map(listenPfad).filter((p) => p !== null));
 }
 
 /**
  * Ist das Paket nach E5 freigegeben? Nur wenn das Label nicht (mehr) haengt und ein Kommentar
  * mit dem Anker die Zeile `Label kit:geschuetzt gesetzt` traegt und jeden aktuellen Treffer
- * in seiner Backtick-Liste nennt. `Label kit:geschuetzt nicht gesetzt` gibt nie frei — dort
+ * in seiner Backtick-Liste nennt — unter jedem Namen des Labels, Zeile wie Label (Issue
+ * #1424). `Label kit:geschuetzt nicht gesetzt` gibt nie frei — dort
  * fehlt das Label, weil das Setzen scheiterte, nicht weil ein Mensch es abnahm. Ohne Treffer
  * gibt es nichts freizugeben: `false`.
  */
 export function geschuetztFreigabe(treffer, kommentare, labels) {
-  if (treffer.length === 0 || labels.includes(GESCHUETZT_LABEL)) return false;
+  if (treffer.length === 0 || traegtLabel(labels, "geschuetzt")) return false;
   return kommentare.some((k) => {
     const pfade = freigegebenePfade(k.body);
     return pfade !== null && treffer.every((t) => pfade.has(t.pfad));

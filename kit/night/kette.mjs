@@ -47,7 +47,7 @@ import { flatten, kennzahlenAddieren, ketteBudgetDefaults, kostenAddieren, KETTE
 import { berichtFuerKette, berichtSchreiben, hatPlanReviewMarker, kommentareVon, planReviewWert,
   pruefBericht, vorbereitungsBericht, wartendeMenschenschritte } from "./bericht.mjs";
 import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, geschuetztAmBoardVermerken, hatKlaerenLabel, laufeRunde,
-  pruefeIssueGates, rundenMerker, wartendVermerk, wartendeSession } from "./wartend.mjs";
+  pruefeIssueGates, rundenMerker, traegtLabel, wartendVermerk, wartendeSession } from "./wartend.mjs";
 
 // Die Praefixe kommen aus dem Board-Teil dokumente (Issue #1218). Abgefangen wie im Einstieg:
 // Fehlt der Teil, wirft jede Funktion erst, wenn jemand sie braucht — ein stilles `false`
@@ -266,8 +266,9 @@ export function wurzelBelegt(F, issues, staende, jetzt, host, { budgets = { kett
  */
 export const REVIEW_FERTIG_LABEL = "review:fertig";
 
+// Erkannt unter jedem Namen des Labels, auch `review:done` (Issue #1424, Plan #1420 E8).
 export function hatReviewFertigLabel(issue) {
-  return (issue?.labels || []).includes(REVIEW_FERTIG_LABEL);
+  return traegtLabel(issue?.labels, "reviewFertig");
 }
 
 /**

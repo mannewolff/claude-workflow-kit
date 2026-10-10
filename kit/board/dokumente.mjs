@@ -33,7 +33,7 @@ import { GitHubIssueTracker, resolveCodeHost } from "./adapter.mjs";
 // Zyklus mit Absicht: ursprung.mjs liest Karten und Herkunftszeilen von hier. Beide Seiten
 // rufen sich erst zur Laufzeit, keine liest beim Laden einen Wert der anderen.
 import { ursprungLesen, ursprungNachziehen } from "./ursprung.mjs";
-import { SPRACHEN, praefix, erkennePraefix } from "./namen.mjs";
+import { SPRACHEN, praefix, erkennePraefix, erkenneLabel } from "./namen.mjs";
 
 // ============================================================
 // Kontext-Achse (Vault-Pfade fuer /kontext und /document, Issue #202)
@@ -1254,7 +1254,6 @@ const AUFTRAG_PRAEFIXE = [
   [istPlan, "plan", "Titel-Praefix [Plan]"],
   [istMensch, "mensch", "Titel-Praefix [Mensch]"],
 ];
-const AUFTRAG_KLAEREN = "kit:klaeren";
 const AUFTRAG_SPALTEN = new Set(["ready", "in_progress"]);
 // Die Spalten, in denen eine Voraussetzung unerfuellt ist (Issue #1149); jede andere Lage
 // gilt als erfuellt — wie `satisfiedIds` in kit/night.mjs.
@@ -1668,7 +1667,7 @@ function geschuetztSchritte(id, treffer, geschuetzt) {
 // Konstanten) fuehrt der Abschnitt "Geschuetzte Pfade"; der Aufrufer reicht sie herein
 // (Issue #1218), damit dieser Teil nicht aus dem Einstieg importiert.
 function auftragUrteil(id, spalte, erwartet, karte, voraussetzungen, kommentare, geschuetzt) {
-  const { GESCHUETZT_LABEL, geschuetzteTreffer, geschuetztFreigabe, geschuetztKommentar } = geschuetzt;
+  const { geschuetzteTreffer, geschuetztFreigabe, geschuetztKommentar } = geschuetzt;
   const nicht = (folge, grund, kommentar = null) => ({ urteil: "darf nicht beginnen", folge, grund, kommentar });
   if (spalte !== erwartet) {
     const wo = spalte ? COLUMN_DEFAULTS[spalte] : "keiner bestimmbaren Spalte";
@@ -1676,12 +1675,16 @@ function auftragUrteil(id, spalte, erwartet, karte, voraussetzungen, kommentare,
   }
   const praefix = AUFTRAG_PRAEFIXE.find(([passt]) => passt(karte.title));
   if (praefix) return nicht("backlog", `${praefix[2]} — wird nicht implementiert.`, AUFTRAG_BACKLOG_TEXTE[praefix[1]](id));
-  if ((karte.labels || []).includes(AUFTRAG_KLAEREN)) {
-    return nicht("backlog", `Label ${AUFTRAG_KLAEREN} — eine offene Entscheidung wartet.`, AUFTRAG_BACKLOG_TEXTE.klaeren(id));
-  }
+  // Beide Labels unter jedem ihrer Namen (Issue #1424, Plan #1420 E8); der Grund nennt den
+  // Namen, den die Karte traegt.
   const labels = karte.labels || [];
-  if (labels.includes(GESCHUETZT_LABEL)) {
-    return nicht("backlog", `Label ${GESCHUETZT_LABEL} — eine menschliche Handlung an einer geschuetzten Datei wartet; das Label bleibt.`, AUFTRAG_BACKLOG_TEXTE.geschuetzt(id));
+  const klaeren = labels.find((name) => erkenneLabel(name) === "klaeren");
+  if (klaeren) {
+    return nicht("backlog", `Label ${klaeren} — eine offene Entscheidung wartet.`, AUFTRAG_BACKLOG_TEXTE.klaeren(id));
+  }
+  const geschuetztLabel = labels.find((name) => erkenneLabel(name) === "geschuetzt");
+  if (geschuetztLabel) {
+    return nicht("backlog", `Label ${geschuetztLabel} — eine menschliche Handlung an einer geschuetzten Datei wartet; das Label bleibt.`, AUFTRAG_BACKLOG_TEXTE.geschuetzt(id));
   }
   const treffer = geschuetzteTreffer(karte.body || "", karte.title || "", configWurzel());
   if (treffer.length > 0 && !geschuetztFreigabe(treffer, kommentare, labels)) {

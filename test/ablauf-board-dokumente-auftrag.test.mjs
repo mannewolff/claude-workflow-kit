@@ -69,6 +69,8 @@ const KARTEN = [
   { nr: 14, spalte: "ready", titel: "[Plan] Weg", body: body() },
   { nr: 15, spalte: "ready", titel: "[Mensch] Zugang anlegen", body: body() },
   { nr: 16, spalte: "ready", titel: "Paket mit Frage", body: body(), labels: ["kit:klaeren"] },
+  // Derselbe Klaerhalt unter dem englischen Namen (Issue #1424, Plan #1420 E8).
+  { nr: 26, spalte: "ready", titel: "Paket mit englischer Frage", body: body(), labels: ["kit:clarify"] },
   { nr: 17, spalte: "ready", titel: "Paket wartet", body: body(20) },
   { nr: 18, spalte: "ready", titel: "Paket mit Phantom", body: body(99) },
   { nr: 19, spalte: "ready", titel: "Rueckläufer", body: body(21, 22), kommentare: ["Review: Test fehlt."] },
@@ -91,6 +93,7 @@ const KARTEN = [
   { nr: 40, spalte: "backlog", titel: "[Fachlich] Anlass", body: FACHLICH_BODY },
   // Geschuetzte Dateien (Issue #1052): Label, Treffer, freigegebene Karte, Menschenschritt.
   { nr: 50, spalte: "ready", titel: "Paket wartet auf Handlung", body: body(), labels: ["kit:geschuetzt"] },
+  { nr: 55, spalte: "ready", titel: "Paket wartet auf englische Handlung", body: body(), labels: ["kit:protected"] },
   { nr: 51, spalte: "ready", titel: "Paket mit geschuetzter Datei", body: geschuetztBody },
   { nr: 52, spalte: "ready", titel: "Paket freigegeben", body: geschuetztBody, kommentare: [FREIGABE] },
   { nr: 53, spalte: "ready", titel: "[Mensch] Einstellung eintragen", body: geschuetztBody },
@@ -158,6 +161,7 @@ async function adapterFaelle(t, lauf, zustand) {
     ["14", "[Plan]", AUFTRAG_BACKLOG_TEXTE.plan("14")],
     ["15", "[Mensch]", AUFTRAG_BACKLOG_TEXTE.mensch("15")],
     ["16", "kit:klaeren", AUFTRAG_BACKLOG_TEXTE.klaeren("16")],
+    ["26", "kit:clarify", AUFTRAG_BACKLOG_TEXTE.klaeren("26")],
   ];
   for (const [nr, was, text] of backlogFaelle) {
     await t.test(`${was} -> backlog mit Kommentartext, Karte unveraendert`, async () => {
@@ -184,6 +188,15 @@ async function adapterFaelle(t, lauf, zustand) {
     assert.match(a.urteil.grund, /kit:geschuetzt/);
     assert.ok(a.aufgabe.labels.includes("kit:geschuetzt"), "das Label bleibt");
     assert.deepEqual(await zustand("50"), vorher);
+  });
+
+  await t.test("kit:protected -> backlog wie kit:geschuetzt (Issue #1424)", async () => {
+    const vorher = await zustand("55");
+    const a = await auftrag("55");
+    assert.equal(a.urteil.folge, "backlog");
+    assert.equal(a.urteil.kommentar, AUFTRAG_BACKLOG_TEXTE.geschuetzt("55"));
+    assert.match(a.urteil.grund, /kit:protected/);
+    assert.deepEqual(await zustand("55"), vorher);
   });
 
   await t.test("geschuetzter Pfad -> geschuetzt, Kommentar gleich dem von check-geschuetzt", async () => {

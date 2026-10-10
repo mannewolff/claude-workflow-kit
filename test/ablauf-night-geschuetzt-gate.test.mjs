@@ -21,8 +21,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, cpSync } from "node:fs";
+import { join, dirname, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
@@ -337,10 +337,44 @@ test("hatGeschuetztLabel erkennt das Label und nur es", () => {
   assert.equal(nightModul.hatGeschuetztLabel({}), false);
 });
 
-test("Der Runner nimmt kit:geschuetzt nie ab", () => {
-  const quelle = readFileSync(NIGHT, "utf-8");
-  assert.doesNotMatch(quelle, /"label",\s*"remove",[^)]*GESCHUETZT_LABEL/);
-  assert.doesNotMatch(quelle, /label remove[^\n]*kit:geschuetzt/);
+// Alle Dateien unter kit/, nicht nur night.mjs (Issue #1424, Plan #1420 E8): Seit den Teilen
+// unter kit/night/ und kit/board/ steht der Runner nicht mehr in einer Datei, und seit dem
+// Register traegt jedes Label zwei Namen.
+function kitQuellen(verzeichnis = join(repoRoot, "kit")) {
+  return readdirSync(verzeichnis, { withFileTypes: true }).flatMap((e) => {
+    const pfad = join(verzeichnis, e.name);
+    if (e.isDirectory()) return kitQuellen(pfad);
+    return [{ datei: relative(repoRoot, pfad).split(sep).join("/"), quelle: readFileSync(pfad, "utf-8") }];
+  });
+}
+
+test("Kein Code unter kit/ nimmt kit:geschuetzt oder kit:protected ab", () => {
+  const quellen = kitQuellen();
+  assert.ok(quellen.some((q) => q.datei === "kit/night.mjs"), "der Scan liest kit/night.mjs");
+  assert.ok(quellen.some((q) => q.datei === "kit/night/wartend.mjs"), "der Scan liest die Teile unter kit/night/");
+  const muster = [
+    /"label",\s*"remove",[^)]*(GESCHUETZT_LABEL|kit:geschuetzt|kit:protected|"geschuetzt")/,
+    /label remove[^\n]*(kit:geschuetzt|kit:protected)/,
+  ];
+  const funde = quellen.flatMap(({ datei, quelle }) => muster.filter((m) => m.test(quelle)).map((m) => `${datei}: ${m}`));
+  assert.deepEqual(funde, []);
+});
+
+// Eine Konstante mit dem Wert eines der beiden Labels, in einer der beiden Sprachen.
+const KONSTANTE = /\b(?:const|let|var)\s+[\w$]+\s*=\s*(["'`])kit:(?:geschuetzt|klaeren|protected|clarify)\1/;
+
+test("Ausser im Register definiert kein Modul unter kit/ eine Konstante kit:geschuetzt oder kit:klaeren", () => {
+  const funde = kitQuellen()
+    .filter(({ datei }) => datei !== "kit/board/namen.mjs")
+    .filter(({ quelle }) => KONSTANTE.test(quelle))
+    .map(({ datei, quelle }) => `${datei}: ${KONSTANTE.exec(quelle)[0]}`);
+  assert.deepEqual(funde, []);
+});
+
+test("Der Konstanten-Scan schlaegt bei einer Doppeldefinition an", () => {
+  assert.match('export const GESCHUETZT_LABEL = "kit:geschuetzt";', KONSTANTE);
+  assert.match("const AUFTRAG_KLAEREN = 'kit:klaeren';", KONSTANTE);
+  assert.doesNotMatch('const X = labelName("geschuetzt", "de");', KONSTANTE);
 });
 
 // --- Vorschau (Issue #1047, Plan #987, E19) ---
