@@ -2,7 +2,31 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
-## [Unreleased]
+## [4.1.1] - 2026-10-10
+- Test der Rundenauswertung liest nicht mehr die Prüf-Zusammenfassung der Projektwurzel (#1418)
+- Doku (DE/EN): Schutz des Hauptzweigs, --schutz, Notfallweg, code schutz (#1412)
+- Build-Dienst des Kits: Lauf der Stufe push auf dem Prüfzweig kit-pruefung (#1411)
+- Skills und Regeltext: /push-main notfall und Prüfzweig-Push in /merge-production (#1410)
+- Installer: Schutz-Vorschlag bei GitHub und Modus --schutz (#1409)
+- CLI code schutz mit Probe: status, einrichten, aussetzen, wiederherstellen, nachpruefen (#1408)
+- Neues Modul kit/board/schutz.mjs: Zustand, Ruleset-Soll, Anleitung, Notfall-Gate, Nacht-Sperre (#1407)
+- Code-Host-Adapter: Ruleset-Operationen und Zweigfilter für getCiStatus (#1406)
+- Doku: Wackelnde Prüfungen einmal wiederholt (DE/EN) (#1403)
+- Regeltext und implement-Skills: einmalige Wiederholung, Wackler, Messgrenze (#1402)
+- push main und merge production: Halt mit Rückfrage nach einem Wackler (#1401)
+- Vorbereitung der Nacht: Wackler als offener Punkt für push main (#1400)
+- Nachtbericht: gewackelte Prüfungen mit Zahl der Fälle nennen (#1399)
+- Wirksamkeit: Wackler zählen, Reparaturkandidaten kennzeichnen (#1398)
+- Prüfläufe: Wackler je Karte in der Zusammenfassung fortschreiben (#1397)
+- Prüfläufe: rote Prüfung einmal wiederholen (#1396)
+- Skills, Regeltext und Doku: das festgefahrene Paket (#1393)
+- Melder: Ausgang festgefahren als RED/CHECKS_RED an den Leitstand (#1392)
+- Nachtbericht, Kette und Schlusszeile zeigen den Ausgang festgefahren (#1391)
+- Nacht-Runner: Ausgang festgefahren mit Stash, Vermerk und Backlog (#1390)
+- Nacht-Runner: Sitzung bei Bremsmarke vorzeitig beenden (#1389)
+- checks.mjs: festgefahrene Prüfung zählen und unbeaufsichtigt bremsen (Exitcode 3) (#1388)
+- Config: Feld night.festgefahrenNach in Schema, Einstellungen, Vorlage und Referenz (#1387)
+- Doku und Changelog: Prüfer nur lesend (kit-pruefer), Rollen als Dateien unter kit/rollen/ (#1384)
 - Schalter: /issue-review und /review prüfen über kit/rollen/, pruefauftrag und kit-pruefer (#1383)
 - befunde pruefen meldet keine-pruefer ohne Reviewer-Kopf (#1382)
 - issue-review start mit Lesegrenze; check und roles melden Lesegrenze und Rollendateien (#1381)

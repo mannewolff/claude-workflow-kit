@@ -162,7 +162,7 @@ import { homedir } from "node:os";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "4.1.0";
+const KIT_VERSION = "4.1.1";
 
 // SYNC: Die Vorgaben fuer --model und --label stehen als DEFAULT_MODEL und DEFAULT_LABEL in
 // kit/night/grundlagen.mjs. Der Text steht hier, weil --help antwortet, bevor ein Teil
