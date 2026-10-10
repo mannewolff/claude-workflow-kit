@@ -21,6 +21,8 @@ test("[night-19] reisst eine Session das Zeitbudget der Stufe, endet die Kette a
     const einheit = lauf.einheiten.find((e) => e.id === F);
     assert.equal(einheit.ausgang, "abgebrochen");
     assert.match(einheit.grund, /Zeitbudget plan: die Session wurde nach [\d.]+ min am Limit beendet/);
+    // Die Einordnung traegt das Feld grundArt, nicht der Text (Issue #1426).
+    assert.equal(einheit.grundArt, "zeitbudget");
     // Eine erreichte Grenze ist kein Abbruch des Laufs (Issue #881): Der Lauf endet
     // regulaer, und die Meldung ans Board traegt deshalb keinen abortReason — der
     // Ausgang steht am roten Paket, nicht am Lauf.

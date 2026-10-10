@@ -386,6 +386,7 @@ export function pruefeIssueGates(top) {
   if (hatKlaerenLabel(top)) {
     return {
       log: `#${top.id} uebersprungen: traegt ${KLAEREN_LABEL}, eine offene Entscheidung wartet.`,
+      grundArt: "klaeren",
       kommentar: "Nachtlauf: Traegt kit:klaeren — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.",
     };
   }
@@ -427,6 +428,7 @@ export function pruefeIssueGates(top) {
   if (unmet.length > 0) {
     return {
       unmet,
+      grundArt: "abhaengigkeit",
       log: `#${top.id} zurueckgestellt: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt.`,
       kommentar: `Nachtlauf: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt (liegt in Backlog, Ready oder In progress) — Issue zurueckgestellt.`,
       block: abhaengigkeitsBlock(befund),
@@ -1360,12 +1362,12 @@ function festgefahrenFelder() {
 }
 
 function ausgangsFelder(ausgang) {
-  if (ausgang === "deferred") return { ausgang: "zurueckgestellt", grund: DEFERRED_GRUND };
+  if (ausgang === "deferred") return { ausgang: "zurueckgestellt", grund: DEFERRED_GRUND, grundArt: "ohneInReview" };
   if (ausgang === "hardStop") return { ausgang: "harterStopp" };
   // Das Paket ist an sich selbst gescheitert, seine Reste liegen im Stash (Issue #1089).
-  if (ausgang === "abgebrochen") return { ausgang, grund: ABBRUCH_GRUND };
+  if (ausgang === "abgebrochen") return { ausgang, grund: ABBRUCH_GRUND, grundArt: "sonst" };
   // Die Bremse hat die Sitzung beendet (Issue #1390, E8) — ein eigener Ausgang.
-  if (ausgang === "festgefahren") return { ausgang, grund: GRUND_FESTGEFAHREN };
+  if (ausgang === "festgefahren") return { ausgang, grund: GRUND_FESTGEFAHREN, grundArt: "sonst" };
   // `angehalten` braucht keinen eigenen Zweig (Issue #572): Der Default liefert
   // `{ ausgang: "angehalten" }`, und einen Grund traegt der Halt nicht — er steht
   // als Kommentar der Session an der Karte, und eine zweite Fassung waere eine
@@ -1585,7 +1587,7 @@ function stelleAmGateZurueck(top, gate) {
   if (gate.art === "geschuetzt") {
     abh.board("issue", "move", String(top.id), "backlog");
     geschuetztAmBoardVermerken(top, gate);
-    einheitErgaenzen(einheitAnlegen(top.id, top.title), { ausgang: "zurueckgestellt", grund: gate.log });
+    einheitErgaenzen(einheitAnlegen(top.id, top.title), { ausgang: "zurueckgestellt", grund: gate.log, grundArt: "sonst" });
     return;
   }
   // Die zweite Logzeile je Kreis (Issue #1063, E10) — die erste bleibt einzeilig wie bisher.
@@ -1594,7 +1596,9 @@ function stelleAmGateZurueck(top, gate) {
   const text = gate.block ? `${gate.kommentar}\n\n${gate.block}` : gate.kommentar;
   abh.board("issue", "comment", String(top.id), "--text", text);
   abh.board("issue", "move", String(top.id), "backlog");
-  einheitErgaenzen(einheitAnlegen(top.id, top.title), { ausgang: "zurueckgestellt", grund: gate.kommentar });
+  // Die Art des Grundes liest der Melder statt des Textes (Issue #1426); ein Gate ohne
+  // eigene Art — Titel-Praefix, Review-Freigabe — ist `sonst`.
+  einheitErgaenzen(einheitAnlegen(top.id, top.title), { ausgang: "zurueckgestellt", grund: gate.kommentar, grundArt: gate.grundArt ?? "sonst" });
   // Haengt das Paket an einem Paket, das in diesem Lauf abgebrochen ist, wartet es (E15) —
   // zusaetzlich zum Rueckstell-Kommentar, der unveraendert bleibt.
   const an = (gate.unmet ?? []).filter((n) => ABGEBROCHENE_PAKETE.has(Number(n)));
@@ -1658,6 +1662,7 @@ function ohneSessionGescheitert(top, einheit, modellStand, started) {
   einheitErgaenzen(einheit, {
     ausgang: "fehlschlag",
     grund,
+    grundArt: "sonst",
     dauerMs: Date.now() - started,
     commit: null,
     endStatus: abh.board("issue", "get", String(top.id)).status,

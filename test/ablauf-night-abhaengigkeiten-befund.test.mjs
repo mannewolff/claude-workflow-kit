@@ -84,6 +84,7 @@ test("[night-1062] ein zurueckgestelltes Paket traegt unter der unveraenderten e
     assert.ok(einheit, "keine Einheit fuer das zurueckgestellte Paket");
     assert.equal(einheit.ausgang, "zurueckgestellt");
     assert.equal(einheit.grund, erwartet);
+    assert.equal(einheit.grundArt, "abhaengigkeit", "der Melder liest die Art, nicht den Text (Issue #1426)");
   });
 });
 

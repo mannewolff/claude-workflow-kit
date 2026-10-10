@@ -351,6 +351,7 @@ test("[night-55] eine wartende Sitzung bei sauberem Baum bekommt eigenen Grund, 
     assert.equal(karte(dir, erstes).status, "backlog", "die Karte gehoert weiterhin ins Backlog");
     const e = einheit(dir, erstes);
     assert.equal(e.ausgang, "zurueckgestellt", "der Ausgang bleibt die Rueckstellung");
+    assert.equal(e.grundArt, "ohneInReview", "der Melder liest die Art, nicht den Text (Issue #1426)");
     assert.equal(e.wartendBeendet, true, "das Feld der wartenden Sitzung fehlt an der Einheit");
     // Das neue Feld haengt hinten an — die Feldreihenfolge ist der Vertrag mit den
     // Auswertungen, und die sieben alten Namen behalten ihre Plaetze.

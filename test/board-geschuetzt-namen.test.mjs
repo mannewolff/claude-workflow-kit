@@ -70,6 +70,7 @@ test("Klaerhalt: eine Karte mit kit:clarify gilt wie eine mit kit:klaeren", () =
     assert.equal(hatKlaerenLabel({ labels: [label] }), true, label);
     const gate = pruefeIssueGates({ id: "7", title: "Paket", labels: [label] });
     assert.match(gate.kommentar, /eine offene Entscheidung wartet/, label);
+    assert.equal(gate.grundArt, "klaeren", `${label}: der Melder liest die Art, nicht den Text (Issue #1426)`);
   }
   assert.equal(hatKlaerenLabel({ labels: ["kit:geschuetzt", "kit:protected"] }), false);
   assert.equal(hatKlaerenLabel({}), false);

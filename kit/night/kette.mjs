@@ -879,7 +879,7 @@ export function wartendBeendet(stufe, schlusstext, dokId, ergebnisDa) {
 async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, { dokId = null, ergebnisDa = null, extraEnv } = {}) {
   const rest = budgetMs - (abh.jetzt().getTime() - stufeStart);
   if (rest < KETTE_MINDEST_REST_MS) {
-    return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe} erschoepft, bevor eine weitere Session starten konnte`, dauerMs: 0, kennzahlen: null, sitzungsAbbruch: true };
+    return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe} erschoepft, bevor eine weitere Session starten konnte`, grundArt: "zeitbudget", dauerMs: 0, kennzahlen: null, sitzungsAbbruch: true };
   }
   const t = abh.jetzt().getTime();
   const res = await runSession(kette.F, kette.args, {
@@ -893,7 +893,7 @@ async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, { dokId 
   if (ZUSTAND.LAUF) kostenAddieren(ZUSTAND.LAUF, kennzahlen);
   const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
   if (timedOut) {
-    return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe}: die Session wurde nach ${minuten} min am Limit beendet`, dauerMs, kennzahlen, sitzungsAbbruch: true };
+    return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe}: die Session wurde nach ${minuten} min am Limit beendet`, grundArt: "zeitbudget", dauerMs, kennzahlen, sitzungsAbbruch: true };
   }
   if (res.umgebungGescheitert) laufAnhalten(`Sitzungsstart der Stufe ${stufe} zu #${kette.F} auch im 2. Versuch gescheitert (${exitText(res)})`);
   if (res.error || res.status !== 0) {
@@ -1942,7 +1942,7 @@ function uebersprungeneVerbuchen(uebersprungen, alle, kettenLabel, dryRun) {
   const abgelehnt = uebersprungen.filter((u) => String(u.grund).startsWith(UNGEPRUEFT_PRAEFIX));
   for (const u of uebersprungen) {
     log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
-    einheitErgaenzen(einheitAnlegen(u.id, u.title), { ausgang: "uebersprungen", grund: u.grund });
+    einheitErgaenzen(einheitAnlegen(u.id, u.title), { ausgang: "uebersprungen", grund: u.grund, grundArt: "sonst" });
     // Der Dry-Run schreibt nichts ans Board; der Hinweis auf das Kennzeichen kommt
     // auch dort, er ist nur eine Protokollzeile.
     if (!dryRun && abgelehnt.includes(u)) pruefungFehltKommentieren(u);
@@ -2630,7 +2630,9 @@ async function ketteMitKarte(auftrag, nummer, args) {
       : { ueberholt: [], ueberholtUnbestaetigt: [] };
     einheitErgaenzen(einheit, {
       ausgang: ergebnis.ausgang,
-      ...(ergebnis.grund ? { grund: ergebnis.grund } : {}),
+      // Die Art des Grundes liest der Melder statt des Textes (Issue #1426): Sie traegt nur
+      // das Ergebnis einer Stufe, deren Grund eingeordnet ist — sonst `sonst`.
+      ...(ergebnis.grund ? { grund: ergebnis.grund, grundArt: ergebnis.grundArt ?? "sonst" } : {}),
       // Die Auftragsart und — nur beim Plan-Auftrag — die fachliche Wurzel (Issue #895):
       // Die Einheit traegt die Nummer der gekennzeichneten Karte, und ohne `fachplan`
       // waere von aussen nicht zu sehen, wogegen die Abdeckung gehalten hat.

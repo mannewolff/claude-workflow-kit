@@ -168,10 +168,10 @@ test("[night-31] Implementierung: Farbe und Fehlerklasse je Ausgang", () => {
     e("erfolg", { pruefung: { zustand: "leeresPaket" } }),
     e("erfolg", { pruefung: { zustand: "ungeprueft" } }),
     e("fehlschlag", { pruefung: { zustand: "rot", rotesKommando: "node --test", rotesErgebnis: "Exit 1" } }),
-    e("zurueckgestellt", { grund: "Nachtlauf: Abhaengigkeit #3 nicht erfuellt" }),
-    e("zurueckgestellt", { grund: "Traegt kit:klaeren" }),
-    e("zurueckgestellt", { grund: "Session ohne In-review-Ergebnis" }),
-    e("zurueckgestellt", { grund: "Fachliches Issue" }),
+    e("zurueckgestellt", { grund: "Nachtlauf: Abhaengigkeit #3 nicht erfuellt", grundArt: "abhaengigkeit" }),
+    e("zurueckgestellt", { grund: "Traegt kit:klaeren", grundArt: "klaeren" }),
+    e("zurueckgestellt", { grund: "Session ohne In-review-Ergebnis", grundArt: "ohneInReview" }),
+    e("zurueckgestellt", { grund: "Fachliches Issue", grundArt: "sonst" }),
     e("uebersprungen", { grund: "kein Label" }),
     e("liegengeblieben"),
     e("angehalten"),
@@ -192,9 +192,9 @@ test("[night-31] Kette: fertig, angehalten und die drei Abbrueche", () => {
   const farben = [
     e("fertig"),
     e("angehalten"),
-    e("abgebrochen", { grund: "Zeitbudget review: die Session wurde nach 15 min am Limit beendet", stufen: { plan: { id: "12" } } }),
-    e("abgebrochen", { grund: "Zeitbudget plan erschoepft", stufen: { plan: { id: null } } }),
-    e("abgebrochen", { grund: "Kostenbudget: 51.00 $ von 50 $" }),
+    e("abgebrochen", { grund: "Zeitbudget review: die Session wurde nach 15 min am Limit beendet", grundArt: "zeitbudget", stufen: { plan: { id: "12" } } }),
+    e("abgebrochen", { grund: "Zeitbudget plan erschoepft", grundArt: "zeitbudget", stufen: { plan: { id: null } } }),
+    e("abgebrochen", { grund: "Kostenbudget: 51.00 $ von 50 $", grundArt: "sonst" }),
   ].map((x) => nachtlaufMeldung(stand("kette", [x]), JETZT).items[0]).map((i) => [i.state, i.errorClass]);
   assert.deepEqual(farben, [
     ["GREEN", null], ["RED", "AWAITING_DECISION"], ["YELLOW", "TIME_BUDGET_EXCEEDED"], ["RED", "TIME_BUDGET_EXCEEDED"], ["RED", "HARD_ABORT"],

@@ -90,28 +90,38 @@ const NACHTLAUF_FEST = {
   fertig: ["GREEN", null],
 };
 
-/** Die Farbe eines zurueckgestellten Pakets — erster Treffer gewinnt (ZURUECKGESTELLT dort). */
-function farbeZurueckgestellt(grund) {
-  if (grund.includes("Abhaengigkeit")) return ["GREY", "DEPENDENCY_UNMET"];
-  if (grund.includes("kit:klaeren")) return ["RED", "AWAITING_DECISION"];
-  if (grund.startsWith("Session ohne In-review-Ergebnis")) return ["RED", "UNEXPECTED_STATE"];
+/**
+ * Die Art des Grundes einer Einheit (Issue #1426, Plan #1420, E14): eines der Woerter
+ * `abhaengigkeit|klaeren|ohneInReview|zeitbudget|sonst`. Der Freitext `grund` wird
+ * uebersetzt und taugt deshalb nicht zur Einordnung; ein alter Lauf ohne das Feld gilt
+ * als `sonst`.
+ */
+function grundArtVon(einheit) {
+  return typeof einheit.grundArt === "string" ? einheit.grundArt : "sonst";
+}
+
+/** Die Farbe eines zurueckgestellten Pakets (ZURUECKGESTELLT dort). */
+function farbeZurueckgestellt(grundArt) {
+  if (grundArt === "abhaengigkeit") return ["GREY", "DEPENDENCY_UNMET"];
+  if (grundArt === "klaeren") return ["RED", "AWAITING_DECISION"];
+  if (grundArt === "ohneInReview") return ["RED", "UNEXPECTED_STATE"];
   return ["GREY", null];
 }
 
 /** Die Farbe eines abgebrochenen Ketten-Vorgangs (deuteKettenAusgang dort). */
-function farbeAbgebrochen(einheit, grund) {
-  if (!grund.startsWith("Zeitbudget ")) return ["RED", "HARD_ABORT"];
+function farbeAbgebrochen(einheit, grundArt) {
+  if (grundArt !== "zeitbudget") return ["RED", "HARD_ABORT"];
   const s = einheit.stufen;
   const dokument = typeof s?.plan?.id === "string" || (Array.isArray(s?.pakete?.ids) && s.pakete.ids.length > 0);
   return [dokument ? "YELLOW" : "RED", "TIME_BUDGET_EXCEEDED"];
 }
 
 function nachtlaufFarbe(einheit) {
-  const grund = typeof einheit.grund === "string" ? einheit.grund : "";
+  const grundArt = grundArtVon(einheit);
   const ausgang = einheit.ausgang;
   if (NACHTLAUF_FEST[ausgang]) return NACHTLAUF_FEST[ausgang];
-  if (ausgang === "zurueckgestellt") return farbeZurueckgestellt(grund);
-  if (ausgang === "abgebrochen") return farbeAbgebrochen(einheit, grund);
+  if (ausgang === "zurueckgestellt") return farbeZurueckgestellt(grundArt);
+  if (ausgang === "abgebrochen") return farbeAbgebrochen(einheit, grundArt);
   if (ausgang === "erfolg" || ausgang === "fehlschlag") {
     const zeile = NACHTLAUF_NACH_PRUEFUNG[einheit.pruefung?.zustand ?? "ungeprueft"];
     return zeile?.[ausgang] ?? ["RED", "UNEXPECTED_STATE"];
