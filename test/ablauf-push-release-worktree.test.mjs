@@ -350,7 +350,8 @@ test("[release-4] worktree.mjs wird gestempelt und ausgeliefert", () => {
 
   const install = readFileSync(join(repoRoot, "install.mjs"), "utf-8");
   assert.match(install, /const WORKTREE_MJS_B64 = "/, "install.mjs traegt keinen Blob");
-  assert.match(install, /worktree\.mjs geschrieben/, "der Installer schreibt die Datei nicht aus");
+  // Die Meldung steht seit Issue #1455 in der Texttabelle; ausgeschrieben wird ueber den Schluessel.
+  assert.match(install, /t\("geschrieben", \{ datei: "worktree\.mjs"/, "der Installer schreibt die Datei nicht aus");
 
   // Die installierten Skills rufen `.claude/kit/worktree.mjs`; eine Datei, die nur im
   // Kit-Repo liegt, ginge in jedem Zielprojekt ins Leere (dieselbe Luecke wie #425).

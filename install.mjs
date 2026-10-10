@@ -121,11 +121,12 @@ const schema = {
     },
   },
   validationRules: [
+    // `error` nennt den Schluessel der Meldung in TEXTE (Issue #1455).
     {
       field: "codeHost",
       rule: "enum",
       allowed: ["github", "gitlab", "local"],
-      error: "codeHost muss 'github', 'gitlab' oder 'local' sein.",
+      error: "codeHostFalsch",
     },
     {
       field: "issueTracker",
@@ -134,19 +135,19 @@ const schema = {
       // muss aber gueltig sein, damit eine bestehende Toolbox-Config beim Re-Install
       // per Enter bestaetigt werden kann (#124).
       allowed: ["github", "gitlab", "local", "toolbox"],
-      error: "issueTracker muss 'github', 'gitlab' oder 'local' sein.",
+      error: "issueTrackerFalsch",
     },
     {
       field: "reviewScope",
       rule: "enum",
       allowed: ["diff", "full"],
-      error: "reviewScope muss 'diff' oder 'full' sein.",
+      error: "reviewScopeFalsch",
     },
     {
       field: "reviewModel",
       rule: "pattern",
       pattern: "^claude-",
-      error: "reviewModel muss eine Claude-Modell-ID sein (z.B. 'claude-opus-4-8').",
+      error: "reviewModelFalsch",
     },
     // Das Reviewer-Paar (Issue #432/#433). `validate()` arbeitet feldlokal und prueft
     // genau ein Feld — zum Zeitpunkt der reviewModel-Frage ist reviewCommand noch gar
@@ -159,14 +160,7 @@ const schema = {
     {
       fields: ["reviewModel", "reviewCommand"],
       rule: "exactlyOne",
-      error:
-        "Genau eines von reviewModel und reviewCommand muss gesetzt sein.\n" +
-        "    reviewModel   = ein Claude-Modell, das als Reviewer-Subagent laeuft; es muss\n" +
-        "                    mit 'claude-' beginnen (z.B. 'claude-opus-4-8').\n" +
-        "    reviewCommand = eine fremde CLI, die den Review-Prompt ueber stdin bekommt\n" +
-        "                    (z.B. 'codex exec --model gpt-5').\n" +
-        "    Fuer einen Kommando-Reviewer: reviewModel mit '-' leeren.\n" +
-        "    Fuer den Claude-Reviewer: reviewCommand mit '-' leeren.",
+      error: "reviewerPaarFalsch",
     },
   ],
 };
@@ -215,7 +209,7 @@ function validate(field, value) {
   for (const rule of rules) {
     if (rule.field !== field) continue;
     if (rule.rule === "enum" && !rule.allowed.includes(value)) {
-      return rule.error;
+      return t(rule.error);
     }
     // Ein leerer Wert heisst "nicht gesetzt"; Muster gelten fuer gesetzte Werte. Ohne
     // diese Ausnahme liesse sich reviewModel nie leeren — die ^claude-Regel wuerde
@@ -223,7 +217,7 @@ function validate(field, value) {
     // (Issue #433). Dass ueberhaupt eines der beiden Felder gesetzt ist, sichert die
     // exactlyOne-Regel.
     if (rule.rule === "pattern" && value !== "" && !new RegExp(rule.pattern).test(value)) {
-      return rule.error;
+      return t(rule.error);
     }
   }
   return null;
@@ -236,7 +230,7 @@ function validateFelder(werte) {
   for (const rule of rules) {
     if (rule.rule !== "exactlyOne") continue;
     const gesetzt = rule.fields.filter((f) => (werte[f] ?? "") !== "");
-    if (gesetzt.length !== 1) return rule.error;
+    if (gesetzt.length !== 1) return t(rule.error, { leer: LEER_EINGABE });
   }
   return null;
 }
@@ -255,7 +249,7 @@ async function askWithDefault(rl, question, defaultValue, field, leerbar = false
     else value = eingabe === "" ? defaultValue : eingabe;
     const error = field ? validate(field, value) : null;
     if (error) {
-      console.error(`  Fehler: ${error}`);
+      console.error(t("fehlerZeile", { fehler: error }));
       if (_pipedLines !== null) throw new Error(`Validation failed in non-interactive mode: ${error}`);
       continue;
     }
@@ -307,7 +301,7 @@ function copySkills(targetDir) {
     try {
       skillsBlob = skillsBlobLesen();
     } catch {
-      console.warn("  Warnung: eingebetteter Skills-Blob ist kein gueltiges JSON, wird ignoriert.");
+      console.warn(t("skillsBlobKaputt"));
     }
   }
 
@@ -325,7 +319,7 @@ function copySkills(targetDir) {
     if (Object.keys(files).length === 0) {
       // Ohne Pfadangabe — es gibt keinen Pfad mehr. Stumm ueberspringen waere
       // schlimmer: Der Skill fehlte im Zielprojekt, ohne dass es jemand saehe.
-      console.warn(`  Warnung: ${skill} ist im eingebetteten Blob leer, wird uebersprungen.`);
+      console.warn(t("skillLeer", { skill }));
       continue;
     }
     const dest = join(targetDir, skill);
@@ -341,10 +335,7 @@ function copySkills(targetDir) {
   // String, korruptes Base64/JSON, gueltiges {}, und ein Blob, dessen Eintraege
   // alle leer sind.
   if (copied === 0) {
-    console.error(
-      "Fehler: Kein einziger Skill konnte kopiert werden " +
-      "(eingebetteter Blob fehlt oder ist beschaedigt)."
-    );
+    console.error(t("keinSkill"));
     process.exit(1);
   }
   return copied;
@@ -382,13 +373,13 @@ function cliSpawn(programm, args, fakeVariable, optionen) {
 }
 
 async function setupGitLabLabels(rl) {
-  const raw = await ask(rl, "\nGitLab-Labels jetzt automatisch anlegen? (glab muss eingeloggt sein) [j/n]: ");
-  if (raw.trim().toLowerCase() !== "j") {
-    console.log(`  Labels manuell anlegen: Backlog, Ready, "In progress", "In review", Done`);
-    console.log(`  Wichtig: Leerzeichen in den Namen verwenden, kein Bindestrich.\n`);
+  const raw = await ask(rl, t("gitlabFrage"));
+  if (!JA.has(raw.trim().toLowerCase())) {
+    console.log(t("gitlabVonHand"));
+    console.log(t("gitlabLeerzeichen"));
     return;
   }
-  console.log("\nLege GitLab-Labels an:");
+  console.log(t("gitlabLege"));
   // Ohne Shell, mit Argument-Array (Issue #198, dieselbe Linie wie board.mjs in #196):
   // Zuvor wurde der Labelname in eine Kommandozeile interpoliert. Namen wie
   // "In progress" haengen damit am Quoting-Dialekt der jeweiligen Plattform, und ein
@@ -404,15 +395,12 @@ async function setupGitLabLabels(rl) {
     }
     const msg = res.error ? res.error.message : (res.stderr ?? "");
     if (msg.includes("already exists") || msg.includes("has already been taken")) {
-      console.log(`  ~ ${label.name} (bereits vorhanden)`);
+      console.log(t("gitlabVorhanden", { label: label.name }));
     } else {
       console.warn(`  ✗ ${label.name}: ${msg.trim()}`);
     }
   }
-  console.log(`\n  Labels angelegt. Jetzt manuell das Board einrichten:`);
-  console.log(`  Issues → Boards → "Add list" → je eine Spalte fuer jedes Label anlegen.`);
-  console.log(`  Reihenfolge: Backlog → Ready → In progress → In review → Done`);
-  console.log(`  (Board-Spalten lassen sich nicht per CLI anlegen — das ist eine GitLab-Einschraenkung.)\n`);
+  console.log(t("gitlabBoard"));
 }
 
 // --- Schutz des Hauptzweigs (Issue #1409, Plan #1405) ---
@@ -421,13 +409,10 @@ async function setupGitLabLabels(rl) {
 // liegt in `code schutz einrichten` (Issue #1408). `pushPruefung` schreibt er erst, wenn
 // der Schutz scharf ist oder als Anleitung beim Menschen liegt (A4, A10).
 
-const SCHUTZ_SPAETER = "Später einschalten: node install.mjs --schutz im Projekt.";
-const UNGESCHUETZT = "  Haupt- und Veröffentlichungszweig bleiben ungeschützt: Ein Push an `push main` vorbei kommt ungeprüft durch.";
-
-// "[J/n]": leer heisst Ja, nur ein n oder nein heisst Nein.
+// "[J/n]": leer heisst Ja, nur ein Nein-Wort (n, nein, no) heisst Nein.
 async function frageJaNein(rl, frage) {
-  const raw = (await ask(rl, `${frage} [J/n]: `)).trim().toLowerCase();
-  return raw !== "n" && raw !== "nein";
+  const raw = (await ask(rl, t("jaNeinFrage", { frage }))).trim().toLowerCase();
+  return !NEIN.has(raw);
 }
 
 /**
@@ -436,26 +421,26 @@ async function frageJaNein(rl, frage) {
  */
 async function frageSchutz(rl, scope, codeHost, existingConfig) {
   if (codeHost === "gitlab") {
-    console.log("  Bei GitLab wird der Schutz des Hauptzweigs noch nicht eingerichtet; Haupt- und Veröffentlichungszweig bleiben ungeschützt.");
+    console.log(t("schutzGitlab"));
     return null;
   }
   if (codeHost !== "github") {
-    console.log("  Ohne Code-Host: Der Schutz bleibt lokal, es prüft nur der eigene Rechner vor dem Push.");
+    console.log(t("schutzLokal"));
     return null;
   }
   if (scope !== "projekt") {
-    console.log(`  Schutz des Hauptzweigs gilt je Repository. ${SCHUTZ_SPAETER}`);
+    console.log(t("schutzJeRepo", { spaeter: t("schutzSpaeter") }));
     return null;
   }
-  if (!await frageJaNein(rl, "Hat das Projekt einen Build-Dienst (GitHub Actions)?")) {
-    console.log(UNGESCHUETZT);
+  if (!await frageJaNein(rl, t("frageBuildDienst"))) {
+    console.log(t("ungeschuetzt"));
     return null;
   }
-  if (!await frageJaNein(rl, "Prüfung vor dem Push in den Build-Dienst verlegen und Haupt- und Veröffentlichungszweig schützen?")) {
-    console.log(UNGESCHUETZT);
+  if (!await frageJaNein(rl, t("frageVerlegen"))) {
+    console.log(t("ungeschuetzt"));
     return null;
   }
-  return askWithDefault(rl, "Prüfzweig für den Lauf vor dem Push", existingConfig.pushPruefung?.zweig || "kit-pruefung");
+  return askWithDefault(rl, t("frageZweig"), existingConfig.pushPruefung?.zweig || "kit-pruefung");
 }
 
 /**
@@ -465,25 +450,25 @@ async function frageSchutz(rl, scope, codeHost, existingConfig) {
  */
 function richteSchutzEin(kitDir, configPfad, zweig) {
   if (!zweig) return;
-  console.log(`\nRichte den Schutz ein (Prüfzweig ${zweig}) — die Probe kann einige Minuten dauern:`);
+  console.log(t("schutzEinrichten", { zweig }));
   const res = cliSpawn(process.execPath, [join(kitDir, "board.mjs"), "code", "schutz", "einrichten", "--zweig", zweig],
     "INSTALL_SCHUTZ_FAKE", { encoding: "utf-8", stdio: ["ignore", "pipe", "inherit"] });
   if (res.stdout) process.stdout.write(res.stdout);
   let ergebnis = null;
   try { ergebnis = JSON.parse(res.stdout).ergebnis; } catch { /* keine Antwort: nicht eingerichtet */ }
   if (res.status !== 0 || !ergebnis) {
-    console.log(`! Schutz nicht eingerichtet. ${SCHUTZ_SPAETER}`);
+    console.log(t("schutzNicht", { spaeter: t("schutzSpaeter") }));
     return;
   }
   if (ergebnis === "scharf" || ergebnis === "anleitung") {
     const { config } = normalisiereConfig(JSON.parse(readFileSync(configPfad, "utf-8")));
     config.pushPruefung = { ort: "buildDienst", zweig };
     writeFileSync(configPfad, JSON.stringify(inProjektsprache(config), null, 2) + "\n", "utf-8");
-    console.log(`✓ pushPruefung eingetragen: Build-Dienst, Prüfzweig ${zweig}`);
+    console.log(t("schutzEingetragen", { zweig }));
   } else if (ergebnis === "nicht moeglich") {
-    console.log(`! Schutz nicht möglich, pushPruefung bleibt unverändert. ${SCHUTZ_SPAETER}`);
+    console.log(t("schutzUnmoeglich", { spaeter: t("schutzSpaeter") }));
   } else {
-    console.log("! Schutz noch offen, pushPruefung bleibt unverändert.");
+    console.log(t("schutzOffen"));
   }
 }
 
@@ -496,9 +481,9 @@ async function schutzModus(rl) {
   const boardPfad = join(kitDir, "board.mjs");
   const configPfad = resolve(".claude", "workflow.config.json");
   if (!existsSync(boardPfad) || !readFileSync(boardPfad, "utf-8").includes("code schutz einrichten")) {
-    throw new Error("Die installierte board.mjs kennt `code schutz` noch nicht — erst das Kit mit `node install.mjs` aktualisieren.");
+    throw new Error(t("schutzBoardAlt"));
   }
-  if (!existsSync(configPfad)) throw new Error("Keine .claude/workflow.config.json — erst das Kit mit `node install.mjs` installieren.");
+  if (!existsSync(configPfad)) throw new Error(t("schutzOhneConfig"));
   const { config } = normalisiereConfig(JSON.parse(readFileSync(configPfad, "utf-8")));
   const zweig = await frageSchutz(rl, "projekt", config.codeHost ?? config.provider, config);
   richteSchutzEin(kitDir, configPfad, zweig);
@@ -509,11 +494,11 @@ async function schutzModus(rl) {
 // Frage 1 (global/projekt) als eigene Schleife: haelt die Wiederholung aus main() heraus.
 async function promptScope(rl) {
   while (true) {
-    const raw = await ask(rl, "Skills global (~/.claude/skills/) oder nur fuer dieses Projekt (.claude/skills/)? [global/projekt]: ");
+    const raw = await ask(rl, t("scopeFrage"));
     const answer = raw.trim().toLowerCase();
     if (answer === "" || answer === "global") return "global";
-    if (answer === "projekt") return "projekt";
-    console.error("  Bitte 'global' oder 'projekt' eingeben.");
+    if (answer === "projekt" || answer === "project") return "projekt";
+    console.error(t("scopeFalsch"));
   }
 }
 
@@ -535,12 +520,14 @@ async function frageSprache(rl) {
 
 // Der Kopf des Installers, die Sprachfrage vor allen Meldungen in einer Sprache (E22). Ein
 // Projekt mit Config ist kein neues Projekt — auch nicht mit unlesbarer Config —, es wird
-// nicht gefragt. Liefert die Sprache oder `null`.
+// nicht gefragt. Ab der Antwort spricht der Installer in ihr (Issue #1455). Liefert die
+// Sprache oder `null`.
 async function kopfMitSprache(rl) {
   console.log("\n=== claude-workflow-kit Installer ===\n");
   const sprache = existsSync(resolve(".claude", "workflow.config.json")) ? null : await frageSprache(rl);
-  console.log("Dieser Installer richtet die claude-workflow-kit-Skill-Bibliothek ein.");
-  console.log("Zehn Fragen, bei GitHub bis zu drei mehr zum Schutz des Hauptzweigs, zuletzt nach den Bereichen des Projekts (global neun, zuletzt nach dem Vault-Pfad), dann bist du fertig.\n");
+  if (sprache) spracheFestlegen(sprache);
+  console.log(t("kopfZweck"));
+  console.log(t("kopfFragen"));
   return sprache;
 }
 
@@ -552,6 +539,13 @@ function sprachfeldNeu(sprache, configPfad) {
   return { [SPRACHFELD[sprache]]: sprache };
 }
 
+// Ohne Antwort auf die Sprachfrage spricht der Installer die Sprache der Config, die er
+// fortschreibt — beim globalen Install die unter ~/.claude; eine unlesbare Config gilt als
+// deutsch (E22). Eigene Funktion, damit main() unter der Komplexitaetsschwelle bleibt.
+function spracheDesLaufs(sprache, existingConfig) {
+  if (!sprache) spracheFestlegen(projektSprache(existingConfig));
+}
+
 // --- Namen der Einstellungen, Labels und Praefixe (Issue #1438, Plan #1420 E7, E12) ---
 //
 // Beide Module liegen schon im Teile-Blob von board/ und importieren nur Node-Bordmittel; der
@@ -559,7 +553,315 @@ function sprachfeldNeu(sprache, configPfad) {
 const BOARD_TEILE = JSON.parse(Buffer.from(KIT_BOARD_B64, "base64").toString("utf-8"));
 const ladeTeil = (datei) => import(`data:text/javascript;base64,${Buffer.from(BOARD_TEILE[datei], "utf-8").toString("base64")}`);
 const { normalisiereConfig, benenneUm } = await ladeTeil("config-namen.mjs");
-const { projektSprache, LABELS, PRAEFIXE, erkenneLabel, erkennePraefix } = await ladeTeil("namen.mjs");
+const { projektSprache, LABELS, PRAEFIXE, erkenneLabel, erkennePraefix, prozessSprache, spracheFestlegen, text } = await ladeTeil("namen.mjs");
+
+// --- Texte an den Menschen (Issue #1455, Plan #1420 E13, E14, E22) ---
+//
+// Jede Ausgabe an den Menschen steht hier in beiden Sprachen; der Texthelfer kommt wie die
+// Namen aus dem Board-Blob dieser Datei. Die Sprache ist die des Projekts im Arbeitsverzeichnis,
+// bei einem neuen Projekt die Antwort auf die Sprachfrage. Zweisprachig und darum nicht hier
+// stehen die Sprachfrage selbst und ihre Fehlermeldung (SPRACHFRAGE). Unuebersetzt bleiben
+// Vertragswerte: Einstellungs- und Spaltennamen, Kommandos, Dateinamen und die Antwortwoerter,
+// die der Installer in beiden Sprachen versteht.
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    fehlerZeile: "  Fehler: {fehler}",
+    fehlerKopf: "\nFehler:",
+    codeHostFalsch: "codeHost muss 'github', 'gitlab' oder 'local' sein.",
+    issueTrackerFalsch: "issueTracker muss 'github', 'gitlab' oder 'local' sein.",
+    reviewScopeFalsch: "reviewScope muss 'diff' oder 'full' sein.",
+    reviewModelFalsch: "reviewModel muss eine Claude-Modell-ID sein (z.B. 'claude-opus-4-8').",
+    reviewerPaarFalsch:
+      "Genau eines von reviewModel und reviewCommand muss gesetzt sein.\n" +
+      "    reviewModel   = ein Claude-Modell, das als Reviewer-Subagent laeuft; es muss\n" +
+      "                    mit 'claude-' beginnen (z.B. 'claude-opus-4-8').\n" +
+      "    reviewCommand = eine fremde CLI, die den Review-Prompt ueber stdin bekommt\n" +
+      "                    (z.B. 'codex exec --model gpt-5').\n" +
+      "    Fuer einen Kommando-Reviewer: reviewModel mit '{leer}' leeren.\n" +
+      "    Fuer den Claude-Reviewer: reviewCommand mit '{leer}' leeren.",
+    skillsBlobKaputt: "  Warnung: eingebetteter Skills-Blob ist kein gueltiges JSON, wird ignoriert.",
+    skillLeer: "  Warnung: {skill} ist im eingebetteten Blob leer, wird uebersprungen.",
+    keinSkill: "Fehler: Kein einziger Skill konnte kopiert werden (eingebetteter Blob fehlt oder ist beschaedigt).",
+    gitlabFrage: "\nGitLab-Labels jetzt automatisch anlegen? (glab muss eingeloggt sein) [j/n]: ",
+    gitlabVonHand: '  Labels manuell anlegen: Backlog, Ready, "In progress", "In review", Done',
+    gitlabLeerzeichen: "  Wichtig: Leerzeichen in den Namen verwenden, kein Bindestrich.\n",
+    gitlabLege: "\nLege GitLab-Labels an:",
+    gitlabVorhanden: "  ~ {label} (bereits vorhanden)",
+    gitlabBoard:
+      "\n  Labels angelegt. Jetzt manuell das Board einrichten:\n" +
+      '  Issues → Boards → "Add list" → je eine Spalte fuer jedes Label anlegen.\n' +
+      "  Reihenfolge: Backlog → Ready → In progress → In review → Done\n" +
+      "  (Board-Spalten lassen sich nicht per CLI anlegen — das ist eine GitLab-Einschraenkung.)\n",
+    schutzSpaeter: "Später einschalten: node install.mjs --schutz im Projekt.",
+    ungeschuetzt: "  Haupt- und Veröffentlichungszweig bleiben ungeschützt: Ein Push an `push main` vorbei kommt ungeprüft durch.",
+    jaNeinFrage: "{frage} [J/n]: ",
+    schutzGitlab: "  Bei GitLab wird der Schutz des Hauptzweigs noch nicht eingerichtet; Haupt- und Veröffentlichungszweig bleiben ungeschützt.",
+    schutzLokal: "  Ohne Code-Host: Der Schutz bleibt lokal, es prüft nur der eigene Rechner vor dem Push.",
+    schutzJeRepo: "  Schutz des Hauptzweigs gilt je Repository. {spaeter}",
+    frageBuildDienst: "Hat das Projekt einen Build-Dienst (GitHub Actions)?",
+    frageVerlegen: "Prüfung vor dem Push in den Build-Dienst verlegen und Haupt- und Veröffentlichungszweig schützen?",
+    frageZweig: "Prüfzweig für den Lauf vor dem Push",
+    schutzEinrichten: "\nRichte den Schutz ein (Prüfzweig {zweig}) — die Probe kann einige Minuten dauern:",
+    schutzNicht: "! Schutz nicht eingerichtet. {spaeter}",
+    schutzEingetragen: "✓ pushPruefung eingetragen: Build-Dienst, Prüfzweig {zweig}",
+    schutzUnmoeglich: "! Schutz nicht möglich, pushPruefung bleibt unverändert. {spaeter}",
+    schutzOffen: "! Schutz noch offen, pushPruefung bleibt unverändert.",
+    schutzBoardAlt: "Die installierte board.mjs kennt `code schutz` noch nicht — erst das Kit mit `node install.mjs` aktualisieren.",
+    schutzOhneConfig: "Keine .claude/workflow.config.json — erst das Kit mit `node install.mjs` installieren.",
+    schutzKopf: "\n=== claude-workflow-kit: Schutz des Hauptzweigs ===\n",
+    scopeFrage: "Skills global (~/.claude/skills/) oder nur fuer dieses Projekt (.claude/skills/)? [global/projekt]: ",
+    scopeFalsch: "  Bitte 'global' oder 'projekt' eingeben.",
+    kopfZweck: "Dieser Installer richtet die claude-workflow-kit-Skill-Bibliothek ein.",
+    kopfFragen: "Zehn Fragen, bei GitHub bis zu drei mehr zum Schutz des Hauptzweigs, zuletzt nach den Bereichen des Projekts (global neun, zuletzt nach dem Vault-Pfad), dann bist du fertig.\n",
+    umstellungKopf: "\n=== claude-workflow-kit: Umstellung auf {ziel} ===\n",
+    umstellungOhneConfig: "Keine .claude/workflow.config.json — ein neues Projekt fragt `node install.mjs` nach der Sprache.",
+    spracheFalsch: "--{option} braucht 'de' oder 'en', nicht '{wert}'.",
+    labelOffen: "{pfad}: {wert} bleibt; der Name in {ziel} ist {name}",
+    boardNicht: "Board nicht erreichbar ({grund}) — die Liste nennt nur die Config.",
+    karteAndereSprache: "Karte mit Präfix der anderen Sprache: #{id} {titel}",
+    labelsFehlend: "Kit-Labels in {ziel}, die auf keiner Karte stehen — am Board anlegen, falls sie fehlen: {labels}",
+    sicherung: "✓ Sicherung angelegt: {pfad}",
+    spracheGesetzt: "✓ Sprache gesetzt: {feld}: {ziel}",
+    umbenannt: "\nUmbenannt ({anzahl}):",
+    offen: "\nOffen ({anzahl}):",
+    skillsDeutsch: "Skills und Regeltexte bleiben deutsch, bis das Kit sie auf Englisch mitbringt.",
+    zurueck: "\nZurück: node install.mjs --language {ziel}",
+    reviewerWiderspruch: "  Diese Config traegt beide Reviewer — gelten kann nur einer: reviewModel entfaellt,",
+    reviewCommandBleibt: "  reviewCommand bleibt: {kommando}",
+    reviewerUmgekehrt: "  Umgekehrt: reviewCommand mit '{leer}' leeren und reviewModel eintragen.",
+    frageReviewModel: "Reviewer-Modell (Claude-Subagent, beginnt mit 'claude-'; '{leer}' = keines)",
+    frageReviewCommand: "Reviewer-Kommando (fremde CLI, Prompt ueber stdin; '{leer}' = keines)",
+    bereichFrage: "Bereich (Name: Muster, Muster; leer = fertig)",
+    bereichBeibehalten: " [beibehalten]",
+    bereicheVorhanden: "\n  Vorhandene Bereiche (leer = beibehalten):",
+    bereicheErklaerung: "\n  Bereiche ordnen Pfade den Pruefungen zu, die sie beruehren.",
+    bereichFalsch: "Bitte 'Name: Muster, Muster' eingeben.",
+    zuordnungMit: "Bereiche dieser Prüfung (leer = beibehalten) [{vorhanden}]: ",
+    zuordnungOhne: "Bereiche dieser Prüfung (leer = läuft immer): ",
+    zuordnungPruefung: "  Prüfung: {kommando}",
+    bereichUnbekannt: "Unbekannter Bereich '{unbekannt}'. Definiert: {definiert}.",
+    bereicheBehalten: "  Bereiche beibehalten.",
+    ohneBereiche: "  Ohne Bereiche fährt jede Karte alle Prüfungen.",
+    bereicheWirkenErst: "  Die Bereiche wirken erst, wenn die Prüfkommandos in workflow.config.json sie in 'areas' nennen.",
+    grundGlobal: "globaler Install",
+    grundKeinGit: "kein Git-Repo oder git nicht gefunden",
+    aktiveHookDatei: "eine aktive Datei im Hooks-Verzeichnis",
+    hooksErklaerung:
+      "\n  Das Commit-Gate weist jeden Commit ab, dem kein gruener\n" +
+      "  `node .claude/kit/checks.mjs run` auf demselben Stand vorausging.\n" +
+      "  Dafuer setzt der Installer `git config core.hooksPath .githooks` —\n" +
+      "  eine Aenderung an der git-Config dieses Repos.",
+    hooksFrage: "Soll das Commit-Gate eingehaengt werden? [j/N]: ",
+    jaNeinFalsch: "Bitte 'j' oder 'n' eingeben.",
+    fremderHook: "! {pfad} stammt nicht aus diesem Kit — unveraendert gelassen.",
+    fremderHookHilfe: "  Zum Einhaengen des Gates dort ergaenzen: node .githooks/gate.mjs pre-commit",
+    hooksPathFehler: "core.hooksPath liess sich nicht setzen: {grund}",
+    hooksPathGesetzt: "✓ core.hooksPath auf .githooks gesetzt — das Commit-Gate ist aktiv.",
+    hooksPathBelegt: "! core.hooksPath ist bereits {wert} — nicht geaendert.",
+    hooksPathBelegtHilfe: "  Zum Einhaengen den eigenen Hook um 'node .githooks/gate.mjs pre-commit' ergaenzen.",
+    hooksPathEntfaellt: "! core.hooksPath nicht gesetzt ({grund}) — das Gate ist nicht aktiv.",
+    hooksPathSchon: "✓ core.hooksPath steht bereits auf .githooks.",
+    hooksPathNicht: "! core.hooksPath nicht gesetzt — das Gate ist nicht aktiv.",
+    configGefunden: "  Bestehende workflow.config.json gefunden — Werte als Defaults uebernommen.\n",
+    configUnlesbar: "  Hinweis: Bestehende workflow.config.json konnte nicht gelesen werden.\n",
+    gitignoreKopf1: "# claude-workflow-kit (Issue #208): workflow.config.json gehoert ins Repo,",
+    gitignoreKopf2: "# alles andere unter .claude/ ist lokaler Zustand.",
+    gitignoreVorhanden: "✓ .gitignore: .claude-Block bereits vorhanden",
+    gitignoreEigene: "! .gitignore: eigene .claude-Regeln gefunden — nichts geaendert.",
+    gitignoreEmpfohlen: "  Empfohlen, damit workflow.config.json versionierbar bleibt:",
+    gitignoreErsetzt: "✓ .gitignore: '.claude/' durch Block ersetzt — workflow.config.json wird jetzt getrackt",
+    gitignoreEingetragen: "✓ .gitignore: .claude-Block eingetragen",
+    hooksVonHand: "! {pfad} {grund} — hooks nicht eingetragen.",
+    hooksVonHandHilfe:
+      "  Von Hand ergaenzen, damit der Verbrauch dieser Sitzungen gemeldet wird und\n" +
+      "  Pipes hinter ausgenommenen Kommandos nicht in der Sandbox landen:",
+    keinJsonObjekt: "ist kein lesbares JSON-Objekt",
+    hooksSchon: "✓ {pfad}: Kit-Hooks bereits eingetragen",
+    hooksEingetragen: "✓ {pfad}: Kit-Hooks eingetragen ({ereignisse})",
+    teileGeschrieben: "✓ {teil}/ geschrieben: {anzahl} Teil(e) in {pfad}",
+    agentenGeschrieben: "✓ agents/ geschrieben: {anzahl} Agent(en) in {pfad}",
+    windowsNicht: "claude-workflow-kit unterstützt natives Windows ab Version 4.0.0 nicht mehr.",
+    windowsWsl: "Richte das Kit in WSL2 ein: https://docs.mwolff.org/wsl2",
+    frageCodeHost: "Code-Host: 'github', 'gitlab' oder 'local'?",
+    frageTracker: "Issue-Tracker: 'github', 'gitlab' oder 'local'?",
+    frageMain: "Haupt-Branch (mainBranch)",
+    frageProduction: "Production-Branch (productionBranch)",
+    frageReviewScope: "Review-Umfang: 'diff' (nur Aenderungen) oder 'full' (gesamter Quelltext)?",
+    frageVault: "Pfad zum Memory-Vault für /kontext (leer = überspringen): ",
+    kopiereSkills: "\nKopiere Skills nach {pfad}:",
+    configGeschrieben: "\n✓ Config geschrieben: {pfad}",
+    specHinweis: "  Hinweis: Der spec-Block wird nicht mehr ausgewertet und kann samt specs/ entfernt werden.",
+    abgelegt: "✓ {datei} abgelegt: {pfad}",
+    beispielAbgelegt: "✓ Beispiel-Config abgelegt: {pfad}",
+    geschrieben: "✓ {datei} geschrieben: {pfad}",
+    fertig: "\n=== Fertig ===",
+    neueSession: "Starte eine neue Claude-Code-Session im Projekt.",
+    skillsInHelp: "Die {anzahl} Skills erscheinen in /help.\n",
+    committen:
+      "Bitte .claude/workflow.config.json und .githooks/ committen — beide gelten fuer das ganze Team.\n" +
+      "Persoenliche Abweichungen (reviewModel, reviewCommand, reviewScope) gehoeren in\n" +
+      ".claude/workflow.config.local.json; die bleibt lokal.\n",
+    gitlabLogin: "GitLab: Stelle sicher dass 'glab auth login' durchgefuehrt wurde.",
+    githubLogin: "GitHub: Stelle sicher dass 'gh auth login' durchgefuehrt wurde.\n",
+    naechsterSchritt: "Naechster Schritt: workflow.config.json anpassen (buildChecks, mutationCommand).",
+    pfad: "Pfad: {pfad}\n",
+    issueReview:
+      "Fuer /issue-review: den 'issueReview'-Block aus workflow.config.example.json\n" +
+      "heruebernehmen und an die eigenen Modelle anpassen. Ohne ihn tut der Skill nichts.\n",
+  }),
+  en: Object.freeze({
+    fehlerZeile: "  Error: {fehler}",
+    fehlerKopf: "\nError:",
+    codeHostFalsch: "codeHost must be 'github', 'gitlab' or 'local'.",
+    issueTrackerFalsch: "issueTracker must be 'github', 'gitlab' or 'local'.",
+    reviewScopeFalsch: "reviewScope must be 'diff' or 'full'.",
+    reviewModelFalsch: "reviewModel must be a Claude model ID (e.g. 'claude-opus-4-8').",
+    reviewerPaarFalsch:
+      "Exactly one of reviewModel and reviewCommand must be set.\n" +
+      "    reviewModel   = a Claude model that runs as reviewer subagent; it must\n" +
+      "                    start with 'claude-' (e.g. 'claude-opus-4-8').\n" +
+      "    reviewCommand = an external CLI that receives the review prompt on stdin\n" +
+      "                    (e.g. 'codex exec --model gpt-5').\n" +
+      "    For a command reviewer: clear reviewModel with '{leer}'.\n" +
+      "    For the Claude reviewer: clear reviewCommand with '{leer}'.",
+    skillsBlobKaputt: "  Warning: the embedded skills blob is not valid JSON and is ignored.",
+    skillLeer: "  Warning: {skill} is empty in the embedded blob and is skipped.",
+    keinSkill: "Error: Not a single skill could be copied (embedded blob missing or damaged).",
+    gitlabFrage: "\nCreate the GitLab labels automatically now? (glab must be logged in) [y/n]: ",
+    gitlabVonHand: '  Create the labels by hand: Backlog, Ready, "In progress", "In review", Done',
+    gitlabLeerzeichen: "  Important: use spaces in the names, no hyphen.\n",
+    gitlabLege: "\nCreating GitLab labels:",
+    gitlabVorhanden: "  ~ {label} (already exists)",
+    gitlabBoard:
+      "\n  Labels created. Now set up the board by hand:\n" +
+      '  Issues → Boards → "Add list" → create one column for each label.\n' +
+      "  Order: Backlog → Ready → In progress → In review → Done\n" +
+      "  (Board columns cannot be created via CLI — that is a GitLab limitation.)\n",
+    schutzSpaeter: "Switch it on later: node install.mjs --schutz in the project.",
+    ungeschuetzt: "  Main and release branches stay unprotected: a push that bypasses `push main` gets through unchecked.",
+    jaNeinFrage: "{frage} [Y/n]: ",
+    schutzGitlab: "  GitLab does not set up protection of the main branch yet; main and release branches stay unprotected.",
+    schutzLokal: "  Without a code host: protection stays local, only your own machine checks before the push.",
+    schutzJeRepo: "  Protection of the main branch applies per repository. {spaeter}",
+    frageBuildDienst: "Does the project have a build service (GitHub Actions)?",
+    frageVerlegen: "Move the check before the push into the build service and protect main and release branches?",
+    frageZweig: "Check branch for the run before the push",
+    schutzEinrichten: "\nSetting up protection (check branch {zweig}) — the probe can take a few minutes:",
+    schutzNicht: "! Protection not set up. {spaeter}",
+    schutzEingetragen: "✓ pushCheck entered: build service, check branch {zweig}",
+    schutzUnmoeglich: "! Protection not possible, pushCheck stays unchanged. {spaeter}",
+    schutzOffen: "! Protection still open, pushCheck stays unchanged.",
+    schutzBoardAlt: "The installed board.mjs does not know `code schutz` yet — first update the kit with `node install.mjs`.",
+    schutzOhneConfig: "No .claude/workflow.config.json — first install the kit with `node install.mjs`.",
+    schutzKopf: "\n=== claude-workflow-kit: protection of the main branch ===\n",
+    scopeFrage: "Install skills globally (~/.claude/skills/) or for this project only (.claude/skills/)? [global/project]: ",
+    scopeFalsch: "  Please enter 'global' or 'project'.",
+    kopfZweck: "This installer sets up the claude-workflow-kit skill library.",
+    kopfFragen: "Ten questions, with GitHub up to three more on protecting the main branch, last the areas of the project (global: nine, last the vault path), and you are done.\n",
+    umstellungKopf: "\n=== claude-workflow-kit: switching to {ziel} ===\n",
+    umstellungOhneConfig: "No .claude/workflow.config.json — for a new project `node install.mjs` asks for the language.",
+    spracheFalsch: "--{option} takes 'de' or 'en', not '{wert}'.",
+    labelOffen: "{pfad}: {wert} stays; the name in {ziel} is {name}",
+    boardNicht: "Board not reachable ({grund}) — the list covers only the config.",
+    karteAndereSprache: "Card with prefix of the other language: #{id} {titel}",
+    labelsFehlend: "Kit labels in {ziel} that are on no card — create them on the board if they are missing: {labels}",
+    sicherung: "✓ Backup created: {pfad}",
+    spracheGesetzt: "✓ Language set: {feld}: {ziel}",
+    umbenannt: "\nRenamed ({anzahl}):",
+    offen: "\nOpen ({anzahl}):",
+    skillsDeutsch: "Skills and rule texts stay German until the kit ships them in English.",
+    zurueck: "\nBack: node install.mjs --language {ziel}",
+    reviewerWiderspruch: "  This config carries both reviewers — only one can apply: reviewModel is dropped,",
+    reviewCommandBleibt: "  reviewCommand stays: {kommando}",
+    reviewerUmgekehrt: "  The other way round: clear reviewCommand with '{leer}' and enter reviewModel.",
+    frageReviewModel: "Reviewer model (Claude subagent, starts with 'claude-'; '{leer}' = none)",
+    frageReviewCommand: "Reviewer command (external CLI, prompt on stdin; '{leer}' = none)",
+    bereichFrage: "Area (name: pattern, pattern; empty = done)",
+    bereichBeibehalten: " [keep]",
+    bereicheVorhanden: "\n  Existing areas (empty = keep):",
+    bereicheErklaerung: "\n  Areas map paths to the checks that touch them.",
+    bereichFalsch: "Please enter 'Name: pattern, pattern'.",
+    zuordnungMit: "Areas of this check (empty = keep) [{vorhanden}]: ",
+    zuordnungOhne: "Areas of this check (empty = always runs): ",
+    zuordnungPruefung: "  Check: {kommando}",
+    bereichUnbekannt: "Unknown area '{unbekannt}'. Defined: {definiert}.",
+    bereicheBehalten: "  Areas kept.",
+    ohneBereiche: "  Without areas every card runs all checks.",
+    bereicheWirkenErst: "  The areas take effect only once the check commands in workflow.config.json name them in 'areas'.",
+    grundGlobal: "global install",
+    grundKeinGit: "no Git repository or git not found",
+    aktiveHookDatei: "an active file in the hooks directory",
+    hooksErklaerung:
+      "\n  The commit gate rejects every commit not preceded by a green\n" +
+      "  `node .claude/kit/checks.mjs run` on the same state.\n" +
+      "  For that the installer sets `git config core.hooksPath .githooks` —\n" +
+      "  a change to the git config of this repository.",
+    hooksFrage: "Hook the commit gate in? [y/N]: ",
+    jaNeinFalsch: "Please enter 'y' or 'n'.",
+    fremderHook: "! {pfad} does not come from this kit — left unchanged.",
+    fremderHookHilfe: "  To hook in the gate, add there: node .githooks/gate.mjs pre-commit",
+    hooksPathFehler: "core.hooksPath could not be set: {grund}",
+    hooksPathGesetzt: "✓ core.hooksPath set to .githooks — the commit gate is active.",
+    hooksPathBelegt: "! core.hooksPath is already {wert} — not changed.",
+    hooksPathBelegtHilfe: "  To hook in the gate, add 'node .githooks/gate.mjs pre-commit' to your own hook.",
+    hooksPathEntfaellt: "! core.hooksPath not set ({grund}) — the gate is not active.",
+    hooksPathSchon: "✓ core.hooksPath already points to .githooks.",
+    hooksPathNicht: "! core.hooksPath not set — the gate is not active.",
+    configGefunden: "  Existing workflow.config.json found — values taken over as defaults.\n",
+    configUnlesbar: "  Note: the existing workflow.config.json could not be read.\n",
+    gitignoreKopf1: "# claude-workflow-kit (Issue #208): workflow.config.json belongs in the repo,",
+    gitignoreKopf2: "# everything else under .claude/ is local state.",
+    gitignoreVorhanden: "✓ .gitignore: .claude block already present",
+    gitignoreEigene: "! .gitignore: own .claude rules found — nothing changed.",
+    gitignoreEmpfohlen: "  Recommended, so that workflow.config.json stays versionable:",
+    gitignoreErsetzt: "✓ .gitignore: '.claude/' replaced by the block — workflow.config.json is tracked now",
+    gitignoreEingetragen: "✓ .gitignore: .claude block entered",
+    hooksVonHand: "! {pfad} {grund} — hooks not entered.",
+    hooksVonHandHilfe:
+      "  Add by hand, so that the usage of these sessions is reported and\n" +
+      "  pipes behind excluded commands do not end up in the sandbox:",
+    keinJsonObjekt: "is not a readable JSON object",
+    hooksSchon: "✓ {pfad}: kit hooks already entered",
+    hooksEingetragen: "✓ {pfad}: kit hooks entered ({ereignisse})",
+    teileGeschrieben: "✓ {teil}/ written: {anzahl} part(s) in {pfad}",
+    agentenGeschrieben: "✓ agents/ written: {anzahl} agent(s) in {pfad}",
+    windowsNicht: "claude-workflow-kit no longer supports native Windows from version 4.0.0.",
+    windowsWsl: "Set up the kit in WSL2: https://docs.mwolff.org/wsl2",
+    frageCodeHost: "Code host: 'github', 'gitlab' or 'local'?",
+    frageTracker: "Issue tracker: 'github', 'gitlab' or 'local'?",
+    frageMain: "Main branch (mainBranch)",
+    frageProduction: "Production branch (productionBranch)",
+    frageReviewScope: "Review scope: 'diff' (changes only) or 'full' (entire source)?",
+    frageVault: "Path to the memory vault for /kontext (empty = skip): ",
+    kopiereSkills: "\nCopying skills to {pfad}:",
+    configGeschrieben: "\n✓ Config written: {pfad}",
+    specHinweis: "  Note: the spec block is no longer evaluated and can be removed together with specs/.",
+    abgelegt: "✓ {datei} placed: {pfad}",
+    beispielAbgelegt: "✓ Example config placed: {pfad}",
+    geschrieben: "✓ {datei} written: {pfad}",
+    fertig: "\n=== Done ===",
+    neueSession: "Start a new Claude Code session in the project.",
+    skillsInHelp: "The {anzahl} skills appear in /help.\n",
+    committen:
+      "Please commit .claude/workflow.config.json and .githooks/ — both apply to the whole team.\n" +
+      "Personal deviations (reviewModel, reviewCommand, reviewScope) belong in\n" +
+      ".claude/workflow.config.local.json; that file stays local.\n",
+    gitlabLogin: "GitLab: make sure 'glab auth login' has been run.",
+    githubLogin: "GitHub: make sure 'gh auth login' has been run.\n",
+    naechsterSchritt: "Next step: adjust workflow.config.json (buildChecks, mutationCommand).",
+    pfad: "Path: {pfad}\n",
+    issueReview:
+      "For /issue-review: copy the 'issueReview' block from workflow.config.example.json\n" +
+      "and adapt it to your own models. Without it the skill does nothing.\n",
+  }),
+});
+
+const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
+
+// Antwortwoerter versteht der Installer in beiden Sprachen: Eine Pipe mit deutschen Antworten
+// laeuft auch in einem englischen Projekt, und umgekehrt.
+const JA = new Set(["j", "ja", "y", "yes"]);
+const NEIN = new Set(["n", "nein", "no"]);
 
 /** Die Config in den Namen ihrer Projektsprache — so schreibt der Installer jede Config. */
 function inProjektsprache(config) {
@@ -578,7 +880,7 @@ function offeneLabels(config, ziel) {
   for (const pfad of LABEL_FELDER) {
     const wert = pfad.reduce((knoten, name) => knoten?.[name], config);
     const sache = erkenneLabel(wert);
-    if (sache && LABELS[sache][ziel] !== wert) offen.push(`${pfad.join(".")}: ${wert} bleibt; der Name in ${ziel} ist ${LABELS[sache][ziel]}`);
+    if (sache && LABELS[sache][ziel] !== wert) offen.push(t("labelOffen", { pfad: pfad.join("."), wert, ziel, name: LABELS[sache][ziel] }));
   }
   return offen;
 }
@@ -595,18 +897,18 @@ function boardBestand(ziel) {
   try { karten = res.status === 0 ? JSON.parse(res.stdout) : null; } catch { /* keine lesbare Antwort */ }
   if (!Array.isArray(karten)) {
     const grund = (res.error?.message ?? res.stderr ?? "").trim().split("\n").pop() || `Exit ${res.status}`;
-    return [`Board nicht erreichbar (${grund}) — die Liste nennt nur die Config.`];
+    return [t("boardNicht", { grund })];
   }
   const zeilen = [];
   for (const karte of karten) {
     const paar = PRAEFIXE[erkennePraefix(karte.title)];
     if (!paar || paar.de === paar.en) continue;
     if (karte.title.trimStart().toLowerCase().startsWith(paar[ziel].toLowerCase())) continue;
-    zeilen.push(`Karte mit Präfix der anderen Sprache: #${karte.id} ${karte.title}`);
+    zeilen.push(t("karteAndereSprache", { id: karte.id, titel: karte.title }));
   }
   const gesehen = new Set(karten.flatMap((k) => k.labels ?? []));
   const fehlend = Object.values(LABELS).filter((l) => l.de !== l.en && !gesehen.has(l[ziel])).map((l) => l[ziel]);
-  if (fehlend.length > 0) zeilen.push(`Kit-Labels in ${ziel}, die auf keiner Karte stehen — am Board anlegen, falls sie fehlen: ${fehlend.join(", ")}`);
+  if (fehlend.length > 0) zeilen.push(t("labelsFehlend", { ziel, labels: fehlend.join(", ") }));
   return zeilen;
 }
 
@@ -624,7 +926,7 @@ function umstellSprache(argv) {
     const treffer = /^--(language|sprache)(?:=(.*))?$/.exec(argv[i]);
     if (!treffer) continue;
     const wert = (treffer[2] ?? argv[i + 1] ?? "").trim().toLowerCase();
-    if (!Object.hasOwn(SPRACHFELD, wert)) throw new Error(`--${treffer[1]} braucht 'de' oder 'en', nicht '${wert}'.`);
+    if (!Object.hasOwn(SPRACHFELD, wert)) throw new Error(t("spracheFalsch", { option: treffer[1], wert }));
     return wert;
   }
   return null;
@@ -640,7 +942,7 @@ function umstellSprache(argv) {
 function umstellModus(ziel) {
   const configPfad = resolve(".claude", "workflow.config.json");
   if (!existsSync(configPfad)) {
-    throw new Error("Keine .claude/workflow.config.json — ein neues Projekt fragt `node install.mjs` nach der Sprache.");
+    throw new Error(t("umstellungOhneConfig"));
   }
   const original = readFileSync(configPfad, "utf-8");
   const { config: umbenannt, umbenannt: liste } = benenneUm(JSON.parse(original), ziel);
@@ -649,8 +951,8 @@ function umstellModus(ziel) {
 
   writeFileSync(`${configPfad}.vor-umstellung`, original, "utf-8");
   writeFileSync(configPfad, JSON.stringify(config, null, 2) + "\n", "utf-8");
-  console.log(`✓ Sicherung angelegt: ${configPfad}.vor-umstellung`);
-  console.log(`✓ Sprache gesetzt: ${SPRACHFELD[ziel]}: ${ziel}`);
+  console.log(t("sicherung", { pfad: `${configPfad}.vor-umstellung` }));
+  console.log(t("spracheGesetzt", { feld: SPRACHFELD[ziel], ziel }));
 
   const zeilen = liste.map(umbenennungsZeile);
   const lokalPfad = resolve(".claude", "workflow.config.local.json");
@@ -659,14 +961,14 @@ function umstellModus(ziel) {
     if (lokal.umbenannt.length > 0) writeFileSync(lokalPfad, JSON.stringify(lokal.config, null, 2) + "\n", "utf-8");
     zeilen.push(...lokal.umbenannt.map((u) => `workflow.config.local.json: ${umbenennungsZeile(u)}`));
   }
-  console.log(`\nUmbenannt (${zeilen.length}):`);
+  console.log(t("umbenannt", { anzahl: zeilen.length }));
   for (const z of zeilen) console.log(`  ${z}`);
 
   const offen = [...offeneLabels(normalisiereConfig(config).config, ziel), ...boardBestand(ziel)];
-  if (ziel === "en") offen.push("Skills und Regeltexte bleiben deutsch, bis das Kit sie auf Englisch mitbringt.");
-  console.log(`\nOffen (${offen.length}):`);
+  if (ziel === "en") offen.push(t("skillsDeutsch"));
+  console.log(t("offen", { anzahl: offen.length }));
   for (const z of offen) console.log(`  ${z}`);
-  console.log(`\nZurück: node install.mjs --language ${ziel === "en" ? "de" : "en"}`);
+  console.log(t("zurueck", { ziel: ziel === "en" ? "de" : "en" }));
 }
 
 // Fragen 7 und 8 (das Reviewer-Paar) als eigene Schleife, wie promptScope: Sie werden
@@ -682,9 +984,6 @@ function umstellModus(ziel) {
 // Frage nicht rekonstruierbar waere, das Modell aber jederzeit neu eingetippt ist,
 // behaelt reviewCommand seinen Bestandswert; still umgeschrieben wird nichts, der
 // Hinweis unten benennt den Eingriff vor der ersten Frage.
-const REVIEWER_WIDERSPRUCH_HINWEIS =
-  "  Diese Config traegt beide Reviewer — gelten kann nur einer: reviewModel entfaellt,";
-
 async function promptReviewerPaar(rl, D, existingConfig) {
   const beideGesetzt = Boolean(existingConfig.reviewModel && existingConfig.reviewCommand);
   const reviewModelDefault =
@@ -693,29 +992,29 @@ async function promptReviewerPaar(rl, D, existingConfig) {
       : D.reviewModel;
 
   if (beideGesetzt) {
-    console.log(`\n${REVIEWER_WIDERSPRUCH_HINWEIS}`);
-    console.log(`  reviewCommand bleibt: ${existingConfig.reviewCommand}`);
-    console.log(`  Umgekehrt: reviewCommand mit '${LEER_EINGABE}' leeren und reviewModel eintragen.`);
+    console.log(`\n${t("reviewerWiderspruch")}`);
+    console.log(t("reviewCommandBleibt", { kommando: existingConfig.reviewCommand }));
+    console.log(t("reviewerUmgekehrt", { leer: LEER_EINGABE }));
   }
 
   while (true) {
     const reviewModel = await askWithDefault(
       rl,
-      `Reviewer-Modell (Claude-Subagent, beginnt mit 'claude-'; '${LEER_EINGABE}' = keines)`,
+      t("frageReviewModel", { leer: LEER_EINGABE }),
       reviewModelDefault,
       "reviewModel",
       true
     );
     const reviewCommand = await askWithDefault(
       rl,
-      `Reviewer-Kommando (fremde CLI, Prompt ueber stdin; '${LEER_EINGABE}' = keines)`,
+      t("frageReviewCommand", { leer: LEER_EINGABE }),
       D.reviewCommand ?? "",
       "reviewCommand",
       true
     );
     const fehler = validateFelder({ reviewModel, reviewCommand });
     if (!fehler) return { reviewModel, reviewCommand };
-    console.error(`  Fehler: ${fehler}`);
+    console.error(t("fehlerZeile", { fehler }));
     // Interaktiv werden genau diese beiden Fragen erneut gestellt; die uebrigen
     // Antworten bleiben stehen. Im Pipe-Modus antwortet niemand nach — dort bricht es ab.
     if (_pipedLines !== null) throw new Error(`Validation failed in non-interactive mode: ${fehler}`);
@@ -728,8 +1027,6 @@ async function promptReviewerPaar(rl, D, existingConfig) {
 // Pruefung ihre Zuordnung (areas). Eine falsche Eingabe wird hier auch im Pipe-Modus
 // erneut gefragt statt abgebrochen — die Schleife endet trotzdem, weil eine
 // erschoepfte Pipe mit "" antwortet, und "" heisst an jeder Stelle "fertig".
-
-const BEREICH_FRAGE = "Bereich (Name: Muster, Muster; leer = fertig)";
 
 /** "name: muster, muster" → { name, muster } oder null bei falscher Form. */
 function liesBereich(eingabe) {
@@ -748,20 +1045,20 @@ function liesBereich(eingabe) {
 async function frageBereichsliste(rl, vorhanden) {
   const namen = Object.keys(vorhanden);
   if (namen.length > 0) {
-    console.log("\n  Vorhandene Bereiche (leer = beibehalten):");
+    console.log(t("bereicheVorhanden"));
     for (const name of namen) console.log(`    ${name}: ${vorhanden[name].join(", ")}`);
   } else {
-    console.log("\n  Bereiche ordnen Pfade den Pruefungen zu, die sie beruehren.");
+    console.log(t("bereicheErklaerung"));
   }
   const bereiche = { ...vorhanden };
   let neu = 0;
   while (true) {
-    const vorgabe = namen.length > 0 && neu === 0 ? " [beibehalten]" : "";
-    const eingabe = (await ask(rl, `${BEREICH_FRAGE}${vorgabe}: `)).trim();
+    const vorgabe = namen.length > 0 && neu === 0 ? t("bereichBeibehalten") : "";
+    const eingabe = (await ask(rl, `${t("bereichFrage")}${vorgabe}: `)).trim();
     if (eingabe === "") return neu === 0 ? null : bereiche;
     const bereich = liesBereich(eingabe);
     if (!bereich) {
-      console.error("  Fehler: Bitte 'Name: Muster, Muster' eingeben.");
+      console.error(t("fehlerZeile", { fehler: t("bereichFalsch") }));
       continue;
     }
     bereiche[bereich.name] = bereich.muster;
@@ -774,9 +1071,9 @@ async function frageZuordnung(rl, check, bereiche) {
   const cmd = typeof check === "string" ? check : check.cmd;
   const vorhanden = typeof check === "object" && check.areas ? check.areas.join(", ") : "";
   const frage = vorhanden
-    ? `Bereiche dieser Prüfung (leer = beibehalten) [${vorhanden}]: `
-    : "Bereiche dieser Prüfung (leer = läuft immer): ";
-  console.log(`  Prüfung: ${cmd}`);
+    ? t("zuordnungMit", { vorhanden })
+    : t("zuordnungOhne");
+  console.log(t("zuordnungPruefung", { kommando: cmd }));
   while (true) {
     const eingabe = (await ask(rl, frage)).trim();
     if (eingabe === "") return check;
@@ -787,7 +1084,8 @@ async function frageZuordnung(rl, check, bereiche) {
       const { always: _always, ...rest } = typeof check === "string" ? { cmd } : check;
       return { ...rest, areas: namen };
     }
-    console.error(`  Fehler: Unbekannter Bereich '${unbekannt.join("', '")}'. Definiert: ${Object.keys(bereiche).join(", ")}.`);
+    const fehler = t("bereichUnbekannt", { unbekannt: unbekannt.join("', '"), definiert: Object.keys(bereiche).join(", ") });
+    console.error(t("fehlerZeile", { fehler }));
   }
 }
 
@@ -801,13 +1099,13 @@ async function frageBereiche(rl, scope, existingConfig) {
   const checkAreas = await frageBereichsliste(rl, vorhanden);
   if (!checkAreas) {
     console.log(Object.keys(vorhanden).length > 0
-      ? "  Bereiche beibehalten."
-      : "  Ohne Bereiche fährt jede Karte alle Prüfungen.");
+      ? t("bereicheBehalten")
+      : t("ohneBereiche"));
     return null;
   }
   const checks = existingConfig.buildChecks ?? [];
   if (checks.length === 0) {
-    console.log("  Die Bereiche wirken erst, wenn die Prüfkommandos in workflow.config.json sie in 'areas' nennen.");
+    console.log(t("bereicheWirkenErst"));
     return { checkAreas };
   }
   const buildChecks = [];
@@ -904,28 +1202,25 @@ function zeigtAufEigenesGithooks(wert) {
  * der A11-Fall.
  */
 function hooksPathLage(scope) {
-  if (scope !== "projekt") return { art: "entfaellt", grund: "globaler Install" };
-  if (!imGitRepo()) return { art: "entfaellt", grund: "kein Git-Repo oder git nicht gefunden" };
+  if (scope !== "projekt") return { art: "entfaellt", grund: t("grundGlobal") };
+  if (!imGitRepo()) return { art: "entfaellt", grund: t("grundKeinGit") };
   const wert = gitAntwort("config", "--get", "core.hooksPath");
   if (wert === ".githooks") return { art: "schon gesetzt" };
   if (wert && zeigtAufEigenesGithooks(wert)) return { art: "schon gesetzt" };
   if (wert) return { art: "belegt", wert };
-  if (aktiverHookVorhanden()) return { art: "belegt", wert: "eine aktive Datei im Hooks-Verzeichnis" };
+  if (aktiverHookVorhanden()) return { art: "belegt", wert: t("aktiveHookDatei") };
   return { art: "frei" };
 }
 
 async function promptHooks(rl) {
-  console.log("\n  Das Commit-Gate weist jeden Commit ab, dem kein gruener");
-  console.log("  `node .claude/kit/checks.mjs run` auf demselben Stand vorausging.");
-  console.log("  Dafuer setzt der Installer `git config core.hooksPath .githooks` —");
-  console.log("  eine Aenderung an der git-Config dieses Repos.");
+  console.log(t("hooksErklaerung"));
   while (true) {
-    const raw = await ask(rl, "Soll das Commit-Gate eingehaengt werden? [j/N]: ");
+    const raw = await ask(rl, t("hooksFrage"));
     const antwort = raw.trim().toLowerCase();
-    if (antwort === "j" || antwort === "ja") return true;
-    if (antwort === "" || antwort === "n" || antwort === "nein") return false;
-    const fehler = "Bitte 'j' oder 'n' eingeben.";
-    console.error(`  Fehler: ${fehler}`);
+    if (JA.has(antwort)) return true;
+    if (antwort === "" || NEIN.has(antwort)) return false;
+    const fehler = t("jaNeinFalsch");
+    console.error(t("fehlerZeile", { fehler }));
     if (_pipedLines !== null) throw new Error(`Validation failed in non-interactive mode: ${fehler}`);
   }
 }
@@ -961,7 +1256,7 @@ function schreibeCommitGate(scope, hooks) {
   mkdirSync(hooksDir, { recursive: true });
   const gateTarget = join(hooksDir, "gate.mjs");
   writeFileSync(gateTarget, Buffer.from(GATE_MJS_B64, "base64").toString("utf-8"), "utf-8");
-  console.log(`✓ gate.mjs geschrieben: ${gateTarget}`);
+  console.log(t("geschrieben", { datei: "gate.mjs", pfad: gateTarget }));
 
   schreibeHookDatei(join(hooksDir, "pre-commit"));
   meldeHooksPath(hooks);
@@ -974,8 +1269,8 @@ function schreibeCommitGate(scope, hooks) {
  */
 function schreibeHookDatei(hookTarget) {
   if (existsSync(hookTarget) && !readFileSync(hookTarget, "utf-8").includes(HOOK_KENNUNG)) {
-    console.log(`! ${hookTarget} stammt nicht aus diesem Kit — unveraendert gelassen.`);
-    console.log("  Zum Einhaengen des Gates dort ergaenzen: node .githooks/gate.mjs pre-commit");
+    console.log(t("fremderHook", { pfad: hookTarget }));
+    console.log(t("fremderHookHilfe"));
     return;
   }
   writeFileSync(hookTarget, Buffer.from(PRE_COMMIT_B64, "base64").toString("utf-8"), "utf-8");
@@ -984,7 +1279,7 @@ function schreibeHookDatei(hookTarget) {
   } catch {
     // Ein Dateisystem ohne x-Bit ist kein Grund abzubrechen; der Hook liegt trotzdem da.
   }
-  console.log(`✓ pre-commit geschrieben: ${hookTarget}`);
+  console.log(t("geschrieben", { datei: "pre-commit", pfad: hookTarget }));
 }
 
 /** Setzt `core.hooksPath` oder sagt, warum nicht. */
@@ -992,27 +1287,28 @@ function meldeHooksPath(hooks) {
   if (hooks.setzen) {
     const res = cliSpawn("git", ["config", "core.hooksPath", ".githooks"], "INSTALL_GIT_FAKE", { encoding: "utf-8" });
     if (res.error || res.status !== 0) {
-      console.error(`  Fehler: core.hooksPath liess sich nicht setzen: ${(res.stderr || res.error?.message || "").trim()}`);
+      const fehler = t("hooksPathFehler", { grund: (res.stderr || res.error?.message || "").trim() });
+      console.error(t("fehlerZeile", { fehler }));
       process.exitCode = 1;
       return;
     }
-    console.log("✓ core.hooksPath auf .githooks gesetzt — das Commit-Gate ist aktiv.");
+    console.log(t("hooksPathGesetzt"));
     return;
   }
   if (hooks.lage.art === "belegt") {
-    console.log(`! core.hooksPath ist bereits ${hooks.lage.wert} — nicht geaendert.`);
-    console.log("  Zum Einhaengen den eigenen Hook um 'node .githooks/gate.mjs pre-commit' ergaenzen.");
+    console.log(t("hooksPathBelegt", { wert: hooks.lage.wert }));
+    console.log(t("hooksPathBelegtHilfe"));
     return;
   }
   if (hooks.lage.art === "entfaellt") {
-    console.log(`! core.hooksPath nicht gesetzt (${hooks.lage.grund}) — das Gate ist nicht aktiv.`);
+    console.log(t("hooksPathEntfaellt", { grund: hooks.lage.grund }));
     return;
   }
   if (hooks.lage.art === "schon gesetzt") {
-    console.log("✓ core.hooksPath steht bereits auf .githooks.");
+    console.log(t("hooksPathSchon"));
     return;
   }
-  console.log("! core.hooksPath nicht gesetzt — das Gate ist nicht aktiv.");
+  console.log(t("hooksPathNicht"));
 }
 
 // Bestehende workflow.config.json als Update-Defaults laden und das alte provider-Feld
@@ -1023,9 +1319,9 @@ function loadExistingConfig(configPath) {
     try {
       // Gelesen unter den deutschen Namen, geschrieben in der Projektsprache (Issue #1438).
       existingConfig = normalisiereConfig(JSON.parse(readFileSync(configPath, "utf-8"))).config;
-      console.log("  Bestehende workflow.config.json gefunden — Werte als Defaults uebernommen.\n");
+      console.log(t("configGefunden"));
     } catch {
-      console.warn("  Hinweis: Bestehende workflow.config.json konnte nicht gelesen werden.\n");
+      console.warn(t("configUnlesbar"));
     }
   }
   if (existingConfig.provider && !existingConfig.codeHost) existingConfig.codeHost = existingConfig.provider;
@@ -1051,9 +1347,11 @@ function loadExistingConfig(configPath) {
 // Wirksamkeits-Auswertung (`.claude/wirksamkeit.md`, `.claude/wirksamkeit.json`) haben
 // hier keinen eigenen Eintrag: Aufgezaehlt werden die Zustandsdateien, die der Prozess
 // fortschreibt, nicht jedes erzeugte Ergebnis.
-const GITIGNORE_BLOCK = [
-  "# claude-workflow-kit (Issue #208): workflow.config.json gehoert ins Repo,",
-  "# alles andere unter .claude/ ist lokaler Zustand.",
+// Die beiden Kopfzeilen stehen in der Sprache des Projekts (Issue #1455); erkannt wird der
+// Block an der Negationszeile, nicht an ihnen.
+const gitignoreBlock = () => [
+  t("gitignoreKopf1"),
+  t("gitignoreKopf2"),
   ".claude/*",
   "!.claude/workflow.config.json",
   ".claude/workflow.config.local.json",
@@ -1089,7 +1387,7 @@ function ensureProjectGitignore() {
   const trimmed = lines.map((l) => l.trim());
 
   if (trimmed.includes("!.claude/workflow.config.json")) {
-    console.log("✓ .gitignore: .claude-Block bereits vorhanden");
+    console.log(t("gitignoreVorhanden"));
     return;
   }
 
@@ -1098,9 +1396,9 @@ function ensureProjectGitignore() {
   const eigeneRegeln = trimmed.some((l) => l.startsWith(".claude/") && l !== ".claude/") ||
     trimmed.some((l) => l.startsWith("!.claude/"));
   if (eigeneRegeln) {
-    console.log("! .gitignore: eigene .claude-Regeln gefunden — nichts geaendert.");
-    console.log("  Empfohlen, damit workflow.config.json versionierbar bleibt:");
-    for (const zeile of GITIGNORE_BLOCK) console.log(`    ${zeile}`);
+    console.log(t("gitignoreEigene"));
+    console.log(t("gitignoreEmpfohlen"));
+    for (const zeile of gitignoreBlock()) console.log(`    ${zeile}`);
     return;
   }
 
@@ -1108,16 +1406,16 @@ function ensureProjectGitignore() {
   if (alteZeile !== -1) {
     // Migration: ersetzen, nicht ergaenzen. Bliebe `.claude/` stehen, liefe die
     // Negation aus dem oben genannten Grund ins Leere.
-    lines.splice(alteZeile, 1, ...GITIGNORE_BLOCK);
+    lines.splice(alteZeile, 1, ...gitignoreBlock());
     writeFileSync(gitignorePath, lines.join("\n"), "utf-8");
-    console.log("✓ .gitignore: '.claude/' durch Block ersetzt — workflow.config.json wird jetzt getrackt");
+    console.log(t("gitignoreErsetzt"));
     return;
   }
 
-  const block = GITIGNORE_BLOCK.join("\n") + "\n";
+  const block = gitignoreBlock().join("\n") + "\n";
   const next = content.endsWith("\n") || content === "" ? content + block : content + "\n" + block;
   writeFileSync(gitignorePath, next, "utf-8");
-  console.log("✓ .gitignore: .claude-Block eingetragen");
+  console.log(t("gitignoreEingetragen"));
 }
 
 // --- Der Sitzungs-Melder an den Hooks von Claude Code (Issue #735, Plan E22) ---
@@ -1159,9 +1457,8 @@ function hookSchonEingetragen(gruppen, kennung) {
 
 /** Sagt, was von Hand nachzutragen ist — der Rueckfall, wenn wir die Datei nicht anfassen. */
 function meldeHooksVonHand(pfad, grund) {
-  console.log(`! ${pfad} ${grund} — hooks nicht eingetragen.`);
-  console.log("  Von Hand ergaenzen, damit der Verbrauch dieser Sitzungen gemeldet wird und");
-  console.log("  Pipes hinter ausgenommenen Kommandos nicht in der Sandbox landen:");
+  console.log(t("hooksVonHand", { pfad, grund }));
+  console.log(t("hooksVonHandHilfe"));
   for (const { event, matcher, command } of SITZUNG_HOOKS) {
     const zusatz = matcher ? ` (${matcher})` : "";
     console.log(`    ${event}${zusatz}: ${command}`);
@@ -1201,7 +1498,7 @@ function ensureSitzungsHooks(targetBase) {
   const pfad = join(targetBase, "settings.json");
   const settings = liesSettings(pfad);
   if (settings === null) {
-    meldeHooksVonHand(pfad, "ist kein lesbares JSON-Objekt");
+    meldeHooksVonHand(pfad, t("keinJsonObjekt"));
     return;
   }
 
@@ -1218,14 +1515,14 @@ function ensureSitzungsHooks(targetBase) {
     neu.push(event);
   }
   if (neu.length === 0) {
-    console.log(`✓ ${pfad}: Kit-Hooks bereits eingetragen`);
+    console.log(t("hooksSchon", { pfad }));
     return;
   }
 
   settings.hooks = hooks;
   mkdirSync(targetBase, { recursive: true });
   writeFileSync(pfad, JSON.stringify(settings, null, 2) + "\n", "utf-8");
-  console.log(`✓ ${pfad}: Kit-Hooks eingetragen (${neu.join(", ")})`);
+  console.log(t("hooksEingetragen", { pfad, ereignisse: neu.join(", ") }));
 }
 
 // Schreibt die Teile von night.mjs und board.mjs nach night/ und board/ des Kit-Verzeichnisses
@@ -1240,7 +1537,7 @@ function schreibeTeile(kitDir) {
     for (const [datei, inhalt] of Object.entries(dateien)) {
       writeFileSync(join(teilDir, datei), inhalt, "utf-8");
     }
-    console.log(`✓ ${teil}/ geschrieben: ${Object.keys(dateien).length} Teil(e) in ${teilDir}`);
+    console.log(t("teileGeschrieben", { teil, anzahl: Object.keys(dateien).length, pfad: teilDir }));
   }
 }
 
@@ -1253,17 +1550,14 @@ function copyAgents(targetDir) {
   for (const [datei, inhalt] of Object.entries(dateien)) {
     writeFileSync(join(targetDir, datei), inhalt, "utf-8");
   }
-  console.log(`✓ agents/ geschrieben: ${Object.keys(dateien).length} Agent(en) in ${targetDir}`);
+  console.log(t("agentenGeschrieben", { anzahl: Object.keys(dateien).length, pfad: targetDir }));
 }
 
 /**
  * Die Abbruchmeldung unter nativem Windows (Issue #1276, Plan #1265 E3). "ab" und nicht
  * "seit": Der `npx`-Weg zieht `main`, die Abweisung kann kurz vor dem Release wirken.
  */
-const WINDOWS_ABWEISUNG = Object.freeze([
-  "claude-workflow-kit unterstützt natives Windows ab Version 4.0.0 nicht mehr.",
-  "Richte das Kit in WSL2 ein: https://docs.mwolff.org/wsl2",
-]);
+const WINDOWS_ABWEISUNG = Object.freeze(["windowsNicht", "windowsWsl"]);
 
 /**
  * Die einzige Stelle, an der das Kit natives Windows noch erkennt (Fachplan #1264,
@@ -1274,7 +1568,7 @@ const WINDOWS_ABWEISUNG = Object.freeze([
  * jedem Host pruefbar ist.
  */
 export function windowsAbweisung(plattform = process.platform) {
-  return plattform === "win32" ? [...WINDOWS_ABWEISUNG] : null;
+  return plattform === "win32" ? WINDOWS_ABWEISUNG.map((k) => t(k)) : null;
 }
 
 // Was vor jeder Frage endet: natives Windows und --version. Eigene Funktion, damit main()
@@ -1295,12 +1589,16 @@ function vorabEnden() {
 }
 
 async function main() {
+  // Die Sprache steht ab hier fest, aus der Config vor jeder Aenderung (Issue #1455): Die
+  // Umstellung berichtet in der Sprache, die das Projekt bis dahin hatte, und ein neues
+  // Projekt legt sie mit der Antwort auf die Sprachfrage neu fest.
+  prozessSprache();
   vorabEnden();
 
   // Die Umstellung fragt nichts und liest darum kein stdin (Issue #1438).
   const umstellung = umstellSprache(process.argv.slice(2));
   if (umstellung) {
-    console.log(`\n=== claude-workflow-kit: Umstellung auf ${umstellung} ===\n`);
+    console.log(t("umstellungKopf", { ziel: umstellung }));
     umstellModus(umstellung);
     return;
   }
@@ -1311,7 +1609,7 @@ async function main() {
     : { close: () => {} };
 
   if (process.argv.includes("--schutz")) {
-    console.log("\n=== claude-workflow-kit: Schutz des Hauptzweigs ===\n");
+    console.log(t("schutzKopf"));
     await schutzModus(rl);
     rl.close();
     return;
@@ -1328,12 +1626,13 @@ async function main() {
     : resolve(".claude", "workflow.config.json");
   const sprachfeld = sprachfeldNeu(sprache, existingConfigPath);
   const existingConfig = loadExistingConfig(existingConfigPath);
+  spracheDesLaufs(sprache, existingConfig);
   const D = { ...DEFAULTS, ...existingConfig };
 
   // Frage 2: codeHost
   const codeHost = await askWithDefault(
     rl,
-    "Code-Host: 'github', 'gitlab' oder 'local'?",
+    t("frageCodeHost"),
     D.codeHost,
     "codeHost"
   );
@@ -1344,21 +1643,21 @@ async function main() {
   // Frage 3: issueTracker
   const issueTracker = await askWithDefault(
     rl,
-    "Issue-Tracker: 'github', 'gitlab' oder 'local'?",
+    t("frageTracker"),
     D.issueTracker ?? codeHost,
     "issueTracker"
   );
 
   // Frage 4: mainBranch
-  const mainBranch = await askWithDefault(rl, "Haupt-Branch (mainBranch)", D.mainBranch);
+  const mainBranch = await askWithDefault(rl, t("frageMain"), D.mainBranch);
 
   // Frage 5: productionBranch
-  const productionBranch = await askWithDefault(rl, "Production-Branch (productionBranch)", D.productionBranch);
+  const productionBranch = await askWithDefault(rl, t("frageProduction"), D.productionBranch);
 
   // Frage 6: reviewScope
   const reviewScope = await askWithDefault(
     rl,
-    "Review-Umfang: 'diff' (nur Aenderungen) oder 'full' (gesamter Quelltext)?",
+    t("frageReviewScope"),
     D.reviewScope,
     "reviewScope"
   );
@@ -1377,7 +1676,7 @@ async function main() {
   // Frage 9 (nur bei globalem Install): Vault-Pfad für kontext.config.json
   let vaultPath = "";
   if (scope === "global") {
-    const raw = await ask(rl, "Pfad zum Memory-Vault für /kontext (leer = überspringen): ");
+    const raw = await ask(rl, t("frageVault"));
     vaultPath = raw.trim();
   }
 
@@ -1392,7 +1691,7 @@ async function main() {
   const planMdTarget = join(targetBase, "CLAUDE-Plan.md");
 
   // --- Skills kopieren ---
-  console.log(`\nKopiere Skills nach ${skillsTarget}:`);
+  console.log(t("kopiereSkills", { pfad: skillsTarget }));
   const skillAnzahl = copySkills(skillsTarget);
 
   // --- Config schreiben ---
@@ -1427,13 +1726,13 @@ async function main() {
   }
   mkdirSync(targetBase, { recursive: true });
   writeFileSync(configTarget, JSON.stringify(inProjektsprache(config), null, 2) + "\n", "utf-8");
-  console.log(`\n✓ Config geschrieben: ${configTarget}`);
+  console.log(t("configGeschrieben", { pfad: configTarget }));
   // Der spec-Block ist eine Altlast aus Spec-Driven Development (entfallen mit
   // Idee #813, Plan #825). Ein vorhandener Block kommt ueber den
   // existingConfig-Spread unveraendert mit — kein Werkzeug liest ihn mehr, und der
   // Installer sagt das genau einmal, statt ihn still mitzuschleppen oder
   // eigenmaechtig zu entfernen (A4).
-  if (config.spec) console.log("  Hinweis: Der spec-Block wird nicht mehr ausgewertet und kann samt specs/ entfernt werden.");
+  if (config.spec) console.log(t("specHinweis"));
 
   // --- kontext.config.json schreiben (nur bei globalem Install mit Vault-Pfad) ---
   if (scope === "global" && vaultPath) {
@@ -1444,18 +1743,18 @@ async function main() {
     };
     const kontextConfigTarget = join(targetBase, "kontext.config.json");
     writeFileSync(kontextConfigTarget, JSON.stringify(kontextConfig, null, 2) + "\n", "utf-8");
-    console.log(`✓ kontext.config.json geschrieben: ${kontextConfigTarget}`);
+    console.log(t("geschrieben", { datei: "kontext.config.json", pfad: kontextConfigTarget }));
   }
 
   // --- CLAUDE-workflow.md ablegen ---
   writeFileSync(workflowMdTarget, Buffer.from(CLAUDE_WORKFLOW_MD_B64, "base64").toString("utf-8"), "utf-8");
-  console.log(`✓ CLAUDE-workflow.md abgelegt: ${workflowMdTarget}`);
+  console.log(t("abgelegt", { datei: "CLAUDE-workflow.md", pfad: workflowMdTarget }));
 
   // --- Gate-Register ablegen ---
   writeFileSync(fachplanMdTarget, Buffer.from(CLAUDE_FACHPLAN_MD_B64, "base64").toString("utf-8"), "utf-8");
-  console.log(`✓ CLAUDE-Fachplan.md abgelegt: ${fachplanMdTarget}`);
+  console.log(t("abgelegt", { datei: "CLAUDE-Fachplan.md", pfad: fachplanMdTarget }));
   writeFileSync(planMdTarget, Buffer.from(CLAUDE_PLAN_MD_B64, "base64").toString("utf-8"), "utf-8");
-  console.log(`✓ CLAUDE-Plan.md abgelegt: ${planMdTarget}`);
+  console.log(t("abgelegt", { datei: "CLAUDE-Plan.md", pfad: planMdTarget }));
 
   // --- Beispiel-Config ablegen ---
   //
@@ -1472,40 +1771,40 @@ async function main() {
   // bleiben muss (Issue #125).
   const exampleTarget = join(targetBase, "workflow.config.example.json");
   writeFileSync(exampleTarget, Buffer.from(CONFIG_EXAMPLE_B64, "base64").toString("utf-8"), "utf-8");
-  console.log(`✓ Beispiel-Config abgelegt: ${exampleTarget}`);
+  console.log(t("beispielAbgelegt", { pfad: exampleTarget }));
 
   // --- board.mjs ausschreiben ---
   const kitDir = join(targetBase, "kit");
   mkdirSync(kitDir, { recursive: true });
   const boardTarget = join(kitDir, "board.mjs");
   writeFileSync(boardTarget, Buffer.from(BOARD_MJS_B64, "base64").toString("utf-8"), "utf-8");
-  console.log(`✓ board.mjs geschrieben: ${boardTarget}`);
+  console.log(t("geschrieben", { datei: "board.mjs", pfad: boardTarget }));
 
   // --- night.mjs ausschreiben (Nacht-Runner, #131) ---
   const nightTarget = join(kitDir, "night.mjs");
   writeFileSync(nightTarget, Buffer.from(NIGHT_MJS_B64, "base64").toString("utf-8"), "utf-8");
-  console.log(`✓ night.mjs geschrieben: ${nightTarget}`);
+  console.log(t("geschrieben", { datei: "night.mjs", pfad: nightTarget }));
 
   // --- checks.mjs ausschreiben (Pruef-Auswahl, #425) ---
   // Die implement-Skills und /local-check rufen es als .claude/kit/checks.mjs auf;
   // ohne diesen Block laege es nur im Kit-Repo und der Aufruf ginge ins Leere.
   const checksTarget = join(kitDir, "checks.mjs");
   writeFileSync(checksTarget, Buffer.from(CHECKS_MJS_B64, "base64").toString("utf-8"), "utf-8");
-  console.log(`✓ checks.mjs geschrieben: ${checksTarget}`);
+  console.log(t("geschrieben", { datei: "checks.mjs", pfad: checksTarget }));
 
   // --- preise.mjs ausschreiben (Preistabelle des Sitzungs-Melders, #734) ---
   // board.mjs laedt sie als Nachbardatei. Fehlt sie, meldet der Melder den Verbrauch
   // in Token weiter, aber ohne Dollarbetrag — kein Fehler, nur eine Angabe weniger.
   const preiseTarget = join(kitDir, "preise.mjs");
   writeFileSync(preiseTarget, Buffer.from(PREISE_MJS_B64, "base64").toString("utf-8"), "utf-8");
-  console.log(`✓ preise.mjs geschrieben: ${preiseTarget}`);
+  console.log(t("geschrieben", { datei: "preise.mjs", pfad: preiseTarget }));
 
   // --- aufwand.mjs ausschreiben (Aufwands-Auswertung, #750) ---
   // Der Nacht-Runner ruft es am Ende jedes Laufs, /push-main vor dem Veroeffentlichen.
   // Ohne diesen Block laege es nur im Kit-Repo und beide Aufrufe gingen ins Leere.
   const aufwandTarget = join(kitDir, "aufwand.mjs");
   writeFileSync(aufwandTarget, Buffer.from(AUFWAND_MJS_B64, "base64").toString("utf-8"), "utf-8");
-  console.log(`✓ aufwand.mjs geschrieben: ${aufwandTarget}`);
+  console.log(t("geschrieben", { datei: "aufwand.mjs", pfad: aufwandTarget }));
 
   // --- wirksamkeit.mjs ausschreiben (Wirksamkeits-Auswertung, #787) ---
   // Liest das Ausfuehrungsprotokoll von checks.mjs (#785). Ohne diesen Block bekaeme
@@ -1513,7 +1812,7 @@ async function main() {
   // `node .claude/kit/wirksamkeit.mjs` aufrufen.
   const wirksamkeitTarget = join(kitDir, "wirksamkeit.mjs");
   writeFileSync(wirksamkeitTarget, Buffer.from(WIRKSAMKEIT_MJS_B64, "base64").toString("utf-8"), "utf-8");
-  console.log(`✓ wirksamkeit.mjs geschrieben: ${wirksamkeitTarget}`);
+  console.log(t("geschrieben", { datei: "wirksamkeit.mjs", pfad: wirksamkeitTarget }));
 
   // --- befunde.mjs ausschreiben (Form und Arten der Funde, #799) ---
   // Der Regeltext verweist fuer die Artenliste auf `node .claude/kit/befunde.mjs arten`,
@@ -1521,7 +1820,7 @@ async function main() {
   // jedem Zielprojekt ins Leere.
   const befundeTarget = join(kitDir, "befunde.mjs");
   writeFileSync(befundeTarget, Buffer.from(BEFUNDE_MJS_B64, "base64").toString("utf-8"), "utf-8");
-  console.log(`✓ befunde.mjs geschrieben: ${befundeTarget}`);
+  console.log(t("geschrieben", { datei: "befunde.mjs", pfad: befundeTarget }));
 
   // --- worktree.mjs ausschreiben (Worktree der Release-Skills, #929) ---
   // `/push-main` und `/merge-production` legen damit ihren eigenen Worktree an, statt im
@@ -1529,7 +1828,7 @@ async function main() {
   // Es ruft night.mjs als Nachbardatei — beide liegen hier zusammen.
   const worktreeTarget = join(kitDir, "worktree.mjs");
   writeFileSync(worktreeTarget, Buffer.from(WORKTREE_MJS_B64, "base64").toString("utf-8"), "utf-8");
-  console.log(`✓ worktree.mjs geschrieben: ${worktreeTarget}`);
+  console.log(t("geschrieben", { datei: "worktree.mjs", pfad: worktreeTarget }));
 
   schreibeTeile(kitDir);
   copyAgents(join(targetBase, "agents"));
@@ -1543,30 +1842,27 @@ async function main() {
     ensureSitzungsHooks(targetBase);
   }
 
-  console.log("\n=== Fertig ===");
-  console.log(`Starte eine neue Claude-Code-Session im Projekt.`);
+  console.log(t("fertig"));
+  console.log(t("neueSession"));
   // Gezaehlt statt behauptet: Das Zahlwort stand hier zweimal falsch (zuletzt
   // "dreizehn" bei fuenfzehn Skills) — es wurde bei jedem neuen Skill vergessen.
-  console.log(`Die ${skillAnzahl} Skills erscheinen in /help.\n`);
+  console.log(t("skillsInHelp", { anzahl: skillAnzahl }));
   if (scope === "projekt") {
     // Ohne diesen Hinweis bleibt die Datei ungetrackt liegen und niemand merkt es —
     // bis zwei Entwickler unterschiedliche buildChecks fahren (Issue #208).
-    console.log(`Bitte .claude/workflow.config.json und .githooks/ committen — beide gelten fuer das ganze Team.`);
-    console.log(`Persoenliche Abweichungen (reviewModel, reviewCommand, reviewScope) gehoeren in`);
-    console.log(`.claude/workflow.config.local.json; die bleibt lokal.\n`);
+    console.log(t("committen"));
   }
   if (codeHost === "gitlab" || issueTracker === "gitlab") {
-    console.log(`GitLab: Stelle sicher dass 'glab auth login' durchgefuehrt wurde.`);
+    console.log(t("gitlabLogin"));
     await setupGitLabLabels(rl);
   } else if (codeHost === "github" || issueTracker === "github") {
-    console.log(`GitHub: Stelle sicher dass 'gh auth login' durchgefuehrt wurde.\n`);
+    console.log(t("githubLogin"));
   }
   // rl erst hier schliessen — setupGitLabLabels fragt interaktiv nach
   rl.close();
-  console.log(`Naechster Schritt: workflow.config.json anpassen (buildChecks, mutationCommand).`);
-  console.log(`Pfad: ${configTarget}\n`);
-  console.log(`Fuer /issue-review: den 'issueReview'-Block aus workflow.config.example.json`);
-  console.log(`heruebernehmen und an die eigenen Modelle anpassen. Ohne ihn tut der Skill nichts.\n`);
+  console.log(t("naechsterSchritt"));
+  console.log(t("pfad", { pfad: configTarget }));
+  console.log(t("issueReview"));
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).
@@ -1582,7 +1878,7 @@ if (runAsCli) {
   try {
     await main();
   } catch (err) {
-    console.error("\nFehler:", err.message);
+    console.error(t("fehlerKopf"), err.message);
     process.exit(1);
   }
 }
