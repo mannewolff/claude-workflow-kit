@@ -33,6 +33,7 @@ import { GitHubIssueTracker, resolveCodeHost } from "./adapter.mjs";
 // Zyklus mit Absicht: ursprung.mjs liest Karten und Herkunftszeilen von hier. Beide Seiten
 // rufen sich erst zur Laufzeit, keine liest beim Laden einen Wert der anderen.
 import { ursprungLesen, ursprungNachziehen } from "./ursprung.mjs";
+import { SPRACHEN, praefix, erkennePraefix } from "./namen.mjs";
 
 // ============================================================
 // Kontext-Achse (Vault-Pfade fuer /kontext und /document, Issue #202)
@@ -339,26 +340,34 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
  * fuehrender Leerraum erlaubt, Gross- und Kleinschreibung gleichgueltig, das
  * Praefix steht am Titelanfang. `[Fachplan]`, `[Konzept]`, `Fachlich: …` und ein
  * `[Plan]` mitten im Titel sind KEIN Praefix — sie bezeichnen Arbeitspakete.
+ *
+ * Seit Issue #1423 kommen die Namen aus dem Register kit/board/namen.mjs, und jede Art gilt
+ * unter beiden: `[Requirement]` wie `[Fachlich]`, `[Idea]` wie `[Idee]`, `[Human]` wie
+ * `[Mensch]` — gleich, welche Sprache das Projekt hat (Plan #1420 E3, E4).
  */
-export const FACHLICH_PRAEFIX = /^\s*\[fachlich\]/i;
-export const PLAN_PRAEFIX = /^\s*\[plan\]/i;
-export const IDEE_PRAEFIX = /^\s*\[idee\]/i;
-export const MENSCH_PRAEFIX = /^\s*\[mensch\]/i;
+const praefixRegex = (art) => {
+  const maskiert = [...new Set(SPRACHEN.map((s) => praefix(art, s)))].map((n) => n.replaceAll(/[[\]]/g, String.raw`\$&`));
+  return new RegExp(String.raw`^\s*(?:` + maskiert.join("|") + ")", "i");
+};
+export const FACHLICH_PRAEFIX = praefixRegex("fachlich");
+export const PLAN_PRAEFIX = praefixRegex("plan");
+export const IDEE_PRAEFIX = praefixRegex("idee");
+export const MENSCH_PRAEFIX = praefixRegex("mensch");
 
 export function istFachlich(title) {
-  return FACHLICH_PRAEFIX.test(title || "");
+  return erkennePraefix(title) === "fachlich";
 }
 
 export function istPlan(title) {
-  return PLAN_PRAEFIX.test(title || "");
+  return erkennePraefix(title) === "plan";
 }
 
 export function istIdee(title) {
-  return IDEE_PRAEFIX.test(title || "");
+  return erkennePraefix(title) === "idee";
 }
 
 export function istMensch(title) {
-  return MENSCH_PRAEFIX.test(title || "");
+  return erkennePraefix(title) === "mensch";
 }
 
 // ============================================================
