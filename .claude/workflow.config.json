@@ -613,7 +613,9 @@
     ],
     "board-adapter": [
       "kit/board/adapter.mjs",
+      "kit/board/schutz.mjs",
       "test/board-adapter-*.test.mjs",
+      "test/board-schutz.test.mjs",
       "test/helpers/adapter-fixture.mjs",
       "test/helpers/board-ci-fixture.mjs",
       "test/helpers/board-github-fixture.mjs",

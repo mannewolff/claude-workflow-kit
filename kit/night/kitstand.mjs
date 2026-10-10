@@ -441,8 +441,11 @@ function verursacherKartennummern(verursacher) {
  * `rot` traegt die Verursacher nach `verursacherKarten` (E11): Nennt eine rote Pruefung
  * statt Karten einen `hinweis`, oder laesst sich gar keine Karte zuordnen, gelten alle
  * Pakete des Stands.
+ *
+ * Exportiert fuer das Notfall-Gate in board/schutz.mjs (Plan #1405, E9): Es legt dieselbe
+ * Frage, wann ein Lauf gruen ist, nicht ein zweites Mal fest.
  */
-function zusammenfassungBezeugt(pfad, pakete) {
+export function zusammenfassungBezeugt(pfad, pakete) {
   let daten = null;
   try {
     daten = JSON.parse(readFileSync(join(pfad, ".claude", "checks-summary.json"), "utf-8"));

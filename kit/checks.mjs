@@ -2691,7 +2691,9 @@ function listenGleich(a, b) {
   return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((wert, i) => wert === b[i]);
 }
 
-function hashesGleich(a, b) {
+// Exportiert fuer das Notfall-Gate in board/schutz.mjs (Plan #1405, E9): Wann ein Stand
+// derselbe ist, legt nur diese Stelle fest.
+export function hashesGleich(a, b) {
   if (a === null || typeof a !== "object" || b === null || typeof b !== "object") return false;
   const alt = Object.keys(a);
   const neu = Object.keys(b);

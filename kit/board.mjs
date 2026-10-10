@@ -301,6 +301,8 @@ const { dispatchNightrun, dispatchSitzung } = await import("./board/melder.mjs")
 export const { pruefeBashZeile, pruefeHintergrund } = await import("./board/hook.mjs");
 // Den Befehlsverteiler des Hooks braucht nur Dispatch; exportiert war er nie.
 const { dispatchHook } = await import("./board/hook.mjs");
+export const { SCHUTZ_AUSGESETZT, NACHPRUEFEN_KOMMANDO, NACHT_GESPERRT, rulesetSoll, schutzZustand, anleitung,
+  notfallGate, nachtSperre } = await import("./board/schutz.mjs");
 
 // --- Argument-Parser ---
 
