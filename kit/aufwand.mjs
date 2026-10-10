@@ -50,6 +50,13 @@ import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, realpa
 import { join, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+// Der Normalisierer der Einstellungsnamen aus dem Board-Teil config-namen (Issue #1436, Plan
+// #1420 E10): Er bildet eine englisch benannte Config auf die deutschen Namen ab, die dieses
+// Modul liest. Dynamisch und abgefangen, denn das Modul laeuft auch allein ohne den Board-Teil;
+// fehlt er, bleibt die Config, wie sie gelesen wurde.
+const { normalisiereConfig = (roh) => ({ config: roh, hinweise: [] }) } =
+  await import(new URL("./board/config-namen.mjs", import.meta.url).href).catch(() => ({}));
+
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
@@ -196,7 +203,7 @@ function ladeEinstellungen(root) {
   if (!existsSync(pfad)) return vorgabe;
   let config;
   try {
-    config = JSON.parse(readFileSync(pfad, "utf-8"));
+    config = normalisiereConfig(JSON.parse(readFileSync(pfad, "utf-8"))).config;
   } catch (err) {
     return { ...vorgabe, configGelesen: `nicht lesbar (${err.message})` };
   }

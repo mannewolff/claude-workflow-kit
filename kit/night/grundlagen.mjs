@@ -62,7 +62,7 @@ const { TOOLBOX_BUDGET_NACHT_MS } = await import(pathToFileURL(join(NACHBAR_DIR,
 // Der Normalisierer der Einstellungsnamen aus dem Board-Teil config-namen (Issue #1435, Plan
 // #1420 E10): Er bringt beide Config-Dateien vor dem Mischen auf die deutschen Namen. Dynamisch
 // und abgefangen wie das Budget darueber; fehlt der Teil, bleibt die Config, wie sie gelesen wurde.
-const { normalisiereConfig = (roh) => ({ config: roh, hinweise: [] }) } =
+export const { normalisiereConfig = (roh) => ({ config: roh, hinweise: [] }) } =
   await import(pathToFileURL(join(NACHBAR_DIR, "board", "config-namen.mjs")).href).catch(() => ({}));
 
 // Normalerweise liegt board.mjs neben night.mjs in .claude/kit/. KIT_ROOT

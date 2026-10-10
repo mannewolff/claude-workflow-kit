@@ -39,6 +39,13 @@ import { existsSync, copyFileSync, mkdirSync, readFileSync, appendFileSync, real
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Der Normalisierer der Einstellungsnamen aus dem Board-Teil config-namen (Issue #1436, Plan
+// #1420 E10): Er bildet eine englisch benannte Config auf die deutschen Namen ab, die dieses
+// Modul liest. Dynamisch und abgefangen, denn das Modul laeuft auch allein ohne den Board-Teil;
+// fehlt er, bleibt die Config, wie sie gelesen wurde.
+const { normalisiereConfig = (roh) => ({ config: roh, hinweise: [] }) } =
+  await import(new URL("./board/config-namen.mjs", import.meta.url).href).catch(() => ({}));
+
 import {
   worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen, befundeZurueck, nachziehenPruefen, vorbereitungFesthalten, vorbereitungPruefen,
 } from "./night/kitstand.mjs";
@@ -118,7 +125,7 @@ function stempel() {
  */
 function installKommando(repoRoot) {
   try {
-    const cfg = JSON.parse(readFileSync(join(repoRoot, ".claude", "workflow.config.json"), "utf-8"));
+    const { config: cfg } = normalisiereConfig(JSON.parse(readFileSync(join(repoRoot, ".claude", "workflow.config.json"), "utf-8")));
     return (cfg.installCommand || "").trim();
   } catch {
     return "";

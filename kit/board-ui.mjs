@@ -18,6 +18,13 @@ import { readdir, readFile, mkdir, rename, stat } from "node:fs/promises";
 import { resolve, join, basename } from "node:path";
 import { execFileSync } from "node:child_process";
 
+// Der Normalisierer der Einstellungsnamen aus dem Board-Teil config-namen (Issue #1436, Plan
+// #1420 E10): Er bildet eine englisch benannte Config auf die deutschen Namen ab, die dieses
+// Modul liest. Dynamisch und abgefangen, denn das Modul laeuft auch allein ohne den Board-Teil;
+// fehlt er, bleibt die Config, wie sie gelesen wurde.
+const { normalisiereConfig = (roh) => ({ config: roh, hinweise: [] }) } =
+  await import(new URL("./board/config-namen.mjs", import.meta.url).href).catch(() => ({}));
+
 // Versionskennung (x.y.z). Einzige Anzeige-Quelle — funktioniert auch fuer die
 // standalone ins Kit synchronisierte board-ui.mjs (kein package.json noetig).
 // Gepflegt von tools/bump-version.mjs (haelt package.json im Gleichschritt):
@@ -72,7 +79,7 @@ function loadConfig() {
   for (const p of candidates) {
     if (existsSync(p)) {
       try {
-        return JSON.parse(readFileSync(p, "utf-8"));
+        return normalisiereConfig(JSON.parse(readFileSync(p, "utf-8"))).config;
       } catch {
         // ignorieren, naechste Datei versuchen
       }

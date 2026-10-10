@@ -133,6 +133,13 @@ import { fileURLToPath } from "node:url";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 
+// Der Normalisierer der Einstellungsnamen aus dem Board-Teil config-namen (Issue #1436, Plan
+// #1420 E10): Er bildet eine englisch benannte Config auf die deutschen Namen ab, die dieses
+// Modul liest. Dynamisch und abgefangen, denn das Modul laeuft auch allein ohne den Board-Teil;
+// fehlt er, bleibt die Config, wie sie gelesen wurde.
+const { normalisiereConfig = (roh) => ({ config: roh, hinweise: [] }) } =
+  await import(new URL("./board/config-namen.mjs", import.meta.url).href).catch(() => ({}));
+
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
@@ -641,7 +648,7 @@ function ladeConfig() {
     fail(`Keine .claude/workflow.config.json unter ${wurzel()} — bitte im Projekt-Root starten.`);
   }
   try {
-    return JSON.parse(readFileSync(pfad, "utf-8"));
+    return normalisiereConfig(JSON.parse(readFileSync(pfad, "utf-8"))).config;
   } catch (err) {
     return fail(`.claude/workflow.config.json ist kein gueltiges JSON: ${err.message}`);
   }

@@ -36,7 +36,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   ZUSTAND, UMSETZUNG_LOCK, KIT_STAND_MARKIERUNG, BEFUNDE_PATH, BOARD_MAX_BUFFER, log, fail, ersteZeile, gitReste,
-  ladeConfigMitOverrides, vergleicheText, laufArt,
+  ladeConfigMitOverrides, normalisiereConfig, vergleicheText, laufArt,
 } from "./grundlagen.mjs";
 
 // --- Abhaengigkeiten nach aussen (Plan #1199, E6) ---
@@ -335,7 +335,7 @@ export const RUNNER_SPERREN = [UMSETZUNG_LOCK];
 /** Die Config der Hauptkopie, so weit sie ohne Lauf-Kontext lesbar ist (Muster #800). */
 function configVonPlatte(repoRoot) {
   try {
-    return JSON.parse(readFileSync(join(repoRoot, ".claude", "workflow.config.json"), "utf-8"));
+    return normalisiereConfig(JSON.parse(readFileSync(join(repoRoot, ".claude", "workflow.config.json"), "utf-8"))).config;
   } catch {
     return null; // keine oder unlesbare Config ist ein normaler Zustand
   }
@@ -802,7 +802,7 @@ function halterLebt(pfad) {
  */
 function befundeSchwelle(repoRoot) {
   try {
-    const cfg = JSON.parse(readFileSync(join(repoRoot, ".claude", "workflow.config.json"), "utf-8"));
+    const { config: cfg } = normalisiereConfig(JSON.parse(readFileSync(join(repoRoot, ".claude", "workflow.config.json"), "utf-8")));
     const wert = cfg?.befunde?.schwelle;
     if (Number.isInteger(wert) && wert > 0) return wert;
   } catch { /* keine Config ist ein normaler Zustand — Vorgabe. */ }

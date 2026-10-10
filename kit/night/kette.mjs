@@ -34,7 +34,7 @@ import { tmpdir } from "node:os";
 
 import { ZUSTAND, NACHBAR_DIR, log, board, boardRoh, einheitAnlegen, einheitErgaenzen, gitClean, gitReste,
   laufMelden, resteText, schreibeErgebnisstand, schrittBeginnen, schrittEnden, vergleicheText,
-  vermerkeOhneArbeit } from "./grundlagen.mjs";
+  normalisiereConfig, vermerkeOhneArbeit } from "./grundlagen.mjs";
 import { ABBRUCH_BUDGET_MS, LAUF_KONTEXT, LAUF_ORDNER, RECHNER, abgeben, exitText, journalLesen, laufAnhalten,
   laufLebt, laufPositionSetzen, pulsZustandSetzen, standSetzen } from "./laufstand.mjs";
 import { UMSETZUNG_WARTEN_MS, VORBEREITUNG_DATEI, aufUmsetzungWarten, befundeZurueckUndVorschlagen, kitStandAbgeben, kitStandInBaum, prozessLaeuft,
@@ -798,8 +798,11 @@ export function trackerImWorktreeUmleiten(wt, repoRoot) {
   if (ZUSTAND.config.issueTracker !== "local") return;
   const pfad = join(wt, ".claude", "workflow.config.json");
   if (!existsSync(pfad)) return;
+  // Gelesen wird normalisiert, zurueckgeschrieben die Datei in ihrer eigenen Sprache (Issue #1436):
+  // `local` und `issuesDir` heissen in beiden Sprachen gleich.
   const wtConfig = JSON.parse(readFileSync(pfad, "utf-8"));
-  wtConfig.local = { ...wtConfig.local, issuesDir: resolve(repoRoot, ZUSTAND.config.local?.issuesDir || "issues") };
+  const { config: gelesen } = normalisiereConfig(wtConfig);
+  wtConfig.local = { ...gelesen.local, issuesDir: resolve(repoRoot, ZUSTAND.config.local?.issuesDir || "issues") };
   writeFileSync(pfad, JSON.stringify(wtConfig, null, 2) + "\n", "utf-8");
 }
 

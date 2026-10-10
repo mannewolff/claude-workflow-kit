@@ -329,6 +329,8 @@ export const { SCHUTZ_AUSGESETZT, NACHPRUEFEN_KOMMANDO, NACHT_GESPERRT, rulesetS
   notfallGate, nachtSperre, probe, einrichten, nachpruefen } = await import("./board/schutz.mjs");
 // Den Namen eines Rulesets braucht nur `code schutz aussetzen|wiederherstellen`; exportiert war er nie.
 const { rulesetName } = await import("./board/adapter.mjs");
+// Englisch benannte Config auf die deutschen Namen (Issue #1436, Plan #1420 E10).
+const { normalisiereConfig } = await import("./board/config-namen.mjs");
 
 // --- Argument-Parser ---
 
@@ -693,7 +695,7 @@ function auskunftOhneTeile(argv) {
  */
 function trackerSprichtFetch() {
   try {
-    const roh = JSON.parse(readFileSync(join(configWurzel(), ".claude", "workflow.config.json"), "utf-8"));
+    const { config: roh } = normalisiereConfig(JSON.parse(readFileSync(join(configWurzel(), ".claude", "workflow.config.json"), "utf-8")));
     return (roh.issueTracker ?? roh.provider) === "toolbox";
   } catch {
     return true;

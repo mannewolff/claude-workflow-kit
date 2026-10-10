@@ -34,6 +34,7 @@ import { GitHubIssueTracker, resolveCodeHost } from "./adapter.mjs";
 // rufen sich erst zur Laufzeit, keine liest beim Laden einen Wert der anderen.
 import { ursprungLesen, ursprungNachziehen } from "./ursprung.mjs";
 import { SPRACHEN, praefix, erkennePraefix, erkenneLabel } from "./namen.mjs";
+import { normalisiereConfig } from "./config-namen.mjs";
 
 // ============================================================
 // Kontext-Achse (Vault-Pfade fuer /kontext und /document, Issue #202)
@@ -859,7 +860,7 @@ export function kitStandZeileFuer(text, { env = process.env, baum = process.cwd(
 
 function ladeMainBranch(baum) {
   try {
-    return JSON.parse(readFileSync(join(baum, ".claude", "workflow.config.json"), "utf-8")).mainBranch || "main";
+    return normalisiereConfig(JSON.parse(readFileSync(join(baum, ".claude", "workflow.config.json"), "utf-8"))).config.mainBranch || "main";
   } catch {
     return "main";
   }
