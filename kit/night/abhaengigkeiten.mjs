@@ -28,6 +28,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { NACHBAR_DIR, NACHBAR_BOARD, board, boardRoh } from "./grundlagen.mjs";
+import { ueberschriftName, ueberschriftZeile } from "../board/namen.mjs";
 
 // Fence-Regel, Praefixe und die Lesung mit Herkunft kommen aus dem Board-Teil dokumente,
 // der sie fuehrt (Issue #1218). Abgefangen wie im Einstieg: Fehlt der Teil, wirft jede
@@ -81,23 +82,25 @@ export function leseKarte(id) {
 
 // --- Abhaengigkeiten ---
 
-const DEPS_UEBERSCHRIFT = /^ {0,3}##\s*Abh(?:ä|ae)ngigkeiten\s*$/i;
+// Die Ueberschriften kommen aus dem Register, unter beiden Namen (Issue #1460): ein Objekt mit
+// `test` je Kopfzeile, wie `abschnittLesen` es prueft.
+const DEPS_UEBERSCHRIFT = ueberschriftZeile("abhaengigkeiten");
 const ABSCHNITTS_ENDE = /^ {0,3}##\s/;
 const LOKALE_REFERENZ = /(?<![\w`/#])#(\d+)/g;
 // Der Pflichtabschnitt eines Plandokuments (Regel P6), gelesen von der Stopp-Fragen-
 // Pruefung des Erzeugungsmodus. Name und Ausdruck gehoeren zusammen: Der Name steht in
 // den Gruenden, damit dort keine zweite Schreibweise entsteht.
-export const OFFENE_FRAGEN_NAME = "Offene Fragen";
-export const OFFENE_FRAGEN_UEBERSCHRIFT = /^ {0,3}##\s*Offene\s+Fragen\s*$/i;
+export const OFFENE_FRAGEN_NAME = ueberschriftName("offeneFragen", "de");
+export const OFFENE_FRAGEN_UEBERSCHRIFT = ueberschriftZeile("offeneFragen");
 // Der Abschnitt, in den eine Antwort auf eine Stopp-Frage gehoert. Er steht in den
 // Gruenden von `planAusschluss` und im Weg nach vorn des Halt-Kommentars (Issue #896) —
 // zwei Schreibweisen desselben Abschnitts liessen den Menschen den falschen suchen.
-export const ENTSCHEIDUNGEN_NAME = "Architektonische Entscheidungen";
+export const ENTSCHEIDUNGEN_NAME = ueberschriftName("architektonischeEntscheidungen", "de");
 // Der Pflichtabschnitt einer fachlichen Anforderung (Gate F7), gelesen von
 // `offeneFragenGrund`. Eigene Konstante neben `OFFENE_FRAGEN_NAME`: Die Ueberschrift
 // lautet anders, und die beiden Regeln koennen getrennt wandern.
-export const PO_FRAGEN_NAME = "Offene Fragen an den PO";
-export const PO_FRAGEN_UEBERSCHRIFT = /^ {0,3}##\s*Offene\s+Fragen\s+an\s+den\s+PO\s*$/i;
+export const PO_FRAGEN_NAME = ueberschriftName("poFragen", "de");
+export const PO_FRAGEN_UEBERSCHRIFT = ueberschriftZeile("poFragen");
 
 /**
  * Die Zeilen eines Markdown-Abschnitts — `null`, wenn die Ueberschrift fehlt.
@@ -131,7 +134,8 @@ export function abschnittLesen(body, ueberschrift) {
 }
 
 /**
- * Liest #N-Referenzen aus dem Abschnitt "## Abhaengigkeiten" (auch "Abhängigkeiten").
+ * Liest #N-Referenzen aus dem Abschnitt "## Abhaengigkeiten" (auch "Abhängigkeiten" und
+ * "## Dependencies", Issue #1460).
  *
  * Bewusst nur nackte #N-Tokens: Referenzen wie `owner/repo`#245 (Backtick/Slash
  * davor) sind fremde Repos und werden nicht als lokale Issues gewertet.

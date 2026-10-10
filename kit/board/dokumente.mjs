@@ -33,7 +33,8 @@ import { GitHubIssueTracker, resolveCodeHost } from "./adapter.mjs";
 // Zyklus mit Absicht: ursprung.mjs liest Karten und Herkunftszeilen von hier. Beide Seiten
 // rufen sich erst zur Laufzeit, keine liest beim Laden einen Wert der anderen.
 import { ursprungLesen, ursprungNachziehen } from "./ursprung.mjs";
-import { SPRACHEN, praefix, erkennePraefix, erkenneLabel, erkenneMarker, leseMarker, markerWerte } from "./namen.mjs";
+import { SPRACHEN, praefix, erkennePraefix, erkenneLabel, erkenneMarker, leseMarker, markerWerte,
+  kanonischeUeberschrift, ueberschriftName, ueberschriftZeile } from "./namen.mjs";
 import { normalisiereConfig } from "./config-namen.mjs";
 
 // ============================================================
@@ -956,6 +957,8 @@ const vergleichbar = (text) => String(text ?? "").replaceAll("\r\n", "\n").trimE
 // Er steht unmittelbar vor dem Schwanz aus `Kit-Stand:` und `Bericht-Lauf:`; `issue melden`
 // schreibt ihn nach dem Zug, und `berichtAblegen` fuehrt ihn bei einer Wiederholung mit.
 const URSPRUNG_ABSCHNITT = "### Ursprungsdokumente";
+// Zurueckgelesen unter beiden Namen (Issue #1460): `### Ursprungsdokumente` oder `### Origin documents`.
+const URSPRUNG_KOPF = ueberschriftZeile("ursprungsdokumente", 3);
 
 // Index der ersten Zeile des Schwanzes: die letzten Zeilen, die mit `Kit-Stand:` oder
 // `Bericht-Lauf:` beginnen oder leer sind, ohne fuehrende Leerzeilen.
@@ -972,7 +975,7 @@ function schwanzBeginn(zeilen) {
 /** `{ ohne, abschnitt }`: der Bericht ohne den Abschnitt und der Abschnitt selbst oder null. */
 function ursprungAbtrennen(body) {
   const zeilen = String(body ?? "").replaceAll("\r\n", "\n").split("\n");
-  const kopf = zeilen.indexOf(URSPRUNG_ABSCHNITT);
+  const kopf = zeilen.findIndex((z) => URSPRUNG_KOPF.test(z));
   const ende = schwanzBeginn(zeilen);
   if (kopf === -1 || kopf >= ende) return { ohne: body, abschnitt: null };
   const vorher = zeilen.slice(0, kopf).join("\n").trimEnd();
@@ -1298,7 +1301,8 @@ const KEIN_VORHABEN = "kein Vorhaben";
 // LOKALE_REFERENZ, abschnittLesen) — bewusst kein Import, board.mjs laedt den Runner
 // nicht. Der Gleichlauf-Test in test/ablauf-board-dokumente-auftrag.test.mjs faehrt beide Lesungen ueber
 // dieselben Fixtures.
-const DEPS_UEBERSCHRIFT = /^ {0,3}##\s*Abh(?:ä|ae)ngigkeiten\s*$/i;
+// Unter beiden Namen (Issue #1460): `## Abhaengigkeiten` oder `## Dependencies`.
+const DEPS_UEBERSCHRIFT = ueberschriftZeile("abhaengigkeiten");
 const DEPS_ABSCHNITTS_ENDE = /^ {0,3}##\s/;
 const DEPS_REFERENZ = /(?<![\w`/#])#(\d+)/g;
 
@@ -1521,8 +1525,8 @@ function abschnittWoertlich(body, name) {
   const imFence = fenceLauf();
   // Je Zeile die Ueberschrift ausserhalb eines Codeblocks, sonst null.
   const koepfe = zeilen.map((z) => (imFence(z) ? null : ABSCHNITT_ZEILE.exec(z)?.[1] ?? null));
-  const soll = normUeberschrift(name);
-  const start = koepfe.findIndex((k) => k !== null && normUeberschrift(k) === soll);
+  const soll = kanonischeUeberschrift(name);
+  const start = koepfe.findIndex((k) => k !== null && kanonischeUeberschrift(k) === soll);
   if (start < 0) return null;
   const naechster = koepfe.findIndex((k, i) => i > start && k !== null);
   const inhalt = zeilen.slice(start + 1, naechster < 0 ? zeilen.length : naechster);
@@ -1903,15 +1907,23 @@ export async function issueUpdate(tracker, args) {
 // Formpruefung: issue check-form (Issue #628)
 // ============================================================
 
+/** Die Titel der Formatueberschriften `sachen`, wie `zerlegeAbschnitte` sie liefert. */
+export function abschnittsTitel(...sachen) {
+  return sachen.map((sache) => kanonischeUeberschrift(ueberschriftName(sache, "de")));
+}
+
 export const CHECK_FORM_WEGE =
   "check-form nimmt genau einen Eingabeweg: eine Kartennummer <id> ODER "
   + "--body-file <pfad> zusammen mit --title \"<titel>\"";
 
-/** Die Pflichtabschnitte je Stufe, normalisiert (klein, transliteriert). */
+/**
+ * Die Pflichtabschnitte je Stufe, normalisiert (klein, transliteriert) unter ihrem deutschen
+ * Namen; `zerlegeAbschnitte` fuehrt einen englischen Titel auf ihn zurueck (Issue #1460).
+ */
 export const CHECK_FORM_ABSCHNITTE = {
-  fachlich: ["ziel", "fachliche akzeptanzkriterien", "nicht-ziele", "offene fragen an den po"],
-  plan: ["ziel", "betroffene bereiche", "architektonische entscheidungen", "geplante aenderungen", "offene fragen", "verifizierung"],
-  issue: ["kontext", "aufgabe", "akzeptanzkriterium", "abhaengigkeiten"],
+  fachlich: abschnittsTitel("ziel", "fachlicheKriterien", "nichtZiele", "poFragen"),
+  plan: abschnittsTitel("ziel", "betroffeneBereiche", "architektonischeEntscheidungen", "geplanteAenderungen", "offeneFragen", "verifizierung"),
+  issue: abschnittsTitel("kontext", "aufgabe", "akzeptanzkriterium", "abhaengigkeiten"),
 };
 
 // Die Kopfzeile eines `##`-Abschnitts; Gruppe 1 ist ihr Titel.
@@ -1919,22 +1931,17 @@ export const CHECK_FORM_ABSCHNITTE = {
 // Der Titel laeuft greedy bis zum Zeilenende, und dahinter steht nichts mehr, was
 // scheitern koennte: Das alte `(.+?)[ \t]*$` war ein S8786-Fund (Issue #877), weil das
 // lazy Stueck und der Leerraum-Lauf dieselben Zeichen akzeptierten. Den Leerraum am Ende
-// stutzt ohnehin `normUeberschrift` — im Ausdruck stand er doppelt.
+// stutzt ohnehin `kanonischeUeberschrift` — im Ausdruck stand er doppelt.
 export const ABSCHNITT_ZEILE = /^##[ \t]+([^\n]+)/;
-
-/** Ueberschriften vergleichbar machen: Umlaute zaehlen in beiden Schreibweisen. */
-function normUeberschrift(text) {
-  return String(text).trim().toLowerCase()
-    .replaceAll("ä", "ae").replaceAll("ö", "oe").replaceAll("ü", "ue").replaceAll("ß", "ss")
-    .replaceAll(/\s+/g, " ");
-}
 
 /**
  * Zerlegt den Body ohne Codebloecke in Kopf und `##`-Abschnitte.
  *
  * Dieselbe Fence-Auslegung wie ueberall im Adapter (`fenceLauf`): Eine
  * Ueberschrift im Codeblock existiert fuer die Pruefung nicht — weder als
- * Treffer noch als Verstoss. `###` ist keine Abschnittsgrenze.
+ * Treffer noch als Verstoss. `###` ist keine Abschnittsgrenze. Der Titel ist kanonisch
+ * (`kanonischeUeberschrift`, Issue #1460): `## Dependencies` heisst wie `## Abhaengigkeiten`
+ * `abhaengigkeiten`, damit die Formgates beide Namen gleich behandeln.
  */
 export function zerlegeAbschnitte(body) {
   const imFence = fenceLauf();
@@ -1945,7 +1952,7 @@ export function zerlegeAbschnitte(body) {
     if (imFence(zeile)) continue;
     const m = ABSCHNITT_ZEILE.exec(zeile);
     if (m) {
-      aktuell = { titel: normUeberschrift(m[1]), zeilen: [] };
+      aktuell = { titel: kanonischeUeberschrift(m[1]), zeilen: [] };
       abschnitte.push(aktuell);
       continue;
     }

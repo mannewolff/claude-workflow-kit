@@ -36,7 +36,7 @@ import { VORBEREITUNG_DATEI, pidAusInhalt, prozessLaeuft, kitStandZeile } from "
 import { abschnittLesen, leseKarte } from "./abhaengigkeiten.mjs";
 import { COLUMN_DEFAULTS } from "../board/grundlagen.mjs";
 // Die Marker in Body und Kommentaren gelten unter beiden Namen (Issue #1443, Plan #1420 E15).
-import { leseMarker, erkenneMarker } from "../board/namen.mjs";
+import { leseMarker, erkenneMarker, ueberschriftZeile } from "../board/namen.mjs";
 import { endlicheZahl, lesePruefung, paketstufenChecks, runBuildChecksSync,
   LOKALER_KOMMENTARKOPF } from "./session.mjs";
 
@@ -487,13 +487,14 @@ export function prueflaufZeilen(einheiten, ziel = undefined) {
 export const BERICHT_ANKER = "## Nachtbericht, Kette";
 export const BERICHT_SCHLUSS = "Dieser Bericht ist Verlauf. Verbindlich fuer die naechste Kette wird eine Entscheidung erst als Satz im Fachplan.";
 const BERICHT_DATEI_PRAEFIX = "night-bericht-";
-const ENTSCHEIDUNGEN_UEBERSCHRIFT = /^ {0,3}##\s*Architektonische\s+Entscheidungen\s*$/i;
+// Plan und Abschlussbericht unter beiden Namen (Issue #1460).
+const ENTSCHEIDUNGEN_UEBERSCHRIFT = ueberschriftZeile("architektonischeEntscheidungen");
 // Die Kontextueberschrift unter beiden Namen (Issue #1443): `## Kontext` allein auf der Zeile.
 // Ein Objekt mit `test`, weil `abschnittLesen` eine Ueberschrift so prueft.
 const KONTEXT_UEBERSCHRIFT = {
   test: (zeile) => /^ {0,3}##/.test(zeile) && ((m) => m?.sache === "kontext" && m.rest.trim() === "")(leseMarker(zeile)),
 };
-const ENTSCHEIDUNGEN_KOMMENTAR_UEBERSCHRIFT = /^ {0,3}###\s*Entscheidungen\s*$/i;
+const ENTSCHEIDUNGEN_KOMMENTAR_UEBERSCHRIFT = ueberschriftZeile("entscheidungen", 3);
 // `## Einarbeitung, Runde N` unter beiden Namen (Issue #1443).
 const istEinarbeitung = (kommentar) => ((m) => m?.sache === "einarbeitungRunde" && /^ \d/.test(m.rest))(leseMarker(kommentar));
 

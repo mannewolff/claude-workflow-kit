@@ -20,8 +20,8 @@ import { readFileSync } from "node:fs";
 import path, { join } from "node:path";
 import { homedir } from "node:os";
 
-import { istMensch, zerlegeAbschnitte, CHECK_FORM_ABSCHNITTE } from "./dokumente.mjs";
-import { SPRACHEN, erkenneLabel, labelName, erkenneMarker, leseMarker } from "./namen.mjs";
+import { istMensch, zerlegeAbschnitte, abschnittsTitel, CHECK_FORM_ABSCHNITTE } from "./dokumente.mjs";
+import { SPRACHEN, erkenneLabel, labelName, erkenneMarker, leseMarker, ueberschriftZeile } from "./namen.mjs";
 
 // ============================================================
 // Geschuetzte Pfade (Issue #1041, Plan #987, fachliche Quelle #868)
@@ -176,7 +176,7 @@ export function tokenFormen(token, wurzel, pfad = path) {
 
 // Gebaut wird, was in der Aufgabe steht; geprueft, was im Kriterium steht (E4). Der Kontext
 // erzaehlt die Vorgeschichte und zitiert Pfade, die das Paket gerade nicht aendert.
-const GESCHUETZT_ABSCHNITTE = new Set(["aufgabe", "akzeptanzkriterium"]);
+const GESCHUETZT_ABSCHNITTE = new Set(abschnittsTitel("aufgabe", "akzeptanzkriterium"));
 
 /**
  * Die geschuetzten Pfade, die ein Paket in `## Aufgabe` und `## Akzeptanzkriterium` beim
@@ -536,8 +536,9 @@ function guetekommandos(config) {
 
 // Der Anker des Blocks, der den Session-Abschluss nicht blockiert (Issue #215).
 // `###` ist keine Abschnittsgrenze, der Block steht also in den Zeilen des
-// Akzeptanzkriteriums — I6 liest nur, was davor steht.
-const MANUELLE_PRUEFUNG_ZEILE = /^###[ \t]+manuelle[ \t]+pr(ü|ue)fung/i;
+// Akzeptanzkriteriums — I6 liest nur, was davor steht. Unter beiden Namen (Issue #1460):
+// `### Manuelle Pruefung …` oder `### Manual check …`, mit beliebigem Zusatz.
+const MANUELLE_PRUEFUNG_ZEILE = ueberschriftZeile("manuellePruefung", 3, { anfang: true });
 
 // Eine Entscheidungszeile im Kontext, die die Guetemess-Konvention aufhebt: Sie handelt
 // von einem Vollauf oder einer Guetemessung und beantwortet das mit `Gewaehlt: ja`.

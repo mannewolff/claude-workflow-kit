@@ -103,8 +103,11 @@
       "areas": [
         "board-adapter",
         "board-dokumente",
+        "board-einstieg",
+        "board-geschuetzt",
         "board-grundlagen",
         "board-issue-review",
+        "board-testhinweise",
         "board-wiederholung",
         "nacht-abhaengigkeiten"
       ]

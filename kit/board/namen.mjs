@@ -213,6 +213,109 @@ export function markerWerte(text, sache, { eingerueckt = true } = {}) {
     .map(leseMarker).filter((m) => m?.sache === sache).map((m) => m.rest);
 }
 
+/**
+ * Die Formatueberschriften der Dokumente (Issue #1460, Plan #1420 E15): Arbeitspaket, Plan,
+ * Fachplan und Abschlussbericht, je Sache der deutsche und der englische Name. Die
+ * Abschnittsparser erkennen beide; geschrieben wird, was der Skill der Projektsprache
+ * schreibt. Die manuelle Pruefung steht nur mit ihrem festen Anfang hier, der Zusatz
+ * `(Mensch, nicht Teil des Session-Abschlusses)` bzw. `(human, not part of the session
+ * close)` gehoert nicht zur Erkennung.
+ */
+export const UEBERSCHRIFTEN = Object.freeze({
+  // Arbeitspaket.
+  kontext: eintrag("Kontext", "Context"),
+  aufgabe: eintrag("Aufgabe", "Task"),
+  akzeptanzkriterium: eintrag("Akzeptanzkriterium", "Acceptance criteria"),
+  abhaengigkeiten: eintrag("Abhaengigkeiten", "Dependencies"),
+  manuellePruefung: eintrag("Manuelle Pruefung", "Manual check"),
+  // Plan; `Ziel` teilt er mit dem Fachplan.
+  ziel: eintrag("Ziel", "Goal"),
+  betroffeneBereiche: eintrag("Betroffene Bereiche", "Affected areas"),
+  architektonischeEntscheidungen: eintrag("Architektonische Entscheidungen", "Architectural decisions"),
+  geplanteAenderungen: eintrag("Geplante Aenderungen", "Planned changes"),
+  offeneFragen: eintrag("Offene Fragen", "Open questions"),
+  verifizierung: eintrag("Verifizierung", "Verification"),
+  // Fachplan.
+  fachlicheKriterien: eintrag("Fachliche Akzeptanzkriterien", "Business acceptance criteria"),
+  nichtZiele: eintrag("Nicht-Ziele", "Non-goals"),
+  poFragen: eintrag("Offene Fragen an den PO", "Open questions for the PO"),
+  // Abschlussbericht.
+  aenderungen: eintrag("Änderungen", "Changes"),
+  testsUndChecks: eintrag("Tests und Checks", "Tests and checks"),
+  hinweise: eintrag("Hinweise", "Notes"),
+  entscheidungen: eintrag("Entscheidungen", "Decisions"),
+  ursprungsdokumente: eintrag("Ursprungsdokumente", "Origin documents"),
+  standDesVorhabens: eintrag("Stand des Vorhabens", "State of the project"),
+});
+
+/** Ueberschriften vergleichbar machen: klein, Umlaute in beiden Schreibweisen, Leerraum einfach. */
+export function normUeberschrift(text) {
+  return String(text).trim().toLowerCase()
+    .replaceAll("ä", "ae").replaceAll("ö", "oe").replaceAll("ü", "ue").replaceAll("ß", "ss")
+    .replaceAll(/\s+/g, " ");
+}
+
+// Laengster Name zuerst, wie bei den Markern: `Offene Fragen an den PO` ist nicht `Offene Fragen`.
+const UEBERSCHRIFT_NAMEN = Object.entries(UEBERSCHRIFTEN)
+  .flatMap(([sache, { de, en }]) => [[normUeberschrift(de), sache], [normUeberschrift(en), sache]])
+  .sort(([a], [b]) => b.length - a.length);
+
+/** Der Name einer Formatueberschrift in der Sprache; eine unbekannte Sprache gilt als `de`. */
+export function ueberschriftName(sache, sprache) {
+  return nameIn(UEBERSCHRIFTEN, "Ueberschrift", sache, sprache);
+}
+
+/**
+ * Sache und Rest der Formatueberschrift am Anfang des Titels (ohne Rauten), gleich in welcher
+ * Sprache: `{ sache, rest }` mit dem normalisierten Rest, sonst `null`. Wie bei den Markern
+ * darf auf einen Namen, der auf einen Buchstaben endet, keiner folgen.
+ */
+export function leseUeberschrift(titel) {
+  if (typeof titel !== "string") return null;
+  const t = normUeberschrift(titel);
+  for (const [name, sache] of UEBERSCHRIFT_NAMEN) {
+    if (!t.startsWith(name)) continue;
+    if (/^[\p{L}\p{N}-]/u.test(t.slice(name.length))) continue;
+    return { sache, rest: t.slice(name.length).trim() };
+  }
+  return null;
+}
+
+/** Die Sache des Titels, wenn er genau eine Formatueberschrift ist, gleich in welcher Sprache; sonst `null`. */
+export function erkenneUeberschrift(titel) {
+  const m = leseUeberschrift(titel);
+  return m && m.rest === "" ? m.sache : null;
+}
+
+/**
+ * Der Titel, wie die Formgates ihn vergleichen: eine erkannte Formatueberschrift als ihr
+ * deutscher Name, normalisiert, jede andere nur normalisiert. So gelten die Gates unter
+ * beiden Namen, ohne dass jedes seine Abschnitte zweimal kennt.
+ */
+export function kanonischeUeberschrift(titel) {
+  const sache = erkenneUeberschrift(titel);
+  return normUeberschrift(sache ? UEBERSCHRIFTEN[sache].de : titel);
+}
+
+/**
+ * Ein Pruefer fuer die Kopfzeile der Ueberschrift `sache` auf der Ebene `ebene` (2 fuer
+ * `##`), beide Namen: bis zu drei Leerzeichen davor, genau so viele Rauten, der Name allein
+ * auf der Zeile. Mit `anfang: true` darf ihm ein Zusatz folgen (der Block der manuellen
+ * Pruefung). Ein Objekt mit `test`, weil die Abschnittsleser eine Ueberschrift so pruefen.
+ */
+export function ueberschriftZeile(sache, ebene = 2, { anfang = false } = {}) {
+  if (!Object.hasOwn(UEBERSCHRIFTEN, sache)) throw new Error(`namen: unbekannte Ueberschrift "${sache}"`);
+  const kopf = new RegExp(`^ {0,3}#{${ebene}}(?!#)\\s*(.*)$`);
+  return Object.freeze({
+    test(zeile) {
+      const m = kopf.exec(String(zeile));
+      if (!m) return false;
+      if (!anfang) return erkenneUeberschrift(m[1]) === sache;
+      return leseUeberschrift(m[1])?.sache === sache;
+    },
+  });
+}
+
 // --- Texthelfer (Plan #1420 E13) ----------------------------------------------------
 
 let sprache = null;

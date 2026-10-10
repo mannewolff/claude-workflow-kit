@@ -22,7 +22,7 @@ import { basename, extname } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { escapeRegex, pruefeFachlich, pruefePlan, pruefeIssue } from "./geschuetzt.mjs";
-import { zerlegeAbschnitte, normalisiereZeilenenden } from "./dokumente.mjs";
+import { zerlegeAbschnitte, abschnittsTitel, normalisiereZeilenenden } from "./dokumente.mjs";
 import { stufeAusTitel } from "./issue-review.mjs";
 
 // ------------------------------------------------------------
@@ -151,7 +151,8 @@ export function genannteDateien(text, verzeichnis, { stamm = false } = {}) {
 }
 
 // Nur hier fuehrt ein Plan seine Bausteine (A6); Ziel und Verifizierung erwaehnen nur.
-const BAUSTEIN_ABSCHNITTE = new Set(["betroffene bereiche", "geplante aenderungen"]);
+// Ueber das Register unter beiden Namen (Issue #1460).
+const BAUSTEIN_ABSCHNITTE = new Set(abschnittsTitel("betroffeneBereiche", "geplanteAenderungen"));
 
 /**
  * Die Testhinweise eines Plans (A6 bis A9). Bausteine sind die Dateien, die
