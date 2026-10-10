@@ -247,9 +247,9 @@ test("[1356] die englische Ausgabe traegt englischen Rahmentext, kein 'gültig' 
     assert.match(abschnitt, /\(valid: `github`, `gitlab`, `local`\)/);
     assert.doesNotMatch(abschnitt, /gültig/);
     assert.doesNotMatch(abschnitt, /Dieser Abschnitt entsteht/);
-    // Die Einstellungsnamen bleiben unuebersetzt.
+    // Englischer Name, dahinter der deutsche Altname, wo er abweicht (Issue #1439).
     assert.match(abschnitt, /^### `mainBranch`$/m);
-    assert.match(abschnitt, /^- `night\.kette\.planMin` — /m);
+    assert.match(abschnitt, /^- `night\.chain\.planMin` \(German: `night\.kette\.planMin`\) — /m);
   });
 });
 
