@@ -204,10 +204,13 @@ const WERT_FLAGS = {
   "--timeout-min": (args, wert) => { args.timeoutMin = Number(wert); },
 };
 
-// Schalter ohne Wert: Flag -> Feldname, immer auf true.
+// Schalter ohne Wert: Flag -> Feldname, immer auf true. `--chain` und `--check` sind die
+// englischen Namen von `--kette` und `--pruefen` (Issue #1462, Plan #1420 E18).
 const SCHALTER_FLAGS = {
   "--kette": "kette",
+  "--chain": "kette",
   "--pruefen": "pruefen",
+  "--check": "pruefen",
   "--dry-run": "dryRun",
   "--yolo": "yolo",
   "--no-checks-ok": "noChecksOk",

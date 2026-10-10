@@ -175,7 +175,7 @@ test("[1441-6] die englische Referenz im Repo ist eingebettet und stimmt mit der
   assert.equal(Buffer.from(eingebettet(EINSTELLUNGEN) ?? "", "base64").toString("utf-8"), readFileSync(REFERENZ, "utf-8"));
 });
 
-const KONSTANTEN = ["CONFIG_EXAMPLE_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "PREISE_MJS_B64", "AUFWAND_MJS_B64", "WIRKSAMKEIT_MJS_B64", "BEFUNDE_MJS_B64", "WORKTREE_MJS_B64", "KIT_NIGHT_B64", "KIT_BOARD_B64", "KIT_ROLLEN_B64", "GATE_MJS_B64", "PRE_COMMIT_B64", "SKILLS_B64", "AGENTS_B64"];
+const KONSTANTEN = ["CONFIG_EXAMPLE_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "PREISE_MJS_B64", "AUFWAND_MJS_B64", "WIRKSAMKEIT_MJS_B64", "BEFUNDE_MJS_B64", "WORKTREE_MJS_B64", "FINDINGS_MJS_B64", "EFFORT_MJS_B64", "EFFECTIVENESS_MJS_B64", "KIT_NIGHT_B64", "KIT_BOARD_B64", "KIT_ROLLEN_B64", "GATE_MJS_B64", "PRE_COMMIT_B64", "SKILLS_B64", "AGENTS_B64"];
 
 /** Minimales Repo mit allem, was sync-blobs.mjs anfasst, und der echten englischen Referenz. */
 function fixture() {
@@ -190,6 +190,8 @@ function fixture() {
   for (const d of ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs", "worktree.mjs"]) {
     writeFileSync(join(dir, "kit", d), `const KIT_VERSION = "1.0.0";\n`);
   }
+  // Seit Issue #1462: die englischen Einstiege, als Blob und in der Kopie, aber ohne Stempel.
+  for (const datei of ["findings.mjs", "effort.mjs", "effectiveness.mjs"]) writeFileSync(join(dir, "kit", datei), `console.log("${datei}");\n`);
   writeFileSync(join(dir, "kit", "board", "config-namen.mjs"), "export {};\n");
   writeFileSync(join(dir, "kit", "board", "namen.mjs"), "export {};\n");
   copyFileSync(REFERENZ, join(dir, "tools", "config-referenz.en.json"));

@@ -68,6 +68,8 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
     writeFileSync(join(dir, "kit", datei),
       `const KIT_VERSION = "${kitVersion}";\nconsole.log("${datei}");\n`);
   }
+  // Seit Issue #1462: die englischen Einstiege, als Blob und in der Kopie, aber ohne Stempel.
+  for (const datei of ["findings.mjs", "effort.mjs", "effectiveness.mjs"]) writeFileSync(join(dir, "kit", datei), `console.log("${datei}");\n`);
   writeFileSync(join(dir, "install.mjs"), [
     `const VERSION = "${installVersion}";`,
     `const CONFIG_EXAMPLE_B64 = "";`,
@@ -82,6 +84,9 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
     `const WIRKSAMKEIT_MJS_B64 = "";`,
     `const BEFUNDE_MJS_B64 = "";`,
     `const WORKTREE_MJS_B64 = "";`,
+    `const FINDINGS_MJS_B64 = "";`,
+    `const EFFORT_MJS_B64 = "";`,
+    `const EFFECTIVENESS_MJS_B64 = "";`,
     `const KIT_NIGHT_B64 = "";`,
     `const KIT_BOARD_B64 = "";`,
     `const KIT_ROLLEN_B64 = "";`,

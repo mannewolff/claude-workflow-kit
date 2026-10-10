@@ -3573,16 +3573,35 @@ function pruefeKombinationen(args) {
  */
 const NUR_RUN_SCHALTER = { "--frisch": "frisch", "--wiederholen": "wiederholen" };
 
+/**
+ * Die englischen Namen der Unterkommandos und Optionen (Issue #1462, Plan #1420 E18): je
+ * englischer Name der deutsche, den er vertritt. Die deutschen bleiben gueltig.
+ */
+const KOMMANDOS_EN = { areas: "bereiche" };
+const OPTIONEN_EN = {
+  "--stage": "--stufe",
+  "--area": "--bereich",
+  "--finish": "--abschluss",
+  "--fresh": "--frisch",
+  "--retry": "--wiederholen",
+};
+
+/** Der deutsche Name hinter einem englischen; jeder andere Name bleibt, wie er ist. */
+function deutscherName(tabelle, name) {
+  return Object.hasOwn(tabelle, name) ? tabelle[name] : name;
+}
+
 function parseArgs(rest) {
   const args = {};
   let i = 0;
   while (i < rest.length) {
-    if (rest[i] === "--since") {
+    const option = deutscherName(OPTIONEN_EN, rest[i]);
+    if (option === "--since") {
       // Fehlt der Wert ganz, ist das derselbe Fall wie ein leerer: nicht
       // aufloesbar, also voller Umfang.
       args.since = rest[i + 1] ?? "";
       i += 1;
-    } else if (rest[i] === "--stufe") {
+    } else if (option === "--stufe") {
       // Ein unbekannter Wert ist ein Fehler und nicht stillschweigend die
       // Paketstufe (Issue #758): Ein Tippfehler liesse sonst genau die
       // Pruefungen aus, um deren Zeitpunkt es beim Aufruf ging — weniger
@@ -3594,13 +3613,13 @@ function parseArgs(rest) {
       }
       args.stufe = wert;
       i += 1;
-    } else if (rest[i] === "--bereich") {
+    } else if (option === "--bereich") {
       // Der fehlende Wert zaehlt wie ein falscher (wie bei `--stufe`): Die
       // Pruefung gegen `checkAreas` steht in `planen`, wo die Config liegt, und
       // der leere Name faellt dort mit derselben nennenden Meldung durch.
       args.bereich = rest[i + 1] ?? "";
       i += 1;
-    } else if (rest[i] === "--abschluss") {
+    } else if (option === "--abschluss") {
       // Dieser Lauf schliesst genau ein Arbeitspaket ab (Issue #946). Die Kartennummer
       // liest `kartennummer`, samt ihrer Begruendung.
       args.abschluss = true;
@@ -3609,9 +3628,9 @@ function parseArgs(rest) {
         args.karte = karte;
         i += 1;
       }
-    } else if (Object.hasOwn(NUR_RUN_SCHALTER, rest[i])) {
-      args[NUR_RUN_SCHALTER[rest[i]]] = true;
-    } else if (rest[i] === "--in") {
+    } else if (Object.hasOwn(NUR_RUN_SCHALTER, option)) {
+      args[NUR_RUN_SCHALTER[option]] = true;
+    } else if (option === "--in") {
       // Das Arbeitsverzeichnis des Laufs (Issue #1372). Ein fehlender oder ungueltiger
       // Wert bricht ab: Der Lauf maesse sonst still den falschen Baum.
       args.in = rest[i + 1] ?? "";
@@ -3651,7 +3670,8 @@ function main(argv = process.argv.slice(2)) {
     return 0;
   }
 
-  const [command, ...rest] = argv;
+  const [befehl, ...rest] = argv;
+  const command = deutscherName(KOMMANDOS_EN, befehl);
   if (command === "plan") {
     // `--wiederholen` wirkt nur bei `run` (Issue #1396, E3): Die Auswahl von `plan` bleibt dieselbe.
     const { wiederholen, ...args } = parseArgs(rest);
@@ -3668,7 +3688,7 @@ function main(argv = process.argv.slice(2)) {
   }
 
   aufStdout(HELP);
-  return fail(`Unbekannter Befehl: '${command}'. Erwartet: plan, run oder bereiche`);
+  return fail(`Unbekannter Befehl: '${befehl}'. Erwartet: plan, run oder bereiche`);
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).

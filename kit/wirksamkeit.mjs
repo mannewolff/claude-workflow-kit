@@ -1613,14 +1613,27 @@ export function kandidaten(root) {
 
 // --- CLI ---------------------------------------------------------------------
 
+/**
+ * Die englischen Namen der Unterkommandos und Optionen (Issue #1462, Plan #1420 E18): je
+ * englischer Name der deutsche, den er vertritt. Die deutschen bleiben gueltig. Nur hier,
+ * nicht in kit/aufwand.mjs: Das Paket nennt die Werkzeuge einzeln.
+ */
+const KOMMANDOS_EN = { evaluate: "auswerten", finding: "befund", candidates: "kandidaten" };
+const OPTIONEN_EN = { "--window": "--fenster" };
+
+/** Der deutsche Name hinter einem englischen; jeder andere Name bleibt, wie er ist. */
+function deutscherName(tabelle, name) {
+  return Object.hasOwn(tabelle, name) ? tabelle[name] : name;
+}
+
 // SYNC: `parseAuswertenArgs` und `main` stehen gleichlautend in kit/aufwand.mjs (#440) —
 // bis auf die Unterkommandos neben `auswerten` und `befund`: dort `auskunft`, hier
-// `kandidaten` (Issue #1398).
+// `kandidaten` (Issue #1398), und die englischen Namen darueber (Issue #1462).
 function parseAuswertenArgs(rest) {
   const args = {};
   let i = 0;
   while (i < rest.length) {
-    if (rest[i] !== "--fenster") fail(`Unbekanntes Argument: '${rest[i]}'`);
+    if (deutscherName(OPTIONEN_EN, rest[i]) !== "--fenster") fail(`Unbekanntes Argument: '${rest[i]}'`);
     const wert = Number(rest[i + 1]);
     if (!Number.isInteger(wert) || wert <= 0) {
       fail(`--fenster erwartet eine ganze Zahl groesser null, bekam '${rest[i + 1] ?? ""}'.`);
@@ -1673,7 +1686,8 @@ function main(argv, { cwd, abhaengigkeiten = {}, stdout }) {
     return 0;
   }
 
-  const [command, ...rest] = argv;
+  const [befehl, ...rest] = argv;
+  const command = deutscherName(KOMMANDOS_EN, befehl);
   if (command === "auswerten") {
     // Immer JSON auf stdout, auch wenn der Aufruf abgewiesen wird: Die Ausgabe dieses
     // Kommandos wird maschinell gelesen. Ein Fliesstext-Fehler mittendrin machte aus
@@ -1702,7 +1716,7 @@ function main(argv, { cwd, abhaengigkeiten = {}, stdout }) {
   }
 
   stdout(HELP);
-  return fail(`Unbekannter Befehl: '${command}'. Erwartet: auswerten, befund oder kandidaten`);
+  return fail(`Unbekannter Befehl: '${befehl}'. Erwartet: auswerten, befund oder kandidaten`);
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).

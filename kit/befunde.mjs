@@ -1529,11 +1529,36 @@ export function befund() {
 
 // --- CLI ---------------------------------------------------------------------
 
+/**
+ * Die englischen Namen der Unterkommandos und Optionen (Issue #1462, Plan #1420 E18): je
+ * englischer Name der deutsche, den er vertritt. Die deutschen bleiben gueltig.
+ */
+const KOMMANDOS_EN = {
+  kinds: "arten",
+  check: "pruefen",
+  record: "buchen",
+  suggest: "vorschlag",
+  evaluate: "auswerten",
+  finding: "befund",
+};
+const OPTIONEN_EN = {
+  "--file": "--datei",
+  "--stage": "--stufe",
+  "--card": "--karte",
+  "--kind": "--art",
+  "--rejected": "--abgelehnt",
+};
+
+/** Der deutsche Name hinter einem englischen; jeder andere Name bleibt, wie er ist. */
+function deutscherName(tabelle, name) {
+  return Object.hasOwn(tabelle, name) ? tabelle[name] : name;
+}
+
 function parsePruefenArgs(rest) {
   let datei = null;
   let i = 0;
   while (i < rest.length) {
-    if (rest[i] !== "--datei") fail(`Unbekanntes Argument: '${rest[i]}'`);
+    if (deutscherName(OPTIONEN_EN, rest[i]) !== "--datei") fail(`Unbekanntes Argument: '${rest[i]}'`);
     datei = rest[i + 1];
     if (!datei) fail("--datei erwartet einen Pfad.");
     i += 2;  // Option und ihr Wert
@@ -1547,7 +1572,7 @@ function parseBuchenArgs(rest) {
   const optionen = { "--datei": "datei", "--stufe": "stufe", "--karte": "karte" };
   let i = 0;
   while (i < rest.length) {
-    const feld = optionen[rest[i]];
+    const feld = optionen[deutscherName(OPTIONEN_EN, rest[i])];
     if (!feld) fail(`Unbekanntes Argument: '${rest[i]}'`);
     werte[feld] = rest[i + 1];
     if (!werte[feld]) fail(`${rest[i]} erwartet einen Wert.`);
@@ -1567,7 +1592,7 @@ function parseVorschlagArgs(rest) {
   const optionen = { "--art": "art", "--abgelehnt": "abgelehnt" };
   let i = 0;
   while (i < rest.length) {
-    const feld = optionen[rest[i]];
+    const feld = optionen[deutscherName(OPTIONEN_EN, rest[i])];
     if (!feld) fail(`Unbekanntes Argument: '${rest[i]}'`);
     werte[feld] = rest[i + 1];
     if (!werte[feld]) fail(`${rest[i]} erwartet eine Mangel-Art.`);
@@ -1654,7 +1679,8 @@ function main(argv) {
     return 0;
   }
 
-  const [command, ...rest] = argv;
+  const [befehl, ...rest] = argv;
+  const command = deutscherName(KOMMANDOS_EN, befehl);
   if (command === "arten") {
     return alsJson(() => {
       if (rest.length > 0) fail(`'arten' nimmt keine Argumente, bekam '${rest[0]}'.`);
@@ -1690,9 +1716,9 @@ function main(argv) {
   // ruft, liest seine Ausgabe maschinell, und ein Hilfetext auf stdout waere dort ein
   // Parse-Fehler. Die Uebersicht geht deshalb nach stderr.
   aufStderr(HELP);
-  return alsJson(() => fail(command === undefined
+  return alsJson(() => fail(befehl === undefined
     ? `Kein Kommando. Erwartet: ${KOMMANDOS.join(", ")}.`
-    : `Unbekannter Befehl: '${command}'. Erwartet: ${KOMMANDOS.slice(0, -1).join(", ")} oder ${KOMMANDOS.at(-1)}.`));
+    : `Unbekannter Befehl: '${befehl}'. Erwartet: ${KOMMANDOS.slice(0, -1).join(", ")} oder ${KOMMANDOS.at(-1)}.`));
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).

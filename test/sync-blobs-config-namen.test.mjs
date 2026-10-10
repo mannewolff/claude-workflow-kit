@@ -20,7 +20,7 @@ const SYNC = join(repoRoot, "tools", "sync-blobs.mjs");
 const EINSTELLUNGEN = join(repoRoot, "kit", "einstellungen.mjs");
 const CONFIG_NAMEN = join(repoRoot, "kit", "board", "config-namen.mjs");
 
-const KONSTANTEN = ["CONFIG_EXAMPLE_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "PREISE_MJS_B64", "AUFWAND_MJS_B64", "WIRKSAMKEIT_MJS_B64", "BEFUNDE_MJS_B64", "WORKTREE_MJS_B64", "KIT_NIGHT_B64", "KIT_BOARD_B64", "KIT_ROLLEN_B64", "GATE_MJS_B64", "PRE_COMMIT_B64", "SKILLS_B64", "AGENTS_B64"];
+const KONSTANTEN = ["CONFIG_EXAMPLE_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "PREISE_MJS_B64", "AUFWAND_MJS_B64", "WIRKSAMKEIT_MJS_B64", "BEFUNDE_MJS_B64", "WORKTREE_MJS_B64", "FINDINGS_MJS_B64", "EFFORT_MJS_B64", "EFFECTIVENESS_MJS_B64", "KIT_NIGHT_B64", "KIT_BOARD_B64", "KIT_ROLLEN_B64", "GATE_MJS_B64", "PRE_COMMIT_B64", "SKILLS_B64", "AGENTS_B64"];
 
 /** Minimales Repo mit allem, was sync-blobs.mjs anfasst, und der echten Namenstabelle. */
 function fixture() {
@@ -35,6 +35,8 @@ function fixture() {
   for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs", "worktree.mjs"]) {
     writeFileSync(join(dir, "kit", datei), `const KIT_VERSION = "1.0.0";\n`);
   }
+  // Seit Issue #1462: die englischen Einstiege, als Blob und in der Kopie, aber ohne Stempel.
+  for (const datei of ["findings.mjs", "effort.mjs", "effectiveness.mjs"]) writeFileSync(join(dir, "kit", datei), `console.log("${datei}");\n`);
   copyFileSync(CONFIG_NAMEN, join(dir, "kit", "board", "config-namen.mjs"));
   writeFileSync(join(dir, "kit", "board", "namen.mjs"), "export {};\n");
   writeFileSync(join(dir, "tools", "config-referenz.en.json"), "{}\n");

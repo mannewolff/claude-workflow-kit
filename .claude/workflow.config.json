@@ -103,11 +103,8 @@
       "areas": [
         "board-adapter",
         "board-dokumente",
-        "board-einstieg",
-        "board-geschuetzt",
         "board-grundlagen",
         "board-issue-review",
-        "board-testhinweise",
         "board-wiederholung",
         "nacht-abhaengigkeiten"
       ]
@@ -721,6 +718,10 @@
     "sync": [
       "tools/sync-blobs.mjs",
       "tools/version.mjs",
+      "kit/findings.mjs",
+      "kit/effort.mjs",
+      "kit/effectiveness.mjs",
+      "kit/settings.mjs",
       "test/sync-*.test.mjs",
       "test/kit-*.test.mjs",
       "test/ablauf-sync-*.test.mjs",

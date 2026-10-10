@@ -104,9 +104,39 @@ function repoWurzel() {
   return erste.slice("worktree ".length).trim();
 }
 
+/**
+ * Die englischen Namen der Unterkommandos und Optionen (Issue #1462, Plan #1420 E18): je
+ * englischer Name der deutsche, den er vertritt. Die deutschen bleiben gueltig.
+ */
+const KOMMANDOS_EN = {
+  create: "anlegen",
+  remove: "entfernen",
+  in: "im",
+  "catch-up-check": "nachziehen-pruefen",
+  return: "rueckweg",
+  "record-preparation": "vorbereitung-festhalten",
+  "check-preparation": "vorbereitung-pruefen",
+};
+const OPTIONEN_EN = {
+  "--prefix": "--praefix",
+  "--result": "--ergebnis",
+  "--open": "--offen",
+  "--discard": "--verwerfen",
+};
+
+/** Der deutsche Name hinter einem englischen; jeder andere Name bleibt, wie er ist. */
+function deutscherName(tabelle, name) {
+  return Object.hasOwn(tabelle, name) ? tabelle[name] : name;
+}
+
+/** Ob `arg` das Flag `name` ist, unter seinem deutschen oder seinem englischen Namen. */
+function istFlag(arg, name) {
+  return deutscherName(OPTIONEN_EN, arg) === name;
+}
+
 /** Ein Wert hinter einem Flag; `null`, wenn das Flag fehlt. */
 function flagWert(cliArgs, name) {
-  const i = cliArgs.indexOf(name);
+  const i = cliArgs.findIndex((a) => istFlag(a, name));
   return i !== -1 && i + 1 < cliArgs.length ? cliArgs[i + 1] : null;
 }
 
@@ -226,7 +256,7 @@ function rueckweg(repoRoot, cliArgs) {
 /** Alle Werte eines wiederholbaren Flags, in Reihenfolge. */
 function flagWerte(cliArgs, name) {
   const werte = [];
-  for (let i = 0; i < cliArgs.length - 1; i += 1) if (cliArgs[i] === name) werte.push(cliArgs[i + 1]);
+  for (let i = 0; i < cliArgs.length - 1; i += 1) if (istFlag(cliArgs[i], name)) werte.push(cliArgs[i + 1]);
   return werte;
 }
 
@@ -266,13 +296,14 @@ function fuehreAus(kommando, cliArgs) {
   if (kommando === "rueckweg") return rueckweg(repoWurzel(), cliArgs);
   if (kommando === "vorbereitung-festhalten") return vorbereitungFesthaltenAufruf(repoWurzel(), cliArgs);
   if (kommando === "vorbereitung-pruefen") {
-    return { ok: true, ...vorbereitungPruefen({ repoRoot: repoWurzel(), verwerfen: cliArgs.includes("--verwerfen") }) };
+    return { ok: true, ...vorbereitungPruefen({ repoRoot: repoWurzel(), verwerfen: cliArgs.some((a) => istFlag(a, "--verwerfen")) }) };
   }
   throw new Error(`unbekanntes Kommando '${kommando}' — bekannt sind anlegen, entfernen, im, nachziehen-pruefen, rueckweg, vorbereitung-festhalten, vorbereitung-pruefen`);
 }
 
 function main() {
-  const [kommando, ...cliArgs] = process.argv.slice(2);
+  const [befehl, ...cliArgs] = process.argv.slice(2);
+  const kommando = deutscherName(KOMMANDOS_EN, befehl);
   if (!kommando || kommando === "--help" || kommando === "-h") {
     process.stdout.write(HELP);
     return;

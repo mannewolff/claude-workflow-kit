@@ -1,6 +1,3 @@
-// Ablauf-Pruefung: `issue auftrag` liest Plan, Fachplan und Voraussetzungen ueber das echte
-// CLI von board.mjs, das nur ein Programmstart zeigt.
-//
 // Formgates und Abschnittsparser erkennen die Formatueberschriften unter beiden Namen
 // (Issue #1460, Plan #1420 E15).
 //
@@ -9,20 +6,21 @@
 // der Nachtlauf sie verstehen — sonst faellt jedes englische Paket an I1 durch, und der
 // Nachtlauf liest seine Abhaengigkeiten nicht. Die Namen stehen im Register
 // kit/board/namen.mjs; ein Dokument darf beide Sprachen mischen.
+//
+// Die Faelle des Nachtlaufs stehen in test/night-abhaengigkeiten-englische-ueberschriften.test.mjs,
+// `issue auftrag` in test/ablauf-board-englische-ueberschriften.test.mjs: Ein Import aus
+// kit/night/ oder ein Start des Board-Einstiegs hier zoege bei jeder Aenderung an den
+// Testhinweisen fremde Gruppen mit (test/config-teile.test.mjs, Kriterien 4 und 7).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 
 import {
   UEBERSCHRIFTEN, erkenneUeberschrift, leseUeberschrift, ueberschriftName, ueberschriftZeile,
 } from "../kit/board/namen.mjs";
-import { abhaengigkeitenLesen, zerlegeAbschnitte } from "../kit/board/dokumente.mjs";
+import { zerlegeAbschnitte } from "../kit/board/dokumente.mjs";
 import { GESCHUETZTE_PFADE, geschuetzteTreffer } from "../kit/board/geschuetzt.mjs";
 import { pruefeForm } from "../kit/board/testhinweise.mjs";
-import { OFFENE_FRAGEN_UEBERSCHRIFT, PO_FRAGEN_UEBERSCHRIFT, abschnittLesen, parseDeps, wartetAufPush } from "../kit/night/abhaengigkeiten.mjs";
-import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
 
 // --- Dokumente in beiden Sprachen ---
 
@@ -142,49 +140,4 @@ test("Nachtlauf und auftrag: geschuetzte Pfade unter Task und Acceptance criteri
   assert.deepEqual(geschuetzteTreffer(body, "Paket", ".").map((t) => t.pfad), [pfad]);
   const imKontext = PAKET_EN.replace("Author-Model: claude-opus-5-5", `Author-Model: x\nSiehe \`${pfad}\`.`);
   assert.deepEqual(geschuetzteTreffer(imKontext, "Paket", "."), []);
-});
-
-// --- Nachtlauf: Abhaengigkeiten und Pflichtabschnitte ---
-
-test("Nachtlauf: parseDeps, wartetAufPush und abhaengigkeitenLesen lesen ## Dependencies", () => {
-  const body = "## Context\nx\n\n## Dependencies\nIssue #12 (wartet auf Push)\nIssue #13\n";
-  assert.deepEqual(parseDeps(body), [12, 13]);
-  assert.deepEqual(wartetAufPush(body), [12]);
-  assert.deepEqual(abhaengigkeitenLesen(body), [12, 13]);
-  assert.deepEqual(parseDeps(PAKET_DE), [7]);
-});
-
-test("Nachtlauf: die Stopp-Fragen-Abschnitte unter beiden Namen", () => {
-  assert.deepEqual(abschnittLesen(PLAN_EN, OFFENE_FRAGEN_UEBERSCHRIFT)?.zeilen.filter(Boolean), ["- Keine."]);
-  assert.deepEqual(abschnittLesen(FACHPLAN_EN, PO_FRAGEN_UEBERSCHRIFT)?.zeilen.filter(Boolean), ["Keine."]);
-  assert.equal(abschnittLesen(FACHPLAN_EN, OFFENE_FRAGEN_UEBERSCHRIFT), null);
-});
-
-// --- issue auftrag mit englischen Dokumenten ---
-
-const lokalDatei = (nr, status, titel, body) =>
-  `---\nid: "${String(nr).padStart(4, "0")}"\ntype: task\nstatus: ${status}\ntitle: ${titel}\n---\n\n${body}`;
-
-test("issue auftrag: Plan-Entscheidungen, fachlicher Anlass und Voraussetzungen aus englischen Dokumenten", () => {
-  const dir = setupProjekt({ codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } }, "board-englisch-");
-  try {
-    mkdirSync(join(dir, "issues"));
-    const plan = PLAN_EN.replace("- Keine.\n\n## Planned", "- E1: Which?\n  Chosen: A.\n\n## Planned");
-    const paket = PAKET_EN.replace("Author-Model: claude-opus-5-5", "Author-Model: x\nPlan: Issue #2\nRequirement: Issue #3")
-      .replace("Issue #7", "Issue #4");
-    writeFileSync(join(dir, "issues", "0001.md"), lokalDatei(1, "ready", "Paket", paket));
-    writeFileSync(join(dir, "issues", "0002.md"), lokalDatei(2, "backlog", "[Plan] Weg", `Requirement: Issue #3\n\n${plan}`));
-    writeFileSync(join(dir, "issues", "0003.md"), lokalDatei(3, "backlog", "[Requirement] Anlass", FACHPLAN_EN));
-    writeFileSync(join(dir, "issues", "0004.md"), lokalDatei(4, "ready", "Voraussetzung", PAKET_DE));
-    const res = runBoard(dir, ["issue", "auftrag", "1", "--json"]);
-    assert.equal(res.status, 0, res.stderr);
-    const a = JSON.parse(res.stdout);
-    assert.deepEqual(a.planEntscheidungen.eintraege, [{ id: "E1", text: "- E1: Which?\n  Chosen: A." }]);
-    assert.equal(a.fachlicherAnlass.ziel, "Goal.\n\nAuthor-Model: claude-opus-5-5");
-    assert.equal(a.fachlicherAnlass.kriterien, "1. One.");
-    assert.deepEqual(a.voraussetzungen.map((v) => v.id), ["4"]);
-    assert.equal(a.urteil.folge, "bleibt");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
 });
