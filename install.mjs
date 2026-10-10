@@ -8,6 +8,7 @@
  * Aufruf:
  *   node install.mjs
  *   node install.mjs --version
+ *   node install.mjs --language en|de   (gleichwertig --sprache; stellt ein Projekt um)
  *   npx github:mannewolff/claude-workflow-kit  (nach Veroeffentlichung)
  *
  * Aenderung v1.3.0: Config-Schema nutzt codeHost + issueTracker statt provider.
@@ -475,9 +476,9 @@ function richteSchutzEin(kitDir, configPfad, zweig) {
     return;
   }
   if (ergebnis === "scharf" || ergebnis === "anleitung") {
-    const config = JSON.parse(readFileSync(configPfad, "utf-8"));
+    const { config } = normalisiereConfig(JSON.parse(readFileSync(configPfad, "utf-8")));
     config.pushPruefung = { ort: "buildDienst", zweig };
-    writeFileSync(configPfad, JSON.stringify(config, null, 2) + "\n", "utf-8");
+    writeFileSync(configPfad, JSON.stringify(inProjektsprache(config), null, 2) + "\n", "utf-8");
     console.log(`✓ pushPruefung eingetragen: Build-Dienst, Prüfzweig ${zweig}`);
   } else if (ergebnis === "nicht moeglich") {
     console.log(`! Schutz nicht möglich, pushPruefung bleibt unverändert. ${SCHUTZ_SPAETER}`);
@@ -498,7 +499,7 @@ async function schutzModus(rl) {
     throw new Error("Die installierte board.mjs kennt `code schutz` noch nicht — erst das Kit mit `node install.mjs` aktualisieren.");
   }
   if (!existsSync(configPfad)) throw new Error("Keine .claude/workflow.config.json — erst das Kit mit `node install.mjs` installieren.");
-  const config = JSON.parse(readFileSync(configPfad, "utf-8"));
+  const { config } = normalisiereConfig(JSON.parse(readFileSync(configPfad, "utf-8")));
   const zweig = await frageSchutz(rl, "projekt", config.codeHost ?? config.provider, config);
   richteSchutzEin(kitDir, configPfad, zweig);
 }
@@ -549,6 +550,123 @@ async function kopfMitSprache(rl) {
 function sprachfeldNeu(sprache, configPfad) {
   if (!sprache || existsSync(configPfad)) return {};
   return { [SPRACHFELD[sprache]]: sprache };
+}
+
+// --- Namen der Einstellungen, Labels und Praefixe (Issue #1438, Plan #1420 E7, E12) ---
+//
+// Beide Module liegen schon im Teile-Blob von board/ und importieren nur Node-Bordmittel; der
+// Installer laedt sie daraus, statt eine zweite Kopie zu tragen.
+const BOARD_TEILE = JSON.parse(Buffer.from(KIT_BOARD_B64, "base64").toString("utf-8"));
+const ladeTeil = (datei) => import(`data:text/javascript;base64,${Buffer.from(BOARD_TEILE[datei], "utf-8").toString("base64")}`);
+const { normalisiereConfig, benenneUm } = await ladeTeil("config-namen.mjs");
+const { projektSprache, LABELS, PRAEFIXE, erkenneLabel, erkennePraefix } = await ladeTeil("namen.mjs");
+
+/** Die Config in den Namen ihrer Projektsprache — so schreibt der Installer jede Config. */
+function inProjektsprache(config) {
+  return benenneUm(config, projektSprache(config)).config;
+}
+
+// Die Config-Felder, die Labelnamen tragen (E7). Ein gesetzter Wert bleibt, wie er ist; die
+// Umstellung nennt ihn nur, wenn er ein Kit-Label in der anderen Sprache ist.
+const LABEL_FELDER = [
+  ["night", "kette", "label"], ["night", "kette", "varianteBLabel"], ["pruefLauf", "label"],
+  ["night", "stand", "labels", "laeuft"], ["night", "stand", "labels", "abgebrochen"], ["night", "stand", "labels", "wartet"],
+];
+
+function offeneLabels(config, ziel) {
+  const offen = [];
+  for (const pfad of LABEL_FELDER) {
+    const wert = pfad.reduce((knoten, name) => knoten?.[name], config);
+    const sache = erkenneLabel(wert);
+    if (sache && LABELS[sache][ziel] !== wert) offen.push(`${pfad.join(".")}: ${wert} bleibt; der Name in ${ziel} ist ${LABELS[sache][ziel]}`);
+  }
+  return offen;
+}
+
+/**
+ * Der Board-Teil des Berichts (E12): Karten mit Praefix der anderen Sprache und Kit-Labels der
+ * Zielsprache, die auf keiner Karte stehen. Gelesen ueber `issue list` der installierten
+ * board.mjs; scheitert der Aufruf, steht das im Bericht, und die Umstellung bleibt.
+ */
+function boardBestand(ziel) {
+  const board = resolve(".claude", "kit", "board.mjs");
+  const res = cliSpawn(process.execPath, [board, "issue", "list"], "INSTALL_BOARD_FAKE", { encoding: "utf-8", timeout: 120000 });
+  let karten = null;
+  try { karten = res.status === 0 ? JSON.parse(res.stdout) : null; } catch { /* keine lesbare Antwort */ }
+  if (!Array.isArray(karten)) {
+    const grund = (res.error?.message ?? res.stderr ?? "").trim().split("\n").pop() || `Exit ${res.status}`;
+    return [`Board nicht erreichbar (${grund}) — die Liste nennt nur die Config.`];
+  }
+  const zeilen = [];
+  for (const karte of karten) {
+    const paar = PRAEFIXE[erkennePraefix(karte.title)];
+    if (!paar || paar.de === paar.en) continue;
+    if (karte.title.trimStart().toLowerCase().startsWith(paar[ziel].toLowerCase())) continue;
+    zeilen.push(`Karte mit Präfix der anderen Sprache: #${karte.id} ${karte.title}`);
+  }
+  const gesehen = new Set(karten.flatMap((k) => k.labels ?? []));
+  const fehlend = Object.values(LABELS).filter((l) => l.de !== l.en && !gesehen.has(l[ziel])).map((l) => l[ziel]);
+  if (fehlend.length > 0) zeilen.push(`Kit-Labels in ${ziel}, die auf keiner Karte stehen — am Board anlegen, falls sie fehlen: ${fehlend.join(", ")}`);
+  return zeilen;
+}
+
+// Ein Schluessel steht unter seinem Elternpfad, ein Wert unter seinem eigenen Pfad.
+function umbenennungsZeile(u) {
+  if (u.art === "wert") return `${u.pfad}: ${u.von} → ${u.nach}`;
+  const trenner = u.pfad.lastIndexOf(".");
+  const zeile = `${u.von} → ${u.nach}`;
+  return trenner < 0 ? zeile : `${u.pfad.slice(0, trenner)}: ${zeile}`;
+}
+
+/** Die Zielsprache aus `--language <de|en>`, `--sprache <de|en>` oder `--language=<..>`; sonst `null`. */
+function umstellSprache(argv) {
+  for (let i = 0; i < argv.length; i++) {
+    const treffer = /^--(language|sprache)(?:=(.*))?$/.exec(argv[i]);
+    if (!treffer) continue;
+    const wert = (treffer[2] ?? argv[i + 1] ?? "").trim().toLowerCase();
+    if (!Object.hasOwn(SPRACHFELD, wert)) throw new Error(`--${treffer[1]} braucht 'de' oder 'en', nicht '${wert}'.`);
+    return wert;
+  }
+  return null;
+}
+
+/**
+ * `node install.mjs --language en|de` (E12): stellt ein bestehendes Projekt um. Sichert die
+ * Config nach `workflow.config.json.vor-umstellung`, benennt Schluessel und Aufzaehlungswerte
+ * in Config und Override-Datei um, setzt das Sprachfeld und listet, was umbenannt wurde und
+ * was offen bleibt. Labelwerte aendert sie nicht (E7), Skills und Regeltexte bleiben deutsch,
+ * bis das Kit sie auf Englisch mitbringt.
+ */
+function umstellModus(ziel) {
+  const configPfad = resolve(".claude", "workflow.config.json");
+  if (!existsSync(configPfad)) {
+    throw new Error("Keine .claude/workflow.config.json — ein neues Projekt fragt `node install.mjs` nach der Sprache.");
+  }
+  const original = readFileSync(configPfad, "utf-8");
+  const { config: umbenannt, umbenannt: liste } = benenneUm(JSON.parse(original), ziel);
+  const { language: _l, sprache: _s, ...rest } = umbenannt;
+  const config = { [SPRACHFELD[ziel]]: ziel, ...rest };
+
+  writeFileSync(`${configPfad}.vor-umstellung`, original, "utf-8");
+  writeFileSync(configPfad, JSON.stringify(config, null, 2) + "\n", "utf-8");
+  console.log(`✓ Sicherung angelegt: ${configPfad}.vor-umstellung`);
+  console.log(`✓ Sprache gesetzt: ${SPRACHFELD[ziel]}: ${ziel}`);
+
+  const zeilen = liste.map(umbenennungsZeile);
+  const lokalPfad = resolve(".claude", "workflow.config.local.json");
+  if (existsSync(lokalPfad)) {
+    const lokal = benenneUm(JSON.parse(readFileSync(lokalPfad, "utf-8")), ziel);
+    if (lokal.umbenannt.length > 0) writeFileSync(lokalPfad, JSON.stringify(lokal.config, null, 2) + "\n", "utf-8");
+    zeilen.push(...lokal.umbenannt.map((u) => `workflow.config.local.json: ${umbenennungsZeile(u)}`));
+  }
+  console.log(`\nUmbenannt (${zeilen.length}):`);
+  for (const z of zeilen) console.log(`  ${z}`);
+
+  const offen = [...offeneLabels(normalisiereConfig(config).config, ziel), ...boardBestand(ziel)];
+  if (ziel === "en") offen.push("Skills und Regeltexte bleiben deutsch, bis das Kit sie auf Englisch mitbringt.");
+  console.log(`\nOffen (${offen.length}):`);
+  for (const z of offen) console.log(`  ${z}`);
+  console.log(`\nZurück: node install.mjs --language ${ziel === "en" ? "de" : "en"}`);
 }
 
 // Fragen 7 und 8 (das Reviewer-Paar) als eigene Schleife, wie promptScope: Sie werden
@@ -903,7 +1021,8 @@ function loadExistingConfig(configPath) {
   let existingConfig = {};
   if (existsSync(configPath)) {
     try {
-      existingConfig = JSON.parse(readFileSync(configPath, "utf-8"));
+      // Gelesen unter den deutschen Namen, geschrieben in der Projektsprache (Issue #1438).
+      existingConfig = normalisiereConfig(JSON.parse(readFileSync(configPath, "utf-8"))).config;
       console.log("  Bestehende workflow.config.json gefunden — Werte als Defaults uebernommen.\n");
     } catch {
       console.warn("  Hinweis: Bestehende workflow.config.json konnte nicht gelesen werden.\n");
@@ -1178,6 +1297,14 @@ function vorabEnden() {
 async function main() {
   vorabEnden();
 
+  // Die Umstellung fragt nichts und liest darum kein stdin (Issue #1438).
+  const umstellung = umstellSprache(process.argv.slice(2));
+  if (umstellung) {
+    console.log(`\n=== claude-workflow-kit: Umstellung auf ${umstellung} ===\n`);
+    umstellModus(umstellung);
+    return;
+  }
+
   await loadPipedLines();
   const rl = IST_TTY
     ? createInterface({ input: process.stdin, output: process.stdout })
@@ -1299,7 +1426,7 @@ async function main() {
     delete config.reviewModel;
   }
   mkdirSync(targetBase, { recursive: true });
-  writeFileSync(configTarget, JSON.stringify(config, null, 2) + "\n", "utf-8");
+  writeFileSync(configTarget, JSON.stringify(inProjektsprache(config), null, 2) + "\n", "utf-8");
   console.log(`\n✓ Config geschrieben: ${configTarget}`);
   // Der spec-Block ist eine Altlast aus Spec-Driven Development (entfallen mit
   // Idee #813, Plan #825). Ein vorhandener Block kommt ueber den
