@@ -36,7 +36,7 @@ The core process has nine steps. Step 1 is your requirement; the AI takes over s
 **`kontext.config.json` for /kontext and /document (optional).** Both skills also run without this file, in degraded mode. If you want persistent cross-project memory: With a global installation the installer asks for the vault path and creates the file automatically; with a project-local installation you create it manually. Details in the section [kontext.config.json](/en/dokumentation#kontext-config-json-reference).
 
 ## Installation
-<!-- de: 0e67b6dac800 -->
+<!-- de: 575f856daeff -->
 
 Change into your project folder and run:
 
@@ -76,6 +76,19 @@ The installer asks nine questions — with a global installation a tenth follows
 **9. Commit gate (project-local only).** Whether the installer hooks in the commit gate, i.e. sets `git config core.hooksPath .githooks` — see [The commit gate](#the-commit-gate). The question only appears if neither another `core.hooksPath` is in effect nor an active file lies in the hooks directory; the default is no.
 
 **10. Vault path (global installation only).** Path to the memory vault for /kontext and /document. Leaving it empty skips the step; with a path the installer writes the global `~/.claude/kontext.config.json`.
+
+**Protecting the main branch (after the code host question).** With `github` and a project-local installation, the installer asks three more questions: whether the project has a build service (GitHub Actions), whether it should move the check before the push there and protect the main and release branches, and which check branch to use (default `kit-pruefung`). Both yes/no questions are preselected with yes. A no leaves everything as before, and the installer says in one sentence that a push bypassing `push main` gets through unchecked. In the other cases it does not ask but states one sentence: with `gitlab` the protection is not set up yet, with `local` the check stays on your own machine, and with a global installation it points to `node install.mjs --schutz` in the project, because protection applies per repository.
+
+With yes, the installer calls `node .claude/kit/board.mjs code schutz einrichten --zweig <zweig>`. The command first pushes the state of `origin/<mainBranch>` to the check branch as a probe and waits to see whether the build service runs the mandatory checks there; this can take a few minutes. Its result is one of four:
+
+| Result | Meaning | `pushPruefung` |
+|---|---|---|
+| `scharf` | Probe passed, the rulesets for the main and release branches are set. | is written |
+| `anleitung` | Probe passed, but the rulesets could not be set, for example without admin rights. The output names every step with its place on GitHub. | is written |
+| `offen` | The build service ran nothing on the check branch or did not finish. The output describes what has to run there. | stays unchanged |
+| `nicht moeglich` | The code host knows no protection, or `origin/<mainBranch>` is missing. | stays unchanged |
+
+**Later: `node install.mjs --schutz`.** An existing project switches protection on without reinstalling the kit. The call asks only the protection questions, calls `code schutz einrichten` and changes nothing in `.claude/workflow.config.json` but `pushPruefung`; all other settings and kit files stay untouched. It requires an installed `board.mjs` that already knows `code schutz`. Whether a project is protected is then reported at any time by `node .claude/kit/board.mjs code schutz status` (see [Board adapter](#board-adapter)).
 
 The installer copies the sixteen skills, writes a `.claude/workflow.config.json` with your answers, places a `CLAUDE-workflow.md` with the process description as well as the two gate registers `CLAUDE-Fachplan.md` and `CLAUDE-Plan.md`, and writes the board adapter to `.claude/kit/board.mjs`. With GitLab it additionally asks whether it should create the five labels automatically. No background process, no service, no registry entries.
 
@@ -643,7 +656,7 @@ Target branch for the PR in step 9 (merge production). Applies team-wide; a diff
 
 ### `pushPruefung`
 
-Where the full check run before 'push main' takes place. 'lokal' (default): /push-main runs it with 'checks.mjs run --stufe push' on your own machine. An object with ort 'buildDienst' moves it to the project's build service: /push-main pushes the state to the check branch, waits for the result via 'board.mjs code ci-status --commit' and pushes mainBranch only on green. The obligation is the same in both places — green before the push; productionBranch stays untouched. On the check branch the build service must run the same mandatory checks as the local run of stage push. Applies team-wide; a different value in workflow.config.local.json is ignored. (valid: `lokal`)
+Where the full check run before 'push main' takes place. 'lokal' (default): /push-main runs it with 'checks.mjs run --stufe push' on your own machine. An object with ort 'buildDienst' moves it to the project's build service: /push-main pushes the state to the check branch, waits for the result via 'board.mjs code ci-status --commit' and pushes mainBranch only on green. The obligation is the same in both places — green before the push; productionBranch stays untouched. On the check branch the build service must run the same mandatory checks as the local run of stage push. Protection of the main and release branches is set up by 'board.mjs code schutz einrichten'; the installer writes 'pushPruefung' only after its probe on the check branch has passed. Applies team-wide; a different value in workflow.config.local.json is ignored. (valid: `lokal`)
 
 - `pushPruefung.ort` — The place of the full run: the project's build service. (valid: `buildDienst`)
 - `pushPruefung.zweig` — The check branch to which /push-main pushes the state before the push and which it deletes again afterwards. Not mainBranch and not productionBranch.
@@ -1001,7 +1014,7 @@ The skill opens a new Claude session without the implementation context of the c
 Depending on `reviewScope`, the reviewer gets the diff or all files in the repo. The review brief is assembled by `issue-review pruefauftrag` from the role `kit/rollen/code-review.md` and this material. It is read by the reader agent `kit-pruefer` with the model from `reviewModel` or, if `reviewCommand` is set, by the third-party CLI that `issue-review start --code-review` starts at its read boundary (`reviewLesegrenze`). If either call fails, `/review` aborts visibly, without a comment and without a move to In review. The findings land as a comment in the issue or PR. For security patterns that require a corpus-driven approach (secrets scan, SQL concatenation, missing input validation), the skill does not rely on the model alone. These checks belong in your CI.
 
 ### /push-main
-<!-- de: 24785e7d3709 -->
+<!-- de: 4350d4756702 -->
 
 
 **Step 8, after the review, on your explicit command.**
@@ -1022,19 +1035,29 @@ A red `/local-check` from step 6 blocks this step mechanically: you have no gree
 
 **On the path through the build service.** If your project runs the full run with `pushPruefung` in the build service, the night cannot run it without pushing to the check branch. The preparation then runs only the evidence run of the package stage over the release files and commits; on green the result is called `gruen-offen`, and the first open item reads `voller Lauf im Build-Dienst (Prüfzweig <zweig>)` (full run in the build service, check branch `<branch>`). In the morning, `push main` takes over the commit as above, pushes it to the check branch, waits for the build service and pushes `main` only on green.
 
+**The emergency path: `/push-main notfall`.** If the build service fails while the code host protects the main branch, the owner of the repository can still publish. The prerequisite is a full green run of stage `push` on your own machine as a substitute check: the skill runs it as on the local path, even if `pushPruefung` names the build service, and a red run stops. After that, in this order:
+
+1. `node .claude/kit/board.mjs code schutz aussetzen --in <pfad>` — suspends the ruleset of the main branch only if the check summary of the worktree attests a green run of stage `push` for exactly this state. On GitHub only someone with admin rights can suspend it.
+2. The push to the main branch, without `--force`.
+3. `node .claude/kit/board.mjs code schutz wiederherstellen` — immediately, however the push went. If it fails, the run is a failure, even after a successful push; until it is repeated the main branch stands unprotected, and `code schutz status` says so.
+
+The emergency path runs **only interactively** and, like every push, needs the typed trigger phrase. If `KIT_AGENT_MODEL` is set, the skill stops before the first step. The state that reached the main branch this way without evidence from the build service appears in `code schutz status` under `ungeprueft` until `code schutz nachpruefen` has checked it green in the build service.
+
 ### Checking the test server (human, between step 8 and step 9)
 <!-- de: 2940a24483a9 -->
 
 After the push, the test server picks up the change automatically or you deploy manually. You check the result in the browser: the golden path, critical edge cases, no visible regressions. Only after this check do you go to step 9.
 
 ### /merge-production
-<!-- de: 66caa7c113be -->
+<!-- de: 42f55c17f7f8 -->
 
 **Step 9, after the test server check, on your explicit command.**
 
 Creates a pull request (GitHub) or merge request (GitLab) from main to production. This skill, too, is locked against autonomous invocation. You carry out the final merge yourself in the PR/MR, because you are the one who checked on the test server that the result is right.
 
 **Before the PR there is a CI gate.** The skill uses `node .claude/kit/board.mjs code ci-status --commit <sha>` to fetch the CI state for the state on `origin/main` — before the version bump, commit and PR. On **red**, **no PR** is created: the skill names the red jobs by name and ends; an exit code 1 of the axis counts the same. If the CI is still running, it asks exactly once, and only a `ja` (yes) continues. If a project has no CI (`codeHost: local`), the axis reports `keine` (none) and the run continues unchanged.
+
+**The release commit goes through the check branch.** If `pushPruefung` names the build service, the skill does not push the release commit directly to `main`: a protected main branch would reject it, because it does not carry the mandatory checks yet. Like `push main`, the skill pushes it to the check branch first, waits for the build service and pushes `main` only on green. If this path ends without a push to `main` — red, deadline expired or push rejected — no PR is created. Without `pushPruefung` in the build service, the direct push stays.
 
 **Before that there is a stop: `push main` first.** There is never a `merge production` without a preceding `push main`. If your local `main` carries commits that are not on `origin/main`, the skill ends before the worktree with the message „Erst `push main` — dieser Stand ist noch nicht veröffentlicht und nicht geprüft.“ (`push main` first — this state is not yet published and not checked.)
 
@@ -2087,12 +2110,22 @@ If number and comments do not matter, it also works without the tool: read `gh i
 | `local` | none | none |
 
 ### Board adapter
-<!-- de: 5c8ef124fe98 -->
+<!-- de: 27679803a2ff -->
 
 All board operations run through `.claude/kit/board.mjs`. The adapter has two main areas:
 
 - **Issue tracker interface:** `issue create`, `issue list`, `issue get`, `issue activity`, `issue move`, `issue comment`, `issue melden`, `issue auftrag`, `issue ursprung`, `issue epics`
-- **Code host interface:** `code repo-name`, `code pr`
+- **Code host interface:** `code repo-name`, `code pr`, `code schutz`
+
+**`code schutz` sets up protection of the main and release branches and reports on it.** Five actions, each with JSON on stdout:
+
+- `node .claude/kit/board.mjs code schutz status` — the state as `{ geschuetzt, fehlt, ungeprueft }`. `fehlt` names every missing part, for example a ruleset that is not set or is suspended. `ungeprueft` is `null` or `{ commit, kommando }`: the state on the main branch that lacks green evidence from the build service, together with the command that catches up on it. Exit 0 even with `geschuetzt: false`, as with `code ci-status`.
+- `code schutz einrichten [--zweig <z>]` — probe on the check branch, then the rulesets; result `scharf`, `anleitung`, `offen` or `nicht moeglich` (see [Installation](#installation)). Without `--zweig`, `pushPruefung.zweig` applies, otherwise `kit-pruefung`.
+- `code schutz aussetzen --in <pfad>` — suspends the ruleset of the main branch, only with a green run of stage `push` in the worktree `<pfad>`; part of the emergency path of [/push-main](#push-main).
+- `code schutz wiederherstellen` — switches the ruleset back on. If it fails, protection stays suspended, and the message names the command to repeat.
+- `code schutz nachpruefen [--zweig <z>]` — has the build service check the current state of the main branch afterwards via the check branch, for example after the emergency path.
+
+`einrichten`, `aussetzen` and `nachpruefen` push or change the code host. With `KIT_AGENT_MODEL` set, i.e. unattended, they therefore abort; `status` stays allowed. The night never pushes, and the lock sits in the tool rather than only in the skill text.
 
 **`issue list` returns work packages, `issue epics` returns initiatives.** The separation is strict: Initiatives never appear in `issue list`, not even without a status filter. They are brackets over several cards, not work — whoever counts them in a list of open issues takes them for work packages with a thin description. `issue epics` returns them with their short code and progress (`#360 [HER] … 8/8`), that is with the information an initiative actually carries.
 

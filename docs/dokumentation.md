@@ -73,6 +73,19 @@ Der Installer stellt neun Fragen — bei globaler Installation folgt eine zehnte
 
 **10. Vault-Pfad (nur bei globaler Installation).** Pfad zum Memory-Vault für /kontext und /document. Leer lassen überspringt den Schritt; mit Pfad schreibt der Installer die globale `~/.claude/kontext.config.json`.
 
+**Schutz des Hauptzweigs (nach der Code-Host-Frage).** Bei `github` und projektlokaler Installation stellt der Installer drei weitere Fragen: ob das Projekt einen Build-Dienst (GitHub Actions) hat, ob er die Prüfung vor dem Push dorthin verlegen und Haupt- und Veröffentlichungszweig schützen soll, und welcher Prüfzweig dafür gilt (Vorgabe `kit-pruefung`). Die beiden Ja/Nein-Fragen sind mit Ja vorausgewählt. Ein Nein lässt alles wie bisher, und der Installer sagt in einem Satz, dass ein Push an `push main` vorbei ungeprüft durchkommt. In den übrigen Fällen fragt er nicht, sondern nennt nur einen Satz: Bei `gitlab` wird der Schutz noch nicht eingerichtet, bei `local` bleibt die Prüfung auf dem eigenen Rechner, und bei globaler Installation verweist er auf `node install.mjs --schutz` im Projekt, weil der Schutz je Repository gilt.
+
+Mit Ja ruft der Installer `node .claude/kit/board.mjs code schutz einrichten --zweig <zweig>` auf. Das Kommando pusht zuerst als Probe den Stand von `origin/<mainBranch>` auf den Prüfzweig und wartet, ob der Build-Dienst dort die Pflichtprüfungen fährt; das kann einige Minuten dauern. Sein Ergebnis ist eines von vier:
+
+| Ergebnis | Bedeutung | `pushPruefung` |
+|---|---|---|
+| `scharf` | Probe bestanden, die Rulesets für Haupt- und Veröffentlichungszweig sind gesetzt. | wird eingetragen |
+| `anleitung` | Probe bestanden, aber die Rulesets ließen sich nicht setzen, etwa ohne Admin-Rechte. Die Ausgabe nennt jeden Schritt mit seinem Ort bei GitHub. | wird eingetragen |
+| `offen` | Der Build-Dienst fuhr auf dem Prüfzweig keinen Lauf oder wurde nicht fertig. Die Ausgabe beschreibt, was dort laufen muss. | bleibt unverändert |
+| `nicht moeglich` | Der Code-Host kennt keinen Schutz, oder `origin/<mainBranch>` fehlt. | bleibt unverändert |
+
+**Nachträglich: `node install.mjs --schutz`.** Ein bestehendes Projekt schaltet den Schutz ein, ohne das Kit neu zu installieren. Der Aufruf stellt nur die Schutzfragen, ruft `code schutz einrichten` und ändert in `.claude/workflow.config.json` allein `pushPruefung`; alle anderen Einstellungen und Kit-Dateien bleiben unangetastet. Er setzt eine installierte `board.mjs` voraus, die `code schutz` schon kennt. Ob ein Projekt geschützt ist, sagt danach jederzeit `node .claude/kit/board.mjs code schutz status` (siehe [Board-Adapter](#board-adapter)).
+
 Der Installer kopiert die sechzehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung sowie die beiden Gate-Register `CLAUDE-Fachplan.md` und `CLAUDE-Plan.md` ab und schreibt den Board-Adapter in `.claude/kit/board.mjs`. Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
 
 Die frühere lokale Kanban-GUI (`board-ui.mjs`) ist eingestellt.
@@ -617,7 +630,7 @@ Ziel-Branch für den PR in Schritt 9 (merge production). Gilt teamweit; ein abwe
 
 ### `pushPruefung`
 
-Wo der volle Prüflauf vor 'push main' stattfindet. 'lokal' (Vorgabe): /push-main fährt ihn mit 'checks.mjs run --stufe push' auf dem eigenen Rechner. Ein Objekt mit ort 'buildDienst' verlegt ihn in den Build-Dienst des Projekts: /push-main pusht den Stand auf den Prüfzweig, wartet über 'board.mjs code ci-status --commit' auf das Ergebnis und pusht mainBranch nur bei Grün. Die Pflicht ist an beiden Orten dieselbe — grün vor dem Push; productionBranch bleibt unberührt. Der Build-Dienst muss auf dem Prüfzweig dieselben Pflichtprüfungen fahren wie der lokale Lauf der Stufe push. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert. (gültig: `lokal`)
+Wo der volle Prüflauf vor 'push main' stattfindet. 'lokal' (Vorgabe): /push-main fährt ihn mit 'checks.mjs run --stufe push' auf dem eigenen Rechner. Ein Objekt mit ort 'buildDienst' verlegt ihn in den Build-Dienst des Projekts: /push-main pusht den Stand auf den Prüfzweig, wartet über 'board.mjs code ci-status --commit' auf das Ergebnis und pusht mainBranch nur bei Grün. Die Pflicht ist an beiden Orten dieselbe — grün vor dem Push; productionBranch bleibt unberührt. Der Build-Dienst muss auf dem Prüfzweig dieselben Pflichtprüfungen fahren wie der lokale Lauf der Stufe push. Den Schutz von Haupt- und Veröffentlichungszweig richtet 'board.mjs code schutz einrichten' ein; der Installer schreibt 'pushPruefung' erst, wenn dessen Probe auf dem Prüfzweig bestanden ist. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert. (gültig: `lokal`)
 
 - `pushPruefung.ort` — Der Ort des vollen Laufs: der Build-Dienst des Projekts. (gültig: `buildDienst`)
 - `pushPruefung.zweig` — Der Prüfzweig, auf den /push-main den Stand vor dem Push pusht und den es danach wieder löscht. Nicht mainBranch und nicht productionBranch.
@@ -981,6 +994,14 @@ Ein roter `/local-check` aus Schritt 6 blockiert diesen Schritt mechanisch: Du h
 
 **Auf dem Weg über den Build-Dienst.** Fährt dein Projekt den vollen Lauf mit `pushPruefung` im Build-Dienst, kann die Nacht ihn nicht fahren, ohne auf den Prüfzweig zu pushen. Die Vorbereitung fährt dann nur den Nachweislauf der Paketstufe über die Release-Dateien und committet; das Ergebnis heißt bei Grün `gruen-offen`, und der erste offene Punkt lautet `voller Lauf im Build-Dienst (Prüfzweig <zweig>)`. Morgens übernimmt `push main` den Commit wie oben, pusht ihn auf den Prüfzweig, wartet auf den Build-Dienst und pusht `main` nur bei Grün.
 
+**Der Notfallweg: `/push-main notfall`.** Fällt der Build-Dienst aus, während der Code-Host den Hauptzweig schützt, kann der Inhaber des Repositories trotzdem veröffentlichen. Voraussetzung ist ein voller grüner Lauf der Stufe `push` auf dem eigenen Rechner als Ersatzprüfung: Der Skill fährt ihn wie auf dem lokalen Weg, auch wenn `pushPruefung` den Build-Dienst nennt, und ein roter Lauf hält an. Danach, in dieser Reihenfolge:
+
+1. `node .claude/kit/board.mjs code schutz aussetzen --in <pfad>` — setzt das Ruleset des Hauptzweigs nur aus, wenn die Prüf-Zusammenfassung des Worktrees einen grünen Lauf der Stufe `push` für genau diesen Stand bezeugt. Aussetzen kann bei GitHub nur, wer Admin-Rechte hat.
+2. Der Push auf den Hauptzweig, ohne `--force`.
+3. `node .claude/kit/board.mjs code schutz wiederherstellen` — sofort, gleich wie der Push ausging. Scheitert es, ist der Lauf ein Fehlschlag, auch nach gelungenem Push; bis zur Wiederholung steht der Hauptzweig ungeschützt, und `code schutz status` nennt das.
+
+Der Notfallweg läuft **nur interaktiv** und braucht wie jeder Push die getippte Trigger-Phrase. Ist `KIT_AGENT_MODEL` gesetzt, hält der Skill vor dem ersten Schritt an. Der Stand, der so ohne Nachweis des Build-Dienstes auf den Hauptzweig kam, steht in `code schutz status` unter `ungeprueft`, bis `code schutz nachpruefen` ihn im Build-Dienst grün geprüft hat.
+
 ### Test-Server prüfen (menschlich, zwischen Schritt 8 und 9)
 
 Nach dem Push zieht der Test-Server automatisch oder du deployest manuell. Du prüfst das Ergebnis im Browser: den Golden Path, kritische Edge Cases, keine sichtbaren Regressionen. Erst nach dieser Prüfung gehst du zu Schritt 9.
@@ -992,6 +1013,8 @@ Nach dem Push zieht der Test-Server automatisch oder du deployest manuell. Du pr
 Erstellt einen Pull Request (GitHub) oder Merge Request (GitLab) von main nach production. Auch dieser Skill ist gegen autonome Invocation gesperrt. Den finalen Merge führst du selbst im PR/MR durch, denn du bist es, der auf dem Test-Server geprüft hat, dass das Ergebnis stimmt.
 
 **Vor dem PR steht ein CI-Gate.** Der Skill holt sich per `node .claude/kit/board.mjs code ci-status --commit <sha>` den Zustand der CI für den Stand auf `origin/main` — vor Versionsbump, Commit und PR. Bei **rot** entsteht **kein PR**: Der Skill nennt die roten Jobs mit Namen und endet; ein Exit-Code 1 der Achse zählt genauso. Läuft die CI noch, fragt er genau einmal nach, und nur ein `ja` fährt fort. Hat ein Projekt keine CI (`codeHost: local`), meldet die Achse `keine` und der Lauf geht unverändert weiter.
+
+**Der Release-Commit geht über den Prüfzweig.** Steht `pushPruefung` auf dem Build-Dienst, pusht der Skill den Release-Commit nicht direkt auf `main`: Ein geschützter Hauptzweig wiese ihn ab, denn er trägt die Pflichtprüfungen noch nicht. Der Skill pusht ihn wie `push main` zuerst auf den Prüfzweig, wartet auf den Build-Dienst und pusht `main` nur bei Grün. Endet dieser Weg ohne Push auf `main` — rot, Frist abgelaufen oder Push abgewiesen —, entsteht kein PR. Ohne `pushPruefung` im Build-Dienst bleibt es beim direkten Push.
 
 **Vorher steht ein Halt: erst `push main`.** Es gibt nie ein `merge production` ohne vorheriges `push main`. Trägt dein lokales `main` Commits, die nicht auf `origin/main` liegen, endet der Skill vor dem Worktree mit der Meldung „Erst `push main` — dieser Stand ist noch nicht veröffentlicht und nicht geprüft.“
 
@@ -2008,7 +2031,17 @@ Wenn Nummer und Kommentare nicht zählen, geht es auch ohne das Werkzeug: `gh is
 Alle Board-Operationen laufen über `.claude/kit/board.mjs`. Der Adapter hat zwei Hauptbereiche:
 
 - **Issue-Tracker-Interface:** `issue create`, `issue list`, `issue get`, `issue activity`, `issue move`, `issue comment`, `issue melden`, `issue auftrag`, `issue ursprung`, `issue epics`
-- **Code-Host-Interface:** `code repo-name`, `code pr`
+- **Code-Host-Interface:** `code repo-name`, `code pr`, `code schutz`
+
+**`code schutz` richtet den Schutz von Haupt- und Veröffentlichungszweig ein und gibt Auskunft darüber.** Fünf Aktionen, jede mit JSON auf stdout:
+
+- `node .claude/kit/board.mjs code schutz status` — der Zustand als `{ geschuetzt, fehlt, ungeprueft }`. `fehlt` nennt jeden fehlenden Teil, etwa ein nicht gesetztes oder ausgesetztes Ruleset. `ungeprueft` ist `null` oder `{ commit, kommando }`: der Stand auf dem Hauptzweig, dem ein grüner Nachweis des Build-Dienstes fehlt, samt dem Kommando, das ihn nachholt. Exit 0 auch bei `geschuetzt: false`, wie bei `code ci-status`.
+- `code schutz einrichten [--zweig <z>]` — Probe auf dem Prüfzweig, danach die Rulesets; Ergebnis `scharf`, `anleitung`, `offen` oder `nicht moeglich` (siehe [Installation](#installation)). Ohne `--zweig` gilt `pushPruefung.zweig`, sonst `kit-pruefung`.
+- `code schutz aussetzen --in <pfad>` — setzt das Ruleset des Hauptzweigs aus, nur bei einem grünen Lauf der Stufe `push` im Worktree `<pfad>`; Teil des Notfallwegs von [/push-main](#push-main).
+- `code schutz wiederherstellen` — schaltet das Ruleset wieder scharf. Scheitert es, bleibt der Schutz ausgesetzt, und die Meldung nennt das Kommando zum Wiederholen.
+- `code schutz nachpruefen [--zweig <z>]` — lässt den Build-Dienst den aktuellen Stand des Hauptzweigs über den Prüfzweig nachträglich prüfen, etwa nach dem Notfallweg.
+
+`einrichten`, `aussetzen` und `nachpruefen` pushen oder ändern den Code-Host. Bei gesetztem `KIT_AGENT_MODEL`, also ohne Aufsicht, brechen sie darum ab; `status` bleibt erlaubt. Die Nacht pusht nie, und die Sperre sitzt im Werkzeug statt nur im Skilltext.
 
 **`issue list` liefert Arbeitspakete, `issue epics` liefert Vorhaben.** Die Trennung ist scharf: Vorhaben erscheinen in `issue list` nie, auch nicht ohne Status-Filter. Sie sind Klammern über mehreren Karten, keine Arbeit — wer sie in einer Liste offener Issues mitzählt, hält sie für Arbeitspakete mit dünner Beschreibung. `issue epics` liefert sie mit Kürzel und Fortschritt (`#360 [HER] … 8/8`), also mit der Information, die ein Vorhaben tatsächlich trägt.
 
