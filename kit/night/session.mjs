@@ -975,11 +975,22 @@ export function leseErgebnisText(stdout) {
 
 // --- Das Modell einer Karte (Issue #665) ---
 
-// So eng gefasst wie AUTOR_MODELL_ZEILE in kit/board.mjs: Anker am Zeilenanfang, damit
+// Die Marker der Karte kommen aus dem Register im Board-Teil und gelten unter beiden Namen
+// (Issue #1443, Plan #1420 E15). Fehlt es neben night.mjs, ist keine Zeile lesbar — laut,
+// nicht still als "keine Zeile".
+const { markerWerte } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "namen.mjs")).href)
+  .catch(() => ({ markerWerte: () => { throw new Error(`board/namen.mjs fehlt neben night.mjs (${join(NACHBAR_DIR, "board")}) — Marker sind nicht lesbar.`); } }));
+
+// So eng gefasst wie AUTOR_MODELL_ZEILE in kit/board.mjs: der Marker am Zeilenanfang, damit
 // eine Erwaehnung im Fliesstext nicht trifft, und `\S+` als Wert — kein Leerraum, kein
 // zweites Wort. Ein Wert wie `claude-opus-5 --yolo` faellt damit schon hier durch und
-// nicht erst am Vergleich mit der Liste.
-const EMPFOHLENES_MODELL_ZEILE = /^Empfohlenes Modell:[^\S\n]*(\S+)[^\S\n]*$/m;
+// nicht erst am Vergleich mit der Liste. Der Ausdruck sieht den Rest hinter dem Marker.
+const EIN_WORT = /^[^\S\n]*(\S+)[^\S\n]*$/;
+
+/** Das Wort der ersten Zeile mit dem Marker `sache`, deren Rest genau ein Wort ist — sonst `null`. */
+function wortHinter(body, sache) {
+  return markerWerte(String(body ?? ""), sache, { eingerueckt: false }).map((rest) => EIN_WORT.exec(rest)?.[1]).find(Boolean) ?? null;
+}
 
 /**
  * Das Modell, mit dem die Session dieser Karte starten soll (Issue #665).
@@ -1007,10 +1018,9 @@ export function empfohlenesModell(body, erlaubte) {
   const liste = Array.isArray(erlaubte) ? erlaubte : [];
   if (liste.length === 0) return { modell: null, grund: null };
 
-  const treffer = EMPFOHLENES_MODELL_ZEILE.exec(String(body ?? ""));
-  if (!treffer) return { modell: null, grund: null };
+  const name = wortHinter(body, "empfohlenesModell");
+  if (name === null) return { modell: null, grund: null };
 
-  const name = treffer[1];
   // Fuehrender Bindestrich: nie ein Modellname, immer ein Flag. Der Vergleich mit der
   // Liste wuerde ihn ohnehin abweisen — die eigene Zeile steht hier, weil diese Stelle
   // die ist, an der jemand spaeter eine Abkuerzung einbauen koennte.
@@ -1025,10 +1035,9 @@ export function empfohlenesModell(body, erlaubte) {
 
 // --- Die Stufe einer Karte (Issue #709, Plan #707) ---
 
-// Derselbe enge Anker wie EMPFOHLENES_MODELL_ZEILE: Zeilenanfang, ein Wort ohne Leerraum.
-// Eine Erwaehnung im Fliesstext ("... siehe Aufgabenstufe: leicht ...") trifft er nicht,
-// und ein Wert aus zwei Woertern faellt schon hier durch.
-const AUFGABENSTUFE_ZEILE = /^Aufgabenstufe:[^\S\n]*(\S+)[^\S\n]*$/m;
+// Derselbe enge Anker wie beim empfohlenen Modell (`wortHinter`): Zeilenanfang, ein Wort
+// ohne Leerraum. Eine Erwaehnung im Fliesstext ("... siehe Aufgabenstufe: leicht ...") trifft
+// er nicht, und ein Wert aus zwei Woertern faellt schon hier durch.
 
 // Die Ordnung der Stufen, von der leichtesten zur schwersten. Sie ist die Richtung, in die
 // ausgewichen wird: nach oben, nie nach unten. Eine Aufgabe, fuer die die vorgesehene Stufe
@@ -1050,10 +1059,9 @@ export const STUFEN_ORDNUNG = ["leicht", "mittel", "schwer"];
  * der Normalfall und kein Befund. Bestandspakete tragen die Zeile nicht (Plan #707, E12).
  */
 export function aufgabenStufe(body) {
-  const treffer = AUFGABENSTUFE_ZEILE.exec(String(body ?? ""));
-  if (!treffer) return { stufe: null, grund: null };
+  const wert = wortHinter(body, "aufgabenstufe");
+  if (wert === null) return { stufe: null, grund: null };
 
-  const wert = treffer[1];
   if (!STUFEN_ORDNUNG.includes(wert)) {
     return { stufe: null, grund: `Aufgabenstufe "${wert}" ist kein bekannter Stufenwert (schwer, mittel, leicht) — keine Stufe.` };
   }

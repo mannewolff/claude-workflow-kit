@@ -182,14 +182,35 @@ export function markerName(sache, sprache) {
  * auf einen Buchstaben, darf keiner folgen: `## Kontextwechsel` ist nicht `## Kontext`.
  */
 export function erkenneMarker(zeile) {
+  return leseMarker(zeile)?.sache ?? null;
+}
+
+/**
+ * Sache und Rest des Markers am Anfang der Zeile, nach derselben Regel wie `erkenneMarker`:
+ * `{ sache, rest }` mit dem Rest hinter dem Namen in der Schreibweise der Zeile, sonst `null`.
+ * Die Leser der Module nehmen ihren Wert aus `rest` (Issue #1443).
+ */
+export function leseMarker(zeile) {
   if (typeof zeile !== "string") return null;
-  const z = zeile.trimStart().toLowerCase();
+  const roh = zeile.trimStart();
+  const z = roh.toLowerCase();
   for (const [name, sache] of MARKER_NAMEN) {
     if (!z.startsWith(name)) continue;
     if (/[\p{L}\p{N}]$/u.test(name) && /^[\p{L}\p{N}]/u.test(z.slice(name.length))) continue;
-    return sache;
+    return { sache, rest: roh.slice(name.length) };
   }
   return null;
+}
+
+/**
+ * Die Reste aller Zeilen des Texts, die mit dem Marker `sache` beginnen, in ihrer Folge. Mit
+ * `eingerueckt: false` zaehlt nur eine Zeile, deren Marker ganz vorn steht — fuer Leser, die
+ * eine eingerueckte Zeile nie als Treffer gelten liessen.
+ */
+export function markerWerte(text, sache, { eingerueckt = true } = {}) {
+  return String(text ?? "").split(/\r\n|\r|\n/)
+    .filter((z) => eingerueckt || !/^\s/.test(z))
+    .map(leseMarker).filter((m) => m?.sache === sache).map((m) => m.rest);
 }
 
 // --- Texthelfer (Plan #1420 E13) ----------------------------------------------------

@@ -82,6 +82,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const { normalisiereConfig = (roh) => ({ config: roh, hinweise: [] }) } =
   await import(new URL("./board/config-namen.mjs", import.meta.url).href).catch(() => ({}));
 
+// Das Register der Marker aus dem Board-Teil namen (Issue #1443, Plan #1420 E15): Der Kopf des
+// Befunde-Kommentars gilt unter beiden Namen. Abgefangen wie der Normalisierer darueber; fehlt
+// der Teil, erkennt `reviewKopfDa` den deutschen Kopf wie vor dem Register.
+const { leseMarker = null } = await import(new URL("./board/namen.mjs", import.meta.url).href).catch(() => ({}));
+
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
@@ -567,6 +572,16 @@ function meldung(angabe, gefundeneArt) {
 // Reviewer-Kopf (Issue #1182) — der Code-Review aus /review schreibt einen Text ohne
 // Reviewer-Koepfe, und `buchen` gibt ihm die Rolle `code-review` aus der Stufe.
 const ISSUE_REVIEW_KOPF_RE = /^## (?:Issue|Fachplan|Plan)-Review, Runde \d+[^\S\n]*$/m;
+const REVIEW_RUNDEN = new Set(["issueReviewRunde", "fachplanReviewRunde", "planReviewRunde"]);
+
+/** Traegt der Text den Kopf `## <Stufe>-Review, Runde <n>` als ganze Zeile, unter beiden Namen? */
+function reviewKopfDa(text) {
+  if (leseMarker === null) return ISSUE_REVIEW_KOPF_RE.test(text);
+  return text.split("\n").some((zeile) => {
+    const m = zeile.startsWith("## ") ? leseMarker(zeile) : null;
+    return m !== null && REVIEW_RUNDEN.has(m.sache) && /^ \d+[^\S\n]*$/.test(m.rest);
+  });
+}
 
 const MELDUNG_KEINE_PRUEFER = "Der Text traegt keinen einzigen Reviewer-Kopf '### Reviewer <n>: <rolle>, <modell>' — kein Pruefer lief, die Pruefung gilt nicht als erledigt (review:fertig wird nicht gesetzt).";
 
@@ -581,7 +596,7 @@ export function pruefen(pfad) {
   // Der Reviewer-Kopf ist eine Angabe des Texts, nicht des Funds: `fehlendeAngaben`
   // bleibt bei den drei Pflichtangaben, sonst fiele bei `buchen` jeder Fund ohne Kopf
   // aus dem Protokoll, statt mit der Rolle 'unbekannt' gebucht zu werden.
-  const koepfe = ISSUE_REVIEW_KOPF_RE.test(text) ? reviewerKoepfe(text) : null;
+  const koepfe = reviewKopfDa(text) ? reviewerKoepfe(text) : null;
   const eintraege = [];
   const funde = fundeLesen(text).map((fund) => {
     const { fehlt, art } = fehlendeAngaben(fund);

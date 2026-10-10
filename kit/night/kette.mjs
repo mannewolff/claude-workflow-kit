@@ -69,6 +69,14 @@ const {
   istMensch: praefixFehlt("[Mensch]"),
 }));
 
+// Die Marker in Body und Kommentaren kommen aus dem Register im Board-Teil und gelten unter
+// beiden Namen (Issue #1443, Plan #1420 E15). Fehlt es, wirft der Ersatz beim ersten Lesen.
+const namenFehlt = () => {
+  throw new Error(`board/namen.mjs fehlt neben night.mjs (${join(NACHBAR_DIR, "board")}) — Marker sind nicht lesbar.`);
+};
+const { erkenneMarker, markerWerte } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "namen.mjs")).href)
+  .catch(() => ({ erkenneMarker: namenFehlt, markerWerte: namenFehlt }));
+
 // --- Anbindung an den Einstieg (Plan #1199, E16) ---
 
 // Abschluss des Laufs und Reviewer-Vorflug stehen im Einstieg; ein Teil, der allein geladen
@@ -208,14 +216,21 @@ function wurzelObergrenzeMs({ kette, pruefLauf }) {
   return Math.max(ketteMin, pruefLauf.pruefungMin) * 60_000;
 }
 
-/** Lauf-ID, Stand und Position aus einem Laufstand-Text (#1186) — `null` ohne Lauf-ID. */
+/** Ist der Kommentar ein Laufstand, unter beiden Namen des Ankers (Issue #1443)? */
+const istLaufstandKommentar = (kommentar) => erkenneMarker(kommentar) === "laufstand";
+
+/** Der erste Rest hinter dem Marker `sache`, auf den `ausdruck` passt: sein erster Capture, sonst undefined. */
+const markerCapture = (text, sache, ausdruck) => markerWerte(text, sache, { eingerueckt: false }).map((rest) => ausdruck.exec(rest)?.[1]).find(Boolean);
+
+/** Lauf-ID, Stand und Position aus einem Laufstand-Text (#1186) — `null` ohne Lauf-ID. Marker unter beiden Namen (#1443). */
 function laufstandKopf(text) {
   const t = String(text ?? "");
-  const laufId = /^Lauf-ID:[^\S\n]*(\S+)[^\S\n]*$/m.exec(t)?.[1];
+  const einWort = /^[^\S\n]*(\S+)[^\S\n]*$/;
+  const laufId = markerCapture(t, "laufId", einWort);
   if (!laufId) return null;
   const [host, pid] = laufId.split("/");
-  const stand = Date.parse(/^Stand:[^\S\n]*(\S+)[^\S\n]*$/m.exec(t)?.[1] ?? "");
-  const k = Number(/^Position:[^\S\n]*(\d+)[^\S\n]+von[^\S\n]+\d+[^\S\n]*$/m.exec(t)?.[1]);
+  const stand = Date.parse(markerCapture(t, "stand", einWort) ?? "");
+  const k = Number(markerCapture(t, "position", /^[^\S\n]*(\d+)[^\S\n]+von[^\S\n]+\d+[^\S\n]*$/));
   return { laufId, host, pid: Number(pid), stand, k: k > 0 ? k : 1 };
 }
 
@@ -389,6 +404,17 @@ export function offeneFragenGrund(body) {
 export const HERKUNFT_FELD = { plan: "Fachliche Quelle", issue: "Plan" };
 
 /**
+ * Die Nummern der GANZEN Herkunftszeilen `<feld>: Issue #N` zeichengleich, mit fuehrenden
+ * Nullen. Das Feld kommt mit seinem deutschen Namen aus `HERKUNFT_FELD`, gelesen wird es
+ * unter beiden Namen des Markers (Issue #1443).
+ */
+function herkunftZeilen(body, feld) {
+  // `[^\S\n]` statt `\s`: Das Zeilenende hinter der Nummer bleibt hart.
+  return markerWerte(String(body ?? ""), erkenneMarker(`${feld}:`))
+    .map((rest) => /^[^\S\n]*Issue[^\S\n]*#(\d+)[^\S\n]*$/.exec(rest)?.[1]).filter(Boolean);
+}
+
+/**
  * Traegt dieses Dokument die Zielstufe des Laufs (Issue #520)?
  *
  * `plan` erzeugt ein `[Plan]`-Dokument, `issue` erzeugt Arbeitspakete — und die tragen
@@ -427,13 +453,7 @@ export function stammtAusErzeugung(issue, quelleId, stufe) {
   // lokalen Tracker also mitsamt fuehrenden Nullen.
   const nummer = String(quelleId ?? "");
   if (!/^\d+$/.test(nummer)) return false;
-  // `[^\S\n]` statt `\s`: `\s*$` duerfte mit dem m-Flag ueber Zeilenumbrueche laufen und
-  // haette das Zeilenende damit wieder aufgeweicht.
-  const zeile = new RegExp(
-    String.raw`^[^\S\n]*${HERKUNFT_FELD[stufe]}:[^\S\n]*Issue[^\S\n]*#${nummer}[^\S\n]*$`,
-    "m",
-  );
-  return zeile.test(issue?.body || "");
+  return herkunftZeilen(issue?.body, HERKUNFT_FELD[stufe]).includes(nummer);
 }
 
 /**
@@ -449,11 +469,7 @@ export function stammtAusErzeugung(issue, quelleId, stufe) {
  * vergleicht, vergleicht zeichengleich.
  */
 export function fachlicheQuelleVon(body) {
-  const zeile = new RegExp(
-    String.raw`^[^\S\n]*${HERKUNFT_FELD.plan}:[^\S\n]*Issue[^\S\n]*#(\d+)[^\S\n]*$`,
-    "m",
-  );
-  return zeile.exec(String(body ?? ""))?.[1] ?? null;
+  return herkunftZeilen(body, HERKUNFT_FELD.plan)[0] ?? null;
 }
 
 
@@ -1168,7 +1184,7 @@ async function stufePakete(kette, planId) {
   }
   if (pakete.length === 0) {
     const nachherPlan = abh.board("issue", "get", planId);
-    const halt = neueKommentare(vorherPlan, nachherPlan).find((k) => String(k).startsWith(ISSUES_HALT_KOPF));
+    const halt = neueKommentare(vorherPlan, nachherPlan).find((k) => erkenneMarker(String(k)) === "issuesHalt");
     if (halt) {
       return { ausgang: "angehalten", grund: `Stopp-Frage beim Schneiden von #${planId}`, dokId: planId, frage: halt };
     }
@@ -1581,6 +1597,11 @@ async function stufeUmsetzung(kette, paketIds) {
 /** Der Grund, der im Bericht hinter einem nicht bestaetigten Ueberholt-Kommentar steht. */
 export const UEBERHOLT_UNBESTAETIGT_GRUND = "der Kommentar wurde geschrieben, war danach aber an der Karte nicht auffindbar";
 
+/** Traegt der Kommentar eine Zeile `Ueberholt durch Plan #<plan>`, unter beiden Namen (Issue #1443)? */
+function traegtUeberholt(kommentar, plan) {
+  return markerWerte(kommentar, "ueberholt").some((rest) => rest.startsWith(String(plan)));
+}
+
 /**
  * Aeltere Plandokumente zum selben Fachplan sind mit dem neuen Plan ueberholt (Plan
  * #638, A8): ein Kommentar je Karte, kein Label, kein Move.
@@ -1602,7 +1623,7 @@ function aeltereUeberholen(kette, aeltere, neuerPlan) {
     // Kettenstempel nicht — er bleibt ueber Laeufe hinweg wiedererkennbar.
     const anker = `Ueberholt durch Plan #${neuerPlan}`;
     abh.board("issue", "comment", id, "--text", `${anker} (Kette ${ZUSTAND.LAUF_STEMPEL ?? "ohne Stempel"}). Die naechste Kette begann von vorn; dieser Entwurf bleibt nur als Verlauf.`);
-    if (kommentareVon(abh.board("issue", "get", id)).some((k) => k.includes(anker))) {
+    if (kommentareVon(abh.board("issue", "get", id)).some((k) => traegtUeberholt(k, neuerPlan))) {
       ueberholt.push(id);
       log(`  Plan #${id} als ueberholt kommentiert (neuer Plan #${neuerPlan}).`);
     } else {
@@ -1901,7 +1922,7 @@ function pruefungFehltKommentieren(u, anker = KETTE_UNGEPRUEFT_ANKER) {
     log(`  #${u.id}: Hinweis-Kommentar nicht geschrieben (Karte nicht lesbar).`);
     return;
   }
-  if (kommentareVon(karte).some((k) => k.includes(anker))) {
+  if (kommentareVon(karte).some((k) => traegtAnker(k, anker))) {
     log(`  #${u.id}: Hinweis-Kommentar steht schon am Board — kein zweiter.`);
     return;
   }
@@ -1909,6 +1930,12 @@ function pruefungFehltKommentieren(u, anker = KETTE_UNGEPRUEFT_ANKER) {
   log(res.status === 0
     ? `  #${u.id}: Hinweis-Kommentar geschrieben, Label bleibt.`
     : `  #${u.id}: Hinweis-Kommentar nicht geschrieben (${res.text.slice(0, 120)}).`);
+}
+
+/** Traegt der Kommentar den Anker, unter beiden Namen? Je Zeile, wie `k.includes(anker)` es tat (Issue #1443). */
+function traegtAnker(kommentar, anker) {
+  const sache = erkenneMarker(anker);
+  return String(kommentar).split("\n").some((z) => erkenneMarker(z) === sache);
 }
 
 /**
@@ -1995,8 +2022,8 @@ async function mitMeldung(stufe) {
 // Ein Plan in Done zaehlt nicht: Wer einen frischen Plan will, schliesst den alten (E9).
 const PLAN_VORHANDEN_SPALTEN = new Set(["backlog", "ready", "in_review"]);
 const PAKET_UMGESETZT_SPALTEN = new Set(["in_review", "done"]);
-// Der Kopf des Kommentars, den `werteInReview` an ein Paket mit Nachweis-Mangel schreibt.
-const NACHWEIS_MANGEL_KOPF = "Nachtlauf: Nachweis ";
+// Der Kopf des Kommentars, den `werteInReview` an ein Paket mit Nachweis-Mangel schreibt, ist
+// der Marker `nachweisMangel` im Register (Issue #1443).
 // Der Wortlaut des Teilschnitts (E10) — hinter der Liste der angelegten Pakete.
 const TEILSCHNITT_FOLGE = "eine Wiederholung legte doppelt an; Teilschnitt am Board aufräumen, dann erneut kit:night";
 
@@ -2012,7 +2039,7 @@ function eintragDa(texte, stufe, was, ziel) {
 /**
  * Der Kommentar `## Laufstand` einer Karte, wie er jetzt am Board steht — leer ohne ihn.
  */
-const laufstandAmBoard = (karteId) => kommentareVon(leseKarte(karteId)).filter((k) => k.startsWith("## Laufstand"));
+const laufstandAmBoard = (karteId) => kommentareVon(leseKarte(karteId)).filter(istLaufstandKommentar);
 
 /**
  * Der Laufstand-Text der tragenden Karte aus allen Quellen (E10): der Kommentar, wie ihn
@@ -2042,7 +2069,7 @@ function laufstandTexte(auftrag) {
  */
 export function paketUmgesetzt(issue) {
   if (!issue || !PAKET_UMGESETZT_SPALTEN.has(issue.status)) return false;
-  return !kommentareVon(issue).some((k) => k.startsWith(NACHWEIS_MANGEL_KOPF));
+  return !kommentareVon(issue).some((k) => erkenneMarker(k) === "nachweisMangel");
 }
 
 /** Die Arbeitspakete zum Plan am Board, aufsteigend nach Nummer. */
@@ -2705,7 +2732,7 @@ const laeuftLabel = () => ZUSTAND.config?.night?.stand?.labels?.laeuft?.trim() |
  * `wurzelBelegt` — `zustand` ist `laeuft`, wenn die Karte das Label traegt.
  */
 function laufstandDerKarte(karte) {
-  const texte = kommentareVon(karte).filter((k) => k.startsWith("## Laufstand"));
+  const texte = kommentareVon(karte).filter(istLaufstandKommentar);
   const zustand = kennzeichenName(karte?.labels, laeuftLabel(), "laufLaeuft") ? "laeuft" : null;
   return { texte, stand: texte.length > 0 ? { zustand, text: texte.at(-1) } : null };
 }

@@ -33,7 +33,7 @@ import { GitHubIssueTracker, resolveCodeHost } from "./adapter.mjs";
 // Zyklus mit Absicht: ursprung.mjs liest Karten und Herkunftszeilen von hier. Beide Seiten
 // rufen sich erst zur Laufzeit, keine liest beim Laden einen Wert der anderen.
 import { ursprungLesen, ursprungNachziehen } from "./ursprung.mjs";
-import { SPRACHEN, praefix, erkennePraefix, erkenneLabel } from "./namen.mjs";
+import { SPRACHEN, praefix, erkennePraefix, erkenneLabel, erkenneMarker, leseMarker, markerWerte } from "./namen.mjs";
 import { normalisiereConfig } from "./config-namen.mjs";
 
 // ============================================================
@@ -264,10 +264,25 @@ export function heute() {
 // stufte den Ausdruck nach einem Text als linear ein, bei dem die Zeile sauber
 // endet. Erst ein Text, dessen PRAEFIX passt und dessen Rest scheitert, loest
 // das Backtracking aus.
+//
+// Seit Issue #1443 liest `autorModellSicherstellen` die Zeile ueber das Register unter beiden
+// Namen; der Ausdruck bleibt als exportierte Form der deutschen Zeile.
 export const AUTOR_MODELL_ZEILE = /^Autor-Modell:[^\S\n]*(\S(?:[^\n]*\S)?)[^\S\n]*$/m;
 const AUTOR_MODELL_HILFE =
   'Der Body braucht eine Zeile "Autor-Modell: <modell>" im Kontext-Abschnitt. ' +
   'Alternativ --author-model <modell> setzen; im Nachtbetrieb genuegt gesetztes KIT_AGENT_MODEL.';
+
+/** Die erste Zeile `## Kontext` (oder `## Context`) mit Zeilenende: `{ ende }` hinter ihr, sonst null. */
+function kontextKopf(body) {
+  let offset = 0;
+  for (const zeile of body.split("\n")) {
+    const naechste = offset + zeile.length + 1;
+    if (naechste > body.length) return null; // die letzte Zeile ohne Umbruch zaehlte nie
+    if (erkenneMarker(zeile) === "kontext" && zeile.startsWith("## ")) return { ende: naechste };
+    offset = naechste;
+  }
+  return null;
+}
 
 /**
  * Liefert den Body mit garantierter Autor-Modell-Zeile — oder bricht ab.
@@ -277,11 +292,13 @@ const AUTOR_MODELL_HILFE =
  * stilles Ueberschreiben: Wer eine Autorschaft ueberschreibt, faelscht sie.
  */
 export function autorModellSicherstellen(body, flagWert, env = process.env) {
-  const vorhanden = body.match(AUTOR_MODELL_ZEILE);
+  // Die Zeile unter beiden Namen ueber das Register (Issue #1443); der Wert reicht wie bei
+  // AUTOR_MODELL_ZEILE vom ersten bis zum letzten Nicht-Leerzeichen.
+  const vorhanden = markerWerte(body, "autorModell", { eingerueckt: false }).map((w) => w.trim()).find((w) => w !== "");
   const flag = typeof flagWert === "string" ? flagWert.trim() : "";
   if (vorhanden) {
-    if (flag && flag !== vorhanden[1]) {
-      fail(`--author-model '${flag}' widerspricht der vorhandenen Zeile 'Autor-Modell: ${vorhanden[1]}'. Eine der beiden weglassen.`);
+    if (flag && flag !== vorhanden) {
+      fail(`--author-model '${flag}' widerspricht der vorhandenen Zeile 'Autor-Modell: ${vorhanden}'. Eine der beiden weglassen.`);
     }
     return body;
   }
@@ -291,9 +308,9 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
   // Ans Ende des Kontext-Abschnitts, nicht ans Dateiende: Dort suchen der
   // /issues-Skill und /issue-review sie. Ohne Kontext-Abschnitt (Ideen, fremde
   // Formate) kommt sie an den Anfang — Hauptsache, sie ist da und auffindbar.
-  const kontext = body.match(/^## Kontext[^\n]*\n/m);
+  const kontext = kontextKopf(body);
   if (!kontext) return `Autor-Modell: ${wert}\n\n${body}`;
-  const start = kontext.index + kontext[0].length;
+  const start = kontext.ende;
   const naechsterAbschnitt = body.slice(start).search(/^## /m);
   const ende = naechsterAbschnitt === -1 ? body.length : start + naechsterAbschnitt;
   // `(?<!\n)` statt blossem `\n+$`: Der Lookbehind laesst nur den ANFANG des
@@ -385,8 +402,11 @@ export function istMensch(title) {
 // erzwingt keine identische Semantik, und zwei Auslegungen derselben Zeile
 // waeren am Board nicht zu sehen.
 
-/** Kontextueberschrift — dieselbe Form, die `autorModellSicherstellen` erkennt. */
-const KONTEXT_UEBERSCHRIFT = /^## Kontext(?:[ \t].*)?$/;
+/** Kontextueberschrift unter beiden Namen (Issue #1443): `## Kontext`, auch mit Zusatz nach Leerraum. */
+const istKontextUeberschrift = (zeile) => {
+  const m = zeile.startsWith("## ") ? leseMarker(zeile) : null;
+  return m?.sache === "kontext" && (m.rest === "" || /^[ \t]/.test(m.rest));
+};
 // Der negative Lookahead ist der Kern (Issue #403): Ohne ihn akzeptieren `{3,} und
 // [^\n]* dieselben Zeichen, und eine Zeile aus lauter Backticks ohne Zeilenende
 // laesst die Engine jede Aufteilung durchprobieren — 78 ms bei 16 KiB, quadratisch
@@ -446,7 +466,7 @@ export function kontextGrenzen(text) {
   for (const zeile of text.split("\n")) {
     if (!imFence(zeile)) {
       if (start === -1) {
-        if (KONTEXT_UEBERSCHRIFT.test(zeile)) start = offset;
+        if (istKontextUeberschrift(zeile)) start = offset;
       } else if (zeile.startsWith("## ")) {
         return { start, ende: offset };
       }
@@ -846,7 +866,7 @@ function lebendeKitStandMarkierung(baum) {
  */
 export function kitStandZeileFuer(text, { env = process.env, baum = process.cwd(), config = null } = {}) {
   if (!env.KIT_STAND) return null;
-  if (String(text).split(/\r?\n/).some((z) => z.startsWith(KIT_STAND_PRAEFIX))) return null;
+  if (markerWerte(text, "kitStand").length > 0) return null;
   const markierung = lebendeKitStandMarkierung(baum);
   if (!markierung) return null;
   const commit = String(env.KIT_STAND);
@@ -921,6 +941,15 @@ function stueckeZusammensetzen(stuecke) {
   }, "");
 }
 
+/**
+ * Traegt der Kommentar die Laufzeile `Bericht-Lauf: <stempel>` — unter beiden Namen des
+ * Markers, der Stempel zeichengleich (Issue #1443).
+ */
+function traegtLaufZeile(body, laufZeile) {
+  const stempel = leseMarker(laufZeile)?.rest.trim();
+  return markerWerte(body, "berichtLauf").some((w) => w.trim() === stempel);
+}
+
 const vergleichbar = (text) => String(text ?? "").replaceAll("\r\n", "\n").trimEnd();
 
 // Abschnitt `### Ursprungsdokumente` im Abschlussbericht (Issue #1286, Plan #1283 A9, E6).
@@ -934,7 +963,7 @@ function schwanzBeginn(zeilen) {
   let beginn = zeilen.length;
   for (let i = zeilen.length - 1; i >= 0; i--) {
     const z = zeilen[i];
-    if (z.trim() !== "" && !z.startsWith(KIT_STAND_PRAEFIX) && !z.startsWith(BERICHT_LAUF)) break;
+    if (z.trim() !== "" && !["kitStand", "berichtLauf"].includes(erkenneMarker(z))) break;
     if (z.trim() !== "") beginn = i;
   }
   return beginn;
@@ -989,7 +1018,7 @@ async function berichtAblegen(tracker, id, text, laufZeile) {
   } catch (e) {
     fail(`Kommentare von Issue ${id} nicht lesbar — kein Bericht geschrieben, Karte bleibt: ${e.message}`);
   }
-  const dieserLauf = kommentare.filter((c) => String(c.body ?? "").replaceAll("\r", "").split("\n").includes(laufZeile));
+  const dieserLauf = kommentare.filter((c) => traegtLaufZeile(c.body, laufZeile));
   try {
     // Ein Abschnitt `### Ursprungsdokumente` gehoert nicht zum Text der Session: Er zaehlt
     // beim Vergleich nicht und bleibt beim Ersetzen unveraendert stehen (E6).
@@ -1128,7 +1157,7 @@ async function ursprungMelden(tracker, id, laufZeile) {
 
   try {
     const kommentare = await tracker.kommentareStreng(id);
-    const ziel = kommentare.findLast((c) => String(c.body ?? "").replaceAll("\r", "").split("\n").includes(laufZeile));
+    const ziel = kommentare.findLast((c) => traegtLaufZeile(c.body, laufZeile));
     if (!ziel || ziel.id == null) throw new BoardError("Bericht dieses Laufs nicht gefunden.");
     if (ursprungAbtrennen(ziel.body).abschnitt === null) {
       await tracker.ersetzeKommentar(id, ziel.id, ursprungEinhaengen(ziel.body, ursprungAbschnittText(ergebnis)));
@@ -1171,7 +1200,11 @@ function standLabels(config) {
   return labels;
 }
 
-const istLaufstand = (body) => String(body ?? "").replaceAll("\r", "").trimStart().split("\n")[0].trim() === LAUFSTAND_ANKER;
+// Die erste Zeile ist der Anker allein, unter beiden Namen (Issue #1443).
+const istLaufstand = (body) => {
+  const m = leseMarker(String(body ?? "").replaceAll("\r", "").trimStart().split("\n")[0]);
+  return m?.sache === "laufstand" && m.rest.trim() === "";
+};
 
 /**
  * `issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <datei>` —
@@ -1456,24 +1489,25 @@ const ohneFuehrendeNullen = (id) => String(id).replace(/^0+(?=\d)/, "");
  * Tracker seine Nummern mit ihnen schreibt.
  */
 export function herkunftNummern(body, feld) {
-  // `[^\S\n]` statt `\s`: `\s*$` duerfte mit dem m-Flag ueber Zeilenumbrueche laufen.
-  const zeile = new RegExp(String.raw`^[^\S\n]*${feld}:[^\S\n]*Issue[^\S\n]*#(\d+)[^\S\n]*$`, "gm");
-  return [...normalisiereZeilenenden(body).matchAll(zeile)].map((m) => ohneFuehrendeNullen(m[1]));
+  // Das Feld kommt mit seinem deutschen Namen; gelesen wird es unter beiden (Issue #1443).
+  const sache = erkenneMarker(`${feld}:`);
+  if (sache === null) throw new Error(`herkunftNummern: unbekanntes Feld "${feld}"`);
+  return markerWerte(body, sache).map((rest) => HERKUNFT_REST.exec(rest)?.[1]).filter(Boolean).map(ohneFuehrendeNullen);
 }
+
+// Der Rest einer Herkunftszeile hinter dem Feld: `Issue #N` bis zum Zeilenende.
+const HERKUNFT_REST = /^[^\S\n]*Issue[^\S\n]*#(\d+)[^\S\n]*$/;
 
 // Die Kontext-Zeile `Plan-Entscheidungen: E1, E3` (oder `Keine.`), die `/issues` in jedes
 // Paket aus einem Plan schreibt (Plan #1015, E1). Gelesen werden die `E<n>` nur aus dieser
-// einen Zeile — eine Freitextsuche im Paket traefe auch `E2E`.
-const PLAN_AUSWAHL_FELD = "Plan-Entscheidungen:";
+// einen Zeile — eine Freitextsuche im Paket traefe auch `E2E`. Der Name kommt aus dem
+// Register, erkannt werden beide (Issue #1443).
 const E_NUMMER = /\bE(\d+)\b/g;
 
 /** Die genannten `E<n>` ohne Doppelte, `[]` bei `Keine.`, `null` ohne die Zeile (Altbestand). */
 function planAuswahlLesen(body) {
-  // Zeilenweise statt eines `^…(.*)$`-Ausdrucks mit m-Flag (sonarjs/slow-regex).
-  const zeile = normalisiereZeilenenden(body).split("\n").map((z) => z.trimStart())
-    .find((z) => z.startsWith(PLAN_AUSWAHL_FELD));
-  if (zeile === undefined) return null;
-  const wert = zeile.slice(PLAN_AUSWAHL_FELD.length);
+  const wert = markerWerte(body, "planEntscheidungen")[0];
+  if (wert === undefined) return null;
   return [...new Set([...wert.matchAll(E_NUMMER)].map((t) => `E${Number(t[1])}`))];
 }
 

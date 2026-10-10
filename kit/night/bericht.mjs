@@ -35,6 +35,8 @@ import { ZUSTAND, NACHBAR_CHECKS, log, boardRoh, vergleicheText } from "./grundl
 import { VORBEREITUNG_DATEI, pidAusInhalt, prozessLaeuft, kitStandZeile } from "./kitstand.mjs";
 import { abschnittLesen, leseKarte } from "./abhaengigkeiten.mjs";
 import { COLUMN_DEFAULTS } from "../board/grundlagen.mjs";
+// Die Marker in Body und Kommentaren gelten unter beiden Namen (Issue #1443, Plan #1420 E15).
+import { leseMarker, erkenneMarker } from "../board/namen.mjs";
 import { endlicheZahl, lesePruefung, paketstufenChecks, runBuildChecksSync,
   LOKALER_KOMMENTARKOPF } from "./session.mjs";
 
@@ -89,22 +91,24 @@ export function berichtAbhaengigkeiten(neu) {
 export const PLAN_REVIEW_ZEILE = /^Plan-Review:[^\S\n]*(\S(?:[^\n]*\S)?)[^\S\n]*$/;
 
 /**
- * Der Wert eines Marker-Ausdrucks im Body — sonst `null`.
+ * Der Wert der ersten Zeile mit dem Marker `sache` und nicht leerem Wert — sonst `null`.
  *
- * `trimStart()` statt `[^\S\n]*` im Ausdruck, aus demselben Grund wie bei
- * `hasReviewMarker`: Es raeumt dieselben Zeichen ab, `\r` aus CRLF eingeschlossen.
+ * Der Marker gilt unter beiden Namen (Issue #1443); der Wert hat die Form von
+ * PLAN_REVIEW_ZEILE, vom ersten bis zum letzten Nicht-Leerzeichen, `\r` aus CRLF nicht
+ * eingeschlossen. Die exportierten Ausdruecke bleiben die Form der deutschen Zeile.
  */
-function markerWert(body, ausdruck) {
+function markerWert(body, sache) {
   for (const zeile of String(body ?? "").split("\n")) {
-    const treffer = ausdruck.exec(zeile.trimStart());
-    if (treffer !== null) return treffer[1];
+    const m = leseMarker(zeile);
+    const wert = m?.sache === sache ? m.rest.trim() : "";
+    if (wert !== "") return wert;
   }
   return null;
 }
 
 /** Der Pruefer aus der Zeile 'Plan-Review: <pruefer>' eines Plan-Bodys — sonst `null`. */
 export function planReviewWert(body) {
-  return markerWert(body, PLAN_REVIEW_ZEILE);
+  return markerWert(body, "planReview");
 }
 
 /** Ob der Body eines Plans den Plan-Review-Marker mit einem Wert traegt. */
@@ -120,7 +124,7 @@ export const FACHPLAN_REVIEW_ZEILE = /^Fachplan-Review:[^\S\n]*(\S(?:[^\n]*\S)?)
 
 /** Der Pruefer aus der Zeile 'Fachplan-Review: <pruefer>' — sonst `null`. */
 export function fachplanReviewWert(body) {
-  return markerWert(body, FACHPLAN_REVIEW_ZEILE);
+  return markerWert(body, "fachplanReview");
 }
 
 /** Ob der Body einer fachlichen Anforderung den Fachplan-Review-Marker mit Wert traegt. */
@@ -484,9 +488,14 @@ export const BERICHT_ANKER = "## Nachtbericht, Kette";
 export const BERICHT_SCHLUSS = "Dieser Bericht ist Verlauf. Verbindlich fuer die naechste Kette wird eine Entscheidung erst als Satz im Fachplan.";
 const BERICHT_DATEI_PRAEFIX = "night-bericht-";
 const ENTSCHEIDUNGEN_UEBERSCHRIFT = /^ {0,3}##\s*Architektonische\s+Entscheidungen\s*$/i;
-const KONTEXT_UEBERSCHRIFT = /^ {0,3}##\s*Kontext\s*$/i;
+// Die Kontextueberschrift unter beiden Namen (Issue #1443): `## Kontext` allein auf der Zeile.
+// Ein Objekt mit `test`, weil `abschnittLesen` eine Ueberschrift so prueft.
+const KONTEXT_UEBERSCHRIFT = {
+  test: (zeile) => /^ {0,3}##/.test(zeile) && ((m) => m?.sache === "kontext" && m.rest.trim() === "")(leseMarker(zeile)),
+};
 const ENTSCHEIDUNGEN_KOMMENTAR_UEBERSCHRIFT = /^ {0,3}###\s*Entscheidungen\s*$/i;
-const EINARBEITUNG_KOPF = /^## Einarbeitung, Runde \d+/;
+// `## Einarbeitung, Runde N` unter beiden Namen (Issue #1443).
+const istEinarbeitung = (kommentar) => ((m) => m?.sache === "einarbeitungRunde" && /^ \d/.test(m.rest))(leseMarker(kommentar));
 
 function minutenText(ms) {
   return ((ms ?? 0) / 60000).toFixed(1);
@@ -504,7 +513,7 @@ export function kommentareVon(issue) {
 
 /** Der Kommentar `## Einarbeitung, Runde N` am Plan — bei mehreren der letzte; null ohne. */
 export function einarbeitungVon(plan) {
-  const treffer = kommentareVon(plan).filter((k) => EINARBEITUNG_KOPF.test(k));
+  const treffer = kommentareVon(plan).filter(istEinarbeitung);
   return treffer.length > 0 ? treffer.at(-1) : null;
 }
 
@@ -522,7 +531,7 @@ function punkteErsterEbene(body, ueberschrift) {
 function entscheidungsZeilen(body) {
   const abschnitt = abschnittLesen(body, KONTEXT_UEBERSCHRIFT);
   if (!abschnitt) return [];
-  return abschnitt.zeilen.filter((z, i) => abschnitt.ausserhalb[i] && /^\s*Entscheidung:/.test(z)).map((z) => z.trim());
+  return abschnitt.zeilen.filter((z, i) => abschnitt.ausserhalb[i] && erkenneMarker(z) === "entscheidung").map((z) => z.trim());
 }
 
 /**
@@ -536,8 +545,6 @@ function entscheidungenAusKommentaren(paket) {
   return eintraege;
 }
 
-const SITZUNGSUMFANG_KOPF = "Sitzungsumfang:";
-
 /**
  * Der Wert der Zeile `Sitzungsumfang: passt | reisst — <ein Satz>` aus dem `## Kontext`
  * eines Pakets (Konvention aus Issue #979): `"reisst"`, `"passt"` oder `null`, wenn die
@@ -550,9 +557,9 @@ function sitzungsumfangVon(body) {
   if (!abschnitt) return null;
   for (let i = 0; i < abschnitt.zeilen.length; i++) {
     if (!abschnitt.ausserhalb[i]) continue;
-    const zeile = abschnitt.zeilen[i].trim();
-    if (!zeile.toLowerCase().startsWith(SITZUNGSUMFANG_KOPF.toLowerCase())) continue;
-    const wert = zeile.slice(SITZUNGSUMFANG_KOPF.length).trim();
+    const m = leseMarker(abschnitt.zeilen[i]);
+    if (m?.sache !== "sitzungsumfang") continue;
+    const wert = m.rest.trim();
     if (/^rei(?:ss|ß)t\b/i.test(wert)) return "reisst";
     if (/^passt\b/i.test(wert)) return "passt";
   }

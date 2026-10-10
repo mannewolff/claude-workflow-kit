@@ -21,7 +21,7 @@ import path, { join } from "node:path";
 import { homedir } from "node:os";
 
 import { istMensch, zerlegeAbschnitte, CHECK_FORM_ABSCHNITTE } from "./dokumente.mjs";
-import { SPRACHEN, erkenneLabel, labelName } from "./namen.mjs";
+import { SPRACHEN, erkenneLabel, labelName, erkenneMarker, leseMarker } from "./namen.mjs";
 
 // ============================================================
 // Geschuetzte Pfade (Issue #1041, Plan #987, fachliche Quelle #868)
@@ -282,10 +282,16 @@ export function geschuetztKommentar(treffer) {
   ].join("\n");
 }
 
+/** Die Zeile ist der Anker allein, unter beiden Namen (Issue #1443). */
+function istAnkerZeile(zeile) {
+  const m = zeile === zeile.trimStart() ? leseMarker(zeile) : null;
+  return m?.sache === "geschuetzteDatei" && m.rest === "";
+}
+
 /** Die Pfade der Listenzeilen eines Halt-Kommentars, oder null, wenn er nicht freigeben kann. */
 function freigegebenePfade(body) {
   const zeilen = String(body ?? "").replaceAll("\r", "").split("\n").map((z) => z.trimEnd());
-  if (!zeilen.includes(GESCHUETZT_ANKER) || !ZEILEN_GESETZT.some((z) => zeilen.includes(z))) return null;
+  if (!zeilen.some(istAnkerZeile)|| !ZEILEN_GESETZT.some((z) => zeilen.includes(z))) return null;
   if (ZEILEN_NICHT_GESETZT.some((z) => zeilen.includes(z))) return null;
   return new Set(zeilen.map(listenPfad).filter((p) => p !== null));
 }
@@ -333,12 +339,14 @@ function istLeer(zeilen) {
   return ersteNichtLeere(zeilen) === null;
 }
 
-/** `Autor-Modell: <wert>` (bzw. eine andere Kennzeichnungszeile) mit nicht leerem Wert. */
-function hatKennzeichnung(zeilen, name) {
-  const muster = new RegExp(String.raw`^${name}:[ \t]*(\S.*)?$`);
+/**
+ * Eine Kennzeichnungszeile (`autorModell`, `planModell`) mit nicht leerem Wert, unter beiden
+ * Namen des Markers (Issue #1443).
+ */
+function hatKennzeichnung(zeilen, sache) {
   return zeilen.some((z) => {
-    const m = muster.exec(z.trim());
-    return Boolean(m?.[1] && m[1].trim() !== "");
+    const m = leseMarker(z.trim());
+    return m?.sache === sache && m.rest.trim() !== "";
   });
 }
 
@@ -359,14 +367,14 @@ function pruefeReihenfolge(abschnitte, erwartet) {
   return meldungen;
 }
 
-/** Zeilen ausserhalb von Codebloecken, die mit einem der Praefixe beginnen. */
-function zeilenMitPraefix(zeilen, muster) {
-  return zeilen.filter((z) => muster.test(z.trim()));
+/** Zeilen ausserhalb von Codebloecken, die mit einem der Marker beginnen, unter beiden Namen (Issue #1443). */
+function zeilenMitMarker(zeilen, ...sachen) {
+  return zeilen.filter((z) => sachen.includes(erkenneMarker(z.trim())));
 }
 
 /** Meldungen fuer die Marker-Zeile, die auf dieser Stufe nicht stehen darf (F11, P12). */
 function markerVerstoesse(zeilen, gate, richtigerMarker) {
-  return zeilenMitPraefix(zeilen, /^Issue-Review:/i)
+  return zeilenMitMarker(zeilen, "issueReview")
     .map((z) => ({ gate, meldung: `'${z.trim()}' — der Marker dieser Stufe heisst '${richtigerMarker}'` }));
 }
 
@@ -375,7 +383,7 @@ export function pruefeFachlich(abschnitte, alleZeilen) {
   const finde = (name) => abschnitte.find((a) => a.titel === name);
   const verstoesse = pruefeReihenfolge(abschnitte, erwartet).map((meldung) => ({ gate: "F1", meldung }));
   const ziel = finde("ziel");
-  if (!ziel || !hatKennzeichnung(ziel.zeilen, "Autor-Modell")) {
+  if (!ziel || !hatKennzeichnung(ziel.zeilen, "autorModell")) {
     verstoesse.push({ gate: "F2", meldung: "'Autor-Modell:' steht nicht mit Wert im Abschnitt '## Ziel'" });
   }
   for (const name of ["ziel", "fachliche akzeptanzkriterien", "nicht-ziele"]) {
@@ -385,7 +393,7 @@ export function pruefeFachlich(abschnitte, alleZeilen) {
   if (!finde("offene fragen an den po")) {
     verstoesse.push({ gate: "F7", meldung: "Abschnitt '## Offene Fragen an den PO' fehlt" });
   }
-  for (const z of zeilenMitPraefix(alleZeilen, /^(Fachliche Quelle|Plan):/)) {
+  for (const z of zeilenMitMarker(alleZeilen, "fachlicheQuelle", "plan")) {
     verstoesse.push({ gate: "F9", meldung: `Herkunftszeile an der Wurzel: '${z.trim()}'` });
   }
   return [...verstoesse, ...markerVerstoesse(alleZeilen, "F11", "Fachplan-Review:")];
@@ -411,7 +419,7 @@ export function pruefePlan(kopf, abschnitte, alleZeilen) {
       verstoesse.push({ gate: "P2", meldung: `zusaetzliche Ueberschrift '## ${a.titel}' — nur ### ist zwischen den sechs Abschnitten erlaubt` });
     }
   }
-  if (!hatKennzeichnung(kopf, "Plan-Modell")) {
+  if (!hatKennzeichnung(kopf, "planModell")) {
     verstoesse.push({ gate: "P3", meldung: "'Plan-Modell:' steht nicht mit Wert im Kopf vor '## Ziel'" });
   }
   for (const a of abschnitte.filter((x) => erwartet.includes(x.titel))) {
@@ -438,14 +446,19 @@ function pruefeAbhaengigkeiten(zeilen) {
   } else if (!erste.startsWith("Keine.") && !zeilen.some((z) => /#\d+/.test(z))) {
     verstoesse.push({ gate: "I3", meldung: "'## Abhaengigkeiten' nennt weder 'Keine.' noch eine #N-Referenz — der Nacht-Runner liest nur #N" });
   }
-  for (const z of zeilenMitPraefix(zeilen, /^(Fachliche Quelle|Plan):/)) {
+  for (const z of zeilenMitMarker(zeilen, "fachlicheQuelle", "plan")) {
     verstoesse.push({ gate: "I4", meldung: `'${z.trim()}' gehoert in '## Kontext', nicht in die Abhaengigkeiten — der Runner laese sie als Abhaengigkeit` });
   }
   return verstoesse;
 }
 
-// Die Vorlage-Zeile im Kontext (Issue #683): `Vorlage: <Pfad> — verbindlich | Anregung`.
-const VORLAGE_VERBINDLICH = /^Vorlage:[^\S\n]*\S.*[—–-][^\S\n]*verbindlich[^\S\n]*$/i;
+// Die Vorlage-Zeile im Kontext (Issue #683): `Vorlage: <Pfad> — verbindlich | Anregung`. Der
+// Marker unter beiden Namen (Issue #1443), hier der Rest dahinter.
+const VORLAGE_VERBINDLICH = /^[^\S\n]*\S.*[—–-][^\S\n]*verbindlich[^\S\n]*$/i;
+const istVerbindlicheVorlage = (zeile) => {
+  const m = leseMarker(zeile.trim());
+  return m?.sache === "vorlage" && VORLAGE_VERBINDLICH.test(m.rest);
+};
 
 /**
  * I5: Eine verbindliche Vorlage verlangt die Abnahme per Bildschirmfoto im Akzeptanzkriterium
@@ -453,7 +466,7 @@ const VORLAGE_VERBINDLICH = /^Vorlage:[^\S\n]*\S.*[—–-][^\S\n]*verbindlich[^
  * gruen, und die Ansicht sieht aus wie vorher. Der Block unter dem Kriterium zaehlt mit.
  */
 function pruefeVorlage(kontext, akzeptanz) {
-  if (!kontext?.zeilen.some((z) => VORLAGE_VERBINDLICH.test(z.trim()))) return [];
+  if (!kontext?.zeilen.some(istVerbindlicheVorlage)) return [];
   if (akzeptanz?.zeilen.some((z) => /bildschirmfoto/i.test(z))) return [];
   return [{ gate: "I5", meldung: "'Vorlage: … — verbindlich' im Kontext, aber '## Akzeptanzkriterium' nennt keine Abnahme per Bildschirmfoto" }];
 }
@@ -528,7 +541,6 @@ const MANUELLE_PRUEFUNG_ZEILE = /^###[ \t]+manuelle[ \t]+pr(ü|ue)fung/i;
 
 // Eine Entscheidungszeile im Kontext, die die Guetemess-Konvention aufhebt: Sie handelt
 // von einem Vollauf oder einer Guetemessung und beantwortet das mit `Gewaehlt: ja`.
-const ENTSCHEIDUNG_ZEILE = /^Entscheidung:/;
 const GUETE_BEZUG = /vollauf|g(ü|ue)temessung|mutationspruefung|mutationspr(ü|ue)fung/i;
 
 // Die Antwort ist das erste Wort nach dem **ersten** `Gewaehlt:` der Zeile — nicht irgendein
@@ -574,7 +586,7 @@ function pruefeGuetemessung(akzeptanz, kontext, config) {
       });
     }
   }
-  for (const zeile of zeilenMitPraefix(kontext?.zeilen ?? [], ENTSCHEIDUNG_ZEILE)) {
+  for (const zeile of zeilenMitMarker(kontext?.zeilen ?? [], "entscheidung")) {
     const z = zeile.trim();
     if (!GUETE_BEZUG.test(z) || !mitJaEntschieden(z)) continue;
     verstoesse.push({
@@ -590,7 +602,7 @@ export function pruefeIssue(abschnitte, config, title, wurzel) {
   const verstoesse = [...pruefeReihenfolge(abschnitte, CHECK_FORM_ABSCHNITTE.issue), ...pruefeI1Lage(abschnitte)]
     .map((meldung) => ({ gate: "I1", meldung }));
   const kontext = finde("kontext");
-  if (!kontext || !hatKennzeichnung(kontext.zeilen, "Autor-Modell")) {
+  if (!kontext || !hatKennzeichnung(kontext.zeilen, "autorModell")) {
     verstoesse.push({ gate: "I2", meldung: "'Autor-Modell:' steht nicht mit Wert im Abschnitt '## Kontext'" });
   }
   verstoesse.push(

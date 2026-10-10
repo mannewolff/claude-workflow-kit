@@ -21,6 +21,7 @@
 
 import { COLUMN_DEFAULTS } from "./grundlagen.mjs";
 import { auftragAlleKarten, herkunftNummern, istPlan, istFachlich } from "./dokumente.mjs";
+import { erkenneMarker } from "./namen.mjs";
 
 const OFFEN = new Set(["backlog", "ready", "in_progress"]);
 const ERLEDIGT = new Set(["in_review", "done"]);
@@ -63,7 +64,8 @@ async function haltenderPlan(karten, nr, kommentareVon) {
   const stand = planStand(karten, nr);
   if (stand.durch) return null;
   const kommentare = await kommentareVon(nr);
-  const ueberholt = (kommentare ?? []).some((k) => String(typeof k === "string" ? k : k?.body ?? "").trimStart().startsWith(UEBERHOLT_ANKER));
+  // Der Vermerk unter beiden Namen (Issue #1443).
+  const ueberholt = (kommentare ?? []).some((k) => erkenneMarker(String(typeof k === "string" ? k : k?.body ?? "")) === "ueberholt");
   return ueberholt ? null : `Plan #${nr} ohne Vermerk „${UEBERHOLT_ANKER}…“ — ${stand.grund}`;
 }
 
