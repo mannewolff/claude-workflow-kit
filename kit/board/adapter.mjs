@@ -584,12 +584,23 @@ class GitHubCodeHost {
   // Das Urteil entsteht ausschliesslich aus jobs[]: `gh run list --json name` liefert den
   // WORKFLOW-Namen, nicht den Job — damit waere der rote Job nicht zu benennen, und genau
   // sein Name ist es, den das Gate in `/merge-production` ausgibt.
-  async getCiStatus(commit) {
-    const laeufe = ciJSON("gh", [
-      "run", "list", "--commit", commit, "--json", "databaseId,workflowName,conclusion,status",
-    ]);
+  //
+  // Mit `zweig` zaehlen nur die Laeufe dieses Zweigs (Plan #1405, A3): Am Kopf von
+  // `origin/main` haengen Laeufe anderer Ausloeser (SonarQube), die die Probe sonst zur
+  // Pflichtpruefung machte. `--branch` filtert schon bei gh, `headBranch` noch einmal hier.
+  // Ohne `zweig` bleibt der Aufruf wortgleich wie zuvor.
+  async getCiStatus(commit, zweig) {
+    const laeufe = zweig
+      ? ciJSON("gh", [
+        "run", "list", "--branch", zweig, "--commit", commit,
+        "--json", "databaseId,workflowName,headBranch,conclusion,status",
+      ])
+      : ciJSON("gh", [
+        "run", "list", "--commit", commit, "--json", "databaseId,workflowName,conclusion,status",
+      ]);
+    const passend = (Array.isArray(laeufe) ? laeufe : []).filter((l) => !zweig || l.headBranch === zweig);
     const jobs = [];
-    for (const lauf of Array.isArray(laeufe) ? laeufe : []) {
+    for (const lauf of passend) {
       const detail = ciJSON("gh", ["run", "view", String(lauf.databaseId), "--json", "jobs"]);
       for (const job of Array.isArray(detail.jobs) ? detail.jobs : []) {
         jobs.push({
@@ -600,6 +611,155 @@ class GitHubCodeHost {
       }
     }
     return { status: ciGesamturteil(jobs), jobs };
+  }
+
+  // --- Schutz von Haupt- und Veroeffentlichungszweig (Issue #1406, Plan #1405) ---
+
+  schutzUnterstuetzt() { return { ja: true }; }
+
+  _repo() {
+    if (!this._repoName) {
+      try {
+        this._repoName = exec("gh", ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]);
+      } catch (e) {
+        throw new BoardError(`gh repo view: ${e.message}`);
+      }
+    }
+    return this._repoName;
+  }
+
+  /**
+   * Die Rulesets des Kits — nur die mit dem Namen `claude-workflow-kit: <zweig>` (A1).
+   * Fremde Rulesets werden nicht einmal im Detail gelesen: Was das Kit nicht liest, kann
+   * es auch nicht versehentlich aendern.
+   */
+  async getRulesets() {
+    const repo = this._repo();
+    const liste = ghApi(`repos/${repo}/rulesets`);
+    const eigene = (Array.isArray(liste) ? liste : []).filter((r) => istKitRuleset(r.name));
+    return eigene.map((r) => {
+      const d = ghApi(`repos/${repo}/rulesets/${r.id}`);
+      const regeln = Array.isArray(d.rules) ? d.rules : [];
+      const ziel = d.conditions?.ref_name?.include?.[0] || "";
+      const pruefregel = regeln.find((x) => x.type === "required_status_checks");
+      return {
+        id: d.id,
+        name: d.name,
+        zweig: ziel.replace(/^refs\/heads\//, ""),
+        enforcement: d.enforcement,
+        regeln,
+        requiredStatusChecks: (pruefregel?.parameters?.required_status_checks || []).map((c) => c.context),
+        bypassActors: Array.isArray(d.bypass_actors) ? d.bypass_actors : [],
+      };
+    });
+  }
+
+  /**
+   * Legt das Ruleset des Zweigs an (POST) oder ersetzt das gleichnamige (PUT).
+   * `soll` ist `{ zweig, regeln, enforcement? }`; `regeln` sind Regeln im Format der
+   * Rulesets-API. Name und Zielzweig setzt der Adapter selbst. `bypass_actors` geht immer
+   * leer mit (A6): Auch eine von Hand eingetragene Umgehung faellt beim Aendern weg, und
+   * eine im Soll mitgegebene erreicht GitHub nie.
+   */
+  async upsertRuleset(soll) {
+    const repo = this._repo();
+    const name = rulesetName(soll.zweig);
+    const koerper = {
+      name,
+      target: "branch",
+      enforcement: soll.enforcement || "active",
+      conditions: { ref_name: { include: [`refs/heads/${soll.zweig}`], exclude: [] } },
+      rules: soll.regeln,
+      bypass_actors: [],
+    };
+    const vorhanden = this._eigenesRuleset(repo, name);
+    if (vorhanden) {
+      ghApi(`repos/${repo}/rulesets/${vorhanden.id}`, { methode: "PUT", koerper });
+      return { id: vorhanden.id, name, angelegt: false };
+    }
+    const neu = ghApi(`repos/${repo}/rulesets`, { methode: "POST", koerper });
+    return { id: neu.id, name, angelegt: true };
+  }
+
+  /** Setzt ein Ruleset des Kits auf `active` oder `disabled` (A6). */
+  async setRulesetEnforcement(name, wert) {
+    if (wert !== "active" && wert !== "disabled") {
+      throw new BoardError(`enforcement '${wert}' unbekannt. Erwartet: active | disabled`);
+    }
+    if (!istKitRuleset(name)) {
+      throw new BoardError(`Ruleset '${name}' gehoert nicht dem Kit (Name ohne '${RULESET_PRAEFIX}') — es wird nicht angefasst.`);
+    }
+    const repo = this._repo();
+    const vorhanden = this._eigenesRuleset(repo, name);
+    if (!vorhanden) throw new BoardError(`Ruleset '${name}' in '${repo}' nicht gefunden.`);
+    ghApi(`repos/${repo}/rulesets/${vorhanden.id}`, { methode: "PUT", koerper: { enforcement: wert } });
+    return { id: vorhanden.id, name, enforcement: wert };
+  }
+
+  /** Ob der angemeldete Nutzer Admin-Rechte am Repository hat (A9). */
+  async hatAdminRecht() {
+    const daten = ghApi(`repos/${this._repo()}`);
+    return daten?.permissions?.admin === true;
+  }
+
+  /** Pusht `sha` auf `zweig` von origin, nie mit `--force`. */
+  async pushRef(sha, zweig) {
+    gitPush([`${sha}:refs/heads/${zweig}`]);
+  }
+
+  /** Loescht `zweig` auf origin. */
+  async deleteRef(zweig) {
+    gitPush(["--delete", zweig]);
+  }
+
+  _eigenesRuleset(repo, name) {
+    const liste = ghApi(`repos/${repo}/rulesets`);
+    return (Array.isArray(liste) ? liste : []).find((r) => r.name === name) || null;
+  }
+}
+
+// Am Namen erkennt das Kit seine Rulesets (Plan #1405, A1) — fremde fasst es nie an.
+export const RULESET_PRAEFIX = "claude-workflow-kit: ";
+
+export function rulesetName(zweig) { return `${RULESET_PRAEFIX}${zweig}`; }
+
+function istKitRuleset(name) {
+  return typeof name === "string" && name.startsWith(RULESET_PRAEFIX);
+}
+
+/**
+ * Ein Aufruf von `gh api` mit JSON-Antwort; ein Koerper geht ueber die Standardeingabe.
+ * Jeder Fehlweg endet wie bei ciJSON als BoardError im Klartext. Nennt gh einen HTTP-Status
+ * (`(HTTP 403)`), steht er zusaetzlich in `httpStatus`: Aus einer 403 macht die
+ * Schutz-Logik die Anleitung (A9) statt einer Fehlermeldung.
+ */
+function ghApi(endpunkt, { methode, koerper } = {}) {
+  const args = ["api", endpunkt];
+  if (methode) args.push("--method", methode);
+  if (koerper !== undefined) args.push("--input", "-");
+  let roh;
+  try {
+    roh = exec("gh", args, koerper === undefined ? {} : { input: JSON.stringify(koerper) });
+  } catch (e) {
+    const fehler = new BoardError(`gh ${args.join(" ")}: ${e.message}`);
+    const status = /\(HTTP (\d{3})\)/.exec(e.message);
+    if (status) fehler.httpStatus = Number(status[1]);
+    throw fehler;
+  }
+  if (roh === "") return null;
+  try {
+    return JSON.parse(roh);
+  } catch {
+    throw new BoardError(`gh ${args.join(" ")} lieferte kein gueltiges JSON: ${roh.slice(0, 200)}`);
+  }
+}
+
+function gitPush(ziel) {
+  const args = ["push", "origin", ...ziel];
+  try {
+    exec("git", args);
+  } catch (e) {
+    throw new BoardError(`git ${args.join(" ")}: ${e.message}`);
   }
 }
 
@@ -765,7 +925,15 @@ class GitLabIssueTracker {
   }
 }
 
+// Der Satz aus Plan #1405, A5: Wo das Kit keinen Schutz einrichtet, sagt es, was offen bleibt.
+const SCHUTZ_GITLAB = "Bei GitLab richtet das Kit keinen Schutz ein: Haupt- und Veroeffentlichungszweig "
+  + "bleiben ungeschuetzt und nehmen auch einen ungeprueften Push an push main vorbei an.";
+const SCHUTZ_LOCAL = "Bei codeHost local gibt es keinen Code-Host, der einen Push abweisen koennte: "
+  + "Haupt- und Veroeffentlichungszweig bleiben ungeschuetzt.";
+
 class GitLabCodeHost {
+  schutzUnterstuetzt() { return { ja: false, grund: SCHUTZ_GITLAB }; }
+
   async getRepoName() {
     // Ohne Remote (kein Repo, kein origin) bleibt der Verzeichnisname — frueher ueber
     // `basename $(pwd)`, das cmd.exe nicht kennt (Issue #196).
@@ -1110,6 +1278,8 @@ class LocalIssueTracker {
 }
 
 class LocalCodeHost {
+  schutzUnterstuetzt() { return { ja: false, grund: SCHUTZ_LOCAL }; }
+
   async getRepoName() {
     // Frueher mit 2>/dev/null — die Umleitung gibt es unter cmd.exe nicht (#196);
     // gitRemoteUrl liefert stattdessen null, wenn kein Remote da ist.

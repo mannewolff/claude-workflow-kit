@@ -201,6 +201,19 @@ export function aufrufe(dir, name) {
     .map((z) => JSON.parse(z).argv);
 }
 
+/**
+ * Die Standardeingaben aller Aufrufe eines Fake-Binaries, in Aufrufreihenfolge (Issue #1406).
+ * Festgehalten wird sie nur bei `--input -`; sonst steht dort `undefined`.
+ */
+export function aufrufEingaben(dir, name) {
+  const logPfad = join(dir, "fakebin", `${name}.log.jsonl`);
+  if (!existsSync(logPfad)) return [];
+  return readFileSync(logPfad, "utf-8")
+    .split("\n")
+    .filter(Boolean)
+    .map((z) => JSON.parse(z).stdin);
+}
+
 /** Die Aufrufe als eine Zeile pro Aufruf — bequem fuer Regex-Assertions. */
 export function aufrufZeilen(dir, name) {
   return aufrufe(dir, name).map((argv) => argv.join(" "));
@@ -269,7 +282,11 @@ for (let i = 0; i < regeln.length; i++) {
   break;
 }
 
-appendFileSync(logPfad, JSON.stringify({ argv, regel: index }) + "\\n");
+// Ein Koerper ueber die Standardeingabe (\`gh api ... --input -\`) gehoert zum Aufruf
+// (Issue #1406): Ohne ihn liesse sich nicht pruefen, was an die API ging.
+const eingabeIndex = argv.indexOf("--input");
+const stdin = eingabeIndex !== -1 && argv[eingabeIndex + 1] === "-" ? readFileSync(0, "utf-8") : undefined;
+appendFileSync(logPfad, JSON.stringify({ argv, regel: index, stdin }) + "\\n");
 
 if (index === -1) {
   process.stderr.write(\`fake-cli: keine Regel fuer: \${zeile}\\n\`);

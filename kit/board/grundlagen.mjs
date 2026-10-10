@@ -62,8 +62,11 @@ export function isStateColumn(status, config) {
 // Start und Umgebung sind injizierbar (Issue #1211, Plan #1199, E6): So belegt ein Test
 // im selben Prozess, womit gestartet wird, statt das Werkzeug als Kindprozess gegen ein
 // gefaelschtes CLI im PATH laufen zu lassen.
-export function exec(datei, args = [], { spawn = spawnSync, env = process.env } = {}) {
-  const res = spawn(datei, args, { encoding: "utf-8", env });
+//
+// `input` geht als Standardeingabe an den Prozess (Issue #1406): Ein JSON-Koerper fuer
+// `gh api --input -` braucht so weder eine Zwischendatei noch eine Shell.
+export function exec(datei, args = [], { spawn = spawnSync, env = process.env, input } = {}) {
+  const res = spawn(datei, args, input === undefined ? { encoding: "utf-8", env } : { encoding: "utf-8", env, input });
   if (res.error) {
     // Haeufigster Fall: das CLI ist nicht installiert (ENOENT).
     throw new Error(res.error.code === "ENOENT"
