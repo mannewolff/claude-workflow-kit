@@ -51,7 +51,7 @@ test("fehlende Antwortzeilen gelten als leer und uebernehmen den Default", () =>
   try {
     // Nur die ersten drei Fragen werden beantwortet; danach ist die Eingabe zu Ende.
     // Jede weitere Frage muss den Default nehmen — nicht `undefined` schreiben.
-    const res = installiere(dir, ["projekt", "github", "github"]);
+    const res = installiere(dir, ["projekt", "github", "j", "n", "github"]);
 
     assert.equal(res.status, 0, `Installer schlug fehl: ${res.stderr}\n${res.stdout}`);
     const c = config(dir);
@@ -99,7 +99,7 @@ test("eine .gitignore ohne Schlusszeilenumbruch bekommt einen eingefuegt", () =>
     // Eintraege waeren damit unwirksam.
     writeFileSync(join(dir, ".gitignore"), "node_modules", "utf-8");
 
-    const res = installiere(dir, ["projekt", "github", "github", "", "", "", ""]);
+    const res = installiere(dir, ["projekt", "github", "j", "n", "github", "", "", "", ""]);
 
     assert.equal(res.status, 0, `Installer schlug fehl: ${res.stderr}\n${res.stdout}`);
     const zeilen = readFileSync(join(dir, ".gitignore"), "utf-8").split("\n");

@@ -111,7 +111,7 @@ test("zeigt INSTALL_GIT_FAKE ins Leere, scheitert schon der Start wie bei einem 
 
 // Scope, codeHost, issueTracker, mainBranch, productionBranch, reviewScope,
 // reviewModel, reviewCommand — und an neunter Stelle die Hook-Frage.
-const antworten = (hook) => ["projekt", "github", "toolbox", "", "", "", "", "", hook];
+const antworten = (hook) => ["projekt", "github", "j", "n", "toolbox", "", "", "", "", "", hook];
 
 function hooksPath(dir) {
   const res = git(dir, "config", "--get", "core.hooksPath");
@@ -262,7 +262,7 @@ test("[installer-2] ein belegter core.hooksPath bleibt unveraendert und verbrauc
     assert.equal(git(dir, "config", "core.hooksPath", ".husky").status, 0);
     // Eine Antwort WENIGER: Wird die Frage doch gestellt, fehlt eine Zeile und der
     // Lauf endet rot — genau das soll der Test fangen.
-    const res = installiere(dir, ["projekt", "github", "toolbox", "", "", "", "", "", "n"]);
+    const res = installiere(dir, ["projekt", "github", "j", "n", "toolbox", "", "", "", "", "", "n"]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.equal(hooksPath(dir), ".husky", "ein fremder hooksPath darf nicht ueberschrieben werden");
     assert.doesNotMatch(res.stdout, new RegExp(FRAGE), "bei belegtem Wert wird nicht gefragt");
@@ -282,7 +282,7 @@ test("[installer-2] ein absoluter core.hooksPath auf das eigene .githooks gilt a
     assert.equal(git(dir, "config", "core.hooksPath", absolut).status, 0);
     // Eine Antwort WENIGER: Wird die Frage doch gestellt, fehlt eine Zeile und der
     // Lauf endet rot — genau das soll der Test fangen.
-    const res = installiere(dir, ["projekt", "github", "toolbox", "", "", "", "", "", "n"]);
+    const res = installiere(dir, ["projekt", "github", "j", "n", "toolbox", "", "", "", "", "", "n"]);
 
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.doesNotMatch(res.stdout, new RegExp(FRAGE), "das eigene Gate loest keine Frage aus");
@@ -294,7 +294,7 @@ test("[installer-2] ein absoluter core.hooksPath auf das eigene .githooks gilt a
 test("[installer-2] ein core.hooksPath './.githooks' gilt als gesetzt", () => {
   mitFixture("install-gate-punkt-", (dir) => {
     assert.equal(git(dir, "config", "core.hooksPath", "./.githooks").status, 0);
-    const res = installiere(dir, ["projekt", "github", "toolbox", "", "", "", "", "", "n"]);
+    const res = installiere(dir, ["projekt", "github", "j", "n", "toolbox", "", "", "", "", "", "n"]);
 
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.doesNotMatch(res.stdout, new RegExp(FRAGE), "das eigene Gate loest keine Frage aus");
@@ -310,7 +310,7 @@ test("[installer-2] ein .githooks in einem anderen Verzeichnis bleibt belegt", (
     const fremd = join(dir, "anderswo", ".githooks");
     mkdirSync(fremd, { recursive: true });
     assert.equal(git(dir, "config", "core.hooksPath", fremd).status, 0);
-    const res = installiere(dir, ["projekt", "github", "toolbox", "", "", "", "", "", "n"]);
+    const res = installiere(dir, ["projekt", "github", "j", "n", "toolbox", "", "", "", "", "", "n"]);
 
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.doesNotMatch(res.stdout, new RegExp(FRAGE), "bei belegtem Wert wird nicht gefragt");
@@ -329,7 +329,7 @@ test("[installer-2] das eigene .githooks wird auch aus einer alleinigen Installe
     writeFileSync(kopie, readFileSync(INSTALLER));
     const absolut = join(dir, ".githooks");
     assert.equal(git(dir, "config", "core.hooksPath", absolut).status, 0);
-    const res = installiere(dir, ["projekt", "github", "toolbox", "", "", "", "", "", "n"], {}, [], kopie);
+    const res = installiere(dir, ["projekt", "github", "j", "n", "toolbox", "", "", "", "", "", "n"], {}, [], kopie);
 
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /steht bereits auf \.githooks/, "das eingehaengte Gate gehoert als solches gemeldet");
@@ -359,7 +359,7 @@ test("[installer-2] eine aktive Datei im Hooks-Verzeichnis gilt als belegt", () 
     // nicht fragen — ein gesetzter core.hooksPath schaltete diesen Hook stillschweigend ab.
     writeFileSync(join(hooksDir(dir), "pre-push"), "#!/bin/sh\nexit 0\n", "utf-8");
     // Eine Antwort WENIGER: Wird doch gefragt, fehlt eine Zeile und der Lauf endet rot.
-    const res = installiere(dir, ["projekt", "github", "toolbox", "", "", "", "", "", "n"]);
+    const res = installiere(dir, ["projekt", "github", "j", "n", "toolbox", "", "", "", "", "", "n"]);
 
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.doesNotMatch(res.stdout, new RegExp(FRAGE), "bei aktivem Hook wird nicht gefragt");
@@ -523,7 +523,7 @@ test("[installer-2] ein fremdes .githooks/pre-commit bleibt bytegleich erhalten"
 
 test("[installer-2] ausserhalb eines Git-Repos entfaellt die Frage, der Lauf endet gruen", () => {
   mitFixture("install-gate-ohnegit-", (dir) => {
-    const res = installiere(dir, ["projekt", "github", "toolbox", "", "", "", "", "", "n"]);
+    const res = installiere(dir, ["projekt", "github", "j", "n", "toolbox", "", "", "", "", "", "n"]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.doesNotMatch(res.stdout, new RegExp(FRAGE));
     assert.match(res.stdout, /kein Git-Repo|git nicht gefunden/);
@@ -533,7 +533,7 @@ test("[installer-2] ausserhalb eines Git-Repos entfaellt die Frage, der Lauf end
 test("[installer-2] im Update-Modus mit gesetztem .githooks entfaellt die Frage", () => {
   mitFixture("install-gate-update-", (dir) => {
     assert.equal(git(dir, "config", "core.hooksPath", ".githooks").status, 0);
-    const res = installiere(dir, ["projekt", "github", "toolbox", "", "", "", "", "", "n"]);
+    const res = installiere(dir, ["projekt", "github", "j", "n", "toolbox", "", "", "", "", "", "n"]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.doesNotMatch(res.stdout, new RegExp(FRAGE));
     assert.equal(hooksPath(dir), ".githooks");

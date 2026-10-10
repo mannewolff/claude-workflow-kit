@@ -53,12 +53,14 @@ function installiere(dir, antworten, extraEnv = {}) {
   });
 }
 
-// Antworten fuer den kuerzesten Weg: projektlokal, GitHub, alle Defaults. Zeile 7 und 8
-// sind das Reviewer-Paar reviewModel/reviewCommand (Issue #433), Zeile 9 die Hook-Frage
-// (nur im Git-Repo gestellt) und Zeile 10 die Bereichsfrage (leer = ueberspringen,
+// Antworten fuer den kuerzesten Weg: projektlokal, GitHub, alle Defaults. Nach dem Code-Host
+// stehen die Schutzfragen (Issue #1409): "j" fuer den Build-Dienst, "n" fuer den Schutz —
+// so startet kein Test das echte `code schutz einrichten`. Zeile 9 und 10
+// sind das Reviewer-Paar reviewModel/reviewCommand (Issue #433), Zeile 11 die Hook-Frage
+// (nur im Git-Repo gestellt) und Zeile 12 die Bereichsfrage (leer = ueberspringen,
 // Issue #1009). Im Pipe-Modus verbraucht jede Frage genau eine Zeile — eine fehlende
 // Antwort verschoebe alle folgenden; im TTY-Pfad wartete readline auf sie bis zur Frist.
-const PROJEKT_GITHUB = ["projekt", "github", "github", "", "", "", "", "", "", ""];
+const PROJEKT_GITHUB = ["projekt", "github", "j", "n", "github", "", "", "", "", "", "", ""];
 
 function config(dir) {
   return JSON.parse(readFileSync(join(dir, ".claude", "workflow.config.json"), "utf-8"));
@@ -361,7 +363,7 @@ test("Eine leere Antwort auf die Scope-Frage bedeutet global", () => {
 test("Eine unverstaendliche Scope-Antwort wird zurueckgewiesen und neu gefragt", () => {
   const dir = fixture("install-scope-ungueltig-");
   try {
-    const res = installiere(dir, ["vielleicht", "projekt", "github", "github", "", "", "", "", "", ""]);
+    const res = installiere(dir, ["vielleicht", "projekt", "github", "j", "n", "github", "", "", "", "", "", ""]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout + res.stderr, /Bitte 'global' oder 'projekt' eingeben/);
     assert.ok(existsSync(join(dir, ".claude", "workflow.config.json")),
@@ -387,7 +389,7 @@ test("Ein ungueltiger codeHost bricht den Piped-Modus mit Fehlermeldung ab", () 
 test("Ein reviewModel ohne claude-Praefix wird von der pattern-Regel abgelehnt", () => {
   const dir = fixture("install-reviewmodel-");
   try {
-    const res = installiere(dir, ["projekt", "github", "github", "", "", "", "gpt-4"]);
+    const res = installiere(dir, ["projekt", "github", "j", "n", "github", "", "", "", "gpt-4"]);
     assert.equal(res.status, 1);
     assert.match(res.stdout + res.stderr, /reviewModel muss eine Claude-Modell-ID sein/);
   } finally {
@@ -662,7 +664,7 @@ test("Re-Install akzeptiert ein bestehendes issueTracker: toolbox (#124)", () =>
       JSON.stringify({ ...vorher, issueTracker: "toolbox", toolbox: { host: "https://beispiel.invalid" } }, null, 2), "utf-8");
 
     // Leere Antwort auf die issueTracker-Frage = bestehenden Wert uebernehmen.
-    const res = installiere(dir, ["projekt", "github", "", "", "", "", "", "", "", ""]);
+    const res = installiere(dir, ["projekt", "github", "j", "n", "", "", "", "", "", "", "", ""]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.equal(config(dir).issueTracker, "toolbox",
       "toolbox muss als bestehender Wert durch die Validierung kommen");

@@ -29,7 +29,7 @@ const AREAS_HINWEIS = /wirken erst, wenn die Prüfkommandos in workflow\.config\
 // Scope, codeHost, issueTracker, mainBranch, productionBranch, reviewScope,
 // reviewModel, reviewCommand. Ohne Git-Repo entfaellt die Hook-Frage, die
 // naechste Zeile beantwortet also die Bereichsfrage.
-const VORSPANN = ["projekt", "github", "github", "", "", "", "", ""];
+const VORSPANN = ["projekt", "github", "j", "n", "github", "", "", "", "", ""];
 
 function fixture(praefix) {
   const dir = mkdtempSync(join(tmpdir(), praefix));

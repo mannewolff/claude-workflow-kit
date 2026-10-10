@@ -43,7 +43,7 @@ const SPEC = { seit: "2026-09-02", bereiche: { kit: ["kit/**"] } };
 // reviewModel, reviewCommand — die Spec-Frage gibt es nicht mehr, und ohne
 // Git-Repo im Fixture entfaellt auch die Gate-Frage. Tracker 'toolbox', weil
 // genau dort die alte Frage gestellt wurde.
-const ANTWORTEN = ["projekt", "github", "toolbox", "", "", "", "", ""];
+const ANTWORTEN = ["projekt", "github", "j", "n", "toolbox", "", "", "", "", ""];
 
 function fixture(praefix) {
   const dir = mkdtempSync(join(tmpdir(), praefix));

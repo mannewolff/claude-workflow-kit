@@ -414,6 +414,95 @@ async function setupGitLabLabels(rl) {
   console.log(`  (Board-Spalten lassen sich nicht per CLI anlegen — das ist eine GitLab-Einschraenkung.)\n`);
 }
 
+// --- Schutz des Hauptzweigs (Issue #1409, Plan #1405) ---
+//
+// Der Installer fragt nur und ruft die installierte board.mjs: Die Einrichtung samt Probe
+// liegt in `code schutz einrichten` (Issue #1408). `pushPruefung` schreibt er erst, wenn
+// der Schutz scharf ist oder als Anleitung beim Menschen liegt (A4, A10).
+
+const SCHUTZ_SPAETER = "Später einschalten: node install.mjs --schutz im Projekt.";
+const UNGESCHUETZT = "  Haupt- und Veröffentlichungszweig bleiben ungeschützt: Ein Push an `push main` vorbei kommt ungeprüft durch.";
+
+// "[J/n]": leer heisst Ja, nur ein n oder nein heisst Nein.
+async function frageJaNein(rl, frage) {
+  const raw = (await ask(rl, `${frage} [J/n]: `)).trim().toLowerCase();
+  return raw !== "n" && raw !== "nein";
+}
+
+/**
+ * Die Schutzfragen nach der Code-Host-Frage. Liefert den gewaehlten Pruefzweig oder `null`,
+ * wenn der Schutz nicht eingerichtet wird. Gefragt wird nur projektlokal bei GitHub (E4, A5).
+ */
+async function frageSchutz(rl, scope, codeHost, existingConfig) {
+  if (codeHost === "gitlab") {
+    console.log("  Bei GitLab wird der Schutz des Hauptzweigs noch nicht eingerichtet; Haupt- und Veröffentlichungszweig bleiben ungeschützt.");
+    return null;
+  }
+  if (codeHost !== "github") {
+    console.log("  Ohne Code-Host: Der Schutz bleibt lokal, es prüft nur der eigene Rechner vor dem Push.");
+    return null;
+  }
+  if (scope !== "projekt") {
+    console.log(`  Schutz des Hauptzweigs gilt je Repository. ${SCHUTZ_SPAETER}`);
+    return null;
+  }
+  if (!await frageJaNein(rl, "Hat das Projekt einen Build-Dienst (GitHub Actions)?")) {
+    console.log(UNGESCHUETZT);
+    return null;
+  }
+  if (!await frageJaNein(rl, "Prüfung vor dem Push in den Build-Dienst verlegen und Haupt- und Veröffentlichungszweig schützen?")) {
+    console.log(UNGESCHUETZT);
+    return null;
+  }
+  return askWithDefault(rl, "Prüfzweig für den Lauf vor dem Push", existingConfig.pushPruefung?.zweig || "kit-pruefung");
+}
+
+/**
+ * Ruft `code schutz einrichten` der installierten board.mjs und traegt bei `scharf` oder
+ * `anleitung` `pushPruefung` in die Config ein — nur dieses Feld, der Rest der Datei bleibt.
+ * Ohne Zweig (Schutz abgewaehlt oder nicht gefragt) geschieht nichts.
+ */
+function richteSchutzEin(kitDir, configPfad, zweig) {
+  if (!zweig) return;
+  console.log(`\nRichte den Schutz ein (Prüfzweig ${zweig}) — die Probe kann einige Minuten dauern:`);
+  const res = cliSpawn(process.execPath, [join(kitDir, "board.mjs"), "code", "schutz", "einrichten", "--zweig", zweig],
+    "INSTALL_SCHUTZ_FAKE", { encoding: "utf-8", stdio: ["ignore", "pipe", "inherit"] });
+  if (res.stdout) process.stdout.write(res.stdout);
+  let ergebnis = null;
+  try { ergebnis = JSON.parse(res.stdout).ergebnis; } catch { /* keine Antwort: nicht eingerichtet */ }
+  if (res.status !== 0 || !ergebnis) {
+    console.log(`! Schutz nicht eingerichtet. ${SCHUTZ_SPAETER}`);
+    return;
+  }
+  if (ergebnis === "scharf" || ergebnis === "anleitung") {
+    const config = JSON.parse(readFileSync(configPfad, "utf-8"));
+    config.pushPruefung = { ort: "buildDienst", zweig };
+    writeFileSync(configPfad, JSON.stringify(config, null, 2) + "\n", "utf-8");
+    console.log(`✓ pushPruefung eingetragen: Build-Dienst, Prüfzweig ${zweig}`);
+  } else if (ergebnis === "nicht moeglich") {
+    console.log(`! Schutz nicht möglich, pushPruefung bleibt unverändert. ${SCHUTZ_SPAETER}`);
+  } else {
+    console.log("! Schutz noch offen, pushPruefung bleibt unverändert.");
+  }
+}
+
+/**
+ * `node install.mjs --schutz` (E2, E3): nur die Schutzfragen und `code schutz einrichten`,
+ * in der Config nur `pushPruefung`, keine Kit-Datei.
+ */
+async function schutzModus(rl) {
+  const kitDir = resolve(".claude", "kit");
+  const boardPfad = join(kitDir, "board.mjs");
+  const configPfad = resolve(".claude", "workflow.config.json");
+  if (!existsSync(boardPfad) || !readFileSync(boardPfad, "utf-8").includes("code schutz einrichten")) {
+    throw new Error("Die installierte board.mjs kennt `code schutz` noch nicht — erst das Kit mit `node install.mjs` aktualisieren.");
+  }
+  if (!existsSync(configPfad)) throw new Error("Keine .claude/workflow.config.json — erst das Kit mit `node install.mjs` installieren.");
+  const config = JSON.parse(readFileSync(configPfad, "utf-8"));
+  const zweig = await frageSchutz(rl, "projekt", config.codeHost ?? config.provider, config);
+  richteSchutzEin(kitDir, configPfad, zweig);
+}
+
 // --- Hauptprogramm ---
 
 // Frage 1 (global/projekt) als eigene Schleife: haelt die Wiederholung aus main() heraus.
@@ -1034,7 +1123,9 @@ export function windowsAbweisung(plattform = process.platform) {
   return plattform === "win32" ? [...WINDOWS_ABWEISUNG] : null;
 }
 
-async function main() {
+// Was vor jeder Frage endet: natives Windows und --version. Eigene Funktion, damit main()
+// unter der Komplexitaetsschwelle bleibt (Issue #404).
+function vorabEnden() {
   // Vor allem anderen, auch vor --version und dem Lesen von stdin (E1): Unter nativem
   // Windows geschieht nichts am Projekt, und keine Ausgabe steht vor der Meldung.
   const abweisung = windowsAbweisung();
@@ -1047,15 +1138,26 @@ async function main() {
     console.log(`claude-workflow-kit install.mjs v${VERSION}`);
     process.exit(0);
   }
+}
+
+async function main() {
+  vorabEnden();
 
   await loadPipedLines();
   const rl = IST_TTY
     ? createInterface({ input: process.stdin, output: process.stdout })
     : { close: () => {} };
 
+  if (process.argv.includes("--schutz")) {
+    console.log("\n=== claude-workflow-kit: Schutz des Hauptzweigs ===\n");
+    await schutzModus(rl);
+    rl.close();
+    return;
+  }
+
   console.log("\n=== claude-workflow-kit Installer ===\n");
   console.log("Dieser Installer richtet die claude-workflow-kit-Skill-Bibliothek ein.");
-  console.log("Zehn Fragen, zuletzt nach den Bereichen des Projekts (global neun, zuletzt nach dem Vault-Pfad), dann bist du fertig.\n");
+  console.log("Zehn Fragen, bei GitHub bis zu drei mehr zum Schutz des Hauptzweigs, zuletzt nach den Bereichen des Projekts (global neun, zuletzt nach dem Vault-Pfad), dann bist du fertig.\n");
 
   // Frage 1: global oder projekt
   const scope = await promptScope(rl);
@@ -1074,6 +1176,9 @@ async function main() {
     D.codeHost,
     "codeHost"
   );
+
+  // Schutzfragen (nur projektlokal bei GitHub, Issue #1409): Build-Dienst, Vorschlag, Pruefzweig.
+  const schutzZweig = await frageSchutz(rl, scope, codeHost, existingConfig);
 
   // Frage 3: issueTracker
   const issueTracker = await askWithDefault(
@@ -1266,6 +1371,7 @@ async function main() {
 
   schreibeTeile(kitDir);
   copyAgents(join(targetBase, "agents"));
+  richteSchutzEin(kitDir, configTarget, schutzZweig);
 
   schreibeCommitGate(scope, hooks);
 
