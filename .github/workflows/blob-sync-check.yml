@@ -1,28 +1,33 @@
 name: "Checks: Tests + install.mjs-Blobs synchron"
 
-# CI-Guard mit zwei Steps (davor installiert npm ci die Abhängigkeiten, #996):
-# 1. node --test — die node:test-Suite unter test/ (seit #135).
-# 2. Blob-Check — prüft, dass die eingebetteten Base64-Blobs in install.mjs zum
-#    aktuellen Stand ihrer Quellen passen: templates/CLAUDE-workflow.md,
-#    kit/board.mjs, kit/night.mjs und skills/. Wird rot, wenn eine dieser Quellen
-#    geändert wurde, ohne dass anschließend `node tools/sync-blobs.mjs` lief.
-#    Der Check schreibt nichts.
-#    kit/board-ui.mjs gehört bewusst nicht dazu: Die lokale Kanban-GUI ist kein
-#    Installer-Bestandteil mehr, sie wird nur zum Download ausgeliefert (#176).
-#    Sie liegt zwar unter kit/, ist aber von diesem Guard nicht abgedeckt.
+# Gate vor dem Push (Issue #1411, Plan #1405, A12): `push main` schiebt den Stand
+# zuerst auf den Prüfzweig kit-pruefung; dieser Job fährt dort den vollen Lauf der
+# Stufe push und hinterlegt das Ergebnis am Commit. Erst ein grüner Lauf lässt den
+# Stand auf main. Die Probe aus `code schutz` (Issue #1408) findet ihn am Jobnamen
+# `check` — der Name bleibt darum stehen.
 #
-# Zweck: verhindert, dass ein veralteter oder kaputter install.mjs auf main landet
-# und von dort auf docs.mwolff.org deployt wird. production entsteht ausschließlich
-# per PR aus main (siehe RELEASING.md) und wird darum nicht eigens geprüft.
-# Lokal laufen dieselben Kommandos als buildChecks (Gate in /local-check und
-# /push-main); diese Doppelung bleibt gewollt — lokal fängt vor dem Push, CI bleibt
-# Sicherheitsnetz für PRs und Fremd-Pushes (#137).
+# Gefahren wird `node kit/checks.mjs run --stufe push` gegen den Anker
+# `git merge-base HEAD origin/main` — die Quelle unter kit/, weil die installierte
+# Kopie unter .claude/kit/ im Kit-Repository nicht versioniert ist. Die Stufe push
+# enthält die ganze Testsuite (in Gruppen) und den Blob-Check
+# `node tools/sync-blobs.mjs --check`; eigene Schritte dafür entfallen.
+# Der Anker braucht die volle Historie (fetch-depth: 0) und origin/main: Mit der
+# Vorgabe fetch-depth: 1 gäbe es kein origin/main, der Anker wäre leer und
+# checks.mjs bräche ab.
+#
+# Pull Requests auf main und production laufen ebenfalls, damit ein Merge nur mit
+# grünen Pflichtprüfungen möglich ist. Ein Push auf production löst nichts aus:
+# production nimmt nur Merges über Pull Requests an.
+#
+# Der Auslöser „Push auf main" bleibt bis zum Einrichtungspaket stehen (Issue #1414),
+# sonst fehlte zwischendurch das heutige Sicherheitsnetz. SonarQube läuft unverändert
+# nach dem Push auf main (sonarqube.yml) und ist keine Pflichtprüfung.
 
 on:
   push:
-    branches: [main]
+    branches: [main, kit-pruefung]
   pull_request:
-    branches: [main]
+    branches: [main, production]
 
 jobs:
   check:
@@ -30,6 +35,8 @@ jobs:
     steps:
       - name: Repository auschecken
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Node einrichten
         uses: actions/setup-node@v5
@@ -41,8 +48,8 @@ jobs:
       - name: Abhängigkeiten installieren
         run: npm ci
 
-      - name: Testsuite ausführen
-        run: node --test
+      - name: origin/main holen
+        run: git fetch origin main
 
-      - name: Blobs gegen kit/ prüfen
-        run: node tools/sync-blobs.mjs --check
+      - name: Prüfungen der Stufe push
+        run: node kit/checks.mjs run --stufe push --since "$(git merge-base HEAD origin/main)"
