@@ -286,7 +286,7 @@ export const { leseStromereignis, werkzeugZeitBeobachter, UEBERNAHME_MARKE, prue
   runSession, lesePruefung, gueteAuswerten, fehlermerkmal, salvagePrompt, laufModell, KETTE_BUDGET_DEFAULTS,
   ladeKetteBudget, KETTE_UEBERGAENGE_DEFAULTS, ladeKetteUebergaenge, ketteBudgetDefaults, PRUEFLAUF_BUDGET_DEFAULTS,
   ladePruefLaufBudget, pruefLaufBudgetDefaults, varianteVon, trackerProbeId, vorflugPrompt, parseVorflugBefund,
-  normalisiereVorflug, neueKommentare } = await import("./night/session.mjs");
+  normalisiereVorflug, neueKommentare, kennzeichenName } = await import("./night/session.mjs");
 const { STUFEN_ORDNUNG, paketstufenChecks, VORFLUG_MODEL,
   reviewerVorflug } = await import("./night/session.mjs");
 export const { PLAN_REVIEW_ZEILE, planReviewWert, hatPlanReviewMarker, FACHPLAN_REVIEW_ZEILE, fachplanReviewWert,
@@ -903,7 +903,8 @@ export function vorbereiten(args) {
   const labelFilter = args.label === "none" ? null : args.label;
   const ctx = {
     labelFilter,
-    hasLabel: (issue) => labelFilter === null || (issue.labels || []).includes(labelFilter),
+    // Unter jedem Namen des Labels (Issue #1425); ein Name ausserhalb des Registers fuer sich.
+    hasLabel: (issue) => labelFilter === null || kennzeichenName(issue.labels, labelFilter) !== null,
     labelWarnungGezeigt: false,
   };
 

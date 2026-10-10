@@ -40,7 +40,7 @@ import { befundeZurueckUndVorschlagen, kitStandInBaum, worktreeAnlegen, worktree
 import { leseKarte } from "./abhaengigkeiten.mjs";
 import { LOKALER_KOMMENTARKOPF, PRUEFLAUF_BUDGET_DEFAULTS, SESSION_ABHAENGIGKEITEN, kostenAddieren,
   ladePruefLaufBudget, leseErgebnisText, leseKennzahlen, neueKommentare, pruefLaufBudgetDefaults,
-  runSession } from "./session.mjs";
+  runSession, kennzeichenName, kennzeichenNamen } from "./session.mjs";
 import { hatFachplanReviewMarker } from "./bericht.mjs";
 import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, hatKlaerenLabel, wartendeSession } from "./wartend.mjs";
 import { KETTE_ZUSATZ, REVIEW_FERTIG_LABEL, beanspruchtGrund, belegteWurzeln, budgetDefaultsZeile,
@@ -154,8 +154,8 @@ const PRUEFLAUF_NICHT_FACHLICH = "der Prueflauf gilt allein fachlichen Anforderu
  * auch nicht nach einer Antwort), zuletzt `kit:klaeren` — wer die wartende Frage
  * beantwortet, kommt weiter.
  */
-export function pruefLaufAusschluss(issue, label) {
-  if (!(issue?.labels || []).includes(label)) return `traegt das Kennzeichen ${label} nicht`;
+export function pruefLaufAusschluss(issue, label, sache = "pruefen") {
+  if (!kennzeichenName(issue?.labels, label, sache)) return `traegt das Kennzeichen ${label} nicht`;
   const titel = issue?.title ?? "";
   if (!isFachlich(titel)) {
     const art = isPlan(titel) ? "traegt [Plan]" : "traegt kein [Fachlich]";
@@ -183,14 +183,15 @@ export function pruefLaufAusschluss(issue, label) {
  * `belegt(F)` liefert ihren lebenden Halter `{ karte, laufId }` oder `null`. Auch sie
  * verbraucht keinen Platz.
  */
-export function waehlePruefLaufKandidaten(issues, label, max, { belegt = () => null } = {}) {
-  const alle = (issues || []).filter((i) => (i?.labels || []).includes(label));
+export function waehlePruefLaufKandidaten(issues, label, max, { belegt = () => null, sache = "pruefen" } = {}) {
+  // Der gesetzte Wert und beide Vorgabenamen (Issue #1425, Plan #1420 E7).
+  const alle = (issues || []).filter((i) => kennzeichenName(i?.labels, label, sache));
   const kandidaten = [];
   const uebersprungen = [];
   const liegengeblieben = [];
   const deckel = Number.isFinite(max) ? max : Infinity;
   for (const issue of alle) {
-    const ausschluss = pruefLaufAusschluss(issue, label);
+    const ausschluss = pruefLaufAusschluss(issue, label, sache);
     const halter = ausschluss === null ? belegt(String(issue.id)) : null;
     const grund = halter ? beanspruchtGrund(halter.laufId) : ausschluss;
     if (grund !== null) uebersprungen.push({ id: String(issue.id), title: issue.title ?? "", grund });
@@ -433,14 +434,18 @@ async function pruefeEineKarte(lauf, issue, nummer) {
   log(`Pruefung ${nummer}/${lauf.gesamt}: Issue #${id} — ${titel} (Fassung ${fassung})`);
   // Das Kennzeichen ist mit dem Start verbraucht (E2): Ein Abbruch fuehrt zu einem Vermerk
   // mit Grund und einer neuen Geste, nicht zur stillen Wiederholung.
-  abh.board("issue", "label", "remove", id, lauf.budget.label);
-  log(`  Label '${lauf.budget.label}' entfernt — jedes Setzen autorisiert genau eine Pruefung.`);
+  // Abgenommen wird der Name, den die Karte traegt, jeder, wenn sie mehrere traegt (Issue #1425).
+  const kennzeichen = kennzeichenNamen(vorher?.labels, lauf.budget.label, "pruefen");
+  for (const label of kennzeichen.length > 0 ? kennzeichen : [lauf.budget.label]) {
+    abh.board("issue", "label", "remove", id, label);
+    log(`  Label '${label}' entfernt — jedes Setzen autorisiert genau eine Pruefung.`);
+  }
   // Und `review:fertig` gleich mit (E16): Nur so beantwortet der Nachher-Stand die Frage nach
   // DIESER Session und nicht die nach einem Vorlauf. `kit:klaeren` nimmt der Lauf nie ab —
   // das darf allein ein Mensch.
-  if (hatReviewFertigLabel(vorher)) {
-    abh.board("issue", "label", "remove", id, REVIEW_FERTIG_LABEL);
-    log(`  Label '${REVIEW_FERTIG_LABEL}' aus einem Vorlauf entfernt — nur diese Session darf es neu setzen.`);
+  for (const label of kennzeichenNamen(vorher?.labels, REVIEW_FERTIG_LABEL, "reviewFertig")) {
+    abh.board("issue", "label", "remove", id, label);
+    log(`  Label '${label}' aus einem Vorlauf entfernt — nur diese Session darf es neu setzen.`);
   }
 
   // Die Session hat ihr eigenes Protokoll (Issue #1090, E16): Laeuft daneben eine Kette,
@@ -625,7 +630,7 @@ async function pruefLaufFahren(args) {
   for (const p of worktreesAufraeumen(repoRoot, PRUEFLAUF_PRAEFIX)) log(`Liegengebliebenen Worktree entfernt: ${p}`);
 
   const alle = abh.board("issue", "list");
-  const gewaehlt = waehlePruefLaufKandidaten(alle, budget.label, args.max, { belegt: belegteWurzeln(alle, budget.label) });
+  const gewaehlt = waehlePruefLaufKandidaten(alle, budget.label, args.max, { belegt: belegteWurzeln(alle, budget.label, "pruefen") });
   // Direkt nach der Auswahl beanspruchen wie die Kette (Plan #1113, E8): Erst damit sieht
   // eine Kette oder ein zweiter Prueflauf, dass dieser Lauf die Wurzel haelt. Wer die
   // Bestaetigung verliert, weicht wie eine belegte Wurzel.

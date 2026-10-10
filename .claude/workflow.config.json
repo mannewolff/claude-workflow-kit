@@ -254,7 +254,7 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/night-tag-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/night-tag-*.test.mjs\" \"test/night-englische-labels.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-dokumente",

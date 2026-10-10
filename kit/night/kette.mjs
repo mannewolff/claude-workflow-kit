@@ -43,7 +43,8 @@ import { ENTSCHEIDUNGEN_NAME, OFFENE_FRAGEN_NAME, OFFENE_FRAGEN_UEBERSCHRIFT, PO
   abschnittLesen, leseKarte, wartetAufPush } from "./abhaengigkeiten.mjs";
 import { flatten, kennzahlenAddieren, ketteBudgetDefaults, kostenAddieren, KETTE_BUDGET_DEFAULTS, ladeKetteBudget,
   ladeKetteUebergaenge, ladePruefLaufBudget, leseErgebnisText, leseKennzahlen, neueKommentare, runSession,
-  KETTE_ZIELE, PLANREVIEW_LABELS, pruefreihenVon, SESSION_ABHAENGIGKEITEN, varianteVon, zielVon, ZIEL_LABEL_PRAEFIX } from "./session.mjs";
+  KETTE_ZIELE, PLANREVIEW_LABELS, pruefreihenVon, SESSION_ABHAENGIGKEITEN, varianteVon, zielVon, ZIEL_LABEL_PRAEFIX,
+  istZielLabel, kennzeichenName, kennzeichenNamen } from "./session.mjs";
 import { berichtFuerKette, berichtSchreiben, hatPlanReviewMarker, kommentareVon, planReviewWert,
   pruefBericht, vorbereitungsBericht, wartendeMenschenschritte } from "./bericht.mjs";
 import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, geschuetztAmBoardVermerken, hatKlaerenLabel, laufeRunde,
@@ -607,7 +608,7 @@ export function planAusschluss(issue, kettenLabel, karten) {
 export function zielAusschluss(karte, art, plan) {
   const labels = karte?.labels || [];
   const schritt = "die Karte behaelt ihre Labels";
-  const ziele = labels.filter((l) => String(l).startsWith(ZIEL_LABEL_PRAEFIX));
+  const ziele = labels.filter(istZielLabel);
   if (ziele.length > 1) {
     return `${ZIEL_UNPASSEND_PRAEFIX}mehr als ein Ziel (${ziele.join(", ")}) — alle bis auf eines abnehmen; ${schritt}`;
   }
@@ -615,8 +616,9 @@ export function zielAusschluss(karte, art, plan) {
   if (pruefer.length > 1) {
     return `${ZIEL_UNPASSEND_PRAEFIX}${pruefer.join(" und ")} zugleich — eines abnehmen; ${schritt}`;
   }
-  if (art === "plan" && labels.includes(`${ZIEL_LABEL_PRAEFIX}plan`)) {
-    return `${ZIEL_UNPASSEND_PRAEFIX}${ZIEL_LABEL_PRAEFIX}plan an einem Plandokument — der Plan steht schon; ein weiter reichendes Ziel setzen oder das Label abnehmen; ${schritt}`;
+  const zielPlan = kennzeichenName(labels, `${ZIEL_LABEL_PRAEFIX}plan`, "zielPlan");
+  if (art === "plan" && zielPlan) {
+    return `${ZIEL_UNPASSEND_PRAEFIX}${zielPlan} an einem Plandokument — der Plan steht schon; ein weiter reichendes Ziel setzen oder das Label abnehmen; ${schritt}`;
   }
   if (art === "plan" && pruefer.length === 1) {
     return `${ZIEL_UNPASSEND_PRAEFIX}${pruefer[0]} an einem Plandokument — die Prueferzahl gilt nur an der fachlichen Anforderung; das Label abnehmen; ${schritt}`;
@@ -711,8 +713,9 @@ function ausschlussGrund(issue, art, label, issues) {
  * liefert den lebenden Halter `{ karte, laufId }` oder `null`, wie `wurzelBelegt`. Auch sie
  * verbraucht keinen Platz.
  */
-export function waehleKettenKandidaten(issues, label, max, { belegt = () => null } = {}) {
-  const alle = (issues || []).filter((i) => (i?.labels || []).includes(label));
+export function waehleKettenKandidaten(issues, label, max, { belegt = () => null, sache = "night" } = {}) {
+  // Der gesetzte Wert und beide Vorgabenamen (Issue #1425, Plan #1420 E7).
+  const alle = (issues || []).filter((i) => kennzeichenName(i?.labels, label, sache));
   const gruende = new Map();
   const auftraege = [];
 
@@ -2475,13 +2478,17 @@ function ketteBeginnen(kette, auftrag, nummer, args) {
     : `Kette ${nummer}/${args.max}: Issue #${kette.F} — ${karte.title}`);
   // Das Kennzeichen ist mit dem Start verbraucht (A2): Ein Abbruch fuehrt zu einem
   // Bericht mit Grund und einer neuen Geste, nicht zur stillen Wiederholung.
-  abh.board("issue", "label", "remove", String(karte.id), kette.budget.label);
-  log(`  Label '${kette.budget.label}' entfernt — jedes Setzen autorisiert genau eine Kette.`);
+  // Abgenommen wird der Name, den die Karte traegt, jeder, wenn sie mehrere traegt (Issue #1425).
+  const kennzeichen = kennzeichenNamen(karte.labels, kette.budget.label, "night");
+  for (const label of kennzeichen.length > 0 ? kennzeichen : [kette.budget.label]) {
+    abh.board("issue", "label", "remove", String(karte.id), label);
+    log(`  Label '${label}' entfernt — jedes Setzen autorisiert genau eine Kette.`);
+  }
   // Ziel und Prueferzahl gelten ebenso fuer genau diesen Lauf (E1): Sie stehen danach nur
   // noch in der Kette, eine stehengebliebene Angabe wirkte sonst still in der naechsten.
   kette.ziel = zielVon(karte, kette.budget);
   kette.planReviewer = pruefreihenVon(karte);
-  const verbraucht = (karte.labels || []).filter((l) => String(l).startsWith(ZIEL_LABEL_PRAEFIX) || PLANREVIEW_LABELS.includes(l));
+  const verbraucht = (karte.labels || []).filter((l) => istZielLabel(l) || PLANREVIEW_LABELS.includes(l));
   for (const label of verbraucht) abh.board("issue", "label", "remove", String(karte.id), label);
   if (verbraucht.length > 0) {
     const namen = verbraucht.map((l) => "'" + l + "'").join(", ");
@@ -2531,7 +2538,7 @@ function karteBeimStart(auftrag) {
     log(`  #${alt.id} nicht frisch lesbar (${e.message}) — die Kette faehrt mit dem Stand vom Laufbeginn.`);
     return { karte: alt };
   }
-  if (!(karte?.labels || []).includes(KETTE_BUDGET.label)) return { grund: KENNZEICHEN_ZURUECK_GRUND };
+  if (!kennzeichenName(karte?.labels, KETTE_BUDGET.label, "night")) return { grund: KENNZEICHEN_ZURUECK_GRUND };
   const grund = zielAusschluss(karte, auftrag.art, plan);
   return grund ? { grund } : { karte: { ...alt, ...karte } };
 }
@@ -2694,7 +2701,7 @@ const laeuftLabel = () => ZUSTAND.config?.night?.stand?.labels?.laeuft?.trim() |
  */
 function laufstandDerKarte(karte) {
   const texte = kommentareVon(karte).filter((k) => k.startsWith("## Laufstand"));
-  const zustand = (karte?.labels || []).includes(laeuftLabel()) ? "laeuft" : null;
+  const zustand = kennzeichenName(karte?.labels, laeuftLabel(), "laufLaeuft") ? "laeuft" : null;
   return { texte, stand: texte.length > 0 ? { zustand, text: texte.at(-1) } : null };
 }
 
@@ -2778,16 +2785,16 @@ export function beanspruchen(auftraege, {
  * die Plaene zu ihr. Rueckgabe ist `belegt(F)` fuer `waehleKettenKandidaten` und
  * `waehlePruefLaufKandidaten`.
  */
-export function belegteWurzeln(alle, label) {
+export function belegteWurzeln(alle, label, sache) {
   const wurzeln = new Set();
-  for (const i of alle.filter((k) => (k?.labels || []).includes(label))) {
+  for (const i of alle.filter((k) => kennzeichenName(k?.labels, label, sache))) {
     wurzeln.add(String(i.id));
     const quelle = isPlan(i?.title ?? "") ? fachlicheQuelleVon(i?.body || "") : null;
     if (quelle) wurzeln.add(quelle);
   }
   const lesbar = (i) => wurzeln.has(String(i.id)) || (isPlan(i?.title ?? "") && wurzeln.has(fachlicheQuelleVon(i?.body || "")));
   const staende = new Map();
-  for (const i of alle.filter((k) => (k?.labels || []).includes(laeuftLabel()) && lesbar(k))) {
+  for (const i of alle.filter((k) => kennzeichenName(k?.labels, laeuftLabel(), "laufLaeuft") && lesbar(k))) {
     const karte = leseKarte(i.id);
     const stand = karte ? laufstandDerKarte(karte).stand : null;
     if (stand) staende.set(String(i.id), stand);
@@ -2861,7 +2868,7 @@ async function ketteFahren(args) {
   }
   const alle = abh.board("issue", "list");
   warneVorAltenLabels(alle);
-  const auswahl = waehleKettenKandidaten(alle, budget.label, args.max, { belegt: belegteWurzeln(alle, budget.label) });
+  const auswahl = waehleKettenKandidaten(alle, budget.label, args.max, { belegt: belegteWurzeln(alle, budget.label, "night") });
   const { liegengeblieben } = auswahl;
   uebersprungeneVerbuchen(auswahl.uebersprungen, alle, budget.label, args.dryRun);
   for (const l of liegengeblieben) {
@@ -2877,7 +2884,7 @@ async function ketteFahren(args) {
   // Vorflug, Nicht-gestartet-Kommentar und Tracker-Probe arbeiten mit Karten, nicht mit
   // Auftraegen (Issue #895): Ihr Verhalten haengt an keiner der beiden Auftragsarten.
   const kandidaten = auftraege.map((a) => a.karte);
-  if (kandidaten.length === 0 && uebersprungen.length === 0 && !alle.some((i) => (i.labels || []).includes(budget.label))) {
+  if (kandidaten.length === 0 && uebersprungen.length === 0 && !alle.some((i) => kennzeichenName(i.labels, budget.label, "night"))) {
     const vorhanden = [...new Set(alle.flatMap((i) => i.labels || []))];
     log(`WARNUNG: keine Karte traegt das Label '${budget.label}' — es wird nichts verarbeitet.`);
     log(`  Vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);

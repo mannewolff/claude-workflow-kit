@@ -50,7 +50,9 @@ test("A3: ziel:push-vorbereitet reicht weiter als kit:durchziehen", () => {
 
 test("A3: das Durchziehen-Label kommt aus dem Budget, ohne Budget zaehlt nur das Ziel-Label", () => {
   assert.equal(zielVon(karte("kit:weiterziehen"), { varianteBLabel: "kit:weiterziehen" }), "umsetzung");
-  assert.equal(zielVon(karte("kit:durchziehen"), { varianteBLabel: "kit:weiterziehen" }), null);
+  // Neben dem gesetzten Wert gelten beide Vorgabenamen (Issue #1425, Plan #1420 E7).
+  assert.equal(zielVon(karte("kit:durchziehen"), { varianteBLabel: "kit:weiterziehen" }), "umsetzung");
+  assert.equal(zielVon(karte("kit:sonstwas"), { varianteBLabel: "kit:weiterziehen" }), null);
   assert.equal(zielVon(karte("kit:durchziehen"), undefined), null);
   assert.equal(zielVon(karte("ziel:pakete"), undefined), "pakete");
 });

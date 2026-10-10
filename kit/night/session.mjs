@@ -27,7 +27,7 @@ import { existsSync, readFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { ZUSTAND, NACHBAR_CHECKS, CHECKS_PATH, DEFAULT_MODEL, log,
+import { ZUSTAND, NACHBAR_CHECKS, NACHBAR_DIR, CHECKS_PATH, DEFAULT_MODEL, log,
   schrittZweiterVersuch, schrittProtokollieren, fail, schreibeErgebnisstand, ladeConfigMitOverrides,
   salvageSauberkeitsKommando } from "./grundlagen.mjs";
 import { pulsSchreiben, zweiterVersuch, sitzungsStartGescheitert, exitText } from "./laufstand.mjs";
@@ -2378,6 +2378,31 @@ export function laufModell(args, config) {
   return { modell: wert, herkunft: "night.modell", fehler: null };
 }
 
+// --- Kit-Labels unter beiden Namen (Issue #1425, Plan #1420 E3, E7) ---
+
+// Das Register der Namenspaare liegt im Board-Teil. Fehlt es neben night.mjs, gilt nur der
+// Name, den der Aufrufer nennt — wie vor dem Register.
+const { erkenneLabel } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "namen.mjs")).href)
+  .catch(() => ({ erkenneLabel: () => null }));
+
+/**
+ * Der Name, unter dem die Karte ein Kennzeichen traegt — `null`, wenn sie es nicht traegt.
+ *
+ * Erkannt werden `name` selbst, meist der Wert aus der Config, und jeder Name der Sache
+ * `sache` im Register (E7): Ein gesetzter Wert gilt unveraendert, die beiden Vorgabenamen
+ * gelten daneben. Ohne `sache` gilt die Sache von `name`; ein Name ausserhalb des Registers
+ * steht dann fuer sich allein. Wer ein Label abnimmt, nimmt diesen Namen ab — nicht den der
+ * Config, den die Karte vielleicht gar nicht traegt.
+ */
+export function kennzeichenName(labels, name, sache = erkenneLabel(name)) {
+  return kennzeichenNamen(labels, name, sache)[0] ?? null;
+}
+
+/** Alle Namen, unter denen die Karte das Kennzeichen traegt — zum Abnehmen, wenn sie beide traegt. */
+export function kennzeichenNamen(labels, name, sache = erkenneLabel(name)) {
+  return (labels || []).filter((l) => l === name || (sache !== null && erkenneLabel(l) === sache));
+}
+
 // --- Budgets der Nacht-Kette (Plan #638, A6; night.kette) ---
 
 // Startwerte aus Fachplan #635, Kriterium 6. Alle Zeiten in Minuten, Kosten in US-Dollar.
@@ -2538,18 +2563,29 @@ export function varianteVon(issue, budget) {
 
 // Die Ziele in der festen Reihenfolge der Stufen, je mit der Stufe, nach der die Kette
 // endet (A2). Die Labels sind bewusst nicht konfigurierbar (A1): kanban-kit liest sie fest.
+// `sache` ist der Eintrag im Register kit/board/namen.mjs: Erkannt wird jedes Ziel unter
+// beiden Namen, `ziel:plan` wie `goal:plan` (Issue #1425).
 export const KETTE_ZIELE = Object.freeze([
-  Object.freeze({ ziel: "plan", endstufe: "review" }),
-  Object.freeze({ ziel: "pakete", endstufe: "abdeckung" }),
-  Object.freeze({ ziel: "umsetzung", endstufe: "umsetzung" }),
-  Object.freeze({ ziel: "push-vorbereitet", endstufe: "vorbereitung" }),
+  Object.freeze({ ziel: "plan", endstufe: "review", sache: "zielPlan" }),
+  Object.freeze({ ziel: "pakete", endstufe: "abdeckung", sache: "zielPakete" }),
+  Object.freeze({ ziel: "umsetzung", endstufe: "umsetzung", sache: "zielUmsetzung" }),
+  Object.freeze({ ziel: "push-vorbereitet", endstufe: "vorbereitung", sache: "zielPushVorbereitet" }),
 ]);
 export const ZIEL_LABEL_PRAEFIX = "ziel:";
+// Die Praefixe beider Sprachen; auch ein unbekanntes `goal:*` zaehlt als Ziel-Label.
+const ZIEL_LABEL_PRAEFIXE = Object.freeze([ZIEL_LABEL_PRAEFIX, "goal:"]);
+
+/** Ob ein Label ein Ziel-Label ist, `ziel:*` oder `goal:*`, bekannt oder nicht. */
+export function istZielLabel(label) {
+  return ZIEL_LABEL_PRAEFIXE.some((p) => String(label).startsWith(p));
+}
 export const PLANREVIEW_LABELS = Object.freeze(["planreview:1", "planreview:2"]);
 
 /**
  * Das wirksame Ziel einer Karte (A3): das weiter reichende aus Ziel-Label und dem Label
- * aus `budget.varianteBLabel`, das als `umsetzung` zaehlt. Ohne beides `null` — dann
+ * aus `budget.varianteBLabel`, das als `umsetzung` zaehlt. Beide zaehlen unter jedem ihrer
+ * Namen, das Durchziehen-Label auch unter beiden Vorgabenamen neben einem gesetzten Wert
+ * (Issue #1425, Plan #1420 E7). Ohne beides `null` — dann
  * bleibt es beim heutigen Verhalten. Rein wie `varianteVon`: Ein unbekanntes `ziel:*`
  * zaehlt nicht, mehrere Ziel-Labels lehnt erst `zielAusschluss` ab, hier gilt das
  * weiteste.
@@ -2558,10 +2594,10 @@ export function zielVon(karte, budget) {
   const labels = karte?.labels || [];
   const durchziehen = budget?.varianteBLabel;
   let rang = -1;
-  KETTE_ZIELE.forEach(({ ziel }, i) => {
-    if (labels.includes(`${ZIEL_LABEL_PRAEFIX}${ziel}`)) rang = Math.max(rang, i);
+  KETTE_ZIELE.forEach(({ ziel, sache }, i) => {
+    if (kennzeichenName(labels, `${ZIEL_LABEL_PRAEFIX}${ziel}`, sache)) rang = Math.max(rang, i);
   });
-  if (durchziehen && labels.includes(durchziehen)) {
+  if (durchziehen && kennzeichenName(labels, durchziehen, "durchziehen")) {
     rang = Math.max(rang, KETTE_ZIELE.findIndex((z) => z.ziel === "umsetzung"));
   }
   return rang < 0 ? null : KETTE_ZIELE[rang].ziel;
