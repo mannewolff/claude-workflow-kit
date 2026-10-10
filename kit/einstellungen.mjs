@@ -1377,6 +1377,17 @@ function schemaFuer(pfad) {
 
 const gehoertZu = (befundPfad, pfad) => befundPfad === pfad || befundPfad.startsWith(`${pfad}.`) || befundPfad.startsWith(`${pfad}[`);
 
+/**
+ * Die Projektsprache, nur zur Anzeige (Plan #1420 E2, E12): `language`, sonst der deutsche
+ * Altname `sprache`, sonst `de`. Liest die Config selbst statt über kit/board/namen.mjs, weil
+ * diese Datei allein verteilt wird. Umgestellt wird über den Installer, nicht hier.
+ */
+export function spracheAus(team) {
+  const gesetzt = istObjekt(team) ? team.language ?? team.sprache : undefined;
+  const wert = gesetzt === "en" ? "en" : "de";
+  return { wert, anzeige: wert === "en" ? "English" : "Deutsch", umstellung: `node install.mjs --language ${wert === "en" ? "de" : "en"}` };
+}
+
 /** Der Zustand eines Projekts, wie die Oberfläche ihn zeigt. */
 export function projektZustand(projekt, { home, eigenerStand }) {
   const kitStand = kitStandVon(projekt.pfad, home);
@@ -1393,6 +1404,7 @@ export function projektZustand(projekt, { home, eigenerStand }) {
     themen: {},
   };
   if (!lesbar) return zustand;
+  zustand.grundlagen = { sprache: spracheAus(d.team) };
   const befunde = pruefe(d.team, d.lokal);
   const instanzen = new Map();
   for (const [pfad, werte] of Object.entries(ebenen(d.team, d.lokal))) {
@@ -2142,6 +2154,15 @@ function zeichne() {
     buehne.append(el("div", "melder melder-warn", "Dieses Projekt nutzt einen älteren Kit-Stand (" + zustand.kitStand + "). Einstellungen, die erst mit einer neueren Fassung kamen, wertet es noch nicht aus."));
   }
   for (const teil of zustand.themen[thema] || []) buehne.append(platte(teil));
+  if (zustand.grundlagen) {
+    const sprache = zustand.grundlagen.sprache;
+    const grundlagen = el("section", "platte");
+    const kopf = el("div", "platte-kopf");
+    kopf.append(el("h3", "platte-pfad", "Grundlagen"), el("span", "etikett", "nur lesend"));
+    grundlagen.append(kopf);
+    grundlagen.append(el("p", "erklaerung", "Sprache: " + sprache.anzeige + " — umstellen mit " + sprache.umstellung));
+    buehne.append(grundlagen);
+  }
 }
 
 `,
