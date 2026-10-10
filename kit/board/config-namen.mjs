@@ -309,3 +309,63 @@ export function benenneUm(config, sprache) {
   const ergebnis = bilde(config, "", "", { ziel: sprache, vorrang: spracheDer(config), hinweise: [], umbenannt });
   return { config: ergebnis, umbenannt };
 }
+
+// Je Einstellung der Vorlage der Name, unter dem sie dort gilt — bei einer Doppelung der Name
+// der Sprache `sprache`, wie in normalisiereConfig.
+function namenDerVorlage(vorlage, kinder, sprache) {
+  const namen = new Map();
+  for (const name of Object.keys(vorlage)) {
+    const paar = kinder.get(name);
+    if (paar && (!namen.has(paar.de) || paar[sprache] === name)) namen.set(paar.de, name);
+  }
+  return namen;
+}
+
+function wieVorlage(wert, vorlage, pfad, sprache) {
+  if (Array.isArray(wert)) {
+    return wert.map((e, i) => wieVorlage(e, Array.isArray(vorlage) ? vorlage[i] : undefined, `${pfad}[]`, sprache));
+  }
+  if (typeof wert === "string") return wertWieVorlage(wert, vorlage, pfad, sprache);
+  if (!istObjekt(wert)) return wert;
+  const kinder = KINDER.get(pfad);
+  if (!kinder) return structuredClone(wert);
+  return objektWieVorlage(wert, istObjekt(vorlage) ? vorlage : {}, pfad, kinder, sprache);
+}
+
+function wertWieVorlage(wert, vorlage, pfad, sprache) {
+  const paar = AUFZAEHLUNG.get(pfad)?.get(wert);
+  if (!paar) return wert;
+  return typeof vorlage === "string" && AUFZAEHLUNG.get(pfad).get(vorlage) === paar ? vorlage : paar[sprache];
+}
+
+function objektWieVorlage(wert, vorlage, pfad, kinder, sprache) {
+  const vorhanden = namenDerVorlage(vorlage, kinder, sprache);
+  const ergebnis = {};
+  for (const [name, inhalt] of Object.entries(wert)) {
+    const paar = kinder.get(name);
+    if (!paar) {
+      ergebnis[name] = structuredClone(inhalt);
+      continue;
+    }
+    const ziel = vorhanden.get(paar.de) ?? paar[sprache];
+    ergebnis[ziel] = wieVorlage(inhalt, vorlage[ziel], pfadUnter(pfad, paar.de), sprache);
+  }
+  // Der unterlegene Name einer Doppelung bleibt in der Datei stehen, solange die Einstellung
+  // bleibt: Ihn zu streichen, waere eine Aenderung, die niemand verlangt hat.
+  for (const [name, inhalt] of Object.entries(vorlage)) {
+    const paar = kinder.get(name);
+    if (paar && !(name in ergebnis) && vorhanden.get(paar.de) in ergebnis) ergebnis[name] = structuredClone(inhalt);
+  }
+  return ergebnis;
+}
+
+/**
+ * Bringt eine Config mit deutschen Namen in die Schreibweise der Datei `vorlage` zurueck
+ * (Issue #1441): Eine Einstellung oder ein Aufzaehlungswert, der dort schon steht, behaelt
+ * seinen Namen, auch einen, den der Mensch in der anderen Sprache geschrieben hat; was neu
+ * dazukommt, bekommt den Namen der Sprache `sprache`. Frei gewaehlte Namen bleiben.
+ */
+export function benenneWieVorlage(config, vorlage, sprache) {
+  if (sprache !== "de" && sprache !== "en") throw new Error(`config-namen: unbekannte Sprache "${sprache}"`);
+  return wieVorlage(config, vorlage, "", sprache);
+}

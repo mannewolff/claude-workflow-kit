@@ -77,6 +77,8 @@ export function kitFixture({ mitKitQuelle = true, ohneOrigin = false, config = {
     }
     mkdirSync(join(dir, "tools"), { recursive: true });
     cpSync(join(repoRoot, "tools", "sync-blobs.mjs"), join(dir, "tools", "sync-blobs.mjs"));
+    // Seit Issue #1441 bettet sync-blobs auch die englische Referenz in die Einstellungsoberflaeche ein.
+    cpSync(join(repoRoot, "tools", "config-referenz.en.json"), join(dir, "tools", "config-referenz.en.json"));
     mkdirSync(join(dir, ".githooks"), { recursive: true });
     writeFileSync(join(dir, ".githooks", "gate.mjs"), gateMitSpur());
     writeFileSync(join(dir, ".githooks", "pre-commit"), readFileSync(join(repoRoot, ".githooks", "pre-commit"), "utf-8"), { mode: 0o755 });

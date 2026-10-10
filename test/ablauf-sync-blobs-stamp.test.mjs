@@ -56,10 +56,13 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
   // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
   writeFileSync(join(dir, "templates", "workflow.config.schema.json"), JSON.stringify({ properties: { codeHost: { type: "string" } } }) + "\n");
   writeFileSync(join(dir, "kit", "einstellungen.mjs"),
-    `const KIT_VERSION = "${kitVersion}";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconsole.log("einstellungen");\n`);
+    `const KIT_VERSION = "${kitVersion}";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconsole.log("einstellungen");\n`);
   // Seit Issue #1437: die Namenstabelle, die sync-blobs ebenfalls einbettet.
   mkdirSync(join(dir, "kit", "board"), { recursive: true });
   writeFileSync(join(dir, "kit", "board", "config-namen.mjs"), "export {};\n");
+  // Seit Issue #1441: die englische Referenz, die sync-blobs ebenfalls einbettet.
+  mkdirSync(join(dir, "tools"), { recursive: true });
+  writeFileSync(join(dir, "tools", "config-referenz.en.json"), "{}\n");
   for (const datei of KIT_DATEIEN) {
     writeFileSync(join(dir, "kit", datei),
       `const KIT_VERSION = "${kitVersion}";\nconsole.log("${datei}");\n`);
