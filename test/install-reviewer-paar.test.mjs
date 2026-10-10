@@ -57,7 +57,10 @@ function schreibeConfig(dir, werte) {
 
 // Scope, codeHost, issueTracker, mainBranch, productionBranch, reviewScope,
 // reviewModel, reviewCommand — alles ab Frage 4 leer, also Default uebernehmen.
-const ALLES_DEFAULT = ["projekt", "github", "j", "n", "github", "", "", "", "", ""];
+// Ein neues Projekt beantwortet zuerst die Sprachfrage (Issue #1430), "" heisst Deutsch;
+// ein Lauf auf einer Bestandsconfig wird nicht nach ihr gefragt.
+const ALLES_DEFAULT_BESTAND = ["projekt", "github", "j", "n", "github", "", "", "", "", ""];
+const ALLES_DEFAULT = ["", ...ALLES_DEFAULT_BESTAND];
 
 // --- Frischer Install: der DEFAULTS-Spread setzt den Claude-Reviewer ---
 
@@ -90,7 +93,7 @@ test("frischer Install mit Kommando-Reviewer schreibt reviewCommand und KEIN rev
   const dir = fixture("paar-frisch-kommando-");
   try {
     const res = installiere(dir,
-      ["projekt", "github", "j", "n", "github", "", "", "", "-", "codex exec --model gpt-5", ""]);
+      ["", "projekt", "github", "j", "n", "github", "", "", "", "-", "codex exec --model gpt-5", ""]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     const c = config(dir);
@@ -124,7 +127,7 @@ test("Bestandsconfig mit beiden Reviewer-Feldern laesst sich durch blosses Besta
   try {
     beideFelder(dir);
 
-    const res = installiere(dir, ALLES_DEFAULT);
+    const res = installiere(dir, ALLES_DEFAULT_BESTAND);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     const c = config(dir);
@@ -144,7 +147,7 @@ test("[installer-3] Der Widerspruchs-Hinweis steht im Installer und VOR der erst
   try {
     beideFelder(dir);
 
-    const res = installiere(dir, ALLES_DEFAULT);
+    const res = installiere(dir, ALLES_DEFAULT_BESTAND);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     assert.match(res.stdout, /reviewModel/, "der Hinweis nennt reviewModel nicht");
@@ -165,7 +168,7 @@ test("[installer-3] Der Widerspruchs-Hinweis steht im Installer und VOR der erst
 test("werden beide Felder aktiv geleert, bricht der Installer ab", () => {
   const dir = fixture("paar-keins-");
   try {
-    const res = installiere(dir, ["projekt", "github", "j", "n", "github", "", "", "", "-", "-", ""]);
+    const res = installiere(dir, ["", "projekt", "github", "j", "n", "github", "", "", "", "-", "-", ""]);
     assert.equal(res.status, 1, "ohne Reviewer laeuft /review ins Leere — das darf nicht durchgehen");
 
     const meldung = res.stdout + res.stderr;
@@ -201,7 +204,7 @@ test("Re-Install gegen einen Kommando-Reviewer laesst sich durch blosses Bestaet
     });
 
     // Alle Fragen mit Enter bestaetigen — genau der Weg, der bisher abbrach.
-    const res = installiere(dir, ALLES_DEFAULT);
+    const res = installiere(dir, ALLES_DEFAULT_BESTAND);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     const c = config(dir);

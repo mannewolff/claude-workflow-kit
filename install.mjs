@@ -516,6 +516,41 @@ async function promptScope(rl) {
   }
 }
 
+// Die Sprache eines neuen Projekts (Issue #1430, Plan #1420 E2, E22). Sie ist die erste
+// Frage und zweisprachig: Lesen muss sie gerade der Mensch ohne Deutschkenntnisse. Die
+// Antwort steht unter dem Namen ihrer Sprache in der neuen Config, ein deutsches Projekt
+// traegt `sprache`, ein englisches `language`; die Leser erkennen beide (kit/board/namen.mjs).
+const SPRACHFRAGE = "Sprache / Language [de/en] (de): ";
+const SPRACHFELD = Object.freeze({ de: "sprache", en: "language" });
+
+async function frageSprache(rl) {
+  while (true) {
+    const antwort = (await ask(rl, SPRACHFRAGE)).trim().toLowerCase();
+    const sprache = antwort === "" ? "de" : antwort;
+    if (Object.hasOwn(SPRACHFELD, sprache)) return sprache;
+    console.error("  Bitte 'de' oder 'en' eingeben. / Please enter 'de' or 'en'.");
+  }
+}
+
+// Der Kopf des Installers, die Sprachfrage vor allen Meldungen in einer Sprache (E22). Ein
+// Projekt mit Config ist kein neues Projekt — auch nicht mit unlesbarer Config —, es wird
+// nicht gefragt. Liefert die Sprache oder `null`.
+async function kopfMitSprache(rl) {
+  console.log("\n=== claude-workflow-kit Installer ===\n");
+  const sprache = existsSync(resolve(".claude", "workflow.config.json")) ? null : await frageSprache(rl);
+  console.log("Dieser Installer richtet die claude-workflow-kit-Skill-Bibliothek ein.");
+  console.log("Zehn Fragen, bei GitHub bis zu drei mehr zum Schutz des Hauptzweigs, zuletzt nach den Bereichen des Projekts (global neun, zuletzt nach dem Vault-Pfad), dann bist du fertig.\n");
+  return sprache;
+}
+
+// Das Sprachfeld fuer die zu schreibende Config. Nur eine neu angelegte Config bekommt es;
+// eine bestehende bleibt ohne Feld deutsch (E2) — das trifft auch den globalen Install auf
+// eine schon vorhandene Config. Zu lesen, bevor die Config geschrieben ist.
+function sprachfeldNeu(sprache, configPfad) {
+  if (!sprache || existsSync(configPfad)) return {};
+  return { [SPRACHFELD[sprache]]: sprache };
+}
+
 // Fragen 7 und 8 (das Reviewer-Paar) als eigene Schleife, wie promptScope: Sie werden
 // gemeinsam wiederholt, weil die Regel "genau eines von beiden" erst mit beiden Antworten
 // pruefbar ist (Issue #433).
@@ -1155,9 +1190,7 @@ async function main() {
     return;
   }
 
-  console.log("\n=== claude-workflow-kit Installer ===\n");
-  console.log("Dieser Installer richtet die claude-workflow-kit-Skill-Bibliothek ein.");
-  console.log("Zehn Fragen, bei GitHub bis zu drei mehr zum Schutz des Hauptzweigs, zuletzt nach den Bereichen des Projekts (global neun, zuletzt nach dem Vault-Pfad), dann bist du fertig.\n");
+  const sprache = await kopfMitSprache(rl);
 
   // Frage 1: global oder projekt
   const scope = await promptScope(rl);
@@ -1166,6 +1199,7 @@ async function main() {
   const existingConfigPath = scope === "global"
     ? join(homedir(), ".claude", "workflow.config.json")
     : resolve(".claude", "workflow.config.json");
+  const sprachfeld = sprachfeldNeu(sprache, existingConfigPath);
   const existingConfig = loadExistingConfig(existingConfigPath);
   const D = { ...DEFAULTS, ...existingConfig };
 
@@ -1251,6 +1285,7 @@ async function main() {
   // Das alte provider-Feld ist beim Laden auf codeHost/issueTracker migriert worden
   // und wird nicht zurueckgeschrieben.
   delete config.provider;
+  Object.assign(config, sprachfeld);
   // Das Reviewer-Paar wird als Paar geschrieben, nicht feldweise gespreadet: Genau
   // eines der beiden Felder steht in der Datei, das andere wird entfernt. Beide
   // Vorlagen fuellen sonst ein bewusst geleertes reviewModel wieder auf —

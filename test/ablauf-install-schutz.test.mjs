@@ -66,7 +66,7 @@ function config(dir) {
 
 // Projektlokal, GitHub, danach die Schutzfragen, dann der Rest mit Defaults.
 const REST = ["github", "", "", "", "", "", "", ""];
-const mitSchutz = (zweig) => ["projekt", "github", "j", "j", zweig, ...REST];
+const mitSchutz = (zweig) => ["", "projekt", "github", "j", "j", zweig, ...REST];
 
 for (const [ergebnis, schreibt] of [["scharf", true], ["anleitung", true], ["offen", false], ["nicht moeglich", false]]) {
   test(`Zustimmung mit Ergebnis '${ergebnis}' ${schreibt ? "schreibt" : "schreibt kein"} pushPruefung`, () => {
@@ -98,7 +98,7 @@ test("Abwahl des Schutzes ruft code schutz nicht auf und laesst die Config ohne 
   const dir = fixture("install-schutz-ab-");
   try {
     const fake = schutzFake(dir, "scharf");
-    const res = installiere(dir, ["projekt", "github", "j", "n", ...REST], fake.env);
+    const res = installiere(dir, ["", "projekt", "github", "j", "n", ...REST], fake.env);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.deepEqual(aufrufe(fake.log), []);
     assert.equal(config(dir).pushPruefung, undefined);
@@ -113,7 +113,7 @@ test("Nein beim Build-Dienst nennt die ungeschuetzten Zweige und stellt keine Sc
   const dir = fixture("install-schutz-ohne-ci-");
   try {
     const fake = schutzFake(dir, "scharf");
-    const res = installiere(dir, ["projekt", "github", "n", ...REST], fake.env);
+    const res = installiere(dir, ["", "projekt", "github", "n", ...REST], fake.env);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, UNGESCHUETZT);
     assert.doesNotMatch(res.stdout, SCHUTZFRAGE);
@@ -129,7 +129,7 @@ for (const [codeHost, satz] of [["gitlab", /GitLab.*Schutz.*noch nicht eingerich
     const dir = fixture(`install-schutz-${codeHost}-`);
     try {
       const fake = schutzFake(dir, "scharf");
-      const res = installiere(dir, ["projekt", codeHost, "local", "", "", "", "", "", "", ""], fake.env);
+      const res = installiere(dir, ["", "projekt", codeHost, "local", "", "", "", "", "", "", ""], fake.env);
       assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
       assert.match(res.stdout, satz);
       assert.doesNotMatch(res.stdout, BUILD_DIENST_FRAGE);
@@ -145,7 +145,7 @@ test("Globale Installation stellt keine Schutzfrage und nennt node install.mjs -
   const dir = fixture("install-schutz-global-");
   try {
     const fake = schutzFake(dir, "scharf");
-    const res = installiere(dir, ["global", "github", "github", "", "", "", "", "", ""], fake.env);
+    const res = installiere(dir, ["", "global", "github", "github", "", "", "", "", "", ""], fake.env);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.doesNotMatch(res.stdout, BUILD_DIENST_FRAGE);
     assert.doesNotMatch(res.stdout, SCHUTZFRAGE);

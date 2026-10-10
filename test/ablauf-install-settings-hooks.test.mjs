@@ -33,8 +33,11 @@ const INSTALLER = join(repoRoot, "install.mjs");
 // Kein Git-Repo im Wegwerf-Verzeichnis: Die Gate-Frage entfaellt damit und verbraucht
 // keine Antwortzeile. Acht Antworten — Scope, codeHost, issueTracker, mainBranch,
 // productionBranch, reviewScope, reviewModel, reviewCommand.
-const PROJEKT = ["projekt", "github", "j", "n", "toolbox", "", "", "", "", ""];
-const GLOBAL = ["global", "github", "toolbox", "", "", "", "", "", ""];
+// Ein neues Projekt beantwortet davor die Sprachfrage (Issue #1430), "" heisst Deutsch; ein
+// zweiter Lauf auf derselben Config wird nicht nach ihr gefragt und antwortet mit PROJEKT_BESTAND.
+const PROJEKT_BESTAND = ["projekt", "github", "j", "n", "toolbox", "", "", "", "", ""];
+const PROJEKT = ["", ...PROJEKT_BESTAND];
+const GLOBAL = ["", "global", "github", "toolbox", "", "", "", "", "", ""];
 
 function installiere(dir, antworten = PROJEKT) {
   return spawnSync(process.execPath, [INSTALLER], {
@@ -132,7 +135,7 @@ test("[installer-9] zweimal installieren ergibt dieselbe Datei wie einmal", () =
   mitFixture("install-hooks-zweimal-", { env: { A: "1" } }, (dir) => {
     assert.equal(installiere(dir).status, 0);
     const nachErstem = readFileSync(settingsPfad(dir), "utf-8");
-    const zweiter = installiere(dir);
+    const zweiter = installiere(dir, PROJEKT_BESTAND);
     assert.equal(zweiter.status, 0, `${zweiter.stderr}\n${zweiter.stdout}`);
 
     // Byteweise: Ein zweiter Eintrag faellt ueber einen Vergleich der Kommandoliste
@@ -192,7 +195,7 @@ test("[installer-995] zweiter Lauf laesst die Datei byteweise gleich, fremde Pre
   mitFixture("install-hooks-bash-zweimal-", { hooks: { PreToolUse: [fremd] } }, (dir) => {
     assert.equal(installiere(dir).status, 0);
     const nachErstem = readFileSync(settingsPfad(dir), "utf-8");
-    assert.equal(installiere(dir).status, 0);
+    assert.equal(installiere(dir, PROJEKT_BESTAND).status, 0);
     assert.equal(readFileSync(settingsPfad(dir), "utf-8"), nachErstem, "der zweite Lauf hat die Datei veraendert");
     const settings = liesSettings(dir);
     assert.deepEqual(settings.hooks.PreToolUse[0], fremd, "der fremde Hook bleibt vorn stehen");

@@ -51,7 +51,7 @@ test("fehlende Antwortzeilen gelten als leer und uebernehmen den Default", () =>
   try {
     // Nur die ersten drei Fragen werden beantwortet; danach ist die Eingabe zu Ende.
     // Jede weitere Frage muss den Default nehmen — nicht `undefined` schreiben.
-    const res = installiere(dir, ["projekt", "github", "j", "n", "github"]);
+    const res = installiere(dir, ["", "projekt", "github", "j", "n", "github"]);
 
     assert.equal(res.status, 0, `Installer schlug fehl: ${res.stderr}\n${res.stdout}`);
     const c = config(dir);
@@ -76,7 +76,7 @@ test("ohne glab im PATH warnt das Label-Setup, ohne die Installation zu kippen",
     // Keine Spec-Antwortzeile: Bei issueTracker 'gitlab' entfaellt die Frage seit
     // Issue #461 (A19). Die neunte, leere Zeile ueberspringt die Bereichsfrage
     // (Issue #1009), die zehnte ist das 'j' der Label-Frage.
-    const res = installiere(dir, ["projekt", "gitlab", "gitlab", "", "", "", "", "", "", "j"], { PATH: leer });
+    const res = installiere(dir, ["", "projekt", "gitlab", "gitlab", "", "", "", "", "", "", "j"], { PATH: leer });
 
     assert.equal(res.status, 0,
       `ein fehlendes glab darf die Installation nicht kippen: ${res.stderr}\n${res.stdout}`);
@@ -99,7 +99,7 @@ test("eine .gitignore ohne Schlusszeilenumbruch bekommt einen eingefuegt", () =>
     // Eintraege waeren damit unwirksam.
     writeFileSync(join(dir, ".gitignore"), "node_modules", "utf-8");
 
-    const res = installiere(dir, ["projekt", "github", "j", "n", "github", "", "", "", ""]);
+    const res = installiere(dir, ["", "projekt", "github", "j", "n", "github", "", "", "", ""]);
 
     assert.equal(res.status, 0, `Installer schlug fehl: ${res.stderr}\n${res.stdout}`);
     const zeilen = readFileSync(join(dir, ".gitignore"), "utf-8").split("\n");
@@ -144,7 +144,7 @@ test("bei codeHost local und issueTracker github kommt der gh-Hinweis trotzdem",
   try {
     // Das Zwei-Achsen-Modell erlaubt genau das: Code liegt lokal, die Issues bei
     // GitHub. Der Hinweis auf `gh auth login` haengt deshalb an BEIDEN Feldern.
-    const res = installiere(dir, ["projekt", "local", "github", "", "", "", ""]);
+    const res = installiere(dir, ["", "projekt", "local", "github", "", "", "", ""]);
 
     assert.equal(res.status, 0, `Installer schlug fehl: ${res.stderr}\n${res.stdout}`);
     const c = config(dir);
