@@ -187,6 +187,7 @@ function attrappe({ status = "ready", nachher = { ...VORHER, status }, sauber = 
     leseKarte: () => ({ ...nachher, status }),
     gitClean: () => sauber,
     gitReste: () => reste,
+    lesePruefung: () => ({ zustand: "ungeprueft" }),
   });
   return aufrufe;
 }
@@ -307,6 +308,25 @@ test("[night-927] ein unlesbarer Zustand der Karte ist ein Fehlschlag ohne Board
   assert.equal(ausgang, "fehlschlag");
   assert.deepEqual(aufrufe, []);
   assert.equal(rundenMerker().wartend, false, "ohne gelesenen Zustand wird nichts gewertet");
+});
+
+test("[night-1418] die Bremse aus der Zusammenfassung kommt ueber die eingesetzte Abhaengigkeit", async () => {
+  const aufrufe = attrappe();
+  const gelesen = [];
+  wartendAbhaengigkeiten({
+    lesePruefung: (id) => {
+      gelesen.push(id);
+      return {
+        zustand: "rot",
+        roh: { festgefahren: { ausgeloest: { pruefung: "npm test", fehler: "AssertionError", versuche: 3 } } },
+      };
+    },
+  });
+  const ausgang = await runde({ status: 0, stdout: resultZeileMitText("end_turn", "Ich komme nicht weiter.") });
+
+  assert.equal(ausgang, "festgefahren");
+  assert.deepEqual(gelesen, [TOP.id], "gelesen wird die Zusammenfassung der Karte der Runde");
+  assert.deepEqual(moves(aufrufe), ["backlog"]);
 });
 
 test("wartendAbhaengigkeiten weist eine unbekannte Abhaengigkeit ab", () => {

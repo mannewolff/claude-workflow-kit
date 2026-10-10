@@ -77,7 +77,7 @@ const { geschuetzteTreffer, geschuetztKommentar, geschuetztFreigabe } = await im
 
 // --- Abhaengigkeiten nach aussen (Plan #1199, E6) ---
 
-const VORGABEN = Object.freeze({ board, boardRoh, leseKarte, gitClean, gitReste });
+const VORGABEN = Object.freeze({ board, boardRoh, leseKarte, gitClean, gitReste, lesePruefung });
 const abh = { ...VORGABEN };
 
 /**
@@ -1480,7 +1480,7 @@ export async function werteRunde({ top, res: sitzung, minutes, args, salvageAtte
  * Runner nicht selbst gesehen hat. `checks.mjs` schreibt das Feld nur unbeaufsichtigt.
  */
 function bremseAusZusammenfassung(issueId) {
-  const ausgeloest = lesePruefung(issueId).roh?.festgefahren?.ausgeloest;
+  const ausgeloest = abh.lesePruefung(issueId).roh?.festgefahren?.ausgeloest;
   if (!ausgeloest || typeof ausgeloest.pruefung !== "string") return null;
   const { pruefung, fehler, versuche } = ausgeloest;
   return { pruefung, fehler: typeof fehler === "string" ? fehler : "", versuche: Number.isInteger(versuche) ? versuche : null };
