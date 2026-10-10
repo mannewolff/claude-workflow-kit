@@ -59,6 +59,12 @@ export const NACHBAR_BEFUNDE = join(NACHBAR_DIR, "befunde.mjs");
 // abgefangen: night.mjs beantwortet --version und --help auch ohne Nachbarn (Issue #170).
 const { TOOLBOX_BUDGET_NACHT_MS } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "adapter.mjs")).href).catch(() => ({}));
 
+// Der Normalisierer der Einstellungsnamen aus dem Board-Teil config-namen (Issue #1435, Plan
+// #1420 E10): Er bringt beide Config-Dateien vor dem Mischen auf die deutschen Namen. Dynamisch
+// und abgefangen wie das Budget darueber; fehlt der Teil, bleibt die Config, wie sie gelesen wurde.
+const { normalisiereConfig = (roh) => ({ config: roh, hinweise: [] }) } =
+  await import(pathToFileURL(join(NACHBAR_DIR, "board", "config-namen.mjs")).href).catch(() => ({}));
+
 // Normalerweise liegt board.mjs neben night.mjs in .claude/kit/. KIT_ROOT
 // verlegt die Suche in ein anderes Projekt und ist ein Test-Hook (Issue #189,
 // dasselbe Muster wie in kit/board.mjs und tools/sync-blobs.mjs): Nur so koennen
@@ -1197,8 +1203,18 @@ function zerlegeAllowlist(allowlist) {
   return { erlaubteFelder, erlaubteBlaetter };
 }
 
+// Beide Dateien werden vor dem Mischen normalisiert (Issue #1435): Erst dann ueberschreibt
+// ein englischer Name der persoenlichen Datei den deutschen der geteilten. Jede Doppelung
+// beider Namen in einer Datei geht als Hinweis auf stderr.
+// SYNC: dieselbe Reihenfolge in mergeWorkflowConfig, kit/board/grundlagen.mjs.
+function normalisiertMitHinweisen(roh, optionen) {
+  const { config, hinweise } = normalisiereConfig(roh, optionen);
+  for (const hinweis of hinweise) process.stderr.write(`Hinweis: ${hinweis}\n`);
+  return config;
+}
+
 export function ladeConfigMitOverrides(sharedPfad) {
-  const shared = JSON.parse(readFileSync(sharedPfad, "utf-8"));
+  const shared = normalisiertMitHinweisen(JSON.parse(readFileSync(sharedPfad, "utf-8")));
   const lokalPfad = join(dirname(sharedPfad), "workflow.config.local.json");
   if (!existsSync(lokalPfad)) return shared;
 
@@ -1211,7 +1227,7 @@ export function ladeConfigMitOverrides(sharedPfad) {
     return shared;
   }
 
-  return mischeErlaubteFelder(shared, local);
+  return mischeErlaubteFelder(shared, normalisiertMitHinweisen(local, { sprache: shared.language ?? shared.sprache }));
 }
 
 /**

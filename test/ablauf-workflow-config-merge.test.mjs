@@ -144,3 +144,112 @@ test("night.mjs: lokale night.modelle werden ignoriert und gemeldet", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// --- Englische und deutsche Namen beim Mischen (Issue #1435, Plan #1420 E9/E10) ---
+//
+// Beide Einlesestellen normalisieren die geteilte und die persoenliche Datei, bevor sie
+// mischen. Eine englisch geschriebene Datei mischt sich darum mit einer deutschen zum selben
+// Ergebnis wie zwei deutsche, und ein englischer Name in der persoenlichen Datei ueberschreibt
+// den deutschen der geteilten.
+
+const GETEILT_DE = {
+  codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
+  reviewModel: "claude-opus-5-5", reviewStufen: { plan: { rollen: ["fachlich"] } },
+};
+const GETEILT_EN = {
+  codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
+  reviewModel: "claude-opus-5-5", reviewStages: { plan: { roles: ["fachlich"] } },
+};
+const LOKAL_DE = { reviewCommand: "fremd-cli", reviewLesegrenze: 4000 };
+const LOKAL_EN = { reviewCommand: "fremd-cli", reviewReadLimit: 4000 };
+
+/** Schreibt beide Dateien in ein Wegwerf-Verzeichnis und liefert den Pfad der geteilten. */
+function configDateien(geteilt, lokal) {
+  const dir = mkdtempSync(join(tmpdir(), "config-namen-merge-"));
+  mkdirSync(join(dir, ".claude"), { recursive: true });
+  const pfad = join(dir, ".claude", "workflow.config.json");
+  writeFileSync(pfad, JSON.stringify(geteilt));
+  if (lokal) writeFileSync(join(dir, ".claude", "workflow.config.local.json"), JSON.stringify(lokal));
+  return { dir, pfad };
+}
+
+/** Fuehrt `fn` aus und liefert ihr Ergebnis samt allem, was sie auf stderr schrieb. */
+function mitStderr(fn) {
+  const original = process.stderr.write;
+  let stderr = "";
+  process.stderr.write = (teil) => { stderr += teil; return true; };
+  try {
+    return { ergebnis: fn(), stderr };
+  } finally {
+    process.stderr.write = original;
+  }
+}
+
+const LESER = [
+  ["board: ladeConfigDatei", async () => (await import("../kit/board/grundlagen.mjs")).ladeConfigDatei],
+  ["night: ladeConfigMitOverrides", async () => (await import("../kit/night/grundlagen.mjs")).ladeConfigMitOverrides],
+];
+
+for (const [name, holeLeser] of LESER) {
+  test(`${name}: englisch und deutsch gemischt ergibt dasselbe wie zwei deutsche Dateien`, async () => {
+    const lies = await holeLeser();
+    const ergebnisVon = (geteilt, lokal) => {
+      const { dir, pfad } = configDateien(geteilt, lokal);
+      try {
+        const { ergebnis, stderr } = mitStderr(() => lies(pfad));
+        assert.doesNotMatch(stderr, /ignoriert|Doppelung/, stderr);
+        return ergebnis;
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    };
+    const erwartet = ergebnisVon(GETEILT_DE, LOKAL_DE);
+    assert.equal(erwartet.reviewLesegrenze, 4000);
+    assert.equal(erwartet.reviewModel, undefined, "das lokale reviewCommand verdraengt reviewModel");
+    assert.deepEqual(ergebnisVon(GETEILT_EN, LOKAL_DE), erwartet);
+    assert.deepEqual(ergebnisVon(GETEILT_DE, LOKAL_EN), erwartet);
+    assert.deepEqual(ergebnisVon(GETEILT_EN, LOKAL_EN), erwartet);
+  });
+
+  test(`${name}: ein englischer Name lokal ueberschreibt den deutschen der geteilten Datei`, async () => {
+    const lies = await holeLeser();
+    const { dir, pfad } = configDateien({ ...GETEILT_DE, reviewCommand: "team-cli", reviewLesegrenze: 1000 },
+      { reviewReadLimit: 9000 });
+    try {
+      const { ergebnis } = mitStderr(() => lies(pfad));
+      assert.equal(ergebnis.reviewLesegrenze, 9000);
+      assert.equal(ergebnis.reviewReadLimit, undefined);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test(`${name}: die Doppelung beider Namen in einer Datei erscheint als Hinweis`, async () => {
+    const lies = await holeLeser();
+    for (const [geteilt, lokal] of [
+      [{ ...GETEILT_DE, reviewStages: { plan: { roles: ["technisch"] } } }, null],
+      [GETEILT_DE, { reviewLesegrenze: 1000, reviewReadLimit: 2000 }],
+    ]) {
+      const { dir, pfad } = configDateien(geteilt, lokal);
+      try {
+        const { stderr } = mitStderr(() => lies(pfad));
+        assert.match(stderr, /Hinweis: .*Doppelung/, `kein Hinweis auf die Doppelung: ${stderr}`);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  test(`${name}: in einem englischen Projekt gilt bei einer Doppelung lokal der englische Name`, async () => {
+    const lies = await holeLeser();
+    const { dir, pfad } = configDateien({ ...GETEILT_EN, language: "en" },
+      { reviewCommand: "fremd-cli", reviewLesegrenze: 1000, reviewReadLimit: 2000 });
+    try {
+      const { ergebnis, stderr } = mitStderr(() => lies(pfad));
+      assert.equal(ergebnis.reviewLesegrenze, 2000);
+      assert.match(stderr, /Doppelung.*reviewReadLimit.*\(en\)/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}

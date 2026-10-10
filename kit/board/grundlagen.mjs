@@ -19,6 +19,7 @@ import { readFileSync, existsSync, accessSync, constants } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { normalisiereConfig } from "./config-namen.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -258,10 +259,18 @@ function setzePersoenlichesFeld(config, feld, wert, local) {
   }
 }
 
-export function mergeWorkflowConfig(shared, local) {
+/**
+ * Beide Dateien werden vor dem Mischen auf die deutschen Namen gebracht (Issue #1435, Plan
+ * #1420 E10): Erst dann ueberschreibt ein englischer Name der persoenlichen Datei den
+ * deutschen der geteilten. `hinweise` nennt jede Doppelung beider Namen in einer Datei.
+ */
+export function mergeWorkflowConfig(sharedRoh, localRoh) {
+  const { config: shared, hinweise } = normalisiereConfig(sharedRoh);
   const config = { ...shared };
   const ignored = [];
-  if (!local) return { config, ignored };
+  if (!localRoh) return { config, ignored, hinweise };
+  const { config: local, hinweise: lokaleHinweise } = normalisiereConfig(localRoh, { sprache: shared.language ?? shared.sprache });
+  hinweise.push(...lokaleHinweise);
 
   const { erlaubteFelder, erlaubteBlaetter } = zerlegeAllowlist(LOCAL_OVERRIDE_ALLOWLIST);
 
@@ -280,7 +289,7 @@ export function mergeWorkflowConfig(shared, local) {
       ignored.push(feld);
     }
   }
-  return { config, ignored };
+  return { config, ignored, hinweise };
 }
 
 // Die persoenliche Config neben der geteilten. Fehlt sie, aendert sich nichts; ist sie
@@ -314,10 +323,11 @@ export function ladeConfigDatei(p) {
   // Rueckwaertskompatibilitaet: provider -> codeHost/issueTracker
   if (raw.provider && !raw.codeHost) raw.codeHost = raw.provider;
   if (raw.provider && !raw.issueTracker) raw.issueTracker = raw.provider;
-  const { config, ignored } = mergeWorkflowConfig(raw, readLocalOverrides(p));
+  const { config, ignored, hinweise } = mergeWorkflowConfig(raw, readLocalOverrides(p));
   // Hinweis auf stderr, nicht auf stdout: stdout bleibt maschinenlesbar, die Skills
   // parsen ihn als JSON. Kein Abbruch — die Wirkung bleibt ohnehin aus, und ein
   // harter Fehler waere bei jedem board.mjs-Aufruf laut.
+  for (const hinweis of hinweise) process.stderr.write(`Hinweis: ${hinweis}\n`);
   for (const feld of ignored) {
     process.stderr.write(
       `Hinweis: '${feld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`

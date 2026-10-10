@@ -610,6 +610,7 @@
     "board-grundlagen": [
       "kit/board/grundlagen.mjs",
       "kit/board/namen.mjs",
+      "kit/board/config-namen.mjs",
       "test/board-grundlagen-*.test.mjs",
       "test/helpers/board-attrappe.mjs"
     ],

@@ -284,11 +284,15 @@ function bildeObjekt(wert, pfad, anzeige, kinder, lauf) {
  * Namen derselben Einstellung darin, gilt der Name der Projektsprache, und `hinweise` nennt die
  * Doppelung. Unbekannte Schluessel und frei gewaehlte Werte bleiben unveraendert; die Eingabe
  * wird nicht veraendert.
+ *
+ * `sprache` nennt die Projektsprache, wenn sie nicht in `roh` selbst steht — bei der
+ * persoenlichen Override-Datei, die sie aus der geteilten Config erbt (Issue #1435).
  */
-export function normalisiereConfig(roh) {
+export function normalisiereConfig(roh, { sprache } = {}) {
   const hinweise = [];
   if (!istObjekt(roh)) return { config: roh, hinweise };
-  const config = bilde(roh, "", "", { ziel: "de", vorrang: spracheDer(roh), hinweise, umbenannt: [] });
+  const vorrang = sprache === "en" || sprache === "de" ? sprache : spracheDer(roh);
+  const config = bilde(roh, "", "", { ziel: "de", vorrang, hinweise, umbenannt: [] });
   return { config, hinweise };
 }
 
