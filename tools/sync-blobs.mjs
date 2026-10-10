@@ -140,11 +140,15 @@ const STAMPED_DOWNLOADS = ["einstellungen.mjs"];
 // brachen sie den Lauf ab, weil ein Teil keine Konstante traegt.
 const TEILE = ["night", "board", "rollen"];
 
-// Das Schema, das die Einstellungs-Oberflaeche eingebettet traegt (Plan #674 E2). Eine
-// eigene Datei mitzuliefern widerspraeche dem Download als einzelne Datei.
-const SCHEMA_QUELLE = join(root, "templates", "workflow.config.schema.json");
-const SCHEMA_ZIEL = "einstellungen.mjs";
-const SCHEMA_RE = /(const SCHEMA_B64 = ")([A-Za-z0-9+/=]*)(";)/;
+// Was die Einstellungs-Oberflaeche eingebettet traegt: das Schema (Plan #674 E2) und die
+// Namenstabelle der Einstellungen (Issue #1437, Plan #1420 E10). Eine eigene Datei
+// mitzuliefern widerspraeche dem Download als einzelne Datei, und eine Kopie von Hand
+// liefe der Quelle davon.
+const EINBETTUNG_ZIEL = "einstellungen.mjs";
+const EINBETTUNGEN = [
+  { konstante: "SCHEMA_B64", quelle: "templates/workflow.config.schema.json", meldung: "Schema eingebettet" },
+  { konstante: "CONFIG_NAMEN_B64", quelle: "kit/board/config-namen.mjs", meldung: "Namenstabelle eingebettet" },
+];
 const KIT_VERSION_RE = /(const KIT_VERSION = ")(\d+\.\d+\.\d+)(";)/;
 const INSTALL_VERSION_RE = /const VERSION = "(\d+\.\d+\.\d+)";/;
 
@@ -180,23 +184,26 @@ for (const datei of [...STAMPED, ...STAMPED_DOWNLOADS]) {
   }
 }
 
-// --- Eingebettetes Schema (Issue #676) ---
+// --- Eingebettete Dateien (Issue #676, #1437) ---
 // Nach dem Stempel gelesen, damit beide Schritte auf demselben Dateistand arbeiten.
-const schemaDrift = [];
+const einbettungDrift = [];
 {
-  const pfad = join(root, "kit", SCHEMA_ZIEL);
-  const src = readFileSync(pfad, "utf-8");
-  const erwartet = Buffer.from(readFileSync(SCHEMA_QUELLE, "utf-8"), "utf-8").toString("base64");
-  const m = src.match(SCHEMA_RE);
-  if (!m) {
-    process.stderr.write(`Fehler: SCHEMA_B64-Konstante nicht in kit/${SCHEMA_ZIEL} gefunden\n`);
-    process.exit(1);
-  }
-  if (m[2] !== erwartet) {
-    schemaDrift.push(`kit/${SCHEMA_ZIEL}`);
+  const pfad = join(root, "kit", EINBETTUNG_ZIEL);
+  let src = readFileSync(pfad, "utf-8");
+  for (const { konstante, quelle, meldung } of EINBETTUNGEN) {
+    const re = new RegExp(`(const ${konstante} = ")([A-Za-z0-9+/=]*)(";)`);
+    const erwartet = Buffer.from(readFileSync(join(root, quelle), "utf-8"), "utf-8").toString("base64");
+    const m = src.match(re);
+    if (!m) {
+      process.stderr.write(`Fehler: ${konstante}-Konstante nicht in kit/${EINBETTUNG_ZIEL} gefunden\n`);
+      process.exit(1);
+    }
+    if (m[2] === erwartet) continue;
+    einbettungDrift.push({ quelle, meldung });
     // Base64 enthaelt kein '$' — Ersetzung ohne Escaping sicher.
-    if (!checkOnly) writeFileSync(pfad, src.replace(SCHEMA_RE, `$1${erwartet}$3`), "utf-8");
+    src = src.replace(re, `$1${erwartet}$3`);
   }
+  if (einbettungDrift.length > 0 && !checkOnly) writeFileSync(pfad, src, "utf-8");
 }
 
 let installSrc = readFileSync(INSTALL, "utf-8");
@@ -370,20 +377,20 @@ if (checkOnly) {
   if (stampDrift.length > 0) probleme.push(`Versions-Stempel: ${stampDrift.join("; ")}.`);
   if (drift.length > 0) probleme.push(`Blob-Drift in install.mjs: ${drift.join(", ")} weicht von kit/ ab.`);
   if (copyDrift.length > 0) probleme.push(`Lokale Kopie veraltet: ${copyDrift.join(", ")}.`);
-  if (schemaDrift.length > 0) probleme.push(`Eingebettetes Schema veraltet: ${schemaDrift.join(", ")} weicht von templates/workflow.config.schema.json ab.`);
+  for (const { quelle } of einbettungDrift) probleme.push(`Eingebettete Datei veraltet: kit/${EINBETTUNG_ZIEL} weicht von ${quelle} ab.`);
   if (probleme.length > 0) {
     process.stderr.write(`${probleme.join("\n")}\nBeheben mit: node tools/sync-blobs.mjs\n`);
     process.exit(1);
   }
   process.stdout.write("Blobs und Versions-Stempel synchron mit kit/.\n");
-} else if (stampDrift.length > 0 || drift.length > 0 || copyDrift.length > 0 || schemaDrift.length > 0) {
+} else if (stampDrift.length > 0 || drift.length > 0 || copyDrift.length > 0 || einbettungDrift.length > 0) {
   if (drift.length > 0) writeFileSync(INSTALL, installSrc, "utf-8");
   const teile = [];
   const gestempelt = [...STAMPED, ...STAMPED_DOWNLOADS].map((d) => `kit/${d}`).join(", ");
   if (stampDrift.length > 0) teile.push(`Gestempelt auf v${version}: ${gestempelt}`);
   if (drift.length > 0) teile.push(`Aktualisiert: ${drift.join(", ")}`);
   if (copyDrift.length > 0) teile.push(`Lokale Kopie aufgefrischt: ${copyDrift.join(", ")}`);
-  if (schemaDrift.length > 0) teile.push(`Schema eingebettet: ${schemaDrift.join(", ")}`);
+  for (const { meldung } of einbettungDrift) teile.push(`${meldung}: kit/${EINBETTUNG_ZIEL}`);
   process.stdout.write(`${teile.join("\n")}\n`);
 } else {
   process.stdout.write("Blobs bereits synchron.\n");

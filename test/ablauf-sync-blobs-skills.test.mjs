@@ -45,7 +45,10 @@ function setupFixture({
   }
   // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
   writeFileSync(join(dir, "templates", "workflow.config.schema.json"), "{}\n");
-  writeFileSync(join(dir, "kit", "einstellungen.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\n`);
+  writeFileSync(join(dir, "kit", "einstellungen.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\n`);
+  // Seit Issue #1437: die Namenstabelle, die sync-blobs ebenfalls einbettet.
+  mkdirSync(join(dir, "kit", "board"), { recursive: true });
+  writeFileSync(join(dir, "kit", "board", "config-namen.mjs"), "export {};\n");
   // Hook und Gate liegen ausserhalb von kit/ und tragen keinen Versions-Stempel
   // (Issue #473): gate.mjs steht bewusst nicht in STAMPED.
   writeFileSync(join(dir, ".githooks", "gate.mjs"), 'console.log("gate");\n');

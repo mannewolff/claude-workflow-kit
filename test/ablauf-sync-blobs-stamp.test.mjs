@@ -56,7 +56,10 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
   // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
   writeFileSync(join(dir, "templates", "workflow.config.schema.json"), JSON.stringify({ properties: { codeHost: { type: "string" } } }) + "\n");
   writeFileSync(join(dir, "kit", "einstellungen.mjs"),
-    `const KIT_VERSION = "${kitVersion}";\nconst SCHEMA_B64 = "";\nconsole.log("einstellungen");\n`);
+    `const KIT_VERSION = "${kitVersion}";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconsole.log("einstellungen");\n`);
+  // Seit Issue #1437: die Namenstabelle, die sync-blobs ebenfalls einbettet.
+  mkdirSync(join(dir, "kit", "board"), { recursive: true });
+  writeFileSync(join(dir, "kit", "board", "config-namen.mjs"), "export {};\n");
   for (const datei of KIT_DATEIEN) {
     writeFileSync(join(dir, "kit", datei),
       `const KIT_VERSION = "${kitVersion}";\nconsole.log("${datei}");\n`);
@@ -446,8 +449,9 @@ test("[teile] ein Teil unter kit/night/ landet ungestempelt im Blob und in .clau
     assert.equal(readFileSync(join(dir, ".claude", "kit", "night", "probe.mjs"), "utf-8"), probe,
       "der Teil fehlt in der Kopie unter .claude/kit/night/");
     assert.deepEqual(blobInhalt(dir, "KIT_NIGHT_B64"), { "probe.mjs": probe });
-    assert.deepEqual(blobInhalt(dir, "KIT_BOARD_B64"), {}, "ein fehlendes kit/board/ ergibt einen leeren Blob");
-    assert.equal(existsSync(join(dir, ".claude", "kit", "board")), false, "ohne Teil entsteht kein Verzeichnis in der Kopie");
+    // kit/board/ traegt seit Issue #1437 die eingebettete Namenstabelle; ohne Teil bleibt kit/rollen/.
+    assert.deepEqual(blobInhalt(dir, "KIT_ROLLEN_B64"), {}, "ein fehlendes kit/rollen/ ergibt einen leeren Blob");
+    assert.equal(existsSync(join(dir, ".claude", "kit", "rollen")), false, "ohne Teil entsteht kein Verzeichnis in der Kopie");
     assert.equal(syncBlobs(dir, "--check").status, 0, "--check haette danach gruen sein muessen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
