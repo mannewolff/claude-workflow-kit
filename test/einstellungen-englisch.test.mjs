@@ -146,7 +146,7 @@ test("[1441-8] der Fuss eines Teils nennt den Pfad in der Projektsprache", () =>
   mitProjekt(ENGLISCH, ({ projekt: p, optionen }) => {
     const r = vorschau(p, { ebene: "team", teil: "m4", aenderungen: [{ pfad: "ohnePruefung", wert: [] }], hashes: projektZustand(p, optionen).hashes }, optionen);
     assert.equal(r.status, 200);
-    assert.deepEqual(r.body.aenderungen.map((a) => [a.pfad, a.satz]), [["ohnePruefung", "noCheck hat jetzt 0 Einträge statt 1"]]);
+    assert.deepEqual(r.body.aenderungen.map((a) => [a.pfad, a.satz]), [["ohnePruefung", "noCheck now has 0 entries instead of 1"]], "ein englisches Projekt bekommt den Satz englisch (Issue #1456)");
   });
 });
 
@@ -191,8 +191,9 @@ function fixture() {
     writeFileSync(join(dir, "kit", d), `const KIT_VERSION = "1.0.0";\n`);
   }
   writeFileSync(join(dir, "kit", "board", "config-namen.mjs"), "export {};\n");
+  writeFileSync(join(dir, "kit", "board", "namen.mjs"), "export {};\n");
   copyFileSync(REFERENZ, join(dir, "tools", "config-referenz.en.json"));
-  writeFileSync(join(dir, "kit", "einstellungen.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\n`);
+  writeFileSync(join(dir, "kit", "einstellungen.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
   writeFileSync(join(dir, "install.mjs"), ['const VERSION = "1.0.0";', ...KONSTANTEN.map((k) => `const ${k} = "";`), ""].join("\n"));
   return dir;
 }

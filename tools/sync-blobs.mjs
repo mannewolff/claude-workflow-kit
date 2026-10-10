@@ -142,14 +142,16 @@ const TEILE = ["night", "board", "rollen"];
 
 // Was die Einstellungs-Oberflaeche eingebettet traegt: das Schema (Plan #674 E2) und die
 // Namenstabelle der Einstellungen (Issue #1437, Plan #1420 E10), dazu die englischen
-// Beschreibungen fuer ein englisches Projekt (Issue #1441). Eine eigene Datei
-// mitzuliefern widerspraeche dem Download als einzelne Datei, und eine Kopie von Hand
-// liefe der Quelle davon.
+// Beschreibungen fuer ein englisches Projekt (Issue #1441) und der Texthelfer, ueber den
+// die Oberflaeche ihre Meldungen in der Projektsprache waehlt (Issue #1456, Plan #1420
+// E13). Eine eigene Datei mitzuliefern widerspraeche dem Download als einzelne Datei, und
+// eine Kopie von Hand liefe der Quelle davon.
 const EINBETTUNG_ZIEL = "einstellungen.mjs";
 const EINBETTUNGEN = [
   { konstante: "SCHEMA_B64", quelle: "templates/workflow.config.schema.json", meldung: "Schema eingebettet" },
   { konstante: "CONFIG_NAMEN_B64", quelle: "kit/board/config-namen.mjs", meldung: "Namenstabelle eingebettet" },
   { konstante: "CONFIG_REFERENZ_EN_B64", quelle: "tools/config-referenz.en.json", meldung: "Englische Referenz eingebettet" },
+  { konstante: "NAMEN_B64", quelle: "kit/board/namen.mjs", meldung: "Texthelfer eingebettet" },
 ];
 const KIT_VERSION_RE = /(const KIT_VERSION = ")(\d+\.\d+\.\d+)(";)/;
 const INSTALL_VERSION_RE = /const VERSION = "(\d+\.\d+\.\d+)";/;

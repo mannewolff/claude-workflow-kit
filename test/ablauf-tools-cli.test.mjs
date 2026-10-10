@@ -216,10 +216,11 @@ function syncFixture(praefix, { installZeilen, kitVersion = "1.26.0" } = {}) {
   }
   // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
   writeFileSync(join(dir, "templates", "workflow.config.schema.json"), "{}\n");
-  writeFileSync(join(dir, "kit", "einstellungen.mjs"), `const KIT_VERSION = "${kitVersion}";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\n`);
+  writeFileSync(join(dir, "kit", "einstellungen.mjs"), `const KIT_VERSION = "${kitVersion}";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
   // Seit Issue #1437: die Namenstabelle, die sync-blobs ebenfalls einbettet.
   mkdirSync(join(dir, "kit", "board"), { recursive: true });
   writeFileSync(join(dir, "kit", "board", "config-namen.mjs"), "export {};\n");
+  writeFileSync(join(dir, "kit", "board", "namen.mjs"), "export {};\n");
   // Seit Issue #1441: die englische Referenz, die sync-blobs ebenfalls einbettet.
   mkdirSync(join(dir, "tools"), { recursive: true });
   writeFileSync(join(dir, "tools", "config-referenz.en.json"), "{}\n");
