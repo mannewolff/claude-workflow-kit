@@ -543,6 +543,10 @@ node einstellungen.mjs ~/ki-projects
 <!-- einstellungen:start -->
 _Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node tools/config-referenz.mjs`; Änderungen gehören ins Schema, nicht hierher._
 
+### `language`
+
+Sprache des Kits in diesem Projekt: de (Deutsch) oder en (Englisch). Der deutsche Altname sprache wird ebenso gelesen; stehen beide da, gilt language. Fehlt das Feld oder steht ein anderer Wert darin, gilt de. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert. (gültig: `de`, `en`)
+
 ### `codeHost`
 
 Wo der Code liegt (Push, Pull Requests). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert. (gültig: `github`, `gitlab`, `local`)

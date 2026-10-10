@@ -1,4 +1,8 @@
 {
+  "language": {
+    "de": "09246d2cc370",
+    "text": "Language of the kit in this project: de (German) or en (English). The German legacy name sprache is read as well; if both are present, language wins. If the field is missing or holds another value, de applies. Applies team-wide; a different value in workflow.config.local.json is ignored."
+  },
   "codeHost": {
     "de": "2338564386f1",
     "text": "Where the code lives (push, pull requests). Applies team-wide; a different value in workflow.config.local.json is ignored."

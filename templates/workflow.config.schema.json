@@ -10,6 +10,15 @@
       "description": "Versionskennung x.y.z. push main erhöht z, merge production erhöht y, x nur explizit. Wird auf dem Board angezeigt. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": "1.4.0"
     },
+    "language": {
+      "type": "string",
+      "enum": [
+        "de",
+        "en"
+      ],
+      "description": "Sprache des Kits in diesem Projekt: de (Deutsch) oder en (Englisch). Der deutsche Altname sprache wird ebenso gelesen; stehen beide da, gilt language. Fehlt das Feld oder steht ein anderer Wert darin, gilt de. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "default": "de"
+    },
     "codeHost": {
       "type": "string",
       "enum": [
