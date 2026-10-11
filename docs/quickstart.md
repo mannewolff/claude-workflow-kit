@@ -26,7 +26,7 @@ Oder in einem Schritt:
 node <(curl -s https://docs.mwolff.org/install.mjs)
 ```
 
-Ein neues Projekt fragt der Installer zuerst nach der Sprache des Kits: `de` (Deutsch, Vorgabe) oder `en` (Englisch). Ein bestehendes Projekt behält seine Sprache; umgestellt wird es mit `node install.mjs --language en` (siehe [Sprache](/dokumentation#sprache)).
+Ein neues Projekt fragt der Installer zuerst nach der Sprache des Kits: `de` (Deutsch, Vorgabe) oder `en` (Englisch). Ein bestehendes Projekt behält seine Sprache; umgestellt wird es mit `node install.mjs --language en` (siehe [Sprache](/dokumentation#sprache)). Labels und Titel-Präfixe der Karten haben je einen deutschen und einen englischen Namen, etwa `[Fachlich]` und `[Requirement]` oder `kit:klaeren` und `kit:clarify`. Das Kit versteht beide und schreibt den Namen der Projektsprache; die Tabelle steht unter [Labels und Titel-Präfixe](/dokumentation#labels-und-titel-prafixe).
 
 Danach fragt der Installer sieben Dinge:
 

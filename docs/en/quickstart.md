@@ -14,7 +14,7 @@ You have a process for AI-assisted development, and you want to make it executab
 - On Windows: WSL2, see [Windows via WSL2](/en/wsl2)
 
 ## Installing
-<!-- de: 2bd52903b384 -->
+<!-- de: b1340445e31c -->
 
 Download the installer and start it in the project folder:
 
@@ -29,7 +29,7 @@ Or in one step:
 node <(curl -s https://docs.mwolff.org/install.mjs)
 ```
 
-For a new project, the installer first asks for the language of the kit: `de` (German, the default) or `en` (English). An existing project keeps its language; you switch it with `node install.mjs --language en` (see [Language of the kit](/en/dokumentation#language-of-the-kit)).
+For a new project, the installer first asks for the language of the kit: `de` (German, the default) or `en` (English). An existing project keeps its language; you switch it with `node install.mjs --language en` (see [Language of the kit](/en/dokumentation#language-of-the-kit)). Labels and the title prefixes of cards each have a German and an English name, for example `[Fachlich]` and `[Requirement]` or `kit:klaeren` and `kit:clarify`. The kit understands both and writes the name in the project language; the table is under [Labels and title prefixes](/en/dokumentation#labels-and-title-prefixes).
 
 Then the installer asks seven things:
 

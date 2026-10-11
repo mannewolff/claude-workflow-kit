@@ -1,9 +1,9 @@
 # Glossary
-<!-- de: 51576c616e75 -->
+<!-- de: 5fa208864f6e -->
 
 The documentation is available in German and in English. This table maps the kit's concept terms between the two: The English version uses the terms from the left column and gives the German term in parentheses at its first occurrence on a page.
 
-Left unchanged in both languages are commands, labels, the title prefixes of cards (`[Plan]`, `[Mensch]` …), setting names and verbatim quoted messages of the tools. That is why they do not appear in this table.
+Left unchanged in both languages are commands and verbatim quoted messages of the tools. Labels and the title prefixes of cards each have a German and an English name, for example `kit:klaeren` and `kit:clarify` or `[Mensch]` and `[Human]`; the kit understands both. The complete table of names is under [Labels and title prefixes](/en/dokumentation#labels-and-title-prefixes). Only `kit:night`, `kit:nightrun`, `planreview:1`, `planreview:2`, `[Plan]` and `[Task]` have the same name in both languages. Setting names are listed under [All settings](/en/dokumentation#all-settings). That is why none of them appear in this table.
 
 | English | German |
 |---------|--------|

@@ -534,6 +534,34 @@ node install.mjs --language de
 
 Er benennt die Einstellungen wieder in die deutschen Namen um. Wer genau den Stand vor der Umstellung braucht, kopiert die Sicherung zurück auf `.claude/workflow.config.json`.
 
+### Labels und Titel-Präfixe
+
+Jedes Label und jedes Titel-Präfix, das das Kit kennt, hat einen deutschen und einen englischen Namen. Das Kit erkennt in jedem Projekt beide Namen derselben Sache und behandelt sie gleich, egal welche Sprache eingestellt ist. Alte Karten mit deutschem Präfix können also neben neuen mit englischem stehen. Setzt das Kit selbst ein Label oder legt es eine Karte an, verwendet es den Namen der Projektsprache. Auch die Freigaberechte gelten unter beiden Namen: Ein Label, das nur ein Mensch abnehmen darf, darf auch unter seinem englischen Namen nur ein Mensch abnehmen.
+
+| Sache | Deutsch | Englisch |
+|-------|---------|----------|
+| Frage wartet auf den Menschen | `kit:klaeren` | `kit:clarify` |
+| geschützte Datei wartet auf den Menschen | `kit:geschuetzt` | `kit:protected` |
+| Variante B der Nacht-Kette | `kit:durchziehen` | `kit:carry-through` |
+| Prüflauf | `kit:pruefen` | `kit:check` |
+| Lauf läuft | `lauf:laeuft` | `run:running` |
+| Lauf abgebrochen | `lauf:abgebrochen` | `run:aborted` |
+| Lauf wartet | `lauf:wartet` | `run:waiting` |
+| Spur der Prüfung | `review:fertig` | `review:done` |
+| Ziel der Kette: Plan | `ziel:plan` | `goal:plan` |
+| Ziel der Kette: Pakete | `ziel:pakete` | `goal:packages` |
+| Ziel der Kette: Umsetzung | `ziel:umsetzung` | `goal:implementation` |
+| Ziel der Kette: Push vorbereitet | `ziel:push-vorbereitet` | `goal:push-prepared` |
+| Präfix der fachlichen Anforderung | `[Fachlich]` | `[Requirement]` |
+| Präfix der Idee | `[Idee]` | `[Idea]` |
+| Präfix des Menschenschritts | `[Mensch]` | `[Human]` |
+
+`kit:night`, `kit:nightrun`, `planreview:1`, `planreview:2`, `[Plan]` und `[Task]` heißen in beiden Sprachen gleich.
+
+**Die Art statt des Präfixes.** `issue create` und `issue check-form` nehmen die Art einer Karte mit `--art fachlich|plan|idee|mensch|task` an. Das Kit stellt dem Titel dann das Präfix der Projektsprache voran, etwa `[Requirement]` in einem englischen Projekt. Ein Titel, der schon ein Präfix trägt, bleibt gültig; `--art` daneben ist ein Fehler. Ohne `--art` bleibt der Titel, wie er ist.
+
+**Wie lange die deutschen Namen gelten.** Die deutschen Labels und Präfixe bleiben über die Versionen 4 und 5 gültig. In englischen Projekten können die deutschen Altnamen frühestens mit Version 6 entfallen, und erst nach Ankündigung.
+
 ## Einstellungen über die Oberfläche
 
 Statt die Config-Dateien von Hand zu bearbeiten, lassen sich die Prozess-Einstellungen über eine lokale Oberfläche pflegen. Sie wird **nicht installiert**, sondern als einzelne Datei heruntergeladen: [einstellungen.mjs](https://docs.mwolff.org/einstellungen.mjs). Sie arbeitet über alle Projekte unter einem Ordner und gehört deshalb in keines.

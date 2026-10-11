@@ -315,7 +315,7 @@ Herkunfts-Konvention: `issue create --derived-from <nummer>` traegt die Kartennu
 
 ### Vier Titel-Praefixe, vier Sonderfaelle
 
-Ein Issue ohne Praefix ist ein Arbeitspaket im Vier-Abschnitt-Format oben. Vier Praefixe kennzeichnen Karten, die **keine Session umsetzt**; implement-Skills und Nacht-Runner stellen sie mechanisch kommentiert ins Backlog zurueck, ohne eine Session zu starten. Die ersten drei sind Dokumente und gehen nie nach Ready; `[Mensch]` ist ein Arbeitspaket, das nur ein Mensch erledigen kann.
+Ein Issue ohne Praefix ist ein Arbeitspaket im Vier-Abschnitt-Format oben. Vier Praefixe kennzeichnen Karten, die **keine Session umsetzt**; implement-Skills und Nacht-Runner stellen sie mechanisch kommentiert ins Backlog zurueck, ohne eine Session zu starten. Die ersten drei sind Dokumente und gehen nie nach Ready; `[Mensch]` ist ein Arbeitspaket, das nur ein Mensch erledigen kann. **Beide Namen:** Jedes Praefix und jedes Kit-Label hat einen deutschen und einen englischen Namen — `[Fachlich]`/`[Requirement]`, `[Idee]`/`[Idea]`, `[Mensch]`/`[Human]`, `kit:klaeren`/`kit:clarify`, `kit:geschuetzt`/`kit:protected` und so fort; `[Plan]`, `[Task]`, `kit:night` und `kit:nightrun` heissen gleich. Das Kit erkennt in jedem Projekt beide Namen, behandelt sie gleich, auch bei den Freigaberechten, und schreibt den Namen der Projektsprache (`language`); `issue create --art fachlich|plan|idee|mensch|task` setzt das Praefix der Projektsprache. Die vollstaendige Namenstabelle steht im Abschnitt „Labels und Titel-Präfixe“ der Kit-Dokumentation.
 
 | Praefix | Was es ist | Weg nach vorn |
 |---------|-----------|---------------|

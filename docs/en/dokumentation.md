@@ -559,6 +559,35 @@ node install.mjs --language de
 
 It renames the settings back to the German names. If you need exactly the state before the switch, copy the backup back to `.claude/workflow.config.json`.
 
+### Labels and title prefixes
+<!-- de: ffd34729fb4d -->
+
+Every label and every title prefix the kit knows has a German and an English name. In every project the kit recognises both names of the same thing and treats them alike, whatever language is set. Old cards with a German prefix can therefore sit next to new ones with an English prefix. When the kit itself sets a label or creates a card, it uses the name in the project language. The release rights apply under both names as well: a label that only a human may remove may also only be removed by a human under its English name.
+
+| Thing | German | English |
+|-------|---------|----------|
+| question waits for the human | `kit:klaeren` | `kit:clarify` |
+| protected file waits for the human | `kit:geschuetzt` | `kit:protected` |
+| variant B of the night chain | `kit:durchziehen` | `kit:carry-through` |
+| check run | `kit:pruefen` | `kit:check` |
+| run is running | `lauf:laeuft` | `run:running` |
+| run aborted | `lauf:abgebrochen` | `run:aborted` |
+| run is waiting | `lauf:wartet` | `run:waiting` |
+| trace of the review | `review:fertig` | `review:done` |
+| goal of the chain: plan | `ziel:plan` | `goal:plan` |
+| goal of the chain: packages | `ziel:pakete` | `goal:packages` |
+| goal of the chain: implementation | `ziel:umsetzung` | `goal:implementation` |
+| goal of the chain: push prepared | `ziel:push-vorbereitet` | `goal:push-prepared` |
+| prefix of the business requirement | `[Fachlich]` | `[Requirement]` |
+| prefix of the idea | `[Idee]` | `[Idea]` |
+| prefix of the human step | `[Mensch]` | `[Human]` |
+
+`kit:night`, `kit:nightrun`, `planreview:1`, `planreview:2`, `[Plan]` and `[Task]` have the same name in both languages.
+
+**The kind instead of the prefix.** `issue create` and `issue check-form` accept the kind of a card with `--art fachlich|plan|idee|mensch|task`. The kit then puts the prefix of the project language in front of the title, for example `[Requirement]` in an English project. A title that already carries a prefix stays valid; `--art` alongside it is an error. Without `--art` the title stays as it is.
+
+**How long the German names stay valid.** The German labels and prefixes remain valid throughout versions 4 and 5. In English projects the German legacy names can be dropped at the earliest with version 6, and only after an announcement.
+
 ## Settings through the interface
 <!-- de: 5640e7dafde7 -->
 
