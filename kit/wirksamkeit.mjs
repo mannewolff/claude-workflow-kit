@@ -113,20 +113,21 @@ const PRUEFDAUER_OBERGRENZE_MS = 30_000;
 
 // SYNC: `ausloeserBestimmen` in kit/checks.mjs setzt diese Arten (Issue #1004, E5). Jede
 // Art ausser `bereiche` hat ihre Sonderzeile in der Bereichstabelle (E6) — ebenso eine
-// Zeile ohne die Spalte, geschrieben vor der Erfassung.
+// Zeile ohne die Spalte, geschrieben vor der Erfassung. Die Werte sind die Schluessel ihrer
+// Namen in `TEXTE`.
 const AUSLOESER_BEREICHE = "bereiche";
 const AUSLOESER_OHNE_ZUORDNUNG = "ohne-zuordnung";
-const VOR_DER_ERFASSUNG = "vor der Erfassung";
+const VOR_DER_ERFASSUNG = "sonderVorErfassung";
 const SONDERZEILEN = new Map([
-  ["ohne-bereich", "ohne Bereich"],
-  [AUSLOESER_OHNE_ZUORDNUNG, "voller Umfang wegen fehlender Zuordnung"],
-  ["veroeffentlichung", "Veroeffentlichung (push/merge)"],
-  ["anker", "Anker nicht aufloesbar"],
+  ["ohne-bereich", "sonderOhneBereich"],
+  [AUSLOESER_OHNE_ZUORDNUNG, "sonderOhneZuordnung"],
+  ["veroeffentlichung", "sonderVeroeffentlichung"],
+  ["anker", "sonderAnker"],
 ]);
 // Eine Art, die dieses Werkzeug nicht kennt — ein neuerer Schreiber genuegt. Ihre Minuten
 // stehen in einer eigenen Zeile, statt still aus der Tabelle zu fallen; die Zeile erscheint
 // nur, wenn es sie gibt.
-const AUSLOESER_UNBEKANNT = "Ausloeser unbekannt";
+const AUSLOESER_UNBEKANNT = "sonderUnbekannt";
 
 // SYNC: COLUMN_DEFAULTS aus kit/board.mjs — die Anzeigenamen der Spalten, gegen die
 // das Ziel einer Verlaufsbewegung gehalten wird, wenn die Config schweigt.
@@ -192,45 +193,330 @@ const MASKIERUNGEN = new Map([["t", "\t"], ["n", "\n"], ["r", "\r"], ["\\", "\\"
 // zusaetzlich das Komma, den Trenner der Eintraege.
 const LISTEN_MASKIERUNGEN = new Map([...MASKIERUNGEN, [",", ","]]);
 
-const HELP = `wirksamkeit.mjs (claude-workflow-kit v${KIT_VERSION}) — Wirksamkeit der Pruefungen
+/**
+ * Die Texte an Menschen in beiden Sprachen (Issue #1497, Plan #1420 E13): Hilfe, Bericht,
+ * Befund, Reparaturkandidaten, die Freitexte des Stands (`text`, `grund`, `vermerk`,
+ * `configGelesen`, die Namen der Sonderzeilen) und die Fehler. Unuebersetzt bleibt der
+ * Maschinenvertrag (E14): die Feldnamen von `wirksamkeit.json` und der JSON-Ausgabe, die
+ * Zustandswerte einer Pruefung, die Schwellenschluessel und `VERSCHOBEN_PRAEFIX`. Den
+ * Gleichstand der Schluessel und Platzhalter haelt test/befunde-texte-en.test.mjs.
+ */
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    hilfe: `wirksamkeit.mjs (claude-workflow-kit v{version}) — Wirksamkeit der Pruefungen
 
   node wirksamkeit.mjs auswerten [--fenster <tage>]
   node wirksamkeit.mjs befund
   node wirksamkeit.mjs kandidaten
 
-auswerten  Liest ${CLAUDE_DIR}/${AUSFUEHRUNGEN_DATEI}, aggregiert je Pruefkommando
+auswerten  Liest {dir}/{ausfuehrungen}, aggregiert je Pruefkommando
            Ausfuehrungen, Beanstandungen und Dauer ueber das Zeitfenster, rechnet die
            mittlere Pruefzeit je Karte aus den Abschlusslaeufen samt Vergleichswert,
            zaehlt Laeufe und Minuten je Bereich (Zuschnitt und Inventar ueber
            checks.mjs bereiche), ermittelt
-           die Ruecklaeuferquote (Kandidaten aus ${CLAUDE_DIR}/${BEWEGUNGEN_DATEI},
+           die Ruecklaeuferquote (Kandidaten aus {dir}/{bewegungen},
            Verlauf ueber board.mjs issue activity) und schreibt
-           ${CLAUDE_DIR}/${BERICHT_DATEI} sowie ${CLAUDE_DIR}/${STAND_DATEI}. Die
+           {dir}/{bericht} sowie {dir}/{stand}. Die
            Ausgabe auf stdout ist immer JSON — auch im Leerfall und auch bei einem
            abgewiesenen Aufruf. Ein Fehlschlag des Board-Teils ist ein Vermerk im
            Bericht, kein Abbruch.
-befund     Gibt den Befundblock aus ${CLAUDE_DIR}/${STAND_DATEI} als Text aus, mit
+befund     Gibt den Befundblock aus {dir}/{stand} als Text aus, mit
            Datum der Auswertung und Fenster in der Kopfzeile. Liegt kein Befund vor,
            fehlt die Datei oder ist sie unlesbar, bleibt die Ausgabe leer. Exit immer
            0 — der Befund ist kein Gate.
-kandidaten Nennt je Pruefung, die ${CLAUDE_DIR}/${STAND_DATEI} als Reparaturkandidat
-           kennzeichnet (ab ${REPARATUR_AB_WACKLERN} Wacklern im Fenster), eine Zeile
+kandidaten Nennt je Pruefung, die {dir}/{stand} als Reparaturkandidat
+           kennzeichnet (ab {reparaturAb} Wacklern im Fenster), eine Zeile
            'Reparaturkandidat: <cmd> — <n> Wackler im Zeitfenster'. Rechnet nicht neu;
            ohne Kandidaten oder ohne Datei bleibt die Ausgabe leer. Exit immer 0.
 
-  --fenster <tage>  Laenge des Zeitfensters in Tagen (Vorgabe ${VORGABE_FENSTER_TAGE}).
+  --fenster <tage>  Laenge des Zeitfensters in Tagen (Vorgabe {vorgabeFenster}).
                     Sticht den Config-Block.
   --version         Kit-Stand dieser Datei.
   --help, -h        Diese Uebersicht.
 
-Gelesen wird ${CLAUDE_DIR}/${CONFIG_DATEI} im Arbeitsverzeichnis: 'buildChecks' (fuer
+Gelesen wird {dir}/{config} im Arbeitsverzeichnis: 'buildChecks' (fuer
 die Menge der vorgeschriebenen Pruefungen und ihr 'nichtBeimAbschluss' fuer den
 Vergleichswert der Pruefzeit je Karte), 'columns' und 'issueTracker' (fuer die
 Ruecklaeuferquote) und der optionale Block 'wirksamkeit' mit 'fensterTage',
-'nieBeanstandetAbAusfuehrungen', 'kandidatenMax' (Vorgabe ${VORGABE_KANDIDATEN_MAX}),
-'quoteSchwelle' (Vorgabe ${VORGABE_QUOTE_SCHWELLE}) und 'quoteAbPaketen' (Vorgabe
-${VORGABE_QUOTE_AB_PAKETEN}). Fehlt der Block oder ein Feld darin, gelten die Vorgaben.
-`;
+'nieBeanstandetAbAusfuehrungen', 'kandidatenMax' (Vorgabe {vorgabeKandidaten}),
+'quoteSchwelle' (Vorgabe {vorgabeQuote}) und 'quoteAbPaketen' (Vorgabe
+{vorgabeQuoteAb}). Fehlt der Block oder ein Feld darin, gelten die Vorgaben.
+`,
+    // Freitexte des Stands
+    configNichtLesbar: "nicht lesbar ({grund})",
+    befundNieBeanstandet: "Die Pruefung '{cmd}' lief {ausfuehrungen} ({lauftage}, {dauer}) und hat dabei kein einziges Mal etwas beanstandet.",
+    befundQuote: "Von {nenner} Karten, die im Fenster nach 'In review' kamen, gingen {zaehler} Bewegungen zurueck in die Arbeit — Ruecklaeuferquote {quote}.",
+    zuschnittEnde: "das Kommando endete mit {status}",
+    zuschnittOhneListe: "die Ausgabe traegt keine Liste 'bereiche'",
+    zuschnittKeinJson: "das Kommando lieferte kein JSON ({grund})",
+    verlaufEnde: "der Adapter endete mit {status}",
+    verlaufKeinJson: "der Adapter lieferte kein JSON ({grund})",
+    quoteLocal: "der Tracker 'local' fuehrt keinen Verlauf (nur ein synthetischer CREATED-Eintrag, nie eine Bewegung)",
+    quoteVerlaufFehl: "der Verlaufs-Aufruf des Boards schlug fehl: {grund}",
+    sonderOhneBereich: "ohne Bereich",
+    sonderOhneZuordnung: "voller Umfang wegen fehlender Zuordnung",
+    sonderVeroeffentlichung: "Veroeffentlichung (push/merge)",
+    sonderAnker: "Anker nicht aufloesbar",
+    sonderVorErfassung: "vor der Erfassung",
+    sonderUnbekannt: "Ausloeser unbekannt",
+    // Zahlen und Worte
+    tausender: ".",
+    dezimal: ",",
+    prozent: "{zahl} %",
+    nichtGemessen: "nicht gemessen",
+    ausfuehrungKeine: "kein einziges Mal",
+    ausfuehrungEine: "ein einziges Mal",
+    ausfuehrungMehrere: "{n}-mal",
+    lauftagKeiner: "an keinem Lauftag",
+    lauftagEiner: "an einem einzigen Lauftag",
+    lauftagMehrere: "an {n} Lauftagen",
+    karteEine: "{n} Karte",
+    karteMehrere: "{n} Karten",
+    abschlusslaufEiner: "{n} Abschlusslauf",
+    abschlusslaufMehrere: "{n} Abschlusslaeufen",
+    zustandNichtGelaufen: "nicht gelaufen",
+    zustandGewackelt: "ausgefuehrt, gewackelt",
+    zustandBeanstandet: "ausgefuehrt, mit Beanstandungen",
+    zustandNieBeanstandet: "ausgefuehrt, nie beanstandet",
+    ja: "ja",
+    nein: "nein",
+    jaKopplung: "ja — durch Kopplung erzwungen: {grund}",
+    kandidatWackler: "{n} Wackler im Zeitfenster",
+    kandidatZeile: "Reparaturkandidat: {cmd} — {kandidat}",
+    // Bericht
+    titel: "# Wirksamkeit der Pruefungen",
+    am: "Auswertung vom {am}.",
+    fenster: "Fenster: {tage} Tage, von {von} bis {bis}.",
+    abgeschnitten: "Das Ausfuehrungsprotokoll beginnt erst am {beginn} — die Zahlen tragen nur den Zeitraum seit diesem Anfang, nicht das volle Fenster.",
+    ohneProtokoll: "Es liegt kein Ausfuehrungsprotokoll vor ({pfad} fehlt) — keine Pruefung traegt eine gemessene Ausfuehrung.",
+    pruefungenTitel: "## Pruefungen",
+    pruefungenLeer: "Keine einzige Pruefung im Fenster — weder eine vorgeschriebene noch eine protokollierte.",
+    pruefungenKopf: "| Kommando | Zustand | Ausfuehrungen | Beanstandungen | Wackler | Dauer | Lauftage |",
+    reparatur: "Reparaturkandidat: `{cmd}` — {kandidat} (ab {ab}).",
+    momentaufnahme: "Die Zeile zu `{cmd}` stammt aus einem einzigen Lauftag — eine Momentaufnahme, keine Tendenz.",
+    nichtVorgeschrieben: "Die Pruefung `{cmd}` steht nicht (mehr) in den buildChecks; ihre Zahlen stammen aus dem Fenster.",
+    abschlusszeitTitel: "## Mittlere Pruefzeit je Karte",
+    abschlusszeitLeer: "Keine Abschlusszeile mit Kartennummer im Fenster — die mittlere Pruefzeit je Karte ist nicht gemessen. Ein Mittel je Lauf steht hier ausdruecklich nicht: Das waere eine andere Groesse.",
+    abschlusszeit: "Gemessen {mittel} je Karte, zum Vergleich ohne die Auslassungen des Abschlusses {vergleich} — getragen von {karten} und {laeufe}.",
+    abschlusszeitGrenze: "Messgrenze dieser Zahl: Nur Abschlusslaeufe zaehlen — Pruefzeiten waehrend der Arbeit und beim Veroeffentlichen zaehlen nicht mit.",
+    ohneAuslassung: "Keine Pruefung traegt 'nichtBeimAbschluss' — der Vergleichswert ist die gemessene Zeit.",
+    ausgelassenNie: "Die beim Abschluss ausgelassene Pruefung `{cmd}` ({grund}) lief im Fenster nie beim Veroeffentlichen — ihre Dauer ist nicht gemessen, und darum bleibt der Vergleichswert offen.",
+    ausgelassen: "Die beim Abschluss ausgelassene Pruefung `{cmd}` ({grund}) kostete beim Veroeffentlichen im Mittel {dauer} ({ausfuehrungen} gelaufen).",
+    bereicheTitel: "## Bereiche",
+    ohneZuschnitt: "Der Zuschnitt aus `checks.mjs bereiche` fehlt: {vermerk}. Anteil, Hervorhebung und Inventar entfallen; Laeufe und Minuten stammen aus dem Protokoll.",
+    bereicheKopf: "| Bereich | nennende Kommandos | hervorgehoben | Laeufe | Minuten |",
+    bereicheSumme: "Die Summe der Zeilen uebersteigt die Gesamtzeit von {minuten} Minuten, weil eine Ausfuehrung fuer jeden ihrer Bereiche mit voller Dauer zaehlt. Uebernommene Ergebnisse schreiben keine Protokollzeile und zaehlen nicht.",
+    inventarTitel: "### Inventar",
+    inventarOhneTreffer: "{ohne} von {dateien} versionierten Dateien treffen kein Bereichsmuster.",
+    inventarFreigestellt: "freigestellt (`ohnePruefung`, mit Grund): {n}",
+    inventarOhneZuordnung: "ohne jede Zuordnung — loest den vollen Umfang aus: {n}",
+    teuerTitel: "### Teure Dateien ohne Zuordnung",
+    teuerLeer: "Im Fenster loeste keine unzugeordnete Datei den vollen Umfang aus.",
+    teuerKopf: "| Datei | volle Laeufe | Minuten |",
+    obergrenzeTitel: "### Abschlusslaeufe ueber {grenze}",
+    obergrenzeLeer: "Keine Pruefung und kein Abschlusslauf im Fenster.",
+    obergrenzeKopf: "| Kommando | Abschlusslaeufe | ueber {grenze} | davon gleichzeitig gemessen |",
+    ruecklaufTitel: "## Ruecklaeuferquote",
+    ruecklaufEntfallen: "Die Ruecklaeuferquote entfaellt: {grund}. Die Pruefungs-Kennzahlen oben bleiben davon unberuehrt.",
+    nichtZuordenbar: "Nicht zuordenbare Bewegungen im Fenster: {n}.",
+    restluecke: "Restluecke: Karten, die das Kit nie bewegt hat, stehen nicht im Nenner — eine von Hand am Board nach 'In review' gezogene Karte fehlt in Zaehler und Nenner.",
+    kernOhneKarte: "Im Fenster traegt keine Karte eine Kit-Bewegung — die Quote ist nicht berechenbar.",
+    kernOhneEintritt: "Kein Eintritt nach 'In review' ist im Fenster zuordenbar — die Quote ist nicht berechenbar, nicht null.",
+    kern: "Von {karten}, die im Fenster nach 'In review' {kam}, {bewegungen} zurueck in die Arbeit — Ruecklaeuferquote {quote}.",
+    kamEine: "kam",
+    kamMehrere: "kamen",
+    bewegungEine: "ging 1 Bewegung",
+    bewegungMehrere: "gingen {n} Bewegungen",
+    deckelEine: "Der Deckel von {max} Karten griff: {n} Karte ist weggefallen — gewertet wurden die {gewertet} juengsten.",
+    deckelMehrere: "Der Deckel von {max} Karten griff: {n} Karten sind weggefallen — gewertet wurden die {gewertet} juengsten.",
+    bewegungenAbgeschnitten: "Das Bewegungsprotokoll beginnt erst am {beginn} — die Quote traegt nur den Zeitraum seit diesem Anfang.",
+    fehlerKarteEine: "{n} Karte lieferte keinen Verlauf (Fehlereintrag des Boards) und fehlen in der Zaehlung.",
+    fehlerKartenMehrere: "{n} Karten lieferten keinen Verlauf (Fehlereintrag des Boards) und fehlen in der Zaehlung.",
+    bewegungenUnlesbar: "{n} Zeilen des Bewegungsprotokolls waren unlesbar und wurden uebersprungen.",
+    befundTitel: "## Befund",
+    befundLeer: "Keine Pruefung liegt ueber der Schwelle.",
+    schwellen: "Schwellen dieses Laufs: nie beanstandet ab {nie} Ausfuehrungen, Ruecklaeuferquote ab {quote} bei mindestens {ab} Karten, Fenster {tage} Tage. Eine nicht gelaufene Pruefung loest nie einen Befund aus.",
+    messgrenzeTitel: "## Messgrenze",
+    messgrenze: "Die Salvage-Pruefungen des Nacht-Runners laufen an checks.mjs vorbei und sind hier nicht erfasst.",
+    protokollUnlesbar: "{n} Protokollzeilen waren unlesbar oder fehlerhaft und wurden uebersprungen.",
+    configHinweis: "Hinweis zur Konfiguration: {grund} — es gelten die Vorgaben.",
+    befundKopf: "Auswertung vom {am}, Fenster {tage} Tage seit {von}.",
+    // Fehler
+    nichtGeschrieben: "{pfad} konnte nicht geschrieben werden: {grund}",
+    unbekanntesArgument: "Unbekanntes Argument: '{arg}'",
+    fensterErwartet: "--fenster erwartet eine ganze Zahl groesser null, bekam '{wert}'.",
+    befundOhneArgumente: "'befund' nimmt keine Argumente, bekam '{arg}'.",
+    kandidatenOhneArgumente: "'kandidaten' nimmt keine Argumente, bekam '{arg}'.",
+    unbekannterBefehl: "Unbekannter Befehl: '{befehl}'. Erwartet: auswerten, befund oder kandidaten",
+    fehler: "Fehler",
+    unerwarteterFehler: "Unerwarteter Fehler",
+  }),
+  en: Object.freeze({
+    hilfe: `wirksamkeit.mjs (claude-workflow-kit v{version}) — Effectiveness of the checks
+
+  node wirksamkeit.mjs evaluate [--window <days>]
+  node wirksamkeit.mjs finding
+  node wirksamkeit.mjs candidates
+
+evaluate   Reads {dir}/{ausfuehrungen}, aggregates runs, findings and duration
+           per check command over the time window, computes the mean check time
+           per card from the completion runs together with a comparison value,
+           counts runs and minutes per area (breakdown and inventory via
+           checks.mjs bereiche), determines
+           the return rate (candidates from {dir}/{bewegungen},
+           history via board.mjs issue activity) and writes
+           {dir}/{bericht} and {dir}/{stand}. The
+           output on stdout is always JSON — also in the empty case and also for a
+           rejected call. A failure of the board part is a note in the
+           report, not an abort.
+finding    Prints the findings block from {dir}/{stand} as text, with the
+           date of the evaluation and the window in the header line. If there are no
+           findings, or the file is missing or unreadable, the output stays empty.
+           Exit always 0 — the findings are not a gate.
+candidates Prints one line 'Repair candidate: <cmd> — <n> flaky runs in the time
+           window' per check that {dir}/{stand} marks as a repair candidate
+           (from {reparaturAb} flaky runs in the window). Does not recompute;
+           without candidates or without the file the output stays empty. Exit always 0.
+
+  --window <days>   Length of the time window in days (default {vorgabeFenster}).
+                    Overrides the config block.
+  --version         Kit revision of this file.
+  --help, -h        This overview.
+
+Reads {dir}/{config} in the working directory: 'buildChecks' (for
+the set of required checks and their 'notAtCompletion' for the
+comparison value of the check time per card), 'columns' and 'issueTracker' (for the
+return rate) and the optional block 'effectiveness' with 'windowDays',
+'neverFlaggedFromRuns', 'candidatesMax' (default {vorgabeKandidaten}),
+'rateThreshold' (default {vorgabeQuote}) and 'rateFromPackages' (default
+{vorgabeQuoteAb}). If the block or a field in it is missing, the defaults apply.
+`,
+    configNichtLesbar: "not readable ({grund})",
+    befundNieBeanstandet: "The check '{cmd}' ran {ausfuehrungen} ({lauftage}, {dauer}) and did not flag anything a single time.",
+    befundQuote: "Of {nenner} cards that came to 'In review' in the window, {zaehler} moves went back into work — return rate {quote}.",
+    zuschnittEnde: "the command ended with {status}",
+    zuschnittOhneListe: "the output carries no list 'bereiche'",
+    zuschnittKeinJson: "the command returned no JSON ({grund})",
+    verlaufEnde: "the adapter ended with {status}",
+    verlaufKeinJson: "the adapter returned no JSON ({grund})",
+    quoteLocal: "the tracker 'local' keeps no history (only a synthetic CREATED entry, never a move)",
+    quoteVerlaufFehl: "the history call of the board failed: {grund}",
+    sonderOhneBereich: "without area",
+    sonderOhneZuordnung: "full scope due to missing assignment",
+    sonderVeroeffentlichung: "Publishing (push/merge)",
+    sonderAnker: "Anchor not resolvable",
+    sonderVorErfassung: "before recording",
+    sonderUnbekannt: "Trigger unknown",
+    tausender: ",",
+    dezimal: ".",
+    prozent: "{zahl} %",
+    nichtGemessen: "not measured",
+    ausfuehrungKeine: "not a single time",
+    ausfuehrungEine: "a single time",
+    ausfuehrungMehrere: "{n} times",
+    lauftagKeiner: "on no run day",
+    lauftagEiner: "on a single run day",
+    lauftagMehrere: "on {n} run days",
+    karteEine: "{n} card",
+    karteMehrere: "{n} cards",
+    abschlusslaufEiner: "{n} completion run",
+    abschlusslaufMehrere: "{n} completion runs",
+    zustandNichtGelaufen: "not run",
+    zustandGewackelt: "run, flaky",
+    zustandBeanstandet: "run, with findings",
+    zustandNieBeanstandet: "run, never flagged",
+    ja: "yes",
+    nein: "no",
+    jaKopplung: "yes — forced by coupling: {grund}",
+    kandidatWackler: "{n} flaky runs in the time window",
+    kandidatZeile: "Repair candidate: {cmd} — {kandidat}",
+    titel: "# Effectiveness of the checks",
+    am: "Evaluation of {am}.",
+    fenster: "Window: {tage} days, from {von} to {bis}.",
+    abgeschnitten: "The execution log only begins on {beginn} — the figures cover only the period since that start, not the full window.",
+    ohneProtokoll: "There is no execution log ({pfad} is missing) — no check carries a measured run.",
+    pruefungenTitel: "## Checks",
+    pruefungenLeer: "Not a single check in the window — neither a required nor a logged one.",
+    pruefungenKopf: "| Command | State | Runs | Findings | Flaky | Duration | Run days |",
+    reparatur: "Repair candidate: `{cmd}` — {kandidat} (from {ab}).",
+    momentaufnahme: "The row for `{cmd}` comes from a single run day — a snapshot, not a trend.",
+    nichtVorgeschrieben: "The check `{cmd}` is no longer in the buildChecks; its figures come from the window.",
+    abschlusszeitTitel: "## Mean check time per card",
+    abschlusszeitLeer: "No completion row with a card number in the window — the mean check time per card is not measured. A mean per run is deliberately not shown here: that would be a different quantity.",
+    abschlusszeit: "Measured {mittel} per card, for comparison without the omissions at completion {vergleich} — based on {karten} and {laeufe}.",
+    abschlusszeitGrenze: "Measurement limit of this figure: only completion runs count — check times during the work and when publishing do not count.",
+    ohneAuslassung: "No check carries 'notAtCompletion' — the comparison value is the measured time.",
+    ausgelassenNie: "The check `{cmd}` omitted at completion ({grund}) never ran when publishing in the window — its duration is not measured, so the comparison value stays open.",
+    ausgelassen: "The check `{cmd}` omitted at completion ({grund}) took {dauer} on average when publishing (ran {ausfuehrungen}).",
+    bereicheTitel: "## Areas",
+    ohneZuschnitt: "The breakdown from `checks.mjs bereiche` is missing: {vermerk}. Share, highlighting and inventory are dropped; runs and minutes come from the log.",
+    bereicheKopf: "| Area | naming commands | highlighted | Runs | Minutes |",
+    bereicheSumme: "The sum of the rows exceeds the total time of {minuten} minutes, because a run counts with its full duration for each of its areas. Adopted results write no log row and do not count.",
+    inventarTitel: "### Inventory",
+    inventarOhneTreffer: "{ohne} of {dateien} versioned files match no area pattern.",
+    inventarFreigestellt: "exempted (`noCheck`, with reason): {n}",
+    inventarOhneZuordnung: "without any assignment — triggers the full scope: {n}",
+    teuerTitel: "### Expensive files without assignment",
+    teuerLeer: "In the window no unassigned file triggered the full scope.",
+    teuerKopf: "| File | full runs | Minutes |",
+    obergrenzeTitel: "### Completion runs over {grenze}",
+    obergrenzeLeer: "No check and no completion run in the window.",
+    obergrenzeKopf: "| Command | Completion runs | over {grenze} | of these measured concurrently |",
+    ruecklaufTitel: "## Return rate",
+    ruecklaufEntfallen: "The return rate does not apply: {grund}. The check figures above are unaffected.",
+    nichtZuordenbar: "Moves in the window that cannot be assigned: {n}.",
+    restluecke: "Remaining gap: cards the kit never moved are not in the denominator — a card dragged to 'In review' by hand on the board is missing from numerator and denominator.",
+    kernOhneKarte: "In the window no card carries a kit move — the rate cannot be computed.",
+    kernOhneEintritt: "No entry into 'In review' can be assigned in the window — the rate cannot be computed, it is not zero.",
+    kern: "Of {karten} that {kam} to 'In review' in the window, {bewegungen} back into work — return rate {quote}.",
+    kamEine: "came",
+    kamMehrere: "came",
+    bewegungEine: "1 move went",
+    bewegungMehrere: "{n} moves went",
+    deckelEine: "The cap of {max} cards applied: {n} card was dropped — the {gewertet} latest were evaluated.",
+    deckelMehrere: "The cap of {max} cards applied: {n} cards were dropped — the {gewertet} latest were evaluated.",
+    bewegungenAbgeschnitten: "The move log only begins on {beginn} — the rate covers only the period since that start.",
+    fehlerKarteEine: "{n} card returned no history (error entry of the board) and is missing from the count.",
+    fehlerKartenMehrere: "{n} cards returned no history (error entry of the board) and are missing from the count.",
+    bewegungenUnlesbar: "{n} rows of the move log were unreadable and were skipped.",
+    befundTitel: "## Findings",
+    befundLeer: "No check is above the threshold.",
+    schwellen: "Thresholds of this run: never flagged from {nie} runs, return rate from {quote} with at least {ab} cards, window {tage} days. A check that did not run never triggers a finding.",
+    messgrenzeTitel: "## Measurement limit",
+    messgrenze: "The salvage checks of the night runner bypass checks.mjs and are not recorded here.",
+    protokollUnlesbar: "{n} log rows were unreadable or faulty and were skipped.",
+    configHinweis: "Note on the configuration: {grund} — the defaults apply.",
+    befundKopf: "Evaluation of {am}, window {tage} days since {von}.",
+    nichtGeschrieben: "{pfad} could not be written: {grund}",
+    unbekanntesArgument: "Unknown argument: '{arg}'",
+    fensterErwartet: "--window expects a whole number greater than zero, got '{wert}'.",
+    befundOhneArgumente: "'finding' takes no arguments, got '{arg}'.",
+    kandidatenOhneArgumente: "'candidates' takes no arguments, got '{arg}'.",
+    unbekannterBefehl: "Unknown command: '{befehl}'. Expected: evaluate, finding or candidates",
+    fehler: "Error",
+    unerwarteterFehler: "Unexpected error",
+  }),
+});
+
+// Der Texthelfer aus dem Board-Teil namen (Plan #1420 E13), abgefangen wie der Normalisierer:
+// Fehlt board/namen.mjs neben wirksamkeit.mjs, bleiben die Texte deutsch.
+const namen = await import(new URL("./board/namen.mjs", import.meta.url).href).catch(() => null);
+
+/** Der Text zu `schluessel` aus `TEXTE` in der Sprache des Prozesses; ohne Register deutsch. */
+function t(schluessel, werte = {}) {
+  if (namen) return namen.text(TEXTE, schluessel, werte);
+  return TEXTE.de[schluessel].replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
+}
+
+/** Die Hilfe — erst beim Aufruf gebaut, damit die Sprache der Config gilt. */
+function hilfe() {
+  return t("hilfe", {
+    version: KIT_VERSION, dir: CLAUDE_DIR, ausfuehrungen: AUSFUEHRUNGEN_DATEI, bewegungen: BEWEGUNGEN_DATEI,
+    bericht: BERICHT_DATEI, stand: STAND_DATEI, reparaturAb: REPARATUR_AB_WACKLERN, vorgabeFenster: VORGABE_FENSTER_TAGE,
+    config: CONFIG_DATEI, vorgabeKandidaten: VORGABE_KANDIDATEN_MAX, vorgabeQuote: VORGABE_QUOTE_SCHWELLE,
+    vorgabeQuoteAb: VORGABE_QUOTE_AB_PAKETEN,
+  });
+}
 
 class WirksamkeitError extends Error {}
 
@@ -282,7 +568,7 @@ function ladeEinstellungen(root) {
   try {
     config = normalisiereConfig(JSON.parse(readFileSync(pfad, "utf-8"))).config;
   } catch (err) {
-    return { ...vorgabe, configGelesen: `nicht lesbar (${err.message})` };
+    return { ...vorgabe, configGelesen: t("configNichtLesbar", { grund: err.message }) };
   }
   const { buildCmds, abschlussAusgelassen, hinweisCmds } = pruefungenAusConfig(config);
   const block = config?.wirksamkeit && typeof config.wirksamkeit === "object" ? config.wirksamkeit : {};
@@ -644,8 +930,9 @@ function befundBestimmen(pruefungen, nieBeanstandetAb) {
     befund.push({
       schwelle: "nieBeanstandet",
       cmd: p.cmd,
-      text: `Die Pruefung '${p.cmd}' lief ${ausfuehrungsText(p.ausfuehrungen)} (${lauftagText(p.lauftage)}, `
-        + `${dauer(p.dauerMs)}) und hat dabei kein einziges Mal etwas beanstandet.`,
+      text: t("befundNieBeanstandet", {
+        cmd: p.cmd, ausfuehrungen: ausfuehrungsText(p.ausfuehrungen), lauftage: lauftagText(p.lauftage), dauer: dauer(p.dauerMs),
+      }),
     });
   }
   return befund;
@@ -726,15 +1013,15 @@ function abschlusszeitErmitteln(zeilen, fenster, ausgelassenChecks) {
 function zuschnittHolen(root, checks) {
   const res = checks(["bereiche"], { cwd: root });
   if (res.status !== 0) {
-    const grund = (res.stderr || "").trim() || `das Kommando endete mit ${res.status ?? res.error?.message ?? "?"}`;
+    const grund = (res.stderr || "").trim() || t("zuschnittEnde", { status: res.status ?? res.error?.message ?? "?" });
     return { fehler: grund };
   }
   try {
     const zuschnitt = JSON.parse(res.stdout);
-    if (!Array.isArray(zuschnitt?.bereiche)) return { fehler: "die Ausgabe traegt keine Liste 'bereiche'" };
+    if (!Array.isArray(zuschnitt?.bereiche)) return { fehler: t("zuschnittOhneListe") };
     return { zuschnitt };
   } catch (err) {
-    return { fehler: `das Kommando lieferte kein JSON (${err.message})` };
+    return { fehler: t("zuschnittKeinJson", { grund: err.message }) };
   }
 }
 
@@ -759,7 +1046,7 @@ function zuschnittHolen(root, checks) {
  */
 function bereicheErmitteln(zeilen, fenster, buildCmds, geholt) {
   const jeBereich = new Map();
-  const sonder = new Map([...SONDERZEILEN.values(), VOR_DER_ERFASSUNG].map((name) => [name, { name, laeufe: 0, dauerMs: 0 }]));
+  const sonder = new Map([...SONDERZEILEN.values(), VOR_DER_ERFASSUNG].map((schluessel) => [schluessel, { name: t(schluessel), laeufe: 0, dauerMs: 0 }]));
   const teuer = new Map();
   const obergrenze = new Map(buildCmds.map((cmd) => [cmd, { cmd, abschlusslaeufe: 0, ueber: 0, ueberGleichzeitig: 0 }]));
   let gesamtDauerMs = 0;
@@ -801,14 +1088,14 @@ function eintragVon(map, schluessel, neu) {
 function ausloeserZaehlen(z, jeBereich, sonder) {
   const ziele = z.ausloeser === AUSLOESER_BEREICHE
     ? z.bereiche.map((name) => eintragVon(jeBereich, name, () => ({ laeufe: 0, dauerMs: 0 })))
-    : [eintragVon(sonder, sonderzeileVon(z.ausloeser), () => ({ name: sonderzeileVon(z.ausloeser), laeufe: 0, dauerMs: 0 }))];
+    : [eintragVon(sonder, sonderzeileVon(z.ausloeser), () => ({ name: t(sonderzeileVon(z.ausloeser)), laeufe: 0, dauerMs: 0 }))];
   for (const ziel of ziele) {
     ziel.laeufe += 1;
     ziel.dauerMs += z.dauerMs;
   }
 }
 
-/** Der Name der Sonderzeile einer Ausloeserart — `null` heisst: vor der Erfassung geschrieben. */
+/** Der Textschluessel der Sonderzeile einer Ausloeserart — `null` heisst: vor der Erfassung geschrieben. */
 function sonderzeileVon(ausloeser) {
   if (ausloeser === null) return VOR_DER_ERFASSUNG;
   return SONDERZEILEN.get(ausloeser) ?? AUSLOESER_UNBEKANNT;
@@ -918,13 +1205,13 @@ function zielVon(detail, zuordnung) {
 function verlaeufeHolen(root, ids, board) {
   const res = board(["issue", "activity", "--ids", ids.join(",")], { cwd: root });
   if (res.status !== 0) {
-    const grund = (res.stderr || "").trim() || `der Adapter endete mit ${res.status ?? res.error?.message ?? "?"}`;
+    const grund = (res.stderr || "").trim() || t("verlaufEnde", { status: res.status ?? res.error?.message ?? "?" });
     return { fehler: grund };
   }
   try {
     return { verlaeufe: JSON.parse(res.stdout) };
   } catch (err) {
-    return { fehler: `der Adapter lieferte kein JSON (${err.message})` };
+    return { fehler: t("verlaufKeinJson", { grund: err.message }) };
   }
 }
 
@@ -963,7 +1250,7 @@ function ruecklaufErmitteln(root, einstellungen, fensterTage, jetztMs, board) {
     return {
       ...basis,
       status: "entfallen",
-      grund: "der Tracker 'local' fuehrt keinen Verlauf (nur ein synthetischer CREATED-Eintrag, nie eine Bewegung)",
+      grund: t("quoteLocal"),
     };
   }
 
@@ -973,7 +1260,7 @@ function ruecklaufErmitteln(root, einstellungen, fensterTage, jetztMs, board) {
 
   const geholt = verlaeufeHolen(root, gewertet.ids, board);
   if (geholt.fehler) {
-    return { ...basis, status: "entfallen", grund: `der Verlaufs-Aufruf des Boards schlug fehl: ${geholt.fehler}` };
+    return { ...basis, status: "entfallen", grund: t("quoteVerlaufFehl", { grund: geholt.fehler }) };
   }
 
   const gezaehlt = kartenZaehlen(geholt.verlaeufe, gewertet.ids, einstellungen.spalten, fenster);
@@ -1066,16 +1353,16 @@ function ruecklaufBefund(r, einstellungen) {
   if (r.nenner < einstellungen.quoteAbPaketen || r.quote < einstellungen.quoteSchwelle) return [];
   return [{
     schwelle: "ruecklaufquote",
-    text: `Von ${r.nenner} Karten, die im Fenster nach 'In review' kamen, gingen ${r.zaehler} Bewegungen `
-      + `zurueck in die Arbeit — Ruecklaeuferquote ${prozent(r.quote)}.`,
+    text: t("befundQuote", { nenner: r.nenner, zaehler: r.zaehler, quote: prozent(r.quote) }),
   }];
 }
 
 // --- Textformen --------------------------------------------------------------
 
 /**
- * Deutsche Zahlform: Komma als Dezimaltrenner, Punkt als Tausendertrenner. Von Hand
- * und NICHT ueber `toLocaleString`: Dessen Ergebnis haengt an der Locale der Maschine.
+ * Zahlform der Projektsprache: deutsch Komma als Dezimaltrenner und Punkt als
+ * Tausendertrenner, englisch umgekehrt. Von Hand und NICHT ueber `toLocaleString`: Dessen
+ * Ergebnis haengt an der Locale der Maschine.
  *
  * SYNC: dieselben Textformen (`zahlform`, `dauer`) stehen in kit/aufwand.mjs (#440).
  */
@@ -1110,8 +1397,8 @@ export function zahlform(wert, stellen) {
   const [ganz, bruch] = fest.split(".");
   const vorzeichen = ganz.startsWith("-") ? "-" : "";
   const ziffern = vorzeichen ? ganz.slice(1) : ganz;
-  const gruppiert = tausenderPunkte(ziffern);
-  return bruch ? `${vorzeichen}${gruppiert},${bruch}` : `${vorzeichen}${gruppiert}`;
+  const gruppiert = tausenderPunkte(ziffern).replaceAll(".", t("tausender"));
+  return bruch ? `${vorzeichen}${gruppiert}${t("dezimal")}${bruch}` : `${vorzeichen}${gruppiert}`;
 }
 
 /**
@@ -1120,7 +1407,7 @@ export function zahlform(wert, stellen) {
  */
 function prozent(quote) {
   const p = quote * 100;
-  return `${zahlform(p, Number.isInteger(p) ? 0 : 1)} %`;
+  return t("prozent", { zahl: zahlform(p, Number.isInteger(p) ? 0 : 1) });
 }
 
 /** Eine Dauer in Minuten mit einer Nachkommastelle — die Spalte der Bereichstabelle. */
@@ -1130,7 +1417,7 @@ function minuten(ms) {
 
 /** Eine Dauer in Millisekunden als lesbare Spanne; `null` sagt "nicht gemessen". */
 function dauer(ms) {
-  if (ms === null) return "nicht gemessen";
+  if (ms === null) return t("nichtGemessen");
   if (ms < 1000) return `${zahlform(ms, 0)} ms`;
   const sekunden = Math.round(ms / 1000);
   if (sekunden < 60) return `${sekunden} s`;
@@ -1145,25 +1432,25 @@ function dauer(ms) {
  * keine Tendenz, wie `laufText` in kit/aufwand.mjs es sagt.
  */
 function ausfuehrungsText(n) {
-  if (n === 0) return "kein einziges Mal";
-  return n === 1 ? "ein einziges Mal" : `${n}-mal`;
+  if (n === 0) return t("ausfuehrungKeine");
+  return n === 1 ? t("ausfuehrungEine") : t("ausfuehrungMehrere", { n });
 }
 
-/** Eine Zahl mit ihrem Wort — Einzahl bei genau einem, sonst die genannte Mehrzahl. */
+/** Eine Zahl mit ihrem Wort — der Text `einzahl` bei genau einem, sonst `mehrzahl`. */
 function anzahlText(n, einzahl, mehrzahl) {
-  return `${n} ${n === 1 ? einzahl : mehrzahl}`;
+  return t(n === 1 ? einzahl : mehrzahl, { n });
 }
 
 function lauftagText(n) {
-  if (n === 0) return "an keinem Lauftag";
-  return n === 1 ? "an einem einzigen Lauftag" : `an ${n} Lauftagen`;
+  if (n === 0) return t("lauftagKeiner");
+  return n === 1 ? t("lauftagEiner") : t("lauftagMehrere", { n });
 }
 
 /** Der Zustand einer Pruefung, wie er in der Tabelle steht. */
 function zustandText(p) {
-  if (p.zustand === "nicht gelaufen") return "nicht gelaufen";
-  if (p.zustand === "gewackelt") return "ausgefuehrt, gewackelt";
-  return p.zustand === "beanstandet" ? "ausgefuehrt, mit Beanstandungen" : "ausgefuehrt, nie beanstandet";
+  if (p.zustand === "nicht gelaufen") return t("zustandNichtGelaufen");
+  if (p.zustand === "gewackelt") return t("zustandGewackelt");
+  return p.zustand === "beanstandet" ? t("zustandBeanstandet") : t("zustandNieBeanstandet");
 }
 
 /**
@@ -1180,8 +1467,8 @@ export function berichtText(e) {
     ...berichtBefund(e),
     // Die Messgrenze aus E17 steht in JEDEM Bericht, auch im Leerfall: Wer die Datei
     // liest, soll wissen, was sie systematisch nicht sieht.
-    "## Messgrenze", "",
-    "Die Salvage-Pruefungen des Nacht-Runners laufen an checks.mjs vorbei und sind hier nicht erfasst.",
+    t("messgrenzeTitel"), "",
+    t("messgrenze"),
     "",
     ...berichtFuss(e),
   ].join("\n");
@@ -1189,34 +1476,25 @@ export function berichtText(e) {
 
 function berichtKopf(e) {
   const zeilen = [
-    "# Wirksamkeit der Pruefungen", "",
-    `Auswertung vom ${e.erzeugtAm}.`,
-    `Fenster: ${e.fenster.tage} Tage, von ${e.fenster.von} bis ${e.fenster.bis}.`,
+    t("titel"), "",
+    t("am", { am: e.erzeugtAm }),
+    t("fenster", { tage: e.fenster.tage, von: e.fenster.von, bis: e.fenster.bis }),
   ];
-  if (e.fenster.abgeschnitten) {
-    zeilen.push(
-      `Das Ausfuehrungsprotokoll beginnt erst am ${e.fenster.erhebungsbeginn} — die Zahlen tragen `
-      + "nur den Zeitraum seit diesem Anfang, nicht das volle Fenster."
-    );
-  }
+  if (e.fenster.abgeschnitten) zeilen.push(t("abgeschnitten", { beginn: e.fenster.erhebungsbeginn }));
   zeilen.push("");
   if (!e.protokoll.vorhanden) {
-    zeilen.push(
-      `Es liegt kein Ausfuehrungsprotokoll vor (${CLAUDE_DIR}/${AUSFUEHRUNGEN_DATEI} fehlt) — `
-      + "keine Pruefung traegt eine gemessene Ausfuehrung.",
-      ""
-    );
+    zeilen.push(t("ohneProtokoll", { pfad: `${CLAUDE_DIR}/${AUSFUEHRUNGEN_DATEI}` }), "");
   }
   return zeilen;
 }
 
 function berichtPruefungen(e) {
   if (e.pruefungen.length === 0) {
-    return ["## Pruefungen", "", "Keine einzige Pruefung im Fenster — weder eine vorgeschriebene noch eine protokollierte.", ""];
+    return [t("pruefungenTitel"), "", t("pruefungenLeer"), ""];
   }
   const zeilen = [
-    "## Pruefungen", "",
-    "| Kommando | Zustand | Ausfuehrungen | Beanstandungen | Wackler | Dauer | Lauftage |",
+    t("pruefungenTitel"), "",
+    t("pruefungenKopf"),
     "| --- | --- | --- | --- | --- | --- | --- |",
     ...e.pruefungen.map((p) =>
       `| \`${p.cmd}\` | ${zustandText(p)} | ${p.ausfuehrungen} | ${p.beanstandungen} | ${p.wackler ?? 0} | ${dauer(p.dauerMs)} | ${p.lauftage} |`),
@@ -1224,17 +1502,17 @@ function berichtPruefungen(e) {
   ];
   // Je Reparaturkandidat eine Zeile (Issue #1398, E10) — dieselbe Form, die `kandidaten` ausgibt.
   for (const p of e.pruefungen.filter((p) => p.reparaturkandidat)) {
-    zeilen.push(`Reparaturkandidat: \`${p.cmd}\` — ${kandidatText(p)} (ab ${REPARATUR_AB_WACKLERN}).`);
+    zeilen.push(t("reparatur", { cmd: p.cmd, kandidat: kandidatText(p), ab: REPARATUR_AB_WACKLERN }));
   }
   // Die Traglast in Worten (AK 7): Eine Zeile aus einem einzigen Lauftag ist eine
   // Momentaufnahme — das steht ausdruecklich da, nicht nur als 1 in einer Spalte.
   for (const p of e.pruefungen.filter((p) => p.ausfuehrungen > 0 && p.lauftage === 1)) {
-    zeilen.push(`Die Zeile zu \`${p.cmd}\` stammt aus einem einzigen Lauftag — eine Momentaufnahme, keine Tendenz.`);
+    zeilen.push(t("momentaufnahme", { cmd: p.cmd }));
   }
   // Eine im Fenster entfernte Pruefung bleibt in der Zeitbilanz (E3) und wird benannt:
   // Ihre Zahlen sagen sonst nichts darueber, warum sie kuenftig fehlen werden.
   for (const p of e.pruefungen.filter((p) => !p.vorgeschrieben)) {
-    zeilen.push(`Die Pruefung \`${p.cmd}\` steht nicht (mehr) in den buildChecks; ihre Zahlen stammen aus dem Fenster.`);
+    zeilen.push(t("nichtVorgeschrieben", { cmd: p.cmd }));
   }
   if (zeilen.at(-1) !== "") zeilen.push("");
   return zeilen;
@@ -1248,41 +1526,28 @@ function berichtPruefungen(e) {
  */
 function berichtAbschlusszeit(e) {
   const a = e.abschlusszeit;
-  const zeilen = ["## Mittlere Pruefzeit je Karte", ""];
+  const zeilen = [t("abschlusszeitTitel"), ""];
   if (a.karten === 0) {
-    zeilen.push(
-      "Keine Abschlusszeile mit Kartennummer im Fenster — die mittlere Pruefzeit je Karte ist nicht gemessen. "
-      + "Ein Mittel je Lauf steht hier ausdruecklich nicht: Das waere eine andere Groesse.",
-    );
+    zeilen.push(t("abschlusszeitLeer"));
   } else {
-    const karten = anzahlText(a.karten, "Karte", "Karten");
-    const laeufe = anzahlText(a.laeufe, "Abschlusslauf", "Abschlusslaeufen");
-    zeilen.push(
-      `Gemessen ${dauer(a.mittelMs)} je Karte, zum Vergleich ohne die Auslassungen des Abschlusses `
-      + `${dauer(a.vergleichMs)} — getragen von ${karten} und ${laeufe}.`,
-    );
+    zeilen.push(t("abschlusszeit", {
+      mittel: dauer(a.mittelMs),
+      vergleich: dauer(a.vergleichMs),
+      karten: anzahlText(a.karten, "karteEine", "karteMehrere"),
+      laeufe: anzahlText(a.laeufe, "abschlusslaufEiner", "abschlusslaufMehrere"),
+    }));
   }
   // Die Messgrenze der Zahl (AK 6): Sie steht in JEDEM Fall da, auch im Leerfall.
-  zeilen.push(
-    ...abschlusszeitVermerke(a),
-    "",
-    "Messgrenze dieser Zahl: Nur Abschlusslaeufe zaehlen — Pruefzeiten waehrend der Arbeit und beim "
-    + "Veroeffentlichen zaehlen nicht mit.",
-    "",
-  );
+  zeilen.push(...abschlusszeitVermerke(a), "", t("abschlusszeitGrenze"), "");
   return zeilen;
 }
 
 /** Die Vermerke zur Traglast des Vergleichswerts: je ausgelassener Pruefung eine Zeile. */
 function abschlusszeitVermerke(a) {
-  if (a.ausgelassen.length === 0) {
-    return ["Keine Pruefung traegt 'nichtBeimAbschluss' — der Vergleichswert ist die gemessene Zeit."];
-  }
+  if (a.ausgelassen.length === 0) return [t("ohneAuslassung")];
   return a.ausgelassen.map((p) => (p.mittelMs === null
-    ? `Die beim Abschluss ausgelassene Pruefung \`${p.cmd}\` (${p.grund}) lief im Fenster nie beim `
-      + "Veroeffentlichen — ihre Dauer ist nicht gemessen, und darum bleibt der Vergleichswert offen."
-    : `Die beim Abschluss ausgelassene Pruefung \`${p.cmd}\` (${p.grund}) kostete beim Veroeffentlichen `
-      + `im Mittel ${dauer(p.mittelMs)} (${ausfuehrungsText(p.ausfuehrungen)} gelaufen).`));
+    ? t("ausgelassenNie", { cmd: p.cmd, grund: p.grund })
+    : t("ausgelassen", { cmd: p.cmd, grund: p.grund, dauer: dauer(p.mittelMs), ausfuehrungen: ausfuehrungsText(p.ausfuehrungen) })));
 }
 
 /**
@@ -1292,23 +1557,15 @@ function abschlusszeitVermerke(a) {
  */
 function berichtBereiche(e) {
   const b = e.bereiche;
-  const zeilen = ["## Bereiche", ""];
-  if (b.vermerk !== null) {
-    zeilen.push(
-      `Der Zuschnitt aus \`checks.mjs bereiche\` fehlt: ${b.vermerk}. Anteil, Hervorhebung und Inventar `
-      + "entfallen; Laeufe und Minuten stammen aus dem Protokoll.",
-      "",
-    );
-  }
+  const zeilen = [t("bereicheTitel"), ""];
+  if (b.vermerk !== null) zeilen.push(t("ohneZuschnitt", { vermerk: b.vermerk }), "");
   zeilen.push(
-    "| Bereich | nennende Kommandos | hervorgehoben | Laeufe | Minuten |",
+    t("bereicheKopf"),
     "| --- | --- | --- | --- | --- |",
     ...b.tabelle.map((z) => `| ${z.name} | ${anteilText(z)} | ${hervorhebungText(z)} | ${z.laeufe} | ${minuten(z.dauerMs)} |`),
     ...b.sonderzeilen.map((z) => `| ${z.name} | — | — | ${z.laeufe} | ${minuten(z.dauerMs)} |`),
     "",
-    `Die Summe der Zeilen uebersteigt die Gesamtzeit von ${minuten(b.gesamtDauerMs)} Minuten, weil eine Ausfuehrung `
-    + "fuer jeden ihrer Bereiche mit voller Dauer zaehlt. Uebernommene Ergebnisse schreiben keine Protokollzeile "
-    + "und zaehlen nicht.",
+    t("bereicheSumme", { minuten: minuten(b.gesamtDauerMs) }),
     "",
     ...berichtInventar(b.inventar),
     ...berichtTeureDateien(b.teureDateien),
@@ -1325,8 +1582,8 @@ function anteilText(z) {
 /** Die Hervorhebung einer Tabellenzeile — bei gekoppelten Bereichen mit Grund (E14). */
 function hervorhebungText(z) {
   if (z.hervorgehoben === null) return "—";
-  if (!z.hervorgehoben) return "nein";
-  return z.kopplungsgrund ? `ja — durch Kopplung erzwungen: ${z.kopplungsgrund}` : "ja";
+  if (!z.hervorgehoben) return t("nein");
+  return z.kopplungsgrund ? t("jaKopplung", { grund: z.kopplungsgrund }) : t("ja");
 }
 
 function berichtInventar(inventar) {
@@ -1334,28 +1591,28 @@ function berichtInventar(inventar) {
   const freigestellt = inventar.freigestellt ?? [];
   const ohneZuordnung = inventar.ohneZuordnung ?? [];
   return [
-    "### Inventar", "",
-    `${inventar.ohneTreffer} von ${inventar.dateien} versionierten Dateien treffen kein Bereichsmuster.`,
+    t("inventarTitel"), "",
+    t("inventarOhneTreffer", { ohne: inventar.ohneTreffer, dateien: inventar.dateien }),
     "",
-    `freigestellt (\`ohnePruefung\`, mit Grund): ${freigestellt.length}`,
+    t("inventarFreigestellt", { n: freigestellt.length }),
     ...freigestellt.map((f) => `- \`${f.pfad}\` — ${f.grund}`),
     "",
-    `ohne jede Zuordnung — loest den vollen Umfang aus: ${ohneZuordnung.length}`,
+    t("inventarOhneZuordnung", { n: ohneZuordnung.length }),
     ...ohneZuordnung.map((pfad) => `- \`${pfad}\``),
     "",
   ];
 }
 
 function berichtTeureDateien(teure) {
-  const zeilen = ["### Teure Dateien ohne Zuordnung", ""];
+  const zeilen = [t("teuerTitel"), ""];
   if (teure.length === 0) {
-    zeilen.push("Im Fenster loeste keine unzugeordnete Datei den vollen Umfang aus.", "");
+    zeilen.push(t("teuerLeer"), "");
     return zeilen;
   }
   zeilen.push(
-    "| Datei | volle Laeufe | Minuten |",
+    t("teuerKopf"),
     "| --- | --- | --- |",
-    ...teure.map((t) => `| \`${t.pfad}\` | ${t.volleLaeufe} | ${minuten(t.dauerMs)} |`),
+    ...teure.map((d) => `| \`${d.pfad}\` | ${d.volleLaeufe} | ${minuten(d.dauerMs)} |`),
     "",
   );
   return zeilen;
@@ -1363,13 +1620,13 @@ function berichtTeureDateien(teure) {
 
 function berichtObergrenze(o) {
   const grenze = dauer(o.grenzeMs);
-  const zeilen = [`### Abschlusslaeufe ueber ${grenze}`, ""];
+  const zeilen = [t("obergrenzeTitel", { grenze }), ""];
   if (o.kommandos.length === 0) {
-    zeilen.push("Keine Pruefung und kein Abschlusslauf im Fenster.", "");
+    zeilen.push(t("obergrenzeLeer"), "");
     return zeilen;
   }
   zeilen.push(
-    `| Kommando | Abschlusslaeufe | ueber ${grenze} | davon gleichzeitig gemessen |`,
+    t("obergrenzeKopf", { grenze }),
     "| --- | --- | --- | --- |",
     ...o.kommandos.map((k) => `| \`${k.cmd}\` | ${k.abschlusslaeufe} | ${k.ueber} | ${k.ueberGleichzeitig ?? 0} |`),
     "",
@@ -1387,19 +1644,14 @@ function berichtObergrenze(o) {
 function berichtRuecklauf(e) {
   const r = e.ruecklauf;
   if (r.status === "entfallen") {
-    return [
-      "## Ruecklaeuferquote", "",
-      `Die Ruecklaeuferquote entfaellt: ${r.grund}. Die Pruefungs-Kennzahlen oben bleiben davon unberuehrt.`,
-      "",
-    ];
+    return [t("ruecklaufTitel"), "", t("ruecklaufEntfallen", { grund: r.grund }), ""];
   }
   return [
-    "## Ruecklaeuferquote", "",
+    t("ruecklaufTitel"), "",
     ruecklaufKernsatz(r),
-    `Nicht zuordenbare Bewegungen im Fenster: ${r.nichtZuordenbareBewegungen}.`,
+    t("nichtZuordenbar", { n: r.nichtZuordenbareBewegungen }),
     ...ruecklaufVermerke(r, e.schwellen),
-    "Restluecke: Karten, die das Kit nie bewegt hat, stehen nicht im Nenner — eine von Hand am Board "
-    + "nach 'In review' gezogene Karte fehlt in Zaehler und Nenner.",
+    t("restluecke"),
     "",
   ];
 }
@@ -1407,52 +1659,41 @@ function berichtRuecklauf(e) {
 /** Die erste Aussage des Quote-Abschnitts: die Quote selbst oder ihr Nicht-Berechenbar-Grund. */
 function ruecklaufKernsatz(r) {
   if (r.status !== "berechnet") {
-    return r.kandidaten.gewertet === 0
-      ? "Im Fenster traegt keine Karte eine Kit-Bewegung — die Quote ist nicht berechenbar."
-      : "Kein Eintritt nach 'In review' ist im Fenster zuordenbar — die Quote ist nicht berechenbar, nicht null.";
+    return r.kandidaten.gewertet === 0 ? t("kernOhneKarte") : t("kernOhneEintritt");
   }
-  const karten = `${r.nenner} ${r.nenner === 1 ? "Karte" : "Karten"}`;
-  const kam = r.nenner === 1 ? "kam" : "kamen";
-  const bewegungen = r.zaehler === 1 ? "ging 1 Bewegung" : `gingen ${r.zaehler} Bewegungen`;
-  return `Von ${karten}, die im Fenster nach 'In review' ${kam}, ${bewegungen} zurueck in die Arbeit — `
-    + `Ruecklaeuferquote ${prozent(r.quote)}.`;
+  return t("kern", {
+    karten: anzahlText(r.nenner, "karteEine", "karteMehrere"),
+    kam: t(r.nenner === 1 ? "kamEine" : "kamMehrere"),
+    bewegungen: anzahlText(r.zaehler, "bewegungEine", "bewegungMehrere"),
+    quote: prozent(r.quote),
+  });
 }
 
 /** Die Traglast-Vermerke der Quote — nur die Zeilen, deren Anlass eingetreten ist. */
 function ruecklaufVermerke(r, schwellen) {
   const zeilen = [];
   if (r.kandidaten.weggefallen > 0) {
-    zeilen.push(
-      `Der Deckel von ${schwellen.kandidatenMax} Karten griff: `
-      + `${r.kandidaten.weggefallen} ${r.kandidaten.weggefallen === 1 ? "Karte ist" : "Karten sind"} weggefallen — `
-      + `gewertet wurden die ${r.kandidaten.gewertet} juengsten.`
-    );
+    zeilen.push(t(r.kandidaten.weggefallen === 1 ? "deckelEine" : "deckelMehrere", {
+      max: schwellen.kandidatenMax, n: r.kandidaten.weggefallen, gewertet: r.kandidaten.gewertet,
+    }));
   }
-  if (r.abgeschnitten) {
-    zeilen.push(
-      `Das Bewegungsprotokoll beginnt erst am ${r.erhebungsbeginn} — die Quote traegt nur den Zeitraum seit diesem Anfang.`
-    );
-  }
-  if (r.fehlerKarten > 0) {
-    zeilen.push(
-      `${r.fehlerKarten} ${r.fehlerKarten === 1 ? "Karte lieferte" : "Karten lieferten"} keinen Verlauf `
-      + "(Fehlereintrag des Boards) und fehlen in der Zaehlung."
-    );
-  }
-  if (r.protokoll.fehlerhafteZeilen > 0) {
-    zeilen.push(`${r.protokoll.fehlerhafteZeilen} Zeilen des Bewegungsprotokolls waren unlesbar und wurden uebersprungen.`);
-  }
+  if (r.abgeschnitten) zeilen.push(t("bewegungenAbgeschnitten", { beginn: r.erhebungsbeginn }));
+  if (r.fehlerKarten > 0) zeilen.push(anzahlText(r.fehlerKarten, "fehlerKarteEine", "fehlerKartenMehrere"));
+  if (r.protokoll.fehlerhafteZeilen > 0) zeilen.push(t("bewegungenUnlesbar", { n: r.protokoll.fehlerhafteZeilen }));
   return zeilen;
 }
 
 function berichtBefund(e) {
-  const zeilen = ["## Befund", ""];
-  if (e.befund.length === 0) zeilen.push("Keine Pruefung liegt ueber der Schwelle.", "");
+  const zeilen = [t("befundTitel"), ""];
+  if (e.befund.length === 0) zeilen.push(t("befundLeer"), "");
   else zeilen.push(...e.befund.map((b) => `- ${b.text}`), "");
   zeilen.push(
-    `Schwellen dieses Laufs: nie beanstandet ab ${e.schwellen.nieBeanstandetAbAusfuehrungen} Ausfuehrungen, `
-    + `Ruecklaeuferquote ab ${prozent(e.schwellen.quoteSchwelle)} bei mindestens ${e.schwellen.quoteAbPaketen} Karten, `
-    + `Fenster ${e.schwellen.fensterTage} Tage. Eine nicht gelaufene Pruefung loest nie einen Befund aus.`,
+    t("schwellen", {
+      nie: e.schwellen.nieBeanstandetAbAusfuehrungen,
+      quote: prozent(e.schwellen.quoteSchwelle),
+      ab: e.schwellen.quoteAbPaketen,
+      tage: e.schwellen.fensterTage,
+    }),
     ""
   );
   return zeilen;
@@ -1460,13 +1701,8 @@ function berichtBefund(e) {
 
 function berichtFuss(e) {
   const zeilen = [];
-  if (e.protokoll.fehlerhafteZeilen > 0) {
-    zeilen.push(
-      `${e.protokoll.fehlerhafteZeilen} Protokollzeilen waren unlesbar oder fehlerhaft und wurden uebersprungen.`,
-      ""
-    );
-  }
-  if (e.configGelesen) zeilen.push(`Hinweis zur Konfiguration: ${e.configGelesen} — es gelten die Vorgaben.`, "");
+  if (e.protokoll.fehlerhafteZeilen > 0) zeilen.push(t("protokollUnlesbar", { n: e.protokoll.fehlerhafteZeilen }), "");
+  if (e.configGelesen) zeilen.push(t("configHinweis", { grund: e.configGelesen }), "");
   return zeilen;
 }
 
@@ -1480,13 +1716,13 @@ function berichtFuss(e) {
 export function befundText(stand) {
   const befund = Array.isArray(stand?.befund) ? stand.befund : [];
   if (befund.length === 0) return "";
-  const kopf = `Auswertung vom ${stand.erzeugtAm}, Fenster ${stand.fenster?.tage ?? "?"} Tage seit ${stand.fenster?.von ?? "?"}.`;
+  const kopf = t("befundKopf", { am: stand.erzeugtAm, tage: stand.fenster?.tage ?? "?", von: stand.fenster?.von ?? "?" });
   return [kopf, ...befund.map((b) => `- ${b.text}`)].join("\n") + "\n";
 }
 
 /** Die Zahl der Wackler eines Reparaturkandidaten in Worten. */
 function kandidatText(p) {
-  return `${p.wackler} Wackler im Zeitfenster`;
+  return t("kandidatWackler", { n: p.wackler });
 }
 
 /**
@@ -1497,7 +1733,7 @@ export function kandidatenText(stand) {
   const pruefungen = Array.isArray(stand?.pruefungen) ? stand.pruefungen : [];
   return pruefungen
     .filter((p) => p?.reparaturkandidat === true)
-    .map((p) => `Reparaturkandidat: ${p.cmd} — ${kandidatText(p)}\n`)
+    .map((p) => `${t("kandidatZeile", { cmd: p.cmd, kandidat: kandidatText(p) })}\n`)
     .join("");
 }
 
@@ -1508,7 +1744,7 @@ function schreibeDatei(pfad, inhalt) {
     mkdirSync(dirname(pfad), { recursive: true });
     writeFileSync(pfad, inhalt, "utf-8");
   } catch (err) {
-    fail(`${pfad} konnte nicht geschrieben werden: ${err.message}`);
+    fail(t("nichtGeschrieben", { pfad, grund: err.message }));
   }
 }
 
@@ -1633,10 +1869,10 @@ function parseAuswertenArgs(rest) {
   const args = {};
   let i = 0;
   while (i < rest.length) {
-    if (deutscherName(OPTIONEN_EN, rest[i]) !== "--fenster") fail(`Unbekanntes Argument: '${rest[i]}'`);
+    if (deutscherName(OPTIONEN_EN, rest[i]) !== "--fenster") fail(t("unbekanntesArgument", { arg: rest[i] }));
     const wert = Number(rest[i + 1]);
     if (!Number.isInteger(wert) || wert <= 0) {
-      fail(`--fenster erwartet eine ganze Zahl groesser null, bekam '${rest[i + 1] ?? ""}'.`);
+      fail(t("fensterErwartet", { wert: rest[i + 1] ?? "" }));
     }
     args.fenster = wert;
     i += 2;  // Option und ihr Wert
@@ -1646,7 +1882,7 @@ function parseAuswertenArgs(rest) {
 
 /** Der Fehler eines Aufrufs als stderr-Zeile: `Fehler:` fuer den erwarteten, sonst `Unerwarteter Fehler:`. */
 function fehlerZeile(err) {
-  const prefix = err instanceof WirksamkeitError ? "Fehler" : "Unerwarteter Fehler";
+  const prefix = err instanceof WirksamkeitError ? t("fehler") : t("unerwarteterFehler");
   return `${prefix}: ${err.message}\n`;
 }
 
@@ -1678,7 +1914,7 @@ export function aufrufen(argv, { cwd = process.cwd(), ...abhaengigkeiten } = {})
 
 function main(argv, { cwd, abhaengigkeiten = {}, stdout }) {
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
-    stdout(HELP);
+    stdout(hilfe());
     return 0;
   }
   if (argv[0] === "--version") {
@@ -1704,19 +1940,19 @@ function main(argv, { cwd, abhaengigkeiten = {}, stdout }) {
     // Hier gilt das Gegenteil: Was auf stdout steht, reicht ein Skill unveraendert
     // weiter. Ein abgewiesener Aufruf schreibt deshalb nach stderr und laesst stdout
     // leer — sonst stuende eine Fehlermeldung dort, wo ein Befund hingehoert.
-    if (rest.length > 0) fail(`'befund' nimmt keine Argumente, bekam '${rest[0]}'.`);
+    if (rest.length > 0) fail(t("befundOhneArgumente", { arg: rest[0] }));
     stdout(befund(cwd));
     return 0;
   }
   if (command === "kandidaten") {
     // Wie `befund`: stdout traegt nur, was ein Skill weiterreicht.
-    if (rest.length > 0) fail(`'kandidaten' nimmt keine Argumente, bekam '${rest[0]}'.`);
+    if (rest.length > 0) fail(t("kandidatenOhneArgumente", { arg: rest[0] }));
     stdout(kandidaten(cwd));
     return 0;
   }
 
-  stdout(HELP);
-  return fail(`Unbekannter Befehl: '${befehl}'. Erwartet: auswerten, befund oder kandidaten`);
+  stdout(hilfe());
+  return fail(t("unbekannterBefehl", { befehl }));
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).
