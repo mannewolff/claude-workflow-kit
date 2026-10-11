@@ -354,3 +354,178 @@ test("[1495] ohne Spracheinstellung bleiben die Gruende und die Bremse deutsch",
     assert.equal(eintrag(plan(dir, "--stufe", "push").laufen, GRUEN("paket")).grund, "Veroeffentlichungsstufe: voller Umfang");
   });
 });
+
+// --- kit/checks.mjs, Teil 3: ab berichtszeilen bis zum Dateiende (Issue #1496) --------
+
+import { UEBERNAHME_MARKE } from "../kit/checks.mjs";
+import { DEUTSCHE_WOERTER } from "./helpers/quelltext-texte.mjs";
+
+// Vertragswerte (E14), die auch ein englisches Projekt deutsch sieht: die Ergebniswerte, die
+// Marke einer Uebernahme (kit/night/session.mjs liest sie aus der Ausgabe) und die Bremse.
+const VERTRAG_IN_AUSGABE = ["bereiche | ohne-bereich | ohne-zuordnung | veroeffentlichung | anker", "nicht gestartet", UEBERNAHME_MARKE, FESTGEFAHREN_MARKE];
+
+/** Die Zeilen des Berichtsblocks bis zur ersten Leerzeile, ab der Ueberschrift `kopf`. */
+function block(stdout, kopf) {
+  const zeilen = stdout.split("\n");
+  const i = zeilen.indexOf(kopf);
+  assert.ok(i >= 0, `kein Block '${kopf}' in: ${stdout}`);
+  const ende = zeilen.indexOf("", i);
+  return zeilen.slice(i + 1, ende < 0 ? undefined : ende);
+}
+
+/** Ein Kommando als Teil eines regulaeren Ausdrucks. */
+const esc = (text) => text.replaceAll(/[.()]/g, String.raw`\$&`);
+
+/** Ein Kommando, das beim ersten Aufruf rot und danach gruen endet. */
+const WACKELT = String.raw`node -e "const fs=require('fs');const f='.claude/flaky';if(!fs.existsSync(f)){fs.writeFileSync(f,'1');process.exit(1)}" # flaky`;
+
+test("[1496] die Texttabelle traegt die Meldungen des dritten Teils in beiden Sprachen", () => {
+  assert.deepEqual(pruefeParitaet(CHECKS_TEXTE), []);
+  assert.deepEqual(deutschImEnglischen(CHECKS_TEXTE), []);
+  for (const schluessel of ["berichtKopf", "berichtGelaufen", "berichtAusgelassen", "berichtHinweis", "gewackelt",
+    "wartezeit", "wartezeitKarte", "teillauf", "standUnveraendert", "merkmalRot", "hinweisGescheitert",
+    "verursacherZeile", "keineKartennummer", "unbekannterBefehl", "keinVerzeichnis", "nebenMarke"]) {
+    assert.ok(Object.hasOwn(CHECKS_TEXTE.de, schluessel), `die Tabelle traegt ${schluessel}`);
+  }
+});
+
+test("[1496] in der ganzen Datei geht jeder deutsche Text ueber den Texthelfer", () => {
+  // gueteAuswerten bleibt die Wertung, die kit/night/session.mjs als Kopie fuehrt (SYNC).
+  assert.deepEqual(deutschAmHelferVorbei("kit/checks.mjs", CHECKS_TEXTE,
+    [FESTGEFAHREN_MARKE, "nicht gestartet", "bereiche | ohne-bereich | ohne-zuordnung | veroeffentlichung | anker",
+      "ohne-bereich", "ohne-zuordnung"],
+    { ohne: [{ von: "export function gueteAuswerten(", bis: "function gueteErgebnis(" }] }), []);
+});
+
+test("[1496] englisch: der Block fuer den Abschlussbericht eines gruenen Laufs mit Kartennummer", async () => {
+  const config = { buildChecks: [GRUEN("a"), { cmd: GRUEN("later"), stufe: "push" }] };
+  await mitRepo({ config }, async (dir) => {
+    datei(dir, "neu.txt");
+    await inSprache("en", async () => {
+      const res = await run(dir, "--abschluss", "7");
+      assert.equal(res.status, 0, res.stdout + res.stderr);
+      assert.ok(res.stdout.includes(`skipped: ${GRUEN("later")} — stage push, running paket\n`), res.stdout);
+      const zeilen = block(res.stdout, "For the completion report:");
+      assert.match(zeilen[0], /^Wait time: [\d.]+ s, together [\d.]+ s in 1 runs for card #7$/);
+      assert.match(zeilen[1], new RegExp(`^ran: ${esc(GRUEN("a"))} → gruen, [\\d.]+ s — full scope: 'neu\\.txt' matches no pattern$`));
+      assert.equal(zeilen[2], `skipped: ${GRUEN("later")} → stage push, running paket`);
+      assert.match(res.stdout, /\nSummary: .+checks-summary\.json\n$/);
+
+      const nochmal = await run(dir, "--abschluss", "7");
+      assert.match(nochmal.stdout, new RegExp(`State unchanged since \\S+: ${UEBERNAHME_MARKE} \\(gruen\\)\\. Check again with --fresh\\.`));
+      assert.match(block(nochmal.stdout, "For the completion report:")[1], new RegExp(`\\(${UEBERNAHME_MARKE}\\) — full scope: 'neu\\.txt' matches no pattern$`));
+    });
+  });
+});
+
+test("[1496] englisch: Wiederholung, Wackler, Ablage und Teillauf", async () => {
+  await mitRepo({ config: { buildChecks: [WACKELT, ROT("b")] } }, async (dir) => {
+    datei(dir, "neu.txt");
+    await inSprache("en", async () => {
+      const res = await run(dir, "--abschluss", "8");
+      assert.equal(res.status, 1);
+      assert.ok(res.stdout.includes(`Retry: ${WACKELT} was red — repeated once on the same state\n`), res.stdout);
+      assert.ok(res.stdout.includes("-> flaky (red first, then green)\n"), res.stdout);
+      assert.ok(res.stdout.includes("-> rot, also on the retry\n"), res.stdout);
+      assert.match(res.stdout, /Output of the first run stored: \.claude\/checks-protokolle\/01-.+-erstlauf\.log\n/);
+      assert.match(res.stdout, /\nOutput stored: \.claude\/checks-protokolle\/02-.+\.log\n/);
+      const zeilen = block(res.stdout, "For the completion report:");
+      assert.match(zeilen[2], /^Flaky: .+ → red first, then green — output of the first run: \.claude\/checks-protokolle\/01-.+-erstlauf\.log$/);
+      assert.match(zeilen[3], new RegExp(`^ran: ${esc(ROT("b"))} → rot, also on the retry, [\\d.]+ s — full scope: 'neu\\.txt' matches no pattern — output: \\.claude/`));
+
+      datei(dir, "noch.txt");
+      const teil = await run(dir, "--abschluss", "8");
+      assert.ok(teil.stdout.includes(`\nPartial run: only the checks red last time: ${ROT("b")}\n`), teil.stdout);
+      assert.equal(block(teil.stdout, "For the completion report:")[1], "Partial run: only the checks red last time");
+      assert.ok(block(teil.stdout, "For the completion report:").some((z) => /^Flaky: .+ → red first, then green \(earlier run of \S+\)$/.test(z)), teil.stdout);
+    });
+  });
+});
+
+test("[1496] englisch: leeres Paket, Fehlermerkmal und gescheiterte Hinweis-Pruefung", async () => {
+  const merkmal = 'node -e "console.log(\'[ERROR] x\')" # marker';
+  const hinweis = 'node -e "process.exit(5)" # hint';
+  await mitRepo({ config: { buildChecks: [{ cmd: hinweis, art: "hinweis" }, merkmal] } }, async (dir) => {
+    await inSprache("en", async () => {
+      const leer = await run(dir);
+      assert.equal(block(leer.stdout, "For the completion report:")[1], "no check, because nothing was changed");
+      datei(dir, "neu.txt");
+      const res = await run(dir);
+      assert.ok(res.stdout.includes(`Hint check failed: ${hinweis} (Exit 5)\n`), res.stdout);
+      assert.ok(res.stdout.includes("Error marker in the output: '[ERROR]' — the run counts as red\n"), res.stdout);
+      assert.ok(block(res.stdout, "For the completion report:").includes(`note: Hint check failed: ${hinweis} (Exit 5)`));
+    });
+  });
+});
+
+test("[1496] englisch: Stufe push mit Ankuendigung und Verursachern", async () => {
+  const config = { buildChecks: [GRUEN("a"), { cmd: ROT("p"), stufe: "push" }] };
+  await mitRepo({ config }, async (dir) => {
+    await inSprache("en", async () => {
+      const ohneAnker = await run(dir, "--stufe", "push", "--since", "gibtsnicht");
+      assert.ok(ohneAnker.stdout.includes(`Stage push: in addition to the package stage runs ${ROT("p")}\n`), ohneAnker.stdout);
+      assert.ok(ohneAnker.stdout.includes(
+        `Causers (${ROT("p")}): causers cannot be determined: anchor 'gibtsnicht' cannot be resolved\n`), ohneAnker.stdout);
+      const ohneKarte = await run(dir, "--stufe", "push", "--since", "HEAD", "--frisch");
+      assert.match(ohneKarte.stdout, new RegExp(`Causers \\(.+\\): No completed card since \\S+ touches this check\\.\n`));
+    });
+  });
+});
+
+test("[1496] englisch: Fehler der Kommandozeile", async () => {
+  await mitRepo({ config: { buildChecks: [GRUEN("a")] } }, (dir) => inSprache("en", () => {
+    assert.equal(fehler(checks(dir, "plan", "--abschluss", "x7")),
+      "Error: 'x7' is no card number for --finish. Expected: a number or nothing.");
+    assert.equal(fehler(checks(dir, "plan", "--abschluss", "--stufe", "push")),
+      "Error: --finish and --stage 'push' together: the completion of a card runs the stage 'package'. "
+      + "Before publishing the full scope runs without --finish.");
+    assert.equal(fehler(checks(dir, "plan", "--abschluss", "--bereich", "a")),
+      "Error: --finish and --area together: two restrictions in one run. The area run belongs in the work, --finish at its end.");
+    assert.equal(fehler(checks(dir, "plan", "--stufe", "bald")), "Error: Unknown stage 'bald'. Expected: paket, push, merge.");
+    assert.equal(fehler(checks(dir, "plan", "--gibts")), "Error: Unknown argument: '--gibts'");
+    assert.equal(fehler(checks(dir, "areas", "x")), "Error: Unknown argument: 'x'");
+    assert.equal(fehler(checks(dir, "plan", "--in", "fehlt")), "Error: --in 'fehlt' is not a directory.");
+    const befehl = checks(dir, "tanzen");
+    assert.equal(fehler(befehl), "Error: Unknown command: 'tanzen'. Expected: plan, run or areas");
+  }));
+});
+
+test("[1496] englisch: in keiner Ausgabe des Pruefkommandos steht ein deutsches Wort", async () => {
+  const ausgaben = [];
+  const merke = (res) => ausgaben.push(res.stdout, res.stderr);
+  const config = {
+    buildChecks: [GRUEN("a"), WACKELT, { cmd: ROT("p"), stufe: "push" }, { cmd: 'node -e "process.exit(5)" # hint', art: "hinweis" }],
+  };
+  await mitRepo({ config }, async (dir) => {
+    await inSprache("en", async () => {
+      merke(aufrufen(["--help"], { cwd: dir }));
+      merke(await run(dir));
+      datei(dir, "neu.txt");
+      merke(await run(dir, "--abschluss", "9"));
+      merke(await run(dir, "--abschluss", "9"));
+      merke(await run(dir, "--stufe", "push", "--since", "gibtsnicht"));
+      merke(await run(dir, "--stufe", "push", "--frisch"));
+      for (const args of [["plan", "--abschluss", "x"], ["plan", "--stufe", "bald"], ["tanzen"], ["plan", "--in", "missing"]]) {
+        merke(checks(dir, ...args));
+      }
+    });
+  });
+  for (const text of ausgaben) {
+    let rest = text;
+    for (const wert of VERTRAG_IN_AUSGABE) rest = rest.replaceAll(wert, "");
+    const zeilen = rest.split("\n").filter((z) => DEUTSCHE_WOERTER.test(z));
+    assert.deepEqual(zeilen, []);
+  }
+});
+
+test("[1496] ohne Spracheinstellung bleibt der Block fuer den Abschlussbericht deutsch", async () => {
+  await mitRepo({ config: { buildChecks: [GRUEN("a")] } }, async (dir) => {
+    datei(dir, "neu.txt");
+    const res = await run(dir, "--abschluss", "7");
+    const zeilen = block(res.stdout, "Fuer den Abschlussbericht:");
+    assert.match(zeilen[0], /^Wartezeit: [\d.]+ s, zusammen [\d.]+ s in 1 Laeufen fuer Karte #7$/);
+    assert.match(zeilen[1], /^gelaufen: .+ → gruen, [\d.]+ s — voller Umfang: 'neu\.txt' trifft kein Muster$/);
+    assert.match(res.stdout, /\nZusammenfassung: /);
+    assert.equal(fehler(checks(dir, "tanzen")), "Fehler: Unbekannter Befehl: 'tanzen'. Erwartet: plan, run oder bereiche");
+  });
+});

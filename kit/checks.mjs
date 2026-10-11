@@ -357,10 +357,6 @@ const HAENGEN_FRIST_ENV = "KIT_CHECKS_HAENGEN_FRIST_MS";
 export const GLEICHZEITIG_ENV = "KIT_CHECKS_GLEICHZEITIG";
 const GLEICHZEITIG_VORGABE = 2;
 
-// Der Vermerk hinter der Dauer einer gleichzeitig gelaufenen Pruefung (Issue #1071). Hier
-// oben, weil die Hilfe ihn nennt.
-export const NEBEN_MARKE = "neben anderen gemessen";
-
 // Ab wie vielen bereichsgebundenen Kommandos die Hervorhebung eines Bereichs greift
 // (Issue #1004, Plan #1001, E8). Bei zwei Kommandos waere jeder Bereich "in allen bis
 // auf eines" — die Regel sagte dann nichts mehr. Hier oben, weil die Hilfe sie nennt.
@@ -648,6 +644,54 @@ Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
     dauerNichtGemessen: "Dauer nicht gemessen",
     obergrenze: " — Obergrenze {grenze} s um {ueber} s ueberschritten",
     haengend: "haengend: nach {grenze} s Grenze abgebrochen",
+    // Teil 3 (#1496): ab `berichtszeilen`.
+    // Der Vermerk hinter der Dauer einer gleichzeitig gelaufenen Pruefung (Issue #1071).
+    nebenMarke: "neben anderen gemessen",
+    berichtKopf: "Fuer den Abschlussbericht:",
+    berichtGelaufen: "gelaufen: {cmd} → {ergebnis}, {dauer}{zusatz} — {grund}",
+    berichtAusgelassen: "ausgelassen: {cmd} → {grund}",
+    berichtHinweis: "hinweis: {text}",
+    keinePruefung: "keine Pruefung, weil nichts veraendert wurde",
+    gewackelt: "Gewackelt: {cmd} → erst rot, dann gruen{erstlauf}",
+    gewackeltFrueher: "Gewackelt: {cmd} → erst rot, dann gruen (früherer Lauf vom {zeitpunkt})",
+    ausgabeErstlauf: " — Ausgabe des ersten Laufs: {pfad}",
+    ausgabe: " — Ausgabe: {pfad}",
+    rotWiederholt: "rot, auch bei der Wiederholung",
+    gewackeltAusgang: "gewackelt (erst rot, dann gruen)",
+    protokolleNichtGeleert: "Hinweis: {ordner} nicht geleert: {grund}",
+    ausgabeNichtAbgelegt: "Hinweis: Ausgabe nicht abgelegt ({pfad}): {grund}",
+    wartezeit: "Wartezeit: {dauer}",
+    wartezeitKarte: "{lauf}, zusammen {summe} in {laeufe} Laeufen fuer Karte #{karte}",
+    zusammenfassungNichtGeschrieben: "Zusammenfassung konnte nicht geschrieben werden ({pfad}): {grund}",
+    teillauf: "Teillauf: nur die zuletzt roten Pruefungen",
+    standUnveraendert: "Stand unveraendert seit {zeitpunkt}: {marke} ({befund}). Neu pruefen mit --frisch.",
+    merkmalRot: "Fehlermerkmal in der Ausgabe: '{merkmal}' — der Lauf gilt als rot",
+    gueteKommandoRot: "kein Anteil erhoben — das Kommando selbst war rot",
+    gueteMerkmal: "kein Anteil erhoben — Fehlermerkmal '{merkmal}' in der Ausgabe",
+    ohneRueckgabewert: "ohne Rueckgabewert",
+    hinweisGescheitert: "Hinweis-Pruefung gescheitert: {cmd} ({wie})",
+    rueckgabewert: "Rueckgabewert {status}",
+    gitLogGescheitert: "git log {basis}..HEAD schlug fehl: {grund}",
+    gitShowGescheitert: "git show {sha} schlug fehl: {grund}",
+    verursacherAnker: "Verursacher nicht bestimmbar: Anker '{basis}' laesst sich nicht aufloesen",
+    verursacherFehler: "Verursacher nicht bestimmbar: {fehler}",
+    verursacherKeine: "Keine abgeschlossene Karte seit {basis} beruehrt diese Pruefung.",
+    commitOhneKarte: "Commit ohne Karte {shas}",
+    verursacherZeile: "Verursacher ({cmd}): {text}",
+    keineWeitere: "keine weitere Pruefung",
+    stufeZusaetzlich: "Stufe {stufe}: zusaetzlich zur Paketstufe laeuft {liste}",
+    ausgelassenVorab: "ausgelassen: {cmd} — {grund}",
+    ausgabeAbgelegt: "Ausgabe abgelegt: {pfad}",
+    erstlaufAbgelegt: "Ausgabe des ersten Laufs abgelegt: {pfad}",
+    wiederholung: "Wiederholung: {cmd} war rot — einmal auf demselben Stand wiederholt",
+    teillaufGruen: "Teillauf gruen — es folgt der volle Lauf als Nachweis",
+    keineKartennummer: "'{wert}' ist keine Kartennummer fuer --abschluss. Erwartet: eine Nummer oder nichts.",
+    abschlussMitStufe: "--abschluss und --stufe '{stufe}' zusammen: Der Abschluss einer Karte faehrt die Stufe '{paket}'. Vor dem Veroeffentlichen laeuft der volle Umfang ohne --abschluss.",
+    abschlussMitBereich: "--abschluss und --bereich zusammen: zwei Eingrenzungen in einem Lauf. Der Bereichslauf gehoert in die Arbeit, --abschluss an ihr Ende.",
+    unbekannteStufe: "Unbekannte Stufe '{wert}'. Erwartet: {liste}.",
+    unbekanntesArgument: "Unbekanntes Argument: '{arg}'",
+    keinVerzeichnis: "--in '{pfad}' ist kein Verzeichnis.",
+    unbekannterBefehl: "Unbekannter Befehl: '{befehl}'. Erwartet: plan, run oder bereiche",
   }),
   en: Object.freeze({
     hilfe: `checks.mjs (claude-workflow-kit v{version}) — due checks
@@ -888,6 +932,52 @@ segment boundaries; a directory is covered as 'frontend/**'.
     dauerNichtGemessen: "duration not measured",
     obergrenze: " — limit {grenze} s exceeded by {ueber} s",
     haengend: "hanging: aborted after the {grenze} s limit",
+    nebenMarke: "measured alongside others",
+    berichtKopf: "For the completion report:",
+    berichtGelaufen: "ran: {cmd} → {ergebnis}, {dauer}{zusatz} — {grund}",
+    berichtAusgelassen: "skipped: {cmd} → {grund}",
+    berichtHinweis: "note: {text}",
+    keinePruefung: "no check, because nothing was changed",
+    gewackelt: "Flaky: {cmd} → red first, then green{erstlauf}",
+    gewackeltFrueher: "Flaky: {cmd} → red first, then green (earlier run of {zeitpunkt})",
+    ausgabeErstlauf: " — output of the first run: {pfad}",
+    ausgabe: " — output: {pfad}",
+    rotWiederholt: "rot, also on the retry",
+    gewackeltAusgang: "flaky (red first, then green)",
+    protokolleNichtGeleert: "Note: {ordner} not emptied: {grund}",
+    ausgabeNichtAbgelegt: "Note: output not stored ({pfad}): {grund}",
+    wartezeit: "Wait time: {dauer}",
+    wartezeitKarte: "{lauf}, together {summe} in {laeufe} runs for card #{karte}",
+    zusammenfassungNichtGeschrieben: "The summary could not be written ({pfad}): {grund}",
+    teillauf: "Partial run: only the checks red last time",
+    standUnveraendert: "State unchanged since {zeitpunkt}: {marke} ({befund}). Check again with --fresh.",
+    merkmalRot: "Error marker in the output: '{merkmal}' — the run counts as red",
+    gueteKommandoRot: "no share collected — the command itself was red",
+    gueteMerkmal: "no share collected — error marker '{merkmal}' in the output",
+    ohneRueckgabewert: "without return code",
+    hinweisGescheitert: "Hint check failed: {cmd} ({wie})",
+    rueckgabewert: "return code {status}",
+    gitLogGescheitert: "git log {basis}..HEAD failed: {grund}",
+    gitShowGescheitert: "git show {sha} failed: {grund}",
+    verursacherAnker: "causers cannot be determined: anchor '{basis}' cannot be resolved",
+    verursacherFehler: "causers cannot be determined: {fehler}",
+    verursacherKeine: "No completed card since {basis} touches this check.",
+    commitOhneKarte: "commit without card {shas}",
+    verursacherZeile: "Causers ({cmd}): {text}",
+    keineWeitere: "no further check",
+    stufeZusaetzlich: "Stage {stufe}: in addition to the package stage runs {liste}",
+    ausgelassenVorab: "skipped: {cmd} — {grund}",
+    ausgabeAbgelegt: "Output stored: {pfad}",
+    erstlaufAbgelegt: "Output of the first run stored: {pfad}",
+    wiederholung: "Retry: {cmd} was red — repeated once on the same state",
+    teillaufGruen: "Partial run green — the full run follows as evidence",
+    keineKartennummer: "'{wert}' is no card number for --finish. Expected: a number or nothing.",
+    abschlussMitStufe: "--finish and --stage '{stufe}' together: the completion of a card runs the stage '{paket}'. Before publishing the full scope runs without --finish.",
+    abschlussMitBereich: "--finish and --area together: two restrictions in one run. The area run belongs in the work, --finish at its end.",
+    unbekannteStufe: "Unknown stage '{wert}'. Expected: {liste}.",
+    unbekanntesArgument: "Unknown argument: '{arg}'",
+    keinVerzeichnis: "--in '{pfad}' is not a directory.",
+    unbekannterBefehl: "Unknown command: '{befehl}'. Expected: plan, run or areas",
   }),
 });
 
@@ -909,7 +999,7 @@ function hilfe() {
     zusammenfassung: SUMMARY_DATEI,
     gleichzeitigEnv: GLEICHZEITIG_ENV,
     gleichzeitigVorgabe: GLEICHZEITIG_VORGABE,
-    nebenMarke: NEBEN_MARKE,
+    nebenMarke: t("nebenMarke"),
     fehlermerkmale: FEHLERMERKMALE.join(", "),
     festgefahrenVorgabe: FESTGEFAHREN_VORGABE,
     festgefahrenMarke: FESTGEFAHREN_MARKE,
@@ -2862,46 +2952,47 @@ function berichtszeilen(auswahl, laufen, { uebernommen = false, grenzeMs = PRUEF
   }
   // Eine Pruefung, die in diesem Lauf nicht ausgewaehlt ist, verliert ihren Fall nicht.
   for (const w of frueher.filter((x) => !laufen.some((e) => e.cmd === x.cmd))) zeilen.push(frueherGewackeltZeile(w));
-  for (const e of auswahl.ausgelassen) zeilen.push(`ausgelassen: ${e.cmd} → ${e.grund}`);
+  for (const e of auswahl.ausgelassen) zeilen.push(t("berichtAusgelassen", { cmd: e.cmd, grund: e.grund }));
   return zeilen;
 }
 
 function frueherGewackeltZeile(w) {
-  return `Gewackelt: ${w.cmd} → erst rot, dann gruen (früherer Lauf vom ${w.zeitpunkt})`;
+  return t("gewackeltFrueher", { cmd: w.cmd, zeitpunkt: w.zeitpunkt });
 }
 
 /** Die Zeilen eines gelaufenen Kommandos: `gelaufen:`, darunter `Gewackelt:` und seine Hinweise. */
 function gelaufenZeilen(e, vermerk, grenzeMs) {
   const dauerMs = typeof e.dauerMs === "number" ? e.dauerMs : null;
-  const neben = e.gleichzeitig ? ` (${NEBEN_MARKE})` : "";
+  const neben = e.gleichzeitig ? ` (${t("nebenMarke")})` : "";
   const haengt = e.haengend ? " — " + haengendText(e.haengend.grenzeMs) : "";
   // Am Ende der Zeile, weil das Ende einer gekappten Ausgabe stehen bleibt (Issue #1196).
-  const ablage = e.protokoll ? ` — Ausgabe: ${e.protokoll}` : "";
+  const ablage = e.protokoll ? t("ausgabe", { pfad: e.protokoll }) : "";
   // Rot auch bei der Wiederholung (Issue #1396, E12): Der Leser sieht, dass nicht ein
   // einzelner Ausreisser den Lauf rot gemacht hat.
-  const ergebnis = e.wiederholt === true ? "rot, auch bei der Wiederholung" : e.ergebnis;
+  const ergebnis = e.wiederholt === true ? t("rotWiederholt") : e.ergebnis;
   const zeilen = [
-    `gelaufen: ${e.cmd} → ${ergebnis}, ${dauerText(dauerMs)}${neben}${vermerk} — ${e.grund}${obergrenzeZusatz(dauerMs, grenzeMs)}${haengt}${ablage}`,
+    t("berichtGelaufen", { cmd: e.cmd, ergebnis, dauer: dauerText(dauerMs), zusatz: `${neben}${vermerk}`, grund: e.grund })
+      + `${obergrenzeZusatz(dauerMs, grenzeMs)}${haengt}${ablage}`,
   ];
   // Der Wackler direkt unter seiner Zeile (Issue #1396, E12, E17).
   if (e.gewackelt) {
-    const erstlauf = e.gewackelt.protokoll ? ` — Ausgabe des ersten Laufs: ${e.gewackelt.protokoll}` : "";
-    zeilen.push(`Gewackelt: ${e.cmd} → erst rot, dann gruen${erstlauf}`);
+    const erstlauf = e.gewackelt.protokoll ? t("ausgabeErstlauf", { pfad: e.gewackelt.protokoll }) : "";
+    zeilen.push(t("gewackelt", { cmd: e.cmd, erstlauf }));
   }
   // Die Funde einer Hinweis-Pruefung direkt unter ihrer Zeile (Issue #1155, E11).
-  for (const hinweis of e.hinweise ?? []) zeilen.push(`hinweis: ${hinweis}`);
+  for (const hinweis of e.hinweise ?? []) zeilen.push(t("berichtHinweis", { text: hinweis }));
   return zeilen;
 }
 
 /** Die Zeilen, die die Auswahl erklaeren — sie stehen vor den Kommandos. */
 function auswahlZeilen(auswahl) {
-  const zeilen = auswahl.leeresPaket ? ["keine Pruefung, weil nichts veraendert wurde"] : [];
+  const zeilen = auswahl.leeresPaket ? [t("keinePruefung")] : [];
   // Die Ableitung aus den Importen je Datei (Issue #1181): Sie erklaert die Auswahl darunter.
   for (const a of auswahl.abgeleitet ?? []) zeilen.push(ableitungsZeile(a));
   // Die Bereiche, die ein Import mitberuehrt, mit ihrem Weg (Issue #1208).
   for (const a of auswahl.abhaengig ?? []) zeilen.push(abhaengigZeile(a));
   // Kommandos, die jedem Bereich zugeordnet sind (Issue #1214, E13).
-  for (const hinweis of auswahl.zuschnitt ?? []) zeilen.push(`hinweis: ${hinweis}`);
+  for (const hinweis of auswahl.zuschnitt ?? []) zeilen.push(t("berichtHinweis", { text: hinweis }));
   return zeilen;
 }
 
@@ -2922,7 +3013,7 @@ function protokolleLeeren() {
   try {
     for (const name of readdirSync(ordner)) unlinkSync(join(ordner, name));
   } catch (err) {
-    if (err.code !== "ENOENT") aufStderr(`Hinweis: ${PROTOKOLL_ORDNER} nicht geleert: ${err.message}\n`);
+    if (err.code !== "ENOENT") aufStderr(`${t("protokolleNichtGeleert", { ordner: PROTOKOLL_ORDNER, grund: err.message })}\n`);
   }
 }
 
@@ -2941,7 +3032,7 @@ function protokollAblegen(nummer, cmd, ausgabe, zusatz = "") {
     writeFileSync(pfad, ausgabe, "utf-8");
     return relativ;
   } catch (err) {
-    aufStderr(`Hinweis: Ausgabe nicht abgelegt (${relativ}): ${err.message}\n`);
+    aufStderr(`${t("ausgabeNichtAbgelegt", { pfad: relativ, grund: err.message })}\n`);
     return null;
   }
 }
@@ -2953,14 +3044,14 @@ function protokollAblegen(nummer, cmd, ausgabe, zusatz = "") {
  * bleibt, was es war, die Zeilen je Pruefung.
  */
 export function wartezeitZeile(wartezeitMs, wartezeitKarte) {
-  const lauf = `Wartezeit: ${dauerText(wartezeitMs)}`;
+  const lauf = t("wartezeit", { dauer: dauerText(wartezeitMs) });
   if (!wartezeitKarte) return lauf;
   const { karte, summeMs, laeufe } = wartezeitKarte;
-  return `${lauf}, zusammen ${dauerText(summeMs)} in ${laeufe} Laeufen fuer Karte #${karte}`;
+  return t("wartezeitKarte", { lauf, summe: dauerText(summeMs), laeufe, karte });
 }
 
 function berichtsblockSchreiben(zeilen, wartezeit) {
-  aufStdout(["", "Fuer den Abschlussbericht:", wartezeit, ...zeilen, ""].join("\n"));
+  aufStdout(["", t("berichtKopf"), wartezeit, ...zeilen, ""].join("\n"));
 }
 
 /**
@@ -3033,7 +3124,7 @@ function schreibeZusammenfassung(daten) {
   } catch (err) {
     // Die Datei ist die Datenquelle des Nacht-Runners; ihr Ausfall darf nicht
     // stillschweigend durchgehen, auch nicht bei gruenen Checks.
-    fail(`Zusammenfassung konnte nicht geschrieben werden (${pfad}): ${err.message}`);
+    fail(t("zusammenfassungNichtGeschrieben", { pfad, grund: err.message }));
   }
   return pfad;
 }
@@ -3178,13 +3269,6 @@ function rotesKommando(laufen) {
 export const UEBERNAHME_MARKE = "Ergebnis uebernommen";
 
 /**
- * Die Zeile, mit der ein Teillauf beginnt und die im Berichtsblock eines roten Teillaufs
- * vor den Zeilen je Pruefung steht (Issue #1072). Ohne sie saehe ein Bericht mit lauter
- * `nicht gestartet` aus wie ein abgebrochener voller Lauf.
- */
-const TEILLAUF_ZEILE = "Teillauf: nur die zuletzt roten Pruefungen";
-
-/**
  * Schreibt das uebernommene Ergebnis als frischen Nachweis und gibt den Exit-Code
  * des Originals zurueck (Issue #863).
  *
@@ -3210,7 +3294,7 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
   // faehrt nichts. Die Faelle des uebernommenen Laufs stehen schon an seinen Eintraegen.
   const gewackeltKarte = gewackeltKarteVorher(vorige, karte);
   const zeilen = [
-    ...(frueher.teillauf === true ? [TEILLAUF_ZEILE] : []),
+    ...(frueher.teillauf === true ? [t("teillauf")] : []),
     ...berichtszeilen(auswahl, frueher.laufen, {
       uebernommen: true, grenzeMs: pruefdauerObergrenzeMs(),
       frueher: (gewackeltKarte ?? []).filter((w) => w.zeitpunkt !== original),
@@ -3246,11 +3330,9 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
     ...(gewackeltKarte ? { gewackeltKarte } : {}),
   });
   const befund = ungruen === null ? "gruen" : `rot: ${ungruen.cmd}`;
-  aufStdout(
-    `Stand unveraendert seit ${original}: ${UEBERNAHME_MARKE} (${befund}). Neu pruefen mit --frisch.\n`,
-  );
+  aufStdout(`${t("standUnveraendert", { zeitpunkt: original, marke: UEBERNAHME_MARKE, befund })}\n`);
   berichtsblockSchreiben(zeilen, wartezeitZeile(wartezeitMs, wartezeitKarte));
-  aufStdout(`\nZusammenfassung: ${pfad}\n`);
+  aufStdout(`\n${t("zusammenfassung", { pfad })}\n`);
   return ungruen === null ? 0 : 1;
 }
 
@@ -3280,7 +3362,7 @@ function bewerten(eintrag, gruen, ausgabe, schreibe = (text) => aufStdout(text),
   const merkmal = fehlermerkmal(ausgabe);
   if (merkmal !== null) {
     eintrag.fehlermerkmal = merkmal;
-    schreibe(`Fehlermerkmal in der Ausgabe: '${merkmal}' — der Lauf gilt als rot\n`);
+    schreibe(`${t("merkmalRot", { merkmal })}\n`);
   }
   const bestanden = gruen && merkmal === null;
   if (!eintrag.guete) return { bestanden, guete: null };
@@ -3289,8 +3371,8 @@ function bewerten(eintrag, gruen, ausgabe, schreibe = (text) => aufStdout(text),
   // ein nicht auswertbares Ergebnis ist derselbe rote Lauf wie jeder rote
   // Pflichtcheck — kein eigener Stop-Punkt (Issue #763).
   const grund = merkmal === null
-    ? "kein Anteil erhoben — das Kommando selbst war rot"
-    : `kein Anteil erhoben — Fehlermerkmal '${merkmal}' in der Ausgabe`;
+    ? t("gueteKommandoRot")
+    : t("gueteMerkmal", { merkmal });
   const guete = gueteErgebnis(eintrag, bestanden, ausgabe, grund);
   schreibe(`${gueteZeile(guete)}\n`);
   return { bestanden: bestanden && guete.erfuellt, guete };
@@ -3311,8 +3393,8 @@ function hinweisBewerten(eintrag, ausgabe, code, schreibe) {
     .filter((treffer) => treffer !== null)
     .map((treffer) => treffer[1]);
   if (code === null || code >= HINWEIS_ABSTURZ_AB) {
-    const wie = code === null ? "ohne Rueckgabewert" : `Exit ${code}`;
-    const zeile = `Hinweis-Pruefung gescheitert: ${eintrag.cmd} (${wie})`;
+    const wie = code === null ? t("ohneRueckgabewert") : `Exit ${code}`;
+    const zeile = t("hinweisGescheitert", { cmd: eintrag.cmd, wie });
     eintrag.hinweise.push(zeile);
     schreibe(`${zeile}\n`);
   }
@@ -3340,7 +3422,7 @@ const LOG_SATZ = "\x1e";
 /** Der Grund eines gescheiterten git-Aufrufs; ein stummes Scheitern nennt seinen Rueckgabewert. */
 function gitGrund(res) {
   const text = (res.stderr || "").trim();
-  return text !== "" ? text : `Rueckgabewert ${res.status}`;
+  return text !== "" ? text : t("rueckgabewert", { status: res.status });
 }
 
 /**
@@ -3365,7 +3447,7 @@ function kartennummerAusBotschaft(betreff, rumpf) {
 /** Die Commits des Fensters `<basis>..HEAD`, juengster zuerst — oder ein Grund, warum nicht. */
 function commitsSeit(basis) {
   const res = git("log", `--format=%h${LOG_FELD}%s${LOG_FELD}%b${LOG_SATZ}`, `${basis}..HEAD`);
-  if (res.status !== 0) return { fehler: `git log ${basis}..HEAD schlug fehl: ${gitGrund(res)}` };
+  if (res.status !== 0) return { fehler: t("gitLogGescheitert", { basis, grund: gitGrund(res) }) };
   const commits = [];
   for (const satz of res.stdout.split(LOG_SATZ)) {
     if (satz.trim() === "") continue;
@@ -3385,7 +3467,7 @@ function commitsSeit(basis) {
  */
 function dateienDesCommits(sha) {
   const res = git("show", "--name-only", "--format=", "-z", sha);
-  if (res.status !== 0) return { fehler: `git show ${sha} schlug fehl: ${gitGrund(res)}` };
+  if (res.status !== 0) return { fehler: t("gitShowGescheitert", { sha, grund: gitGrund(res) }) };
   const dateien = res.stdout
     .split("\0")
     .filter((pfad) => pfad !== "")
@@ -3469,11 +3551,11 @@ function verursacherKarten(auswahl, roteEintraege) {
   if (auswahl.stufe !== "push" || roteEintraege.length === 0) return null;
   const alle = (hinweis) => roteEintraege.map((e) => ({ cmd: e.cmd, hinweis }));
   if (auswahl.vollerUmfang) {
-    return alle(`Verursacher nicht bestimmbar: Anker '${auswahl.basis}' laesst sich nicht aufloesen`);
+    return alle(t("verursacherAnker", { basis: auswahl.basis }));
   }
 
   const ermittelt = kartenGruppen(auswahl.basis);
-  if (ermittelt.fehler !== undefined) return alle(`Verursacher nicht bestimmbar: ${ermittelt.fehler}`);
+  if (ermittelt.fehler !== undefined) return alle(t("verursacherFehler", { fehler: ermittelt.fehler }));
 
   const config = ladeConfig();
   const checks = (config.buildChecks ?? []).map((c) => normalisiere(c));
@@ -3496,7 +3578,7 @@ function verursacherKarten(auswahl, roteEintraege) {
       .map((gruppe) => ({ karte: gruppe.karte, shas: gruppe.shas }));
     return karten.length > 0
       ? { cmd: e.cmd, karten }
-      : { cmd: e.cmd, hinweis: `Keine abgeschlossene Karte seit ${auswahl.basis} beruehrt diese Pruefung.` };
+      : { cmd: e.cmd, hinweis: t("verursacherKeine", { basis: auswahl.basis }) };
   });
 }
 
@@ -3504,7 +3586,7 @@ function verursacherKarten(auswahl, roteEintraege) {
 function verursacherText(eintrag) {
   if (eintrag.hinweis !== undefined) return eintrag.hinweis;
   return eintrag.karten
-    .map((k) => (k.karte === null ? `Commit ohne Karte ${k.shas.join(", ")}` : `Issue #${k.karte} (${k.shas.join(", ")})`))
+    .map((k) => (k.karte === null ? t("commitOhneKarte", { shas: k.shas.join(", ") }) : `Issue #${k.karte} (${k.shas.join(", ")})`))
     .join(", ");
 }
 
@@ -3565,8 +3647,8 @@ async function ausfuehren(args) {
   // bleibt still. Eine Zeile, die in jedem Lauf steht, liest bald niemand mehr.
   if (auswahl.stufe !== STUFEN[0]) {
     const hinzu = auswahl.laufen.filter((e) => e.stufe !== STUFEN[0]).map((e) => e.cmd);
-    const liste = hinzu.length > 0 ? hinzu.join(", ") : "keine weitere Pruefung";
-    aufStdout(`Stufe ${auswahl.stufe}: zusaetzlich zur Paketstufe laeuft ${liste}\n`);
+    const liste = hinzu.length > 0 ? hinzu.join(", ") : t("keineWeitere");
+    aufStdout(`${t("stufeZusaetzlich", { stufe: auswahl.stufe, liste })}\n`);
   }
 
   // VOR den Auslassungen (Issue #934): Eine Datei, zu der ausdruecklich nichts
@@ -3574,12 +3656,12 @@ async function ausfuehren(args) {
   // Sie muss in jedem Lauf dastehen, samt Grund — eine stille Ausnahme waere genau
   // die Sorte Auslassung, die niemandem auffaellt.
   for (const e of auswahl.ohnePruefung) {
-    aufStdout(`ohne Pruefung: ${e.pfad} — ${e.grund}\n`);
+    aufStdout(`${t("ableitungOhnePruefung", { pfad: e.pfad, grund: e.grund })}\n`);
   }
 
   // Vorab in den Bericht: Was nicht laeuft, ist genauso ein Ergebnis wie was laeuft.
   for (const e of auswahl.ausgelassen) {
-    aufStdout(`ausgelassen: ${e.cmd} — ${e.grund}\n`);
+    aufStdout(`${t("ausgelassenVorab", { cmd: e.cmd, grund: e.grund })}\n`);
   }
 
   // Nach den Auslassungen und vor dem ersten Kommando (Issue #863): Was nicht
@@ -3672,7 +3754,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   const gewackeltVorher = gewackeltKarteVorher(vorige, args.karte);
   let wacklerTeillauf = [];
   const zeilenVon = (stand) => [
-    ...(stand.teillauf ? [TEILLAUF_ZEILE] : []),
+    ...(stand.teillauf ? [t("teillauf")] : []),
     ...berichtszeilen(auswahl, stand.laufen, { grenzeMs, frueher: gewackeltVorher ?? [] }),
   ];
   const schreibeStand = (stand, abgeschlossen) => schreibeZusammenfassung({
@@ -3728,7 +3810,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
       const ablage = protokollAblegen(nummer, eintrag.cmd, lauf.abgelegt);
       if (ablage) {
         eintrag.protokoll = ablage;
-        schreibe(`Ausgabe abgelegt: ${ablage}\n`);
+        schreibe(`${t("ausgabeAbgelegt", { pfad: ablage })}\n`);
       }
       // Der Fehlerabdruck (Issue #1388, E4): woran der naechste Lauf erkennt, ob dieselbe
       // Pruefung auf dieselbe Weise scheitert — nach einer Wiederholung der ihre (E7).
@@ -3758,9 +3840,9 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
       if (!erster.bestanden && auswahl.wiederholen === true) {
         // Die rote Ausgabe bleibt liegen (E17): Wer die Pruefung spaeter repariert, braucht sie.
         erstlauf = protokollAblegen(nummer, eintrag.cmd, erster.abgelegt, "-erstlauf");
-        if (erstlauf) schreibe(`Ausgabe des ersten Laufs abgelegt: ${erstlauf}\n`);
+        if (erstlauf) schreibe(`${t("erstlaufAbgelegt", { pfad: erstlauf })}\n`);
         zeile(erster, "erstlauf");
-        schreibe(`Wiederholung: ${eintrag.cmd} war rot — einmal auf demselben Stand wiederholt\n`);
+        schreibe(`${t("wiederholung", { cmd: eintrag.cmd })}\n`);
         lauf = await fahren(eintrag, schreibe);
       }
       const wiederholt = lauf !== erster;
@@ -3834,10 +3916,10 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   // Durchgang mit hoechstens einer Wiederholung; was im Teillauf gewackelt hat, geht in den
   // vollen Lauf ueber wie `festgefahrenBasis` — sonst verschwaende er mit dessen Eintraegen.
   if (rote !== null) {
-    aufStdout(`\n${TEILLAUF_ZEILE}: ${rote.join(", ")}\n`);
+    aufStdout(`\n${t("teillauf")}: ${rote.join(", ")}\n`);
     stand = await durchgang(new Set(rote));
     if (!stand.rot) {
-      aufStdout("\nTeillauf gruen — es folgt der volle Lauf als Nachweis\n");
+      aufStdout(`\n${t("teillaufGruen")}\n`);
       festgefahrenBasis = festgefahrenNach(festgefahrenBasis, stand.laufen);
       wacklerTeillauf = stand.laufen.filter((e) => e.gewackelt);
       stand = null;
@@ -3854,7 +3936,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   // Ausfuehrungsprotokoll: Buchhaltung, keine Bedingung.
   stand.verursacher = verursacherKarten(auswahl, stand.laufen.filter((e) => e.ergebnis === "rot"));
   for (const e of stand.verursacher ?? []) {
-    aufStdout(`Verursacher (${e.cmd}): ${verursacherText(e)}\n`);
+    aufStdout(`${t("verursacherZeile", { cmd: e.cmd, text: verursacherText(e) })}\n`);
   }
 
   // Die letzte Fassung, und die einzige mit `abgeschlossen: true`: Hier ist der Lauf
@@ -3874,7 +3956,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   const pfad = schreibeStand(stand, true);
   festgefahrenMelden(stand.laufen, festgefahrenNach(festgefahrenBasis, stand.laufen));
   berichtsblockSchreiben(zeilenVon(stand), wartezeitZeile(wartezeitMs, wartezeitKarte));
-  aufStdout(`\nZusammenfassung: ${pfad}\n`);
+  aufStdout(`\n${t("zusammenfassung", { pfad })}\n`);
   return stand.rot ? 1 : 0;
 }
 
@@ -3892,7 +3974,7 @@ function wacklerUebernehmen(laufen, wackler) {
 /** Was hinter `-> ` steht (Issue #1396, E12): nach einer Wiederholung mit beiden Ergebnissen. */
 function ausgangText(ergebnis, wiederholt) {
   if (!wiederholt) return ergebnis;
-  return ergebnis === "gruen" ? "gewackelt (erst rot, dann gruen)" : "rot, auch bei der Wiederholung";
+  return ergebnis === "gruen" ? t("gewackeltAusgang") : t("rotWiederholt");
 }
 
 // --- CLI -------------------------------------------------------------------
@@ -3909,7 +3991,7 @@ function ausgangText(ergebnis, wiederholt) {
 function kartennummer(wert) {
   if (wert === undefined || wert.startsWith("--")) return null;
   if (!/^\d+$/.test(wert)) {
-    fail(`'${wert}' ist keine Kartennummer fuer --abschluss. Erwartet: eine Nummer oder nichts.`);
+    fail(t("keineKartennummer", { wert }));
   }
   return wert;
 }
@@ -3929,10 +4011,10 @@ function kartennummer(wert) {
 function pruefeKombinationen(args) {
   if (args.abschluss !== true) return;
   if (args.stufe === "push" || args.stufe === "merge") {
-    fail(`--abschluss und --stufe '${args.stufe}' zusammen: Der Abschluss einer Karte faehrt die Stufe '${STUFEN[0]}'. Vor dem Veroeffentlichen laeuft der volle Umfang ohne --abschluss.`);
+    fail(t("abschlussMitStufe", { stufe: args.stufe, paket: configWert("buildChecks[].stufe", STUFEN[0]) }));
   }
   if (args.bereich !== undefined) {
-    fail("--abschluss und --bereich zusammen: zwei Eingrenzungen in einem Lauf. Der Bereichslauf gehoert in die Arbeit, --abschluss an ihr Ende.");
+    fail(t("abschlussMitBereich"));
   }
 }
 
@@ -3979,7 +4061,7 @@ function parseArgs(rest) {
       // falscher; anders als bei `--since` gibt es hier keine sichere Deutung.
       const wert = rest[i + 1] ?? "";
       if (!STUFEN.includes(wert)) {
-        fail(`Unbekannte Stufe '${wert}'. Erwartet: ${STUFEN.join(", ")}.`);
+        fail(t("unbekannteStufe", { wert, liste: STUFEN.join(", ") }));
       }
       args.stufe = wert;
       i += 1;
@@ -4006,7 +4088,7 @@ function parseArgs(rest) {
       args.in = rest[i + 1] ?? "";
       i += 1;
     } else {
-      fail(`Unbekanntes Argument: '${rest[i]}'`);
+      fail(t("unbekanntesArgument", { arg: rest[i] }));
     }
     i += 1;
   }
@@ -4025,7 +4107,7 @@ function arbeitsverzeichnisSetzen(args) {
   try {
     istVerzeichnis = args.in !== "" && lstatSync(realpathSync(ziel)).isDirectory();
   } catch { /* fehlt -> Fehler unten */ }
-  if (!istVerzeichnis) fail(`--in '${args.in}' ist kein Verzeichnis.`);
+  if (!istVerzeichnis) fail(t("keinVerzeichnis", { pfad: args.in }));
   umgebung.cwd = ziel;
   return args;
 }
@@ -4052,13 +4134,13 @@ function main(argv = process.argv.slice(2)) {
   if (command === "bereiche") {
     // Kein Argument: Anteil und Inventar gelten fuer die Config und den versionierten
     // Stand, nicht fuer einen Anker. Ein uebergebenes Argument ist ein Irrtum.
-    if (rest.length > 0) fail(`Unbekanntes Argument: '${rest[0]}'`);
+    if (rest.length > 0) fail(t("unbekanntesArgument", { arg: rest[0] }));
     aufStdout(JSON.stringify(bereicheAuswerten(), null, 2) + "\n");
     return 0;
   }
 
   aufStdout(hilfe());
-  return fail(`Unbekannter Befehl: '${befehl}'. Erwartet: plan, run oder bereiche`);
+  return fail(t("unbekannterBefehl", { befehl }));
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).
