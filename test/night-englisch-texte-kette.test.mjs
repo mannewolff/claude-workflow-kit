@@ -9,7 +9,8 @@
 //     sind, und laufen mit der Vorgabe Deutsch.
 //
 // Das Paket #1449 ist in drei Teile geschnitten. Der erste (#1491) deckt kit/night/kette.mjs
-// vom Dateianfang bis vor `formSicherstellen`; die Teile #1492 und #1493 ergaenzen diese Datei.
+// vom Dateianfang bis vor `formSicherstellen`, der zweite (#1492) von dort bis vor `mitMeldung`;
+// der Teil #1493 ergaenzt diese Datei.
 
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
@@ -17,12 +18,14 @@ import assert from "node:assert/strict";
 import {
   TEXTE as KETTE_TEXTE, UNGEPRUEFT_PRAEFIX, ZIEL_UNPASSEND_PRAEFIX, budgetDefaultsZeile, istUngeprueftGrund,
   istZielUnpassendGrund, ketteAbhaengigkeiten, ketteAnbinden, offeneFragenGrund, planAusschluss, pruefungFehltGrund,
-  stoppFragenGrund, waehleKettenKandidaten, wartendBeendet, zielAusschluss, KETTE_ZUSATZ,
+  stoppFragenGrund, waehleKettenKandidaten, wartendBeendet, zielAusschluss, KETTE_ZUSATZ, REVIEW_REST_ANKER, pushVermerk,
+  umsetzungHaltGrund,
 } from "../kit/night/kette.mjs";
 import { KETTE_BUDGET_DEFAULTS } from "../kit/night/session.mjs";
 import { ZUSTAND } from "../kit/night/grundlagen.mjs";
 import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
 import { deutschAmHelferVorbei, deutschImEnglischen } from "./helpers/quelltext-texte.mjs";
+import { GLATT, fachplanKarte, jeStufe, ketteImProzess, planAnlegen } from "./helpers/kette-fixture.mjs";
 
 /** Fuehrt `fn` mit der Prozesssprache `sprache` aus und vergisst sie danach wieder. */
 async function inSprache(sprache, fn) {
@@ -180,6 +183,80 @@ const KETTE_OHNE = [
 test("[1491] der erste Teil der Kette gibt in einem englischen Projekt keine deutsche Meldung aus", () => {
   const bereich = { bis: "async function formSicherstellen", ohne: KETTE_OHNE };
   assert.deepEqual(deutschAmHelferVorbei("kit/night/kette.mjs", KETTE_TEXTE, [], bereich), [],
+    "kit/night/kette.mjs: deutsche Texte am Texthelfer vorbei");
+  assert.deepEqual(deutschImEnglischen(KETTE_TEXTE), [], "kit/night/kette.mjs: deutsche Woerter in der englischen Tabelle");
+});
+
+// --- kit/night/kette.mjs, Teil 2: formSicherstellen bis vor mitMeldung (Issue #1492) -------
+
+test("[1492] die Texttabelle traegt die Meldungen des zweiten Teils, in beiden Sprachen gleich gebaut", () => {
+  assert.deepEqual(pruefeParitaet(KETTE_TEXTE), []);
+  assert.ok(Object.keys(KETTE_TEXTE.de).length >= 110, "die Tabelle traegt die Meldungen des zweiten Teils");
+});
+
+test("[1492] englisch: Push-Vermerk und Grund der angehaltenen Umsetzung", async () => {
+  await inSprache("en", () => {
+    assert.equal(pushVermerk({ comments: [] }, "Issue #7"),
+      "Night run: package waits for a push (Issue #7). After `push main` it can be pulled to Ready.");
+    assert.deepEqual(umsetzungHaltGrund({ angehalten: ["3", "4"], haltArten: { 4: "geschuetzt" } }), {
+      grund: "Stage umsetzung: #3 stops at a stop question; #4 stops at a protected file", haltArt: "klaeren",
+    });
+  });
+  assert.equal(pushVermerk({ comments: [] }, "Issue #7"),
+    "Nachtlauf: Paket wartet auf einen Push (Issue #7). Nach `push main` kann es nach Ready gezogen werden.");
+});
+
+test("[1492] englisch: die Protokollzeilen der Stufen review und pakete und der Formpruefung", async () => {
+  const r = await inSprache("en", () => ketteImProzess({ karten: [fachplanKarte("1")], config: { language: "en" }, sitzung: GLATT }));
+  assert.equal(r.code, 0, r.ausgabe);
+  const plan = r.lauf.einheiten.find((e) => e.id === "1").stufen.plan.id;
+  assert.ok(r.ausgabe.includes(`  Form check #${plan} green.`), r.ausgabe);
+  assert.match(r.ausgabe, new RegExp(`  Stage review: /issue-review #${plan} \\(budget \\d+ min\\)\\.`));
+  assert.match(r.ausgabe, new RegExp(`  Review #${plan} done, marker set\\.`));
+  assert.match(r.ausgabe, new RegExp(`  Stage pakete: /issues #${plan} \\(budget \\d+ min\\)\\.`));
+  assert.match(r.ausgabe, new RegExp(`  Packages from plan #${plan}: #\\d+`));
+});
+
+test("[1492] englisch: der Vermerk einer abgebrochenen Review-Stufe", async () => {
+  const befunde = (s) => {
+    const id = /^\/issue-review #(\d+)/.exec(s.prompt)[1];
+    s.board("issue", "comment", id, "--text", "Fund 1 (opus, WICHTIG): Kriterium 3 fehlt.");
+  };
+  const r = await inSprache("en", () => ketteImProzess({
+    karten: [fachplanKarte("1")], config: { language: "en" },
+    sitzung: jeStufe({ plan: planAnlegen(), review: (s) => { befunde(s); return { zeilen: [JSON.stringify({ type: "system", subtype: "init" })], ohneResult: true, ende: 3 }; } }),
+  }));
+  const plan = r.lauf.einheiten.find((e) => e.id === "1").stufen.plan.id;
+  const vermerk = r.karte(plan).comments.map((c) => c.body).find((b) => b.startsWith(REVIEW_REST_ANKER));
+  assert.ok(vermerk, r.ausgabe);
+  assert.ok(vermerk.includes("stage review: The check ran, its findings are a comment on this document."), vermerk);
+  assert.ok(vermerk.includes(`Way forward: run /issue-review #${plan} by hand.`), vermerk);
+  assert.ok(r.ausgabe.includes(`  Review #${plan} aborted, findings without incorporation — note '${REVIEW_REST_ANKER}' written on plan #${plan}.`),
+    r.ausgabe);
+});
+
+test("[1492] englisch: die uebersprungene Karte in der Form der Vorlage und ihr Hinweis-Kommentar", async () => {
+  const r = await inSprache("en", () => ketteImProzess({
+    karten: [fachplanKarte("1", { labels: ["kit:night"] })], config: { language: "en" },
+  }));
+  assert.ok(r.ausgabe.includes("  #1 [Fachlich] Ein Anliegen -> skipped (unchecked: label 'review:done' missing — "), r.ausgabe);
+  assert.ok(r.ausgabe.includes("  #1: note comment written, label stays."), r.ausgabe);
+  const kommentar = r.karte("1").comments.at(-1).body;
+  assert.ok(kommentar.startsWith("## Chain not started: check missing\n\nunchecked: label 'review:done' missing"), kommentar);
+});
+
+test("[1492] englisch: der Zeitbudget-Grund der Umsetzung beginnt in der Form der Vorlage", () => {
+  assert.match(KETTE_TEXTE.en.umsetzungZeitbudget, /^Time budget /);
+  assert.match(KETTE_TEXTE.de.umsetzungZeitbudget, /^Zeitbudget /);
+});
+
+// Vertragswerte (E14) im zweiten Teil: der Anker der Testhinweise, den Skill und Vorlage
+// woertlich nennen, und das Ergebnis `nicht-vorbereitet` der Vorbereitung.
+const KETTE_VERTRAG = ["## Testhinweise der Formpruefung", "nicht-vorbereitet"];
+
+test("[1492] der zweite Teil der Kette gibt in einem englischen Projekt keine deutsche Meldung aus", () => {
+  const bereich = { bis: "async function mitMeldung", ohne: KETTE_OHNE };
+  assert.deepEqual(deutschAmHelferVorbei("kit/night/kette.mjs", KETTE_TEXTE, KETTE_VERTRAG, bereich), [],
     "kit/night/kette.mjs: deutsche Texte am Texthelfer vorbei");
   assert.deepEqual(deutschImEnglischen(KETTE_TEXTE), [], "kit/night/kette.mjs: deutsche Woerter in der englischen Tabelle");
 });
