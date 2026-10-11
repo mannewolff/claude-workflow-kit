@@ -21,7 +21,90 @@ import path, { join } from "node:path";
 import { homedir } from "node:os";
 
 import { istMensch, zerlegeAbschnitte, abschnittsTitel, CHECK_FORM_ABSCHNITTE } from "./dokumente.mjs";
-import { SPRACHEN, erkenneLabel, labelName, erkenneMarker, leseMarker, ueberschriftZeile } from "./namen.mjs";
+import { SPRACHEN, erkenneLabel, labelName, erkenneMarker, leseMarker, markerName, ueberschriftZeile, UEBERSCHRIFTEN,
+  normUeberschrift, ueberschriftName, prozessSprache, text } from "./namen.mjs";
+
+// ============================================================
+// Texte an den Menschen (Issue #1482, Plan #1420 E13/E14)
+// ============================================================
+
+/**
+ * Die Meldungen dieses Teils je Sprache: die Erklaerung im Halt-Kommentar und die Befunde der
+ * Formgates. Vertragswerte bleiben ausserhalb (E14): die Gate-Kennungen, der Anker
+ * `## Geschuetzte Datei`, die Label-Zeilen `Label kit:geschuetzt gesetzt|nicht gesetzt` und
+ * die Zeile `beim Schreiben abgewiesen` — der Runner liest sie zurueck. Was ein Gate woertlich
+ * erkennt (`- Keine.`, `Keine.`, `verbindlich`, `Bildschirmfoto`, `Gewaehlt: ja`), nennen
+ * auch die englischen Texte woertlich.
+ */
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    haltErklaerung: "Dieses Paket nennt Dateien, die nur ein Mensch schreiben darf — eine Session darf sie nicht aendern und den Schutz nicht umgehen. Ein Mensch nimmt die Aenderung, die die zitierten Zeilen verlangen, selbst vor und nimmt danach das Label `{label}` ab; beim naechsten Anlauf laeuft das Paket dann durch, solange es keine weitere geschuetzte Datei nennt.",
+    abschnittFehlt: "Abschnitt '## {name}' fehlt",
+    abschnittMehrfach: "Abschnitt '## {name}' steht {anzahl}-mal",
+    abschnittReihenfolge: "Abschnitt '## {name}' steht nicht in der vorgeschriebenen Reihenfolge",
+    abschnittLeer: "Abschnitt '## {name}' ist leer",
+    markerFalsch: "'{zeile}' — der Marker dieser Stufe heisst '{marker}'",
+    f2AutorModell: "'Autor-Modell:' steht nicht mit Wert im Abschnitt '## Ziel'",
+    f7PoFragen: "Abschnitt '## Offene Fragen an den PO' fehlt",
+    f9Herkunft: "Herkunftszeile an der Wurzel: '{zeile}'",
+    p6KeineVerboten: "'- Keine.' ist in '## {name}' nicht erlaubt",
+    p6KeineErste: "'- Keine.' in '## {name}' muss die erste Zeile sein und darf keine weiteren Eintraege haben",
+    p2Zusatz: "zusaetzliche Ueberschrift '## {name}' — nur ### ist zwischen den sechs Abschnitten erlaubt",
+    p3PlanModell: "'Plan-Modell:' steht nicht mit Wert im Kopf vor '## Ziel'",
+    i1Letzter: "'## Abhaengigkeiten' ist nicht der letzte Abschnitt",
+    i2AutorModell: "'Autor-Modell:' steht nicht mit Wert im Abschnitt '## Kontext'",
+    i3Leer: "'## Abhaengigkeiten' ist leer — 'Keine.' oder 'Issue #N'",
+    i3OhneReferenz: "'## Abhaengigkeiten' nennt weder 'Keine.' noch eine #N-Referenz — der Nacht-Runner liest nur #N",
+    i4Herkunft: "'{zeile}' gehoert in '## Kontext', nicht in die Abhaengigkeiten — der Runner laese sie als Abhaengigkeit",
+    i5Vorlage: "'Vorlage: … — verbindlich' im Kontext, aber '## Akzeptanzkriterium' nennt keine Abnahme per Bildschirmfoto",
+    i6Kriterium: "'## Akzeptanzkriterium' ruft die Guetemessung '{cmd}' auf — sie gehoert als buildChecks-Eintrag mit 'stufe: push' einmal an die Veroeffentlichung, nicht einmal in jedes Paket",
+    i6Entscheidung: "'{zeile}' hebt die Guetemess-Konvention auf — sie gilt ohne Ausnahme, auch fuer ein Paket, das den Mess-Treiber selbst baut. Dass ein Vollauf durchlaeuft, steht unter '### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)'",
+    i7OhneDatei: "'## Aufgabe' nennt keine Datei als Backtick-Pfad (z. B. `kit/board.mjs`) — ohne genannte Datei erkennt das Kit keine geschuetzte",
+    i8Geschuetzt: "'{pfad}' ist geschuetzt, nur ein Mensch darf die Datei schreiben (Zeile: '{zeile}') — die Aenderung gehoert als eigene [Mensch]-Karte heraus, dieses Paket nennt die Datei dann nicht mehr",
+    i9Kopie: "'{pfad}' in '## Aufgabe' (Zeile: '{zeile}') — Die installierte Kopie unter `.claude/kit/`/`.claude/skills/` wird nie von Hand geändert; im Kit ist die Quelle unter `kit/`/`skills/` gemeint, in einem installierten Projekt ein Kit-Update.",
+  }),
+  en: Object.freeze({
+    haltErklaerung: "This package names files that only a human may write — a session must not change them and must not bypass the protection. A human makes the change the quoted lines require themselves and then removes the label `{label}`; on the next attempt the package then runs through, as long as it names no further protected file.",
+    abschnittFehlt: "Section '## {name}' is missing",
+    abschnittMehrfach: "Section '## {name}' appears {anzahl} times",
+    abschnittReihenfolge: "Section '## {name}' is not in the prescribed order",
+    abschnittLeer: "Section '## {name}' is empty",
+    markerFalsch: "'{zeile}' — the marker of this stage is '{marker}'",
+    f2AutorModell: "'Author-Model:' is not given with a value in section '## Goal'",
+    f7PoFragen: "Section '## Open questions for the PO' is missing",
+    f9Herkunft: "Origin line at the root: '{zeile}'",
+    p6KeineVerboten: "'- Keine.' is not allowed in '## {name}'",
+    p6KeineErste: "'- Keine.' in '## {name}' must be the first line and must have no further entries",
+    p2Zusatz: "additional heading '## {name}' — only ### is allowed between the six sections",
+    p3PlanModell: "'Plan-Model:' is not given with a value in the header before '## Goal'",
+    i1Letzter: "'## Dependencies' is not the last section",
+    i2AutorModell: "'Author-Model:' is not given with a value in section '## Context'",
+    i3Leer: "'## Dependencies' is empty — 'Keine.' or 'Issue #N'",
+    i3OhneReferenz: "'## Dependencies' names neither 'Keine.' nor a #N reference — the night runner reads only #N",
+    i4Herkunft: "'{zeile}' belongs in '## Context', not in the dependencies — the runner would read it as a dependency",
+    i5Vorlage: "'Template: … — verbindlich' in the context, but '## Acceptance criteria' names no acceptance by screenshot ('Bildschirmfoto')",
+    i6Kriterium: "'## Acceptance criteria' calls the quality measurement '{cmd}' — it belongs as a buildChecks entry with 'stufe: push' once at the release, not once in every package",
+    i6Entscheidung: "'{zeile}' lifts the quality-measurement convention — it applies without exception, also to a package that builds the measurement driver itself. That a full run goes through belongs under '### Manual check (human, not part of the session close)'",
+    i7OhneDatei: "'## Task' names no file as a backtick path (e.g. `kit/board.mjs`) — without a named file the kit detects no protected one",
+    i8Geschuetzt: "'{pfad}' is protected, only a human may write the file (line: '{zeile}') — the change belongs on its own [Mensch] card, and this package then no longer names the file",
+    i9Kopie: "'{pfad}' in '## Task' (line: '{zeile}') — The installed copy under `.claude/kit/`/`.claude/skills/` is never changed by hand; in the kit the source under `kit/`/`skills/` is meant, in an installed project a kit update.",
+  }),
+});
+
+/** Ein Text dieses Teils in der Projektsprache (Issue #1482, E13). */
+const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
+
+// Die Formatueberschriften nach ihrem deutschen Namen, wie die Gates sie vergleichen.
+const UEBERSCHRIFT_SACHE = new Map(Object.entries(UEBERSCHRIFTEN).map(([sache, { de }]) => [normUeberschrift(de), sache]));
+
+/**
+ * Der Abschnittsname einer Meldung: deutsch der verglichene Titel wie bisher, englisch der
+ * englische Name einer Formatueberschrift; ein fremder Titel bleibt, wie er steht.
+ */
+function abschnittName(titel) {
+  const sache = UEBERSCHRIFT_SACHE.get(titel);
+  return prozessSprache() === "en" && sache ? ueberschriftName(sache, "en") : titel;
+}
 
 // ============================================================
 // Geschuetzte Pfade (Issue #1041, Plan #987, fachliche Quelle #868)
@@ -276,7 +359,7 @@ export function geschuetztKommentar(treffer) {
   return [
     GESCHUETZT_ANKER,
     "",
-    `Dieses Paket nennt Dateien, die nur ein Mensch schreiben darf — eine Session darf sie nicht aendern und den Schutz nicht umgehen. Ein Mensch nimmt die Aenderung, die die zitierten Zeilen verlangen, selbst vor und nimmt danach das Label \`${GESCHUETZT_LABEL}\` ab; beim naechsten Anlauf laeuft das Paket dann durch, solange es keine weitere geschuetzte Datei nennt.`,
+    t("haltErklaerung", { label: GESCHUETZT_LABEL }),
     "",
     ...liste,
   ].join("\n");
@@ -359,9 +442,10 @@ function pruefeReihenfolge(abschnitte, erwartet) {
   let letzte = -1;
   for (const name of erwartet) {
     const stellen = abschnitte.map((a, i) => (a.titel === name ? i : -1)).filter((i) => i >= 0);
-    if (stellen.length === 0) { meldungen.push(`Abschnitt '## ${name}' fehlt`); continue; }
-    if (stellen.length > 1) meldungen.push(`Abschnitt '## ${name}' steht ${stellen.length}-mal`);
-    if (stellen[0] < letzte) meldungen.push(`Abschnitt '## ${name}' steht nicht in der vorgeschriebenen Reihenfolge`);
+    const anzeige = abschnittName(name);
+    if (stellen.length === 0) { meldungen.push(t("abschnittFehlt", { name: anzeige })); continue; }
+    if (stellen.length > 1) meldungen.push(t("abschnittMehrfach", { name: anzeige, anzahl: stellen.length }));
+    if (stellen[0] < letzte) meldungen.push(t("abschnittReihenfolge", { name: anzeige }));
     letzte = Math.max(letzte, stellen[0]);
   }
   return meldungen;
@@ -372,10 +456,13 @@ function zeilenMitMarker(zeilen, ...sachen) {
   return zeilen.filter((z) => sachen.includes(erkenneMarker(z.trim())));
 }
 
-/** Meldungen fuer die Marker-Zeile, die auf dieser Stufe nicht stehen darf (F11, P12). */
+/**
+ * Meldungen fuer die Marker-Zeile, die auf dieser Stufe nicht stehen darf (F11, P12); der
+ * richtige Marker im Namen der Projektsprache.
+ */
 function markerVerstoesse(zeilen, gate, richtigerMarker) {
-  return zeilenMitMarker(zeilen, "issueReview")
-    .map((z) => ({ gate, meldung: `'${z.trim()}' — der Marker dieser Stufe heisst '${richtigerMarker}'` }));
+  const marker = markerName(richtigerMarker, prozessSprache());
+  return zeilenMitMarker(zeilen, "issueReview").map((z) => ({ gate, meldung: t("markerFalsch", { zeile: z.trim(), marker }) }));
 }
 
 export function pruefeFachlich(abschnitte, alleZeilen) {
@@ -384,31 +471,31 @@ export function pruefeFachlich(abschnitte, alleZeilen) {
   const verstoesse = pruefeReihenfolge(abschnitte, erwartet).map((meldung) => ({ gate: "F1", meldung }));
   const ziel = finde("ziel");
   if (!ziel || !hatKennzeichnung(ziel.zeilen, "autorModell")) {
-    verstoesse.push({ gate: "F2", meldung: "'Autor-Modell:' steht nicht mit Wert im Abschnitt '## Ziel'" });
+    verstoesse.push({ gate: "F2", meldung: t("f2AutorModell") });
   }
   for (const name of ["ziel", "fachliche akzeptanzkriterien", "nicht-ziele"]) {
     const a = finde(name);
-    if (a && istLeer(a.zeilen)) verstoesse.push({ gate: "F6", meldung: `Abschnitt '## ${name}' ist leer` });
+    if (a && istLeer(a.zeilen)) verstoesse.push({ gate: "F6", meldung: t("abschnittLeer", { name: abschnittName(name) }) });
   }
   if (!finde("offene fragen an den po")) {
-    verstoesse.push({ gate: "F7", meldung: "Abschnitt '## Offene Fragen an den PO' fehlt" });
+    verstoesse.push({ gate: "F7", meldung: t("f7PoFragen") });
   }
   for (const z of zeilenMitMarker(alleZeilen, "fachlicheQuelle", "plan")) {
-    verstoesse.push({ gate: "F9", meldung: `Herkunftszeile an der Wurzel: '${z.trim()}'` });
+    verstoesse.push({ gate: "F9", meldung: t("f9Herkunft", { zeile: z.trim() }) });
   }
-  return [...verstoesse, ...markerVerstoesse(alleZeilen, "F11", "Fachplan-Review:")];
+  return [...verstoesse, ...markerVerstoesse(alleZeilen, "F11", "fachplanReview")];
 }
 
 /** P6 fuer einen Abschnitt: nicht leer; `- Keine.` nur wo erlaubt und nur als erste Zeile. */
 function pruefeP6(name, zeilen) {
   const inhalt = zeilen.map((z) => z.trim()).filter((z) => z !== "");
-  if (inhalt.length === 0) return `Abschnitt '## ${name}' ist leer`;
+  if (inhalt.length === 0) return t("abschnittLeer", { name: abschnittName(name) });
   const keineErlaubt = name === "architektonische entscheidungen" || name === "offene fragen";
   const hatKeine = inhalt.some((z) => z.startsWith("- Keine."));
   if (!hatKeine) return null;
-  if (!keineErlaubt) return `'- Keine.' ist in '## ${name}' nicht erlaubt`;
+  if (!keineErlaubt) return t("p6KeineVerboten", { name: abschnittName(name) });
   const nurKeine = inhalt.every((z, i) => (i === 0 ? z.startsWith("- Keine.") : !z.startsWith("- Keine.")));
-  return nurKeine ? null : `'- Keine.' in '## ${name}' muss die erste Zeile sein und darf keine weiteren Eintraege haben`;
+  return nurKeine ? null : t("p6KeineErste", { name: abschnittName(name) });
 }
 
 export function pruefePlan(kopf, abschnitte, alleZeilen) {
@@ -416,24 +503,24 @@ export function pruefePlan(kopf, abschnitte, alleZeilen) {
   const verstoesse = pruefeReihenfolge(abschnitte, erwartet).map((meldung) => ({ gate: "P1", meldung }));
   for (const a of abschnitte) {
     if (!erwartet.includes(a.titel)) {
-      verstoesse.push({ gate: "P2", meldung: `zusaetzliche Ueberschrift '## ${a.titel}' — nur ### ist zwischen den sechs Abschnitten erlaubt` });
+      verstoesse.push({ gate: "P2", meldung: t("p2Zusatz", { name: abschnittName(a.titel) }) });
     }
   }
   if (!hatKennzeichnung(kopf, "planModell")) {
-    verstoesse.push({ gate: "P3", meldung: "'Plan-Modell:' steht nicht mit Wert im Kopf vor '## Ziel'" });
+    verstoesse.push({ gate: "P3", meldung: t("p3PlanModell") });
   }
   for (const a of abschnitte.filter((x) => erwartet.includes(x.titel))) {
     const meldung = pruefeP6(a.titel, a.zeilen);
     if (meldung) verstoesse.push({ gate: "P6", meldung });
   }
-  return [...verstoesse, ...markerVerstoesse(alleZeilen, "P12", "Plan-Review:")];
+  return [...verstoesse, ...markerVerstoesse(alleZeilen, "P12", "planReview")];
 }
 
 /** I1 ueber die Reihenfolge hinaus: Abhaengigkeiten zuletzt. */
 function pruefeI1Lage(abschnitte) {
   const meldungen = [];
   const abh = abschnitte.findIndex((a) => a.titel === "abhaengigkeiten");
-  if (abh >= 0 && abh !== abschnitte.length - 1) meldungen.push("'## Abhaengigkeiten' ist nicht der letzte Abschnitt");
+  if (abh >= 0 && abh !== abschnitte.length - 1) meldungen.push(t("i1Letzter"));
   return meldungen;
 }
 
@@ -442,12 +529,12 @@ function pruefeAbhaengigkeiten(zeilen) {
   const verstoesse = [];
   const erste = ersteNichtLeere(zeilen);
   if (erste === null) {
-    verstoesse.push({ gate: "I3", meldung: "'## Abhaengigkeiten' ist leer — 'Keine.' oder 'Issue #N'" });
+    verstoesse.push({ gate: "I3", meldung: t("i3Leer") });
   } else if (!erste.startsWith("Keine.") && !zeilen.some((z) => /#\d+/.test(z))) {
-    verstoesse.push({ gate: "I3", meldung: "'## Abhaengigkeiten' nennt weder 'Keine.' noch eine #N-Referenz — der Nacht-Runner liest nur #N" });
+    verstoesse.push({ gate: "I3", meldung: t("i3OhneReferenz") });
   }
   for (const z of zeilenMitMarker(zeilen, "fachlicheQuelle", "plan")) {
-    verstoesse.push({ gate: "I4", meldung: `'${z.trim()}' gehoert in '## Kontext', nicht in die Abhaengigkeiten — der Runner laese sie als Abhaengigkeit` });
+    verstoesse.push({ gate: "I4", meldung: t("i4Herkunft", { zeile: z.trim() }) });
   }
   return verstoesse;
 }
@@ -468,15 +555,12 @@ const istVerbindlicheVorlage = (zeile) => {
 function pruefeVorlage(kontext, akzeptanz) {
   if (!kontext?.zeilen.some(istVerbindlicheVorlage)) return [];
   if (akzeptanz?.zeilen.some((z) => /bildschirmfoto/i.test(z))) return [];
-  return [{ gate: "I5", meldung: "'Vorlage: … — verbindlich' im Kontext, aber '## Akzeptanzkriterium' nennt keine Abnahme per Bildschirmfoto" }];
+  return [{ gate: "I5", meldung: t("i5Vorlage") }];
 }
 
 // Ein Dateipfad unter den Pfad-Token (E7): mit Schraegstrich oder mit Dateiendung. Ein Label
 // wie `kit:klaeren` oder eine Konstante wie `KOPIE_PFADE` nennt keine Datei.
 const DATEIPFAD = /(?:\/)|(?:\.[a-z0-9]+$)/;
-
-const KOPIE_MELDUNG = "Die installierte Kopie unter `.claude/kit/`/`.claude/skills/` wird nie von Hand geändert; "
-  + "im Kit ist die Quelle unter `kit/`/`skills/` gemeint, in einem installierten Projekt ein Kit-Update.";
 
 /**
  * I7 bis I9 (Issue #1044, Plan #987, E7): Ein Paket, das eine geschuetzte Datei aendern muss,
@@ -497,17 +581,14 @@ function pruefeGeschuetzt(abschnitte, title, wurzel) {
   const verstoesse = [];
   const aufgabe = abschnitte.find((a) => a.titel === "aufgabe")?.zeilen ?? [];
   if (!pfadTokens(aufgabe).some(({ token, genannt }) => !genannt && DATEIPFAD.test(token))) {
-    verstoesse.push({ gate: "I7", meldung: "'## Aufgabe' nennt keine Datei als Backtick-Pfad (z. B. `kit/board.mjs`) — ohne genannte Datei erkennt das Kit keine geschuetzte" });
+    verstoesse.push({ gate: "I7", meldung: t("i7OhneDatei") });
   }
   const zeilen = abschnitte.filter((a) => GESCHUETZT_ABSCHNITTE.has(a.titel)).flatMap((a) => a.zeilen);
   for (const { pfad, zeile } of listenTreffer(zeilen, geschuetztePfade(wurzel), wurzel, { ohneGenannt: true })) {
-    verstoesse.push({
-      gate: "I8",
-      meldung: `'${pfad}' ist geschuetzt, nur ein Mensch darf die Datei schreiben (Zeile: '${zeile.trim()}') — die Aenderung gehoert als eigene [Mensch]-Karte heraus, dieses Paket nennt die Datei dann nicht mehr`,
-    });
+    verstoesse.push({ gate: "I8", meldung: t("i8Geschuetzt", { pfad, zeile: zeile.trim() }) });
   }
   for (const { pfad, zeile } of listenTreffer(aufgabe, KOPIE_PFADE, wurzel)) {
-    verstoesse.push({ gate: "I9", meldung: `'${pfad}' in '## Aufgabe' (Zeile: '${zeile.trim()}') — ${KOPIE_MELDUNG}` });
+    verstoesse.push({ gate: "I9", meldung: t("i9Kopie", { pfad, zeile: zeile.trim() }) });
   }
   return verstoesse;
 }
@@ -581,19 +662,13 @@ function pruefeGuetemessung(akzeptanz, kontext, config) {
   if (akzeptanz) {
     const text = maschinelleKriterien(akzeptanz.zeilen).join(" ").replaceAll(/\s+/g, " ");
     for (const cmd of guetekommandos(config).filter((c) => text.includes(c))) {
-      verstoesse.push({
-        gate: "I6",
-        meldung: `'## Akzeptanzkriterium' ruft die Guetemessung '${cmd}' auf — sie gehoert als buildChecks-Eintrag mit 'stufe: push' einmal an die Veroeffentlichung, nicht einmal in jedes Paket`,
-      });
+      verstoesse.push({ gate: "I6", meldung: t("i6Kriterium", { cmd }) });
     }
   }
   for (const zeile of zeilenMitMarker(kontext?.zeilen ?? [], "entscheidung")) {
     const z = zeile.trim();
     if (!GUETE_BEZUG.test(z) || !mitJaEntschieden(z)) continue;
-    verstoesse.push({
-      gate: "I6",
-      meldung: `'${z}' hebt die Guetemess-Konvention auf — sie gilt ohne Ausnahme, auch fuer ein Paket, das den Mess-Treiber selbst baut. Dass ein Vollauf durchlaeuft, steht unter '### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)'`,
-    });
+    verstoesse.push({ gate: "I6", meldung: t("i6Entscheidung", { zeile: z }) });
   }
   return verstoesse;
 }
@@ -604,7 +679,7 @@ export function pruefeIssue(abschnitte, config, title, wurzel) {
     .map((meldung) => ({ gate: "I1", meldung }));
   const kontext = finde("kontext");
   if (!kontext || !hatKennzeichnung(kontext.zeilen, "autorModell")) {
-    verstoesse.push({ gate: "I2", meldung: "'Autor-Modell:' steht nicht mit Wert im Abschnitt '## Kontext'" });
+    verstoesse.push({ gate: "I2", meldung: t("i2AutorModell") });
   }
   verstoesse.push(
     ...pruefeVorlage(kontext, finde("akzeptanzkriterium")),

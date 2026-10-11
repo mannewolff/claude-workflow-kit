@@ -12,7 +12,8 @@
 //   - Der Maschinenvertrag (E14) bleibt: Feldnamen und Rueckmeldungen.
 //
 // Der erste Teil deckt kit/board/adapter.mjs, der zweite (#1481) kit/board/issue-review.mjs
-// und kit/board/hook.mjs; die folgenden Teile (#1482, #1483) ergaenzen diese Datei um ihre Module.
+// und kit/board/hook.mjs, der dritte (#1482) kit/board/geschuetzt.mjs und kit/board/schutz.mjs;
+// der folgende Teil (#1483) ergaenzt diese Datei um seine Module.
 
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -28,6 +29,11 @@ import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
 import { TEXTE as ISSUE_REVIEW_TEXTE, planReviewerAusLauf, probelauf, issueReviewCheck, issueReviewStart,
   issueReviewPruefauftrag } from "../kit/board/issue-review.mjs";
 import { TEXTE as HOOK_TEXTE, pruefeBashZeile, pruefeHintergrund, hookBashPruefen } from "../kit/board/hook.mjs";
+import { TEXTE as GESCHUETZT_TEXTE, geschuetztKommentar, pruefeIssue, pruefeFachlich, pruefePlan, GESCHUETZT_ANKER,
+  GESCHUETZT_LABEL_GESETZT, GESCHUETZT_ABGEWIESEN } from "../kit/board/geschuetzt.mjs";
+import { zerlegeAbschnitte } from "../kit/board/dokumente.mjs";
+import { TEXTE as SCHUTZ_TEXTE, SCHUTZ_AUSGESETZT, rulesetSoll, schutzZustand, anleitung, nachtSperre, probe,
+  einrichten } from "../kit/board/schutz.mjs";
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
 
 const ADAPTER_URL = new URL("../kit/board/adapter.mjs", import.meta.url).href;
@@ -280,4 +286,113 @@ test("[1481] englisch: die Config-Pruefung und roles weisen ab", () => {
   assert.match(stufe.stderr, /--stufe 'code' is not a known stage\. Expected: fachlich \| plan \| issue/);
   const unbekannt = issueReviewAbweisung(`dispatchIssueReview("weg", {}, "")`);
   assert.match(unbekannt.stderr, /Unknown issue-review command: 'weg'/);
+});
+
+
+// --- kit/board/geschuetzt.mjs und kit/board/schutz.mjs (Issue #1482) -----------------
+
+test("[1482] die Texttabellen von geschuetzt.mjs und schutz.mjs haben in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
+  assert.deepEqual(pruefeParitaet(GESCHUETZT_TEXTE), []);
+  assert.deepEqual(pruefeParitaet(SCHUTZ_TEXTE), []);
+  assert.ok(Object.keys(GESCHUETZT_TEXTE.de).length >= 20, "die Tabelle traegt die Texte der Formgates und des Halt-Kommentars");
+  assert.ok(Object.keys(SCHUTZ_TEXTE.de).length >= 25, "die Tabelle traegt die Texte des Schutzes");
+});
+
+test("[1482] englisch: der Halt-Kommentar erklaert englisch; Anker, Label- und Abweisungszeile bleiben Vertrag", () => {
+  spracheFestlegen("en");
+  const kommentar = geschuetztKommentar([{ pfad: ".claude/settings.json", zeile: "- `.claude/settings.json` anpassen" }]);
+  assert.ok(kommentar.startsWith(`${GESCHUETZT_ANKER}\n\n`));
+  assert.match(kommentar, /^This package names files that only a human may write/m);
+  assert.match(kommentar, /removes the label `kit:geschuetzt`/);
+  assert.match(kommentar, /^- `\.claude\/settings\.json`$/m);
+  assert.equal(GESCHUETZT_ANKER, "## Geschuetzte Datei");
+  assert.equal(GESCHUETZT_LABEL_GESETZT, "Label kit:geschuetzt gesetzt");
+  assert.equal(GESCHUETZT_ABGEWIESEN, "beim Schreiben abgewiesen");
+  spracheFestlegen("de");
+  assert.match(geschuetztKommentar([{ pfad: "x", zeile: "y" }]), /^Dieses Paket nennt Dateien, die nur ein Mensch schreiben darf/m);
+});
+
+/** Die Abschnitte eines Bodys, wie check-form sie den Gates reicht. */
+const abschnitteVon = (body) => zerlegeAbschnitte(body).abschnitte;
+const meldungen = (verstoesse, gate) => verstoesse.filter((v) => v.gate === gate).map((v) => v.meldung);
+
+test("[1482] englisch: die Formgates des Arbeitspakets nennen ihren Befund englisch, die Gate-Kennungen bleiben", () => {
+  spracheFestlegen("en");
+  const body = [
+    "## Context", "nothing", "",
+    "## Task", "1. change `.claude/settings.json` and `.claude/kit/board.mjs`", "",
+    "## Acceptance criteria", "- green", "",
+  ].join("\n");
+  const v = pruefeIssue(abschnitteVon(body), {}, "Paket", "/nicht/vorhanden");
+  assert.deepEqual(meldungen(v, "I1"), ["Section '## Dependencies' is missing"]);
+  assert.deepEqual(meldungen(v, "I2"), ["'Author-Model:' is not given with a value in section '## Context'"]);
+  assert.match(meldungen(v, "I8")[0], /^'\.claude\/settings\.json' is protected, only a human may write the file \(line: '1\. change/);
+  assert.match(meldungen(v, "I9")[0], /^'\.claude\/kit\/board\.mjs' in '## Task' \(line: .+\) — The installed copy under/);
+  const ohneDatei = pruefeIssue(abschnitteVon("## Context\nAuthor-Model: x\n\n## Task\ndo it\n\n## Acceptance criteria\n- ok\n\n## Dependencies\n"), {}, "Paket", "/x");
+  assert.match(meldungen(ohneDatei, "I7")[0], /^'## Task' names no file as a backtick path/);
+  assert.deepEqual(meldungen(ohneDatei, "I3"), ["'## Dependencies' is empty — 'Keine.' or 'Issue #N'"]);
+  spracheFestlegen("de");
+  assert.deepEqual(meldungen(pruefeIssue(abschnitteVon(body), {}, "Paket", "/x"), "I1"), ["Abschnitt '## abhaengigkeiten' fehlt"]);
+});
+
+test("[1482] englisch: Fachplan- und Plan-Gates", () => {
+  spracheFestlegen("en");
+  const fachlich = pruefeFachlich(abschnitteVon("## Goal\n\n## Goal\nx\n"), []);
+  assert.ok(meldungen(fachlich, "F1").includes("Section '## Goal' appears 2 times"), meldungen(fachlich, "F1").join(" | "));
+  assert.deepEqual(meldungen(fachlich, "F2"), ["'Author-Model:' is not given with a value in section '## Goal'"]);
+  assert.deepEqual(meldungen(fachlich, "F7"), ["Section '## Open questions for the PO' is missing"]);
+  const plan = pruefePlan([], abschnitteVon("## Goal\nx\n\n## Extra\ny\n\n## Verification\n- Keine.\n"), []);
+  assert.deepEqual(meldungen(plan, "P2"), ["additional heading '## extra' — only ### is allowed between the six sections"]);
+  assert.deepEqual(meldungen(plan, "P3"), ["'Plan-Model:' is not given with a value in the header before '## Goal'"]);
+  assert.deepEqual(meldungen(plan, "P6"), ["'- Keine.' is not allowed in '## Verification'"]);
+});
+
+/** Ein Code-Host, der Schutz kennt, mit Rulesets und gruenem Lauf. */
+function schutzHost({ rulesets = [], admin = true } = {}) {
+  return {
+    schutzUnterstuetzt: () => ({ ja: true }),
+    getRulesets: async () => rulesets,
+    hatAdminRecht: async () => admin,
+    getCiStatus: async () => ({ status: "gruen", jobs: [{ name: "check", ergebnis: "gruen" }] }),
+    pushRef: async () => {},
+    deleteRef: async () => {},
+  };
+}
+
+test("[1482] englisch: Zustand, Soll und Nacht-Sperre des Schutzes; die Konstante bleibt deutsch", async () => {
+  spracheFestlegen("en");
+  assert.throws(() => rulesetSoll("main", [], "irgendwas"), { message: "Ruleset kind 'irgendwas' unknown. Expected: haupt | veroeffentlichung" });
+  const haupt = { ...rulesetSoll("main", ["check"], "haupt"), requiredStatusChecks: ["check"], bypassActors: ["x"], enforcement: "disabled" };
+  const zustand = await schutzZustand(schutzHost({ rulesets: [haupt] }), { mainBranch: "main" }, { kopfVon: () => null });
+  assert.deepEqual(zustand.fehlt, [
+    "Check before push not in the build service (pushPruefung)",
+    "Main branch protection suspended",
+    "Ruleset 'claude-workflow-kit: main' deviates: bypass list not empty",
+    "Ruleset 'claude-workflow-kit: production' is missing",
+  ]);
+  assert.equal(SCHUTZ_AUSGESETZT, "Schutz des Hauptzweigs ausgesetzt");
+  assert.throws(() => nachtSperre("einrichten", { KIT_AGENT_MODEL: "opus" }),
+    { message: /^code schutz einrichten is blocked without supervision \(KIT_AGENT_MODEL set\): / });
+  spracheFestlegen("de");
+  const de = await schutzZustand(schutzHost({ rulesets: [haupt] }), { mainBranch: "main" }, { kopfVon: () => null });
+  assert.ok(de.fehlt.includes(SCHUTZ_AUSGESETZT), de.fehlt.join(" | "));
+});
+
+test("[1482] englisch: Anleitung, Probe und Einrichten; die Ergebniswerte bleiben Vertrag", async () => {
+  spracheFestlegen("en");
+  const text = anleitung(rulesetSoll("main", ["check"], "haupt"));
+  assert.match(text, /^4\. Bypass list: leave empty, no role and no user$/m);
+  assert.match(text, /\(target branch: main\)/);
+  assert.match(text, /^6\. Under Require status checks to pass, enter these jobs as required checks: check$/m);
+  await assert.rejects(() => probe(schutzHost(), { mainBranch: "main" }, "kit-pruefung", { kopfVon: () => null }),
+    { message: "origin/main is missing in the local repository — first git fetch origin main." });
+  await assert.rejects(() => probe(schutzHost(), {}, "kit-pruefung", { kopfVon: () => "a", zweigBelegt: () => true }),
+    { message: /^The check branch 'kit-pruefung' already exists on origin/ });
+  const ohne = await einrichten(schutzHost(), { mainBranch: "main" }, "kit-pruefung", { kopfVon: () => null });
+  assert.deepEqual(ohne, { ergebnis: "nicht moeglich", grund: "origin/main is missing — without a remote state there is nothing to check." });
+  const ohneAdmin = await einrichten(schutzHost({ admin: false }), { mainBranch: "main" }, "kit-pruefung", {
+    kopfVon: () => "a", zweigBelegt: () => false, takt: 1, schlafe: async () => {}, melde: () => {},
+  });
+  assert.equal(ohneAdmin.ergebnis, "anleitung");
+  assert.equal(ohneAdmin.grund, "Without admin rights on the repository the kit sets up nothing.");
 });
