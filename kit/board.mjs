@@ -314,8 +314,8 @@ Usage:
   node board.mjs issue melden <id> --teil <n> --text '<stueck>'
   node board.mjs issue melden <id>
       Files the completion report and then moves the card to In review (Issue #1022).
-      The report gets 'Report-Run: <stamp>' as its last line (the card's latest move
-      to in_progress from .claude/bewegungen.tsv). Idempotent per run: same content ->
+      The report gets a run stamp line as its last line (the card's latest move to
+      in_progress from .claude/bewegungen.tsv). Idempotent per run: same content ->
       nothing written, changed -> replaced, reports of other runs stay. A ' in the
       report is written in the shell as '\\''.
       --teil <n> only writes piece n to .claude/berichte/<id>.<n>.md (no board); the
@@ -324,8 +324,8 @@ Usage:
       Output: { ok, id, bericht: angelegt|ersetzt|unveraendert, status: in_review }.
   node board.mjs issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <pfad>
       Run status of a card in one go (Issue #1083): sets the label of the state and
-      removes the other two (fertig: all three), plus exactly one comment
-      '## Run status', replaced on every call. The label names come from
+      removes the other two (fertig: all three), plus exactly one run status
+      comment, replaced on every call. The label names come from
       night.stand.labels in the config. Comments are read strictly; unreadable ->
       exit 1, nothing written. Output: { ok, id, zustand, kommentar: angelegt|ersetzt|unveraendert }.
   node board.mjs issue auftrag <id> [--spalte ready|in_progress] [--json]
