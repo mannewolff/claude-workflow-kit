@@ -2,6 +2,38 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [4.2.1] - 2026-10-11
+- Englische Unterkommandos und Optionen in kit/board.mjs (#1461)
+- Lokale Board-Oberfläche zweisprachig, Teil 2: kit/board-ui.mjs ab renderMarkdown (#1501)
+- Lokale Board-Oberfläche zweisprachig, Teil 1: kit/board-ui.mjs bis vor renderMarkdown (#1500)
+- Test des Nachtberichts mit fester Uhrzeit statt mit der Uhr (#1476)
+- sprachfassungen.mjs prüft die Paare unter en/ (#1465)
+- Spiegel en/ als Blobs, Installer legt Skills und Regeltexte je Sprache ab (#1464)
+- Englische Befehlsnamen und englische Einstiegsdateien der Kit-Werkzeuge (#1462)
+- Formgates und Abschnittsparser erkennen englische Formatüberschriften (#1460)
+- Commit-Gate gate.mjs und pre-commit zweisprachig (#1458)
+- Einstellungsoberfläche zweisprachig: Texte, lang-Attribut, Befundtexte (#1456)
+- Meldungen des Installers zweisprachig (#1455)
+- Meldungen zweisprachig: kit/aufwand.mjs und kit/preise.mjs (#1452)
+- Doku: Abschnitt Sprache mit Einstellungsnamen language/sprache und install --language (#1444)
+- Zurückgelesene Marker werden unter beiden Namen erkannt (#1443)
+- Einstellungsoberfläche zeigt englische Namen in einem englischen Projekt (#1441)
+- Register der zurückgelesenen Marker und gemeinsamer Texthelfer (#1440)
+- Englische Config-Referenz nennt englischen Namen und deutschen Altnamen (#1439)
+- install.mjs --language en|de stellt ein Projekt um (#1438)
+- sync-blobs bettet config-namen in kit/einstellungen.mjs ein (#1437)
+- Rohleser der Config lesen über normalisiereConfig (#1436)
+- loadConfig und ladeConfigMitOverrides normalisieren vor dem Mischen (#1435)
+- Namenspaare der Einstellungen: kit/board/config-namen.mjs mit normalisiereConfig (#1434)
+- Einstellungsoberfläche zeigt die Projektsprache (#1431)
+- Installer fragt neue Projekte zuerst nach der Sprache (#1430)
+- Strukturiertes Feld grundArt statt Freitext-Erkennung im Melder (#1426)
+- Nachtlauf erkennt Kit-Labels unter beiden Namen (#1425)
+- Schutz im KI Repository angeschmissen
+- Freigaberechte gelten unter beiden Labelnamen (#1424)
+- Titel-Präfixe werden unter beiden Namen erkannt (#1423)
+- Namen-Register kit/board/namen.mjs und Spracheinstellung language (#1421)
+
 ## [4.2.0] - 2026-10-10
 - CI des Kits läuft mit Node 24 statt Node 20 (#1419)
 

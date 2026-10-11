@@ -90,7 +90,7 @@ const { leseMarker = null } = await import(new URL("./board/namen.mjs", import.m
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "4.2.0";
+const KIT_VERSION = "4.2.1";
 
 // Blob-Hash und Ort der Pruef-Zusammenfassung kommen aus checks.mjs und werden NICHT
 // nachgebaut (Issue #802, Plan #797 E13): Zwei Implementierungen derselben Frage
