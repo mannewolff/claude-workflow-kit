@@ -14,16 +14,21 @@
 // schluessel und das Praefix `Verschoben nach ` der Board-Verlaufszeile, das der Adapter liefert.
 //
 // Das Paket #1453 ist in drei Teile geschnitten. Der erste (#1497) deckt kit/wirksamkeit.mjs
-// vollstaendig; die Teile fuer die Werkzeuge befunde und worktree ergaenzen diese Datei.
+// vollstaendig, der zweite (#1498) kit/befunde.mjs; der Teil fuer worktree ergaenzt diese Datei.
+// Fuer befunde bleiben dazu Vertrag (E14): die Artnamen, die Marken, die Formwoerter des
+// Fundblocks (`Gegenprobe:`, `— geprueft, bestaetigt`, `— nicht geprueft`, `Art:`), die
+// Angaben-Schluessel, die Vorschlagsstaende und die Werte des Vergleichsstands.
 
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, copyFileSync, cpSync } from "node:fs";
+import { mkdirSync, copyFileSync, cpSync, mkdtempSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { TEXTE as WIRKSAMKEIT_TEXTE, befundText, kandidatenText, zahlform } from "../kit/wirksamkeit.mjs";
+import { TEXTE as BEFUNDE_TEXTE, aufrufen as befundeAufrufen } from "../kit/befunde.mjs";
 import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
 import { mitProjekt, zeile, bewegung, moved, auswerten, wirksamkeit, bericht } from "./helpers/wirksamkeit-fixture.mjs";
 import { deutschAmHelferVorbei, deutschImEnglischen } from "./helpers/quelltext-texte.mjs";
@@ -200,6 +205,190 @@ test("[1497] ein englisches Projekt sieht keine deutsche Meldung — echter Proz
     assert.match(bericht(dir), /^# Effectiveness of the checks$/m, "ohne Repo-Kontext laeuft der Bericht englisch");
     const alles = ausgaben.join("\n");
     const gefunden = deutscheBruchstuecke().filter((s) => alles.includes(s));
+    assert.deepEqual(gefunden, [], "deutsche Meldung in einem englischen Projekt");
+  });
+});
+
+// --- kit/befunde.mjs (Issue #1498) ------------------------------------------------------
+
+// Ein Befunde-Kommentar von /issue-review mit englischem Kopf und ohne Reviewer-Kopf: Er loest
+// die Meldung `keine-pruefer`, die Angabe `reviewer-kopf` und eine fremde Art aus.
+const FUNDTEXT = [
+  "## Plan-Review, Round 1",
+  "",
+  "#### WICHTIG",
+  "**Missing case**",
+  "Gegenprobe: a line in kit/x.mjs — geprueft, bestaetigt",
+  "Art: luecke",
+  "Uebernahme: uebernommen",
+  "",
+  "**Second one**",
+  "Art: erfunden",
+  "",
+].join("\n");
+
+/** Eine Protokollzeile, wie `buchen` sie schreibt — sieben Spalten, Art in Spalte 5. */
+function befundeZeile(art, { stufe = "plan", vergleich = "-" } = {}) {
+  return `2026-09-22T00:00:00.000Z\t${stufe}\t797\treviewer\t${art}\tWICHTIG\t${vergleich}`;
+}
+
+/** Ein Wegwerf-Projekt mit Fundtext, Protokoll und optional Vorschlagsstand und Config. */
+function mitBefundeProjekt({ protokoll = [], vorschlaege = null, config = null } = {}, fn) {
+  const dir = mkdtempSync(join(tmpdir(), "befunde-en-"));
+  mkdirSync(join(dir, ".claude"), { recursive: true });
+  writeFileSync(join(dir, "funde.md"), FUNDTEXT);
+  if (protokoll.length > 0) writeFileSync(join(dir, ".claude", "befunde.tsv"), protokoll.map((z) => `${z}\n`).join(""));
+  if (vorschlaege) writeFileSync(join(dir, ".claude", "befunde-vorschlaege.json"), JSON.stringify(vorschlaege));
+  if (config) writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify(config));
+  try {
+    return fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** `befunde.mjs` im selben Prozess mit einem Stub-Adapter, der jeden Aufruf samt Datei festhaelt. */
+function befunde(dir, argv, aufrufe = []) {
+  const board = (args) => {
+    const i = args.findIndex((a) => a === "--body-file" || a === "--text-file");
+    aufrufe.push({ args, text: i === -1 ? null : readFileSync(args[i + 1], "utf-8") });
+    return { status: 0, stdout: `${JSON.stringify({ id: "812" })}\n`, stderr: "" };
+  };
+  return befundeAufrufen(argv, { cwd: dir, board, jetzt: () => new Date("2026-10-11T12:00:00.000Z") });
+}
+
+test("[1498] die Texttabelle von befunde.mjs hat in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
+  assert.deepEqual(pruefeParitaet(BEFUNDE_TEXTE), []);
+  assert.ok(Object.keys(BEFUNDE_TEXTE.de).length > 80, "die Tabelle traegt die Texte des Moduls");
+});
+
+test("[1498] die englische Haelfte der Tabelle von befunde.mjs traegt keine deutschen Woerter", () => {
+  assert.deepEqual(deutschImEnglischen(BEFUNDE_TEXTE), []);
+});
+
+test("[1498] jeder deutsche Text von befunde.mjs geht ueber den Texthelfer", () => {
+  assert.deepEqual(deutschAmHelferVorbei("kit/befunde.mjs", BEFUNDE_TEXTE,
+    ["nicht", "— nicht geprueft", "keine-pruefer", "nicht-vergleichbar", "(?:nicht gefunden|not found)", "karte-fehlt"]), []);
+});
+
+test("[1498] englisch: arten erklaert, pruefen meldet — Artnamen, Angaben und Formwoerter bleiben Vertrag", () => {
+  spracheFestlegen("en");
+  mitBefundeProjekt({}, (dir) => {
+    const liste = JSON.parse(befunde(dir, ["kinds"]).stdout);
+    assert.equal(liste.arten[3].name, "luecke", "die Artnamen bleiben Vertrag");
+    assert.equal(liste.arten[3].erklaerung, "A case, step or area needed for the goal is missing entirely.");
+
+    const geprueft = JSON.parse(befunde(dir, ["check", "--file", "funde.md"]).stdout);
+    assert.deepEqual(geprueft.meldungen.map((m) => m.angabe), ["keine-pruefer"]);
+    assert.match(geprueft.meldungen[0].meldung, /^The text carries not a single reviewer head '### Reviewer <n>: <role>, <model>'/);
+    const meldung = (angabe, fund) => geprueft.eintraege.find((e) => e.angabe === angabe && e.fund === fund).meldung;
+    assert.equal(meldung("stand", 2), "The state of the counter-check is missing — expected is '— geprueft, bestaetigt' or '— nicht geprueft' at the end of the line.");
+    assert.equal(meldung("art", 2), "The kind 'erfunden' is not in the list; valid are the names from 'findings kinds'.");
+    assert.match(meldung("reviewer-kopf", 1), /books the role as 'unbekannt'\.$/);
+  });
+});
+
+test("[1498] englisch: die Idee am Board traegt englisches Praefix, Kopf und Text", () => {
+  spracheFestlegen("en");
+  mitBefundeProjekt({ protokoll: [befundeZeile("form"), befundeZeile("form"), befundeZeile("form")] }, (dir) => {
+    const aufrufe = [];
+    const ergebnis = JSON.parse(befunde(dir, ["suggest", "--kind", "form"], aufrufe).stdout);
+    assert.equal(ergebnis.titel, "[Idea] Machine check for defect kind form?");
+    const body = aufrufe[0].text;
+    assert.match(body, /^## Context$/m);
+    assert.match(body, /^Author-Model: kit\/befunde\.mjs$/m);
+    assert.match(body, /^\| Time \| Stage \| Card \| Role \| Severity \|$/m);
+    assert.match(body, /^Not all findings of this kind can be caught by the same check\.$/m);
+    assert.match(body, /`node \.claude\/kit\/findings\.mjs suggest --rejected form`/);
+  });
+  mitBefundeProjekt({}, (dir) => {
+    assert.equal(JSON.parse(befunde(dir, ["suggest", "--kind", "luecke"]).stdout).grund,
+      "'luecke' is a judgement kind — a review judges it, a machine check does not catch it. No suggestion is created.");
+    assert.equal(JSON.parse(befunde(dir, ["suggest", "--kind", "form"]).stdout).grund,
+      "0 occurrences above the zero point 0 do not reach the threshold 3.");
+  });
+});
+
+test("[1498] englisch: Bericht und Befund; der Vorschlagsstand im Stand bleibt Vertrag", () => {
+  spracheFestlegen("en");
+  const protokoll = [befundeZeile("form"), befundeZeile("form"), befundeZeile("form"), befundeZeile("luecke", { stufe: "code", vergleich: "nicht-vergleichbar" })];
+  mitBefundeProjekt({ protokoll, vorschlaege: { form: { karte: "812", stand: "offen", zaehlerstand: 3, nullpunkt: 0 } } }, (dir) => {
+    const stand = JSON.parse(befunde(dir, ["evaluate"]).stdout);
+    assert.deepEqual(stand.arten.find((a) => a.art === "form").vorschlag, { stand: "offen", karte: "812", ideaId: null });
+    assert.equal(stand.befund[0].text, "`luecke`: 1 occurrences (code 1) — no suggestion (judgement kind).");
+    assert.equal(stand.befund[1].text, "`form`: 3 occurrences (plan 3), threshold 3 reached — suggestion open (#812).");
+    assert.equal(stand.befund[2].text, "Stage `code`: 0 on a state with green required checks, 1 marked as `nicht-vergleichbar`.");
+    const md = readFileSync(join(dir, ".claude", "befunde.md"), "utf-8");
+    assert.match(md, /^# Findings of the model reviews$/m);
+    assert.match(md, /^\| Kind \| Occurrences \| fachlich \| plan \| issue \| code \| code green \| code not comparable \|/m);
+    assert.match(md, /\| `form` \| 3 \| 0 \| 3 \| 0 \| 0 \| 0 \| 0 \| 3 \| yes \| suggestion open \(#812\) \|/);
+    assert.match(md, /^## Stage code$/m);
+    assert.match(befunde(dir, ["finding"]).stdout, /^Findings of the model reviews — evaluation of 2026-10-11T12:00:00\.000Z: 4 occurrences in 2 kinds, threshold 3\.\n- `luecke`/);
+  });
+});
+
+test("[1498] englisch: Hilfe und Fehler nennen die englischen Befehlsnamen", () => {
+  spracheFestlegen("en");
+  mitBefundeProjekt({}, (dir) => {
+    const hilfe = befunde(dir, ["--help"]).stdout;
+    assert.match(hilfe, /— form and kinds of findings/);
+    assert.match(hilfe, /node findings\.mjs record --file <path> --stage <fachlich\|plan\|issue\|code> --card <n>/);
+    const fehler = (argv) => JSON.parse(befunde(dir, argv).stdout);
+    assert.deepEqual(Object.keys(fehler(["kinds", "x"])), ["ok", "fehler"], "Feldnamen der Fehlerausgabe bleiben Vertrag");
+    assert.equal(fehler(["kinds", "x"]).fehler, "'kinds' takes no arguments, got 'x'.");
+    assert.equal(fehler(["check"]).fehler, "'check' needs --file <path>.");
+    assert.equal(fehler(["record", "--file", "f", "--stage", "x", "--card", "1"]).fehler, "Unknown stage: 'x'. Expected: fachlich, plan, issue, code.");
+    assert.equal(fehler(["suggest", "--kind", "x"]).fehler, "Unknown kind: 'x'. Valid are the names from 'findings kinds'.");
+    assert.equal(fehler(["check", "--file", "fehlt.md"]).fehler, "File not readable: fehlt.md (ENOENT).");
+    assert.equal(fehler(["gibtsnicht"]).fehler, "Unknown command: 'gibtsnicht'. Expected: kinds, check, record, suggest, evaluate or finding.");
+    assert.equal(befunde(dir, ["finding", "x"]).stderr, "Error: 'finding' takes no arguments, got 'x'.\n");
+  });
+});
+
+test("[1498] die deutsche Vorgabe bleibt: Idee, Befund und Meldung sprechen Deutsch", () => {
+  spracheFestlegen("de");
+  mitBefundeProjekt({ protokoll: [befundeZeile("form"), befundeZeile("form"), befundeZeile("form")] }, (dir) => {
+    assert.equal(JSON.parse(befunde(dir, ["vorschlag", "--art", "form"]).stdout).titel, "[Idee] Maschinelle Pruefung fuer Mangel-Art form?");
+    befunde(dir, ["auswerten"]);
+    assert.match(befunde(dir, ["befund"]).stdout, /^Befunde der Modell-Pruefungen — Auswertung vom .+: 3 Vorkommen in 1 Art, Schwelle 3\.$/m);
+    assert.equal(JSON.parse(befunde(dir, ["arten", "x"]).stdout).fehler, "'arten' nimmt keine Argumente, bekam 'x'.");
+  });
+});
+
+/** Die festen Bruchstuecke der deutschen Texte von befunde.mjs, die im Englischen nicht vorkommen. */
+function deutscheBefundeBruchstuecke() {
+  const englisch = Object.values(BEFUNDE_TEXTE.en).join("\n");
+  const stuecke = new Set();
+  for (const wert of Object.values(BEFUNDE_TEXTE.de)) {
+    for (const teil of wert.split(/\{[A-Za-z_]\w*\}|\n/)) {
+      const t = teil.trim();
+      if (t.length >= 8 && !englisch.includes(t)) stuecke.add(t);
+    }
+  }
+  return [...stuecke];
+}
+
+test("[1498] ein englisches Projekt sieht von befunde.mjs keine deutsche Meldung — echter Prozess, nur die verteilten Dateien", () => {
+  const protokoll = [befundeZeile("form"), befundeZeile("form"), befundeZeile("form"), befundeZeile("luecke", { stufe: "code", vergleich: "nicht-vergleichbar" }), "kaputt"];
+  mitBefundeProjekt({ protokoll, vorschlaege: { form: { karte: "812", stand: "offen", zaehlerstand: 3, nullpunkt: 0 } }, config: { language: "en", issueTracker: "local" } }, (dir) => {
+    const kit = join(dir, ".claude", "kit");
+    mkdirSync(kit, { recursive: true });
+    copyFileSync(join(KIT, "befunde.mjs"), join(kit, "befunde.mjs"));
+    cpSync(join(KIT, "board"), join(kit, "board"), { recursive: true });
+
+    const cli = (...args) => spawnSync(process.execPath, [join(kit, "befunde.mjs"), ...args], { cwd: dir, encoding: "utf-8" });
+    const auswertung = cli("auswerten");
+    assert.equal(auswertung.status, 0, auswertung.stderr);
+    const ausgaben = [
+      freitexte(JSON.parse(auswertung.stdout)).join("\n"), readFileSync(join(dir, ".claude", "befunde.md"), "utf-8"), cli("befund").stdout,
+      cli("arten").stdout, cli("pruefen", "--datei", "funde.md").stdout, cli("vorschlag", "--art", "luecke").stdout,
+      cli("--help").stdout, cli("befund", "x").stderr, cli("arten", "x").stdout, cli("unbekannt").stdout, cli("unbekannt").stderr,
+      cli("buchen", "--datei", "funde.md", "--stufe", "code", "--karte", "1").stdout,
+    ];
+    const alles = ausgaben.join("\n");
+    assert.match(alles, /^# Findings of the model reviews$/m, "ohne Repo-Kontext laeuft der Bericht englisch");
+    assert.match(alles, /checks\.mjs is not next to befunde\.mjs/, "der fehlende Nachbar meldet sich englisch");
+    const gefunden = deutscheBefundeBruchstuecke().filter((s) => alles.includes(s));
     assert.deepEqual(gefunden, [], "deutsche Meldung in einem englischen Projekt");
   });
 });
