@@ -96,7 +96,10 @@ const HILFE = `board.mjs — Board-Adapter fuer das claude-workflow-kit
 Nutzung:
   node board.mjs issue create --title "..." --body "..." | --body-file <pfad> | --body -
                              [--author-model <modell>] [--derived-from <nummer>]
-                             [--idempotency-key <wert>]
+                             [--idempotency-key <wert>] [--art fachlich|plan|idee|mensch|task]
+      --art stellt das Titel-Praefix der Art in der Projektsprache voran, etwa
+      '[Fachlich]' oder '[Requirement]' (Issue #1427). Ein Titel mit Praefix bleibt
+      gueltig; --art daneben ist ein Fehler. Ohne --art bleibt der Titel, wie er ist.
       --derived-from traegt die Kartennummer des naechsten Vorfahren ins Board
       (Issue #356). Nur kanbancompat wertet sie aus; die uebrigen Tracker nehmen
       sie folgenlos an. Nachtragen geht nicht — sie wirkt nur beim Anlegen.
@@ -163,11 +166,12 @@ Nutzung:
   node board.mjs issue label add <id> <name>
   node board.mjs issue label remove <id> <name>
       Zeichnet ein Issue (z. B. kit:klaeren). Status-Labels aendert \`issue move\`.
-  node board.mjs issue check-form <id>
-  node board.mjs issue check-form --body-file <pfad> --title "<titel>"
+  node board.mjs issue check-form <id> [--art fachlich|plan|idee|mensch|task]
+  node board.mjs issue check-form --body-file <pfad> --title "<titel>" [--art ...]
       Formpruefung gegen die maschinellen Gates der Stufe (Issue #628): fachlich
       F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, Arbeitspaket I1 bis I9. Die Stufe
-      kommt aus dem Titel-Praefix. I7 bis I9 (Issue #1044): '## Aufgabe' nennt eine
+      kommt aus dem Titel-Praefix, mit --art aus der Art wie bei 'issue create'
+      (Issue #1427); --art neben einem Titel mit Praefix weist den Aufruf ab. I7 bis I9 (Issue #1044): '## Aufgabe' nennt eine
       Datei als Backtick-Pfad, keine genannte Datei ist geschuetzt (Sperren aus den
       Einstellungen der Projektwurzel), '## Aufgabe' nennt nicht die installierte
       Kopie; ein [Mensch]-Paket besteht alle drei. Immer JSON ({ ok, stufe, verstoesse }), Exit 1
@@ -340,7 +344,8 @@ export const { mergeKontextConfig, resolveKontextPaths, pickNoteFile, pickLatest
 // Einstieg fuer Dispatch und Formpruefung; exportiert waren sie nie und bleiben es nicht.
 const { KONTEXT_DEFAULTS, loadKontextConfig, kontextRepoName, heute, issueCreate,
   issueGet, issueList, issueEpics, issueActivity, issueMove, issueLabel,
-  issueComment, issueMelden, issueStand, issueAuftrag, issueUrsprung, issueUpdate, CHECK_FORM_WEGE } = await import("./board/dokumente.mjs");
+  issueComment, issueMelden, issueStand, issueAuftrag, issueUrsprung, issueUpdate, CHECK_FORM_WEGE,
+  titelMitArt } = await import("./board/dokumente.mjs");
 export const { GESCHUETZTE_PFADE, KOPIE_PFADE, geschuetztePfade, trifftGeschuetzt, pfadTokens, tokenFormen,
   geschuetzteTreffer, GESCHUETZT_ANKER, GESCHUETZT_LABEL, GESCHUETZT_LABEL_GESETZT, GESCHUETZT_LABEL_NICHT_GESETZT,
   GESCHUETZT_ABGEWIESEN, abgewieseneTreffer, geschuetztKommentar, geschuetztFreigabe } = await import("./board/geschuetzt.mjs");
@@ -367,7 +372,7 @@ const { rulesetName } = await import("./board/adapter.mjs");
 // Englisch benannte Config auf die deutschen Namen (Issue #1436, Plan #1420 E10).
 const { normalisiereConfig } = await import("./board/config-namen.mjs");
 // Die englischen Namen der Optionen und der Aktionen von `code schutz` (Issue #1461, E18).
-const { BEFEHLSNAMEN } = await import("./board/namen.mjs");
+const { BEFEHLSNAMEN, projektSprache } = await import("./board/namen.mjs");
 /** Englisch -> deutsch fuer eine Ebene der Namenstabelle. */
 const deutscherName = (ebene) => Object.fromEntries(Object.entries(ebene).map(([de, en]) => [en, de]));
 const OPTION_DEUTSCH = deutscherName(BEFEHLSNAMEN.optionen);
@@ -447,7 +452,11 @@ async function issueCheckForm(tracker, config, args) {
   if (id !== undefined && hatDatei) checkFormAbweisen(`Kartennummer und --body-file zugleich uebergeben. ${CHECK_FORM_WEGE}.`);
   if (id === undefined && !hatDatei) checkFormAbweisen(`Keine Eingabe uebergeben. ${CHECK_FORM_WEGE}.`);
 
-  const { body, title } = hatDatei ? checkFormAusDatei(args["body-file"], args.title) : await checkFormVomBoard(tracker, id);
+  const eingabe = hatDatei ? checkFormAusDatei(args["body-file"], args.title) : await checkFormVomBoard(tracker, id);
+  const body = eingabe.body;
+  // --art waehlt die Stufe ueber den Titel, wie `issue create` ihn anlegt (Issue #1427, E6).
+  const { titel: title, fehler } = titelMitArt(eingabe.title, args.art, projektSprache(config));
+  if (fehler) checkFormAbweisen(`${fehler}. ${CHECK_FORM_WEGE}.`);
   const dateien = stufeAusTitel(title) === "plan" ? versionierteDateien() : [];
   const ergebnis = pruefeForm(body, title, config, dateien, configWurzel());
   if (ergebnis.stufe === "issue") {
@@ -501,7 +510,7 @@ async function dispatchIssue(command, args) {
   const config = loadConfig();
   const tracker = resolveTracker(config);
   switch (command) {
-    case "create":  return issueCreate(tracker, args);
+    case "create":  return issueCreate(tracker, args, config);
     case "get":     return issueGet(tracker, args);
     case "list":    return issueList(tracker, args);
     case "epics":   return issueEpics(tracker);

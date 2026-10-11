@@ -33,7 +33,7 @@ import { GitHubIssueTracker, resolveCodeHost } from "./adapter.mjs";
 // Zyklus mit Absicht: ursprung.mjs liest Karten und Herkunftszeilen von hier. Beide Seiten
 // rufen sich erst zur Laufzeit, keine liest beim Laden einen Wert der anderen.
 import { ursprungLesen, ursprungNachziehen } from "./ursprung.mjs";
-import { SPRACHEN, praefix, erkennePraefix, erkenneLabel, erkenneMarker, leseMarker, markerWerte,
+import { SPRACHEN, PRAEFIXE, projektSprache, praefix, erkennePraefix, erkenneLabel, erkenneMarker, leseMarker, markerWerte,
   kanonischeUeberschrift, ueberschriftName, ueberschriftZeile } from "./namen.mjs";
 import { normalisiereConfig } from "./config-namen.mjs";
 
@@ -512,8 +512,31 @@ function idempotenzOption(wert) {
   return String(wert).trim();
 }
 
-export async function issueCreate(tracker, args) {
+/** Die Werte von `--art`, wie das Namen-Register sie kennt (Plan #1420 E6). */
+export const ARTEN = Object.freeze(Object.keys(PRAEFIXE));
+
+/**
+ * Der Titel mit dem Praefix der Art in der Projektsprache (Issue #1427, E6): `{ titel }`,
+ * oder `{ fehler }`, wenn die Art unbekannt ist oder der Titel schon ein Praefix traegt.
+ * Ohne Art bleibt der Titel unveraendert — ein Titel mit Praefix wird nie umgeschrieben.
+ * Dieselbe Regel fuer `issue create` und `issue check-form`, damit beide denselben Titel sehen.
+ */
+export function titelMitArt(title, art, sprache) {
+  if (art === undefined) return { titel: title };
+  if (art === true || !ARTEN.includes(art)) {
+    return { fehler: `--art braucht einen dieser Werte: ${ARTEN.join("|")}` };
+  }
+  if (erkennePraefix(title) !== null) {
+    return { fehler: `--art ${art} neben einem Titel mit Praefix ('${title}') — entweder --art oder das Praefix im Titel` };
+  }
+  return { titel: `${praefix(art, sprache)} ${String(title).trimStart()}` };
+}
+
+export async function issueCreate(tracker, args, config = {}) {
   if (!args.title) fail("--title ist erforderlich");
+  // Vor jedem Netzaufruf: Ein Widerspruch zwischen --art und Titel legt keine Karte an.
+  const { titel, fehler } = titelMitArt(args.title, args.art, projektSprache(config));
+  if (fehler) fail(fehler);
   // Ohne jede Body-Quelle bleibt der Body leer — der lokale Tracker setzt dann
   // seine Abschnitts-Vorlage. leseTextQuelle wuerde einen leeren Text ablehnen,
   // deshalb wird es nur befragt, wenn ueberhaupt eine Quelle angegeben ist.
@@ -524,7 +547,7 @@ export async function issueCreate(tracker, args) {
   const idempotencyKey = idempotenzOption(args["idempotency-key"]);
   const roh = hatQuelle ? await leseTextQuelle(args.body, args["body-file"], "body") : "";
   const felder = {
-    title: args.title,
+    title: titel,
     // Die Autor-Modell-Leitplanke laeuft auf dem AUFGELOESTEN Text (Issue #271):
     // Stuende sie vor der Aufloesung, wuerde ein '-' oder ein Dateipfad geprueft
     // statt des Inhalts — und ein Body mit korrekter Zeile in der Datei abgelehnt.
