@@ -618,6 +618,59 @@ Was das Kit ausgibt und an die Karten schreibt, steht in der Projektsprache: die
 
 Übersetzt werden die Freitexte der Meldung an den Leitstand, `title`, `excerpt`, `abortReason` und `noWorkReason`, und alle Anzeigen.
 
+### Skills, Befehle und Einstiegsdateien
+
+Auch Skills, Befehle und Werkzeugdateien haben einen englischen Namen. Der deutsche bleibt daneben gültig und ruft dasselbe auf, in jedem Projekt, egal welche Sprache eingestellt ist. In einem englischen Projekt nennt die Hilfe von `kit/board.mjs` die englischen Namen. Umbenannt wird keine Datei: Hooks, Sandbox-Ausnahmen und Projekte nennen weiter die alten Pfade.
+
+**Skills.** Zwei Skills haben einen neuen Namen; die übrigen heißen schon englisch und bleiben. Der Altname ist eine Weiterleitung, die den neuen Skill mit denselben Argumenten ausführt.
+
+| Skill | Deutsch (Altname) | Englisch |
+|-------|-------------------|----------|
+| Kontext laden | `/kontext` | `/context` |
+| fachliche Anforderung | `/fachplan` | `/requirement` |
+
+**Einstiegsdateien.** Die Werkzeuge mit deutschem Dateinamen bekommen eine englische Einstiegsdatei daneben. Sie ruft die deutsche Datei mit denselben Argumenten auf und endet mit ihrem Exitcode.
+
+| Deutsch | Englisch |
+|---------|----------|
+| `kit/befunde.mjs` | `kit/findings.mjs` |
+| `kit/aufwand.mjs` | `kit/effort.mjs` |
+| `kit/wirksamkeit.mjs` | `kit/effectiveness.mjs` |
+| `einstellungen.mjs` | `settings.mjs` |
+
+**Befehle von `kit/board.mjs`.** Die Tabelle nennt nur, was sich unterscheidet; Befehle wie `issue create` oder `issue move` und Optionen wie `--title` heißen schon englisch.
+
+| Deutsch | Englisch |
+|---------|----------|
+| `kontext` | `context` |
+| `sitzung` | `session` |
+| `issue melden`, `nightrun melden`, `sitzung melden` | `issue report`, `nightrun report`, `session report` |
+| `issue stand` | `issue run-state` |
+| `issue auftrag` | `issue brief` |
+| `issue ursprung` | `issue origin` |
+| `issue check-geschuetzt` | `issue check-protected` |
+| `issue-review pruefauftrag` | `issue-review review-brief` |
+| `hook bash-pruefen` | `hook bash-check` |
+| `code schutz` | `code protection` |
+| `einrichten`, `aussetzen`, `wiederherstellen`, `nachpruefen` (Aktionen von `code schutz`) | `setup`, `suspend`, `restore`, `verify` |
+| `--teil`, `--zustand`, `--spalte`, `--pfad`, `--zweig`, `--nur-pfad` | `--part`, `--state`, `--column`, `--path`, `--branch`, `--path-only` |
+| `--stufe`, `--rolle`, `--datei`, `--material-datei`, `--auftrag`, `--ausgabe`, `--protokoll` | `--stage`, `--role`, `--file`, `--material-file`, `--brief`, `--output`, `--transcript` |
+
+**Befehle der übrigen Werkzeuge.**
+
+| Werkzeug | Deutsch | Englisch |
+|----------|---------|----------|
+| `kit/checks.mjs` | `bereiche`, `--stufe`, `--bereich`, `--abschluss`, `--frisch`, `--wiederholen` | `areas`, `--stage`, `--area`, `--finish`, `--fresh`, `--retry` |
+| `kit/night.mjs` | `--kette`, `--pruefen` | `--chain`, `--check` |
+| `kit/befunde.mjs` | `arten`, `pruefen`, `buchen`, `vorschlag`, `auswerten`, `befund` | `kinds`, `check`, `record`, `suggest`, `evaluate`, `finding` |
+| `kit/befunde.mjs` (Optionen) | `--datei`, `--stufe`, `--karte`, `--art`, `--abgelehnt` | `--file`, `--stage`, `--card`, `--kind`, `--rejected` |
+| `kit/wirksamkeit.mjs` | `auswerten`, `befund`, `kandidaten`, `--fenster` | `evaluate`, `finding`, `candidates`, `--window` |
+| `kit/worktree.mjs` | `anlegen`, `entfernen`, `im`, `nachziehen-pruefen`, `rueckweg` | `create`, `remove`, `in`, `catch-up-check`, `return` |
+| `kit/worktree.mjs` (Vorbereitung) | `vorbereitung-festhalten`, `vorbereitung-pruefen` | `record-preparation`, `check-preparation` |
+| `kit/worktree.mjs` (Optionen) | `--praefix`, `--ergebnis`, `--offen`, `--verwerfen` | `--prefix`, `--result`, `--open`, `--discard` |
+
+**Wie lange die deutschen Namen gelten.** Die deutschen Namen der Skills, Befehle und Einstiegsdateien bleiben über die Versionen 4 und 5 gültig. In englischen Projekten können sie frühestens mit Version 6 entfallen, und erst nach Ankündigung.
+
 ## Einstellungen über die Oberfläche
 
 Statt die Config-Dateien von Hand zu bearbeiten, lassen sich die Prozess-Einstellungen über eine lokale Oberfläche pflegen. Sie wird **nicht installiert**, sondern als einzelne Datei heruntergeladen: [einstellungen.mjs](https://docs.mwolff.org/einstellungen.mjs). Sie arbeitet über alle Projekte unter einem Ordner und gehört deshalb in keines.

@@ -645,6 +645,60 @@ What the kit outputs and writes to the cards is in the project language: the mes
 
 Translated are the free texts of the message to the control room, `title`, `excerpt`, `abortReason` and `noWorkReason`, and all displays.
 
+### Skills, commands and entry files
+<!-- de: 294755f3865c -->
+
+Skills, commands and tool files also have an English name. The German one stays valid alongside it and calls the same thing, in every project, whichever language is set. In an English project the help of `kit/board.mjs` gives the English names. No file is renamed: hooks, sandbox exceptions and projects keep naming the old paths.
+
+**Skills.** Two skills have a new name; the others are already English and stay. The old name is a forwarding skill that runs the new skill with the same arguments.
+
+| Skill | German (old name) | English |
+|-------|-------------------|----------|
+| load context | `/kontext` | `/context` |
+| business requirement | `/fachplan` | `/requirement` |
+
+**Entry files.** The tools with a German file name get an English entry file next to them. It calls the German file with the same arguments and ends with its exit code.
+
+| German | English |
+|---------|----------|
+| `kit/befunde.mjs` | `kit/findings.mjs` |
+| `kit/aufwand.mjs` | `kit/effort.mjs` |
+| `kit/wirksamkeit.mjs` | `kit/effectiveness.mjs` |
+| `einstellungen.mjs` | `settings.mjs` |
+
+**Commands of `kit/board.mjs`.** The table lists only what differs; commands such as `issue create` or `issue move` and options such as `--title` are already English.
+
+| German | English |
+|---------|----------|
+| `kontext` | `context` |
+| `sitzung` | `session` |
+| `issue melden`, `nightrun melden`, `sitzung melden` | `issue report`, `nightrun report`, `session report` |
+| `issue stand` | `issue run-state` |
+| `issue auftrag` | `issue brief` |
+| `issue ursprung` | `issue origin` |
+| `issue check-geschuetzt` | `issue check-protected` |
+| `issue-review pruefauftrag` | `issue-review review-brief` |
+| `hook bash-pruefen` | `hook bash-check` |
+| `code schutz` | `code protection` |
+| `einrichten`, `aussetzen`, `wiederherstellen`, `nachpruefen` (actions of `code schutz`) | `setup`, `suspend`, `restore`, `verify` |
+| `--teil`, `--zustand`, `--spalte`, `--pfad`, `--zweig`, `--nur-pfad` | `--part`, `--state`, `--column`, `--path`, `--branch`, `--path-only` |
+| `--stufe`, `--rolle`, `--datei`, `--material-datei`, `--auftrag`, `--ausgabe`, `--protokoll` | `--stage`, `--role`, `--file`, `--material-file`, `--brief`, `--output`, `--transcript` |
+
+**Commands of the other tools.**
+
+| Tool | German | English |
+|----------|---------|----------|
+| `kit/checks.mjs` | `bereiche`, `--stufe`, `--bereich`, `--abschluss`, `--frisch`, `--wiederholen` | `areas`, `--stage`, `--area`, `--finish`, `--fresh`, `--retry` |
+| `kit/night.mjs` | `--kette`, `--pruefen` | `--chain`, `--check` |
+| `kit/befunde.mjs` | `arten`, `pruefen`, `buchen`, `vorschlag`, `auswerten`, `befund` | `kinds`, `check`, `record`, `suggest`, `evaluate`, `finding` |
+| `kit/befunde.mjs` (options) | `--datei`, `--stufe`, `--karte`, `--art`, `--abgelehnt` | `--file`, `--stage`, `--card`, `--kind`, `--rejected` |
+| `kit/wirksamkeit.mjs` | `auswerten`, `befund`, `kandidaten`, `--fenster` | `evaluate`, `finding`, `candidates`, `--window` |
+| `kit/worktree.mjs` | `anlegen`, `entfernen`, `im`, `nachziehen-pruefen`, `rueckweg` | `create`, `remove`, `in`, `catch-up-check`, `return` |
+| `kit/worktree.mjs` (preparation) | `vorbereitung-festhalten`, `vorbereitung-pruefen` | `record-preparation`, `check-preparation` |
+| `kit/worktree.mjs` (options) | `--praefix`, `--ergebnis`, `--offen`, `--verwerfen` | `--prefix`, `--result`, `--open`, `--discard` |
+
+**How long the German names apply.** The German names of the skills, commands and entry files stay valid through versions 4 and 5. In English projects they can be dropped at the earliest with version 6, and only after an announcement.
+
 ## Settings through the interface
 <!-- de: 5640e7dafde7 -->
 
