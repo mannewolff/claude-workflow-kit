@@ -47,14 +47,373 @@ import { frischeStufenFelder, leseErgebnisText, leseKennzahlen, lesePruefung, ne
   salvagePrompt, stufenEinstellung, SALVAGE_TIMEOUT_MS, verifyChecksForSalvage } from "./session.mjs";
 import { bewertePruefung, verwerfeZusammenfassung, kommentareVon } from "./bericht.mjs";
 
+// --- Texte an den Menschen (Issue #1487, Plan #1420 E13/E14) ---
+
+// Die Zeilen, die kanban-kit aus dem Textprotokoll und der Ergebnisdatei liest, nehmen
+// englisch die Form der Vorlage am Plan #1420 (`Success after`, `FAILURE after`, `HARD STOP:`,
+// `SALVAGE ATTEMPT`, `session <i>/<k>: issue #<n>`, `deferred: dependency`, `WARNING:`,
+// `Session without In-review result`). Die Anker der Vermerke kommen aus dem Register MARKER.
+// Vertrag bleibt (E14): die Ausgaenge und Zaehlwoerter, die Zustaende des Laufstands, der
+// Folgesatz des Halts, Anker und Abweisungszeile des geschuetzten Halts samt Label-Zeile, die
+// `kit/board/geschuetzt.mjs` zurueckliest, und der Stash-Name `nachtrest #<id> <lauf>`.
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    boardTeilFehlt: "board/{teil} fehlt neben night.mjs ({pfad}) — {was} ist nicht verfuegbar.",
+    teilPraefix: "das Praefix {praefix}",
+    teilErkennung: "die Erkennung geschuetzter Dateien",
+    teilKommentar: "der Halt-Kommentar fuer geschuetzte Dateien",
+    teilFreigabe: "die Freigabe geschuetzter Dateien",
+    teilLabels: "die Erkennung der Kit-Labels",
+    abhaengigkeitUnbekannt: "wartendAbhaengigkeiten kennt keine Abhaengigkeit '{name}'",
+    nichtAngebunden: "{haken} ist nicht angebunden — der Einstieg kit/night.mjs setzt es beim Laden.",
+    hakenUnbekannt: "wartendAnbinden kennt keinen Haken '{name}'",
+    nachtlauf: "Nachtlauf: {text}",
+    ungeprueftKurz: "ungeprueft, kein Issue-Review-Marker",
+    ungeprueftLog: "uebersprungen: ungeprueft (kein Issue-Review-Marker im Body).",
+    ungeprueftKommentar: "Ungeprueft — bitte erst /issue-review #{id} laufen lassen, dann wieder nach Ready.",
+    labelWarnung: "WARNUNG: kein Ready-Issue traegt das Label '{label}' — es wird nichts verarbeitet.",
+    labelVorhanden: "  In Ready vorhandene Labels: {labels}",
+    keineLabels: "keine",
+    labelTippfehler: "  Tippfehler im --label-Wert? Mit --label none laeuft der Nachtlauf ohne Label-Filter.",
+    gateFachlichLog: "#{id} uebersprungen: fachliches Issue ([Fachlich]), wird nicht implementiert.",
+    gateFachlich: "Fachliches Issue — wird nicht implementiert, bitte per /techplan #{id} in technische Issues ueberfuehren.",
+    gateIdeeLog: "#{id} uebersprungen: Idee ([Idee]), wird nicht implementiert.",
+    gateIdee: "Idee — mit Abwaegung erst /fachplan #{id}, ohne Abwaegung /task #{id}, wird nicht implementiert.",
+    gatePlanLog: "#{id} uebersprungen: Plan-Dokument ([Plan]), wird nicht implementiert.",
+    gatePlan: "Plan-Dokument — wird nicht implementiert, bitte per /issues #{id} in Arbeitspakete ueberfuehren.",
+    gateMenschLog: "#{id} uebersprungen: Menschenschritt ([Mensch]), wird nicht implementiert.",
+    gateMensch: "Menschenschritt — wird nicht implementiert, die Karte wartet auf einen Menschen und ist nicht gescheitert.",
+    gateKlaerenLog: "#{id} uebersprungen: traegt {label}, eine offene Entscheidung wartet.",
+    gateKlaeren: "Traegt {label} — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.",
+    gateGeschuetztLog: "#{id} uebersprungen: traegt {label}, eine menschliche Handlung an einer geschuetzten Datei wartet.",
+    gateGeschuetzt: "Traegt {label} — eine menschliche Handlung an einer geschuetzten Datei wartet, wird nicht implementiert. "
+      + "Das Label nimmt nur ein Mensch ab.",
+    gateAbhaengigkeitLog: "#{id} zurueckgestellt: Abhaengigkeit {nummern} nicht erfuellt.",
+    gateAbhaengigkeit: "Abhaengigkeit {nummern} nicht erfuellt (liegt in Backlog, Ready oder In progress) — Issue zurueckgestellt.",
+    dokumentVerweis: "#{id} startet mit Dokument-Verweis: {verweise} — ein Dokument ist kein Arbeitspaket.",
+    fundstelle: "{pfad} (Zeile: '{zeile}')",
+    geschuetztLog: "#{id} angehalten: nennt geschuetzte Datei {fundstellen} — ein Mensch nimmt die Aenderung selbst vor "
+      + "und nimmt danach {label} ab.",
+    labelNichtGesetzt: "#{id}: Label {label} nicht gesetzt — {grund}. Der Halt-Kommentar vermerkt es; der Lauf geht weiter.",
+    unbenanntesKommando: "unbenanntes Kommando",
+    vorpruefung: "Vorpruefung des Runners",
+    quelleSession: "Session",
+    salvageNichtMoeglich: "  Salvage nicht moeglich: {grund} — die Runde ist wirklich gescheitert.",
+    ausgabeRot: "  Ausgabe des roten Checks:\n{tail}",
+    salvageGestartet: "  SALVAGE-VERSUCH gestartet (Checks extern verifiziert gruen): Issue #{id} — Zwischenstand wird gegen das "
+      + "Issue geprueft.",
+    salvageErfolg: "  Salvage erfolgreich, Commit {commit}, Issue #{id} in In review.",
+    salvageZeitlimit: " Die regulaere Runde endete am Zeitlimit — {grund}, die Grenze dieser Runde: {grenze}.",
+    salvageKommentar: "Die regulaere Runde endete ohne Board-Ergebnis, die Pflicht-Checks waren extern aber gruen. Eine "
+      + "Salvage-Session hat den Zwischenstand geprueft, committet und das Issue nach In review verschoben. Bitte beim Review "
+      + "besonders auf Vollstaendigkeit achten.{zeitlimit}",
+    salvageWiderspruch: "SALVAGE WIDERSPRUECHLICH — harter Stopp. Issue #{id} steht in In review, obwohl Arbeit liegen blieb; {reste}.",
+    salvageWiderspruchKommentar: "Die Salvage-Session hat das Issue nach In review verschoben, obwohl Arbeit im Working Tree liegen "
+      + "blieb — Lauf hart gestoppt. Die Karte behauptet mehr, als committet ist. Bitte morgens manuell sichten.",
+    salvageUnvollstaendig: "SALVAGE UNVOLLSTAENDIG — harter Stopp. Issue #{id}: Commit {commit}, Board nicht bewegt; {reste}.",
+    salvageUnvollstaendigKommentar: "Die Salvage-Session hat committet, aber Arbeit liegen gelassen und das Board nicht bewegt — "
+      + "Lauf hart gestoppt. Der Commit {commit} liegt lokal. Bitte morgens manuell sichten.",
+    salvageGescheitert: "SALVAGE-VERSUCH gescheitert. Issue #{id}: kein Commit, Board nicht bewegt.",
+    grundEndTurn: "Grund: Session regulaer beendet ohne Commit (end_turn)",
+    grundZeitlimit: "Grund: Session am Zeitlimit beendet",
+    grundIsError: "Grund: Session mit is_error beendet",
+    grundUnbekannt: "Grund: Session ohne auswertbares Ergebnis-Ereignis beendet",
+    grundFestgefahren: "Grund: Session an einer Pruefung festgefahren",
+    grundCheckRot: "Grund: Pflichtcheck rot — {kommando} ({quelle})",
+    grundWartend: "Grund: Sitzung hat auf eine selbst angestossene Arbeit gewartet und ist ohne Ergebnis beendet worden",
+    gekuerzt: "{stand}\n\n(Schlusstext auf {max} Zeichen gekuerzt.)",
+    zuletztBekannt: "### Zuletzt bekannter Stand",
+    imArbeitsverzeichnis: "### Im Arbeitsverzeichnis",
+    grenzeUnbekannt: "Grenze nicht bekannt",
+    minuten: "{anzahl} Minuten",
+    nichtBeobachtet: "Fortschritt nicht beobachtet (kein Strom) — ueber den Stand dieser Sitzung liegt nichts vor.",
+    keineAuskunft: "keine Auskunft der Sitzung — sie hat bis zum Abbruch keine Fortschrittszeile gemeldet.",
+    gekappt: "({gesehen} Fortschrittszeilen gemeldet, die juengsten {anzahl} stehen hier.)",
+    zeitlimitGrund: "{grund} — die Grenze dieser Runde: {grenze}.",
+    zeitlimitUhr: "Das ist kein inhaltlicher Fehlschlag: Die Sitzung wurde an der Uhr abgebrochen, nicht an ihrer Arbeit.",
+    eigeneAuskunft: "### Stand nach eigener Auskunft der Sitzung",
+    naechsterSchritt: "### Naechster Schritt (Mensch)",
+    empfehlung: "Empfehlung (keine Vorgabe): dieses Paket in Teile schneiden, die je in eine Sitzung passen.\n"
+      + "Ob geteilt wird und wie, entscheidet ein Mensch — hier steht keine Aufgabe, sondern ein Vorschlag.",
+    ursache: "Aus dem Abbruch folgt keine Aussage ueber seine Ursache: Dass die Zeit ausging, sagt nicht,\n"
+      + "ob das Paket zu gross geschnitten war, ob die Sitzung sich verlaufen hat oder ob ein einzelner\n"
+      + "Lauf ungewoehnlich lange gebraucht hat.",
+    nichtBekannt: "nicht bekannt",
+    versucheGleich: "{anzahl}-mal gleich gescheitert",
+    festgefahrenGrund: "{grund} — die Bremse hat die Sitzung vor ihrer Zeitgrenze beendet.",
+    festgefahrenPruefung: "- Pruefung: {wert}",
+    festgefahrenFehler: "- Fehler: {wert}",
+    festgefahrenVersuche: "- Versuche: {wert}",
+    festgefahrenLaufzeit: "- Laufzeit bis zum Abbruch: {wert}",
+    festgefahrenGrenze: "- Zeitgrenze der Sitzung: {wert}",
+    keinRettungsversuch: "Fuer das Paket beginnt kein Rettungsversuch; es kommt erst nach einem neuen GO wieder dran.",
+    nichtsGesichert: "Gesichert wurde nichts: keine Aenderungen im Arbeitsverzeichnis.",
+    haltBefundKlaeren: "traegt {label}",
+    haltBefundGeschuetzt: "haelt an einer geschuetzten Datei",
+    haltUnsauber: "HALT MIT UNSAUBEREM BAUM nach {minuten} min: Issue #{id} {befund}, aber der Working Tree ist dirty — "
+      + "kein Salvage, harter Stopp.",
+    haltGetanKlaeren: "hat {label} gesetzt",
+    haltGetanGeschuetzt: "hat den Halt an einer geschuetzten Datei vermerkt",
+    haltUnsauberKommentar: "Halt mit unsauberem Working Tree — die Session {getan}, aber Aenderungen liegen gelassen; kein Salvage, "
+      + "Lauf hart gestoppt. Bitte morgens manuell sichten.",
+    fehlschlagDirty: "FEHLSCHLAG nach {minuten} min: Issue #{id} — {grund}; nicht in In review UND Working Tree dirty.",
+    fehlschlagDirtyKommentar: "Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen. {grund}.",
+    festgefahrenDirty: "FESTGEFAHREN nach {minuten} min: Issue #{id} — {grund} ({pruefung}); kein Salvage, Working Tree dirty.",
+    festgefahrenKommentar: "Die Sitzung hat sich an einer Pruefung festgefahren und wurde vor ihrer Zeitgrenze beendet. {grund}.",
+    auffangNichtMoeglich: "  Auffang an geschuetzter Datei fuer Issue #{id} nicht moeglich: Reste nicht im Stash gesichert ({meldung}).",
+    auffang: "  AUFFANG GESCHUETZT nach {minuten} min: Issue #{id} — die Session scheiterte beim Schreiben an {dateien} und "
+      + "vermerkte keinen Halt; Zwischenstand im Stash „{name}“, Issue ins Backlog, weiter.",
+    zwischenstand: "{kommentar}\n\nZwischenstand: Stash „{name}“ (`git stash list`).",
+    salvageOhneCommitKommentar: "Pflicht-Checks extern gruen, aber die Salvage-Session hat weder committet noch das Board bewegt.",
+    keinePfade: "keine Pfade der Reste lesbar",
+    stashGescheitert: "HARTER STOPP: Reste zu Issue #{id} liessen sich nicht im Stash sichern ({meldung}).",
+    stashGescheitertKommentar: "{kommentar} Die Reste liessen sich nicht im Stash sichern — Lauf hart gestoppt. Bitte morgens "
+      + "manuell sichten.",
+    stashGesichert: "  Reste zu Issue #{id} im Stash „{name}“ gesichert — Issue ins Backlog, weiter.",
+    stashKommentar: "{kommentar} Die Reste liegen im Stash „{name}“ (`git stash list`), die Karte geht ins Backlog, und der Lauf "
+      + "geht weiter.",
+    abbruchGrund: "{grund} Reste im Stash „{name}“.",
+    nachweisFehlt: "Nachweis fehlt — die Session hat keine Pruefung gefahren",
+    nachweisUnlesbar: "Nachweis unlesbar ({fehler})",
+    nachweisRot: "Nachweis rot — {kommando} endete {ergebnis}",
+    deferredGrund: "Session ohne In-review-Ergebnis beendet — Issue zurueckgestellt, Lauf ging mit dem naechsten Issue weiter.",
+    zustandUnlesbar: "Zustand der Karte war nicht lesbar — Karte und Commit bleiben unangetastet, Lauf geht mit dem naechsten "
+      + "Issue weiter.",
+    haltLogKlaeren: "eine offene Entscheidung wartet auf einen Menschen",
+    haltLogGeschuetzt: "eine Handlung an einer geschuetzten Datei wartet auf einen Menschen",
+    haltStandKlaeren: "eine offene Entscheidung wartet am Board auf einen Menschen",
+    haltStandGeschuetzt: "eine Handlung an einer geschuetzten Datei wartet am Board auf einen Menschen",
+    unlesbarLog: "  Fehlschlag nach {minuten} min: Issue #{id} — {grund}",
+    infrastruktur: "INFRASTRUKTUR-FEHLSCHLAG nach {minuten} min ({exit}): Session-Start gescheitert — harter Stopp, Issue #{id} "
+      + "bleibt unangetastet.",
+    cliMeldung: "CLI-Meldung: {detail}",
+    startGescheitert: "Sitzungsstart gescheitert ({exit})",
+    startGescheitertDetail: "Sitzungsstart gescheitert ({exit}): {detail}",
+    angehalten: "  angehalten: {text} — Issue #{id} nach {minuten} min von der Session ins Backlog gezeichnet, kein Kommentar und "
+      + "kein Move durch den Runner, weiter.",
+    erfolg: "  Erfolg nach {minuten} min, Commit {commit}, Issue #{id} in In review.",
+    resteNachErfolg: "HARTER STOPP: erfolgreiche Runde zu Issue #{id} hat unkommittete Reste hinterlassen — bitte morgens sichten "
+      + "und aufraeumen.",
+    ohneNachweisLog: "  Fehlschlag nach {minuten} min: Issue #{id} in In review, aber {mangel} — Karte bleibt, Commit bleibt, weiter.",
+    ohneNachweisKommentar: "{mangel}. Die Karte bleibt in In review und der Commit unangetastet — bitte den Stand pruefen.",
+    festgefahrenSauber: "  FESTGEFAHREN nach {minuten} min: Issue #{id} — {grund} ({pruefung}); Tree sauber — Issue ins Backlog, weiter.",
+    rueckstellungGrund: " — {grund};",
+    rueckstellungLog: "  Fehlschlag nach {minuten} min: Issue #{id}{grund} nicht in In review, Tree sauber — Issue ins Backlog, weiter.",
+    haengtAn: "hängt an #{nummer} (abgebrochen in diesem Lauf)",
+    hinweisStufe: "Aufgabenstufe {stufe}",
+    hinweisModell: "Modell {modell} ({herkunft})",
+    hinweisKeinModell: "kein Modell ({herkunft})",
+    hinweisUeber: "ueber Stufe {stufe}",
+    hinweisEffort: "Gruendlichkeit {effort}",
+    keineStufe: "Keine startbare Stufe fuer Aufgabenstufe {stufe}: {grund}",
+    ohneSessionLog: "  Fehlschlag ohne Session: Issue #{id} — {grund} — Issue ins Backlog, weiter.",
+    ohneSessionKommentar: "{grund} Es wurde keine Session gestartet.",
+    laeuftSeit: "Umsetzung laeuft seit {zeit}",
+    hinweisZu: "  Hinweis zu #{id}: {hinweis}",
+    standErfolg: "In review mit Nachweis ({zustand}), Commit {commit}",
+    standWeiter: "{grund}; die Karte ging ins Backlog, der Lauf weiter",
+    rundeBeendet: "Runde beendet: {ausgang} um {zeit}\n\n{grund}",
+    umsetzungAusgelassen: "Umsetzung ausgelassen: {grund}. Der Lauf endet ohne Paket.",
+    session: "Session {nummer}/{max}: Issue #{id} — {titel}",
+  }),
+  en: Object.freeze({
+    boardTeilFehlt: "board/{teil} is missing next to night.mjs ({pfad}) — {was} is not available.",
+    teilPraefix: "the prefix {praefix}",
+    teilErkennung: "the detection of protected files",
+    teilKommentar: "the halt comment for protected files",
+    teilFreigabe: "the release of protected files",
+    teilLabels: "the detection of the kit labels",
+    abhaengigkeitUnbekannt: "wartendAbhaengigkeiten knows no dependency '{name}'",
+    nichtAngebunden: "{haken} is not connected — the entry point kit/night.mjs sets it when loading.",
+    hakenUnbekannt: "wartendAnbinden knows no hook '{name}'",
+    nachtlauf: "Night run: {text}",
+    ungeprueftKurz: "unchecked, no Issue-Review marker",
+    ungeprueftLog: "skipped: unchecked (no Issue-Review marker in the body).",
+    ungeprueftKommentar: "Unchecked — please run /issue-review #{id} first, then move it back to Ready.",
+    labelWarnung: "WARNING: no Ready issue carries the label '{label}' — nothing will be processed.",
+    labelVorhanden: "  Labels present in Ready: {labels}",
+    keineLabels: "none",
+    labelTippfehler: "  Typo in the --label value? With --label none the night run works without a label filter.",
+    gateFachlichLog: "#{id} skipped: requirement ([Fachlich]), not implemented.",
+    gateFachlich: "Requirement — not implemented, please turn it into technical issues via /techplan #{id}.",
+    gateIdeeLog: "#{id} skipped: idea ([Idee]), not implemented.",
+    gateIdee: "Idea — with trade-offs first /requirement #{id}, without trade-offs /task #{id}; not implemented.",
+    gatePlanLog: "#{id} skipped: plan document ([Plan]), not implemented.",
+    gatePlan: "Plan document — not implemented, please turn it into work packages via /issues #{id}.",
+    gateMenschLog: "#{id} skipped: human step ([Mensch]), not implemented.",
+    gateMensch: "Human step — not implemented, the card waits for a human and has not failed.",
+    gateKlaerenLog: "#{id} skipped: carries {label}, an open decision is waiting.",
+    gateKlaeren: "Carries {label} — an open decision waits for a human, not implemented.",
+    gateGeschuetztLog: "#{id} skipped: carries {label}, a human action on a protected file is waiting.",
+    gateGeschuetzt: "Carries {label} — a human action on a protected file is waiting, not implemented. "
+      + "Only a human removes the label.",
+    gateAbhaengigkeitLog: "#{id} deferred: dependency {nummern} not met.",
+    gateAbhaengigkeit: "dependency {nummern} not met (lies in Backlog, Ready or In progress) — issue deferred.",
+    dokumentVerweis: "#{id} starts with a document reference: {verweise} — a document is not a work package.",
+    fundstelle: "{pfad} (line: '{zeile}')",
+    geschuetztLog: "#{id} halted: names protected file {fundstellen} — a human makes the change and afterwards "
+      + "removes {label}.",
+    labelNichtGesetzt: "#{id}: label {label} not set — {grund}. The halt comment records it; the run continues.",
+    unbenanntesKommando: "unnamed command",
+    vorpruefung: "runner pre-check",
+    quelleSession: "session",
+    salvageNichtMoeglich: "  Salvage not possible: {grund} — the round really failed.",
+    ausgabeRot: "  Output of the red check:\n{tail}",
+    salvageGestartet: "  SALVAGE ATTEMPT started (checks verified green externally): issue #{id} — the intermediate state is "
+      + "checked against the issue.",
+    salvageErfolg: "  Salvage succeeded, commit {commit}, issue #{id} in In review.",
+    salvageZeitlimit: " The regular round ended at the time limit — {grund}, the limit of this round: {grenze}.",
+    salvageKommentar: "The regular round ended without a board result, but the required checks were green externally. A "
+      + "salvage session checked the intermediate state, committed it and moved the issue to In review. Please pay special "
+      + "attention to completeness in the review.{zeitlimit}",
+    salvageWiderspruch: "SALVAGE CONTRADICTORY — hard stop. Issue #{id} is in In review although work was left behind; {reste}.",
+    salvageWiderspruchKommentar: "The salvage session moved the issue to In review although work was left in the working tree "
+      + "— run stopped hard. The card claims more than is committed. Please review by hand in the morning.",
+    salvageUnvollstaendig: "SALVAGE INCOMPLETE — hard stop. Issue #{id}: commit {commit}, board not moved; {reste}.",
+    salvageUnvollstaendigKommentar: "The salvage session committed, but left work behind and did not move the board — "
+      + "run stopped hard. Commit {commit} is local. Please review by hand in the morning.",
+    salvageGescheitert: "SALVAGE ATTEMPT failed. Issue #{id}: no commit, board not moved.",
+    grundEndTurn: "Reason: session ended regularly without a commit (end_turn)",
+    grundZeitlimit: "Reason: session ended at the time limit",
+    grundIsError: "Reason: session ended with is_error",
+    grundUnbekannt: "Reason: session ended without an evaluable result event",
+    grundFestgefahren: "Reason: session stuck on a check",
+    grundCheckRot: "Reason: required check red — {kommando} ({quelle})",
+    grundWartend: "Reason: the session waited for work it had started itself and was ended without a result",
+    gekuerzt: "{stand}\n\n(Final text shortened to {max} characters.)",
+    zuletztBekannt: "### Last known state",
+    imArbeitsverzeichnis: "### In the working directory",
+    grenzeUnbekannt: "limit unknown",
+    minuten: "{anzahl} minutes",
+    nichtBeobachtet: "Progress not observed (no stream) — nothing is known about the state of this session.",
+    keineAuskunft: "no information from the session — it reported no progress line before the abort.",
+    gekappt: "({gesehen} progress lines reported, the latest {anzahl} are shown here.)",
+    zeitlimitGrund: "{grund} — the limit of this round: {grenze}.",
+    zeitlimitUhr: "This is not a failure of content: the session was stopped by the clock, not by its work.",
+    eigeneAuskunft: "### State according to the session itself",
+    naechsterSchritt: "### Next step (human)",
+    empfehlung: "Recommendation (not a requirement): split this package into parts that each fit into one session.\n"
+      + "Whether and how to split is decided by a human — this is a suggestion, not a task.",
+    ursache: "The abort says nothing about its cause: running out of time does not tell\n"
+      + "whether the package was cut too large, whether the session went astray or whether a single\n"
+      + "run took unusually long.",
+    nichtBekannt: "unknown",
+    versucheGleich: "failed the same way {anzahl} times",
+    festgefahrenGrund: "{grund} — the brake ended the session before its time limit.",
+    festgefahrenPruefung: "- Check: {wert}",
+    festgefahrenFehler: "- Error: {wert}",
+    festgefahrenVersuche: "- Attempts: {wert}",
+    festgefahrenLaufzeit: "- Running time until the abort: {wert}",
+    festgefahrenGrenze: "- Time limit of the session: {wert}",
+    keinRettungsversuch: "No salvage attempt starts for the package; it only comes up again after a new GO.",
+    nichtsGesichert: "Nothing was saved: no changes in the working directory.",
+    haltBefundKlaeren: "carries {label}",
+    haltBefundGeschuetzt: "halts at a protected file",
+    haltUnsauber: "HALT WITH UNCLEAN TREE after {minuten} min: issue #{id} {befund}, but the working tree is dirty — "
+      + "no salvage, hard stop.",
+    haltGetanKlaeren: "set {label}",
+    haltGetanGeschuetzt: "recorded the halt at a protected file",
+    haltUnsauberKommentar: "Halt with unclean working tree — the session {getan}, but left changes behind; no salvage, "
+      + "run stopped hard. Please review by hand in the morning.",
+    fehlschlagDirty: "FAILURE after {minuten} min: issue #{id} — {grund}; not in In review AND working tree dirty.",
+    fehlschlagDirtyKommentar: "Round failed and working tree not left clean. {grund}.",
+    festgefahrenDirty: "STUCK after {minuten} min: issue #{id} — {grund} ({pruefung}); no salvage, working tree dirty.",
+    festgefahrenKommentar: "The session got stuck on a check and was ended before its time limit. {grund}.",
+    auffangNichtMoeglich: "  Catching the protected file for issue #{id} not possible: leftovers not saved in the stash ({meldung}).",
+    auffang: "  CAUGHT PROTECTED after {minuten} min: issue #{id} — the session failed writing {dateien} and "
+      + "recorded no halt; intermediate state in stash „{name}“, issue to Backlog, continuing.",
+    zwischenstand: "{kommentar}\n\nIntermediate state: stash „{name}“ (`git stash list`).",
+    salvageOhneCommitKommentar: "Required checks green externally, but the salvage session neither committed nor moved the board.",
+    keinePfade: "no paths of the leftovers readable",
+    stashGescheitert: "HARD STOP: leftovers of issue #{id} could not be saved in the stash ({meldung}).",
+    stashGescheitertKommentar: "{kommentar} The leftovers could not be saved in the stash — run stopped hard. Please review "
+      + "by hand in the morning.",
+    stashGesichert: "  Leftovers of issue #{id} saved in stash „{name}“ — issue to Backlog, continuing.",
+    stashKommentar: "{kommentar} The leftovers are in stash „{name}“ (`git stash list`), the card goes to Backlog, and the run "
+      + "continues.",
+    abbruchGrund: "{grund} Leftovers in stash „{name}“.",
+    nachweisFehlt: "evidence missing — the session ran no check",
+    nachweisUnlesbar: "evidence unreadable ({fehler})",
+    nachweisRot: "evidence red — {kommando} ended {ergebnis}",
+    deferredGrund: "Session without In-review result — issue deferred, the run continued with the next issue.",
+    zustandUnlesbar: "State of the card was not readable — card and commit stay untouched, the run continues with the next "
+      + "issue.",
+    haltLogKlaeren: "an open decision waits for a human",
+    haltLogGeschuetzt: "an action on a protected file waits for a human",
+    haltStandKlaeren: "an open decision waits on the board for a human",
+    haltStandGeschuetzt: "an action on a protected file waits on the board for a human",
+    unlesbarLog: "  Failure after {minuten} min: issue #{id} — {grund}",
+    infrastruktur: "INFRASTRUCTURE FAILURE after {minuten} min ({exit}): session start failed — hard stop, issue #{id} "
+      + "remains untouched.",
+    cliMeldung: "CLI message: {detail}",
+    startGescheitert: "session start failed ({exit})",
+    startGescheitertDetail: "session start failed ({exit}): {detail}",
+    angehalten: "  halted: {text} — issue #{id} marked for Backlog by the session after {minuten} min, no comment and "
+      + "no move by the runner, continuing.",
+    erfolg: "  Success after {minuten} min, commit {commit}, issue #{id} in In review.",
+    resteNachErfolg: "HARD STOP: successful round for issue #{id} left uncommitted leftovers — please review and clean up "
+      + "in the morning.",
+    ohneNachweisLog: "  Failure after {minuten} min: issue #{id} in In review, but {mangel} — card stays, commit stays, continuing.",
+    ohneNachweisKommentar: "{mangel}. The card stays in In review and the commit untouched — please check the state.",
+    festgefahrenSauber: "  STUCK after {minuten} min: issue #{id} — {grund} ({pruefung}); tree clean — issue to Backlog, continuing.",
+    rueckstellungGrund: " — {grund};",
+    rueckstellungLog: "  Failure after {minuten} min: issue #{id}{grund} not in In review, tree clean — issue to Backlog, continuing.",
+    haengtAn: "depends on #{nummer} (aborted in this run)",
+    hinweisStufe: "task tier {stufe}",
+    hinweisModell: "model {modell} ({herkunft})",
+    hinweisKeinModell: "no model ({herkunft})",
+    hinweisUeber: "via tier {stufe}",
+    hinweisEffort: "effort {effort}",
+    keineStufe: "No startable tier for task tier {stufe}: {grund}",
+    ohneSessionLog: "  Failure without session: issue #{id} — {grund} — issue to Backlog, continuing.",
+    ohneSessionKommentar: "{grund} No session was started.",
+    laeuftSeit: "Implementation running since {zeit}",
+    hinweisZu: "  Note on #{id}: {hinweis}",
+    standErfolg: "In review with evidence ({zustand}), commit {commit}",
+    standWeiter: "{grund}; the card went to Backlog, the run continued",
+    rundeBeendet: "Round finished: {ausgang} at {zeit}\n\n{grund}",
+    umsetzungAusgelassen: "Implementation skipped: {grund}. The run ends without a package.",
+    session: "session {nummer}/{max}: issue #{id} — {titel}",
+  }),
+});
+
+// Das Register mit literalem Pfad und abgefangen, wie in den Grundlagen (Issue #1485): Fehlt
+// board/namen.mjs neben night.mjs, bleiben die Texte deutsch.
+const namen = await import("../board/namen.mjs").catch(() => null);
+
+function t(schluessel, werte = {}) {
+  if (namen) return namen.text(TEXTE, schluessel, werte);
+  return TEXTE.de[schluessel].replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
+}
+
+/** Ein Text mit dem Praefix `Nachtlauf: `, das jeder Kommentar des Runners traegt. */
+const nachtlauf = (schluessel, werte = {}) => t("nachtlauf", { text: t(schluessel, werte) });
+
+// Die Anker der Vermerke ohne Register, wie im Laufstand (Issue #1486).
+const ANKER_OHNE_REGISTER = Object.freeze({
+  wartend: "## Nachtlauf: wartende Sitzung",
+  zeitgrenze: "## Nachtlauf: Zeitgrenze erreicht",
+  festgefahren: "## Nachtlauf: an einer Pruefung festgefahren",
+});
+
+/** Der Anker eines Vermerks in der Sprache des Prozesses; erkannt werden beide Namen (#1443). */
+function anker(sache) {
+  return namen ? namen.markerName(sache, namen.prozessSprache()) : ANKER_OHNE_REGISTER[sache];
+}
+
+/** Ein Kit-Label im Namen der Projektsprache, wie der Einstieg es setzt (Issue #1429). */
+function labelDerSprache(sache, rueckfall) {
+  return namen ? namen.labelName(sache, namen.prozessSprache()) : rueckfall;
+}
+
 // Die Praefixe kommen aus dem Board-Teil dokumente, die Erkennung geschuetzter Dateien aus dem
 // Board-Teil geschuetzt (Issue #1218, #1219). Abgefangen wie im Einstieg: Fehlt ein Teil, wirft
 // jede Funktion erst, wenn jemand sie braucht — ein stilles `false` liesse ein Plandokument als
 // Arbeitspaket durch, ein stilles "keine Treffer" ein Paket mit geschuetzter Datei in eine
 // Session. Die Pfade sind nicht literal, deshalb nennt die Gruppe dieses Teils die Bereiche
 // board-dokumente und board-geschuetzt von Hand (E3).
-const boardTeilFehlt = (teil, was) => () => {
-  throw new Error(`board/${teil} fehlt neben night.mjs (${join(NACHBAR_DIR, "board")}) — ${was} ist nicht verfuegbar.`);
+const boardTeilFehlt = (teil, was, werte = {}) => () => {
+  throw new Error(t("boardTeilFehlt", { teil, pfad: join(NACHBAR_DIR, "board"), was: t(was, werte) }));
 };
 const {
   istFachlich: isFachlich,
@@ -62,22 +421,23 @@ const {
   istIdee: isIdee,
   istMensch: isMensch,
 } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "dokumente.mjs")).href).catch(() => ({
-  istFachlich: boardTeilFehlt("dokumente.mjs", "das Praefix [Fachlich]"),
-  istPlan: boardTeilFehlt("dokumente.mjs", "das Praefix [Plan]"),
-  istIdee: boardTeilFehlt("dokumente.mjs", "das Praefix [Idee]"),
-  istMensch: boardTeilFehlt("dokumente.mjs", "das Praefix [Mensch]"),
+  istFachlich: boardTeilFehlt("dokumente.mjs", "teilPraefix", { praefix: "[Fachlich]" }),
+  istPlan: boardTeilFehlt("dokumente.mjs", "teilPraefix", { praefix: "[Plan]" }),
+  istIdee: boardTeilFehlt("dokumente.mjs", "teilPraefix", { praefix: "[Idee]" }),
+  istMensch: boardTeilFehlt("dokumente.mjs", "teilPraefix", { praefix: "[Mensch]" }),
 }));
 // Die Labels mit Freigaberecht samt ihrer Erkennung unter beiden Namen ebenso (Issue #1424,
 // Plan #1420 E8). Fehlt der Teil, bleiben die beiden Namen leer: Jede Pruefung, nach der sie
 // gebraucht wuerden, wirft vorher.
 const { geschuetzteTreffer, geschuetztKommentar, geschuetztFreigabe, traegtLabel,
-  GESCHUETZT_LABEL: geschuetztLabel, KLAEREN_LABEL: klaerenLabel } = await import(
+  GESCHUETZT_LABEL: geschuetztLabel, KLAEREN_LABEL: klaerenLabel,
+  GESCHUETZT_LABEL_GESETZT: labelGesetztZeile, GESCHUETZT_LABEL_NICHT_GESETZT: labelNichtGesetztZeile } = await import(
   pathToFileURL(join(NACHBAR_DIR, "board", "geschuetzt.mjs")).href,
 ).catch(() => ({
-  geschuetzteTreffer: boardTeilFehlt("geschuetzt.mjs", "die Erkennung geschuetzter Dateien"),
-  geschuetztKommentar: boardTeilFehlt("geschuetzt.mjs", "der Halt-Kommentar fuer geschuetzte Dateien"),
-  geschuetztFreigabe: boardTeilFehlt("geschuetzt.mjs", "die Freigabe geschuetzter Dateien"),
-  traegtLabel: boardTeilFehlt("geschuetzt.mjs", "die Erkennung der Kit-Labels"),
+  geschuetzteTreffer: boardTeilFehlt("geschuetzt.mjs", "teilErkennung"),
+  geschuetztKommentar: boardTeilFehlt("geschuetzt.mjs", "teilKommentar"),
+  geschuetztFreigabe: boardTeilFehlt("geschuetzt.mjs", "teilFreigabe"),
+  traegtLabel: boardTeilFehlt("geschuetzt.mjs", "teilLabels"),
 }));
 export { traegtLabel };
 
@@ -96,7 +456,7 @@ export function wartendAbhaengigkeiten(neu) {
     return;
   }
   for (const [name, fn] of Object.entries(neu)) {
-    if (!Object.hasOwn(VORGABEN, name)) throw new Error(`wartendAbhaengigkeiten kennt keine Abhaengigkeit '${name}'`);
+    if (!Object.hasOwn(VORGABEN, name)) throw new Error(t("abhaengigkeitUnbekannt", { name }));
     abh[name] = fn;
   }
 }
@@ -106,14 +466,14 @@ export function wartendAbhaengigkeiten(neu) {
 // Der Abschluss des Laufs steht im Einstieg; ein Teil, der allein geladen ist, hat keinen.
 const anbindung = {
   laufAbschliessen: () => {
-    throw new Error("laufAbschliessen ist nicht angebunden — der Einstieg kit/night.mjs setzt es beim Laden.");
+    throw new Error(t("nichtAngebunden", { haken: "laufAbschliessen" }));
   },
 };
 
 /** Setzt die Haken aus `anbindung`; nicht genannte behalten ihren Wert. */
 export function wartendAnbinden(haken) {
   for (const [name, fn] of Object.entries(haken)) {
-    if (!Object.hasOwn(anbindung, name)) throw new Error(`wartendAnbinden kennt keinen Haken '${name}'`);
+    if (!Object.hasOwn(anbindung, name)) throw new Error(t("hakenUnbekannt", { name }));
     anbindung[name] = fn;
   }
 }
@@ -241,9 +601,9 @@ export function reviewFreigabe(body) {
 /** Protokollzeile, Board-Kommentar und Dry-Run-Grund je Ablehnungsart (#304). */
 export const GATE_ABLEHNUNG = {
   ungeprueft: {
-    kurz: () => "ungeprueft, kein Issue-Review-Marker",
-    log: () => "uebersprungen: ungeprueft (kein Issue-Review-Marker im Body).",
-    kommentar: (id) => `Ungeprueft — bitte erst /issue-review #${id} laufen lassen, dann wieder nach Ready.`,
+    kurz: () => t("ungeprueftKurz"),
+    log: () => t("ungeprueftLog"),
+    kommentar: (id) => t("ungeprueftKommentar", { id }),
   },
 };
 
@@ -297,7 +657,9 @@ export function hatGeschuetztLabel(issue) {
 
 // Der Kommentar des Label-Gates. SYNC: Ohne das Praefix `Nachtlauf: ` steht er als
 // Backlog-Text von `issue auftrag` in kit/board.mjs (Issue #1052).
-export const GESCHUETZT_LABEL_GATE_TEXT = `Nachtlauf: Traegt ${GESCHUETZT_LABEL} — eine menschliche Handlung an einer geschuetzten Datei wartet, wird nicht implementiert. Das Label nimmt nur ein Mensch ab.`;
+// In der Projektsprache (Issue #1487); der Gleichlauf gilt fuer die deutsche Fassung.
+const geschuetztGateText = () => nachtlauf("gateGeschuetzt", { label: labelDerSprache("geschuetzt", GESCHUETZT_LABEL) });
+export const GESCHUETZT_LABEL_GATE_TEXT = geschuetztGateText();
 
 /**
  * Der feste Folgesatz, an dem der Runner einen Halt-Kommentar erkennt (Issue #572).
@@ -332,9 +694,9 @@ export function warnWennLabelNirgendsVorkommt(ctx, ready) {
   if (ready.some(ctx.hasLabel)) return;
   ctx.labelWarnungGezeigt = true;
   const vorhanden = [...new Set(ready.flatMap((i) => i.labels || []))];
-  log(`WARNUNG: kein Ready-Issue traegt das Label '${ctx.labelFilter}' — es wird nichts verarbeitet.`);
-  log(`  In Ready vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
-  log(`  Tippfehler im --label-Wert? Mit --label none laeuft der Nachtlauf ohne Label-Filter.`);
+  log(t("labelWarnung", { label: ctx.labelFilter }));
+  log(t("labelVorhanden", { labels: vorhanden.length ? vorhanden.join(", ") : t("keineLabels") }));
+  log(t("labelTippfehler"));
 }
 
 /**
@@ -355,47 +717,36 @@ export function warnWennLabelNirgendsVorkommt(ctx, ready) {
  */
 export function pruefeIssueGates(top) {
   if (isFachlich(top.title)) {
-    return {
-      log: `#${top.id} uebersprungen: fachliches Issue ([Fachlich]), wird nicht implementiert.`,
-      kommentar: `Nachtlauf: Fachliches Issue — wird nicht implementiert, bitte per /techplan #${top.id} in technische Issues ueberfuehren.`,
-    };
+    return { log: t("gateFachlichLog", { id: top.id }), kommentar: nachtlauf("gateFachlich", { id: top.id }) };
   }
   if (isIdee(top.title)) {
-    return {
-      log: `#${top.id} uebersprungen: Idee ([Idee]), wird nicht implementiert.`,
-      kommentar: `Nachtlauf: Idee — mit Abwaegung erst /fachplan #${top.id}, ohne Abwaegung /task #${top.id}, wird nicht implementiert.`,
-    };
+    return { log: t("gateIdeeLog", { id: top.id }), kommentar: nachtlauf("gateIdee", { id: top.id }) };
   }
   if (isPlan(top.title)) {
-    return {
-      log: `#${top.id} uebersprungen: Plan-Dokument ([Plan]), wird nicht implementiert.`,
-      kommentar: `Nachtlauf: Plan-Dokument — wird nicht implementiert, bitte per /issues #${top.id} in Arbeitspakete ueberfuehren.`,
-    };
+    return { log: t("gatePlanLog", { id: top.id }), kommentar: nachtlauf("gatePlan", { id: top.id }) };
   }
   // Der Menschenschritt (Issue #984): Die Aufgabe liegt ausserhalb des Repositories, kein Zug
   // einer Sitzung erledigt sie. Der Kommentar sagt ausdruecklich, dass die Karte wartet und
   // nicht gescheitert ist — sonst sieht sie im Backlog aus wie ein gescheitertes Paket, und
   // wer morgens die Spalten liest, findet sie nicht mehr da, wo er sie hingelegt hat.
   if (isMensch(top.title)) {
-    return {
-      log: `#${top.id} uebersprungen: Menschenschritt ([Mensch]), wird nicht implementiert.`,
-      kommentar: "Nachtlauf: Menschenschritt — wird nicht implementiert, die Karte wartet auf einen Menschen und ist nicht gescheitert.",
-    };
+    return { log: t("gateMenschLog", { id: top.id }), kommentar: nachtlauf("gateMensch") };
   }
   // Das Label bleibt dabei stehen: Es abzunehmen ist Sache des Menschen (A4).
   if (hatKlaerenLabel(top)) {
+    const label = labelDerSprache("klaeren", KLAEREN_LABEL);
     return {
-      log: `#${top.id} uebersprungen: traegt ${KLAEREN_LABEL}, eine offene Entscheidung wartet.`,
+      log: t("gateKlaerenLog", { id: top.id, label }),
       grundArt: "klaeren",
-      kommentar: "Nachtlauf: Traegt kit:klaeren — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.",
+      kommentar: nachtlauf("gateKlaeren", { label }),
     };
   }
   // Auch dieses Label bleibt stehen (E11): Erst wenn der Mensch es abnimmt, prueft das
   // Body-Gate unten die Freigabe.
   if (hatGeschuetztLabel(top)) {
     return {
-      log: `#${top.id} uebersprungen: traegt ${GESCHUETZT_LABEL}, eine menschliche Handlung an einer geschuetzten Datei wartet.`,
-      kommentar: GESCHUETZT_LABEL_GATE_TEXT,
+      log: t("gateGeschuetztLog", { id: top.id, label: labelDerSprache("geschuetzt", GESCHUETZT_LABEL) }),
+      kommentar: geschuetztGateText(),
     };
   }
 
@@ -415,7 +766,7 @@ export function pruefeIssueGates(top) {
       const texte = GATE_ABLEHNUNG[freigabe.art];
       return {
         log: `#${top.id} ${texte.log()}`,
-        kommentar: `Nachtlauf: ${texte.kommentar(top.id)}`,
+        kommentar: t("nachtlauf", { text: texte.kommentar(top.id) }),
       };
     }
   }
@@ -429,8 +780,8 @@ export function pruefeIssueGates(top) {
     return {
       unmet,
       grundArt: "abhaengigkeit",
-      log: `#${top.id} zurueckgestellt: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt.`,
-      kommentar: `Nachtlauf: Abhaengigkeit ${unmet.map((d) => "#" + d).join(", ")} nicht erfuellt (liegt in Backlog, Ready oder In progress) — Issue zurueckgestellt.`,
+      log: t("gateAbhaengigkeitLog", { id: top.id, nummern: unmet.map((d) => "#" + d).join(", ") }),
+      kommentar: nachtlauf("gateAbhaengigkeit", { nummern: unmet.map((d) => "#" + d).join(", ") }),
       block: abhaengigkeitsBlock(befund),
       kreisLog: befund.kreise.map((k) => kreisLogZeile(top.id, k)),
     };
@@ -440,7 +791,7 @@ export function pruefeIssueGates(top) {
   const dokumente = befund.abhaengigkeiten.filter((a) => a.dokument);
   if (dokumente.length > 0) {
     const verweise = dokumente.map((a) => `#${a.nummer} (${a.dokument})`).join(", ");
-    log(`#${top.id} startet mit Dokument-Verweis: ${verweise} — ein Dokument ist kein Arbeitspaket.`);
+    log(t("dokumentVerweis", { id: top.id, verweise }));
   }
   return null;
 }
@@ -462,10 +813,10 @@ export function geschuetztGate(top, full) {
   if (treffer.length === 0) return null;
   const kommentare = kommentareVon(full).map((k) => ({ body: k }));
   if (geschuetztFreigabe(treffer, kommentare, full?.labels || top.labels || [])) return null;
-  const fundstellen = treffer.map((t) => `${t.pfad} (Zeile: '${t.zeile.trim()}')`).join("; ");
+  const fundstellen = treffer.map((tr) => t("fundstelle", { pfad: tr.pfad, zeile: tr.zeile.trim() })).join("; ");
   return {
     art: "geschuetzt",
-    log: `#${top.id} angehalten: nennt geschuetzte Datei ${fundstellen} — ein Mensch nimmt die Aenderung selbst vor und nimmt danach ${GESCHUETZT_LABEL} ab.`,
+    log: t("geschuetztLog", { id: top.id, fundstellen, label: GESCHUETZT_LABEL }),
     kommentar: geschuetztKommentar(treffer),
   };
 }
@@ -490,9 +841,10 @@ export function geschuetztAmBoardVermerken(karte, gate) {
   const gesetzt = res.status === 0;
   if (!gesetzt) {
     const grund = res.text || "Exit " + res.status;
-    log(`#${id}: Label ${GESCHUETZT_LABEL} nicht gesetzt — ${grund}. Der Halt-Kommentar vermerkt es; der Lauf geht weiter.`);
+    log(t("labelNichtGesetzt", { id, label: GESCHUETZT_LABEL, grund }));
   }
-  const zeile = `Label ${GESCHUETZT_LABEL} ${gesetzt ? "gesetzt" : "nicht gesetzt"}`;
+  // Die Label-Zeile ist Vertrag (E14): `geschuetztFreigabe` liest sie zurueck.
+  const zeile = gesetzt ? labelGesetztZeile : labelNichtGesetztZeile;
   abh.board("issue", "comment", id, "--text", `${gate.kommentar}\n\n${zeile}`);
 }
 
@@ -528,11 +880,11 @@ async function versucheSalvage(top, args, sessionWahl, res, pruefung) {
     // Urteil nannte. Wer morgens sichtet, braucht den Befund — die letzten Zeilen sind
     // dieselbe Menge, die auch der Salvage-Prompt mitgibt.
     const tail = (checks.output || "").trim().split("\n").slice(-15).join("\n");
-    log(`  Salvage nicht moeglich: ${grundCheckRot(checks.rotesKommando ?? "unbenanntes Kommando", "Vorpruefung des Runners")} — die Runde ist wirklich gescheitert.`);
-    if (tail) log(`  Ausgabe des roten Checks:\n${tail}`);
+    log(t("salvageNichtMoeglich", { grund: grundCheckRot(checks.rotesKommando ?? t("unbenanntesKommando"), t("vorpruefung")) }));
+    if (tail) log(t("ausgabeRot", { tail }));
     return "nichtMoeglich";
   }
-  log(`  SALVAGE-VERSUCH gestartet (Checks extern verifiziert gruen): Issue #${top.id} — Zwischenstand wird gegen das Issue geprueft.`);
+  log(t("salvageGestartet", { id: top.id }));
   const commitVorher = lastCommitHash();
   await runSession(top.id, args, {
     prompt: salvagePrompt(top.id, checks.output, checks.formatFixCmd),
@@ -554,7 +906,7 @@ async function versucheSalvage(top, args, sessionWahl, res, pruefung) {
   const salvaged = abh.board("issue", "list", "--status", "in_review").some((i) => Number(i.id) === Number(top.id));
   const reste = abh.gitReste();
   if (salvaged && reste.length === 0) {
-    log(`  Salvage erfolgreich, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
+    log(t("salvageErfolg", { commit: lastCommitHash(), id: top.id }));
     // EIN Satz zum Zeitabbruch der regulaeren Runde, nicht der volle Vermerk (Plan #974,
     // E11): Kein Stand-Abschnitt und keine Empfehlung — an einer fertigen Karte ist nichts
     // zu teilen, und wer den Abbruch morgens einordnen will, braucht hier nur die Auskunft,
@@ -563,11 +915,10 @@ async function versucheSalvage(top, args, sessionWahl, res, pruefung) {
     //
     // Der Befund muss durchgereicht werden: `behandleDirtyRunde` kehrt bei `erfolg` sofort
     // zurueck und erreicht seinen eigenen `rundenGrund`-Aufruf nie.
-    const zeitlimitSatz = rundenGrund(res, pruefung) === GRUND_ZEITLIMIT
-      ? ` Die regulaere Runde endete am Zeitlimit — ${GRUND_ZEITLIMIT}, die Grenze dieser Runde: ${grenzeText(grenzeMinuten(res))}.`
+    const zeitlimitSatz = rundenGrund(res, pruefung) === grundZeitlimit()
+      ? t("salvageZeitlimit", { grund: grundZeitlimit(), grenze: grenzeText(grenzeMinuten(res)) })
       : "";
-    abh.board("issue", "comment", String(top.id), "--text",
-      `Nachtlauf: Die regulaere Runde endete ohne Board-Ergebnis, die Pflicht-Checks waren extern aber gruen. Eine Salvage-Session hat den Zwischenstand geprueft, committet und das Issue nach In review verschoben. Bitte beim Review besonders auf Vollstaendigkeit achten.${zeitlimitSatz}`);
+    abh.board("issue", "comment", String(top.id), "--text", nachtlauf("salvageKommentar", { zeitlimit: zeitlimitSatz }));
     return "erfolg";
   }
   // Der Grund traegt den Protokollsatz woertlich. Wo der Satz die Reste bereits nennt,
@@ -579,18 +930,18 @@ async function versucheSalvage(top, args, sessionWahl, res, pruefung) {
   let grund;
   let kommentar;
   if (salvaged) {
-    satz = `SALVAGE WIDERSPRUECHLICH — harter Stopp. Issue #${top.id} steht in In review, obwohl Arbeit liegen blieb; ${resteText(reste)}.`;
+    satz = t("salvageWiderspruch", { id: top.id, reste: resteText(reste) });
     grund = satz;
-    kommentar = "Nachtlauf: Die Salvage-Session hat das Issue nach In review verschoben, obwohl Arbeit im Working Tree liegen blieb — Lauf hart gestoppt. Die Karte behauptet mehr, als committet ist. Bitte morgens manuell sichten.";
+    kommentar = nachtlauf("salvageWiderspruchKommentar");
   } else if (committet) {
-    satz = `SALVAGE UNVOLLSTAENDIG — harter Stopp. Issue #${top.id}: Commit ${commitNachher}, Board nicht bewegt; ${resteText(reste)}.`;
+    satz = t("salvageUnvollstaendig", { id: top.id, commit: commitNachher, reste: resteText(reste) });
     grund = satz;
-    kommentar = `Nachtlauf: Die Salvage-Session hat committet, aber Arbeit liegen gelassen und das Board nicht bewegt — Lauf hart gestoppt. Der Commit ${commitNachher} liegt lokal. Bitte morgens manuell sichten.`;
+    kommentar = nachtlauf("salvageUnvollstaendigKommentar", { commit: commitNachher });
   } else {
     // Ohne Commit und ohne Zug liegt nur der Arbeitsbaum da (Issue #1089, E14): Kein harter
     // Stopp mehr, der Aufrufer sichert die Reste im Stash, und die Nacht laeuft weiter. Die
     // beiden Faelle darueber bleiben harter Stopp — dort kann ein Commit unvollstaendig sein.
-    const satzOhne = `SALVAGE-VERSUCH gescheitert. Issue #${top.id}: kein Commit, Board nicht bewegt.`;
+    const satzOhne = t("salvageGescheitert", { id: top.id });
     log(`  ${satzOhne}`);
     SALVAGE_GRUND = satzOhne;
     return "ohneCommit";
@@ -618,14 +969,17 @@ async function versucheSalvage(top, args, sessionWahl, res, pruefung) {
 // warum, folgt nicht aus dem Abbruch und steht allenfalls im Vermerk unter
 // `ZEITLIMIT_ANKER` am Arbeitspaket; ein `is_error` ist ein Abbruch; ein roter
 // Pflichtcheck ist Arbeit am Code.
-const GRUND_END_TURN = "Grund: Session regulaer beendet ohne Commit (end_turn)";
-const GRUND_ZEITLIMIT = "Grund: Session am Zeitlimit beendet";
-const GRUND_IS_ERROR = "Grund: Session mit is_error beendet";
-const GRUND_UNBEKANNT = "Grund: Session ohne auswertbares Ergebnis-Ereignis beendet";
+//
+// In der Projektsprache (Issue #1487) und darum Funktionen: Der Text entsteht beim Aufruf, in
+// der Sprache, die dann gilt — die Vergleiche darunter sehen so stets dieselbe Fassung.
+const grundEndTurn = () => t("grundEndTurn");
+const grundZeitlimit = () => t("grundZeitlimit");
+const grundIsError = () => t("grundIsError");
+const grundUnbekannt = () => t("grundUnbekannt");
 // Die Bremse von `checks.mjs` hat die Sitzung beendet (Issue #1390, Plan #1386, E8) — vor der
 // Zeitgrenze und nicht an ihr.
-const GRUND_FESTGEFAHREN = "Grund: Session an einer Pruefung festgefahren";
-const grundCheckRot = (kommando, quelle) => `Grund: Pflichtcheck rot — ${kommando} (${quelle})`;
+const grundFestgefahren = () => t("grundFestgefahren");
+const grundCheckRot = (kommando, quelle) => t("grundCheckRot", { kommando, quelle });
 
 // --- Die wartende Sitzung (Plan #773, Issue #775) ---
 //
@@ -634,10 +988,11 @@ const grundCheckRot = (kommando, quelle) => `Grund: Pflichtcheck rot — ${komma
 // gewartet und damit ihren Zug beendet — headless gibt es keinen Folge-Turn. Bis hierher
 // sah dieser Ausgang aus wie ein regulaeres Ende ohne Commit, also wie Aufgeben.
 //
-// Woertliche Konstante aus demselben Grund wie die vier darueber: Der Text erscheint in
-// Protokoll, Board-Kommentar und `grund` des Ergebnisstands zugleich.
-export const GRUND_WARTEND =
-  "Grund: Sitzung hat auf eine selbst angestossene Arbeit gewartet und ist ohne Ergebnis beendet worden";
+// Woertlicher Text aus demselben Grund wie die vier darueber: Er erscheint in Protokoll,
+// Board-Kommentar und `grund` des Ergebnisstands zugleich. Die Konstante traegt die Fassung
+// beim Laden fuer Kette und Prueflauf; dieser Teil fragt die Funktion.
+const grundWartend = () => t("grundWartend");
+export const GRUND_WARTEND = grundWartend();
 
 // Erkannt wird am Schlusstext, nicht am Werkzeug und nicht an der Zeit (Plan #773, A1).
 // Die Muster sind benannt, weil sie zwei verschiedene Dinge beschreiben: das Warten auf
@@ -713,7 +1068,7 @@ export function wartendeSession(text) {
  *
  * Exportiert fuer die Tests und die Auswertungswege der Folgepakete.
  */
-export const WARTEND_ANKER = "## Nachtlauf: wartende Sitzung";
+export const WARTEND_ANKER = anker("wartend");
 
 // Mehr als 2.000 Zeichen Schlusstext sagen ueber den Stand nichts Neues, machen den
 // Board-Kommentar aber unlesbar.
@@ -737,15 +1092,15 @@ const WARTEND_STAND_MAX = 2000;
 export function wartendVermerk(schlusstext, pfade = []) {
   const stand = String(schlusstext ?? "");
   const gekuerzt = stand.length > WARTEND_STAND_MAX
-    ? `${stand.slice(0, WARTEND_STAND_MAX)}\n\n(Schlusstext auf ${WARTEND_STAND_MAX} Zeichen gekuerzt.)`
+    ? t("gekuerzt", { stand: stand.slice(0, WARTEND_STAND_MAX), max: WARTEND_STAND_MAX })
     : stand;
 
   const teile = [
-    WARTEND_ANKER,
+    anker("wartend"),
     "",
-    GRUND_WARTEND,
+    grundWartend(),
     "",
-    "### Zuletzt bekannter Stand",
+    t("zuletztBekannt"),
     "",
     gekuerzt,
   ];
@@ -753,7 +1108,7 @@ export function wartendVermerk(schlusstext, pfade = []) {
   if (Array.isArray(pfade) && pfade.length > 0) {
     // `resteText` kuerzt ab dem elften Eintrag auf Anzahl und die ersten zehn — dieselbe
     // Darstellung wie in jedem anderen Grund des Runners (night-11).
-    teile.push("", "### Im Arbeitsverzeichnis", "", resteText(pfade));
+    teile.push("", t("imArbeitsverzeichnis"), "", resteText(pfade));
   }
 
   return `${teile.join("\n")}\n`;
@@ -767,7 +1122,7 @@ export function wartendVermerk(schlusstext, pfade = []) {
  * auf halbem Weg weiterzumachen. Zwei Fassungen waeren zwei Anker, und einer fuehrte ins
  * Leere.
  */
-export const ZEITLIMIT_ANKER = "## Nachtlauf: Zeitgrenze erreicht";
+export const ZEITLIMIT_ANKER = anker("zeitgrenze");
 
 /**
  * Die Grenze in Minuten fuer den Vermerkstext (Issue #976).
@@ -778,8 +1133,8 @@ export const ZEITLIMIT_ANKER = "## Nachtlauf: Zeitgrenze erreicht";
  * ueblich, und "0 Minuten" waere falsch.
  */
 function grenzeText(grenzeMin) {
-  if (typeof grenzeMin !== "number" || !Number.isFinite(grenzeMin)) return "Grenze nicht bekannt";
-  return `${Number.isInteger(grenzeMin) ? grenzeMin : grenzeMin.toFixed(1)} Minuten`;
+  if (typeof grenzeMin !== "number" || !Number.isFinite(grenzeMin)) return t("grenzeUnbekannt");
+  return t("minuten", { anzahl: Number.isInteger(grenzeMin) ? grenzeMin : grenzeMin.toFixed(1) });
 }
 
 /**
@@ -822,44 +1177,41 @@ export function zeitlimitVermerk(grenzeMin, fortschritt, pfade = []) {
 
   const stand = [];
   if (zeilen === null) {
-    stand.push("Fortschritt nicht beobachtet (kein Strom) — ueber den Stand dieser Sitzung liegt nichts vor.");
+    stand.push(t("nichtBeobachtet"));
   } else if (zeilen.length === 0) {
-    stand.push("keine Auskunft der Sitzung — sie hat bis zum Abbruch keine Fortschrittszeile gemeldet.");
+    stand.push(t("keineAuskunft"));
   } else {
     stand.push(...zeilen);
     const gesehen = fortschritt.gesehen;
     if (typeof gesehen === "number" && gesehen > zeilen.length) {
       // Ohne diesen Satz saehe eine gekappte Liste wie die ganze aus.
-      stand.push("", `(${gesehen} Fortschrittszeilen gemeldet, die juengsten ${zeilen.length} stehen hier.)`);
+      stand.push("", t("gekappt", { gesehen, anzahl: zeilen.length }));
     }
   }
 
   const teile = [
-    ZEITLIMIT_ANKER,
+    anker("zeitgrenze"),
     "",
-    `${GRUND_ZEITLIMIT} — die Grenze dieser Runde: ${grenzeText(grenzeMin)}.`,
-    "Das ist kein inhaltlicher Fehlschlag: Die Sitzung wurde an der Uhr abgebrochen, nicht an ihrer Arbeit.",
+    t("zeitlimitGrund", { grund: grundZeitlimit(), grenze: grenzeText(grenzeMin) }),
+    t("zeitlimitUhr"),
     "",
-    "### Stand nach eigener Auskunft der Sitzung",
+    t("eigeneAuskunft"),
     "",
     ...stand,
     "",
-    "### Naechster Schritt (Mensch)",
+    t("naechsterSchritt"),
     "",
-    "Empfehlung (keine Vorgabe): dieses Paket in Teile schneiden, die je in eine Sitzung passen.",
-    "Ob geteilt wird und wie, entscheidet ein Mensch — hier steht keine Aufgabe, sondern ein Vorschlag.",
+    t("empfehlung"),
     "",
     // Kriterium 5 des Fachplans: Der Abbruch ist ein Befund ueber die Uhr und keiner ueber
     // das Paket. Wer ihn als "zu gross geschnitten" liest, hat die Ursache geraten.
-    "Aus dem Abbruch folgt keine Aussage ueber seine Ursache: Dass die Zeit ausging, sagt nicht,",
-    "ob das Paket zu gross geschnitten war, ob die Sitzung sich verlaufen hat oder ob ein einzelner",
-    "Lauf ungewoehnlich lange gebraucht hat.",
+    t("ursache"),
   ];
 
   if (Array.isArray(pfade) && pfade.length > 0) {
     // Wie bei `wartendVermerk`: ohne Pfade entfaellt der Abschnitt ersatzlos, statt "keine"
     // zu melden — und `resteText` kuerzt lange Listen wie in jedem anderen Grund des Runners.
-    teile.push("", "### Im Arbeitsverzeichnis", "", resteText(pfade));
+    teile.push("", t("imArbeitsverzeichnis"), "", resteText(pfade));
   }
 
   return `${teile.join("\n")}\n`;
@@ -869,7 +1221,7 @@ export function zeitlimitVermerk(grenzeMin, fortschritt, pfade = []) {
  * Der Anker des Vermerks an einem festgefahrenen Paket (Issue #1390, Plan #1386, E9) — neben
  * `ZEITLIMIT_ANKER` und aus demselben Grund woertlich: Die implement-Skills nennen ihn.
  */
-export const FESTGEFAHREN_ANKER = "## Nachtlauf: an einer Pruefung festgefahren";
+export const FESTGEFAHREN_ANKER = anker("festgefahren");
 
 /**
  * Der Vermerk, den eine Bremsung am Arbeitspaket hinterlaesst (Issue #1390, Plan #1386, E9).
@@ -881,22 +1233,23 @@ export const FESTGEFAHREN_ANKER = "## Nachtlauf: an einer Pruefung festgefahren"
  * war. Eine fehlende Angabe steht als "nicht bekannt" da, nie als erfundener Wert.
  */
 export function festgefahrenVermerk(info, laufzeitMin, grenzeMin, sauber = false) {
-  const versuche = Number.isInteger(info?.versuche) ? `${info.versuche}-mal gleich gescheitert` : "nicht bekannt";
-  const laufzeit = laufzeitMin === null || laufzeitMin === undefined || laufzeitMin === "" ? "nicht bekannt" : `${laufzeitMin} Minuten`;
+  const unbekannt = t("nichtBekannt");
+  const versuche = Number.isInteger(info?.versuche) ? t("versucheGleich", { anzahl: info.versuche }) : unbekannt;
+  const laufzeit = laufzeitMin === null || laufzeitMin === undefined || laufzeitMin === "" ? unbekannt : t("minuten", { anzahl: laufzeitMin });
   const teile = [
-    FESTGEFAHREN_ANKER,
+    anker("festgefahren"),
     "",
-    `${GRUND_FESTGEFAHREN} — die Bremse hat die Sitzung vor ihrer Zeitgrenze beendet.`,
+    t("festgefahrenGrund", { grund: grundFestgefahren() }),
     "",
-    `- Pruefung: ${info?.pruefung || "nicht bekannt"}`,
-    `- Fehler: ${info?.fehler || "nicht bekannt"}`,
-    `- Versuche: ${versuche}`,
-    `- Laufzeit bis zum Abbruch: ${laufzeit}`,
-    `- Zeitgrenze der Sitzung: ${grenzeText(grenzeMin)}`,
+    t("festgefahrenPruefung", { wert: info?.pruefung || unbekannt }),
+    t("festgefahrenFehler", { wert: info?.fehler || unbekannt }),
+    t("festgefahrenVersuche", { wert: versuche }),
+    t("festgefahrenLaufzeit", { wert: laufzeit }),
+    t("festgefahrenGrenze", { wert: grenzeText(grenzeMin) }),
     "",
-    "Fuer das Paket beginnt kein Rettungsversuch; es kommt erst nach einem neuen GO wieder dran.",
+    t("keinRettungsversuch"),
   ];
-  if (sauber) teile.push("", "Gesichert wurde nichts: keine Aenderungen im Arbeitsverzeichnis.");
+  if (sauber) teile.push("", t("nichtsGesichert"));
   return `${teile.join("\n")}\n`;
 }
 
@@ -920,15 +1273,15 @@ export function festgefahrenVermerk(info, laufzeitMin, grenzeMin, sauber = false
  * Exportiert fuer die Tests.
  */
 export function rundenGrund(res, pruefung) {
-  if (res?.festgefahren) return GRUND_FESTGEFAHREN;
-  if (res?.error?.code === "ETIMEDOUT" || res?.signal === "SIGTERM") return GRUND_ZEITLIMIT;
+  if (res?.festgefahren) return grundFestgefahren();
+  if (res?.error?.code === "ETIMEDOUT" || res?.signal === "SIGTERM") return grundZeitlimit();
   const kennzahlen = leseKennzahlen(res?.stdout);
-  if (kennzahlen?.isError === true) return GRUND_IS_ERROR;
-  if (pruefung?.zustand === "rot") return grundCheckRot(pruefung.rotesKommando ?? "unbenanntes Kommando", "Session");
+  if (kennzahlen?.isError === true) return grundIsError();
+  if (pruefung?.zustand === "rot") return grundCheckRot(pruefung.rotesKommando ?? t("unbenanntesKommando"), t("quelleSession"));
   if (kennzahlen?.stopReason === "end_turn") {
-    return wartendeSession(leseErgebnisText(res?.stdout)) ? GRUND_WARTEND : GRUND_END_TURN;
+    return wartendeSession(leseErgebnisText(res?.stdout)) ? grundWartend() : grundEndTurn();
   }
-  return GRUND_UNBEKANNT;
+  return grundUnbekannt();
 }
 
 /**
@@ -962,18 +1315,18 @@ export function rundenGrund(res, pruefung) {
  */
 function rueckstellungsGrund(res, pruefung) {
   // Die Bremse zuerst (Issue #1390, Review-Fund 2): Sie endet wie am Zeitlimit.
-  if (res?.festgefahren) return GRUND_FESTGEFAHREN;
-  if (wartendeSession(leseErgebnisText(res?.stdout))) return GRUND_WARTEND;
-  if (rundenGrund(res, pruefung) === GRUND_ZEITLIMIT) return GRUND_ZEITLIMIT;
+  if (res?.festgefahren) return grundFestgefahren();
+  if (wartendeSession(leseErgebnisText(res?.stdout))) return grundWartend();
+  if (rundenGrund(res, pruefung) === grundZeitlimit()) return grundZeitlimit();
   return null;
 }
 
 // `minutes` traegt nur der Vermerk der Bremse (Issue #1390): Er nennt die Laufzeit bis zum
 // Abbruch, und ein leeres `pfade` heisst dort, dass der Baum sauber war.
 function rundenVermerk(grund, res, pfade = [], minutes = null) {
-  if (grund === GRUND_FESTGEFAHREN) return festgefahrenVermerk(res.festgefahren, minutes, grenzeMinuten(res), pfade.length === 0);
-  if (grund === GRUND_WARTEND) return wartendVermerk(leseErgebnisText(res?.stdout), pfade);
-  if (grund === GRUND_ZEITLIMIT) return zeitlimitVermerk(grenzeMinuten(res), res?.fortschritt, pfade);
+  if (grund === grundFestgefahren()) return festgefahrenVermerk(res.festgefahren, minutes, grenzeMinuten(res), pfade.length === 0);
+  if (grund === grundWartend()) return wartendVermerk(leseErgebnisText(res?.stdout), pfade);
+  if (grund === grundZeitlimit()) return zeitlimitVermerk(grenzeMinuten(res), res?.fortschritt, pfade);
   return null;
 }
 
@@ -992,12 +1345,12 @@ function haltMitUnsauberemBaum(top, minutes, vorher) {
   const nachher = abh.board("issue", "get", String(top.id));
   const haltArt = hatKlaerenLabel(nachher) ? "klaeren" : istHalt(vorher, nachher);
   if (!haltArt) return null;
-  const befund = haltArt === "klaeren" ? `traegt ${KLAEREN_LABEL}` : "haelt an einer geschuetzten Datei";
-  const satz = `HALT MIT UNSAUBEREM BAUM nach ${minutes} min: Issue #${top.id} ${befund}, aber der Working Tree ist dirty — kein Salvage, harter Stopp.`;
+  const label = labelDerSprache("klaeren", KLAEREN_LABEL);
+  const befund = haltArt === "klaeren" ? t("haltBefundKlaeren", { label }) : t("haltBefundGeschuetzt");
+  const satz = t("haltUnsauber", { minuten: minutes, id: top.id, befund });
   log(`  ${satz}`);
-  const getan = haltArt === "klaeren" ? "hat kit:klaeren gesetzt" : "hat den Halt an einer geschuetzten Datei vermerkt";
-  abh.board("issue", "comment", String(top.id), "--text",
-    `Nachtlauf: Halt mit unsauberem Working Tree — die Session ${getan}, aber Aenderungen liegen gelassen; kein Salvage, Lauf hart gestoppt. Bitte morgens manuell sichten.`);
+  const getan = haltArt === "klaeren" ? t("haltGetanKlaeren", { label }) : t("haltGetanGeschuetzt");
+  abh.board("issue", "comment", String(top.id), "--text", nachtlauf("haltUnsauberKommentar", { getan }));
   merkeHartenStopp("harterStopp", `${satz} ${resteText(abh.gitReste())}`);
   return "hardStop";
 }
@@ -1050,18 +1403,18 @@ async function behandleDirtyRunde(top, args, minutes, salvageAttempted, res, pru
   // `rundenGrund` traegt den Fall der wartenden Sitzung bereits mit seiner Rangfolge —
   // ein zweiter Aufruf von `wartendeSession` hier waere eine zweite Herleitung desselben
   // Befunds, ohne Zeitlimit, Abbruch und roten Pflichtcheck davor.
-  const wartend = grund === GRUND_WARTEND;
+  const wartend = grund === grundWartend();
   if (wartend) WARTEND_BEENDET = true;
   // Derselbe Griff fuer den Zeitabbruch (Issue #977): Der Grund steht schon heute im Text,
   // neu sind Auskunft, Empfehlung und Ursachen-Vorbehalt des Vermerks.
-  if (grund === GRUND_ZEITLIMIT) ZEITLIMIT_BEENDET = true;
-  const satz = `FEHLSCHLAG nach ${minutes} min: Issue #${top.id} — ${grund}; nicht in In review UND Working Tree dirty.`;
+  if (grund === grundZeitlimit()) ZEITLIMIT_BEENDET = true;
+  const satz = t("fehlschlagDirty", { minuten: minutes, id: top.id, grund });
   log(`  ${satz}`);
   // Der Vermerk ERWEITERT den Kommentar, anders als im Rueckstellungsfall: Dort ist er
   // die ganze Botschaft, hier steht der Fehlschlag davor — mit den Pfaden aus
   // `gitReste()`, denn der Baum ist unsauber.
   const vermerk = rundenVermerk(grund, res, abh.gitReste());
-  return resteSichern(top, `${satz} ${resteText(abh.gitReste())}`, `Nachtlauf: Runde fehlgeschlagen und Working Tree nicht sauber hinterlassen. ${grund}.`, vermerk);
+  return resteSichern(top, `${satz} ${resteText(abh.gitReste())}`, nachtlauf("fehlschlagDirtyKommentar", { grund }), vermerk);
 }
 
 /** Merkt die Bremse fuer die Einheit (Issue #1390, E8) — erst, wenn der Ausgang feststeht. */
@@ -1077,11 +1430,11 @@ function festgefahrenMerken(res) {
  */
 function festgefahrenSichern(top, minutes, res) {
   const { pruefung } = res.festgefahren;
-  const satz = `FESTGEFAHREN nach ${minutes} min: Issue #${top.id} — ${GRUND_FESTGEFAHREN} (${pruefung}); kein Salvage, Working Tree dirty.`;
+  const satz = t("festgefahrenDirty", { minuten: minutes, id: top.id, grund: grundFestgefahren(), pruefung });
   log(`  ${satz}`);
-  const vermerk = rundenVermerk(GRUND_FESTGEFAHREN, res, abh.gitReste(), minutes);
+  const vermerk = rundenVermerk(grundFestgefahren(), res, abh.gitReste(), minutes);
   const ausgang = resteSichern(top, `${satz} ${resteText(abh.gitReste())}`,
-    `Nachtlauf: Die Sitzung hat sich an einer Pruefung festgefahren und wurde vor ihrer Zeitgrenze beendet. ${GRUND_FESTGEFAHREN}.`, vermerk);
+    nachtlauf("festgefahrenKommentar", { grund: grundFestgefahren() }), vermerk);
   if (ausgang !== "abgebrochen") return ausgang;
   festgefahrenMerken(res);
   return "festgefahren";
@@ -1159,13 +1512,13 @@ function geschuetztAuffangen(top, res, minutes) {
 
   const { ok, name, meldung } = resteInStash(top);
   if (!ok) {
-    log(`  Auffang an geschuetzter Datei fuer Issue #${id} nicht moeglich: Reste nicht im Stash gesichert (${meldung}).`);
+    log(t("auffangNichtMoeglich", { id, meldung }));
     return null;
   }
   const dateien = [...new Set(abgewiesen.map((t) => t.pfad))].join(", ");
-  log(`  AUFFANG GESCHUETZT nach ${minutes} min: Issue #${id} — die Session scheiterte beim Schreiben an ${dateien} und vermerkte keinen Halt; Zwischenstand im Stash „${name}“, Issue ins Backlog, weiter.`);
+  log(t("auffang", { minuten: minutes, id, dateien, name }));
   abh.board("issue", "move", id, "backlog");
-  geschuetztAmBoardVermerken(top, { kommentar: `${pruef.json.kommentar}\n\nZwischenstand: Stash „${name}“ (\`git stash list\`).` });
+  geschuetztAmBoardVermerken(top, { kommentar: t("zwischenstand", { kommentar: pruef.json.kommentar, name }) });
   HALT_ART = "geschuetzt";
   return "angehalten";
 }
@@ -1182,10 +1535,10 @@ function salvageGescheitert(top, salvage, res, pruefung) {
     // ueber das, was morgens im Arbeitsverzeichnis liegt, und war nie falsch — zwei
     // Vorgaenge sind zu berichten: warum die regulaere Runde nichts hinterliess, und
     // was der Salvage vorfand.
-    if (salvage === "gescheitert") merkeHartenStopp("harterStopp", `${GRUND_WARTEND}; ${ZUSTAND.STOPP_GRUND}`);
-    else SALVAGE_GRUND = `${GRUND_WARTEND}; ${SALVAGE_GRUND}`;
+    if (salvage === "gescheitert") merkeHartenStopp("harterStopp", `${grundWartend()}; ${ZUSTAND.STOPP_GRUND}`);
+    else SALVAGE_GRUND = `${grundWartend()}; ${SALVAGE_GRUND}`;
     abh.board("issue", "comment", String(top.id), "--text", wartendVermerk(schlusstext, abh.gitReste()));
-  } else if (rundenGrund(res, pruefung) === GRUND_ZEITLIMIT) {
+  } else if (rundenGrund(res, pruefung) === grundZeitlimit()) {
     // Derselbe eigene Griff wie fuer die wartende Sitzung darueber, und aus demselben
     // Grund (Issue #977): Dieser Zweig kehrt zurueck, bevor der Fehlschlag-Zweig unten
     // mit `rundenGrund` erreicht ist — ohne ihn entstuende der Befund nur fuer die
@@ -1202,7 +1555,7 @@ function salvageGescheitert(top, salvage, res, pruefung) {
   }
   if (salvage === "gescheitert") return "hardStop";
   return resteSichern(top, `${SALVAGE_GRUND} ${resteText(abh.gitReste())}`,
-    "Nachtlauf: Pflicht-Checks extern gruen, aber die Salvage-Session hat weder committet noch das Board bewegt.");
+    nachtlauf("salvageOhneCommitKommentar"));
 }
 
 /**
@@ -1240,7 +1593,7 @@ function resteInStash(top) {
   const pfade = restPfade();
   const res = pfade.length > 0
     ? spawnSync("git", ["stash", "push", "--include-untracked", "-m", name, "--", ...pfade.map((p) => `:(literal)${p}`)], { encoding: "utf-8", cwd: process.cwd() })
-    : { status: 1, stderr: "keine Pfade der Reste lesbar" };
+    : { status: 1, stderr: t("keinePfade") };
   if (res.status === 0 && abh.gitClean()) return { ok: true, name };
   return { ok: false, name, meldung: ersteZeile(res.stderr || res.stdout || "Exit " + res.status) };
 }
@@ -1254,17 +1607,17 @@ function resteInStash(top) {
 function resteSichern(top, grund, kommentar, vermerk = null) {
   const { ok, name, meldung } = resteInStash(top);
   if (!ok) {
-    const satz = `HARTER STOPP: Reste zu Issue #${top.id} liessen sich nicht im Stash sichern (${meldung}).`;
+    const satz = t("stashGescheitert", { id: top.id, meldung });
     log(`  ${satz}`);
-    abh.board("issue", "comment", String(top.id), "--text", `${kommentar} Die Reste liessen sich nicht im Stash sichern — Lauf hart gestoppt. Bitte morgens manuell sichten.`);
+    abh.board("issue", "comment", String(top.id), "--text", t("stashGescheitertKommentar", { kommentar }));
     merkeHartenStopp("harterStopp", `${satz} ${grund}`);
     return "hardStop";
   }
-  log(`  Reste zu Issue #${top.id} im Stash „${name}“ gesichert — Issue ins Backlog, weiter.`);
-  const text = `${kommentar} Die Reste liegen im Stash „${name}“ (\`git stash list\`), die Karte geht ins Backlog, und der Lauf geht weiter.`;
+  log(t("stashGesichert", { id: top.id, name }));
+  const text = t("stashKommentar", { kommentar, name });
   abh.board("issue", "comment", String(top.id), "--text", vermerk ? `${text}\n\n${vermerk}` : text);
   abh.board("issue", "move", String(top.id), "backlog");
-  ABBRUCH_GRUND = `${grund} Reste im Stash „${name}“.`;
+  ABBRUCH_GRUND = t("abbruchGrund", { grund, name });
   return "abgebrochen";
 }
 
@@ -1286,13 +1639,13 @@ function resteSichern(top, grund, kommentar, vermerk = null) {
 function nachweisMangel(pruefung) {
   const zustand = pruefung?.zustand;
   if (zustand === "ungeprueft") {
-    return "Nachweis fehlt — die Session hat keine Pruefung gefahren";
+    return t("nachweisFehlt");
   }
   if (zustand === "unlesbar") {
-    return `Nachweis unlesbar (${pruefung.fehler})`;
+    return t("nachweisUnlesbar", { fehler: pruefung.fehler });
   }
   if (zustand === "rot") {
-    return `Nachweis rot — ${pruefung.rotesKommando} endete ${pruefung.rotesErgebnis}`;
+    return t("nachweisRot", { kommando: pruefung.rotesKommando, ergebnis: pruefung.rotesErgebnis });
   }
   return null;
 }
@@ -1303,7 +1656,7 @@ function nachweisMangel(pruefung) {
  * Ein Text fuer Board-Kommentar und Ergebnisstand: Zwei Formulierungen desselben
  * Vorgangs waeren zwei Wahrheiten darueber, warum das Paket liegen blieb.
  */
-const DEFERRED_GRUND = "Session ohne In-review-Ergebnis beendet — Issue zurueckgestellt, Lauf ging mit dem naechsten Issue weiter.";
+const deferredGrund = () => t("deferredGrund");
 
 /**
  * Der Grund, aus dem eine Runde ohne jede Board-Aenderung endet (Issue #927).
@@ -1314,7 +1667,7 @@ const DEFERRED_GRUND = "Session ohne In-review-Ergebnis beendet — Issue zuruec
  * unterscheidet. Ein nicht lesbarer Zustand ist keine Aussage ueber die Spalte, also
  * folgt ihm auch keine Rueckstellung.
  */
-const ZUSTAND_UNLESBAR_GRUND = "Zustand der Karte war nicht lesbar — Karte und Commit bleiben unangetastet, Lauf geht mit dem naechsten Issue weiter.";
+const zustandUnlesbarGrund = () => t("zustandUnlesbar");
 
 /**
  * Uebersetzt den Rueckgabewert von werteRunde in die Felder der Einheit (Issue #488).
@@ -1362,12 +1715,12 @@ function festgefahrenFelder() {
 }
 
 function ausgangsFelder(ausgang) {
-  if (ausgang === "deferred") return { ausgang: "zurueckgestellt", grund: DEFERRED_GRUND, grundArt: "ohneInReview" };
+  if (ausgang === "deferred") return { ausgang: "zurueckgestellt", grund: deferredGrund(), grundArt: "ohneInReview" };
   if (ausgang === "hardStop") return { ausgang: "harterStopp" };
   // Das Paket ist an sich selbst gescheitert, seine Reste liegen im Stash (Issue #1089).
   if (ausgang === "abgebrochen") return { ausgang, grund: ABBRUCH_GRUND, grundArt: "sonst" };
   // Die Bremse hat die Sitzung beendet (Issue #1390, E8) — ein eigener Ausgang.
-  if (ausgang === "festgefahren") return { ausgang, grund: GRUND_FESTGEFAHREN, grundArt: "sonst" };
+  if (ausgang === "festgefahren") return { ausgang, grund: grundFestgefahren(), grundArt: "sonst" };
   // `angehalten` braucht keinen eigenen Zweig (Issue #572): Der Default liefert
   // `{ ausgang: "angehalten" }`, und einen Grund traegt der Halt nicht — er steht
   // als Kommentar der Session an der Karte, und eine zweite Fassung waere eine
@@ -1404,16 +1757,10 @@ export function istHalt(vorher, nachher) {
 }
 
 /** Die Logzeile nach `istHalt`, je Art des Halts (Issue #1050). */
-const HALT_LOG_TEXT = {
-  klaeren: "eine offene Entscheidung wartet auf einen Menschen",
-  geschuetzt: "eine Handlung an einer geschuetzten Datei wartet auf einen Menschen",
-};
+const HALT_LOG_TEXT = { klaeren: "haltLogKlaeren", geschuetzt: "haltLogGeschuetzt" };
 
 /** Der Laufstand eines angehaltenen Pakets, je Art des Halts (Issue #1050). */
-const HALT_STAND_TEXT = {
-  klaeren: "eine offene Entscheidung wartet am Board auf einen Menschen",
-  geschuetzt: "eine Handlung an einer geschuetzten Datei wartet am Board auf einen Menschen",
-};
+const HALT_STAND_TEXT = { klaeren: "haltStandKlaeren", geschuetzt: "haltStandGeschuetzt" };
 
 /**
  * Wertet eine gelaufene Runde aus. Die Angaben kommen als EIN Objekt statt als acht
@@ -1439,7 +1786,7 @@ export async function werteRunde({ top, res: sitzung, minutes, args, salvageAtte
   // Ausgang ist `fehlschlag` — das Wort des Laufs fuer "Karte bleibt, Commit bleibt,
   // weiter"; WARUM sie bleibt, sagt allein diese Log-Zeile.
   if (kartenStatus === null) {
-    log(`  Fehlschlag nach ${minutes} min: Issue #${top.id} — ${ZUSTAND_UNLESBAR_GRUND}`);
+    log(t("unlesbarLog", { minuten: minutes, id: top.id, grund: zustandUnlesbarGrund() }));
     return "fehlschlag";
   }
   if (kartenStatus === "in_review") return werteInReview(top, minutes, pruefung);
@@ -1460,13 +1807,13 @@ export async function werteRunde({ top, res: sitzung, minutes, args, salvageAtte
   if (!timedOut && (res.error || res.status !== 0) && (kommando || !hatSitzungsereignis(res.stdout))) {
     const exitInfo = exitText(res);
     const detail = (res.stderr || res.stdout || "").trim().split(/\r?\n/).slice(0, 3).join(" | ");
-    const kopf = `INFRASTRUKTUR-FEHLSCHLAG nach ${minutes} min (${exitInfo}): Session-Start gescheitert — harter Stopp, Issue #${top.id} bleibt unangetastet.`;
+    const kopf = t("infrastruktur", { minuten: minutes, exit: exitInfo, id: top.id });
     log(`  ${kopf}`);
-    if (detail) log(`  CLI-Meldung: ${detail}`);
+    if (detail) log(`  ${t("cliMeldung", { detail })}`);
     // Beide Protokollzeilen, in derselben Reihenfolge (Issue #558): Die CLI-Meldung ist
     // hier das Einzige, was den Ausfall benennt — exitInfo allein sagt nur, dass es ihn gab.
-    merkeHartenStopp("umgebung", detail ? `${kopf}\nCLI-Meldung: ${detail}` : kopf);
-    anhaltenVermerken(detail ? `Sitzungsstart gescheitert (${exitInfo}): ${detail}` : `Sitzungsstart gescheitert (${exitInfo})`);
+    merkeHartenStopp("umgebung", detail ? `${kopf}\n${t("cliMeldung", { detail })}` : kopf);
+    anhaltenVermerken(detail ? t("startGescheitertDetail", { exit: exitInfo, detail }) : t("startGescheitert", { exit: exitInfo }));
     return "hardStop";
   }
 
@@ -1479,7 +1826,7 @@ export async function werteRunde({ top, res: sitzung, minutes, args, salvageAtte
   const haltArt = istHalt(vorher, abh.board("issue", "get", String(top.id)));
   if (haltArt) {
     HALT_ART = haltArt;
-    log(`  angehalten: ${HALT_LOG_TEXT[haltArt]} — Issue #${top.id} nach ${minutes} min von der Session ins Backlog gezeichnet, kein Kommentar und kein Move durch den Runner, weiter.`);
+    log(t("angehalten", { text: t(HALT_LOG_TEXT[haltArt]), id: top.id, minuten: minutes }));
     return "angehalten";
   }
 
@@ -1506,14 +1853,14 @@ function bremseAusZusammenfassung(issueId) {
  * deren erstem Zweig zwei weitere Guards stecken.
  */
 function werteInReview(top, minutes, pruefung) {
-  log(`  Erfolg nach ${minutes} min, Commit ${lastCommitHash()}, Issue #${top.id} in In review.`);
+  log(t("erfolg", { minuten: minutes, commit: lastCommitHash(), id: top.id }));
   // Rest-Guard (Issue #152): Eine erfolgreiche Runde muss den Tree sauber
   // hinterlassen. Unkommittete Reste (z. B. Temp-Dateien) wuerden die
   // Diagnose der Folgerunde verfaelschen und koennten sie faelschlich als
   // dirty hart stoppen — darum hier stoppen, wo die Ursache noch klar ist.
   const reste = abh.gitReste();
   if (reste.length > 0) {
-    const satz = `HARTER STOPP: erfolgreiche Runde zu Issue #${top.id} hat unkommittete Reste hinterlassen — bitte morgens sichten und aufraeumen.`;
+    const satz = t("resteNachErfolg", { id: top.id });
     log(`  ${satz}`);
     merkeHartenStopp("harterStopp", `${satz} ${resteText(reste)}`);
     return "hardStop";
@@ -1526,9 +1873,8 @@ function werteInReview(top, minutes, pruefung) {
   // Pruefung gefahren", und der Dirty-Guard waere umgangen.
   const mangel = nachweisMangel(pruefung);
   if (mangel) {
-    log(`  Fehlschlag nach ${minutes} min: Issue #${top.id} in In review, aber ${mangel} — Karte bleibt, Commit bleibt, weiter.`);
-    abh.board("issue", "comment", String(top.id),
-      "--text", `Nachtlauf: ${mangel}. Die Karte bleibt in In review und der Commit unangetastet — bitte den Stand pruefen.`);
+    log(t("ohneNachweisLog", { minuten: minutes, id: top.id, mangel }));
+    abh.board("issue", "comment", String(top.id), "--text", nachtlauf("ohneNachweisKommentar", { mangel }));
     return "fehlschlag";
   }
   return "erfolg";
@@ -1551,24 +1897,24 @@ function stelleRundeZurueck(top, res, minutes, pruefung) {
   const grund = rueckstellungsGrund(res, pruefung);
   // Die Bremse bei sauberem Baum (Issue #1390, E9): kein Stash, derselbe Vermerk, der selbst
   // sagt, dass nichts zu sichern war — und ein eigener Ausgang statt der Rueckstellung.
-  if (grund === GRUND_FESTGEFAHREN) {
-    log(`  FESTGEFAHREN nach ${minutes} min: Issue #${top.id} — ${grund} (${res.festgefahren.pruefung}); Tree sauber — Issue ins Backlog, weiter.`);
+  if (grund === grundFestgefahren()) {
+    log(t("festgefahrenSauber", { minuten: minutes, id: top.id, grund, pruefung: res.festgefahren.pruefung }));
     abh.board("issue", "comment", String(top.id), "--text", rundenVermerk(grund, res, [], minutes));
     abh.board("issue", "move", String(top.id), "backlog");
     festgefahrenMerken(res);
     return "festgefahren";
   }
-  if (grund === GRUND_WARTEND) WARTEND_BEENDET = true;
-  if (grund === GRUND_ZEITLIMIT) ZEITLIMIT_BEENDET = true;
+  if (grund === grundWartend()) WARTEND_BEENDET = true;
+  if (grund === grundZeitlimit()) ZEITLIMIT_BEENDET = true;
   // Der Grund steht VOR dem Zustand — dieselbe Ordnung wie im Dirty-Zweig (Issue #668):
   // erst warum die Runde nichts abgeschlossen hat, dann was der Runner vorgefunden hat.
-  const grundTeil = grund ? ` — ${grund};` : "";
-  log(`  Fehlschlag nach ${minutes} min: Issue #${top.id}${grundTeil} nicht in In review, Tree sauber — Issue ins Backlog, weiter.`);
+  const grundTeil = grund ? t("rueckstellungGrund", { grund }) : "";
+  log(t("rueckstellungLog", { minuten: minutes, id: top.id, grund: grundTeil }));
   // Der Vermerk IST der Kommentar: Er traegt seinen Grund bereits im Wortlaut, und ein
   // vorangestelltes zweites Mal waere dieselbe Aussage doppelt. Ohne Pfade — in diesem
   // Zweig ist der Baum sauber, und eine Meldung ueber nichts ist keine.
   const vermerk = rundenVermerk(grund, res);
-  abh.board("issue", "comment", String(top.id), "--text", vermerk ?? `Nachtlauf: ${DEFERRED_GRUND}`);
+  abh.board("issue", "comment", String(top.id), "--text", vermerk ?? nachtlauf("deferredGrund"));
   abh.board("issue", "move", String(top.id), "backlog");
   return "deferred";
 }
@@ -1602,7 +1948,7 @@ function stelleAmGateZurueck(top, gate) {
   // Haengt das Paket an einem Paket, das in diesem Lauf abgebrochen ist, wartet es (E15) —
   // zusaetzlich zum Rueckstell-Kommentar, der unveraendert bleibt.
   const an = (gate.unmet ?? []).filter((n) => ABGEBROCHENE_PAKETE.has(Number(n)));
-  if (an.length > 0) standSetzen(top.id, "wartet", an.map((n) => `hängt an #${n} (abgebrochen in diesem Lauf)`).join("\n"));
+  if (an.length > 0) standSetzen(top.id, "wartet", an.map((n) => t("haengtAn", { nummer: n })).join("\n"));
 }
 
 /**
@@ -1635,13 +1981,13 @@ function stufenFelderAuffrischen() {
 function rundenHinweis({ modell, herkunft, grund, stufe, stufeVerwendet, effort }) {
   if (!stufe && !grund) return null;
   const teile = [];
-  if (stufe) teile.push(`Aufgabenstufe ${stufe}`);
-  teile.push(modell ? `Modell ${modell} (${herkunft})` : `kein Modell (${herkunft})`);
-  if (stufeVerwendet && stufeVerwendet !== stufe) teile.push(`ueber Stufe ${stufeVerwendet}`);
+  if (stufe) teile.push(t("hinweisStufe", { stufe }));
+  teile.push(modell ? t("hinweisModell", { modell, herkunft }) : t("hinweisKeinModell", { herkunft }));
+  if (stufeVerwendet && stufeVerwendet !== stufe) teile.push(t("hinweisUeber", { stufe: stufeVerwendet }));
   // Nur wenn gesetzt (Issue #846): Ohne Gruendlichkeit bleibt die Zeile wortgleich mit
   // der von vorher — eine Stufe ohne `effort` faehrt mit der Voreinstellung der CLI, und
   // das ist keine Auskunft, die eine eigene Angabe verdient.
-  if (effort) teile.push(`Gruendlichkeit ${effort}`);
+  if (effort) teile.push(t("hinweisEffort", { effort }));
   return grund ? `${teile.join(", ")} — ${grund}` : teile.join(", ");
 }
 
@@ -1655,9 +2001,9 @@ function rundenHinweis({ modell, herkunft, grund, stufe, stufeVerwendet, effort 
  * naechste Iteration dasselbe Paket erneut, bis MAX_ITERATIONS erschoepft ist.
  */
 function ohneSessionGescheitert(top, einheit, modellStand, started) {
-  const grund = `Keine startbare Stufe fuer Aufgabenstufe ${modellStand.stufe}: ${modellStand.grund}`;
-  log(`  Fehlschlag ohne Session: Issue #${top.id} — ${grund} — Issue ins Backlog, weiter.`);
-  abh.board("issue", "comment", String(top.id), "--text", `Nachtlauf: ${grund} Es wurde keine Session gestartet.`);
+  const grund = t("keineStufe", { stufe: modellStand.stufe, grund: modellStand.grund });
+  log(t("ohneSessionLog", { id: top.id, grund }));
+  abh.board("issue", "comment", String(top.id), "--text", nachtlauf("ohneSessionKommentar", { grund }));
   abh.board("issue", "move", String(top.id), "backlog");
   einheitErgaenzen(einheit, {
     ausgang: "fehlschlag",
@@ -1701,7 +2047,7 @@ async function rundeLaufen(top, args, salvageAttempted, pruefungen) {
   const started = Date.now();
   // Der Laufstand des Pakets an der Paketkarte (Issue #1089, E2) — in Kette und
   // Umsetzungsnacht gleich, denn beide gehen durch diese Runde.
-  standSetzen(top.id, "laeuft", `Umsetzung laeuft seit ${new Date(started).toISOString()}`);
+  standSetzen(top.id, "laeuft", t("laeuftSeit", { zeit: new Date(started).toISOString() }));
   ABBRUCH_GRUND = "";
   // Vor dem Start verwerfen, direkt danach lesen (Issue #428): So zaehlt fuer eine
   // Session nur, was sie selbst geschrieben hat — und die Salvage-Session, die
@@ -1732,7 +2078,7 @@ async function rundeLaufen(top, args, salvageAttempted, pruefungen) {
   // Lauf mitten in der Runde ab, steht das gezogene Paket trotzdem im Stand.
   const einheit = einheitAnlegen(top.id, top.title, modellStand);
   const hinweis = rundenHinweis(modellStand);
-  if (hinweis) log(`  Hinweis zu #${top.id}: ${hinweis}`);
+  if (hinweis) log(t("hinweisZu", { id: top.id, hinweis }));
 
   // Kein startbarer Weg fuer die Stufe dieses Pakets (Issue #711, Kriterium 10): Das Paket
   // wird OHNE Session als Fehlschlag verbucht und der Lauf zieht das naechste. Der Rueckfall
@@ -1812,12 +2158,12 @@ const RUNDEN_STAND = { erfolg: "fertig", angehalten: "wartet" };
 
 /** Der Grund im Laufstand einer Runde, je Ausgang aus dem, was die Auswertung schon weiss. */
 function rundenStandGrund(ausgang, { einheit, pruefung, res, commit }) {
-  if (ausgang === "erfolg") return `In review mit Nachweis (${pruefung?.zustand ?? "ungeprueft"}), Commit ${commit}`;
-  if (ausgang === "angehalten") return HALT_STAND_TEXT[HALT_ART ?? "klaeren"];
-  if (ausgang === "deferred") return `${rundenGrund(res, pruefung)}; die Karte ging ins Backlog, der Lauf weiter`;
-  if (ausgang === "fehlschlag") return nachweisMangel(pruefung) ?? ZUSTAND_UNLESBAR_GRUND;
+  if (ausgang === "erfolg") return t("standErfolg", { zustand: pruefung?.zustand ?? "ungeprueft", commit });
+  if (ausgang === "angehalten") return t(HALT_STAND_TEXT[HALT_ART ?? "klaeren"]);
+  if (ausgang === "deferred") return t("standWeiter", { grund: rundenGrund(res, pruefung) });
+  if (ausgang === "fehlschlag") return nachweisMangel(pruefung) ?? zustandUnlesbarGrund();
   // Mit Stash nennt ABBRUCH_GRUND ihn (Issue #1390); bei sauberem Baum bleibt der Grund allein.
-  if (ausgang === "festgefahren") return ABBRUCH_GRUND || `${GRUND_FESTGEFAHREN}; die Karte ging ins Backlog, der Lauf weiter`;
+  if (ausgang === "festgefahren") return ABBRUCH_GRUND || t("standWeiter", { grund: grundFestgefahren() });
   return einheit.grund ?? ZUSTAND.STOPP_GRUND;
 }
 
@@ -1830,7 +2176,7 @@ function paketStandAbschliessen(top, ausgang, grund) {
   if (anhaltenLaeuft()) return;
   const zustand = RUNDEN_STAND[ausgang] ?? "abgebrochen";
   if (zustand === "abgebrochen") ABGEBROCHENE_PAKETE.add(Number(top.id));
-  standSetzen(top.id, zustand, `Runde beendet: ${ausgang} um ${new Date().toISOString()}\n\n${grund}`);
+  standSetzen(top.id, zustand, t("rundeBeendet", { ausgang, zeit: new Date().toISOString(), grund }));
 }
 
 /**
@@ -1841,7 +2187,7 @@ function paketStandAbschliessen(top, ausgang, grund) {
  */
 function lockVorErsterSession() {
   const lock = umsetzungLockNehmen(process.cwd());
-  if (!lock.ok) log(`Umsetzung ausgelassen: ${lock.grund}. Der Lauf endet ohne Paket.`);
+  if (!lock.ok) log(t("umsetzungAusgelassen", { grund: lock.grund }));
   else if (lock.hinweis) log(lock.hinweis);
   return lock;
 }
@@ -1933,7 +2279,7 @@ async function implementierungsSchleife(args, ctx, lauf) {
     kitStandInBaum(process.cwd());
 
     lauf.sessions++;
-    log(`Session ${lauf.sessions}/${args.max}: Issue #${top.id} — ${top.title}`);
+    log(t("session", { nummer: lauf.sessions, max: args.max, id: top.id, titel: top.title }));
     const ausgang = await laufeRunde(top, args, lauf.salvageAttempted, lauf.pruefungen);
     // Kein `break` bei Paketfehlern (Issue #1089, E14): Ein abgebrochenes Paket haelt nur
     // sich und die von ihm abhaengigen an. Der harte Stopp bleibt fuer Umgebung und Reste

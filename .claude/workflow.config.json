@@ -53,9 +53,11 @@
         "nacht-einstieg",
         "nacht-grundlagen",
         "nacht-kette",
+        "nacht-kitstand",
         "nacht-laufstand",
         "nacht-session",
         "nacht-tag",
+        "nacht-wartend",
         "preise",
         "pruefungen",
         "sync"

@@ -1,0 +1,220 @@
+// Meldungen des Nacht-Runners zweisprachig, Gruppe wartend, session, kitstand (Plan #1420 E13/E14).
+//
+// Jedes Modul der Gruppe traegt seine Texte an den Menschen in einer Tabelle TEXTE { de, en }
+// und gibt sie ueber den Texthelfer aus kit/board/namen.mjs aus:
+//   - Paritaet: je Tabelle dieselben Schluessel und Platzhalter in beiden Sprachen.
+//   - Englische Stichproben: ein englisches Projekt sieht die englische Form; die Zeilen, die
+//     kanban-kit aus Textprotokoll und Ergebnisdatei liest, stehen in der Form der Vorlage am
+//     Plan #1420, die Anker der Vermerke unter ihrem englischen Namen aus dem Register MARKER.
+//   - Die deutschen Wortlaut-Tests der Gruppe bleiben, wie sie sind, und laufen mit der
+//     Vorgabe Deutsch.
+//
+// Der erste Teil (#1487) deckt kit/night/wartend.mjs; die folgenden Teile ergaenzen
+// kit/night/session.mjs und kit/night/kitstand.mjs.
+
+import { test, after, beforeEach } from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  TEXTE as WARTEND_TEXTE, GESCHUETZT_ABGEWIESEN, festgefahrenVermerk, pruefeIssueGates, rundenGrund,
+  rundenMerkerZuruecksetzen, wartendAbhaengigkeiten, wartendVermerk, werteRunde, zeitlimitVermerk,
+} from "../kit/night/wartend.mjs";
+import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
+import { deutschAmHelferVorbei, deutschImEnglischen } from "./helpers/quelltext-texte.mjs";
+
+/** Fuehrt `fn` mit der Prozesssprache `sprache` aus und vergisst sie danach wieder. */
+async function inSprache(sprache, fn) {
+  spracheFestlegen(sprache);
+  try {
+    return await fn();
+  } finally {
+    spracheFestlegen(null);
+  }
+}
+
+/** Faengt die Protokollzeilen von `log` ab, solange `fn` laeuft. */
+async function mitProtokoll(fn) {
+  const zeilen = [];
+  const schreiben = process.stdout.write;
+  process.stdout.write = (chunk) => {
+    zeilen.push(String(chunk));
+    return true;
+  };
+  try {
+    await fn();
+  } finally {
+    process.stdout.write = schreiben;
+  }
+  return zeilen.join("");
+}
+
+// --- kit/night/wartend.mjs (Issue #1487) --------------------------------------------------
+
+test("[1487] die Texttabelle von wartend hat in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
+  assert.deepEqual(pruefeParitaet(WARTEND_TEXTE), []);
+  assert.ok(Object.keys(WARTEND_TEXTE.de).length >= 100, "die Tabelle traegt die Meldungen der Runde");
+});
+
+test("[1487] englisch: die Zeilen, die kanban-kit liest, beginnen in der Form der Vorlage", () => {
+  const vorlage = {
+    erfolg: "  Success after {minuten} min, commit {commit}, issue #{id} in In review.",
+    salvageErfolg: "  Salvage succeeded, commit {commit}, issue #{id} in In review.",
+    fehlschlagDirty: "FAILURE after {minuten} min: issue #{id} — ",
+    rueckstellungLog: "  Failure after {minuten} min: issue #{id}",
+    infrastruktur: "INFRASTRUCTURE FAILURE after {minuten} min",
+    resteNachErfolg: "HARD STOP: successful round for issue #{id}",
+    salvageGescheitert: "SALVAGE ATTEMPT failed",
+    salvageGestartet: "  SALVAGE ATTEMPT started",
+    salvageNichtMoeglich: "  Salvage not possible: ",
+    gateAbhaengigkeitLog: "#{id} deferred: dependency ",
+    gateFachlichLog: "#{id} skipped: ",
+    gateKlaerenLog: "#{id} skipped: ",
+    session: "session {nummer}/{max}: issue #{id} — {titel}",
+    cliMeldung: "CLI message: ",
+    labelWarnung: "WARNING: ",
+    labelVorhanden: "  Labels present in Ready: ",
+    labelTippfehler: "  Typo in the --label value?",
+    deferredGrund: "Session without In-review result",
+    nachtlauf: "Night run: ",
+  };
+  for (const [schluessel, anfang] of Object.entries(vorlage)) {
+    assert.ok(WARTEND_TEXTE.en[schluessel].startsWith(anfang), `${schluessel}: "${WARTEND_TEXTE.en[schluessel]}"`);
+  }
+  assert.match(WARTEND_TEXTE.en.gateAbhaengigkeit, /^dependency /, "der Grund an der Karte nennt die Abhaengigkeit");
+});
+
+test("[1487] englisch: die Gruende einer Runde ohne Ergebnis", async () => {
+  await inSprache("en", () => {
+    assert.equal(rundenGrund({ error: { code: "ETIMEDOUT" } }, { zustand: "gruen" }), "Reason: session ended at the time limit");
+    assert.equal(rundenGrund({ stdout: "" }, { zustand: "rot", rotesKommando: "npm test" }),
+      "Reason: required check red — npm test (session)");
+    assert.equal(rundenGrund({ stdout: "" }, { zustand: "rot" }), "Reason: required check red — unnamed command (session)");
+    assert.equal(rundenGrund({ stdout: "" }, { zustand: "gruen" }), "Reason: session ended without an evaluable result event");
+    assert.equal(rundenGrund({ festgefahren: { pruefung: "x" } }, null), "Reason: session stuck on a check");
+  });
+});
+
+test("[1487] englisch: die drei Vermerke stehen unter dem englischen Anker", async () => {
+  await inSprache("en", () => {
+    const wartend = wartendVermerk("Waiting.", ["a.txt"]);
+    assert.match(wartend, /^## Night run: waiting session\n\nReason: the session waited for work it had started itself/);
+    assert.ok(wartend.includes("### Last known state\n\nWaiting."), wartend);
+    assert.ok(wartend.includes("### In the working directory\n\nuncommitted leftovers: a.txt"), wartend);
+    assert.match(wartendVermerk("x".repeat(2100)), /\(Final text shortened to 2000 characters\.\)\n$/);
+
+    const zeit = zeitlimitVermerk(30, { zeilen: [] });
+    assert.match(zeit, /^## Night run: time limit reached\n\nReason: session ended at the time limit — the limit of this round: 30 minutes\.\n/);
+    assert.ok(zeit.includes("no information from the session"), zeit);
+    assert.ok(zeit.includes("### Next step (human)"), zeit);
+    assert.match(zeitlimitVermerk(null, null), /limit unknown\.\n[\s\S]*Progress not observed \(no stream\)/);
+    assert.ok(zeitlimitVermerk(1.5, { zeilen: ["AK1"], gesehen: 4 }).includes("(4 progress lines reported, the latest 1 are shown here.)"));
+
+    const fest = festgefahrenVermerk({ pruefung: "npm test", fehler: "boom", versuche: 3 }, null, 10, true);
+    assert.match(fest, /^## Night run: stuck on a check\n\nReason: session stuck on a check — the brake ended/);
+    assert.ok(fest.includes("- Attempts: failed the same way 3 times"), fest);
+    assert.ok(fest.includes("- Running time until the abort: unknown"), fest);
+    assert.ok(fest.includes("- Time limit of the session: 10 minutes"), fest);
+    assert.ok(fest.endsWith("Nothing was saved: no changes in the working directory.\n"), fest);
+    for (const deutsch of ["Nachtlauf", "Grund:", "Stand", "Minuten", "nicht bekannt"]) {
+      assert.ok(![wartend, zeit, fest].some((v) => v.includes(deutsch)), `deutsch im Vermerk: ${deutsch}`);
+    }
+  });
+});
+
+test("[1487] englisch: die Titel- und Label-Gates", async () => {
+  await inSprache("en", () => {
+    const fachlich = pruefeIssueGates({ id: 5, title: "[Requirement] Self-service", labels: [] });
+    assert.equal(fachlich.log, "#5 skipped: requirement ([Fachlich]), not implemented.");
+    assert.equal(fachlich.kommentar, "Night run: Requirement — not implemented, please turn it into technical issues via /techplan #5.");
+    const plan = pruefeIssueGates({ id: 6, title: "[Plan] Something", labels: [] });
+    assert.match(plan.kommentar, /^Night run: Plan document — not implemented/);
+    const klaeren = pruefeIssueGates({ id: 7, title: "Package", labels: ["kit:clarify"] });
+    assert.equal(klaeren.grundArt, "klaeren");
+    assert.equal(klaeren.log, "#7 skipped: carries kit:clarify, an open decision is waiting.");
+    assert.equal(klaeren.kommentar, "Night run: Carries kit:clarify — an open decision waits for a human, not implemented.");
+    const geschuetzt = pruefeIssueGates({ id: 8, title: "Package", labels: ["kit:geschuetzt"] });
+    assert.match(geschuetzt.kommentar, /^Night run: Carries kit:protected — a human action on a protected file is waiting/);
+  });
+});
+
+// --- Die Runde im selben Prozess, mit eingesetztem Board ----------------------------------
+
+const TOP = { id: "7", title: "Package" };
+const VORHER = { id: "7", status: "in_progress", labels: [], comments: [] };
+
+function attrappe({ status, sauber = true, reste = [] }) {
+  const aufrufe = [];
+  wartendAbhaengigkeiten({
+    board: (...args) => {
+      aufrufe.push(args);
+      return args[1] === "get" ? { ...VORHER, status } : { ok: true };
+    },
+    boardRoh: (...args) => {
+      aufrufe.push(args);
+      return { status: 0, json: null, text: "" };
+    },
+    leseKarte: () => ({ ...VORHER, status }),
+    gitClean: () => sauber,
+    gitReste: () => reste,
+    lesePruefung: () => ({ zustand: "ungeprueft" }),
+  });
+  return aufrufe;
+}
+
+const kommentare = (aufrufe) => aufrufe.filter((a) => a[1] === "comment").map((a) => a[a.indexOf("--text") + 1]);
+
+function runde(pruefung) {
+  return werteRunde({
+    top: TOP, res: { status: 0, stdout: "", stderr: "" }, minutes: "0.1", args: {}, salvageAttempted: new Set(),
+    pruefung, vorher: VORHER, sessionWahl: {},
+  });
+}
+
+beforeEach(() => rundenMerkerZuruecksetzen());
+after(() => wartendAbhaengigkeiten());
+
+test("[1487] englisch: eine Runde ohne In-review-Ergebnis bei sauberem Baum", async () => {
+  const aufrufe = attrappe({ status: "ready" });
+  let ausgang;
+  const protokoll = await inSprache("en", () => mitProtokoll(async () => {
+    ausgang = await runde({ zustand: "ungeprueft" });
+  }));
+  assert.equal(ausgang, "deferred");
+  assert.ok(protokoll.includes("  Failure after 0.1 min: issue #7 not in In review, tree clean — issue to Backlog, continuing."), protokoll);
+  assert.deepEqual(kommentare(aufrufe),
+    ["Night run: Session without In-review result — issue deferred, the run continued with the next issue."]);
+});
+
+test("[1487] englisch: eine Runde in In review ohne Nachweis", async () => {
+  const aufrufe = attrappe({ status: "in_review" });
+  const protokoll = await inSprache("en", () => mitProtokoll(() => runde({ zustand: "ungeprueft" })));
+  assert.match(protokoll, / {2}Success after 0\.1 min, commit \S+, issue #7 in In review\./);
+  assert.ok(protokoll.includes("issue #7 in In review, but evidence missing — the session ran no check — card stays"), protokoll);
+  assert.deepEqual(kommentare(aufrufe),
+    ["Night run: evidence missing — the session ran no check. The card stays in In review and the commit untouched — please check the state."]);
+});
+
+test("[1487] ohne Spracheinstellung bleibt die Runde deutsch", async () => {
+  const aufrufe = attrappe({ status: "ready" });
+  const protokoll = await mitProtokoll(() => runde({ zustand: "ungeprueft" }));
+  assert.ok(protokoll.includes("  Fehlschlag nach 0.1 min: Issue #7 nicht in In review, Tree sauber — Issue ins Backlog, weiter."), protokoll);
+  assert.deepEqual(kommentare(aufrufe),
+    ["Nachtlauf: Session ohne In-review-Ergebnis beendet — Issue zurueckgestellt, Lauf ging mit dem naechsten Issue weiter."]);
+});
+
+// --- Keine deutsche Meldung am Texthelfer vorbei ------------------------------------------
+
+// Vertragswerte (E14), die deutsch bleiben: die Abweisungszeile des geschuetzten Halts, die
+// `kit/board/geschuetzt.mjs` zurueckliest, und der Rueckfall im Stash-Namen `nachtrest #<id> <lauf>`.
+const VERTRAG = [GESCHUETZT_ABGEWIESEN, "ohne-lauf"];
+
+const GRUPPE = [
+  ["kit/night/wartend.mjs", WARTEND_TEXTE],
+];
+
+test("[1487] die Gruppe gibt in einem englischen Projekt keine deutsche Meldung aus", () => {
+  for (const [datei, tabelle] of GRUPPE) {
+    assert.deepEqual(deutschAmHelferVorbei(datei, tabelle, VERTRAG), [], `${datei}: deutsche Texte am Texthelfer vorbei`);
+    assert.deepEqual(deutschImEnglischen(tabelle), [], `${datei}: deutsche Woerter in der englischen Tabelle`);
+  }
+});
