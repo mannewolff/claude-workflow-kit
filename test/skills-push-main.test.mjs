@@ -68,7 +68,10 @@ test("auf dem Build-Dienst-Weg fährt der Build-Dienst die Stufe push, der Skill
 });
 
 test("der Build-Dienst-Weg pusht erst den Prüfzweig, wartet über code ci-status --commit und pusht mainBranch nur bei Grün", () => {
-  const pruefzweig = BUILDDIENST.search(/git -C <pfad> push origin HEAD:<zweig>/);
+  // Voller Referenzname: Der Worktree steht auf einem losgelösten HEAD, und der Prüfzweig
+  // existiert vor dem Push nicht (Issue #1518).
+  const pruefzweig = BUILDDIENST.search(/git -C <pfad> push origin HEAD:refs\/heads\/<zweig>/);
+  assert.doesNotMatch(BUILDDIENST, /push origin HEAD:<zweig>/, "der Prüfzweig-Push ohne vollen Referenznamen steht noch da");
   const warten = BUILDDIENST.search(/board\.mjs code ci-status --commit/);
   const haupt = BUILDDIENST.search(/git -C <pfad> push origin HEAD:<mainBranch>/);
   assert.notEqual(pruefzweig, -1, "der Push auf den Prüfzweig fehlt");

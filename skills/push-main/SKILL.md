@@ -533,10 +533,13 @@ nichts erzeugt, meldet er `leeresPaket`, und Schritt 6 entfällt wie beschrieben
 1. Den Stand auf den Prüfzweig pushen:
 
    ```bash
-   git -C <pfad> push origin HEAD:<zweig>
+   git -C <pfad> push origin HEAD:refs/heads/<zweig>
    ```
 
-   Wird er abgewiesen, liegt auf `<zweig>` noch ein fremder Stand — der Lauf endet mit
+   Der volle Name `refs/heads/<zweig>` ist nötig: Der Worktree steht auf einem losgelösten
+   `HEAD`, und den Prüfzweig gibt es vor dem Push nicht, weil Schritt 8 ihn nach jedem Lauf
+   löscht. Mit dem kurzen Namen weist git den Push ab, weil es das Ziel nicht als Zweig
+   erkennt (Issue #1518). Wird er abgewiesen, liegt auf `<zweig>` noch ein fremder Stand — der Lauf endet mit
    dieser Meldung, weiter mit Schritt 8. Kein `--force`.
 2. Warten, bis der Build-Dienst fertig ist. `<sha>` ist die Ausgabe von `git -C <pfad> rev-parse HEAD`:
 
