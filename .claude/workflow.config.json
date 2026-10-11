@@ -3,6 +3,22 @@
   "issueTracker": "toolbox",
   "buildChecks": [
     {
+      "cmd": "node tools/sync-blobs.mjs --check",
+      "vorab": true
+    },
+    {
+      "cmd": "npx eslint kit tools test install.mjs .githooks",
+      "vorab": true
+    },
+    {
+      "cmd": "node --test test/checks-leichtigkeit.test.mjs",
+      "vorab": true,
+      "areas": [
+        "pruefungen",
+        "testdateien"
+      ]
+    },
+    {
       "cmd": "node --test --test-concurrency=2 \"test/night-kette-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
@@ -376,14 +392,6 @@
       ]
     },
     {
-      "cmd": "node --test test/checks-leichtigkeit.test.mjs",
-      "gleichzeitig": true,
-      "areas": [
-        "pruefungen",
-        "testdateien"
-      ]
-    },
-    {
       "cmd": "node --test --test-concurrency=2 \"test/migrate-*.test.mjs\" \"test/ablauf-migrate-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
@@ -497,9 +505,7 @@
       "cmd": "node tools/frischer-checkout.mjs",
       "always": true,
       "stufe": "push"
-    },
-    "node tools/sync-blobs.mjs --check",
-    "npx eslint kit tools test install.mjs .githooks"
+    }
   ],
   "mutationCommand": "",
   "mainBranch": "main",

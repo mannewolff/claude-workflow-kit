@@ -123,6 +123,11 @@
                 "default": false,
                 "description": "Ob diese Prüfung in \"checks.mjs run\" neben anderen laufen darf. Gekennzeichnete Einträge laufen in einer ersten Phase gleichzeitig (höchstens zwei, übersteuerbar über die Umgebungsvariable KIT_CHECKS_GLEICHZEITIG), die übrigen danach nacheinander in Config-Reihenfolge. Die gleichzeitige Phase läuft vollständig durch, damit alle roten bekannt sind; die nachfolgende bricht beim ersten Rot ab und startet nach einem Rot der ersten Phase nicht. Die Ausgabe steht je Prüfung als geschlossener Block in Config-Reihenfolge, und der Bericht vermerkt bei einer gleichzeitig gemessenen Dauer, dass sie neben anderen gemessen wurde. Nur für Prüfungen, die sich nicht gegenseitig stören (eigene Dateien, eigene Ports). Fehlendes Feld = false = die Prüfung läuft nacheinander wie bisher. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
               },
+              "vorab": {
+                "type": "boolean",
+                "default": false,
+                "description": "Ob diese Prüfung in \"checks.mjs run\" vor allen anderen läuft. Gekennzeichnete Einträge laufen in einer Vorphase nacheinander in Config-Reihenfolge, noch vor den mit \"gleichzeitig\" gekennzeichneten; ein Rot dort startet keine weitere Prüfung. Gedacht für schnelle Prüfungen (Lint, kurze Tests), deren Rot nach Sekunden bekannt sein soll statt erst nach den langen gleichzeitigen. Ein Eintrag mit \"vorab\" und \"gleichzeitig\" zugleich ist ein Fehler. Fehlendes Feld = false = die Prüfung läuft in ihrer bisherigen Phase. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
+              },
               "art": {
                 "type": "string",
                 "enum": [
@@ -144,7 +149,7 @@
           }
         ]
       },
-      "description": "Kommandos, die /local-check über checks.mjs run ausführt (Build, Tests): zuerst die mit \"gleichzeitig\" gekennzeichneten gleichzeitig, danach die übrigen nacheinander in Config-Reihenfolge. Leer-Array = keine automatisierten Checks. Ein Eintrag ist entweder ein Kommandostring oder ein Objekt mit Bereichszuordnung (siehe items und checkAreas). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Kommandos, die /local-check über checks.mjs run ausführt (Build, Tests): zuerst die mit \"vorab\" gekennzeichneten nacheinander, dann die mit \"gleichzeitig\" gekennzeichneten gleichzeitig, danach die übrigen nacheinander in Config-Reihenfolge. Leer-Array = keine automatisierten Checks. Ein Eintrag ist entweder ein Kommandostring oder ein Objekt mit Bereichszuordnung (siehe items und checkAreas). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": []
     },
     "checkAreas": {

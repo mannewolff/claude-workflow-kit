@@ -397,8 +397,10 @@ export const TEXTE = Object.freeze({
 plan  Gibt als JSON aus, welche buildChecks nach dem aktuellen Arbeitspaket
       laufen muessen und welche ausgelassen werden koennen — jede Entscheidung
       mit Grund. Ausgefuehrt wird nichts.
-run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
-      Zusammenfassung nach {zusammenfassung}. Zuerst laufen die mit
+run   Fuehrt genau diese Auswahl in Phasen aus und schreibt die
+      Zusammenfassung nach {zusammenfassung}. Vorab laufen die mit 'vorab'
+      gekennzeichneten Pruefungen nacheinander in Config-Reihenfolge; nach
+      einem Rot dort startet keine weitere Pruefung. Dann laufen die mit
       'gleichzeitig' gekennzeichneten Pruefungen gleichzeitig, hoechstens
       {gleichzeitigEnv} auf einmal (Vorgabe {gleichzeitigVorgabe}; 1 faehrt sie
       nacheinander; gemessen in Issue #1119: mit 2 am schnellsten und als
@@ -407,7 +409,7 @@ run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
       Config-Reihenfolge, und die Berichtszeile vermerkt bei der Dauer
       '({nebenMarke})'. Danach laufen die uebrigen nacheinander in
       Config-Reihenfolge und brechen beim ersten roten Check ab; nach einem Rot
-      der ersten Phase starten sie nicht. Ein roter Lauf endet mit Exit
+      einer Phase davor starten sie nicht. Ein roter Lauf endet mit Exit
       ungleich 0.
       Neben dem Rueckgabewert prueft 'run' die Ausgabe jedes Kommandos auf eine
       feste Liste allgemeiner Fehlermerkmale ({fehlermerkmale}). Ein
@@ -574,6 +576,7 @@ Gelesen wird .claude/workflow.config.json im Arbeitsverzeichnis: 'buildChecks'
 und 'nichtBeimAbschluss': {abschlussWerte} — die Pruefung
 zaehlt erst beim Veroeffentlichen und bleibt im Abschlusslauf aus, sowie
 'gleichzeitig': true — die Pruefung laeuft in der ersten Phase neben anderen, sowie
+'vorab': true — die Pruefung laeuft vor der gleichzeitigen Phase, sowie
 'art': {arten} — die Pruefung meldet nur: Sie endet immer gruen, auch
 beim Absturz, ohne Rueckgabewert-, Merkmal- und Guetepruefung; jede Ausgabezeile
 'Hinweis: <text>' steht in 'hinweise' und als 'hinweis: <text>' im Bericht, ein
@@ -589,6 +592,8 @@ Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
     configKeinJson: ".claude/workflow.config.json ist kein gueltiges JSON: {grund}",
     unbekannterWertAbschluss: "Unbekannter Wert {wert} fuer nichtBeimAbschluss bei Pruefung '{cmd}'. Erwartet: {erwartet}.",
     unbekannterWertArt: "Unbekannter Wert {wert} fuer art bei Pruefung '{cmd}'. Erwartet: {erwartet}.",
+    unbekannterWertVorab: "Unbekannter Wert {wert} fuer vorab bei Pruefung '{cmd}'. Erwartet: true, false.",
+    vorabUndGleichzeitig: "Die Pruefung '{cmd}' traegt vorab und gleichzeitig — sie laeuft entweder vor der gleichzeitigen Phase oder in ihr.",
     keineBereiche: "keine",
     unbekannterBereich: "Unbekannter Bereich '{name}' bei Pruefung '{cmd}'. Bekannt aus checkAreas: {liste}.",
     mehrereGuete: "Mehr als eine Guetemessung: {liste} tragen alle 'guete' — hoechstens ein Eintrag darf messen.",
@@ -703,15 +708,17 @@ Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
 plan  Prints as JSON which buildChecks must run after the current work package
       and which may be skipped — every decision with its reason. Nothing is
       executed.
-run   Executes exactly this selection in two phases and writes the summary
-      to {zusammenfassung}. First the checks marked 'concurrent' run side by
-      side, at most {gleichzeitigEnv} at a time (default {gleichzeitigVorgabe};
+run   Executes exactly this selection in phases and writes the summary
+      to {zusammenfassung}. First the checks marked 'upfront' run one after
+      another in config order; after a red there no further check starts.
+      Then the checks marked 'concurrent' run side by side, at most
+      {gleichzeitigEnv} at a time (default {gleichzeitigVorgabe};
       1 runs them one after another; measured in issue #1119: fastest with 2
       and the only stable value). This phase runs to its end so that every red
       one is known; its output stands as one closed block per check in config
       order, and the report line marks the duration with '({nebenMarke})'.
       Then the remaining checks run one after another in config order and stop
-      at the first red check; after a red in the first phase they do not start.
+      at the first red check; after a red in an earlier phase they do not start.
       A red run ends with an exit code other than 0.
       Besides the return code, 'run' scans the output of every command for a
       fixed list of general failure markers ({fehlermerkmale}). A match turns
@@ -863,6 +870,7 @@ Read is .claude/workflow.config.json in the working directory: 'buildChecks'
 and 'notAtCompletion: {abschlussWerte}' — the check counts only when
 publishing and stays out of the completion run, as well as
 'concurrent': true — the check runs in the first phase next to others, as well as
+'upfront': true — the check runs before the concurrent phase, as well as
 'kind': {arten} — the check only reports: it always ends green, even on a
 crash, without return code, marker and quality check; every output line
 'Hinweis: <text>' stands in 'hinweise' and as a hint in the report, an exit
@@ -877,6 +885,8 @@ segment boundaries; a directory is covered as 'frontend/**'.
     configKeinJson: ".claude/workflow.config.json is not valid JSON: {grund}",
     unbekannterWertAbschluss: "Unknown value {wert} for notAtCompletion on check '{cmd}'. Expected: {erwartet}.",
     unbekannterWertArt: "Unknown value {wert} for kind on check '{cmd}'. Expected: {erwartet}.",
+    unbekannterWertVorab: "Unknown value {wert} for upfront on check '{cmd}'. Expected: true, false.",
+    vorabUndGleichzeitig: "The check '{cmd}' carries upfront and concurrent — it runs either before the concurrent phase or in it.",
     keineBereiche: "none",
     unbekannterBereich: "Unknown area '{name}' on check '{cmd}'. Known from checkAreas: {liste}.",
     mehrereGuete: "More than one quality measurement: {liste} all carry 'quality' — at most one entry may measure.",
@@ -1142,6 +1152,17 @@ function normalisiere(check) {
   if (objekt.art !== undefined && !ARTEN.includes(objekt.art)) {
     const genannt = typeof objekt.art === "string" ? `'${objekt.art}'` : JSON.stringify(objekt.art);
     fail(t("unbekannterWertArt", { wert: genannt, cmd: objekt.cmd, erwartet: ARTEN.map((w) => configWert("buildChecks[].art", w)).join(", ") }));
+  }
+  // `vorab` (Issue #1519) bricht bei jedem Wert ausser true und false ab: Ein "ja" liesse
+  // die Pruefung still hinter den gleichzeitigen laufen, und ihr schnelles Rot kaeme so
+  // spaet wie vorher. Zugleich mit `gleichzeitig` widerspricht sich der Eintrag — er kann
+  // nicht vor der gleichzeitigen Phase und in ihr laufen. Das Feld bleibt, wie es steht,
+  // damit der Fingerabdruck jeder bestehenden Config unveraendert bleibt.
+  if (objekt.vorab !== undefined && typeof objekt.vorab !== "boolean") {
+    fail(t("unbekannterWertVorab", { wert: JSON.stringify(objekt.vorab), cmd: objekt.cmd }));
+  }
+  if (objekt.vorab === true && objekt.gleichzeitig === true) {
+    fail(t("vorabUndGleichzeitig", { cmd: objekt.cmd }));
   }
   return { ...objekt, stufe: objekt.stufe ?? STUFEN[0], nichtBeimAbschluss, gleichzeitig: objekt.gleichzeitig === true };
 }
@@ -3713,6 +3734,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   const konfiguriert = (ladeConfig().buildChecks ?? []).map((c) => normalisiere(c));
   const ausloeserVon = (cmd) => ausloeserBestimmen(auswahl, konfiguriert.find((c) => c.cmd === cmd) ?? null);
   const gekennzeichnet = new Set(konfiguriert.filter((c) => c.gleichzeitig).map((c) => c.cmd));
+  const vorab = new Set(konfiguriert.filter((c) => c.vorab === true).map((c) => c.cmd));
   const grenze = gleichzeitigGrenze(env);
 
   // Die Zusammenfassung BEGLEITET den Lauf (Issue #857, Plan #810, E1): Sie entsteht
@@ -3863,20 +3885,33 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
     // Zwei Phasen (Issue #1071, Plan #1066, A1, A2, A6): zuerst die mit `gleichzeitig`
     // gekennzeichneten, hoechstens `grenze` auf einmal, danach die uebrigen nacheinander.
     // Ohne gekennzeichnete bleibt die erste Phase leer, und der Ablauf ist der bisherige.
+    // Davor die Vorphase (Issue #1519): die mit `vorab` gekennzeichneten, nacheinander.
     const faellig = nur === null ? stand.laufen : stand.laufen.filter((e) => nur.has(e.cmd));
+    const vorphase = faellig.filter((e) => vorab.has(e.cmd));
     const erste = faellig.filter((e) => gekennzeichnet.has(e.cmd));
-    const danach = faellig.filter((e) => !gekennzeichnet.has(e.cmd));
+    const danach = faellig.filter((e) => !gekennzeichnet.has(e.cmd) && !vorab.has(e.cmd));
     // "Neben anderen gemessen" nur, wenn wirklich mehrere zugleich laufen konnten: Mit der
     // Grenze 1 oder einer einzigen gekennzeichneten ist die Dauer eine allein gemessene.
     const nebenAnderen = grenze > 1 && erste.length > 1;
+
+    // Die Vorphase laeuft wie die nachfolgende und bricht beim ersten Rot ab; nach einem
+    // Rot startet keine weitere Pruefung. So ist das Rot einer schnellen Pruefung nach
+    // Sekunden bekannt und nicht erst nach den langen gleichzeitigen.
+    for (const eintrag of vorphase) {
+      if (stand.rot) break;
+      schreibeStand(stand, false);
+      aufStdout(`\n$ ${eintrag.cmd} — ${eintrag.grund}\n`);
+      await einKommando(eintrag, (text) => aufStdout(text), false);
+    }
 
     // Die erste Phase laeuft VOLLSTAENDIG durch, auch nach einem Rot: Wer korrigiert, soll
     // alle roten auf einmal sehen und nicht eine nach der anderen. Die Ausgabe jedes
     // Kommandos wird gesammelt und als geschlossener Block geschrieben, sobald er und alle
     // davor fertig sind — so steht sie in Config-Reihenfolge, gleich wer zuerst endet.
+    // Nach einem Rot der Vorphase startet sie nicht.
     const bloecke = new Map();
     let naechsterBlock = 0;
-    const warteschlange = [...erste];
+    const warteschlange = stand.rot ? [] : [...erste];
     const arbeiter = async () => {
       for (let eintrag = warteschlange.shift(); eintrag; eintrag = warteschlange.shift()) {
         let block = `\n$ ${eintrag.cmd} — ${eintrag.grund}\n`;
@@ -3891,9 +3926,9 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
         }
       }
     };
-    await Promise.all(Array.from({ length: Math.min(grenze, erste.length) }, arbeiter));
+    await Promise.all(Array.from({ length: Math.min(grenze, warteschlange.length) }, arbeiter));
 
-    // Die nachfolgende Phase startet nach einem Rot der ersten nicht und bricht beim ersten
+    // Die nachfolgende Phase startet nach einem Rot davor nicht und bricht beim ersten
     // eigenen Rot ab; der Rest bleibt "nicht gestartet".
     for (const eintrag of danach) {
       if (stand.rot) break;

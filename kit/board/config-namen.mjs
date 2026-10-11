@@ -37,6 +37,7 @@ export const SCHLUESSEL = Object.freeze({
   "buildChecks[].guete.muster": "pattern",
   "buildChecks[].guete.marke": "marker",
   "buildChecks[].gleichzeitig": "concurrent",
+  "buildChecks[].vorab": "upfront",
   "buildChecks[].art": "kind",
   checkAreas: "checkAreas",
   ohnePruefung: "noCheck",

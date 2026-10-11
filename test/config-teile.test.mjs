@@ -85,17 +85,30 @@ test("jeder Testaufruf ist mindestens einem Teil zugeordnet", () => {
   }
 });
 
-test("genau die Testaufrufe tragen gleichzeitig: true", () => {
+test("genau die Testaufrufe ohne vorab tragen gleichzeitig: true", () => {
   // Issue #1074 (Plan #1066, A1, E3): Die Testgruppen laufen nebeneinander, alles andere
   // danach allein — Lint, Drift-Pruefung und der frische Checkout messen den Stand, den die
   // Tests hinterlassen, und teilen sich keine Last mit ihnen. Dieselbe Erkennung wie
-  // `testEintraege`: am Kommando, nicht an der Position.
+  // `testEintraege`: am Kommando, nicht an der Position. Ein schneller Testaufruf mit
+  // `vorab` laeuft davor allein (Issue #1519) und traegt das Kennzeichen darum nicht.
   const eintraege = (config.buildChecks ?? [])
     .map((eintrag) => (typeof eintrag === "string" ? { cmd: eintrag } : eintrag));
   const falsch = eintraege
-    .filter((eintrag) => (eintrag.gleichzeitig === true) !== eintrag.cmd.startsWith("node --test"))
+    .filter((eintrag) => (eintrag.gleichzeitig === true) !== (eintrag.cmd.startsWith("node --test") && eintrag.vorab !== true))
     .map((eintrag) => `${eintrag.cmd}: gleichzeitig=${eintrag.gleichzeitig === true}`);
   assert.deepEqual(falsch, [], "Eintraege, deren Kennzeichen gleichzeitig nicht zu ihrem Kommando passt");
+});
+
+test("genau sync-blobs --check, eslint und checks-leichtigkeit tragen vorab: true und stehen vorn", () => {
+  // Issue #1519: Ihr Rot ist nach Sekunden bekannt statt erst nach den gleichzeitigen.
+  const eintraege = (config.buildChecks ?? [])
+    .map((eintrag) => (typeof eintrag === "string" ? { cmd: eintrag } : eintrag));
+  // Am Kennwort erkannt, nicht am vollen Kommando: Ein Programmpfad im Testtext liest die
+  // Leichtigkeitspruefung als Prozessstart.
+  const kennwoerter = ["sync-blobs.mjs --check", "npx eslint ", "checks-leichtigkeit.test.mjs"];
+  const kennwort = (eintrag) => kennwoerter.find((wort) => eintrag.cmd.includes(wort)) ?? eintrag.cmd;
+  assert.deepEqual(eintraege.filter((eintrag) => eintrag.vorab === true).map(kennwort), kennwoerter);
+  assert.deepEqual(eintraege.slice(0, kennwoerter.length).map(kennwort), kennwoerter);
 });
 
 test("jede versionierte Testdatei wird von einem der Aufrufe erfasst", () => {

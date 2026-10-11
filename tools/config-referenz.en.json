@@ -16,8 +16,8 @@
     "text": "Deprecated (v1). Migrated to codeHost/issueTracker on load. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "buildChecks": {
-    "de": "d3525aa7e773",
-    "text": "Commands that /local-check runs via checks.mjs run (build, tests): first those marked \"gleichzeitig\" in parallel, then the rest one after another in config order. Empty array = no automated checks. An entry is either a command string or an object with an area assignment (see items and checkAreas). Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "f151820f76e9",
+    "text": "Commands that /local-check runs via checks.mjs run (build, tests): first those marked \"vorab\" one after another, then those marked \"gleichzeitig\" in parallel, then the rest one after another in config order. Empty array = no automated checks. An entry is either a command string or an object with an area assignment (see items and checkAreas). Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "buildChecks[]": {
     "de": "4a5f8c18e84d",
@@ -58,6 +58,10 @@
   "buildChecks[].gleichzeitig": {
     "de": "daacfb4f8d3c",
     "text": "Whether this check may run alongside others in \"checks.mjs run\". Marked entries run in parallel in a first phase (at most two, overridable via the environment variable KIT_CHECKS_GLEICHZEITIG), the rest afterwards one after another in config order. The parallel phase runs to the end so that all red checks are known; the following phase stops at the first red and does not start after a red in the first phase. The output appears per check as a closed block in config order, and the report notes for a duration measured in parallel that it was measured alongside others. Only for checks that do not interfere with each other (own files, own ports). Missing field = false = the check runs sequentially as before. Applies team-wide; a different value in workflow.config.local.json is ignored."
+  },
+  "buildChecks[].vorab": {
+    "de": "48435427941b",
+    "text": "Whether this check runs in \"checks.mjs run\" before all others. Marked entries run in an upfront phase one after another in config order, even before those marked \"gleichzeitig\"; a red there starts no further check. Meant for fast checks (lint, short tests) whose red should be known after seconds instead of only after the long concurrent ones. An entry with \"vorab\" and \"gleichzeitig\" at once is an error. Missing field = false = the check runs in its previous phase. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "buildChecks[].art": {
     "de": "749f9ca68bca",
