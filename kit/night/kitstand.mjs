@@ -39,6 +39,119 @@ import {
   ladeConfigMitOverrides, normalisiereConfig, vergleicheText, laufArt,
 } from "./grundlagen.mjs";
 
+// --- Texte an den Menschen (Plan #1420, E13, E14; Issue #1490) ---
+//
+// Was dieser Teil an den Menschen ausgibt — Gruende von Lock und Nachziehen, die offenen
+// Punkte und Urteile der vorbereiteten Veroeffentlichung, Protokollzeilen des Befund-Rueckwegs
+// und des Kit-Stands —, steht in dieser Tabelle und geht ueber den Texthelfer aus
+// kit/board/namen.mjs. Vertrag bleibt (E14): die Arten `belegt|schreibfehler`, die Ergebnisse
+// `gruen|gruen-offen|rot`, die Fetch-Werte `ok|fehlgeschlagen`, der Laufzustand `laeuft`, die
+// Fehlerklasse `umgebung` und die Feldnamen der Vorbereitungsdatei. Der Marker der Kit-Stand-Zeile
+// kommt aus dem Register MARKER.
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    abhaengigkeitUnbekannt: "kitstandAbhaengigkeiten kennt keine Abhaengigkeit '{name}'",
+    unbekannt: "unbekannt",
+    lockVerwaistGenommen: "verwaisten Lock {lock} aufgeraeumt und selbst genommen",
+    umsetzungGewartet: "{grund}, {minuten} min im Umsetzungsbudget gewartet",
+    wartetAufUmsetzung: "wartet auf die Umsetzung seit {seit}",
+    lockBelegt: "eine andere Umsetzung haelt {lock} (Prozess {pid})",
+    lockSchreibfehler: "{lock} liess sich nicht schreiben ({fehler})",
+    lockNichtEntfernt: "{lock} liess sich nicht entfernen ({fehler}) — der naechste Lauf raeumt ihn als verwaist auf.",
+    sperreGehalten: "{sperre} wird gehalten (Prozess {pid}) — in der Hauptkopie arbeitet ein Lauf des Runners",
+    hauptkopieReste: "die Hauptkopie traegt unkommittierte Aenderungen: {reste}",
+    pushPlanFehlgeschlagen: "checks.mjs plan --stufe push schlug fehl: {meldung}",
+    paketeLogFehlgeschlagen: "git log fuer die Pakete schlug fehl: {meldung}",
+    keineZusammenfassung: "keine abgeschlossene Zusammenfassung im Worktree",
+    buildDienstOffen: "voller Lauf im Build-Dienst (Prüfzweig {zweig})",
+    gewackeltOffen: "Gewackelt: {cmd} — Entscheidung beim push main",
+    ergebnisUnbekannt: "--ergebnis '{wert}' ist unbekannt — erwartet {erwartet}",
+    fetchUnbekannt: "--fetch '{wert}' ist unbekannt — erwartet {erwartet}",
+    worktreeOhneHead: "der Worktree {pfad} hat keinen HEAD",
+    abweichung: "uebergeben {ergebnis}, Zusammenfassung {bezeugt} — es gilt die Zusammenfassung",
+    keineVorbereitung: "keine vorbereitete Veroeffentlichung ({datei} fehlt oder ist unlesbar)",
+    nurGruen: "Ergebnis {ergebnis} — nur gruen und gruen-offen werden uebernommen",
+    nichts: "nichts",
+    standVerschoben: "{ref} steht nicht mehr auf {commit}",
+    referenzVerschoben: "{ref} zeigt nicht auf {commit}",
+    worktreeAddFehlgeschlagen: "git worktree add schlug fehl: {meldung}",
+    befundeNichtZurueck: "Hinweis: Befunde aus dem Worktree nicht zurueckgeholt ({ziel}): {fehler} — der Abbau geht weiter.",
+    werkzeugFehlt: "{pfad} liegt nicht vor",
+    nichtGestartet: "liess sich nicht starten: {fehler}",
+    ausgabeUnlesbar: "Ausgabe nicht lesbar: {fehler}",
+    exit: "Exit {status}",
+    poolIdee: "Pool-Idee {id}",
+    karte: "Karte {karte}",
+    vorschlagAngelegt: "  Vorschlag fuer '{art}' angelegt: {kennung} — {titel}",
+    vorschlagErgaenzt: "  Vorschlag fuer '{art}' ergaenzt: Karte {karte}, Stand {stand}.",
+    keinVorschlag: "  Kein Vorschlag fuer '{art}': {grund}",
+    vorschlagFehlgeschlagen: "Vorschlag fuer '{art}' fehlgeschlagen: {fehler} — der Abbau geht weiter.",
+    befundeZurueckgeholt: "  Befunde aus dem Worktree zurueckgeholt — Schwelle erreicht: {arten}.",
+    verweisFehlt: "Kit-Stand: der Verweis origin/{branch} fehlt — ohne ihn gibt es keinen veroeffentlichten Stand, mit dem der Lauf arbeiten kann. Einmal 'git fetch origin' oder 'push main', dann neu starten.",
+    syncBlobsFehlgeschlagen: "sync-blobs im Stand {commit} schlug fehl: {meldung}",
+    standEntfernt: "Liegengebliebenen Kit-Stand entfernt: {pfad}",
+    standZeit: " vom {datum} {uhrzeit}",
+    nichtBereitgestellt: "Kit-Stand nicht bereitgestellt: {fehler}",
+    laufArbeitetMit: "{zeile} — der Lauf arbeitet mit {pfad}",
+    runnerNichtGestartet: "Fehler: Runner des Kit-Stands nicht gestartet: {fehler}",
+  }),
+  en: Object.freeze({
+    abhaengigkeitUnbekannt: "kitstandAbhaengigkeiten knows no dependency '{name}'",
+    unbekannt: "unknown",
+    lockVerwaistGenommen: "cleaned up orphaned lock {lock} and took it",
+    umsetzungGewartet: "{grund}, waited {minuten} min within the implementation budget",
+    wartetAufUmsetzung: "waiting for the implementation since {seit}",
+    lockBelegt: "another implementation holds {lock} (process {pid})",
+    lockSchreibfehler: "{lock} could not be written ({fehler})",
+    lockNichtEntfernt: "{lock} could not be removed ({fehler}) — the next run cleans it up as orphaned.",
+    sperreGehalten: "{sperre} is held (process {pid}) — a run of the runner is working in the main copy",
+    hauptkopieReste: "the main copy has uncommitted changes: {reste}",
+    pushPlanFehlgeschlagen: "checks.mjs plan --stufe push failed: {meldung}",
+    paketeLogFehlgeschlagen: "git log for the packages failed: {meldung}",
+    keineZusammenfassung: "no completed summary in the worktree",
+    buildDienstOffen: "full run in the build service (check branch {zweig})",
+    gewackeltOffen: "Flaky: {cmd} — decision at push main",
+    ergebnisUnbekannt: "--ergebnis '{wert}' is unknown — expected {erwartet}",
+    fetchUnbekannt: "--fetch '{wert}' is unknown — expected {erwartet}",
+    worktreeOhneHead: "the worktree {pfad} has no HEAD",
+    abweichung: "passed {ergebnis}, summary {bezeugt} — the summary applies",
+    keineVorbereitung: "no prepared release ({datei} is missing or unreadable)",
+    nurGruen: "result {ergebnis} — only gruen and gruen-offen are taken over",
+    nichts: "nothing",
+    standVerschoben: "{ref} no longer points to {commit}",
+    referenzVerschoben: "{ref} does not point to {commit}",
+    worktreeAddFehlgeschlagen: "git worktree add failed: {meldung}",
+    befundeNichtZurueck: "Note: findings not brought back from the worktree ({ziel}): {fehler} — the teardown continues.",
+    werkzeugFehlt: "{pfad} is not present",
+    nichtGestartet: "could not be started: {fehler}",
+    ausgabeUnlesbar: "output not readable: {fehler}",
+    exit: "exit {status}",
+    poolIdee: "pool idea {id}",
+    karte: "card {karte}",
+    vorschlagAngelegt: "  Proposal for '{art}' created: {kennung} — {titel}",
+    vorschlagErgaenzt: "  Proposal for '{art}' extended: card {karte}, count {stand}.",
+    keinVorschlag: "  No proposal for '{art}': {grund}",
+    vorschlagFehlgeschlagen: "Proposal for '{art}' failed: {fehler} — the teardown continues.",
+    befundeZurueckgeholt: "  Findings brought back from the worktree — threshold reached: {arten}.",
+    verweisFehlt: "Kit revision: the ref origin/{branch} is missing — without it there is no published revision for the run to work with. Run 'git fetch origin' or 'push main' once, then restart.",
+    syncBlobsFehlgeschlagen: "sync-blobs in revision {commit} failed: {meldung}",
+    standEntfernt: "Removed leftover kit revision: {pfad}",
+    standZeit: " from {datum} {uhrzeit}",
+    nichtBereitgestellt: "Kit revision not provided: {fehler}",
+    laufArbeitetMit: "{zeile} — the run works with {pfad}",
+    runnerNichtGestartet: "Error: runner of the kit revision not started: {fehler}",
+  }),
+});
+
+// Das Register mit literalem Pfad und abgefangen, wie in den uebrigen Teilen (Issue #1485):
+// Fehlt board/namen.mjs neben night.mjs, bleiben die Texte deutsch.
+const namen = await import("../board/namen.mjs").catch(() => null);
+
+function t(schluessel, werte = {}) {
+  if (namen) return namen.text(TEXTE, schluessel, werte);
+  return TEXTE.de[schluessel].replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
+}
+
 // --- Abhaengigkeiten nach aussen (Plan #1199, E6) ---
 
 const VORGABEN = Object.freeze({
@@ -66,7 +179,7 @@ export function kitstandAbhaengigkeiten(neu) {
     return;
   }
   for (const [name, fn] of Object.entries(neu)) {
-    if (!Object.hasOwn(VORGABEN, name)) throw new Error(`kitstandAbhaengigkeiten kennt keine Abhaengigkeit '${name}'`);
+    if (!Object.hasOwn(VORGABEN, name)) throw new Error(t("abhaengigkeitUnbekannt", { name }));
     abh[name] = fn;
   }
 }
@@ -164,7 +277,7 @@ export function umsetzungLockNehmen(repoRoot) {
       writeFileSync(pfad, `${process.pid}\n`, { encoding: "utf-8", flag: "wx" });
       return {
         ok: true,
-        hinweis: verwaist ? `verwaisten Lock ${UMSETZUNG_LOCK} aufgeraeumt und selbst genommen` : null,
+        hinweis: verwaist ? t("lockVerwaistGenommen", { lock: UMSETZUNG_LOCK }) : null,
         freigeben: () => lockFreigeben(pfad),
       };
     } catch (e) {
@@ -177,7 +290,7 @@ export function umsetzungLockNehmen(repoRoot) {
     if (geraeumt.ok === false) return geraeumt;
     verwaist = geraeumt.verwaist;
   }
-  return lockBelegt(lockPid(pfad) ?? "unbekannt");
+  return lockBelegt(lockPid(pfad) ?? t("unbekannt"));
 }
 
 /** Der Takt, in dem eine Kette eine belegte Umsetzungssperre erneut versucht (E10). */
@@ -204,10 +317,10 @@ export async function aufUmsetzungWarten({ nehmen, jetzt, schlafen, budgetMs, st
     const rest = budgetMs - (jetzt() - start);
     if (rest <= 0) {
       const minuten = Math.round((jetzt() - start) / 60000);
-      return { ...lock, grund: `${lock.grund}, ${minuten} min im Umsetzungsbudget gewartet` };
+      return { ...lock, grund: t("umsetzungGewartet", { grund: lock.grund, minuten }) };
     }
     if (!standGesetzt) {
-      standSetzen("laeuft", `wartet auf die Umsetzung seit ${new Date(start).toISOString()}`);
+      standSetzen("laeuft", t("wartetAufUmsetzung", { seit: new Date(start).toISOString() }));
       standGesetzt = true;
     }
     await schlafen(Math.min(UMSETZUNG_WARTEN_MS, rest));
@@ -217,11 +330,11 @@ export async function aufUmsetzungWarten({ nehmen, jetzt, schlafen, budgetMs, st
 }
 
 function lockBelegt(pid) {
-  return { ok: false, art: "belegt", grund: `eine andere Umsetzung haelt ${UMSETZUNG_LOCK} (Prozess ${pid})` };
+  return { ok: false, art: "belegt", grund: t("lockBelegt", { lock: UMSETZUNG_LOCK, pid }) };
 }
 
 function lockSchreibfehler(e) {
-  return { ok: false, art: "schreibfehler", grund: `${UMSETZUNG_LOCK} liess sich nicht schreiben (${e.message})` };
+  return { ok: false, art: "schreibfehler", grund: t("lockSchreibfehler", { lock: UMSETZUNG_LOCK, fehler: e.message }) };
 }
 
 /**
@@ -286,7 +399,7 @@ function zurueckholen(weg, pfad) {
     // Liegt schon eine neue Sperre, haelt die; die zurueckgeholte waere eine zweite.
   }
   rmSync(weg, { force: true });
-  return lockBelegt(lockPid(pfad) ?? "unbekannt");
+  return lockBelegt(lockPid(pfad) ?? t("unbekannt"));
 }
 
 /** Wie lange eine leere Lock-Datei Zeit bekommt, die Id ihres Anlegers aufzunehmen. */
@@ -317,7 +430,7 @@ function lockFreigeben(pfad) {
     // Gerufen wird das aus einem `finally`; ein Wurf von hier risse den ganzen Lauf
     // mit, nach getaner Arbeit. Liegenbleiben ist unschaedlich — der naechste Lauf
     // findet die Id dieses Prozesses vor und erkennt sie als verwaist.
-    log(`${UMSETZUNG_LOCK} liess sich nicht entfernen (${e.message}) — der naechste Lauf raeumt ihn als verwaist auf.`);
+    log(t("lockNichtEntfernt", { lock: UMSETZUNG_LOCK, fehler: e.message }));
   }
 }
 
@@ -360,12 +473,12 @@ export function nachziehenPruefen(repoRoot = process.cwd()) {
   for (const sperre of RUNNER_SPERREN) {
     const pid = lockPid(join(repoRoot, sperre));
     if (pid !== null && prozessLaeuft(pid)) {
-      return { nachziehen: false, grund: `${sperre} wird gehalten (Prozess ${pid}) — in der Hauptkopie arbeitet ein Lauf des Runners` };
+      return { nachziehen: false, grund: t("sperreGehalten", { sperre, pid }) };
     }
   }
   const reste = gitReste(repoRoot, configVonPlatte(repoRoot));
   if (reste.length > 0) {
-    return { nachziehen: false, grund: `die Hauptkopie traegt unkommittierte Aenderungen: ${reste.join(", ")}` };
+    return { nachziehen: false, grund: t("hauptkopieReste", { reste: reste.join(", ") }) };
   }
   return { nachziehen: true, grund: null };
 }
@@ -396,7 +509,7 @@ function pushWegAusPlan(pfad) {
   const checks = join(dirname(fileURLToPath(import.meta.url)), "..", "checks.mjs");
   const res = abh.spawnSync(process.execPath, [checks, "plan", "--stufe", "push"], { cwd: pfad, encoding: "utf-8" });
   if (res.status !== 0) {
-    throw new Error(`checks.mjs plan --stufe push schlug fehl: ${ersteZeile((res.stderr || res.stdout || res.error?.message || "").trim())}`);
+    throw new Error(t("pushPlanFehlgeschlagen", { meldung: ersteZeile((res.stderr || res.stdout || res.error?.message || "").trim()) }));
   }
   return JSON.parse(res.stdout).pushPruefung ?? "lokal";
 }
@@ -414,7 +527,7 @@ function vorbereitungMainBranch(repoRoot) {
 /** Die Kartennummern aller `(Issue #N)`-Betreffe zwischen `origin` und `commit`, aelteste zuerst (E11). */
 function paketeZwischen(repoRoot, origin, commit) {
   const res = gitIm(repoRoot, ["log", "--reverse", "--format=%s", origin ? `${origin}..${commit}` : commit]);
-  if (res.status !== 0) throw new Error(`git log fuer die Pakete schlug fehl: ${ersteZeile((res.stderr || "").trim())}`);
+  if (res.status !== 0) throw new Error(t("paketeLogFehlgeschlagen", { meldung: ersteZeile((res.stderr || "").trim()) }));
   const pakete = [];
   for (const betreff of res.stdout.split(/\r?\n/)) {
     const treffer = /\(Issue #(\d+)\)/.exec(betreff);
@@ -462,7 +575,7 @@ export function zusammenfassungBezeugt(pfad, pakete) {
   const hinweise = verursacher.filter((v) => v.hinweis !== undefined).map((v) => v.hinweis);
   const karten = verursacherKartennummern(verursacher);
   let hinweis = hinweise.length > 0 ? hinweise.join(" ") : null;
-  if (daten === null || daten.abgeschlossen !== true) hinweis = "keine abgeschlossene Zusammenfassung im Worktree";
+  if (daten === null || daten.abgeschlossen !== true) hinweis = t("keineZusammenfassung");
   const alle = hinweis !== null || karten.length === 0;
   return {
     ergebnis: "rot",
@@ -480,10 +593,10 @@ function offenePunkte(pfad, bezeugt, offen) {
   const punkte = [...offen];
   const weg = abh.pushWeg(pfad);
   if (weg?.ort === "buildDienst" && bezeugt.stufe === "paket") {
-    punkte.unshift(`voller Lauf im Build-Dienst (Prüfzweig ${weg.zweig})`);
+    punkte.unshift(t("buildDienstOffen", { zweig: weg.zweig }));
   }
   for (const cmd of bezeugt.gewackelt) {
-    const punkt = `Gewackelt: ${cmd} — Entscheidung beim push main`;
+    const punkt = t("gewackeltOffen", { cmd });
     if (!punkte.includes(punkt)) punkte.push(punkt);
   }
   return punkte;
@@ -503,14 +616,14 @@ function offenePunkte(pfad, bezeugt, offen) {
  */
 export function vorbereitungFesthalten({ repoRoot, pfad, ergebnis, offen = [], fetch = "ok", env = process.env }) {
   if (!VORBEREITUNG_ERGEBNISSE.includes(ergebnis)) {
-    throw new Error(`--ergebnis '${ergebnis}' ist unbekannt — erwartet ${VORBEREITUNG_ERGEBNISSE.join(", ")}`);
+    throw new Error(t("ergebnisUnbekannt", { wert: ergebnis, erwartet: VORBEREITUNG_ERGEBNISSE.join(", ") }));
   }
   if (!VORBEREITUNG_FETCH.includes(fetch)) {
-    throw new Error(`--fetch '${fetch}' ist unbekannt — erwartet ${VORBEREITUNG_FETCH.join(", ")}`);
+    throw new Error(t("fetchUnbekannt", { wert: fetch, erwartet: VORBEREITUNG_FETCH.join(", ") }));
   }
   const mainBranch = vorbereitungMainBranch(repoRoot);
   const commit = commitVon(pfad, "HEAD");
-  if (!commit) throw new Error(`der Worktree ${pfad} hat keinen HEAD`);
+  if (!commit) throw new Error(t("worktreeOhneHead", { pfad }));
   const basis = commitVon(repoRoot, `refs/heads/${mainBranch}`);
   const origin = commitVon(repoRoot, `refs/remotes/origin/${mainBranch}`);
   const pakete = paketeZwischen(repoRoot, origin, commit);
@@ -521,7 +634,7 @@ export function vorbereitungFesthalten({ repoRoot, pfad, ergebnis, offen = [], f
   const uebergebenGruen = ergebnis !== "rot";
   const abweichung = uebergebenGruen === (bezeugt.ergebnis === "gruen")
     ? null
-    : `uebergeben ${ergebnis}, Zusammenfassung ${bezeugt.ergebnis} — es gilt die Zusammenfassung`;
+    : t("abweichung", { ergebnis, bezeugt: bezeugt.ergebnis });
 
   const offenGesamt = bezeugt.ergebnis === "gruen" ? offenePunkte(pfad, bezeugt, offen) : [...offen];
   let endErgebnis = bezeugt.ergebnis;
@@ -573,15 +686,15 @@ export function vorbereitungPruefen({ repoRoot, verwerfen = false }) {
   try {
     daten = JSON.parse(readFileSync(pfad, "utf-8"));
   } catch {
-    return { uebernehmen: false, grund: `keine vorbereitete Veroeffentlichung (${VORBEREITUNG_DATEI} fehlt oder ist unlesbar)`, commit: null, offen: [], zeitpunkt: null };
+    return { uebernehmen: false, grund: t("keineVorbereitung", { datei: VORBEREITUNG_DATEI }), commit: null, offen: [], zeitpunkt: null };
   }
   const urteil = (grund) => ({ uebernehmen: grund === null, grund, commit: daten.commit ?? null, offen: daten.offen ?? [], zeitpunkt: daten.zeitpunkt ?? null });
   const mainBranch = vorbereitungMainBranch(repoRoot);
-  if (daten.ergebnis !== "gruen" && daten.ergebnis !== "gruen-offen") return urteil(`Ergebnis ${daten.ergebnis} — nur gruen und gruen-offen werden uebernommen`);
-  const kurz = (c) => (c ? c.slice(0, 12) : "nichts");
-  if (commitVon(repoRoot, `refs/heads/${mainBranch}`) !== daten.basis) return urteil(`${mainBranch} steht nicht mehr auf ${kurz(daten.basis)}`);
-  if (commitVon(repoRoot, `refs/remotes/origin/${mainBranch}`) !== daten.origin) return urteil(`origin/${mainBranch} steht nicht mehr auf ${kurz(daten.origin)}`);
-  if (commitVon(repoRoot, VORBEREITUNG_REFERENZ) !== daten.commit) return urteil(`${VORBEREITUNG_REFERENZ} zeigt nicht auf ${kurz(daten.commit)}`);
+  if (daten.ergebnis !== "gruen" && daten.ergebnis !== "gruen-offen") return urteil(t("nurGruen", { ergebnis: daten.ergebnis }));
+  const kurz = (c) => (c ? c.slice(0, 12) : t("nichts"));
+  if (commitVon(repoRoot, `refs/heads/${mainBranch}`) !== daten.basis) return urteil(t("standVerschoben", { ref: mainBranch, commit: kurz(daten.basis) }));
+  if (commitVon(repoRoot, `refs/remotes/origin/${mainBranch}`) !== daten.origin) return urteil(t("standVerschoben", { ref: `origin/${mainBranch}`, commit: kurz(daten.origin) }));
+  if (commitVon(repoRoot, VORBEREITUNG_REFERENZ) !== daten.commit) return urteil(t("referenzVerschoben", { ref: VORBEREITUNG_REFERENZ, commit: kurz(daten.commit) }));
   return urteil(null);
 }
 
@@ -708,7 +821,7 @@ export function worktreeAnlegen({ repoRoot, issueId = null, stempel, praefix = "
   const res = gitIm(repoRoot, ["worktree", "add", "--detach", pfad, ref]);
   if (res.status !== 0) {
     rmSync(halterPfad(pfad), { force: true });
-    throw new Error(`git worktree add schlug fehl: ${(res.stderr || res.stdout || "").trim()}`);
+    throw new Error(t("worktreeAddFehlgeschlagen", { meldung: (res.stderr || res.stdout || "").trim() }));
   }
   if (spiegeln) claudeSpiegeln(repoRoot, pfad);
   return pfad;
@@ -870,7 +983,7 @@ export function befundeZurueck(pfad, repoRoot) {
     mkdirSync(dirname(ziel), { recursive: true });
     appendFileSync(ziel, zeilen.map((z) => `${z}\n`).join(""), "utf-8");
   } catch (e) {
-    log(`Hinweis: Befunde aus dem Worktree nicht zurueckgeholt (${ziel}): ${e.message} — der Abbau geht weiter.`);
+    log(t("befundeNichtZurueck", { ziel, fehler: e.message }));
     return [];
   }
 
@@ -893,24 +1006,24 @@ export function befundeZurueck(pfad, repoRoot) {
  */
 function befundeVorschlagen(repoRoot, art) {
   try {
-    if (!existsSync(BEFUNDE_PATH)) throw new Error(`${BEFUNDE_PATH} liegt nicht vor`);
+    if (!existsSync(BEFUNDE_PATH)) throw new Error(t("werkzeugFehlt", { pfad: BEFUNDE_PATH }));
     const res = abh.spawnSync(process.execPath, [BEFUNDE_PATH, "vorschlag", "--art", art], {
       encoding: "utf-8", cwd: repoRoot, maxBuffer: BOARD_MAX_BUFFER,
     });
-    if (res.error) throw new Error(`liess sich nicht starten: ${res.error.message}`);
+    if (res.error) throw new Error(t("nichtGestartet", { fehler: res.error.message }));
     let stand;
     try {
       stand = JSON.parse(res.stdout);
     } catch (err) {
-      throw new Error(`Ausgabe nicht lesbar: ${err.message}`);
+      throw new Error(t("ausgabeUnlesbar", { fehler: err.message }));
     }
-    if (res.status !== 0 || stand?.ok !== true) throw new Error(stand?.fehler || `Exit ${res.status}`);
-    const kennung = stand.karte === null ? `Pool-Idee ${stand.ideaId}` : `Karte ${stand.karte}`;
-    if (stand.angelegt) log(`  Vorschlag fuer '${art}' angelegt: ${kennung} — ${stand.titel}`);
-    else if (stand.ergaenzt) log(`  Vorschlag fuer '${art}' ergaenzt: Karte ${stand.karte}, Stand ${stand.zaehlerstand}.`);
-    else log(`  Kein Vorschlag fuer '${art}': ${stand.grund}`);
+    if (res.status !== 0 || stand?.ok !== true) throw new Error(stand?.fehler || t("exit", { status: res.status }));
+    const kennung = stand.karte === null ? t("poolIdee", { id: stand.ideaId }) : t("karte", { karte: stand.karte });
+    if (stand.angelegt) log(t("vorschlagAngelegt", { art, kennung, titel: stand.titel }));
+    else if (stand.ergaenzt) log(t("vorschlagErgaenzt", { art, karte: stand.karte, stand: stand.zaehlerstand }));
+    else log(t("keinVorschlag", { art, grund: stand.grund }));
   } catch (err) {
-    log(`Vorschlag fuer '${art}' fehlgeschlagen: ${err.message} — der Abbau geht weiter.`);
+    log(t("vorschlagFehlgeschlagen", { art, fehler: err.message }));
   }
 }
 
@@ -928,7 +1041,7 @@ function befundeVorschlagen(repoRoot, art) {
 export function befundeZurueckUndVorschlagen(lauf) {
   const arten = befundeZurueck(lauf.wt, lauf.repoRoot);
   if (arten.length === 0) return;
-  log(`  Befunde aus dem Worktree zurueckgeholt — Schwelle erreicht: ${arten.join(", ")}.`);
+  log(t("befundeZurueckgeholt", { arten: arten.join(", ") }));
   for (const art of arten) befundeVorschlagen(lauf.repoRoot, art);
 }
 
@@ -1015,7 +1128,7 @@ export function kitStandErmitteln(repoRoot, mainBranch) {
   const res = gitIm(repoRoot, ["rev-parse", "--verify", "--quiet", `${verweis}^{commit}`]);
   if (res.status !== 0) {
     if (!traegtKitQuelle(repoRoot, "HEAD")) return null;
-    throw new Error(`Kit-Stand: der Verweis origin/${mainBranch} fehlt — ohne ihn gibt es keinen veroeffentlichten Stand, mit dem der Lauf arbeiten kann. Einmal 'git fetch origin' oder 'push main', dann neu starten.`);
+    throw new Error(t("verweisFehlt", { branch: mainBranch }));
   }
   const commit = res.stdout.trim();
   if (!traegtKitQuelle(repoRoot, commit)) return null;
@@ -1048,7 +1161,9 @@ export function kitStandBereitstellen(repoRoot, commit, laufart) {
       cwd: pfad, encoding: "utf-8", env: { ...process.env, KIT_ROOT: pfad },
     });
     if (res.status !== 0) {
-      throw new Error(`sync-blobs im Stand ${commit.slice(0, 12)} schlug fehl: ${ersteZeile((res.stderr || res.stdout || res.error?.message || "").trim())}`);
+      throw new Error(t("syncBlobsFehlgeschlagen", {
+        commit: commit.slice(0, 12), meldung: ersteZeile((res.stderr || res.stdout || res.error?.message || "").trim()),
+      }));
     }
     const vorlagen = join(pfad, "templates");
     for (const name of readdirSync(vorlagen).filter((n) => /^CLAUDE-.*\.md$/.test(n))) {
@@ -1111,7 +1226,7 @@ export function kitStandInBaum(baum) {
 export function kitStaendeAufraeumen(args) {
   if (args.dryRun || !KIT_STAND_LAUF) return;
   const praefix = `kitstand-${laufArt(args)}`;
-  for (const p of worktreesAufraeumen(process.cwd(), praefix, KIT_STAND_LAUF.pfad)) log(`Liegengebliebenen Kit-Stand entfernt: ${p}`);
+  for (const p of worktreesAufraeumen(process.cwd(), praefix, KIT_STAND_LAUF.pfad)) log(t("standEntfernt", { pfad: p }));
 }
 
 /** Die Startzeile des festen Kit-Stands (A7) — nichts ohne Stand. */
@@ -1158,12 +1273,16 @@ export function kitStandFeld() {
 }
 
 /**
- * Die Zeile `Kit-Stand: <commit, 12 Stellen> (origin/<mainBranch> vom <JJJJ-MM-TT HH:MM>)` (A7).
+ * Die Zeile `Kit-Stand: <commit, 12 Stellen> (origin/<mainBranch> vom <JJJJ-MM-TT HH:MM>)` (A7),
+ * in einem englischen Projekt unter dem Marker `Kit-Revision:` aus dem Register (Issue #1490).
  * SYNC: dieselbe Form baut `kitStandZeileFuer` in kit/board.mjs fuer jeden Kommentar.
  */
 export function kitStandZeile(kitStand) {
-  const zeit = kitStand.commitZeit ? ` vom ${kitStand.commitZeit.slice(0, 10)} ${kitStand.commitZeit.slice(11, 16)}` : "";
-  return `Kit-Stand: ${kitStand.commit.slice(0, 12)} (${kitStand.ref}${zeit})`;
+  const zeit = kitStand.commitZeit
+    ? t("standZeit", { datum: kitStand.commitZeit.slice(0, 10), uhrzeit: kitStand.commitZeit.slice(11, 16) })
+    : "";
+  const marker = namen ? namen.markerName("kitStand", namen.prozessSprache()) : "Kit-Stand:";
+  return `${marker} ${kitStand.commit.slice(0, 12)} (${kitStand.ref}${zeit})`;
 }
 
 /**
@@ -1187,9 +1306,9 @@ export async function kitStandSchritt(args, argv) {
     if (!stand) return null;
     pfad = kitStandBereitstellen(repoRoot, stand.commit, laufArt(args));
   } catch (err) {
-    fail(`Kit-Stand nicht bereitgestellt: ${err.message}`, "umgebung");
+    fail(t("nichtBereitgestellt", { fehler: err.message }), "umgebung");
   }
-  process.stdout.write(`${kitStandZeile(stand)} — der Lauf arbeitet mit ${pfad}\n`);
+  process.stdout.write(`${t("laufArbeitetMit", { zeile: kitStandZeile(stand), pfad })}\n`);
   return await new Promise((fertig) => {
     const kind = abh.spawn(process.execPath, [join(pfad, ".claude", "kit", "night.mjs"), ...argv], {
       cwd: repoRoot, stdio: "inherit",
@@ -1199,7 +1318,7 @@ export async function kitStandSchritt(args, argv) {
       process.on(signal, () => kind.kill(signal));
     }
     kind.on("error", (err) => {
-      process.stderr.write(`Fehler: Runner des Kit-Stands nicht gestartet: ${err.message}\n`);
+      process.stderr.write(`${t("runnerNichtGestartet", { fehler: err.message })}\n`);
       fertig(1);
     });
     kind.on("exit", (code, signal) => fertig(code ?? (signal ? 128 + (osConstants.signals[signal] ?? 0) : 1)));

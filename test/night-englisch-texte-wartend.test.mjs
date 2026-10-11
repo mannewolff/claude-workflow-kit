@@ -9,8 +9,8 @@
 //   - Die deutschen Wortlaut-Tests der Gruppe bleiben, wie sie sind, und laufen mit der
 //     Vorgabe Deutsch.
 //
-// Der erste Teil (#1487) deckt kit/night/wartend.mjs; die folgenden Teile ergaenzen
-// kit/night/session.mjs und kit/night/kitstand.mjs.
+// Der erste Teil (#1487) deckt kit/night/wartend.mjs, die Teile #1488 und #1489
+// kit/night/session.mjs, der letzte (#1490) kit/night/kitstand.mjs.
 
 import { test, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
@@ -27,7 +27,11 @@ import {
   ladeKetteUebergaenge, ladePruefLaufBudget, laufModell, modellFuerStufe, normalisiereVorflug, paketWahl,
   reviewerVorflug, stufeStartbar, verifyChecksForSalvage, zielLabelName,
 } from "../kit/night/session.mjs";
-import { CHECKS_PATH } from "../kit/night/grundlagen.mjs";
+import {
+  TEXTE as KITSTAND_TEXTE, aufUmsetzungWarten, kitStandZeile, kitstandAbhaengigkeiten, nachziehenPruefen,
+  umsetzungLockNehmen, vorbereitungFesthalten, vorbereitungPruefen, zusammenfassungBezeugt,
+} from "../kit/night/kitstand.mjs";
+import { CHECKS_PATH, UMSETZUNG_LOCK } from "../kit/night/grundlagen.mjs";
 import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
 import { deutschAmHelferVorbei, deutschImEnglischen } from "./helpers/quelltext-texte.mjs";
 
@@ -350,12 +354,86 @@ test("[1489] ohne Spracheinstellung bleiben die Meldungen des zweiten Teils deut
     "die Vorflug-Session hat zu diesem Reviewer nichts gemeldet");
 });
 
+// --- kit/night/kitstand.mjs (Issue #1490) ----------------------------------------------
+
+test("[1490] die Texttabelle von kitstand hat in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
+  assert.deepEqual(pruefeParitaet(KITSTAND_TEXTE), []);
+  assert.ok(Object.keys(KITSTAND_TEXTE.de).length >= 30, "die Tabelle traegt die Meldungen des Kit-Stands");
+});
+
+/** Ein leeres Verzeichnis als Hauptkopie, solange `fn` laeuft. */
+async function inLeeremBaum(fn) {
+  const dir = mkdtempSync(join(tmpdir(), "night-1490-"));
+  try {
+    return await fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Ein Lock in `dir`, den dieser Prozess haelt. */
+function eigenerLock(dir) {
+  mkdirSync(join(dir, ".claude"), { recursive: true });
+  writeFileSync(join(dir, UMSETZUNG_LOCK), `${process.pid}\n`);
+}
+
+test("[1490] englisch: Umsetzungs-Lock und Nachziehen", async () => {
+  await inLeeremBaum((dir) => inSprache("en", async () => {
+    eigenerLock(dir);
+    assert.equal(umsetzungLockNehmen(dir).grund, `another implementation holds ${UMSETZUNG_LOCK} (process ${process.pid})`);
+    assert.equal(nachziehenPruefen(dir).grund,
+      `${UMSETZUNG_LOCK} is held (process ${process.pid}) — a run of the runner is working in the main copy`);
+
+    const uhr = [0, 0, 120000, 120000];
+    const staende = [];
+    const lock = await aufUmsetzungWarten({
+      nehmen: () => ({ ok: false, art: "belegt", grund: "held" }), jetzt: () => uhr.shift(), schlafen: async () => {},
+      budgetMs: 60000, standSetzen: (zustand, text) => staende.push([zustand, text]),
+    });
+    assert.deepEqual(staende, [["laeuft", "waiting for the implementation since 1970-01-01T00:00:00.000Z"]]);
+    assert.equal(lock.grund, "held, waited 2 min within the implementation budget");
+  }));
+});
+
+test("[1490] englisch: die vorbereitete Veroeffentlichung", async () => {
+  await inLeeremBaum((dir) => inSprache("en", () => {
+    assert.equal(vorbereitungPruefen({ repoRoot: dir }).grund,
+      "no prepared release (.claude/push-vorbereitung.json is missing or unreadable)");
+    assert.throws(() => vorbereitungFesthalten({ repoRoot: dir, pfad: dir, ergebnis: "blau" }),
+      { message: "--ergebnis 'blau' is unknown — expected gruen, gruen-offen, rot" });
+    assert.throws(() => vorbereitungFesthalten({ repoRoot: dir, pfad: dir, ergebnis: "rot", fetch: "nie" }),
+      { message: "--fetch 'nie' is unknown — expected ok, fehlgeschlagen" });
+    assert.equal(zusammenfassungBezeugt(dir, ["1"]).rot.hinweis, "no completed summary in the worktree");
+  }));
+});
+
+test("[1490] englisch: die Zeile des Kit-Stands steht unter dem englischen Marker", async () => {
+  await inSprache("en", () => {
+    assert.equal(kitStandZeile({ commit: "abcdef1234567890", ref: "origin/main", commitZeit: "2026-10-11T13:35:30+02:00" }),
+      "Kit-Revision: abcdef123456 (origin/main from 2026-10-11 13:35)");
+    assert.equal(kitStandZeile({ commit: "abcdef1234567890", ref: "origin/main", commitZeit: "" }), "Kit-Revision: abcdef123456 (origin/main)");
+    assert.throws(() => kitstandAbhaengigkeiten({ mond: () => {} }), { message: "kitstandAbhaengigkeiten knows no dependency 'mond'" });
+  });
+});
+
+test("[1490] ohne Spracheinstellung bleiben die Meldungen von kitstand deutsch", async () => {
+  assert.equal(kitStandZeile({ commit: "abcdef1234567890", ref: "origin/main", commitZeit: "2026-10-11T13:35:30+02:00" }),
+    "Kit-Stand: abcdef123456 (origin/main vom 2026-10-11 13:35)");
+  await inLeeremBaum((dir) => {
+    eigenerLock(dir);
+    assert.equal(umsetzungLockNehmen(dir).grund, `eine andere Umsetzung haelt ${UMSETZUNG_LOCK} (Prozess ${process.pid})`);
+    assert.equal(vorbereitungPruefen({ repoRoot: dir }).grund,
+      "keine vorbereitete Veroeffentlichung (.claude/push-vorbereitung.json fehlt oder ist unlesbar)");
+  });
+});
+
 // --- Keine deutsche Meldung am Texthelfer vorbei ------------------------------------------
 
 // Vertragswerte (E14), die deutsch bleiben: die Abweisungszeile des geschuetzten Halts, die
 // `kit/board/geschuetzt.mjs` zurueckliest, der Rueckfall im Stash-Namen `nachtrest #<id> <lauf>`
-// und die Bremsmarke von `checks.mjs run`, die der Runner aus dem Strom der Session liest.
-const VERTRAG = [GESCHUETZT_ABGEWIESEN, "ohne-lauf", FESTGEFAHREN_MARKE];
+// die Bremsmarke von `checks.mjs run`, die der Runner aus dem Strom der Session liest, und der
+// Ergebniswert `nicht gestartet` der Pruef-Zusammenfassung, den kitstand.mjs zurueckliest.
+const VERTRAG = [GESCHUETZT_ABGEWIESEN, "ohne-lauf", FESTGEFAHREN_MARKE, "nicht gestartet"];
 
 // Nicht ueber die Tabelle von session.mjs laufen (Issue #1489): die Prompts an Sessions, die
 // ein Modell liest und kein Mensch, und `gueteAuswerten`, die Kopie des Originals in
@@ -371,6 +449,7 @@ const SESSION_OHNE = [
 const GRUPPE = [
   ["kit/night/wartend.mjs", WARTEND_TEXTE],
   ["kit/night/session.mjs", SESSION_TEXTE, { ohne: SESSION_OHNE }],
+  ["kit/night/kitstand.mjs", KITSTAND_TEXTE],
 ];
 
 test("[1487] die Gruppe gibt in einem englischen Projekt keine deutsche Meldung aus", () => {
