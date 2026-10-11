@@ -14,7 +14,7 @@
 
 import { test, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -23,9 +23,11 @@ import {
   rundenMerkerZuruecksetzen, wartendAbhaengigkeiten, wartendVermerk, werteRunde, zeitlimitVermerk,
 } from "../kit/night/wartend.mjs";
 import {
-  TEXTE as SESSION_TEXTE, FESTGEFAHREN_MARKE, aufgabenStufe, empfohlenesModell, frischeStufenFelder, modellFuerStufe,
-  paketWahl, stufeStartbar,
+  TEXTE as SESSION_TEXTE, FESTGEFAHREN_MARKE, aufgabenStufe, empfohlenesModell, frischeStufenFelder, ladeKetteBudget,
+  ladeKetteUebergaenge, ladePruefLaufBudget, laufModell, modellFuerStufe, normalisiereVorflug, paketWahl,
+  reviewerVorflug, stufeStartbar, verifyChecksForSalvage, zielLabelName,
 } from "../kit/night/session.mjs";
+import { CHECKS_PATH } from "../kit/night/grundlagen.mjs";
 import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
 import { deutschAmHelferVorbei, deutschImEnglischen } from "./helpers/quelltext-texte.mjs";
 
@@ -261,6 +263,93 @@ test("[1488] ohne Spracheinstellung bleiben die Gruende von session deutsch", ()
   assert.equal(stufeStartbar({}, []).grund, "weder modell noch kommando gesetzt");
 });
 
+// --- kit/night/session.mjs, Teil 2: ab permissionArgs (Issue #1489) -----------------------
+
+test("[1489] die Texttabelle von session traegt auch die Meldungen des zweiten Teils", () => {
+  assert.deepEqual(pruefeParitaet(SESSION_TEXTE), []);
+  for (const schluessel of ["claudeFehlt", "formatFixStart", "formatFixGruen", "zahlGroesserNull", "vorflugOhneBlock"]) {
+    assert.ok(Object.hasOwn(SESSION_TEXTE.de, schluessel), `"${schluessel}" fehlt in der Tabelle`);
+  }
+});
+
+test("[1489] englisch: die Pruefung der Einstellungen von Lauf, Kette und Prueflauf", async () => {
+  await inSprache("en", () => {
+    assert.equal(laufModell({}, { night: { modell: "m9", modelle: ["m1"] } }).fehler,
+      "night.modell 'm9' is not in night.modelle — add it there or change night.modell.");
+    assert.throws(() => ladeKetteBudget({ night: { kette: { label: " " } } }), { message: "night.kette.label must be a non-empty text" });
+    assert.throws(() => ladeKetteBudget({ night: { kette: { varianteBLabel: 3 } } }),
+      { message: "night.kette.varianteBLabel must be a non-empty text" });
+    assert.throws(() => ladeKetteBudget({ night: { kette: { planMin: 0 } } }), { message: "night.kette.planMin must be a number greater than 0, is 0" });
+    assert.throws(() => ladeKetteBudget({ night: { kette: { korrekturrunden: 1.5 } } }),
+      { message: "night.kette.korrekturrunden must be an integer, is 1.5" });
+    assert.throws(() => ladeKetteUebergaenge({ night: { kette: { uebergaenge: [] } } }),
+      { message: "night.kette.uebergaenge must be an object of booleans" });
+    assert.throws(() => ladeKetteUebergaenge({ night: { kette: { uebergaenge: { quer: true } } } }),
+      { message: /^night\.kette\.uebergaenge\.quer is not a transition of the chain \(known: planReview, / });
+    assert.throws(() => ladeKetteUebergaenge({ night: { kette: { uebergaenge: { planReview: "ja" } } } }),
+      { message: 'night.kette.uebergaenge.planReview must be true or false, is "ja"' });
+    assert.throws(() => ladePruefLaufBudget({ pruefLauf: { label: "" } }), { message: "pruefLauf.label must be a non-empty text" });
+    assert.throws(() => ladePruefLaufBudget({ pruefLauf: { kostenUsd: -1 } }), { message: "pruefLauf.kostenUsd must be a number greater than 0, is -1" });
+    assert.throws(() => zielLabelName("mond", {}), { message: 'zielLabelName: unknown goal "mond"' });
+  });
+});
+
+/** Ein leeres Projektverzeichnis als Arbeitsverzeichnis, solange `fn` laeuft. */
+async function imLeerenProjekt(fn) {
+  const dir = mkdtempSync(join(tmpdir(), "night-1489-"));
+  const vorher = process.cwd();
+  mkdirSync(join(dir, ".claude"), { recursive: true });
+  process.chdir(dir);
+  try {
+    return await fn();
+  } finally {
+    process.chdir(vorher);
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test("[1489] englisch: die Zeilen des Format-Fix stehen in der Form der Vorlage", async () => {
+  const exitcodes = [1, 0];
+  const spawnSync = (_befehl, args) => (args[0] === CHECKS_PATH
+    ? { status: exitcodes.shift(), stdout: "", stderr: "" }
+    : { status: 0, stdout: "", stderr: "" });
+  const text = await imLeerenProjekt(() => inSprache("en", () => mitProtokoll(() =>
+    verifyChecksForSalvage({ formatFixCommand: "npm run format" }, 7, { spawnSync }))));
+  assert.match(text, / {2}buildChecks red — one-time format fix being applied: npm run format/);
+  assert.match(text, / {2}FORMAT FIX applied, buildChecks now green — the run continues\./);
+});
+
+test("[1489] englisch: die Gruende des Reviewer-Vorflugs", async () => {
+  await inSprache("en", () => {
+    const { reviewers, tracker } = normalisiereVorflug({ reviewers: [{ name: "b", verfuegbar: false }] }, [
+      { name: "a", kind: "command" }, { name: "b", kind: "command" },
+    ]);
+    assert.deepEqual(reviewers.map((r) => r.grund), ["the preflight session reported nothing about this reviewer",
+      "reported as unavailable without a reason"]);
+    assert.equal(tracker.grund, "the preflight session reported no tracker finding");
+  });
+  const vorher = process.env.NIGHT_VORFLUG_CMD;
+  try {
+    process.env.NIGHT_VORFLUG_CMD = "echo kein Block";
+    const ohneBlock = await inSprache("en", () => reviewerVorflug({}, [], null));
+    assert.equal(ohneBlock.grund, "the preflight session ended without an evaluable finding block");
+    process.env.NIGHT_VORFLUG_CMD = "exit 3";
+    const mitExit = await inSprache("en", () => reviewerVorflug({}, [], null));
+    assert.equal(mitExit.grund, "the preflight session ended with exit 3 and without an evaluable finding block");
+  } finally {
+    if (vorher === undefined) delete process.env.NIGHT_VORFLUG_CMD;
+    else process.env.NIGHT_VORFLUG_CMD = vorher;
+  }
+});
+
+test("[1489] ohne Spracheinstellung bleiben die Meldungen des zweiten Teils deutsch", () => {
+  assert.throws(() => ladeKetteBudget({ night: { kette: { planMin: 0 } } }), { message: "night.kette.planMin muss eine Zahl groesser 0 sein, ist 0" });
+  assert.equal(laufModell({}, { night: { modell: "m9", modelle: [] } }).fehler,
+    "night.modell 'm9' steht nicht in night.modelle — bitte dort eintragen oder night.modell aendern.");
+  assert.equal(normalisiereVorflug({}, [{ name: "a", kind: "command" }]).reviewers[0].grund,
+    "die Vorflug-Session hat zu diesem Reviewer nichts gemeldet");
+});
+
 // --- Keine deutsche Meldung am Texthelfer vorbei ------------------------------------------
 
 // Vertragswerte (E14), die deutsch bleiben: die Abweisungszeile des geschuetzten Halts, die
@@ -268,10 +357,20 @@ test("[1488] ohne Spracheinstellung bleiben die Gruende von session deutsch", ()
 // und die Bremsmarke von `checks.mjs run`, die der Runner aus dem Strom der Session liest.
 const VERTRAG = [GESCHUETZT_ABGEWIESEN, "ohne-lauf", FESTGEFAHREN_MARKE];
 
-// session.mjs wird in zwei Paketen umgestellt: Teil 1 (#1488) bis vor `permissionArgs`.
+// Nicht ueber die Tabelle von session.mjs laufen (Issue #1489): die Prompts an Sessions, die
+// ein Modell liest und kein Mensch, und `gueteAuswerten`, die Kopie des Originals in
+// kit/checks.mjs — ihr Wortlaut folgt dem Original, gleich gehalten von
+// test/guete-wertung-sync.test.mjs.
+const SESSION_OHNE = [
+  { von: "export function gueteAuswerten", bis: "const FEHLERMERKMALE" },
+  { von: "export function salvagePrompt", bis: "// --- Das Modell des Laufs" },
+  { von: "const VORFLUG_PROBE_PROMPT", bis: "// Der Stempel, an dem" },
+  { von: "export function vorflugPrompt", bis: "/** Schneidet den Befund-Block" },
+];
+
 const GRUPPE = [
   ["kit/night/wartend.mjs", WARTEND_TEXTE],
-  ["kit/night/session.mjs", SESSION_TEXTE, { bis: "export function permissionArgs" }],
+  ["kit/night/session.mjs", SESSION_TEXTE, { ohne: SESSION_OHNE }],
 ];
 
 test("[1487] die Gruppe gibt in einem englischen Projekt keine deutsche Meldung aus", () => {

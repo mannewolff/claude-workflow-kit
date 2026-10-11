@@ -115,12 +115,19 @@ const MARKER_DEUTSCH = new Set(Object.values(MARKER).map((m) => m.de));
  * je Sprache, der deutsche steht nur als Rueckfall ohne Register im Modul. `vertrag` nennt
  * weitere Texte, die als Vertragswert (E14) deutsch bleiben. `bis` begrenzt den Scan auf den
  * Quelltext vor dieser Stelle, fuer ein Modul, das in mehreren Paketen umgestellt wird.
+ * `ohne` nimmt Abschnitte `{ von, bis }` aus dem Scan, die nicht an den Menschen gehen.
  */
-export function deutschAmHelferVorbei(datei, tabelle, vertrag = [], { bis } = {}) {
+export function deutschAmHelferVorbei(datei, tabelle, vertrag = [], { bis, ohne = [] } = {}) {
   const ganz = readFileSync(join(repoRoot, datei), "utf-8");
   const ende = bis ? ganz.indexOf(bis) : -1;
   if (bis) assert.ok(ende >= 0, `${datei}: die Grenze "${bis}" ist nicht zu finden`);
-  const src = bis ? ganz.slice(0, ende) : ganz;
+  let src = bis ? ganz.slice(0, ende) : ganz;
+  for (const { von, bis: abschnittEnde } of ohne) {
+    const anfang = src.indexOf(von);
+    const schluss = src.indexOf(abschnittEnde, anfang);
+    assert.ok(anfang >= 0 && schluss > anfang, `${datei}: der Abschnitt "${von}" bis "${abschnittEnde}" ist nicht zu finden`);
+    src = src.slice(0, anfang) + src.slice(schluss);
+  }
   const ohneTabelle = src.replace(/\nexport const TEXTE = Object\.freeze\(\{[\s\S]*?\n\}\);\n/, "\n");
   if (tabelle) assert.notEqual(ohneTabelle, src, `${datei}: die Texttabelle TEXTE ist nicht zu finden`);
   const ausnahmen = new Set(vertrag);

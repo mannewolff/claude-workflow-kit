@@ -39,7 +39,9 @@ export { LAUF_VARIABLEN, ohneLaufVariablen };
 
 // --- Texte an den Menschen (Issue #1488, Plan #1420 E13/E14) ---
 
-// Teil 1 (#1488) deckt den Quelltext bis vor `permissionArgs`, Teil 2 (#1489) den Rest.
+// Teil 1 (#1488) deckt den Quelltext bis vor `permissionArgs`, Teil 2 (#1489) den Rest. Deutsch
+// bleiben dort die Prompts an Sessions (`salvagePrompt`, `vorflugPrompt`, die Probe) — sie liest
+// ein Modell — und `gueteAuswerten`, deren Wortlaut dem Original in kit/checks.mjs folgt.
 // Vertrag bleibt (E14): die Marken `Ergebnis uebernommen` und `Pruefung festgefahren:`, die
 // kit/checks.mjs schreibt und dieser Teil aus dem Strom liest, die Stufenwerte
 // `schwer|mittel|leicht` und die Feldnamen `modell`, `kommando` und `night.modelle`.
@@ -62,6 +64,32 @@ export const TEXTE = Object.freeze({
     einstellungNichtFrisch: "die Einstellung liess sich nicht frisch lesen ({fehler}) — es gilt der Stand des Laufbeginns.",
     prozesseNachEnde: "  Hinweis: Nach dem Ende der Session liefen noch Prozesse ihrer Gruppe, als die Frist ablief — "
       + "die folgende Messung kann von ihnen gestoert sein.",
+    // Teil 2 (#1489): ab `permissionArgs`.
+    claudeFehlt: "claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?",
+    shellFehlt: "die Shell \"{cmd}\" fuer die Kommando-Stufe wurde nicht gefunden",
+    sitzungsstartGescheitert: "Sitzungsstart zu #{id} gescheitert ({exit})",
+    merkmalRot: "Fehlermerkmal in der Ausgabe: '{merkmal}' — der Lauf gilt als rot",
+    gueteOhneErgebnis: "Guete: kein auswertbares Ergebnis ({grund})",
+    gueteErgebnis: "Guete: {anteil} % erreicht, Marke {marke} % — {grund}",
+    checksFehltPfad: "{pfad} liegt nicht vor — die Pflicht-Pruefungen lassen sich nicht fahren.",
+    formatFixStart: "  buildChecks rot — einmaliger Format-Fix wird angewendet: {cmd}",
+    formatFixNichtGestartet: "  Format-Fix nicht gestartet: {fehler}",
+    formatFixGruen: "  FORMAT-FIX angewendet, buildChecks jetzt gruen — der Lauf geht weiter.",
+    laufModellNichtErlaubt: "night.modell '{wert}' steht nicht in night.modelle — bitte dort eintragen oder night.modell aendern.",
+    nichtLeererText: "{feld} muss ein nicht leerer Text sein",
+    zahlGroesserNull: "{feld} muss eine Zahl groesser 0 sein, ist {wert}",
+    ganzzahlig: "{feld} muss ganzzahlig sein, ist {wert}",
+    uebergaengeKeinObjekt: "night.kette.uebergaenge muss ein Objekt mit Wahrheitswerten sein",
+    uebergangUnbekannt: "night.kette.uebergaenge.{feld} ist kein Uebergang der Kette (bekannt: {bekannt})",
+    uebergangKeinWahrheitswert: "night.kette.uebergaenge.{feld} muss true oder false sein, ist {wert}",
+    zielUnbekannt: "zielLabelName: unbekanntes Ziel \"{ziel}\"",
+    vorflugProtokoll: "--- Vorflug-Session ---",
+    vorflugNichtsGemeldet: "die Vorflug-Session hat zu diesem Reviewer nichts gemeldet",
+    vorflugOhneGrund: "ohne Grund als nicht verfuegbar gemeldet",
+    vorflugKeinTracker: "die Vorflug-Session hat keinen Tracker-Befund gemeldet",
+    vorflugZeitlimit: "Zeitlimit von {ms} ms ueberschritten",
+    vorflugOhneBlock: "die Vorflug-Session endete ohne auswertbaren Befund-Block",
+    vorflugExitOhneBlock: "die Vorflug-Session endete mit Exit {status} und ohne auswertbaren Befund-Block",
   }),
   en: Object.freeze({
     checksFehlt: "checks.mjs is not next to night.mjs ({pfad}) — the location of the check summary is unknown.",
@@ -81,6 +109,31 @@ export const TEXTE = Object.freeze({
     einstellungNichtFrisch: "the settings could not be read fresh ({fehler}) — the state at the start of the run applies.",
     prozesseNachEnde: "  Note: processes of its group were still running when the deadline after the end of the session "
       + "expired — the following measurement may be disturbed by them.",
+    claudeFehlt: "claude CLI not found. Is Claude Code installed and on the PATH?",
+    shellFehlt: "the shell \"{cmd}\" for the command tier was not found",
+    sitzungsstartGescheitert: "Session start for #{id} failed ({exit})",
+    merkmalRot: "Error marker in the output: '{merkmal}' — the run counts as red",
+    gueteOhneErgebnis: "Quality: no evaluable result ({grund})",
+    gueteErgebnis: "Quality: {anteil} % reached, threshold {marke} % — {grund}",
+    checksFehltPfad: "{pfad} does not exist — the required checks cannot be run.",
+    formatFixStart: "  buildChecks red — one-time format fix being applied: {cmd}",
+    formatFixNichtGestartet: "  Format fix not started: {fehler}",
+    formatFixGruen: "  FORMAT FIX applied, buildChecks now green — the run continues.",
+    laufModellNichtErlaubt: "night.modell '{wert}' is not in night.modelle — add it there or change night.modell.",
+    nichtLeererText: "{feld} must be a non-empty text",
+    zahlGroesserNull: "{feld} must be a number greater than 0, is {wert}",
+    ganzzahlig: "{feld} must be an integer, is {wert}",
+    uebergaengeKeinObjekt: "night.kette.uebergaenge must be an object of booleans",
+    uebergangUnbekannt: "night.kette.uebergaenge.{feld} is not a transition of the chain (known: {bekannt})",
+    uebergangKeinWahrheitswert: "night.kette.uebergaenge.{feld} must be true or false, is {wert}",
+    zielUnbekannt: "zielLabelName: unknown goal \"{ziel}\"",
+    vorflugProtokoll: "--- Preflight session ---",
+    vorflugNichtsGemeldet: "the preflight session reported nothing about this reviewer",
+    vorflugOhneGrund: "reported as unavailable without a reason",
+    vorflugKeinTracker: "the preflight session reported no tracker finding",
+    vorflugZeitlimit: "time limit of {ms} ms exceeded",
+    vorflugOhneBlock: "the preflight session ended without an evaluable finding block",
+    vorflugExitOhneBlock: "the preflight session ended with exit {status} and without an evaluable finding block",
   }),
 });
 
@@ -1816,10 +1869,10 @@ export function sessionStart({ testCmd, kommando, prompt, modell, args, opts }) 
  */
 function programmFehlt(res, { kommando, cmd }) {
   if (!kommando) {
-    fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?", "umgebung");
+    fail(t("claudeFehlt"), "umgebung");
     return;
   }
-  res.startfehler = `die Shell "${cmd}" fuer die Kommando-Stufe wurde nicht gefunden`;
+  res.startfehler = t("shellFehlt", { cmd });
 }
 
 // Exportiert fuer die Kette und ihre Tests. `abh` sind die Abhaengigkeiten aus
@@ -1930,7 +1983,7 @@ export async function runSession(issueId, args, opts = {}, abh = {}) {
   // Pause (Issue #1088, E13). Scheitert auch er, traegt das Ergebnis `umgebungGescheitert`,
   // und der Aufrufer haelt den Lauf an. Ohne Stempel (Import durch Tests) kein Versuch.
   if (ZUSTAND.LAUF_STEMPEL && !opts.zweiterVersuch && sitzungsStartGescheitert(res, kommando)) {
-    zweiterVersuch(`Sitzungsstart zu #${issueId} gescheitert (${exitText(res)})`);
+    zweiterVersuch(t("sitzungsstartGescheitert", { id: issueId, exit: exitText(res) }));
     schrittZweiterVersuch();
     const zweiter = await runSession(issueId, args, { ...opts, zweiterVersuch: true }, abh);
     zweiter.zweiterVersuch = true;
@@ -2226,7 +2279,7 @@ function bewerteLaufSync(eintrag, gruen, ausgabe) {
   // alles, was Protokoll und Sichtung am Morgen vom Befund zu sehen bekommen.
   const merkmal = fehlermerkmal(ausgabe);
   if (merkmal !== null) {
-    return { bestanden: false, zeilen: `Fehlermerkmal in der Ausgabe: '${merkmal}' — der Lauf gilt als rot\n` };
+    return { bestanden: false, zeilen: `${t("merkmalRot", { merkmal })}\n` };
   }
 
   // Die Guetemessung wird nur nach einem gruenen Kommando gewertet, aus demselben
@@ -2245,8 +2298,8 @@ function bewerteLaufSync(eintrag, gruen, ausgabe) {
 
   const auswertung = gueteAuswerten(guete, ausgabe);
   const zeilen = auswertung.anteil === null
-    ? `Guete: kein auswertbares Ergebnis (${auswertung.grund})\n`
-    : `Guete: ${auswertung.anteil} % erreicht, Marke ${guete.marke} % — ${auswertung.grund}\n`;
+    ? `${t("gueteOhneErgebnis", { grund: auswertung.grund })}\n`
+    : `${t("gueteErgebnis", { anteil: auswertung.anteil, marke: guete.marke, grund: auswertung.grund })}\n`;
   return { bestanden: auswertung.erfuellt, zeilen };
 }
 
@@ -2304,7 +2357,7 @@ const CHECKS_MAX_BUFFER = 256 * 1024 * 1024;
  */
 function runChecksCliSync(karte, abfragen) {
   if (!existsSync(CHECKS_PATH)) {
-    return { ok: false, output: `${CHECKS_PATH} liegt nicht vor — die Pflicht-Pruefungen lassen sich nicht fahren.\n`, rotesKommando: null };
+    return { ok: false, output: `${t("checksFehltPfad", { pfad: CHECKS_PATH })}\n`, rotesKommando: null };
   }
   const cliArgs = [CHECKS_PATH, "run", "--abschluss", String(karte), "--frisch"];
   // Der Puls davor und danach (Issue #1084, E6): Der volle Pruefumfang blockiert den Takt.
@@ -2343,15 +2396,15 @@ export function verifyChecksForSalvage(cfg, karte, abh = {}) {
   const fixCmd = (cfg.formatFixCommand || "").trim();
   if (!fixCmd) return { ok: false, output: first.output, formatFixCmd: null, rotesKommando: first.rotesKommando };
 
-  log(`  buildChecks rot — einmaliger Format-Fix wird angewendet: ${fixCmd}`);
+  log(t("formatFixStart", { cmd: fixCmd }));
   // fixCmd kommt aus der Config und braucht deshalb eine Shell (Issue #199). Startet sie
   // nicht, steht das im Log, und der zweite Durchgang bleibt rot.
   const fix = konfigKommandoSync(fixCmd, checkEnv(), abfragen);
-  if (fix.status === null && fix.stderr) log(`  Format-Fix nicht gestartet: ${fix.stderr.trim()}`);
+  if (fix.status === null && fix.stderr) log(t("formatFixNichtGestartet", { fehler: fix.stderr.trim() }));
 
   const second = runChecksCliSync(karte, abfragen);
   if (!second.ok) return { ok: false, output: second.output, formatFixCmd: null, rotesKommando: second.rotesKommando };
-  log(`  FORMAT-FIX angewendet, buildChecks jetzt gruen — der Lauf geht weiter.`);
+  log(t("formatFixGruen"));
   return { ok: true, output: second.output, formatFixCmd: fixCmd, rotesKommando: null };
 }
 
@@ -2437,7 +2490,7 @@ export function laufModell(args, config) {
   if (wert === undefined || wert === null || wert === "") return { modell: DEFAULT_MODEL, herkunft: "Vorgabe", fehler: null };
   const erlaubt = Array.isArray(config.night.modelle) ? config.night.modelle : [];
   if (!erlaubt.includes(wert)) {
-    return { modell: null, herkunft: "night.modell", fehler: `night.modell '${wert}' steht nicht in night.modelle — bitte dort eintragen oder night.modell aendern.` };
+    return { modell: null, herkunft: "night.modell", fehler: t("laufModellNichtErlaubt", { wert }) };
   }
   return { modell: wert, herkunft: "night.modell", fehler: null };
 }
@@ -2508,21 +2561,21 @@ export function ladeKetteBudget(config) {
   const budget = { ...KETTE_BUDGET_DEFAULTS, label: labelDerSprache("night", config, KETTE_BUDGET_DEFAULTS.label),
     varianteBLabel: labelDerSprache("durchziehen", config, KETTE_BUDGET_DEFAULTS.varianteBLabel) };
   if (block.label !== undefined) {
-    if (typeof block.label !== "string" || block.label.trim() === "") throw new Error("night.kette.label muss ein nicht leerer Text sein");
+    if (typeof block.label !== "string" || block.label.trim() === "") throw new Error(t("nichtLeererText", { feld: "night.kette.label" }));
     budget.label = block.label.trim();
   }
   if (block.varianteBLabel !== undefined) {
-    if (typeof block.varianteBLabel !== "string" || block.varianteBLabel.trim() === "") throw new Error("night.kette.varianteBLabel muss ein nicht leerer Text sein");
+    if (typeof block.varianteBLabel !== "string" || block.varianteBLabel.trim() === "") throw new Error(t("nichtLeererText", { feld: "night.kette.varianteBLabel" }));
     budget.varianteBLabel = block.varianteBLabel.trim();
   }
   for (const feld of ["planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "vorbereitungMin", "kostenUsd", "kostenUsdB", "korrekturrunden"]) {
     if (block[feld] === undefined) continue;
     const wert = block[feld];
     if (typeof wert !== "number" || !Number.isFinite(wert) || wert <= 0) {
-      throw new Error(`night.kette.${feld} muss eine Zahl groesser 0 sein, ist ${JSON.stringify(wert)}`);
+      throw new Error(t("zahlGroesserNull", { feld: `night.kette.${feld}`, wert: JSON.stringify(wert) }));
     }
     if (feld === "korrekturrunden" && !Number.isInteger(wert)) {
-      throw new Error(`night.kette.korrekturrunden muss ganzzahlig sein, ist ${wert}`);
+      throw new Error(t("ganzzahlig", { feld: "night.kette.korrekturrunden", wert }));
     }
     budget[feld] = wert;
   }
@@ -2554,10 +2607,10 @@ export function ladeKetteUebergaenge(config) {
   const block = config?.night?.kette?.uebergaenge;
   const uebergaenge = { ...KETTE_UEBERGAENGE_DEFAULTS };
   if (block === undefined) return uebergaenge;
-  if (block === null || typeof block !== "object" || Array.isArray(block)) throw new Error("night.kette.uebergaenge muss ein Objekt mit Wahrheitswerten sein");
+  if (block === null || typeof block !== "object" || Array.isArray(block)) throw new Error(t("uebergaengeKeinObjekt"));
   for (const [feld, wert] of Object.entries(block)) {
-    if (!Object.hasOwn(KETTE_UEBERGAENGE_DEFAULTS, feld)) throw new Error(`night.kette.uebergaenge.${feld} ist kein Uebergang der Kette (bekannt: ${Object.keys(KETTE_UEBERGAENGE_DEFAULTS).join(", ")})`);
-    if (typeof wert !== "boolean") throw new Error(`night.kette.uebergaenge.${feld} muss true oder false sein, ist ${JSON.stringify(wert)}`);
+    if (!Object.hasOwn(KETTE_UEBERGAENGE_DEFAULTS, feld)) throw new Error(t("uebergangUnbekannt", { feld, bekannt: Object.keys(KETTE_UEBERGAENGE_DEFAULTS).join(", ") }));
+    if (typeof wert !== "boolean") throw new Error(t("uebergangKeinWahrheitswert", { feld, wert: JSON.stringify(wert) }));
     uebergaenge[feld] = wert;
   }
   return uebergaenge;
@@ -2597,14 +2650,14 @@ export function ladePruefLaufBudget(config) {
   const block = config?.pruefLauf ?? {};
   const budget = { ...PRUEFLAUF_BUDGET_DEFAULTS, label: labelDerSprache("pruefen", config, PRUEFLAUF_BUDGET_DEFAULTS.label) };
   if (block.label !== undefined) {
-    if (typeof block.label !== "string" || block.label.trim() === "") throw new Error("pruefLauf.label muss ein nicht leerer Text sein");
+    if (typeof block.label !== "string" || block.label.trim() === "") throw new Error(t("nichtLeererText", { feld: "pruefLauf.label" }));
     budget.label = block.label.trim();
   }
   for (const feld of ["pruefungMin", "kostenUsd"]) {
     if (block[feld] === undefined) continue;
     const wert = block[feld];
     if (typeof wert !== "number" || !Number.isFinite(wert) || wert <= 0) {
-      throw new Error(`pruefLauf.${feld} muss eine Zahl groesser 0 sein, ist ${JSON.stringify(wert)}`);
+      throw new Error(t("zahlGroesserNull", { feld: `pruefLauf.${feld}`, wert: JSON.stringify(wert) }));
     }
     budget[feld] = wert;
   }
@@ -2653,7 +2706,7 @@ const ZIEL_LABEL_PRAEFIXE = Object.freeze([ZIEL_LABEL_PRAEFIX, "goal:"]);
 /** Der Name des Ziel-Labels in der Projektsprache, `ziel:pakete` oder `goal:packages` (Issue #1429). */
 export function zielLabelName(ziel, config) {
   const eintrag = KETTE_ZIELE.find((z) => z.ziel === ziel);
-  if (!eintrag) throw new Error(`zielLabelName: unbekanntes Ziel "${ziel}"`);
+  if (!eintrag) throw new Error(t("zielUnbekannt", { ziel }));
   return labelDerSprache(eintrag.sache, config, `${ZIEL_LABEL_PRAEFIX}${ziel}`);
 }
 
@@ -2873,20 +2926,20 @@ export function normalisiereVorflug(roh, reviewers) {
     if (r.kind !== "command") return { ...basis, verfuegbar: true };
     const meldung = gemeldet.get(r.name);
     if (!meldung) {
-      return { ...basis, verfuegbar: false, grund: "die Vorflug-Session hat zu diesem Reviewer nichts gemeldet" };
+      return { ...basis, verfuegbar: false, grund: t("vorflugNichtsGemeldet") };
     }
     if (meldung.verfuegbar === true) return { ...basis, verfuegbar: true };
-    return { ...basis, verfuegbar: false, grund: String(meldung.grund || "").trim() || "ohne Grund als nicht verfuegbar gemeldet" };
+    return { ...basis, verfuegbar: false, grund: String(meldung.grund || "").trim() || t("vorflugOhneGrund") };
   });
 
-  const t = roh?.tracker || {};
-  const erreichbar = t.erreichbar === true;
+  const gemeldetTracker = roh?.tracker || {};
+  const erreichbar = gemeldetTracker.erreichbar === true;
   const tracker = {
     erreichbar,
     umgebung: UMGEBUNG_SESSION,
-    geprueft: t.geprueft ? String(t.geprueft) : null,
-    ...(t.uebersprungen ? { uebersprungen: String(t.uebersprungen) } : {}),
-    ...(erreichbar ? {} : { grund: String(t.grund || "").trim() || "die Vorflug-Session hat keinen Tracker-Befund gemeldet" }),
+    geprueft: gemeldetTracker.geprueft ? String(gemeldetTracker.geprueft) : null,
+    ...(gemeldetTracker.uebersprungen ? { uebersprungen: String(gemeldetTracker.uebersprungen) } : {}),
+    ...(erreichbar ? {} : { grund: String(gemeldetTracker.grund || "").trim() || t("vorflugKeinTracker") }),
   };
   return { reviewers: befunde, tracker };
 }
@@ -2918,7 +2971,7 @@ async function runVorflugSession(args, prompt, abh = {}) {
     extraEnv: { NIGHT_PROMPT: prompt, KIT_AGENT_MODEL: VORFLUG_MODEL, NIGHT_VORFLUG: "1", ...laufKennungUmgebung() },
   }, abh);
   if (ZUSTAND.LOG_FILE) {
-    appendFileSync(ZUSTAND.LOG_FILE, `--- Vorflug-Session ---\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
+    appendFileSync(ZUSTAND.LOG_FILE, `${t("vorflugProtokoll")}\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
   }
   const kennzahlen = leseKennzahlen(res.stdout);
   verbrauchErfassen(null, kennzahlen);
@@ -2949,8 +3002,8 @@ export async function reviewerVorflug(args, reviewers, trackerId, abh = {}) {
     tracker: { erreichbar: false, umgebung: UMGEBUNG_SESSION, geprueft: null, grund },
   });
 
-  if (res.error?.code === "ETIMEDOUT") return gescheitert(`Zeitlimit von ${timeoutMs} ms ueberschritten`);
-  if (res.error?.code === "ENOENT") return gescheitert("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?");
+  if (res.error?.code === "ETIMEDOUT") return gescheitert(t("vorflugZeitlimit", { ms: timeoutMs }));
+  if (res.error?.code === "ENOENT") return gescheitert(t("claudeFehlt"));
   if (res.error) return gescheitert(res.error.message);
 
   // Im Strom steht der Befund im Text des result-Ereignisses; ohne Strom (Test-Fakes, eine
@@ -2958,8 +3011,8 @@ export async function reviewerVorflug(args, reviewers, trackerId, abh = {}) {
   const roh = parseVorflugBefund(leseErgebnisText(res.stdout) ?? res.stdout);
   if (!roh) {
     return gescheitert(res.status === 0
-      ? "die Vorflug-Session endete ohne auswertbaren Befund-Block"
-      : `die Vorflug-Session endete mit Exit ${res.status} und ohne auswertbaren Befund-Block`);
+      ? t("vorflugOhneBlock")
+      : t("vorflugExitOhneBlock", { status: res.status }));
   }
   return { sessionStartbar: true, grund: null, ...normalisiereVorflug(roh, reviewers) };
 }
