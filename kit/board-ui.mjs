@@ -13,10 +13,11 @@
  */
 
 import { createServer } from "node:http";
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, statSync, realpathSync } from "node:fs";
 import { readdir, readFile, mkdir, rename, stat } from "node:fs/promises";
 import { resolve, join, basename } from "node:path";
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 // Der Normalisierer der Einstellungsnamen aus dem Board-Teil config-namen (Issue #1436, Plan
 // #1420 E10): Er bildet eine englisch benannte Config auf die deutschen Namen ab, die dieses
@@ -24,6 +25,16 @@ import { execFileSync } from "node:child_process";
 // fehlt er, bleibt die Config, wie sie gelesen wurde.
 const { normalisiereConfig = (roh) => ({ config: roh, hinweise: [] }) } =
   await import(new URL("./board/config-namen.mjs", import.meta.url).href).catch(() => ({}));
+
+// Der Texthelfer aus dem Board-Teil namen (Issue #1500, Plan #1420 E13): Er setzt die Werte
+// ein und liest die Sprache des Prozesses aus der Config. Nach demselben Muster wie oben
+// dynamisch und abgefangen; ohne den Board-Teil (etwa als einzeln geladene Datei) bleibt es
+// bei Deutsch.
+const {
+  text: textAusTabelle = (tabelle, schluessel, werte = {}) =>
+    tabelle.de[schluessel].replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name])),
+  prozessSprache = () => "de",
+} = await import(new URL("./board/namen.mjs", import.meta.url).href).catch(() => ({}));
 
 // Versionskennung (x.y.z). Einzige Anzeige-Quelle — funktioniert auch fuer die
 // standalone ins Kit synchronisierte board-ui.mjs (kein package.json noetig).
@@ -49,8 +60,14 @@ function parseArgs(argv) {
   return result;
 }
 
-function helpText() {
-  return `board-ui.mjs (v${VERSION}) — ein einfacher Viewer. Diese Datei wird ins
+// --- Texte (Issue #1500, Plan #1420 E13) ---
+//
+// Jede Ausgabe an den Menschen steht hier, je Sprache unter demselben Schluessel. Die Seite
+// bekommt die Tabelle ihrer Sprache eingebettet (siehe `seite`). Vertrag bleibt (E14): die
+// Feldnamen der Antworten, die Spaltenschluessel und der Kommentar-Marker `**Kommentar**`.
+export const TEXTE = {
+  de: {
+    hilfe: `board-ui.mjs (v{version}) — ein einfacher Viewer. Diese Datei wird ins
 Projektverzeichnis unter .claude/kit/board-ui.mjs kopiert und von dort, vom
 Projekt-Root aus, aufgerufen. Sie stellt ein einfaches Kanban-Board bereit,
 um die lokalen Issues (issues/*.md) zu visualisieren.
@@ -66,7 +83,64 @@ Parameter:
 Konfiguration (optional, .claude/workflow.config.json oder workflow.config.json):
   local.uiPort        Ueberschreibt den Port. Vorrang: config.local.uiPort > --port > 3000.
   local.issuesDir     Verzeichnis mit den Issue-Dateien (Default: issues)
-`;
+`,
+    archiviert: "Archiviert: {datei}",
+    titelLeer: "Titel darf nicht leer sein",
+    statusUngueltig: "Ungueltiger Status '{status}'. Gueltig: {gueltig}",
+    issueFehlt: "Issue {id} nicht gefunden",
+    kommentarLeer: "Leerer Kommentar",
+    idsKeinArray: "ids muss ein Array sein",
+    goCommit: "GO: #{id} nach ready",
+    goCommitFehler: "GO-Commit fehlgeschlagen (nicht kritisch): {fehler}",
+    seitenTitel: "claude-workflow-kit Board",
+    untertitel: "Lokaler Modus — Dateien in issues/",
+    ansichtBoard: "Board",
+    ansichtListe: "Liste",
+    ansichtEpics: "Epics",
+    neu: "+ Neu",
+  },
+  en: {
+    hilfe: `board-ui.mjs (v{version}) — a simple viewer. This file is copied into the
+project directory as .claude/kit/board-ui.mjs and run from there, from the
+project root. It provides a simple Kanban board to visualise the local
+issues (issues/*.md).
+
+Usage (from the project root):
+  node .claude/kit/board-ui.mjs [--port <Port>] [--name <Board-Name>] [-h|--help]
+
+Options:
+  --port <Port>       Port for the HTTP server (default: 3000)
+  --name <Name>       Board title in the header
+  -h, --help          Show this help and exit
+
+Configuration (optional, .claude/workflow.config.json or workflow.config.json):
+  local.uiPort        Overrides the port. Precedence: config.local.uiPort > --port > 3000.
+  local.issuesDir     Directory with the issue files (default: issues)
+`,
+    archiviert: "Archived: {datei}",
+    titelLeer: "Title must not be empty",
+    statusUngueltig: "Invalid status '{status}'. Valid: {gueltig}",
+    issueFehlt: "Issue {id} not found",
+    kommentarLeer: "Empty comment",
+    idsKeinArray: "ids must be an array",
+    goCommit: "GO: #{id} to ready",
+    goCommitFehler: "GO commit failed (not critical): {fehler}",
+    seitenTitel: "claude-workflow-kit Board",
+    untertitel: "Local mode — files in issues/",
+    ansichtBoard: "Board",
+    ansichtListe: "List",
+    ansichtEpics: "Epics",
+    neu: "+ New",
+  },
+};
+
+/** Der Text zu `schluessel` in der Sprache des Prozesses, mit eingesetzten Werten. */
+function t(schluessel, werte) {
+  return textAusTabelle(TEXTE, schluessel, werte);
+}
+
+export function helpText() {
+  return t("hilfe", { version: VERSION });
 }
 
 // --- Config laden ---
@@ -222,7 +296,7 @@ async function archiveOldIssues(issuesDir) {
     if (isNaN(doneTs) || now - doneTs < THREE_DAYS_MS) continue;
     await mkdir(archiveDir, { recursive: true });
     await rename(path, join(archiveDir, f));
-    process.stdout.write(`Archiviert: ${f}\n`);
+    process.stdout.write(t("archiviert", { datei: f }) + "\n");
   }
 }
 
@@ -234,7 +308,7 @@ function handleRequest(req, res, issuesDir) {
   // GET /
   if (req.method === "GET" && url.pathname === "/") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    res.end(HTML);
+    res.end(seite());
     return;
   }
 
@@ -300,7 +374,7 @@ function handleRequest(req, res, issuesDir) {
         const { title, body: issueBody, type, parent, shortcode, color } = JSON.parse(body);
         if (!title || !title.trim()) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Titel darf nicht leer sein" }));
+          res.end(JSON.stringify({ error: t("titelLeer") }));
           return;
         }
         const created = createIssue(issuesDir, {
@@ -333,13 +407,13 @@ function handleRequest(req, res, issuesDir) {
         const valid = Object.keys(columnMap(config));
         if (!valid.includes(to)) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: `Ungueltiger Status '${to}'. Gueltig: ${valid.join(", ")}` }));
+          res.end(JSON.stringify({ error: t("statusUngueltig", { status: to, gueltig: valid.join(", ") }) }));
           return;
         }
         const file = join(issuesDir, `${id}.md`);
         if (!existsSync(file)) {
           res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: `Issue ${id} nicht gefunden` }));
+          res.end(JSON.stringify({ error: t("issueFehlt", { id }) }));
           return;
         }
         const raw = readFileSync(file, "utf-8");
@@ -357,9 +431,9 @@ function handleRequest(req, res, issuesDir) {
           try {
             execFileSync("git", ["add", "--", file], { stdio: "pipe" });
             // --only: nur die Issue-Datei committen, fremde gestagte Aenderungen bleiben im Index
-            execFileSync("git", ["commit", "-o", "-m", `GO: #${id} nach ready`, "--", file], { stdio: "pipe" });
+            execFileSync("git", ["commit", "-o", "-m", t("goCommit", { id }), "--", file], { stdio: "pipe" });
           } catch (e) {
-            process.stderr.write(`GO-Commit fehlgeschlagen (nicht kritisch): ${e.message}\n`);
+            process.stderr.write(t("goCommitFehler", { fehler: e.message }) + "\n");
           }
         }
 
@@ -384,13 +458,13 @@ function handleRequest(req, res, issuesDir) {
         const { title, body: newBody, shortcode, color } = JSON.parse(body);
         if (!title || !title.trim()) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Titel darf nicht leer sein" }));
+          res.end(JSON.stringify({ error: t("titelLeer") }));
           return;
         }
         const file = join(issuesDir, `${id}.md`);
         if (!existsSync(file)) {
           res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: `Issue ${id} nicht gefunden` }));
+          res.end(JSON.stringify({ error: t("issueFehlt", { id }) }));
           return;
         }
         const raw = readFileSync(file, "utf-8");
@@ -429,13 +503,13 @@ function handleRequest(req, res, issuesDir) {
         const { text } = JSON.parse(body);
         if (!text || !text.trim()) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Leerer Kommentar" }));
+          res.end(JSON.stringify({ error: t("kommentarLeer") }));
           return;
         }
         const file = join(issuesDir, `${id}.md`);
         if (!existsSync(file)) {
           res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: `Issue ${id} nicht gefunden` }));
+          res.end(JSON.stringify({ error: t("issueFehlt", { id }) }));
           return;
         }
         const now = new Date();
@@ -460,7 +534,7 @@ function handleRequest(req, res, issuesDir) {
     req.on("end", () => {
       try {
         const { ids } = JSON.parse(body);
-        if (!Array.isArray(ids)) throw new Error("ids muss ein Array sein");
+        if (!Array.isArray(ids)) throw new Error(t("idsKeinArray"));
         ids.forEach((id, idx) => {
           const file = join(issuesDir, `${id}.md`);
           if (!existsSync(file)) return;
@@ -485,11 +559,16 @@ function handleRequest(req, res, issuesDir) {
 
 // --- HTML (eingebettet, kein Build-Step, keine externen Abhaengigkeiten) ---
 
-const HTML = `<!DOCTYPE html>
-<html lang="de">
+// Je Aufruf gebaut, damit die Seite die Sprache des Prozesses traegt (Issue #1500).
+export function seite() {
+  const sprache = prozessSprache();
+  // Die Tabelle der Seite; "<" maskiert, damit kein Text das Skript beendet.
+  const texteSeite = JSON.stringify(TEXTE[sprache]).replaceAll("<", "\\u003c");
+  return `<!DOCTYPE html>
+<html lang="${sprache}">
 <head>
 <meta charset="utf-8">
-<title>claude-workflow-kit Board</title>
+<title>${t("seitenTitel")}</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1012,16 +1091,16 @@ const HTML = `<!DOCTYPE html>
 <body>
 
 <header>
-  <h1 id="board-title">claude-workflow-kit Board</h1>
+  <h1 id="board-title">${t("seitenTitel")}</h1>
   <span class="copyright" id="board-copyright"></span>
   <span class="version" id="board-version"></span>
-  <span class="subtitle" id="board-subtitle">Lokaler Modus — Dateien in issues/</span>
+  <span class="subtitle" id="board-subtitle">${t("untertitel")}</span>
   <div class="view-toggle">
-    <button class="view-btn active" id="btn-board" onclick="switchView('board')">Board</button>
-    <button class="view-btn" id="btn-list" onclick="switchView('list')">Liste</button>
-    <button class="view-btn" id="btn-epics" onclick="switchView('epics')">Epics</button>
+    <button class="view-btn active" id="btn-board" onclick="switchView('board')">${t("ansichtBoard")}</button>
+    <button class="view-btn" id="btn-list" onclick="switchView('list')">${t("ansichtListe")}</button>
+    <button class="view-btn" id="btn-epics" onclick="switchView('epics')">${t("ansichtEpics")}</button>
   </div>
-  <button class="new-issue-btn" onclick="openNewIssueModal()">+ Neu</button>
+  <button class="new-issue-btn" onclick="openNewIssueModal()">${t("neu")}</button>
 </header>
 
 <div class="board" id="board"></div>
@@ -1029,6 +1108,20 @@ const HTML = `<!DOCTYPE html>
 <div class="epics-view" id="epics-view" style="display:none"></div>
 
 <script>
+const TEXTE_SEITE = ${texteSeite};
+
+// Nach derselben Regel wie der Texthelfer aus kit/board/namen.mjs: ein fehlender Text oder
+// Wert wirft, nie still die andere Sprache.
+function tx(schluessel, werte) {
+  const vorlage = Object.prototype.hasOwnProperty.call(TEXTE_SEITE, schluessel) ? TEXTE_SEITE[schluessel] : undefined;
+  if (typeof vorlage !== "string") throw new Error("kein Text \\"" + schluessel + "\\"");
+  const w = werte || {};
+  return vorlage.replace(/\\{([A-Za-z_]\\w*)\\}/g, function (_, name) {
+    if (!Object.prototype.hasOwnProperty.call(w, name)) throw new Error("Text \\"" + schluessel + "\\" ohne Wert fuer {" + name + "}");
+    return String(w[name]);
+  });
+}
+
 let COLUMNS = [
   { key: "backlog",     label: "Backlog" },
   { key: "ready",       label: "Ready" },
@@ -1974,33 +2067,51 @@ init();
 </script>
 </body>
 </html>`;
+}
 
 // --- Start ---
 
-const args = parseArgs(process.argv.slice(2));
-if (args.help) {
-  process.stdout.write(helpText());
-  process.exit(0);
-}
-const config = loadConfig();
-const issuesDir = resolve(config.local?.issuesDir || "issues");
-// Vorrang: config.local.uiPort (workflow.config.json) > --port > Default 3000.
-const port = config.local?.uiPort ?? args.port ?? 3000;
+// Gesetzt erst beim Start als Kommando; handleRequest liest beides.
+let args = {};
+let config = {};
 
-const server = createServer((req, res) => {
-  try {
-    handleRequest(req, res, issuesDir);
-  } catch (e) {
-    res.writeHead(500);
-    res.end(e.message);
+function starten(argv) {
+  args = parseArgs(argv);
+  if (args.help) {
+    process.stdout.write(helpText());
+    process.exit(0);
   }
-});
+  config = loadConfig();
+  const issuesDir = resolve(config.local?.issuesDir || "issues");
+  // Vorrang: config.local.uiPort (workflow.config.json) > --port > Default 3000.
+  const port = config.local?.uiPort ?? args.port ?? 3000;
 
-const logArchiveError = (e) => process.stderr.write(`Archivierung fehlgeschlagen: ${e.message}\n`);
-archiveOldIssues(issuesDir).catch(logArchiveError);
-setInterval(() => archiveOldIssues(issuesDir).catch(logArchiveError), 60 * 60 * 1000);
+  const server = createServer((req, res) => {
+    try {
+      handleRequest(req, res, issuesDir);
+    } catch (e) {
+      res.writeHead(500);
+      res.end(e.message);
+    }
+  });
 
-server.listen(port, () => {
-  console.log(`Board läuft auf http://localhost:${port}`);
-  console.log(`Issues-Verzeichnis: ${issuesDir}`);
-});
+  const logArchiveError = (e) => process.stderr.write(`Archivierung fehlgeschlagen: ${e.message}\n`);
+  archiveOldIssues(issuesDir).catch(logArchiveError);
+  setInterval(() => archiveOldIssues(issuesDir).catch(logArchiveError), 60 * 60 * 1000);
+
+  server.listen(port, () => {
+    console.log(`Board läuft auf http://localhost:${port}`);
+    console.log(`Issues-Verzeichnis: ${issuesDir}`);
+  });
+}
+
+// Nur als Kommando starten, nicht beim Import durch die Tests (Issue #1500).
+// realpathSync statt resolve: Node loest fuer import.meta.url Symlinks auf (macOS:
+// /var -> /private/var), ein nur normalisierter argv[1] wuerde dann nie passen.
+let alsKommando = false;
+if (process.argv[1]) {
+  try {
+    alsKommando = realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch { /* argv[1] nicht aufloesbar -> kein Start */ }
+}
+if (alsKommando) starten(process.argv.slice(2));
