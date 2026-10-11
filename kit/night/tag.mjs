@@ -46,12 +46,141 @@ import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, hatKlaerenLabel, wartendeS
 import { KETTE_ZUSATZ, REVIEW_FERTIG_LABEL, beanspruchtGrund, belegteWurzeln, budgetDefaultsZeile,
   hatReviewFertigLabel, trackerImWorktreeUmleiten, vorabStandSetzen, wartendVermerken } from "./kette.mjs";
 
+// --- Texte an den Menschen (Issue #1486, Plan #1420 E13/E14) ---
+
+// Die Zeilen, die kanban-kit aus dem Textprotokoll liest, nehmen englisch die Form der Vorlage
+// am Plan #1420 (`WARNING:`, der Grund `Time budget` eines Zeitbudget-Abbruchs). Vertrag bleibt
+// (E14): die Ausgaenge (`geprueft`, `klaeren`, `unvollstaendig`, `uebersprungen`,
+// `liegengeblieben`), die erreichten Schritte (`gestartet`, `befunde`, `eingearbeitet`), die
+// Zustaende des Laufstands und die Anker, die der Teil aus den Kommentaren der Session liest.
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    praefixFehlt: "board/dokumente.mjs fehlt neben night.mjs ({pfad}) — das Praefix {praefix} ist nicht erkennbar.",
+    nichtAngebunden: "{haken} ist nicht angebunden — der Einstieg kit/night.mjs setzt es beim Laden.",
+    hakenUnbekannt: "tagAnbinden kennt keinen Haken '{name}'",
+    abhaengigkeitUnbekannt: "laufePrueflauf kennt keine Abhaengigkeit '{name}'",
+    budgetName: "des Prueflaufs",
+    nichtFachlich: "der Prueflauf gilt allein fachlichen Anforderungen (Nicht-Ziel 'Plandokumente und Arbeitspakete')",
+    ohneKennzeichen: "traegt das Kennzeichen {label} nicht",
+    traegtPlan: "traegt [Plan]",
+    ohneFachlich: "traegt kein [Fachlich]",
+    artGrund: "{art} — {hinweis}",
+    klaeren: "traegt {label} — eine Entscheidung wartet auf einen Menschen, eine zweite Pruefung beantwortet sie nicht",
+    standKopf: "Pruefung beendet: {ausgang} um {zeit}",
+    standFrage: "{kopf}\n\nWartende Entscheidung: {frage}",
+    standSchritt: ", erreichter Schritt: {schritt}",
+    standGrund: "{kopf}{erreicht}\n\n{grund}",
+    ohneGrund: "ohne Grund",
+    letzterKommentar: "siehe den letzten Kommentar an #{id}",
+    restAnker: "## Pruefung unvollstaendig",
+    ohneStempel: "ohne Stempel",
+    restGelaufen: "Prueflauf {stempel}: Die Pruefung ist gelaufen, ihre Befunde stehen als Kommentar an dieser Karte.",
+    restUnvollstaendig: "Sie ist unvollstaendig geblieben — der Lauf endete davor ({grund}) —, zuletzt erreichter Schritt: "
+      + "{schritt}. Der Body traegt deshalb keinen Fachplan-Review-Marker, obwohl geprueft wurde.",
+    restWeg: "Weg nach vorn: /issue-review #{id} von Hand fahren.",
+    restGeschrieben: "  Pruefung #{id} abgebrochen ({schritt}) — Vermerk '{anker}' an #{id} geschrieben.",
+    nichtGestartet: "Pruefung nicht gestartet: {grund}",
+    nichtGestartetGeschrieben: "  #{id}: Kommentar 'Pruefung nicht gestartet' geschrieben, Kennzeichen bleibt.",
+    nichtGestartetFehler: "  #{id}: Kommentar 'Pruefung nicht gestartet' nicht geschrieben ({antwort}).",
+    zeitbudget: "Zeitbudget: die Session wurde nach {minuten} min am Limit beendet",
+    technischerFehler: "technischer Fehler: die Session endete mit {exit}",
+    nichtLesbar: "die Karte ist nicht lesbar — es lief keine Session, das Kennzeichen bleibt",
+    karteUebersprungen: "Pruefung {nummer}/{gesamt}: Issue #{id} uebersprungen ({grund}).",
+    karteBeginnt: "Pruefung {nummer}/{gesamt}: Issue #{id} — {titel} (Fassung {fassung})",
+    kennzeichenEntfernt: "  Label '{label}' entfernt — jedes Setzen autorisiert genau eine Pruefung.",
+    reviewFertigEntfernt: "  Label '{label}' aus einem Vorlauf entfernt — nur diese Session darf es neu setzen.",
+    karteErgebnis: "  Pruefung #{id}: {ausgang}{zusatz} ({kosten} $).",
+    ohneMarker: "die Session endete, ohne den Fachplan-Review-Marker zu setzen",
+    zeileFassung: ", Fassung {fassung}",
+    zeileGeprueft: "  #{id} {titel}: geprueft{fassung}",
+    zeileKlaeren: "  #{id} {titel}: wartende Entscheidung{fassung}, Frage: {frage}",
+    zeileUnvollstaendig: "  #{id} {titel}: unvollstaendig{fassung}, erreichter Schritt: {schritt}",
+    ueberMax: "ueber --max {max}, bleibt liegen",
+    keinLabelWarnung: "WARNUNG: keine Karte traegt das Label '{label}' — es wird nichts geprueft.",
+    vorhandeneLabels: "  Vorhandene Labels: {labels}",
+    keineLabels: "keine",
+    kandidat: "  #{id} {titel} -> Pruefung {nummer}/{gesamt} (Fassung {fassung})",
+    worktree: "Worktree des Laufs: {pfad}",
+    kostenbudget: "Kostenbudget: {summe} $ von {deckel} $ nach Pruefung {nummer}",
+    worktreeEntfernt: "Liegengebliebenen Worktree entfernt: {pfad}",
+    ergebnisliste: "Ergebnisliste des Prueflaufs:",
+    beendet: "Prueflauf beendet: {geprueft} geprueft, {klaeren} mit wartender Entscheidung, {unvollstaendig} unvollstaendig, "
+      + "{uebersprungen} uebersprungen, {liegengeblieben} liegengeblieben.",
+    danach: "Danach: Eine geprueft hinterlassene Karte erfuellt die Aufnahmevoraussetzung der Nacht-Kette — das GO bleibt deins. "
+      + "Eine Karte mit '{label}' wartet auf deine Antwort; das Label nimmt nur ein Mensch ab. Protokoll: {protokoll}",
+  }),
+  en: Object.freeze({
+    praefixFehlt: "board/dokumente.mjs is missing next to night.mjs ({pfad}) — the prefix {praefix} cannot be recognized.",
+    nichtAngebunden: "{haken} is not connected — the entry point kit/night.mjs sets it when loading.",
+    hakenUnbekannt: "tagAnbinden knows no hook '{name}'",
+    abhaengigkeitUnbekannt: "laufePrueflauf knows no dependency '{name}'",
+    budgetName: "of the check run",
+    nichtFachlich: "the check run applies only to requirements (non-goal 'plan documents and work packages')",
+    ohneKennzeichen: "does not carry the marker {label}",
+    traegtPlan: "carries [Plan]",
+    ohneFachlich: "carries no [Fachlich]",
+    artGrund: "{art} — {hinweis}",
+    klaeren: "carries {label} — a decision is waiting for a human, a second check does not answer it",
+    standKopf: "Check finished: {ausgang} at {zeit}",
+    standFrage: "{kopf}\n\nPending decision: {frage}",
+    standSchritt: ", step reached: {schritt}",
+    standGrund: "{kopf}{erreicht}\n\n{grund}",
+    ohneGrund: "no reason",
+    letzterKommentar: "see the last comment on #{id}",
+    restAnker: "## Check incomplete",
+    ohneStempel: "without stamp",
+    restGelaufen: "Check run {stempel}: The check ran, its findings are a comment on this card.",
+    restUnvollstaendig: "It remained incomplete — the run ended before ({grund}) —, step reached: "
+      + "{schritt}. That is why the body carries no requirement review marker, although it was checked.",
+    restWeg: "Way forward: run /issue-review #{id} by hand.",
+    restGeschrieben: "  Check #{id} aborted ({schritt}) — note '{anker}' written on #{id}.",
+    nichtGestartet: "Check not started: {grund}",
+    nichtGestartetGeschrieben: "  #{id}: comment 'Check not started' written, marker stays.",
+    nichtGestartetFehler: "  #{id}: comment 'Check not started' not written ({antwort}).",
+    zeitbudget: "Time budget: the session was ended at the limit after {minuten} min",
+    technischerFehler: "technical error: the session ended with {exit}",
+    nichtLesbar: "the card is not readable — no session ran, the marker stays",
+    karteUebersprungen: "Check {nummer}/{gesamt}: issue #{id} skipped ({grund}).",
+    karteBeginnt: "Check {nummer}/{gesamt}: issue #{id} — {titel} (revision {fassung})",
+    kennzeichenEntfernt: "  Label '{label}' removed — each setting authorizes exactly one check.",
+    reviewFertigEntfernt: "  Label '{label}' from an earlier run removed — only this session may set it again.",
+    karteErgebnis: "  Check #{id}: {ausgang}{zusatz} ({kosten} $).",
+    ohneMarker: "the session ended without setting the requirement review marker",
+    zeileFassung: ", revision {fassung}",
+    zeileGeprueft: "  #{id} {titel}: checked{fassung}",
+    zeileKlaeren: "  #{id} {titel}: pending decision{fassung}, question: {frage}",
+    zeileUnvollstaendig: "  #{id} {titel}: incomplete{fassung}, step reached: {schritt}",
+    ueberMax: "over --max {max}, remains pending",
+    keinLabelWarnung: "WARNING: no card carries the label '{label}' — nothing will be checked.",
+    vorhandeneLabels: "  Labels present: {labels}",
+    keineLabels: "none",
+    kandidat: "  #{id} {titel} -> check {nummer}/{gesamt} (revision {fassung})",
+    worktree: "Worktree of the run: {pfad}",
+    kostenbudget: "Cost budget: {summe} $ of {deckel} $ after check {nummer}",
+    worktreeEntfernt: "Leftover worktree removed: {pfad}",
+    ergebnisliste: "Result list of the check run:",
+    beendet: "Check run finished: {geprueft} checked, {klaeren} with pending decision, {unvollstaendig} incomplete, "
+      + "{uebersprungen} skipped, {liegengeblieben} left pending.",
+    danach: "Next: a card left checked meets the entry condition of the night chain — the GO stays yours. "
+      + "A card with '{label}' waits for your answer; only a human removes that label. Log: {protokoll}",
+  }),
+});
+
+// Das Register mit literalem Pfad und abgefangen, wie in den Grundlagen (Issue #1485): Fehlt
+// board/namen.mjs neben night.mjs, bleiben die Texte deutsch.
+const namen = await import("../board/namen.mjs").catch(() => null);
+
+function t(schluessel, werte = {}) {
+  if (namen) return namen.text(TEXTE, schluessel, werte);
+  return TEXTE.de[schluessel].replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
+}
+
 // Die Praefixe kommen aus dem Board-Teil dokumente (Issue #1218). Abgefangen wie im Einstieg:
 // Fehlt der Teil, wirft jede Funktion erst, wenn jemand sie braucht — ein stilles `false`
 // liesse ein Plandokument in den Prueflauf. Der Pfad ist nicht literal, deshalb nennt die
 // Gruppe dieses Teils den Bereich board-dokumente von Hand (E3).
 const praefixFehlt = (was) => () => {
-  throw new Error(`board/dokumente.mjs fehlt neben night.mjs (${join(NACHBAR_DIR, "board")}) — das Praefix ${was} ist nicht erkennbar.`);
+  throw new Error(t("praefixFehlt", { pfad: join(NACHBAR_DIR, "board"), praefix: was }));
 };
 const {
   istFachlich: isFachlich,
@@ -67,17 +196,17 @@ const {
 // ist, hat keinen.
 const anbindung = {
   laufAbschliessen: () => {
-    throw new Error("laufAbschliessen ist nicht angebunden — der Einstieg kit/night.mjs setzt es beim Laden.");
+    throw new Error(t("nichtAngebunden", { haken: "laufAbschliessen" }));
   },
   fuehreVorflug: () => {
-    throw new Error("fuehreVorflug ist nicht angebunden — der Einstieg kit/night.mjs setzt es beim Laden.");
+    throw new Error(t("nichtAngebunden", { haken: "fuehreVorflug" }));
   },
 };
 
 /** Setzt die Haken aus `anbindung`; nicht genannte behalten ihren Wert. */
 export function tagAnbinden(haken) {
   for (const [name, fn] of Object.entries(haken)) {
-    if (!Object.hasOwn(anbindung, name)) throw new Error(`tagAnbinden kennt keinen Haken '${name}'`);
+    if (!Object.hasOwn(anbindung, name)) throw new Error(t("hakenUnbekannt", { name }));
     anbindung[name] = fn;
   }
 }
@@ -131,16 +260,14 @@ export function pruefLaufBudgetStand() {
 
 // Was die Protokollzeile des Prueflaufs ueber ihren Config-Block sagen muss. Die Zeile selbst,
 // budgetDefaultsZeile(), steht mit ihrem Hauptaufrufer im Teil kit/night/kette.mjs.
-const PRUEFLAUF_BUDGET_TEXT = { name: "des Prueflaufs", block: "pruefLauf", defaults: PRUEFLAUF_BUDGET_DEFAULTS };
+// Der Name in der Sprache des Prozesses, gebildet erst beim Lauf.
+const pruefLaufBudgetText = () => ({ name: t("budgetName"), block: "pruefLauf", defaults: PRUEFLAUF_BUDGET_DEFAULTS });
 
 // --- Auswahl, Fassung, Ergebnis und Vermerk einer Pruefung ---
 
-/**
- * Der Hinweis auf das Nicht-Ziel der fachlichen Anforderung #899: Der Prueflauf gilt
- * allein fachlichen Anforderungen. Er steht an jeder gekennzeichneten Karte, die keine
- * ist — am Plandokument wie am Arbeitspaket.
- */
-const PRUEFLAUF_NICHT_FACHLICH = "der Prueflauf gilt allein fachlichen Anforderungen (Nicht-Ziel 'Plandokumente und Arbeitspakete')";
+// Der Hinweis auf das Nicht-Ziel der fachlichen Anforderung #899 (`nichtFachlich` in TEXTE):
+// Der Prueflauf gilt allein fachlichen Anforderungen. Er steht an jeder gekennzeichneten
+// Karte, die keine ist — am Plandokument wie am Arbeitspaket.
 
 /**
  * Der Grund, aus dem eine gekennzeichnete Karte nicht geprueft wird — `null`, wenn sie
@@ -155,13 +282,13 @@ const PRUEFLAUF_NICHT_FACHLICH = "der Prueflauf gilt allein fachlichen Anforderu
  * beantwortet, kommt weiter.
  */
 export function pruefLaufAusschluss(issue, label, sache = "pruefen") {
-  if (!kennzeichenName(issue?.labels, label, sache)) return `traegt das Kennzeichen ${label} nicht`;
+  if (!kennzeichenName(issue?.labels, label, sache)) return t("ohneKennzeichen", { label });
   const titel = issue?.title ?? "";
   if (!isFachlich(titel)) {
-    const art = isPlan(titel) ? "traegt [Plan]" : "traegt kein [Fachlich]";
-    return `${art} — ${PRUEFLAUF_NICHT_FACHLICH}`;
+    const art = isPlan(titel) ? t("traegtPlan") : t("ohneFachlich");
+    return t("artGrund", { art, hinweis: t("nichtFachlich") });
   }
-  if (hatKlaerenLabel(issue)) return `traegt ${KLAEREN_LABEL} — eine Entscheidung wartet auf einen Menschen, eine zweite Pruefung beantwortet sie nicht`;
+  if (hatKlaerenLabel(issue)) return t("klaeren", { label: KLAEREN_LABEL });
   return null;
 }
 
@@ -237,11 +364,11 @@ const PRUEFLAUF_STAND = { geprueft: "fertig", klaeren: "wartet" };
  */
 export function pruefLaufStand({ ausgang, frage, schritt, grund }) {
   const zustand = PRUEFLAUF_STAND[ausgang] ?? "abgebrochen";
-  const kopf = `Pruefung beendet: ${ausgang} um ${abh.jetzt().toISOString()}`;
-  if (ausgang === "klaeren") return { zustand, text: `${kopf}\n\nWartende Entscheidung: ${ersteZeile(frage ?? "")}` };
+  const kopf = t("standKopf", { ausgang, zeit: abh.jetzt().toISOString() });
+  if (ausgang === "klaeren") return { zustand, text: t("standFrage", { kopf, frage: ersteZeile(frage ?? "") }) };
   if (zustand === "fertig") return { zustand, text: kopf };
-  const erreicht = schritt ? `, erreichter Schritt: ${schritt}` : "";
-  return { zustand, text: `${kopf}${erreicht}\n\n${grund ?? "ohne Grund"}` };
+  const erreicht = schritt ? t("standSchritt", { schritt }) : "";
+  return { zustand, text: t("standGrund", { kopf, erreicht, grund: grund ?? t("ohneGrund") }) };
 }
 
 /** Die ersten Zeilen der beiden Kommentare, die eine Pruefung an der Karte hinterlaesst. */
@@ -276,7 +403,7 @@ export function pruefLaufErgebnis(vorher, nachher) {
   }
   const neue = neueKommentare(vorher, nachher);
   if (hatKlaerenLabel(nachher)) {
-    const frage = neue.at(-1) ?? `siehe den letzten Kommentar an #${nachher?.id}`;
+    const frage = neue.at(-1) ?? t("letzterKommentar", { id: nachher?.id });
     return { ausgang: "klaeren", frage };
   }
   return { ausgang: "unvollstaendig", schritt: pruefLaufSchritt(neue) };
@@ -289,7 +416,21 @@ export function pruefLaufErgebnis(vorher, nachher) {
  * Ein EIGENER Anker, nicht der `REVIEW_REST_ANKER` der Nacht-Kette: Der spricht von Kette,
  * Plan und Plan-Review-Marker und gehoert der Kette.
  */
-export const PRUEFLAUF_REST_ANKER = "## Pruefung unvollstaendig";
+export const PRUEFLAUF_REST_ANKER = t("restAnker");
+
+/** Der Text des Vermerks aus `pruefLaufRestVermerken`, in der Sprache des Prozesses. */
+export function pruefLaufRestText(id, grund, schritt, stempel) {
+  return [
+    t("restAnker"),
+    "",
+    t("restGelaufen", { stempel: stempel ?? t("ohneStempel") }),
+    "",
+    t("restUnvollstaendig", { grund, schritt }),
+    "",
+    t("restWeg", { id }),
+    "",
+  ].join("\n");
+}
 
 /**
  * Der Vermerk an der Karte, wenn die Pruefung abbricht, nachdem sie Spuren hinterlassen hat
@@ -308,20 +449,10 @@ export function pruefLaufRestVermerken(id, grund, schritt, spuren = []) {
   const fremde = (spuren || []).filter((k) => !String(k).includes(WARTEND_ANKER));
   if (fremde.length === 0) return false;
   const pfad = join(tmpdir(), `night-prueflauf-rest-${process.pid}-${id}-${ZUSTAND.LAUF_STEMPEL ?? abh.jetzt().getTime()}.md`);
-  const text = [
-    PRUEFLAUF_REST_ANKER,
-    "",
-    `Prueflauf ${ZUSTAND.LAUF_STEMPEL ?? "ohne Stempel"}: Die Pruefung ist gelaufen, ihre Befunde stehen als Kommentar an dieser Karte.`,
-    "",
-    `Sie ist unvollstaendig geblieben — der Lauf endete davor (${grund}) —, zuletzt erreichter Schritt: ${schritt}. Der Body traegt deshalb keinen Fachplan-Review-Marker, obwohl geprueft wurde.`,
-    "",
-    `Weg nach vorn: /issue-review #${id} von Hand fahren.`,
-    "",
-  ].join("\n");
-  writeFileSync(pfad, text, "utf-8");
+  writeFileSync(pfad, pruefLaufRestText(id, grund, schritt, ZUSTAND.LAUF_STEMPEL), "utf-8");
   try {
     abh.board("issue", "comment", String(id), "--text-file", pfad);
-    log(`  Pruefung #${id} abgebrochen (${schritt}) — Vermerk '${PRUEFLAUF_REST_ANKER}' an #${id} geschrieben.`);
+    log(t("restGeschrieben", { id, schritt, anker: t("restAnker") }));
   } finally {
     rmSync(pfad, { force: true });
   }
@@ -357,10 +488,10 @@ const PRUEFLAUF_STUFE = "pruefung";
  */
 function pruefungNichtGestartet(kandidaten, grund) {
   for (const k of kandidaten) {
-    const res = abh.boardRoh("issue", "comment", String(k.id), "--text", `Pruefung nicht gestartet: ${grund}`);
+    const res = abh.boardRoh("issue", "comment", String(k.id), "--text", t("nichtGestartet", { grund }));
     log(res.status === 0
-      ? `  #${k.id}: Kommentar 'Pruefung nicht gestartet' geschrieben, Kennzeichen bleibt.`
-      : `  #${k.id}: Kommentar 'Pruefung nicht gestartet' nicht geschrieben (${res.text.slice(0, 120)}).`);
+      ? t("nichtGestartetGeschrieben", { id: k.id })
+      : t("nichtGestartetFehler", { id: k.id, antwort: res.text.slice(0, 120) }));
   }
 }
 
@@ -392,11 +523,11 @@ async function pruefLaufSession(lauf, id) {
 
   const minuten = (dauerMs / 60000).toFixed(1);
   if (res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM") {
-    return { ...messung, abbruch: `Zeitbudget: die Session wurde nach ${minuten} min am Limit beendet` };
+    return { ...messung, abbruch: t("zeitbudget", { minuten }) };
   }
   if (res.error || res.status !== 0) {
     const exitInfo = res.error ? `${res.error.code || res.error.message}` : `Exit ${res.status ?? res.signal}`;
-    return { ...messung, abbruch: `technischer Fehler: die Session endete mit ${exitInfo}` };
+    return { ...messung, abbruch: t("technischerFehler", { exit: exitInfo }) };
   }
   // Die wartende Sitzung (Plan #773) hinter Zeitbudget und technischem Fehler, weil sie ein
   // REGULAERES Ende verfeinert: Die Session hat eine lange Arbeit angestossen, darauf
@@ -420,8 +551,8 @@ async function pruefeEineKarte(lauf, issue, nummer) {
   // Auswahl und dieser Zeile liegen der Vorflug und alle vorigen Pruefungen des Laufs.
   const vorher = leseKarte(id);
   if (!vorher) {
-    const grund = "die Karte ist nicht lesbar — es lief keine Session, das Kennzeichen bleibt";
-    log(`Pruefung ${nummer}/${lauf.gesamt}: Issue #${id} uebersprungen (${grund}).`);
+    const grund = t("nichtLesbar");
+    log(t("karteUebersprungen", { nummer, gesamt: lauf.gesamt, id, grund }));
     pruefLaufStandSetzen(id, { ausgang: "uebersprungen", grund });
     einheitErgaenzen(einheit, { ausgang: "uebersprungen", grund });
     return { id, titel, ausgang: "uebersprungen", grund };
@@ -431,21 +562,21 @@ async function pruefeEineKarte(lauf, issue, nummer) {
   // der Pruefung aendert, sieht hinterher am Fingerabdruck, dass eine andere Fassung gelesen
   // wurde — erkennen kann der Lauf die Aenderung nicht.
   const fassung = pruefLaufFassung(vorher.body);
-  log(`Pruefung ${nummer}/${lauf.gesamt}: Issue #${id} — ${titel} (Fassung ${fassung})`);
+  log(t("karteBeginnt", { nummer, gesamt: lauf.gesamt, id, titel, fassung }));
   // Das Kennzeichen ist mit dem Start verbraucht (E2): Ein Abbruch fuehrt zu einem Vermerk
   // mit Grund und einer neuen Geste, nicht zur stillen Wiederholung.
   // Abgenommen wird der Name, den die Karte traegt, jeder, wenn sie mehrere traegt (Issue #1425).
   const kennzeichen = kennzeichenNamen(vorher?.labels, lauf.budget.label, "pruefen");
   for (const label of kennzeichen.length > 0 ? kennzeichen : [lauf.budget.label]) {
     abh.board("issue", "label", "remove", id, label);
-    log(`  Label '${label}' entfernt — jedes Setzen autorisiert genau eine Pruefung.`);
+    log(t("kennzeichenEntfernt", { label }));
   }
   // Und `review:fertig` gleich mit (E16): Nur so beantwortet der Nachher-Stand die Frage nach
   // DIESER Session und nicht die nach einem Vorlauf. `kit:klaeren` nimmt der Lauf nie ab —
   // das darf allein ein Mensch.
   for (const label of kennzeichenNamen(vorher?.labels, REVIEW_FERTIG_LABEL, "reviewFertig")) {
     abh.board("issue", "label", "remove", id, label);
-    log(`  Label '${label}' aus einem Vorlauf entfernt — nur diese Session darf es neu setzen.`);
+    log(t("reviewFertigEntfernt", { label }));
   }
 
   // Die Session hat ihr eigenes Protokoll (Issue #1090, E16): Laeuft daneben eine Kette,
@@ -465,9 +596,9 @@ async function pruefeEineKarte(lauf, issue, nummer) {
     // fuer einen Abbruch sagen nichts, was einer nicht sagt.
     wartendVermerken(id, PRUEFLAUF_STUFE, s.schlusstext);
   } else if (ergebnis.ausgang === "unvollstaendig") {
-    pruefLaufRestVermerken(id, s.abbruch ?? PRUEFLAUF_OHNE_MARKER, ergebnis.schritt, neueKommentare(vorher, nachher));
+    pruefLaufRestVermerken(id, s.abbruch ?? t("ohneMarker"), ergebnis.schritt, neueKommentare(vorher, nachher));
   }
-  pruefLaufStandSetzen(id, { ...ergebnis, grund: s.abbruch ?? PRUEFLAUF_OHNE_MARKER });
+  pruefLaufStandSetzen(id, { ...ergebnis, grund: s.abbruch ?? t("ohneMarker") });
 
   einheitErgaenzen(einheit, {
     ausgang: ergebnis.ausgang,
@@ -484,12 +615,12 @@ async function pruefeEineKarte(lauf, issue, nummer) {
     kostenUnbekannt: s.kosten.kostenUnbekannt,
   });
   const zusatz = s.abbruch ? ` — ${s.abbruch}` : "";
-  log(`  Pruefung #${id}: ${ergebnis.ausgang}${zusatz} (${s.kosten.kostenSumme.toFixed(2)} $).`);
+  log(t("karteErgebnis", { id, ausgang: ergebnis.ausgang, zusatz, kosten: s.kosten.kostenSumme.toFixed(2) }));
   return { id, titel, fassung, ...ergebnis, ...(s.abbruch ? { grund: s.abbruch } : {}) };
 }
 
-/** Der Grund einer unvollstaendigen Pruefung, deren Session ohne Abbruch endete. */
-const PRUEFLAUF_OHNE_MARKER = "die Session endete, ohne den Fachplan-Review-Marker zu setzen";
+// Der Grund einer unvollstaendigen Pruefung, deren Session ohne Abbruch endete, ist
+// `ohneMarker` in TEXTE.
 
 /** Setzt den Laufstand einer Karte des Prueflaufs nach ihrem Ausgang (E8). */
 function pruefLaufStandSetzen(id, ergebnis) {
@@ -505,14 +636,14 @@ function pruefLaufStandSetzen(id, ergebnis) {
  * wartenden Entscheidung die Frage, bei einem Abbruch der erreichte Schritt.
  */
 function pruefLaufZeile(e) {
-  const fassung = e.fassung ? `, Fassung ${e.fassung}` : "";
+  const fassung = e.fassung ? t("zeileFassung", { fassung: e.fassung }) : "";
   switch (e.ausgang) {
     case "geprueft":
-      return `  #${e.id} ${e.titel}: geprueft${fassung}`;
+      return t("zeileGeprueft", { id: e.id, titel: e.titel, fassung });
     case "klaeren":
-      return `  #${e.id} ${e.titel}: wartende Entscheidung${fassung}, Frage: ${ersteZeile(e.frage)}`;
+      return t("zeileKlaeren", { id: e.id, titel: e.titel, fassung, frage: ersteZeile(e.frage) });
     case "unvollstaendig":
-      return `  #${e.id} ${e.titel}: unvollstaendig${fassung}, erreichter Schritt: ${e.schritt}`;
+      return t("zeileUnvollstaendig", { id: e.id, titel: e.titel, fassung, schritt: e.schritt });
     default:
       return `  #${e.id} ${e.titel}: ${e.ausgang} — ${e.grund}`;
   }
@@ -545,15 +676,15 @@ function pruefLaufAuswahlMelden(args, budget, alle, auswahl, ergebnisse) {
     pruefLaufOhneSession(ergebnisse, u.id, u.title, "uebersprungen", u.grund);
   }
   for (const l of liegengeblieben) {
-    pruefLaufOhneSession(ergebnisse, l.id, l.title, "liegengeblieben", `ueber --max ${args.max}, bleibt liegen`);
+    pruefLaufOhneSession(ergebnisse, l.id, l.title, "liegengeblieben", t("ueberMax", { max: args.max }));
   }
   if (kandidaten.length === 0 && uebersprungen.length === 0 && liegengeblieben.length === 0) {
     const vorhanden = [...new Set(alle.flatMap((i) => i.labels || []))];
-    log(`WARNUNG: keine Karte traegt das Label '${budget.label}' — es wird nichts geprueft.`);
-    log(`  Vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
+    log(t("keinLabelWarnung", { label: budget.label }));
+    log(t("vorhandeneLabels", { labels: vorhanden.length ? vorhanden.join(", ") : t("keineLabels") }));
   }
   kandidaten.forEach((k, i) => {
-    log(`  #${k.id} ${k.title} -> Pruefung ${i + 1}/${kandidaten.length} (Fassung ${pruefLaufFassung(k.body)})`);
+    log(t("kandidat", { id: k.id, titel: k.title, nummer: i + 1, gesamt: kandidaten.length, fassung: pruefLaufFassung(k.body) }));
   });
 }
 
@@ -571,7 +702,7 @@ async function pruefLaufRunden(lauf, kandidaten, ergebnisse) {
     // Nach dem Spiegel: Der Stand ueberschreibt die gespiegelte Kopie der Hauptkopie (Issue #1102, A3).
     kitStandInBaum(lauf.wt);
     trackerImWorktreeUmleiten(lauf.wt, lauf.repoRoot);
-    log(`Worktree des Laufs: ${lauf.wt}`);
+    log(t("worktree", { pfad: lauf.wt }));
 
     let nummer = 0;
     for (const issue of kandidaten) {
@@ -582,7 +713,7 @@ async function pruefLaufRunden(lauf, kandidaten, ergebnisse) {
       // Der Kostendeckel gilt dem LAUF und wird NACH jeder Session geprueft, nie mittendrin:
       // Eine halb gelesene Pruefung waere der teurere Fehler.
       if (lauf.kosten.kostenSumme > lauf.budget.kostenUsd) {
-        const grund = `Kostenbudget: ${lauf.kosten.kostenSumme.toFixed(2)} $ von ${lauf.budget.kostenUsd} $ nach Pruefung ${nummer}`;
+        const grund = t("kostenbudget", { summe: lauf.kosten.kostenSumme.toFixed(2), deckel: lauf.budget.kostenUsd, nummer });
         for (const rest of kandidaten.slice(nummer)) {
           pruefLaufOhneSession(ergebnisse, rest.id, rest.title ?? "", "uebersprungen", grund);
           pruefLaufStandSetzen(rest.id, { ausgang: "uebersprungen", grund });
@@ -609,7 +740,7 @@ async function pruefLaufRunden(lauf, kandidaten, ergebnisse) {
  */
 export async function laufePrueflauf(args, abhaengigkeiten = {}) {
   for (const name of Object.keys(abhaengigkeiten)) {
-    if (!Object.hasOwn(TAG_ABHAENGIGKEITEN, name)) throw new Error(`laufePrueflauf kennt keine Abhaengigkeit '${name}'`);
+    if (!Object.hasOwn(TAG_ABHAENGIGKEITEN, name)) throw new Error(t("abhaengigkeitUnbekannt", { name }));
   }
   const vorher = { ...abh };
   Object.assign(abh, abhaengigkeiten);
@@ -623,11 +754,11 @@ export async function laufePrueflauf(args, abhaengigkeiten = {}) {
 async function pruefLaufFahren(args) {
   const budget = PRUEFLAUF_BUDGET;
   const repoRoot = process.cwd();
-  const defaultsZeile = budgetDefaultsZeile(budget, PRUEFLAUF_BUDGET_AUS_DEFAULT, PRUEFLAUF_BUDGET_TEXT);
+  const defaultsZeile = budgetDefaultsZeile(budget, PRUEFLAUF_BUDGET_AUS_DEFAULT, pruefLaufBudgetText());
   if (defaultsZeile) log(defaultsZeile);
   // Nur der eigene Praefix (Issue #908): Eine Nacht-Kette kann daneben laufen, und ihr
   // Worktree gehoert ihr.
-  for (const p of worktreesAufraeumen(repoRoot, PRUEFLAUF_PRAEFIX)) log(`Liegengebliebenen Worktree entfernt: ${p}`);
+  for (const p of worktreesAufraeumen(repoRoot, PRUEFLAUF_PRAEFIX)) log(t("worktreeEntfernt", { pfad: p }));
 
   const alle = abh.board("issue", "list");
   const gewaehlt = waehlePruefLaufKandidaten(alle, budget.label, args.max, { belegt: belegteWurzeln(alle, budget.label, "pruefen") });
@@ -662,13 +793,14 @@ async function pruefLaufFahren(args) {
   };
   await pruefLaufRunden(lauf, kandidaten, ergebnisse);
 
-  log("Ergebnisliste des Prueflaufs:");
+  log(t("ergebnisliste"));
   for (const e of ergebnisse) log(pruefLaufZeile(e));
   const zahl = (ausgang) => ergebnisse.filter((e) => e.ausgang === ausgang).length;
-  log(`Prueflauf beendet: ${zahl("geprueft")} geprueft, ${zahl("klaeren")} mit wartender Entscheidung, `
-    + `${zahl("unvollstaendig")} unvollstaendig, ${zahl("uebersprungen")} uebersprungen, ${zahl("liegengeblieben")} liegengeblieben.`);
-  log(`Danach: Eine geprueft hinterlassene Karte erfuellt die Aufnahmevoraussetzung der Nacht-Kette — das GO bleibt deins. `
-    + `Eine Karte mit '${KLAEREN_LABEL}' wartet auf deine Antwort; das Label nimmt nur ein Mensch ab. Protokoll: ${ZUSTAND.LOG_FILE}`);
+  log(t("beendet", {
+    geprueft: zahl("geprueft"), klaeren: zahl("klaeren"), unvollstaendig: zahl("unvollstaendig"),
+    uebersprungen: zahl("uebersprungen"), liegengeblieben: zahl("liegengeblieben"),
+  }));
+  log(t("danach", { label: KLAEREN_LABEL, protokoll: ZUSTAND.LOG_FILE }));
   anbindung.laufAbschliessen("regulaer");
   return abh.beenden(0);
 }

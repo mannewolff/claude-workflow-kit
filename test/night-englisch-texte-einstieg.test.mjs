@@ -12,12 +12,14 @@
 //
 // Der erste Teil (#1484) deckt den Einstieg kit/night.mjs; kit/night/laufvariablen.mjs gibt
 // nichts an den Menschen aus und hat darum keine Tabelle. Der zweite Teil (#1485) deckt
-// kit/night/grundlagen.mjs. Die folgenden Teile ergaenzen diese Datei um ihre Module.
+// kit/night/grundlagen.mjs, der dritte (#1486) kit/night/laufstand.mjs und kit/night/tag.mjs.
+// Fuer die ganze Gruppe weist der Quelltext-Scan am Ende nach, dass keine deutsche Meldung
+// mehr am Texthelfer vorbei ausgegeben wird.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, cpSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, cpSync, rmSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -26,7 +28,13 @@ import { TEXTE as EINSTIEG_TEXTE } from "../kit/night.mjs";
 import {
   TEXTE as GRUNDLAGEN_TEXTE, grundOhneArbeit, resteText, sicherheitsnetzGrund, boardFehlertext,
 } from "../kit/night/grundlagen.mjs";
-import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
+import {
+  TEXTE as LAUFSTAND_TEXTE, nightStandLaden, standSetzen, anhaltenVermerken, LAUF_KONTEXT,
+} from "../kit/night/laufstand.mjs";
+import { TEXTE as TAG_TEXTE, pruefLaufAusschluss, pruefLaufStand, pruefLaufRestText } from "../kit/night/tag.mjs";
+import { LETZTES_PROTOKOLL, ZUSTAND } from "../kit/night/grundlagen.mjs";
+import { pruefeParitaet, spracheFestlegen, MARKER } from "../kit/board/namen.mjs";
+import { mitProjekt } from "./helpers/laufstand-attrappe.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -237,4 +245,214 @@ test("[1485] ohne Spracheinstellung bleibt ein unbekanntes Argument deutsch", ()
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// --- kit/night/laufstand.mjs und kit/night/tag.mjs (Issue #1486) -------------------------
+
+/** Wie `inSprache`, fuer eine asynchrone Funktion. */
+async function inSpracheAsync(sprache, fn) {
+  spracheFestlegen(sprache);
+  try {
+    return await fn();
+  } finally {
+    spracheFestlegen(null);
+  }
+}
+
+const LAUF = "2026-10-01-010000";
+
+test("[1486] die Texttabellen von Laufstand und Prueflauf haben in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
+  assert.deepEqual(pruefeParitaet(LAUFSTAND_TEXTE), []);
+  assert.deepEqual(pruefeParitaet(TAG_TEXTE), []);
+  assert.ok(Object.keys(LAUFSTAND_TEXTE.de).length >= 20, "die Tabelle traegt die Meldungen des Laufstands");
+  assert.ok(Object.keys(TAG_TEXTE.de).length >= 30, "die Tabelle traegt die Meldungen des Prueflaufs");
+});
+
+test("[1486] englisch: die Abweisung eines unbrauchbaren night.stand", () => {
+  inSprache("en", () => {
+    assert.equal(nightStandLaden({ night: { stand: { fristMin: 0 } } }).fehler,
+      "night.stand.fristMin must be a number greater than 0, is 0.");
+    assert.match(nightStandLaden({ night: { stand: { fristMin: 5, pauseMin: 5 } } }).fehler,
+      /^night\.stand\.pauseMin \(5\) must be smaller than night\.stand\.fristMin \(5\) — /);
+  });
+});
+
+test("[1486] englisch: der Laufstand traegt die Kopfzeilen unter den englischen Markern", async () => {
+  await inSpracheAsync("en", () => mitProjekt(({ dir, staende }) => {
+    LETZTES_PROTOKOLL.set("7", ".claude/protokolle/x/7-umsetzung.log");
+    standSetzen("7", "laeuft", "accepted", { lauf: LAUF, repoRoot: dir, position: { k: 2, n: 3 } });
+    const text = staende()[0].text;
+    assert.match(text, /^Log: \.claude\/protokolle\/x\/7-umsetzung\.log$/m);
+    assert.match(text, /^Run-ID: \S+\/\d+\/2026-10-01-010000$/m);
+    assert.match(text, /^Updated: \S+$/m);
+    assert.match(text, /^Position: 2 of 3$/m);
+    for (const deutsch of ["Lauf-ID:", "Stand:", "Protokoll:", " von "]) assert.ok(!text.includes(deutsch), text);
+  }));
+});
+
+test("[1486] englisch: das Anhalten vermerkt die laufende und die naechsten Karten englisch", async () => {
+  await inSpracheAsync("en", () => mitProjekt(({ staende }) => {
+    ZUSTAND.LAUF_STEMPEL = LAUF;
+    Object.assign(LAUF_KONTEXT, { karte: "7", kandidaten: () => ["7", "8"] });
+    anhaltenVermerken("board silent");
+    const [laufend, naechste] = staende();
+    assert.match(laufend.text, /^aborted, environment error at \S+: board silent/);
+    assert.match(naechste.text, /^not started: the run stopped at \S+ — board silent/);
+  }));
+});
+
+test("[1486] englisch: Ausschluss, Laufstand und Rest-Vermerk des Prueflaufs", () => {
+  inSprache("en", () => {
+    const karte = (title, labels = ["kit:pruefen"]) => ({ id: 1, title, labels });
+    assert.equal(pruefLaufAusschluss(karte("[Fachlich] X", []), "kit:pruefen"), "does not carry the marker kit:pruefen");
+    assert.match(pruefLaufAusschluss(karte("[Plan] X"), "kit:pruefen"), /^carries \[Plan\] — the check run applies only to requirements/);
+    assert.match(pruefLaufAusschluss(karte("Paket"), "kit:pruefen"), /^carries no \[Fachlich\] — /);
+    assert.match(pruefLaufStand({ ausgang: "geprueft" }).text, /^Check finished: geprueft at \S+$/);
+    assert.match(pruefLaufStand({ ausgang: "klaeren", frage: "Which?" }).text, /\n\nPending decision: Which\?$/);
+    assert.match(pruefLaufStand({ ausgang: "unvollstaendig", schritt: "befunde" }).text,
+      /^Check finished: unvollstaendig at \S+, step reached: befunde\n\nno reason$/);
+  });
+});
+
+test("[1486] englisch: der Rest-Vermerk einer abgebrochenen Pruefung", () => {
+  const text = inSprache("en", () => pruefLaufRestText("5", "Time budget: x", "befunde", "2026-10-01-010000"));
+  assert.match(text, /^## Check incomplete\n\nCheck run 2026-10-01-010000: /);
+  assert.ok(text.includes("(Time budget: x)"), text);
+  assert.ok(text.includes("step reached: befunde."), text);
+  assert.ok(text.endsWith("Way forward: run /issue-review #5 by hand.\n"), text);
+});
+
+// --- Die ganze Gruppe: keine deutsche Meldung am Texthelfer vorbei (Issue #1486) ----------
+
+const ANFUEHRUNG = new Set(['"', "'", "`"]);
+
+/** Das Ende des Kommentars ab `i`, oder -1, wenn dort keiner beginnt. */
+function kommentarEnde(src, i) {
+  if (src.startsWith("//", i)) {
+    const zeilenende = src.indexOf("\n", i);
+    return zeilenende < 0 ? src.length : zeilenende;
+  }
+  if (src.startsWith("/*", i)) return src.indexOf("*/", i + 2) + 2;
+  return -1;
+}
+
+/** Das Ende einer Zeichenklasse `[…]` in einem regulaeren Ausdruck ab `i`. */
+function klassenEnde(src, i) {
+  let j = i + 1;
+  while (j < src.length && src[j] !== "]") j += src[j] === "\\" ? 2 : 1;
+  return j + 1;
+}
+
+/** Das Ende eines regulaeren Ausdrucks ab `i`, oder -1, wenn der Schraegstrich keiner beginnt. */
+function regexEnde(src, i) {
+  if (!/[(,=:!&|?;{}[]\s*$/.test(src.slice(Math.max(0, i - 20), i))) return -1;
+  let j = i + 1;
+  while (j < src.length && src[j] !== "/") {
+    if (src[j] === "\\") j += 2;
+    else if (src[j] === "[") j = klassenEnde(src, j);
+    else j++;
+  }
+  return j + 1;
+}
+
+/** Ein `${…}` ab `i` (hinter der Klammer) bis zu seinem Ende; Literale darin zaehlen mit. */
+function einschubEnde(src, i, aus) {
+  let tiefe = 1;
+  let j = i;
+  while (j < src.length) {
+    const c = src[j];
+    if (ANFUEHRUNG.has(c)) {
+      j = liesLiteral(src, j, aus);
+      continue;
+    }
+    if (c === "{") tiefe++;
+    if (c === "}" && --tiefe === 0) return j + 1;
+    j++;
+  }
+  return j;
+}
+
+/** Liest das Literal ab dem Anfuehrungszeichen bei `i` nach `aus`; Rueckgabe sein Ende. */
+function liesLiteral(src, i, aus) {
+  const q = src[i];
+  let s = "";
+  let j = i + 1;
+  while (j < src.length && src[j] !== q) {
+    if (src[j] === "\\") {
+      s += src[j + 1];
+      j += 2;
+    } else if (q === "`" && src.startsWith("${", j)) {
+      j = einschubEnde(src, j + 2, aus);
+      s += " ";
+    } else {
+      s += src[j];
+      j++;
+    }
+  }
+  aus.push(s);
+  return j + 1;
+}
+
+/**
+ * Die Zeichenketten eines Quelltexts ohne Kommentare und ohne regulaere Ausdruecke; ein
+ * Template-Literal ohne seine `${…}`-Teile, deren eigene Zeichenketten zaehlen mit.
+ */
+function literale(src) {
+  const aus = [];
+  let i = 0;
+  while (i < src.length) {
+    const ende = kommentarEnde(src, i);
+    if (ende >= 0) i = ende;
+    else if (ANFUEHRUNG.has(src[i])) i = liesLiteral(src, i, aus);
+    else if (src[i] === "/") i = Math.max(regexEnde(src, i), i + 1);
+    else i++;
+  }
+  return aus;
+}
+
+// Woerter, die in einem englischen Satz nicht vorkommen. Gross und klein zaehlen getrennt: Die
+// Kleinwoerter `karte`, `lauf` und `pruefung` sind Vertragswerte (E14) und bleiben.
+const DEUTSCHE_WOERTER = new RegExp(`\\b(${[
+  "nicht", "kein", "keine", "der", "die", "das", "und", "ist", "wird", "wurde", "fehlt", "bleibt", "steht",
+  "mit", "ohne", "nach", "beim", "von", "um", "Karte", "Lauf", "Pruefung", "Fehler",
+].join("|")})\\b`);
+
+const MARKER_DEUTSCH = new Set(Object.values(MARKER).map((m) => m.de));
+
+const GRUPPE = [
+  ["kit/night.mjs", EINSTIEG_TEXTE],
+  ["kit/night/laufvariablen.mjs", null],
+  ["kit/night/grundlagen.mjs", GRUNDLAGEN_TEXTE],
+  ["kit/night/laufstand.mjs", LAUFSTAND_TEXTE],
+  ["kit/night/tag.mjs", TAG_TEXTE],
+];
+
+/**
+ * Die deutschen Texte eines Moduls ausserhalb seiner Texttabelle — was der Mensch liest, geht
+ * ueber den Texthelfer. Ein Markername aus dem Register zaehlt nicht: Ihn waehlt das Register
+ * je Sprache, der deutsche steht nur als Rueckfall ohne Register im Modul.
+ */
+function deutschAmHelferVorbei(datei, tabelle) {
+  const src = readFileSync(join(repoRoot, datei), "utf-8");
+  const ohneTabelle = src.replace(/\nexport const TEXTE = Object\.freeze\(\{[\s\S]*?\n\}\);\n/, "\n");
+  if (tabelle) assert.notEqual(ohneTabelle, src, `${datei}: die Texttabelle TEXTE ist nicht zu finden`);
+  return literale(ohneTabelle).filter((l) => DEUTSCHE_WOERTER.test(l) && !MARKER_DEUTSCH.has(l));
+}
+
+/** Die Eintraege der englischen Tabellenhaelfte, die deutsche Woerter tragen. */
+function deutschImEnglischen(tabelle) {
+  return Object.entries(tabelle?.en ?? {}).filter(([, v]) => DEUTSCHE_WOERTER.test(v.replaceAll(/\{\w+\}/g, "")));
+}
+
+test("[1486] die Gruppe gibt in einem englischen Projekt keine deutsche Meldung aus", () => {
+  for (const [datei, tabelle] of GRUPPE) {
+    assert.deepEqual(deutschAmHelferVorbei(datei, tabelle), [], `${datei}: deutsche Texte am Texthelfer vorbei`);
+    assert.deepEqual(deutschImEnglischen(tabelle), [], `${datei}: deutsche Woerter in der englischen Tabelle`);
+  }
+});
+
+test("[1486] der Quelltext-Scan findet einen deutschen Satz am Texthelfer vorbei", () => {
+  const funde = literale('// "kein Fund"\nlog(`Lauf ${x ? "nicht da" : y} fertig`); const r = /der/;')
+    .filter((l) => DEUTSCHE_WOERTER.test(l));
+  assert.deepEqual(funde, ["nicht da", "Lauf   fertig"]);
 });

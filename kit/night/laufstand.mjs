@@ -38,6 +38,96 @@ import {
   ladeConfigMitOverrides, vergleicheText,
 } from "./grundlagen.mjs";
 
+// --- Texte an den Menschen (Issue #1486, Plan #1420 E13/E14) ---
+
+// Die Kopfzeilen des Laufstands (`Lauf-ID:`, `Stand:`, `Position:`, `Protokoll:`) nimmt der
+// Teil aus dem Register `MARKER` in kit/board/namen.mjs, nicht aus dieser Tabelle: Dort steht,
+// was kanban-kit und die Leser im Kit unter beiden Namen erkennen.
+// Vertrag bleibt (E14): die Zeilenarten und Zustaende des Journals (`lauf`, `stand`,
+// `quittung`; `laeuft`, `abgebrochen`, `wartet`, `abgegeben`), die Felder des Pulses und die
+// Werte des Laufberichts (`abschluss`, `ausgang` `verstummt`).
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    standZahl: "night.stand.{feld} muss eine Zahl groesser 0 sein, ist {wert}.",
+    standPause: "night.stand.pauseMin ({pause}) muss kleiner sein als night.stand.fristMin ({frist}) — sonst gaelte ein "
+      + "lebender Lauf in der Pause vor seinem zweiten Versuch als verstummt.",
+    abhaengigkeitUnbekannt: "laufstandAbhaengigkeiten kennt keine Abhaengigkeit '{name}'",
+    journalFehler: "Journal {pfad} nicht geschrieben: {fehler}",
+    positionWert: "{k} von {n}",
+    standFehler: "Laufstand #{karte} {zustand} nicht geschrieben ({antwort}) — bleibt offen im Journal und wird nachgetragen.",
+    nachgetragen: "Laufstand nachgetragen: #{karte} {zustand} (Journal .claude/lauf/{lauf}.jsonl).",
+    pulsFehler: "Puls {pfad} nicht geschrieben: {fehler}",
+    laufBegonnen: "begonnen",
+    abgebrochen: "abgebrochen, {grund}",
+    laufAbgebrochen: "Lauf {text}.",
+    abgebrochenUm: "{text} (um {zeit})",
+    umgebungsfehler: "Umgebungsfehler: {grund} — 2. Versuch nach {sekunden} s Pause.",
+    zweiterVersuch: "2. Versuch: {grund}",
+    versuchVermerk: "2. Versuch nach Umgebungsfehler um {zeit}: {grund}",
+    laufHaeltAn: "Lauf haelt an: {grund}",
+    abgebrochenUmgebung: "abgebrochen, Umgebungsfehler um {zeit}: {grund}",
+    naechsteUnbestimmt: "  Die naechsten Karten liessen sich nicht bestimmen ({fehler}) — am Board gilt ihr zuletzt sichtbarer Stand.",
+    nichtBegonnenLog: "  #{id} nicht begonnen.",
+    nichtBegonnen: "nicht begonnen: der Lauf hielt um {zeit} an — {grund}",
+    laufAngehalten: "Lauf angehalten: {grund}",
+    lebenszeichenUnbekannt: "unbekannt",
+    verstummtText: "nicht beendet, letztes Lebenszeichen {zeit}, Frist {frist}",
+    verstummtLog: "Lauf {lauf} verstummt: {text}.",
+    verstummtJournal: "verstummt, {text}",
+    laufberichtFehler: "Laufbericht {lauf} nicht geschrieben: {fehler}",
+    waechterFehler: "Waechter nicht gestartet: {fehler}",
+    waechterGestartet: "Waechter gestartet",
+  }),
+  en: Object.freeze({
+    standZahl: "night.stand.{feld} must be a number greater than 0, is {wert}.",
+    standPause: "night.stand.pauseMin ({pause}) must be smaller than night.stand.fristMin ({frist}) — otherwise a "
+      + "living run would count as silent during the pause before its second attempt.",
+    abhaengigkeitUnbekannt: "laufstandAbhaengigkeiten knows no dependency '{name}'",
+    journalFehler: "Journal {pfad} not written: {fehler}",
+    positionWert: "{k} of {n}",
+    standFehler: "Run status #{karte} {zustand} not written ({antwort}) — stays open in the journal and will be added later.",
+    nachgetragen: "Run status added later: #{karte} {zustand} (journal .claude/lauf/{lauf}.jsonl).",
+    pulsFehler: "Pulse {pfad} not written: {fehler}",
+    laufBegonnen: "started",
+    abgebrochen: "aborted, {grund}",
+    laufAbgebrochen: "Run {text}.",
+    abgebrochenUm: "{text} (at {zeit})",
+    umgebungsfehler: "Environment error: {grund} — 2nd attempt after a {sekunden} s pause.",
+    zweiterVersuch: "2nd attempt: {grund}",
+    versuchVermerk: "2nd attempt after environment error at {zeit}: {grund}",
+    laufHaeltAn: "Run stopping: {grund}",
+    abgebrochenUmgebung: "aborted, environment error at {zeit}: {grund}",
+    naechsteUnbestimmt: "  The next cards could not be determined ({fehler}) — on the board their last visible status applies.",
+    nichtBegonnenLog: "  #{id} not started.",
+    nichtBegonnen: "not started: the run stopped at {zeit} — {grund}",
+    laufAngehalten: "Run stopped: {grund}",
+    lebenszeichenUnbekannt: "unknown",
+    verstummtText: "not finished, last sign of life {zeit}, limit {frist}",
+    verstummtLog: "Run {lauf} went silent: {text}.",
+    verstummtJournal: "silent, {text}",
+    laufberichtFehler: "Run report {lauf} not written: {fehler}",
+    waechterFehler: "Watchdog not started: {fehler}",
+    waechterGestartet: "Watchdog started",
+  }),
+});
+
+// Das Register mit literalem Pfad und abgefangen, wie in den Grundlagen (Issue #1485): Fehlt
+// board/namen.mjs neben night.mjs, bleiben die Texte deutsch.
+const namen = await import("../board/namen.mjs").catch(() => null);
+
+function t(schluessel, werte = {}) {
+  if (namen) return namen.text(TEXTE, schluessel, werte);
+  return TEXTE.de[schluessel].replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
+}
+
+// Ohne Register die deutschen Namen, wie es sie bis Issue #1440 allein gab.
+const MARKER_OHNE_REGISTER = Object.freeze({ laufId: "Lauf-ID:", stand: "Stand:", position: "Position:", protokoll: "Protokoll:" });
+
+/** Der Name eines Laufstand-Markers in der Sprache des Prozesses. */
+function marker(sache) {
+  return namen ? namen.markerName(sache, namen.prozessSprache()) : MARKER_OHNE_REGISTER[sache];
+}
+
 // Der Einstieg, den der Waechter als eigenen Prozess startet — er liegt eine Ebene hoeher.
 const EINSTIEG = resolve(dirname(fileURLToPath(import.meta.url)), "..", "night.mjs");
 
@@ -68,7 +158,7 @@ export function laufstandAbhaengigkeiten(neu) {
     return;
   }
   for (const [name, fn] of Object.entries(neu)) {
-    if (!Object.hasOwn(VORGABEN, name)) throw new Error(`laufstandAbhaengigkeiten kennt keine Abhaengigkeit '${name}'`);
+    if (!Object.hasOwn(VORGABEN, name)) throw new Error(t("abhaengigkeitUnbekannt", { name }));
     abh[name] = fn;
   }
 }
@@ -109,12 +199,12 @@ export function nightStandLaden(cfg) {
     const wert = block[feld];
     if (wert === undefined) continue;
     if (typeof wert !== "number" || !Number.isFinite(wert) || wert <= 0) {
-      return { fehler: `night.stand.${feld} muss eine Zahl groesser 0 sein, ist ${JSON.stringify(wert)}.` };
+      return { fehler: t("standZahl", { feld, wert: JSON.stringify(wert) }) };
     }
     stand[feld] = wert;
   }
   if (stand.pauseMin >= stand.fristMin) {
-    return { fehler: `night.stand.pauseMin (${stand.pauseMin}) muss kleiner sein als night.stand.fristMin (${stand.fristMin}) — sonst gaelte ein lebender Lauf in der Pause vor seinem zweiten Versuch als verstummt.` };
+    return { fehler: t("standPause", { pause: stand.pauseMin, frist: stand.fristMin }) };
   }
   return stand;
 }
@@ -137,7 +227,7 @@ function journalZeile(pfad, objekt) {
     mkdirSync(dirname(pfad), { recursive: true });
     appendFileSync(pfad, JSON.stringify(objekt) + "\n", "utf-8");
   } catch (err) {
-    log(`Journal ${pfad} nicht geschrieben: ${err.message}`);
+    log(t("journalFehler", { pfad, fehler: err.message }));
   }
 }
 
@@ -215,8 +305,8 @@ export function laufPositionSetzen(karte, position) {
  */
 function laufstandText(zeile) {
   if (!zeile.laufId) return zeile.text;
-  const kopf = [`Lauf-ID: ${zeile.laufId}`, `Stand: ${zeile.zeit}`];
-  if (zeile.position) kopf.push(`Position: ${zeile.position.k} von ${zeile.position.n}`);
+  const kopf = [`${marker("laufId")} ${zeile.laufId}`, `${marker("stand")} ${zeile.zeit}`];
+  if (zeile.position) kopf.push(`${marker("position")} ${t("positionWert", zeile.position)}`);
   return zeile.text ? `${zeile.text}\n\n${kopf.join("\n")}\n` : `${kopf.join("\n")}\n`;
 }
 
@@ -228,7 +318,7 @@ function standAnsBoard(pfad, zeile, { repoRoot, budgetMs }) {
   try {
     const res = abh.board("issue", "stand", zeile.karte, "--zustand", zeile.zustand, "--text-file", datei, { cwd: repoRoot, budgetMs });
     if (res.status !== 0) {
-      log(`Laufstand #${zeile.karte} ${zeile.zustand} nicht geschrieben (${res.text.slice(0, 200)}) — bleibt offen im Journal und wird nachgetragen.`);
+      log(t("standFehler", { karte: zeile.karte, zustand: zeile.zustand, antwort: res.text.slice(0, 200) }));
       return false;
     }
     journalZeile(pfad, { art: "quittung", nr: zeile.nr, zeit: isoJetzt() });
@@ -246,7 +336,7 @@ function standAnsBoard(pfad, zeile, { repoRoot, budgetMs }) {
 function mitProtokollZeile(karte, eintrag) {
   const rel = LETZTES_PROTOKOLL.get(karte);
   if (!rel) return eintrag;
-  const zeile = `Protokoll: ${rel}`;
+  const zeile = `${marker("protokoll")} ${rel}`;
   return eintrag ? `${eintrag}\n\n${zeile}` : zeile;
 }
 
@@ -335,7 +425,7 @@ function journalNachtragen(repoRoot, lauf) {
   for (const zeile of staende.filter((s) => s.status === "offen" && letzter.get(s.karte) !== "abgegeben")) {
     if (!standAnsBoard(pfad, zeile, { repoRoot })) continue;
     nachgetragen.push({ lauf, nr: zeile.nr, karte: zeile.karte, zustand: zeile.zustand });
-    log(`Laufstand nachgetragen: #${zeile.karte} ${zeile.zustand} (Journal .claude/lauf/${lauf}.jsonl).`);
+    log(t("nachgetragen", { karte: zeile.karte, zustand: zeile.zustand, lauf }));
   }
   return nachgetragen;
 }
@@ -358,7 +448,7 @@ export function pulsSchreiben() {
     abh.umbenennen(temporaer, PULS_DATEI);
   } catch (err) {
     try { rmSync(temporaer, { force: true }); } catch { /* bleibt liegen, der Puls zaehlt nur .puls */ }
-    log(`Puls ${PULS_DATEI} nicht geschrieben: ${err.message}`);
+    log(t("pulsFehler", { pfad: PULS_DATEI, fehler: err.message }));
   }
 }
 
@@ -386,7 +476,7 @@ export function laufstandStarten() {
   PULS_DATEI = laufPfad(process.cwd(), ZUSTAND.LAUF_STEMPEL, "puls");
   // Die Laufart steht im Laufbericht, den der Einstieg davor anlegt (`laufArt`, E8).
   if (ZUSTAND.LAUF?.art) PULS_ZUSTAND.art = ZUSTAND.LAUF.art;
-  journalZeile(laufPfad(process.cwd(), ZUSTAND.LAUF_STEMPEL, "jsonl"), { art: "lauf", zeit: isoJetzt(), pid: process.pid, text: "begonnen" });
+  journalZeile(laufPfad(process.cwd(), ZUSTAND.LAUF_STEMPEL, "jsonl"), { art: "lauf", zeit: isoJetzt(), pid: process.pid, text: t("laufBegonnen") });
   pulsSchreiben();
   PULS_TIMER = setInterval(pulsSchreiben, Number(process.env.NIGHT_PULS_MS) || PULS_TAKT_MS);
   PULS_TIMER.unref();
@@ -403,14 +493,14 @@ export function laufAbbrechen(grund, { abschluss = "abgebrochen", budgetMs, exit
   if (ABBRUCH_LAEUFT) return abh.beenden(exitCode);
   ABBRUCH_LAEUFT = true;
   if (PULS_TIMER) clearInterval(PULS_TIMER);
-  const text = `abgebrochen, ${grund}`;
-  if (abschluss === "abgebrochen") log(`Lauf ${text}.`);
+  const text = t("abgebrochen", { grund });
+  if (abschluss === "abgebrochen") log(t("laufAbgebrochen", { text }));
   if (ZUSTAND.LAUF_STEMPEL) {
     const pfad = laufPfad(process.cwd(), ZUSTAND.LAUF_STEMPEL, "jsonl");
     const zeit = isoJetzt();
     journalZeile(pfad, { art: "lauf", zeit, pid: process.pid, text });
     for (const karte of laufendeKarten(journalLesen(pfad).staende)) {
-      standSetzen(karte, "abgebrochen", `${text} (um ${zeit})`, { budgetMs });
+      standSetzen(karte, "abgebrochen", t("abgebrochenUm", { text, zeit }), { budgetMs });
     }
   }
   if (ZUSTAND.LAUF) {
@@ -488,9 +578,9 @@ function pauseMs() {
 export function zweiterVersuch(grund) {
   const ms = pauseMs();
   const zeit = isoJetzt();
-  log(`Umgebungsfehler: ${grund} — 2. Versuch nach ${ms / 1000} s Pause.`);
-  if (ZUSTAND.LAUF_STEMPEL) journalZeile(laufPfad(process.cwd(), ZUSTAND.LAUF_STEMPEL, "jsonl"), { art: "lauf", zeit, pid: process.pid, text: `2. Versuch: ${ersteZeile(grund)}` });
-  if (LAUF_KONTEXT.karte) VERSUCH_VERMERKE.set(String(LAUF_KONTEXT.karte), `2. Versuch nach Umgebungsfehler um ${zeit}: ${ersteZeile(grund)}`);
+  log(t("umgebungsfehler", { grund, sekunden: ms / 1000 }));
+  if (ZUSTAND.LAUF_STEMPEL) journalZeile(laufPfad(process.cwd(), ZUSTAND.LAUF_STEMPEL, "jsonl"), { art: "lauf", zeit, pid: process.pid, text: t("zweiterVersuch", { grund: ersteZeile(grund) }) });
+  if (LAUF_KONTEXT.karte) VERSUCH_VERMERKE.set(String(LAUF_KONTEXT.karte), t("versuchVermerk", { zeit, grund: ersteZeile(grund) }));
   pulsSchreiben();
   abh.schlaf(ms);
   pulsSchreiben();
@@ -518,18 +608,18 @@ export function anhaltenVermerken(grund) {
   ANHALTEN_LAEUFT = true;
   const zeit = isoJetzt();
   const karte = LAUF_KONTEXT.karte ? String(LAUF_KONTEXT.karte) : null;
-  log(`Lauf haelt an: ${grund}`);
-  if (karte) standSetzen(karte, "abgebrochen", `abgebrochen, Umgebungsfehler um ${zeit}: ${grund}`, { budgetMs: ABBRUCH_BUDGET_MS });
+  log(t("laufHaeltAn", { grund }));
+  if (karte) standSetzen(karte, "abgebrochen", t("abgebrochenUmgebung", { zeit, grund }), { budgetMs: ABBRUCH_BUDGET_MS });
   let ids;
   try {
     ids = LAUF_KONTEXT.kandidaten().map(String);
   } catch (err) {
-    log(`  Die naechsten Karten liessen sich nicht bestimmen (${ersteZeile(err.message)}) — am Board gilt ihr zuletzt sichtbarer Stand.`);
+    log(t("naechsteUnbestimmt", { fehler: ersteZeile(err.message) }));
     return;
   }
   for (const id of ids.filter((i) => i !== karte)) {
-    log(`  #${id} nicht begonnen.`);
-    standSetzen(id, "wartet", `nicht begonnen: der Lauf hielt um ${zeit} an — ${grund}`, { budgetMs: ABBRUCH_BUDGET_MS });
+    log(t("nichtBegonnenLog", { id }));
+    standSetzen(id, "wartet", t("nichtBegonnen", { zeit, grund }), { budgetMs: ABBRUCH_BUDGET_MS });
   }
 }
 
@@ -540,7 +630,7 @@ export function anhaltenVermerken(grund) {
  */
 export function laufAnhalten(grund, klasse = "umgebung") {
   anhaltenVermerken(grund);
-  fail(`Lauf angehalten: ${grund}`, klasse);
+  fail(t("laufAngehalten", { grund }), klasse);
 }
 
 /** Hat die Sitzung ein Ereignis in ihren Strom geschrieben, kam sie zustande (E13). */
@@ -632,10 +722,10 @@ function waechterLage(repoRoot, lauf, fristMs) {
  * waere ein Lauf ohne Geste (Kriterium 12 aus #1075).
  */
 function verstummtAbschliessen(repoRoot, lauf, fristMs) {
-  const text = `nicht beendet, letztes Lebenszeichen ${pulsLesen(repoRoot, lauf)?.zeit ?? "unbekannt"}, Frist ${fristText(fristMs)}`;
-  log(`Lauf ${lauf} verstummt: ${text}.`);
+  const text = t("verstummtText", { zeit: pulsLesen(repoRoot, lauf)?.zeit ?? t("lebenszeichenUnbekannt"), frist: fristText(fristMs) });
+  log(t("verstummtLog", { lauf, text }));
   const pfad = laufPfad(repoRoot, lauf, "jsonl");
-  journalZeile(pfad, { art: "lauf", zeit: isoJetzt(), pid: process.pid, text: `verstummt, ${text}` });
+  journalZeile(pfad, { art: "lauf", zeit: isoJetzt(), pid: process.pid, text: t("verstummtJournal", { text }) });
   for (const karte of laufendeKarten(journalLesen(pfad).staende)) {
     standSetzen(karte, "abgebrochen", text, { lauf, repoRoot, budgetMs: ABBRUCH_BUDGET_MS });
   }
@@ -653,7 +743,7 @@ function verstummtAbschliessen(repoRoot, lauf, fristMs) {
   try {
     writeFileSync(laufberichtPfad(repoRoot, lauf), JSON.stringify(bericht, null, 2) + "\n", "utf-8");
   } catch (err) {
-    log(`Laufbericht ${lauf} nicht geschrieben: ${err.message}`);
+    log(t("laufberichtFehler", { lauf, fehler: err.message }));
     return;
   }
   laufMelden({ budgetMs: ABBRUCH_BUDGET_MS, datei: laufberichtPfad(repoRoot, lauf), stand: bericht });
@@ -715,14 +805,14 @@ export function waechterStarten() {
   if (!ZUSTAND.LAUF_STEMPEL || process.env.KIT_NIGHT_WAECHTER === "0") return;
   try {
     const kind = abh.spawn(process.execPath, [EINSTIEG, "--waechter", ZUSTAND.LAUF_STEMPEL], waechterStartOptionen(process.cwd()));
-    kind.on("error", (err) => log(`Waechter nicht gestartet: ${err.message}`));
+    kind.on("error", (err) => log(t("waechterFehler", { fehler: err.message })));
     kind.unref();
     WAECHTER_PID = kind.pid ?? null;
   } catch (err) {
-    log(`Waechter nicht gestartet: ${err.message}`);
+    log(t("waechterFehler", { fehler: err.message }));
     return;
   }
-  journalZeile(laufPfad(process.cwd(), ZUSTAND.LAUF_STEMPEL, "jsonl"), { art: "lauf", zeit: isoJetzt(), pid: process.pid, waechterPid: WAECHTER_PID, text: "Waechter gestartet" });
+  journalZeile(laufPfad(process.cwd(), ZUSTAND.LAUF_STEMPEL, "jsonl"), { art: "lauf", zeit: isoJetzt(), pid: process.pid, waechterPid: WAECHTER_PID, text: t("waechterGestartet") });
 }
 
 /** Beendet den Waechter dieses Laufs mit SIGTERM; ohne Waechter ein Leerlauf. */
