@@ -600,7 +600,7 @@ export const { mergeKontextConfig, resolveKontextPaths, pickNoteFile, pickLatest
 // Einstieg fuer Dispatch und Formpruefung; exportiert waren sie nie und bleiben es nicht.
 const { KONTEXT_DEFAULTS, loadKontextConfig, kontextRepoName, heute, issueCreate,
   issueGet, issueList, issueEpics, issueActivity, issueMove, issueLabel,
-  issueComment, issueMelden, issueStand, issueAuftrag, issueUrsprung, issueUpdate, CHECK_FORM_WEGE,
+  issueComment, issueMelden, issueStand, issueAuftrag, issueUrsprung, issueUpdate, checkFormWege,
   titelMitArt } = await import("./board/dokumente.mjs");
 export const { GESCHUETZTE_PFADE, KOPIE_PFADE, geschuetztePfade, trifftGeschuetzt, pfadTokens, tokenFormen,
   geschuetzteTreffer, GESCHUETZT_ANKER, GESCHUETZT_LABEL, GESCHUETZT_LABEL_GESETZT, GESCHUETZT_LABEL_NICHT_GESETZT,
@@ -698,14 +698,14 @@ function checkFormAbweisen(meldung) {
 
 /** Der Datei-Weg: Body aus --body-file, Titel aus --title. */
 function checkFormAusDatei(datei, titel) {
-  if (datei === true || datei === "") checkFormAbweisen(t("checkFormOhnePfad", { wege: CHECK_FORM_WEGE }));
+  if (datei === true || datei === "") checkFormAbweisen(t("checkFormOhnePfad", { wege: checkFormWege() }));
   if (typeof titel !== "string" || titel.trim() === "") {
-    checkFormAbweisen(t("checkFormOhneTitel", { wege: CHECK_FORM_WEGE }));
+    checkFormAbweisen(t("checkFormOhneTitel", { wege: checkFormWege() }));
   }
   try {
     return { body: readFileSync(datei, "utf-8"), title: titel };
   } catch (e) {
-    return checkFormAbweisen(t("checkFormUnlesbar", { datei, grund: e.code || e.message, wege: CHECK_FORM_WEGE }));
+    return checkFormAbweisen(t("checkFormUnlesbar", { datei, grund: e.code || e.message, wege: checkFormWege() }));
   }
 }
 
@@ -723,14 +723,14 @@ async function checkFormVomBoard(tracker, id) {
 async function issueCheckForm(tracker, config, args) {
   const id = args._[0];
   const hatDatei = args["body-file"] !== undefined;
-  if (id !== undefined && hatDatei) checkFormAbweisen(t("checkFormBeides", { wege: CHECK_FORM_WEGE }));
-  if (id === undefined && !hatDatei) checkFormAbweisen(t("checkFormNichts", { wege: CHECK_FORM_WEGE }));
+  if (id !== undefined && hatDatei) checkFormAbweisen(t("checkFormBeides", { wege: checkFormWege() }));
+  if (id === undefined && !hatDatei) checkFormAbweisen(t("checkFormNichts", { wege: checkFormWege() }));
 
   const eingabe = hatDatei ? checkFormAusDatei(args["body-file"], args.title) : await checkFormVomBoard(tracker, id);
   const body = eingabe.body;
   // --art waehlt die Stufe ueber den Titel, wie `issue create` ihn anlegt (Issue #1427, E6).
   const { titel: title, fehler } = titelMitArt(eingabe.title, args.art, projektSprache(config));
-  if (fehler) checkFormAbweisen(t("checkFormArt", { fehler, wege: CHECK_FORM_WEGE }));
+  if (fehler) checkFormAbweisen(t("checkFormArt", { fehler, wege: checkFormWege() }));
   const dateien = stufeAusTitel(title) === "plan" ? versionierteDateien() : [];
   const ergebnis = pruefeForm(body, title, config, dateien, configWurzel());
   if (ergebnis.stufe === "issue") {

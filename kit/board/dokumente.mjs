@@ -33,14 +33,17 @@ import { GitHubIssueTracker, resolveCodeHost, labelSetzenMitRueckfall } from "./
 // Zyklus mit Absicht: ursprung.mjs liest Karten und Herkunftszeilen von hier. Beide Seiten
 // rufen sich erst zur Laufzeit, keine liest beim Laden einen Wert der anderen.
 import { ursprungLesen, ursprungNachziehen } from "./ursprung.mjs";
-import { SPRACHEN, PRAEFIXE, LABELS, projektSprache, praefix, labelName, erkennePraefix, erkenneLabel, erkenneMarker, leseMarker, markerWerte,
+import { SPRACHEN, PRAEFIXE, LABELS, projektSprache, prozessSprache, praefix, labelName, erkennePraefix, erkenneLabel, erkenneMarker, leseMarker, markerWerte,
   kanonischeUeberschrift, ueberschriftName, ueberschriftZeile, text } from "./namen.mjs";
 import { normalisiereConfig } from "./config-namen.mjs";
 
 /**
- * Die Texte dieses Teils an den Menschen (Issue #1478, Plan #1420 E13). Vertragswerte (E14)
- * stehen nicht hier: die Feldnamen der JSON-Ausgaben, die `art` der Label-Hinweise und die
- * Marker, die das Kit an die Karten schreibt (`Autor-Modell:`, `Kit-Stand:`, `Bericht-Lauf:`).
+ * Die Texte dieses Teils an den Menschen (Issue #1478, #1479, Plan #1420 E13). Vertragswerte
+ * (E14) stehen nicht hier: die Feldnamen der JSON-Ausgaben, die `art` der Label-Hinweise und
+ * der Abhaengigkeits-Hinweise, die Folge des Auftrags (`beginnen`, `bleibt`, `backlog`,
+ * `geschuetzt`), der Befund einer Voraussetzung im JSON, die Werte von `bericht` und
+ * `kommentar`, die `aktion` der Ursprungsdokumente und die Marker, die das Kit an die Karten
+ * schreibt (`Autor-Modell:`, `Kit-Stand:`, `Bericht-Lauf:`, `## Laufstand`).
  */
 export const TEXTE = Object.freeze({
   de: Object.freeze({
@@ -82,6 +85,118 @@ export const TEXTE = Object.freeze({
     quelleUnlesbar: "{dateiFlag}: {pfad} ist nicht lesbar ({grund}).",
     stdinUnlesbar: "--{flag} -: stdin ist nicht lesbar ({grund}).",
     quelleLeer: "--{flag} ist erforderlich und darf nicht leer sein (Argument, {dateiFlag} oder '-' fuer stdin).",
+    // Ab ursprungEinhaengen bis zum Dateiende (Issue #1479).
+    meldenAufruf: "issue melden <id> [--teil <n>] --text '…'",
+    meldenTeilKeineZahl: "--teil '{wert}' ist keine positive Ganzzahl.",
+    meldenTeilOhneText: "--teil braucht --text '…' mit dem Stueck.",
+    meldenTextUndStuecke: "Fuer Issue {id} liegen {anzahl} Stueck(e) unter .claude/{ordner}/ — "
+      + "entweder --text oder den Abschluss ohne --text aufrufen, nicht beides.",
+    meldenKeinBericht: "Kein Bericht fuer Issue {id}: weder --text noch Stuecke unter .claude/{ordner}/.",
+    meldenKeinZug: "Kein Zug von Issue {id} nach in_progress in .claude/{datei} — ohne Laufkennung kein Bericht. Nichts geschrieben.",
+    berichtKommentareUnlesbar: "Kommentare von Issue {id} nicht lesbar — kein Bericht geschrieben, Karte bleibt: {grund}",
+    berichtOhneKommentarId: "der Bericht dieses Laufs traegt keine Kommentar-ID.",
+    berichtNichtAbgelegt: "Bericht fuer Issue {id} nicht abgelegt, Karte bleibt in In progress: {grund}",
+    berichtNichtGefunden: "Bericht dieses Laufs nicht gefunden.",
+    ursprungPlan: "Plan #{id}",
+    ursprungFachlich: "Fachliche Anforderung #{id}",
+    ursprungFehler: "- {name}: {art} ({grund}) — nachziehen mit `{kommando}`",
+    ursprungGewandert: "- {name}: nach In review gewandert",
+    ursprungBleibt: "- {name}: bleibt — {grund}",
+    ursprungLagBereits: "- {name}: lag bereits in {spalte}",
+    ursprungPaketNichtLesbar: "Paket nicht lesbar",
+    ursprungPaketNichtLesbarGrund: "Paket nicht lesbar ({grund})",
+    ursprungNachziehenGescheitert: "Nachziehen gescheitert",
+    ursprungAbschnittNichtGeschrieben: "Abschnitt nicht geschrieben",
+    standLabelLeer: "night.stand.labels.{zustand} muss ein nicht leerer Text sein, ist {wert}.",
+    standLabelsGleich: "night.stand.labels: die drei Namen muessen verschieden sein ({namen}).",
+    standAufruf: "issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <datei>",
+    standLabelsGibtsNicht: "--labels gibt es nicht: Die Namen kommen aus night.stand.labels der Config. board.mjs {aufruf}",
+    standZustandUnbekannt: "--zustand '{wert}' unbekannt. Erwartet: {erwartet}",
+    standTextFileErforderlich: "--text-file ist erforderlich: board.mjs {aufruf}",
+    standKommentareUnlesbar: "Kommentare von Issue {id} nicht lesbar — kein Laufstand geschrieben: {grund}",
+    standOhneKommentarId: "Der Laufstand an Issue {id} traegt keine Kommentar-ID — nicht ersetzt.",
+    backlogFachlich: "Fachliches Issue — wird nicht implementiert, bitte per /techplan #{id} in technische Issues ueberfuehren.",
+    backlogIdee: "Idee — mit Abwaegung erst /fachplan #{id}, ohne Abwaegung /task #{id}, wird nicht implementiert.",
+    backlogPlan: "Plan-Dokument — wird nicht implementiert, bitte per /issues #{id} in Arbeitspakete ueberfuehren.",
+    backlogMensch: "Menschenschritt — wird nicht implementiert, die Karte wartet auf einen Menschen und ist nicht gescheitert.",
+    backlogKlaeren: "Traegt {label} — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.",
+    backlogGeschuetzt: "Traegt {label} — eine menschliche Handlung an einer geschuetzten Datei wartet, wird nicht implementiert. "
+      + "Das Label nimmt nur ein Mensch ab.",
+    hinweisSchreibweise: "#{nummer} zählt als Abhängigkeit — sie steht nicht in einer Verweiszeile (‚Issue #{nummer}‘): {stelle}",
+    hinweisUnbekannt: "#{nummer} steht nicht auf dem Board (archiviert oder nicht vorhanden?) — sie gilt als erfüllt",
+    hinweisDokument: "#{nummer} ist ein Dokument ({praefix}), kein Arbeitspaket — {satz}",
+    dokumentPlanSatz: "ein Plandokument wird nie durch Umsetzung erledigt",
+    dokumentErstSatz: "eine fachliche Anforderung oder Idee ist erst erledigt, wenn ihre Pakete fertig sind",
+    befundErfuellt: "erfuellt",
+    befundUnerfuellt: "unerfuellt",
+    nichtFeststellbar: "nicht feststellbar",
+    nichtAufDemBoard: "steht nicht auf dem Board",
+    karteNichtLesbar: "Karte nicht lesbar: {grund}",
+    spalteNichtLesbar: "Spalte nicht lesbar: {grund}",
+    keinVorhaben: "kein Vorhaben",
+    keinVorhabenGrund: "kein Vorhaben — das Paket nennt keine Zeile `Plan: Issue #M`",
+    lueckePlanEntscheidungen: "Plan-Entscheidungen: {was}",
+    lueckeGeschwister: "Geschwister: {was}",
+    lueckeAnlass: "Fachlicher Anlass: {was}",
+    lueckePlanNichtLesbar: "Plan #{plan} nicht lesbar ({grund})",
+    lueckePlanOhneEintrag: "Plan #{plan} hat unter `## {abschnitt}` keinen Eintrag `- E<n>:`",
+    lueckeEntscheidungFehlt: "Plan-Entscheidung {e}: fehlt im Plan #{plan}",
+    hinweisKeineAuswahl: "Das Paket beruft sich auf keine Plan-Entscheidung (`Plan-Entscheidungen: Keine.`).",
+    hinweisAlleEintraege: "Das Paket nennt keine Auswahl (Zeile `Plan-Entscheidungen:` fehlt) — es folgen alle Einträge des Plans.",
+    anlassOhneQuelle: "weder das Paket noch sein Plan nennt eine Zeile `Fachliche Quelle: Issue #N`",
+    anlassVollerText: "Voller Text: `node .claude/kit/board.mjs issue get {quelle}`",
+    anlassNichtLesbar: "Issue #{quelle} nicht lesbar ({grund})",
+    anlassAbschnittFehlt: "Abschnitt `## {abschnitt}` fehlt in Issue #{quelle}",
+    geschwisterNichtLesbar: "Karten nicht lesbar ({grund})",
+    geschwisterHinweisNichtLesbar: "Karten nicht lesbar (siehe Lücken)",
+    lueckeGeschwisterSpalte: "Geschwister #{id}: Spalte nicht feststellbar (in keiner Spalte des Boards)",
+    lueckeSpalte: "Spalte des Pakets: nicht feststellbar",
+    lueckeVoraussetzung: "Voraussetzung #{id}: nicht feststellbar ({grund})",
+    geschuetztSchritte: "Geschuetzte Datei {pfade} — eine menschliche Handlung wartet, wird nicht implementiert. "
+      + "Schritte: 1. Karte nach Backlog. 2. `node .claude/kit/board.mjs issue label add {id} {label}` — "
+      + "scheitert er, den Fehlschlag melden und nicht aufhoeren. 3. Den Kommentar unten woertlich ans Issue, "
+      + "als letzte Zeile ergaenzt um `{gesetzt}` oder, wenn Schritt 2 scheiterte, `{nichtGesetzt}`.",
+    urteilDarfBeginnen: "darf beginnen",
+    urteilDarfNicht: "darf nicht beginnen",
+    urteilNichtInSpalte: "Issue #{id} liegt nicht (mehr) in {erwartet}, sondern in {wo}.",
+    urteilKeineSpalte: "keiner bestimmbaren Spalte",
+    urteilPraefix: "Titel-Praefix {praefix} — wird nicht implementiert.",
+    urteilKlaeren: "Label {label} — eine offene Entscheidung wartet.",
+    urteilGeschuetztLabel: "Label {label} — eine menschliche Handlung an einer geschuetzten Datei wartet; das Label bleibt.",
+    urteilVoraussetzung: "Voraussetzung {liste} (unerfuellt ist, was in Backlog, Ready oder In progress liegt).",
+    auftragKopfUrteil: "Urteil",
+    auftragKopfAufgabe: "Aufgabe",
+    auftragKopfPlan: "Plan-Entscheidungen",
+    auftragKopfAnlass: "Fachlicher Anlass",
+    auftragKopfGeschwister: "Geschwister",
+    auftragKopfVoraussetzungen: "Voraussetzungen",
+    auftragKopfLuecken: "Lücken",
+    auftragUrteilZeile: "{urteil} — Folge: {folge}",
+    auftragGrund: "Grund: {grund}",
+    auftragKommentarWoertlich: "Kommentar fuer die Karte (woertlich):",
+    auftragSpalte: "Spalte: {spalte}",
+    auftragLabels: "Labels: {labels}",
+    auftragKommentareKeine: "Kommentare: keine",
+    auftragKommentareAnzahl: "Kommentare ({anzahl}):",
+    auftragKommentarUnbekannt: "unbekannt",
+    auftragKommentarOhneDatum: "ohne Datum",
+    auftragKeine: "keine",
+    auftragKeinePunkt: "Keine.",
+    auftragOhneTitel: "(ohne Titel)",
+    auftragVoraussetzung: "- #{id} {titel} — Spalte: {spalte} — {befund}{grund}",
+    auftragGeschwisterZeile: "- #{id} {titel} — Spalte: {spalte}",
+    auftragOhnePlan: "kein Vorhaben — das Paket nennt keine Zeile `Plan: Issue #M` (siehe Lücken)",
+    auftragKeineSieheLuecken: "keine (siehe Lücken)",
+    auftragKeineQuelle: "keine fachliche Quelle (siehe Lücken)",
+    auftragAusPaket: "aus dem Paket",
+    auftragAusPlan: "aus dem Plan #{plan}",
+    auftragFehlt: "fehlt (siehe Lücken)",
+    auftragQuelle: "Fachliche Quelle: Issue #{quelle} ({herkunft})",
+    auftragAufruf: "issue auftrag <id> [--spalte ready|in_progress] [--json]",
+    auftragSpalteUngueltig: "--spalte '{spalte}' ist keine erwartbare Spalte (ready | in_progress).",
+    paketNichtLesbar: "Paket {id} nicht lesbar: {grund}",
+    checkFormWege: "check-form nimmt genau einen Eingabeweg: eine Kartennummer <id> ODER "
+      + "--body-file <pfad> zusammen mit --title \"<titel>\"",
   }),
   en: Object.freeze({
     kontextConfigUnlesbar: "kontext.config.json could not be read: {pfad}",
@@ -122,6 +237,118 @@ export const TEXTE = Object.freeze({
     quelleUnlesbar: "{dateiFlag}: {pfad} is not readable ({grund}).",
     stdinUnlesbar: "--{flag} -: stdin is not readable ({grund}).",
     quelleLeer: "--{flag} is required and must not be empty (argument, {dateiFlag} or '-' for stdin).",
+    // From ursprungEinhaengen to the end of the file (Issue #1479).
+    meldenAufruf: "issue report <id> [--part <n>] --text '…'",
+    meldenTeilKeineZahl: "--part '{wert}' is not a positive integer.",
+    meldenTeilOhneText: "--part needs --text '…' with the piece.",
+    meldenTextUndStuecke: "Issue {id} has {anzahl} piece(s) under .claude/{ordner}/ — "
+      + "call either --text or the completion without --text, not both.",
+    meldenKeinBericht: "No report for issue {id}: neither --text nor pieces under .claude/{ordner}/.",
+    meldenKeinZug: "No move of issue {id} to in_progress in .claude/{datei} — no report without a run stamp. Nothing written.",
+    berichtKommentareUnlesbar: "Comments of issue {id} not readable — no report written, the card stays: {grund}",
+    berichtOhneKommentarId: "the report of this run carries no comment ID.",
+    berichtNichtAbgelegt: "Report for issue {id} not filed, the card stays in In progress: {grund}",
+    berichtNichtGefunden: "Report of this run not found.",
+    ursprungPlan: "Plan #{id}",
+    ursprungFachlich: "Requirement #{id}",
+    ursprungFehler: "- {name}: {art} ({grund}) — catch up with `{kommando}`",
+    ursprungGewandert: "- {name}: moved to In review",
+    ursprungBleibt: "- {name}: stays — {grund}",
+    ursprungLagBereits: "- {name}: was already in {spalte}",
+    ursprungPaketNichtLesbar: "Package not readable",
+    ursprungPaketNichtLesbarGrund: "Package not readable ({grund})",
+    ursprungNachziehenGescheitert: "Catching up failed",
+    ursprungAbschnittNichtGeschrieben: "Section not written",
+    standLabelLeer: "night.stand.labels.{zustand} must be a non-empty text, is {wert}.",
+    standLabelsGleich: "night.stand.labels: the three names must differ ({namen}).",
+    standAufruf: "issue run-state <id> --state laeuft|abgebrochen|wartet|fertig --text-file <file>",
+    standLabelsGibtsNicht: "--labels does not exist: the names come from night.stand.labels in the config. board.mjs {aufruf}",
+    standZustandUnbekannt: "--state '{wert}' unknown. Expected: {erwartet}",
+    standTextFileErforderlich: "--text-file is required: board.mjs {aufruf}",
+    standKommentareUnlesbar: "Comments of issue {id} not readable — no run status written: {grund}",
+    standOhneKommentarId: "The run status on issue {id} carries no comment ID — not replaced.",
+    backlogFachlich: "Requirement — not implemented, please turn it into technical issues via /techplan #{id}.",
+    backlogIdee: "Idea — with trade-offs first /requirement #{id}, without trade-offs /task #{id}; not implemented.",
+    backlogPlan: "Plan document — not implemented, please turn it into work packages via /issues #{id}.",
+    backlogMensch: "Human step — not implemented, the card waits for a human and has not failed.",
+    backlogKlaeren: "Carries {label} — an open decision waits for a human, not implemented.",
+    backlogGeschuetzt: "Carries {label} — a human action on a protected file is waiting, not implemented. "
+      + "Only a human removes the label.",
+    hinweisSchreibweise: "#{nummer} counts as a dependency — it is not on a reference line ('Issue #{nummer}'): {stelle}",
+    hinweisUnbekannt: "#{nummer} is not on the board (archived or missing?) — it counts as met",
+    hinweisDokument: "#{nummer} is a document ({praefix}), not a work package — {satz}",
+    dokumentPlanSatz: "a plan document is never done by implementation",
+    dokumentErstSatz: "a requirement or idea is only done once its packages are finished",
+    befundErfuellt: "met",
+    befundUnerfuellt: "unmet",
+    nichtFeststellbar: "not determinable",
+    nichtAufDemBoard: "not on the board",
+    karteNichtLesbar: "Card not readable: {grund}",
+    spalteNichtLesbar: "Column not readable: {grund}",
+    keinVorhaben: "no project",
+    keinVorhabenGrund: "no project — the package names no line `Plan: Issue #M`",
+    lueckePlanEntscheidungen: "Plan decisions: {was}",
+    lueckeGeschwister: "Siblings: {was}",
+    lueckeAnlass: "Business reason: {was}",
+    lueckePlanNichtLesbar: "plan #{plan} not readable ({grund})",
+    lueckePlanOhneEintrag: "plan #{plan} has no entry `- E<n>:` under `## {abschnitt}`",
+    lueckeEntscheidungFehlt: "Plan decision {e}: missing in plan #{plan}",
+    hinweisKeineAuswahl: "The package relies on no plan decision (`Plan-Decisions: None.`).",
+    hinweisAlleEintraege: "The package names no selection (line `Plan-Decisions:` missing) — all entries of the plan follow.",
+    anlassOhneQuelle: "neither the package nor its plan names a line `Requirement: Issue #N`",
+    anlassVollerText: "Full text: `node .claude/kit/board.mjs issue get {quelle}`",
+    anlassNichtLesbar: "issue #{quelle} not readable ({grund})",
+    anlassAbschnittFehlt: "section `## {abschnitt}` missing in issue #{quelle}",
+    geschwisterNichtLesbar: "cards not readable ({grund})",
+    geschwisterHinweisNichtLesbar: "Cards not readable (see gaps)",
+    lueckeGeschwisterSpalte: "Sibling #{id}: column not determinable (in no column of the board)",
+    lueckeSpalte: "Column of the package: not determinable",
+    lueckeVoraussetzung: "Prerequisite #{id}: not determinable ({grund})",
+    geschuetztSchritte: "Protected file {pfade} — a human action is waiting, not implemented. "
+      + "Steps: 1. Card to Backlog. 2. `node .claude/kit/board.mjs issue label add {id} {label}` — "
+      + "if it fails, report the failure and do not stop. 3. Post the comment below verbatim to the issue, "
+      + "with `{gesetzt}` added as the last line or, if step 2 failed, `{nichtGesetzt}`.",
+    urteilDarfBeginnen: "may start",
+    urteilDarfNicht: "may not start",
+    urteilNichtInSpalte: "Issue #{id} is not (or no longer) in {erwartet}, but in {wo}.",
+    urteilKeineSpalte: "no determinable column",
+    urteilPraefix: "Title prefix {praefix} — not implemented.",
+    urteilKlaeren: "Label {label} — an open decision is waiting.",
+    urteilGeschuetztLabel: "Label {label} — a human action on a protected file is waiting; the label stays.",
+    urteilVoraussetzung: "Prerequisite {liste} (unmet is what lies in Backlog, Ready or In progress).",
+    auftragKopfUrteil: "Verdict",
+    auftragKopfAufgabe: "Task",
+    auftragKopfPlan: "Plan decisions",
+    auftragKopfAnlass: "Business reason",
+    auftragKopfGeschwister: "Siblings",
+    auftragKopfVoraussetzungen: "Prerequisites",
+    auftragKopfLuecken: "Gaps",
+    auftragUrteilZeile: "{urteil} — Consequence: {folge}",
+    auftragGrund: "Reason: {grund}",
+    auftragKommentarWoertlich: "Comment for the card (verbatim):",
+    auftragSpalte: "Column: {spalte}",
+    auftragLabels: "Labels: {labels}",
+    auftragKommentareKeine: "Comments: none",
+    auftragKommentareAnzahl: "Comments ({anzahl}):",
+    auftragKommentarUnbekannt: "unknown",
+    auftragKommentarOhneDatum: "no date",
+    auftragKeine: "none",
+    auftragKeinePunkt: "None.",
+    auftragOhneTitel: "(no title)",
+    auftragVoraussetzung: "- #{id} {titel} — Column: {spalte} — {befund}{grund}",
+    auftragGeschwisterZeile: "- #{id} {titel} — Column: {spalte}",
+    auftragOhnePlan: "no project — the package names no line `Plan: Issue #M` (see gaps)",
+    auftragKeineSieheLuecken: "none (see gaps)",
+    auftragKeineQuelle: "no business source (see gaps)",
+    auftragAusPaket: "from the package",
+    auftragAusPlan: "from the plan #{plan}",
+    auftragFehlt: "missing (see gaps)",
+    auftragQuelle: "Requirement: Issue #{quelle} ({herkunft})",
+    auftragAufruf: "issue brief <id> [--column ready|in_progress] [--json]",
+    auftragSpalteUngueltig: "--column '{spalte}' is not an expected column (ready | in_progress).",
+    paketNichtLesbar: "Package {id} not readable: {grund}",
+    checkFormWege: "check-form takes exactly one input path: a card number <id> OR "
+      + "--body-file <path> together with --title \"<title>\"",
   }),
 });
 
@@ -1105,7 +1332,7 @@ const vergleichbar = (text) => String(text ?? "").replaceAll("\r\n", "\n").trimE
 // Abschnitt `### Ursprungsdokumente` im Abschlussbericht (Issue #1286, Plan #1283 A9, E6).
 // Er steht unmittelbar vor dem Schwanz aus `Kit-Stand:` und `Bericht-Lauf:`; `issue melden`
 // schreibt ihn nach dem Zug, und `berichtAblegen` fuehrt ihn bei einer Wiederholung mit.
-const URSPRUNG_ABSCHNITT = "### Ursprungsdokumente";
+// Geschrieben in der Projektsprache wie der Bericht, den er ergaenzt (Issue #1479).
 // Zurueckgelesen unter beiden Namen (Issue #1460): `### Ursprungsdokumente` oder `### Origin documents`.
 const URSPRUNG_KOPF = ueberschriftZeile("ursprungsdokumente", 3);
 
@@ -1144,9 +1371,9 @@ function ursprungEinhaengen(body, abschnitt) {
 // `issue melden <id> --teil <n> --text '…'`: nur das Stueck ablegen, kein Board-Zugriff.
 async function meldenStueck(id, args, hatText) {
   if (!/^\d+$/.test(String(args.teil)) || Number(args.teil) < 1) {
-    fail(`--teil '${args.teil}' ist keine positive Ganzzahl.`);
+    fail(t("meldenTeilKeineZahl", { wert: args.teil }));
   }
-  if (!hatText) fail("--teil braucht --text '…' mit dem Stueck.");
+  if (!hatText) fail(t("meldenTeilOhneText"));
   const text = await leseTextQuelle(args.text, args["text-file"], "text");
   const nummer = Number(args.teil);
   const pfad = resolve(".claude", BERICHTE_ORDNER, `${kartenSchluessel(id)}.${nummer}.md`);
@@ -1168,7 +1395,7 @@ async function berichtAblegen(tracker, id, text, laufZeile) {
   try {
     kommentare = await tracker.kommentareStreng(id);
   } catch (e) {
-    fail(`Kommentare von Issue ${id} nicht lesbar — kein Bericht geschrieben, Karte bleibt: ${e.message}`);
+    fail(t("berichtKommentareUnlesbar", { id, grund: e.message }));
   }
   const dieserLauf = kommentare.filter((c) => traegtLaufZeile(c.body, laufZeile));
   try {
@@ -1177,7 +1404,7 @@ async function berichtAblegen(tracker, id, text, laufZeile) {
     if (dieserLauf.some((c) => vergleichbar(ursprungAbtrennen(c.body).ohne) === vergleichbar(neu))) return "unveraendert";
     if (dieserLauf.length > 0) {
       const ziel = dieserLauf.at(-1);
-      if (ziel.id == null) throw new BoardError("der Bericht dieses Laufs traegt keine Kommentar-ID.");
+      if (ziel.id == null) throw new BoardError(t("berichtOhneKommentarId"));
       const { abschnitt } = ursprungAbtrennen(ziel.body);
       await tracker.ersetzeKommentar(id, ziel.id, abschnitt ? ursprungEinhaengen(neu, abschnitt) : neu);
       return "ersetzt";
@@ -1185,7 +1412,7 @@ async function berichtAblegen(tracker, id, text, laufZeile) {
     await tracker.commentIssue(id, neu);
     return "angelegt";
   } catch (e) {
-    fail(`Bericht fuer Issue ${id} nicht abgelegt, Karte bleibt in In progress: ${e.message}`);
+    fail(t("berichtNichtAbgelegt", { id, grund: e.message }));
   }
 }
 
@@ -1208,7 +1435,7 @@ async function berichtAblegen(tracker, id, text, laufZeile) {
  */
 export async function issueMelden(tracker, args) {
   const id = args._[0];
-  if (!id) fail("id ist erforderlich: board.mjs issue melden <id> [--teil <n>] --text '…'");
+  if (!id) fail(t("idErforderlich", { aufruf: t("meldenAufruf") }));
   const hatText = args.text !== undefined || args["text-file"] !== undefined;
 
   if (args.teil !== undefined) {
@@ -1218,18 +1445,16 @@ export async function issueMelden(tracker, args) {
 
   const stuecke = berichtStuecke(id);
   if (hatText && stuecke.length > 0) {
-    fail(`Fuer Issue ${id} liegen ${stuecke.length} Stueck(e) unter .claude/${BERICHTE_ORDNER}/ — `
-      + "entweder --text oder den Abschluss ohne --text aufrufen, nicht beides.");
+    fail(t("meldenTextUndStuecke", { id, anzahl: stuecke.length, ordner: BERICHTE_ORDNER }));
   }
   if (!hatText && stuecke.length === 0) {
-    fail(`Kein Bericht fuer Issue ${id}: weder --text noch Stuecke unter .claude/${BERICHTE_ORDNER}/.`);
+    fail(t("meldenKeinBericht", { id, ordner: BERICHTE_ORDNER }));
   }
   const text = hatText ? await leseTextQuelle(args.text, args["text-file"], "text") : stueckeZusammensetzen(stuecke);
 
   const stempel = laufkennung(id);
   if (!stempel) {
-    fail(`Kein Zug von Issue ${id} nach in_progress in .claude/${BEWEGUNGEN_DATEI} — `
-      + "ohne Laufkennung kein Bericht. Nichts geschrieben.");
+    fail(t("meldenKeinZug", { id, datei: BEWEGUNGEN_DATEI }));
   }
   const bericht = await berichtAblegen(tracker, id, text, `${BERICHT_LAUF} ${stempel}`);
 
@@ -1249,16 +1474,21 @@ export async function issueMelden(tracker, args) {
 // Ein Grund kann mehrzeilig sein (Adapter-Meldungen); im Listenpunkt steht er auf einer Zeile.
 const einzeilig = (text) => String(text ?? "").replaceAll(/\s+/g, " ").trim();
 
+// Die `aktion` ist Vertrag (E14): `wandert`, `bleibt` oder `lag bereits in <Spalte>`.
+const LAG_BEREITS = /^lag bereits in (.+)$/;
+
 function ursprungZeile(d, fehler) {
-  const name = d.art === "plan" ? `Plan #${d.id}` : `Fachliche Anforderung #${d.id}`;
-  if (fehler) return `- ${name}: ${fehler.art} (${einzeilig(fehler.grund)}) — nachziehen mit \`${fehler.kommando}\``;
-  if (d.aktion === "wandert") return `- ${name}: nach In review gewandert`;
-  if (d.aktion === "bleibt") return `- ${name}: bleibt — ${einzeilig(d.grund)}`;
+  const name = t(d.art === "plan" ? "ursprungPlan" : "ursprungFachlich", { id: d.id });
+  if (fehler) return t("ursprungFehler", { name, art: fehler.art, grund: einzeilig(fehler.grund), kommando: fehler.kommando });
+  if (d.aktion === "wandert") return t("ursprungGewandert", { name });
+  if (d.aktion === "bleibt") return t("ursprungBleibt", { name, grund: einzeilig(d.grund) });
+  const lag = LAG_BEREITS.exec(d.aktion);
+  if (lag) return t("ursprungLagBereits", { name, spalte: lag[1] });
   return `- ${name}: ${d.aktion}`;
 }
 
 function ursprungAbschnittText(ergebnis) {
-  const zeilen = [URSPRUNG_ABSCHNITT];
+  const zeilen = [`### ${ueberschriftName("ursprungsdokumente", prozessSprache())}`];
   for (const d of ergebnis.dokumente) zeilen.push(ursprungZeile(d, ergebnis.fehler.find((f) => f.id === d.id)));
   for (const f of ergebnis.fehler.filter((f) => !ergebnis.dokumente.some((d) => d.id === f.id))) {
     zeilen.push(`- ${f.art}: ${einzeilig(f.grund)}`);
@@ -1277,8 +1507,8 @@ async function ursprungDesPakets(tracker, id) {
   try {
     karte = await tracker.getIssue(id);
   } catch (e) {
-    return { plan: null, durch: false, grund: `Paket nicht lesbar (${e.message})`, fehlend: [], dokumente: [],
-      fehler: [{ id: kartenSchluessel(id), art: "Paket nicht lesbar", grund: e.message }] };
+    return { plan: null, durch: false, grund: t("ursprungPaketNichtLesbarGrund", { grund: e.message }), fehlend: [], dokumente: [],
+      fehler: [{ id: kartenSchluessel(id), art: t("ursprungPaketNichtLesbar"), grund: e.message }] };
   }
   if (istPlan(karte.title) || istFachlich(karte.title)) return null;
   const planNr = herkunftNummern(karte.body ?? "", "Plan")[0];
@@ -1287,7 +1517,7 @@ async function ursprungDesPakets(tracker, id) {
     return await ursprungNachziehen(tracker, planNr);
   } catch (e) {
     return { plan: planNr, durch: false, grund: e.message, fehlend: [], dokumente: [],
-      fehler: [{ id: planNr, art: "Nachziehen gescheitert", grund: e.message }] };
+      fehler: [{ id: planNr, art: t("ursprungNachziehenGescheitert"), grund: e.message }] };
   }
 }
 
@@ -1310,12 +1540,12 @@ async function ursprungMelden(tracker, id, laufZeile) {
   try {
     const kommentare = await tracker.kommentareStreng(id);
     const ziel = kommentare.findLast((c) => traegtLaufZeile(c.body, laufZeile));
-    if (!ziel || ziel.id == null) throw new BoardError("Bericht dieses Laufs nicht gefunden.");
+    if (!ziel || ziel.id == null) throw new BoardError(t("berichtNichtGefunden"));
     if (ursprungAbtrennen(ziel.body).abschnitt === null) {
       await tracker.ersetzeKommentar(id, ziel.id, ursprungEinhaengen(ziel.body, ursprungAbschnittText(ergebnis)));
     }
   } catch (e) {
-    ergebnis.fehler.push({ id: kartenSchluessel(id), art: "Abschnitt nicht geschrieben", grund: e.message });
+    ergebnis.fehler.push({ id: kartenSchluessel(id), art: t("ursprungAbschnittNichtGeschrieben"), grund: e.message });
   }
   return ergebnis;
 }
@@ -1347,12 +1577,12 @@ export function standLabels(config) {
     const wert = block[zustand];
     if (wert === undefined) continue;
     if (typeof wert !== "string" || wert.trim() === "") {
-      fail(`night.stand.labels.${zustand} muss ein nicht leerer Text sein, ist ${JSON.stringify(wert)}.`);
+      fail(t("standLabelLeer", { zustand, wert: JSON.stringify(wert) }));
     }
     labels[zustand] = wert.trim();
   }
   if (new Set(Object.values(labels)).size !== Object.keys(labels).length) {
-    fail(`night.stand.labels: die drei Namen muessen verschieden sein (${Object.values(labels).join(", ")}).`);
+    fail(t("standLabelsGleich", { namen: Object.values(labels).join(", ") }));
   }
   return labels;
 }
@@ -1375,13 +1605,13 @@ const istLaufstand = (body) => {
  */
 export async function issueStand(tracker, config, args) {
   const id = args._[0];
-  const nutzung = "board.mjs issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <datei>";
-  if (!id) fail(`id ist erforderlich: ${nutzung}`);
-  if (args.labels !== undefined) fail(`--labels gibt es nicht: Die Namen kommen aus night.stand.labels der Config. ${nutzung}`);
+  const aufruf = t("standAufruf");
+  if (!id) fail(t("idErforderlich", { aufruf }));
+  if (args.labels !== undefined) fail(t("standLabelsGibtsNicht", { aufruf }));
   if (!STAND_ZUSTAENDE.includes(args.zustand)) {
-    fail(`--zustand '${args.zustand ?? ""}' unbekannt. Erwartet: ${STAND_ZUSTAENDE.join(" | ")}`);
+    fail(t("standZustandUnbekannt", { wert: args.zustand ?? "", erwartet: STAND_ZUSTAENDE.join(" | ") }));
   }
-  if (args["text-file"] === undefined) fail(`--text-file ist erforderlich: ${nutzung}`);
+  if (args["text-file"] === undefined) fail(t("standTextFileErforderlich", { aufruf }));
   const labels = standLabels(config);
   const text = await leseTextQuelle(undefined, args["text-file"], "text");
   const rumpf = text.replaceAll("\r\n", "\n").trim();
@@ -1391,7 +1621,7 @@ export async function issueStand(tracker, config, args) {
   try {
     kommentare = await tracker.kommentareStreng(id);
   } catch (e) {
-    fail(`Kommentare von Issue ${id} nicht lesbar — kein Laufstand geschrieben: ${e.message}`);
+    fail(t("standKommentareUnlesbar", { id, grund: e.message }));
   }
 
   // Erst abnehmen, dann setzen: So haengen nie zwei Laufstand-Labels zugleich.
@@ -1407,7 +1637,7 @@ export async function issueStand(tracker, config, args) {
     kommentar = "unveraendert";
   } else if (staende.length > 0) {
     const alt = staende.at(-1);
-    if (alt.id == null) fail(`Der Laufstand an Issue ${id} traegt keine Kommentar-ID — nicht ersetzt.`);
+    if (alt.id == null) fail(t("standOhneKommentarId", { id }));
     await tracker.ersetzeKommentar(id, alt.id, neu);
     kommentar = "ersetzt";
   } else {
@@ -1427,29 +1657,29 @@ export async function issueStand(tracker, config, args) {
 // SYNC: dieselben Texte stehen mit dem Praefix `Nachtlauf: ` in kit/night.mjs
 // (`pruefeIssueGates`). Wer einen hier aendert, aendert ihn dort mit — der
 // Gleichlauf-Test in test/ablauf-board-dokumente-auftrag.test.mjs vergleicht beide Seiten.
+// In der Projektsprache (Issue #1479); der Gleichlauf gilt fuer die deutsche Fassung.
 export const AUFTRAG_BACKLOG_TEXTE = {
-  fachlich: (id) => `Fachliches Issue — wird nicht implementiert, bitte per /techplan #${id} in technische Issues ueberfuehren.`,
-  idee: (id) => `Idee — mit Abwaegung erst /fachplan #${id}, ohne Abwaegung /task #${id}, wird nicht implementiert.`,
-  plan: (id) => `Plan-Dokument — wird nicht implementiert, bitte per /issues #${id} in Arbeitspakete ueberfuehren.`,
-  mensch: () => "Menschenschritt — wird nicht implementiert, die Karte wartet auf einen Menschen und ist nicht gescheitert.",
-  klaeren: () => "Traegt kit:klaeren — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.",
+  fachlich: (id) => t("backlogFachlich", { id }),
+  idee: (id) => t("backlogIdee", { id }),
+  plan: (id) => t("backlogPlan", { id }),
+  mensch: () => t("backlogMensch"),
+  klaeren: () => t("backlogKlaeren", { label: labelName("klaeren", prozessSprache()) }),
   // SYNC: `GESCHUETZT_LABEL_GATE_TEXT` in kit/night.mjs (Issue #1046, #1052).
-  geschuetzt: () => "Traegt kit:geschuetzt — eine menschliche Handlung an einer geschuetzten Datei wartet, wird nicht implementiert. Das Label nimmt nur ein Mensch ab.",
+  geschuetzt: () => t("backlogGeschuetzt", { label: labelName("geschuetzt", prozessSprache()) }),
 };
 
 // Dieselbe Pruefreihenfolge wie `pruefeIssueGates` in kit/night.mjs: erst die Praefixe,
 // dann das Label.
 const AUFTRAG_PRAEFIXE = [
-  [istFachlich, "fachlich", "Titel-Praefix [Fachlich]"],
-  [istIdee, "idee", "Titel-Praefix [Idee]"],
-  [istPlan, "plan", "Titel-Praefix [Plan]"],
-  [istMensch, "mensch", "Titel-Praefix [Mensch]"],
+  [istFachlich, "fachlich"],
+  [istIdee, "idee"],
+  [istPlan, "plan"],
+  [istMensch, "mensch"],
 ];
 const AUFTRAG_SPALTEN = new Set(["ready", "in_progress"]);
 // Die Spalten, in denen eine Voraussetzung unerfuellt ist (Issue #1149); jede andere Lage
 // gilt als erfuellt — wie `satisfiedIds` in kit/night.mjs.
 const AUFTRAG_UNERFUELLT = ["backlog", "ready", "in_progress"];
-const KEIN_VORHABEN = "kein Vorhaben";
 
 // SYNC: nachgebaut aus `parseDeps` in kit/night.mjs (DEPS_UEBERSCHRIFT, ABSCHNITTS_ENDE,
 // LOKALE_REFERENZ, abschnittLesen) — bewusst kein Import, board.mjs laedt den Runner
@@ -1514,19 +1744,19 @@ export async function abhaengigkeitsHinweise(body, tracker) {
     if (herkunft === "text") {
       hinweise.push({
         art: "schreibweise", nummer, stelle,
-        meldung: `#${nummer} zählt als Abhängigkeit — sie steht nicht in einer Verweiszeile (‚Issue #${nummer}‘): ${stelle}`,
+        meldung: t("hinweisSchreibweise", { nummer, stelle }),
       });
     }
     const dokument = await dokumentArt(tracker, nummer);
     if (dokument?.unbekannt) {
       hinweise.push({
         art: "unbekannt", nummer, stelle,
-        meldung: `#${nummer} steht nicht auf dem Board (archiviert oder nicht vorhanden?) — sie gilt als erfüllt`,
+        meldung: t("hinweisUnbekannt", { nummer }),
       });
     } else if (dokument) {
       hinweise.push({
         art: "dokument", nummer, stelle,
-        meldung: `#${nummer} ist ein Dokument (${dokument.praefix}), kein Arbeitspaket — ${dokument.satz}`,
+        meldung: t("hinweisDokument", { nummer, praefix: dokument.praefix, satz: dokument.satz }),
       });
     }
   }
@@ -1544,10 +1774,10 @@ async function dokumentArt(tracker, nummer) {
   } catch (e) {
     return karteUnbekannt(e) ? { unbekannt: true } : null;
   }
-  const erst = "eine fachliche Anforderung oder Idee ist erst erledigt, wenn ihre Pakete fertig sind";
-  if (istPlan(titel)) return { praefix: "[Plan]", satz: "ein Plandokument wird nie durch Umsetzung erledigt" };
-  if (istFachlich(titel)) return { praefix: "[Fachlich]", satz: erst };
-  if (istIdee(titel)) return { praefix: "[Idee]", satz: erst };
+  const sprache = prozessSprache();
+  if (istPlan(titel)) return { praefix: praefix("plan", sprache), satz: t("dokumentPlanSatz") };
+  if (istFachlich(titel)) return { praefix: praefix("fachlich", sprache), satz: t("dokumentErstSatz") };
+  if (istIdee(titel)) return { praefix: praefix("idee", sprache), satz: t("dokumentErstSatz") };
   return null;
 }
 
@@ -1613,20 +1843,18 @@ async function auftragVoraussetzung(tracker, nummer, spaltenListen) {
   try {
     karte = await tracker.getIssue(String(nummer));
   } catch (e) {
-    if (karteUnbekannt(e)) return { id: String(nummer), titel: null, spalte: null, befund: "erfuellt", grund: NICHT_AUF_DEM_BOARD };
-    return { id: String(nummer), titel: null, spalte: null, befund: "nicht feststellbar", grund: `Karte nicht lesbar: ${e.message}` };
+    if (karteUnbekannt(e)) return { id: String(nummer), titel: null, spalte: null, befund: "erfuellt", grund: t("nichtAufDemBoard") };
+    return { id: String(nummer), titel: null, spalte: null, befund: "nicht feststellbar", grund: t("karteNichtLesbar", { grund: e.message }) };
   }
   let spalte;
   try {
     spalte = await auftragSpalte(tracker, { ...karte, id: String(nummer) }, AUFTRAG_UNERFUELLT, spaltenListen);
   } catch (e) {
-    return { id: String(nummer), titel: karte.title ?? null, spalte: null, befund: "nicht feststellbar", grund: `Spalte nicht lesbar: ${e.message}` };
+    return { id: String(nummer), titel: karte.title ?? null, spalte: null, befund: "nicht feststellbar", grund: t("spalteNichtLesbar", { grund: e.message }) };
   }
   const eintrag = { id: String(nummer), titel: karte.title ?? null, spalte };
   return { ...eintrag, befund: AUFTRAG_UNERFUELLT.includes(spalte) ? "unerfuellt" : "erfuellt" };
 }
-
-const NICHT_AUF_DEM_BOARD = "steht nicht auf dem Board";
 
 /**
  * Der Tracker kennt die Nummer nicht — anders als ein Abruf, der scheitert (Issue #1149).
@@ -1720,29 +1948,30 @@ function planEintraegeLesen(planBody) {
 function auftragPlanEntscheidungen(karte, planNr, plan, luecken) {
   const auswahl = planAuswahlLesen(karte.body);
   const glied = (hinweis, eintraege = []) => ({ plan: planNr, auswahl, hinweis, eintraege });
+  const luecke = (was) => luecken.push(t("lueckePlanEntscheidungen", { was }));
   if (planNr === null) {
-    luecken.push(`Plan-Entscheidungen: ${KEIN_VORHABEN} — das Paket nennt keine Zeile \`Plan: Issue #M\``);
-    return glied(KEIN_VORHABEN);
+    luecke(t("keinVorhabenGrund"));
+    return glied(t("keinVorhaben"));
   }
   if (plan.fehler) {
-    luecken.push(`Plan-Entscheidungen: Plan #${planNr} nicht lesbar (${plan.fehler})`);
+    luecke(t("lueckePlanNichtLesbar", { plan: planNr, grund: plan.fehler }));
     return glied(null);
   }
   if (auswahl !== null && auswahl.length === 0) {
-    return glied("Das Paket beruft sich auf keine Plan-Entscheidung (`Plan-Entscheidungen: Keine.`).");
+    return glied(t("hinweisKeineAuswahl"));
   }
   const alle = planEintraegeLesen(plan.body) ?? [];
   if (alle.length === 0) {
-    luecken.push(`Plan-Entscheidungen: Plan #${planNr} hat unter \`## Architektonische Entscheidungen\` keinen Eintrag \`- E<n>:\``);
+    luecke(t("lueckePlanOhneEintrag", { plan: planNr, abschnitt: ueberschriftName("architektonischeEntscheidungen", prozessSprache()) }));
   }
   if (auswahl === null) {
-    return glied("Das Paket nennt keine Auswahl (Zeile `Plan-Entscheidungen:` fehlt) — es folgen alle Einträge des Plans.", alle);
+    return glied(t("hinweisAlleEintraege"), alle);
   }
   const eintraege = [];
   for (const id of auswahl) {
     const eintrag = alle.find((e) => e.id === id);
     if (eintrag) eintraege.push(eintrag);
-    else if (alle.length > 0) luecken.push(`Plan-Entscheidung ${id}: fehlt im Plan #${planNr}`);
+    else if (alle.length > 0) luecken.push(t("lueckeEntscheidungFehlt", { e: id, plan: planNr }));
   }
   return glied(null, eintraege);
 }
@@ -1753,8 +1982,9 @@ async function auftragFachlicherAnlass(tracker, karte, plan, luecken) {
   const ausPlan = plan?.body === undefined ? undefined : herkunftNummern(plan.body, "Fachliche Quelle")[0];
   const quelle = ausPaket ?? ausPlan ?? null;
   const leer = { quelle: null, herkunft: null, ziel: null, kriterien: null, vollerText: null };
+  const luecke = (was) => luecken.push(t("lueckeAnlass", { was }));
   if (quelle === null) {
-    luecken.push("Fachlicher Anlass: weder das Paket noch sein Plan nennt eine Zeile `Fachliche Quelle: Issue #N`");
+    luecke(t("anlassOhneQuelle"));
     return leer;
   }
   const anlass = {
@@ -1762,19 +1992,20 @@ async function auftragFachlicherAnlass(tracker, karte, plan, luecken) {
     herkunft: ausPaket ? "paket" : "plan",
     ziel: null,
     kriterien: null,
-    vollerText: `Voller Text: \`node .claude/kit/board.mjs issue get ${quelle}\``,
+    vollerText: t("anlassVollerText", { quelle }),
   };
   let body;
   try {
     body = (await tracker.getIssue(quelle)).body ?? "";
   } catch (e) {
-    luecken.push(`Fachlicher Anlass: Issue #${quelle} nicht lesbar (${e.message})`);
+    luecke(t("anlassNichtLesbar", { quelle, grund: e.message }));
     return anlass;
   }
   anlass.ziel = abschnittWoertlich(body, "Ziel");
   anlass.kriterien = abschnittWoertlich(body, "Fachliche Akzeptanzkriterien");
-  if (anlass.ziel === null) luecken.push(`Fachlicher Anlass: Abschnitt \`## Ziel\` fehlt in Issue #${quelle}`);
-  if (anlass.kriterien === null) luecken.push(`Fachlicher Anlass: Abschnitt \`## Fachliche Akzeptanzkriterien\` fehlt in Issue #${quelle}`);
+  const fehlt = (sache) => luecke(t("anlassAbschnittFehlt", { quelle, abschnitt: ueberschriftName(sache, prozessSprache()) }));
+  if (anlass.ziel === null) fehlt("ziel");
+  if (anlass.kriterien === null) fehlt("fachlicheKriterien");
   return anlass;
 }
 
@@ -1811,22 +2042,22 @@ export async function auftragAlleKarten(tracker, spaltenListen) {
 /** Geschwister nach Plan #1015, E7: alle Karten mit der ganzen Zeile `Plan: Issue #M`. */
 async function auftragGeschwister(tracker, nummer, planNr, spaltenListen, luecken) {
   if (planNr === null) {
-    luecken.push(`Geschwister: ${KEIN_VORHABEN} — das Paket nennt keine Zeile \`Plan: Issue #M\``);
-    return { plan: null, hinweis: KEIN_VORHABEN, karten: [] };
+    luecken.push(t("lueckeGeschwister", { was: t("keinVorhabenGrund") }));
+    return { plan: null, hinweis: t("keinVorhaben"), karten: [] };
   }
   let alle;
   try {
     alle = await auftragAlleKarten(tracker, spaltenListen);
   } catch (e) {
-    luecken.push(`Geschwister: Karten nicht lesbar (${e.message})`);
-    return { plan: planNr, hinweis: "Karten nicht lesbar (siehe Lücken)", karten: [] };
+    luecken.push(t("lueckeGeschwister", { was: t("geschwisterNichtLesbar", { grund: e.message }) }));
+    return { plan: planNr, hinweis: t("geschwisterHinweisNichtLesbar"), karten: [] };
   }
   const karten = alle
     .filter((k) => k.id !== nummer && herkunftNummern(k.body, "Plan").includes(planNr))
     .sort((a, b) => Number(a.id) - Number(b.id))
     .map(({ id, titel, spalte }) => ({ id, titel, spalte }));
   for (const k of karten.filter((g) => g.spalte === null)) {
-    luecken.push(`Geschwister #${k.id}: Spalte nicht feststellbar (in keiner Spalte des Boards)`);
+    luecken.push(t("lueckeGeschwisterSpalte", { id: k.id }));
   }
   return { plan: planNr, hinweis: null, karten };
 }
@@ -1847,10 +2078,8 @@ async function auftragKommentare(tracker, id, karte) {
 function geschuetztSchritte(id, treffer, geschuetzt) {
   const { GESCHUETZT_LABEL, GESCHUETZT_LABEL_GESETZT, GESCHUETZT_LABEL_NICHT_GESETZT } = geschuetzt;
   const pfade = [...new Set(treffer.map((t) => t.pfad))].join(", ");
-  return `Geschuetzte Datei ${pfade} — eine menschliche Handlung wartet, wird nicht implementiert. `
-    + `Schritte: 1. Karte nach Backlog. 2. \`node .claude/kit/board.mjs issue label add ${id} ${GESCHUETZT_LABEL}\` — `
-    + "scheitert er, den Fehlschlag melden und nicht aufhoeren. 3. Den Kommentar unten woertlich ans Issue, "
-    + `als letzte Zeile ergaenzt um \`${GESCHUETZT_LABEL_GESETZT}\` oder, wenn Schritt 2 scheiterte, \`${GESCHUETZT_LABEL_NICHT_GESETZT}\`.`;
+  return t("geschuetztSchritte", { pfade, id, label: GESCHUETZT_LABEL, gesetzt: GESCHUETZT_LABEL_GESETZT,
+    nichtGesetzt: GESCHUETZT_LABEL_NICHT_GESETZT });
 }
 
 // Das Urteil nach Plan #1015, E6, um die geschuetzten Dateien erweitert (Issue #1052, Plan
@@ -1861,23 +2090,25 @@ function geschuetztSchritte(id, treffer, geschuetzt) {
 // (Issue #1218), damit dieser Teil nicht aus dem Einstieg importiert.
 function auftragUrteil(id, spalte, erwartet, karte, voraussetzungen, kommentare, geschuetzt) {
   const { geschuetzteTreffer, geschuetztFreigabe, geschuetztKommentar } = geschuetzt;
-  const nicht = (folge, grund, kommentar = null) => ({ urteil: "darf nicht beginnen", folge, grund, kommentar });
+  const nicht = (folge, grund, kommentar = null) => ({ urteil: t("urteilDarfNicht"), folge, grund, kommentar });
   if (spalte !== erwartet) {
-    const wo = spalte ? COLUMN_DEFAULTS[spalte] : "keiner bestimmbaren Spalte";
-    return nicht("bleibt", `Issue #${id} liegt nicht (mehr) in ${COLUMN_DEFAULTS[erwartet]}, sondern in ${wo}.`);
+    const wo = spalte ? COLUMN_DEFAULTS[spalte] : t("urteilKeineSpalte");
+    return nicht("bleibt", t("urteilNichtInSpalte", { id, erwartet: COLUMN_DEFAULTS[erwartet], wo }));
   }
-  const praefix = AUFTRAG_PRAEFIXE.find(([passt]) => passt(karte.title));
-  if (praefix) return nicht("backlog", `${praefix[2]} — wird nicht implementiert.`, AUFTRAG_BACKLOG_TEXTE[praefix[1]](id));
+  const art = AUFTRAG_PRAEFIXE.find(([passt]) => passt(karte.title))?.[1];
+  if (art) {
+    return nicht("backlog", t("urteilPraefix", { praefix: praefix(art, prozessSprache()) }), AUFTRAG_BACKLOG_TEXTE[art](id));
+  }
   // Beide Labels unter jedem ihrer Namen (Issue #1424, Plan #1420 E8); der Grund nennt den
   // Namen, den die Karte traegt.
   const labels = karte.labels || [];
   const klaeren = labels.find((name) => erkenneLabel(name) === "klaeren");
   if (klaeren) {
-    return nicht("backlog", `Label ${klaeren} — eine offene Entscheidung wartet.`, AUFTRAG_BACKLOG_TEXTE.klaeren(id));
+    return nicht("backlog", t("urteilKlaeren", { label: klaeren }), AUFTRAG_BACKLOG_TEXTE.klaeren(id));
   }
   const geschuetztLabel = labels.find((name) => erkenneLabel(name) === "geschuetzt");
   if (geschuetztLabel) {
-    return nicht("backlog", `Label ${geschuetztLabel} — eine menschliche Handlung an einer geschuetzten Datei wartet; das Label bleibt.`, AUFTRAG_BACKLOG_TEXTE.geschuetzt(id));
+    return nicht("backlog", t("urteilGeschuetztLabel", { label: geschuetztLabel }), AUFTRAG_BACKLOG_TEXTE.geschuetzt(id));
   }
   const treffer = geschuetzteTreffer(karte.body || "", karte.title || "", configWurzel());
   if (treffer.length > 0 && !geschuetztFreigabe(treffer, kommentare, labels)) {
@@ -1885,10 +2116,10 @@ function auftragUrteil(id, spalte, erwartet, karte, voraussetzungen, kommentare,
   }
   const offen = voraussetzungen.filter((v) => v.befund !== "erfuellt");
   if (offen.length > 0) {
-    const liste = offen.map((v) => `#${v.id} ${v.befund}`).join(", ");
-    return nicht("bleibt", `Voraussetzung ${liste} (unerfuellt ist, was in Backlog, Ready oder In progress liegt).`);
+    const liste = offen.map((v) => `#${v.id} ${befundText(v.befund)}`).join(", ");
+    return nicht("bleibt", t("urteilVoraussetzung", { liste }));
   }
-  return { urteil: "darf beginnen", folge: "beginnen", grund: null, kommentar: null };
+  return { urteil: t("urteilDarfBeginnen"), folge: "beginnen", grund: null, kommentar: null };
 }
 
 // Ein Text im Codeblock, dessen Zaun laenger ist als jeder Backtick-Lauf im Text: So
@@ -1907,63 +2138,75 @@ function ohneSchlussUmbrueche(text) {
 }
 
 function auftragKommentarBlock(k) {
-  return `\n\n${k.author || "unbekannt"}, ${k.createdAt || "ohne Datum"}:\n\n${eingezaeunt(k.body)}`;
+  return `\n\n${k.author || t("auftragKommentarUnbekannt")}, ${k.createdAt || t("auftragKommentarOhneDatum")}:\n\n${eingezaeunt(k.body)}`;
+}
+
+// Der Befund in Worten; im JSON bleibt er Vertrag (E14).
+function befundText(befund) {
+  if (befund === "erfuellt") return t("befundErfuellt");
+  if (befund === "unerfuellt") return t("befundUnerfuellt");
+  return t("nichtFeststellbar");
 }
 
 function auftragVoraussetzungZeile(v) {
   const grund = v.grund ? " (" + v.grund + ")" : "";
-  const spalte = v.spalte ?? (v.befund === "erfuellt" ? "keine" : "nicht feststellbar");
-  return `- #${v.id} ${v.titel ?? "(ohne Titel)"} — Spalte: ${spalte} — ${v.befund}${grund}`;
+  const spalte = v.spalte ?? (v.befund === "erfuellt" ? t("auftragKeine") : t("nichtFeststellbar"));
+  return t("auftragVoraussetzung", { id: v.id, titel: v.titel ?? t("auftragOhneTitel"), spalte, befund: befundText(v.befund), grund });
 }
+
+const auftragGlied = (schluessel, inhalt) => `## ${t(schluessel)}\n\n${inhalt}`;
 
 function auftragMarkdown(a) {
   const u = a.urteil;
-  const teile = [`## Urteil\n\n${u.urteil} — Folge: ${u.folge}`];
-  if (u.grund) teile[0] += `\nGrund: ${u.grund}`;
-  if (u.kommentar) teile[0] += `\n\nKommentar fuer die Karte (woertlich):\n\n${u.kommentar}`;
+  let urteil = t("auftragUrteilZeile", { urteil: u.urteil, folge: u.folge });
+  if (u.grund) urteil += `\n${t("auftragGrund", { grund: u.grund })}`;
+  if (u.kommentar) urteil += `\n\n${t("auftragKommentarWoertlich")}\n\n${u.kommentar}`;
+  const teile = [auftragGlied("auftragKopfUrteil", urteil)];
 
   const auf = a.aufgabe;
-  let aufgabe = `## Aufgabe\n\nIssue #${auf.id}: ${auf.titel}\nSpalte: ${auf.spalte ?? "nicht feststellbar"}\n`
-    + `Labels: ${auf.labels.length ? auf.labels.join(", ") : "keine"}\n\n${eingezaeunt(auf.body)}`;
+  let aufgabe = `Issue #${auf.id}: ${auf.titel}\n${t("auftragSpalte", { spalte: auf.spalte ?? t("nichtFeststellbar") })}\n`
+    + `${t("auftragLabels", { labels: auf.labels.length ? auf.labels.join(", ") : t("auftragKeine") })}\n\n${eingezaeunt(auf.body)}`;
   const kommentarBloecke = auf.kommentare.map(auftragKommentarBlock).join("");
   aufgabe += auf.kommentare.length === 0
-    ? "\n\nKommentare: keine"
-    : `\n\nKommentare (${auf.kommentare.length}):${kommentarBloecke}`;
-  teile.push(aufgabe);
+    ? `\n\n${t("auftragKommentareKeine")}`
+    : `\n\n${t("auftragKommentareAnzahl", { anzahl: auf.kommentare.length })}${kommentarBloecke}`;
+  teile.push(auftragGlied("auftragKopfAufgabe", aufgabe));
 
-  teile.push(`## Plan-Entscheidungen\n\n${planEntscheidungenMarkdown(a.planEntscheidungen)}`);
-  teile.push(`## Fachlicher Anlass\n\n${fachlicherAnlassMarkdown(a.fachlicherAnlass, a.planEntscheidungen.plan)}`);
-  teile.push(`## Geschwister\n\n${geschwisterMarkdown(a.geschwister)}`);
+  teile.push(auftragGlied("auftragKopfPlan", planEntscheidungenMarkdown(a.planEntscheidungen)));
+  teile.push(auftragGlied("auftragKopfAnlass", fachlicherAnlassMarkdown(a.fachlicherAnlass, a.planEntscheidungen.plan)));
+  teile.push(auftragGlied("auftragKopfGeschwister", geschwisterMarkdown(a.geschwister)));
 
-  const voraus = a.voraussetzungen.length === 0 ? "Keine." : a.voraussetzungen.map(auftragVoraussetzungZeile).join("\n");
-  teile.push(`## Voraussetzungen\n\n${voraus}`);
-  teile.push(`## Lücken\n\n${a.luecken.length === 0 ? "Keine." : a.luecken.map((l) => "- " + l).join("\n")}`);
+  const keine = t("auftragKeinePunkt");
+  const voraus = a.voraussetzungen.length === 0 ? keine : a.voraussetzungen.map(auftragVoraussetzungZeile).join("\n");
+  teile.push(auftragGlied("auftragKopfVoraussetzungen", voraus));
+  teile.push(auftragGlied("auftragKopfLuecken", a.luecken.length === 0 ? keine : a.luecken.map((l) => "- " + l).join("\n")));
   return `${teile.join("\n\n")}\n`;
 }
 
-const OHNE_PLAN_MARKDOWN = `${KEIN_VORHABEN} — das Paket nennt keine Zeile \`Plan: Issue #M\` (siehe Lücken)`;
-
 function planEntscheidungenMarkdown(p) {
-  if (p.plan === null) return OHNE_PLAN_MARKDOWN;
+  if (p.plan === null) return t("auftragOhnePlan");
   const teile = [`Plan: Issue #${p.plan}`];
   if (p.hinweis) teile.push(p.hinweis);
   if (p.eintraege.length > 0) teile.push(p.eintraege.map((e) => e.text).join("\n"));
-  else if (!p.hinweis) teile.push("keine (siehe Lücken)");
+  else if (!p.hinweis) teile.push(t("auftragKeineSieheLuecken"));
   return teile.join("\n\n");
 }
 
 function fachlicherAnlassMarkdown(f, planNr) {
-  if (f.quelle === null) return "keine fachliche Quelle (siehe Lücken)";
-  const herkunft = f.herkunft === "paket" ? "aus dem Paket" : `aus dem Plan #${planNr}`;
-  const abschnitt = (text) => (text === null ? "fehlt (siehe Lücken)" : eingezaeunt(text));
-  return `Fachliche Quelle: Issue #${f.quelle} (${herkunft})\n\n### Ziel\n\n${abschnitt(f.ziel)}\n\n`
-    + `### Fachliche Akzeptanzkriterien\n\n${abschnitt(f.kriterien)}\n\n${f.vollerText}`;
+  if (f.quelle === null) return t("auftragKeineQuelle");
+  const herkunft = f.herkunft === "paket" ? t("auftragAusPaket") : t("auftragAusPlan", { plan: planNr });
+  const abschnitt = (text) => (text === null ? t("auftragFehlt") : eingezaeunt(text));
+  const sprache = prozessSprache();
+  return `${t("auftragQuelle", { quelle: f.quelle, herkunft })}\n\n### ${ueberschriftName("ziel", sprache)}\n\n${abschnitt(f.ziel)}\n\n`
+    + `### ${ueberschriftName("fachlicheKriterien", sprache)}\n\n${abschnitt(f.kriterien)}\n\n${f.vollerText}`;
 }
 
 function geschwisterMarkdown(g) {
-  if (g.plan === null) return OHNE_PLAN_MARKDOWN;
-  const zeilen = g.karten.map((k) => `- #${k.id} ${k.titel || "(ohne Titel)"} — Spalte: ${k.spalte ?? "nicht feststellbar"}`);
-  return `Plan: Issue #${g.plan}\n\n${g.hinweis ?? (zeilen.length > 0 ? zeilen.join("\n") : "Keine.")}`;
+  if (g.plan === null) return t("auftragOhnePlan");
+  const zeilen = g.karten.map((k) => t("auftragGeschwisterZeile", {
+    id: k.id, titel: k.titel || t("auftragOhneTitel"), spalte: k.spalte ?? t("nichtFeststellbar"),
+  }));
+  return `Plan: Issue #${g.plan}\n\n${g.hinweis ?? (zeilen.length > 0 ? zeilen.join("\n") : t("auftragKeinePunkt"))}`;
 }
 
 /**
@@ -1984,15 +2227,15 @@ function geschwisterMarkdown(g) {
  */
 export async function issueAuftrag(tracker, args, geschuetzt) {
   const id = args._[0];
-  if (!id) fail("id ist erforderlich: board.mjs issue auftrag <id> [--spalte ready|in_progress] [--json]");
+  if (!id) fail(t("idErforderlich", { aufruf: t("auftragAufruf") }));
   const erwartet = args.spalte ?? "ready";
-  if (!AUFTRAG_SPALTEN.has(erwartet)) fail(`--spalte '${erwartet}' ist keine erwartbare Spalte (ready | in_progress).`);
+  if (!AUFTRAG_SPALTEN.has(erwartet)) fail(t("auftragSpalteUngueltig", { spalte: erwartet }));
 
   let karte;
   try {
     karte = await tracker.getIssue(String(id));
   } catch (e) {
-    fail(`Paket ${id} nicht lesbar: ${e.message}`);
+    fail(t("paketNichtLesbar", { id, grund: e.message }));
   }
   const nummer = String(karte.id ?? id).replace(/^0+(?=\d)/, "");
   const spaltenListen = new Map();
@@ -2014,9 +2257,9 @@ export async function issueAuftrag(tracker, args, geschuetzt) {
   const planEntscheidungen = auftragPlanEntscheidungen(karte, planNr, plan, luecken);
   const fachlicherAnlass = await auftragFachlicherAnlass(tracker, karte, plan, luecken);
   const geschwister = await auftragGeschwister(tracker, nummer, planNr, spaltenListen, luecken);
-  if (spalte === null) luecken.push("Spalte des Pakets: nicht feststellbar");
+  if (spalte === null) luecken.push(t("lueckeSpalte"));
   for (const v of voraussetzungen.filter((x) => x.befund === "nicht feststellbar")) {
-    luecken.push(`Voraussetzung #${v.id}: nicht feststellbar (${v.grund})`);
+    luecken.push(t("lueckeVoraussetzung", { id: v.id, grund: v.grund }));
   }
 
   const kommentare = (await auftragKommentare(tracker, id, karte)).map((k) => ({ author: k.author ?? "", createdAt: k.createdAt ?? null, body: k.body ?? "" }));
@@ -2049,7 +2292,7 @@ export async function issueAuftrag(tracker, args, geschuetzt) {
 // versehentlich geleerter Issue-Body ist nicht wiederherstellbar.
 export async function issueUpdate(tracker, args) {
   const id = args._[0];
-  if (!id) fail("id ist erforderlich: board.mjs issue update <id> --body \"...\"");
+  if (!id) fail(t("idErforderlich", { aufruf: 'issue update <id> --body "..."' }));
   const neu = await leseTextQuelle(args.body, args["body-file"], "body");
   // Seit Plan #638 (A15) ohne Pruefvorgabe-Leitplanke: Der Body wird geschrieben, wie
   // er kommt.
@@ -2066,9 +2309,10 @@ export function abschnittsTitel(...sachen) {
   return sachen.map((sache) => kanonischeUeberschrift(ueberschriftName(sache, "de")));
 }
 
-export const CHECK_FORM_WEGE =
-  "check-form nimmt genau einen Eingabeweg: eine Kartennummer <id> ODER "
-  + "--body-file <pfad> zusammen mit --title \"<titel>\"";
+/** Die Eingabewege von `issue check-form` in der Projektsprache (Issue #1479). */
+export function checkFormWege() {
+  return t("checkFormWege");
+}
 
 /**
  * Die Pflichtabschnitte je Stufe, normalisiert (klein, transliteriert) unter ihrem deutschen
