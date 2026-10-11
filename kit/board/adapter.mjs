@@ -34,6 +34,37 @@ import { toolboxBudgetMs, toolboxVersuchMs, proxyGesetzt, PROXY_HINWEIS, netzfeh
 export { TOOLBOX_BUDGET_NACHT_MS } from "./wiederholung.mjs";
 
 // ============================================================
+// Labelnamen mit Rueckfall (Issue #1428, Plan #1420 E6)
+// ============================================================
+
+/**
+ * Ein Label fehlt als Definition am Board — der Tracker hat nichts gesetzt. GitHub und das
+ * Toolbox-Board melden das so; GitLab legt ein unbekanntes Label beim Setzen selbst an, der
+ * lokale Tracker kennt keine Definitionen. Die Meldung bleibt die des Trackers.
+ */
+export class LabelFehltError extends BoardError {}
+
+/**
+ * Setzt den ersten der Namen; fehlt er am Board, den naechsten. Liefert
+ * `{ label, fehlend }` mit dem gesetzten Namen und den Fehlschlaegen davor als
+ * `{ name, grund }` — der Aufrufer macht daraus seinen Hinweis. Fehlen alle, wirft der
+ * Fehlschlag des ersten: Er nennt den Namen, den der Aufrufer setzen wollte.
+ */
+export async function labelSetzenMitRueckfall(tracker, id, namen) {
+  const fehlend = [];
+  for (const name of namen) {
+    try {
+      await tracker.labelIssue(id, name, "add");
+      return { label: name, fehlend };
+    } catch (e) {
+      if (!(e instanceof LabelFehltError)) throw e;
+      fehlend.push({ name, grund: e.message, fehler: e });
+    }
+  }
+  throw fehlend[0]?.fehler ?? new BoardError("labelSetzenMitRueckfall: kein Labelname");
+}
+
+// ============================================================
 // GitHub-Adapter
 // ============================================================
 
@@ -476,10 +507,16 @@ export class GitHubIssueTracker {
   // Issues bleiben unberuehrt, und beide Richtungen sind von sich aus idempotent.
   // Eine unbekannte Labeldefinition meldet gh mit Exit != 0 — das schlaegt bewusst
   // durch, damit eine nie gesetzte Zeichnung nicht als gesetzt gilt.
+  // Das fehlende Label meldet gh als `'<name>' not found` (Issue #1428).
   async labelIssue(id, name, aktion) {
     const repo = this._repo();
     const flag = aktion === "add" ? "--add-label" : "--remove-label";
-    exec("gh", ["issue", "edit", String(id), "--repo", repo, flag, name]);
+    try {
+      exec("gh", ["issue", "edit", String(id), "--repo", repo, flag, name]);
+    } catch (e) {
+      if (aktion === "add" && e.message.includes(`'${name}' not found`)) throw new LabelFehltError(e.message);
+      throw e;
+    }
   }
 }
 
@@ -1901,7 +1938,7 @@ export class ToolboxIssueTracker {
         return await fn();
       } catch (e) {
         if (e instanceof BoardError && /HTTP 404|nicht gefunden/i.test(e.message)) {
-          throw new BoardError(
+          throw new LabelFehltError(
             `Label '${name}' ist am Board nicht definiert. Die Definition muss einmal je Board angelegt werden (POST /api/boards/{boardId}/labels), danach setzt und entfernt die Automatik sie.`
           );
         }

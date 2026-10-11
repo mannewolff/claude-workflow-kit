@@ -29,11 +29,11 @@ import { homedir } from "node:os";
 
 import { VALID_STATUSES, COLUMN_DEFAULTS, columnLabels, BoardError, fail, out, configWurzel,
   readWorkflowConfig } from "./grundlagen.mjs";
-import { GitHubIssueTracker, resolveCodeHost } from "./adapter.mjs";
+import { GitHubIssueTracker, resolveCodeHost, labelSetzenMitRueckfall } from "./adapter.mjs";
 // Zyklus mit Absicht: ursprung.mjs liest Karten und Herkunftszeilen von hier. Beide Seiten
 // rufen sich erst zur Laufzeit, keine liest beim Laden einen Wert der anderen.
 import { ursprungLesen, ursprungNachziehen } from "./ursprung.mjs";
-import { SPRACHEN, PRAEFIXE, projektSprache, praefix, erkennePraefix, erkenneLabel, erkenneMarker, leseMarker, markerWerte,
+import { SPRACHEN, PRAEFIXE, LABELS, projektSprache, praefix, labelName, erkennePraefix, erkenneLabel, erkenneMarker, leseMarker, markerWerte,
   kanonischeUeberschrift, ueberschriftName, ueberschriftZeile } from "./namen.mjs";
 import { normalisiereConfig } from "./config-namen.mjs";
 
@@ -769,8 +769,47 @@ export async function issueLabel(tracker, config, args, hilfe = "") {
     fail(`Status-Label \`${name}\` nur ueber \`issue move\` aendern`);
   }
 
-  await tracker.labelIssue(id, name, aktion);
-  out({ ok: true, id, label: name, aktion });
+  out({ ok: true, id, ...await labelAbbilden(tracker, config, aktion, id, name), aktion });
+}
+
+/**
+ * Die Abbildung der Kit-Labels in `issue label` (Issue #1428, Plan #1420 E6): Kit-eigene
+ * Labels gehoeren dem Kit. `add` setzt den Namen der Projektsprache und faellt nur auf den
+ * anderen zurueck, wenn er am Board fehlt. `remove` nimmt den Namen ab, den die Karte
+ * traegt — GitHub und GitLab melden beim Abnehmen eines nicht gesetzten Labels keinen Fehler,
+ * `remove kit:klaeren` taete an einer Karte mit `kit:clarify` sonst still nichts. Fremde
+ * Labels und Kit-Labels mit einem Namen fuer beide Sprachen gehen unveraendert durch.
+ *
+ * Liefert `{ label }` mit dem geschriebenen Namen, dazu `hinweise` als
+ * `{ art: "rueckfall" | "nicht-getragen" | "beide", meldung }`, wenn es etwas zu sagen gibt.
+ */
+export async function labelAbbilden(tracker, config, aktion, id, name) {
+  const sache = erkenneLabel(name);
+  if (!sache || LABELS[sache].de === LABELS[sache].en) {
+    await tracker.labelIssue(id, name, aktion);
+    return { label: name };
+  }
+  const sprache = projektSprache(config);
+  const namen = [labelName(sache, sprache), ...SPRACHEN.filter((s) => s !== sprache).map((s) => labelName(sache, s))];
+
+  if (aktion === "add") {
+    const { label, fehlend } = await labelSetzenMitRueckfall(tracker, id, namen);
+    if (fehlend.length === 0) return { label };
+    const meldung = `Label ${fehlend.map((f) => f.name).join(", ")} fehlt am Board — stattdessen ${label} gesetzt. `
+      + "Legt ein Mensch das fehlende Label am Board an, setzt das Kit kuenftig den Namen der Projektsprache.";
+    return { label, hinweise: [{ art: "rueckfall", meldung }] };
+  }
+
+  const karte = await tracker.getIssue(id);
+  const getragen = namen.filter((n) => (karte.labels || []).includes(n));
+  if (getragen.length === 0) {
+    const meldung = `Issue ${id} traegt weder ${namen.join(" noch ")} — nichts abgenommen.`;
+    return { label: name, hinweise: [{ art: "nicht-getragen", meldung }] };
+  }
+  for (const n of getragen) await tracker.labelIssue(id, n, "remove");
+  if (getragen.length === 1) return { label: getragen[0] };
+  const meldung = `Issue ${id} trug beide Namen (${getragen.join(", ")}) — beide abgenommen.`;
+  return { label: name, hinweise: [{ art: "beide", meldung }] };
 }
 
 /**
@@ -1198,20 +1237,25 @@ async function ursprungMelden(tracker, id, laufZeile) {
 // Laufstand einer Karte: issue stand (Issue #1083, Plan #1079 E1, E3, E4)
 // ============================================================
 
+// Die Sache je Zustand im Namen-Register (Issue #1428, Plan #1420 E7).
+const STAND_LABEL_SACHEN = Object.freeze({ laeuft: "laufLaeuft", abgebrochen: "laufAbgebrochen", wartet: "laufWartet" });
+const standLabelVorgaben = (sprache) => Object.freeze(Object.fromEntries(
+  Object.entries(STAND_LABEL_SACHEN).map(([zustand, sache]) => [zustand, labelName(sache, sprache)])));
+
 // SYNC: dieselben Vorgaben stehen in templates/workflow.config.schema.json unter
-// `night.stand.labels` — test/ablauf-board-dokumente-stand.test.mjs vergleicht beide.
-export const STAND_LABEL_VORGABEN = Object.freeze({
-  laeuft: "lauf:laeuft",
-  abgebrochen: "lauf:abgebrochen",
-  wartet: "lauf:wartet",
-});
+// `night.stand.labels` — test/ablauf-board-dokumente-stand.test.mjs vergleicht beide. Das
+// Schema nennt die deutschen Namen; ohne gesetzten Wert gilt der Name der Projektsprache.
+export const STAND_LABEL_VORGABEN = standLabelVorgaben("de");
 const STAND_ZUSTAENDE = [...Object.keys(STAND_LABEL_VORGABEN), "fertig"];
 const LAUFSTAND_ANKER = "## Laufstand";
 
-/** Die drei Labelnamen aus `night.stand.labels`, fehlende aus den Vorgaben (E4). */
-function standLabels(config) {
+/**
+ * Die drei Labelnamen aus `night.stand.labels`, fehlende aus den Vorgaben (E4) in der
+ * Projektsprache. Ein gesetzter Wert gilt unveraendert (Plan #1420 E7).
+ */
+export function standLabels(config) {
   const block = config?.night?.stand?.labels ?? {};
-  const labels = { ...STAND_LABEL_VORGABEN };
+  const labels = { ...standLabelVorgaben(projektSprache(config)) };
   for (const zustand of Object.keys(STAND_LABEL_VORGABEN)) {
     const wert = block[zustand];
     if (wert === undefined) continue;

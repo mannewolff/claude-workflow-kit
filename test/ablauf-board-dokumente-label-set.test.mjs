@@ -33,8 +33,21 @@ function mitFake(config, praefix, cli, regeln, fn) {
   }
 }
 
-function mitGitHub(fn, regeln = []) {
-  return mitFake(GITHUB, "board-label-gh-", "gh", [
+// Die Karte, wie `issue get` sie liest: `remove` eines Kit-Labels nimmt den Namen ab, den die
+// Karte traegt (Issue #1428), und liest sie dafuer.
+const GH_KARTE = (labels) => ({
+  match: "^issue view 7",
+  stdout: JSON.stringify({ number: 7, title: "Ein Issue", body: "", state: "OPEN", comments: [],
+    labels: labels.map((name) => ({ name })), createdAt: "2026-08-14T00:00:00Z" }) + "\n",
+});
+const GL_KARTE = (labels) => ({
+  match: "^issue view 7",
+  stdout: JSON.stringify({ iid: 7, title: "Ein Issue", description: "", state: "opened", labels,
+    created_at: "2026-08-14T00:00:00Z" }) + "\n",
+});
+
+function mitGitHub(fn, regeln = [], config = GITHUB) {
+  return mitFake(config, "board-label-gh-", "gh", [
     ...regeln,
     { match: "^repo view", stdout: "besitzer/mein-repo\n" },
     { match: "^issue edit", stdout: "" },
@@ -109,7 +122,32 @@ test("github: remove entfernt das Label ueber `--remove-label`", () => {
       aufrufZeilen(dir, "gh").join("\n"),
       /issue edit 7 --repo besitzer\/mein-repo --remove-label kit:klaeren/,
     );
-  });
+  }, [GH_KARTE(["kit:klaeren"])]);
+});
+
+// Issue #1428: In einem englischen Projekt setzt `add` den englischen Namen; fehlt er am
+// Board, den deutschen, und sagt es unter `hinweise`.
+test("github: add in einem englischen Projekt faellt bei fehlendem kit:clarify auf kit:klaeren zurueck", () => {
+  mitGitHub((dir) => {
+    const ergebnis = board(dir, "issue", "label", "add", "7", "kit:klaeren");
+    assert.equal(ergebnis.label, "kit:klaeren");
+    assert.equal(ergebnis.hinweise[0].art, "rueckfall");
+    const zeilen = aufrufZeilen(dir, "gh").join("\n");
+    assert.match(zeilen, /--add-label kit:clarify/);
+    assert.match(zeilen, /--add-label kit:klaeren/);
+  }, [
+    { match: "--add-label kit:clarify", stderr: "could not add label: 'kit:clarify' not found\n", exit: 1 },
+  ], { ...GITHUB, language: "en" });
+});
+
+// Issue #1428: Eine alte Karte traegt `kit:klaeren`; `remove kit:clarify` nimmt genau das ab.
+test("github: remove in einem englischen Projekt nimmt den Namen ab, den die Karte traegt", () => {
+  mitGitHub((dir) => {
+    assert.equal(board(dir, "issue", "label", "remove", "7", "kit:clarify").label, "kit:klaeren");
+    const zeilen = aufrufZeilen(dir, "gh").join("\n");
+    assert.match(zeilen, /--remove-label kit:klaeren/);
+    assert.doesNotMatch(zeilen, /--remove-label kit:clarify/);
+  }, [GH_KARTE(["kit:nightrun", "kit:klaeren"])], { ...GITHUB, language: "en" });
 });
 
 test("github: ein zweiter add-Aufruf bleibt bei Exit 0 (idempotent)", () => {
@@ -140,7 +178,7 @@ test("gitlab: add und remove nutzen --label und --unlabel", () => {
     const zeilen = aufrufZeilen(dir, "glab").join("\n");
     assert.match(zeilen, /issue update 7 --label kit:klaeren/);
     assert.match(zeilen, /issue update 7 --unlabel kit:klaeren/);
-  });
+  }, [GL_KARTE(["kit:klaeren"]), { match: "^api ", stdout: "[]\n" }]);
 });
 
 // Bei GitLab SIND die Spaltennamen Labels. Ohne diese Sperre koennte das generische

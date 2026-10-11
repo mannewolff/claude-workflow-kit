@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
-import { resolveTracker, ToolboxIssueTracker } from "../kit/board/adapter.mjs";
+import { resolveTracker, ToolboxIssueTracker, LabelFehltError } from "../kit/board/adapter.mjs";
 import { BoardError, loadConfig } from "../kit/board/grundlagen.mjs";
 import { setupProjekt, starteServer, imProjekt } from "./helpers/adapter-fixture.mjs";
 
@@ -477,6 +477,18 @@ test("label remove kodiert einen Namen mit Schraegstrich", async () => {
     await amBoard(dir, (t) => t.labelIssue("7", "bereich/ui", "remove"));
     const del = requests.find((r) => r.method === "DELETE" && r.url.startsWith("/api/kanban/items/700/labels"));
     assert.equal(del.url, "/api/kanban/items/700/labels?name=bereich%2Fui");
+  });
+});
+
+// Ein am Board nicht definiertes Label meldet der Server mit 404. Der Adapter macht daraus
+// LabelFehltError — daran erkennt `issue label add` den Rueckfall auf den anderen Namen
+// (Issue #1428).
+test("label add auf ein am Board fehlendes Label wirft LabelFehltError mit dem Namen", async () => {
+  const ohneLabel = (req) => (req.method === "POST" && /\/labels$/.test(req.url)
+    ? { status: 404, json: { message: "LabelNotFound" } } : standardAntwort(req));
+  await mitBoard(ohneLabel, async (dir) => {
+    await assert.rejects(amBoard(dir, (t) => t.labelIssue("7", "kit:clarify", "add")),
+      (e) => e instanceof LabelFehltError && /Label 'kit:clarify' ist am Board nicht definiert/.test(e.message));
   });
 });
 
