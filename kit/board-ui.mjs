@@ -98,6 +98,42 @@ Konfiguration (optional, .claude/workflow.config.json oder workflow.config.json)
     ansichtListe: "Liste",
     ansichtEpics: "Epics",
     neu: "+ Neu",
+    // Seitenskript ab renderMarkdown und Start (Issue #1501).
+    statusArchiv: "Archiv",
+    keineIssues: "Keine Issues",
+    kommentarKopf: "Kommentar · {ts}",
+    bearbeiten: "Bearbeiten",
+    schliessen: "Schliessen",
+    kommentarPlatzhalter: "Kommentar schreiben...",
+    senden: "Senden",
+    feldTitel: "Titel",
+    feldBeschreibung: "Beschreibung",
+    speichern: "Speichern",
+    abbrechen: "Abbrechen",
+    feldKuerzel: "Kürzel",
+    kuerzelPlatzhalter: "leer = aus Titel",
+    feldFarbe: "Farbe",
+    speichernFehler: "Speichern fehlgeschlagen: {fehler}",
+    vorlageNeuesIssue: "\n## Kontext\n\n## Aufgabe\n\n## Akzeptanzkriterium\n\n## Abhaengigkeiten\n",
+    neuesIssue: "Neues Issue",
+    feldTyp: "Typ",
+    feldEpic: "Epic",
+    keinEpic: "(kein Epic)",
+    titelPlatzhalter: "Kurzer, praeziser Titel",
+    anlegen: "Anlegen",
+    anlegenFehler: "Anlegen fehlgeschlagen: {fehler}",
+    farbeAutomatisch: "automatisch",
+    keineEpics: "Noch keine Epics. Lege über „+ Neu\" ein Issue vom Typ Epic an.",
+    storiesFertig: "{done}/{total} Stories fertig",
+    alleEpics: "← Alle Epics",
+    neueStory: "+ Neue Story",
+    keineStories: "Noch keine Stories in diesem Epic. Lege über „+ Neue Story“ eine an.",
+    reihenfolgeAendern: "Reihenfolge ändern",
+    spaltenbreiteZiehen: "Spaltenbreite ziehen",
+    untertitelMitRoot: "Lokaler Modus — Dateien in issues/ — {root}",
+    archivierungFehler: "Archivierung fehlgeschlagen: {fehler}",
+    laeuftAuf: "Board läuft auf http://localhost:{port}",
+    issuesVerzeichnis: "Issues-Verzeichnis: {pfad}",
   },
   en: {
     hilfe: `board-ui.mjs (v{version}) — a simple viewer. This file is copied into the
@@ -131,6 +167,41 @@ Configuration (optional, .claude/workflow.config.json or workflow.config.json):
     ansichtListe: "List",
     ansichtEpics: "Epics",
     neu: "+ New",
+    statusArchiv: "Archive",
+    keineIssues: "No issues",
+    kommentarKopf: "Comment · {ts}",
+    bearbeiten: "Edit",
+    schliessen: "Close",
+    kommentarPlatzhalter: "Write a comment...",
+    senden: "Send",
+    feldTitel: "Title",
+    feldBeschreibung: "Description",
+    speichern: "Save",
+    abbrechen: "Cancel",
+    feldKuerzel: "Short code",
+    kuerzelPlatzhalter: "empty = from title",
+    feldFarbe: "Colour",
+    speichernFehler: "Saving failed: {fehler}",
+    vorlageNeuesIssue: "\n## Context\n\n## Task\n\n## Acceptance criteria\n\n## Dependencies\n",
+    neuesIssue: "New issue",
+    feldTyp: "Type",
+    feldEpic: "Epic",
+    keinEpic: "(no epic)",
+    titelPlatzhalter: "Short, precise title",
+    anlegen: "Create",
+    anlegenFehler: "Creating failed: {fehler}",
+    farbeAutomatisch: "automatic",
+    keineEpics: "No epics yet. Use \"+ New\" to create an issue of type Epic.",
+    storiesFertig: "{done}/{total} stories done",
+    alleEpics: "← All epics",
+    neueStory: "+ New story",
+    keineStories: "No stories in this epic yet. Use \"+ New story\" to create one.",
+    reihenfolgeAendern: "Change order",
+    spaltenbreiteZiehen: "Drag column width",
+    untertitelMitRoot: "Local mode — files in issues/ — {root}",
+    archivierungFehler: "Archiving failed: {fehler}",
+    laeuftAuf: "Board running at http://localhost:{port}",
+    issuesVerzeichnis: "Issues directory: {pfad}",
   },
 };
 
@@ -1206,7 +1277,7 @@ function buildBoard(issues) {
     const body = colEl.querySelector(".column-body");
 
     if (colIssues.length === 0) {
-      body.innerHTML = '<div class="empty">Keine Issues</div>';
+      body.innerHTML = '<div class="empty">' + escHtml(tx("keineIssues")) + '</div>';
     } else {
       for (const issue of colIssues) {
         body.appendChild(buildCard(issue));
@@ -1237,7 +1308,7 @@ const STATUS_BADGE = {
   in_progress: { bg: "#fffae6", color: "#7a6000", label: "In Progress" },
   in_review:   { bg: "#ffedeb", color: "#bf2600", label: "In Review" },
   done:        { bg: "#e3fcef", color: "#006644", label: "Done" },
-  archived:    { bg: "#f0f0f0", color: "#666", label: "Archiv" },
+  archived:    { bg: "#f0f0f0", color: "#666", label: tx("statusArchiv") },
 };
 
 function parseIssueBody(raw) {
@@ -1261,7 +1332,7 @@ function openModal(issue) {
 
   const commentsHtml = comments.map(c =>
     \`<div class="modal-comment">
-      <div class="modal-comment-meta">Kommentar · \${escHtml(c.ts)}</div>
+      <div class="modal-comment-meta">\${escHtml(tx("kommentarKopf", { ts: c.ts }))}</div>
       <div class="modal-comment-body">\${renderMarkdown(c.text)}</div>
     </div>\`
   ).join("");
@@ -1271,14 +1342,14 @@ function openModal(issue) {
   window_.innerHTML =
     \`<div class="modal-header">
       <div class="modal-title">\${escHtml(issue.title)}</div>
-      <div class="modal-meta">\${badgeHtml}<span>#\${escHtml(issue.id)}</span><button class="modal-edit-btn" type="button">Bearbeiten</button></div>
+      <div class="modal-meta">\${badgeHtml}<span>#\${escHtml(issue.id)}</span><button class="modal-edit-btn" type="button">\${escHtml(tx("bearbeiten"))}</button></div>
       <button class="modal-close" aria-label="Schliessen">×</button>
     </div>
     <div class="modal-body">\${renderMarkdown(mainBody)}</div>
     \${comments.length ? \`<div class="modal-comments">\${commentsHtml}</div>\` : ""}
     <div class="modal-comment-form">
-      <textarea placeholder="Kommentar schreiben..."></textarea>
-      <button class="modal-comment-send" disabled>Senden</button>
+      <textarea placeholder="\${escAttr(tx("kommentarPlatzhalter"))}"></textarea>
+      <button class="modal-comment-send" disabled>\${escHtml(tx("senden"))}</button>
     </div>\`;
 
   overlay.appendChild(window_);
@@ -1346,15 +1417,15 @@ function enterEditMode(window_, issue, mainBody) {
   const bodyEl = window_.querySelector(".modal-body");
   bodyEl.innerHTML =
     \`<div class="new-issue-field">
-      <label for="edit-issue-title">Titel</label>
+      <label for="edit-issue-title">\${escHtml(tx("feldTitel"))}</label>
       <input id="edit-issue-title" type="text">
     </div>
     <div class="new-issue-field">
-      <label for="edit-issue-body">Beschreibung</label>
+      <label for="edit-issue-body">\${escHtml(tx("feldBeschreibung"))}</label>
       <textarea id="edit-issue-body"></textarea>
     </div>
-    <button class="modal-comment-send edit-save-btn">Speichern</button>
-    <button class="modal-edit-cancel-btn" type="button">Abbrechen</button>\`;
+    <button class="modal-comment-send edit-save-btn">\${escHtml(tx("speichern"))}</button>
+    <button class="modal-edit-cancel-btn" type="button">\${escHtml(tx("abbrechen"))}</button>\`;
 
   const titleInput = bodyEl.querySelector("#edit-issue-title");
   const bodyInput = bodyEl.querySelector("#edit-issue-body");
@@ -1369,9 +1440,9 @@ function enterEditMode(window_, issue, mainBody) {
     const field = document.createElement("div");
     field.className = "new-issue-field";
     field.innerHTML =
-      '<label for="edit-issue-shortcode">Kürzel</label>' +
-      '<input id="edit-issue-shortcode" type="text" maxlength="6" placeholder="leer = aus Titel">' +
-      '<label style="margin-top:8px">Farbe</label>' +
+      '<label for="edit-issue-shortcode">' + escHtml(tx("feldKuerzel")) + '</label>' +
+      '<input id="edit-issue-shortcode" type="text" maxlength="6" placeholder="' + escAttr(tx("kuerzelPlatzhalter")) + '">' +
+      '<label style="margin-top:8px">' + escHtml(tx("feldFarbe")) + '</label>' +
       '<div class="epic-color-picker" id="edit-issue-color"></div>';
     titleInput.closest(".new-issue-field").after(field);
     shortcodeInput = field.querySelector("#edit-issue-shortcode");
@@ -1396,7 +1467,7 @@ function enterEditMode(window_, issue, mainBody) {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      alert("Speichern fehlgeschlagen: " + (err.error || res.status));
+      alert(tx("speichernFehler", { fehler: err.error || res.status }));
       saveBtn.disabled = false;
       return;
     }
@@ -1427,7 +1498,7 @@ function closeModal() {
   document.removeEventListener("keydown", handleEsc);
 }
 
-const NEW_ISSUE_TEMPLATE = "\\n## Kontext\\n\\n## Aufgabe\\n\\n## Akzeptanzkriterium\\n\\n## Abhaengigkeiten\\n";
+const NEW_ISSUE_TEMPLATE = tx("vorlageNeuesIssue");
 
 async function openNewIssueModal(opts) {
   opts = opts || {};
@@ -1441,12 +1512,12 @@ async function openNewIssueModal(opts) {
   window_.className = "modal-window";
   window_.innerHTML =
     \`<div class="modal-header">
-      <div class="modal-title">Neues Issue</div>
+      <div class="modal-title">\${escHtml(tx("neuesIssue"))}</div>
       <button class="modal-close" aria-label="Schliessen">×</button>
     </div>
     <div class="modal-body">
       <div class="new-issue-field">
-        <label for="new-issue-type">Typ</label>
+        <label for="new-issue-type">\${escHtml(tx("feldTyp"))}</label>
         <select id="new-issue-type">
           <option value="task">Task</option>
           <option value="story">Story</option>
@@ -1454,25 +1525,25 @@ async function openNewIssueModal(opts) {
         </select>
       </div>
       <div class="new-issue-field" id="new-issue-parent-field">
-        <label for="new-issue-parent">Epic</label>
+        <label for="new-issue-parent">\${escHtml(tx("feldEpic"))}</label>
         <select id="new-issue-parent"></select>
       </div>
       <div class="new-issue-field" id="new-issue-epic-fields" style="display:none">
-        <label for="new-issue-shortcode">Kürzel</label>
-        <input id="new-issue-shortcode" type="text" maxlength="6" placeholder="leer = aus Titel">
-        <label style="margin-top:8px">Farbe</label>
+        <label for="new-issue-shortcode">\${escHtml(tx("feldKuerzel"))}</label>
+        <input id="new-issue-shortcode" type="text" maxlength="6" placeholder="\${escAttr(tx("kuerzelPlatzhalter"))}">
+        <label style="margin-top:8px">\${escHtml(tx("feldFarbe"))}</label>
         <div class="epic-color-picker" id="new-issue-color"></div>
       </div>
       <div class="new-issue-field">
-        <label for="new-issue-title">Titel</label>
-        <input id="new-issue-title" type="text" placeholder="Kurzer, praeziser Titel">
+        <label for="new-issue-title">\${escHtml(tx("feldTitel"))}</label>
+        <input id="new-issue-title" type="text" placeholder="\${escAttr(tx("titelPlatzhalter"))}">
       </div>
       <div class="new-issue-field">
-        <label for="new-issue-body">Beschreibung</label>
+        <label for="new-issue-body">\${escHtml(tx("feldBeschreibung"))}</label>
         <textarea id="new-issue-body"></textarea>
       </div>
-      <button class="modal-comment-send new-issue-create" disabled>Anlegen</button>
-      <button class="modal-edit-cancel-btn new-issue-cancel" type="button">Abbrechen</button>
+      <button class="modal-comment-send new-issue-create" disabled>\${escHtml(tx("anlegen"))}</button>
+      <button class="modal-edit-cancel-btn new-issue-cancel" type="button">\${escHtml(tx("abbrechen"))}</button>
     </div>\`;
 
   overlay.appendChild(window_);
@@ -1493,7 +1564,7 @@ async function openNewIssueModal(opts) {
   const getEpicColor = buildColorPicker(window_.querySelector("#new-issue-color"), "");
   bodyInput.value = NEW_ISSUE_TEMPLATE;
 
-  parentSelect.innerHTML = '<option value="">(kein Epic)</option>' +
+  parentSelect.innerHTML = '<option value="">' + escHtml(tx("keinEpic")) + '</option>' +
     epics.map(function (e) {
       return '<option value="' + escHtml(e.id) + '">' + escHtml(epicShortcode(e)) + ' – ' + escHtml(e.title) + '</option>';
     }).join('');
@@ -1532,7 +1603,7 @@ async function openNewIssueModal(opts) {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      alert("Anlegen fehlgeschlagen: " + (err.error || res.status));
+      alert(tx("anlegenFehler", { fehler: err.error || res.status }));
       createBtn.disabled = false;
       return;
     }
@@ -1597,6 +1668,11 @@ function escHtml(str) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+// Fuer Texte in Attributwerten (title, placeholder): zusaetzlich das Anfuehrungszeichen.
+function escAttr(str) {
+  return escHtml(str).replace(/"/g, "&quot;");
 }
 
 async function moveIssue(id, to) {
@@ -1668,7 +1744,7 @@ function buildColorPicker(container, initial) {
     b.type = 'button';
     b.className = 'epic-swatch' + (val === selected ? ' selected' : '');
     if (val) { b.style.background = val; b.title = val; }
-    else { b.classList.add('epic-swatch-auto'); b.textContent = 'A'; b.title = 'automatisch'; }
+    else { b.classList.add('epic-swatch-auto'); b.textContent = 'A'; b.title = tx('farbeAutomatisch'); }
     b.addEventListener('click', function () {
       selected = val;
       swatches.forEach(function (s) { s.el.classList.toggle('selected', s.val === selected); });
@@ -1703,7 +1779,7 @@ function buildEpics(epics) {
   if (!epics.length) {
     const empty = document.createElement('div');
     empty.className = 'epics-empty';
-    empty.textContent = 'Noch keine Epics. Lege über „+ Neu" ein Issue vom Typ Epic an.';
+    empty.textContent = tx('keineEpics');
     container.appendChild(empty);
     return;
   }
@@ -1724,7 +1800,7 @@ function buildEpics(epics) {
       '<div class="epic-desc">' + escHtml(bodyExcerpt(epic.body || '')) + '</div>' +
       '<div class="epic-progress">' +
         '<div class="epic-progress-bar"><div class="epic-progress-fill" style="width:' + pct + '%;background:' + escHtml(color) + '"></div></div>' +
-        '<span class="epic-progress-label">' + done + '/' + total + ' Stories fertig</span>' +
+        '<span class="epic-progress-label">' + escHtml(tx('storiesFertig', { done: done, total: total })) + '</span>' +
       '</div>';
     card.addEventListener('click', () => openEpicDetail(epic));
     container.appendChild(card);
@@ -1745,10 +1821,10 @@ async function openEpicDetail(epic) {
   const head = document.createElement('div');
   head.className = 'epic-detail-head';
   head.innerHTML =
-    '<button class="epic-back" type="button">← Alle Epics</button>' +
+    '<button class="epic-back" type="button">' + escHtml(tx('alleEpics')) + '</button>' +
     '<div class="epic-detail-title"><span class="epic-dot" style="background:' + escHtml(color) + '"></span>' + codeHtml +
       '<span class="epic-name">' + escHtml(epic.title) + '</span></div>' +
-    '<button class="new-issue-btn epic-add-story" type="button">+ Neue Story</button>';
+    '<button class="new-issue-btn epic-add-story" type="button">' + escHtml(tx('neueStory')) + '</button>';
   container.appendChild(head);
   head.querySelector('.epic-back').addEventListener('click', () => loadEpics());
   head.querySelector('.epic-add-story').addEventListener('click', () => openNewIssueModal({ type: 'story', parent: epic.id }));
@@ -1756,7 +1832,7 @@ async function openEpicDetail(epic) {
   if (!children.length) {
     const empty = document.createElement('div');
     empty.className = 'epics-empty';
-    empty.textContent = 'Noch keine Stories in diesem Epic. Lege über „+ Neue Story“ eine an.';
+    empty.textContent = tx('keineStories');
     container.appendChild(empty);
     return;
   }
@@ -1795,7 +1871,7 @@ const LIST_STATUSES = [
   { key: 'in_progress', label: 'In Progress' },
   { key: 'in_review',   label: 'In Review' },
   { key: 'done',        label: 'Done' },
-  { key: 'archived',    label: 'Archiv' },
+  { key: 'archived',    label: tx('statusArchiv') },
 ];
 
 function bodyExcerpt(raw) {
@@ -1836,7 +1912,7 @@ function buildList(issues) {
   if (visible.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty';
-    empty.textContent = 'Keine Issues';
+    empty.textContent = tx('keineIssues');
     container.appendChild(empty);
     return;
   }
@@ -1904,11 +1980,11 @@ function buildListRow(issue) {
   }
 
   row.innerHTML =
-    \`<span class="list-handle\${isArchived ? ' disabled' : ''}" title="Reihenfolge ändern">⠿</span>
+    \`<span class="list-handle\${isArchived ? ' disabled' : ''}" title="\${escAttr(tx('reihenfolgeAendern'))}">⠿</span>
      <span class="list-id">#\${escHtml(issue.id)}</span>
      \${badgeEl}\${epicEl}
      <span class="list-title">\${escHtml(issue.title)}</span>
-     <span class="list-resizer" title="Spaltenbreite ziehen"></span>
+     <span class="list-resizer" title="\${escAttr(tx('spaltenbreiteZiehen'))}"></span>
      <span class="list-excerpt">\${escHtml(bodyExcerpt(issue.body || ''))}</span>\`;
 
   const resizer = row.querySelector('.list-resizer');
@@ -2053,7 +2129,7 @@ async function init() {
   }
   if (cfg.root) {
     document.getElementById("board-subtitle").textContent =
-      "Lokaler Modus — Dateien in issues/ — " + cfg.root;
+      tx("untertitelMitRoot", { root: cfg.root });
   }
   if (cfg.version) {
     document.getElementById("board-version").textContent = "v" + cfg.version;
@@ -2095,13 +2171,13 @@ function starten(argv) {
     }
   });
 
-  const logArchiveError = (e) => process.stderr.write(`Archivierung fehlgeschlagen: ${e.message}\n`);
+  const logArchiveError = (e) => process.stderr.write(`${t("archivierungFehler", { fehler: e.message })}\n`);
   archiveOldIssues(issuesDir).catch(logArchiveError);
   setInterval(() => archiveOldIssues(issuesDir).catch(logArchiveError), 60 * 60 * 1000);
 
   server.listen(port, () => {
-    console.log(`Board läuft auf http://localhost:${port}`);
-    console.log(`Issues-Verzeichnis: ${issuesDir}`);
+    console.log(t("laeuftAuf", { port }));
+    console.log(t("issuesVerzeichnis", { pfad: issuesDir }));
   });
 }
 

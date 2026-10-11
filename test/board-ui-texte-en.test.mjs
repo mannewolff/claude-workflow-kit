@@ -63,6 +63,39 @@ test("[1500] die deutsche Vorgabe bleibt: mit Deutsch spricht die Oberflaeche wi
   assert.match(html, /"titelLeer":"Titel darf nicht leer sein"/);
 });
 
+test("[1501] die Tabelle traegt die Texte der Seite ab renderMarkdown und des Starts", () => {
+  assert.deepEqual(pruefeParitaet(TEXTE), []);
+  for (const k of ["keineIssues", "kommentarKopf", "bearbeiten", "neuesIssue", "vorlageNeuesIssue", "storiesFertig", "alleEpics", "speichernFehler", "anlegenFehler", "laeuftAuf", "issuesVerzeichnis", "archivierungFehler", "statusArchiv"]) {
+    assert.ok(Object.hasOwn(TEXTE.de, k), `die Tabelle traegt "${k}"`);
+  }
+});
+
+test("[1501] englische Stichproben: Texte der Seite ab renderMarkdown", () => {
+  spracheFestlegen("en");
+  const html = seite();
+  const tabelle = JSON.parse(html.match(/const TEXTE_SEITE = (.*);\n/)[1]);
+  assert.equal(tabelle.keineIssues, "No issues");
+  assert.equal(tabelle.bearbeiten, "Edit");
+  assert.equal(tabelle.storiesFertig, "{done}/{total} stories done");
+  assert.match(tabelle.vorlageNeuesIssue, /^## Acceptance criteria$/m, "die Vorlage traegt die englischen Formatueberschriften");
+  // Das Seitenskript holt seine Texte aus der Tabelle, nicht als festen deutschen Wortlaut.
+  // Zeilenkommentare sind keine Meldungen und bleiben aussen vor.
+  const skript = html.match(/<script>([\s\S]*)<\/script>/)[1]
+    .split("\n").filter((zeile) => !zeile.trimStart().startsWith("//")).join("\n");
+  for (const deutsch of ["Keine Issues", "Bearbeiten", "Neues Issue", "Stories fertig", "Alle Epics", "Speichern fehlgeschlagen", "Lokaler Modus", "Reihenfolge ändern"]) {
+    assert.ok(!skript.includes(deutsch), `"${deutsch}" steht nicht mehr fest im Skript`);
+  }
+  assert.match(skript, /tx\("keineIssues"\)/);
+});
+
+test("[1501] die deutsche Vorgabe bleibt fuer die Texte der Seite", () => {
+  spracheFestlegen("de");
+  const tabelle = JSON.parse(seite().match(/const TEXTE_SEITE = (.*);\n/)[1]);
+  assert.equal(tabelle.keineIssues, "Keine Issues");
+  assert.equal(tabelle.storiesFertig, "{done}/{total} Stories fertig");
+  assert.match(tabelle.vorlageNeuesIssue, /^## Akzeptanzkriterium$/m);
+});
+
 /**
  * Die festen Bruchstuecke der deutschen Texte, die im Englischen nicht vorkommen: Was davon
  * in einer Ausgabe steht, ist eine deutsche Meldung. Kurze Bruchstuecke sagen nichts ueber
@@ -185,6 +218,8 @@ test("[1500] ein englisches Projekt sieht keine deutsche Meldung — echter Serv
 
     // Das Archiv laeuft beim Start im Hintergrund; seine Meldung steht spaetestens jetzt da.
     await warteAufAusgabe(() => stdout, /^Archived: 0008\.md$/m);
+    assert.match(stdout, /^Board running at http:\/\/localhost:\d+$/m, "der Start meldet sich englisch (Issue #1501)");
+    assert.match(stdout, /^Issues directory: /m);
 
     // Was der Mensch auf der Seite sieht: das Markup ohne Skript und Stil, dazu die Werte der
     // eingebetteten Tabelle. Kommentare und Bezeichner im Skript sind keine Meldungen.
