@@ -1062,7 +1062,7 @@ function boardLauf(args, { karte = null } = {}) {
     // Die eine Ausnahme vom Werfen (Issue #1100): Wer eine `karte` nennt, bekommt deren
     // Fehlen als Wert zurueck. Erkannt wird allein die Meldung, die der lokale und der
     // Toolbox-Tracker dafuer liefern — ein Netz- oder Zugangsfehler wirft weiter.
-    if (karte !== null && new RegExp(`\\bIssue #?${karte} nicht gefunden\\b`).test(grund)) return KARTE_FEHLT;
+    if (karte !== null && new RegExp(`\\bIssue #?${karte} (?:nicht gefunden|not found)\\b`).test(grund)) return KARTE_FEHLT;
     fail(`board.mjs ${args.slice(0, 2).join(" ")} schlug fehl: ${grund}`);
   }
   try {

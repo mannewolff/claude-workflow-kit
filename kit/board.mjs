@@ -715,7 +715,7 @@ async function checkFormVomBoard(tracker, id) {
     const issue = await tracker.getIssue(String(id));
     return { body: issue.body || "", title: issue.title || "" };
   } catch (e) {
-    if (e instanceof BoardError && /HTTP 404|nicht gefunden/i.test(e.message)) return checkFormAbweisen(e.message);
+    if (e instanceof BoardError && /HTTP 404|nicht gefunden|not found/i.test(e.message)) return checkFormAbweisen(e.message);
     throw e;
   }
 }

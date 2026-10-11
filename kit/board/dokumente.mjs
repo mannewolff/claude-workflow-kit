@@ -1858,11 +1858,11 @@ async function auftragVoraussetzung(tracker, nummer, spaltenListen) {
 
 /**
  * Der Tracker kennt die Nummer nicht — anders als ein Abruf, der scheitert (Issue #1149).
- * Lokaler Tracker und Toolbox werfen `Issue <n> nicht gefunden`, gh und glab ihre eigene
+ * Lokaler Tracker und Toolbox werfen `Issue <n> nicht gefunden` (englisch `not found`), gh und glab ihre eigene
  * Meldung. Ein fehlendes CLI ("gh nicht gefunden") zaehlt nicht dazu.
  */
 function karteUnbekannt(e) {
-  if (e instanceof BoardError) return /^Issue \S+ nicht gefunden/.test(e.message);
+  if (e instanceof BoardError) return /^Issue \S+ (?:nicht gefunden|not found)/.test(e.message);
   return /Could not resolve to an issue|404 Not Found/i.test(String(e?.message ?? ""));
 }
 
