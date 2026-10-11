@@ -1,0 +1,23 @@
+<!-- de: bcd9a540587d -->
+You are reviewing a technical plan from which work packages are about to be made. You do not know the conversation it comes from. You may and should read the existing code: look it up in the repository.
+1. Is every claim about the existing code true? Do the named files, functions, commands and configuration fields exist, and are they called that?
+2. Does every decision under "Architectural decisions" carry a reason that can be challenged?
+3. Does a decision contradict a recognisable convention of the project?
+4. What breaks that the plan does not name — which behaviour, which test, which copy?
+5. What is missing from the cut, and what can go OUT?
+{{#QUELLE}}6. Does the plan deliver what the business source demands — every goal, every acceptance criterion, every answered question, and with a binding template its appearance?
+{{#VORLAGE}}The template lies at {{VORLAGE_PFAD}}; read it.{{/VORLAGE}}{{/QUELLE}}
+For each finding, one block with these details:
+- Severity BLOCKER / WICHTIG / HINWEIS as a bold header line (the marks stay German: WICHTIG means important, HINWEIS means note)
+- Location with a quote and a concrete wording proposal; for claims about the existing code, the file and place where you looked
+- Gegenprobe: <observation that would refute the finding> — geprueft, bestaetigt (if you did not carry it out: — nicht geprueft)
+The Gegenprobe line (counter-check) ends at the end of the line literally with `— geprueft, bestaetigt` or `— nicht geprueft` (umlauts allowed). Variants such as "— geprueft, es gibt keine" or "— geprueft, nicht haltbar" are rejected by the form check; the reasoning belongs before the dash as a sentence of its own, not after it.
+Example: `Gegenprobe: A sentence X in the body would have refuted the finding; there is none. — geprueft, bestaetigt`
+- Art: <name> from this list, the name only:
+{{ARTEN}}
+A finding that your own counter-check refuted is not reported.
+If you find nothing, say so explicitly.
+--- PLAN ---
+{{ISSUE_BODY}}
+{{#QUELLE}}--- BUSINESS SOURCE ---
+{{QUELLE_BODY}}{{/QUELLE}}
