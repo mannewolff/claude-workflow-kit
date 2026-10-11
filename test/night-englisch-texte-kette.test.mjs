@@ -9,8 +9,8 @@
 //     sind, und laufen mit der Vorgabe Deutsch.
 //
 // Das Paket #1449 ist in drei Teile geschnitten. Der erste (#1491) deckt kit/night/kette.mjs
-// vom Dateianfang bis vor `formSicherstellen`, der zweite (#1492) von dort bis vor `mitMeldung`;
-// der Teil #1493 ergaenzt diese Datei.
+// vom Dateianfang bis vor `formSicherstellen`, der zweite (#1492) von dort bis vor `mitMeldung`,
+// der dritte (#1493) von `mitMeldung` bis zum Dateiende.
 
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
@@ -19,13 +19,13 @@ import {
   TEXTE as KETTE_TEXTE, UNGEPRUEFT_PRAEFIX, ZIEL_UNPASSEND_PRAEFIX, budgetDefaultsZeile, istUngeprueftGrund,
   istZielUnpassendGrund, ketteAbhaengigkeiten, ketteAnbinden, offeneFragenGrund, planAusschluss, pruefungFehltGrund,
   stoppFragenGrund, waehleKettenKandidaten, wartendBeendet, zielAusschluss, KETTE_ZUSATZ, REVIEW_REST_ANKER, pushVermerk,
-  umsetzungHaltGrund,
+  umsetzungHaltGrund, beanspruchtGrund, kennzeichenZurueckGrund,
 } from "../kit/night/kette.mjs";
 import { KETTE_BUDGET_DEFAULTS } from "../kit/night/session.mjs";
 import { ZUSTAND } from "../kit/night/grundlagen.mjs";
 import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
 import { deutschAmHelferVorbei, deutschImEnglischen } from "./helpers/quelltext-texte.mjs";
-import { GLATT, fachplanKarte, jeStufe, ketteImProzess, planAnlegen } from "./helpers/kette-fixture.mjs";
+import { GLATT, fachplanKarte, jeStufe, ketteImProzess, paketBody, planAnlegen, planBody, planKarte } from "./helpers/kette-fixture.mjs";
 
 /** Fuehrt `fn` mit der Prozesssprache `sprache` aus und vergisst sie danach wieder. */
 async function inSprache(sprache, fn) {
@@ -257,6 +257,78 @@ const KETTE_VERTRAG = ["## Testhinweise der Formpruefung", "nicht-vorbereitet"];
 test("[1492] der zweite Teil der Kette gibt in einem englischen Projekt keine deutsche Meldung aus", () => {
   const bereich = { bis: "async function mitMeldung", ohne: KETTE_OHNE };
   assert.deepEqual(deutschAmHelferVorbei("kit/night/kette.mjs", KETTE_TEXTE, KETTE_VERTRAG, bereich), [],
+    "kit/night/kette.mjs: deutsche Texte am Texthelfer vorbei");
+  assert.deepEqual(deutschImEnglischen(KETTE_TEXTE), [], "kit/night/kette.mjs: deutsche Woerter in der englischen Tabelle");
+});
+
+// --- kit/night/kette.mjs, Teil 3: ab mitMeldung bis zum Dateiende (Issue #1493) ------------
+
+test("[1493] die Texttabelle traegt die Meldungen des dritten Teils, in beiden Sprachen gleich gebaut", () => {
+  assert.deepEqual(pruefeParitaet(KETTE_TEXTE), []);
+  assert.ok(Object.keys(KETTE_TEXTE.de).length >= 180, "die Tabelle traegt die Meldungen des dritten Teils");
+});
+
+/** Die Laufstaende, die die Kette an `id` schrieb, in Folge. */
+const staendeVon = (r, id) => r.journal.filter((z) => z.art === "stand" && z.karte === id).map((z) => z.text);
+
+test("[1493] englisch: der Laufstand in den Wortformen der Vorlage, Ziel und Protokoll englisch", async () => {
+  const karte = fachplanKarte("1", { labels: ["kit:night", "review:done", "goal:packages"] });
+  const r = await inSprache("en", () => ketteImProzess({ karten: [karte], config: { language: "en" }, sitzung: GLATT }));
+  assert.equal(r.code, 0, r.ausgabe);
+  const plan = r.lauf.einheiten.find((e) => e.id === "1").stufen.plan.id;
+  const staende = staendeVon(r, "1");
+  assert.match(staende[0], /^Run accepted at .+, preflight check running/);
+  assert.match(staende[1], /^Goal: packages\n\nlast started: plan started for #1 at \d{4}-/, staende[1]);
+  const letzter = staende.at(-1);
+  assert.ok(letzter.startsWith("done up to packages\nNext: Pull the packages to Ready.\n\nGoal: packages\n\n"), letzter);
+  assert.match(letzter, new RegExp(`last started: coverage started for #${plan} at `));
+  assert.match(letzter, new RegExp(`last finished: coverage finished for #${plan} at `));
+  assert.doesNotMatch(staende.join("\n"), /zuletzt|begonnen|fertig|für #|Ziel:|Als Nächstes/);
+  assert.ok(r.ausgabe.includes("Chain 1/3: Issue #1 — [Fachlich] Ein Anliegen"), r.ausgabe);
+  assert.ok(r.ausgabe.includes("  Goal packages reached after abdeckung — the chain ends here."), r.ausgabe);
+  assert.match(r.ausgabe, /Night chain finished: 1 finished, 0 incomplete, 0 stopped, 0 aborted, 0 skipped, 0 pending, 0 package\(s\) not started\./);
+  assert.match(r.ausgabe, /Morning ritual: /);
+});
+
+test("[1493] ein englischer Laufstand-Eintrag zaehlt wie ein deutscher als vorhandenes Ergebnis", async () => {
+  const markiert = planBody().replace("Plan-Modell: fixture-modell", "Plan-Modell: fixture-modell\nPlan-Review: opus (2026-09-28, Nachtlauf)");
+  const pakete = ["3", "4"].map((id, i) => ({
+    id, title: `Paket ${i + 1}`, status: "in_review", labels: [], body: paketBody("2", "1", { n: i + 1, aufgabe: `Paket ${i + 1}.` }),
+  }));
+  for (const [sprache, eintrag] of [["en", "last finished: coverage finished for #2 at 2026-09-28T03:05:00.000Z"],
+    ["de", "zuletzt abgeschlossen: abdeckung fertig für #2 um 2026-09-28T03:05:00.000Z"]]) {
+    const karte = fachplanKarte("1", { labels: ["kit:night", "review:fertig", "ziel:pakete"] });
+    karte.comments = [{ body: `## Laufstand\n\n${eintrag}` }];
+    const r = await inSprache("en", () => ketteImProzess({
+      karten: [karte, planKarte("2", "1", { body: markiert }), ...pakete], config: { language: "en" }, sitzung: GLATT,
+    }));
+    assert.equal(r.code, 0, r.ausgabe);
+    assert.ok(r.ausgabe.includes("  Stage abdeckung: result is there — no session, the stage counts as finished."), `${sprache}: ${r.ausgabe}`);
+    assert.equal(r.sitzungen.length, 0, sprache);
+  }
+});
+
+test("[1493] englisch: die Gruende des Beanspruchens und des zurueckgenommenen Kennzeichens", async () => {
+  await inSprache("en", () => {
+    assert.equal(beanspruchtGrund("dort/1/x"), "already claimed by a running runner (dort/1/x)");
+    assert.equal(kennzeichenZurueckGrund(), "start marker withdrawn after the run began");
+  });
+  assert.equal(beanspruchtGrund("dort/1/x"), "bereits von einem laufenden Runner beansprucht (dort/1/x)");
+  assert.equal(kennzeichenZurueckGrund(), "Startkennzeichen nach Laufbeginn zurückgenommen");
+});
+
+test("[1493] englisch: der Wartetext an der Projektgrenze in der Form der Vorlage", async () => {
+  const karte = fachplanKarte("1", { labels: ["kit:night", "review:done", "goal:packages"] });
+  const r = await inSprache("en", () => ketteImProzess({
+    karten: [karte], config: { language: "en" }, kette: { uebergaenge: { paketeAbdeckung: false } }, sitzung: GLATT,
+  }));
+  const letzter = staendeVon(r, "1").at(-1);
+  assert.ok(letzter.startsWith("waiting: transition paketeAbdeckung not enabled in project — continue with kit:night\n\n"
+    + "Goal: packages\nLimit: packages\n"), letzter);
+});
+
+test("[1493] die ganze Kette gibt in einem englischen Projekt keine deutsche Meldung aus", () => {
+  assert.deepEqual(deutschAmHelferVorbei("kit/night/kette.mjs", KETTE_TEXTE, KETTE_VERTRAG, { ohne: KETTE_OHNE }), [],
     "kit/night/kette.mjs: deutsche Texte am Texthelfer vorbei");
   assert.deepEqual(deutschImEnglischen(KETTE_TEXTE), [], "kit/night/kette.mjs: deutsche Woerter in der englischen Tabelle");
 });

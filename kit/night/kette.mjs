@@ -61,8 +61,10 @@ import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, geschuetztAmBoardVermerken
 // Fragen. Die Prompts an Sessions (`KETTE_ZUSATZ` und die uebrigen) bleiben unveraendert, sie
 // stellt ein Paket der Stufe 4 um.
 //
-// Bisher umgestellt: der Teil vom Dateianfang bis vor `formSicherstellen` (#1491) und von dort bis
-// vor `mitMeldung` (#1492). Die Anker `TESTHINWEIS_ANKER` und `REVIEW_REST_ANKER` stehen nicht im
+// Umgestellt in drei Teilen: vom Dateianfang bis vor `formSicherstellen` (#1491), von dort bis vor
+// `mitMeldung` (#1492) und von dort bis zum Dateiende (#1493). Der Laufstand-Kommentar nimmt
+// englisch die Wortformen der Vorlage am Plan #1420 (`last started:`, `done up to`, `Next:`, die
+// Stufenwoerter `packages`, `coverage` …); gelesen werden die Eintraege in beiden Sprachen. Die Anker `TESTHINWEIS_ANKER` und `REVIEW_REST_ANKER` stehen nicht im
 // Register und bleiben deutsch; Skill und Vorlage nennen den ersten woertlich.
 export const TEXTE = Object.freeze({
   de: Object.freeze({
@@ -211,6 +213,81 @@ export const TEXTE = Object.freeze({
     kennzeichenWege: "  Entweder ist das Kennzeichen am Board noch nicht angelegt — dann einmal anlegen, wie das Label "
       + "'{kettenLabel}' —, oder es hat noch keine Anforderung eine Pruefung hinter sich (/issue-review <Nummer> setzt es).",
     uebersprungen: "  #{id} {titel} -> uebersprungen ({grund})",
+    // Teil 3: ab mitMeldung bis zum Dateiende (#1493).
+    stufenwortPlan: "plan",
+    stufenwortReview: "review",
+    stufenwortPakete: "pakete",
+    stufenwortAbdeckung: "abdeckung",
+    stufenwortUmsetzung: "umsetzung",
+    stufenwortVorbereitung: "vorbereitung",
+    eintragBegonnen: "begonnen",
+    eintragFertig: "fertig",
+    stufenEintrag: "{stufe} {was} für #{ziel}",
+    stufenEintragZeit: "{eintrag} um {zeit}",
+    zuletztBegonnen: "zuletzt begonnen: {eintrag}",
+    zuletztAbgeschlossen: "zuletzt abgeschlossen: {eintrag}",
+    zuletztPraefix: "zuletzt ",
+    teilschnitt: "Teilschnitt vorhanden ({ids}) — eine Wiederholung legte doppelt an; Teilschnitt am Board aufräumen, "
+      + "dann erneut kit:night",
+    haltWartet: "Halt: Frage wartet auf den Menschen — siehe `{anker}`",
+    haltMitGrund: "Halt: {grund}",
+    ausgangStufe: "{ausgang}: Stufe {stufe}: {grund}",
+    ohneGrund: "ohne Grund",
+    fertigBis: "fertig bis {ziel}\nAls Nächstes: {naechstes}",
+    naechstesPlan: "Plan lesen, dann `kit:night` an den Plan.",
+    naechstesPakete: "Pakete nach Ready ziehen.",
+    naechstesUmsetzung: "Pakete in In review testen, dann `push main`.",
+    naechstesPushVorbereitet: "Meldung der Vorbereitung lesen, dann `push main`.",
+    naechstesMenschenschritt: "Menschenschritt {ids} erledigen, dann kit:night an #{id} — {anzahl} Paket(e) hängen daran.",
+    ergebnisLiegtVor: "  Stufe {stufe}: Ergebnis liegt vor — keine Session, die Stufe gilt als fertig.",
+    stufeZeile: "  Stufe {stufe}: {grund}.",
+    abgebrochenErgebnisDa: "  Stufe {stufe}: abgebrochen ({grund}), das Ergebnis liegt aber vor — die Stufe gilt als fertig.",
+    uebergangNichtFreigegeben: "wartet: Übergang {uebergang} im Projekt nicht freigegeben — weiter mit kit:night",
+    ohneFreigabeZurUmsetzung: "wartet: Karte ohne Freigabe zur Umsetzung",
+    zielErreicht: "  Ziel {ziel} erreicht nach {stufe} — die Kette endet hier.",
+    abdeckungVorgefunden: "aus einem frueheren Lauf vorgefunden — der Text steht in dessen Bericht",
+    ursprungDurch: "Plan durch",
+    ursprungNichtDurch: "Plan nicht durch",
+    ursprungNichtLesbar: "issue ursprung {id} nicht lesbar ({grund})",
+    ursprungZeile: "  Ursprungsdokumente zu Plan #{id}: {stand}.",
+    ketteStartPlan: "Kette {nummer}/{max}: Plan #{plan} (fachliche Quelle #{quelle}) — {titel}",
+    ketteStartIssue: "Kette {nummer}/{max}: Issue #{id} — {titel}",
+    labelEntfernt: "  Label '{label}' entfernt — jedes Setzen autorisiert genau eine Kette.",
+    zielLabelsEntfernt: "  Label {namen} entfernt — Ziel {ziel}, Pruefer {pruefer} festgehalten.",
+    zielKeins: "keins",
+    prueferNachProjekt: "nach Projekt",
+    planUebernommen: "  Plan #{id} uebernommen — die Stufen plan und review entfallen.",
+    kennzeichenZurueck: "Startkennzeichen nach Laufbeginn zurückgenommen",
+    nichtFrischLesbar: "  #{id} nicht frisch lesbar ({text}) — die Kette faehrt mit dem Stand vom Laufbeginn.",
+    nichtMehrFreigegeben: "Kette {nummer}/{max}: #{id} beim Start nicht mehr freigegeben.",
+    worktreeFehler: "technischer Fehler: {meldung}",
+    ketteEnde: "  Kette zu Issue #{id}: {ausgang}{zusatz} ({kosten} $).",
+    alteLabels: "Hinweis: #{id} traegt das Label '{alt}', das es seit Stufe 2 nicht mehr gibt — es hat keine Wirkung. "
+      + "Die Nacht-Kette startet ueber '{label}' an der fachlichen Anforderung oder am Plandokument.",
+    beansprucht: "bereits von einem laufenden Runner beansprucht ({laufId})",
+    laufstandNichtLesbar: "Laufstand nicht lesbar — nicht beansprucht",
+    wurzelUebernommen: "  #{id}: Wurzel #{wurzel} uebernommen — der Runner {laufId} laeuft nicht mehr.",
+    laufAngenommen: "Lauf angenommen um {zeit}, Vorabprüfung läuft",
+    ohneLaufId: "ohne Lauf-ID",
+    bestaetigungNichtLesbar: "Bestaetigung nicht lesbar — nicht beansprucht",
+    laufeKetteUnbekannt: "laufeKette kennt keine Abhaengigkeit '{name}'",
+    worktreeEntfernt: "Liegengebliebenen Worktree entfernt: {pfad}",
+    keinLabelWarnung: "WARNUNG: keine Karte traegt das Label '{label}' — es wird nichts verarbeitet.",
+    vorhandeneLabels: "  Vorhandene Labels: {labels}",
+    keineLabels: "keine",
+    dryBudget: "Budget: Plan {plan} min, Pakete {pakete} min, Review {review} min, Abdeckung {abdeckung} min, {kosten} "
+      + "$ je Kette, {runden} Korrekturrunde(n).",
+    dryPlanAuftrag: "Plan-Auftrag, fachliche Quelle #{quelle}, ",
+    dryKette: "  #{id} {titel} -> Kette {nummer} ({art}Variante {variante})",
+    dryEnde: "Dry-Run beendet: {anzahl} Kette(n) wuerden laufen — kein Worktree, kein Label veraendert.",
+    ueberMax: "  #{id} {titel} -> ueber --max {max}, bleibt liegen.",
+    menschenschritteOffen: ", {anzahl} Menschenschritt(e) offen",
+    ketteBeendet: "Nacht-Kette beendet: {fertig} fertig, {unvollstaendig} unvollstaendig, {angehalten} angehalten, "
+      + "{abgebrochen} abgebrochen, {uebersprungen} uebersprungen, {liegengeblieben} liegengeblieben, {nichtBegonnen} "
+      + "Paket(e) nicht begonnen{menschenschritte}.",
+    morgenRitual: "Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt "
+      + "deins. Nach Variante A liegen die Pakete morgens in Backlog; Variante B (Label '{label}') hat sie in "
+      + "derselben Nacht umgesetzt, sie stehen dann in In review. Protokoll: {pfad}",
   }),
   en: Object.freeze({
     praefixFehlt: "board/dokumente.mjs is missing next to night.mjs ({pfad}) — the prefix {praefix} cannot be recognized.",
@@ -358,6 +435,81 @@ export const TEXTE = Object.freeze({
     kennzeichenWege: "  Either the marker is not yet created on the board — then create it once, like the label "
       + "'{kettenLabel}' —, or no requirement has been checked yet (/issue-review <number> sets it).",
     uebersprungen: "  #{id} {titel} -> skipped ({grund})",
+    // Part 3: from mitMeldung to the end of the file (#1493).
+    stufenwortPlan: "plan",
+    stufenwortReview: "review",
+    stufenwortPakete: "packages",
+    stufenwortAbdeckung: "coverage",
+    stufenwortUmsetzung: "implementation",
+    stufenwortVorbereitung: "preparation",
+    eintragBegonnen: "started",
+    eintragFertig: "finished",
+    stufenEintrag: "{stufe} {was} for #{ziel}",
+    stufenEintragZeit: "{eintrag} at {zeit}",
+    zuletztBegonnen: "last started: {eintrag}",
+    zuletztAbgeschlossen: "last finished: {eintrag}",
+    zuletztPraefix: "last ",
+    teilschnitt: "Partial cut present ({ids}) — a repetition would create duplicates; clean up the partial cut on the "
+      + "board, then kit:night again",
+    haltWartet: "Stop: question waits for the human — see `{anker}`",
+    haltMitGrund: "Stop: {grund}",
+    ausgangStufe: "{ausgang}: stage {stufe}: {grund}",
+    ohneGrund: "without reason",
+    fertigBis: "done up to {ziel}\nNext: {naechstes}",
+    naechstesPlan: "Read the plan, then `kit:night` on the plan.",
+    naechstesPakete: "Pull the packages to Ready.",
+    naechstesUmsetzung: "Test the packages in In review, then `push main`.",
+    naechstesPushVorbereitet: "Read the preparation report, then `push main`.",
+    naechstesMenschenschritt: "Complete human step {ids}, then kit:night on #{id} — {anzahl} package(s) depend on it.",
+    ergebnisLiegtVor: "  Stage {stufe}: result is there — no session, the stage counts as finished.",
+    stufeZeile: "  Stage {stufe}: {grund}.",
+    abgebrochenErgebnisDa: "  Stage {stufe}: aborted ({grund}), but the result is there — the stage counts as finished.",
+    uebergangNichtFreigegeben: "waiting: transition {uebergang} not enabled in project — continue with kit:night",
+    ohneFreigabeZurUmsetzung: "waiting: card without release for implementation",
+    zielErreicht: "  Goal {ziel} reached after {stufe} — the chain ends here.",
+    abdeckungVorgefunden: "found from an earlier run — the text is in its report",
+    ursprungDurch: "plan through",
+    ursprungNichtDurch: "plan not through",
+    ursprungNichtLesbar: "issue ursprung {id} not readable ({grund})",
+    ursprungZeile: "  Origin documents for plan #{id}: {stand}.",
+    ketteStartPlan: "Chain {nummer}/{max}: plan #{plan} (requirement #{quelle}) — {titel}",
+    ketteStartIssue: "Chain {nummer}/{max}: Issue #{id} — {titel}",
+    labelEntfernt: "  Label '{label}' removed — each setting authorizes exactly one chain.",
+    zielLabelsEntfernt: "  Label {namen} removed — goal {ziel}, reviewers {pruefer} recorded.",
+    zielKeins: "none",
+    prueferNachProjekt: "per project",
+    planUebernommen: "  Plan #{id} taken over — the stages plan and review are skipped.",
+    kennzeichenZurueck: "start marker withdrawn after the run began",
+    nichtFrischLesbar: "  #{id} not freshly readable ({text}) — the chain runs with the state from the start of the run.",
+    nichtMehrFreigegeben: "Chain {nummer}/{max}: #{id} no longer released at start.",
+    worktreeFehler: "technical error: {meldung}",
+    ketteEnde: "  Chain for issue #{id}: {ausgang}{zusatz} ({kosten} $).",
+    alteLabels: "Note: #{id} carries the label '{alt}', which no longer exists since stage 2 — it has no effect. The "
+      + "night chain starts via '{label}' on the requirement or on the plan document.",
+    beansprucht: "already claimed by a running runner ({laufId})",
+    laufstandNichtLesbar: "run status not readable — not claimed",
+    wurzelUebernommen: "  #{id}: root #{wurzel} taken over — the runner {laufId} is no longer running.",
+    laufAngenommen: "Run accepted at {zeit}, preflight check running",
+    ohneLaufId: "without run ID",
+    bestaetigungNichtLesbar: "confirmation not readable — not claimed",
+    laufeKetteUnbekannt: "laufeKette knows no dependency '{name}'",
+    worktreeEntfernt: "Removed leftover worktree: {pfad}",
+    keinLabelWarnung: "WARNING: no card carries the label '{label}' — nothing is processed.",
+    vorhandeneLabels: "  Labels present: {labels}",
+    keineLabels: "none",
+    dryBudget: "Budget: plan {plan} min, packages {pakete} min, review {review} min, coverage {abdeckung} min, "
+      + "{kosten} $ per chain, {runden} correction round(s).",
+    dryPlanAuftrag: "plan order, requirement #{quelle}, ",
+    dryKette: "  #{id} {titel} -> chain {nummer} ({art}variant {variante})",
+    dryEnde: "Dry run finished: {anzahl} chain(s) would run — no worktree, no label changed.",
+    ueberMax: "  #{id} {titel} -> over --max {max}, remains pending.",
+    menschenschritteOffen: ", {anzahl} human step(s) open",
+    ketteBeendet: "Night chain finished: {fertig} finished, {unvollstaendig} incomplete, {angehalten} stopped, "
+      + "{abgebrochen} aborted, {uebersprungen} skipped, {liegengeblieben} pending, {nichtBegonnen} package(s) not "
+      + "started{menschenschritte}.",
+    morgenRitual: "Morning ritual: review plans and packages, read the coverage, pull packages to Ready — the GO stays "
+      + "yours. After variant A the packages are in Backlog in the morning; variant B (label '{label}') implemented "
+      + "them in the same night, they are then in In review. Log: {pfad}",
   }),
 });
 
@@ -2056,7 +2208,7 @@ function haltAmAuftrag(kette, ergebnis) {
   // Der Halt-Stand (Issue #1090, E1): Erst mit ihm ist am Board ohne Deutung zu sehen, dass
   // eine Frage wartet und kein technischer Abbruch vorliegt — auch wenn die Kette ausserhalb
   // einer Stufe anhielt.
-  ketteStand(kette, "wartet", HALT_WARTET);
+  ketteStand(kette, "wartet", haltWartet());
 }
 
 // --- Warten auf die Vorbereitung der Veroeffentlichung (Plan #1243, E8; Issue #1250) ---
@@ -2375,16 +2527,34 @@ const PLAN_VORHANDEN_SPALTEN = new Set(["backlog", "ready", "in_review"]);
 const PAKET_UMGESETZT_SPALTEN = new Set(["in_review", "done"]);
 // Der Kopf des Kommentars, den `werteInReview` an ein Paket mit Nachweis-Mangel schreibt, ist
 // der Marker `nachweisMangel` im Register (Issue #1443).
-// Der Wortlaut des Teilschnitts (E10) — hinter der Liste der angelegten Pakete.
-const TEILSCHNITT_FOLGE = "eine Wiederholung legte doppelt an; Teilschnitt am Board aufräumen, dann erneut kit:night";
+// Der Wortlaut des Teilschnitts (E10) steht als `teilschnitt` in TEXTE.
 
-/** Ein Laufstand-Eintrag einer Stufe: `<stufe> begonnen|fertig für #<ziel>`. */
-const stufenEintrag = (stufe, was, ziel) => `${stufe} ${was} für #${ziel}`;
+// Die Woerter `begonnen|fertig` eines Stufeneintrags, je Schluessel in TEXTE.
+const EINTRAG_WORT = Object.freeze({ begonnen: "eintragBegonnen", fertig: "eintragFertig" });
 
-/** Traegt einer der Texte den Eintrag — mit Zahlgrenze, sonst passte #12 auf #123. */
+/** Die Sprache des Prozesses; ohne Register Deutsch. */
+const spracheJetzt = () => (namen ? namen.prozessSprache() : "de");
+
+/** Das Wort einer Stufe im Laufstand in `sprache` — englisch nach der Vorlage `packages`, `coverage` … */
+const stufenWortIn = (sprache, stufe) => textIn(sprache, `stufenwort${stufe[0].toUpperCase()}${stufe.slice(1)}`);
+
+/** Der Stufeneintrag in der Sprache `sprache`: `<stufe> begonnen|fertig für #<ziel>`. */
+const stufenEintragIn = (sprache, stufe, was, ziel) => textIn(sprache, "stufenEintrag",
+  { stufe: stufenWortIn(sprache, stufe), was: textIn(sprache, EINTRAG_WORT[was]), ziel });
+
+/** Ein Laufstand-Eintrag einer Stufe in der Sprache des Prozesses; die Sprachen mischen sich darin nicht. */
+const stufenEintrag = (stufe, was, ziel) => stufenEintragIn(spracheJetzt(), stufe, was, ziel);
+
+const regexText = (text) => text.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+
+/**
+ * Traegt einer der Texte den Eintrag — in einer der beiden Sprachen, denn ein frueherer Lauf
+ * kann in der anderen geschrieben haben; mit Zahlgrenze, sonst passte #12 auf #123.
+ */
 function eintragDa(texte, stufe, was, ziel) {
-  const muster = new RegExp(`(?:^|[^\\w])${stufe} ${was} für #${ziel}(?!\\d)`, "m");
-  return texte.some((t) => muster.test(t));
+  const muster = Object.keys(TEXTE).map((sprache) =>
+    new RegExp(`(?:^|[^\\w])${regexText(stufenEintragIn(sprache, stufe, was, ziel))}(?!\\d)`, "m"));
+  return texte.some((t) => muster.some((m) => m.test(t)));
 }
 
 /**
@@ -2477,11 +2647,11 @@ function teilschnitt(auftrag, planId) {
   if (!eintragDa(laufstandTexte(auftrag), "pakete", "begonnen", planId)) return null;
   const ids = paketeZumPlan(planId);
   if (ids.length === 0) return null;
-  return { ausgang: "abgebrochen", grund: `Teilschnitt vorhanden (${ids.map((id) => "#" + id).join(", ")}) — ${TEILSCHNITT_FOLGE}` };
+  return { ausgang: "abgebrochen", grund: t("teilschnitt", { ids: ids.map((id) => "#" + id).join(", ") }) };
 }
 
 // Der Wortlaut von `wartet` bei einem inhaltlichen Halt (E1), wie er im Regeltext steht.
-const HALT_WARTET = `Halt: Frage wartet auf den Menschen — siehe \`${KETTE_HALT_ANKER}\``;
+const haltWartet = () => t("haltWartet", { anker: KETTE_HALT_ANKER });
 
 /**
  * Schreibt den Laufstand der tragenden Karte (E2): zuletzt begonnener und zuletzt
@@ -2491,8 +2661,8 @@ const HALT_WARTET = `Halt: Frage wartet auf den Menschen — siehe \`${KETTE_HAL
 function ketteStand(kette, zustand, kopf = null) {
   const s = kette.laufstand;
   const zuletzt = [
-    ...(s.begonnen ? [`zuletzt begonnen: ${s.begonnen}`] : []),
-    ...(s.abgeschlossen ? [`zuletzt abgeschlossen: ${s.abgeschlossen}`] : []),
+    ...(s.begonnen ? [t("zuletztBegonnen", { eintrag: s.begonnen })] : []),
+    ...(s.abgeschlossen ? [t("zuletztAbgeschlossen", { eintrag: s.abgeschlossen })] : []),
   ];
   const bloecke = [kopf, zielZeilen(kette).join("\n"), zuletzt.join("\n")].filter(Boolean);
   standSetzen(kette.karte.id, zustand, bloecke.join("\n\n"), { repoRoot: kette.repoRoot });
@@ -2507,10 +2677,19 @@ function ketteStand(kette, zustand, kopf = null) {
 function zielZeilen(kette) {
   const grenze = grenzeVorZiel(kette);
   return [
-    ...(kette.ziel ? [`Ziel: ${kette.ziel}`] : []),
-    ...(kette.planReviewer ? [`Prüfer: ${kette.planReviewer}`] : []),
-    ...(grenze ? [`Grenze: ${grenze}`] : []),
+    ...(kette.ziel ? [`${nameDerSprache("markerName", "ziel", "Ziel:")} ${zielWort(kette.ziel)}`] : []),
+    ...(kette.planReviewer ? [`${nameDerSprache("markerName", "pruefer", "Prüfer:")} ${kette.planReviewer}`] : []),
+    ...(grenze ? [`${nameDerSprache("markerName", "grenze", "Grenze:")} ${stufenWortIn(spracheJetzt(), grenze)}`] : []),
   ];
+}
+
+/**
+ * Das Ziel, wie es der Laufstand nennt: der Name des Ziel-Labels ohne Praefix, englisch also
+ * `packages` zu `goal:packages` (Vorlage am Plan #1420).
+ */
+function zielWort(ziel) {
+  const sache = KETTE_ZIELE.find((z) => z.ziel === ziel)?.sache;
+  return sache ? nameDerSprache("labelName", sache, `ziel:${ziel}`).replace(/^[^:]*:/, "") : ziel;
 }
 
 // Die Stufen der Kette in fester Folge, je mit dem Uebergang, ueber den sie folgt (E5).
@@ -2536,11 +2715,12 @@ function grenzeVorZiel(kette) {
 }
 
 // Was nach dem Ende am Ziel dem Menschen gehoert (E5), je Ziel.
+// Die Saetze stehen in TEXTE, hier ihre Schluessel.
 const ALS_NAECHSTES = Object.freeze({
-  plan: "Plan lesen, dann `kit:night` an den Plan.",
-  pakete: "Pakete nach Ready ziehen.",
-  umsetzung: "Pakete in In review testen, dann `push main`.",
-  "push-vorbereitet": "Meldung der Vorbereitung lesen, dann `push main`.",
+  plan: "naechstesPlan",
+  pakete: "naechstesPakete",
+  umsetzung: "naechstesUmsetzung",
+  "push-vorbereitet": "naechstesPushVorbereitet",
 });
 
 /**
@@ -2549,27 +2729,28 @@ const ALS_NAECHSTES = Object.freeze({
  */
 function alsNaechstes(kette) {
   const wartend = wartendeMenschenschritte(kette.stufen?.umsetzung);
-  if (wartend.length === 0) return ALS_NAECHSTES[kette.ziel];
+  if (wartend.length === 0) return t(ALS_NAECHSTES[kette.ziel]);
   const haengen = new Set(wartend.flatMap((w) => w.haengen));
-  return `Menschenschritt ${wartend.map((w) => "#" + w.id).join(", ")} erledigen, dann kit:night an #${kette.karte.id} — ${haengen.size} Paket(e) hängen daran.`;
+  return t("naechstesMenschenschritt", { ids: wartend.map((w) => "#" + w.id).join(", "), id: kette.karte.id, anzahl: haengen.size });
 }
 
 /** Der Laufstand zum Beginn einer Stufe. `ziel` ist die Karte, an der sie arbeitet. */
 function stufeBeginnt(kette, stufe, ziel) {
-  kette.laufstand.begonnen = `${stufenEintrag(stufe, "begonnen", ziel)} um ${abh.jetzt().toISOString()}`;
+  kette.laufstand.begonnen = t("stufenEintragZeit", { eintrag: stufenEintrag(stufe, "begonnen", ziel), zeit: abh.jetzt().toISOString() });
   ketteStand(kette, "laeuft");
 }
 
 /** Der Laufstand zum Ende einer Stufe — `fertig`, oder ihr Abbruch beziehungsweise Halt. */
 function stufeEndet(kette, stufe, ziel, ergebnis) {
   if (ergebnis.ausgang === "fertig") {
-    kette.laufstand.abgeschlossen = `${stufenEintrag(stufe, "fertig", ziel)} um ${abh.jetzt().toISOString()}`;
-    ketteStand(kette, "fertig", endetAmZiel(kette, stufe) ? `fertig bis ${kette.ziel}\nAls Nächstes: ${alsNaechstes(kette)}` : null);
+    kette.laufstand.abgeschlossen = t("stufenEintragZeit", { eintrag: stufenEintrag(stufe, "fertig", ziel), zeit: abh.jetzt().toISOString() });
+    ketteStand(kette, "fertig", endetAmZiel(kette, stufe) ? t("fertigBis", { ziel: zielWort(kette.ziel), naechstes: alsNaechstes(kette) }) : null);
   } else if (ergebnis.ausgang === "angehalten") {
     // Haelt ein Paket der Umsetzung an, steht die Frage am Paket, nicht an dieser Karte (E17).
-    ketteStand(kette, "wartet", ergebnis.ohneHaltAmFachplan ? `Halt: ${ergebnis.grund}` : HALT_WARTET);
+    ketteStand(kette, "wartet", ergebnis.ohneHaltAmFachplan ? t("haltMitGrund", { grund: ergebnis.grund }) : haltWartet());
   } else {
-    ketteStand(kette, ergebnis.ausgang === "abgebrochen" ? "abgebrochen" : "fertig", `${ergebnis.ausgang}: Stufe ${stufe}: ${ergebnis.grund ?? "ohne Grund"}`);
+    ketteStand(kette, ergebnis.ausgang === "abgebrochen" ? "abgebrochen" : "fertig",
+      t("ausgangStufe", { ausgang: ergebnis.ausgang, stufe, grund: ergebnis.grund ?? t("ohneGrund") }));
   }
 }
 
@@ -2582,14 +2763,14 @@ function stufeEndet(kette, stufe, ziel, ergebnis) {
 async function stufeMitErgebnis(kette, stufe, ziel, { auftrag, laufen, vorfinden, vorab = null }) {
   const vorhanden = ergebnisVorhanden(stufe, auftrag);
   if (vorhanden) {
-    log(`  Stufe ${stufe}: Ergebnis liegt vor — keine Session, die Stufe gilt als fertig.`);
+    log(t("ergebnisLiegtVor", { stufe }));
     const ergebnis = vorfinden(vorhanden);
     stufeEndet(kette, stufe, ziel, ergebnis);
     return ergebnis;
   }
   const sperre = vorab?.();
   if (sperre) {
-    log(`  Stufe ${stufe}: ${sperre.grund}.`);
+    log(t("stufeZeile", { stufe, grund: sperre.grund }));
     stufeEndet(kette, stufe, ziel, sperre);
     return sperre;
   }
@@ -2613,7 +2794,7 @@ async function stufeLaufen(kette, stufe, ziel, { auftrag, laufen, vorfinden }) {
   if (ergebnis.ausgang === "abgebrochen" && ergebnis.sitzungsAbbruch && !kette.kostenGrund) {
     const nachher = ergebnisVorhanden(stufe, auftrag);
     if (nachher) {
-      log(`  Stufe ${stufe}: abgebrochen (${ergebnis.grund}), das Ergebnis liegt aber vor — die Stufe gilt als fertig.`);
+      log(t("abgebrochenErgebnisDa", { stufe, grund: ergebnis.grund }));
       ergebnis = vorfinden(nachher, kette.stufen[stufe]);
     }
   }
@@ -2624,8 +2805,8 @@ async function stufeLaufen(kette, stufe, ziel, { auftrag, laufen, vorfinden }) {
 // --- Freigegebene Uebergaenge (Issue #1087, Plan #1079 E1, E12) ---
 
 // Die beiden Wortlaute von `wartet` aus E1, wie sie im Regeltext stehen.
-const uebergangNichtFreigegeben = (uebergang) => `wartet: Übergang ${uebergang} im Projekt nicht freigegeben — weiter mit kit:night`;
-const OHNE_FREIGABE_ZUR_UMSETZUNG = "wartet: Karte ohne Freigabe zur Umsetzung";
+const uebergangNichtFreigegeben = (uebergang) => t("uebergangNichtFreigegeben", { uebergang });
+const ohneFreigabeZurUmsetzung = () => t("ohneFreigabeZurUmsetzung");
 
 /**
  * Folgt die naechste Stufe automatisch? Gesperrt wird nur das Folgen auf eine Stufe, die in
@@ -2638,7 +2819,7 @@ const uebergangGesperrt = (kette, uebergang, vorige) => !vorige.vorgefunden && k
 
 /** Ende der Kette vor `stufe`: Laufstand `wartet` mit dem Wortlaut, Ausgang `unvollstaendig`. */
 function ketteWartet(kette, stufe, text) {
-  log(`  Stufe ${stufe}: ${text}.`);
+  log(t("stufeZeile", { stufe, grund: text }));
   ketteStand(kette, "wartet", text);
   return { ausgang: "unvollstaendig", grund: text, stufe };
 }
@@ -2659,7 +2840,7 @@ function anDerGrenze(kette, stufe, uebergang) {
  */
 function vorDerUmsetzung(kette, abdeckung) {
   if (kette.variante !== "B") {
-    return kette.uebergaenge.abdeckungUmsetzung === true ? ketteWartet(kette, "umsetzung", OHNE_FREIGABE_ZUR_UMSETZUNG) : { ausgang: "fertig" };
+    return kette.uebergaenge.abdeckungUmsetzung === true ? ketteWartet(kette, "umsetzung", ohneFreigabeZurUmsetzung()) : { ausgang: "fertig" };
   }
   return uebergangGesperrt(kette, "abdeckungUmsetzung", abdeckung)
     ? anDerGrenze(kette, "umsetzung", "abdeckungUmsetzung")
@@ -2673,7 +2854,7 @@ function vorDerUmsetzung(kette, abdeckung) {
  */
 function amZiel(kette, stufe) {
   if (!endetAmZiel(kette, stufe)) return null;
-  log(`  Ziel ${kette.ziel} erreicht nach ${stufe} — die Kette endet hier.`);
+  log(t("zielErreicht", { ziel: zielWort(kette.ziel), stufe }));
   return { ausgang: "fertig", zielErreicht: true };
 }
 
@@ -2767,7 +2948,7 @@ async function stufenDerKette(kette) {
     auftrag: { ...auftrag, planId },
     laufen: () => stufeAbdeckung(kette, kette.F, planId, pakete.ids),
     vorfinden: () => {
-      kette.stufen.abdeckung = { dauerMs: 0, kennzahlen: null, text: null, grund: "aus einem frueheren Lauf vorgefunden — der Text steht in dessen Bericht", vorgefunden: true };
+      kette.stufen.abdeckung = { dauerMs: 0, kennzahlen: null, text: null, grund: t("abdeckungVorgefunden"), vorgefunden: true };
       return { ausgang: "fertig", vorgefunden: true };
     },
   }));
@@ -2834,11 +3015,11 @@ function ursprungFesthalten(kette, planId, vorher) {
   }
   if (res.status === 0 && res.json) {
     stand.ursprung = { vorher, auswertung: res.json };
-    log(`  Ursprungsdokumente zu Plan #${planId}: ${res.json.durch ? "Plan durch" : res.json.grund ?? "Plan nicht durch"}.`);
+    log(t("ursprungZeile", { id: planId, stand: res.json.durch ? t("ursprungDurch") : res.json.grund ?? t("ursprungNichtDurch") }));
   } else {
     const grund = res.text || "Exit " + res.status;
-    stand.ursprung = { fehler: `issue ursprung ${planId} nicht lesbar (${grund})` };
-    log(`  Ursprungsdokumente zu Plan #${planId}: ${stand.ursprung.fehler}.`);
+    stand.ursprung = { fehler: t("ursprungNichtLesbar", { id: planId, grund }) };
+    log(t("ursprungZeile", { id: planId, stand: stand.ursprung.fehler }));
   }
 }
 
@@ -2855,15 +3036,15 @@ function ursprungFesthalten(kette, planId, vorher) {
 function ketteBeginnen(kette, auftrag, nummer, args) {
   const karte = auftrag.karte;
   log(auftrag.art === "plan"
-    ? `Kette ${nummer}/${args.max}: Plan #${auftrag.planId} (fachliche Quelle #${kette.F}) — ${karte.title}`
-    : `Kette ${nummer}/${args.max}: Issue #${kette.F} — ${karte.title}`);
+    ? t("ketteStartPlan", { nummer, max: args.max, plan: auftrag.planId, quelle: kette.F, titel: karte.title })
+    : t("ketteStartIssue", { nummer, max: args.max, id: kette.F, titel: karte.title }));
   // Das Kennzeichen ist mit dem Start verbraucht (A2): Ein Abbruch fuehrt zu einem
   // Bericht mit Grund und einer neuen Geste, nicht zur stillen Wiederholung.
   // Abgenommen wird der Name, den die Karte traegt, jeder, wenn sie mehrere traegt (Issue #1425).
   const kennzeichen = kennzeichenNamen(karte.labels, kette.budget.label, "night");
   for (const label of kennzeichen.length > 0 ? kennzeichen : [kette.budget.label]) {
     abh.board("issue", "label", "remove", String(karte.id), label);
-    log(`  Label '${label}' entfernt — jedes Setzen autorisiert genau eine Kette.`);
+    log(t("labelEntfernt", { label }));
   }
   // Ziel und Prueferzahl gelten ebenso fuer genau diesen Lauf (E1): Sie stehen danach nur
   // noch in der Kette, eine stehengebliebene Angabe wirkte sonst still in der naechsten.
@@ -2872,13 +3053,16 @@ function ketteBeginnen(kette, auftrag, nummer, args) {
   const verbraucht = (karte.labels || []).filter((l) => istZielLabel(l) || PLANREVIEW_LABELS.includes(l));
   for (const label of verbraucht) abh.board("issue", "label", "remove", String(karte.id), label);
   if (verbraucht.length > 0) {
-    const namen = verbraucht.map((l) => "'" + l + "'").join(", ");
-    log(`  Label ${namen} entfernt — Ziel ${kette.ziel ?? "keins"}, Pruefer ${kette.planReviewer ?? "nach Projekt"} festgehalten.`);
+    log(t("zielLabelsEntfernt", {
+      namen: verbraucht.map((l) => "'" + l + "'").join(", "),
+      ziel: kette.ziel ? zielWort(kette.ziel) : t("zielKeins"),
+      pruefer: kette.planReviewer ?? t("prueferNachProjekt"),
+    }));
   }
 
   if (auftrag.art === "plan") {
     kette.stufen.plan = { id: auftrag.planId, uebernommen: true, dauerMs: 0, kennzahlen: null, korrekturrunden: 0, weitere: [] };
-    log(`  Plan #${auftrag.planId} uebernommen — die Stufen plan und review entfallen.`);
+    log(t("planUebernommen", { id: auftrag.planId }));
     return [];
   }
   // Ein vorgefundener Plan (E9) ist das Ergebnis der Stufe plan, kein neuer: Er ueberholt
@@ -2891,7 +3075,7 @@ function ketteBeginnen(kette, auftrag, nummer, args) {
 }
 
 /** Der Grund einer Kette, deren Karte beim Start das Startkennzeichen nicht mehr traegt (Issue #1263). */
-export const KENNZEICHEN_ZURUECK_GRUND = "Startkennzeichen nach Laufbeginn zurückgenommen";
+export const kennzeichenZurueckGrund = () => t("kennzeichenZurueck");
 
 /**
  * Die gekennzeichnete Karte, wie sie beim Start der Kette am Board steht (Issue #1263):
@@ -2916,10 +3100,10 @@ function karteBeimStart(auftrag) {
       plan = juengsterPlanAmBoard(abh.board("issue", "list"), alt.id);
     }
   } catch (e) {
-    log(`  #${alt.id} nicht frisch lesbar (${e.message}) — die Kette faehrt mit dem Stand vom Laufbeginn.`);
+    log(t("nichtFrischLesbar", { id: alt.id, text: e.message }));
     return { karte: alt };
   }
-  if (!kennzeichenName(karte?.labels, KETTE_BUDGET.label, "night")) return { grund: KENNZEICHEN_ZURUECK_GRUND };
+  if (!kennzeichenName(karte?.labels, KETTE_BUDGET.label, "night")) return { grund: kennzeichenZurueckGrund() };
   const grund = zielAusschluss(karte, auftrag.art, plan);
   return grund ? { grund } : { karte: { ...alt, ...karte } };
 }
@@ -2933,10 +3117,12 @@ function karteBeimStart(auftrag) {
  */
 function ketteNichtMehrFreigegeben(auftrag, nummer, args, grund) {
   const { id, title } = auftrag.karte;
-  log(`Kette ${nummer}/${args.max}: #${id} beim Start nicht mehr freigegeben.`);
+  log(t("nichtMehrFreigegeben", { nummer, max: args.max, id }));
   uebersprungeneVerbuchen([{ id: String(id), title: title ?? "", grund }], [], KETTE_BUDGET.label, false);
-  const zuletzt = String((auftrag.laufstandVorher ?? []).at(-1) ?? "").split("\n").filter((z) => z.startsWith("zuletzt "));
-  const text = [`Kette nicht gestartet um ${abh.jetzt().toISOString()}: ${grund}`, zuletzt.join("\n")].filter(Boolean).join("\n\n");
+  // Die `zuletzt`-Zeilen in beiden Sprachen: Der vorige Lauf kann in der anderen geschrieben haben.
+  const istZuletzt = (z) => Object.keys(TEXTE).some((sprache) => z.startsWith(textIn(sprache, "zuletztPraefix")));
+  const zuletzt = String((auftrag.laufstandVorher ?? []).at(-1) ?? "").split("\n").filter(istZuletzt);
+  const text = [t("nichtGestartetStand", { zeit: abh.jetzt().toISOString(), grund }), zuletzt.join("\n")].filter(Boolean).join("\n\n");
   standSetzen(id, "abgebrochen", text, { budgetMs: ABBRUCH_BUDGET_MS });
   return { ausgang: "uebersprungen", vorbereitung: false, kette: null };
 }
@@ -2991,7 +3177,7 @@ async function ketteMitKarte(auftrag, nummer, args) {
     trackerImWorktreeUmleiten(kette.wt, kette.repoRoot);
     log(`  Worktree: ${kette.wt}`);
   } catch (e) {
-    ergebnis = { ausgang: "abgebrochen", grund: `technischer Fehler: ${e.message}` };
+    ergebnis = { ausgang: "abgebrochen", grund: t("worktreeFehler", { meldung: e.message }) };
   }
   try {
     if (!ergebnis) ergebnis = await stufenDerKette(kette);
@@ -3003,7 +3189,7 @@ async function ketteMitKarte(auftrag, nummer, args) {
     // Vorab-Stand `laeuft` weiter an der Karte (Issue #1090, E17).
     if (!kette.standGesetzt) {
       const zustand = { abgebrochen: "abgebrochen", angehalten: "wartet" }[ergebnis.ausgang] ?? "fertig";
-      ketteStand(kette, zustand, `${ergebnis.ausgang}: ${ergebnis.grund ?? "ohne Grund"}`);
+      ketteStand(kette, zustand, `${ergebnis.ausgang}: ${ergebnis.grund ?? t("ohneGrund")}`);
     }
     const neuerPlan = kette.stufen.plan?.id;
     const ueberholung = neuerPlan && aeltere.length > 0
@@ -3044,7 +3230,7 @@ async function ketteMitKarte(auftrag, nummer, args) {
     }
   }
   const zusatz = ergebnis.grund ? ` — ${ergebnis.grund}` : "";
-  log(`  Kette zu Issue #${F}: ${ergebnis.ausgang}${zusatz} (${kette.kosten.kostenSumme.toFixed(2)} $).`);
+  log(t("ketteEnde", { id: F, ausgang: ergebnis.ausgang, zusatz, kosten: kette.kosten.kostenSumme.toFixed(2) }));
   return { ausgang: ergebnis.ausgang, vorbereitung: ergebnis.vorbereitung === true, kette };
 }
 
@@ -3059,7 +3245,7 @@ function warneVorAltenLabels(issues) {
   for (const issue of issues) {
     for (const alt of ALTE_ROUTING_LABELS) {
       if ((issue.labels || []).includes(alt)) {
-        log(`Hinweis: #${issue.id} traegt das Label '${alt}', das es seit Stufe 2 nicht mehr gibt — es hat keine Wirkung. Die Nacht-Kette startet ueber '${KETTE_BUDGET.label}' an der fachlichen Anforderung oder am Plandokument.`);
+        log(t("alteLabels", { id: issue.id, alt, label: KETTE_BUDGET.label }));
       }
     }
   }
@@ -3073,7 +3259,7 @@ const bestaetigungsfristMs = () => (process.env.NIGHT_BESTAETIGUNG_MS !== undefi
   : BESTAETIGUNGSFRIST_MS);
 
 /** Der Grund, mit dem ein Runner eine Wurzel auslaesst, die ein anderer haelt (Kriterium 3 aus #1014). */
-export const beanspruchtGrund = (laufId) => `bereits von einem laufenden Runner beansprucht (${laufId})`;
+export const beanspruchtGrund = (laufId) => t("beansprucht", { laufId });
 
 /**
  * Der Name des Labels `laeuft` aus `night.stand.labels` — dieselbe Vorgabe wie in kit/board.mjs:
@@ -3101,12 +3287,12 @@ function laufstandDerKarte(karte) {
 function lesenUndSchreiben(a, { lesen, schreiben, host, eintrag }) {
   const id = String(a.karte.id);
   const karte = lesen(id);
-  if (!karte) return { grund: "Laufstand nicht lesbar — nicht beansprucht" };
+  if (!karte) return { grund: t("laufstandNichtLesbar") };
   const { texte, stand } = laufstandDerKarte(karte);
   const halter = wurzelBelegt(a.F, [karte], stand ? { [id]: stand } : {}, abh.jetzt(), host);
   if (halter) return { grund: beanspruchtGrund(halter.laufId) };
   const alt = stand?.zustand === "laeuft" ? laufstandKopf(stand.text) : null;
-  if (alt) log(`  #${id}: Wurzel #${a.F} uebernommen — der Runner ${alt.laufId} laeuft nicht mehr.`);
+  if (alt) log(t("wurzelUebernommen", { id, wurzel: a.F, laufId: alt.laufId }));
   a.laufstandVorher = texte;
   schreiben(id, "laeuft", eintrag);
   return alt ? { uebernommen: { id, laufId: alt.laufId } } : {};
@@ -3140,7 +3326,7 @@ export function beanspruchen(auftraege, {
   host = RECHNER,
   frist = bestaetigungsfristMs(),
 } = {}) {
-  const eintrag = `Lauf angenommen um ${abh.jetzt().toISOString()}, Vorabprüfung läuft`;
+  const eintrag = t("laufAngenommen", { zeit: abh.jetzt().toISOString() });
   const geschrieben = [];
   const abgegeben = [];
   const uebernommen = [];
@@ -3162,7 +3348,7 @@ export function beanspruchen(auftraege, {
       continue;
     }
     austragen(id);
-    auslassen(a, karte ? beanspruchtGrund(juengster?.laufId ?? "ohne Lauf-ID") : "Bestaetigung nicht lesbar — nicht beansprucht");
+    auslassen(a, karte ? beanspruchtGrund(juengster?.laufId ?? t("ohneLaufId")) : t("bestaetigungNichtLesbar"));
   }
   return { beansprucht, abgegeben, uebernommen };
 }
@@ -3215,7 +3401,7 @@ export function vorabStandSetzen(args, auftraege) {
  */
 export async function laufeKette(args, abhaengigkeiten = {}) {
   for (const name of Object.keys(abhaengigkeiten)) {
-    if (!Object.hasOwn(KETTE_ABHAENGIGKEITEN, name)) throw new Error(`laufeKette kennt keine Abhaengigkeit '${name}'`);
+    if (!Object.hasOwn(KETTE_ABHAENGIGKEITEN, name)) throw new Error(t("laufeKetteUnbekannt", { name }));
   }
   const vorher = { ...abh };
   Object.assign(abh, abhaengigkeiten);
@@ -3252,7 +3438,7 @@ async function ketteFahren(args) {
   const defaultsZeile = budgetDefaultsZeile(budget, KETTE_BUDGET_AUS_DEFAULT);
   if (defaultsZeile) log(defaultsZeile);
   if (!args.dryRun) {
-    for (const p of worktreesAufraeumen(repoRoot)) log(`Liegengebliebenen Worktree entfernt: ${p}`);
+    for (const p of worktreesAufraeumen(repoRoot)) log(t("worktreeEntfernt", { pfad: p }));
   }
   const alle = abh.board("issue", "list");
   warneVorAltenLabels(alle);
@@ -3260,7 +3446,7 @@ async function ketteFahren(args) {
   const { liegengeblieben } = auswahl;
   uebersprungeneVerbuchen(auswahl.uebersprungen, alle, budget.label, args.dryRun);
   for (const l of liegengeblieben) {
-    log(`  #${l.id} ${l.title} -> ueber --max ${args.max}, bleibt liegen.`);
+    log(t("ueberMax", { id: l.id, titel: l.title, max: args.max }));
     einheitErgaenzen(einheitAnlegen(l.id, l.title), { ausgang: "liegengeblieben" });
   }
 
@@ -3274,8 +3460,8 @@ async function ketteFahren(args) {
   const kandidaten = auftraege.map((a) => a.karte);
   if (kandidaten.length === 0 && uebersprungen.length === 0 && !alle.some((i) => kennzeichenName(i.labels, budget.label, "night"))) {
     const vorhanden = [...new Set(alle.flatMap((i) => i.labels || []))];
-    log(`WARNUNG: keine Karte traegt das Label '${budget.label}' — es wird nichts verarbeitet.`);
-    log(`  Vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
+    log(t("keinLabelWarnung", { label: budget.label }));
+    log(t("vorhandeneLabels", { labels: vorhanden.length ? vorhanden.join(", ") : t("keineLabels") }));
   }
 
   // Der Reviewer-Vorflug bleibt (A16): Die Pruefer-Session braucht die Reviewer in ihrer
@@ -3293,20 +3479,27 @@ async function ketteFahren(args) {
   }
 
   if (args.dryRun) {
-    log(`Budget: Plan ${budget.planMin} min, Pakete ${budget.paketeMin} min, Review ${budget.reviewMin} min, Abdeckung ${budget.abdeckungMin} min, ${budget.kostenUsd} $ je Kette, ${budget.korrekturrunden} Korrekturrunde(n).`);
+    log(t("dryBudget", {
+      plan: budget.planMin, pakete: budget.paketeMin, review: budget.reviewMin, abdeckung: budget.abdeckungMin,
+      kosten: budget.kostenUsd, runden: budget.korrekturrunden,
+    }));
     auftraege.forEach((a, i) => {
-      const art = a.art === "plan" ? `Plan-Auftrag, fachliche Quelle #${a.F}, ` : "";
-      log(`  #${a.karte.id} ${a.karte.title} -> Kette ${i + 1} (${art}Variante ${varianteVon(a.karte, budget)})`);
+      const art = a.art === "plan" ? t("dryPlanAuftrag", { quelle: a.F }) : "";
+      log(t("dryKette", { id: a.karte.id, titel: a.karte.title, nummer: i + 1, art, variante: varianteVon(a.karte, budget) }));
     });
-    log(`Dry-Run beendet: ${auftraege.length} Kette(n) wuerden laufen — kein Worktree, kein Label veraendert.`);
+    log(t("dryEnde", { anzahl: auftraege.length }));
     return abh.beenden(0);
   }
 
   MENSCHENSCHRITTE_OFFEN.clear();
   const zaehler = await kettenUndVorbereitung(auftraege, args);
-  const menschenschritte = MENSCHENSCHRITTE_OFFEN.size > 0 ? `, ${MENSCHENSCHRITTE_OFFEN.size} Menschenschritt(e) offen` : "";
-  log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.unvollstaendig} unvollstaendig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length + zaehler.uebersprungen} uebersprungen, ${liegengeblieben.length} liegengeblieben, ${NICHT_BEGONNEN_GESAMT} Paket(e) nicht begonnen${menschenschritte}.`);
-  log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Nach Variante A liegen die Pakete morgens in Backlog; Variante B (Label '${budget.varianteBLabel}') hat sie in derselben Nacht umgesetzt, sie stehen dann in In review. Protokoll: ${ZUSTAND.LOG_FILE}`);
+  const menschenschritte = MENSCHENSCHRITTE_OFFEN.size > 0 ? t("menschenschritteOffen", { anzahl: MENSCHENSCHRITTE_OFFEN.size }) : "";
+  log(t("ketteBeendet", {
+    fertig: zaehler.fertig, unvollstaendig: zaehler.unvollstaendig, angehalten: zaehler.angehalten, abgebrochen: zaehler.abgebrochen,
+    uebersprungen: uebersprungen.length + zaehler.uebersprungen, liegengeblieben: liegengeblieben.length,
+    nichtBegonnen: NICHT_BEGONNEN_GESAMT, menschenschritte,
+  }));
+  log(t("morgenRitual", { label: budget.varianteBLabel, pfad: ZUSTAND.LOG_FILE }));
   anbindung.laufAbschliessen("regulaer");
   return abh.beenden(0);
 }
