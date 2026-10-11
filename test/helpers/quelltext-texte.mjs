@@ -113,10 +113,14 @@ const MARKER_DEUTSCH = new Set(Object.values(MARKER).map((m) => m.de));
  * Die deutschen Texte eines Moduls ausserhalb seiner Texttabelle — was der Mensch liest, geht
  * ueber den Texthelfer. Ein Markername aus dem Register zaehlt nicht: Ihn waehlt das Register
  * je Sprache, der deutsche steht nur als Rueckfall ohne Register im Modul. `vertrag` nennt
- * weitere Texte, die als Vertragswert (E14) deutsch bleiben.
+ * weitere Texte, die als Vertragswert (E14) deutsch bleiben. `bis` begrenzt den Scan auf den
+ * Quelltext vor dieser Stelle, fuer ein Modul, das in mehreren Paketen umgestellt wird.
  */
-export function deutschAmHelferVorbei(datei, tabelle, vertrag = []) {
-  const src = readFileSync(join(repoRoot, datei), "utf-8");
+export function deutschAmHelferVorbei(datei, tabelle, vertrag = [], { bis } = {}) {
+  const ganz = readFileSync(join(repoRoot, datei), "utf-8");
+  const ende = bis ? ganz.indexOf(bis) : -1;
+  if (bis) assert.ok(ende >= 0, `${datei}: die Grenze "${bis}" ist nicht zu finden`);
+  const src = bis ? ganz.slice(0, ende) : ganz;
   const ohneTabelle = src.replace(/\nexport const TEXTE = Object\.freeze\(\{[\s\S]*?\n\}\);\n/, "\n");
   if (tabelle) assert.notEqual(ohneTabelle, src, `${datei}: die Texttabelle TEXTE ist nicht zu finden`);
   const ausnahmen = new Set(vertrag);

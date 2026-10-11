@@ -14,11 +14,18 @@
 
 import { test, after, beforeEach } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 import {
   TEXTE as WARTEND_TEXTE, GESCHUETZT_ABGEWIESEN, festgefahrenVermerk, pruefeIssueGates, rundenGrund,
   rundenMerkerZuruecksetzen, wartendAbhaengigkeiten, wartendVermerk, werteRunde, zeitlimitVermerk,
 } from "../kit/night/wartend.mjs";
+import {
+  TEXTE as SESSION_TEXTE, FESTGEFAHREN_MARKE, aufgabenStufe, empfohlenesModell, frischeStufenFelder, modellFuerStufe,
+  paketWahl, stufeStartbar,
+} from "../kit/night/session.mjs";
 import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
 import { deutschAmHelferVorbei, deutschImEnglischen } from "./helpers/quelltext-texte.mjs";
 
@@ -202,19 +209,74 @@ test("[1487] ohne Spracheinstellung bleibt die Runde deutsch", async () => {
     ["Nachtlauf: Session ohne In-review-Ergebnis beendet — Issue zurueckgestellt, Lauf ging mit dem naechsten Issue weiter."]);
 });
 
+// --- kit/night/session.mjs, Teil 1: bis vor permissionArgs (Issue #1488) ------------------
+
+test("[1488] die Texttabelle von session hat in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
+  assert.deepEqual(pruefeParitaet(SESSION_TEXTE), []);
+  assert.ok(Object.keys(SESSION_TEXTE.de).length >= 15, "die Tabelle traegt die Meldungen des ersten Teils");
+});
+
+test("[1488] englisch: die Gruende zu Modell und Aufgabenstufe der Karte", async () => {
+  await inSprache("en", () => {
+    assert.equal(empfohlenesModell("Empfohlenes Modell: --yolo", ["m1"]).grund,
+      'Recommended model "--yolo" starts with a hyphen and is not a model name — model of the run.');
+    assert.equal(empfohlenesModell("Recommended model: m2", ["m1"]).grund,
+      'Recommended model "m2" is not in night.modelle — model of the run.');
+    assert.equal(aufgabenStufe("Aufgabenstufe: mittelschwer").grund,
+      'Task tier "mittelschwer" is not a known tier value (schwer, mittel, leicht) — no tier.');
+    assert.equal(paketWahl({ body: "Empfohlenes Modell: m1\nAufgabenstufe: leicht", erlaubteModelle: ["m1"], laufModell: "m0" }).grund,
+      "Card names a model and task tier leicht — the model name wins.");
+  });
+});
+
+test("[1488] englisch: warum eine Stufe nicht startet", async () => {
+  await inSprache("en", () => {
+    assert.equal(stufeStartbar({ modell: "m9" }, ["m1"]).grund, 'model "m9" is not in night.modelle');
+    assert.equal(stufeStartbar({}, []).grund, "neither modell nor kommando set");
+    assert.equal(stufeStartbar({ kommando: "A=1 B=2" }, []).grund, 'the command line "A=1 B=2" names only environment and no program');
+    assert.equal(stufeStartbar({ kommando: "gibt-es-nicht-1488 --x" }, []).grund,
+      'the program "gibt-es-nicht-1488" cannot be found via the shell');
+    assert.equal(modellFuerStufe({ stufen: {} }, "extrem", []).grund, '"extrem" is not a task tier');
+    assert.equal(modellFuerStufe({ stufen: { schwer: { modell: "m9" } } }, "mittel", ["m1"]).grund,
+      'tier mittel not assigned; tier schwer not startable: model "m9" is not in night.modelle');
+  });
+});
+
+test("[1488] englisch: eine unlesbare Einstellung beim frischen Lesen der Stufen", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "night-1488-"));
+  try {
+    const pfad = join(dir, "workflow.config.json");
+    writeFileSync(pfad, "{ kaputt");
+    const { grund } = await inSprache("en", () => frischeStufenFelder(pfad, { night: { stufen: {} } }));
+    assert.match(grund, /^the settings could not be read fresh \(.+\) — the state at the start of the run applies\.$/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[1488] ohne Spracheinstellung bleiben die Gruende von session deutsch", () => {
+  assert.equal(empfohlenesModell("Empfohlenes Modell: m2", ["m1"]).grund,
+    'Empfohlenes Modell "m2" steht nicht in night.modelle — Modell des Laufs.');
+  assert.equal(modellFuerStufe({ stufen: {} }, "schwer", []).grund, "Stufe schwer nicht belegt");
+  assert.equal(stufeStartbar({}, []).grund, "weder modell noch kommando gesetzt");
+});
+
 // --- Keine deutsche Meldung am Texthelfer vorbei ------------------------------------------
 
 // Vertragswerte (E14), die deutsch bleiben: die Abweisungszeile des geschuetzten Halts, die
-// `kit/board/geschuetzt.mjs` zurueckliest, und der Rueckfall im Stash-Namen `nachtrest #<id> <lauf>`.
-const VERTRAG = [GESCHUETZT_ABGEWIESEN, "ohne-lauf"];
+// `kit/board/geschuetzt.mjs` zurueckliest, der Rueckfall im Stash-Namen `nachtrest #<id> <lauf>`
+// und die Bremsmarke von `checks.mjs run`, die der Runner aus dem Strom der Session liest.
+const VERTRAG = [GESCHUETZT_ABGEWIESEN, "ohne-lauf", FESTGEFAHREN_MARKE];
 
+// session.mjs wird in zwei Paketen umgestellt: Teil 1 (#1488) bis vor `permissionArgs`.
 const GRUPPE = [
   ["kit/night/wartend.mjs", WARTEND_TEXTE],
+  ["kit/night/session.mjs", SESSION_TEXTE, { bis: "export function permissionArgs" }],
 ];
 
 test("[1487] die Gruppe gibt in einem englischen Projekt keine deutsche Meldung aus", () => {
-  for (const [datei, tabelle] of GRUPPE) {
-    assert.deepEqual(deutschAmHelferVorbei(datei, tabelle, VERTRAG), [], `${datei}: deutsche Texte am Texthelfer vorbei`);
+  for (const [datei, tabelle, bereich] of GRUPPE) {
+    assert.deepEqual(deutschAmHelferVorbei(datei, tabelle, VERTRAG, bereich), [], `${datei}: deutsche Texte am Texthelfer vorbei`);
     assert.deepEqual(deutschImEnglischen(tabelle), [], `${datei}: deutsche Woerter in der englischen Tabelle`);
   }
 });

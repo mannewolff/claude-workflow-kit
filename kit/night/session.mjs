@@ -37,6 +37,62 @@ import { kitStandUmgebung, laufKennungUmgebung } from "./kitstand.mjs";
 import { LAUF_VARIABLEN, ohneLaufVariablen } from "./laufvariablen.mjs";
 export { LAUF_VARIABLEN, ohneLaufVariablen };
 
+// --- Texte an den Menschen (Issue #1488, Plan #1420 E13/E14) ---
+
+// Teil 1 (#1488) deckt den Quelltext bis vor `permissionArgs`, Teil 2 (#1489) den Rest.
+// Vertrag bleibt (E14): die Marken `Ergebnis uebernommen` und `Pruefung festgefahren:`, die
+// kit/checks.mjs schreibt und dieser Teil aus dem Strom liest, die Stufenwerte
+// `schwer|mittel|leicht` und die Feldnamen `modell`, `kommando` und `night.modelle`.
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    checksFehlt: "checks.mjs liegt nicht neben night.mjs ({pfad}) — der Ort der Pruef-Zusammenfassung ist unbekannt.",
+    namenFehlt: "board/namen.mjs fehlt neben night.mjs ({pfad}) — Marker sind nicht lesbar.",
+    modellBindestrich: "Empfohlenes Modell \"{name}\" beginnt mit einem Bindestrich und ist kein Modellname — Modell des Laufs.",
+    modellNichtErlaubt: "Empfohlenes Modell \"{name}\" steht nicht in night.modelle — Modell des Laufs.",
+    stufeUnbekannt: "Aufgabenstufe \"{wert}\" ist kein bekannter Stufenwert (schwer, mittel, leicht) — keine Stufe.",
+    startModellNichtErlaubt: "Modell \"{modell}\" steht nicht in night.modelle",
+    startOhneEintrag: "weder modell noch kommando gesetzt",
+    startNurUmgebung: "die Kommandozeile \"{kommando}\" nennt nur Umgebung und kein Programm",
+    startShell: "die Shell fuer \"{programm}\" liess sich nicht starten: {fehler}",
+    startNichtAuffindbar: "das Programm \"{programm}\" ist ueber die Shell nicht auffindbar",
+    keineAufgabenstufe: "\"{stufe}\" ist keine Aufgabenstufe",
+    stufeNichtBelegt: "Stufe {stufe} nicht belegt",
+    stufeNichtStartbar: "Stufe {stufe} nicht startbar: {grund}",
+    modellUndStufe: "Karte nennt Modell und Aufgabenstufe {stufe} — der Modellname gewinnt.",
+    einstellungNichtFrisch: "die Einstellung liess sich nicht frisch lesen ({fehler}) — es gilt der Stand des Laufbeginns.",
+    prozesseNachEnde: "  Hinweis: Nach dem Ende der Session liefen noch Prozesse ihrer Gruppe, als die Frist ablief — "
+      + "die folgende Messung kann von ihnen gestoert sein.",
+  }),
+  en: Object.freeze({
+    checksFehlt: "checks.mjs is not next to night.mjs ({pfad}) — the location of the check summary is unknown.",
+    namenFehlt: "board/namen.mjs is missing next to night.mjs ({pfad}) — markers cannot be read.",
+    modellBindestrich: "Recommended model \"{name}\" starts with a hyphen and is not a model name — model of the run.",
+    modellNichtErlaubt: "Recommended model \"{name}\" is not in night.modelle — model of the run.",
+    stufeUnbekannt: "Task tier \"{wert}\" is not a known tier value (schwer, mittel, leicht) — no tier.",
+    startModellNichtErlaubt: "model \"{modell}\" is not in night.modelle",
+    startOhneEintrag: "neither modell nor kommando set",
+    startNurUmgebung: "the command line \"{kommando}\" names only environment and no program",
+    startShell: "the shell for \"{programm}\" could not be started: {fehler}",
+    startNichtAuffindbar: "the program \"{programm}\" cannot be found via the shell",
+    keineAufgabenstufe: "\"{stufe}\" is not a task tier",
+    stufeNichtBelegt: "tier {stufe} not assigned",
+    stufeNichtStartbar: "tier {stufe} not startable: {grund}",
+    modellUndStufe: "Card names a model and task tier {stufe} — the model name wins.",
+    einstellungNichtFrisch: "the settings could not be read fresh ({fehler}) — the state at the start of the run applies.",
+    prozesseNachEnde: "  Note: processes of its group were still running when the deadline after the end of the session "
+      + "expired — the following measurement may be disturbed by them.",
+  }),
+});
+
+// Das Register aus dem Board-Teil, abgefangen: Fehlt board/namen.mjs neben night.mjs, bleiben
+// die Texte deutsch, und die Marker sind nicht lesbar (unten bei `markerWerte`).
+const namen = await import(pathToFileURL(join(NACHBAR_DIR, "board", "namen.mjs")).href).catch(() => null);
+
+function t(schluessel, werte = {}) {
+  if (namen) return namen.text(TEXTE, schluessel, werte);
+  return TEXTE.de[schluessel].replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
+}
+
 // Der Ort der Pruef-Zusammenfassung kommt aus checks.mjs und wird NICHT nachgerechnet (Issue
 // #428). Bedingt und mit werfendem Ersatz wie im Einstieg: Fehlt der Nachbar, wirft der Stub
 // erst, wenn wirklich jemand den Pfad braucht. Der Pfad ist nicht literal, deshalb nennt die
@@ -45,7 +101,7 @@ const { zusammenfassungPfad } = existsSync(NACHBAR_CHECKS)
   ? await import(pathToFileURL(NACHBAR_CHECKS).href)
   : {
       zusammenfassungPfad: () => {
-        throw new Error(`checks.mjs liegt nicht neben night.mjs (${NACHBAR_CHECKS}) — der Ort der Pruef-Zusammenfassung ist unbekannt.`);
+        throw new Error(t("checksFehlt", { pfad: NACHBAR_CHECKS }));
       },
     };
 
@@ -978,8 +1034,8 @@ export function leseErgebnisText(stdout) {
 // Die Marker der Karte kommen aus dem Register im Board-Teil und gelten unter beiden Namen
 // (Issue #1443, Plan #1420 E15). Fehlt es neben night.mjs, ist keine Zeile lesbar — laut,
 // nicht still als "keine Zeile".
-const { markerWerte } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "namen.mjs")).href)
-  .catch(() => ({ markerWerte: () => { throw new Error(`board/namen.mjs fehlt neben night.mjs (${join(NACHBAR_DIR, "board")}) — Marker sind nicht lesbar.`); } }));
+const markerWerte = namen?.markerWerte
+  ?? (() => { throw new Error(t("namenFehlt", { pfad: join(NACHBAR_DIR, "board") })); });
 
 // So eng gefasst wie AUTOR_MODELL_ZEILE in kit/board.mjs: der Marker am Zeilenanfang, damit
 // eine Erwaehnung im Fliesstext nicht trifft, und `\S+` als Wert — kein Leerraum, kein
@@ -1025,10 +1081,10 @@ export function empfohlenesModell(body, erlaubte) {
   // Liste wuerde ihn ohnehin abweisen — die eigene Zeile steht hier, weil diese Stelle
   // die ist, an der jemand spaeter eine Abkuerzung einbauen koennte.
   if (name.startsWith("-")) {
-    return { modell: null, grund: `Empfohlenes Modell "${name}" beginnt mit einem Bindestrich und ist kein Modellname — Modell des Laufs.` };
+    return { modell: null, grund: t("modellBindestrich", { name }) };
   }
   if (!liste.includes(name)) {
-    return { modell: null, grund: `Empfohlenes Modell "${name}" steht nicht in night.modelle — Modell des Laufs.` };
+    return { modell: null, grund: t("modellNichtErlaubt", { name }) };
   }
   return { modell: name, grund: null };
 }
@@ -1063,7 +1119,7 @@ export function aufgabenStufe(body) {
   if (wert === null) return { stufe: null, grund: null };
 
   if (!STUFEN_ORDNUNG.includes(wert)) {
-    return { stufe: null, grund: `Aufgabenstufe "${wert}" ist kein bekannter Stufenwert (schwer, mittel, leicht) — keine Stufe.` };
+    return { stufe: null, grund: t("stufeUnbekannt", { wert }) };
   }
   return { stufe: wert, grund: null };
 }
@@ -1149,15 +1205,15 @@ export function stufeStartbar(eintrag, erlaubteModelle) {
 
   if (modell) {
     const liste = Array.isArray(erlaubteModelle) ? erlaubteModelle : [];
-    if (!liste.includes(modell)) return { ok: false, grund: `Modell "${modell}" steht nicht in night.modelle` };
+    if (!liste.includes(modell)) return { ok: false, grund: t("startModellNichtErlaubt", { modell }) };
     return { ok: true, grund: null };
   }
 
-  if (!kommando) return { ok: false, grund: "weder modell noch kommando gesetzt" };
+  if (!kommando) return { ok: false, grund: t("startOhneEintrag") };
 
   const woerter = kommando.trim().split(/\s+/);
   const programm = woerter.find((w) => !ZUWEISUNG.test(w));
-  if (!programm) return { ok: false, grund: `die Kommandozeile "${kommando}" nennt nur Umgebung und kein Programm` };
+  if (!programm) return { ok: false, grund: t("startNurUmgebung", { kommando }) };
 
   // Das Wort steht als Argument daneben und nie im Shell-String — dieselbe Trennung wie
   // beim spaeteren Start (E9), damit die Pruefung nicht zur Einsetzungsluecke wird.
@@ -1165,8 +1221,8 @@ export function stufeStartbar(eintrag, erlaubteModelle) {
     encoding: "utf-8",
     env: process.env,
   });
-  if (res.error) return { ok: false, grund: `die Shell fuer "${programm}" liess sich nicht starten: ${res.error.message}` };
-  if (res.status !== 0) return { ok: false, grund: `das Programm "${programm}" ist ueber die Shell nicht auffindbar` };
+  if (res.error) return { ok: false, grund: t("startShell", { programm, fehler: res.error.message }) };
+  if (res.status !== 0) return { ok: false, grund: t("startNichtAuffindbar", { programm }) };
   return { ok: true, grund: null };
 }
 
@@ -1186,18 +1242,18 @@ export function stufeStartbar(eintrag, erlaubteModelle) {
 export function modellFuerStufe(einstellung, stufe, erlaubteModelle) {
   const stufen = einstellung?.stufen ?? {};
   const start = STUFEN_ORDNUNG.indexOf(stufe);
-  if (start < 0) return { stufeVerwendet: null, eintrag: null, grund: `"${stufe}" ist keine Aufgabenstufe` };
+  if (start < 0) return { stufeVerwendet: null, eintrag: null, grund: t("keineAufgabenstufe", { stufe }) };
 
   const uebersprungen = [];
   for (const kandidat of STUFEN_ORDNUNG.slice(start)) {
     const eintrag = stufen[kandidat];
     if (!eintrag) {
-      uebersprungen.push(`Stufe ${kandidat} nicht belegt`);
+      uebersprungen.push(t("stufeNichtBelegt", { stufe: kandidat }));
       continue;
     }
     const { ok, grund } = stufeStartbar(eintrag, erlaubteModelle);
     if (!ok) {
-      uebersprungen.push(`Stufe ${kandidat} nicht startbar: ${grund}`);
+      uebersprungen.push(t("stufeNichtStartbar", { stufe: kandidat, grund }));
       continue;
     }
     return { stufeVerwendet: kandidat, eintrag, grund: uebersprungen.length > 0 ? uebersprungen.join("; ") : null };
@@ -1247,7 +1303,7 @@ export function paketWahl({ body, einstellung, erlaubteModelle, laufModell }) {
   if (ausKarte) {
     // Die doppelte Angabe ist kein Fehler, sondern eine Auskunft: Der Mensch soll sehen,
     // dass die Stufe der Karte an diesem Paket ohne Wirkung blieb.
-    const doppelt = stufe ? `Karte nennt Modell und Aufgabenstufe ${stufe} — der Modellname gewinnt.` : null;
+    const doppelt = stufe ? t("modellUndStufe", { stufe }) : null;
     return { ...rahmen, modell: ausKarte, herkunft: "karte", grund: gruendeFassen(doppelt, stufenGrund) };
   }
 
@@ -1299,7 +1355,7 @@ export function frischeStufenFelder(configPfad, stand) {
     const frisch = ladeConfigMitOverrides(configPfad);
     return { stufen: frisch?.night?.stufen, stufenRegel: frisch?.night?.stufenRegel, grund: null };
   } catch (err) {
-    return vomStart(`die Einstellung liess sich nicht frisch lesen (${err.message}) — es gilt der Stand des Laufbeginns.`);
+    return vomStart(t("einstellungNichtFrisch", { fehler: err.message }));
   }
 }
 
@@ -1613,7 +1669,7 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
           jetzt, schlaf, spawnSync: abfragen,
         });
         if (!leer) {
-          log(`  Hinweis: Nach dem Ende der Session liefen noch Prozesse ihrer Gruppe, als die Frist ablief — die folgende Messung kann von ihnen gestoert sein.`);
+          log(t("prozesseNachEnde"));
         }
       }
       done({ status: code, signal, error, stdout, stderr });
