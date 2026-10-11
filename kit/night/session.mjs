@@ -2389,9 +2389,18 @@ export function laufModell(args, config) {
 // --- Kit-Labels unter beiden Namen (Issue #1425, Plan #1420 E3, E7) ---
 
 // Das Register der Namenspaare liegt im Board-Teil. Fehlt es neben night.mjs, gilt nur der
-// Name, den der Aufrufer nennt — wie vor dem Register.
-const { erkenneLabel } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "namen.mjs")).href)
+// Name, den der Aufrufer nennt — wie vor dem Register — und geschrieben wird der deutsche.
+const { erkenneLabel, labelName, projektSprache } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "namen.mjs")).href)
   .catch(() => ({ erkenneLabel: () => null }));
+
+/**
+ * Der Name eines Kit-Labels in der Sprache des Projekts (Issue #1429, Plan #1420 E4, E7) —
+ * fuer die Vorgaben ohne gesetzten Config-Wert und alles, was der Nachtlauf nach aussen
+ * nennt. `deutsch` gilt, wenn das Register fehlt.
+ */
+export function labelDerSprache(sache, config, deutsch) {
+  return labelName && projektSprache ? labelName(sache, projektSprache(config)) : deutsch;
+}
 
 /**
  * Der Name, unter dem die Karte ein Kennzeichen traegt — `null`, wenn sie es nicht traegt.
@@ -2439,7 +2448,9 @@ export const KETTE_BUDGET_DEFAULTS = Object.freeze({
  */
 export function ladeKetteBudget(config) {
   const block = config?.night?.kette ?? {};
-  const budget = { ...KETTE_BUDGET_DEFAULTS };
+  // Die Vorgaben der Kennzeichen in der Projektsprache; ein gesetzter Wert gilt unveraendert (E7).
+  const budget = { ...KETTE_BUDGET_DEFAULTS, label: labelDerSprache("night", config, KETTE_BUDGET_DEFAULTS.label),
+    varianteBLabel: labelDerSprache("durchziehen", config, KETTE_BUDGET_DEFAULTS.varianteBLabel) };
   if (block.label !== undefined) {
     if (typeof block.label !== "string" || block.label.trim() === "") throw new Error("night.kette.label muss ein nicht leerer Text sein");
     budget.label = block.label.trim();
@@ -2528,7 +2539,7 @@ export const PRUEFLAUF_BUDGET_DEFAULTS = Object.freeze({
  */
 export function ladePruefLaufBudget(config) {
   const block = config?.pruefLauf ?? {};
-  const budget = { ...PRUEFLAUF_BUDGET_DEFAULTS };
+  const budget = { ...PRUEFLAUF_BUDGET_DEFAULTS, label: labelDerSprache("pruefen", config, PRUEFLAUF_BUDGET_DEFAULTS.label) };
   if (block.label !== undefined) {
     if (typeof block.label !== "string" || block.label.trim() === "") throw new Error("pruefLauf.label muss ein nicht leerer Text sein");
     budget.label = block.label.trim();
@@ -2582,6 +2593,13 @@ export const KETTE_ZIELE = Object.freeze([
 export const ZIEL_LABEL_PRAEFIX = "ziel:";
 // Die Praefixe beider Sprachen; auch ein unbekanntes `goal:*` zaehlt als Ziel-Label.
 const ZIEL_LABEL_PRAEFIXE = Object.freeze([ZIEL_LABEL_PRAEFIX, "goal:"]);
+
+/** Der Name des Ziel-Labels in der Projektsprache, `ziel:pakete` oder `goal:packages` (Issue #1429). */
+export function zielLabelName(ziel, config) {
+  const eintrag = KETTE_ZIELE.find((z) => z.ziel === ziel);
+  if (!eintrag) throw new Error(`zielLabelName: unbekanntes Ziel "${ziel}"`);
+  return labelDerSprache(eintrag.sache, config, `${ZIEL_LABEL_PRAEFIX}${ziel}`);
+}
 
 /** Ob ein Label ein Ziel-Label ist, `ziel:*` oder `goal:*`, bekannt oder nicht. */
 export function istZielLabel(label) {

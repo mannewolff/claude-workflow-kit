@@ -43,8 +43,8 @@ import { ENTSCHEIDUNGEN_NAME, OFFENE_FRAGEN_NAME, OFFENE_FRAGEN_UEBERSCHRIFT, PO
   abschnittLesen, leseKarte, wartetAufPush } from "./abhaengigkeiten.mjs";
 import { flatten, kennzahlenAddieren, ketteBudgetDefaults, kostenAddieren, KETTE_BUDGET_DEFAULTS, ladeKetteBudget,
   ladeKetteUebergaenge, ladePruefLaufBudget, leseErgebnisText, leseKennzahlen, neueKommentare, runSession,
-  KETTE_ZIELE, PLANREVIEW_LABELS, pruefreihenVon, SESSION_ABHAENGIGKEITEN, varianteVon, zielVon, ZIEL_LABEL_PRAEFIX,
-  istZielLabel, kennzeichenName, kennzeichenNamen } from "./session.mjs";
+  KETTE_ZIELE, PLANREVIEW_LABELS, pruefreihenVon, SESSION_ABHAENGIGKEITEN, varianteVon, zielVon, zielLabelName,
+  istZielLabel, kennzeichenName, kennzeichenNamen, labelDerSprache } from "./session.mjs";
 import { berichtFuerKette, berichtSchreiben, hatPlanReviewMarker, kommentareVon, planReviewWert,
   pruefBericht, vorbereitungsBericht, wartendeMenschenschritte } from "./bericht.mjs";
 import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, geschuetztAmBoardVermerken, hatKlaerenLabel, laufeRunde,
@@ -282,6 +282,9 @@ export function wurzelBelegt(F, issues, staende, jetzt, host, { budgets = { kett
  */
 export const REVIEW_FERTIG_LABEL = "review:fertig";
 
+/** Der Name von `review:fertig` in der Projektsprache, `review:done` im englischen (Issue #1429). */
+export const reviewFertigLabelName = (config = ZUSTAND.config) => labelDerSprache("reviewFertig", config, REVIEW_FERTIG_LABEL);
+
 // Erkannt unter jedem Namen des Labels, auch `review:done` (Issue #1424, Plan #1420 E8).
 export function hatReviewFertigLabel(issue) {
   return traegtLabel(issue?.labels, "reviewFertig");
@@ -294,7 +297,18 @@ export function hatReviewFertigLabel(issue) {
  * die Faelle wiedererkennen will (der Kommentar an der abgelehnten Anforderung), prueft
  * auf dieses Praefix und nicht auf den ganzen Text.
  */
-export const UNGEPRUEFT_PRAEFIX = `ungeprueft: Label '${REVIEW_FERTIG_LABEL}' fehlt`;
+const ungeprueftPraefix = (label) => `ungeprueft: Label '${label}' fehlt`;
+export const UNGEPRUEFT_PRAEFIX = ungeprueftPraefix(REVIEW_FERTIG_LABEL);
+
+/**
+ * Ob ein Grund der Grund „Pruefung fehlt" ist — unter dem Labelnamen jeder Sprache: Der
+ * Grund nennt den Namen der Projektsprache (Issue #1429), erkannt wird er immer.
+ */
+export function istUngeprueftGrund(grund) {
+  const g = String(grund);
+  return [REVIEW_FERTIG_LABEL, labelDerSprache("reviewFertig", { language: "en" }, REVIEW_FERTIG_LABEL)]
+    .some((label) => g.startsWith(ungeprueftPraefix(label)));
+}
 
 /**
  * Grund und naechster Schritt fuer eine Karte ohne `review:fertig` — getrennt geliefert.
@@ -304,8 +318,10 @@ export const UNGEPRUEFT_PRAEFIX = `ungeprueft: Label '${REVIEW_FERTIG_LABEL}' fe
  * Label waere `kit:night` im Text schlicht falsch (Plan #716, E8).
  */
 export function pruefungFehltGrund(id, kettenLabel) {
-  const schritt = `mit /issue-review #${id} pruefen lassen, das setzt ${REVIEW_FERTIG_LABEL}; das Label ${kettenLabel} bleibt dran`;
-  return { praefix: UNGEPRUEFT_PRAEFIX, schritt, text: `${UNGEPRUEFT_PRAEFIX} — ${schritt}` };
+  const label = reviewFertigLabelName();
+  const praefix = ungeprueftPraefix(label);
+  const schritt = `mit /issue-review #${id} pruefen lassen, das setzt ${label}; das Label ${kettenLabel} bleibt dran`;
+  return { praefix, schritt, text: `${praefix} — ${schritt}` };
 }
 
 /**
@@ -632,7 +648,7 @@ export function zielAusschluss(karte, art, plan) {
   if (pruefer.length > 1) {
     return `${ZIEL_UNPASSEND_PRAEFIX}${pruefer.join(" und ")} zugleich — eines abnehmen; ${schritt}`;
   }
-  const zielPlan = kennzeichenName(labels, `${ZIEL_LABEL_PRAEFIX}plan`, "zielPlan");
+  const zielPlan = kennzeichenName(labels, zielLabelName("plan", ZUSTAND.config), "zielPlan");
   if (art === "plan" && zielPlan) {
     return `${ZIEL_UNPASSEND_PRAEFIX}${zielPlan} an einem Plandokument — der Plan steht schon; ein weiter reichendes Ziel setzen oder das Label abnehmen; ${schritt}`;
   }
@@ -1953,7 +1969,7 @@ function traegtAnker(kommentar, anker) {
  */
 function hinweisAufUnbekanntesKennzeichen(alle, abgelehnt, kettenLabel) {
   if (abgelehnt.length === 0 || (alle || []).some(hatReviewFertigLabel)) return;
-  log(`Hinweis: keine Karte am Board traegt '${REVIEW_FERTIG_LABEL}' — deshalb wird jeder Auftrag abgelehnt.`);
+  log(`Hinweis: keine Karte am Board traegt '${reviewFertigLabelName()}' — deshalb wird jeder Auftrag abgelehnt.`);
   log(`  Entweder ist das Kennzeichen am Board noch nicht angelegt — dann einmal anlegen, wie das Label '${kettenLabel}' —, oder es hat noch keine Anforderung eine Pruefung hinter sich (/issue-review <Nummer> setzt es).`);
 }
 
@@ -1969,7 +1985,7 @@ function hinweisAufUnbekanntesKennzeichen(alle, abgelehnt, kettenLabel) {
 function uebersprungeneVerbuchen(uebersprungen, alle, kettenLabel, dryRun) {
   // Erkannt am festen Praefix, nicht am ganzen Grundtext: Der traegt je Karte ihre
   // Nummer und ist deshalb kein Vergleichswert.
-  const abgelehnt = uebersprungen.filter((u) => String(u.grund).startsWith(UNGEPRUEFT_PRAEFIX));
+  const abgelehnt = uebersprungen.filter((u) => istUngeprueftGrund(u.grund));
   for (const u of uebersprungen) {
     log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
     einheitErgaenzen(einheitAnlegen(u.id, u.title), { ausgang: "uebersprungen", grund: u.grund, grundArt: "sonst" });
@@ -2724,8 +2740,13 @@ const bestaetigungsfristMs = () => (process.env.NIGHT_BESTAETIGUNG_MS !== undefi
 /** Der Grund, mit dem ein Runner eine Wurzel auslaesst, die ein anderer haelt (Kriterium 3 aus #1014). */
 export const beanspruchtGrund = (laufId) => `bereits von einem laufenden Runner beansprucht (${laufId})`;
 
-/** Der Name des Labels `laeuft` aus `night.stand.labels` — dieselbe Vorgabe wie in kit/board.mjs. */
-const laeuftLabel = () => ZUSTAND.config?.night?.stand?.labels?.laeuft?.trim() || "lauf:laeuft";
+/**
+ * Der Name des Labels `laeuft` aus `night.stand.labels` — dieselbe Vorgabe wie in kit/board.mjs:
+ * ohne gesetzten Wert der Name der Projektsprache, `run:running` im englischen (Issue #1429).
+ */
+export const laeuftLabelName = (config) => config?.night?.stand?.labels?.laeuft?.trim()
+  || labelDerSprache("laufLaeuft", config, "lauf:laeuft");
+const laeuftLabel = () => laeuftLabelName(ZUSTAND.config);
 
 /**
  * Die Laufstand-Kommentare einer gelesenen Karte und ihr juengster Stand fuer

@@ -4,13 +4,16 @@
 // Labels. Auswahl, Zurueckstellen, Ziel-Erkennung und Abnehmen behandeln beide gleich;
 // abgenommen wird der Name, den die Karte traegt. Ein gesetzter Config-Wert fuer
 // `night.kette.label`, `varianteBLabel` oder `pruefLauf.label` gilt unveraendert, erkannt
-// werden er und beide Vorgabenamen (E7). Neu gesetzt wird weiter der deutsche Name.
+// werden er und beide Vorgabenamen (E7). Ohne gesetzten Wert nennt und setzt der Nachtlauf
+// den Namen der Projektsprache (Issue #1429).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { kennzeichenName, ladeKetteBudget, ladePruefLaufBudget, pruefreihenVon, varianteVon, zielVon } from "../kit/night/session.mjs";
-import { ZIEL_UNPASSEND_PRAEFIX, beanspruchen, beanspruchtGrund, waehleKettenKandidaten, zielAusschluss } from "../kit/night/kette.mjs";
+import { kennzeichenName, ladeKetteBudget, ladePruefLaufBudget, pruefreihenVon, varianteVon, zielLabelName, zielVon } from "../kit/night/session.mjs";
+import { UNGEPRUEFT_PRAEFIX, ZIEL_UNPASSEND_PRAEFIX, beanspruchen, beanspruchtGrund, istUngeprueftGrund, laeuftLabelName, pruefungFehltGrund,
+  reviewFertigLabelName, waehleKettenKandidaten, zielAusschluss } from "../kit/night/kette.mjs";
+import { ZUSTAND } from "../kit/night/grundlagen.mjs";
 import { pruefLaufAusschluss, waehlePruefLaufKandidaten } from "../kit/night/tag.mjs";
 import { GLATT, KETTE_LABEL, fachplanKarte, ketteImProzess } from "./helpers/kette-fixture.mjs";
 import { BUDGET, pruefKarte, pruefLaufImProzess, pruefungGeprueft } from "./helpers/tag-fixture.mjs";
@@ -163,4 +166,84 @@ test("Beanspruchen: eine Karte mit run:running und lebender Lauf-ID wird ausgela
   assert.deepEqual(r.beansprucht, []);
   assert.deepEqual(r.abgegeben, [{ id: "10", title: karte.title, grund: beanspruchtGrund(halter) }]);
   assert.deepEqual(geschrieben, [], "kein Schreiben an einer belegten Wurzel");
+});
+
+// --- Geschrieben wird der Name der Projektsprache (Issue #1429, Plan #1420 E4, E7) ---
+//
+// Ohne Config-Wert haengt die Vorgabe an der Projektsprache; ein gesetzter Wert gilt
+// unveraendert. Was der Nachtlauf nach aussen nennt oder abnimmt, wenn die Karte keinen
+// Namen traegt, ist dieser Name.
+
+const EN = { language: "en" };
+
+/** Fuehrt `fn` mit einer Projektsprache im Prozesszustand des Nachtlaufs aus. */
+function mitConfig(config, fn) {
+  const vorher = ZUSTAND.config;
+  ZUSTAND.config = config;
+  try {
+    return fn();
+  } finally {
+    ZUSTAND.config = vorher;
+  }
+}
+
+test("englisches Projekt: Vorgaben der Kennzeichen heissen englisch, kit:night bleibt", () => {
+  const kette = ladeKetteBudget(EN);
+  assert.equal(kette.label, "kit:night");
+  assert.equal(kette.varianteBLabel, "kit:carry-through");
+  assert.equal(ladePruefLaufBudget(EN).label, "kit:check");
+  assert.equal(ladePruefLaufBudget({ sprache: "en" }).label, "kit:check", "der deutsche Altname des Felds gilt ebenso");
+});
+
+test("deutsches Projekt: die Vorgaben bleiben deutsch", () => {
+  for (const config of [{}, { language: "de" }, { language: "fr" }]) {
+    assert.equal(ladeKetteBudget(config).varianteBLabel, "kit:durchziehen");
+    assert.equal(ladePruefLaufBudget(config).label, "kit:pruefen");
+  }
+});
+
+test("E7: ein gesetzter Config-Wert gilt woertlich, auch im englischen Projekt", () => {
+  const kette = ladeKetteBudget({ ...EN, night: { kette: { label: "mein:nacht", varianteBLabel: "kit:durchziehen" } } });
+  assert.equal(kette.label, "mein:nacht");
+  assert.equal(kette.varianteBLabel, "kit:durchziehen");
+  assert.equal(ladePruefLaufBudget({ ...EN, pruefLauf: { label: "kit:pruefen" } }).label, "kit:pruefen");
+  assert.equal(laeuftLabelName({ ...EN, night: { stand: { labels: { laeuft: "lauf:laeuft" } } } }), "lauf:laeuft");
+});
+
+test("Ziel-Labels heissen in der Projektsprache goal:* oder ziel:*", () => {
+  assert.equal(zielLabelName("plan", EN), "goal:plan");
+  assert.equal(zielLabelName("pakete", EN), "goal:packages");
+  assert.equal(zielLabelName("umsetzung", EN), "goal:implementation");
+  assert.equal(zielLabelName("push-vorbereitet", EN), "goal:push-prepared");
+  assert.equal(zielLabelName("pakete", {}), "ziel:pakete");
+  assert.throws(() => zielLabelName("irgendwas", EN), /unbekanntes Ziel/);
+});
+
+test("Laufstand: run:running im englischen, lauf:laeuft im deutschen Projekt", () => {
+  assert.equal(laeuftLabelName(EN), "run:running");
+  assert.equal(laeuftLabelName({}), "lauf:laeuft");
+  assert.equal(laeuftLabelName(undefined), "lauf:laeuft");
+});
+
+test("englisches Projekt: der Grund fuer eine ungepruefte Karte nennt review:done", () => {
+  const g = mitConfig(EN, () => pruefungFehltGrund("7", "kit:night"));
+  assert.match(g.text, /Label 'review:done' fehlt/);
+  assert.match(g.schritt, /das setzt review:done;/);
+  assert.doesNotMatch(g.text, /review:fertig/);
+  assert.ok(istUngeprueftGrund(g.text), "der englische Grund wird als ungeprueft erkannt");
+  assert.equal(reviewFertigLabelName(EN), "review:done");
+});
+
+test("deutsches Projekt: der Grund nennt weiter review:fertig", () => {
+  const g = mitConfig({}, () => pruefungFehltGrund("7", "kit:night"));
+  assert.ok(g.text.startsWith(UNGEPRUEFT_PRAEFIX), g.text);
+  assert.match(g.text, /review:fertig/);
+  assert.ok(istUngeprueftGrund(g.text));
+  assert.equal(reviewFertigLabelName({}), "review:fertig");
+});
+
+test("englisches Projekt: die Auswahl der Kette lehnt eine ungepruefte Karte mit review:done ab", () => {
+  const karten = [{ id: "40", title: "[Requirement] Neu", status: "backlog", body: "", labels: [KETTE_LABEL] }];
+  const r = mitConfig(EN, () => waehleKettenKandidaten(karten, KETTE_LABEL, 5));
+  assert.match(r.uebersprungen[0].grund, /Label 'review:done' fehlt/);
 });
