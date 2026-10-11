@@ -23,6 +23,104 @@ import { fileURLToPath } from "node:url";
 import { BoardError, fail, out, loadConfig, findeImPath, umgebungsWert, configWurzel } from "./grundlagen.mjs";
 import { istFachlich, istPlan, herkunftNummern, normalisiereZeilenenden } from "./dokumente.mjs";
 import { resolveTracker } from "./adapter.mjs";
+import { text } from "./namen.mjs";
+
+// ============================================================
+// Texte an den Menschen (Issue #1481, Plan #1420 E13/E14)
+// ============================================================
+
+/**
+ * Die Meldungen der Issue-Review-Achse je Sprache. Vertragswerte bleiben ausserhalb (E14):
+ * Feldnamen und die Werte von `fehler`, `geprueft`, `quelle` und `stufenQuelle`, die
+ * Config-Schluessel, Stufen- und Rollennamen und die Befehlsnamen.
+ */
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    pairsKeineListe: "{wo}: muss eine Liste von Reviewer-Namen sein.",
+    pairsSelbst: "{wo}: nennt '{autor}' sich selbst — der Autor darf nicht sein eigener Reviewer sein.",
+    pairsUnbekannt: "{wo}: '{name}' steht nicht in issueReview.reviewers.",
+    reviewerOhneName: "{wo}: 'name' fehlt oder ist leer.",
+    reviewerKind: "{wo} ('{name}'): 'kind' muss {erlaubt} sein, ist '{kind}'.",
+    oder: " oder ",
+    reviewerFeldFehlt: "{wo} ('{name}'): '{feld}' fehlt.",
+    lesegrenzeNurCommand: "{wo} ('{name}'): 'lesegrenze' gilt nur bei kind 'command'.",
+    lesegrenzeKeinText: "{wo} ('{name}'): 'lesegrenze' muss ein Text sein.",
+    stufenKeinObjekt: "reviewStufen: muss ein Objekt mit den Stufen {stufen} sein.",
+    stufeFehlt: "{wo}: fehlt oder ist kein Objekt mit 'reviewer' und 'rollen'.",
+    stufeReviewer: "{wo}.reviewer: muss eine positive Ganzzahl sein, ist '{wert}'.",
+    stufeRollenListe: "{wo}.rollen: muss eine Liste von Rollennamen sein.",
+    stufeRolleLeer: "{wo}.rollen[{i}]: muss ein nicht leerer Rollenname sein.",
+    stufeRolleDoppelt: "{wo}.rollen: nennt einen Rollennamen doppelt.",
+    stufeRollenzahl: "{wo}: rollen.length ({rollen}) stimmt nicht mit reviewer ({reviewer}) ueberein.",
+    planReviewerUngueltig: "KIT_PLAN_REVIEWER '{wert}' ist ungueltig — erlaubt sind 1 oder 2.",
+    planReviewerZuWenige: "planreview:2 verlangt zwei Reviewer, verfügbar ist einer",
+    keineLesegrenze: "keine Lesegrenze",
+    lesegrenzeAufgehoben: "'{schalter}' hebt die Lesegrenze auf",
+    zeitlimit: "Zeitlimit von {ms} ms ueberschritten",
+    signal: "Durch Signal {signal} beendet",
+    optionOhneWert: "--{name} braucht einen Wert",
+    rolesEntfallen: "--{option} gibt es seit Stufe 2 des Prozess-Umbaus nicht mehr — roles kennt nur --stufe und --author.",
+    stufeOptionFehlt: "--stufe fehlt. Erwartet: {stufen}",
+    stufeUnbekannt: "--stufe '{stufe}' ist keine bekannte Stufe. Erwartet: {stufen}",
+    autorFehlt: "--author fehlt — ohne Autor greifen weder pairs noch der Selbstausschluss.",
+    nichtImPath: "{datei} nicht im PATH",
+    keineReviewer: "issueReview.reviewers ist leer oder fehlt — Block aus .claude/workflow.config.example.json uebernehmen",
+    pruefauftragFehler: "issue-review pruefauftrag: {meldung}",
+    optionFehlt: "--{name} fehlt",
+    keinRollenname: "--rolle '{rolle}' ist kein Rollenname (Kleinbuchstaben, Ziffern, Bindestrich)",
+    idOderMaterial: "entweder --id <N> oder --material-datei <pfad> angeben",
+    startFehler: "issue-review start: {meldung}",
+    reviewerOderCodeReview: "entweder --reviewer <name> oder --code-review angeben",
+    codeReviewOhneKommando: "--code-review braucht reviewCommand in der Config",
+    reviewerUnbekannt: "'{name}' steht nicht in issueReview.reviewers",
+    reviewerClaude: "'{name}' hat kind '{kind}' — Claude-Pruefer laufen ueber den Agenten kit-pruefer",
+    befehlUnbekannt: "Unbekannter issue-review-Befehl: '{befehl}'",
+  }),
+  en: Object.freeze({
+    pairsKeineListe: "{wo}: must be a list of reviewer names.",
+    pairsSelbst: "{wo}: names '{autor}' itself — the author must not be their own reviewer.",
+    pairsUnbekannt: "{wo}: '{name}' is not listed in issueReview.reviewers.",
+    reviewerOhneName: "{wo}: 'name' is missing or empty.",
+    reviewerKind: "{wo} ('{name}'): 'kind' must be {erlaubt}, is '{kind}'.",
+    oder: " or ",
+    reviewerFeldFehlt: "{wo} ('{name}'): '{feld}' is missing.",
+    lesegrenzeNurCommand: "{wo} ('{name}'): 'lesegrenze' only applies to kind 'command'.",
+    lesegrenzeKeinText: "{wo} ('{name}'): 'lesegrenze' must be a text.",
+    stufenKeinObjekt: "reviewStufen: must be an object with the stages {stufen}.",
+    stufeFehlt: "{wo}: missing or not an object with 'reviewer' and 'rollen'.",
+    stufeReviewer: "{wo}.reviewer: must be a positive integer, is '{wert}'.",
+    stufeRollenListe: "{wo}.rollen: must be a list of role names.",
+    stufeRolleLeer: "{wo}.rollen[{i}]: must be a non-empty role name.",
+    stufeRolleDoppelt: "{wo}.rollen: names a role twice.",
+    stufeRollenzahl: "{wo}: rollen.length ({rollen}) does not match reviewer ({reviewer}).",
+    planReviewerUngueltig: "KIT_PLAN_REVIEWER '{wert}' is invalid — allowed are 1 or 2.",
+    planReviewerZuWenige: "planreview:2 requires two reviewers, one is available",
+    keineLesegrenze: "no read boundary",
+    lesegrenzeAufgehoben: "'{schalter}' lifts the read boundary",
+    zeitlimit: "Time limit of {ms} ms exceeded",
+    signal: "Ended by signal {signal}",
+    optionOhneWert: "--{name} needs a value",
+    rolesEntfallen: "--{option} no longer exists since stage 2 of the process rework — roles only knows --stufe and --author.",
+    stufeOptionFehlt: "--stufe missing. Expected: {stufen}",
+    stufeUnbekannt: "--stufe '{stufe}' is not a known stage. Expected: {stufen}",
+    autorFehlt: "--author missing — without an author neither pairs nor the self-exclusion apply.",
+    nichtImPath: "{datei} not in PATH",
+    keineReviewer: "issueReview.reviewers is empty or missing — copy the block from .claude/workflow.config.example.json",
+    pruefauftragFehler: "issue-review pruefauftrag: {meldung}",
+    optionFehlt: "--{name} missing",
+    keinRollenname: "--rolle '{rolle}' is not a role name (lowercase letters, digits, hyphen)",
+    idOderMaterial: "specify either --id <N> or --material-datei <pfad>",
+    startFehler: "issue-review start: {meldung}",
+    reviewerOderCodeReview: "specify either --reviewer <name> or --code-review",
+    codeReviewOhneKommando: "--code-review needs reviewCommand in the config",
+    reviewerUnbekannt: "'{name}' is not listed in issueReview.reviewers",
+    reviewerClaude: "'{name}' has kind '{kind}' — Claude reviewers run through the agent kit-pruefer",
+    befehlUnbekannt: "Unknown issue-review command: '{befehl}'",
+  }),
+});
+
+/** Ein Text dieses Teils in der Projektsprache (Issue #1481, E13). */
+const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
 
 // ============================================================
 // Issue-Review-Achse (Issue #220)
@@ -135,10 +233,10 @@ function validatePairs(pairs, reviewers) {
   const bekannt = new Set(reviewers.map((r) => r.name));
   for (const [autor, genannt] of Object.entries(pairs || {})) {
     const wo = `issueReview.pairs['${autor}']`;
-    if (!Array.isArray(genannt)) fail(`${wo}: muss eine Liste von Reviewer-Namen sein.`);
+    if (!Array.isArray(genannt)) fail(t("pairsKeineListe", { wo }));
     for (const name of genannt) {
-      if (name === autor) fail(`${wo}: nennt '${autor}' sich selbst — der Autor darf nicht sein eigener Reviewer sein.`);
-      if (!bekannt.has(name)) fail(`${wo}: '${name}' steht nicht in issueReview.reviewers.`);
+      if (name === autor) fail(t("pairsSelbst", { wo, autor }));
+      if (!bekannt.has(name)) fail(t("pairsUnbekannt", { wo, name }));
     }
   }
   return pairs || {};
@@ -150,14 +248,14 @@ function validatePairs(pairs, reviewers) {
 function validateReviewers(reviewers) {
   reviewers.forEach((r, i) => {
     const wo = `issueReview.reviewers[${i}]`;
-    if (!r || typeof r.name !== "string" || !r.name) fail(`${wo}: 'name' fehlt oder ist leer.`);
+    if (!r || typeof r.name !== "string" || !r.name) fail(t("reviewerOhneName", { wo }));
     if (!REVIEWER_KINDS.includes(r.kind)) {
-      fail(`${wo} ('${r.name}'): 'kind' muss ${REVIEWER_KINDS.join(" oder ")} sein, ist '${r.kind}'.`);
+      fail(t("reviewerKind", { wo, name: r.name, erlaubt: REVIEWER_KINDS.join(t("oder")), kind: r.kind }));
     }
-    if (r.kind === "claude" && !r.model) fail(`${wo} ('${r.name}'): 'model' fehlt.`);
-    if (r.kind === "command" && !r.command) fail(`${wo} ('${r.name}'): 'command' fehlt.`);
-    if (r.lesegrenze !== undefined && r.kind !== "command") fail(`${wo} ('${r.name}'): 'lesegrenze' gilt nur bei kind 'command'.`);
-    if (r.lesegrenze !== undefined && typeof r.lesegrenze !== "string") fail(`${wo} ('${r.name}'): 'lesegrenze' muss ein Text sein.`);
+    if (r.kind === "claude" && !r.model) fail(t("reviewerFeldFehlt", { wo, name: r.name, feld: "model" }));
+    if (r.kind === "command" && !r.command) fail(t("reviewerFeldFehlt", { wo, name: r.name, feld: "command" }));
+    if (r.lesegrenze !== undefined && r.kind !== "command") fail(t("lesegrenzeNurCommand", { wo, name: r.name }));
+    if (r.lesegrenze !== undefined && typeof r.lesegrenze !== "string") fail(t("lesegrenzeKeinText", { wo, name: r.name }));
   });
   return reviewers;
 }
@@ -179,26 +277,26 @@ function validateReviewStufen(block) {
     return { stufen: Object.fromEntries(REVIEW_STUFEN.map((s) => [s, REVIEW_STUFEN_DEFAULT[s]])), stufenQuelle: "default" };
   }
   if (typeof block !== "object" || Array.isArray(block)) {
-    fail(`reviewStufen: muss ein Objekt mit den Stufen ${REVIEW_STUFEN.join(", ")} sein.`);
+    fail(t("stufenKeinObjekt", { stufen: REVIEW_STUFEN.join(", ") }));
   }
   const stufen = {};
   for (const stufe of REVIEW_STUFEN) {
     const wo = `reviewStufen.${stufe}`;
     const eintrag = block[stufe];
     if (!eintrag || typeof eintrag !== "object" || Array.isArray(eintrag)) {
-      fail(`${wo}: fehlt oder ist kein Objekt mit 'reviewer' und 'rollen'.`);
+      fail(t("stufeFehlt", { wo }));
     }
     const { reviewer, rollen } = eintrag;
     if (!Number.isInteger(reviewer) || reviewer < 1) {
-      fail(`${wo}.reviewer: muss eine positive Ganzzahl sein, ist '${reviewer}'.`);
+      fail(t("stufeReviewer", { wo, wert: reviewer }));
     }
-    if (!Array.isArray(rollen)) fail(`${wo}.rollen: muss eine Liste von Rollennamen sein.`);
+    if (!Array.isArray(rollen)) fail(t("stufeRollenListe", { wo }));
     rollen.forEach((name, i) => {
-      if (typeof name !== "string" || !name) fail(`${wo}.rollen[${i}]: muss ein nicht leerer Rollenname sein.`);
+      if (typeof name !== "string" || !name) fail(t("stufeRolleLeer", { wo, i }));
     });
-    if (new Set(rollen).size !== rollen.length) fail(`${wo}.rollen: nennt einen Rollennamen doppelt.`);
+    if (new Set(rollen).size !== rollen.length) fail(t("stufeRolleDoppelt", { wo }));
     if (rollen.length !== reviewer) {
-      fail(`${wo}: rollen.length (${rollen.length}) stimmt nicht mit reviewer (${reviewer}) ueberein.`);
+      fail(t("stufeRollenzahl", { wo, rollen: rollen.length, reviewer }));
     }
     stufen[stufe] = { reviewer, rollen };
   }
@@ -221,11 +319,11 @@ export function planReviewerAusLauf({ env = process.env, eintrag, verfuegbar }) 
   const wert = env.KIT_PLAN_REVIEWER;
   if (wert === undefined || wert === "") return null;
   if (wert !== "1" && wert !== "2") {
-    throw new BoardError(`KIT_PLAN_REVIEWER '${wert}' ist ungueltig — erlaubt sind 1 oder 2.`);
+    throw new BoardError(t("planReviewerUngueltig", { wert }));
   }
   const reviewer = Number(wert);
   if (reviewer > verfuegbar) {
-    throw new BoardError("planreview:2 verlangt zwei Reviewer, verfügbar ist einer");
+    throw new BoardError(t("planReviewerZuWenige"));
   }
   const rollen = eintrag.rollen.slice(0, reviewer);
   for (const rolle of PLAN_ROLLEN) {
@@ -306,10 +404,10 @@ function aufhebenderSchalter(argumente) {
  */
 function startArgumente(command, lesegrenze) {
   const grenze = lesegrenzeVon({ command, lesegrenze });
-  if (grenze === null) return { fehler: "keine-lesegrenze", grund: "keine Lesegrenze" };
+  if (grenze === null) return { fehler: "keine-lesegrenze", grund: t("keineLesegrenze") };
   const argumente = [...woerter(command).slice(1), ...grenze];
   const schalter = aufhebenderSchalter(argumente);
-  if (schalter !== null) return { fehler: "lesegrenze-aufgehoben", schalter, grund: `'${schalter}' hebt die Lesegrenze auf` };
+  if (schalter !== null) return { fehler: "lesegrenze-aufgehoben", schalter, grund: t("lesegrenzeAufgehoben", { schalter }) };
   return { argumente, lesegrenze: grenze.join(" ") };
 }
 
@@ -359,7 +457,7 @@ export function probelauf(kommandozeile, pfad, { spawn = spawnSync, prompt = PRO
   const argumente = kommandozeile.trim().split(/\s+/).slice(1);
   const res = spawn(pfad, argumente, { input: prompt, encoding: "utf-8", timeout: timeoutMs, env });
   if (res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM") {
-    return { ok: false, grund: `Zeitlimit von ${timeoutMs} ms ueberschritten` };
+    return { ok: false, grund: t("zeitlimit", { ms: timeoutMs }) };
   }
   // Der Exit-Status schlaegt den Fehler (Issue #393). Endet das Kommando, bevor der
   // Prompt in seine stdin geschrieben ist, meldet spawnSync EPIPE — zusaetzlich zum
@@ -377,13 +475,13 @@ export function probelauf(kommandozeile, pfad, { spawn = spawnSync, prompt = PRO
   // Kein Status und kein Fehler heisst: durch ein Signal gestorben (SIGSEGV, SIGKILL).
   // Ohne diesen Zweig fiele der Fall auf `ok: true` durch, und ein abgestuerzter
   // Reviewer gaelte als verfuegbar.
-  return { ok: false, grund: `Durch Signal ${res.signal} beendet` };
+  return { ok: false, grund: t("signal", { signal: res.signal }) };
 }
 
 // Die Befehle unten liefern ihre Antwort zurueck, statt sie auszugeben; `dispatchIssueReview`
 // gibt sie aus. So prueft ein Test die Antwort im selben Prozess (Plan #1199, E6).
 export function issueReviewReviewers(args, config = loadConfig()) {
-  const autor = args.author === true ? fail("--author braucht einen Wert") : args.author;
+  const autor = args.author === true ? fail(t("optionOhneWert", { name: "author" })) : args.author;
   const { reviewers, pairs } = issueReviewConfig(config);
   return { autor: autor || null, ...pickReviewers(reviewers, autor, 2, pairs) };
 }
@@ -409,16 +507,16 @@ const ROLES_ENTFALLEN = ["issue", "rolle", "ausschluss"];
 export function issueReviewRoles(args, config = loadConfig(), env = process.env) {
   for (const option of ROLES_ENTFALLEN) {
     if (args[option] !== undefined) {
-      fail(`--${option} gibt es seit Stufe 2 des Prozess-Umbaus nicht mehr — roles kennt nur --stufe und --author.`);
+      fail(t("rolesEntfallen", { option }));
     }
   }
-  const stufe = args.stufe === true ? fail("--stufe braucht einen Wert") : args.stufe;
-  if (!stufe) fail(`--stufe fehlt. Erwartet: ${REVIEW_STUFEN.join(" | ")}`);
+  const stufe = args.stufe === true ? fail(t("optionOhneWert", { name: "stufe" })) : args.stufe;
+  if (!stufe) fail(t("stufeOptionFehlt", { stufen: REVIEW_STUFEN.join(" | ") }));
   if (!REVIEW_STUFEN.includes(stufe)) {
-    fail(`--stufe '${stufe}' ist keine bekannte Stufe. Erwartet: ${REVIEW_STUFEN.join(" | ")}`);
+    fail(t("stufeUnbekannt", { stufe, stufen: REVIEW_STUFEN.join(" | ") }));
   }
-  const autor = args.author === true ? fail("--author braucht einen Wert") : args.author;
-  if (!autor) fail("--author fehlt — ohne Autor greifen weder pairs noch der Selbstausschluss.");
+  const autor = args.author === true ? fail(t("optionOhneWert", { name: "author" })) : args.author;
+  if (!autor) fail(t("autorFehlt"));
 
   const { reviewers, pairs, reviewStufen } = issueReviewConfig(config);
   // Bei der Stufe plan schlaegt die Pruefzahl des Laufs die Config (Issue #1245).
@@ -490,7 +588,7 @@ export function issueReviewCheck(args = {}, { config = loadConfig(), verfuegbar 
     }
     Object.assign(basis, { lesegrenze: start.lesegrenze });
     const { datei, ok, pfad } = verfuegbar(r.command);
-    if (!ok) return { ...basis, verfuegbar: false, geprueft: "pfad", grund: `${datei} nicht im PATH` };
+    if (!ok) return { ...basis, verfuegbar: false, geprueft: "pfad", grund: t("nichtImPath", { datei }) };
     if (nurPfad) return { ...basis, verfuegbar: true, geprueft: "pfad" };
     const lauf = probe(r.command, pfad);
     return lauf.ok
@@ -504,7 +602,7 @@ export function issueReviewCheck(args = {}, { config = loadConfig(), verfuegbar 
   // Dieselbe Fehlerklasse wie beim [Idee]-Gate (Issue #192): eine vorhersehbare Lage
   // gehoert ins Gate, nicht in einen Prompt.
   return reviewers.length === 0
-    ? { reviewers: [], alleVerfuegbar: false, grund: "issueReview.reviewers ist leer oder fehlt — Block aus .claude/workflow.config.example.json uebernehmen", rollen }
+    ? { reviewers: [], alleVerfuegbar: false, grund: t("keineReviewer"), rollen }
     : { reviewers: ergebnis, alleVerfuegbar: ergebnis.every((r) => r.verfuegbar), rollen };
 }
 
@@ -606,16 +704,16 @@ async function dokumentWerte(tracker, id) {
 // Ein Aufruffehler wirft, statt den Prozess zu beenden: Der Test laeuft im selben Prozess,
 // und `dispatchIssueReview` macht daraus wie bei `roles` ein `fail`.
 function fehlerArg(meldung) {
-  throw new BoardError(`issue-review pruefauftrag: ${meldung}`);
+  throw new BoardError(t("pruefauftragFehler", { meldung }));
 }
 
 function pruefauftragArgumente(args) {
-  const wert = (name) => (args[name] === true ? fehlerArg(`--${name} braucht einen Wert`) : args[name]);
+  const wert = (name) => (args[name] === true ? fehlerArg(t("optionOhneWert", { name })) : args[name]);
   const eingang = { rolle: wert("rolle"), datei: wert("datei"), id: wert("id"), material: wert("material-datei") };
-  if (!eingang.rolle) fehlerArg("--rolle fehlt");
-  if (!ROLLEN_NAME.test(eingang.rolle)) fehlerArg(`--rolle '${eingang.rolle}' ist kein Rollenname (Kleinbuchstaben, Ziffern, Bindestrich)`);
-  if (!eingang.datei) fehlerArg("--datei fehlt");
-  if (Boolean(eingang.id) === Boolean(eingang.material)) fehlerArg("entweder --id <N> oder --material-datei <pfad> angeben");
+  if (!eingang.rolle) fehlerArg(t("optionFehlt", { name: "rolle" }));
+  if (!ROLLEN_NAME.test(eingang.rolle)) fehlerArg(t("keinRollenname", { rolle: eingang.rolle }));
+  if (!eingang.datei) fehlerArg(t("optionFehlt", { name: "datei" }));
+  if (Boolean(eingang.id) === Boolean(eingang.material)) fehlerArg(t("idOderMaterial"));
   return eingang;
 }
 
@@ -681,32 +779,32 @@ const START_PUFFER = 64 * 1024 * 1024;
 const STDERR_AUSSCHNITT = 1000;
 
 function fehlerStart(meldung) {
-  throw new BoardError(`issue-review start: ${meldung}`);
+  throw new BoardError(t("startFehler", { meldung }));
 }
 
-const pflichtwert = (args, name) => (args[name] === true || !args[name] ? fehlerStart(`--${name} fehlt`) : args[name]);
+const pflichtwert = (args, name) => (args[name] === true || !args[name] ? fehlerStart(t("optionFehlt", { name })) : args[name]);
 
 /** Wer startet: ein `kind: command`-Reviewer oder das persoenliche reviewCommand. */
 function startPruefer(args, config) {
-  const wert = (name) => (args[name] === true ? fehlerStart(`--${name} braucht einen Wert`) : args[name]);
+  const wert = (name) => (args[name] === true ? fehlerStart(t("optionOhneWert", { name })) : args[name]);
   const codeReview = args["code-review"] === true;
   const name = args.reviewer === undefined ? undefined : wert("reviewer");
-  if (codeReview === Boolean(name)) fehlerStart("entweder --reviewer <name> oder --code-review angeben");
+  if (codeReview === Boolean(name)) fehlerStart(t("reviewerOderCodeReview"));
   if (codeReview) {
-    if (!config.reviewCommand) fehlerStart("--code-review braucht reviewCommand in der Config");
+    if (!config.reviewCommand) fehlerStart(t("codeReviewOhneKommando"));
     return { name: "reviewCommand", command: config.reviewCommand, lesegrenze: config.reviewLesegrenze };
   }
   const { reviewers } = issueReviewConfig(config);
   const reviewer = reviewers.find((r) => r.name === name);
-  if (!reviewer) fehlerStart(`'${name}' steht nicht in issueReview.reviewers`);
-  if (reviewer.kind !== "command") fehlerStart(`'${name}' hat kind '${reviewer.kind}' — Claude-Pruefer laufen ueber den Agenten kit-pruefer`);
+  if (!reviewer) fehlerStart(t("reviewerUnbekannt", { name }));
+  if (reviewer.kind !== "command") fehlerStart(t("reviewerClaude", { name, kind: reviewer.kind }));
   return reviewer;
 }
 
 /** Das Ende von stderr, bei einem Lauf ohne Exit-Status der Startfehler oder das Signal. */
 function ausfallGrund(res) {
   if (res.status !== null) return res.stderr || "";
-  return res.error ? res.error.message : `Durch Signal ${res.signal} beendet`;
+  return res.error ? res.error.message : t("signal", { signal: res.signal });
 }
 
 /**
@@ -727,7 +825,7 @@ export function issueReviewStart(args, { config = loadConfig(), spawn = spawnSyn
   const prompt = liesDatei(auftrag);
   if (prompt === null) return { ok: false, reviewer, fehler: "auftrag-fehlt", pfad: auftrag };
   const { datei, ok, pfad } = verfuegbar(pruefer.command);
-  if (!ok) return { ok: false, reviewer, fehler: "nicht-im-path", grund: `${datei} nicht im PATH` };
+  if (!ok) return { ok: false, reviewer, fehler: "nicht-im-path", grund: t("nichtImPath", { datei }) };
 
   const res = spawn(pfad, start.argumente, { input: prompt, encoding: "utf-8", env, maxBuffer: START_PUFFER });
   if (res.status !== 0) {
@@ -783,6 +881,6 @@ export async function dispatchIssueReview(command, args, hilfe) {
       }
     default:
       process.stdout.write(hilfe);
-      fail(`Unbekannter issue-review-Befehl: '${command}'`);
+      fail(t("befehlUnbekannt", { befehl: command }));
   }
 }

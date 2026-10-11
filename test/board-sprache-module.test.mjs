@@ -11,8 +11,8 @@
 //   - Englische Stichproben im selben Prozess, die Sprache per spracheFestlegen gesetzt.
 //   - Der Maschinenvertrag (E14) bleibt: Feldnamen und Rueckmeldungen.
 //
-// Dieser erste Teil deckt kit/board/adapter.mjs; die folgenden Teile (#1481 bis #1483)
-// ergaenzen diese Datei um ihre Module.
+// Der erste Teil deckt kit/board/adapter.mjs, der zweite (#1481) kit/board/issue-review.mjs
+// und kit/board/hook.mjs; die folgenden Teile (#1482, #1483) ergaenzen diese Datei um ihre Module.
 
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
@@ -25,9 +25,13 @@ import { TEXTE as ADAPTER_TEXTE, resolveToolboxToken, interpretToolboxCreateResp
   resolveCodeHost, ToolboxIssueTracker, LabelFehltError } from "../kit/board/adapter.mjs";
 import { BoardError, RUECKMELDUNG } from "../kit/board/grundlagen.mjs";
 import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
+import { TEXTE as ISSUE_REVIEW_TEXTE, planReviewerAusLauf, probelauf, issueReviewCheck, issueReviewStart,
+  issueReviewPruefauftrag } from "../kit/board/issue-review.mjs";
+import { TEXTE as HOOK_TEXTE, pruefeBashZeile, pruefeHintergrund, hookBashPruefen } from "../kit/board/hook.mjs";
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
 
 const ADAPTER_URL = new URL("../kit/board/adapter.mjs", import.meta.url).href;
+const ISSUE_REVIEW_URL = new URL("../kit/board/issue-review.mjs", import.meta.url).href;
 const NAMEN_URL = new URL("../kit/board/namen.mjs", import.meta.url).href;
 
 process.env.TBX_TOKEN = "test-token";
@@ -187,4 +191,93 @@ test("[1480] englisch: check-form erkennt die unbekannte Karte an der englischen
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+
+// --- kit/board/issue-review.mjs und kit/board/hook.mjs (Issue #1481) -------------------
+
+test("[1481] die Texttabellen von issue-review.mjs und hook.mjs haben in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
+  assert.deepEqual(pruefeParitaet(ISSUE_REVIEW_TEXTE), []);
+  assert.deepEqual(pruefeParitaet(HOOK_TEXTE), []);
+  assert.ok(Object.keys(ISSUE_REVIEW_TEXTE.de).length > 30, "die Tabelle traegt die Texte der Issue-Review-Achse");
+  assert.ok(Object.keys(HOOK_TEXTE.de).length >= 4, "die Tabelle traegt die Texte des Hooks");
+});
+
+test("[1481] englisch: der Hook weist Pipe und Hintergrund ab und laesst bei eigenem Fehler durch", () => {
+  spracheFestlegen("en");
+  const pipe = pruefeBashZeile("node werkzeug.mjs issue list | head", ["node werkzeug.mjs*"]);
+  assert.equal(pipe.abweisen, true);
+  assert.match(pipe.grund, /^Rejected: "node werkzeug\.mjs\*" is listed in sandbox\.excludedCommands, but a pipe/);
+  assert.match(pipe.grund, /\(2>&1 is allowed\)/);
+  const hintergrund = pruefeHintergrund({ run_in_background: true }, { KIT_AGENT_MODEL: "opus" });
+  assert.match(hintergrund.grund, /^Rejected: run_in_background is blocked without supervision \(KIT_AGENT_MODEL set\)\./);
+  const kaputt = hookBashPruefen({ eingabeLesen: () => "{", env: {}, cwd: "/nicht/vorhanden" });
+  assert.equal(kaputt.exitCode, 0);
+  assert.match(kaputt.stderr, /^board\.mjs hook bash-pruefen: input not readable \(.+\) — call let through\n$/);
+  spracheFestlegen("de");
+  assert.match(pruefeBashZeile("node werkzeug.mjs x | head", ["node werkzeug.mjs*"]).grund, /^Abgewiesen: /);
+});
+
+test("[1481] englisch: Pruefzahl des Laufs und Probelauf", () => {
+  spracheFestlegen("en");
+  const eintrag = { reviewer: 1, rollen: ["architektur-bestand"] };
+  assert.throws(() => planReviewerAusLauf({ env: { KIT_PLAN_REVIEWER: "3" }, eintrag, verfuegbar: 2 }),
+    { message: "KIT_PLAN_REVIEWER '3' is invalid — allowed are 1 or 2." });
+  assert.throws(() => planReviewerAusLauf({ env: { KIT_PLAN_REVIEWER: "2" }, eintrag, verfuegbar: 1 }),
+    { message: "planreview:2 requires two reviewers, one is available" });
+  const zeit = probelauf("x", "/x", { spawn: () => ({ status: null, signal: "SIGTERM" }), timeoutMs: 5 });
+  assert.deepEqual(zeit, { ok: false, grund: "Time limit of 5 ms exceeded" });
+  const signal = probelauf("x", "/x", { spawn: () => ({ status: null, signal: "SIGKILL" }) });
+  assert.deepEqual(signal, { ok: false, grund: "Ended by signal SIGKILL" });
+  assert.deepEqual(probelauf("x", "/x", { spawn: () => ({ status: 3, stderr: "" }) }), { ok: false, grund: "Exit 3" });
+});
+
+test("[1481] englisch: check nennt fehlende Reviewer und Werkzeuge; die Vertragswerte bleiben", () => {
+  spracheFestlegen("en");
+  const leer = issueReviewCheck({}, { config: {} });
+  assert.match(leer.grund, /^issueReview\.reviewers is empty or missing — copy the block from \.claude\/workflow\.config\.example\.json$/);
+  const config = { issueReview: { reviewers: [
+    { name: "fremd", kind: "command", command: "fremdwerkzeug" },
+    { name: "astra", kind: "command", command: "codex exec" },
+  ] } };
+  const { reviewers } = issueReviewCheck({}, { config, verfuegbar: () => ({ datei: "codex", ok: false, pfad: null }) });
+  assert.equal(reviewers[0].geprueft, "lesegrenze");
+  assert.equal(reviewers[0].grund, "no read boundary");
+  assert.equal(reviewers[1].geprueft, "pfad");
+  assert.equal(reviewers[1].grund, "codex not in PATH");
+});
+
+test("[1481] englisch: start und pruefauftrag weisen ab; fehler bleibt Vertrag", async () => {
+  spracheFestlegen("en");
+  const config = { issueReview: { reviewers: [{ name: "astra", kind: "command", command: "codex exec --full-auto" }] } };
+  const aufgehoben = issueReviewStart({ reviewer: "astra", auftrag: "a", ausgabe: "b" }, { config });
+  assert.equal(aufgehoben.fehler, "lesegrenze-aufgehoben");
+  assert.equal(aufgehoben.grund, "'--full-auto' lifts the read boundary");
+  assert.throws(() => issueReviewStart({ auftrag: "a", ausgabe: "b" }, { config }),
+    { message: "issue-review start: specify either --reviewer <name> or --code-review" });
+  assert.throws(() => issueReviewStart({ reviewer: "weg", auftrag: "a", ausgabe: "b" }, { config }),
+    { message: "issue-review start: 'weg' is not listed in issueReview.reviewers" });
+  await assert.rejects(() => issueReviewPruefauftrag({ rolle: "abgrenzung" }, { config: {} }),
+    { message: "issue-review pruefauftrag: --datei missing" });
+});
+
+/** Die Pruefung der Config endet per `fail` — darum im eigenen Prozess. */
+function issueReviewAbweisung(aufruf) {
+  const skript = `import * as r from ${JSON.stringify(ISSUE_REVIEW_URL)};
+import { spracheFestlegen } from ${JSON.stringify(NAMEN_URL)};
+spracheFestlegen("en");
+await r.${aufruf};`;
+  return spawnSync(process.execPath, ["--input-type=module", "-e", skript], { encoding: "utf-8" });
+}
+
+test("[1481] englisch: die Config-Pruefung und roles weisen ab", () => {
+  const kind = issueReviewAbweisung(`issueReviewMatrix({ issueReview: { reviewers: [{ name: "x", kind: "agent" }] } })`);
+  assert.equal(kind.status, 1);
+  assert.match(kind.stderr, /issueReview\.reviewers\[0\] \('x'\): 'kind' must be claude or command, is 'agent'\./);
+  const selbst = issueReviewAbweisung(`issueReviewMatrix({ issueReview: { reviewers: [{ name: "x", kind: "claude", model: "m" }], pairs: { x: ["x"] } } })`);
+  assert.match(selbst.stderr, /issueReview\.pairs\['x'\]: names 'x' itself — the author must not be their own reviewer\./);
+  const stufe = issueReviewAbweisung(`issueReviewRoles({ stufe: "code", author: "x" }, {})`);
+  assert.match(stufe.stderr, /--stufe 'code' is not a known stage\. Expected: fachlich \| plan \| issue/);
+  const unbekannt = issueReviewAbweisung(`dispatchIssueReview("weg", {}, "")`);
+  assert.match(unbekannt.stderr, /Unknown issue-review command: 'weg'/);
 });
