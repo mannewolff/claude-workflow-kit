@@ -271,7 +271,7 @@ test("[skills-6] implement-test und implement-done kennen den Halt nicht", () =>
 // --- Die Spur in /fachplan ---------------------------------------------------
 
 test("[skills-8] /fachplan nimmt einen angehaltenen `[Task]` als Argument `#T`", () => {
-  const text = quelle("fachplan");
+  const text = quelle("requirement");
   assert.match(text, /\/fachplan #T/, "das Argument `#T` ist nicht benannt");
   assert.ok(
     text.includes(HALT_FOLGESATZ),
@@ -280,7 +280,7 @@ test("[skills-8] /fachplan nimmt einen angehaltenen `[Task]` als Argument `#T`",
 });
 
 test("[skills-8] /fachplan lehnt jede andere Karte ab und legt nichts an", () => {
-  const text = quelle("fachplan");
+  const text = quelle("requirement");
   assert.match(
     text,
     /nur fuer einen angehaltenen `\[Task\]` gilt/,
@@ -290,7 +290,7 @@ test("[skills-8] /fachplan lehnt jede andere Karte ab und legt nichts an", () =>
 });
 
 test("[skills-8] /fachplan haengt genau einen Kommentar `Fortsetzung: Issue #N` an den Task", () => {
-  const text = quelle("fachplan");
+  const text = quelle("requirement");
   assert.match(
     text,
     /issue comment <T> --text "Fortsetzung: Issue #N"/,
@@ -300,7 +300,7 @@ test("[skills-8] /fachplan haengt genau einen Kommentar `Fortsetzung: Issue #N` 
 });
 
 test("[skills-8] am fachlichen Issue entsteht keine Herkunftszeile, und ohne `#T` entfaellt der Aufruf", () => {
-  const text = quelle("fachplan");
+  const text = quelle("requirement");
   assert.match(
     text,
     /keine\*\* Herkunftszeile|\*\*keine\*\* Herkunftszeile/,

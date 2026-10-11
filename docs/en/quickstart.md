@@ -46,12 +46,12 @@ With a global installation, an eighth question follows about the vault path for 
 Afterwards the sixteen skills are in `.claude/skills/` (or globally in `~/.claude/skills/`), and a `.claude/workflow.config.json` with your answers as well as the board adapter (Board-Adapter) (`.claude/kit/board.mjs`) are in the repo. Restart Claude Code, and the skills show up in `/help`.
 
 ## The sixteen skills
-<!-- de: 2c527f9cea82 -->
+<!-- de: 50d11cb5503f -->
 
 | Command | What for |
 |--------|-------|
-| `/kontext` | Load context, overview of the situation at session start |
-| `/fachplan` | Optional: requirement as a business issue for the PO loop (PO-Schleife) (see [documentation](./dokumentation.md#po-loop-business-and-technical-issues)) |
+| `/context` | Load context, overview of the situation at session start (old name `/kontext`) |
+| `/requirement` | Optional: requirement as a business issue for the PO loop (PO-Schleife) (see [documentation](./dokumentation.md#po-loop-business-and-technical-issues)) (old name `/fachplan`) |
 | `/techplan` | Plan from the requirement, implements nothing |
 | `/issues` | Plan into small issues (GitHub, GitLab or local) |
 | `/task` | Requirement without trade-offs as a single work package (Arbeitspaket) `[Task]`, only after your confirmation |

@@ -20,7 +20,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Die Stellen, die einem Menschen oder einer Sitzung den Weg einer Idee nennen. */
 const STELLEN = [
-  "skills/fachplan/SKILL.md",
+  "skills/requirement/SKILL.md",
   "skills/task/SKILL.md",
   "templates/CLAUDE-workflow.md",
   "docs/dokumentation.md",
@@ -80,7 +80,7 @@ test("[skills-962] der Rueckgabe-Kommentar aus issue auftrag nennt beide Wege", 
 });
 
 test("[skills-962] /fachplan nimmt eine `[Idee]` mit Abwaegung an, ohne Herkunftsspur am neuen Issue", () => {
-  const text = readFileSync(join(repoRoot, "skills", "fachplan", "SKILL.md"), "utf-8");
+  const text = readFileSync(join(repoRoot, "skills", "requirement", "SKILL.md"), "utf-8");
   const absaetze = text.split(/\n\s*\n/);
   assert.ok(
     absaetze.some((a) => /Eingang/.test(a) && /`\[Idee\]`/.test(a)),

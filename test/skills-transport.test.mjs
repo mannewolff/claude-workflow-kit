@@ -36,7 +36,7 @@ export const STELLEN = [
   { datei: "skills/issue-review/SKILL.md", befehl: "Einarbeitung", zweck: "einarbeitung" },
   { datei: "skills/issues/SKILL.md", befehl: "issue create mit --derived-from" },
   { datei: "skills/issues/SKILL.md", befehl: "issue create" },
-  { datei: "skills/fachplan/SKILL.md", befehl: "issue create" },
+  { datei: "skills/requirement/SKILL.md", befehl: "issue create" },
   { datei: "skills/task/SKILL.md", befehl: "issue create" },
   { datei: "skills/techplan/SKILL.md", befehl: "issue create (mehrzeilig)" },
   { datei: "skills/review/SKILL.md", befehl: "Review-Ergebnis" },

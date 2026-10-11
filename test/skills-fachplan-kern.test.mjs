@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { HALT_FOLGESATZ } from "../kit/night/wartend.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SKILL = readFileSync(join(repoRoot, "skills", "fachplan", "SKILL.md"), "utf-8");
+const SKILL = readFileSync(join(repoRoot, "skills", "requirement", "SKILL.md"), "utf-8");
 
 test("[skills-8] der Skill bleibt unter 110 Zeilen, ohne label-sync und ohne Issue-Verweise", () => {
   const zeilen = SKILL.split("\n").length;

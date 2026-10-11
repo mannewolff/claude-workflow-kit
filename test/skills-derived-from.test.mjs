@@ -21,7 +21,7 @@ const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
 const ISSUES = lies("skills", "issues", "SKILL.md");
 const PLAN = lies("skills", "techplan", "SKILL.md");
-const FACHPLAN = lies("skills", "fachplan", "SKILL.md");
+const FACHPLAN = lies("skills", "requirement", "SKILL.md");
 // Der Sender von `issue create` steht seit Issue #1218 im Board-Teil dokumente.
 const BOARD = lies("kit", "board", "dokumente.mjs");
 

@@ -25,8 +25,11 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...teile) => readFileSync(join(repoRoot, ...teile), "utf-8");
 
 // Der Wegweiser `/plan` erstellt keinen Plan, er nennt nur den neuen Namen `/techplan`.
-// Er steht bewusst in keiner Skill-Tabelle und zaehlt deshalb nicht mit.
-const WEGWEISER = new Set(["plan"]);
+// Er steht bewusst in keiner Skill-Tabelle und zaehlt deshalb nicht mit. Ebenso die
+// Weiterleitungen `/fachplan` und `/kontext` (Issue #1463, Plan #1420 E16): Sie fuehren
+// `/requirement` und `/context` aus, sind also Altnamen und keine eigenen Skills. Die
+// Tabelle nennt sie in der Zeile ihres Ziel-Skills.
+const WEGWEISER = new Set(["plan", "fachplan", "kontext"]);
 
 // Die englische Fassung zaehlt mit "sixteen" (Issue #1370); die Konfiguration traegt beide
 // Beschreibungen und steht deshalb in beiden Listen.

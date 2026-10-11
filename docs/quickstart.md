@@ -46,8 +46,8 @@ Danach liegen die sechzehn Skills in `.claude/skills/` (oder global in `~/.claud
 
 | Befehl | Wofür |
 |--------|-------|
-| `/kontext` | Kontext laden, Lageüberblick zu Session-Start |
-| `/fachplan` | Optional: Anforderung als fachliches Issue für die PO-Schleife (siehe [Dokumentation](./dokumentation.md#po-schleife-fachliche-und-technische-issues)) |
+| `/context` | Kontext laden, Lageüberblick zu Session-Start (Altname `/kontext`) |
+| `/requirement` | Optional: Anforderung als fachliches Issue für die PO-Schleife (siehe [Dokumentation](./dokumentation.md#po-schleife-fachliche-und-technische-issues)) (Altname `/fachplan`) |
 | `/techplan` | Plan aus der Anforderung, implementiert nichts |
 | `/issues` | Plan in kleinteilige Issues (GitHub, GitLab oder lokal) |
 | `/task` | Anforderung ohne Abwägungsbedarf als einzelnes Arbeitspaket `[Task]`, erst nach deiner Bestätigung |

@@ -73,7 +73,7 @@ test('Sidebar führt die WSL2-Anleitung in Einstieg direkt nach dem Quickstart',
 
 const TRANSPORT = [
   'templates/CLAUDE-workflow.md',
-  'skills/fachplan/SKILL.md',
+  'skills/requirement/SKILL.md',
   'skills/issue-review/SKILL.md',
   'skills/issues/SKILL.md',
   'skills/review/SKILL.md',

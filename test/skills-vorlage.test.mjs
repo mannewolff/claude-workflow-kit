@@ -24,20 +24,20 @@ function vorlageAbsatz(text) {
 }
 
 test("[skills-24] fachplan, techplan und issues tragen den Vorlage-Absatz wortgleich", () => {
-  const fachplan = vorlageAbsatz(lies("fachplan"));
+  const fachplan = vorlageAbsatz(lies("requirement"));
   assert.equal(vorlageAbsatz(lies("techplan")), fachplan);
   assert.equal(vorlageAbsatz(lies("issues")), fachplan);
 });
 
 test("[skills-24] der Absatz nennt die Zeile, ihre Weitergabe und die Wirkung von verbindlich", () => {
-  const absatz = vorlageAbsatz(lies("fachplan"));
+  const absatz = vorlageAbsatz(lies("requirement"));
   for (const teil of ["`Vorlage: <Pfad> — verbindlich | Anregung`", "`## Ziel`", "Kopf des Plans", "`## Kontext`", "keine offene Gestaltungsfrage gegen die Vorlage", "Stopp-Frage", "Stelle der Vorlage", "Bildschirmfoto", "`issue check-form`"]) {
     assert.notEqual(absatz.indexOf(teil), -1, `der Absatz nennt nicht: ${teil}`);
   }
 });
 
 test("[skills-24] /fachplan fragt bei einer verbindlichen Vorlage nach der Designquelle", () => {
-  const text = lies("fachplan");
+  const text = lies("requirement");
   assert.match(text, /Designquelle des Projekts/);
   assert.match(text, /das erste Paket/);
 });
