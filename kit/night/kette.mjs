@@ -50,12 +50,149 @@ import { berichtFuerKette, berichtSchreiben, hatPlanReviewMarker, kommentareVon,
 import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, geschuetztAmBoardVermerken, hatKlaerenLabel, laufeRunde,
   pruefeIssueGates, rundenMerker, traegtLabel, wartendVermerk, wartendeSession } from "./wartend.mjs";
 
+// --- Texte an den Menschen (Plan #1420, E13, E14; Issue #1491) ---
+//
+// Was die Kette an den Menschen ausgibt — Gruende der Auswahl, der Stopp-Fragen und der
+// Stufen-Abbrueche, Protokollzeilen der Stufen, Fehler der Anbindung —, steht in dieser
+// Tabelle und geht ueber den Texthelfer aus kit/board/namen.mjs. Der Grund eines
+// Zeitbudget-Abbruchs beginnt englisch in der Form der Vorlage am Plan #1420 (`Time budget`).
+// Vertrag bleibt (E14): die Ausgaenge der Kette, die Stufenschluessel, `grundArt`, die
+// Labelnamen, die Anker und Marker aus dem Register und die Regelform `- Keine.` der offenen
+// Fragen. Die Prompts an Sessions (`KETTE_ZUSATZ` und die uebrigen) bleiben unveraendert, sie
+// stellt ein Paket der Stufe 4 um.
+//
+// Bisher umgestellt: der Teil vom Dateianfang bis vor `formSicherstellen` (#1491).
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    praefixFehlt: "board/dokumente.mjs fehlt neben night.mjs ({pfad}) — das Praefix {praefix} ist nicht erkennbar.",
+    namenFehlt: "board/namen.mjs fehlt neben night.mjs ({pfad}) — Marker sind nicht lesbar.",
+    nichtAngebunden: "{haken} ist nicht angebunden — der Einstieg kit/night.mjs setzt es beim Laden.",
+    hakenUnbekannt: "ketteAnbinden kennt keinen Haken '{name}'",
+    abhaengigkeitUnbekannt: "ketteAbhaengigkeiten kennt keine Abhaengigkeit '{name}'",
+    budgetName: "der Kette",
+    budgetBlockLeer: " — {block} in .claude/workflow.config.json fehlt oder setzt kein Feld.",
+    budgetDefaults: "Budget {name} aus den Defaults: {werte}{ganz}",
+    ungeprueftPraefix: "ungeprueft: Label '{label}' fehlt",
+    pruefungFehltSchritt: "mit /issue-review #{id} pruefen lassen, das setzt {label}; das Label {kettenLabel} bleibt dran",
+    pruefungFehlt: "{praefix} — {schritt}",
+    zielUnpassendPraefix: "unpassende Einstellung: ",
+    stoppAbschnittFehlt: "kein Abschnitt ## {name}",
+    stoppAbschnittLeer: "Abschnitt ## {name} ist leer",
+    stoppFrageOffen: "offene Stopp-Frage: {frage}",
+    poFrageOffen: "offene Frage an den PO: {frage}",
+    unbekannt: "unbekannt",
+    nichtInBacklog: "steht in {status}, nicht in Backlog",
+    ketteKlaeren: "traegt {label} — die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen, dann das Label abnehmen",
+    poFragen: "{frage}; die Fragen im Body beantworten und '## {name}' auf 'Keine' setzen",
+    herkunftFehlt: "die fachliche Herkunft ist nicht erkennbar — die Zeile '{feld} Issue #N' fehlt im Plan oder nennt keine "
+      + "Karte dieses Boards (die Nummer wird zeichengleich verglichen, fuehrende Nullen zaehlen mit)",
+    planKlaeren: "traegt {label} — die Entscheidung gehoert in den Plan, danach nimmt ein Mensch das Label ab",
+    planEntscheidung: "eine Entscheidung wartet: {frage}; sie gehoert als Eintrag unter '## {entscheidungen}' des Plans, "
+      + "danach traegt '## {offen}' wieder '{keine}' — ein Satz in der fachlichen Anforderung genuegt nicht",
+    zielSchritt: "die Karte behaelt ihre Labels",
+    zielMehrere: "{praefix}mehr als ein Ziel ({ziele}) — alle bis auf eines abnehmen; {schritt}",
+    prueferUnd: " und ",
+    prueferZugleich: "{praefix}{pruefer} zugleich — eines abnehmen; {schritt}",
+    zielPlanAmPlan: "{praefix}{label} an einem Plandokument — der Plan steht schon; ein weiter reichendes Ziel setzen oder "
+      + "das Label abnehmen; {schritt}",
+    prueferAmPlan: "{praefix}{label} an einem Plandokument — die Prueferzahl gilt nur an der fachlichen Anforderung; "
+      + "das Label abnehmen; {schritt}",
+    planSchonGeprueft: "{praefix}{label}, aber Plan #{plan} ist schon geprueft — das Label abnehmen oder das Kettenlabel "
+      + "an den Plan setzen; {schritt}",
+    keineAuftragsart: "weder {fachlich} noch {plan} — das Kennzeichen gilt an der fachlichen Anforderung oder am Plandokument",
+    kollisionAnforderung: "zu dieser Anforderung ist Plan #{plan} gekennzeichnet — er laeuft an ihrer Stelle, ein zweiter "
+      + "Plan entstuende sonst daneben",
+    kollisionPlan: "zur fachlichen Quelle #{quelle} ist ein juengerer Plan gekennzeichnet — #{plan} laeuft an seiner Stelle",
+    wartendVermerkt: "  Stufe {stufe}: {grund} — Vermerk '{anker}' an #{id} geschrieben.",
+    wartendErgebnisDa: "  Stufe {stufe}: Schlusstext klang nach Warten, das Ergebnis liegt aber vor — die Session gilt als fertig.",
+    zeitbudgetErschoepft: "Zeitbudget {stufe} erschoepft, bevor eine weitere Session starten konnte",
+    zeitbudgetLimit: "Zeitbudget {stufe}: die Session wurde nach {minuten} min am Limit beendet",
+    sitzungsstartGescheitert: "Sitzungsstart der Stufe {stufe} zu #{id} auch im 2. Versuch gescheitert ({exit})",
+    technischerFehler: "technischer Fehler: die Session der Stufe {stufe} endete mit {exit}",
+    kostenbudget: "Kostenbudget: {summe} $ von {deckel} $ nach der Stufe {stufe}",
+    planStart: "  Stufe plan: /techplan #{id} (Budget {minuten} min).",
+    keinPlan: "kein Plan entstanden — die Session hat kein {plan}-Dokument mit der Herkunftszeile angelegt",
+    planWeitere: " (weitere: {ids})",
+    planEntstanden: "  Plan #{plan} entstanden aus Issue #{id}{weitere}.",
+    stoppFrageImPlan: "Stopp-Frage im Plan #{plan}",
+  }),
+  en: Object.freeze({
+    praefixFehlt: "board/dokumente.mjs is missing next to night.mjs ({pfad}) — the prefix {praefix} cannot be recognized.",
+    namenFehlt: "board/namen.mjs is missing next to night.mjs ({pfad}) — markers cannot be read.",
+    nichtAngebunden: "{haken} is not connected — the entry point kit/night.mjs sets it when loading.",
+    hakenUnbekannt: "ketteAnbinden knows no hook '{name}'",
+    abhaengigkeitUnbekannt: "ketteAbhaengigkeiten knows no dependency '{name}'",
+    budgetName: "of the chain",
+    budgetBlockLeer: " — {block} in .claude/workflow.config.json is missing or sets no field.",
+    budgetDefaults: "Budget {name} from the defaults: {werte}{ganz}",
+    ungeprueftPraefix: "unchecked: label '{label}' missing",
+    pruefungFehltSchritt: "have it checked with /issue-review #{id}, which sets {label}; the label {kettenLabel} stays on",
+    pruefungFehlt: "{praefix} — {schritt}",
+    zielUnpassendPraefix: "unsuitable setting: ",
+    stoppAbschnittFehlt: "no section ## {name}",
+    stoppAbschnittLeer: "section ## {name} is empty",
+    stoppFrageOffen: "open stop question: {frage}",
+    poFrageOffen: "open question to the PO: {frage}",
+    unbekannt: "unknown",
+    nichtInBacklog: "is in {status}, not in Backlog",
+    ketteKlaeren: "carries {label} — the answer to the stop question must first be on the requirement, then remove the label",
+    poFragen: "{frage}; answer the questions in the body and set '## {name}' to 'Keine'",
+    herkunftFehlt: "the requirement origin is not recognizable — the line '{feld} Issue #N' is missing in the plan or names "
+      + "no card of this board (the number is compared character by character, leading zeros count)",
+    planKlaeren: "carries {label} — the decision belongs in the plan, afterwards a human removes the label",
+    planEntscheidung: "a decision is waiting: {frage}; it belongs as an entry under '## {entscheidungen}' of the plan, "
+      + "afterwards '## {offen}' carries '{keine}' again — a sentence in the requirement is not enough",
+    zielSchritt: "the card keeps its labels",
+    zielMehrere: "{praefix}more than one goal ({ziele}) — remove all but one; {schritt}",
+    prueferUnd: " and ",
+    prueferZugleich: "{praefix}{pruefer} at the same time — remove one; {schritt}",
+    zielPlanAmPlan: "{praefix}{label} on a plan document — the plan already exists; set a further-reaching goal or "
+      + "remove the label; {schritt}",
+    prueferAmPlan: "{praefix}{label} on a plan document — the reviewer count applies only on the requirement; "
+      + "remove the label; {schritt}",
+    planSchonGeprueft: "{praefix}{label}, but plan #{plan} is already checked — remove the label or set the chain label "
+      + "on the plan; {schritt}",
+    keineAuftragsart: "neither {fachlich} nor {plan} — the marker applies on the requirement or on the plan document",
+    kollisionAnforderung: "plan #{plan} is marked for this requirement — it runs in its place, otherwise a second "
+      + "plan would be created alongside",
+    kollisionPlan: "a newer plan is marked for the requirement #{quelle} — #{plan} runs in its place",
+    wartendVermerkt: "  Stage {stufe}: {grund} — note '{anker}' written on #{id}.",
+    wartendErgebnisDa: "  Stage {stufe}: final text sounded like waiting, but the result is there — the session counts as finished.",
+    zeitbudgetErschoepft: "Time budget {stufe} exhausted before another session could start",
+    zeitbudgetLimit: "Time budget {stufe}: the session was ended at the limit after {minuten} min",
+    sitzungsstartGescheitert: "Session start of stage {stufe} for #{id} failed in the 2nd attempt as well ({exit})",
+    technischerFehler: "technical error: the session of stage {stufe} ended with {exit}",
+    kostenbudget: "Cost budget: {summe} $ of {deckel} $ after stage {stufe}",
+    planStart: "  Stage plan: /techplan #{id} (budget {minuten} min).",
+    keinPlan: "no plan created — the session created no {plan} document with the origin line",
+    planWeitere: " (more: {ids})",
+    planEntstanden: "  Plan #{plan} created from issue #{id}{weitere}.",
+    stoppFrageImPlan: "Stop question in plan #{plan}",
+  }),
+});
+
+// Das Register aus dem Board-Teil, abgefangen: Fehlt board/namen.mjs neben night.mjs, bleiben
+// die Texte deutsch, und die Marker sind nicht lesbar (unten bei `markerWerte`).
+const namen = await import(pathToFileURL(join(NACHBAR_DIR, "board", "namen.mjs")).href).catch(() => null);
+
+function t(schluessel, werte = {}) {
+  if (namen) return namen.text(TEXTE, schluessel, werte);
+  return TEXTE.de[schluessel].replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
+}
+
+/** Der Text zu `schluessel` in der Sprache `sprache`, fuer die Leser, die beide Sprachen erkennen. */
+const textIn = (sprache, schluessel, werte = {}) => TEXTE[sprache][schluessel]
+  .replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
+
+/** Ein Name aus dem Register in der Sprache des Prozesses; ohne Register der deutsche. */
+const nameDerSprache = (art, sache, deutsch) => (namen ? namen[art](sache, namen.prozessSprache()) : deutsch);
+
 // Die Praefixe kommen aus dem Board-Teil dokumente (Issue #1218). Abgefangen wie im Einstieg:
 // Fehlt der Teil, wirft jede Funktion erst, wenn jemand sie braucht — ein stilles `false`
 // liesse ein Plandokument als Arbeitspaket durch. Der Pfad ist nicht literal, deshalb nennt
 // die Gruppe dieses Teils den Bereich board-dokumente von Hand (E3).
 const praefixFehlt = (was) => () => {
-  throw new Error(`board/dokumente.mjs fehlt neben night.mjs (${join(NACHBAR_DIR, "board")}) — das Praefix ${was} ist nicht erkennbar.`);
+  throw new Error(t("praefixFehlt", { pfad: join(NACHBAR_DIR, "board"), praefix: was }));
 };
 const {
   istFachlich: isFachlich,
@@ -72,10 +209,9 @@ const {
 // Die Marker in Body und Kommentaren kommen aus dem Register im Board-Teil und gelten unter
 // beiden Namen (Issue #1443, Plan #1420 E15). Fehlt es, wirft der Ersatz beim ersten Lesen.
 const namenFehlt = () => {
-  throw new Error(`board/namen.mjs fehlt neben night.mjs (${join(NACHBAR_DIR, "board")}) — Marker sind nicht lesbar.`);
+  throw new Error(t("namenFehlt", { pfad: join(NACHBAR_DIR, "board") }));
 };
-const { erkenneMarker, markerWerte } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "namen.mjs")).href)
-  .catch(() => ({ erkenneMarker: namenFehlt, markerWerte: namenFehlt }));
+const { erkenneMarker, markerWerte } = namen ?? { erkenneMarker: namenFehlt, markerWerte: namenFehlt };
 
 // --- Anbindung an den Einstieg (Plan #1199, E16) ---
 
@@ -83,17 +219,17 @@ const { erkenneMarker, markerWerte } = await import(pathToFileURL(join(NACHBAR_D
 // ist, hat keinen.
 const anbindung = {
   laufAbschliessen: () => {
-    throw new Error("laufAbschliessen ist nicht angebunden — der Einstieg kit/night.mjs setzt es beim Laden.");
+    throw new Error(t("nichtAngebunden", { haken: "laufAbschliessen" }));
   },
   fuehreVorflug: () => {
-    throw new Error("fuehreVorflug ist nicht angebunden — der Einstieg kit/night.mjs setzt es beim Laden.");
+    throw new Error(t("nichtAngebunden", { haken: "fuehreVorflug" }));
   },
 };
 
 /** Setzt die Haken aus `anbindung`; nicht genannte behalten ihren Wert. */
 export function ketteAnbinden(haken) {
   for (const [name, fn] of Object.entries(haken)) {
-    if (!Object.hasOwn(anbindung, name)) throw new Error(`ketteAnbinden kennt keinen Haken '${name}'`);
+    if (!Object.hasOwn(anbindung, name)) throw new Error(t("hakenUnbekannt", { name }));
     anbindung[name] = fn;
   }
 }
@@ -145,7 +281,7 @@ export function ketteAbhaengigkeiten(neu) {
     return;
   }
   for (const [name, fn] of Object.entries(neu)) {
-    if (!Object.hasOwn(KETTE_ABHAENGIGKEITEN, name)) throw new Error(`ketteAbhaengigkeiten kennt keine Abhaengigkeit '${name}'`);
+    if (!Object.hasOwn(KETTE_ABHAENGIGKEITEN, name)) throw new Error(t("abhaengigkeitUnbekannt", { name }));
     abh[name] = fn;
   }
 }
@@ -178,8 +314,9 @@ export function ketteBudgetStand() {
 }
 
 // Was die Protokollzeile je Lauf-Art ueber ihren Config-Block sagen muss. Getrennt von der
-// Zeile selbst, weil nur diese drei Angaben sich unterscheiden — der Satzbau nicht.
-const KETTE_BUDGET_TEXT = { name: "der Kette", block: "night.kette", defaults: KETTE_BUDGET_DEFAULTS };
+// Zeile selbst, weil nur diese drei Angaben sich unterscheiden — der Satzbau nicht. Eine
+// Funktion, damit der Name in der Sprache des Prozesses steht.
+const ketteBudgetText = () => ({ name: t("budgetName"), block: "night.kette", defaults: KETTE_BUDGET_DEFAULTS });
 
 /**
  * Die Protokollzeile zu den Budgets aus den Defaults (Issue #659), `null` ohne solche.
@@ -189,13 +326,11 @@ const KETTE_BUDGET_TEXT = { name: "der Kette", block: "night.kette", defaults: K
  * `text` nennt den Lauf und seinen Block (Issue #909): Kette und Prueflauf bilden dieselbe
  * Zeile, und zwei Fassungen desselben Satzes liefen bei der ersten Aenderung auseinander.
  */
-export function budgetDefaultsZeile(budget, ausDefault, text = KETTE_BUDGET_TEXT) {
+export function budgetDefaultsZeile(budget, ausDefault, text = ketteBudgetText()) {
   if (ausDefault.length === 0) return null;
   const werte = ausDefault.map((feld) => `${feld}=${budget[feld]}`).join(", ");
-  const ganz = ausDefault.length === Object.keys(text.defaults).length
-    ? ` — ${text.block} in .claude/workflow.config.json fehlt oder setzt kein Feld.`
-    : "";
-  return `Budget ${text.name} aus den Defaults: ${werte}${ganz}`;
+  const ganz = ausDefault.length === Object.keys(text.defaults).length ? t("budgetBlockLeer", { block: text.block }) : "";
+  return t("budgetDefaults", { name: text.name, werte, ganz });
 }
 
 // --- Wurzel belegt (Plan #1113, E5, E6) ---
@@ -297,17 +432,19 @@ export function hatReviewFertigLabel(issue) {
  * die Faelle wiedererkennen will (der Kommentar an der abgelehnten Anforderung), prueft
  * auf dieses Praefix und nicht auf den ganzen Text.
  */
-const ungeprueftPraefix = (label) => `ungeprueft: Label '${label}' fehlt`;
-export const UNGEPRUEFT_PRAEFIX = ungeprueftPraefix(REVIEW_FERTIG_LABEL);
+const ungeprueftPraefix = (label) => t("ungeprueftPraefix", { label });
+// Die deutsche Fassung, unabhaengig von der Sprache des Prozesses.
+export const UNGEPRUEFT_PRAEFIX = textIn("de", "ungeprueftPraefix", { label: REVIEW_FERTIG_LABEL });
 
 /**
- * Ob ein Grund der Grund „Pruefung fehlt" ist — unter dem Labelnamen jeder Sprache: Der
- * Grund nennt den Namen der Projektsprache (Issue #1429), erkannt wird er immer.
+ * Ob ein Grund der Grund „Pruefung fehlt" ist — in jeder Sprache und unter dem Labelnamen
+ * jeder Sprache: Der Grund steht in der Projektsprache und nennt deren Labelnamen (Issue
+ * #1429, #1491), erkannt wird er immer.
  */
 export function istUngeprueftGrund(grund) {
   const g = String(grund);
-  return [REVIEW_FERTIG_LABEL, labelDerSprache("reviewFertig", { language: "en" }, REVIEW_FERTIG_LABEL)]
-    .some((label) => g.startsWith(ungeprueftPraefix(label)));
+  const labels = [REVIEW_FERTIG_LABEL, labelDerSprache("reviewFertig", { language: "en" }, REVIEW_FERTIG_LABEL)];
+  return Object.keys(TEXTE).some((sprache) => labels.some((label) => g.startsWith(textIn(sprache, "ungeprueftPraefix", { label }))));
 }
 
 /**
@@ -320,8 +457,8 @@ export function istUngeprueftGrund(grund) {
 export function pruefungFehltGrund(id, kettenLabel) {
   const label = reviewFertigLabelName();
   const praefix = ungeprueftPraefix(label);
-  const schritt = `mit /issue-review #${id} pruefen lassen, das setzt ${label}; das Label ${kettenLabel} bleibt dran`;
-  return { praefix, schritt, text: `${praefix} — ${schritt}` };
+  const schritt = t("pruefungFehltSchritt", { id, label, kettenLabel });
+  return { praefix, schritt, text: t("pruefungFehlt", { praefix, schritt }) };
 }
 
 /**
@@ -344,7 +481,12 @@ export const KETTE_UNGEPRUEFT_ANKER = "## Kette nicht gestartet: Pruefung fehlt"
  * #1243, A9; Issue #1244) — wie `UNGEPRUEFT_PRAEFIX` erkennt `uebersprungeneVerbuchen`
  * daran die Karten, die einen Hinweis bekommen.
  */
-export const ZIEL_UNPASSEND_PRAEFIX = "unpassende Einstellung: ";
+export const ZIEL_UNPASSEND_PRAEFIX = textIn("de", "zielUnpassendPraefix");
+
+/** Ob ein Grund der einer unpassenden Einstellung ist, in jeder Sprache (Issue #1491). */
+export function istZielUnpassendGrund(grund) {
+  return Object.keys(TEXTE).some((sprache) => String(grund).startsWith(textIn(sprache, "zielUnpassendPraefix")));
+}
 
 /** Der Anker des einmaligen Hinweises an einer solchen Karte, gebaut wie `KETTE_UNGEPRUEFT_ANKER`. */
 export const KETTE_ZIEL_ANKER = "## Kette nicht gestartet: unpassende Einstellung";
@@ -371,13 +513,14 @@ const STOPP_FRAGE_ZITAT = 120;
  */
 export function stoppFragenGrund(body) {
   const abschnitt = abschnittLesen(body, OFFENE_FRAGEN_UEBERSCHRIFT);
-  if (abschnitt === null) return `kein Abschnitt ## ${OFFENE_FRAGEN_NAME}`;
+  const name = nameDerSprache("ueberschriftName", "offeneFragen", OFFENE_FRAGEN_NAME);
+  if (abschnitt === null) return t("stoppAbschnittFehlt", { name });
   // Nur Zeilen ausserhalb eines Fence: Ein Plan, der die Regelform als Beispiel zeigt,
   // haette sich sonst mit seinem eigenen Codeblock freigegeben.
   const erste = abschnitt.zeilen.find((z, i) => abschnitt.ausserhalb[i] && z.trim() !== "");
-  if (erste === undefined) return `Abschnitt ## ${OFFENE_FRAGEN_NAME} ist leer`;
+  if (erste === undefined) return t("stoppAbschnittLeer", { name });
   if (erste.trim().startsWith(KEINE_STOPP_FRAGEN)) return null;
-  return `offene Stopp-Frage: ${flatten(erste, STOPP_FRAGE_ZITAT)}`;
+  return t("stoppFrageOffen", { frage: flatten(erste, STOPP_FRAGE_ZITAT) });
 }
 
 // Wie eine fachliche Anforderung sagt, dass keine Frage mehr offen ist: die erste
@@ -408,7 +551,7 @@ export function offeneFragenGrund(body) {
   const erste = abschnitt.zeilen.find((z, i) => abschnitt.ausserhalb[i] && z.trim() !== "");
   if (erste === undefined) return null;
   if (KEINE_PO_FRAGEN.test(erste.trim())) return null;
-  return `offene Frage an den PO: ${flatten(erste, STOPP_FRAGE_ZITAT)}`;
+  return t("poFrageOffen", { frage: flatten(erste, STOPP_FRAGE_ZITAT) });
 }
 
 // --- Das Erfolgssignal der Erzeugung (Issue #520) ---
@@ -583,8 +726,8 @@ export function abdeckungPrompt(fachplanId, planId, paketIds) {
  * liefen bei der ersten Aenderung auseinander.
  */
 function kettenAusschluss(issue, kettenLabel) {
-  if (issue.status !== "backlog") return `steht in ${issue.status ?? "unbekannt"}, nicht in Backlog`;
-  if (hatKlaerenLabel(issue)) return `traegt ${KLAEREN_LABEL} — die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen, dann das Label abnehmen`;
+  if (issue.status !== "backlog") return t("nichtInBacklog", { status: issue.status ?? t("unbekannt") });
+  if (hatKlaerenLabel(issue)) return t("ketteKlaeren", { label: klaerenLabelName() });
   if (!hatReviewFertigLabel(issue)) return pruefungFehltGrund(issue.id, kettenLabel).text;
   // Zuletzt die offenen Fragen an den PO (Issue #916): Wer die Pruefung noch gar nicht
   // laufen liess, soll das zuerst erfahren; die Fragen sind der naechste Schritt danach.
@@ -592,7 +735,7 @@ function kettenAusschluss(issue, kettenLabel) {
   // PO-Fragen ausdruecklich nicht beantworten, also sagt das Label darueber nichts.
   const poFrage = offeneFragenGrund(issue?.body || "");
   if (poFrage !== null) {
-    return `${poFrage}; die Fragen im Body beantworten und '## ${PO_FRAGEN_NAME}' auf 'Keine' setzen`;
+    return t("poFragen", { frage: poFrage, name: nameDerSprache("ueberschriftName", "poFragen", PO_FRAGEN_NAME) });
   }
   return null;
 }
@@ -614,15 +757,20 @@ function kettenAusschluss(issue, kettenLabel) {
  * Boards treffen, zeichengleich — siehe `fachlicheQuelleVon`.
  */
 export function planAusschluss(issue, kettenLabel, karten) {
-  if (issue?.status !== "backlog") return `steht in ${issue?.status ?? "unbekannt"}, nicht in Backlog`;
+  if (issue?.status !== "backlog") return t("nichtInBacklog", { status: issue?.status ?? t("unbekannt") });
   const quelle = fachlicheQuelleVon(issue?.body || "");
   if (quelle === null || !(karten || []).some((k) => String(k?.id) === quelle)) {
-    return `die fachliche Herkunft ist nicht erkennbar — die Zeile '${HERKUNFT_FELD.plan}: Issue #N' fehlt im Plan oder nennt keine Karte dieses Boards (die Nummer wird zeichengleich verglichen, fuehrende Nullen zaehlen mit)`;
+    return t("herkunftFehlt", { feld: nameDerSprache("markerName", "fachlicheQuelle", `${HERKUNFT_FELD.plan}:`) });
   }
-  if (hatKlaerenLabel(issue)) return `traegt ${KLAEREN_LABEL} — die Entscheidung gehoert in den Plan, danach nimmt ein Mensch das Label ab`;
+  if (hatKlaerenLabel(issue)) return t("planKlaeren", { label: klaerenLabelName() });
   const frage = stoppFragenGrund(issue?.body || "");
   if (frage !== null) {
-    return `eine Entscheidung wartet: ${frage}; sie gehoert als Eintrag unter '## ${ENTSCHEIDUNGEN_NAME}' des Plans, danach traegt '## ${OFFENE_FRAGEN_NAME}' wieder '${KEINE_STOPP_FRAGEN}' — ein Satz in der fachlichen Anforderung genuegt nicht`;
+    return t("planEntscheidung", {
+      frage,
+      entscheidungen: nameDerSprache("ueberschriftName", "architektonischeEntscheidungen", ENTSCHEIDUNGEN_NAME),
+      offen: nameDerSprache("ueberschriftName", "offeneFragen", OFFENE_FRAGEN_NAME),
+      keine: KEINE_STOPP_FRAGEN,
+    });
   }
   if (!hatReviewFertigLabel(issue)) return pruefungFehltGrund(issue.id, kettenLabel).text;
   return null;
@@ -639,30 +787,29 @@ export function planAusschluss(issue, kettenLabel, karten) {
  */
 export function zielAusschluss(karte, art, plan) {
   const labels = karte?.labels || [];
-  const schritt = "die Karte behaelt ihre Labels";
+  const praefix = t("zielUnpassendPraefix");
+  const schritt = t("zielSchritt");
   const ziele = labels.filter(istZielLabel);
-  if (ziele.length > 1) {
-    return `${ZIEL_UNPASSEND_PRAEFIX}mehr als ein Ziel (${ziele.join(", ")}) — alle bis auf eines abnehmen; ${schritt}`;
-  }
+  if (ziele.length > 1) return t("zielMehrere", { praefix, ziele: ziele.join(", "), schritt });
   const pruefer = PLANREVIEW_LABELS.filter((l) => labels.includes(l));
-  if (pruefer.length > 1) {
-    return `${ZIEL_UNPASSEND_PRAEFIX}${pruefer.join(" und ")} zugleich — eines abnehmen; ${schritt}`;
-  }
+  if (pruefer.length > 1) return t("prueferZugleich", { praefix, pruefer: pruefer.join(t("prueferUnd")), schritt });
   const zielPlan = kennzeichenName(labels, zielLabelName("plan", ZUSTAND.config), "zielPlan");
-  if (art === "plan" && zielPlan) {
-    return `${ZIEL_UNPASSEND_PRAEFIX}${zielPlan} an einem Plandokument — der Plan steht schon; ein weiter reichendes Ziel setzen oder das Label abnehmen; ${schritt}`;
-  }
-  if (art === "plan" && pruefer.length === 1) {
-    return `${ZIEL_UNPASSEND_PRAEFIX}${pruefer[0]} an einem Plandokument — die Prueferzahl gilt nur an der fachlichen Anforderung; das Label abnehmen; ${schritt}`;
-  }
+  if (art === "plan" && zielPlan) return t("zielPlanAmPlan", { praefix, label: zielPlan, schritt });
+  if (art === "plan" && pruefer.length === 1) return t("prueferAmPlan", { praefix, label: pruefer[0], schritt });
   if (art === "fachplan" && pruefer.length === 1 && plan && hatPlanReviewMarker(plan.body || "")) {
-    return `${ZIEL_UNPASSEND_PRAEFIX}${pruefer[0]}, aber Plan #${plan.id} ist schon geprueft — das Label abnehmen oder das Kettenlabel an den Plan setzen; ${schritt}`;
+    return t("planSchonGeprueft", { praefix, label: pruefer[0], plan: plan.id, schritt });
   }
   return null;
 }
 
 /** Der Grund an einer gekennzeichneten Karte, die keine der beiden Auftragsarten traegt. */
-const KEINE_AUFTRAGSART_GRUND = "weder [Fachlich] noch [Plan] — das Kennzeichen gilt an der fachlichen Anforderung oder am Plandokument";
+const keineAuftragsartGrund = () => t("keineAuftragsart", {
+  fachlich: nameDerSprache("praefix", "fachlich", "[Fachlich]"),
+  plan: nameDerSprache("praefix", "plan", "[Plan]"),
+});
+
+/** Der Name von `kit:klaeren` in der Projektsprache, `kit:clarify` im englischen. */
+const klaerenLabelName = () => labelDerSprache("klaeren", ZUSTAND.config, KLAEREN_LABEL);
 
 /** Die Auftragsart am Titel-Praefix — `null`, wenn die Karte keine der beiden traegt. */
 function auftragsartVon(titel) {
@@ -695,10 +842,10 @@ function auftragAus(issue, art) {
 function kollisionsGrund(auftrag, juengster) {
   if (juengster === null) return null;
   if (auftrag.art === "fachplan") {
-    return `zu dieser Anforderung ist Plan #${juengster.id} gekennzeichnet — er laeuft an ihrer Stelle, ein zweiter Plan entstuende sonst daneben`;
+    return t("kollisionAnforderung", { plan: juengster.id });
   }
   if (juengster.id !== auftrag.planId) {
-    return `zur fachlichen Quelle #${auftrag.F} ist ein juengerer Plan gekennzeichnet — #${juengster.id} laeuft an seiner Stelle`;
+    return t("kollisionPlan", { quelle: auftrag.F, plan: juengster.id });
   }
   return null;
 }
@@ -764,7 +911,7 @@ export function waehleKettenKandidaten(issues, label, max, { belegt = () => null
   for (const issue of alle) {
     const art = auftragsartVon(issue?.title ?? "");
     if (art === null) {
-      gruende.set(String(issue.id), KEINE_AUFTRAGSART_GRUND);
+      gruende.set(String(issue.id), keineAuftragsartGrund());
       continue;
     }
     const grund = ausschlussGrund(issue, art, label, issues || []);
@@ -866,7 +1013,7 @@ export function wartendVermerken(dokId, stufe, schlusstext) {
   writeFileSync(pfad, wartendVermerk(schlusstext), "utf-8");
   try {
     abh.board("issue", "comment", String(dokId), "--text-file", pfad);
-    log(`  Stufe ${stufe}: ${GRUND_WARTEND} — Vermerk '${WARTEND_ANKER}' an #${dokId} geschrieben.`);
+    log(t("wartendVermerkt", { stufe, grund: GRUND_WARTEND, anker: WARTEND_ANKER, id: dokId }));
   } finally {
     rmSync(pfad, { force: true });
   }
@@ -882,7 +1029,7 @@ export function wartendVermerken(dokId, stufe, schlusstext) {
 export function wartendBeendet(stufe, schlusstext, dokId, ergebnisDa) {
   if (stufe === STUFE_OHNE_WARTEND_ERKENNUNG || !wartendeSession(schlusstext)) return false;
   if (ergebnisDa?.()) {
-    log(`  Stufe ${stufe}: Schlusstext klang nach Warten, das Ergebnis liegt aber vor — die Session gilt als fertig.`);
+    log(t("wartendErgebnisDa", { stufe }));
     return false;
   }
   if (dokId) wartendVermerken(dokId, stufe, schlusstext);
@@ -914,26 +1061,25 @@ export function wartendBeendet(stufe, schlusstext, dokId, ergebnisDa) {
 async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, { dokId = null, ergebnisDa = null, extraEnv } = {}) {
   const rest = budgetMs - (abh.jetzt().getTime() - stufeStart);
   if (rest < KETTE_MINDEST_REST_MS) {
-    return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe} erschoepft, bevor eine weitere Session starten konnte`, grundArt: "zeitbudget", dauerMs: 0, kennzahlen: null, sitzungsAbbruch: true };
+    return { ausgang: "abgebrochen", grund: t("zeitbudgetErschoepft", { stufe }), grundArt: "zeitbudget", dauerMs: 0, kennzahlen: null, sitzungsAbbruch: true };
   }
-  const t = abh.jetzt().getTime();
+  const beginn = abh.jetzt().getTime();
   const res = await runSession(kette.F, kette.args, {
     prompt: `${prompt}\n\n${stufe === "abdeckung" ? ABDECKUNG_ZUSATZ : KETTE_ZUSATZ}`, cwd: kette.wt, stream: true, stufe, timeoutMs: rest,
     ...(extraEnv ? { extraEnv } : {}),
   }, { spawn: abh.spawn, spawnSync: abh.spawnSync });
-  const dauerMs = abh.jetzt().getTime() - t;
+  const dauerMs = abh.jetzt().getTime() - beginn;
   const minuten = (dauerMs / 60000).toFixed(1);
   const kennzahlen = leseKennzahlen(res.stdout);
   kostenAddieren(kette.kosten, kennzahlen);
   if (ZUSTAND.LAUF) kostenAddieren(ZUSTAND.LAUF, kennzahlen);
   const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
   if (timedOut) {
-    return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe}: die Session wurde nach ${minuten} min am Limit beendet`, grundArt: "zeitbudget", dauerMs, kennzahlen, sitzungsAbbruch: true };
+    return { ausgang: "abgebrochen", grund: t("zeitbudgetLimit", { stufe, minuten }), grundArt: "zeitbudget", dauerMs, kennzahlen, sitzungsAbbruch: true };
   }
-  if (res.umgebungGescheitert) laufAnhalten(`Sitzungsstart der Stufe ${stufe} zu #${kette.F} auch im 2. Versuch gescheitert (${exitText(res)})`);
+  if (res.umgebungGescheitert) laufAnhalten(t("sitzungsstartGescheitert", { stufe, id: kette.F, exit: exitText(res) }));
   if (res.error || res.status !== 0) {
-    const exitInfo = exitText(res);
-    return { ausgang: "abgebrochen", grund: `technischer Fehler: die Session der Stufe ${stufe} endete mit ${exitInfo}`, dauerMs, kennzahlen, sitzungsAbbruch: true };
+    return { ausgang: "abgebrochen", grund: t("technischerFehler", { stufe, exit: exitText(res) }), dauerMs, kennzahlen, sitzungsAbbruch: true };
   }
   // Die wartende Sitzung (Plan #773, Issue #778) — hinter Zeitbudget und technischem
   // Fehler, weil sie ein REGULAERES Ende verfeinert: Die Session hat eine lange Arbeit
@@ -953,7 +1099,7 @@ async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, { dokId 
   // angelegter Plan nicht im Ergebnisstand.
   const deckel = kettenKostendeckel(kette);
   if (kette.kosten.kostenSumme > deckel && !kette.kostenGrund) {
-    kette.kostenGrund = `Kostenbudget: ${kette.kosten.kostenSumme.toFixed(2)} $ von ${deckel} $ nach der Stufe ${stufe}`;
+    kette.kostenGrund = t("kostenbudget", { summe: kette.kosten.kostenSumme.toFixed(2), deckel, stufe });
   }
   return { ausgang: "fertig", dauerMs, kennzahlen, res };
 }
@@ -987,7 +1133,7 @@ async function stufePlan(kette) {
   const summe = (s) => { stand.dauerMs += s.dauerMs; stand.kennzahlen = kennzahlenAddieren(stand.kennzahlen, s.kennzahlen); };
 
   const vorher = new Set(abh.board("issue", "list").map((i) => String(i.id)));
-  log(`  Stufe plan: /techplan #${F} (Budget ${budget.planMin} min).`);
+  log(t("planStart", { id: F, minuten: budget.planMin }));
   // Das Ergebnis ist die Herkunftszeile, nicht der Session-Text (E2): nur neue
   // [Plan]-Karten mit `Fachliche Quelle: Issue #F`; bei mehreren die hoechste Nummer.
   const neuePlaene = () => abh.board("issue", "list")
@@ -999,11 +1145,11 @@ async function stufePlan(kette) {
   if (s.ausgang !== "fertig") return s;
 
   const neue = neuePlaene();
-  if (neue.length === 0) return { ausgang: "abgebrochen", grund: "kein Plan entstanden — die Session hat kein [Plan]-Dokument mit der Herkunftszeile angelegt" };
+  if (neue.length === 0) return { ausgang: "abgebrochen", grund: t("keinPlan", { plan: nameDerSprache("praefix", "plan", "[Plan]") }) };
   stand.id = String(neue[0].id);
   stand.weitere = neue.slice(1).map((i) => String(i.id));
-  const weitere = stand.weitere.length ? ` (weitere: ${stand.weitere.map((i) => "#" + i).join(", ")})` : "";
-  log(`  Plan #${stand.id} entstanden aus Issue #${F}${weitere}.`);
+  const weitere = stand.weitere.length ? t("planWeitere", { ids: stand.weitere.map((i) => "#" + i).join(", ") }) : "";
+  log(t("planEntstanden", { plan: stand.id, id: F, weitere }));
   if (kostenErschoepft(kette)) return kostenErschoepft(kette);
 
   const form = await formSicherstellen(kette, stand, stufeStart, budgetMs, summe);
@@ -1013,7 +1159,7 @@ async function stufePlan(kette) {
   const body = abh.board("issue", "get", stand.id).body;
   const grund = stoppFragenGrund(body);
   if (grund !== null) {
-    return { ausgang: "angehalten", grund: `Stopp-Frage im Plan #${stand.id}`, dokId: stand.id, frage: abschnittText(body, OFFENE_FRAGEN_UEBERSCHRIFT) || grund };
+    return { ausgang: "angehalten", grund: t("stoppFrageImPlan", { plan: stand.id }), dokId: stand.id, frage: abschnittText(body, OFFENE_FRAGEN_UEBERSCHRIFT) || grund };
   }
   return { ausgang: "fertig", id: stand.id };
 }
@@ -1993,7 +2139,7 @@ function uebersprungeneVerbuchen(uebersprungen, alle, kettenLabel, dryRun) {
     // auch dort, er ist nur eine Protokollzeile.
     if (!dryRun && abgelehnt.includes(u)) pruefungFehltKommentieren(u);
     // Die unpassende Einstellung (Issue #1244, A9) auf demselben Weg, mit eigenem Anker.
-    if (!dryRun && String(u.grund).startsWith(ZIEL_UNPASSEND_PRAEFIX)) pruefungFehltKommentieren(u, KETTE_ZIEL_ANKER);
+    if (!dryRun && istZielUnpassendGrund(u.grund)) pruefungFehltKommentieren(u, KETTE_ZIEL_ANKER);
   }
   hinweisAufUnbekanntesKennzeichen(alle, abgelehnt, kettenLabel);
 }
