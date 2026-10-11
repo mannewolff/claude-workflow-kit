@@ -58,8 +58,8 @@ import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, geschuetztAmBoardVermerken
 // Zeitbudget-Abbruchs beginnt englisch in der Form der Vorlage am Plan #1420 (`Time budget`).
 // Vertrag bleibt (E14): die Ausgaenge der Kette, die Stufenschluessel, `grundArt`, die
 // Labelnamen, die Anker und Marker aus dem Register und die Regelform `- Keine.` der offenen
-// Fragen. Die Prompts an Sessions (`KETTE_ZUSATZ` und die uebrigen) bleiben unveraendert, sie
-// stellt ein Paket der Stufe 4 um.
+// Fragen. Von den Prompts an Sessions geht der Zusatz der Stufen-Sessions ueber die Tabelle
+// (#1471); die uebrigen bleiben deutsch.
 //
 // Umgestellt in drei Teilen: vom Dateianfang bis vor `formSicherstellen` (#1491), von dort bis vor
 // `mitMeldung` (#1492) und von dort bis zum Dateiende (#1493). Der Laufstand-Kommentar nimmt
@@ -288,6 +288,11 @@ export const TEXTE = Object.freeze({
     morgenRitual: "Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt "
       + "deins. Nach Variante A liegen die Pakete morgens in Backlog; Variante B (Label '{label}') hat sie in "
       + "derselben Nacht umgesetzt, sie stehen dann in In review. Protokoll: {pfad}",
+    // Prompt an die Stufen-Sessions (`ketteZusatz`, Issue #1471): ihn liest ein Modell.
+    ketteZusatz: "Dieser Lauf ist unbeaufsichtigt: Es sieht niemand zu, und es wird nicht gefragt. "
+      + "Schreibe dein Ergebnis ans Board, bevor die Session endet. "
+      + "Beende deine Arbeit nicht, solange eine von dir angestossene lange Arbeit laeuft: "
+      + "Warte auf ihr Ergebnis oder brich sie ab und melde den Abbruch als Fehlschlag.",
   }),
   en: Object.freeze({
     praefixFehlt: "board/dokumente.mjs is missing next to night.mjs ({pfad}) — the prefix {praefix} cannot be recognized.",
@@ -510,6 +515,10 @@ export const TEXTE = Object.freeze({
     morgenRitual: "Morning ritual: review plans and packages, read the coverage, pull packages to Ready — the GO stays "
       + "yours. After variant A the packages are in Backlog in the morning; variant B (label '{label}') implemented "
       + "them in the same night, they are then in In review. Log: {pfad}",
+    ketteZusatz: "This run is unattended: nobody is watching, and nobody will be asked. "
+      + "Write your result to the board before the session ends. "
+      + "Do not end your work while a long-running job you started is still running: "
+      + "wait for its result or cancel it and report the cancellation as a failure.",
   }),
 });
 
@@ -994,11 +1003,11 @@ export function fachlicheQuelleVon(body) {
 // Nachricht aus. Der Satz ueber das Board widersprach ihrem Auftrag, darum bekommt sie
 // `ABDECKUNG_ZUSATZ` — dieselben Saetze ohne ihn (Issue #1106).
 //
-// Exportiert fuer die Tests.
-export const KETTE_ZUSATZ = "Dieser Lauf ist unbeaufsichtigt: Es sieht niemand zu, und es wird nicht gefragt. "
-  + "Schreibe dein Ergebnis ans Board, bevor die Session endet. "
-  + "Beende deine Arbeit nicht, solange eine von dir angestossene lange Arbeit laeuft: "
-  + "Warte auf ihr Ergebnis oder brich sie ab und melde den Abbruch als Fehlschlag.";
+// Der Zusatz steht in der Sprache des Projekts in TEXTE (`ketteZusatz`, Issue #1471);
+// `KETTE_ZUSATZ` bleibt der deutsche Wortlaut, exportiert fuer die Tests.
+export const KETTE_ZUSATZ = textIn("de", "ketteZusatz");
+/** Der Zusatz der Stufen-Sessions in der Sprache des Prozesses. */
+export const ketteZusatz = () => t("ketteZusatz");
 export const ABDECKUNG_ZUSATZ = "Dieser Lauf ist unbeaufsichtigt: Es sieht niemand zu, und es wird nicht gefragt. "
   + "Gib dein Ergebnis als letzte Nachricht aus, bevor die Session endet. "
   + "Beende deine Arbeit nicht, solange eine von dir angestossene lange Arbeit laeuft: "
@@ -1298,7 +1307,7 @@ export function korrekturPrompt(dokId, verstoesse) {
     `und uebertrage ihn mit \`node .claude/kit/board.mjs issue update ${dokId} --body-file <pfad>\`.`,
     "Aendere sonst nichts: keinen Inhalt, keine anderen Karten, keine Dateien im Projekt.",
     "",
-    KETTE_ZUSATZ,
+    ketteZusatz(),
   ].join("\n");
 }
 
@@ -1407,7 +1416,7 @@ async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, { dokId 
   }
   const beginn = abh.jetzt().getTime();
   const res = await runSession(kette.F, kette.args, {
-    prompt: `${prompt}\n\n${stufe === "abdeckung" ? ABDECKUNG_ZUSATZ : KETTE_ZUSATZ}`, cwd: kette.wt, stream: true, stufe, timeoutMs: rest,
+    prompt: `${prompt}\n\n${stufe === "abdeckung" ? ABDECKUNG_ZUSATZ : ketteZusatz()}`, cwd: kette.wt, stream: true, stufe, timeoutMs: rest,
     ...(extraEnv ? { extraEnv } : {}),
   }, { spawn: abh.spawn, spawnSync: abh.spawnSync });
   const dauerMs = abh.jetzt().getTime() - beginn;

@@ -164,7 +164,9 @@ test("[1491] ohne Spracheinstellung bleiben die Gruende der Kette deutsch", () =
   assert.equal(uebersprungen[0].grund, "weder [Fachlich] noch [Plan] — das Kennzeichen gilt an der fachlichen Anforderung oder am Plandokument");
 });
 
-test("[1491] die Prompts an Sessions bleiben unveraendert", async () => {
+// Seit #1471 geht der Zusatz ueber die Tabelle (test/night-session-prompt-en.test.mjs); die
+// exportierte Konstante bleibt der deutsche Wortlaut.
+test("[1491] KETTE_ZUSATZ bleibt der deutsche Wortlaut, auch in einem englischen Projekt", async () => {
   await inSprache("en", () => {
     assert.match(KETTE_ZUSATZ, /^Dieser Lauf ist unbeaufsichtigt/);
   });
@@ -172,8 +174,8 @@ test("[1491] die Prompts an Sessions bleiben unveraendert", async () => {
 
 // --- Keine deutsche Meldung am Texthelfer vorbei ------------------------------------------
 
-// Nicht ueber die Tabelle laufen die Prompts an Sessions, die ein Modell liest und kein Mensch;
-// sie stellt ein Paket der Stufe 4 um (#1471).
+// Nicht ueber die Tabelle laufen die Prompts an Sessions, die ein Modell liest und kein Mensch,
+// ausser dem Zusatz der Stufen-Sessions (#1471); der erste Bereich traegt noch ABDECKUNG_ZUSATZ.
 const KETTE_OHNE = [
   { von: "export const KETTE_ZUSATZ", bis: "// Der Anker des Halt-Kommentars" },
   { von: "export const ABDECKUNG_PROMPT", bis: "function kettenAusschluss" },

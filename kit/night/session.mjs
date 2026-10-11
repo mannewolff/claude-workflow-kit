@@ -41,7 +41,7 @@ export { LAUF_VARIABLEN, ohneLaufVariablen };
 
 // Teil 1 (#1488) deckt den Quelltext bis vor `permissionArgs`, Teil 2 (#1489) den Rest. Deutsch
 // bleiben dort die Prompts an Sessions (`salvagePrompt`, `vorflugPrompt`, die Probe) — sie liest
-// ein Modell — und `gueteAuswerten`, deren Wortlaut dem Original in kit/checks.mjs folgt.
+// ein Modell; nur der Vorgabeprompt geht ueber die Tabelle (#1471) — und `gueteAuswerten`, deren Wortlaut dem Original in kit/checks.mjs folgt.
 // Vertrag bleibt (E14): die Marken `Ergebnis uebernommen` und `Pruefung festgefahren:`, die
 // kit/checks.mjs schreibt und dieser Teil aus dem Strom liest, die Stufenwerte
 // `schwer|mittel|leicht` und die Feldnamen `modell`, `kommando` und `night.modelle`.
@@ -90,6 +90,9 @@ export const TEXTE = Object.freeze({
     vorflugZeitlimit: "Zeitlimit von {ms} ms ueberschritten",
     vorflugOhneBlock: "die Vorflug-Session endete ohne auswertbaren Befund-Block",
     vorflugExitOhneBlock: "die Vorflug-Session endete mit Exit {status} und ohne auswertbaren Befund-Block",
+    // Der Vorgabeprompt einer Umsetzungs-Session (Issue #1471): Der Skill-Name ist in beiden
+    // Sprachen derselbe, und `umsetzungsStart` erkennt ihn.
+    vorgabePrompt: "/implement-next #{id}",
   }),
   en: Object.freeze({
     checksFehlt: "checks.mjs is not next to night.mjs ({pfad}) — the location of the check summary is unknown.",
@@ -134,6 +137,7 @@ export const TEXTE = Object.freeze({
     vorflugZeitlimit: "time limit of {ms} ms exceeded",
     vorflugOhneBlock: "the preflight session ended without an evaluable finding block",
     vorflugExitOhneBlock: "the preflight session ended with exit {status} and without an evaluable finding block",
+    vorgabePrompt: "/implement-next #{id}",
   }),
 });
 
@@ -705,6 +709,11 @@ export function auskunftBeobachter() {
       return { ms, aufrufe };
     },
   };
+}
+
+/** Der Vorgabeprompt einer Umsetzungs-Session zu `issueId`, in der Sprache des Prozesses. */
+export function vorgabePrompt(issueId) {
+  return t("vorgabePrompt", { id: issueId });
 }
 
 /**
@@ -1893,7 +1902,7 @@ export async function runSession(issueId, args, opts = {}, abh = {}) {
   // Das Issue wird der Session verbindlich uebergeben (Issue #191) — sie waehlt
   // nicht mehr selbst. Der Prompt geht zusaetzlich als NIGHT_PROMPT in die
   // Kindprozess-Umgebung, damit der Auftrag auch im Test-Hook-Pfad sichtbar ist.
-  const prompt = opts.prompt || `/implement-next #${issueId}`;
+  const prompt = opts.prompt || vorgabePrompt(issueId);
   // Das Modell dieser Session (Issue #665). `opts.model ?? args.model` statt eines
   // Pflichtparameters: `runSession` ist exportiert und wird an mehreren Stellen mit
   // `args` allein gerufen — die Kette behaelt so ohne Zutun das Modell des Laufs.
