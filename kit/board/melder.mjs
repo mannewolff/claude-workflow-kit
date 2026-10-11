@@ -22,8 +22,58 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { BoardError, fail, loadConfig, readWorkflowConfig } from "./grundlagen.mjs";
 import { ToolboxIssueTracker, resolveToolboxToken, agentModelHeader } from "./adapter.mjs";
 import { WEGMARKEN_SPALTEN, WEGMARKEN_DATEI } from "./dokumente.mjs";
+import { text } from "./namen.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * Die Texte an Menschen in beiden Sprachen (Issue #1454, Plan #1420 E13): die Freitextfelder der
+ * Meldung (`excerpt`, `abortReason`), die Fehler und Hinweise der Melder und der Rueckfall-Vermerk.
+ * Unuebersetzt bleibt der Vertrag (E14): `stages`, `errorClass`, `state`, `grundArt`, die
+ * Feldnamen der Meldung und der Antworten, die Schweige-Gruende des Sitzungs-Melders und die
+ * Werte von `abschluss`. `title` und `noWorkReason` kommen aus dem Stand und gehen unveraendert
+ * durch. Den Gleichstand der Schluessel und Platzhalter haelt test/board-melder-texte-en.test.mjs.
+ */
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    auszugPruefung: "Pruefung: {pruefung}",
+    auszugFehler: "Fehler: {fehler}",
+    abbruchHarterStopp: "Harter Stopp",
+    abbruchVerstummt: "Verstummt",
+    abbruchAbgebrochen: "Abgebrochen",
+    abbruchMitKlasse: "{grund} ({fehlerklasse})",
+    keineSchnittstelle: "Lauf-Art '{art}' hat keine Nachtlauf-Schnittstelle (erwartet: {erwartet})",
+    nurToolbox: "Einlieferung nur mit issueTracker toolbox moeglich, konfiguriert ist '{tracker}'.",
+    dateiFehlt: "nightrun melden braucht --datei <ergebnisstand.json>",
+    nichtLesbar: "Ergebnisstand {datei} nicht lesbar: {grund}",
+    nachversuch: "Hinweis: Laufmeldung mit releasePreparation abgewiesen (HTTP 400), Nachversuch ohne das Feld: {grund}",
+    rueckfall: "ohne releasePreparation nachgemeldet nach HTTP 400",
+    unbekanntNightrun: "Unbekannter nightrun-Befehl: '{befehl}'",
+    standNichtGeschrieben: "Hinweis: Sitzungs-Stand nicht geschrieben ({pfad}): {grund}",
+    nichtEingeliefert: "Hinweis: Sitzungs-Meldung nicht eingeliefert: {grund}",
+    unbekanntSitzung: "Unbekannter sitzung-Befehl: '{befehl}'",
+  }),
+  en: Object.freeze({
+    auszugPruefung: "Check: {pruefung}",
+    auszugFehler: "Error: {fehler}",
+    abbruchHarterStopp: "Hard stop",
+    abbruchVerstummt: "Went silent",
+    abbruchAbgebrochen: "Aborted",
+    abbruchMitKlasse: "{grund} ({fehlerklasse})",
+    keineSchnittstelle: "Run type '{art}' has no night-run interface (expected: {erwartet})",
+    nurToolbox: "Delivery only possible with issueTracker toolbox, configured is '{tracker}'.",
+    dateiFehlt: "nightrun report needs --file <result.json>",
+    nichtLesbar: "Result file {datei} not readable: {grund}",
+    nachversuch: "Note: run report with releasePreparation rejected (HTTP 400), retrying without the field: {grund}",
+    rueckfall: "reported again without releasePreparation after HTTP 400",
+    unbekanntNightrun: "Unknown nightrun command: '{befehl}'",
+    standNichtGeschrieben: "Note: session state not written ({pfad}): {grund}",
+    nichtEingeliefert: "Note: session report not delivered: {grund}",
+    unbekanntSitzung: "Unknown session command: '{befehl}'",
+  }),
+});
+
+const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
 
 // ============================================================
 // Nachtlauf einliefern (Issue #669)
@@ -135,8 +185,8 @@ function nachtlaufAuszug(e) {
   const grund = gefuellt(e.grund) ? e.grund : null;
   const f = e.ausgang === "festgefahren" ? e.festgefahren : null;
   const teile = [grund];
-  if (f && gefuellt(f.pruefung)) teile.push(`Pruefung: ${f.pruefung}`);
-  if (f && gefuellt(f.fehler)) teile.push(`Fehler: ${f.fehler}`);
+  if (f && gefuellt(f.pruefung)) teile.push(t("auszugPruefung", { pruefung: f.pruefung }));
+  if (f && gefuellt(f.fehler)) teile.push(t("auszugFehler", { fehler: f.fehler }));
   const text = teile.filter((t) => t !== null).join("\n");
   return text === "" ? null : text.slice(0, NACHTLAUF_AUSZUG_MAX);
 }
@@ -249,12 +299,12 @@ function nachtlaufBudget(stand) {
 // Die Abschluesse, die eine Stoerung sind, mit dem Grund, der bleibt, wenn der Stand keinen
 // nennt. `verstummt` setzt der Waechter, `abgebrochen` die Abbruch-Handler (Issue #1085,
 // E18): Beide schliessen den Lauf ab, und ohne Grund stuende er am Leitstand wie ein
-// regulaer beendeter.
-const NACHTLAUF_ABBRUCH = { harterStopp: "Harter Stopp", verstummt: "Verstummt", abgebrochen: "Abgebrochen" };
+// regulaer beendeter. Die Schluessel sind Vertrag (E14), die Werte Schluessel der Texttabelle.
+const NACHTLAUF_ABBRUCH = { harterStopp: "abbruchHarterStopp", verstummt: "abbruchVerstummt", abgebrochen: "abbruchAbgebrochen" };
 
 export function nachtlaufAbbruchGrund(stand) {
-  const ersatz = NACHTLAUF_ABBRUCH[stand?.abschluss];
-  if (ersatz === undefined) return null;
+  if (!Object.hasOwn(NACHTLAUF_ABBRUCH, stand?.abschluss ?? "")) return null;
+  const ersatz = t(NACHTLAUF_ABBRUCH[stand.abschluss]);
   const gefuellt = (text) => typeof text === "string" && text !== "";
   if (gefuellt(stand.fehlerText)) return stand.fehlerText.slice(0, NACHTLAUF_AUSZUG_MAX);
   const einheiten = Array.isArray(stand.einheiten) ? stand.einheiten : [];
@@ -262,7 +312,7 @@ export function nachtlaufAbbruchGrund(stand) {
     ? null
     : einheiten.find((e) => String(e?.id) === String(stand.fehlerEinheit));
   if (betroffen && gefuellt(betroffen.grund)) return betroffen.grund.slice(0, NACHTLAUF_AUSZUG_MAX);
-  return gefuellt(stand.fehlerklasse) ? `${ersatz} (${stand.fehlerklasse})` : ersatz;
+  return gefuellt(stand.fehlerklasse) ? t("abbruchMitKlasse", { grund: ersatz, fehlerklasse: stand.fehlerklasse }) : ersatz;
 }
 
 function nachtlaufDauer(einheit) {
@@ -301,7 +351,7 @@ function nachtlaufOhneAusgang(einheit) {
  */
 export function nachtlaufMeldung(stand, jetzt = new Date()) {
   const mode = NACHTLAUF_MODUS[stand?.art];
-  if (!mode) throw new BoardError(`Lauf-Art '${stand?.art}' hat keine Nachtlauf-Schnittstelle (erwartet: ${Object.keys(NACHTLAUF_MODUS).join(" | ")})`);
+  if (!mode) throw new BoardError(t("keineSchnittstelle", { art: stand?.art, erwartet: Object.keys(NACHTLAUF_MODUS).join(" | ") }));
   const laeuft = stand.abschluss === null || stand.abschluss === undefined;
   const items = (Array.isArray(stand.einheiten) ? stand.einheiten : [])
     .filter((e) => /^\d+$/.test(String(e?.id)))
@@ -426,14 +476,14 @@ export async function nightrunMelden(args, {
   melde = (zeile) => process.stderr.write(`${zeile}\n`),
 } = {}) {
   if (config.issueTracker !== "toolbox") {
-    throw new BoardError(`Einlieferung nur mit issueTracker toolbox moeglich, konfiguriert ist '${config.issueTracker}'.`);
+    throw new BoardError(t("nurToolbox", { tracker: config.issueTracker }));
   }
-  if (!args.datei) throw new BoardError("nightrun melden braucht --datei <ergebnisstand.json>");
+  if (!args.datei) throw new BoardError(t("dateiFehlt"));
   let stand;
   try {
     stand = JSON.parse(lesen(args.datei));
   } catch (e) {
-    throw new BoardError(`Ergebnisstand ${args.datei} nicht lesbar: ${e.message}`);
+    throw new BoardError(t("nichtLesbar", { datei: args.datei, grund: e.message }));
   }
   const meldung = nachtlaufMeldung(stand, jetzt());
   try {
@@ -445,9 +495,9 @@ export async function nightrunMelden(args, {
     // verloren gehen: genau ein Nachversuch ohne das Feld. Jeder andere Fehler bleibt.
     if (!(e instanceof BoardError) || e.status !== 400 || !("releasePreparation" in meldung)) throw e;
     const { releasePreparation, ...ohneFeld } = meldung;
-    melde(`Hinweis: Laufmeldung mit releasePreparation abgewiesen (HTTP 400), Nachversuch ohne das Feld: ${e.message.split("\n")[0]}`);
+    melde(t("nachversuch", { grund: e.message.split("\n")[0] }));
     const antwort = await senden(config, ohneFeld);
-    return { ok: true, outcome: antwort?.outcome ?? null, rueckfall: "ohne releasePreparation nachgemeldet nach HTTP 400" };
+    return { ok: true, outcome: antwort?.outcome ?? null, rueckfall: t("rueckfall") };
   }
 }
 
@@ -455,7 +505,7 @@ export async function nightrunMelden(args, {
 export async function dispatchNightrun(command, args, hilfe) {
   if (command === "melden" || command === "report") return ausgeben(await nightrunMelden(args));
   process.stdout.write(hilfe);
-  fail(`Unbekannter nightrun-Befehl: '${command}'`);
+  fail(t("unbekanntNightrun", { befehl: command }));
 }
 
 /** Eine Antwort der Melder: eine Zeile JSON, wie die Hook-Aufrufer sie lesen. */
@@ -781,7 +831,7 @@ function sitzungVerbuchen(start, complete, jetzt, { ablage, melde }) {
       writeFileSync(stand, JSON.stringify({ sitzung: start, zuletzt: jetzt.toISOString() }) + "\n", "utf-8");
     }
   } catch (e) {
-    melde(`Hinweis: Sitzungs-Stand nicht geschrieben (${stand}): ${e.message}`);
+    melde(t("standNichtGeschrieben", { pfad: stand, grund: e.message }));
   }
 }
 
@@ -856,7 +906,7 @@ export async function sitzungMelden(args, {
   } catch (e) {
     // Nicht eingeliefert heisst nicht verbucht: Weder wird gedrosselt noch werden die
     // Wegmarken geleert — der naechste Versuch soll denselben Abschnitt noch sehen.
-    melde(`Hinweis: Sitzungs-Meldung nicht eingeliefert: ${e.message}`);
+    melde(t("nichtEingeliefert", { grund: e.message }));
     return sitzungSchweigt("nicht-eingeliefert");
   }
   sitzungVerbuchen(protokoll.start, complete, zeitpunkt, { ablage, melde });
@@ -866,5 +916,5 @@ export async function sitzungMelden(args, {
 export async function dispatchSitzung(command, args, hilfe) {
   if (command === "melden" || command === "report") return ausgeben(await sitzungMelden(args));
   process.stdout.write(hilfe);
-  fail(`Unbekannter sitzung-Befehl: '${command}'`);
+  fail(t("unbekanntSitzung", { befehl: command }));
 }
