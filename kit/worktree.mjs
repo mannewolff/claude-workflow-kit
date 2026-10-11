@@ -55,7 +55,16 @@ import {
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
 const KIT_VERSION = "4.2.1";
 
-const HELP = `worktree.mjs (claude-workflow-kit v${KIT_VERSION}) — Worktree fuer die Release-Skills
+/**
+ * Die Texte an Menschen in beiden Sprachen (Issue #1499, Plan #1420 E13): Hilfe und die Fehler
+ * dieses Einstiegs. Unuebersetzt bleibt der Maschinenvertrag (E14): die Feldnamen der
+ * JSON-Ausgaben, die Werte von --ergebnis und --fetch, die Referenz und die Dateinamen unter
+ * `.claude/`. Was `night/kitstand.mjs` meldet, traegt dessen eigene Tabelle. Den Gleichstand
+ * der Schluessel und Platzhalter haelt test/befunde-texte-en.test.mjs.
+ */
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    hilfe: `worktree.mjs (claude-workflow-kit v{version}) — Worktree fuer die Release-Skills
 
   anlegen [--praefix <p>] [--ref <ref>] [--issue <n>]   Worktree auf <ref> (Vorgabe HEAD),
                                                         danach das installCommand der Config
@@ -77,7 +86,70 @@ const HELP = `worktree.mjs (claude-workflow-kit v${KIT_VERSION}) — Worktree fu
 
 Die letzte Zeile der Ausgabe ist immer JSON — ausser bei 'im', das die Ausgabe des
 Kommandos durchreicht und nur bei einem eigenen Fehler JSON schreibt.
-`;
+`,
+    keinRepo: "kein git-Repo: {ausgabe}",
+    keineHauptkopie: "git worktree list nennt keine Hauptkopie: {ausgabe}",
+    exitCode: "Exit-Code {status}",
+    signal: "Signal {signal}",
+    installRot: "installCommand '{kommando}' endete mit {code} — der Worktree wurde wieder abgebaut",
+    entfernenPfad: "entfernen braucht den Pfad des Worktrees",
+    rueckwegPfad: "rueckweg braucht den Pfad des Worktrees",
+    festhaltenPfad: "vorbereitung-festhalten braucht den Pfad des Worktrees",
+    festhaltenErgebnis: "vorbereitung-festhalten braucht --ergebnis <gruen|gruen-offen|rot>",
+    imForm: "im braucht <pfad> -- <kommando> [argumente]",
+    imKeinVerzeichnis: "im: '{pfad}' ist kein Verzeichnis",
+    imStart: "im: '{programm}' liess sich nicht starten ({grund})",
+    unbekannt: "unbekanntes Kommando '{kommando}' — bekannt sind anlegen, entfernen, im, nachziehen-pruefen, rueckweg, vorbereitung-festhalten, vorbereitung-pruefen",
+  }),
+  en: Object.freeze({
+    hilfe: `worktree.mjs (claude-workflow-kit v{version}) — worktree for the release skills
+
+  create [--prefix <p>] [--ref <ref>] [--issue <n>]     Worktree on <ref> (default HEAD),
+                                                        then the installCommand of the config
+  remove <path>                                         Tear down the worktree
+  catch-up-check                                        May the local main be rebased?
+  return <path>                                         Summary, executions, findings back
+  record-preparation <path> --result <gruen|gruen-offen|rot>
+      [--open "<text>"]... [--fetch <ok|fehlgeschlagen>]
+                                                        Records the nightly preparation:
+                                                        reference refs/kit/push-vorbereitet on
+                                                        HEAD of the worktree, file
+                                                        .claude/push-vorbereitung.json
+  check-preparation [--discard]                         May /push-main take over the prepared
+                                                        state? No git fetch of its own.
+                                                        --discard deletes file and reference
+  in <path> -- <command> [arguments]                    Starts <command> with <path> as
+                                                        working directory, without a shell; output
+                                                        and exit code of the command pass through
+
+The last line of the output is always JSON — except for 'in', which passes the output of
+the command through and writes JSON only on an error of its own.
+`,
+    keinRepo: "not a git repo: {ausgabe}",
+    keineHauptkopie: "git worktree list names no main copy: {ausgabe}",
+    exitCode: "exit code {status}",
+    signal: "signal {signal}",
+    installRot: "installCommand '{kommando}' ended with {code} — the worktree was torn down again",
+    entfernenPfad: "remove needs the path of the worktree",
+    rueckwegPfad: "return needs the path of the worktree",
+    festhaltenPfad: "record-preparation needs the path of the worktree",
+    festhaltenErgebnis: "record-preparation needs --result <gruen|gruen-offen|rot>",
+    imForm: "in needs <path> -- <command> [arguments]",
+    imKeinVerzeichnis: "in: '{pfad}' is not a directory",
+    imStart: "in: '{programm}' could not be started ({grund})",
+    unbekannt: "unknown command '{kommando}' — known are create, remove, in, catch-up-check, return, record-preparation, check-preparation",
+  }),
+});
+
+// Der Texthelfer aus dem Board-Teil namen (Plan #1420 E13), abgefangen wie der Normalisierer:
+// Fehlt board/namen.mjs neben worktree.mjs, bleiben die Texte deutsch.
+const namen = await import(new URL("./board/namen.mjs", import.meta.url).href).catch(() => null);
+
+/** Der Text zu `schluessel` aus `TEXTE` in der Sprache des Prozesses; ohne Register deutsch. */
+function t(schluessel, werte = {}) {
+  if (namen) return namen.text(TEXTE, schluessel, werte);
+  return TEXTE.de[schluessel].replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
+}
 
 /** Die Dateien, die der Rueckweg ANHAENGT (Buchhaltung, nie ersetzen). */
 const ANGEHAENGT = ".claude/ausfuehrungen.tsv";
@@ -98,9 +170,9 @@ function pfadIn(root, relativ) {
  */
 function repoWurzel() {
   const res = spawnSync("git", ["worktree", "list", "--porcelain"], { encoding: "utf-8" });
-  if (res.status !== 0) throw new Error(`kein git-Repo: ${(res.stderr || res.stdout || "").trim()}`);
+  if (res.status !== 0) throw new Error(t("keinRepo", { ausgabe: (res.stderr || res.stdout || "").trim() }));
   const erste = res.stdout.split(/\r?\n/).find((z) => z.startsWith("worktree "));
-  if (!erste) throw new Error(`git worktree list nennt keine Hauptkopie: ${res.stdout.trim()}`);
+  if (!erste) throw new Error(t("keineHauptkopie", { ausgabe: res.stdout.trim() }));
   return erste.slice("worktree ".length).trim();
 }
 
@@ -191,8 +263,8 @@ function installiereIn(pfad, repoRoot) {
   if (res.status === 0) return kommando;
 
   worktreeEntfernen(pfad, repoRoot);
-  const code = res.status === null ? `Signal ${res.signal}` : `Exit-Code ${res.status}`;
-  throw new Error(`installCommand '${kommando}' endete mit ${code} — der Worktree wurde wieder abgebaut`);
+  const code = res.status === null ? t("signal", { signal: res.signal }) : t("exitCode", { status: res.status });
+  throw new Error(t("installRot", { kommando, code }));
 }
 
 function anlegen(repoRoot, cliArgs) {
@@ -210,7 +282,7 @@ function anlegen(repoRoot, cliArgs) {
 
 function entfernen(repoRoot, cliArgs) {
   const pfad = cliArgs.find((a) => !a.startsWith("--"));
-  if (!pfad) throw new Error("entfernen braucht den Pfad des Worktrees");
+  if (!pfad) throw new Error(t("entfernenPfad"));
   worktreeEntfernen(pfad, repoRoot);
   return { ok: true, entfernt: pfad };
 }
@@ -227,7 +299,7 @@ function entfernen(repoRoot, cliArgs) {
  */
 function rueckweg(repoRoot, cliArgs) {
   const pfad = cliArgs.find((a) => !a.startsWith("--"));
-  if (!pfad) throw new Error("rueckweg braucht den Pfad des Worktrees");
+  if (!pfad) throw new Error(t("rueckwegPfad"));
 
   const quelle = pfadIn(pfad, ZUSAMMENFASSUNG);
   const ziel = pfadIn(repoRoot, ZUSAMMENFASSUNG);
@@ -263,9 +335,9 @@ function flagWerte(cliArgs, name) {
 /** Ruft nur `vorbereitungFesthalten` auf (Plan #1243, Plan-Review Runde 2, Fund 7). */
 function vorbereitungFesthaltenAufruf(repoRoot, cliArgs) {
   const pfad = cliArgs[0];
-  if (!pfad || pfad.startsWith("--")) throw new Error("vorbereitung-festhalten braucht den Pfad des Worktrees");
+  if (!pfad || pfad.startsWith("--")) throw new Error(t("festhaltenPfad"));
   const ergebnis = flagWert(cliArgs, "--ergebnis");
-  if (ergebnis === null) throw new Error("vorbereitung-festhalten braucht --ergebnis <gruen|gruen-offen|rot>");
+  if (ergebnis === null) throw new Error(t("festhaltenErgebnis"));
   const fetch = flagWert(cliArgs, "--fetch") ?? "ok";
   return { ok: true, ...vorbereitungFesthalten({ repoRoot, pfad, ergebnis, offen: flagWerte(cliArgs, "--offen"), fetch }) };
 }
@@ -281,11 +353,11 @@ function vorbereitungFesthaltenAufruf(repoRoot, cliArgs) {
 function imWorktree(cliArgs) {
   const [pfad, trenner, programm, ...argumente] = cliArgs;
   if (!pfad || pfad === "--" || trenner !== "--" || !programm) {
-    throw new Error("im braucht <pfad> -- <kommando> [argumente]");
+    throw new Error(t("imForm"));
   }
-  if (!existsSync(pfad) || !statSync(pfad).isDirectory()) throw new Error(`im: '${pfad}' ist kein Verzeichnis`);
+  if (!existsSync(pfad) || !statSync(pfad).isDirectory()) throw new Error(t("imKeinVerzeichnis", { pfad }));
   const res = spawnSync(programm, argumente, { cwd: pfad, stdio: "inherit" });
-  if (res.error) throw new Error(`im: '${programm}' liess sich nicht starten (${res.error.message})`);
+  if (res.error) throw new Error(t("imStart", { programm, grund: res.error.message }));
   return res.status ?? 1;
 }
 
@@ -298,14 +370,14 @@ function fuehreAus(kommando, cliArgs) {
   if (kommando === "vorbereitung-pruefen") {
     return { ok: true, ...vorbereitungPruefen({ repoRoot: repoWurzel(), verwerfen: cliArgs.some((a) => istFlag(a, "--verwerfen")) }) };
   }
-  throw new Error(`unbekanntes Kommando '${kommando}' — bekannt sind anlegen, entfernen, im, nachziehen-pruefen, rueckweg, vorbereitung-festhalten, vorbereitung-pruefen`);
+  throw new Error(t("unbekannt", { kommando }));
 }
 
 function main() {
   const [befehl, ...cliArgs] = process.argv.slice(2);
   const kommando = deutscherName(KOMMANDOS_EN, befehl);
   if (!kommando || kommando === "--help" || kommando === "-h") {
-    process.stdout.write(HELP);
+    process.stdout.write(t("hilfe", { version: KIT_VERSION }));
     return;
   }
   try {

@@ -14,7 +14,7 @@
 // schluessel und das Praefix `Verschoben nach ` der Board-Verlaufszeile, das der Adapter liefert.
 //
 // Das Paket #1453 ist in drei Teile geschnitten. Der erste (#1497) deckt kit/wirksamkeit.mjs
-// vollstaendig, der zweite (#1498) kit/befunde.mjs; der Teil fuer worktree ergaenzt diese Datei.
+// vollstaendig, der zweite (#1498) kit/befunde.mjs, der dritte (#1499) kit/worktree.mjs.
 // Fuer befunde bleiben dazu Vertrag (E14): die Artnamen, die Marken, die Formwoerter des
 // Fundblocks (`Gegenprobe:`, `— geprueft, bestaetigt`, `— nicht geprueft`, `Art:`), die
 // Angaben-Schluessel, die Vorschlagsstaende und die Werte des Vergleichsstands.
@@ -29,6 +29,7 @@ import { fileURLToPath } from "node:url";
 
 import { TEXTE as WIRKSAMKEIT_TEXTE, befundText, kandidatenText, zahlform } from "../kit/wirksamkeit.mjs";
 import { TEXTE as BEFUNDE_TEXTE, aufrufen as befundeAufrufen } from "../kit/befunde.mjs";
+import { TEXTE as WORKTREE_TEXTE } from "../kit/worktree.mjs";
 import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
 import { mitProjekt, zeile, bewegung, moved, auswerten, wirksamkeit, bericht } from "./helpers/wirksamkeit-fixture.mjs";
 import { deutschAmHelferVorbei, deutschImEnglischen } from "./helpers/quelltext-texte.mjs";
@@ -389,6 +390,155 @@ test("[1498] ein englisches Projekt sieht von befunde.mjs keine deutsche Meldung
     assert.match(alles, /^# Findings of the model reviews$/m, "ohne Repo-Kontext laeuft der Bericht englisch");
     assert.match(alles, /checks\.mjs is not next to befunde\.mjs/, "der fehlende Nachbar meldet sich englisch");
     const gefunden = deutscheBefundeBruchstuecke().filter((s) => alles.includes(s));
+    assert.deepEqual(gefunden, [], "deutsche Meldung in einem englischen Projekt");
+  });
+});
+
+// --- kit/worktree.mjs (Issue #1499) -----------------------------------------------------
+
+// Fuer worktree bleiben dazu Vertrag (E14): die Feldnamen der JSON-Ausgaben, die Werte von
+// --ergebnis (`gruen`, `gruen-offen`, `rot`) und --fetch (`ok`, `fehlgeschlagen`), die Namen
+// der Referenz und der Dateien unter `.claude/`. Was night/kitstand.mjs meldet, traegt dessen
+// eigene Tabelle (Issue #1490).
+
+const WORKTREE = join(KIT, "worktree.mjs");
+
+/** Ein Wegwerf-Repo mit einem Commit und einer Config; `git` fehlt, wenn `repo` falsch ist. */
+function mitWorktreeProjekt({ config = { language: "en", issueTracker: "local" }, repo = true } = {}, fn) {
+  const dir = mkdtempSync(join(tmpdir(), "worktree-en-"));
+  mkdirSync(join(dir, ".claude"), { recursive: true });
+  writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify(config));
+  const git = (...a) => {
+    const res = spawnSync("git", a, { cwd: dir, encoding: "utf-8" });
+    assert.equal(res.status, 0, `git ${a.join(" ")}: ${res.stderr}`);
+  };
+  if (repo) {
+    writeFileSync(join(dir, ".gitignore"), ".claude/*\n!.claude/workflow.config.json\n");
+    writeFileSync(join(dir, "VERSION"), "1.0.0\n");
+    git("init", "-q");
+    git("config", "user.email", "t@example.invalid");
+    git("config", "user.name", "T");
+    git("add", "-A");
+    git("commit", "-q", "-m", "erster");
+  }
+  try {
+    return fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+/** Startet `werkzeug` im Projekt; liefert stdout, stderr, Exitcode und das JSON der letzten Zeile. */
+function worktree(dir, werkzeug, ...args) {
+  const res = spawnSync(process.execPath, [werkzeug, ...args], { cwd: dir, encoding: "utf-8" });
+  const letzte = res.stdout.split("\n").findLast((z) => z.trim() !== "") ?? "";
+  let stand = null;
+  try {
+    stand = JSON.parse(letzte);
+  } catch { /* keine JSON-Zeile, etwa bei der Hilfe */ }
+  return { ...res, stand };
+}
+
+test("[1499] die Texttabelle von worktree.mjs hat in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
+  assert.deepEqual(pruefeParitaet(WORKTREE_TEXTE), []);
+  assert.ok(Object.keys(WORKTREE_TEXTE.de).length >= 12, "die Tabelle traegt die Texte des Moduls");
+});
+
+test("[1499] die englische Haelfte der Tabelle von worktree.mjs traegt keine deutschen Woerter", () => {
+  assert.deepEqual(deutschImEnglischen(WORKTREE_TEXTE), []);
+});
+
+test("[1499] jeder deutsche Text von worktree.mjs geht ueber den Texthelfer", () => {
+  assert.deepEqual(deutschAmHelferVorbei("kit/worktree.mjs", WORKTREE_TEXTE), []);
+});
+
+test("[1499] englisch: die Hilfe nennt die englischen Unterkommandos und Optionen", () => {
+  mitWorktreeProjekt({ repo: false }, (dir) => {
+    const hilfe = worktree(dir, WORKTREE, "--help").stdout;
+    assert.match(hilfe, /— worktree for the release skills$/m);
+    assert.match(hilfe, /^ {2}create \[--prefix <p>\] \[--ref <ref>\] \[--issue <n>\]/m);
+    assert.match(hilfe, /^ {2}record-preparation <path> --result <gruen\|gruen-offen\|rot>$/m, "die Werte von --result bleiben Vertrag");
+    assert.match(hilfe, /^ {2}check-preparation \[--discard\]/m);
+    assert.match(hilfe, /^ {2}in <path> -- <command> \[arguments\]/m);
+    assert.match(hilfe, /^The last line of the output is always JSON/m);
+  });
+});
+
+test("[1499] englisch: die Fehler von worktree.mjs; die Feldnamen bleiben Vertrag", () => {
+  mitWorktreeProjekt({}, (dir) => {
+    const fehler = (...args) => {
+      const res = worktree(dir, WORKTREE, ...args);
+      assert.equal(res.status, 1, `${args.join(" ")} haette scheitern muessen: ${res.stdout}`);
+      assert.deepEqual(Object.keys(res.stand), ["ok", "fehler"], "Feldnamen der Fehlerausgabe bleiben Vertrag");
+      return res.stand.fehler;
+    };
+    assert.equal(fehler("remove"), "remove needs the path of the worktree");
+    assert.equal(fehler("return"), "return needs the path of the worktree");
+    assert.equal(fehler("record-preparation"), "record-preparation needs the path of the worktree");
+    assert.equal(fehler("record-preparation", dir), "record-preparation needs --result <gruen|gruen-offen|rot>");
+    assert.equal(fehler("in", dir), "in needs <path> -- <command> [arguments]");
+    assert.equal(fehler("in", join(dir, "fehlt"), "--", "x"), `in: '${join(dir, "fehlt")}' is not a directory`);
+    assert.match(fehler("in", dir, "--", "gibt-es-nicht-1499"), /^in: 'gibt-es-nicht-1499' could not be started \(/);
+    assert.equal(fehler("gibtsnicht"),
+      "unknown command 'gibtsnicht' — known are create, remove, in, catch-up-check, return, record-preparation, check-preparation");
+  });
+  mitWorktreeProjekt({ repo: false }, (dir) => {
+    assert.match(worktree(dir, WORKTREE, "catch-up-check").stand.fehler, /^not a git repo: /);
+  });
+});
+
+test("[1499] englisch: ein rotes installCommand meldet Kommando und Exit-Code", () => {
+  const config = { language: "en", issueTracker: "local", installCommand: `"${process.execPath}" -e "process.exit(3)"` };
+  mitWorktreeProjekt({ config }, (dir) => {
+    const { status, stand } = worktree(dir, WORKTREE, "create", "--prefix", "wt1499");
+    assert.equal(status, 1);
+    assert.match(stand.fehler, /^installCommand '.+process\.exit\(3\)"' ended with exit code 3 — the worktree was torn down again$/);
+  });
+});
+
+test("[1499] die deutsche Vorgabe bleibt: ohne Spracheinstellung spricht worktree.mjs Deutsch", () => {
+  mitWorktreeProjekt({ config: {} }, (dir) => {
+    assert.match(worktree(dir, WORKTREE, "--help").stdout, /— Worktree fuer die Release-Skills$/m);
+    assert.equal(worktree(dir, WORKTREE, "entfernen").stand.fehler, "entfernen braucht den Pfad des Worktrees");
+    assert.match(worktree(dir, WORKTREE, "gibtsnicht").stand.fehler, /^unbekanntes Kommando 'gibtsnicht' — bekannt sind anlegen, entfernen, im,/);
+  });
+});
+
+/** Die festen Bruchstuecke der deutschen Texte von worktree.mjs, die im Englischen nicht vorkommen. */
+function deutscheWorktreeBruchstuecke() {
+  const englisch = Object.values(WORKTREE_TEXTE.en).join("\n");
+  const stuecke = new Set();
+  for (const wert of Object.values(WORKTREE_TEXTE.de)) {
+    for (const teil of wert.split(/\{[A-Za-z_]\w*\}|\n/)) {
+      const t = teil.trim();
+      if (t.length >= 8 && !englisch.includes(t)) stuecke.add(t);
+    }
+  }
+  return [...stuecke];
+}
+
+test("[1499] ein englisches Projekt sieht von worktree.mjs keine deutsche Meldung — echter Prozess, nur die verteilten Dateien", () => {
+  const config = { language: "en", issueTracker: "local", installCommand: `"${process.execPath}" -e "process.exit(3)"` };
+  mitWorktreeProjekt({ config }, (dir) => {
+    const kit = join(dir, ".claude", "kit");
+    mkdirSync(kit, { recursive: true });
+    copyFileSync(WORKTREE, join(kit, "worktree.mjs"));
+    cpSync(join(KIT, "night"), join(kit, "night"), { recursive: true });
+    cpSync(join(KIT, "board"), join(kit, "board"), { recursive: true });
+    const werkzeug = join(kit, "worktree.mjs");
+
+    const ausgaben = [
+      ["--help"], ["anlegen", "--praefix", "wt1499"], ["entfernen"], ["rueckweg"], ["vorbereitung-festhalten"],
+      ["vorbereitung-festhalten", dir], ["im", dir], ["im", join(dir, "fehlt"), "--", "x"],
+      ["im", dir, "--", "gibt-es-nicht-1499"], ["unbekannt"],
+    ].map((args) => {
+      const res = worktree(dir, werkzeug, ...args);
+      return `${res.stdout}\n${res.stderr}`;
+    });
+    const alles = ausgaben.join("\n");
+    assert.match(alles, /— worktree for the release skills$/m, "ohne Repo-Kontext laeuft die Hilfe englisch");
+    assert.match(alles, /the worktree was torn down again/, "der rote Installationslauf meldet sich englisch");
+    const gefunden = deutscheWorktreeBruchstuecke().filter((s) => alles.includes(s));
     assert.deepEqual(gefunden, [], "deutsche Meldung in einem englischen Projekt");
   });
 });
