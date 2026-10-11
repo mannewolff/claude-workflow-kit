@@ -609,7 +609,7 @@ Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
     ohneMusterWeitere: "{genannt} und {weitere} weitere",
     ohneMusterEine: "voller Umfang: {liste} trifft kein Muster",
     ohneMusterMehrere: "voller Umfang: {liste} treffen kein Muster",
-    nurBlobs: "{datei}: nur Blobs",
+    nurBlobs: "{dateien}: nur Blobs und Stempel",
     gitDiffGescheitert: "git diff gegen '{basis}' schlug fehl: {grund}",
     gitStatusGescheitert: "git status schlug fehl: {grund}",
     bereichEiner: "Bereich {namen}",
@@ -902,7 +902,7 @@ segment boundaries; a directory is covered as 'frontend/**'.
     ohneMusterWeitere: "{genannt} and {weitere} more",
     ohneMusterEine: "full scope: {liste} matches no pattern",
     ohneMusterMehrere: "full scope: {liste} match no pattern",
-    nurBlobs: "{datei}: blobs only",
+    nurBlobs: "{dateien}: blobs and stamps only",
     gitDiffGescheitert: "git diff against '{basis}' failed: {grund}",
     gitStatusGescheitert: "git status failed: {grund}",
     bereichEiner: "area {namen}",
@@ -1315,17 +1315,27 @@ export function bereicheVorbereiten(checkAreas) {
  * noch als unzugeordnet und traegt ihren Grund mit sich — die Ausnahme von der
  * Regel „im Zweifel laeuft alles" ist nur ertraeglich, wenn sie sich begruendet.
  */
+/** Merkt zu jedem getroffenen Bereich die Datei, die nur Blobs und Stempel aendert. */
+function blobBereicheMerken(blobBereiche, treffer, pfad) {
+  for (const { name } of treffer) {
+    if (!blobBereiche.has(name)) blobBereiche.set(name, new Set());
+    blobBereiche.get(name).add(pfad);
+  }
+}
+
 function zuordnen(dateien, bereichsdefinition, freistellungen = [], nurBlobs = new Set()) {
   const beruehrt = new Set();
   const ohneZuordnung = [];
   const ohnePruefung = [];
-  const blobBereiche = new Set();
+  // Bereich → die Dateien darin, die nur Blobs und Stempel aendern.
+  const blobBereiche = new Map();
   for (const pfad of dateien) {
     const treffer = bereichsTreffer(pfad, bereichsdefinition);
-    // Eine Datei mit nur gespiegelten Blob-Zeilen (Issue #1178) beruehrt ihre Bereiche
-    // nicht; die Bereiche merkt sie sich, damit der Grund der Auslassung es sagt.
+    // Eine Datei mit nur gespiegelten Blob- und Stempelzeilen (Issue #1178, #1521)
+    // beruehrt ihre Bereiche nicht; die Bereiche merken sich die Datei, damit der Grund
+    // der Auslassung es sagt.
     if (treffer.length > 0 && nurBlobs.has(pfad)) {
-      for (const bereich of treffer) blobBereiche.add(bereich.name);
+      blobBereicheMerken(blobBereiche, treffer, pfad);
       continue;
     }
     // HIER wirkt der Vorrang aus Plan #930, E3: Trifft eine Datei beide Musterarten,
@@ -1537,7 +1547,7 @@ function abhaengigeBereiche(beruehrt, importGraph, bereichsdefinition, startDate
 
 /**
  * Erweitert eine Zuordnung um die abhaengigen Bereiche (Issue #1208). Ausgangspunkt ist
- * jede geaenderte Datei ausser einer, die nur Blob-Zeilen aendert — die beruehrt nicht
+ * jede geaenderte Datei ausser einer, die nur Blob- und Stempelzeilen aendert — die beruehrt nicht
  * einmal ihre eigenen Bereiche. Scheitert die Erhebung, laesst sich nicht sagen, was
  * abhaengt: Dann gilt die Zuordnung als nicht bestimmbar und zieht den vollen Umfang.
  */
@@ -1593,34 +1603,63 @@ function freistellungenVorbereiten(ohnePruefung) {
 // Die Datei mit den Blob-Konstanten und die Form einer solchen Zeile (Issue #1178).
 const BLOB_DATEI = "install.mjs";
 const BLOB_ZEILE = /^\s*(?:export\s+)?const\s+\w+_B64\s*=\s*"[^"]*";?\s*$/;
+// Die Versionsstempel, die `sync-blobs` setzt (Issue #1521): `KIT_VERSION` in jeder
+// gestempelten Kit-Datei, `VERSION` nur im Installer.
+const KIT_STEMPEL_ZEILE = /^\s*(?:export\s+)?const\s+KIT_VERSION\s*=\s*"[^"]*";?\s*$/;
+const INSTALLER_STEMPEL_ZEILE = /^\s*(?:export\s+)?const\s+VERSION\s*=\s*"[^"]*";?\s*$/;
 // Der Vermerk im Grund einer Auslassung, die nur daran haengt.
-const nurBlobsVermerk = () => t("nurBlobs", { datei: BLOB_DATEI });
+const nurBlobsVermerk = (dateien) => t("nurBlobs", { dateien: [...dateien].sort(vergleicheText).join(", ") });
+
+/** Ob eine geaenderte Zeile von `pfad` nur ein gespiegelter Blob oder ein Stempel ist. */
+function istBlobOderStempel(pfad, zeile) {
+  if (KIT_STEMPEL_ZEILE.test(zeile)) return true;
+  if (pfad !== BLOB_DATEI) return false;
+  return BLOB_ZEILE.test(zeile) || INSTALLER_STEMPEL_ZEILE.test(zeile);
+}
 
 /**
- * Die Dateien, deren Aenderung seit dem Anker nur aus Blob-Konstanten besteht (Issue
- * #1178) — hoechstens `install.mjs`. `sync-blobs` aendert dort bei jeder Aenderung an
- * einer Quelle die gespiegelte Zeile mit; die Quelle steht selbst im Diff und waehlt die
- * Pruefungen, die sie braucht. Gilt nur, wenn JEDE geaenderte Zeile, hinzugefuegt oder
- * entfernt, eine Blob-Konstante ist: Eine echte Aenderung am Installer loest seine
- * Pruefungen weiter aus. Im Zweifel — kein Diff, ein Fehler, eine neue Datei ohne Stand
- * am Anker — beruehrt die Datei ihre Bereiche wie jede andere.
+ * Die Dateien, deren Aenderung seit dem Anker nur aus Blob-Konstanten und
+ * Versionsstempeln besteht (Issue #1178, #1521). `sync-blobs` aendert in `install.mjs`
+ * bei jeder Aenderung an einer Quelle die gespiegelte Zeile mit, und beim Release in
+ * jeder gestempelten Datei die Versionszeile; die Quelle steht selbst im Diff und waehlt
+ * die Pruefungen, die sie braucht, und ob Stempel und Blobs stimmen, prueft
+ * `sync-blobs --check`. Gilt nur, wenn JEDE geaenderte Zeile, hinzugefuegt oder
+ * entfernt, so eine Zeile ist: Eine echte Aenderung loest die Pruefungen weiter aus. Im
+ * Zweifel — kein Diff, ein Fehler, eine neue oder geloeschte Datei ohne Stand an einem
+ * Ende — beruehrt die Datei ihre Bereiche wie jede andere.
  */
 function nurBlobsGeaendert(basis, geaendert) {
-  if (!geaendert.includes(BLOB_DATEI)) return new Set();
-  const diff = git("diff", "--no-color", "--no-ext-diff", "-U0", basis, "--", BLOB_DATEI);
-  if (diff.status !== 0) return new Set();
-  let imAbschnitt = false;
-  let zeilen = 0;
-  for (const zeile of diff.stdout.split(/\r?\n/)) {
-    if (zeile.startsWith("@@")) {
-      imAbschnitt = true;
-      continue;
-    }
-    if (!imAbschnitt || !(zeile.startsWith("+") || zeile.startsWith("-"))) continue;
-    if (!BLOB_ZEILE.test(zeile.slice(1))) return new Set();
-    zeilen += 1;
+  const ergebnis = new Set();
+  if (geaendert.length === 0) return ergebnis;
+  // Ohne Pfadliste: Sie waere Pathspec und kein woertlicher Pfad; was nicht in
+  // `geaendert` steht, faellt unten heraus.
+  const diff = git("diff", "--no-color", "--no-ext-diff", "--no-renames", "-U0", basis);
+  if (diff.status !== 0) return ergebnis;
+  for (const abschnitt of diff.stdout.split(/^(?=diff --git )/m)) {
+    const pfad = nurBlobsDatei(abschnitt.split(/\r?\n/));
+    if (pfad !== null && geaendert.includes(pfad)) ergebnis.add(pfad);
   }
-  return zeilen > 0 ? new Set([BLOB_DATEI]) : new Set();
+  return ergebnis;
+}
+
+/**
+ * Der Pfad einer Datei im Diff, wenn jede ihrer geaenderten Zeilen ein Blob oder ein
+ * Stempel ist, sonst `null`. Eine neue oder geloeschte Datei hat an einem Ende keinen
+ * Stand und ist nie ausgenommen.
+ */
+function nurBlobsDatei(zeilen) {
+  const kopfEnde = zeilen.findIndex((zeile) => zeile.startsWith("@@"));
+  if (kopfEnde < 0) return null;
+  const kopf = zeilen.slice(0, kopfEnde);
+  if (kopf.includes("--- /dev/null") || kopf.includes("+++ /dev/null")) return null;
+  const ziel = kopf.find((zeile) => zeile.startsWith("+++ b/"));
+  if (!ziel) return null;
+  const pfad = ziel.slice("+++ b/".length);
+  const geaendert = zeilen
+    .slice(kopfEnde)
+    .filter((zeile) => !zeile.startsWith("@@") && (zeile.startsWith("+") || zeile.startsWith("-")));
+  if (geaendert.length === 0) return null;
+  return geaendert.every((zeile) => istBlobOderStempel(pfad, zeile.slice(1))) ? pfad : null;
 }
 
 function ankerAufloesen(refText) {
@@ -1699,14 +1738,16 @@ function bereichsText(namen) {
  * String und `always: true` laufen beide immer, meinen aber Verschiedenes —
  * vergessen gegen entschieden. Nur der Grund haelt das auseinander.
  */
-function entscheidung(check, beruehrt, blobBereiche = new Set()) {
+function entscheidung(check, beruehrt, blobBereiche = new Map()) {
   if (check.always) return { laeuft: true, grund: t("immerLaufend") };
   if (!check.areas) return { laeuft: true, grund: t("nichtZugeordnet") };
   const treffer = check.areas.filter((name) => beruehrt.has(name));
   if (treffer.length > 0) return { laeuft: true, grund: t("beruehrt", { bereiche: bereichsText(treffer) }) };
-  // Haette nur die Blob-Aenderung die Pruefung ausgeloest, sagt der Grund das (Issue
-  // #1178) — sonst saehe die Auslassung aus wie eine, an der nichts geaendert wurde.
-  const blobs = check.areas.some((name) => blobBereiche.has(name)) ? ` (${nurBlobsVermerk()})` : "";
+  // Haette nur die Blob- oder Stempelaenderung die Pruefung ausgeloest, sagt der Grund
+  // das (Issue #1178, #1521) — sonst saehe die Auslassung aus wie eine, an der nichts
+  // geaendert wurde.
+  const blobDateien = new Set(check.areas.flatMap((name) => [...(blobBereiche.get(name) ?? [])]));
+  const blobs = blobDateien.size > 0 ? ` (${nurBlobsVermerk(blobDateien)})` : "";
   return { laeuft: false, grund: t("unberuehrt", { bereiche: bereichsText(check.areas), blobs }) };
 }
 

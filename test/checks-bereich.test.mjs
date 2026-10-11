@@ -275,7 +275,7 @@ test("nur Blob-Zeilen geaendert: installer bleibt unberuehrt, der Grund nennt 'i
     assert.deepEqual(kommandos(ergebnis.laufen), ["npm run build"]);
     assert.equal(
       eintrag(ergebnis.ausgelassen, "node --test test/install-*.test.mjs").grund,
-      "Bereich installer unberuehrt (install.mjs: nur Blobs)",
+      "Bereich installer unberuehrt (install.mjs: nur Blobs und Stempel)",
     );
   });
 });
@@ -343,7 +343,7 @@ test("der Berichtsblock nennt 'install.mjs: nur Blobs' bei der Auslassung", asyn
     const res = await run(dir);
 
     assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
-    assert.match(res.stdout, /ausgelassen: node -e "process\.exit\(0\)" # installer → Bereich installer unberuehrt \(install\.mjs: nur Blobs\)/);
+    assert.match(res.stdout, /ausgelassen: node -e "process\.exit\(0\)" # installer → Bereich installer unberuehrt \(install\.mjs: nur Blobs und Stempel\)/);
   });
 });
 
