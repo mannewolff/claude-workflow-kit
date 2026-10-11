@@ -137,8 +137,21 @@ import { createHash } from "node:crypto";
 // #1420 E10): Er bildet eine englisch benannte Config auf die deutschen Namen ab, die dieses
 // Modul liest. Dynamisch und abgefangen, denn das Modul laeuft auch allein ohne den Board-Teil;
 // fehlt er, bleibt die Config, wie sie gelesen wurde.
-const { normalisiereConfig = (roh) => ({ config: roh, hinweise: [] }) } =
+const { normalisiereConfig = (roh) => ({ config: roh, hinweise: [] }), WERTE: CONFIG_WERTE = {} } =
   await import(new URL("./board/config-namen.mjs", import.meta.url).href).catch(() => ({}));
+
+// Der Texthelfer aus dem Board-Teil namen (Plan #1420 E13), abgefangen wie der Normalisierer:
+// Fehlt board/namen.mjs neben checks.mjs, bleiben die Texte deutsch.
+const namen = await import(new URL("./board/namen.mjs", import.meta.url).href).catch(() => null);
+
+/** Der Text zu `schluessel` aus `TEXTE` in der Sprache des Prozesses; ohne Register deutsch. */
+function t(schluessel, werte = {}) {
+  if (namen) return namen.text(TEXTE, schluessel, werte);
+  return TEXTE.de[schluessel].replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
+}
+
+/** Die Sprache des Prozesses; ohne Register Deutsch. */
+const spracheJetzt = () => (namen ? namen.prozessSprache() : "de");
 
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
@@ -274,7 +287,7 @@ const NICHT_BEIM_ABSCHLUSS = ["zusammenspiel", "volleTestmenge"];
 // meldet und haelt nie an: Er endet immer `gruen`, seine Zeilen `Hinweis: …` gehen in den
 // Bericht. Kein dritter Ergebniswert (E12) — Gate, Runner und Befunde lesen jedes
 // `ergebnis !== "gruen"` als Abweisung, und ein neuer Wert braeuchte an jeder dieser
-// Stellen eine zweite Bahn. Hier oben, weil `HELP` die Werte nennt.
+// Stellen eine zweite Bahn. Hier oben, weil die Hilfe die Werte nennt.
 const ARTEN = ["hinweis"];
 
 // Die Zeilenform, in der eine Hinweis-Pruefung ihre Funde meldet (Issue #1155).
@@ -297,7 +310,7 @@ const HINWEIS_ABSTURZ_AB = 2;
  * nennt den Weg): eine Entscheidung, die im Projekt sichtbar bleibt, statt die
  * Pruefung fuer alle abzuschalten.
  *
- * Steht hier oben und nicht bei `fehlermerkmal`, weil `HELP` die Liste nennt — ein
+ * Steht hier oben und nicht bei `fehlermerkmal`, weil die Hilfe die Liste nennt — ein
  * `const` weiter unten waere dort noch nicht initialisiert.
  */
 const FEHLERMERKMALE = ["[ERROR]", "BUILD FAILURE"];
@@ -345,17 +358,17 @@ export const GLEICHZEITIG_ENV = "KIT_CHECKS_GLEICHZEITIG";
 const GLEICHZEITIG_VORGABE = 2;
 
 // Der Vermerk hinter der Dauer einer gleichzeitig gelaufenen Pruefung (Issue #1071). Hier
-// oben, weil `HELP` ihn nennt.
+// oben, weil die Hilfe ihn nennt.
 export const NEBEN_MARKE = "neben anderen gemessen";
 
 // Ab wie vielen bereichsgebundenen Kommandos die Hervorhebung eines Bereichs greift
 // (Issue #1004, Plan #1001, E8). Bei zwei Kommandos waere jeder Bereich "in allen bis
-// auf eines" — die Regel sagte dann nichts mehr. Hier oben, weil `HELP` sie nennt.
+// auf eines" — die Regel sagte dann nichts mehr. Hier oben, weil die Hilfe sie nennt.
 const HERVORHEBUNG_AB_KOMMANDOS = 3;
 
 // Nach so vielen gleich gescheiterten Laeufen derselben Pruefung gilt eine Sitzung als
 // festgefahren (Issue #1388, Plan #1386, E11) — Rueckfall, wenn `night.festgefahrenNach`
-// fehlt oder kein gueltiger Wert ist. Hier oben, weil `HELP` sie nennt.
+// fehlt oder kein gueltiger Wert ist. Hier oben, weil die Hilfe sie nennt.
 // SYNC: die Vorgabe von night.festgefahrenNach in templates/workflow.config.schema.json.
 const FESTGEFAHREN_VORGABE = 3;
 const FESTGEFAHREN_MINDEST = 2;
@@ -366,7 +379,14 @@ const FESTGEFAHREN_MINDEST = 2;
  */
 export const FESTGEFAHREN_MARKE = "Pruefung festgefahren:";
 
-const HELP = `checks.mjs (claude-workflow-kit v${KIT_VERSION}) — faellige Pruefungen
+/**
+ * Die Texte des Pruefkommandos an den Menschen (Issue #1494, Plan #1420 E13). Vertragswerte
+ * (E14) stehen nicht hier: die Feldnamen der JSON-Ausgaben, die Ergebniswerte, die Stufen- und
+ * Achsenwerte der Config und die Marke `FESTGEFAHREN_MARKE`.
+ */
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    hilfe: `checks.mjs (claude-workflow-kit v{version}) — faellige Pruefungen
 
   node checks.mjs plan [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]] [--in <pfad>]
   node checks.mjs run  [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]] [--wiederholen] [--frisch] [--in <pfad>]
@@ -376,19 +396,19 @@ plan  Gibt als JSON aus, welche buildChecks nach dem aktuellen Arbeitspaket
       laufen muessen und welche ausgelassen werden koennen — jede Entscheidung
       mit Grund. Ausgefuehrt wird nichts.
 run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
-      Zusammenfassung nach ${SUMMARY_DATEI}. Zuerst laufen die mit
+      Zusammenfassung nach {zusammenfassung}. Zuerst laufen die mit
       'gleichzeitig' gekennzeichneten Pruefungen gleichzeitig, hoechstens
-      ${GLEICHZEITIG_ENV} auf einmal (Vorgabe ${GLEICHZEITIG_VORGABE}; 1 faehrt sie
+      {gleichzeitigEnv} auf einmal (Vorgabe {gleichzeitigVorgabe}; 1 faehrt sie
       nacheinander; gemessen in Issue #1119: mit 2 am schnellsten und als
       einziger Wert stabil). Diese Phase laeuft vollstaendig durch, damit alle roten
       bekannt sind; ihre Ausgabe steht je Pruefung als geschlossener Block in
       Config-Reihenfolge, und die Berichtszeile vermerkt bei der Dauer
-      '(${NEBEN_MARKE})'. Danach laufen die uebrigen nacheinander in
+      '({nebenMarke})'. Danach laufen die uebrigen nacheinander in
       Config-Reihenfolge und brechen beim ersten roten Check ab; nach einem Rot
       der ersten Phase starten sie nicht. Ein roter Lauf endet mit Exit
       ungleich 0.
       Neben dem Rueckgabewert prueft 'run' die Ausgabe jedes Kommandos auf eine
-      feste Liste allgemeiner Fehlermerkmale (${FEHLERMERKMALE.join(", ")}). Ein
+      feste Liste allgemeiner Fehlermerkmale ({fehlermerkmale}). Ein
       Treffer faerbt die Pruefung rot, auch bei Rueckgabewert 0 — kein
       Config-Feld schaltet das ab. Ein falsches Rot ist die sichere Richtung:
       Das Kommando irrt nur in eine Richtung, mehr pruefen.
@@ -399,10 +419,10 @@ run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
       Kommando die gleich gescheiterten echten Laeufe hintereinander; gruen oder
       ein anderer Abdruck setzt die Folge zurueck, eine Uebernahme zaehlt nicht.
       Ab night.festgefahrenNach gleichen Fehlschlaegen (Vorgabe
-      ${FESTGEFAHREN_VORGABE}) gilt die Pruefung als festgefahren. Unbeaufsichtigt
+      {festgefahrenVorgabe}) gilt die Pruefung als festgefahren. Unbeaufsichtigt
       (KIT_AGENT_MODEL gesetzt) kuendigt der Lauf das als letzten erlaubten
       Versuch an, und der naechste Aufruf faehrt nichts mehr, auch mit
-      --frisch: Er gibt '${FESTGEFAHREN_MARKE} <Kommando> — <Fehler>' aus, laesst
+      --frisch: Er gibt '{festgefahrenMarke} <Kommando> — <Fehler>' aus, laesst
       die vorige Zusammenfassung stehen, ergaenzt allein
       'festgefahren.ausgeloest' und endet mit Exit 3. Interaktiv bremst nichts;
       der Lauf gibt nur 'Hinweis: festgefahren an <Kommando> — <n>-mal gleich
@@ -410,11 +430,11 @@ run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
       Die Zusammenfassung BEGLEITET den Lauf: Sie entsteht vor dem ersten
       Kommando und wird vor jedem weiteren und nach jedem gleichzeitig
       gelaufenen ueberschrieben; ein laufendes Kommando steht darin noch auf
-      'nicht gestartet'. Erst die letzte Fassung
+      '{nichtGestartet}'. Erst die letzte Fassung
       traegt 'abgeschlossen': true. Ein Lauf, der an der Uhr oder mit seiner
       Session stirbt, hinterlaesst damit einen Stand, der nie ganz gruen ist.
       Die Ausgabe jedes nicht gruenen Kommandos liegt vollstaendig unter
-      ${PROTOKOLL_ORDNER}/; die Berichtszeile und das Feld 'protokoll' in der
+      {protokollOrdner}/; die Berichtszeile und das Feld 'protokoll' in der
       Zusammenfassung nennen den Pfad. Jeder echte Lauf leert den Ordner, ein
       uebernommener laesst ihn stehen.
       Hat sich der Stand seit dem letzten Lauf nicht geaendert — gleicher Anker,
@@ -429,7 +449,7 @@ run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
       den zuletzt roten Kommandos, nach denselben Achsen wie der volle Lauf.
       Werden sie gruen, folgt im selben Aufruf genau einmal der volle Lauf als
       Nachweis; bleiben sie rot, endet der Aufruf rot, die uebrigen stehen auf
-      'nicht gestartet', die Zusammenfassung traegt 'teillauf': true und der
+      '{nichtGestartet}', die Zusammenfassung traegt 'teillauf': true und der
       Berichtsblock vor den Zeilen 'Teillauf: nur die zuletzt roten
       Pruefungen'. Nach einer Korrektur genuegt darum derselbe Aufruf wie
       zuvor. '--frisch' ueberspringt den Teillauf und faehrt sofort alles.
@@ -443,7 +463,7 @@ run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
       'Wiederholung: <Kommando> war rot — einmal auf demselben Stand
       wiederholt'. Rot und gruen endet mit '-> gewackelt (erst rot, dann
       gruen)': Ergebnis 'gruen', Feld 'gewackelt' ({ erstDauerMs, protokoll }),
-      die Ausgabe des ersten Laufs unter ${PROTOKOLL_ORDNER}/ mit dem Zusatz
+      die Ausgabe des ersten Laufs unter {protokollOrdner}/ mit dem Zusatz
       '-erstlauf' und im Bericht die Zeile 'Gewackelt: <Kommando> → erst rot,
       dann gruen — Ausgabe des ersten Laufs: <pfad>'. Rot und rot endet mit
       '-> rot, auch bei der Wiederholung': Ergebnis 'rot', Feld 'wiederholt'.
@@ -471,7 +491,7 @@ run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
       uebernommener Lauf zaehlt als Lauf ohne Zeit. Nachts beginnt die Summe
       mit jeder Session neu, weil der Runner die Zusammenfassung vor jeder
       Runde verwirft; die Summe ueber Sessions liefert der Nachtbericht. Dauert eine
-      Pruefung laenger als ${PRUEFDAUER_OBERGRENZE_MS} ms, vermerkt ihre Zeile
+      Pruefung laenger als {obergrenzeMs} ms, vermerkt ihre Zeile
       die Ueberschreitung (Feld 'ueberObergrenzeMs'); rot wird der Lauf davon
       nicht.
       An der Stufe 'push' nennt ein roter Lauf die VERURSACHER: die Karten, deren
@@ -483,9 +503,9 @@ run   Fuehrt genau diese Auswahl in zwei Phasen aus und schreibt die
       der Anker nicht aufloesen oder scheitert ein git-Aufruf, steht der Grund an
       derselben Stelle. Die Suche erklaert einen gefallenen Befund und aendert am
       Ausgang des Laufs nichts.
-      Jede Ausfuehrung haengt eine Zeile an ${AUSFUEHRUNGEN_DATEI}; hinten
-      stehen ihr Ausloeser (bereiche | ohne-bereich | ohne-zuordnung |
-      veroeffentlichung | anker), die ausloesenden Bereiche und beim vollen
+      Jede Ausfuehrung haengt eine Zeile an {ausfuehrungen}; hinten
+      stehen ihr Ausloeser ({ausloeser}),
+      die ausloesenden Bereiche und beim vollen
       Umfang die Dateien ohne Muster, dann 'gleichzeitig', wenn die
       Dauer neben anderen Pruefungen gemessen wurde, als letztes 'erstlauf'
       oder 'wiederholung' an den beiden Laeufen einer wiederholten Pruefung.
@@ -493,10 +513,10 @@ bereiche
       Gibt als JSON aus, wie die Bereiche zugeschnitten sind: je Bereich
       seine Muster, in wie vielen der bereichsgebundenen Kommandos der
       Paketstufe er steht ('nennend' von 'von'), ob er hervorgehoben ist
-      (in allen oder allen bis auf eines, ab ${HERVORHEBUNG_AB_KOMMANDOS} Kommandos) und
+      (in allen oder allen bis auf eines, ab {hervorhebungAb} Kommandos) und
       den Grund aus 'gekoppelteBereiche'. Je Kommando ('kommandoUrteile'), wie
       viele Bereiche es nennt und ob es breit ist (alle oder alle bis auf
-      einen, ab ${HERVORHEBUNG_AB_KOMMANDOS} Kommandos); ein breites Kommando ohne gekoppelten
+      einen, ab {hervorhebungAb} Kommandos); ein breites Kommando ohne gekoppelten
       Bereich steht in plan ('zuschnitt') und run als 'hinweis:' im Bericht.
       Dazu das Inventar: alle von git
       versionierten Dateien ohne checkAreas-Treffer, getrennt in
@@ -505,7 +525,7 @@ bereiche
   --since <ref>   Anker, gegen den die Aenderungen ermittelt werden (Default HEAD).
                   Laesst sich der Anker nicht aufloesen — auch bei leerem Wert —,
                   laufen alle Pruefungen.
-  --stufe <s>     Gefahrener Zeitpunkt: ${STUFEN.join(" | ")} (Default ${STUFEN[0]}).
+  --stufe <s>     Gefahrener Zeitpunkt: {stufen} (Default {stufeVorgabe}).
                   push faehrt paket mit. Pruefungen spaeterer Stufen erscheinen
                   mit Grund als ausgelassen. push faehrt jede faellige Pruefung,
                   auch bei leerem Paket und unberuehrten Bereichen. merge prueft
@@ -549,17 +569,295 @@ bereiche
 
 Gelesen wird .claude/workflow.config.json im Arbeitsverzeichnis: 'buildChecks'
 (Kommandostring oder { cmd } mit den Achsen 'areas'/'always', 'stufe', 'guete'
-und 'nichtBeimAbschluss': ${NICHT_BEIM_ABSCHLUSS.join(" | ")} — die Pruefung
+und 'nichtBeimAbschluss': {abschlussWerte} — die Pruefung
 zaehlt erst beim Veroeffentlichen und bleibt im Abschlusslauf aus, sowie
 'gleichzeitig': true — die Pruefung laeuft in der ersten Phase neben anderen, sowie
-'art': ${ARTEN.join(" | ")} — die Pruefung meldet nur: Sie endet immer gruen, auch
+'art': {arten} — die Pruefung meldet nur: Sie endet immer gruen, auch
 beim Absturz, ohne Rueckgabewert-, Merkmal- und Guetepruefung; jede Ausgabezeile
 'Hinweis: <text>' steht in 'hinweise' und als 'hinweis: <text>' im Bericht, ein
-Exit ab ${HINWEIS_ABSTURZ_AB} als 'Hinweis-Pruefung gescheitert') und
+Exit ab {hinweisAbsturzAb} als 'Hinweis-Pruefung gescheitert') und
 'checkAreas' (Bereichsname -> Pfadmuster). Muster kennen '*' innerhalb eines
 Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
 'frontend/**'.
-`;
+`,
+    fehler: "Fehler",
+    unerwarteterFehler: "Unerwarteter Fehler",
+    aufrufenLaeuft: "checks.mjs: aufrufen laeuft schon — zwei Aufrufe zugleich gehen nicht",
+    keineConfig: "Keine .claude/workflow.config.json unter {wurzel} — bitte im Projekt-Root starten.",
+    configKeinJson: ".claude/workflow.config.json ist kein gueltiges JSON: {grund}",
+    unbekannterWertAbschluss: "Unbekannter Wert {wert} fuer nichtBeimAbschluss bei Pruefung '{cmd}'. Erwartet: {erwartet}.",
+    unbekannterWertArt: "Unbekannter Wert {wert} fuer art bei Pruefung '{cmd}'. Erwartet: {erwartet}.",
+    keineBereiche: "keine",
+    unbekannterBereich: "Unbekannter Bereich '{name}' bei Pruefung '{cmd}'. Bekannt aus checkAreas: {liste}.",
+    mehrereGuete: "Mehr als eine Guetemessung: {liste} tragen alle 'guete' — hoechstens ein Eintrag darf messen.",
+    gueteMerge: "Die Guetemessung '{cmd}' traegt stufe 'merge' — eine Messung erst vor der Freigabe kaeme zu spaet. Zulaessig: {erlaubt}.",
+    abschlussAchseStufe: "Die Pruefung '{cmd}' traegt nichtBeimAbschluss und stufe '{stufe}' — dort laeuft sie beim Abschluss ohnehin nicht. Die Achse gilt fuer die Stufe '{paket}'.",
+    abschlussOhneGate: "Kein Eintrag der Stufe '{paket}' laeuft beim Abschluss: jeder traegt nichtBeimAbschluss oder einen guete-Block. Damit hat der Abschluss eines Arbeitspakets kein Gate.",
+    nichtImportiert: "von keiner Datei importiert",
+    nichtMitMusterImportiert: "von keiner Datei mit Muster importiert",
+    abhaengig: "Bereich {bereich} beruehrt ueber Import von {ueber}",
+    importeUnbekannt: "voller Umfang: die Importe liessen sich nicht erheben",
+    ableitungOhnePruefung: "ohne Pruefung: {pfad} — {grund}",
+    ableitung: "abgeleitet: {pfad} ueber {ueber} → {bereiche}",
+    ohneMusterWeitere: "{genannt} und {weitere} weitere",
+    ohneMusterEine: "voller Umfang: {liste} trifft kein Muster",
+    ohneMusterMehrere: "voller Umfang: {liste} treffen kein Muster",
+    nurBlobs: "{datei}: nur Blobs",
+    gitDiffGescheitert: "git diff gegen '{basis}' schlug fehl: {grund}",
+    gitStatusGescheitert: "git status schlug fehl: {grund}",
+    bereichEiner: "Bereich {namen}",
+    bereichMehrere: "Bereiche {namen}",
+    immerLaufend: "als immer laufend festgelegt",
+    nichtZugeordnet: "nicht zugeordnet",
+    beruehrt: "{bereiche} beruehrt",
+    unberuehrt: "{bereiche} unberuehrt{blobs}",
+  }),
+  en: Object.freeze({
+    hilfe: `checks.mjs (claude-workflow-kit v{version}) — due checks
+
+  node checks.mjs plan [--since <ref>] [--stage <stage>] [--area <name>] [--finish [n]] [--in <path>]
+  node checks.mjs run  [--since <ref>] [--stage <stage>] [--area <name>] [--finish [n]] [--retry] [--fresh] [--in <path>]
+  node checks.mjs areas
+
+plan  Prints as JSON which buildChecks must run after the current work package
+      and which may be skipped — every decision with its reason. Nothing is
+      executed.
+run   Executes exactly this selection in two phases and writes the summary
+      to {zusammenfassung}. First the checks marked 'concurrent' run side by
+      side, at most {gleichzeitigEnv} at a time (default {gleichzeitigVorgabe};
+      1 runs them one after another; measured in issue #1119: fastest with 2
+      and the only stable value). This phase runs to its end so that every red
+      one is known; its output stands as one closed block per check in config
+      order, and the report line marks the duration with '({nebenMarke})'.
+      Then the remaining checks run one after another in config order and stop
+      at the first red check; after a red in the first phase they do not start.
+      A red run ends with an exit code other than 0.
+      Besides the return code, 'run' scans the output of every command for a
+      fixed list of general failure markers ({fehlermerkmale}). A match turns
+      the check red, even with return code 0 — no config field switches this
+      off. A false red is the safe direction: the command errs in one
+      direction only, checking more.
+      Every red command carries its failure fingerprint in laufen[] ('fehler'):
+      the names of the failed tests (node:test, Jest/Vitest, Maven Surefire),
+      otherwise the first error line, without timestamps, durations, temporary
+      paths and random values. The field 'festgefahren' of the summary counts
+      per command the identically failed real runs in a row; green or another
+      fingerprint resets the sequence, an adopted result does not count.
+      From night.stuckAfter identical failures (default {festgefahrenVorgabe})
+      on, the check counts as stuck. Unattended (KIT_AGENT_MODEL set) the run
+      announces this as the last allowed attempt, and the next call runs
+      nothing more, even with --fresh: it prints
+      '{festgefahrenMarke} <command> — <error>', leaves the previous summary as
+      it is, adds only 'festgefahren.ausgeloest' and ends with exit 3.
+      Interactively nothing brakes; the run only prints a notice on stderr that
+      names the command, the count of identical failures and the error.
+      The summary ACCOMPANIES the run: it is created before the first command
+      and overwritten before every further one and after every concurrent one;
+      a running command still stands there with the result '{nichtGestartet}'.
+      Only the last version carries 'abgeschlossen': true. A run that dies at
+      the clock or with its session thus leaves a state that is never fully
+      green.
+      The output of every command that is not green lies complete under
+      {protokollOrdner}/; the report line and the field 'protokoll' in the
+      summary name the path. Every real run empties the folder, an adopted one
+      leaves it in place.
+      If the state has not changed since the last run — same anchor, same
+      stage, the same files with the same blob hashes, the same config —, no
+      command runs: 'run' adopts the result of the previous run (a red one
+      too) with its exit code and writes the evidence again with a fresh
+      timestamp. '--fresh' forces the real run.
+      If the previous run was RED and only the state has changed since, not
+      the selection — same anchor, same stage, the same config, the same
+      selected commands in the same order, but other files or blob hashes —,
+      'run' first runs a PARTIAL RUN with only the commands that were red last
+      time, along the same axes as the full run. If they turn green, the full
+      run follows exactly once in the same call as evidence; if they stay red,
+      the call ends red, the others keep the result '{nichtGestartet}', the
+      summary carries 'teillauf': true and the report block marks the partial
+      run before its lines. After a fix the same call as before is therefore
+      enough. '--fresh' skips the partial run and runs everything at once.
+      A hanging check is aborted: the limit is five times the median of its
+      green runs from .claude/ausfuehrungen.tsv, at least 3 min, without
+      history 15 min. The whole process group receives SIGTERM, SIGKILL after
+      5 s; the check stands red with the limit it hit (field 'haengend' in
+      laufen[]).
+      With --finish or --retry every red check is repeated exactly once on the
+      same state, immediately and before the phase stops; the output says so.
+      Red then green is a flaky check: result 'gruen', field 'gewackelt'
+      ({ erstDauerMs, protokoll }), the output of the first run under
+      {protokollOrdner}/ with the suffix '-erstlauf', and a line in the report
+      that names the command and the output of the first run. Red and red
+      stays red: result 'rot', field 'wiederholt'. 'dauerMs' is the sum of
+      both runs; the brake counts the pair as one attempt. Hint checks are
+      never repeated. Partial run and full run each repeat at most once.
+      With --finish <n> the summary keeps the flaky checks of the card (field
+      'gewackeltKarte': [{ cmd, zeitpunkt, karte }]), carried on over the runs
+      of the same card and started anew for another card; without a card
+      number the field is missing. A case from an earlier run stands in the
+      report with the time of that run.
+      As the red command every message names the first with result 'rot', only
+      without such one the first that is not green.
+      At the end stands the block for the completion report with ready-made
+      lines per check that ran and per check that was skipped, each with its
+      reason, the adopted run included; the field 'berichtszeilen' of the
+      summary carries the same. The block opens with the wait time: the wall
+      clock of this run from the call to the result (field 'wartezeitMs';
+      'dauerGesamtMs' stays the sum of the single durations), and with
+      --finish <n> the total of all runs of the same card (field
+      'wartezeitKarte'); an adopted run counts as a run without time. At night
+      the total starts anew with every session, because the runner discards
+      the summary before every round; the total over sessions comes from the
+      night report. If a check takes longer than {obergrenzeMs} ms, its line
+      notes the excess (field 'ueberObergrenzeMs'); the run does not turn red
+      because of it.
+      At the stage 'push' a red run names the CAUSERS: the cards whose commits
+      since the anchor touched an area of the red check, read from
+      '(Issue #<n>)' in the subject and 'Refs #<n>' in the body. A commit
+      without a recognizable number appears with its short SHA, a check
+      without area assignment counts as touched by every card. If no card
+      touched the check, a sentence says so instead of an empty list; if the
+      anchor cannot be resolved or a git call fails, the reason stands in the
+      same place. The search explains a finding that has already fallen and
+      changes nothing about the outcome of the run.
+      Every execution appends a line to {ausfuehrungen}; at its end stand its
+      trigger ({ausloeser}),
+      the triggering areas and, for the full scope, the files without
+      a pattern, then 'gleichzeitig' if the duration was measured next to other
+      checks, last 'erstlauf' or 'wiederholung' on the two runs of a repeated
+      check.
+areas
+      Prints as JSON how the areas are cut: per area its patterns, in how many
+      of the area-bound commands of the package stage it stands (field 'nennend', its total in the
+      neighbouring field), whether it is highlighted (in all or all but one, from
+      {hervorhebungAb} commands on) and the reason from 'coupledAreas'. Per
+      command ('kommandoUrteile') how many areas it names and whether it is
+      broad (all or all but one, from {hervorhebungAb} commands on); a broad
+      command without a coupled area stands in plan ('zuschnitt') and in run as
+      a hint in the report.
+      Plus the inventory: all files versioned by git without a checkAreas
+      match, split into exempted (noCheck, with reason) and without any
+      assignment.
+
+  --since <ref>   Anchor against which the changes are determined (default HEAD).
+                  If the anchor cannot be resolved — an empty value too —,
+                  all checks run.
+  --stage <s>     Stage to run: {stufen} (default {stufeVorgabe}).
+                  push runs paket too. Checks of later stages appear as skipped
+                  with a reason. push runs every due check, even with an empty
+                  package and untouched areas. merge checks only what push main
+                  did not check: the stage merge always, the package stage by
+                  areas over the files since --since, the stage push not.
+  --area <n>      Runs the check groups of exactly one checkAreas area instead
+                  of determining the touched ones from the changed files. The
+                  intended way when only the complete group exists for the
+                  changed file — a group run justified like this is no breach
+                  of the ten-minute mark but its sanctioned case. An unknown
+                  name aborts and names the configured areas. Combinable with
+                  --since, --stage and --fresh: '--area' says WHETHER a check
+                  is affected, '--stage' further WHEN it is due.
+  --finish [n]    This run completes exactly one work package. Then every check
+                  with 'notAtCompletion' stays out, and the quality measurement
+                  too — both with a reason in the list of skips, and both run
+                  again before publishing. The card number is optional and
+                  serves the evaluation per card; a value that is no number
+                  aborts. Not together with --stage push|merge (there runs
+                  exactly what the completion skips) and not together with
+                  --area (two restrictions in one run). Only the completion of
+                  a card sets the switch: whoever forgets it checks more.
+  --retry         Only for 'run': repeat a red check once on the same state, as
+                  --finish does anyway. For the run before push main and merge
+                  production, together with --stage. Accepted with 'plan' and
+                  without effect, allowed with --finish and without effect.
+  --fresh         Only for 'run': adopt no result and run no partial run with
+                  the last red ones, but really run all due commands — for
+                  instance on suspicion of a flaky test.
+  --in <path>     Working directory of the run instead of the process working
+                  directory: config, anchor, commands and summary apply there.
+                  For the worktree of the release skills — so the call stands
+                  alone and needs no 'cd'.
+  --help, -h      This overview (runs as the only call without a config).
+
+Read is .claude/workflow.config.json in the working directory: 'buildChecks'
+(command string or { cmd } with the axes 'areas'/'always', 'stage', 'quality'
+and 'notAtCompletion: {abschlussWerte}' — the check counts only when
+publishing and stays out of the completion run, as well as
+'concurrent': true — the check runs in the first phase next to others, as well as
+'kind': {arten} — the check only reports: it always ends green, even on a
+crash, without return code, marker and quality check; every output line
+'Hinweis: <text>' stands in 'hinweise' and as a hint in the report, an exit
+from {hinweisAbsturzAb} on as a failed hint check) and 'checkAreas' (area name
+-> path patterns). Patterns know '*' within a path segment and '**' across
+segment boundaries; a directory is covered as 'frontend/**'.
+`,
+    fehler: "Error",
+    unerwarteterFehler: "Unexpected error",
+    aufrufenLaeuft: "checks.mjs: aufrufen is already running — two calls at the same time are not possible",
+    keineConfig: "No .claude/workflow.config.json under {wurzel} — please start in the project root.",
+    configKeinJson: ".claude/workflow.config.json is not valid JSON: {grund}",
+    unbekannterWertAbschluss: "Unknown value {wert} for notAtCompletion on check '{cmd}'. Expected: {erwartet}.",
+    unbekannterWertArt: "Unknown value {wert} for kind on check '{cmd}'. Expected: {erwartet}.",
+    keineBereiche: "none",
+    unbekannterBereich: "Unknown area '{name}' on check '{cmd}'. Known from checkAreas: {liste}.",
+    mehrereGuete: "More than one quality measurement: {liste} all carry 'quality' — at most one entry may measure.",
+    gueteMerge: "The quality measurement '{cmd}' carries stage 'merge' — a measurement only before the release would come too late. Allowed: {erlaubt}.",
+    abschlussAchseStufe: "The check '{cmd}' carries notAtCompletion and stage '{stufe}' — there it does not run at completion anyway. The axis applies to the stage '{paket}'.",
+    abschlussOhneGate: "No entry of the stage '{paket}' runs at completion: each carries notAtCompletion or a quality block. So the completion of a work package has no gate.",
+    nichtImportiert: "not imported by any file",
+    nichtMitMusterImportiert: "not imported by any file with a pattern",
+    abhaengig: "area {bereich} touched via import of {ueber}",
+    importeUnbekannt: "full scope: the imports could not be determined",
+    ableitungOhnePruefung: "no check: {pfad} — {grund}",
+    ableitung: "derived: {pfad} via {ueber} → {bereiche}",
+    ohneMusterWeitere: "{genannt} and {weitere} more",
+    ohneMusterEine: "full scope: {liste} matches no pattern",
+    ohneMusterMehrere: "full scope: {liste} match no pattern",
+    nurBlobs: "{datei}: blobs only",
+    gitDiffGescheitert: "git diff against '{basis}' failed: {grund}",
+    gitStatusGescheitert: "git status failed: {grund}",
+    bereichEiner: "area {namen}",
+    bereichMehrere: "areas {namen}",
+    immerLaufend: "set to always run",
+    nichtZugeordnet: "not assigned",
+    beruehrt: "{bereiche} touched",
+    unberuehrt: "{bereiche} untouched{blobs}",
+  }),
+});
+
+/**
+ * Ein Config-Wert in der Sprache des Prozesses: englisch der Name aus dem Board-Teil
+ * config-namen, deutsch und ohne den Teil der Wert, wie dieses Modul ihn liest.
+ */
+function configWert(pfad, wert) {
+  return spracheJetzt() === "en" ? CONFIG_WERTE[pfad]?.[wert] ?? wert : wert;
+}
+
+// Das Vokabular der Ausloeser im Ausfuehrungsprotokoll, wie die Hilfe es nennt — Vertrag (E14).
+const AUSLOESER_HILFE = "bereiche | ohne-bereich | ohne-zuordnung | veroeffentlichung | anker";
+
+/** Die Nutzungshilfe in der Sprache des Prozesses. */
+function hilfe() {
+  return t("hilfe", {
+    version: KIT_VERSION,
+    zusammenfassung: SUMMARY_DATEI,
+    gleichzeitigEnv: GLEICHZEITIG_ENV,
+    gleichzeitigVorgabe: GLEICHZEITIG_VORGABE,
+    nebenMarke: NEBEN_MARKE,
+    fehlermerkmale: FEHLERMERKMALE.join(", "),
+    festgefahrenVorgabe: FESTGEFAHREN_VORGABE,
+    festgefahrenMarke: FESTGEFAHREN_MARKE,
+    nichtGestartet: "nicht gestartet",
+    protokollOrdner: PROTOKOLL_ORDNER,
+    obergrenzeMs: PRUEFDAUER_OBERGRENZE_MS,
+    ausfuehrungen: AUSFUEHRUNGEN_DATEI,
+    hervorhebungAb: HERVORHEBUNG_AB_KOMMANDOS,
+    stufen: STUFEN.join(" | "),
+    stufeVorgabe: STUFEN[0],
+    abschlussWerte: NICHT_BEIM_ABSCHLUSS.map((w) => configWert("buildChecks[].nichtBeimAbschluss", w)).join(" | "),
+    arten: ARTEN.map((w) => configWert("buildChecks[].art", w)).join(" | "),
+    hinweisAbsturzAb: HINWEIS_ABSTURZ_AB,
+    ausloeser: AUSLOESER_HILFE,
+  });
+}
 
 class ChecksError extends Error {}
 
@@ -569,7 +867,7 @@ function fail(nachricht) {
 
 /** Meldet einen Fehler wie die Kommandozeile: `Fehler:` fuer den erwarteten, sonst `Unerwarteter Fehler:`. */
 function fehlerMelden(err) {
-  const prefix = err instanceof ChecksError ? "Fehler" : "Unerwarteter Fehler";
+  const prefix = t(err instanceof ChecksError ? "fehler" : "unerwarteterFehler");
   aufStderr(`${prefix}: ${err.message}\n`);
 }
 
@@ -585,7 +883,7 @@ function fehlerMelden(err) {
  * ganze Modul —, der zweite bricht darum mit einem Fehler ab.
  */
 export function aufrufen(argv, { cwd, env = process.env, git: gitStarter } = {}) {
-  if (umgebung.aktiv) throw new Error("checks.mjs: aufrufen laeuft schon — zwei Aufrufe zugleich gehen nicht");
+  if (umgebung.aktiv) throw new Error(t("aufrufenLaeuft"));
   let stdout = "";
   let stderr = "";
   umgebung = {
@@ -645,12 +943,12 @@ function git(...args) {
 function ladeConfig() {
   const pfad = join(wurzel(), ".claude", "workflow.config.json");
   if (!existsSync(pfad)) {
-    fail(`Keine .claude/workflow.config.json unter ${wurzel()} — bitte im Projekt-Root starten.`);
+    fail(t("keineConfig", { wurzel: wurzel() }));
   }
   try {
     return normalisiereConfig(JSON.parse(readFileSync(pfad, "utf-8"))).config;
   } catch (err) {
-    return fail(`.claude/workflow.config.json ist kein gueltiges JSON: ${err.message}`);
+    return fail(t("configKeinJson", { grund: err.message }));
   }
 }
 
@@ -673,7 +971,11 @@ function normalisiere(check) {
   const nichtBeimAbschluss = objekt.nichtBeimAbschluss ?? null;
   if (nichtBeimAbschluss !== null && !NICHT_BEIM_ABSCHLUSS.includes(nichtBeimAbschluss)) {
     const genannt = typeof nichtBeimAbschluss === "string" ? `'${nichtBeimAbschluss}'` : JSON.stringify(nichtBeimAbschluss);
-    fail(`Unbekannter Wert ${genannt} fuer nichtBeimAbschluss bei Pruefung '${objekt.cmd}'. Erwartet: ${NICHT_BEIM_ABSCHLUSS.join(", ")}.`);
+    fail(t("unbekannterWertAbschluss", {
+      wert: genannt,
+      cmd: objekt.cmd,
+      erwartet: NICHT_BEIM_ABSCHLUSS.map((w) => configWert("buildChecks[].nichtBeimAbschluss", w)).join(", "),
+    }));
   }
   // Dieselbe Haltung fuer `art` (Issue #1155): Ein vertippter Wert machte aus der
   // Hinweis-Pruefung still eine gewoehnliche, deren Fund den Lauf rot faerbte. Das Feld
@@ -681,7 +983,7 @@ function normalisiere(check) {
   // bestehenden Config unveraendert.
   if (objekt.art !== undefined && !ARTEN.includes(objekt.art)) {
     const genannt = typeof objekt.art === "string" ? `'${objekt.art}'` : JSON.stringify(objekt.art);
-    fail(`Unbekannter Wert ${genannt} fuer art bei Pruefung '${objekt.cmd}'. Erwartet: ${ARTEN.join(", ")}.`);
+    fail(t("unbekannterWertArt", { wert: genannt, cmd: objekt.cmd, erwartet: ARTEN.map((w) => configWert("buildChecks[].art", w)).join(", ") }));
   }
   return { ...objekt, stufe: objekt.stufe ?? STUFEN[0], nichtBeimAbschluss, gleichzeitig: objekt.gleichzeitig === true };
 }
@@ -700,8 +1002,8 @@ function pruefeBereichsnamen(checks, checkAreas) {
   for (const check of checks) {
     for (const name of check.areas ?? []) {
       if (!bekannt.has(name)) {
-        const liste = bekannt.size > 0 ? [...bekannt].join(", ") : "keine";
-        fail(`Unbekannter Bereich '${name}' bei Pruefung '${check.cmd}'. Bekannt aus checkAreas: ${liste}.`);
+        const liste = bekannt.size > 0 ? [...bekannt].join(", ") : t("keineBereiche");
+        fail(t("unbekannterBereich", { name, cmd: check.cmd, liste }));
       }
     }
   }
@@ -719,10 +1021,10 @@ function pruefeGuete(checks) {
   const traeger = checks.filter((check) => check.guete);
   if (traeger.length > 1) {
     const liste = traeger.map((check) => `'${check.cmd}'`).join(", ");
-    fail(`Mehr als eine Guetemessung: ${liste} tragen alle 'guete' — hoechstens ein Eintrag darf messen.`);
+    fail(t("mehrereGuete", { liste }));
   }
   if (traeger[0]?.stufe === "merge") {
-    fail(`Die Guetemessung '${traeger[0].cmd}' traegt stufe 'merge' — eine Messung erst vor der Freigabe kaeme zu spaet. Zulaessig: paket oder push.`);
+    fail(t("gueteMerge", { cmd: traeger[0].cmd, erlaubt: `${configWert("buildChecks[].stufe", "paket")}, push` }));
   }
 }
 
@@ -743,7 +1045,7 @@ function pruefeNichtBeimAbschlussStufe(checks) {
   for (const check of checks) {
     if (!check.nichtBeimAbschluss) continue;
     if (check.stufe === STUFEN[0]) continue;
-    fail(`Die Pruefung '${check.cmd}' traegt nichtBeimAbschluss und stufe '${check.stufe}' — dort laeuft sie beim Abschluss ohnehin nicht. Die Achse gilt fuer die Stufe '${STUFEN[0]}'.`);
+    fail(t("abschlussAchseStufe", { cmd: check.cmd, stufe: configWert("buildChecks[].stufe", check.stufe), paket: configWert("buildChecks[].stufe", STUFEN[0]) }));
   }
 }
 
@@ -769,7 +1071,7 @@ function pruefeAbschlussGate(checks) {
   const paketstufe = checks.filter((check) => check.stufe === STUFEN[0]);
   if (paketstufe.length === 0) return;
   if (paketstufe.some((check) => !check.nichtBeimAbschluss && !check.guete)) return;
-  fail(`Kein Eintrag der Stufe '${STUFEN[0]}' laeuft beim Abschluss: jeder traegt nichtBeimAbschluss oder einen guete-Block. Damit hat der Abschluss eines Arbeitspakets kein Gate.`);
+  fail(t("abschlussOhneGate", { paket: configWert("buildChecks[].stufe", STUFEN[0]) }));
 }
 
 // --- Muster ----------------------------------------------------------------
@@ -1010,7 +1312,7 @@ function ausImportenAbleiten(zuordnung, bereichsdefinition, importGraph = import
       abgeleitet.push({ pfad, ueber, bereiche });
       continue;
     }
-    const grund = direkt === 0 ? "von keiner Datei importiert" : "von keiner Datei mit Muster importiert";
+    const grund = t(direkt === 0 ? "nichtImportiert" : "nichtMitMusterImportiert");
     ohnePruefung.push({ pfad, grund });
     abgeleitet.push({ pfad, ueber, bereiche, grund });
   }
@@ -1073,16 +1375,16 @@ function umAbhaengigeErweitern(zuordnung, geaendert, nurBlobs, bereichsdefinitio
 
 /** Die Berichtszeile eines abhaengigen Bereichs (Issue #1208). */
 function abhaengigZeile({ bereich, ueber }) {
-  return `Bereich ${bereich} beruehrt ueber Import von ${ueber}`;
+  return t("abhaengig", { bereich, ueber });
 }
 
 /** Der Grund des vollen Umfangs, wenn sich die Importe nicht erheben liessen (Issue #1208). */
-const IMPORTE_UNBEKANNT_GRUND = "voller Umfang: die Importe liessen sich nicht erheben";
+const importeUnbekanntGrund = () => t("importeUnbekannt");
 
 /** Die Zeile einer Ableitung im Block `Fuer den Abschlussbericht:` (Issue #1181). */
 function ableitungsZeile({ pfad, ueber, bereiche, grund }) {
-  if (bereiche.length === 0) return `ohne Pruefung: ${pfad} — ${grund}`;
-  return `abgeleitet: ${pfad} ueber ${ueber.join(", ")} → ${bereiche.join(", ")}`;
+  if (bereiche.length === 0) return t("ableitungOhnePruefung", { pfad, grund });
+  return t("ableitung", { pfad, ueber: ueber.join(", "), bereiche: bereiche.join(", ") });
 }
 
 /** Wie viele unzugeordnete Dateien der Grund des vollen Umfangs hoechstens beim Namen nennt. */
@@ -1098,8 +1400,8 @@ const GRUND_DATEIEN_HOECHSTENS = 10;
 function ohneMusterGrund(ohneZuordnung) {
   const genannt = ohneZuordnung.slice(0, GRUND_DATEIEN_HOECHSTENS).map((pfad) => `'${pfad}'`).join(", ");
   const weitere = ohneZuordnung.length - GRUND_DATEIEN_HOECHSTENS;
-  const liste = weitere > 0 ? `${genannt} und ${weitere} weitere` : genannt;
-  return `voller Umfang: ${liste} ${ohneZuordnung.length === 1 ? "trifft" : "treffen"} kein Muster`;
+  const liste = weitere > 0 ? t("ohneMusterWeitere", { genannt, weitere }) : genannt;
+  return t(ohneZuordnung.length === 1 ? "ohneMusterEine" : "ohneMusterMehrere", { liste });
 }
 
 /** Die pruefungsfreien Eintraege aus der Config als fertige Regexe samt Grund (Issue #934). */
@@ -1113,7 +1415,7 @@ function freistellungenVorbereiten(ohnePruefung) {
 const BLOB_DATEI = "install.mjs";
 const BLOB_ZEILE = /^\s*(?:export\s+)?const\s+\w+_B64\s*=\s*"[^"]*";?\s*$/;
 // Der Vermerk im Grund einer Auslassung, die nur daran haengt.
-const NUR_BLOBS_VERMERK = `${BLOB_DATEI}: nur Blobs`;
+const nurBlobsVermerk = () => t("nurBlobs", { datei: BLOB_DATEI });
 
 /**
  * Die Dateien, deren Aenderung seit dem Anker nur aus Blob-Konstanten besteht (Issue
@@ -1193,11 +1495,11 @@ function geaenderteDateien(basis) {
   const dateien = new Set();
 
   const diff = git("diff", "--name-status", "-z", basis);
-  if (diff.status !== 0) fail(`git diff gegen '${basis}' schlug fehl: ${diff.stderr.trim()}`);
+  if (diff.status !== 0) fail(t("gitDiffGescheitert", { basis, grund: diff.stderr.trim() }));
   for (const pfad of diffPfade(diff.stdout)) dateien.add(pfad);
 
   const status = git("status", "--porcelain", "-z", "--untracked-files=all");
-  if (status.status !== 0) fail(`git status schlug fehl: ${status.stderr.trim()}`);
+  if (status.status !== 0) fail(t("gitStatusGescheitert", { grund: status.stderr.trim() }));
   for (const pfad of untracktePfade(status.stdout)) dateien.add(pfad);
 
   // Nach dem Trenner-Normalisieren gefiltert: Kaeme ein Pfad mit Backslash, ginge
@@ -1211,7 +1513,7 @@ function geaenderteDateien(basis) {
 // --- Auswahl ---------------------------------------------------------------
 
 function bereichsText(namen) {
-  return `${namen.length === 1 ? "Bereich" : "Bereiche"} ${namen.join(", ")}`;
+  return t(namen.length === 1 ? "bereichEiner" : "bereichMehrere", { namen: namen.join(", ") });
 }
 
 /**
@@ -1219,14 +1521,14 @@ function bereichsText(namen) {
  * vergessen gegen entschieden. Nur der Grund haelt das auseinander.
  */
 function entscheidung(check, beruehrt, blobBereiche = new Set()) {
-  if (check.always) return { laeuft: true, grund: "als immer laufend festgelegt" };
-  if (!check.areas) return { laeuft: true, grund: "nicht zugeordnet" };
+  if (check.always) return { laeuft: true, grund: t("immerLaufend") };
+  if (!check.areas) return { laeuft: true, grund: t("nichtZugeordnet") };
   const treffer = check.areas.filter((name) => beruehrt.has(name));
-  if (treffer.length > 0) return { laeuft: true, grund: `${bereichsText(treffer)} beruehrt` };
+  if (treffer.length > 0) return { laeuft: true, grund: t("beruehrt", { bereiche: bereichsText(treffer) }) };
   // Haette nur die Blob-Aenderung die Pruefung ausgeloest, sagt der Grund das (Issue
   // #1178) — sonst saehe die Auslassung aus wie eine, an der nichts geaendert wurde.
-  const blobs = check.areas.some((name) => blobBereiche.has(name)) ? ` (${NUR_BLOBS_VERMERK})` : "";
-  return { laeuft: false, grund: `${bereichsText(check.areas)} unberuehrt${blobs}` };
+  const blobs = check.areas.some((name) => blobBereiche.has(name)) ? ` (${nurBlobsVermerk()})` : "";
+  return { laeuft: false, grund: t("unberuehrt", { bereiche: bereichsText(check.areas), blobs }) };
 }
 
 /**
@@ -1438,8 +1740,8 @@ function auswahlPlanen(args) {
   const bereiche = [...beruehrt].sort(vergleicheText);
   // Laesst sich nicht sagen, was von der Aenderung abhaengt, gilt dasselbe wie fuer eine
   // Datei ohne Muster: im Zweifel alles (E16). Der Grund sagt, welcher Zweifel es war.
-  const ohneMuster = ohneMusterDatei ?? (importeUnbekannt ? IMPORTE_UNBEKANNT_GRUND : null);
-  const zweifelGrund = ohneMusterDatei !== null ? ohneMusterGrund(ohneZuordnung) : IMPORTE_UNBEKANNT_GRUND;
+  const ohneMuster = ohneMusterDatei ?? (importeUnbekannt ? importeUnbekanntGrund() : null);
+  const zweifelGrund = ohneMusterDatei !== null ? ohneMusterGrund(ohneZuordnung) : importeUnbekanntGrund();
 
   // Der BEREICHSLAUF (Issue #922, Plan #917, E3): Nicht der Diff sagt, welche
   // Bereiche beruehrt sind, sondern der Aufrufer. Das ist der sanktionierte Weg
@@ -3666,7 +3968,7 @@ function arbeitsverzeichnisSetzen(args) {
  */
 function main(argv = process.argv.slice(2)) {
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
-    aufStdout(HELP);
+    aufStdout(hilfe());
     return 0;
   }
 
@@ -3687,7 +3989,7 @@ function main(argv = process.argv.slice(2)) {
     return 0;
   }
 
-  aufStdout(HELP);
+  aufStdout(hilfe());
   return fail(`Unbekannter Befehl: '${befehl}'. Erwartet: plan, run oder bereiche`);
 }
 
