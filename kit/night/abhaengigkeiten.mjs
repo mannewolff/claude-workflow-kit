@@ -28,15 +28,67 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { NACHBAR_DIR, NACHBAR_BOARD, board, boardRoh } from "./grundlagen.mjs";
-import { ueberschriftName, ueberschriftZeile } from "../board/namen.mjs";
+import { erkennePraefix, praefix, prozessSprache, text, ueberschriftName, ueberschriftZeile } from "../board/namen.mjs";
+
+// --- Texte an den Menschen (Plan #1420, E13, E14; Issue #1450) ---
+//
+// Was dieser Teil an den Menschen ausgibt — der Block unter dem Rueckstell-Kommentar mit
+// `DOKUMENT_SATZ_ERST`, die Zeilen des Probelaufs, die Logzeile eines Kreises und die Fehler der
+// Anbindung —, steht in dieser Tabelle und geht ueber den Texthelfer aus kit/board/namen.mjs.
+// Vertrag bleibt (E14): das Feld `dokument` des Befunds (`[Plan]`, `[Fachlich]`, `[Idee]`) und
+// `herkunft`; angezeigt wird das Praefix im Namen der Projektsprache.
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    dokumenteFehlt: "board/dokumente.mjs fehlt neben night.mjs ({pfad}) — {was} ist nicht verfuegbar.",
+    wasFenceRegel: "die Fence-Regel",
+    wasPraefix: "das Praefix {praefix}",
+    wasHerkunft: "die Herkunft der Abhaengigkeiten",
+    abhaengigkeitUnbekannt: "abhaengigkeitenAbhaengigkeiten kennt keine Abhaengigkeit '{name}'",
+    satzPlan: "ein Plandokument wird nie durch Umsetzung erledigt",
+    satzErst: "eine fachliche Anforderung oder Idee ist erst erledigt, wenn ihre Pakete fertig sind",
+    kreis: "Kreis: {kreis}",
+    kreisWartet: "Kreis: {kreis} — dieses Paket wartet auf einen Kreis.",
+    kreisLogSteht: "#{paket} steht in einem Kreis: {kreis}",
+    kreisLogWartet: "#{paket} wartet auf einen Kreis: {kreis}",
+    erfuellt: "erfuellt",
+    unerfuellt: "unerfuellt",
+    ausVerweiszeile: "aus einer Verweiszeile",
+    ausText: "aus erlaeuterndem Text",
+    dokument: " — Dokument ({dokument}), kein Arbeitspaket: {satz}.",
+    zeile: "- #{nummer}{titel}: {stand}, {herkunft}: „{stelle}“{dokument}",
+    blockKopf: "Abhaengigkeiten, wie der Nachtlauf sie liest:",
+  }),
+  en: Object.freeze({
+    dokumenteFehlt: "board/dokumente.mjs is missing next to night.mjs ({pfad}) — {was} is not available.",
+    wasFenceRegel: "the fence rule",
+    wasPraefix: "the prefix {praefix}",
+    wasHerkunft: "the origin of the dependencies",
+    abhaengigkeitUnbekannt: "abhaengigkeitenAbhaengigkeiten knows no dependency '{name}'",
+    satzPlan: "a plan document is never done by implementation",
+    satzErst: "a requirement or idea is only done when its packages are done",
+    kreis: "Cycle: {kreis}",
+    kreisWartet: "Cycle: {kreis} — this package waits on a cycle.",
+    kreisLogSteht: "#{paket} is in a cycle: {kreis}",
+    kreisLogWartet: "#{paket} waits on a cycle: {kreis}",
+    erfuellt: "fulfilled",
+    unerfuellt: "unfulfilled",
+    ausVerweiszeile: "from a reference line",
+    ausText: "from explanatory text",
+    dokument: " — document ({dokument}), not a work package: {satz}.",
+    zeile: "- #{nummer}{titel}: {stand}, {herkunft}: „{stelle}“{dokument}",
+    blockKopf: "Dependencies as the night run reads them:",
+  }),
+});
+
+const t = (schluessel, werte = {}) => text(TEXTE, schluessel, werte);
 
 // Fence-Regel, Praefixe und die Lesung mit Herkunft kommen aus dem Board-Teil dokumente,
 // der sie fuehrt (Issue #1218). Abgefangen wie im Einstieg: Fehlt der Teil, wirft jede
 // Funktion erst, wenn jemand sie braucht — ein stilles Ergebnis liesse ein Plandokument als
 // Arbeitspaket durch oder den Befund ohne Herkunft stehen. Der Pfad ist nicht literal,
 // deshalb nennt die Gruppe dieses Teils den Bereich board-dokumente von Hand (E3).
-const dokumenteFehlt = (was) => () => {
-  throw new Error(`board/dokumente.mjs fehlt neben night.mjs (${NACHBAR_BOARD}) — ${was} ist nicht verfuegbar.`);
+const dokumenteFehlt = (schluessel, werte = {}) => () => {
+  throw new Error(t("dokumenteFehlt", { pfad: NACHBAR_BOARD, was: t(schluessel, werte) }));
 };
 const {
   fenceLauf,
@@ -45,11 +97,11 @@ const {
   istIdee: isIdee,
   abhaengigkeitenMitHerkunft,
 } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "dokumente.mjs")).href).catch(() => ({
-  fenceLauf: dokumenteFehlt("die Fence-Regel"),
-  istFachlich: dokumenteFehlt("das Praefix [Fachlich]"),
-  istPlan: dokumenteFehlt("das Praefix [Plan]"),
-  istIdee: dokumenteFehlt("das Praefix [Idee]"),
-  abhaengigkeitenMitHerkunft: dokumenteFehlt("die Herkunft der Abhaengigkeiten"),
+  fenceLauf: dokumenteFehlt("wasFenceRegel"),
+  istFachlich: dokumenteFehlt("wasPraefix", { praefix: "[Fachlich]" }),
+  istPlan: dokumenteFehlt("wasPraefix", { praefix: "[Plan]" }),
+  istIdee: dokumenteFehlt("wasPraefix", { praefix: "[Idee]" }),
+  abhaengigkeitenMitHerkunft: dokumenteFehlt("wasHerkunft"),
 }));
 
 // --- Abhaengigkeiten nach aussen (Plan #1199, E6) ---
@@ -69,7 +121,7 @@ export function abhaengigkeitenAbhaengigkeiten(neu) {
     return;
   }
   for (const [name, fn] of Object.entries(neu)) {
-    if (!Object.hasOwn(VORGABEN, name)) throw new Error(`abhaengigkeitenAbhaengigkeiten kennt keine Abhaengigkeit '${name}'`);
+    if (!Object.hasOwn(VORGABEN, name)) throw new Error(t("abhaengigkeitUnbekannt", { name }));
     abh[name] = fn;
   }
 }
@@ -302,10 +354,11 @@ function erfuelltAusser(offen) {
 }
 
 // Der Satz je Dokument-Art, dem Wortlaut von `dokumentArt` in kit/board.mjs folgend
-// (Issue #1060): Beim Schreiben und im Nachtlauf sagt derselbe Hinweis dasselbe.
-const DOKUMENT_SATZ_ERST = "eine fachliche Anforderung oder Idee ist erst erledigt, wenn ihre Pakete fertig sind";
+// (Issue #1060): Beim Schreiben und im Nachtlauf sagt derselbe Hinweis dasselbe. Der Satz
+// steht in TEXTE (`satzErst`, `satzPlan`) und geht in der Projektsprache an die Karte.
+const DOKUMENT_SATZ_ERST = "satzErst";
 const DOKUMENT_ARTEN = [
-  [isPlan, "[Plan]", "ein Plandokument wird nie durch Umsetzung erledigt"],
+  [isPlan, "[Plan]", "satzPlan"],
   [isFachlich, "[Fachlich]", DOKUMENT_SATZ_ERST],
   [isIdee, "[Idee]", DOKUMENT_SATZ_ERST],
 ];
@@ -331,7 +384,7 @@ export function abhaengigkeitsBefund(top, body, erfuellt) {
       stelle: herkunft.get(nummer)?.stelle ?? "",
       titel,
       dokument: art ? art[1] : null,
-      dokumentSatz: art ? art[2] : null,
+      dokumentSatz: art ? t(art[2]) : null,
     };
   });
   // Die Kreise nur, wenn etwas unerfuellt ist: Sonst fuehrt kein Pfad weiter (E7), und ein
@@ -348,21 +401,25 @@ export function abhaengigkeitsBefund(top, body, erfuellt) {
  * selbst darin, haengt es nur daran und wartet auf einen Kreis.
  */
 function kreisZeile(kreis) {
-  return `Kreis: ${kreisText(kreis.karten)}${kreis.steht ? "" : " — dieses Paket wartet auf einen Kreis."}`;
+  return t(kreis.steht ? "kreis" : "kreisWartet", { kreis: kreisText(kreis.karten) });
 }
 
 /** Die zweite Logzeile des Abhaengigkeits-Gates je Kreis (E10). */
 export function kreisLogZeile(paket, kreis) {
-  return `#${paket} ${kreis.steht ? "steht in einem Kreis" : "wartet auf einen Kreis"}: ${kreisText(kreis.karten)}`;
+  return t(kreis.steht ? "kreisLogSteht" : "kreisLogWartet", { paket, kreis: kreisText(kreis.karten) });
 }
 
 /** Eine Zeile des Blocks je Abhaengigkeit (E10), ohne Titel bei unbekannter Karte. */
 function abhaengigkeitsZeile(a) {
   const titel = a.titel === null ? "" : ` (${a.titel})`;
-  const stand = a.erfuellt ? "erfuellt" : "unerfuellt";
-  const herkunft = a.herkunft === "verweiszeile" ? "aus einer Verweiszeile" : "aus erlaeuterndem Text";
-  const dokument = a.dokument ? ` — Dokument (${a.dokument}), kein Arbeitspaket: ${a.dokumentSatz}.` : "";
-  return `- #${a.nummer}${titel}: ${stand}, ${herkunft}: „${a.stelle}“${dokument}`;
+  // Das Praefix im Namen der Projektsprache; das Feld `dokument` bleibt der deutsche Name (E14).
+  const art = a.dokument ? erkennePraefix(a.dokument) : null;
+  const name = art ? praefix(art, prozessSprache()) : a.dokument;
+  const dokument = a.dokument ? t("dokument", { dokument: name, satz: a.dokumentSatz }) : "";
+  return t("zeile", {
+    nummer: a.nummer, titel, stand: t(a.erfuellt ? "erfuellt" : "unerfuellt"),
+    herkunft: t(a.herkunft === "verweiszeile" ? "ausVerweiszeile" : "ausText"), stelle: a.stelle, dokument,
+  });
 }
 
 /**
@@ -372,7 +429,7 @@ function abhaengigkeitsZeile(a) {
  */
 export function abhaengigkeitsBlock(befund) {
   return [
-    "Abhaengigkeiten, wie der Nachtlauf sie liest:",
+    t("blockKopf"),
     ...befund.abhaengigkeiten.map(abhaengigkeitsZeile),
     ...(befund.kreise ?? []).map(kreisZeile),
   ].join("\n");
