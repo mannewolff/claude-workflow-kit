@@ -20,7 +20,7 @@ Zwei Karten sind ein zulässiger Eingang, und die Nummer kommt als Argument: `/f
 Extrahiere aus der Anforderung die fachliche Substanz. Frage nach, wenn Ziel oder Nutzen unklar sind — aber kläre nur Fachliches, keine Technik.
 
 ### 2. Genau ein fachliches Issue anlegen
-Titel: `[Fachlich] <Titel>` — das Präfix ist die verbindliche Konvention, an der alle anderen Skills und der Nacht-Runner fachliche Issues erkennen. Body im Story-Format mit vier Abschnitten:
+Titel: `<Titel>` ohne Präfix — `--art fachlich` an `issue check-form` und `issue create` stellt das Präfix der Projektsprache voran (`[Fachlich]` im deutschen Projekt); an ihm erkennen alle anderen Skills und der Nacht-Runner fachliche Issues. Body im Story-Format mit vier Abschnitten:
 ```markdown
 ## Ziel
 Wer braucht was, und warum? (Nutzerwirkung in PO-Sprache)
@@ -65,11 +65,11 @@ TEIL2
 
 Vor dem Anlegen prüft ein Kommando die Form; erst bei `ok: true` folgt `issue create`, Verstöße werden in der Datei behoben und erneut geprüft:
 ```bash
-node .claude/kit/board.mjs issue check-form --body-file <tmpdir>/neues-issue.md --title "[Fachlich] <Titel>"
+node .claude/kit/board.mjs issue check-form --art fachlich --body-file <tmpdir>/neues-issue.md --title "<Titel>"
 ```
 
 ```bash
-node .claude/kit/board.mjs issue create --title "[Fachlich] <Titel>" --body-file <tmpdir>/neues-issue.md
+node .claude/kit/board.mjs issue create --art fachlich --title "<Titel>" --body-file <tmpdir>/neues-issue.md
 ```
 
 Scheitert ein Dateischritt, wird die unvollstaendige Datei nicht uebertragen; scheitert der Board-Aufruf, meldet der Skill den Fehler mit dem Pfad und endet ohne weitere Mutation.

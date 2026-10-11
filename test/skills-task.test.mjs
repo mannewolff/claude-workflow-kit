@@ -121,11 +121,11 @@ test("[skills-7] `[Fachlich]` und `[Plan]` werden als Quelle abgelehnt, ohne anz
 
 // --- Schritt 3/4: Body und Anlegen --------------------------------------------
 
-test("[skills-7] der Titel traegt das Praefix `[Task]` und das Anlegen nennt --author-model", () => {
+test("[skills-7] das Anlegen nennt --art task und das Anlegen nennt --author-model", () => {
   const aufrufe = codebloecke().filter((block) => /board\.mjs issue create/.test(block));
   assert.ok(aufrufe.length > 0, "kein `issue create`-Aufruf im Skill");
   const zusammen = aufrufe.join("\n");
-  assert.match(zusammen, /--title "\[Task\] /, "der Titel traegt das Praefix [Task] nicht");
+  assert.match(zusammen, /--art task --title "<Titel>"/, "das Anlegen nennt --art task nicht");
   assert.match(zusammen, /--author-model/, "--author-model fehlt im Aufruf");
   assert.match(zusammen, /--body-file/, "der Body geht nicht ueber eine Datei");
 });

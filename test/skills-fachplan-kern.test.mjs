@@ -26,9 +26,9 @@ test("[skills-8] der Skill bleibt unter 110 Zeilen, ohne label-sync und ohne Iss
 
 test("[skills-8] check-form laeuft gegen die Datei, bevor das fachliche Issue entsteht", () => {
   const bash = [...SKILL.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]).join("\n");
-  assert.match(bash, /issue check-form --body-file <tmpdir>\/neues-issue\.md --title "\[Fachlich\] <Titel>"/);
-  const check = SKILL.indexOf("issue check-form --body-file");
-  const create = SKILL.indexOf('issue create --title "[Fachlich] <Titel>"');
+  assert.match(bash, /issue check-form --art fachlich --body-file <tmpdir>\/neues-issue\.md --title "<Titel>"/);
+  const check = SKILL.indexOf("issue check-form --art fachlich");
+  const create = SKILL.indexOf('issue create --art fachlich --title "<Titel>"');
   assert.ok(check > 0 && create > check, "check-form steht nicht vor dem Anlegen");
   assert.match(SKILL, /erst bei `ok: true` folgt `issue create`/);
 });

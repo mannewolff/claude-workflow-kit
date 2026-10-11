@@ -25,8 +25,8 @@ test("[skills-2] der Skill bleibt unter 220 Zeilen, ohne label-sync und ohne Iss
 
 test("[skills-2] check-form laeuft gegen die Datei, bevor das Plandokument entsteht", () => {
   const bash = [...SKILL.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]).join("\n");
-  assert.match(bash, /issue check-form --body-file <tmpdir>\/plandokument\.md --title "\[Plan\] <Titel>"/);
-  assert.ok(SKILL.indexOf("issue check-form --body-file") < SKILL.indexOf("**Angelegt über:**"),
+  assert.match(bash, /issue check-form --art plan --body-file <tmpdir>\/plandokument\.md --title "<Titel>"/);
+  assert.ok(SKILL.indexOf("issue check-form --art plan") < SKILL.indexOf("**Angelegt über:**"),
     "check-form steht nicht vor dem Anlege-Block");
   assert.match(SKILL, /erst bei `ok: true` folgt `issue create`/);
 });
@@ -59,7 +59,7 @@ function schritt(nummer) {
 
 test("[skills-2] Schritt 4 prueft den Entwurf mit check-form --body-file und zeigt die hinweise mit dem Plan", () => {
   const vier = schritt(4);
-  assert.match(vier, /check-form --body-file/, "Schritt 4 nennt check-form --body-file nicht");
+  assert.match(vier, /check-form --art plan --body-file/, "Schritt 4 nennt check-form --art plan --body-file nicht");
   assert.match(vier, /`hinweise`/, "Schritt 4 nennt die hinweise nicht");
   assert.ok(SKILL.indexOf("hinweise") < SKILL.indexOf("### 5. "), "die Nennung steht nicht vor Schritt 5");
   assert.match(vier, /bleibt grün/, "Schritt 4 nennt die Aufnahme als ‚bleibt grün' nicht");
