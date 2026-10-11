@@ -380,6 +380,12 @@ const FESTGEFAHREN_MINDEST = 2;
 export const FESTGEFAHREN_MARKE = "Pruefung festgefahren:";
 
 /**
+ * Was in der Zeile nach der Marke auf die Zahl der Versuche folgt — Vertrag (E14) in jeder
+ * Sprache: `festgefahrenLesen` in kit/night/session.mjs liest `<n>-mal gleich gescheitert`.
+ */
+const VERSUCHE_MARKE = "-mal gleich gescheitert";
+
+/**
  * Die Texte des Pruefkommandos an den Menschen (Issue #1494, Plan #1420 E13). Vertragswerte
  * (E14) stehen nicht hier: die Feldnamen der JSON-Ausgaben, die Ergebniswerte, die Stufen- und
  * Achsenwerte der Config und die Marke `FESTGEFAHREN_MARKE`.
@@ -611,6 +617,37 @@ Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
     nichtZugeordnet: "nicht zugeordnet",
     beruehrt: "{bereiche} beruehrt",
     unberuehrt: "{bereiche} unberuehrt{blobs}",
+    grundGueteVeroeffentlichung: "Guetemessung: laeuft vor dem Veroeffentlichen immer",
+    grundGueteAbschluss: "Abschlusslauf: Guetemessung braucht die vollstaendige Testmenge",
+    grundStufeSpaeter: "Stufe {stufe}, gefahren wird {gefahren}",
+    grundNichtBeimAbschluss: "Abschlusslauf: {achse}, laeuft beim Veroeffentlichen",
+    pushPruefungUngueltig: "Ungueltiger Wert {genannt} fuer pushPruefung. Erwartet: \"lokal\" oder { \"ort\": \"buildDienst\", \"zweig\": \"<name>\" }.",
+    pushPruefungZweig: "pushPruefung: Der Pruefzweig '{zweig}' ist {feld}. Der Pruefzweig muss ein eigener Zweig sein.",
+    unbekannterBereichWahl: "Unbekannter Bereich '{name}'. Konfiguriert in checkAreas: {liste}.",
+    keinerBereich: "keiner",
+    grundAnkerUnbekannt: "voller Umfang: Anker '{ref}' laesst sich nicht aufloesen",
+    grundBereichslauf: "Bereichslauf {bereich}: {grund}",
+    grundVeroeffentlichung: "Veroeffentlichungsstufe: voller Umfang",
+    grundLeeresPaket: "leeres Paket: keine Aenderung seit {basis}",
+    grundFreigabe: "Freigabestufe: laeuft vor jeder Freigabe",
+    grundPushGeprueft: "Stufe push, geprueft beim push main",
+    zuschnittHinweis: "{cmd} ist jedem Bereich zugeordnet und laeuft bei jeder Aenderung — Zuschnitt pruefen (checks.mjs bereiche)",
+    gitLsFilesGescheitert: "git ls-files schlug fehl: {grund}",
+    bremseVersuche: "{versuche}{marke}; es laeuft keine Pruefung mehr (Exit 3).",
+    zusammenfassung: "Zusammenfassung: {pfad}",
+    letzterVersuch: "Letzter erlaubter Versuch: {cmd} ist {versuche}-mal gleich gescheitert ({fehler}) — der naechste Aufruf faehrt nichts und endet mit Exit 3.",
+    festgefahrenHinweis: "Hinweis: festgefahren an {cmd} — {versuche}-mal gleich gescheitert ({fehler})",
+    standUnlesbar: "Der Stand von '{pfad}' liess sich nicht lesen: {grund}",
+    hashObjectGescheitert: "git hash-object schlug fehl: {grund}",
+    hashObjectAnzahl: "git hash-object lieferte {hashes} Hashes fuer {pfade} Pfade.",
+    gueteOhneErgebnis: "Guete: kein auswertbares Ergebnis ({grund})",
+    gueteErgebnis: "Guete: {anteil} % erreicht, Marke {marke} % — {grund}",
+    gueteNichtGestartet: "nicht gestartet: ein frueheres Kommando war rot",
+    gueteAusgelassen: "ausgelassen: {grund}",
+    nichtProtokolliert: "Hinweis: Ausfuehrung nicht protokolliert ({pfad}): {grund}",
+    dauerNichtGemessen: "Dauer nicht gemessen",
+    obergrenze: " — Obergrenze {grenze} s um {ueber} s ueberschritten",
+    haengend: "haengend: nach {grenze} s Grenze abgebrochen",
   }),
   en: Object.freeze({
     hilfe: `checks.mjs (claude-workflow-kit v{version}) — due checks
@@ -820,6 +857,37 @@ segment boundaries; a directory is covered as 'frontend/**'.
     nichtZugeordnet: "not assigned",
     beruehrt: "{bereiche} touched",
     unberuehrt: "{bereiche} untouched{blobs}",
+    grundGueteVeroeffentlichung: "quality measurement: always runs before the release",
+    grundGueteAbschluss: "completion run: the quality measurement needs the full test set",
+    grundStufeSpaeter: "stage {stufe}, running {gefahren}",
+    grundNichtBeimAbschluss: "completion run: {achse}, runs at release",
+    pushPruefungUngueltig: "Invalid value {genannt} for pushCheck. Expected: \"local\" or { \"location\": \"buildService\", \"branch\": \"<name>\" }.",
+    pushPruefungZweig: "pushCheck: the check branch '{zweig}' is {feld}. The check branch must be a branch of its own.",
+    unbekannterBereichWahl: "Unknown area '{name}'. Configured in checkAreas: {liste}.",
+    keinerBereich: "none",
+    grundAnkerUnbekannt: "full scope: anchor '{ref}' cannot be resolved",
+    grundBereichslauf: "area run {bereich}: {grund}",
+    grundVeroeffentlichung: "release stage: full scope",
+    grundLeeresPaket: "empty package: no change since {basis}",
+    grundFreigabe: "approval stage: runs before every approval",
+    grundPushGeprueft: "stage push, checked at push main",
+    zuschnittHinweis: "{cmd} is assigned to every area and runs on every change — check the cut (checks.mjs areas)",
+    gitLsFilesGescheitert: "git ls-files failed: {grund}",
+    bremseVersuche: "{versuche}{marke}: failed the same way {versuche} times; no check runs any more (exit 3).",
+    zusammenfassung: "Summary: {pfad}",
+    letzterVersuch: "Last allowed attempt: {cmd} failed the same way {versuche} times ({fehler}) — the next call runs nothing and ends with exit 3.",
+    festgefahrenHinweis: "Note: stuck at {cmd} — failed the same way {versuche} times ({fehler})",
+    standUnlesbar: "The state of '{pfad}' could not be read: {grund}",
+    hashObjectGescheitert: "git hash-object failed: {grund}",
+    hashObjectAnzahl: "git hash-object returned {hashes} hashes for {pfade} paths.",
+    gueteOhneErgebnis: "Quality: no evaluable result ({grund})",
+    gueteErgebnis: "Quality: {anteil} % reached, threshold {marke} % — {grund}",
+    gueteNichtGestartet: "not started: an earlier command was red",
+    gueteAusgelassen: "skipped: {grund}",
+    nichtProtokolliert: "Note: execution not logged ({pfad}): {grund}",
+    dauerNichtGemessen: "duration not measured",
+    obergrenze: " — limit {grenze} s exceeded by {ueber} s",
+    haengend: "hanging: aborted after the {grenze} s limit",
   }),
 });
 
@@ -1575,13 +1643,13 @@ function verteilen(checks, stufe, entscheiden, abschluss = false) {
   for (const check of checks) {
     let ergebnis;
     if (check.guete && stufe === "push") {
-      ergebnis = { laeuft: true, grund: "Guetemessung: laeuft vor dem Veroeffentlichen immer" };
+      ergebnis = { laeuft: true, grund: t("grundGueteVeroeffentlichung") };
     } else if (check.guete && abschluss) {
-      ergebnis = { laeuft: false, grund: "Abschlusslauf: Guetemessung braucht die vollstaendige Testmenge" };
+      ergebnis = { laeuft: false, grund: t("grundGueteAbschluss") };
     } else if (STUFEN.indexOf(check.stufe) > gefahren) {
-      ergebnis = { laeuft: false, grund: `Stufe ${check.stufe}, gefahren wird ${stufe}` };
+      ergebnis = { laeuft: false, grund: t("grundStufeSpaeter", { stufe: check.stufe, gefahren: stufe }) };
     } else if (check.nichtBeimAbschluss && abschluss) {
-      ergebnis = { laeuft: false, grund: `Abschlusslauf: ${check.nichtBeimAbschluss}, laeuft beim Veroeffentlichen` };
+      ergebnis = { laeuft: false, grund: t("grundNichtBeimAbschluss", { achse: configWert("buildChecks[].nichtBeimAbschluss", check.nichtBeimAbschluss) }) };
     } else {
       ergebnis = entscheiden(check);
     }
@@ -1670,11 +1738,11 @@ function pushPruefung(config) {
   const objekt = wert !== null && typeof wert === "object" && !Array.isArray(wert);
   const felder = objekt ? Object.keys(wert) : [];
   if (!objekt || felder.length !== 2 || !felder.includes("ort") || !felder.includes("zweig") || wert.ort !== "buildDienst" || typeof wert.zweig !== "string" || !/^\S+$/.test(wert.zweig)) {
-    fail(`Ungueltiger Wert ${genannt} fuer pushPruefung. Erwartet: "lokal" oder { "ort": "buildDienst", "zweig": "<name>" }.`);
+    fail(t("pushPruefungUngueltig", { genannt }));
   }
   for (const [feld, vorgabe] of [["mainBranch", "main"], ["productionBranch", "production"]]) {
     if (wert.zweig === (config[feld] ?? vorgabe)) {
-      fail(`pushPruefung: Der Pruefzweig '${wert.zweig}' ist ${feld}. Der Pruefzweig muss ein eigener Zweig sein.`);
+      fail(t("pushPruefungZweig", { zweig: wert.zweig, feld }));
     }
   }
   return { ort: wert.ort, zweig: wert.zweig };
@@ -1701,7 +1769,7 @@ function auswahlPlanen(args) {
   const bereichWahl = args.bereich ?? null;
   if (bereichWahl !== null && !Object.hasOwn(checkAreas, bereichWahl)) {
     const namen = Object.keys(checkAreas);
-    fail(`Unbekannter Bereich '${bereichWahl}'. Konfiguriert in checkAreas: ${namen.length > 0 ? namen.join(", ") : "keiner"}.`);
+    fail(t("unbekannterBereichWahl", { name: bereichWahl, liste: namen.length > 0 ? namen.join(", ") : t("keinerBereich") }));
   }
 
   const stufe = args.stufe ?? STUFEN[0];
@@ -1711,7 +1779,7 @@ function auswahlPlanen(args) {
     // Der Zweifelsfall behaelt seinen eigenen Grund, auch an der Freigabestufe:
     // Dort laeuft ohnehin alles, aber WARUM ist verschieden — entschieden gegen
     // nicht gewusst.
-    const grund = `voller Umfang: Anker '${refText}' laesst sich nicht aufloesen`;
+    const grund = t("grundAnkerUnbekannt", { ref: refText });
     return bauen({
       basis: refText, stufe, vollerUmfang: true, abschluss,
       ...verteilen(checks, stufe, () => ({ laeuft: true, grund }), abschluss),
@@ -1764,7 +1832,7 @@ function auswahlPlanen(args) {
       basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, bereichWahl, abschluss, abgeleitet, abhaengig,
       ...verteilen(checks, stufe, (check) => {
         const ergebnis = entscheidung(check, gewaehlt);
-        return { laeuft: ergebnis.laeuft, grund: `Bereichslauf ${bereichWahl}: ${ergebnis.grund}` };
+        return { laeuft: ergebnis.laeuft, grund: t("grundBereichslauf", { bereich: bereichWahl, grund: ergebnis.grund }) };
       }, abschluss),
     });
   }
@@ -1791,7 +1859,7 @@ function auswahlPlanen(args) {
   // davon: eine Entscheidung. Denselben Unterschied halten String-Form und
   // `always: true` auseinander.
   if (stufe === "push") {
-    const grund = "Veroeffentlichungsstufe: voller Umfang";
+    const grund = t("grundVeroeffentlichung");
     return bauen({
       basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, abschluss, abgeleitet, abhaengig,
       ...verteilen(checks, stufe, () => ({ laeuft: true, grund }), abschluss),
@@ -1799,7 +1867,7 @@ function auswahlPlanen(args) {
   }
 
   if (geaendert.length === 0) {
-    const grund = `leeres Paket: keine Aenderung seit ${basis}`;
+    const grund = t("grundLeeresPaket", { basis });
     return bauen({
       basis, stufe, leeresPaket: true, abschluss,
       ...verteilen(checks, stufe, () => ({ laeuft: false, grund }), abschluss),
@@ -1840,15 +1908,15 @@ function freigabeAuswahl({ checks, basis, geaendert, bereiche, ohneZuordnung, oh
   const leer = geaendert.length === 0;
   const zweifel = !leer && ohneMuster !== null;
   const paketstufe = (check) => {
-    if (leer) return { laeuft: false, grund: `leeres Paket: keine Aenderung seit ${basis}` };
+    if (leer) return { laeuft: false, grund: t("grundLeeresPaket", { basis }) };
     if (zweifel) return { laeuft: true, grund: zweifelGrund };
     return entscheidung(check, beruehrt, blobBereiche);
   };
   return bauen({
     basis, stufe: "merge", geaendert, bereiche, ohneZuordnung, ohnePruefung, vollerUmfang: zweifel, abschluss, abgeleitet, abhaengig,
     ...verteilen(checks, "merge", (check) => {
-      if (check.stufe === "merge") return { laeuft: true, grund: "Freigabestufe: laeuft vor jeder Freigabe" };
-      if (check.stufe === "push") return { laeuft: false, grund: "Stufe push, geprueft beim push main" };
+      if (check.stufe === "merge") return { laeuft: true, grund: t("grundFreigabe") };
+      if (check.stufe === "push") return { laeuft: false, grund: t("grundPushGeprueft") };
       return paketstufe(check);
     }, abschluss),
   });
@@ -1897,7 +1965,7 @@ function kommandoUrteile(checks, checkAreas, kopplung) {
 function zuschnittHinweise(config, checks) {
   return kommandoUrteile(checks, config.checkAreas ?? {}, kopplungsgruende(config))
     .filter((u) => u.breit && u.kopplungsgrund === null)
-    .map((u) => `${u.cmd} ist jedem Bereich zugeordnet und laeuft bei jeder Aenderung — Zuschnitt pruefen (checks.mjs bereiche)`);
+    .map((u) => t("zuschnittHinweis", { cmd: u.cmd }));
 }
 
 /**
@@ -1952,7 +2020,7 @@ function bereicheAuswerten() {
   const { checks, checkAreas, kopplung, kommandos: m, bereiche } = anteilJeBereich(config);
 
   const ls = git("ls-files", "-z");
-  if (ls.status !== 0) fail(`git ls-files schlug fehl: ${gitGrund(ls)}`);
+  if (ls.status !== 0) fail(t("gitLsFilesGescheitert", { grund: gitGrund(ls) }));
   const dateien = ls.stdout
     .split("\0")
     .filter((pfad) => pfad !== "")
@@ -2347,8 +2415,8 @@ function bremsen(auswahl, vorige) {
   const ausgeloest = { pruefung: fest.cmd, fehler, versuche, zeitpunkt: new Date().toISOString() };
   const pfad = schreibeZusammenfassung({ ...vorige, festgefahren: { ...vorige.festgefahren, ausgeloest } });
   aufStdout(`${FESTGEFAHREN_MARKE} ${fest.cmd} — ${fehler}\n`);
-  aufStdout(`${versuche}-mal gleich gescheitert; es laeuft keine Pruefung mehr (Exit 3).\n`);
-  aufStdout(`\nZusammenfassung: ${pfad}\n`);
+  aufStdout(`${t("bremseVersuche", { versuche, marke: VERSUCHE_MARKE })}\n`);
+  aufStdout(`\n${t("zusammenfassung", { pfad })}\n`);
   return 3;
 }
 
@@ -2364,8 +2432,8 @@ function festgefahrenMelden(laufen, festgefahren) {
     const f = festgefahren.folgen[e.cmd];
     if (e.ergebnis !== "rot" || !f || f.versuche < grenze) continue;
     aufStderr(ohneAufsicht
-      ? `Letzter erlaubter Versuch: ${e.cmd} ist ${f.versuche}-mal gleich gescheitert (${f.fehler}) — der naechste Aufruf faehrt nichts und endet mit Exit 3.\n`
-      : `Hinweis: festgefahren an ${e.cmd} — ${f.versuche}-mal gleich gescheitert (${f.fehler})\n`);
+      ? `${t("letzterVersuch", { cmd: e.cmd, versuche: f.versuche, fehler: f.fehler })}\n`
+      : `${t("festgefahrenHinweis", { cmd: e.cmd, versuche: f.versuche, fehler: f.fehler })}\n`);
   }
 }
 
@@ -2402,7 +2470,7 @@ export function blobHashes(pfade, root = wurzel()) {
       vorhanden.push(pfad);
     } catch (err) {
       if (err.code !== "ENOENT") {
-        fail(`Der Stand von '${pfad}' liess sich nicht lesen: ${err.message}`);
+        fail(t("standUnlesbar", { pfad, grund: err.message }));
       }
       hashes[pfad] = null;
     }
@@ -2415,11 +2483,11 @@ export function blobHashes(pfade, root = wurzel()) {
     input: `${vorhanden.join("\n")}\n`,
   });
   if (res.status !== 0) {
-    fail(`git hash-object schlug fehl: ${(res.stderr || "").trim()}`);
+    fail(t("hashObjectGescheitert", { grund: (res.stderr || "").trim() }));
   }
   const zeilen = res.stdout.split(/\r?\n/).filter((z) => z.length > 0);
   if (zeilen.length !== vorhanden.length) {
-    fail(`git hash-object lieferte ${zeilen.length} Hashes fuer ${vorhanden.length} Pfade.`);
+    fail(t("hashObjectAnzahl", { hashes: zeilen.length, pfade: vorhanden.length }));
   }
   vorhanden.forEach((pfad, i) => {
     hashes[pfad] = zeilen[i];
@@ -2506,8 +2574,8 @@ function gueteErgebnis(eintrag, gruen, ausgabe, grund) {
 
 function gueteZeile(ergebnis) {
   return ergebnis.anteil === null
-    ? `Guete: kein auswertbares Ergebnis (${ergebnis.grund})`
-    : `Guete: ${ergebnis.anteil} % erreicht, Marke ${ergebnis.marke} % — ${ergebnis.grund}`;
+    ? t("gueteOhneErgebnis", { grund: ergebnis.grund })
+    : t("gueteErgebnis", { anteil: ergebnis.anteil, marke: ergebnis.marke, grund: ergebnis.grund });
 }
 
 /**
@@ -2519,11 +2587,11 @@ function gueteZeile(ergebnis) {
 function gueteOhneLauf(laufen, ausgelassen) {
   const geplant = laufen.find((e) => e.guete);
   if (geplant) {
-    return { cmd: geplant.cmd, anteil: null, marke: geplant.guete.marke, erfuellt: false, grund: "nicht gestartet: ein frueheres Kommando war rot" };
+    return { cmd: geplant.cmd, anteil: null, marke: geplant.guete.marke, erfuellt: false, grund: t("gueteNichtGestartet") };
   }
   const eintrag = ausgelassen.find((e) => e.guete);
   if (eintrag) {
-    return { cmd: eintrag.cmd, anteil: null, marke: eintrag.guete.marke, erfuellt: false, grund: `ausgelassen: ${eintrag.grund}` };
+    return { cmd: eintrag.cmd, anteil: null, marke: eintrag.guete.marke, erfuellt: false, grund: t("gueteAusgelassen", { grund: eintrag.grund }) };
   }
   return null;
 }
@@ -2649,7 +2717,7 @@ function ausfuehrungSchreiben(cmd, ergebnis, dauerMs, herkunft, ausloeser, { gle
       "utf-8",
     );
   } catch (err) {
-    aufStderr(`Hinweis: Ausfuehrung nicht protokolliert (${pfad}): ${err.message}\n`);
+    aufStderr(`${t("nichtProtokolliert", { pfad, grund: err.message })}\n`);
   }
 }
 
@@ -2752,7 +2820,7 @@ function sekunden(ms) {
 
 /** Die Dauer einer Berichtszeile (Issue #1003). "Nicht gemessen" ist kein Nullbetrag. */
 export function dauerText(dauerMs) {
-  return typeof dauerMs === "number" ? `${sekunden(dauerMs)} s` : "Dauer nicht gemessen";
+  return typeof dauerMs === "number" ? `${sekunden(dauerMs)} s` : t("dauerNichtGemessen");
 }
 
 /**
@@ -2761,12 +2829,12 @@ export function dauerText(dauerMs) {
  */
 export function obergrenzeZusatz(dauerMs, grenzeMs = PRUEFDAUER_OBERGRENZE_MS) {
   if (typeof dauerMs !== "number" || dauerMs <= grenzeMs) return "";
-  return ` — Obergrenze ${sekunden(grenzeMs)} s um ${sekunden(dauerMs - grenzeMs)} s ueberschritten`;
+  return t("obergrenze", { grenze: sekunden(grenzeMs), ueber: sekunden(dauerMs - grenzeMs) });
 }
 
 /** Der Vermerk einer abgebrochenen, haengenden Pruefung (Issue #1077). */
 export function haengendText(grenzeMs) {
-  return `haengend: nach ${sekunden(grenzeMs)} s Grenze abgebrochen`;
+  return t("haengend", { grenze: sekunden(grenzeMs) });
 }
 
 /**
