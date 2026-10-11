@@ -91,8 +91,7 @@ import { spawnSync } from "node:child_process";
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
 const KIT_VERSION = "4.2.0";
 
-
-const HELP = `board.mjs — Board-Adapter fuer das claude-workflow-kit
+const HILFE = `board.mjs — Board-Adapter fuer das claude-workflow-kit
 
 Nutzung:
   node board.mjs issue create --title "..." --body "..." | --body-file <pfad> | --body -
@@ -274,6 +273,42 @@ Fuer GitHub-Board-Integration: github.projectNumber in der Config setzen. Fehlt 
 wird bei genau einem GitHub Project fuer den Owner automatisch dessen Nummer verwendet.
 `;
 
+/**
+ * Die Hilfe in den Namen der Projektsprache (Issue #1461, Plan #1420 E18): In einem englischen
+ * Projekt stehen Befehlsfolgen wie `issue melden` und Optionen wie `--zustand` englisch; den
+ * Fliesstext uebersetzt dieses Paket nicht. Eine Befehlsfolge zaehlt nur mit bekanntem Befehl,
+ * damit Fliesstext wie "kontext-Achse" bleibt.
+ */
+function hilfeMitNamen(text, sprache, { achsen, befehle, schutz, optionen }) {
+  if (sprache !== "en") return text;
+  const befehlsfolge = /\b(issue-review|issue|code|kontext|nightrun|sitzung|hook) ([a-z][a-z-]*)(?: ([a-z]+))?/g;
+  return text
+    .replaceAll(befehlsfolge, (ganz, achse, befehl, aktion) => {
+      const name = befehle[achse][befehl];
+      if (name === undefined) return ganz;
+      if (aktion === undefined) return `${achsen[achse]} ${name}`;
+      const folge = befehl === "schutz" ? schutz[aktion] ?? aktion : aktion;
+      return `${achsen[achse]} ${name} ${folge}`;
+    })
+    .replaceAll(/--([a-z][a-z-]*)/g, (ganz, name) => (Object.hasOwn(optionen, name) ? `--${optionen[name]}` : ganz));
+}
+
+/**
+ * Die Hilfe in der Projektsprache, mit Sprache und Namen aus dem Namen-Register. Fehlt das
+ * Register, bleibt sie deutsch — eine einzeln kopierte board.mjs antwortet so weiter (Issue #170).
+ */
+async function hilfeInProjektsprache() {
+  let namen;
+  try {
+    namen = await import("./board/namen.mjs");
+  } catch {
+    return HILFE;
+  }
+  return hilfeMitNamen(HILFE, namen.prozessSprache(), namen.BEFEHLSNAMEN);
+}
+
+const HELP = await hilfeInProjektsprache();
+
 // Auskunft vor den Teilen (Plan #1199, E2): --version und --help antworten, bevor ein Teil
 // geladen ist. Nur so beantwortet board.mjs sie auch als einzeln kopierte Datei, ohne
 // kit/board/ daneben (Issue #170) — und genau dort fragt man danach.
@@ -331,6 +366,12 @@ export const { SCHUTZ_AUSGESETZT, NACHPRUEFEN_KOMMANDO, NACHT_GESPERRT, rulesetS
 const { rulesetName } = await import("./board/adapter.mjs");
 // Englisch benannte Config auf die deutschen Namen (Issue #1436, Plan #1420 E10).
 const { normalisiereConfig } = await import("./board/config-namen.mjs");
+// Die englischen Namen der Optionen und der Aktionen von `code schutz` (Issue #1461, E18).
+const { BEFEHLSNAMEN } = await import("./board/namen.mjs");
+/** Englisch -> deutsch fuer eine Ebene der Namenstabelle. */
+const deutscherName = (ebene) => Object.fromEntries(Object.entries(ebene).map(([de, en]) => [en, de]));
+const OPTION_DEUTSCH = deutscherName(BEFEHLSNAMEN.optionen);
+const SCHUTZ_DEUTSCH = deutscherName(BEFEHLSNAMEN.schutz);
 
 // --- Argument-Parser ---
 
@@ -344,7 +385,8 @@ function parseArgs(argv) {
   while (i < argv.length) {
     const a = argv[i];
     if (a.startsWith("--")) {
-      const key = a.slice(2);
+      // Eine englisch benannte Option traegt ab hier ihren deutschen Namen (E18).
+      const key = OPTION_DEUTSCH[a.slice(2)] ?? a.slice(2);
       const next = argv[i + 1];
       if (next !== undefined && !next.startsWith("--")) {
         result[key] = next;
@@ -467,13 +509,18 @@ async function dispatchIssue(command, args) {
     case "move":    return issueMove(tracker, args);
     case "update":  return issueUpdate(tracker, args);
     case "comment": return issueComment(tracker, args);
-    case "melden":  return issueMelden(tracker, args);
-    case "stand":   return issueStand(tracker, config, args);
-    case "auftrag": return issueAuftrag(tracker, args, AUFTRAG_GESCHUETZT);
-    case "ursprung": return issueUrsprung(tracker, args);
+    case "melden":
+    case "report":  return issueMelden(tracker, args);
+    case "stand":
+    case "run-state": return issueStand(tracker, config, args);
+    case "auftrag":
+    case "brief":   return issueAuftrag(tracker, args, AUFTRAG_GESCHUETZT);
+    case "ursprung":
+    case "origin":  return issueUrsprung(tracker, args);
     case "label":   return issueLabel(tracker, config, args, HELP);
     case "check-form": return issueCheckForm(tracker, config, args);
-    case "check-geschuetzt": return issueCheckGeschuetzt(tracker, args);
+    case "check-geschuetzt":
+    case "check-protected": return issueCheckGeschuetzt(tracker, args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter issue-Befehl: '${command}'`);
@@ -522,7 +569,7 @@ function schutzVerlangen(host) {
  * (E8); `status` und `wiederherstellen` nicht.
  */
 async function codeSchutz(host, config, args) {
-  const aktion = args._[0];
+  const aktion = SCHUTZ_DEUTSCH[args._[0]] ?? args._[0];
   if (!SCHUTZ_AKTIONEN.includes(aktion)) {
     process.stdout.write(HELP);
     fail(`Unbekannte schutz-Aktion: '${aktion ?? ""}'. Erwartet: ${SCHUTZ_AKTIONEN.join(" | ")}`);
@@ -560,7 +607,8 @@ async function dispatchCode(command, args) {
     case "repo-name": return codeRepoName(host);
     case "pr":        return codePr(host, args);
     case "ci-status": return codeCiStatus(host, args);
-    case "schutz":    return codeSchutz(host, config, args);
+    case "schutz":
+    case "protection": return codeSchutz(host, config, args);
     default:
       process.stdout.write(HELP);
       fail(`Unbekannter code-Befehl: '${command}'`);
@@ -726,11 +774,11 @@ async function main() {
     await dispatchCode(command, args);
   } else if (axis === "issue-review") {
     await dispatchIssueReview(command, args, HELP);
-  } else if (axis === "kontext") {
+  } else if (axis === "kontext" || axis === "context") {
     await dispatchKontext(command, args);
   } else if (axis === "nightrun") {
     await dispatchNightrun(command, args, HELP);
-  } else if (axis === "sitzung") {
+  } else if (axis === "sitzung" || axis === "session") {
     await dispatchSitzung(command, args, HELP);
   } else if (axis === "hook") {
     await dispatchHook(command, HELP);

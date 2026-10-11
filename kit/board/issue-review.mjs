@@ -767,7 +767,8 @@ async function antwortMitExit(befehl) {
 // Die Hilfe kommt vom Einstieg herein: Sie steht dort, und ein Import von dort waere ein Zyklus.
 export async function dispatchIssueReview(command, args, hilfe) {
   switch (command) {
-    case "pruefauftrag": return antwortMitExit(() => issueReviewPruefauftrag(args));
+    case "pruefauftrag":
+    case "review-brief": return antwortMitExit(() => issueReviewPruefauftrag(args));
     case "start": return antwortMitExit(() => issueReviewStart(args));
     case "reviewers": return out(issueReviewReviewers(args));
     case "check": return out(issueReviewCheck(args));

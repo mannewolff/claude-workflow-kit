@@ -3,7 +3,8 @@
  * E2 bis E4): je Sache ein deutscher und ein englischer Name, die Projektsprache aus der
  * Config und das Erkennen beider Namen. Dazu die zurueckgelesenen Marker in Kommentaren und
  * Body und der Texthelfer, ueber den jedes Modul seine Meldungen in der Projektsprache
- * waehlt (Issue #1440, E13, E15).
+ * waehlt (Issue #1440, E13, E15). Zuletzt die englischen Befehlsnamen von kit/board.mjs
+ * (Issue #1461, E18).
  *
  * Hier und nur hier stehen die Namenspaare. Bis zu diesem Register standen dieselben Labels
  * mehrfach im Code, nur durch SYNC-Kommentare gehalten (`kit:klaeren` dreifach,
@@ -398,3 +399,36 @@ export function pruefeParitaet(tabelle) {
   }
   return befunde;
 }
+
+// --- Befehlsnamen (Plan #1420 E18) ---------------------------------------------------
+
+/**
+ * Die englischen Namen der Achsen, Befehle und Optionen von kit/board.mjs neben den deutschen
+ * (Issue #1461), je Eintrag deutsch -> englisch. Die deutschen bleiben gueltig. Die Verteiler
+ * tragen die englischen Befehle als zusaetzliche Eintraege, die Optionen bildet parseArgs im
+ * Einstieg ab, die Hilfe eines englischen Projekts nennt die englischen Namen.
+ */
+export const BEFEHLSNAMEN = Object.freeze({
+  achsen: Object.freeze({ issue: "issue", code: "code", kontext: "context", "issue-review": "issue-review",
+    nightrun: "nightrun", sitzung: "session", hook: "hook" }),
+  befehle: Object.freeze({
+    issue: Object.freeze({ create: "create", get: "get", list: "list", epics: "epics", activity: "activity",
+      move: "move", update: "update", comment: "comment", melden: "report", stand: "run-state",
+      auftrag: "brief", ursprung: "origin", label: "label", "check-form": "check-form",
+      "check-geschuetzt": "check-protected" }),
+    code: Object.freeze({ "repo-name": "repo-name", pr: "pr", "ci-status": "ci-status", schutz: "protection" }),
+    kontext: Object.freeze({ paths: "paths", "last-log": "last-log" }),
+    "issue-review": Object.freeze({ reviewers: "reviewers", check: "check", matrix: "matrix", roles: "roles",
+      pruefauftrag: "review-brief", start: "start" }),
+    nightrun: Object.freeze({ melden: "report" }),
+    sitzung: Object.freeze({ melden: "report" }),
+    hook: Object.freeze({ "bash-pruefen": "bash-check" }),
+  }),
+  // Die Aktionen von `code schutz`.
+  schutz: Object.freeze({ status: "status", einrichten: "setup", aussetzen: "suspend",
+    wiederherstellen: "restore", nachpruefen: "verify" }),
+  // Nur die Optionen mit deutschem Namen; die uebrigen (--title, --text-file …) sind englisch.
+  optionen: Object.freeze({ teil: "part", zustand: "state", spalte: "column", pfad: "path", zweig: "branch",
+    "nur-pfad": "path-only", stufe: "stage", rolle: "role", datei: "file", "material-datei": "material-file",
+    auftrag: "brief", ausgabe: "output", protokoll: "transcript" }),
+});

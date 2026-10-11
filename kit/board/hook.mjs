@@ -258,8 +258,9 @@ export function hookBashPruefen({ eingabeLesen = () => readFileSync(0, "utf-8"),
   return ergebnis.abweisen ? { exitCode: 2, stderr: ergebnis.grund + "\n" } : ohneBefund;
 }
 
+// `bash-check` ist der englische Name von `bash-pruefen` (Issue #1461, Plan #1420 E18).
 export async function dispatchHook(command, hilfe) {
-  if (command === "bash-pruefen") {
+  if (command === "bash-pruefen" || command === "bash-check") {
     const { exitCode, stderr } = hookBashPruefen();
     if (stderr) process.stderr.write(stderr);
     process.exitCode = exitCode;

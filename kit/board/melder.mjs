@@ -451,8 +451,9 @@ export async function nightrunMelden(args, {
   }
 }
 
+// `report` ist der englische Name von `melden` (Issue #1461, Plan #1420 E18).
 export async function dispatchNightrun(command, args, hilfe) {
-  if (command === "melden") return ausgeben(await nightrunMelden(args));
+  if (command === "melden" || command === "report") return ausgeben(await nightrunMelden(args));
   process.stdout.write(hilfe);
   fail(`Unbekannter nightrun-Befehl: '${command}'`);
 }
@@ -863,7 +864,7 @@ export async function sitzungMelden(args, {
 }
 
 export async function dispatchSitzung(command, args, hilfe) {
-  if (command === "melden") return ausgeben(await sitzungMelden(args));
+  if (command === "melden" || command === "report") return ausgeben(await sitzungMelden(args));
   process.stdout.write(hilfe);
   fail(`Unbekannter sitzung-Befehl: '${command}'`);
 }
