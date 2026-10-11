@@ -34,8 +34,99 @@ import { GitHubIssueTracker, resolveCodeHost, labelSetzenMitRueckfall } from "./
 // rufen sich erst zur Laufzeit, keine liest beim Laden einen Wert der anderen.
 import { ursprungLesen, ursprungNachziehen } from "./ursprung.mjs";
 import { SPRACHEN, PRAEFIXE, LABELS, projektSprache, praefix, labelName, erkennePraefix, erkenneLabel, erkenneMarker, leseMarker, markerWerte,
-  kanonischeUeberschrift, ueberschriftName, ueberschriftZeile } from "./namen.mjs";
+  kanonischeUeberschrift, ueberschriftName, ueberschriftZeile, text } from "./namen.mjs";
 import { normalisiereConfig } from "./config-namen.mjs";
+
+/**
+ * Die Texte dieses Teils an den Menschen (Issue #1478, Plan #1420 E13). Vertragswerte (E14)
+ * stehen nicht hier: die Feldnamen der JSON-Ausgaben, die `art` der Label-Hinweise und die
+ * Marker, die das Kit an die Karten schreibt (`Autor-Modell:`, `Kit-Stand:`, `Bericht-Lauf:`).
+ */
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    kontextConfigUnlesbar: "kontext.config.json konnte nicht gelesen werden: {pfad}",
+    autorModellWiderspruch: "--author-model '{flag}' widerspricht der vorhandenen Zeile 'Autor-Modell: {vorhanden}'. Eine der beiden weglassen.",
+    autorModellFehlt: 'Kein Autor-Modell angegeben. Der Body braucht eine Zeile "Autor-Modell: <modell>" im Kontext-Abschnitt. '
+      + "Alternativ --author-model <modell> setzen; im Nachtbetrieb genuegt gesetztes KIT_AGENT_MODEL.",
+    derivedFromOhneWert: "--derived-from braucht einen Wert (Kartennummer des naechsten Vorfahren)",
+    derivedFromKeineZahl: "--derived-from '{wert}' ist keine positive Ganzzahl.",
+    idempotenzOhneWert: "--idempotency-key braucht einen Wert.",
+    artUnbekannt: "--art braucht einen dieser Werte: {arten}",
+    artNebenPraefix: "--art {art} neben einem Titel mit Praefix ('{titel}') — entweder --art oder das Praefix im Titel",
+    titelErforderlich: "--title ist erforderlich",
+    idErforderlich: "id ist erforderlich: board.mjs {aufruf}",
+    statusErforderlich: "status ist erforderlich: board.mjs issue move <id> <status>",
+    statusUngueltig: "Ungueltiger Status '{status}'. Gueltig: {gueltig}",
+    epicsNichtUnterstuetzt: "epics wird von diesem Tracker nicht unterstuetzt (verfuegbar bei: local, toolbox)",
+    activityBeides: "--ids und eine Einzelnummer schliessen sich aus: board.mjs issue activity <id> | issue activity --ids <n,n,...>",
+    activityNichtUnterstuetzt: "activity wird von diesem Tracker nicht unterstuetzt — '{name}' fuehrt keinen Aktivitaetsverlauf (verfuegbar bei: local, toolbox)",
+    dieserTracker: "dieser Tracker",
+    idsLeer: "--ids braucht mindestens eine Kartennummer: board.mjs issue activity --ids 12,13",
+    wegmarkeNichtGeschrieben: "Hinweis: Wegmarke nicht geschrieben ({pfad}): {grund}",
+    bewegungNichtProtokolliert: "Hinweis: Bewegung nicht protokolliert ({pfad}): {grund}",
+    planErforderlich: "Plan-Nummer ist erforderlich: board.mjs issue ursprung <plan>",
+    labelUnbekannt: "Unbekannter label-Befehl: '{aktion}'. Erwartet: {erwartet}",
+    labelNameErforderlich: "name ist erforderlich: board.mjs issue label add <id> <name>",
+    labelZuViele: "Zu viele Argumente: '{zuviel}'. Erwartet genau <id> und <name>.",
+    labelNameUngueltig: "Labelname darf kein Komma und keinen Zeilenumbruch enthalten: '{name}'",
+    statusLabel: "Status-Label `{name}` nur ueber `issue move` aendern",
+    labelRueckfall: "Label {fehlend} fehlt am Board — stattdessen {label} gesetzt. "
+      + "Legt ein Mensch das fehlende Label am Board an, setzt das Kit kuenftig den Namen der Projektsprache.",
+    labelNichtGetragen: "Issue {id} traegt weder {namen} — nichts abgenommen.",
+    labelWederNoch: " noch ",
+    labelBeide: "Issue {id} trug beide Namen ({namen}) — beide abgenommen.",
+    quelleBeides: "--{flag} und {dateiFlag} schliessen sich aus — nur eine Quelle angeben.",
+    quelleOhnePfad: "{dateiFlag} braucht einen Pfad.",
+    quelleOhneWert: "--{flag} braucht einen Wert (oder '-' fuer stdin).",
+    quelleDateiFehlt: "{dateiFlag}: Datei nicht gefunden: {pfad}",
+    quelleUnlesbar: "{dateiFlag}: {pfad} ist nicht lesbar ({grund}).",
+    stdinUnlesbar: "--{flag} -: stdin ist nicht lesbar ({grund}).",
+    quelleLeer: "--{flag} ist erforderlich und darf nicht leer sein (Argument, {dateiFlag} oder '-' fuer stdin).",
+  }),
+  en: Object.freeze({
+    kontextConfigUnlesbar: "kontext.config.json could not be read: {pfad}",
+    autorModellWiderspruch: "--author-model '{flag}' contradicts the existing author model line ('{vorhanden}'). Leave out one of the two.",
+    autorModellFehlt: 'No author model given. The body needs a line "Author-Model: <model>" in the context section. '
+      + "Alternatively set --author-model <model>; in night mode a set KIT_AGENT_MODEL is enough.",
+    derivedFromOhneWert: "--derived-from needs a value (card number of the nearest ancestor)",
+    derivedFromKeineZahl: "--derived-from '{wert}' is not a positive integer.",
+    idempotenzOhneWert: "--idempotency-key needs a value.",
+    artUnbekannt: "--art needs one of these values: {arten}",
+    artNebenPraefix: "--art {art} next to a title with a prefix ('{titel}') — either --art or the prefix in the title",
+    titelErforderlich: "--title is required",
+    idErforderlich: "id is required: board.mjs {aufruf}",
+    statusErforderlich: "status is required: board.mjs issue move <id> <status>",
+    statusUngueltig: "Invalid status '{status}'. Valid: {gueltig}",
+    epicsNichtUnterstuetzt: "epics is not supported by this tracker (available with: local, toolbox)",
+    activityBeides: "--ids and a single number exclude each other: board.mjs issue activity <id> | issue activity --ids <n,n,...>",
+    activityNichtUnterstuetzt: "activity is not supported by this tracker — '{name}' keeps no activity history (available with: local, toolbox)",
+    dieserTracker: "this tracker",
+    idsLeer: "--ids needs at least one card number: board.mjs issue activity --ids 12,13",
+    wegmarkeNichtGeschrieben: "Note: waypoint not written ({pfad}): {grund}",
+    bewegungNichtProtokolliert: "Note: move not logged ({pfad}): {grund}",
+    planErforderlich: "Plan number is required: board.mjs issue origin <plan>",
+    labelUnbekannt: "Unknown label command: '{aktion}'. Expected: {erwartet}",
+    labelNameErforderlich: "name is required: board.mjs issue label add <id> <name>",
+    labelZuViele: "Too many arguments: '{zuviel}'. Expected exactly <id> and <name>.",
+    labelNameUngueltig: "Label name must not contain a comma or a line break: '{name}'",
+    statusLabel: "Change the status label `{name}` only via `issue move`",
+    labelRueckfall: "Label {fehlend} is missing on the board — set {label} instead. "
+      + "Once a human creates the missing label on the board, the kit sets the name in the project language.",
+    labelNichtGetragen: "Issue {id} carries neither {namen} — nothing removed.",
+    labelWederNoch: " nor ",
+    labelBeide: "Issue {id} carried both names ({namen}) — both removed.",
+    quelleBeides: "--{flag} and {dateiFlag} exclude each other — give only one source.",
+    quelleOhnePfad: "{dateiFlag} needs a path.",
+    quelleOhneWert: "--{flag} needs a value (or '-' for stdin).",
+    quelleDateiFehlt: "{dateiFlag}: file not found: {pfad}",
+    quelleUnlesbar: "{dateiFlag}: {pfad} is not readable ({grund}).",
+    stdinUnlesbar: "--{flag} -: stdin is not readable ({grund}).",
+    quelleLeer: "--{flag} is required and must not be empty (argument, {dateiFlag} or '-' for stdin).",
+  }),
+});
+
+/** Ein Text dieses Teils in der Projektsprache (Issue #1478, E13). */
+const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
 
 // ============================================================
 // Kontext-Achse (Vault-Pfade fuer /kontext und /document, Issue #202)
@@ -200,7 +291,7 @@ function readKontextConfigFile(pfad) {
   try {
     return JSON.parse(readFileSync(pfad, "utf-8"));
   } catch {
-    fail(`kontext.config.json konnte nicht gelesen werden: ${pfad}`);
+    fail(t("kontextConfigUnlesbar", { pfad }));
   }
 }
 
@@ -269,9 +360,6 @@ export function heute() {
 // Seit Issue #1443 liest `autorModellSicherstellen` die Zeile ueber das Register unter beiden
 // Namen; der Ausdruck bleibt als exportierte Form der deutschen Zeile.
 export const AUTOR_MODELL_ZEILE = /^Autor-Modell:[^\S\n]*(\S(?:[^\n]*\S)?)[^\S\n]*$/m;
-const AUTOR_MODELL_HILFE =
-  'Der Body braucht eine Zeile "Autor-Modell: <modell>" im Kontext-Abschnitt. ' +
-  'Alternativ --author-model <modell> setzen; im Nachtbetrieb genuegt gesetztes KIT_AGENT_MODEL.';
 
 /** Die erste Zeile `## Kontext` (oder `## Context`) mit Zeilenende: `{ ende }` hinter ihr, sonst null. */
 function kontextKopf(body) {
@@ -299,12 +387,12 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
   const flag = typeof flagWert === "string" ? flagWert.trim() : "";
   if (vorhanden) {
     if (flag && flag !== vorhanden) {
-      fail(`--author-model '${flag}' widerspricht der vorhandenen Zeile 'Autor-Modell: ${vorhanden}'. Eine der beiden weglassen.`);
+      fail(t("autorModellWiderspruch", { flag, vorhanden }));
     }
     return body;
   }
   const wert = flag || (env.KIT_AGENT_MODEL || "").trim();
-  if (!wert) fail(`Kein Autor-Modell angegeben. ${AUTOR_MODELL_HILFE}`);
+  if (!wert) fail(t("autorModellFehlt"));
 
   // Ans Ende des Kontext-Abschnitts, nicht ans Dateiende: Dort suchen der
   // /issues-Skill und /issue-review sie. Ohne Kontext-Abschnitt (Ideen, fremde
@@ -492,10 +580,10 @@ export function kontextGrenzen(text) {
  */
 function derivedFromOption(wert) {
   if (wert === undefined) return undefined;
-  if (wert === true) fail("--derived-from braucht einen Wert (Kartennummer des naechsten Vorfahren)");
+  if (wert === true) fail(t("derivedFromOhneWert"));
   const nummer = Number(wert);
   if (!Number.isInteger(nummer) || nummer < 1) {
-    fail(`--derived-from '${wert}' ist keine positive Ganzzahl.`);
+    fail(t("derivedFromKeineZahl", { wert }));
   }
   return nummer;
 }
@@ -508,7 +596,7 @@ function derivedFromOption(wert) {
  */
 function idempotenzOption(wert) {
   if (wert === undefined) return undefined;
-  if (wert === true || String(wert).trim() === "") fail("--idempotency-key braucht einen Wert.");
+  if (wert === true || String(wert).trim() === "") fail(t("idempotenzOhneWert"));
   return String(wert).trim();
 }
 
@@ -524,16 +612,16 @@ export const ARTEN = Object.freeze(Object.keys(PRAEFIXE));
 export function titelMitArt(title, art, sprache) {
   if (art === undefined) return { titel: title };
   if (art === true || !ARTEN.includes(art)) {
-    return { fehler: `--art braucht einen dieser Werte: ${ARTEN.join("|")}` };
+    return { fehler: t("artUnbekannt", { arten: ARTEN.join("|") }) };
   }
   if (erkennePraefix(title) !== null) {
-    return { fehler: `--art ${art} neben einem Titel mit Praefix ('${title}') — entweder --art oder das Praefix im Titel` };
+    return { fehler: t("artNebenPraefix", { art, titel: title }) };
   }
   return { titel: `${praefix(art, sprache)} ${String(title).trimStart()}` };
 }
 
 export async function issueCreate(tracker, args, config = {}) {
-  if (!args.title) fail("--title ist erforderlich");
+  if (!args.title) fail(t("titelErforderlich"));
   // Vor jedem Netzaufruf: Ein Widerspruch zwischen --art und Titel legt keine Karte an.
   const { titel, fehler } = titelMitArt(args.title, args.art, projektSprache(config));
   if (fehler) fail(fehler);
@@ -568,20 +656,20 @@ export async function issueCreate(tracker, args, config = {}) {
 
 export async function issueGet(tracker, args) {
   const id = args._[0];
-  if (!id) fail("id ist erforderlich: board.mjs issue get <id>");
+  if (!id) fail(t("idErforderlich", { aufruf: "issue get <id>" }));
   out(await tracker.getIssue(id));
 }
 
 export async function issueList(tracker, args) {
   if (args.status && !VALID_STATUSES.includes(args.status)) {
-    fail(`Ungueltiger Status '${args.status}'. Gueltig: ${VALID_STATUSES.join(", ")}`);
+    fail(t("statusUngueltig", { status: args.status, gueltig: VALID_STATUSES.join(", ") }));
   }
   out(await tracker.listIssues(args.status));
 }
 
 export async function issueEpics(tracker) {
   if (typeof tracker.listEpics !== "function") {
-    fail("epics wird von diesem Tracker nicht unterstuetzt (verfuegbar bei: local, toolbox)");
+    fail(t("epicsNichtUnterstuetzt"));
   }
   out(await tracker.listEpics());
 }
@@ -603,19 +691,19 @@ export async function issueActivity(tracker, config, args) {
   // gewinnen: Welcher das waere, kann der Aufrufer nicht wissen, und die Ausgabeform
   // der beiden ist verschieden (Liste gegen Objekt).
   if (ids !== undefined && id) {
-    fail("--ids und eine Einzelnummer schliessen sich aus: board.mjs issue activity <id> | issue activity --ids <n,n,...>");
+    fail(t("activityBeides"));
   }
-  if (ids === undefined && !id) fail("id ist erforderlich: board.mjs issue activity <id> | --ids <n,n,...>");
+  if (ids === undefined && !id) fail(t("idErforderlich", { aufruf: "issue activity <id> | --ids <n,n,...>" }));
   if (typeof tracker.listActivity !== "function") {
-    const name = config?.issueTracker ?? "dieser Tracker";
-    fail(`activity wird von diesem Tracker nicht unterstuetzt — '${name}' fuehrt keinen Aktivitaetsverlauf (verfuegbar bei: local, toolbox)`);
+    const name = config?.issueTracker ?? t("dieserTracker");
+    fail(t("activityNichtUnterstuetzt", { name }));
   }
   if (ids !== undefined) {
     // `--ids` ohne Wert kommt als `true` aus parseArgs. Ein leerer oder nur aus Kommas
     // bestehender Wert bliebe sonst eine Sammelabfrage ueber nichts und gaebe `{}` aus —
     // von einem Ergebnis ohne Ruecklaeufer nicht zu unterscheiden.
     const nummern = (ids === true ? [] : String(ids).split(",").map((n) => n.trim()).filter(Boolean));
-    if (!nummern.length) fail("--ids braucht mindestens eine Kartennummer: board.mjs issue activity --ids 12,13");
+    if (!nummern.length) fail(t("idsLeer"));
     out(await tracker.listActivityMany(nummern));
     return;
   }
@@ -650,7 +738,7 @@ function wegmarkeSchreiben(id, status, jetzt = new Date()) {
     mkdirSync(dirname(pfad), { recursive: true });
     appendFileSync(pfad, `${jetzt.toISOString()}\t${id}\t${status}\n`, "utf-8");
   } catch (e) {
-    process.stderr.write(`Hinweis: Wegmarke nicht geschrieben (${pfad}): ${e.message}\n`);
+    process.stderr.write(`${t("wegmarkeNichtGeschrieben", { pfad, grund: e.message })}\n`);
   }
 }
 
@@ -684,16 +772,16 @@ function bewegungSchreiben(id, status, jetzt = new Date()) {
     mkdirSync(dirname(pfad), { recursive: true });
     appendFileSync(pfad, `${jetzt.toISOString()}\t${id}\t${status}\n`, "utf-8");
   } catch (e) {
-    process.stderr.write(`Hinweis: Bewegung nicht protokolliert (${pfad}): ${e.message}\n`);
+    process.stderr.write(`${t("bewegungNichtProtokolliert", { pfad, grund: e.message })}\n`);
   }
 }
 
 export async function issueMove(tracker, args) {
   const [id, toStatus] = args._;
-  if (!id) fail("id ist erforderlich: board.mjs issue move <id> <status>");
-  if (!toStatus) fail("status ist erforderlich: board.mjs issue move <id> <status>");
+  if (!id) fail(t("idErforderlich", { aufruf: "issue move <id> <status>" }));
+  if (!toStatus) fail(t("statusErforderlich"));
   if (!VALID_STATUSES.includes(toStatus)) {
-    fail(`Ungueltiger Status '${toStatus}'. Gueltig: ${VALID_STATUSES.join(", ")}`);
+    fail(t("statusUngueltig", { status: toStatus, gueltig: VALID_STATUSES.join(", ") }));
   }
   await tracker.moveIssue(id, toStatus);
   // Erst nach dem Zug: Eine Wegmarke auf eine gescheiterte Bewegung waere eine Buchung
@@ -716,7 +804,7 @@ const URSPRUNG_AUSLOESER = new Set(["in_review", "done"]);
  */
 export async function issueUrsprung(tracker, args) {
   const id = args._[0];
-  if (!id) fail("Plan-Nummer ist erforderlich: board.mjs issue ursprung <plan>");
+  if (!id) fail(t("planErforderlich"));
   out(await ursprungLesen(tracker, id));
 }
 
@@ -749,15 +837,15 @@ export async function issueLabel(tracker, config, args, hilfe = "") {
   const [aktion, id, name, ...zuviel] = args._;
   const labelFail = (msg) => labelFailMit(msg, hilfe);
   if (!LABEL_AKTIONEN.includes(aktion)) {
-    labelFail(`Unbekannter label-Befehl: '${aktion ?? ""}'. Erwartet: ${LABEL_AKTIONEN.join(" | ")}`);
+    labelFail(t("labelUnbekannt", { aktion: aktion ?? "", erwartet: LABEL_AKTIONEN.join(" | ") }));
   }
-  if (!id) labelFail("id ist erforderlich: board.mjs issue label add <id> <name>");
-  if (!name) labelFail("name ist erforderlich: board.mjs issue label add <id> <name>");
+  if (!id) labelFail(t("idErforderlich", { aufruf: "issue label add <id> <name>" }));
+  if (!name) labelFail(t("labelNameErforderlich"));
   if (zuviel.length > 0) {
-    labelFail(`Zu viele Argumente: '${zuviel.join(" ")}'. Erwartet genau <id> und <name>.`);
+    labelFail(t("labelZuViele", { zuviel: zuviel.join(" ") }));
   }
   if (/[,\n]/.test(name)) {
-    labelFail(`Labelname darf kein Komma und keinen Zeilenumbruch enthalten: '${name}'`);
+    labelFail(t("labelNameUngueltig", { name }));
   }
 
   // Spaltennamen sind bei GitLab selbst Labels — ohne diese Sperre koennte das
@@ -766,7 +854,7 @@ export async function issueLabel(tracker, config, args, hilfe = "") {
   // Projekt einmal den Status aendert und einmal nicht, ist die schlechtere Wahl.
   // Verglichen wird exakt — nur der wortgleiche Name ist das Statuslabel.
   if (Object.values(columnLabels(config)).includes(name)) {
-    fail(`Status-Label \`${name}\` nur ueber \`issue move\` aendern`);
+    fail(t("statusLabel", { name }));
   }
 
   out({ ok: true, id, ...await labelAbbilden(tracker, config, aktion, id, name), aktion });
@@ -795,20 +883,19 @@ export async function labelAbbilden(tracker, config, aktion, id, name) {
   if (aktion === "add") {
     const { label, fehlend } = await labelSetzenMitRueckfall(tracker, id, namen);
     if (fehlend.length === 0) return { label };
-    const meldung = `Label ${fehlend.map((f) => f.name).join(", ")} fehlt am Board — stattdessen ${label} gesetzt. `
-      + "Legt ein Mensch das fehlende Label am Board an, setzt das Kit kuenftig den Namen der Projektsprache.";
+    const meldung = t("labelRueckfall", { fehlend: fehlend.map((f) => f.name).join(", "), label });
     return { label, hinweise: [{ art: "rueckfall", meldung }] };
   }
 
   const karte = await tracker.getIssue(id);
   const getragen = namen.filter((n) => (karte.labels || []).includes(n));
   if (getragen.length === 0) {
-    const meldung = `Issue ${id} traegt weder ${namen.join(" noch ")} — nichts abgenommen.`;
+    const meldung = t("labelNichtGetragen", { id, namen: namen.join(t("labelWederNoch")) });
     return { label: name, hinweise: [{ art: "nicht-getragen", meldung }] };
   }
   for (const n of getragen) await tracker.labelIssue(id, n, "remove");
   if (getragen.length === 1) return { label: getragen[0] };
-  const meldung = `Issue ${id} trug beide Namen (${getragen.join(", ")}) — beide abgenommen.`;
+  const meldung = t("labelBeide", { id, namen: getragen.join(", ") });
   return { label: name, hinweise: [{ art: "beide", meldung }] };
 }
 
@@ -841,30 +928,30 @@ export async function leseTextQuelle(direkt, dateiPfad, flagName) {
 
   // Beide angegeben: Fehler statt Vorrangregel. Wer beides setzt, meint etwas
   // anderes als das, was eine stille Vorrangregel taete.
-  if (hatDirekt && hatDatei) fail(`--${flagName} und ${dateiFlag} schliessen sich aus — nur eine Quelle angeben.`);
-  if (dateiPfad === true) fail(`${dateiFlag} braucht einen Pfad.`);
-  if (direkt === true) fail(`--${flagName} braucht einen Wert (oder '-' fuer stdin).`);
+  if (hatDirekt && hatDatei) fail(t("quelleBeides", { flag: flagName, dateiFlag }));
+  if (dateiPfad === true) fail(t("quelleOhnePfad", { dateiFlag }));
+  if (direkt === true) fail(t("quelleOhneWert", { flag: flagName }));
 
   let text;
   if (hatDatei) {
-    if (!existsSync(dateiPfad)) fail(`${dateiFlag}: Datei nicht gefunden: ${dateiPfad}`);
+    if (!existsSync(dateiPfad)) fail(t("quelleDateiFehlt", { dateiFlag, pfad: dateiPfad }));
     try {
       text = readFileSync(dateiPfad, "utf-8");
     } catch (e) {
-      fail(`${dateiFlag}: ${dateiPfad} ist nicht lesbar (${e.code || e.message}).`);
+      fail(t("quelleUnlesbar", { dateiFlag, pfad: dateiPfad, grund: e.code || e.message }));
     }
   } else if (direkt === "-") {
     try {
       text = await stdinLesen();
     } catch (e) {
-      fail(`--${flagName} -: stdin ist nicht lesbar (${e.code || e.message}).`);
+      fail(t("stdinUnlesbar", { flag: flagName, grund: e.code || e.message }));
     }
   } else {
     text = direkt;
   }
 
   if (typeof text !== "string" || text.trim() === "") {
-    fail(`--${flagName} ist erforderlich und darf nicht leer sein (Argument, ${dateiFlag} oder '-' fuer stdin).`);
+    fail(t("quelleLeer", { flag: flagName, dateiFlag }));
   }
   return text;
 }
@@ -881,7 +968,7 @@ function stdinLesen() {
 
 export async function issueComment(tracker, args) {
   const id = args._[0];
-  if (!id) fail("id ist erforderlich: board.mjs issue comment <id> --text \"...\"");
+  if (!id) fail(t("idErforderlich", { aufruf: 'issue comment <id> --text "..."' }));
   // Vor jeder Textaufloesung: Ein fehlerhafter Schalter soll nicht erst eine Datei
   // lesen und schon gar nichts ans Board schicken.
   const idempotencyKey = idempotenzOption(args["idempotency-key"]);

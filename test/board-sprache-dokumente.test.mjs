@@ -19,7 +19,8 @@ import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import { TEXTE } from "../kit/board.mjs";
-import { pruefeParitaet } from "../kit/board/namen.mjs";
+import { TEXTE as DOKUMENTE_TEXTE, labelAbbilden, titelMitArt } from "../kit/board/dokumente.mjs";
+import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
 
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
@@ -30,13 +31,13 @@ const KARTE = [
 ].join("\n");
 
 /** Ein Aufruf in einem frischen Projekt mit lokalem Tracker, Karte #5 und der Sprache `sprache`. */
-function lauf(sprache, args) {
+function lauf(sprache, args, env = {}) {
   const config = sprache === undefined ? LOKAL : { ...LOKAL, language: sprache };
   const dir = setupProjekt(config, "board-sprache-");
   try {
     mkdirSync(join(dir, "issues"), { recursive: true });
     writeFileSync(join(dir, "issues", "0005.md"), KARTE, "utf-8");
-    return runBoard(dir, args, { HOME: dir });
+    return runBoard(dir, args, { HOME: dir, ...env });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -118,4 +119,93 @@ test("[1477] issue check-form weist englisch ab, mit dem Feld fehler", () => {
   assert.match(JSON.parse(unlesbar.stdout).fehler, /^--body-file: fehlt\.md is not readable \(ENOENT\)\. /);
   const beides = lauf("en", ["issue", "check-form", "5", "--body-file", "x.md"]);
   assert.match(JSON.parse(beides.stdout).fehler, /^Card number and --body-file given together\. /);
+});
+
+// --- kit/board/dokumente.mjs, vom Dateianfang bis vor ursprungEinhaengen (Issue #1478) ---
+//
+// Die Abbrueche laufen weiter ueber `fail` der Grundlagen; dessen Praefix `Fehler:` stellt
+// #1483 um. Die Stichproben pruefen darum den Text hinter dem Praefix.
+
+test("[1478] die Texttabelle von dokumente.mjs hat in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
+  assert.deepEqual(pruefeParitaet(DOKUMENTE_TEXTE), []);
+  assert.ok(Object.keys(DOKUMENTE_TEXTE.de).length > 30, "die Tabelle traegt die Texte bis vor ursprungEinhaengen");
+});
+
+test("[1478] englische Stichproben: Abweisungen von create, move, label, comment, activity und origin", () => {
+  const faelle = [
+    [["issue", "create"], /: --title is required$/m],
+    [["issue", "create", "--title", "X", "--art", "quatsch"], /: --art needs one of these values: fachlich\|/m],
+    [["issue", "create", "--title", "[Plan] X", "--art", "plan"], /: --art plan next to a title with a prefix \('\[Plan\] X'\) — either --art or the prefix in the title$/m],
+    [["issue", "create", "--title", "X", "--derived-from"], /: --derived-from needs a value \(card number of the nearest ancestor\)$/m],
+    [["issue", "create", "--title", "X", "--derived-from", "x"], /: --derived-from 'x' is not a positive integer\.$/m],
+    [["issue", "get"], /: id is required: board\.mjs issue get <id>$/m],
+    [["issue", "list", "--status", "weg"], /: Invalid status 'weg'\. Valid: backlog, ready, in_progress, in_review, done$/m],
+    [["issue", "move"], /: id is required: board\.mjs issue move <id> <status>$/m],
+    [["issue", "move", "5"], /: status is required: board\.mjs issue move <id> <status>$/m],
+    [["issue", "move", "5", "weg"], /: Invalid status 'weg'\./m],
+    [["issue", "origin"], /: Plan number is required: board\.mjs issue origin <plan>$/m],
+    [["issue", "activity"], /: id is required: board\.mjs issue activity <id> \| --ids <n,n,\.\.\.>$/m],
+    [["issue", "activity", "5", "--ids", "1"], /: --ids and a single number exclude each other: /m],
+    [["issue", "activity", "--ids", ","], /: --ids needs at least one card number: board\.mjs issue activity --ids 12,13$/m],
+    [["issue", "label", "quatsch"], /: Unknown label command: 'quatsch'\. Expected: add \| remove$/m],
+    [["issue", "label", "add"], /: id is required: board\.mjs issue label add <id> <name>$/m],
+    [["issue", "label", "add", "5"], /: name is required: board\.mjs issue label add <id> <name>$/m],
+    [["issue", "label", "add", "5", "a", "b"], /: Too many arguments: 'b'\. Expected exactly <id> and <name>\.$/m],
+    [["issue", "label", "add", "5", "a,b"], /: Label name must not contain a comma or a line break: 'a,b'$/m],
+    [["issue", "label", "add", "5", "Ready"], /: Change the status label `Ready` only via `issue move`$/m],
+    [["issue", "comment"], /: id is required: board\.mjs issue comment <id> --text "\.\.\."$/m],
+    [["issue", "comment", "5"], /: --text is required and must not be empty \(argument, --text-file or '-' for stdin\)\.$/m],
+    [["issue", "comment", "5", "--text", "a", "--text-file", "b"], /: --text and --text-file exclude each other — give only one source\.$/m],
+    [["issue", "comment", "5", "--text-file"], /: --text-file needs a path\.$/m],
+    [["issue", "comment", "5", "--text"], /: --text needs a value \(or '-' for stdin\)\.$/m],
+    [["issue", "comment", "5", "--text-file", "fehlt.md"], /: --text-file: file not found: fehlt\.md$/m],
+    [["issue", "comment", "5", "--text", "x", "--idempotency-key"], /: --idempotency-key needs a value\.$/m],
+  ];
+  for (const [args, erwartet] of faelle) {
+    const res = lauf("en", args);
+    assert.equal(res.status, 1, `${args.join(" ")}: ${res.stderr}`);
+    assert.match(res.stderr, erwartet, args.join(" "));
+    assert.doesNotMatch(res.stderr, /erforderlich|Ungueltig|Unbekannt|braucht|nicht gefunden|schliessen sich aus/, args.join(" "));
+  }
+});
+
+test("[1478] englische Stichprobe: das fehlende Autor-Modell", () => {
+  const res = lauf("en", ["issue", "create", "--title", "X", "--body", "Text"], { KIT_AGENT_MODEL: "" });
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /: No author model given\. The body needs a line "Author-Model: <model>" in the context section\./m);
+
+  const widerspruch = lauf("en", ["issue", "create", "--title", "X", "--body", "Autor-Modell: a", "--author-model", "b"]);
+  assert.match(widerspruch.stderr, /: --author-model 'b' contradicts the existing author model line \('a'\)\. Leave out one of the two\.$/m);
+});
+
+test("[1478] dieselben Abweisungen bleiben in einem deutschen Projekt deutsch", () => {
+  assert.match(lauf(undefined, ["issue", "move", "5", "weg"]).stderr, /^Fehler: Ungueltiger Status 'weg'\. Gueltig: /m);
+  assert.match(lauf("de", ["issue", "label", "quatsch"]).stderr, /^Fehler: Unbekannter label-Befehl: 'quatsch'\. Erwartet: add \| remove$/m);
+  assert.match(lauf("de", ["issue", "comment", "5"]).stderr, /^Fehler: --text ist erforderlich und darf nicht leer sein/m);
+});
+
+test("[1478] titelMitArt und die Label-Hinweise nennen ihren Freitext englisch, Art und Felder bleiben", async () => {
+  spracheFestlegen("en");
+  try {
+    assert.match(titelMitArt("X", true, "en").fehler, /^--art needs one of these values: fachlich\|/);
+    assert.deepEqual(Object.keys(titelMitArt("[Idea] X", "idee", "en")), ["fehler"]);
+
+    const tracker = (labels) => ({
+      gesetzt: [],
+      async labelIssue(id, name, aktion) {
+        this.gesetzt.push([name, aktion]);
+      },
+      async getIssue() { return { labels }; },
+    });
+
+    const keins = await labelAbbilden(tracker([]), { language: "en" }, "remove", "5", "kit:klaeren");
+    assert.equal(keins.hinweise[0].art, "nicht-getragen");
+    assert.equal(keins.hinweise[0].meldung, "Issue 5 carries neither kit:clarify nor kit:klaeren — nothing removed.");
+
+    const beide = await labelAbbilden(tracker(["kit:klaeren", "kit:clarify"]), { language: "en" }, "remove", "5", "kit:clarify");
+    assert.equal(beide.hinweise[0].art, "beide");
+    assert.equal(beide.hinweise[0].meldung, "Issue 5 carried both names (kit:clarify, kit:klaeren) — both removed.");
+  } finally {
+    spracheFestlegen(null);
+  }
 });
