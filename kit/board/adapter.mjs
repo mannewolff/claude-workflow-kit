@@ -26,7 +26,7 @@ import { randomUUID } from "node:crypto";
 import { VALID_STATUSES, columnLabels, isStateColumn, execJSON, exec, gitRemoteUrl, normalizeRepoName,
   RUECKMELDUNG, BoardError, fail, sleep, labelNamesFrom, labelMapFrom, withLabels, normalizeComments,
   labelToStatus, createdFrom } from "./grundlagen.mjs";
-import { toolboxBudgetMs, toolboxVersuchMs, proxyGesetzt, PROXY_HINWEIS, netzfehlerArt, darfWiederholen,
+import { toolboxBudgetMs, toolboxVersuchMs, proxyGesetzt, proxyHinweis, netzfehlerArt, darfWiederholen,
   rueckmeldungFuer, wartezeitMs, VERLAUF_GLEICHZEITIG, hoechstensGleichzeitig, wiederholKommando } from "./wiederholung.mjs";
 import { text } from "./namen.mjs";
 
@@ -1671,7 +1671,7 @@ export class ToolboxIssueTracker {
   /** Namensaufloesung oder Verbindung scheiterte hinter einem Proxy: die Abhilfe nennen (Issue #998). */
   _proxyZusatz(netz) {
     if (netz === "zeitablauf" || !netz || !proxyGesetzt(process.env)) return "";
-    return `\n${PROXY_HINWEIS}`;
+    return `\n${proxyHinweis()}`;
   }
 
   /**

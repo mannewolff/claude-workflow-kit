@@ -24,6 +24,21 @@ import { spawnSync } from "node:child_process";
 import { escapeRegex, pruefeFachlich, pruefePlan, pruefeIssue } from "./geschuetzt.mjs";
 import { zerlegeAbschnitte, abschnittsTitel, normalisiereZeilenenden } from "./dokumente.mjs";
 import { stufeAusTitel } from "./issue-review.mjs";
+import { text } from "./namen.mjs";
+
+// ============================================================
+// Texte an den Menschen (Issue #1483, Plan #1420 E13/E14)
+// ============================================================
+
+/** Der Testhinweis je Sprache. Die Feldnamen der Hinweise bleiben Vertrag (E14). */
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    testNichtGenannt: "Zu {baustein} gehört {test}, der Plan nennt ihn nicht. Bleibt er grün, oder fehlt er in der Liste der Änderungen?",
+  }),
+  en: Object.freeze({
+    testNichtGenannt: "{test} belongs to {baustein}, the plan does not name it. Does it stay green, or is it missing from the list of changes?",
+  }),
+});
 
 // ------------------------------------------------------------
 // Testhinweise fuer Plaene (Issue #1031, Plan #1029)
@@ -185,7 +200,7 @@ export function pruefeTestNennung(abschnitte, body, dateien, config) {
         hinweise.push({
           baustein,
           test,
-          meldung: `Zu ${baustein} gehört ${test}, der Plan nennt ihn nicht. Bleibt er grün, oder fehlt er in der Liste der Änderungen?`,
+          meldung: text(TEXTE, "testNichtGenannt", { baustein, test }),
         });
       }
     }

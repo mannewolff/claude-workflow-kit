@@ -20,8 +20,43 @@ import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { normalisiereConfig } from "./config-namen.mjs";
+import { text } from "./namen.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// ============================================================
+// Texte an den Menschen (Issue #1483, Plan #1420 E13/E14)
+// ============================================================
+
+/**
+ * Die Meldungen der Grundlagen je Sprache. Vertragswerte bleiben ausserhalb (E14): die Werte
+ * von RUECKMELDUNG, die Spaltennamen, die Dateinamen unter `.claude/` und die Feldnamen der
+ * Config, die die Hinweise nennen.
+ */
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    nichtGefunden: "{datei} nicht gefunden — ist es installiert und im PATH?",
+    exitCode: "{datei} endete mit Exit {status}",
+    fehler: "Fehler: {meldung}",
+    hinweis: "Hinweis: {hinweis}",
+    lokalKaputt: "{pfad} ist kein gueltiges JSON und wird ignoriert.",
+    feldIgnoriert: "'{feld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.",
+    configUnlesbar: "workflow.config.json konnte nicht gelesen werden: {pfad}",
+    keineConfig: "Keine .claude/workflow.config.json gefunden. Bitte zuerst den Installer ausfuehren.",
+  }),
+  en: Object.freeze({
+    nichtGefunden: "{datei} not found — is it installed and in PATH?",
+    exitCode: "{datei} ended with exit {status}",
+    fehler: "Error: {meldung}",
+    hinweis: "Note: {hinweis}",
+    lokalKaputt: "{pfad} is not valid JSON and is ignored.",
+    feldIgnoriert: "'{feld}' from workflow.config.local.json is ignored — the field applies to the whole team.",
+    configUnlesbar: "workflow.config.json could not be read: {pfad}",
+    keineConfig: "No .claude/workflow.config.json found. Please run the installer first.",
+  }),
+});
+
+const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
 
 export const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -70,12 +105,10 @@ export function exec(datei, args = [], { spawn = spawnSync, env = process.env, i
   const res = spawn(datei, args, input === undefined ? { encoding: "utf-8", env } : { encoding: "utf-8", env, input });
   if (res.error) {
     // Haeufigster Fall: das CLI ist nicht installiert (ENOENT).
-    throw new Error(res.error.code === "ENOENT"
-      ? `${datei} nicht gefunden — ist es installiert und im PATH?`
-      : res.error.message);
+    throw new Error(res.error.code === "ENOENT" ? t("nichtGefunden", { datei }) : res.error.message);
   }
   if (res.status !== 0) {
-    throw new Error((res.stderr || res.stdout || "").trim() || `${datei} endete mit Exit ${res.status}`);
+    throw new Error((res.stderr || res.stdout || "").trim() || t("exitCode", { datei, status: res.status }));
   }
   return (res.stdout || "").trim();
 }
@@ -161,7 +194,7 @@ export class BoardError extends Error {
 }
 
 export function fail(msg) {
-  process.stderr.write(`Fehler: ${msg}\n`);
+  process.stderr.write(`${t("fehler", { meldung: msg })}\n`);
   process.exit(1);
 }
 
@@ -302,7 +335,7 @@ function readLocalOverrides(sharedPfad) {
   try {
     return JSON.parse(readFileSync(pfad, "utf-8"));
   } catch {
-    process.stderr.write(`Hinweis: ${pfad} ist kein gueltiges JSON und wird ignoriert.\n`);
+    process.stderr.write(`${t("hinweis", { hinweis: t("lokalKaputt", { pfad }) })}\n`);
     return null;
   }
 }
@@ -327,11 +360,9 @@ export function ladeConfigDatei(p) {
   // Hinweis auf stderr, nicht auf stdout: stdout bleibt maschinenlesbar, die Skills
   // parsen ihn als JSON. Kein Abbruch — die Wirkung bleibt ohnehin aus, und ein
   // harter Fehler waere bei jedem board.mjs-Aufruf laut.
-  for (const hinweis of hinweise) process.stderr.write(`Hinweis: ${hinweis}\n`);
+  for (const hinweis of hinweise) process.stderr.write(`${t("hinweis", { hinweis })}\n`);
   for (const feld of ignored) {
-    process.stderr.write(
-      `Hinweis: '${feld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`
-    );
+    process.stderr.write(`${t("hinweis", { hinweis: t("feldIgnoriert", { feld }) })}\n`);
   }
   return config;
 }
@@ -357,7 +388,7 @@ export function readWorkflowConfig() {
     try {
       return ladeConfigDatei(p);
     } catch {
-      fail(`workflow.config.json konnte nicht gelesen werden: ${p}`);
+      fail(t("configUnlesbar", { pfad: p }));
     }
   }
   return null;
@@ -366,7 +397,7 @@ export function readWorkflowConfig() {
 export function loadConfig() {
   const config = readWorkflowConfig();
   if (!config) {
-    fail("Keine .claude/workflow.config.json gefunden. Bitte zuerst den Installer ausfuehren.");
+    fail(t("keineConfig"));
   }
   return config;
 }
