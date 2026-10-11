@@ -118,6 +118,126 @@ export const DEFAULT_MAX_SESSIONS = 10;
 // Ausgangsdokumente je Nacht.
 export const DEFAULT_MAX_KETTEN = 3;
 
+// --- Texte an den Menschen (Issue #1485, Plan #1420 E13/E14) ---
+
+// Die Abbruchzeile `Fehler:` und der Satz zu einem leeren Ready nehmen englisch genau die
+// Form der kanban-kit-Vorlage am Plan #1420 (`Error:`, `Ready is empty — nothing to do.`).
+// Vertrag bleibt (E14): die Fehlerklassen von fail(), die Feldnamen und Werte des
+// Ergebnisstands, die Ausnahmen des Rest-Guards.
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    verboseWert: "--verbose kennt nur die Werte no und yes (gelesen: {wert}) — ohne Wert bleibt es beim Vorgabewert yes.",
+    entfallenesFlag: "{flag} gibt es seit Stufe 2 nicht mehr; die Nacht-Kette ist --kette{zusatz}.",
+    entfallenesFlagStufe: ", und die Kette hat keine Stufen",
+    unbekanntesArgument: "Unbekanntes Argument: {argument} — siehe --help",
+    kettePruefen: "--kette und --pruefen sind zwei Laeufe mit eigenen Budgets — bitte einzeln starten.",
+    pruefenDryRun: "Der Prueflauf hat keine Vorschau — `/issue-review --dry-run` zeigt Dokumente und Reviewer.",
+    ketteLabel: "--kette kennt kein --label — das Kettenlabel steht in night.kette.label der workflow.config.json.",
+    pruefenLabel: "--pruefen kennt kein --label — das Kennzeichen steht in pruefLauf.label der workflow.config.json.",
+    maxZahl: "--max braucht eine Zahl >= 1",
+    timeoutZahl: "--timeout-min braucht eine Zahl >= 1",
+    schrittprotokollFehler: "Schrittprotokoll konnte nicht geschrieben werden: {fehler} — die Zeilen stehen weiter im Tagesprotokoll.",
+    fehlerZeile: "Fehler: {meldung}",
+    resteKeine: "keine unkommittierten Reste",
+    resteViele: "{anzahl} unkommittierte Reste, die ersten zehn: {liste}",
+    resteWenige: "unkommittierte Reste: {liste}",
+    ersatzGrund: "Kein Grund ermittelbar — der Lauf ist hart gestoppt, ohne dass ein Abbruchweg "
+      + "seinen Grund hinterlegt hat. Der Weg steht im Textprotokoll daneben; bitte melden.",
+    ankerFehlt: "(Der Uebergabe-Anker fehlte: Dieser Text stammt aus dem zuletzt gemerkten harten "
+      + "Stopp, nicht von der betroffenen Einheit und nicht vom Lauf. Bitte melden.)",
+    ohneArbeitUnbekannt: "Kein Grund ermittelbar — der Lauf endete ohne eine Session, ohne dass ein "
+      + "benannter Fall zutraf. Der Weg steht im Textprotokoll daneben; bitte melden.",
+    readyLeer: "Ready ist leer — nichts zu tun.",
+    keinLabel: "Keine der {anzahl} Karten in Ready traegt das Label '{label}' — nichts zu tun.",
+    alleZurueckgestellt: "Alle {anzahl} Karten in Ready wurden am Gate zurueckgestellt — der Lauf hat Ready selbst "
+      + "geleert, es blieb nichts zu tun.",
+    umsetzungBelegt: "Die Umsetzung ist belegt: {grund} — der Lauf endet ohne Paket.",
+    ketteKeinLabel: "Keine Kette zu fahren: keine Karte traegt das Label '{label}'.",
+    ketteAlleUebersprungen: "Keine Kette zu fahren: alle {anzahl} gekennzeichneten Karten mit dem Label '{label}' "
+      + "wurden uebersprungen, weil eine Voraussetzung fehlt.",
+    pruefLaufKeinLabel: "Nichts zu pruefen: keine Karte traegt das Label '{label}'.",
+    pruefLaufAlleUebersprungen: "Nichts zu pruefen: alle {anzahl} gekennzeichneten Karten mit dem Label '{label}' "
+      + "wurden uebersprungen, weil sie keine fachliche Anforderung sind oder eine Entscheidung wartet.",
+    einlieferungPruefung: "Einlieferung entfaellt: die Lauf-Art 'pruefung' hat keine Nachtlauf-Schnittstelle — der Ergebnisstand bleibt als Datei.",
+    einlieferungTracker: "Einlieferung entfaellt: issueTracker '{tracker}' kennt keine Nachtlauf-Schnittstelle — der Ergebnisstand bleibt als Datei.",
+    einlieferungFehlgeschlagen: "Einlieferung fehlgeschlagen: {fehler} — der Ergebnisstand bleibt als Datei.",
+    eingeliefert: "Nachtlauf eingeliefert ({outcome}).",
+    ohneRueckmeldung: "ohne Rueckmeldung",
+    stempelFehler: "Lauf-Stempel {stempel}: {fehler}",
+    stempelVergeben: "Lauf-Stempel {stempel} auch nach {anzahl} Neubildungen schon vergeben",
+    ergebnisstandFehler: "Ergebnisstand konnte nicht geschrieben werden: {fehler}",
+    zitatGekuerzt: "{text}… ({anzahl} Zeichen gekürzt)",
+    signal: "Signal {signal}",
+    boardFehlgeschlagen: "board.mjs {aufruf} schlug fehl{zusatz}: {zitat}",
+    zweiterVersuch: "{text} (auch im 2. Versuch)",
+    boardKeinJson: "board.mjs {aufruf} lieferte kein JSON: {ausgabe}",
+    gitStatusFehler: "git status schlug fehl — bin ich im Projekt-Root eines git-Repos?",
+    hinweis: "Hinweis: {hinweis}",
+    lokalUngueltig: "{pfad} ist kein gueltiges JSON und wird ignoriert.",
+    feldTeamweit: "'{feld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.",
+  }),
+  en: Object.freeze({
+    verboseWert: "--verbose only knows the values no and yes (read: {wert}) — without a value it stays at the default yes.",
+    entfallenesFlag: "{flag} no longer exists since stage 2; the night chain is --chain{zusatz}.",
+    entfallenesFlagStufe: ", and the chain has no stages",
+    unbekanntesArgument: "Unknown argument: {argument} — see --help",
+    kettePruefen: "--chain and --check are two runs with their own budgets — please start them separately.",
+    pruefenDryRun: "The check run has no preview — `/issue-review --dry-run` shows documents and reviewers.",
+    ketteLabel: "--chain does not know --label — the chain label is in night.kette.label of workflow.config.json.",
+    pruefenLabel: "--check does not know --label — the marker label is in pruefLauf.label of workflow.config.json.",
+    maxZahl: "--max needs a number >= 1",
+    timeoutZahl: "--timeout-min needs a number >= 1",
+    schrittprotokollFehler: "Step log could not be written: {fehler} — the lines remain in the daily log.",
+    fehlerZeile: "Error: {meldung}",
+    resteKeine: "no uncommitted leftovers",
+    resteViele: "{anzahl} uncommitted leftovers, the first ten: {liste}",
+    resteWenige: "uncommitted leftovers: {liste}",
+    ersatzGrund: "No reason could be determined — the run stopped hard without any abort path "
+      + "leaving its reason. The path is in the text log next to it; please report.",
+    ankerFehlt: "(The handover anchor was missing: this text comes from the most recently noted hard "
+      + "stop, not from the affected unit and not from the run. Please report.)",
+    ohneArbeitUnbekannt: "No reason could be determined — the run ended without a session, without any "
+      + "named case applying. The path is in the text log next to it; please report.",
+    readyLeer: "Ready is empty — nothing to do.",
+    keinLabel: "None of the {anzahl} cards in Ready carries the label '{label}' — nothing to do.",
+    alleZurueckgestellt: "All {anzahl} cards in Ready were deferred at the gate — the run emptied Ready "
+      + "itself, nothing was left to do.",
+    umsetzungBelegt: "The implementation is occupied: {grund} — the run ends without a package.",
+    ketteKeinLabel: "No chain to run: no card carries the label '{label}'.",
+    ketteAlleUebersprungen: "No chain to run: all {anzahl} marked cards with the label '{label}' "
+      + "were skipped because a prerequisite is missing.",
+    pruefLaufKeinLabel: "Nothing to check: no card carries the label '{label}'.",
+    pruefLaufAlleUebersprungen: "Nothing to check: all {anzahl} marked cards with the label '{label}' "
+      + "were skipped because they are not requirements or a decision is pending.",
+    einlieferungPruefung: "Delivery skipped: the run type 'pruefung' has no night-run interface — the result file remains as a file.",
+    einlieferungTracker: "Delivery skipped: issueTracker '{tracker}' has no night-run interface — the result file remains as a file.",
+    einlieferungFehlgeschlagen: "Delivery failed: {fehler} — the result file remains as a file.",
+    eingeliefert: "Night run delivered ({outcome}).",
+    ohneRueckmeldung: "no response",
+    stempelFehler: "Run stamp {stempel}: {fehler}",
+    stempelVergeben: "Run stamp {stempel} still taken after {anzahl} rebuilds",
+    ergebnisstandFehler: "Result file could not be written: {fehler}",
+    zitatGekuerzt: "{text}… ({anzahl} characters truncated)",
+    signal: "signal {signal}",
+    boardFehlgeschlagen: "board.mjs {aufruf} failed{zusatz}: {zitat}",
+    zweiterVersuch: "{text} (also in the 2nd attempt)",
+    boardKeinJson: "board.mjs {aufruf} returned no JSON: {ausgabe}",
+    gitStatusFehler: "git status failed — am I in the project root of a git repository?",
+    hinweis: "Note: {hinweis}",
+    lokalUngueltig: "{pfad} is not valid JSON and is ignored.",
+    feldTeamweit: "'{feld}' from workflow.config.local.json is ignored — the field applies team-wide.",
+  }),
+});
+
+// Das Register mit literalem Pfad und abgefangen, wie im Einstieg (Issue #1484): Fehlt
+// board/namen.mjs neben night.mjs, bleiben die Texte deutsch.
+const namen = await import("../board/namen.mjs").catch(() => null);
+
+function t(schluessel, werte = {}) {
+  if (namen) return namen.text(TEXTE, schluessel, werte);
+  return TEXTE.de[schluessel].replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
+}
+
 // --- Textvergleich ---
 
 /**
@@ -235,7 +355,7 @@ function liesVerbose(args, argv, i) {
   const naechster = argv[i + 1];
   if (naechster === undefined || naechster.startsWith("-")) return i;
   if (!Object.hasOwn(VERBOSE_WERTE, naechster)) {
-    fail(`--verbose kennt nur die Werte no und yes (gelesen: ${naechster}) — ohne Wert bleibt es beim Vorgabewert yes.`);
+    fail(t("verboseWert", { wert: naechster }));
   }
   args.verbose = VERBOSE_WERTE[naechster];
   return i + 1;
@@ -248,8 +368,8 @@ function liesVerbose(args, argv, i) {
 const ENTFALLENE_FLAGS = new Set(["--review", "--erzeuge", "--stufe", "--review-label", "--erzeuge-label"]);
 
 function entfallenesFlag(a) {
-  const zusatz = a === "--stufe" ? ", und die Kette hat keine Stufen" : "";
-  fail(`${a} gibt es seit Stufe 2 nicht mehr; die Nacht-Kette ist --kette${zusatz}.`);
+  const zusatz = a === "--stufe" ? t("entfallenesFlagStufe") : "";
+  fail(t("entfallenesFlag", { flag: a, zusatz }));
 }
 
 /**
@@ -272,7 +392,7 @@ function liesArgument(args, argv, i) {
     args[SCHALTER_FLAGS[a]] = true;
     return i + 1;
   }
-  fail(`Unbekanntes Argument: ${a} — siehe --help`);
+  fail(t("unbekanntesArgument", { argument: a }));
 }
 
 export function parseArgs(argv) {
@@ -325,21 +445,21 @@ function pruefeArgs(args) {
   // eine Art nennen. Ein Aufruf mit beiden Flags waere ein Lauf, der nicht sagen kann,
   // welcher er ist.
   if (args.kette && args.pruefen) {
-    fail("--kette und --pruefen sind zwei Laeufe mit eigenen Budgets — bitte einzeln starten.");
+    fail(t("kettePruefen"));
   }
   // Der Prueflauf hat keine Vorschau (Plan #904, E10): Was er tun wuerde, steht in der
   // Kandidatenliste, die er vor der ersten Session protokolliert.
   if (args.pruefen && args.dryRun) {
-    fail("Der Prueflauf hat keine Vorschau — `/issue-review --dry-run` zeigt Dokumente und Reviewer.");
+    fail(t("pruefenDryRun"));
   }
   // Der Abend hat genau eine Geste: Das Kettenlabel kommt aus night.kette.label, ein
   // zweiter Weg zum selben Wert waere eine zweite Wahrheit (Plan #638, E6).
   if (args.kette && args.labelGesetzt) {
-    fail("--kette kennt kein --label — das Kettenlabel steht in night.kette.label der workflow.config.json.");
+    fail(t("ketteLabel"));
   }
   // Dieselbe Begruendung fuer den Prueflauf, nur mit seinem eigenen Block.
   if (args.pruefen && args.labelGesetzt) {
-    fail("--pruefen kennt kein --label — das Kennzeichen steht in pruefLauf.label der workflow.config.json.");
+    fail(t("pruefenLabel"));
   }
   // Die Aufloesung steht VOR der Zahlenpruefung: Die Vorbelegung ist null, und die
   // Pruefung wiese sonst jeden Aufruf ohne --max ab.
@@ -348,8 +468,8 @@ function pruefeArgs(args) {
   // Der Prueflauf darf ohne Zahlendeckel fahren (E9): Dort ist `null` das Ergebnis der
   // Aufloesung und keine fehlende Angabe. Ein gesetztes `--max` prueft auch er.
   const ohneDeckel = args.pruefen && args.max === null;
-  if (!ohneDeckel && (!Number.isFinite(args.max) || args.max < 1)) fail("--max braucht eine Zahl >= 1");
-  if (!Number.isFinite(args.timeoutMin) || args.timeoutMin < 1) fail("--timeout-min braucht eine Zahl >= 1");
+  if (!ohneDeckel && (!Number.isFinite(args.max) || args.max < 1)) fail(t("maxZahl"));
+  if (!Number.isFinite(args.timeoutMin) || args.timeoutMin < 1) fail(t("timeoutZahl"));
 }
 
 // --- Logging ---
@@ -461,7 +581,7 @@ export function schrittProtokollieren(text) {
   } catch (err) {
     LETZTES_PROTOKOLL.delete(SCHRITT_LOG.karte);
     SCHRITT_LOG = null;
-    log(`Schrittprotokoll konnte nicht geschrieben werden: ${err.message} — die Zeilen stehen weiter im Tagesprotokoll.`);
+    log(t("schrittprotokollFehler", { fehler: err.message }));
   }
 }
 
@@ -482,7 +602,7 @@ export function schrittProtokollieren(text) {
  * `harterStopp` — ein erkannter Stopp ist kein Abbruch von aussen.
  */
 export function fail(msg, klasse = "unbekannt") {
-  const line = `Fehler: ${msg}`;
+  const line = t("fehlerZeile", { meldung: msg });
   process.stderr.write(line + "\n");
   if (ZUSTAND.LOG_FILE) appendFileSync(ZUSTAND.LOG_FILE, line + "\n", "utf-8");
   if (ZUSTAND.LAUF) {
@@ -555,11 +675,9 @@ export function hefteStoppGrundAnLauf() {
  * eine Auskunft und kein Mangel.
  */
 export function resteText(reste) {
-  if (reste.length === 0) return "keine unkommittierten Reste";
-  const gezeigt = reste.slice(0, 10).join(" | ");
-  return reste.length > 10
-    ? `${reste.length} unkommittierte Reste, die ersten zehn: ${gezeigt}`
-    : `unkommittierte Reste: ${gezeigt}`;
+  if (reste.length === 0) return t("resteKeine");
+  const liste = reste.slice(0, 10).join(" | ");
+  return reste.length > 10 ? t("resteViele", { anzahl: reste.length, liste }) : t("resteWenige", { liste });
 }
 
 /**
@@ -568,12 +686,12 @@ export function resteText(reste) {
  * Er sagt ausdruecklich, dass hier etwas fehlt, und bittet um Meldung: Ein leeres Feld
  * liesse offen, ob der Lauf nichts zu sagen hatte oder ob die Uebergabe gerissen ist.
  */
-export const ERSATZ_GRUND = "Kein Grund ermittelbar — der Lauf ist hart gestoppt, ohne dass ein Abbruchweg "
-  + "seinen Grund hinterlegt hat. Der Weg steht im Textprotokoll daneben; bitte melden.";
+// Die drei Rueckfallsaetze sind als Konstanten in der Sprache des Prozesses exportiert; die
+// Funktionen darunter bilden sie bei jedem Aufruf neu ueber denselben Schluessel.
+export const ERSATZ_GRUND = t("ersatzGrund");
 
 /** Der Zusatz, wenn der Grund nur ueber den Modul-Zustand kam und nicht ueber die Uebergabe. */
-export const ANKER_FEHLT = "(Der Uebergabe-Anker fehlte: Dieser Text stammt aus dem zuletzt gemerkten harten "
-  + "Stopp, nicht von der betroffenen Einheit und nicht vom Lauf. Bitte melden.)";
+export const ANKER_FEHLT = t("ankerFehlt");
 
 // Die Gruende eines Laufs ohne Arbeitspaket (Issue #744) — derselbe Wortlaut steht im
 // Textprotokoll und am Lauf-Kopf (`LAUF.noWorkReason`), damit beide nie auseinanderlaufen.
@@ -590,8 +708,7 @@ const OHNE_ARBEIT_NAME_MAX = 80;
  * Er sagt ausdruecklich, dass hier ein Fall fehlt: Ein leeres Feld liesse offen, ob der
  * Lauf nichts zu sagen hatte oder ob eine Lage unbenannt geblieben ist.
  */
-export const OHNE_ARBEIT_UNBEKANNT = "Kein Grund ermittelbar — der Lauf endete ohne eine Session, ohne dass ein "
-  + "benannter Fall zutraf. Der Weg steht im Textprotokoll daneben; bitte melden.";
+export const OHNE_ARBEIT_UNBEKANNT = t("ohneArbeitUnbekannt");
 
 /** Kuerzt einen variablen Namen, damit der Satz am Lauf-Kopf nicht gekappt wird. */
 function ohneArbeitName(wert) {
@@ -615,32 +732,29 @@ export function grundOhneArbeit(fall, daten) {
   const d = daten || {};
   switch (fall) {
     case "readyLeer":
-      return "Ready ist leer — nichts zu tun.";
+      return t("readyLeer");
     case "keinLabel":
-      return `Keine der ${d.anzahl} Karten in Ready traegt das Label '${ohneArbeitName(d.label)}' — nichts zu tun.`;
+      return t("keinLabel", { anzahl: d.anzahl, label: ohneArbeitName(d.label) });
     case "alleZurueckgestellt":
-      return `Alle ${d.anzahl} Karten in Ready wurden am Gate zurueckgestellt — der Lauf hat Ready selbst `
-        + "geleert, es blieb nichts zu tun.";
+      return t("alleZurueckgestellt", { anzahl: d.anzahl });
     case "umsetzungBelegt":
-      return `Die Umsetzung ist belegt: ${ohneArbeitName(d.grund)} — der Lauf endet ohne Paket.`;
+      return t("umsetzungBelegt", { grund: ohneArbeitName(d.grund) });
     // Karte statt Fachplan seit Issue #896: Auftrag der Kette ist die fachliche
     // Anforderung ODER das Plandokument, und ein Satz, der nur den Fachplan kennt,
     // liesse den Morgen das Kennzeichen an der falschen Karte suchen.
     case "ketteKeinLabel":
-      return `Keine Kette zu fahren: keine Karte traegt das Label '${ohneArbeitName(d.label)}'.`;
+      return t("ketteKeinLabel", { label: ohneArbeitName(d.label) });
     case "ketteAlleUebersprungen":
-      return `Keine Kette zu fahren: alle ${d.anzahl} gekennzeichneten Karten mit dem Label '${ohneArbeitName(d.label)}' `
-        + "wurden uebersprungen, weil eine Voraussetzung fehlt.";
+      return t("ketteAlleUebersprungen", { anzahl: d.anzahl, label: ohneArbeitName(d.label) });
     // Die beiden Pruefsaetze teilen das Praefix `Nichts zu pruefen:` — wie die beiden
     // Kettensaetze darueber, und aus demselben Grund: Ein Matcher, der den Fall selbst nicht
     // unterscheidet, soll sich an eine Stelle haengen koennen.
     case "pruefLaufKeinLabel":
-      return `Nichts zu pruefen: keine Karte traegt das Label '${ohneArbeitName(d.label)}'.`;
+      return t("pruefLaufKeinLabel", { label: ohneArbeitName(d.label) });
     case "pruefLaufAlleUebersprungen":
-      return `Nichts zu pruefen: alle ${d.anzahl} gekennzeichneten Karten mit dem Label '${ohneArbeitName(d.label)}' `
-        + "wurden uebersprungen, weil sie keine fachliche Anforderung sind oder eine Entscheidung wartet.";
+      return t("pruefLaufAlleUebersprungen", { anzahl: d.anzahl, label: ohneArbeitName(d.label) });
     default:
-      return OHNE_ARBEIT_UNBEKANNT;
+      return t("ohneArbeitUnbekannt");
   }
 }
 
@@ -680,7 +794,7 @@ export function sicherheitsnetzGrund(lauf, stoppGrund) {
     ? null
     : (lauf.einheiten || []).find((e) => String(e.id) === String(lauf.fehlerEinheit));
   if (betroffen && gefuellt(betroffen.grund)) return null;
-  return gefuellt(stoppGrund) ? `${stoppGrund} ${ANKER_FEHLT}` : ERSATZ_GRUND;
+  return gefuellt(stoppGrund) ? `${stoppGrund} ${t("ankerFehlt")}` : t("ersatzGrund");
 }
 
 /**
@@ -773,20 +887,20 @@ export function laufMelden({ budgetMs, datei = ZUSTAND.ERGEBNIS_FILE, stand = ZU
   // Ausnahme steht HIER und nicht als Zweig in board.mjs: Der Prueflauf gehoert dem Tag,
   // und die Schnittstelle beschreibt Nachtlaeufe.
   if (stand.art === "pruefung") {
-    meldezeile("Einlieferung entfaellt: die Lauf-Art 'pruefung' hat keine Nachtlauf-Schnittstelle — der Ergebnisstand bleibt als Datei.");
+    meldezeile(t("einlieferungPruefung"));
     return;
   }
   const tracker = ZUSTAND.config?.issueTracker;
   if (tracker !== "toolbox" && !process.env.NIGHT_MELDEN_ERZWINGEN) {
-    meldezeile(`Einlieferung entfaellt: issueTracker '${tracker}' kennt keine Nachtlauf-Schnittstelle — der Ergebnisstand bleibt als Datei.`);
+    meldezeile(t("einlieferungTracker", { tracker }));
     return;
   }
   const res = boardRoh("nightrun", "melden", "--datei", datei, { budgetMs, spawn });
   if (res.status !== 0) {
-    meldezeile(`Einlieferung fehlgeschlagen: ${res.text.trim().slice(0, 300)} — der Ergebnisstand bleibt als Datei.`);
+    meldezeile(t("einlieferungFehlgeschlagen", { fehler: res.text.trim().slice(0, 300) }));
     return;
   }
-  if (stand.abschluss !== null) meldezeile(`Nachtlauf eingeliefert (${res.json?.outcome ?? "ohne Rueckmeldung"}).`);
+  if (stand.abschluss !== null) meldezeile(t("eingeliefert", { outcome: res.json?.outcome ?? t("ohneRueckmeldung") }));
 }
 
 /** Die erste Zeile eines Fremdtextes, gekuerzt — damit eine Meldung eine Zeile bleibt. */
@@ -824,9 +938,9 @@ export function laufStempelReservieren(repoRoot, jetzt, {
       writeFileSync(pfad, "{}\n", { encoding: "utf-8", flag: "wx" });
       return { stempel, jetzt, pfad, fehler: null };
     } catch (err) {
-      if (err.code !== "EEXIST") return { stempel, jetzt, pfad, fehler: `Lauf-Stempel ${stempel}: ${err.message}` };
+      if (err.code !== "EEXIST") return { stempel, jetzt, pfad, fehler: t("stempelFehler", { stempel, fehler: err.message }) };
       if (versuch >= STEMPEL_NEUBILDUNGEN) {
-        return { stempel, jetzt, pfad, fehler: `Lauf-Stempel ${stempel} auch nach ${STEMPEL_NEUBILDUNGEN} Neubildungen schon vergeben` };
+        return { stempel, jetzt, pfad, fehler: t("stempelVergeben", { stempel, anzahl: STEMPEL_NEUBILDUNGEN }) };
       }
       warten(1000 - (jetzt.getTime() % 1000));
       jetzt = uhr();
@@ -848,7 +962,7 @@ export function schreibeErgebnisstand() {
   try {
     writeFileSync(ZUSTAND.ERGEBNIS_FILE, JSON.stringify(ZUSTAND.LAUF, null, 2) + "\n", "utf-8");
   } catch (err) {
-    log(`Ergebnisstand konnte nicht geschrieben werden: ${err.message}`);
+    log(t("ergebnisstandFehler", { fehler: err.message }));
   }
 }
 
@@ -867,7 +981,7 @@ const BOARD_ZITAT_MAX = 500;
 
 function boardZitat(text) {
   if (text.length <= BOARD_ZITAT_MAX) return text;
-  return `${text.slice(0, BOARD_ZITAT_MAX)}… (${text.length - BOARD_ZITAT_MAX} Zeichen gekürzt)`;
+  return t("zitatGekuerzt", { text: text.slice(0, BOARD_ZITAT_MAX), anzahl: text.length - BOARD_ZITAT_MAX });
 }
 
 /**
@@ -878,10 +992,10 @@ function boardZitat(text) {
 export function boardFehlertext(cliArgs, res) {
   const hinweise = [];
   if (res.error?.code) hinweise.push(res.error.code);
-  if (res.signal) hinweise.push(`Signal ${res.signal}`);
-  const praefix = hinweise.length ? ` (${hinweise.join(", ")})` : "";
+  if (res.signal) hinweise.push(t("signal", { signal: res.signal }));
+  const zusatz = hinweise.length ? ` (${hinweise.join(", ")})` : "";
   const zitat = boardZitat((res.stderr || res.stdout || "").trim());
-  return `board.mjs ${cliArgs.join(" ")} schlug fehl${praefix}: ${zitat}`;
+  return t("boardFehlgeschlagen", { aufruf: cliArgs.join(" "), zusatz, zitat });
 }
 
 /**
@@ -939,13 +1053,13 @@ export function board(...cliArgs) {
     if (!ZUSTAND.LAUF_STEMPEL) fail(text, "tracker");
     anbindung.zweiterVersuch(text);
     res = boardAufruf(cliArgs, opts);
-    if (res.status !== 0) anbindung.laufAnhalten(`${boardFehlertext(cliArgs, res)} (auch im 2. Versuch)`, "tracker");
+    if (res.status !== 0) anbindung.laufAnhalten(t("zweiterVersuch", { text: boardFehlertext(cliArgs, res) }), "tracker");
     anbindung.vermerkAnDieKarte();
   }
   try {
     return JSON.parse(res.stdout);
   } catch {
-    fail(`board.mjs ${cliArgs.join(" ")} lieferte kein JSON: ${res.stdout.slice(0, 200)}`, "tracker");
+    fail(t("boardKeinJson", { aufruf: cliArgs.join(" "), ausgabe: res.stdout.slice(0, 200) }), "tracker");
   }
 }
 
@@ -1146,7 +1260,7 @@ export function salvageSauberkeitsKommando(ausnahmen = gitResteAusnahmen()) {
 // `spawn` ersetzt den git-Aufruf im Test (Plan #1199, E6).
 export function gitReste(cwd = process.cwd(), cfg = ZUSTAND.config, { spawn = spawnSync } = {}) {
   const res = spawn("git", ["status", "--porcelain", ...gitRestePathspec(gitResteAusnahmen(cfg))], { encoding: "utf-8", cwd });
-  if (res.status !== 0) fail("git status schlug fehl — bin ich im Projekt-Root eines git-Repos?");
+  if (res.status !== 0) fail(t("gitStatusFehler"));
   return res.stdout.split(/\r?\n/).filter((zeile) => zeile.trim() !== "");
 }
 
@@ -1212,7 +1326,7 @@ function zerlegeAllowlist(allowlist) {
 // SYNC: dieselbe Reihenfolge in mergeWorkflowConfig, kit/board/grundlagen.mjs.
 function normalisiertMitHinweisen(roh, optionen) {
   const { config, hinweise } = normalisiereConfig(roh, optionen);
-  for (const hinweis of hinweise) process.stderr.write(`Hinweis: ${hinweis}\n`);
+  for (const hinweis of hinweise) process.stderr.write(t("hinweis", { hinweis }) + "\n");
   return config;
 }
 
@@ -1226,7 +1340,7 @@ export function ladeConfigMitOverrides(sharedPfad) {
     local = JSON.parse(readFileSync(lokalPfad, "utf-8"));
   } catch {
     // Eine persoenliche Datei mit Tippfehler darf den Lauf nicht kippen.
-    process.stderr.write(`Hinweis: ${lokalPfad} ist kein gueltiges JSON und wird ignoriert.\n`);
+    process.stderr.write(t("hinweis", { hinweis: t("lokalUngueltig", { pfad: lokalPfad }) }) + "\n");
     return shared;
   }
 
@@ -1267,7 +1381,7 @@ function mischeErlaubteFelder(shared, local) {
     } else if (erlaubteBlaetter.has(feld) && wert && typeof wert === "object") {
       config[feld] = mischeBlattfelder(config[feld], wert, erlaubteBlaetter.get(feld), feld);
     } else {
-      process.stderr.write(`Hinweis: '${feld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`);
+      process.stderr.write(t("hinweis", { hinweis: t("feldTeamweit", { feld }) }) + "\n");
     }
   }
   return config;
@@ -1285,7 +1399,7 @@ function mischeBlattfelder(bisher, wert, blaetter, feld) {
   const zusammen = { ...bisher };
   for (const [unterfeld, unterwert] of Object.entries(wert)) {
     if (blaetter.has(unterfeld)) zusammen[unterfeld] = unterwert;
-    else process.stderr.write(`Hinweis: '${feld}.${unterfeld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`);
+    else process.stderr.write(t("hinweis", { hinweis: t("feldTeamweit", { feld: `${feld}.${unterfeld}` }) }) + "\n");
   }
   return zusammen;
 }

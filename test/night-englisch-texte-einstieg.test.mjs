@@ -11,8 +11,8 @@
 //     Vorgabe Deutsch.
 //
 // Der erste Teil (#1484) deckt den Einstieg kit/night.mjs; kit/night/laufvariablen.mjs gibt
-// nichts an den Menschen aus und hat darum keine Tabelle. Die folgenden Teile ergaenzen diese
-// Datei um ihre Module.
+// nichts an den Menschen aus und hat darum keine Tabelle. Der zweite Teil (#1485) deckt
+// kit/night/grundlagen.mjs. Die folgenden Teile ergaenzen diese Datei um ihre Module.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -23,7 +23,10 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 import { TEXTE as EINSTIEG_TEXTE } from "../kit/night.mjs";
-import { pruefeParitaet } from "../kit/board/namen.mjs";
+import {
+  TEXTE as GRUNDLAGEN_TEXTE, grundOhneArbeit, resteText, sicherheitsnetzGrund, boardFehlertext,
+} from "../kit/night/grundlagen.mjs";
+import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -166,6 +169,71 @@ test("[1484] englisch: ein unsauberer Baum haelt den Lauf mit englischer Meldung
     assert.notEqual(res.status, 0);
     assert.ok((res.stdout + res.stderr).includes("Working tree is not clean. Please commit or clean up, then restart."),
       res.stdout + res.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- kit/night/grundlagen.mjs (Issue #1485) -----------------------------------------------
+
+/** Fuehrt `fn` mit der Prozesssprache `sprache` aus und vergisst sie danach wieder. */
+function inSprache(sprache, fn) {
+  spracheFestlegen(sprache);
+  try {
+    return fn();
+  } finally {
+    spracheFestlegen(null);
+  }
+}
+
+test("[1485] die Texttabelle der Grundlagen hat in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
+  assert.deepEqual(pruefeParitaet(GRUNDLAGEN_TEXTE), []);
+  assert.ok(Object.keys(GRUNDLAGEN_TEXTE.de).length >= 30, "die Tabelle traegt die Meldungen der Grundlagen");
+});
+
+test("[1485] englisch: die Saetze eines Laufs ohne Arbeit, Ready leer in der Form der Vorlage", () => {
+  inSprache("en", () => {
+    assert.equal(grundOhneArbeit("readyLeer", {}), "Ready is empty — nothing to do.");
+    assert.equal(grundOhneArbeit("keinLabel", { anzahl: 3, label: "kit:nightrun" }),
+      "None of the 3 cards in Ready carries the label 'kit:nightrun' — nothing to do.");
+    assert.match(grundOhneArbeit("ketteKeinLabel", { label: "kit:night" }), /^No chain to run:/);
+    assert.match(grundOhneArbeit("pruefLaufKeinLabel", { label: "kit:check" }), /^Nothing to check:/);
+    assert.match(grundOhneArbeit("gibtEsNicht", {}), /please report\.$/);
+  });
+});
+
+test("[1485] englisch: Reste, Sicherheitsnetz und Board-Fehler", () => {
+  inSprache("en", () => {
+    assert.equal(resteText([]), "no uncommitted leftovers");
+    assert.equal(resteText(["a", "b"]), "uncommitted leftovers: a | b");
+    assert.match(resteText(Array.from({ length: 12 }, (_, i) => `d${i}`)), /^12 uncommitted leftovers, the first ten: d0 \| /);
+    assert.match(sicherheitsnetzGrund({}, ""), /^No reason could be determined/);
+    assert.match(sicherheitsnetzGrund({}, "HARD STOP: x"), /^HARD STOP: x \(The handover anchor was missing/);
+    assert.equal(boardFehlertext(["issue", "list"], { signal: "SIGTERM", stderr: "weg" }),
+      "board.mjs issue list failed (signal SIGTERM): weg");
+  });
+});
+
+test("[1485] englisch: ein unbekanntes Argument endet mit Error: statt Fehler:", () => {
+  const dir = mkdtempSync(join(tmpdir(), "night-englisch-argument-"));
+  try {
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({ language: "en" }));
+    const res = laufe(dir, process.execPath, [NIGHT, "--gibt-es-nicht"]);
+    assert.notEqual(res.status, 0);
+    assert.ok(res.stderr.includes("Error: Unknown argument: --gibt-es-nicht — see --help"), res.stderr);
+    assert.ok(!res.stderr.includes("Fehler:"), res.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[1485] ohne Spracheinstellung bleibt ein unbekanntes Argument deutsch", () => {
+  const dir = mkdtempSync(join(tmpdir(), "night-deutsch-argument-"));
+  try {
+    const res = laufe(dir, process.execPath, [NIGHT, "--gibt-es-nicht"]);
+    assert.notEqual(res.status, 0);
+    assert.ok(res.stderr.includes("Fehler: Unbekanntes Argument: --gibt-es-nicht — siehe --help"), res.stderr);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
