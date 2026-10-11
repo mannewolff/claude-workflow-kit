@@ -562,6 +562,62 @@ Jedes Label und jedes Titel-Präfix, das das Kit kennt, hat einen deutschen und 
 
 **Wie lange die deutschen Namen gelten.** Die deutschen Labels und Präfixe bleiben über die Versionen 4 und 5 gültig. In englischen Projekten können die deutschen Altnamen frühestens mit Version 6 entfallen, und erst nach Ankündigung.
 
+### Meldungen, Berichte und Marker
+
+Was das Kit ausgibt und an die Karten schreibt, steht in der Projektsprache: die Meldungen der Werkzeuge, der Block `Fuer den Abschlussbericht:` von `checks.mjs`, Nacht- und Laufberichte, Vermerke und Kommentare an den Karten, Installer, Einstellungsoberfläche und lokale Board-Oberfläche. Ein Wechsel der Sprache wirkt ab dem nächsten Aufruf; was schon am Board steht, bleibt, wie es ist.
+
+**Marker.** Manche Zeilen liest das Kit später aus Kommentaren und Body zurück, etwa den Laufstand oder die Kopfzeilen eines Arbeitspakets. Diese Marker schreibt es im Namen der Projektsprache und erkennt sie unter beiden Namen, auch gemischt auf derselben Karte. Ein Marker mit veränderlichem Rest, etwa `## Einarbeitung, Runde 2`, steht hier mit seinem festen Anfang.
+
+| Sache | Deutsch | Englisch |
+|-------|---------|----------|
+| Laufstand-Kommentar | `## Laufstand` | `## Run status` |
+| Kennung des Laufs | `Lauf-ID:` | `Run-ID:` |
+| Zeitpunkt des Stands | `Stand:` | `Updated:` |
+| Protokolldatei | `Protokoll:` | `Log:` |
+| Ziel der Kette | `Ziel:` | `Goal:` |
+| Prüfer | `Prüfer:` | `Reviewers:` |
+| Grenze | `Grenze:` | `Limit:` |
+| geschützte Datei | `## Geschuetzte Datei` | `## Protected file` |
+| wartende Sitzung | `## Nachtlauf: wartende Sitzung` | `## Night run: waiting session` |
+| Zeitgrenze erreicht | `## Nachtlauf: Zeitgrenze erreicht` | `## Night run: time limit reached` |
+| an einer Prüfung festgefahren | `## Nachtlauf: an einer Pruefung festgefahren` | `## Night run: stuck on a check` |
+| fehlender Nachweis | `Nachtlauf: Nachweis` | `Night run: evidence` |
+| Kette ohne Prüfung | `## Kette nicht gestartet: Pruefung fehlt` | `## Chain not started: check missing` |
+| Kette mit unpassender Einstellung | `## Kette nicht gestartet: unpassende Einstellung` | `## Chain not started: unsuitable setting` |
+| kein Eingang für `/issues` | `Kein Eingang für /issues` | `No input for /issues` |
+| Folgesatz eines Halts | `Daraus soll per /fachplan eine fachliche Anforderung entstehen.` | `A requirement is to be created from this via /requirement.` |
+| überholtes Paket | `Ueberholt durch Plan #` | `Superseded by plan #` |
+| Kennung des Berichts | `Bericht-Lauf:` | `Report-Run:` |
+| Stand des Kits | `Kit-Stand:` | `Kit-Revision:` |
+| Nachtbericht | `## Nachtbericht, Kette` | `## Night report, chain` |
+| Runde des Plan-Reviews | `## Plan-Review, Runde` | `## Plan-Review, Round` |
+| Runde des Fachplan-Reviews | `## Fachplan-Review, Runde` | `## Requirement-Review, Round` |
+| Runde des Issue-Reviews | `## Issue-Review, Runde` | `## Issue-Review, Round` |
+| Runde der Einarbeitung | `## Einarbeitung, Runde` | `## Incorporation, Round` |
+| Kontext eines Dokuments | `## Kontext` | `## Context` |
+| Modell des Autors | `Autor-Modell:` | `Author-Model:` |
+| Modell des Plans | `Plan-Modell:` | `Plan-Model:` |
+| fachliche Quelle | `Fachliche Quelle:` | `Requirement:` |
+| Entscheidungen des Plans | `Plan-Entscheidungen:` | `Plan-Decisions:` |
+| Entscheidung | `Entscheidung:` | `Decision:` |
+| Aufgabenstufe | `Aufgabenstufe:` | `Task-Tier:` |
+| empfohlenes Modell | `Empfohlenes Modell:` | `Recommended model:` |
+| Sitzungsumfang | `Sitzungsumfang:` | `Session scope:` |
+| Vorlage | `Vorlage:` | `Template:` |
+| Spur des Fachplan-Reviews | `Fachplan-Review:` | `Requirement-Review:` |
+
+`Position:`, `Plan:`, `Plan-Review:` und `Issue-Review:` heißen in beiden Sprachen gleich.
+
+**Was unübersetzt bleibt.** Manche Werte sind Schnittstellen zu Skills, Auswertungen und dem KI-Leitstand in kanban-kit, keine Namen, denen du begegnest. Sie bleiben in beiden Sprachen gleich:
+
+- die JSON-Feldnamen der Werkzeugausgaben, etwa `ok`, `fehler` und `hinweise`,
+- das Vokabular des Ergebnisstands und des Journals,
+- die Aufzählungen der Meldung an den Leitstand, `stages`, `errorClass` und `state`, und das Feld `grundArt` mit den Werten `abhaengigkeit`, `klaeren`, `ohneInReview`, `zeitbudget` und `sonst`,
+- die Dateinamen unter `.claude/`,
+- die Formwörter der Befunde, die `kit/befunde.mjs` liest: die Marken `KRITISCH`, `BLOCKER`, `WICHTIG` und `HINWEIS`, `Fundstelle:`, `Vorschlag:`, `Gegenprobe:` mit `— geprueft, bestaetigt` und `— nicht geprueft`, `Art:` und die Artnamen.
+
+Übersetzt werden die Freitexte der Meldung an den Leitstand, `title`, `excerpt`, `abortReason` und `noWorkReason`, und alle Anzeigen.
+
 ## Einstellungen über die Oberfläche
 
 Statt die Config-Dateien von Hand zu bearbeiten, lassen sich die Prozess-Einstellungen über eine lokale Oberfläche pflegen. Sie wird **nicht installiert**, sondern als einzelne Datei heruntergeladen: [einstellungen.mjs](https://docs.mwolff.org/einstellungen.mjs). Sie arbeitet über alle Projekte unter einem Ordner und gehört deshalb in keines.

@@ -410,8 +410,9 @@ test("weder ein Skill noch die Nutzerdoku empfiehlt noch ein `recommended`-Set",
       `skills/${name}/SKILL.md empfiehlt noch ein \`recommended\`-Set`,
     );
   }
+  // Der Marker `Recommended model:` (Issue #1459) ist kein Lint-Set.
   assert.ok(
-    !/recommended/i.test(DOKUMENTATION),
+    !/recommended(?! model:)/i.test(DOKUMENTATION),
     "docs/dokumentation.md empfiehlt noch ein `recommended`-Set",
   );
 });

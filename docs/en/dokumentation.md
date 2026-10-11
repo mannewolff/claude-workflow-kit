@@ -588,6 +588,63 @@ Every label and every title prefix the kit knows has a German and an English nam
 
 **How long the German names stay valid.** The German labels and prefixes remain valid throughout versions 4 and 5. In English projects the German legacy names can be dropped at the earliest with version 6, and only after an announcement.
 
+### Messages, reports and markers
+<!-- de: 4b642edfecfe -->
+
+What the kit outputs and writes to the cards is in the project language: the messages of the tools, the block `Fuer den Abschlussbericht:` of `checks.mjs`, night and run reports, notes and comments on the cards, the installer, the settings interface and the local board interface. A change of language takes effect from the next call; what is already on the board stays as it is.
+
+**Markers.** Some lines the kit later reads back from comments and body, such as the run status or the header lines of a work package. It writes these markers in the name of the project language and recognises them under both names, even mixed on the same card. A marker with a variable rest, such as `## Einarbeitung, Runde 2`, is listed here with its fixed beginning.
+
+| Thing | German | English |
+|-------|---------|----------|
+| run status comment | `## Laufstand` | `## Run status` |
+| identifier of the run | `Lauf-ID:` | `Run-ID:` |
+| time of the status | `Stand:` | `Updated:` |
+| log file | `Protokoll:` | `Log:` |
+| goal of the chain | `Ziel:` | `Goal:` |
+| reviewers | `Prüfer:` | `Reviewers:` |
+| limit | `Grenze:` | `Limit:` |
+| protected file | `## Geschuetzte Datei` | `## Protected file` |
+| waiting session | `## Nachtlauf: wartende Sitzung` | `## Night run: waiting session` |
+| time limit reached | `## Nachtlauf: Zeitgrenze erreicht` | `## Night run: time limit reached` |
+| stuck on a check | `## Nachtlauf: an einer Pruefung festgefahren` | `## Night run: stuck on a check` |
+| missing evidence | `Nachtlauf: Nachweis` | `Night run: evidence` |
+| chain without check | `## Kette nicht gestartet: Pruefung fehlt` | `## Chain not started: check missing` |
+| chain with unsuitable setting | `## Kette nicht gestartet: unpassende Einstellung` | `## Chain not started: unsuitable setting` |
+| no input for `/issues` | `Kein Eingang für /issues` | `No input for /issues` |
+| follow-up sentence of a halt | `Daraus soll per /fachplan eine fachliche Anforderung entstehen.` | `A requirement is to be created from this via /requirement.` |
+| superseded package | `Ueberholt durch Plan #` | `Superseded by plan #` |
+| identifier of the report | `Bericht-Lauf:` | `Report-Run:` |
+| revision of the kit | `Kit-Stand:` | `Kit-Revision:` |
+| night report | `## Nachtbericht, Kette` | `## Night report, chain` |
+| round of the plan review | `## Plan-Review, Runde` | `## Plan-Review, Round` |
+| round of the requirement review | `## Fachplan-Review, Runde` | `## Requirement-Review, Round` |
+| round of the issue review | `## Issue-Review, Runde` | `## Issue-Review, Round` |
+| round of incorporation | `## Einarbeitung, Runde` | `## Incorporation, Round` |
+| context of a document | `## Kontext` | `## Context` |
+| model of the author | `Autor-Modell:` | `Author-Model:` |
+| model of the plan | `Plan-Modell:` | `Plan-Model:` |
+| business source | `Fachliche Quelle:` | `Requirement:` |
+| decisions of the plan | `Plan-Entscheidungen:` | `Plan-Decisions:` |
+| decision | `Entscheidung:` | `Decision:` |
+| task tier | `Aufgabenstufe:` | `Task-Tier:` |
+| recommended model | `Empfohlenes Modell:` | `Recommended model:` |
+| session scope | `Sitzungsumfang:` | `Session scope:` |
+| template | `Vorlage:` | `Template:` |
+| trace of the requirement review | `Fachplan-Review:` | `Requirement-Review:` |
+
+`Position:`, `Plan:`, `Plan-Review:` and `Issue-Review:` have the same name in both languages.
+
+**What stays untranslated.** Some values are interfaces to skills, evaluations and the AI control room in kanban-kit, not names you encounter. They stay the same in both languages:
+
+- the JSON field names of the tool outputs, such as `ok`, `fehler` and `hinweise`,
+- the vocabulary of the result state and the journal,
+- the enumerations of the message to the control room, `stages`, `errorClass` and `state`, and the field `grundArt` with the values `abhaengigkeit`, `klaeren`, `ohneInReview`, `zeitbudget` and `sonst`,
+- the file names under `.claude/`,
+- the form words of the findings that `kit/befunde.mjs` reads: the marks `KRITISCH`, `BLOCKER`, `WICHTIG` and `HINWEIS`, `Fundstelle:`, `Vorschlag:`, `Gegenprobe:` with `— geprueft, bestaetigt` and `— nicht geprueft`, `Art:` and the kind names.
+
+Translated are the free texts of the message to the control room, `title`, `excerpt`, `abortReason` and `noWorkReason`, and all displays.
+
 ## Settings through the interface
 <!-- de: 5640e7dafde7 -->
 
