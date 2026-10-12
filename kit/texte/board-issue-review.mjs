@@ -55,6 +55,9 @@ export const TEXTE = Object.freeze({
     reviewerUnbekannt: "'{name}' steht nicht in issueReview.reviewers",
     reviewerClaude: "'{name}' hat kind '{kind}' — Claude-Pruefer laufen ueber den Agenten kit-pruefer",
     befehlUnbekannt: "Unbekannter issue-review-Befehl: '{befehl}'",
+    vorgeschichteKopf: "#{nummer} {titel} — archiviert: {archiviert}",
+    ja: "ja",
+    nein: "nein",
   }),
   en: Object.freeze({
     pairsKeineListe: "{wo}: must be a list of reviewer names.",
@@ -96,5 +99,8 @@ export const TEXTE = Object.freeze({
     reviewerUnbekannt: "'{name}' is not listed in issueReview.reviewers",
     reviewerClaude: "'{name}' has kind '{kind}' — Claude reviewers run through the agent kit-pruefer",
     befehlUnbekannt: "Unknown issue-review command: '{befehl}'",
+    vorgeschichteKopf: "#{nummer} {titel} — archived: {archiviert}",
+    ja: "yes",
+    nein: "no",
   }),
 });

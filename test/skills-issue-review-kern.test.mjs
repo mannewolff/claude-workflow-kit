@@ -120,7 +120,9 @@ test("[skills-13] jede Dokument-Rolle steht als Datei mit Streich-Frage und Plat
     assert.match(p, /RAUS/, `${name}: die Streich-Frage fehlt`);
     assert.match(p, /BLOCKER \/ WICHTIG \/ HINWEIS/, `${name}: die Schweregrade fehlen`);
     assert.doesNotMatch(p, /Klasse|gate|alternativen|korrektur/, `${name}: verlangt noch eine Fundklasse`);
-    assert.ok(p.split("\n").length <= 25, `${name}: laenger als 25 Zeilen`);
+    // Die Vorgeschichte erscheint nur mit Schalter (Issue #1540); gemessen wird der Rahmen ohne sie.
+    const ohneVorgeschichte = p.replaceAll(/\{\{#VORGESCHICHTE\}\}[\s\S]*?\{\{\/VORGESCHICHTE\}\}\n/g, "");
+    assert.ok(ohneVorgeschichte.split("\n").length <= 25, `${name}: laenger als 25 Zeilen`);
   }
 });
 

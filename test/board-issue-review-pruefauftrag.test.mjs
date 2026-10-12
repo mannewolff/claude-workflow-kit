@@ -28,12 +28,18 @@ function liesMit(vorgaben = {}) {
   };
 }
 
-/** Ein Board mit festen Karten; `getIssue` wirft wie ein Adapter fuer Unbekanntes. */
+/**
+ * Ein Board mit festen Karten; `getIssue` wirft wie ein Adapter fuer Unbekanntes. Eine Karte
+ * ist ein Body oder `{ title, body }`.
+ */
 function boardMit(karten) {
   return {
     async getIssue(id) {
       if (!(String(id) in karten)) throw new Error(`Issue #${id} nicht gefunden`);
-      return { id: String(id), title: `Karte ${id}`, body: karten[id] };
+      const karte = karten[id];
+      return typeof karte === "string"
+        ? { id: String(id), title: `Karte ${id}`, body: karte }
+        : { id: String(id), ...karte };
     },
   };
 }
@@ -48,7 +54,7 @@ async function montiere(args, umgebung = {}) {
   const datei = join(verz, "auftrag.md");
   try {
     const antwort = await issueReviewPruefauftrag({ ...args, datei }, {
-      config: {},
+      config: umgebung.config ?? {},
       board: umgebung.board ?? boardMit({}),
       lies: umgebung.lies ?? liesMit(),
     });
@@ -213,4 +219,107 @@ test("zwei Laeufe mit gleichem Eingang ergeben byte-gleiche Dateien", async () =
   const eins = await montiere({ rolle: "schnitt-abhaengigkeiten", id: "10" }, { board });
   const zwei = await montiere({ rolle: "schnitt-abhaengigkeiten", id: "10" }, { board });
   assert.ok(Buffer.from(eins.text).equals(Buffer.from(zwei.text)));
+});
+
+// --- Block {{#VORGESCHICHTE}} (Issue #1540, Plan #1534 A3, A9, E2, E3) ---
+
+const MIT_VORGESCHICHTE = { vorgeschichte: true };
+const FRUEHER_41 = "## Ziel\nFrüheres Ziel 41.\n\n## Nicht-Ziele\n- Kein Export.\n";
+const FRUEHER_42 = "## Ziel\nFrüheres Ziel 42.\n";
+const PLAN_MIT_VORGESCHICHTE = [
+  "## Ziel", "Der Plan.", "Fachliche Quelle: Issue #20", "",
+  "### Vorgeschichte", "Suchbegriffe: Export; Archiv", "Dateien: `kit/gibt-es-nicht.mjs`", "- #41: zählt.", "",
+  "## Betroffene Bereiche", "- x", "",
+].join("\n");
+const FACHPLAN_MIT_VORGESCHICHTE = [
+  "## Ziel", "Die Anforderung.", "", "## Vorgeschichte", "Suchbegriffe: Export", "- #41: zählt.", "",
+].join("\n");
+
+/**
+ * Ein Board, das auch die Archivsuche kann: `suche` (Begriff -> Nummern); jede Nummer ist eine
+ * Karte mit [Fachlich]-Titel. `fehler` laesst die Suche scheitern wie ein Board ohne Netz.
+ */
+function boardMitArchiv(karten, { suche = {}, fehler = false } = {}) {
+  const fruehere = { 10: PLAN_MIT_VORGESCHICHTE, 20: QUELLE_OHNE_VORLAGE, 41: FRUEHER_41, 42: FRUEHER_42 };
+  const archiviert = new Set([41]);
+  const aufrufe = [];
+  return {
+    aufrufe,
+    ...boardMit(karten),
+    async sucheFachplaene(begriff) {
+      aufrufe.push(begriff);
+      if (fehler) throw new Error("fetch failed");
+      return { treffer: (suche[begriff] ?? []).map((n) => ({ nummer: n, titel: `[Fachlich] Karte ${n}`, archiviert: archiviert.has(n) })) };
+    },
+    async karteNachNummer(n) {
+      return n in fruehere ? { titel: `[Fachlich] Karte ${n}`, body: fruehere[n], archiviert: archiviert.has(n) } : null;
+    },
+    async herkunftskette() {
+      return [];
+    },
+  };
+}
+
+const PLAN_KARTEN = { 10: { title: "[Plan] Der Plan", body: PLAN_MIT_VORGESCHICHTE }, 20: QUELLE_OHNE_VORLAGE };
+// Die Suche liefert auch das Dokument selbst und seine Fachliche Quelle (E3).
+const SUCHE = { Export: [41, 10, 20], Archiv: [42, 41] };
+
+test("mit Treffern traegt der Auftrag Pruefsatz und Anhang VORGESCHICHTE mit den ungekuerzten Bodies", async () => {
+  const board = boardMitArchiv(PLAN_KARTEN, { suche: SUCHE });
+  const { antwort, text } = await montiere({ rolle: "architektur-bestand", id: "10" }, { board, config: MIT_VORGESCHICHTE });
+  assert.equal(antwort.ok, true);
+  assert.deepEqual(board.aufrufe, ["Export", "Archiv"], "Suchbegriffe aus dem Abschnitt");
+  assert.ok(text.includes("nicht vermerkt"), "die unnummerierte Pruefsatz-Zeile steht im Auftrag");
+  const anhang = text.slice(text.indexOf("--- VORGESCHICHTE ---\n"));
+  assert.ok(text.indexOf("--- VORGESCHICHTE ---\n") > text.indexOf("--- FACHLICHE QUELLE ---"), "Anhang nach der Quelle");
+  assert.ok(anhang.includes("#41 [Fachlich] Karte 41 — archiviert: ja\n" + FRUEHER_41), anhang);
+  assert.ok(anhang.includes("#42 [Fachlich] Karte 42 — archiviert: nein\n" + FRUEHER_42), anhang);
+  assert.ok(!anhang.includes("#10 "), "das Dokument selbst ist keine Vorgeschichte");
+  assert.ok(!anhang.includes("#20 "), "die Fachliche Quelle ist keine Vorgeschichte");
+  assert.doesNotMatch(text, /\{\{[#/]?[A-Z_]+\}\}/);
+});
+
+test("die Nummerierung der Pruefungsfragen bleibt mit Vorgeschichte unveraendert", async () => {
+  const board = boardMitArchiv(PLAN_KARTEN, { suche: SUCHE });
+  const { text } = await montiere({ rolle: "architektur-bestand", id: "10" }, { board, config: MIT_VORGESCHICHTE });
+  const nummern = [...text.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]));
+  assert.deepEqual(nummern, [1, 2, 3, 4, 5, 6]);
+});
+
+test("der Fachplan liest seine Vorgeschichte unter ## und schliesst sich selbst aus", async () => {
+  const karten = { 30: { title: "[Fachlich] Neu", body: FACHPLAN_MIT_VORGESCHICHTE } };
+  const board = boardMitArchiv(karten, { suche: { Export: [30, 41] } });
+  for (const rolle of ["form-beobachtbarkeit", "abgrenzung"]) {
+    const { antwort, text } = await montiere({ rolle, id: "30" }, { board, config: MIT_VORGESCHICHTE });
+    assert.equal(antwort.ok, true, rolle);
+    assert.ok(text.includes("--- VORGESCHICHTE ---\n#41 [Fachlich] Karte 41 — archiviert: ja\n"), rolle);
+    assert.ok(!text.includes("#30 "), `${rolle}: eigene Nummer`);
+  }
+});
+
+test("mit Treffern bleibt in keiner Dokument-Rolle ein Platzhalter offen", async () => {
+  const board = boardMitArchiv(PLAN_KARTEN, { suche: SUCHE });
+  for (const rolle of DOKUMENT_ROLLEN) {
+    const { antwort, text } = await montiere({ rolle, id: "10" }, { board, config: MIT_VORGESCHICHTE });
+    assert.equal(antwort.ok, true, `${rolle}: ${JSON.stringify(antwort)}`);
+    assert.doesNotMatch(text, /\{\{[#/]?[A-Z_]+\}\}/, rolle);
+  }
+});
+
+test("ohne Schalter, ohne Suchbegriffe-Zeile und ohne Archiv entfaellt der Block wie heute", async () => {
+  const ohneZeile = PLAN_MIT_VORGESCHICHTE.replace("Suchbegriffe: Export; Archiv\n", "");
+  const faelle = [
+    ["ohne Schalter", boardMitArchiv(PLAN_KARTEN, { suche: SUCHE }), {}],
+    ["ohne Suchbegriffe-Zeile", boardMitArchiv({ ...PLAN_KARTEN, 10: { title: "[Plan] P", body: ohneZeile } }, { suche: SUCHE }), MIT_VORGESCHICHTE],
+    ["archiv-nicht-erreichbar", boardMitArchiv(PLAN_KARTEN, { suche: SUCHE, fehler: true }), MIT_VORGESCHICHTE],
+  ];
+  for (const rolle of ["architektur-bestand", "form-beobachtbarkeit"]) {
+    const heute = (await montiere({ rolle, id: "10" }, { board: boardMit(PLAN_KARTEN) })).text;
+    for (const [fall, board, config] of faelle) {
+      const { antwort, text } = await montiere({ rolle, id: "10" }, { board, config });
+      assert.equal(antwort.ok, true, `${rolle}, ${fall}`);
+      assert.ok(!text.includes("VORGESCHICHTE"), `${rolle}, ${fall}`);
+      if (fall !== "ohne Suchbegriffe-Zeile") assert.equal(text, heute, `${rolle}, ${fall}: Auftrag wie heute`);
+    }
+  }
 });

@@ -1,4 +1,4 @@
-<!-- de: bcd9a540587d -->
+<!-- de: 736f5f3c6ac3 -->
 You are reviewing a technical plan from which work packages are about to be made. You do not know the conversation it comes from. You may and should read the existing code: look it up in the repository.
 1. Is every claim about the existing code true? Do the named files, functions, commands and configuration fields exist, and are they called that?
 2. Does every decision under "Architectural decisions" carry a reason that can be challenged?
@@ -7,6 +7,7 @@ You are reviewing a technical plan from which work packages are about to be made
 5. What is missing from the cut, and what can go OUT?
 {{#QUELLE}}6. Does the plan deliver what the business source demands — every goal, every acceptance criterion, every answered question, and with a binding template its appearance?
 {{#VORLAGE}}The template lies at {{VORLAGE_PFAD}}; read it.{{/VORLAGE}}{{/QUELLE}}
+{{#VORGESCHICHTE}}Does the document contradict an earlier PO answer or an earlier non-goal from the earlier requirements under HISTORY, without noting the contradiction in its history section? Then that is a finding; name the number and quote the earlier passage.{{/VORGESCHICHTE}}
 For each finding, one block with these details:
 - Severity BLOCKER / WICHTIG / HINWEIS as a bold header line (the marks stay German: WICHTIG means important, HINWEIS means note)
 - Location with a quote and a concrete wording proposal; for claims about the existing code, the file and place where you looked
@@ -21,3 +22,5 @@ If you find nothing, say so explicitly.
 {{ISSUE_BODY}}
 {{#QUELLE}}--- BUSINESS SOURCE ---
 {{QUELLE_BODY}}{{/QUELLE}}
+{{#VORGESCHICHTE}}--- HISTORY ---
+{{VORGESCHICHTE_BODY}}{{/VORGESCHICHTE}}

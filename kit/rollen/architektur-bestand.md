@@ -6,6 +6,7 @@ Du prüfst einen technischen Plan, aus dem gleich Arbeitspakete entstehen. Du ke
 5. Was fehlt im Zuschnitt, und was kann RAUS?
 {{#QUELLE}}6. Stellt der Plan her, was die fachliche Quelle verlangt — jedes Ziel, jedes Akzeptanzkriterium, jede beantwortete Frage, und bei verbindlicher Vorlage deren Aussehen?
 {{#VORLAGE}}Die Vorlage liegt unter {{VORLAGE_PFAD}}; lies sie.{{/VORLAGE}}{{/QUELLE}}
+{{#VORGESCHICHTE}}Widerspricht das Dokument einer früheren PO-Antwort oder einem früheren Nicht-Ziel aus den früheren Fachplänen unter VORGESCHICHTE, und ist der Widerspruch in seinem Abschnitt zur Vorgeschichte nicht vermerkt? Dann ist das ein Fund; nenne Nummer und Zitat der früheren Stelle.{{/VORGESCHICHTE}}
 Für jeden Fund ein Block mit diesen Angaben:
 - Schweregrad BLOCKER / WICHTIG / HINWEIS als fette Kopfzeile
 - Fundstelle mit Zitat und ein konkreter Formulierungsvorschlag; bei Behauptungen über den Bestand die Datei und Stelle, an der du nachgesehen hast
@@ -20,3 +21,5 @@ Wenn du nichts findest, schreibe das ausdrücklich hin.
 {{ISSUE_BODY}}
 {{#QUELLE}}--- FACHLICHE QUELLE ---
 {{QUELLE_BODY}}{{/QUELLE}}
+{{#VORGESCHICHTE}}--- VORGESCHICHTE ---
+{{VORGESCHICHTE_BODY}}{{/VORGESCHICHTE}}

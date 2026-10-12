@@ -23,7 +23,8 @@ import { fileURLToPath } from "node:url";
 import { BoardError, fail, out, loadConfig, findeImPath, umgebungsWert, configWurzel } from "./grundlagen.mjs";
 import { istFachlich, istPlan, herkunftNummern, normalisiereZeilenenden } from "./dokumente.mjs";
 import { resolveTracker } from "./adapter.mjs";
-import { text } from "./namen.mjs";
+import { text, ueberschriftZeile } from "./namen.mjs";
+import { vorgeschichteAktiv, vorgeschichteSuchen } from "./vorgeschichte.mjs";
 
 // Die Texte an den Menschen liegen unter kit/texte/board-issue-review.mjs (Issue #1526).
 import { TEXTE } from "../texte/board-issue-review.mjs";
@@ -589,11 +590,57 @@ function block(text, name, behalten) {
   return ergebnis;
 }
 
-/** Holt Dokument, fachliche Quelle und Vorlage vom Board; `null` heisst: entfaellt. */
-async function dokumentWerte(tracker, id) {
+/**
+ * Die Werte einer Zeile `<feld> <a>; <b>; …` im Abschnitt zur Vorgeschichte, Backticks entfernt;
+ * `null` ohne den Abschnitt oder ohne die Zeile. Der Abschnitt steht beim Fachplan unter `##`,
+ * beim Plan unter `###` und reicht bis zur naechsten Ueberschrift derselben oder hoeheren Ebene.
+ */
+function vorgeschichteZeile(body, ebene, feld) {
+  const kopf = ueberschriftZeile("vorgeschichte", ebene);
+  const ende = new RegExp(`^ {0,3}#{1,${ebene}}(?!#)\\s`);
+  let drin = false;
+  for (const zeile of normalisiereZeilenenden(body).split("\n")) {
+    if (kopf.test(zeile)) {
+      drin = true;
+      continue;
+    }
+    if (!drin) continue;
+    if (ende.test(zeile)) break;
+    const rest = zeile.trim();
+    if (!rest.startsWith(feld)) continue;
+    return rest.slice(feld.length).split(";").map((w) => w.replaceAll("`", "").trim()).filter(Boolean);
+  }
+  return null;
+}
+
+/**
+ * Die frueheren Fachplaene fuer den Anhang VORGESCHICHTE (Issue #1540, Plan #1534 A3, A9):
+ * je Treffer Kopfzeile und ungekuerzter Body, ohne Kommentare (E2). Dasselbe `vorgeschichteSuchen`
+ * wie `issue vorgeschichte`, ohne Kindprozess. Das Dokument selbst und seine Fachliche Quelle
+ * sind keine Vorgeschichte (E3). `null` ohne Schalter, ohne `Suchbegriffe:`-Zeile, ohne Archiv
+ * oder ohne Treffer — dann entfaellt der Block, und der Auftrag gleicht dem ohne Vorgeschichte.
+ */
+async function vorgeschichteBody(tracker, config, { id, titel, body, quelleNr }) {
+  if (!vorgeschichteAktiv(config)) return null;
+  const plan = istPlan(titel);
+  const begriffe = vorgeschichteZeile(body, plan ? 3 : 2, "Suchbegriffe:");
+  if (begriffe === null) return null;
+  const dateien = plan ? vorgeschichteZeile(body, 3, "Dateien:") ?? [] : [];
+  const ohne = [id, quelleNr].filter((nr) => nr !== null).map((nr) => Number(String(nr).replace("#", "")));
+  const ergebnis = await vorgeschichteSuchen(tracker, config, { begriffe, dateien, ohne, bodies: true });
+  if (!ergebnis.ok || ergebnis.treffer.length === 0) return null;
+  return ergebnis.treffer.map((treffer) => {
+    const archiviert = t(treffer.archiviert ? "ja" : "nein");
+    return `${t("vorgeschichteKopf", { nummer: treffer.nummer, titel: treffer.titel, archiviert })}\n${mitZeilenende(treffer.body ?? "")}`;
+  }).join("\n");
+}
+
+/** Holt Dokument, fachliche Quelle, Vorlage und Vorgeschichte vom Board; `null` heisst: entfaellt. */
+async function dokumentWerte(tracker, config, id) {
   const lesen = async (nr) => {
     try {
-      return { body: (await tracker.getIssue(String(nr))).body ?? "" };
+      const karte = await tracker.getIssue(String(nr));
+      return { titel: karte.title ?? "", body: karte.body ?? "" };
     } catch (e) {
       return { fehler: { ok: false, fehler: "dokument-nicht-lesbar", id: String(nr), grund: e.message } };
     }
@@ -608,6 +655,7 @@ async function dokumentWerte(tracker, id) {
       ISSUE_BODY: dokument.body,
       QUELLE_BODY: quelle?.body ?? null,
       VORLAGE_PFAD: vorlagePfad(dokument.body, quelle?.body ?? null),
+      VORGESCHICHTE_BODY: await vorgeschichteBody(tracker, config, { id, titel: dokument.titel, body: dokument.body, quelleNr }),
     },
   };
 }
@@ -636,6 +684,7 @@ function pruefauftragArgumente(args) {
 function montiere(rahmen, werte) {
   let text = block(normalisiereZeilenenden(rahmen), "VORLAGE", werte.VORLAGE_PFAD != null);
   text = block(text, "QUELLE", werte.QUELLE_BODY != null);
+  text = block(text, "VORGESCHICHTE", werte.VORGESCHICHTE_BODY != null);
   const offen = [...new Set([...text.matchAll(PLATZHALTER)].map((m) => m[1]))].filter((name) => werte[name] == null);
   if (offen.length > 0) return { offen };
   return { text: text.replaceAll(PLATZHALTER, (_, name) => werte[name]) };
@@ -658,7 +707,7 @@ export async function issueReviewPruefauftrag(args, { config = loadConfig(), boa
 
   let werte;
   if (id) {
-    const ergebnis = await dokumentWerte(board ?? resolveTracker(config), id);
+    const ergebnis = await dokumentWerte(board ?? resolveTracker(config), config, id);
     if (ergebnis.fehler) return ergebnis.fehler;
     werte = ergebnis.werte;
   } else {

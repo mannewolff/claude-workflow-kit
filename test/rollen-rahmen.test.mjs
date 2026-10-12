@@ -58,17 +58,30 @@ test("der gemeinsame Fundblock samt Form des Stands ist in allen Dokument-Rollen
 test("{{QUELLE_BODY}} steht nur im QUELLE-Block, {{VORLAGE_PFAD}} nur im VORLAGE-Block (E3)", () => {
   for (const name of alleRollen) {
     const text = rolle(name);
-    for (const marke of ["QUELLE", "VORLAGE"]) {
+    for (const marke of ["QUELLE", "VORLAGE", "VORGESCHICHTE"]) {
       const auf = text.split(`{{#${marke}}}`).length - 1;
       const zu = text.split(`{{/${marke}}}`).length - 1;
       assert.equal(auf, zu, `${name}: Blockmarken ${marke} unausgeglichen`);
     }
     assert.doesNotMatch(ohneBloecke(text, "QUELLE"), /\{\{QUELLE_BODY\}\}/, `${name}: {{QUELLE_BODY}} außerhalb des QUELLE-Blocks`);
     assert.doesNotMatch(ohneBloecke(text, "VORLAGE"), /\{\{VORLAGE_PFAD\}\}/, `${name}: {{VORLAGE_PFAD}} außerhalb des VORLAGE-Blocks`);
+    assert.doesNotMatch(ohneBloecke(text, "VORGESCHICHTE"), /\{\{VORGESCHICHTE_BODY\}\}/, `${name}: {{VORGESCHICHTE_BODY}} außerhalb des VORGESCHICHTE-Blocks`);
   }
   const architektur = rolle("architektur-bestand");
   assert.match(architektur, /\{\{#QUELLE\}\}--- FACHLICHE QUELLE ---\n\{\{QUELLE_BODY\}\}\{\{\/QUELLE\}\}/);
   assert.match(architektur, /\{\{#VORLAGE\}\}[^\n]*\{\{VORLAGE_PFAD\}\}[^\n]*\{\{\/VORLAGE\}\}/);
+});
+
+test("die vier Dokument-Rollen zu Fachplan und Plan tragen Prüfsatz und Anhang der Vorgeschichte (Issue #1540)", () => {
+  for (const name of ["form-beobachtbarkeit", "abgrenzung", "architektur-bestand", "schnitt-abhaengigkeiten"]) {
+    const text = rolle(name);
+    const bloecke = [...text.matchAll(/\{\{#VORGESCHICHTE\}\}([\s\S]*?)\{\{\/VORGESCHICHTE\}\}/g)].map((m) => m[1]);
+    assert.equal(bloecke.length, 2, `${name}: Prüfsatz und Anhang`);
+    assert.match(bloecke[0], /^[^\d\n][^\n]*nicht vermerkt/, `${name}: Prüfsatz unnummeriert, eine Zeile`);
+    assert.ok(text.indexOf(bloecke[0]) < text.indexOf("Für jeden Fund"), `${name}: Prüfsatz vor dem Fundblock`);
+    assert.equal(bloecke[1], "--- VORGESCHICHTE ---\n{{VORGESCHICHTE_BODY}}", name);
+    assert.ok(text.endsWith("{{/VORGESCHICHTE}}\n"), `${name}: Anhang am Ende`);
+  }
 });
 
 test("architektur-bestand stellt die Frage zur fachlichen Quelle als letzte Frage im QUELLE-Block", () => {
