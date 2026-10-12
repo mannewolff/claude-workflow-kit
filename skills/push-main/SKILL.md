@@ -1,6 +1,6 @@
 ---
 name: push-main
-description: Schritt 8 des 9-Schritt-Prozesses — pusht den aktuellen Commit-Batch auf main. Nur auf explizite Trigger-Phrase des Menschen. Nutze diesen Skill NUR wenn der Nutzer explizit "push main" tippt. Einzige Ausnahme ist der Modus `vorbereiten`: Er pusht nicht und darf darum vom Nacht-Runner ohne Phrase gestartet werden.
+description: Step 8 of the 9-step process: pushes the current batch of commits to main. Only on the explicit trigger phrase of the human. Use this skill ONLY when the user explicitly types "push main". The only exception is the mode `vorbereiten` (prepare): it does not push, so the night runner may start it without the phrase.
 user-invocable: true
 disable-model-invocation: true
 ---
@@ -341,7 +341,7 @@ früherer Lauf gesehen. Ohne Nachweis für genau diesen Stand weist das Commit-G
 Commit ab.
 
 **Befunde buchen, wenn Code-Review-Befunde eingearbeitet wurden.** Sind vor diesem Push
-Funde aus einem `/review` eingearbeitet worden, hält die Session das in einem
+Funde aus einem `/kit-review` eingearbeitet worden, hält die Session das in einem
 Einarbeitungs-Kommentar am Issue fest — übernommen / abgelehnt mit Grund je Fund, im Muster
 von `/issue-review` —, ergänzt den Befunde-Text je Fundblock um die Zeile
 `Uebernahme: uebernommen` beziehungsweise `Uebernahme: abgelehnt` und schreibt ihn nach der
@@ -610,7 +610,7 @@ durch, nicht das Kit. Die Rulesets tragen keine dauerhafte Umgehung; der Schutz 
 für diesen einen Push weg.
 
 **Nur interaktiv.** Ist `KIT_AGENT_MODEL` gesetzt, hält der Skill vor Schritt 1 an — kein
-Worktree, kein Lauf, kein Push. `code schutz aussetzen` bricht ohne Aufsicht ohnehin ab
+Worktree, kein Lauf, kein Push. `code protection suspend` bricht ohne Aufsicht ohnehin ab
 (E8); der Halt im Skill kommt dem zuvor. Auch hier braucht es die getippte Trigger-Phrase
 des Menschen.
 
@@ -645,10 +645,10 @@ dort. Ein Wackler hält vor dem Commit an und wird erfragt wie dort.
    node .claude/kit/board.mjs code protection restore
    ```
 
-   Scheitert `wiederherstellen`, ist der Lauf ein Fehlschlag, auch wenn der Push gelang
+   Scheitert `restore`, ist der Lauf ein Fehlschlag, auch wenn der Push gelang
    (E10): Der Skill meldet es so und nennt das Kommando zum Wiederholen
    (`node .claude/kit/board.mjs code protection restore`). Bis es gelingt, steht der
-   Hauptzweig ungeschützt, und `code schutz status` nennt das unter `fehlt`.
+   Hauptzweig ungeschützt, und `code protection status` nennt das unter `fehlt`.
 
 Danach Schritt 8 wie oben, auch nach einem Halt.
 

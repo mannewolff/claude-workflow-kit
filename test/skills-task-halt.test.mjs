@@ -4,7 +4,7 @@
 // Taucht beim Umsetzen eine Entscheidung auf, wird sie entschieden und im
 // Abschlussbericht protokolliert. Nur eine Frage der Stopp-Klasse aus
 // CLAUDE-workflow.md haelt an: Die Sitzung nimmt ihren eigenen Anteil zurueck,
-// zeichnet das Issue mit `kit:klaeren`, benennt die Frage als Board-Kommentar und
+// zeichnet das Issue mit `kit:clarify`, benennt die Frage als Board-Kommentar und
 // schiebt nach Backlog.
 //
 // Geprueft wird der Skill-TEXT, nicht die Laufzeit — was ein Skill tut, entscheidet
@@ -27,7 +27,7 @@ import { fileURLToPath } from "node:url";
 import { HALT_FOLGESAETZE } from "../kit/night/wartend.mjs";
 
 // Der Runner erkennt jeden Wortlaut des Folgesatzes (Issue #1553, E15); die Skills tragen bis zu
-// ihrer Umstellung (Plan #1548, eigenes Paket) den alten mit /fachplan.
+// ihrer Umstellung (Plan #1548, eigenes Paket) den alten mit /requirement.
 const traegtFolgesatz = (text) => HALT_FOLGESAETZE.some((satz) => text.includes(satz));
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -169,7 +169,7 @@ test("[skills-6] der Halt nimmt erst den eigenen Anteil zurueck, dann Label, Kom
     const abschnitt = haltAbschnitt(name);
     const stellen = [
       [/\*\*namentlich\*\* zuruecknehmen/, "das namentliche Zuruecknehmen"],
-      [/issue label add <id> kit:klaeren/, "der Label-Aufruf"],
+      [/issue label add <id> kit:clarify/, "der Label-Aufruf"],
       [/issue comment <id> --text-file <tmpdir>\/<id>-halt\.md/, "der Kommentar-Aufruf"],
       [/issue move <id> backlog/, "der Move nach Backlog"],
     ];
@@ -272,18 +272,18 @@ test("[skills-6] implement-test und implement-done kennen den Halt nicht", () =>
   }
 });
 
-// --- Die Spur in /fachplan ---------------------------------------------------
+// --- Die Spur in /requirement ---------------------------------------------------
 
-test("[skills-8] /fachplan nimmt einen angehaltenen `[Task]` als Argument `#T`", () => {
+test("[skills-8] /requirement nimmt einen angehaltenen `[Task]` als Argument `#T`", () => {
   const text = quelle("requirement");
-  assert.match(text, /\/fachplan #T/, "das Argument `#T` ist nicht benannt");
+  assert.match(text, /\/requirement #T/, "das Argument `#T` ist nicht benannt");
   assert.ok(
     traegtFolgesatz(text),
     "der Folgesatz, an dem der angehaltene Task erkannt wird, fehlt",
   );
 });
 
-test("[skills-8] /fachplan lehnt jede andere Karte ab und legt nichts an", () => {
+test("[skills-8] /requirement lehnt jede andere Karte ab und legt nichts an", () => {
   const text = quelle("requirement");
   assert.match(
     text,
@@ -293,7 +293,7 @@ test("[skills-8] /fachplan lehnt jede andere Karte ab und legt nichts an", () =>
   assert.match(text, /legt nichts an/, "es steht nicht, dass nichts angelegt wird");
 });
 
-test("[skills-8] /fachplan haengt genau einen Kommentar `Fortsetzung: Issue #N` an den Task", () => {
+test("[skills-8] /requirement haengt genau einen Kommentar `Fortsetzung: Issue #N` an den Task", () => {
   const text = quelle("requirement");
   assert.match(
     text,

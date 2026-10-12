@@ -5,7 +5,7 @@
 // eine geschuetzte Datei und wird gar nicht erst begonnen — und der Rueckfall aus E13 —
 // eine Session scheitert erst beim Schreiben am Schutz, weil die Aufgabe die Datei nicht
 // beim Namen nennt. Der Rueckfall ist nicht der Halt der Stopp-Frage: anderes Label,
-// anderer Anker, Backlog vor dem Label, und kein `/fachplan` als Weg nach vorn.
+// anderer Anker, Backlog vor dem Label, und kein `/requirement` als Weg nach vorn.
 //
 // Geprueft wird der Skill-TEXT der Quelle unter `skills/`. Label und Anker kommen aus den
 // Konstanten in kit/night.mjs, nicht aus Abschriften (Muster test/skills-task-halt.test.mjs):
@@ -23,9 +23,9 @@ import { fileURLToPath } from "node:url";
 import { GESCHUETZT_ANKER, HALT_FOLGESAETZE } from "../kit/night/wartend.mjs";
 import { LABELS } from "../kit/board/namen.mjs";
 
-// Skills und Doku nennen das Label bis zu ihrer Umstellung (Plan #1548, eigene Pakete) unter dem
-// deutschen Namen; das Kit schreibt seit Issue #1552 den englischen.
-const GESCHUETZT_LABEL = LABELS.geschuetzt.de;
+// Die Skills nennen das Label seit Issue #1567 (Plan #1548) unter dem englischen Namen, den das
+// Kit seit Issue #1552 schreibt.
+const GESCHUETZT_LABEL = LABELS.geschuetzt.en;
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -85,7 +85,7 @@ function pruefeFolge(text, name) {
   assert.doesNotMatch(eintrag, /issue comment <id> --text '/, `${name}: der Halt-Kommentar geht als Argument`);
 }
 
-/** Leitplanke: `kit:geschuetzt` wird wie `kit:klaeren` nie entfernt. */
+/** Leitplanke: `kit:protected` wird wie `kit:clarify` nie entfernt. */
 function pruefeLeitplanke(text, name) {
   const muster = new RegExp(`\`${GESCHUETZT_LABEL}\` wird[^\\n]*nie entfernt`);
   assert.match(text, muster, `${name}: die Leitplanke, dass ${GESCHUETZT_LABEL} nie entfernt wird, fehlt`);
@@ -107,7 +107,7 @@ function pruefeRueckfall(text, name) {
   assert.match(abschnitt, /bleibt in In progress/, `${name}: der Fall ohne namentliche Ruecknahme fehlt`);
   assert.match(abschnitt, /nie[^.]*umgangen|nicht[^.]*umgeh/, `${name}: dass der Schutz nicht umgangen wird, fehlt`);
   assert.ok(!HALT_FOLGESAETZE.some((satz) => abschnitt.includes(satz)), `${name}: der Rueckfall traegt den Folgesatz der Stopp-Frage`);
-  assert.ok(!abschnitt.includes("kit:klaeren"), `${name}: der Rueckfall nennt kit:klaeren`);
+  assert.ok(!abschnitt.includes("kit:clarify"), `${name}: der Rueckfall nennt kit:clarify`);
 }
 
 function pruefeSkill(text, name) {

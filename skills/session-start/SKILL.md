@@ -1,6 +1,6 @@
 ---
 name: session-start
-description: Lädt den Memory-Vault und gibt einen kurzen Session-Start-Stand. Nutze diesen Skill wenn der Nutzer /context (Altname /kontext) aufruft oder die Session mit dem Projektstand starten will.
+description: Loads the memory vault and gives a short session start status. Use this skill when the user invokes /session-start or wants to start the session with the project status.
 user-invocable: true
 ---
 
@@ -57,7 +57,7 @@ Lesereihenfolge: **`parentNote` zuerst** (sofern nicht `null`), **`projectNote` 
 
 Fehlt eine der beiden Dateien im Vault: leise überspringen, kein Fehler. Nur die `always`-Dateien zeigen reicht.
 
-**Der Fallback gilt genau einem Fall: unbekannte Achse `kontext`** — ein Projekt mit älterer `board.mjs`. Dann auf das bisherige Verhalten zurückfallen statt abzubrechen: Projektname über `node .claude/kit/board.mjs code repo-name` (letztes Segment ohne `.git`, `project`-Feld aus der Config gewinnt), Projektnotiz `{vault}/Projekte/{name}/{name}.md`, keine Dach-Notiz. Ein Session-Start darf daran nicht scheitern.
+**Der Fallback gilt genau einem Fall: unbekannte Achse `context`** — ein Projekt mit älterer `board.mjs`. Dann auf das bisherige Verhalten zurückfallen statt abzubrechen: Projektname über `node .claude/kit/board.mjs code repo-name` (letztes Segment ohne `.git`, `project`-Feld aus der Config gewinnt), Projektnotiz `{vault}/Projekte/{name}/{name}.md`, keine Dach-Notiz. Ein Session-Start darf daran nicht scheitern.
 
 **Jeder andere Fehler wird sichtbar gemeldet**, insbesondere eine mehrdeutige Notiz (zwei Dateien, die sich nur in der Groß-/Kleinschreibung unterscheiden) und ein nicht lesbarer Notizordner. Die Meldung des Kommandos unverändert ausgeben und keinen Pfad selbst konstruieren. Wer hier zurückfällt, verdeckt genau den Befund, den das Kommando gerade gemeldet hat (Issue #286).
 

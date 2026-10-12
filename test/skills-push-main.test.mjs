@@ -172,7 +172,7 @@ test("[1410] der Notfallweg hält bei gesetztem KIT_AGENT_MODEL an und fragt nic
 
 test("[1410] der Notfallweg meldet ein gescheitertes Wiederherstellen mit Kommando und nennt den Schutzstand", () => {
   const s = NOTFALL.replaceAll(/\s+/g, " ");
-  assert.match(s, /scheitert `wiederherstellen`[^.]*Fehlschlag/i, "ein gescheitertes Wiederherstellen ist kein Fehlschlag");
+  assert.match(s, /scheitert `restore`[^.]*Fehlschlag/i, "ein gescheitertes Wiederherstellen ist kein Fehlschlag");
   assert.match(NOTFALL, /board\.mjs code protection status/, "`code protection status` fehlt in der Abschlussmeldung");
   assert.match(s, /`ungeprueft`[\s\S]{0,300}code protection verify/, "der Hinweis auf `code protection verify` bei `ungeprueft` fehlt");
 });

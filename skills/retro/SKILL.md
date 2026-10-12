@@ -1,6 +1,6 @@
 ---
 name: retro
-description: KI-Retrospektive, die die Mensch-KI-Zusammenarbeit reflektiert, Memory konsolidiert, Workflow-Regeln schärft und die Kennzahlen des Prozesses ausweist. Nutze diesen Skill wenn der Nutzer /retro aufruft oder eine KI-Retrospektive starten will (alle 1-2 Wochen empfohlen).
+description: AI retrospective that reflects on the human-AI collaboration, consolidates memory, sharpens workflow rules, and reports the key figures of the process. Use this skill when the user invokes /retro or wants to start an AI retrospective (suggested every 1-2 weeks).
 user-invocable: true
 ---
 
@@ -39,8 +39,8 @@ Identifiziere Anti-Patterns, die sich wiederholt haben:
 Fünf Kennzahlen für den Retro-Zeitraum, jede mit ihrer Quelle. Gezählt wird aus dem Board (`node .claude/kit/board.mjs issue list`, `issue get <N>` mit Kommentaren, `issue activity <N>` wo der Tracker es kann) und aus `git log`. Eine Zahl, die sich nicht ermitteln lässt, steht als „nicht ermittelbar: <Grund>" — nie geschätzt.
 
 - **Gekippte Entscheidungen.** Zahl der Einträge unter `### Entscheidungen` in den Abschlussberichten und unter `## Architektonische Entscheidungen` in den Plänen des Zeitraums (E-Einträge nach `CLAUDE-workflow.md`, „Entscheiden statt fragen"), und davon die Zahl, die der Mensch danach gekippt hat — erkennbar an einem Kommentar oder Commit, der die Entscheidung umkehrt. Die Quote ist die Kennzahl: Bleibt sie nahe null, trägt „Entscheiden statt fragen"; steigt sie, nennt die Retro die betroffene Entscheidungsklasse als Kandidat für die Stopp-Klasse.
-- **Stopp-Fragen.** Zahl der Halte mit `kit:klaeren` im Zeitraum und je Halt der Punkt der Stopp-Klasse.
-- **Anforderung bis GO.** Je Vorhaben die Kalendertage vom Anlegen des ersten Dokuments (`[Fachlich]`, `[Plan]` oder `[Task]`) bis zum Ziehen nach Ready.
+- **Stopp-Fragen.** Zahl der Halte mit `kit:clarify` im Zeitraum und je Halt der Punkt der Stopp-Klasse.
+- **Anforderung bis GO.** Je Vorhaben die Kalendertage vom Anlegen des ersten Dokuments (`[Requirement]`, `[Plan]` oder `[Task]`) bis zum Ziehen nach Ready.
 - **GO bis Push.** Je Vorhaben die Kalendertage vom Ziehen nach Ready bis zum Push des letzten Commits.
 - **Pakete der Nacht ohne Einwand.** Je Kommentar mit dem Anker `## Nachtbericht, Kette` im Zeitraum die Pakete, die sein Abschnitt `### Stufen` nennt, in drei Zahlen: ohne Einwand (nach Ready gezogen, ohne vorherige Body-Änderung und ohne Kommentar des Menschen), nach Änderung (erst nach einer Body-Änderung oder einem Kommentar gezogen), zurückgehalten (bis zum Retro-Tag nicht gezogen oder geschlossen). Gezogen heißt: der erste Wechsel nach Ready laut `issue activity`; Änderungen und Kommentare davor aus `issue activity` und `issue get`. Die Zahl ist das Argument für oder gegen Variante B aus Idee #637 (das Kennzeichen am Fachplan als GO): Bleibt „ohne Einwand“ hoch, wiederholt das Ziehen nur das Urteil über den Plan. Liefert der Tracker keinen Verlauf: „nicht ermittelbar: <Grund>“.
 
@@ -70,7 +70,7 @@ Schreibe am Ende eine kurze Zusammenfassung:
 | Kennzahl | Wert | Quelle |
 |----------|------|--------|
 | Gekippte Entscheidungen | <gekippt> von <gesamt> | Abschlussberichte, Pläne, Kommentare |
-| Stopp-Fragen | <Zahl>, Punkte: <1–6> | Karten mit kit:klaeren |
+| Stopp-Fragen | <Zahl>, Punkte: <1–6> | Karten mit kit:clarify |
 | Anforderung bis GO | <Tage je Vorhaben> | Board-Verlauf |
 | GO bis Push | <Tage je Vorhaben> oder nicht ermittelbar: <Grund> | Board-Verlauf, git log |
 | Pakete der Nacht ohne Einwand | <ohne Einwand> / <nach Änderung> / <zurückgehalten> | Nachtberichte, Board-Verlauf |

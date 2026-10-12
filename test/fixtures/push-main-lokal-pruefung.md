@@ -89,7 +89,7 @@ früherer Lauf gesehen. Ohne Nachweis für genau diesen Stand weist das Commit-G
 Commit ab.
 
 **Befunde buchen, wenn Code-Review-Befunde eingearbeitet wurden.** Sind vor diesem Push
-Funde aus einem `/review` eingearbeitet worden, hält die Session das in einem
+Funde aus einem `/kit-review` eingearbeitet worden, hält die Session das in einem
 Einarbeitungs-Kommentar am Issue fest — übernommen / abgelehnt mit Grund je Fund, im Muster
 von `/issue-review` —, ergänzt den Befunde-Text je Fundblock um die Zeile
 `Uebernahme: uebernommen` beziehungsweise `Uebernahme: abgelehnt` und schreibt ihn nach der

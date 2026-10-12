@@ -59,8 +59,9 @@ test("der Modus vorbereiten ist die einzige Ausnahme von der Trigger-Phrase", ()
   for (const [name, text] of [["description", KOPF], ["Trigger-Phrase", TRIGGER]]) {
     const t = flach(text);
     assert.match(t, /vorbereiten/, `${name} nennt den Modus vorbereiten nicht`);
-    assert.match(t, /pusht nicht/, `${name} begründet die Ausnahme nicht damit, dass er nicht pusht`);
-    assert.match(t, /Nacht-Runner/, `${name} nennt nicht, wer den Modus ohne Phrase startet`);
+    // Die description ist englisch (Issue #1567, Plan #1548 E12), der Abschnitt deutsch.
+    assert.match(t, /pusht nicht|does not push/, `${name} begründet die Ausnahme nicht damit, dass er nicht pusht`);
+    assert.match(t, /Nacht-Runner|night runner/, `${name} nennt nicht, wer den Modus ohne Phrase startet`);
   }
   assert.match(flach(TRIGGER), /einzige Ausnahme/i, "die Trigger-Phrase nennt den Modus nicht als einzige Ausnahme");
 });

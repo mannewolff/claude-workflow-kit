@@ -96,7 +96,7 @@ test("[groom] der Vermerk kommt aus vermerkVorschlag", () => {
 
 test("[groom] der Abschluss nennt Label-Abnahme, den Weg im Halt-Kommentar und den Pruefvorschlag (E6, E9)", () => {
   assert.match(SKILL, /stoppKommentar/, "stoppKommentar fehlt");
-  assert.match(SKILL, /`kit:klaeren` ab/, "der Satz zum Abnehmen von kit:klaeren fehlt");
+  assert.match(SKILL, /`kit:clarify` ab/, "der Satz zum Abnehmen von kit:clarify fehlt");
   assert.match(SKILL, /Halt-Kommentar/, "der Verweis auf den Weg im Halt-Kommentar fehlt");
   assert.match(SKILL, /\/issue-review #<N>/, "der Prüfvorschlag mit /issue-review fehlt");
 });

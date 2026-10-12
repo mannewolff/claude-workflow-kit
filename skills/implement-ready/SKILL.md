@@ -1,6 +1,6 @@
 ---
 name: implement-ready
-description: Schritt 5 des 9-Schritt-Prozesses — arbeitet alle Issues in der Ready-Spalte sequenziell in Board-Reihenfolge ab, committet lokal, pusht nicht. Nutze diesen Skill wenn der Nutzer /implement-ready aufruft, Ready-Issues umsetzen will oder das GO zur Implementierung gibt.
+description: Step 5 of the 9-step process: works off all issues in the Ready column one after another in board order, commits locally, does not push. Use this skill when the user invokes /implement-ready, wants to implement Ready issues, or gives the GO for implementation.
 user-invocable: true
 ---
 
@@ -31,7 +31,7 @@ Gibt die Issues als JSON-Array in der Reihenfolge der Ready-Spalte des Boards (o
 node .claude/kit/board.mjs issue brief <id>
 ```
 
-Der Auftrag liefert in einem Zug das **Urteil** (`darf beginnen` oder `darf nicht beginnen` samt Grund) mit seiner **Folge**, dazu die Aufgabe mit Kommentaren, die Plan-Entscheidungen im Wortlaut, den fachlichen Anlass, die Geschwister mit Spalte, die Voraussetzungen und die Lücken. Er läuft **vor** Schritt 1: Er erwartet die Karte in Ready, nach dem Zug nach In progress lautete seine Folge `bleibt`. Gehandelt wird allein nach der Folge. Die Prüfungen dahinter — die Titel-Präfixe `[Fachlich]`, `[Idee]`, `[Plan]` und `[Mensch]`, das Label `kit:klaeren`, das Label `kit:geschuetzt` und die geschützten Dateien, die das Paket nennt, die Spalte, die Voraussetzungen — und die Wortlaute der Backlog-Kommentare stehen in `kit/board.mjs`, nicht in diesem Skill:
+Der Auftrag liefert in einem Zug das **Urteil** (`darf beginnen` oder `darf nicht beginnen` samt Grund) mit seiner **Folge**, dazu die Aufgabe mit Kommentaren, die Plan-Entscheidungen im Wortlaut, den fachlichen Anlass, die Geschwister mit Spalte, die Voraussetzungen und die Lücken. Er läuft **vor** Schritt 1: Er erwartet die Karte in Ready, nach dem Zug nach In progress lautete seine Folge `bleibt`. Gehandelt wird allein nach der Folge. Die Prüfungen dahinter — die Titel-Präfixe `[Requirement]`, `[Idea]`, `[Plan]` und `[Human]`, das Label `kit:clarify`, das Label `kit:protected` und die geschützten Dateien, die das Paket nennt, die Spalte, die Voraussetzungen — und die Wortlaute der Backlog-Kommentare stehen in `kit/board.mjs`, nicht in diesem Skill:
 
 - **`beginnen`** — weiter mit Schritt 1.
 - **`bleibt`** — die Karte wird nicht bewegt und nicht kommentiert. Der Skill meldet den Grund aus dem Urteil, und der Lauf geht mit dem nächsten Issue weiter.
@@ -54,10 +54,10 @@ Der Auftrag liefert in einem Zug das **Urteil** (`darf beginnen` oder `darf nich
   Dann das Label:
 
   ```bash
-  node .claude/kit/board.mjs issue label add <id> kit:geschuetzt
+  node .claude/kit/board.mjs issue label add <id> kit:protected
   ```
 
-  Ein Fehlschlag dieses Aufrufs wird gemeldet und hält nicht auf. Danach geht der Kommentar ans Issue, den der Auftrag unter „Kommentar fuer die Karte (woertlich)" liefert, als letzte Zeile ergänzt um die Label-Zeile, die den Ausgang vermerkt: `Label kit:geschuetzt gesetzt`, oder `Label kit:geschuetzt nicht gesetzt`, wenn der Aufruf davor scheiterte. Nur die erste gibt das Paket später frei. Der Kommentar geht nach der Transportregel (`CLAUDE-workflow.md`, „Lange Texte ans Board"): Datei `<tmpdir>/<id>-geschuetzt.md` stückweise per Shell anlegen, dann
+  Ein Fehlschlag dieses Aufrufs wird gemeldet und hält nicht auf. Danach geht der Kommentar ans Issue, den der Auftrag unter „Kommentar fuer die Karte (woertlich)" liefert, als letzte Zeile ergänzt um die Label-Zeile, die den Ausgang vermerkt: `Label kit:protected gesetzt`, oder `Label kit:protected nicht gesetzt`, wenn der Aufruf davor scheiterte. Nur die erste gibt das Paket später frei. Der Kommentar geht nach der Transportregel (`CLAUDE-workflow.md`, „Lange Texte ans Board"): Datei `<tmpdir>/<id>-geschuetzt.md` stückweise per Shell anlegen, dann
 
   ```bash
   node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-geschuetzt.md
@@ -65,9 +65,9 @@ Der Auftrag liefert in einem Zug das **Urteil** (`darf beginnen` oder `darf nich
 
   Danach geht der Lauf mit dem nächsten Issue weiter.
 
-**Das Label `kit:klaeren` wird dabei nie entfernt.** Die Maschine darf es setzen, abnehmen darf es nur der Mensch (Plan #368, A4) — ein Lauf, der sein eigenes `kit:klaeren` abraeumen duerfte, koennte sich selbst freigeben.
+**Das Label `kit:clarify` wird dabei nie entfernt.** Die Maschine darf es setzen, abnehmen darf es nur der Mensch (Plan #368, A4) — ein Lauf, der sein eigenes `kit:clarify` abraeumen duerfte, koennte sich selbst freigeben.
 
-**Auch `kit:geschuetzt` wird nie entfernt.** Die Maschine setzt es, abnehmen darf es allein der Mensch, nachdem er die geschützte Änderung selbst vorgenommen hat — erst damit gilt das Paket beim nächsten Anlauf als freigegeben.
+**Auch `kit:protected` wird nie entfernt.** Die Maschine setzt es, abnehmen darf es allein der Mensch, nachdem er die geschützte Änderung selbst vorgenommen hat — erst damit gilt das Paket beim nächsten Anlauf als freigegeben.
 
 Ob ein Ready-Issue geprueft wurde, ist keine Frage dieses Skills — Ready ist das GO.
 
@@ -116,26 +116,26 @@ Für eine granularere Variante mit explizitem Stopp zwischen rot und grün: `/im
 Nur eine Frage aus der Stopp-Klasse haelt an, genau eine je Halt. Was dann geschieht, in dieser Reihenfolge:
 
 1. Eigene uncommittete Aenderungen **namentlich** zuruecknehmen, selbst angelegte Dateien loeschen — nie pauschal den ganzen Arbeitsbaum verwerfen. Interaktiv koennen fremde Aenderungen darin liegen, und die gehoeren dem Menschen.
-2. `node .claude/kit/board.mjs issue label add <id> kit:klaeren`
-3. Kommentar ans Issue nach der Transportregel (`CLAUDE-workflow.md`, „Lange Texte ans Board"): Datei `<tmpdir>/<id>-halt.md` stueckweise per Shell anlegen, dann `node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-halt.md` — nie als Argument. Der Kommentar benennt den Punkt der Stopp-Klasse, die eine Frage und den Folgeschritt, diesen **woertlich**: `Daraus soll per /fachplan eine fachliche Anforderung entstehen.` An genau diesem Satz erkennt der Nacht-Runner den Halt-Kommentar; er steht dort als Konstante `HALT_FOLGESATZ` in `kit/night.mjs` und wird nicht umformuliert.
+2. `node .claude/kit/board.mjs issue label add <id> kit:clarify`
+3. Kommentar ans Issue nach der Transportregel (`CLAUDE-workflow.md`, „Lange Texte ans Board"): Datei `<tmpdir>/<id>-halt.md` stueckweise per Shell anlegen, dann `node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-halt.md` — nie als Argument. Der Kommentar benennt den Punkt der Stopp-Klasse, die eine Frage und den Folgeschritt, diesen **woertlich**: `Daraus soll per /requirement eine fachliche Anforderung entstehen.` An genau diesem Satz erkennt der Nacht-Runner den Halt-Kommentar; er steht dort als Konstante `HALT_FOLGESATZ` in `kit/night.mjs` und wird nicht umformuliert.
 4. `node .claude/kit/board.mjs issue move <id> backlog`
-5. Melden, dass die Frage am Board wartet und der Weg nach vorn `/fachplan #<id>` ist — **kein Commit**. In `/implement-next` endet die Session damit; in `/implement-ready` geht der Lauf ohne weiteren Versuch an diesem Vorgang mit dem naechsten Ready-Issue weiter.
+5. Melden, dass die Frage am Board wartet und der Weg nach vorn `/requirement #<id>` ist — **kein Commit**. In `/implement-next` endet die Session damit; in `/implement-ready` geht der Lauf ohne weiteren Versuch an diesem Vorgang mit dem naechsten Ready-Issue weiter.
 
 **Gemessen wird der eigene Anteil** — die Dateien, die die Session nachweislich selbst angelegt oder geaendert hat, belegt ueber ihre eigenen Werkzeugaufrufe —, nicht der ganze Arbeitsbaum. Ein Vergleich gegen den Stand bei Session-Start ist kein Nachweis: Fremde Aenderungen koennen im selben Zeitraum entstehen.
 
 **Ob sich jeder eigene Anteil namentlich zuruecknehmen laesst, wird vor Schritt 2 entschieden.** Nicht namentlich zuruecknehmbar ist etwa eine Datei, die vor der Session schon fremde uncommittete Aenderungen trug und die die Session weiter geaendert hat — `git restore` naehme dem Menschen seinen Anteil weg. Bleibt so eine eigene Aenderung zurueck, wird **nicht** angehalten: keiner der Schritte 2 bis 5, also kein Label, kein Kommentar, kein Move, kein Commit. Die Session meldet, welche Datei zurueckbleibt und warum, und endet; das Issue bleibt in In progress. Interaktiv entscheidet der Mensch, nachts greift der Dirty-Guard des Runners wie bei jeder Runde ohne In-review-Ergebnis.
 
-Das Label wird dabei **nie** entfernt — dieselbe Begruendung wie bei der `kit:klaeren`-Leitplanke in Schritt 0: Die Maschine darf es setzen, abnehmen darf es nur der Mensch.
+Das Label wird dabei **nie** entfernt — dieselbe Begruendung wie bei der `kit:clarify`-Leitplanke in Schritt 0: Die Maschine darf es setzen, abnehmen darf es nur der Mensch.
 
 **Rueckfall: Schreibzugriff auf eine geschuetzte Datei abgewiesen.** Weist Claude Code einen Schreibzugriff ab, weil die Datei geschützt ist, obwohl die Aufgabe sie nicht beim Namen nennt, hält die Session an — ohne weiteren Versuch. Der Schutz wird nie umgangen, auch nicht über die Shell. Das ist nicht der Halt einer Stopp-Frage: anderes Label, anderer Anker, eine andere Reihenfolge, und der Weg nach vorn ist die Handlung des Menschen an der Datei, kein Fachkonzept. In dieser Reihenfolge:
 
 1. Eigene uncommittete Aenderungen **namentlich** zuruecknehmen, selbst angelegte Dateien loeschen — nie pauschal den ganzen Arbeitsbaum verwerfen. Gemessen wird der eigene Anteil, belegt ueber die eigenen Werkzeugaufrufe.
 2. `node .claude/kit/board.mjs issue move <id> backlog`
-3. `node .claude/kit/board.mjs issue label add <id> kit:geschuetzt` — ein Fehlschlag wird gemeldet und beendet den Halt nicht.
-4. Den Kommentar holen: `node .claude/kit/board.mjs issue check-protected <id> --path <abgewiesener Pfad>`, je abgewiesenem Pfad ein `--path`. Das Kommando endet mit Exit 1, das ist der Befund. Das Feld `kommentar` seiner Ausgabe beginnt mit dem Anker `## Geschuetzte Datei` und ist der Text — die Session baut ihn nicht selbst. Er geht als letzte Zeile ergänzt um die Label-Zeile aus Schritt 3 (`Label kit:geschuetzt gesetzt` oder `Label kit:geschuetzt nicht gesetzt`) nach der Transportregel (`CLAUDE-workflow.md`, „Lange Texte ans Board") ans Issue: Datei `<tmpdir>/<id>-geschuetzt.md` stückweise per Shell anlegen, dann `node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-geschuetzt.md` — nie als Argument.
+3. `node .claude/kit/board.mjs issue label add <id> kit:protected` — ein Fehlschlag wird gemeldet und beendet den Halt nicht.
+4. Den Kommentar holen: `node .claude/kit/board.mjs issue check-protected <id> --path <abgewiesener Pfad>`, je abgewiesenem Pfad ein `--path`. Das Kommando endet mit Exit 1, das ist der Befund. Das Feld `kommentar` seiner Ausgabe beginnt mit dem Anker `## Geschuetzte Datei` und ist der Text — die Session baut ihn nicht selbst. Er geht als letzte Zeile ergänzt um die Label-Zeile aus Schritt 3 (`Label kit:protected gesetzt` oder `Label kit:protected nicht gesetzt`) nach der Transportregel (`CLAUDE-workflow.md`, „Lange Texte ans Board") ans Issue: Datei `<tmpdir>/<id>-geschuetzt.md` stückweise per Shell anlegen, dann `node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-geschuetzt.md` — nie als Argument.
 5. Melden, welche Datei ein Mensch ändern muss — **kein Commit**. In `/implement-ready` geht der Lauf danach mit dem naechsten Ready-Issue weiter, die anderen Skills enden damit.
 
-Bleibt ein eigener Anteil zurueck, der sich nicht namentlich zuruecknehmen laesst — etwa eine Datei, die vor der Session schon fremde uncommittete Aenderungen trug —, wird **nicht** angehalten: kein Move, kein Label, kein Kommentar, kein Commit. Die Session meldet die Datei und endet; das Paket bleibt in In progress. Auch hier gilt: `kit:geschuetzt` wird nie entfernt.
+Bleibt ein eigener Anteil zurueck, der sich nicht namentlich zuruecknehmen laesst — etwa eine Datei, die vor der Session schon fremde uncommittete Aenderungen trug —, wird **nicht** angehalten: kein Move, kein Label, kein Kommentar, kein Commit. Die Session meldet die Datei und endet; das Paket bleibt in In progress. Auch hier gilt: `kit:protected` wird nie entfernt.
 
 ### 4. Pruefungen vor dem Commit
 
@@ -282,7 +282,7 @@ Kein eigenmächtiges Ziehen aus Backlog. Kein Raten, welches Issue sinnvoll wär
 
 ## Stop-Punkte
 
-- Fachliche Issues (`[Fachlich]`-Titel), Ideen (`[Idee]`-Titel), Plandokumente (`[Plan]`-Titel) und Menschenschritte (`[Mensch]`-Titel) implementieren: nie — kommentiert zurück nach Backlog
+- Fachliche Issues (`[Requirement]`-Titel), Ideen (`[Idea]`-Titel), Plandokumente (`[Plan]`-Titel) und Menschenschritte (`[Human]`-Titel) implementieren: nie — kommentiert zurück nach Backlog
 - Pushen: nie ohne explizite Trigger-Phrase `push main`
 - Backlog nach Ready ziehen: nie — das ist Mannes GO. Ausnahme, ausschliesslich in der Umsetzungsstufe der Nacht-Kette unter Variante B: Dort zieht der Nacht-Runner die Arbeitspakete der gekennzeichneten Karte selbst nach Ready und beginnt ihre Umsetzung ohne Freigabe je Paket. Das GO hat der Mensch an der gekennzeichneten Karte gegeben — an der fachlichen Anforderung oder am Plandokument —, als er sie fuer Variante B kennzeichnete. Ausserhalb dieser Stufe gilt der Satz davor ohne Einschraenkung — auch fuer Pakete einer Karte, die frueher unter Variante B lief.
 - Issues auf Done setzen: nie — das macht der Mensch nach seinem Test

@@ -27,16 +27,16 @@ function absatzMit(text, zeichenkette) {
   return text.split("\n\n").find((a) => a.includes(zeichenkette));
 }
 
-test("[skills-36] /issue-review bucht nach dem Einarbeitungs-Kommentar und vor `review:fertig`", () => {
+test("[skills-36] /issue-review bucht nach dem Einarbeitungs-Kommentar und vor `review:done`", () => {
   const kommentar = ISSUE_REVIEW.indexOf("## Einarbeitung, Runde 1");
   const buchen = ISSUE_REVIEW.indexOf("findings.mjs record");
-  const label = ISSUE_REVIEW.indexOf("issue label add <id> review:fertig");
+  const label = ISSUE_REVIEW.indexOf("issue label add <id> review:done");
 
   assert.notEqual(kommentar, -1, "der Kommentar '## Einarbeitung, Runde 1' fehlt");
   assert.notEqual(buchen, -1, "der Skill ruft 'findings.mjs record' nicht");
-  assert.notEqual(label, -1, "das Setzen von 'review:fertig' fehlt");
+  assert.notEqual(label, -1, "das Setzen von 'review:done' fehlt");
   assert.ok(kommentar < buchen, "gebucht wird vor dem Einarbeitungs-Kommentar");
-  assert.ok(buchen < label, "gebucht wird erst nach 'review:fertig'");
+  assert.ok(buchen < label, "gebucht wird erst nach 'review:done'");
 });
 
 test("[skills-36] der Aufruf traegt Datei, Stufe des Laufs und Karte", () => {
@@ -61,9 +61,9 @@ test("[skills-36] /issue-review schlaegt je erreichter Art einen Vorschlag vor",
     "der Skill sagt nicht, dass der Vorschlag je gemeldeter erreichter Art laeuft");
 });
 
-test("[skills-36] bei `kit:klaeren` wird nicht gebucht", () => {
-  const absatz = ISSUE_REVIEW.split("\n\n").find((a) => a.includes("kit:klaeren") && a.includes("bucht"));
-  assert.ok(absatz, "der Skill sagt nicht, dass bei 'kit:klaeren' nicht gebucht wird");
+test("[skills-36] bei `kit:clarify` wird nicht gebucht", () => {
+  const absatz = ISSUE_REVIEW.split("\n\n").find((a) => a.includes("kit:clarify") && a.includes("bucht"));
+  assert.ok(absatz, "der Skill sagt nicht, dass bei 'kit:clarify' nicht gebucht wird");
   assert.match(absatz, /nicht gebucht|bucht (die Session )?nicht/,
     "der Absatz verneint die Buchung nicht ausdruecklich");
 });

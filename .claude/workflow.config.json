@@ -867,6 +867,7 @@
       "test/vergleiche-*.test.mjs",
       "test/helpers/zeilenenden.mjs",
       "test/fixtures/push-main-*.md",
+      "test/fixtures/claude-code-kommandos.json",
       ".github/workflows/**",
       "docs-site/**",
       "docs-site/sprachen.json",

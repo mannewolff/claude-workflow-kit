@@ -2,7 +2,7 @@
 //
 // Der Sender aus Issue #356 wirkt erst, wenn die Skills ihn benutzen — sonst bleibt
 // das Feld am Board leer, obwohl die Option existiert. Jede Stufe hat eine andere
-// Stellung in der Kette: /fachplan legt die Wurzel an (nie ein Verweis), /techplan das
+// Stellung in der Kette: /requirement legt die Wurzel an (nie ein Verweis), /techplan das
 // Plandokument darunter, /issues die Arbeitspakete.
 //
 // Der heikelste Test ist die KOPPLUNG an board.mjs: Die Skills nennen eine
@@ -89,13 +89,13 @@ test("der Halbsatz erklaert, warum die Regel trotz des neuen Feldes gilt", () =>
 
 // --- /techplan ---
 
-test("plan-Skill bindet die Option an die Bedingung '/techplan #N gegen [Fachlich]'", () => {
+test("plan-Skill bindet die Option an die Bedingung '/techplan #N gegen [Requirement]'", () => {
   assert.match(PLAN, /--derived-from/, "die Option fehlt");
   // Ko-Okkurrenz im selben Absatz, nach dem Muster aus skills-plan-ticket.test.mjs:
   // Option und Bedingung duerfen nicht in getrennten Teilen der Datei stehen.
   const absatz = PLAN.split(/\n\n/).find((a) => /--derived-from/.test(a) && /genau dann/i.test(a));
   assert.ok(absatz, "kein Absatz verbindet die Option mit einer 'genau dann'-Bedingung");
-  assert.match(absatz, /\[Fachlich\]/, "die Bedingung nennt das [Fachlich]-Issue nicht");
+  assert.match(absatz, /\[Requirement\]/, "die Bedingung nennt das [Requirement]-Issue nicht");
   assert.match(absatz, /\/techplan #N/, "die Bedingung nennt den Aufruf /techplan #N nicht");
 });
 
@@ -104,7 +104,7 @@ test("plan-Skill sagt, dass die Option beim Plan aus dem Chat entfaellt", () => 
   assert.ok(absatz, "der Fall 'Plan aus dem Chat' ist nicht behandelt");
 });
 
-// --- /fachplan ---
+// --- /requirement ---
 
 test("fachplan-Skill schliesst die Option an der Wurzel ausdruecklich aus", () => {
   assert.match(FACHPLAN, /--derived-from/, "die Option wird nicht erwaehnt");

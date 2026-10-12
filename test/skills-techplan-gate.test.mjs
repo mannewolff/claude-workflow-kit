@@ -7,7 +7,7 @@
 // wieder Plandokumente — und niemand merkt es, weil kein Code kaputtgeht.
 //
 // Absichtlich NICHT geprueft: implement-test und implement-done. Sie tragen heute
-// keinerlei [Fachlich]/[Idee]-Erwaehnung, und docs/dokumentation.md nennt ausdruecklich
+// keinerlei [Requirement]/[Idea]-Erwaehnung, und docs/dokumentation.md nennt ausdruecklich
 // nur /implement-ready, /implement-next und den Nacht-Runner als Traeger der
 // mechanischen Leitplanke. Die Auslassung ist Konvention, kein Versehen.
 
@@ -47,48 +47,49 @@ for (const [name, text] of SKILLS) {
   });
 }
 
-// Seit Issue #984 zaehlt das Gate vier Sorten: [Mensch] kam als Arbeitspaket hinzu, das
+// Seit Issue #984 zaehlt das Gate vier Sorten: [Human] kam als Arbeitspaket hinzu, das
 // nur ein Mensch erledigen kann. Die Zaehlung bleibt gepruefte Zusicherung — eine Doku, die
 // drei nennt und vier aufzaehlt, laesst den Leser die fehlende selbst suchen.
-test("dokumentation: das Gate kennt vier Sorten, [Plan] und [Mensch] eingeschlossen", () => {
+test("dokumentation: das Gate kennt vier Sorten, [Plan] und [Human] eingeschlossen", () => {
   const doku = lies("docs", "dokumentation.md");
   for (const veraltet of [/Zwei Sorten/, /Drei Sorten/]) {
     assert.doesNotMatch(doku, veraltet, "die Zaehlung stimmt nicht mehr — es sind vier Sorten");
   }
   assert.match(doku, /Vier Sorten/, "die neue Zaehlung fehlt");
   assert.match(doku, /\[Plan\]/, "das Praefix [Plan] wird nicht genannt");
-  assert.match(doku, /\[Mensch\]/, "das Praefix [Mensch] wird nicht genannt");
+  assert.match(doku, /\[Human\]/, "das Praefix [Human] wird nicht genannt");
 });
 
 // Seit Stufe 2 des Prozess-Umbaus (Plan #638, Issue #646) gibt es keine Stufenwahl
-// mehr: Die Nacht-Kette nimmt genau [Fachlich]-Issues als Eingang; [Idee] und [Plan]
+// mehr: Die Nacht-Kette nimmt genau [Requirement]-Issues als Eingang; [Idea] und [Plan]
 // sind damit keine Kandidaten, ohne dass ein eigener Ausschluss noetig waere. Die Doku
 // muss den Eingang nennen und keinen der entfallenen Stufen-Schalter mehr.
-test("dokumentation: der Abschnitt zur Nacht-Kette nennt [Fachlich] als einzigen Eingang", () => {
+test("dokumentation: der Abschnitt zur Nacht-Kette nennt [Requirement] als einzigen Eingang", () => {
   const doku = lies("docs", "dokumentation.md");
   const idx = doku.indexOf("### Zweiter Modus: die Nacht-Kette");
   assert.ok(idx >= 0, "der Abschnitt zur Nacht-Kette fehlt");
   const kette = doku.slice(idx).split(/\n### /)[0];
-  assert.match(kette, /hat den Titel `\[Fachlich\]`/, "der Eingang [Fachlich] fehlt");
+  // Die Doku nennt den Eingang bis zu ihrer Umstellung (Plan #1548, Issue #1573) unter dem deutschen Praefix.
+  assert.match(kette, /hat den Titel `\[(?:Requirement|Fachlich)\]`/, "der Eingang [Requirement] fehlt");
   assert.doesNotMatch(doku, /--stufe <fachlich\|plan\|issue>/, "der entfallene Stufen-Schalter steht noch in der Doku");
 });
 
-// Seit Issue #279 schliesst /issue-review [Fachlich] und [Plan] NICHT mehr aus --
+// Seit Issue #279 schliesst /issue-review [Requirement] und [Plan] NICHT mehr aus --
 // sie bestimmen dort die Pruefstufe. Der frueher hier gepruefte Gleichlauf der
-// Ausschlussliste gilt deshalb nur noch fuer den [Idee]-Fall. Was das Gate
+// Ausschlussliste gilt deshalb nur noch fuer den [Idea]-Fall. Was das Gate
 // tatsaechlich schuetzt, prueft test/skills-issue-review-stufen.test.mjs: dass
-// kein Ausschluss von [Fachlich]/[Plan] stehen geblieben ist, und dass der Anker
+// kein Ausschluss von [Requirement]/[Plan] stehen geblieben ist, und dass der Anker
 // `Issue-Review:` dem Arbeitspaket vorbehalten bleibt.
-test("issue-review: schliesst nur noch [Idee] aus, [Plan] bestimmt die Stufe", () => {
+test("issue-review: schliesst nur noch [Idea] aus, [Plan] bestimmt die Stufe", () => {
   const skill = lies("skills", "issue-review", "SKILL.md");
-  assert.match(skill, /\[Idee\]/, "der [Idee]-Ausschluss fehlt");
+  assert.match(skill, /\[Idea\]/, "der [Idea]-Ausschluss fehlt");
   const ausschluss = skill
     .split("\n")
     .filter(
       (z) =>
         /(uebersprungen|übersprungen|kein Review von)/i.test(z) &&
-        /\[Fachlich\]|\[Plan\]/.test(z) &&
+        /\[Requirement\]|\[Plan\]/.test(z) &&
         !/nicht mehr|bestimmen dagegen|bestimmen die (Prüf|Pruef)stufe|ohnehin nicht vor/i.test(z)
     );
-  assert.deepEqual(ausschluss, [], `[Fachlich]/[Plan] werden noch ausgeschlossen: ${ausschluss.join(" | ")}`);
+  assert.deepEqual(ausschluss, [], `[Requirement]/[Plan] werden noch ausgeschlossen: ${ausschluss.join(" | ")}`);
 });

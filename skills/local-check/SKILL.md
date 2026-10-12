@@ -1,6 +1,6 @@
 ---
 name: local-check
-description: Schritt 6 des 9-Schritt-Prozesses — führt die Pflicht-Checks aus der Config aus und gibt eine grüne Checklist zurück. Nutze diesen Skill wenn der Nutzer /local-check aufruft oder Schritt 6 (lokale Prüfung) startet.
+description: Step 6 of the 9-step process: runs the mandatory checks from the config and returns a green checklist. Use this skill when the user invokes /local-check or starts step 6 (local check).
 user-invocable: true
 ---
 
@@ -145,4 +145,4 @@ Roter Check (`❌`) stoppt den Prozess. Nicht weitergehen, bevor der Fehler gekl
 
 ## Stop-Punkt
 
-Nach grüner Checklist wartet der Prozess auf den Start von `/review` (Schritt 7). Push erfolgt erst nach expliziter Trigger-Phrase `push main`.
+Nach grüner Checklist wartet der Prozess auf den Start von `/kit-review` (Schritt 7). Push erfolgt erst nach expliziter Trigger-Phrase `push main`.

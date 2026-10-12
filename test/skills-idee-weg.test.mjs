@@ -1,9 +1,9 @@
 // Eine Idee hat genau zwei Wege, und sie stehen ueberall gleich (Issue #962).
 //
-// Die Wegwahl fuer eine `[Idee]` stand in fuenf Regeltexten, und sie sagten
+// Die Wegwahl fuer eine `[Idea]` stand in fuenf Regeltexten, und sie sagten
 // Verschiedenes: dreimal `/task`, zweimal „erst /techplan, dann /issues". Gearbeitet
 // wurde nach einer sechsten, ungeschriebenen Regel — Abwaegung noetig geht ueber
-// `/fachplan`, sonst ueber `/task`. Solange sich die Texte widersprechen, entscheidet
+// `/requirement`, sonst ueber `/task`. Solange sich die Texte widersprechen, entscheidet
 // jede Sitzung anders; die Widerspruchsfreiheit ist darum das Ergebnis dieses Pakets
 // und wird geprueft, nicht nur hergestellt.
 //
@@ -26,15 +26,19 @@ const STELLEN = [
   "docs/dokumentation.md",
 ];
 
+// Der Weg zur Anforderung: in Skills und Regeltext `/requirement`; die Doku nennt bis zu ihrer
+// Umstellung (Plan #1548, Issue #1573) noch den alten Namen.
+const anforderung = (pfad) => (pfad.startsWith("docs/") ? /\/(?:requirement|fachplan)/ : /\/requirement/);
+
 function zeilen(pfad) {
   return readFileSync(join(repoRoot, pfad), "utf-8").split("\n");
 }
 
-test("[skills-962] jede Stelle nennt beide Wege einer Idee: Abwaegung -> /fachplan, sonst -> /task", () => {
+test("[skills-962] jede Stelle nennt beide Wege einer Idee: Abwaegung -> /requirement, sonst -> /task", () => {
   for (const pfad of STELLEN) {
     const text = zeilen(pfad).join("\n");
     assert.match(text, /Abw(?:ae|ä)gung/, `${pfad}: die Unterscheidung nach Abwaegung fehlt`);
-    assert.match(text, /\/fachplan/, `${pfad}: der Weg /fachplan fehlt`);
+    assert.match(text, anforderung(pfad), `${pfad}: der Weg /requirement fehlt`);
     assert.match(text, /\/task/, `${pfad}: der Weg /task fehlt`);
   }
 });
@@ -46,25 +50,25 @@ test("[skills-962] beide Wege stehen in einem Atemzug, nicht in getrennten Absch
   for (const pfad of STELLEN) {
     const absaetze = readFileSync(join(repoRoot, pfad), "utf-8").split(/\n\s*\n/);
     const treffer = absaetze.filter(
-      (a) => /Abw(?:ae|ä)gung/.test(a) && /\/fachplan/.test(a) && /\/task/.test(a),
+      (a) => /Abw(?:ae|ä)gung/.test(a) && anforderung(pfad).test(a) && /\/task/.test(a),
     );
     assert.ok(
       treffer.length >= 1,
-      `${pfad}: kein Absatz nennt Abwaegung, /fachplan und /task zusammen`,
+      `${pfad}: kein Absatz nennt Abwaegung, /requirement und /task zusammen`,
     );
   }
 });
 
-test("[skills-962] keine Stelle schickt eine `[Idee]` mehr nach /techplan", () => {
+test("[skills-962] keine Stelle schickt eine `[Idea]` mehr nach /techplan", () => {
   const funde = [];
   for (const pfad of STELLEN) {
     zeilen(pfad).forEach((zeile, i) => {
-      if (zeile.includes("[Idee]") && zeile.includes("/techplan")) {
+      if (zeile.includes("[Idea]") && zeile.includes("/techplan")) {
         funde.push(`${pfad}:${i + 1}: ${zeile.trim().slice(0, 160)}`);
       }
     });
   }
-  assert.deepEqual(funde, [], `der gestrichene Weg [Idee] -> /techplan steht noch da:\n${funde.join("\n")}`);
+  assert.deepEqual(funde, [], `der gestrichene Weg [Idea] -> /techplan steht noch da:\n${funde.join("\n")}`);
 });
 
 // Seit Issue #1025 steht der Rueckgabe-Kommentar nur noch in kit/board.mjs; die
@@ -79,11 +83,11 @@ test("[skills-962] der Rueckgabe-Kommentar aus issue auftrag nennt beide Wege", 
   assert.doesNotMatch(idee, /techplan/, "der Kommentar schickt weiter nach /techplan");
 });
 
-test("[skills-962] /fachplan nimmt eine `[Idee]` mit Abwaegung an, ohne Herkunftsspur am neuen Issue", () => {
+test("[skills-962] /requirement nimmt eine `[Idea]` mit Abwaegung an, ohne Herkunftsspur am neuen Issue", () => {
   const text = readFileSync(join(repoRoot, "skills", "requirement", "SKILL.md"), "utf-8");
   const absaetze = text.split(/\n\s*\n/);
   assert.ok(
-    absaetze.some((a) => /Eingang/.test(a) && /`\[Idee\]`/.test(a)),
+    absaetze.some((a) => /Eingang/.test(a) && /`\[Idea\]`/.test(a)),
     "kein Absatz nennt die Idee als Eingang des Skills",
   );
   assert.match(

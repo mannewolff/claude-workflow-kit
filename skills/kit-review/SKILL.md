@@ -1,6 +1,6 @@
 ---
 name: kit-review
-description: Startet einen Review durch einen Opus-Subagent in frischer Session ohne Implementierungs-Kontext. Nutze diesen Skill wenn der Nutzer /review aufruft oder Schritt 7 des Prozesses startet (Code-Review durch zweites Modell).
+description: Starts a review by an Opus subagent in a fresh session without implementation context. Use this skill when the user invokes /kit-review or starts step 7 of the process (code review by a second model).
 user-invocable: true
 ---
 
@@ -25,8 +25,8 @@ Die relevanten Felder:
 
 Zwei Lagen entstehen zur Laufzeit trotzdem:
 
-- **Fehlen beide Felder**, gilt der Default `reviewModel: "claude-opus-4-8"` — mit Hinweis. Configs aus der Zeit vor dem Paar kennen keines von beiden, und `/review` darf für sie nicht brechen.
-- **Sind beide gesetzt**, bricht `/review` mit Verweis auf die Oder-Regel ab, statt still eines zu bevorzugen. Der Installer lässt diese Lage nicht zu (Issue #433), ein Handedit an der Config schon — und welches der beiden dann gemeint war, weiß nur der Mensch.
+- **Fehlen beide Felder**, gilt der Default `reviewModel: "claude-opus-4-8"` — mit Hinweis. Configs aus der Zeit vor dem Paar kennen keines von beiden, und `/kit-review` darf für sie nicht brechen.
+- **Sind beide gesetzt**, bricht `/kit-review` mit Verweis auf die Oder-Regel ab, statt still eines zu bevorzugen. Der Installer lässt diese Lage nicht zu (Issue #433), ein Handedit an der Config schon — und welches der beiden dann gemeint war, weiß nur der Mensch.
 
 Fehlt `reviewScope`, nutze `"diff"` als Default und weise darauf hin.
 
@@ -71,7 +71,7 @@ node .claude/kit/board.mjs issue-review start --code-review --brief <tmpdir>/rev
 
 Das Agent-Tool kommt hier nicht zum Einsatz: Es kennt nur Claude-Modelle, und ein `reviewCommand` durch dieses Werkzeug zu reichen wäre ein stiller Ausfall.
 
-**Ausfallpfad: Endet `pruefauftrag` oder `start` mit Exit ungleich 0, bricht `/review` ab** — mit sichtbarer Fehlermeldung einschließlich des Fehlers aus der Ausgabe, bei `start` samt stderr-Ausschnitt. Das Issue wechselt dabei **nicht** nach In review, und es entsteht **kein Board-Kommentar**. Ein Review, der nicht lief, darf keine Spur hinterlassen, die wie eine Prüfung aussieht: Ein Kommentar unter „Code-Review (Schritt 7)" ohne Befunde liest sich wie ein sauberer Durchlauf, und ein Issue in *In review* behauptet, die Prüfung sei erledigt. Beides wäre schlechter als der sichtbare Abbruch.
+**Ausfallpfad: Endet `review-brief` oder `start` mit Exit ungleich 0, bricht `/kit-review` ab** — mit sichtbarer Fehlermeldung einschließlich des Fehlers aus der Ausgabe, bei `start` samt stderr-Ausschnitt. Das Issue wechselt dabei **nicht** nach In review, und es entsteht **kein Board-Kommentar**. Ein Review, der nicht lief, darf keine Spur hinterlassen, die wie eine Prüfung aussieht: Ein Kommentar unter „Code-Review (Schritt 7)" ohne Befunde liest sich wie ein sauberer Durchlauf, und ein Issue in *In review* behauptet, die Prüfung sei erledigt. Beides wäre schlechter als der sichtbare Abbruch.
 
 ### 3. Ergebnis dokumentieren
 
