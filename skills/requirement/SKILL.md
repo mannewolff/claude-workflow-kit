@@ -20,7 +20,7 @@ Zwei Karten sind ein zulässiger Eingang, und die Nummer kommt als Argument: `/f
 Extrahiere aus der Anforderung die fachliche Substanz. Frage nach, wenn Ziel oder Nutzen unklar sind — aber kläre nur Fachliches, keine Technik.
 
 ### 2. Genau ein fachliches Issue anlegen
-Titel: `<Titel>` ohne Präfix — `--art fachlich` an `issue check-form` und `issue create` stellt das Präfix der Projektsprache voran (`[Fachlich]` im deutschen Projekt); an ihm erkennen alle anderen Skills und der Nacht-Runner fachliche Issues. Body im Story-Format mit vier Abschnitten:
+Titel: `<Titel>` ohne Präfix — `--art fachlich` an `issue check-form` und `issue create` stellt das Präfix der Projektsprache voran (`[Fachlich]` im deutschen Projekt); an ihm erkennen alle anderen Skills und der Nacht-Runner fachliche Issues. Body im Story-Format mit vier Abschnitten; bei gesetztem Schalter `vorgeschichte` steht dazu `## Vorgeschichte` zwischen `## Nicht-Ziele` und `## Offene Fragen an den PO`, gesucht und geschrieben nach `CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“:
 ```markdown
 ## Ziel
 Wer braucht was, und warum? (Nutzerwirkung in PO-Sprache)

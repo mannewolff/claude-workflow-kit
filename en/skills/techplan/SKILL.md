@@ -11,13 +11,15 @@ user-invocable: true
 Step 2 of the 9-step process: the AI creates a plan. The plan is put up for discussion, not for implementation.
 
 ## In night mode
-<!-- de: acf33728b3e6 -->
+<!-- de: c9d46b17fff5 -->
 
 The distinguishing mark is **a set `KIT_AGENT_MODEL`** and explicitly no second signal — the same condition as in the section "In night mode" of `/issue-review`. The night runner does put a sentence in front of the assignment that names the mode of operation. **Only `KIT_AGENT_MODEL` counts; the hint in the prompt merely repeats it** — its absence is no all-clear.
 
 At night the skill is started by the night runner with `node .claude/kit/night.mjs --chain`, per requirement with the label `kit:night` a fresh session with `/techplan #N` against the `[Requirement]` issue — the first stage of the night chain; the check of the plan and the cut into work packages follow in the same chain.
 
 **At night nobody is asked — in no situation.** This applies to the lane (step 0), to every unclarity in the requirement (step 1) and to the discussion of the plan (step 4). A session waiting for an answer cannot be told apart from a failure by the runner. This rule applies to **every unattended run**, not only to this runner — also when another runner starts the skill.
+
+A contradiction to the history is no E entry and no stop question: it stands as a `- Widerspruch:` line in `### History`, holds nothing up, and the night report names it.
 
 Unchanged at night: no code, no commit, no technical issues, no move to Ready — the stop point at the end applies unattended as well. Unattended, the plan document from step 5 comes about **immediately after step 3**; the release then takes place on the board.
 
@@ -77,12 +79,17 @@ Clarify first: what is to be built, which areas of the code are affected, are th
 **Interactive:** ask when something is unclear. What the human decides stands in the same format under `## Architectural decisions`.
 
 ### 2. Read the relevant files
-<!-- de: e4e5f69fa4f8 -->
+<!-- de: 1f3f25c3ca1c -->
 
 Read the affected files and existing patterns. Use an Explore agent when the scope is unclear. Actively look for reusable functions and patterns — avoid new code when a suitable implementation already exists.
 
+**History** (only with the switch `history` set, rule in `CLAUDE-workflow.md`, section "History"): once it is clear which files are affected, the skill calls the command with terms from title and goal, one `--files` per file from `## Affected areas` and with `--without` for the business source:
+```bash
+node .claude/kit/board.mjs issue history --terms <term> --files <path> --without <N>
+```
+
 ### 3. Create the plan
-<!-- de: a444c46d1e71 -->
+<!-- de: 0f9d76b58413 -->
 
 The plan has a **binding format** — like the four-section format of the work packages in `/issues`, not as a suggestion. Every plan contains the following six `##` headings **exactly once and in this order**. Sub-headings from level `###` may stand in between, but no further headings of level `##`:
 ```markdown
@@ -97,7 +104,7 @@ The plan has a **binding format** — like the four-section format of the work p
 The headings are the anchor on which the plan check and `/issues` work — **reworded in spirit, they do not work**. They are taken over literally: not renamed, not merged, not reordered. The German headings (`## Ziel` … `## Verifizierung`) count the same. **The order has a reason:** `## Open questions` stands **before** `## Verification`. Open questions should not be buried at the end — as the last section of the document they would be exactly that. What belongs in the sections:
 
 - `## Goal` — what is built and what effect it has for the user.
-- `## Affected areas` — files, modules, layers.
+- `## Affected areas` — files, modules, layers. With the switch `history` set, the section ends with the subsection `### History`: the lines `Suchbegriffe:` and `Dateien:`, the places and notes according to `CLAUDE-workflow.md`, section "History", and the `- Widerspruch:` lines from `## History` of the business source verbatim taken over, beside its own.
 - `## Architectural decisions` — the decisions made, each with its reason:
 
   > Every architectural decision must carry a reason, so that its assumptions and trade-offs can be checked and attacked in the review.

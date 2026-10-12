@@ -14,6 +14,8 @@ Gestartet wird der Skill nachts vom Nacht-Runner mit `node .claude/kit/night.mjs
 
 **Nachts wird nicht gefragt — in keiner Lage.** Das gilt für die Bahn (Schritt 0), für jede Unklarheit in der Anforderung (Schritt 1) und für die Diskussion des Plans (Schritt 4). Eine Session, die auf eine Antwort wartet, ist vom Runner nicht von einem Fehlschlag zu unterscheiden. Diese Regel gilt für **jeden unbeaufsichtigten Lauf**, nicht nur für diesen Runner — auch dann, wenn ein anderer Runner den Skill startet.
 
+Ein Widerspruch zur Vorgeschichte ist kein E-Eintrag und keine Stopp-Frage: Er steht als `- Widerspruch:`-Zeile in `### Vorgeschichte`, hält nichts an, und der Nachtbericht nennt ihn.
+
 Unverändert nachts: kein Code, kein Commit, keine technischen Issues, keine Ready-Bewegung — der Stop-Punkt am Ende gilt auch unbeaufsichtigt. Das Plan-Dokument aus Schritt 5 entsteht unbeaufsichtigt **unmittelbar nach Schritt 3**; die Freigabe erfolgt dann am Board.
 
 ## Plan-Modell: wer den Plan geschrieben hat
@@ -64,6 +66,11 @@ Kläre zuerst: Was soll gebaut werden, welche Bereiche des Codes sind betroffen,
 ### 2. Relevante Dateien lesen
 Lies die betroffenen Dateien und vorhandene Muster. Nutze einen Explore-Agenten, wenn der Scope unklar ist. Suche aktiv nach wiederverwendbaren Funktionen und Mustern — vermeide neuen Code, wenn eine passende Implementierung bereits existiert.
 
+**Vorgeschichte** (nur bei gesetztem Schalter `vorgeschichte`, Regel in `CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“): Steht fest, welche Dateien betroffen sind, ruft der Skill das Kommando mit Begriffen aus Titel und Ziel, je Datei aus `## Betroffene Bereiche` ein `--dateien` und mit `--ohne` für die Fachliche Quelle:
+```bash
+node .claude/kit/board.mjs issue vorgeschichte --begriffe <begriff> --dateien <pfad> --ohne <N>
+```
+
 ### 3. Plan erstellen
 Der Plan hat ein **verbindliches Format** — wie das Vier-Abschnitt-Format der Arbeitspakete in `/issues`, nicht als Anregung. Jeder Plan enthält die folgenden sechs `##`-Überschriften **genau einmal und in dieser Reihenfolge**. Dazwischen dürfen Unterüberschriften ab Ebene `###` stehen, aber keine weiteren Überschriften der Ebene `##`:
 ```markdown
@@ -78,7 +85,7 @@ Der Plan hat ein **verbindliches Format** — wie das Vier-Abschnitt-Format der 
 Die Überschriften sind der Anker, an dem die Plan-Prüfung und `/issues` arbeiten — **sinngemäß umformuliert wirken sie nicht**. Sie werden wörtlich übernommen: nicht umbenannt, nicht zusammengefasst, nicht umsortiert. **Die Reihenfolge ist begründet:** `## Offene Fragen` steht **vor** `## Verifizierung`. Offene Fragen sollen nicht am Ende vergraben werden — als letzter Abschnitt des Dokuments wären sie genau das. Was in die Abschnitte gehört:
 
 - `## Ziel` — was gebaut wird und welche Wirkung es für den Nutzer hat.
-- `## Betroffene Bereiche` — Dateien, Module, Schichten.
+- `## Betroffene Bereiche` — Dateien, Module, Schichten. Bei gesetztem Schalter `vorgeschichte` endet der Abschnitt mit dem Unterabschnitt `### Vorgeschichte`: die Zeilen `Suchbegriffe:` und `Dateien:`, die Fundstellen und Vermerke nach `CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“, und die `- Widerspruch:`-Zeilen aus `## Vorgeschichte` der Fachlichen Quelle wörtlich übernommen, neben den eigenen.
 - `## Architektonische Entscheidungen` — die getroffenen Entscheidungen, jede mit Begründung:
 
   > Jede architektonische Entscheidung muss eine Begründung tragen, damit ihre Annahmen und Abwägungen im Review geprüft und angegriffen werden können.

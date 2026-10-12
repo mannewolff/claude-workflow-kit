@@ -233,6 +233,31 @@ Der Umfang allein entscheidet also nicht mehr: Eine Aenderung an zwoelf Dateien 
 
 ---
 
+## Vorgeschichte
+
+Gilt nur, wenn `.claude/workflow.config.json` den Schalter `vorgeschichte` auf `true` setzt; ohne ihn entsteht jedes Dokument wie bisher, ohne Abschnitt und ohne Vermerk. Mit ihm liest der Autor eines Fachplans (`/requirement`) und eines Plans (`/techplan`) vor dem Schreiben die frueheren Fachplaene zum selben Gegenstand, archivierte eingeschlossen. Eine fruehere Entscheidung sperrt dabei nichts, sie wird nur sichtbar.
+
+**Suchen.** Ein Kommando sucht, nicht der Autor:
+```bash
+node .claude/kit/board.mjs issue vorgeschichte --begriffe <begriff> [--begriffe <begriff>]... [--dateien <pfad>]... [--ohne <N>]...
+```
+
+Die Suchbegriffe waehlt der Autor aus Titel und Ziel der neuen Anforderung, je Begriff ein `--begriffe`. Der Plan gibt zusaetzlich je Datei aus `## Betroffene Bereiche` ein `--dateien` mit und nimmt seine Fachliche Quelle mit `--ohne <N>` aus den Treffern — sie ist die Anforderung selbst, keine Vorgeschichte. Das Dokument nennt, wonach gesucht wurde, in der Zeile `Suchbegriffe: <a>; <b>; …`, der Plan zusaetzlich in der Zeile `Dateien: <pfad>; …`. Aus diesen Zeilen wiederholt der Pruefauftrag von `/issue-review` dieselbe Suche und legt den Pruefern die gefundenen Fachplaene vollstaendig bei.
+
+**Ort.** Beim Fachplan steht der Abschnitt `## Vorgeschichte` zwischen `## Nicht-Ziele` und `## Offene Fragen an den PO`. Beim Plan steht der Unterabschnitt `### Vorgeschichte` am Ende von `## Betroffene Bereiche` — ein siebter `##`-Abschnitt waere ein Formverstoss.
+
+**Inhalt.** Hoechstens fuenf Fundstellen, je mit Nummer, Titel und einem Satz, der fuer die neue Anforderung zaehlt: eine PO-Antwort, ein Nicht-Ziel oder eine verworfene Moeglichkeit. Steht die neue Anforderung im Widerspruch zu einer frueheren PO-Antwort oder einem frueheren Nicht-Ziel, steht jeder Widerspruch vollstaendig als eigene Zeile `- Widerspruch: #N „<Zitat>“ — <Fundstelle>; <warum>`; Widersprueche zaehlen nicht in die fuenf. Dazu genau einer der drei festen Vermerke, wo er zutrifft:
+
+- `Nichts Einschlägiges gefunden.` — gesucht, aber kein Treffer zaehlt.
+- `Keine Vorgeschichte gelesen: <Grund>` — das Kommando meldet `ok: false` (etwa ohne Netz oder ohne erreichbares Archiv); das Dokument entsteht trotzdem.
+- `Weitere Treffer: <Zahl>` — es gab mehr Treffer, als das Dokument nennt. Die Zahl = (Treffer des Kommandos − im Dokument genannte Fundstellen) + `weitere`, wobei `weitere` das gleichnamige Feld der Ausgabe ist.
+
+Die Vermerke, `Suchbegriffe:`, `Dateien:` und `- Widerspruch:` sind feste Anfaenge, an denen Nachtbericht und Pruefer sie lesen; sie bleiben in jeder Projektsprache deutsch.
+
+**Ein Widerspruch haelt nichts an.** Kein Halt, auch nachts nicht, keine Frage an den PO aus einem Widerspruch und kein Eintrag unter `## Offene Fragen an den PO` oder `## Offene Fragen` — der Widerspruch steht im Abschnitt zur Vorgeschichte, der Nachtbericht nennt ihn, und der Mensch sieht ihn am Morgen. Der Plan uebernimmt die `- Widerspruch:`-Zeilen aus `## Vorgeschichte` seiner Fachlichen Quelle woertlich in `### Vorgeschichte`; nur so erreicht ein im Fachplan vermerkter Widerspruch den Nachtbericht. Fehlt der Abschnitt bei gesetztem Schalter, meldet `issue check-form` das als Hinweis, nicht als Verstoss.
+
+---
+
 ## Kanban-Board (5 Spalten)
 
 | Spalte | Bedeutung | Wer bewegt |

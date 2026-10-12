@@ -246,6 +246,32 @@ Scope alone therefore no longer decides: a change to twelve files without weighi
 
 ---
 
+## History
+<!-- de: 306e961ada4d -->
+
+Applies only when `.claude/workflow.config.json` sets the switch `history` to `true`; without it every document comes about as before, without section and without note. With it, the author of a requirement (`/requirement`) and of a plan (`/techplan`) reads, before writing, the earlier requirements on the same subject, archived ones included. An earlier decision blocks nothing; it only becomes visible.
+
+**Searching.** A command searches, not the author:
+```bash
+node .claude/kit/board.mjs issue history --terms <term> [--terms <term>]... [--files <path>]... [--without <N>]...
+```
+
+The author chooses the search terms from title and goal of the new requirement, one `--terms` per term. The plan additionally passes one `--files` per file from `## Affected areas` and takes its business source out of the hits with `--without <N>` — it is the requirement itself, not history. The document names what was searched for in the line `Suchbegriffe: <a>; <b>; …`, the plan additionally in the line `Dateien: <path>; …`. From these lines the review brief of `/issue-review` repeats the same search and attaches the requirements found to the reviewers in full.
+
+**Place.** In a requirement the section `## History` stands between `## Non-goals` and `## Open questions for the PO`. In a plan the subsection `### History` stands at the end of `## Affected areas` — a seventh `##` section would be a form violation.
+
+**Content.** At most five places, each with number, title and one sentence that counts for the new requirement: a PO answer, a non-goal or a discarded option. If the new requirement contradicts an earlier PO answer or an earlier non-goal, every contradiction stands in full as a line of its own `- Widerspruch: #N „<Zitat>“ — <Fundstelle>; <warum>` (contradiction: quote, place, why); contradictions do not count towards the five. In addition exactly one of the three fixed notes, where it applies:
+
+- `Nichts Einschlägiges gefunden.` (nothing relevant found) — searched, but no hit counts.
+- `Keine Vorgeschichte gelesen: <Grund>` (no history read: reason) — the command reports `ok: false` (for instance without network or without a reachable archive); the document comes about anyway.
+- `Weitere Treffer: <Zahl>` (further hits: number) — there were more hits than the document names. The number = (hits of the command − places named in the document) + `weitere`, where `weitere` is the field of that name in the output.
+
+The notes, `Suchbegriffe:`, `Dateien:` and `- Widerspruch:` are fixed beginnings by which the night report and the reviewers read them; they stay German in every project language.
+
+**A contradiction holds nothing up.** No halt, not at night either, no question to the PO from a contradiction and no entry under `## Open questions for the PO` or `## Open questions` — the contradiction stands in the history section, the night report names it, and the human sees it in the morning. The plan takes the `- Widerspruch:` lines from `## History` of its business source verbatim into `### History`; only so does a contradiction noted in the requirement reach the night report. If the section is missing while the switch is set, `issue check-form` reports that as a hint, not as a violation.
+
+---
+
 ## Kanban board (5 columns)
 <!-- de: 83f11581b9fe -->
 

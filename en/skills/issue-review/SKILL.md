@@ -64,11 +64,11 @@ node .claude/kit/board.mjs issue-review roles --stage <fachlich|plan|issue> --au
 The number of reviewers of the stage `plan` can be set by a run via `KIT_PLAN_REVIEWER`; the session takes over the output of the command and does not count itself. `gewaehlt[i]` is paired with `rollen[i]`; only what stands in `gewaehlt` is started. `unterbesetzt: true` runs anyway and stands in line 2 of the comment; `quelle` (`pairs` | `regel`) and an `autorAufgeloest: false` belong there as well.
 
 ### 4. Start reviewers
-<!-- de: 4a73e94f0298 -->
+<!-- de: e6f982708378 -->
 
 Directly before the start the session takes off an existing label: `node .claude/kit/board.mjs issue label remove <id> review:done`. If it does not hang on the card, that is no error. If the run ends prematurely afterwards, the label stays off — the marker in the body keeps saying what was checked; the summary names the label as taken off and not set again.
 
-Every reviewer `<n>` from `gewaehlt` gets its review brief as a file. The kit assembles it from the role under `kit/rollen/<rolle>.md`, the list of kinds and the unchanged body, for the plan including `Requirement:` and `Template:`; the session copies no role text and fills in nothing itself:
+Every reviewer `<n>` from `gewaehlt` gets its review brief as a file. The kit assembles it from the role under `kit/rollen/<rolle>.md`, the list of kinds and the unchanged body, for the plan including `Requirement:` and `Template:`, with the switch `history` set including the requirements found in full, as the lines `Suchbegriffe:` and `Dateien:` of the document find them; the session copies no role text and fills in nothing itself:
 ```bash
 node .claude/kit/board.mjs issue-review review-brief --role <role> --id <id> --file <tmpdir>/<id>-auftrag-<n>.md
 ```

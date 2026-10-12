@@ -29,9 +29,9 @@ Two cards are a permitted input, and the number comes as an argument: `/requirem
 Extract the business substance from the requirement. Ask when goal or benefit are unclear — but clarify only business matters, no technology.
 
 ### 2. Create exactly one business issue
-<!-- de: 88f1a65efeb7 -->
+<!-- de: db154d0dadad -->
 
-Title: `<title>` without a prefix — `--art fachlich` on `issue check-form` and `issue create` puts the prefix of the project language in front (`[Requirement]` in an English project); by it all other skills and the night runner recognise business issues. The value `fachlich` of the option is a machine value and stays as it is in every language. Body in story format with four sections:
+Title: `<title>` without a prefix — `--art fachlich` on `issue check-form` and `issue create` puts the prefix of the project language in front (`[Requirement]` in an English project); by it all other skills and the night runner recognise business issues. The value `fachlich` of the option is a machine value and stays as it is in every language. Body in story format with four sections; with the switch `history` set, `## History` stands in addition between `## Non-goals` and `## Open questions for the PO`, searched and written according to `CLAUDE-workflow.md`, section "History":
 ```markdown
 ## Goal
 Who needs what, and why? (Effect for the user in PO language)
