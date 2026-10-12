@@ -1,6 +1,6 @@
 // Die Aggregation der Ergebnisstaende (Issue #750, Plan #745, E5 bis E8).
 //
-// `aufwand.mjs auswerten` macht aus den Ergebnisstaenden `.claude/night-run-*.json`
+// `effort.mjs evaluate` macht aus den Ergebnisstaenden `.claude/night-run-*.json`
 // eine Aussage ueber Zeit, Pruefungen, Umfang und Kosten. Die Staende sind die einzige
 // Quelle — sie tragen seit Issue #749 alles Noetige, bleiben liegen und schliessen
 // fehlgeschlagene wie abgebrochene Laeufe ein. Eine zweite Ablage waere dieselbe
@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { mitProjekt, lauf, einheit, pruefstand, auswerten, aufwand, bericht, stand } from "./helpers/aufwand-fixture.mjs";
-import { aufrufen } from "../kit/aufwand.mjs";
+import { aufrufen } from "../kit/effort.mjs";
 
 /** Zehn Staende mit den vier Sonderfaellen, die das Paket ausdruecklich verlangt. */
 function zehnStaende() {
@@ -283,9 +283,9 @@ test("[aufwand-1] ein fehlender Messwert bleibt null und erscheint als 'nicht ge
   });
 });
 
-test("[aufwand-1] --laeufe 3 begrenzt auf die drei juengsten Staende, absteigend nach Stempel", () => {
+test("[aufwand-1] --runs 3 begrenzt auf die drei juengsten Staende, absteigend nach Stempel", () => {
   mitProjekt({ laeufe: zehnStaende() }, (dir) => {
-    const e = auswerten(dir, "--laeufe", "3");
+    const e = auswerten(dir, "--runs", "3");
 
     assert.equal(e.laeufe.gefunden, 10);
     assert.equal(e.laeufe.einbezogen, 3);
@@ -296,7 +296,7 @@ test("[aufwand-1] --laeufe 3 begrenzt auf die drei juengsten Staende, absteigend
 
 test("[aufwand-1] auswerten schreibt aufwand.md und aufwand.json und gibt JSON auf stdout", () => {
   mitProjekt({ laeufe: zehnStaende() }, (dir) => {
-    const res = aufwand(dir, "auswerten");
+    const res = aufwand(dir, "evaluate");
 
     assert.equal(res.status, 0, res.stderr);
     assert.equal(JSON.parse(res.stdout).laeufe.einbezogen, 10);
@@ -308,7 +308,7 @@ test("[aufwand-1] auswerten schreibt aufwand.md und aufwand.json und gibt JSON a
 
 test("[aufwand-1213] der Zeitstempel der Auswertung kommt aus der uebergebenen Uhr", () => {
   mitProjekt({ laeufe: zehnStaende() }, (dir) => {
-    const res = aufrufen(["auswerten"], { cwd: dir, jetzt: () => new Date("2026-10-05T12:00:00.000Z") });
+    const res = aufrufen(["evaluate"], { cwd: dir, jetzt: () => new Date("2026-10-05T12:00:00.000Z") });
 
     assert.equal(res.status, 0, res.stderr);
     assert.equal(JSON.parse(res.stdout).erzeugtAm, "2026-10-05T12:00:00.000Z");
@@ -318,7 +318,7 @@ test("[aufwand-1213] der Zeitstempel der Auswertung kommt aus der uebergebenen U
 
 test("[aufwand-1] der Leerfall gibt JSON aus, schreibt den Bericht und endet gruen", () => {
   mitProjekt({ laeufe: [] }, (dir) => {
-    const res = aufwand(dir, "auswerten");
+    const res = aufwand(dir, "evaluate");
 
     assert.equal(res.status, 0, res.stderr);
     const e = JSON.parse(res.stdout);
@@ -332,7 +332,7 @@ test("[aufwand-1] der Leerfall gibt JSON aus, schreibt den Bericht und endet gru
 
 test("[aufwand-1] ein abgewiesener Aufruf gibt trotzdem JSON auf stdout aus", () => {
   mitProjekt({ laeufe: [] }, (dir) => {
-    for (const args of [["auswerten", "--laeufe", "0"], ["auswerten", "--laeufe", "zwei"], ["auswerten", "--was"]]) {
+    for (const args of [["evaluate", "--runs", "0"], ["evaluate", "--runs", "zwei"], ["evaluate", "--was"]]) {
       const res = aufwand(dir, ...args);
       assert.notEqual(res.status, 0, `'${args.join(" ")}' haette abgewiesen werden muessen`);
       const json = JSON.parse(res.stdout);
@@ -342,12 +342,12 @@ test("[aufwand-1] ein abgewiesener Aufruf gibt trotzdem JSON auf stdout aus", ()
   });
 });
 
-test("[aufwand-1] ohne Argument gibt aufwand.mjs die Hilfe aus, --version den Kit-Stand", () => {
+test("[aufwand-1] ohne Argument gibt effort.mjs die Hilfe aus, --version den Kit-Stand", () => {
   mitProjekt({ laeufe: [] }, (dir) => {
     const hilfe = aufwand(dir);
     assert.equal(hilfe.status, 0, hilfe.stderr);
-    assert.match(hilfe.stdout, /auswerten/);
-    assert.match(hilfe.stdout, /befund/);
+    assert.match(hilfe.stdout, /evaluate/);
+    assert.match(hilfe.stdout, /finding/);
 
     const version = aufwand(dir, "--version");
     assert.equal(version.status, 0, version.stderr);

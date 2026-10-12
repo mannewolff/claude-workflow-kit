@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mitProjekt, zeile, auswerten, pruefung, bericht } from "./helpers/wirksamkeit-fixture.mjs";
-import { auswerten as auswertenDirekt } from "../kit/wirksamkeit.mjs";
+import { auswerten as auswertenDirekt } from "../kit/effectiveness.mjs";
 
 const CONFIG = { buildChecks: ["node --test"] };
 
@@ -54,7 +54,7 @@ test("[wirksamkeit-4] --fenster sticht Config und Vorgabe", () => {
     config: { ...CONFIG, wirksamkeit: { fensterTage: 30 } },
     zeilen: [zeile({ tage: 5 }), zeile({ tage: 1 })],
   }, (dir) => {
-    const e = auswerten(dir, "--fenster", "2");
+    const e = auswerten(dir, "--window", "2");
 
     assert.equal(e.fenster.tage, 2);
     assert.equal(pruefung(e, "node --test").ausfuehrungen, 1);

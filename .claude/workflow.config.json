@@ -773,15 +773,15 @@
       "test/fixtures/mvn-verify-*.log"
     ],
     "aufwand": [
-      "kit/aufwand.mjs",
-      "kit/texte/aufwand.mjs",
+      "kit/effort.mjs",
+      "kit/texte/effort.mjs",
       "test/aufwand-*.test.mjs",
       "test/ablauf-aufwand-*.test.mjs",
       "test/helpers/aufwand-fixture.mjs",
       "test/fixtures/aufwand/**"
     ],
     "wirksamkeit": [
-      "kit/wirksamkeit.mjs",
+      "kit/effectiveness.mjs",
       "test/wirksamkeit-*.test.mjs",
       "test/ablauf-wirksamkeit-*.test.mjs",
       "test/helpers/wirksamkeit-fixture.mjs"
@@ -814,8 +814,6 @@
     "sync": [
       "tools/sync-blobs.mjs",
       "tools/version.mjs",
-      "kit/effort.mjs",
-      "kit/effectiveness.mjs",
       "kit/settings.mjs",
       "test/sync-*.test.mjs",
       "test/kit-*.test.mjs",

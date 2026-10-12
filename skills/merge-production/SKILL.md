@@ -220,7 +220,7 @@ vorige Zusammenfassung. Dann, in dieser Reihenfolge:
 2. Die Reparaturkandidaten holen und nennen (Plan #1395, E15):
 
    ```bash
-   node .claude/kit/wirksamkeit.mjs kandidaten
+   node .claude/kit/effectiveness.mjs candidates
    ```
 
    Es liest `.claude/wirksamkeit.json` der Hauptkopie und gibt je Kandidat eine Zeile
@@ -231,7 +231,7 @@ vorige Zusammenfassung. Dann, in dieser Reihenfolge:
    Schritt 8, der Worktree wird abgebaut.
 
 `checks.mjs run` endet in diesem Fall mit Exitcode 0. **Ohne Wackler** ruft der Skill
-`wirksamkeit.mjs kandidaten` ebenfalls, an derselben Stelle: Reparaturkandidaten ohne
+`effectiveness.mjs candidates` ebenfalls, an derselben Stelle: Reparaturkandidaten ohne
 Wackler werden genannt, halten aber nicht an.
 
 ### 7. Der eine Commit
@@ -399,7 +399,7 @@ und den Tag setzt er ebenfalls selbst.
 
 Davor nennt die Rückmeldung jede `Gewackelt:`-Zeile des Prüflaufs unverändert samt der
 Antwort des Menschen auf die Rückfrage und jede Zeile `Reparaturkandidat:` aus
-`wirksamkeit.mjs kandidaten` (Schritt 6). Ohne beides entfällt der Absatz.
+`effectiveness.mjs candidates` (Schritt 6). Ohne beides entfällt der Absatz.
 
 > "PR/MR erstellt: <URL>. Der Merge nach production liegt bei dir.
 > Nach dem Merge der Tag:"

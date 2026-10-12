@@ -674,7 +674,7 @@ const { zusammenfassungPfad } = existsSync(NACHBAR_CHECKS)
   ? await import(pathToFileURL(NACHBAR_CHECKS).href)
   : { zusammenfassungPfad: zusammenfassungPfadFallback };
 
-// Die Form des Befundblocks kommt aus aufwand.mjs und wird NICHT nachgebaut (Issue #752):
+// Die Form des Befundblocks kommt aus effort.mjs und wird NICHT nachgebaut (Issue #752):
 // Es ist die eine Form, die an beiden Ausgabestellen erscheint — im Laufprotokoll hier und
 // in `/push-main`. Ein zweiter Textbau waere eine zweite Wahrheit darueber, wie ein Befund
 // aussieht, und die beiden liefen bei der ersten Aenderung auseinander.
@@ -684,7 +684,7 @@ const { zusammenfassungPfad } = existsSync(NACHBAR_CHECKS)
 // aufwandAuswerten() faengt ihn ab und macht daraus die eine Protokollzeile, die ein
 // Fehlschlag der Auswertung sein darf (E15).
 const befundTextFallback = () => {
-  throw new Error(t("nachbarFehlt", { datei: "aufwand.mjs", pfad: NACHBAR_AUFWAND }));
+  throw new Error(t("nachbarFehlt", { datei: "effort.mjs", pfad: NACHBAR_AUFWAND }));
 };
 const { befundText } = existsSync(NACHBAR_AUFWAND)
   ? await import(pathToFileURL(NACHBAR_AUFWAND).href)
@@ -695,7 +695,7 @@ const { befundText } = existsSync(NACHBAR_AUFWAND)
 // `/push-main`. Der Wurf des Ersatzes ist ungefaehrlich, weil wirksamkeitAuswerten() ihn
 // abfaengt und daraus die eine Protokollzeile macht, die ein Fehlschlag sein darf (E9).
 const wirksamkeitBefundTextFallback = () => {
-  throw new Error(t("nachbarFehlt", { datei: "wirksamkeit.mjs", pfad: NACHBAR_WIRKSAMKEIT }));
+  throw new Error(t("nachbarFehlt", { datei: "effectiveness.mjs", pfad: NACHBAR_WIRKSAMKEIT }));
 };
 const { befundText: wirksamkeitBefundText } = existsSync(NACHBAR_WIRKSAMKEIT)
   ? await import(pathToFileURL(NACHBAR_WIRKSAMKEIT).href)
@@ -804,7 +804,7 @@ function befundeAuswerten() {
 }
 
 // Das Zeitlimit beider Auswertungen (Issue #824, night-67). Ohne Limit haengt der
-// ganze Abschluss an ihnen: `kit/wirksamkeit.mjs` ruft fuer die Ruecklaeuferquote
+// ganze Abschluss an ihnen: `kit/effectiveness.mjs` ruft fuer die Ruecklaeuferquote
 // `board.mjs issue activity` und damit das Netz — bleibt der Aufruf stehen, erreichte
 // der Lauf `laufMelden()` erst, wenn die Grenzen von `fetch` greifen. Grosszuegig
 // bemessen: Die Auswertung liest ein ganzes Bewegungsprotokoll und holt Aktivitaeten

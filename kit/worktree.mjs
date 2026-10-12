@@ -23,7 +23,7 @@
  * denselben Funktionen, die die Nacht-Kette benutzt — `worktreeAnlegen`,
  * `worktreeEntfernen`, `worktreesAufraeumen` und `befundeZurueck` aus dem Teil `night/kitstand.mjs` (Issue #1226). Diese
  * Datei traegt darum bewusst eine Nachbar-Abhaengigkeit und ist keine fuer sich portable
- * Einzeldatei wie `aufwand.mjs` oder `findings.mjs` (Muster #440): Zwei Wege, einen Worktree
+ * Einzeldatei wie `effort.mjs` oder `findings.mjs` (Muster #440): Zwei Wege, einen Worktree
  * vorzubereiten, laufen beim ersten Unterschied auseinander — und der Spiegel von
  * `.claude/` ist genau der Teil, den ein Skill nicht nebenbei nachbaut. `night.mjs`
  * seinerseits kennt diese Datei nicht; der Nacht-Runner bleibt ohne sie vollstaendig.

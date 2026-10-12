@@ -18,7 +18,7 @@
  * `evaluate` (Issue #806) liest Protokoll und Vorschlagsstand und schreibt den Bericht
  * nach `.claude/befunde.md` (fuer Menschen) und `.claude/befunde.json` (fuer die
  * Ausgabestellen); `finding` gibt allein den Befundblock aus diesem Stand als Text aus —
- * dieselbe Teilung von Messen und Anzeigen wie bei `aufwand.mjs` und `wirksamkeit.mjs`.
+ * dieselbe Teilung von Messen und Anzeigen wie bei `effort.mjs` und `effectiveness.mjs`.
  *
  * `suggest --kind <a>` (Issue #804) legt am Board eine Idee an, sobald die Art oberhalb
  * ihres Nullpunkts die Schwelle erreicht — und ergaenzt einen bereits offenen Vorschlag,
@@ -27,8 +27,8 @@
  * ist eine BEOBACHTUNG, keine Entscheidung: Ob daraus eine maschinelle Pruefung wird,
  * entscheidet der Mensch; ohne sein Zutun entsteht keine.
  *
- * WARUM EIN EIGENES WERKZEUG UND KEIN ANBAU AN wirksamkeit.mjs (Plan #797, E1):
- * `wirksamkeit.mjs` misst die Pflichtpruefungen aus `ausfuehrungen.tsv` und
+ * WARUM EIN EIGENES WERKZEUG UND KEIN ANBAU AN effectiveness.mjs (Plan #797, E1):
+ * `effectiveness.mjs` misst die Pflichtpruefungen aus `ausfuehrungen.tsv` und
  * `bewegungen.tsv`; Funde von Modellen sind eine andere Quelle und ein anderer
  * Gegenstand, und die Datei traegt bereits rund 960 Zeilen.
  *
@@ -327,7 +327,7 @@ const NICHT_VERGLEICHBAR = "nicht-vergleichbar";
 const PROTOKOLL_DATEI = ".claude/befunde.tsv";
 const VORSCHLAEGE_DATEI = ".claude/befunde-vorschlaege.json";
 const CONFIG_DATEI = ".claude/workflow.config.json";
-// Die beiden Ergebnisse von `auswerten` (Issue #806), im Muster von wirksamkeit.mjs:
+// Die beiden Ergebnisse von `auswerten` (Issue #806), im Muster von effectiveness.mjs:
 // der Bericht fuer Menschen, der Stand fuer die Ausgabestellen.
 const BERICHT_DATEI = ".claude/befunde.md";
 const STAND_DATEI = ".claude/befunde.json";
@@ -604,7 +604,7 @@ function fehlendeAngaben(fund) {
  * Ausgabe von `buchen`.
  *
  * SYNC: dieselbe Funktion steckt in kit/checks.mjs, kit/night.mjs und
- * kit/wirksamkeit.mjs — Aenderungen dort nachziehen. Die Kit-Werkzeuge sind
+ * kit/effectiveness.mjs — Aenderungen dort nachziehen. Die Kit-Werkzeuge sind
  * bewusst eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440);
  * geteilte Logik wird dupliziert und hier markiert.
  *
@@ -1458,7 +1458,7 @@ function berichtText(stand) {
  *
  * Ohne Befund eine LEERE Zeichenkette, nicht eine mit Kopfzeile: Die Kopfzeile allein
  * waere schon der beruhigende Satz, den das Schweigen bei Unauffaelligkeit ausschliesst
- * (dieselbe Zusage wie `befundText` in kit/aufwand.mjs und kit/wirksamkeit.mjs).
+ * (dieselbe Zusage wie `befundText` in kit/effort.mjs und kit/effectiveness.mjs).
  */
 export function befundText(stand) {
   const befund = Array.isArray(stand?.befund) ? stand.befund : [];
@@ -1782,7 +1782,7 @@ function main(argv) {
     // Hier gilt das Gegenteil der JSON-Regel: Was auf stdout steht, reicht eine
     // Ausgabestelle unveraendert weiter. Ein abgewiesener Aufruf schreibt deshalb nach
     // stderr und laesst stdout leer — sonst stuende eine Fehlermeldung dort, wo ein
-    // Befund hingehoert (wie in kit/wirksamkeit.mjs).
+    // Befund hingehoert (wie in kit/effectiveness.mjs).
     if (rest.length > 0) fail(t("befundOhneArgumente", { arg: rest[0] }));
     aufStdout(befund());
     return 0;

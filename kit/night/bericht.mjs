@@ -463,7 +463,7 @@ function gewackeltZeilen(pakete) {
  * draussen: Sie haben keine Umsetzung, deren Dauer sich an einer Marke messen liesse.
  *
  * Gerechnet wird mit `einheit.dauerMs`, der Rundendauer einschliesslich aller Pruefungen
- * und Korrekturen (Konvention aus `kit/aufwand.mjs`) — nicht mit `zeiten.dauerMs`.
+ * und Korrekturen (Konvention aus `kit/effort.mjs`) — nicht mit `zeiten.dauerMs`.
  * Gerechnet wird hier und nicht in der Datei (E7): Zwei Rechnungen ueber dieselbe Messung
  * driften auseinander.
  */

@@ -141,8 +141,8 @@ test("[1401] beide Release-Skills wiederholen im einen Prueflauf und fragen nach
     const lauf = text.search(LAUF);
     const frage = text.indexOf("Trotzdem fortfahren? (ja/nein)", lauf);
     assert.ok(frage > lauf && frage < text.indexOf(commit), `${wo}: die Rückfrage steht nicht zwischen Prüflauf und Commit`);
-    const kandidaten = text.indexOf("node .claude/kit/wirksamkeit.mjs kandidaten", lauf);
-    assert.ok(kandidaten > lauf && kandidaten < text.indexOf(commit), `${wo}: wirksamkeit.mjs kandidaten fehlt vor dem Commit`);
+    const kandidaten = text.indexOf("node .claude/kit/effectiveness.mjs candidates", lauf);
+    assert.ok(kandidaten > lauf && kandidaten < text.indexOf(commit), `${wo}: effectiveness.mjs candidates fehlt vor dem Commit`);
 
     const schluss = text.slice(text.indexOf(bericht));
     const ende = schluss.search(/\n## /);

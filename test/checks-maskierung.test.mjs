@@ -11,13 +11,13 @@
 // Zeile ohne Sonderzeichen liest sich wie bisher.
 //
 // Der letzte Test faehrt die ganze Strecke: schreiben mit checks.mjs, lesen mit
-// wirksamkeit.mjs. Nur dort zeigt sich, ob die beiden Seiten dieselbe Sprache sprechen —
+// effectiveness.mjs. Nur dort zeigt sich, ob die beiden Seiten dieselbe Sprache sprechen —
 // die Kit-Werkzeuge teilen bewusst kein Modul (#440).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mitRepo, run, datei, ausfuehrungen } from "./helpers/checks-repo.mjs";
-import { auswerten } from "../kit/wirksamkeit.mjs";
+import { auswerten } from "../kit/effectiveness.mjs";
 
 /** Eine Protokollzeile in ihre Spalten zerlegt (die drei hinteren seit Issue #948). */
 function spalten(zeile) {

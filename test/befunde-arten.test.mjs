@@ -10,7 +10,7 @@
 // Die zweite Zusage dieser Datei ist die Ausgabeform: JEDES Kommando gibt JSON auf
 // stdout aus, auch im Leerfall und auch bei einem abgewiesenen Aufruf. Ein
 // Fliesstext-Fehler mittendrin machte aus jedem Fehlerfall einen Parse-Fehler beim
-// Aufrufer — dieselbe Zusage wie in kit/aufwand.mjs und kit/wirksamkeit.mjs.
+// Aufrufer — dieselbe Zusage wie in kit/effort.mjs und kit/effectiveness.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -94,7 +94,7 @@ test("ein unbekanntes Kommando steht als JSON auf stdout und endet ungleich 0", 
 
 test("--help und --version bleiben Textausgaben mit Exit 0", () => {
   // Die Ausnahme von der JSON-Regel, und die einzige: Beide richten sich an einen
-  // Menschen am Terminal, nicht an einen Aufrufer — wie in kit/wirksamkeit.mjs.
+  // Menschen am Terminal, nicht an einen Aufrufer — wie in kit/effectiveness.mjs.
   const hilfe = befunde("--help");
   assert.equal(hilfe.status, 0, hilfe.stderr);
   assert.match(hilfe.stdout, /findings\.mjs/);

@@ -21,8 +21,8 @@ const g = await import(pathToFileURL(join(repoRoot, "kit", "night", "grundlagen.
 test("unter KIT_ROOT liegen die Kommandos im .claude/kit/ des fremden Projekts", () => {
   const kit = join(projekt, ".claude", "kit");
   assert.equal(g.BOARD_PATH, join(kit, "board.mjs"));
-  assert.equal(g.AUFWAND_PATH, join(kit, "aufwand.mjs"));
-  assert.equal(g.WIRKSAMKEIT_PATH, join(kit, "wirksamkeit.mjs"));
+  assert.equal(g.AUFWAND_PATH, join(kit, "effort.mjs"));
+  assert.equal(g.WIRKSAMKEIT_PATH, join(kit, "effectiveness.mjs"));
   assert.equal(g.BEFUNDE_PATH, join(kit, "findings.mjs"));
   assert.equal(g.CHECKS_PATH, join(kit, "checks.mjs"));
 });
@@ -31,8 +31,8 @@ test("NIGHT_NACHBAR_DIR verlegt die Module, nicht die Kommandos (Issue #498)", (
   assert.equal(g.NACHBAR_DIR, nachbarn);
   assert.equal(g.NACHBAR_BOARD, join(nachbarn, "board.mjs"));
   assert.equal(g.NACHBAR_CHECKS, join(nachbarn, "checks.mjs"));
-  assert.equal(g.NACHBAR_AUFWAND, join(nachbarn, "aufwand.mjs"));
-  assert.equal(g.NACHBAR_WIRKSAMKEIT, join(nachbarn, "wirksamkeit.mjs"));
+  assert.equal(g.NACHBAR_AUFWAND, join(nachbarn, "effort.mjs"));
+  assert.equal(g.NACHBAR_WIRKSAMKEIT, join(nachbarn, "effectiveness.mjs"));
   assert.equal(g.NACHBAR_BEFUNDE, join(nachbarn, "findings.mjs"));
 });
 

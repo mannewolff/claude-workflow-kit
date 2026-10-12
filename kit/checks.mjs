@@ -214,7 +214,7 @@ const SUMMARY_DATEI = ".claude/checks-summary.json";
 // Pruefung eines Arbeitspakets — ihn mitzuzaehlen mischte zwei Zaehleinheiten.
 //
 // SYNC: kit/night.mjs nimmt denselben Pfad im Rest-Guard aus (`:(exclude)` in gitReste,
-// dazu der Worktree-Spiegel), kit/wirksamkeit.mjs liest die Datei. Die Kit-Werkzeuge sind
+// dazu der Worktree-Spiegel), kit/effectiveness.mjs liest die Datei. Die Kit-Werkzeuge sind
 // bewusst eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440), geteilte
 // Konstanten werden dupliziert und hier markiert.
 const AUSFUEHRUNGEN_DATEI = ".claude/ausfuehrungen.tsv";
@@ -261,7 +261,7 @@ export function zusammenfassungPfad(root = wurzel()) {
  * Bericht und in der Zusammenfassung.
  *
  * SYNC: dieselbe Funktion steckt in kit/findings.mjs, kit/night.mjs und
- * kit/wirksamkeit.mjs — Aenderungen dort nachziehen. Die Kit-Werkzeuge sind bewusst eigenstaendige
+ * kit/effectiveness.mjs — Aenderungen dort nachziehen. Die Kit-Werkzeuge sind bewusst eigenstaendige
  * Single-File-Tools ohne gemeinsames Modul (#440); geteilte Logik wird dupliziert
  * und hier markiert.
  *
@@ -2848,7 +2848,7 @@ function gueteOhneLauf(laufen, ausgelassen) {
  * Der Backslash wird ZUERST verdoppelt: sonst liesse sich ein echtes `\n` im Kommando
  * nach dem Lesen nicht mehr von einem maskierten Zeilenumbruch unterscheiden.
  *
- * SYNC: kit/wirksamkeit.mjs wandelt in `kommandoLesen` zurueck. Die Kit-Werkzeuge sind
+ * SYNC: kit/effectiveness.mjs wandelt in `kommandoLesen` zurueck. Die Kit-Werkzeuge sind
  * eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440); geteilte Logik wird
  * dupliziert und an beiden Enden markiert.
  */
@@ -2866,7 +2866,7 @@ function kommandoMaskieren(cmd) {
  * Backslash dran — derselbe Grund wie in `kommandoMaskieren`: Nur so bleibt ein `\,`
  * im Pfad von einem maskierten Trenner unterscheidbar.
  *
- * SYNC: kit/wirksamkeit.mjs wandelt beim Lesen zurueck (Issue #1005).
+ * SYNC: kit/effectiveness.mjs wandelt beim Lesen zurueck (Issue #1005).
  */
 function listeMaskieren(eintraege) {
   return eintraege.map((e) => kommandoMaskieren(e).replaceAll(",", String.raw`\,`)).join(",");
@@ -3022,7 +3022,7 @@ function haengenFristMs(env = umgebungsVariablen()) {
 /**
  * Die Zeilen des Ausfuehrungsprotokolls als `{ cmd, ergebnis, dauerMs }` (Issue #1077).
  * Das Kommando wird entmaskiert — die Umkehrung von `kommandoMaskieren`, wie
- * `kommandoLesen` in kit/wirksamkeit.mjs. Fehlt die Datei oder ist sie unlesbar, gibt es
+ * `kommandoLesen` in kit/effectiveness.mjs. Fehlt die Datei oder ist sie unlesbar, gibt es
  * keine Historie: Dann gilt die Vorgabe, und `run` laeuft weiter.
  */
 function ausfuehrungenLesen() {

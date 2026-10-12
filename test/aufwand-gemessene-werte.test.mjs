@@ -1,6 +1,6 @@
 // Die Auswertung rechnet nur mit gemessenen Werten (Issue #821).
 //
-// Vier Stellen in kit/aufwand.mjs haben eine fehlende Messung wie eine gemessene Null
+// Vier Stellen in kit/effort.mjs haben eine fehlende Messung wie eine gemessene Null
 // behandelt oder eine Grundlage mit einer anderen verglichen. Jede verfaelschte eine
 // Kennzahl, ohne dass es auffiel — genau die Klasse Fehler, gegen die die Leitregel der
 // Datei steht: Ein fehlender Messwert bleibt `null` und heisst "nicht gemessen", nie 0.

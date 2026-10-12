@@ -198,7 +198,7 @@ function standAnlegen() {
   const pfad = mkdtempSync(join(tmpdir(), "kitstand-stand-"));
   mkdirSync(join(pfad, KOPIE, "night"), { recursive: true });
   mkdirSync(join(pfad, ".claude", "skills", "issue-review"), { recursive: true });
-  writeFileSync(join(pfad, KOPIE, "aufwand.mjs"), "// Stand\n");
+  writeFileSync(join(pfad, KOPIE, "effort.mjs"), "// Stand\n");
   writeFileSync(join(pfad, KOPIE, "night", "probe.mjs"), "// Teil des Stands\n");
   writeFileSync(join(pfad, ".claude", "skills", "issue-review", "SKILL.md"), "# Skill des Stands\n");
   writeFileSync(join(pfad, ".claude", "CLAUDE-workflow.md"), "# Regeln des Stands\n");
@@ -212,12 +212,12 @@ test("[kitstand-3] Einsetzen ueberschreibt Kit, Skills und Regeltexte, loescht n
   kitstandAbhaengigkeiten({ jetzt: () => JETZT });
   try {
     mkdirSync(join(baum, KOPIE), { recursive: true });
-    writeFileSync(join(baum, KOPIE, "aufwand.mjs"), "// Tagstand\n");
+    writeFileSync(join(baum, KOPIE, "effort.mjs"), "// Tagstand\n");
     writeFileSync(join(baum, KOPIE, "board-ui.mjs"), "// nicht Teil des Stands\n");
 
     kitStandEinsetzen({ commit: COMMIT, pfad }, baum);
 
-    assert.equal(readFileSync(join(baum, KOPIE, "aufwand.mjs"), "utf-8"), "// Stand\n", "ueberschrieben mit dem Stand");
+    assert.equal(readFileSync(join(baum, KOPIE, "effort.mjs"), "utf-8"), "// Stand\n", "ueberschrieben mit dem Stand");
     assert.equal(readFileSync(join(baum, KOPIE, "board-ui.mjs"), "utf-8"), "// nicht Teil des Stands\n",
       "was der Stand nicht kennt, bleibt");
     assert.equal(readFileSync(join(baum, KOPIE, "night", "probe.mjs"), "utf-8"), "// Teil des Stands\n",
@@ -231,7 +231,7 @@ test("[kitstand-3] Einsetzen ueberschreibt Kit, Skills und Regeltexte, loescht n
 
     kitStandFreigeben(baum);
     assert.equal(existsSync(join(baum, KIT_STAND_MARKIERUNG)), false, "die Markierung ist weg");
-    assert.equal(readFileSync(join(baum, KOPIE, "aufwand.mjs"), "utf-8"), "// Stand\n", "die Kopie bleibt auf dem Stand (E5)");
+    assert.equal(readFileSync(join(baum, KOPIE, "effort.mjs"), "utf-8"), "// Stand\n", "die Kopie bleibt auf dem Stand (E5)");
   } finally {
     kitStandFreigeben(baum);
     rmSync(pfad, { recursive: true, force: true });

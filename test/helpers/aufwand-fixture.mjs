@@ -1,4 +1,4 @@
-// Wegwerf-Projekt fuer die Tests von kit/aufwand.mjs (Issue #750, Plan #745).
+// Wegwerf-Projekt fuer die Tests von kit/effort.mjs (Issue #750, Plan #745).
 //
 // Die Auswertung ist eine reine Leseoperation ueber Dateien — kein Board, kein Git.
 // Sie laesst sich deshalb vollstaendig an Fixtures pruefen: ein Temp-Verzeichnis mit
@@ -13,7 +13,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { aufrufen } from "../../kit/aufwand.mjs";
+import { aufrufen } from "../../kit/effort.mjs";
 
 /**
  * Ein Ergebnisstand mit den Feldern, die night.mjs schreibt. Alles ist ueberschreibbar,
@@ -135,7 +135,7 @@ export function aufwand(dir, ...cliArgs) {
 
 /** Erfolgreicher `auswerten`-Aufruf, JSON von stdout geparst. */
 export function auswerten(dir, ...cliArgs) {
-  const res = aufwand(dir, "auswerten", ...cliArgs);
+  const res = aufwand(dir, "evaluate", ...cliArgs);
   if (res.status !== 0) throw new Error(`auswerten schlug fehl (${res.status}): ${res.stderr}${res.stdout}`);
   return JSON.parse(res.stdout);
 }

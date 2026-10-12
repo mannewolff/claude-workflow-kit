@@ -48,8 +48,8 @@ const KIT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const NACHBAR_DIR = process.env.NIGHT_NACHBAR_DIR ? resolve(process.env.NIGHT_NACHBAR_DIR) : KIT_DIR;
 export const NACHBAR_BOARD = join(NACHBAR_DIR, "board.mjs");
 export const NACHBAR_CHECKS = join(NACHBAR_DIR, "checks.mjs");
-export const NACHBAR_AUFWAND = join(NACHBAR_DIR, "aufwand.mjs");
-export const NACHBAR_WIRKSAMKEIT = join(NACHBAR_DIR, "wirksamkeit.mjs");
+export const NACHBAR_AUFWAND = join(NACHBAR_DIR, "effort.mjs");
+export const NACHBAR_WIRKSAMKEIT = join(NACHBAR_DIR, "effectiveness.mjs");
 export const NACHBAR_BEFUNDE = join(NACHBAR_DIR, "findings.mjs");
 
 // Das Budget der Board-Aufrufe im Nachtbetrieb, aus dem Board-Teil adapter (Issue #1217):
@@ -81,12 +81,12 @@ export const BOARD_PATH = kitPfad("board.mjs");
 // nicht importiert, und misst das Projekt, in dem der Runner arbeitet — also derselbe
 // KIT_ROOT-Weg wie beim Board. Die reine Textform kommt dagegen ueber NACHBAR_AUFWAND,
 // genau wie board.mjs zweimal auftaucht: einmal als CLI, einmal als Funktion.
-export const AUFWAND_PATH = kitPfad("aufwand.mjs");
+export const AUFWAND_PATH = kitPfad("effort.mjs");
 
 // Und dasselbe noch einmal fuer die Wirksamkeits-Auswertung (Issue #790): Sie misst mit
 // `.claude/ausfuehrungen.tsv` und `.claude/bewegungen.tsv` ebenfalls das Projekt, in dem
 // der Runner arbeitet, und schreibt ihre Berichte dorthin — also derselbe KIT_ROOT-Weg.
-export const WIRKSAMKEIT_PATH = kitPfad("wirksamkeit.mjs");
+export const WIRKSAMKEIT_PATH = kitPfad("effectiveness.mjs");
 
 // Und dasselbe fuer die Befunde (Issue #804, #806): Nach dem Rueckweg aus dem Worktree
 // ruft die Kette `findings.mjs suggest --kind <a>` je zurueckgegebener Mangel-Art, und
@@ -143,7 +143,7 @@ function t(schluessel, werte = {}) {
  * ueberall dieselbe Liste ergeben — die Artnamen stehen im Nacht-Bericht.
  *
  * SYNC: dieselbe Funktion steckt in kit/checks.mjs, kit/findings.mjs und
- * kit/wirksamkeit.mjs — Aenderungen dort nachziehen. Die Kit-Werkzeuge sind
+ * kit/effectiveness.mjs — Aenderungen dort nachziehen. Die Kit-Werkzeuge sind
  * bewusst eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440);
  * geteilte Logik wird dupliziert und hier markiert.
  *
@@ -1081,7 +1081,7 @@ export function gitResteAusnahmen(cfg = ZUSTAND.config) {
     // Projekt ohne ihn waere es.
     // SYNC: die schreibenden Stellen liegen anderswo — `bewegungen.tsv` in kit/board.mjs,
     // `ausfuehrungen.tsv` in kit/checks.mjs, `wirksamkeit.md` und `wirksamkeit.json` in
-    // kit/wirksamkeit.mjs; die Kit-Werkzeuge sind bewusst eigenstaendige Single-File-Tools
+    // kit/effectiveness.mjs; die Kit-Werkzeuge sind bewusst eigenstaendige Single-File-Tools
     // ohne gemeinsames Modul (#440), geteilte Konstanten werden dupliziert und hier markiert.
     ".claude/bewegungen.tsv", // SYNC: kit/board.mjs schreibt sie
     ".claude/ausfuehrungen.tsv", // SYNC: kit/checks.mjs schreibt sie
@@ -1096,8 +1096,8 @@ export function gitResteAusnahmen(cfg = ZUSTAND.config) {
     // Ausschluss stoppte der Rest-Guard nach jedem roten Lauf in einem Projekt ohne den
     // `.claude/*`-Block hart.
     ".claude/checks-protokolle", // SYNC: kit/checks.mjs schreibt ihn (PROTOKOLL_ORDNER)
-    ".claude/wirksamkeit.md", // SYNC: kit/wirksamkeit.mjs schreibt ihn
-    ".claude/wirksamkeit.json", // SYNC: kit/wirksamkeit.mjs schreibt ihn
+    ".claude/wirksamkeit.md", // SYNC: kit/effectiveness.mjs schreibt ihn
+    ".claude/wirksamkeit.json", // SYNC: kit/effectiveness.mjs schreibt ihn
     // Die Befunde der Modell-Pruefungen (Plan #797; Issue #803) legen vier weitere Dateien
     // an: das Protokoll `befunde.tsv` (`befunde buchen` schreibt es, `befundeZurueck` holt
     // es aus dem Worktree zurueck), die Nullpunkte `befunde-vorschlaege.json` und die

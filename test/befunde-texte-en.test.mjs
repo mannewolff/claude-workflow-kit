@@ -13,7 +13,7 @@
 // aus dem Protokoll (`ohne-bereich`, `ohne-zuordnung`), die Schwellen-
 // schluessel und das Praefix `Verschoben nach ` der Board-Verlaufszeile, das der Adapter liefert.
 //
-// Das Paket #1453 ist in drei Teile geschnitten. Der erste (#1497) deckt kit/wirksamkeit.mjs
+// Das Paket #1453 ist in drei Teile geschnitten. Der erste (#1497) deckt kit/effectiveness.mjs
 // vollstaendig, der zweite (#1498) kit/befunde.mjs (seit #1559 kit/findings.mjs), der dritte (#1499) kit/worktree.mjs.
 // Fuer befunde bleiben dazu Vertrag (E14): die Artnamen, die Marken, die Formwoerter des
 // Fundblocks (`Gegenprobe:`, `— geprueft, bestaetigt`, `— nicht geprueft`, `Art:`), die
@@ -27,7 +27,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { TEXTE as WIRKSAMKEIT_TEXTE, befundText, kandidatenText, zahlform } from "../kit/wirksamkeit.mjs";
+import { TEXTE as WIRKSAMKEIT_TEXTE, befundText, kandidatenText, zahlform } from "../kit/effectiveness.mjs";
 import { TEXTE as BEFUNDE_TEXTE, aufrufen as befundeAufrufen } from "../kit/findings.mjs";
 import { TEXTE as WORKTREE_TEXTE } from "../kit/worktree.mjs";
 import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
@@ -38,7 +38,7 @@ const KIT = join(dirname(fileURLToPath(import.meta.url)), "..", "kit");
 
 afterEach(() => spracheFestlegen(null));
 
-// --- kit/wirksamkeit.mjs (Issue #1497) --------------------------------------------------
+// --- kit/effectiveness.mjs (Issue #1497) --------------------------------------------------
 
 /**
  * Ein Stand, der moeglichst viele Texte ausloest: eine nie beanstandete Pruefung ueber der
@@ -74,7 +74,7 @@ function vollerStand() {
   };
 }
 
-test("[1497] die Texttabelle von wirksamkeit.mjs hat in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
+test("[1497] die Texttabelle von effectiveness.mjs hat in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
   assert.deepEqual(pruefeParitaet(WIRKSAMKEIT_TEXTE), []);
   assert.ok(Object.keys(WIRKSAMKEIT_TEXTE.de).length > 60, "die Tabelle traegt die Texte des Moduls");
 });
@@ -83,8 +83,8 @@ test("[1497] die englische Haelfte der Tabelle traegt keine deutschen Woerter", 
   assert.deepEqual(deutschImEnglischen(WIRKSAMKEIT_TEXTE), []);
 });
 
-test("[1497] jeder deutsche Text von wirksamkeit.mjs geht ueber den Texthelfer", () => {
-  assert.deepEqual(deutschAmHelferVorbei("kit/wirksamkeit.mjs", WIRKSAMKEIT_TEXTE, ["nicht gelaufen", "Verschoben nach ", "ohne-bereich", "ohne-zuordnung"]), []);
+test("[1497] jeder deutsche Text von effectiveness.mjs geht ueber den Texthelfer", () => {
+  assert.deepEqual(deutschAmHelferVorbei("kit/effectiveness.mjs", WIRKSAMKEIT_TEXTE, ["nicht gelaufen", "Verschoben nach ", "ohne-bereich", "ohne-zuordnung"]), []);
 });
 
 test("[1497] englisch: Bericht, Befund und Reparaturkandidaten", () => {
@@ -139,7 +139,7 @@ test("[1497] englisch: Hilfe und Fehler nennen die englischen Befehlsnamen", () 
   mitProjekt({}, (dir) => {
     const hilfe = wirksamkeit(dir, "--help").stdout;
     assert.match(hilfe, /— Effectiveness of the checks/);
-    assert.match(hilfe, /node wirksamkeit\.mjs evaluate \[--window <days>\]/);
+    assert.match(hilfe, /node effectiveness\.mjs evaluate \[--window <days>\]/);
     assert.match(hilfe, /^candidates /m);
     assert.match(wirksamkeit(dir, "finding", "x").stderr, /^Error: 'finding' takes no arguments, got 'x'\.$/m);
     assert.match(wirksamkeit(dir, "candidates", "x").stderr, /^Error: 'candidates' takes no arguments, got 'x'\.$/m);
@@ -192,17 +192,17 @@ test("[1497] ein englisches Projekt sieht keine deutsche Meldung — echter Proz
   mitProjekt({ ...stand, config: { ...stand.config, language: "en", issueTracker: "local" } }, (dir) => {
     const kit = join(dir, ".claude", "kit");
     mkdirSync(kit, { recursive: true });
-    copyFileSync(join(KIT, "wirksamkeit.mjs"), join(kit, "wirksamkeit.mjs"));
+    copyFileSync(join(KIT, "effectiveness.mjs"), join(kit, "effectiveness.mjs"));
     cpSync(join(KIT, "board"), join(kit, "board"), { recursive: true });
     cpSync(join(KIT, "texte"), join(kit, "texte"), { recursive: true });
 
-    const cli = (...args) => spawnSync(process.execPath, [join(kit, "wirksamkeit.mjs"), ...args], { cwd: dir, encoding: "utf-8" });
-    const auswertung = cli("auswerten");
+    const cli = (...args) => spawnSync(process.execPath, [join(kit, "effectiveness.mjs"), ...args], { cwd: dir, encoding: "utf-8" });
+    const auswertung = cli("evaluate");
     assert.equal(auswertung.status, 0, auswertung.stderr);
     const ausgaben = [
-      freitexte(JSON.parse(auswertung.stdout)).join("\n"), bericht(dir), cli("befund").stdout, cli("kandidaten").stdout,
-      cli("--help").stdout, cli("befund", "x").stderr, cli("kandidaten", "x").stderr, cli("unbekannt").stderr,
-      cli("auswerten", "--fenster", "x").stdout, cli("auswerten", "--zuviel").stdout,
+      freitexte(JSON.parse(auswertung.stdout)).join("\n"), bericht(dir), cli("finding").stdout, cli("candidates").stdout,
+      cli("--help").stdout, cli("finding", "x").stderr, cli("candidates", "x").stderr, cli("unbekannt").stderr,
+      cli("evaluate", "--window", "x").stdout, cli("evaluate", "--zuviel").stdout,
     ];
     assert.match(bericht(dir), /^# Effectiveness of the checks$/m, "ohne Repo-Kontext laeuft der Bericht englisch");
     const alles = ausgaben.join("\n");

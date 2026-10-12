@@ -1,7 +1,7 @@
 // Gleichlauf der beiden `auskunftArt`-Fassungen (Issue #1027, Plan #1015, E11/E13).
 //
-// kit/aufwand.mjs traegt eine Kopie des Klassifizierers aus kit/night.mjs, damit
-// `aufwand.mjs auskunft` Transkripte mit derselben Regel misst wie der Runner den
+// kit/effort.mjs traegt eine Kopie des Klassifizierers aus kit/night.mjs, damit
+// `effort.mjs info` Transkripte mit derselben Regel misst wie der Runner den
 // Live-Strom. Dieser Test laesst beide Fassungen ueber dieselben Fixtures laufen und
 // zeigt, dass eine abweichende Kopie auffaellt. Er steht unter night-*, weil die Gruppe
 // `night-a*` bei Aenderungen an beiden Dateien laeuft (Bereiche aufwand und nacht-einstieg).
@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { auskunftArt as auskunftArtAufwand } from "../kit/aufwand.mjs";
+import { auskunftArt as auskunftArtAufwand } from "../kit/effort.mjs";
 import { auskunftArt as auskunftArtNight, TOOL_RESULTS_PFAD } from "../kit/night/session.mjs";
 
 const tr = `/Users/x/.claude/projects/-p/0f0e/${TOOL_RESULTS_PFAD}b0x1.txt`;
@@ -48,7 +48,7 @@ function artAbweichungen(kopie) {
   return ART_FIXTURES.filter((b) => kopie(b) !== auskunftArtNight(b));
 }
 
-test("[night-1027] Gleichlauf: auskunftArt in aufwand.mjs stimmt auf allen Fixtures mit night.mjs ueberein", () => {
+test("[night-1027] Gleichlauf: auskunftArt in effort.mjs stimmt auf allen Fixtures mit night.mjs ueberein", () => {
   assert.deepEqual(artAbweichungen(auskunftArtAufwand), []);
   // Die Fixtures decken alle drei Antworten ab — sonst bewiese der Gleichlauf wenig.
   assert.deepEqual(new Set(ART_FIXTURES.map(auskunftArtNight)), new Set(["rueckfrage", "aufbereitung", null]));

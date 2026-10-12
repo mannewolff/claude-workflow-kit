@@ -247,7 +247,7 @@ test("[wirksamkeit-1005] scheitert checks.mjs bereiche, endet die Auswertung mit
     zeilen: [lauf({ bereiche: ["kern"], dauerMs: 60_000 })],
     zuschnitt: { exit: 3, stderr: "Fehler: checkAreas kaputt" },
   }, (dir) => {
-    const res = wirksamkeit(dir, "auswerten");
+    const res = wirksamkeit(dir, "evaluate");
     assert.equal(res.status, 0, `Exit ${res.status}: ${res.stderr}`);
     const b = JSON.parse(res.stdout).bereiche;
 
@@ -266,7 +266,7 @@ test("[wirksamkeit-1005] scheitert checks.mjs bereiche, endet die Auswertung mit
 
 test("[wirksamkeit-1005] fehlt checks.mjs ganz, ist das ebenfalls nur ein Vermerk", () => {
   mitProjekt({ zeilen: [] }, (dir) => {
-    const res = wirksamkeit(dir, "auswerten");
+    const res = wirksamkeit(dir, "evaluate");
     assert.equal(res.status, 0);
     assert.ok(JSON.parse(res.stdout).bereiche.vermerk, "der Vermerk fehlt");
   });

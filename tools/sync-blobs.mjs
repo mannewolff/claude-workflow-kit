@@ -99,12 +99,14 @@ const BLOBS = [
   { constName: "PREISE_MJS_B64", source: join(root, "kit", "preise.mjs") },
   // Aufwands-Auswertung (Issue #750). Eigene Datei statt Anbau an night.mjs: /push-main
   // muss den Befund lesen koennen, ohne den Nacht-Runner zu starten. Wie board.mjs laedt
-  // sie preise.mjs als Nachbardatei und kommt ohne sie aus.
-  { constName: "AUFWAND_MJS_B64", source: join(root, "kit", "aufwand.mjs") },
+  // sie preise.mjs als Nachbardatei und kommt ohne sie aus. Seit Issue #1560 traegt die
+  // englische Datei den Code (Plan #1548 E6).
+  { constName: "EFFORT_MJS_B64", source: join(root, "kit", "effort.mjs") },
   // Wirksamkeits-Auswertung (Issue #787). Eigenes Werkzeug nach dem Muster von
-  // aufwand.mjs: eine reine Leseoperation ueber das Ausfuehrungsprotokoll von
-  // checks.mjs (#785), an Fixtures vollstaendig pruefbar.
-  { constName: "WIRKSAMKEIT_MJS_B64", source: join(root, "kit", "wirksamkeit.mjs") },
+  // effort.mjs: eine reine Leseoperation ueber das Ausfuehrungsprotokoll von
+  // checks.mjs (#785), an Fixtures vollstaendig pruefbar. Seit Issue #1560 unter dem
+  // englischen Namen.
+  { constName: "EFFECTIVENESS_MJS_B64", source: join(root, "kit", "effectiveness.mjs") },
   // Form und Arten der Funde (Issue #799). Eigenes Werkzeug nach demselben Muster:
   // Der Regeltext verweist fuer die Artenliste auf `findings kinds`, und die
   // Pruef-Skills setzen sie ueber dieses Kommando in ihre Prompts ein — ohne
@@ -116,10 +118,6 @@ const BLOBS = [
   // Nachbardatei, damit es genau einen Weg gibt, einen Worktree anzulegen. Ohne
   // Auslieferung riefen `/push-main` und `/merge-production` in jedem Zielprojekt ins Leere.
   { constName: "WORKTREE_MJS_B64", source: join(root, "kit", "worktree.mjs") },
-  // Die englischen Einstiege (Issue #1462, Plan #1420 E18): je ein Aufruf der deutschen
-  // Quelle als Nachbardatei. settings.mjs fehlt, weil einstellungen.mjs Download ist.
-  { constName: "EFFORT_MJS_B64", source: join(root, "kit", "effort.mjs") },
-  { constName: "EFFECTIVENESS_MJS_B64", source: join(root, "kit", "effectiveness.mjs") },
   // Hook und Gate (Issue #473). gate.mjs gehoert bewusst NICHT in STAMPED: Die
   // Liste steuert Versions-Stempel und die Dogfooding-Kopie nach .claude/kit/,
   // und dort soll das Gate gerade nicht liegen (Plan #467, A2).
@@ -149,16 +147,11 @@ const BLOBS = [
 // Die Liste steuert zugleich die Dogfooding-Kopie unter .claude/kit/ (weiter unten):
 // Ein Werkzeug, das hier fehlt, entstuende dort nie — und die Skills dieses Repos
 // riefen ein Kommando auf, das im eigenen Klon nicht liegt (Issue #425).
-const STAMPED = ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "findings.mjs", "worktree.mjs"];
+const STAMPED = ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "effort.mjs", "effectiveness.mjs", "findings.mjs", "worktree.mjs"];
 
 // Download-Dateien (Issue #676, Plan #674 E1): gestempelt wie die Kit-Werkzeuge, aber ohne
 // Kopie nach .claude/kit/ — sie arbeiten ueber mehrere Projekte und gehoeren in keines.
 const STAMPED_DOWNLOADS = ["einstellungen.mjs"];
-
-// Die englischen Einstiege (Issue #1462, Plan #1420 E18): kopiert nach .claude/kit/ wie die
-// Werkzeuge, aber ungestempelt — sie tragen keine KIT_VERSION, `--version` beantwortet die
-// Quelle. settings.mjs gehoert wie einstellungen.mjs nicht in die Kopie.
-const EINSTIEGE = ["effort.mjs", "effectiveness.mjs"];
 
 // Teilverzeichnisse unter kit/ (Issue #1209, Plan #1199 E19): kopiert nach .claude/kit/<teil>/
 // wie die Werkzeuge, aber ungestempelt — KIT_VERSION steht nur im Einstieg. In STAMPED
@@ -308,7 +301,7 @@ const laufStandZeile = laufStand
   : null;
 
 if (existsSync(LOCAL_KIT) && !laufStand) {
-  for (const datei of [...STAMPED, ...EINSTIEGE]) {
+  for (const datei of STAMPED) {
     const ziel = join(LOCAL_KIT, datei);
     const soll = readFileSync(join(root, "kit", datei), "utf-8");
     const ist = existsSync(ziel) ? readFileSync(ziel, "utf-8") : null;

@@ -49,7 +49,7 @@ test("[aufwand-2] mit Befund nennt die erste Zeile Auswertungszeitpunkt und juen
   mitProjekt({ laeufe: [mitWerkzeugBefund(), mitWerkzeugBefund("2026-09-02-100000")] }, (dir) => {
     auswerten(dir);
 
-    const res = aufwand(dir, "befund");
+    const res = aufwand(dir, "finding");
 
     assert.equal(res.status, 0, res.stderr);
     const [kopf, ...rest] = res.stdout.split("\n");
@@ -63,7 +63,7 @@ test("[aufwand-2] ohne Befund bleibt die Ausgabe byteweise leer — auch die Zei
   mitProjekt({ laeufe: [ohneBefund()] }, (dir) => {
     auswerten(dir);
 
-    const res = aufwand(dir, "befund");
+    const res = aufwand(dir, "finding");
 
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.stdout, "", `erwartet war eine leere Ausgabe, kam: ${JSON.stringify(res.stdout)}`);
@@ -73,7 +73,7 @@ test("[aufwand-2] ohne Befund bleibt die Ausgabe byteweise leer — auch die Zei
 
 test("[aufwand-2] ohne aufwand.json bleibt die Ausgabe leer und der Exit-Code 0", () => {
   mitProjekt({ laeufe: [mitWerkzeugBefund()] }, (dir) => {
-    const res = aufwand(dir, "befund");
+    const res = aufwand(dir, "finding");
 
     assert.equal(res.status, 0, `ohne Datei darf der Befund nichts aufhalten: ${res.stderr}`);
     assert.equal(res.stdout, "");
@@ -86,7 +86,7 @@ test("[aufwand-2] mit kaputter aufwand.json bleibt die Ausgabe leer und der Exit
     auswerten(dir);
     writeFileSync(standPfad(dir), "{ das ist kein JSON", "utf-8");
 
-    const res = aufwand(dir, "befund");
+    const res = aufwand(dir, "finding");
 
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.stdout, "");
@@ -99,7 +99,7 @@ test("[aufwand-2] eine aufwand.json ohne Befundfeld bleibt stumm", () => {
   mitProjekt({ laeufe: [mitWerkzeugBefund()] }, (dir) => {
     writeFileSync(standPfad(dir), JSON.stringify({ erzeugtAm: "2026-09-01T00:00:00.000Z" }), "utf-8");
 
-    const res = aufwand(dir, "befund");
+    const res = aufwand(dir, "finding");
 
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.stdout, "");
@@ -111,7 +111,7 @@ test("[aufwand-2] eine neuere Auswertung ohne Befund loescht den alten Stand", (
   // heute stehen bleiben — er saehe aus wie der Befund von heute.
   mitProjekt({ laeufe: [mitWerkzeugBefund()] }, (dir) => {
     auswerten(dir);
-    assert.notEqual(aufwand(dir, "befund").stdout, "", "der erste Lauf haette einen Befund haben muessen");
+    assert.notEqual(aufwand(dir, "finding").stdout, "", "der erste Lauf haette einen Befund haben muessen");
 
     // Der auffaellige Stand verschwindet, ein unauffaelliger tritt an seine Stelle.
     rmSync(`${dir}/.claude/night-run-2026-09-01-100000.json`);
@@ -119,7 +119,7 @@ test("[aufwand-2] eine neuere Auswertung ohne Befund loescht den alten Stand", (
       JSON.stringify(ohneBefund("2026-09-02-100000").daten, null, 2) + "\n", "utf-8");
     auswerten(dir);
 
-    const res = aufwand(dir, "befund");
+    const res = aufwand(dir, "finding");
     assert.equal(res.status, 0);
     assert.equal(res.stdout, "", "der alte Befund steht noch in aufwand.json");
   });
@@ -132,7 +132,7 @@ test("[aufwand-2] der Befundblock nennt jede ueberschrittene Schwelle in Worten,
   mitProjekt({ laeufe: [l] }, (dir) => {
     auswerten(dir);
 
-    const { stdout } = aufwand(dir, "befund");
+    const { stdout } = aufwand(dir, "finding");
 
     assert.match(stdout, /Werkzeugarbeit/);
     assert.match(stdout, /Eingrenzung/);
@@ -149,7 +149,7 @@ test("[aufwand-2] befund liest allein aufwand.json — ohne Config und ohne Erge
     auswerten(dir);
     rmSync(`${dir}/.claude/night-run-2026-09-01-100000.json`);
 
-    const res = aufwand(dir, "befund");
+    const res = aufwand(dir, "finding");
 
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, /^Auswertung vom /);
@@ -158,10 +158,10 @@ test("[aufwand-2] befund liest allein aufwand.json — ohne Config und ohne Erge
 
 test("[aufwand-2] befund weist ein ueberzaehliges Argument ab, ohne etwas auszugeben", () => {
   mitProjekt({ laeufe: [] }, (dir) => {
-    const res = aufwand(dir, "befund", "--laeufe", "3");
+    const res = aufwand(dir, "finding", "--runs", "3");
 
     assert.notEqual(res.status, 0, "ein unbekanntes Argument gehoert abgewiesen");
     assert.equal(res.stdout, "", "auf stdout gehoert hier kein Text, den ein Skill weiterreicht");
-    assert.match(res.stderr, /--laeufe/);
+    assert.match(res.stderr, /--runs/);
   });
 });

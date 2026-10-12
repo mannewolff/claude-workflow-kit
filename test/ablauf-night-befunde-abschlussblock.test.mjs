@@ -123,8 +123,8 @@ function setupProjekt(praefix, {
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
   cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
-  if (aufwandStub !== null) writeFileSync(join(dir, ".claude", "kit", "aufwand.mjs"), aufwandStub);
-  if (wirksamkeitStub !== null) writeFileSync(join(dir, ".claude", "kit", "wirksamkeit.mjs"), wirksamkeitStub);
+  if (aufwandStub !== null) writeFileSync(join(dir, ".claude", "kit", "effort.mjs"), aufwandStub);
+  if (wirksamkeitStub !== null) writeFileSync(join(dir, ".claude", "kit", "effectiveness.mjs"), wirksamkeitStub);
   if (befundeStub !== null) writeFileSync(join(dir, ".claude", "kit", "findings.mjs"), befundeStub);
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"],

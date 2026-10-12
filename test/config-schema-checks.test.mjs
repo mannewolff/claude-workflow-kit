@@ -728,7 +728,7 @@ test("pruefLauf: die ausgelieferte Vorlage traegt den Block mit den Vorgabewerte
 
 test("wirksamkeit.quoteSchwelle: die Beschreibung nennt die Zaehlweise je Karte", () => {
   // Gezaehlt werden Ruecklaufbewegungen je Karte mit Eintritt nach In review, nicht
-  // der Anteil der Arbeitspakete (kit/wirksamkeit.mjs, "Zaehlweise der Quote"). Die
+  // der Anteil der Arbeitspakete (kit/effectiveness.mjs, "Zaehlweise der Quote"). Die
   // Beschreibung war falsch, nicht der Code.
   const text = schema.properties.wirksamkeit.properties.quoteSchwelle.description;
   assert.match(text, /Rücklaufbewegungen je Karte/, "die Zaehlweise je Karte steht nicht in der Beschreibung");

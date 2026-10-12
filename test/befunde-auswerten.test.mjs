@@ -5,7 +5,7 @@
 // `.claude/befunde.json` (fuer die Ausgabestellen). `befund` liest allein den Stand und
 // gibt den Befundblock als Text aus.
 //
-// Dieselben zwei Zusagen wie bei kit/aufwand.mjs und kit/wirksamkeit.mjs: Exit 0 IN
+// Dieselben zwei Zusagen wie bei kit/effort.mjs und kit/effectiveness.mjs: Exit 0 IN
 // JEDEM FALL — auch ohne Datei, mit leerer und mit kaputter Datei, denn der Befund ist
 // kein Gate — und byteweise LEERE Ausgabe ohne Befund, ohne Ueberschrift und ohne
 // beruhigenden Satz.

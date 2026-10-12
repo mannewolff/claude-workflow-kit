@@ -184,7 +184,7 @@ test("[aufwand-1339] --laeufe begrenzt auch die Verteilung", () => {
     lauf("2026-10-02-100000", { einheiten: [mitZeiten(2, 60_000, 30_000, 20_000)] }),
   ];
   mitProjekt({ laeufe }, (dir) => {
-    const g = gruppe(auswerten(dir, "--laeufe", "1"), "implementierung", "mittel");
+    const g = gruppe(auswerten(dir, "--runs", "1"), "implementierung", "mittel");
     assert.equal(g.dauerMs.anzahl, 1);
     assert.equal(g.dauerMs.median, 60_000);
   });

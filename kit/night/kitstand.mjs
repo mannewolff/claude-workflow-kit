@@ -661,8 +661,8 @@ function gitIm(repoRoot, gitArgs) {
 /**
  * Ob ein Eintrag direkt unter `.claude/` in der Hauptkopie zurueckbleibt: die Protokolle
  * und Auswertungen des Laufs, nicht die Werkzeuge. Entschieden wird am Namen des Eintrags
- * auf der obersten Ebene (Issue #824, night-68) — `.claude/kit/aufwand.mjs` und
- * `.claude/kit/wirksamkeit.mjs` kommen darum mit, `.claude/aufwand.json` nicht.
+ * auf der obersten Ebene (Issue #824, night-68) — `.claude/kit/effort.mjs` und
+ * `.claude/kit/effectiveness.mjs` kommen darum mit, `.claude/aufwand.json` nicht.
  */
 function bleibtInHauptkopie(name) {
   return name.startsWith("night-run-")

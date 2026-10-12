@@ -1,4 +1,4 @@
-// Wegwerf-Projekt fuer die Tests von kit/wirksamkeit.mjs (Issue #787, Plan #782).
+// Wegwerf-Projekt fuer die Tests von kit/effectiveness.mjs (Issue #787, Plan #782).
 //
 // Die Auswertung ist eine reine Leseoperation ueber Dateien — kein Board, kein Git.
 // Sie laesst sich deshalb vollstaendig an Fixtures pruefen: ein Temp-Verzeichnis mit
@@ -20,7 +20,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { aufrufen } from "../../kit/wirksamkeit.mjs";
+import { aufrufen } from "../../kit/effectiveness.mjs";
 
 const TAG_MS = 24 * 60 * 60 * 1000;
 
@@ -179,7 +179,7 @@ export function wirksamkeit(dir, ...cliArgs) {
 
 /** Erfolgreicher `auswerten`-Aufruf, JSON von stdout geparst. */
 export function auswerten(dir, ...cliArgs) {
-  const res = wirksamkeit(dir, "auswerten", ...cliArgs);
+  const res = wirksamkeit(dir, "evaluate", ...cliArgs);
   if (res.status !== 0) throw new Error(`auswerten schlug fehl (${res.status}): ${res.stderr}${res.stdout}`);
   return JSON.parse(res.stdout);
 }

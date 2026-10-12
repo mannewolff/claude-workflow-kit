@@ -68,7 +68,7 @@ vorige Zusammenfassung. Dann, in dieser Reihenfolge:
 2. Die Reparaturkandidaten holen und nennen (Plan #1395, E15):
 
    ```bash
-   node .claude/kit/wirksamkeit.mjs kandidaten
+   node .claude/kit/effectiveness.mjs candidates
    ```
 
    Es liest `.claude/wirksamkeit.json` der Hauptkopie und gibt je Kandidat eine Zeile
@@ -79,8 +79,8 @@ vorige Zusammenfassung. Dann, in dieser Reihenfolge:
    der Worktree wird abgebaut.
 
 `checks.mjs run` endet in diesem Fall mit Exitcode 0 — die Prüfung ist bestanden, die
-Entscheidung liegt beim Menschen. **Ohne Wackler** ruft der Skill `wirksamkeit.mjs
-kandidaten` ebenfalls, an derselben Stelle: Reparaturkandidaten ohne Wackler werden genannt,
+Entscheidung liegt beim Menschen. **Ohne Wackler** ruft der Skill `effectiveness.mjs
+candidates` ebenfalls, an derselben Stelle: Reparaturkandidaten ohne Wackler werden genannt,
 halten aber nicht an.
 
 Warum überhaupt noch ein Lauf, wenn `/implement-ready` und `/local-check` je Issue schon

@@ -1,8 +1,8 @@
 // Ablauf-Pruefung: Ob ein englisches Projekt ohne Repo-Kontext nur englische Meldungen sieht, belegt nur ein echter Prozess aus den verteilten Dateien.
 //
-// Meldungen zweisprachig: kit/aufwand.mjs und kit/preise.mjs (Issue #1452, Plan #1420 E13/E14).
+// Meldungen zweisprachig: kit/effort.mjs und kit/preise.mjs (Issue #1452, Plan #1420 E13/E14).
 //
-// aufwand.mjs traegt seine Texte in einer Tabelle `{ de, en }` und gibt sie ueber den
+// effort.mjs traegt seine Texte in einer Tabelle `{ de, en }` und gibt sie ueber den
 // Texthelfer aus kit/board/namen.mjs aus. Hier steht, was das Paket zusaetzlich zu den
 // deutschen Wortlaut-Tests verlangt:
 //
@@ -22,7 +22,7 @@ import { mkdirSync, copyFileSync, cpSync, readFileSync, writeFileSync } from "no
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { TEXTE, aufrufen, befundText, berichtText, zahlform } from "../kit/aufwand.mjs";
+import { TEXTE, aufrufen, befundText, berichtText, zahlform } from "../kit/effort.mjs";
 import * as preise from "../kit/preise.mjs";
 import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
 import { mitProjekt, lauf, einheit, pruefstand, bericht } from "./helpers/aufwand-fixture.mjs";
@@ -56,7 +56,7 @@ function vollerStand() {
   ];
 }
 
-test("[1452] die Texttabelle von aufwand.mjs hat in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
+test("[1452] die Texttabelle von effort.mjs hat in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
   assert.deepEqual(pruefeParitaet(TEXTE), []);
   assert.ok(Object.keys(TEXTE.de).length > 50, "die Tabelle traegt die Texte des Moduls");
 });
@@ -71,7 +71,7 @@ test("[1452] preise.mjs gibt nichts an Menschen aus: keine Konsole, keine Texte"
 test("[1452] englische Stichproben: Bericht, Zahlform und Befund", () => {
   spracheFestlegen("en");
   mitProjekt({ laeufe: vollerStand() }, (dir) => {
-    const res = aufrufen(["auswerten"], { cwd: dir, jetzt: () => new Date("2026-09-03T08:00:00Z") });
+    const res = aufrufen(["evaluate"], { cwd: dir, jetzt: () => new Date("2026-09-03T08:00:00Z") });
     assert.equal(res.status, 0, res.stderr);
     const md = bericht(dir);
     assert.match(md, /^# Process effort$/m);
@@ -98,24 +98,24 @@ test("[1452] englische Stichproben: leerer Bericht, Auskunft, Hilfe und Fehler",
   assert.match(berichtText({ laeufe: { einbezogen: 0, unlesbar: [] }, erzeugtAm: "x", dauerMs: 3 }),
     /There is no result state — nothing to evaluate\./);
   mitProjekt({ laeufe: [] }, (dir) => {
-    const auskunft = aufrufen(["auskunft", "fehlt.jsonl"], { cwd: dir });
+    const auskunft = aufrufen(["info", "fehlt.jsonl"], { cwd: dir });
     assert.equal(auskunft.status, 1);
     assert.match(auskunft.stdout, /^fehlt\.jsonl: not readable \(ENOENT\) — not measured$/m);
     assert.match(auskunft.stdout, /^Total: not measured \(1 not measured\)$/m);
 
     assert.match(aufrufen(["--help"], { cwd: dir }).stdout, /Process effort/);
-    assert.match(aufrufen(["befund", "--zuviel"], { cwd: dir }).stderr, /^Error: 'befund' takes no arguments, got '--zuviel'\.$/m);
+    assert.match(aufrufen(["finding", "--zuviel"], { cwd: dir }).stderr, /^Error: 'finding' takes no arguments, got '--zuviel'\.$/m);
     assert.match(aufrufen(["gibtsnicht"], { cwd: dir }).stderr, /^Error: Unknown command: 'gibtsnicht'/m);
-    const falsch = JSON.parse(aufrufen(["auswerten", "--laeufe", "0"], { cwd: dir }).stdout);
+    const falsch = JSON.parse(aufrufen(["evaluate", "--runs", "0"], { cwd: dir }).stdout);
     assert.deepEqual(Object.keys(falsch), ["ok", "fehler"], "Feldnamen der Fehlerausgabe bleiben Vertrag");
-    assert.match(falsch.fehler, /^--laeufe expects a whole number greater than zero/);
+    assert.match(falsch.fehler, /^--runs expects a whole number greater than zero/);
   });
 });
 
 test("[1452] die deutsche Vorgabe bleibt: ohne Spracheinstellung spricht der Bericht Deutsch", () => {
   spracheFestlegen("de");
   mitProjekt({ laeufe: vollerStand() }, (dir) => {
-    assert.equal(aufrufen(["auswerten"], { cwd: dir }).status, 0);
+    assert.equal(aufrufen(["evaluate"], { cwd: dir }).status, 0);
     assert.match(bericht(dir), /^# Aufwand des Prozesses$/m);
   });
   assert.equal(zahlform(12345.5, 1), "12.345,5");
@@ -155,20 +155,20 @@ test("[1452] ein englisches Projekt sieht keine deutsche Meldung — echter Proz
   mitProjekt({ laeufe: vollerStand(), config: { language: "en" } }, (dir) => {
     const kit = join(dir, ".claude", "kit");
     mkdirSync(kit, { recursive: true });
-    copyFileSync(join(KIT, "aufwand.mjs"), join(kit, "aufwand.mjs"));
+    copyFileSync(join(KIT, "effort.mjs"), join(kit, "effort.mjs"));
     copyFileSync(join(KIT, "preise.mjs"), join(kit, "preise.mjs"));
     cpSync(join(KIT, "board"), join(kit, "board"), { recursive: true });
     cpSync(join(KIT, "texte"), join(kit, "texte"), { recursive: true });
     writeFileSync(join(dir, "kaputt.jsonl"), "kein json\n", "utf-8");
 
-    const aufwand = join(kit, "aufwand.mjs");
+    const aufwand = join(kit, "effort.mjs");
     const cli = (...args) => spawnSync(process.execPath, [aufwand, ...args], { cwd: dir, encoding: "utf-8" });
-    const auswerten = cli("auswerten");
+    const auswerten = cli("evaluate");
     assert.equal(auswerten.status, 0, auswerten.stderr);
     const ausgaben = [
-      freitexte(JSON.parse(auswerten.stdout)).join("\n"), bericht(dir), cli("befund").stdout, cli("--help").stdout,
-      cli("auskunft", "fehlt.jsonl", "kaputt.jsonl").stdout, cli("auskunft").stderr,
-      cli("befund", "x").stderr, cli("unbekannt").stderr, cli("auswerten", "--laeufe", "x").stdout,
+      freitexte(JSON.parse(auswerten.stdout)).join("\n"), bericht(dir), cli("finding").stdout, cli("--help").stdout,
+      cli("info", "fehlt.jsonl", "kaputt.jsonl").stdout, cli("info").stderr,
+      cli("finding", "x").stderr, cli("unbekannt").stderr, cli("evaluate", "--runs", "x").stdout,
     ];
     assert.match(bericht(dir), /^# Process effort$/m, "ohne Repo-Kontext laeuft der Bericht englisch");
     const alles = ausgaben.join("\n");

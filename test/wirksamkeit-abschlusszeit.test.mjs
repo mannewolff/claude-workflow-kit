@@ -166,7 +166,7 @@ test("[wirksamkeit-951] eine Zeile ausserhalb des Fensters zaehlt in keinem der 
       veroeffentlichung({ dauerMs: 20_000, tage: 1 }),
     ],
   }, (dir) => {
-    const a = auswerten(dir, "--fenster", "7").abschlusszeit;
+    const a = auswerten(dir, "--window", "7").abschlusszeit;
 
     assert.equal(a.karten, 1, "die 40 Tage alte Karte liegt ausserhalb");
     assert.equal(a.mittelMs, 10_000);

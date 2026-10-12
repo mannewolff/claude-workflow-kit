@@ -8,6 +8,10 @@
 // night, checks, befunde, worktree und wirksamkeit bekommen englische Namen dazu. Die alten
 // Namen bleiben gueltig — Hooks, Sandbox-Ausnahmen und Projekte nennen sie.
 //
+// Seit Plan #1548 (E6-E8) entfallen die deutschen Dateien befunde.mjs (Issue #1559), aufwand.mjs
+// und wirksamkeit.mjs (Issue #1560): Der Code steht in der englischen Datei, und ihre deutschen
+// Namen werden mit Hinweis auf den englischen abgewiesen.
+//
 // Geprueft wird die Gleichheit mit dem deutschen Aufruf, nicht ein bestimmtes Ergebnis.
 // Wo ein Aufruf etwas veraendern wuerde, vergleicht der Test eine Abweisung, die erst NACH
 // dem Einlesen faellt: Ein unbekannter Name scheiterte vorher mit `Unbekanntes Argument`
@@ -23,7 +27,8 @@ import { tmpdir } from "node:os";
 
 import { aufrufen as checks } from "../kit/checks.mjs";
 import { aufrufen as befunde } from "../kit/findings.mjs";
-import { aufrufen as wirksamkeit } from "../kit/wirksamkeit.mjs";
+import { aufrufen as aufwand } from "../kit/effort.mjs";
+import { aufrufen as wirksamkeit } from "../kit/effectiveness.mjs";
 import { parseArgs, grundlagenAnbinden } from "../kit/night/grundlagen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -44,8 +49,6 @@ function leeresProjekt(praefix) {
 // --- Einstiegsdateien ----------------------------------------------------------
 
 const EINSTIEGE = [
-  ["effort.mjs", "aufwand.mjs", [["--version"], ["--help"], ["gibtsnicht"]]],
-  ["effectiveness.mjs", "wirksamkeit.mjs", [["--version"], ["--help"], ["gibtsnicht"]]],
   ["settings.mjs", "einstellungen.mjs", [["--version"], ["--help"]]],
 ];
 
@@ -149,21 +152,84 @@ test("findings.mjs: die Hilfe ist englisch, auch in einem deutschen Projekt", ()
   }
 });
 
-// --- wirksamkeit.mjs -------------------------------------------------------------
+// --- effort.mjs und effectiveness.mjs ---------------------------------------------
 
-test("wirksamkeit.mjs: evaluate, finding, candidates und --window gleichen den deutschen Namen", () => {
+// Der Code steht seit Issue #1560 (Plan #1548 E6) in kit/effort.mjs und kit/effectiveness.mjs;
+// die deutschen Dateien entfallen ohne Weiterleitung, und die deutschen Namen werden mit
+// Hinweis abgewiesen (E8).
+test("effort.mjs und effectiveness.mjs: kit/aufwand.mjs und kit/wirksamkeit.mjs gibt es nicht mehr", () => {
+  assert.equal(existsSync(join(KIT, "aufwand.mjs")), false);
+  assert.equal(existsSync(join(KIT, "wirksamkeit.mjs")), false);
+});
+
+test("effort.mjs: deutsche Unterkommandos und --laeufe enden mit Exit 1 und nennen den englischen Namen", () => {
+  const dir = leeresProjekt("aufwand-en-");
+  try {
+    const faelle = [
+      [["auswerten"], "'auswerten'", "'evaluate'"],
+      [["befund"], "'befund'", "'finding'"],
+      [["auskunft", "x.jsonl"], "'auskunft'", "'info'"],
+      [["evaluate", "--laeufe", "3"], "'--laeufe'", "'--runs'"],
+    ];
+    for (const [argv, alt, neu] of faelle) {
+      const res = aufwand(argv, { cwd: dir });
+      assert.equal(res.status, 1, argv.join(" "));
+      const ausgabe = res.stdout + res.stderr;
+      assert.ok(ausgabe.includes(alt) && ausgabe.includes(neu), `${argv.join(" ")}: ${ausgabe}`);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("effort.mjs: evaluate --runs, finding und info laufen unter den englischen Namen", () => {
+  const dir = leeresProjekt("aufwand-en-lauf-");
+  try {
+    const auswertung = aufwand(["evaluate", "--runs", "3"], { cwd: dir });
+    assert.equal(auswertung.status, 0, auswertung.stdout + auswertung.stderr);
+    assert.equal(JSON.parse(auswertung.stdout).fehler, undefined);
+    const befund = aufwand(["finding"], { cwd: dir });
+    assert.equal(befund.status, 0, befund.stderr);
+    const auskunft = aufwand(["info"], { cwd: dir });
+    assert.equal(auskunft.status, 1);
+    assert.match(auskunft.stderr, /'info'/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("effectiveness.mjs: deutsche Unterkommandos und --fenster enden mit Exit 1 und nennen den englischen Namen", () => {
   const dir = leeresProjekt("wirksamkeit-en-");
   try {
-    const paare = [
-      [["evaluate", "--window", "0"], ["auswerten", "--fenster", "0"]],
-      [["finding", "x"], ["befund", "x"]],
-      [["candidates", "x"], ["kandidaten", "x"]],
+    const faelle = [
+      [["auswerten"], "'auswerten'", "'evaluate'"],
+      [["befund"], "'befund'", "'finding'"],
+      [["kandidaten"], "'kandidaten'", "'candidates'"],
+      [["evaluate", "--fenster", "3"], "'--fenster'", "'--window'"],
     ];
-    for (const [en, de] of paare) {
-      const soll = wirksamkeit(de, { cwd: dir });
-      assert.doesNotMatch(soll.stdout + soll.stderr, /Unbekannte[rs]? (Argument|Befehl)/, de.join(" "));
-      assert.deepEqual(wirksamkeit(en, { cwd: dir }), soll, en.join(" "));
+    for (const [argv, alt, neu] of faelle) {
+      const res = wirksamkeit(argv, { cwd: dir });
+      assert.equal(res.status, 1, argv.join(" "));
+      const ausgabe = res.stdout + res.stderr;
+      assert.ok(ausgabe.includes(alt) && ausgabe.includes(neu), `${argv.join(" ")}: ${ausgabe}`);
     }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("effort.mjs und effectiveness.mjs: die Hilfe ist englisch, auch in einem deutschen Projekt", () => {
+  const dir = leeresProjekt("auswertungen-en-hilfe-");
+  try {
+    const aufwandHilfe = aufwand(["--help"], { cwd: dir }).stdout;
+    assert.match(aufwandHilfe, /^effort\.mjs \(claude-workflow-kit v[^)]+\) — Process effort$/m);
+    assert.match(aufwandHilfe, /node effort\.mjs evaluate \[--runs <n>\]/);
+    assert.match(aufwandHilfe, /node effort\.mjs info <transcript…>/);
+    assert.doesNotMatch(aufwandHilfe, /aufwand\.mjs|auswerten|--laeufe|Liest/);
+    const wirksamkeitHilfe = wirksamkeit(["--help"], { cwd: dir }).stdout;
+    assert.match(wirksamkeitHilfe, /^effectiveness\.mjs \(claude-workflow-kit v[^)]+\) — Effectiveness of the checks$/m);
+    assert.match(wirksamkeitHilfe, /node effectiveness\.mjs evaluate \[--window <days>\]/);
+    assert.doesNotMatch(wirksamkeitHilfe, /wirksamkeit\.mjs|auswerten|--fenster|Liest/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -253,7 +319,7 @@ test("worktree.mjs: create --prefix legt den Worktree unter dem Praefix an wie a
 // Der kuerzeste Weg durch die Fragen wie in test/ablauf-install-checks-blob.test.mjs.
 const PROJEKT_GITHUB = ["", "projekt", "github", "j", "n", "github", "", "", "", "", "", ""];
 
-test("Der Installer legt findings.mjs, effort.mjs und effectiveness.mjs byteweise wie die Quelle ab, settings.mjs und befunde.mjs nicht", () => {
+test("Der Installer legt findings.mjs, effort.mjs und effectiveness.mjs byteweise wie die Quelle ab, settings.mjs und die deutschen Dateien nicht", () => {
   const dir = mkdtempSync(join(tmpdir(), "install-einstiege-en-"));
   mkdirSync(join(dir, "home"), { recursive: true });
   try {
@@ -273,10 +339,15 @@ test("Der Installer legt findings.mjs, effort.mjs und effectiveness.mjs byteweis
     // Einstieg ohne die Datei daneben liefe ins Leere.
     assert.equal(existsSync(join(dir, ".claude", "kit", "settings.mjs")), false);
     assert.equal(existsSync(join(dir, ".claude", "kit", "befunde.mjs")), false, "die deutsche Datei entfaellt (Issue #1559)");
-    // findings.mjs laeuft im Zielprojekt aus seinem eigenen Code.
-    const version = spawnSync(process.execPath, [join(dir, ".claude", "kit", "findings.mjs"), "--version"], { encoding: "utf-8" });
-    assert.equal(version.status, 0, version.stderr);
-    assert.match(version.stdout, /^\d+\.\d+\.\d+\n$/);
+    for (const datei of ["aufwand.mjs", "wirksamkeit.mjs"]) {
+      assert.equal(existsSync(join(dir, ".claude", "kit", datei)), false, `${datei} entfaellt (Issue #1560)`);
+    }
+    // Die drei laufen im Zielprojekt aus ihrem eigenen Code.
+    for (const datei of ["findings.mjs", "effort.mjs", "effectiveness.mjs"]) {
+      const version = spawnSync(process.execPath, [join(dir, ".claude", "kit", datei), "--version"], { encoding: "utf-8" });
+      assert.equal(version.status, 0, `${datei}: ${version.stderr}`);
+      assert.match(version.stdout, /^\d+\.\d+\.\d+\n$/, datei);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

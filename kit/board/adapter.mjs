@@ -1130,7 +1130,7 @@ class LocalIssueTracker {
    *
    * Der lokale Tracker fuehrt keinen Verlauf — er hat nur das Frontmatter. Daraus
    * entsteht **ein** Eintrag vom Typ CREATED, damit Auswertungen (etwa
-   * `wirksamkeit.mjs` ueber `issue activity`) hier dieselbe Quelle lesen koennen
+   * `effectiveness.mjs` ueber `issue activity`) hier dieselbe Quelle lesen koennen
    * wie beim Board.
    *
    * Fehlt `created:`, ist der Verlauf leer. Das ist ehrlicher als ein erfundenes

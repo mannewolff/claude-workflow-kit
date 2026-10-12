@@ -598,7 +598,7 @@ export async function issueEpics(tracker) {
 /**
  * Aktivitaetsverlauf einer Karte (Issue #460).
  *
- * Auswertungen wie `wirksamkeit.mjs` lesen daraus die Ereignisdaten: Die
+ * Auswertungen wie `effectiveness.mjs` lesen daraus die Ereignisdaten: Die
  * Karten-Route fuehrt kein Anlagedatum — an der Instanz belegt am 2026-09-02
  * (manuelle Pruefung zu Issue #457). Der Verlauf geht unveraendert durch,
  * einschliesslich seiner Reihenfolge; wer das aelteste Ereignis braucht, sucht

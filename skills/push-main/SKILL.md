@@ -41,7 +41,7 @@ ist die Wartezeit: Der eine Prüflauf über den fertigen Stand dauert so lange w
 **Aufwand melden.** Noch vor dem ersten Schritt:
 
 ```bash
-node .claude/kit/aufwand.mjs befund
+node .claude/kit/effort.mjs finding
 ```
 
 Zeige die Ausgabe **unverändert**. Sie ist bereits die Form, in der der Aufwands-Befund an
@@ -53,7 +53,7 @@ der Prozess gekostet hat.
 Unmittelbar danach der zweite Befund:
 
 ```bash
-node .claude/kit/wirksamkeit.mjs befund
+node .claude/kit/effectiveness.mjs finding
 ```
 
 Für ihn gelten **dieselben Regeln**: Ausgabe unverändert zeigen, und er liest allein
@@ -209,7 +209,7 @@ wird vor dem Push als Frage an den Menschen gestellt; pusht wird nur nach seinem
 Ein offener Punkt `Gewackelt: <cmd> — Entscheidung beim push main` (ein Wackler im Lauf
 der Nacht, Plan #1395, E14) wird wie jeder offene Punkt vor dem Push in Schritt 7 erfragt,
 mit der Frage aus Schritt 5: Der Skill nennt die Prüfung und die Reparaturkandidaten aus
-`wirksamkeit.mjs kandidaten` und fragt „Trotzdem fortfahren? (ja/nein)“; nur `ja` pusht.
+`effectiveness.mjs candidates` und fragt „Trotzdem fortfahren? (ja/nein)“; nur `ja` pusht.
 Die Fortschrittszeilen zählen die entfallenen Schritte nicht mit.
 
 **Abhängigkeiten im frischen Worktree.** Er trägt nur, was versioniert ist, plus das
@@ -320,7 +320,7 @@ vorige Zusammenfassung. Dann, in dieser Reihenfolge:
 2. Die Reparaturkandidaten holen und nennen (Plan #1395, E15):
 
    ```bash
-   node .claude/kit/wirksamkeit.mjs kandidaten
+   node .claude/kit/effectiveness.mjs candidates
    ```
 
    Es liest `.claude/wirksamkeit.json` der Hauptkopie und gibt je Kandidat eine Zeile
@@ -331,8 +331,8 @@ vorige Zusammenfassung. Dann, in dieser Reihenfolge:
    der Worktree wird abgebaut.
 
 `checks.mjs run` endet in diesem Fall mit Exitcode 0 — die Prüfung ist bestanden, die
-Entscheidung liegt beim Menschen. **Ohne Wackler** ruft der Skill `wirksamkeit.mjs
-kandidaten` ebenfalls, an derselben Stelle: Reparaturkandidaten ohne Wackler werden genannt,
+Entscheidung liegt beim Menschen. **Ohne Wackler** ruft der Skill `effectiveness.mjs
+candidates` ebenfalls, an derselben Stelle: Reparaturkandidaten ohne Wackler werden genannt,
 halten aber nicht an.
 
 Warum überhaupt noch ein Lauf, wenn `/implement-ready` und `/local-check` je Issue schon
@@ -493,7 +493,7 @@ den Bericht — ein Lauf ohne Commit sieht sonst aus wie ein Lauf mit Commit.
 
 **Wackler und Reparaturkandidaten.** Der Bericht nennt jede `Gewackelt:`-Zeile des
 Prüflaufs unverändert samt der Antwort des Menschen auf die Rückfrage und jede Zeile
-`Reparaturkandidat:` aus `wirksamkeit.mjs kandidaten` (Schritt 5). Ohne beides entfällt
+`Reparaturkandidat:` aus `effectiveness.mjs candidates` (Schritt 5). Ohne beides entfällt
 der Absatz.
 
 **In den Bericht gehören außerdem:** der Pfad des Worktrees und sein Abbau, ob das lokale

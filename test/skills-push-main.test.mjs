@@ -118,7 +118,7 @@ test("[1401] Schritt 5 wiederholt eine rote Prüfung: --wiederholen neben --stuf
 test("[1401] nach einem Wackler fragt Schritt 5 vor dem Commit und nennt die Reparaturkandidaten", () => {
   const s = SCHRITT5.replaceAll(/\s+/g, " ");
   assert.match(s, /Trotzdem fortfahren\? \(ja\/nein\)/, "die Rückfrage fehlt in Schritt 5");
-  assert.match(s, /node \.claude\/kit\/wirksamkeit\.mjs kandidaten/, "Schritt 5 ruft wirksamkeit.mjs kandidaten nicht");
+  assert.match(s, /node \.claude\/kit\/effectiveness\.mjs candidates/, "Schritt 5 ruft effectiveness.mjs candidates nicht");
   assert.match(s, /`Gewackelt:`/, "Schritt 5 nennt die Gewackelt-Zeile nicht als Auslöser");
   assert.match(s, /gewackeltKarte/, "Schritt 5 grenzt gewackeltKarte nicht aus");
   assert.match(s, /Nur `ja` fährt fort/, "Schritt 5 sagt nicht, dass nur ja fortfährt");

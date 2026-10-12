@@ -196,7 +196,7 @@ test("[wirksamkeit-1398] kandidaten nennt je Reparaturkandidat eine Zeile aus wi
     zeilen: [...wackelpaar({ lauf: "A" }), ...wackelpaar({ lauf: "B" }), ...wackelpaar({ lauf: "C" })],
   }, (dir) => {
     auswerten(dir);
-    const res = wirksamkeit(dir, "kandidaten");
+    const res = wirksamkeit(dir, "candidates");
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.stdout, "Reparaturkandidat: node --test — 3 Wackler im Zeitfenster\n");
   });

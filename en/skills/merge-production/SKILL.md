@@ -171,7 +171,7 @@ The skill itself knows no project-specific version or changelog logic; it lives 
 the `RELEASING.md` of the respective repo. A tag does **not** come about here — see step 9.
 
 ### 6. The one check run (gate — before commit, push and PR)
-<!-- de: 1d2e2ba3d503 -->
+<!-- de: cfa96e39f295 -->
 
 > `Step 6 of 12 — Check run (running)`
 
@@ -396,7 +396,7 @@ That belongs **in the completion report** — that a step does not apply must be
 otherwise a run without a release looks like a run with a release.
 
 ### 12. Return the PR/MR URL and the two commands
-<!-- de: 1e016205f807 -->
+<!-- de: 025400db22a5 -->
 
 Print the URL from the adapter output, followed by the commands from steps 9 and 11 in **one**
 code block. The merge is the human's task — Claude does not merge, and the human sets the tag

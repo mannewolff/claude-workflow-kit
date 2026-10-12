@@ -33,7 +33,7 @@ German name because the night runner sends `/push-main vorbereiten` in every pro
 only interactively, see the section "Emergency path (`notfall`)".
 
 ## Procedure
-<!-- de: b5757b016d6c -->
+<!-- de: fa45f81e90b9 -->
 
 **Report progress.** Every step begins with a line `Step k of n — <name> (running)`.
 The full run takes **nine** steps; the lines then read `Step k of 9`. The `n` is the number of
@@ -45,7 +45,7 @@ should see where on the way it is.
 **Report effort.** Before the first step:
 
 ```bash
-node .claude/kit/effort.mjs befund
+node .claude/kit/effort.mjs finding
 ```
 
 Show the output **unchanged**. It already is the form in which the effort finding appears at
@@ -119,7 +119,7 @@ git log origin/main..HEAD --oneline
 Show which commits will be pushed. The human should know what goes out.
 
 ### 3. Create the worktree and merge it with `origin`
-<!-- de: 7136c962e0df -->
+<!-- de: 00db96d8a40b -->
 
 > `Step 3 of 9 — Worktree (running)`
 
@@ -252,7 +252,7 @@ The skill itself knows no project-specific version or release logic; it lives ex
 the `RELEASING.md` of the respective repo.
 
 ### 5. The one check run (gate — before commit and push)
-<!-- de: d4ad436fdb4f -->
+<!-- de: 43bf83022f15 -->
 
 > `Step 5 of 9 — Check run (running)`
 
@@ -468,7 +468,7 @@ node .claude/kit/worktree.mjs remove <path>
 ```
 
 ### 9. Confirmation
-<!-- de: 41e264848eb1 -->
+<!-- de: 0e59b872acc7 -->
 
 Report the new state on `origin/<mainBranch>` with the last commit hash.
 

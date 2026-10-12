@@ -1,52 +1,21 @@
 /**
- * texte/aufwand.mjs — die Texttabelle von aufwand.mjs (Issue #1524). Eigener Teil, damit
+ * texte/effort.mjs — die Texttabelle von effort.mjs (Issue #1524, seit Issue #1560 unter dem
+ * englischen Namen). Eigener Teil, damit
  * `sonar.cpd.exclusions` die gleich gebauten Haelften de und en ausnehmen kann, ohne die
  * Logik des Moduls aus der Duplikatsmessung zu nehmen. Das Modul importiert die Tabelle und
  * exportiert sie unter demselben Namen weiter.
  */
 
 /**
- * Die Texte an Menschen in beiden Sprachen (Issue #1452, Plan #1420 E13): Hilfe, Bericht,
- * Befund, Auskunft und Fehler. Unuebersetzt bleibt der Maschinenvertrag (E14): die Feldnamen
+ * Die Texte an Menschen in beiden Sprachen (Issue #1452, Plan #1420 E13): Bericht, Befund,
+ * Auskunft und Fehler; die Hilfe gibt es nur englisch, in kit/effort.mjs (Issue #1560, Plan
+ * #1548 E7). Unuebersetzt bleibt der Maschinenvertrag (E14): die Feldnamen
  * von `aufwand.json` und der JSON-Ausgabe, das Vokabular des Ergebnisstands (`abschluss`,
  * `art`, `endStatus`) und die Befehls- und Optionsnamen. Den Gleichstand der Schluessel und
  * Platzhalter haelt test/aufwand-texte-en.test.mjs.
  */
 export const TEXTE = {
   de: {
-    hilfe: `aufwand.mjs (claude-workflow-kit v{version}) — Aufwand des Prozesses
-
-  node aufwand.mjs auswerten [--laeufe <n>]
-  node aufwand.mjs befund
-  node aufwand.mjs auskunft <transkript…>
-
-auswerten  Liest die juengsten Ergebnisstaende aus {dir}/, aggregiert Zeit,
-           Pruefungen, Umfang, Kosten, den Aufwand je Aufgabenstufe, die Verteilung
-           je Laufart und Aufgabenstufe (Median, 90. Perzentil) und die Zeit
-           fuer Board-Auskuenfte je Umsetzungseinheit (Abschnitt Auskuenfte) und schreibt
-           {dir}/{bericht} sowie
-           {dir}/{stand}. Die Ausgabe auf stdout ist immer JSON —
-           auch im Leerfall und auch bei einem abgewiesenen Aufruf.
-befund     Gibt den Befundblock aus {dir}/{stand} als Text aus, mit dem
-           Zeitpunkt der Auswertung als erster Zeile. Liegt kein Befund vor, fehlt die
-           Datei oder ist sie unlesbar, bleibt die Ausgabe leer. Exit immer 0 — der
-           Befund ist kein Gate.
-auskunft   Misst Claude-Code-Transkripte (*.jsonl) nach derselben Regel wie der
-           Nacht-Runner: die Spanne vom Werkzeugaufruf bis zu seinem Ergebnis fuer jede
-           Rueckfrage an das Board und jedes Aufbereiten ihrer Antwort. Gibt je Datei
-           und gesamt Minuten und Aufrufe aus. Eine unlesbare Datei oder eine ohne
-           Zeitstempel wird gemeldet und nicht als 0 gezaehlt; dann Exit 1.
-
-  --laeufe <n>    Wie viele Staende hoechstens einbezogen werden, die juengsten zuerst
-                  (Vorgabe {vorgabe}). Sticht den Config-Block.
-  --version       Kit-Stand dieser Datei.
-  --help, -h      Diese Uebersicht.
-
-Gelesen wird {dir}/{config} im Arbeitsverzeichnis, Block 'aufwand':
-'laeufe' und 'schwellen' (pruefungAnteil, eingrenzungOhneWirkung, werkzeugAnteil,
-schreibkostenAnteil). Der Block ist optional; fehlt er oder ein Feld darin, gelten die
-Vorgaben.
-`,
     // Zahlen, Einheiten, Traglast
     tausender: ".",
     dezimal: ",",
@@ -180,47 +149,15 @@ Vorgaben.
     // Fehler
     nichtGeschrieben: "{pfad} konnte nicht geschrieben werden: {fehler}",
     unbekanntesArgument: "Unbekanntes Argument: '{arg}'",
-    laeufeErwartet: "--laeufe erwartet eine ganze Zahl groesser null, bekam '{wert}'.",
-    befundOhneArgumente: "'befund' nimmt keine Argumente, bekam '{arg}'.",
-    auskunftOhneDatei: "'auskunft' erwartet mindestens eine Transkript-Datei (*.jsonl).",
-    unbekannterBefehl: "Unbekannter Befehl: '{befehl}'. Erwartet: auswerten, befund oder auskunft",
+    laeufeErwartet: "--runs erwartet eine ganze Zahl groesser null, bekam '{wert}'.",
+    befundOhneArgumente: "'finding' nimmt keine Argumente, bekam '{arg}'.",
+    auskunftOhneDatei: "'info' erwartet mindestens eine Transkript-Datei (*.jsonl).",
+    unbekannterBefehl: "Unbekannter Befehl: '{befehl}'. Erwartet: evaluate, finding oder info",
+    altname: "unbekannt: '{name}' — englischer Name: '{englisch}'",
     fehler: "Fehler",
     unerwarteterFehler: "Unerwarteter Fehler",
   },
   en: {
-    hilfe: `aufwand.mjs (claude-workflow-kit v{version}) — Process effort
-
-  node aufwand.mjs auswerten [--laeufe <n>]
-  node aufwand.mjs befund
-  node aufwand.mjs auskunft <transcript…>
-
-auswerten  Reads the latest result states from {dir}/, aggregates time,
-           checks, scope, costs, the effort per task tier, the distribution
-           per run type and task tier (median, 90th percentile) and the time
-           for board queries per implementation unit (section Board queries) and writes
-           {dir}/{bericht} and
-           {dir}/{stand}. The output on stdout is always JSON —
-           also in the empty case and also for a rejected call.
-befund     Prints the findings block from {dir}/{stand} as text, with the
-           time of the evaluation as the first line. If there are no findings, or the
-           file is missing or unreadable, the output stays empty. Exit always 0 — the
-           findings are not a gate.
-auskunft   Measures Claude Code transcripts (*.jsonl) by the same rule as the
-           night runner: the span from the tool call to its result for every
-           query to the board and every processing of its answer. Prints minutes and
-           calls per file and in total. An unreadable file or one without
-           timestamps is reported and not counted as 0; then exit 1.
-
-  --laeufe <n>    How many states are included at most, the latest first
-                  (default {vorgabe}). Overrides the config block.
-  --version       Kit revision of this file.
-  --help, -h      This overview.
-
-Reads {dir}/{config} in the working directory, block 'workload':
-'runs' and 'thresholds' (checkShare, narrowingWithoutEffect, toolShare,
-writeCostShare). The block is optional; if it or a field in it is missing, the
-defaults apply.
-`,
     tausender: ",",
     dezimal: ".",
     prozent: "{zahl} percent",
@@ -339,10 +276,11 @@ defaults apply.
     gesamtNichtGemessen: " ({anzahl} not measured)",
     nichtGeschrieben: "{pfad} could not be written: {fehler}",
     unbekanntesArgument: "Unknown argument: '{arg}'",
-    laeufeErwartet: "--laeufe expects a whole number greater than zero, got '{wert}'.",
-    befundOhneArgumente: "'befund' takes no arguments, got '{arg}'.",
-    auskunftOhneDatei: "'auskunft' expects at least one transcript file (*.jsonl).",
-    unbekannterBefehl: "Unknown command: '{befehl}'. Expected: auswerten, befund or auskunft",
+    laeufeErwartet: "--runs expects a whole number greater than zero, got '{wert}'.",
+    befundOhneArgumente: "'finding' takes no arguments, got '{arg}'.",
+    auskunftOhneDatei: "'info' expects at least one transcript file (*.jsonl).",
+    unbekannterBefehl: "Unknown command: '{befehl}'. Expected: evaluate, finding or info",
+    altname: "unknown: '{name}' — English name: '{englisch}'",
     fehler: "Error",
     unerwarteterFehler: "Unexpected error",
   },
