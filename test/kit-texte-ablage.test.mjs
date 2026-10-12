@@ -15,12 +15,16 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Die Module, deren Tabelle schon unter kit/texte/ liegt. Die Teile unter kit/night/ legen
-// ihre Tabelle als night-<modul>.mjs ab (Issue #1525).
+// ihre Tabelle als night-<modul>.mjs ab (Issue #1525), die unter kit/board/ als
+// board-<modul>.mjs (Issue #1526).
 const MODULE = [
   "kit/aufwand.mjs", "kit/befunde.mjs", "kit/board.mjs", "kit/worktree.mjs",
   "kit/night/kette.mjs", "kit/night/bericht.mjs", "kit/night/wartend.mjs", "kit/night/grundlagen.mjs",
   "kit/night/session.mjs", "kit/night/tag.mjs", "kit/night/kitstand.mjs", "kit/night/laufstand.mjs",
   "kit/night/abhaengigkeiten.mjs",
+  "kit/board/dokumente.mjs", "kit/board/adapter.mjs", "kit/board/issue-review.mjs", "kit/board/schutz.mjs",
+  "kit/board/hook.mjs", "kit/board/geschuetzt.mjs", "kit/board/grundlagen.mjs", "kit/board/melder.mjs",
+  "kit/board/testhinweise.mjs", "kit/board/ursprung.mjs", "kit/board/wiederholung.mjs",
 ];
 
 const name = (modul) => modul.replace(/^kit\//, "").replaceAll("/", "-");

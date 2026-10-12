@@ -406,10 +406,16 @@
       "areas": [
         "aufwand",
         "befunde",
+        "board-adapter",
         "board-dokumente",
         "board-einstieg",
+        "board-geschuetzt",
         "board-grundlagen",
+        "board-hook",
         "board-issue-review",
+        "board-melder",
+        "board-testhinweise",
+        "board-wiederholung",
         "einstellungen",
         "frischer-checkout",
         "herkunft",
@@ -576,43 +582,52 @@
     ],
     "nacht-grundlagen": [
       "kit/night/grundlagen.mjs",
+      "kit/texte/night-grundlagen.mjs",
       "test/night-grundlagen-*.test.mjs"
     ],
     "nacht-laufstand": [
       "kit/night/laufstand.mjs",
+      "kit/texte/night-laufstand.mjs",
       "test/night-laufstand-*.test.mjs",
       "test/helpers/laufstand-attrappe.mjs"
     ],
     "nacht-abhaengigkeiten": [
       "kit/night/abhaengigkeiten.mjs",
+      "kit/texte/night-abhaengigkeiten.mjs",
       "test/night-abhaengigkeiten-*.test.mjs"
     ],
     "nacht-kitstand": [
       "kit/night/kitstand.mjs",
+      "kit/texte/night-kitstand.mjs",
       "test/night-kitstand-*.test.mjs"
     ],
     "nacht-session": [
       "kit/night/session.mjs",
+      "kit/texte/night-session.mjs",
       "kit/night/laufvariablen.mjs",
       "test/night-session-*.test.mjs",
       "test/helpers/session-attrappe.mjs"
     ],
     "nacht-bericht": [
       "kit/night/bericht.mjs",
+      "kit/texte/night-bericht.mjs",
       "test/night-bericht-*.test.mjs"
     ],
     "nacht-wartend": [
       "kit/night/wartend.mjs",
+      "kit/texte/night-wartend.mjs",
       "test/night-wartend-*.test.mjs"
     ],
     "nacht-kette": [
       "kit/night/kette.mjs",
+      "kit/texte/night-kette.mjs",
       "test/night-kette-*.test.mjs",
       "test/helpers/kette-fixture.mjs",
       "test/helpers/kette-texte.mjs"
     ],
     "nacht-tag": [
       "kit/night/tag.mjs",
+      "kit/texte/night-tag.mjs",
       "test/night-tag-*.test.mjs",
       "test/helpers/tag-fixture.mjs"
     ],
@@ -644,6 +659,7 @@
     ],
     "board-grundlagen": [
       "kit/board/grundlagen.mjs",
+      "kit/texte/board-grundlagen.mjs",
       "kit/board/namen.mjs",
       "kit/board/config-namen.mjs",
       "test/board-grundlagen-*.test.mjs",
@@ -651,11 +667,14 @@
     ],
     "board-wiederholung": [
       "kit/board/wiederholung.mjs",
+      "kit/texte/board-wiederholung.mjs",
       "test/board-wiederholung-*.test.mjs"
     ],
     "board-adapter": [
       "kit/board/adapter.mjs",
+      "kit/texte/board-adapter.mjs",
       "kit/board/schutz.mjs",
+      "kit/texte/board-schutz.mjs",
       "test/board-adapter-*.test.mjs",
       "test/board-schutz.test.mjs",
       "test/helpers/adapter-fixture.mjs",
@@ -665,27 +684,34 @@
     ],
     "board-dokumente": [
       "kit/board/dokumente.mjs",
+      "kit/texte/board-dokumente.mjs",
       "kit/board/ursprung.mjs",
+      "kit/texte/board-ursprung.mjs",
       "test/board-dokumente-*.test.mjs"
     ],
     "board-geschuetzt": [
       "kit/board/geschuetzt.mjs",
+      "kit/texte/board-geschuetzt.mjs",
       "test/board-geschuetzt-*.test.mjs"
     ],
     "board-testhinweise": [
       "kit/board/testhinweise.mjs",
+      "kit/texte/board-testhinweise.mjs",
       "test/board-testhinweise-*.test.mjs"
     ],
     "board-issue-review": [
       "kit/board/issue-review.mjs",
+      "kit/texte/board-issue-review.mjs",
       "test/board-issue-review-*.test.mjs"
     ],
     "board-melder": [
       "kit/board/melder.mjs",
+      "kit/texte/board-melder.mjs",
       "test/board-melder-*.test.mjs"
     ],
     "board-hook": [
       "kit/board/hook.mjs",
+      "kit/texte/board-hook.mjs",
       "test/board-hook-*.test.mjs"
     ],
     "pruefungen": [

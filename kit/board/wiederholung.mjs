@@ -21,21 +21,10 @@
 import { RUECKMELDUNG } from "./grundlagen.mjs";
 import { text } from "./namen.mjs";
 
-// ============================================================
-// Texte an den Menschen (Issue #1483, Plan #1420 E13/E14)
-// ============================================================
+// Die Texte an den Menschen liegen unter kit/texte/board-wiederholung.mjs (Issue #1526).
+import { TEXTE } from "../texte/board-wiederholung.mjs";
 
-/** Der Proxy-Hinweis je Sprache. Die Werte von RUECKMELDUNG bleiben Vertrag (E14). */
-export const TEXTE = Object.freeze({
-  de: Object.freeze({
-    proxyHinweis: "Der Aufruf lief hinter einem Proxy (HTTPS_PROXY). Die uebliche Abhilfe ist "
-      + "NODE_USE_ENV_PROXY=1 vor dem Aufruf, nicht das Verlassen der Sandbox.",
-  }),
-  en: Object.freeze({
-    proxyHinweis: "The call ran behind a proxy (HTTPS_PROXY). The usual remedy is "
-      + "NODE_USE_ENV_PROXY=1 before the call, not leaving the sandbox.",
-  }),
-});
+export { TEXTE };
 
 // ============================================================
 // Wiederholung gegen Ueberlast (Issue #834)

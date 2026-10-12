@@ -47,7 +47,8 @@ test("[1454] die englische Haelfte der Tabelle traegt keine deutschen Woerter", 
 });
 
 test("[1454] jeder deutsche Text des Melders geht ueber den Texthelfer", () => {
-  assert.deepEqual(deutschAmHelferVorbei("kit/board/melder.mjs", TEXTE, VERTRAG), []);
+  // Die Tabelle liegt seit Issue #1526 in kit/texte/board-melder.mjs; gescannt wird das Modul ohne sie.
+  assert.deepEqual(deutschAmHelferVorbei("kit/board/melder.mjs", null, VERTRAG), []);
 });
 
 test("[1454] englisch: excerpt eines festgefahrenen Pakets und abortReason ohne Grund im Stand", () => {

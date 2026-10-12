@@ -421,10 +421,13 @@ test("jeder Eintrag in gekoppelteBereiche ist in jeder Gruppe, die ihn nennt, ge
 /**
  * Die Quelldatei eines Teils, wie `checkAreas` sie dem Bereich zuordnet — genau eine
  * unter `kit/`. Die Probe nennt den Teil ueber seinen Bereich und nicht ueber einen
- * Pfad: So haengt sie an der Teilzuordnung der Config, die sie belegen soll.
+ * Pfad: So haengt sie an der Teilzuordnung der Config, die sie belegen soll. Die Texttabelle
+ * des Teils unter `kit/texte/` zaehlt nicht mit: Sie steht neben ihrem Modul im Bereich
+ * (Issue #1526), ist aber keine eigene Quelle des Teils.
  */
 function teilDatei(bereich) {
-  const quellen = (config.checkAreas?.[bereich] ?? []).filter((muster) => muster.startsWith("kit/"));
+  const quellen = (config.checkAreas?.[bereich] ?? [])
+    .filter((muster) => muster.startsWith("kit/") && !muster.startsWith("kit/texte/"));
   assert.equal(quellen.length, 1, `Bereich ${bereich} ordnet nicht genau eine Quelldatei unter kit/ zu: ${quellen.join(", ")}`);
   return quellen[0];
 }
