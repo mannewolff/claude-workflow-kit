@@ -43,6 +43,8 @@ export const TEXTE = Object.freeze({
     nichtInBacklog: "steht in {status}, nicht in Backlog",
     ketteKlaeren: "traegt {label} — die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen, dann das Label abnehmen",
     poFragen: "{frage}; die Fragen im Body beantworten und '## {name}' auf 'Keine' setzen",
+    szenarienFehlen: "Fachplan #{id} hat keinen Abschnitt Szenarien; er entsteht beim Groomen (`/groom #{id}`)",
+    stichtagFehlt: "Hinweis: {hinweis}",
     herkunftFehlt: "die fachliche Herkunft ist nicht erkennbar — die Zeile '{feld} Issue #N' fehlt im Plan oder nennt keine "
       + "Karte dieses Boards (die Nummer wird zeichengleich verglichen, fuehrende Nullen zaehlen mit)",
     planKlaeren: "traegt {label} — die Entscheidung gehoert in den Plan, danach nimmt ein Mensch das Label ab",
@@ -270,6 +272,8 @@ export const TEXTE = Object.freeze({
     nichtInBacklog: "is in {status}, not in Backlog",
     ketteKlaeren: "carries {label} — the answer to the stop question must first be on the requirement, then remove the label",
     poFragen: "{frage}; answer the questions in the body and set '## {name}' to 'Keine'",
+    szenarienFehlen: "requirement #{id} has no scenarios section; it is added during grooming (`/groom #{id}`)",
+    stichtagFehlt: "Note: {hinweis}",
     herkunftFehlt: "the requirement origin is not recognizable — the line '{feld} Issue #N' is missing in the plan or names "
       + "no card of this board (the number is compared character by character, leading zeros count)",
     planKlaeren: "carries {label} — the decision belongs in the plan, afterwards a human removes the label",

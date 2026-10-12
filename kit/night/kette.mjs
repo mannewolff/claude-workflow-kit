@@ -58,6 +58,9 @@ export { TEXTE };
 // Das Register aus dem Board-Teil, abgefangen: Fehlt board/namen.mjs neben night.mjs, bleiben
 // die Texte deutsch, und die Marker sind nicht lesbar (unten bei `markerWerte`).
 const namen = await import(pathToFileURL(join(NACHBAR_DIR, "board", "namen.mjs")).href).catch(() => null);
+// Der Leser fuer den Abschnitt Szenarien, ebenso abgefangen (Plan #1588 A7, Issue #1593): Fehlt
+// board/szenarien.mjs, prueft die Kette keine Szenarien und nennt keinen Stichtag.
+const szenarien = await import(pathToFileURL(join(NACHBAR_DIR, "board", "szenarien.mjs")).href).catch(() => null);
 
 function t(schluessel, werte = {}) {
   if (namen) return namen.text(TEXTE, schluessel, werte);
@@ -583,6 +586,8 @@ export const ISSUES_HALT_KOPF = "Kein Eingang für /issues";
 export const ABDECKUNG_PROMPT = [
   "Aendere dabei NICHTS: kein Kommentar, keine Karte, kein Label, keine Datei.",
   "",
+  "Traegt der Fachplan einen Abschnitt Szenarien, halte auch sie gegen die Pakete: Jedes Szenario des Fachplans steht woertlich in mindestens einem Arbeitspaket; ein Szenario, das in keinem Paket steht, nennst du unter \"Ohne Paket\" mit seinem Titel. Nach Tests fragt diese Pruefung nicht.",
+  "",
   "Gib als letzte Nachricht genau diese drei Abschnitte aus, in Markdown:",
     "",
     "### Zuordnung",
@@ -616,7 +621,7 @@ export function abdeckungPrompt(fachplanId, planId, paketIds) {
  * ohne beide Praefixe bekommt dort ihren Grund. Zwei Praefix-Proben — eine je Art —
  * liefen bei der ersten Aenderung auseinander.
  */
-function kettenAusschluss(issue, kettenLabel) {
+function kettenAusschluss(issue, kettenLabel, config) {
   if (issue.status !== "backlog") return t("nichtInBacklog", { status: issue.status ?? t("unbekannt") });
   if (hatKlaerenLabel(issue)) return t("ketteKlaeren", { label: klaerenLabelName() });
   if (!hatReviewFertigLabel(issue)) return pruefungFehltGrund(issue.id, kettenLabel).text;
@@ -628,7 +633,33 @@ function kettenAusschluss(issue, kettenLabel) {
   if (poFrage !== null) {
     return t("poFragen", { frage: poFrage, name: nameDerSprache("ueberschriftName", "poFragen", PO_FRAGEN_NAME) });
   }
-  return null;
+  // Nach den PO-Fragen die Szenarien (Issue #1593, Kriterium 4): Ein pflichtiger Fachplan
+  // ohne vollstaendiges Szenario laeuft in keinen Plan; Altbestand und ein fehlender
+  // Stichtag schliessen nicht aus (Kriterium 5, A6).
+  return szenarienGrund(issue, config);
+}
+
+/** Der Grund, wenn ein pflichtiger Fachplan kein vollstaendiges Szenario traegt — sonst `null`. */
+function szenarienGrund(issue, config) {
+  if (!szenarien || szenarien.szenarienPflicht(issue.id, config) !== true) return null;
+  if (szenarien.szenarienLesen(issue?.body || "").szenarien.some((s) => s.vollstaendig)) return null;
+  return t("szenarienFehlen", { id: issue.id });
+}
+
+/**
+ * Der Hinweis auf den fehlenden Stichtag `szenarienAb` (Plan #1588 E14) — `null`, wenn er
+ * gesetzt ist. Die Kette nennt ihn einmal je Lauf im Protokoll und im Nachtbericht.
+ */
+export function stichtagFehltHinweis(config) {
+  // Ohne Stichtag antwortet `szenarienPflicht` weder `true` noch `false`.
+  if (!szenarien || typeof szenarien.szenarienPflicht(null, config) === "boolean") return null;
+  return szenarien.stichtagHinweis();
+}
+
+/** Die eine Protokollzeile je Lauf, wenn der Stichtag fehlt (E14) — kein Kommentar, kein Laufstand. */
+function stichtagNennen() {
+  const hinweis = stichtagFehltHinweis(ZUSTAND.config);
+  if (hinweis) log(t("stichtagFehlt", { hinweis }));
 }
 
 /**
@@ -753,8 +784,8 @@ function juengsterPlanAmBoard(issues, F) {
 }
 
 /** Der Ausschluss je Auftragsart, danach die unpassende Einstellung (Issue #1244) — `null`, wenn die Karte laeuft. */
-function ausschlussGrund(issue, art, label, issues) {
-  const grund = art === "plan" ? planAusschluss(issue, label, issues) : kettenAusschluss(issue, label);
+function ausschlussGrund(issue, art, label, issues, config) {
+  const grund = art === "plan" ? planAusschluss(issue, label, issues) : kettenAusschluss(issue, label, config);
   return grund ?? zielAusschluss(issue, art, art === "fachplan" ? juengsterPlanAmBoard(issues, issue.id) : null);
 }
 
@@ -783,7 +814,7 @@ function ausschlussGrund(issue, art, label, issues) {
  * liefert den lebenden Halter `{ karte, laufId }` oder `null`, wie `wurzelBelegt`. Auch sie
  * verbraucht keinen Platz.
  */
-export function waehleKettenKandidaten(issues, label, max, { belegt = () => null, sache = "night" } = {}) {
+export function waehleKettenKandidaten(issues, label, max, { belegt = () => null, sache = "night", config = ZUSTAND.config } = {}) {
   // Der gesetzte Wert und beide Vorgabenamen (Issue #1425, Plan #1420 E7).
   const alle = (issues || []).filter((i) => kennzeichenName(i?.labels, label, sache));
   const gruende = new Map();
@@ -805,7 +836,7 @@ export function waehleKettenKandidaten(issues, label, max, { belegt = () => null
       gruende.set(String(issue.id), keineAuftragsartGrund());
       continue;
     }
-    const grund = ausschlussGrund(issue, art, label, issues || []);
+    const grund = ausschlussGrund(issue, art, label, issues || [], config);
     if (grund === null) auftraege.push(auftragAus(issue, art));
     else gruende.set(String(issue.id), grund);
   }
@@ -2711,6 +2742,8 @@ async function ketteMitKarte(auftrag, nummer, args) {
     uebergaenge: KETTE_UEBERGAENGE,
     // Der Laufstand vor dem Vorab-Stand dieses Laufs (Issue #1090) — fuer die Ergebnispruefung.
     laufstandVorher: auftrag.laufstandVorher,
+    // Der Hinweis fuer den Nachtbericht, wenn `szenarienAb` fehlt (Issue #1593, E14).
+    stichtagFehlt: stichtagFehltHinweis(ZUSTAND.config),
   };
   // Haelt der Lauf wegen der Umgebung an, sind die naechsten die Pakete des Auftrags ohne
   // Ergebnis (E15).
@@ -2995,6 +3028,7 @@ async function ketteFahren(args) {
   warneVorAltenLabels(alle);
   const auswahl = waehleKettenKandidaten(alle, budget.label, args.max, { belegt: belegteWurzeln(alle, budget.label, "night") });
   const { liegengeblieben } = auswahl;
+  stichtagNennen();
   uebersprungeneVerbuchen(auswahl.uebersprungen, alle, budget.label, args.dryRun);
   for (const l of liegengeblieben) {
     log(t("ueberMax", { id: l.id, titel: l.title, max: args.max }));

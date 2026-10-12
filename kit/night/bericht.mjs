@@ -937,6 +937,11 @@ function berichtAusgang(einheit, pakete) {
   return zeilen;
 }
 
+/** Der Abschnitt Hinweise: heute nur der fehlende Stichtag `szenarienAb` (Issue #1593, E14); ohne ihn entfaellt er. */
+function berichtHinweise(stichtagFehlt) {
+  return stichtagFehlt ? [t("hinweiseKopf"), "", t("stichtagFehlt", { hinweis: stichtagFehlt }), ""] : [];
+}
+
 export function berichtBauen(einheit, {
   plan = null, pakete = [], einarbeitung = null, abdeckung = null, budget = {}, start, stempel, frage = null, jetzt = Date.now(),
   // Die Paket-Einheiten des Laufs und die Zielmarke (Issue #926): Der Bericht rechnet die
@@ -945,6 +950,8 @@ export function berichtBauen(einheit, {
   // Der feste Kit-Stand des Laufs (Issue #1103). Er steht im Text selbst: Ein wartender
   // Bericht, den ein spaeterer Lauf nachtraegt, nennt so den Stand des Laufs, der ihn schrieb.
   kitStand = ZUSTAND.LAUF?.kitStand ?? null,
+  // Der Hinweis auf den fehlenden Stichtag `szenarienAb` (Issue #1593, Plan #1588 E14) oder `null`.
+  stichtagFehlt = null,
 } = {}) {
   const stufen = einheit.stufen ?? {};
   const z = [`${berichtAnker()} ${stempel ?? ZUSTAND.LAUF_STEMPEL ?? t("ohneStempel")}`, ""];
@@ -990,6 +997,7 @@ export function berichtBauen(einheit, {
   if ((einheit.ueberholtUnbestaetigt ?? []).length > 0) {
     z.push(t("unbestaetigtKopf"), "", ...einheit.ueberholtUnbestaetigt.map((e) => t("unbestaetigtZeile", { id: e.id, grund: e.grund })), "");
   }
+  z.push(...berichtHinweise(stichtagFehlt));
   if (kitStand) z.push(kitStandZeile(kitStand), "");
   z.push(t("berichtSchluss"), "");
   return z.join("\n");
@@ -1173,5 +1181,6 @@ export function berichtFuerKette(kette, einheit, ergebnis) {
     // eines Laufs stuenden sonst fremde Pakete im Kommentar dieser Karte, und die Zeile
     // "N von M" zaehlte sie mit.
     einheiten: ketteEinheiten(kette), zielUmsetzungMin: ZUSTAND.config?.night?.zielUmsetzungMin,
+    stichtagFehlt: kette.stichtagFehlt ?? null,
   });
 }
