@@ -1,7 +1,7 @@
 # 5-minute guide
-<!-- de: 0a296c3cd2dc -->
+<!-- de: 65e520054be1 -->
 
-You have a process for AI-assisted development, and you want to make it executable in Claude Code without giving up your stop points (Stop-Punkte). The kit gives you sixteen skills, a config and an installer. In five minutes it is running.
+You have a process for AI-assisted development, and you want to make it executable in Claude Code without giving up your stop points (Stop-Punkte). The kit gives you seventeen skills, a config and an installer. In five minutes it is running.
 
 ## Prerequisites
 <!-- de: dd6489dcf11f -->
@@ -14,7 +14,7 @@ You have a process for AI-assisted development, and you want to make it executab
 - On Windows: WSL2, see [Windows via WSL2](/en/wsl2)
 
 ## Installing
-<!-- de: b1340445e31c -->
+<!-- de: 3d2c5a693315 -->
 
 Download the installer and start it in the project folder:
 
@@ -43,15 +43,16 @@ Then the installer asks seven things:
 
 With a global installation, an eighth question follows about the vault path for `/kontext` and `/document` (leaving it empty skips it).
 
-Afterwards the sixteen skills are in `.claude/skills/` (or globally in `~/.claude/skills/`), and a `.claude/workflow.config.json` with your answers as well as the board adapter (Board-Adapter) (`.claude/kit/board.mjs`) are in the repo. Restart Claude Code, and the skills show up in `/help`.
+Afterwards the seventeen skills are in `.claude/skills/` (or globally in `~/.claude/skills/`), and a `.claude/workflow.config.json` with your answers as well as the board adapter (Board-Adapter) (`.claude/kit/board.mjs`) are in the repo. Restart Claude Code, and the skills show up in `/help`.
 
-## The sixteen skills
-<!-- de: 50d11cb5503f -->
+## The seventeen skills
+<!-- de: 1524fb48be8a -->
 
 | Command | What for |
 |--------|-------|
 | `/context` | Load context, overview of the situation at session start (old name `/kontext`) |
 | `/requirement` | Optional: requirement as a business issue for the PO loop (PO-Schleife) (see [documentation](./dokumentation.md#po-loop-business-and-technical-issues)) (old name `/fachplan`) |
+| `/groom` | Decide the open questions of a reviewed business plan (Fachplan) one by one with the PO |
 | `/techplan` | Plan from the requirement, implements nothing |
 | `/issues` | Plan into small issues (GitHub, GitLab or local) |
 | `/task` | Requirement without trade-offs as a single work package (Arbeitspaket) `[Task]`, only after your confirmation |

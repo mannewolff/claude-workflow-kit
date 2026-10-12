@@ -4,13 +4,13 @@
 A thin tool layer that makes a 9-step core process for AI-assisted development executable in Claude Code. The kit automates the AI steps and deliberately leaves the three human responsibility thresholds in place.
 
 ## Concept
-<!-- de: efe773ce86aa -->
+<!-- de: 630985a49dab -->
 
-The kit is not a platform and not an agent. It is a library of sixteen skills, a project-local config and an installer.
+The kit is not a platform and not an agent. It is a library of seventeen skills, a project-local config and an installer.
 
 The skills are written independently of any project. Everything project-specific (build commands, branch names, review model) comes from the config file. An update to a skill therefore applies in every project in which you use the kit. You do not have to adjust anything in each repo when the process evolves.
 
-The core process has nine steps. Step 1 is your requirement; the AI takes over steps 2, 3, 5, 6 and 7. The three human stop points (Stop-Punkte) are step 4 (GO), step 8 (push) and step 9 (merge); between push and merge you check the test server. Nine further skills stand outside the numbering and structure the working rhythm: /kontext, /fachplan, /issue-review, /task, /implement-test and /implement-done, /implement-next, /retro and /document.
+The core process has nine steps. Step 1 is your requirement; the AI takes over steps 2, 3, 5, 6 and 7. The three human stop points (Stop-Punkte) are step 4 (GO), step 8 (push) and step 9 (merge); between push and merge you check the test server. Ten further skills stand outside the numbering and structure the working rhythm: /kontext, /fachplan, /groom, /issue-review, /task, /implement-test and /implement-done, /implement-next, /retro and /document.
 
 ## Prerequisites
 <!-- de: c8c7a036ea0f -->
@@ -36,7 +36,7 @@ The core process has nine steps. Step 1 is your requirement; the AI takes over s
 **`kontext.config.json` for /kontext and /document (optional).** Both skills also run without this file, in degraded mode. If you want persistent cross-project memory: With a global installation the installer asks for the vault path and creates the file automatically; with a project-local installation you create it manually. Details in the section [kontext.config.json](/en/dokumentation#kontext-config-json-reference).
 
 ## Installation
-<!-- de: 7dff5ac95989 -->
+<!-- de: e1b807c5b8a4 -->
 
 Change into your project folder and run:
 
@@ -90,7 +90,7 @@ With yes, the installer calls `node .claude/kit/board.mjs code schutz einrichten
 
 **Later: `node install.mjs --schutz`.** An existing project switches protection on without reinstalling the kit. The call asks only the protection questions, calls `code schutz einrichten` and changes nothing in `.claude/workflow.config.json` but `pushPruefung`; all other settings and kit files stay untouched. It requires an installed `board.mjs` that already knows `code schutz`. Whether a project is protected is then reported at any time by `node .claude/kit/board.mjs code schutz status` (see [Board adapter](#board-adapter)).
 
-The installer copies the sixteen skills, writes a `.claude/workflow.config.json` with your answers, places a `CLAUDE-workflow.md` with the process description as well as the two gate registers `CLAUDE-Fachplan.md` and `CLAUDE-Plan.md`, and writes the board adapter to `.claude/kit/board.mjs`. The parts of the tools sit in subdirectories next to it: `night/` and `board/` for the night runner and the board adapter, `rollen/` for the review roles and `texte/` for the text tables of the tools in both languages. With GitLab it additionally asks whether it should create the five labels automatically. No background process, no service, no registry entries.
+The installer copies the seventeen skills, writes a `.claude/workflow.config.json` with your answers, places a `CLAUDE-workflow.md` with the process description as well as the two gate registers `CLAUDE-Fachplan.md` and `CLAUDE-Plan.md`, and writes the board adapter to `.claude/kit/board.mjs`. The parts of the tools sit in subdirectories next to it: `night/` and `board/` for the night runner and the board adapter, `rollen/` for the review roles and `texte/` for the text tables of the tools in both languages. With GitLab it additionally asks whether it should create the five labels automatically. No background process, no service, no registry entries.
 
 The former local Kanban GUI (`board-ui.mjs`) has been discontinued.
 
@@ -1001,8 +1001,8 @@ Recurring findings of the model reviews: from how many occurrences a proposal ar
 - `findings.threshold` (German: `befunde.schwelle`) — From how many occurrences of the same finding a proposal arises. Below that, a finding is a single case and not a rule.
 <!-- einstellungen:ende -->
 
-## The sixteen skills and the 9-step core process
-<!-- de: 08a3721168e6 -->
+## The seventeen skills and the 9-step core process
+<!-- de: fe3ae6bffe48 -->
 
 The process has **nine** steps, seven of them with a skill. The remaining nine skills are tools alongside it: helpful, often used — but the process runs without them too.
 

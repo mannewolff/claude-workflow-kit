@@ -31,12 +31,12 @@ const lies = (...teile) => readFileSync(join(repoRoot, ...teile), "utf-8");
 // Tabelle nennt sie in der Zeile ihres Ziel-Skills.
 const WEGWEISER = new Set(["plan", "fachplan", "kontext"]);
 
-// Die englische Fassung zaehlt mit "sixteen" (Issue #1370); die Konfiguration traegt beide
+// Die englische Fassung zaehlt mit "seventeen" (Issue #1370, seit #1514 mit /groom); die Konfiguration traegt beide
 // Beschreibungen und steht deshalb in beiden Listen.
 const SPRACHEN = [
   {
-    zaehlwort: "sechzehn",
-    alteZaehlung: /vierzehn Skills|zw(ö|oe)lf Skills|f(ü|ue)nfzehn Skills/i,
+    zaehlwort: "siebzehn",
+    alteZaehlung: /vierzehn Skills|zw(ö|oe)lf Skills|f(ü|ue)nfzehn Skills|sechzehn Skills/i,
     dateien: [
       ["docs", "dokumentation.md"],
       ["docs", "quickstart.md"],
@@ -46,8 +46,8 @@ const SPRACHEN = [
     ],
   },
   {
-    zaehlwort: "sixteen",
-    alteZaehlung: /fourteen skills|twelve skills|fifteen skills/i,
+    zaehlwort: "seventeen",
+    alteZaehlung: /fourteen skills|twelve skills|fifteen skills|sixteen skills/i,
     dateien: [
       ["docs", "en", "dokumentation.md"],
       ["docs", "en", "quickstart.md"],

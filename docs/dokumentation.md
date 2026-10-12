@@ -4,11 +4,11 @@ Eine dünne Werkzeugschicht, die einen 9-Schritt-Kernprozess für KI-gestützte 
 
 ## Konzept
 
-Das Kit ist keine Plattform und kein Agent. Es ist eine Bibliothek aus sechzehn Skills, eine projektlokale Config und ein Installer.
+Das Kit ist keine Plattform und kein Agent. Es ist eine Bibliothek aus siebzehn Skills, eine projektlokale Config und ein Installer.
 
 Die Skills sind projekt-unabhängig geschrieben. Alles Projekt-Spezifische (Build-Kommandos, Branch-Namen, Review-Modell) kommt aus der Config-Datei. Ein Update an einem Skill gilt damit in allen Projekten, in denen du das Kit nutzt. Du musst nicht in jedem Repo etwas anpassen, wenn sich der Prozess weiterentwickelt.
 
-Der Kernprozess hat neun Schritte. Schritt 1 ist deine Anforderung; die KI übernimmt die Schritte 2, 3, 5, 6 und 7. Die drei menschlichen Stop-Punkte sind Schritt 4 (GO), Schritt 8 (Push) und Schritt 9 (Merge); zwischen Push und Merge prüfst du den Test-Server. Neun weitere Skills stehen außerhalb der Nummerierung und strukturieren den Arbeitsrhythmus: /kontext, /fachplan, /issue-review, /task, /implement-test und /implement-done, /implement-next, /retro und /document.
+Der Kernprozess hat neun Schritte. Schritt 1 ist deine Anforderung; die KI übernimmt die Schritte 2, 3, 5, 6 und 7. Die drei menschlichen Stop-Punkte sind Schritt 4 (GO), Schritt 8 (Push) und Schritt 9 (Merge); zwischen Push und Merge prüfst du den Test-Server. Zehn weitere Skills stehen außerhalb der Nummerierung und strukturieren den Arbeitsrhythmus: /kontext, /fachplan, /groom, /issue-review, /task, /implement-test und /implement-done, /implement-next, /retro und /document.
 
 ## Voraussetzungen
 
@@ -86,7 +86,7 @@ Mit Ja ruft der Installer `node .claude/kit/board.mjs code schutz einrichten --z
 
 **Nachträglich: `node install.mjs --schutz`.** Ein bestehendes Projekt schaltet den Schutz ein, ohne das Kit neu zu installieren. Der Aufruf stellt nur die Schutzfragen, ruft `code schutz einrichten` und ändert in `.claude/workflow.config.json` allein `pushPruefung`; alle anderen Einstellungen und Kit-Dateien bleiben unangetastet. Er setzt eine installierte `board.mjs` voraus, die `code schutz` schon kennt. Ob ein Projekt geschützt ist, sagt danach jederzeit `node .claude/kit/board.mjs code schutz status` (siehe [Board-Adapter](#board-adapter)).
 
-Der Installer kopiert die sechzehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung sowie die beiden Gate-Register `CLAUDE-Fachplan.md` und `CLAUDE-Plan.md` ab und schreibt den Board-Adapter in `.claude/kit/board.mjs`. Die Teile der Werkzeuge liegen in Unterverzeichnissen daneben: `night/` und `board/` für Nacht-Runner und Board-Adapter, `rollen/` für die Prüfrollen und `texte/` für die Texttabellen der Werkzeuge in beiden Sprachen. Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
+Der Installer kopiert die siebzehn Skills, schreibt eine `.claude/workflow.config.json` mit deinen Antworten, legt eine `CLAUDE-workflow.md` mit der Prozessbeschreibung sowie die beiden Gate-Register `CLAUDE-Fachplan.md` und `CLAUDE-Plan.md` ab und schreibt den Board-Adapter in `.claude/kit/board.mjs`. Die Teile der Werkzeuge liegen in Unterverzeichnissen daneben: `night/` und `board/` für Nacht-Runner und Board-Adapter, `rollen/` für die Prüfrollen und `texte/` für die Texttabellen der Werkzeuge in beiden Sprachen. Bei GitLab fragt er zusätzlich, ob er die fünf Labels automatisch anlegen soll. Kein Hintergrundprozess, kein Service, keine Registry-Einträge.
 
 Die frühere lokale Kanban-GUI (`board-ui.mjs`) ist eingestellt.
 
@@ -971,7 +971,7 @@ Wiederkehrende Funde der Modell-Prüfungen: ab wie vielen Vorkommen aus ihnen ei
 - `befunde.schwelle` — Ab wie vielen Vorkommen desselben Fundes ein Vorschlag entsteht. Darunter ist ein Fund ein Einzelfall und keine Regel.
 <!-- einstellungen:ende -->
 
-## Die sechzehn Skills und der 9-Schritt-Kernprozess
+## Die siebzehn Skills und der 9-Schritt-Kernprozess
 
 Der Prozess hat **neun** Schritte, davon sieben mit Skill. Die übrigen neun Skills sind Werkzeuge daneben: hilfreich, oft benutzt — aber ohne sie läuft der Prozess auch.
 
