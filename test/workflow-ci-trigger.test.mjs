@@ -1,4 +1,4 @@
-// Tests fuer die Trigger der CI-Workflows (Issue #891, #1274, #1411).
+// Tests fuer die Trigger der CI-Workflows (Issue #891, #1274, #1411, #1414).
 //
 // Der Guard blob-sync-check lief dreimal auf demselben Inhalt: Push auf main, PR
 // main -> production und Push auf production. Geblieben sind der Push auf main und
@@ -6,8 +6,9 @@
 // ohne Vorab-Zweig (Plan #1265, E14).
 //
 // Seit #1411 ist der Job das Gate vor dem Push ueber den Pruefzweig kit-pruefung
-// (Plan #1405, A12): Push auf main und kit-pruefung, Pull Request auf main und
-// production, kein Push auf production. Er faehrt den vollen Lauf der Stufe push
+// (Plan #1405, A12): Push nur auf kit-pruefung, Pull Request auf main und
+// production, kein Push auf production. Der Push-Ausloeser auf main fiel nach dem
+// Einrichtungspaket weg (Issue #1414, E11). Er faehrt den vollen Lauf der Stufe push
 // gegen den Anker `git merge-base HEAD origin/main` — dafuer braucht der Checkout
 // die volle Historie und vorab `git fetch origin main`.
 //
@@ -36,9 +37,9 @@ function onBlock(text) {
   return rest.slice(0, ende === -1 ? rest.length : ende).join("\n");
 }
 
-test("[ci-trigger] blob-sync-check triggert bei Push auf main und kit-pruefung, bei PR auf main und production", () => {
+test("[ci-trigger] blob-sync-check triggert bei Push nur auf kit-pruefung, bei PR auf main und production", () => {
   const block = onBlock(lies("blob-sync-check.yml"));
-  assert.match(block, /push:[ \t]*\n[ \t]*branches: \[main, kit-pruefung\]/);
+  assert.match(block, /push:[ \t]*\n[ \t]*branches: \[kit-pruefung\]/);
   assert.match(block, /pull_request:[ \t]*\n[ \t]*branches: \[main, production\]/);
 });
 

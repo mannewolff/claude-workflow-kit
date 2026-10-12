@@ -19,13 +19,12 @@ name: "Checks: Tests + install.mjs-Blobs synchron"
 # grünen Pflichtprüfungen möglich ist. Ein Push auf production löst nichts aus:
 # production nimmt nur Merges über Pull Requests an.
 #
-# Der Auslöser „Push auf main" bleibt bis zum Einrichtungspaket stehen (Issue #1414),
-# sonst fehlte zwischendurch das heutige Sicherheitsnetz. SonarQube läuft unverändert
-# nach dem Push auf main (sonarqube.yml) und ist keine Pflichtprüfung.
+# SonarQube läuft unverändert nach dem Push auf main (sonarqube.yml) und ist keine
+# Pflichtprüfung.
 
 on:
   push:
-    branches: [main, kit-pruefung]
+    branches: [kit-pruefung]
   pull_request:
     branches: [main, production]
 
