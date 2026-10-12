@@ -42,6 +42,8 @@ node .claude/kit/board.mjs issue check-form <id>
 
 Verstöße — Reihenfolge der Abschnitte, fehlende Kennzeichnungszeile, Herkunftszeile am falschen Ort — behebt die aufrufende Session selbst im Body, bevor ein Reviewer startet, mit `issue update` nach der Transportregel unten. Ein Reviewer prüft keine Form.
 
+**Ausnahme F12:** Fehlen einem Fachplan die Szenarien, ist das der einzige Formverstoß, den die Session nicht selbst behebt — Szenarien ergänzt das Grooming mit dem PO. Die Prüfung läuft weiter, und die Zusammenfassung nennt `/groom #N` als Weg zu den Szenarien. Ein Halt wäre eine Sackgasse: `/groom` setzt die Prüfung voraus.
+
 ### 3. Reviewer wählen
 Lies `Autor-Modell:` (Arbeitspaket: `## Kontext`; fachliche Anforderung: `## Ziel`) bzw. `Plan-Modell:` im Kopf des Plandokuments. Fehlt der Wert oder lautet er `unbekannt`, frage einmal nach und schlage einen Reviewer vor; unbeaufsichtigt gilt der Regelvorschlag, und der Befunde-Kommentar vermerkt das.
 ```bash
@@ -114,7 +116,7 @@ Bei einer fachlichen Anforderung danach `node .claude/kit/board.mjs issue questi
 ### 7. Abschluss
 Zusammenfassung je Dokument: Stufe, Zahl der Funde, übernommen / abgelehnt, Zahl der **gebuchten** Funde und die dabei entstandenen oder ergänzten **Vorschläge** (bei einem Fehlschlag der Buchung dessen eine Zeile), Marker und `review:done` gesetzt, `kit:clarified` gesetzt oder nicht (bei einem fehlenden Label dessen Fehlermeldung), Label abgenommen und nicht wieder gesetzt, oder `kit:clarify`, übersprungene Dokumente mit Grund. Dann: Ready ist das GO des Menschen — der Marker gibt nichts frei.
 
-Steht `kit:clarify` an einem `[Requirement]`, nennt die Zusammenfassung `/groom #N` als Weg zur Antwort.
+Steht `kit:clarify` an einem `[Requirement]`, nennt die Zusammenfassung `/groom #N` als Weg zur Antwort. Meldete die Formprüfung F12, nennt sie `/groom #N` als Weg zu den Szenarien.
 
 ## Lange Texte ans Board
 Befunde, Body und Einarbeitung entstehen nach der Transportregel aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board": nie als Kommandozeilen-Argument, sondern stückweise in eine Datei außerhalb des Projektverzeichnisses (`printenv TMPDIR`, bleibt die Ausgabe leer (Linux und WSL2 ohne Sandbox), gilt `/tmp`; dann `cat >` und `cat >>` mit je höchstens 6.000 Zeichen), jedes Stück ein **eigener** Werkzeugaufruf mit wörtlichem Pfad, dann ein Aufruf mit `--text-file` bzw. `--body-file`. Scheitert ein Dateischritt, wird die unvollständige Datei nicht übertragen; scheitert ein Board-Aufruf, meldet der Skill den Fehler mit dem Pfad und endet ohne weitere Mutation.

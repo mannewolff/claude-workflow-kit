@@ -32,7 +32,14 @@ node .claude/kit/board.mjs issue comment <N> --text "Plan erstellt von <modell> 
 Der Grund ist die Lückenlosigkeit der Kette: Die technischen Issues tragen ihr eigenes `Autor-Modell`, und ohne diesen Kommentar wäre nicht mehr ablesbar, welches Modell den Plan entworfen hat; der Tracker nennt als Autor immer den Inhaber des Tokens.
 
 ## Eingang `/techplan #N`: fachliches Issue als Quelle
-Wird der Skill mit einer Issue-Nummer aufgerufen und trägt dieses Issue das Titel-Präfix `[Requirement]` (PO-Schleife, siehe `/requirement`), dann ist **das Issue die Anforderungsquelle, nicht der Chat**:
+Wird der Skill mit einer Issue-Nummer aufgerufen und trägt dieses Issue das Titel-Präfix `[Requirement]` (PO-Schleife, siehe `/requirement`), dann ist **das Issue die Anforderungsquelle, nicht der Chat**.
+
+**Szenarien vor dem Plan.** Zuerst ruft der Skill die Formprüfung des Fachplans auf:
+```bash
+node .claude/kit/board.mjs issue check-form <N>
+```
+
+Nennt `verstoesse` das Gate `F12`, fehlen dem pflichtigen Fachplan die Szenarien, und es entsteht kein Plan: Der Skill nennt die `meldung` als Grund und den Weg `/groom #N`, der die Szenarien mit dem PO ergänzt, und endet. Unbeaufsichtigt (gesetztes `KIT_AGENT_MODEL`) gehen Grund und Weg als Kommentar an den Fachplan, nach der Transportregel aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board“, als `<tmpdir>/<N>-szenarien.md` mit `issue comment <N> --text-file`. Die Szenarien ergänzt der Skill nie selbst — das gehört ins Grooming zum PO. Andere Verstöße halten hier nicht an, und ein Fachplan von vor dem Stichtag meldet kein F12.
 
 1. Das fachliche Issue vollständig lesen — **den kompletten Body**, denn dort steckt die Groom-Historie mit den PO-Entscheidungen. Die Verhandlung findet im Body statt, nicht in Kommentaren: Der Body ist der verhandelte Stand, Kommentare sind Verlauf. `board.mjs issue get` liefert zusätzlich ein `comments`-Array (Verlauf, Abschlussberichte, Review-Befunde) — das ergänzt den Body, ersetzt ihn aber nicht als Quelle der Anforderung.
 2. Den technischen Plan aus Ziel, fachlichen Akzeptanzkriterien und Nicht-Zielen entwickeln; die Nicht-Ziele sind Scope-Grenzen, keine Anregungen.
@@ -96,7 +103,7 @@ Die Überschriften sind der Anker, an dem die Plan-Prüfung und `/issues` arbeit
 
 - `## Geplante Änderungen` — je Datei, was sich ändert.
 - `## Offene Fragen` — **Stopp-Fragen**: Fragen aus der Stopp-Klasse in `CLAUDE-workflow.md`, Abschnitt „Entscheiden statt fragen". Nachträglich entscheidbare Fragen gehören nicht hierher, sie werden entschieden und stehen als E-Eintrag unter `## Architektonische Entscheidungen`. **Fehlerpfad:** Enthält der Abschnitt mindestens eine offene Stopp-Frage, darf der Plan nicht in Arbeitspakete überführt werden. Erst nach Beantwortung und Einarbeitung wird er erneut zur Freigabe gestellt.
-- `## Verifizierung` — **beschreibt die auszuführenden Prüfungen, nicht deren vorweggenommenes Ergebnis.**
+- `## Verifizierung` — **beschreibt die auszuführenden Prüfungen, nicht deren vorweggenommenes Ergebnis.** Trägt die Fachliche Quelle Szenarien, nennt der Abschnitt je Szenario den Test, der den Titel des Szenarios im Namen trägt.
 
 **Leere Pflichtabschnitte gibt es nicht.** Alle sechs bleiben erhalten, auch wenn es für einen nichts zu sagen gibt; in `## Architektonische Entscheidungen` und `## Offene Fragen` steht dann `- Keine.` **Die Metadaten zählen nicht mit.** Die Kopfzeilen `Plan-Modell: …` und, falls anwendbar, `Fachliche Quelle: Issue #N` stehen **vor** `## Ziel`. Sie sind keine Überschrift und damit kein siebter Abschnitt des Formats.
 

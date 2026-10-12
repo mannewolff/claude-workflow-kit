@@ -148,3 +148,11 @@ test("[skills-2] die Ueberschrift von Schritt 5 setzt nicht mehr allein die Frei
   assert.match(zeile, /unbeaufsichtigt/i,
     "die zweite Betriebsart fehlt in der Ueberschrift von Schritt 5");
 });
+
+// E6 aus Plan #1588 (Issue #1594): Unbeaufsichtigt erreicht der Grund den Morgen als
+// Kommentar am Fachplan, nicht nur in der Ausgabe der Session.
+test("[1594-3] unbeaufsichtigt geht der F12-Grund als Kommentar an den Fachplan", () => {
+  const eingang = abschnitt("## Eingang `/techplan #N`", "## Ablauf");
+  assert.match(eingang, /Unbeaufsichtigt \(gesetztes `KIT_AGENT_MODEL`\) gehen Grund und Weg als Kommentar an den Fachplan/);
+  assert.match(eingang, /`<tmpdir>\/<N>-szenarien\.md` mit `issue comment <N> --text-file`/);
+});

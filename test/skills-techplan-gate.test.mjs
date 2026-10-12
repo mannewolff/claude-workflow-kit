@@ -93,3 +93,12 @@ test("issue-review: schliesst nur noch [Idea] aus, [Plan] bestimmt die Stufe", (
     );
   assert.deepEqual(ausschluss, [], `[Requirement]/[Plan] werden noch ausgeschlossen: ${ausschluss.join(" | ")}`);
 });
+
+// Das Szenarien-Gate F12 am Eingang von /techplan (Issue #1594, Plan #1588 E6): Es steht
+// vor dem Anlegen des Plandokuments, sonst entsteht der Plan, bevor der Grund fehlt.
+test("techplan: das Gate F12 steht vor dem Anlegen des Plandokuments", () => {
+  const techplan = lies("skills", "techplan", "SKILL.md");
+  const gate = techplan.indexOf("issue check-form <N>");
+  assert.ok(gate > -1, "die Formpruefung am Eingang fehlt");
+  assert.ok(gate < techplan.indexOf("### 5. Plan-Dokument anlegen"), "das Gate steht hinter dem Anlegen");
+});

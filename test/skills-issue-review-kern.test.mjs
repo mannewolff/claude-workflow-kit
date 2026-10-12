@@ -215,3 +215,12 @@ test("[skills-1383] Schritt 6 setzt review:done nicht, wenn pruefen keine-pruefe
   const schritt = SKILL.slice(i, SKILL.indexOf("\n### 7.", i));
   assert.match(schritt, /Meldet `findings\.mjs check` den Eintrag `keine-pruefer`, wird `review:done` nicht gesetzt/);
 });
+
+// E7 aus Plan #1588 (Issue #1594): F12 behebt die Session nicht selbst und haelt nicht an;
+// die Zusammenfassung nennt /groom #N, weil /groom die Pruefung voraussetzt.
+test("[1594-4] Form vor Inhalt nimmt F12 aus: kein eigener Fix, kein Halt, /groom #N", () => {
+  const form = SKILL.slice(SKILL.indexOf("### 2. Form vor Inhalt"), SKILL.indexOf("### 3. Reviewer wählen"));
+  assert.match(form, /\*\*Ausnahme F12:\*\*/);
+  assert.match(form, /der einzige Formverstoß, den die Session nicht selbst behebt/);
+  assert.match(form, /Die Prüfung läuft weiter, und die Zusammenfassung nennt `\/groom #N`/);
+});

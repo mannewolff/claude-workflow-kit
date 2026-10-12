@@ -22,7 +22,7 @@ Zwei Karten sind ein zulässiger Eingang, und die Nummer kommt als Argument: `/r
 Extrahiere aus der Anforderung die fachliche Substanz. Frage nach, wenn Ziel oder Nutzen unklar sind — aber kläre nur Fachliches, keine Technik.
 
 ### 2. Genau ein fachliches Issue anlegen
-Titel: `<Titel>` ohne Präfix — `--art requirement` an `issue check-form` und `issue create` stellt das Präfix `[Requirement]` voran; an ihm erkennen alle anderen Skills und der Nacht-Runner fachliche Issues. Body im Story-Format mit vier Abschnitten; bei gesetztem Schalter `vorgeschichte` steht dazu `## Vorgeschichte` zwischen `## Nicht-Ziele` und `## Offene Fragen an den PO`, gesucht und geschrieben nach `CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“:
+Titel: `<Titel>` ohne Präfix — `--art requirement` an `issue check-form` und `issue create` stellt das Präfix `[Requirement]` voran; an ihm erkennen alle anderen Skills und der Nacht-Runner fachliche Issues. Body im Story-Format mit fünf Abschnitten; bei gesetztem Schalter `vorgeschichte` steht dazu `## Vorgeschichte` zwischen `## Nicht-Ziele` und `## Offene Fragen an den PO`, gesucht und geschrieben nach `CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“:
 ```markdown
 ## Ziel
 Wer braucht was, und warum? (Nutzerwirkung in PO-Sprache)
@@ -32,6 +32,12 @@ Autor-Modell: <wert>
 ## Fachliche Akzeptanzkriterien
 Woran erkennt der PO, dass es das ist? Konkret und aus Nutzersicht prüfbar.
 
+## Szenarien
+### Szenario: <Titel>
+- Angenommen <Ausgangslage>
+- Wenn <Handlung>
+- Dann <beobachtbares Ergebnis>
+
 ## Nicht-Ziele
 Was gehört ausdrücklich nicht dazu? (Scope-Grenze)
 
@@ -40,6 +46,8 @@ Was muss im Groomen geklärt werden? Sind alle Fragen beantwortet, steht hier al
 ```
 
 **Strikt technikfrei:** keine Dateien, keine Architektur, keine Implementierungsdetails. Der Maßstab: Ein PO ohne Code-Kenntnis versteht jede Zeile.
+
+**Szenarien schreibt die Session beim Anlegen mit:** mindestens eines, aus den fachlichen Akzeptanzkriterien abgeleitet, technikfrei wie der übrige Body. Je Szenario `### Szenario: <Titel>` mit Listenzeilen `Angenommen` (Ausgangslage), `Wenn` (Handlung), `Dann` (beobachtbares Ergebnis) und bei Bedarf `Und`, in den Schlüsselwörtern der Projektsprache — im englischen Projekt `## Scenarios`, `### Scenario: <title>`, `Given`, `When`, `Then`, `And`. Nicht jedes Kriterium braucht ein Szenario. Fehlt der Abschnitt, steht er an falscher Stelle oder trägt er kein vollständiges Szenario, weist `issue check-form` den Body mit F12 ab; die Session ergänzt ihn in der Datei und prüft erneut.
 
 **Die `Autor-Modell:`-Zeile gehört in den Abschnitt `## Ziel`**, analog zur Konvention in `/issues`. Der Wert entsteht in drei Stufen: `KIT_AGENT_MODEL`, sofern nicht leer — sonst die **Selbstauskunft der Session** — und nur, wenn beides nicht zu ermitteln ist, wörtlich `unbekannt`. Die Zeile wird nie weggelassen; `board.mjs issue create` legt kein Issue ohne sie an.
 
@@ -95,7 +103,7 @@ Melde das angelegte Issue (Nummer bzw. `ideaId` + Titel) und den weiteren Weg:
 ## Grooming findet im Body statt, nie in Kommentaren
 **Verbindlich:** Alles, worauf sich ein späterer Plan stützen muss, gehört in den **Body** des Issues — Antworten des PO ebenso wie Ergänzungen der KI. Kommentare sind für Verlauf und Diskussion, nicht für Entscheidungen. Der Body ist der **verhandelte Stand**, Kommentare sind **Verlauf**; wer eine Entscheidung nur kommentiert, zwingt jede spätere Session, sie aus einer Diskussion zu rekonstruieren. `board.mjs issue get` liefert die Kommentare zwar mit, aber das ändert die Regel nicht: Was gilt, steht im Body.
 
-**Antworten des PO** direkt hinter die jeweilige Frage unter „Offene Fragen an den PO" in den Body schreiben. **Sind damit alle Fragen beantwortet, bekommt der Abschnitt als erste Zeile einen Vermerk, der mit „Keine“ beginnt** — etwa „Keine. Die 3 Fragen hat der PO am 2026-09-24 entschieden, die Antworten stehen unter der jeweiligen Frage." Fragen und Antworten bleiben darunter stehen; sie sind der verhandelte Stand, auf den sich der Plan stützt (F8). Der Grund: Der Nacht-Runner liest allein die **erste** nichtleere Zeile des Abschnitts und hält die Anforderung an, solange dort eine Frage steht — beantwortete Fragen ohne diesen Vermerk erkennt er nicht. **Rohe Issues des Menschen ergänzen:** Wirft der Mensch nur Ziel und grobe Anforderung hin (der Normalfall), füllt die KI beim Groomen im Body `## Fachliche Akzeptanzkriterien`, `## Nicht-Ziele` und `## Offene Fragen an den PO` nach — nicht als Kommentar. `/groom #N` schreibt Antwortzeile, Einarbeitung und Vermerk genau in dieser Form. Dieser Abschnitt bleibt die Regel, `/groom` ist ihr Werkzeug.
+**Antworten des PO** direkt hinter die jeweilige Frage unter „Offene Fragen an den PO" in den Body schreiben. **Sind damit alle Fragen beantwortet, bekommt der Abschnitt als erste Zeile einen Vermerk, der mit „Keine“ beginnt** — etwa „Keine. Die 3 Fragen hat der PO am 2026-09-24 entschieden, die Antworten stehen unter der jeweiligen Frage." Fragen und Antworten bleiben darunter stehen; sie sind der verhandelte Stand, auf den sich der Plan stützt (F8). Der Grund: Der Nacht-Runner liest allein die **erste** nichtleere Zeile des Abschnitts und hält die Anforderung an, solange dort eine Frage steht — beantwortete Fragen ohne diesen Vermerk erkennt er nicht. **Rohe Issues des Menschen ergänzen:** Wirft der Mensch nur Ziel und grobe Anforderung hin (der Normalfall), füllt die KI beim Groomen im Body `## Fachliche Akzeptanzkriterien`, `## Szenarien`, `## Nicht-Ziele` und `## Offene Fragen an den PO` nach — nicht als Kommentar. `/groom #N` schreibt Antwortzeile, Einarbeitung und Vermerk genau in dieser Form. Dieser Abschnitt bleibt die Regel, `/groom` ist ihr Werkzeug.
 
 So kommt der ergänzte Body ins Board, wieder über eine Datei **außerhalb des Projektverzeichnisses**:
 ```bash
