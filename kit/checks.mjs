@@ -1266,7 +1266,7 @@ function pruefeNichtBeimAbschlussStufe(checks) {
  * den Eintrag aus. Derselbe Weg wie bei `pruefeNichtBeimAbschlussStufe`: Abbruch statt
  * stiller Wirkungslosigkeit, unbedingt, weil es eine Aussage ueber die Config ist.
  */
-// SYNC: dieselbe Regel soll kit/einstellungen.mjs vor dem Speichern pruefen (Plan #1529).
+// SYNC: dieselbe Regel prueft kit/einstellungen.mjs vor dem Speichern (regelAbschlussBereiche, Issue #1532).
 function pruefeAbschlussBereiche(checks, checkAreas) {
   const bekannt = new Set(Object.keys(checkAreas));
   for (const check of checks) {

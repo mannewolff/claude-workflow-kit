@@ -113,6 +113,10 @@ export const TEXTE = {
     "regel.abschlussWert": "{genannt} ist kein Grund der Achse — möglich sind {moeglich}, {datei}",
     "regel.abschlussStufe": "zusammen mit der Stufe '{stufe}' — dort läuft die Prüfung beim Abschluss ohnehin nicht. Die Achse gilt für die Stufe '{paket}', {datei}",
     "regel.abschlussFehlt": "kein Eintrag der Stufe 'paket' läuft beim Abschluss — jeder trägt 'nichtBeimAbschluss' oder einen guete-Block. Damit hat der Abschluss eines Arbeitspakets kein Gate, und der Nacht-Runner startet nicht. Die Felder stehen je Eintrag in .claude/workflow.config.json",
+    "regel.abschlussBereicheOhneAchse": "'abschlussBereiche' ohne 'nichtBeimAbschluss' — ohne die Achse läuft die Prüfung beim Abschluss ohnehin, das Feld bewirkt nichts, {datei}",
+    "regel.abschlussBereicheForm": "'abschlussBereiche' ist keine nicht leere Liste von Bereichsnamen: {wert}, {datei}",
+    "regel.abschlussBereicheFremd": "'abschlussBereiche' nennt Bereiche, die checkAreas nicht kennt: {genannt}, {datei}",
+    "regel.abschlussBereicheAusserhalb": "'abschlussBereiche' nennt Bereiche, die nicht in 'areas' des Eintrags stehen: {genannt} — ihre Berührung wählte die Prüfung nie aus, {datei}",
     "regel.gueteDatei": "der Block steht je Eintrag in .claude/workflow.config.json",
     "regel.gueteKeinAusdruck": "'{muster}' ist kein regulärer Ausdruck — {datei}",
     "regel.gueteGruppen": "nennt {gruppen} fangende Gruppen, gebraucht wird genau eine — sie greift den Prozentwert aus der Ausgabe, {datei}",
@@ -409,6 +413,10 @@ export const TEXTE = {
     "regel.abschlussWert": "{genannt} is not a reason of the axis — possible are {moeglich}, {datei}",
     "regel.abschlussStufe": "together with the stage '{stufe}' — the check does not run at completion there anyway. The axis applies to the stage '{paket}', {datei}",
     "regel.abschlussFehlt": "no entry of the stage 'paket' runs at completion — each carries 'notAtCompletion' or a quality block. So completing a work package has no gate, and the night runner does not start. The fields are set per entry in .claude/workflow.config.json",
+    "regel.abschlussBereicheOhneAchse": "'completionAreas' without 'notAtCompletion' — without the axis the check runs at completion anyway, the field has no effect, {datei}",
+    "regel.abschlussBereicheForm": "'completionAreas' is not a non-empty list of area names: {wert}, {datei}",
+    "regel.abschlussBereicheFremd": "'completionAreas' names areas that checkAreas does not know: {genannt}, {datei}",
+    "regel.abschlussBereicheAusserhalb": "'completionAreas' names areas that are not in the entry's 'areas': {genannt} — touching them would never select the check, {datei}",
     "regel.gueteDatei": "the block is set per entry in .claude/workflow.config.json",
     "regel.gueteKeinAusdruck": "'{muster}' is not a regular expression — {datei}",
     "regel.gueteGruppen": "has {gruppen} capturing groups, exactly one is needed — it takes the percentage from the output, {datei}",
@@ -1025,6 +1033,39 @@ function regelAbschlussstufeFehlt(config) {
   return [befund("buildChecks", tx("regel.abschlussFehlt"), "warnung")];
 }
 
+// Das Feld `abschlussBereiche` (Issue #1532, Plan #1529, E7): Ein Eintrag mit der Achse nennt
+// die Bereiche, bei deren direkter Berührung er beim Abschluss doch läuft. Jede Form, in der das
+// Feld nichts bewirken könnte, ist ein Fehler, weil `kit/checks.mjs` beim Start daran abbricht:
+// ohne die Achse, keine nicht leere Liste von Namen, ein unbekannter Bereich, ein Bereich außerhalb
+// von `areas` (das entfällt bei `always: true` und ohne `areas`, dort wählt jeder Bereich aus).
+// Ein unbekannter Name steht nur im zweiten Befund, nicht auch im vierten.
+//
+// Die Oberfläche bearbeitet das Feld nicht, wie die Achse selbst: Es steht am Eintrag in der Datei,
+// `checkSetzen` lässt es stehen, und `bereichsFolgen` zieht Umbenennen und Entfernen nach.
+// SYNC: `pruefeAbschlussBereiche` in kit/checks.mjs.
+function regelAbschlussBereiche(config) {
+  const bekannt = new Set(Object.keys(istObjekt(config.checkAreas) ? config.checkAreas : {}));
+  const datei = tx("regel.abschlussDatei");
+  const out = [];
+  (Array.isArray(config.buildChecks) ? config.buildChecks : []).forEach((check, i) => {
+    if (!istObjekt(check) || check.abschlussBereiche === undefined || check.abschlussBereiche === null) return;
+    const pfad = `buildChecks[${i}].abschlussBereiche`;
+    const liste = check.abschlussBereiche;
+    if (!check.nichtBeimAbschluss) out.push(befund(pfad, tx("regel.abschlussBereicheOhneAchse", { datei })));
+    if (!Array.isArray(liste) || liste.length === 0 || liste.some((name) => typeof name !== "string")) {
+      out.push(befund(pfad, tx("regel.abschlussBereicheForm", { wert: JSON.stringify(liste), datei })));
+      return;
+    }
+    const genannt = (namen) => namen.map((n) => "'" + n + "'").join(", ");
+    const fremd = liste.filter((name) => !bekannt.has(name));
+    if (fremd.length > 0) out.push(befund(pfad, tx("regel.abschlussBereicheFremd", { genannt: genannt(fremd), datei })));
+    if (check.always === true || !Array.isArray(check.areas)) return;
+    const ausserhalb = liste.filter((name) => bekannt.has(name) && !check.areas.includes(name));
+    if (ausserhalb.length > 0) out.push(befund(pfad, tx("regel.abschlussBereicheAusserhalb", { genannt: genannt(ausserhalb), datei })));
+  });
+  return out;
+}
+
 // --- Die Gütemessung (Issue #764, Plan #753) ---
 //
 // Vier Regeln, die das Schema nicht ausdrücken kann: "höchstens ein Eintrag" ist eine Aussage
@@ -1161,7 +1202,7 @@ export function zusatzregeln(config) {
     ...regelPaare(config), ...regelBereiche(config),
     ...regelLeereBereiche(config), ...regelCheckStufe(config), ...regelPaketstufeFehlt(config),
     ...regelNichtBeimAbschlussWert(config), ...regelNichtBeimAbschlussStufe(config),
-    ...regelAbschlussstufeFehlt(config),
+    ...regelAbschlussstufeFehlt(config), ...regelAbschlussBereiche(config),
     ...regelGuete(config), ...regelStufenFelder(config), ...regelStufenModell(config),
     ...regelStufenEffort(config), ...regelLaufModell(config),
   ];
@@ -1358,8 +1399,9 @@ export function checkForm(eintrag) {
  * zurück — nur so sieht der Schreiber keine Änderung und die Zeile bleibt in der Datei stehen.
  *
  * Ergänzen statt neu bauen (Plan E9): Ein Feld, das die Tabelle nicht zeigt, bleibt stehen —
- * insbesondere `stufe` und `nichtBeimAbschluss`. Die Oberfläche zeigt und prüft beide, sie
- * bearbeitet sie nicht (Plan #753, E18; Issue #949); gingen sie beim Speichern einer Zeile
+ * insbesondere `stufe`, `nichtBeimAbschluss` und `abschlussBereiche`. Die Oberfläche prüft sie
+ * und nennt sie im Befund am Pfad des Eintrags, sie bearbeitet sie nicht (Plan #753, E18;
+ * Issue #949, #1532); gingen sie beim Speichern einer Zeile
  * verloren, fiele die Prüfung stillschweigend auf die Paketstufe zurück und liefe beim
  * Abschluss wieder mit.
  */
@@ -1408,15 +1450,24 @@ export function bereichsFolgen(buildChecks, umbenannt, entfernt) {
   for (const name of entfernt || []) weg[name] = true;
   const neu = [];
   const betroffen = [];
+  // `abschlussBereiche` zieht in jeder Laufart mit (Issue #1532): Ohne Bedienelement stünde sonst
+  // ein alter Name im Feld, und die Config ließe sich nicht mehr speichern. Bleibt die Liste
+  // leer, bleibt sie leer stehen — dann hält der Befund das Speichern auf, wie bei `areas`.
+  const abschlussNachziehen = function (eintrag) {
+    if (eintrag === null || typeof eintrag !== "object" || !Array.isArray(eintrag.abschlussBereiche)) return eintrag;
+    const liste = namensliste(eintrag.abschlussBereiche, neuerName, weg).bleibt;
+    if (JSON.stringify(liste) === JSON.stringify(eintrag.abschlussBereiche)) return eintrag;
+    return { ...eintrag, abschlussBereiche: liste };
+  };
   alt.forEach(function (eintrag, i) {
     const form = checkForm(eintrag);
     if (form.laufart !== "bereiche") {
-      neu.push(eintrag);
+      neu.push(abschlussNachziehen(eintrag));
       return;
     }
     const zeile = namensliste(form.areas, neuerName, weg);
     if (zeile.nameWeg) betroffen.push({ index: i, cmd: form.cmd, art: zeile.bleibt.length === 0 ? "leer" : "name" });
-    neu.push(checkSetzen(eintrag, { areas: zeile.bleibt }));
+    neu.push(abschlussNachziehen(checkSetzen(eintrag, { areas: zeile.bleibt })));
   });
   return { buildChecks: neu, betroffen: betroffen };
 }
