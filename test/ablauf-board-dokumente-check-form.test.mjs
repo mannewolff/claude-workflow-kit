@@ -535,3 +535,61 @@ test("[board-5] die Hilfe nennt issue check-form mit beiden Aufrufformen", () =>
     assert.match(res.stdout, /issue check-form --body-file <pfad> --title/);
   });
 });
+
+// --- Hinweis auf fehlende Vorgeschichte (Issue #1542, Plan #1534 A11) ----------
+
+const MIT_VORGESCHICHTE = { ...CONFIG, vorgeschichte: true };
+
+function vorgeschichteHinweise(json) {
+  return (json.hinweise ?? []).filter((h) => h.art === "vorgeschichte");
+}
+
+test("[board-5] Vorgeschichte: Schalter an, Fachplan ohne Abschnitt → Hinweis, ok bleibt true", () => {
+  mitProjektConfig(MIT_VORGESCHICHTE, (dir) => {
+    const r = dateiWeg(dir, FACHLICH, "[Fachlich] x");
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
+    const h = vorgeschichteHinweise(r.json);
+    assert.equal(h.length, 1, JSON.stringify(r.json));
+    assert.match(h[0].meldung, /## Vorgeschichte/);
+    assert.equal(h[0].baustein, undefined);
+    assert.equal(h[0].test, undefined);
+  });
+});
+
+test("[board-5] Vorgeschichte: Schalter an, Plan ohne ### Vorgeschichte → Hinweis", () => {
+  mitProjektConfig(MIT_VORGESCHICHTE, (dir) => {
+    const r = dateiWeg(dir, PLAN, "[Plan] x");
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
+    const h = vorgeschichteHinweise(r.json);
+    assert.equal(h.length, 1, JSON.stringify(r.json));
+    assert.match(h[0].meldung, /### Vorgeschichte/);
+  });
+});
+
+test("[board-5] Vorgeschichte: Schalter an, Abschnitt vorhanden (auch englisch) → kein Hinweis", () => {
+  mitProjektConfig(MIT_VORGESCHICHTE, (dir) => {
+    const fachlich = dateiWeg(dir, FACHLICH + "\n## Vorgeschichte\n- Nichts Einschlaegiges gefunden.\n", "[Fachlich] x");
+    assert.deepEqual(vorgeschichteHinweise(fachlich.json), [], JSON.stringify(fachlich.json));
+    const englisch = dateiWeg(dir, FACHLICH + "\n## History\n- Nothing relevant.\n", "[Fachlich] x");
+    assert.deepEqual(vorgeschichteHinweise(englisch.json), [], JSON.stringify(englisch.json));
+    const plan = dateiWeg(dir, PLAN.replace("## Offene Fragen\n", "### Vorgeschichte\n- Nichts Einschlaegiges gefunden.\n\n## Offene Fragen\n"), "[Plan] x");
+    assert.equal(plan.json.ok, true, JSON.stringify(plan.json));
+    assert.deepEqual(vorgeschichteHinweise(plan.json), [], JSON.stringify(plan.json));
+  });
+});
+
+test("[board-5] Vorgeschichte: Schalter aus → kein Hinweis, Ausgabe wie bisher", () => {
+  mitProjekt((dir) => {
+    assert.deepEqual(dateiWeg(dir, FACHLICH, "[Fachlich] x").json, { ok: true, stufe: "fachlich", verstoesse: [] });
+    assert.deepEqual(dateiWeg(dir, PLAN, "[Plan] x").json, { ok: true, stufe: "plan", verstoesse: [] });
+  });
+});
+
+test("[board-5] Vorgeschichte: Arbeitspaket → kein Hinweis, auch mit Schalter", () => {
+  mitProjektConfig(MIT_VORGESCHICHTE, (dir) => {
+    const r = dateiWeg(dir, PAKET, "[Task] x");
+    assert.deepEqual(vorgeschichteHinweise(r.json), [], JSON.stringify(r.json));
+  });
+});
