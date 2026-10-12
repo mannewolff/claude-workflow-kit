@@ -163,6 +163,15 @@ Nutzung:
       'Fachliche Quelle:') die Aktion wandert | lag bereits in In review | lag bereits
       in Done | bleibt, mit Grund. Rein lesend, bewegt nichts. Ausgabe: { plan, durch,
       grund, fehlend: [{ id, titel, spalte }], dokumente: [{ id, art, spalte, aktion, grund }] }.
+  node board.mjs issue fragen <id> [--body-file <pfad>] [--vergleich <pfad>]
+      Grooming-Stand eines Fachplans fuer /groom (Issue #1513, Plan #1510): einstieg
+      ({ start, grund, meldung }), fragen ({ vermerk, fragen, ungegliedert, offen }),
+      stoppKommentar (nur bei kit:klaeren: { kommentar, grund }, sonst null) und
+      vermerkVorschlag (der Vermerk 'Keine' mit heutigem Datum, nur ohne offene Frage).
+      --body-file prueft einen neuen Body gegen den der Karte (pruefung: { ok,
+      verstoesse }), Exit 1 bei Verstoessen. --vergleich nennt die geaenderten
+      Kriterien und Nicht-Ziele zwischen der Datei und dem Body der Karte (aenderungen).
+      Rein lesend: aendert weder Body noch Labels.
   node board.mjs issue label add <id> <name>
   node board.mjs issue label remove <id> <name>
       Zeichnet ein Issue (z. B. kit:klaeren). Status-Labels aendert \`issue move\`.
@@ -351,6 +360,15 @@ Usage:
       action wandert | lag bereits in In review | lag bereits in Done | bleibt, with a
       reason. Read-only, moves nothing. Output: { plan, durch, grund, fehlend: [{ id,
       titel, spalte }], dokumente: [{ id, art, spalte, aktion, grund }] }.
+  node board.mjs issue fragen <id> [--body-file <pfad>] [--vergleich <pfad>]
+      Grooming state of a requirement for /groom (Issue #1513, Plan #1510): einstieg
+      ({ start, grund, meldung }), fragen ({ vermerk, fragen, ungegliedert, offen }),
+      stoppKommentar (only with kit:clarify: { kommentar, grund }, otherwise null) and
+      vermerkVorschlag (the note 'Keine' with today's date, only without an open
+      question). --body-file checks a new body against the card's (pruefung: { ok,
+      verstoesse }), exit 1 on violations. --vergleich lists the changed criteria and
+      non-goals between the file and the card's body (aenderungen).
+      Read-only: changes neither body nor labels.
   node board.mjs issue label add <id> <name>
   node board.mjs issue label remove <id> <name>
       Marks an issue (e.g. kit:clarify). Status labels are changed by \`issue move\`.
@@ -716,6 +734,53 @@ function geschuetztHandlung(treffer, label, freigegeben) {
   return t("handlungAnhalten", { pfade });
 }
 
+/**
+ * `issue fragen <id> [--body-file <pfad>] [--vergleich <pfad>]` (Issue #1513, Plan #1510 A2,
+ * A3, A4, E9): der Grooming-Stand eines Fachplans fuer `/groom`. Rein lesend — geschrieben
+ * wird ueber `issue update --body-file` (A3), Labels bleiben unberuehrt (A4). Die Kommentare
+ * liest der Aufruf nur bei `kit:klaeren`: Nur dort gibt es eine Stopp-Frage. Exit 1 allein,
+ * wenn `--body-file` gegen den Body der Karte verstoesst.
+ */
+async function issueFragen(tracker, args) {
+  const id = args._[0];
+  if (id === undefined) abbruch(t("fragenOhneId"));
+  const { groomEinstieg, fragenLesen, stoppKommentar, vermerkZeile, koerperPruefen, kriterienVergleich } =
+    await import("./board/grooming.mjs");
+  const neu = optionDatei(args, "body-file");
+  const start = optionDatei(args, "vergleich");
+  const issue = await tracker.getIssue(String(id));
+  const body = issue.body || "";
+  const fragen = fragenLesen(body);
+  const klaeren = traegtLabel(issue.labels, "klaeren");
+  const ausgabe = {
+    einstieg: groomEinstieg({ ...issue, id: String(id) }, process.env),
+    fragen,
+    stoppKommentar: klaeren ? stoppKommentar(await kartenKommentare(tracker, String(id), issue)) : null,
+    vermerkVorschlag: fragen.offen === 0 && fragen.fragen.length > 0 ? vermerkZeile(fragen.fragen.length, heute()) : null,
+  };
+  if (neu !== null) ausgabe.pruefung = koerperPruefen(body, neu);
+  if (start !== null) ausgabe.aenderungen = kriterienVergleich(start, body);
+  out(ausgabe);
+  if (ausgabe.pruefung && !ausgabe.pruefung.ok) process.exit(1);
+}
+
+/** Die Kommentare einer Karte: mit der Karte geliefert, sonst streng vom Tracker gelesen. */
+async function kartenKommentare(tracker, id, issue) {
+  if (Array.isArray(issue.comments)) return issue.comments;
+  return tracker.kommentareStreng(id);
+}
+
+/** Der Inhalt der Datei hinter `--<name> <pfad>`, null ohne die Option. */
+function optionDatei(args, name) {
+  if (args[name] === undefined) return null;
+  if (args[name] === true) abbruch(t("optionOhneWert", { option: name }));
+  try {
+    return readFileSync(args[name], "utf-8");
+  } catch (e) {
+    return abbruch(t("optionDateiUnlesbar", { option: name, datei: args[name], grund: e.code || e.message }));
+  }
+}
+
 // Was das Urteil von `issue auftrag` aus dem Abschnitt "Geschuetzte Pfade" braucht. Der Teil
 // dokumente importiert nie aus dem Einstieg; der Einstieg reicht es ihm herein (Issue #1218).
 const AUFTRAG_GESCHUETZT = Object.freeze({ geschuetzteTreffer, geschuetztFreigabe, geschuetztKommentar,
@@ -741,6 +806,7 @@ async function dispatchIssue(command, args) {
     case "brief":   return issueAuftrag(tracker, args, AUFTRAG_GESCHUETZT);
     case "ursprung":
     case "origin":  return issueUrsprung(tracker, args);
+    case "fragen":  return issueFragen(tracker, args);
     case "label":   return issueLabel(tracker, config, args, HELP);
     case "check-form": return issueCheckForm(tracker, config, args);
     case "check-geschuetzt":
