@@ -27,6 +27,7 @@ const LABEL_PAARE = [
   ["lauf:abgebrochen", "run:aborted"],
   ["lauf:wartet", "run:waiting"],
   ["review:fertig", "review:done"],
+  ["kit:geklaert", "kit:clarified"],
   ["ziel:plan", "goal:plan"],
   ["ziel:pakete", "goal:packages"],
   ["ziel:umsetzung", "goal:implementation"],

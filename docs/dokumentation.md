@@ -565,6 +565,7 @@ Jedes Label und jedes Titel-Präfix des Kits hat einen Namen, den englischen, in
 | Lauf abgebrochen | `run:aborted` |
 | Lauf wartet | `run:waiting` |
 | Spur der Prüfung | `review:done` |
+| Fragen an den PO geklärt | `kit:clarified` |
 | Ziel der Kette: Plan | `goal:plan` |
 | Ziel der Kette: Pakete | `goal:packages` |
 | Ziel der Kette: Umsetzung | `goal:implementation` |
@@ -574,6 +575,8 @@ Jedes Label und jedes Titel-Präfix des Kits hat einen Namen, den englischen, in
 | Präfix des Menschenschritts | `[Human]` |
 
 Dazu kommen `kit:night`, `kit:nightrun`, `planreview:1`, `planreview:2`, `[Plan]` und `[Task]`.
+
+`kit:clarified` zeigt am Board, dass an einem Fachplan keine Frage an den PO mehr offen ist. `/issue-review` und `/groom` setzen es, sobald die erste Zeile unter `## Offene Fragen an den PO` mit „Keine“ beginnt. Es ist eine Hilfe für den Menschen, kein Kriterium: Die Nacht-Kette prüft weiter den Vermerk „Keine“, nicht das Label. Das Kit nimmt es nie ab; abnehmen tut es nur der Mensch.
 
 **Karten mit den früheren deutschen Namen arbeiten weiter.** Offene Karten tragen noch die früheren deutschen Präfixe und Labels. Das Kit erkennt die früheren deutschen Namen beim Lesen mit und behandelt sie wie die englischen, schreibt aber nur die englischen. Ein deutsches Label, das das Kit abräumen würde, räumt es ebenso ab; unbeteiligte Labels bleiben unverändert. Auch die Freigaberechte gelten unter beiden Namen: Ein Label, das nur ein Mensch abnehmen darf, darf auch unter seinem deutschen Namen nur ein Mensch abnehmen. Welcher deutsche Name zu welchem englischen gehört, steht in der [Tabelle alt → neu](#skills-befehle-und-einstiegsdateien).
 

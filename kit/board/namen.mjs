@@ -52,6 +52,7 @@ export const LABELS = Object.freeze({
   laufAbgebrochen: eintrag("lauf:abgebrochen", "run:aborted"),
   laufWartet: eintrag("lauf:wartet", "run:waiting"),
   reviewFertig: eintrag("review:fertig", "review:done"),
+  geklaert: eintrag("kit:geklaert", "kit:clarified"),
   zielPlan: eintrag("ziel:plan", "goal:plan"),
   zielPakete: eintrag("ziel:pakete", "goal:packages"),
   zielUmsetzung: eintrag("ziel:umsetzung", "goal:implementation"),

@@ -577,7 +577,7 @@ node install.mjs --language de
 It renames the settings back to the German names. If you need exactly the state before the switch, copy the backup back to `.claude/workflow.config.json`.
 
 ### Labels and title prefixes
-<!-- de: 0119e337edde -->
+<!-- de: f1a29a559675 -->
 
 Every label and every title prefix of the kit has one name, the English one, in every project, including a German one. When the kit sets a label or creates a card, it uses this name.
 
@@ -591,6 +591,7 @@ Every label and every title prefix of the kit has one name, the English one, in 
 | run aborted | `run:aborted` |
 | run is waiting | `run:waiting` |
 | trace of the review | `review:done` |
+| questions to the PO clarified | `kit:clarified` |
 | goal of the chain: plan | `goal:plan` |
 | goal of the chain: packages | `goal:packages` |
 | goal of the chain: implementation | `goal:implementation` |
@@ -600,6 +601,8 @@ Every label and every title prefix of the kit has one name, the English one, in 
 | prefix of the human step | `[Human]` |
 
 Added to these are `kit:night`, `kit:nightrun`, `planreview:1`, `planreview:2`, `[Plan]` and `[Task]`.
+
+`kit:clarified` shows on the board that no question to the PO is open on a business requirement any more. `/issue-review` and `/groom` set it as soon as the first line under `## Offene Fragen an den PO` begins with „Keine“. It is a help for the human, not a criterion: the night chain keeps checking the note „Keine“, not the label. The kit never removes it; only the human removes it.
 
 **Cards with the former German names keep working.** Open cards still carry the former German prefixes and labels. The kit recognises the former German names when reading and treats them like the English ones, but writes only the English ones. A German label the kit would remove, it removes just the same; uninvolved labels stay unchanged. The release rights apply under both names as well: a label that only a human may remove may also only be removed by a human under its German name. Which German name belongs to which English one is given in the [table old → new](/en/dokumentation#skills-commands-and-entry-files).
 

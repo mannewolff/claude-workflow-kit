@@ -71,10 +71,13 @@ Meldet die Prüfung Verstöße (Exit 1), schreibt der Skill nicht. Er korrigiert
 
 Sind alle Fragen entschieden und keine zurückgestellt, liefert ein erneuter Aufruf `issue questions <N>` den Vermerk unter `vermerkVorschlag` — mit der Zahl aller Fragen des Abschnitts, Folgefragen eingeschlossen, und dem heutigen Datum. Der Skill übernimmt ihn wörtlich als erste Zeile unter `## Offene Fragen an den PO`; Fragen und Antworten bleiben darunter stehen. Er zeigt die Änderung und schreibt nach Zustimmung wie in Schritt 5. Ist eine Frage zurückgestellt, entfällt der Vermerk.
 
+Nach dem Schreiben des Vermerks setzt der Skill `node .claude/kit/board.mjs issue label add <N> kit:clarified`: Das Label zeigt am Board, dass keine Frage an den PO offen ist — eine Hilfe für den Menschen, kein Kriterium; die Kette prüft weiter den Vermerk. Ist es am Board nicht definiert, nennt der Skill die Fehlermeldung des Adapters und läuft weiter. Entfällt der Vermerk, entfällt auch das Label.
+
 ### 7. Abschluss
 
 Die Abschlussmeldung nennt:
 
+- ob `kit:clarified` gesetzt ist, oder die Fehlermeldung des Adapters, wenn das Label am Board fehlt;
 - die zurückgestellten Fragen mit Nummer, oder dass keine zurückgestellt ist;
 - bei `kit:clarify` mit `stoppKommentar`: dass der Mensch `kit:clarify` abnimmt und den Fachplan erneut prüfen lässt (`/issue-review #<N>`);
 - bei `kit:clarify` ohne `stoppKommentar`: dass der Halt keiner Prüfung des Fachplans entstammt und sein Weg im Halt-Kommentar steht;
@@ -88,7 +91,7 @@ Ist unter `aenderungen` ein Kriterium oder Nicht-Ziel ergänzt, gestrichen oder 
 
 ## Stop-Punkte
 
-- Kein Label setzen oder abnehmen — `review:done` und `kit:clarify` bleiben, wie sie sind; `kit:clarify` nimmt allein der Mensch ab.
+- Kein Label setzen oder abnehmen — `review:done` und `kit:clarify` bleiben, wie sie sind; `kit:clarify` nimmt allein der Mensch ab. Einzige Ausnahme: `kit:clarified` nach dem Vermerk „Keine“ (Schritt 6); abgenommen wird auch dieses nie.
 - Keine Prüfung starten — der Skill schlägt `/issue-review` nur vor.
 - Keine eigenen Prüffunde einbringen — jede Änderung stammt aus einer Antwort.
 - Kein `[Plan]` anlegen — das ist `/techplan`.
