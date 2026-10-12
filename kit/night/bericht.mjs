@@ -511,6 +511,8 @@ const KONTEXT_UEBERSCHRIFT = {
   test: (zeile) => /^ {0,3}##/.test(zeile) && ((m) => m?.sache === "kontext" && m.rest.trim() === "")(leseMarker(zeile)),
 };
 const ENTSCHEIDUNGEN_KOMMENTAR_UEBERSCHRIFT = ueberschriftZeile("entscheidungen", 3);
+// `### Vorgeschichte` bzw. `### History` im Plan (Issue #1541, Plan #1534).
+const VORGESCHICHTE_UEBERSCHRIFT = ueberschriftZeile("vorgeschichte", 3);
 // `## Einarbeitung, Runde N` unter beiden Namen (Issue #1443).
 const istEinarbeitung = (kommentar) => ((m) => m?.sache === "einarbeitungRunde" && /^ \d/.test(m.rest))(leseMarker(kommentar));
 
@@ -542,6 +544,22 @@ function punkteErsterEbene(body, ueberschrift) {
     .filter((z, i) => abschnitt.ausserhalb[i] && /^[-*+]\s+\S/.test(z))
     .map((z) => z.replace(/^[-*+]\s+/, "").trim())
     .filter((z) => !/^keine\.?$/i.test(z));
+}
+
+/**
+ * Die `- Widerspruch:`-Zeilen aus `### Vorgeschichte` des Plans, woertlich (Issue #1541).
+ * `/techplan` uebernimmt sie aus der Fachlichen Quelle; gelesen wird darum nur der Plan.
+ * Der Unterabschnitt endet an der naechsten `##`- oder `###`-Zeile — `abschnittLesen`
+ * endet nur an `##` und liefe ueber eine folgende `###`-Ueberschrift hinaus.
+ */
+function widerspruchsZeilen(body) {
+  const abschnitt = abschnittLesen(body, VORGESCHICHTE_UEBERSCHRIFT);
+  if (!abschnitt) return [];
+  const ende = abschnitt.zeilen.findIndex((z, i) => abschnitt.ausserhalb[i] && /^ {0,3}###\s/.test(z));
+  const bis = ende < 0 ? abschnitt.zeilen.length : ende;
+  return abschnitt.zeilen.slice(0, bis)
+    .filter((z, i) => abschnitt.ausserhalb[i] && /^- Widerspruch:/.test(z))
+    .map((z) => z.trimEnd());
 }
 
 /** Die `Entscheidung:`-Zeilen aus `## Kontext` eines Pakets. */
@@ -940,6 +958,9 @@ export function berichtBauen(einheit, {
   z.push(t("entscheidungenKopf"), "");
   if (entscheidungen.length === 0) z.push(t("keineEntscheidungen"));
   entscheidungen.forEach((e, i) => z.push(`${i + 1}. ${e}`));
+  // Ohne Widerspruch entfaellt der Kopf (Issue #1541): Die Zeilenfolge jeder anderen Kette bleibt.
+  const widersprueche = widerspruchsZeilen(plan?.body);
+  if (widersprueche.length > 0) z.push("", t("widerspruecheKopf"), "", ...widersprueche);
 
   z.push(
     "",
