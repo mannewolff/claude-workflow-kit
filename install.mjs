@@ -637,7 +637,7 @@ function spracheDesLaufs(sprache, existingConfig) {
 const BOARD_TEILE = JSON.parse(Buffer.from(KIT_BOARD_B64, "base64").toString("utf-8"));
 const ladeTeil = (datei) => import(`data:text/javascript;base64,${Buffer.from(BOARD_TEILE[datei], "utf-8").toString("base64")}`);
 const { normalisiereConfig, benenneUm } = await ladeTeil("config-namen.mjs");
-const { projektSprache, LABELS, PRAEFIXE, erkenneLabel, erkennePraefix, prozessSprache, spracheFestlegen, text } = await ladeTeil("namen.mjs");
+const { projektSprache, LABELS, PRAEFIXE, erkenneLabel, erkennePraefix, prozessSprache, spracheFestlegen, text, ALTNAMEN } = await ladeTeil("namen.mjs");
 
 // --- Texte an den Menschen (Issue #1455, Plan #1420 E13, E14, E22) ---
 //
@@ -765,6 +765,12 @@ export const TEXTE = Object.freeze({
     hooksSchon: "✓ {pfad}: Kit-Hooks bereits eingetragen",
     hooksEingetragen: "✓ {pfad}: Kit-Hooks eingetragen ({ereignisse})",
     hooksUmgeschrieben: "✓ {pfad}: Kit-Hooks auf die englischen Namen umgeschrieben ({ereignisse})",
+    selbstKopf: "\nSelbst zu ändern — Aufrufe des Kits unter einem alten Namen:",
+    selbstKeine: "  Keine Fundstelle in .claude/settings.json, .claude/settings.local.json, den Skripten der package.json und crontab -l.",
+    selbstFund: "  {ort}: {alt} → {neu}",
+    crontabOrt: "crontab -l, Zeile {zeile}",
+    selbstTabelle: "  Die alten Namen und ihre neuen (alt → neu):",
+    selbstAusserhalb: "  Zeitpläne und eigene Skripte außerhalb dieser Orte (etwa LaunchAgents) bitte selbst auf die alten Namen prüfen.",
     teileGeschrieben: "✓ {teil}/ geschrieben: {anzahl} Teil(e) in {pfad}",
     agentenGeschrieben: "✓ agents/ geschrieben: {anzahl} Agent(en) in {pfad}",
     windowsNicht: "claude-workflow-kit unterstützt natives Windows ab Version 4.0.0 nicht mehr.",
@@ -913,6 +919,12 @@ export const TEXTE = Object.freeze({
     hooksSchon: "✓ {pfad}: kit hooks already entered",
     hooksEingetragen: "✓ {pfad}: kit hooks entered ({ereignisse})",
     hooksUmgeschrieben: "✓ {pfad}: kit hooks rewritten to the English names ({ereignisse})",
+    selbstKopf: "\nTo change yourself — calls of the kit under an old name:",
+    selbstKeine: "  No occurrence in .claude/settings.json, .claude/settings.local.json, the scripts of package.json and crontab -l.",
+    selbstFund: "  {ort}: {alt} → {neu}",
+    crontabOrt: "crontab -l, line {zeile}",
+    selbstTabelle: "  The old names and their new ones (old → new):",
+    selbstAusserhalb: "  Please check schedules and your own scripts outside these places (such as LaunchAgents) for the old names yourself.",
     teileGeschrieben: "✓ {teil}/ written: {anzahl} part(s) in {pfad}",
     agentenGeschrieben: "✓ agents/ written: {anzahl} agent(s) in {pfad}",
     windowsNicht: "claude-workflow-kit no longer supports native Windows from version 4.0.0.",
@@ -1667,6 +1679,133 @@ function ensureSitzungsHooks(targetBase) {
   if (neu.length > 0) console.log(t("hooksEingetragen", { pfad, ereignisse: neu.join(", ") }));
 }
 
+// --- Stellen, die der Mensch selbst aendern muss (Issue #1570, Plan #1548 E11) ---
+//
+// Was das Update nicht selbst umschreibt, nennt es: eigene Sandbox-Ausnahmen, Paket-Skripte und
+// Zeitplaene, die das Kit unter einem alten Namen rufen. Gesucht wird lesend an festen Orten —
+// `.claude/settings.json`, `.claude/settings.local.json`, die `scripts` der `package.json` und
+// `crontab -l`. Nicht durchsucht werden LaunchAgents und fremde Verzeichnisse: `crontab -l` ist
+// ein Kommando ohne Pfadwissen, sie verlangten geratene Pfade ausserhalb des Projekts.
+
+// Die frueheren Dateinamen der Kommandos (Issues #1559, #1560, #1563).
+const ALTE_DATEIEN = Object.freeze({ "befunde.mjs": "findings.mjs", "aufwand.mjs": "effort.mjs",
+  "wirksamkeit.mjs": "effectiveness.mjs", "einstellungen.mjs": "settings.mjs" });
+// SYNC: DEUTSCHE_FLAGS in kit/night/grundlagen.mjs (Issue #1565).
+const ALTE_NIGHT_FLAGS = Object.freeze({ "--kette": "--chain", "--pruefen": "--check", "--waechter": "--watcher" });
+
+const rx = (s) => s.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+const wort = (s) => `(?<![\\w.-])${rx(s)}(?![\\w-])`;
+const einer = (namen) => `(?:${namen.map(rx).join("|")})`;
+
+/**
+ * Die Regeln alt → neu, laengste Form zuerst: Ein Fund, der in einem frueheren liegt, zaehlt
+ * nicht — `board.mjs sitzung melden` ist ein Fund, nicht zusaetzlich `board.mjs sitzung`. Eine
+ * Regel mit `kommando` gilt nur in einer Zeichenkette, die dieses Kommando nennt: `--teil` ist
+ * allein kein Aufruf des Kits.
+ */
+function altnamenRegeln() {
+  const { achsen, befehle, schutz, optionen, werte } = ALTNAMEN;
+  const achsNamen = (en) => [en, ...Object.keys(achsen).filter((de) => achsen[de] === en)];
+  const optNamen = (en) => [en, ...Object.keys(optionen).filter((de) => optionen[de] === en)];
+  const regeln = [];
+  for (const [option, ebene] of Object.entries(werte)) {
+    for (const [de, en] of Object.entries(ebene)) {
+      regeln.push({ alt: `--${option} ${de}`, neu: `--${option} ${en}`, kommando: "board.mjs",
+        muster: `(?<![\\w-])--${einer(optNamen(option))}[ =]${rx(de)}(?![\\w-])` });
+    }
+  }
+  for (const [de, en] of Object.entries(schutz)) {
+    regeln.push({ alt: `board.mjs code protection ${de}`, neu: `board.mjs code protection ${en}`,
+      muster: `board\\.mjs\\s+code\\s+${einer(["protection", ...Object.keys(befehle.code)])}\\s+${rx(de)}(?![\\w-])` });
+  }
+  for (const [achse, ebene] of Object.entries(befehle)) {
+    for (const [de, en] of Object.entries(ebene)) {
+      regeln.push({ alt: `board.mjs ${achse} ${de}`, neu: `board.mjs ${achse} ${en}`,
+        muster: `board\\.mjs\\s+${einer(achsNamen(achse))}\\s+${rx(de)}(?![\\w-])` });
+    }
+  }
+  for (const [de, en] of Object.entries(achsen)) {
+    regeln.push({ alt: `board.mjs ${de}`, neu: `board.mjs ${en}`, muster: `board\\.mjs\\s+${rx(de)}(?![\\w-])` });
+  }
+  for (const [de, en] of Object.entries(optionen)) {
+    regeln.push({ alt: `--${de}`, neu: `--${en}`, kommando: "board.mjs", muster: wort(`--${de}`) });
+  }
+  for (const [de, en] of Object.entries(ALTE_NIGHT_FLAGS)) {
+    regeln.push({ alt: de, neu: en, kommando: "night.mjs", muster: wort(de) });
+  }
+  for (const [de, en] of Object.entries(ALTE_DATEIEN)) {
+    regeln.push({ alt: de, neu: en, muster: `(?<![\\w.-])${rx(de)}` });
+  }
+  return regeln.map((r) => ({ ...r, muster: new RegExp(r.muster, "g") }));
+}
+
+const ALTNAMEN_REGELN = altnamenRegeln();
+
+/** Die Funde alter Namen in einer Zeichenkette, je Fund `{ ort, alt, neu }`; `alt` ist der Text, wie er dort steht. */
+export function altnamenFunde(ort, zeichenkette) {
+  const belegt = [];
+  const funde = [];
+  for (const regel of ALTNAMEN_REGELN) {
+    if (regel.kommando && !zeichenkette.includes(regel.kommando)) continue;
+    for (const m of zeichenkette.matchAll(regel.muster)) {
+      const von = m.index;
+      const bis = von + m[0].length;
+      if (belegt.some(([a, b]) => von >= a && bis <= b)) continue;
+      belegt.push([von, bis]);
+      funde.push({ von, fund: { ort, alt: m[0], neu: regel.neu } });
+    }
+  }
+  return funde.sort((a, b) => a.von - b.von).map((f) => f.fund);
+}
+
+/** Jede Zeichenkette eines JSON-Werts mit ihrem Pfad (`sandbox.excludedCommands[1]`). */
+function zeichenketten(wert, pfad = "", aus = []) {
+  if (typeof wert === "string") aus.push([pfad, wert]);
+  else if (Array.isArray(wert)) wert.forEach((w, i) => zeichenketten(w, `${pfad}[${i}]`, aus));
+  else if (wert && typeof wert === "object") {
+    for (const [k, w] of Object.entries(wert)) zeichenketten(w, pfad ? `${pfad}.${k}` : k, aus);
+  }
+  return aus;
+}
+
+/** Die Zeilen von `crontab -l`; fehlt das Kommando oder gibt es keinen Zeitplan, keine. */
+function crontabZeilen() {
+  const res = spawnSync("crontab", ["-l"], { encoding: "utf-8", timeout: 10_000 });
+  if (res.error || res.status !== 0) return [];
+  return String(res.stdout ?? "").split(/\r?\n/);
+}
+
+/** Alle Fundstellen an den festen Orten; gelesen wird nur. */
+function sucheFundstellen() {
+  const funde = [];
+  for (const datei of [".claude/settings.json", ".claude/settings.local.json"]) {
+    const inhalt = liesSettings(resolve(datei));
+    for (const [pfad, s] of zeichenketten(inhalt ?? {})) funde.push(...altnamenFunde(`${datei}: ${pfad}`, s));
+  }
+  const paket = liesSettings(resolve("package.json"));
+  for (const [pfad, s] of zeichenketten(paket?.scripts ?? {}, "scripts")) funde.push(...altnamenFunde(`package.json: ${pfad}`, s));
+  crontabZeilen().forEach((zeile, i) => funde.push(...altnamenFunde(t("crontabOrt", { zeile: i + 1 }), zeile)));
+  return funde;
+}
+
+/**
+ * Die Schlussmeldung des projektlokalen Laufs: jede Fundstelle, danach immer die vollstaendige
+ * Tabelle alt → neu. Der globale Install hat kein Projekt, in dem er suchen koennte.
+ */
+function meldeSelbstZuAendern(scope) {
+  if (scope !== "projekt") return;
+  console.log(t("selbstKopf"));
+  const funde = sucheFundstellen();
+  if (funde.length === 0) console.log(t("selbstKeine"));
+  for (const f of funde) console.log(t("selbstFund", f));
+  console.log(t("selbstTabelle"));
+  for (const r of ALTNAMEN_REGELN) {
+    const kommando = r.kommando ? ` (${r.kommando})` : "";
+    console.log(`    ${r.alt} → ${r.neu}${kommando}`);
+  }
+  console.log(t("selbstAusserhalb"));
+}
+
 // Schreibt die Teile von night.mjs und board.mjs nach night/ und board/ des Kit-Verzeichnisses
 // (Issue #1209, Plan #1199 E1), die Texttabellen der Module nach texte/ (Issue #1524). Die Einstiege laden ihre Teile aus diesen Unterverzeichnissen.
 // Das Verzeichnis entsteht auch leer: Dann gibt es noch keinen Teil, und ein neuer Teil
@@ -2038,6 +2177,8 @@ async function main() {
   }
 
   meldeRueckfall(rueckfall);
+  // Nach dem Umschreiben der Hooks: Was danach noch einen alten Namen ruft, aendert der Mensch.
+  meldeSelbstZuAendern(scope);
   console.log(t("fertig"));
   console.log(t("neueSession"));
   // Gezaehlt statt behauptet: Das Zahlwort stand hier zweimal falsch (zuletzt
