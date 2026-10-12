@@ -338,7 +338,7 @@ Not every mandatory check belongs at every point in time. Running an integration
 **Not to be confused.** The term *stage* (*Stufe*) has three meanings in the kit: `reviewStufen` are the [check stages of the review](/en/dokumentation#three-check-stages-the-check-moves-up), the task level (Aufgabenstufe) of a work package (`schwer`/`mittel`/`leicht`) controls the model of the [night chain](/en/dokumentation#second-mode-the-night-chain) (Nacht-Kette), and `stufe` is the point in time of a mandatory check. The three have nothing to do with each other.
 
 ### Completion and publishing: `nichtBeimAbschluss`
-<!-- de: c657d63448c8 -->
+<!-- de: 972fa1f15021 -->
 
 The staging above moves a **whole check** to a later point in time. Sometimes, though, the check is right at its point in time and only its *scope* is too large: The unit tests of a work package say whether this package holds — the integration tests say whether the parts fit together, and that is not yet a question at the completion of a single card. A `buildChecks` entry of the package stage can therefore say **why** it does not have to carry the completion of a single card:
 
@@ -372,6 +372,21 @@ The unit tests (surefire) run at the completion of every card. The integration t
 **Postponed, not waived.** Every check skipped this way runs **before publishing** in `/push-main`, there in full scope. In the report of the completion run it appears as an omission with its reason — not a shortcoming but its point in time.
 
 **Only meaningful on stage `paket`.** On `push` or `merge` the check does not run at completion anyway; `checks.mjs` rejects the combination at start instead of silently choosing one over the other. Likewise rejected is a configuration in which **every** entry of the package stage carries the axis or a `guete` block: Then completing a card would no longer have a gate.
+
+**Exception on direct touch: `abschlussBereiche`.** Sometimes a long check should only be skipped at completion if the package does not change its territory itself. For this, an entry with `nichtBeimAbschluss` additionally names the areas whose direct touch makes it run at completion as well:
+
+```json
+{
+  "cmd": "node --test --test-concurrency=2 \"test/ablauf-night-*.test.mjs\"",
+  "areas": ["board-dokumente", "nacht-einstieg", "nacht-kette"],
+  "nichtBeimAbschluss": "zusammenspiel",
+  "abschlussBereiche": ["nacht-einstieg", "nacht-kette"]
+}
+```
+
+An area is touched directly if a changed file matches one of its patterns or carries it via the [derivation from its importers](#area-based-checks-checkareas). The dependent areas do not count, nor do files in which every changed line is a blob or a stamp. If one of the named areas is touched directly, the normal area selection decides from there; otherwise the entry appears among the omissions, with the reason `keiner der Bereiche aus abschlussBereiche (…) direkt beruehrt, laeuft beim Veroeffentlichen` ("none of the areas from abschlussBereiche (…) touched directly, runs when publishing"). In the example, the group runs at the completion of a package that changes the night run, and is skipped for one that only touches `board-dokumente`. If the anchor cannot be resolved, "not touched directly" cannot be established, and the entry runs; an empty package names its own reason. The field only applies together with `nichtBeimAbschluss`, every name must be in `checkAreas` and in the entry's `areas`, and any other form aborts the check run at start.
+
+**A helper in a catch-all area must be entered.** The derivation only applies to a file without a pattern. A new helper under `test/helpers/`, however, matches the pattern of a catch-all area such as `testdateien` (`test/helpers/**`) and therefore does not carry the area of the tests that load it. If a test whose area is listed in `abschlussBereiche` loads it, the helper itself belongs in that area's patterns — in this project, for instance, a new helper of the night flow tests belongs in `nacht-einstieg`. Otherwise the check is skipped at the completion of a package that only changes the helper.
 
 **A missing field means unchanged behaviour.** Whoever writes nothing notices nothing of the axis — and whoever cannot call their tests separately by kind keeps getting the previous scope. The axis applies team-wide; a deviating value in `workflow.config.local.json` has no effect.
 

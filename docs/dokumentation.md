@@ -362,6 +362,21 @@ Die Modultests (surefire) laufen beim Abschluss jeder Karte. Die Integrationstes
 
 **Nur an der Stufe `paket` sinnvoll.** An `push` oder `merge` läuft die Prüfung beim Abschluss ohnehin nicht; die Kombination weist `checks.mjs` beim Start ab, statt still das eine gegen das andere zu wählen. Ebenso abgewiesen wird eine Konfiguration, in der **jeder** Eintrag der Paketstufe die Achse oder einen `guete`-Block trägt: Dann hätte der Abschluss einer Karte kein Gate mehr.
 
+**Ausnahme bei direkter Berührung: `abschlussBereiche`.** Manchmal soll eine lange Prüfung beim Abschluss nur dann entfallen, wenn das Paket ihr Gebiet nicht selbst ändert. Dafür nennt ein Eintrag mit `nichtBeimAbschluss` zusätzlich die Bereiche, deren direkte Berührung ihn auch beim Abschluss laufen lässt:
+
+```json
+{
+  "cmd": "node --test --test-concurrency=2 \"test/ablauf-night-*.test.mjs\"",
+  "areas": ["board-dokumente", "nacht-einstieg", "nacht-kette"],
+  "nichtBeimAbschluss": "zusammenspiel",
+  "abschlussBereiche": ["nacht-einstieg", "nacht-kette"]
+}
+```
+
+Direkt berührt ist ein Bereich, wenn eine geänderte Datei eines seiner Muster trifft oder ihn über die [Ableitung aus ihren Importeuren](#bereichsbezogene-prüfungen-checkareas) trägt. Die abhängigen Bereiche zählen nicht mit, ebenso wenig Dateien, deren jede geänderte Zeile Blob oder Stempel ist. Ist einer der genannten Bereiche direkt berührt, entscheidet danach die normale Bereichsauswahl; sonst steht der Eintrag unter den Auslassungen, mit dem Grund `keiner der Bereiche aus abschlussBereiche (…) direkt beruehrt, laeuft beim Veroeffentlichen`. Im Beispiel läuft die Gruppe beim Abschluss eines Pakets, das den Nachtlauf ändert, und entfällt bei einem, das nur `board-dokumente` berührt. Lässt sich der Anker nicht auflösen, ist „nicht direkt berührt" nicht festzustellen, und der Eintrag läuft; ein leeres Paket nennt seinen eigenen Grund. Das Feld gilt nur zusammen mit `nichtBeimAbschluss`, jeder Name muss in `checkAreas` und in den `areas` des Eintrags stehen, und jede andere Form bricht den Prüflauf beim Start ab.
+
+**Ein Helfer im Sammelbereich muss eingetragen werden.** Die Ableitung greift nur für eine Datei ohne Muster. Ein neuer Helfer unter `test/helpers/` trifft aber das Muster eines Sammelbereichs wie `testdateien` (`test/helpers/**`) und trägt darum nicht den Bereich der Tests, die ihn laden. Lädt ihn ein Test, dessen Bereich in `abschlussBereiche` steht, gehört der Helfer selbst in die Muster dieses Bereichs — in diesem Projekt etwa ein neuer Helfer der Nacht-Ablauftests in `nacht-einstieg`. Sonst entfällt die Prüfung beim Abschluss eines Pakets, das nur den Helfer ändert.
+
 **Ein fehlendes Feld bedeutet unverändertes Verhalten.** Wer nichts hinschreibt, merkt von der Achse nichts — und wer seine Tests nicht nach Art getrennt aufrufbar hat, bekommt weiterhin den bisherigen Umfang. Die Achse gilt teamweit; ein abweichender Wert in `workflow.config.local.json` bleibt unwirksam.
 
 ### Wer war es? Die Verursachersuche
