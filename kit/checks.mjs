@@ -596,6 +596,10 @@ Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
     vorabUndGleichzeitig: "Die Pruefung '{cmd}' traegt vorab und gleichzeitig — sie laeuft entweder vor der gleichzeitigen Phase oder in ihr.",
     keineBereiche: "keine",
     unbekannterBereich: "Unbekannter Bereich '{name}' bei Pruefung '{cmd}'. Bekannt aus checkAreas: {liste}.",
+    abschlussBereicheForm: "abschlussBereiche bei Pruefung '{cmd}' ist keine nicht leere Liste von Bereichsnamen: {wert}.",
+    abschlussBereicheOhneAchse: "Die Pruefung '{cmd}' traegt abschlussBereiche ohne nichtBeimAbschluss — ohne die Achse laeuft sie beim Abschluss ohnehin, das Feld bewirkt nichts.",
+    abschlussBereicheUnbekannt: "Unbekannter Bereich '{name}' in abschlussBereiche bei Pruefung '{cmd}'. Bekannt aus checkAreas: {liste}.",
+    abschlussBereicheAusserhalb: "Der Bereich '{name}' in abschlussBereiche bei Pruefung '{cmd}' steht nicht in ihren areas ({areas}) — seine Beruehrung waehlte sie nie aus.",
     mehrereGuete: "Mehr als eine Guetemessung: {liste} tragen alle 'guete' — hoechstens ein Eintrag darf messen.",
     gueteMerge: "Die Guetemessung '{cmd}' traegt stufe 'merge' — eine Messung erst vor der Freigabe kaeme zu spaet. Zulaessig: {erlaubt}.",
     abschlussAchseStufe: "Die Pruefung '{cmd}' traegt nichtBeimAbschluss und stufe '{stufe}' — dort laeuft sie beim Abschluss ohnehin nicht. Die Achse gilt fuer die Stufe '{paket}'.",
@@ -889,6 +893,10 @@ segment boundaries; a directory is covered as 'frontend/**'.
     vorabUndGleichzeitig: "The check '{cmd}' carries upfront and concurrent — it runs either before the concurrent phase or in it.",
     keineBereiche: "none",
     unbekannterBereich: "Unknown area '{name}' on check '{cmd}'. Known from checkAreas: {liste}.",
+    abschlussBereicheForm: "completionAreas on check '{cmd}' is not a non-empty list of area names: {wert}.",
+    abschlussBereicheOhneAchse: "The check '{cmd}' carries completionAreas without notAtCompletion — without the axis it runs at completion anyway, the field has no effect.",
+    abschlussBereicheUnbekannt: "Unknown area '{name}' in completionAreas on check '{cmd}'. Known from checkAreas: {liste}.",
+    abschlussBereicheAusserhalb: "The area '{name}' in completionAreas on check '{cmd}' is not in its areas ({areas}) — touching it would never select the check.",
     mehrereGuete: "More than one quality measurement: {liste} all carry 'quality' — at most one entry may measure.",
     gueteMerge: "The quality measurement '{cmd}' carries stage 'merge' — a measurement only before the release would come too late. Allowed: {erlaubt}.",
     abschlussAchseStufe: "The check '{cmd}' carries notAtCompletion and stage '{stufe}' — there it does not run at completion anyway. The axis applies to the stage '{paket}'.",
@@ -1164,7 +1172,10 @@ function normalisiere(check) {
   if (objekt.vorab === true && objekt.gleichzeitig === true) {
     fail(t("vorabUndGleichzeitig", { cmd: objekt.cmd }));
   }
-  return { ...objekt, stufe: objekt.stufe ?? STUFEN[0], nichtBeimAbschluss, gleichzeitig: objekt.gleichzeitig === true };
+  // `abschlussBereiche` (Issue #1530, Plan #1529) geht unveraendert durch; ob es etwas
+  // bewirken kann, prueft `pruefeAbschlussBereiche`, weil es dafuer `checkAreas` braucht.
+  const abschlussBereiche = objekt.abschlussBereiche ?? null;
+  return { ...objekt, stufe: objekt.stufe ?? STUFEN[0], nichtBeimAbschluss, abschlussBereiche, gleichzeitig: objekt.gleichzeitig === true };
 }
 
 /**
@@ -1225,6 +1236,39 @@ function pruefeNichtBeimAbschlussStufe(checks) {
     if (!check.nichtBeimAbschluss) continue;
     if (check.stufe === STUFEN[0]) continue;
     fail(t("abschlussAchseStufe", { cmd: check.cmd, stufe: configWert("buildChecks[].stufe", check.stufe), paket: configWert("buildChecks[].stufe", STUFEN[0]) }));
+  }
+}
+
+/**
+ * Das Feld `abschlussBereiche` (Issue #1530, Plan #1529, E7): Ein Eintrag mit
+ * `nichtBeimAbschluss` nennt die Bereiche, bei deren direkter Beruehrung er beim Abschluss
+ * doch laeuft. Jede Form, in der das Feld nichts bewirken koennte, bricht ab — ohne die
+ * Achse, als leere oder falsch geformte Liste, mit einem unbekannten Bereich oder mit
+ * einem Bereich, der nicht in `areas` steht und den Eintrag darum nie auswaehlte. Die
+ * letzte Regel entfaellt bei `always: true` und ohne `areas`: Dort waehlt jeder Bereich
+ * den Eintrag aus. Derselbe Weg wie bei `pruefeNichtBeimAbschlussStufe`: Abbruch statt
+ * stiller Wirkungslosigkeit, unbedingt, weil es eine Aussage ueber die Config ist.
+ */
+// SYNC: dieselbe Regel soll kit/einstellungen.mjs vor dem Speichern pruefen (Plan #1529).
+function pruefeAbschlussBereiche(checks, checkAreas) {
+  const bekannt = new Set(Object.keys(checkAreas));
+  for (const check of checks) {
+    const liste = check.abschlussBereiche;
+    if (liste === null) continue;
+    if (!Array.isArray(liste) || liste.length === 0 || liste.some((name) => typeof name !== "string")) {
+      fail(t("abschlussBereicheForm", { cmd: check.cmd, wert: JSON.stringify(liste) }));
+    }
+    if (!check.nichtBeimAbschluss) fail(t("abschlussBereicheOhneAchse", { cmd: check.cmd }));
+    for (const name of liste) pruefeAbschlussBereich(check, name, bekannt);
+  }
+}
+
+function pruefeAbschlussBereich(check, name, bekannt) {
+  if (!bekannt.has(name)) {
+    fail(t("abschlussBereicheUnbekannt", { name, cmd: check.cmd, liste: bekannt.size > 0 ? [...bekannt].join(", ") : t("keineBereiche") }));
+  }
+  if (check.always !== true && Array.isArray(check.areas) && !check.areas.includes(name)) {
+    fail(t("abschlussBereicheAusserhalb", { name, cmd: check.cmd, areas: check.areas.join(", ") }));
   }
 }
 
@@ -1907,6 +1951,7 @@ function auswahlPlanen(args) {
   pruefeBereichsnamen(checks, checkAreas);
   pruefeGuete(checks);
   pruefeNichtBeimAbschlussStufe(checks);
+  pruefeAbschlussBereiche(checks, checkAreas);
 
   // Der Abschlusslauf (Issue #946): Er schliesst genau ein Arbeitspaket ab und ist der
   // einzige Lauf, der die Zusammenspiel-Pruefungen auslassen darf. Sein Gate wird hier

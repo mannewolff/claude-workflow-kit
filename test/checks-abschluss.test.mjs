@@ -317,3 +317,84 @@ test("die Hilfe nennt die Achse und den Schalter", async () => {
     assert.match(res.stdout, /nichtBeimAbschluss/);
   });
 });
+
+// Das Feld `abschlussBereiche` (Issue #1530, Plan #1529, E7): Ein Eintrag mit
+// `nichtBeimAbschluss` nennt die Bereiche, bei deren direkter Beruehrung er beim
+// Abschluss doch laeuft. Jede Form, in der das Feld nichts bewirken koennte, bricht beim
+// Start ab — derselbe Weg wie beim unbekannten Feldwert und beim unbekannten Bereich.
+
+/** Erwartet den Abbruch von `plan` mit einer Meldung, die alle Muster trifft. */
+async function brichtAb(eintraege, muster) {
+  await mitRepo({ config: { buildChecks: [{ cmd: "echo einheit", always: true }, ...eintraege], checkAreas: BEREICHE } }, async (dir) => {
+    datei(dir, "frontend/src/App.tsx");
+
+    const res = checks(dir, "plan");
+
+    assert.notEqual(res.status, 0, "ein wirkungsloses abschlussBereiche darf nicht durchgehen");
+    for (const m of muster) assert.match(res.stderr, m);
+  });
+}
+
+/** Erwartet, dass `plan` mit diesen Eintraegen ohne Fehler startet. */
+async function startet(eintraege) {
+  await mitRepo({ config: { buildChecks: [{ cmd: "echo einheit", always: true }, ...eintraege], checkAreas: BEREICHE } }, async (dir) => {
+    datei(dir, "frontend/src/App.tsx");
+
+    const res = checks(dir, "plan");
+
+    assert.equal(res.status, 0, res.stderr);
+  });
+}
+
+test("(a) abschlussBereiche ohne nichtBeimAbschluss faellt durch", async () => {
+  await brichtAb(
+    [{ cmd: "echo ohne-achse", areas: ["frontend"], abschlussBereiche: ["frontend"] }],
+    [/abschlussBereiche/, /nichtBeimAbschluss/, /echo ohne-achse/],
+  );
+});
+
+test("(b) abschlussBereiche, das keine nicht leere Liste von Strings ist, faellt durch", async () => {
+  for (const wert of [[], "frontend", ["frontend", 3]]) {
+    await brichtAb(
+      [{ cmd: "echo form", areas: ["frontend"], nichtBeimAbschluss: "zusammenspiel", abschlussBereiche: wert }],
+      [/abschlussBereiche/, /echo form/],
+    );
+  }
+});
+
+test("(c) abschlussBereiche mit einem Bereich, den checkAreas nicht kennt, faellt durch", async () => {
+  await brichtAb(
+    [{ cmd: "echo unbekannt", always: true, nichtBeimAbschluss: "zusammenspiel", abschlussBereiche: ["nacht"] }],
+    [/'nacht'/, /echo unbekannt/, /frontend, backend/],
+  );
+});
+
+test("(d) abschlussBereiche mit einem Bereich ausserhalb von areas faellt durch", async () => {
+  await brichtAb(
+    [{ cmd: "echo fremd", areas: ["frontend"], nichtBeimAbschluss: "zusammenspiel", abschlussBereiche: ["backend"] }],
+    [/'backend'/, /echo fremd/, /areas/],
+  );
+});
+
+test("bei always: true oder ohne areas entfaellt die Regel (d)", async () => {
+  await startet([{ cmd: "echo immer", always: true, nichtBeimAbschluss: "zusammenspiel", abschlussBereiche: ["backend"] }]);
+  await startet([{ cmd: "echo ohne-areas", nichtBeimAbschluss: "zusammenspiel", abschlussBereiche: ["backend"] }]);
+});
+
+test("ein gueltiger Eintrag mit abschlussBereiche startet ohne Fehler und aendert die Auswahl nicht", async () => {
+  const gueltig = {
+    buildChecks: [
+      { cmd: "echo einheit", areas: ["frontend"] },
+      { cmd: "echo zusammenspiel", areas: ["frontend", "backend"], nichtBeimAbschluss: "zusammenspiel", abschlussBereiche: ["frontend"] },
+    ],
+    checkAreas: BEREICHE,
+  };
+  await mitRepo({ config: gueltig }, async (dir) => {
+    datei(dir, "frontend/src/App.tsx");
+
+    const res = checks(dir, "plan");
+
+    assert.equal(res.status, 0, res.stderr);
+    assert.deepEqual(kommandos(plan(dir).laufen), ["echo einheit", "echo zusammenspiel"]);
+  });
+});

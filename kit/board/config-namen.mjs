@@ -33,6 +33,7 @@ export const SCHLUESSEL = Object.freeze({
   "buildChecks[].always": "always",
   "buildChecks[].stufe": "stage",
   "buildChecks[].nichtBeimAbschluss": "notAtCompletion",
+  "buildChecks[].abschlussBereiche": "completionAreas",
   "buildChecks[].guete": "quality",
   "buildChecks[].guete.muster": "pattern",
   "buildChecks[].guete.marke": "marker",

@@ -96,6 +96,15 @@
                 ],
                 "description": "Warum diese Pr\u00fcfung den Abschluss eines einzelnen Arbeitspakets nicht tragen muss: \"zusammenspiel\" = sie pr\u00fcft das Zusammenspiel mehrerer Teile, \"volleTestmenge\" = sie gewinnt ihren Befund aus der vollst\u00e4ndigen Testmenge. Die vierte Achse neben \"areas\"/\"always\" (ob eine Pr\u00fcfung betroffen ist), \"stufe\" (wann sie an der Reihe ist) und \"guete\" (was sie misst) \u2014 dieses Feld sagt nichts davon, sondern warum sie beim Abschluss entfallen darf. Sie wirkt nur, wenn der Aufruf \"--abschluss\" tr\u00e4gt: den setzen allein die implement-Skills beim Abschluss genau einer Karte. Jeder andere Lauf f\u00e4hrt die Pr\u00fcfung mit, und sp\u00e4testens vor dem Ver\u00f6ffentlichen l\u00e4uft sie in jedem Fall. Nur an einem Eintrag der Stufe \"paket\" sinnvoll \u2014 an \"push\" oder \"merge\" l\u00e4uft die Pr\u00fcfung beim Abschluss ohnehin nicht, und der Pr\u00fcflauf bricht dort ab. Tr\u00e4gt jeder Eintrag der Paketstufe dieses Feld oder einen guete-Block, hat der Abschluss kein Gate mehr; auch das bricht ab. Fehlendes Feld = die Pr\u00fcfung l\u00e4uft auch beim Abschluss = unver\u00e4ndertes Verhalten. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
               },
+              "abschlussBereiche": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Bereichsnamen aus checkAreas, bei deren direkter Berührung eine Prüfung mit \"nichtBeimAbschluss\" auch beim Abschluss eines Arbeitspakets läuft. Direkt berührt ist ein Bereich, wenn eine geänderte Datei eines seiner Muster trifft oder ihn über die Ableitung aus ihren Importeuren trägt — nicht über die abhängigen Bereiche und nicht über Dateien, deren jede geänderte Zeile Blob oder Stempel ist. Nur zusammen mit \"nichtBeimAbschluss\"; jeder Name muss in checkAreas stehen und, wenn der Eintrag \"areas\" trägt, auch dort. Jede andere Form bricht den Prüflauf beim Start ab. Fehlendes Feld = die Prüfung entfällt beim Abschluss wie bisher. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
+              },
               "guete": {
                 "type": "object",
                 "properties": {
