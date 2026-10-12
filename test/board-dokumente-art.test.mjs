@@ -11,9 +11,9 @@ import { ARTEN, titelMitArt } from "../kit/board/dokumente.mjs";
 import { stufeAusTitel } from "../kit/board/issue-review.mjs";
 
 test("[board-1552] --art stellt das englische Praefix voran, in jedem Projekt", () => {
-  assert.deepEqual(titelMitArt("Etwas", "fachlich"), { titel: "[Requirement] Etwas" });
-  assert.deepEqual(titelMitArt("  Etwas", "idee"), { titel: "[Idea] Etwas" });
-  assert.deepEqual(titelMitArt("Step", "mensch"), { titel: "[Human] Step" });
+  assert.deepEqual(titelMitArt("Etwas", "requirement"), { titel: "[Requirement] Etwas" });
+  assert.deepEqual(titelMitArt("  Etwas", "idea"), { titel: "[Idea] Etwas" });
+  assert.deepEqual(titelMitArt("Step", "human"), { titel: "[Human] Step" });
   assert.deepEqual(titelMitArt("Do it", "task"), { titel: "[Task] Do it" });
 });
 
@@ -24,21 +24,22 @@ test("[board-1427] ohne --art bleibt der Titel unveraendert, auch mit Praefix", 
 
 test("[board-1427] --art neben einem Titel mit Praefix ist ein Fehler, in jeder Sprache des Praefixes", () => {
   for (const titel of ["[Fachlich] Doppelt", "[Requirement] Doppelt", " [plan] Doppelt"]) {
-    const { titel: angelegt, fehler } = titelMitArt(titel, "fachlich");
+    const { titel: angelegt, fehler } = titelMitArt(titel, "requirement");
     assert.equal(angelegt, undefined, titel);
     assert.match(fehler, /--art/);
   }
 });
 
 test("[board-1427] eine unbekannte Art oder --art ohne Wert ist ein Fehler, der die Arten nennt", () => {
-  for (const art of ["epos", true, "Fachlich"]) {
-    assert.match(titelMitArt("X", art).fehler, /fachlich\|idee\|mensch\|plan\|task/, String(art));
+  // Seit Issue #1557 zaehlt auch der fruehere deutsche Wert als unbekannt.
+  for (const art of ["epos", true, "Requirement", "fachlich", "idee", "mensch"]) {
+    assert.match(titelMitArt("X", art).fehler, /requirement\|idea\|human\|plan\|task/, String(art));
   }
   assert.deepEqual(ARTEN, ["fachlich", "idee", "mensch", "plan", "task"]);
 });
 
 test("[board-1427] der Titel mit Art ergibt die Pruefstufe der Art, wie check-form sie waehlt", () => {
-  assert.equal(stufeAusTitel(titelMitArt("X", "fachlich").titel), "fachlich");
+  assert.equal(stufeAusTitel(titelMitArt("X", "requirement").titel), "fachlich");
   assert.equal(stufeAusTitel(titelMitArt("X", "plan").titel), "plan");
   assert.equal(stufeAusTitel(titelMitArt("X", "task").titel), "issue");
   assert.equal(stufeAusTitel(titelMitArt("X", undefined).titel), "issue");

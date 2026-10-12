@@ -4,7 +4,7 @@
 // Issue #641).
 //
 // Die Pruefvorgabe am Ticket und die Synthese-Pruefung sind entfallen. `roles` kennt
-// nur noch `--stufe` und `--author`; `--issue`, `--rolle` und `--ausschluss` werden
+// nur noch `--stage` und `--author`; `--issue`, `--role` und `--ausschluss` werden
 // abgewiesen statt still uebergangen, und die Antwort traegt weder `runden` noch
 // `verzicht` noch `vorgabeQuelle`. `reviewers` gibt kein `rounds` mehr aus. Die
 // entfallenen Kommandos `label-sync` und `synthese-check` sind unbekannte Befehle. Die
@@ -43,13 +43,13 @@ function mitProjekt(fn, extra = {}) {
   }
 }
 
-for (const [option, wert] of [["--issue", "1"], ["--rolle", "synthese"], ["--ausschluss", "fable"]]) {
+for (const [option, wert] of [["--issue", "1"], ["--role", "synthese"], ["--ausschluss", "fable"]]) {
   test(`[board-6] roles weist ${option} mit Exit 1 ab und nennt die beiden bleibenden Optionen`, () => {
     mitProjekt((dir) => {
-      const res = runBoard(dir, ["issue-review", "roles", "--stufe", "issue", "--author", "claude-opus-5", option, wert]);
+      const res = runBoard(dir, ["issue-review", "roles", "--stage", "issue", "--author", "claude-opus-5", option, wert]);
       assert.equal(res.status, 1, `${option} haette abgewiesen werden muessen: ${res.stdout}`);
       assert.match(res.stderr, new RegExp(`${option} gibt es seit Stufe 2 des Prozess-Umbaus nicht mehr`));
-      assert.match(res.stderr, /nur --stufe und --author/);
+      assert.match(res.stderr, /nur --stage und --author/);
     });
   });
 }
@@ -74,24 +74,24 @@ test("[board-6] die Hilfe nennt weder --issue noch label-sync noch synthese-chec
     const rolesZeilen = res.stdout.split("\n").filter((z) => z.includes("issue-review roles"));
     assert.ok(rolesZeilen.length > 0);
     assert.ok(rolesZeilen.every((z) => !z.includes("--role")), "die Hilfe nennt bei roles noch '--role'");
-    assert.ok(res.stdout.includes("issue-review roles --stage <requirement|plan|issue> --author <modell>"));
+    assert.ok(res.stdout.includes("issue-review roles --stage <requirement|plan|issue> --author <model>"));
   });
 });
 
 // KIT_PLAN_REVIEWER (Issue #1245, Plan #1243, A8): Die reine Bestimmung wirft einen
 // BoardError, erst der Befehl macht daraus fail — Exit 1 mit dem Grund belegt nur ein Prozess.
 
-test("[board-6] roles --stufe plan endet bei ungueltigem KIT_PLAN_REVIEWER mit Exit 1 und Grund", () => {
+test("[board-6] roles --stage plan endet bei ungueltigem KIT_PLAN_REVIEWER mit Exit 1 und Grund", () => {
   mitProjekt((dir) => {
-    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "plan", "--author", "claude-opus-5"], { KIT_PLAN_REVIEWER: "3" });
+    const res = runBoard(dir, ["issue-review", "roles", "--stage", "plan", "--author", "claude-opus-5"], { KIT_PLAN_REVIEWER: "3" });
     assert.equal(res.status, 1, `haette abgewiesen werden muessen: ${res.stdout}`);
     assert.match(res.stderr, /Fehler: KIT_PLAN_REVIEWER '3' ist ungueltig — erlaubt sind 1 oder 2\./);
   });
 });
 
-test("[board-6] roles --stufe plan endet bei KIT_PLAN_REVIEWER=2 mit nur einem Reviewer mit Exit 1 und Grund", () => {
+test("[board-6] roles --stage plan endet bei KIT_PLAN_REVIEWER=2 mit nur einem Reviewer mit Exit 1 und Grund", () => {
   mitProjekt((dir) => {
-    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "plan", "--author", "claude-opus-5"], { KIT_PLAN_REVIEWER: "2" });
+    const res = runBoard(dir, ["issue-review", "roles", "--stage", "plan", "--author", "claude-opus-5"], { KIT_PLAN_REVIEWER: "2" });
     assert.equal(res.status, 1, `haette abgewiesen werden muessen: ${res.stdout}`);
     assert.match(res.stderr, /Fehler: planreview:2 verlangt zwei Reviewer, verfügbar ist einer/);
   }, { issueReview: { reviewers: REVIEWERS.slice(0, 2) } });
@@ -99,7 +99,7 @@ test("[board-6] roles --stufe plan endet bei KIT_PLAN_REVIEWER=2 mit nur einem R
 
 test("[board-6] roles nennt je Rolle, ob ihre Datei vorliegt", () => {
   mitProjekt((dir) => {
-    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "issue", "--author", "claude-opus-5"]);
+    const res = runBoard(dir, ["issue-review", "roles", "--stage", "issue", "--author", "claude-opus-5"]);
     assert.equal(res.status, 0, res.stderr);
     const out = JSON.parse(res.stdout);
     assert.deepEqual(out.rollenDateien.map((r) => [r.rolle, r.rolleVorhanden]), [["gibtsnicht", false]]);

@@ -7,8 +7,9 @@
 // Ein Aufruf ist eine Zeile mit `board.mjs`, gefolgt von einer bekannten Achse, oder im Code ein
 // Aufruf `board(…)`, `boardRoh(…)` mit der Achse als erstem Zeichenkettenargument. Fliesstext wie
 // "board.mjs liegt nicht" zaehlt nicht: Ohne bekannte Achse ist es kein Aufruf. Geprueft wird
-// gegen `BEFEHLSNAMEN` aus kit/board/namen.mjs — jeder deutsche Name, dessen englischer anders
-// lautet. Erkennungs- und Abweisungscode (`case "melden":`) ist kein Aufruf und faellt nicht auf.
+// gegen `ALTNAMEN` aus kit/board/namen.mjs — jeder fruehere deutsche Name, den board.mjs seit
+// Issue #1557 abweist. Erkennungs- und Abweisungscode (`case "melden":`) ist kein Aufruf und
+// faellt nicht auf.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -16,18 +17,20 @@ import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { BEFEHLSNAMEN } from "../kit/board/namen.mjs";
+import { ALTNAMEN } from "../kit/board/namen.mjs";
 
 const WURZEL = fileURLToPath(new URL("..", import.meta.url));
 const BEREICHE = ["kit", "skills", "templates", join("en", "templates"), "install.mjs"];
 
-// Je Tabelle nur die deutschen Namen, deren englischer anders lautet.
-const deutsch = (tabelle) => new Map(Object.entries(tabelle).filter(([de, en]) => de !== en));
-const ACHSEN = new Map(Object.entries(BEFEHLSNAMEN.achsen).flatMap(([de, en]) => [[de, de], [en, de]]));
-const ACHSE_DE = deutsch(BEFEHLSNAMEN.achsen);
-const OPTION_DE = deutsch(BEFEHLSNAMEN.optionen);
-const OPTION_INTERN = new Map(Object.entries(BEFEHLSNAMEN.optionen).flatMap(([de, en]) => [[de, de], [en, de]]));
-const SCHUTZ_DE = deutsch(BEFEHLSNAMEN.schutz);
+// Je Tabelle die frueheren deutschen Namen mit ihrem englischen.
+const deutsch = (tabelle) => new Map(Object.entries(tabelle));
+// Jede Achse unter ihrem englischen Namen, auch unter dem frueheren deutschen.
+const ACHSEN = new Map([
+  ...["issue", "code", "issue-review", "context", "nightrun", "session", "hook"].map((a) => [a, a]),
+  ...Object.entries(ALTNAMEN.achsen),
+]);
+const ACHSE_DE = deutsch(ALTNAMEN.achsen);
+const OPTION_DE = deutsch(ALTNAMEN.optionen);
 
 /** Die Befunde zu den Woertern eines Aufrufs, beginnend mit der Achse; leer ohne bekannte Achse. */
 export function befundeZuAufruf(woerter) {
@@ -35,21 +38,20 @@ export function befundeZuAufruf(woerter) {
   if (!ACHSEN.has(achse)) return [];
   const befunde = [];
   if (ACHSE_DE.has(achse)) befunde.push(`Achse ${achse} -> ${ACHSE_DE.get(achse)}`);
-  const befehle = BEFEHLSNAMEN.befehle[ACHSEN.get(achse)];
-  const befehlDe = deutsch(befehle);
+  const befehlDe = deutsch(ALTNAMEN.befehle[ACHSEN.get(achse)] ?? {});
   if (befehlDe.has(befehl)) befunde.push(`Befehl ${befehl} -> ${befehlDe.get(befehl)}`);
-  const istSchutz = befehl === "schutz" || befehl === BEFEHLSNAMEN.befehle.code.schutz;
-  if (ACHSEN.get(achse) === "code" && istSchutz && SCHUTZ_DE.has(aktion)) {
-    befunde.push(`Aktion ${aktion} -> ${SCHUTZ_DE.get(aktion)}`);
+  const istSchutz = befehl === "schutz" || befehl === ALTNAMEN.befehle.code.schutz;
+  if (ACHSEN.get(achse) === "code" && istSchutz && Object.hasOwn(ALTNAMEN.schutz, aktion)) {
+    befunde.push(`Aktion ${aktion} -> ${ALTNAMEN.schutz[aktion]}`);
   }
   woerter.forEach((wort, i) => {
     const m = /^--([a-z][a-z-]*)$/.exec(wort);
     if (!m) return;
     if (OPTION_DE.has(m[1])) befunde.push(`Option --${m[1]} -> --${OPTION_DE.get(m[1])}`);
-    const werte = BEFEHLSNAMEN.werte[OPTION_INTERN.get(m[1]) ?? m[1]];
+    const werte = ALTNAMEN.werte[OPTION_DE.get(m[1]) ?? m[1]];
     if (!werte || i + 1 >= woerter.length) return;
     for (const wert of woerter[i + 1].split("|")) {
-      if (Object.hasOwn(werte, wert) && werte[wert] !== wert) befunde.push(`Wert --${m[1]} ${wert} -> ${werte[wert]}`);
+      if (Object.hasOwn(werte, wert)) befunde.push(`Wert --${m[1]} ${wert} -> ${werte[wert]}`);
     }
   });
   return befunde;

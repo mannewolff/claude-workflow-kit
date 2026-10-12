@@ -1,4 +1,4 @@
-// `issue-review pruefauftrag` im selben Prozess (Issue #1380, Plan #1375 A3, E2, E3, E7):
+// `issue-review review-brief` im selben Prozess (Issue #1380, Plan #1375 A3, E2, E3, E7):
 // Das Kit montiert den Pruefauftrag aus der Rollendatei unter kit/rollen/, der Artenliste,
 // dem Dokument vom Board oder dem Material der Code-Pruefung. Board und Dateizugriff sind
 // injiziert; die Rollendateien liest der Test echt, damit er die ausgelieferten Rollen misst.
@@ -53,7 +53,7 @@ async function montiere(args, umgebung = {}) {
   const verz = mkdtempSync(join(tmpdir(), "pruefauftrag-"));
   const datei = join(verz, "auftrag.md");
   try {
-    const antwort = await issueReviewPruefauftrag({ ...args, datei }, {
+    const antwort = await issueReviewPruefauftrag({ ...args, file: datei }, {
       config: umgebung.config ?? {},
       board: umgebung.board ?? boardMit({}),
       lies: umgebung.lies ?? liesMit(),
@@ -70,7 +70,7 @@ async function montiere(args, umgebung = {}) {
 for (const rolle of DOKUMENT_ROLLEN) {
   test(`pruefauftrag montiert die Rolle ${rolle} aus kit/rollen/ ohne offenen Platzhalter`, async () => {
     const board = boardMit({ 10: PLAN_MIT_QUELLE, 20: QUELLE_MIT_VORLAGE });
-    const { antwort, text, datei } = await montiere({ rolle, id: "10" }, { board });
+    const { antwort, text, datei } = await montiere({ role: rolle, id: "10" }, { board });
     assert.equal(antwort.ok, true);
     assert.equal(antwort.rolle, rolle);
     assert.equal(antwort.datei, datei);
@@ -85,7 +85,7 @@ for (const rolle of DOKUMENT_ROLLEN) {
 
 test("pruefauftrag montiert die Rolle code-review aus der Material-Datei", async () => {
   const lies = liesMit({ "material.diff": "diff --git a/x b/x\n+neu\n", "checks-summary.json": null });
-  const { antwort, text } = await montiere({ rolle: "code-review", "material-datei": "/irgendwo/material.diff" }, { lies });
+  const { antwort, text } = await montiere({ role: "code-review", "material-file": "/irgendwo/material.diff" }, { lies });
   assert.equal(antwort.ok, true);
   assert.ok(text.includes("--- REVIEW-MATERIAL ---\ndiff --git a/x b/x\n+neu\n"));
   assert.ok(text.includes(ARTEN_ZEILEN));
@@ -96,7 +96,7 @@ test("pruefauftrag montiert die Rolle code-review aus der Material-Datei", async
 
 test("pruefauftrag setzt {{ARTEN}} je Art als Zeile '<name> — <erklaerung>'", async () => {
   const lies = liesMit({ "rollen/probe.md": "Arten:\n{{ARTEN}}\n--- ISSUE ---\n{{ISSUE_BODY}}\n" });
-  const { text } = await montiere({ rolle: "probe", id: "10" }, { lies, board: boardMit({ 10: "Inhalt" }) });
+  const { text } = await montiere({ role: "probe", id: "10" }, { lies, board: boardMit({ 10: "Inhalt" }) });
   const zeilen = text.split("\n").slice(1, 1 + arten().anzahl);
   assert.deepEqual(zeilen, arten().arten.map((a) => `${a.name} — ${a.erklaerung}`));
 });
@@ -105,7 +105,7 @@ test("pruefauftrag setzt {{ARTEN}} je Art als Zeile '<name> — <erklaerung>'", 
 
 test("mit Quelle und Vorlage entfallen nur die Blockmarken", async () => {
   const board = boardMit({ 10: PLAN_MIT_QUELLE, 20: QUELLE_MIT_VORLAGE });
-  const { text } = await montiere({ rolle: "architektur-bestand", id: "10" }, { board });
+  const { text } = await montiere({ role: "architektur-bestand", id: "10" }, { board });
   assert.ok(text.includes("5. Was fehlt im Zuschnitt, und was kann RAUS?\n6. Stellt der Plan her,"));
   assert.ok(text.includes("deren Aussehen?\nDie Vorlage liegt unter docs/bild/maske.png; lies sie.\nFür jeden Fund"));
   assert.ok(text.includes("--- PLAN ---\n## Ziel\nDer Plan.\nFachliche Quelle: Issue #20\n\n--- FACHLICHE QUELLE ---\n## Ziel\nDie fachliche Quelle."));
@@ -113,7 +113,7 @@ test("mit Quelle und Vorlage entfallen nur die Blockmarken", async () => {
 
 test("mit Quelle ohne Vorlage entfaellt nur der Satz zur Vorlage samt Zeilenumbruch", async () => {
   const board = boardMit({ 10: PLAN_MIT_QUELLE, 20: QUELLE_OHNE_VORLAGE });
-  const { text } = await montiere({ rolle: "architektur-bestand", id: "10" }, { board });
+  const { text } = await montiere({ role: "architektur-bestand", id: "10" }, { board });
   assert.ok(text.includes("deren Aussehen?\nFür jeden Fund"), "keine Leerzeile, wo der Satz stand");
   assert.ok(!text.includes("Vorlage liegt unter"));
   assert.ok(text.includes("--- FACHLICHE QUELLE ---"));
@@ -122,26 +122,26 @@ test("mit Quelle ohne Vorlage entfaellt nur der Satz zur Vorlage samt Zeilenumbr
 test("die Vorlage-Zeile im Plan zaehlt wie die in der Quelle", async () => {
   const plan = `${PLAN_MIT_QUELLE}Vorlage: docs/plan-vorlage.html — Anregung\n`;
   const board = boardMit({ 10: plan, 20: QUELLE_OHNE_VORLAGE });
-  const { text } = await montiere({ rolle: "architektur-bestand", id: "10" }, { board });
+  const { text } = await montiere({ role: "architektur-bestand", id: "10" }, { board });
   assert.ok(text.includes("Die Vorlage liegt unter docs/plan-vorlage.html; lies sie."));
 });
 
 test("ohne Quelle entfallen Frage 6 und der Abschnitt FACHLICHE QUELLE samt Zeilenumbruch", async () => {
   const board = boardMit({ 10: PLAN_OHNE_QUELLE });
   for (const rolle of ["architektur-bestand", "schnitt-abhaengigkeiten"]) {
-    const { antwort, text } = await montiere({ rolle, id: "10" }, { board });
+    const { antwort, text } = await montiere({ role: rolle, id: "10" }, { board });
     assert.equal(antwort.ok, true);
     assert.ok(!text.includes("FACHLICHE QUELLE"), rolle);
     assert.ok(!text.includes("6. Stellt"), rolle);
     assert.ok(text.endsWith("--- PLAN ---\n## Ziel\nDer Plan ohne Quelle.\n\n"), `${rolle}: ${JSON.stringify(text.slice(-60))}`);
   }
-  const { text } = await montiere({ rolle: "architektur-bestand", id: "10" }, { board });
+  const { text } = await montiere({ role: "architektur-bestand", id: "10" }, { board });
   assert.ok(text.includes("5. Was fehlt im Zuschnitt, und was kann RAUS?\nFür jeden Fund"));
 });
 
 test("Platzhalter im Dokument selbst werden nicht als Rollen-Platzhalter gelesen", async () => {
   const body = "Ein Text mit {{ARTEN}}, {{UNBEKANNT}} und {{#QUELLE}}x{{/QUELLE}} darin.\n";
-  const { antwort, text } = await montiere({ rolle: "pruefbarkeit", id: "10" }, { board: boardMit({ 10: body }) });
+  const { antwort, text } = await montiere({ role: "pruefbarkeit", id: "10" }, { board: boardMit({ 10: body }) });
   assert.equal(antwort.ok, true);
   assert.ok(text.includes(body), "das Dokument steht wortgetreu im Auftrag");
 });
@@ -149,7 +149,7 @@ test("Platzhalter im Dokument selbst werden nicht als Rollen-Platzhalter gelesen
 // --- Fehler ---
 
 test("fehlende Rollendatei ergibt den Fehler rolle-fehlt mit Pfad", async () => {
-  const { antwort, text } = await montiere({ rolle: "gibt-es-nicht", id: "10" }, { board: boardMit({ 10: "x" }) });
+  const { antwort, text } = await montiere({ role: "gibt-es-nicht", id: "10" }, { board: boardMit({ 10: "x" }) });
   assert.equal(antwort.ok, false);
   assert.equal(antwort.fehler, "rolle-fehlt");
   assert.equal(antwort.rolle, "gibt-es-nicht");
@@ -159,22 +159,22 @@ test("fehlende Rollendatei ergibt den Fehler rolle-fehlt mit Pfad", async () => 
 
 test("ein anderer ungefuellter Platzhalter ist ein Fehler", async () => {
   const lies = liesMit({ "rollen/probe.md": "{{ARTEN}}\n{{ISSUE_BODY}}\n{{UNBEKANNT}} und {{QUELLE_BODY}}\n" });
-  const { antwort, text } = await montiere({ rolle: "probe", id: "10" }, { lies, board: boardMit({ 10: "x" }) });
+  const { antwort, text } = await montiere({ role: "probe", id: "10" }, { lies, board: boardMit({ 10: "x" }) });
   assert.equal(antwort.ok, false);
   assert.equal(antwort.fehler, "platzhalter-offen");
   assert.deepEqual(antwort.platzhalter, ["UNBEKANNT", "QUELLE_BODY"]);
   assert.equal(text, null);
 });
 
-test("die Dokument-Rolle mit --material-datei laesst {{ISSUE_BODY}} offen und ist ein Fehler", async () => {
+test("die Dokument-Rolle mit --material-file laesst {{ISSUE_BODY}} offen und ist ein Fehler", async () => {
   const lies = liesMit({ "material.diff": "diff" });
-  const { antwort } = await montiere({ rolle: "pruefbarkeit", "material-datei": "/x/material.diff" }, { lies });
+  const { antwort } = await montiere({ role: "pruefbarkeit", "material-file": "/x/material.diff" }, { lies });
   assert.equal(antwort.fehler, "platzhalter-offen");
   assert.deepEqual(antwort.platzhalter, ["ISSUE_BODY"]);
 });
 
 test("ein unlesbares Dokument ist ein Fehler mit der Kartennummer", async () => {
-  const { antwort } = await montiere({ rolle: "pruefbarkeit", id: "99" });
+  const { antwort } = await montiere({ role: "pruefbarkeit", id: "99" });
   assert.equal(antwort.ok, false);
   assert.equal(antwort.fehler, "dokument-nicht-lesbar");
   assert.equal(antwort.id, "99");
@@ -182,18 +182,18 @@ test("ein unlesbares Dokument ist ein Fehler mit der Kartennummer", async () => 
 
 test("eine fehlende Material-Datei ist ein Fehler mit Pfad", async () => {
   const lies = liesMit({ "material.diff": null });
-  const { antwort } = await montiere({ rolle: "code-review", "material-datei": "/x/material.diff" }, { lies });
+  const { antwort } = await montiere({ role: "code-review", "material-file": "/x/material.diff" }, { lies });
   assert.equal(antwort.fehler, "material-fehlt");
   assert.equal(antwort.pfad, "/x/material.diff");
 });
 
 test("eine Rolle mit Pfadzeichen wird abgewiesen", async () => {
-  await assert.rejects(montiere({ rolle: "../geheim", id: "10" }), /--rolle/);
+  await assert.rejects(montiere({ role: "../geheim", id: "10" }), /--role/);
 });
 
-test("--id und --material-datei zugleich oder keins von beiden wird abgewiesen", async () => {
-  await assert.rejects(montiere({ rolle: "pruefbarkeit", id: "10", "material-datei": "/x" }), /entweder/);
-  await assert.rejects(montiere({ rolle: "pruefbarkeit" }), /entweder/);
+test("--id und --material-file zugleich oder keins von beiden wird abgewiesen", async () => {
+  await assert.rejects(montiere({ role: "pruefbarkeit", id: "10", "material-file": "/x" }), /entweder/);
+  await assert.rejects(montiere({ role: "pruefbarkeit" }), /entweder/);
 });
 
 // --- Code-Pruefung und lokale Pruefung (E7) ---
@@ -201,13 +201,13 @@ test("--id und --material-datei zugleich oder keins von beiden wird abgewiesen",
 test("code-review haengt checks-summary.json als Abschnitt LOKALE PRUEFUNG an", async () => {
   const summary = "{\n  \"ok\": true\n}\n";
   const lies = liesMit({ "material.diff": "diff\n", ".claude/checks-summary.json": summary });
-  const { text } = await montiere({ rolle: "code-review", "material-datei": "/x/material.diff" }, { lies });
+  const { text } = await montiere({ role: "code-review", "material-file": "/x/material.diff" }, { lies });
   assert.ok(text.endsWith(`--- REVIEW-MATERIAL ---\ndiff\n\n--- LOKALE PRUEFUNG ---\n${summary}`), JSON.stringify(text.slice(-80)));
 });
 
 test("code-review ohne checks-summary.json hat keinen Abschnitt LOKALE PRUEFUNG", async () => {
   const lies = liesMit({ "material.diff": "diff\n", ".claude/checks-summary.json": null });
-  const { text } = await montiere({ rolle: "code-review", "material-datei": "/x/material.diff" }, { lies });
+  const { text } = await montiere({ role: "code-review", "material-file": "/x/material.diff" }, { lies });
   assert.ok(!text.includes("LOKALE PRUEFUNG"));
   assert.ok(text.endsWith("--- REVIEW-MATERIAL ---\ndiff\n\n"));
 });
@@ -216,8 +216,8 @@ test("code-review ohne checks-summary.json hat keinen Abschnitt LOKALE PRUEFUNG"
 
 test("zwei Laeufe mit gleichem Eingang ergeben byte-gleiche Dateien", async () => {
   const board = boardMit({ 10: PLAN_MIT_QUELLE, 20: QUELLE_MIT_VORLAGE });
-  const eins = await montiere({ rolle: "schnitt-abhaengigkeiten", id: "10" }, { board });
-  const zwei = await montiere({ rolle: "schnitt-abhaengigkeiten", id: "10" }, { board });
+  const eins = await montiere({ role: "schnitt-abhaengigkeiten", id: "10" }, { board });
+  const zwei = await montiere({ role: "schnitt-abhaengigkeiten", id: "10" }, { board });
   assert.ok(Buffer.from(eins.text).equals(Buffer.from(zwei.text)));
 });
 
@@ -266,7 +266,7 @@ const SUCHE = { Export: [41, 10, 20], Archiv: [42, 41] };
 
 test("mit Treffern traegt der Auftrag Pruefsatz und Anhang VORGESCHICHTE mit den ungekuerzten Bodies", async () => {
   const board = boardMitArchiv(PLAN_KARTEN, { suche: SUCHE });
-  const { antwort, text } = await montiere({ rolle: "architektur-bestand", id: "10" }, { board, config: MIT_VORGESCHICHTE });
+  const { antwort, text } = await montiere({ role: "architektur-bestand", id: "10" }, { board, config: MIT_VORGESCHICHTE });
   assert.equal(antwort.ok, true);
   assert.deepEqual(board.aufrufe, ["Export", "Archiv"], "Suchbegriffe aus dem Abschnitt");
   assert.ok(text.includes("nicht vermerkt"), "die unnummerierte Pruefsatz-Zeile steht im Auftrag");
@@ -281,7 +281,7 @@ test("mit Treffern traegt der Auftrag Pruefsatz und Anhang VORGESCHICHTE mit den
 
 test("die Nummerierung der Pruefungsfragen bleibt mit Vorgeschichte unveraendert", async () => {
   const board = boardMitArchiv(PLAN_KARTEN, { suche: SUCHE });
-  const { text } = await montiere({ rolle: "architektur-bestand", id: "10" }, { board, config: MIT_VORGESCHICHTE });
+  const { text } = await montiere({ role: "architektur-bestand", id: "10" }, { board, config: MIT_VORGESCHICHTE });
   const nummern = [...text.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]));
   assert.deepEqual(nummern, [1, 2, 3, 4, 5, 6]);
 });
@@ -290,7 +290,7 @@ test("der Fachplan liest seine Vorgeschichte unter ## und schliesst sich selbst 
   const karten = { 30: { title: "[Fachlich] Neu", body: FACHPLAN_MIT_VORGESCHICHTE } };
   const board = boardMitArchiv(karten, { suche: { Export: [30, 41] } });
   for (const rolle of ["form-beobachtbarkeit", "abgrenzung"]) {
-    const { antwort, text } = await montiere({ rolle, id: "30" }, { board, config: MIT_VORGESCHICHTE });
+    const { antwort, text } = await montiere({ role: rolle, id: "30" }, { board, config: MIT_VORGESCHICHTE });
     assert.equal(antwort.ok, true, rolle);
     assert.ok(text.includes("--- VORGESCHICHTE ---\n#41 [Fachlich] Karte 41 — archiviert: ja\n"), rolle);
     assert.ok(!text.includes("#30 "), `${rolle}: eigene Nummer`);
@@ -300,7 +300,7 @@ test("der Fachplan liest seine Vorgeschichte unter ## und schliesst sich selbst 
 test("mit Treffern bleibt in keiner Dokument-Rolle ein Platzhalter offen", async () => {
   const board = boardMitArchiv(PLAN_KARTEN, { suche: SUCHE });
   for (const rolle of DOKUMENT_ROLLEN) {
-    const { antwort, text } = await montiere({ rolle, id: "10" }, { board, config: MIT_VORGESCHICHTE });
+    const { antwort, text } = await montiere({ role: rolle, id: "10" }, { board, config: MIT_VORGESCHICHTE });
     assert.equal(antwort.ok, true, `${rolle}: ${JSON.stringify(antwort)}`);
     assert.doesNotMatch(text, /\{\{[#/]?[A-Z_]+\}\}/, rolle);
   }
@@ -314,9 +314,9 @@ test("ohne Schalter, ohne Suchbegriffe-Zeile und ohne Archiv entfaellt der Block
     ["archiv-nicht-erreichbar", boardMitArchiv(PLAN_KARTEN, { suche: SUCHE, fehler: true }), MIT_VORGESCHICHTE],
   ];
   for (const rolle of ["architektur-bestand", "form-beobachtbarkeit"]) {
-    const heute = (await montiere({ rolle, id: "10" }, { board: boardMit(PLAN_KARTEN) })).text;
+    const heute = (await montiere({ role: rolle, id: "10" }, { board: boardMit(PLAN_KARTEN) })).text;
     for (const [fall, board, config] of faelle) {
-      const { antwort, text } = await montiere({ rolle, id: "10" }, { board, config });
+      const { antwort, text } = await montiere({ role: rolle, id: "10" }, { board, config });
       assert.equal(antwort.ok, true, `${rolle}, ${fall}`);
       assert.ok(!text.includes("VORGESCHICHTE"), `${rolle}, ${fall}`);
       if (fall !== "ohne Suchbegriffe-Zeile") assert.equal(text, heute, `${rolle}, ${fall}: Auftrag wie heute`);

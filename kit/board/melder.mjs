@@ -436,12 +436,12 @@ export async function nightrunMelden(args, {
   if (config.issueTracker !== "toolbox") {
     throw new BoardError(t("nurToolbox", { tracker: config.issueTracker }));
   }
-  if (!args.datei) throw new BoardError(t("dateiFehlt"));
+  if (!args.file) throw new BoardError(t("dateiFehlt"));
   let stand;
   try {
-    stand = JSON.parse(lesen(args.datei));
+    stand = JSON.parse(lesen(args.file));
   } catch (e) {
-    throw new BoardError(t("nichtLesbar", { datei: args.datei, grund: e.message }));
+    throw new BoardError(t("nichtLesbar", { datei: args.file, grund: e.message }));
   }
   const meldung = nachtlaufMeldung(stand, jetzt());
   try {
@@ -459,9 +459,8 @@ export async function nightrunMelden(args, {
   }
 }
 
-// `report` ist der englische Name von `melden` (Issue #1461, Plan #1420 E18).
 export async function dispatchNightrun(command, args, hilfe) {
-  if (command === "melden" || command === "report") return ausgeben(await nightrunMelden(args));
+  if (command === "report") return ausgeben(await nightrunMelden(args));
   process.stdout.write(hilfe);
   fail(t("unbekanntNightrun", { befehl: command }));
 }
@@ -736,9 +735,9 @@ export function sitzungMeldung({ start, zuege, unlesbar = 0, abschnitte = [], co
   };
 }
 
-/** Der Pfad des Protokolls: `--protokoll`, sonst `transcript_path` aus dem Hook-Rumpf. */
+/** Der Pfad des Protokolls: `--transcript`, sonst `transcript_path` aus dem Hook-Rumpf. */
 function sitzungProtokollPfad(args, stdinLesen) {
-  if (typeof args.protokoll === "string") return args.protokoll;
+  if (typeof args.transcript === "string") return args.transcript;
   // Ein Claude-Code-Hook reicht seinen Rumpf ueber stdin herein. Ist keine da oder
   // steht nichts Brauchbares drin, meldet der Melder nichts — er soll nie raten,
   // welches der Protokolle im Benutzerverzeichnis die laufende Sitzung ist.
@@ -794,7 +793,7 @@ function sitzungVerbuchen(start, complete, jetzt, { ablage, melde }) {
 }
 
 /**
- * `sitzung melden` — der Verbrauch der laufenden Sitzung ans Board (Issue #734).
+ * `session report` — der Verbrauch der laufenden Sitzung ans Board (Issue #734).
  *
  * Jeder Grund zu schweigen endet mit Exit 0 und ohne HTTP-Aufruf. Der Melder laeuft
  * an einem Hook und darf eine Sitzung niemals stoeren: Er ist Buchhaltung, keine
@@ -872,7 +871,7 @@ export async function sitzungMelden(args, {
 }
 
 export async function dispatchSitzung(command, args, hilfe) {
-  if (command === "melden" || command === "report") return ausgeben(await sitzungMelden(args));
+  if (command === "report") return ausgeben(await sitzungMelden(args));
   process.stdout.write(hilfe);
   fail(t("unbekanntSitzung", { befehl: command }));
 }

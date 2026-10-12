@@ -1,4 +1,4 @@
-// Ablauf-Pruefung: `issue create`, `issue check-form`, `issue label` und `issue stand` fuehrt der
+// Ablauf-Pruefung: `issue create`, `issue check-form`, `issue label` und `issue run-state` fuehrt der
 // Einstieg, und der Befund ist Ausgabe und Kartenstand des Prozesses.
 //
 // Ein Register, eine Schreibrichtung (Issue #1552, Plan #1548 E2, E3): Der Board-Teil schreibt
@@ -31,9 +31,9 @@ const karte = ({ titel = "Paket", labels = [] } = {}) => [
   ...(labels.length > 0 ? [`labels: ${labels.join(", ")}`] : []), "---", "", "## Kontext", "Text.", "",
 ].join("\n");
 
-test("[board-1552] ein deutsches Projekt legt mit --art fachlich eine Karte [Requirement] an", () => {
+test("[board-1552] ein deutsches Projekt legt mit --art requirement eine Karte [Requirement] an", () => {
   mitProjekt((dir) => {
-    const res = runBoard(dir, ["issue", "create", "--title", "Etwas", "--body", BODY, "--art", "fachlich"]);
+    const res = runBoard(dir, ["issue", "create", "--title", "Etwas", "--body", BODY, "--art", "requirement"]);
     assert.equal(res.status, 0, res.stderr);
     assert.equal(board(dir, "issue", "get", String(JSON.parse(res.stdout).id)).title, "[Requirement] Etwas");
   });
@@ -62,21 +62,21 @@ test("[board-1552] ein deutsches Projekt erkennt ein getragenes kit:klaeren und 
   }, karte({ labels: ["kit:klaeren", "fix"] }));
 });
 
-test("[board-1552] issue stand raeumt ein getragenes lauf:laeuft ab und setzt das englische Label (E3)", () => {
+test("[board-1552] issue run-state raeumt ein getragenes lauf:laeuft ab und setzt das englische Label (E3)", () => {
   mitProjekt((dir) => {
     const text = join(dir, "stand.md");
     writeFileSync(text, "Abgebrochen um 03:00.", "utf-8");
-    const res = runBoard(dir, ["issue", "stand", "7", "--zustand", "abgebrochen", "--text-file", text]);
+    const res = runBoard(dir, ["issue", "run-state", "7", "--state", "aborted", "--text-file", text]);
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(board(dir, "issue", "get", "7").labels, ["kit:nightrun", "run:aborted"]);
   }, karte({ labels: ["lauf:laeuft", "kit:nightrun"] }));
 });
 
-test("[board-1552] issue stand fertig raeumt deutsche und englische Laufstand-Labels ab, fremde bleiben", () => {
+test("[board-1552] issue run-state fertig raeumt deutsche und englische Laufstand-Labels ab, fremde bleiben", () => {
   mitProjekt((dir) => {
     const text = join(dir, "stand.md");
     writeFileSync(text, "Fertig.", "utf-8");
-    const res = runBoard(dir, ["issue", "stand", "7", "--zustand", "fertig", "--text-file", text]);
+    const res = runBoard(dir, ["issue", "run-state", "7", "--state", "done", "--text-file", text]);
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(board(dir, "issue", "get", "7").labels, ["lauf:anders"]);
   }, karte({ labels: ["lauf:laeuft", "run:waiting", "lauf:anders", "lauf:abgebrochen"] }));

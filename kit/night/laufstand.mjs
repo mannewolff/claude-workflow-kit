@@ -243,7 +243,7 @@ function laufstandText(zeile) {
 }
 
 /** Der englische Wert eines Zustands fuer `issue run-state --state` (Issue #1556, Plan #1548 E5). */
-const zustandWert = (zustand) => namen?.BEFEHLSNAMEN.werte.zustand[zustand] ?? zustand;
+const zustandWert = (zustand) => namen?.EINGABEWERTE.state[zustand] ?? zustand;
 
 /** Schreibt einen Journal-Stand ans Board und quittiert ihn; `true`, wenn das Board ihn annahm. */
 function standAnsBoard(pfad, zeile, { repoRoot, budgetMs }) {

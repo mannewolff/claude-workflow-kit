@@ -44,7 +44,7 @@ function mitKontext({ global = null, local = null, config = LOKAL } = {}, fn) {
 
 /** Ruft `context paths` auf, erwartet Exit 0 und liefert die geparste Ausgabe. */
 function paths(dir, env, ...cliArgs) {
-  const res = runBoard(dir, ["kontext", "paths", ...cliArgs], env);
+  const res = runBoard(dir, ["context", "paths", ...cliArgs], env);
   assert.equal(res.status, 0, res.stderr);
   return JSON.parse(res.stdout);
 }
@@ -149,30 +149,30 @@ test("Die Hilfe nennt die kontext-Achse", () => {
   });
 });
 
-test("Unbekannte Achse nennt issue | code | kontext", () => {
+test("Unbekannte Achse nennt issue | code | context", () => {
   mitKontext({}, (dir, env) => {
     const res = runBoard(dir, ["quatsch"], env);
     assert.equal(res.status, 1);
-    assert.match(res.stderr, /Erwartet: issue \| code \| kontext/);
+    assert.match(res.stderr, /Erwartet: issue \| code \| context/);
   });
 });
 
-test("Unbekannter kontext-Befehl: Hilfe plus Fehlermeldung", () => {
+test("Unbekannter context-Befehl: Hilfe plus Fehlermeldung", () => {
   mitKontext({}, (dir, env) => {
-    const res = runBoard(dir, ["kontext", "fliegen"], env);
+    const res = runBoard(dir, ["context", "fliegen"], env);
     assert.equal(res.status, 1);
-    assert.match(res.stdout, /Board-Adapter/);
-    assert.match(res.stderr, /Unbekannter kontext-Befehl: 'fliegen'/);
+    assert.match(res.stdout, /board adapter/);
+    assert.match(res.stderr, /Unbekannter context-Befehl: 'fliegen'/);
   });
 });
 
 test("--project und --date ohne Wert brechen mit Meldung ab", () => {
   mitKontext({ global: { vault: VAULT } }, (dir, env) => {
-    const ohneProjekt = runBoard(dir, ["kontext", "paths", "--project"], env);
+    const ohneProjekt = runBoard(dir, ["context", "paths", "--project"], env);
     assert.equal(ohneProjekt.status, 1);
     assert.match(ohneProjekt.stderr, /--project braucht einen Wert/);
 
-    const ohneDatum = runBoard(dir, ["kontext", "paths", "--date"], env);
+    const ohneDatum = runBoard(dir, ["context", "paths", "--date"], env);
     assert.equal(ohneDatum.status, 1);
     assert.match(ohneDatum.stderr, /--date braucht einen Wert/);
   });
@@ -184,7 +184,7 @@ test("--project und --date ohne Wert brechen mit Meldung ab", () => {
 // gezogen wurde.
 test("Kaputte kontext.config.json: Meldung nennt den Pfad, Exit 1", () => {
   mitKontext({ local: "{ das ist kein JSON" }, (dir, env) => {
-    const res = runBoard(dir, ["kontext", "paths"], env);
+    const res = runBoard(dir, ["context", "paths"], env);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /kontext\.config\.json konnte nicht gelesen werden/);
   });
@@ -208,7 +208,7 @@ test("context last-log liefert Pfad und Datum des juengsten Eintrags", () => {
     JSON.stringify({ vault, logPath: "Log/{date}-{project}.md" })
   );
   try {
-    const res = runBoard(dir, ["kontext", "last-log", "--project", "auth"], { HOME: home, USERPROFILE: home });
+    const res = runBoard(dir, ["context", "last-log", "--project", "auth"], { HOME: home, USERPROFILE: home });
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(JSON.parse(res.stdout), {
       path: join(vault, "Log", "2026-08-04-auth.md"),
@@ -226,7 +226,7 @@ test("context last-log ohne Vorgaenger liefert path null", () => {
   const vault = mitVault(dir, []);
   writeFileSync(join(home, ".claude", "kontext.config.json"), JSON.stringify({ vault }));
   try {
-    const res = runBoard(dir, ["kontext", "last-log", "--project", "auth"], { HOME: home, USERPROFILE: home });
+    const res = runBoard(dir, ["context", "last-log", "--project", "auth"], { HOME: home, USERPROFILE: home });
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(JSON.parse(res.stdout), { path: null });
   } finally {
@@ -236,7 +236,7 @@ test("context last-log ohne Vorgaenger liefert path null", () => {
 
 test("context last-log ohne Vault liefert path null statt eines Fehlers", () => {
   mitKontext({}, (dir, env) => {
-    const res = runBoard(dir, ["kontext", "last-log", "--project", "auth"], env);
+    const res = runBoard(dir, ["context", "last-log", "--project", "auth"], env);
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(JSON.parse(res.stdout), { path: null });
   });
@@ -250,7 +250,7 @@ test("context last-log: fehlendes Log-Verzeichnis ist kein Fehler", () => {
   mkdirSync(vault, { recursive: true });
   writeFileSync(join(home, ".claude", "kontext.config.json"), JSON.stringify({ vault }));
   try {
-    const res = runBoard(dir, ["kontext", "last-log", "--project", "auth"], { HOME: home, USERPROFILE: home });
+    const res = runBoard(dir, ["context", "last-log", "--project", "auth"], { HOME: home, USERPROFILE: home });
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(JSON.parse(res.stdout), { path: null });
   } finally {

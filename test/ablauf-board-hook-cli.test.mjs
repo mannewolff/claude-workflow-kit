@@ -21,7 +21,7 @@ function mitProjekt(fn) {
 }
 
 function hook(dir, command) {
-  return runBoard(dir, ["hook", "bash-pruefen"], { CLAUDE_PROJECT_DIR: "", KIT_AGENT_MODEL: "" },
+  return runBoard(dir, ["hook", "bash-check"], { CLAUDE_PROJECT_DIR: "", KIT_AGENT_MODEL: "" },
     { input: JSON.stringify({ tool_name: "Bash", tool_input: { command } }) });
 }
 

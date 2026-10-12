@@ -3,11 +3,10 @@
 // Namen, zeigt nur der Prozess.
 //
 // Englische Namen fuer `issue fragen`, `--vergleich` und die Auswahlwerte von `--art`, `--zustand`
-// und `issue-review roles --stufe` (Issue #1555, Plan #1548 E1, E5, E8). Die deutschen gelten in
-// diesem Paket noch. Je Paar laufen der deutsche und der englische Aufruf in je einem frischen
-// Projekt und liefern dasselbe — Exitcode, stdout, stderr und die Karten danach. Die reinen
-// Abbildungen (`internerWert`, `titelMitArt`, `issueReviewRoles`) pruefen die Faelle im selben
-// Prozess.
+// und `issue-review roles --stufe` (Issue #1555, Plan #1548 E1, E5, E8). Seit Issue #1557 gelten
+// nur sie: Je Paar wirkt der englische Aufruf, der deutsche endet mit Exit 1, nennt den
+// englischen Namen und laesst die Karten unberuehrt. Die reinen Abbildungen (`internerWert`,
+// `titelMitArt`, `issueReviewRoles`) pruefen die Faelle im selben Prozess.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -15,7 +14,7 @@ import { mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync } from "nod
 import { join } from "node:path";
 
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
-import { BEFEHLSNAMEN, internerWert } from "../kit/board/namen.mjs";
+import { ALTNAMEN, EINGABEWERTE, internerWert } from "../kit/board/namen.mjs";
 import { titelMitArt, ARTEN } from "../kit/board/dokumente.mjs";
 import { issueReviewRoles } from "../kit/board/issue-review.mjs";
 
@@ -74,26 +73,26 @@ function lauf(args, env = MIT_AUFSICHT) {
   }
 }
 
-const WERTE = BEFEHLSNAMEN.werte;
+const WERTE = EINGABEWERTE;
 
 // --- das Register --------------------------------------------------------------
 
 test("das Register nennt die englischen Namen aus E5 und E8", () => {
-  assert.equal(BEFEHLSNAMEN.befehle.issue.fragen, "questions");
-  assert.equal(BEFEHLSNAMEN.optionen.vergleich, "compare");
+  assert.equal(ALTNAMEN.befehle.issue.fragen, "questions");
+  assert.equal(ALTNAMEN.optionen.vergleich, "compare");
   assert.deepEqual(WERTE.art, { fachlich: "requirement", idee: "idea", mensch: "human", plan: "plan", task: "task" });
-  assert.deepEqual(WERTE.zustand, { laeuft: "running", abgebrochen: "aborted", wartet: "waiting", fertig: "done" });
-  assert.deepEqual(WERTE.stufe, { fachlich: "requirement", plan: "plan", issue: "issue" });
+  assert.deepEqual(WERTE.state, { laeuft: "running", abgebrochen: "aborted", wartet: "waiting", fertig: "done" });
+  assert.deepEqual(WERTE.stage, { fachlich: "requirement", plan: "plan", issue: "issue" });
 });
 
-test("internerWert bildet den englischen Wert auf den internen Schluessel ab, alles andere bleibt", () => {
+test("internerWert bildet den englischen Wert auf den internen Schluessel ab, ein anderer ergibt null", () => {
   for (const [option, ebene] of Object.entries(WERTE)) {
     for (const [intern, englisch] of Object.entries(ebene)) {
       assert.equal(internerWert(option, englisch), intern, `${option} ${englisch}`);
-      assert.equal(internerWert(option, intern), intern, `${option} ${intern}`);
+      if (intern !== englisch) assert.equal(internerWert(option, intern), null, `${option} ${intern}`);
     }
   }
-  assert.equal(internerWert("art", "epos"), "epos");
+  assert.equal(internerWert("art", "epos"), null);
   assert.equal(internerWert("art", true), true);
   assert.equal(internerWert("art", undefined), undefined);
   assert.equal(internerWert("unbekannt", "requirement"), "requirement");
@@ -113,22 +112,22 @@ test("die englischen Werte sind je Option eindeutig und kollidieren mit keinem a
 
 // --- im selben Prozess ------------------------------------------------------------
 
-test("titelMitArt: jeder englische Wert von --art ergibt denselben Titel wie der deutsche", () => {
+test("titelMitArt: jeder englische Wert von --art stellt das Praefix seiner Art voran", () => {
+  const praefixe = { fachlich: "[Requirement]", idee: "[Idea]", mensch: "[Human]", plan: "[Plan]", task: "[Task]" };
   for (const [intern, englisch] of Object.entries(WERTE.art)) {
-    assert.deepEqual(titelMitArt("Etwas", englisch), titelMitArt("Etwas", intern), englisch);
+    assert.deepEqual(titelMitArt("Etwas", englisch), { titel: `${praefixe[intern]} Etwas` }, englisch);
   }
 });
 
-test("issueReviewRoles: --stufe requirement wirkt wie fachlich und meldet den Config-Schluessel", () => {
+test("issueReviewRoles: --stage requirement waehlt die Stufe fachlich und meldet den Config-Schluessel", () => {
   const config = { ...LOKAL, reviewStufen: {
     fachlich: { reviewer: 2, rollen: ["form-beobachtbarkeit", "abgrenzung"] }, plan: { reviewer: 1, rollen: ["architektur-bestand"] },
     issue: { reviewer: 1, rollen: ["pruefbarkeit"] },
   } };
-  for (const [intern, englisch] of Object.entries(WERTE.stufe)) {
-    const de = issueReviewRoles({ _: [], stufe: intern, author: "claude-opus-5" }, config, {});
-    const en = issueReviewRoles({ _: [], stufe: englisch, author: "claude-opus-5" }, config, {});
-    assert.deepEqual(en, de, englisch);
+  for (const [intern, englisch] of Object.entries(WERTE.stage)) {
+    const en = issueReviewRoles({ _: [], stage: englisch, author: "claude-opus-5" }, config, {});
     assert.equal(en.stufe, intern);
+    assert.deepEqual(en.rollen, config.reviewStufen[intern].rollen, englisch);
   }
 });
 
@@ -138,27 +137,31 @@ const FAELLE = [
   { de: ["issue", "fragen", "6"], en: ["issue", "questions", "6"] },
   { de: ["issue", "fragen", "6", "--vergleich", "start.md"], en: ["issue", "questions", "6", "--compare", "start.md"] },
   { de: ["issue", "fragen"], en: ["issue", "questions"] },
-  ...Object.entries(WERTE.zustand).map(([intern, englisch]) => ({
+  ...Object.entries(WERTE.state).map(([intern, englisch]) => ({
     de: ["issue", "stand", "5", "--zustand", intern, "--text-file", "stand.md"],
     en: ["issue", "run-state", "5", "--state", englisch, "--text-file", "stand.md"],
   })),
-  ...Object.entries(WERTE.art).flatMap(([intern, englisch]) => [
+  ...Object.entries(WERTE.art).filter(([intern, englisch]) => intern !== englisch).flatMap(([intern, englisch]) => [
     { de: ["issue", "create", "--title", "Etwas", "--body-file", "body.md", "--art", intern],
       en: ["issue", "create", "--title", "Etwas", "--body-file", "body.md", "--art", englisch] },
     { de: ["issue", "check-form", "--body-file", "body.md", "--title", "Etwas", "--art", intern],
       en: ["issue", "check-form", "--body-file", "body.md", "--title", "Etwas", "--art", englisch] },
   ]),
-  ...Object.entries(WERTE.stufe).map(([intern, englisch]) => ({
+  ...Object.entries(WERTE.stage).filter(([intern, englisch]) => intern !== englisch).map(([intern, englisch]) => ({
     de: ["issue-review", "roles", "--stufe", intern, "--author", "claude-opus-5"],
     en: ["issue-review", "roles", "--stage", englisch, "--author", "claude-opus-5"],
   })),
 ];
 
 for (const fall of FAELLE) {
-  test(`${fall.en.join(" ")} wirkt wie ${fall.de.join(" ")}`, () => {
-    const deutsch = lauf(fall.de);
+  test(`${fall.en.join(" ")} wirkt, ${fall.de.join(" ")} wird abgewiesen`, () => {
     const englisch = lauf(fall.en);
-    assert.deepEqual(englisch, deutsch);
+    assert.doesNotMatch(englisch.stderr, /englischer Name/, fall.en.join(" "));
+    const deutsch = lauf(fall.de);
+    assert.equal(deutsch.status, 1, deutsch.stderr);
+    assert.match(deutsch.stderr, /englischer Name: '[^']+'/);
+    assert.equal(deutsch.stdout, "");
+    assert.deepEqual(deutsch.karten, lauf([]).karten, "die Karten blieben nicht unberuehrt");
   });
 }
 

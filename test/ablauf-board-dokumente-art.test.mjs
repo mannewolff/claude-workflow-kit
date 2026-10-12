@@ -76,9 +76,9 @@ function checkForm(dir, body, title, extra = []) {
 test("[board-1552] issue create --art stellt das englische Praefix voran, auch in einem deutschen Projekt", () => {
   for (const language of [undefined, "de", "en"]) {
     const dir = projekt(language);
-    assert.equal(titelVon(dir, anlegen(dir, ["--title", "Etwas", "--art", "fachlich"])), "[Requirement] Etwas", language);
-    assert.equal(titelVon(dir, anlegen(dir, ["--title", "Etwas", "--art", "idee"])), "[Idea] Etwas", language);
-    assert.equal(titelVon(dir, anlegen(dir, ["--title", "Step", "--art", "mensch"])), "[Human] Step", language);
+    assert.equal(titelVon(dir, anlegen(dir, ["--title", "Etwas", "--art", "requirement"])), "[Requirement] Etwas", language);
+    assert.equal(titelVon(dir, anlegen(dir, ["--title", "Etwas", "--art", "idea"])), "[Idea] Etwas", language);
+    assert.equal(titelVon(dir, anlegen(dir, ["--title", "Step", "--art", "human"])), "[Human] Step", language);
     assert.equal(titelVon(dir, anlegen(dir, ["--title", "Do it", "--art", "task"])), "[Task] Do it", language);
   }
 });
@@ -92,7 +92,7 @@ test("[board-1427] issue create ohne --art laesst den Titel unveraendert", () =>
 test("[board-1427] issue create --art neben einem Titel mit Praefix ist ein Fehler und legt nichts an", () => {
   const dir = projekt();
   for (const titel of ["[Fachlich] Doppelt", "[Requirement] Doppelt", " [plan] Doppelt"]) {
-    const res = anlegen(dir, ["--title", titel, "--art", "fachlich"]);
+    const res = anlegen(dir, ["--title", titel, "--art", "requirement"]);
     assert.notEqual(res.status, 0, titel);
     assert.match(res.stderr, /--art/);
   }
@@ -103,7 +103,7 @@ test("[board-1427] issue create --art mit unbekannter Art oder ohne Wert ist ein
   const dir = projekt();
   const unbekannt = anlegen(dir, ["--title", "X", "--art", "epos"]);
   assert.notEqual(unbekannt.status, 0);
-  assert.match(unbekannt.stderr, /fachlich\|idee\|mensch\|plan\|task/);
+  assert.match(unbekannt.stderr, /requirement\|idea\|human\|plan\|task/);
   const leer = runBoard(dir, ["issue", "create", "--body", BODY, "--title", "X", "--art"]);
   assert.notEqual(leer.status, 0);
   assert.deepEqual(board(dir, "issue", "list"), []);
@@ -116,10 +116,10 @@ test("[board-1427] issue check-form --art plan prueft mit den Plan-Gates", () =>
   assert.equal(res.status, 0, res.stdout);
 });
 
-test("[board-1427] issue check-form --art fachlich prueft mit den Fachplan-Gates, auch englisch", () => {
+test("[board-1427] issue check-form --art requirement prueft mit den Fachplan-Gates, auch englisch", () => {
   for (const language of ["de", "en"]) {
     const dir = projekt(language);
-    const { res, ergebnis } = checkForm(dir, FACHLICH, "Der Nutzer sieht etwas", ["--art", "fachlich"]);
+    const { res, ergebnis } = checkForm(dir, FACHLICH, "Der Nutzer sieht etwas", ["--art", "requirement"]);
     assert.equal(ergebnis.stufe, "fachlich", language);
     assert.equal(res.status, 0, res.stdout);
   }
@@ -136,7 +136,7 @@ test("[board-1427] issue check-form ohne --art leitet die Stufe wie bisher aus d
 
 test("[board-1427] issue check-form --art neben einem Titel mit Praefix weist den Aufruf ab", () => {
   const dir = projekt();
-  const { res, ergebnis } = checkForm(dir, FACHLICH, "[Fachlich] Etwas", ["--art", "fachlich"]);
+  const { res, ergebnis } = checkForm(dir, FACHLICH, "[Fachlich] Etwas", ["--art", "requirement"]);
   assert.equal(res.status, 1);
   assert.equal(ergebnis.ok, false);
   assert.match(ergebnis.fehler, /--art/);

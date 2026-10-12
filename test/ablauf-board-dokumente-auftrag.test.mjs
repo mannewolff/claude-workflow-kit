@@ -1,8 +1,8 @@
-// Ablauf-Pruefung: `issue auftrag` bekommt die Erkennung geschuetzter Dateien vom Einstieg
+// Ablauf-Pruefung: `issue brief` bekommt die Erkennung geschuetzter Dateien vom Einstieg
 // hereingereicht und schreibt Markdown auf stdout; der Gleichlauf mit dem Nacht-Runner braucht
 // beide Programme.
 //
-// `issue auftrag` — Aufgabe, Voraussetzungen und das Urteil "darf beginnen" in einem Zug
+// `issue brief` — Aufgabe, Voraussetzungen und das Urteil "darf beginnen" in einem Zug
 // (Issue #1023, Plan #1015 E2, E3, E5, E6).
 //
 // Der Befehl ist rein lesend: Er bewegt keine Karte und schreibt keinen Kommentar. Bei
@@ -123,12 +123,12 @@ function json(res) {
 }
 
 /**
- * Die Faelle, die jeder Adapter erfuellen muss. `lauf(args)` ruft `issue auftrag` und
+ * Die Faelle, die jeder Adapter erfuellen muss. `lauf(args)` ruft `issue brief` und
  * liefert { status, stdout, stderr }; `zustand()` liefert, was sich am Board aendern
  * koennte (Spalte und Kommentare), fuer den Vorher-nachher-Vergleich.
  */
 async function adapterFaelle(t, lauf, zustand) {
-  const auftrag = async (...args) => json(await lauf(["issue", "auftrag", ...args, "--json"]));
+  const auftrag = async (...args) => json(await lauf(["issue", "brief", ...args, "--json"]));
 
   await t.test("darf beginnen", async () => {
     const a = await auftrag("10");
@@ -148,9 +148,9 @@ async function adapterFaelle(t, lauf, zustand) {
     assert.equal(a.urteil.kommentar, null);
   });
 
-  await t.test("--spalte in_progress erwartet In progress", async () => {
-    assert.equal((await auftrag("11", "--spalte", "in_progress")).urteil.folge, "beginnen");
-    const a = await auftrag("10", "--spalte", "in_progress");
+  await t.test("--column in_progress erwartet In progress", async () => {
+    assert.equal((await auftrag("11", "--column", "in_progress")).urteil.folge, "beginnen");
+    const a = await auftrag("10", "--column", "in_progress");
     assert.equal(a.urteil.folge, "bleibt");
     assert.match(a.urteil.grund, /liegt nicht \(mehr\) in In progress/);
   });
@@ -170,7 +170,7 @@ async function adapterFaelle(t, lauf, zustand) {
       assert.equal(a.urteil.urteil, "darf nicht beginnen");
       assert.equal(a.urteil.folge, "backlog");
       assert.equal(a.urteil.kommentar, text);
-      const md = await lauf(["issue", "auftrag", nr]);
+      const md = await lauf(["issue", "brief", nr]);
       assert.equal(md.status, 0);
       assert.ok(md.stdout.includes(text), "der Kommentartext steht woertlich in der Markdown-Ausgabe");
       assert.deepEqual(await zustand(nr), vorher, "weder Spalte noch Kommentare veraendert");
@@ -204,7 +204,7 @@ async function adapterFaelle(t, lauf, zustand) {
     const a = await auftrag("51");
     assert.equal(a.urteil.urteil, "darf nicht beginnen");
     assert.equal(a.urteil.folge, "geschuetzt");
-    const check = await lauf(["issue", "check-geschuetzt", "51"]);
+    const check = await lauf(["issue", "check-protected", "51"]);
     assert.equal(check.status, 1, check.stderr);
     const erwartet = JSON.parse(check.stdout).kommentar;
     assert.ok(erwartet, "check-geschuetzt liefert einen Kommentar");
@@ -213,7 +213,7 @@ async function adapterFaelle(t, lauf, zustand) {
     for (const schritt of [/Backlog/, /issue label add 51 kit:protected/, /Fehlschlag/, /Label kit:protected gesetzt/, /Label kit:protected nicht gesetzt/]) {
       assert.match(a.urteil.grund, schritt);
     }
-    const md = await lauf(["issue", "auftrag", "51"]);
+    const md = await lauf(["issue", "brief", "51"]);
     assert.equal(md.status, 0);
     assert.match(md.stdout, /Folge: geschuetzt/);
     assert.ok(md.stdout.includes(`Kommentar fuer die Karte (woertlich):\n\n${erwartet}`), md.stdout);
@@ -254,7 +254,7 @@ async function adapterFaelle(t, lauf, zustand) {
     assert.equal(a.urteil.folge, "beginnen");
     assert.deepEqual(a.voraussetzungen, [{ id: "99", titel: null, spalte: null, befund: "erfuellt", grund: "steht nicht auf dem Board" }]);
     assert.ok(!a.luecken.some((l) => l.includes("#99")), a.luecken.join("\n"));
-    const md = (await lauf(["issue", "auftrag", "18"])).stdout;
+    const md = (await lauf(["issue", "brief", "18"])).stdout;
     assert.match(md, /- #99 \(ohne Titel\) — Spalte: keine — erfuellt \(steht nicht auf dem Board\)/);
   });
 
@@ -264,13 +264,13 @@ async function adapterFaelle(t, lauf, zustand) {
     assert.equal(a.urteil.folge, "beginnen");
     assert.deepEqual(a.voraussetzungen.map((v) => [v.id, v.spalte, v.befund]), [["21", "in_review", "erfuellt"], ["22", "done", "erfuellt"]]);
     assert.ok(a.aufgabe.kommentare.some((k) => k.body.includes("Review: Test fehlt.")));
-    const md = (await lauf(["issue", "auftrag", "19"])).stdout;
+    const md = (await lauf(["issue", "brief", "19"])).stdout;
     assert.ok(md.includes("Review: Test fehlt."), "der Kommentar steht im Glied Aufgabe");
     assert.deepEqual(await zustand("19"), vorher);
   });
 
   await t.test("Markdown: sieben Glieder in fester Reihenfolge, fehlende unter Luecken", async () => {
-    const res = await lauf(["issue", "auftrag", "10"]);
+    const res = await lauf(["issue", "brief", "10"]);
     assert.equal(res.status, 0);
     assert.deepEqual(ueberschriften(res.stdout), GLIEDER);
     const luecken = res.stdout.slice(res.stdout.lastIndexOf("## Lücken"));
@@ -297,7 +297,7 @@ async function adapterFaelle(t, lauf, zustand) {
     assert.equal(a.planEntscheidungen.hinweis, null);
     assert.deepEqual(a.planEntscheidungen.eintraege, [{ id: "E2", text: E2 }, { id: "E5", text: E5 }]);
     assert.ok(!a.luecken.some((l) => l.startsWith("Plan-Entscheidung")), a.luecken.join("\n"));
-    const md = (await lauf(["issue", "auftrag", "31"])).stdout;
+    const md = (await lauf(["issue", "brief", "31"])).stdout;
     const glied = md.slice(md.indexOf("## Plan-Entscheidungen"), md.indexOf("## Fachlicher Anlass"));
     assert.ok(glied.includes(E2) && glied.includes(E5), glied);
     assert.ok(!glied.includes("E7"), "nicht genannte Eintraege fehlen");
@@ -308,13 +308,13 @@ async function adapterFaelle(t, lauf, zustand) {
     assert.equal(a.planEntscheidungen.auswahl, null);
     assert.match(a.planEntscheidungen.hinweis, /keine Auswahl/);
     assert.deepEqual(a.planEntscheidungen.eintraege, [{ id: "E2", text: E2 }, { id: "E5", text: E5 }, { id: "E7", text: E7 }]);
-    const md = (await lauf(["issue", "auftrag", "33"])).stdout;
+    const md = (await lauf(["issue", "brief", "33"])).stdout;
     assert.match(md, /keine Auswahl/);
     assert.ok(!md.includes("E8: steht nicht"), "ein `- E8:` ausserhalb des Abschnitts ist kein Eintrag");
   });
 
   await t.test("Plan-Entscheidungen: ein im Plan fehlendes E<n> steht unter Luecken", async () => {
-    const a = await auftrag("34", "--spalte", "in_progress");
+    const a = await auftrag("34", "--column", "in_progress");
     assert.deepEqual(a.planEntscheidungen.eintraege.map((e) => e.id), ["E2"]);
     assert.ok(a.luecken.some((l) => l.includes("E9") && l.includes("#30")), a.luecken.join("\n"));
   });
@@ -335,7 +335,7 @@ async function adapterFaelle(t, lauf, zustand) {
       quelle: "40", herkunft: "paket", ziel: ZIEL, kriterien: KRITERIEN,
       vollerText: "Voller Text: `node .claude/kit/board.mjs issue get 40`",
     });
-    const md = (await lauf(["issue", "auftrag", "31"])).stdout;
+    const md = (await lauf(["issue", "brief", "31"])).stdout;
     assert.deepEqual(ueberschriften(md), GLIEDER, "das `##` im Ziel bleibt Inhalt");
     const glied = md.slice(md.indexOf("## Fachlicher Anlass"), md.indexOf("## Geschwister"));
     for (const teil of ["Ziel", "Fachliche Akzeptanzkriterien", "Zieltext.", "1. Kriterium eins.", "Voller Text: `node .claude/kit/board.mjs issue get 40`"]) {
@@ -368,7 +368,7 @@ async function adapterFaelle(t, lauf, zustand) {
       { id: "33", titel: "Paket ohne Auswahl", spalte: "ready" },
       { id: "34", titel: "Paket mit Phantom-E", spalte: "in_review" },
     ]);
-    const md = (await lauf(["issue", "auftrag", "31"])).stdout;
+    const md = (await lauf(["issue", "brief", "31"])).stdout;
     assert.match(md, /#32 Geschwister fertig — Spalte: done/);
   });
 
@@ -381,11 +381,11 @@ async function adapterFaelle(t, lauf, zustand) {
     assert.equal(a.fachlicherAnlass.quelle, null);
     assert.ok(a.luecken.some((l) => l.startsWith("Geschwister") && l.includes("kein Vorhaben")), a.luecken.join("\n"));
     assert.ok(a.luecken.some((l) => l.startsWith("Fachlicher Anlass")), a.luecken.join("\n"));
-    assert.match((await lauf(["issue", "auftrag", "10"])).stdout, /kein Vorhaben/);
+    assert.match((await lauf(["issue", "brief", "10"])).stdout, /kein Vorhaben/);
   });
 
   await t.test("nicht lesbares Paket -> Exit 1", async () => {
-    const res = await lauf(["issue", "auftrag", "99"]);
+    const res = await lauf(["issue", "brief", "99"]);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /99/);
   });
@@ -411,7 +411,7 @@ test("local", async (t) => {
       // Ein Verzeichnis statt der Datei: Die Karte existiert, laesst sich aber nicht lesen.
       mkdirSync(join(dir, "issues", "0098.md"));
       try {
-        nichtFeststellbar(json(runBoard(dir, ["issue", "auftrag", "25", "--json"])));
+        nichtFeststellbar(json(runBoard(dir, ["issue", "brief", "25", "--json"])));
       } finally {
         rmSync(join(dir, "issues", "0098.md"), { recursive: true, force: true });
       }
@@ -472,18 +472,18 @@ test("GitHub", async (t) => {
   try {
     await adapterFaelle(t, async (args) => runBoard(dir, args), zustand);
     await t.test("Geschwister in keiner Spalte: nicht feststellbar und unter Luecken", () => {
-      const res = runBoard(dir, ["issue", "auftrag", "31", "--json"]);
+      const res = runBoard(dir, ["issue", "brief", "31", "--json"]);
       const a = json(res);
       assert.deepEqual(a.geschwister.karten.find((k) => k.id === "38"), { id: "38", titel: "Geschwister ohne Spalte", spalte: null });
       assert.ok(a.luecken.some((l) => l.includes("#38") && l.includes("nicht feststellbar")), a.luecken.join("\n"));
-      const md = runBoard(dir, ["issue", "auftrag", "31"]).stdout;
+      const md = runBoard(dir, ["issue", "brief", "31"]).stdout;
       assert.match(md, /#38 Geschwister ohne Spalte — Spalte: nicht feststellbar/);
     });
     await t.test("Abruf der Voraussetzung scheitert -> nicht feststellbar, bleibt (Issue #1149)", () => {
-      nichtFeststellbar(json(runBoard(dir, ["issue", "auftrag", "25", "--json"])));
+      nichtFeststellbar(json(runBoard(dir, ["issue", "brief", "25", "--json"])));
     });
     await t.test("geschlossene Voraussetzung in Done gilt als erfuellt", () => {
-      const a = json(runBoard(dir, ["issue", "auftrag", "19", "--json"]));
+      const a = json(runBoard(dir, ["issue", "brief", "19", "--json"]));
       assert.deepEqual(a.voraussetzungen.find((v) => v.id === "22"), { id: "22", titel: "Voraussetzung fertig", spalte: "done", befund: "erfuellt" });
     });
     await t.test("kein schreibender gh-Aufruf", () => assert.deepEqual(zustand(), []));
@@ -570,15 +570,15 @@ test("toolbox", async (t) => {
 
 // --- Aufrufformen ---
 
-test("ohne id und mit falscher --spalte: Exit 1", () => {
+test("ohne id und mit falscher --column: Exit 1", () => {
   const dir = setupProjekt({ codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } }, "board-auftrag-args-");
   mkdirSync(join(dir, "issues"));
   writeFileSync(join(dir, "issues", "0010.md"), lokalDatei(KARTEN[0]));
   try {
-    assert.equal(runBoard(dir, ["issue", "auftrag"]).status, 1);
-    const res = runBoard(dir, ["issue", "auftrag", "10", "--spalte", "done"]);
+    assert.equal(runBoard(dir, ["issue", "brief"]).status, 1);
+    const res = runBoard(dir, ["issue", "brief", "10", "--column", "done"]);
     assert.equal(res.status, 1);
-    assert.match(res.stderr, /--spalte/);
+    assert.match(res.stderr, /--column/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

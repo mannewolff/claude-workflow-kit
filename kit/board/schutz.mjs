@@ -2,7 +2,7 @@
  * board/schutz.mjs — der Schutz von Haupt- und Veroeffentlichungszweig ohne Host-Details
  * (Issue #1407, Plan #1405): Zustand ableiten, Ruleset-Soll, Anleitung, Notfall-Gate und
  * Nacht-Sperre; dazu die Probe auf dem Pruefzweig, `einrichten` und `nachpruefen`
- * (Issue #1408), die `code schutz` im Einstieg ruft.
+ * (Issue #1408), die `code protection` im Einstieg ruft.
  *
  * Ein Teil von kit/board.mjs. Der Einstieg laedt ihn erst nach der Auskunft ueber
  * --version und --help und exportiert seine Namen unveraendert weiter. Dieser Teil
@@ -45,7 +45,7 @@ export const SCHUTZ_AUSGESETZT = TEXTE.de.schutzAusgesetzt;
 // A7: Ein Stand auf dem Hauptzweig ohne Nachweis des Build-Dienstes wird hiermit nachgeprueft.
 export const NACHPRUEFEN_KOMMANDO = "node .claude/kit/board.mjs code protection verify";
 // E8: Diese Aktionen pushen oder aendern den Code-Host — die Nacht pusht nie.
-export const NACHT_GESPERRT = Object.freeze(["einrichten", "aussetzen", "nachpruefen"]);
+export const NACHT_GESPERRT = Object.freeze(["setup", "suspend", "verify"]);
 
 const ARTEN = Object.freeze(["haupt", "veroeffentlichung"]);
 
@@ -268,8 +268,8 @@ export async function notfallGate(pfad) {
 }
 
 /**
- * Die Sperre der Nacht (E8): Mit gesetztem `KIT_AGENT_MODEL` brechen `einrichten`,
- * `aussetzen` und `nachpruefen` ab; `status` bleibt erlaubt.
+ * Die Sperre der Nacht (E8): Mit gesetztem `KIT_AGENT_MODEL` brechen `setup`, `suspend` und
+ * `verify` von `code protection` ab; `status` bleibt erlaubt.
  */
 export function nachtSperre(aktion, env = process.env) {
   if (env.KIT_AGENT_MODEL && NACHT_GESPERRT.includes(aktion)) {

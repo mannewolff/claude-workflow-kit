@@ -73,7 +73,7 @@
   node board.mjs issue-review reviewers --author <modell>
   node board.mjs issue-review check [--path-only]
   node board.mjs issue-review matrix
-  node board.mjs issue-review roles --stage <requirement|plan|issue> --author <modell>
+  node board.mjs issue-review roles --stage <requirement|plan|issue> --author <model>
   node board.mjs issue-review review-brief --role <rolle> --file <ziel> (--id <N> | --material-file <pfad>)
       Montiert den Pruefauftrag eines Pruefers aus kit/rollen/<rolle>.md (Issue #1380).
       Nicht zu verwechseln mit 'issue brief <id>', dem Umsetzungsauftrag einer Karte.
@@ -91,220 +91,16 @@ import { spawnSync } from "node:child_process";
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
 const KIT_VERSION = "4.2.4";
 
-const HILFE_DE = `board.mjs — Board-Adapter fuer das claude-workflow-kit
-
-Nutzung:
-  node board.mjs issue create --title "..." --body "..." | --body-file <pfad> | --body -
-                             [--author-model <modell>] [--derived-from <nummer>]
-                             [--idempotency-key <wert>] [--art requirement|plan|idea|human|task]
-      --art stellt das Titel-Praefix der Art in der Projektsprache voran, etwa
-      '[Fachlich]' oder '[Requirement]' (Issue #1427). Ein Titel mit Praefix bleibt
-      gueltig; --art daneben ist ein Fehler. Ohne --art bleibt der Titel, wie er ist.
-      --derived-from traegt die Kartennummer des naechsten Vorfahren ins Board
-      (Issue #356). Nur kanbancompat wertet sie aus; die uebrigen Tracker nehmen
-      sie folgenlos an. Nachtragen geht nicht — sie wirkt nur beim Anlegen.
-      --idempotency-key wiederholt einen Aufruf, dessen Ausgang unklar blieb, ohne
-      ihn ein zweites Mal auszufuehren (Issue #834). Ohne den Schalter entsteht der
-      Schluessel je Auftrag selbst; die Fehlermeldung nennt ihn samt Kommando.
-      Hat der Body einen Abschnitt '## Abhaengigkeiten', traegt die Ausgabe dessen
-      'hinweise' wie bei 'check-form' (Issue #1060); sie beruehren das Anlegen nicht.
-  node board.mjs issue get <id>
-  node board.mjs issue activity <id>      Aktivitaetsverlauf (local, toolbox)
-  node board.mjs issue activity --ids <n,n,...>
-      Verlauf mehrerer Karten als Objekt {"<nummer>": [...]}. Loest die Kartenliste
-      genau einmal auf; eine unbekannte Nummer erscheint mit Fehlergrund (Issue #786).
-  node board.mjs issue list [--status <status>]
-  node board.mjs issue move <id> <status>
-  node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
-      Ausgabe { ok, id }, dazu 'hinweise' zum Abschnitt '## Abhaengigkeiten' wie bei
-      'issue create' (Issue #1060).
-  node board.mjs issue comment <id> --text "..." | --text-file <pfad> | --text -
-                             [--idempotency-key <wert>]
-      '-' liest von stdin, gut fuer kurze Texte; fuer lange '--text-file' (Issue #584).
-      --idempotency-key wie bei 'issue create' (Issue #834).
-  node board.mjs issue report <id> --text '<bericht>' | --text-file <pfad>
-  node board.mjs issue report <id> --part <n> --text '<stueck>'
-  node board.mjs issue report <id>
-      Legt den Abschlussbericht ab und zieht die Karte danach nach In review (Issue
-      #1022). Der Bericht bekommt als letzte Zeile 'Bericht-Lauf: <stempel>' (juengster
-      Zug der Karte nach in_progress aus .claude/bewegungen.tsv). Je Lauf idempotent:
-      gleicher Inhalt -> nichts geschrieben, geaenderter -> ersetzt, Berichte anderer
-      Laeufe bleiben. Ein ' im Bericht wird in der Shell als '\\'' geschrieben.
-      --part <n> schreibt nur Stueck n nach .claude/berichte/<id>.<n>.md (ohne Board);
-      der Aufruf ohne --text setzt die Stuecke in Nummernfolge zusammen, schliesst ab
-      und raeumt sie erst danach. Scheitert er, ist die Wiederholung derselbe Aufruf.
-      Ausgabe: { ok, id, bericht: angelegt|ersetzt|unveraendert, status: in_review }.
-  node board.mjs issue run-state <id> --state running|aborted|waiting|done --text-file <pfad>
-      Laufstand einer Karte in einem Zug (Issue #1083): setzt das Label des Zustands
-      und nimmt die beiden anderen ab (fertig: alle drei), dazu genau ein Kommentar
-      '## Laufstand', bei jedem Aufruf ersetzt. Die Labelnamen kommen aus
-      night.stand.labels der Config (Vorgaben run:running, run:aborted,
-      run:waiting). Kommentare werden streng gelesen; nicht lesbar -> Exit 1, nichts
-      geschrieben. Ausgabe: { ok, id, zustand, kommentar: angelegt|ersetzt|unveraendert }.
-  node board.mjs issue brief <id> [--column ready|in_progress] [--json]
-      Alles, was eine Umsetzung vor dem Beginn braucht, in einem Aufruf (Issue #1023):
-      Urteil (darf beginnen | darf nicht beginnen) mit Folge (beginnen | bleibt |
-      backlog samt woertlichem Kommentartext | geschuetzt: nennt das Paket eine
-      geschuetzte Datei und ist nicht freigegeben, Backlog, label add kit:geschuetzt,
-      dann der Halt-Kommentar aus check-geschuetzt plus Label-Zeile; das Label
-      kit:geschuetzt selbst ergibt backlog, Issue #1052), Aufgabe (Titel, Body, Labels, Spalte,
-      Kommentare), Plan-Entscheidungen im Wortlaut (Auswahl aus der Zeile
-      'Plan-Entscheidungen:', ohne sie alle), fachlicher Anlass (Ziel und Fachliche
-      Akzeptanzkriterien der 'Fachlichen Quelle'), Geschwister des Plans mit Spalte
-      (Issue #1024) und Voraussetzungen aus '## Abhaengigkeiten' (erfuellt ab In review).
-      Was sich nicht ermitteln laesst, steht unter Luecken. Rein lesend. --column in_progress erwartet die Karte in In progress statt Ready.
-      Ausgabe: Markdown mit sieben '##'-Gliedern -- die einzige Ausnahme von JSON auf
-      stdout; --json liefert dieselben Glieder als Felder. Exit 0 auch bei 'darf nicht
-      beginnen', Exit 1 nur, wenn das Paket nicht lesbar ist.
-  node board.mjs issue origin <plan>
-      Stand der Ursprungsdokumente eines Plans (Issue #1285, Plan #1283): durch heisst,
-      mindestens ein Paket ('Plan: Issue #M') liegt in In review oder Done und keines in
-      Backlog, Ready oder In progress. Je Dokument (Plan, fachliche Anforderung aus
-      'Fachliche Quelle:') die Aktion wandert | lag bereits in In review | lag bereits
-      in Done | bleibt, mit Grund. Rein lesend, bewegt nichts. Ausgabe: { plan, durch,
-      grund, fehlend: [{ id, titel, spalte }], dokumente: [{ id, art, spalte, aktion, grund }] }.
-  node board.mjs issue history [--terms <begriff>]... [--files <pfad>]... [--without <nummer>]... [--bodies]
-      Fruehere Fachplaene des eigenen Boards, archivierte eingeschlossen (Issue #1539, Plan
-      #1534): je Begriff ueber die Suche (nur Titel mit [Fachlich]), je Datei ueber die
-      Kartennummern der letzten 30 Commits und deren Herkunftskette. Zusammengefuehrt ueber
-      die Nummer, geordnet nach Zahl der getroffenen Begriffe, dann Nummer absteigend,
-      hoechstens 20. Ausgabe: { ok, suchbegriffe, dateien, treffer: [{ nummer, titel,
-      archiviert, weg, auszug }], weitere }; --bodies legt je Treffer den Body bei. Ohne
-      Archiv { ok: false, grund: archiv-nicht-erreichbar | tracker-ohne-suche | abgeschaltet },
-      Exit 0 auch dann; der erste Fehlschlag am Board beendet die Suche.
-  node board.mjs issue questions <id> [--body-file <pfad>] [--compare <pfad>]
-      Grooming-Stand eines Fachplans fuer /groom (Issue #1513, Plan #1510): einstieg
-      ({ start, grund, meldung }), fragen ({ vermerk, fragen, ungegliedert, offen }),
-      stoppKommentar (nur bei kit:klaeren: { kommentar, grund }, sonst null) und
-      vermerkVorschlag (der Vermerk 'Keine' mit heutigem Datum, nur ohne offene Frage).
-      --body-file prueft einen neuen Body gegen den der Karte (pruefung: { ok,
-      verstoesse }), Exit 1 bei Verstoessen. --compare nennt die geaenderten
-      Kriterien und Nicht-Ziele zwischen der Datei und dem Body der Karte (aenderungen).
-      Rein lesend: aendert weder Body noch Labels.
-  node board.mjs issue label add <id> <name>
-  node board.mjs issue label remove <id> <name>
-      Zeichnet ein Issue (z. B. kit:klaeren). Status-Labels aendert \`issue move\`.
-  node board.mjs issue check-form <id> [--art requirement|plan|idea|human|task]
-  node board.mjs issue check-form --body-file <pfad> --title "<titel>" [--art ...]
-      Formpruefung gegen die maschinellen Gates der Stufe (Issue #628): fachlich
-      F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, Arbeitspaket I1 bis I9. Die Stufe
-      kommt aus dem Titel-Praefix, mit --art aus der Art wie bei 'issue create'
-      (Issue #1427); --art neben einem Titel mit Praefix weist den Aufruf ab. I7 bis I9 (Issue #1044): '## Aufgabe' nennt eine
-      Datei als Backtick-Pfad, keine genannte Datei ist geschuetzt (Sperren aus den
-      Einstellungen der Projektwurzel), '## Aufgabe' nennt nicht die installierte
-      Kopie; ein [Mensch]-Paket besteht alle drei. Immer JSON ({ ok, stufe, verstoesse }), Exit 1
-      bei Verstoessen; ein abgewiesener Aufruf traegt 'fehler'. Schreibt nie ans Board.
-      Bei [Plan] zusaetzlich 'hinweise' ([{ baustein, test, meldung }], Issue #1031):
-      eigene Tests gefuehrter Bausteine, die der Plan nicht nennt, nach den Ablagen aus
-      'testAblagen' gegen 'git ls-files'; sie beruehren weder ok noch den Exit-Code.
-      Beim Arbeitspaket 'hinweise' zum Abschnitt '## Abhaengigkeiten' ([{ art, nummer,
-      stelle, meldung }], Issue #1060): 'schreibweise' je #N ausserhalb einer Verweiszeile
-      ('Issue #N' am Zeilenanfang), 'dokument' je #N auf eine [Plan]-, [Fachlich]- oder
-      [Idee]-Karte. Der Nachtlauf liest beide als Abhaengigkeit; auch sie beruehren weder
-      ok noch den Exit-Code. Eine Karte, die sich nicht nachschlagen laesst, bleibt still.
-  node board.mjs issue check-protected <id> [--path <pfad>]
-      Geschuetzte Dateien eines Pakets (Issue #1045, Plan #987): Treffer aus Aufgabe und
-      Akzeptanzkriterium gegen die Sperren der Projektwurzel; --path (auch mehrfach,
-      Issue #1053) nimmt einen beim Schreiben abgewiesenen Pfad dazu, ist er geschuetzt,
-      mit der Zeile 'beim Schreiben abgewiesen' — fuer den Rueckfall-Halt, wenn die
-      Aufgabe ihn nicht nennt. Dazu das Label kit:geschuetzt
-      und die Freigabe — ein Halt-Kommentar '## Geschuetzte Datei' mit der Zeile
-      'Label kit:geschuetzt gesetzt', das Label abgenommen und jeder Treffer dort
-      genannt. Ausgabe: { ok, treffer, label, freigegeben, handlung, kommentar };
-      'kommentar' ist der Halt-Text ohne Label-Zeile. Exit 1 bei ok false, auch bei
-      Label ohne Treffer. Rein lesend.
-  node board.mjs code repo-name
-  node board.mjs code pr --from <branch> --to <branch>
-  node board.mjs code ci-status --commit <sha>
-      Zustand der CI fuer genau diesen Commit (Issue #316):
-      { status: gruen|rot|laeuft|keine, jobs: [{ name, ergebnis, gestartet }] }. Vorrang
-      rot vor laeuft vor gruen; 'keine' nur bei codeHost local, ein am Host noch
-      unsichtbarer Lauf ist 'laeuft'. 'gestartet' ist die Startzeit des Jobs (ISO) oder
-      null, solange er nicht gestartet ist (Issue #1151).
-  node board.mjs code protection status
-  node board.mjs code protection setup --branch <z>
-  node board.mjs code protection suspend --in <pfad>
-  node board.mjs code protection restore
-  node board.mjs code protection verify [--branch <z>]
-      Schutz von Haupt- und Veroeffentlichungszweig per Ruleset (Issue #1408).
-      status: { geschuetzt, fehlt, ungeprueft }, Exit 0 auch bei geschuetzt false.
-      einrichten: Probe — der Kopf von origin/<mainBranch> geht auf den Pruefzweig
-      (Vorgabe pushPruefung.zweig, sonst kit-pruefung; ein schon vorhandener bricht
-      ab), Warten im 30-s-Takt bis 5 min auf den Lauf und 60 min auf seinen
-      Abschluss, Zweig danach geloescht. Ergebnis scharf | offen | anleitung |
-      nicht moeglich. aussetzen: Notfallweg, nur nach gruenem Lauf der Stufe push
-      im Worktree <pfad>; setzt das Ruleset des Hauptzweigs auf disabled.
-      wiederherstellen: wieder active, scheitert es Exit 1 mit dem Kommando zum
-      Wiederholen. nachpruefen: Kopf erneut auf den Pruefzweig, Ergebnis des
-      Build-Dienstes. einrichten, aussetzen, nachpruefen mit KIT_AGENT_MODEL gesperrt.
-  node board.mjs context paths [--project <name>] [--date JJJJ-MM-TT]
-  node board.mjs context last-log [--project <name>] [--before JJJJ-MM-TT]
-  node board.mjs issue-review reviewers --author <modell>
-  node board.mjs issue-review check [--path-only]
-      Je Reviewer die Lesegrenze; kind command ohne sie ist nicht verfuegbar ('keine
-      Lesegrenze'). 'rollen' nennt die fehlenden Rollendateien aller Stufen.
-  node board.mjs issue-review matrix
-  node board.mjs issue-review roles --stage <requirement|plan|issue> --author <modell>
-      'rollenDateien' nennt je Rolle pfad und rolleVorhanden.
-      Besetzung und Rollen der Stufe aus reviewStufen; der Autor faellt weg.
-      Bei --stage plan setzt KIT_PLAN_REVIEWER (1 oder 2) die Pruefzahl vor reviewStufen.
-  node board.mjs issue-review review-brief --role <rolle> --file <ziel> (--id <N> | --material-file <pfad>)
-      Pruefauftrag fuer einen Pruefer, nicht der Umsetzungsauftrag von 'issue brief <id>'.
-      Setzt kit/rollen/<rolle>.md mit Artenliste und Dokument (--id: vom Board, samt
-      'Fachliche Quelle:' und 'Vorlage:') oder Material (--material-file; bei code-review
-      mit .claude/checks-summary.json) in die Datei --file. Ausgabe { ok, rolle, datei,
-      zeichen }; Fehler (Exit 1) rolle-fehlt mit pfad, platzhalter-offen, material-fehlt,
-      dokument-nicht-lesbar.
-  node board.mjs issue-review start --reviewer <name> | --code-review --brief <datei> --output <datei>
-      Startet einen fremden Pruefer (kind command; --code-review: reviewCommand) ohne Shell:
-      Auftrag ueber stdin, stdout in --output. Die Lesegrenze steht als letztes Argument —
-      aus lesegrenze bzw. reviewLesegrenze, sonst aus der Tabelle (codex: --sandbox read-only).
-      Braucht 'node .claude/kit/board.mjs*' in sandbox.excludedCommands. Ausgabe { ok,
-      reviewer, lesegrenze, ausgabe, zeichen }; Fehler (Exit 1) keine-lesegrenze,
-      lesegrenze-aufgehoben mit schalter (--full-auto, --dangerously-bypass-approvals-and-
-      sandbox, --sandbox/-s ausser read-only, -c sandbox_mode, --profile/-p), auftrag-fehlt,
-      nicht-im-path, ausfall mit exit und stderr-Ausschnitt.
-  node board.mjs nightrun report --file <ergebnisstand.json>
-      Liefert einen Ergebnisstand des Nacht-Runners an POST /api/kanban/night-runs ein
-      (nur issueTracker toolbox); derselbe Lauf wird bei jeder Meldung ersetzt.
-      Fuehrt der Stand eine Vorbereitung der Veroeffentlichung, traegt die Meldung
-      releasePreparation; weist das Board sie mit HTTP 400 ab, meldet der Befehl genau
-      einmal ohne das Feld nach und vermerkt den Rueckfall in der Antwort ('rueckfall').
-  node board.mjs session report [--transcript <pfad>] [--complete]
-      Meldet den Verbrauch der laufenden interaktiven Sitzung an dieselbe Route
-      (kind/mode INTERACTIVE, Issue #734), aufgeteilt nach den Wegmarken aus
-      .claude/wegmarken.tsv. Ohne --transcript kommt der Pfad als 'transcript_path'
-      aus dem Hook-Rumpf auf stdin. --complete meldet das Sitzungsende und leert die
-      Wegmarken; ohne das Flag wird hoechstens alle fuenf Minuten gemeldet.
-      Schweigt ohne Fehler bei gesetztem KIT_AGENT_MODEL (der Nacht-Runner meldet
-      selbst) und ohne Toolbox-Token.
-  node board.mjs hook bash-check
-      PreToolUse-Hook fuer Bash (Issue #995): liest den Hook-Rumpf von Claude Code auf
-      stdin und weist mit Exit 2 ab, wenn eine Pipe, Umleitung oder ein weiterer Befehl
-      einem Kommando aus sandbox.excludedCommands die Ausnahme nimmt. Muster aus
-      .claude/settings.json und .claude/settings.local.json.
-
-  node board.mjs --version
-
-Gueltige Status-Werte: backlog | ready | in_progress | in_review | done
-
-Konfiguration: .claude/workflow.config.json (issueTracker, codeHost)
-Fuer die kontext-Achse zusaetzlich: ~/.claude/kontext.config.json und
-.claude/kontext.config.json (gemergt, lokale Felder gewinnen).
-Fuer GitHub-Board-Integration: github.projectNumber in der Config setzen. Fehlt sie,
-wird bei genau einem GitHub Project fuer den Owner automatisch dessen Nummer verwendet.
-`;
-
-// Die Zeilen 'node board.mjs …' stehen woertlich wie in der deutschen Hilfe: Befehle und
-// Optionen setzt hilfeMitNamen in die Namen der Projektsprache (Issue #1461).
-const HILFE_EN = `board.mjs — board adapter for the claude-workflow-kit
+// Die Hilfe gibt es je Kommando genau einmal, englisch, in jedem Projekt (Issue #1557, Plan
+// #1548 E7). Sie antwortet, bevor ein Teil geladen ist (Plan #1199, E2).
+const HELP = `board.mjs — board adapter for the claude-workflow-kit
 
 Usage:
-  node board.mjs issue create --title "..." --body "..." | --body-file <pfad> | --body -
-                             [--author-model <modell>] [--derived-from <nummer>]
-                             [--idempotency-key <wert>] [--art requirement|plan|idea|human|task]
-      --art puts the title prefix of the kind in front, in the project language, such
-      as '[Fachlich]' or '[Requirement]' (Issue #1427). A title with a prefix stays
+  node board.mjs issue create --title "..." --body "..." | --body-file <path> | --body -
+                             [--author-model <model>] [--derived-from <number>]
+                             [--idempotency-key <value>] [--art requirement|plan|idea|human|task]
+      --art puts the English title prefix of the kind in front, such
+      as '[Requirement]' (Issue #1427). A title with a prefix stays
       valid; --art next to it is an error. Without --art the title stays as it is.
       --derived-from carries the card number of the nearest ancestor to the board
       (Issue #356). Only kanbancompat evaluates it; the other trackers accept it
@@ -317,19 +113,19 @@ Usage:
   node board.mjs issue get <id>
   node board.mjs issue activity <id>      activity history (local, toolbox)
   node board.mjs issue activity --ids <n,n,...>
-      History of several cards as an object {"<nummer>": [...]}. Resolves the card
+      History of several cards as an object {"<number>": [...]}. Resolves the card
       list exactly once; an unknown number appears with its error reason (Issue #786).
   node board.mjs issue list [--status <status>]
   node board.mjs issue move <id> <status>
-  node board.mjs issue update <id> --body "..." | --body-file <pfad> | --body -
+  node board.mjs issue update <id> --body "..." | --body-file <path> | --body -
       Output { ok, id }, plus 'hinweise' on the section '## Dependencies' as with
       'issue create' (Issue #1060).
-  node board.mjs issue comment <id> --text "..." | --text-file <pfad> | --text -
-                             [--idempotency-key <wert>]
+  node board.mjs issue comment <id> --text "..." | --text-file <path> | --text -
+                             [--idempotency-key <value>]
       '-' reads from stdin, good for short texts; for long ones '--text-file' (Issue #584).
       --idempotency-key as with 'issue create' (Issue #834).
-  node board.mjs issue report <id> --text '<bericht>' | --text-file <pfad>
-  node board.mjs issue report <id> --part <n> --text '<stueck>'
+  node board.mjs issue report <id> --text '<report>' | --text-file <path>
+  node board.mjs issue report <id> --part <n> --text '<piece>'
   node board.mjs issue report <id>
       Files the completion report and then moves the card to In review (Issue #1022).
       The report gets a run stamp line as its last line (the card's latest move to
@@ -340,9 +136,9 @@ Usage:
       call without --text joins the pieces in numeric order, completes and only then
       clears them. If it fails, the retry is the same call.
       Output: { ok, id, bericht: angelegt|ersetzt|unveraendert, status: in_review }.
-  node board.mjs issue run-state <id> --state running|aborted|waiting|done --text-file <pfad>
+  node board.mjs issue run-state <id> --state running|aborted|waiting|done --text-file <path>
       Run status of a card in one go (Issue #1083): sets the label of the state and
-      removes the other two (fertig: all three), plus exactly one run status
+      removes the other two (done: all three), plus exactly one run status
       comment, replaced on every call. The label names come from
       night.stand.labels in the config. Comments are read strictly; unreadable ->
       exit 1, nothing written. Output: { ok, id, zustand, kommentar: angelegt|ersetzt|unveraendert }.
@@ -350,9 +146,9 @@ Usage:
       Everything an implementation needs before it starts, in one call (Issue #1023):
       verdict (may start | may not start) with consequence (beginnen | bleibt |
       backlog with the literal comment text | geschuetzt: the package names a
-      protected file and is not released — backlog, label add kit:geschuetzt, then
+      protected file and is not released — backlog, label add kit:protected, then
       the halt comment from issue check-protected plus label line; the label
-      kit:geschuetzt itself results in backlog, Issue #1052), task (title, body,
+      kit:protected itself results in backlog, Issue #1052), task (title, body,
       labels, column, comments), plan decisions verbatim (selection from the line
       'Plan-Decisions:', without it all of them), business reason (goal and business
       acceptance criteria of the 'Requirement:'), siblings of the plan with column
@@ -369,7 +165,7 @@ Usage:
       action wandert | lag bereits in In review | lag bereits in Done | bleibt, with a
       reason. Read-only, moves nothing. Output: { plan, durch, grund, fehlend: [{ id,
       titel, spalte }], dokumente: [{ id, art, spalte, aktion, grund }] }.
-  node board.mjs issue history [--terms <begriff>]... [--files <pfad>]... [--without <nummer>]... [--bodies]
+  node board.mjs issue history [--terms <term>]... [--files <path>]... [--without <number>]... [--bodies]
       Earlier requirements of the own board, archived ones included (Issue #1539, Plan
       #1534): per term via the search (only titles with [Requirement]), per file via the
       card numbers of the last 30 commits and their lineage. Merged by number, ordered by
@@ -378,7 +174,7 @@ Usage:
       weitere }; --bodies adds the body of each hit. Without archive { ok: false, grund:
       archiv-nicht-erreichbar | tracker-ohne-suche | abgeschaltet }, exit 0 even then; the
       first failure at the board ends the search.
-  node board.mjs issue questions <id> [--body-file <pfad>] [--compare <pfad>]
+  node board.mjs issue questions <id> [--body-file <path>] [--compare <path>]
       Grooming state of a requirement for /groom (Issue #1513, Plan #1510): einstieg
       ({ start, grund, meldung }), fragen ({ vermerk, fragen, ungegliedert, offen }),
       stoppKommentar (only with kit:clarify: { kommentar, grund }, otherwise null) and
@@ -391,7 +187,7 @@ Usage:
   node board.mjs issue label remove <id> <name>
       Marks an issue (e.g. kit:clarify). Status labels are changed by \`issue move\`.
   node board.mjs issue check-form <id> [--art requirement|plan|idea|human|task]
-  node board.mjs issue check-form --body-file <pfad> --title "<titel>" [--art ...]
+  node board.mjs issue check-form --body-file <path> --title "<titel>" [--art ...]
       Form check against the machine gates of the stage (Issue #628): requirement
       F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, work package I1 to I9. The stage comes
       from the title prefix, with --art from the kind as with 'issue create'
@@ -410,13 +206,13 @@ Usage:
       ('Issue #N' at the start of the line), 'dokument' per #N to a [Plan], [Requirement]
       or [Idea] card. The night run reads both as a dependency; they too affect neither
       ok nor the exit code. A card that cannot be looked up stays silent.
-  node board.mjs issue check-protected <id> [--path <pfad>]
+  node board.mjs issue check-protected <id> [--path <path>]
       Protected files of a package (Issue #1045, Plan #987): hits from task and
       acceptance criteria against the locks of the project root; --path (also
       repeated, Issue #1053) adds a path rejected on writing, if it is protected, with
       the line 'beim Schreiben abgewiesen' — for the fallback halt when the task does
-      not name it. Plus the label kit:geschuetzt and the release — a halt comment
-      '## Geschuetzte Datei' with the line 'Label kit:geschuetzt gesetzt', the label
+      not name it. Plus the label kit:protected and the release — a halt comment
+      '## Geschuetzte Datei' with the line 'Label kit:protected gesetzt', the label
       removed and every hit named there. Output: { ok, treffer, label, freigegeben,
       handlung, kommentar }; 'kommentar' is the halt text without the label line.
       Exit 1 on ok false, also for a label without hits. Read-only.
@@ -429,10 +225,10 @@ Usage:
       not yet visible at the host is 'laeuft'. 'gestartet' is the start time of the
       job (ISO) or null as long as it has not started (Issue #1151).
   node board.mjs code protection status
-  node board.mjs code protection setup --branch <z>
-  node board.mjs code protection suspend --in <pfad>
+  node board.mjs code protection setup --branch <b>
+  node board.mjs code protection suspend --in <path>
   node board.mjs code protection restore
-  node board.mjs code protection verify [--branch <z>]
+  node board.mjs code protection verify [--branch <b>]
       Protection of main and publishing branch by ruleset (Issue #1408).
       status: { geschuetzt, fehlt, ungeprueft }, exit 0 also on geschuetzt false.
       setup: probe — the head of origin/<mainBranch> goes to the check branch
@@ -440,29 +236,29 @@ Usage:
       waits in 30 s steps up to 5 min for the run and 60 min for its completion,
       branch deleted afterwards. Result scharf | offen | anleitung | nicht moeglich.
       suspend: emergency path, only after a green run of stage push in the worktree
-      <pfad>; sets the ruleset of the main branch to disabled. restore: active again,
+      <path>; sets the ruleset of the main branch to disabled. restore: active again,
       if it fails exit 1 with the command to repeat. verify: head again to the check
       branch, result of the build service. setup, suspend, verify are locked with
       KIT_AGENT_MODEL.
-  node board.mjs context paths [--project <name>] [--date JJJJ-MM-TT]
-  node board.mjs context last-log [--project <name>] [--before JJJJ-MM-TT]
-  node board.mjs issue-review reviewers --author <modell>
+  node board.mjs context paths [--project <name>] [--date YYYY-MM-DD]
+  node board.mjs context last-log [--project <name>] [--before YYYY-MM-DD]
+  node board.mjs issue-review reviewers --author <model>
   node board.mjs issue-review check [--path-only]
       The read boundary per reviewer; kind command without it is not available
       ('keine Lesegrenze'). 'rollen' names the missing role files of all stages.
   node board.mjs issue-review matrix
-  node board.mjs issue-review roles --stage <requirement|plan|issue> --author <modell>
+  node board.mjs issue-review roles --stage <requirement|plan|issue> --author <model>
       'rollenDateien' names pfad and rolleVorhanden per role.
       Cast and roles of the stage from reviewStufen; the author drops out.
       With --stage plan, KIT_PLAN_REVIEWER (1 or 2) sets the reviewer count ahead of reviewStufen.
-  node board.mjs issue-review review-brief --role <rolle> --file <ziel> (--id <N> | --material-file <pfad>)
+  node board.mjs issue-review review-brief --role <role> --file <target> (--id <N> | --material-file <path>)
       Review brief for a reviewer, not the implementation brief of 'issue brief <id>'.
-      Puts kit/rollen/<rolle>.md with the list of kinds and the document (--id: from
+      Puts kit/rollen/<role>.md with the list of kinds and the document (--id: from
       the board, with 'Requirement:' and 'Template:') or material (--material-file;
       for code-review with .claude/checks-summary.json) into the file --file. Output
       { ok, rolle, datei, zeichen }; errors (exit 1) rolle-fehlt with pfad,
       platzhalter-offen, material-fehlt, dokument-nicht-lesbar.
-  node board.mjs issue-review start --reviewer <name> | --code-review --brief <datei> --output <datei>
+  node board.mjs issue-review start --reviewer <name> | --code-review --brief <file> --output <file>
       Starts an outside reviewer (kind command; --code-review: reviewCommand) without
       a shell: brief via stdin, stdout into --output. The read boundary is the last
       argument — from lesegrenze or reviewLesegrenze, otherwise from the table (codex:
@@ -472,14 +268,14 @@ Usage:
       (--full-auto, --dangerously-bypass-approvals-and-sandbox, --sandbox/-s except
       read-only, -c sandbox_mode, --profile/-p), auftrag-fehlt, nicht-im-path, ausfall
       with exit and an excerpt of stderr.
-  node board.mjs nightrun report --file <ergebnisstand.json>
+  node board.mjs nightrun report --file <result.json>
       Delivers a result state of the night runner to POST /api/kanban/night-runs
       (issueTracker toolbox only); the same run is replaced on every report. If the
       state carries a preparation of the release, the report carries
       releasePreparation; if the board rejects it with HTTP 400, the command reports
       exactly once more without the field and notes the fallback in the answer
       ('rueckfall').
-  node board.mjs session report [--transcript <pfad>] [--complete]
+  node board.mjs session report [--transcript <path>] [--complete]
       Reports the usage of the running interactive session to the same route
       (kind/mode INTERACTIVE, Issue #734), split by the waypoints from
       .claude/wegmarken.tsv. Without --transcript the path comes as 'transcript_path'
@@ -506,43 +302,6 @@ missing and the owner has exactly one GitHub Project, its number is used.
 
 // Die Texttabelle liegt im Teil texte/ (Issue #1524) und laedt mit den uebrigen Teilen weiter
 // unten. Die Hilfe steht nicht darin: Sie antwortet, bevor ein Teil geladen ist.
-
-/**
- * Die Hilfe in den Namen der Projektsprache (Issue #1461, Plan #1420 E18): In einem englischen
- * Projekt stehen Befehlsfolgen wie `issue melden` und Optionen wie `--zustand` englisch; den
- * Fliesstext uebersetzt dieses Paket nicht. Eine Befehlsfolge zaehlt nur mit bekanntem Befehl,
- * damit Fliesstext wie "kontext-Achse" bleibt.
- */
-function hilfeMitNamen(text, sprache, { achsen, befehle, schutz, optionen }) {
-  if (sprache !== "en") return text;
-  const befehlsfolge = /\b(issue-review|issue|code|kontext|nightrun|sitzung|hook) ([a-z][a-z-]*)(?: ([a-z]+))?/g;
-  return text
-    .replaceAll(befehlsfolge, (ganz, achse, befehl, aktion) => {
-      const name = befehle[achse][befehl];
-      if (name === undefined) return ganz;
-      if (aktion === undefined) return `${achsen[achse]} ${name}`;
-      const folge = befehl === "schutz" ? schutz[aktion] ?? aktion : aktion;
-      return `${achsen[achse]} ${name} ${folge}`;
-    })
-    .replaceAll(/--([a-z][a-z-]*)/g, (ganz, name) => (Object.hasOwn(optionen, name) ? `--${optionen[name]}` : ganz));
-}
-
-/**
- * Die Hilfe in der Projektsprache, mit Sprache und Namen aus dem Namen-Register. Fehlt das
- * Register, bleibt sie deutsch — eine einzeln kopierte board.mjs antwortet so weiter (Issue #170).
- */
-async function hilfeInProjektsprache() {
-  let namen;
-  try {
-    namen = await import("./board/namen.mjs");
-  } catch {
-    return HILFE_DE;
-  }
-  return hilfeMitNamen(namen.text({ de: { hilfe: HILFE_DE }, en: { hilfe: HILFE_EN } }, "hilfe"),
-    namen.prozessSprache(), namen.BEFEHLSNAMEN);
-}
-
-const HELP = await hilfeInProjektsprache();
 
 // Auskunft vor den Teilen (Plan #1199, E2): --version und --help antworten, bevor ein Teil
 // geladen ist. Nur so beantwortet board.mjs sie auch als einzeln kopierte Datei, ohne
@@ -604,19 +363,15 @@ const { rulesetName } = await import("./board/adapter.mjs");
 const { issueVorgeschichte } = await import("./board/vorgeschichte.mjs");
 // Englisch benannte Config auf die deutschen Namen (Issue #1436, Plan #1420 E10).
 const { normalisiereConfig } = await import("./board/config-namen.mjs");
-// Die englischen Namen der Optionen und der Aktionen von `code schutz` (Issue #1461, E18).
-const { BEFEHLSNAMEN, prozessSprache, text } = await import("./board/namen.mjs");
+// Die Meldung zu einem frueheren deutschen Namen (Issue #1557, Plan #1548).
+const { altnameHinweis, EINGABEWERTE, text } = await import("./board/namen.mjs");
 // Die Texte des Einstiegs an den Menschen (Issue #1524: im Teil texte/).
 export const { TEXTE } = await import("./texte/board.mjs");
-/** Englisch -> deutsch fuer eine Ebene der Namenstabelle. */
-const deutscherName = (ebene) => Object.fromEntries(Object.entries(ebene).map(([de, en]) => [en, de]));
-const OPTION_DEUTSCH = deutscherName(BEFEHLSNAMEN.optionen);
-const SCHUTZ_DEUTSCH = deutscherName(BEFEHLSNAMEN.schutz);
 
 /** Ein Text des Einstiegs in der Projektsprache (Issue #1477, E13). */
 const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
-/** Ein deutscher Name einer Ebene der Namenstabelle in der Projektsprache. */
-const nameIn = (ebene, name) => (prozessSprache() === "en" ? ebene[name] ?? name : name);
+/** Die Achsen von board.mjs, englisch wie jeder Name, den das Kommando annimmt (Issue #1557). */
+const ACHSEN = ["issue", "code", "context", "issue-review", "nightrun", "session", "hook"];
 /**
  * Bricht mit einer Meldung ab wie `fail` aus den Grundlagen, das Praefix in der Projektsprache.
  * `fail` selbst stellen die Grundlagen um (Issue #1483).
@@ -628,14 +383,14 @@ function abbruch(meldung) {
 /** Weist einen unbekannten Befehl einer Achse ab, nach der Hilfe. */
 function unbekannterBefehl(achse, befehl) {
   process.stdout.write(HELP);
-  abbruch(t("unbekannterBefehl", { achse: nameIn(BEFEHLSNAMEN.achsen, achse), befehl }));
+  abbruch(t("unbekannterBefehl", { achse, befehl }));
 }
 
 // --- Argument-Parser ---
 
 function parseArgs(argv) {
   const result = { _: [] };
-  // Alle Werte einer mehrfach genannten Option (`--pfad a --pfad b`); `result[key]` traegt
+  // Alle Werte einer mehrfach genannten Option (`--path a --path b`); `result[key]` traegt
   // weiter den letzten. Nicht aufzaehlbar, damit es kein Optionsname werden kann.
   const werte = {};
   Object.defineProperty(result, "werte", { value: werte, enumerable: false });
@@ -643,8 +398,7 @@ function parseArgs(argv) {
   while (i < argv.length) {
     const a = argv[i];
     if (a.startsWith("--")) {
-      // Eine englisch benannte Option traegt ab hier ihren deutschen Namen (E18).
-      const key = OPTION_DEUTSCH[a.slice(2)] ?? a.slice(2);
+      const key = a.slice(2);
       const next = argv[i + 1];
       if (next !== undefined && !next.startsWith("--")) {
         result[key] = next;
@@ -729,13 +483,13 @@ async function issueCheckForm(tracker, config, args) {
  */
 async function issueCheckGeschuetzt(tracker, args) {
   const id = args._[0];
-  if (id === undefined) abbruch(t("checkGeschuetztOhneId", { befehl: `issue ${nameIn(BEFEHLSNAMEN.befehle.issue, "check-geschuetzt")}` }));
+  if (id === undefined) abbruch(t("checkGeschuetztOhneId", { befehl: "issue check-protected" }));
   const issue = await tracker.getIssue(String(id));
   const kommentare = await tracker.kommentareStreng(String(id));
   const labels = issue.labels || [];
   const treffer = [
     ...geschuetzteTreffer(issue.body || "", issue.title || "", configWurzel()),
-    ...abgewieseneTreffer(args.werte?.pfad ?? [], configWurzel()),
+    ...abgewieseneTreffer(args.werte?.path ?? [], configWurzel()),
   ];
   const label = traegtLabel(labels, "geschuetzt");
   const freigegeben = geschuetztFreigabe(treffer, kommentare, labels);
@@ -768,7 +522,7 @@ async function issueFragen(tracker, args) {
   const { groomEinstieg, fragenLesen, stoppKommentar, vermerkZeile, koerperPruefen, kriterienVergleich } =
     await import("./board/grooming.mjs");
   const neu = optionDatei(args, "body-file");
-  const start = optionDatei(args, "vergleich");
+  const start = optionDatei(args, "compare");
   const issue = await tracker.getIssue(String(id));
   const body = issue.body || "";
   const fragen = fragenLesen(body);
@@ -819,21 +573,14 @@ async function dispatchIssue(command, args) {
     case "move":    return issueMove(tracker, args);
     case "update":  return issueUpdate(tracker, args);
     case "comment": return issueComment(tracker, args);
-    case "melden":
     case "report":  return issueMelden(tracker, args);
-    case "stand":
     case "run-state": return issueStand(tracker, config, args);
-    case "auftrag":
     case "brief":   return issueAuftrag(tracker, args, AUFTRAG_GESCHUETZT);
-    case "ursprung":
     case "origin":  return issueUrsprung(tracker, args);
-    case "fragen":
     case "questions": return issueFragen(tracker, args);
     case "label":   return issueLabel(tracker, config, args, HELP);
     case "check-form": return issueCheckForm(tracker, config, args);
-    case "check-geschuetzt":
     case "check-protected": return issueCheckGeschuetzt(tracker, args);
-    case "vorgeschichte":
     case "history": return issueVorgeschichte(tracker, config, args, HELP);
     default:
       unbekannterBefehl("issue", command);
@@ -859,13 +606,13 @@ async function codeCiStatus(host, args) {
   out(await host.getCiStatus(String(args.commit)));
 }
 
-const SCHUTZ_AKTIONEN = ["status", "einrichten", "aussetzen", "wiederherstellen", "nachpruefen"];
+const SCHUTZ_AKTIONEN = ["status", "setup", "suspend", "restore", "verify"];
 const WIEDERHERSTELLEN_KOMMANDO = "node .claude/kit/board.mjs code protection restore";
 
-/** Der Pruefzweig der Probe (E5): `--zweig`, sonst `pushPruefung.zweig`, sonst `kit-pruefung`. */
+/** Der Pruefzweig der Probe (E5): `--branch`, sonst `pushPruefung.zweig`, sonst `kit-pruefung`. */
 function schutzZweig(config, args) {
-  if (args.zweig === true) abbruch(t("optionOhneWert", { option: nameIn(BEFEHLSNAMEN.optionen, "zweig") }));
-  return args.zweig || config.pushPruefung?.zweig || "kit-pruefung";
+  if (args.branch === true) abbruch(t("optionOhneWert", { option: "branch" }));
+  return args.branch || config.pushPruefung?.zweig || "kit-pruefung";
 }
 
 /** Aussetzen und Wiederherstellen brauchen einen Code-Host mit Schutz. */
@@ -877,27 +624,27 @@ function schutzVerlangen(host) {
 }
 
 /**
- * `code schutz <aktion>` (Issue #1408, Plan #1405, A10). `einrichten`, `aussetzen` und
- * `nachpruefen` pushen oder aendern den Code-Host und laufen darum durch die Nacht-Sperre
- * (E8); `status` und `wiederherstellen` nicht.
+ * `code protection <aktion>` (Issue #1408, Plan #1405, A10). `setup`, `suspend` und `verify`
+ * pushen oder aendern den Code-Host und laufen darum durch die Nacht-Sperre (E8); `status`
+ * und `restore` nicht.
  */
 async function codeSchutz(host, config, args) {
-  const aktion = SCHUTZ_DEUTSCH[args._[0]] ?? args._[0];
+  const aktion = args._[0];
   if (!SCHUTZ_AKTIONEN.includes(aktion)) {
     process.stdout.write(HELP);
     abbruch(t("unbekannteSchutzAktion", {
-      schutz: nameIn(BEFEHLSNAMEN.befehle.code, "schutz"),
+      schutz: "protection",
       aktion: aktion ?? "",
-      erwartet: SCHUTZ_AKTIONEN.map((a) => nameIn(BEFEHLSNAMEN.schutz, a)).join(" | "),
+      erwartet: SCHUTZ_AKTIONEN.join(" | "),
     }));
   }
   nachtSperre(aktion);
   const mainBranch = config.mainBranch || "main";
   switch (aktion) {
-    case "status":      return out(await schutzZustand(host, config));
-    case "einrichten":  return out(await einrichten(host, config, schutzZweig(config, args)));
-    case "nachpruefen": return out(await nachpruefen(host, config, schutzZweig(config, args)));
-    case "aussetzen": {
+    case "status": return out(await schutzZustand(host, config));
+    case "setup":  return out(await einrichten(host, config, schutzZweig(config, args)));
+    case "verify": return out(await nachpruefen(host, config, schutzZweig(config, args)));
+    case "suspend": {
       if (typeof args.in !== "string") abbruch(t("aussetzenOhneIn"));
       schutzVerlangen(host);
       const gate = await notfallGate(args.in);
@@ -923,7 +670,6 @@ async function dispatchCode(command, args) {
     case "repo-name": return codeRepoName(host);
     case "pr":        return codePr(host, args);
     case "ci-status": return codeCiStatus(host, args);
-    case "schutz":
     case "protection": return codeSchutz(host, config, args);
     default:
       unbekannterBefehl("code", command);
@@ -1022,8 +768,29 @@ async function dispatchKontext(command, args) {
     case "paths": return kontextPaths(args);
     case "last-log": return kontextLastLog(args);
     default:
-      unbekannterBefehl("kontext", command);
+      unbekannterBefehl("context", command);
   }
+}
+
+/**
+ * Weist einen frueheren deutschen Namen ab (Issue #1557, Plan #1548, Entscheidung „Abweisung
+ * statt Uebergang“): Achse, Befehl, Aktion von `code protection`, Option oder Auswahlwert von
+ * `--art`, `--state` und `--stage`. Exit 1 mit der Meldung, die den englischen Namen nennt —
+ * vor jedem Zugriff aufs Board, so bleibt alles unberuehrt.
+ */
+function altnamenAbweisen(axis, command, rest) {
+  const abweisen = (hinweis) => {
+    if (hinweis !== null) abbruch(hinweis);
+  };
+  abweisen(altnameHinweis("achse", axis));
+  abweisen(altnameHinweis("befehl", command, axis));
+  if (axis === "code" && command === "protection") abweisen(altnameHinweis("schutz", rest[0]));
+  rest.forEach((wort, i) => {
+    if (!wort.startsWith("--")) return;
+    const option = wort.slice(2);
+    abweisen(altnameHinweis("option", option));
+    if (Object.hasOwn(EINGABEWERTE, option)) abweisen(altnameHinweis("wert", rest[i + 1], option));
+  });
 }
 
 // Hilfe und --version, beendet den Prozess. Laeuft vor dem Laden der Teile (Plan #1199, E2)
@@ -1076,6 +843,7 @@ async function main() {
   }
 
   const [axis, command, ...rest] = argv;
+  altnamenAbweisen(axis, command, rest);
   const args = parseArgs(rest);
 
   if (axis === "issue") {
@@ -1084,18 +852,17 @@ async function main() {
     await dispatchCode(command, args);
   } else if (axis === "issue-review") {
     await dispatchIssueReview(command, args, HELP);
-  } else if (axis === "kontext" || axis === "context") {
+  } else if (axis === "context") {
     await dispatchKontext(command, args);
   } else if (axis === "nightrun") {
     await dispatchNightrun(command, args, HELP);
-  } else if (axis === "sitzung" || axis === "session") {
+  } else if (axis === "session") {
     await dispatchSitzung(command, args, HELP);
   } else if (axis === "hook") {
     await dispatchHook(command, HELP);
   } else {
     process.stdout.write(HELP);
-    const erwartet = Object.keys(BEFEHLSNAMEN.achsen).map((a) => nameIn(BEFEHLSNAMEN.achsen, a)).join(" | ");
-    abbruch(t("unbekannteAchse", { achse: axis, erwartet }));
+    abbruch(t("unbekannteAchse", { achse: axis, erwartet: ACHSEN.join(" | ") }));
   }
 }
 

@@ -532,7 +532,7 @@ test("[board-5] die Hilfe nennt issue check-form mit beiden Aufrufformen", () =>
   mitProjekt((dir) => {
     const res = runBoard(dir, ["--help"]);
     assert.match(res.stdout, /issue check-form <id>/);
-    assert.match(res.stdout, /issue check-form --body-file <pfad> --title/);
+    assert.match(res.stdout, /issue check-form --body-file <path> --title/);
   });
 });
 

@@ -1,7 +1,7 @@
-// Ablauf-Pruefung: `issue melden` legt den Bericht ab, zieht die Karte und raeumt Stuecke; der
+// Ablauf-Pruefung: `issue report` legt den Bericht ab, zieht die Karte und raeumt Stuecke; der
 // Vertrag ist Ausgabe und Exitcode des Prozesses.
 //
-// `issue melden` — Abschlussbericht je Lauf idempotent ablegen und nach In review
+// `issue report` — Abschlussbericht je Lauf idempotent ablegen und nach In review
 // ziehen (Issue #1022, Plan #1015 E2, E8, E9, E10).
 //
 // Ein Aufruf ersetzt die Folge `issue move … in_review` plus Zwischendatei plus
@@ -93,9 +93,9 @@ function lokalStatus(datei) {
 
 test("local: zweimal gleicher Text legt genau einen Bericht an, der zweite meldet unveraendert", () => {
   mitLokal((dir, datei) => {
-    const erst = ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Alles gruen."]));
+    const erst = ausgabe(runBoard(dir, ["issue", "report", "5", "--text", "Alles gruen."]));
     assert.deepEqual(erst, { ok: true, id: "5", bericht: "angelegt", status: "in_review" });
-    const zweit = ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Alles gruen."]));
+    const zweit = ausgabe(runBoard(dir, ["issue", "report", "5", "--text", "Alles gruen."]));
     assert.deepEqual(zweit, { ok: true, id: "5", bericht: "unveraendert", status: "in_review" });
 
     assert.deepEqual(lokalKommentare(datei), [bericht("Alles gruen.")]);
@@ -107,8 +107,8 @@ test("local: zweimal gleicher Text legt genau einen Bericht an, der zweite melde
 
 test("local: geaenderter Text ersetzt den Bericht dieses Laufs, die Zahl bleibt", () => {
   mitLokal((dir, datei) => {
-    ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Erste Fassung."]));
-    const zweit = ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Zweite Fassung."]));
+    ausgabe(runBoard(dir, ["issue", "report", "5", "--text", "Erste Fassung."]));
+    const zweit = ausgabe(runBoard(dir, ["issue", "report", "5", "--text", "Zweite Fassung."]));
     assert.equal(zweit.bericht, "ersetzt");
     assert.deepEqual(lokalKommentare(datei), [bericht("Zweite Fassung.")]);
   });
@@ -117,8 +117,8 @@ test("local: geaenderter Text ersetzt den Bericht dieses Laufs, die Zahl bleibt"
 test("local: ein Bericht mit aelterem Bericht-Lauf bleibt Byte fuer Byte", () => {
   mitLokal((dir, datei) => {
     const vorher = readFileSync(datei, "utf-8");
-    ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Neu."]));
-    ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Neu, geaendert."]));
+    ausgabe(runBoard(dir, ["issue", "report", "5", "--text", "Neu."]));
+    ausgabe(runBoard(dir, ["issue", "report", "5", "--text", "Neu, geaendert."]));
     const nachher = readFileSync(datei, "utf-8");
     const altStueck = vorher.slice(vorher.indexOf("\n\n---\n**Kommentar**"));
     assert.ok(nachher.includes(altStueck), "der alte Bericht ist unveraendert");
@@ -134,7 +134,7 @@ test("local: Karte nicht lesbar -> Exit 1, nichts geschrieben, Karte bleibt", ()
     const zuegeVorher = bewegungen(dir);
     rmSync(datei);
     mkdirSync(datei);
-    const res = runBoard(dir, ["issue", "melden", "5", "--text", "Bericht."]);
+    const res = runBoard(dir, ["issue", "report", "5", "--text", "Bericht."]);
     rmSync(datei, { recursive: true });
     writeFileSync(datei, vorher, "utf-8");
     assert.equal(res.status, 1);
@@ -149,7 +149,7 @@ test("local: Karte nicht lesbar -> Exit 1, nichts geschrieben, Karte bleibt", ()
 test("Laufkennung: bei geleerten Wegmarken kommt der Stempel aus bewegungen.tsv", () => {
   mitLokal((dir, datei) => {
     writeFileSync(join(dir, ".claude", "wegmarken.tsv"), "", "utf-8");
-    ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Bericht."]));
+    ausgabe(runBoard(dir, ["issue", "report", "5", "--text", "Bericht."]));
     const [k] = lokalKommentare(datei);
     assert.equal(k.split("\n").at(-1), LAUF, "die letzte Zeile ist die Laufkennung");
   });
@@ -157,7 +157,7 @@ test("Laufkennung: bei geleerten Wegmarken kommt der Stempel aus bewegungen.tsv"
 
 test("Laufkennung: fuehrende Nullen der Kartennummer aendern den Lauf nicht", () => {
   mitLokal((dir, datei) => {
-    ausgabe(runBoard(dir, ["issue", "melden", "0005", "--text", "Bericht."]));
+    ausgabe(runBoard(dir, ["issue", "report", "0005", "--text", "Bericht."]));
     assert.equal(lokalKommentare(datei)[0].split("\n").at(-1), LAUF);
   });
 });
@@ -167,7 +167,7 @@ test("Laufkennung: ohne in_progress-Zug der Karte Exit 1 und nichts geschrieben"
     writeFileSync(join(dir, ".claude", "bewegungen.tsv"),
       "2026-09-29T08:00:00.000Z\t5\tready\n2026-09-29T09:30:00.000Z\t99\tin_progress\n", "utf-8");
     const vorher = readFileSync(datei, "utf-8");
-    const res = runBoard(dir, ["issue", "melden", "5", "--text", "Bericht."]);
+    const res = runBoard(dir, ["issue", "report", "5", "--text", "Bericht."]);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /in_progress/);
     assert.equal(readFileSync(datei, "utf-8"), vorher);
@@ -179,7 +179,7 @@ test("Laufkennung: ohne bewegungen.tsv Exit 1 und nichts geschrieben", () => {
   mitLokal((dir, datei) => {
     rmSync(join(dir, ".claude", "bewegungen.tsv"));
     const vorher = readFileSync(datei, "utf-8");
-    const res = runBoard(dir, ["issue", "melden", "5", "--text", "Bericht."]);
+    const res = runBoard(dir, ["issue", "report", "5", "--text", "Bericht."]);
     assert.equal(res.status, 1);
     assert.equal(readFileSync(datei, "utf-8"), vorher);
   });
@@ -193,7 +193,7 @@ test(String.raw`ein ' im Bericht, als '\'' in der Shell geschrieben, kommt unver
     const ersatz = String.raw`'\''`;
     const maskiert = `'${text.replaceAll("'", ersatz)}'`;
     const env = { ...process.env, KIT_ROOT: dir, KIT_AGENT_MODEL: "fixture-modell", KIT_TOOLBOX_BUDGET_MS: TEST_TOOLBOX_BUDGET_MS };
-    const res = spawnSync(posixShell(), ["-c", `"${process.execPath}" "${BOARD}" issue melden 5 --text ${maskiert}`],
+    const res = spawnSync(posixShell(), ["-c", `"${process.execPath}" "${BOARD}" issue report 5 --text ${maskiert}`],
       { cwd: dir, encoding: "utf-8", env });
     ausgabe(res);
     assert.deepEqual(lokalKommentare(datei), [bericht(text)]);
@@ -204,23 +204,23 @@ test(String.raw`ein ' im Bericht, als '\'' in der Shell geschrieben, kommt unver
 
 const berichteDir = (dir) => join(dir, ".claude", "berichte");
 
-test("--teil: Stuecke ueber 6.000 Zeichen setzen sich in Nummernfolge zusammen und werden geraeumt", () => {
+test("--part: Stuecke ueber 6.000 Zeichen setzen sich in Nummernfolge zusammen und werden geraeumt", () => {
   mitLokal((dir, datei) => {
     const eins = `## Abschlussbericht\n${"a".repeat(3500)}`;
     const zwei = `### Hinweise\n${"b".repeat(3500)}`;
     const zehn = "### Entscheidungen\nkeine";
     // Ausser der Reihe geschrieben, Stueck 1 zweimal (die Wiederholung ueberschreibt).
-    ausgabe(runBoard(dir, ["issue", "melden", "5", "--teil", "10", "--text", zehn]));
-    ausgabe(runBoard(dir, ["issue", "melden", "5", "--teil", "2", "--text", zwei]));
-    ausgabe(runBoard(dir, ["issue", "melden", "5", "--teil", "1", "--text", "vorlaeufig"]));
-    const teil = ausgabe(runBoard(dir, ["issue", "melden", "5", "--teil", "1", "--text", eins]));
+    ausgabe(runBoard(dir, ["issue", "report", "5", "--part", "10", "--text", zehn]));
+    ausgabe(runBoard(dir, ["issue", "report", "5", "--part", "2", "--text", zwei]));
+    ausgabe(runBoard(dir, ["issue", "report", "5", "--part", "1", "--text", "vorlaeufig"]));
+    const teil = ausgabe(runBoard(dir, ["issue", "report", "5", "--part", "1", "--text", eins]));
     assert.equal(teil.ok, true);
     assert.equal(teil.teil, 1);
     assert.equal(lokalKommentare(datei).length, 1, "ein Stueck beruehrt das Board nicht");
     assert.equal(lokalStatus(datei), "in_progress");
     assert.equal(readdirSync(berichteDir(dir)).length, 3);
 
-    const fertig = ausgabe(runBoard(dir, ["issue", "melden", "5"]));
+    const fertig = ausgabe(runBoard(dir, ["issue", "report", "5"]));
     assert.equal(fertig.bericht, "angelegt");
     const gesamt = `${eins}\n${zwei}\n${zehn}`;
     assert.ok(gesamt.length > 6000);
@@ -230,26 +230,26 @@ test("--teil: Stuecke ueber 6.000 Zeichen setzen sich in Nummernfolge zusammen u
   }, { kommentare: [ALTER_BERICHT] });
 });
 
-test("--teil: ein gescheiterter Abschluss laesst die Stuecke liegen, die Wiederholung verdoppelt nichts", () => {
+test("--part: ein gescheiterter Abschluss laesst die Stuecke liegen, die Wiederholung verdoppelt nichts", () => {
   mitLokal((dir, datei) => {
-    ausgabe(runBoard(dir, ["issue", "melden", "5", "--teil", "1", "--text", "Stueck eins"]));
-    ausgabe(runBoard(dir, ["issue", "melden", "5", "--teil", "2", "--text", "Stueck zwei"]));
+    ausgabe(runBoard(dir, ["issue", "report", "5", "--part", "1", "--text", "Stueck eins"]));
+    ausgabe(runBoard(dir, ["issue", "report", "5", "--part", "2", "--text", "Stueck zwei"]));
     rmSync(join(dir, ".claude", "bewegungen.tsv"));
-    assert.equal(runBoard(dir, ["issue", "melden", "5"]).status, 1);
+    assert.equal(runBoard(dir, ["issue", "report", "5"]).status, 1);
     assert.equal(readdirSync(berichteDir(dir)).length, 2, "die Stuecke liegen noch da");
 
     schreibeBewegungen(dir, "5");
-    assert.equal(ausgabe(runBoard(dir, ["issue", "melden", "5"])).bericht, "angelegt");
+    assert.equal(ausgabe(runBoard(dir, ["issue", "report", "5"])).bericht, "angelegt");
     assert.deepEqual(lokalKommentare(datei), [bericht("Stueck eins\nStueck zwei")]);
   });
 });
 
-test("--teil: Stuecke anderer Karten bleiben liegen", () => {
+test("--part: Stuecke anderer Karten bleiben liegen", () => {
   mitLokal((dir) => {
     mkdirSync(berichteDir(dir), { recursive: true });
     writeFileSync(join(berichteDir(dir), "6.1.md"), "fremd", "utf-8");
-    ausgabe(runBoard(dir, ["issue", "melden", "5", "--teil", "1", "--text", "eigen"]));
-    ausgabe(runBoard(dir, ["issue", "melden", "5"]));
+    ausgabe(runBoard(dir, ["issue", "report", "5", "--part", "1", "--text", "eigen"]));
+    ausgabe(runBoard(dir, ["issue", "report", "5"]));
     assert.deepEqual(readdirSync(berichteDir(dir)), ["6.1.md"]);
   });
 });
@@ -258,11 +258,11 @@ test("Abschluss ohne Text und ohne Stuecke, falsche --teil-Werte: Exit 1 ohne Sc
   mitLokal((dir, datei) => {
     const vorher = readFileSync(datei, "utf-8");
     for (const args of [
-      ["issue", "melden", "5"],
-      ["issue", "melden", "5", "--teil", "0", "--text", "x"],
-      ["issue", "melden", "5", "--teil", "abc", "--text", "x"],
-      ["issue", "melden", "5", "--teil", "1"],
-      ["issue", "melden"],
+      ["issue", "report", "5"],
+      ["issue", "report", "5", "--part", "0", "--text", "x"],
+      ["issue", "report", "5", "--part", "abc", "--text", "x"],
+      ["issue", "report", "5", "--part", "1"],
+      ["issue", "report"],
     ]) {
       const res = runBoard(dir, args);
       assert.equal(res.status, 1, `${args.join(" ")} haette scheitern muessen`);
@@ -274,9 +274,9 @@ test("Abschluss ohne Text und ohne Stuecke, falsche --teil-Werte: Exit 1 ohne Sc
 
 test("--text zusammen mit liegenden Stuecken: Exit 1, Stuecke bleiben", () => {
   mitLokal((dir, datei) => {
-    ausgabe(runBoard(dir, ["issue", "melden", "5", "--teil", "1", "--text", "Stueck"]));
+    ausgabe(runBoard(dir, ["issue", "report", "5", "--part", "1", "--text", "Stueck"]));
     const vorher = readFileSync(datei, "utf-8");
-    const res = runBoard(dir, ["issue", "melden", "5", "--text", "Ganz"]);
+    const res = runBoard(dir, ["issue", "report", "5", "--text", "Ganz"]);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /Stueck/);
     assert.equal(readFileSync(datei, "utf-8"), vorher);
@@ -289,7 +289,7 @@ test("--text-file bleibt fuer Hand-Aufrufe", () => {
     const pfad = join(dir, "..", `melden-${process.pid}.md`);
     writeFileSync(pfad, "Aus der Datei.\n", "utf-8");
     try {
-      ausgabe(runBoard(dir, ["issue", "melden", "5", "--text-file", pfad]));
+      ausgabe(runBoard(dir, ["issue", "report", "5", "--text-file", pfad]));
     } finally {
       rmSync(pfad, { force: true });
     }
@@ -324,8 +324,8 @@ test("GitHub: zweimal gleicher Text -> ein Bericht, zweiter Aufruf unveraendert,
     { match: GH_VIEW, times: 1, stdout: { comments: [] } },
     { match: GH_VIEW, stdout: { comments: [ghKommentar(301, bericht("Gruen."))] } },
   ], (dir) => {
-    assert.equal(ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Gruen."])).bericht, "angelegt");
-    assert.equal(ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Gruen."])).bericht, "unveraendert");
+    assert.equal(ausgabe(runBoard(dir, ["issue", "report", "5", "--text", "Gruen."])).bericht, "angelegt");
+    assert.equal(ausgabe(runBoard(dir, ["issue", "report", "5", "--text", "Gruen."])).bericht, "unveraendert");
     const schreib = ghSchreiben(dir);
     assert.equal(schreib.length, 1);
     assert.deepEqual(schreib[0].slice(0, 3), ["issue", "comment", "5"]);
@@ -339,7 +339,7 @@ test("GitHub: geaenderter Text ersetzt per PATCH, kein zweiter Kommentar; alter 
   mitGitHub([
     { match: GH_VIEW, stdout: { comments: [ghKommentar(300, ALTER_BERICHT), ghKommentar(301, bericht("Alt."))] } },
   ], (dir) => {
-    assert.equal(ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Neu."])).bericht, "ersetzt");
+    assert.equal(ausgabe(runBoard(dir, ["issue", "report", "5", "--text", "Neu."])).bericht, "ersetzt");
     const schreib = ghSchreiben(dir);
     assert.equal(schreib.length, 1, "genau ein Schreibaufruf");
     assert.deepEqual(schreib[0], ["api", "repos/besitzer/mein-repo/issues/comments/301", "-X", "PATCH", "-f", `body=${bericht("Neu.")}`]);
@@ -348,7 +348,7 @@ test("GitHub: geaenderter Text ersetzt per PATCH, kein zweiter Kommentar; alter 
 
 test("GitHub: Kommentare nicht lesbar -> Exit 1, kein Bericht, kein Zug", () => {
   mitGitHub([{ match: GH_VIEW, stderr: "HTTP 502\n", exit: 1 }], (dir) => {
-    const res = runBoard(dir, ["issue", "melden", "5", "--text", "Bericht."]);
+    const res = runBoard(dir, ["issue", "report", "5", "--text", "Bericht."]);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /HTTP 502/);
     assert.equal(ghSchreiben(dir).length, 0);
@@ -381,8 +381,8 @@ test("GitLab: zweimal gleicher Text -> ein Bericht, zweiter Aufruf unveraendert,
     { match: GL_NOTES, times: 1, stdout: [] },
     { match: GL_NOTES, stdout: [glNote(7, bericht("Gruen."))] },
   ], (dir) => {
-    assert.equal(ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Gruen."])).bericht, "angelegt");
-    assert.equal(ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Gruen."])).bericht, "unveraendert");
+    assert.equal(ausgabe(runBoard(dir, ["issue", "report", "5", "--text", "Gruen."])).bericht, "angelegt");
+    assert.equal(ausgabe(runBoard(dir, ["issue", "report", "5", "--text", "Gruen."])).bericht, "unveraendert");
     const schreib = glSchreiben(dir);
     assert.equal(schreib.length, 1);
     assert.deepEqual(schreib[0], ["issue", "note", "5", "--message", bericht("Gruen.")]);
@@ -395,14 +395,14 @@ test("GitLab: geaenderter Text ersetzt per PUT, kein zweiter Kommentar; alter La
   mitGitLab([
     { match: GL_NOTES, stdout: [glNote(6, ALTER_BERICHT), glNote(7, bericht("Alt."))] },
   ], (dir) => {
-    assert.equal(ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Neu."])).bericht, "ersetzt");
+    assert.equal(ausgabe(runBoard(dir, ["issue", "report", "5", "--text", "Neu."])).bericht, "ersetzt");
     assert.deepEqual(glSchreiben(dir), [["api", "projects/:id/issues/5/notes/7", "-X", "PUT", "-f", `body=${bericht("Neu.")}`]]);
   });
 });
 
 test("GitLab: Kommentare nicht lesbar -> Exit 1, kein Bericht, kein Zug", () => {
   mitGitLab([{ match: GL_NOTES, stderr: "404 Not Found\n", exit: 1 }], (dir) => {
-    const res = runBoard(dir, ["issue", "melden", "5", "--text", "Bericht."]);
+    const res = runBoard(dir, ["issue", "report", "5", "--text", "Bericht."]);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /404 Not Found/);
     assert.equal(glSchreiben(dir).length, 0);
@@ -419,7 +419,7 @@ async function mitToolbox(optionen, fn) {
   const { server, requests, host } = await starteServer(toolboxMitKommentaren({ karten: [karte], kommentare, zustand, ...optionen }));
   const dir = setupProjekt({ codeHost: "local", issueTracker: "toolbox", toolbox: { host } }, "board-melden-tbx-");
   schreibeBewegungen(dir, "7");
-  const melden = (...rest) => runBoardAsync(dir, ["issue", "melden", "7", ...rest], { TBX_TOKEN: "test-token" });
+  const melden = (...rest) => runBoardAsync(dir, ["issue", "report", "7", ...rest], { TBX_TOKEN: "test-token" });
   try {
     return await fn({ melden, karte, kommentare, requests, zustand, dir });
   } finally {
@@ -472,8 +472,8 @@ test("toolbox ohne PATCH-Route: geaenderter Text -> Exit 1, Meldung nennt die Ro
 
 test("toolbox: scheitert der Zug, bleiben die Stuecke; die Wiederholung verdoppelt nichts", async () => {
   await mitToolbox({}, async ({ melden, karte, kommentare, requests, zustand, dir }) => {
-    ausgabe(await melden("--teil", "1", "--text", "Eins"));
-    ausgabe(await melden("--teil", "2", "--text", "Zwei"));
+    ausgabe(await melden("--part", "1", "--text", "Eins"));
+    ausgabe(await melden("--part", "2", "--text", "Zwei"));
     zustand.moveRoute = false;
     const res = await melden();
     assert.equal(res.status, 1);
@@ -518,7 +518,7 @@ function markierung(dir, pid = process.pid) {
 test("[kitstand-zeile] melden setzt die Zeile unmittelbar vor Bericht-Lauf, das bleibt die letzte Zeile", () => {
   mitLokal((dir, datei) => {
     markierung(dir);
-    ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Alles gruen."], { KIT_STAND: STAND }));
+    ausgabe(runBoard(dir, ["issue", "report", "5", "--text", "Alles gruen."], { KIT_STAND: STAND }));
     assert.deepEqual(lokalKommentare(datei), [`Alles gruen.\n\n${STAND_ZEILE}\n${LAUF}`]);
   });
 });
@@ -540,7 +540,7 @@ for (const [fall, vorbereiten, env] of [
     mitLokal((dir, datei) => {
       vorbereiten(dir);
       ausgabe(runBoard(dir, ["issue", "comment", "5", "--text", "Kommentar."], env));
-      ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Bericht."], env));
+      ausgabe(runBoard(dir, ["issue", "report", "5", "--text", "Bericht."], env));
       assert.deepEqual(lokalKommentare(datei), ["Kommentar.", bericht("Bericht.")]);
     });
   });
@@ -551,14 +551,14 @@ test("[kitstand-zeile] traegt der Text schon eine Kit-Stand-Zeile, entsteht kein
     markierung(dir);
     const vorhanden = "Kit-Stand: fedcba987654 (origin/main vom 2026-10-01 22:00)";
     ausgabe(runBoard(dir, ["issue", "comment", "5", "--text", `Nachtrag.\n\n${vorhanden}`], { KIT_STAND: STAND }));
-    ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", `Bericht.\n\n${vorhanden}`], { KIT_STAND: STAND }));
+    ausgabe(runBoard(dir, ["issue", "report", "5", "--text", `Bericht.\n\n${vorhanden}`], { KIT_STAND: STAND }));
     assert.deepEqual(lokalKommentare(datei), [`Nachtrag.\n\n${vorhanden}`, `Bericht.\n\n${vorhanden}\n\n${LAUF}`]);
   });
 });
 
 // --- Ursprungsdokumente (Issue #1286, Plan #1283 A1, A3, A8, A9, E6, E7, E9) ---
 //
-// Bringt `issue melden` das letzte offene Paket eines Plans nach In review, zieht es Plan und
+// Bringt `issue report` das letzte offene Paket eines Plans nach In review, zieht es Plan und
 // fachliche Anforderung nach und nennt sie im Abschlussbericht unter `### Ursprungsdokumente`,
 // vor `Kit-Stand:`/`Bericht-Lauf:`. Ein Fehler dabei aendert den Exit-Code nicht (A8); kein
 // Dokument-Zug bucht Wegmarke oder Bewegung (E9); Plan und Anforderung bekommen keinen
@@ -592,7 +592,7 @@ const zeilenFuer = (dir, nr) => [...bewegungen(dir), ...(existsSync(join(dir, ".
 
 test("[ursprung] letztes Paket: Plan und Anforderung in In review, Abschnitt vor Bericht-Lauf, Ausgabe traegt ursprung", () => {
   mitVorhaben(({ dir, nimm, karte }) => {
-    const e = nimm("issue", "melden", "0003", "--text", "Alles gruen.");
+    const e = nimm("issue", "report", "0003", "--text", "Alles gruen.");
     assert.equal(e.bericht, "angelegt");
     assert.equal(e.status, "in_review");
     assert.equal(e.ursprung.plan, "2");
@@ -621,7 +621,7 @@ test("[ursprung] letztes Paket: Plan und Anforderung in In review, Abschnitt vor
 test("[ursprung] der Abschnitt steht auch vor einer Kit-Stand-Zeile", () => {
   mitVorhaben(({ dir, karte }) => {
     markierung(dir);
-    ausgabe(runBoard(dir, ["issue", "melden", "0003", "--text", "Gruen."], { KIT_STAND: STAND }));
+    ausgabe(runBoard(dir, ["issue", "report", "0003", "--text", "Gruen."], { KIT_STAND: STAND }));
     const zeilen = lokalKommentare(karte("0003"))[0].split("\n");
     assert.deepEqual(zeilen.slice(-2), [STAND_ZEILE, zeilen.at(-1)]);
     assert.ok(zeilen.at(-1).startsWith("Bericht-Lauf: "));
@@ -631,7 +631,7 @@ test("[ursprung] der Abschnitt steht auch vor einer Kit-Stand-Zeile", () => {
 
 test("[ursprung] Paket mitten im Vorhaben: kein Abschnitt, Dokumente bleiben", () => {
   mitVorhaben(({ nimm, karte }) => {
-    const e = nimm("issue", "melden", "0003", "--text", "Gruen.");
+    const e = nimm("issue", "report", "0003", "--text", "Gruen.");
     assert.equal(e.ursprung.durch, false);
     assert.deepEqual(e.ursprung.fehler, []);
     assert.ok(!lokalKommentare(karte("0003"))[0].includes(ABSCHNITT));
@@ -642,18 +642,18 @@ test("[ursprung] Paket mitten im Vorhaben: kein Abschnitt, Dokumente bleiben", (
 
 test("[ursprung] Wiederholung mit gleichem und geaendertem Text: der Abschnitt bleibt und meldet weiter gewandert", () => {
   mitVorhaben(({ nimm, karte }) => {
-    nimm("issue", "melden", "0003", "--text", "Erste Fassung.");
+    nimm("issue", "report", "0003", "--text", "Erste Fassung.");
     const abschnitt = (k) => k.slice(k.indexOf(ABSCHNITT), k.lastIndexOf("\n\nBericht-Lauf:"));
     const erst = abschnitt(lokalKommentare(karte("0003"))[0]);
     assert.match(erst, /gewandert/);
 
-    const gleich = nimm("issue", "melden", "0003", "--text", "Erste Fassung.");
+    const gleich = nimm("issue", "report", "0003", "--text", "Erste Fassung.");
     assert.equal(gleich.bericht, "unveraendert");
     assert.deepEqual(gleich.ursprung.dokumente.map((d) => d.aktion), ["lag bereits in In review", "lag bereits in In review"]);
     assert.equal(lokalKommentare(karte("0003")).length, 1);
     assert.equal(abschnitt(lokalKommentare(karte("0003"))[0]), erst);
 
-    const anders = nimm("issue", "melden", "0003", "--text", "Zweite Fassung.");
+    const anders = nimm("issue", "report", "0003", "--text", "Zweite Fassung.");
     assert.equal(anders.bericht, "ersetzt");
     const [k] = lokalKommentare(karte("0003"));
     assert.ok(k.startsWith("Zweite Fassung.\n\n### Ursprungsdokumente\n"), k);
@@ -665,7 +665,7 @@ test("[ursprung] Wiederholung mit gleichem und geaendertem Text: der Abschnitt b
 
 test("[ursprung] ohne Plan-Zeile: keine ursprung-Ausgabe, kein Abschnitt", () => {
   mitLokal((dir, datei) => {
-    const e = ausgabe(runBoard(dir, ["issue", "melden", "5", "--text", "Gruen."]));
+    const e = ausgabe(runBoard(dir, ["issue", "report", "5", "--text", "Gruen."]));
     assert.deepEqual(e, { ok: true, id: "5", bericht: "angelegt", status: "in_review" });
     assert.deepEqual(lokalKommentare(datei), [bericht("Gruen.")]);
   });
@@ -681,7 +681,7 @@ async function mitToolboxVorhaben(optionen, fn) {
   const { server, host } = await starteServer(toolboxMitKommentaren({ karten: [karte, plan, anforderung], kommentare, zustand, ...optionen }));
   const dir = setupProjekt({ codeHost: "local", issueTracker: "toolbox", toolbox: { host } }, "board-melden-tbx-ursprung-");
   schreibeBewegungen(dir, "7");
-  const melden = (...rest) => runBoardAsync(dir, ["issue", "melden", "7", ...rest], { TBX_TOKEN: "test-token" });
+  const melden = (...rest) => runBoardAsync(dir, ["issue", "report", "7", ...rest], { TBX_TOKEN: "test-token" });
   try {
     return await fn({ melden, karte, plan, anforderung, kommentare, dir });
   } finally {

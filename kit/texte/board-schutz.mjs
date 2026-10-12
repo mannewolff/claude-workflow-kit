@@ -12,7 +12,7 @@
 /**
  * Die Meldungen des Schutzes je Sprache. Vertragswerte bleiben ausserhalb (E14): die
  * Feldnamen der Ergebnisse, die Werte von `ergebnis` und `status`, die Ruleset-Arten, die
- * Aktionsnamen von `code schutz`, die Kommandos und die Bezeichnungen der Oberflaeche des
+ * Aktionsnamen von `code protection`, die Kommandos und die Bezeichnungen der Oberflaeche des
  * Code-Hosts, die die Anleitung woertlich nennt.
  */
 export const TEXTE = Object.freeze({
@@ -41,7 +41,7 @@ export const TEXTE = Object.freeze({
     keineHashes: "Die Zusammenfassung nennt keine Blob-Hashes; der gepruefte Stand ist nicht belegt.",
     standUnlesbar: "Der Stand der geprueften Dateien liess sich nicht lesen: {fehler}",
     seitLaufGeaendert: "Seit dem Lauf geaendert: {dateien} — der Stand ist nicht mehr der gepruefte.",
-    nachtGesperrt: "code schutz {aktion} ist ohne Aufsicht gesperrt (KIT_AGENT_MODEL gesetzt): Die Aktion pusht oder aendert den Code-Host, und die Nacht pusht nie. Nur status ist erlaubt.",
+    nachtGesperrt: "code protection {aktion} ist ohne Aufsicht gesperrt (KIT_AGENT_MODEL gesetzt): Die Aktion pusht oder aendert den Code-Host, und die Nacht pusht nie. Nur status ist erlaubt.",
     originFehltLokal: "origin/{zweig} fehlt im lokalen Repository — erst git fetch origin {zweig}.",
     pruefzweigBelegt: "Der Pruefzweig '{zweig}' ist auf origin schon vorhanden — vielleicht laeuft dort ein push main. Die Probe ueberschreibt ihn nicht; erst wenn er weg ist, erneut aufrufen.",
     probeLaeuft: "Probe auf {zweig}: {minuten} min gewartet, Lauf laeuft",
@@ -78,7 +78,7 @@ export const TEXTE = Object.freeze({
     keineHashes: "The summary names no blob hashes; the checked state is not proven.",
     standUnlesbar: "The state of the checked files could not be read: {fehler}",
     seitLaufGeaendert: "Changed since the run: {dateien} — the state is no longer the checked one.",
-    nachtGesperrt: "code schutz {aktion} is blocked without supervision (KIT_AGENT_MODEL set): the action pushes or changes the code host, and the night never pushes. Only status is allowed.",
+    nachtGesperrt: "code protection {aktion} is blocked without supervision (KIT_AGENT_MODEL set): the action pushes or changes the code host, and the night never pushes. Only status is allowed.",
     originFehltLokal: "origin/{zweig} is missing in the local repository — first git fetch origin {zweig}.",
     pruefzweigBelegt: "The check branch '{zweig}' already exists on origin — perhaps a push main is running there. The probe does not overwrite it; call again only once it is gone.",
     probeLaeuft: "Probe on {zweig}: waited {minuten} min, run in progress",

@@ -1,4 +1,4 @@
-// Ablauf-Pruefung: `issue vorgeschichte` ueber das echte CLI (Issue #1539, Plan #1534).
+// Ablauf-Pruefung: `issue history` ueber das echte CLI (Issue #1539, Plan #1534).
 //
 // Das Kommando sucht fruehere Fachplaene des eigenen Boards: je Begriff ueber die Suche, je
 // Datei ueber die Kartennummern der letzten Commits und deren Herkunftskette. Es fuehrt
@@ -66,7 +66,7 @@ async function mitBoard(antwort, fn, config = {}) {
  * im selben Prozess laeuft und ein spawnSync ihre Event-Loop blockierte.
  */
 async function vorgeschichte(dir, args, env = MIT_TOKEN) {
-  const res = await runBoardAsync(dir, ["issue", "vorgeschichte", ...args], env);
+  const res = await runBoardAsync(dir, ["issue", "history", ...args], env);
   assert.equal(res.status, 0, res.stderr);
   return JSON.parse(res.stdout);
 }
@@ -79,7 +79,7 @@ test("Begriffe: nur [Fachlich]-Karten bleiben, zwei Begriffe auf dieselbe Nummer
   const karten = { 10: { titel: "[Fachlich] Archiv lesen", archiviert: true }, 11: { titel: "[Plan] Archiv lesen" }, 12: { titel: "[Fachlich] Vorgeschichte" } };
   const suche = { Archiv: [10, 11, 12], Vorgeschichte: [12] };
   await mitBoard(attrappe({ karten, suche }), async (dir, requests) => {
-    const erg = await vorgeschichte(dir, ["--begriffe", "Archiv", "--begriffe", "Vorgeschichte"]);
+    const erg = await vorgeschichte(dir, ["--terms", "Archiv", "--terms", "Vorgeschichte"]);
     assert.equal(erg.ok, true);
     assert.deepEqual(erg.suchbegriffe, ["Archiv", "Vorgeschichte"]);
     assert.deepEqual(erg.dateien, []);
@@ -98,7 +98,7 @@ test("Obergrenze 20: der Rest steht in weitere, geordnet nach Nummer absteigend"
   const nummern = Array.from({ length: 25 }, (_, i) => 100 + i);
   const karten = Object.fromEntries(nummern.map((n) => [n, { titel: `[Fachlich] Karte ${n}` }]));
   await mitBoard(attrappe({ karten, suche: { Archiv: nummern } }), async (dir, requests) => {
-    const erg = await vorgeschichte(dir, ["--begriffe", "Archiv"]);
+    const erg = await vorgeschichte(dir, ["--terms", "Archiv"]);
     assert.equal(erg.treffer.length, 20);
     assert.equal(erg.weitere, 5);
     assert.deepEqual(erg.treffer.map((t) => t.nummer), nummern.toReversed().slice(0, 20));
@@ -106,10 +106,10 @@ test("Obergrenze 20: der Rest steht in weitere, geordnet nach Nummer absteigend"
   });
 });
 
-test("--ohne nimmt Nummern aus den Treffern, ohne sie zu holen", async () => {
+test("--without nimmt Nummern aus den Treffern, ohne sie zu holen", async () => {
   const karten = { 10: { titel: "[Fachlich] A" }, 12: { titel: "[Fachlich] B" } };
   await mitBoard(attrappe({ karten, suche: { Archiv: [10, 12] } }), async (dir, requests) => {
-    const erg = await vorgeschichte(dir, ["--begriffe", "Archiv", "--ohne", "12"]);
+    const erg = await vorgeschichte(dir, ["--terms", "Archiv", "--without", "12"]);
     assert.deepEqual(erg.treffer.map((t) => t.nummer), [10]);
     assert.equal(erg.weitere, 0);
     assert.ok(!nurNetz(requests).includes("/api/kanban/items/by-number/12"));
@@ -118,7 +118,7 @@ test("--ohne nimmt Nummern aus den Treffern, ohne sie zu holen", async () => {
 
 test("--bodies liefert den Body ungekuerzt und ohne Kommentare", async () => {
   await mitBoard(attrappe({ karten: { 10: { titel: "[Fachlich] A" } }, suche: { Archiv: [10] } }), async (dir) => {
-    const erg = await vorgeschichte(dir, ["--begriffe", "Archiv", "--bodies"]);
+    const erg = await vorgeschichte(dir, ["--terms", "Archiv", "--bodies"]);
     assert.equal(erg.treffer[0].body, body(10));
     assert.equal(Object.hasOwn(erg.treffer[0], "kommentare"), false);
   });
@@ -164,7 +164,7 @@ test("Dateiweg: Kartennummern aus den Commits, Herkunftskette bis zum Fachplan, 
   };
   await mitBoard(attrappe({ karten, ketten, suche: { Archiv: [20, 60] } }), async (dir, requests) => {
     gitMitCommits(dir);
-    const erg = await vorgeschichte(dir, ["--begriffe", "Archiv", "--dateien", "kit/a.mjs"]);
+    const erg = await vorgeschichte(dir, ["--terms", "Archiv", "--files", "kit/a.mjs"]);
     assert.deepEqual(erg.dateien, ["kit/a.mjs"]);
     assert.deepEqual(erg.treffer.map((t) => [t.nummer, t.weg, t.archiviert]), [
       [60, "suche", false],
@@ -182,7 +182,7 @@ test("Dateiweg: Kartennummern aus den Commits, Herkunftskette bis zum Fachplan, 
 test("HTTP-Fehler: archiv-nicht-erreichbar nach genau einem Aufruf an die Attrappe", async () => {
   await mitBoard(() => ({ status: 500, json: { message: "Archiv kaputt" } }), async (dir, requests) => {
     gitMitCommits(dir);
-    const erg = await vorgeschichte(dir, ["--begriffe", "Archiv", "--begriffe", "Vorgeschichte", "--dateien", "kit/a.mjs"]);
+    const erg = await vorgeschichte(dir, ["--terms", "Archiv", "--terms", "Vorgeschichte", "--files", "kit/a.mjs"]);
     assert.equal(erg.ok, false);
     assert.equal(erg.grund, "archiv-nicht-erreichbar");
     assert.match(erg.meldung, /Archiv kaputt/);
@@ -192,7 +192,7 @@ test("HTTP-Fehler: archiv-nicht-erreichbar nach genau einem Aufruf an die Attrap
 
 test("Alle Einzelabrufe 404: archiv-nicht-erreichbar statt nichts gefunden", async () => {
   await mitBoard(attrappe({ suche: { Archiv: [10, 12] } }), async (dir) => {
-    const erg = await vorgeschichte(dir, ["--begriffe", "Archiv"]);
+    const erg = await vorgeschichte(dir, ["--terms", "Archiv"]);
     assert.equal(erg.ok, false);
     assert.equal(erg.grund, "archiv-nicht-erreichbar");
     assert.equal(typeof erg.meldung, "string");
@@ -201,7 +201,7 @@ test("Alle Einzelabrufe 404: archiv-nicht-erreichbar statt nichts gefunden", asy
 
 test("Einzelne 404: der Treffer wird uebersprungen und nicht gezaehlt", async () => {
   await mitBoard(attrappe({ karten: { 10: { titel: "[Fachlich] A" } }, suche: { Archiv: [10, 12] } }), async (dir) => {
-    const erg = await vorgeschichte(dir, ["--begriffe", "Archiv"]);
+    const erg = await vorgeschichte(dir, ["--terms", "Archiv"]);
     assert.equal(erg.ok, true);
     assert.deepEqual(erg.treffer.map((t) => t.nummer), [10]);
     assert.equal(erg.weitere, 0);
@@ -210,7 +210,7 @@ test("Einzelne 404: der Treffer wird uebersprungen und nicht gezaehlt", async ()
 
 test("Fehlendes Token: archiv-nicht-erreichbar ohne Aufruf an den Server", async () => {
   await mitBoard(attrappe({ suche: { Archiv: [10] } }), async (dir, requests) => {
-    const erg = await vorgeschichte(dir, ["--begriffe", "Archiv"], {});
+    const erg = await vorgeschichte(dir, ["--terms", "Archiv"], {});
     assert.equal(erg.ok, false);
     assert.equal(erg.grund, "archiv-nicht-erreichbar");
     assert.match(erg.meldung, /Token/);
@@ -221,7 +221,7 @@ test("Fehlendes Token: archiv-nicht-erreichbar ohne Aufruf an den Server", async
 test("Lokaler Tracker: tracker-ohne-suche", async () => {
   const dir = setupProjekt({ codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" }, vorgeschichte: true }, "board-vg-cli-");
   try {
-    const erg = await vorgeschichte(dir, ["--begriffe", "Archiv"]);
+    const erg = await vorgeschichte(dir, ["--terms", "Archiv"]);
     assert.equal(erg.ok, false);
     assert.equal(erg.grund, "tracker-ohne-suche");
   } finally {
@@ -231,7 +231,7 @@ test("Lokaler Tracker: tracker-ohne-suche", async () => {
 
 test("Schalter aus: abgeschaltet, ohne Aufruf an den Server", async () => {
   await mitBoard(attrappe({ suche: { Archiv: [10] } }), async (dir, requests) => {
-    const erg = await vorgeschichte(dir, ["--begriffe", "Archiv"]);
+    const erg = await vorgeschichte(dir, ["--terms", "Archiv"]);
     assert.equal(erg.ok, false);
     assert.equal(erg.grund, "abgeschaltet");
     assert.equal(requests.length, 0);
@@ -240,13 +240,14 @@ test("Schalter aus: abgeschaltet, ohne Aufruf an den Server", async () => {
 
 // --- Hilfe ---
 
-test("--help nennt das Kommando unter beiden Namen", async () => {
+test("--help nennt das Kommando; der fruehere deutsche Name wird abgewiesen (Issue #1557)", async () => {
   await mitBoard(attrappe({}), async (dir, requests) => {
-    for (const befehl of ["vorgeschichte", "history"]) {
-      const res = await runBoardAsync(dir, ["issue", befehl, "--help"], MIT_TOKEN);
-      assert.equal(res.status, 0, res.stderr);
-      assert.match(res.stdout, /issue history/);
-    }
+    const res = await runBoardAsync(dir, ["issue", "history", "--help"], MIT_TOKEN);
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /issue history/);
+    const alt = await runBoardAsync(dir, ["issue", "vorgeschichte", "--help"], MIT_TOKEN);
+    assert.equal(alt.status, 1);
+    assert.match(alt.stderr, /'vorgeschichte' — englischer Name: 'history'/);
     assert.equal(requests.length, 0);
   });
 });

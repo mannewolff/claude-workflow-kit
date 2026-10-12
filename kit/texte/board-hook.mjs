@@ -11,7 +11,7 @@
 
 /**
  * Die Meldungen des Hooks je Sprache. Vertragswerte bleiben ausserhalb (E14): Exitcodes,
- * die Feldnamen `abweisen` und `grund` und der Befehlsname `bash-pruefen`.
+ * die Feldnamen `abweisen` und `grund` und der Befehlsname `bash-check`.
  */
 export const TEXTE = Object.freeze({
   de: Object.freeze({

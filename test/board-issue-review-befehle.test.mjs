@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import {
   issueReviewReviewers, issueReviewRoles, issueReviewMatrix, issueReviewCheck, probelauf,
 } from "../kit/board/issue-review.mjs";
+import { EINGABEWERTE } from "../kit/board/namen.mjs";
 
 const OPUS = { name: "opus", kind: "claude", model: "claude-opus-5" };
 const SONNET = { name: "sonnet", kind: "claude", model: "claude-sonnet-5" };
@@ -59,7 +60,7 @@ test("issue-review reviewers ohne --author nennt den Autor null", () => {
 const config = mitReview({ reviewers: ALLE, pairs: PAARE }, STUFEN);
 
 test("issue-review roles: die Stufe issue laeuft mit genau einem Reviewer", () => {
-  const antwort = issueReviewRoles({ stufe: "issue", author: "claude-opus-5" }, config);
+  const antwort = issueReviewRoles({ stage: "issue", author: "claude-opus-5" }, config);
   assert.equal(antwort.stufe, "issue");
   assert.equal(antwort.reviewer, 1);
   assert.deepEqual(antwort.rollen, ["pruefbarkeit"]);
@@ -69,7 +70,7 @@ test("issue-review roles: die Stufe issue laeuft mit genau einem Reviewer", () =
 
 test("issue-review roles: fachlich und plan laufen mit zwei Reviewern", () => {
   for (const stufe of ["fachlich", "plan"]) {
-    const antwort = issueReviewRoles({ stufe, author: "opus" }, config);
+    const antwort = issueReviewRoles({ stage: EINGABEWERTE.stage[stufe], author: "opus" }, config);
     assert.equal(antwort.reviewer, 2, stufe);
     assert.deepEqual(antwort.rollen, STUFEN[stufe].rollen, stufe);
     assert.equal(antwort.gewaehlt.length, 2, stufe);
@@ -77,7 +78,7 @@ test("issue-review roles: fachlich und plan laufen mit zwei Reviewern", () => {
 });
 
 test("issue-review roles: die Modell-ID des Autors wird aufgeloest und schliesst ihn aus", () => {
-  const antwort = issueReviewRoles({ stufe: "fachlich", author: "claude-opus-5" }, config);
+  const antwort = issueReviewRoles({ stage: "requirement", author: "claude-opus-5" }, config);
   assert.equal(antwort.autor, "claude-opus-5");
   assert.equal(antwort.autorAufgeloest, true);
   assert.equal(antwort.quelle, "pairs", "pairs.opus greift ueber die aufgeloeste Modell-ID");
@@ -85,11 +86,11 @@ test("issue-review roles: die Modell-ID des Autors wird aufgeloest und schliesst
 });
 
 test("issue-review roles: quelle bleibt die Auswahlquelle, stufenQuelle ist ein eigenes Feld", () => {
-  const ausPairs = issueReviewRoles({ stufe: "plan", author: "opus" }, config);
+  const ausPairs = issueReviewRoles({ stage: "plan", author: "opus" }, config);
   assert.equal(ausPairs.quelle, "pairs");
   assert.equal(ausPairs.stufenQuelle, "stufen");
   // fable steht nicht in pairs -> die Reihenfolge-Regel waehlt.
-  const ausRegel = issueReviewRoles({ stufe: "plan", author: "fable" }, config);
+  const ausRegel = issueReviewRoles({ stage: "plan", author: "fable" }, config);
   assert.equal(ausRegel.quelle, "regel");
   assert.equal(ausRegel.stufenQuelle, "stufen");
 });
@@ -103,7 +104,7 @@ test("issue-review roles: ohne reviewStufen-Block gilt fuer jede Stufe die Rueck
     issue: ["pruefbarkeit"],
   };
   for (const [stufe, rollen] of Object.entries(erwartet)) {
-    const antwort = issueReviewRoles({ stufe, author: "opus" }, mitReview({ reviewers: ALLE, pairs: PAARE }));
+    const antwort = issueReviewRoles({ stage: EINGABEWERTE.stage[stufe], author: "opus" }, mitReview({ reviewers: ALLE, pairs: PAARE }));
     assert.equal(antwort.reviewer, rollen.length, stufe);
     assert.deepEqual(antwort.rollen, rollen, stufe);
     assert.equal(antwort.stufenQuelle, "default", stufe);
@@ -112,7 +113,7 @@ test("issue-review roles: ohne reviewStufen-Block gilt fuer jede Stufe die Rueck
 });
 
 test("[board-6] roles liefert keine runden, verzicht und vorgabeQuelle mehr", () => {
-  const antwort = issueReviewRoles({ stufe: "plan", author: "claude-opus-5" }, config);
+  const antwort = issueReviewRoles({ stage: "plan", author: "claude-opus-5" }, config);
   for (const feld of ["runden", "verzicht", "vorgabeQuelle", "entfall", "ausschlussUnbekannt"]) {
     assert.equal(feld in antwort, false, `${feld} darf nicht mehr ausgegeben werden`);
   }
@@ -201,7 +202,7 @@ test("issue-review check: ein scheiternder Probelauf macht das Kommando unverfue
 });
 
 test("issue-review check: --nur-pfad ueberspringt den Probelauf", () => {
-  const befund = issueReviewCheck({ "nur-pfad": true }, { config: mitReview({ reviewers: [FAKE] }), verfuegbar: IM_PATH, probe: KEIN_AUFRUF });
+  const befund = issueReviewCheck({ "path-only": true }, { config: mitReview({ reviewers: [FAKE] }), verfuegbar: IM_PATH, probe: KEIN_AUFRUF });
   assert.equal(befund.alleVerfuegbar, true);
   assert.equal(befund.reviewers[0].geprueft, "pfad");
 });
@@ -258,9 +259,9 @@ test("issue-review check: die Rollen der Rueckfallebene liegen alle als Datei vo
 // --- roles: rolleVorhanden (Issue #1381) ---
 
 test("issue-review roles meldet je gewaehlter Rolle rolleVorhanden", () => {
-  const antwort = issueReviewRoles({ stufe: "fachlich", author: "opus" }, config);
+  const antwort = issueReviewRoles({ stage: "requirement", author: "opus" }, config);
   assert.deepEqual(antwort.rollenDateien.map((r) => [r.rolle, r.rolleVorhanden]), [["form-beobachtbarkeit", true], ["abgrenzung", true]]);
-  const fehlt = issueReviewRoles({ stufe: "issue", author: "opus" }, mitReview({ reviewers: ALLE }, { ...STUFEN, issue: { reviewer: 1, rollen: ["gibtsnicht"] } }));
+  const fehlt = issueReviewRoles({ stage: "issue", author: "opus" }, mitReview({ reviewers: ALLE }, { ...STUFEN, issue: { reviewer: 1, rollen: ["gibtsnicht"] } }));
   assert.deepEqual(fehlt.rollenDateien.map((r) => [r.rolle, r.rolleVorhanden]), [["gibtsnicht", false]]);
   assert.match(fehlt.rollenDateien[0].pfad, /gibtsnicht\.md$/);
 });

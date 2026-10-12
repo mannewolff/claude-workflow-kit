@@ -33,7 +33,7 @@ import { GitHubIssueTracker, resolveCodeHost, LabelFehltError } from "./adapter.
 // Zyklus mit Absicht: ursprung.mjs liest Karten und Herkunftszeilen von hier. Beide Seiten
 // rufen sich erst zur Laufzeit, keine liest beim Laden einen Wert der anderen.
 import { ursprungLesen, ursprungNachziehen } from "./ursprung.mjs";
-import { SPRACHEN, PRAEFIXE, LABELS, internerWert, prozessSprache, praefix, labelName, erkennePraefix, erkenneLabel, erkenneMarker, leseMarker, markerWerte,
+import { SPRACHEN, PRAEFIXE, LABELS, EINGABEWERTE, internerWert, prozessSprache, praefix, labelName, erkennePraefix, erkenneLabel, erkenneMarker, leseMarker, markerWerte,
   kanonischeUeberschrift, ueberschriftName, ueberschriftZeile, text } from "./namen.mjs";
 import { normalisiereConfig } from "./config-namen.mjs";
 
@@ -529,10 +529,11 @@ export const ARTEN = Object.freeze(Object.keys(PRAEFIXE));
  */
 export function titelMitArt(title, getippt) {
   if (getippt === undefined) return { titel: title };
-  // `--art requirement|idea|human` traegt ab hier den internen Schluessel (Issue #1555, E5).
+  // `--art requirement|idea|human` traegt ab hier den internen Schluessel (Issue #1555, E5);
+  // getippt wird nur der englische Wert (Issue #1557).
   const art = internerWert("art", getippt);
   if (art === true || !ARTEN.includes(art)) {
-    return { fehler: t("artUnbekannt", { arten: ARTEN.join("|") }) };
+    return { fehler: t("artUnbekannt", { arten: ARTEN.map((a) => EINGABEWERTE.art[a]).join("|") }) };
   }
   if (erkennePraefix(title) !== null) {
     return { fehler: t("artNebenPraefix", { art: getippt, titel: title }) };
@@ -1069,12 +1070,12 @@ function ursprungEinhaengen(body, abschnitt) {
 
 // `issue report <id> --part <n> --text '…'`: nur das Stueck ablegen, kein Board-Zugriff.
 async function meldenStueck(id, args, hatText) {
-  if (!/^\d+$/.test(String(args.teil)) || Number(args.teil) < 1) {
-    fail(t("meldenTeilKeineZahl", { wert: args.teil }));
+  if (!/^\d+$/.test(String(args.part)) || Number(args.part) < 1) {
+    fail(t("meldenTeilKeineZahl", { wert: args.part }));
   }
   if (!hatText) fail(t("meldenTeilOhneText"));
   const text = await leseTextQuelle(args.text, args["text-file"], "text");
-  const nummer = Number(args.teil);
+  const nummer = Number(args.part);
   const pfad = resolve(".claude", BERICHTE_ORDNER, `${kartenSchluessel(id)}.${nummer}.md`);
   mkdirSync(dirname(pfad), { recursive: true });
   writeFileSync(pfad, text, "utf-8");
@@ -1121,7 +1122,7 @@ async function berichtAblegen(tracker, id, text, laufZeile) {
  *
  * Drei Formen:
  *  - `--text '…'` (oder `--text-file` von Hand): Bericht direkt, dann Abschluss.
- *  - `--teil <n> --text '…'`: schreibt nur Stueck n nach `.claude/berichte/<id>.<n>.md`,
+ *  - `--part <n> --text '…'`: schreibt nur Stueck n nach `.claude/berichte/<id>.<n>.md`,
  *    ueberschreibt es bei Wiederholung, beruehrt das Board nicht.
  *  - ohne beides: setzt die Stuecke zusammen und schliesst ab. Geraeumt wird erst nach
  *    Ablage UND Zug — scheitert einer davon, ist die Wiederholung dieser Aufruf allein.
@@ -1137,7 +1138,7 @@ export async function issueMelden(tracker, args) {
   if (!id) fail(t("idErforderlich", { aufruf: t("meldenAufruf") }));
   const hatText = args.text !== undefined || args["text-file"] !== undefined;
 
-  if (args.teil !== undefined) {
+  if (args.part !== undefined) {
     await meldenStueck(id, args, hatText);
     return;
   }
@@ -1326,9 +1327,10 @@ export async function issueStand(tracker, config, args) {
   if (!id) fail(t("idErforderlich", { aufruf }));
   if (args.labels !== undefined) fail(t("standLabelsGibtsNicht", { aufruf }));
   // `--state running|aborted|waiting|done` traegt ab hier den internen Schluessel (Issue #1555, E5).
-  const zustand = internerWert("zustand", args.zustand);
+  const zustand = internerWert("state", args.state);
   if (!STAND_ZUSTAENDE.includes(zustand)) {
-    fail(t("standZustandUnbekannt", { wert: args.zustand ?? "", erwartet: STAND_ZUSTAENDE.join(" | ") }));
+    const erwartet = STAND_ZUSTAENDE.map((z) => EINGABEWERTE.state[z]).join(" | ");
+    fail(t("standZustandUnbekannt", { wert: args.state ?? "", erwartet }));
   }
   if (args["text-file"] === undefined) fail(t("standTextFileErforderlich", { aufruf }));
   const labels = standLabels(config);
@@ -1931,7 +1933,7 @@ function geschwisterMarkdown(g) {
 }
 
 /**
- * `issue auftrag <id> [--spalte ready|in_progress] [--json]` — Aufgabe, Voraussetzungen
+ * `issue brief <id> [--column ready|in_progress] [--json]` — Aufgabe, Voraussetzungen
  * und das Urteil, ob eine Umsetzung beginnen darf, in einem Aufruf (Issue #1023, Plan
  * #1015 E2, E3, E5, E6), dazu Plan-Entscheidungen, fachlicher Anlass und Geschwister
  * (Issue #1024, E1, E4, E7). Jede Angabe, die sich nicht ermitteln laesst, steht unter
@@ -1949,7 +1951,7 @@ function geschwisterMarkdown(g) {
 export async function issueAuftrag(tracker, args, geschuetzt) {
   const id = args._[0];
   if (!id) fail(t("idErforderlich", { aufruf: t("auftragAufruf") }));
-  const erwartet = args.spalte ?? "ready";
+  const erwartet = args.column ?? "ready";
   if (!AUFTRAG_SPALTEN.has(erwartet)) fail(t("auftragSpalteUngueltig", { spalte: erwartet }));
 
   let karte;

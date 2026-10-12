@@ -11,7 +11,11 @@ import {
   erkennePraefix,
   LABELS,
   PRAEFIXE,
+  ALTNAMEN,
+  EINGABEWERTE,
+  internerWert,
 } from "../kit/board/namen.mjs";
+import * as register from "../kit/board/namen.mjs";
 
 // Die Paare aus E4, hier bewusst noch einmal ausgeschrieben: Der Test haelt das Register fest.
 const LABEL_PAARE = [
@@ -147,4 +151,42 @@ test("erkennePraefix: Titel ohne Praefix ergibt null", () => {
   for (const titel of ["Namen-Register", "x [Plan] y", "[Unbekannt] z", "[Fachplan] z", "Fachlich: z", "", undefined, null]) {
     assert.equal(erkennePraefix(titel), null, String(titel));
   }
+});
+
+// Seit Issue #1557 (Plan #1548) nimmt board.mjs nur englische Namen an. `ALTNAMEN` nennt die
+// frueheren deutschen allein fuer die Abweisung; ein Register zum Ausfuehren gibt es nicht mehr.
+test("das Register fuehrt keine Befehlsnamen zum Ausfuehren mehr", () => {
+  assert.equal(register.BEFEHLSNAMEN, undefined);
+});
+
+test("ALTNAMEN: jeder Eintrag ist ein deutscher Name mit einem anderen englischen", () => {
+  const ebenen = [
+    ALTNAMEN.achsen, ...Object.values(ALTNAMEN.befehle), ALTNAMEN.schutz, ALTNAMEN.optionen,
+    ...Object.values(ALTNAMEN.werte),
+  ];
+  for (const ebene of ebenen) {
+    assert.ok(Object.isFrozen(ebene));
+    const englisch = Object.values(ebene);
+    assert.equal(new Set(englisch).size, englisch.length, `doppelt: ${englisch.join(", ")}`);
+    for (const [de, en] of Object.entries(ebene)) {
+      assert.notEqual(de, en);
+      assert.ok(!Object.hasOwn(ebene, en), `${en} ist zugleich ein Altname`);
+    }
+  }
+  assert.deepEqual(Object.keys(ALTNAMEN.befehle).sort(), ["code", "hook", "issue", "issue-review", "nightrun", "session"]);
+  assert.deepEqual(Object.keys(ALTNAMEN.werte).sort(), Object.keys(EINGABEWERTE).sort());
+});
+
+test("internerWert nimmt nur den englischen Wert an", () => {
+  assert.equal(internerWert("art", "requirement"), "fachlich");
+  assert.equal(internerWert("art", "plan"), "plan");
+  assert.equal(internerWert("state", "running"), "laeuft");
+  assert.equal(internerWert("stage", "requirement"), "fachlich");
+  for (const [option, ebene] of Object.entries(ALTNAMEN.werte)) {
+    for (const deutsch of Object.keys(ebene)) assert.equal(internerWert(option, deutsch), null, `${option} ${deutsch}`);
+  }
+  assert.equal(internerWert("art", "epos"), null);
+  assert.equal(internerWert("art", true), true);
+  assert.equal(internerWert("art", undefined), undefined);
+  assert.equal(internerWert("unbekannt", "requirement"), "requirement");
 });

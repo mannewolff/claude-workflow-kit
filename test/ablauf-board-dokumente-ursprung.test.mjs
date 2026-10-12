@@ -1,4 +1,4 @@
-// Ablauf-Pruefung: `issue ursprung` startet kit/board.mjs am lokalen Tracker und liest die
+// Ablauf-Pruefung: `issue origin` startet kit/board.mjs am lokalen Tracker und liest die
 // Auswertung aus stdout.
 //
 // Das Kommando ist rein lesend (Issue #1285, Plan #1283 A11): Es nennt, ob der Plan durch ist
@@ -11,7 +11,7 @@ import { rmSync } from "node:fs";
 
 import { setupProjekt, board } from "./helpers/board-fixture.mjs";
 
-test("issue ursprung gibt die Auswertung als JSON aus und bewegt nichts", () => {
+test("issue origin gibt die Auswertung als JSON aus und bewegt nichts", () => {
   const dir = setupProjekt({ codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } }, "board-ursprung-");
   try {
     // Das Paket kommt nach In review, bevor es den Plan gibt: Seit Issue #1287 zoege der Zug
@@ -20,7 +20,7 @@ test("issue ursprung gibt die Auswertung als JSON aus und bewegt nichts", () => 
     board(dir, "issue", "create", "--title", "Paket", "--body", "Plan: Issue #0003\n\n## Aufgabe\na");
     board(dir, "issue", "move", "0002", "in_review");
     board(dir, "issue", "create", "--title", "[Plan] Plan", "--body", "Fachliche Quelle: Issue #0001\n\n## Ziel\nz");
-    const e = board(dir, "issue", "ursprung", "0003");
+    const e = board(dir, "issue", "origin", "0003");
     assert.equal(e.plan, "3");
     assert.equal(e.durch, true);
     assert.deepEqual(e.dokumente.map((d) => [d.id, d.art, d.aktion]), [["3", "plan", "wandert"], ["1", "fachlich", "wandert"]]);

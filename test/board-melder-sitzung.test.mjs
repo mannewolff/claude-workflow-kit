@@ -255,7 +255,7 @@ const EIN_ZUG = protokoll(zug({ id: "a", ms: 0, ausgabe: 100 }));
 const MIT_TOKEN = { TBX_TOKEN: "test-token", KIT_AGENT_MODEL: "" };
 /**
  * Ein Melder mit eigener Ablage unter tmpdir. `protokollText` liegt als echte Datei darin:
- * Der Melder liest `--protokoll` vom Dateisystem.
+ * Der Melder liest `--transcript` vom Dateisystem.
  */
 function umgebung({ config = TOOLBOX, env = MIT_TOKEN, protokollText = EIN_ZUG, markenText = null, antwort = { outcome: "REPLACED" }, versandFehler = null } = {}) {
   const ablage = mkdtempSync(join(tmpdir(), "board-melder-sitzung-"));
@@ -285,10 +285,10 @@ function umgebung({ config = TOOLBOX, env = MIT_TOKEN, protokollText = EIN_ZUG, 
   };
 }
 
-test("[board-11] sitzung melden schickt den Rumpf mit kind/mode INTERACTIVE an das Board", async () => {
+test("[board-11] session report schickt den Rumpf mit kind/mode INTERACTIVE an das Board", async () => {
   const u = umgebung();
   try {
-    const antwort = await u.melden({ protokoll: u.pfad, complete: true });
+    const antwort = await u.melden({ transcript: u.pfad, complete: true });
     assert.deepEqual(antwort, { ok: true, gemeldet: true, complete: true, karten: 0, outcome: "REPLACED" });
     assert.equal(u.gesendet.length, 1);
     assert.equal(u.gesendet[0].cfg, TOOLBOX);
@@ -317,7 +317,7 @@ test("[board-12] bei gesetztem KIT_AGENT_MODEL wird nichts gesendet und keine Co
 test("[board-12] ohne Zugriffstoken wird nichts gesendet", async () => {
   const u = umgebung({ env: { KIT_AGENT_MODEL: "" } });
   try {
-    assert.deepEqual(await u.melden({ protokoll: u.pfad, complete: true }), { ok: true, gemeldet: false, grund: "kein-token" });
+    assert.deepEqual(await u.melden({ transcript: u.pfad, complete: true }), { ok: true, gemeldet: false, grund: "kein-token" });
     assert.equal(u.gesendet.length, 0);
   } finally {
     u.aufraeumen();
@@ -330,11 +330,11 @@ test("[board-12] ohne Board-Tracker, ohne Config, ohne Protokoll und ohne Zuege 
   const ohne = umgebung();
   const leer = umgebung({ protokollText: protokoll(ohneUsage(0)) });
   try {
-    assert.equal((await lokal.melden({ protokoll: lokal.pfad })).grund, "kein-board");
+    assert.equal((await lokal.melden({ transcript: lokal.pfad })).grund, "kein-board");
     assert.equal((await ohneConfig.melden({})).grund, "kein-board");
-    assert.equal((await ohne.melden({ protokoll: join(ohne.ablage, "gibt-es-nicht.jsonl") })).grund, "protokoll-nicht-lesbar");
-    assert.equal((await ohne.melden({ protokoll: undefined })).grund, "kein-protokoll", "ein unlesbarer Hook-Rumpf heisst: kein Protokoll");
-    assert.equal((await leer.melden({ protokoll: leer.pfad })).grund, "nichts-gemessen");
+    assert.equal((await ohne.melden({ transcript: join(ohne.ablage, "gibt-es-nicht.jsonl") })).grund, "protokoll-nicht-lesbar");
+    assert.equal((await ohne.melden({ transcript: undefined })).grund, "kein-protokoll", "ein unlesbarer Hook-Rumpf heisst: kein Protokoll");
+    assert.equal((await leer.melden({ transcript: leer.pfad })).grund, "nichts-gemessen");
     for (const u of [lokal, ohneConfig, ohne, leer]) assert.equal(u.gesendet.length, 0);
   } finally {
     for (const u of [lokal, ohneConfig, ohne, leer]) u.aufraeumen();
@@ -344,18 +344,18 @@ test("[board-12] ohne Board-Tracker, ohne Config, ohne Protokoll und ohne Zuege 
 test("[board-12] ein Hook-Rumpf ohne transcript_path heisst: kein Protokoll", async () => {
   const u = umgebung();
   try {
-    const antwort = await u.melden({ protokoll: undefined }, { stdinLesen: () => JSON.stringify({ session_id: "x" }) });
+    const antwort = await u.melden({ transcript: undefined }, { stdinLesen: () => JSON.stringify({ session_id: "x" }) });
     assert.equal(antwort.grund, "kein-protokoll");
   } finally {
     u.aufraeumen();
   }
 });
 
-test("[board-11] ohne --protokoll kommt der Pfad aus dem Hook-Rumpf auf stdin", async () => {
+test("[board-11] ohne --transcript kommt der Pfad aus dem Hook-Rumpf auf stdin", async () => {
   const u = umgebung();
   try {
     const { pfad } = u;
-    const antwort = await u.melden({ protokoll: undefined, complete: true }, { stdinLesen: () => JSON.stringify({ transcript_path: pfad }) });
+    const antwort = await u.melden({ transcript: undefined, complete: true }, { stdinLesen: () => JSON.stringify({ transcript_path: pfad }) });
     assert.equal(antwort.gemeldet, true);
     assert.equal(u.gesendet.length, 1);
   } finally {
@@ -367,20 +367,20 @@ test("[board-14] zwei Zuege binnen fuenf Minuten erzeugen genau eine Zwischenmel
   const u = umgebung();
   try {
     const { pfad } = u;
-    assert.equal((await u.melden({ protokoll: pfad })).gemeldet, true);
+    assert.equal((await u.melden({ transcript: pfad })).gemeldet, true);
 
     writeFileSync(pfad, protokoll(zug({ id: "a", ms: 0, ausgabe: 100 }), zug({ id: "b", ms: 1000, ausgabe: 50 })), "utf-8");
-    const zweite = await u.melden({ protokoll: pfad }, { jetzt: () => new Date(JETZT.getTime() + 4 * MIN) });
+    const zweite = await u.melden({ transcript: pfad }, { jetzt: () => new Date(JETZT.getTime() + 4 * MIN) });
     assert.deepEqual(zweite, { ok: true, gemeldet: false, grund: "gedrosselt" });
     assert.equal(u.gesendet.length, 1);
 
     // Nach Ablauf der fuenf Minuten meldet die naechste Zwischenmeldung wieder.
-    const spaeter = await u.melden({ protokoll: pfad }, { jetzt: () => new Date(JETZT.getTime() + 5 * MIN) });
+    const spaeter = await u.melden({ transcript: pfad }, { jetzt: () => new Date(JETZT.getTime() + 5 * MIN) });
     assert.equal(spaeter.gemeldet, true);
 
     // Das Sitzungsende wird nicht gedrosselt — sonst verloere jede kurze Sitzung ihren
     // Abschluss und der Leitstand haette nie einen vollstaendigen Stand.
-    const ende = await u.melden({ protokoll: pfad, complete: true }, { jetzt: () => new Date(JETZT.getTime() + 6 * MIN) });
+    const ende = await u.melden({ transcript: pfad, complete: true }, { jetzt: () => new Date(JETZT.getTime() + 6 * MIN) });
     assert.equal(ende.gemeldet, true);
     assert.deepEqual(u.gesendet.map((g) => g.meldung.complete), [false, false, true]);
   } finally {
@@ -393,9 +393,9 @@ test("[board-14] ein fremder oder kaputter Stand zaehlt als noch nie gemeldet", 
   try {
     const { pfad } = u;
     writeFileSync(join(u.ablage, "sitzung-meldung.json"), "{kaputt", "utf-8");
-    assert.equal((await u.melden({ protokoll: pfad })).gemeldet, true);
+    assert.equal((await u.melden({ transcript: pfad })).gemeldet, true);
     writeFileSync(join(u.ablage, "sitzung-meldung.json"), JSON.stringify({ sitzung: "andere", zuletzt: JETZT.toISOString() }), "utf-8");
-    assert.equal((await u.melden({ protokoll: pfad })).gemeldet, true);
+    assert.equal((await u.melden({ transcript: pfad })).gemeldet, true);
   } finally {
     u.aufraeumen();
   }
@@ -407,11 +407,11 @@ test("[board-14] nach complete ist die Wegmarken-Datei leer, nach einer Zwischen
   const datei = join(u.ablage, "wegmarken.tsv");
   try {
     const { pfad } = u;
-    await u.melden({ protokoll: pfad });
+    await u.melden({ transcript: pfad });
     assert.equal(readFileSync(datei, "utf-8"), markenText, "eine Zwischenmeldung laesst die Abschnitte stehen");
     assert.equal(u.gesendet[0].meldung.items.length, 0, "der Zug liegt vor der Wegmarke und gehoert keiner Karte");
 
-    await u.melden({ protokoll: pfad, complete: true });
+    await u.melden({ transcript: pfad, complete: true });
     assert.equal(existsSync(datei), true, "die Datei bleibt, sie wird geleert");
     assert.equal(readFileSync(datei, "utf-8"), "", "nach dem Sitzungsende zaehlt keine Wegmarke mehr");
     assert.deepEqual(JSON.parse(readFileSync(join(u.ablage, "sitzung-meldung.json"), "utf-8")), { sitzung: new Date(T0).toISOString(), zuletzt: null });
@@ -424,7 +424,7 @@ test("[board-14] eine gescheiterte Meldung leert die Wegmarken nicht und beendet
   const markenText = marken([10 * MIN, "10", "in_progress"]);
   const u = umgebung({ markenText, versandFehler: new Error("HTTP 500 kaputt") });
   try {
-    const antwort = await u.melden({ protokoll: u.pfad, complete: true });
+    const antwort = await u.melden({ transcript: u.pfad, complete: true });
     assert.deepEqual(antwort, { ok: true, gemeldet: false, grund: "nicht-eingeliefert" }, "der Melder ist Buchhaltung, keine Bedingung");
     assert.deepEqual(u.hinweise, ["Hinweis: Sitzungs-Meldung nicht eingeliefert: HTTP 500 kaputt"]);
     assert.equal(readFileSync(join(u.ablage, "wegmarken.tsv"), "utf-8"), markenText, "nicht eingeliefert heisst nicht verbucht");
@@ -441,7 +441,7 @@ test("[board-14] ein Stand, der sich nicht schreiben laesst, bleibt ein Hinweis"
     // Die Ablage ist eine Datei: mkdir scheitert, die Meldung ist trotzdem raus.
     const versperrt = join(u.ablage, "versperrt");
     writeFileSync(versperrt, "", "utf-8");
-    const antwort = await u.melden({ protokoll: pfad }, { ablage: versperrt });
+    const antwort = await u.melden({ transcript: pfad }, { ablage: versperrt });
     assert.equal(antwort.gemeldet, true);
     assert.equal(u.hinweise.length, 1);
     assert.match(u.hinweise[0], /^Hinweis: Sitzungs-Stand nicht geschrieben/);

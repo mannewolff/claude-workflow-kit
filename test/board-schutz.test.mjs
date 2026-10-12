@@ -243,22 +243,22 @@ test("[schutz] notfallGate: gruener push-Lauf mit unveraendertem Stand geht durc
 
 // --- nachtSperre (E8) ---
 
-test("[schutz] nachtSperre: mit KIT_AGENT_MODEL gesperrt fuer einrichten, aussetzen, nachpruefen, nicht fuer status", () => {
+test("[schutz] nachtSperre: mit KIT_AGENT_MODEL gesperrt fuer setup, suspend, verify, nicht fuer status", () => {
   const nacht = { KIT_AGENT_MODEL: "claude-sonnet-5-5" };
-  for (const aktion of ["einrichten", "aussetzen", "nachpruefen"]) {
+  for (const aktion of ["setup", "suspend", "verify"]) {
     assert.throws(() => nachtSperre(aktion, nacht), new RegExp(aktion));
   }
   assert.doesNotThrow(() => nachtSperre("status", nacht));
 });
 
 test("[schutz] nachtSperre: ohne KIT_AGENT_MODEL alles erlaubt, Vorgabe ist process.env", () => {
-  for (const aktion of ["einrichten", "aussetzen", "nachpruefen", "status"]) {
+  for (const aktion of ["setup", "suspend", "verify", "status"]) {
     assert.doesNotThrow(() => nachtSperre(aktion, {}));
   }
   const vorher = process.env.KIT_AGENT_MODEL;
   process.env.KIT_AGENT_MODEL = "claude-sonnet-5-5";
   try {
-    assert.throws(() => nachtSperre("aussetzen"));
+    assert.throws(() => nachtSperre("suspend"));
   } finally {
     if (vorher === undefined) delete process.env.KIT_AGENT_MODEL; else process.env.KIT_AGENT_MODEL = vorher;
   }

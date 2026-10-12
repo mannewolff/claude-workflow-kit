@@ -74,13 +74,13 @@ test("[1454] englisch: title und noWorkReason gehen unveraendert durch, der leer
   assert.equal(m.noWorkReason, "Nothing in Ready");
 });
 
-test("[1454] englisch: Fehler und Hinweise von nightrun melden", async () => {
+test("[1454] englisch: Fehler und Hinweise von nightrun report", async () => {
   spracheFestlegen("en");
   const senden = async () => ({ outcome: "CREATED" });
-  await assert.rejects(nightrunMelden({ datei: "x" }, { config: { issueTracker: "local" }, senden }),
+  await assert.rejects(nightrunMelden({ file: "x" }, { config: { issueTracker: "local" }, senden }),
     { message: "Delivery only possible with issueTracker toolbox, configured is 'local'." });
   await assert.rejects(nightrunMelden({}, { config: TOOLBOX, senden }), { message: "nightrun report needs --file <result.json>" });
-  await assert.rejects(nightrunMelden({ datei: "kaputt.json" }, { config: TOOLBOX, lesen: () => "{kaputt", senden }),
+  await assert.rejects(nightrunMelden({ file: "kaputt.json" }, { config: TOOLBOX, lesen: () => "{kaputt", senden }),
     { message: /^Result file kaputt\.json not readable: / });
   assert.throws(() => nachtlaufMeldung({ art: "pruefung" }, JETZT), {
     message: "Run type 'pruefung' has no night-run interface (expected: implementierung | kette)",
@@ -97,7 +97,7 @@ test("[1454] englisch: Fehler und Hinweise von nightrun melden", async () => {
     }
     return { outcome: "CREATED" };
   };
-  const antwort = await nightrunMelden({ datei: "x" }, {
+  const antwort = await nightrunMelden({ file: "x" }, {
     config: TOOLBOX,
     lesen: () => JSON.stringify(stand([], { vorbereitung: { ergebnis: "gruen" } })),
     senden: abweisend,
@@ -123,12 +123,12 @@ test("[1454] englisch: Hinweise des Sitzungs-Melders, die Schweige-Gruende bleib
       jetzt: () => JETZT,
       melde: (z) => hinweise.push(z),
     };
-    const antwort = await sitzungMelden({ protokoll: pfad }, { ...optionen, senden: async () => { throw new Error("HTTP 500 broken"); } });
+    const antwort = await sitzungMelden({ transcript: pfad }, { ...optionen, senden: async () => { throw new Error("HTTP 500 broken"); } });
     assert.deepEqual(antwort, { ok: true, gemeldet: false, grund: "nicht-eingeliefert" });
     assert.deepEqual(hinweise, ["Note: session report not delivered: HTTP 500 broken"]);
 
     hinweise.length = 0;
-    await sitzungMelden({ protokoll: pfad }, { ...optionen, ablage: join(pfad, "kein-verzeichnis"), senden: async () => ({ outcome: "CREATED" }) });
+    await sitzungMelden({ transcript: pfad }, { ...optionen, ablage: join(pfad, "kein-verzeichnis"), senden: async () => ({ outcome: "CREATED" }) });
     assert.match(hinweise[0], /^Note: session state not written \(.+\): /);
   } finally {
     rmSync(ablage, { recursive: true, force: true });

@@ -37,7 +37,7 @@ function projekt() {
 function fragen(dir, ...args) {
   const datei = join(dir, "issues", "0001.md");
   const vorher = readFileSync(datei, "utf-8");
-  const res = runBoard(dir, ["issue", "fragen", "1", ...args], MIT_AUFSICHT);
+  const res = runBoard(dir, ["issue", "questions", "1", ...args], MIT_AUFSICHT);
   assert.equal(readFileSync(datei, "utf-8"), vorher, "Body oder Labels geaendert");
   return { status: res.status, stderr: res.stderr, ausgabe: res.stdout ? JSON.parse(res.stdout) : null };
 }
@@ -90,7 +90,7 @@ test("Abweisung am Einstieg: review:fertig mit Vermerk ist nichts-offen", () => 
 
 test("unbeaufsichtigt mit gesetztem KIT_AGENT_MODEL", () => imProjekt((dir) => {
   board(dir, "issue", "label", "add", "1", "review:fertig");
-  const res = runBoard(dir, ["issue", "fragen", "1"], { KIT_AGENT_MODEL: "claude-opus-5-5" });
+  const res = runBoard(dir, ["issue", "questions", "1"], { KIT_AGENT_MODEL: "claude-opus-5-5" });
   assert.equal(res.status, 0, res.stderr);
   assert.equal(JSON.parse(res.stdout).einstieg.grund, "unbeaufsichtigt");
 }));
@@ -142,12 +142,12 @@ test("--compare liefert die aenderungen aus kriterienVergleich", () => imProjekt
 }));
 
 test("ohne Kartennummer: Exit 1 mit Meldung", () => imProjekt((dir) => {
-  const res = runBoard(dir, ["issue", "fragen"], MIT_AUFSICHT);
+  const res = runBoard(dir, ["issue", "questions"], MIT_AUFSICHT);
   assert.equal(res.status, 1);
   assert.match(res.stderr, /issue questions/);
 }));
 
 test("die Hilfe nennt issue questions", () => imProjekt((dir) => {
   const res = runBoard(dir, ["--help"]);
-  assert.match(res.stdout, /issue questions <id> \[--body-file <pfad>\] \[--compare <pfad>\]/);
+  assert.match(res.stdout, /issue questions <id> \[--body-file <path>\] \[--compare <path>\]/);
 }));

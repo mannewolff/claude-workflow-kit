@@ -4,6 +4,7 @@
 // laden — sonst gaebe eine einzeln kopierte Datei keine Auskunft mehr (Issue #170). Die
 // gueltigen Statuswerte stehen darum woertlich im Hilfetext, waehrend der Adapter sie aus
 // `VALID_STATUSES` in den Grundlagen nimmt. Diese Pruefung haelt beide Stellen zusammen.
+// Seit Issue #1557 (Plan #1548 E7) ist die Hilfe englisch, auch in einem deutschen Projekt.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -11,14 +12,29 @@ import { spawnSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { rmSync } from "node:fs";
+
 import { VALID_STATUSES } from "../kit/board/grundlagen.mjs";
+import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
 
 const BOARD = join(dirname(fileURLToPath(import.meta.url)), "..", "kit", "board.mjs");
 
 test("board.mjs --help nennt genau die Statuswerte der Grundlagen", () => {
   const res = spawnSync(process.execPath, [BOARD, "--help"], { encoding: "utf-8" });
   assert.equal(res.status, 0, res.stderr);
-  const zeile = res.stdout.split("\n").find((z) => z.startsWith("Gueltige Status-Werte: "));
+  const zeile = res.stdout.split("\n").find((z) => z.startsWith("Valid status values: "));
   assert.ok(zeile, "die Hilfe nennt keine Statuswerte");
-  assert.equal(zeile, `Gueltige Status-Werte: ${VALID_STATUSES.join(" | ")}`);
+  assert.equal(zeile, `Valid status values: ${VALID_STATUSES.join(" | ")}`);
+});
+
+test("board.mjs --help ist im deutschen Projekt englisch", () => {
+  const dir = setupProjekt({ codeHost: "local", issueTracker: "local", language: "de" }, "hilfe-de-");
+  try {
+    const res = runBoard(dir, ["--help"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /^board\.mjs — board adapter for the claude-workflow-kit\n\nUsage:\n/);
+    assert.doesNotMatch(res.stdout, /Nutzung|Gueltige|Konfiguration/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

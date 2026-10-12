@@ -183,7 +183,7 @@ test("die Hilfe zu check-form nennt I1 bis I9", () => {
   const dir = setupProjekt({ codeHost: "local", issueTracker: "local" }, "board-check-form-geschuetzt-");
   try {
     const res = runBoard(dir, ["--help"]);
-    assert.match(res.stdout, /Arbeitspaket I1 bis I9/);
+    assert.match(res.stdout, /work package I1 to I9/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

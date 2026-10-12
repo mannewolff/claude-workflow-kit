@@ -171,7 +171,7 @@ test("[1455] Umstellung und Schutzmodus eines englischen Projekts melden englisc
     const schutz = installiere(u, ["--schutz"]);
     assert.equal(schutz.status, 1);
     assert.match(schutz.stdout, /=== claude-workflow-kit: protection of the main branch ===/);
-    assert.match(schutz.stderr, /^Error: The installed board\.mjs does not know `code schutz` yet/m);
+    assert.match(schutz.stderr, /^Error: The installed board\.mjs does not know `code protection` yet/m);
     keinDeutsch(schutz.alles, "Schutzmodus");
 
     const unbekannt = installiere(u, ["--language", "fr"]);

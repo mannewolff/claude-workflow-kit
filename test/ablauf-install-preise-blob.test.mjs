@@ -99,7 +99,7 @@ test("[board-11] [board-15] der Melder laeuft im installierten Projekt und rechn
     }) + "\n", "utf-8");
 
     const res = await new Promise((fertig) => {
-      const kind = execFile(process.execPath, [join(dir, ".claude", "kit", "board.mjs"), "sitzung", "melden", "--protokoll", protokoll, "--complete"], {
+      const kind = execFile(process.execPath, [join(dir, ".claude", "kit", "board.mjs"), "session", "report", "--transcript", protokoll, "--complete"], {
         cwd: dir,
         // TBX_CONFIG_DIR zeigt ins Wegwerf-Verzeichnis: Ohne das koennte der globale
         // tbx-Login der Entwicklermaschine einspringen und der Test bewiese nichts.

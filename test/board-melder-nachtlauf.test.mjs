@@ -5,7 +5,7 @@
 // `POST /api/kanban/night-runs` (kanban-kit, NightRunIngestController, Plan #943). Die
 // Farben folgen der Deutung in kanban-kit `frontend/src/lib/nightRunErgebnisstand.ts`,
 // beschraenkt auf die beiden Lauf-Arten, die night.mjs heute schreibt. Den Befehl
-// `nightrun melden` ueber die Kommandozeile belegt `test/ablauf-board-melder-cli.test.mjs`.
+// `nightrun report` ueber die Kommandozeile belegt `test/ablauf-board-melder-cli.test.mjs`.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -422,7 +422,7 @@ test("[board-20] ohne Kennzahlen bleiben Modellzeit und Zuege null, und ohne jed
   assert.equal(leer.usage, null, "nichts gemessen heisst weiterhin null, nicht ein Objekt aus Nullen");
 });
 
-// --- Der Befehl `nightrun melden` -------------------------------------------
+// --- Der Befehl `nightrun report` -------------------------------------------
 //
 // Config, Datei, Uhr und Versand sind injiziert: Der Versand merkt sich, was er bekam,
 // und antwortet wie die Gegenstelle. Ein Abbruch wirft BoardError; der Einstieg gibt ihn
@@ -436,10 +436,10 @@ function versand(antwort = { outcome: "REPLACED" }) {
   return { gesendet, senden: async (config, meldung) => { gesendet.push({ config, meldung }); return antwort; } };
 }
 
-test("[night-31] nightrun melden schickt die gedeutete Meldung des Ergebnisstands und nennt das Ergebnis", async () => {
+test("[night-31] nightrun report schickt die gedeutete Meldung des Ergebnisstands und nennt das Ergebnis", async () => {
   const { gesendet, senden } = versand();
   const gelesen = [];
-  const antwort = await nightrunMelden({ datei: "/ablage/stand.json" }, {
+  const antwort = await nightrunMelden({ file: "/ablage/stand.json" }, {
     config: TOOLBOX,
     lesen: (pfad) => { gelesen.push(pfad); return STAND_DATEI; },
     senden,
@@ -456,19 +456,19 @@ test("[night-31] nightrun melden schickt die gedeutete Meldung des Ergebnisstand
   assert.equal(body.items[0].state, "GREEN");
 });
 
-test("[night-31] nightrun melden ohne JSON-Antwort meldet outcome null", async () => {
+test("[night-31] nightrun report ohne JSON-Antwort meldet outcome null", async () => {
   const { senden } = versand(null);
-  const antwort = await nightrunMelden({ datei: "x" }, { config: TOOLBOX, lesen: () => STAND_DATEI, senden, jetzt: () => JETZT });
+  const antwort = await nightrunMelden({ file: "x" }, { config: TOOLBOX, lesen: () => STAND_DATEI, senden, jetzt: () => JETZT });
   assert.deepEqual(antwort, { ok: true, outcome: null });
 });
 
-test("[night-31] nightrun melden weist einen anderen Tracker, eine fehlende Angabe und eine unlesbare Datei mit Grund ab", async () => {
+test("[night-31] nightrun report weist einen anderen Tracker, eine fehlende Angabe und eine unlesbare Datei mit Grund ab", async () => {
   const { gesendet, senden } = versand();
   const lesen = () => { throw new Error("ENOENT: fehlt"); };
-  await assert.rejects(nightrunMelden({ datei: "x" }, { config: { issueTracker: "local" }, lesen, senden }), /nur mit issueTracker toolbox moeglich, konfiguriert ist 'local'/);
-  await assert.rejects(nightrunMelden({}, { config: TOOLBOX, lesen, senden }), /braucht --datei/);
-  await assert.rejects(nightrunMelden({ datei: "/ablage/fehlt.json" }, { config: TOOLBOX, lesen, senden }), /Ergebnisstand \/ablage\/fehlt\.json nicht lesbar: ENOENT/);
-  await assert.rejects(nightrunMelden({ datei: "kaputt.json" }, { config: TOOLBOX, lesen: () => "{kaputt", senden }), /Ergebnisstand kaputt\.json nicht lesbar/);
+  await assert.rejects(nightrunMelden({ file: "x" }, { config: { issueTracker: "local" }, lesen, senden }), /nur mit issueTracker toolbox moeglich, konfiguriert ist 'local'/);
+  await assert.rejects(nightrunMelden({}, { config: TOOLBOX, lesen, senden }), /braucht --file/);
+  await assert.rejects(nightrunMelden({ file: "/ablage/fehlt.json" }, { config: TOOLBOX, lesen, senden }), /Ergebnisstand \/ablage\/fehlt\.json nicht lesbar: ENOENT/);
+  await assert.rejects(nightrunMelden({ file: "kaputt.json" }, { config: TOOLBOX, lesen: () => "{kaputt", senden }), /Ergebnisstand kaputt\.json nicht lesbar/);
   assert.equal(gesendet.length, 0, "ein Abbruch schickt nichts");
 });
 

@@ -8,7 +8,7 @@
 //
 //   - Paritaet: je Sprache dieselben Schluessel und Platzhalter.
 //   - Englische Stichproben: Hilfe, Fehlerpraefix, Abweisungen der Achsen und Befehle,
-//     die Handlung von `issue check-geschuetzt` und die Abweisung von `issue check-form`.
+//     die Handlung von `issue check-protected` und die Abweisung von `issue check-form`.
 //   - Der Maschinenvertrag (E14) bleibt: Feldnamen der JSON-Ausgaben.
 //
 // Die folgenden Teile (#1478, #1479) ergaenzen diese Datei um kit/board/dokumente.mjs.
@@ -48,7 +48,7 @@ test("[1477] die Texttabelle von board.mjs hat in beiden Sprachen dieselben Schl
   assert.ok(Object.keys(TEXTE.de).length > 20, "die Tabelle traegt die Texte des Einstiegs");
 });
 
-test("[1477] die Hilfe steht in einem englischen Projekt englisch, in einem deutschen deutsch", () => {
+test("[1477] die Hilfe steht in jedem Projekt englisch (seit Issue #1557, Plan #1548 E7)", () => {
   const en = lauf("en", ["--help"]);
   assert.equal(en.status, 0, en.stderr);
   assert.match(en.stdout, /^board\.mjs — board adapter for the claude-workflow-kit$/m);
@@ -59,8 +59,7 @@ test("[1477] die Hilfe steht in einem englischen Projekt englisch, in einem deut
   for (const sprache of [undefined, "de"]) {
     const de = lauf(sprache, ["--help"]);
     assert.equal(de.status, 0, de.stderr);
-    assert.match(de.stdout, /^Nutzung:$/m);
-    assert.doesNotMatch(de.stdout, /^Usage:$/m);
+    assert.equal(de.stdout, en.stdout);
   }
 });
 
@@ -90,7 +89,7 @@ test("[1477] englische Stichproben: Fehlerpraefix und Abweisungen der Achsen und
 test("[1477] dieselben Abweisungen bleiben in einem deutschen Projekt deutsch", () => {
   const res = lauf(undefined, ["achse"]);
   assert.equal(res.status, 1);
-  assert.match(res.stderr, /^Fehler: Unbekannte Achse: 'achse'\. Erwartet: issue \| code \| kontext \| issue-review \| nightrun \| sitzung \| hook$/m);
+  assert.match(res.stderr, /^Fehler: Unbekannte Achse: 'achse'\. Erwartet: issue \| code \| context \| issue-review \| nightrun \| session \| hook$/m);
   const pr = lauf("de", ["code", "pr"]);
   assert.match(pr.stderr, /^Fehler: --from ist erforderlich$/m);
 });
@@ -134,7 +133,7 @@ test("[1478] die Texttabelle von dokumente.mjs hat in beiden Sprachen dieselben 
 test("[1478] englische Stichproben: Abweisungen von create, move, label, comment, activity und origin", () => {
   const faelle = [
     [["issue", "create"], /: --title is required$/m],
-    [["issue", "create", "--title", "X", "--art", "quatsch"], /: --art needs one of these values: fachlich\|/m],
+    [["issue", "create", "--title", "X", "--art", "quatsch"], /: --art needs one of these values: requirement\|idea\|human\|plan\|task$/m],
     [["issue", "create", "--title", "[Plan] X", "--art", "plan"], /: --art plan next to a title with a prefix \('\[Plan\] X'\) — either --art or the prefix in the title$/m],
     [["issue", "create", "--title", "X", "--derived-from"], /: --derived-from needs a value \(card number of the nearest ancestor\)$/m],
     [["issue", "create", "--title", "X", "--derived-from", "x"], /: --derived-from 'x' is not a positive integer\.$/m],
@@ -187,8 +186,8 @@ test("[1478] dieselben Abweisungen bleiben in einem deutschen Projekt deutsch", 
 test("[1478] titelMitArt und die Label-Hinweise nennen ihren Freitext englisch, Art und Felder bleiben", async () => {
   spracheFestlegen("en");
   try {
-    assert.match(titelMitArt("X", true, "en").fehler, /^--art needs one of these values: fachlich\|/);
-    assert.deepEqual(Object.keys(titelMitArt("[Idea] X", "idee", "en")), ["fehler"]);
+    assert.match(titelMitArt("X", true, "en").fehler, /^--art needs one of these values: requirement\|/);
+    assert.deepEqual(Object.keys(titelMitArt("[Idea] X", "idea", "en")), ["fehler"]);
 
     const tracker = (labels) => ({
       gesetzt: [],
@@ -266,10 +265,10 @@ test("[1479] englische Stichproben: Abweisungen von report, run-state, brief und
     [["issue", "report", "5", "--part", "1"], /: --part needs --text '…' with the piece\.$/m],
     [["issue", "report", "5"], /: No report for issue 5: neither --text nor pieces under \.claude\/berichte\/\.$/m],
     [["issue", "report", "5", "--text", "x"], /: No move of issue 5 to in_progress in \.claude\/bewegungen\.tsv — /m],
-    [["issue", "run-state"], /: id is required: board\.mjs issue run-state <id> --state laeuft\|abgebrochen\|wartet\|fertig --text-file <file>$/m],
+    [["issue", "run-state"], /: id is required: board\.mjs issue run-state <id> --state running\|aborted\|waiting\|done --text-file <file>$/m],
     [["issue", "run-state", "5", "--labels", "a"], /: --labels does not exist: the names come from night\.stand\.labels in the config\. /m],
-    [["issue", "run-state", "5", "--state", "weg"], /: --state 'weg' unknown\. Expected: laeuft \| abgebrochen \| wartet \| fertig$/m],
-    [["issue", "run-state", "5", "--state", "fertig"], /: --text-file is required: board\.mjs issue run-state /m],
+    [["issue", "run-state", "5", "--state", "weg"], /: --state 'weg' unknown\. Expected: running \| aborted \| waiting \| done$/m],
+    [["issue", "run-state", "5", "--state", "done"], /: --text-file is required: board\.mjs issue run-state /m],
     [["issue", "brief"], /: id is required: board\.mjs issue brief <id> \[--column ready\|in_progress\] \[--json\]$/m],
     [["issue", "brief", "5", "--column", "done"], /: --column 'done' is not an expected column \(ready \| in_progress\)\.$/m],
     [["issue", "brief", "99"], /: Package 99 not readable: /m],
@@ -293,7 +292,7 @@ test("[1479] englische Stichprobe: night.stand.labels in der Config", () => {
       mkdirSync(join(dir, "issues"), { recursive: true });
       writeFileSync(join(dir, "issues", "0005.md"), KARTE, "utf-8");
       writeFileSync(join(dir, "stand.md"), "Stand", "utf-8");
-      const res = runBoard(dir, ["issue", "run-state", "5", "--state", "laeuft", "--text-file", "stand.md"], { HOME: dir });
+      const res = runBoard(dir, ["issue", "run-state", "5", "--state", "running", "--text-file", "stand.md"], { HOME: dir });
       assert.equal(res.status, 1, res.stderr);
       assert.match(res.stderr, erwartet);
     } finally {
@@ -352,7 +351,7 @@ test("[1479] issue brief spricht englisch; Folge, Befund und Feldnamen bleiben",
 test("[1479] dieselben Auftraege bleiben in einem deutschen Projekt deutsch", () => {
   imProjektDerSprache(undefined, ({ rufe, nimm }) => {
     vorhaben(nimm);
-    const o = rufe("issue", "auftrag", "3").stdout;
+    const o = rufe("issue", "brief", "3").stdout;
     assert.match(o, /^## Urteil$/m);
     assert.match(o, /^darf nicht beginnen — Folge: bleibt$/m);
     assert.match(o, /^### Ziel$/m);
@@ -447,7 +446,7 @@ test("[1479] ein englisches Projekt sieht aus board.mjs und dokumente.mjs keine 
       ["issue", "brief"], ["issue", "brief", "3", "--column", "x"], ["issue", "brief", "99"], ["issue", "update"],
       ["issue", "brief", "1"], ["issue", "brief", "2"], ["issue", "brief", "3"], ["issue", "brief", "3", "--json"], ["issue", "brief", "4"],
       ["issue", "update", "3", "--body", "## Abhaengigkeiten\n#1 und #88"],
-      ["issue", "run-state", "3", "--state", "laeuft", "--text-file", "stand.md"],
+      ["issue", "run-state", "3", "--state", "running", "--text-file", "stand.md"],
       ["issue", "move", "3", "in_progress"], ["issue", "report", "3", "--text", "x"],
     ]) sammle(rufe(...args));
     ausgaben.push(kommentareVon(dir, "0003"));

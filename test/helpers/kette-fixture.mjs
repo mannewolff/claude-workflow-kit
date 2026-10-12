@@ -115,7 +115,7 @@ export function ketteBoard(anfang, { jetzt, formPruefung, ablehnen = () => false
     // Laufstand ersetzen statt einen zweiten anzuhaengen.
     "run-state": ([id, ...args]) => {
       const ziel = karte(id);
-      const zustand = internerWert("zustand", option(args, "state"));
+      const zustand = internerWert("state", option(args, "state"));
       const rumpf = textOderDatei(args, "text").replaceAll("\r\n", "\n").trim();
       const neu = rumpf.startsWith("## Laufstand") ? rumpf : `## Laufstand\n\n${rumpf}`;
       ziel.labels = ziel.labels.filter((l) => !STAND_SACHEN.has(erkenneLabel(l)));

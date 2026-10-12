@@ -6,7 +6,7 @@
  * lesen, ob ein Projekt die Vorgeschichte sucht. Die Typprüfung übernimmt das Schema; beim
  * Lesen gilt alles außer `true` als aus, ohne Abbruch.
  *
- * `issue vorgeschichte` (Issue #1539) sucht die früheren Fachpläne auf zwei Wegen: je Begriff
+ * `issue history` (Issue #1539) sucht die früheren Fachpläne auf zwei Wegen: je Begriff
  * über die Suche des Boards (archivierte Karten eingeschlossen), je Datei über die
  * Kartennummern ihrer letzten Commits und deren Herkunftskette (A4). Es führt die Treffer
  * über die Nummer zusammen, ordnet und begrenzt sie (A2) und holt je Treffer die Karte.
@@ -22,7 +22,7 @@ import { spawnSync } from "node:child_process";
 
 import { BoardError, out } from "./grundlagen.mjs";
 import { zerlegeAbschnitte } from "./dokumente.mjs";
-import { BEFEHLSNAMEN, erkennePraefix, kanonischeUeberschrift, prozessSprache, text } from "./namen.mjs";
+import { erkennePraefix, kanonischeUeberschrift, text } from "./namen.mjs";
 
 // Die Texte an den Menschen liegen unter kit/texte/board-vorgeschichte.mjs.
 import { TEXTE } from "../texte/board-vorgeschichte.mjs";
@@ -173,28 +173,25 @@ async function treffenUndHolen(tracker, { begriffe, dateien, ohne, bodies, cwd }
   return { treffer, weitere: geordnet.length - auswahl.length };
 }
 
-/** Der Name einer Option in der Projektsprache. */
-const optionsName = (name) => (prozessSprache() === "en" ? BEFEHLSNAMEN.optionen[name] ?? name : name);
-
 /** Alle Werte einer mehrfach erlaubten Option; eine Option ohne Wert bricht ab. */
 function werteVon(args, name) {
-  if (args[name] === true) throw new BoardError(t("optionOhneWert", { option: optionsName(name) }));
+  if (args[name] === true) throw new BoardError(t("optionOhneWert", { option: name }));
   return args.werte?.[name] ?? [];
 }
 
-/** `issue vorgeschichte` (Issue #1539): Ergebnis als JSON, Exit 0 auch ohne Archiv. */
+/** `issue history` (Issue #1539): Ergebnis als JSON, Exit 0 auch ohne Archiv. */
 export async function issueVorgeschichte(tracker, config, args, hilfe) {
   if (args.help) {
     process.stdout.write(hilfe);
     return;
   }
-  const ohne = werteVon(args, "ohne").map((wert) => {
-    if (!/^#?\d+$/.test(wert)) throw new BoardError(t("keineNummer", { option: optionsName("ohne"), wert }));
+  const ohne = werteVon(args, "without").map((wert) => {
+    if (!/^#?\d+$/.test(wert)) throw new BoardError(t("keineNummer", { option: "without", wert }));
     return Number(wert.replace("#", ""));
   });
   out(await vorgeschichteSuchen(tracker, config, {
-    begriffe: werteVon(args, "begriffe"),
-    dateien: werteVon(args, "dateien"),
+    begriffe: werteVon(args, "terms"),
+    dateien: werteVon(args, "files"),
     ohne,
     bodies: args.bodies !== undefined,
   }));

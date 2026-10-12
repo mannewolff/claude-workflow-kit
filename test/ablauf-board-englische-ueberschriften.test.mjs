@@ -1,7 +1,7 @@
-// Ablauf-Pruefung: `issue auftrag` liest Plan, Fachplan und Voraussetzungen ueber das echte
+// Ablauf-Pruefung: `issue brief` liest Plan, Fachplan und Voraussetzungen ueber das echte
 // CLI von board.mjs, das nur ein Programmstart zeigt.
 //
-// `issue auftrag` liest englische Dokumente wie deutsche (Issue #1460, Plan #1420 E15).
+// `issue brief` liest englische Dokumente wie deutsche (Issue #1460, Plan #1420 E15).
 // Ausgegliedert aus test/board-testhinweise-englische-ueberschriften.test.mjs, damit der Start
 // von kit/board.mjs in einer Gruppe steht, die der Board-Einstieg ausloest (test/config-teile.test.mjs).
 
@@ -22,12 +22,12 @@ const PLAN_EN = "Plan-Model: claude-opus-5-5\n\n## Goal\nGoal.\n\n## Affected ar
 const FACHPLAN_EN = "## Goal\nGoal.\n\nAuthor-Model: claude-opus-5-5\n\n## Business acceptance criteria\n1. One.\n\n"
   + "## Non-goals\n- Nothing.\n\n## Open questions for the PO\nKeine.\n";
 
-// --- issue auftrag mit englischen Dokumenten ---
+// --- issue brief mit englischen Dokumenten ---
 
 const lokalDatei = (nr, status, titel, body) =>
   `---\nid: "${String(nr).padStart(4, "0")}"\ntype: task\nstatus: ${status}\ntitle: ${titel}\n---\n\n${body}`;
 
-test("issue auftrag: Plan-Entscheidungen, fachlicher Anlass und Voraussetzungen aus englischen Dokumenten", () => {
+test("issue brief: Plan-Entscheidungen, fachlicher Anlass und Voraussetzungen aus englischen Dokumenten", () => {
   const dir = setupProjekt({ codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } }, "board-englisch-");
   try {
     mkdirSync(join(dir, "issues"));
@@ -38,7 +38,7 @@ test("issue auftrag: Plan-Entscheidungen, fachlicher Anlass und Voraussetzungen 
     writeFileSync(join(dir, "issues", "0002.md"), lokalDatei(2, "backlog", "[Plan] Weg", `Requirement: Issue #3\n\n${plan}`));
     writeFileSync(join(dir, "issues", "0003.md"), lokalDatei(3, "backlog", "[Requirement] Anlass", FACHPLAN_EN));
     writeFileSync(join(dir, "issues", "0004.md"), lokalDatei(4, "ready", "Voraussetzung", PAKET_DE));
-    const res = runBoard(dir, ["issue", "auftrag", "1", "--json"]);
+    const res = runBoard(dir, ["issue", "brief", "1", "--json"]);
     assert.equal(res.status, 0, res.stderr);
     const a = JSON.parse(res.stdout);
     assert.deepEqual(a.planEntscheidungen.eintraege, [{ id: "E1", text: "- E1: Which?\n  Chosen: A." }]);

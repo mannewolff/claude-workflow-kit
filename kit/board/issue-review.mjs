@@ -1,7 +1,7 @@
 /**
  * board/issue-review.mjs — Issue-Review-Achse des Board-Werkzeugs (Issue #1221, Plan #1199, E17):
  * Reviewer-Auswahl, Pruefstufen, Verfuegbarkeit mit Probelauf und die Befehle
- * `issue-review reviewers | roles | matrix | check | pruefauftrag | start`.
+ * `issue-review reviewers | roles | matrix | check | review-brief | start`.
  *
  * Ein Teil von kit/board.mjs. Der Einstieg laedt ihn erst nach der Auskunft ueber
  * --version und --help und exportiert seine Namen unveraendert weiter. Dieser Teil
@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 import { BoardError, fail, out, loadConfig, findeImPath, umgebungsWert, configWurzel } from "./grundlagen.mjs";
 import { istFachlich, istPlan, herkunftNummern, normalisiereZeilenenden } from "./dokumente.mjs";
 import { resolveTracker } from "./adapter.mjs";
-import { internerWert, text, ueberschriftZeile } from "./namen.mjs";
+import { EINGABEWERTE, internerWert, text, ueberschriftZeile } from "./namen.mjs";
 import { vorgeschichteAktiv, vorgeschichteSuchen } from "./vorgeschichte.mjs";
 
 // Die Texte an den Menschen liegen unter kit/texte/board-issue-review.mjs (Issue #1526).
@@ -410,11 +410,11 @@ export function issueReviewReviewers(args, config = loadConfig()) {
  * STUFENBESETZUNG ("stufen" | "default", bei der Stufe plan auch "lauf" aus
  * KIT_PLAN_REVIEWER, Issue #1245).
  *
- * `--issue`, `--rolle` und `--ausschluss` sind mit der Pruefvorgabe und der
+ * `--issue`, `--role` und `--ausschluss` sind mit der Pruefvorgabe und der
  * Synthese-Pruefung entfallen. Sie werden abgewiesen statt still uebergangen: Ein
  * stilles Flag waere eine zweite Wahrheit ueber das, was das Kommando tut.
  */
-const ROLES_ENTFALLEN = ["issue", "rolle", "ausschluss"];
+const ROLES_ENTFALLEN = ["issue", "role", "ausschluss"];
 
 export function issueReviewRoles(args, config = loadConfig(), env = process.env) {
   for (const option of ROLES_ENTFALLEN) {
@@ -423,11 +423,13 @@ export function issueReviewRoles(args, config = loadConfig(), env = process.env)
     }
   }
   // `--stage requirement` traegt ab hier den internen Schluessel `fachlich`, den auch
-  // `reviewStufen` nennt (Issue #1555, Plan #1548 E5).
-  const stufe = args.stufe === true ? fail(t("optionOhneWert", { name: "stufe" })) : internerWert("stufe", args.stufe);
-  if (!stufe) fail(t("stufeOptionFehlt", { stufen: REVIEW_STUFEN.join(" | ") }));
+  // `reviewStufen` nennt (Issue #1555, Plan #1548 E5); getippt wird nur der englische Wert.
+  const stufen = REVIEW_STUFEN.map((s) => EINGABEWERTE.stage[s]).join(" | ");
+  if (args.stage === true) fail(t("optionOhneWert", { name: "stage" }));
+  if (!args.stage) fail(t("stufeOptionFehlt", { stufen }));
+  const stufe = internerWert("stage", args.stage);
   if (!REVIEW_STUFEN.includes(stufe)) {
-    fail(t("stufeUnbekannt", { stufe, stufen: REVIEW_STUFEN.join(" | ") }));
+    fail(t("stufeUnbekannt", { stufe: args.stage, stufen }));
   }
   const autor = args.author === true ? fail(t("optionOhneWert", { name: "author" })) : args.author;
   if (!autor) fail(t("autorFehlt"));
@@ -485,7 +487,7 @@ export function issueReviewCheck(args = {}, { config = loadConfig(), verfuegbar 
   // `--nur-pfad` faellt auf das Verhalten vor Issue #262 zurueck, fuer den Fall, dass
   // ein Probelauf zu teuer oder unerwuenscht ist. Das Feld `geprueft` macht in beiden
   // Faellen sichtbar, worauf sich die Aussage stuetzt.
-  const nurPfad = args["nur-pfad"] === true;
+  const nurPfad = args["path-only"] === true;
   const { reviewers, reviewStufen } = issueReviewConfig(config);
   // Fehlende Rollendateien aller Stufen (Issue #1381): Ein Pruefer ohne Rolle faellt im
   // Review aus — hier steht es vorher, auch wenn kein Reviewer konfiguriert ist.
@@ -670,10 +672,10 @@ function fehlerArg(meldung) {
 
 function pruefauftragArgumente(args) {
   const wert = (name) => (args[name] === true ? fehlerArg(t("optionOhneWert", { name })) : args[name]);
-  const eingang = { rolle: wert("rolle"), datei: wert("datei"), id: wert("id"), material: wert("material-datei") };
-  if (!eingang.rolle) fehlerArg(t("optionFehlt", { name: "rolle" }));
+  const eingang = { rolle: wert("role"), datei: wert("file"), id: wert("id"), material: wert("material-file") };
+  if (!eingang.rolle) fehlerArg(t("optionFehlt", { name: "role" }));
   if (!ROLLEN_NAME.test(eingang.rolle)) fehlerArg(t("keinRollenname", { rolle: eingang.rolle }));
-  if (!eingang.datei) fehlerArg(t("optionFehlt", { name: "datei" }));
+  if (!eingang.datei) fehlerArg(t("optionFehlt", { name: "file" }));
   if (Boolean(eingang.id) === Boolean(eingang.material)) fehlerArg(t("idOderMaterial"));
   return eingang;
 }
@@ -693,10 +695,10 @@ function montiere(rahmen, werte) {
 }
 
 /**
- * Montiert den Pruefauftrag einer Rolle in die Datei `--datei` (A3).
+ * Montiert den Pruefauftrag einer Rolle in die Datei `--file` (A3).
  *
  * Eingang entweder `--id <N>` (Dokument vom Board, `Fachliche Quelle:` und `Vorlage:`
- * aufgeloest) oder `--material-datei <pfad>` (Code-Pruefung). Fehlt die Rollendatei,
+ * aufgeloest) oder `--material-file <pfad>` (Code-Pruefung). Fehlt die Rollendatei,
  * antwortet der Befehl `rolle-fehlt` mit Pfad — der Skill bucht das als Ausfall dieses
  * Pruefers. Bleibt ein Platzhalter ausserhalb der Bloecke offen, entsteht keine Datei:
  * Ein halb gefuellter Auftrag saehe am Board aus wie ein vollstaendiger (E3).
@@ -771,15 +773,15 @@ function ausfallGrund(res) {
 
 /**
  * Startet einen fremden Pruefer mit Lesegrenze (A4): Auftrag ueber stdin, Antwort aus stdout
- * in `--ausgabe`. Gestartet wird ohne Shell wie im Probelauf — die Kommandozeile wird am
+ * in `--output`. Gestartet wird ohne Shell wie im Probelauf — die Kommandozeile wird am
  * Leerraum zerlegt, Quotes und Pipes traegt sie nicht. Ohne bekannte Lesegrenze oder mit einem
  * Schalter, der sie aufhebt, startet nichts (A6). Exit ungleich 0 ist ein Ausfall mit dem Ende
  * von stderr; die Ausgabedatei entsteht dann nicht, damit kein halber Befund als ganzer gilt.
  */
 export function issueReviewStart(args, { config = loadConfig(), spawn = spawnSync, verfuegbar = kommandoVerfuegbar, env = process.env } = {}) {
   const pruefer = startPruefer(args, config);
-  const auftrag = pflichtwert(args, "auftrag");
-  const ausgabe = pflichtwert(args, "ausgabe");
+  const auftrag = pflichtwert(args, "brief");
+  const ausgabe = pflichtwert(args, "output");
   const reviewer = pruefer.name;
 
   const start = startArgumente(pruefer.command, pruefer.lesegrenze);
@@ -827,7 +829,6 @@ async function antwortMitExit(befehl) {
 // Die Hilfe kommt vom Einstieg herein: Sie steht dort, und ein Import von dort waere ein Zyklus.
 export async function dispatchIssueReview(command, args, hilfe) {
   switch (command) {
-    case "pruefauftrag":
     case "review-brief": return antwortMitExit(() => issueReviewPruefauftrag(args));
     case "start": return antwortMitExit(() => issueReviewStart(args));
     case "reviewers": return out(issueReviewReviewers(args));

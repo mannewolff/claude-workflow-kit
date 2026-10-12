@@ -52,20 +52,20 @@ function mitStufen(reviewStufen, fn, issueReview = REVIEW) {
 
 test("issue-review roles: eine unbekannte Stufe bricht ab", () => {
   mitStufen(STUFEN, (dir) => {
-    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "unbekannt", "--author", "opus"]);
+    const res = runBoard(dir, ["issue-review", "roles", "--stage", "unbekannt", "--author", "opus"]);
     assert.notEqual(res.status, 0);
     assert.match(res.stderr, /unbekannt/);
   });
 });
 
-test("issue-review roles: --stufe ohne Wert und ohne Option brechen ab", () => {
+test("issue-review roles: --stage ohne Wert und ohne Option brechen ab", () => {
   mitStufen(STUFEN, (dir) => {
-    const ohneWert = runBoard(dir, ["issue-review", "roles", "--stufe", "--author", "opus"]);
+    const ohneWert = runBoard(dir, ["issue-review", "roles", "--stage", "--author", "opus"]);
     assert.notEqual(ohneWert.status, 0);
-    assert.match(ohneWert.stderr, /--stufe/);
+    assert.match(ohneWert.stderr, /--stage/);
     const ohneOption = runBoard(dir, ["issue-review", "roles", "--author", "opus"]);
     assert.notEqual(ohneOption.status, 0);
-    assert.match(ohneOption.stderr, /--stufe/);
+    assert.match(ohneOption.stderr, /--stage/);
   });
 });
 
@@ -73,10 +73,10 @@ test("issue-review roles: --author ist verpflichtend", () => {
   // pickReviewers braucht den Autor fuer pairs und fuer den Selbstausschluss; ohne ihn
   // koennte das Kommando genau das nicht leisten, wofuer es da ist.
   mitStufen(STUFEN, (dir) => {
-    const ohneOption = runBoard(dir, ["issue-review", "roles", "--stufe", "issue"]);
+    const ohneOption = runBoard(dir, ["issue-review", "roles", "--stage", "issue"]);
     assert.notEqual(ohneOption.status, 0);
     assert.match(ohneOption.stderr, /--author/);
-    const ohneWert = runBoard(dir, ["issue-review", "roles", "--stufe", "issue", "--author"]);
+    const ohneWert = runBoard(dir, ["issue-review", "roles", "--stage", "issue", "--author"]);
     assert.notEqual(ohneWert.status, 0);
     assert.match(ohneWert.stderr, /--author/);
   });
@@ -91,7 +91,7 @@ test("issue-review roles: --author ist verpflichtend", () => {
 test("reviewStufen: rollen.length ungleich reviewer bricht mit genau dieser Meldung ab", () => {
   const kaputt = { ...STUFEN, issue: { reviewer: 1, rollen: ["pruefbarkeit", "zuviel"] } };
   mitStufen(kaputt, (dir) => {
-    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "issue", "--author", "opus"]);
+    const res = runBoard(dir, ["issue-review", "roles", "--stage", "issue", "--author", "opus"]);
     assert.equal(res.status, 1);
     assert.ok(
       res.stderr.includes("reviewStufen.issue: rollen.length (2) stimmt nicht mit reviewer (1) ueberein."),
@@ -115,7 +115,7 @@ for (const [was, stufe] of [
 ]) {
   test(`reviewStufen: Stufe mit ${was} bricht mit Config-Pfad ab`, () => {
     mitStufen({ ...STUFEN, issue: stufe }, (dir) => {
-      const res = runBoard(dir, ["issue-review", "roles", "--stufe", "issue", "--author", "opus"]);
+      const res = runBoard(dir, ["issue-review", "roles", "--stage", "issue", "--author", "opus"]);
       assert.equal(res.status, 1);
       assert.match(res.stderr, /reviewStufen\.issue/);
       assert.equal(res.stdout, "");
@@ -128,7 +128,7 @@ test("reviewStufen: eine fehlende Stufe im vorhandenen Block bricht ab", () => {
   // vergessener Eintrag von einer bewussten Rueckfallebene nicht zu unterscheiden.
   const { issue, ...ohneIssue } = STUFEN;
   mitStufen(ohneIssue, (dir) => {
-    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "fachlich", "--author", "opus"]);
+    const res = runBoard(dir, ["issue-review", "roles", "--stage", "requirement", "--author", "opus"]);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /reviewStufen\.issue/);
   });
@@ -136,7 +136,7 @@ test("reviewStufen: eine fehlende Stufe im vorhandenen Block bricht ab", () => {
 
 test("reviewStufen: ein Block, der kein Objekt ist, bricht ab", () => {
   mitStufen(["fachlich"], (dir) => {
-    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "fachlich", "--author", "opus"]);
+    const res = runBoard(dir, ["issue-review", "roles", "--stage", "requirement", "--author", "opus"]);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /reviewStufen/);
   });
@@ -144,7 +144,7 @@ test("reviewStufen: ein Block, der kein Objekt ist, bricht ab", () => {
 
 // --- Hilfe und Kopfkommentar ---
 
-const SYNTAX = "issue-review roles --stage <requirement|plan|issue> --author <modell>";
+const SYNTAX = "issue-review roles --stage <requirement|plan|issue> --author <model>";
 
 test("Die Hilfe nennt die volle Syntax von issue-review roles", () => {
   mitStufen(STUFEN, (dir) => {
@@ -169,13 +169,13 @@ test("Der Kopfkommentar von board.mjs nennt dieselbe Syntax", () => {
 test("issueReview.reviewers: lesegrenze bei kind claude bricht ab, bei kind command nicht", () => {
   const mitClaude = { ...REVIEW, reviewers: [{ ...OPUS, lesegrenze: "--sandbox read-only" }, SONNET, FABLE, CODEX] };
   mitStufen(STUFEN, (dir) => {
-    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "issue", "--author", "sonnet"]);
+    const res = runBoard(dir, ["issue-review", "roles", "--stage", "issue", "--author", "sonnet"]);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /issueReview\.reviewers\[0\] \('opus'\): 'lesegrenze' gilt nur bei kind 'command'/);
   }, mitClaude);
   const mitKommando = { ...REVIEW, reviewers: [OPUS, SONNET, FABLE, { ...CODEX, lesegrenze: "--sandbox read-only" }] };
   mitStufen(STUFEN, (dir) => {
-    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "issue", "--author", "opus"]);
+    const res = runBoard(dir, ["issue-review", "roles", "--stage", "issue", "--author", "opus"]);
     assert.equal(res.status, 0, res.stderr);
   }, mitKommando);
 });
@@ -183,7 +183,7 @@ test("issueReview.reviewers: lesegrenze bei kind claude bricht ab, bei kind comm
 test("issueReview.reviewers: eine lesegrenze, die kein String ist, bricht ab", () => {
   const kaputt = { ...REVIEW, reviewers: [OPUS, SONNET, FABLE, { ...CODEX, lesegrenze: ["--sandbox"] }] };
   mitStufen(STUFEN, (dir) => {
-    const res = runBoard(dir, ["issue-review", "roles", "--stufe", "issue", "--author", "opus"]);
+    const res = runBoard(dir, ["issue-review", "roles", "--stage", "issue", "--author", "opus"]);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /issueReview\.reviewers\[3\] \('codex'\): 'lesegrenze' muss ein Text sein/);
   }, kaputt);

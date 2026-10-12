@@ -83,7 +83,7 @@ test("issue stand: ein englischer Laufstand wird ersetzt, kein zweiter angelegt"
       ersetzeKommentar: async (id, kid) => aufrufe.push(["ersetzt", kid]),
       commentIssue: async () => aufrufe.push(["angelegt"]),
     };
-    await issueStand(tracker, {}, { _: ["5"], zustand: "laeuft", "text-file": datei });
+    await issueStand(tracker, {}, { _: ["5"], state: "running", "text-file": datei });
     assert.deepEqual(aufrufe, [["ersetzt", "k1"]]);
   } finally {
     rmSync(dir, { recursive: true, force: true });

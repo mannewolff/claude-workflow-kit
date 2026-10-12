@@ -6,7 +6,7 @@
  * Body gegen den alten und der Vergleich von Kriterien und Nicht-Zielen.
  *
  * Reine Funktionen ohne Board-Zugriff; den Zugriff traegt allein der Einstieg in
- * kit/board.mjs, `issue questions` (deutsch noch `issue fragen`, Issue #1555, Plan #1548 E8). Sie lesen nur und aendern keine Labels (A4). Empfehlung, Einarbeitung und
+ * kit/board.mjs, `issue questions` (Issue #1555, Plan #1548 E8). Sie lesen nur und aendern keine Labels (A4). Empfehlung, Einarbeitung und
  * Folgefragen sind Urteil der Session und stehen im Skill, nicht hier (A1).
  *
  * QUELLE DER WAHRHEIT: Diese Datei wird im Kit-Repo (claude-workflow-kit) gepflegt.

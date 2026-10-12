@@ -3,8 +3,8 @@
  * E2 bis E4): je Sache ein deutscher und ein englischer Name, die Projektsprache aus der
  * Config und das Erkennen beider Namen. Dazu die zurueckgelesenen Marker in Kommentaren und
  * Body und der Texthelfer, ueber den jedes Modul seine Meldungen in der Projektsprache
- * waehlt (Issue #1440, E13, E15). Zuletzt die englischen Befehlsnamen von kit/board.mjs
- * (Issue #1461, E18).
+ * waehlt (Issue #1440, E13, E15). Zuletzt die frueheren deutschen Befehlsnamen von
+ * kit/board.mjs, die nur noch in der Abweisung erscheinen (Issue #1557).
  *
  * Hier und nur hier stehen die Namenspaare. Bis zu diesem Register standen dieselben Labels
  * mehrfach im Code, nur durch SYNC-Kommentare gehalten (`kit:klaeren` dreifach,
@@ -417,56 +417,86 @@ export function pruefeParitaet(tabelle) {
   return befunde;
 }
 
-// --- Befehlsnamen (Plan #1420 E18) ---------------------------------------------------
+// --- Altnamen (Plan #1548 E5, E7, E8) -------------------------------------------------
 
 /**
- * Die englischen Namen der Achsen, Befehle und Optionen von kit/board.mjs neben den deutschen
- * (Issue #1461), je Eintrag deutsch -> englisch. Die deutschen bleiben gueltig. Die Verteiler
- * tragen die englischen Befehle als zusaetzliche Eintraege, die Optionen bildet parseArgs im
- * Einstieg ab, die Hilfe eines englischen Projekts nennt die englischen Namen.
+ * Die getippten Auswahlwerte, die ein Verhalten des Kits waehlen (Issue #1555, Plan #1548 E5),
+ * je englischer Option interner Schluessel -> englischer Wert: `--art`, `issue run-state
+ * --state` und `issue-review roles --stage`. Die internen Schluessel (ARTEN, STAND_ZUSTAENDE,
+ * REVIEW_STUFEN, der Config-Schluessel `reviewStufen.fachlich`) bleiben; abgebildet wird am
+ * Einstieg. Getippt wird allein der englische Wert.
  */
-export const BEFEHLSNAMEN = Object.freeze({
-  achsen: Object.freeze({ issue: "issue", code: "code", kontext: "context", "issue-review": "issue-review",
-    nightrun: "nightrun", sitzung: "session", hook: "hook" }),
+export const EINGABEWERTE = Object.freeze({
+  art: Object.freeze({ fachlich: "requirement", idee: "idea", mensch: "human", plan: "plan", task: "task" }),
+  state: Object.freeze({ laeuft: "running", abgebrochen: "aborted", wartet: "waiting", fertig: "done" }),
+  stage: Object.freeze({ fachlich: "requirement", plan: "plan", issue: "issue" }),
+});
+
+/** Die Paare einer Ebene, deren beide Namen sich unterscheiden. */
+const nurAbweichende = (ebene) => Object.freeze(Object.fromEntries(Object.entries(ebene).filter(([de, en]) => de !== en)));
+
+/**
+ * Die frueheren deutschen Namen der Achsen, Befehle, Optionen und Auswahlwerte von
+ * kit/board.mjs, je Eintrag deutsch -> englisch (Issue #1557, Plan #1548). Seit Version 5
+ * nimmt board.mjs nur die englischen an; diese Tabelle dient allein der Meldung, die einen
+ * deutschen Namen abweist und den englischen nennt — zum Ausfuehren wird sie nie benutzt
+ * (PO-Antwort 2, Kriterium 1). Die Befehle stehen je englischer Achse, die Werte je
+ * englischer Option.
+ */
+export const ALTNAMEN = Object.freeze({
+  achsen: Object.freeze({ kontext: "context", sitzung: "session" }),
   befehle: Object.freeze({
-    issue: Object.freeze({ create: "create", get: "get", list: "list", epics: "epics", activity: "activity",
-      move: "move", update: "update", comment: "comment", melden: "report", stand: "run-state",
-      auftrag: "brief", ursprung: "origin", label: "label", "check-form": "check-form",
+    issue: Object.freeze({ melden: "report", stand: "run-state", auftrag: "brief", ursprung: "origin",
       "check-geschuetzt": "check-protected", vorgeschichte: "history", fragen: "questions" }),
-    code: Object.freeze({ "repo-name": "repo-name", pr: "pr", "ci-status": "ci-status", schutz: "protection" }),
-    kontext: Object.freeze({ paths: "paths", "last-log": "last-log" }),
-    "issue-review": Object.freeze({ reviewers: "reviewers", check: "check", matrix: "matrix", roles: "roles",
-      pruefauftrag: "review-brief", start: "start" }),
+    code: Object.freeze({ schutz: "protection" }),
+    "issue-review": Object.freeze({ pruefauftrag: "review-brief" }),
     nightrun: Object.freeze({ melden: "report" }),
-    sitzung: Object.freeze({ melden: "report" }),
+    session: Object.freeze({ melden: "report" }),
     hook: Object.freeze({ "bash-pruefen": "bash-check" }),
   }),
-  // Die Aktionen von `code schutz`.
-  schutz: Object.freeze({ status: "status", einrichten: "setup", aussetzen: "suspend",
-    wiederherstellen: "restore", nachpruefen: "verify" }),
-  // Nur die Optionen mit deutschem Namen; die uebrigen (--title, --text-file …) sind englisch.
+  // Die Aktionen von `code protection`.
+  schutz: Object.freeze({ einrichten: "setup", aussetzen: "suspend", wiederherstellen: "restore",
+    nachpruefen: "verify" }),
   optionen: Object.freeze({ teil: "part", zustand: "state", spalte: "column", pfad: "path", zweig: "branch",
     "nur-pfad": "path-only", stufe: "stage", rolle: "role", datei: "file", "material-datei": "material-file",
     auftrag: "brief", ausgabe: "output", protokoll: "transcript", begriffe: "terms", dateien: "files",
     ohne: "without", vergleich: "compare" }),
-  // Die Auswahlwerte der Optionen, die ein Verhalten des Kits waehlen (Issue #1555, Plan #1548
-  // E5), je Option interner Schluessel -> englischer Wert: `--art`, `issue run-state --state` und
-  // `issue-review roles --stufe`. Die internen Schluessel (ARTEN, STAND_ZUSTAENDE, REVIEW_STUFEN,
-  // der Config-Schluessel `reviewStufen.fachlich`) bleiben; abgebildet wird am Einstieg.
-  werte: Object.freeze({
-    art: Object.freeze({ fachlich: "requirement", idee: "idea", mensch: "human", plan: "plan", task: "task" }),
-    zustand: Object.freeze({ laeuft: "running", abgebrochen: "aborted", wartet: "waiting", fertig: "done" }),
-    stufe: Object.freeze({ fachlich: "requirement", plan: "plan", issue: "issue" }),
-  }),
+  werte: Object.freeze(Object.fromEntries(Object.entries(EINGABEWERTE).map(([option, ebene]) => [option, nurAbweichende(ebene)]))),
+});
+
+const ALTNAMEN_TEXTE = Object.freeze({
+  de: { altname: "unbekannt: '{name}' — englischer Name: '{englisch}'" },
+  en: { altname: "unknown: '{name}' — English name: '{englisch}'" },
 });
 
 /**
- * Der interne Schluessel zum getippten Wert der Option `option` (deutscher Optionsname aus
- * `BEFEHLSNAMEN.werte`): ein englischer Wert wird abgebildet, jeder andere bleibt, wie er ist —
- * auch ein deutscher, ein unbekannter oder ein fehlender Wert (Issue #1555, E5).
+ * Die Meldung zu einem frueheren deutschen Namen in der Projektsprache, etwa
+ * "unbekannt: 'melden' — englischer Name: 'report'"; `null`, wenn `name` kein Altname ist.
+ * `art` ist `achse`, `befehl` (mit der englischen Achse als `bereich`), `schutz`, `option`
+ * (Name ohne `--`, die Meldung nennt ihn mit) oder `wert` (mit der englischen Option als
+ * `bereich`).
+ */
+export function altnameHinweis(art, name, bereich) {
+  const ebene = {
+    achse: ALTNAMEN.achsen,
+    befehl: ALTNAMEN.befehle[bereich],
+    schutz: ALTNAMEN.schutz,
+    option: ALTNAMEN.optionen,
+    wert: ALTNAMEN.werte[bereich],
+  }[art];
+  if (!ebene || typeof name !== "string" || !Object.hasOwn(ebene, name)) return null;
+  const vorn = art === "option" ? "--" : "";
+  return text(ALTNAMEN_TEXTE, "altname", { name: vorn + name, englisch: vorn + ebene[name] });
+}
+
+/**
+ * Der interne Schluessel zum getippten Wert der englischen Option `option` (`art`, `state`,
+ * `stage`): ein englischer Wert wird abgebildet, `true` und ein fehlender Wert bleiben, jeder
+ * andere — auch der interne Schluessel selbst, wo er nicht der englische Wert ist — ergibt
+ * `null` (Issue #1557). Eine Option ohne Auswahlwerte laesst den Wert, wie er ist.
  */
 export function internerWert(option, wert) {
-  const ebene = Object.hasOwn(BEFEHLSNAMEN.werte, option) ? BEFEHLSNAMEN.werte[option] : null;
+  const ebene = Object.hasOwn(EINGABEWERTE, option) ? EINGABEWERTE[option] : null;
   if (ebene === null || typeof wert !== "string") return wert;
-  return Object.keys(ebene).find((intern) => ebene[intern] === wert) ?? wert;
+  return Object.keys(ebene).find((intern) => ebene[intern] === wert) ?? null;
 }

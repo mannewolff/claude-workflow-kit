@@ -262,15 +262,15 @@ test("[1481] englisch: check nennt fehlende Reviewer und Werkzeuge; die Vertrags
 test("[1481] englisch: start und pruefauftrag weisen ab; fehler bleibt Vertrag", async () => {
   spracheFestlegen("en");
   const config = { issueReview: { reviewers: [{ name: "astra", kind: "command", command: "codex exec --full-auto" }] } };
-  const aufgehoben = issueReviewStart({ reviewer: "astra", auftrag: "a", ausgabe: "b" }, { config });
+  const aufgehoben = issueReviewStart({ reviewer: "astra", brief: "a", output: "b" }, { config });
   assert.equal(aufgehoben.fehler, "lesegrenze-aufgehoben");
   assert.equal(aufgehoben.grund, "'--full-auto' lifts the read boundary");
-  assert.throws(() => issueReviewStart({ auftrag: "a", ausgabe: "b" }, { config }),
+  assert.throws(() => issueReviewStart({ brief: "a", output: "b" }, { config }),
     { message: "issue-review start: specify either --reviewer <name> or --code-review" });
-  assert.throws(() => issueReviewStart({ reviewer: "weg", auftrag: "a", ausgabe: "b" }, { config }),
+  assert.throws(() => issueReviewStart({ reviewer: "weg", brief: "a", output: "b" }, { config }),
     { message: "issue-review start: 'weg' is not listed in issueReview.reviewers" });
-  await assert.rejects(() => issueReviewPruefauftrag({ rolle: "abgrenzung" }, { config: {} }),
-    { message: "issue-review pruefauftrag: --datei missing" });
+  await assert.rejects(() => issueReviewPruefauftrag({ role: "abgrenzung" }, { config: {} }),
+    { message: "issue-review review-brief: --file missing" });
 });
 
 /** Die Pruefung der Config endet per `fail` — darum im eigenen Prozess. */
@@ -288,8 +288,8 @@ test("[1481] englisch: die Config-Pruefung und roles weisen ab", () => {
   assert.match(kind.stderr, /issueReview\.reviewers\[0\] \('x'\): 'kind' must be claude or command, is 'agent'\./);
   const selbst = issueReviewAbweisung(`issueReviewMatrix({ issueReview: { reviewers: [{ name: "x", kind: "claude", model: "m" }], pairs: { x: ["x"] } } })`);
   assert.match(selbst.stderr, /issueReview\.pairs\['x'\]: names 'x' itself — the author must not be their own reviewer\./);
-  const stufe = issueReviewAbweisung(`issueReviewRoles({ stufe: "code", author: "x" }, {})`);
-  assert.match(stufe.stderr, /--stufe 'code' is not a known stage\. Expected: fachlich \| plan \| issue/);
+  const stufe = issueReviewAbweisung(`issueReviewRoles({ stage: "code", author: "x" }, {})`);
+  assert.match(stufe.stderr, /--stage 'code' is not a known stage\. Expected: requirement \| plan \| issue/);
   const unbekannt = issueReviewAbweisung(`dispatchIssueReview("weg", {}, "")`);
   assert.match(unbekannt.stderr, /Unknown issue-review command: 'weg'/);
 });
@@ -377,8 +377,8 @@ test("[1482] englisch: Zustand, Soll und Nacht-Sperre des Schutzes; die Konstant
     "Ruleset 'claude-workflow-kit: production' is missing",
   ]);
   assert.equal(SCHUTZ_AUSGESETZT, "Schutz des Hauptzweigs ausgesetzt");
-  assert.throws(() => nachtSperre("einrichten", { KIT_AGENT_MODEL: "opus" }),
-    { message: /^code schutz einrichten is blocked without supervision \(KIT_AGENT_MODEL set\): / });
+  assert.throws(() => nachtSperre("setup", { KIT_AGENT_MODEL: "opus" }),
+    { message: /^code protection setup is blocked without supervision \(KIT_AGENT_MODEL set\): / });
   spracheFestlegen("de");
   const de = await schutzZustand(schutzHost({ rulesets: [haupt] }), { mainBranch: "main" }, { kopfVon: () => null });
   assert.ok(de.fehlt.includes(SCHUTZ_AUSGESETZT), de.fehlt.join(" | "));

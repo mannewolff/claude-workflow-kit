@@ -172,7 +172,7 @@ function bestehendesProjekt(dir, { kenntSchutz = true, config: cfg = BESTAND } =
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify(cfg, null, 2) + "\n");
   const board = kenntSchutz
-    ? "// node board.mjs code schutz einrichten --zweig <z>\n"
+    ? "// node board.mjs code protection setup --branch <b>\n"
     : "// node board.mjs code ci-status --commit <sha>\n";
   writeFileSync(join(dir, ".claude", "kit", "board.mjs"), board);
 }

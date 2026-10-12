@@ -30,7 +30,7 @@ test("Ohne Argumente wird die Hilfe ausgegeben, Exit 0", () => {
   mitProjekt(LOKAL, (dir) => {
     const res = runBoard(dir, []);
     assert.equal(res.status, 0);
-    assert.match(res.stdout, /Board-Adapter fuer das claude-workflow-kit/);
+    assert.match(res.stdout, /board adapter for the claude-workflow-kit/);
     assert.match(res.stdout, /backlog \| ready \| in_progress \| in_review \| done/);
   });
 });
@@ -59,7 +59,7 @@ test("Unbekannte Achse: Hilfe plus Fehlermeldung, Exit 1", () => {
   mitProjekt(LOKAL, (dir) => {
     const res = runBoard(dir, ["quatsch", "list"]);
     assert.equal(res.status, 1);
-    assert.match(res.stdout, /Board-Adapter/);
+    assert.match(res.stdout, /board adapter/);
     assert.match(res.stderr, /Unbekannte Achse: 'quatsch'/);
   });
 });

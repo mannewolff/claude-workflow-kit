@@ -1,7 +1,7 @@
-// Ablauf-Pruefung: `issue stand` liest die Kommentare streng und endet bei Unlesbarem ueber
+// Ablauf-Pruefung: `issue run-state` liest die Kommentare streng und endet bei Unlesbarem ueber
 // process.exit, ohne zu schreiben.
 //
-// `issue stand` — Label und Laufstand-Kommentar einer Karte in einem Zug (Issue #1083,
+// `issue run-state` — Label und Laufstand-Kommentar einer Karte in einem Zug (Issue #1083,
 // Plan #1079 E1, E3, E4).
 //
 // Geprueft am lokalen Tracker ueber das echte CLI: Das Kommando baut nur auf
@@ -37,7 +37,7 @@ function mitLokal(fn, { config = LOKAL, labels = [], kommentare = [] } = {}) {
 function stand(dir, zustand, text) {
   const pfad = join(dir, "stand.md");
   writeFileSync(pfad, text, "utf-8");
-  return runBoard(dir, ["issue", "stand", "7", "--zustand", zustand, "--text-file", pfad]);
+  return runBoard(dir, ["issue", "run-state", "7", "--state", zustand, "--text-file", pfad]);
 }
 
 function ausgabe(res) {
@@ -57,7 +57,7 @@ function laufstandKommentare(datei) {
 
 test("Zustand setzt sein englisches Label und nimmt die beiden anderen ab, auch unter deutschem Namen", () => {
   mitLokal((dir) => {
-    const res = ausgabe(stand(dir, "abgebrochen", "Zuletzt begonnen: Plan um 01:00."));
+    const res = ausgabe(stand(dir, "aborted", "Zuletzt begonnen: Plan um 01:00."));
     assert.deepEqual(res, { ok: true, id: "7", zustand: "abgebrochen", kommentar: "angelegt" });
     assert.deepEqual(labelsVon(dir), ["kit:nightrun", "run:aborted"]);
   }, { labels: ["kit:nightrun", "lauf:laeuft", "lauf:wartet"] });
@@ -65,16 +65,16 @@ test("Zustand setzt sein englisches Label und nimmt die beiden anderen ab, auch 
 
 test("fertig nimmt alle drei Labels ab, fremde bleiben", () => {
   mitLokal((dir) => {
-    ausgabe(stand(dir, "fertig", "Abgeschlossen: Umsetzung um 03:00."));
+    ausgabe(stand(dir, "done", "Abgeschlossen: Umsetzung um 03:00."));
     assert.deepEqual(labelsVon(dir), ["kit:nightrun"]);
   }, { labels: ["lauf:laeuft", "kit:nightrun", "lauf:abgebrochen", "lauf:wartet"] });
 });
 
 test("Kommentar wird angelegt, beim zweiten Aufruf ersetzt, bei gleichem Inhalt unveraendert", () => {
   mitLokal((dir, datei) => {
-    assert.equal(ausgabe(stand(dir, "laeuft", "Lauf angenommen um 01:00, Vorabprüfung läuft")).kommentar, "angelegt");
-    assert.equal(ausgabe(stand(dir, "laeuft", "Zuletzt begonnen: Plan um 01:02")).kommentar, "ersetzt");
-    assert.equal(ausgabe(stand(dir, "laeuft", "Zuletzt begonnen: Plan um 01:02")).kommentar, "unveraendert");
+    assert.equal(ausgabe(stand(dir, "running", "Lauf angenommen um 01:00, Vorabprüfung läuft")).kommentar, "angelegt");
+    assert.equal(ausgabe(stand(dir, "running", "Zuletzt begonnen: Plan um 01:02")).kommentar, "ersetzt");
+    assert.equal(ausgabe(stand(dir, "running", "Zuletzt begonnen: Plan um 01:02")).kommentar, "unveraendert");
     const staende = laufstandKommentare(datei);
     assert.equal(staende.length, 1, "genau ein Laufstand");
     assert.match(staende[0], /## Laufstand\n\nZuletzt begonnen: Plan um 01:02/);
@@ -85,7 +85,7 @@ test("Kommentar wird angelegt, beim zweiten Aufruf ersetzt, bei gleichem Inhalt 
 
 test("ein Text, der den Anker schon traegt, bekommt ihn nicht doppelt", () => {
   mitLokal((dir, datei) => {
-    ausgabe(stand(dir, "wartet", "## Laufstand\n\nwartet: Karte ohne Freigabe zur Umsetzung"));
+    ausgabe(stand(dir, "waiting", "## Laufstand\n\nwartet: Karte ohne Freigabe zur Umsetzung"));
     const staende = laufstandKommentare(datei);
     assert.equal(staende.length, 1);
     assert.equal((staende[0].match(/## Laufstand/g) || []).length, 1);
@@ -95,7 +95,7 @@ test("ein Text, der den Anker schon traegt, bekommt ihn nicht doppelt", () => {
 test("Labelnamen kommen aus night.stand.labels; getragene Namen derselben Sache gehen mit ab (Issue #1552, E3)", () => {
   const config = { ...LOKAL, night: { stand: { labels: { laeuft: "x:lauf", abgebrochen: "x:ab", wartet: "x:wart" } } } };
   mitLokal((dir) => {
-    ausgabe(stand(dir, "wartet", "Halt: Frage wartet auf den Menschen — siehe `## Kette angehalten`"));
+    ausgabe(stand(dir, "waiting", "Halt: Frage wartet auf den Menschen — siehe `## Kette angehalten`"));
     assert.deepEqual(labelsVon(dir), ["fix", "x:wart"]);
   }, { config, labels: ["x:lauf", "lauf:laeuft", "fix", "run:aborted", "x:ab"] });
 });
@@ -103,7 +103,7 @@ test("Labelnamen kommen aus night.stand.labels; getragene Namen derselben Sache 
 test("ohne night.stand in der Config gelten die Vorgaben", () => {
   assert.deepEqual(Object.values(STAND_LABEL_VORGABEN), VORGABEN);
   mitLokal((dir) => {
-    ausgabe(stand(dir, "laeuft", "Lauf angenommen um 01:00, Vorabprüfung läuft"));
+    ausgabe(stand(dir, "running", "Lauf angenommen um 01:00, Vorabprüfung läuft"));
     assert.deepEqual(labelsVon(dir), ["run:running"]);
   });
 });
@@ -124,7 +124,7 @@ test("strenges Lesen: nicht lesbare Kommentare -> Exit 1, kein zweiter Kommentar
     const vorher = readFileSync(datei, "utf-8");
     rmSync(datei);
     mkdirSync(datei);
-    const res = stand(dir, "abgebrochen", "Zuletzt begonnen: Pakete");
+    const res = stand(dir, "aborted", "Zuletzt begonnen: Pakete");
     rmSync(datei, { recursive: true });
     writeFileSync(datei, vorher, "utf-8");
     assert.equal(res.status, 1);
@@ -138,11 +138,11 @@ test("unbekannter Zustand, fehlende Textdatei und --labels werden abgewiesen", (
     const vorher = readFileSync(datei, "utf-8");
     const falsch = stand(dir, "kaputt", "x");
     assert.equal(falsch.status, 1);
-    assert.match(falsch.stderr, /laeuft \| abgebrochen \| wartet \| fertig/);
-    const ohneText = runBoard(dir, ["issue", "stand", "7", "--zustand", "laeuft"]);
+    assert.match(falsch.stderr, /running \| aborted \| waiting \| done/);
+    const ohneText = runBoard(dir, ["issue", "run-state", "7", "--state", "running"]);
     assert.equal(ohneText.status, 1);
     assert.match(ohneText.stderr, /--text-file/);
-    const mitLabels = runBoard(dir, ["issue", "stand", "7", "--zustand", "laeuft", "--text-file", join(dir, "stand.md"), "--labels", "a,b,c"]);
+    const mitLabels = runBoard(dir, ["issue", "run-state", "7", "--state", "running", "--text-file", join(dir, "stand.md"), "--labels", "a,b,c"]);
     assert.equal(mitLabels.status, 1);
     assert.match(mitLabels.stderr, /--labels/);
     assert.equal(readFileSync(datei, "utf-8"), vorher, "nichts geschrieben");

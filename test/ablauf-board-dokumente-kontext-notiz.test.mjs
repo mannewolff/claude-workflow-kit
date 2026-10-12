@@ -1,7 +1,7 @@
 // Ablauf-Pruefung: Die Notiz wird im echten Vault gesucht, und ein Abbruch endet ueber
 // process.exit — beobachtbar ist das nur am Prozess des Board-Werkzeugs.
 //
-// `kontext paths` FINDET die Projektnotiz, statt ihren Namen zu konstruieren (Issue #286).
+// `context paths` FINDET die Projektnotiz, statt ihren Namen zu konstruieren (Issue #286).
 //
 // Der Vault gibt die Schreibweise vor, nicht der Repo-Name: Ein Verzeichnis
 // `Projekte/shell-app/` mit der Notiz `Shell-App.md` ist die Konvention gewachsener
@@ -50,35 +50,35 @@ function mitVault({ cfg, notizen = {} }, fn) {
 }
 
 function paths(dir, env, ...cliArgs) {
-  const res = runBoard(dir, ["kontext", "paths", ...cliArgs], env);
+  const res = runBoard(dir, ["context", "paths", ...cliArgs], env);
   assert.equal(res.status, 0, res.stderr);
   return JSON.parse(res.stdout);
 }
 
 // --- CLI: projectNote ---
 
-test("kontext paths liefert den tatsaechlichen Dateinamen der Projektnotiz", () => {
+test("context paths liefert den tatsaechlichen Dateinamen der Projektnotiz", () => {
   mitVault({ cfg: {}, notizen: { "shell-app": ["Shell-App.md"] } }, (dir, env, vault) => {
     const ergebnis = paths(dir, env, "--project", "shell-app", "--date", "2026-08-14");
     assert.equal(ergebnis.projectNote, join(vault, "Projekte", "shell-app", "Shell-App.md"));
   });
 });
 
-test("kontext paths: leerer Notizordner liefert den konstruierten Pfad", () => {
+test("context paths: leerer Notizordner liefert den konstruierten Pfad", () => {
   mitVault({ cfg: {}, notizen: { "shell-app": [] } }, (dir, env, vault) => {
     const ergebnis = paths(dir, env, "--project", "shell-app", "--date", "2026-08-14");
     assert.equal(ergebnis.projectNote, join(vault, "Projekte", "shell-app", "shell-app.md"));
   });
 });
 
-test("kontext paths: fehlender Notizordner liefert den konstruierten Pfad", () => {
+test("context paths: fehlender Notizordner liefert den konstruierten Pfad", () => {
   mitVault({ cfg: {}, notizen: {} }, (dir, env, vault) => {
     const ergebnis = paths(dir, env, "--project", "shell-app", "--date", "2026-08-14");
     assert.equal(ergebnis.projectNote, join(vault, "Projekte", "shell-app", "shell-app.md"));
   });
 });
 
-test("kontext paths: aus mehreren Notizen wird die passende gewaehlt", () => {
+test("context paths: aus mehreren Notizen wird die passende gewaehlt", () => {
   const notizen = { "mini-jira": ["Board-App.md", "Shell-App.md", "Mini-Jira.md"] };
   mitVault({ cfg: { parentProject: "mini-jira" }, notizen }, (dir, env, vault) => {
     const ergebnis = paths(dir, env, "--project", "shell-app", "--date", "2026-08-14");
@@ -88,7 +88,7 @@ test("kontext paths: aus mehreren Notizen wird die passende gewaehlt", () => {
 
 // --- CLI: parentNote, dieselbe Regel ---
 
-test("kontext paths loest auch die Dach-Notiz ueber den tatsaechlichen Namen auf", () => {
+test("context paths loest auch die Dach-Notiz ueber den tatsaechlichen Namen auf", () => {
   const notizen = { "mini-jira": ["Mini-Jira.md", "Shell-App.md"] };
   mitVault({ cfg: { parentProject: "mini-jira" }, notizen }, (dir, env, vault) => {
     const ergebnis = paths(dir, env, "--project", "shell-app", "--date", "2026-08-14");
@@ -100,7 +100,7 @@ test("kontext paths loest auch die Dach-Notiz ueber den tatsaechlichen Namen auf
 // Liegt erst eine der beiden Notizen im geteilten Ordner, darf die andere NICHT
 // dieselbe Datei bekommen — sonst schreibt /document den Service-Stand in die
 // Dach-Notiz.
-test("kontext paths: im geteilten Ordner bekommt die fehlende Notiz ihren eigenen Pfad", () => {
+test("context paths: im geteilten Ordner bekommt die fehlende Notiz ihren eigenen Pfad", () => {
   mitVault({ cfg: { parentProject: "mini-jira" }, notizen: { "mini-jira": ["Mini-Jira.md"] } }, (dir, env, vault) => {
     const ergebnis = paths(dir, env, "--project", "shell-app", "--date", "2026-08-14");
     assert.equal(ergebnis.parentNote, join(vault, "Projekte", "mini-jira", "Mini-Jira.md"));
@@ -110,7 +110,7 @@ test("kontext paths: im geteilten Ordner bekommt die fehlende Notiz ihren eigene
 
 // --- CLI: Fehlerpfade ---
 
-test("kontext paths: zwei case-insensitiv passende Notizen brechen ab", (t) => {
+test("context paths: zwei case-insensitiv passende Notizen brechen ab", (t) => {
   mitVault({ cfg: {}, notizen: { "shell-app": ["Shell-App.md", "shell-app.md"] } }, (dir, env, vault) => {
     // Auf einem case-insensitiven Dateisystem (macOS-Default) fallen die beiden
     // Dateien zu einer zusammen — der Fall, den dieses Issue behebt, laesst sich
@@ -120,7 +120,7 @@ test("kontext paths: zwei case-insensitiv passende Notizen brechen ab", (t) => {
       t.skip("case-insensitives Dateisystem: zwei Schreibweisen fallen zu einer Datei zusammen");
       return;
     }
-    const res = runBoard(dir, ["kontext", "paths", "--project", "shell-app"], env);
+    const res = runBoard(dir, ["context", "paths", "--project", "shell-app"], env);
     assert.equal(res.status, 1);
     assert.equal(res.stdout, "", "stdout muss bei einem Abbruch leer bleiben");
     assert.match(res.stderr, /Shell-App\.md/);
@@ -147,11 +147,11 @@ test("waehleNotiz: eine Kollision bricht mit beiden Namen ab", () => {
   assert.match(res.stderr, /Projekt\.md, projekt\.md/, "beide Namen gehoeren in die Meldung");
 });
 
-test("kontext paths: Notizordner ist eine Datei -> Abbruch mit Pfad", () => {
+test("context paths: Notizordner ist eine Datei -> Abbruch mit Pfad", () => {
   mitVault({ cfg: {}, notizen: { "Projekte-Platzhalter": [] } }, (dir, env, vault) => {
     // Projekte/shell-app existiert, ist aber eine Datei — kein leerer Ordner.
     writeFileSync(join(vault, "Projekte", "shell-app"), "kein Verzeichnis\n");
-    const res = runBoard(dir, ["kontext", "paths", "--project", "shell-app"], env);
+    const res = runBoard(dir, ["context", "paths", "--project", "shell-app"], env);
     assert.equal(res.status, 1);
     assert.equal(res.stdout, "");
     assert.match(res.stderr, /shell-app/);
@@ -160,7 +160,7 @@ test("kontext paths: Notizordner ist eine Datei -> Abbruch mit Pfad", () => {
 
 // --- Vertrag ---
 
-test("kontext paths: der JSON-Vertrag bleibt unveraendert", () => {
+test("context paths: der JSON-Vertrag bleibt unveraendert", () => {
   mitVault({ cfg: { always: ["Index.md"] }, notizen: { "shell-app": ["Shell-App.md"] } }, (dir, env) => {
     const ergebnis = paths(dir, env, "--project", "shell-app", "--date", "2026-08-14");
     assert.deepEqual(Object.keys(ergebnis).sort(), [
@@ -169,12 +169,12 @@ test("kontext paths: der JSON-Vertrag bleibt unveraendert", () => {
   });
 });
 
-test("kontext paths: Degraded Mode bleibt ohne Vault-Zugriff", () => {
+test("context paths: Degraded Mode bleibt ohne Vault-Zugriff", () => {
   const dir = setupProjekt(LOKAL, "board-notiz-degraded-");
   const home = join(dir, "home");
   mkdirSync(join(home, ".claude"), { recursive: true });
   try {
-    const res = runBoard(dir, ["kontext", "paths", "--project", "x"], { HOME: home, USERPROFILE: home });
+    const res = runBoard(dir, ["context", "paths", "--project", "x"], { HOME: home, USERPROFILE: home });
     assert.equal(res.status, 0, res.stderr);
     const ergebnis = JSON.parse(res.stdout);
     assert.equal(ergebnis.mode, "degraded");
