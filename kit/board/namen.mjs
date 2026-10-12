@@ -240,6 +240,8 @@ export const UEBERSCHRIFTEN = Object.freeze({
   fachlicheKriterien: eintrag("Fachliche Akzeptanzkriterien", "Business acceptance criteria"),
   nichtZiele: eintrag("Nicht-Ziele", "Non-goals"),
   poFragen: eintrag("Offene Fragen an den PO", "Open questions for the PO"),
+  // Fachplan und Plan (Issue #1537, Plan #1534 E1).
+  vorgeschichte: eintrag("Vorgeschichte", "History"),
   // Abschlussbericht.
   aenderungen: eintrag("Änderungen", "Changes"),
   testsUndChecks: eintrag("Tests und Checks", "Tests and checks"),

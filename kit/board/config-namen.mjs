@@ -170,6 +170,7 @@ export const SCHLUESSEL = Object.freeze({
   "wirksamkeit.kandidatenMax": "candidatesMax",
   befunde: "findings",
   "befunde.schwelle": "threshold",
+  vorgeschichte: "history",
 });
 
 const gleich = (...werte) => Object.fromEntries(werte.map((w) => [w, w]));

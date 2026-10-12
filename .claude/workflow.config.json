@@ -123,7 +123,7 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/board-dokumente-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/board-dokumente-*.test.mjs\" \"test/board-vorgeschichte-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
@@ -714,6 +714,8 @@
       "kit/texte/board-dokumente.mjs",
       "kit/board/ursprung.mjs",
       "kit/texte/board-ursprung.mjs",
+      "kit/board/vorgeschichte.mjs",
+      "test/board-vorgeschichte-*.test.mjs",
       "test/board-dokumente-*.test.mjs"
     ],
     "board-geschuetzt": [
@@ -1051,5 +1053,6 @@
   "pushPruefung": {
     "ort": "buildDienst",
     "zweig": "kit-pruefung"
-  }
+  },
+  "vorgeschichte": true
 }

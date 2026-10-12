@@ -1015,6 +1015,10 @@ The effectiveness of the checks: over which time window the evaluation counts ex
 Recurring findings of the model reviews: from how many occurrences a proposal arises from them. Applies to all reviews that record findings — the issue review as well as the code review, which does not sit under issueReview; hence a block of its own. Optional — if the block or the field in it is missing, the built-in default applies. Applies team-wide; a different value in workflow.config.local.json is ignored, because two people with different thresholds in the same project would produce different proposals from the same findings. A proposal card that can no longer be found counts as done: counting then starts from its state, and a new proposal carries only the findings after it.
 
 - `findings.threshold` (German: `befunde.schwelle`) — From how many occurrences of the same finding a proposal arises. Below that, a finding is a single case and not a rule.
+
+### `history` (German: `vorgeschichte`)
+
+Before a requirement or plan is written, searches earlier requirements on the project's own board on the same subject, archived ones included, and names the relevant ones in the new document. A missing field or false = off, the document is written as before; that is the default. Applies team-wide; a different value in workflow.config.local.json is ignored.
 <!-- einstellungen:ende -->
 
 ## The seventeen skills and the 9-step core process

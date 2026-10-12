@@ -985,6 +985,10 @@ Die Wirksamkeit der Prüfungen: über welches Zeitfenster die Auswertung Ausfüh
 Wiederkehrende Funde der Modell-Prüfungen: ab wie vielen Vorkommen aus ihnen ein Vorschlag entsteht. Gilt für alle Prüfungen, die Funde buchen — den Issue-Review ebenso wie den Code-Review, der nicht unter issueReview hängt; deshalb ein eigener Block. Optional — fehlt der Block oder das Feld darin, gilt die eingebaute Vorgabe. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert, weil zwei Menschen mit verschiedenen Schwellen im selben Projekt verschiedene Vorschläge aus denselben Funden erzeugten. Eine nicht mehr auffindbare Vorschlagskarte gilt als erledigt: Gezählt wird dann ab ihrem Stand, und ein neuer Vorschlag trägt nur die Funde danach.
 
 - `befunde.schwelle` — Ab wie vielen Vorkommen desselben Fundes ein Vorschlag entsteht. Darunter ist ein Fund ein Einzelfall und keine Regel.
+
+### `vorgeschichte`
+
+Sucht vor dem Schreiben eines Fachplans oder Plans frühere Fachpläne des eigenen Boards zum selben Gegenstand, archivierte eingeschlossen, und nennt die einschlägigen im neuen Dokument. Fehlendes Feld oder false = aus, das Dokument entsteht wie bisher; das ist die Vorgabe. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
 <!-- einstellungen:ende -->
 
 ## Die siebzehn Skills und der 9-Schritt-Kernprozess
