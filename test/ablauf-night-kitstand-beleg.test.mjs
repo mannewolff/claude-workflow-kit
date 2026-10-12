@@ -42,7 +42,7 @@ function hashInSpur(name, pfad) {
 /** Ein Abschluss wie in /implement-next: pruefen, gezielt stagen, committen, melden. */
 function abschluss(dateien) {
   return [
-    'node .claude/kit/checks.mjs run --abschluss "$NIGHT_ISSUE_ID" >/dev/null',
+    'node .claude/kit/checks.mjs run --finish "$NIGHT_ISSUE_ID" >/dev/null',
     `git add ${dateien}`,
     'git commit -q -m "Paket $NIGHT_ISSUE_ID (Issue #$NIGHT_ISSUE_ID)"',
     'node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review >/dev/null',

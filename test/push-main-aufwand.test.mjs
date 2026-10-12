@@ -72,7 +72,7 @@ test("[skills-30] die Fortschrittszeilen nennen unveraendert dieselben Schrittza
 test("[skills-30] Schritt 4 erzeugt die Release-Dateien, Schritt 3 den Worktree", () => {
   const worktree = SKILL.indexOf("### 3. ");
   assert.notEqual(worktree, -1, "Schritt 3 fehlt");
-  assert.match(SKILL.slice(worktree).split(/\n### /)[0], /worktree\.mjs anlegen/,
+  assert.match(SKILL.slice(worktree).split(/\n### /)[0], /worktree\.mjs create/,
     "Schritt 3 legt keinen Worktree an");
 
   const start = SKILL.indexOf("### 4. ");

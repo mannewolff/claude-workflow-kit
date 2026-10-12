@@ -239,7 +239,7 @@ test("ohne Kartennummer: die Zeile nennt nur die Wartezeit, wartezeitKarte fehlt
   await mitRepo({ config: ABSCHLUSS }, async (dir) => {
     datei(dir, "a.txt");
 
-    const res = await run(dir, "--abschluss");
+    const res = await run(dir, "--finish");
 
     assert.equal(res.status, 0, res.stderr);
     const summary = zusammenfassung(dir);
@@ -252,7 +252,7 @@ test("mit Kartennummer: die Zeile nennt Wartezeit und Summe fuer die Karte", asy
   await mitRepo({ config: ABSCHLUSS }, async (dir) => {
     datei(dir, "a.txt");
 
-    const res = await run(dir, "--abschluss", "7");
+    const res = await run(dir, "--finish", "7");
 
     assert.equal(res.status, 0, res.stderr);
     const summary = zusammenfassung(dir);
@@ -266,11 +266,11 @@ test("mit Kartennummer: die Zeile nennt Wartezeit und Summe fuer die Karte", asy
 test("zwei Laeufe derselben Karte: die Summe addiert, die Zahl der Laeufe zaehlt hoch", async () => {
   await mitRepo({ config: ABSCHLUSS }, async (dir) => {
     datei(dir, "a.txt");
-    assert.equal((await run(dir, "--abschluss", "7")).status, 0);
+    assert.equal((await run(dir, "--finish", "7")).status, 0);
     const erster = zusammenfassung(dir).wartezeitMs;
     datei(dir, "b.txt");
 
-    const res = await run(dir, "--abschluss", "7");
+    const res = await run(dir, "--finish", "7");
 
     assert.equal(res.status, 0, res.stderr);
     const summary = zusammenfassung(dir);
@@ -286,10 +286,10 @@ test("zwei Laeufe derselben Karte: die Summe addiert, die Zahl der Laeufe zaehlt
 test("eine andere Karte beginnt die Summe neu", async () => {
   await mitRepo({ config: ABSCHLUSS }, async (dir) => {
     datei(dir, "a.txt");
-    assert.equal((await run(dir, "--abschluss", "7")).status, 0);
+    assert.equal((await run(dir, "--finish", "7")).status, 0);
     datei(dir, "b.txt");
 
-    const res = await run(dir, "--abschluss", "8");
+    const res = await run(dir, "--finish", "8");
 
     assert.equal(res.status, 0, res.stderr);
     const summary = zusammenfassung(dir);
@@ -300,10 +300,10 @@ test("eine andere Karte beginnt die Summe neu", async () => {
 test("ein uebernommener Lauf zaehlt als Lauf ohne Zeit", async () => {
   await mitRepo({ config: ABSCHLUSS }, async (dir) => {
     datei(dir, "a.txt");
-    assert.equal((await run(dir, "--abschluss", "7")).status, 0);
+    assert.equal((await run(dir, "--finish", "7")).status, 0);
     const erster = zusammenfassung(dir).wartezeitMs;
 
-    const res = await run(dir, "--abschluss", "7");
+    const res = await run(dir, "--finish", "7");
 
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, /Ergebnis uebernommen/);

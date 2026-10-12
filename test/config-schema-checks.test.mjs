@@ -262,10 +262,10 @@ test("nichtBeimAbschluss: das enum steht am Feld im Schema", () => {
   assert.equal(feld.type, "string", "das Feld ist kein String");
 });
 
-test("nichtBeimAbschluss: die Beschreibung nennt --abschluss, das fehlende Feld und die Teamweit-Formel", () => {
+test("nichtBeimAbschluss: die Beschreibung nennt --finish, das fehlende Feld und die Teamweit-Formel", () => {
   const text = eintragSchema.oneOf.find((z) => z.type === "object").properties.nichtBeimAbschluss.description;
   assert.ok(text, "das Feld hat keine description");
-  assert.match(text, /--abschluss/, "der Schalter steht nicht in der Beschreibung");
+  assert.match(text, /--finish/, "der Schalter steht nicht in der Beschreibung");
   assert.match(text, /fehlendes Feld/i, "was ein fehlendes Feld bedeutet, steht nicht in der Beschreibung");
   assert.ok(
     text.endsWith("Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."),
@@ -737,7 +737,7 @@ test("wirksamkeit.quoteSchwelle: die Beschreibung nennt die Zaehlweise je Karte"
 
 // --- installCommand: die Abhaengigkeiten des frischen Worktrees (Issue #964) ---
 //
-// `worktree.mjs anlegen` stellt sie seither selbst her. Das Feld ist eine Kommandozeile
+// `worktree.mjs create` stellt sie seither selbst her. Das Feld ist eine Kommandozeile
 // wie formatFixCommand und gilt wie dieses teamweit; ein Nicht-String waere eine
 // Einstellung, an der das Anlegen jedes Worktrees stillschweigend scheiterte.
 

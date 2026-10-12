@@ -37,7 +37,7 @@ If the config is missing: run `buildChecks: []` and point out that no checks are
 **Guardrail: no session ends with its own work still running.** "I will get back once the run is through" is only a valid statement if a further turn is guaranteed to follow that reads the result. That is not always the case: in some execution contexts the whole execution ends with exactly this announcement — the background process and its result are lost for good, and an outside observer (e.g. a Kanban board) only sees a failure, although the actual work was already done. Whoever started a long run therefore waits for its result or aborts it and reports the abort as a failure. Background work stays allowed; the only thing not allowed is stopping while it is still running (Issue #754). Whoever waits checks two things in doing so: whether the result is there and whether the run **still exists**. A wait loop that only polls the output waits its full length in the error case — and the most frequent error case is that the run never began, for instance because a path in the background command resolves differently than in the session. A run that no longer exists is a **failure** and is reported as such, not as a timeout (Issue #983). Without supervision (set `KIT_AGENT_MODEL`) there is no background work: the hook `bash-check` rejects a Bash call with `run_in_background` (Issue #1081) — call the command in the foreground and wait for it. Interactively background work stays allowed.
 
 ### 1. Build checks from the config
-<!-- de: a2ae45d6eb56 -->
+<!-- de: 119a4f3abb60 -->
 
 ```bash
 node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranch>)"

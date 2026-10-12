@@ -180,7 +180,7 @@ test("[1458] englische Stichproben: rote Pruefung und Bereichslauf, der Vertrags
 
     zusammenfassung(dir, { laufen: [], hashes: {}, bereichWahl: "docs" });
     res = gate(dir, "pre-commit");
-    assert.match(res.stderr, /^Commit rejected — the check ran limited to the area 'docs' and does not cover the commit — please run 'node \.claude\/kit\/checks\.mjs run' without --bereich\./);
+    assert.match(res.stderr, /^Commit rejected — the check ran limited to the area 'docs' and does not cover the commit — please run 'node \.claude\/kit\/checks\.mjs run' without --area\./);
     keinDeutsch(res.alles, "Bereichslauf");
   });
 });

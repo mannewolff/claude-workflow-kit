@@ -30,7 +30,7 @@ const HILFE = "node .claude/kit/checks.mjs run";
  * Die Texte des Gates in beiden Sprachen (Issue #1458, Plan #1420 E13). Das Gate laeuft in
  * jedem Projekt allein und importiert nur Node-Bordmittel; es traegt seine Tabelle deshalb
  * selbst, statt den Texthelfer aus kit/board/namen.mjs zu laden. Vertragswerte wie das
- * Ergebnis einer Pruefung (`rot`) und die Option `--bereich` gehen unuebersetzt ein (E14).
+ * Ergebnis einer Pruefung (`rot`) und die Option `--area` gehen unuebersetzt ein (E14).
  */
 export const TEXTE = Object.freeze({
   de: Object.freeze({
@@ -42,7 +42,7 @@ export const TEXTE = Object.freeze({
     altesFormat: "die Pruef-Zusammenfassung hat ein altes Format ohne hashes — bitte den Installer laufen lassen",
     gitFehler: "{kommando} schlug fehl: {fehler}",
     pruefungEndete: "die Pruefung endete {ergebnis} ({cmd})",
-    bereichslauf: "die Pruefung lief eingegrenzt auf den Bereich '{bereich}' und deckt den Commit nicht — bitte '{hilfe}' ohne --bereich fahren",
+    bereichslauf: "die Pruefung lief eingegrenzt auf den Bereich '{bereich}' und deckt den Commit nicht — bitte '{hilfe}' ohne --area fahren",
     loeschungNichtGeprueft: "Loeschung nicht geprueft",
     nichtGeprueft: "nicht geprueft",
     geaendert: "nach der Pruefung geaendert",
@@ -57,7 +57,7 @@ export const TEXTE = Object.freeze({
     altesFormat: "the check summary has an old format without hashes — please run the installer",
     gitFehler: "{kommando} failed: {fehler}",
     pruefungEndete: "the check ended {ergebnis} ({cmd})",
-    bereichslauf: "the check ran limited to the area '{bereich}' and does not cover the commit — please run '{hilfe}' without --bereich",
+    bereichslauf: "the check ran limited to the area '{bereich}' and does not cover the commit — please run '{hilfe}' without --area",
     loeschungNichtGeprueft: "deletion not checked",
     nichtGeprueft: "not checked",
     geaendert: "changed after the check",
@@ -187,7 +187,7 @@ function preCommit(zusammenfassungPfad) {
   const rot = daten.laufen.find((e) => e.ergebnis === "rot") ?? daten.laufen.find((e) => e.ergebnis !== "gruen");
   if (rot) ab(text("pruefungEndete", { ergebnis: rot.ergebnis, cmd: rot.cmd }));
 
-  // Ein Bereichslauf ist ein TEILNACHWEIS (Issue #922, Code-Review): `--bereich` grenzt
+  // Ein Bereichslauf ist ein TEILNACHWEIS (Issue #922, Code-Review): `--area` grenzt
   // die gefahrenen Pruefungen auf einen Bereich ein, bestimmt `geaendert` und `hashes`
   // aber weiterhin aus dem Anker. Ohne diesen Zweig traegt jede geaenderte Datei einen
   // Hash und das Gate liesse den Commit durch — auch fuer Bereiche, deren Pruefungen nie

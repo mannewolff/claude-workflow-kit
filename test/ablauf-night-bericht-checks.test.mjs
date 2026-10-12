@@ -340,7 +340,7 @@ const WACKEL_CHECK = {
 const FAKE_MIT_ABSCHLUSS = [
   LOG_SESSION,
   'echo arbeit > "kit/work-$NIGHT_ISSUE_ID.txt"',
-  'node .claude/kit/checks.mjs run --abschluss "$NIGHT_ISSUE_ID" > /dev/null 2>&1',
+  'node .claude/kit/checks.mjs run --finish "$NIGHT_ISSUE_ID" > /dev/null 2>&1',
   COMMIT,
   NACH_IN_REVIEW,
 ].join("\n");

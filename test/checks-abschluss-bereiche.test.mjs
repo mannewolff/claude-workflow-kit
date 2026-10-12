@@ -54,10 +54,10 @@ test("(a) eine Datei im Muster von a laesst den Eintrag beim Abschluss laufen", 
   await mitStand({}, async (dir) => {
     datei(dir, "src/a/a.mjs", A_TEXT.replace("c + h", "c + h + 1"));
 
-    const ergebnis = plan(dir, "--abschluss", "1531");
+    const ergebnis = plan(dir, "--finish", "1531");
 
     assert.equal(eintrag(ergebnis.laufen, ZUSAMMENSPIEL)?.grund, "Abschlusslauf: Bereich a direkt beruehrt");
-    const res = await run(dir, "--abschluss", "1531");
+    const res = await run(dir, "--finish", "1531");
     assert.equal(res.status, 0, `${res.stdout}${res.stderr}`);
     assert.match(res.stdout, /echo zusammenspiel[^\n]*Bereich a direkt beruehrt/);
   });
@@ -67,7 +67,7 @@ test("(b) a nur ueber die abhaengigen Bereiche beruehrt: ausgelassen mit eigenem
   await mitStand({}, async (dir) => {
     datei(dir, "src/c/c.mjs", "export const c = 2;\n");
 
-    const ergebnis = plan(dir, "--abschluss", "1531");
+    const ergebnis = plan(dir, "--finish", "1531");
 
     assert.ok(ergebnis.bereiche.includes("a"), JSON.stringify(ergebnis.bereiche));
     assert.deepEqual(kommandos(ergebnis.laufen), ["echo einheit", "echo c"]);
@@ -79,7 +79,7 @@ test("(c) eine Datei ohne Muster ausserhalb von test/helpers traegt a ueber ihre
   await mitStand({}, async (dir) => {
     datei(dir, "lib/hilfe.mjs", "export const h = 2;\n");
 
-    const ergebnis = plan(dir, "--abschluss", "1531");
+    const ergebnis = plan(dir, "--finish", "1531");
 
     assert.deepEqual(ergebnis.abgeleitet?.map((a) => a.pfad), ["lib/hilfe.mjs"]);
     assert.equal(eintrag(ergebnis.laufen, ZUSAMMENSPIEL)?.grund, "Abschlusslauf: Bereich a direkt beruehrt");
@@ -90,7 +90,7 @@ test("(c2) eine Datei in a, die nur ihren Stempel aendert, beruehrt a nicht dire
   await mitStand({}, async (dir) => {
     datei(dir, "src/a/a.mjs", A_TEXT.replace('"1.0.0"', '"1.0.1"'));
 
-    const ergebnis = plan(dir, "--abschluss", "1531");
+    const ergebnis = plan(dir, "--finish", "1531");
 
     assert.deepEqual(kommandos(ergebnis.laufen), ["echo einheit"]);
     assert.equal(eintrag(ergebnis.ausgelassen, ZUSAMMENSPIEL)?.grund, NICHT_DIREKT);
@@ -99,7 +99,7 @@ test("(c2) eine Datei in a, die nur ihren Stempel aendert, beruehrt a nicht dire
 
 test("(d) ist der Anker nicht aufloesbar, laeuft der Eintrag mit dem Grund der normalen Auswahl", async () => {
   await mitStand({}, async (dir) => {
-    const ergebnis = plan(dir, "--abschluss", "1531", "--since", "gibt-es-nicht");
+    const ergebnis = plan(dir, "--finish", "1531", "--since", "gibt-es-nicht");
 
     assert.equal(ergebnis.vollerUmfang, true);
     assert.equal(eintrag(ergebnis.laufen, ZUSAMMENSPIEL)?.grund, "voller Umfang: Anker 'gibt-es-nicht' laesst sich nicht aufloesen");
@@ -108,14 +108,14 @@ test("(d) ist der Anker nicht aufloesbar, laeuft der Eintrag mit dem Grund der n
 
 test("(d2) beim leeren Paket traegt der Eintrag den Grund des leeren Pakets", async () => {
   await mitStand({}, async (dir) => {
-    const ergebnis = plan(dir, "--abschluss", "1531");
+    const ergebnis = plan(dir, "--finish", "1531");
 
     assert.equal(ergebnis.leeresPaket, true);
     assert.match(eintrag(ergebnis.ausgelassen, ZUSAMMENSPIEL)?.grund ?? "", /^leeres Paket: keine Aenderung seit /);
   });
 });
 
-test("(e) ohne --abschluss waehlt der Lauf wie ohne das Feld", async () => {
+test("(e) ohne --finish waehlt der Lauf wie ohne das Feld", async () => {
   for (const aenderung of [["src/c/c.mjs", "export const c = 2;\n"], ["src/b/b.mjs", "export const b = 2;\n"]]) {
     const auswahl = [];
     for (const mitFeld of [true, false]) {
@@ -134,7 +134,7 @@ test("(f) an der Stufe push laeuft der Eintrag", async () => {
   await mitStand({}, async (dir) => {
     datei(dir, "src/c/c.mjs", "export const c = 2;\n");
 
-    const ergebnis = plan(dir, "--stufe", "push");
+    const ergebnis = plan(dir, "--stage", "push");
 
     assert.equal(eintrag(ergebnis.laufen, ZUSAMMENSPIEL)?.grund, "Veroeffentlichungsstufe: voller Umfang");
   });

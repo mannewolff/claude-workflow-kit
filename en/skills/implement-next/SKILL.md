@@ -109,7 +109,7 @@ What is read is the brief from step 0. It already carries task, comments and con
 **If the package carries a note with the anchor `## Night run: waiting session`, `## Night run: time limit reached` or `## Night run: stuck on a check`, name it** — then it has already been started once, and the last known state stands in the note. The second anchor additionally says that the previous run ended at the session time limit, the third that the brake ended it at a check that kept failing the same way; the note names check and error. The German anchors (`## Nachtlauf: …`) count the same. **No halt, no consultation**, only the message: whoever keeps quiet about the note silently continues halfway.
 
 ### 3. Implement
-<!-- de: 7bc42136cc63 -->
+<!-- de: 190ed86015d0 -->
 
 - TDD: write tests first and let them run red, then implement against the tests until green
 - Reuse existing patterns and functions
@@ -161,7 +161,7 @@ The label is **never** removed in the process — the same reasoning as for the 
 If an own share remains that cannot be reverted by name — for instance a file that already carried foreign uncommitted changes before the session —, there is **no** halt: no move, no label, no comment, no commit. The session reports the file and ends; the package stays in In progress. Here too: `kit:protected` is never removed.
 
 ### 4. Checks before the commit
-<!-- de: a56bb78821e3 -->
+<!-- de: 2347705d82b9 -->
 
 ```bash
 node .claude/kit/checks.mjs run --finish <card number>

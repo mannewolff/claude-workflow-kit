@@ -74,23 +74,41 @@ test("settings.mjs: --version und die Hilfe nennen settings.mjs, die Hilfe ist e
 
 // --- checks.mjs ------------------------------------------------------------------
 
-test("checks.mjs: areas gleicht bereiche", () => {
-  assert.deepEqual(checks(["areas"], { cwd: repoRoot }), checks(["bereiche"], { cwd: repoRoot }));
+// Seit Issue #1564 (Plan #1548 E5, E7) nimmt checks.mjs nur die englischen Namen an; ein
+// deutscher Befehl, eine deutsche Option und der getippte Stufenwert `paket` enden mit Exit 1
+// und nennen den englischen Namen. Der Config-Wert `buildChecks[].stufe: paket` bleibt.
+test("checks.mjs: deutsche Befehle, Optionen und der Stufenwert paket enden mit Exit 1 und nennen den englischen Namen", () => {
+  const faelle = [
+    [["bereiche"], "'bereiche'", "'areas'"],
+    [["plan", "--stufe", "push"], "'--stufe'", "'--stage'"],
+    [["plan", "--bereich", "x"], "'--bereich'", "'--area'"],
+    [["plan", "--abschluss", "5"], "'--abschluss'", "'--finish'"],
+    [["run", "--frisch"], "'--frisch'", "'--fresh'"],
+    [["run", "--wiederholen"], "'--wiederholen'", "'--retry'"],
+    [["plan", "--stage", "paket"], "'paket'", "'package'"],
+  ];
+  for (const [args, alt, neu] of faelle) {
+    const res = checks(args, { cwd: repoRoot });
+    assert.equal(res.status, 1, `${args.join(" ")}: ${res.stdout}`);
+    assert.ok(res.stderr.includes(alt) && res.stderr.includes(neu), `${args.join(" ")}: ${res.stderr}`);
+  }
 });
 
-test("checks.mjs: --stage, --area, --finish, --fresh und --retry gleichen den deutschen Optionen", () => {
-  const paare = [
-    [["plan", "--finish", "5", "--stage", "push"], ["plan", "--abschluss", "5", "--stufe", "push"]],
-    [["plan", "--finish", "--area", "x"], ["plan", "--abschluss", "--bereich", "x"]],
-    [["plan", "--fresh", "--stage", "nix"], ["plan", "--frisch", "--stufe", "nix"]],
-    [["plan", "--retry", "--stage", "nix"], ["plan", "--wiederholen", "--stufe", "nix"]],
-  ];
-  for (const [en, de] of paare) {
-    const soll = checks(de, { cwd: repoRoot });
-    assert.equal(soll.status, 1, `${de.join(" ")}: ${soll.stderr}`);
-    assert.doesNotMatch(soll.stderr, /Unbekanntes Argument/);
-    assert.deepEqual(checks(en, { cwd: repoRoot }), soll, en.join(" "));
-  }
+test("checks.mjs: --stage package faehrt die Paketstufe, und areas antwortet", () => {
+  const paket = checks(["plan", "--stage", "package"], { cwd: repoRoot });
+  assert.equal(paket.status, 0, paket.stderr);
+  assert.deepEqual(paket, checks(["plan"], { cwd: repoRoot }));
+  const bereiche = checks(["areas"], { cwd: repoRoot });
+  assert.equal(bereiche.status, 0, bereiche.stderr);
+  assert.ok(JSON.parse(bereiche.stdout));
+});
+
+test("checks.mjs: die Hilfe ist englisch, auch in einem deutschen Projekt, und nennt den Stufenwert package", () => {
+  const res = knoten("checks.mjs", ["--help"], { cwd: repoRoot });
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /^checks\.mjs \(claude-workflow-kit v[^)]+\) — due checks$/m);
+  assert.ok(res.stdout.includes("package | push | merge"), res.stdout);
+  assert.doesNotMatch(res.stdout, /faellige Pruefungen|--stufe|--abschluss|bereiche\n/);
 });
 
 // --- findings.mjs ----------------------------------------------------------------
@@ -268,7 +286,9 @@ function git(cwd, ...a) {
   assert.equal(res.status, 0, `git ${a.join(" ")}: ${res.stderr}`);
 }
 
-test("worktree.mjs: die englischen Unterkommandos und Optionen gleichen den deutschen", () => {
+// Seit Issue #1564 (Plan #1548 E5, E7) nimmt worktree.mjs nur die englischen Namen an,
+// auch fuer die Werte von --result und --fetch.
+test("worktree.mjs: deutsche Unterkommandos, Optionen und Werte enden mit Exit 1 und nennen den englischen Namen", () => {
   const repo = leeresProjekt("worktree-en-");
   try {
     writeFileSync(join(repo, ".gitignore"), ".claude/*\n!.claude/workflow.config.json\n");
@@ -278,27 +298,66 @@ test("worktree.mjs: die englischen Unterkommandos und Optionen gleichen den deut
     git(repo, "add", "-A");
     git(repo, "commit", "-q", "-m", "Anfang");
     const fehlt = join(repo, "gibtsnicht");
-    const paare = [
-      [["remove"], ["entfernen"]],
-      [["return"], ["rueckweg"]],
-      [["catch-up-check"], ["nachziehen-pruefen"]],
-      [["record-preparation", fehlt], ["vorbereitung-festhalten", fehlt]],
-      [["record-preparation", fehlt, "--result", "nix", "--open", "a", "--fetch", "ok"],
-        ["vorbereitung-festhalten", fehlt, "--ergebnis", "nix", "--offen", "a", "--fetch", "ok"]],
-      [["check-preparation", "--discard"], ["vorbereitung-pruefen", "--verwerfen"]],
-      [["in", repo, "--", process.execPath, "-e", "process.exit(3)"], ["im", repo, "--", process.execPath, "-e", "process.exit(3)"]],
+    const faelle = [
+      [["anlegen"], "'anlegen'", "'create'"],
+      [["entfernen", fehlt], "'entfernen'", "'remove'"],
+      [["im", repo, "--", process.execPath, "-e", "0"], "'im'", "'in'"],
+      [["nachziehen-pruefen"], "'nachziehen-pruefen'", "'catch-up-check'"],
+      [["rueckweg", fehlt], "'rueckweg'", "'return'"],
+      [["vorbereitung-festhalten", fehlt], "'vorbereitung-festhalten'", "'record-preparation'"],
+      [["vorbereitung-pruefen"], "'vorbereitung-pruefen'", "'check-preparation'"],
+      [["create", "--praefix", "x"], "'--praefix'", "'--prefix'"],
+      [["record-preparation", fehlt, "--ergebnis", "green"], "'--ergebnis'", "'--result'"],
+      [["record-preparation", fehlt, "--result", "green", "--offen", "a"], "'--offen'", "'--open'"],
+      [["check-preparation", "--verwerfen"], "'--verwerfen'", "'--discard'"],
+      [["record-preparation", fehlt, "--result", "gruen"], "'gruen'", "'green'"],
+      [["record-preparation", fehlt, "--result", "gruen-offen"], "'gruen-offen'", "'green-open'"],
+      [["record-preparation", fehlt, "--result", "rot"], "'rot'", "'red'"],
+      [["record-preparation", fehlt, "--result", "green", "--fetch", "fehlgeschlagen"], "'fehlgeschlagen'", "'failed'"],
     ];
-    for (const [en, de] of paare) {
-      const soll = knoten("worktree.mjs", de, { cwd: repo });
-      assert.doesNotMatch(soll.stdout, /unbekanntes Kommando/, de.join(" "));
-      assert.deepEqual(knoten("worktree.mjs", en, { cwd: repo }), soll, en.join(" "));
+    for (const [args, alt, neu] of faelle) {
+      const res = knoten("worktree.mjs", args, { cwd: repo });
+      assert.equal(res.status, 1, `${args.join(" ")}: ${res.stdout}`);
+      const { ok, fehler } = JSON.parse(res.stdout.trim().split("\n").at(-1));
+      assert.equal(ok, false);
+      assert.ok(fehler.includes(alt) && fehler.includes(neu), `${args.join(" ")}: ${fehler}`);
+    }
+    assert.equal(existsSync(join(repo, ".claude", "push-vorbereitung.json")), false, "keine Abweisung hat etwas festgehalten");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("worktree.mjs: ein unbekannter Wert von --result oder --fetch nennt die englischen Werte", () => {
+  const repo = leeresProjekt("worktree-en-wert-");
+  try {
+    git(repo, "init", "-q", "-b", "main");
+    for (const [args, erwartet] of [
+      [["record-preparation", repo, "--result", "nix"], /green, green-open, red/],
+      [["record-preparation", repo, "--result", "green", "--fetch", "nix"], /ok, failed/],
+    ]) {
+      const res = knoten("worktree.mjs", args, { cwd: repo });
+      assert.equal(res.status, 1, res.stdout);
+      assert.match(JSON.parse(res.stdout.trim().split("\n").at(-1)).fehler, erwartet);
     }
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
 });
 
-test("worktree.mjs: create --prefix legt den Worktree unter dem Praefix an wie anlegen --praefix", () => {
+test("worktree.mjs: die Hilfe ist englisch, auch in einem deutschen Projekt, und die Texttabelle traegt keine", async () => {
+  const res = knoten("worktree.mjs", ["--help"], { cwd: repoRoot });
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /^worktree\.mjs \(claude-workflow-kit v[^)]+\) — worktree for the release skills$/m);
+  assert.ok(res.stdout.includes("--result <green|green-open|red>"), res.stdout);
+  assert.ok(res.stdout.includes("--fetch <ok|failed>"), res.stdout);
+  assert.doesNotMatch(res.stdout, /anlegen|gruen|fehlgeschlagen/);
+  const { TEXTE } = await import("../kit/texte/worktree.mjs");
+  assert.equal(Object.hasOwn(TEXTE.de, "hilfe"), false);
+  assert.equal(Object.hasOwn(TEXTE.en, "hilfe"), false);
+});
+
+test("worktree.mjs: create --prefix legt den Worktree unter dem Praefix an", () => {
   const repo = leeresProjekt("worktree-en-anlegen-");
   try {
     writeFileSync(join(repo, ".gitignore"), ".claude/*\n!.claude/workflow.config.json\n");

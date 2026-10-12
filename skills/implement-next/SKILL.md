@@ -118,11 +118,11 @@ Gelesen wird der Auftrag aus Schritt 0. Er trägt Aufgabe, Kommentare und Zusamm
 
 **Nur die Tests des Pakets laufen lassen.** Die volle Suite ist der teuerste Einzelposten einer Session — sie mehrfach zu starten, kostet Minuten und bringt nichts dazu:
 
-1. Während der Arbeit laufen nur die Tests, die das Paket berührt — gezielt per Datei oder Filter des Test-Runners, zum Beispiel `node --test test/<datei>.test.mjs`. Dazu gehören auch die Tests dessen, was von der geänderten Datei abhängt — nicht nur die der Datei selbst. Gibt es die dafür nur als vollständige Gruppe, fährt die Session sie über `node .claude/kit/checks.mjs run --bereich <name>`; das ist dann kein Verstoß gegen die Zehn-Minuten-Marke, sondern der vorgesehene Weg.
-2. Die volle Suite startet die Session nicht selbst. Der eine volle Lauf ist `node .claude/kit/checks.mjs run --abschluss <kartennummer>` vor dem Commit. Sein Block `Fuer den Abschlussbericht:` beginnt mit der Zeile `Wartezeit:`, die wie der Rest wortgetreu in den Bericht geht. Die Abschlussprüfung wiederholt eine rote Prüfung selbst einmal auf demselben Stand — die Session wiederholt sie nicht zusätzlich; eine `Gewackelt:`-Zeile geht wortgetreu in den Bericht, und das Paket geht wie gewohnt nach In review.
-3. Ein zweiter `checks.mjs run` auf **unverändertem Stand** fährt kein Kommando mehr: Das Kommando übernimmt das Ergebnis des vorigen Laufs — auch ein rotes — samt Exitcode und meldet das. `--frisch` erzwingt den echten Lauf.
+1. Während der Arbeit laufen nur die Tests, die das Paket berührt — gezielt per Datei oder Filter des Test-Runners, zum Beispiel `node --test test/<datei>.test.mjs`. Dazu gehören auch die Tests dessen, was von der geänderten Datei abhängt — nicht nur die der Datei selbst. Gibt es die dafür nur als vollständige Gruppe, fährt die Session sie über `node .claude/kit/checks.mjs run --area <name>`; das ist dann kein Verstoß gegen die Zehn-Minuten-Marke, sondern der vorgesehene Weg.
+2. Die volle Suite startet die Session nicht selbst. Der eine volle Lauf ist `node .claude/kit/checks.mjs run --finish <kartennummer>` vor dem Commit. Sein Block `Fuer den Abschlussbericht:` beginnt mit der Zeile `Wartezeit:`, die wie der Rest wortgetreu in den Bericht geht. Die Abschlussprüfung wiederholt eine rote Prüfung selbst einmal auf demselben Stand — die Session wiederholt sie nicht zusätzlich; eine `Gewackelt:`-Zeile geht wortgetreu in den Bericht, und das Paket geht wie gewohnt nach In review.
+3. Ein zweiter `checks.mjs run` auf **unverändertem Stand** fährt kein Kommando mehr: Das Kommando übernimmt das Ergebnis des vorigen Laufs — auch ein rotes — samt Exitcode und meldet das. `--fresh` erzwingt den echten Lauf.
 4. Hinweis dazu: Wer die Ausgabe eines langen Laufs mehrfach auswerten will, schreibt sie am einfachsten einmal in eine Datei außerhalb des Projektverzeichnisses (`<tmpdir>/…`, den Pfad wörtlich wie in der Transportregel) und liest sie daraus.
-5. Ist `checks.mjs run` rot, genügt nach der Korrektur derselbe Aufruf `checks.mjs run --abschluss <kartennummer>`: Er fährt selbst zuerst die zuletzt roten Prüfungen und erst, wenn sie grün sind, im selben Aufruf einmal den vollen Lauf. Gezielte Einzeltests während der Korrektur bleiben erlaubt.
+5. Ist `checks.mjs run` rot, genügt nach der Korrektur derselbe Aufruf `checks.mjs run --finish <kartennummer>`: Er fährt selbst zuerst die zuletzt roten Prüfungen und erst, wenn sie grün sind, im selben Aufruf einmal den vollen Lauf. Gezielte Einzeltests während der Korrektur bleiben erlaubt.
 
 **Entscheiden statt fragen.** Taucht beim Umsetzen — bei jedem Arbeitspaket, mit oder ohne `[Task]`-Praefix — eine Entscheidung auf, gilt `CLAUDE-workflow.md`, Abschnitt „Entscheiden statt fragen": Alles ausserhalb der Stopp-Klasse wird entschieden, im Format von dort, und steht im Abschlussbericht unter `### Entscheidungen`. Kein Halt, kein Label, kein Kommentar. Stopp-Klasse und Format stehen nur dort und werden hier nicht wiederholt.
 
@@ -155,7 +155,7 @@ Bleibt ein eigener Anteil zurueck, der sich nicht namentlich zuruecknehmen laess
 ### 4. Pruefungen vor dem Commit
 
 ```bash
-node .claude/kit/checks.mjs run --abschluss <kartennummer>
+node .claude/kit/checks.mjs run --finish <kartennummer>
 ```
 
 Das Kommando waehlt die betroffenen `buildChecks` aus und fuehrt genau sie aus.
@@ -164,14 +164,14 @@ uebergibt nie selbst einen. Weil der Aufruf **vor** dem Commit steht, misst `HEA
 genau dieses eine Arbeitspaket: Ein Fehlschlag gehoert dem Paket, das ihn ausgeloest
 hat — in beiden Betriebsarten und auch dann, wenn eine Session mehrfach festschreibt.
 
-**Gefahren wird die Paketstufe.** Auch `--stufe` uebergibt der Skill nie: Die Paketstufe
+**Gefahren wird die Paketstufe.** Auch `--stage` uebergibt der Skill nie: Die Paketstufe
 ist die Vorgabe, und sie ist hier die richtige — gemessen wird ein Arbeitspaket. Traegt
 eine Pruefung im Projekt die Stufe `push` oder `merge`, erscheint sie darum in der Liste
 `ausgelassen`, mit ihrer Stufe als Grund. Das ist **kein Mangel**, sondern ihr Zeitpunkt:
 Sie laeuft in `/push-main` beziehungsweise `/merge-production`. Im Bericht steht sie wie
 jede andere Auslassung.
 
-**`--abschluss <kartennummer>` — dies ist der Abschluss genau einer Karte.** Nur ein
+**`--finish <kartennummer>` — dies ist der Abschluss genau einer Karte.** Nur ein
 solcher Lauf darf die Pruefungen auslassen, die mit `nichtBeimAbschluss` als
 Zusammenspiel-Pruefung gekennzeichnet sind: Sie messen, was mehrere Pakete gemeinsam
 ergeben, und laufen vollstaendig vor dem Veroeffentlichen in `/push-main`. Die

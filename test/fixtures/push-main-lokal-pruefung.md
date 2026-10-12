@@ -8,12 +8,12 @@ Worktree**, und dort misst der Lauf sie. Genau diesen Stand misst **ein** Lauf:
 Der Lauf misst mit `--in` im Worktree (Issue #1372):
 
 ```bash
-node .claude/kit/checks.mjs run --in <pfad> --stufe push --wiederholen --since "$(git -C <pfad> merge-base HEAD origin/<mainBranch>)"
+node .claude/kit/checks.mjs run --in <pfad> --stage push --retry --since "$(git -C <pfad> merge-base HEAD origin/<mainBranch>)"
 ```
 
 `<mainBranch>` ist der Wert aus der Config (Default: `main`).
 
-**`--wiederholen`: eine rote Prüfung einmal auf demselben Stand** (Plan #1395, E2). Ist sie
+**`--retry`: eine rote Prüfung einmal auf demselben Stand** (Plan #1395, E2). Ist sie
 bei der Wiederholung grün, gilt sie als bestanden und hat gewackelt; der Berichtsblock
 trägt unter ihrer Zeile `gelaufen:` die Zeile `Gewackelt: <cmd> → erst rot, dann gruen`.
 Bleibt sie rot, ist sie rot wie bisher.
@@ -96,7 +96,7 @@ von `/issue-review` —, ergänzt den Befunde-Text je Fundblock um die Zeile
 Transportregel als eigene Datei außerhalb des Projektverzeichnisses:
 
 ```bash
-node .claude/kit/worktree.mjs im <pfad> -- node .claude/kit/findings.mjs record --file <tmpdir>/<id>-buchung.md --stage code --card <id>
+node .claude/kit/worktree.mjs in <pfad> -- node .claude/kit/findings.mjs record --file <tmpdir>/<id>-buchung.md --stage code --card <id>
 ```
 
 **Gebucht wird im Worktree**, weil der Vergleichsstand die Zusammenfassung des Prüflaufs

@@ -460,7 +460,7 @@ test("[1499] englisch: die Hilfe nennt die englischen Unterkommandos und Optione
     const hilfe = worktree(dir, WORKTREE, "--help").stdout;
     assert.match(hilfe, /— worktree for the release skills$/m);
     assert.match(hilfe, /^ {2}create \[--prefix <p>\] \[--ref <ref>\] \[--issue <n>\]/m);
-    assert.match(hilfe, /^ {2}record-preparation <path> --result <gruen\|gruen-offen\|rot>$/m, "die Werte von --result bleiben Vertrag");
+    assert.match(hilfe, /^ {2}record-preparation <path> --result <green\|green-open\|red>$/m, "die getippten Werte sind englisch (Issue #1564)");
     assert.match(hilfe, /^ {2}check-preparation \[--discard\]/m);
     assert.match(hilfe, /^ {2}in <path> -- <command> \[arguments\]/m);
     assert.match(hilfe, /^The last line of the output is always JSON/m);
@@ -478,7 +478,7 @@ test("[1499] englisch: die Fehler von worktree.mjs; die Feldnamen bleiben Vertra
     assert.equal(fehler("remove"), "remove needs the path of the worktree");
     assert.equal(fehler("return"), "return needs the path of the worktree");
     assert.equal(fehler("record-preparation"), "record-preparation needs the path of the worktree");
-    assert.equal(fehler("record-preparation", dir), "record-preparation needs --result <gruen|gruen-offen|rot>");
+    assert.equal(fehler("record-preparation", dir), "record-preparation needs --result <green|green-open|red>");
     assert.equal(fehler("in", dir), "in needs <path> -- <command> [arguments]");
     assert.equal(fehler("in", join(dir, "fehlt"), "--", "x"), `in: '${join(dir, "fehlt")}' is not a directory`);
     assert.match(fehler("in", dir, "--", "gibt-es-nicht-1499"), /^in: 'gibt-es-nicht-1499' could not be started \(/);
@@ -499,11 +499,13 @@ test("[1499] englisch: ein rotes installCommand meldet Kommando und Exit-Code", 
   });
 });
 
-test("[1499] die deutsche Vorgabe bleibt: ohne Spracheinstellung spricht worktree.mjs Deutsch", () => {
+// Die Hilfe ist seit Issue #1564 (Plan #1548 E7) in jedem Projekt englisch; die Meldungen
+// bleiben zweisprachig und nennen die englischen Befehlsnamen.
+test("[1499] die deutsche Vorgabe bleibt: ohne Spracheinstellung meldet worktree.mjs Deutsch", () => {
   mitWorktreeProjekt({ config: {} }, (dir) => {
-    assert.match(worktree(dir, WORKTREE, "--help").stdout, /— Worktree fuer die Release-Skills$/m);
-    assert.equal(worktree(dir, WORKTREE, "entfernen").stand.fehler, "entfernen braucht den Pfad des Worktrees");
-    assert.match(worktree(dir, WORKTREE, "gibtsnicht").stand.fehler, /^unbekanntes Kommando 'gibtsnicht' — bekannt sind anlegen, entfernen, im,/);
+    assert.match(worktree(dir, WORKTREE, "--help").stdout, /— worktree for the release skills$/m);
+    assert.equal(worktree(dir, WORKTREE, "remove").stand.fehler, "remove braucht den Pfad des Worktrees");
+    assert.match(worktree(dir, WORKTREE, "gibtsnicht").stand.fehler, /^unbekanntes Kommando 'gibtsnicht' — bekannt sind create, remove, in,/);
   });
 });
 
@@ -532,9 +534,10 @@ test("[1499] ein englisches Projekt sieht von worktree.mjs keine deutsche Meldun
     const werkzeug = join(kit, "worktree.mjs");
 
     const ausgaben = [
-      ["--help"], ["anlegen", "--praefix", "wt1499"], ["entfernen"], ["rueckweg"], ["vorbereitung-festhalten"],
-      ["vorbereitung-festhalten", dir], ["im", dir], ["im", join(dir, "fehlt"), "--", "x"],
-      ["im", dir, "--", "gibt-es-nicht-1499"], ["unbekannt"],
+      ["--help"], ["create", "--prefix", "wt1499"], ["remove"], ["return"], ["record-preparation"],
+      ["record-preparation", dir], ["in", dir], ["in", join(dir, "fehlt"), "--", "x"],
+      ["in", dir, "--", "gibt-es-nicht-1499"], ["unbekannt"], ["anlegen"],
+      ["record-preparation", dir, "--result", "nix"],
     ].map((args) => {
       const res = worktree(dir, werkzeug, ...args);
       return `${res.stdout}\n${res.stderr}`;

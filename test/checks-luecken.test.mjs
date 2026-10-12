@@ -287,7 +287,7 @@ test("ein unbekannter Befehl endet rot, nennt ihn und gibt die Nutzungshilfe aus
 
     assert.notEqual(res.status, 0);
     assert.match(res.stderr, /Unbekannter Befehl: 'planx'/);
-    assert.match(res.stderr, /Erwartet: plan, run oder bereiche/);
+    assert.match(res.stderr, /Erwartet: plan, run oder areas/);
     assert.match(res.stdout, /--since/, "ohne Nutzungshilfe bliebe der Leser ohne naechsten Schritt");
   });
 });

@@ -74,7 +74,7 @@ One call delivers the **verdict** (`may start` or `may not start` together with 
 Read all sections of the task in the brief again; a further `issue get` is not needed, and the output is not taken apart via `node -e` or `jq`. The acceptance criteria are the yardstick for the implementation, not the existing tests alone.
 
 ### 2. Implement against the tests
-<!-- de: cb9c487566b8 -->
+<!-- de: 5390b364429c -->
 
 - Implement until the tests written by `/implement-test` are green.
 - Do not touch test code — unless it is demonstrably worded wrongly (contradicts the acceptance criteria, tests the wrong thing). Then consult the human instead of a silent change.
@@ -100,7 +100,7 @@ Read all sections of the task in the brief again; a further `issue get` is not n
 If an own share remains that cannot be reverted by name — for instance a file that already carried foreign uncommitted changes before the session —, there is **no** halt: no move, no label, no comment, no commit. The session reports the file and ends; the package stays in In progress. Here too: `kit:protected` is never removed.
 
 ### 3. Checks before the commit
-<!-- de: a0b3ac8c25f4 -->
+<!-- de: 76dc51579cb6 -->
 
 ```bash
 node .claude/kit/checks.mjs run --finish <card number>

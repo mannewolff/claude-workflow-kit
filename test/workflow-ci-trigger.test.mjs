@@ -54,7 +54,7 @@ test("[ci-trigger] blob-sync-check holt die volle Historie und origin/main vor d
   const text = lies("blob-sync-check.yml");
   assert.match(text, /fetch-depth: 0/, "der Checkout holt nicht die volle Historie");
   const holen = text.indexOf("git fetch origin main");
-  const lauf = text.search(/checks\.mjs run --stufe push --since "\$\(git merge-base HEAD origin\/main\)"/);
+  const lauf = text.search(/checks\.mjs run --stage push --since "\$\(git merge-base HEAD origin\/main\)"/);
   assert.notEqual(holen, -1, "git fetch origin main fehlt");
   assert.notEqual(lauf, -1, "der Lauf der Stufe push mit dem Anker merge-base fehlt");
   assert.ok(holen < lauf, "git fetch origin main steht nicht vor dem Lauf der Stufe push");

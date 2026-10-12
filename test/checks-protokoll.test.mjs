@@ -2,7 +2,7 @@
 //
 // Nach einem roten Lauf kappte die Werkzeugausgabe der Session die Mitte, und checks.mjs
 // verwarf die Ausgabe des roten Kommandos. Die Session fuhr dann die ganze Suite mit
-// --frisch erneut, nur um sie in eine Datei umzuleiten — bei #1194 und #1195 jeweils zehn
+// --fresh erneut, nur um sie in eine Datei umzuleiten — bei #1194 und #1195 jeweils zehn
 // bis fuenfzehn Minuten. Jetzt liegt die Ausgabe jedes nicht gruenen Kommandos unter
 // .claude/checks-protokolle/, und Zusammenfassung wie Berichtszeile nennen den Pfad.
 
@@ -82,7 +82,7 @@ test("[1196] ein zweiter echter Lauf, der gruen ist, leert den Ordner", async ()
 
     // Der Schalter wird abgeschaltet, indem die Datei verschwindet.
     rmSync(join(dir, ".claude", "rot"));
-    const res = await run(dir, "--frisch");
+    const res = await run(dir, "--fresh");
 
     assert.equal(res.status, 0, res.stdout);
     assert.deepEqual(protokolle(dir), []);

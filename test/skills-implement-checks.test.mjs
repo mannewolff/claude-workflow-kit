@@ -122,16 +122,16 @@ function skillText(name) {
 }
 
 for (const name of ABSCHLUSS_SKILLS) {
-  test(`${name}: der Pruefaufruf vor dem Commit traegt --abschluss <kartennummer>`, () => {
+  test(`${name}: der Pruefaufruf vor dem Commit traegt --finish <kartennummer>`, () => {
     const text = skillText(name);
-    assert.match(text, /checks\.mjs run --abschluss <kartennummer>/,
+    assert.match(text, /checks\.mjs run --finish <kartennummer>/,
       "der Abschlusslauf nennt die Kartennummer nicht — dann rechnet die Kennzahl je Karte nicht");
   });
 
   test(`${name}: der Skill begruendet den Abschlusslauf`, () => {
     const text = skillText(name);
     assert.match(text, /Abschluss genau einer Karte/i,
-      "es fehlt der Satz, warum hier `--abschluss` gesetzt wird");
+      "es fehlt der Satz, warum hier `--finish` gesetzt wird");
   });
 }
 
@@ -143,18 +143,18 @@ for (const name of ["implement-next", "implement-ready", "implement-done"]) {
   });
 }
 
-test("local-check: der Pruefaufruf setzt kein --abschluss", () => {
+test("local-check: der Pruefaufruf setzt kein --finish", () => {
   const text = skillText("local-check");
   const zeilen = text
     .split("\n")
     .filter((z) => z.includes("checks.mjs run") && z.trimStart().startsWith("node "));
   assert.ok(zeilen.length > 0, "der Aufruf `checks.mjs run` fehlt ganz");
   for (const zeile of zeilen) {
-    assert.doesNotMatch(zeile, /--abschluss/,
+    assert.doesNotMatch(zeile, /--finish/,
       "`/local-check` misst mehrere Pakete gegen den Merge-Base — das ist kein Kartenabschluss");
   }
-  assert.match(text, /kein `--abschluss`/,
-    "es fehlt der Satz, warum hier kein `--abschluss` gesetzt wird — sonst liest ihn die naechste Session als Versehen");
+  assert.match(text, /kein `--finish`/,
+    "es fehlt der Satz, warum hier kein `--finish` gesetzt wird — sonst liest ihn die naechste Session als Versehen");
 });
 
 test("push-main: der rote Zweig nennt die Verursacher-Karten und die neue Karte", () => {
@@ -186,7 +186,7 @@ for (const { name, text } of SKILLS) {
 
   // Plan E11: Wer eine Datei anlegt, ordnet sie zu.
   test(`${name}: die Regel zu neu angelegten Dateien im vollen Umfang steht am Pruefschritt`, () => {
-    const pruefschritt = text.slice(text.indexOf("checks.mjs run --abschluss"),
+    const pruefschritt = text.slice(text.indexOf("checks.mjs run --finish"),
       text.search(/### \d+\. Lokal committen/));
     assert.match(pruefschritt, /voller Umfang/);
     assert.match(pruefschritt, /checkAreas/);

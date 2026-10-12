@@ -116,7 +116,7 @@ test("[1494] englisch: die Grenzen der Guetemessung und der Abschluss-Achse", as
     [{ buildChecks: [{ cmd: "a", stufe: "push", nichtBeimAbschluss: "zusammenspiel" }, "b"] }, [],
       "Error: The check 'a' carries notAtCompletion and stage 'push' — there it does not run at completion anyway. "
       + "The axis applies to the stage 'package'."],
-    [{ buildChecks: [{ cmd: "a", nichtBeimAbschluss: "zusammenspiel" }] }, ["--abschluss"],
+    [{ buildChecks: [{ cmd: "a", nichtBeimAbschluss: "zusammenspiel" }] }, ["--finish"],
       "Error: No entry of the stage 'package' runs at completion: each carries notAtCompletion or a quality block. "
       + "So the completion of a work package has no gate."],
   ];
@@ -196,7 +196,8 @@ test("[1494] englisch: die Ableitung aus den Importen", async () => {
 test("[1494] ohne Spracheinstellung bleiben die Meldungen deutsch", async () => {
   const leer = mkdtempSync(join(tmpdir(), "checks-deutsch-"));
   try {
-    assert.match(aufrufen(["--help"], { cwd: leer }).stdout, /— faellige Pruefungen\n/);
+    // Die Hilfe ist seit Issue #1564 (Plan #1548 E7) in jedem Projekt englisch.
+    assert.match(aufrufen(["--help"], { cwd: leer }).stdout, /— due checks\n/);
     assert.equal(fehler(aufrufen(["plan"], { cwd: leer })),
       `Fehler: Keine .claude/workflow.config.json unter ${leer} — bitte im Projekt-Root starten.`);
   } finally {
@@ -242,17 +243,17 @@ test("[1495] englisch: die Gruende nach Stufe und Abschluss", async () => {
     ],
   };
   await mitRepo({ config }, (dir) => inSprache("en", () => {
-    const abschluss = plan(dir, "--abschluss");
+    const abschluss = plan(dir, "--finish");
     assert.equal(eintrag(abschluss.ausgelassen, GRUEN("spaeter")).grund, "stage push, running paket");
     assert.equal(eintrag(abschluss.ausgelassen, GRUEN("zusammen")).grund, "completion run: interplay, runs at release");
     assert.equal(eintrag(abschluss.ausgelassen, GRUEN("guete")).grund, "completion run: the quality measurement needs the full test set");
     assert.match(eintrag(abschluss.ausgelassen, GRUEN("paket")).grund, /^empty package: no change since [0-9a-f]+$/);
 
-    const push = plan(dir, "--stufe", "push");
+    const push = plan(dir, "--stage", "push");
     assert.equal(eintrag(push.laufen, GRUEN("paket")).grund, "release stage: full scope");
     assert.equal(eintrag(push.laufen, GRUEN("guete")).grund, "quality measurement: always runs before the release");
 
-    const merge = plan(dir, "--stufe", "merge");
+    const merge = plan(dir, "--stage", "merge");
     assert.equal(eintrag(merge.laufen, GRUEN("frei")).grund, "approval stage: runs before every approval");
     assert.equal(eintrag(merge.ausgelassen, GRUEN("spaeter")).grund, "stage push, checked at push main");
 
@@ -270,17 +271,17 @@ test("[1495] englisch: Bereichslauf, unbekannter Bereich und breite Kommandos", 
     checkAreas: { a: ["src/a.mjs"], b: ["src/b.mjs"] },
   };
   await mitRepo({ config }, (dir) => inSprache("en", () => {
-    const ergebnis = plan(dir, "--bereich", "a");
+    const ergebnis = plan(dir, "--area", "a");
     assert.equal(eintrag(ergebnis.laufen, GRUEN("a")).grund, "area run a: area a touched");
     assert.deepEqual(ergebnis.zuschnitt, [
       `${GRUEN("a")} is assigned to every area and runs on every change — check the cut (checks.mjs areas)`,
       `${GRUEN("ab1")} is assigned to every area and runs on every change — check the cut (checks.mjs areas)`,
       `${GRUEN("ab2")} is assigned to every area and runs on every change — check the cut (checks.mjs areas)`,
     ]);
-    assert.equal(fehler(checks(dir, "plan", "--bereich", "x")), "Error: Unknown area 'x'. Configured in checkAreas: a, b.");
+    assert.equal(fehler(checks(dir, "plan", "--area", "x")), "Error: Unknown area 'x'. Configured in checkAreas: a, b.");
   }));
   await mitRepo({ config: { buildChecks: [GRUEN("a")] } }, (dir) => inSprache("en", () => {
-    assert.equal(fehler(checks(dir, "plan", "--bereich", "x")), "Error: Unknown area 'x'. Configured in checkAreas: none.");
+    assert.equal(fehler(checks(dir, "plan", "--area", "x")), "Error: Unknown area 'x'. Configured in checkAreas: none.");
   }));
 });
 
@@ -293,7 +294,7 @@ test("[1495] englisch: ungueltige pushPruefung", async () => {
   ];
   for (const [teil, erwartet] of faelle) {
     await mitRepo({ config: { buildChecks: [GRUEN("a")], ...teil } },
-      (dir) => inSprache("en", () => assert.equal(fehler(checks(dir, "plan", "--stufe", "push")), erwartet)));
+      (dir) => inSprache("en", () => assert.equal(fehler(checks(dir, "plan", "--stage", "push")), erwartet)));
   }
 });
 
@@ -313,11 +314,11 @@ test("[1495] englisch: die Guete-Zeile und das Guete-Feld ohne Lauf", async () =
   await mitRepo({ config }, async (dir) => {
     datei(dir, "neu.txt");
     await inSprache("en", async () => {
-      await run(dir, "--abschluss");
+      await run(dir, "--finish");
       assert.equal(zusammenfassung(dir).guete.grund,
         "skipped: completion run: the quality measurement needs the full test set");
       // Der Grund hinter dem Gedankenstrich kommt aus gueteAuswerten, der SYNC-Kopie von kit/night/session.mjs.
-      const res = await run(dir, "--stufe", "push");
+      const res = await run(dir, "--stage", "push");
       assert.ok(res.stdout.includes("Quality: 42 % reached, threshold 1 % — "), res.stdout);
     });
   });
@@ -351,7 +352,7 @@ test("[1495] ohne Spracheinstellung bleiben die Gruende und die Bremse deutsch",
   const config = { buildChecks: [GRUEN("paket"), { cmd: GRUEN("spaeter"), stufe: "push" }] };
   await mitRepo({ config }, (dir) => {
     assert.equal(eintrag(plan(dir).ausgelassen, GRUEN("spaeter")).grund, "Stufe push, gefahren wird paket");
-    assert.equal(eintrag(plan(dir, "--stufe", "push").laufen, GRUEN("paket")).grund, "Veroeffentlichungsstufe: voller Umfang");
+    assert.equal(eintrag(plan(dir, "--stage", "push").laufen, GRUEN("paket")).grund, "Veroeffentlichungsstufe: voller Umfang");
   });
 });
 
@@ -402,7 +403,7 @@ test("[1496] englisch: der Block fuer den Abschlussbericht eines gruenen Laufs m
   await mitRepo({ config }, async (dir) => {
     datei(dir, "neu.txt");
     await inSprache("en", async () => {
-      const res = await run(dir, "--abschluss", "7");
+      const res = await run(dir, "--finish", "7");
       assert.equal(res.status, 0, res.stdout + res.stderr);
       assert.ok(res.stdout.includes(`skipped: ${GRUEN("later")} — stage push, running paket\n`), res.stdout);
       const zeilen = block(res.stdout, "For the completion report:");
@@ -411,7 +412,7 @@ test("[1496] englisch: der Block fuer den Abschlussbericht eines gruenen Laufs m
       assert.equal(zeilen[2], `skipped: ${GRUEN("later")} → stage push, running paket`);
       assert.match(res.stdout, /\nSummary: .+checks-summary\.json\n$/);
 
-      const nochmal = await run(dir, "--abschluss", "7");
+      const nochmal = await run(dir, "--finish", "7");
       assert.match(nochmal.stdout, new RegExp(`State unchanged since \\S+: ${UEBERNAHME_MARKE} \\(gruen\\)\\. Check again with --fresh\\.`));
       assert.match(block(nochmal.stdout, "For the completion report:")[1], new RegExp(`\\(${UEBERNAHME_MARKE}\\) — full scope: 'neu\\.txt' matches no pattern$`));
     });
@@ -422,7 +423,7 @@ test("[1496] englisch: Wiederholung, Wackler, Ablage und Teillauf", async () => 
   await mitRepo({ config: { buildChecks: [WACKELT, ROT("b")] } }, async (dir) => {
     datei(dir, "neu.txt");
     await inSprache("en", async () => {
-      const res = await run(dir, "--abschluss", "8");
+      const res = await run(dir, "--finish", "8");
       assert.equal(res.status, 1);
       assert.ok(res.stdout.includes(`Retry: ${WACKELT} was red — repeated once on the same state\n`), res.stdout);
       assert.ok(res.stdout.includes("-> flaky (red first, then green)\n"), res.stdout);
@@ -434,7 +435,7 @@ test("[1496] englisch: Wiederholung, Wackler, Ablage und Teillauf", async () => 
       assert.match(zeilen[3], new RegExp(`^ran: ${esc(ROT("b"))} → rot, also on the retry, [\\d.]+ s — full scope: 'neu\\.txt' matches no pattern — output: \\.claude/`));
 
       datei(dir, "noch.txt");
-      const teil = await run(dir, "--abschluss", "8");
+      const teil = await run(dir, "--finish", "8");
       assert.ok(teil.stdout.includes(`\nPartial run: only the checks red last time: ${ROT("b")}\n`), teil.stdout);
       assert.equal(block(teil.stdout, "For the completion report:")[1], "Partial run: only the checks red last time");
       assert.ok(block(teil.stdout, "For the completion report:").some((z) => /^Flaky: .+ → red first, then green \(earlier run of \S+\)$/.test(z)), teil.stdout);
@@ -462,11 +463,11 @@ test("[1496] englisch: Stufe push mit Ankuendigung und Verursachern", async () =
   const config = { buildChecks: [GRUEN("a"), { cmd: ROT("p"), stufe: "push" }] };
   await mitRepo({ config }, async (dir) => {
     await inSprache("en", async () => {
-      const ohneAnker = await run(dir, "--stufe", "push", "--since", "gibtsnicht");
+      const ohneAnker = await run(dir, "--stage", "push", "--since", "gibtsnicht");
       assert.ok(ohneAnker.stdout.includes(`Stage push: in addition to the package stage runs ${ROT("p")}\n`), ohneAnker.stdout);
       assert.ok(ohneAnker.stdout.includes(
         `Causers (${ROT("p")}): causers cannot be determined: anchor 'gibtsnicht' cannot be resolved\n`), ohneAnker.stdout);
-      const ohneKarte = await run(dir, "--stufe", "push", "--since", "HEAD", "--frisch");
+      const ohneKarte = await run(dir, "--stage", "push", "--since", "HEAD", "--fresh");
       assert.match(ohneKarte.stdout, new RegExp(`Causers \\(.+\\): No completed card since \\S+ touches this check\\.\n`));
     });
   });
@@ -474,14 +475,14 @@ test("[1496] englisch: Stufe push mit Ankuendigung und Verursachern", async () =
 
 test("[1496] englisch: Fehler der Kommandozeile", async () => {
   await mitRepo({ config: { buildChecks: [GRUEN("a")] } }, (dir) => inSprache("en", () => {
-    assert.equal(fehler(checks(dir, "plan", "--abschluss", "x7")),
+    assert.equal(fehler(checks(dir, "plan", "--finish", "x7")),
       "Error: 'x7' is no card number for --finish. Expected: a number or nothing.");
-    assert.equal(fehler(checks(dir, "plan", "--abschluss", "--stufe", "push")),
+    assert.equal(fehler(checks(dir, "plan", "--finish", "--stage", "push")),
       "Error: --finish and --stage 'push' together: the completion of a card runs the stage 'package'. "
       + "Before publishing the full scope runs without --finish.");
-    assert.equal(fehler(checks(dir, "plan", "--abschluss", "--bereich", "a")),
+    assert.equal(fehler(checks(dir, "plan", "--finish", "--area", "a")),
       "Error: --finish and --area together: two restrictions in one run. The area run belongs in the work, --finish at its end.");
-    assert.equal(fehler(checks(dir, "plan", "--stufe", "bald")), "Error: Unknown stage 'bald'. Expected: paket, push, merge.");
+    assert.equal(fehler(checks(dir, "plan", "--stage", "bald")), "Error: Unknown stage 'bald'. Expected: package, push, merge.");
     assert.equal(fehler(checks(dir, "plan", "--gibts")), "Error: Unknown argument: '--gibts'");
     assert.equal(fehler(checks(dir, "areas", "x")), "Error: Unknown argument: 'x'");
     assert.equal(fehler(checks(dir, "plan", "--in", "fehlt")), "Error: --in 'fehlt' is not a directory.");
@@ -501,11 +502,11 @@ test("[1496] englisch: in keiner Ausgabe des Pruefkommandos steht ein deutsches 
       merke(aufrufen(["--help"], { cwd: dir }));
       merke(await run(dir));
       datei(dir, "neu.txt");
-      merke(await run(dir, "--abschluss", "9"));
-      merke(await run(dir, "--abschluss", "9"));
-      merke(await run(dir, "--stufe", "push", "--since", "gibtsnicht"));
-      merke(await run(dir, "--stufe", "push", "--frisch"));
-      for (const args of [["plan", "--abschluss", "x"], ["plan", "--stufe", "bald"], ["tanzen"], ["plan", "--in", "missing"]]) {
+      merke(await run(dir, "--finish", "9"));
+      merke(await run(dir, "--finish", "9"));
+      merke(await run(dir, "--stage", "push", "--since", "gibtsnicht"));
+      merke(await run(dir, "--stage", "push", "--fresh"));
+      for (const args of [["plan", "--finish", "x"], ["plan", "--stage", "bald"], ["tanzen"], ["plan", "--in", "missing"]]) {
         merke(checks(dir, ...args));
       }
     });
@@ -521,11 +522,11 @@ test("[1496] englisch: in keiner Ausgabe des Pruefkommandos steht ein deutsches 
 test("[1496] ohne Spracheinstellung bleibt der Block fuer den Abschlussbericht deutsch", async () => {
   await mitRepo({ config: { buildChecks: [GRUEN("a")] } }, async (dir) => {
     datei(dir, "neu.txt");
-    const res = await run(dir, "--abschluss", "7");
+    const res = await run(dir, "--finish", "7");
     const zeilen = block(res.stdout, "Fuer den Abschlussbericht:");
     assert.match(zeilen[0], /^Wartezeit: [\d.]+ s, zusammen [\d.]+ s in 1 Laeufen fuer Karte #7$/);
     assert.match(zeilen[1], /^gelaufen: .+ → gruen, [\d.]+ s — voller Umfang: 'neu\.txt' trifft kein Muster$/);
     assert.match(res.stdout, /\nZusammenfassung: /);
-    assert.equal(fehler(checks(dir, "tanzen")), "Fehler: Unbekannter Befehl: 'tanzen'. Erwartet: plan, run oder bereiche");
+    assert.equal(fehler(checks(dir, "tanzen")), "Fehler: Unbekannter Befehl: 'tanzen'. Erwartet: plan, run oder areas");
   });
 });

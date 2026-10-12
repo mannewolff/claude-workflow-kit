@@ -93,7 +93,7 @@ node .claude/kit/board.mjs issue move <id> in_progress
 What is read is the brief from step 1; a further `issue get` is not needed, and its output is not taken apart via `node -e` or `jq`. Read all sections of the task. The tests are written against the issue, not against the chat.
 
 ### 4. Write only the tests
-<!-- de: 340067438b67 -->
+<!-- de: c5bbbbb61db1 -->
 
 - Write test file(s) against the acceptance criteria — so that they fail at the current state of the code (red).
 - No production logic. No stub, no mock implementation that already makes the test green.

@@ -88,7 +88,7 @@ would shift every following step number by one and make every cross-reference to
 "step 6" wrong. The progress lines of the nine steps are unaffected by it.
 
 ### 1. Read the config
-<!-- de: 0c8684b377ce -->
+<!-- de: a9693a2ae637 -->
 
 The configuration lives in `.claude/workflow.config.json` (in the repository, applies to everyone) and is optionally supplemented by `.claude/workflow.config.local.json` (not in the repository, personal fields only: `reviewModel`, `reviewCommand`, `reviewScope`, `triggers`, token paths). Issue #207.
 
@@ -119,7 +119,7 @@ git log origin/main..HEAD --oneline
 Show which commits will be pushed. The human should know what goes out.
 
 ### 3. Create the worktree and merge it with `origin`
-<!-- de: 00db96d8a40b -->
+<!-- de: 342b8cf0dc88 -->
 
 > `Step 3 of 9 — Worktree (running)`
 
@@ -227,7 +227,7 @@ reason: a check that fails on missing dependencies is never reported as a green 
 skipped.
 
 ### 4. Create release files (if `RELEASING.md` exists)
-<!-- de: b540acd1c7bf -->
+<!-- de: d429ed46e0dd -->
 
 > `Step 4 of 9 — Create release files (running)`
 
@@ -252,7 +252,7 @@ The skill itself knows no project-specific version or release logic; it lives ex
 the `RELEASING.md` of the respective repo.
 
 ### 5. The one check run (gate — before commit and push)
-<!-- de: 43bf83022f15 -->
+<!-- de: d5d652ac94af -->
 
 > `Step 5 of 9 — Check run (running)`
 
@@ -384,7 +384,7 @@ nothing to commit; the procedure goes on without a commit to step 7, and the pus
 the commits from step 2.
 
 ### 7. Push
-<!-- de: 2e8c2c9b1588 -->
+<!-- de: bb51b208f7c0 -->
 
 > `Step 7 of 9 — Push (running)`
 
@@ -417,7 +417,7 @@ taken-over preparation with `check-preparation --discard`, as described in step 
 push it stays for the next attempt.
 
 ### 8. Way back, catching up, tearing down the worktree
-<!-- de: 470cbb3683e2 -->
+<!-- de: a31d9b37951a -->
 
 > `Step 8 of 9 — Way back and teardown (running)`
 
@@ -500,7 +500,7 @@ Pointer to the next step:
 > "Commit batch pushed. If the test server pulls automatically: check there. Then, if wanted, \`merge production\` for the PR to production."
 
 ## Path via the build service (`pushPruefung`)
-<!-- de: 863c0fee93da -->
+<!-- de: 0d428c1b1d4e -->
 
 Applies only if `checks.mjs plan --stage push` in step 1 reports `pushPruefung` as an object
 with `"ort": "buildDienst"` (Issue #1216, Plan #1199 E14). The full run then takes place in the
@@ -595,7 +595,7 @@ checks: `<hash> — covered by: build service, check branch <zweig> (green, <poi
 The CI note is dropped — the CI gated before the push.
 
 ## Emergency path (`notfall`)
-<!-- de: ffeb45ee8a6c -->
+<!-- de: 89a5afce85c2 -->
 
 `/push-main notfall` publishes when the build service fails and the code host protects the main
 branch (Plan #1405, A6). Only the owner of the repository gets past the protection: on GitHub
@@ -657,7 +657,7 @@ can check it afterwards as soon as it runs again, with the command
 exception.
 
 ## Mode `vorbereiten` (unattended)
-<!-- de: 9516757db5ef -->
+<!-- de: d98802c758e3 -->
 
 The night runner starts `/push-main vorbereiten` at the end of a run when a chain has reached the
 goal "publication prepared" (Plan #1243, A5). The session runs in the main copy while the runner
@@ -677,7 +677,7 @@ before publishing without humans and without a push, and records the result. In 
 
   Then `git -C <path> rebase origin/<mainBranch>` as above. **If the fetch fails**, that is no
   abort: the rebase goes onto the existing reference `origin/<mainBranch>`, the run goes on and
-  passes `--fetch fehlgeschlagen` when recording. A rebase conflict ends as above without
+  passes `--fetch failed` when recording. A rebase conflict ends as above without
   recording; the runner then reads no preparation of this run.
 - **Step 4:** Without `RELEASING.md` it is dropped as above (E15).
 - **Step 5:** the full check run of the push stage. On the path via the build service, step 5 is
@@ -691,14 +691,14 @@ before publishing without humans and without a push, and records the result. In 
 **Instead of step 7** the session records the result, also after a red check run:
 
 ```bash
-node .claude/kit/worktree.mjs record-preparation <path> --result <gruen|gruen-offen|rot>
+node .claude/kit/worktree.mjs record-preparation <path> --result <green|green-open|red>
 ```
 
-- After a failed fetch additionally `--fetch fehlgeschlagen`.
+- After a failed fetch additionally `--fetch failed`.
 - The pre-push step from `RELEASING.md` and a UI check that is needed according to
   `/local-check`, step 3, each go along as `--open "<text>"`. **They are not started** (E9):
   whether a pre-push step pushes cannot be checked at night. With an open item the result is
-  `gruen-offen`.
+  `green-open`.
 - The build service item is set by the command itself — the session does not pass it.
 
 **Then step 8 without catching up:** `return` and `remove` as above, `catch-up-check` and the

@@ -6,7 +6,7 @@
 //
 // Aufgerufen wird das ECHTE Werkzeug aus kit/ mit cwd im Fixture, im selben Prozess
 // ueber `aufrufen` (Issue #1213, Plan #1199 E6) — nach demselben Muster wie
-// test/helpers/aufwand-fixture.mjs. Board-Adapter und `checks.mjs bereiche` sind
+// test/helpers/aufwand-fixture.mjs. Board-Adapter und `checks.mjs areas` sind
 // Attrappen-Funktionen statt Kindprozessen; dass die Vorgabe wirklich die Kommandos
 // unter `.claude/kit/` startet, belegt test/ablauf-wirksamkeit-cli.test.mjs.
 //
@@ -108,14 +108,14 @@ function fakeBoard({ verlaeufe = {}, exit = 0, stderr = "" }, aufrufe) {
 }
 
 /**
- * Der Fake fuer `checks.mjs bereiche` (Issue #1005), wie das Fake-Board eine Attrappe an
+ * Der Fake fuer `checks.mjs areas` (Issue #1005), wie das Fake-Board eine Attrappe an
  * der Stelle des Kindprozesses. `exit` != 0 laesst den Aufruf mit stderr scheitern, sonst
  * gibt er `ausgabe` als JSON aus.
  */
 function fakeChecks({ ausgabe, exit = 0, stderr = "" }) {
   return (args) => {
     if (exit) return { status: exit, stdout: "", stderr: stderr || "Fehler" };
-    if (args[0] !== "bereiche") return { status: 2, stdout: "", stderr: `unerwartet: ${args.join(" ")}` };
+    if (args[0] !== "areas") return { status: 2, stdout: "", stderr: `unerwartet: ${args.join(" ")}` };
     return { status: 0, stdout: JSON.stringify(ausgabe), stderr: "" };
   };
 }
@@ -138,7 +138,7 @@ export function boardAufrufe(dir) {
  * `bewegungen` sind Zeilen fuer `.claude/bewegungen.tsv` (siehe `bewegung`);
  * `board` legt das Fake-Board an: `{ verlaeufe }` fuer Verlaeufe je Kartennummer,
  * `{ exit, stderr }` fuer einen scheiternden `issue activity`-Aufruf. `zuschnitt` legt
- * den Fake fuer `checks.mjs bereiche` an: `{ ausgabe }` fuer dessen JSON, `{ exit, stderr }`
+ * den Fake fuer `checks.mjs areas` an: `{ ausgabe }` fuer dessen JSON, `{ exit, stderr }`
  * fuer einen scheiternden Aufruf. Ohne `zuschnitt` fehlt die Datei, und der Aufruf scheitert.
  */
 export function mitProjekt({ zeilen = [], config, bewegungen, board, zuschnitt }, fn) {

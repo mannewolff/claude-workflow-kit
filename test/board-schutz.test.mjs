@@ -408,7 +408,7 @@ test("[schutz] einrichten: offen ohne Lauf binnen 5 Minuten, mit dem offenen Sch
   const h = probeHost({ ciFolge: [LEER] });
   const ergebnis = await einrichten(h, CONFIG, ZWEIG, uhr());
   assert.equal(ergebnis.ergebnis, "offen");
-  assert.match(ergebnis.schritt, /checks\.mjs run --stufe push --since "\$\(git merge-base HEAD origin\/main\)"/);
+  assert.match(ergebnis.schritt, /checks\.mjs run --stage push --since "\$\(git merge-base HEAD origin\/main\)"/);
   assert.match(ergebnis.schritt, /kit-pruefung/);
   assert.equal(h.aufrufe.some((a) => a.startsWith("upsertRuleset")), false);
 });

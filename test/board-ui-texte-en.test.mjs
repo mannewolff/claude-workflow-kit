@@ -34,7 +34,7 @@ afterEach(() => spracheFestlegen(null));
 
 test("[1500] die Texttabelle von board-ui.mjs hat in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
   assert.deepEqual(pruefeParitaet(TEXTE), []);
-  for (const k of ["hilfe", "archiviert", "titelLeer", "statusUngueltig", "issueFehlt", "goCommit", "untertitel"]) {
+  for (const k of ["archiviert", "titelLeer", "statusUngueltig", "issueFehlt", "goCommit", "untertitel"]) {
     assert.ok(Object.hasOwn(TEXTE.de, k), `die Tabelle traegt "${k}"`);
   }
 });
@@ -53,9 +53,18 @@ test("[1500] englische Stichproben: Hilfe und Seite", () => {
   assert.doesNotMatch(html, /<span class="subtitle" id="board-subtitle">Lokaler Modus/, "der Kopf der Seite ist englisch");
 });
 
+// Die Hilfe gibt es genau einmal, englisch, in jedem Projekt (Issue #1564, Plan #1548 E7).
+test("[1564] die Hilfe ist englisch, auch in einem deutschen Projekt, und steht nicht in der Texttabelle", () => {
+  spracheFestlegen("de");
+  assert.match(helpText(), /a simple viewer/);
+  assert.match(helpText(), /^Usage \(from the project root\):$/m);
+  assert.doesNotMatch(helpText(), /ein einfacher Viewer|Nutzung|Parameter:/);
+  assert.equal(Object.hasOwn(TEXTE.de, "hilfe"), false);
+  assert.equal(Object.hasOwn(TEXTE.en, "hilfe"), false);
+});
+
 test("[1500] die deutsche Vorgabe bleibt: mit Deutsch spricht die Oberflaeche wie bisher", () => {
   spracheFestlegen("de");
-  assert.match(helpText(), /ein einfacher Viewer/);
   const html = seite();
   assert.match(html, /<html lang="de">/);
   assert.match(html, />Lokaler Modus — Dateien in issues\/</);

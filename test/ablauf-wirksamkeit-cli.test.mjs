@@ -1,7 +1,7 @@
 // Ablauf-Pruefung: Die Vorgaben fuer Board und checks.mjs starten die Kommandos unter .claude/kit/ als Kindprozess, und Exit-Code und Fehlerzeile setzt nur die Kommandozeile.
 //
 // Die uebrigen Tests von kit/effectiveness.mjs rufen das Werkzeug im selben Prozess ueber
-// `aufrufen` und geben Board und `checks.mjs bereiche` als Attrappen-Funktionen
+// `aufrufen` und geben Board und `checks.mjs areas` als Attrappen-Funktionen
 // (Issue #1213, Plan #1199 E6). Was dabei ungeprueft bliebe, belegt diese Datei an
 // echten Prozessen: dass ohne Attrappe genau die Kommandos des Projekts unter
 // `.claude/kit/` starten — der Board-Adapter mit EINEM Sammelaufruf (Issue #788) —, und
@@ -81,7 +81,7 @@ test("[wirksamkeit-1213] ohne Attrappe starten Board und checks.mjs aus .claude/
     assert.equal(e.bereiche.vermerk ?? null, null, "der Zuschnitt aus checks.mjs kam nicht an");
     assert.equal(e.ruecklauf.status, "berechnet", "der Verlauf aus dem Board kam nicht an");
     assert.deepEqual(aufrufe("board"), ["issue activity --ids 12"]);
-    assert.deepEqual(aufrufe("checks"), ["bereiche"]);
+    assert.deepEqual(aufrufe("checks"), ["areas"]);
   });
 });
 

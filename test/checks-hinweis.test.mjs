@@ -129,7 +129,7 @@ test("der Abschlusslauf faehrt einen Hinweis-Eintrag mit always", async () => {
     datei(dir, "frontend/src/App.tsx");
     werkzeug(dir, ["Hinweis: kit/a.mjs:4 — pfade: Schraegstrich"]);
 
-    const res = await run(dir, "--abschluss", "1155");
+    const res = await run(dir, "--finish", "1155");
 
     assert.equal(res.status, 0, res.stdout + res.stderr);
     const summary = zusammenfassung(dir);
@@ -142,7 +142,7 @@ test("die Push-Stufe faehrt einen Hinweis-Eintrag mit always", async () => {
   await mitRepo({ config: config() }, async (dir) => {
     werkzeug(dir, ["Hinweis: kit/a.mjs:4 — pfade: Schraegstrich"]);
 
-    const res = await run(dir, "--stufe", "push");
+    const res = await run(dir, "--stage", "push");
 
     assert.equal(res.status, 0, res.stdout + res.stderr);
     const summary = zusammenfassung(dir);

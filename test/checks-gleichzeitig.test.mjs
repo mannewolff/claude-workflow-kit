@@ -155,7 +155,7 @@ test("--help nennt KIT_CHECKS_GLEICHZEITIG und die Vorgabe 2", async () => {
   const res = aufrufen(["--help"]);
   assert.equal(res.status, 0);
   assert.match(res.stdout, /KIT_CHECKS_GLEICHZEITIG/);
-  assert.match(res.stdout, /Vorgabe 2;/);
+  assert.match(res.stdout, /default 2;/);
   assert.doesNotMatch(res.stdout, /sequenziell/, "die Hilfe spricht noch vom sequenziellen Lauf");
 });
 

@@ -39,7 +39,7 @@
  * Dateiliste mit denselben Blob-Hashes, dieselbe Config — und eine abgeschlossene
  * Zusammenfassung. Dann laeuft kein Kommando, und `run` schreibt denselben Befund
  * mit frischem Zeitpunkt erneut, damit das Commit-Gate seinen Nachweis behaelt.
- * `--frisch` erzwingt den echten Lauf. Das ist keine Bequemlichkeit, sondern
+ * `--fresh` erzwingt den echten Lauf. Das ist keine Bequemlichkeit, sondern
  * dieselbe Erfahrung wie oben: Die Regel „Ausgabe einmal in eine Datei, daraus
  * lesen" (Issue #835) steht seit Langem im Skilltext, und die Sessions starteten
  * denselben gruenen Lauf trotzdem drei- bis neunmal je Paket. Ein Ergebnis
@@ -55,7 +55,7 @@
  * ein falsches Gruen ein gescheitertes Paket nach In review traegt.
  *
  * Neben den Bereichen waehlt das Kommando nach einer STUFE aus (Issue #758):
- * `--stufe paket|push|merge` sagt, welcher Zeitpunkt gefahren wird. Die Stufen
+ * `--stage package|push|merge` sagt, welcher Zeitpunkt gefahren wird. Die Stufen
  * sind kumulativ — `push` faehrt `paket` mit —, ein Eintrag
  * ohne `stufe` gilt als Paketstufe, und damit bleibt jede bestehende Config
  * unveraendert. Die beiden Achsen beantworten Verschiedenes: `areas`/`always`
@@ -70,7 +70,7 @@
  * Pruefungen der Stufe `merge` und die der Paketstufe nach Bereichen ueber die Dateien
  * seit dem Anker; die Stufe `push` bleibt mit Grund aus.
  *
- * `--bereich <name>` faehrt die Pruefgruppen genau eines `checkAreas`-Bereichs
+ * `--area <name>` faehrt die Pruefgruppen genau eines `checkAreas`-Bereichs
  * (Issue #922, Plan #917, E3). Es ist der vorgesehene Weg, wenn fuer die
  * geaenderte Datei nur die vollstaendige Gruppe existiert — dann ist der
  * Gruppenlauf kein Verstoss gegen die Zehn-Minuten-Marke, sondern der Fall, fuer
@@ -82,7 +82,7 @@
  * eine Pruefung den Abschluss eines einzelnen Arbeitspakets nicht tragen muss, weil
  * sie nur das Zusammenspiel prueft (`zusammenspiel`) oder ihren Befund aus der
  * vollstaendigen Testmenge gewinnt (`volleTestmenge`). Gewirkt wird sie allein durch
- * `--abschluss [n]`, den Schalter, den der Abschluss genau einer Karte setzt — dort
+ * `--finish [n]`, den Schalter, den der Abschluss genau einer Karte setzt — dort
  * bleibt sie aus, samt Guetemessung, und vor dem Veroeffentlichen laeuft beides wieder.
  * Nennt der Eintrag dazu `abschlussBereiche` (Issue #1531, Plan #1529), laeuft er beim
  * Abschluss doch, sobald das Paket einen dieser Bereiche direkt beruehrt — ueber ein Muster
@@ -97,24 +97,24 @@
  * Buchhaltung ueber einen bereits gefallenen Befund — ihr eigenes Scheitern steht als
  * Grund an der Stelle der Karten und aendert am Ausgang des Laufs nichts.
  *
- * Faehrt der Lauf mit `--abschluss` oder `--wiederholen`, wird eine rote Pruefung genau
+ * Faehrt der Lauf mit `--finish` oder `--retry`, wird eine rote Pruefung genau
  * EINMAL auf demselben Stand wiederholt (Issue #1396, Plan #1395, E2–E8): unmittelbar im
  * selben Ablaufplatz, bevor der Rest der Phase ueber Abbruch oder Weiterlauf entscheidet.
  * Rot und Gruen ist ein Wackler — der Eintrag bleibt `gruen` und traegt `gewackelt`, die
  * Ausgabe des ersten Laufs liegt mit dem Zusatz `-erstlauf` in der Ablage. Rot und Rot
  * bleibt `rot` und traegt `wiederholt: true`. Einen dritten Ergebniswert gibt es nicht:
  * Gate und Runner lesen allein `ergebnis !== "gruen"`. Die Stufe allein loest nichts aus —
- * der Job des Build-Dienstes faehrt `--stufe push` ohne den Schalter und wiederholt nicht,
+ * der Job des Build-Dienstes faehrt `--stage push` ohne den Schalter und wiederholt nicht,
  * und jeder Lauf waehrend der Umsetzung laeuft wie bisher genau einmal.
  *
- * Auch hier ist die Richtung einseitig: Wer `--abschluss` VERGISST, prueft mehr. Darum
+ * Auch hier ist die Richtung einseitig: Wer `--finish` VERGISST, prueft mehr. Darum
  * bleibt jeder Commit von Hand und jeder Aufruf aus `/local-check` unveraendert, und
  * darum haengt das Gate des Abschlusses (mindestens ein Paketstufen-Eintrag, der weder
  * `nichtBeimAbschluss` noch `guete` traegt) am Schalter statt an jedem Aufruf.
  *
- * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>] [--stufe <s>] [--bereich <name>] [--abschluss [n]] [--in <pfad>]
- *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stufe <s>] [--bereich <name>] [--abschluss [n]] [--wiederholen] [--frisch] [--in <pfad>]
- *                          node .claude/kit/checks.mjs bereiche
+ * Aufruf im Projekt-Root:  node .claude/kit/checks.mjs plan [--since <ref>] [--stage <s>] [--area <name>] [--finish [n]] [--in <pfad>]
+ *                          node .claude/kit/checks.mjs run  [--since <ref>] [--stage <s>] [--area <name>] [--finish [n]] [--retry] [--fresh] [--in <pfad>]
+ *                          node .claude/kit/checks.mjs areas
  *
  * `bereiche` (Issue #1004, Plan #1001) rechnet keine Auswahl, sondern den Zuschnitt: je
  * Bereich, in wie vielen Pruefkommandos er steht, und das Inventar der versionierten
@@ -221,7 +221,7 @@ const AUSFUEHRUNGEN_DATEI = ".claude/ausfuehrungen.tsv";
 
 // Die Ausgabe jedes nicht gruenen Kommandos des letzten echten Laufs (Issue #1196). Die
 // Werkzeugausgabe einer Session kappt die Mitte, und ohne die Datei fuhr sie nach einem
-// Rot die ganze Suite mit --frisch erneut, nur um sie umzuleiten. Wie die Zusammenfassung
+// Rot die ganze Suite mit --fresh erneut, nur um sie umzuleiten. Wie die Zusammenfassung
 // ohne Historie: Jeder echte Lauf leert den Ordner, ein uebernommener laesst ihn stehen.
 // SYNC: kit/night.mjs nimmt den Ordner im Rest-Guard aus (gitReste).
 const PROTOKOLL_ORDNER = ".claude/checks-protokolle";
@@ -276,6 +276,9 @@ export function vergleicheText(a, b) {
 // Pruefung ist faellig, sobald der Index ihrer Stufe den der gefahrenen nicht
 // uebersteigt — daraus folgt die Kumulation, ohne sie zweitens aufzuschreiben.
 const STUFEN = ["paket", "push", "merge"];
+
+/** Der getippte Wert von `--stage` zu einer Stufe der Config (Issue #1564, Plan #1548 E5). */
+const stufeGetippt = (stufe) => (stufe === "paket" ? "package" : stufe);
 
 // Die Werte der vierten Achse `nichtBeimAbschluss` (Issue #946, Plan #944). Sie ist
 // keine zweite Stufe: Die Stufe sagt, WANN eine Pruefung faellig ist, diese Achse sagt,
@@ -391,208 +394,6 @@ const VERSUCHE_MARKE = "-mal gleich gescheitert";
  */
 export const TEXTE = Object.freeze({
   de: Object.freeze({
-    hilfe: `checks.mjs (claude-workflow-kit v{version}) — faellige Pruefungen
-
-  node checks.mjs plan [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]] [--in <pfad>]
-  node checks.mjs run  [--since <ref>] [--stufe <stufe>] [--bereich <name>] [--abschluss [n]] [--wiederholen] [--frisch] [--in <pfad>]
-  node checks.mjs bereiche
-
-plan  Gibt als JSON aus, welche buildChecks nach dem aktuellen Arbeitspaket
-      laufen muessen und welche ausgelassen werden koennen — jede Entscheidung
-      mit Grund. Ausgefuehrt wird nichts.
-run   Fuehrt genau diese Auswahl in Phasen aus und schreibt die
-      Zusammenfassung nach {zusammenfassung}. Vorab laufen die mit 'vorab'
-      gekennzeichneten Pruefungen nacheinander in Config-Reihenfolge; nach
-      einem Rot dort startet keine weitere Pruefung. Dann laufen die mit
-      'gleichzeitig' gekennzeichneten Pruefungen gleichzeitig, hoechstens
-      {gleichzeitigEnv} auf einmal (Vorgabe {gleichzeitigVorgabe}; 1 faehrt sie
-      nacheinander; gemessen in Issue #1119: mit 2 am schnellsten und als
-      einziger Wert stabil). Diese Phase laeuft vollstaendig durch, damit alle roten
-      bekannt sind; ihre Ausgabe steht je Pruefung als geschlossener Block in
-      Config-Reihenfolge, und die Berichtszeile vermerkt bei der Dauer
-      '({nebenMarke})'. Danach laufen die uebrigen nacheinander in
-      Config-Reihenfolge und brechen beim ersten roten Check ab; nach einem Rot
-      einer Phase davor starten sie nicht. Ein roter Lauf endet mit Exit
-      ungleich 0.
-      Neben dem Rueckgabewert prueft 'run' die Ausgabe jedes Kommandos auf eine
-      feste Liste allgemeiner Fehlermerkmale ({fehlermerkmale}). Ein
-      Treffer faerbt die Pruefung rot, auch bei Rueckgabewert 0 — kein
-      Config-Feld schaltet das ab. Ein falsches Rot ist die sichere Richtung:
-      Das Kommando irrt nur in eine Richtung, mehr pruefen.
-      Jedes rote Kommando traegt in laufen[] seinen Fehlerabdruck ('fehler'):
-      die gescheiterten Testnamen (node:test, Jest/Vitest, Maven Surefire),
-      sonst die erste Fehlerzeile, ohne Zeitstempel, Dauern, temporaere Pfade
-      und Zufallswerte. Das Feld 'festgefahren' der Zusammenfassung zaehlt je
-      Kommando die gleich gescheiterten echten Laeufe hintereinander; gruen oder
-      ein anderer Abdruck setzt die Folge zurueck, eine Uebernahme zaehlt nicht.
-      Ab night.festgefahrenNach gleichen Fehlschlaegen (Vorgabe
-      {festgefahrenVorgabe}) gilt die Pruefung als festgefahren. Unbeaufsichtigt
-      (KIT_AGENT_MODEL gesetzt) kuendigt der Lauf das als letzten erlaubten
-      Versuch an, und der naechste Aufruf faehrt nichts mehr, auch mit
-      --frisch: Er gibt '{festgefahrenMarke} <Kommando> — <Fehler>' aus, laesst
-      die vorige Zusammenfassung stehen, ergaenzt allein
-      'festgefahren.ausgeloest' und endet mit Exit 3. Interaktiv bremst nichts;
-      der Lauf gibt nur 'Hinweis: festgefahren an <Kommando> — <n>-mal gleich
-      gescheitert (<Fehler>)' auf stderr aus.
-      Die Zusammenfassung BEGLEITET den Lauf: Sie entsteht vor dem ersten
-      Kommando und wird vor jedem weiteren und nach jedem gleichzeitig
-      gelaufenen ueberschrieben; ein laufendes Kommando steht darin noch auf
-      '{nichtGestartet}'. Erst die letzte Fassung
-      traegt 'abgeschlossen': true. Ein Lauf, der an der Uhr oder mit seiner
-      Session stirbt, hinterlaesst damit einen Stand, der nie ganz gruen ist.
-      Die Ausgabe jedes nicht gruenen Kommandos liegt vollstaendig unter
-      {protokollOrdner}/; die Berichtszeile und das Feld 'protokoll' in der
-      Zusammenfassung nennen den Pfad. Jeder echte Lauf leert den Ordner, ein
-      uebernommener laesst ihn stehen.
-      Hat sich der Stand seit dem letzten Lauf nicht geaendert — gleicher Anker,
-      gleiche Stufe, dieselben Dateien mit denselben Blob-Hashes, dieselbe
-      Config —, laeuft kein Kommando: 'run' uebernimmt das Ergebnis des
-      vorigen Laufs (auch ein rotes) samt Exitcode und schreibt den Nachweis
-      mit frischem Zeitpunkt neu. '--frisch' erzwingt den echten Lauf.
-      War der vorige Lauf ROT und hat sich seither nur der Stand geaendert,
-      nicht die Auswahl — gleicher Anker, gleiche Stufe, dieselbe Config,
-      dieselben ausgewaehlten Kommandos in derselben Reihenfolge, aber andere
-      Dateien oder Blob-Hashes —, faehrt 'run' zuerst einen TEILLAUF mit nur
-      den zuletzt roten Kommandos, nach denselben Achsen wie der volle Lauf.
-      Werden sie gruen, folgt im selben Aufruf genau einmal der volle Lauf als
-      Nachweis; bleiben sie rot, endet der Aufruf rot, die uebrigen stehen auf
-      '{nichtGestartet}', die Zusammenfassung traegt 'teillauf': true und der
-      Berichtsblock vor den Zeilen 'Teillauf: nur die zuletzt roten
-      Pruefungen'. Nach einer Korrektur genuegt darum derselbe Aufruf wie
-      zuvor. '--frisch' ueberspringt den Teillauf und faehrt sofort alles.
-      Eine haengende Pruefung wird abgebrochen: Grenze ist das Fuenffache des
-      Medians ihrer gruenen Laeufe aus .claude/ausfuehrungen.tsv, mindestens
-      3 min, ohne Historie 15 min. Die ganze Prozessgruppe bekommt SIGTERM, nach
-      5 s SIGKILL; die Pruefung steht rot mit 'haengend: nach <s> s Grenze
-      abgebrochen' (Feld 'haengend' in laufen[]).
-      Mit --abschluss oder --wiederholen wird jede rote Pruefung genau einmal
-      auf demselben Stand wiederholt, sofort und vor dem Abbruch der Phase:
-      'Wiederholung: <Kommando> war rot — einmal auf demselben Stand
-      wiederholt'. Rot und gruen endet mit '-> gewackelt (erst rot, dann
-      gruen)': Ergebnis 'gruen', Feld 'gewackelt' ({ erstDauerMs, protokoll }),
-      die Ausgabe des ersten Laufs unter {protokollOrdner}/ mit dem Zusatz
-      '-erstlauf' und im Bericht die Zeile 'Gewackelt: <Kommando> → erst rot,
-      dann gruen — Ausgabe des ersten Laufs: <pfad>'. Rot und rot endet mit
-      '-> rot, auch bei der Wiederholung': Ergebnis 'rot', Feld 'wiederholt'.
-      'dauerMs' ist die Summe beider Laeufe; die Bremse zaehlt das Paar als
-      einen Versuch. Hinweis-Pruefungen werden nie wiederholt. Teillauf und
-      voller Lauf wiederholen je hoechstens einmal.
-      Mit --abschluss <n> fuehrt die Zusammenfassung die Wackler der Karte
-      (Feld 'gewackeltKarte': [{ cmd, zeitpunkt, karte }]), fortgeschrieben
-      ueber die Laeufe derselben Karte und bei anderer Karte neu begonnen;
-      ohne Kartennummer fehlt das Feld. Ein Fall aus einem frueheren Lauf steht
-      im Bericht als 'Gewackelt: <Kommando> → erst rot, dann gruen (früherer
-      Lauf vom <zeitpunkt>)'.
-      Als rotes Kommando nennt jede Meldung das erste mit Ergebnis 'rot', erst
-      ohne ein solches das erste ungruene.
-      Am Ende steht der Block 'Fuer den Abschlussbericht:' mit fertigen Zeilen
-      ('gelaufen: <Kommando> → <Ergebnis>, <Dauer> — <Grund>' und
-      'ausgelassen: <Kommando> → <Grund>'), auch beim uebernommenen Lauf; das
-      Feld 'berichtszeilen' der Zusammenfassung traegt dasselbe. Eroeffnet
-      wird der Block von der Zeile 'Wartezeit: <s> s, zusammen <s> s in <n>
-      Laeufen fuer Karte #<n>', ohne Kartennummer nur 'Wartezeit: <s> s'. Die
-      erste Zahl ist die Wanduhr dieses Laufs vom Aufruf bis zum Ergebnis,
-      (Feld 'wartezeitMs'; 'dauerGesamtMs' bleibt
-      die Summe der Einzeldauern). Die zweite zaehlt mit --abschluss <n> alle
-      Laeufe derselben Karte zusammen (Feld 'wartezeitKarte'); ein
-      uebernommener Lauf zaehlt als Lauf ohne Zeit. Nachts beginnt die Summe
-      mit jeder Session neu, weil der Runner die Zusammenfassung vor jeder
-      Runde verwirft; die Summe ueber Sessions liefert der Nachtbericht. Dauert eine
-      Pruefung laenger als {obergrenzeMs} ms, vermerkt ihre Zeile
-      die Ueberschreitung (Feld 'ueberObergrenzeMs'); rot wird der Lauf davon
-      nicht.
-      An der Stufe 'push' nennt ein roter Lauf die VERURSACHER: die Karten, deren
-      Commits seit dem Anker einen Bereich der roten Pruefung beruehrt haben,
-      gelesen aus '(Issue #<n>)' im Betreff und 'Refs #<n>' im Rumpf. Ein Commit
-      ohne erkennbare Nummer erscheint mit seiner Kurz-SHA, eine Pruefung ohne
-      Bereichszuordnung gilt als von jeder Karte beruehrt. Beruehrt keine Karte
-      die Pruefung, steht das als Satz da und nicht als leere Liste; laesst sich
-      der Anker nicht aufloesen oder scheitert ein git-Aufruf, steht der Grund an
-      derselben Stelle. Die Suche erklaert einen gefallenen Befund und aendert am
-      Ausgang des Laufs nichts.
-      Jede Ausfuehrung haengt eine Zeile an {ausfuehrungen}; hinten
-      stehen ihr Ausloeser ({ausloeser}),
-      die ausloesenden Bereiche und beim vollen
-      Umfang die Dateien ohne Muster, dann 'gleichzeitig', wenn die
-      Dauer neben anderen Pruefungen gemessen wurde, als letztes 'erstlauf'
-      oder 'wiederholung' an den beiden Laeufen einer wiederholten Pruefung.
-bereiche
-      Gibt als JSON aus, wie die Bereiche zugeschnitten sind: je Bereich
-      seine Muster, in wie vielen der bereichsgebundenen Kommandos der
-      Paketstufe er steht ('nennend' von 'von'), ob er hervorgehoben ist
-      (in allen oder allen bis auf eines, ab {hervorhebungAb} Kommandos) und
-      den Grund aus 'gekoppelteBereiche'. Je Kommando ('kommandoUrteile'), wie
-      viele Bereiche es nennt und ob es breit ist (alle oder alle bis auf
-      einen, ab {hervorhebungAb} Kommandos); ein breites Kommando ohne gekoppelten
-      Bereich steht in plan ('zuschnitt') und run als 'hinweis:' im Bericht.
-      Dazu das Inventar: alle von git
-      versionierten Dateien ohne checkAreas-Treffer, getrennt in
-      freigestellt (ohnePruefung, mit Grund) und ohne jede Zuordnung.
-
-  --since <ref>   Anker, gegen den die Aenderungen ermittelt werden (Default HEAD).
-                  Laesst sich der Anker nicht aufloesen — auch bei leerem Wert —,
-                  laufen alle Pruefungen.
-  --stufe <s>     Gefahrener Zeitpunkt: {stufen} (Default {stufeVorgabe}).
-                  push faehrt paket mit. Pruefungen spaeterer Stufen erscheinen
-                  mit Grund als ausgelassen. push faehrt jede faellige Pruefung,
-                  auch bei leerem Paket und unberuehrten Bereichen. merge prueft
-                  nur, was push main nicht geprueft hat: die Stufe merge immer,
-                  die Paketstufe nach Bereichen ueber die Dateien seit --since,
-                  die Stufe push nicht.
-  --bereich <n>   Faehrt die Pruefgruppen genau eines checkAreas-Bereichs, statt
-                  die beruehrten aus den geaenderten Dateien zu bestimmen. Der
-                  vorgesehene Weg, wenn fuer die geaenderte Datei nur die
-                  vollstaendige Gruppe existiert — ein so begruendeter
-                  Gruppenlauf ist kein Verstoss gegen die Zehn-Minuten-Marke,
-                  sondern sein sanktionierter Fall. Ein unbekannter Name bricht
-                  ab und nennt die konfigurierten Bereiche. Kombinierbar mit
-                  --since, --stufe und --frisch: '--bereich' sagt, OB eine
-                  Pruefung betroffen ist, '--stufe' weiter, WANN sie dran ist.
-  --abschluss [n] Dieser Lauf schliesst genau ein Arbeitspaket ab. Dann bleibt
-                  jede Pruefung mit 'nichtBeimAbschluss' aus und die
-                  Guetemessung ebenso — beide mit Grund in der Liste der
-                  Auslassungen, und beide laufen vor dem Veroeffentlichen
-                  wieder mit. Ausnahme: Eine Pruefung mit 'abschlussBereiche'
-                  laeuft doch, wenn das Paket einen dieser Bereiche direkt
-                  beruehrt (Muster oder Ableitung aus den Importeuren, nicht
-                  die abhaengigen Bereiche). Die Kartennummer ist optional und dient der
-                  Auswertung je Karte; ein Wert, der keine Nummer ist, bricht
-                  ab. Nicht zusammen mit --stufe push|merge (dort laeuft
-                  gerade, was der Abschluss auslaesst) und nicht zusammen mit
-                  --bereich (zwei Eingrenzungen in einem Lauf). Gesetzt wird
-                  der Schalter allein vom Abschluss einer Karte: Wer ihn
-                  vergisst, prueft mehr.
-  --wiederholen   Nur fuer 'run': eine rote Pruefung einmal auf demselben Stand
-                  wiederholen, wie es --abschluss ohnehin tut. Fuer den Lauf vor
-                  push main und merge production, zusammen mit --stufe. Bei
-                  'plan' angenommen und ohne Wirkung, mit --abschluss erlaubt
-                  und wirkungslos.
-  --frisch        Nur fuer 'run': kein Ergebnis uebernehmen und keinen Teillauf
-                  mit den zuletzt roten fahren, sondern alle faelligen
-                  Kommandos wirklich fahren — etwa beim Verdacht auf einen
-                  wackligen Test.
-  --in <pfad>     Arbeitsverzeichnis des Laufs statt des Prozess-Arbeits-
-                  verzeichnisses: Config, Anker, Kommandos und Zusammenfassung
-                  gelten dort. Fuer den Worktree der Release-Skills — so steht
-                  der Aufruf allein und braucht kein 'cd'.
-  --help, -h      Diese Uebersicht (laeuft als einziger Aufruf ohne Config).
-
-Gelesen wird .claude/workflow.config.json im Arbeitsverzeichnis: 'buildChecks'
-(Kommandostring oder { cmd } mit den Achsen 'areas'/'always', 'stufe', 'guete'
-und 'nichtBeimAbschluss': {abschlussWerte} — die Pruefung
-zaehlt erst beim Veroeffentlichen und bleibt im Abschlusslauf aus, dazu
-'abschlussBereiche': [Bereichsnamen] — sie laeuft im Abschlusslauf doch, wenn
-einer dieser Bereiche direkt beruehrt ist, sowie
-'gleichzeitig': true — die Pruefung laeuft in der ersten Phase neben anderen, sowie
-'vorab': true — die Pruefung laeuft vor der gleichzeitigen Phase, sowie
-'art': {arten} — die Pruefung meldet nur: Sie endet immer gruen, auch
-beim Absturz, ohne Rueckgabewert-, Merkmal- und Guetepruefung; jede Ausgabezeile
-'Hinweis: <text>' steht in 'hinweise' und als 'hinweis: <text>' im Bericht, ein
-Exit ab {hinweisAbsturzAb} als 'Hinweis-Pruefung gescheitert') und
-'checkAreas' (Bereichsname -> Pfadmuster). Muster kennen '*' innerhalb eines
-Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
-'frontend/**'.
-`,
     fehler: "Fehler",
     unerwarteterFehler: "Unerwarteter Fehler",
     aufrufenLaeuft: "checks.mjs: aufrufen laeuft schon — zwei Aufrufe zugleich gehen nicht",
@@ -646,7 +447,7 @@ Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
     grundLeeresPaket: "leeres Paket: keine Aenderung seit {basis}",
     grundFreigabe: "Freigabestufe: laeuft vor jeder Freigabe",
     grundPushGeprueft: "Stufe push, geprueft beim push main",
-    zuschnittHinweis: "{cmd} ist jedem Bereich zugeordnet und laeuft bei jeder Aenderung — Zuschnitt pruefen (checks.mjs bereiche)",
+    zuschnittHinweis: "{cmd} ist jedem Bereich zugeordnet und laeuft bei jeder Aenderung — Zuschnitt pruefen (checks.mjs areas)",
     gitLsFilesGescheitert: "git ls-files schlug fehl: {grund}",
     bremseVersuche: "{versuche}{marke}; es laeuft keine Pruefung mehr (Exit 3).",
     zusammenfassung: "Zusammenfassung: {pfad}",
@@ -683,7 +484,7 @@ Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
     wartezeitKarte: "{lauf}, zusammen {summe} in {laeufe} Laeufen fuer Karte #{karte}",
     zusammenfassungNichtGeschrieben: "Zusammenfassung konnte nicht geschrieben werden ({pfad}): {grund}",
     teillauf: "Teillauf: nur die zuletzt roten Pruefungen",
-    standUnveraendert: "Stand unveraendert seit {zeitpunkt}: {marke} ({befund}). Neu pruefen mit --frisch.",
+    standUnveraendert: "Stand unveraendert seit {zeitpunkt}: {marke} ({befund}). Neu pruefen mit --fresh.",
     merkmalRot: "Fehlermerkmal in der Ausgabe: '{merkmal}' — der Lauf gilt als rot",
     gueteKommandoRot: "kein Anteil erhoben — das Kommando selbst war rot",
     gueteMerkmal: "kein Anteil erhoben — Fehlermerkmal '{merkmal}' in der Ausgabe",
@@ -704,16 +505,150 @@ Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
     erstlaufAbgelegt: "Ausgabe des ersten Laufs abgelegt: {pfad}",
     wiederholung: "Wiederholung: {cmd} war rot — einmal auf demselben Stand wiederholt",
     teillaufGruen: "Teillauf gruen — es folgt der volle Lauf als Nachweis",
-    keineKartennummer: "'{wert}' ist keine Kartennummer fuer --abschluss. Erwartet: eine Nummer oder nichts.",
-    abschlussMitStufe: "--abschluss und --stufe '{stufe}' zusammen: Der Abschluss einer Karte faehrt die Stufe '{paket}'. Vor dem Veroeffentlichen laeuft der volle Umfang ohne --abschluss.",
-    abschlussMitBereich: "--abschluss und --bereich zusammen: zwei Eingrenzungen in einem Lauf. Der Bereichslauf gehoert in die Arbeit, --abschluss an ihr Ende.",
+    keineKartennummer: "'{wert}' ist keine Kartennummer fuer --finish. Erwartet: eine Nummer oder nichts.",
+    abschlussMitStufe: "--finish und --stage '{stufe}' zusammen: Der Abschluss einer Karte faehrt die Stufe '{paket}'. Vor dem Veroeffentlichen laeuft der volle Umfang ohne --finish.",
+    abschlussMitBereich: "--finish und --area zusammen: zwei Eingrenzungen in einem Lauf. Der Bereichslauf gehoert in die Arbeit, --finish an ihr Ende.",
     unbekannteStufe: "Unbekannte Stufe '{wert}'. Erwartet: {liste}.",
     unbekanntesArgument: "Unbekanntes Argument: '{arg}'",
     keinVerzeichnis: "--in '{pfad}' ist kein Verzeichnis.",
-    unbekannterBefehl: "Unbekannter Befehl: '{befehl}'. Erwartet: plan, run oder bereiche",
+    unbekannterBefehl: "Unbekannter Befehl: '{befehl}'. Erwartet: plan, run oder areas",
+    altname: "unbekannt: '{name}' — englischer Name: '{englisch}'",
   }),
   en: Object.freeze({
-    hilfe: `checks.mjs (claude-workflow-kit v{version}) — due checks
+    fehler: "Error",
+    unerwarteterFehler: "Unexpected error",
+    aufrufenLaeuft: "checks.mjs: aufrufen is already running — two calls at the same time are not possible",
+    keineConfig: "No .claude/workflow.config.json under {wurzel} — please start in the project root.",
+    configKeinJson: ".claude/workflow.config.json is not valid JSON: {grund}",
+    unbekannterWertAbschluss: "Unknown value {wert} for notAtCompletion on check '{cmd}'. Expected: {erwartet}.",
+    unbekannterWertArt: "Unknown value {wert} for kind on check '{cmd}'. Expected: {erwartet}.",
+    unbekannterWertVorab: "Unknown value {wert} for upfront on check '{cmd}'. Expected: true, false.",
+    vorabUndGleichzeitig: "The check '{cmd}' carries upfront and concurrent — it runs either before the concurrent phase or in it.",
+    keineBereiche: "none",
+    unbekannterBereich: "Unknown area '{name}' on check '{cmd}'. Known from checkAreas: {liste}.",
+    abschlussBereicheForm: "completionAreas on check '{cmd}' is not a non-empty list of area names: {wert}.",
+    abschlussBereicheOhneAchse: "The check '{cmd}' carries completionAreas without notAtCompletion — without the axis it runs at completion anyway, the field has no effect.",
+    abschlussBereicheUnbekannt: "Unknown area '{name}' in completionAreas on check '{cmd}'. Known from checkAreas: {liste}.",
+    abschlussBereicheAusserhalb: "The area '{name}' in completionAreas on check '{cmd}' is not in its areas ({areas}) — touching it would never select the check.",
+    mehrereGuete: "More than one quality measurement: {liste} all carry 'quality' — at most one entry may measure.",
+    gueteMerge: "The quality measurement '{cmd}' carries stage 'merge' — a measurement only before the release would come too late. Allowed: {erlaubt}.",
+    abschlussAchseStufe: "The check '{cmd}' carries notAtCompletion and stage '{stufe}' — there it does not run at completion anyway. The axis applies to the stage '{paket}'.",
+    abschlussOhneGate: "No entry of the stage '{paket}' runs at completion: each carries notAtCompletion or a quality block. So the completion of a work package has no gate.",
+    nichtImportiert: "not imported by any file",
+    nichtMitMusterImportiert: "not imported by any file with a pattern",
+    abhaengig: "area {bereich} touched via import of {ueber}",
+    importeUnbekannt: "full scope: the imports could not be determined",
+    ableitungOhnePruefung: "no check: {pfad} — {grund}",
+    ableitung: "derived: {pfad} via {ueber} → {bereiche}",
+    ohneMusterWeitere: "{genannt} and {weitere} more",
+    ohneMusterEine: "full scope: {liste} matches no pattern",
+    ohneMusterMehrere: "full scope: {liste} match no pattern",
+    nurBlobs: "{dateien}: blobs and stamps only",
+    gitDiffGescheitert: "git diff against '{basis}' failed: {grund}",
+    gitStatusGescheitert: "git status failed: {grund}",
+    bereichEiner: "area {namen}",
+    bereichMehrere: "areas {namen}",
+    immerLaufend: "set to always run",
+    nichtZugeordnet: "not assigned",
+    beruehrt: "{bereiche} touched",
+    unberuehrt: "{bereiche} untouched{blobs}",
+    grundGueteVeroeffentlichung: "quality measurement: always runs before the release",
+    grundGueteAbschluss: "completion run: the quality measurement needs the full test set",
+    grundStufeSpaeter: "stage {stufe}, running {gefahren}",
+    grundNichtBeimAbschluss: "completion run: {achse}, runs at release",
+    grundNichtDirektBeruehrt: "completion run: {achse}, none of the areas from completionAreas ({bereiche}) touched directly, runs at release",
+    grundDirektBeruehrt: "completion run: {bereiche} touched directly",
+    pushPruefungUngueltig: "Invalid value {genannt} for pushCheck. Expected: \"local\" or { \"location\": \"buildService\", \"branch\": \"<name>\" }.",
+    pushPruefungZweig: "pushCheck: the check branch '{zweig}' is {feld}. The check branch must be a branch of its own.",
+    unbekannterBereichWahl: "Unknown area '{name}'. Configured in checkAreas: {liste}.",
+    keinerBereich: "none",
+    grundAnkerUnbekannt: "full scope: anchor '{ref}' cannot be resolved",
+    grundBereichslauf: "area run {bereich}: {grund}",
+    grundVeroeffentlichung: "release stage: full scope",
+    grundLeeresPaket: "empty package: no change since {basis}",
+    grundFreigabe: "approval stage: runs before every approval",
+    grundPushGeprueft: "stage push, checked at push main",
+    zuschnittHinweis: "{cmd} is assigned to every area and runs on every change — check the cut (checks.mjs areas)",
+    gitLsFilesGescheitert: "git ls-files failed: {grund}",
+    bremseVersuche: "{versuche}{marke}: failed the same way {versuche} times; no check runs any more (exit 3).",
+    zusammenfassung: "Summary: {pfad}",
+    letzterVersuch: "Last allowed attempt: {cmd} failed the same way {versuche} times ({fehler}) — the next call runs nothing and ends with exit 3.",
+    festgefahrenHinweis: "Note: stuck at {cmd} — failed the same way {versuche} times ({fehler})",
+    standUnlesbar: "The state of '{pfad}' could not be read: {grund}",
+    hashObjectGescheitert: "git hash-object failed: {grund}",
+    hashObjectAnzahl: "git hash-object returned {hashes} hashes for {pfade} paths.",
+    gueteOhneErgebnis: "Quality: no evaluable result ({grund})",
+    gueteErgebnis: "Quality: {anteil} % reached, threshold {marke} % — {grund}",
+    gueteNichtGestartet: "not started: an earlier command was red",
+    gueteAusgelassen: "skipped: {grund}",
+    nichtProtokolliert: "Note: execution not logged ({pfad}): {grund}",
+    dauerNichtGemessen: "duration not measured",
+    obergrenze: " — limit {grenze} s exceeded by {ueber} s",
+    haengend: "hanging: aborted after the {grenze} s limit",
+    nebenMarke: "measured alongside others",
+    berichtKopf: "For the completion report:",
+    berichtGelaufen: "ran: {cmd} → {ergebnis}, {dauer}{zusatz} — {grund}",
+    berichtAusgelassen: "skipped: {cmd} → {grund}",
+    berichtHinweis: "note: {text}",
+    keinePruefung: "no check, because nothing was changed",
+    gewackelt: "Flaky: {cmd} → red first, then green{erstlauf}",
+    gewackeltFrueher: "Flaky: {cmd} → red first, then green (earlier run of {zeitpunkt})",
+    ausgabeErstlauf: " — output of the first run: {pfad}",
+    ausgabe: " — output: {pfad}",
+    rotWiederholt: "rot, also on the retry",
+    gewackeltAusgang: "flaky (red first, then green)",
+    protokolleNichtGeleert: "Note: {ordner} not emptied: {grund}",
+    ausgabeNichtAbgelegt: "Note: output not stored ({pfad}): {grund}",
+    wartezeit: "Wait time: {dauer}",
+    wartezeitKarte: "{lauf}, together {summe} in {laeufe} runs for card #{karte}",
+    zusammenfassungNichtGeschrieben: "The summary could not be written ({pfad}): {grund}",
+    teillauf: "Partial run: only the checks red last time",
+    standUnveraendert: "State unchanged since {zeitpunkt}: {marke} ({befund}). Check again with --fresh.",
+    merkmalRot: "Error marker in the output: '{merkmal}' — the run counts as red",
+    gueteKommandoRot: "no share collected — the command itself was red",
+    gueteMerkmal: "no share collected — error marker '{merkmal}' in the output",
+    ohneRueckgabewert: "without return code",
+    hinweisGescheitert: "Hint check failed: {cmd} ({wie})",
+    rueckgabewert: "return code {status}",
+    gitLogGescheitert: "git log {basis}..HEAD failed: {grund}",
+    gitShowGescheitert: "git show {sha} failed: {grund}",
+    verursacherAnker: "causers cannot be determined: anchor '{basis}' cannot be resolved",
+    verursacherFehler: "causers cannot be determined: {fehler}",
+    verursacherKeine: "No completed card since {basis} touches this check.",
+    commitOhneKarte: "commit without card {shas}",
+    verursacherZeile: "Causers ({cmd}): {text}",
+    keineWeitere: "no further check",
+    stufeZusaetzlich: "Stage {stufe}: in addition to the package stage runs {liste}",
+    ausgelassenVorab: "skipped: {cmd} — {grund}",
+    ausgabeAbgelegt: "Output stored: {pfad}",
+    erstlaufAbgelegt: "Output of the first run stored: {pfad}",
+    wiederholung: "Retry: {cmd} was red — repeated once on the same state",
+    teillaufGruen: "Partial run green — the full run follows as evidence",
+    keineKartennummer: "'{wert}' is no card number for --finish. Expected: a number or nothing.",
+    abschlussMitStufe: "--finish and --stage '{stufe}' together: the completion of a card runs the stage '{paket}'. Before publishing the full scope runs without --finish.",
+    abschlussMitBereich: "--finish and --area together: two restrictions in one run. The area run belongs in the work, --finish at its end.",
+    unbekannteStufe: "Unknown stage '{wert}'. Expected: {liste}.",
+    unbekanntesArgument: "Unknown argument: '{arg}'",
+    keinVerzeichnis: "--in '{pfad}' is not a directory.",
+    unbekannterBefehl: "Unknown command: '{befehl}'. Expected: plan, run or areas",
+    altname: "unknown: '{name}' — English name: '{englisch}'",
+  }),
+});
+
+/**
+ * Ein Config-Wert in der Sprache des Prozesses: englisch der Name aus dem Board-Teil
+ * config-namen, deutsch und ohne den Teil der Wert, wie dieses Modul ihn liest.
+ */
+function configWert(pfad, wert) {
+  return spracheJetzt() === "en" ? CONFIG_WERTE[pfad]?.[wert] ?? wert : wert;
+}
+
+// Das Vokabular der Ausloeser im Ausfuehrungsprotokoll, wie die Hilfe es nennt — Vertrag (E14).
+const AUSLOESER_HILFE = "bereiche | ohne-bereich | ohne-zuordnung | veroeffentlichung | anker";
+
+// Die Hilfe gibt es genau einmal, englisch, in jedem Projekt (Issue #1564, Plan #1548 E7). Die
+// Config-Werte nennt sie darum unter ihrem englischen Namen, den jedes Projekt lesen kann.
+const HILFE = `checks.mjs (claude-workflow-kit v{version}) — due checks
 
   node checks.mjs plan [--since <ref>] [--stage <stage>] [--area <name>] [--finish [n]] [--in <path>]
   node checks.mjs run  [--since <ref>] [--stage <stage>] [--area <name>] [--finish [n]] [--retry] [--fresh] [--in <path>]
@@ -896,145 +831,21 @@ crash, without return code, marker and quality check; every output line
 from {hinweisAbsturzAb} on as a failed hint check) and 'checkAreas' (area name
 -> path patterns). Patterns know '*' within a path segment and '**' across
 segment boundaries; a directory is covered as 'frontend/**'.
-`,
-    fehler: "Error",
-    unerwarteterFehler: "Unexpected error",
-    aufrufenLaeuft: "checks.mjs: aufrufen is already running — two calls at the same time are not possible",
-    keineConfig: "No .claude/workflow.config.json under {wurzel} — please start in the project root.",
-    configKeinJson: ".claude/workflow.config.json is not valid JSON: {grund}",
-    unbekannterWertAbschluss: "Unknown value {wert} for notAtCompletion on check '{cmd}'. Expected: {erwartet}.",
-    unbekannterWertArt: "Unknown value {wert} for kind on check '{cmd}'. Expected: {erwartet}.",
-    unbekannterWertVorab: "Unknown value {wert} for upfront on check '{cmd}'. Expected: true, false.",
-    vorabUndGleichzeitig: "The check '{cmd}' carries upfront and concurrent — it runs either before the concurrent phase or in it.",
-    keineBereiche: "none",
-    unbekannterBereich: "Unknown area '{name}' on check '{cmd}'. Known from checkAreas: {liste}.",
-    abschlussBereicheForm: "completionAreas on check '{cmd}' is not a non-empty list of area names: {wert}.",
-    abschlussBereicheOhneAchse: "The check '{cmd}' carries completionAreas without notAtCompletion — without the axis it runs at completion anyway, the field has no effect.",
-    abschlussBereicheUnbekannt: "Unknown area '{name}' in completionAreas on check '{cmd}'. Known from checkAreas: {liste}.",
-    abschlussBereicheAusserhalb: "The area '{name}' in completionAreas on check '{cmd}' is not in its areas ({areas}) — touching it would never select the check.",
-    mehrereGuete: "More than one quality measurement: {liste} all carry 'quality' — at most one entry may measure.",
-    gueteMerge: "The quality measurement '{cmd}' carries stage 'merge' — a measurement only before the release would come too late. Allowed: {erlaubt}.",
-    abschlussAchseStufe: "The check '{cmd}' carries notAtCompletion and stage '{stufe}' — there it does not run at completion anyway. The axis applies to the stage '{paket}'.",
-    abschlussOhneGate: "No entry of the stage '{paket}' runs at completion: each carries notAtCompletion or a quality block. So the completion of a work package has no gate.",
-    nichtImportiert: "not imported by any file",
-    nichtMitMusterImportiert: "not imported by any file with a pattern",
-    abhaengig: "area {bereich} touched via import of {ueber}",
-    importeUnbekannt: "full scope: the imports could not be determined",
-    ableitungOhnePruefung: "no check: {pfad} — {grund}",
-    ableitung: "derived: {pfad} via {ueber} → {bereiche}",
-    ohneMusterWeitere: "{genannt} and {weitere} more",
-    ohneMusterEine: "full scope: {liste} matches no pattern",
-    ohneMusterMehrere: "full scope: {liste} match no pattern",
-    nurBlobs: "{dateien}: blobs and stamps only",
-    gitDiffGescheitert: "git diff against '{basis}' failed: {grund}",
-    gitStatusGescheitert: "git status failed: {grund}",
-    bereichEiner: "area {namen}",
-    bereichMehrere: "areas {namen}",
-    immerLaufend: "set to always run",
-    nichtZugeordnet: "not assigned",
-    beruehrt: "{bereiche} touched",
-    unberuehrt: "{bereiche} untouched{blobs}",
-    grundGueteVeroeffentlichung: "quality measurement: always runs before the release",
-    grundGueteAbschluss: "completion run: the quality measurement needs the full test set",
-    grundStufeSpaeter: "stage {stufe}, running {gefahren}",
-    grundNichtBeimAbschluss: "completion run: {achse}, runs at release",
-    grundNichtDirektBeruehrt: "completion run: {achse}, none of the areas from completionAreas ({bereiche}) touched directly, runs at release",
-    grundDirektBeruehrt: "completion run: {bereiche} touched directly",
-    pushPruefungUngueltig: "Invalid value {genannt} for pushCheck. Expected: \"local\" or { \"location\": \"buildService\", \"branch\": \"<name>\" }.",
-    pushPruefungZweig: "pushCheck: the check branch '{zweig}' is {feld}. The check branch must be a branch of its own.",
-    unbekannterBereichWahl: "Unknown area '{name}'. Configured in checkAreas: {liste}.",
-    keinerBereich: "none",
-    grundAnkerUnbekannt: "full scope: anchor '{ref}' cannot be resolved",
-    grundBereichslauf: "area run {bereich}: {grund}",
-    grundVeroeffentlichung: "release stage: full scope",
-    grundLeeresPaket: "empty package: no change since {basis}",
-    grundFreigabe: "approval stage: runs before every approval",
-    grundPushGeprueft: "stage push, checked at push main",
-    zuschnittHinweis: "{cmd} is assigned to every area and runs on every change — check the cut (checks.mjs areas)",
-    gitLsFilesGescheitert: "git ls-files failed: {grund}",
-    bremseVersuche: "{versuche}{marke}: failed the same way {versuche} times; no check runs any more (exit 3).",
-    zusammenfassung: "Summary: {pfad}",
-    letzterVersuch: "Last allowed attempt: {cmd} failed the same way {versuche} times ({fehler}) — the next call runs nothing and ends with exit 3.",
-    festgefahrenHinweis: "Note: stuck at {cmd} — failed the same way {versuche} times ({fehler})",
-    standUnlesbar: "The state of '{pfad}' could not be read: {grund}",
-    hashObjectGescheitert: "git hash-object failed: {grund}",
-    hashObjectAnzahl: "git hash-object returned {hashes} hashes for {pfade} paths.",
-    gueteOhneErgebnis: "Quality: no evaluable result ({grund})",
-    gueteErgebnis: "Quality: {anteil} % reached, threshold {marke} % — {grund}",
-    gueteNichtGestartet: "not started: an earlier command was red",
-    gueteAusgelassen: "skipped: {grund}",
-    nichtProtokolliert: "Note: execution not logged ({pfad}): {grund}",
-    dauerNichtGemessen: "duration not measured",
-    obergrenze: " — limit {grenze} s exceeded by {ueber} s",
-    haengend: "hanging: aborted after the {grenze} s limit",
-    nebenMarke: "measured alongside others",
-    berichtKopf: "For the completion report:",
-    berichtGelaufen: "ran: {cmd} → {ergebnis}, {dauer}{zusatz} — {grund}",
-    berichtAusgelassen: "skipped: {cmd} → {grund}",
-    berichtHinweis: "note: {text}",
-    keinePruefung: "no check, because nothing was changed",
-    gewackelt: "Flaky: {cmd} → red first, then green{erstlauf}",
-    gewackeltFrueher: "Flaky: {cmd} → red first, then green (earlier run of {zeitpunkt})",
-    ausgabeErstlauf: " — output of the first run: {pfad}",
-    ausgabe: " — output: {pfad}",
-    rotWiederholt: "rot, also on the retry",
-    gewackeltAusgang: "flaky (red first, then green)",
-    protokolleNichtGeleert: "Note: {ordner} not emptied: {grund}",
-    ausgabeNichtAbgelegt: "Note: output not stored ({pfad}): {grund}",
-    wartezeit: "Wait time: {dauer}",
-    wartezeitKarte: "{lauf}, together {summe} in {laeufe} runs for card #{karte}",
-    zusammenfassungNichtGeschrieben: "The summary could not be written ({pfad}): {grund}",
-    teillauf: "Partial run: only the checks red last time",
-    standUnveraendert: "State unchanged since {zeitpunkt}: {marke} ({befund}). Check again with --fresh.",
-    merkmalRot: "Error marker in the output: '{merkmal}' — the run counts as red",
-    gueteKommandoRot: "no share collected — the command itself was red",
-    gueteMerkmal: "no share collected — error marker '{merkmal}' in the output",
-    ohneRueckgabewert: "without return code",
-    hinweisGescheitert: "Hint check failed: {cmd} ({wie})",
-    rueckgabewert: "return code {status}",
-    gitLogGescheitert: "git log {basis}..HEAD failed: {grund}",
-    gitShowGescheitert: "git show {sha} failed: {grund}",
-    verursacherAnker: "causers cannot be determined: anchor '{basis}' cannot be resolved",
-    verursacherFehler: "causers cannot be determined: {fehler}",
-    verursacherKeine: "No completed card since {basis} touches this check.",
-    commitOhneKarte: "commit without card {shas}",
-    verursacherZeile: "Causers ({cmd}): {text}",
-    keineWeitere: "no further check",
-    stufeZusaetzlich: "Stage {stufe}: in addition to the package stage runs {liste}",
-    ausgelassenVorab: "skipped: {cmd} — {grund}",
-    ausgabeAbgelegt: "Output stored: {pfad}",
-    erstlaufAbgelegt: "Output of the first run stored: {pfad}",
-    wiederholung: "Retry: {cmd} was red — repeated once on the same state",
-    teillaufGruen: "Partial run green — the full run follows as evidence",
-    keineKartennummer: "'{wert}' is no card number for --finish. Expected: a number or nothing.",
-    abschlussMitStufe: "--finish and --stage '{stufe}' together: the completion of a card runs the stage '{paket}'. Before publishing the full scope runs without --finish.",
-    abschlussMitBereich: "--finish and --area together: two restrictions in one run. The area run belongs in the work, --finish at its end.",
-    unbekannteStufe: "Unknown stage '{wert}'. Expected: {liste}.",
-    unbekanntesArgument: "Unknown argument: '{arg}'",
-    keinVerzeichnis: "--in '{pfad}' is not a directory.",
-    unbekannterBefehl: "Unknown command: '{befehl}'. Expected: plan, run or areas",
-  }),
-});
+`;
 
-/**
- * Ein Config-Wert in der Sprache des Prozesses: englisch der Name aus dem Board-Teil
- * config-namen, deutsch und ohne den Teil der Wert, wie dieses Modul ihn liest.
- */
-function configWert(pfad, wert) {
-  return spracheJetzt() === "en" ? CONFIG_WERTE[pfad]?.[wert] ?? wert : wert;
+/** Ein Config-Wert unter seinem englischen Namen, unabhaengig von der Prozesssprache. */
+function configWertEnglisch(pfad, wert) {
+  return CONFIG_WERTE[pfad]?.[wert] ?? wert;
 }
 
-// Das Vokabular der Ausloeser im Ausfuehrungsprotokoll, wie die Hilfe es nennt — Vertrag (E14).
-const AUSLOESER_HILFE = "bereiche | ohne-bereich | ohne-zuordnung | veroeffentlichung | anker";
-
-/** Die Nutzungshilfe in der Sprache des Prozesses. */
+/** Die Nutzungshilfe, englisch. */
 function hilfe() {
-  return t("hilfe", {
+  const werte = {
     version: KIT_VERSION,
     zusammenfassung: SUMMARY_DATEI,
     gleichzeitigEnv: GLEICHZEITIG_ENV,
     gleichzeitigVorgabe: GLEICHZEITIG_VORGABE,
-    nebenMarke: t("nebenMarke"),
+    nebenMarke: TEXTE.en.nebenMarke,
     fehlermerkmale: FEHLERMERKMALE.join(", "),
     festgefahrenVorgabe: FESTGEFAHREN_VORGABE,
     festgefahrenMarke: FESTGEFAHREN_MARKE,
@@ -1043,13 +854,14 @@ function hilfe() {
     obergrenzeMs: PRUEFDAUER_OBERGRENZE_MS,
     ausfuehrungen: AUSFUEHRUNGEN_DATEI,
     hervorhebungAb: HERVORHEBUNG_AB_KOMMANDOS,
-    stufen: STUFEN.join(" | "),
-    stufeVorgabe: STUFEN[0],
-    abschlussWerte: NICHT_BEIM_ABSCHLUSS.map((w) => configWert("buildChecks[].nichtBeimAbschluss", w)).join(" | "),
-    arten: ARTEN.map((w) => configWert("buildChecks[].art", w)).join(" | "),
+    stufen: STUFEN.map(stufeGetippt).join(" | "),
+    stufeVorgabe: stufeGetippt(STUFEN[0]),
+    abschlussWerte: NICHT_BEIM_ABSCHLUSS.map((w) => configWertEnglisch("buildChecks[].nichtBeimAbschluss", w)).join(" | "),
+    arten: ARTEN.map((w) => configWertEnglisch("buildChecks[].art", w)).join(" | "),
     hinweisAbsturzAb: HINWEIS_ABSTURZ_AB,
     ausloeser: AUSLOESER_HILFE,
-  });
+  };
+  return HILFE.replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
 }
 
 class ChecksError extends Error {}
@@ -1848,7 +1660,7 @@ function entscheidung(check, beruehrt, blobBereiche = new Map()) {
  *     Ihr Anteil entsteht aus der vollstaendigen Testmenge, und ein Anteil aus einem
  *     verkuerzten Lauf waere nicht dieselbe Zahl, sondern eine andere Groesse mit
  *     demselben Namen. Der Zweig steht UNTER dem Zweig fuer die Veroeffentlichungsstufen:
- *     Dort laeuft sie weiter immer, und `--abschluss` kommt dort ohnehin nicht vor.
+ *     Dort laeuft sie weiter immer, und `--finish` kommt dort ohnehin nicht vor.
  *   - `nichtBeimAbschluss` faellt weg, und zwar VOR der Bereichsauswahl: Sonst stuende im
  *     Grund "Bereich unberuehrt", obwohl die Pruefung auch im beruehrten Bereich nicht
  *     gelaufen waere — dieselbe Falle, die schon die Stufenauswahl nach oben gezogen hat.
@@ -1920,7 +1732,7 @@ function auswahlEintrag(check, grund) {
 function bauen({ basis, stufe, geaendert = [], bereiche = [], ohneZuordnung = [], ohnePruefung = [],
   laufen = [], ausgelassen = [], vollerUmfang = false, leeresPaket = false, bereichWahl = null,
   abschluss = false, abgeleitet = [], abhaengig = [] }) {
-  // `bereichWahl` traegt den Namen des Bereichs, auf den `--bereich` die Auswahl
+  // `bereichWahl` traegt den Namen des Bereichs, auf den `--area` die Auswahl
   // eingegrenzt hat, sonst null. Das Feld ist kein Schmuck, sondern die Marke eines
   // TEILNACHWEISES: Ein Bereichslauf bestimmt `geaendert` und `hashes` weiterhin aus
   // dem Anker und saehe darum aus wie ein vollstaendiger Lauf. Zwei Leser brauchen den
@@ -1955,7 +1767,7 @@ function planen(args) {
   if (zuschnitt.length > 0) auswahl.zuschnitt = zuschnitt;
   if (auswahl.stufe === "push") auswahl.pushPruefung = pushPruefung(config);
   // Ob eine rote Pruefung einmal wiederholt wird (Issue #1396, Plan #1395, E2): allein bei
-  // `--abschluss` oder `--wiederholen`, nie wegen der Stufe. Das Feld fehlt sonst, und die
+  // `--finish` oder `--retry`, nie wegen der Stufe. Das Feld fehlt sonst, und die
   // Zusammenfassung bleibt, wie sie war.
   if (args.abschluss === true || args.wiederholen === true) auswahl.wiederholen = true;
   return auswahl;
@@ -1963,7 +1775,7 @@ function planen(args) {
 
 /**
  * Wo der volle Lauf vor `push main` stattfindet (Issue #1216, Plan #1199 E14): `"lokal"`
- * (Vorgabe) oder `{ ort: "buildDienst", zweig }`. `plan --stufe push` gibt den Wert aus,
+ * (Vorgabe) oder `{ ort: "buildDienst", zweig }`. `plan --stage push` gibt den Wert aus,
  * damit `/push-main` die Config nicht selbst liest.
  *
  * Ein ungueltiger Wert ist ein Fehler und nicht stillschweigend `lokal`: Wer den
@@ -2064,8 +1876,8 @@ function auswahlPlanen(args) {
   // Zweifelsfall des nicht aufloesbaren Ankers — dort ist gar nichts bekannt, und
   // dieses Kommando irrt in diese Richtung nie.
   //
-  // Die STUFENACHSE bleibt unberuehrt: `--bereich` beantwortet, OB eine Pruefung
-  // betroffen ist, `--stufe` weiter, WANN sie an der Reihe ist. Der Grund traegt
+  // Die STUFENACHSE bleibt unberuehrt: `--area` beantwortet, OB eine Pruefung
+  // betroffen ist, `--stage` weiter, WANN sie an der Reihe ist. Der Grund traegt
   // das Praefix, damit im Bericht steht, warum die Auswahl so ausfiel.
   if (bereichWahl !== null) {
     const gewaehlt = new Set([bereichWahl]);
@@ -2212,7 +2024,7 @@ function zuschnittHinweise(config, checks) {
 /**
  * Der Anteil je Bereich aus `bereicheAuswerten`, ohne Inventar: allein aus der Config, ohne
  * git und ohne Datei zu lesen. Exportiert, damit test/config-teile.test.mjs dieselbe
- * Hervorhebung im selben Prozess bekommt, statt `checks.mjs bereiche` zu starten (Issue #1235).
+ * Hervorhebung im selben Prozess bekommt, statt `checks.mjs areas` zu starten (Issue #1235).
  */
 export function anteilJeBereich(config) {
   const checks = (config.buildChecks ?? []).map((c) => normalisiere(c));
@@ -3359,7 +3171,7 @@ function gleicheAuswahlBasis(alt, auswahl, configHash) {
   if (alt.basis !== auswahl.basis || alt.stufe !== auswahl.stufe) return false;
   // Die Eingrenzung gehoert in den Vergleich (Issue #922, Code-Review): Ohne sie
   // uebernimmt ein uneingeschraenkter Lauf das Ergebnis eines vorangegangenen
-  // `--bereich`-Laufs, weil Basis, Stufe, Dateien und Hashes identisch sind — die
+  // `--area`-Laufs, weil Basis, Stufe, Dateien und Hashes identisch sind — die
   // faelligen Pruefungen der uebrigen Bereiche liefen dann nie. `?? null` liest eine
   // Zusammenfassung aus einer Fassung vor diesem Feld als uneingeschraenkt.
   if ((alt.bereichWahl ?? null) !== (auswahl.bereichWahl ?? null)) return false;
@@ -3674,7 +3486,7 @@ function gruppeTrifft(check, gruppe) {
  * Die Karten, die eine rote Pruefung des Push-Laufs beruehrt haben (Issue #947, AK 4
  * des Fachplans #938).
  *
- * Nur bei `--stufe push`, und nur zu einem roten Befund:
+ * Nur bei `--stage push`, und nur zu einem roten Befund:
  *   - Der Anker ist der `--since`-Wert des Laufs, den `/push-main` schon heute als
  *     `git merge-base HEAD origin/<mainBranch>` uebergibt (E5). Eine eigene Marke im
  *     Projekt waere dieselbe Wahrheit an einem zweiten Ort und liefe auseinander.
@@ -3767,7 +3579,7 @@ async function ausfuehren(args) {
   // bisherige Summe der Karte.
   const vorige = vorigeZusammenfassung();
   const auswahl = planen(args);
-  // Nach der Auswahl und vor Uebernahme und `--frisch` (Issue #1388, Plan #1386, E6): Eine
+  // Nach der Auswahl und vor Uebernahme und `--fresh` (Issue #1388, Plan #1386, E6): Eine
   // festgefahrene Pruefung bekommt unbeaufsichtigt kein Ergebnis mehr, auch kein uebernommenes.
   const gebremst = bremsen(auswahl, vorige);
   if (gebremst !== null) return gebremst;
@@ -3823,7 +3635,7 @@ async function ausfuehren(args) {
   if (frueher !== null) {
     return uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs, vorige, karte: args.karte });
   }
-  // Nach einer Korrektur zuerst die zuletzt roten (Issue #1072); `--frisch` faehrt sofort alles.
+  // Nach einer Korrektur zuerst die zuletzt roten (Issue #1072); `--fresh` faehrt sofort alles.
   const rote = args.frisch ? null : zuletztRote(vorige, auswahl, hashes, configHash);
 
   // Ab hier laufen Kommandos. Eine rechnerweite Sperre davor gibt es seit Issue #1241 nicht
@@ -3849,7 +3661,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   // tragen — daran haengt die Trennung von "je Lauf" und "je Kommando". Ein Teillauf und
   // der volle Lauf danach sind ein Aufruf und teilen sie (Issue #1072).
   //
-  // Der Anlass kommt aus der Auswahl und nicht aus den rohen Argumenten: `--abschluss`
+  // Der Anlass kommt aus der Auswahl und nicht aus den rohen Argumenten: `--finish`
   // schlaegt die Stufe, weil ein Abschlusslauf genau der Lauf ist, der Pruefungen
   // auslaesst — und ohne den Schalter ist die Stufe der Anlass (`paket`, `push`, `merge`).
   // Die Laufkennung ist derselbe `zeitpunkt`, den die Zusammenfassung traegt; ein zweiter,
@@ -4145,7 +3957,7 @@ function ausgangText(ergebnis, wiederholt) {
 // --- CLI -------------------------------------------------------------------
 
 /**
- * Die optionale Kartennummer hinter `--abschluss` oder `null` (Issue #946).
+ * Die optionale Kartennummer hinter `--finish` oder `null` (Issue #946).
  *
  * Sie ist OPTIONAL: Der Schalter wirkt auch ohne sie, und ein Aufruf ohne Nummer soll
  * nicht daran scheitern, dass die Auswertung je Karte ihn nicht zuordnen kann. Ein Wert,
@@ -4162,13 +3974,13 @@ function kartennummer(wert) {
 }
 
 /**
- * Die Kombinationen, die `--abschluss` ausschliesst (Issue #946) — geprueft NACH der
+ * Die Kombinationen, die `--finish` ausschliesst (Issue #946) — geprueft NACH der
  * Schleife, damit die Meldung nicht an der Stellung der Flags haengt. Beides ist ein
  * Fehler und keine stille Wahl:
- *   - `--abschluss` mit einer Veroeffentlichungsstufe waere zweierlei zugleich (AK 3).
+ *   - `--finish` mit einer Veroeffentlichungsstufe waere zweierlei zugleich (AK 3).
  *     Der Abschluss misst ein Arbeitspaket, `push` und `merge` messen den Stand, der
  *     hinausgeht — und dort laeuft gerade das, was der Abschluss auslaesst.
- *   - `--abschluss` mit `--bereich` waere eine doppelte Eingrenzung (E13): Der
+ *   - `--finish` mit `--area` waere eine doppelte Eingrenzung (E13): Der
  *     Bereichslauf ist der begruendete Gruppenlauf mitten in der Arbeit, nicht der
  *     Abschluss einer Karte. Zusammen liesse sich aus dem Lauf nicht mehr ablesen,
  *     welche der beiden Verkuerzungen eine Pruefung weggelassen hat.
@@ -4184,59 +3996,68 @@ function pruefeKombinationen(args) {
 }
 
 /**
- * Die Schalter ohne Wert, die nur bei `run` wirken: `--frisch` und `--wiederholen` (Issue
+ * Die Schalter ohne Wert, die nur bei `run` wirken: `--fresh` und `--retry` (Issue
  * #1396, E3). Bei `plan` angenommen und ohne Wirkung — kein Fehler dort, weil beide nur in
  * die sichere Richtung zeigen: mehr pruefen.
  */
-const NUR_RUN_SCHALTER = { "--frisch": "frisch", "--wiederholen": "wiederholen" };
+const NUR_RUN_SCHALTER = { "--fresh": "frisch", "--retry": "wiederholen" };
 
 /**
- * Die englischen Namen der Unterkommandos und Optionen (Issue #1462, Plan #1420 E18): je
- * englischer Name der deutsche, den er vertritt. Die deutschen bleiben gueltig.
+ * Die frueheren deutschen Namen des Befehls, der Optionen und des Stufenwerts, je Eintrag
+ * deutsch -> englisch (Issue #1564, Plan #1548 E5). Seit Version 5 nimmt checks.mjs nur die
+ * englischen an; diese Tabellen dienen allein der Meldung, die einen deutschen Namen abweist
+ * und den englischen nennt — zum Ausfuehren werden sie nie benutzt.
  */
-const KOMMANDOS_EN = { areas: "bereiche" };
-const OPTIONEN_EN = {
-  "--stage": "--stufe",
-  "--area": "--bereich",
-  "--finish": "--abschluss",
-  "--fresh": "--frisch",
-  "--retry": "--wiederholen",
-};
+const ALTE_BEFEHLE = Object.freeze({ bereiche: "areas" });
+const ALTE_OPTIONEN = Object.freeze({
+  "--stufe": "--stage",
+  "--bereich": "--area",
+  "--abschluss": "--finish",
+  "--frisch": "--fresh",
+  "--wiederholen": "--retry",
+});
+const ALTE_STUFEN = Object.freeze({ paket: "package" });
 
-/** Der deutsche Name hinter einem englischen; jeder andere Name bleibt, wie er ist. */
-function deutscherName(tabelle, name) {
-  return Object.hasOwn(tabelle, name) ? tabelle[name] : name;
+/** Wirft die Abweisung, wenn `name` ein frueherer deutscher Name aus `tabelle` ist. */
+function altnameAbweisen(tabelle, name) {
+  if (typeof name === "string" && Object.hasOwn(tabelle, name)) {
+    fail(t("altname", { name, englisch: tabelle[name] }));
+  }
 }
 
 function parseArgs(rest) {
   const args = {};
   let i = 0;
   while (i < rest.length) {
-    const option = deutscherName(OPTIONEN_EN, rest[i]);
+    altnameAbweisen(ALTE_OPTIONEN, rest[i]);
+    const option = rest[i];
     if (option === "--since") {
       // Fehlt der Wert ganz, ist das derselbe Fall wie ein leerer: nicht
       // aufloesbar, also voller Umfang.
       args.since = rest[i + 1] ?? "";
       i += 1;
-    } else if (option === "--stufe") {
+    } else if (option === "--stage") {
       // Ein unbekannter Wert ist ein Fehler und nicht stillschweigend die
       // Paketstufe (Issue #758): Ein Tippfehler liesse sonst genau die
       // Pruefungen aus, um deren Zeitpunkt es beim Aufruf ging — weniger
       // pruefen, ohne dass es auffaellt. Der fehlende Wert zaehlt wie ein
       // falscher; anders als bei `--since` gibt es hier keine sichere Deutung.
+      // Getippt wird der englische Wert, gefahren die Stufe der Config (E5: `package` -> `paket`).
       const wert = rest[i + 1] ?? "";
-      if (!STUFEN.includes(wert)) {
-        fail(t("unbekannteStufe", { wert, liste: STUFEN.join(", ") }));
+      altnameAbweisen(ALTE_STUFEN, wert);
+      const stufe = STUFEN.find((s) => stufeGetippt(s) === wert);
+      if (stufe === undefined) {
+        fail(t("unbekannteStufe", { wert, liste: STUFEN.map(stufeGetippt).join(", ") }));
       }
-      args.stufe = wert;
+      args.stufe = stufe;
       i += 1;
-    } else if (option === "--bereich") {
-      // Der fehlende Wert zaehlt wie ein falscher (wie bei `--stufe`): Die
+    } else if (option === "--area") {
+      // Der fehlende Wert zaehlt wie ein falscher (wie bei `--stage`): Die
       // Pruefung gegen `checkAreas` steht in `planen`, wo die Config liegt, und
       // der leere Name faellt dort mit derselben nennenden Meldung durch.
       args.bereich = rest[i + 1] ?? "";
       i += 1;
-    } else if (option === "--abschluss") {
+    } else if (option === "--finish") {
       // Dieser Lauf schliesst genau ein Arbeitspaket ab (Issue #946). Die Kartennummer
       // liest `kartennummer`, samt ihrer Begruendung.
       args.abschluss = true;
@@ -4287,16 +4108,16 @@ function main(argv = process.argv.slice(2)) {
     return 0;
   }
 
-  const [befehl, ...rest] = argv;
-  const command = deutscherName(KOMMANDOS_EN, befehl);
+  const [command, ...rest] = argv;
+  altnameAbweisen(ALTE_BEFEHLE, command);
   if (command === "plan") {
-    // `--wiederholen` wirkt nur bei `run` (Issue #1396, E3): Die Auswahl von `plan` bleibt dieselbe.
+    // `--retry` wirkt nur bei `run` (Issue #1396, E3): Die Auswahl von `plan` bleibt dieselbe.
     const { wiederholen, ...args } = parseArgs(rest);
     aufStdout(JSON.stringify(planen(arbeitsverzeichnisSetzen(args)), null, 2) + "\n");
     return 0;
   }
   if (command === "run") return ausfuehren(arbeitsverzeichnisSetzen(parseArgs(rest)));
-  if (command === "bereiche") {
+  if (command === "areas") {
     // Kein Argument: Anteil und Inventar gelten fuer die Config und den versionierten
     // Stand, nicht fuer einen Anker. Ein uebergebenes Argument ist ein Irrtum.
     if (rest.length > 0) fail(t("unbekanntesArgument", { arg: rest[0] }));
@@ -4305,7 +4126,7 @@ function main(argv = process.argv.slice(2)) {
   }
 
   aufStdout(hilfe());
-  return fail(t("unbekannterBefehl", { befehl }));
+  return fail(t("unbekannterBefehl", { befehl: command }));
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).

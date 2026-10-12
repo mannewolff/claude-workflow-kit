@@ -61,8 +61,8 @@
  * startet und ihren Turn beendet, bevor das Ergebnis da ist, verliert es — eine
  * headless -p-Session hat keinen Folge-Turn. Das Board zeigt dann einen
  * Fehlschlag, obwohl die Arbeit fertig ist. Vor dem harten Stopp verifiziert der
- * Runner deshalb die Pflicht-Pruefungen selbst — mit `checks.mjs run --abschluss <id>
- * --frisch` im Zielprojekt (Issue #919), damit der Nachweis entsteht, den das
+ * Runner deshalb die Pflicht-Pruefungen selbst — mit `checks.mjs run --finish <id>
+ * --fresh` im Zielprojekt (Issue #919), damit der Nachweis entsteht, den das
  * Commit-Gate liest. Sind sie gruen,
  * bekommt genau eine Salvage-Session pro Issue die Chance, den Zwischenstand
  * gegen das Issue zu pruefen, zu committen und erst bei sauberem Arbeitsbaum das
@@ -229,8 +229,8 @@ Flags:
   --help, -h         diese Uebersicht
 
 Salvage (immer an): Endet eine Runde ohne Board-Ergebnis, aber mit Aenderungen im
-Working Tree, prueft der Runner selbst nach — mit "checks.mjs run --abschluss <id>
---frisch", also demselben Lauf, dessen Nachweis das Commit-Gate liest. Sind sie gruen, bekommt
+Working Tree, prueft der Runner selbst nach — mit "checks.mjs run --finish <id>
+--fresh", also demselben Lauf, dessen Nachweis das Commit-Gate liest. Sind sie gruen, bekommt
 genau eine Salvage-Session pro Issue die Chance, den Zwischenstand gegen das Issue
 zu pruefen, zu committen und erst bei leerem "git status --porcelain" nach In review
 zu verschieben (Zeitlimit 10 min). Das Kommando dazu steht im Prompt der Session und
@@ -386,8 +386,8 @@ Flags:
   --help, -h         this overview
 
 Salvage (always on): If a round ends without a board result but with changes in the
-working tree, the runner verifies on its own — with "checks.mjs run --abschluss <id>
---frisch", the same run whose evidence the commit gate reads. If they are green, exactly
+working tree, the runner verifies on its own — with "checks.mjs run --finish <id>
+--fresh", the same run whose evidence the commit gate reads. If they are green, exactly
 one salvage session per issue gets the chance to check the intermediate state against
 the issue, to commit, and only with an empty "git status --porcelain" to move it to
 In review (time limit 10 min). The command for this is in the session's prompt and

@@ -1845,7 +1845,7 @@ function vorbereitungVersuchen(repoRoot) {
 // --- Die Vorbereitung der Veroeffentlichung (Plan #1243, A4, A5, A6, E12, E17; Issue #1254) ---
 
 // Der Auftrag der Session: der Modus `vorbereiten` von /push-main (#1253). Er legt seinen
-// Worktree selbst an und haelt das Ergebnis ueber `worktree.mjs vorbereitung-festhalten` fest.
+// Worktree selbst an und haelt das Ergebnis ueber `worktree.mjs record-preparation` fest.
 const VORBEREITUNG_PROMPT = "/push-main vorbereiten";
 
 /** Das Ergebnis einer Vorbereitung, die keinen Stand dieses Laufs festhielt. */

@@ -278,10 +278,10 @@ function ergebnisText(block) {
  *
  *   "voll"      woertlich ein `buildChecks`-Kommando: die vollstaendige Gruppe waehrend
  *               der Arbeit, und genau das ist der Verstoss, den dieser Zaehler sichtbar macht.
- *   "bereich"   `checks.mjs run --bereich <name>`: der sanktionierte Gruppenlauf (E3).
+ *   "bereich"   `checks.mjs run --area <name>`: der sanktionierte Gruppenlauf (E3).
  *               Er zaehlt eigens, damit er nicht unter die Verstoesse geraet.
  *   "gezielt"   dasselbe Programm wie ein `buildChecks`-Kommando, aber anderer Umfang.
- *   "abschluss" `checks.mjs run` ohne `--bereich`: der Abschlussversuch (E9). Er zaehlt in
+ *   "abschluss" `checks.mjs run` ohne `--area`: der Abschlussversuch (E9). Er zaehlt in
  *               seinem EIGENEN Block und nie in der Arbeit — dort stuende er zweimal.
  *   null        kein Prueflauf.
  *
@@ -295,7 +295,7 @@ function prueflaufArt(kommando, programme, woertlich) {
   const worte = text.split(" ");
   const idx = worte.findIndex((w) => w.replaceAll(/["']/g, "").endsWith("checks.mjs"));
   if (idx >= 0 && worte[idx + 1] === "run") {
-    return worte.slice(idx + 2).some((w) => w === "--bereich" || w.startsWith("--bereich=")) ? "bereich" : "abschluss";
+    return worte.slice(idx + 2).some((w) => w === "--area" || w.startsWith("--area=")) ? "bereich" : "abschluss";
   }
   if (woertlich.has(text)) return "voll";
   const programm = erstesProgramm(text);
@@ -322,7 +322,7 @@ function prueflaufArt(kommando, programme, woertlich) {
  * `zeile(roh, ts)` nimmt eine Rohzeile oder ein geparstes Objekt mit dem Zeitstempel ihrer
  * ANKUNFT, `ergebnis()` liefert jederzeit `{ anzahl, volle, volleNoetig, dauerMs, abschluss }`.
  * `abschluss` (Issue #926, E9) zaehlt die Abschlussversuche — `checks.mjs run` ohne
- * `--bereich` — und ihre Spannen, in einem eigenen Block neben der Arbeit: In `anzahl`
+ * `--area` — und ihre Spannen, in einem eigenen Block neben der Arbeit: In `anzahl`
  * stuende derselbe Lauf zweimal. Was aus beidem FOLGT — Laeufe je Abschluss, Anteil an der
  * Laufzeit, Abstand zur Zielmarke — rechnet der Bericht, nicht dieser Zaehler (E7).
  */
@@ -2253,11 +2253,11 @@ const CHECKS_MAX_BUFFER = 256 * 1024 * 1024;
  * gelingen. `checks.mjs run` schreibt denselben Nachweis, den `.githooks/gate.mjs`
  * liest; damit gibt es eine Wahrheit ueber "gruen" statt zweier.
  *
- * `--frisch` ist Pflicht und keine Bequemlichkeit: Ohne den Schalter uebernaehme das
+ * `--fresh` ist Pflicht und keine Bequemlichkeit: Ohne den Schalter uebernaehme das
  * Kommando das Ergebnis der Session, wenn sich seither nichts geaendert hat — also
  * genau ihr rotes, das der Runner gerade anzweifelt.
  *
- * `--abschluss <karte>` haelt den Umfang, den die Vorpruefung immer hatte: die
+ * `--finish <karte>` haelt den Umfang, den die Vorpruefung immer hatte: die
  * Paketstufe ohne `nichtBeimAbschluss` und ohne Guetemessung (Plan #944, E14). Der
  * Salvage IST der Abschluss dieser Karte — ohne die Nummer koennte die Wirksamkeit
  * ihre Kennzahl je Karte nicht rechnen (Issue #951).
@@ -2269,7 +2269,7 @@ function runChecksCliSync(karte, abfragen) {
   if (!existsSync(CHECKS_PATH)) {
     return { ok: false, output: `${t("checksFehltPfad", { pfad: CHECKS_PATH })}\n`, rotesKommando: null };
   }
-  const cliArgs = [CHECKS_PATH, "run", "--abschluss", String(karte), "--frisch"];
+  const cliArgs = [CHECKS_PATH, "run", "--finish", String(karte), "--fresh"];
   // Der Puls davor und danach (Issue #1084, E6): Der volle Pruefumfang blockiert den Takt.
   pulsSchreiben();
   const res = abfragen(process.execPath, cliArgs, {
@@ -2292,7 +2292,7 @@ function runChecksCliSync(karte, abfragen) {
 // Bleiben sie rot, war das Format nicht die Ursache -> harter Stopp wie bisher.
 // Ohne formatFixCommand ist das Verhalten exakt wie vor #169.
 //
-// Beide Durchgaenge gehen ueber `checks.mjs run --frisch` (Issue #919): Der zweite ist
+// Beide Durchgaenge gehen ueber `checks.mjs run --fresh` (Issue #919): Der zweite ist
 // der, dessen Nachweis am Ende liegenbleibt — er muss den Stand NACH dem Format-Fix
 // bezeugen, sonst wiese das Gate die Rettung wegen der geaenderten Blobs ab.
 //
@@ -2332,7 +2332,7 @@ export function salvagePrompt(issueId, checksOutput, formatFixCmd) {
   const tail = (checksOutput || "").trim().split("\n").slice(-15).join("\n");
   return [
     `Die Pflicht-Checks (buildChecks) dieses Projekts wurden soeben EXTERN ausgefuehrt und sind GRUEN.`,
-    `Gefahren wurden sie mit "node .claude/kit/checks.mjs run --abschluss ${issueId} --frisch"; der Nachweis`,
+    `Gefahren wurden sie mit "node .claude/kit/checks.mjs run --finish ${issueId} --fresh"; der Nachweis`,
     `liegt in .claude/checks-summary.json, und das Commit-Gate liest genau ihn.`,
     `Fuehre sie NICHT erneut aus und starte keine langen Builds.`,
     ``,
@@ -2371,7 +2371,7 @@ export function salvagePrompt(issueId, checksOutput, formatFixCmd) {
     // Pakets gar nicht faehrt — die Session hielt die Gruen-Annahme darum zu Recht fuer
     // falsch und verweigerte den Commit. Jetzt ist es die Ausgabe desselben Laufs, der
     // den Nachweis geschrieben hat, samt seiner Auslassungen.
-    `Nicht pushen. Letzte Zeilen der externen Check-Ausgabe (checks.mjs run --abschluss ${issueId} --frisch):`,
+    `Nicht pushen. Letzte Zeilen der externen Check-Ausgabe (checks.mjs run --finish ${issueId} --fresh):`,
     tail,
   ].join("\n");
 }

@@ -38,7 +38,7 @@ const FASSUNGEN = [
     begriff: "Nach-Push-Schritt",
     wahr: "**`nachziehen: true`**",
     falsch: "**`nachziehen: false`**",
-    abbau: "worktree.mjs entfernen",
+    abbau: "worktree.mjs remove",
     rebase: "git rebase origin/<mainBranch>",
   },
   {

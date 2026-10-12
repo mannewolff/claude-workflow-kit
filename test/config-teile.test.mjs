@@ -320,7 +320,7 @@ test("jeder Eintrag von nurGeruest traegt ein Muster und einen Grund", () => {
 // hier: Dieselbe Regel zweimal beschrieben wiche ab der ersten Aenderung voneinander ab.
 
 /**
- * Der Anteil je Bereich, den `checks.mjs bereiche` meldet, fuer die Config dieses Repos —
+ * Der Anteil je Bereich, den `checks.mjs areas` meldet, fuer die Config dieses Repos —
  * im selben Prozess ueber `anteilJeBereich`, dieselbe Funktion, die das Kommando ruft
  * (Issue #1235, Plan #1199, E6).
  */
@@ -413,7 +413,7 @@ test("jeder Eintrag in gekoppelteBereiche ist in jeder Gruppe, die ihn nennt, ge
 
 // --- Kriterien 4 und 7 an der echten Config (Issue #1236, Plan #1199, E3, E5) ----------
 //
-// Die Auswahl selbst, nicht ein Nachbau: `checks.mjs plan --abschluss` im selben Prozess
+// Die Auswahl selbst, nicht ein Nachbau: `checks.mjs plan --finish` im selben Prozess
 // (E6) gegen die versionierte Config und den Importgraphen dieses Repos. Nur git wird
 // ersetzt, und nur in der Frage, was sich geaendert hat — so misst die Probe eine Aenderung
 // an genau einer Datei, gleich was gerade im Arbeitsbaum liegt.
@@ -439,7 +439,7 @@ function auswahlFuer(pfad) {
     if (args[0] === "status") return { status: 0, stdout: "", stderr: "" };
     return spawnSync("git", args, optionen);
   };
-  const res = aufrufen(["plan", "--abschluss"], { cwd: repoRoot, git });
+  const res = aufrufen(["plan", "--finish"], { cwd: repoRoot, git });
   assert.equal(res.status, 0, `checks.mjs plan schlug fehl: ${res.stderr}`);
   return JSON.parse(res.stdout);
 }

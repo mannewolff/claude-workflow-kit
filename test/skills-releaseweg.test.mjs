@@ -135,7 +135,7 @@ test("[1401] beide Release-Skills wiederholen im einen Prueflauf und fragen nach
     const wo = pfad.join("/");
     const ohneBuildDienst = text.replace(/\n## Weg über den Build-Dienst[\s\S]*?(?=\n## )/, "\n");
     const zeile = ohneBuildDienst.slice(ohneBuildDienst.search(LAUF)).split("\n")[0];
-    assert.match(zeile, new RegExp(`--stufe ${stufe} --wiederholen `), `${wo}: --wiederholen steht nicht neben --stufe ${stufe}: ${zeile}`);
+    assert.match(zeile, new RegExp(`--stage ${stufe} --retry `), `${wo}: --retry steht nicht neben --stage ${stufe}: ${zeile}`);
 
     // Ab dem Prueflauf gesucht: push main stellt dieselbe Frage auch bei der Uebernahme (Schritt 3).
     const lauf = text.search(LAUF);

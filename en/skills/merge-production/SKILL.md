@@ -104,7 +104,7 @@ The stop is the precondition for the shortened check run in step 6: because the 
 not checked there. This is proven by the git state, not by a second bookkeeping.
 
 ### 4. Create the worktree on `origin/<mainBranch>`
-<!-- de: e9130c00fa60 -->
+<!-- de: 4d02b83ea6c4 -->
 
 > `Step 4 of 12 — Worktree (running)`
 
@@ -151,7 +151,7 @@ this reason: a check that fails on missing dependencies is never reported as a g
 never skipped.
 
 ### 5. Create release files (if `RELEASING.md` exists)
-<!-- de: d54de4c9f8aa -->
+<!-- de: 06a16eb4434b -->
 
 > `Step 5 of 12 — Create release files (running)`
 
@@ -171,7 +171,7 @@ The skill itself knows no project-specific version or changelog logic; it lives 
 the `RELEASING.md` of the respective repo. A tag does **not** come about here — see step 9.
 
 ### 6. The one check run (gate — before commit, push and PR)
-<!-- de: cfa96e39f295 -->
+<!-- de: bb691f231ff4 -->
 
 > `Step 6 of 12 — Check run (running)`
 
@@ -238,7 +238,7 @@ triggered by `gewackeltKarte` or an earlier summary. Then, in this order:
 check are named but do not stop.
 
 ### 7. The one commit
-<!-- de: 40cf7791bc1e -->
+<!-- de: ad97085e9420 -->
 
 > `Step 7 of 12 — Commit (running)`
 
@@ -290,7 +290,7 @@ red, deadline expiry, rejected push — ends here without a PR, on with step 8. 
 `pushPruefung` in the build service it stays with the direct push above.
 
 ### 8. Way back, catching up, tearing down the worktree
-<!-- de: 0539d0fb4e19 -->
+<!-- de: e2b6f82951b7 -->
 
 > `Step 8 of 12 — Way back and teardown (running)`
 

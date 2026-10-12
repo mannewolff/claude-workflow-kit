@@ -1,6 +1,6 @@
 // Ablauf-Pruefung: kit/worktree.mjs exportiert nichts; das Unterkommando im ist nur als Prozess beobachtbar.
 //
-// `worktree.mjs im <pfad> -- <kommando> [argumente]` (Issue #1372): Die Release-Skills
+// `worktree.mjs in <pfad> -- <kommando> [argumente]` (Issue #1372): Die Release-Skills
 // fahren die Schritte aus RELEASING.md im Worktree, ohne `cd`. Claude Code setzt das
 // Arbeitsverzeichnis ausserhalb der erlaubten Verzeichnisse nach jedem Aufruf zurueck, und
 // ein zusammengesetzter Aufruf `cd <pfad> && …` faellt nicht mehr unter
@@ -36,7 +36,7 @@ function mitVerzeichnissen(fn) {
 test("[1372] im startet das Kommando mit dem genannten Verzeichnis als Arbeitsverzeichnis", () => {
   mitVerzeichnissen(({ aufrufer, ziel }) => {
     const skript = "require('fs').writeFileSync('ort.txt', process.cwd()); console.log('ausgabe-durch')";
-    const res = werkzeug(aufrufer, "im", ziel, "--", process.execPath, "-e", skript);
+    const res = werkzeug(aufrufer, "in", ziel, "--", process.execPath, "-e", skript);
 
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, /ausgabe-durch/, "die Ausgabe des Kommandos kommt nicht durch");
@@ -47,7 +47,7 @@ test("[1372] im startet das Kommando mit dem genannten Verzeichnis als Arbeitsve
 
 test("[1372] im reicht den Exitcode des Kommandos durch", () => {
   mitVerzeichnissen(({ aufrufer, ziel }) => {
-    const res = werkzeug(aufrufer, "im", ziel, "--", process.execPath, "-e", "process.exit(7)");
+    const res = werkzeug(aufrufer, "in", ziel, "--", process.execPath, "-e", "process.exit(7)");
     assert.equal(res.status, 7);
   });
 });
@@ -55,7 +55,7 @@ test("[1372] im reicht den Exitcode des Kommandos durch", () => {
 test("[1372] im startet keine Shell: Sonderzeichen gehen woertlich als Argument durch", () => {
   mitVerzeichnissen(({ aufrufer, ziel }) => {
     const skript = "require('fs').writeFileSync('arg.txt', process.argv[1])";
-    const res = werkzeug(aufrufer, "im", ziel, "--", process.execPath, "-e", skript, "a && b; $(x) > y");
+    const res = werkzeug(aufrufer, "in", ziel, "--", process.execPath, "-e", skript, "a && b; $(x) > y");
     assert.equal(res.status, 0, res.stderr);
     assert.equal(readFileSync(join(ziel, "arg.txt"), "utf-8"), "a && b; $(x) > y");
     assert.ok(!existsSync(join(ziel, "y")), "eine Shell hat die Umleitung ausgewertet");
@@ -65,18 +65,18 @@ test("[1372] im startet keine Shell: Sonderzeichen gehen woertlich als Argument 
 test("[1372] im ohne Verzeichnis, ohne Trenner oder ohne Kommando bricht mit JSON-Fehler ab", () => {
   mitVerzeichnissen(({ aufrufer, ziel }) => {
     for (const args of [
-      ["im"],
-      ["im", ziel],
-      ["im", ziel, "--"],
-      ["im", ziel, process.execPath, "-e", "0"],
-      ["im", join(ziel, "gibt-es-nicht"), "--", process.execPath, "-e", "0"],
+      ["in"],
+      ["in", ziel],
+      ["in", ziel, "--"],
+      ["in", ziel, process.execPath, "-e", "0"],
+      ["in", join(ziel, "gibt-es-nicht"), "--", process.execPath, "-e", "0"],
     ]) {
       const res = werkzeug(aufrufer, ...args);
       assert.equal(res.status, 1, `kein Abbruch bei ${args.join(" ")}`);
       const letzte = res.stdout.trim().split("\n").at(-1);
       const stand = JSON.parse(letzte);
       assert.equal(stand.ok, false);
-      assert.match(stand.fehler, /im/);
+      assert.match(stand.fehler, /in/);
     }
   });
 });

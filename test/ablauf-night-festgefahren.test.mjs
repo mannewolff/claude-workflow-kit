@@ -112,7 +112,7 @@ function einheit(dir, id) {
 
 /** Die Strom-Zeilen eines gebremsten `checks.mjs run`, als Shell-Befehle. */
 function gebremstImStrom() {
-  const aufruf = { type: "assistant", message: { content: [{ type: "tool_use", id: "c1", name: "Bash", input: { command: "node .claude/kit/checks.mjs run --abschluss 1" } }] } };
+  const aufruf = { type: "assistant", message: { content: [{ type: "tool_use", id: "c1", name: "Bash", input: { command: "node .claude/kit/checks.mjs run --finish 1" } }] } };
   const ergebnis = {
     type: "user",
     message: { content: [{ type: "tool_result", tool_use_id: "c1", content: `Exit code 3\n${FESTGEFAHREN_MARKE} ${PRUEFUNG} — ${FEHLER}\n3-mal gleich gescheitert; es laeuft keine Pruefung mehr (Exit 3).\n` }] },

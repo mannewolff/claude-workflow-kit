@@ -7,7 +7,7 @@
 //     die erste — er ist Text fuer Menschen und wird anderswo woertlich gelesen,
 //     also darf er sich nicht mitbewegen. Beides zusammen ist der Punkt: Der
 //     Beobachter braucht die volle Liste als Daten, ohne einen Satz zu parsen.
-//   - `--bereich <name>` ist der sanktionierte Weg fuer den notwendigen
+//   - `--area <name>` ist der sanktionierte Weg fuer den notwendigen
 //     Gruppenlauf. Ohne ihn liesse sich am Lauf nicht ablesen, ob jemand die
 //     Auswahl umgangen hat oder ob fuer die geaenderte Datei nur die ganze
 //     Gruppe existiert.
@@ -68,12 +68,12 @@ test("ein nicht aufloesbarer Anker erfindet keinen Eintrag in ohneZuordnung", as
   });
 });
 
-test("--bereich faehrt die Pruefgruppen genau dieses Bereichs", async () => {
+test("--area faehrt die Pruefgruppen genau dieses Bereichs", async () => {
   await mitRepo({ config: CONFIG }, async (dir) => {
     // Eine Datei ohne Muster: ohne das Flag zoege sie den vollen Umfang nach sich.
     datei(dir, "notizen.txt");
 
-    const ergebnis = plan(dir, "--bereich", "frontend");
+    const ergebnis = plan(dir, "--area", "frontend");
 
     assert.equal(ergebnis.vollerUmfang, false);
     assert.deepEqual(kommandos(ergebnis.laufen), ["npm run build"]);
@@ -83,7 +83,7 @@ test("--bereich faehrt die Pruefgruppen genau dieses Bereichs", async () => {
   });
 });
 
-test("run --bereich fuehrt genau die Kommandos dieses Bereichs aus", async () => {
+test("run --area fuehrt genau die Kommandos dieses Bereichs aus", async () => {
   const config = {
     buildChecks: [
       { cmd: "echo x > lief-frontend.txt", areas: ["frontend"] },
@@ -94,7 +94,7 @@ test("run --bereich fuehrt genau die Kommandos dieses Bereichs aus", async () =>
   await mitRepo({ config }, async (dir) => {
     datei(dir, "backend/src/Service.java");
 
-    const res = await run(dir, "--bereich", "frontend");
+    const res = await run(dir, "--area", "frontend");
 
     assert.equal(res.status, 0, `run endete mit ${res.status}: ${res.stderr}`);
     assert.ok(existsSync(join(dir, "lief-frontend.txt")), "die Pruefung des Bereichs ist nicht gelaufen");
@@ -104,7 +104,7 @@ test("run --bereich fuehrt genau die Kommandos dieses Bereichs aus", async () =>
 
 test("ein unbekannter Bereichsname schlaegt fehl und nennt die konfigurierten Bereiche", async () => {
   await mitRepo({ config: CONFIG }, async (dir) => {
-    const res = await checks(dir, "run", "--bereich", "fronend");
+    const res = await checks(dir, "run", "--area", "fronend");
 
     assert.notEqual(res.status, 0, "der unbekannte Bereich lief durch");
     assert.match(res.stderr, /fronend/);
@@ -113,16 +113,16 @@ test("ein unbekannter Bereichsname schlaegt fehl und nennt die konfigurierten Be
   });
 });
 
-test("ein fehlender Wert hinter --bereich ist derselbe Fehler wie ein falscher", async () => {
+test("ein fehlender Wert hinter --area ist derselbe Fehler wie ein falscher", async () => {
   await mitRepo({ config: CONFIG }, async (dir) => {
-    const res = checks(dir, "plan", "--bereich");
+    const res = checks(dir, "plan", "--area");
 
-    assert.notEqual(res.status, 0, "--bereich ohne Wert lief durch");
+    assert.notEqual(res.status, 0, "--area ohne Wert lief durch");
     assert.match(res.stderr, /frontend/);
   });
 });
 
-test("--bereich bleibt mit --stufe kombinierbar: die Kumulation gilt weiter", async () => {
+test("--area bleibt mit --stage kombinierbar: die Kumulation gilt weiter", async () => {
   const config = {
     buildChecks: [
       { cmd: "npm run build", areas: ["frontend"] },
@@ -134,21 +134,21 @@ test("--bereich bleibt mit --stufe kombinierbar: die Kumulation gilt weiter", as
   await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const paket = plan(dir, "--bereich", "frontend");
+    const paket = plan(dir, "--area", "frontend");
     assert.deepEqual(kommandos(paket.laufen), ["npm run build"]);
     assert.match(eintrag(paket.ausgelassen, "npm run e2e").grund, /Stufe push/);
 
-    const push = plan(dir, "--bereich", "frontend", "--stufe", "push");
+    const push = plan(dir, "--area", "frontend", "--stage", "push");
     assert.deepEqual(kommandos(push.laufen), ["npm run build", "npm run e2e"]);
     assert.deepEqual(kommandos(push.ausgelassen), ["mvn verify"]);
   });
 });
 
-test("--bereich laesst --since unberuehrt: der Anker bestimmt weiter die Dateiliste", async () => {
+test("--area laesst --since unberuehrt: der Anker bestimmt weiter die Dateiliste", async () => {
   await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const ergebnis = plan(dir, "--bereich", "backend", "--since", "HEAD");
+    const ergebnis = plan(dir, "--area", "backend", "--since", "HEAD");
 
     assert.deepEqual(ergebnis.geaendert, ["frontend/src/App.tsx"]);
     assert.deepEqual(kommandos(ergebnis.laufen), ["mvn verify"]);
@@ -172,7 +172,7 @@ const CONFIG_LAUF = {
 };
 //
 // Zwei Loecher, die der Review aufgedeckt hat. Beide entstehen daraus, dass ein
-// `--bereich`-Lauf zwar WENIGER Pruefungen faehrt, `geaendert` und `hashes` aber
+// `--area`-Lauf zwar WENIGER Pruefungen faehrt, `geaendert` und `hashes` aber
 // weiterhin aus dem Anker bestimmt — er sah damit aus wie ein vollstaendiger Lauf.
 
 test("ein uneingeschraenkter Lauf uebernimmt das Ergebnis eines Bereichslaufs nicht", async () => {
@@ -181,7 +181,7 @@ test("ein uneingeschraenkter Lauf uebernimmt das Ergebnis eines Bereichslaufs ni
     datei(dir, "backend/src/Main.java");
 
     // Erst eingegrenzt: nur die Frontend-Pruefung laeuft.
-    const eingegrenzt = await run(dir, "--bereich", "frontend");
+    const eingegrenzt = await run(dir, "--area", "frontend");
     assert.equal(eingegrenzt.status, 0, `${eingegrenzt.stdout}${eingegrenzt.stderr}`);
     assert.equal(zusammenfassung(dir).bereichWahl, "frontend");
 
@@ -191,7 +191,7 @@ test("ein uneingeschraenkter Lauf uebernimmt das Ergebnis eines Bereichslaufs ni
     const voll = await run(dir);
     assert.doesNotMatch(voll.stdout, /Ergebnis uebernommen/, "der volle Lauf darf nicht uebernehmen");
     const nachher = zusammenfassung(dir);
-    assert.equal(nachher.bereichWahl, null, "ohne --bereich traegt die Zusammenfassung null");
+    assert.equal(nachher.bereichWahl, null, "ohne --area traegt die Zusammenfassung null");
     assert.ok(
       kommandos(nachher.laufen).some((c) => c.includes("# backend")),
       `die Backend-Pruefung muss laufen, lief: ${kommandos(nachher.laufen).join(", ")}`,
@@ -204,8 +204,8 @@ test("zwei Bereichslaeufe auf verschiedene Bereiche uebernehmen einander nicht",
     datei(dir, "frontend/src/App.tsx");
     datei(dir, "backend/src/Main.java");
 
-    await run(dir, "--bereich", "frontend");
-    const zweiter = await run(dir, "--bereich", "backend");
+    await run(dir, "--area", "frontend");
+    const zweiter = await run(dir, "--area", "backend");
 
     assert.doesNotMatch(zweiter.stdout, /Ergebnis uebernommen/);
     assert.equal(zusammenfassung(dir).bereichWahl, "backend");
@@ -216,8 +216,8 @@ test("derselbe Bereichslauf auf unveraendertem Stand uebernimmt weiterhin", asyn
   await mitRepo({ config: CONFIG_LAUF }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    await run(dir, "--bereich", "frontend");
-    const zweiter = await run(dir, "--bereich", "frontend");
+    await run(dir, "--area", "frontend");
+    const zweiter = await run(dir, "--area", "frontend");
 
     // Die Wiederverwendung selbst bleibt unangetastet: Gleiche Eingrenzung, gleicher
     // Stand, gleiches Ergebnis (Issue #863).

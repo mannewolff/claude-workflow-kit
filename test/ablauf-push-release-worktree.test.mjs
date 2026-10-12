@@ -85,7 +85,7 @@ function mitRepo(fn) {
 
 test("[release-1] anlegen setzt auf dem uebergebenen Ref auf und spiegelt .claude einschliesslich kit/", () => {
   mitRepo((dir, angelegt) => {
-    const { status, stand } = werkzeug(dir, "anlegen", "--praefix", "release", "--ref", "veroeffentlicht");
+    const { status, stand } = werkzeug(dir, "create", "--prefix", "release", "--ref", "veroeffentlicht");
     assert.equal(status, 0, `anlegen schlug fehl: ${JSON.stringify(stand)}`);
     assert.equal(stand.ok, true);
     angelegt.push(stand.pfad);
@@ -105,7 +105,7 @@ test("[release-1] anlegen setzt auf dem uebergebenen Ref auf und spiegelt .claud
 
 test("[release-1] anlegen ohne --ref nimmt HEAD", () => {
   mitRepo((dir, angelegt) => {
-    const { stand } = werkzeug(dir, "anlegen", "--praefix", "release");
+    const { stand } = werkzeug(dir, "create", "--prefix", "release");
     angelegt.push(stand.pfad);
     assert.equal(readFileSync(join(stand.pfad, "VERSION"), "utf-8").replaceAll("\r\n", "\n"), "1.1.0\n");
   });
@@ -113,12 +113,12 @@ test("[release-1] anlegen ohne --ref nimmt HEAD", () => {
 
 test("[release-1] anlegen raeumt liegengebliebene Worktrees desselben Praefixes auf, fremde nicht", () => {
   mitRepo((dir, angelegt) => {
-    const alt = werkzeug(dir, "anlegen", "--praefix", "release").stand.pfad;
+    const alt = werkzeug(dir, "create", "--prefix", "release").stand.pfad;
     angelegt.push(alt);
-    const kette = werkzeug(dir, "anlegen", "--praefix", "kette").stand.pfad;
+    const kette = werkzeug(dir, "create", "--prefix", "kette").stand.pfad;
     angelegt.push(kette);
 
-    const neu = werkzeug(dir, "anlegen", "--praefix", "release").stand.pfad;
+    const neu = werkzeug(dir, "create", "--prefix", "release").stand.pfad;
     angelegt.push(neu);
 
     assert.ok(!existsSync(alt), "der liegengebliebene Release-Worktree ist nicht abgeraeumt");
@@ -129,10 +129,10 @@ test("[release-1] anlegen raeumt liegengebliebene Worktrees desselben Praefixes 
 
 test("[release-1] entfernen loescht Ordner und Eintrag", () => {
   mitRepo((dir, angelegt) => {
-    const pfad = werkzeug(dir, "anlegen", "--praefix", "release").stand.pfad;
+    const pfad = werkzeug(dir, "create", "--prefix", "release").stand.pfad;
     angelegt.push(pfad);
 
-    const { status, stand } = werkzeug(dir, "entfernen", pfad);
+    const { status, stand } = werkzeug(dir, "remove", pfad);
     assert.equal(status, 0);
     assert.equal(stand.entfernt, pfad);
     assert.ok(!existsSync(pfad));
@@ -149,13 +149,13 @@ test("[release-1] eine fremde Aenderung im Haupt-Tree bleibt dort und geht in ke
     writeFileSync(join(dir, "VERSION"), "1.1.0-wip\n");
     const vorher = git(dir, "status", "--porcelain");
 
-    const pfad = werkzeug(dir, "anlegen", "--praefix", "release", "--ref", "HEAD").stand.pfad;
+    const pfad = werkzeug(dir, "create", "--prefix", "release", "--ref", "HEAD").stand.pfad;
     angelegt.push(pfad);
     assert.ok(!existsSync(join(pfad, "rot.test.mjs")), "die fremde, unversionierte Datei ist im Worktree");
     assert.equal(readFileSync(join(pfad, "VERSION"), "utf-8").replaceAll("\r\n", "\n"), "1.1.0\n",
       "der Worktree traegt den committeten Stand, nicht die fremde Aenderung");
 
-    werkzeug(dir, "entfernen", pfad);
+    werkzeug(dir, "remove", pfad);
     assert.equal(git(dir, "status", "--porcelain"), vorher,
       "der Haupt-Working-Tree sieht vor und nach dem Lauf gleich aus");
   });
@@ -163,12 +163,12 @@ test("[release-1] eine fremde Aenderung im Haupt-Tree bleibt dort und geht in ke
 
 test("[release-1] entfernen zielt auch aus dem Worktree heraus auf den Worktree", () => {
   mitRepo((dir, angelegt) => {
-    const pfad = werkzeug(dir, "anlegen", "--praefix", "release").stand.pfad;
+    const pfad = werkzeug(dir, "create", "--prefix", "release").stand.pfad;
     angelegt.push(pfad);
 
     // Der Skill arbeitet im Worktree; `--show-toplevel` liefert dort DEN WORKTREE, und ein
     // Abbau haette auf sich selbst gezielt statt auf den Eintrag in der Hauptkopie.
-    const { status, stand } = werkzeug(pfad, "entfernen", pfad);
+    const { status, stand } = werkzeug(pfad, "remove", pfad);
     assert.equal(status, 0, `entfernen schlug fehl: ${JSON.stringify(stand)}`);
     assert.ok(!existsSync(pfad));
     assert.doesNotMatch(git(dir, "worktree", "list"), /release-/);
@@ -202,7 +202,7 @@ function echterPfad(pfad) {
 
 test("[release-1] entfernen verlaesst das Arbeitsverzeichnis, wenn es im Worktree liegt", () => {
   mitRepo((dir, angelegt) => {
-    const pfad = werkzeug(dir, "anlegen", "--praefix", "release").stand.pfad;
+    const pfad = werkzeug(dir, "create", "--prefix", "release").stand.pfad;
     angelegt.push(pfad);
 
     // Der Prozess steht IM Worktree — auf Windows sperrt das das Loeschen.
@@ -215,7 +215,7 @@ test("[release-1] entfernen verlaesst das Arbeitsverzeichnis, wenn es im Worktre
 
 test("[release-1] entfernen von ausserhalb wechselt das Arbeitsverzeichnis nicht", () => {
   mitRepo((dir, angelegt) => {
-    const pfad = werkzeug(dir, "anlegen", "--praefix", "release").stand.pfad;
+    const pfad = werkzeug(dir, "create", "--prefix", "release").stand.pfad;
     angelegt.push(pfad);
     const daneben = mkdtempSync(join(tmpdir(), "daneben-"));
     angelegt.push(daneben);
@@ -258,7 +258,7 @@ test("[release-1] ein unbekanntes Kommando endet mit Exit 1 und einem Fehler im 
 
 test("[release-2] nachziehen-pruefen sagt ja im sauberen Baum ohne Sperre", () => {
   mitRepo((dir) => {
-    const { status, stand } = werkzeug(dir, "nachziehen-pruefen");
+    const { status, stand } = werkzeug(dir, "catch-up-check");
     assert.equal(status, 0);
     assert.equal(stand.nachziehen, true, `unerwarteter Grund: ${stand.grund}`);
     assert.equal(stand.grund, null);
@@ -268,13 +268,13 @@ test("[release-2] nachziehen-pruefen sagt ja im sauberen Baum ohne Sperre", () =
 test("[release-2] nachziehen-pruefen sagt nein, solange eine Sperre mit lebender Prozess-Id liegt", () => {
   mitRepo((dir) => {
     writeFileSync(join(dir, ".claude", "night-umsetzung.lock"), `${process.pid}\n`);
-    const { stand } = werkzeug(dir, "nachziehen-pruefen");
+    const { stand } = werkzeug(dir, "catch-up-check");
     assert.equal(stand.nachziehen, false);
     assert.match(stand.grund, /night-umsetzung\.lock/);
 
     // Eine verwaiste Sperre haelt nichts auf: Die Prozess-Id gehoert niemandem mehr.
     writeFileSync(join(dir, ".claude", "night-umsetzung.lock"), "2147483647\n");
-    assert.equal(werkzeug(dir, "nachziehen-pruefen").stand.nachziehen, true);
+    assert.equal(werkzeug(dir, "catch-up-check").stand.nachziehen, true);
   });
 });
 
@@ -285,10 +285,10 @@ test("[release-2] nachziehen-pruefen sagt nein im schmutzigen Haupt-Tree, aber n
     mkdirSync(join(dir, "issues"), { recursive: true });
     writeFileSync(join(dir, "issues", "929.json"), "{}\n");
     writeFileSync(join(dir, ".claude", "wegmarken.tsv"), "zug\n");
-    assert.equal(werkzeug(dir, "nachziehen-pruefen").stand.nachziehen, true);
+    assert.equal(werkzeug(dir, "catch-up-check").stand.nachziehen, true);
 
     writeFileSync(join(dir, "VERSION"), "9.9.9\n");
-    const { stand } = werkzeug(dir, "nachziehen-pruefen");
+    const { stand } = werkzeug(dir, "catch-up-check");
     assert.equal(stand.nachziehen, false);
     assert.match(stand.grund, /VERSION/);
   });
@@ -302,14 +302,14 @@ test("[release-3] rueckweg holt Zusammenfassung, Ausfuehrungsprotokoll und Befun
     writeFileSync(join(dir, ".claude", "ausfuehrungen.tsv"), "2026-09-24T00:00:00.000Z\tnode --test\tgruen\t10\n");
     writeFileSync(join(dir, ".claude", "befunde.tsv"), "alt\tzeile\tmit\tsieben\tspalten\tund\tmehr\n");
 
-    const pfad = werkzeug(dir, "anlegen", "--praefix", "release").stand.pfad;
+    const pfad = werkzeug(dir, "create", "--prefix", "release").stand.pfad;
     angelegt.push(pfad);
     // Was der Prueflauf im Worktree hinterlaesst.
     writeFileSync(join(pfad, ".claude", "checks-summary.json"), JSON.stringify({ ergebnis: "neu" }) + "\n");
     writeFileSync(join(pfad, ".claude", "ausfuehrungen.tsv"), "2026-09-25T00:00:00.000Z\tnode --test\tgruen\t20\n");
     writeFileSync(join(pfad, ".claude", "befunde.tsv"), "neu\tzeile\tmit\tsieben\tspalten\tund\tmehr\n");
 
-    const { status, stand } = werkzeug(dir, "rueckweg", pfad);
+    const { status, stand } = werkzeug(dir, "return", pfad);
     assert.equal(status, 0, `rueckweg schlug fehl: ${JSON.stringify(stand)}`);
     assert.equal(stand.zusammenfassung, true);
     assert.equal(stand.ausfuehrungen, 1, "eine Zeile des Worktrees kommt zurueck");
@@ -326,11 +326,11 @@ test("[release-3] rueckweg holt Zusammenfassung, Ausfuehrungsprotokoll und Befun
 test("[release-3] rueckweg ohne Dateien im Worktree laesst die Hauptkopie unberuehrt", () => {
   mitRepo((dir, angelegt) => {
     writeFileSync(join(dir, ".claude", "checks-summary.json"), JSON.stringify({ ergebnis: "alt" }) + "\n");
-    const pfad = werkzeug(dir, "anlegen", "--praefix", "release").stand.pfad;
+    const pfad = werkzeug(dir, "create", "--prefix", "release").stand.pfad;
     angelegt.push(pfad);
     rmSync(join(pfad, ".claude", "checks-summary.json"), { force: true });
 
-    const { status, stand } = werkzeug(dir, "rueckweg", pfad);
+    const { status, stand } = werkzeug(dir, "return", pfad);
     assert.equal(status, 0);
     assert.equal(stand.zusammenfassung, false);
     assert.equal(stand.ausfuehrungen, 0);
@@ -357,10 +357,10 @@ test("[release-4] worktree.mjs wird gestempelt und ausgeliefert", () => {
   // Kit-Repo liegt, ginge in jedem Zielprojekt ins Leere (dieselbe Luecke wie #425).
   for (const skill of ["push-main", "merge-production"]) {
     const text = readFileSync(join(repoRoot, "skills", skill, "SKILL.md"), "utf-8");
-    assert.match(text, /node \.claude\/kit\/worktree\.mjs anlegen/, `${skill} legt keinen Worktree an`);
-    assert.match(text, /node \.claude\/kit\/worktree\.mjs entfernen/, `${skill} baut den Worktree nicht ab`);
-    assert.match(text, /node \.claude\/kit\/worktree\.mjs rueckweg/, `${skill} holt nichts aus dem Worktree zurueck`);
-    assert.match(text, /node \.claude\/kit\/worktree\.mjs nachziehen-pruefen/, `${skill} prueft das Nachziehen nicht`);
+    assert.match(text, /node \.claude\/kit\/worktree\.mjs create/, `${skill} legt keinen Worktree an`);
+    assert.match(text, /node \.claude\/kit\/worktree\.mjs remove/, `${skill} baut den Worktree nicht ab`);
+    assert.match(text, /node \.claude\/kit\/worktree\.mjs return/, `${skill} holt nichts aus dem Worktree zurueck`);
+    assert.match(text, /node \.claude\/kit\/worktree\.mjs catch-up-check/, `${skill} prueft das Nachziehen nicht`);
     // Ein frischer Worktree traegt keine installierten Abhaengigkeiten. Ohne diesen Absatz
     // faellt ein Pflichtcheck dort aus einem Grund um, der nichts mit dem Stand zu tun hat.
     const absatz = text.split("\n\n").find((a) => a.includes("Abhängigkeiten im frischen Worktree"));
@@ -404,7 +404,7 @@ test("[release-964] ein gesetztes installCommand laeuft IM Worktree", () => {
   mitRepo((dir, angelegt) => {
     configErgaenzen(dir, { installCommand: MARKER_KOMMANDO });
 
-    const { status, stand } = werkzeug(dir, "anlegen", "--praefix", "release");
+    const { status, stand } = werkzeug(dir, "create", "--prefix", "release");
     assert.equal(status, 0, `anlegen schlug fehl: ${JSON.stringify(stand)}`);
     angelegt.push(stand.pfad);
 
@@ -418,7 +418,7 @@ test("[release-964] ein leeres installCommand aendert nichts", () => {
   mitRepo((dir, angelegt) => {
     configErgaenzen(dir, { installCommand: "" });
 
-    const { status, stand } = werkzeug(dir, "anlegen", "--praefix", "release");
+    const { status, stand } = werkzeug(dir, "create", "--prefix", "release");
     assert.equal(status, 0);
     angelegt.push(stand.pfad);
 
@@ -433,7 +433,7 @@ test("[release-964] ein leeres installCommand aendert nichts", () => {
 
 test("[release-964] ein fehlendes installCommand aendert nichts", () => {
   mitRepo((dir, angelegt) => {
-    const { status, stand } = werkzeug(dir, "anlegen", "--praefix", "release");
+    const { status, stand } = werkzeug(dir, "create", "--prefix", "release");
     assert.equal(status, 0);
     angelegt.push(stand.pfad);
 
@@ -447,7 +447,7 @@ test("[release-964] ein rotes installCommand raeumt den Worktree wieder ab", () 
   mitRepo((dir) => {
     configErgaenzen(dir, { installCommand: `"${process.execPath}" -e "process.exit(3)"` });
 
-    const { status, stand } = werkzeug(dir, "anlegen", "--praefix", "release");
+    const { status, stand } = werkzeug(dir, "create", "--prefix", "release");
     assert.equal(status, 1, `anlegen haette scheitern muessen: ${JSON.stringify(stand)}`);
     assert.equal(stand.ok, false);
     assert.match(stand.fehler, /process\.exit\(3\)/, "der Fehler nennt das Kommando nicht");

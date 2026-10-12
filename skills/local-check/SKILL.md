@@ -40,10 +40,10 @@ node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranc
 
 Das Kommando wählt die betroffenen `buildChecks` aus und führt genau sie aus. `<mainBranch>` ist der Wert aus `.claude/workflow.config.json` (Default: `main`).
 
-**Gefahren wird die Paketstufe.** Der Aufruf trägt kein `--stufe`: Die Paketstufe ist die Vorgabe, und sie bleibt hier die richtige. Der mechanische Halt vor dem Push sitzt seit skills-20 in `/push-main` selbst — dieser Schritt ist die lokale Prüfung vor der menschlichen Testrunde, und sie teuer zu machen nähme ihr den Nutzen. Trägt eine Prüfung im Projekt die Stufe `push` oder `merge`, erscheint sie darum in der Liste `ausgelassen`, mit ihrer Stufe als Grund. Das ist **kein Mangel**, sondern ihr Zeitpunkt: Sie läuft in `/push-main` bzw. `/merge-production`. In der Checklist steht sie wie jede andere Auslassung.
+**Gefahren wird die Paketstufe.** Der Aufruf trägt kein `--stage`: Die Paketstufe ist die Vorgabe, und sie bleibt hier die richtige. Der mechanische Halt vor dem Push sitzt seit skills-20 in `/push-main` selbst — dieser Schritt ist die lokale Prüfung vor der menschlichen Testrunde, und sie teuer zu machen nähme ihr den Nutzen. Trägt eine Prüfung im Projekt die Stufe `push` oder `merge`, erscheint sie darum in der Liste `ausgelassen`, mit ihrer Stufe als Grund. Das ist **kein Mangel**, sondern ihr Zeitpunkt: Sie läuft in `/push-main` bzw. `/merge-production`. In der Checklist steht sie wie jede andere Auslassung.
 
-**Und hier wird kein `--abschluss` gesetzt.** Das ist kein Versehen, sondern der
-Unterschied der Zeitpunkte: `--abschluss` gehoert an das Ende **einer** Karte, wo die
+**Und hier wird kein `--finish` gesetzt.** Das ist kein Versehen, sondern der
+Unterschied der Zeitpunkte: `--finish` gehoert an das Ende **einer** Karte, wo die
 `implement-*`-Skills vor ihrem Commit gegen `HEAD` messen. Dieser Schritt misst den Stand
 **mehrerer Pakete** gegen den Merge-Base — er schliesst keine Karte ab, und die
 Zusammenspiel-Pruefungen (`nichtBeimAbschluss`) sind hier genau die, die gebraucht werden.

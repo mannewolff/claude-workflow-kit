@@ -102,8 +102,8 @@ test("[night-924] ein buildChecks-Eintrag in Objektform wird wie die String-Form
   assert.equal(erg.anzahl, 1);
 });
 
-test("[night-924] ein checks.mjs run --bereich ist der sanktionierte Gruppenlauf: volleNoetig, nicht volle", () => {
-  const erg = einAufruf("node .claude/kit/checks.mjs run --bereich board");
+test("[night-924] ein checks.mjs run --area ist der sanktionierte Gruppenlauf: volleNoetig, nicht volle", () => {
+  const erg = einAufruf("node .claude/kit/checks.mjs run --area board");
   assert.equal(erg.volleNoetig, 1);
   assert.equal(erg.volle, 0, "der Bereichslauf darf nicht unter die Verstoesse geraten (Plan #917, E3)");
   assert.equal(erg.anzahl, 1);
@@ -116,7 +116,7 @@ test("[night-924] ein node --test auf eine einzelne Datei ist keine vollstaendig
   assert.equal(erg.anzahl, 1, "gezaehlt wird er trotzdem — er ist ein Prueflauf der Arbeit");
 });
 
-test("[night-924] ein checks.mjs run ohne --bereich ist der Abschlussversuch und erhoeht arbeit.anzahl nicht", () => {
+test("[night-924] ein checks.mjs run ohne --area ist der Abschlussversuch und erhoeht arbeit.anzahl nicht", () => {
   const erg = einAufruf("node .claude/kit/checks.mjs run");
   assert.equal(erg.anzahl, 0, "sonst stuende der Abschlussversuch in zwei Zahlen (Plan #917, E9)");
   assert.equal(erg.volle, 0);
@@ -134,23 +134,23 @@ test("[night-926] der Abschlussversuch zaehlt in seinem eigenen Block, mit seine
   assert.equal(erg.anzahl, 0, "er bleibt aus der Arbeit heraus — dort zaehlte er doppelt");
 });
 
-test("[night-926] auch --frisch ist ein Abschlussversuch, ein --bereich-Lauf keiner", () => {
-  assert.deepEqual(einAufruf("node .claude/kit/checks.mjs run --frisch").abschluss, { anzahl: 1, dauerMs: 100 });
-  assert.deepEqual(einAufruf("node .claude/kit/checks.mjs run --bereich board").abschluss, { anzahl: 0, dauerMs: 0 });
+test("[night-926] auch --fresh ist ein Abschlussversuch, ein --area-Lauf keiner", () => {
+  assert.deepEqual(einAufruf("node .claude/kit/checks.mjs run --fresh").abschluss, { anzahl: 1, dauerMs: 100 });
+  assert.deepEqual(einAufruf("node .claude/kit/checks.mjs run --area board").abschluss, { anzahl: 0, dauerMs: 0 });
 });
 
 // Die Zuordnung darf nicht daran kippen, dass der Abschlusslauf jetzt einen eigenen
-// Schalter traegt (Issue #950, Plan #944): `--abschluss` ist genau der Lauf, den dieser
+// Schalter traegt (Issue #950, Plan #944): `--finish` ist genau der Lauf, den dieser
 // Block zaehlen soll, und die Nummer der Karte dahinter aendert daran nichts. Ohne
 // diesen Test wuerde eine spaetere Verschaerfung der Erkennung ("nur `run` ohne weitere
 // Worte") den Abschlussversuch unbemerkt aus der Zaehlung nehmen.
-test("[night-950] --abschluss bleibt ein Abschlussversuch, mit und ohne Kartennummer", () => {
-  assert.deepEqual(einAufruf("node .claude/kit/checks.mjs run --abschluss 950").abschluss, { anzahl: 1, dauerMs: 100 });
-  assert.deepEqual(einAufruf("node .claude/kit/checks.mjs run --abschluss").abschluss, { anzahl: 1, dauerMs: 100 });
-  assert.equal(einAufruf("node .claude/kit/checks.mjs run --abschluss 950").anzahl, 0,
+test("[night-950] --finish bleibt ein Abschlussversuch, mit und ohne Kartennummer", () => {
+  assert.deepEqual(einAufruf("node .claude/kit/checks.mjs run --finish 950").abschluss, { anzahl: 1, dauerMs: 100 });
+  assert.deepEqual(einAufruf("node .claude/kit/checks.mjs run --finish").abschluss, { anzahl: 1, dauerMs: 100 });
+  assert.equal(einAufruf("node .claude/kit/checks.mjs run --finish 950").anzahl, 0,
     "der Abschlussversuch darf auch mit Schalter nicht in der Arbeit stehen");
-  assert.deepEqual(einAufruf("node .claude/kit/checks.mjs run --abschluss 950 --bereich board").abschluss,
-    { anzahl: 0, dauerMs: 0 }, "ein Bereichslauf bleibt ein Bereichslauf, auch neben --abschluss");
+  assert.deepEqual(einAufruf("node .claude/kit/checks.mjs run --finish 950 --area board").abschluss,
+    { anzahl: 0, dauerMs: 0 }, "ein Bereichslauf bleibt ein Bereichslauf, auch neben --finish");
 });
 
 test("[night-926] zwei Abschlussversuche einer Session addieren Zahl und Spannen", () => {
@@ -168,7 +168,7 @@ test("[night-926] ein uebernommener Abschlusslauf zaehlt als Versuch ohne Dauer"
   assert.equal(erg.abschluss.dauerMs, 100, "der frische Lauf traegt seine Spanne — Gegenprobe");
   const uebernommen = beobachte([
     [bashAufrufe(["t1", "node .claude/kit/checks.mjs run"]), 1000],
-    [toolResult("t1", `Stand unveraendert seit 2026-09-24T22:00:00.000Z: ${UEBERNAHME_MARKE} (gruen). Neu pruefen mit --frisch.`), 1100],
+    [toolResult("t1", `Stand unveraendert seit 2026-09-24T22:00:00.000Z: ${UEBERNAHME_MARKE} (gruen). Neu pruefen mit --fresh.`), 1100],
   ]);
   assert.deepEqual(uebernommen.abschluss, { anzahl: 1, dauerMs: 0 },
     "uebernehmen() reicht die Werte des frueheren Laufs weiter — die Spanne waere nicht gemessen, sondern geerbt");
@@ -204,10 +204,10 @@ test("[night-926] ein Arbeitslauf mit der Marke im Ergebnis behaelt seine Spanne
   assert.equal(erg.dauerMs, 300, "die Regel gilt fuer den Abschlussversuch, nicht fuer jeden Lauf");
 });
 
-test("[night-924] auch checks.mjs run --frisch bleibt Abschlussversuch, mit --bereich bleibt es der Gruppenlauf", () => {
-  assert.equal(einAufruf("node .claude/kit/checks.mjs run --frisch").anzahl, 0);
-  const mitBereich = einAufruf("node .claude/kit/checks.mjs run --bereich=board --frisch");
-  assert.equal(mitBereich.volleNoetig, 1, "--bereich=<name> ist dieselbe Wahl wie --bereich <name>");
+test("[night-924] auch checks.mjs run --fresh bleibt Abschlussversuch, mit --area bleibt es der Gruppenlauf", () => {
+  assert.equal(einAufruf("node .claude/kit/checks.mjs run --fresh").anzahl, 0);
+  const mitBereich = einAufruf("node .claude/kit/checks.mjs run --area=board --fresh");
+  assert.equal(mitBereich.volleNoetig, 1, "--area=<name> ist dieselbe Wahl wie --area <name>");
   assert.equal(mitBereich.anzahl, 1);
 });
 
@@ -279,7 +279,7 @@ test("[night-924] unlesbare Zeilen, fehlendes Kommando und fehlende Id werden to
 test("[night-924] ohne buildChecks zaehlt der Beobachter keine Arbeit, aber weiter den Bereichslauf", () => {
   assert.deepEqual(beobachte([[bashAufrufe(["t1", "mvn verify"]), 1000], [toolResult("t1"), 1100]], []),
     { anzahl: 0, volle: 0, volleNoetig: 0, dauerMs: 0, abschluss: { anzahl: 0, dauerMs: 0 } });
-  const bereich = einAufruf("node .claude/kit/checks.mjs run --bereich board", []);
+  const bereich = einAufruf("node .claude/kit/checks.mjs run --area board", []);
   assert.equal(bereich.volleNoetig, 1, "der Bereichslauf ist per Aufrufweg erkennbar, nicht ueber die Programme");
 });
 
@@ -476,7 +476,7 @@ test("[night-1389] die Bremsmarke des Beobachters ist die des Kommandos", () => 
 
 test("[night-1389] ein gebremster Prueflauf meldet Pruefung, Fehler und Versuche", () => {
   const gemeldet = bremsungen([
-    [bashAufrufe(["t1", "node .claude/kit/checks.mjs run --abschluss 7"]), 1000],
+    [bashAufrufe(["t1", "node .claude/kit/checks.mjs run --finish 7"]), 1000],
     [toolResult("t1", `Exit code 3\n${GEBREMST}`), 1100],
   ]);
   assert.deepEqual(gemeldet, [{ pruefung: "npm test", fehler: "test/a.test.mjs: erwartet 2", versuche: 3 }]);
@@ -484,7 +484,7 @@ test("[night-1389] ein gebremster Prueflauf meldet Pruefung, Fehler und Versuche
 
 test("[night-1389] auch die Blockform des tool_result und ein Bereichslauf werden gelesen", () => {
   const gemeldet = bremsungen([
-    [bashAufrufe(["t1", "node .claude/kit/checks.mjs run --bereich board"]), 1000],
+    [bashAufrufe(["t1", "node .claude/kit/checks.mjs run --area board"]), 1000],
     [JSON.stringify({
       type: "user",
       message: { content: [{ type: "tool_result", tool_use_id: "t1", content: [{ type: "text", text: GEBREMST }] }] },
@@ -518,7 +518,7 @@ test("[night-1389] ein Prueflauf ohne Marke meldet nichts, eine zweite Marke nur
 
 test("[night-1389] nach der Bremsmarke endet die Sitzung vor dem Zeitlimit, ohne ETIMEDOUT", async () => {
   const fake = [
-    schub("c1", "node .claude/kit/checks.mjs run --abschluss 1").split("\n")[0],
+    schub("c1", "node .claude/kit/checks.mjs run --finish 1").split("\n")[0],
     `printf '%s\\n' '${JSON.stringify({
       type: "user",
       message: { content: [{ type: "tool_result", tool_use_id: "c1", content: GEBREMST }] },

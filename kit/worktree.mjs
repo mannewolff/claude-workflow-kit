@@ -12,12 +12,13 @@
  * Seither laufen beide Skills in einem eigenen Worktree ausserhalb des Repos, und diese
  * Datei ist ihre Tuer dorthin:
  *
- *   node .claude/kit/worktree.mjs anlegen [--praefix release] [--ref <ref>] [--issue <n>]
- *   node .claude/kit/worktree.mjs entfernen <pfad>
- *   node .claude/kit/worktree.mjs nachziehen-pruefen
- *   node .claude/kit/worktree.mjs rueckweg <pfad>
- *   node .claude/kit/worktree.mjs vorbereitung-festhalten <pfad> --ergebnis <e> [--offen "<Text>"]... [--fetch <f>]
- *   node .claude/kit/worktree.mjs vorbereitung-pruefen [--verwerfen]
+ *   node .claude/kit/worktree.mjs create [--prefix release] [--ref <ref>] [--issue <n>]
+ *   node .claude/kit/worktree.mjs remove <pfad>
+ *   node .claude/kit/worktree.mjs catch-up-check
+ *   node .claude/kit/worktree.mjs return <pfad>
+ *   node .claude/kit/worktree.mjs record-preparation <pfad> --result <e> [--open "<Text>"]... [--fetch <f>]
+ *   node .claude/kit/worktree.mjs check-preparation [--discard]
+ *   node .claude/kit/worktree.mjs in <pfad> -- <kommando> [argumente]
  *
  * KEIN ZWEITER WEG (Entscheidung des Pakets): Angelegt, gespiegelt und abgeraeumt wird mit
  * denselben Funktionen, die die Nacht-Kette benutzt — `worktreeAnlegen`,
@@ -95,39 +96,56 @@ function repoWurzel() {
 }
 
 /**
- * Die englischen Namen der Unterkommandos und Optionen (Issue #1462, Plan #1420 E18): je
- * englischer Name der deutsche, den er vertritt. Die deutschen bleiben gueltig.
+ * Die frueheren deutschen Namen der Unterkommandos, Optionen und Werte, je Eintrag deutsch ->
+ * englisch (Issue #1564, Plan #1548 E5). Seit Version 5 nimmt worktree.mjs nur die englischen
+ * an; diese Tabellen dienen allein der Meldung, die einen deutschen Namen abweist und den
+ * englischen nennt — zum Ausfuehren werden sie nie benutzt.
  */
-const KOMMANDOS_EN = {
-  create: "anlegen",
-  remove: "entfernen",
-  in: "im",
-  "catch-up-check": "nachziehen-pruefen",
-  return: "rueckweg",
-  "record-preparation": "vorbereitung-festhalten",
-  "check-preparation": "vorbereitung-pruefen",
-};
-const OPTIONEN_EN = {
-  "--prefix": "--praefix",
-  "--result": "--ergebnis",
-  "--open": "--offen",
-  "--discard": "--verwerfen",
-};
+const ALTE_BEFEHLE = Object.freeze({
+  anlegen: "create",
+  entfernen: "remove",
+  im: "in",
+  "nachziehen-pruefen": "catch-up-check",
+  rueckweg: "return",
+  "vorbereitung-festhalten": "record-preparation",
+  "vorbereitung-pruefen": "check-preparation",
+});
+const ALTE_OPTIONEN = Object.freeze({
+  "--praefix": "--prefix",
+  "--ergebnis": "--result",
+  "--offen": "--open",
+  "--verwerfen": "--discard",
+});
+const ALTE_WERTE = Object.freeze({ gruen: "green", "gruen-offen": "green-open", rot: "red", fehlgeschlagen: "failed" });
 
-/** Der deutsche Name hinter einem englischen; jeder andere Name bleibt, wie er ist. */
-function deutscherName(tabelle, name) {
-  return Object.hasOwn(tabelle, name) ? tabelle[name] : name;
-}
+/**
+ * Die getippten Werte von --result und --fetch zum internen Schluessel (E5): Getippt wird
+ * englisch, festgehalten wird weiter der Wert, den `vorbereitungFesthalten` und der Leser
+ * der Vorbereitungsdatei kennen.
+ */
+const ERGEBNIS_WERTE = Object.freeze({ green: "gruen", "green-open": "gruen-offen", red: "rot" });
+const FETCH_WERTE = Object.freeze({ ok: "ok", failed: "fehlgeschlagen" });
 
-/** Ob `arg` das Flag `name` ist, unter seinem deutschen oder seinem englischen Namen. */
-function istFlag(arg, name) {
-  return deutscherName(OPTIONEN_EN, arg) === name;
+/** Wirft die Abweisung, wenn `name` ein frueherer deutscher Name aus `tabelle` ist. */
+function altnameAbweisen(tabelle, name) {
+  if (typeof name === "string" && Object.hasOwn(tabelle, name)) {
+    throw new Error(t("altname", { name, englisch: tabelle[name] }));
+  }
 }
 
 /** Ein Wert hinter einem Flag; `null`, wenn das Flag fehlt. */
 function flagWert(cliArgs, name) {
-  const i = cliArgs.findIndex((a) => istFlag(a, name));
+  const i = cliArgs.indexOf(name);
   return i !== -1 && i + 1 < cliArgs.length ? cliArgs[i + 1] : null;
+}
+
+/** Der interne Schluessel zum getippten Wert `wert` der Option `option` aus `tabelle`. */
+function internerWert(tabelle, option, wert) {
+  altnameAbweisen(ALTE_WERTE, wert);
+  if (!Object.hasOwn(tabelle, wert)) {
+    throw new Error(t("unbekannterWert", { option, wert, werte: Object.keys(tabelle).join(", ") }));
+  }
+  return tabelle[wert];
 }
 
 /** Der Zeitstempel im Ordnernamen — dieselbe Form wie im Protokollnamen des Runners. */
@@ -186,7 +204,7 @@ function installiereIn(pfad, repoRoot) {
 }
 
 function anlegen(repoRoot, cliArgs) {
-  const praefix = flagWert(cliArgs, "--praefix") ?? "release";
+  const praefix = flagWert(cliArgs, "--prefix") ?? "release";
   const ref = flagWert(cliArgs, "--ref") ?? "HEAD";
   const issueId = flagWert(cliArgs, "--issue");
   // Erst abraeumen, dann anlegen: Ein harter Abbruch laesst Ordner und Eintrag liegen, und
@@ -246,7 +264,7 @@ function rueckweg(repoRoot, cliArgs) {
 /** Alle Werte eines wiederholbaren Flags, in Reihenfolge. */
 function flagWerte(cliArgs, name) {
   const werte = [];
-  for (let i = 0; i < cliArgs.length - 1; i += 1) if (istFlag(cliArgs[i], name)) werte.push(cliArgs[i + 1]);
+  for (let i = 0; i < cliArgs.length - 1; i += 1) if (cliArgs[i] === name) werte.push(cliArgs[i + 1]);
   return werte;
 }
 
@@ -254,10 +272,11 @@ function flagWerte(cliArgs, name) {
 function vorbereitungFesthaltenAufruf(repoRoot, cliArgs) {
   const pfad = cliArgs[0];
   if (!pfad || pfad.startsWith("--")) throw new Error(t("festhaltenPfad"));
-  const ergebnis = flagWert(cliArgs, "--ergebnis");
-  if (ergebnis === null) throw new Error(t("festhaltenErgebnis"));
-  const fetch = flagWert(cliArgs, "--fetch") ?? "ok";
-  return { ok: true, ...vorbereitungFesthalten({ repoRoot, pfad, ergebnis, offen: flagWerte(cliArgs, "--offen"), fetch }) };
+  const getippt = flagWert(cliArgs, "--result");
+  if (getippt === null) throw new Error(t("festhaltenErgebnis", { werte: Object.keys(ERGEBNIS_WERTE).join("|") }));
+  const ergebnis = internerWert(ERGEBNIS_WERTE, "--result", getippt);
+  const fetch = internerWert(FETCH_WERTE, "--fetch", flagWert(cliArgs, "--fetch") ?? "ok");
+  return { ok: true, ...vorbereitungFesthalten({ repoRoot, pfad, ergebnis, offen: flagWerte(cliArgs, "--open"), fetch }) };
 }
 
 /**
@@ -280,26 +299,54 @@ function imWorktree(cliArgs) {
 }
 
 function fuehreAus(kommando, cliArgs) {
-  if (kommando === "nachziehen-pruefen") return { ok: true, ...nachziehenPruefen(repoWurzel()) };
-  if (kommando === "anlegen") return anlegen(repoWurzel(), cliArgs);
-  if (kommando === "entfernen") return entfernen(repoWurzel(), cliArgs);
-  if (kommando === "rueckweg") return rueckweg(repoWurzel(), cliArgs);
-  if (kommando === "vorbereitung-festhalten") return vorbereitungFesthaltenAufruf(repoWurzel(), cliArgs);
-  if (kommando === "vorbereitung-pruefen") {
-    return { ok: true, ...vorbereitungPruefen({ repoRoot: repoWurzel(), verwerfen: cliArgs.some((a) => istFlag(a, "--verwerfen")) }) };
+  altnameAbweisen(ALTE_BEFEHLE, kommando);
+  for (const arg of cliArgs) altnameAbweisen(ALTE_OPTIONEN, arg);
+  if (kommando === "catch-up-check") return { ok: true, ...nachziehenPruefen(repoWurzel()) };
+  if (kommando === "create") return anlegen(repoWurzel(), cliArgs);
+  if (kommando === "remove") return entfernen(repoWurzel(), cliArgs);
+  if (kommando === "return") return rueckweg(repoWurzel(), cliArgs);
+  if (kommando === "record-preparation") return vorbereitungFesthaltenAufruf(repoWurzel(), cliArgs);
+  if (kommando === "check-preparation") {
+    return { ok: true, ...vorbereitungPruefen({ repoRoot: repoWurzel(), verwerfen: cliArgs.includes("--discard") }) };
   }
   throw new Error(t("unbekannt", { kommando }));
 }
 
+// Die Hilfe gibt es genau einmal, englisch, in jedem Projekt (Issue #1564, Plan #1548 E7).
+function hilfe() {
+  return `worktree.mjs (claude-workflow-kit v${KIT_VERSION}) — worktree for the release skills
+
+  create [--prefix <p>] [--ref <ref>] [--issue <n>]     Worktree on <ref> (default HEAD),
+                                                        then the installCommand of the config
+  remove <path>                                         Tear down the worktree
+  catch-up-check                                        May the local main be rebased?
+  return <path>                                         Summary, executions, findings back
+  record-preparation <path> --result <${Object.keys(ERGEBNIS_WERTE).join("|")}>
+      [--open "<text>"]... [--fetch <${Object.keys(FETCH_WERTE).join("|")}>]
+                                                        Records the nightly preparation:
+                                                        reference refs/kit/push-vorbereitet on
+                                                        HEAD of the worktree, file
+                                                        .claude/push-vorbereitung.json
+  check-preparation [--discard]                         May /push-main take over the prepared
+                                                        state? No git fetch of its own.
+                                                        --discard deletes file and reference
+  in <path> -- <command> [arguments]                    Starts <command> with <path> as
+                                                        working directory, without a shell; output
+                                                        and exit code of the command pass through
+
+The last line of the output is always JSON — except for 'in', which passes the output of
+the command through and writes JSON only on an error of its own.
+`;
+}
+
 function main() {
-  const [befehl, ...cliArgs] = process.argv.slice(2);
-  const kommando = deutscherName(KOMMANDOS_EN, befehl);
+  const [kommando, ...cliArgs] = process.argv.slice(2);
   if (!kommando || kommando === "--help" || kommando === "-h") {
-    process.stdout.write(t("hilfe", { version: KIT_VERSION }));
+    process.stdout.write(hilfe());
     return;
   }
   try {
-    if (kommando === "im") {
+    if (kommando === "in") {
       process.exitCode = imWorktree(cliArgs);
       return;
     }

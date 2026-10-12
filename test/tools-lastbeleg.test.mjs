@@ -127,7 +127,7 @@ test("ein gruener Lauf: Einrichtung, Referenzaenderung, gleichzeitiger Start und
     for (const wt of a.angelegt) {
       const eigene = a.aufrufe.filter((x) => x.cwd === wt).map((x) => x.cmd);
       // sync-blobs zweimal: nach dem Einrichten und nach der Referenzaenderung (Issue #1257).
-      assert.deepEqual(eigene, ["npm ci", "node tools/sync-blobs.mjs", "node tools/sync-blobs.mjs", "node .claude/kit/checks.mjs run --abschluss --frisch"]);
+      assert.deepEqual(eigene, ["npm ci", "node tools/sync-blobs.mjs", "node tools/sync-blobs.mjs", "node .claude/kit/checks.mjs run --finish --fresh"]);
       assert.match(beimStart.get(wt), /^export const x = 1;\n\n\/\/ lastbeleg: Referenzaenderung/);
     }
 

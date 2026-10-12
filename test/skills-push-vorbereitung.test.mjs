@@ -65,31 +65,31 @@ test("der Modus vorbereiten ist die einzige Ausnahme von der Trigger-Phrase", ()
   assert.match(flach(TRIGGER), /einzige Ausnahme/i, "die Trigger-Phrase nennt den Modus nicht als einzige Ausnahme");
 });
 
-test("Schritt 3: Fetch, dann vorbereitung-pruefen, dann anlegen", () => {
+test("Schritt 3: Fetch, dann check-preparation, dann anlegen", () => {
   assert.ok(SCHRITT3, "Schritt 3 fehlt");
   const fetch = SCHRITT3.indexOf("git fetch origin <mainBranch>");
-  const pruefen = SCHRITT3.indexOf("node .claude/kit/worktree.mjs vorbereitung-pruefen");
-  const anlegen = SCHRITT3.indexOf("node .claude/kit/worktree.mjs anlegen");
+  const pruefen = SCHRITT3.indexOf("node .claude/kit/worktree.mjs check-preparation");
+  const anlegen = SCHRITT3.indexOf("node .claude/kit/worktree.mjs create");
   assert.ok(fetch >= 0, "Schritt 3 holt origin nicht");
-  assert.ok(pruefen >= 0, "Schritt 3 ruft vorbereitung-pruefen nicht");
+  assert.ok(pruefen >= 0, "Schritt 3 ruft check-preparation nicht");
   assert.ok(anlegen >= 0, "Schritt 3 legt keinen Worktree an");
-  assert.ok(fetch < pruefen && pruefen < anlegen, "die Reihenfolge ist nicht Fetch → vorbereitung-pruefen → anlegen");
-  assert.match(SCHRITT3, /anlegen --praefix release --ref refs\/kit\/push-vorbereitet/,
+  assert.ok(fetch < pruefen && pruefen < anlegen, "die Reihenfolge ist nicht Fetch → check-preparation → anlegen");
+  assert.match(SCHRITT3, /create --prefix release --ref refs\/kit\/push-vorbereitet/,
     "bei Übernahme entsteht der Worktree nicht auf der vorbereiteten Referenz");
-  assert.match(SCHRITT3, /anlegen --praefix release --ref <mainBranch>/, "ohne Übernahme fehlt der heutige Weg");
+  assert.match(SCHRITT3, /create --prefix release --ref <mainBranch>/, "ohne Übernahme fehlt der heutige Weg");
   assert.match(SCHRITT3, /git -C <pfad> rebase origin\/<mainBranch>/, "das Rebase im Worktree fehlt");
 });
 
 test("im Modus vorbereiten wird erst unter gehaltener Umsetzungssperre geholt, ein Fehlschlag hält nicht an", () => {
   const m = flach(MODUS);
-  assert.match(m, /--praefix vorbereitung/, "der Modus legt den Worktree nicht mit dem Präfix vorbereitung an");
+  assert.match(m, /--prefix vorbereitung/, "der Modus legt den Worktree nicht mit dem Präfix vorbereitung an");
   assert.match(m, /git fetch origin <mainBranch>/, "der Modus holt origin nicht");
   assert.match(m, /Umsetzungssperre/, "der Modus begründet den Fetch nicht mit der gehaltenen Umsetzungssperre");
   assert.match(m, /vorhandene Referenz `origin\/<mainBranch>`/, "der Modus rebased nach gescheitertem Fetch nicht auf die vorhandene Referenz");
-  assert.match(m, /--fetch fehlgeschlagen/, "der Modus übergibt den gescheiterten Fetch nicht");
-  assert.match(m, /node \.claude\/kit\/worktree\.mjs vorbereitung-festhalten <pfad> --ergebnis/,
+  assert.match(m, /--fetch failed/, "der Modus übergibt den gescheiterten Fetch nicht");
+  assert.match(m, /node \.claude\/kit\/worktree\.mjs record-preparation <pfad> --result/,
     "der Modus hält die Vorbereitung nicht fest");
-  assert.match(m, /--offen "<Text>"/, "der Modus übergibt offene Prüfungen nicht");
+  assert.match(m, /--open "<Text>"/, "der Modus übergibt offene Prüfungen nicht");
   assert.match(m, /RELEASING\.md/, "der Modus nennt den Fall ohne RELEASING.md nicht");
 });
 
@@ -97,7 +97,7 @@ test("im Modus vorbereiten ist auf dem Weg über den Build-Dienst Schritt 5 der 
   const m = flach(MODUS);
   assert.match(m, /Weg über den Build-Dienst/, "der Modus nennt den Weg über den Build-Dienst nicht");
   assert.match(m, /Nachweislauf der Paketstufe/, "der Modus nennt den Nachweislauf der Paketstufe nicht");
-  assert.match(m, /checks\.mjs run --in <pfad> --since HEAD --wiederholen/, "der Modus nennt das Kommando des Nachweislaufs mit --wiederholen nicht");
+  assert.match(m, /checks\.mjs run --in <pfad> --since HEAD --retry/, "der Modus nennt das Kommando des Nachweislaufs mit --retry nicht");
   assert.match(m, /Build-Dienst-Punkt setzt das Kommando selbst/, "der Modus lässt die Session den Build-Dienst-Punkt setzen");
 });
 
@@ -117,7 +117,7 @@ test("morgens fährt Schritt 7 auf dem Weg über den Build-Dienst den Prüfzweig
 });
 
 test("nach dem Push und bei jedem Nicht-Übernehmen wird verworfen", () => {
-  assert.match(PUSH, /node \.claude\/kit\/worktree\.mjs vorbereitung-pruefen --verwerfen/, "--verwerfen fehlt");
+  assert.match(PUSH, /node \.claude\/kit\/worktree\.mjs check-preparation --discard/, "--discard fehlt");
   const s = flach(PUSH);
   assert.match(s, /Nach dem Push und bei jedem Nicht-Übernehmen/, "der Skill sagt nicht, wann verworfen wird");
 });

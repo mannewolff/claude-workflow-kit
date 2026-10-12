@@ -2,7 +2,7 @@
 // E7, E8, E14).
 //
 // Die Rohdaten kommen aus zwei Quellen: die drei hinteren Protokollspalten (Ausloeser,
-// Bereiche, Dateien — Issue #1004) fuer Laeufe und Minuten, und `checks.mjs bereiche`
+// Bereiche, Dateien — Issue #1004) fuer Laeufe und Minuten, und `checks.mjs areas`
 // fuer Anteil, Hervorhebung und Inventar. Der Unterbefehl ist hier ein Fake unter
 // `.claude/kit/checks.mjs` im Fixture — derselbe Pfad, den die Auswertung aufruft.
 
@@ -15,7 +15,7 @@ function lauf({ cmd = "node --test a", dauerMs = 60_000, anlass = "paket", karte
   return zeile({ tage, cmd, dauerMs, anlass, lauf: kennung, karte, ausloeser, bereiche, dateien, ergebnis });
 }
 
-/** Die Ausgabe von `checks.mjs bereiche`, wie Issue #1004 sie liefert. */
+/** Die Ausgabe von `checks.mjs areas`, wie Issue #1004 sie liefert. */
 function zuschnitt({ bereiche = [], kommandos = 3, freigestellt = [], ohneZuordnung = [], dateien = 20 } = {}) {
   return {
     ausgabe: {
@@ -242,7 +242,7 @@ test("[wirksamkeit-1073] alte Zeilen ohne die Spalte gleichzeitig gelten als nac
   });
 });
 
-test("[wirksamkeit-1005] scheitert checks.mjs bereiche, endet die Auswertung mit 0 und vermerkt es", () => {
+test("[wirksamkeit-1005] scheitert checks.mjs areas, endet die Auswertung mit 0 und vermerkt es", () => {
   mitProjekt({
     zeilen: [lauf({ bereiche: ["kern"], dauerMs: 60_000 })],
     zuschnitt: { exit: 3, stderr: "Fehler: checkAreas kaputt" },
@@ -258,7 +258,7 @@ test("[wirksamkeit-1005] scheitert checks.mjs bereiche, endet die Auswertung mit
 
     const text = bericht(dir);
     assert.match(text, /## Bereiche/);
-    assert.match(text, /checks\.mjs bereiche.*checkAreas kaputt/);
+    assert.match(text, /checks\.mjs areas.*checkAreas kaputt/);
     assert.match(text, /\| kern \| — \| — \| 1 \| 1,0 \|/);
     assert.deepEqual(stand(dir).bereiche, b, "der JSON-Stand traegt denselben Abschnitt");
   });

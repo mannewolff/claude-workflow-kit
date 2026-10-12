@@ -402,13 +402,13 @@ const VORBEREITUNG_ERGEBNISSE = ["gruen", "gruen-offen", "rot"];
 const VORBEREITUNG_FETCH = ["ok", "fehlgeschlagen"];
 
 /**
- * Der Weg der Push-Stufe, wie `checks.mjs plan --stufe push` ihn meldet (E17) — dieselbe
+ * Der Weg der Push-Stufe, wie `checks.mjs plan --stage push` ihn meldet (E17) — dieselbe
  * Auskunft, die `/push-main` liest, statt die Config ein zweites Mal auszulegen. Gefragt
  * wird im Worktree, mit der `checks.mjs` neben diesem Teil.
  */
 function pushWegAusPlan(pfad) {
   const checks = join(dirname(fileURLToPath(import.meta.url)), "..", "checks.mjs");
-  const res = abh.spawnSync(process.execPath, [checks, "plan", "--stufe", "push"], { cwd: pfad, encoding: "utf-8" });
+  const res = abh.spawnSync(process.execPath, [checks, "plan", "--stage", "push"], { cwd: pfad, encoding: "utf-8" });
   if (res.status !== 0) {
     throw new Error(t("pushPlanFehlgeschlagen", { meldung: ersteZeile((res.stderr || res.stdout || res.error?.message || "").trim()) }));
   }

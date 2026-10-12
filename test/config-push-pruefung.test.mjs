@@ -3,7 +3,7 @@
 // Er sagt, wo der volle Lauf vor `push main` stattfindet: `"lokal"` (Vorgabe) oder im
 // Build-Dienst über einen Prüfzweig, `{ "ort": "buildDienst", "zweig": "<name>" }`. Die
 // Pflicht ist in beiden Fällen dieselbe (W3) — nur der Ort wechselt. `checks.mjs plan
-// --stufe push` gibt den Wert aus, damit `/push-main` die Config nicht selbst lesen muss.
+// --stage push` gibt den Wert aus, damit `/push-main` die Config nicht selbst lesen muss.
 //
 // Das Schema wird mit dem Mini-Validator geprüft wie in test/config-schema-checks.test.mjs.
 
@@ -70,39 +70,39 @@ test("pushPruefung: die Einstellungs-Referenz kennt den Schlüssel, seine Werte 
 
 // --- checks.mjs plan ---
 
-test("plan --stufe push: ohne Schlüssel steht pushPruefung auf lokal", () => {
+test("plan --stage push: ohne Schlüssel steht pushPruefung auf lokal", () => {
   mitRepo({ config: { buildChecks: ["node -e 0"] } }, (dir) => {
-    assert.equal(plan(dir, "--stufe", "push").pushPruefung, "lokal");
+    assert.equal(plan(dir, "--stage", "push").pushPruefung, "lokal");
   });
 });
 
-test("plan --stufe push: der Build-Dienst-Wert geht unverändert ins JSON", () => {
+test("plan --stage push: der Build-Dienst-Wert geht unverändert ins JSON", () => {
   mitRepo({ config: { buildChecks: ["node -e 0"], pushPruefung: BUILDDIENST } }, (dir) => {
-    assert.deepEqual(plan(dir, "--stufe", "push").pushPruefung, BUILDDIENST);
+    assert.deepEqual(plan(dir, "--stage", "push").pushPruefung, BUILDDIENST);
   });
 });
 
 test("plan ohne Stufe push: kein pushPruefung im JSON", () => {
   mitRepo({ config: { buildChecks: ["node -e 0"], pushPruefung: BUILDDIENST } }, (dir) => {
     assert.equal(plan(dir).pushPruefung, undefined);
-    assert.equal(plan(dir, "--stufe", "merge").pushPruefung, undefined);
+    assert.equal(plan(dir, "--stage", "merge").pushPruefung, undefined);
   });
 });
 
-test("plan --stufe push: ein ungültiger Wert ist ein Fehler, der den Schlüssel nennt", () => {
+test("plan --stage push: ein ungültiger Wert ist ein Fehler, der den Schlüssel nennt", () => {
   for (const wert of ["buildDienst", { ort: "buildDienst" }, { ort: "irgendwo", zweig: "x" }]) {
     mitRepo({ config: { buildChecks: ["node -e 0"], pushPruefung: wert } }, (dir) => {
-      const res = checks(dir, "plan", "--stufe", "push");
+      const res = checks(dir, "plan", "--stage", "push");
       assert.equal(res.status, 1, `${JSON.stringify(wert)} wurde angenommen: ${res.stdout}`);
       assert.match(res.stderr, /pushPruefung/);
     });
   }
 });
 
-test("plan --stufe push: der Prüfzweig darf nicht mainBranch oder productionBranch sein", () => {
+test("plan --stage push: der Prüfzweig darf nicht mainBranch oder productionBranch sein", () => {
   for (const zweig of ["main", "production"]) {
     mitRepo({ config: { buildChecks: ["node -e 0"], pushPruefung: { ort: "buildDienst", zweig } } }, (dir) => {
-      const res = checks(dir, "plan", "--stufe", "push");
+      const res = checks(dir, "plan", "--stage", "push");
       assert.equal(res.status, 1, `Prüfzweig '${zweig}' wurde angenommen`);
       assert.match(res.stderr, new RegExp(`pushPruefung[^\\n]*'${zweig}'`));
     });

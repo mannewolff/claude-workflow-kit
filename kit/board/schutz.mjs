@@ -376,7 +376,7 @@ async function warteAufLauf(host, commit, zweig, o) {
 
 /** Der Schritt, der offen bleibt, wenn der Build-Dienst auf dem Pruefzweig nicht laeuft (A4). */
 function offenerSchritt(mainBranch, zweig) {
-  const kommando = `node .claude/kit/checks.mjs run --stufe push --since "$(git merge-base HEAD origin/${mainBranch})"`;
+  const kommando = `node .claude/kit/checks.mjs run --stage push --since "$(git merge-base HEAD origin/${mainBranch})"`;
   return t("offenerSchritt", { zweig, kommando });
 }
 

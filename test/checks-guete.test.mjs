@@ -108,12 +108,12 @@ test("[checks-6] war das Kommando selbst rot, bleibt es rot, und die Guete-Zeile
   });
 });
 
-test("[checks-6] bei --stufe push laeuft die Guetemessung auch im unberuehrten Bereich", async () => {
+test("[checks-6] bei --stage push laeuft die Guetemessung auch im unberuehrten Bereich", async () => {
   const config = gueteConfig(80, { always: undefined, areas: ["backend"] });
   await mitRepo({ config }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const ergebnis = plan(dir, "--stufe", "push");
+    const ergebnis = plan(dir, "--stage", "push");
 
     assert.ok(kommandos(ergebnis.laufen).includes(MISST_84), "die Guetemessung laeuft nicht");
     assert.equal(
@@ -123,9 +123,9 @@ test("[checks-6] bei --stufe push laeuft die Guetemessung auch im unberuehrten B
   });
 });
 
-test("[checks-6] bei --stufe push laeuft die Guetemessung auch dann, wenn das Paket leer waere", async () => {
+test("[checks-6] bei --stage push laeuft die Guetemessung auch dann, wenn das Paket leer waere", async () => {
   await mitRepo({ config: gueteConfig(80) }, async (dir) => {
-    const ergebnis = plan(dir, "--stufe", "push");
+    const ergebnis = plan(dir, "--stage", "push");
 
     // Seit Issue #849 faehrt die Push-Stufe ohnehin jede faellige Pruefung, und
     // `leeresPaket` bleibt dort false. Die Guetemessung behaelt trotzdem ihren
@@ -144,22 +144,22 @@ test("[checks-6] bei --stufe push laeuft die Guetemessung auch dann, wenn das Pa
 // An der Freigabe hat die Messung keine Sonderrolle mehr (Issue #1000): Beim
 // `push main` lief sie fuer denselben Stand, und `merge production` gibt es nie ohne
 // ihn. Sie folgt der Auswahl der Freigabestufe wie jede andere Pruefung.
-test("[checks-6] bei --stufe merge laeuft eine Guetemessung der Push-Stufe nicht, mit Grund", async () => {
+test("[checks-6] bei --stage merge laeuft eine Guetemessung der Push-Stufe nicht, mit Grund", async () => {
   await mitRepo({ config: gueteConfig(80, { stufe: "push" }) }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const ergebnis = plan(dir, "--stufe", "merge");
+    const ergebnis = plan(dir, "--stage", "merge");
 
     assert.deepEqual(ergebnis.laufen, []);
     assert.equal(eintrag(ergebnis.ausgelassen, MISST_84).grund, "Stufe push, geprueft beim push main");
   });
 });
 
-test("[checks-6] bei --stufe merge folgt eine Guetemessung der Paketstufe der Bereichsauswahl", async () => {
+test("[checks-6] bei --stage merge folgt eine Guetemessung der Paketstufe der Bereichsauswahl", async () => {
   await mitRepo({ config: gueteConfig(80) }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const ergebnis = plan(dir, "--stufe", "merge");
+    const ergebnis = plan(dir, "--stage", "merge");
 
     assert.equal(eintrag(ergebnis.laufen, MISST_84).grund, "als immer laufend festgelegt");
   });

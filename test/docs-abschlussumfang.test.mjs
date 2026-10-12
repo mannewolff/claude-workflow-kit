@@ -57,8 +57,8 @@ test("der Abschnitt zu den Pflichtchecks beschreibt die Achse nichtBeimAbschluss
   assert.match(text, /`nichtBeimAbschluss`/, "die Achse fehlt im Abschnitt");
   assert.match(text, /zusammenspiel/, "der Wert `zusammenspiel` fehlt");
   assert.match(text, /volleTestmenge/, "der Wert `volleTestmenge` fehlt");
-  assert.match(text, /--abschluss/,
-    "dass die Achse nur beim Lauf mit --abschluss wirkt, steht nicht im Abschnitt");
+  assert.match(text, /--finish/,
+    "dass die Achse nur beim Lauf mit --finish wirkt, steht nicht im Abschnitt");
 });
 
 test("der Abschnitt sichert zu, dass jede verschobene Pruefung vor dem Veroeffentlichen laeuft", () => {
@@ -69,10 +69,10 @@ test("der Abschnitt sichert zu, dass jede verschobene Pruefung vor dem Veroeffen
 });
 
 test("der Abschnitt sagt, dass ein Lauf ohne Karte den heutigen Umfang faehrt", () => {
-  // AK 5: Wer `--abschluss` nicht setzt — jeder andere Lauf —, merkt von der
+  // AK 5: Wer `--finish` nicht setzt — jeder andere Lauf —, merkt von der
   // Aenderung nichts.
   const text = abschnitt("## Pflichtchecks vor Push");
-  assert.match(text, /[Oo]hne (die Karte|Kartennummer|`--abschluss`)[\s\S]{0,200}Umfang/,
+  assert.match(text, /[Oo]hne (die Karte|Kartennummer|`--finish`)[\s\S]{0,200}Umfang/,
     "dass ein Lauf ohne Karte den heutigen Umfang faehrt, steht nicht im Abschnitt");
 });
 

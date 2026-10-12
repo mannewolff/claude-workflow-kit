@@ -157,7 +157,7 @@ The check run (`node .claude/kit/night.mjs --check`) has several requirements ch
 ---
 
 ## Night mode (optional)
-<!-- de: 98236b5a3fcd -->
+<!-- de: 5dd6639c991e -->
 
 The night runner (`node .claude/kit/night.mjs`) works through the Ready column unattended: per issue with the routing label `kit:nightrun` a fresh headless session with `/implement-next #N`. Success is measured on the board (issue in In review); failures wander into the backlog with a comment, with an unclean working tree the run stops hard. At night there are commits, never pushes — review, test and `push main` happen in the morning through the human.
 
@@ -286,7 +286,7 @@ The notes, `Suchbegriffe:`, `Dateien:` and `- Widerspruch:` are fixed beginnings
 ---
 
 ## Git workflow (strictly binding)
-<!-- de: 36495b71f72f -->
+<!-- de: 8dbd72cc9323 -->
 
 1. Claude commits locally, does NOT push automatically. Every commit — also lane 1, also by hand, also from a GUI client — requires a green `node .claude/kit/checks.mjs run` on the state to be committed; a tool without `node` in the PATH is rejected, not let through.
 2. The human tests locally (start the dev server, click through the golden path).
@@ -314,7 +314,7 @@ The file is the only project-local place the skills read from. Fields: `codeHost
 ---
 
 ## Mandatory checks before push (step 6)
-<!-- de: 6d2093fdce7c -->
+<!-- de: dddc559c874d -->
 
 All **affected** `buildChecks` from the config run green; untouched areas are left out with evidence. Red checks still block the push mechanically. For UI changes: start the dev server, check the golden path and at least one edge case manually. If a check cannot be run locally: note it in the completion report, do not conceal it. **The checks run staggered:** each carries a stage — `package` at the completion of a work package, `push` before publishing, `merge` before the release; without a value `package` applies. A later stage does **not run along** with the earlier one (a check of the stage `push` stays out at the completion of a work package), and `push` runs the **preceding stage** along (`push` executes `package` and `push`). `merge` only checks what `push main` did not check, because there is never a `merge production` without a preceding `push main`: the stage `merge` always, the package stage by areas over the release files, the stage `push` not. **No mandatory check drops out of the overall process with this**; it only runs at the point in time at which its result counts, and not twice for the same state. Which check belongs in which stage is decided by the project. The stage of a mandatory check (`stage`) is something different from the review stages (`reviewStages`) and from the stages of the night chain: it says *when* a check runs, not how thoroughly is read and not which section of an unattended run is due. **One** of its checks a project may also name as a **quality measurement** (`quality` with `pattern` and `marker`): it measures how many deliberately inserted faults the tests notice. If the measured share lies below the mark, that is **the same halt as a red mandatory check** — no new stop point, no exception, no personal mark (the mark applies team-wide, a deviation in `workflow.config.local.json` stays ineffective). The halt costs no work: it is a red run **before commit and push**, the already finished packages stay committed locally, and the version bump of `/push-main` stays in place idempotently — after the rework the same batch continues. **Without naming there is neither measurement nor mark nor halt.**
 

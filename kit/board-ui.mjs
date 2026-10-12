@@ -67,23 +67,6 @@ function parseArgs(argv) {
 // Feldnamen der Antworten, die Spaltenschluessel und der Kommentar-Marker `**Kommentar**`.
 export const TEXTE = {
   de: {
-    hilfe: `board-ui.mjs (v{version}) — ein einfacher Viewer. Diese Datei wird ins
-Projektverzeichnis unter .claude/kit/board-ui.mjs kopiert und von dort, vom
-Projekt-Root aus, aufgerufen. Sie stellt ein einfaches Kanban-Board bereit,
-um die lokalen Issues (issues/*.md) zu visualisieren.
-
-Nutzung (vom Projekt-Root aus):
-  node .claude/kit/board-ui.mjs [--port <Port>] [--name <Board-Name>] [-h|--help]
-
-Parameter:
-  --port <Port>       Port fuer den HTTP-Server (Default: 3000)
-  --name <Name>       Board-Titel im Header
-  -h, --help          Diese Hilfe anzeigen und beenden
-
-Konfiguration (optional, .claude/workflow.config.json oder workflow.config.json):
-  local.uiPort        Ueberschreibt den Port. Vorrang: config.local.uiPort > --port > 3000.
-  local.issuesDir     Verzeichnis mit den Issue-Dateien (Default: issues)
-`,
     archiviert: "Archiviert: {datei}",
     titelLeer: "Titel darf nicht leer sein",
     statusUngueltig: "Ungueltiger Status '{status}'. Gueltig: {gueltig}",
@@ -136,23 +119,6 @@ Konfiguration (optional, .claude/workflow.config.json oder workflow.config.json)
     issuesVerzeichnis: "Issues-Verzeichnis: {pfad}",
   },
   en: {
-    hilfe: `board-ui.mjs (v{version}) — a simple viewer. This file is copied into the
-project directory as .claude/kit/board-ui.mjs and run from there, from the
-project root. It provides a simple Kanban board to visualise the local
-issues (issues/*.md).
-
-Usage (from the project root):
-  node .claude/kit/board-ui.mjs [--port <Port>] [--name <Board-Name>] [-h|--help]
-
-Options:
-  --port <Port>       Port for the HTTP server (default: 3000)
-  --name <Name>       Board title in the header
-  -h, --help          Show this help and exit
-
-Configuration (optional, .claude/workflow.config.json or workflow.config.json):
-  local.uiPort        Overrides the port. Precedence: config.local.uiPort > --port > 3000.
-  local.issuesDir     Directory with the issue files (default: issues)
-`,
     archiviert: "Archived: {datei}",
     titelLeer: "Title must not be empty",
     statusUngueltig: "Invalid status '{status}'. Valid: {gueltig}",
@@ -210,8 +176,25 @@ function t(schluessel, werte) {
   return textAusTabelle(TEXTE, schluessel, werte);
 }
 
+// Die Hilfe gibt es genau einmal, englisch, in jedem Projekt (Issue #1564, Plan #1548 E7).
 export function helpText() {
-  return t("hilfe", { version: VERSION });
+  return `board-ui.mjs (v${VERSION}) — a simple viewer. This file is copied into the
+project directory as .claude/kit/board-ui.mjs and run from there, from the
+project root. It provides a simple Kanban board to visualise the local
+issues (issues/*.md).
+
+Usage (from the project root):
+  node .claude/kit/board-ui.mjs [--port <Port>] [--name <Board-Name>] [-h|--help]
+
+Options:
+  --port <Port>       Port for the HTTP server (default: 3000)
+  --name <Name>       Board title in the header
+  -h, --help          Show this help and exit
+
+Configuration (optional, .claude/workflow.config.json or workflow.config.json):
+  local.uiPort        Overrides the port. Precedence: config.local.uiPort > --port > 3000.
+  local.issuesDir     Directory with the issue files (default: issues)
+`;
 }
 
 // --- Config laden ---

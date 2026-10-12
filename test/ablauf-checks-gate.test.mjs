@@ -260,7 +260,7 @@ test("[gate-1] gate.mjs und der Hook liegen unter .githooks/", async () => {
 
 // --- Der Bereichslauf deckt keinen Commit (Code-Review zu #922) ---
 //
-// `--bereich` grenzt die gefahrenen Pruefungen ein, bestimmt `geaendert` und `hashes`
+// `--area` grenzt die gefahrenen Pruefungen ein, bestimmt `geaendert` und `hashes`
 // aber weiterhin aus dem Anker. Ohne eigenen Zweig traegt damit JEDE geaenderte Datei
 // einen Hash, und das Gate liesse den Commit durch — auch fuer Bereiche, deren
 // Pruefungen nie liefen. Der eingegrenzte Lauf bleibt richtig; er ist nur kein
@@ -280,7 +280,7 @@ test("[gate-1] ein Bereichslauf deckt den Commit nicht, auch wenn er gruen ist",
     datei(dir, "frontend/App.tsx");
     datei(dir, "backend/Main.java");
 
-    const lauf = await run(dir, "--bereich", "frontend");
+    const lauf = await run(dir, "--area", "frontend");
     assert.equal(lauf.status, 0, `der Bereichslauf selbst muss gruen sein: ${lauf.stdout}${lauf.stderr}`);
 
     git(dir, "add", "frontend/App.tsx", "backend/Main.java");
@@ -297,7 +297,7 @@ test("[gate-1] nach dem uneingeschraenkten Lauf nimmt das Gate denselben Stand a
     datei(dir, "frontend/App.tsx");
     datei(dir, "backend/Main.java");
 
-    await run(dir, "--bereich", "frontend");
+    await run(dir, "--area", "frontend");
     await run(dir);
 
     git(dir, "add", "frontend/App.tsx", "backend/Main.java");

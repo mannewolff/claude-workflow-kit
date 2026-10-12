@@ -6,7 +6,7 @@ name: "Checks: Tests + install.mjs-Blobs synchron"
 # Stand auf main. Die Probe aus `code schutz` (Issue #1408) findet ihn am Jobnamen
 # `check` — der Name bleibt darum stehen.
 #
-# Gefahren wird `node kit/checks.mjs run --stufe push` gegen den Anker
+# Gefahren wird `node kit/checks.mjs run --stage push` gegen den Anker
 # `git merge-base HEAD origin/main` — die Quelle unter kit/, weil die installierte
 # Kopie unter .claude/kit/ im Kit-Repository nicht versioniert ist. Die Stufe push
 # enthält die ganze Testsuite (in Gruppen) und den Blob-Check
@@ -51,4 +51,4 @@ jobs:
         run: git fetch origin main
 
       - name: Prüfungen der Stufe push
-        run: node kit/checks.mjs run --stufe push --since "$(git merge-base HEAD origin/main)"
+        run: node kit/checks.mjs run --stage push --since "$(git merge-base HEAD origin/main)"

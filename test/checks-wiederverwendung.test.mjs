@@ -64,7 +64,7 @@ test("[checks-11] ein zweiter run auf unveraendertem Stand startet kein Kommando
     assert.equal(laeufe(dir), 1, "der zweite Lauf darf das Kommando nicht erneut starten");
     assert.equal(zweiter.status, erster.status, "der Exitcode bleibt derselbe");
     assert.match(zweiter.stdout, /Ergebnis uebernommen \(gruen\)/);
-    assert.match(zweiter.stdout, /--frisch/, "die Meldung nennt den Weg zum echten Lauf");
+    assert.match(zweiter.stdout, /--fresh/, "die Meldung nennt den Weg zum echten Lauf");
 
     const summary = zusammenfassung(dir);
     assert.equal(summary.uebernommen, zeitpunkt, "uebernommen traegt den Zeitpunkt des Originals");
@@ -121,7 +121,7 @@ test("[checks-11] eine andere Stufe erzwingt einen echten Lauf", async () => {
     datei(dir, "src/a.txt");
 
     await run(dir);
-    await run(dir, "--stufe", "push");
+    await run(dir, "--stage", "push");
 
     assert.equal(laeufe(dir), 2);
   });
@@ -170,13 +170,13 @@ test("[checks-11] die Zusammenfassung traegt den Config-Hash als Feld", async ()
   });
 });
 
-test("[checks-11] --frisch erzwingt einen echten Lauf", async () => {
+test("[checks-11] --fresh erzwingt einen echten Lauf", async () => {
   await mitRepo({ config: mitZaehler() }, async (dir) => {
     zaehlerAnlegen(dir);
     datei(dir, "src/a.txt");
 
     await run(dir);
-    const res = await run(dir, "--frisch");
+    const res = await run(dir, "--fresh");
 
     assert.equal(laeufe(dir), 2);
     assert.doesNotMatch(res.stdout, /uebernommen/);
@@ -231,7 +231,7 @@ test("[checks-11] die Uebersicht nennt die Wiederverwendung und den Schalter", a
     const res = checks(dir, "--help");
 
     assert.equal(res.status, 0, res.stderr);
-    assert.match(res.stdout, /--frisch/);
-    assert.match(res.stdout, /uebernommen|uebernimmt/);
+    assert.match(res.stdout, /--fresh/);
+    assert.match(res.stdout, /adopt/);
   });
 });

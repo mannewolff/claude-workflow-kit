@@ -104,7 +104,7 @@ function readyIssue(dir) {
 const REGULAER = [
   `echo arbeit > kit/work-$NIGHT_ISSUE_ID.txt`,
   `touch .rot`,
-  `node .claude/kit/checks.mjs run --abschluss "$NIGHT_ISSUE_ID" --frisch > /dev/null 2>&1`,
+  `node .claude/kit/checks.mjs run --finish "$NIGHT_ISSUE_ID" --fresh > /dev/null 2>&1`,
   `rm -f .rot`,
 ].join("\n");
 

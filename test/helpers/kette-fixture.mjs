@@ -426,7 +426,7 @@ export const VORBEREITUNG_GRUEN = Object.freeze({
 /**
  * Stufe vorbereitung: legt `.claude/push-vorbereitung.json` in der Hauptkopie ab, mit der
  * Laufkennung aus der Umgebung der Session und einem Zeitpunkt eine Stunde nach Uhrbeginn —
- * so, wie `/push-main vorbereiten` sie ueber `worktree.mjs vorbereitung-festhalten` hinterlaesst.
+ * so, wie `/push-main vorbereiten` sie ueber `worktree.mjs record-preparation` hinterlaesst.
  */
 export function vorbereitungAblegen(felder = {}) {
   return (s) => {

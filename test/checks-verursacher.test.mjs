@@ -52,7 +52,7 @@ function commit(dir, betreff, ...rumpf) {
 
 /** Der rote Push-Lauf ueber das Fenster ab `basis`. */
 async function pushLauf(dir, basis) {
-  const res = await run(dir, "--since", basis, "--stufe", "push");
+  const res = await run(dir, "--since", basis, "--stage", "push");
   assert.equal(res.status, 1, `der Lauf haette rot sein muessen: ${res.stdout}${res.stderr}`);
   return res;
 }
@@ -201,7 +201,7 @@ test("ein nicht aufloesbarer Anker nennt seinen eigenen Satz statt einer Kartenl
     datei(dir, "backend/src/Dienst.java");
     commit(dir, "Ein Stand (Issue #908)");
 
-    const res = await run(dir, "--since", "gibtsnicht", "--stufe", "push");
+    const res = await run(dir, "--since", "gibtsnicht", "--stage", "push");
 
     assert.equal(res.status, 1, `der Lauf haette rot sein muessen: ${res.stdout}${res.stderr}`);
     const satz = "Verursacher nicht bestimmbar: Anker 'gibtsnicht' laesst sich nicht aufloesen";
@@ -216,7 +216,7 @@ test("die Freigabestufe sucht nicht — dort ist die Basis HEAD selbst", async (
     datei(dir, "backend/src/Dienst.java");
     commit(dir, "Ein Stand (Issue #909)");
 
-    const res = await run(dir, "--since", basis, "--stufe", "merge");
+    const res = await run(dir, "--since", basis, "--stage", "merge");
 
     assert.equal(res.status, 1, `der Lauf haette rot sein muessen: ${res.stdout}${res.stderr}`);
     assert.equal(zusammenfassung(dir).verursacher, undefined);
@@ -245,7 +245,7 @@ test("ein gruener Push-Lauf nennt keine Verursacher", async () => {
     datei(dir, "backend/src/Dienst.java");
     commit(dir, "Ein Stand (Issue #913)");
 
-    const res = await run(dir, "--since", basis, "--stufe", "push");
+    const res = await run(dir, "--since", basis, "--stage", "push");
 
     assert.equal(res.status, 0, `der Lauf haette gruen sein muessen: ${res.stdout}${res.stderr}`);
     assert.equal(zusammenfassung(dir).verursacher, undefined);
@@ -260,7 +260,7 @@ test("ein gescheiterter git-Aufruf haelt den Lauf nicht an und nennt seinen Grun
     commit(dir, "Ein Stand (Issue #914)");
     fakeGitOhne(dir, "log", "fake: git log verweigert");
 
-    const res = await checksMitFakeGit(dir, "run", "--since", basis, "--stufe", "push");
+    const res = await checksMitFakeGit(dir, "run", "--since", basis, "--stage", "push");
 
     assert.equal(res.status, 1, `der rote Befund bleibt der Ausgang: ${res.stdout}${res.stderr}`);
     const verursacher = zusammenfassung(dir).verursacher;
@@ -279,7 +279,7 @@ test("ein uebernommenes rotes Ergebnis nennt die Verursacher weiter", async () =
     const sha = commit(dir, "Ein Stand (Issue #915)");
 
     await pushLauf(dir, basis);
-    const zweiter = await run(dir, "--since", basis, "--stufe", "push");
+    const zweiter = await run(dir, "--since", basis, "--stage", "push");
 
     assert.equal(zweiter.status, 1, `das rote Ergebnis wird uebernommen: ${zweiter.stdout}`);
     assert.match(zweiter.stdout, /Ergebnis uebernommen/);

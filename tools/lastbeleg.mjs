@@ -15,8 +15,8 @@
  *      `node tools/sync-blobs.mjs` — `.claude/kit/` und `node_modules` sind nicht versioniert.
  *   2. In jedem dieselbe Referenzaenderung uncommittet im Arbeitsbaum: eine Kommentarzeile in
  *      `--referenz`. Ohne sie saehe `checks.mjs` gegen `HEAD` ein leeres Paket.
- *   3. Je Runde startet in allen gleichzeitig `node .claude/kit/checks.mjs run --abschluss
- *      --frisch`. Gemessen wird das Nebeneinander; eine rechnerweite Sperre, an der sich die
+ *   3. Je Runde startet in allen gleichzeitig `node .claude/kit/checks.mjs run --finish
+ *      --fresh`. Gemessen wird das Nebeneinander; eine rechnerweite Sperre, an der sich die
  *      Laeufe anstellten, gibt es seit #1241 nicht mehr.
  *   4. Je Lauf Dauer und Ergebnis, dazu `os.loadavg()` alle 5 s.
  *   5. Eine rote Testdatei faehrt danach einmal allein. Ist sie allein gruen, steht sie als
@@ -43,7 +43,7 @@ import { fileURLToPath } from "node:url";
 
 const VORGABEN = { anzahl: 10, runden: 1, grenzeS: 600, referenz: "kit/night/kette.mjs" };
 const PROBE_MS = 5000;
-const LAUF_KOMMANDO = "node .claude/kit/checks.mjs run --abschluss --frisch";
+const LAUF_KOMMANDO = "node .claude/kit/checks.mjs run --finish --fresh";
 const MARKE = "// lastbeleg: Referenzaenderung, nur im Wegwerf-Worktree";
 
 export const HILFE = `lastbeleg.mjs — zehn Abschlusslaeufe gleichzeitig, gemessen (Issue #1237)

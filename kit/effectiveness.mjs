@@ -53,7 +53,7 @@
  *
  * BEREICHE (Issue #1005, Plan #1001): je Bereich Anteil, Laeufe und Minuten, dazu das
  * Inventar der Dateien ohne Bereich und die teuren unter ihnen. Den Zuschnitt rechnet
- * `checks.mjs bereiche` (zweiter Kindprozess, ebenfalls nur ein Vermerk, wenn er scheitert).
+ * `checks.mjs areas` (zweiter Kindprozess, ebenfalls nur ein Vermerk, wenn er scheitert).
  *
  * NICHT-ZIEL: keine Handlungsempfehlung. Das Werkzeug sagt, was auffaellt, nicht was
  * zu tun ist — dieselbe Haltung wie in kit/effort.mjs.
@@ -105,7 +105,7 @@ const BEWEGUNGEN_DATEI = "bewegungen.tsv";
 const BOARD_KOMMANDO = [".claude", "kit", "board.mjs"];
 
 // Dasselbe fuer den Zuschnitt der Bereiche (Issue #1005, Plan #1001, E7): Anteil,
-// Hervorhebung und Inventar rechnet `checks.mjs bereiche` — ueber dieselbe Zuordnung,
+// Hervorhebung und Inventar rechnet `checks.mjs areas` — ueber dieselbe Zuordnung,
 // die jede Auswahl trifft. Eine zweite Glob-Logik hier bescheinigte ab der ersten
 // Abweichung eine Deckung, die die Auswahl nicht sieht.
 const CHECKS_KOMMANDO = [".claude", "kit", "checks.mjs"];
@@ -182,7 +182,7 @@ const ERGEBNISSE = new Set(["gruen", "rot"]);
 const UNBEKANNT = "unbekannt";
 
 // SYNC: `herkunft` in kit/checks.mjs setzt diese Anlaesse (Issue #948) — `abschluss`
-// fuer einen Lauf mit `--abschluss`, sonst die gefahrene Stufe. Der Abschluss einer
+// fuer einen Lauf mit `--finish`, sonst die gefahrene Stufe. Der Abschluss einer
 // Karte ist der Zaehler der Kennzahl je Karte, die Veroeffentlichungslaeufe liefern die
 // Dauer der beim Abschluss ausgelassenen Pruefungen (Issue #951, Plan #944, E8).
 const ANLASS_ABSCHLUSS = "abschluss";
@@ -268,7 +268,7 @@ export const TEXTE = Object.freeze({
     ausgelassenNie: "Die beim Abschluss ausgelassene Pruefung `{cmd}` ({grund}) lief im Fenster nie beim Veroeffentlichen — ihre Dauer ist nicht gemessen, und darum bleibt der Vergleichswert offen.",
     ausgelassen: "Die beim Abschluss ausgelassene Pruefung `{cmd}` ({grund}) kostete beim Veroeffentlichen im Mittel {dauer} ({ausfuehrungen} gelaufen).",
     bereicheTitel: "## Bereiche",
-    ohneZuschnitt: "Der Zuschnitt aus `checks.mjs bereiche` fehlt: {vermerk}. Anteil, Hervorhebung und Inventar entfallen; Laeufe und Minuten stammen aus dem Protokoll.",
+    ohneZuschnitt: "Der Zuschnitt aus `checks.mjs areas` fehlt: {vermerk}. Anteil, Hervorhebung und Inventar entfallen; Laeufe und Minuten stammen aus dem Protokoll.",
     bereicheKopf: "| Bereich | nennende Kommandos | hervorgehoben | Laeufe | Minuten |",
     bereicheSumme: "Die Summe der Zeilen uebersteigt die Gesamtzeit von {minuten} Minuten, weil eine Ausfuehrung fuer jeden ihrer Bereiche mit voller Dauer zaehlt. Uebernommene Ergebnisse schreiben keine Protokollzeile und zaehlen nicht.",
     inventarTitel: "### Inventar",
@@ -376,7 +376,7 @@ export const TEXTE = Object.freeze({
     ausgelassenNie: "The check `{cmd}` omitted at completion ({grund}) never ran when publishing in the window — its duration is not measured, so the comparison value stays open.",
     ausgelassen: "The check `{cmd}` omitted at completion ({grund}) took {dauer} on average when publishing (ran {ausfuehrungen}).",
     bereicheTitel: "## Areas",
-    ohneZuschnitt: "The breakdown from `checks.mjs bereiche` is missing: {vermerk}. Share, highlighting and inventory are dropped; runs and minutes come from the log.",
+    ohneZuschnitt: "The breakdown from `checks.mjs areas` is missing: {vermerk}. Share, highlighting and inventory are dropped; runs and minutes come from the log.",
     bereicheKopf: "| Area | naming commands | highlighted | Runs | Minutes |",
     bereicheSumme: "The sum of the rows exceeds the total time of {minuten} minutes, because a run counts with its full duration for each of its areas. Adopted results write no log row and do not count.",
     inventarTitel: "### Inventory",
@@ -662,7 +662,7 @@ function listeLesen(feld) {
  *
  * FEHLT eine der hinteren Spalten oder ist sie leer, steht `unbekannt` (Issue #951) —
  * fuer alle drei derselbe Wert: Eine Zeile aus der Zeit vor Issue #948 traegt keinen
- * Anlass, und ein Lauf ohne `--abschluss <nummer>` keine Karte. Eine Vorgabe wie
+ * Anlass, und ein Lauf ohne `--finish <nummer>` keine Karte. Eine Vorgabe wie
  * `paket` an dieser Stelle waere geraten und ginge als gemessene Groesse in eine
  * Kennzahl ein; `unbekannt` faellt aus jeder Kennzahl heraus, die eine Karte braucht.
  *
@@ -964,7 +964,7 @@ function abschlusszeitErmitteln(zeilen, fenster, ausgelassenChecks) {
 // --- Bereiche (Issue #1005, Plan #1001, E4, E6, E7, E8, E14) -----------------
 
 /**
- * Der Zuschnitt der Bereiche aus `checks.mjs bereiche` ueber genau EINEN Kindprozess, wie
+ * Der Zuschnitt der Bereiche aus `checks.mjs areas` ueber genau EINEN Kindprozess, wie
  * der Verlauf beim Board (E7). Ein Fehlschlag ist ein VERMERK, kein Abbruch: Laeufe und
  * Minuten stehen im Protokoll und bleiben auch ohne ihn lesbar.
  *
@@ -972,7 +972,7 @@ function abschlusszeitErmitteln(zeilen, fenster, ausgelassenChecks) {
  * die Vorgabe ist der Kindprozess, die Tests geben eine Attrappe (Issue #1213, Plan #1199 E6).
  */
 function zuschnittHolen(root, checks) {
-  const res = checks(["bereiche"], { cwd: root });
+  const res = checks(["areas"], { cwd: root });
   if (res.status !== 0) {
     const grund = (res.stderr || "").trim() || t("zuschnittEnde", { status: res.status ?? res.error?.message ?? "?" });
     return { fehler: grund };
