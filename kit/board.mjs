@@ -163,6 +163,15 @@ Nutzung:
       'Fachliche Quelle:') die Aktion wandert | lag bereits in In review | lag bereits
       in Done | bleibt, mit Grund. Rein lesend, bewegt nichts. Ausgabe: { plan, durch,
       grund, fehlend: [{ id, titel, spalte }], dokumente: [{ id, art, spalte, aktion, grund }] }.
+  node board.mjs issue vorgeschichte [--begriffe <begriff>]... [--dateien <pfad>]... [--ohne <nummer>]... [--bodies]
+      Fruehere Fachplaene des eigenen Boards, archivierte eingeschlossen (Issue #1539, Plan
+      #1534): je Begriff ueber die Suche (nur Titel mit [Fachlich]), je Datei ueber die
+      Kartennummern der letzten 30 Commits und deren Herkunftskette. Zusammengefuehrt ueber
+      die Nummer, geordnet nach Zahl der getroffenen Begriffe, dann Nummer absteigend,
+      hoechstens 20. Ausgabe: { ok, suchbegriffe, dateien, treffer: [{ nummer, titel,
+      archiviert, weg, auszug }], weitere }; --bodies legt je Treffer den Body bei. Ohne
+      Archiv { ok: false, grund: archiv-nicht-erreichbar | tracker-ohne-suche | abgeschaltet },
+      Exit 0 auch dann; der erste Fehlschlag am Board beendet die Suche.
   node board.mjs issue fragen <id> [--body-file <pfad>] [--vergleich <pfad>]
       Grooming-Stand eines Fachplans fuer /groom (Issue #1513, Plan #1510): einstieg
       ({ start, grund, meldung }), fragen ({ vermerk, fragen, ungegliedert, offen }),
@@ -360,6 +369,15 @@ Usage:
       action wandert | lag bereits in In review | lag bereits in Done | bleibt, with a
       reason. Read-only, moves nothing. Output: { plan, durch, grund, fehlend: [{ id,
       titel, spalte }], dokumente: [{ id, art, spalte, aktion, grund }] }.
+  node board.mjs issue vorgeschichte [--begriffe <begriff>]... [--dateien <pfad>]... [--ohne <nummer>]... [--bodies]
+      Earlier requirements of the own board, archived ones included (Issue #1539, Plan
+      #1534): per term via the search (only titles with [Requirement]), per file via the
+      card numbers of the last 30 commits and their lineage. Merged by number, ordered by
+      the number of matched terms, then number descending, at most 20. Output: { ok,
+      suchbegriffe, dateien, treffer: [{ nummer, titel, archiviert, weg, auszug }],
+      weitere }; --bodies adds the body of each hit. Without archive { ok: false, grund:
+      archiv-nicht-erreichbar | tracker-ohne-suche | abgeschaltet }, exit 0 even then; the
+      first failure at the board ends the search.
   node board.mjs issue fragen <id> [--body-file <pfad>] [--vergleich <pfad>]
       Grooming state of a requirement for /groom (Issue #1513, Plan #1510): einstieg
       ({ start, grund, meldung }), fragen ({ vermerk, fragen, ungegliedert, offen }),
@@ -582,6 +600,8 @@ export const { SCHUTZ_AUSGESETZT, NACHPRUEFEN_KOMMANDO, NACHT_GESPERRT, rulesetS
   notfallGate, nachtSperre, probe, einrichten, nachpruefen } = await import("./board/schutz.mjs");
 // Den Namen eines Rulesets braucht nur `code schutz aussetzen|wiederherstellen`; exportiert war er nie.
 const { rulesetName } = await import("./board/adapter.mjs");
+// `issue vorgeschichte` (Issue #1539); exportiert war es nie.
+const { issueVorgeschichte } = await import("./board/vorgeschichte.mjs");
 // Englisch benannte Config auf die deutschen Namen (Issue #1436, Plan #1420 E10).
 const { normalisiereConfig } = await import("./board/config-namen.mjs");
 // Die englischen Namen der Optionen und der Aktionen von `code schutz` (Issue #1461, E18).
@@ -811,6 +831,8 @@ async function dispatchIssue(command, args) {
     case "check-form": return issueCheckForm(tracker, config, args);
     case "check-geschuetzt":
     case "check-protected": return issueCheckGeschuetzt(tracker, args);
+    case "vorgeschichte":
+    case "history": return issueVorgeschichte(tracker, config, args, HELP);
     default:
       unbekannterBefehl("issue", command);
   }

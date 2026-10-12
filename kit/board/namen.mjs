@@ -417,7 +417,7 @@ export const BEFEHLSNAMEN = Object.freeze({
     issue: Object.freeze({ create: "create", get: "get", list: "list", epics: "epics", activity: "activity",
       move: "move", update: "update", comment: "comment", melden: "report", stand: "run-state",
       auftrag: "brief", ursprung: "origin", label: "label", "check-form": "check-form",
-      "check-geschuetzt": "check-protected" }),
+      "check-geschuetzt": "check-protected", vorgeschichte: "history" }),
     code: Object.freeze({ "repo-name": "repo-name", pr: "pr", "ci-status": "ci-status", schutz: "protection" }),
     kontext: Object.freeze({ paths: "paths", "last-log": "last-log" }),
     "issue-review": Object.freeze({ reviewers: "reviewers", check: "check", matrix: "matrix", roles: "roles",
@@ -432,5 +432,6 @@ export const BEFEHLSNAMEN = Object.freeze({
   // Nur die Optionen mit deutschem Namen; die uebrigen (--title, --text-file …) sind englisch.
   optionen: Object.freeze({ teil: "part", zustand: "state", spalte: "column", pfad: "path", zweig: "branch",
     "nur-pfad": "path-only", stufe: "stage", rolle: "role", datei: "file", "material-datei": "material-file",
-    auftrag: "brief", ausgabe: "output", protokoll: "transcript" }),
+    auftrag: "brief", ausgabe: "output", protokoll: "transcript", begriffe: "terms", dateien: "files",
+    ohne: "without" }),
 });

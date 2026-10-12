@@ -17,6 +17,7 @@ import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
 import { BEFEHLSNAMEN } from "../kit/board/namen.mjs";
 
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
+const MIT_VORGESCHICHTE = { ...LOKAL, vorgeschichte: true };
 const KARTE = [
   "---", "id: \"0005\"", "type: task", "status: ready", "title: Paket", "---", "",
   "## Kontext", "Text.", "", "## Aufgabe", "1. `kit/x.mjs` aendern.", "",
@@ -44,8 +45,8 @@ function spuren(dir) {
 }
 
 /** Fuehrt einen Aufruf in einem frischen Projekt aus; Pfade des Projekts werden neutral. */
-function lauf(args, env = {}) {
-  const dir = projekt();
+function lauf(args, env = {}, config = LOKAL) {
+  const dir = projekt(config);
   try {
     const res = runBoard(dir, args, { HOME: dir, ...env }, { input: readFileSync(join(dir, "hook.json"), "utf-8") });
     const neutral = (s) => (s || "").replaceAll(dir, "<DIR>").replaceAll(/\d{4}-\d\d-\d\dT[\d:.]+Z/g, "<ZEIT>");
@@ -71,6 +72,15 @@ const FAELLE = [
   { de: ["issue", "ursprung", "5"], en: ["issue", befehl("issue", "ursprung"), "5"] },
   { de: ["issue", "check-geschuetzt", "5", "--pfad", ".claude/settings.json"],
     en: ["issue", befehl("issue", "check-geschuetzt"), "5", option("pfad"), ".claude/settings.json"] },
+  // Der lokale Tracker fuehrt keine Suche: beide Namen enden mit tracker-ohne-suche (Issue #1539).
+  // --dateien ohne Wert und --ohne mit einer Nicht-Nummer brechen ab — eine nicht erkannte
+  // englische Option bliebe dagegen unbeachtet und endete mit tracker-ohne-suche.
+  { de: ["issue", "vorgeschichte", "--begriffe", "x"], en: ["issue", befehl("issue", "vorgeschichte"), option("begriffe"), "x"],
+    config: MIT_VORGESCHICHTE },
+  { de: ["issue", "vorgeschichte", "--dateien"], en: ["issue", befehl("issue", "vorgeschichte"), option("dateien")],
+    config: MIT_VORGESCHICHTE },
+  { de: ["issue", "vorgeschichte", "--ohne", "keine-nummer"], en: ["issue", befehl("issue", "vorgeschichte"), option("ohne"), "keine-nummer"],
+    config: MIT_VORGESCHICHTE },
   ...Object.keys(BEFEHLSNAMEN.schutz).map((aktion) => ({
     de: ["code", "schutz", aktion, "--zweig", "probe"],
     en: ["code", befehl("code", "schutz"), BEFEHLSNAMEN.schutz[aktion], option("zweig"), "probe"],
@@ -94,8 +104,8 @@ const FAELLE = [
 for (const fall of FAELLE) {
   test(`${fall.en.join(" ")} wirkt wie ${fall.de.join(" ")}`, () => {
     assert.notDeepEqual(fall.en, fall.de, "das Paar unterscheidet sich nicht");
-    const deutsch = lauf(fall.de, fall.env);
-    const englisch = lauf(fall.en, fall.env);
+    const deutsch = lauf(fall.de, fall.env, fall.config);
+    const englisch = lauf(fall.en, fall.env, fall.config);
     assert.deepEqual(englisch, deutsch);
   });
 }

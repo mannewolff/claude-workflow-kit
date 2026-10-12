@@ -3588,7 +3588,7 @@ function gitGrund(res) {
  * Session und kommt ohne Board und ohne Netz aus. Der Preis ist der Commit ohne
  * erkennbare Nummer — und der verschwindet nicht, sondern erscheint mit seiner Kurz-SHA.
  */
-function kartennummerAusBotschaft(betreff, rumpf) {
+export function kartennummerAusBotschaft(betreff, rumpf) {
   const imBetreff = /\(Issue #(\d+)\)/.exec(betreff);
   if (imBetreff !== null) return imBetreff[1];
   const imRumpf = /(?:^|\s)Refs #(\d+)/.exec(rumpf);

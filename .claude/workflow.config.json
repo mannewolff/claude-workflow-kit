@@ -715,6 +715,7 @@
       "kit/board/ursprung.mjs",
       "kit/texte/board-ursprung.mjs",
       "kit/board/vorgeschichte.mjs",
+      "kit/texte/board-vorgeschichte.mjs",
       "test/board-vorgeschichte-*.test.mjs",
       "test/board-dokumente-*.test.mjs"
     ],
