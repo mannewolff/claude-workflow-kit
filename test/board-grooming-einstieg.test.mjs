@@ -163,3 +163,50 @@ test("Kommentare als reine Texte werden ebenso gelesen", () => {
 test("Gleichlauf: der Halt-Anker ist der, den die Nacht-Kette schreibt", () => {
   assert.equal(GROOMING_HALT_ANKER, KETTE_HALT_ANKER);
 });
+
+// --- Szenarien beim Einstieg (Issue #1592, Plan #1588 A8, E13) ---
+
+const SZENARIO = "## Szenarien\n\n### Szenario: Export\n- Angenommen ein Export\n- Wenn er laeuft\n- Dann liegt eine CSV vor\n\n";
+const MIT_SZENARIO = VERMERK.replace("## Offene Fragen an den PO", `${SZENARIO}## Offene Fragen an den PO`);
+const AB_40 = { szenarienAb: 40 };
+
+test("pflichtig, Vermerk Keine, ohne Abschnitt → start", () => {
+  const e = groomEinstieg(karte({ id: "42", body: VERMERK }), OHNE_AUFSICHT, AB_40);
+  assert.equal(e.start, true);
+  assert.equal(e.grund, "szenarien-fehlen");
+  assert.match(e.meldung, /#42/);
+  assert.match(e.meldung, /Szenarien/);
+});
+
+test("pflichtig, Vermerk Keine, Szenario unvollstaendig → start", () => {
+  const halb = MIT_SZENARIO.replace("- Dann liegt eine CSV vor\n", "");
+  assert.equal(groomEinstieg(karte({ body: halb }), OHNE_AUFSICHT, AB_40).grund, "szenarien-fehlen");
+});
+
+test("pflichtig, Vermerk Keine, vollstaendiges Szenario → nichts-offen", () => {
+  assert.equal(groomEinstieg(karte({ body: MIT_SZENARIO }), OHNE_AUFSICHT, AB_40).grund, "nichts-offen");
+});
+
+test("unter dem Stichtag, ohne Abschnitt → kein Start", () => {
+  const e = groomEinstieg(karte({ id: "39", body: VERMERK }), OHNE_AUFSICHT, AB_40);
+  assert.equal(e.start, false);
+  assert.equal(e.grund, "nichts-offen");
+});
+
+test("ohne Stichtag, ohne Abschnitt → kein Start (Altbestand)", () => {
+  for (const config of [undefined, {}]) {
+    assert.equal(groomEinstieg(karte({ body: VERMERK }), OHNE_AUFSICHT, config).grund, "nichts-offen");
+  }
+});
+
+test("pflichtig ohne Abschnitt und ohne Vermerk: der Ablauf beginnt wie bisher", () => {
+  assert.deepEqual(groomEinstieg(karte({ body: OFFEN }), OHNE_AUFSICHT, AB_40), { start: true, grund: null });
+});
+
+test("szenarien-fehlen: Meldung in einem englischen Projekt", () => {
+  spracheFestlegen("en");
+  const e = groomEinstieg(karte({ id: "42", body: VERMERK }), OHNE_AUFSICHT, AB_40);
+  assert.equal(e.grund, "szenarien-fehlen");
+  assert.match(e.meldung, /Scenarios/);
+  assert.doesNotMatch(e.meldung, /Szenarien/);
+});

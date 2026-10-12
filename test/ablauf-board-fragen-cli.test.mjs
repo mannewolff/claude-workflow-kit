@@ -28,8 +28,8 @@ const BODY = [
 
 const ENTSCHIEDEN = BODY.replace("1. Welches Trennzeichen?", "1. Welches Trennzeichen?\n   **Antwort (PO, 2026-10-12):** Semikolon.");
 
-function projekt() {
-  const dir = setupProjekt(LOKAL, "board-fragen-");
+function projekt(config = LOKAL) {
+  const dir = setupProjekt(config, "board-fragen-");
   board(dir, "issue", "create", "--title", "[Fachlich] Export", "--body", mitSzenarien(BODY));
   return dir;
 }
@@ -43,8 +43,8 @@ function fragen(dir, ...args) {
   return { status: res.status, stderr: res.stderr, ausgabe: res.stdout ? JSON.parse(res.stdout) : null };
 }
 
-function imProjekt(lauf) {
-  const dir = projekt();
+function imProjekt(lauf, config) {
+  const dir = projekt(config);
   try {
     lauf(dir);
   } finally {
@@ -52,11 +52,11 @@ function imProjekt(lauf) {
   }
 }
 
-test("ohne Schalter: einstieg, fragen, stoppKommentar und vermerkVorschlag", () => imProjekt((dir) => {
+test("ohne Schalter: einstieg, fragen, stoppKommentar, vermerkVorschlag und szenarien", () => imProjekt((dir) => {
   board(dir, "issue", "label", "add", "1", "review:fertig");
   const { status, ausgabe } = fragen(dir);
   assert.equal(status, 0);
-  assert.deepEqual(Object.keys(ausgabe).sort(), ["einstieg", "fragen", "stoppKommentar", "vermerkVorschlag"]);
+  assert.deepEqual(Object.keys(ausgabe).sort(), ["einstieg", "fragen", "stoppKommentar", "szenarien", "vermerkVorschlag"]);
   assert.deepEqual(ausgabe.einstieg, { start: true, grund: null });
   assert.equal(ausgabe.fragen.offen, 1);
   assert.equal(ausgabe.fragen.fragen[0].text, "Welches Trennzeichen?");
@@ -152,3 +152,48 @@ test("die Hilfe nennt issue questions", () => imProjekt((dir) => {
   const res = runBoard(dir, ["--help"]);
   assert.match(res.stdout, /issue questions <id> \[--body-file <path>\] \[--compare <path>\]/);
 }));
+
+// --- Stand der Szenarien (Issue #1592, Plan #1588 A6, A8, E13) ---
+
+const AB_1 = { ...LOKAL, szenarienAb: 1 };
+const MIT_VERMERK = ENTSCHIEDEN.replace("## Offene Fragen an den PO\n", `## Offene Fragen an den PO\n${vermerkZeile(1, "2026-10-12")}\n\n`);
+
+test("szenarien: pflichtig mit vollstaendigem Szenario", () => imProjekt((dir) => {
+  board(dir, "issue", "label", "add", "1", "review:fertig");
+  const { ausgabe } = fragen(dir);
+  assert.deepEqual(ausgabe.szenarien, { pflicht: true, vorhanden: true, vollstaendig: true });
+}, AB_1));
+
+test("szenarien: pflichtig ohne Abschnitt bei Vermerk Keine → einstieg startet", () => imProjekt((dir) => {
+  board(dir, "issue", "label", "add", "1", "review:fertig");
+  board(dir, "issue", "update", "1", "--body", MIT_VERMERK);
+  const { ausgabe } = fragen(dir);
+  assert.deepEqual(ausgabe.szenarien, { pflicht: true, vorhanden: false, vollstaendig: false });
+  assert.equal(ausgabe.einstieg.start, true);
+  assert.equal(ausgabe.einstieg.grund, "szenarien-fehlen");
+}, AB_1));
+
+test("szenarien: unter dem Stichtag nicht pflichtig", () => imProjekt((dir) => {
+  board(dir, "issue", "update", "1", "--body", MIT_VERMERK);
+  board(dir, "issue", "label", "add", "1", "review:fertig");
+  const { ausgabe } = fragen(dir);
+  assert.deepEqual(ausgabe.szenarien, { pflicht: false, vorhanden: false, vollstaendig: false });
+  assert.equal(ausgabe.einstieg.grund, "nichts-offen");
+}, { ...LOKAL, szenarienAb: 5 }));
+
+test("szenarien: ohne Stichtag ein Hinweis mit dem Kommando zum Nachholen", () => imProjekt((dir) => {
+  const { ausgabe } = fragen(dir);
+  assert.equal(ausgabe.szenarien.pflicht, "ohne-stichtag");
+  assert.equal(ausgabe.szenarien.vollstaendig, true);
+  assert.match(ausgabe.szenarien.hinweis, /szenarienAb/);
+  assert.match(ausgabe.szenarien.hinweis, /scenarios baseline/);
+}));
+
+test("--compare nennt ein beim Groomen ergaenztes Szenario und schlaegt /issue-review vor", () => imProjekt((dir) => {
+  board(dir, "issue", "label", "add", "1", "review:fertig");
+  const start = join(dir, "start.md");
+  writeFileSync(start, BODY, "utf-8");
+  const { ausgabe } = fragen(dir, "--compare", start);
+  assert.deepEqual(ausgabe.aenderungen.szenarien.ergaenzt.map((s) => s.titel), ["Ein Anliegen"]);
+  assert.equal(ausgabe.aenderungen.vorschlag, "/issue-review #1");
+}, AB_1));

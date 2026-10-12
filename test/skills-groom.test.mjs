@@ -101,6 +101,34 @@ test("[groom] der Abschluss nennt Label-Abnahme, den Weg im Halt-Kommentar und d
   assert.match(SKILL, /\/issue-review #<N>/, "der Prüfvorschlag mit /issue-review fehlt");
 });
 
+// --- Szenarien ergaenzen (Issue #1592, Plan #1588 A8, E8) ------------------------------
+
+test("[groom] der Schritt Szenarien ergänzen steht vor den offenen Fragen", () => {
+  const schritt = /^### \d+\. Szenarien ergänzen$/m.exec(SKILL);
+  assert.ok(schritt, "der Schritt „Szenarien ergänzen“ fehlt");
+  const fragen = /^### \d+\. Je offene Frage$/m.exec(SKILL);
+  const stopp = /^### \d+\. Stopp-Frage zuerst$/m.exec(SKILL);
+  assert.ok(schritt.index < fragen.index, "Szenarien ergänzen steht nicht vor den offenen Fragen");
+  assert.ok(schritt.index < stopp.index, "Szenarien ergänzen steht nicht vor der Stopp-Frage");
+});
+
+test("[groom] Szenarien ergänzen: aus den Kriterien, technikfrei, Projektsprache, Zustimmung vor dem Schreiben", () => {
+  const text = abschnitt(SKILL.match(/^### \d+\. Szenarien ergänzen$/m)[0]);
+  assert.match(text, /`szenarien`/, "der Schritt liest das Feld szenarien nicht");
+  assert.match(text, /szenarien-fehlen/, "der Grund szenarien-fehlen fehlt");
+  assert.match(text, /aus den (?:fachlichen )?(?:Akzeptanz)?[Kk]riterien/, "die Herkunft aus den Kriterien fehlt");
+  assert.match(text, /technikfrei/, "technikfrei fehlt");
+  assert.match(text, /Projektsprache/, "die Schlüsselwörter der Projektsprache fehlen");
+  assert.match(text, /[Ee]rst nach (?:der )?Zustimmung/, "die Zustimmung vor dem Schreiben fehlt");
+  assert.match(text, /Vermerk „Keine“[^\n]*erst danach|erst danach[^\n]*Vermerk/, "der Vermerk „Keine“ entsteht nicht erst danach");
+});
+
+test("[groom] der Abschluss uebernimmt den Pruefvorschlag aus aenderungen.vorschlag, auch fuer Szenarien (E8)", () => {
+  const abschluss = abschnitt(SKILL.match(/^### \d+\. Abschluss$/m)[0]);
+  assert.match(abschluss, /`vorschlag`/, "der Vorschlag aus dem Vergleich fehlt");
+  assert.match(abschluss, /Szenari/, "die Szenarien im Vergleich fehlen");
+});
+
 // --- Stop-Punkte und unbeaufsichtigt ------------------------------------------
 
 test("[groom] die Stop-Punkte: kein Label, keine Pruefung, keine eigenen Prueffunde, kein [Plan], keine Bewegung", () => {

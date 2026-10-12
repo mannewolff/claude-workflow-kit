@@ -16,10 +16,12 @@ const fachplan = ({
   kriterien = "1. Erstens.\n2. Zweitens.",
   nichtZiele = "- Kein A.\n- Kein B.",
   fragen = `1. Erste Frage?\n${ANTWORT}\n2. Zweite Frage?`,
+  szenarien = null,
   ohne = [],
 } = {}) => [
   ["Ziel", `Ein Ziel.\n\n${kopf}`],
   ["Fachliche Akzeptanzkriterien", kriterien],
+  ...(szenarien === null ? [] : [["Szenarien", szenarien]]),
   ["Nicht-Ziele", nichtZiele],
   ["Offene Fragen an den PO", fragen],
 ].filter(([titel]) => !ohne.includes(titel)).map(([titel, inhalt]) => `## ${titel}\n${inhalt}\n`).join("\n");
@@ -138,9 +140,10 @@ const leer = { ergaenzt: [], gestrichen: [], umformuliert: [] };
 
 test("unveraenderte Listen ergeben leere Vergleiche", () => {
   const b = fachplan();
-  assert.deepEqual(kriterienVergleich(b, b), { kriterien: leer, nichtZiele: leer });
+  const ohneAenderung = { kriterien: leer, nichtZiele: leer, szenarien: leer, vorschlag: null };
+  assert.deepEqual(kriterienVergleich(b, b, "7"), ohneAenderung);
   const umbruch = fachplan({ kriterien: "1. Erstens.\n2.  Zweitens. " });
-  assert.deepEqual(kriterienVergleich(b, umbruch), { kriterien: leer, nichtZiele: leer });
+  assert.deepEqual(kriterienVergleich(b, umbruch, "7"), ohneAenderung);
 });
 
 test("nummerierte Liste: Zuordnung ueber die Nummer", () => {
@@ -170,4 +173,69 @@ test("Folgezeilen gehoeren zum Listenelement, englische Titel zaehlen", () => {
   const start = fachplan({ kriterien: "1. Erstens,\n   mit Folgezeile." });
   const ende = fachplan({ kriterien: "1. Erstens,\n   mit anderer Folgezeile." }).replace("## Fachliche Akzeptanzkriterien", "## Business acceptance criteria");
   assert.deepEqual(kriterienVergleich(start, ende).kriterien.umformuliert, [{ nr: 1, vorher: "Erstens,\nmit Folgezeile.", nachher: "Erstens,\nmit anderer Folgezeile." }]);
+});
+
+test("ein geaendertes Kriterium oder Nicht-Ziel fuehrt zum Vorschlag /issue-review", () => {
+  const start = fachplan();
+  assert.equal(kriterienVergleich(start, fachplan({ kriterien: "1. Erstens.\n2. Zweitens, genauer." }), "7").vorschlag, "/issue-review #7");
+  assert.equal(kriterienVergleich(start, fachplan({ nichtZiele: "- Kein A." }), "7").vorschlag, "/issue-review #7");
+});
+
+// --- Szenarien im Vergleich (Issue #1592, Plan #1588 E8, A1) ---------------------------
+
+const SZ_A = "### Szenario: Export\n- Angenommen ein Export\n- Wenn er laeuft\n- Dann liegt eine CSV vor";
+const SZ_B = "### Szenario: Import\n- Angenommen eine CSV\n- Wenn sie eingelesen wird\n- Dann stehen die Zeilen da";
+
+test("Szenario ergänzt: Vorschlag /issue-review", () => {
+  const r = kriterienVergleich(fachplan(), fachplan({ szenarien: SZ_A }), "7");
+  assert.deepEqual(r.szenarien, {
+    ...leer, ergaenzt: [{ titel: "Export", text: "- Angenommen ein Export\n- Wenn er laeuft\n- Dann liegt eine CSV vor" }],
+  });
+  assert.deepEqual(r.kriterien, leer, "die Listenzeilen der Szenarien zaehlen nicht als Kriterien (A1)");
+  assert.equal(r.vorschlag, "/issue-review #7");
+});
+
+test("Szenario gestrichen: Vorschlag /issue-review", () => {
+  const r = kriterienVergleich(fachplan({ szenarien: `${SZ_A}\n\n${SZ_B}` }), fachplan({ szenarien: SZ_A }), "7");
+  assert.deepEqual(r.szenarien, {
+    ...leer, gestrichen: [{ titel: "Import", text: "- Angenommen eine CSV\n- Wenn sie eingelesen wird\n- Dann stehen die Zeilen da" }],
+  });
+  assert.equal(r.vorschlag, "/issue-review #7");
+});
+
+test("Szenario umformuliert: Vorschlag /issue-review", () => {
+  const r = kriterienVergleich(fachplan({ szenarien: SZ_A }), fachplan({ szenarien: SZ_A.replace("eine CSV", "eine CSV-Datei") }), "7");
+  assert.deepEqual(r.szenarien, {
+    ...leer,
+    umformuliert: [{
+      titel: "Export",
+      vorher: "- Angenommen ein Export\n- Wenn er laeuft\n- Dann liegt eine CSV vor",
+      nachher: "- Angenommen ein Export\n- Wenn er laeuft\n- Dann liegt eine CSV-Datei vor",
+    }],
+  });
+  assert.equal(r.vorschlag, "/issue-review #7");
+});
+
+test("Szenario unverändert: kein Vorschlag, Leerraum zaehlt nicht", () => {
+  const start = fachplan({ szenarien: `${SZ_A}\n\n${SZ_B}` });
+  const ende = fachplan({ szenarien: `${SZ_A.replace("ein Export", "ein  Export ")}\n\n\n${SZ_B}` });
+  const r = kriterienVergleich(start, ende, "7");
+  assert.deepEqual(r.szenarien, leer);
+  assert.equal(r.vorschlag, null);
+});
+
+test("ein umbenanntes Szenario gilt als gestrichen und ergaenzt", () => {
+  const r = kriterienVergleich(fachplan({ szenarien: SZ_A }), fachplan({ szenarien: SZ_A.replace("Szenario: Export", "Szenario: Ausfuhr") }), "7");
+  assert.deepEqual(r.szenarien.gestrichen.map((s) => s.titel), ["Export"]);
+  assert.deepEqual(r.szenarien.ergaenzt.map((s) => s.titel), ["Ausfuhr"]);
+});
+
+test("zwei Szenarien mit gleichem Titel werden beide verglichen", () => {
+  const r = kriterienVergleich(fachplan({ szenarien: `${SZ_A}\n\n${SZ_A}` }), fachplan({ szenarien: `${SZ_A}\n\n${SZ_A.replace("eine CSV", "zwei CSV")}` }), "7");
+  assert.equal(r.szenarien.umformuliert.length, 1);
+  assert.equal(r.szenarien.umformuliert[0].titel, "Export (2)");
+});
+
+test("ohne Kartennummer nennt der Vorschlag den Platzhalter", () => {
+  assert.equal(kriterienVergleich(fachplan(), fachplan({ szenarien: SZ_A })).vorschlag, "/issue-review #?");
 });

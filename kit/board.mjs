@@ -365,7 +365,7 @@ export const { TEST_ABLAGEN_VORGABE, testAblagen, ablageAlsAusdruck, nennungsVer
 // Den Bestand fuer `issue check-form` braucht nur der Einstieg; exportiert war er nie.
 const { versionierteDateien } = await import("./board/testhinweise.mjs");
 // Ob eine Karte die Szenarien-Pflicht traegt, braucht nur `issue check-form` (Issue #1590).
-const { szenarienPflicht } = await import("./board/szenarien.mjs");
+const { szenarienLesen, szenarienPflicht, stichtagHinweis } = await import("./board/szenarien.mjs");
 export const { pickReviewers, kommandoVerfuegbar, stufeAusTitel } = await import("./board/issue-review.mjs");
 // Den Befehlsverteiler der Achse braucht nur Dispatch; exportiert war er nie.
 const { dispatchIssueReview } = await import("./board/issue-review.mjs");
@@ -534,15 +534,16 @@ function geschuetztHandlung(treffer, label, freigegeben) {
 /**
  * `issue questions <id> [--body-file <pfad>] [--compare <pfad>]` (Issue #1513, Plan #1510 A2,
  * A3, A4, E9), englisch `issue questions` mit `--compare` (Issue #1555, Plan #1548 E8): der
- * Grooming-Stand eines Fachplans fuer `/groom`. Rein lesend — geschrieben
+ * Grooming-Stand eines Fachplans fuer `/groom`, dazu der Stand der Szenarien (Issue #1592,
+ * Plan #1588 A6, A8). Rein lesend — geschrieben
  * wird ueber `issue update --body-file` (A3), Labels bleiben unberuehrt (A4). Die Kommentare
  * liest der Aufruf nur bei `kit:klaeren`: Nur dort gibt es eine Stopp-Frage. Exit 1 allein,
  * wenn `--body-file` gegen den Body der Karte verstoesst.
  */
-async function issueFragen(tracker, args) {
+async function issueFragen(tracker, config, args) {
   const id = args._[0];
   if (id === undefined) abbruch(t("fragenOhneId"));
-  const { groomEinstieg, fragenLesen, stoppKommentar, vermerkZeile, koerperPruefen, kriterienVergleich } =
+  const { groomEinstieg, fragenLesen, stoppKommentar, vermerkZeile, koerperPruefen, kriterienVergleich, szenarienVollstaendig } =
     await import("./board/grooming.mjs");
   const neu = optionDatei(args, "body-file");
   const start = optionDatei(args, "compare");
@@ -551,15 +552,27 @@ async function issueFragen(tracker, args) {
   const fragen = fragenLesen(body);
   const klaeren = traegtLabel(issue.labels, "klaeren");
   const ausgabe = {
-    einstieg: groomEinstieg({ ...issue, id: String(id) }, process.env),
+    einstieg: groomEinstieg({ ...issue, id: String(id) }, process.env, config),
     fragen,
     stoppKommentar: klaeren ? stoppKommentar(await kartenKommentare(tracker, String(id), issue)) : null,
     vermerkVorschlag: fragen.offen === 0 && fragen.fragen.length > 0 ? vermerkZeile(fragen.fragen.length, heute()) : null,
+    szenarien: szenarienStand(id, body, config, szenarienVollstaendig),
   };
   if (neu !== null) ausgabe.pruefung = koerperPruefen(body, neu);
-  if (start !== null) ausgabe.aenderungen = kriterienVergleich(start, body);
+  if (start !== null) ausgabe.aenderungen = kriterienVergleich(start, body, String(id));
   out(ausgabe);
   if (ausgabe.pruefung && !ausgabe.pruefung.ok) process.exit(1);
+}
+
+/**
+ * Der Stand der Szenarien fuer `issue questions`: `{ pflicht, vorhanden, vollstaendig }`,
+ * `pflicht` wie `szenarienPflicht`; fehlt der Stichtag, dazu `hinweis` (A6).
+ */
+function szenarienStand(id, body, config, vollstaendig) {
+  const pflicht = szenarienPflicht(id, config);
+  const stand = { pflicht, vorhanden: szenarienLesen(body).vorhanden, vollstaendig: vollstaendig(body) };
+  if (pflicht === "ohne-stichtag") stand.hinweis = stichtagHinweis();
+  return stand;
 }
 
 /** Die Kommentare einer Karte: mit der Karte geliefert, sonst streng vom Tracker gelesen. */
@@ -600,7 +613,7 @@ async function dispatchIssue(command, args) {
     case "run-state": return issueStand(tracker, config, args);
     case "brief":   return issueAuftrag(tracker, args, AUFTRAG_GESCHUETZT);
     case "origin":  return issueUrsprung(tracker, args);
-    case "questions": return issueFragen(tracker, args);
+    case "questions": return issueFragen(tracker, config, args);
     case "label":   return issueLabel(tracker, config, args, HELP);
     case "check-form": return issueCheckForm(tracker, config, args);
     case "check-protected": return issueCheckGeschuetzt(tracker, args);

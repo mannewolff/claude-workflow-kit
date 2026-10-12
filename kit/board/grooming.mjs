@@ -3,7 +3,9 @@
  * Plan #1510 A1, A2, A4, A5, E2–E4, E6, E7, E13): welche Fragen unter `## Offene Fragen an
  * den PO` offen sind, ob `/groom` beginnen darf, welcher Kommentar die Stopp-Frage traegt und
  * wie der Vermerk „Keine“ lautet. Dazu (Issue #1512, Plan #1510 E8, E9) die Pruefung eines neuen
- * Body gegen den alten und der Vergleich von Kriterien und Nicht-Zielen.
+ * Body gegen den alten und der Vergleich von Kriterien und Nicht-Zielen. Dazu (Issue #1592,
+ * Plan #1588 A8, E8) der Einstieg einer pflichtigen Karte ohne Szenario und der Vergleich der
+ * Szenarien.
  *
  * Reine Funktionen ohne Board-Zugriff; den Zugriff traegt allein der Einstieg in
  * kit/board.mjs, `issue questions` (Issue #1555, Plan #1548 E8). Sie lesen nur und aendern keine Labels (A4). Empfehlung, Einarbeitung und
@@ -20,6 +22,7 @@ import { erkenneLabel, erkenneMarker, erkenneUeberschrift, kanonischeUeberschrif
 
 // Die Texte an den Menschen liegen unter kit/texte/board-grooming.mjs.
 import { TEXTE } from "../texte/board-grooming.mjs";
+import { szenarienLesen, szenarienPflicht } from "./szenarien.mjs";
 
 export { TEXTE };
 
@@ -144,8 +147,13 @@ const labelSachen = (labels) => new Set((labels ?? []).map((l) => erkenneLabel(t
  * `meldung`, bei `nichts-offen` mit offener Frage unter dem Vermerk dazu `hinweis` (E13).
  * Die Gruende in dieser Reihenfolge: `kein-fachplan`, `unbeaufsichtigt` (E7), `ungeprueft`,
  * `nichts-offen`. `env` ist die Umgebung des Aufrufs, in der Regel `process.env`.
+ *
+ * Steht der Vermerk, ist die Karte aber ab dem Stichtag `szenarienAb` aus `config` pflichtig
+ * und traegt kein vollstaendiges Szenario, beginnt der Ablauf doch: `start: true` mit dem
+ * Grund `szenarien-fehlen` und einer `meldung` (Issue #1592, Plan #1588 A8, E13). Altbestand
+ * unter dem Stichtag oder ohne Stichtag bleibt bei `nichts-offen`.
  */
-export function groomEinstieg(issue, env = {}) {
+export function groomEinstieg(issue, env = {}, config = {}) {
   const id = issue?.id ?? "?";
   const sprache = prozessSprache();
   if (!istFachlich(issue?.title ?? "")) {
@@ -161,6 +169,9 @@ export function groomEinstieg(issue, env = {}) {
   }
   const fragen = fragenLesen(issue.body);
   if (fragen.vermerk !== null && !sachen.has("klaeren")) {
+    if (szenarienPflicht(id, config) === true && !szenarienVollstaendig(issue.body)) {
+      return { start: true, grund: "szenarien-fehlen", meldung: t("szenarienFehlen", { id }) };
+    }
     const e = abweisung("nichts-offen", t("nichtsOffen", { id, klaeren }));
     const offen = fragen.fragen.filter((f) => !f.entschieden);
     if (offen.length > 0) {
@@ -173,6 +184,9 @@ export function groomEinstieg(issue, env = {}) {
 }
 
 const abweisung = (grund, meldung) => ({ start: false, grund, meldung });
+
+/** Ob der Body mindestens ein vollstaendiges Szenario traegt (A3). */
+export const szenarienVollstaendig = (body) => szenarienLesen(body ?? "").szenarien.some((s) => s.vollstaendig);
 
 /** Die erste nichtleere Zeile eines Kommentars. */
 const ersteZeile = (body) => String(body ?? "").split(/\r\n|\r|\n/).find((z) => z.trim() !== "") ?? "";
@@ -343,14 +357,50 @@ function listenVergleich(start, ende) {
 }
 
 /**
- * Die ergaenzten, gestrichenen und umformulierten Elemente von `## Fachliche
- * Akzeptanzkriterien` und `## Nicht-Ziele` zwischen dem Body zu Beginn und am Ende des
- * Grooming (E9): `{ kriterien: { ergaenzt, gestrichen, umformuliert }, nichtZiele: {…} }`.
- * Sind alle sechs Listen leer, schlaegt `/groom` keine erneute Pruefung vor.
+ * Die Szenarien eines Body als Abbildung Titel → Wortlaut (E8). Leerraum zaehlt nicht; ein
+ * zweites Szenario mit demselben Titel heisst `<Titel> (2)`, damit keines verloren geht.
  */
-export function kriterienVergleich(start, ende) {
-  return {
+function szenarienNachTitel(body) {
+  const gesehen = new Map();
+  const ergebnis = new Map();
+  for (const { titel, zeilen } of szenarienLesen(body).szenarien) {
+    const zahl = (gesehen.get(titel) ?? 0) + 1;
+    gesehen.set(titel, zahl);
+    const wortlaut = zeilen.map((z) => z.trim().replaceAll(/[ \t]+/g, " ")).join("\n");
+    ergebnis.set(zahl === 1 ? titel : `${titel} (${zahl})`, wortlaut);
+  }
+  return ergebnis;
+}
+
+/** Vergleicht die Szenarien zweier Body nach Titel und Wortlaut (E8). */
+function szenarienVergleich(start, ende) {
+  const vorher = szenarienNachTitel(start);
+  const nachher = szenarienNachTitel(ende);
+  const r = { ergaenzt: [], gestrichen: [], umformuliert: [] };
+  for (const [titel, text] of vorher) {
+    if (!nachher.has(titel)) r.gestrichen.push({ titel, text });
+    else if (nachher.get(titel) !== text) r.umformuliert.push({ titel, vorher: text, nachher: nachher.get(titel) });
+  }
+  for (const [titel, text] of nachher) if (!vorher.has(titel)) r.ergaenzt.push({ titel, text });
+  return r;
+}
+
+const geaendert = (v) => v.ergaenzt.length + v.gestrichen.length + v.umformuliert.length > 0;
+
+/**
+ * Die ergaenzten, gestrichenen und umformulierten Elemente von `## Fachliche
+ * Akzeptanzkriterien` und `## Nicht-Ziele` (E9) und die Szenarien nach Titel (Issue #1592,
+ * Plan #1588 E8) zwischen dem Body zu Beginn und am Ende des Grooming:
+ * `{ kriterien: { ergaenzt, gestrichen, umformuliert }, nichtZiele: {…}, szenarien: {…},
+ * vorschlag }`. Die Listenzeilen der Szenarien zaehlen nicht als Kriterien (A1). `vorschlag`
+ * ist `/issue-review #<id>`, sobald eine der neun Listen nicht leer ist, sonst null.
+ */
+export function kriterienVergleich(start, ende, id = "?") {
+  const r = {
     kriterien: listenVergleich(listenElemente(start, "fachlicheKriterien"), listenElemente(ende, "fachlicheKriterien")),
     nichtZiele: listenVergleich(listenElemente(start, "nichtZiele"), listenElemente(ende, "nichtZiele")),
+    szenarien: szenarienVergleich(start, ende),
   };
+  const pruefen = Object.values(r).some(geaendert);
+  return { ...r, vorschlag: pruefen ? `/issue-review #${id}` : null };
 }
