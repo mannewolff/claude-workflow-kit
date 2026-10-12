@@ -28,6 +28,7 @@ import { berichtAbhaengigkeiten } from "../../kit/night/bericht.mjs";
 import { wartendAbhaengigkeiten } from "../../kit/night/wartend.mjs";
 import { verbrauchLeer } from "../../kit/night/session.mjs";
 import { REVIEW_FERTIG_LABEL, ketteAnbinden, ketteBudgetSetzen, laufeKette } from "../../kit/night/kette.mjs";
+import { erkenneLabel } from "../../kit/board/namen.mjs";
 import { boardAttrappe } from "./board-attrappe.mjs";
 import { psLeer, spawnAttrappe, stdoutFangen, uhrAttrappe } from "./session-attrappe.mjs";
 import { fachplanBody, planBody } from "./kette-texte.mjs";
@@ -40,8 +41,12 @@ export const UHR_START = Date.UTC(2026, 9, 6, 2, 0, 0);
 /** Das Kettenlabel der Vorgabe. */
 export const KETTE_LABEL = "kit:night";
 
-/** Die Laufstand-Labels der Vorgabe von `issue stand` (`STAND_LABEL_VORGABEN` im Board-Teil dokumente). */
-const STAND_LABELS = { laeuft: "lauf:laeuft", abgebrochen: "lauf:abgebrochen", wartet: "lauf:wartet" };
+/**
+ * Die Laufstand-Labels der Vorgabe von `issue stand` (`STAND_LABEL_VORGABEN` im Board-Teil
+ * dokumente), englisch seit Issue #1552. Abgenommen wird jeder Name derselben Sache.
+ */
+const STAND_LABELS = { laeuft: "run:running", abgebrochen: "run:aborted", wartet: "run:waiting" };
+const STAND_SACHEN = new Set(["laufLaeuft", "laufAbgebrochen", "laufWartet"]);
 
 /** Eine fachliche Anforderung als Karte der Attrappe: gekennzeichnet und geprueft, wenn nicht anders gesagt. */
 export function fachplanKarte(id, { titel = "[Fachlich] Ein Anliegen", labels = [KETTE_LABEL, REVIEW_FERTIG_LABEL], body = fachplanBody(), status = "backlog" } = {}) {
@@ -113,7 +118,7 @@ export function ketteBoard(anfang, { jetzt, formPruefung, ablehnen = () => false
       const zustand = option(args, "zustand");
       const rumpf = textOderDatei(args, "text").replaceAll("\r\n", "\n").trim();
       const neu = rumpf.startsWith("## Laufstand") ? rumpf : `## Laufstand\n\n${rumpf}`;
-      ziel.labels = ziel.labels.filter((l) => !Object.values(STAND_LABELS).includes(l));
+      ziel.labels = ziel.labels.filter((l) => !STAND_SACHEN.has(erkenneLabel(l)));
       if (STAND_LABELS[zustand]) ziel.labels.push(STAND_LABELS[zustand]);
       const alt = ziel.comments.findLast((c) => c.body.startsWith("## Laufstand"));
       if (alt) alt.body = neu;

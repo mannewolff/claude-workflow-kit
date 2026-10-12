@@ -46,7 +46,7 @@ test("[night-6] ohne board.mjs setzt boardUmgebung kein Budget (Issue #1067)", (
 });
 
 test("[night-6] ohne board.mjs wirft der Ersatz fuer istFachlich", () => {
-  assert.throws(() => night.nachbarn.istFachlich("[Fachlich] Etwas"), /das Praefix \[Fachlich\] ist nicht erkennbar/);
+  assert.throws(() => night.nachbarn.istFachlich("[Fachlich] Etwas"), /das Praefix \[Requirement\] ist nicht erkennbar/);
 });
 
 test("[night-6] ohne board.mjs wirft der Ersatz fuer istPlan", () => {
@@ -54,11 +54,11 @@ test("[night-6] ohne board.mjs wirft der Ersatz fuer istPlan", () => {
 });
 
 test("[night-6] ohne board.mjs wirft der Ersatz fuer istIdee", () => {
-  assert.throws(() => night.nachbarn.istIdee("[Idee] Etwas"), /das Praefix \[Idee\] ist nicht erkennbar/);
+  assert.throws(() => night.nachbarn.istIdee("[Idee] Etwas"), /das Praefix \[Idea\] ist nicht erkennbar/);
 });
 
 test("[night-6] ohne board.mjs wirft der Ersatz fuer istMensch", () => {
-  assert.throws(() => night.nachbarn.istMensch("[Mensch] Etwas"), /das Praefix \[Mensch\] ist nicht erkennbar/);
+  assert.throws(() => night.nachbarn.istMensch("[Mensch] Etwas"), /das Praefix \[Human\] ist nicht erkennbar/);
 });
 
 // Ein stilles "keine Treffer" liesse ein Paket mit geschuetzter Datei in eine Session

@@ -161,7 +161,7 @@ test("[1491] ohne Spracheinstellung bleiben die Gruende der Kette deutsch", () =
   assert.equal(stoppFragenGrund("## Offene Fragen\n- Wer?\n"), "offene Stopp-Frage: - Wer?");
   assert.equal(budgetDefaultsZeile({ planMin: 30 }, ["planMin"]), "Budget der Kette aus den Defaults: planMin=30");
   const { uebersprungen } = waehleKettenKandidaten([{ id: "2", title: "Paket", status: "backlog", labels: ["kit:night"] }], "kit:night", 5);
-  assert.equal(uebersprungen[0].grund, "weder [Fachlich] noch [Plan] — das Kennzeichen gilt an der fachlichen Anforderung oder am Plandokument");
+  assert.equal(uebersprungen[0].grund, "weder [Requirement] noch [Plan] — das Kennzeichen gilt an der fachlichen Anforderung oder am Plandokument");
 });
 
 // Seit #1471 geht der Zusatz ueber die Tabelle (test/night-session-prompt-en.test.mjs); die

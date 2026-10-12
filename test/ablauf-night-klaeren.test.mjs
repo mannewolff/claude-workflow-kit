@@ -84,7 +84,7 @@ test("Nachtlauf: Ready-Issue mit kit:klaeren wird kommentiert uebersprungen", ()
     assert.ok(backlog.includes(String(gezeichnet.id)), "gezeichnetes Issue liegt nicht im Backlog");
 
     assert.deepEqual(kommentare(issueText(dir, gezeichnet.id)), [
-      `Nachtlauf: Traegt kit:klaeren — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.`,
+      `Nachtlauf: Traegt kit:clarify — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.`,
     ]);
 
     const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
@@ -127,7 +127,7 @@ test("Dry-Run weist gezeichnete Issues aus, ohne etwas zu bewegen", () => {
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--dry-run"], { NIGHT_CLAUDE_CMD: fake });
     assert.equal(res.status, 0, `dry-run schlug fehl: ${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, /wuerde ins Backlog \(kit:klaeren, offene Entscheidung\)/);
+    assert.match(res.stdout, /wuerde ins Backlog \(kit:clarify, offene Entscheidung\)/);
     assert.match(res.stdout, /0 Session\(s\) wuerden starten/);
 
     const ready = board(dir, "issue", "list", "--status", "ready").map((i) => String(i.id));

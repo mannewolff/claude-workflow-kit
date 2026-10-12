@@ -84,7 +84,7 @@ export const TEXTE = Object.freeze({
     standKommentareUnlesbar: "Kommentare von Issue {id} nicht lesbar — kein Laufstand geschrieben: {grund}",
     standOhneKommentarId: "Der Laufstand an Issue {id} traegt keine Kommentar-ID — nicht ersetzt.",
     backlogFachlich: "Fachliches Issue — wird nicht implementiert, bitte per /techplan #{id} in technische Issues ueberfuehren.",
-    backlogIdee: "Idee — mit Abwaegung erst /fachplan #{id}, ohne Abwaegung /task #{id}, wird nicht implementiert.",
+    backlogIdee: "Idee — mit Abwaegung erst /requirement #{id}, ohne Abwaegung /task #{id}, wird nicht implementiert.",
     backlogPlan: "Plan-Dokument — wird nicht implementiert, bitte per /issues #{id} in Arbeitspakete ueberfuehren.",
     backlogMensch: "Menschenschritt — wird nicht implementiert, die Karte wartet auf einen Menschen und ist nicht gescheitert.",
     backlogKlaeren: "Traegt {label} — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.",

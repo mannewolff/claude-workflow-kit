@@ -1373,15 +1373,16 @@ export async function issueStand(tracker, config, args) {
 // SYNC: dieselben Texte stehen mit dem Praefix `Nachtlauf: ` in kit/night.mjs
 // (`pruefeIssueGates`). Wer einen hier aendert, aendert ihn dort mit — der
 // Gleichlauf-Test in test/ablauf-board-dokumente-auftrag.test.mjs vergleicht beide Seiten.
-// In der Projektsprache (Issue #1479); der Gleichlauf gilt fuer die deutsche Fassung.
+// In der Projektsprache (Issue #1479); der Gleichlauf gilt fuer die deutsche Fassung. Die
+// Labels nennen beide Seiten englisch, in jedem Projekt (Issue #1553, Plan #1548 E15).
 export const AUFTRAG_BACKLOG_TEXTE = {
   fachlich: (id) => t("backlogFachlich", { id }),
   idee: (id) => t("backlogIdee", { id }),
   plan: (id) => t("backlogPlan", { id }),
   mensch: () => t("backlogMensch"),
-  klaeren: () => t("backlogKlaeren", { label: labelName("klaeren", prozessSprache()) }),
+  klaeren: () => t("backlogKlaeren", { label: labelName("klaeren") }),
   // SYNC: `GESCHUETZT_LABEL_GATE_TEXT` in kit/night.mjs (Issue #1046, #1052).
-  geschuetzt: () => t("backlogGeschuetzt", { label: labelName("geschuetzt", prozessSprache()) }),
+  geschuetzt: () => t("backlogGeschuetzt", { label: labelName("geschuetzt") }),
 };
 
 // Dieselbe Pruefreihenfolge wie `pruefeIssueGates` in kit/night.mjs: erst die Praefixe,

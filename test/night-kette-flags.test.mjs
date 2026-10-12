@@ -17,7 +17,7 @@ test("[night-19] --kette --dry-run nennt Kandidaten, Uebersprungene und Budget u
   const r = await ketteImProzess({ karten: [fachplanKarte("1"), offen], argv: ["--dry-run"], sitzung: jeStufe({ plan: planAnlegen() }) });
   assert.equal(r.code, 0, r.ausgabe);
   assert.match(r.ausgabe, /#1 \[Fachlich\] Ein Anliegen -> Kette 1/);
-  assert.match(r.ausgabe, /#2 .*-> uebersprungen \(traegt kit:klaeren/);
+  assert.match(r.ausgabe, /#2 .*-> uebersprungen \(traegt kit:clarify/);
   assert.match(r.ausgabe, /Budget: Plan 20 min, Pakete 15 min, Review 15 min, Abdeckung 10 min, 50 \$ je Kette, 2 Korrekturrunde\(n\)/);
   assert.match(r.ausgabe, /Dry-Run beendet: 1 Kette\(n\) wuerden laufen/);
   assert.ok(r.karte("1").labels.includes(KETTE_LABEL), "der Dry-Run verbraucht kein Label");
@@ -79,12 +79,12 @@ test("[night-19] waehleKettenKandidaten: nur Karten mit Label, in Reihenfolge, m
     // #3 ist ein [Plan] ohne Herkunftszeile: seit #895 laeuft an ihm `planAusschluss`.
     ["3", "die fachliche Herkunft ist nicht erkennbar"],
     ["4", "steht in ready"],
-    ["5", "traegt kit:klaeren"],
-    ["8", "ungeprueft: Label 'review:fertig' fehlt"],
+    ["5", "traegt kit:clarify"],
+    ["8", "ungeprueft: Label 'review:done' fehlt"],
   ]);
   assert.deepEqual(waehleKettenKandidaten(undefined, "kit:night", 3), { kandidaten: [], uebersprungen: [], liegengeblieben: [] });
   assert.equal(waehleKettenKandidaten([{ id: "9", status: "backlog", labels: ["kit:night"] }], "kit:night", 1).uebersprungen[0].grund,
-    "weder [Fachlich] noch [Plan] — das Kennzeichen gilt an der fachlichen Anforderung oder am Plandokument",
+    "weder [Requirement] noch [Plan] — das Kennzeichen gilt an der fachlichen Anforderung oder am Plandokument",
     "eine Karte ohne Titel traegt keine der beiden Auftragsarten");
 });
 

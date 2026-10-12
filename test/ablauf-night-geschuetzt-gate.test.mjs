@@ -287,7 +287,7 @@ test("Wiederaufnahme: eine Karte mit kit:geschuetzt wird uebersprungen, das Labe
     assert.equal(spalte(dir, id), "backlog");
     assert.ok(hatLabel(labels(dir, id), "kit:geschuetzt"), "der Lauf hat kit:geschuetzt entfernt");
     assert.ok(!aufrufe.some((a) => a[1] === "label" && a[2] === "remove"), "label remove kommt im Runner nicht vor");
-    assert.match(res.stdout, new RegExp(`#${id} uebersprungen: traegt kit:geschuetzt`));
+    assert.match(res.stdout, new RegExp(`#${id} uebersprungen: traegt kit:protected`));
     const ks = kommentare(issueText(dir, id));
     assert.equal(ks.at(-1), nightModul.GESCHUETZT_LABEL_GATE_TEXT);
   } finally {
@@ -409,7 +409,7 @@ test("Vorschau: eine Karte mit kit:geschuetzt ohne Pfad im Body wuerde ins Backl
     const id = readyPaket(dir, "Paket aus dem Rueckfall-Halt", paketBody("src/frei.mjs"));
     board(dir, "issue", "label", "add", id, "kit:geschuetzt");
     const zeile = vorschauZeile(dir, id);
-    assert.ok(zeile.includes("wuerde ins Backlog (kit:geschuetzt, menschliche Handlung wartet)"), zeile);
+    assert.ok(zeile.includes("wuerde ins Backlog (kit:protected, menschliche Handlung wartet)"), zeile);
     assert.doesNotMatch(zeile, /Session/);
   } finally {
     rmSync(dir, { recursive: true, force: true });

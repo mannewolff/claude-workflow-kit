@@ -24,7 +24,11 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { HALT_FOLGESATZ } from "../kit/night/wartend.mjs";
+import { HALT_FOLGESAETZE } from "../kit/night/wartend.mjs";
+
+// Der Runner erkennt jeden Wortlaut des Folgesatzes (Issue #1553, E15); die Skills tragen bis zu
+// ihrer Umstellung (Plan #1548, eigenes Paket) den alten mit /fachplan.
+const traegtFolgesatz = (text) => HALT_FOLGESAETZE.some((satz) => text.includes(satz));
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -207,8 +211,8 @@ test("[skills-6] der Folgesatz steht woertlich so da, wie ihn der Nacht-Runner s
   // Abschrift bliebe gruen, wenn der Runner den Satz aendert (Issue #572).
   for (const name of MIT_HALT) {
     assert.ok(
-      haltAbschnitt(name).includes(HALT_FOLGESATZ),
-      `${name}: der Folgesatz weicht von HALT_FOLGESATZ in kit/night.mjs ab`,
+      traegtFolgesatz(haltAbschnitt(name)),
+      `${name}: der Folgesatz weicht von HALT_FOLGESAETZE in kit/night/wartend.mjs ab`,
     );
   }
 });
@@ -264,7 +268,7 @@ test("[skills-6] implement-test und implement-done kennen den Halt nicht", () =>
   for (const name of OHNE_HALT) {
     const text = quelle(name);
     assert.ok(!text.includes(FETTMARKE), `${name}: traegt die Fettmarke des Halts`);
-    assert.ok(!text.includes(HALT_FOLGESATZ), `${name}: traegt den Folgesatz`);
+    assert.ok(!traegtFolgesatz(text), `${name}: traegt den Folgesatz`);
   }
 });
 
@@ -274,7 +278,7 @@ test("[skills-8] /fachplan nimmt einen angehaltenen `[Task]` als Argument `#T`",
   const text = quelle("requirement");
   assert.match(text, /\/fachplan #T/, "das Argument `#T` ist nicht benannt");
   assert.ok(
-    text.includes(HALT_FOLGESATZ),
+    traegtFolgesatz(text),
     "der Folgesatz, an dem der angehaltene Task erkannt wird, fehlt",
   );
 });

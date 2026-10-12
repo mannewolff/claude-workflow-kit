@@ -212,7 +212,7 @@ test("[night-14] Nachtlauf: Halt mit unsauberem Baum loest keinen Salvage aus un
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
 
     assert.equal(res.status, 1, `night.mjs haette hart stoppen muessen: ${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, /HALT MIT UNSAUBEREM BAUM nach [\d.]+ min: Issue #\d+ traegt kit:klaeren, aber der Working Tree ist dirty — kein Salvage, harter Stopp\./,
+    assert.match(res.stdout, /HALT MIT UNSAUBEREM BAUM nach [\d.]+ min: Issue #\d+ traegt kit:clarify, aber der Working Tree ist dirty — kein Salvage, harter Stopp\./,
       `die eigene Zeile des Halt-Stopps fehlt: ${res.stdout}`);
     assert.doesNotMatch(res.stdout, /SALVAGE-VERSUCH/, "an einer angehaltenen Karte darf kein Salvage laufen");
 

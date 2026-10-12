@@ -2408,17 +2408,18 @@ export function laufModell(args, config) {
 // --- Kit-Labels unter beiden Namen (Issue #1425, Plan #1420 E3, E7) ---
 
 // Das Register der Namenspaare liegt im Board-Teil. Fehlt es neben night.mjs, gilt nur der
-// Name, den der Aufrufer nennt — wie vor dem Register — und geschrieben wird der deutsche.
-const { erkenneLabel, labelName, projektSprache } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "namen.mjs")).href)
+// Name, den der Aufrufer nennt — wie vor dem Register — und geschrieben wird der englische.
+const { erkenneLabel, labelName } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "namen.mjs")).href)
   .catch(() => ({ erkenneLabel: () => null }));
 
 /**
- * Der Name eines Kit-Labels in der Sprache des Projekts (Issue #1429, Plan #1420 E4, E7) —
- * fuer die Vorgaben ohne gesetzten Config-Wert und alles, was der Nachtlauf nach aussen
- * nennt. `deutsch` gilt, wenn das Register fehlt.
+ * Der Name eines Kit-Labels, den der Nachtlauf setzt und nennt — englisch, in jedem Projekt
+ * (Issue #1553, Plan #1548 E2; vorher in der Projektsprache, Issue #1429). Fuer die Vorgaben
+ * ohne gesetzten Config-Wert und alles, was der Nachtlauf nach aussen nennt. `rueckfall` gilt,
+ * wenn das Register fehlt, und ist selbst der englische Name.
  */
-export function labelDerSprache(sache, config, deutsch) {
-  return labelName && projektSprache ? labelName(sache, projektSprache(config)) : deutsch;
+export function kitLabel(sache, rueckfall) {
+  return labelName ? labelName(sache) : rueckfall;
 }
 
 /**
@@ -2444,7 +2445,7 @@ export function kennzeichenNamen(labels, name, sache = erkenneLabel(name)) {
 // Startwerte aus Fachplan #635, Kriterium 6. Alle Zeiten in Minuten, Kosten in US-Dollar.
 export const KETTE_BUDGET_DEFAULTS = Object.freeze({
   label: "kit:night",
-  varianteBLabel: "kit:durchziehen",
+  varianteBLabel: "kit:carry-through",
   planMin: 20,
   paketeMin: 15,
   reviewMin: 15,
@@ -2467,9 +2468,9 @@ export const KETTE_BUDGET_DEFAULTS = Object.freeze({
  */
 export function ladeKetteBudget(config) {
   const block = config?.night?.kette ?? {};
-  // Die Vorgaben der Kennzeichen in der Projektsprache; ein gesetzter Wert gilt unveraendert (E7).
-  const budget = { ...KETTE_BUDGET_DEFAULTS, label: labelDerSprache("night", config, KETTE_BUDGET_DEFAULTS.label),
-    varianteBLabel: labelDerSprache("durchziehen", config, KETTE_BUDGET_DEFAULTS.varianteBLabel) };
+  // Die Vorgaben der Kennzeichen englisch; ein gesetzter Wert gilt unveraendert (E7).
+  const budget = { ...KETTE_BUDGET_DEFAULTS, label: kitLabel("night", KETTE_BUDGET_DEFAULTS.label),
+    varianteBLabel: kitLabel("durchziehen", KETTE_BUDGET_DEFAULTS.varianteBLabel) };
   if (block.label !== undefined) {
     if (typeof block.label !== "string" || block.label.trim() === "") throw new Error(t("nichtLeererText", { feld: "night.kette.label" }));
     budget.label = block.label.trim();
@@ -2543,7 +2544,7 @@ export function ketteBudgetDefaults(config) {
 // Startwerte aus Plan #904. Der Block steht in der WURZEL der Config und nicht unter
 // `night`: Der Lauf gehoert dem Tag, und unter `night` behauptete der Name das Gegenteil.
 export const PRUEFLAUF_BUDGET_DEFAULTS = Object.freeze({
-  label: "kit:pruefen",
+  label: "kit:check",
   pruefungMin: 25,
   kostenUsd: 25,
 });
@@ -2558,7 +2559,7 @@ export const PRUEFLAUF_BUDGET_DEFAULTS = Object.freeze({
  */
 export function ladePruefLaufBudget(config) {
   const block = config?.pruefLauf ?? {};
-  const budget = { ...PRUEFLAUF_BUDGET_DEFAULTS, label: labelDerSprache("pruefen", config, PRUEFLAUF_BUDGET_DEFAULTS.label) };
+  const budget = { ...PRUEFLAUF_BUDGET_DEFAULTS, label: kitLabel("pruefen", PRUEFLAUF_BUDGET_DEFAULTS.label) };
   if (block.label !== undefined) {
     if (typeof block.label !== "string" || block.label.trim() === "") throw new Error(t("nichtLeererText", { feld: "pruefLauf.label" }));
     budget.label = block.label.trim();
@@ -2602,22 +2603,26 @@ export function varianteVon(issue, budget) {
 // Die Ziele in der festen Reihenfolge der Stufen, je mit der Stufe, nach der die Kette
 // endet (A2). Die Labels sind bewusst nicht konfigurierbar (A1): kanban-kit liest sie fest.
 // `sache` ist der Eintrag im Register kit/board/namen.mjs: Erkannt wird jedes Ziel unter
-// beiden Namen, `ziel:plan` wie `goal:plan` (Issue #1425).
+// beiden Namen, `ziel:plan` wie `goal:plan` (Issue #1425). `label` ist der englische Name,
+// den der Nachtlauf schreibt, wenn das Register fehlt (Issue #1553).
 export const KETTE_ZIELE = Object.freeze([
-  Object.freeze({ ziel: "plan", endstufe: "review", sache: "zielPlan" }),
-  Object.freeze({ ziel: "pakete", endstufe: "abdeckung", sache: "zielPakete" }),
-  Object.freeze({ ziel: "umsetzung", endstufe: "umsetzung", sache: "zielUmsetzung" }),
-  Object.freeze({ ziel: "push-vorbereitet", endstufe: "vorbereitung", sache: "zielPushVorbereitet" }),
+  Object.freeze({ ziel: "plan", endstufe: "review", sache: "zielPlan", label: "goal:plan" }),
+  Object.freeze({ ziel: "pakete", endstufe: "abdeckung", sache: "zielPakete", label: "goal:packages" }),
+  Object.freeze({ ziel: "umsetzung", endstufe: "umsetzung", sache: "zielUmsetzung", label: "goal:implementation" }),
+  Object.freeze({ ziel: "push-vorbereitet", endstufe: "vorbereitung", sache: "zielPushVorbereitet", label: "goal:push-prepared" }),
 ]);
 export const ZIEL_LABEL_PRAEFIX = "ziel:";
 // Die Praefixe beider Sprachen; auch ein unbekanntes `goal:*` zaehlt als Ziel-Label.
 const ZIEL_LABEL_PRAEFIXE = Object.freeze([ZIEL_LABEL_PRAEFIX, "goal:"]);
 
-/** Der Name des Ziel-Labels in der Projektsprache, `ziel:pakete` oder `goal:packages` (Issue #1429). */
-export function zielLabelName(ziel, config) {
+/**
+ * Der Name des Ziel-Labels, englisch in jedem Projekt: `goal:packages` (Issue #1553, Plan #1548
+ * E2; vorher in der Projektsprache, Issue #1429).
+ */
+export function zielLabelName(ziel) {
   const eintrag = KETTE_ZIELE.find((z) => z.ziel === ziel);
   if (!eintrag) throw new Error(t("zielUnbekannt", { ziel }));
-  return labelDerSprache(eintrag.sache, config, `${ZIEL_LABEL_PRAEFIX}${ziel}`);
+  return kitLabel(eintrag.sache, eintrag.label);
 }
 
 /** Ob ein Label ein Ziel-Label ist, `ziel:*` oder `goal:*`, bekannt oder nicht. */

@@ -187,22 +187,23 @@ Aufruf (im Projekt-Root):
   node .claude/kit/night.mjs [Flags]
 
 Flags:
-  --kette            Nacht-Kette statt Implementierung: je [Fachlich]-Issue mit dem
+  --kette            Nacht-Kette statt Implementierung: je [Requirement]-Issue mit dem
                      Label aus night.kette.label (Default kit:night) eine Kette aus
                      /techplan, Formpruefung, /issue-review, /issues und Abdeckung im
                      eigenen Worktree, mit Nachtbericht am Fachplan. Ein zweites Label
-                     aus night.kette.varianteBLabel (Default kit:durchziehen) waehlt
+                     aus night.kette.varianteBLabel (Default kit:carry-through) waehlt
                      Variante B statt Variante A; ohne dieses Label laeuft Variante A.
-                     Ein Ziel-Label bestimmt, wo die Kette endet: ziel:plan, ziel:pakete,
-                     ziel:umsetzung oder ziel:push-vorbereitet. planreview:1 oder
-                     planreview:2 an der Anforderung legt fest, wie viele Modelle den
-                     Plan pruefen. Mit ziel:push-vorbereitet folgt nach allen Ketten
-                     einmal die Stufe vorbereitung: /push-main vorbereiten, ohne Push,
-                     Ergebnis in .claude/push-vorbereitung.json und als Nachtbericht.
+                     Ein Ziel-Label bestimmt, wo die Kette endet: goal:plan,
+                     goal:packages, goal:implementation oder goal:push-prepared.
+                     planreview:1 oder planreview:2 an der Anforderung legt fest, wie
+                     viele Modelle den Plan pruefen. Mit goal:push-prepared folgt nach
+                     allen Ketten einmal die Stufe vorbereitung: /push-main
+                     vorbereiten, ohne Push, Ergebnis in .claude/push-vorbereitung.json
+                     und als Nachtbericht.
                      --max zaehlt Ketten (Default 3); --label gilt hier nicht, das
                      Label kommt aus der Config. Budgets in night.kette.
-  --pruefen          Prueflauf am Tag statt Implementierung: je [Fachlich]-Issue mit dem
-                     Label aus pruefLauf.label (Default kit:pruefen) eine Session
+  --pruefen          Prueflauf am Tag statt Implementierung: je [Requirement]-Issue mit dem
+                     Label aus pruefLauf.label (Default kit:check) eine Session
                      /issue-review in einem Worktree je Lauf, nacheinander. Der Lauf
                      bewegt keine Karte und setzt kein Label ausser dem, was die Pruefung
                      selbst hinterlaesst; begrenzt wird er ueber seine Budgets in
@@ -332,7 +333,7 @@ Details: Kapitel "Nachtbetrieb" in der Kit-Dokumentation.
     endeFestgefahren: ", {anzahl} festgefahren",
     endeHarterStopp: ", HARTER STOPP",
     ende: "Nacht-Runner beendet: {erfolgreich} erfolgreich, {zurueckgestellt} zurueckgestellt, {ohneNachweis} ohne gueltigen Nachweis, {sessions} Session(s) gestartet, {angehalten} angehalten{abgebrochen}{festgefahren}{harterStopp}.",
-    morgenRitual: "Morgen-Ritual: /review -> Test -> push main. Protokoll: {pfad}",
+    morgenRitual: "Morgen-Ritual: /kit-review -> Test -> push main. Protokoll: {pfad}",
   }),
   en: Object.freeze({
     hilfe: `Night runner: works through the Ready column unattended —
@@ -489,7 +490,7 @@ Details: chapter "Night operation" in the kit documentation.
     endeFestgefahren: ", {anzahl} stuck",
     endeHarterStopp: ", HARD STOP",
     ende: "Night runner finished: {erfolgreich} succeeded, {zurueckgestellt} deferred, {ohneNachweis} without valid evidence, {sessions} session(s) started, {angehalten} halted{abgebrochen}{festgefahren}{harterStopp}.",
-    morgenRitual: "Morning ritual: /review -> test -> push main. Log: {pfad}",
+    morgenRitual: "Morning ritual: /kit-review -> test -> push main. Log: {pfad}",
   }),
 });
 
@@ -503,9 +504,9 @@ function t(schluessel, werte = {}) {
   return TEXTE.de[schluessel].replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
 }
 
-/** Der Name eines Kit-Labels in der Sprache des Prozesses; ohne Register der deutsche. */
-function labelInSprache(sache) {
-  return namen ? namen.labelName(sache, namen.prozessSprache()) : { klaeren: "kit:klaeren", geschuetzt: "kit:geschuetzt" }[sache];
+/** Der Name eines Kit-Labels, englisch in jedem Projekt (Issue #1553, Plan #1548 E2); ohne Register ebenso. */
+function kitLabel(sache) {
+  return namen ? namen.labelName(sache) : { klaeren: "kit:clarify", geschuetzt: "kit:protected" }[sache];
 }
 
 // Auskunft vor den Teilen (Plan #1199, E2): --version und --help antworten, bevor ein Teil
@@ -644,10 +645,10 @@ const {
 } = existsSync(NACHBAR_BOARD)
   ? await import(pathToFileURL(NACHBAR_BOARD).href)
   : {
-      istFachlich: praefixFallback("[Fachlich]"),
+      istFachlich: praefixFallback("[Requirement]"),
       istPlan: praefixFallback("[Plan]"),
-      istIdee: praefixFallback("[Idee]"),
-      istMensch: praefixFallback("[Mensch]"),
+      istIdee: praefixFallback("[Idea]"),
+      istMensch: praefixFallback("[Human]"),
       abhaengigkeitenMitHerkunft: abhaengigkeitenFallback,
       geschuetzteTreffer: geschuetztFallback("boardFehltErkennung"),
       geschuetztKommentar: geschuetztFallback("boardFehltKommentar"),
@@ -1420,11 +1421,11 @@ function dryRunBefund(issue, ctx, assumedDone) {
   if (!ctx.hasLabel(issue)) return aus(t("dryOhneLabel", { label: ctx.labelFilter }));
   const praefix = DRY_RUN_PRAEFIXE.find(([passt]) => passt(issue.title));
   if (praefix) return aus(t("dryPraefix", { art: t(praefix[1]) }));
-  if (hatKlaerenLabel(issue)) return aus(t("dryKlaeren", { label: labelInSprache("klaeren") }));
+  if (hatKlaerenLabel(issue)) return aus(t("dryKlaeren", { label: kitLabel("klaeren") }));
   // Beide Gates fuer geschuetzte Dateien in der Reihenfolge von `pruefeIssueGates` (Issue
   // #1047, Plan #987, E19): erst das Label, das auch eine Karte ohne Pfad im Body traegt,
   // dann der Treffer, sofern der Mensch ihn nicht nach E5 freigegeben hat.
-  if (hatGeschuetztLabel(issue)) return aus(t("dryGeschuetztLabel", { label: labelInSprache("geschuetzt") }));
+  if (hatGeschuetztLabel(issue)) return aus(t("dryGeschuetztLabel", { label: kitLabel("geschuetzt") }));
 
   const full = board("issue", "get", String(issue.id));
   const geschuetzt = dryRunGeschuetzt(issue, full);

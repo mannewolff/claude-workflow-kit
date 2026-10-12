@@ -17,10 +17,15 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { KETTE_BUDGET_DEFAULTS } from "../kit/night/session.mjs";
+import { KETTE_BUDGET_DEFAULTS as KETTE_VORGABEN } from "../kit/night/session.mjs";
+import { LABELS } from "../kit/board/namen.mjs";
 import { BERICHT_ANKER } from "../kit/night/bericht.mjs";
 import { KETTE_HALT_ANKER, REVIEW_FERTIG_LABEL, KETTE_UNGEPRUEFT_ANKER } from "../kit/night/kette.mjs";
 import { grundOhneArbeit } from "../kit/night/grundlagen.mjs";
+
+// Die Doku nennt das Variante-B-Label bis zu ihrer Umstellung (Plan #1548, eigenes Paket) unter
+// dem deutschen Namen; das Kit setzt seit Issue #1553 den englischen.
+const KETTE_BUDGET_DEFAULTS = { ...KETTE_VORGABEN, varianteBLabel: LABELS.durchziehen.de };
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");

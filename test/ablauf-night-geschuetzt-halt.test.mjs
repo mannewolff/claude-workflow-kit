@@ -215,7 +215,7 @@ test("[night-halt] die Logzeile einer Stopp-Frage bleibt die offene Entscheidung
 
 for (const [art, fake, muster] of [
   ["geschuetzt", geschuetztFake(false), /HALT MIT UNSAUBEREM BAUM nach [\d.]+ min: Issue #\d+ haelt an einer geschuetzten Datei, aber der Working Tree ist dirty — kein Salvage, harter Stopp\./],
-  ["klaeren", klaerenFake, /HALT MIT UNSAUBEREM BAUM nach [\d.]+ min: Issue #\d+ traegt kit:klaeren, aber der Working Tree ist dirty — kein Salvage, harter Stopp\./],
+  ["klaeren", klaerenFake, /HALT MIT UNSAUBEREM BAUM nach [\d.]+ min: Issue #\d+ traegt kit:clarify, aber der Working Tree ist dirty — kein Salvage, harter Stopp\./],
 ]) {
   test(`[night-halt] der Dirty-Guard stoppt hart, wenn ein ${art}-Halt an einem unsauberen Baum haengt`, () => {
     const dir = setupProjekt(`night-geschuetzt-halt-dirty-${art}-`);

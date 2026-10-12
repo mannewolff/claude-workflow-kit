@@ -88,7 +88,7 @@ test("[night-984] pruefeIssueGates haelt eine `[Mensch]`-Karte, eine Karte ohne 
     assert.equal(res.status, 0, `die Probe schlug fehl: ${res.stderr}`);
     const gate = JSON.parse(res.stdout);
     assert.ok(gate, "das Gate laesst den Menschenschritt durch");
-    assert.match(gate.log, /\[Mensch\]/, "die Logzeile nennt das Praefix nicht");
+    assert.match(gate.log, /\[Human\]/, "die Logzeile nennt das Praefix nicht");
     assert.match(gate.kommentar, /wartet auf einen Menschen/i, "der Kommentar sagt nicht, dass die Karte auf einen Menschen wartet");
     assert.match(gate.kommentar, /nicht gescheitert/i, "der Kommentar sagt nicht, dass die Karte nicht gescheitert ist");
 

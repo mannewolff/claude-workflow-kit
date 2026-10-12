@@ -49,7 +49,7 @@ test("[night-906] ein Plandokument und ein Arbeitspaket weichen mit dem Hinweis 
     assert.match(grund, /Plandokumente und Arbeitspakete/, `${k.title}: ${grund}`);
   }
   assert.match(pruefLaufAusschluss(plan, LABEL), /\[Plan\]/);
-  assert.match(pruefLaufAusschluss(paket, LABEL), /\[Fachlich\]/);
+  assert.match(pruefLaufAusschluss(paket, LABEL), /\[Requirement\]/);
 });
 
 test("[night-906] eine Karte mit kit:klaeren wartet auf einen Menschen", () => {

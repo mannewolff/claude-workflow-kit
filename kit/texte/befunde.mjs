@@ -97,7 +97,7 @@ suchen.
     angabeArt: "Die Zeile 'Art: <name>' fehlt; gueltig sind die Namen aus 'befunde arten'.",
     angabeReviewerKopf: "Vor dem Fund steht kein Reviewer-Kopf '### Reviewer <n>: <rolle>, <modell>' — ohne ihn bucht 'buchen' die Rolle als 'unbekannt'.",
     artNichtInListe: "Die Art '{art}' steht nicht in der Liste; gueltig sind die Namen aus 'befunde arten'.",
-    keinePruefer: "Der Text traegt keinen einzigen Reviewer-Kopf '### Reviewer <n>: <rolle>, <modell>' — kein Pruefer lief, die Pruefung gilt nicht als erledigt (review:fertig wird nicht gesetzt).",
+    keinePruefer: "Der Text traegt keinen einzigen Reviewer-Kopf '### Reviewer <n>: <rolle>, <modell>' — kein Pruefer lief, die Pruefung gilt nicht als erledigt (review:done wird nicht gesetzt).",
     nachbarFehlt: "checks.mjs liegt nicht neben befunde.mjs ({pfad}) — 'buchen --stufe code' braucht blobHashes und den Ort der Pruef-Zusammenfassung aus dem Nachbarn.",
     dateiNichtLesbar: "Datei nicht lesbar: {pfad} ({grund}).",
     protokollNichtLesbar: "Hinweis: Protokoll nicht lesbar ({pfad}): {grund}",

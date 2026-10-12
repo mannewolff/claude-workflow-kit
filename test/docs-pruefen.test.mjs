@@ -16,13 +16,16 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PRUEFLAUF_BUDGET_DEFAULTS } from "../kit/night/session.mjs";
+import { PRUEFLAUF_BUDGET_DEFAULTS as PRUEFLAUF_VORGABEN } from "../kit/night/session.mjs";
 import { PRUEFLAUF_REST_ANKER } from "../kit/night/tag.mjs";
 import { LABELS } from "../kit/board/namen.mjs";
 
 // Skills und Doku nennen das Label bis zu ihrer Umstellung (Plan #1548, eigene Pakete) unter dem
 // deutschen Namen; das Kit schreibt seit Issue #1552 den englischen.
 const KLAEREN_LABEL = LABELS.klaeren.de;
+// Ebenso die Vorgabe des Prueflauf-Kennzeichens: Das Kit setzt seit Issue #1553 `kit:check`, Doku
+// und Vorlage nennen bis zu ihrer Umstellung den deutschen Namen.
+const PRUEFLAUF_BUDGET_DEFAULTS = { ...PRUEFLAUF_VORGABEN, label: LABELS.pruefen.de };
 import { REVIEW_FERTIG_LABEL } from "../kit/night/kette.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");

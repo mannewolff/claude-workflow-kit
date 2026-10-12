@@ -76,9 +76,12 @@ function anker(sache) {
   return namen ? namen.markerName(sache, namen.prozessSprache()) : ANKER_OHNE_REGISTER[sache];
 }
 
-/** Ein Kit-Label im Namen der Projektsprache, wie der Einstieg es setzt (Issue #1429). */
-function labelDerSprache(sache, rueckfall) {
-  return namen ? namen.labelName(sache, namen.prozessSprache()) : rueckfall;
+/**
+ * Ein Kit-Label, wie der Nachtlauf es nennt: englisch, in jedem Projekt (Issue #1553, Plan #1548
+ * E2). `rueckfall` gilt ohne Register und ist selbst der englische Name.
+ */
+function kitLabel(sache, rueckfall) {
+  return namen ? namen.labelName(sache) : rueckfall;
 }
 
 // Die Praefixe kommen aus dem Board-Teil dokumente, die Erkennung geschuetzter Dateien aus dem
@@ -96,10 +99,10 @@ const {
   istIdee: isIdee,
   istMensch: isMensch,
 } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "dokumente.mjs")).href).catch(() => ({
-  istFachlich: boardTeilFehlt("dokumente.mjs", "teilPraefix", { praefix: "[Fachlich]" }),
+  istFachlich: boardTeilFehlt("dokumente.mjs", "teilPraefix", { praefix: "[Requirement]" }),
   istPlan: boardTeilFehlt("dokumente.mjs", "teilPraefix", { praefix: "[Plan]" }),
-  istIdee: boardTeilFehlt("dokumente.mjs", "teilPraefix", { praefix: "[Idee]" }),
-  istMensch: boardTeilFehlt("dokumente.mjs", "teilPraefix", { praefix: "[Mensch]" }),
+  istIdee: boardTeilFehlt("dokumente.mjs", "teilPraefix", { praefix: "[Idea]" }),
+  istMensch: boardTeilFehlt("dokumente.mjs", "teilPraefix", { praefix: "[Human]" }),
 }));
 // Die Labels mit Freigaberecht samt ihrer Erkennung unter beiden Namen ebenso (Issue #1424,
 // Plan #1420 E8). Fehlt der Teil, bleiben die beiden Namen leer: Jede Pruefung, nach der sie
@@ -333,7 +336,7 @@ export function hatGeschuetztLabel(issue) {
 // Der Kommentar des Label-Gates. SYNC: Ohne das Praefix `Nachtlauf: ` steht er als
 // Backlog-Text von `issue auftrag` in kit/board.mjs (Issue #1052).
 // In der Projektsprache (Issue #1487); der Gleichlauf gilt fuer die deutsche Fassung.
-const geschuetztGateText = () => nachtlauf("gateGeschuetzt", { label: labelDerSprache("geschuetzt", GESCHUETZT_LABEL) });
+const geschuetztGateText = () => nachtlauf("gateGeschuetzt", { label: kitLabel("geschuetzt", "kit:protected") });
 export const GESCHUETZT_LABEL_GATE_TEXT = geschuetztGateText();
 
 /**
@@ -350,7 +353,15 @@ export const GESCHUETZT_LABEL_GATE_TEXT = geschuetztGateText();
  * geprueft werden kann statt gegen eine Abschrift — zwei Literale liefen auseinander,
  * und der Halt waere danach still wirkungslos.
  */
-export const HALT_FOLGESATZ = "Daraus soll per /fachplan eine fachliche Anforderung entstehen.";
+export const HALT_FOLGESATZ = "Daraus soll per /requirement eine fachliche Anforderung entstehen.";
+
+// Erkannt wird der Halt-Kommentar unter jedem Wortlaut des Folgesatzes (Issue #1553, Plan #1548
+// E15): dem deutschen, dem englischen aus dem Register und dem alten mit /fachplan, den offene
+// Karten und Skills vor ihrer Umstellung noch tragen. Exportiert, damit die Skill-Tests gegen
+// diese Liste pruefen. SYNC: MARKER und MARKER_ALTNAMEN in kit/board/namen.mjs.
+const HALT_FOLGESATZ_ALT = "Daraus soll per /fachplan eine fachliche Anforderung entstehen.";
+export const HALT_FOLGESAETZE = Object.freeze([...new Set([HALT_FOLGESATZ, HALT_FOLGESATZ_ALT,
+  ...(namen ? namen.SPRACHEN.map((s) => namen.markerName("haltFolgesatz", s)) : [])])]);
 
 // Vorflug-Warnung zum Routing-Label (Issue #179). Ein Vertipper im --label-Wert ist
 // syntaktisch gueltig: --label no filtert auf ein Label namens "no", findet nichts,
@@ -409,7 +420,7 @@ export function pruefeIssueGates(top) {
   }
   // Das Label bleibt dabei stehen: Es abzunehmen ist Sache des Menschen (A4).
   if (hatKlaerenLabel(top)) {
-    const label = labelDerSprache("klaeren", KLAEREN_LABEL);
+    const label = kitLabel("klaeren", "kit:clarify");
     return {
       log: t("gateKlaerenLog", { id: top.id, label }),
       grundArt: "klaeren",
@@ -420,7 +431,7 @@ export function pruefeIssueGates(top) {
   // Body-Gate unten die Freigabe.
   if (hatGeschuetztLabel(top)) {
     return {
-      log: t("gateGeschuetztLog", { id: top.id, label: labelDerSprache("geschuetzt", GESCHUETZT_LABEL) }),
+      log: t("gateGeschuetztLog", { id: top.id, label: kitLabel("geschuetzt", "kit:protected") }),
       kommentar: geschuetztGateText(),
     };
   }
@@ -1020,7 +1031,7 @@ function haltMitUnsauberemBaum(top, minutes, vorher) {
   const nachher = abh.board("issue", "get", String(top.id));
   const haltArt = hatKlaerenLabel(nachher) ? "klaeren" : istHalt(vorher, nachher);
   if (!haltArt) return null;
-  const label = labelDerSprache("klaeren", KLAEREN_LABEL);
+  const label = kitLabel("klaeren", "kit:clarify");
   const befund = haltArt === "klaeren" ? t("haltBefundKlaeren", { label }) : t("haltBefundGeschuetzt");
   const satz = t("haltUnsauber", { minuten: minutes, id: top.id, befund });
   log(`  ${satz}`);
@@ -1426,7 +1437,7 @@ function ausgangsFelder(ausgang) {
 export function istHalt(vorher, nachher) {
   if (nachher?.status !== "backlog") return null;
   const neue = neueKommentare(vorher, nachher).map(String);
-  if (hatKlaerenLabel(nachher) && neue.some((text) => text.includes(HALT_FOLGESATZ))) return "klaeren";
+  if (hatKlaerenLabel(nachher) && neue.some((text) => HALT_FOLGESAETZE.some((satz) => text.includes(satz)))) return "klaeren";
   if (neue.some((text) => text.includes(GESCHUETZT_ANKER))) return "geschuetzt";
   return null;
 }

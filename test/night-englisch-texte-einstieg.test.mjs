@@ -308,7 +308,7 @@ test("[1486] englisch: Ausschluss, Laufstand und Rest-Vermerk des Prueflaufs", (
     const karte = (title, labels = ["kit:pruefen"]) => ({ id: 1, title, labels });
     assert.equal(pruefLaufAusschluss(karte("[Fachlich] X", []), "kit:pruefen"), "does not carry the marker kit:pruefen");
     assert.match(pruefLaufAusschluss(karte("[Plan] X"), "kit:pruefen"), /^carries \[Plan\] — the check run applies only to requirements/);
-    assert.match(pruefLaufAusschluss(karte("Paket"), "kit:pruefen"), /^carries no \[Fachlich\] — /);
+    assert.match(pruefLaufAusschluss(karte("Paket"), "kit:pruefen"), /^carries no \[Requirement\] — /);
     assert.match(pruefLaufStand({ ausgang: "geprueft" }).text, /^Check finished: geprueft at \S+$/);
     assert.match(pruefLaufStand({ ausgang: "klaeren", frage: "Which?" }).text, /\n\nPending decision: Which\?$/);
     assert.match(pruefLaufStand({ ausgang: "unvollstaendig", schritt: "befunde" }).text,

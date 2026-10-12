@@ -106,7 +106,7 @@ test("I8 weist eine geschuetzte Datei in der Aufgabe ab und nennt Pfad und Zeile
     assert.equal(i8.length, 1);
     assert.ok(i8[0].meldung.includes(EINSTELLUNGEN), i8[0].meldung);
     assert.ok(i8[0].meldung.includes(zeile), i8[0].meldung);
-    assert.match(i8[0].meldung, /\[Mensch\]-Karte/);
+    assert.match(i8[0].meldung, /\[Human\]-Karte/);
     assert.equal(gate(r, "I7").length, 0, "ein geschuetzter Pfad ist auch ein Pfad");
   });
 });

@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { HALT_FOLGESATZ } from "../kit/night/wartend.mjs";
+import { HALT_FOLGESAETZE } from "../kit/night/wartend.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SKILL = readFileSync(join(repoRoot, "skills", "requirement", "SKILL.md"), "utf-8");
@@ -35,6 +35,6 @@ test("[skills-8] check-form laeuft gegen die Datei, bevor das fachliche Issue en
 
 test("[skills-8] der Eingang #T kommt aus einem Halt an der Stopp-Klasse", () => {
   assert.match(SKILL, /Stopp-Klasse/, "die Stopp-Klasse ist nicht genannt");
-  assert.ok(SKILL.includes(HALT_FOLGESATZ), "der Folgesatz weicht von HALT_FOLGESATZ in kit/night.mjs ab");
+  assert.ok(HALT_FOLGESAETZE.some((satz) => SKILL.includes(satz)), "der Folgesatz weicht von HALT_FOLGESAETZE in kit/night/wartend.mjs ab");
   assert.match(SKILL, /Punkt der Stopp-Klasse und die eine Frage/, "was der Halt-Kommentar traegt, steht nicht da");
 });

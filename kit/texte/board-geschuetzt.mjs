@@ -12,7 +12,7 @@
 /**
  * Die Meldungen dieses Teils je Sprache: die Erklaerung im Halt-Kommentar und die Befunde der
  * Formgates. Vertragswerte bleiben ausserhalb (E14): die Gate-Kennungen, der Anker
- * `## Geschuetzte Datei`, die Label-Zeilen `Label kit:geschuetzt gesetzt|nicht gesetzt` und
+ * `## Geschuetzte Datei`, die Label-Zeilen `Label kit:protected gesetzt|nicht gesetzt` und
  * die Zeile `beim Schreiben abgewiesen` — der Runner liest sie zurueck. Was ein Gate woertlich
  * erkennt (`- Keine.`, `Keine.`, `verbindlich`, `Bildschirmfoto`, `Gewaehlt: ja`), nennen
  * auch die englischen Texte woertlich.
@@ -41,7 +41,7 @@ export const TEXTE = Object.freeze({
     i6Kriterium: "'## Akzeptanzkriterium' ruft die Guetemessung '{cmd}' auf — sie gehoert als buildChecks-Eintrag mit 'stufe: push' einmal an die Veroeffentlichung, nicht einmal in jedes Paket",
     i6Entscheidung: "'{zeile}' hebt die Guetemess-Konvention auf — sie gilt ohne Ausnahme, auch fuer ein Paket, das den Mess-Treiber selbst baut. Dass ein Vollauf durchlaeuft, steht unter '### Manuelle Pruefung (Mensch, nicht Teil des Session-Abschlusses)'",
     i7OhneDatei: "'## Aufgabe' nennt keine Datei als Backtick-Pfad (z. B. `kit/board.mjs`) — ohne genannte Datei erkennt das Kit keine geschuetzte",
-    i8Geschuetzt: "'{pfad}' ist geschuetzt, nur ein Mensch darf die Datei schreiben (Zeile: '{zeile}') — die Aenderung gehoert als eigene [Mensch]-Karte heraus, dieses Paket nennt die Datei dann nicht mehr",
+    i8Geschuetzt: "'{pfad}' ist geschuetzt, nur ein Mensch darf die Datei schreiben (Zeile: '{zeile}') — die Aenderung gehoert als eigene [Human]-Karte heraus, dieses Paket nennt die Datei dann nicht mehr",
     i9Kopie: "'{pfad}' in '## Aufgabe' (Zeile: '{zeile}') — Die installierte Kopie unter `.claude/kit/`/`.claude/skills/` wird nie von Hand geändert; im Kit ist die Quelle unter `kit/`/`skills/` gemeint, in einem installierten Projekt ein Kit-Update.",
   }),
   en: Object.freeze({
@@ -67,7 +67,7 @@ export const TEXTE = Object.freeze({
     i6Kriterium: "'## Acceptance criteria' calls the quality measurement '{cmd}' — it belongs as a buildChecks entry with 'stufe: push' once at the release, not once in every package",
     i6Entscheidung: "'{zeile}' lifts the quality-measurement convention — it applies without exception, also to a package that builds the measurement driver itself. That a full run goes through belongs under '### Manual check (human, not part of the session close)'",
     i7OhneDatei: "'## Task' names no file as a backtick path (e.g. `kit/board.mjs`) — without a named file the kit detects no protected one",
-    i8Geschuetzt: "'{pfad}' is protected, only a human may write the file (line: '{zeile}') — the change belongs on its own [Mensch] card, and this package then no longer names the file",
+    i8Geschuetzt: "'{pfad}' is protected, only a human may write the file (line: '{zeile}') — the change belongs on its own [Human] card, and this package then no longer names the file",
     i9Kopie: "'{pfad}' in '## Task' (line: '{zeile}') — The installed copy under `.claude/kit/`/`.claude/skills/` is never changed by hand; in the kit the source under `kit/`/`skills/` is meant, in an installed project a kit update.",
   }),
 });

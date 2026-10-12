@@ -71,7 +71,7 @@ const {
   istFachlich: isFachlich,
   istPlan: isPlan,
 } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "dokumente.mjs")).href).catch(() => ({
-  istFachlich: praefixFehlt("[Fachlich]"),
+  istFachlich: praefixFehlt("[Requirement]"),
   istPlan: praefixFehlt("[Plan]"),
 }));
 

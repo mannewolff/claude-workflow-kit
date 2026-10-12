@@ -44,7 +44,7 @@ import { ENTSCHEIDUNGEN_NAME, OFFENE_FRAGEN_NAME, OFFENE_FRAGEN_UEBERSCHRIFT, PO
 import { flatten, kennzahlenAddieren, ketteBudgetDefaults, kostenAddieren, KETTE_BUDGET_DEFAULTS, ladeKetteBudget,
   ladeKetteUebergaenge, ladePruefLaufBudget, leseErgebnisText, leseKennzahlen, neueKommentare, runSession,
   KETTE_ZIELE, PLANREVIEW_LABELS, pruefreihenVon, SESSION_ABHAENGIGKEITEN, varianteVon, zielVon, zielLabelName,
-  istZielLabel, kennzeichenName, kennzeichenNamen, labelDerSprache } from "./session.mjs";
+  istZielLabel, kennzeichenName, kennzeichenNamen, kitLabel } from "./session.mjs";
 import { berichtFuerKette, berichtSchreiben, hatPlanReviewMarker, kommentareVon, planReviewWert,
   pruefBericht, vorbereitungsBericht, wartendeMenschenschritte } from "./bericht.mjs";
 import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, geschuetztAmBoardVermerken, hatKlaerenLabel, laufeRunde,
@@ -71,6 +71,12 @@ const textIn = (sprache, schluessel, werte = {}) => TEXTE[sprache][schluessel]
 /** Ein Name aus dem Register in der Sprache des Prozesses; ohne Register der deutsche. */
 const nameDerSprache = (art, sache, deutsch) => (namen ? namen[art](sache, namen.prozessSprache()) : deutsch);
 
+/**
+ * Ein Titel-Praefix, wie der Nachtlauf es nennt: englisch, in jedem Projekt (Issue #1553, Plan
+ * #1548 E2). `rueckfall` gilt ohne Register und ist selbst der englische Name.
+ */
+const kitPraefix = (art, rueckfall) => (namen ? namen.praefix(art) : rueckfall);
+
 // Die Praefixe kommen aus dem Board-Teil dokumente (Issue #1218). Abgefangen wie im Einstieg:
 // Fehlt der Teil, wirft jede Funktion erst, wenn jemand sie braucht — ein stilles `false`
 // liesse ein Plandokument als Arbeitspaket durch. Der Pfad ist nicht literal, deshalb nennt
@@ -84,10 +90,10 @@ const {
   istIdee: isIdee,
   istMensch: isMensch,
 } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "dokumente.mjs")).href).catch(() => ({
-  istFachlich: praefixFehlt("[Fachlich]"),
+  istFachlich: praefixFehlt("[Requirement]"),
   istPlan: praefixFehlt("[Plan]"),
-  istIdee: praefixFehlt("[Idee]"),
-  istMensch: praefixFehlt("[Mensch]"),
+  istIdee: praefixFehlt("[Idea]"),
+  istMensch: praefixFehlt("[Human]"),
 }));
 
 // Die Marker in Body und Kommentaren kommen aus dem Register im Board-Teil und gelten unter
@@ -301,8 +307,8 @@ export function wurzelBelegt(F, issues, staende, jetzt, host, { budgets = { kett
  */
 export const REVIEW_FERTIG_LABEL = "review:fertig";
 
-/** Der Name von `review:fertig` in der Projektsprache, `review:done` im englischen (Issue #1429). */
-export const reviewFertigLabelName = (config = ZUSTAND.config) => labelDerSprache("reviewFertig", config, REVIEW_FERTIG_LABEL);
+/** Der Name, unter dem der Nachtlauf `review:fertig` nennt: `review:done`, in jedem Projekt (Issue #1553). */
+export const reviewFertigLabelName = () => kitLabel("reviewFertig", "review:done");
 
 // Erkannt unter jedem Namen des Labels, auch `review:done` (Issue #1424, Plan #1420 E8).
 export function hatReviewFertigLabel(issue) {
@@ -317,8 +323,9 @@ export function hatReviewFertigLabel(issue) {
  * auf dieses Praefix und nicht auf den ganzen Text.
  */
 const ungeprueftPraefix = (label) => t("ungeprueftPraefix", { label });
-// Die deutsche Fassung, unabhaengig von der Sprache des Prozesses.
-export const UNGEPRUEFT_PRAEFIX = textIn("de", "ungeprueftPraefix", { label: REVIEW_FERTIG_LABEL });
+// Die deutsche Fassung, unabhaengig von der Sprache des Prozesses, mit dem Labelnamen, den der
+// Nachtlauf nennt (Issue #1553). Den alten Grund mit `review:fertig` erkennt `istUngeprueftGrund`.
+export const UNGEPRUEFT_PRAEFIX = textIn("de", "ungeprueftPraefix", { label: reviewFertigLabelName() });
 
 /**
  * Ob ein Grund der Grund „Pruefung fehlt" ist — in jeder Sprache und unter dem Labelnamen
@@ -327,7 +334,7 @@ export const UNGEPRUEFT_PRAEFIX = textIn("de", "ungeprueftPraefix", { label: REV
  */
 export function istUngeprueftGrund(grund) {
   const g = String(grund);
-  const labels = [REVIEW_FERTIG_LABEL, labelDerSprache("reviewFertig", { language: "en" }, REVIEW_FERTIG_LABEL)];
+  const labels = [REVIEW_FERTIG_LABEL, reviewFertigLabelName()];
   return Object.keys(TEXTE).some((sprache) => labels.some((label) => g.startsWith(textIn(sprache, "ungeprueftPraefix", { label }))));
 }
 
@@ -677,7 +684,7 @@ export function zielAusschluss(karte, art, plan) {
   if (ziele.length > 1) return t("zielMehrere", { praefix, ziele: ziele.join(", "), schritt });
   const pruefer = PLANREVIEW_LABELS.filter((l) => labels.includes(l));
   if (pruefer.length > 1) return t("prueferZugleich", { praefix, pruefer: pruefer.join(t("prueferUnd")), schritt });
-  const zielPlan = kennzeichenName(labels, zielLabelName("plan", ZUSTAND.config), "zielPlan");
+  const zielPlan = kennzeichenName(labels, zielLabelName("plan"), "zielPlan");
   if (art === "plan" && zielPlan) return t("zielPlanAmPlan", { praefix, label: zielPlan, schritt });
   if (art === "plan" && pruefer.length === 1) return t("prueferAmPlan", { praefix, label: pruefer[0], schritt });
   if (art === "fachplan" && pruefer.length === 1 && plan && hatPlanReviewMarker(plan.body || "")) {
@@ -688,12 +695,12 @@ export function zielAusschluss(karte, art, plan) {
 
 /** Der Grund an einer gekennzeichneten Karte, die keine der beiden Auftragsarten traegt. */
 const keineAuftragsartGrund = () => t("keineAuftragsart", {
-  fachlich: nameDerSprache("praefix", "fachlich", "[Fachlich]"),
-  plan: nameDerSprache("praefix", "plan", "[Plan]"),
+  fachlich: kitPraefix("fachlich", "[Requirement]"),
+  plan: kitPraefix("plan", "[Plan]"),
 });
 
-/** Der Name von `kit:klaeren` in der Projektsprache, `kit:clarify` im englischen. */
-const klaerenLabelName = () => labelDerSprache("klaeren", ZUSTAND.config, KLAEREN_LABEL);
+/** Der Name, unter dem der Nachtlauf `kit:klaeren` nennt: `kit:clarify`, in jedem Projekt (Issue #1553). */
+const klaerenLabelName = () => kitLabel("klaeren", "kit:clarify");
 
 /** Die Auftragsart am Titel-Praefix — `null`, wenn die Karte keine der beiden traegt. */
 function auftragsartVon(titel) {
@@ -1029,7 +1036,7 @@ async function stufePlan(kette) {
   if (s.ausgang !== "fertig") return s;
 
   const neue = neuePlaene();
-  if (neue.length === 0) return { ausgang: "abgebrochen", grund: t("keinPlan", { plan: nameDerSprache("praefix", "plan", "[Plan]") }) };
+  if (neue.length === 0) return { ausgang: "abgebrochen", grund: t("keinPlan", { plan: kitPraefix("plan", "[Plan]") }) };
   stand.id = String(neue[0].id);
   stand.weitere = neue.slice(1).map((i) => String(i.id));
   const weitere = stand.weitere.length ? t("planWeitere", { ids: stand.weitere.map((i) => "#" + i).join(", ") }) : "";
@@ -2227,7 +2234,8 @@ function zielZeilen(kette) {
 
 /**
  * Das Ziel, wie es der Laufstand nennt: der Name des Ziel-Labels ohne Praefix, englisch also
- * `packages` zu `goal:packages` (Vorlage am Plan #1420).
+ * `packages` zu `goal:packages` (Vorlage am Plan #1420). Ein Wort des Textes in der Sprache
+ * des Prozesses, kein Label — darum nicht englisch in jedem Projekt (Issue #1553).
  */
 function zielWort(ziel) {
   const sache = KETTE_ZIELE.find((z) => z.ziel === ziel)?.sache;
@@ -2805,10 +2813,10 @@ export const beanspruchtGrund = (laufId) => t("beansprucht", { laufId });
 
 /**
  * Der Name des Labels `laeuft` aus `night.stand.labels` — dieselbe Vorgabe wie in kit/board.mjs:
- * ohne gesetzten Wert der Name der Projektsprache, `run:running` im englischen (Issue #1429).
+ * ohne gesetzten Wert `run:running`, in jedem Projekt (Issue #1553, Plan #1548 E2).
  */
 export const laeuftLabelName = (config) => config?.night?.stand?.labels?.laeuft?.trim()
-  || labelDerSprache("laufLaeuft", config, "lauf:laeuft");
+  || kitLabel("laufLaeuft", "run:running");
 const laeuftLabel = () => laeuftLabelName(ZUSTAND.config);
 
 /**

@@ -28,7 +28,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { NACHBAR_DIR, NACHBAR_BOARD, board, boardRoh } from "./grundlagen.mjs";
-import { erkennePraefix, praefix, prozessSprache, text, ueberschriftName, ueberschriftZeile } from "../board/namen.mjs";
+import { erkennePraefix, praefix, text, ueberschriftName, ueberschriftZeile } from "../board/namen.mjs";
 
 // Die Texte an den Menschen liegen unter kit/texte/night-abhaengigkeiten.mjs (Issue #1525).
 import { TEXTE } from "../texte/night-abhaengigkeiten.mjs";
@@ -53,9 +53,9 @@ const {
   abhaengigkeitenMitHerkunft,
 } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "dokumente.mjs")).href).catch(() => ({
   fenceLauf: dokumenteFehlt("wasFenceRegel"),
-  istFachlich: dokumenteFehlt("wasPraefix", { praefix: "[Fachlich]" }),
+  istFachlich: dokumenteFehlt("wasPraefix", { praefix: "[Requirement]" }),
   istPlan: dokumenteFehlt("wasPraefix", { praefix: "[Plan]" }),
-  istIdee: dokumenteFehlt("wasPraefix", { praefix: "[Idee]" }),
+  istIdee: dokumenteFehlt("wasPraefix", { praefix: "[Idea]" }),
   abhaengigkeitenMitHerkunft: dokumenteFehlt("wasHerkunft"),
 }));
 
@@ -367,9 +367,10 @@ export function kreisLogZeile(paket, kreis) {
 /** Eine Zeile des Blocks je Abhaengigkeit (E10), ohne Titel bei unbekannter Karte. */
 function abhaengigkeitsZeile(a) {
   const titel = a.titel === null ? "" : ` (${a.titel})`;
-  // Das Praefix im Namen der Projektsprache; das Feld `dokument` bleibt der deutsche Name (E14).
+  // Das Praefix englisch, in jedem Projekt (Issue #1553, Plan #1548 E2); das Feld `dokument`
+  // bleibt der deutsche Name (E14).
   const art = a.dokument ? erkennePraefix(a.dokument) : null;
-  const name = art ? praefix(art, prozessSprache()) : a.dokument;
+  const name = art ? praefix(art) : a.dokument;
   const dokument = a.dokument ? t("dokument", { dokument: name, satz: a.dokumentSatz }) : "";
   return t("zeile", {
     nummer: a.nummer, titel, stand: t(a.erfuellt ? "erfuellt" : "unerfuellt"),

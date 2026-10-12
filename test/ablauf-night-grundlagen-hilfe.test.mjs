@@ -39,7 +39,7 @@ test("--help zeigt die Usage und endet mit Exit 0, auch ohne Projekt-Root", () =
   for (const flag of ["--kette", "--pruefen"]) {
     assert.match(res.stdout, new RegExp(`^[ \\t]+${flag}\\s`, "m"), `Usage nennt ${flag} nicht als Option`);
   }  // Ziel-Labels, Prueferzahl und die Stufe vorbereitung der Kette (Plan #1243; Issue #1254).
-  for (const wort of ["ziel:plan", "ziel:pakete", "ziel:umsetzung", "ziel:push-vorbereitet", "planreview:2", "Stufe vorbereitung"]) {
+  for (const wort of ["goal:plan", "goal:packages", "goal:implementation", "goal:push-prepared", "planreview:2", "Stufe vorbereitung"]) {
     assert.ok(res.stdout.includes(wort), `Usage nennt ${wort} nicht`);
   }
 });

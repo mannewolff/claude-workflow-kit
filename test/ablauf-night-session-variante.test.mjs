@@ -57,10 +57,10 @@ test("[night-33] der Dry-Run nennt je Kandidat die Variante", () => {
   });
 });
 
-test("[night-33] --help nennt kit:durchziehen und beide Varianten", () => {
+test("[night-33] --help nennt kit:carry-through und beide Varianten", () => {
   const res = spawnSync(process.execPath, [NIGHT, "--help"], { encoding: "utf-8" });
   assert.equal(res.status, 0);
-  assert.match(res.stdout, /kit:durchziehen/);
+  assert.match(res.stdout, /kit:carry-through/);
   assert.match(res.stdout, /Variante A/);
   assert.match(res.stdout, /Variante B/);
 });
@@ -75,6 +75,6 @@ test("[night-33] die Schlusszeile Morgen-Ritual nennt beide Varianten und das La
     assert.ok(zeile, "keine Morgen-Ritual-Zeile im Protokoll");
     assert.match(zeile, /Variante A/);
     assert.match(zeile, /Variante B/);
-    assert.match(zeile, /kit:durchziehen/);
+    assert.match(zeile, /kit:carry-through/);
   });
 });

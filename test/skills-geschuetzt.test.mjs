@@ -20,7 +20,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { GESCHUETZT_ANKER, HALT_FOLGESATZ } from "../kit/night/wartend.mjs";
+import { GESCHUETZT_ANKER, HALT_FOLGESAETZE } from "../kit/night/wartend.mjs";
 import { LABELS } from "../kit/board/namen.mjs";
 
 // Skills und Doku nennen das Label bis zu ihrer Umstellung (Plan #1548, eigene Pakete) unter dem
@@ -106,7 +106,7 @@ function pruefeRueckfall(text, name) {
   assert.match(abschnitt, /Label-Zeile/, `${name}: die Label-Zeile fehlt`);
   assert.match(abschnitt, /bleibt in In progress/, `${name}: der Fall ohne namentliche Ruecknahme fehlt`);
   assert.match(abschnitt, /nie[^.]*umgangen|nicht[^.]*umgeh/, `${name}: dass der Schutz nicht umgangen wird, fehlt`);
-  assert.ok(!abschnitt.includes(HALT_FOLGESATZ), `${name}: der Rueckfall traegt den Folgesatz der Stopp-Frage`);
+  assert.ok(!HALT_FOLGESAETZE.some((satz) => abschnitt.includes(satz)), `${name}: der Rueckfall traegt den Folgesatz der Stopp-Frage`);
   assert.ok(!abschnitt.includes("kit:klaeren"), `${name}: der Rueckfall nennt kit:klaeren`);
 }
 

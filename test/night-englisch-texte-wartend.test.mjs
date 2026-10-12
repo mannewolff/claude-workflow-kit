@@ -137,7 +137,7 @@ test("[1487] englisch: die drei Vermerke stehen unter dem englischen Anker", asy
 test("[1487] englisch: die Titel- und Label-Gates", async () => {
   await inSprache("en", () => {
     const fachlich = pruefeIssueGates({ id: 5, title: "[Requirement] Self-service", labels: [] });
-    assert.equal(fachlich.log, "#5 skipped: requirement ([Fachlich]), not implemented.");
+    assert.equal(fachlich.log, "#5 skipped: requirement ([Requirement]), not implemented.");
     assert.equal(fachlich.kommentar, "Night run: Requirement — not implemented, please turn it into technical issues via /techplan #5.");
     const plan = pruefeIssueGates({ id: 6, title: "[Plan] Something", labels: [] });
     assert.match(plan.kommentar, /^Night run: Plan document — not implemented/);

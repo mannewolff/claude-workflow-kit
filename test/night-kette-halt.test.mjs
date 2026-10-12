@@ -38,7 +38,7 @@ test("[night-19] eine Stopp-Frage im Plan haelt die Kette an: Kommentar und kit:
   assert.match(text, /Stufe plan, Dokument #2\b/);
   // Der Weg nach vorn fuehrt ueber den Plan, nicht ueber den Fachplan (Issue #896);
   // der Wortlaut selbst steht in night-kette-halt-planauftrag.test.mjs auf der Probe.
-  assert.match(text, /kit:klaeren an Plan #2 abnehmen/);
+  assert.match(text, /kit:clarify an Plan #2 abnehmen/);
   assert.match(text, /das Label kit:night an Plan #2 setzen/);
 
   const plan = r.karte("2");
@@ -80,7 +80,7 @@ test("[night-19] ein Fachplan mit kit:klaeren und einer in Ready werden ueberspr
   }
   const grund = (id) => r.lauf.einheiten.find((e) => e.id === id).grund;
   assert.equal(r.lauf.einheiten.find((e) => e.id === "1").ausgang, "uebersprungen");
-  assert.match(grund("1"), /traegt kit:klaeren/);
+  assert.match(grund("1"), /traegt kit:clarify/);
   assert.match(grund("2"), /steht in ready, nicht in Backlog/);
   // Der Plan traegt keine Herkunftszeile: Seit Issue #895 lehnt ihn `planAusschluss`
   // als Plan-Auftrag ab, nicht mehr die Praefix-Probe des Fachplan-Auftrags.

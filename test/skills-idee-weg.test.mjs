@@ -74,7 +74,7 @@ test("[skills-962] der Rueckgabe-Kommentar aus issue auftrag nennt beide Wege", 
   const idee = AUFTRAG_BACKLOG_TEXTE.idee("N");
   assert.match(idee, /^Idee —/, "der Kommentar beginnt nicht mit 'Idee —'");
   assert.match(idee, /Abw(?:ae|ä)gung/, "der Kommentar unterscheidet nicht nach Abwaegung");
-  assert.match(idee, /\/fachplan/, "der Kommentar nennt /fachplan nicht");
+  assert.match(idee, /\/requirement/, "der Kommentar nennt /requirement nicht");
   assert.match(idee, /\/task/, "der Kommentar nennt /task nicht");
   assert.doesNotMatch(idee, /techplan/, "der Kommentar schickt weiter nach /techplan");
 });
