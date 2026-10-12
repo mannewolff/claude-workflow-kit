@@ -2,7 +2,8 @@
  * board/grooming.mjs — die mechanischen Fragen des Grooming eines Fachplans (Issue #1511,
  * Plan #1510 A1, A2, A4, A5, E2–E4, E6, E7, E13): welche Fragen unter `## Offene Fragen an
  * den PO` offen sind, ob `/groom` beginnen darf, welcher Kommentar die Stopp-Frage traegt und
- * wie der Vermerk „Keine“ lautet.
+ * wie der Vermerk „Keine“ lautet. Dazu (Issue #1512, Plan #1510 E8, E9) die Pruefung eines neuen
+ * Body gegen den alten und der Vergleich von Kriterien und Nicht-Zielen.
  *
  * Reine Funktionen ohne Board-Zugriff; den Zugriff traegt allein der Einstieg in
  * kit/board.mjs. Sie lesen nur und aendern keine Labels (A4). Empfehlung, Einarbeitung und
@@ -12,9 +13,10 @@
  * Aenderungen ausschliesslich hier vornehmen, danach `node tools/sync-blobs.mjs`.
  */
 
-import { ABSCHNITT_ZEILE, fenceLauf, istFachlich, normalisiereZeilenenden } from "./dokumente.mjs";
-import { erkenneLabel, erkenneMarker, labelName, markerName, praefix, prozessSprache, text,
-  ueberschriftZeile } from "./namen.mjs";
+import { ABSCHNITT_ZEILE, CHECK_FORM_ABSCHNITTE, fenceLauf, istFachlich, normalisiereZeilenenden,
+  zerlegeAbschnitte } from "./dokumente.mjs";
+import { erkenneLabel, erkenneMarker, erkenneUeberschrift, kanonischeUeberschrift, labelName, markerName,
+  markerWerte, praefix, prozessSprache, text, ueberschriftName, ueberschriftZeile } from "./namen.mjs";
 
 // Die Texte an den Menschen liegen unter kit/texte/board-grooming.mjs.
 import { TEXTE } from "../texte/board-grooming.mjs";
@@ -211,4 +213,144 @@ export function vermerkZeile(zahl, datum) {
   return zahl === 1
     ? `Keine. Die 1 Frage hat der PO am ${tag} entschieden, die Antwort steht unter der Frage.`
     : `Keine. Die ${zahl} Fragen hat der PO am ${tag} entschieden, die Antworten stehen unter der jeweiligen Frage.`;
+}
+
+// --- Body-Pruefung und Vergleich (Issue #1512) ------------------------------------------
+
+// Die Kennzeichnungszeilen, die ein neuer Body behalten muss (E8 a).
+const KENNZEICHNUNGEN = ["autorModell", "fachplanReview", "vorlage"];
+
+// Ein Vermerk „Keine“ an anderer Stelle als der ersten Zeile, als Absatz oder Listenelement.
+const VERMERK_ANFANG = /^Keine\b/;
+
+// Die Zahl der Fragen im Vermerk, wie `vermerkZeile` sie schreibt.
+const VERMERK_ZAHL = /(?<!\d)(\d+) Frage/;
+
+/** Die erste Zeile einer Frage, als Name in einer Meldung. */
+const frageName = (f) => f.text.split("\n")[0];
+
+/**
+ * Prueft einen neuen Fachplan-Body gegen den alten nach E8: `{ ok, verstoesse: [{ regel,
+ * meldung }] }`. Die Regeln in dieser Reihenfolge: `kennzeichnung` (a), `antwort` (b),
+ * `fragenzahl` (c), `vermerk` (d), `pflichtabschnitt` (e). Eine entschiedene Frage findet sich
+ * im neuen Body ueber ihren Text, sonst ueber ihre Nummer — eine vorangestellte Stopp-Frage
+ * verschiebt die Nummern. Pflichtabschnitte zaehlen, wenn der alte Body sie trug.
+ */
+export function koerperPruefen(alt, neu) {
+  const verstoesse = [
+    ...kennzeichnungVerstoesse(alt, neu),
+    ...fragenVerstoesse(fragenLesen(alt), fragenLesen(neu)),
+    ...vermerkVerstoesse(neu),
+    ...abschnittVerstoesse(alt, neu),
+  ];
+  return { ok: verstoesse.length === 0, verstoesse };
+}
+
+const verstoss = (regel, schluessel, werte) => ({ regel, meldung: t(schluessel, werte) });
+
+function kennzeichnungVerstoesse(alt, neu) {
+  const verstoesse = [];
+  for (const sache of KENNZEICHNUNGEN) {
+    const neuWerte = new Set(markerWerte(neu, sache).map((w) => w.trim()));
+    for (const wert of markerWerte(alt, sache).map((w) => w.trim())) {
+      if (neuWerte.has(wert)) continue;
+      verstoesse.push(verstoss("kennzeichnung", "kennzeichnung", { zeile: `${markerName(sache, prozessSprache())} ${wert}` }));
+    }
+  }
+  return verstoesse;
+}
+
+function fragenVerstoesse(alt, neu) {
+  const verstoesse = [];
+  for (const frage of alt.fragen.filter((f) => f.entschieden)) {
+    const gegenstueck = neu.fragen.find((f) => f.text === frage.text) ?? neu.fragen.find((f) => f.nr === frage.nr);
+    if (!gegenstueck?.entschieden) {
+      verstoesse.push(verstoss("antwort", "antwortOffen", { frage: frageName(frage), antwort: frage.antwortZeile }));
+    } else if (gegenstueck.antwortZeile !== frage.antwortZeile) {
+      verstoesse.push(verstoss("antwort", "antwortAnders", { frage: frageName(frage), vorher: frage.antwortZeile, nachher: gegenstueck.antwortZeile }));
+    }
+  }
+  if (neu.fragen.length < alt.fragen.length) {
+    verstoesse.push(verstoss("fragenzahl", "fragenzahl", { alt: alt.fragen.length, neu: neu.fragen.length }));
+  }
+  return verstoesse;
+}
+
+function vermerkVerstoesse(body) {
+  const r = fragenLesen(body);
+  const verstoesse = [];
+  const verirrt = [
+    ...r.ungegliedert.map((absatz) => absatz.split("\n")[0]),
+    ...r.fragen.map(frageName),
+  ].filter((zeile) => VERMERK_ANFANG.test(zeile));
+  for (const zeile of verirrt) verstoesse.push(verstoss("vermerk", "vermerkStelle", { zeile }));
+  if (r.vermerk === null) return verstoesse;
+  if (r.offen > 0) verstoesse.push(verstoss("vermerk", "vermerkOffen", { zahl: r.offen }));
+  const genannt = VERMERK_ZAHL.exec(r.vermerk)?.[1];
+  const zahl = r.fragen.length;
+  if (genannt === undefined ? zahl > 0 : Number(genannt) !== zahl) {
+    verstoesse.push(verstoss("vermerk", "vermerkZahl", { genannt: genannt ?? "-", zahl }));
+  }
+  return verstoesse;
+}
+
+function abschnittVerstoesse(alt, neu) {
+  const titel = (body) => new Set(zerlegeAbschnitte(body).abschnitte.map((a) => a.titel));
+  const vorher = titel(alt);
+  const nachher = titel(neu);
+  const sprache = prozessSprache();
+  return CHECK_FORM_ABSCHNITTE.fachlich
+    .filter((kanonisch) => vorher.has(kanonisch) && !nachher.has(kanonisch))
+    .map((kanonisch) => verstoss("pflichtabschnitt", "pflichtabschnitt", { abschnitt: `## ${ueberschriftName(erkenneUeberschrift(kanonisch), sprache)}` }));
+}
+
+// Ein Listenelement oberster Ebene: Gruppe 1 die Nummer einer nummerierten Liste, Gruppe 2 der Text.
+const LISTENELEMENT = /^(?:(\d+)\.|[-*+])[ \t]+(\S.*)$/;
+
+/**
+ * Die Listenelemente des Abschnitts `sache` (beide Sprachen): `[{ nummer, text }]`, `nummer`
+ * null bei einer Aufzaehlung ohne Nummer. Eingerueckte Folgezeilen gehoeren zum Element davor,
+ * Leerraum zaehlt beim Vergleich nicht.
+ */
+function listenElemente(body, sache) {
+  const titel = kanonischeUeberschrift(ueberschriftName(sache, "de"));
+  const abschnitt = zerlegeAbschnitte(body).abschnitte.find((a) => a.titel === titel);
+  const elemente = [];
+  for (const zeile of abschnitt?.zeilen ?? []) {
+    const m = LISTENELEMENT.exec(zeile);
+    if (m) elemente.push({ nummer: m[1] === undefined ? null : Number(m[1]), zeilen: [m[2].trim()] });
+    else if (/^\s+\S/.test(zeile) && elemente.length > 0) elemente.at(-1).zeilen.push(zeile.trim());
+  }
+  return elemente.map(({ nummer, zeilen }) => ({ nummer, text: zeilen.join("\n").replaceAll(/[ \t]+/g, " ") }));
+}
+
+/**
+ * Vergleicht zwei Listen nach E9: nummeriert (jedes Element beider Seiten traegt eine Nummer)
+ * ueber die Nummer, sonst ueber die Position ab 1. `nr` ist die Nummer bzw. die Position.
+ */
+function listenVergleich(start, ende) {
+  const nummeriert = [...start, ...ende].every((e) => e.nummer !== null);
+  const schluessel = (liste) => new Map(liste.map((e, i) => [nummeriert ? e.nummer : i + 1, e.text]));
+  const vorher = schluessel(start);
+  const nachher = schluessel(ende);
+  const r = { ergaenzt: [], gestrichen: [], umformuliert: [] };
+  for (const [nr, text] of vorher) {
+    if (!nachher.has(nr)) r.gestrichen.push({ nr, text });
+    else if (nachher.get(nr) !== text) r.umformuliert.push({ nr, vorher: text, nachher: nachher.get(nr) });
+  }
+  for (const [nr, text] of nachher) if (!vorher.has(nr)) r.ergaenzt.push({ nr, text });
+  return r;
+}
+
+/**
+ * Die ergaenzten, gestrichenen und umformulierten Elemente von `## Fachliche
+ * Akzeptanzkriterien` und `## Nicht-Ziele` zwischen dem Body zu Beginn und am Ende des
+ * Grooming (E9): `{ kriterien: { ergaenzt, gestrichen, umformuliert }, nichtZiele: {…} }`.
+ * Sind alle sechs Listen leer, schlaegt `/groom` keine erneute Pruefung vor.
+ */
+export function kriterienVergleich(start, ende) {
+  return {
+    kriterien: listenVergleich(listenElemente(start, "fachlicheKriterien"), listenElemente(ende, "fachlicheKriterien")),
+    nichtZiele: listenVergleich(listenElemente(start, "nichtZiele"), listenElemente(ende, "nichtZiele")),
+  };
 }
