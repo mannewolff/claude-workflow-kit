@@ -2,6 +2,21 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [4.2.3] - 2026-10-12
+- Versionsstempel lösen beim Nachweislauf keine Bereiche aus (#1521)
+- Schnelle Prüfungen laufen vor den gleichzeitigen (vorab) (#1519)
+- Englische Fassungen der Prüfrollen und des Prüfers kit-pruefer (#1509)
+- Englische Fassungen der Vorlagen CLAUDE-Fachplan.md und CLAUDE-Plan.md (#1508)
+- Englische Fassung des Regeltexts CLAUDE-workflow.md (#1507)
+- Englische Fassungen von local-check und review (#1506)
+- Englische Fassungen von implement-test und implement-done (#1505)
+- Englische Fassungen von implement-next und implement-ready (#1504)
+- Englische Fassungen von issues, task und issue-review (#1503)
+- Englische Fassungen von requirement, techplan und plan (#1502)
+- Doku (DE/EN): Skills, Befehle und Einstiegsdateien mit beiden Namen (#1472)
+- Englische Fassungen von context, retro, document, fachplan und kontext (#1469)
+- Englische Fassungen von push-main und merge-production (#1468)
+
 ## [4.2.2] - 2026-10-11
 - Prompts an Sessions in der Projektsprache (#1471)
 - Doku (DE/EN): Meldungen, Berichte und Marker in der Projektsprache (#1459)

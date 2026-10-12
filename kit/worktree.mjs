@@ -53,7 +53,7 @@ import {
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "4.2.2";
+const KIT_VERSION = "4.2.3";
 
 /**
  * Die Texte an Menschen in beiden Sprachen (Issue #1499, Plan #1420 E13): Hilfe und die Fehler
