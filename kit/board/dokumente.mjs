@@ -555,6 +555,13 @@ export async function issueCreate(tracker, args) {
   const derivedFrom = derivedFromOption(args["derived-from"]);
   const idempotencyKey = idempotenzOption(args["idempotency-key"]);
   const roh = hatQuelle ? await leseTextQuelle(args.body, args["body-file"], "body") : "";
+  // Gate F12 vor dem Anlegen (Issue #1590, Plan #1588 E12): Ein Fachplan ohne vollstaendiges
+  // Szenario entsteht nicht. Dynamisch, weil szenarien.mjs dieses Modul importiert.
+  if (istFachlich(titel)) {
+    const { szenarienVerstoss } = await import("./szenarien.mjs");
+    const meldung = szenarienVerstoss(roh);
+    if (meldung) fail(t("fachplanOhneSzenarien", { meldung }));
+  }
   const felder = {
     title: titel,
     // Die Autor-Modell-Leitplanke laeuft auf dem AUFGELOESTEN Text (Issue #271):

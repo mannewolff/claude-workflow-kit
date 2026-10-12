@@ -26,6 +26,7 @@ import {
   VORFLUG_OK, RESULT, GATE_MARKE, kitFixture, git, sha256, syncBlobs, runner, board, laufStand,
   standWorktrees, aufraeumen,
 } from "./helpers/kitstand-fixture.mjs";
+import { mitSzenarien } from "./helpers/szenarien-fixture.mjs";
 
 function spurZeilen(pfad) {
   return existsSync(pfad) ? readFileSync(pfad, "utf-8").trim().split("\n").filter(Boolean) : [];
@@ -130,7 +131,7 @@ test("[kitstand-7] Fall 2: ein Prueflauf liest den Skill des Pushs, auch wenn de
     syncBlobs(dir);
 
     const karte = board(dir, "issue", "create", "--title", "[Fachlich] Ein Anliegen", "--body",
-      "## Ziel\n\nEin Anliegen.\n\n## Fachliche Akzeptanzkriterien\n\n- Eines.\n").id;
+      mitSzenarien("## Ziel\n\nEin Anliegen.\n\n## Fachliche Akzeptanzkriterien\n\n- Eines.\n")).id;
     board(dir, "issue", "label", "add", String(karte), "kit:pruefen");
 
     // Die Sitzung laeuft im Worktree. Waehrend sie laeuft, aendert der Mensch in der

@@ -12,6 +12,7 @@ import { join } from "node:path";
 
 import { setupProjekt, board, runBoard } from "./helpers/board-fixture.mjs";
 import { vermerkZeile } from "../kit/board/grooming.mjs";
+import { mitSzenarien } from "./helpers/szenarien-fixture.mjs";
 
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
 // Mit Aufsicht: Die Fixture setzt KIT_AGENT_MODEL, und gesetzt hiesse unbeaufsichtigt (E7).
@@ -29,7 +30,7 @@ const ENTSCHIEDEN = BODY.replace("1. Welches Trennzeichen?", "1. Welches Trennze
 
 function projekt() {
   const dir = setupProjekt(LOKAL, "board-fragen-");
-  board(dir, "issue", "create", "--title", "[Fachlich] Export", "--body", BODY);
+  board(dir, "issue", "create", "--title", "[Fachlich] Export", "--body", mitSzenarien(BODY));
   return dir;
 }
 

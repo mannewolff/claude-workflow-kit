@@ -110,6 +110,9 @@ Usage:
       error message names it together with the command.
       If the body has a section '## Dependencies', the output carries its 'hinweise'
       as with 'check-form' (Issue #1060); they do not affect the creation.
+      A requirement (--art requirement or its title prefix) without a complete
+      scenario fails gate F12 as with 'check-form --body-file': nothing is created,
+      the message names what is missing, exit 1 (Issue #1590).
   node board.mjs issue get <id>
   node board.mjs issue activity <id>      activity history (local, toolbox)
   node board.mjs issue activity --ids <n,n,...>
@@ -189,7 +192,7 @@ Usage:
   node board.mjs issue check-form <id> [--art requirement|plan|idea|human|task]
   node board.mjs issue check-form --body-file <path> --title "<titel>" [--art ...]
       Form check against the machine gates of the stage (Issue #628): requirement
-      F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, work package I1 to I9. The stage comes
+      F1 F2 F6 F7 F9 F11 F12, plan P1 P2 P3 P6 P12, work package I1 to I9. The stage comes
       from the title prefix, with --art from the kind as with 'issue create'
       (Issue #1427); --art next to a title with a prefix rejects the call. I7 to I9
       (Issue #1044): '## Task' names a file as a backtick path, no named file is
@@ -197,6 +200,10 @@ Usage:
       the installed copy; a [Human] package passes all three. Always JSON ({ ok, stufe,
       verstoesse }), exit 1 on violations; a rejected call carries 'fehler'. Never
       writes to the board.
+      F12 (Issue #1590): the section '## Scenarios' stands between the acceptance
+      criteria and the non-goals and holds at least one complete scenario. It applies
+      to --body-file always, to <id> only from 'scenariosFrom' on; without that field
+      a hint { art: "szenarien-stichtag", meldung } instead.
       For [Plan] additionally 'hinweise' ([{ baustein, test, meldung }], Issue #1031):
       own tests of listed building blocks that the plan does not name, by the
       locations from 'testAblagen' against 'git ls-files'; they affect neither ok nor
@@ -351,6 +358,8 @@ export const { TEST_ABLAGEN_VORGABE, testAblagen, ablageAlsAusdruck, nennungsVer
   pruefeTestNennung, pruefeForm } = await import("./board/testhinweise.mjs");
 // Den Bestand fuer `issue check-form` braucht nur der Einstieg; exportiert war er nie.
 const { versionierteDateien } = await import("./board/testhinweise.mjs");
+// Ob eine Karte die Szenarien-Pflicht traegt, braucht nur `issue check-form` (Issue #1590).
+const { szenarienPflicht } = await import("./board/szenarien.mjs");
 export const { pickReviewers, kommandoVerfuegbar, stufeAusTitel } = await import("./board/issue-review.mjs");
 // Den Befehlsverteiler der Achse braucht nur Dispatch; exportiert war er nie.
 const { dispatchIssueReview } = await import("./board/issue-review.mjs");
@@ -471,7 +480,9 @@ async function issueCheckForm(tracker, config, args) {
   const { titel: title, fehler } = titelMitArt(eingabe.title, args.art);
   if (fehler) checkFormAbweisen(t("checkFormArt", { fehler, wege: checkFormWege() }));
   const dateien = stufeAusTitel(title) === "plan" ? versionierteDateien() : [];
-  const ergebnis = pruefeForm(body, title, config, dateien, configWurzel());
+  // F12: eine Datei ist ein neuer Fachplan, eine Karte erst ab dem Stichtag (Issue #1590, A4, A6).
+  const szenarien = hatDatei ? true : szenarienPflicht(id, config);
+  const ergebnis = pruefeForm(body, title, config, dateien, configWurzel(), { szenarien });
   if (ergebnis.stufe === "issue") {
     const hinweise = await abhaengigkeitsHinweise(body, tracker);
     if (hinweise.length > 0) ergebnis.hinweise = hinweise;

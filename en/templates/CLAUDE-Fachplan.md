@@ -179,7 +179,7 @@ No acceptance criterion demands something that a non-goal excludes.
 may not decide what the product is to do.
 
 ## F11 — The document carries no `Issue-Review:` line `[maschinell]`
-<!-- de: 711352c1c32a -->
+<!-- de: 294db929c14c -->
 
 The marker of this stage is called `Requirement-Review:` (in a German project
 `Fachplan-Review:`).
@@ -190,10 +190,42 @@ The marker of this stage is called `Requirement-Review:` (in a German project
 runner takes it for a work package ready for release and pulls it into the
 implementation.
 
+## F12 — The section `## Scenarios` holds at least one complete scenario `[maschinell]`
+<!-- de: 86027bc3d264 -->
+
+The section `## Scenarios` (in a German project `## Szenarien`) is present, stands between
+`## Business acceptance criteria` and `## Non-goals` and contains at least one complete
+scenario: a heading `### Scenario: <title>` and below it at least one list line each
+`Given`, `When`, `Then` in this order; `And` may stand in between. The keywords follow
+the project language — in a German project `### Szenario: <Titel>` with `Angenommen`,
+`Wenn`, `Dann`, `Und`.
+
+```markdown
+## Scenarios
+
+### Scenario: Requirement without scenarios is rejected
+- Given a project on the kit version with the duty
+- When the human creates a requirement without a Scenarios section through the kit
+- Then the kit creates nothing
+- And the message shows the form of a scenario
+```
+
+**Scope:** When checking a file (`issue check-form --body-file`) and when creating
+(`issue create` with `--art requirement` or the requirement prefix in the title) always —
+a violation creates nothing and ends with exit 1. When checking a card on the board
+(`issue check-form <id>`) only if its number is at least `scenariosFrom` from the
+`workflow.config.json`. Without the field F12 applies to no card on the board, and the
+check names the missing cut-off as a hint. F1 stays at four sections.
+
+*Why gate:* A scenario separates starting point, action and observable result while
+writing; a missing cut-off date or an unobservable result shows up there and not only in
+the review. The cut-off protects the requirements that already lie on the board at the
+update to this duty: they stay valid.
+
 ---
 
 ## Expressly no gate
-<!-- de: d3119ed8caf3 -->
+<!-- de: fb6c6ba4554d -->
 
 So that the reviewer does not declare everything a gate:
 
@@ -206,6 +238,10 @@ So that the reviewer does not declare everything a gate:
 - **An empty section `## Open questions for the PO`** (see F7).
 - **Technical terms as such.** Only a prescribed solution violates F3.
 - **Spelling and terminology**, as long as F3 is preserved.
+- **Further incomplete scenarios** next to a complete one (see F12). They are a finding
+  of the review, not a form violation.
+- **The number of scenarios above one.** Not every business acceptance criterion needs a
+  scenario.
 
 A finding on these points is still a finding — it is applied or discarded. Whether it calls
 a human is decided by trigger 2 from A9, not by this register.

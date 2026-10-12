@@ -15,6 +15,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
+import { mitSzenarien } from "./helpers/szenarien-fixture.mjs";
 
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -73,7 +74,7 @@ function issuesDirText(dir) {
 test("Nachtlauf: fachliches Issue wird kommentiert uebersprungen, normales Issue laeuft", () => {
   const dir = setupProjekt();
   try {
-    const fachlich = board(dir, "issue", "create", "--title", "[Fachlich] Kunden-Selbstauskunft", "--body", "## Ziel\nPO-Story.");
+    const fachlich = board(dir, "issue", "create", "--title", "[Fachlich] Kunden-Selbstauskunft", "--body", mitSzenarien("## Ziel\nPO-Story."));
     const normal = board(dir, "issue", "create", "--title", "Normales technisches Issue", "--body", "## Abhaengigkeiten\nKeine.");
     board(dir, "issue", "move", String(fachlich.id), "ready");
     board(dir, "issue", "move", String(normal.id), "ready");
@@ -103,7 +104,7 @@ test("Nachtlauf: fachliches Issue wird kommentiert uebersprungen, normales Issue
 test("Dry-Run weist fachliche Issues als uebersprungen aus, ohne etwas zu bewegen", () => {
   const dir = setupProjekt();
   try {
-    const fachlich = board(dir, "issue", "create", "--title", "[Fachlich] Reporting-Wunsch", "--body", "## Ziel\nStory.");
+    const fachlich = board(dir, "issue", "create", "--title", "[Fachlich] Reporting-Wunsch", "--body", mitSzenarien("## Ziel\nStory."));
     board(dir, "issue", "move", String(fachlich.id), "ready");
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--dry-run"]);

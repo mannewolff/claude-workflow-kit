@@ -21,6 +21,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { setupProjekt, runBoard, board } from "./helpers/board-fixture.mjs";
+import { mitSzenarien } from "./helpers/szenarien-fixture.mjs";
 
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
 
@@ -150,7 +151,7 @@ const zeilenVon = (zeilen, nr) => zeilen.filter((z) => ["", "000"].some((p) => z
 /** 0001 Anforderung, 0002 Plan, 0003 Paket; `anforderungBody` ersetzt den Text der Anforderung. */
 function mitVorhaben(fn, { anforderungBody = "## Ziel\nz" } = {}) {
   mitProjekt((dir) => {
-    board(dir, "issue", "create", "--title", "[Fachlich] Anforderung", "--body", anforderungBody);
+    board(dir, "issue", "create", "--title", "[Fachlich] Anforderung", "--body", mitSzenarien(anforderungBody));
     board(dir, "issue", "create", "--title", "[Plan] Plan", "--body", "Fachliche Quelle: Issue #0001\n\n## Ziel\nz");
     board(dir, "issue", "create", "--title", "Paket", "--body", "## Kontext\nPlan: Issue #0002\n\n## Aufgabe\na");
     fn(dir);

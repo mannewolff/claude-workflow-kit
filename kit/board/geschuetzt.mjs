@@ -23,6 +23,7 @@ import { homedir } from "node:os";
 import { istMensch, zerlegeAbschnitte, abschnittsTitel, CHECK_FORM_ABSCHNITTE } from "./dokumente.mjs";
 import { SPRACHEN, erkenneLabel, labelName, erkenneMarker, leseMarker, markerName, ueberschriftZeile, UEBERSCHRIFTEN,
   normUeberschrift, ueberschriftName, prozessSprache, text } from "./namen.mjs";
+import { szenarienVerstossIn } from "./szenarien.mjs";
 
 // Die Texte an den Menschen liegen unter kit/texte/board-geschuetzt.mjs (Issue #1526).
 import { TEXTE } from "../texte/board-geschuetzt.mjs";
@@ -403,7 +404,13 @@ function markerVerstoesse(zeilen, gate, richtigerMarker) {
   return zeilenMitMarker(zeilen, "issueReview").map((z) => ({ gate, meldung: t("markerFalsch", { zeile: z.trim(), marker }) }));
 }
 
-export function pruefeFachlich(abschnitte, alleZeilen) {
+/**
+ * Die Gates des Fachplans. F12 (Issue #1590, Plan #1588 A3, A4) prueft nur, wenn `szenarien`
+ * `true` ist: Der Abschnitt Szenarien steht zwischen Kriterien und Nicht-Zielen und traegt
+ * mindestens ein vollstaendiges Szenario. Ob die Pflicht gilt, entscheidet der Aufrufer — eine
+ * Datei immer, eine Karte am Board erst ab dem Stichtag. F1 bleibt bei vier Abschnitten (A1).
+ */
+export function pruefeFachlich(abschnitte, alleZeilen, { szenarien = false } = {}) {
   const erwartet = CHECK_FORM_ABSCHNITTE.fachlich;
   const finde = (name) => abschnitte.find((a) => a.titel === name);
   const verstoesse = pruefeReihenfolge(abschnitte, erwartet).map((meldung) => ({ gate: "F1", meldung }));
@@ -421,7 +428,10 @@ export function pruefeFachlich(abschnitte, alleZeilen) {
   for (const z of zeilenMitMarker(alleZeilen, "fachlicheQuelle", "plan")) {
     verstoesse.push({ gate: "F9", meldung: t("f9Herkunft", { zeile: z.trim() }) });
   }
-  return [...verstoesse, ...markerVerstoesse(alleZeilen, "F11", "fachplanReview")];
+  verstoesse.push(...markerVerstoesse(alleZeilen, "F11", "fachplanReview"));
+  const szenarienMeldung = szenarien === true ? szenarienVerstossIn(abschnitte) : null;
+  if (szenarienMeldung) verstoesse.push({ gate: "F12", meldung: szenarienMeldung });
+  return verstoesse;
 }
 
 /** P6 fuer einen Abschnitt: nicht leer; `- Keine.` nur wo erlaubt und nur als erste Zeile. */

@@ -11,6 +11,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { setupProjekt, runBoard, board } from "./helpers/board-fixture.mjs";
+import { mitSzenarien } from "./helpers/szenarien-fixture.mjs";
 
 const DEUTSCH = { language: "de", codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
 const BODY = "## Kontext\nAutor-Modell: fixture-modell\n";
@@ -33,7 +34,7 @@ const karte = ({ titel = "Paket", labels = [] } = {}) => [
 
 test("[board-1552] ein deutsches Projekt legt mit --art requirement eine Karte [Requirement] an", () => {
   mitProjekt((dir) => {
-    const res = runBoard(dir, ["issue", "create", "--title", "Etwas", "--body", BODY, "--art", "requirement"]);
+    const res = runBoard(dir, ["issue", "create", "--title", "Etwas", "--body", mitSzenarien(BODY), "--art", "requirement"]);
     assert.equal(res.status, 0, res.stderr);
     assert.equal(board(dir, "issue", "get", String(JSON.parse(res.stdout).id)).title, "[Requirement] Etwas");
   });

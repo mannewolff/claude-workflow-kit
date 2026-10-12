@@ -60,7 +60,11 @@ function szenarioTitel(kopf) {
  * darunter und `vollstaendig` in der Sprache `sprache`.
  */
 export function szenarienLesen(body, sprache = prozessSprache()) {
-  const { abschnitte } = zerlegeAbschnitte(body);
+  return lesenAus(zerlegeAbschnitte(body).abschnitte, sprache);
+}
+
+/** `szenarienLesen` auf den schon zerlegten Abschnitten, wie die Formpruefung sie hat. */
+function lesenAus(abschnitte, sprache) {
   const titel = abschnitte.map((a) => a.titel);
   const index = titel.indexOf(SZENARIEN);
   if (index < 0) return { vorhanden: false, lage: null, szenarien: [] };
@@ -143,7 +147,15 @@ function form(sprache) {
  * Ein Satz, dahinter die Form eines Szenarios mit den Schluesselwoertern von `sprache`.
  */
 export function szenarienVerstoss(body, sprache = prozessSprache()) {
-  const gelesen = szenarienLesen(body, sprache);
+  return szenarienVerstossIn(zerlegeAbschnitte(body).abschnitte, sprache);
+}
+
+/**
+ * `szenarienVerstoss` auf den Abschnitten aus `zerlegeAbschnitte` — fuer Gate F12 in
+ * `pruefeFachlich`, das den Body schon zerlegt hat (Issue #1590).
+ */
+export function szenarienVerstossIn(abschnitte, sprache = prozessSprache()) {
+  const gelesen = lesenAus(abschnitte, sprache);
   let satz = null;
   if (!gelesen.szenarien.some((s) => s.vollstaendig)) {
     satz = t("fehlt");

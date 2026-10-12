@@ -10,13 +10,14 @@ import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 
 import { setupProjekt, board } from "./helpers/board-fixture.mjs";
+import { mitSzenarien } from "./helpers/szenarien-fixture.mjs";
 
 test("issue origin gibt die Auswertung als JSON aus und bewegt nichts", () => {
   const dir = setupProjekt({ codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } }, "board-ursprung-");
   try {
     // Das Paket kommt nach In review, bevor es den Plan gibt: Seit Issue #1287 zoege der Zug
     // sonst Plan und Anforderung selbst nach, und es bliebe nichts zu zeigen, was wandert.
-    board(dir, "issue", "create", "--title", "[Fachlich] Anforderung", "--body", "## Ziel\nz");
+    board(dir, "issue", "create", "--title", "[Fachlich] Anforderung", "--body", mitSzenarien("## Ziel\nz"));
     board(dir, "issue", "create", "--title", "Paket", "--body", "Plan: Issue #0003\n\n## Aufgabe\na");
     board(dir, "issue", "move", "0002", "in_review");
     board(dir, "issue", "create", "--title", "[Plan] Plan", "--body", "Fachliche Quelle: Issue #0001\n\n## Ziel\nz");

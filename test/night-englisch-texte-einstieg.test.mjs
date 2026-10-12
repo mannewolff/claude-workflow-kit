@@ -38,6 +38,7 @@ import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
 import { mitProjekt } from "./helpers/laufstand-attrappe.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 import { DEUTSCHE_WOERTER, deutschAmHelferVorbei, deutschImEnglischen, literale } from "./helpers/quelltext-texte.mjs";
+import { mitSzenarien } from "./helpers/szenarien-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -127,7 +128,7 @@ test("[1484] englisch: Start, Dry-Run und Ende stehen in der Form der kanban-kit
   try {
     committen(dir);
     const ohneLabel = board(dir, "issue", "create", "--title", "Without label", "--body", "## Dependencies\nNone.");
-    const anforderung = board(dir, "issue", "create", "--title", "[Requirement] Customer self-service", "--body", "## Goal\nStory.");
+    const anforderung = board(dir, "issue", "create", "--title", "[Requirement] Customer self-service", "--body", mitSzenarien("## Goal\nStory.", "en"));
     const paket = board(dir, "issue", "create", "--title", "Package", "--body", "## Dependencies\nNone.");
     for (const i of [ohneLabel, anforderung, paket]) board(dir, "issue", "move", String(i.id), "ready");
     for (const i of [anforderung, paket]) board(dir, "issue", "label", "add", String(i.id), "kit:nightrun");

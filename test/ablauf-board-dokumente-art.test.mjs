@@ -20,7 +20,13 @@ const projekt = (language) => setupProjekt(language ? { ...CONFIG, language } : 
 
 const BODY = "## Kontext\nAutor-Modell: fixture-modell\n";
 
-const FACHLICH = `## Ziel
+// Der Abschnitt Szenarien mit den Schluesselwoertern der Projektsprache (Issue #1590, F12).
+const SZENARIEN = {
+  de: "## Szenarien\n\n### Szenario: Der Nutzer sieht es\n- Angenommen ein Nutzer am Board\n- Wenn er die Karte oeffnet\n- Dann sieht er es\n",
+  en: "## Scenarios\n\n### Scenario: The user sees it\n- Given a user at the board\n- When they open the card\n- Then they see it\n",
+};
+
+const fachlich = (language) => `## Ziel
 Der Nutzer sieht etwas.
 
 Autor-Modell: fixture-modell
@@ -28,6 +34,7 @@ Autor-Modell: fixture-modell
 ## Fachliche Akzeptanzkriterien
 - Der Nutzer sieht es.
 
+${SZENARIEN[language === "en" ? "en" : "de"]}
 ## Nicht-Ziele
 - Nichts weiter.
 
@@ -57,8 +64,10 @@ Etwas bauen.
 - node --test
 `;
 
-function anlegen(dir, args) {
-  return runBoard(dir, ["issue", "create", "--body", BODY, ...args]);
+const FACHLICH = fachlich("de");
+
+function anlegen(dir, args, body = BODY) {
+  return runBoard(dir, ["issue", "create", "--body", body, ...args]);
 }
 
 function titelVon(dir, res) {
@@ -76,7 +85,7 @@ function checkForm(dir, body, title, extra = []) {
 test("[board-1552] issue create --art stellt das englische Praefix voran, auch in einem deutschen Projekt", () => {
   for (const language of [undefined, "de", "en"]) {
     const dir = projekt(language);
-    assert.equal(titelVon(dir, anlegen(dir, ["--title", "Etwas", "--art", "requirement"])), "[Requirement] Etwas", language);
+    assert.equal(titelVon(dir, anlegen(dir, ["--title", "Etwas", "--art", "requirement"], fachlich(language))), "[Requirement] Etwas", language);
     assert.equal(titelVon(dir, anlegen(dir, ["--title", "Etwas", "--art", "idea"])), "[Idea] Etwas", language);
     assert.equal(titelVon(dir, anlegen(dir, ["--title", "Step", "--art", "human"])), "[Human] Step", language);
     assert.equal(titelVon(dir, anlegen(dir, ["--title", "Do it", "--art", "task"])), "[Task] Do it", language);
@@ -85,7 +94,7 @@ test("[board-1552] issue create --art stellt das englische Praefix voran, auch i
 
 test("[board-1427] issue create ohne --art laesst den Titel unveraendert", () => {
   const dir = projekt("en");
-  assert.equal(titelVon(dir, anlegen(dir, ["--title", "[Fachlich] Bleibt"])), "[Fachlich] Bleibt");
+  assert.equal(titelVon(dir, anlegen(dir, ["--title", "[Fachlich] Bleibt"], fachlich("en"))), "[Fachlich] Bleibt");
   assert.equal(titelVon(dir, anlegen(dir, ["--title", "Ohne Praefix"])), "Ohne Praefix");
 });
 
@@ -119,7 +128,7 @@ test("[board-1427] issue check-form --art plan prueft mit den Plan-Gates", () =>
 test("[board-1427] issue check-form --art requirement prueft mit den Fachplan-Gates, auch englisch", () => {
   for (const language of ["de", "en"]) {
     const dir = projekt(language);
-    const { res, ergebnis } = checkForm(dir, FACHLICH, "Der Nutzer sieht etwas", ["--art", "requirement"]);
+    const { res, ergebnis } = checkForm(dir, fachlich(language), "Der Nutzer sieht etwas", ["--art", "requirement"]);
     assert.equal(ergebnis.stufe, "fachlich", language);
     assert.equal(res.status, 0, res.stdout);
   }

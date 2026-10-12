@@ -184,6 +184,8 @@ test("die Hilfe zu check-form nennt I1 bis I9", () => {
   try {
     const res = runBoard(dir, ["--help"]);
     assert.match(res.stdout, /work package I1 to I9/);
+    // F12 steht in derselben Gate-Zeile (Issue #1590).
+    assert.match(res.stdout, /requirement\s+F1 F2 F6 F7 F9 F11 F12, plan/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

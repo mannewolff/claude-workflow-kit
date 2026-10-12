@@ -22,6 +22,7 @@ import { TEXTE } from "../kit/board.mjs";
 import { TEXTE as DOKUMENTE_TEXTE, labelAbbilden, titelMitArt } from "../kit/board/dokumente.mjs";
 import { MARKER, pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
+import { mitSzenarien } from "./helpers/szenarien-fixture.mjs";
 
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
 const KARTE = [
@@ -239,7 +240,7 @@ function imProjektDerSprache(sprache, fn) {
  */
 function vorhaben(nimm, sprache = "de") {
   const [quelle, auswahl] = sprache === "en" ? ["Requirement", "Plan-Decisions"] : ["Fachliche Quelle", "Plan-Entscheidungen"];
-  nimm("issue", "create", "--title", "[Fachlich] Anforderung", "--body", "Text ohne Abschnitte.");
+  nimm("issue", "create", "--title", "[Fachlich] Anforderung", "--body", mitSzenarien("Text ohne Abschnitte.", sprache));
   nimm("issue", "create", "--title", "[Plan] Plan", "--body", `${quelle}: Issue #0001\n\n## Ziel\nz`);
   nimm("issue", "create", "--title", "Paket", "--body",
     `## Kontext\nPlan: Issue #0002\n${auswahl}: E1\n\n## Aufgabe\na\n\n## Abhaengigkeiten\nIssue #0004\nund #77`);

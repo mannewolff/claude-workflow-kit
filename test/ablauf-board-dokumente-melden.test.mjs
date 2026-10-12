@@ -27,6 +27,7 @@ import {
 } from "./helpers/board-fixture.mjs";
 import { GITHUB, basisRegeln as ghBasis } from "./helpers/board-github-fixture.mjs";
 import { GITLAB, basisRegeln as glabBasis } from "./helpers/board-gitlab-fixture.mjs";
+import { mitSzenarien } from "./helpers/szenarien-fixture.mjs";
 
 const STEMPEL = "2026-09-29T09:00:00.000Z";
 const LAUF = `Bericht-Lauf: ${STEMPEL}`;
@@ -574,7 +575,7 @@ function mitVorhaben(fn, { zweitesPaket = false } = {}) {
   const dir = setupProjekt(LOKAL, "board-melden-ursprung-");
   const nimm = (...a) => ausgabe(runBoard(dir, a));
   try {
-    nimm("issue", "create", "--title", "[Fachlich] Anforderung", "--body", "## Ziel\nz");
+    nimm("issue", "create", "--title", "[Fachlich] Anforderung", "--body", mitSzenarien("## Ziel\nz"));
     nimm("issue", "create", "--title", "[Plan] Plan", "--body", "Fachliche Quelle: Issue #0001\n\n## Ziel\nz");
     nimm("issue", "create", "--title", "Paket", "--body", "## Kontext\nPlan: Issue #0002\nPlan-Entscheidungen: E1\n\n## Aufgabe\na");
     if (zweitesPaket) nimm("issue", "create", "--title", "Paket zwei", "--body", "## Kontext\nPlan: Issue #0002\n\n## Aufgabe\nb");
