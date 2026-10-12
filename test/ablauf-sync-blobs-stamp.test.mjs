@@ -90,6 +90,7 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
     `const KIT_NIGHT_B64 = "";`,
     `const KIT_BOARD_B64 = "";`,
     `const KIT_ROLLEN_B64 = "";`,
+    `const KIT_TEXTE_B64 = "";`,
     `const GATE_MJS_B64 = "";\nconst PRE_COMMIT_B64 = "";\nconst SKILLS_B64 = "";`,
     `const AGENTS_B64 = "";`,
     `const SKILLS_EN_B64 = "";`,

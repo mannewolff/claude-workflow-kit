@@ -7,7 +7,8 @@
 //   - Portabilitaet: Allein in einem leeren Verzeichnis laufen `arten`, `pruefen` und
 //     `buchen` unterhalb der Code-Stufe; erst `buchen --stufe code` meldet den fehlenden
 //     Nachbarn checks.mjs. Das Kit liefert seine Werkzeuge als eigenstaendige
-//     Einzeldateien aus — ein Import auf eine Datei des Kit-Repos fiele hier auf.
+//     Einzeldateien aus, jede mit ihrer Texttabelle unter texte/ (Issue #1524) — ein Import
+//     auf eine andere Datei des Kit-Repos fiele hier auf.
 //   - Ohne Attrappe startet `vorschlag` den Board-Adapter unter KIT_ROOT als Kindprozess.
 //   - Die Kommandozeile setzt den Exit-Code.
 
@@ -34,12 +35,14 @@ function cli(programm, dir, cliArgs, env = process.env) {
   return spawnSync(process.execPath, [programm, ...cliArgs], { cwd: dir, encoding: "utf-8", env });
 }
 
-/** Ein leeres Verzeichnis mit einer Kopie von befunde.mjs ohne Nachbarn und dem Fundtext. */
+/** Ein leeres Verzeichnis mit einer Kopie von befunde.mjs samt Texttabelle, ohne Nachbarn, und dem Fundtext. */
 function mitKopieAllein(fn) {
   const dir = mkdtempSync(join(tmpdir(), "befunde-allein-"));
   try {
     const allein = join(dir, "befunde.mjs");
     copyFileSync(BEFUNDE, allein);
+    mkdirSync(join(dir, "texte"));
+    copyFileSync(join(dirname(BEFUNDE), "texte", "befunde.mjs"), join(dir, "texte", "befunde.mjs"));
     writeFileSync(join(dir, "text.md"), FUND, "utf-8");
     fn(dir, allein);
   } finally {

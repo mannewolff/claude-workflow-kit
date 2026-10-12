@@ -158,6 +158,7 @@ test("[1452] ein englisches Projekt sieht keine deutsche Meldung — echter Proz
     copyFileSync(join(KIT, "aufwand.mjs"), join(kit, "aufwand.mjs"));
     copyFileSync(join(KIT, "preise.mjs"), join(kit, "preise.mjs"));
     cpSync(join(KIT, "board"), join(kit, "board"), { recursive: true });
+    cpSync(join(KIT, "texte"), join(kit, "texte"), { recursive: true });
     writeFileSync(join(dir, "kaputt.jsonl"), "kein json\n", "utf-8");
 
     const aufwand = join(kit, "aufwand.mjs");

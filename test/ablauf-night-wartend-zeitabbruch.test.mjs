@@ -64,6 +64,7 @@ function setupProjekt(praefix, buildChecks) {
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   // Die Salvage-Vorpruefung faehrt `checks.mjs run` im Zielprojekt; ohne die Datei gaebe
   // es keine Pflicht-Pruefung und damit keinen Rettungsversuch.
   copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));

@@ -5,7 +5,8 @@
 //
 //   - Fehlt kit/preise.mjs neben aufwand.mjs, entfaellt die Kostenteilung mit Vermerk.
 //     Ob die Datei daneben liegt, entscheidet das Modul einmal beim Laden — die Frage
-//     laesst sich darum nur an einer Kopie ohne Nachbarn stellen.
+//     laesst sich darum nur an einer Kopie ohne Nachbarn stellen. Mit ihr reist allein ihre
+//     Texttabelle unter texte/ (Issue #1524).
 //   - Der Start als Kommandozeile setzt den Exit-Code und schreibt den Fehler nach stderr.
 
 import { test } from "node:test";
@@ -31,6 +32,8 @@ test("[aufwand-1] fehlt kit/preise.mjs als Nachbardatei, entfaellt die Kostentei
     const kopie = join(dir, "kit-ohne-preise");
     mkdirSync(kopie, { recursive: true });
     copyFileSync(AUFWAND, join(kopie, "aufwand.mjs"));
+    mkdirSync(join(kopie, "texte"));
+    copyFileSync(join(dirname(AUFWAND), "texte", "aufwand.mjs"), join(kopie, "texte", "aufwand.mjs"));
     const res = cli(join(kopie, "aufwand.mjs"), dir, "auswerten");
 
     assert.equal(res.status, 0, `ohne Preistabelle darf nichts abstuerzen: ${res.stderr}`);

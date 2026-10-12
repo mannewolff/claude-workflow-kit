@@ -59,6 +59,7 @@ function setupProjekt(buildChecks) {
     copyFileSync(join(repoRoot, "kit", name), join(dir, ".claude", "kit", name));
   }
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   mkdirSync(join(dir, ".githooks"), { recursive: true });
   copyFileSync(join(repoRoot, ".githooks", "gate.mjs"), join(dir, ".githooks", "gate.mjs"));
   writeFileSync(join(dir, ".githooks", "pre-commit"),

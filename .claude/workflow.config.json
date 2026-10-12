@@ -611,6 +611,7 @@
     ],
     "board-einstieg": [
       "kit/board.mjs",
+      "kit/texte/board.mjs",
       "kit/board-ui.mjs",
       "tools/migrate-issues.mjs",
       "test/board-ac*.test.mjs",
@@ -701,6 +702,7 @@
     ],
     "aufwand": [
       "kit/aufwand.mjs",
+      "kit/texte/aufwand.mjs",
       "test/aufwand-*.test.mjs",
       "test/ablauf-aufwand-*.test.mjs",
       "test/helpers/aufwand-fixture.mjs",
@@ -714,6 +716,7 @@
     ],
     "befunde": [
       "kit/befunde.mjs",
+      "kit/texte/befunde.mjs",
       "test/befunde-*.test.mjs",
       "test/ablauf-befunde-*.test.mjs",
       "test/helpers/zeilenenden.mjs"
@@ -733,7 +736,8 @@
       "test/helpers/oberflaeche-vm.mjs"
     ],
     "worktree": [
-      "kit/worktree.mjs"
+      "kit/worktree.mjs",
+      "kit/texte/worktree.mjs"
     ],
     "sync": [
       "tools/sync-blobs.mjs",

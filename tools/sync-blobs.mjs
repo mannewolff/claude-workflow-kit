@@ -131,6 +131,8 @@ const BLOBS = [
   { constName: "KIT_BOARD_B64", sourceFiles: join(root, "kit", "board") },
   // Die Pruefrollen (Issue #1377, Plan #1375 A1): ein Teil wie night/ und board/.
   { constName: "KIT_ROLLEN_B64", sourceFiles: join(root, "kit", "rollen") },
+  // Die Texttabellen der Module (Issue #1524): ein Teil wie night/ und board/.
+  { constName: "KIT_TEXTE_B64", sourceFiles: join(root, "kit", "texte") },
   { constName: "SKILLS_B64", sourceDir: join(root, "skills") },
   // Der Leser-Agent der Pruefer (Issue #1377, Plan #1375 A2): eine flache Quelle neben skills/.
   { constName: "AGENTS_B64", sourceFiles: join(root, "agents") },
@@ -161,7 +163,7 @@ const EINSTIEGE = ["findings.mjs", "effort.mjs", "effectiveness.mjs"];
 // Teilverzeichnisse unter kit/ (Issue #1209, Plan #1199 E19): kopiert nach .claude/kit/<teil>/
 // wie die Werkzeuge, aber ungestempelt — KIT_VERSION steht nur im Einstieg. In STAMPED
 // brachen sie den Lauf ab, weil ein Teil keine Konstante traegt.
-const TEILE = ["night", "board", "rollen"];
+const TEILE = ["night", "board", "rollen", "texte"];
 
 // Was die Einstellungs-Oberflaeche eingebettet traegt: das Schema (Plan #674 E2) und die
 // Namenstabelle der Einstellungen (Issue #1437, Plan #1420 E10), dazu die englischen

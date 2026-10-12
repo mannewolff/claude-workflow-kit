@@ -61,6 +61,7 @@ function setupProjekt() {
   mkdirSync(join(dir, "helfer"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(kit, "board-echt.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(kit, "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(kit, "texte"), { recursive: true });
   const stoerung = join(dir, "helfer", "stoerung.json");
   writeFileSync(join(kit, "board.mjs"), [
     'import { readFileSync, writeFileSync, existsSync } from "node:fs";',

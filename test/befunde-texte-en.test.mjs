@@ -194,6 +194,7 @@ test("[1497] ein englisches Projekt sieht keine deutsche Meldung — echter Proz
     mkdirSync(kit, { recursive: true });
     copyFileSync(join(KIT, "wirksamkeit.mjs"), join(kit, "wirksamkeit.mjs"));
     cpSync(join(KIT, "board"), join(kit, "board"), { recursive: true });
+    cpSync(join(KIT, "texte"), join(kit, "texte"), { recursive: true });
 
     const cli = (...args) => spawnSync(process.execPath, [join(kit, "wirksamkeit.mjs"), ...args], { cwd: dir, encoding: "utf-8" });
     const auswertung = cli("auswerten");
@@ -267,8 +268,9 @@ test("[1498] die englische Haelfte der Tabelle von befunde.mjs traegt keine deut
   assert.deepEqual(deutschImEnglischen(BEFUNDE_TEXTE), []);
 });
 
+// Die Tabelle liegt seit Issue #1524 in kit/texte/; gescannt wird das Modul ohne sie.
 test("[1498] jeder deutsche Text von befunde.mjs geht ueber den Texthelfer", () => {
-  assert.deepEqual(deutschAmHelferVorbei("kit/befunde.mjs", BEFUNDE_TEXTE,
+  assert.deepEqual(deutschAmHelferVorbei("kit/befunde.mjs", null,
     ["nicht", "— nicht geprueft", "keine-pruefer", "nicht-vergleichbar", "(?:nicht gefunden|not found)", "karte-fehlt"]), []);
 });
 
@@ -376,6 +378,7 @@ test("[1498] ein englisches Projekt sieht von befunde.mjs keine deutsche Meldung
     mkdirSync(kit, { recursive: true });
     copyFileSync(join(KIT, "befunde.mjs"), join(kit, "befunde.mjs"));
     cpSync(join(KIT, "board"), join(kit, "board"), { recursive: true });
+    cpSync(join(KIT, "texte"), join(kit, "texte"), { recursive: true });
 
     const cli = (...args) => spawnSync(process.execPath, [join(kit, "befunde.mjs"), ...args], { cwd: dir, encoding: "utf-8" });
     const auswertung = cli("auswerten");
@@ -449,7 +452,7 @@ test("[1499] die englische Haelfte der Tabelle von worktree.mjs traegt keine deu
 });
 
 test("[1499] jeder deutsche Text von worktree.mjs geht ueber den Texthelfer", () => {
-  assert.deepEqual(deutschAmHelferVorbei("kit/worktree.mjs", WORKTREE_TEXTE), []);
+  assert.deepEqual(deutschAmHelferVorbei("kit/worktree.mjs", null), []);
 });
 
 test("[1499] englisch: die Hilfe nennt die englischen Unterkommandos und Optionen", () => {
@@ -525,6 +528,7 @@ test("[1499] ein englisches Projekt sieht von worktree.mjs keine deutsche Meldun
     copyFileSync(WORKTREE, join(kit, "worktree.mjs"));
     cpSync(join(KIT, "night"), join(kit, "night"), { recursive: true });
     cpSync(join(KIT, "board"), join(kit, "board"), { recursive: true });
+    cpSync(join(KIT, "texte"), join(kit, "texte"), { recursive: true });
     const werkzeug = join(kit, "worktree.mjs");
 
     const ausgaben = [

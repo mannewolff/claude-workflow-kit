@@ -57,6 +57,7 @@ function setupProjekt({ buildChecks = [KIT_CHECK, FRONTEND_CHECK], extraConfig =
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   // checks.mjs wird seit Issue #425 neben board.mjs und night.mjs ausgeliefert — der
   // Session-Fake ruft es genauso auf wie ein echter /implement-next-Lauf.
   copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));

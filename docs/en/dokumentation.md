@@ -36,7 +36,7 @@ The core process has nine steps. Step 1 is your requirement; the AI takes over s
 **`kontext.config.json` for /kontext and /document (optional).** Both skills also run without this file, in degraded mode. If you want persistent cross-project memory: With a global installation the installer asks for the vault path and creates the file automatically; with a project-local installation you create it manually. Details in the section [kontext.config.json](/en/dokumentation#kontext-config-json-reference).
 
 ## Installation
-<!-- de: 575f856daeff -->
+<!-- de: 7dff5ac95989 -->
 
 Change into your project folder and run:
 
@@ -90,7 +90,7 @@ With yes, the installer calls `node .claude/kit/board.mjs code schutz einrichten
 
 **Later: `node install.mjs --schutz`.** An existing project switches protection on without reinstalling the kit. The call asks only the protection questions, calls `code schutz einrichten` and changes nothing in `.claude/workflow.config.json` but `pushPruefung`; all other settings and kit files stay untouched. It requires an installed `board.mjs` that already knows `code schutz`. Whether a project is protected is then reported at any time by `node .claude/kit/board.mjs code schutz status` (see [Board adapter](#board-adapter)).
 
-The installer copies the sixteen skills, writes a `.claude/workflow.config.json` with your answers, places a `CLAUDE-workflow.md` with the process description as well as the two gate registers `CLAUDE-Fachplan.md` and `CLAUDE-Plan.md`, and writes the board adapter to `.claude/kit/board.mjs`. With GitLab it additionally asks whether it should create the five labels automatically. No background process, no service, no registry entries.
+The installer copies the sixteen skills, writes a `.claude/workflow.config.json` with your answers, places a `CLAUDE-workflow.md` with the process description as well as the two gate registers `CLAUDE-Fachplan.md` and `CLAUDE-Plan.md`, and writes the board adapter to `.claude/kit/board.mjs`. The parts of the tools sit in subdirectories next to it: `night/` and `board/` for the night runner and the board adapter, `rollen/` for the review roles and `texte/` for the text tables of the tools in both languages. With GitLab it additionally asks whether it should create the five labels automatically. No background process, no service, no registry entries.
 
 The former local Kanban GUI (`board-ui.mjs`) has been discontinued.
 

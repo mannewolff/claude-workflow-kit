@@ -68,6 +68,7 @@ function setupProjekt(buildChecks) {
     copyFileSync(join(repoRoot, "kit", datei), join(dir, ".claude", "kit", datei));
   }
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks,
     checkAreas: { kit: ["kit/**"] }, local: { issuesDir: "issues" },

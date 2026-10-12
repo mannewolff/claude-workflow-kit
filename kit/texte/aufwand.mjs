@@ -1,0 +1,349 @@
+/**
+ * texte/aufwand.mjs — die Texttabelle von aufwand.mjs (Issue #1524). Eigener Teil, damit
+ * `sonar.cpd.exclusions` die gleich gebauten Haelften de und en ausnehmen kann, ohne die
+ * Logik des Moduls aus der Duplikatsmessung zu nehmen. Das Modul importiert die Tabelle und
+ * exportiert sie unter demselben Namen weiter.
+ */
+
+/**
+ * Die Texte an Menschen in beiden Sprachen (Issue #1452, Plan #1420 E13): Hilfe, Bericht,
+ * Befund, Auskunft und Fehler. Unuebersetzt bleibt der Maschinenvertrag (E14): die Feldnamen
+ * von `aufwand.json` und der JSON-Ausgabe, das Vokabular des Ergebnisstands (`abschluss`,
+ * `art`, `endStatus`) und die Befehls- und Optionsnamen. Den Gleichstand der Schluessel und
+ * Platzhalter haelt test/aufwand-texte-en.test.mjs.
+ */
+export const TEXTE = {
+  de: {
+    hilfe: `aufwand.mjs (claude-workflow-kit v{version}) — Aufwand des Prozesses
+
+  node aufwand.mjs auswerten [--laeufe <n>]
+  node aufwand.mjs befund
+  node aufwand.mjs auskunft <transkript…>
+
+auswerten  Liest die juengsten Ergebnisstaende aus {dir}/, aggregiert Zeit,
+           Pruefungen, Umfang, Kosten, den Aufwand je Aufgabenstufe, die Verteilung
+           je Laufart und Aufgabenstufe (Median, 90. Perzentil) und die Zeit
+           fuer Board-Auskuenfte je Umsetzungseinheit (Abschnitt Auskuenfte) und schreibt
+           {dir}/{bericht} sowie
+           {dir}/{stand}. Die Ausgabe auf stdout ist immer JSON —
+           auch im Leerfall und auch bei einem abgewiesenen Aufruf.
+befund     Gibt den Befundblock aus {dir}/{stand} als Text aus, mit dem
+           Zeitpunkt der Auswertung als erster Zeile. Liegt kein Befund vor, fehlt die
+           Datei oder ist sie unlesbar, bleibt die Ausgabe leer. Exit immer 0 — der
+           Befund ist kein Gate.
+auskunft   Misst Claude-Code-Transkripte (*.jsonl) nach derselben Regel wie der
+           Nacht-Runner: die Spanne vom Werkzeugaufruf bis zu seinem Ergebnis fuer jede
+           Rueckfrage an das Board und jedes Aufbereiten ihrer Antwort. Gibt je Datei
+           und gesamt Minuten und Aufrufe aus. Eine unlesbare Datei oder eine ohne
+           Zeitstempel wird gemeldet und nicht als 0 gezaehlt; dann Exit 1.
+
+  --laeufe <n>    Wie viele Staende hoechstens einbezogen werden, die juengsten zuerst
+                  (Vorgabe {vorgabe}). Sticht den Config-Block.
+  --version       Kit-Stand dieser Datei.
+  --help, -h      Diese Uebersicht.
+
+Gelesen wird {dir}/{config} im Arbeitsverzeichnis, Block 'aufwand':
+'laeufe' und 'schwellen' (pruefungAnteil, eingrenzungOhneWirkung, werkzeugAnteil,
+schreibkostenAnteil). Der Block ist optional; fehlt er oder ein Feld darin, gelten die
+Vorgaben.
+`,
+    // Zahlen, Einheiten, Traglast
+    tausender: ".",
+    dezimal: ",",
+    prozent: "{zahl} Prozent",
+    nichtGemessen: "nicht gemessen",
+    laufOhne: "ohne einen einzigen Lauf",
+    laufEiner: "aus einem einzigen Lauf",
+    laufMehrere: "ueber {n} Laeufe",
+    einheitEine: "1 Einheit",
+    einheitenMehrere: "{n} Einheiten",
+    // Werte im Stand, die Menschen lesen
+    configNichtLesbar: "nicht lesbar ({fehler})",
+    ohneNamen: "(ohne Namen)",
+    ohneLaufart: "ohne Laufart",
+    zeitartNachdenken: "Nachdenken",
+    zeitartWerkzeug: "Werkzeug",
+    zeitartRest: "Rest",
+    nichtBestimmbar: "nicht bestimmbar",
+    zeitartenNichtGemessen: "{namen} nicht gemessen",
+    nichtRegulaer: "nicht regulaer abgeschlossen ({abschluss})",
+    ohneAbschluss: "ohne Abschluss",
+    ohneEinheit: "ohne Einheit",
+    ohneZeiten: "ohne Zeiten je Einheit",
+    ohnePruefstand: "ohne Pruefstand",
+    // Befunde
+    befundPruefung: "Die Pruefung '{cmd}' verbraucht {anteil} der gemessenen Pruefzeit ({dauer} von {gesamt}, {anzahl} Ausfuehrungen), gemessen {laeufe}.",
+    befundEingrenzung: "Die Eingrenzung der Pruefungen hat in keinem der {anzahl} Pruefstaende gegriffen: In keinem wurde eine Pruefung wegen eines unberuehrten Bereichs ausgelassen, es lief jedes Mal die volle Auswahl.",
+    befundWerkzeug: "Werkzeugarbeit macht {anteil} der Gesamtzeit der Einheiten aus, die beide Zeiten tragen ({werkzeug} von {gesamt}), gemessen {laeufe}.",
+    befundSchreibkosten: "Schreibkosten machen {anteil} der gerechneten Gesamtkosten aus ({schreiben} von {gesamt}), gemessen {laeufe}.",
+    befundKopf: "Auswertung vom {zeit} {laeufe} bis {juengster}.",
+    // Bericht: Kopf und Fuss
+    berichtTitel: "# Aufwand des Prozesses",
+    auswertungVom: "Auswertung vom {zeit}.",
+    keinStand: "Es liegt kein Ergebnisstand vor — es gibt nichts auszuwerten.",
+    einbezogen: "Einbezogen sind {einbezogen} von {gefunden} Ergebnisstaenden (Grenze {grenze}), der juengste vom {juengster}. Sie tragen {einheiten} Arbeitseinheiten.",
+    einzigerLauf: "Die Zahlen stammen aus **einem einzigen Lauf**. Das ist eine Momentaufnahme, keine Tendenz.",
+    wartendKeine: "Keine Sitzung hat auf eine selbst angestossene Arbeit gewartet und ist ohne Ergebnis beendet worden.",
+    wartendEine: "Eine Sitzung hat auf eine selbst angestossene Arbeit gewartet und ist ohne Ergebnis beendet worden ({laeufe}).",
+    wartendMehrere: "{anzahl} Sitzungen haben auf eine selbst angestossene Arbeit gewartet und sind ohne Ergebnis beendet worden ({laeufe}).",
+    unvollTitel: "## Unvollstaendige Laeufe",
+    unvollErklaerung: "Sie gehen mit dem ein, was sie tragen — verworfen saehen die Summen vollstaendig aus und waeren zu klein.",
+    unlesbarTitel: "## Unlesbare Staende",
+    configHinweis: "Hinweis zur Konfiguration: {grund} — es gelten die Vorgaben.",
+    dauerzeile: "Die Auswertung selbst dauerte {dauer} (ohne das Schreiben dieser Datei).",
+    // Bericht: Zeit
+    zeitTitel: "## Zeit",
+    postenKopf: "| Posten | Wert | Grundlage |",
+    zeitGesamt: "Gesamtdauer der Sessions",
+    zeitNachdenken: "Nachdenken",
+    zeitWerkzeug: "Werkzeugarbeit",
+    zeitRest: "Rest (Start, Warten, Uebriges)",
+    werkzeugBasis: "Der Werkzeuganteil wird ueber die Einheiten gebildet, die Gesamtdauer und Werkzeugzeit beide tragen: {werkzeug} von {gesamt} ({laeufe}).",
+    werkzeugOhneBeide: " {anzahl} Einheiten ({laeufe}) tragen nur eine der beiden Zeiten oder keine; sie gehen in den Anteil nicht ein.",
+    nebenlaeufig: "Bei {anzahl} Einheiten ({laeufe}) uebersteigt die Summe aus Nachdenken und Werkzeugarbeit die Gesamtdauer: Dort lief beides nebenlaeufig. Diese Einheiten tragen keinen Rest bei — eine negative Zeit waere keine Zahl, die etwas bedeutet.",
+    // Bericht: Pruefungen und Umfang
+    pruefTitel: "## Pruefungen",
+    keinPruefstand: "Kein Pruefstand in den einbezogenen Staenden.",
+    pruefKopf: "| Kommando | Ausfuehrungen | Dauer | Dauer gemessen in |",
+    pruefSumme: "Summe der gemessenen Pruefzeit: {wert}.",
+    umfangTitel: "## Umfang der Pruefungen",
+    umfang: "Von {staende} Pruefstaenden ({laeufe}) liefen {voll} im vollen Umfang, {eingegrenzt} eingegrenzt und {unbekannt} ohne Angabe dazu. Ein Stand ohne Angabe zaehlt als unbekannt, nie als eingegrenzt.",
+    // Bericht: Kosten
+    kostenTitel: "## Kosten",
+    kostenKopf: "| Posten | Betrag | Grundlage |",
+    kostenLesen: "Lesekosten (Eingabe, Cache-Erzeugung, Cache-Lesen)",
+    kostenSchreiben: "Schreibkosten (Ausgabe)",
+    kostenNichtZuordenbar: "Nicht zuordenbar",
+    kostenGesamt: "Gesamt",
+    preiseFehlen: "Die Preistabelle `kit/preise.mjs` liegt nicht daneben: Die Kostenteilung in Lesen und Schreiben entfaellt. Der gemeldete Gesamtbetrag steht weiter, geraten wird kein Satz.",
+    preiseStand: "Gerechnet mit der Preistabelle vom {stand}.",
+    ohneTeilung: "Bei {einheiten} Einheiten lagen {tokens} Token der Cache-Erzeugung ohne Teilung nach Haltedauer vor. Sie wurden mit dem Stunden-Satz bepreist — dem teureren. Der Betrag ist insoweit eine Obergrenze und kein Messwert.",
+    ohneMengen: "Bei {einheiten} Einheiten liegt keine einzige Token-Menge vor. Ihr gemeldeter Betrag steht unter 'nicht zuordenbar'; geteilt wird er nicht. Eine fehlende Menge wird nicht als 0 gerechnet — sonst verschwaende der Betrag zwischen den Posten.",
+    ohneModell: "ohne Modellangabe",
+    ohnePreissatz: "Fuer {einheiten} Einheiten kennt die Preistabelle keinen Satz ({modelle}). Ihr gemeldeter Betrag steht unter 'nicht zuordenbar'; geteilt wird er nicht.",
+    // Bericht: Aufgabenstufe
+    stufenTitel: "## Nach Aufgabenstufe",
+    stufenLeer: "Keine Einheit mit gestarteter Session in den einbezogenen Staenden — es gibt nichts zu vergleichen.",
+    stufenKopf: "| Stufe | Gruendlichkeit | Einheiten | Dauer | Kosten | Rote Pruefstaende | Nacharbeit |",
+    ohneStufe: "ohne Stufe",
+    voreinstellung: "Voreinstellung",
+    nacharbeitErklaerung: "Als Nacharbeit zaehlt eine Einheit, deren Endstatus nicht `in_review` ist oder deren Pruefstand rot war. Gezaehlt werden nur Arbeitspakete mit gestarteter Session; Einheiten ohne Session (uebersprungen, liegengeblieben, zurueckgestellt) und die Einheiten der Kette bleiben aussen vor. Die Kosten sind die je Einheit gemeldeten Betraege, nicht die gerechnete Teilung aus dem Abschnitt Kosten.",
+    stufenOhne: "Einheiten ohne Aufgabenstufe: Modell von der Karte oder vom Lauf, Staende vor #711.",
+    // Bericht: Zielmarke
+    zielTitel: "## Zielmarke der Umsetzung",
+    zielNichtGemessen: "Die Einhaltung der Zielmarke ist nicht gemessen: Kein einbezogener Stand traegt eine Umsetzung, die sich an einer Marke halten liesse.",
+    zielKeine: "Keine Umsetzung liess sich gegen eine Zielmarke halten.",
+    zielVersuche: "Von {versuche} gemessenen Umsetzungen ({laeufe}) liegen {ueber} von {versuche} ueber der Zielmarke. Die Ueberschreitung betraegt im Mittel {mittel} und im Maximum {max}; gemittelt wird ueber die Ueberschreitungen, nicht ueber alle Versuche. Gemessen wurde gegen {marken} — die Marke jedes Stands stammt aus seinem eigenen Lauf-Kopf und nicht aus der heutigen Konfiguration.",
+    zielOhneMarke: "{anzahl} Umsetzungen ({laeufe}) stammen aus Staenden ohne Zielmarke am Lauf-Kopf; sie gehen in keine dieser Zahlen ein. Die heutige Vorgabe auf sie anzuwenden hiesse, sie an etwas zu messen, das in ihrer Nacht nicht galt.",
+    markenKeine: "keine Marke",
+    markenEine: "{marke} Minuten",
+    markenMehrere: "die Marken {marken} Minuten der einzelnen Staende",
+    zeitabbruchEine: "Eine Umsetzung wurde am Zeitlimit beendet und steht getrennt: Ihre Fertigstellungsdauer ist unbekannt, sie geht in keinen Mittelwert ein. Eine Schaetzung als Messung auszuweisen waere falsch.",
+    zeitabbruchMehrere: "{anzahl} Umsetzungen wurden am Zeitlimit beendet und stehen getrennt: Ihre Fertigstellungsdauer ist unbekannt, sie gehen in keinen Mittelwert ein. Eine Schaetzung als Messung auszuweisen waere falsch.",
+    // Bericht: Auskuenfte
+    auskTitel: "## Auskuenfte",
+    auskKopf: "| Lauf | Paket | Auskunftszeit | Aufrufe |",
+    auskMittelLeer: "Mittel ueber die Umsetzungseinheiten: nicht gemessen.",
+    auskMittel: "Mittel ueber {anzahl} Umsetzungseinheiten: {wert} ({laeufe}).",
+    auskKeine: "keine Umsetzung: {einheiten}, Auskunftszeit {wert} — Kette, Karten anlegen, Prueflaeufe; nicht im Mittel.",
+    auskNichtGemessen: "nicht gemessen: {einheiten}{laeufe} — ohne Messung oder aus Staenden vor #1026; sie gehen nicht als 0 ins Mittel ein.",
+    auskRegel: "Gezaehlt wird die Spanne vom Werkzeugaufruf bis zu seinem Ergebnis fuer jede Rueckfrage an das Board und jedes Aufbereiten ihrer Antwort; Nachdenkzeit zaehlt nicht.",
+    // Bericht: Verteilung
+    vertTitel: "## Verteilung",
+    vertLeer: "Keine Einheit in den einbezogenen Staenden — es gibt keine Verteilung.",
+    vertLaufart: "### Laufart {art}",
+    vertKopf: "| Stufe | Einheiten | Dauer | Nachdenken | Werkzeug | Rest | Prueflaeufe je Paket | Dominierende Zeitart | Zeitabbrueche |",
+    vertWerte: "{median} / {p90} ({anzahl} Werte, {laeufe})",
+    vertAbbrueche: "{anteil} ({abbrueche} von {versuche}, {laeufe})",
+    vertErklaerung: "Je Zelle Median / 90. Perzentil nach Nearest-Rank — jeder Wert ist ein tatsaechlich gemessener. Die Dauer ist die Rundendauer des Runners, der Rest die Session-Dauer abzueglich Nachdenken und Werkzeug. Die dominierende Zeitart ist der groesste der drei Mediane. Prueflaeufe je Paket zaehlen Arbeit und Abschluss; eine Einheit ohne diese Angabe geht nicht als 0 ein. Zeitabbrueche zaehlen je Einheit mit Pruefstand wie in der Zielmarke. Die Kettenstufe (Plan, Review, Pakete, ...) wird an der Einheit nicht erfasst und laesst sich deshalb nicht getrennt ausweisen.",
+    // Bericht: Befund
+    befTitel: "## Befund",
+    befKeiner: "Keine der vier Schwellen ist ueberschritten.",
+    eingrenzungGeprueft: "geprueft",
+    eingrenzungAbgeschaltet: "abgeschaltet",
+    schwellenLauf: "Schwellen dieses Laufs: Anteil einer einzelnen Pruefung {pruefung}, Werkzeugarbeit {werkzeug}, Schreibkosten {schreiben}, Eingrenzung ohne Wirkung {eingrenzung}.",
+    nichtBestimmbarListe: "Nicht bestimmbar mangels Messwerten: {namen}. Das ist kein Beleg dafuer, dass dort nichts auffaellt.",
+    // Die Schwellen unter ihrem Einstellungsnamen in der Sprache (config-namen.mjs).
+    schwellePruefungAnteil: "pruefungAnteil",
+    schwelleEingrenzungOhneWirkung: "eingrenzungOhneWirkung",
+    schwelleWerkzeugAnteil: "werkzeugAnteil",
+    schwelleSchreibkostenAnteil: "schreibkostenAnteil",
+    // auskunft
+    auskNichtLesbar: "{pfad}: nicht lesbar ({fehler}) — nicht gemessen",
+    auskOhneZeit: "{pfad}: ohne Zeitstempel — nicht gemessen",
+    auskDatei: "{pfad}: {minuten}, {aufrufe} Aufrufe",
+    auskOhneSpanne: " ({anzahl} davon ohne messbare Spanne)",
+    gesamtNicht: "Gesamt: nicht gemessen",
+    gesamtEine: "Gesamt: {minuten}, {aufrufe} Aufrufe aus 1 Datei",
+    gesamtMehrere: "Gesamt: {minuten}, {aufrufe} Aufrufe aus {dateien} Dateien, im Mittel {mittel} je Datei",
+    gesamtNichtGemessen: " ({anzahl} nicht gemessen)",
+    // Fehler
+    nichtGeschrieben: "{pfad} konnte nicht geschrieben werden: {fehler}",
+    unbekanntesArgument: "Unbekanntes Argument: '{arg}'",
+    laeufeErwartet: "--laeufe erwartet eine ganze Zahl groesser null, bekam '{wert}'.",
+    befundOhneArgumente: "'befund' nimmt keine Argumente, bekam '{arg}'.",
+    auskunftOhneDatei: "'auskunft' erwartet mindestens eine Transkript-Datei (*.jsonl).",
+    unbekannterBefehl: "Unbekannter Befehl: '{befehl}'. Erwartet: auswerten, befund oder auskunft",
+    fehler: "Fehler",
+    unerwarteterFehler: "Unerwarteter Fehler",
+  },
+  en: {
+    hilfe: `aufwand.mjs (claude-workflow-kit v{version}) — Process effort
+
+  node aufwand.mjs auswerten [--laeufe <n>]
+  node aufwand.mjs befund
+  node aufwand.mjs auskunft <transcript…>
+
+auswerten  Reads the latest result states from {dir}/, aggregates time,
+           checks, scope, costs, the effort per task tier, the distribution
+           per run type and task tier (median, 90th percentile) and the time
+           for board queries per implementation unit (section Board queries) and writes
+           {dir}/{bericht} and
+           {dir}/{stand}. The output on stdout is always JSON —
+           also in the empty case and also for a rejected call.
+befund     Prints the findings block from {dir}/{stand} as text, with the
+           time of the evaluation as the first line. If there are no findings, or the
+           file is missing or unreadable, the output stays empty. Exit always 0 — the
+           findings are not a gate.
+auskunft   Measures Claude Code transcripts (*.jsonl) by the same rule as the
+           night runner: the span from the tool call to its result for every
+           query to the board and every processing of its answer. Prints minutes and
+           calls per file and in total. An unreadable file or one without
+           timestamps is reported and not counted as 0; then exit 1.
+
+  --laeufe <n>    How many states are included at most, the latest first
+                  (default {vorgabe}). Overrides the config block.
+  --version       Kit revision of this file.
+  --help, -h      This overview.
+
+Reads {dir}/{config} in the working directory, block 'workload':
+'runs' and 'thresholds' (checkShare, narrowingWithoutEffect, toolShare,
+writeCostShare). The block is optional; if it or a field in it is missing, the
+defaults apply.
+`,
+    tausender: ",",
+    dezimal: ".",
+    prozent: "{zahl} percent",
+    nichtGemessen: "not measured",
+    laufOhne: "without a single run",
+    laufEiner: "from a single run",
+    laufMehrere: "across {n} runs",
+    einheitEine: "1 unit",
+    einheitenMehrere: "{n} units",
+    configNichtLesbar: "not readable ({fehler})",
+    ohneNamen: "(unnamed)",
+    ohneLaufart: "no run type",
+    zeitartNachdenken: "Thinking",
+    zeitartWerkzeug: "Tools",
+    zeitartRest: "Rest",
+    nichtBestimmbar: "not determinable",
+    zeitartenNichtGemessen: "{namen} not measured",
+    nichtRegulaer: "not regularly completed ({abschluss})",
+    ohneAbschluss: "no completion",
+    ohneEinheit: "without a unit",
+    ohneZeiten: "without times per unit",
+    ohnePruefstand: "without a check state",
+    befundPruefung: "The check '{cmd}' takes {anteil} of the measured check time ({dauer} of {gesamt}, {anzahl} executions), measured {laeufe}.",
+    befundEingrenzung: "The narrowing of the checks took effect in none of the {anzahl} check states: In none was a check skipped because of an untouched area; the full selection ran every time.",
+    befundWerkzeug: "Tool work makes up {anteil} of the total time of the units that carry both times ({werkzeug} of {gesamt}), measured {laeufe}.",
+    befundSchreibkosten: "Write costs make up {anteil} of the computed total costs ({schreiben} of {gesamt}), measured {laeufe}.",
+    befundKopf: "Evaluation of {zeit} {laeufe} to {juengster}.",
+    berichtTitel: "# Process effort",
+    auswertungVom: "Evaluation of {zeit}.",
+    keinStand: "There is no result state — nothing to evaluate.",
+    einbezogen: "Included are {einbezogen} of {gefunden} result states (limit {grenze}), the latest from {juengster}. They carry {einheiten} work units.",
+    einzigerLauf: "The figures come from **a single run**. That is a snapshot, not a trend.",
+    wartendKeine: "No session waited for work it had started itself and was ended without a result.",
+    wartendEine: "One session waited for work it had started itself and was ended without a result ({laeufe}).",
+    wartendMehrere: "{anzahl} sessions waited for work they had started themselves and were ended without a result ({laeufe}).",
+    unvollTitel: "## Incomplete runs",
+    unvollErklaerung: "They enter with what they carry — discarded, the sums would look complete and be too small.",
+    unlesbarTitel: "## Unreadable states",
+    configHinweis: "Note on the configuration: {grund} — the defaults apply.",
+    dauerzeile: "The evaluation itself took {dauer} (not counting writing this file).",
+    zeitTitel: "## Time",
+    postenKopf: "| Item | Value | Basis |",
+    zeitGesamt: "Total session duration",
+    zeitNachdenken: "Thinking",
+    zeitWerkzeug: "Tool work",
+    zeitRest: "Rest (start, waiting, other)",
+    werkzeugBasis: "The tool share is formed over the units that carry both total duration and tool time: {werkzeug} of {gesamt} ({laeufe}).",
+    werkzeugOhneBeide: " {anzahl} units ({laeufe}) carry only one of the two times or none; they do not enter the share.",
+    nebenlaeufig: "For {anzahl} units ({laeufe}) the sum of thinking and tool work exceeds the total duration: both ran concurrently there. These units contribute no rest — a negative time would not be a number that means anything.",
+    pruefTitel: "## Checks",
+    keinPruefstand: "No check state in the included states.",
+    pruefKopf: "| Command | Executions | Duration | Duration measured in |",
+    pruefSumme: "Sum of the measured check time: {wert}.",
+    umfangTitel: "## Scope of the checks",
+    umfang: "Of {staende} check states ({laeufe}), {voll} ran in full scope, {eingegrenzt} narrowed and {unbekannt} without information on it. A state without information counts as unknown, never as narrowed.",
+    kostenTitel: "## Costs",
+    kostenKopf: "| Item | Amount | Basis |",
+    kostenLesen: "Read costs (input, cache creation, cache read)",
+    kostenSchreiben: "Write costs (output)",
+    kostenNichtZuordenbar: "Not attributable",
+    kostenGesamt: "Total",
+    preiseFehlen: "The price table `kit/preise.mjs` is not next to this file: The split of costs into reading and writing is omitted. The reported total remains; no rate is guessed.",
+    preiseStand: "Computed with the price table of {stand}.",
+    ohneTeilung: "For {einheiten} units, {tokens} tokens of cache creation came without a split by retention time. They were priced at the hourly rate — the more expensive one. To that extent the amount is an upper bound and not a measurement.",
+    ohneMengen: "For {einheiten} units there is not a single token amount. Their reported amount is listed under 'not attributable'; it is not split. A missing amount is not counted as 0 — otherwise the amount would vanish between the items.",
+    ohneModell: "no model given",
+    ohnePreissatz: "For {einheiten} units the price table knows no rate ({modelle}). Their reported amount is listed under 'not attributable'; it is not split.",
+    stufenTitel: "## By task tier",
+    stufenLeer: "No unit with a started session in the included states — there is nothing to compare.",
+    stufenKopf: "| Tier | Effort | Units | Duration | Costs | Red check states | Rework |",
+    ohneStufe: "no tier",
+    voreinstellung: "default",
+    nacharbeitErklaerung: "A unit counts as rework if its end status is not `in_review` or its check state was red. Only work packages with a started session are counted; units without a session (skipped, left lying, deferred) and the units of the chain stay out. The costs are the amounts reported per unit, not the computed split from the Costs section.",
+    stufenOhne: "Units without a task tier: model from the card or from the run, states before #711.",
+    zielTitel: "## Implementation target",
+    zielNichtGemessen: "Adherence to the target is not measured: No included state carries an implementation that could be held against a target.",
+    zielKeine: "No implementation could be held against a target.",
+    zielVersuche: "Of {versuche} measured implementations ({laeufe}), {ueber} of {versuche} are above the target. The overrun averages {mittel} and peaks at {max}; the mean is taken over the overruns, not over all attempts. Measured against {marken} — the target of each state comes from its own run header and not from today's configuration.",
+    zielOhneMarke: "{anzahl} implementations ({laeufe}) come from states without a target in the run header; they enter none of these figures. Applying today's default to them would mean measuring them against something that did not apply in their night.",
+    markenKeine: "no target",
+    markenEine: "{marke} minutes",
+    markenMehrere: "the targets {marken} minutes of the individual states",
+    zeitabbruchEine: "One implementation was ended at the time limit and stands apart: Its completion time is unknown; it enters no mean. Reporting an estimate as a measurement would be wrong.",
+    zeitabbruchMehrere: "{anzahl} implementations were ended at the time limit and stand apart: Their completion time is unknown; they enter no mean. Reporting an estimate as a measurement would be wrong.",
+    auskTitel: "## Board queries",
+    auskKopf: "| Run | Package | Query time | Calls |",
+    auskMittelLeer: "Mean over the implementation units: not measured.",
+    auskMittel: "Mean over {anzahl} implementation units: {wert} ({laeufe}).",
+    auskKeine: "no implementation: {einheiten}, query time {wert} — chain, creating cards, check runs; not in the mean.",
+    auskNichtGemessen: "not measured: {einheiten}{laeufe} — without a measurement or from states before #1026; they do not enter the mean as 0.",
+    auskRegel: "Counted is the span from the tool call to its result for every query to the board and every processing of its answer; thinking time does not count.",
+    vertTitel: "## Distribution",
+    vertLeer: "No unit in the included states — there is no distribution.",
+    vertLaufart: "### Run type {art}",
+    vertKopf: "| Tier | Units | Duration | Thinking | Tools | Rest | Check runs per package | Dominant time type | Time-limit aborts |",
+    vertWerte: "{median} / {p90} ({anzahl} values, {laeufe})",
+    vertAbbrueche: "{anteil} ({abbrueche} of {versuche}, {laeufe})",
+    vertErklaerung: "Each cell shows median / 90th percentile by nearest rank — every value is one actually measured. The duration is the runner's round duration, the rest the session duration minus thinking and tools. The dominant time type is the largest of the three medians. Check runs per package count work and completion; a unit without this information does not enter as 0. Time-limit aborts count per unit with a check state, as for the target. The chain stage (plan, review, packages, ...) is not recorded on the unit and therefore cannot be shown separately.",
+    befTitel: "## Findings",
+    befKeiner: "None of the four thresholds is exceeded.",
+    eingrenzungGeprueft: "checked",
+    eingrenzungAbgeschaltet: "switched off",
+    schwellenLauf: "Thresholds of this run: share of a single check {pruefung}, tool work {werkzeug}, write costs {schreiben}, narrowing without effect {eingrenzung}.",
+    nichtBestimmbarListe: "Not determinable for lack of measurements: {namen}. That is no evidence that nothing stands out there.",
+    schwellePruefungAnteil: "checkShare",
+    schwelleEingrenzungOhneWirkung: "narrowingWithoutEffect",
+    schwelleWerkzeugAnteil: "toolShare",
+    schwelleSchreibkostenAnteil: "writeCostShare",
+    auskNichtLesbar: "{pfad}: not readable ({fehler}) — not measured",
+    auskOhneZeit: "{pfad}: without timestamps — not measured",
+    auskDatei: "{pfad}: {minuten}, {aufrufe} calls",
+    auskOhneSpanne: " ({anzahl} of them without a measurable span)",
+    gesamtNicht: "Total: not measured",
+    gesamtEine: "Total: {minuten}, {aufrufe} calls from 1 file",
+    gesamtMehrere: "Total: {minuten}, {aufrufe} calls from {dateien} files, on average {mittel} per file",
+    gesamtNichtGemessen: " ({anzahl} not measured)",
+    nichtGeschrieben: "{pfad} could not be written: {fehler}",
+    unbekanntesArgument: "Unknown argument: '{arg}'",
+    laeufeErwartet: "--laeufe expects a whole number greater than zero, got '{wert}'.",
+    befundOhneArgumente: "'befund' takes no arguments, got '{arg}'.",
+    auskunftOhneDatei: "'auskunft' expects at least one transcript file (*.jsonl).",
+    unbekannterBefehl: "Unknown command: '{befehl}'. Expected: auswerten, befund or auskunft",
+    fehler: "Error",
+    unerwarteterFehler: "Unexpected error",
+  },
+};

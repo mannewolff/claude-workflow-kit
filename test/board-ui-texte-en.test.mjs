@@ -156,6 +156,7 @@ test("[1500] ein englisches Projekt sieht keine deutsche Meldung — echter Serv
   mkdirSync(kit, { recursive: true });
   copyFileSync(join(KIT, "board-ui.mjs"), join(kit, "board-ui.mjs"));
   cpSync(join(KIT, "board"), join(kit, "board"), { recursive: true });
+  cpSync(join(KIT, "texte"), join(kit, "texte"), { recursive: true });
   const port = await freierPort();
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({ language: "en", local: { uiPort: port } }));
   const issues = join(dir, "issues");
