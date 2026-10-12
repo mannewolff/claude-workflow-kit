@@ -375,7 +375,7 @@ export function pruefBericht(pruefungen, einheiten = [], zielMin = undefined) {
  * Schemas. Eine Marke, die sich wegkonfigurieren laesst, waere eine Messung, die genau
  * dort verschwindet, wo sie unangenehm wird.
  */
-// SYNC: dieselbe Vorgabe steht im Schema von kit/einstellungen.mjs (night.zielUmsetzungMin).
+// SYNC: dieselbe Vorgabe steht im Schema von kit/settings.mjs (night.zielUmsetzungMin).
 const ZIEL_UMSETZUNG_VORGABE_MIN = 10;
 
 export function zielUmsetzungMin(wert) {

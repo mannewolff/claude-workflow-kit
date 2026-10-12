@@ -1229,7 +1229,7 @@ export function vorbereiten(args) {
   // Wer drei Eintraege in seiner Config sieht, sucht bei einem blossen "ist leer" an der
   // falschen Stelle.
   //
-  // Dies ist der Halt, dem kit/einstellungen.mjs dieselbe Bedingung als WARNUNG vor dem
+  // Dies ist der Halt, dem kit/settings.mjs dieselbe Bedingung als WARNUNG vor dem
   // Speichern gegenueberstellt (Issue #949): Die Config bleibt speicherbar, nachts
   // implementiert wird auf ihr nicht.
   if (paketstufenChecks(ZUSTAND.config).length === 0 && !args.noChecksOk) {

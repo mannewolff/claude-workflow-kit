@@ -55,7 +55,7 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
   writeFileSync(join(dir, "skills", "beispiel", "SKILL.md"), "# Beispiel-Skill\n");
   // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
   writeFileSync(join(dir, "templates", "workflow.config.schema.json"), JSON.stringify({ properties: { codeHost: { type: "string" } } }) + "\n");
-  writeFileSync(join(dir, "kit", "einstellungen.mjs"),
+  writeFileSync(join(dir, "kit", "settings.mjs"),
     `const KIT_VERSION = "${kitVersion}";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\nconsole.log("einstellungen");\n`);
   // Seit Issue #1437: die Namenstabelle, die sync-blobs ebenfalls einbettet.
   mkdirSync(join(dir, "kit", "board"), { recursive: true });
@@ -252,12 +252,12 @@ test("Lokale Kopie: ohne .claude/kit/ laeuft sync-blobs durch und legt nichts an
 
 // --- Download-Datei: Stempel ohne Kopie, eingebettetes Schema (Issue #676) ---
 
-test("[installer-8] einstellungen.mjs wird gestempelt, aber nicht nach .claude/kit/ kopiert", () => {
+test("[installer-8] settings.mjs wird gestempelt, aber nicht nach .claude/kit/ kopiert", () => {
   const dir = setupFixture("2.5.0", "1.0.0", { lokaleKopie: true });
   try {
     assert.equal(syncBlobs(dir).status, 0);
-    assert.equal(stempel(dir, "einstellungen.mjs"), "2.5.0");
-    assert.equal(existsSync(join(dir, ".claude", "kit", "einstellungen.mjs")), false, "die Download-Datei gehoert in kein Projekt");
+    assert.equal(stempel(dir, "settings.mjs"), "2.5.0");
+    assert.equal(existsSync(join(dir, ".claude", "kit", "settings.mjs")), false, "die Download-Datei gehoert in kein Projekt");
     assert.equal(existsSync(join(dir, ".claude", "kit", "board.mjs")), true, "die uebrigen Kopien entstehen weiter");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -268,7 +268,7 @@ test("[installer-8] das Schema wird eingebettet, und --check meldet eine Abweich
   const dir = setupFixture("2.5.0", "1.0.0");
   try {
     assert.equal(syncBlobs(dir).status, 0);
-    const lies = () => readFileSync(join(dir, "kit", "einstellungen.mjs"), "utf-8").match(/const SCHEMA_B64 = "([^"]*)";/)[1];
+    const lies = () => readFileSync(join(dir, "kit", "settings.mjs"), "utf-8").match(/const SCHEMA_B64 = "([^"]*)";/)[1];
     const vorlage = readFileSync(join(dir, "templates", "workflow.config.schema.json"), "utf-8");
     assert.equal(Buffer.from(lies(), "base64").toString("utf-8"), vorlage);
     assert.equal(syncBlobs(dir, "--check").status, 0);
@@ -276,7 +276,7 @@ test("[installer-8] das Schema wird eingebettet, und --check meldet eine Abweich
     writeFileSync(join(dir, "templates", "workflow.config.schema.json"), JSON.stringify({ properties: {} }) + "\n");
     const res = syncBlobs(dir, "--check");
     assert.equal(res.status, 1);
-    assert.match(res.stderr, /einstellungen\.mjs/);
+    assert.match(res.stderr, /settings\.mjs/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

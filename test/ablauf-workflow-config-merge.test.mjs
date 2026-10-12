@@ -35,10 +35,10 @@ test("die Allowlist steht in board.mjs und night.mjs identisch", () => {
   assert.deepEqual(listeAus("night/grundlagen.mjs"), board);
   // Seit Issue #676 die dritte Kopie: die heruntergeladene Einstellungs-Oberflaeche hat
   // keine Nachbardatei, aus der sie importieren koennte.
-  assert.deepEqual(listeAus("einstellungen.mjs"), board);
+  assert.deepEqual(listeAus("settings.mjs"), board);
 });
 
-test("[einstellungen-3] REVIEWER_PAAR steht in board.mjs, night.mjs und einstellungen.mjs identisch", () => {
+test("[einstellungen-3] REVIEWER_PAAR steht in board.mjs, night.mjs und settings.mjs identisch", () => {
   const paarAus = (datei) => {
     const quelle = readFileSync(join(repoRoot, "kit", datei), "utf-8");
     const treffer = quelle.match(/const REVIEWER_PAAR = (\{[^}]*\});/);
@@ -46,7 +46,7 @@ test("[einstellungen-3] REVIEWER_PAAR steht in board.mjs, night.mjs und einstell
     return treffer[1].replaceAll(/\s+/g, "");
   };
   assert.equal(paarAus("night/grundlagen.mjs"), paarAus("board/grundlagen.mjs"));
-  assert.equal(paarAus("einstellungen.mjs"), paarAus("board/grundlagen.mjs"));
+  assert.equal(paarAus("settings.mjs"), paarAus("board/grundlagen.mjs"));
 });
 
 // --- Nacht-Runner ---

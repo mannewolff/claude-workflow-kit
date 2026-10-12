@@ -37,7 +37,7 @@ function fixture({ spiegel = true } = {}) {
   writeFileSync(join(dir, "kit", "board", "config-namen.mjs"), "export {};\n");
   writeFileSync(join(dir, "kit", "board", "namen.mjs"), "export {};\n");
   writeFileSync(join(dir, "tools", "config-referenz.en.json"), "{}\n");
-  writeFileSync(join(dir, "kit", "einstellungen.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
+  writeFileSync(join(dir, "kit", "settings.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
   writeFileSync(join(dir, "install.mjs"), ['const VERSION = "1.0.0";', ...KONSTANTEN.map((k) => `const ${k} = "";`), ""].join("\n"));
   if (spiegel) {
     for (const ordner of ["en/skills/fachplan", "en/templates", "en/agents", "en/kit/rollen"]) mkdirSync(join(dir, ordner), { recursive: true });

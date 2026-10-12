@@ -1,4 +1,4 @@
-// Der Vorschau-Endpunkt von kit/einstellungen.mjs (Issue #724, Plan #721 E1).
+// Der Vorschau-Endpunkt von kit/settings.mjs (Issue #724, Plan #721 E1).
 //
 // Die Oberflaeche soll ihre Pruefungen vor dem Speichern an der betroffenen Zeile zeigen
 // (Kriterium 3), den Fuss eines Teils mit den offenen Aenderungen fuellen (Kriterium 2) und
@@ -19,7 +19,7 @@ import { appendFileSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { abgeleitet, aenderungsliste, projektZustand, ROLLEN_KATALOG, speichere, vorgabeAus, vorschau, waehleReviewer } from "../kit/einstellungen.mjs";
+import { abgeleitet, aenderungsliste, projektZustand, ROLLEN_KATALOG, speichere, vorgabeAus, vorschau, waehleReviewer } from "../kit/settings.mjs";
 import { projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const ECHT = JSON.parse(readFileSync(new URL("../.claude/workflow.config.json", import.meta.url), "utf-8"));

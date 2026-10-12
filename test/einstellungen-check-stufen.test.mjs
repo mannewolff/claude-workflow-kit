@@ -23,7 +23,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { pruefe, zusatzregeln, checkSetzen } from "../kit/einstellungen.mjs";
+import { pruefe, zusatzregeln, checkSetzen } from "../kit/settings.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 

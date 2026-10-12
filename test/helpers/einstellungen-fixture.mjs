@@ -7,7 +7,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { starteServer } from "../../kit/einstellungen.mjs";
+import { starteServer } from "../../kit/settings.mjs";
 
 export const TEAM = { codeHost: "local", issueTracker: "local", reviewModel: "claude-opus-5", buildChecks: ["node --test"], mainBranch: "main" };
 

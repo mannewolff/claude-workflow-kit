@@ -14,7 +14,7 @@
  * Schreibweise der Pfade: deutsche Namen, durch Punkte getrennt; ein Listeneintrag ist `[]`.
  *
  * Dieses Modul importiert nur Node-Bordmittel, damit tools/sync-blobs.mjs es in
- * kit/einstellungen.mjs einbetten kann (E10).
+ * kit/settings.mjs einbetten kann (E10).
  *
  * QUELLE DER WAHRHEIT: Diese Datei wird im Kit-Repo (claude-workflow-kit) gepflegt.
  * Aenderungen ausschliesslich hier vornehmen, danach `node tools/sync-blobs.mjs`.

@@ -5,14 +5,14 @@
 // deshalb ein Konfigurationsfehler und wird nicht stillschweigend ignoriert.
 //
 // Geprüft wird auf beiden Ebenen: Das Schema weist die Form ab (über den
-// Mini-Validator, gefahren gegen das in kit/einstellungen.mjs eingebettete Schema —
+// Mini-Validator, gefahren gegen das in kit/settings.mjs eingebettete Schema —
 // so fällt zugleich auf, wenn tools/sync-blobs.mjs nicht lief), die Zusatzregel
 // benennt das Feld mit seinem Pfad.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { pruefe, zusatzregeln, SCHEMA } from "../kit/einstellungen.mjs";
+import { pruefe, zusatzregeln, SCHEMA } from "../kit/settings.mjs";
 import { pruefe as pruefeMini } from "./helpers/mini-validator.mjs";
 
 const fehler = (befunde) => befunde.filter((b) => b.art === "fehler");

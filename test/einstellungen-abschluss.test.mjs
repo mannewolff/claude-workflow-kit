@@ -22,7 +22,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { TEXTE, pruefe, projektZustand, vorschau, zusatzregeln, checkSetzen } from "../kit/einstellungen.mjs";
+import { TEXTE, pruefe, projektZustand, vorschau, zusatzregeln, checkSetzen } from "../kit/settings.mjs";
 import { projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const fehler = (befunde) => befunde.filter((b) => b.art === "fehler");

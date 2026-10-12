@@ -44,7 +44,7 @@ test("[931] einstellungen-teile laedt die echte Projektkonfiguration", () => {
     quellen.includes(".claude/workflow.config.json"),
     `erwartet: .claude/workflow.config.json — erhoben: ${quellen.join(", ")}`,
   );
-  assert.ok(quellen.includes("kit/einstellungen.mjs"), "der direkte Import fehlt");
+  assert.ok(quellen.includes("kit/settings.mjs"), "der direkte Import fehlt");
 });
 
 test("[931] die board-Tests laden kit/board.mjs oder einen seiner Teile", () => {

@@ -17,7 +17,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Script } from "node:vm";
 
-import { aenderungsliste, bereichsFolgen, checkSetzen, GRUPPEN_AUSNAHMEN, gruppenZeilen, gruppeSetzen, LAUFARTEN, paarungsFolgen, persoenlichErlaubt, ROLLEN_KATALOG, SCHEMA, schluesselUmbenennen, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE, TEXTE, THEMEN, vorgabeAus } from "../kit/einstellungen.mjs";
+import { aenderungsliste, bereichsFolgen, checkSetzen, GRUPPEN_AUSNAHMEN, gruppenZeilen, gruppeSetzen, LAUFARTEN, paarungsFolgen, persoenlichErlaubt, ROLLEN_KATALOG, SCHEMA, schluesselUmbenennen, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE, TEXTE, THEMEN, vorgabeAus } from "../kit/settings.mjs";
 import { mitServer, projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -91,8 +91,8 @@ test("[einstellungen-7] die Antwort traegt eine Content-Security-Policy ohne fre
   assert.doesNotMatch(csp, /https?:|\*/);
 });
 
-test("[einstellungen-7] kit/einstellungen.mjs bleibt unter 1.500.000 Byte", () => {
-  assert.ok(statSync(join(repoRoot, "kit", "einstellungen.mjs")).size < 1_500_000);
+test("[einstellungen-7] kit/settings.mjs bleibt unter 1.500.000 Byte", () => {
+  assert.ok(statSync(join(repoRoot, "kit", "settings.mjs")).size < 1_500_000);
 });
 
 // ------------------------------------------------------------

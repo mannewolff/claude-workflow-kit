@@ -636,7 +636,7 @@ test("validationRules fuehrt fuer issueTracker dieselben Werte wie das enum", ()
 // --- Die Anteilsschwellen der Aufwands-Auswertung (Issue #824) ----------------
 //
 // Sie sind Anteile zwischen 0 und 1. Ohne Grenzen am Feld bestand `pruefungAnteil: 80`
-// das Schema, und nur eine Zusatzregel in kit/einstellungen.mjs wies den Wert ab — wer
+// das Schema, und nur eine Zusatzregel in kit/settings.mjs wies den Wert ab — wer
 // die Config von Hand gegen das Schema prueft, bekam ihn durch.
 
 const ANTEIL_FELDER = ["pruefungAnteil", "werkzeugAnteil", "schreibkostenAnteil"];

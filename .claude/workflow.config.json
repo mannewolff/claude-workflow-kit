@@ -794,7 +794,7 @@
       "test/helpers/zeilenenden.mjs"
     ],
     "einstellungen": [
-      "kit/einstellungen.mjs",
+      "kit/settings.mjs",
       "tools/config-referenz.mjs",
       "tools/config-referenz.en.json",
       "templates/workflow.config.json",
@@ -814,7 +814,6 @@
     "sync": [
       "tools/sync-blobs.mjs",
       "tools/version.mjs",
-      "kit/settings.mjs",
       "test/sync-*.test.mjs",
       "test/kit-*.test.mjs",
       "test/ablauf-sync-*.test.mjs",

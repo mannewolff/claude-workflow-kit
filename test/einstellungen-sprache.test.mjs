@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
-const QUELLE = fileURLToPath(new URL("../kit/einstellungen.mjs", import.meta.url));
+const QUELLE = fileURLToPath(new URL("../kit/settings.mjs", import.meta.url));
 
 /** Startet die kopierte Oberflaeche ueber einem Projekt mit `team` und liefert dessen Zustand und die Seite. */
 async function zustandMit(team) {
@@ -23,9 +23,9 @@ async function zustandMit(team) {
   const ordner = join(wurzel, "projekte");
   mkdirSync(kit);
   mkdirSync(join(ordner, "alpha", ".claude"), { recursive: true });
-  copyFileSync(QUELLE, join(kit, "einstellungen.mjs"));
+  copyFileSync(QUELLE, join(kit, "settings.mjs"));
   writeFileSync(join(ordner, "alpha", ".claude", "workflow.config.json"), `${JSON.stringify(team, null, 2)}\n`);
-  const kind = spawn(process.execPath, [join(kit, "einstellungen.mjs"), ordner, "--port", "0"], { cwd: wurzel, env: { ...process.env, HOME: wurzel } });
+  const kind = spawn(process.execPath, [join(kit, "settings.mjs"), ordner, "--port", "0"], { cwd: wurzel, env: { ...process.env, HOME: wurzel } });
   try {
     const url = await new Promise((fertig, fehler) => {
       let text = "";

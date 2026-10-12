@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { pruefe, TEILE } from "../kit/einstellungen.mjs";
+import { pruefe, TEILE } from "../kit/settings.mjs";
 import { mitServer, projekt, TEAM } from "./helpers/einstellungen-fixture.mjs";
 import { oberflaecheStarten } from "./helpers/oberflaeche-vm.mjs";
 

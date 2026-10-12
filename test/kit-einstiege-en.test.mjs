@@ -46,26 +46,31 @@ function leeresProjekt(praefix) {
   return dir;
 }
 
-// --- Einstiegsdateien ----------------------------------------------------------
+// --- settings.mjs ----------------------------------------------------------------
 
-const EINSTIEGE = [
-  ["settings.mjs", "einstellungen.mjs", [["--version"], ["--help"]]],
-];
+// Der Code der Einstellungs-Oberflaeche steht seit Issue #1563 (Plan #1548 E6) in
+// kit/settings.mjs; die deutsche Datei entfaellt ohne Weiterleitung. Die Oberflaeche kennt
+// keine deutschen Befehls- oder Optionsnamen, die abzuweisen waeren: --port, --version und
+// --help waren schon englisch.
+test("settings.mjs: kit/einstellungen.mjs gibt es nicht mehr", () => {
+  assert.equal(existsSync(join(KIT, "einstellungen.mjs")), false);
+});
 
-for (const [einstieg, quelle, aufrufe] of EINSTIEGE) {
-  test(`kit/${einstieg} liefert dieselbe Ausgabe und denselben Exitcode wie kit/${quelle}`, () => {
-    const dir = leeresProjekt("einstieg-en-");
-    try {
-      for (const args of aufrufe) {
-        const soll = knoten(quelle, args, { cwd: dir });
-        const ist = knoten(einstieg, args, { cwd: dir });
-        assert.deepEqual(ist, soll, `${einstieg} ${args.join(" ")}`);
-      }
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-}
+test("settings.mjs: --version und die Hilfe nennen settings.mjs, die Hilfe ist englisch, auch in einem deutschen Projekt", () => {
+  const dir = leeresProjekt("settings-en-");
+  try {
+    const version = knoten("settings.mjs", ["--version"], { cwd: dir, env: { ...process.env, HOME: dir } });
+    assert.equal(version.status, 0, version.stderr);
+    assert.match(version.stdout, /^settings\.mjs \(claude-workflow-kit v\d+\.\d+\.\d+\)\n$/);
+    const hilfe = knoten("settings.mjs", ["--help"], { cwd: dir, env: { ...process.env, HOME: dir } });
+    assert.equal(hilfe.status, 0, hilfe.stderr);
+    assert.match(hilfe.stdout, /^settings\.mjs — maintain the settings of the claude-workflow-kit$/m);
+    assert.match(hilfe.stdout, /node settings\.mjs \[folder\] \[--port <n>\]/);
+    assert.doesNotMatch(hilfe.stdout, /einstellungen\.mjs|Nutzung|Oberfläche/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 // --- checks.mjs ------------------------------------------------------------------
 

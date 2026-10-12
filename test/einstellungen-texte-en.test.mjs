@@ -1,6 +1,6 @@
 // Die Einstellungsoberflaeche spricht die Sprache des Projekts (Issue #1456, Plan #1420 E13, E14).
 //
-// Jede Ausgabe an den Menschen steht in der Texttabelle TEXTE { de, en } von kit/einstellungen.mjs
+// Jede Ausgabe an den Menschen steht in der Texttabelle TEXTE { de, en } von kit/settings.mjs
 // und geht ueber den Texthelfer aus kit/board/namen.mjs, den tools/sync-blobs.mjs einbettet. Die
 // Befunde, Saetze und Hinweise des Servers stehen in der Sprache des jeweiligen Projekts, die
 // Seite stellt Texte und lang-Attribut mit dem geoeffneten Projekt um, und die Kommandozeile
@@ -16,12 +16,12 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
-import { LAUFARTEN, TEILE, TEXTE, THEMEN, aenderungsliste, projektZustand, pruefeSchema, speichere, vorschau } from "../kit/einstellungen.mjs";
+import { LAUFARTEN, TEILE, TEXTE, THEMEN, aenderungsliste, projektZustand, pruefeSchema, speichere, vorschau } from "../kit/settings.mjs";
 import { pruefeParitaet } from "../kit/board/namen.mjs";
 import { mitServer, projekt } from "./helpers/einstellungen-fixture.mjs";
 import { oberflaecheStarten } from "./helpers/oberflaeche-vm.mjs";
 
-const QUELLE = fileURLToPath(new URL("../kit/einstellungen.mjs", import.meta.url));
+const QUELLE = fileURLToPath(new URL("../kit/settings.mjs", import.meta.url));
 
 /** Ein Projekt mit Befunden: ein unbekannter Bereich, ein Reviewer ohne Modell, keine Kit-Datei. */
 const ENGLISCH = {
@@ -157,7 +157,7 @@ async function wegwerf(team, fn) {
   const dir = mkdtempSync(join(tmpdir(), "einstellungen-allein-"));
   try {
     mkdirSync(join(dir, ".claude"));
-    copyFileSync(QUELLE, join(dir, "einstellungen.mjs"));
+    copyFileSync(QUELLE, join(dir, "settings.mjs"));
     writeFileSync(join(dir, ".claude", "workflow.config.json"), `${JSON.stringify(team, null, 2)}\n`);
     return await fn(dir);
   } finally {
@@ -167,14 +167,14 @@ async function wegwerf(team, fn) {
 
 test("[1456-8] allein gestartet spricht die Datei in einem englischen Projekt nur Englisch", async () => {
   await wegwerf(ENGLISCH, async (dir) => {
-    const hilfe = spawnSync(process.execPath, ["einstellungen.mjs", "--help"], { cwd: dir, encoding: "utf-8", env: { ...process.env, HOME: dir } });
+    const hilfe = spawnSync(process.execPath, ["settings.mjs", "--help"], { cwd: dir, encoding: "utf-8", env: { ...process.env, HOME: dir } });
     assert.equal(hilfe.status, 0, hilfe.stderr);
-    assert.match(hilfe.stdout, /^einstellungen\.mjs — maintain the settings of the claude-workflow-kit/);
+    assert.match(hilfe.stdout, /^settings\.mjs — maintain the settings of the claude-workflow-kit/);
     assert.doesNotMatch(hilfe.stdout, UMLAUTE);
-    const fehler = spawnSync(process.execPath, ["einstellungen.mjs", "--port", "x"], { cwd: dir, encoding: "utf-8", env: { ...process.env, HOME: dir } });
+    const fehler = spawnSync(process.execPath, ["settings.mjs", "--port", "x"], { cwd: dir, encoding: "utf-8", env: { ...process.env, HOME: dir } });
     assert.equal(fehler.stderr, "Error: --port needs a number between 0 and 65535\n");
 
-    const kind = spawn(process.execPath, ["einstellungen.mjs", "--port", "0"], { cwd: dir, env: { ...process.env, HOME: dir } });
+    const kind = spawn(process.execPath, ["settings.mjs", "--port", "0"], { cwd: dir, env: { ...process.env, HOME: dir } });
     try {
       const ausgabe = await new Promise((fertig, abbruch) => {
         let text = "";

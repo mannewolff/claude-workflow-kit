@@ -1,4 +1,4 @@
-// Der Schreiber von kit/einstellungen.mjs (Issue #676, Plan #674 E7).
+// Der Schreiber von kit/settings.mjs (Issue #676, Plan #674 E7).
 //
 // Wer nach dem Speichern `git diff` liest, soll nur die geänderten Werte sehen — keine
 // umsortierte oder neu formatierte Datei (Fachplan #671).
@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { schreibeJson } from "../kit/einstellungen.mjs";
+import { schreibeJson } from "../kit/settings.mjs";
 
 const ZWEI = `{
   "codeHost": "github",

@@ -19,7 +19,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { bereichsFolgen, checkForm, checkSetzen, paarungsFolgen, projektZustand, schluesselUmbenennen, speichere, vorschau, zusatzregeln } from "../kit/einstellungen.mjs";
+import { bereichsFolgen, checkForm, checkSetzen, paarungsFolgen, projektZustand, schluesselUmbenennen, speichere, vorschau, zusatzregeln } from "../kit/settings.mjs";
 import { projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const ECHT = JSON.parse(readFileSync(new URL("../.claude/workflow.config.json", import.meta.url), "utf-8"));

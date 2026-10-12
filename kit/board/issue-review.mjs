@@ -59,7 +59,7 @@ const REVIEW_STUFEN = ["fachlich", "plan", "issue"];
 // ein Reviewer je Rolle (Plan #1375, E5). Jede Rolle braucht ihren Wortlaut unter
 // kit/rollen/ — eine Vorgaberolle ohne Datei liesse jeden Pruefer eines Projekts ohne
 // `reviewStufen` ausfallen. Die Stufe issue hat nur eine Rolle und darum einen Pruefer.
-// SYNC: STUFEN_VORGABE in kit/einstellungen.mjs
+// SYNC: STUFEN_VORGABE in kit/settings.mjs
 const REVIEW_STUFEN_DEFAULT = {
   fachlich: { reviewer: 2, rollen: ["form-beobachtbarkeit", "abgrenzung"] },
   plan: { reviewer: 2, rollen: ["architektur-bestand", "schnitt-abhaengigkeiten"] },
@@ -67,9 +67,9 @@ const REVIEW_STUFEN_DEFAULT = {
 };
 
 // Die Rollen der Stufe plan, aus denen eine vom Lauf erhoehte Pruefzahl aufgefuellt wird
-// (Issue #1245). Abgeschrieben statt importiert: kit/einstellungen.mjs ist ein Download
+// (Issue #1245). Abgeschrieben statt importiert: kit/settings.mjs ist ein Download
 // und wird nicht nach .claude/kit/ gespiegelt (Plan #1243, Review-Fund 1).
-// SYNC: ROLLEN_KATALOG.plan in kit/einstellungen.mjs
+// SYNC: ROLLEN_KATALOG.plan in kit/settings.mjs
 const PLAN_ROLLEN = ["architektur-bestand", "schnitt-abhaengigkeiten"];
 
 /**
@@ -111,7 +111,7 @@ function aufloesenAutor(alle, autor) {
  * erkannten Autor — ein Aufrufer ohne Menschen davor soll das sehen koennen.
 
  */
-// SYNC: dieselbe Wahl bildet kit/einstellungen.mjs (waehleReviewer) fuer die Oberflaeche nach.
+// SYNC: dieselbe Wahl bildet kit/settings.mjs (waehleReviewer) fuer die Oberflaeche nach.
 export function pickReviewers(alle, autor, anzahl = 2, pairs = {}) {
   const aufgeloest = aufloesenAutor(alle, autor);
   const schluessel = aufgeloest ?? autor;
@@ -140,7 +140,7 @@ export function pickReviewers(alle, autor, anzahl = 2, pairs = {}) {
 // Ein stiller Skip verwandelt einen Tippfehler in einen unsichtbaren Ein-Reviewer-Lauf.
 // Und ein Autor, der sich selbst nennt, hebelt den Zweck des Verfahrens aus — das
 // gehoert beim Schreiben der Config bemerkt, nicht beim Lesen des Review-Berichts.
-// SYNC: dieselbe Regel prueft kit/einstellungen.mjs (regelPaare) vor dem Speichern.
+// SYNC: dieselbe Regel prueft kit/settings.mjs (regelPaare) vor dem Speichern.
 function validatePairs(pairs, reviewers) {
   const bekannt = new Set(reviewers.map((r) => r.name));
   for (const [autor, genannt] of Object.entries(pairs || {})) {
@@ -183,7 +183,7 @@ function validateReviewers(reviewers) {
  * vergessene Stufe auch still ergaenzt, liesse sie sich von einer bewussten
  * Rueckfallebene nicht unterscheiden.
  */
-// SYNC: die Regel rollen.length === reviewer prueft kit/einstellungen.mjs (regelRollenzahl) vor dem Speichern.
+// SYNC: die Regel rollen.length === reviewer prueft kit/settings.mjs (regelRollenzahl) vor dem Speichern.
 function validateReviewStufen(block) {
   if (block === undefined || block === null) {
     return { stufen: Object.fromEntries(REVIEW_STUFEN.map((s) => [s, REVIEW_STUFEN_DEFAULT[s]])), stufenQuelle: "default" };

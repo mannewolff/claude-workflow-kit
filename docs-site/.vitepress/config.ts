@@ -11,7 +11,7 @@ const srcExclude = sprachen.englischAktiv ? [] : ["en/**", "glossar.md"];
 const DOWNLOAD = {
   installer: "https://docs.mwolff.org/install.mjs",
   boardUi: "https://docs.mwolff.org/board-ui.mjs",
-  einstellungen: "https://docs.mwolff.org/einstellungen.mjs",
+  einstellungen: "https://docs.mwolff.org/settings.mjs",
 };
 
 // Bedientexte je Sprache (Plan #1348, E13). Die deutsche Wurzel zeigte bis dahin die

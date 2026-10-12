@@ -1203,7 +1203,7 @@ function normalisiere(check) {
  * nicht zu pruefen: Das Schema schliesst beide aus (minItems 1, not). Was das
  * Schema verhindert, muss die Laufzeit nicht erklaeren (Issue #422).
  */
-// SYNC: dieselbe Regel prueft kit/einstellungen.mjs (regelBereiche) vor dem Speichern.
+// SYNC: dieselbe Regel prueft kit/settings.mjs (regelBereiche) vor dem Speichern.
 function pruefeBereichsnamen(checks, checkAreas) {
   const bekannt = new Set(Object.keys(checkAreas));
   for (const check of checks) {
@@ -1223,7 +1223,7 @@ function pruefeBereichsnamen(checks, checkAreas) {
  * nicht: Es sind Aussagen ueber die Liste bzw. ueber zwei Felder zusammen.
  * Derselbe Weg wie beim unbekannten Bereichsnamen: Abbruch statt stiller Wahl.
  */
-// SYNC: dieselbe Regel prueft kit/einstellungen.mjs vor dem Speichern (Issue #764).
+// SYNC: dieselbe Regel prueft kit/settings.mjs vor dem Speichern (Issue #764).
 function pruefeGuete(checks) {
   const traeger = checks.filter((check) => check.guete);
   if (traeger.length > 1) {
@@ -1247,7 +1247,7 @@ function pruefeGuete(checks) {
  * Diese Regel gilt UNBEDINGT, weil sie eine Aussage ueber die Config selbst ist — anders
  * als `pruefeAbschlussGate`, das eine Aussage ueber den Abschlusslauf trifft.
  */
-// SYNC: dieselbe Regel prueft kit/einstellungen.mjs vor dem Speichern (Issue #949).
+// SYNC: dieselbe Regel prueft kit/settings.mjs vor dem Speichern (Issue #949).
 function pruefeNichtBeimAbschlussStufe(checks) {
   for (const check of checks) {
     if (!check.nichtBeimAbschluss) continue;
@@ -1266,7 +1266,7 @@ function pruefeNichtBeimAbschlussStufe(checks) {
  * den Eintrag aus. Derselbe Weg wie bei `pruefeNichtBeimAbschlussStufe`: Abbruch statt
  * stiller Wirkungslosigkeit, unbedingt, weil es eine Aussage ueber die Config ist.
  */
-// SYNC: dieselbe Regel prueft kit/einstellungen.mjs vor dem Speichern (regelAbschlussBereiche, Issue #1532).
+// SYNC: dieselbe Regel prueft kit/settings.mjs vor dem Speichern (regelAbschlussBereiche, Issue #1532).
 function pruefeAbschlussBereiche(checks, checkAreas) {
   const bekannt = new Set(Object.keys(checkAreas));
   for (const check of checks) {
@@ -1305,7 +1305,7 @@ function pruefeAbschlussBereich(check, name, bekannt) {
  * die neue Achse aendert daran nichts, und der Zustand hat seine eigene Meldung im
  * Start-Guard des Nacht-Runners.
  */
-// SYNC: als Warnung vor dem Speichern in kit/einstellungen.mjs (Issue #949), als Halt im
+// SYNC: als Warnung vor dem Speichern in kit/settings.mjs (Issue #949), als Halt im
 // Start-Guard von kit/night.mjs (Issue #950).
 function pruefeAbschlussGate(checks) {
   const paketstufe = checks.filter((check) => check.stufe === STUFEN[0]);

@@ -16,13 +16,13 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
-import { aenderungsliste, anzeigePfad, projektZustand, speichere, vorschau, SCHEMA, SEITEN_BAUSTEINE } from "../kit/einstellungen.mjs";
+import { aenderungsliste, anzeigePfad, projektZustand, speichere, vorschau, SCHEMA, SEITEN_BAUSTEINE } from "../kit/settings.mjs";
 import { benenneWieVorlage, normalisiereConfig, SCHLUESSEL } from "../kit/board/config-namen.mjs";
 import { projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const REFERENZ = join(repoRoot, "tools", "config-referenz.en.json");
-const EINSTELLUNGEN = join(repoRoot, "kit", "einstellungen.mjs");
+const EINSTELLUNGEN = join(repoRoot, "kit", "settings.mjs");
 const TEXTE = JSON.parse(readFileSync(REFERENZ, "utf-8"));
 
 /** Ein Wegwerf-Projekt mit `team`; `fn` bekommt Projekt, Optionen und Pfad. */
@@ -193,7 +193,7 @@ function fixture() {
   writeFileSync(join(dir, "kit", "board", "config-namen.mjs"), "export {};\n");
   writeFileSync(join(dir, "kit", "board", "namen.mjs"), "export {};\n");
   copyFileSync(REFERENZ, join(dir, "tools", "config-referenz.en.json"));
-  writeFileSync(join(dir, "kit", "einstellungen.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
+  writeFileSync(join(dir, "kit", "settings.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
   writeFileSync(join(dir, "install.mjs"), ['const VERSION = "1.0.0";', ...KONSTANTEN.map((k) => `const ${k} = "";`), ""].join("\n"));
   return dir;
 }
@@ -206,13 +206,13 @@ test("[1441-7] sync-blobs bettet die englische Referenz ein, und --check wird ro
   const dir = fixture();
   try {
     assert.equal(syncBlobs(dir).status, 0);
-    assert.equal(Buffer.from(eingebettet(join(dir, "kit", "einstellungen.mjs")), "base64").toString("utf-8"), readFileSync(REFERENZ, "utf-8"));
+    assert.equal(Buffer.from(eingebettet(join(dir, "kit", "settings.mjs")), "base64").toString("utf-8"), readFileSync(REFERENZ, "utf-8"));
     assert.equal(syncBlobs(dir, "--check").status, 0);
     const quelle = join(dir, "tools", "config-referenz.en.json");
     writeFileSync(quelle, readFileSync(quelle, "utf-8").replace("Language of the kit", "Language of this kit"));
     const res = syncBlobs(dir, "--check");
     assert.equal(res.status, 1);
-    assert.match(res.stderr, /einstellungen\.mjs.*tools\/config-referenz\.en\.json/);
+    assert.match(res.stderr, /settings\.mjs.*tools\/config-referenz\.en\.json/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

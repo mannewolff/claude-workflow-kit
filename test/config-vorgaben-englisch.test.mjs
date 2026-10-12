@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { LABELS } from "../kit/board/namen.mjs";
 import { ladeKetteBudget, ladePruefLaufBudget } from "../kit/night/session.mjs";
-import { vorgabeAus } from "../kit/einstellungen.mjs";
+import { vorgabeAus } from "../kit/settings.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
 const lies = (pfad) => readFileSync(join(ROOT, pfad), "utf-8");

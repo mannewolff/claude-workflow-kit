@@ -8,7 +8,7 @@
 
 import { runInNewContext } from "node:vm";
 
-import { SEITEN_BAUSTEINE } from "../../kit/einstellungen.mjs";
+import { SEITEN_BAUSTEINE } from "../../kit/settings.mjs";
 
 class TextKnoten {
   constructor(text) { this.text = String(text); }

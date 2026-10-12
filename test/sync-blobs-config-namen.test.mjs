@@ -1,6 +1,6 @@
-// Die Namenstabelle der Einstellungen in kit/einstellungen.mjs (Issue #1437, Plan #1420 E10).
+// Die Namenstabelle der Einstellungen in kit/settings.mjs (Issue #1437, Plan #1420 E10).
 //
-// kit/einstellungen.mjs wird allein verteilt und kann kit/board/config-namen.mjs nicht
+// kit/settings.mjs wird allein verteilt und kann kit/board/config-namen.mjs nicht
 // importieren. tools/sync-blobs.mjs bettet die Tabelle darum ein wie das Schema, und `--check`
 // wird rot, sobald die eingebettete Fassung von der Quelle abweicht — eine Kopie von Hand gibt
 // es nicht. Die Oberflaeche bringt Config und persoenliche Datei vor dem Mischen auf dieselben
@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const SYNC = join(repoRoot, "tools", "sync-blobs.mjs");
-const EINSTELLUNGEN = join(repoRoot, "kit", "einstellungen.mjs");
+const EINSTELLUNGEN = join(repoRoot, "kit", "settings.mjs");
 const CONFIG_NAMEN = join(repoRoot, "kit", "board", "config-namen.mjs");
 
 const KONSTANTEN = ["CONFIG_EXAMPLE_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "PREISE_MJS_B64", "WORKTREE_MJS_B64", "FINDINGS_MJS_B64", "EFFORT_MJS_B64", "EFFECTIVENESS_MJS_B64", "KIT_NIGHT_B64", "KIT_BOARD_B64", "KIT_ROLLEN_B64", "KIT_TEXTE_B64", "GATE_MJS_B64", "PRE_COMMIT_B64", "SKILLS_B64", "AGENTS_B64", "SKILLS_EN_B64", "TEMPLATES_EN_B64", "AGENTS_EN_B64", "KIT_ROLLEN_EN_B64"];
@@ -38,7 +38,7 @@ function fixture() {
   copyFileSync(CONFIG_NAMEN, join(dir, "kit", "board", "config-namen.mjs"));
   writeFileSync(join(dir, "kit", "board", "namen.mjs"), "export {};\n");
   writeFileSync(join(dir, "tools", "config-referenz.en.json"), "{}\n");
-  writeFileSync(join(dir, "kit", "einstellungen.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
+  writeFileSync(join(dir, "kit", "settings.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
   writeFileSync(join(dir, "install.mjs"), ['const VERSION = "1.0.0";', ...KONSTANTEN.map((k) => `const ${k} = "";`), ""].join("\n"));
   return dir;
 }
@@ -49,12 +49,12 @@ function syncBlobs(dir, ...args) {
 
 const eingebettet = (pfad) => readFileSync(pfad, "utf-8").match(/const CONFIG_NAMEN_B64 = "([^"]*)";/)?.[1];
 
-test("[1437-1] sync-blobs schreibt die Namenstabelle in kit/einstellungen.mjs", () => {
+test("[1437-1] sync-blobs schreibt die Namenstabelle in kit/settings.mjs", () => {
   const dir = fixture();
   try {
     const res = syncBlobs(dir);
     assert.equal(res.status, 0, res.stderr);
-    const b64 = eingebettet(join(dir, "kit", "einstellungen.mjs"));
+    const b64 = eingebettet(join(dir, "kit", "settings.mjs"));
     assert.equal(Buffer.from(b64, "base64").toString("utf-8"), readFileSync(CONFIG_NAMEN, "utf-8"));
     assert.equal(syncBlobs(dir, "--check").status, 0);
   } finally {
@@ -70,7 +70,7 @@ test("[1437-2] --check wird rot, wenn die eingebettete Tabelle von kit/board/con
     writeFileSync(quelle, `${readFileSync(quelle, "utf-8")}\n// geaendert\n`);
     const res = syncBlobs(dir, "--check");
     assert.equal(res.status, 1);
-    assert.match(res.stderr, /einstellungen\.mjs.*kit\/board\/config-namen\.mjs/);
+    assert.match(res.stderr, /settings\.mjs.*kit\/board\/config-namen\.mjs/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -85,12 +85,12 @@ function mischeAllein(team, lokal) {
   const wurzel = mkdtempSync(join(tmpdir(), "einstellungen-allein-"));
   try {
     mkdirSync(join(wurzel, ".claude"));
-    copyFileSync(EINSTELLUNGEN, join(wurzel, "einstellungen.mjs"));
+    copyFileSync(EINSTELLUNGEN, join(wurzel, "settings.mjs"));
     writeFileSync(join(wurzel, ".claude", "workflow.config.json"), JSON.stringify(team));
     writeFileSync(join(wurzel, ".claude", "workflow.config.local.json"), JSON.stringify(lokal));
     const skript = [
       'import { readFileSync } from "node:fs";',
-      'import { mergeWorkflowConfig } from "./einstellungen.mjs";',
+      'import { mergeWorkflowConfig } from "./settings.mjs";',
       'const lies = (d) => JSON.parse(readFileSync(d, "utf-8"));',
       'const { config } = mergeWorkflowConfig(lies(".claude/workflow.config.json"), lies(".claude/workflow.config.local.json"));',
       "process.stdout.write(JSON.stringify(config));",

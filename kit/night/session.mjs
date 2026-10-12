@@ -2053,7 +2053,7 @@ function checkEnv() {
  *     durch, in der sie keines hat.
  */
 // SYNC: derselbe Default steht in kit/checks.mjs (normalisiere) und wird in
-// kit/einstellungen.mjs geprueft. Dieselbe Auslassung trifft kit/checks.mjs
+// kit/settings.mjs geprueft. Dieselbe Auslassung trifft kit/checks.mjs
 // (`verteilen` im Abschlusslauf) und dieselbe Bedingung `pruefeAbschlussGate`.
 export function paketstufenChecks(cfg) {
   return (cfg.buildChecks || []).filter((eintrag) => {

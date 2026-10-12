@@ -1177,7 +1177,7 @@ export function lastCommitHash(cwd = process.cwd(), { spawn = spawnSync } = {}) 
 
 // --- Config mit persoenlichen Overrides (Issue #207) ---
 
-// SYNC: Allowlist und Merge-Logik stehen identisch in kit/board/grundlagen.mjs und kit/einstellungen.mjs
+// SYNC: Allowlist und Merge-Logik stehen identisch in kit/board/grundlagen.mjs und kit/settings.mjs
 // (LOCAL_OVERRIDE_ALLOWLIST, mergeWorkflowConfig) — Aenderungen dort nachziehen.
 // board.mjs und night.mjs sind bewusst eigenstaendige Single-File-Tools ohne
 // gemeinsames Modul; geteilte Logik wird dupliziert und hier markiert.
@@ -1192,7 +1192,7 @@ const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewLesegre
 // lokal setzen, seinen Kommando-Reviewer aber nicht.
 // Das Paar ist eine Gruppe (Issue #1379, Plan #1375 E11): {reviewModel} <-> {reviewCommand,
 // reviewLesegrenze}; eine Lesegrenze allein verdraengt reviewModel nicht.
-// SYNC: dieselbe Zuordnung steckt in kit/board/grundlagen.mjs und kit/einstellungen.mjs.
+// SYNC: dieselbe Zuordnung steckt in kit/board/grundlagen.mjs und kit/settings.mjs.
 const REVIEWER_PAAR = { reviewModel: ["reviewCommand", "reviewLesegrenze"], reviewCommand: ["reviewModel"] };
 
 // SYNC: strukturgleich zu zerlegeAllowlist in kit/board.mjs.

@@ -151,7 +151,7 @@ const STAMPED = ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "effort.m
 
 // Download-Dateien (Issue #676, Plan #674 E1): gestempelt wie die Kit-Werkzeuge, aber ohne
 // Kopie nach .claude/kit/ — sie arbeiten ueber mehrere Projekte und gehoeren in keines.
-const STAMPED_DOWNLOADS = ["einstellungen.mjs"];
+const STAMPED_DOWNLOADS = ["settings.mjs"];
 
 // Teilverzeichnisse unter kit/ (Issue #1209, Plan #1199 E19): kopiert nach .claude/kit/<teil>/
 // wie die Werkzeuge, aber ungestempelt — KIT_VERSION steht nur im Einstieg. In STAMPED
@@ -164,7 +164,7 @@ const TEILE = ["night", "board", "rollen", "texte"];
 // die Oberflaeche ihre Meldungen in der Projektsprache waehlt (Issue #1456, Plan #1420
 // E13). Eine eigene Datei mitzuliefern widerspraeche dem Download als einzelne Datei, und
 // eine Kopie von Hand liefe der Quelle davon.
-const EINBETTUNG_ZIEL = "einstellungen.mjs";
+const EINBETTUNG_ZIEL = "settings.mjs";
 const EINBETTUNGEN = [
   { konstante: "SCHEMA_B64", quelle: "templates/workflow.config.schema.json", meldung: "Schema eingebettet" },
   { konstante: "CONFIG_NAMEN_B64", quelle: "kit/board/config-namen.mjs", meldung: "Namenstabelle eingebettet" },

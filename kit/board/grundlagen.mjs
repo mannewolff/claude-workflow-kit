@@ -203,7 +203,7 @@ function configRoot() {
 // Punkt-Pfade greifen am Blatt, nicht am Elternobjekt: `toolbox.tokenFile` darf nicht das
 // ganze toolbox-Objekt ersetzen. Genau dieser Fehler hat in Issue #188 den Mock-Host mit
 // weggeraeumt und zwanzig Tests still ohne Token laufen lassen.
-// SYNC: dieselbe Liste und Logik steckt in kit/night/grundlagen.mjs und kit/einstellungen.mjs — Aenderungen dort nachziehen.
+// SYNC: dieselbe Liste und Logik steckt in kit/night/grundlagen.mjs und kit/settings.mjs — Aenderungen dort nachziehen.
 const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewLesegrenze", "reviewScope", "triggers", "toolbox.tokenFile"];
 
 // Das Reviewer-Paar (Issue #432): genau eines von reviewModel und reviewCommand gilt.
@@ -213,7 +213,7 @@ const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewLesegre
 // reviewLesegrenze}. Eine Lesegrenze ohne Kommando ist bedeutungslos — wer persoenlich auf
 // Claude wechselt, nimmt die des Team-Kommandos nicht mit. Eine Lesegrenze allein verdraengt
 // reviewModel dagegen nicht: Sie waehlt keinen Reviewer, sie schraenkt einen ein.
-// SYNC: dieselbe Zuordnung steckt in kit/night/grundlagen.mjs und kit/einstellungen.mjs.
+// SYNC: dieselbe Zuordnung steckt in kit/night/grundlagen.mjs und kit/settings.mjs.
 const REVIEWER_PAAR = { reviewModel: ["reviewCommand", "reviewLesegrenze"], reviewCommand: ["reviewModel"] };
 
 /**
