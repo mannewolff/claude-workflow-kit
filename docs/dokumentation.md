@@ -1382,6 +1382,28 @@ Nach der Prüfung durch die Modelle (`/issue-review #N`) läuft das Grooming mit
 
 Ohne PO ist die Schleife unsichtbar: `/techplan` direkt aufzurufen bleibt der Normalweg.
 
+## Vorgeschichte
+
+Ein neuer Fachplan oder Plan kennt sonst nur, was gerade im Gespräch oder im Bestand steht. Frühere Fachpläne zum selben Gegenstand verschwinden mit dem Archiv aus dem Blick, und mit ihnen die Gründe für frühere Entscheidungen. Die Vorgeschichte holt sie vor dem Schreiben zurück, damit eine frühere Entscheidung nicht still überfahren wird. Sie sperrt nichts, sie macht nur sichtbar.
+
+**Einschalten.** Der Schalter [`vorgeschichte`](#vorgeschichte) in `.claude/workflow.config.json` steht in der Vorgabe auf aus; dann entsteht jedes Dokument wie bisher, ohne Abschnitt und ohne Vermerk. Im Kit selbst ist er an. Die Suche braucht ein Board, das auch archivierte Karten durchsucht, und das kann bisher nur der Toolbox-Tracker (kanban-kit). Bei GitHub, GitLab und dem lokalen Datei-Tracker trägt das Dokument stattdessen den Vermerk, dass keine Vorgeschichte gelesen wurde.
+
+**Suchen.** Nicht der Autor durchsucht das Board, sondern ein Kommando:
+
+```bash
+node .claude/kit/board.mjs issue vorgeschichte --begriffe <begriff> [--dateien <pfad>]... [--ohne <N>]...
+```
+
+`/requirement` und `/techplan` rufen es selbst auf. Die Suchbegriffe kommen aus Titel und Ziel der neuen Anforderung; der Plan gibt zusätzlich die Dateien aus `## Betroffene Bereiche` mit und findet so auch die Fachpläne, aus denen diese Teile des Projekts entstanden sind. Das Dokument nennt, wonach gesucht wurde, und `/issue-review` legt den Prüfern die gefundenen Fachpläne vollständig bei.
+
+**Ort.** Im Fachplan steht der Abschnitt `## Vorgeschichte` zwischen den Nicht-Zielen und den offenen Fragen an den PO, im Plan der Unterabschnitt `### Vorgeschichte` am Ende von `## Betroffene Bereiche`. Er nennt höchstens fünf Fundstellen, jede mit Nummer, Titel und dem Satz, der für die neue Anforderung zählt, und genau einen der drei festen Vermerke, wo er zutrifft:
+
+- `Nichts Einschlägiges gefunden.` — gesucht, aber kein Treffer zählt.
+- `Keine Vorgeschichte gelesen: <Grund>` — das Archiv war nicht erreichbar, etwa ohne Netz oder mit einem Tracker ohne Suche; das Dokument entsteht trotzdem.
+- `Weitere Treffer: <Zahl>` — es gab mehr Treffer, als das Dokument nennt.
+
+**Widersprüche halten nichts an.** Widerspricht die neue Anforderung einer früheren PO-Antwort oder einem früheren Nicht-Ziel, steht der Widerspruch mit Zitat und Fundstelle im Abschnitt zur Vorgeschichte, nicht unter den offenen Fragen, und zählt nicht in die fünf. Kein Halt, auch nachts nicht: Die Nacht-Kette läuft weiter, und der Nachtbericht nennt den Widerspruch, damit der Mensch ihn am Morgen sieht. Die genaue Regel steht in `.claude/CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“.
+
 ## Der Prüflauf
 
 **Ein Lauf am Tag, der mehrere gekennzeichnete fachliche Anforderungen nacheinander prüfen lässt.** Die Prüfung tagsüber ist ein Gespräch: Jeder Fund will besprochen, jede Frage der Stopp-Klasse beantwortet werden. Der Prüflauf nimmt genau das ab — Anforderungen kennzeichnen, Lauf starten, später nachsehen. Je Karte läuft eine Session `/issue-review #N`, ohne dass zwischendurch jemand antwortet; danach steht an jeder Karte, woran man ist: geprüft und bereit, oder es wartet eine Entscheidung. Alles, was außerhalb der Stopp-Klasse liegt, hat die Prüfung entschieden und im Dokument festgehalten. **Diese Sortierung ist der Gewinn.**

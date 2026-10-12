@@ -1441,6 +1441,29 @@ After the review by the models (`/issue-review #N`), grooming runs with [/groom]
 
 Without a PO the loop is invisible: calling `/techplan` directly remains the normal route.
 
+## History
+<!-- de: 410e5df99cd7 -->
+
+Otherwise a new business plan (Fachplan) or plan only knows what is currently in the conversation or in the stock. Earlier business plans on the same subject disappear from view with the archive, and with them the reasons for earlier decisions. The history (Vorgeschichte) brings them back before writing, so that an earlier decision is not silently overridden. It locks nothing, it only makes things visible.
+
+**Switching it on.** The switch [`history`](#history-german-vorgeschichte) in `.claude/workflow.config.json` is off by default; then every document arises as before, without a section and without a note. In the kit itself it is on. The search needs a board that also searches archived cards, and so far only the Toolbox tracker (kanban-kit) can do that. With GitHub, GitLab and the local file tracker the document carries the note instead that no history was read.
+
+**Searching.** Not the author searches the board, but a command:
+
+```bash
+node .claude/kit/board.mjs issue vorgeschichte --begriffe <begriff> [--dateien <pfad>]... [--ohne <N>]...
+```
+
+`/requirement` and `/techplan` call it themselves. The search terms come from the title and goal of the new requirement; the plan additionally passes the files from `## Betroffene Bereiche` and so also finds the business plans from which these parts of the project arose. The document names what was searched for, and `/issue-review` hands the reviewers the business plans found in full.
+
+**Location.** In the business plan the section `## Vorgeschichte` stands between the non-goals and the open questions to the PO, in the plan the subsection `### Vorgeschichte` at the end of `## Betroffene Bereiche`. It names at most five references, each with number, title and the sentence that counts for the new requirement, and exactly one of the three fixed notes where it applies:
+
+- `Nichts Einschlägiges gefunden.` — searched, but no hit counts.
+- `Keine Vorgeschichte gelesen: <Grund>` — the archive was not reachable, for instance without network or with a tracker without search; the document arises anyway.
+- `Weitere Treffer: <Zahl>` — there were more hits than the document names.
+
+**Contradictions stop nothing.** If the new requirement contradicts an earlier PO answer or an earlier non-goal, the contradiction stands with quote and reference in the history section, not under the open questions, and does not count toward the five. No stop, not even at night: the night chain (Nacht-Kette) keeps running, and the night report names the contradiction so that the human sees it in the morning. The exact rule is in `.claude/CLAUDE-workflow.md`, section "History".
+
 ## The check run
 <!-- de: 31fbb7820c2e -->
 
