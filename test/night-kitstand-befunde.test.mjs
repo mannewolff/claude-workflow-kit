@@ -22,7 +22,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { befundeZurueck } from "../kit/night/kitstand.mjs";
 
-/** Eine Protokollzeile, wie `befunde.mjs buchen` sie schreibt — sieben Spalten, Art in Spalte 5. */
+/** Eine Protokollzeile, wie `findings.mjs record` sie schreibt — sieben Spalten, Art in Spalte 5. */
 function zeile(art) {
   return `2026-09-22T00:00:00.000Z\tplan\t2\treviewer\t${art}\tWICHTIG\t-`;
 }
@@ -113,7 +113,7 @@ test("[night-69] die Schwelle kommt aus dem Config-Block befunde der Hauptkopie"
 test("[night-69] der Nullpunkt aus befunde-vorschlaege.json zaehlt wie bei buchen", () => {
   // Drei Vorkommen, aber der Nullpunkt einer frueheren Ablehnung liegt bei zwei:
   // erst oberhalb davon zaehlt die Schwelle wieder — dieselbe Regel wie bei `buchen` in
-  // befunde.mjs, dort dupliziert und als SYNC markiert (E11, E20).
+  // findings.mjs, dort dupliziert und als SYNC markiert (E11, E20).
   mitPaar({
     haupt: [zeile("luecke"), zeile("luecke")], wt: [zeile("luecke")],
     vorschlaege: { luecke: { nullpunkt: 2 } },

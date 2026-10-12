@@ -529,7 +529,7 @@ function fail(nachricht) {
  * **nicht** `localeCompare` — dessen Reihenfolge haengt an der Locale der Maschine,
  * und zwei Laeufe muessen ueberall dieselbe Liste ergeben.
  *
- * SYNC: dieselbe Funktion steckt in kit/checks.mjs, kit/befunde.mjs und kit/night.mjs
+ * SYNC: dieselbe Funktion steckt in kit/checks.mjs, kit/findings.mjs und kit/night.mjs
  * (#440: eigenstaendige Single-File-Tools, geteilte Logik wird dupliziert und markiert).
  */
 function vergleicheText(a, b) {

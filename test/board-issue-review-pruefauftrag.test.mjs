@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { issueReviewPruefauftrag } from "../kit/board/issue-review.mjs";
-import { arten } from "../kit/befunde.mjs";
+import { arten } from "../kit/findings.mjs";
 
 const ROLLEN = join(import.meta.dirname, "..", "kit", "rollen");
 const ROLLEN_NAMEN = readdirSync(ROLLEN).filter((d) => d.endsWith(".md")).map((d) => d.slice(0, -3));

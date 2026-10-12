@@ -185,7 +185,7 @@ test("[night-47] die Auswertung sieht den eigenen Lauf abgeschlossen: abschluss 
 
     const gerufen = aufrufe(capture);
     assert.equal(gerufen.length, 1, `genau ein Aufruf der Auswertung erwartet: ${JSON.stringify(gerufen)}`);
-    assert.deepEqual(gerufen[0].argv, ["auswerten"], "die Auswertung wird mit 'auswerten' gerufen");
+    assert.deepEqual(gerufen[0].argv, ["evaluate"], "die Auswertung wird mit 'evaluate' gerufen");
     assert.equal(gerufen[0].gesehen.length, 1, `genau ein Ergebnisstand zum Zeitpunkt des Aufrufs: ${JSON.stringify(gerufen[0].gesehen)}`);
     assert.equal(gerufen[0].gesehen[0].abschluss, "regulaer",
       "die Auswertung las den eigenen Lauf ohne Abschlussart — dann ginge der frischeste Lauf als unvollstaendig ein");
@@ -225,7 +225,7 @@ test("[night-47] ohne Befund steht nichts im Protokoll — keine Ueberschrift, k
     assert.deepEqual(s.aufwand.befund, [], "der Lauf-Kopf traegt den leeren Befund — er ist gemessen, nicht ausgelassen");
 
     // Ohne die Fehlschlagzeilen der beiden anderen Auswertungen: In diesem Fixture liegen
-    // wirksamkeit.mjs und befunde.mjs nicht, und die Zeile „Befunde-Auswertung
+    // wirksamkeit.mjs und findings.mjs nicht, und die Zeile „Befunde-Auswertung
     // fehlgeschlagen" traegt das Wort, nach dem hier gesucht wird. Sie ist kein
     // beruhigender Satz, sondern das Gegenteil — der gemeldete Fehlschlag (Issue #806).
     const log = protokoll(dir).split("\n").filter((z) => !/-Auswertung fehlgeschlagen/.test(z)).join("\n");

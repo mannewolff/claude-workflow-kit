@@ -23,7 +23,7 @@
  * denselben Funktionen, die die Nacht-Kette benutzt — `worktreeAnlegen`,
  * `worktreeEntfernen`, `worktreesAufraeumen` und `befundeZurueck` aus dem Teil `night/kitstand.mjs` (Issue #1226). Diese
  * Datei traegt darum bewusst eine Nachbar-Abhaengigkeit und ist keine fuer sich portable
- * Einzeldatei wie `aufwand.mjs` oder `befunde.mjs` (Muster #440): Zwei Wege, einen Worktree
+ * Einzeldatei wie `aufwand.mjs` oder `findings.mjs` (Muster #440): Zwei Wege, einen Worktree
  * vorzubereiten, laufen beim ersten Unterschied auseinander — und der Spiegel von
  * `.claude/` ist genau der Teil, den ein Skill nicht nebenbei nachbaut. `night.mjs`
  * seinerseits kennt diese Datei nicht; der Nacht-Runner bleibt ohne sie vollstaendig.
@@ -213,7 +213,7 @@ function entfernen(repoRoot, cliArgs) {
  * Befunde sind Buchhaltung und werden ANGEHAENGT; der Spiegel traegt sie gar nicht erst in
  * den Worktree, dort stehen also ausschliesslich die Zeilen dieses Laufs. Fuer die Befunde
  * macht das `befundeZurueck` der Kette — samt Schwellenpruefung am Gesamtstand, deren
- * Ergebnis der Skill in je einen `befunde.mjs vorschlag --art <a>` uebersetzt.
+ * Ergebnis der Skill in je einen `findings.mjs suggest --kind <a>` uebersetzt.
  */
 function rueckweg(repoRoot, cliArgs) {
   const pfad = cliArgs.find((a) => !a.startsWith("--"));

@@ -40,11 +40,11 @@ function setupFixture({
   writeFileSync(join(dir, "templates", "CLAUDE-Fachplan.md"), "# Fachplan-Gates\n");
   writeFileSync(join(dir, "templates", "CLAUDE-Plan.md"), "# Plan-Gates\n");
   writeFileSync(join(dir, "templates", "workflow.config.json"), `${JSON.stringify({ codeHost: "github" })}\n`);
-  for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs", "worktree.mjs"]) {
+  for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "findings.mjs", "worktree.mjs"]) {
     writeFileSync(join(dir, "kit", datei), `const KIT_VERSION = "1.0.0";\nconsole.log("${datei}");\n`);
   }
   // Seit Issue #1462: die englischen Einstiege, als Blob und in der Kopie, aber ohne Stempel.
-  for (const datei of ["findings.mjs", "effort.mjs", "effectiveness.mjs"]) writeFileSync(join(dir, "kit", datei), `console.log("${datei}");\n`);
+  for (const datei of ["effort.mjs", "effectiveness.mjs"]) writeFileSync(join(dir, "kit", datei), `console.log("${datei}");\n`);
   // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
   writeFileSync(join(dir, "templates", "workflow.config.schema.json"), "{}\n");
   writeFileSync(join(dir, "kit", "einstellungen.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
@@ -71,7 +71,6 @@ function setupFixture({
     'const PREISE_MJS_B64 = "";',
     'const AUFWAND_MJS_B64 = "";',
     'const WIRKSAMKEIT_MJS_B64 = "";',
-    'const BEFUNDE_MJS_B64 = "";',
     'const WORKTREE_MJS_B64 = "";',
     'const FINDINGS_MJS_B64 = "";',
     'const EFFORT_MJS_B64 = "";',

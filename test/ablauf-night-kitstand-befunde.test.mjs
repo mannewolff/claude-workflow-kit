@@ -16,7 +16,7 @@ import {
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
 } from "./helpers/kette-ablauf.mjs";
 
-/** Eine Protokollzeile, wie `befunde.mjs buchen` sie schreibt — sieben Spalten, Art in Spalte 5. */
+/** Eine Protokollzeile, wie `findings.mjs record` sie schreibt — sieben Spalten, Art in Spalte 5. */
 function zeile(art) {
   return `2026-09-22T00:00:00.000Z\tplan\t2\treviewer\t${art}\tWICHTIG\t-`;
 }

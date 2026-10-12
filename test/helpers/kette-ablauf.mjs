@@ -72,9 +72,9 @@ export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz 
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
   cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
-  // Der Rueckweg der Befunde ruft `befunde.mjs vorschlag` als Kindprozess (Issue #804);
+  // Der Rueckweg der Befunde ruft `findings.mjs suggest` als Kindprozess (Issue #804);
   // ohne die Kopie waere jeder Ketten-Test blind fuer den Vorschlag am Board.
-  copyFileSync(join(repoRoot, "kit", "befunde.mjs"), join(dir, ".claude", "kit", "befunde.mjs"));
+  copyFileSync(join(repoRoot, "kit", "findings.mjs"), join(dir, ".claude", "kit", "findings.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({ ...CONFIG, ...configZusatz, night: { ...configZusatz.night, kette } }, null, 2));
   // helfer/ traegt Fake-Dateien und Protokoll der Tests — ignoriert, damit der Vorflug
   // des Runners den Arbeitsbaum weiter als sauber sieht.

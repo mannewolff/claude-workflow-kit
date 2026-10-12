@@ -81,7 +81,7 @@ node .claude/kit/board.mjs issue-review start --reviewer <name> --brief <tmpdir>
 If `review-brief` or `start` fails (exit 1, for instance `rolle-fehlt` or `keine-lesegrenze`), that is an outage of this reviewer in line 2 of the findings comment, with the error from the output; the check continues without it. There is no substitute route — no self-written prompt, no start bypassing the kit.
 
 ### 5. Findings to the board
-<!-- de: 0fd2a5aa2b47 -->
+<!-- de: e79dd15b3ede -->
 
 One comment per run. First line literally `## <stage>-Review, Round 1` with `Issue`, `Requirement` or `Plan`; line 2 names outage, understaffing or the rule proposal for the author model, otherwise it stays empty; below it per reviewer the head literally `### Reviewer <n>: <role>, <model>`, for instance `### Reviewer 1: form-beobachtbarkeit, fable`, and below it its findings. From this head `record` books the role; in another form it falls back to "unbekannt". The findings themselves keep the form words that `kit/findings.mjs` reads (`KRITISCH|BLOCKER|WICHTIG|HINWEIS`, `Fundstelle:`, `Vorschlag:`, `Gegenprobe:`, `Art:`); they stay German in every language. File `<tmpdir>/<id>-befunde.md`, then check the form of the findings:
 ```bash
@@ -96,7 +96,7 @@ node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-befunde.
 If this comment does not arrive, the skill ends without further mutation.
 
 ### 6. Incorporate
-<!-- de: 5e6027ea46d5 -->
+<!-- de: 005818ca6ad8 -->
 
 The calling session goes through every finding and decides according to `CLAUDE-workflow.md`, section "Decide instead of asking": take over or reject with one sentence. If a finding hits the stop class, it is asked interactively; unattended the session marks the document, writes no body and ends after the incorporation comment:
 ```bash
@@ -121,7 +121,7 @@ node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-einarbei
 
 Then the recording: per finding block the session adds to the findings text the line `Uebernahme: uebernommen` or `Uebernahme: abgelehnt` (form words, they stay German) — the same decision the comment carries in prose —, writes the text following the transport rule as `<tmpdir>/<id>-buchung.md` and records it with the stage of the run from step 1b; for **every** kind that `record` reports under `arten` as `erreicht` and with `vorschlag: true`, a proposal follows — a judgement kind (`vorschlag: false`) produces none. **No gate:** a failure of `record` or `suggest` stands in **one line** and holds up neither run nor label — the log is bookkeeping, not a condition. If the run is parked with `kit:clarify`, **nothing is recorded**: nobody has decided on the findings there, and a finding without a note of take-over does not belong in the log. In a runner's worktree `suggest` creates nothing and reports that with a reason: that is no failure, the summary names it as "proposal follows on teardown".
 ```bash
-node .claude/kit/findings.mjs record --file <tmpdir>/<id>-buchung.md --stage <fachlich|plan|issue> --card <id>
+node .claude/kit/findings.mjs record --file <tmpdir>/<id>-buchung.md --stage <requirement|plan|issue> --card <id>
 node .claude/kit/findings.mjs suggest --kind <a>
 ```
 

@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { aufrufen } from "../kit/befunde.mjs";
+import { aufrufen } from "../kit/findings.mjs";
 import { mitRepo, git, datei } from "./helpers/checks-repo.mjs";
 
 const FUND = [
@@ -34,7 +34,7 @@ function buchenCode(dir) {
   mkdirSync(join(dir, ".claude"), { recursive: true });
   const eingang = join(dir, ".claude", "befunde-eingang.md");
   writeFileSync(eingang, FUND, "utf-8");
-  const res = aufrufen(["buchen", "--datei", eingang, "--stufe", "code", "--karte", "42"], { cwd: dir });
+  const res = aufrufen(["record", "--file", eingang, "--stage", "code", "--card", "42"], { cwd: dir });
   assert.equal(res.status, 0, res.stderr);
   return JSON.parse(res.stdout);
 }

@@ -1,7 +1,7 @@
 // Die englischen Prüfrollen unter en/kit/rollen/ tragen dieselben Formwörter der Befunde wie
 // die deutschen (Issue #1509, Plan #1420 E14, E17).
 //
-// `kit/befunde.mjs pruefen|buchen` liest die Funde der Prüfer in beiden Projektsprachen mit
+// `kit/findings.mjs check|buchen` liest die Funde der Prüfer in beiden Projektsprachen mit
 // denselben deutschen Formwörtern: den Marken, `Gegenprobe:` mit seinem Stand und `Art:`.
 // Eine englische Rolle, die sie übersetzte, brächte ihre Prüfer dazu, Funde zu schreiben, die
 // die Formprüfung abweist. Dazu müssen die Platzhalter, die die Montage einsetzt, dieselben sein.
@@ -17,7 +17,7 @@ const deDir = join(repoRoot, "kit", "rollen");
 const enDir = join(repoRoot, "en", "kit", "rollen");
 const rollen = readdirSync(deDir).filter((d) => d.endsWith(".md")).sort();
 
-// Die Formwörter, die befunde.mjs liest (E14), in der Schreibweise, die die Rollen vorgeben.
+// Die Formwörter, die findings.mjs liest (E14), in der Schreibweise, die die Rollen vorgeben.
 const FORMWOERTER = [
   "KRITISCH",
   "BLOCKER",
@@ -29,7 +29,7 @@ const FORMWOERTER = [
   "Art:",
 ];
 
-// befunde.mjs nimmt den Stand mit und ohne Umlaute an (`geprüft, bestätigt`); verglichen
+// findings.mjs nimmt den Stand mit und ohne Umlaute an (`geprüft, bestätigt`); verglichen
 // wird darum in der Kit-üblichen ASCII-Schreibweise.
 function lies(dir, name) {
   return readFileSync(join(dir, name), "utf8").replaceAll("ü", "ue").replaceAll("ä", "ae");

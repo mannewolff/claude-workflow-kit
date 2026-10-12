@@ -1,9 +1,9 @@
-// Ablauf-Pruefung: Ob die Kette je Art an der Schwelle befunde.mjs vorschlag ruft und ein Fehlschlag den Abbau nicht aufhaelt, zeigt nur der echte Runner mit Worktree und lokalem Tracker.
+// Ablauf-Pruefung: Ob die Kette je Art an der Schwelle findings.mjs suggest ruft und ein Fehlschlag den Abbau nicht aufhaelt, zeigt nur der echte Runner mit Worktree und lokalem Tracker.
 //
 // Der Vorschlag am Ende des Rueckwegs (Issue #804, night-70).
 //
 // Nach `befundeZurueck` ruft die Nacht-Kette fuer JEDE zurueckgegebene Mangel-Art
-// `befunde.mjs vorschlag --art <a>` und protokolliert das Ergebnis. Der Aufruf steht am
+// `findings.mjs suggest --kind <a>` und protokolliert das Ergebnis. Der Aufruf steht am
 // Anlass und nicht erst beim naechsten `push main` (Plan #797, E9): Ein zweiter Ort
 // waere ein zweiter Zeitpunkt, zu dem dieselbe Zahl anders herauskommen kann.
 //
@@ -21,7 +21,7 @@ import {
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-ablauf.mjs";
 
-/** Eine Protokollzeile, wie `befunde.mjs buchen` sie schreibt — sieben Spalten, Art in Spalte 5. */
+/** Eine Protokollzeile, wie `findings.mjs record` sie schreibt — sieben Spalten, Art in Spalte 5. */
 function zeile(art) {
   return `2026-09-22T00:00:00.000Z\tplan\t2\treviewer\t${art}\tWICHTIG\t-`;
 }
@@ -143,12 +143,12 @@ test("[night-70] jede zurueckgegebene Art bekommt ihren eigenen Aufruf", () => {
 });
 
 test("[night-70] board.mjs ist nicht der einzige Kit-Nachbar, den die Kette braucht", () => {
-  // Gegenprobe zur Fixture-Aenderung: Liegt befunde.mjs nicht neben board.mjs, findet
+  // Gegenprobe zur Fixture-Aenderung: Liegt findings.mjs nicht neben board.mjs, findet
   // der Runner das Kommando nicht — der Test oben waere dann gruen aus dem falschen
   // Grund (Fehlschlag haelt nichts auf) und der Vorschlag nie geprueft.
   // Der Aufruf steht seit Issue #1226 im Teil kitstand, mit dem Rueckweg der Befunde.
   const quelle = readFileSync(new URL("../kit/night/kitstand.mjs", import.meta.url), "utf-8");
-  assert.match(quelle, /BEFUNDE_PATH, "vorschlag", "--art"/,
+  assert.match(quelle, /BEFUNDE_PATH, "suggest", "--kind"/,
     "der Aufruf muss im Teil kitstand stehen");
   // Dass BEFUNDE_PATH demselben KIT_ROOT-Weg folgt wie Board, Aufwand und Wirksamkeit,
   // belegt seit Issue #1224 night-grundlagen-pfade an den Konstanten selbst.

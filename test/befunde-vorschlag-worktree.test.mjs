@@ -8,7 +8,7 @@
 //
 // Gemessen in einem ECHTEN verknuepften Worktree (`git worktree add`) — die Erkennung
 // haengt an `git rev-parse --git-dir` gegen `--git-common-dir`, und die unterscheiden
-// sich nur dort. befunde.mjs laeuft dabei im selben Prozess, der Board-Adapter ist eine
+// sich nur dort. findings.mjs laeuft dabei im selben Prozess, der Board-Adapter ist eine
 // Attrappe (Issue #1213, Plan #1199 E6).
 
 import { test } from "node:test";
@@ -18,7 +18,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync, realpathSync
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { aufrufen } from "../kit/befunde.mjs";
+import { aufrufen } from "../kit/findings.mjs";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
 
 function zeile(art) {
@@ -65,14 +65,14 @@ function mitRepo(fn) {
 }
 
 function vorschlag({ aufrufe }, cwd, ...args) {
-  const res = aufrufen(["vorschlag", ...args], { cwd, board: stubBoard(aufrufe) });
+  const res = aufrufen(["suggest", ...args], { cwd, board: stubBoard(aufrufe) });
   return { ...res, json: JSON.parse(res.stdout) };
 }
 
 test("[befunde-1028] vorschlag --art legt im Worktree nichts an und schreibt kein Register", () => {
   mitRepo((r) => {
     registerAnlegen(r.wt);
-    const res = vorschlag(r, r.wt, "--art", "konvention");
+    const res = vorschlag(r, r.wt, "--kind", "konvention");
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.json.ok, true);
     assert.equal(res.json.angelegt, false);
@@ -88,7 +88,7 @@ test("[befunde-1028] vorschlag --art legt im Worktree nichts an und schreibt kei
 test("[befunde-1028] in der Hauptkopie desselben Repos entsteht der Vorschlag wie bisher", () => {
   mitRepo((r) => {
     registerAnlegen(r.haupt);
-    const res = vorschlag(r, r.haupt, "--art", "konvention");
+    const res = vorschlag(r, r.haupt, "--kind", "konvention");
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.json.angelegt, true);
     assert.equal(r.aufrufe.length, 1);
@@ -99,7 +99,7 @@ test("[befunde-1028] in der Hauptkopie desselben Repos entsteht der Vorschlag wi
 test("[befunde-1028] vorschlag --abgelehnt im Worktree endet ungleich 0 und verweist auf die Hauptkopie", () => {
   mitRepo((r) => {
     registerAnlegen(r.wt);
-    const res = vorschlag(r, r.wt, "--abgelehnt", "konvention");
+    const res = vorschlag(r, r.wt, "--rejected", "konvention");
     assert.notEqual(res.status, 0);
     assert.equal(res.json.ok, false);
     assert.match(res.json.fehler, /Hauptkopie/);
@@ -110,5 +110,5 @@ test("[befunde-1028] vorschlag --abgelehnt im Worktree endet ungleich 0 und verw
 test("[befunde-1028] die Hilfe nennt die Worktree-Regel", () => {
   const res = aufrufen(["--help"]);
   assert.equal(res.status, 0);
-  assert.match(res.stdout, /Worktree/);
+  assert.match(res.stdout, /worktree/i);
 });

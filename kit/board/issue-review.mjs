@@ -719,7 +719,7 @@ export async function issueReviewPruefauftrag(args, { config = loadConfig(), boa
     if (inhalt === null) return { ok: false, fehler: "material-fehlt", pfad: material };
     werte = { REVIEW_MATERIAL: inhalt };
   }
-  const { arten } = await import("../befunde.mjs");
+  const { arten } = await import("../findings.mjs");
   werte.ARTEN = arten().arten.map((a) => `${a.name} — ${a.erklaerung}`).join("\n");
 
   const { text, offen } = montiere(rahmen, werte);

@@ -200,7 +200,7 @@ Two measurement limits belong to the picture: the post-check of the night runner
 ---
 
 ## Findings of the model reviews
-<!-- de: 6c81057dd634 -->
+<!-- de: c02c4f45de03 -->
 
 **Structure of a finding.** Every finding of a model review provided by the kit — requirement, plan, work package, code — carries, besides severity, location and suggestion, three further details: the observation that would refute it; the status of this counter-check, `geprueft, bestaetigt` (checked, confirmed) or `nicht geprueft` (not checked); and its kind of defect. A finding refuted by its own counter-check is not reported. The form words of the findings (`KRITISCH|BLOCKER|WICHTIG|HINWEIS`, `Fundstelle:`, `Vorschlag:`, `Gegenprobe:`, `Art:` and the kind names) are machine words and stay German in every project language.
 

@@ -260,7 +260,7 @@ export function zusammenfassungPfad(root = wurzel()) {
  * ueberall dieselbe Liste ergeben — Dateiliste und Bereichsnamen stehen im
  * Bericht und in der Zusammenfassung.
  *
- * SYNC: dieselbe Funktion steckt in kit/befunde.mjs, kit/night.mjs und
+ * SYNC: dieselbe Funktion steckt in kit/findings.mjs, kit/night.mjs und
  * kit/wirksamkeit.mjs — Aenderungen dort nachziehen. Die Kit-Werkzeuge sind bewusst eigenstaendige
  * Single-File-Tools ohne gemeinsames Modul (#440); geteilte Logik wird dupliziert
  * und hier markiert.
@@ -1326,7 +1326,7 @@ const REGEX_SONDERZEICHEN = /[.+?^${}()|[\]\\]/;
  *
  * Exportiert, damit test/config-teile.test.mjs die Teile dieses Repos gegen
  * `git ls-files` prueft, ohne die Aufloesung ein zweites Mal zu schreiben
- * (Issue #850) — derselbe Grund wie bei `blobHashes` fuer befunde.mjs: Ab der
+ * (Issue #850) — derselbe Grund wie bei `blobHashes` fuer findings.mjs: Ab der
  * ersten Abweichung bescheinigte die zweite Fassung eine Abdeckung, die das
  * ausfuehrende Kommando nicht sieht.
  */
@@ -2696,10 +2696,10 @@ function festgefahrenMelden(laufen, festgefahren) {
  * greift — sonst passte der Hash nicht zu dem Blob, den `git ls-files --stage`
  * dem Gate zeigt.
  *
- * Exportiert, damit befunde.mjs denselben Blob-Hash ermitteln kann, statt die
+ * Exportiert, damit findings.mjs denselben Blob-Hash ermitteln kann, statt die
  * Frage ein zweites Mal zu implementieren (Issue #802) — derselbe Grund, aus dem
  * `zusammenfassungPfad` fuer night.mjs exportiert ist (Issue #428). `root` ist das
- * Projekt, gegen das die Pfade gelten: befunde.mjs nennt es, wenn es im selben Prozess
+ * Projekt, gegen das die Pfade gelten: findings.mjs nennt es, wenn es im selben Prozess
  * fuer ein anderes Verzeichnis laeuft (Issue #1213).
  */
 export function blobHashes(pfade, root = wurzel()) {

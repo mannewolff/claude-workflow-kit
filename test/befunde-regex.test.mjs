@@ -1,4 +1,4 @@
-// Haelt die Bedeutung der sechs Ausdruecke aus kit/befunde.mjs fest, die SonarQube als
+// Haelt die Bedeutung der sechs Ausdruecke aus kit/findings.mjs fest, die SonarQube als
 // super-linear meldet (S8786, Issue #877) — und bei STAND_RE zusaetzlich als zu komplex
 // (S5843, Komplexitaet 31 statt 20).
 //
@@ -21,7 +21,7 @@ import {
   ohneDekoHinten,
   reviewerRolle,
   standVon,
-} from "../kit/befunde.mjs";
+} from "../kit/findings.mjs";
 
 // --- 1. DEKO_HINTEN_RE: /[\s*_#]+$/ ---
 

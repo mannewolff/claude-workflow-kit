@@ -1,6 +1,6 @@
 // Der Fundblock in den Prompts von /issue-review und /review (Issue #801).
 //
-// `befunde.mjs` kennt die Form eines Funds, aber ein Reviewer liefert sie nur, wenn sein
+// `findings.mjs` kennt die Form eines Funds, aber ein Reviewer liefert sie nur, wenn sein
 // Prompt sie verlangt. Seit dem Schalter (Issue #1383) stehen die Prompts als Rollendateien
 // unter `kit/rollen/`, und `issue-review pruefauftrag` setzt die Artenliste ein. Diese Datei
 // prueft beides: Jede Rolle traegt denselben Block — Gegenprobe mit Stand und Art aus der
@@ -15,7 +15,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { arten } from "../kit/befunde.mjs";
+import { arten } from "../kit/findings.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ISSUE_REVIEW = readFileSync(join(repoRoot, "skills", "issue-review", "SKILL.md"), "utf-8");
@@ -71,7 +71,7 @@ test("[skills-37] weder Skill noch Rolle nennt eine Mangel-Art im eigenen Wortla
 test("[skills-1383] beide Skills lassen den Auftrag von pruefauftrag montieren, statt ihn selbst zu fuellen", () => {
   for (const [name, text] of [["issue-review", ISSUE_REVIEW], ["review", REVIEW]]) {
     assert.match(text, /issue-review review-brief --role /, `${name}: ruft review-brief nicht auf`);
-    assert.equal(text.includes("befunde.mjs arten"), false, `${name}: fuellt die Artenliste noch selbst`);
+    assert.equal(text.includes("findings.mjs kinds"), false, `${name}: fuellt die Artenliste noch selbst`);
   }
 });
 
@@ -97,11 +97,11 @@ test("[skills-37] beide Skills pruefen die Form genau einmal, vor ihrem Board-Ko
   ]) {
     // Gezaehlt wird der Aufruf, nicht jede Nennung: Schritt 6 von /issue-review nennt das
     // Kommando noch einmal, wenn er auf seine Meldung `keine-pruefer` verweist (Issue #1383).
-    const treffer = text.split("befunde.mjs pruefen --datei").length - 1;
-    assert.equal(treffer, 1, `${name} ruft 'befunde.mjs pruefen' ${treffer}-mal statt genau einmal`);
-    assert.ok(text.indexOf("befunde.mjs pruefen --datei") < text.indexOf(kommentar),
+    const treffer = text.split("findings.mjs check --file").length - 1;
+    assert.equal(treffer, 1, `${name} ruft 'findings.mjs check' ${treffer}-mal statt genau einmal`);
+    assert.ok(text.indexOf("findings.mjs check --file") < text.indexOf(kommentar),
       `${name} prueft die Form erst nach dem Board-Kommentar`);
-    assert.match(text, /befunde\.mjs pruefen --datei/, `${name} ruft 'pruefen' ohne --datei`);
+    assert.match(text, /findings\.mjs check --file/, `${name} ruft 'check' ohne --file`);
   }
 });
 
@@ -115,7 +115,7 @@ test("[skills-37] die Nachforderung laeuft genau einmal und kennzeichnet danach"
 });
 
 test("[skills-37] /review bucht nicht und behaelt seinen Stop-Punkt", () => {
-  assert.equal(REVIEW.includes("befunde.mjs buchen"), false,
+  assert.equal(REVIEW.includes("findings.mjs record"), false,
     "/review bucht — gebucht wird erst, wenn der Mensch entschieden hat");
   const stopp = REVIEW.slice(REVIEW.indexOf("## Stop-Punkt"));
   assert.equal(stopp.trim(), [

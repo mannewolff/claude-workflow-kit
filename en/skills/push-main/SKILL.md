@@ -33,7 +33,7 @@ German name because the night runner sends `/push-main vorbereiten` in every pro
 only interactively, see the section "Emergency path (`notfall`)".
 
 ## Procedure
-<!-- de: ae03cecd4058 -->
+<!-- de: b5757b016d6c -->
 
 **Report progress.** Every step begins with a line `Step k of n — <name> (running)`.
 The full run takes **nine** steps; the lines then read `Step k of 9`. The `n` is the number of
@@ -252,7 +252,7 @@ The skill itself knows no project-specific version or release logic; it lives ex
 the `RELEASING.md` of the respective repo.
 
 ### 5. The one check run (gate — before commit and push)
-<!-- de: ecadb6193a74 -->
+<!-- de: d4ad436fdb4f -->
 
 > `Step 5 of 9 — Check run (running)`
 
@@ -417,7 +417,7 @@ taken-over preparation with `check-preparation --discard`, as described in step 
 push it stays for the next attempt.
 
 ### 8. Way back, catching up, tearing down the worktree
-<!-- de: a559c5ef0409 -->
+<!-- de: 470cbb3683e2 -->
 
 > `Step 8 of 9 — Way back and teardown (running)`
 

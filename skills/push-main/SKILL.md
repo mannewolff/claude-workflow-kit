@@ -64,7 +64,7 @@ beanstandet hat. Auch er ist kein Gate.
 Unmittelbar danach der dritte Befund:
 
 ```bash
-node .claude/kit/befunde.mjs befund
+node .claude/kit/findings.mjs finding
 ```
 
 Auch für ihn gelten **dieselben Regeln**, und er liest allein `.claude/befunde.json`. Er
@@ -348,7 +348,7 @@ von `/issue-review` —, ergänzt den Befunde-Text je Fundblock um die Zeile
 Transportregel als eigene Datei außerhalb des Projektverzeichnisses:
 
 ```bash
-node .claude/kit/worktree.mjs im <pfad> -- node .claude/kit/befunde.mjs buchen --datei <tmpdir>/<id>-buchung.md --stufe code --karte <id>
+node .claude/kit/worktree.mjs im <pfad> -- node .claude/kit/findings.mjs record --file <tmpdir>/<id>-buchung.md --stage code --card <id>
 ```
 
 **Gebucht wird im Worktree**, weil der Vergleichsstand die Zusammenfassung des Prüflaufs
@@ -442,7 +442,7 @@ Das Kommando ersetzt `.claude/checks-summary.json` der Hauptkopie durch die des 
 `befundeArten` die Arten, die damit die Schwelle erreichen. Für **jede** davon ein Aufruf:
 
 ```bash
-node .claude/kit/befunde.mjs vorschlag --art <a>
+node .claude/kit/findings.mjs suggest --kind <a>
 ```
 
 Dann das lokale `<mainBranch>`, das nach dem Push aus dem Worktree hinter `origin`

@@ -106,10 +106,11 @@ const BLOBS = [
   // checks.mjs (#785), an Fixtures vollstaendig pruefbar.
   { constName: "WIRKSAMKEIT_MJS_B64", source: join(root, "kit", "wirksamkeit.mjs") },
   // Form und Arten der Funde (Issue #799). Eigenes Werkzeug nach demselben Muster:
-  // Der Regeltext verweist fuer die Artenliste auf `befunde arten`, und die
+  // Der Regeltext verweist fuer die Artenliste auf `findings kinds`, und die
   // Pruef-Skills setzen sie ueber dieses Kommando in ihre Prompts ein — ohne
-  // Auslieferung ginge beides in jedem Projekt ins Leere.
-  { constName: "BEFUNDE_MJS_B64", source: join(root, "kit", "befunde.mjs") },
+  // Auslieferung ginge beides in jedem Projekt ins Leere. Seit Issue #1559 traegt die
+  // englische Datei den Code (Plan #1548 E6).
+  { constName: "FINDINGS_MJS_B64", source: join(root, "kit", "findings.mjs") },
   // Der Worktree der Release-Skills (Issue #929). Anders als die Werkzeuge darueber ist es
   // KEINE portable Einzeldatei: Es ruft die Worktree-Vorbereitung aus night.mjs als
   // Nachbardatei, damit es genau einen Weg gibt, einen Worktree anzulegen. Ohne
@@ -117,7 +118,6 @@ const BLOBS = [
   { constName: "WORKTREE_MJS_B64", source: join(root, "kit", "worktree.mjs") },
   // Die englischen Einstiege (Issue #1462, Plan #1420 E18): je ein Aufruf der deutschen
   // Quelle als Nachbardatei. settings.mjs fehlt, weil einstellungen.mjs Download ist.
-  { constName: "FINDINGS_MJS_B64", source: join(root, "kit", "findings.mjs") },
   { constName: "EFFORT_MJS_B64", source: join(root, "kit", "effort.mjs") },
   { constName: "EFFECTIVENESS_MJS_B64", source: join(root, "kit", "effectiveness.mjs") },
   // Hook und Gate (Issue #473). gate.mjs gehoert bewusst NICHT in STAMPED: Die
@@ -149,7 +149,7 @@ const BLOBS = [
 // Die Liste steuert zugleich die Dogfooding-Kopie unter .claude/kit/ (weiter unten):
 // Ein Werkzeug, das hier fehlt, entstuende dort nie — und die Skills dieses Repos
 // riefen ein Kommando auf, das im eigenen Klon nicht liegt (Issue #425).
-const STAMPED = ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs", "worktree.mjs"];
+const STAMPED = ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "findings.mjs", "worktree.mjs"];
 
 // Download-Dateien (Issue #676, Plan #674 E1): gestempelt wie die Kit-Werkzeuge, aber ohne
 // Kopie nach .claude/kit/ — sie arbeiten ueber mehrere Projekte und gehoeren in keines.
@@ -158,7 +158,7 @@ const STAMPED_DOWNLOADS = ["einstellungen.mjs"];
 // Die englischen Einstiege (Issue #1462, Plan #1420 E18): kopiert nach .claude/kit/ wie die
 // Werkzeuge, aber ungestempelt — sie tragen keine KIT_VERSION, `--version` beantwortet die
 // Quelle. settings.mjs gehoert wie einstellungen.mjs nicht in die Kopie.
-const EINSTIEGE = ["findings.mjs", "effort.mjs", "effectiveness.mjs"];
+const EINSTIEGE = ["effort.mjs", "effectiveness.mjs"];
 
 // Teilverzeichnisse unter kit/ (Issue #1209, Plan #1199 E19): kopiert nach .claude/kit/<teil>/
 // wie die Werkzeuge, aber ungestempelt — KIT_VERSION steht nur im Einstieg. In STAMPED

@@ -1,13 +1,13 @@
 /**
- * texte/befunde.mjs — die Texttabelle von befunde.mjs (Issue #1524). Eigener Teil, damit
+ * texte/findings.mjs — die Texttabelle von findings.mjs (Issue #1524, #1559). Eigener Teil, damit
  * `sonar.cpd.exclusions` die gleich gebauten Haelften de und en ausnehmen kann, ohne die
  * Logik des Moduls aus der Duplikatsmessung zu nehmen. Das Modul importiert die Tabelle und
  * exportiert sie unter demselben Namen weiter.
  */
 
 /**
- * Die Texte an Menschen in beiden Sprachen (Issue #1498, Plan #1420 E13): Hilfe, die
- * Erklaerungen der Mangel-Arten, die Meldungen von `pruefen`, die Gruende von `vorschlag`,
+ * Die Texte an Menschen in beiden Sprachen (Issue #1498, Plan #1420 E13): die
+ * Erklaerungen der Mangel-Arten, die Meldungen von `check`, die Gruende von `suggest`,
  * Titel und Body der Idee samt Ergaenzung, Bericht `befunde.md`, Befundblock und die Fehler.
  * Unuebersetzt bleibt der Maschinenvertrag (E14): die Feldnamen der JSON-Ausgaben, die
  * Artnamen, die Marken, die Formwoerter des Fundblocks (`Gegenprobe:`, `— geprueft,
@@ -18,68 +18,6 @@
  */
 export const TEXTE = Object.freeze({
   de: Object.freeze({
-    hilfe: `befunde.mjs (claude-workflow-kit v{version}) — Form und Arten der Funde
-
-  node befunde.mjs arten
-  node befunde.mjs pruefen --datei <pfad>
-  node befunde.mjs buchen --datei <pfad> --stufe <fachlich|plan|issue|code> --karte <n>
-  node befunde.mjs vorschlag --art <art>
-  node befunde.mjs vorschlag --abgelehnt <art>
-  node befunde.mjs auswerten
-  node befunde.mjs befund
-
-arten    Gibt die {anzahl} Mangel-Arten mit je einem erklaerenden Satz aus. Diese Liste
-         ist der einzige Wortlaut im Kit; ein Projekt ergaenzt keine eigenen Arten.
-pruefen  Liest einen Befunde-Text, erkennt die Fundbloecke an ihrer Schweregrad-Marke
-         ({marken}) und meldet je Fund die
-         fehlenden der drei Pflichtangaben: die Gegenprobe, ihren Stand und die Art.
-         Im Befunde-Kommentar von /issue-review ('## <Stufe>-Review, Runde <n>')
-         meldet es dazu einen Fund ohne vorangehenden Reviewer-Kopf
-         '### Reviewer <n>: <rolle>, <modell>' als 'reviewer-kopf', und traegt
-         der Text gar keinen solchen Kopf, unter 'meldungen' '{keinePruefer}'.
-         Exit 0 auch bei lauter unvollstaendigen Funden — aus der Form wird kein Gate.
-         Ungleich 0 wird nur ein Aufruf, der nicht geht: fehlendes --datei, fehlende
-         oder unlesbare Datei.
-buchen   Schreibt je Fund mit 'Gegenprobe: … — geprueft, bestaetigt' UND
-         'Uebernahme: uebernommen' eine Zeile nach .claude/befunde.tsv — anhaengend,
-         nie leerend — und meldet je beruehrter Art den neuen Zaehlerstand und ob die
-         Schwelle (Config-Block befunde.schwelle, Vorgabe {schwelle}) erreicht ist, dazu
-         mit 'vorschlag', ob die Art an der Schwelle einen Vorschlag erzeugt. Bei
-         --stufe code steht in der letzten Spalte der Vergleichsstand der
-         Pflichtpruefungen ('gruen' oder '{nichtVergleichbar}'), sonst '-'.
-vorschlag
-         --art <art> legt am Board eine Idee an, sobald die Art oberhalb ihres
-         Nullpunkts die Schwelle erreicht — nur fuer form, konvention, sicherheit
-         (Frage nach einer Pruefung) und sonstiges (Frage nach der Artenliste); eine
-         Urteils-Art legt nichts an und endet mit 0; ein bereits offener Vorschlag wird
-         ergaenzt statt gedoppelt. Unterhalb der Schwelle entsteht nichts, und das
-         ist kein Fehler. --abgelehnt <art> vermerkt die Ablehnung und setzt den
-         Nullpunkt auf den aktuellen Zaehlerstand — ein Handgriff ohne Board-Aufruf.
-         Der Vermerk steht in {vorschlaege}; ein gescheiterter
-         Board-Aufruf laesst ihn unveraendert und endet ungleich 0. Eine nicht mehr
-         auffindbare Vorschlagskarte gilt als erledigt: Ihr Stand wird der neue
-         Nullpunkt, und eine neue Idee traegt nur die Funde danach. Im Worktree
-         eines Laufs legt --art nichts an (der Vorschlag folgt beim Abbau in der
-         Hauptkopie), und --abgelehnt endet ungleich 0.
-auswerten
-         Liest {protokoll} und {vorschlaege} und
-         schreibt {bericht} sowie {stand}: je Art
-         die Zahl der Vorkommen, die Verteilung ueber die Stufen und den Stand eines
-         Vorschlags, dazu die Stufe 'code' getrennt nach gruenem und nicht
-         vergleichbarem Vergleichsstand. Beide Dateien entstehen vollstaendig, auch
-         wenn nichts auffaellt.
-befund   Gibt den Befundblock aus {stand} als Text aus. Liegt kein
-         Befund vor, fehlt die Datei oder ist sie leer oder unlesbar, bleibt die
-         Ausgabe leer. Exit immer 0 — der Befund ist kein Gate.
-
-  --version   Kit-Stand dieser Datei.
-  --help, -h  Diese Uebersicht.
-
-Die Ausgabe aller Kommandos ist JSON auf stdout — auch im Leerfall und auch bei einem
-abgewiesenen Aufruf. Einzige Ausnahme ist 'befund': Was dort auf stdout steht, reicht
-eine Ausgabestelle unveraendert weiter, und eine Fehlermeldung haette darin nichts zu
-suchen.
-`,
     art_bestandsbehauptung: "Der geprueste Text behauptet etwas ueber den Bestand — eine Datei, eine Zeile, ein Verhalten —, das dort nicht so steht.",
     art_unbeobachtbar: "Eine Zusage ist so formuliert, dass sich nicht beobachten laesst, ob sie erfuellt ist.",
     art_widerspruch: "Zwei Stellen desselben Texts oder der Text und eine bindende Quelle sagen Verschiedenes.",
@@ -94,18 +32,18 @@ suchen.
     art_sonstiges: "Auffang-Art fuer einen Fund, der in keine der elf anderen passt; ein Projekt ergaenzt keine eigenen Arten.",
     angabeGegenprobe: "Die Zeile 'Gegenprobe: <Beobachtung, die den Fund widerlegen wuerde>' fehlt oder nennt vor ihrem Stand keine Beobachtung.",
     angabeStand: "Der Stand der Gegenprobe fehlt — erwartet wird '— geprueft, bestaetigt' oder '{nichtGeprueft}' am Zeilenende.",
-    angabeArt: "Die Zeile 'Art: <name>' fehlt; gueltig sind die Namen aus 'befunde arten'.",
-    angabeReviewerKopf: "Vor dem Fund steht kein Reviewer-Kopf '### Reviewer <n>: <rolle>, <modell>' — ohne ihn bucht 'buchen' die Rolle als 'unbekannt'.",
-    artNichtInListe: "Die Art '{art}' steht nicht in der Liste; gueltig sind die Namen aus 'befunde arten'.",
+    angabeArt: "Die Zeile 'Art: <name>' fehlt; gueltig sind die Namen aus 'findings kinds'.",
+    angabeReviewerKopf: "Vor dem Fund steht kein Reviewer-Kopf '### Reviewer <n>: <rolle>, <modell>' — ohne ihn bucht 'record' die Rolle als 'unbekannt'.",
+    artNichtInListe: "Die Art '{art}' steht nicht in der Liste; gueltig sind die Namen aus 'findings kinds'.",
     keinePruefer: "Der Text traegt keinen einzigen Reviewer-Kopf '### Reviewer <n>: <rolle>, <modell>' — kein Pruefer lief, die Pruefung gilt nicht als erledigt (review:done wird nicht gesetzt).",
-    nachbarFehlt: "checks.mjs liegt nicht neben befunde.mjs ({pfad}) — 'buchen --stufe code' braucht blobHashes und den Ort der Pruef-Zusammenfassung aus dem Nachbarn.",
+    nachbarFehlt: "checks.mjs liegt nicht neben findings.mjs ({pfad}) — 'record --stage code' braucht blobHashes und den Ort der Pruef-Zusammenfassung aus dem Nachbarn.",
     dateiNichtLesbar: "Datei nicht lesbar: {pfad} ({grund}).",
     protokollNichtLesbar: "Hinweis: Protokoll nicht lesbar ({pfad}): {grund}",
     buchungNichtProtokolliert: "Hinweis: Buchung nicht protokolliert ({pfad}): {grund}",
     keineBasis: "die Zusammenfassung nennt keine Basis",
     gitDiffFehl: "git diff gegen '{basis}' schlug fehl: {grund}",
     gitStatusFehl: "git status schlug fehl: {grund}",
-    boardFehlt: "board.mjs liegt nicht neben befunde.mjs ({pfad}) — 'vorschlag' schreibt ueber den Board-Adapter.",
+    boardFehlt: "board.mjs liegt nicht neben findings.mjs ({pfad}) — 'suggest' schreibt ueber den Board-Adapter.",
     boardStartFehl: "board.mjs liess sich nicht starten: {grund}",
     boardFehl: "board.mjs {befehl} schlug fehl: {grund}",
     boardKeinJson: "board.mjs {befehl} lieferte kein JSON: {grund}",
@@ -115,7 +53,7 @@ suchen.
     zustandKeinObjekt: "Zustandsdatei {datei} traegt kein Objekt.",
     nichtGeschrieben: "{datei} konnte nicht geschrieben werden: {grund}",
     grundUrteilsArt: "'{art}' ist eine Urteils-Art — ein Review beurteilt sie, eine maschinelle Pruefung faengt sie nicht. Es entsteht kein Vorschlag.",
-    abgelehntImWorktree: "'vorschlag --abgelehnt' im Worktree eines Laufs wirkt nirgends und geht mit dem Worktree verloren — den Aufruf in der Hauptkopie machen.",
+    abgelehntImWorktree: "'suggest --rejected' im Worktree eines Laufs wirkt nirgends und geht mit dem Worktree verloren — den Aufruf in der Hauptkopie machen.",
     grundWorktree: "Worktree eines Laufs — der Vorschlag folgt beim Abbau in der Hauptkopie.",
     grundUnterSchwelle: "{zaehlerstand} Vorkommen ueber dem Nullpunkt {nullpunkt} erreichen die Schwelle {schwelle} nicht.",
     grundPoolIdee: "Die Pool-Idee {idee} traegt noch keine adressierbare Nummer — sie laesst sich erst ergaenzen, wenn ein Mensch sie einplant.",
@@ -132,7 +70,7 @@ suchen.
     ideeBeobachtung: "Dieser Vorschlag ist eine Beobachtung, keine Entscheidung: Ob daraus eine Pruefung wird, entscheidet ein Mensch. Ohne sein Zutun entsteht keine.",
     ideeFundeKopf: "## Die zugrunde liegenden Funde",
     ideeWegKopf: "## Weg nach vorn",
-    ideeWeg: "Diese Idee ist keine Aufgabe. Wer sie aufgreift, fuehrt sie ueber `/techplan #<n>` und `/issues` in Arbeitspakete; wer sie verwirft, ruft `node .claude/kit/befunde.mjs vorschlag --abgelehnt {art}` — dann zaehlt die Art ab dem heutigen Stand neu.",
+    ideeWeg: "Diese Idee ist keine Aufgabe. Wer sie aufgreift, fuehrt sie ueber `/techplan #<n>` und `/issues` in Arbeitspakete; wer sie verwirft, ruft `node .claude/kit/findings.mjs suggest --rejected {art}` — dann zaehlt die Art ab dem heutigen Stand neu.",
     ergaenzungKopf: "## Weitere Funde der Mangel-Art `{art}`",
     ergaenzungStand: "Seit dem Stand dieses Vorschlags ({vorher}) sind {neu} Vorkommen dazugekommen — Stand jetzt {zaehlerstand}.",
     vorschlagUrteilsArt: "kein Vorschlag (Urteils-Art)",
@@ -163,87 +101,27 @@ suchen.
     befundArt: "`{art}`: {vorkommen} Vorkommen{stufen}{schwellenteil} — {vorschlag}.",
     befundSchwellenteil: ", Schwelle {schwelle} erreicht",
     befundCode: "Stufe `code`: {gruen} auf einem Stand mit gruenen Pflichtpruefungen, {anzahl} als `{wert}` ausgewiesen.",
-    aufrufLaeuft: "befunde.mjs: aufrufen laeuft schon — zwei Aufrufe zugleich gehen nicht",
+    aufrufLaeuft: "findings.mjs: aufrufen laeuft schon — zwei Aufrufe zugleich gehen nicht",
     unbekanntesArgument: "Unbekanntes Argument: '{arg}'",
-    dateiErwartet: "--datei erwartet einen Pfad.",
-    pruefenBraucht: "'pruefen' braucht --datei <pfad>.",
+    dateiErwartet: "--file erwartet einen Pfad.",
+    pruefenBraucht: "'check' braucht --file <pfad>.",
     optionWert: "{option} erwartet einen Wert.",
-    buchenBraucht: "'buchen' braucht --datei <pfad>, --stufe <stufe> und --karte <n>.",
+    buchenBraucht: "'record' braucht --file <pfad>, --stage <stufe> und --card <n>.",
     unbekannteStufe: "Unbekannte Stufe: '{stufe}'. Erwartet: {stufen}.",
     optionArt: "{option} erwartet eine Mangel-Art.",
-    vorschlagBeides: "'vorschlag' nimmt --art ODER --abgelehnt, nicht beides.",
-    vorschlagBraucht: "'vorschlag' braucht --art <art> oder --abgelehnt <art>.",
-    unbekannteArt: "Unbekannte Art: '{art}'. Gueltig sind die Namen aus 'befunde arten'.",
-    artenOhneArgumente: "'arten' nimmt keine Argumente, bekam '{arg}'.",
-    auswertenOhneArgumente: "'auswerten' nimmt keine Argumente, bekam '{arg}'.",
-    befundOhneArgumente: "'befund' nimmt keine Argumente, bekam '{arg}'.",
-    keinKommando: "Kein Kommando. Erwartet: arten, pruefen, buchen, vorschlag, auswerten, befund.",
-    unbekannterBefehl: "Unbekannter Befehl: '{befehl}'. Erwartet: arten, pruefen, buchen, vorschlag, auswerten oder befund.",
+    vorschlagBeides: "'suggest' nimmt --kind ODER --rejected, nicht beides.",
+    vorschlagBraucht: "'suggest' braucht --kind <art> oder --rejected <art>.",
+    unbekannteArt: "Unbekannte Art: '{art}'. Gueltig sind die Namen aus 'findings kinds'.",
+    artenOhneArgumente: "'kinds' nimmt keine Argumente, bekam '{arg}'.",
+    auswertenOhneArgumente: "'evaluate' nimmt keine Argumente, bekam '{arg}'.",
+    befundOhneArgumente: "'finding' nimmt keine Argumente, bekam '{arg}'.",
+    keinKommando: "Kein Kommando. Erwartet: kinds, check, record, suggest, evaluate, finding.",
+    unbekannterBefehl: "Unbekannter Befehl: '{befehl}'. Erwartet: kinds, check, record, suggest, evaluate oder finding.",
     fehler: "Fehler",
     unerwarteterFehler: "Unerwarteter Fehler",
+    altname: "unbekannt: '{name}' — englischer Name: '{englisch}'",
   }),
   en: Object.freeze({
-    hilfe: `befunde.mjs (claude-workflow-kit v{version}) — form and kinds of findings
-
-  node findings.mjs kinds
-  node findings.mjs check --file <path>
-  node findings.mjs record --file <path> --stage <fachlich|plan|issue|code> --card <n>
-  node findings.mjs suggest --kind <kind>
-  node findings.mjs suggest --rejected <kind>
-  node findings.mjs evaluate
-  node findings.mjs finding
-
-kinds    Prints the {anzahl} defect kinds with one explaining sentence each. This list
-         is the only wording in the kit; a project adds no kinds of its own.
-check    Reads a findings text, recognises the finding blocks by their severity mark
-         ({marken}) and reports for each finding the
-         missing ones of the three required entries: the counter-check, its state and the kind.
-         In the findings comment of /issue-review ('## <Stage>-Review, Round <n>')
-         it also reports a finding without a preceding reviewer head
-         '### Reviewer <n>: <role>, <model>' as 'reviewer-kopf', and if the text
-         carries no such head at all, '{keinePruefer}' under 'meldungen'.
-         Exit 0 even with only incomplete findings — the form is no gate.
-         Only a call that cannot work ends non-zero: missing --file, missing
-         or unreadable file.
-record   Writes one row to .claude/befunde.tsv for each finding with
-         'Gegenprobe: … — geprueft, bestaetigt' AND 'Uebernahme: uebernommen' —
-         appending, never emptying — and reports for each touched kind the new count
-         and whether the threshold (config block findings.threshold, default {schwelle})
-         is reached, plus with 'vorschlag' whether the kind creates a suggestion at the
-         threshold. With --stage code the last column carries the comparison state of
-         the required checks ('gruen' or '{nichtVergleichbar}'), otherwise '-'.
-suggest
-         --kind <kind> creates an idea on the board as soon as the kind reaches the
-         threshold above its zero point — only for form, konvention, sicherheit
-         (question about a check) and sonstiges (question about the list of kinds); a
-         judgement kind creates nothing and ends with 0; an open suggestion is
-         extended instead of doubled. Below the threshold nothing is created, and that
-         is no error. --rejected <kind> records the rejection and sets the
-         zero point to the current count — a manual step without a board call.
-         The record lives in {vorschlaege}; a failed
-         board call leaves it unchanged and ends non-zero. A suggestion card that can
-         no longer be found counts as done: its count becomes the new
-         zero point, and a new idea carries only the findings after it. In the worktree
-         of a run --kind creates nothing (the suggestion follows at teardown in the
-         main copy), and --rejected ends non-zero.
-evaluate
-         Reads {protokoll} and {vorschlaege} and
-         writes {bericht} as well as {stand}: for each kind
-         the number of occurrences, the distribution over the stages and the state of a
-         suggestion, plus the stage 'code' split by green and
-         not comparable comparison state. Both files are written in full, even
-         when nothing stands out.
-finding  Prints the finding block from {stand} as text. If there is
-         no finding, or the file is missing, empty or unreadable, the output
-         stays empty. Exit always 0 — the finding is no gate.
-
-  --version   Kit revision of this file.
-  --help, -h  This overview.
-
-The output of all commands is JSON on stdout — also when empty and also for a
-rejected call. The only exception is 'finding': what it prints on stdout an output
-point passes on unchanged, and an error message would be out of place there.
-`,
     art_bestandsbehauptung: "The checked text claims something about the existing state — a file, a line, a behaviour — that is not so there.",
     art_unbeobachtbar: "A commitment is worded so that one cannot observe whether it is met.",
     art_widerspruch: "Two places of the same text, or the text and a binding source, say different things.",
@@ -262,14 +140,14 @@ point passes on unchanged, and an error message would be out of place there.
     angabeReviewerKopf: "The finding has no reviewer head '### Reviewer <n>: <role>, <model>' before it — without it 'record' books the role as 'unbekannt'.",
     artNichtInListe: "The kind '{art}' is not in the list; valid are the names from 'findings kinds'.",
     keinePruefer: "The text carries not a single reviewer head '### Reviewer <n>: <role>, <model>' — no reviewer ran, the review does not count as done (review:done is not set).",
-    nachbarFehlt: "checks.mjs is not next to befunde.mjs ({pfad}) — 'record --stage code' needs blobHashes and the location of the check summary from the neighbour.",
+    nachbarFehlt: "checks.mjs is not next to findings.mjs ({pfad}) — 'record --stage code' needs blobHashes and the location of the check summary from the neighbour.",
     dateiNichtLesbar: "File not readable: {pfad} ({grund}).",
     protokollNichtLesbar: "Note: log not readable ({pfad}): {grund}",
     buchungNichtProtokolliert: "Note: booking not logged ({pfad}): {grund}",
     keineBasis: "the summary names no base",
     gitDiffFehl: "git diff against '{basis}' failed: {grund}",
     gitStatusFehl: "git status failed: {grund}",
-    boardFehlt: "board.mjs is not next to befunde.mjs ({pfad}) — 'suggest' writes through the board adapter.",
+    boardFehlt: "board.mjs is not next to findings.mjs ({pfad}) — 'suggest' writes through the board adapter.",
     boardStartFehl: "board.mjs could not be started: {grund}",
     boardFehl: "board.mjs {befehl} failed: {grund}",
     boardKeinJson: "board.mjs {befehl} returned no JSON: {grund}",
@@ -327,7 +205,7 @@ point passes on unchanged, and an error message would be out of place there.
     befundArt: "`{art}`: {vorkommen} occurrences{stufen}{schwellenteil} — {vorschlag}.",
     befundSchwellenteil: ", threshold {schwelle} reached",
     befundCode: "Stage `code`: {gruen} on a state with green required checks, {anzahl} marked as `{wert}`.",
-    aufrufLaeuft: "befunde.mjs: aufrufen is already running — two calls at once are not possible",
+    aufrufLaeuft: "findings.mjs: aufrufen is already running — two calls at once are not possible",
     unbekanntesArgument: "Unknown argument: '{arg}'",
     dateiErwartet: "--file expects a path.",
     pruefenBraucht: "'check' needs --file <path>.",
@@ -345,5 +223,6 @@ point passes on unchanged, and an error message would be out of place there.
     unbekannterBefehl: "Unknown command: '{befehl}'. Expected: kinds, check, record, suggest, evaluate or finding.",
     fehler: "Error",
     unerwarteterFehler: "Unexpected error",
+    altname: "unknown: '{name}' — English name: '{englisch}'",
   }),
 });

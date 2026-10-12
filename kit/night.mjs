@@ -706,7 +706,7 @@ const { befundText: wirksamkeitBefundText } = existsSync(NACHBAR_WIRKSAMKEIT)
 // Kopf von `/push-main` —, und auch hier faengt befundeAuswerten() den Wurf des Ersatzes
 // ab und macht daraus die eine Protokollzeile, die ein Fehlschlag sein darf.
 const befundeBefundTextFallback = () => {
-  throw new Error(t("nachbarFehlt", { datei: "befunde.mjs", pfad: NACHBAR_BEFUNDE }));
+  throw new Error(t("nachbarFehlt", { datei: "findings.mjs", pfad: NACHBAR_BEFUNDE }));
 };
 const { befundText: befundeBefundText } = existsSync(NACHBAR_BEFUNDE)
   ? await import(pathToFileURL(NACHBAR_BEFUNDE).href)
@@ -833,7 +833,7 @@ function auswertungLaufen(pfad, feld, bezeichnung, textform) {
     if (!existsSync(pfad)) throw new Error(t("auswertungDateiFehlt", { pfad }));
     // maxBuffer wie bei den Board-Aufrufen: Der Stand traegt alle einbezogenen Laeufe,
     // und ein abgeschnittener Puffer machte daraus einen Parse-Fehler.
-    const res = spawnSync(process.execPath, [pfad, "auswerten"], {
+    const res = spawnSync(process.execPath, [pfad, "evaluate"], {
       encoding: "utf-8",
       cwd: process.cwd(),
       maxBuffer: BOARD_MAX_BUFFER,

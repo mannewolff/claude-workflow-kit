@@ -15,6 +15,6 @@ const g = await import(pathToFileURL(join(kitDir, "night", "grundlagen.mjs")).hr
 test("ohne Hook liegen Kommandos und Module neben night.mjs, nicht neben dem Teil", () => {
   assert.equal(g.NACHBAR_DIR, kitDir);
   assert.equal(g.BOARD_PATH, join(kitDir, "board.mjs"));
-  assert.equal(g.BEFUNDE_PATH, join(kitDir, "befunde.mjs"));
+  assert.equal(g.BEFUNDE_PATH, join(kitDir, "findings.mjs"));
   assert.equal(g.NACHBAR_BOARD, join(kitDir, "board.mjs"));
 });

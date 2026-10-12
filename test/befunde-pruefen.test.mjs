@@ -27,7 +27,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-import { aufrufen } from "../kit/befunde.mjs";
+import { aufrufen } from "../kit/findings.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -48,7 +48,7 @@ function pruefe(text, nachher) {
   try {
     const datei = join(dir, "befunde.md");
     writeFileSync(datei, text, "utf-8");
-    const res = aufrufen(["pruefen", "--datei", datei], { cwd: dir });
+    const res = aufrufen(["check", "--file", datei], { cwd: dir });
     nachher(res, JSON.parse(res.stdout), datei);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -374,18 +374,18 @@ test("[befunde-1382] ein Code-Review meldet nie keine-pruefer", () => {
 });
 
 test("pruefen ohne --datei gibt JSON aus und endet ungleich 0", () => {
-  const res = aufrufen(["pruefen"], { cwd: repoRoot });
+  const res = aufrufen(["check"], { cwd: repoRoot });
 
   assert.notEqual(res.status, 0);
   const json = JSON.parse(res.stdout);
   assert.equal(json.ok, false);
-  assert.match(json.fehler, /--datei/);
+  assert.match(json.fehler, /--file/);
 });
 
 test("eine fehlende Datei endet ungleich 0 und gibt trotzdem JSON aus", () => {
   const dir = mkdtempSync(join(tmpdir(), "befunde-fehlt-"));
   try {
-    const res = aufrufen(["pruefen", "--datei", join(dir, "gibtsnicht.md")], { cwd: dir });
+    const res = aufrufen(["check", "--file", join(dir, "gibtsnicht.md")], { cwd: dir });
 
     assert.notEqual(res.status, 0, "eine fehlende Datei ist ein Aufruffehler, kein leerer Befund");
     const json = JSON.parse(res.stdout);
@@ -399,7 +399,7 @@ test("eine fehlende Datei endet ungleich 0 und gibt trotzdem JSON aus", () => {
 test("eine unlesbare Datei — ein Verzeichnis — endet ungleich 0 und gibt JSON aus", () => {
   const dir = mkdtempSync(join(tmpdir(), "befunde-unlesbar-"));
   try {
-    const res = aufrufen(["pruefen", "--datei", dir], { cwd: dir });
+    const res = aufrufen(["check", "--file", dir], { cwd: dir });
 
     assert.notEqual(res.status, 0);
     const json = JSON.parse(res.stdout);

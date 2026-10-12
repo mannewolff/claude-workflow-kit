@@ -57,7 +57,7 @@ test("[skills-1383] der Skill traegt keinen Rollentext mehr", () => {
   for (const platzhalter of ["{{ARTEN}}", "{{ISSUE_BODY}}", "{{QUELLE_BODY}}", "{{VORLAGE_PFAD}}"]) {
     assert.equal(SKILL.includes(platzhalter), false, `der Platzhalter ${platzhalter} steht noch im Skill`);
   }
-  assert.equal(SKILL.includes("befunde.mjs arten"), false, "die Anweisung, {{ARTEN}} selbst zu fuellen, steht noch im Skill");
+  assert.equal(SKILL.includes("findings.mjs kinds"), false, "die Anweisung, {{ARTEN}} selbst zu fuellen, steht noch im Skill");
   assert.equal(SKILL.includes("**Die fachliche Quelle im Plan-Review.**"), false, "der Absatz zur fachlichen Quelle steht noch im Skill");
 });
 
@@ -213,5 +213,5 @@ test("[skills-25] der Skill holt die Quelle nicht selbst, das montiert pruefauft
 test("[skills-1383] Schritt 6 setzt review:fertig nicht, wenn pruefen keine-pruefer meldet", () => {
   const i = SKILL.indexOf("### 6. Einarbeiten");
   const schritt = SKILL.slice(i, SKILL.indexOf("\n### 7.", i));
-  assert.match(schritt, /Meldet `befunde\.mjs pruefen` den Eintrag `keine-pruefer`, wird `review:fertig` nicht gesetzt/);
+  assert.match(schritt, /Meldet `findings\.mjs check` den Eintrag `keine-pruefer`, wird `review:fertig` nicht gesetzt/);
 });

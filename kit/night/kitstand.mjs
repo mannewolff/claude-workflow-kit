@@ -58,7 +58,7 @@ function t(schluessel, werte = {}) {
 const VORGABEN = Object.freeze({
   // PATH-Aufloesung bewusst, siehe Begruendung ueber gitReste() (S4036, Issue #183).
   git: (repoRoot, gitArgs) => spawnSync("git", gitArgs, { encoding: "utf-8", cwd: repoRoot }),
-  // Ein Programm, auf dessen Ende gewartet wird: sync-blobs des Stands, befunde.mjs vorschlag.
+  // Ein Programm, auf dessen Ende gewartet wird: sync-blobs des Stands, findings.mjs suggest.
   spawnSync: (befehl, argumente, optionen) => spawnSync(befehl, argumente, optionen),
   // Der Runner des Stands als Kind, auf den der Elternprozess asynchron wartet.
   spawn: kindStarten,
@@ -810,7 +810,7 @@ function halterLebt(pfad) {
 
 /**
  * Die Schwelle aus dem Config-Block `befunde` der Hauptkopie (Issue #800).
- * SYNC: `schwelleLesen` in kit/befunde.mjs — dieselbe Regel samt Vorgabe 3, dupliziert
+ * SYNC: `schwelleLesen` in kit/findings.mjs — dieselbe Regel samt Vorgabe 3, dupliziert
  * nach dem Muster #440 und mit `repoRoot` statt `process.cwd()`, denn der Runner steht
  * beim Abbau nicht zwingend in der Hauptkopie.
  */
@@ -825,7 +825,7 @@ function befundeSchwelle(repoRoot) {
 
 /**
  * Der Nullpunkt je Art aus `befunde-vorschlaege.json` der Hauptkopie (Plan #797, E11).
- * SYNC: `nullpunktFuer` in kit/befunde.mjs — dupliziert wie die Schwelle darueber.
+ * SYNC: `nullpunktFuer` in kit/findings.mjs — dupliziert wie die Schwelle darueber.
  */
 function befundeNullpunkt(repoRoot, art) {
   try {
@@ -837,7 +837,7 @@ function befundeNullpunkt(repoRoot, art) {
 }
 
 /** Der Zaehlerstand je Art (Spalte 5) aus Protokollzeilen; fehlerhafte Zeilen zaehlen nicht.
- *  SYNC: `zaehleArten` in kit/befunde.mjs. */
+ *  SYNC: `zaehleArten` in kit/findings.mjs. */
 function befundeArtenZaehlen(zeilen) {
   const zaehler = new Map();
   for (const zeile of zeilen) {
@@ -896,7 +896,7 @@ export function befundeZurueck(pfad, repoRoot) {
 }
 
 /**
- * Ruft `befunde.mjs vorschlag --art <a>` fuer eine Mangel-Art an der Schwelle
+ * Ruft `findings.mjs suggest --kind <a>` fuer eine Mangel-Art an der Schwelle
  * (Issue #804, night-70) und protokolliert das Ergebnis in genau einer Zeile.
  *
  * KEIN GATE, wie bei den Auswertungen (E9): Ein Fehlschlag — fehlendes Werkzeug,
@@ -908,7 +908,7 @@ export function befundeZurueck(pfad, repoRoot) {
 function befundeVorschlagen(repoRoot, art) {
   try {
     if (!existsSync(BEFUNDE_PATH)) throw new Error(t("werkzeugFehlt", { pfad: BEFUNDE_PATH }));
-    const res = abh.spawnSync(process.execPath, [BEFUNDE_PATH, "vorschlag", "--art", art], {
+    const res = abh.spawnSync(process.execPath, [BEFUNDE_PATH, "suggest", "--kind", art], {
       encoding: "utf-8", cwd: repoRoot, maxBuffer: BOARD_MAX_BUFFER,
     });
     if (res.error) throw new Error(t("nichtGestartet", { fehler: res.error.message }));
@@ -935,7 +935,7 @@ function befundeVorschlagen(repoRoot, art) {
  * zweiten Lauf und damit doppeltes Anhaengen; die Arten an der Schwelle stehen als eine
  * Zeile im Protokoll.
  *
- * Je zurueckgegebener Art folgt ein `befunde.mjs vorschlag --art <a>` (Issue #804):
+ * Je zurueckgegebener Art folgt ein `findings.mjs suggest --kind <a>` (Issue #804):
  * Hier — am Anlass — und nicht erst beim naechsten `push main`, weil ein zweiter Ort
  * ein zweiter Zeitpunkt waere, zu dem dieselbe Zahl anders herauskommen kann (E9).
  */

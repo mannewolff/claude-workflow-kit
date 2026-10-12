@@ -112,7 +112,7 @@ test("[checks-1] plan gibt kein Feld hashes aus", async () => {
 });
 
 test("[checks-8] blobHashes ist exportiert und liefert denselben Hash wie git hash-object", async () => {
-  assert.equal(typeof blobHashes, "function", "kit/befunde.mjs importiert blobHashes als Nachbardatei (Issue #802)");
+  assert.equal(typeof blobHashes, "function", "kit/findings.mjs importiert blobHashes als Nachbardatei (Issue #802)");
   await mitRepo({ config: LEISE }, async (dir) => {
     datei(dir, "a.txt", "Stand fuer den Vergleich\n");
     const vorher = process.cwd();

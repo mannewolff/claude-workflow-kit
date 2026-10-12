@@ -23,7 +23,7 @@ test("unter KIT_ROOT liegen die Kommandos im .claude/kit/ des fremden Projekts",
   assert.equal(g.BOARD_PATH, join(kit, "board.mjs"));
   assert.equal(g.AUFWAND_PATH, join(kit, "aufwand.mjs"));
   assert.equal(g.WIRKSAMKEIT_PATH, join(kit, "wirksamkeit.mjs"));
-  assert.equal(g.BEFUNDE_PATH, join(kit, "befunde.mjs"));
+  assert.equal(g.BEFUNDE_PATH, join(kit, "findings.mjs"));
   assert.equal(g.CHECKS_PATH, join(kit, "checks.mjs"));
 });
 
@@ -33,7 +33,7 @@ test("NIGHT_NACHBAR_DIR verlegt die Module, nicht die Kommandos (Issue #498)", (
   assert.equal(g.NACHBAR_CHECKS, join(nachbarn, "checks.mjs"));
   assert.equal(g.NACHBAR_AUFWAND, join(nachbarn, "aufwand.mjs"));
   assert.equal(g.NACHBAR_WIRKSAMKEIT, join(nachbarn, "wirksamkeit.mjs"));
-  assert.equal(g.NACHBAR_BEFUNDE, join(nachbarn, "befunde.mjs"));
+  assert.equal(g.NACHBAR_BEFUNDE, join(nachbarn, "findings.mjs"));
 });
 
 test("ohne Board-Teil unter den Nachbarn setzt boardUmgebung kein Budget (Issue #1067)", () => {

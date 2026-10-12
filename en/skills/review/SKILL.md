@@ -80,7 +80,7 @@ The Agent tool is not used here: it knows only Claude models, and passing a `rev
 **Failure path: if `review-brief` or `start` ends with an exit code other than 0, `/review` aborts** — with a visible error message including the error from the output, for `start` together with an stderr excerpt. The issue does **not** change to In review, and **no board comment** is created. A review that did not run must leave no trace that looks like a check: a comment under "Code review (step 7)" without findings reads like a clean pass, and an issue in *In review* claims the check is done. Both would be worse than the visible abort.
 
 ### 3. Document the result
-<!-- de: 28b580ddece9 -->
+<!-- de: c73df40c4b24 -->
 
 Write the findings as a comment on the current issue:
 

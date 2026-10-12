@@ -19,7 +19,7 @@ import { ursprungAuswerten } from "../kit/board/ursprung.mjs";
 import { planReviewWert, fachplanReviewWert, einarbeitungVon } from "../kit/night/bericht.mjs";
 import { stammtAusErzeugung, fachlicheQuelleVon, paketUmgesetzt } from "../kit/night/kette.mjs";
 import { empfohlenesModell, aufgabenStufe } from "../kit/night/session.mjs";
-import { aufrufen } from "../kit/befunde.mjs";
+import { aufrufen } from "../kit/findings.mjs";
 
 /** Beide Sprachen einer Fixture: `de` und `en` ueber dieselbe Funktion. */
 const beide = (de, en, pruefe) => {
@@ -191,7 +191,7 @@ test("Sitzung: Recommended model und Task-Tier wie Empfohlenes Modell und Aufgab
   assert.deepEqual(aufgabenStufe("Task-Tier: zwei Woerter"), { stufe: null, grund: null });
 });
 
-// --- Befunde (kit/befunde.mjs) --------------------------------------------------
+// --- Befunde (kit/findings.mjs) --------------------------------------------------
 
 test("Befunde: ein englischer Review-Kopf verlangt den Reviewer-Kopf wie ein deutscher", () => {
   const fund = ["#### WICHTIG", "", "**W1 — Titel.**", "Gegenprobe: x — geprueft, bestaetigt", "Art: doppelung"].join("\n");
@@ -200,7 +200,7 @@ test("Befunde: ein englischer Review-Kopf verlangt den Reviewer-Kopf wie ein deu
     try {
       const datei = join(dir, "b.md");
       writeFileSync(datei, `${kopf}\n\n${fund}\n`);
-      const json = JSON.parse(aufrufen(["pruefen", "--datei", datei], { cwd: dir }).stdout);
+      const json = JSON.parse(aufrufen(["check", "--file", datei], { cwd: dir }).stdout);
       assert.deepEqual(json.funde[0].fehlt, ["reviewer-kopf"], kopf);
     } finally {
       rmSync(dir, { recursive: true, force: true });

@@ -18,7 +18,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 // ihre Tabelle als night-<modul>.mjs ab (Issue #1525), die unter kit/board/ als
 // board-<modul>.mjs (Issue #1526).
 const MODULE = [
-  "kit/aufwand.mjs", "kit/befunde.mjs", "kit/board.mjs", "kit/worktree.mjs",
+  "kit/aufwand.mjs", "kit/findings.mjs", "kit/board.mjs", "kit/worktree.mjs",
   "kit/night/kette.mjs", "kit/night/bericht.mjs", "kit/night/wartend.mjs", "kit/night/grundlagen.mjs",
   "kit/night/session.mjs", "kit/night/tag.mjs", "kit/night/kitstand.mjs", "kit/night/laufstand.mjs",
   "kit/night/abhaengigkeiten.mjs",

@@ -193,7 +193,7 @@ test("[night-60] laufAbschliessen ruft erst den Aufwand, dann die Wirksamkeit, u
     const gerufen = aufrufe(capture);
     assert.deepEqual(gerufen.map((a) => a.wer), ["aufwand", "wirksamkeit"],
       `erst der Aufwand, dann die Wirksamkeit — je genau einmal: ${JSON.stringify(gerufen)}`);
-    assert.deepEqual(gerufen[1].argv, ["auswerten"], "die Wirksamkeits-Auswertung wird mit 'auswerten' gerufen");
+    assert.deepEqual(gerufen[1].argv, ["evaluate"], "die Wirksamkeits-Auswertung wird mit 'evaluate' gerufen");
 
     const wirk = gerufen[1].gesehen;
     assert.equal(wirk.length, 1, `genau ein Ergebnisstand zum Zeitpunkt des Aufrufs: ${JSON.stringify(wirk)}`);

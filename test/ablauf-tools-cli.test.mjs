@@ -211,11 +211,11 @@ function syncFixture(praefix, { installZeilen, kitVersion = "1.26.0" } = {}) {
   writeFileSync(join(dir, "templates", "CLAUDE-Plan.md"), "# Plan-Gates\n");
   writeFileSync(join(dir, "templates", "workflow.config.json"), JSON.stringify({ codeHost: "github" }) + "\n");
   writeFileSync(join(dir, "skills", "beispiel", "SKILL.md"), "# Beispiel-Skill\n");
-  for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs", "worktree.mjs"]) {
+  for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "findings.mjs", "worktree.mjs"]) {
     writeFileSync(join(dir, "kit", datei), `const KIT_VERSION = "${kitVersion}";\nconsole.log("${datei}");\n`);
   }
   // Seit Issue #1462: die englischen Einstiege, als Blob und in der Kopie, aber ohne Stempel.
-  for (const datei of ["findings.mjs", "effort.mjs", "effectiveness.mjs"]) writeFileSync(join(dir, "kit", datei), `console.log("${datei}");\n`);
+  for (const datei of ["effort.mjs", "effectiveness.mjs"]) writeFileSync(join(dir, "kit", datei), `console.log("${datei}");\n`);
   // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
   writeFileSync(join(dir, "templates", "workflow.config.schema.json"), "{}\n");
   writeFileSync(join(dir, "kit", "einstellungen.mjs"), `const KIT_VERSION = "${kitVersion}";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
@@ -230,7 +230,7 @@ function syncFixture(praefix, { installZeilen, kitVersion = "1.26.0" } = {}) {
   return dir;
 }
 
-const BLOB_KONSTANTEN = ["CONFIG_EXAMPLE_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "PREISE_MJS_B64", "AUFWAND_MJS_B64", "WIRKSAMKEIT_MJS_B64", "BEFUNDE_MJS_B64", "WORKTREE_MJS_B64", "FINDINGS_MJS_B64", "EFFORT_MJS_B64", "EFFECTIVENESS_MJS_B64", "KIT_NIGHT_B64", "KIT_BOARD_B64", "KIT_ROLLEN_B64", "KIT_TEXTE_B64", "GATE_MJS_B64", "PRE_COMMIT_B64", "SKILLS_B64", "AGENTS_B64", "SKILLS_EN_B64", "TEMPLATES_EN_B64", "AGENTS_EN_B64", "KIT_ROLLEN_EN_B64"];
+const BLOB_KONSTANTEN = ["CONFIG_EXAMPLE_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "PREISE_MJS_B64", "AUFWAND_MJS_B64", "WIRKSAMKEIT_MJS_B64", "WORKTREE_MJS_B64", "FINDINGS_MJS_B64", "EFFORT_MJS_B64", "EFFECTIVENESS_MJS_B64", "KIT_NIGHT_B64", "KIT_BOARD_B64", "KIT_ROLLEN_B64", "KIT_TEXTE_B64", "GATE_MJS_B64", "PRE_COMMIT_B64", "SKILLS_B64", "AGENTS_B64", "SKILLS_EN_B64", "TEMPLATES_EN_B64", "AGENTS_EN_B64", "KIT_ROLLEN_EN_B64"];
 
 test("sync-blobs bricht ab, wenn install.mjs keine VERSION-Konstante hat", () => {
   const dir = syncFixture("sync-noversion-", {

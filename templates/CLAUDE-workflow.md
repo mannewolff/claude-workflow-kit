@@ -192,7 +192,7 @@ Zwei Messgrenzen gehoeren zum Bild: Die Nachpruefung des Nacht-Runners laeuft an
 
 **Aufbau eines Funds.** Jeder Fund einer vom Kit vorgesehenen Modell-Pruefung — fachliche Anforderung, Plan, Arbeitspaket, Code — traegt neben Schweregrad, Fundstelle und Vorschlag drei weitere Angaben: die Beobachtung, die ihn widerlegen wuerde; den Stand dieser Gegenprobe, `geprueft, bestaetigt` oder `nicht geprueft`; und seine Mangel-Art. Ein Fund, den die eigene Gegenprobe widerlegt hat, wird nicht gemeldet.
 
-**Die Artenliste hat genau einen Wortlaut:** `node .claude/kit/befunde.mjs arten`. Dieser Abschnitt zaehlt die Arten nicht selbst auf, sondern verweist auf das Kommando — zwei Orte driften auseinander, sobald eine Art hinzukommt oder ihren Namen wechselt. Ein Projekt ergaenzt keine eigenen Arten.
+**Die Artenliste hat genau einen Wortlaut:** `node .claude/kit/findings.mjs kinds`. Dieser Abschnitt zaehlt die Arten nicht selbst auf, sondern verweist auf das Kommando — zwei Orte driften auseinander, sobald eine Art hinzukommt oder ihren Namen wechselt. Ein Projekt ergaenzt keine eigenen Arten.
 
 **Aus dieser Form wird kein Gate.** Ein Fund ohne Gegenprobe oder mit fehlender Angabe haelt nichts auf. Fehlt eine Angabe, wird sie beim liefernden Reviewer genau einmal nachgefordert; bleibt sie aus, traegt der Fundblock `Angaben: unvollstaendig` und wird trotzdem eingearbeitet.
 

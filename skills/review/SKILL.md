@@ -92,7 +92,7 @@ TEIL2
 ```
 
 ```bash
-node .claude/kit/befunde.mjs pruefen --datei <tmpdir>/id-review.md
+node .claude/kit/findings.mjs check --file <tmpdir>/id-review.md
 ```
 
 Meldet das Kommando fehlende Angaben, fordert die Session sie beim Reviewer genau **einmal** nach und schreibt die Datei neu. Bleibt eine Angabe danach aus, trägt der betroffene Fundblock die Zeile `Angaben: unvollstaendig`. **Kein Gate:** Weder eine fehlende Angabe noch eine ausgebliebene Nachlieferung hält den Lauf auf; scheitert das Kommando selbst, steht das als eine Zeile im Kommentar. Der Kommentar geht in jedem dieser Fälle ans Board — der Ausfallpfad aus Schritt 2 bleibt davon unberührt, denn ein Review, der nicht lief, liefert nichts:

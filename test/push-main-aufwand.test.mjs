@@ -111,11 +111,11 @@ test("[skills-30] fuer den Wirksamkeits-Befund gelten dieselben Regeln wie fuer 
 // unmittelbar hinter der Wirksamkeit. Dieselbe Begruendung wie beim zweiten — die
 // Reihenfolge ist Teil der Aussage, und `/retro` laeuft nur alle ein bis zwei Wochen
 // und truege die Zahl damit zu spaet.
-test("[skills-30] der Block ruft `befunde.mjs befund` unmittelbar hinter `wirksamkeit.mjs befund`", () => {
+test("[skills-30] der Block ruft `findings.mjs finding` unmittelbar hinter `wirksamkeit.mjs befund`", () => {
   const { text } = aufwandBlock();
   const wirksamkeit = text.indexOf("node .claude/kit/wirksamkeit.mjs befund");
-  const befunde = text.indexOf("node .claude/kit/befunde.mjs befund");
-  assert.notEqual(befunde, -1, "der Aufruf `befunde.mjs befund` fehlt");
+  const befunde = text.indexOf("node .claude/kit/findings.mjs finding");
+  assert.notEqual(befunde, -1, "der Aufruf `findings.mjs finding` fehlt");
   assert.ok(befunde > wirksamkeit, "der Befunde-Block steht vor dem Wirksamkeits-Block");
   // Unmittelbar heisst: kein weiterer Kit-Aufruf dazwischen.
   const dazwischen = text.slice(wirksamkeit, befunde).match(/node \.claude\/kit\/\S+/g) ?? [];
@@ -124,7 +124,7 @@ test("[skills-30] der Block ruft `befunde.mjs befund` unmittelbar hinter `wirksa
 });
 
 test("[skills-30] der Befunde-Block steht vor dem ersten nummerierten Schritt", () => {
-  const befunde = SKILL.indexOf("node .claude/kit/befunde.mjs befund");
+  const befunde = SKILL.indexOf("node .claude/kit/findings.mjs finding");
   const schritt1 = SKILL.indexOf("### 1. Config lesen");
   assert.notEqual(befunde, -1, "der Aufruf fehlt im Skill");
   assert.ok(befunde < schritt1, "der Befunde-Block steht hinter Schritt 1 — dann liefe er erst nach der Config");
@@ -132,14 +132,14 @@ test("[skills-30] der Befunde-Block steht vor dem ersten nummerierten Schritt", 
 
 test("[skills-30] fuer den Befunde-Befund gelten dieselben Regeln, und er liest allein seinen Stand", () => {
   const { text } = aufwandBlock();
-  const ab = text.slice(text.indexOf("node .claude/kit/befunde.mjs befund"));
+  const ab = text.slice(text.indexOf("node .claude/kit/findings.mjs finding"));
   assert.match(ab, /dieselben Regeln|denselben Regeln/, "es steht nicht, dass dieselben Regeln gelten");
   assert.match(ab, /\.claude\/befunde\.json/, "die gelesene Datei des dritten Befunds fehlt");
 });
 
 test("[skills-30] ein Projekt ohne Modell-Pruefungen sieht nichts, und das bleibt unkommentiert", () => {
   const { text } = aufwandBlock();
-  const ab = text.slice(text.indexOf("node .claude/kit/befunde.mjs befund"));
+  const ab = text.slice(text.indexOf("node .claude/kit/findings.mjs finding"));
   assert.match(ab, /Fehlt die Datei|ohne .*Pr(ue|ü)fung|kein.*Protokoll/i,
     "der Fall des Projekts ohne Modell-Pruefungen kommt nicht vor");
 });

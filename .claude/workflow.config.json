@@ -787,8 +787,8 @@
       "test/helpers/wirksamkeit-fixture.mjs"
     ],
     "befunde": [
-      "kit/befunde.mjs",
-      "kit/texte/befunde.mjs",
+      "kit/findings.mjs",
+      "kit/texte/findings.mjs",
       "test/befunde-*.test.mjs",
       "test/ablauf-befunde-*.test.mjs",
       "test/helpers/zeilenenden.mjs"
@@ -814,7 +814,6 @@
     "sync": [
       "tools/sync-blobs.mjs",
       "tools/version.mjs",
-      "kit/findings.mjs",
       "kit/effort.mjs",
       "kit/effectiveness.mjs",
       "kit/settings.mjs",

@@ -103,7 +103,7 @@ test("[night-68] der Spiegel filtert nur direkt unter .claude/ — Werkzeuge unt
     // Die Kit-Kopie traegt Werkzeuge, deren Namen wie die Berichte der Hauptkopie
     // beginnen. Ein Filter ueber den blossen Dateinamen liesse sie zurueck, und eine
     // Kettenstufe im Worktree riefe ins Leere.
-    for (const werkzeug of ["aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"]) {
+    for (const werkzeug of ["aufwand.mjs", "wirksamkeit.mjs", "findings.mjs"]) {
       writeFileSync(join(dir, KOPIE, werkzeug), `// ${werkzeug}\n`);
     }
     // Und die Berichte, die in der Hauptkopie bleiben sollen — direkt unter `.claude/`.
@@ -114,7 +114,7 @@ test("[night-68] der Spiegel filtert nur direkt unter .claude/ — Werkzeuge unt
     const pfad = worktreeAnlegen({ repoRoot: dir, issueId: "824", stempel: "2026-09-21-010203" });
     angelegt.push(pfad);
 
-    for (const werkzeug of ["board.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs"]) {
+    for (const werkzeug of ["board.mjs", "aufwand.mjs", "wirksamkeit.mjs", "findings.mjs"]) {
       assert.ok(existsSync(join(pfad, KOPIE, werkzeug)), `.claude/kit/${werkzeug} fehlt im Worktree`);
     }
     for (const bericht of ["aufwand.md", "aufwand.json", "wirksamkeit.md", "wirksamkeit.json", "bewegungen.tsv", "ausfuehrungen.tsv"]) {

@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
 import { aufrufen as checks } from "../kit/checks.mjs";
-import { aufrufen as befunde } from "../kit/befunde.mjs";
+import { aufrufen as befunde } from "../kit/findings.mjs";
 import { aufrufen as wirksamkeit } from "../kit/wirksamkeit.mjs";
 import { parseArgs, grundlagenAnbinden } from "../kit/night/grundlagen.mjs";
 
@@ -44,7 +44,6 @@ function leeresProjekt(praefix) {
 // --- Einstiegsdateien ----------------------------------------------------------
 
 const EINSTIEGE = [
-  ["findings.mjs", "befunde.mjs", [["--version"], ["--help"], ["arten"], ["gibtsnicht"]]],
   ["effort.mjs", "aufwand.mjs", [["--version"], ["--help"], ["gibtsnicht"]]],
   ["effectiveness.mjs", "wirksamkeit.mjs", [["--version"], ["--help"], ["gibtsnicht"]]],
   ["settings.mjs", "einstellungen.mjs", [["--version"], ["--help"]]],
@@ -86,27 +85,65 @@ test("checks.mjs: --stage, --area, --finish, --fresh und --retry gleichen den de
   }
 });
 
-// --- befunde.mjs -----------------------------------------------------------------
+// --- findings.mjs ----------------------------------------------------------------
 
-test("befunde.mjs: die englischen Unterkommandos und Optionen gleichen den deutschen", () => {
+// Der Code steht seit Issue #1559 (Plan #1548 E6) in kit/findings.mjs; die deutsche Datei
+// entfaellt ohne Weiterleitung, und die deutschen Namen werden mit Hinweis abgewiesen.
+test("findings.mjs: kit/befunde.mjs gibt es nicht mehr", () => {
+  assert.equal(existsSync(join(KIT, "befunde.mjs")), false);
+});
+
+test("findings.mjs: deutsche Unterkommandos, Optionen und Stufenwerte enden mit Exit 1 und nennen den englischen Namen", () => {
   const dir = leeresProjekt("befunde-en-");
   try {
     const datei = join(dir, "funde.md");
     writeFileSync(datei, "Keine Funde.\n");
-    const paare = [
-      [["kinds"], ["arten"]],
-      [["check", "--file", datei], ["pruefen", "--datei", datei]],
-      [["record", "--file", datei, "--stage", "nix", "--card", "1"], ["buchen", "--datei", datei, "--stufe", "nix", "--karte", "1"]],
-      [["suggest", "--kind", "nix"], ["vorschlag", "--art", "nix"]],
-      [["suggest", "--rejected", "nix"], ["vorschlag", "--abgelehnt", "nix"]],
-      [["evaluate", "x"], ["auswerten", "x"]],
-      [["finding", "x"], ["befund", "x"]],
+    const faelle = [
+      [["arten"], "'arten'", "'kinds'"],
+      [["pruefen", "--file", datei], "'pruefen'", "'check'"],
+      [["buchen"], "'buchen'", "'record'"],
+      [["vorschlag"], "'vorschlag'", "'suggest'"],
+      [["auswerten"], "'auswerten'", "'evaluate'"],
+      [["befund"], "'befund'", "'finding'"],
+      [["check", "--datei", datei], "'--datei'", "'--file'"],
+      [["record", "--file", datei, "--stufe", "plan", "--card", "1"], "'--stufe'", "'--stage'"],
+      [["record", "--file", datei, "--stage", "plan", "--karte", "1"], "'--karte'", "'--card'"],
+      [["suggest", "--art", "form"], "'--art'", "'--kind'"],
+      [["suggest", "--abgelehnt", "form"], "'--abgelehnt'", "'--rejected'"],
+      [["record", "--file", datei, "--stage", "fachlich", "--card", "1"], "'fachlich'", "'requirement'"],
     ];
-    for (const [en, de] of paare) {
-      const soll = befunde(de, { cwd: dir });
-      assert.doesNotMatch(soll.stdout + soll.stderr, /Unbekannte[rs]? (Argument|Befehl)/, de.join(" "));
-      assert.deepEqual(befunde(en, { cwd: dir }), soll, en.join(" "));
+    for (const [argv, alt, neu] of faelle) {
+      const res = befunde(argv, { cwd: dir });
+      assert.equal(res.status, 1, argv.join(" "));
+      const ausgabe = res.stdout + res.stderr;
+      assert.ok(ausgabe.includes(alt) && ausgabe.includes(neu), `${argv.join(" ")}: ${ausgabe}`);
     }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("findings.mjs: --stage requirement bucht unter der internen Stufe fachlich", () => {
+  const dir = leeresProjekt("befunde-en-stufe-");
+  try {
+    const datei = join(dir, ".claude", "funde.md");
+    writeFileSync(datei, "#### WICHTIG\n\n**Fund**\nGegenprobe: Beobachtung. — geprueft, bestaetigt\nArt: luecke\nUebernahme: uebernommen\n");
+    const res = befunde(["record", "--file", datei, "--stage", "requirement", "--card", "7"], { cwd: dir });
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    const zeile = readFileSync(join(dir, ".claude", "befunde.tsv"), "utf-8").trim();
+    assert.equal(zeile.split("\t")[1], "fachlich");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("findings.mjs: die Hilfe ist englisch, auch in einem deutschen Projekt", () => {
+  const dir = leeresProjekt("befunde-en-hilfe-");
+  try {
+    const hilfe = befunde(["--help"], { cwd: dir }).stdout;
+    assert.match(hilfe, /^findings\.mjs \(claude-workflow-kit v[^)]+\) — form and kinds of findings$/m);
+    assert.match(hilfe, /node findings\.mjs record --file <path> --stage <requirement\|plan\|issue\|code> --card <n>/);
+    assert.doesNotMatch(hilfe, /befunde\.mjs|Mangel-Arten|--datei/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -216,7 +253,7 @@ test("worktree.mjs: create --prefix legt den Worktree unter dem Praefix an wie a
 // Der kuerzeste Weg durch die Fragen wie in test/ablauf-install-checks-blob.test.mjs.
 const PROJEKT_GITHUB = ["", "projekt", "github", "j", "n", "github", "", "", "", "", "", ""];
 
-test("Der Installer legt findings.mjs, effort.mjs und effectiveness.mjs byteweise wie die Quelle ab, settings.mjs nicht", () => {
+test("Der Installer legt findings.mjs, effort.mjs und effectiveness.mjs byteweise wie die Quelle ab, settings.mjs und befunde.mjs nicht", () => {
   const dir = mkdtempSync(join(tmpdir(), "install-einstiege-en-"));
   mkdirSync(join(dir, "home"), { recursive: true });
   try {
@@ -235,7 +272,8 @@ test("Der Installer legt findings.mjs, effort.mjs und effectiveness.mjs byteweis
     // Die Einstellungsoberflaeche ist Download, nicht Installation (RELEASING.md): Ein
     // Einstieg ohne die Datei daneben liefe ins Leere.
     assert.equal(existsSync(join(dir, ".claude", "kit", "settings.mjs")), false);
-    // Der Einstieg laeuft im Zielprojekt: Er findet die Quelle als Nachbardatei.
+    assert.equal(existsSync(join(dir, ".claude", "kit", "befunde.mjs")), false, "die deutsche Datei entfaellt (Issue #1559)");
+    // findings.mjs laeuft im Zielprojekt aus seinem eigenen Code.
     const version = spawnSync(process.execPath, [join(dir, ".claude", "kit", "findings.mjs"), "--version"], { encoding: "utf-8" });
     assert.equal(version.status, 0, version.stderr);
     assert.match(version.stdout, /^\d+\.\d+\.\d+\n$/);

@@ -14,7 +14,7 @@
 // schluessel und das Praefix `Verschoben nach ` der Board-Verlaufszeile, das der Adapter liefert.
 //
 // Das Paket #1453 ist in drei Teile geschnitten. Der erste (#1497) deckt kit/wirksamkeit.mjs
-// vollstaendig, der zweite (#1498) kit/befunde.mjs, der dritte (#1499) kit/worktree.mjs.
+// vollstaendig, der zweite (#1498) kit/befunde.mjs (seit #1559 kit/findings.mjs), der dritte (#1499) kit/worktree.mjs.
 // Fuer befunde bleiben dazu Vertrag (E14): die Artnamen, die Marken, die Formwoerter des
 // Fundblocks (`Gegenprobe:`, `— geprueft, bestaetigt`, `— nicht geprueft`, `Art:`), die
 // Angaben-Schluessel, die Vorschlagsstaende und die Werte des Vergleichsstands.
@@ -28,7 +28,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { TEXTE as WIRKSAMKEIT_TEXTE, befundText, kandidatenText, zahlform } from "../kit/wirksamkeit.mjs";
-import { TEXTE as BEFUNDE_TEXTE, aufrufen as befundeAufrufen } from "../kit/befunde.mjs";
+import { TEXTE as BEFUNDE_TEXTE, aufrufen as befundeAufrufen } from "../kit/findings.mjs";
 import { TEXTE as WORKTREE_TEXTE } from "../kit/worktree.mjs";
 import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
 import { mitProjekt, zeile, bewegung, moved, auswerten, wirksamkeit, bericht } from "./helpers/wirksamkeit-fixture.mjs";
@@ -211,7 +211,7 @@ test("[1497] ein englisches Projekt sieht keine deutsche Meldung — echter Proz
   });
 });
 
-// --- kit/befunde.mjs (Issue #1498) ------------------------------------------------------
+// --- kit/findings.mjs (Issue #1498) ------------------------------------------------------
 
 // Ein Befunde-Kommentar von /issue-review mit englischem Kopf und ohne Reviewer-Kopf: Er loest
 // die Meldung `keine-pruefer`, die Angabe `reviewer-kopf` und eine fremde Art aus.
@@ -249,7 +249,7 @@ function mitBefundeProjekt({ protokoll = [], vorschlaege = null, config = null }
   }
 }
 
-/** `befunde.mjs` im selben Prozess mit einem Stub-Adapter, der jeden Aufruf samt Datei festhaelt. */
+/** `findings.mjs` im selben Prozess mit einem Stub-Adapter, der jeden Aufruf samt Datei festhaelt. */
 function befunde(dir, argv, aufrufe = []) {
   const board = (args) => {
     const i = args.findIndex((a) => a === "--body-file" || a === "--text-file");
@@ -259,18 +259,18 @@ function befunde(dir, argv, aufrufe = []) {
   return befundeAufrufen(argv, { cwd: dir, board, jetzt: () => new Date("2026-10-11T12:00:00.000Z") });
 }
 
-test("[1498] die Texttabelle von befunde.mjs hat in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
+test("[1498] die Texttabelle von findings.mjs hat in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
   assert.deepEqual(pruefeParitaet(BEFUNDE_TEXTE), []);
   assert.ok(Object.keys(BEFUNDE_TEXTE.de).length > 80, "die Tabelle traegt die Texte des Moduls");
 });
 
-test("[1498] die englische Haelfte der Tabelle von befunde.mjs traegt keine deutschen Woerter", () => {
+test("[1498] die englische Haelfte der Tabelle von findings.mjs traegt keine deutschen Woerter", () => {
   assert.deepEqual(deutschImEnglischen(BEFUNDE_TEXTE), []);
 });
 
 // Die Tabelle liegt seit Issue #1524 in kit/texte/; gescannt wird das Modul ohne sie.
-test("[1498] jeder deutsche Text von befunde.mjs geht ueber den Texthelfer", () => {
-  assert.deepEqual(deutschAmHelferVorbei("kit/befunde.mjs", null,
+test("[1498] jeder deutsche Text von findings.mjs geht ueber den Texthelfer", () => {
+  assert.deepEqual(deutschAmHelferVorbei("kit/findings.mjs", null,
     ["nicht", "— nicht geprueft", "keine-pruefer", "nicht-vergleichbar", "(?:nicht gefunden|not found)", "karte-fehlt"]), []);
 });
 
@@ -299,7 +299,7 @@ test("[1498] englisch: die Idee am Board traegt englisches Praefix, Kopf und Tex
     assert.equal(ergebnis.titel, "[Idea] Machine check for defect kind form?");
     const body = aufrufe[0].text;
     assert.match(body, /^## Context$/m);
-    assert.match(body, /^Author-Model: kit\/befunde\.mjs$/m);
+    assert.match(body, /^Author-Model: kit\/findings\.mjs$/m);
     assert.match(body, /^\| Time \| Stage \| Card \| Role \| Severity \|$/m);
     assert.match(body, /^Not all findings of this kind can be caught by the same check\.$/m);
     assert.match(body, /`node \.claude\/kit\/findings\.mjs suggest --rejected form`/);
@@ -335,12 +335,12 @@ test("[1498] englisch: Hilfe und Fehler nennen die englischen Befehlsnamen", () 
   mitBefundeProjekt({}, (dir) => {
     const hilfe = befunde(dir, ["--help"]).stdout;
     assert.match(hilfe, /— form and kinds of findings/);
-    assert.match(hilfe, /node findings\.mjs record --file <path> --stage <fachlich\|plan\|issue\|code> --card <n>/);
+    assert.match(hilfe, /node findings\.mjs record --file <path> --stage <requirement\|plan\|issue\|code> --card <n>/);
     const fehler = (argv) => JSON.parse(befunde(dir, argv).stdout);
     assert.deepEqual(Object.keys(fehler(["kinds", "x"])), ["ok", "fehler"], "Feldnamen der Fehlerausgabe bleiben Vertrag");
     assert.equal(fehler(["kinds", "x"]).fehler, "'kinds' takes no arguments, got 'x'.");
     assert.equal(fehler(["check"]).fehler, "'check' needs --file <path>.");
-    assert.equal(fehler(["record", "--file", "f", "--stage", "x", "--card", "1"]).fehler, "Unknown stage: 'x'. Expected: fachlich, plan, issue, code.");
+    assert.equal(fehler(["record", "--file", "f", "--stage", "x", "--card", "1"]).fehler, "Unknown stage: 'x'. Expected: requirement, plan, issue, code.");
     assert.equal(fehler(["suggest", "--kind", "x"]).fehler, "Unknown kind: 'x'. Valid are the names from 'findings kinds'.");
     assert.equal(fehler(["check", "--file", "fehlt.md"]).fehler, "File not readable: fehlt.md (ENOENT).");
     assert.equal(fehler(["gibtsnicht"]).fehler, "Unknown command: 'gibtsnicht'. Expected: kinds, check, record, suggest, evaluate or finding.");
@@ -351,14 +351,14 @@ test("[1498] englisch: Hilfe und Fehler nennen die englischen Befehlsnamen", () 
 test("[1498] die deutsche Vorgabe bleibt: Idee, Befund und Meldung sprechen Deutsch, das Praefix ist englisch (Issue #1552)", () => {
   spracheFestlegen("de");
   mitBefundeProjekt({ protokoll: [befundeZeile("form"), befundeZeile("form"), befundeZeile("form")] }, (dir) => {
-    assert.equal(JSON.parse(befunde(dir, ["vorschlag", "--art", "form"]).stdout).titel, "[Idea] Maschinelle Pruefung fuer Mangel-Art form?");
-    befunde(dir, ["auswerten"]);
-    assert.match(befunde(dir, ["befund"]).stdout, /^Befunde der Modell-Pruefungen — Auswertung vom .+: 3 Vorkommen in 1 Art, Schwelle 3\.$/m);
-    assert.equal(JSON.parse(befunde(dir, ["arten", "x"]).stdout).fehler, "'arten' nimmt keine Argumente, bekam 'x'.");
+    assert.equal(JSON.parse(befunde(dir, ["suggest", "--kind", "form"]).stdout).titel, "[Idea] Maschinelle Pruefung fuer Mangel-Art form?");
+    befunde(dir, ["evaluate"]);
+    assert.match(befunde(dir, ["finding"]).stdout, /^Befunde der Modell-Pruefungen — Auswertung vom .+: 3 Vorkommen in 1 Art, Schwelle 3\.$/m);
+    assert.equal(JSON.parse(befunde(dir, ["kinds", "x"]).stdout).fehler, "'kinds' nimmt keine Argumente, bekam 'x'.");
   });
 });
 
-/** Die festen Bruchstuecke der deutschen Texte von befunde.mjs, die im Englischen nicht vorkommen. */
+/** Die festen Bruchstuecke der deutschen Texte von findings.mjs, die im Englischen nicht vorkommen. */
 function deutscheBefundeBruchstuecke() {
   const englisch = Object.values(BEFUNDE_TEXTE.en).join("\n");
   const stuecke = new Set();
@@ -371,27 +371,27 @@ function deutscheBefundeBruchstuecke() {
   return [...stuecke];
 }
 
-test("[1498] ein englisches Projekt sieht von befunde.mjs keine deutsche Meldung — echter Prozess, nur die verteilten Dateien", () => {
+test("[1498] ein englisches Projekt sieht von findings.mjs keine deutsche Meldung — echter Prozess, nur die verteilten Dateien", () => {
   const protokoll = [befundeZeile("form"), befundeZeile("form"), befundeZeile("form"), befundeZeile("luecke", { stufe: "code", vergleich: "nicht-vergleichbar" }), "kaputt"];
   mitBefundeProjekt({ protokoll, vorschlaege: { form: { karte: "812", stand: "offen", zaehlerstand: 3, nullpunkt: 0 } }, config: { language: "en", issueTracker: "local" } }, (dir) => {
     const kit = join(dir, ".claude", "kit");
     mkdirSync(kit, { recursive: true });
-    copyFileSync(join(KIT, "befunde.mjs"), join(kit, "befunde.mjs"));
+    copyFileSync(join(KIT, "findings.mjs"), join(kit, "findings.mjs"));
     cpSync(join(KIT, "board"), join(kit, "board"), { recursive: true });
     cpSync(join(KIT, "texte"), join(kit, "texte"), { recursive: true });
 
-    const cli = (...args) => spawnSync(process.execPath, [join(kit, "befunde.mjs"), ...args], { cwd: dir, encoding: "utf-8" });
-    const auswertung = cli("auswerten");
+    const cli = (...args) => spawnSync(process.execPath, [join(kit, "findings.mjs"), ...args], { cwd: dir, encoding: "utf-8" });
+    const auswertung = cli("evaluate");
     assert.equal(auswertung.status, 0, auswertung.stderr);
     const ausgaben = [
-      freitexte(JSON.parse(auswertung.stdout)).join("\n"), readFileSync(join(dir, ".claude", "befunde.md"), "utf-8"), cli("befund").stdout,
-      cli("arten").stdout, cli("pruefen", "--datei", "funde.md").stdout, cli("vorschlag", "--art", "luecke").stdout,
-      cli("--help").stdout, cli("befund", "x").stderr, cli("arten", "x").stdout, cli("unbekannt").stdout, cli("unbekannt").stderr,
-      cli("buchen", "--datei", "funde.md", "--stufe", "code", "--karte", "1").stdout,
+      freitexte(JSON.parse(auswertung.stdout)).join("\n"), readFileSync(join(dir, ".claude", "befunde.md"), "utf-8"), cli("finding").stdout,
+      cli("kinds").stdout, cli("check", "--file", "funde.md").stdout, cli("suggest", "--kind", "luecke").stdout,
+      cli("--help").stdout, cli("finding", "x").stderr, cli("kinds", "x").stdout, cli("unbekannt").stdout, cli("unbekannt").stderr,
+      cli("record", "--file", "funde.md", "--stage", "code", "--card", "1").stdout,
     ];
     const alles = ausgaben.join("\n");
     assert.match(alles, /^# Findings of the model reviews$/m, "ohne Repo-Kontext laeuft der Bericht englisch");
-    assert.match(alles, /checks\.mjs is not next to befunde\.mjs/, "der fehlende Nachbar meldet sich englisch");
+    assert.match(alles, /checks\.mjs is not next to findings\.mjs/, "der fehlende Nachbar meldet sich englisch");
     const gefunden = deutscheBefundeBruchstuecke().filter((s) => alles.includes(s));
     assert.deepEqual(gefunden, [], "deutsche Meldung in einem englischen Projekt");
   });

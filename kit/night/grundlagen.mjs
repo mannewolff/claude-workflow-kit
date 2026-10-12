@@ -50,7 +50,7 @@ export const NACHBAR_BOARD = join(NACHBAR_DIR, "board.mjs");
 export const NACHBAR_CHECKS = join(NACHBAR_DIR, "checks.mjs");
 export const NACHBAR_AUFWAND = join(NACHBAR_DIR, "aufwand.mjs");
 export const NACHBAR_WIRKSAMKEIT = join(NACHBAR_DIR, "wirksamkeit.mjs");
-export const NACHBAR_BEFUNDE = join(NACHBAR_DIR, "befunde.mjs");
+export const NACHBAR_BEFUNDE = join(NACHBAR_DIR, "findings.mjs");
 
 // Das Budget der Board-Aufrufe im Nachtbetrieb, aus dem Board-Teil adapter (Issue #1217):
 // Es gehoert zu den Toolbox-Aufrufen der Adapter. Der Pfad ist nicht literal, deshalb nennen
@@ -89,11 +89,11 @@ export const AUFWAND_PATH = kitPfad("aufwand.mjs");
 export const WIRKSAMKEIT_PATH = kitPfad("wirksamkeit.mjs");
 
 // Und dasselbe fuer die Befunde (Issue #804, #806): Nach dem Rueckweg aus dem Worktree
-// ruft die Kette `befunde.mjs vorschlag --art <a>` je zurueckgegebener Mangel-Art, und
-// der Lauf-Abschluss ruft `befunde.mjs auswerten`. Beides ist ein Kindprozess und kein
+// ruft die Kette `findings.mjs suggest --kind <a>` je zurueckgegebener Mangel-Art, und
+// der Lauf-Abschluss ruft `findings.mjs evaluate`. Beides ist ein Kindprozess und kein
 // Import — die Kommandos schreiben ueber board.mjs ans Board beziehungsweise nach
 // `.claude/` und loesen ihre Pfade gegen das Projekt auf, in dem der Runner arbeitet.
-export const BEFUNDE_PATH = kitPfad("befunde.mjs");
+export const BEFUNDE_PATH = kitPfad("findings.mjs");
 
 // Und dasselbe fuer die Pruefungen (Issue #919): Die Vorpruefung des Salvage
 // faehrt sie als Kindprozess `checks.mjs run` im Zielprojekt, damit dort der Nachweis
@@ -142,7 +142,7 @@ function t(schluessel, werte = {}) {
  * Reihenfolge haengt an der Locale der Maschine, und zwei Laeufe muessen
  * ueberall dieselbe Liste ergeben — die Artnamen stehen im Nacht-Bericht.
  *
- * SYNC: dieselbe Funktion steckt in kit/checks.mjs, kit/befunde.mjs und
+ * SYNC: dieselbe Funktion steckt in kit/checks.mjs, kit/findings.mjs und
  * kit/wirksamkeit.mjs — Aenderungen dort nachziehen. Die Kit-Werkzeuge sind
  * bewusst eigenstaendige Single-File-Tools ohne gemeinsames Modul (#440);
  * geteilte Logik wird dupliziert und hier markiert.
@@ -1105,8 +1105,8 @@ export function gitResteAusnahmen(cfg = ZUSTAND.config) {
     // demselben Grund ausgeschlossen wie die vier Dateien der Wirksamkeits-Auswertung
     // darueber: Ohne den Ausschluss stoppte der Rest-Guard (#152) in jedem Projekt ohne
     // den `.claude/*`-Block nach der ersten Buchung hart.
-    ".claude/befunde.tsv", // SYNC: kit/befunde.mjs schreibt sie
-    ".claude/befunde-vorschlaege.json", // SYNC: kit/befunde.mjs liest sie
+    ".claude/befunde.tsv", // SYNC: kit/findings.mjs schreibt sie
+    ".claude/befunde-vorschlaege.json", // SYNC: kit/findings.mjs liest sie
     ".claude/befunde.md",
     ".claude/befunde.json",
     // Die Stuecke eines gestueckelten Abschlussberichts (Issue #1022): `issue report
