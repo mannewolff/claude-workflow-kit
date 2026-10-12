@@ -23,7 +23,7 @@ Binding process for AI-assisted software development in this project. Based on t
 ---
 
 ## Tools beside the process
-<!-- de: c84d86178853 -->
+<!-- de: 42adabf1d753 -->
 
 The nine steps above are the process from the white paper. What stands here is a tool of the kit: helpful, often used — but **the process runs without these skills as well**. They therefore carry no number; a number would claim an order and an obligation that do not exist.
 
@@ -34,6 +34,7 @@ The nine steps above are the process from the white paper. What stands here is a
 | `/context` (old name `/kontext`) | Session start: load the memory vault, fetch the state of the project |
 | `/requirement` (old name `/fachplan`) | Requirement as a business issue for grooming with the PO |
 | `/issue-review` | have a requirement, a plan document **or** a work package checked — one command, three stages |
+| `/groom` | decide the open questions of a reviewed business plan one by one with the PO |
 | `/retro` | AI retrospective, consolidate memory |
 | `/document` | Session end: write the daily log and the project note |
 

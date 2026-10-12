@@ -6,7 +6,7 @@ user-invocable: true
 <!-- de: 4a94de74e2da -->
 
 # Fachplan — old name of requirement
-<!-- de: 6e200e3c4fbb -->
+<!-- de: 5cee74e5f1ea -->
 
 This skill is now called **`requirement`** and carries no instructions of its own. Immediately
 run the skill `requirement` with the same arguments and follow its instructions alone:
@@ -16,4 +16,4 @@ Skill(skill: "requirement", args: "$ARGUMENTS")
 ```
 
 The old name stays callable so that existing habits and references keep working
-(Issue #1463, plan #1420 E16). What the skill does is in `skills/requirement/SKILL.md`.
+(Issue #1463, plan #1420 E16). What the skill does is in `skills/requirement/SKILL.md` — including the route after the review via `/groom #N` to `/techplan #N`.

@@ -97,18 +97,18 @@ node .claude/kit/board.mjs issue comment <T> --text "Continuation: Issue #N"
 On the new `[Requirement]` issue there is **no** origin line and **no** `--derived-from` — for the idea the same trail convention applies as for the task; `CLAUDE-Fachplan.md` (F9) forbids it at the business root. The trail runs in the other direction because the number of the new requirement only comes about here. Without the argument `#T` the call is dropped **without replacement**. If `issue create` returns only an `ideaId` with `pending: true`, the comment is dropped without replacement as well, and the message names the `ideaId`, so that the human lays the trail themselves when scheduling.
 
 ### 3. Close
-<!-- de: 5a024214e249 -->
+<!-- de: 89d13ca31d57 -->
 
 Report the created issue (number or `ideaId` + title) and the way forward:
 
-> "The business issue is created. Groom it with the PO — answers and additions directly in the body. When the PO says: that's it — then `/techplan #N` for the technical plan."
+> "The business issue is created. Groom it with the PO — answers and additions directly in the body. After the review (`/issue-review #N`), `/groom #N` leads through the open questions one by one. When the PO says: that's it — then `/techplan #N` for the technical plan."
 
 ## Grooming takes place in the body, never in comments
-<!-- de: 93f58b177eb8 -->
+<!-- de: 0d794bc66cb0 -->
 
 **Binding:** everything a later plan must rely on belongs in the **body** of the issue — the PO's answers as well as the AI's additions. Comments are for history and discussion, not for decisions. The body is the **negotiated state**, comments are **history**; whoever only comments on a decision forces every later session to reconstruct it from a discussion. `board.mjs issue get` returns the comments as well, but that does not change the rule: what applies stands in the body.
 
-Write the **PO's answers** directly behind the respective question under "Open questions for the PO" in the body. **If that answers all questions, the section gets as its first line a note that begins with "Keine"** — for example "Keine. The PO decided the 3 questions on 2026-09-24, the answers stand under each question." The word `Keine` is a machine value and stays German in every language: the night runner recognises the note only by it. Questions and answers stay below it; they are the negotiated state on which the plan relies (F8). The reason: the night runner reads only the **first** non-empty line of the section and holds the requirement as long as a question stands there — it does not recognise answered questions without this note. **Complete the human's raw issues:** if the human only throws down goal and rough requirement (the normal case), the AI fills in `## Business acceptance criteria`, `## Non-goals` and `## Open questions for the PO` in the body while grooming — not as a comment.
+Write the **PO's answers** directly behind the respective question under "Open questions for the PO" in the body. **If that answers all questions, the section gets as its first line a note that begins with "Keine"** — for example "Keine. The PO decided the 3 questions on 2026-09-24, the answers stand under each question." The word `Keine` is a machine value and stays German in every language: the night runner recognises the note only by it. Questions and answers stay below it; they are the negotiated state on which the plan relies (F8). The reason: the night runner reads only the **first** non-empty line of the section and holds the requirement as long as a question stands there — it does not recognise answered questions without this note. **Complete the human's raw issues:** if the human only throws down goal and rough requirement (the normal case), the AI fills in `## Business acceptance criteria`, `## Non-goals` and `## Open questions for the PO` in the body while grooming — not as a comment. `/groom #N` writes answer line, incorporation and note in exactly this form. This section remains the rule, `/groom` is its tool.
 
 This is how the completed body gets to the board, again via a file **outside the project directory**:
 ```bash

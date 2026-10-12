@@ -109,6 +109,8 @@ Danach das Label als sichtbare Spur am Board: `node .claude/kit/board.mjs issue 
 ### 7. Abschluss
 Zusammenfassung je Dokument: Stufe, Zahl der Funde, übernommen / abgelehnt, Zahl der **gebuchten** Funde und die dabei entstandenen oder ergänzten **Vorschläge** (bei einem Fehlschlag der Buchung dessen eine Zeile), Marker und `review:fertig` gesetzt, Label abgenommen und nicht wieder gesetzt, oder `kit:klaeren`, übersprungene Dokumente mit Grund. Dann: Ready ist das GO des Menschen — der Marker gibt nichts frei.
 
+Steht `kit:klaeren` an einem `[Fachlich]`, nennt die Zusammenfassung `/groom #N` als Weg zur Antwort.
+
 ## Lange Texte ans Board
 Befunde, Body und Einarbeitung entstehen nach der Transportregel aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board": nie als Kommandozeilen-Argument, sondern stückweise in eine Datei außerhalb des Projektverzeichnisses (`printenv TMPDIR`, bleibt die Ausgabe leer (Linux und WSL2 ohne Sandbox), gilt `/tmp`; dann `cat >` und `cat >>` mit je höchstens 6.000 Zeichen), jedes Stück ein **eigener** Werkzeugaufruf mit wörtlichem Pfad, dann ein Aufruf mit `--text-file` bzw. `--body-file`. Scheitert ein Dateischritt, wird die unvollständige Datei nicht übertragen; scheitert ein Board-Aufruf, meldet der Skill den Fehler mit dem Pfad und endet ohne weitere Mutation.
 

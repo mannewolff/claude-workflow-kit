@@ -14,4 +14,4 @@ Skill(skill: "requirement", args: "$ARGUMENTS")
 ```
 
 Der Altname bleibt aufrufbar, damit bestehende Gewohnheiten und Verweise weiter tragen
-(Issue #1463, Plan #1420 E16). Was der Skill tut, steht in `skills/requirement/SKILL.md`.
+(Issue #1463, Plan #1420 E16). Was der Skill tut, steht in `skills/requirement/SKILL.md` — auch der Weg nach der Prüfung über `/groom #N` zu `/techplan #N`.

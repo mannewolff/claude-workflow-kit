@@ -128,9 +128,11 @@ node .claude/kit/findings.mjs suggest --kind <a>
 Then the label as a visible trace on the board: `node .claude/kit/board.mjs issue label add <id> review:done`. It is a trace, not a release, and means the state of the marker date. If a finding hits the stop class and `kit:clarify` is set, `review:done` is dropped. If `findings.mjs check` reports the entry `keine-pruefer`, `review:done` is not set: without a single reviewer that ran the stage is not checked, and the summary names that. If the label is not defined on the board, the skill reports the adapter's error message and carries on; body, marker and comments then stand anyway, and the summary names the missing label. The night chain requires this label as a precondition before it takes up a requirement or a plan document; the trace still stays only a trace, not a release. The label testifies solely to the check by the models — **not** that the PO has answered the questions under `## Open questions for the PO`; the reviewers are explicitly not allowed to answer them. The chain requires both: a requirement with `review:done` and open questions is skipped with a reason until the **first** line of the section carries a note that begins with `Keine` — answered questions alone are not enough, the chain reads only this one line. The word is a machine value and stays German. If a requirement is changed substantially after the check, take the label off or have it checked again — the nightly run does not recognise a later change.
 
 ### 7. Close
-<!-- de: 9fc197ce3a95 -->
+<!-- de: f97702a502a8 -->
 
 Summary per document: stage, number of findings, taken over / rejected, number of **recorded** findings and the **proposals** that came about or were extended in the process (with a failure of the recording its one line), marker and `review:done` set, label taken off and not set again, or `kit:clarify`, skipped documents with reason. Then: Ready is the human's GO — the marker releases nothing.
+
+If `kit:clarify` is on a `[Fachlich]`, the summary names `/groom #N` as the route to the answer.
 
 ## Long texts to the board
 <!-- de: 630900c19283 -->

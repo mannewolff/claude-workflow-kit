@@ -1000,6 +1000,7 @@ Sie tragen keine Nummer, weil eine Nummer eine Reihenfolge und eine Pflicht beha
 | `/kontext` | Session-Start: Vault laden, Projektstand |
 | `/fachplan` | Anforderung als fachliches Issue zum Groomen mit dem PO |
 | `/issue-review` | fachliche Anforderung, Plandokument **oder** Arbeitspaket prüfen lassen — ein Kommando, drei Stufen |
+| `/groom` | offene Fragen eines geprüften Fachplans einzeln mit dem PO entscheiden |
 | `/retro` | KI-Retrospektive, Memory konsolidieren |
 | `/document` | Session-Ende: Tageslog und Projektnotiz |
 
@@ -1037,6 +1038,18 @@ Wenn ein Vault konfiguriert ist, lädt er die `always`-Dateien daraus (Profil, A
 Der Skill überführt eine rohe Anforderung (diktiert, aus einer Mail, aus dem Chat) in genau ein **fachliches Issue**: Titel mit dem Präfix `[Fachlich]`, Body im Story-Format (Ziel, fachliche Akzeptanzkriterien, Nicht-Ziele, offene Fragen an den PO) — strikt technikfrei, in PO-Sprache. Das Issue ist das Übergabe-Artefakt an den PO und wird direkt am Board gegroomt — die PO-Antworten und Ergänzungen gehören in den **Body**, nicht in Kommentare — der Body trägt den verhandelten Stand, Kommentare den Verlauf. (`board.mjs issue get` liefert die Kommentare inzwischen mit, aber eine Anforderung, die man aus einer Diskussion zusammensuchen muss, hat keinen eindeutigen Stand.)
 
 Vor dem Anlegen prüft `issue check-form` die Form des fachlichen Issues. Der Skill erstellt keinen technischen Plan und keine technischen Issues; das kommt nach der PO-Freigabe über `/techplan #N`. Wer keinen PO hat, überspringt diesen Schritt und startet wie gewohnt mit `/techplan`.
+
+### /groom
+
+**Werkzeug neben dem Prozess, zwischen `/issue-review` und `/techplan` — nur für Projekte mit Product Owner.**
+
+Ein geprüfter Fachplan trägt oft noch offene Fragen an den PO. `/groom #N` führt durch sie: Jede offene Frage unter `## Offene Fragen an den PO` kommt einzeln, mit Empfehlung und Begründung, und der Mensch entscheidet genau diese eine Frage. Die Session zeigt, wie sie die Antwort einarbeitet — die Antwortzeile unter der Frage und die Änderung an Ziel, Kriterien oder Nicht-Zielen —, und schreibt nach Zustimmung sofort in den Body. Eine Frage lässt sich zurückstellen; eine Folgefrage kommt im selben Durchgang. Sind alle Fragen entschieden, setzt sie den Vermerk „Keine“, den die Nacht-Kette liest.
+
+**Eingang:** genau ein `[Fachlich]` mit dem Label `review:fertig` oder `kit:klaeren`. Bei `kit:klaeren` kommt die Stopp-Frage der angehaltenen Prüfung zuerst; das Label nimmt am Ende der Mensch ab und lässt erneut prüfen. Hat eine Antwort Kriterien oder Nicht-Ziele geändert, schlägt der Skill eine erneute Prüfung vor.
+
+**Stop-Punkte:** Unbeaufsichtigt beginnt der Skill nicht — niemand kann antworten. Er schreibt nichts ohne Zustimmung, entfernt kein Label und legt keinen Plan an.
+
+Das Mechanische — welche Fragen offen sind, ob der Ablauf beginnen darf, welcher Kommentar die Stopp-Frage trägt, wie der Vermerk lautet — liefert `node .claude/kit/board.mjs issue fragen <N>`; das Kommando liest nur.
 
 ### /task
 
@@ -1344,6 +1357,8 @@ In der Praxis gießt ein Product Owner (oder ein Proxy-PO in der Firma) die Anfo
 - **Erkennung über den Titel (Stufe 1):** Das `[Fachlich]`-Präfix funktioniert bei allen vier Trackern ohne Adapter-Änderung. Eine echte Label-Achse (Labels gibt es in GitHub, GitLab und kanban-kit — die Board-Adapter-Schnittstelle reicht sie nur noch nicht durch) ist als Ausbaustufe vorgesehen.
 - **Eine Idee hat genau zwei Wege nach vorn.** Verlangt sie eine **Abwägung**, führt `/fachplan #N` sie in eine fachliche Anforderung über; ist **nichts abzuwägen** oder hat der Mensch bereits entschieden, wird sie per `/task #N` genau ein Arbeitspaket. Welcher Fall vorliegt, entscheidet der Mensch mit dem Aufruf — ob etwas abzuwägen ist, ist genau die Frage, die ein Mensch beantwortet, und ein Skill, der sie sich selbst beantwortet, träfe die Entscheidung, die er abgeben soll. Beide Skills nennen in ihrer Ablehnung den jeweils anderen Weg, damit ein falscher Aufruf nicht ins Leere läuft. Der Weg direkt in einen technischen Plan gilt nicht: Er würde die Stelle überspringen, an der über das Ziel entschieden wird.
 - **kanban-kit-Einordnung:** Neue fachliche Issues landen dort im Projekt-Ideen-Pool — Pool = ungesichtete Rohanforderung, Einplanen ins Backlog = fachlich in Arbeit (ab da adressierbar und groombar), `/techplan #N` = fachlich freigegeben.
+
+Nach der Prüfung durch die Modelle (`/issue-review #N`) läuft das Grooming mit [/groom](#groom) `#N`: Der Skill legt die offenen Fragen einzeln vor, arbeitet jede Antwort nach Zustimmung in den Body ein und setzt zuletzt den Vermerk „Keine“. Danach folgt `/techplan #N`.
 
 Ohne PO ist die Schleife unsichtbar: `/techplan` direkt aufzurufen bleibt der Normalweg.
 

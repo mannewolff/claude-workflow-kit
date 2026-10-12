@@ -1021,7 +1021,7 @@ The process has **nine** steps, seven of them with a skill. The remaining nine s
 Between step 8 and step 9 you check the test server in the browser — no skill of its own, but mandatory. This numbering is the same as in `CLAUDE-workflow.md` and in the skill definitions.
 
 ### Tools alongside the process
-<!-- de: f1ed3591fab6 -->
+<!-- de: c9c0e90ec33c -->
 
 They carry no number, because a number would claim an order and an obligation that do not exist. The nine steps are the process from the whitepaper; what is listed here is a tool of the kit.
 
@@ -1032,6 +1032,7 @@ They carry no number, because a number would claim an order and an obligation th
 | `/kontext` | Session start: load the vault, project status |
 | `/fachplan` | Requirement as a business issue for grooming with the PO |
 | `/issue-review` | have a business requirement (fachliche Anforderung), plan document (Plandokument) **or** work package reviewed — one command, three stages |
+| `/groom` | decide the open questions of a reviewed business plan (Fachplan) one by one with the PO |
 | `/retro` | AI retrospective, consolidate memory |
 | `/document` | Session end: daily log and project note |
 
@@ -1071,6 +1072,19 @@ If a vault is configured, it loads the `always` files from it (profile, working 
 The skill turns a raw requirement (dictated, from an email, from the chat) into exactly one **business issue**: title with the prefix `[Fachlich]`, body in story format (goal, business acceptance criteria, non-goals, open questions to the PO) — strictly free of technology, in PO language. The issue is the hand-over artefact to the PO and is groomed directly on the board — the PO's answers and additions belong in the **body**, not in comments — the body carries the negotiated state, comments the history. (`board.mjs issue get` now returns the comments as well, but a requirement you have to piece together from a discussion has no unambiguous state.)
 
 Before creating it, `issue check-form` checks the form of the business issue. The skill creates no technical plan and no technical issues; those come after the PO's approval through `/techplan #N`. Whoever has no PO skips this step and starts with `/techplan` as usual.
+
+### /groom
+<!-- de: f50ea6dbc3ff -->
+
+**Tool alongside the process, between `/issue-review` and `/techplan` — only for projects with a product owner.**
+
+A reviewed business plan often still carries open questions to the PO. `/groom #N` leads through them: each open question under `## Offene Fragen an den PO` comes on its own, with a recommendation and its reasoning, and the human decides exactly this one question. The session shows how it works the answer in — the answer line under the question and the change to goal, criteria or non-goals — and writes to the body immediately after approval. A question can be deferred; a follow-up question comes in the same pass. Once all questions are decided, it sets the note “Keine” that the night chain reads.
+
+**Input:** exactly one `[Fachlich]` with the label `review:fertig` or `kit:klaeren`. With `kit:klaeren`, the stop question of the halted review comes first; at the end the human removes the label and has the plan reviewed again. If an answer changed criteria or non-goals, the skill proposes a new review.
+
+**Stop points:** Unattended, the skill does not start — nobody can answer. It writes nothing without approval, removes no label and creates no plan.
+
+The mechanical part — which questions are open, whether the run may start, which comment carries the stop question, how the note reads — comes from `node .claude/kit/board.mjs issue fragen <N>`; the command only reads.
 
 ### /task
 <!-- de: f1126a942979 -->
@@ -1369,7 +1383,7 @@ When in doubt, lane 2 applies; that also covers an unclear need to weigh up. Bef
 **A special case worth naming: rejection as a valid result.** A tool reports a finding, and the finding is defensibly rejected — that, too, is work, and it is typical lane-3 work. So that the rejection holds, the acceptance criterion of such a `[Task]` is the **versioned suppression rule** that the tool itself evaluates, with the justification right next to it: The tool reads the rule, the justification addresses humans and later sessions. In the kit the pattern lives in `sonar-project.properties` — the exclusion of the rule `javascript:S4036` as a versioned line, with a written-out explanation above it of why it is defensible. A rejection marked as "accepted" by hand in the web UI, in contrast, does not hold: The next finding of the same kind arises outside of it. Such a task is verified by running the same tool again — the rejected finding stays away, **and an independent control finding is still reported**; without it, a silent tool cannot be told apart from an effective exclusion. If a tool lacks a versionable route, developing one belongs in an initiative (Vorhaben) of its own, and no cross-tool register is created — it would be a second list next to the rule files that none of the tools reads.
 
 ## PO loop: business and technical issues
-<!-- de: 2ff33472a971 -->
+<!-- de: f7a54c447773 -->
 
 In practice a product owner (or a proxy PO in the company) feeds in the requirements — and wants to accept the plan on the business side before any technology is designed. For this the kit optionally separates two kinds of issue, following the discovery/delivery pattern — the PO loop (PO-Schleife):
 
@@ -1402,6 +1416,8 @@ In practice a product owner (or a proxy PO in the company) feeds in the requirem
 - **Recognition via the title (stage 1):** The `[Fachlich]` prefix works with all four trackers without changing an adapter. A real label axis (labels exist in GitHub, GitLab and kanban-kit — the board adapter (Board-Adapter) interface just does not pass them through yet) is planned as an expansion stage.
 - **An idea has exactly two routes forward.** If it calls for a **trade-off**, `/fachplan #N` turns it into a business requirement; if there is **nothing to weigh up** or the human has already decided, it becomes exactly one work package with `/task #N`. Which case applies is decided by the human with the call — whether there is something to weigh up is exactly the question a human answers, and a skill that answered it for itself would make the decision it is meant to hand over. Both skills name the other route in their rejection, so that a wrong call does not lead nowhere. The route straight into a technical plan does not count: It would skip the point at which the goal is decided.
 - **Placement in kanban-kit:** New business issues land there in the project's idea pool — pool = unsifted raw requirement, scheduling into the backlog = in business work (from then on addressable and groomable), `/techplan #N` = approved on the business side.
+
+After the review by the models (`/issue-review #N`), grooming runs with [/groom](/en/dokumentation#groom) `#N`: the skill presents the open questions one by one, works each answer into the body after approval and finally sets the note “Keine”. Then follows `/techplan #N`.
 
 Without a PO the loop is invisible: calling `/techplan` directly remains the normal route.
 

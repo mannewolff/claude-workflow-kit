@@ -31,6 +31,7 @@ Die neun Schritte oben sind der Prozess aus dem Whitepaper. Was hier steht, ist 
 | `/context` (Altname `/kontext`) | Session-Start: Memory-Vault laden, Projektstand holen |
 | `/requirement` (Altname `/fachplan`) | Anforderung als fachliches Issue zum Groomen mit dem PO |
 | `/issue-review` | fachliche Anforderung, Plandokument **oder** Arbeitspaket pruefen lassen — ein Kommando, drei Stufen |
+| `/groom` | offene Fragen eines geprüften Fachplans einzeln mit dem PO entscheiden |
 | `/retro` | KI-Retrospektive, Memory konsolidieren |
 | `/document` | Session-Ende: Tageslog und Projektnotiz schreiben |
 
