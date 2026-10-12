@@ -227,7 +227,7 @@ reason: a check that fails on missing dependencies is never reported as a green 
 skipped.
 
 ### 4. Create release files (if `RELEASING.md` exists)
-<!-- de: 3b5904473e68 -->
+<!-- de: b540acd1c7bf -->
 
 > `Step 4 of 9 — Create release files (running)`
 
@@ -244,6 +244,9 @@ Check whether a `RELEASING.md` lies in the repo root.
 from there on it takes over with run, commit and push. If further steps stand **behind** the
 first committing step, the skill carries them out after its commit and says so in the
 completion report.
+
+**Post-push step.** If `RELEASING.md` names a post-push step, it does not belong in this
+step: the skill runs it in step 8, in the main copy after catching up.
 
 The skill itself knows no project-specific version or release logic; it lives exclusively in
 the `RELEASING.md` of the respective repo.
@@ -414,7 +417,7 @@ taken-over preparation with `check-preparation --discard`, as described in step 
 push it stays for the next attempt.
 
 ### 8. Way back, catching up, tearing down the worktree
-<!-- de: 9a5cd13bd438 -->
+<!-- de: a559c5ef0409 -->
 
 > `Step 8 of 9 — Way back and teardown (running)`
 
@@ -444,10 +447,19 @@ node .claude/kit/worktree.mjs catch-up-check
 ```
 
 - **`nachziehen: true`** — in the main copy `git fetch origin <mainBranch>` and
-  `git rebase origin/<mainBranch>`.
+  `git rebase origin/<mainBranch>`. Once the rebase is through, the skill runs the
+  **post-push step** from `RELEASING.md`, if it names one — in the main copy, as a call of
+  its own without chaining. The main copy then stands on the state just published, the one
+  every unattended run binds itself to as well. If it fails, that is one line in the report,
+  with its message — no stop, the push has already happened.
 - **`nachziehen: false`** — do **not** catch up. The skill names the `grund` and prints the
-  two commands as a copyable line. A rebase under a running implementation would pull the
+  two commands as a copyable line, followed by the command of the post-push step if
+  `RELEASING.md` names one: it is dropped then, because it is meant to follow the published
+  state, not an older one. A rebase under a running implementation would pull the
   ground from under it, and in a dirty tree it would stop anyway.
+
+If `RELEASING.md` names no post-push step, or there is no `RELEASING.md`, it is dropped
+without replacement.
 
 Finally the teardown:
 

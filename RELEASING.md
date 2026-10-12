@@ -57,6 +57,11 @@ ueber das Commit-Gate.
 2. `node tools/sync-blobs.mjs` — stempelt die neue Version in die Kit-Dateien.
 3. `node tools/changelog.mjs --marke vX.Y.Z` — mit der Kennung aus Schritt 1.
 
+Nach-Push-Schritt: `node tools/sync-blobs.mjs` — in der Hauptkopie, nach dem Nachziehen
+(Issue #1523). Er bringt die installierte Kopie unter `.claude/` auf den eben
+veroeffentlichten Stand; ohne ihn rief der naechste `push main` noch die alten Werkzeuge,
+und eine Aenderung an ihnen wirkte erst beim uebernaechsten.
+
 **Bei `merge production`** (ausgeloest durch `.claude/skills/merge-production/SKILL.md`):
 1. `node tools/version.mjs --minor`
 2. `node tools/sync-blobs.mjs`

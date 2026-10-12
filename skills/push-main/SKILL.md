@@ -244,6 +244,9 @@ fährt der Skill; ab dort übernimmt er mit Lauf, Commit und Push. Stehen **hint
 ersten festschreibenden Schritt noch weitere Schritte, führt der Skill sie nach seinem
 Commit aus und sagt das im Abschlussbericht.
 
+**Nach-Push-Schritt.** Nennt `RELEASING.md` einen Nach-Push-Schritt, gehört er nicht in
+diesen Schritt: Der Skill fährt ihn in Schritt 8, in der Hauptkopie nach dem Nachziehen.
+
 Der Skill selbst kennt keine projektspezifische Versions- oder Release-Logik; diese lebt
 ausschließlich in der `RELEASING.md` des jeweiligen Repos.
 
@@ -450,10 +453,19 @@ node .claude/kit/worktree.mjs nachziehen-pruefen
 ```
 
 - **`nachziehen: true`** — in der Hauptkopie `git fetch origin <mainBranch>` und
-  `git rebase origin/<mainBranch>`.
+  `git rebase origin/<mainBranch>`. Ist das Rebase durch, fährt der Skill den
+  **Nach-Push-Schritt** aus `RELEASING.md`, falls sie einen nennt — in der Hauptkopie, als
+  eigener Aufruf ohne Verkettung. Die Hauptkopie steht dann auf dem eben veröffentlichten
+  Stand, an den sich auch jeder unbeaufsichtigte Lauf bindet. Scheitert er, steht das als
+  eine Zeile im Bericht, mit seiner Meldung — kein Halt, der Push ist schon geschehen.
 - **`nachziehen: false`** — **nicht** nachziehen. Der Skill nennt den `grund` und gibt die
-  beiden Kommandos als kopierbare Zeile aus. Ein Rebase unter einer laufenden Umsetzung
+  beiden Kommandos als kopierbare Zeile aus, dahinter das Kommando des Nach-Push-Schritts,
+  falls `RELEASING.md` einen nennt: Er entfällt dann, denn er soll dem veröffentlichten
+  Stand folgen, nicht einem älteren. Ein Rebase unter einer laufenden Umsetzung
   verschöbe ihr den Boden, und in einem schmutzigen Baum hielte er ohnehin an.
+
+Nennt `RELEASING.md` keinen Nach-Push-Schritt, oder gibt es keine `RELEASING.md`, entfällt
+er ersatzlos.
 
 Zuletzt der Abbau:
 
