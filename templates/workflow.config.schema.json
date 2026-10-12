@@ -1158,6 +1158,11 @@
       "type": "boolean",
       "default": false,
       "description": "Sucht vor dem Schreiben eines Fachplans oder Plans frühere Fachpläne des eigenen Boards zum selben Gegenstand, archivierte eingeschlossen, und nennt die einschlägigen im neuen Dokument. Fehlendes Feld oder false = aus, das Dokument entsteht wie bisher; das ist die Vorgabe. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
+    },
+    "szenarienAb": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Stichtag der Szenarien-Pflicht: die Kartennummer, ab der ein Fachplan am Board einen Abschnitt Szenarien mit mindestens einem vollständigen Szenario tragen muss. Fachpläne mit kleinerer Nummer sind Altbestand und werden nie wegen des fehlenden Abschnitts beanstandet. Beim Prüfen einer Datei und beim Anlegen über das Kit gilt die Pflicht immer. Der Installer setzt das Feld beim Update, wenn es fehlt, auf die höchste Kartennummer am Board plus eins; von Hand nachholen mit `node .claude/kit/board.mjs scenarios baseline`. Fehlt das Feld, gilt die Pflicht für keine Karte am Board, und die Prüfungen nennen den fehlenden Stichtag als Hinweis. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
     }
   },
   "required": [],

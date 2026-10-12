@@ -1066,6 +1066,10 @@ Recurring findings of the model reviews: from how many occurrences a proposal ar
 ### `history` (German: `vorgeschichte`)
 
 Before a requirement or plan is written, searches earlier requirements on the project's own board on the same subject, archived ones included, and names the relevant ones in the new document. A missing field or false = off, the document is written as before; that is the default. Applies team-wide; a different value in workflow.config.local.json is ignored.
+
+### `scenariosFrom` (German: `szenarienAb`)
+
+Cut-off of the scenario duty: the card number from which a requirement on the board must carry a Scenarios section with at least one complete scenario. Requirements with a lower number are legacy and are never flagged for the missing section. When a file is checked or a requirement is created through the kit, the duty always applies. On update the installer sets the field, if it is missing, to the highest card number on the board plus one; to catch up by hand, use `node .claude/kit/board.mjs scenarios baseline`. If the field is missing, the duty applies to no card on the board, and the checks name the missing cut-off as a note. Applies team-wide; a different value in workflow.config.local.json is ignored.
 <!-- einstellungen:ende -->
 
 ## The seventeen skills and the 9-step core process

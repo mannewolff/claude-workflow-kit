@@ -39,6 +39,7 @@ import { TEXTE as GESCHUETZT_TEXTE, geschuetztKommentar, pruefeIssue, pruefeFach
 import { zerlegeAbschnitte } from "../kit/board/dokumente.mjs";
 import { TEXTE as SCHUTZ_TEXTE, SCHUTZ_AUSGESETZT, rulesetSoll, schutzZustand, anleitung, nachtSperre, probe,
   einrichten } from "../kit/board/schutz.mjs";
+import { TEXTE as SZENARIEN_TEXTE } from "../kit/board/szenarien.mjs";
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
 
 const ADAPTER_URL = new URL("../kit/board/adapter.mjs", import.meta.url).href;
@@ -592,6 +593,8 @@ test("[1483] in einem englischen Projekt erscheint aus keinem Modul der Gruppe e
     "kit/board/testhinweise.mjs": TESTHINWEISE_TEXTE,
     "kit/board/ursprung.mjs": URSPRUNG_TEXTE,
     "kit/board/wiederholung.mjs": WIEDERHOLUNG_TEXTE,
+    // Issue #1589: der Abschnitt Szenarien im Fachplan.
+    "kit/board/szenarien.mjs": SZENARIEN_TEXTE,
   };
   const funde = [];
   for (const [datei, tabelle] of Object.entries(gruppe)) {

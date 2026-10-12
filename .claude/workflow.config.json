@@ -45,6 +45,7 @@
         "board-grundlagen",
         "board-hook",
         "board-issue-review",
+        "board-szenarien",
         "board-testhinweise",
         "board-wiederholung",
         "nacht-einstieg",
@@ -737,6 +738,11 @@
       "kit/board/grooming.mjs",
       "kit/texte/board-grooming.mjs",
       "test/board-grooming-*.test.mjs"
+    ],
+    "board-szenarien": [
+      "kit/board/szenarien.mjs",
+      "kit/texte/board-szenarien.mjs",
+      "test/board-szenarien.test.mjs"
     ],
     "board-issue-review": [
       "kit/board/issue-review.mjs",

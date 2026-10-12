@@ -171,6 +171,7 @@ export const SCHLUESSEL = Object.freeze({
   befunde: "findings",
   "befunde.schwelle": "threshold",
   vorgeschichte: "history",
+  szenarienAb: "scenariosFrom",
 });
 
 const gleich = (...werte) => Object.fromEntries(werte.map((w) => [w, w]));

@@ -271,6 +271,8 @@ export const UEBERSCHRIFTEN = Object.freeze({
   // Fachplan.
   fachlicheKriterien: eintrag("Fachliche Akzeptanzkriterien", "Business acceptance criteria"),
   nichtZiele: eintrag("Nicht-Ziele", "Non-goals"),
+  // Fachplan, zwischen Kriterien und Nicht-Zielen (Issue #1589, Plan #1588 A1, E1).
+  szenarien: eintrag("Szenarien", "Scenarios"),
   poFragen: eintrag("Offene Fragen an den PO", "Open questions for the PO"),
   // Fachplan und Plan (Issue #1537, Plan #1534 E1).
   vorgeschichte: eintrag("Vorgeschichte", "History"),
@@ -286,6 +288,24 @@ export const UEBERSCHRIFTEN = Object.freeze({
   offenePunkte: eintrag("Offene Punkte", "Open points"),
   zuletztAktualisiert: eintrag("Zuletzt aktualisiert", "Last updated"),
 });
+
+/**
+ * Die Schluesselwoerter eines Szenarios im Fachplan (Issue #1589, Plan #1588 A2, E1, E2):
+ * der Titel `### Szenario: <Titel>` und die Anfaenge der Listenzeilen, je Sprache. Die
+ * Pruefung nimmt sie nur in der Projektsprache an; der Leser steht in kit/board/szenarien.mjs.
+ */
+export const GHERKIN = Object.freeze({
+  szenario: eintrag("Szenario", "Scenario"),
+  angenommen: eintrag("Angenommen", "Given"),
+  wenn: eintrag("Wenn", "When"),
+  dann: eintrag("Dann", "Then"),
+  und: eintrag("Und", "And"),
+});
+
+/** Ein Schluesselwort eines Szenarios in der Sprache; eine unbekannte Sprache gilt als `de`. */
+export function gherkinWort(sache, sprache) {
+  return nameIn(GHERKIN, "Schluesselwort", sache, sprache);
+}
 
 /** Ueberschriften vergleichbar machen: klein, Umlaute in beiden Schreibweisen, Leerraum einfach. */
 export function normUeberschrift(text) {
