@@ -84,8 +84,11 @@ test("labelName liefert je Sache den Namen der Sprache", () => {
   }
 });
 
-test("labelName: unbekannte Sprache faellt auf de", () => {
-  assert.equal(labelName(erkenneLabel("kit:klaeren"), "fr"), "kit:klaeren");
+test("labelName und praefix: ohne oder mit unbekannter Sprache der englische Name (Issue #1552)", () => {
+  assert.equal(labelName(erkenneLabel("kit:klaeren")), "kit:clarify");
+  assert.equal(labelName(erkenneLabel("kit:klaeren"), "fr"), "kit:clarify");
+  assert.equal(praefix("fachlich"), "[Requirement]");
+  assert.equal(praefix("idee", "fr"), "[Idea]");
 });
 
 test("labelName und praefix: unbekannte Sache wirft", () => {

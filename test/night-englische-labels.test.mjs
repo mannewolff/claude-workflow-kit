@@ -114,7 +114,7 @@ test("Prueflauf: kit:check zaehlt wie kit:pruefen, auch neben einem gesetzten We
   ];
   const vorgabe = waehlePruefLaufKandidaten(karten, ladePruefLaufBudget({}).label, null);
   assert.deepEqual(vorgabe.kandidaten.map((k) => k.id), ["30", "31"]);
-  assert.match(vorgabe.uebersprungen[0].grund, /kit:klaeren/);
+  assert.match(vorgabe.uebersprungen[0].grund, /kit:(klaeren|clarify)/);
   const gesetzt = waehlePruefLaufKandidaten(karten, "mein:pruefen", null, { sache: "pruefen" });
   assert.deepEqual(gesetzt.kandidaten.map((k) => k.id), ["30", "31", "32"]);
   assert.equal(pruefLaufAusschluss(karten[1], "kit:pruefen"), null);

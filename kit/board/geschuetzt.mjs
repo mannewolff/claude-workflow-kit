@@ -224,11 +224,11 @@ export function geschuetzteTreffer(body, title, wurzel) {
 export const GESCHUETZT_ANKER = "## Geschuetzte Datei";
 
 // Die Labels mit Freigaberecht kommen aus dem Register (Issue #1424, Plan #1420 E3, E8).
-// Geschrieben wird der deutsche Name, bis das Schreiben in der Projektsprache folgt; erkannt
-// wird jeder Name derselben Sache — sonst gaebe ein Mensch unter `kit:protected` etwas frei,
-// das das Kit nicht sieht, oder das Kit uebersaehe einen Halt.
-export const GESCHUETZT_LABEL = labelName("geschuetzt", "de");
-export const KLAEREN_LABEL = labelName("klaeren", "de");
+// Geschrieben wird seit Issue #1552 (Plan #1548 E2) der englische Name, in jedem Projekt;
+// erkannt wird jeder Name derselben Sache — sonst gaebe ein Mensch unter dem deutschen Namen
+// etwas frei, das das Kit nicht sieht, oder das Kit uebersaehe einen Halt.
+export const GESCHUETZT_LABEL = labelName("geschuetzt");
+export const KLAEREN_LABEL = labelName("klaeren");
 export const GESCHUETZT_LABEL_GESETZT = freigabeZeile(GESCHUETZT_LABEL, true);
 export const GESCHUETZT_LABEL_NICHT_GESETZT = freigabeZeile(GESCHUETZT_LABEL, false);
 

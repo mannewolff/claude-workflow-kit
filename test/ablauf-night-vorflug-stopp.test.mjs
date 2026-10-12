@@ -9,6 +9,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { hatLabel } from "./helpers/labels.mjs";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { KLAEREN_LABEL } from "../kit/night.mjs";
@@ -16,7 +17,7 @@ import {
   VORFLUG_OK, run, board, mitProjekt, fachplan, sessions, stand, umgebung, pruefUmgebung,
 } from "./helpers/kette-ablauf.mjs";
 
-const PRUEF_LABEL = "kit:pruefen";
+const PRUEF_LABEL = "kit:check";
 const BUDGET = { label: PRUEF_LABEL, pruefungMin: 25, kostenUsd: 25 };
 const HARTER_STOPP = "HARTER STOPP: die Vorflug-Session hat den Working Tree veraendert";
 
@@ -88,7 +89,7 @@ test("[night-1096] meldet der Vorflug des Prueflaufs ein Problem, bekommt jeder 
       const karte = board(dir, "issue", "get", id);
       assert.match(karte.body, /Pruefung nicht gestartet: Kein Reviewer konfiguriert/,
         `#${id}: der Vermerk aus pruefungNichtGestartet fehlt`);
-      assert.ok(karte.labels.includes(PRUEF_LABEL), `#${id}: das Kennzeichen muss bleiben — es lief nichts`);
+      assert.ok(hatLabel(karte.labels, PRUEF_LABEL), `#${id}: das Kennzeichen muss bleiben — es lief nichts`);
       assert.match(res.stdout, new RegExp(`#${id}: Kommentar 'Pruefung nicht gestartet' geschrieben, Kennzeichen bleibt\\.`));
     }
     assert.equal(sessions(env.logPfad).length, 0, "nach dem gescheiterten Vorflug startet keine Pruefung");
@@ -114,7 +115,7 @@ test("[night-1096] mehr Kandidaten als --max: die ueberzaehligen bleiben liegen,
       assert.equal(einheit(id).ausgang, "liegengeblieben");
       assert.equal(einheit(id).grund, "ueber --max 1, bleibt liegen");
       assert.match(res.stdout, new RegExp(`#${id} .*: liegengeblieben — ueber --max 1, bleibt liegen`));
-      assert.ok(board(dir, "issue", "get", id).labels.includes(PRUEF_LABEL),
+      assert.ok(hatLabel(board(dir, "issue", "get", id).labels, PRUEF_LABEL),
         `#${id}: eine liegengebliebene Karte behaelt ihr Kennzeichen`);
     }
     assert.match(res.stdout, /Prueflauf beendet: .* 2 liegengeblieben\./);
@@ -143,7 +144,7 @@ test("[night-1096] sind alle Kandidaten uebersprungen, nennt das Laufende sie un
     assert.ok(lauf.noWorkReason.startsWith(satz), "der Grund steht auch am Ergebnisstand");
     for (const id of [planId, klaeren]) {
       assert.equal(lauf.einheiten.find((e) => e.id === id).ausgang, "uebersprungen");
-      assert.ok(board(dir, "issue", "get", id).labels.includes(PRUEF_LABEL), `#${id}: das Kennzeichen bleibt`);
+      assert.ok(hatLabel(board(dir, "issue", "get", id).labels, PRUEF_LABEL), `#${id}: das Kennzeichen bleibt`);
     }
   });
 });

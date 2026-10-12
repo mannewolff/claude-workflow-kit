@@ -67,7 +67,7 @@ test("[night-70] das dritte Vorkommen im Worktree laesst die Idee am Board entst
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const titel = kartenTitel(dir);
-    assert.ok(titel.includes("[Idee] Maschinelle Pruefung fuer Mangel-Art form?"),
+    assert.ok(titel.includes("[Idea] Maschinelle Pruefung fuer Mangel-Art form?"),
       `die Idee fehlt am Board:\n${titel.join("\n")}`);
     assert.match(res.stdout, /Vorschlag fuer 'form' angelegt/,
       "der Runner protokolliert den Vorschlag");
@@ -85,7 +85,7 @@ test("[night-70] ohne Schwellentreffer entsteht keine Idee", () => {
     const F = fachplan(dir);
     const res = run(dir, ["--kette"], kettenUmgebung(dir));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-    assert.equal(kartenTitel(dir).filter((t) => t.startsWith("[Idee]")).length, 0);
+    assert.equal(kartenTitel(dir).filter((t) => t.startsWith("[Idea]")).length, 0);
     assert.equal(vorschlaege(dir), null, "ohne Vorschlag keine Zustandsdatei");
     assert.ok(String(F));
   });
@@ -106,7 +106,7 @@ test("[night-70] ein Fehlschlag des Vorschlags haelt den Abbau nicht auf", () =>
     assert.match(res.stdout, /der Abbau geht weiter/);
     assert.equal(readFileSync(join(dir, ".claude", "befunde-vorschlaege.json"), "utf-8"), "{kein json",
       "kein halb vermerkter Vorschlag");
-    assert.equal(kartenTitel(dir).filter((t) => t.startsWith("[Idee]")).length, 0);
+    assert.equal(kartenTitel(dir).filter((t) => t.startsWith("[Idea]")).length, 0);
     // Der Rueckweg selbst ist unberuehrt: die dritte Zeile steht in der Hauptkopie.
     const zeilen = readFileSync(join(dir, ".claude", "befunde.tsv"), "utf-8").split("\n").filter(Boolean);
     assert.equal(zeilen.length, 3);
@@ -134,7 +134,7 @@ test("[night-70] jede zurueckgegebene Art bekommt ihren eigenen Aufruf", () => {
 
     const titel = kartenTitel(dir);
     for (const art of ["form", "konvention"]) {
-      assert.ok(titel.includes(`[Idee] Maschinelle Pruefung fuer Mangel-Art ${art}?`),
+      assert.ok(titel.includes(`[Idea] Maschinelle Pruefung fuer Mangel-Art ${art}?`),
         `die Idee zu '${art}' fehlt:\n${titel.join("\n")}`);
     }
     assert.deepEqual(Object.keys(vorschlaege(dir)).sort(), ["form", "konvention"]);

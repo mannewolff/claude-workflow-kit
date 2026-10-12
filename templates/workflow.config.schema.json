@@ -780,19 +780,19 @@
                 "laeuft": {
                   "type": "string",
                   "minLength": 1,
-                  "default": "lauf:laeuft",
+                  "default": "run:running",
                   "description": "Label einer Karte, an der ein Lauf gerade arbeitet."
                 },
                 "abgebrochen": {
                   "type": "string",
                   "minLength": 1,
-                  "default": "lauf:abgebrochen",
+                  "default": "run:aborted",
                   "description": "Label einer technisch abgebrochenen Karte: Wiederholen genügt."
                 },
                 "wartet": {
                   "type": "string",
                   "minLength": 1,
-                  "default": "lauf:wartet",
+                  "default": "run:waiting",
                   "description": "Label einer wartenden Karte; worauf sie wartet, steht wörtlich im Laufstand."
                 }
               },

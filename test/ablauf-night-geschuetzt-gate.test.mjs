@@ -26,6 +26,7 @@ import { join, dirname, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
+import { hatLabel } from "./helpers/labels.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -43,8 +44,8 @@ import { fileURLToPath } from "node:url";
 const hier = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 if (process.env.NIGHT_TEST_AUFRUFE) appendFileSync(process.env.NIGHT_TEST_AUFRUFE, JSON.stringify(args) + "\\n");
-if (process.env.NIGHT_TEST_LABEL_SCHEITERT && args[0] === "issue" && args[1] === "label" && args[2] === "add" && args[4] === "kit:geschuetzt") {
-  process.stderr.write("Label kit:geschuetzt ist am Board nicht angelegt\\n");
+if (process.env.NIGHT_TEST_LABEL_SCHEITERT && args[0] === "issue" && args[1] === "label" && args[2] === "add" && args[4] === "kit:protected") {
+  process.stderr.write("Label kit:protected ist am Board nicht angelegt\\n");
   process.exit(1);
 }
 const res = spawnSync(process.execPath, [join(hier, "board-echt.mjs"), ...args], { stdio: "inherit" });
@@ -138,15 +139,15 @@ test("Treffer: das Paket wird nach Backlog geschoben, gezeichnet und genau einma
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
 
     assert.equal(spalte(dir, geschuetzt), "backlog");
-    assert.ok(labels(dir, geschuetzt).includes("kit:geschuetzt"), "kit:geschuetzt fehlt am Paket");
-    assert.deepEqual(schreibende(aufrufe, geschuetzt), ["move backlog", "label add kit:geschuetzt", "comment"],
+    assert.ok(hatLabel(labels(dir, geschuetzt), "kit:geschuetzt"), "kit:geschuetzt fehlt am Paket");
+    assert.deepEqual(schreibende(aufrufe, geschuetzt), ["move backlog", "label add kit:protected", "comment"],
       "Reihenfolge nach E11: Move, label add, dann Kommentar");
 
     const ks = kommentare(issueText(dir, geschuetzt));
     assert.equal(ks.length, 1, `genau ein Kommentar erwartet, gefunden: ${JSON.stringify(ks)}`);
     const zeile = `In \`${PFAD}\` den Eintrag ergaenzen.`;
     const treffer = boardModul.geschuetzteTreffer(paketBody(PFAD), "Paket mit geschuetzter Datei", dir);
-    assert.equal(ks[0], `${boardModul.geschuetztKommentar(treffer)}\n\nLabel kit:geschuetzt gesetzt`);
+    assert.equal(ks[0], `${boardModul.geschuetztKommentar(treffer)}\n\nLabel kit:protected gesetzt`);
     assert.match(ks[0], /^## Geschuetzte Datei$/m);
     assert.ok(ks[0].includes(`- \`${PFAD}\``), "Backtick-Liste fehlt");
 
@@ -173,8 +174,8 @@ test("Gegenprobe: ein Paket ohne geschuetzten Pfad bekommt seine Session", () =>
     const { res, aufrufe } = nacht(dir);
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
     assert.equal(spalte(dir, normal), "in_review");
-    assert.ok(!aufrufe.some((a) => a[1] === "label" && a[4] === "kit:geschuetzt"), "ohne Treffer kein Label");
-    assert.ok(!labels(dir, normal).includes("kit:geschuetzt"));
+    assert.ok(!aufrufe.some((a) => a[1] === "label" && a[4] === "kit:protected"), "ohne Treffer kein Label");
+    assert.ok(!hatLabel(labels(dir, normal), "kit:geschuetzt"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -205,7 +206,7 @@ test("Kennzeichnung: ein nur genannter geschuetzter Pfad haelt nicht an, das Pak
     const { res, aufrufe } = nacht(dir);
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
     assert.equal(spalte(dir, id), "in_review");
-    assert.ok(!aufrufe.some((a) => a[1] === "label" && a[4] === "kit:geschuetzt"), "ohne Treffer kein Label");
+    assert.ok(!aufrufe.some((a) => a[1] === "label" && a[4] === "kit:protected"), "ohne Treffer kein Label");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -235,12 +236,12 @@ test("Board ohne Label: Move und Kommentar stehen trotzdem, der Lauf geht weiter
     const { res, aufrufe } = nacht(dir, { NIGHT_TEST_LABEL_SCHEITERT: "1" });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
     assert.equal(spalte(dir, geschuetzt), "backlog");
-    assert.ok(!labels(dir, geschuetzt).includes("kit:geschuetzt"));
-    assert.deepEqual(schreibende(aufrufe, geschuetzt), ["move backlog", "label add kit:geschuetzt", "comment"]);
+    assert.ok(!hatLabel(labels(dir, geschuetzt), "kit:geschuetzt"));
+    assert.deepEqual(schreibende(aufrufe, geschuetzt), ["move backlog", "label add kit:protected", "comment"]);
     const ks = kommentare(issueText(dir, geschuetzt));
     assert.equal(ks.length, 1);
-    assert.ok(ks[0].endsWith("\n\nLabel kit:geschuetzt nicht gesetzt"), ks[0]);
-    assert.match(res.stdout, /Label kit:geschuetzt nicht gesetzt.*am Board nicht angelegt/);
+    assert.ok(ks[0].endsWith("\n\nLabel kit:protected nicht gesetzt"), ks[0]);
+    assert.match(res.stdout, /Label kit:protected nicht gesetzt.*am Board nicht angelegt/);
     assert.equal(spalte(dir, normal), "in_review", "der Lauf lief nicht weiter");
 
     // Ohne Handlung eines Menschen: wieder nach Ready, und es haelt erneut an.
@@ -248,7 +249,7 @@ test("Board ohne Label: Move und Kommentar stehen trotzdem, der Lauf geht weiter
     const zweiter = nacht(dir);
     assert.equal(zweiter.res.status, 0, `zweiter Lauf schlug fehl: ${zweiter.res.stderr}`);
     assert.equal(spalte(dir, geschuetzt), "backlog");
-    assert.deepEqual(schreibende(zweiter.aufrufe, geschuetzt), ["move backlog", "label add kit:geschuetzt", "comment"]);
+    assert.deepEqual(schreibende(zweiter.aufrufe, geschuetzt), ["move backlog", "label add kit:protected", "comment"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -258,7 +259,7 @@ test("Board ohne Label: Move und Kommentar stehen trotzdem, der Lauf geht weiter
 
 /** Der Halt-Kommentar, wie ihn der Runner bei gesetztem Label schreibt. */
 const haltKommentar = (dir, body, titel) =>
-  `${boardModul.geschuetztKommentar(boardModul.geschuetzteTreffer(body, titel, dir))}\n\nLabel kit:geschuetzt gesetzt`;
+  `${boardModul.geschuetztKommentar(boardModul.geschuetzteTreffer(body, titel, dir))}\n\nLabel kit:protected gesetzt`;
 
 test("Wiederaufnahme: Halt-Kommentar mit gesetztem Label, Label abgenommen — das Paket laeuft durch", () => {
   const dir = setupProjekt();
@@ -284,7 +285,7 @@ test("Wiederaufnahme: eine Karte mit kit:geschuetzt wird uebersprungen, das Labe
     const { res, aufrufe } = nacht(dir);
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
     assert.equal(spalte(dir, id), "backlog");
-    assert.ok(labels(dir, id).includes("kit:geschuetzt"), "der Lauf hat kit:geschuetzt entfernt");
+    assert.ok(hatLabel(labels(dir, id), "kit:geschuetzt"), "der Lauf hat kit:geschuetzt entfernt");
     assert.ok(!aufrufe.some((a) => a[1] === "label" && a[2] === "remove"), "label remove kommt im Runner nicht vor");
     assert.match(res.stdout, new RegExp(`#${id} uebersprungen: traegt kit:geschuetzt`));
     const ks = kommentare(issueText(dir, id));
@@ -303,8 +304,8 @@ test("Wiederaufnahme: ein weiterer, im Kommentar nicht genannter Pfad haelt erne
     const { res, aufrufe } = nacht(dir);
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
     assert.equal(spalte(dir, id), "backlog");
-    assert.ok(labels(dir, id).includes("kit:geschuetzt"));
-    assert.deepEqual(schreibende(aufrufe, id), ["move backlog", "label add kit:geschuetzt", "comment"]);
+    assert.ok(hatLabel(labels(dir, id), "kit:geschuetzt"));
+    assert.deepEqual(schreibende(aufrufe, id), ["move backlog", "label add kit:protected", "comment"]);
     assert.ok(kommentare(issueText(dir, id)).at(-1).includes(`- \`${ZWEITER_PFAD}\``));
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -321,7 +322,7 @@ function konstantenAbweichungen(nacht, brett) {
 
 test("Gleichlauf: GESCHUETZT_LABEL und GESCHUETZT_ANKER in night.mjs gleichen denen in board.mjs", () => {
   assert.deepEqual(konstantenAbweichungen(nightModul, boardModul), []);
-  assert.equal(nightModul.GESCHUETZT_LABEL, "kit:geschuetzt");
+  assert.equal(nightModul.GESCHUETZT_LABEL, "kit:protected");
   assert.equal(nightModul.GESCHUETZT_ANKER, "## Geschuetzte Datei");
 });
 

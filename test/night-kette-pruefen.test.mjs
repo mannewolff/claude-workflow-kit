@@ -40,5 +40,5 @@ test("[night-906] eine Karte mit wartender Entscheidung bleibt uebersprungen", (
   const wartend = { ...geprueft(), labels: [KETTENLABEL, REVIEW_FERTIG_LABEL, KLAEREN_LABEL] };
   const r = waehleKettenKandidaten([wartend], KETTENLABEL, 3);
   assert.deepEqual(r.kandidaten, []);
-  assert.match(r.uebersprungen[0].grund, new RegExp(KLAEREN_LABEL));
+  assert.match(r.uebersprungen[0].grund, /kit:(?:klaeren|clarify)/);
 });

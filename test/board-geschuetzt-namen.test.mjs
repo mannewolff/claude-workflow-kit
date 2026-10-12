@@ -29,10 +29,10 @@ const haltKommentar = (labelZeile) => ({
 
 // --- Die Namen kommen aus dem Register ---
 
-test("Geschrieben wird weiter der deutsche Name; night und board fuehren dieselben Konstanten", () => {
-  assert.equal(GESCHUETZT_LABEL, "kit:geschuetzt");
-  assert.equal(KLAEREN_LABEL, "kit:klaeren");
-  assert.equal(GESCHUETZT_LABEL_GESETZT, "Label kit:geschuetzt gesetzt");
+test("Geschrieben wird der englische Name (Issue #1552); night und board fuehren dieselben Konstanten", () => {
+  assert.equal(GESCHUETZT_LABEL, "kit:protected");
+  assert.equal(KLAEREN_LABEL, "kit:clarify");
+  assert.equal(GESCHUETZT_LABEL_GESETZT, "Label kit:protected gesetzt");
   assert.equal(NACHT_GESCHUETZT_LABEL, GESCHUETZT_LABEL);
   assert.equal(NACHT_KLAEREN_LABEL, KLAEREN_LABEL);
 });

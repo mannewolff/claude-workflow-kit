@@ -309,10 +309,10 @@ test("[1482] englisch: der Halt-Kommentar erklaert englisch; Anker, Label- und A
   const kommentar = geschuetztKommentar([{ pfad: ".claude/settings.json", zeile: "- `.claude/settings.json` anpassen" }]);
   assert.ok(kommentar.startsWith(`${GESCHUETZT_ANKER}\n\n`));
   assert.match(kommentar, /^This package names files that only a human may write/m);
-  assert.match(kommentar, /removes the label `kit:geschuetzt`/);
+  assert.match(kommentar, /removes the label `kit:protected`/);
   assert.match(kommentar, /^- `\.claude\/settings\.json`$/m);
   assert.equal(GESCHUETZT_ANKER, "## Geschuetzte Datei");
-  assert.equal(GESCHUETZT_LABEL_GESETZT, "Label kit:geschuetzt gesetzt");
+  assert.equal(GESCHUETZT_LABEL_GESETZT, "Label kit:protected gesetzt");
   assert.equal(GESCHUETZT_ABGEWIESEN, "beim Schreiben abgewiesen");
   spracheFestlegen("de");
   assert.match(geschuetztKommentar([{ pfad: "x", zeile: "y" }]), /^Dieses Paket nennt Dateien, die nur ein Mensch schreiben darf/m);

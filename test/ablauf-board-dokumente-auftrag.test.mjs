@@ -210,7 +210,7 @@ async function adapterFaelle(t, lauf, zustand) {
     assert.ok(erwartet, "check-geschuetzt liefert einen Kommentar");
     assert.equal(a.urteil.kommentar, erwartet);
     assert.ok(!a.urteil.kommentar.includes(GESCHUETZT_LABEL_GESETZT), "ohne Label-Zeile");
-    for (const schritt of [/Backlog/, /issue label add 51 kit:geschuetzt/, /Fehlschlag/, /Label kit:geschuetzt gesetzt/, /Label kit:geschuetzt nicht gesetzt/]) {
+    for (const schritt of [/Backlog/, /issue label add 51 kit:protected/, /Fehlschlag/, /Label kit:protected gesetzt/, /Label kit:protected nicht gesetzt/]) {
       assert.match(a.urteil.grund, schritt);
     }
     const md = await lauf(["issue", "auftrag", "51"]);

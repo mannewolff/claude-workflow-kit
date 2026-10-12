@@ -113,7 +113,7 @@ test("Nachtlauf: Fehlschlag mit dirty Tree sichert die Reste im Stash, legt das 
     assert.equal(full.status, "backlog");
     assert.match(full.body, /Working Tree nicht sauber hinterlassen/);
     assert.match(full.body, new RegExp(`Die Reste liegen im Stash „nachtrest #${erstes.id} `));
-    assert.ok(full.labels.includes("lauf:abgebrochen"), `Labels: ${full.labels}`);
+    assert.ok(full.labels.includes("run:aborted"), `Labels: ${full.labels}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

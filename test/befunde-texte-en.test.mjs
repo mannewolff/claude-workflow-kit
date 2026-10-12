@@ -348,10 +348,10 @@ test("[1498] englisch: Hilfe und Fehler nennen die englischen Befehlsnamen", () 
   });
 });
 
-test("[1498] die deutsche Vorgabe bleibt: Idee, Befund und Meldung sprechen Deutsch", () => {
+test("[1498] die deutsche Vorgabe bleibt: Idee, Befund und Meldung sprechen Deutsch, das Praefix ist englisch (Issue #1552)", () => {
   spracheFestlegen("de");
   mitBefundeProjekt({ protokoll: [befundeZeile("form"), befundeZeile("form"), befundeZeile("form")] }, (dir) => {
-    assert.equal(JSON.parse(befunde(dir, ["vorschlag", "--art", "form"]).stdout).titel, "[Idee] Maschinelle Pruefung fuer Mangel-Art form?");
+    assert.equal(JSON.parse(befunde(dir, ["vorschlag", "--art", "form"]).stdout).titel, "[Idea] Maschinelle Pruefung fuer Mangel-Art form?");
     befunde(dir, ["auswerten"]);
     assert.match(befunde(dir, ["befund"]).stdout, /^Befunde der Modell-Pruefungen — Auswertung vom .+: 3 Vorkommen in 1 Art, Schwelle 3\.$/m);
     assert.equal(JSON.parse(befunde(dir, ["arten", "x"]).stdout).fehler, "'arten' nimmt keine Argumente, bekam 'x'.");

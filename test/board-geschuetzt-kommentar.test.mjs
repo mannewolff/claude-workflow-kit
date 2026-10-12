@@ -36,9 +36,9 @@ function halt(pfade, labelZeile) {
 
 test("Anker, Label und Label-Zeilen sind exportierte Konstanten", () => {
   assert.equal(GESCHUETZT_ANKER, "## Geschuetzte Datei");
-  assert.equal(GESCHUETZT_LABEL, "kit:geschuetzt");
-  assert.equal(GESCHUETZT_LABEL_GESETZT, "Label kit:geschuetzt gesetzt");
-  assert.equal(GESCHUETZT_LABEL_NICHT_GESETZT, "Label kit:geschuetzt nicht gesetzt");
+  assert.equal(GESCHUETZT_LABEL, "kit:protected");
+  assert.equal(GESCHUETZT_LABEL_GESETZT, "Label kit:protected gesetzt");
+  assert.equal(GESCHUETZT_LABEL_NICHT_GESETZT, "Label kit:protected nicht gesetzt");
 });
 
 test("der Kommentar nennt je Pfad eine Backtick-Zeile und zitiert die Zeilen woertlich, ohne Label-Zeile", () => {

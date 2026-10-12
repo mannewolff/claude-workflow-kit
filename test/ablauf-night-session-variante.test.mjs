@@ -9,6 +9,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { hatLabel } from "./helpers/labels.mjs";
 import { spawnSync } from "node:child_process";
 import {
   NIGHT, run, board, mitProjekt, fachplan, umgebung, sessions,
@@ -22,7 +23,7 @@ test("[night-33] die Stufenfolge: Variante A endet nach abdeckung, unveraendert"
     const res = run(dir, ["--kette"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["plan", "review", "pakete", "abdeckung"]);
-    assert.equal(board(dir, "issue", "get", F).labels.includes("kit:night"), false, "das Kettenlabel bleibt beim Start verbraucht");
+    assert.equal(hatLabel(board(dir, "issue", "get", F).labels, "kit:night"), false, "das Kettenlabel bleibt beim Start verbraucht");
   });
 });
 
@@ -38,8 +39,8 @@ test("[night-33] eine Karte mit dem Variante-B-Label fuehrt die Stufe umsetzung,
     assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe),
       ["plan", "review", "pakete", "abdeckung", "umsetzung", "umsetzung"]);
     const fach = board(dir, "issue", "get", F);
-    assert.equal(fach.labels.includes("kit:night"), false, "das Kettenlabel ist beim Start verbraucht");
-    assert.ok(fach.labels.includes("kit:durchziehen"), "das Variante-B-Label wird nicht verbraucht");
+    assert.equal(hatLabel(fach.labels, "kit:night"), false, "das Kettenlabel ist beim Start verbraucht");
+    assert.ok(hatLabel(fach.labels, "kit:durchziehen"), "das Variante-B-Label wird nicht verbraucht");
   });
 });
 
@@ -52,7 +53,7 @@ test("[night-33] der Dry-Run nennt je Kandidat die Variante", () => {
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, new RegExp(`#${a} \\[Fachlich\\] Variante A -> Kette 1 \\(Variante A\\)`));
     assert.match(res.stdout, new RegExp(`#${b} \\[Fachlich\\] Variante B -> Kette 2 \\(Variante B\\)`));
-    assert.ok(board(dir, "issue", "get", b).labels.includes("kit:durchziehen"), "der Dry-Run veraendert kein Label");
+    assert.ok(hatLabel(board(dir, "issue", "get", b).labels, "kit:durchziehen"), "der Dry-Run veraendert kein Label");
   });
 });
 

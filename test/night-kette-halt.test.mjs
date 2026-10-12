@@ -10,6 +10,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { hatLabel } from "./helpers/labels.mjs";
 import { REVIEW_FERTIG_LABEL } from "../kit/night/kette.mjs";
 import {
   ketteImProzess, fachplanKarte, jeStufe, planAnlegen, planBody, reviewHalt, reviewMarker, KETTE_LABEL,
@@ -29,8 +30,8 @@ test("[night-19] eine Stopp-Frage im Plan haelt die Kette an: Kommentar und kit:
   assert.equal(r.code, 0, r.ausgabe);
 
   const fach = r.karte("1");
-  assert.ok(fach.labels.includes("kit:klaeren"), "kit:klaeren fehlt am Fachplan");
-  assert.ok(!fach.labels.includes("kit:night"), "das Label ist verbraucht");
+  assert.ok(hatLabel(fach.labels, "kit:klaeren"), "kit:klaeren fehlt am Fachplan");
+  assert.ok(!hatLabel(fach.labels, "kit:night"), "das Label ist verbraucht");
   const text = kommentare(r, "1");
   assert.match(text, /## Kette angehalten/);
   assert.match(text, /Ist der neue Endpunkt eine Schnittstelle/);
@@ -54,7 +55,7 @@ test("[night-19] eine Stopp-Frage im Plan haelt die Kette an: Kommentar und kit:
 test("[night-19] kit:klaeren nach dem Review haelt die Kette an, die Frage ist der letzte Kommentar am Plan", async () => {
   const r = await ketteImProzess({ karten: [fachplanKarte("1")], sitzung: jeStufe({ plan: planAnlegen(), review: reviewHalt }) });
   assert.equal(r.code, 0, r.ausgabe);
-  assert.ok(r.karte("1").labels.includes("kit:klaeren"));
+  assert.ok(hatLabel(r.karte("1").labels, "kit:klaeren"));
   const text = kommentare(r, "1");
   assert.match(text, /## Kette angehalten/);
   assert.match(text, /Stufe review, Dokument #2\b/);

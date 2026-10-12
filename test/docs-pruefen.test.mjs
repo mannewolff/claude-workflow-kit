@@ -18,7 +18,11 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PRUEFLAUF_BUDGET_DEFAULTS } from "../kit/night/session.mjs";
 import { PRUEFLAUF_REST_ANKER } from "../kit/night/tag.mjs";
-import { KLAEREN_LABEL } from "../kit/night/wartend.mjs";
+import { LABELS } from "../kit/board/namen.mjs";
+
+// Skills und Doku nennen das Label bis zu ihrer Umstellung (Plan #1548, eigene Pakete) unter dem
+// deutschen Namen; das Kit schreibt seit Issue #1552 den englischen.
+const KLAEREN_LABEL = LABELS.klaeren.de;
 import { REVIEW_FERTIG_LABEL } from "../kit/night/kette.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");

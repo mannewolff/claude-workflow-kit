@@ -29,11 +29,11 @@ import { homedir } from "node:os";
 
 import { VALID_STATUSES, COLUMN_DEFAULTS, columnLabels, BoardError, fail, out, configWurzel,
   readWorkflowConfig } from "./grundlagen.mjs";
-import { GitHubIssueTracker, resolveCodeHost, labelSetzenMitRueckfall } from "./adapter.mjs";
+import { GitHubIssueTracker, resolveCodeHost, LabelFehltError } from "./adapter.mjs";
 // Zyklus mit Absicht: ursprung.mjs liest Karten und Herkunftszeilen von hier. Beide Seiten
 // rufen sich erst zur Laufzeit, keine liest beim Laden einen Wert der anderen.
 import { ursprungLesen, ursprungNachziehen } from "./ursprung.mjs";
-import { SPRACHEN, PRAEFIXE, LABELS, projektSprache, prozessSprache, praefix, labelName, erkennePraefix, erkenneLabel, erkenneMarker, leseMarker, markerWerte,
+import { SPRACHEN, PRAEFIXE, LABELS, prozessSprache, praefix, labelName, erkennePraefix, erkenneLabel, erkenneMarker, leseMarker, markerWerte,
   kanonischeUeberschrift, ueberschriftName, ueberschriftZeile, text } from "./namen.mjs";
 import { normalisiereConfig } from "./config-namen.mjs";
 
@@ -521,12 +521,13 @@ function idempotenzOption(wert) {
 export const ARTEN = Object.freeze(Object.keys(PRAEFIXE));
 
 /**
- * Der Titel mit dem Praefix der Art in der Projektsprache (Issue #1427, E6): `{ titel }`,
+ * Der Titel mit dem englischen Praefix der Art (Issue #1427, E6; englisch in jedem Projekt seit
+ * Issue #1552, Plan #1548 E2): `{ titel }`,
  * oder `{ fehler }`, wenn die Art unbekannt ist oder der Titel schon ein Praefix traegt.
  * Ohne Art bleibt der Titel unveraendert — ein Titel mit Praefix wird nie umgeschrieben.
  * Dieselbe Regel fuer `issue create` und `issue check-form`, damit beide denselben Titel sehen.
  */
-export function titelMitArt(title, art, sprache) {
+export function titelMitArt(title, art) {
   if (art === undefined) return { titel: title };
   if (art === true || !ARTEN.includes(art)) {
     return { fehler: t("artUnbekannt", { arten: ARTEN.join("|") }) };
@@ -534,13 +535,13 @@ export function titelMitArt(title, art, sprache) {
   if (erkennePraefix(title) !== null) {
     return { fehler: t("artNebenPraefix", { art, titel: title }) };
   }
-  return { titel: `${praefix(art, sprache)} ${String(title).trimStart()}` };
+  return { titel: `${praefix(art)} ${String(title).trimStart()}` };
 }
 
-export async function issueCreate(tracker, args, config = {}) {
+export async function issueCreate(tracker, args) {
   if (!args.title) fail(t("titelErforderlich"));
   // Vor jedem Netzaufruf: Ein Widerspruch zwischen --art und Titel legt keine Karte an.
-  const { titel, fehler } = titelMitArt(args.title, args.art, projektSprache(config));
+  const { titel, fehler } = titelMitArt(args.title, args.art);
   if (fehler) fail(fehler);
   // Ohne jede Body-Quelle bleibt der Body leer — der lokale Tracker setzt dann
   // seine Abschnitts-Vorlage. leseTextQuelle wuerde einen leeren Text ablehnen,
@@ -779,14 +780,16 @@ export async function issueLabel(tracker, config, args, hilfe = "") {
 
 /**
  * Die Abbildung der Kit-Labels in `issue label` (Issue #1428, Plan #1420 E6): Kit-eigene
- * Labels gehoeren dem Kit. `add` setzt den Namen der Projektsprache und faellt nur auf den
- * anderen zurueck, wenn er am Board fehlt. `remove` nimmt den Namen ab, den die Karte
- * traegt — GitHub und GitLab melden beim Abnehmen eines nicht gesetzten Labels keinen Fehler,
- * `remove kit:klaeren` taete an einer Karte mit `kit:clarify` sonst still nichts. Fremde
- * Labels und Kit-Labels mit einem Namen fuer beide Sprachen gehen unveraendert durch.
+ * Labels gehoeren dem Kit. `add` setzt den englischen Namen, in jedem Projekt (Issue #1552,
+ * Plan #1548 E2); fehlt er am Board, endet der Aufruf mit dem Hinweis, die Labels anzulegen —
+ * einen Rueckfall auf den deutschen Namen gibt es nicht mehr. `remove` nimmt den Namen ab,
+ * den die Karte traegt — GitHub und GitLab melden beim Abnehmen eines nicht gesetzten Labels
+ * keinen Fehler, `remove kit:clarify` taete an einer Karte mit dem deutschen Namen sonst still
+ * nichts. Fremde Labels und Kit-Labels mit einem Namen fuer beide Sprachen gehen unveraendert
+ * durch.
  *
  * Liefert `{ label }` mit dem geschriebenen Namen, dazu `hinweise` als
- * `{ art: "rueckfall" | "nicht-getragen" | "beide", meldung }`, wenn es etwas zu sagen gibt.
+ * `{ art: "nicht-getragen" | "beide", meldung }`, wenn es etwas zu sagen gibt.
  */
 export async function labelAbbilden(tracker, config, aktion, id, name) {
   const sache = erkenneLabel(name);
@@ -794,15 +797,19 @@ export async function labelAbbilden(tracker, config, aktion, id, name) {
     await tracker.labelIssue(id, name, aktion);
     return { label: name };
   }
-  const sprache = projektSprache(config);
-  const namen = [labelName(sache, sprache), ...SPRACHEN.filter((s) => s !== sprache).map((s) => labelName(sache, s))];
 
   if (aktion === "add") {
-    const { label, fehlend } = await labelSetzenMitRueckfall(tracker, id, namen);
-    if (fehlend.length === 0) return { label };
-    const meldung = t("labelRueckfall", { fehlend: fehlend.map((f) => f.name).join(", "), label });
-    return { label, hinweise: [{ art: "rueckfall", meldung }] };
+    const label = labelName(sache);
+    try {
+      await tracker.labelIssue(id, label, "add");
+    } catch (e) {
+      if (!(e instanceof LabelFehltError)) throw e;
+      throw new LabelFehltError(t("labelFehltAnlegen", { label, grund: e.message }));
+    }
+    return { label };
   }
+
+  const namen = [labelName(sache), ...SPRACHEN.map((s) => labelName(sache, s)).filter((n) => n !== labelName(sache))];
 
   const karte = await tracker.getIssue(id);
   const getragen = namen.filter((n) => (karte.labels || []).includes(n));
@@ -1246,23 +1253,22 @@ async function ursprungMelden(tracker, id, laufZeile) {
 
 // Die Sache je Zustand im Namen-Register (Issue #1428, Plan #1420 E7).
 const STAND_LABEL_SACHEN = Object.freeze({ laeuft: "laufLaeuft", abgebrochen: "laufAbgebrochen", wartet: "laufWartet" });
-const standLabelVorgaben = (sprache) => Object.freeze(Object.fromEntries(
-  Object.entries(STAND_LABEL_SACHEN).map(([zustand, sache]) => [zustand, labelName(sache, sprache)])));
 
 // SYNC: dieselben Vorgaben stehen in templates/workflow.config.schema.json unter
-// `night.stand.labels` — test/ablauf-board-dokumente-stand.test.mjs vergleicht beide. Das
-// Schema nennt die deutschen Namen; ohne gesetzten Wert gilt der Name der Projektsprache.
-export const STAND_LABEL_VORGABEN = standLabelVorgaben("de");
+// `night.stand.labels` — test/ablauf-board-dokumente-stand.test.mjs vergleicht beide. Ohne
+// gesetzten Wert gilt der englische Name, in jedem Projekt (Issue #1552, Plan #1548 E2).
+export const STAND_LABEL_VORGABEN = Object.freeze(Object.fromEntries(
+  Object.entries(STAND_LABEL_SACHEN).map(([zustand, sache]) => [zustand, labelName(sache)])));
 const STAND_ZUSTAENDE = [...Object.keys(STAND_LABEL_VORGABEN), "fertig"];
 const LAUFSTAND_ANKER = "## Laufstand";
 
 /**
- * Die drei Labelnamen aus `night.stand.labels`, fehlende aus den Vorgaben (E4) in der
- * Projektsprache. Ein gesetzter Wert gilt unveraendert (Plan #1420 E7).
+ * Die drei Labelnamen aus `night.stand.labels`, fehlende aus den englischen Vorgaben (E4).
+ * Ein gesetzter Wert gilt unveraendert (Plan #1420 E7).
  */
 export function standLabels(config) {
   const block = config?.night?.stand?.labels ?? {};
-  const labels = { ...standLabelVorgaben(projektSprache(config)) };
+  const labels = { ...STAND_LABEL_VORGABEN };
   for (const zustand of Object.keys(STAND_LABEL_VORGABEN)) {
     const wert = block[zustand];
     if (wert === undefined) continue;
@@ -1284,9 +1290,28 @@ const istLaufstand = (body) => {
 };
 
 /**
+ * Die Labels, die `issue stand` vor dem Setzen abnimmt (Issue #1552, Plan #1548 E3): je
+ * Zustand der Config-Wert und jeder getragene Name, den das Register als Sache des Zustands
+ * erkennt — so geht auch ein deutsches `lauf:laeuft` ab, wenn das Kit `run:running` schreibt.
+ * Das Label des Ziels selbst bleibt; fremde Labels bleiben unberuehrt.
+ */
+export function standAbzuraeumen(labels, getragen, ziel) {
+  const weg = new Set();
+  for (const [zustand, name] of Object.entries(labels)) {
+    weg.add(name);
+    for (const g of getragen || []) {
+      if (erkenneLabel(g) === STAND_LABEL_SACHEN[zustand]) weg.add(g);
+    }
+  }
+  weg.delete(ziel);
+  return [...weg];
+}
+
+/**
  * `issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <datei>` —
  * setzt das Label des Zustands, nimmt die beiden anderen ab (bei `fertig` alle drei) und
- * ersetzt den Kommentar mit Anker `## Laufstand` oder legt ihn an.
+ * ersetzt den Kommentar mit Anker `## Laufstand` oder legt ihn an. Abgenommen wird auch jeder
+ * getragene Name derselben Sache in der anderen Sprache (`standAbzuraeumen`).
  *
  * Wiederholbar wie `berichtAblegen`: gleicher Inhalt -> nichts geschrieben, anderer ->
  * ersetzt, nie ein zweiter. Darum wird STRENG gelesen, und zwar vor jedem Schreiben — ein
@@ -1313,11 +1338,12 @@ export async function issueStand(tracker, config, args) {
   } catch (e) {
     fail(t("standKommentareUnlesbar", { id, grund: e.message }));
   }
+  const getragen = (await tracker.getIssue(id))?.labels ?? [];
 
   // Erst abnehmen, dann setzen: So haengen nie zwei Laufstand-Labels zugleich.
   const ziel = labels[args.zustand];
-  for (const name of Object.values(labels)) {
-    if (name !== ziel) await tracker.labelIssue(id, name, "remove");
+  for (const name of standAbzuraeumen(labels, getragen, ziel)) {
+    await tracker.labelIssue(id, name, "remove");
   }
   if (ziel) await tracker.labelIssue(id, ziel, "add");
 

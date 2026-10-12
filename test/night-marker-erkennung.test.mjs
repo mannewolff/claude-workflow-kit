@@ -79,6 +79,7 @@ test("issue stand: ein englischer Laufstand wird ersetzt, kein zweiter angelegt"
     const tracker = {
       kommentareStreng: async () => [{ id: "k1", body: "## Run status\n\nalt" }],
       labelIssue: async () => {},
+      getIssue: async (id) => ({ id, labels: [] }),
       ersetzeKommentar: async (id, kid) => aufrufe.push(["ersetzt", kid]),
       commentIssue: async () => aufrufe.push(["angelegt"]),
     };

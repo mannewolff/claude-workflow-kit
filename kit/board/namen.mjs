@@ -10,7 +10,8 @@
  * mehrfach im Code, nur durch SYNC-Kommentare gehalten (`kit:klaeren` dreifach,
  * `kit:geschuetzt` doppelt). Jede Stelle soll ueber das Register beide Namen erkennen und
  * den Namen der Projektsprache schreiben (Plan #1420, Kriterium 4 der fachlichen Quelle
- * #1416); die Umstellung der Nutzer folgt in eigenen Paketen.
+ * #1416); die Umstellung der Nutzer folgt in eigenen Paketen. Seit Issue #1552 (Plan #1548
+ * E2) schreibt das Kit Labels und Titel-Praefixe in jedem Projekt englisch.
  *
  * Die englischen Namen legt E4 fest. `kit:night`, `kit:nightrun`, `planreview:1|2`, `[Plan]`
  * und `[Task]` sind schon englisch und heissen in beiden Sprachen gleich.
@@ -81,20 +82,24 @@ const PRAEFIX_ART = new Map(
   Object.entries(PRAEFIXE).flatMap(([art, { de, en }]) => [[de.toLowerCase(), art], [en.toLowerCase(), art]])
 );
 
-function nameIn(tabelle, art, schluessel, sprache) {
+function nameIn(tabelle, art, schluessel, sprache, vorgabe = VORGABE) {
   const e = Object.hasOwn(tabelle, schluessel) ? tabelle[schluessel] : undefined;
   if (!e) throw new Error(`namen: unbekannte ${art} "${schluessel}"`);
-  return SPRACHEN.includes(sprache) ? e[sprache] : e[VORGABE];
+  return SPRACHEN.includes(sprache) ? e[sprache] : e[vorgabe];
 }
 
-/** Der Name eines Labels in der Sprache; eine unbekannte Sprache gilt als `de`. */
+// Labels und Titel-Praefixe schreibt das Kit in jedem Projekt englisch (Issue #1552, Plan
+// #1548 E2); erkannt werden weiter beide Namen. Der deutsche Name bleibt nur auf ausdruecklichen
+// Wunsch abrufbar, etwa fuer die Erkennung oder fuer Texte, die ihn noch nennen.
+
+/** Der Name eines Labels in der Sprache; ohne oder mit unbekannter Sprache der englische. */
 export function labelName(sache, sprache) {
-  return nameIn(LABELS, "Sache", sache, sprache);
+  return nameIn(LABELS, "Sache", sache, sprache, "en");
 }
 
-/** Das Titel-Praefix einer Art in der Sprache; eine unbekannte Sprache gilt als `de`. */
+/** Das Titel-Praefix einer Art in der Sprache; ohne oder mit unbekannter Sprache das englische. */
 export function praefix(art, sprache) {
-  return nameIn(PRAEFIXE, "Art", art, sprache);
+  return nameIn(PRAEFIXE, "Art", art, sprache, "en");
 }
 
 /** Die Sache hinter einem Labelnamen, gleich in welcher Sprache; sonst `null`. */
@@ -135,9 +140,10 @@ export const MARKER = Object.freeze({
   ketteUngeprueft: eintrag("## Kette nicht gestartet: Pruefung fehlt", "## Chain not started: check missing"),
   ketteZiel: eintrag("## Kette nicht gestartet: unpassende Einstellung", "## Chain not started: unsuitable setting"),
   issuesHalt: eintrag("Kein Eingang für /issues", "No input for /issues"),
-  // SYNC: HALT_FOLGESATZ in kit/night/wartend.mjs.
+  // SYNC: HALT_FOLGESATZ in kit/night/wartend.mjs. Der alte Wortlaut mit /fachplan wird
+  // weiter erkannt (MARKER_ALTNAMEN).
   haltFolgesatz: eintrag(
-    "Daraus soll per /fachplan eine fachliche Anforderung entstehen.",
+    "Daraus soll per /requirement eine fachliche Anforderung entstehen.",
     "A requirement is to be created from this via /requirement."
   ),
   ueberholt: eintrag("Ueberholt durch Plan #", "Superseded by plan #"),
@@ -166,11 +172,20 @@ export const MARKER = Object.freeze({
   issueReview: eintrag("Issue-Review:"),
 });
 
+/**
+ * Fruehere Wortlaute eines Markers, die nur noch erkannt und nie geschrieben werden: Offene
+ * Karten tragen sie noch (Issue #1552, Plan #1548 E15).
+ */
+const MARKER_ALTNAMEN = Object.freeze({
+  haltFolgesatz: Object.freeze(["Daraus soll per /fachplan eine fachliche Anforderung entstehen."]),
+});
+
 // Laengster Name zuerst: `Plan-Review:` darf nicht als `Plan:` gelten, und ein Name, der
 // Anfang eines anderen ist, verliert gegen den laengeren.
-const MARKER_NAMEN = Object.entries(MARKER)
-  .flatMap(([sache, { de, en }]) => [[de.toLowerCase(), sache], [en.toLowerCase(), sache]])
-  .sort(([a], [b]) => b.length - a.length);
+const MARKER_NAMEN = [
+  ...Object.entries(MARKER).flatMap(([sache, { de, en }]) => [[de.toLowerCase(), sache], [en.toLowerCase(), sache]]),
+  ...Object.entries(MARKER_ALTNAMEN).flatMap(([sache, alte]) => alte.map((n) => [n.toLowerCase(), sache])),
+].sort(([a], [b]) => b.length - a.length);
 
 /** Der Name eines Markers in der Sprache; eine unbekannte Sprache gilt als `de`. */
 export function markerName(sache, sprache) {

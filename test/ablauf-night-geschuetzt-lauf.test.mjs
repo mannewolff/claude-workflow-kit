@@ -15,6 +15,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { hatLabel } from "./helpers/labels.mjs";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -61,14 +62,14 @@ function haltKommentar(dir, id) {
   const karte = board(dir, "issue", "get", id);
   const treffer = boardModul.geschuetzteTreffer(karte.body, karte.title, dir);
   assert.ok(treffer.length > 0, `Paket #${id} nennt keine geschuetzte Datei`);
-  return `${boardModul.geschuetztKommentar(treffer)}\n\nLabel kit:geschuetzt gesetzt`;
+  return `${boardModul.geschuetztKommentar(treffer)}\n\nLabel kit:protected gesetzt`;
 }
 
 /** Die Karte mit geschuetzter Datei: Backlog, Label, genau der eine Halt-Kommentar. */
 function istAngehalten(dir, id) {
   const karte = board(dir, "issue", "get", id);
   assert.equal(karte.status, "backlog", `Paket #${id} steht in ${karte.status}`);
-  assert.ok((karte.labels || []).includes("kit:geschuetzt"), `Paket #${id} traegt kit:geschuetzt nicht`);
+  assert.ok(hatLabel(karte.labels, "kit:geschuetzt"), `Paket #${id} traegt kit:geschuetzt nicht`);
   const halt = kommentare(dir, id).filter((k) => k.includes(boardModul.GESCHUETZT_ANKER));
   assert.deepEqual(halt, [haltKommentar(dir, id)], `Paket #${id} traegt nicht genau den einen Halt-Kommentar`);
 }

@@ -56,7 +56,7 @@ const MARKER_PAARE = [
   ["## Kette nicht gestartet: unpassende Einstellung", "## Chain not started: unsuitable setting"],
   ["Kein Eingang für /issues", "No input for /issues"],
   ["## Nachtbericht, Kette", "## Night report, chain"],
-  ["Daraus soll per /fachplan eine fachliche Anforderung entstehen.", "A requirement is to be created from this via /requirement."],
+  ["Daraus soll per /requirement eine fachliche Anforderung entstehen.", "A requirement is to be created from this via /requirement."],
   ["Ueberholt durch Plan #", "Superseded by plan #"],
 ];
 
@@ -221,4 +221,9 @@ test("pruefeParitaet meldet abweichende Platzhalter", () => {
 test("pruefeParitaet meldet eine fehlende Sprache und Werte, die kein Text sind", () => {
   assert.ok(pruefeParitaet({ de: { a: "x" } }).some((b) => b.includes("en")));
   assert.ok(pruefeParitaet({ de: { a: 1 }, en: { a: "x" } }).some((b) => b.includes("a")));
+});
+
+test("haltFolgesatz: der alte Wortlaut mit /fachplan wird weiter erkannt (Issue #1552, E15)", () => {
+  assert.equal(erkenneMarker("Daraus soll per /fachplan eine fachliche Anforderung entstehen."), "haltFolgesatz");
+  assert.equal(markerName("haltFolgesatz", "de"), "Daraus soll per /requirement eine fachliche Anforderung entstehen.");
 });

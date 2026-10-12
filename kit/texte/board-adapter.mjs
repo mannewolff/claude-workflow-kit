@@ -15,7 +15,6 @@
  */
 export const TEXTE = Object.freeze({
   de: Object.freeze({
-    rueckfallOhneName: "labelSetzenMitRueckfall: kein Labelname",
     projektAutomatisch: "Hinweis: github.projectNumber fehlt in workflow.config.json, verwende automatisch "
       + "erkanntes einziges GitHub Project #{num} ('{titel}') fuer Owner '{owner}'. "
       + "Zur dauerhaften Fixierung ergaenzen: '\"github\": { \"projectNumber\": {num} }'",
@@ -84,7 +83,6 @@ export const TEXTE = Object.freeze({
     codeHostUnbekannt: "Unbekannter codeHost: '{name}'. Erwartet: github | gitlab | local",
   }),
   en: Object.freeze({
-    rueckfallOhneName: "labelSetzenMitRueckfall: no label name",
     projektAutomatisch: "Note: github.projectNumber is missing in workflow.config.json, using the automatically "
       + "detected only GitHub Project #{num} ('{titel}') for owner '{owner}'. "
       + "To pin it permanently, add: '\"github\": { \"projectNumber\": {num} }'",

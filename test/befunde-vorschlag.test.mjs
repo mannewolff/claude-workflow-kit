@@ -119,7 +119,7 @@ test("[befunde-vorschlag] drei Vorkommen ergeben genau eine Idee am Board", () =
     const aufrufe = boardAufrufe(dir);
     assert.equal(aufrufe.length, 1, "genau ein Board-Aufruf");
     assert.deepEqual(aufrufe[0].argv.slice(0, 2), ["issue", "create"]);
-    assert.equal(wertVon(aufrufe[0], "--title"), "[Idee] Maschinelle Pruefung fuer Mangel-Art form?");
+    assert.equal(wertVon(aufrufe[0], "--title"), "[Idea] Maschinelle Pruefung fuer Mangel-Art form?");
 
     assert.deepEqual(zustand(dir), {
       form: { karte: "812", ideaId: null, stand: "offen", zaehlerstand: 3, nullpunkt: 0 },
@@ -167,7 +167,7 @@ test("[befunde-vorschlag] der Body nennt alle zugrunde liegenden Funde und den S
 test("[befunde-vorschlag] die Art 'sonstiges' fragt nach der Liste, nicht nach einer Pruefung", () => {
   mitDir({ protokoll: [zeile("sonstiges"), zeile("sonstiges"), zeile("sonstiges")] }, (dir) => {
     assert.equal(vorschlag(dir, "--art", "sonstiges").status, 0);
-    assert.equal(wertVon(boardAufrufe(dir)[0], "--title"), "[Idee] Liste der Mangel-Arten erweitern?");
+    assert.equal(wertVon(boardAufrufe(dir)[0], "--title"), "[Idea] Liste der Mangel-Arten erweitern?");
   });
 });
 
@@ -205,7 +205,7 @@ for (const art of ["form", "konvention", "sicherheit"]) {
   test(`[befunde-vorschlag] die pruefbare Art '${art}' fragt nach einer maschinellen Pruefung`, () => {
     mitDir({ protokoll: [zeile(art), zeile(art), zeile(art)] }, (dir) => {
       assert.equal(vorschlag(dir, "--art", art).status, 0);
-      assert.equal(wertVon(boardAufrufe(dir)[0], "--title"), `[Idee] Maschinelle Pruefung fuer Mangel-Art ${art}?`);
+      assert.equal(wertVon(boardAufrufe(dir)[0], "--title"), `[Idea] Maschinelle Pruefung fuer Mangel-Art ${art}?`);
     });
   });
 }

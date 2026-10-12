@@ -19,6 +19,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
+import { hatLabel } from "./helpers/labels.mjs";
 
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -107,7 +108,7 @@ test("Nachtlauf entfernt das Label NIE", () => {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}`);
 
-    assert.ok(board(dir, "issue", "get", String(gezeichnet.id)).labels.includes("kit:klaeren"),
+    assert.ok(hatLabel(board(dir, "issue", "get", String(gezeichnet.id)).labels, "kit:klaeren"),
       "der Lauf hat kit:klaeren entfernt — A4 verletzt");
   } finally {
     rmSync(dir, { recursive: true, force: true });

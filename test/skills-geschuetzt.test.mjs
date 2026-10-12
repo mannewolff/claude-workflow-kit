@@ -20,7 +20,12 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { GESCHUETZT_ANKER, GESCHUETZT_LABEL, HALT_FOLGESATZ } from "../kit/night/wartend.mjs";
+import { GESCHUETZT_ANKER, HALT_FOLGESATZ } from "../kit/night/wartend.mjs";
+import { LABELS } from "../kit/board/namen.mjs";
+
+// Skills und Doku nennen das Label bis zu ihrer Umstellung (Plan #1548, eigene Pakete) unter dem
+// deutschen Namen; das Kit schreibt seit Issue #1552 den englischen.
+const GESCHUETZT_LABEL = LABELS.geschuetzt.de;
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 

@@ -3,7 +3,7 @@
 // test/board-dokumente-art.test.mjs ohne Prozess.
 //
 // `issue create --art` und `issue check-form --art` (Issue #1427, Plan #1420 E6): Das Kit
-// stellt das Titel-Praefix in der Projektsprache voran, statt dass die Skills es in den
+// stellt das Titel-Praefix voran (seit Issue #1552 englisch, in jedem Projekt), statt dass die Skills es in den
 // Titel schreiben. Faellt das Praefix aus dem Titel, waehlt `check-form` die Pruefstufe
 // ueber dieselbe Option — sonst pruefte es einen Fachplan mit den Paket-Gates. Ein Titel
 // mit Praefix bleibt gueltig und wird nie umgeschrieben; `--art` daneben ist ein Fehler.
@@ -73,18 +73,14 @@ function checkForm(dir, body, title, extra = []) {
   return { res, ergebnis: JSON.parse(res.stdout) };
 }
 
-test("[board-1427] issue create --art fachlich stellt in einem deutschen Projekt [Fachlich] voran", () => {
-  const dir = projekt();
-  assert.equal(titelVon(dir, anlegen(dir, ["--title", "Etwas", "--art", "fachlich"])), "[Fachlich] Etwas");
-  const de = projekt("de");
-  assert.equal(titelVon(de, anlegen(de, ["--title", "Etwas", "--art", "idee"])), "[Idee] Etwas");
-});
-
-test("[board-1427] issue create --art fachlich stellt in einem englischen Projekt [Requirement] voran", () => {
-  const dir = projekt("en");
-  assert.equal(titelVon(dir, anlegen(dir, ["--title", "Something", "--art", "fachlich"])), "[Requirement] Something");
-  assert.equal(titelVon(dir, anlegen(dir, ["--title", "Step", "--art", "mensch"])), "[Human] Step");
-  assert.equal(titelVon(dir, anlegen(dir, ["--title", "Do it", "--art", "task"])), "[Task] Do it");
+test("[board-1552] issue create --art stellt das englische Praefix voran, auch in einem deutschen Projekt", () => {
+  for (const language of [undefined, "de", "en"]) {
+    const dir = projekt(language);
+    assert.equal(titelVon(dir, anlegen(dir, ["--title", "Etwas", "--art", "fachlich"])), "[Requirement] Etwas", language);
+    assert.equal(titelVon(dir, anlegen(dir, ["--title", "Etwas", "--art", "idee"])), "[Idea] Etwas", language);
+    assert.equal(titelVon(dir, anlegen(dir, ["--title", "Step", "--art", "mensch"])), "[Human] Step", language);
+    assert.equal(titelVon(dir, anlegen(dir, ["--title", "Do it", "--art", "task"])), "[Task] Do it", language);
+  }
 });
 
 test("[board-1427] issue create ohne --art laesst den Titel unveraendert", () => {

@@ -344,9 +344,9 @@ function t(schluessel, werte = {}) {
   return TEXTE.de[schluessel].replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
 }
 
-/** Das Titel-Praefix der Idee in der Sprache des Prozesses; ohne Register das deutsche. */
+/** Das Titel-Praefix der Idee, in jedem Projekt englisch (Issue #1552, Plan #1548 E2). */
 function ideePraefix() {
-  return namen ? namen.praefix("idee", namen.prozessSprache()) : "[Idee]";
+  return namen ? namen.praefix("idee") : "[Idea]";
 }
 
 /** Die Hilfe — erst beim Aufruf gebaut, damit die Sprache der Config gilt. */

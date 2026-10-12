@@ -85,7 +85,7 @@ test("[night-893] die Nummer wird zeichengleich verglichen — #1 trifft die Kar
 
 test("[night-893] kit:klaeren am Plan haelt ihn auf und nennt den Weg", () => {
   const grund = planAusschluss(plan({ labels: ["kit:night", REVIEW_FERTIG_LABEL, KLAEREN_LABEL] }), "kit:night", KARTEN);
-  assert.match(grund, new RegExp(`^traegt ${KLAEREN_LABEL}`));
+  assert.match(grund, /^traegt kit:(?:klaeren|clarify)/);
   assert.match(grund, /Plan/);
   assert.match(grund, /Label/);
 });
@@ -127,7 +127,7 @@ test("[night-893] treffen mehrere Gruende zu, gewinnt der spezifischere", () => 
   assert.match(planAusschluss(ohneAlles, "kit:night", KARTEN), /^die fachliche Herkunft ist nicht erkennbar/);
 
   const mitHerkunft = plan({ labels: [KLAEREN_LABEL], body: "Fachliche Quelle: Issue #883\n\n## Offene Fragen\n\n- Was denn?\n" });
-  assert.match(planAusschluss(mitHerkunft, "kit:night", KARTEN), new RegExp(`^traegt ${KLAEREN_LABEL}`));
+  assert.match(planAusschluss(mitHerkunft, "kit:night", KARTEN), /^traegt kit:(?:klaeren|clarify)/);
 
   const ohneKlaeren = plan({ labels: [], body: "Fachliche Quelle: Issue #883\n\n## Offene Fragen\n\n- Was denn?\n" });
   assert.match(planAusschluss(ohneKlaeren, "kit:night", KARTEN), /^eine Entscheidung wartet: /);

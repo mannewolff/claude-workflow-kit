@@ -71,7 +71,7 @@ function karte(dir, titel, labels = []) {
 const laufstaende = (dir, id) => readFileSync(join(dir, "issues", `${id}.md`), "utf-8")
   .split("\n---\n**Kommentar**").slice(1).filter((b) => /\n## Laufstand\b/.test(b));
 
-const lauflabels = (dir, id) => board(dir, "issue", "get", id).labels.filter((l) => l.startsWith("lauf:"));
+const lauflabels = (dir, id) => board(dir, "issue", "get", id).labels.filter((l) => l.startsWith("run:"));
 
 function zeilen(pfad) {
   return readFileSync(pfad, "utf-8").split("\n").filter(Boolean).map((z) => JSON.parse(z));
@@ -170,7 +170,7 @@ test("Puls wird erneuert, und SIGTERM hinterlaesst Journal, Kartenstand und Lauf
     const eintraege = zeilen(join(dir, ".claude", "lauf", journalName));
     assert.ok(eintraege.some((z) => z.art === "lauf" && z.text === "abgebrochen, SIGTERM"), JSON.stringify(eintraege));
     assert.equal(laufbericht(dir).abschluss, "abgebrochen");
-    assert.deepEqual(lauflabels(dir, id), ["lauf:abgebrochen"]);
+    assert.deepEqual(lauflabels(dir, id), ["run:aborted"]);
     assert.match(laufstaende(dir, id)[0], /abgebrochen, SIGTERM/);
   } finally {
     if (runner) {
@@ -199,7 +199,7 @@ test("Belegfall 1: nach SIGKILL auf den Runner steht die Karte binnen Frist plus
     runner = null;
     const getoetet = Date.now();
 
-    await warteAuf(() => lauflabels(dir, id).includes("lauf:abgebrochen"), "der Waechter setzte die Karte nicht auf abgebrochen");
+    await warteAuf(() => lauflabels(dir, id).includes("run:aborted"), "der Waechter setzte die Karte nicht auf abgebrochen");
     const dauerS = (Date.now() - getoetet) / 1000;
     // Frist eine Sekunde, Pruefakt eine Sekunde, dazu der Start der Board-Aufrufe.
     assert.ok(dauerS < 10, `zu spaet: ${dauerS} s`);
@@ -247,8 +247,8 @@ test("der naechste Start traegt offene Zeilen in derselben Reihenfolge nach", ()
 
     const quittungen = zeilen(pfad).filter((z) => z.art === "quittung").map((z) => z.nr);
     assert.deepEqual(quittungen, [1, 2], "nachgetragen in der Reihenfolge des Journals");
-    assert.deepEqual(lauflabels(dir, b), ["lauf:abgebrochen"]);
-    assert.deepEqual(lauflabels(dir, a), ["lauf:laeuft"]);
+    assert.deepEqual(lauflabels(dir, b), ["run:aborted"]);
+    assert.deepEqual(lauflabels(dir, a), ["run:running"]);
     assert.match(res.stdout, /Laufstand nachgetragen: #\d+ abgebrochen/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -263,7 +263,7 @@ test("Rueckfall beim Start: ein verwaister Lauf ohne lebenden Runner wird wie ve
     writeFileSync(join(dir, ".claude", `night-run-${LAUF_ALT}.json`), JSON.stringify({ schemaFassung: 1, art: "implementierung", einheiten: [], abschluss: null, complete: false }), "utf-8");
     const res = run(dir, process.execPath, [NIGHT], { NIGHT_CLAUDE_CMD: "true", KIT_NIGHT_WAECHTER: "0" });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
-    assert.deepEqual(lauflabels(dir, a), ["lauf:abgebrochen"]);
+    assert.deepEqual(lauflabels(dir, a), ["run:aborted"]);
     assert.match(laufstaende(dir, a).at(-1), /nicht beendet, letztes Lebenszeichen 2026-09-30T01:05:00\.000Z/);
     const alt = JSON.parse(readFileSync(join(dir, ".claude", `night-run-${LAUF_ALT}.json`), "utf-8"));
     assert.equal(alt.abschluss, "verstummt");

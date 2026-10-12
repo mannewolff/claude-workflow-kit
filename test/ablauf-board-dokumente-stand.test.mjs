@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
 import { STAND_LABEL_VORGABEN } from "../kit/board.mjs";
 
-const VORGABEN = ["lauf:laeuft", "lauf:abgebrochen", "lauf:wartet"];
+const VORGABEN = ["run:running", "run:aborted", "run:waiting"];
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
 const KOPF = "---\nid: \"0007\"\ntype: task\nstatus: in_progress\ntitle: Paket\n---\n\n## Kontext\nText.\n";
 
@@ -55,11 +55,11 @@ function laufstandKommentare(datei) {
     .filter((b) => /\n## Laufstand\b/.test(b));
 }
 
-test("Zustand setzt sein Label und nimmt die beiden anderen ab", () => {
+test("Zustand setzt sein englisches Label und nimmt die beiden anderen ab, auch unter deutschem Namen", () => {
   mitLokal((dir) => {
     const res = ausgabe(stand(dir, "abgebrochen", "Zuletzt begonnen: Plan um 01:00."));
     assert.deepEqual(res, { ok: true, id: "7", zustand: "abgebrochen", kommentar: "angelegt" });
-    assert.deepEqual(labelsVon(dir), ["kit:nightrun", "lauf:abgebrochen"]);
+    assert.deepEqual(labelsVon(dir), ["kit:nightrun", "run:aborted"]);
   }, { labels: ["kit:nightrun", "lauf:laeuft", "lauf:wartet"] });
 });
 
@@ -79,7 +79,7 @@ test("Kommentar wird angelegt, beim zweiten Aufruf ersetzt, bei gleichem Inhalt 
     assert.equal(staende.length, 1, "genau ein Laufstand");
     assert.match(staende[0], /## Laufstand\n\nZuletzt begonnen: Plan um 01:02/);
     assert.ok(readFileSync(datei, "utf-8").includes("Fremder Kommentar"), "andere Kommentare bleiben");
-    assert.deepEqual(labelsVon(dir), ["lauf:laeuft"]);
+    assert.deepEqual(labelsVon(dir), ["run:running"]);
   }, { kommentare: ["Fremder Kommentar"] });
 });
 
@@ -92,19 +92,19 @@ test("ein Text, der den Anker schon traegt, bekommt ihn nicht doppelt", () => {
   });
 });
 
-test("Labelnamen kommen aus night.stand.labels", () => {
+test("Labelnamen kommen aus night.stand.labels; getragene Namen derselben Sache gehen mit ab (Issue #1552, E3)", () => {
   const config = { ...LOKAL, night: { stand: { labels: { laeuft: "x:lauf", abgebrochen: "x:ab", wartet: "x:wart" } } } };
   mitLokal((dir) => {
     ausgabe(stand(dir, "wartet", "Halt: Frage wartet auf den Menschen — siehe `## Kette angehalten`"));
-    assert.deepEqual(labelsVon(dir), ["lauf:laeuft", "x:wart"], "die Vorgabenamen sind hier fremde Labels");
-  }, { config, labels: ["x:lauf", "lauf:laeuft", "x:ab"] });
+    assert.deepEqual(labelsVon(dir), ["fix", "x:wart"]);
+  }, { config, labels: ["x:lauf", "lauf:laeuft", "fix", "run:aborted", "x:ab"] });
 });
 
 test("ohne night.stand in der Config gelten die Vorgaben", () => {
   assert.deepEqual(Object.values(STAND_LABEL_VORGABEN), VORGABEN);
   mitLokal((dir) => {
     ausgabe(stand(dir, "laeuft", "Lauf angenommen um 01:00, Vorabprüfung läuft"));
-    assert.deepEqual(labelsVon(dir), ["lauf:laeuft"]);
+    assert.deepEqual(labelsVon(dir), ["run:running"]);
   });
 });
 

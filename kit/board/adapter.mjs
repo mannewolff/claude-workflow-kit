@@ -43,7 +43,7 @@ export { TEXTE };
 const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
 
 // ============================================================
-// Labelnamen mit Rueckfall (Issue #1428, Plan #1420 E6)
+// Fehlende Labels (Issue #1428, Plan #1420 E6; ohne Rueckfall seit Issue #1552, Plan #1548 E2)
 // ============================================================
 
 /**
@@ -52,26 +52,6 @@ const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
  * lokale Tracker kennt keine Definitionen. Die Meldung bleibt die des Trackers.
  */
 export class LabelFehltError extends BoardError {}
-
-/**
- * Setzt den ersten der Namen; fehlt er am Board, den naechsten. Liefert
- * `{ label, fehlend }` mit dem gesetzten Namen und den Fehlschlaegen davor als
- * `{ name, grund }` — der Aufrufer macht daraus seinen Hinweis. Fehlen alle, wirft der
- * Fehlschlag des ersten: Er nennt den Namen, den der Aufrufer setzen wollte.
- */
-export async function labelSetzenMitRueckfall(tracker, id, namen) {
-  const fehlend = [];
-  for (const name of namen) {
-    try {
-      await tracker.labelIssue(id, name, "add");
-      return { label: name, fehlend };
-    } catch (e) {
-      if (!(e instanceof LabelFehltError)) throw e;
-      fehlend.push({ name, grund: e.message, fehler: e });
-    }
-  }
-  throw fehlend[0]?.fehler ?? new BoardError(t("rueckfallOhneName"));
-}
 
 // ============================================================
 // GitHub-Adapter

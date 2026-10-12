@@ -15,6 +15,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { hatLabel } from "./helpers/labels.mjs";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -29,7 +30,7 @@ import {
   pruefUmgebung, FACHPLAN_MARKER, PRUEFUNG_GEPRUEFT, PRUEFUNG_HALT, PRUEFUNG_BEFUNDE, PRUEFUNG_FRAGE,
 } from "./helpers/kette-ablauf.mjs";
 
-const PRUEF_LABEL = "kit:pruefen";
+const PRUEF_LABEL = "kit:check";
 const BUDGET = { label: PRUEF_LABEL, pruefungMin: 25, kostenUsd: 25 };
 
 /** Ein Repo mit dem Wurzelblock `pruefLauf` — er steht nicht unter `night` (Plan #904, E12). */
@@ -93,23 +94,23 @@ test("[night-909] ein Prueflauf ohne --max prueft alle gekennzeichneten Karten u
 
       // --- Die Karten am Board ---
       for (const id of [k.geprueft, k.halt, k.ohneSpur, k.vorlauf, k.nurBefunde]) {
-        assert.ok(!board(dir, "issue", "get", id).labels.includes(PRUEF_LABEL),
+        assert.ok(!hatLabel(board(dir, "issue", "get", id).labels, PRUEF_LABEL),
           `#${id}: das Kennzeichen muss mit dem Start verbraucht sein`);
       }
-      assert.ok(board(dir, "issue", "get", k.plan).labels.includes(PRUEF_LABEL),
+      assert.ok(hatLabel(board(dir, "issue", "get", k.plan).labels, PRUEF_LABEL),
         "die uebersprungene Karte behaelt ihr Kennzeichen");
 
       const fertig = board(dir, "issue", "get", k.geprueft);
-      assert.ok(fertig.labels.includes(REVIEW_FERTIG_LABEL), "die gepruefte Karte traegt review:fertig");
+      assert.ok(hatLabel(fertig.labels, REVIEW_FERTIG_LABEL), "die gepruefte Karte traegt review:fertig");
       assert.ok(fertig.body.split("\n").includes(FACHPLAN_MARKER),
         "der Fachplan-Review-Marker steht als eigene Zeile im Kopf");
 
-      assert.ok(board(dir, "issue", "get", k.halt).labels.includes(KLAEREN_LABEL),
+      assert.ok(hatLabel(board(dir, "issue", "get", k.halt).labels, KLAEREN_LABEL),
         "die angehaltene Karte traegt kit:klaeren");
 
       // E16: die Karte aus dem Vorlauf hat ihr `review:fertig` verloren und keins bekommen —
       // ihre Session hat nichts hinterlassen.
-      assert.ok(!board(dir, "issue", "get", k.vorlauf).labels.includes(REVIEW_FERTIG_LABEL),
+      assert.ok(!hatLabel(board(dir, "issue", "get", k.vorlauf).labels, REVIEW_FERTIG_LABEL),
         "der Lauf nimmt review:fertig vor der Session ab und die Session setzt es nicht neu");
 
       // --- Der Vermerk-Kommentar ---

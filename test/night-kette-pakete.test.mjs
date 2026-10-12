@@ -11,6 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { hatLabel } from "./helpers/labels.mjs";
 import {
   ketteImProzess, fachplanKarte, jeStufe, planAnlegen, reviewMarker, paketeAnlegen, paketeHalt,
   paketOhneAbhaengigkeiten, paketReparieren,
@@ -56,7 +57,7 @@ test("[night-20] kein Paket mit Halt-Kommentar von /issues heisst angehalten: Fr
   assert.equal(einheit.ausgang, "angehalten");
   assert.match(einheit.grund, /Stopp-Frage beim Schneiden von #2/);
   assert.deepEqual(einheit.stufen.pakete.ids, []);
-  assert.ok(r.karte("1").labels.includes("kit:klaeren"));
+  assert.ok(hatLabel(r.karte("1").labels, "kit:klaeren"));
   const text = kartenText(r, "1");
   assert.match(text, /## Kette angehalten/);
   assert.match(text, /Stufe pakete, Dokument #2/);
@@ -73,7 +74,7 @@ test("[night-20] kein Paket und kein Halt-Kommentar heisst abgebrochen", async (
   const einheit = r.lauf.einheiten.find((e) => e.id === "1");
   assert.equal(einheit.ausgang, "abgebrochen");
   assert.match(einheit.grund, /kein Paket entstanden/);
-  assert.ok(!r.karte("1").labels.includes("kit:klaeren"));
+  assert.ok(!hatLabel(r.karte("1").labels, "kit:klaeren"));
 });
 
 test("[night-20] ein Paket ohne Abhaengigkeiten-Abschnitt loest eine Korrekturrunde aus, dann ist die Kette fertig", async () => {

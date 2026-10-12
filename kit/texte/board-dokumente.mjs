@@ -41,8 +41,8 @@ export const TEXTE = Object.freeze({
     labelZuViele: "Zu viele Argumente: '{zuviel}'. Erwartet genau <id> und <name>.",
     labelNameUngueltig: "Labelname darf kein Komma und keinen Zeilenumbruch enthalten: '{name}'",
     statusLabel: "Status-Label `{name}` nur ueber `issue move` aendern",
-    labelRueckfall: "Label {fehlend} fehlt am Board — stattdessen {label} gesetzt. "
-      + "Legt ein Mensch das fehlende Label am Board an, setzt das Kit kuenftig den Namen der Projektsprache.",
+    labelFehltAnlegen: "Label {label} fehlt am Board, nichts gesetzt ({grund}). Das Kit setzt nur noch die englischen "
+      + "Labelnamen — bitte die Kit-Labels einmal am Board anlegen (im Leitstand auf Knopfdruck).",
     labelNichtGetragen: "Issue {id} traegt weder {namen} — nichts abgenommen.",
     labelWederNoch: " noch ",
     labelBeide: "Issue {id} trug beide Namen ({namen}) — beide abgenommen.",
@@ -193,8 +193,8 @@ export const TEXTE = Object.freeze({
     labelZuViele: "Too many arguments: '{zuviel}'. Expected exactly <id> and <name>.",
     labelNameUngueltig: "Label name must not contain a comma or a line break: '{name}'",
     statusLabel: "Change the status label `{name}` only via `issue move`",
-    labelRueckfall: "Label {fehlend} is missing on the board — set {label} instead. "
-      + "Once a human creates the missing label on the board, the kit sets the name in the project language.",
+    labelFehltAnlegen: "Label {label} is missing on the board, nothing set ({grund}). The kit sets only the English "
+      + "label names — please create the kit labels once on the board (one click in the control room).",
     labelNichtGetragen: "Issue {id} carries neither {namen} — nothing removed.",
     labelWederNoch: " nor ",
     labelBeide: "Issue {id} carried both names ({namen}) — both removed.",

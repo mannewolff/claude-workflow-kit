@@ -605,7 +605,7 @@ const { issueVorgeschichte } = await import("./board/vorgeschichte.mjs");
 // Englisch benannte Config auf die deutschen Namen (Issue #1436, Plan #1420 E10).
 const { normalisiereConfig } = await import("./board/config-namen.mjs");
 // Die englischen Namen der Optionen und der Aktionen von `code schutz` (Issue #1461, E18).
-const { BEFEHLSNAMEN, projektSprache, prozessSprache, text } = await import("./board/namen.mjs");
+const { BEFEHLSNAMEN, prozessSprache, text } = await import("./board/namen.mjs");
 // Die Texte des Einstiegs an den Menschen (Issue #1524: im Teil texte/).
 export const { TEXTE } = await import("./texte/board.mjs");
 /** Englisch -> deutsch fuer eine Ebene der Namenstabelle. */
@@ -708,7 +708,7 @@ async function issueCheckForm(tracker, config, args) {
   const eingabe = hatDatei ? checkFormAusDatei(args["body-file"], args.title) : await checkFormVomBoard(tracker, id);
   const body = eingabe.body;
   // --art waehlt die Stufe ueber den Titel, wie `issue create` ihn anlegt (Issue #1427, E6).
-  const { titel: title, fehler } = titelMitArt(eingabe.title, args.art, projektSprache(config));
+  const { titel: title, fehler } = titelMitArt(eingabe.title, args.art);
   if (fehler) checkFormAbweisen(t("checkFormArt", { fehler, wege: checkFormWege() }));
   const dateien = stufeAusTitel(title) === "plan" ? versionierteDateien() : [];
   const ergebnis = pruefeForm(body, title, config, dateien, configWurzel());
@@ -810,7 +810,7 @@ async function dispatchIssue(command, args) {
   const config = loadConfig();
   const tracker = resolveTracker(config);
   switch (command) {
-    case "create":  return issueCreate(tracker, args, config);
+    case "create":  return issueCreate(tracker, args);
     case "get":     return issueGet(tracker, args);
     case "list":    return issueList(tracker, args);
     case "epics":   return issueEpics(tracker);

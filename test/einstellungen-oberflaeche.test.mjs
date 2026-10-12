@@ -564,7 +564,7 @@ test("M6 bietet night.stand mit den Vorgaben aus dem Schema an", () => {
     fristMin: vorgabeAus("night.stand.fristMin"),
     pauseMin: vorgabeAus("night.stand.pauseMin"),
   };
-  assert.deepEqual(Object.values(erwartet), ["lauf:laeuft", "lauf:abgebrochen", "lauf:wartet", 10, 5]);
+  assert.deepEqual(Object.values(erwartet), ["run:running", "run:aborted", "run:waiting", 10, 5]);
   assert.ok(stueck.includes(`const STAND_VORGABEN_BROWSER = ${JSON.stringify(erwartet)};`), "die Vorgaben des Laufstands weichen vom Schema ab");
   assert.match(stueck, /setzeWert\(teil, "night\.stand"/, "der Laufstand landet nicht in der Arbeitskopie");
   for (const feld of ["labels.laeuft", "labels.abgebrochen", "labels.wartet", "fristMin", "pauseMin"]) {
