@@ -204,7 +204,7 @@ test("[night-1250] ohne Angabe gilt die Frist vorbereitungMin der Kette", async 
 //
 // Die Vorbereitung ist eine Stufe des Laufs, nicht einer Kette: `ketteFahren` sammelt die
 // Ketten, deren Umsetzung mit Ziel `push-vorbereitet` fertig wurde, und faehrt nach der
-// Schleife genau eine Session `/push-main vorbereiten` in der Hauptkopie. Deren Ergebnis ist
+// Schleife genau eine Session `/push-main prepare` in der Hauptkopie. Deren Ergebnis ist
 // die Datei `.claude/push-vorbereitung.json`; geprueft werden Laufkennung und Zeitpunkt.
 // Jede ausloesende Karte bekommt Stufenzeilen und einen eigenen Nachtbericht. Leicht:
 // Session, Board und Uhr ueber `ketteImProzess` (KETTE_ABHAENGIGKEITEN), ohne feste Pause.
@@ -233,7 +233,7 @@ const berichteDerVorbereitung = (r, id) => r.karte(id).comments.map((c) => c.bod
 const staendeVon = (r, id) => r.journal.filter((z) => z.art === "stand" && z.karte === id).map((z) => z.text);
 const sperreDa = ({ dir }) => existsSync(join(dir, UMSETZUNG_LOCK));
 
-test("[night-1254] ziel:push-vorbereitet nach fertiger Umsetzung: eine Session /push-main vorbereiten in der Hauptkopie", async () => {
+test("[night-1254] ziel:push-vorbereitet nach fertiger Umsetzung: eine Session /push-main prepare in der Hauptkopie", async () => {
   let ort = null;
   const r = await ketteImProzess({
     karten: bisAbdeckung("1", "2", ["3", "4"], [ZIEL_PV]), kette: B_FREI,
@@ -243,7 +243,7 @@ test("[night-1254] ziel:push-vorbereitet nach fertiger Umsetzung: eine Session /
   assert.equal(r.code, 0, r.ausgabe);
   const [s] = vorbereitungen(r);
   assert.equal(vorbereitungen(r).length, 1);
-  assert.match(s.prompt, /^\/push-main vorbereiten/);
+  assert.match(s.prompt, /^\/push-main prepare/);
   assert.equal(s.modell, r.lauf.modell, "die Session laeuft nicht mit KIT_AGENT_MODEL des Laufs");
   assert.equal(ort, r.nachher.dir, "die Session lief nicht in der Hauptkopie");
   assert.equal(r.lauf.vorbereitung.ergebnis, "gruen");

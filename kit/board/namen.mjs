@@ -174,6 +174,18 @@ export const MARKER = Object.freeze({
   gegenprobe: eintrag("Gegenprobe:", "Counter-check:"),
   art: eintrag("Art:", "Kind:"),
   geprueftBestaetigt: eintrag("— geprueft, bestaetigt", "— checked, confirmed"),
+  // Uebernahme- und Angabenvermerk im Fundblock, als ganze Zeile (Issue #1568).
+  uebernommen: eintrag("Uebernahme: uebernommen", "Adoption: adopted"),
+  abgelehnt: eintrag("Uebernahme: abgelehnt", "Adoption: rejected"),
+  unvollstaendig: eintrag("Angaben: unvollstaendig", "Details: incomplete"),
+  // Weitere feste Zeilen der Skills (Issue #1568): Kopf des Abschlussberichts und der roten
+  // Tests, Code-Review- und Reviewer-Kopf, die Zeilen der Vorgeschichte.
+  abschlussbericht: eintrag("## Abschlussbericht Issue #", "## Completion report issue #"),
+  testsGeschrieben: eintrag("### Tests geschrieben (rot) — Issue #", "### Tests written (red) — issue #"),
+  codeReview: eintrag("## Code-Review (Schritt 7)", "## Code review (step 7)"),
+  reviewer: eintrag("### Reviewer"),
+  suchbegriffe: eintrag("Suchbegriffe:", "Search terms:"),
+  dateien: eintrag("Dateien:", "Files:"),
 });
 
 /**
@@ -268,6 +280,10 @@ export const UEBERSCHRIFTEN = Object.freeze({
   entscheidungen: eintrag("Entscheidungen", "Decisions"),
   ursprungsdokumente: eintrag("Ursprungsdokumente", "Origin documents"),
   standDesVorhabens: eintrag("Stand des Vorhabens", "State of the project"),
+  // Tageslog aus /document (Issue #1568).
+  einstieg: eintrag("Einstieg", "Start"),
+  offenePunkte: eintrag("Offene Punkte", "Open points"),
+  zuletztAktualisiert: eintrag("Zuletzt aktualisiert", "Last updated"),
 });
 
 /** Ueberschriften vergleichbar machen: klein, Umlaute in beiden Schreibweisen, Leerraum einfach. */

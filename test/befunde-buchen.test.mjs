@@ -317,3 +317,22 @@ test("[1559] pruefen meldet an einem vollstaendigen englischen Fundblock keine f
     assert.deepEqual(JSON.parse(res.stdout).eintraege, []);
   });
 });
+
+// Auch der Uebernahme- und der Angabenvermerk stehen in der Projektsprache (Issue #1568):
+// `Adoption: adopted` bucht wie `Uebernahme: uebernommen`, `Adoption: rejected` und
+// `Details: incomplete` buchen nicht.
+test("[1568] ein Fundblock mit englischem Uebernahmevermerk wird gebucht, abgelehnt und unvollstaendig nicht", () => {
+  mitDir((dir) => {
+    const block = (titel, ...zeilen) => [`**W — ${titel}.**`, "Counter-check: An observation. — checked, confirmed", "Kind: luecke", ...zeilen, ""];
+    const text = [
+      "#### WICHTIG",
+      "",
+      ...block("Adopted", "Adoption: adopted"),
+      ...block("Rejected", "Adoption: rejected"),
+      ...block("Incomplete", "Details: incomplete", "Adoption: adopted"),
+    ].join("\n");
+    const res = buchen(dir, text);
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(JSON.parse(res.stdout).geschrieben, 1, res.stdout);
+  });
+});

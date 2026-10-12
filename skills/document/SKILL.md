@@ -12,6 +12,8 @@ Werkzeug neben dem Prozess, am Session-Ende: Was in dieser Session gebaut, entsc
 
 Jede Vault-Datei, in die dieser Skill automatisch schreibt, gehoert genau einem Repo. Teilen sich mehrere Service-Repos einen Vault, ist eine gemeinsam beschriebene Datei die Kollisionsstelle: parallele Sessions ueberschreiben Abschnitte, in einem synchronisierten Vault entsteht ein Sync-Konflikt. Geteilte Dateien werden deshalb gelesen oder nur mit ausdruecklicher Zustimmung geschrieben — die Dach-Notiz ist der einzige geteilte Schreibort und bewusst nicht automatisiert.
 
+**Feste Zeilen.** Überschriften, Marker, Review- und Einarbeitungs-Köpfe und Fundblock-Zeilen, die dieser Skill in Dokumente, Kommentare oder Markerzeilen schreibt, stehen hier deutsch. Vor dem ersten Schreiben `node .claude/kit/board.mjs names` aufrufen: Das Feld `lines` nennt je deutscher Zeile die Fassung der Projektsprache, und der Skill schreibt die ausgegebene Fassung. Eine Zeile mit veränderlichem Rest (`## Einarbeitung, Runde 2`) steht dort mit ihrem festen Anfang, eine Überschrift mit `## ` davor gilt auf jeder Ebene, und was `names` nicht nennt, bleibt, wie es hier steht.
+
 ## Ablauf
 
 ### 1. Zielpfade holen

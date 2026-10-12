@@ -323,3 +323,14 @@ test("ohne Schalter, ohne Suchbegriffe-Zeile und ohne Archiv entfaellt der Block
     }
   }
 });
+
+// Die Zeilen der Vorgeschichte stehen in der Projektsprache (Issue #1568): `Search terms:`
+// gilt wie `Suchbegriffe:`.
+test("[1568] die Vorgeschichte liest auch die englische Zeile Search terms:", async () => {
+  const englisch = PLAN_MIT_VORGESCHICHTE.replace("Suchbegriffe:", "Search terms:").replace("Dateien:", "Files:");
+  const board = boardMitArchiv({ ...PLAN_KARTEN, 10: { title: "[Plan] Der Plan", body: englisch } }, { suche: SUCHE });
+  const { antwort, text } = await montiere({ role: "architektur-bestand", id: "10" }, { board, config: MIT_VORGESCHICHTE });
+  assert.equal(antwort.ok, true);
+  assert.deepEqual(board.aufrufe, ["Export", "Archiv"]);
+  assert.ok(text.includes("--- VORGESCHICHTE ---\n"), "Anhang fehlt");
+});

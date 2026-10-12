@@ -350,6 +350,10 @@ const FUNDBLOCK = {
   gegenprobe: namen?.MARKER.gegenprobe ?? { de: "Gegenprobe:", en: "Counter-check:" },
   art: namen?.MARKER.art ?? { de: "Art:", en: "Kind:" },
   geprueftBestaetigt: namen?.MARKER.geprueftBestaetigt ?? { de: "— geprueft, bestaetigt", en: "— checked, confirmed" },
+  // Uebernahme- und Angabenvermerk, als ganze Zeile (Issue #1568).
+  uebernommen: namen?.MARKER.uebernommen ?? { de: "Uebernahme: uebernommen", en: "Adoption: adopted" },
+  abgelehnt: namen?.MARKER.abgelehnt ?? { de: "Uebernahme: abgelehnt", en: "Adoption: rejected" },
+  unvollstaendig: namen?.MARKER.unvollstaendig ?? { de: "Angaben: unvollstaendig", en: "Details: incomplete" },
 };
 
 /** Die Koepfe einer Fundblock-Zeile ohne ihren Doppelpunkt, deutsch und englisch. */
@@ -698,7 +702,9 @@ const WARTEND_PRAEFIX = ".claude/vorhaben-wartend-";
 
 // Die Kennzeichnung aus E6 (Plan #797): Ein so markierter Fund ist kein Vorkommen,
 // auch wenn seine uebrigen Angaben vollstaendig aussehen.
-const UNVOLLSTAENDIG_RE = /^Angaben\s*:\s*unvollst(?:ae|ä)ndig/i;
+// Englisch `Details: incomplete` aus dem Register (Issue #1568).
+const [UNVOLLSTAENDIG_EN_KOPF, UNVOLLSTAENDIG_EN_WERT] = FUNDBLOCK.unvollstaendig.en.split(":").map((w) => w.trim());
+const UNVOLLSTAENDIG_RE = new RegExp(String.raw`^(?:Angaben\s*:\s*unvollst(?:ae|ä)ndig|${UNVOLLSTAENDIG_EN_KOPF}\s*:\s*${UNVOLLSTAENDIG_EN_WERT})`, "i");
 
 // Der Reviewer-Kopf, wie /issue-review Schritt 5 ihn schreibt:
 // '### Reviewer <n>: <rolle>, <modell>'. Die Rolle ist der Teil vor dem Komma; das
@@ -724,14 +730,22 @@ export function reviewerRolle(zeile) {
   return komma === -1 ? null : rest.slice(0, komma).trim();
 }
 
-/** Der Uebernahmevermerk eines Funds: 'uebernommen', 'abgelehnt' oder null. */
+// Der englische Uebernahmevermerk aus dem Register (Issue #1568): Kopf und die beiden Werte.
+const zerlegt = (zeile) => zeile.split(":").map((w) => w.trim());
+const UEBERNAHME_EN = {
+  kopf: zerlegt(FUNDBLOCK.uebernommen.en)[0],
+  uebernommen: zerlegt(FUNDBLOCK.uebernommen.en)[1].toLowerCase(),
+  abgelehnt: zerlegt(FUNDBLOCK.abgelehnt.en)[1].toLowerCase(),
+};
+
+/** Der Uebernahmevermerk eines Funds, deutsch oder englisch: 'uebernommen', 'abgelehnt' oder null. */
 function uebernahmeVon(fund) {
   for (const zeile of fund.zeilen) {
-    const roh = angabenWert(zeile, "Uebernahme", "Übernahme");
+    const roh = angabenWert(zeile, "Uebernahme", "Übernahme", UEBERNAHME_EN.kopf);
     if (roh === null) continue;
     const wert = roh.replace(/^[\s*_]+/, "").toLowerCase();
-    if (wert.startsWith("uebernommen") || wert.startsWith("übernommen")) return "uebernommen";
-    if (wert.startsWith("abgelehnt")) return "abgelehnt";
+    if (wert.startsWith("uebernommen") || wert.startsWith("übernommen") || wert.startsWith(UEBERNAHME_EN.uebernommen)) return "uebernommen";
+    if (wert.startsWith("abgelehnt") || wert.startsWith(UEBERNAHME_EN.abgelehnt)) return "abgelehnt";
     return null;
   }
   return null;

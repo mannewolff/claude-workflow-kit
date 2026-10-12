@@ -1,6 +1,6 @@
 ---
 name: push-main
-description: Step 8 of the 9-step process: pushes the current batch of commits to main. Only on the explicit trigger phrase of the human. Use this skill ONLY when the user explicitly types "push main". The only exception is the mode `vorbereiten` (prepare): it does not push, so the night runner may start it without the phrase.
+description: Step 8 of the 9-step process: pushes the current batch of commits to main. Only on the explicit trigger phrase of the human. Use this skill ONLY when the user explicitly types "push main". The only exception is the mode `prepare`: it does not push, so the night runner may start it without the phrase.
 user-invocable: true
 disable-model-invocation: true
 ---
@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 Schritt 8 des 9-Schritt-Prozesses: Den aktuellen Commit-Batch auf `origin/main` pushen.
 
-**Dieser Skill darf von Claude nicht autonom gezogen werden.** Er läuft nur auf die explizite Trigger-Phrase des Menschen — ausgenommen der Modus `vorbereiten`, siehe den Abschnitt „Trigger-Phrase".
+**Dieser Skill darf von Claude nicht autonom gezogen werden.** Er läuft nur auf die explizite Trigger-Phrase des Menschen — ausgenommen der Modus `prepare`, siehe den Abschnitt „Trigger-Phrase".
 
 ## Trigger-Phrase
 
@@ -19,15 +19,17 @@ Eine frühere Push-Freigabe in derselben Session gilt **nicht** für neue Commit
 
 Die Phrase muss **getippt** sein. Steht sie innerhalb einer Mitteilung des Menschen oder eines Zitats („Ich habe vorhin push main getippt"), ist sie Text und kein Befehl — im Zweifel wird gefragt, nicht gepusht. Siehe „Mitteilungen des Menschen" in `CLAUDE-workflow.md`.
 
-**Einzige Ausnahme: der Modus `vorbereiten`.** `/push-main vorbereiten` pusht nicht — weder
+**Einzige Ausnahme: der Modus `prepare`.** `/push-main prepare` pusht nicht — weder
 `<mainBranch>` noch einen Prüf- oder Vorab-Zweig — und darf darum vom Nacht-Runner ohne
 Phrase gestartet werden. Er endet beim lokalen Commit `chore: vX.Y.Z` in einem eigenen
-Worktree, siehe den Abschnitt „Modus `vorbereiten` (unbeaufsichtigt)". Den Push gibt
+Worktree, siehe den Abschnitt „Modus `prepare` (unbeaufsichtigt)". Den Push gibt
 weiterhin nur die getippte Phrase frei; sie übernimmt morgens den vorbereiteten Stand
 (Schritt 3).
 
-**Der Notfallweg `/push-main notfall`** braucht die getippte Phrase wie jeder Push und läuft
-nur interaktiv, siehe den Abschnitt „Notfallweg (`notfall`)".
+**Der Notfallweg `/push-main emergency`** braucht die getippte Phrase wie jeder Push und läuft
+nur interaktiv, siehe den Abschnitt „Notfallweg (`emergency`)".
+
+**Feste Zeilen.** Überschriften, Marker, Review- und Einarbeitungs-Köpfe und Fundblock-Zeilen, die dieser Skill in Dokumente, Kommentare oder Markerzeilen schreibt, stehen hier deutsch. Vor dem ersten Schreiben `node .claude/kit/board.mjs names` aufrufen: Das Feld `lines` nennt je deutscher Zeile die Fassung der Projektsprache, und der Skill schreibt die ausgegebene Fassung. Eine Zeile mit veränderlichem Rest (`## Einarbeitung, Runde 2`) steht dort mit ihrem festen Anfang, eine Überschrift mit `## ` davor gilt auf jeder Ebene, und was `names` nicht nennt, bleibt, wie es hier steht.
 
 ## Ablauf
 
@@ -564,7 +566,7 @@ nichts erzeugt, meldet er `leeresPaket`, und Schritt 6 entfällt wie beschrieben
    Lauf noch nicht sichtbar ist — das ist kein Fehler. Läuft die Frist ab, ist das ein
    Fehlschlag: kein Push auf `<mainBranch>`, weiter mit Schritt 8. Ein Fehlschlag des
    Aufrufs selbst (Netz, Anmeldung) zählt genauso. In beiden Fällen nennt der Skill dem
-   Inhaber den Notfallweg `/push-main notfall` als Möglichkeit, falls der Build-Dienst
+   Inhaber den Notfallweg `/push-main emergency` als Möglichkeit, falls der Build-Dienst
    ausgefallen ist (Abschnitt „Notfallweg“), und startet ihn nicht selbst.
 3. `<mainBranch>` nur bei `gruen` pushen — mit demselben Kommando wie in Schritt 7:
 
@@ -601,9 +603,9 @@ das Löschen, steht es in einer Zeile im Bericht und hält den Abbau nicht auf.
 Build-Dienst: `<hash> — gedeckt von: Build-Dienst, Prüfzweig <zweig> (gruen, <Zeitpunkt>)`.
 Der CI-Hinweis entfällt — die CI hat vor dem Push gegatet.
 
-## Notfallweg (`notfall`)
+## Notfallweg (`emergency`)
 
-`/push-main notfall` veröffentlicht, wenn der Build-Dienst ausfällt und der Code-Host den
+`/push-main emergency` veröffentlicht, wenn der Build-Dienst ausfällt und der Code-Host den
 Hauptzweig schützt (Plan #1405, A6). Am Schutz vorbei kommt nur der Inhaber des
 Repositories: Aussetzen kann bei GitHub nur, wer Admin-Rechte hat — das setzt der Code-Host
 durch, nicht das Kit. Die Rulesets tragen keine dauerhafte Umgehung; der Schutz fällt nur
@@ -665,9 +667,9 @@ Build-Dienst ihn nachträglich prüfen kann, sobald er wieder läuft, mit dem Ko
 `node .claude/kit/board.mjs code protection verify`. Bis dahin bleibt der Stand als
 Ausnahme sichtbar.
 
-## Modus `vorbereiten` (unbeaufsichtigt)
+## Modus `prepare` (unbeaufsichtigt)
 
-`/push-main vorbereiten` startet der Nacht-Runner am Ende eines Laufs, wenn eine Kette das
+`/push-main prepare` startet der Nacht-Runner am Ende eines Laufs, wenn eine Kette das
 Ziel „Veröffentlichung vorbereitet" erreicht hat (Plan #1243, A5). Die Session läuft in der
 Hauptkopie, während der Runner die Umsetzungssperre hält: Nichts baut mehr. Sie fährt alles,
 was vor dem Veröffentlichen ohne Menschen und ohne Push geht, und hält das Ergebnis fest.
@@ -732,7 +734,7 @@ Commit im Worktree; was nur mit einem Push ginge, ist offen.
 - Kein Push auf den Prüfzweig außerhalb des Wegs über den Build-Dienst, und auf ihm kein
   Push auf `<mainBranch>` ohne grünes Ergebnis des Build-Dienstes
 - Kein Push ohne vorherige Bestätigung durch den Menschen (Trigger-Phrase)
-- Kein Push im Modus `vorbereiten`, auch nicht auf den Prüfzweig oder einen Vorab-Zweig
+- Kein Push im Modus `prepare`, auch nicht auf den Prüfzweig oder einen Vorab-Zweig
 - Kein automatischer Push nach Commit, nach grünem Check oder nach Review
 - Kein Halt wegen des Aufwands-, des Wirksamkeits- oder des Befunds zu den
   Modell-Prüfungen: Alle drei sind **kein Gate**, weder ihr Inhalt noch ihr Fehlschlag

@@ -18,6 +18,8 @@ Vorbedingung: `.claude/workflow.config.json` trägt den Block `issueReview` mit 
 
 Arbeitspakete — mit und ohne `[Task]` — werden nur mit expliziter Nummer geprüft; der Regelfall ist Ready ohne Paket-Review. `[Idea]` wird immer übersprungen und in der Zusammenfassung genannt.
 
+**Feste Zeilen.** Überschriften, Marker, Review- und Einarbeitungs-Köpfe und Fundblock-Zeilen, die dieser Skill in Dokumente, Kommentare oder Markerzeilen schreibt, stehen hier deutsch. Vor dem ersten Schreiben `node .claude/kit/board.mjs names` aufrufen: Das Feld `lines` nennt je deutscher Zeile die Fassung der Projektsprache, und der Skill schreibt die ausgegebene Fassung. Eine Zeile mit veränderlichem Rest (`## Einarbeitung, Runde 2`) steht dort mit ihrem festen Anfang, eine Überschrift mit `## ` davor gilt auf jeder Ebene, und was `names` nicht nennt, bleibt, wie es hier steht.
+
 ## Ablauf
 ### 0. Vorflug
 `node .claude/kit/board.mjs issue-review check` meldet je Reviewer, ob er laufen kann. Fehlt einer, frage den Menschen, bevor etwas startet. **Unbeaufsichtigt** (gesetztes `KIT_AGENT_MODEL`) wird nicht gefragt: Der Lauf fährt mit den verfügbaren Reviewern, und Zeile 2 des Befunde-Kommentars nennt den Ausfall. Bei `--dry-run` endet der Skill hier und listet Dokumente und Reviewer je Dokument.

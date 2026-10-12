@@ -140,11 +140,11 @@ test("[1401] Schritt 9 nennt Gewackelt und Reparaturkandidaten", () => {
 
 // --- Notfallweg bei Ausfall des Build-Dienstes (Issue #1410, Plan #1405 A6, E8, E10) ---
 
-const NOTFALL = abschnitt(PUSH, "## Notfallweg (`notfall`)");
+const NOTFALL = abschnitt(PUSH, "## Notfallweg (`emergency`)");
 
 test("[1410] der Notfallweg hat einen eigenen Abschnitt, und die Trigger-Phrase nennt ihn", () => {
-  assert.ok(NOTFALL, "Abschnitt „## Notfallweg (`notfall`)“ fehlt");
-  assert.match(abschnitt(PUSH, "## Trigger-Phrase"), /`\/push-main notfall`/, "die Trigger-Phrase nennt `/push-main notfall` nicht");
+  assert.ok(NOTFALL, "Abschnitt „## Notfallweg (`emergency`)“ fehlt");
+  assert.match(abschnitt(PUSH, "## Trigger-Phrase"), /`\/push-main emergency`/, "die Trigger-Phrase nennt `/push-main emergency` nicht");
 });
 
 test("[1410] der Notfallweg setzt den Schutz vor dem Push aus und stellt ihn danach wieder her", () => {

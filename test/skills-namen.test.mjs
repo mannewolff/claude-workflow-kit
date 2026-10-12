@@ -103,3 +103,29 @@ for (const name of SKILLS) {
     assert.deepEqual(funde, [], `${name}:\n${funde.join("\n")}`);
   });
 }
+
+// Die Skills sind einsprachig deutsch; was sie als feste Zeile schreiben, kommt ueber
+// `board.mjs names` in der Projektsprache an (Issue #1568, Plan #1548, Entscheidung „Feste
+// Zeilen der Skills über ein Kommando“). Jeder Skill, der Dokumente, Kommentare oder
+// Markerzeilen schreibt, nennt das Kommando und die Regel.
+const SCHREIBENDE = ["requirement", "techplan", "issues", "issue-review", "groom", "task",
+  "implement-next", "implement-ready", "implement-test", "implement-done", "kit-review",
+  "push-main", "retro", "document"];
+
+for (const name of SCHREIBENDE) {
+  test(`${name}: nennt board.mjs names und schreibt die ausgegebene Fassung`, () => {
+    const inhalt = text(name);
+    assert.match(inhalt, /^\*\*Feste Zeilen\.\*\* /m, `${name}: Absatz „Feste Zeilen“ fehlt`);
+    assert.match(inhalt, /node \.claude\/kit\/board\.mjs names/, `${name}: Aufruf board.mjs names fehlt`);
+    assert.match(inhalt.replaceAll(/\s+/g, " "), /schreibt die ausgegebene Fassung/, `${name}: Regel fehlt`);
+  });
+}
+
+// Ein deutsches Schluesselwort, das ein Skill als Argument erwartet, heisst englisch (E14).
+test("push-main erwartet die Modi prepare und emergency, nicht vorbereiten und notfall", () => {
+  const inhalt = text("push-main");
+  assert.match(inhalt, /`\/push-main prepare`/);
+  assert.match(inhalt, /`\/push-main emergency`/);
+  assert.doesNotMatch(inhalt, /\/push-main (?:vorbereiten|notfall)\b/);
+  assert.doesNotMatch(inhalt, /Modus `vorbereiten`|\(`notfall`\)/);
+});

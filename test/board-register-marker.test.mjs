@@ -62,6 +62,16 @@ const MARKER_PAARE = [
   ["## Nachtbericht, Kette", "## Night report, chain"],
   ["Daraus soll per /requirement eine fachliche Anforderung entstehen.", "A requirement is to be created from this via /requirement."],
   ["Ueberholt durch Plan #", "Superseded by plan #"],
+  // Feste Zeilen der Skills (Issue #1568).
+  ["Uebernahme: uebernommen", "Adoption: adopted"],
+  ["Uebernahme: abgelehnt", "Adoption: rejected"],
+  ["Angaben: unvollstaendig", "Details: incomplete"],
+  ["## Abschlussbericht Issue #", "## Completion report issue #"],
+  ["### Tests geschrieben (rot) — Issue #", "### Tests written (red) — issue #"],
+  ["## Code-Review (Schritt 7)", "## Code review (step 7)"],
+  ["### Reviewer", "### Reviewer"],
+  ["Suchbegriffe:", "Search terms:"],
+  ["Dateien:", "Files:"],
 ];
 
 test("das Register traegt genau die Marker mit beiden Namen", () => {

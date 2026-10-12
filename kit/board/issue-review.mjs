@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 import { BoardError, fail, out, loadConfig, findeImPath, umgebungsWert, configWurzel } from "./grundlagen.mjs";
 import { istFachlich, istPlan, herkunftNummern, normalisiereZeilenenden } from "./dokumente.mjs";
 import { resolveTracker } from "./adapter.mjs";
-import { EINGABEWERTE, internerWert, text, ueberschriftZeile } from "./namen.mjs";
+import { EINGABEWERTE, internerWert, leseMarker, text, ueberschriftZeile } from "./namen.mjs";
 import { vorgeschichteAktiv, vorgeschichteSuchen } from "./vorgeschichte.mjs";
 
 // Die Texte an den Menschen liegen unter kit/texte/board-issue-review.mjs (Issue #1526).
@@ -595,7 +595,8 @@ function block(text, name, behalten) {
 }
 
 /**
- * Die Werte einer Zeile `<feld> <a>; <b>; …` im Abschnitt zur Vorgeschichte, Backticks entfernt;
+ * Die Werte der Markerzeile `feld` (`suchbegriffe`, `dateien`, unter beiden Namen, Issue #1568)
+ * `<a>; <b>; …` im Abschnitt zur Vorgeschichte, Backticks entfernt;
  * `null` ohne den Abschnitt oder ohne die Zeile. Der Abschnitt steht beim Fachplan unter `##`,
  * beim Plan unter `###` und reicht bis zur naechsten Ueberschrift derselben oder hoeheren Ebene.
  */
@@ -610,9 +611,9 @@ function vorgeschichteZeile(body, ebene, feld) {
     }
     if (!drin) continue;
     if (ende.test(zeile)) break;
-    const rest = zeile.trim();
-    if (!rest.startsWith(feld)) continue;
-    return rest.slice(feld.length).split(";").map((w) => w.replaceAll("`", "").trim()).filter(Boolean);
+    const m = leseMarker(zeile.trim());
+    if (m?.sache !== feld) continue;
+    return m.rest.split(";").map((w) => w.replaceAll("`", "").trim()).filter(Boolean);
   }
   return null;
 }
@@ -627,9 +628,9 @@ function vorgeschichteZeile(body, ebene, feld) {
 async function vorgeschichteBody(tracker, config, { id, titel, body, quelleNr }) {
   if (!vorgeschichteAktiv(config)) return null;
   const plan = istPlan(titel);
-  const begriffe = vorgeschichteZeile(body, plan ? 3 : 2, "Suchbegriffe:");
+  const begriffe = vorgeschichteZeile(body, plan ? 3 : 2, "suchbegriffe");
   if (begriffe === null) return null;
-  const dateien = plan ? vorgeschichteZeile(body, 3, "Dateien:") ?? [] : [];
+  const dateien = plan ? vorgeschichteZeile(body, 3, "dateien") ?? [] : [];
   const ohne = [id, quelleNr].filter((nr) => nr !== null).map((nr) => Number(String(nr).replace("#", "")));
   const ergebnis = await vorgeschichteSuchen(tracker, config, { begriffe, dateien, ohne, bodies: true });
   if (!ergebnis.ok || ergebnis.treffer.length === 0) return null;

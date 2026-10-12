@@ -1844,9 +1844,10 @@ function vorbereitungVersuchen(repoRoot) {
 
 // --- Die Vorbereitung der Veroeffentlichung (Plan #1243, A4, A5, A6, E12, E17; Issue #1254) ---
 
-// Der Auftrag der Session: der Modus `vorbereiten` von /push-main (#1253). Er legt seinen
-// Worktree selbst an und haelt das Ergebnis ueber `worktree.mjs record-preparation` fest.
-const VORBEREITUNG_PROMPT = "/push-main vorbereiten";
+// Der Auftrag der Session: der Modus `prepare` von /push-main (#1253; englisch seit Issue #1568,
+// Plan #1548 E14). Er legt seinen Worktree selbst an und haelt das Ergebnis ueber
+// `worktree.mjs record-preparation` fest.
+const VORBEREITUNG_PROMPT = "/push-main prepare";
 
 /** Das Ergebnis einer Vorbereitung, die keinen Stand dieses Laufs festhielt. */
 const nichtVorbereitet = (grund) => ({ ergebnis: "nicht-vorbereitet", grund });
@@ -1903,7 +1904,7 @@ async function vorbereitungFahren(kette, start, fristMin) {
 /**
  * Die Stufe `vorbereitung` des Laufs (A4): einmal nach allen Ketten, fuer alle Ketten, deren
  * Umsetzung mit Ziel `push-vorbereitet` fertig wurde. Sie wartet, bis nichts mehr baut, faehrt
- * die Session `/push-main vorbereiten` in der Hauptkopie und prueft deren Datei. Jede
+ * die Session `/push-main prepare` in der Hauptkopie und prueft deren Datei. Jede
  * ausloesende Karte bekommt die Stufenzeilen im Laufstand und einen eigenen Nachtbericht
  * `— Vorbereitung` mit derselben Meldung (E12); das Ergebnis steht als `vorbereitung` im
  * Ergebnisstand. Ein `gruen-offen` mit dem Build-Dienst-Punkt geht unveraendert weiter, und

@@ -55,3 +55,25 @@ test("names nennt jeden Eintrag aus MARKER und UEBERSCHRIFTEN", () => {
   for (const { de, en } of Object.values(MARKER)) assert.equal(lines[de], en, de);
   for (const { de, en } of Object.values(UEBERSCHRIFTEN)) assert.equal(lines[`## ${de}`], `## ${en}`, de);
 });
+
+// Die festen Zeilen der Skills, die das Register bis Issue #1568 nicht kannte: Kopf des
+// Abschlussberichts und der roten Tests, Code-Review- und Reviewer-Kopf, die Zeilen der
+// Vorgeschichte, der Uebernahme- und der Angabenvermerk im Fundblock und die Abschnitte des
+// Tageslogs aus /document.
+test("MARKER und UEBERSCHRIFTEN kennen die festen Zeilen der Skills (Issue #1568)", () => {
+  const erwartet = {
+    abschlussbericht: ["## Abschlussbericht Issue #", "## Completion report issue #"],
+    testsGeschrieben: ["### Tests geschrieben (rot) — Issue #", "### Tests written (red) — issue #"],
+    codeReview: ["## Code-Review (Schritt 7)", "## Code review (step 7)"],
+    reviewer: ["### Reviewer", "### Reviewer"],
+    suchbegriffe: ["Suchbegriffe:", "Search terms:"],
+    dateien: ["Dateien:", "Files:"],
+    uebernommen: ["Uebernahme: uebernommen", "Adoption: adopted"],
+    abgelehnt: ["Uebernahme: abgelehnt", "Adoption: rejected"],
+    unvollstaendig: ["Angaben: unvollstaendig", "Details: incomplete"],
+  };
+  for (const [sache, [de, en]] of Object.entries(erwartet)) assert.deepEqual({ ...MARKER[sache] }, { de, en }, sache);
+  assert.deepEqual({ ...UEBERSCHRIFTEN.einstieg }, { de: "Einstieg", en: "Start" });
+  assert.deepEqual({ ...UEBERSCHRIFTEN.offenePunkte }, { de: "Offene Punkte", en: "Open points" });
+  assert.deepEqual({ ...UEBERSCHRIFTEN.zuletztAktualisiert }, { de: "Zuletzt aktualisiert", en: "Last updated" });
+});

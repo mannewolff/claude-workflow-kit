@@ -15,6 +15,8 @@ Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt f
 Relevantes Feld:
 - `mainBranch`: Branch für lokale Commits (Default: `main`)
 
+**Feste Zeilen.** Überschriften, Marker, Review- und Einarbeitungs-Köpfe und Fundblock-Zeilen, die dieser Skill in Dokumente, Kommentare oder Markerzeilen schreibt, stehen hier deutsch. Vor dem ersten Schreiben `node .claude/kit/board.mjs names` aufrufen: Das Feld `lines` nennt je deutscher Zeile die Fassung der Projektsprache, und der Skill schreibt die ausgegebene Fassung. Eine Zeile mit veränderlichem Rest (`## Einarbeitung, Runde 2`) steht dort mit ihrem festen Anfang, eine Überschrift mit `## ` davor gilt auf jeder Ebene, und was `names` nicht nennt, bleibt, wie es hier steht.
+
 ## Ablauf (genau ein Issue)
 
 ### 0. Issue dieses Laufs bestimmen

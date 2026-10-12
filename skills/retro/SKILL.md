@@ -44,6 +44,8 @@ Fünf Kennzahlen für den Retro-Zeitraum, jede mit ihrer Quelle. Gezählt wird a
 - **GO bis Push.** Je Vorhaben die Kalendertage vom Ziehen nach Ready bis zum Push des letzten Commits.
 - **Pakete der Nacht ohne Einwand.** Je Kommentar mit dem Anker `## Nachtbericht, Kette` im Zeitraum die Pakete, die sein Abschnitt `### Stufen` nennt, in drei Zahlen: ohne Einwand (nach Ready gezogen, ohne vorherige Body-Änderung und ohne Kommentar des Menschen), nach Änderung (erst nach einer Body-Änderung oder einem Kommentar gezogen), zurückgehalten (bis zum Retro-Tag nicht gezogen oder geschlossen). Gezogen heißt: der erste Wechsel nach Ready laut `issue activity`; Änderungen und Kommentare davor aus `issue activity` und `issue get`. Die Zahl ist das Argument für oder gegen Variante B aus Idee #637 (das Kennzeichen am Fachplan als GO): Bleibt „ohne Einwand“ hoch, wiederholt das Ziehen nur das Urteil über den Plan. Liefert der Tracker keinen Verlauf: „nicht ermittelbar: <Grund>“.
 
+**Feste Zeilen.** Überschriften, Marker, Review- und Einarbeitungs-Köpfe und Fundblock-Zeilen, die dieser Skill in Dokumente, Kommentare oder Markerzeilen schreibt, stehen hier deutsch. Vor dem ersten Schreiben `node .claude/kit/board.mjs names` aufrufen: Das Feld `lines` nennt je deutscher Zeile die Fassung der Projektsprache, und der Skill schreibt die ausgegebene Fassung. Eine Zeile mit veränderlichem Rest (`## Einarbeitung, Runde 2`) steht dort mit ihrem festen Anfang, eine Überschrift mit `## ` davor gilt auf jeder Ebene, und was `names` nicht nennt, bleibt, wie es hier steht.
+
 ## Output
 
 Die Retro produziert konkrete Änderungen:

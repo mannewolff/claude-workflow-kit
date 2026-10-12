@@ -21,6 +21,8 @@ node .claude/kit/board.mjs issue list --status in_progress
 - Mehr als ein Issue dort: stoppen, auflisten, Nutzer um Auswahl bitten. Nicht raten, welches gemeint ist.
 - Genau ein Issue dort: das ist das aktuelle Issue. Ob es fortgesetzt werden darf, sagt der Auftrag in Schritt 1.
 
+**Feste Zeilen.** Überschriften, Marker, Review- und Einarbeitungs-Köpfe und Fundblock-Zeilen, die dieser Skill in Dokumente, Kommentare oder Markerzeilen schreibt, stehen hier deutsch. Vor dem ersten Schreiben `node .claude/kit/board.mjs names` aufrufen: Das Feld `lines` nennt je deutscher Zeile die Fassung der Projektsprache, und der Skill schreibt die ausgegebene Fassung. Eine Zeile mit veränderlichem Rest (`## Einarbeitung, Runde 2`) steht dort mit ihrem festen Anfang, eine Überschrift mit `## ` davor gilt auf jeder Ebene, und was `names` nicht nennt, bleibt, wie es hier steht.
+
 ## Ablauf
 
 ### 1. Auftrag holen und lesen

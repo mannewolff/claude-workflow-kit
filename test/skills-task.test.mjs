@@ -215,9 +215,10 @@ test("[skills-7] der Skill verweist auf 'Entscheiden statt fragen' und nennt die
 // als Abhaengigkeit lesen wird. Davor +2 fuer das Praefix `[Human]` (Issue #984): Der Skill
 // legt Arbeitspakete an und muss sagen, wann eines nicht `[Task]` heisst, sondern
 // `[Human]` — eine Aufgabe ausserhalb des Repositories, die keine Sitzung erledigt.
+// Die Grenze stieg um die zwei Zeilen des Absatzes „Feste Zeilen“ (Issue #1568).
 test("[skills-7] der Skill bleibt kurz und begruendet keine Regel mit einem Issue", () => {
   const zeilen = SKILL.split("\n").length;
-  assert.ok(zeilen < 124, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 124`);
+  assert.ok(zeilen < 126, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 126`);
   assert.doesNotMatch(SKILL, /Issue #\d/, "eine Regel wird mit einer Issue-Nummer begruendet");
 });
 

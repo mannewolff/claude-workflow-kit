@@ -16,9 +16,10 @@ import { HALT_FOLGESAETZE } from "../kit/night/wartend.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SKILL = readFileSync(join(repoRoot, "skills", "requirement", "SKILL.md"), "utf-8");
 
-test("[skills-8] der Skill bleibt unter 110 Zeilen, ohne label-sync und ohne Issue-Verweise", () => {
+// Die Grenze stieg um die zwei Zeilen des Absatzes „Feste Zeilen“ (Issue #1568).
+test("[skills-8] der Skill bleibt unter 112 Zeilen, ohne label-sync und ohne Issue-Verweise", () => {
   const zeilen = SKILL.split("\n").length;
-  assert.ok(zeilen < 110, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 110`);
+  assert.ok(zeilen < 112, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 112`);
   assert.ok(!SKILL.includes("label-sync"), "label-sync steht noch im Skill");
   assert.doesNotMatch(SKILL, /Issue #\d/, "eine Regel wird mit einer Issue-Nummer begruendet");
   assert.doesNotMatch(SKILL, /Abwaegungsbedarf|Abwägungsbedarf/, "der alte Anlass des Halts steht noch da");

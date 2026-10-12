@@ -8,6 +8,8 @@ user-invocable: true
 
 Bahn 3: oberhalb der Kleinigkeit, aber ohne Abwaegungsbedarf. Dieser Skill **ersetzt die Schritte 2 und 3** und traegt deshalb keine Prozessnummer: Ein `[Task]` ist genau ein Arbeitspaket ohne Fachkonzept, ohne Plan und ohne Zerlegung. Was danach kommt — GO, Implementierung, Review, Push — ist der normale Weg.
 
+**Feste Zeilen.** Überschriften, Marker, Review- und Einarbeitungs-Köpfe und Fundblock-Zeilen, die dieser Skill in Dokumente, Kommentare oder Markerzeilen schreibt, stehen hier deutsch. Vor dem ersten Schreiben `node .claude/kit/board.mjs names` aufrufen: Das Feld `lines` nennt je deutscher Zeile die Fassung der Projektsprache, und der Skill schreibt die ausgegebene Fassung. Eine Zeile mit veränderlichem Rest (`## Einarbeitung, Runde 2`) steht dort mit ihrem festen Anfang, eine Überschrift mit `## ` davor gilt auf jeder Ebene, und was `names` nicht nennt, bleibt, wie es hier steht.
+
 ## Ablauf
 
 ### 0. Die Bahn benennen
