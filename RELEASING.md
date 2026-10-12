@@ -145,6 +145,21 @@ wenn er **bestimmungsgemaess optional** ist, also auch im Arbeitsverzeichnis feh
 (etwa `.claude/workflow.config.local.json`), und zwar mit Grund. Eine echte Abhaengigkeit
 wird so nie zum Schweigen gebracht.
 
+### Liste eingebauter Kommandos vor dem Veroeffentlichen
+
+Vor der Veroeffentlichung einer Version (vor `merge production`, erstmals vor Version 5)
+wird `test/fixtures/claude-code-kommandos.json` aus der installierten Fassung von Claude
+Code aufgefrischt (Plan #1548, E13): neue eingebaute Kommandos und mitgelieferte Skills
+nachtragen, `fassung` auf die Ausgabe von `claude --version` und `stand` auf das Datum
+setzen. Danach:
+
+```bash
+node --test test/skills-namen.test.mjs
+```
+
+Der Test weist jeden Skill-Namen des Kits ab, den Claude Code selbst mitbringt. Ist er
+rot, wird der Skill umbenannt, bevor die Version hinausgeht.
+
 ## Git-Tags
 
 **Kein Release-Schritt erzeugt einen Tag.** Weder `push main` noch
