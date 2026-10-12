@@ -170,6 +170,10 @@ export const MARKER = Object.freeze({
   planReview: eintrag("Plan-Review:"),
   fachplanReview: eintrag("Fachplan-Review:", "Requirement-Review:"),
   issueReview: eintrag("Issue-Review:"),
+  // Fundblock-Zeilen (Issue #1558, Plan #1548 E19); die Werte hinter `Art:` bleiben deutsch (E5).
+  gegenprobe: eintrag("Gegenprobe:", "Counter-check:"),
+  art: eintrag("Art:", "Kind:"),
+  geprueftBestaetigt: eintrag("— geprueft, bestaetigt", "— checked, confirmed"),
 });
 
 /**
@@ -332,6 +336,21 @@ export function ueberschriftZeile(sache, ebene = 2, { anfang = false } = {}) {
       return leseUeberschrift(m[1])?.sache === sache;
     },
   });
+}
+
+/**
+ * Die festen Zeilen der Skills in der Sprache (Issue #1558, Plan #1548, Entscheidung „Feste
+ * Zeilen der Skills über ein Kommando“): je deutscher Zeile die Fassung der Sprache, aus MARKER
+ * und UEBERSCHRIFTEN. Eine Formatueberschrift steht mit `## ` davor; ein Skill, der sie auf
+ * einer anderen Ebene schreibt, nimmt den Namen dahinter.
+ */
+export function festeZeilen(sprache) {
+  const zeilen = {};
+  for (const sache of Object.keys(MARKER)) zeilen[MARKER[sache].de] = markerName(sache, sprache);
+  for (const sache of Object.keys(UEBERSCHRIFTEN)) {
+    zeilen[`## ${UEBERSCHRIFTEN[sache].de}`] = `## ${ueberschriftName(sache, sprache)}`;
+  }
+  return zeilen;
 }
 
 // --- Texthelfer (Plan #1420 E13) ----------------------------------------------------

@@ -35,7 +35,7 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/board-ac*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-e*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-mensch-*.test.mjs\" \"test/board-namen-*.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-u*.test.mjs\" \"test/cli-*.test.mjs\" \"test/aufrufer-englisch.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/board-ac*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-e*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-mensch-*.test.mjs\" \"test/board-namen-*.test.mjs\" \"test/board-names.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-u*.test.mjs\" \"test/cli-*.test.mjs\" \"test/aufrufer-englisch.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
@@ -671,6 +671,7 @@
       "test/board-l*.test.mjs",
       "test/board-mensch-*.test.mjs",
       "test/board-namen-*.test.mjs",
+      "test/board-names.test.mjs",
       "test/board-o*.test.mjs",
       "test/board-p*.test.mjs",
       "test/board-r*.test.mjs",

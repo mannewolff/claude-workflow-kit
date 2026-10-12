@@ -44,6 +44,10 @@ const MARKER_PAARE = [
   ["Plan-Review:", "Plan-Review:"],
   ["Fachplan-Review:", "Requirement-Review:"],
   ["Issue-Review:", "Issue-Review:"],
+  // Fundblock-Zeilen (Issue #1558, Plan #1548 E19).
+  ["Gegenprobe:", "Counter-check:"],
+  ["Art:", "Kind:"],
+  ["— geprueft, bestaetigt", "— checked, confirmed"],
   ["## Plan-Review, Runde", "## Plan-Review, Round"],
   ["## Fachplan-Review, Runde", "## Requirement-Review, Round"],
   ["## Issue-Review, Runde", "## Issue-Review, Round"],

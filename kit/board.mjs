@@ -289,6 +289,12 @@ Usage:
       takes the exception away from a command in sandbox.excludedCommands. Patterns
       from .claude/settings.json and .claude/settings.local.json.
 
+  node board.mjs names
+      The fixed lines of the skills in the project language (Issue #1558, Plan #1548):
+      headings, markers, review and incorporation heads. Output: { language, lines:
+      { "<German line>": "<line in the project language>" } } from the registers
+      MARKER and UEBERSCHRIFTEN; a heading is listed with '## ' in front. Read-only.
+
   node board.mjs --version
 
 Valid status values: backlog | ready | in_progress | in_review | done
@@ -364,14 +370,14 @@ const { issueVorgeschichte } = await import("./board/vorgeschichte.mjs");
 // Englisch benannte Config auf die deutschen Namen (Issue #1436, Plan #1420 E10).
 const { normalisiereConfig } = await import("./board/config-namen.mjs");
 // Die Meldung zu einem frueheren deutschen Namen (Issue #1557, Plan #1548).
-const { altnameHinweis, EINGABEWERTE, text } = await import("./board/namen.mjs");
+const { altnameHinweis, EINGABEWERTE, text, projektSprache, festeZeilen } = await import("./board/namen.mjs");
 // Die Texte des Einstiegs an den Menschen (Issue #1524: im Teil texte/).
 export const { TEXTE } = await import("./texte/board.mjs");
 
 /** Ein Text des Einstiegs in der Projektsprache (Issue #1477, E13). */
 const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
 /** Die Achsen von board.mjs, englisch wie jeder Name, den das Kommando annimmt (Issue #1557). */
-const ACHSEN = ["issue", "code", "context", "issue-review", "nightrun", "session", "hook"];
+const ACHSEN = ["issue", "code", "context", "issue-review", "nightrun", "session", "hook", "names"];
 /**
  * Bricht mit einer Meldung ab wie `fail` aus den Grundlagen, das Praefix in der Projektsprache.
  * `fail` selbst stellen die Grundlagen um (Issue #1483).
@@ -860,6 +866,10 @@ async function main() {
     await dispatchSitzung(command, args, HELP);
   } else if (axis === "hook") {
     await dispatchHook(command, HELP);
+  } else if (axis === "names") {
+    // Achse ohne Unterbefehl (Issue #1558): die festen Zeilen in der Projektsprache.
+    const language = projektSprache(readWorkflowConfig());
+    out({ language, lines: festeZeilen(language) });
   } else {
     process.stdout.write(HELP);
     abbruch(t("unbekannteAchse", { achse: axis, erwartet: ACHSEN.join(" | ") }));
