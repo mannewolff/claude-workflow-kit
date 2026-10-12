@@ -26,7 +26,7 @@ Oder in einem Schritt:
 node <(curl -s https://docs.mwolff.org/install.mjs)
 ```
 
-Ein neues Projekt fragt der Installer zuerst nach der Sprache des Kits: `de` (Deutsch, Vorgabe) oder `en` (Englisch). Ein bestehendes Projekt behält seine Sprache; umgestellt wird es mit `node install.mjs --language en` (siehe [Sprache](/dokumentation#sprache)). Labels und Titel-Präfixe der Karten haben je einen deutschen und einen englischen Namen, etwa `[Fachlich]` und `[Requirement]` oder `kit:klaeren` und `kit:clarify`. Das Kit versteht beide und schreibt den Namen der Projektsprache; die Tabelle steht unter [Labels und Titel-Präfixe](/dokumentation#labels-und-titel-prafixe).
+Ein neues Projekt fragt der Installer zuerst nach der Sprache des Kits: `de` (Deutsch, Vorgabe) oder `en` (Englisch). Ein bestehendes Projekt behält seine Sprache; umgestellt wird es mit `node install.mjs --language en` (siehe [Sprache](/dokumentation#sprache)). Labels und Titel-Präfixe der Karten sind in jedem Projekt englisch, etwa `[Requirement]` oder `kit:clarify`; die Tabelle steht unter [Labels und Titel-Präfixe](/dokumentation#labels-und-titel-prafixe).
 
 Danach fragt der Installer sieben Dinge:
 
@@ -38,7 +38,7 @@ Danach fragt der Installer sieben Dinge:
 6. Review-Umfang: `diff` oder `full`
 7. Review-Modell
 
-Bei globaler Installation folgt eine achte Frage nach dem Vault-Pfad für `/kontext` und `/document` (leer lassen überspringt sie).
+Bei globaler Installation folgt eine achte Frage nach dem Vault-Pfad für `/session-start` und `/document` (leer lassen überspringt sie).
 
 Danach liegen die siebzehn Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten sowie der Board-Adapter (`.claude/kit/board.mjs`) stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
 
@@ -81,7 +81,7 @@ Du ziehst die Issues am Board nach Ready. Das ist dein GO. Dann:
 ```
 /implement-ready
 /local-check
-/review
+/kit-review
 ```
 
 Du prüfst das Review. Erst dann:

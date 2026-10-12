@@ -7,7 +7,7 @@ Umsetzungsplan; die Diagnose steht dort und wird hier nicht wiederholt.
 Der Umbau hat zwei Stufen. **Stufe 1** schreibt Regeln und Skills um, damit der
 `[Task]`-Weg und die Kette Fachplan → Plan → Pakete ohne den Prüfapparat laufen.
 `kit/night.mjs` und die Review-Kommandos in `kit/board.mjs` bleiben dabei unangetastet.
-**Stufe 2** baut die Nacht-Kette (`night.mjs --kette`) und räumt den dann toten Code ab.
+**Stufe 2** baut die Nacht-Kette (`night.mjs --chain`) und räumt den dann toten Code ab.
 Sie bekommt einen eigenen Fachplan, wenn Stufe 1 durch ist.
 
 ## Prämisse
@@ -30,7 +30,7 @@ oder interaktiv über `/implement-next`. Das ist der Teil des Runners, der funkt
 ## Der neue Skill `/task`
 
 Was bleibt: genau ein Paket, Präfix `[Task]`, Vier-Abschnitt-Format (die Spec-Wirkung entfiel mit Plan #825),
-Eingang aus dem Chat oder einer `[Idee]`, keine `Plan:`- und keine
+Eingang aus dem Chat oder einer `[Idea]`, keine `Plan:`- und keine
 `Fachliche Quelle:`-Zeile, kein `--derived-from`, Ablage im Backlog, Ready bleibt das GO.
 Der Abschnitt zum abgelehnten Werkzeug-Befund bleibt.
 
@@ -67,7 +67,7 @@ Vier Pakete. T1 zuerst, die drei anderen unabhängig voneinander.
 3. **T3 Halt in `/implement-next` und `/implement-ready`.** Der wortgleiche Abschnitt
    „Ein [Task], bei dem Abwaegungsbedarf auftaucht" wird ersetzt: Die Session entscheidet
    nach dem Format und schreibt die Entscheidung in den Abschlussbericht unter eine neue
-   Überschrift `### Entscheidungen`. `kit:klaeren` mit Halt bleibt nur für die
+   Überschrift `### Entscheidungen`. `kit:clarify` mit Halt bleibt nur für die
    Stopp-Klasse. Die Fallunterscheidung zu `Pruefung: Verzicht` entfällt. Test
    `skills-task-halt` folgt.
 4. **T8 Formgates als Kommando.** `board.mjs check-form <id>` prüft die heutigen
@@ -92,9 +92,9 @@ Vier Pakete. Jedes hängt an T1, T5 und T6 zusätzlich an T8.
 7. **T6 `/issues`.** Eingang unbeaufsichtigt ist ein `[Plan]` ohne offene Stopp-Frage;
    der `Plan-Review:`-Marker ist keine Bedingung mehr. Unklarheiten stehen als
    `Entscheidung:` im Kontext. Kein `label-sync`, kein Review-Hinweis im Abschluss.
-8. **T7 `/fachplan` auf den Kern.** Story-Format und PO-Schleife im Body bleiben.
-   `label-sync` und der Marker-Bezug fallen weg; der Eingang `/fachplan #T` gegen einen
-   angehaltenen `[Task]` wird an die Stopp-Klasse angepasst. Der Name bleibt `/fachplan`;
+8. **T7 `/requirement` auf den Kern.** Story-Format und PO-Schleife im Body bleiben.
+   `label-sync` und der Marker-Bezug fallen weg; der Eingang `/requirement #T` gegen einen
+   angehaltenen `[Task]` wird an die Stopp-Klasse angepasst. Der Name bleibt;
    eine systemweite Umstellung auf Englisch ist eine eigene, ferne Entscheidung.
 
 ### Welle 3: Aufräumen
@@ -110,19 +110,19 @@ Zwei Pakete nach Welle 2.
 
 ### Stufe 2, später, eigener Fachplan
 
-`night.mjs --kette` mit Worktree, Budgets, Nachtbericht und einem einzigen Label
+`night.mjs --chain` mit Worktree, Budgets, Nachtbericht und einem einzigen Label
 `kit:night`. Dann entfallen die `board.mjs`-Kommandos `synthese-check`,
-`roles --rolle synthese`, `label-sync` und `reviewZustand` samt ihrer Tests, dazu die
-Routing-Labels und `kit:klaeren` außerhalb der Stopp-Klasse. Die Frage Variante A oder B
+`roles --role synthese`, `label-sync` und `reviewZustand` samt ihrer Tests, dazu die
+Routing-Labels und `kit:clarify` außerhalb der Stopp-Klasse. Die Frage Variante A oder B
 für das GO gehört in diesen Fachplan, nicht in Stufe 1.
 
-Nicht angefasst in Stufe 1: die drei Stop-Punkte, das Commit-Gate, `/review`, das
+Nicht angefasst in Stufe 1: die drei Stop-Punkte, das Commit-Gate, `/kit-review`, das
 Vier-Abschnitt-Issue, `kit/night.mjs`.
 
 ## Getroffene Entscheidungen
 
-- **`/fachplan` bleibt der Name, `[Fachlich]` das Präfix.** Entschieden am 2026-09-13.
-  Eine Umbenennung kommt, wenn überhaupt, mit einer systemweiten Umstellung auf Englisch.
+- **Name und Präfix des Fachplan-Skills bleiben in Stufe 1.** Entschieden am 2026-09-13.
+  Die Umbenennung kam mit der systemweiten Umstellung auf Englisch: heute `/requirement` und `[Requirement]`.
 - **Kein siebter Abschnitt `## Entscheidungen der Nacht`.** Das Prüfstand-Dokument
   schlägt vor, `## Offene Fragen` nachts umzubenennen. Das bräche P1, P2 und `/issues`.
   Die E-Einträge sind Entscheidungen mit Begründung und passen unter

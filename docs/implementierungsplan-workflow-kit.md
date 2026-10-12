@@ -19,7 +19,7 @@ Alles als `.claude/skills/<name>/SKILL.md`, weil das die empfohlene Form ist. Di
 Codex-AGENTS.md und Cursor-Adapter halten wir als Ordnerstruktur offen, bauen sie aber jetzt nicht.
 
 **E4, Review über Opus in frischer Session. ENTSCHIEDEN.**
-`/review` startet einen Reviewer ohne Implementierungs-Kontext und bekommt entweder den Diff oder den ganzen Quelltext. Kein externes Tooling. Die frische Session ist die wichtigste Variable, nicht das Modell. Offene technische Wahl für Issue 1: Reviewer als Subagent mit eigenem Kontext und Opus-Pin, oder Headless-Aufruf von `claude -p` per Bash mit dem Diff als Eingabe. Tendenz: Subagent, weil null Extra-Tooling und sauber getrennter Kontext.
+`/kit-review` startet einen Reviewer ohne Implementierungs-Kontext und bekommt entweder den Diff oder den ganzen Quelltext. Kein externes Tooling. Die frische Session ist die wichtigste Variable, nicht das Modell. Offene technische Wahl für Issue 1: Reviewer als Subagent mit eigenem Kontext und Opus-Pin, oder Headless-Aufruf von `claude -p` per Bash mit dem Diff als Eingabe. Tendenz: Subagent, weil null Extra-Tooling und sauber getrennter Kontext.
 
 ## Verzeichnis-Layout (Quell-Repo)
 
@@ -88,7 +88,7 @@ Kein Skill für GO, kein Skill für die Ready-Bewegung, keine Automatik für Pus
 
 ## Verifizierung
 
-Fertig heißt: frisches Test-Repo, `npx`-Installer durchlaufen, alle acht Skills tauchen nach Session-Start in `/help` auf, `/plan` läuft und implementiert nichts, `/review` startet ohne Implementierungs-Kontext, `/push-main` wird von Claude nicht autonom gezogen.
+Fertig heißt: frisches Test-Repo, `npx`-Installer durchlaufen, alle acht Skills tauchen nach Session-Start in `/help` auf, `/techplan` läuft und implementiert nichts, `/kit-review` startet ohne Implementierungs-Kontext, `/push-main` wird von Claude nicht autonom gezogen.
 
 ## Vorschlag Issue-Schnitt
 

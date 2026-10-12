@@ -1,6 +1,6 @@
 # Windows über WSL2
 
-Unter Windows läuft das Kit in WSL2, dem Linux, das Windows selbst mitbringt. Dort arbeitet es genauso wie unter macOS und Linux, ohne Sonderwege. Diese Anleitung führt dich vom frischen Windows-Rechner bis zum ersten Session-Start mit `/kontext` und zum ersten grünen `/local-check`.
+Unter Windows läuft das Kit in WSL2, dem Linux, das Windows selbst mitbringt. Dort arbeitet es genauso wie unter macOS und Linux, ohne Sonderwege. Diese Anleitung führt dich vom frischen Windows-Rechner bis zum ersten Session-Start mit `/session-start` und zum ersten grünen `/local-check`.
 
 Natives Windows und Git Bash werden ab 4.0.0 nicht mehr unterstützt.
 
@@ -70,11 +70,11 @@ Natives Windows und Git Bash werden ab 4.0.0 nicht mehr unterstützt.
    In der Sitzung dann:
 
    ```
-   /kontext
+   /session-start
    /local-check
    ```
 
-   Gelungen, wenn `/kontext` den Projektstand ausgibt und `/local-check` mit einer grünen Checkliste endet. Bei Weg B prüfst du zusätzlich, dass die Sitzung wirklich in WSL2 arbeitet: Bitte Claude, `uname -s` auszuführen — die Antwort muss `Linux` lauten.
+   Gelungen, wenn `/session-start` den Projektstand ausgibt und `/local-check` mit einer grünen Checkliste endet. Bei Weg B prüfst du zusätzlich, dass die Sitzung wirklich in WSL2 arbeitet: Bitte Claude, `uname -s` auszuführen — die Antwort muss `Linux` lauten.
 
 ## Wo das Projekt liegt
 

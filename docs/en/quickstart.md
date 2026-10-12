@@ -14,7 +14,7 @@ You have a process for AI-assisted development, and you want to make it executab
 - On Windows: WSL2, see [Windows via WSL2](/en/wsl2)
 
 ## Installing
-<!-- de: 3d2c5a693315 -->
+<!-- de: 15834a57fd71 -->
 
 Download the installer and start it in the project folder:
 
@@ -29,7 +29,7 @@ Or in one step:
 node <(curl -s https://docs.mwolff.org/install.mjs)
 ```
 
-For a new project, the installer first asks for the language of the kit: `de` (German, the default) or `en` (English). An existing project keeps its language; you switch it with `node install.mjs --language en` (see [Language of the kit](/en/dokumentation#language-of-the-kit)). Labels and the title prefixes of cards each have a German and an English name, for example `[Fachlich]` and `[Requirement]` or `kit:klaeren` and `kit:clarify`. The kit understands both and writes the name in the project language; the table is under [Labels and title prefixes](/en/dokumentation#labels-and-title-prefixes).
+For a new project, the installer first asks for the language of the kit: `de` (German, the default) or `en` (English). An existing project keeps its language; you switch it with `node install.mjs --language en` (see [Language of the kit](/en/dokumentation#language-of-the-kit)). Labels and the title prefixes of cards are English in every project, for example `[Requirement]` or `kit:clarify`; the table is under [Labels and title prefixes](/en/dokumentation#labels-and-title-prefixes).
 
 Then the installer asks seven things:
 
@@ -41,7 +41,7 @@ Then the installer asks seven things:
 6. Review scope: `diff` or `full`
 7. Review model
 
-With a global installation, an eighth question follows about the vault path for `/kontext` and `/document` (leaving it empty skips it).
+With a global installation, an eighth question follows about the vault path for `/session-start` and `/document` (leaving it empty skips it).
 
 Afterwards the seventeen skills are in `.claude/skills/` (or globally in `~/.claude/skills/`), and a `.claude/workflow.config.json` with your answers as well as the board adapter (Board-Adapter) (`.claude/kit/board.mjs`) are in the repo. Restart Claude Code, and the skills show up in `/help`.
 
@@ -69,7 +69,7 @@ Afterwards the seventeen skills are in `.claude/skills/` (or globally in `~/.cla
 | `/document` | Document the session, update the project note |
 
 ## A first run
-<!-- de: c6f1e3ad36b9 -->
+<!-- de: 043e7c5bd093 -->
 
 ```
 /techplan build a login form with email and password
@@ -86,7 +86,7 @@ You move the issues to Ready on the board. That is your GO. Then:
 ```
 /implement-ready
 /local-check
-/review
+/kit-review
 ```
 
 You check the review. Only then:

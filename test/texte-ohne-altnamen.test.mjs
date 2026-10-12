@@ -21,7 +21,11 @@ import { ALTNAMEN, LABELS, MARKER, PRAEFIXE } from "../kit/board/namen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ORDNER = ["templates", "en/templates", "kit/rollen", "en/kit/rollen", "agents", "en/agents"];
-const DATEIEN = ORDNER.flatMap((o) => readdirSync(join(repoRoot, o))
+// Die Doku dazu (Issue #1573); `docs/historisch/` und `docs/en/historisch/` bleiben, wie sie
+// sind, weil readdirSync nur die Dateien der Ebene liest. Die Tabelle alt → neu in
+// `docs/dokumentation.md` erlaubt `tabelleAltNeu`.
+const DOKU = ["docs", "docs/en"];
+const DATEIEN = [...ORDNER, ...DOKU].flatMap((o) => readdirSync(join(repoRoot, o))
   .filter((n) => n.endsWith(".md")).sort().map((n) => `${o}/${n}`));
 const text = (pfad) => readFileSync(join(repoRoot, pfad), "utf-8");
 
@@ -71,7 +75,7 @@ function funde(inhalt) {
 test("die Liste der Texte ist vollstaendig", () => {
   for (const d of ["templates/CLAUDE-workflow.md", "templates/CLAUDE-Fachplan.md", "templates/CLAUDE-Plan.md",
     "en/templates/CLAUDE-workflow.md", "kit/rollen/code-review.md", "en/kit/rollen/code-review.md",
-    "agents/kit-pruefer.md", "en/agents/kit-pruefer.md"]) {
+    "agents/kit-pruefer.md", "en/agents/kit-pruefer.md", "docs/quickstart.md", "docs/en/quickstart.md"]) {
     assert.ok(DATEIEN.includes(d), `${d} fehlt`);
   }
 });

@@ -577,7 +577,7 @@ node install.mjs --language de
 It renames the settings back to the German names. If you need exactly the state before the switch, copy the backup back to `.claude/workflow.config.json`.
 
 ### Labels and title prefixes
-<!-- de: 3d3bd5ab0425 -->
+<!-- de: 0119e337edde -->
 
 Every label and every title prefix of the kit has one name, the English one, in every project, including a German one. When the kit sets a label or creates a card, it uses this name.
 
@@ -601,7 +601,7 @@ Every label and every title prefix of the kit has one name, the English one, in 
 
 Added to these are `kit:night`, `kit:nightrun`, `planreview:1`, `planreview:2`, `[Plan]` and `[Task]`.
 
-**Cards with the former German names keep working.** Open cards still carry prefixes such as `[Fachlich]` or labels such as `kit:klaeren`. The kit recognises the former German names when reading and treats them like the English ones, but writes only the English ones. A German label the kit would remove, it removes just the same; uninvolved labels stay unchanged. The release rights apply under both names as well: a label that only a human may remove may also only be removed by a human under its German name. Which German name belongs to which English one is given in the [table old → new](/en/dokumentation#skills-commands-and-entry-files).
+**Cards with the former German names keep working.** Open cards still carry the former German prefixes and labels. The kit recognises the former German names when reading and treats them like the English ones, but writes only the English ones. A German label the kit would remove, it removes just the same; uninvolved labels stay unchanged. The release rights apply under both names as well: a label that only a human may remove may also only be removed by a human under its German name. Which German name belongs to which English one is given in the [table old → new](/en/dokumentation#skills-commands-and-entry-files).
 
 **The kind instead of the prefix.** `issue create` and `issue check-form` accept the kind of a card with `--art requirement|plan|idea|human|task`. The kit then puts the matching prefix in front of the title, for example `[Requirement]`. A title that already carries a prefix stays valid; `--art` alongside it is an error. Without `--art` the title stays as it is.
 
