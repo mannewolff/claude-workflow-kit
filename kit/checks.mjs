@@ -84,6 +84,9 @@
  * vollstaendigen Testmenge gewinnt (`volleTestmenge`). Gewirkt wird sie allein durch
  * `--abschluss [n]`, den Schalter, den der Abschluss genau einer Karte setzt — dort
  * bleibt sie aus, samt Guetemessung, und vor dem Veroeffentlichen laeuft beides wieder.
+ * Nennt der Eintrag dazu `abschlussBereiche` (Issue #1531, Plan #1529), laeuft er beim
+ * Abschluss doch, sobald das Paket einen dieser Bereiche direkt beruehrt — ueber ein Muster
+ * oder die Ableitung aus den Importeuren, nicht ueber die abhaengigen Bereiche.
  *
  * Haelt der Lauf an der PUSH-STUFE an, nennt er zu jeder roten Pruefung die Karten, die
  * sie beruehrt haben (Issue #947, AK 4 des Fachplans #938) — gelesen aus den Commits
@@ -549,7 +552,10 @@ bereiche
                   jede Pruefung mit 'nichtBeimAbschluss' aus und die
                   Guetemessung ebenso — beide mit Grund in der Liste der
                   Auslassungen, und beide laufen vor dem Veroeffentlichen
-                  wieder mit. Die Kartennummer ist optional und dient der
+                  wieder mit. Ausnahme: Eine Pruefung mit 'abschlussBereiche'
+                  laeuft doch, wenn das Paket einen dieser Bereiche direkt
+                  beruehrt (Muster oder Ableitung aus den Importeuren, nicht
+                  die abhaengigen Bereiche). Die Kartennummer ist optional und dient der
                   Auswertung je Karte; ein Wert, der keine Nummer ist, bricht
                   ab. Nicht zusammen mit --stufe push|merge (dort laeuft
                   gerade, was der Abschluss auslaesst) und nicht zusammen mit
@@ -574,7 +580,9 @@ bereiche
 Gelesen wird .claude/workflow.config.json im Arbeitsverzeichnis: 'buildChecks'
 (Kommandostring oder { cmd } mit den Achsen 'areas'/'always', 'stufe', 'guete'
 und 'nichtBeimAbschluss': {abschlussWerte} — die Pruefung
-zaehlt erst beim Veroeffentlichen und bleibt im Abschlusslauf aus, sowie
+zaehlt erst beim Veroeffentlichen und bleibt im Abschlusslauf aus, dazu
+'abschlussBereiche': [Bereichsnamen] — sie laeuft im Abschlusslauf doch, wenn
+einer dieser Bereiche direkt beruehrt ist, sowie
 'gleichzeitig': true — die Pruefung laeuft in der ersten Phase neben anderen, sowie
 'vorab': true — die Pruefung laeuft vor der gleichzeitigen Phase, sowie
 'art': {arten} — die Pruefung meldet nur: Sie endet immer gruen, auch
@@ -626,6 +634,8 @@ Pfadsegments und '**' ueber Segmentgrenzen; ein Verzeichnis erfasst man als
     grundGueteAbschluss: "Abschlusslauf: Guetemessung braucht die vollstaendige Testmenge",
     grundStufeSpaeter: "Stufe {stufe}, gefahren wird {gefahren}",
     grundNichtBeimAbschluss: "Abschlusslauf: {achse}, laeuft beim Veroeffentlichen",
+    grundNichtDirektBeruehrt: "Abschlusslauf: {achse}, keiner der Bereiche aus abschlussBereiche ({bereiche}) direkt beruehrt, laeuft beim Veroeffentlichen",
+    grundDirektBeruehrt: "Abschlusslauf: {bereiche} direkt beruehrt",
     pushPruefungUngueltig: "Ungueltiger Wert {genannt} fuer pushPruefung. Erwartet: \"lokal\" oder { \"ort\": \"buildDienst\", \"zweig\": \"<name>\" }.",
     pushPruefungZweig: "pushPruefung: Der Pruefzweig '{zweig}' ist {feld}. Der Pruefzweig muss ein eigener Zweig sein.",
     unbekannterBereichWahl: "Unbekannter Bereich '{name}'. Konfiguriert in checkAreas: {liste}.",
@@ -850,7 +860,10 @@ areas
   --finish [n]    This run completes exactly one work package. Then every check
                   with 'notAtCompletion' stays out, and the quality measurement
                   too — both with a reason in the list of skips, and both run
-                  again before publishing. The card number is optional and
+                  again before publishing. Exception: a check with
+                  'completionAreas' does run when the package touches one of
+                  these areas directly (pattern or derivation from the
+                  importers, not the dependent areas). The card number is optional and
                   serves the evaluation per card; a value that is no number
                   aborts. Not together with --stage push|merge (there runs
                   exactly what the completion skips) and not together with
@@ -872,7 +885,9 @@ areas
 Read is .claude/workflow.config.json in the working directory: 'buildChecks'
 (command string or { cmd } with the axes 'areas'/'always', 'stage', 'quality'
 and 'notAtCompletion: {abschlussWerte}' — the check counts only when
-publishing and stays out of the completion run, as well as
+publishing and stays out of the completion run, plus
+'completionAreas': [area names] — it does run in the completion run when one
+of these areas is touched directly, as well as
 'concurrent': true — the check runs in the first phase next to others, as well as
 'upfront': true — the check runs before the concurrent phase, as well as
 'kind': {arten} — the check only reports: it always ends green, even on a
@@ -923,6 +938,8 @@ segment boundaries; a directory is covered as 'frontend/**'.
     grundGueteAbschluss: "completion run: the quality measurement needs the full test set",
     grundStufeSpaeter: "stage {stufe}, running {gefahren}",
     grundNichtBeimAbschluss: "completion run: {achse}, runs at release",
+    grundNichtDirektBeruehrt: "completion run: {achse}, none of the areas from completionAreas ({bereiche}) touched directly, runs at release",
+    grundDirektBeruehrt: "completion run: {bereiche} touched directly",
     pushPruefungUngueltig: "Invalid value {genannt} for pushCheck. Expected: \"local\" or { \"location\": \"buildService\", \"branch\": \"<name>\" }.",
     pushPruefungZweig: "pushCheck: the check branch '{zweig}' is {feld}. The check branch must be a branch of its own.",
     unbekannterBereichWahl: "Unknown area '{name}'. Configured in checkAreas: {liste}.",
@@ -1398,7 +1415,9 @@ function zuordnen(dateien, bereichsdefinition, freistellungen = [], nurBlobs = n
     }
     ohneZuordnung.push(pfad);
   }
-  return { beruehrt, ohneMuster: ohneZuordnung[0] ?? null, ohneZuordnung, ohnePruefung, blobBereiche };
+  // `direkt` (Issue #1531, Plan #1529, E4): die Bereiche, die eine geaenderte Datei selbst
+  // traegt. Die abhaengigen Bereiche kommen spaeter nur in `beruehrt` dazu.
+  return { beruehrt, direkt: new Set(beruehrt), ohneMuster: ohneZuordnung[0] ?? null, ohneZuordnung, ohnePruefung, blobBereiche };
 }
 
 /** Die Bereiche, deren Muster einen Pfad treffen. */
@@ -1531,6 +1550,7 @@ function ausImportenAbleiten(zuordnung, bereichsdefinition, importGraph = import
   const importeure = importGraph();
   if (importeure === null) return { ...zuordnung, abgeleitet: [] };
   const beruehrt = new Set(zuordnung.beruehrt);
+  const direktBeruehrt = new Set(zuordnung.direkt);
   const ohnePruefung = [...zuordnung.ohnePruefung];
   const ohneZuordnung = [];
   const abgeleitet = [];
@@ -1541,7 +1561,10 @@ function ausImportenAbleiten(zuordnung, bereichsdefinition, importGraph = import
     }
     const { direkt, ueber, bereiche } = importKette(pfad, importeure, bereichsdefinition);
     if (bereiche.length > 0) {
-      for (const bereich of bereiche) beruehrt.add(bereich);
+      for (const bereich of bereiche) {
+        beruehrt.add(bereich);
+        direktBeruehrt.add(bereich);
+      }
       abgeleitet.push({ pfad, ueber, bereiche });
       continue;
     }
@@ -1549,7 +1572,7 @@ function ausImportenAbleiten(zuordnung, bereichsdefinition, importGraph = import
     ohnePruefung.push({ pfad, grund });
     abgeleitet.push({ pfad, ueber, bereiche, grund });
   }
-  return { ...zuordnung, beruehrt, ohnePruefung, ohneZuordnung, ohneMuster: ohneZuordnung[0] ?? null, abgeleitet };
+  return { ...zuordnung, beruehrt, direkt: direktBeruehrt, ohnePruefung, ohneZuordnung, ohneMuster: ohneZuordnung[0] ?? null, abgeleitet };
 }
 
 /**
@@ -1831,8 +1854,16 @@ function entscheidung(check, beruehrt, blobBereiche = new Map()) {
  *     gelaufen waere — dieselbe Falle, die schon die Stufenauswahl nach oben gezogen hat.
  *     Unter der Stufenauswahl dagegen bleibt er: Wer ohnehin nicht dran ist, braucht keinen
  *     zweiten Grund.
+ *
+ * Traegt ein solcher Eintrag `abschlussBereiche` (Issue #1531, Plan #1529, E3–E5), laeuft er
+ * beim Abschluss doch, wenn das Paket einen dieser Bereiche DIREKT beruehrt — `direkt` sind
+ * die Bereiche aus Muster und Ableitung, ohne die abhaengigen (#1208) und ohne Blob- und
+ * Stempeldateien; danach entscheidet die normale Auswahl. `direkt` ist `null`, wenn es keine
+ * Dateiliste gibt (Anker nicht aufloesbar) oder sie leer ist: Dann laesst sich „direkt
+ * beruehrt" nicht verneinen, und der Eintrag geht in die normale Auswahl, die beim leeren
+ * Paket ihren eigenen Grund nennt.
  */
-function verteilen(checks, stufe, entscheiden, abschluss = false) {
+function verteilen(checks, stufe, entscheiden, abschluss = false, direkt = null) {
   const laufen = [];
   const ausgelassen = [];
   const gefahren = STUFEN.indexOf(stufe);
@@ -1845,13 +1876,26 @@ function verteilen(checks, stufe, entscheiden, abschluss = false) {
     } else if (STUFEN.indexOf(check.stufe) > gefahren) {
       ergebnis = { laeuft: false, grund: t("grundStufeSpaeter", { stufe: check.stufe, gefahren: stufe }) };
     } else if (check.nichtBeimAbschluss && abschluss) {
-      ergebnis = { laeuft: false, grund: t("grundNichtBeimAbschluss", { achse: configWert("buildChecks[].nichtBeimAbschluss", check.nichtBeimAbschluss) }) };
+      ergebnis = beimAbschluss(check, entscheiden, direkt);
     } else {
       ergebnis = entscheiden(check);
     }
     (ergebnis.laeuft ? laufen : ausgelassen).push(auswahlEintrag(check, ergebnis.grund));
   }
   return { laufen, ausgelassen };
+}
+
+/** Die Wahl eines Eintrags mit `nichtBeimAbschluss` im Abschlusslauf (Issue #946, #1531). */
+function beimAbschluss(check, entscheiden, direkt) {
+  const achse = configWert("buildChecks[].nichtBeimAbschluss", check.nichtBeimAbschluss);
+  if (!check.abschlussBereiche) return { laeuft: false, grund: t("grundNichtBeimAbschluss", { achse }) };
+  if (direkt === null) return entscheiden(check);
+  const treffer = check.abschlussBereiche.filter((name) => direkt.has(name));
+  if (treffer.length === 0) {
+    return { laeuft: false, grund: t("grundNichtDirektBeruehrt", { achse, bereiche: check.abschlussBereiche.join(", ") }) };
+  }
+  const ergebnis = entscheiden(check);
+  return ergebnis.laeuft ? { laeuft: true, grund: t("grundDirektBeruehrt", { bereiche: bereichsText(treffer) }) } : ergebnis;
 }
 
 /**
@@ -1990,7 +2034,7 @@ function auswahlPlanen(args) {
   // je Lauf, auch wenn beide Ableitungen sie brauchen.
   const importGraph = einmal(importeureErheben);
   const {
-    beruehrt, ohneMuster: ohneMusterDatei, ohneZuordnung, ohnePruefung, blobBereiche, abgeleitet, abhaengig, importeUnbekannt,
+    beruehrt, direkt, ohneMuster: ohneMusterDatei, ohneZuordnung, ohnePruefung, blobBereiche, abgeleitet, abhaengig, importeUnbekannt,
   } = umAbhaengigeErweitern(
     ausImportenAbleiten(
       zuordnen(geaendert, bereichsdefinition, freistellungenVorbereiten(config.ohnePruefung), nurBlobs),
@@ -2075,13 +2119,13 @@ function auswahlPlanen(args) {
     const grund = zweifelGrund;
     return bauen({
       basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, vollerUmfang: true, abschluss, abgeleitet, abhaengig,
-      ...verteilen(checks, stufe, () => ({ laeuft: true, grund }), abschluss),
+      ...verteilen(checks, stufe, () => ({ laeuft: true, grund }), abschluss, direkt),
     });
   }
 
   return bauen({
     basis, stufe, geaendert, bereiche, ohneZuordnung, ohnePruefung, abschluss, abgeleitet, abhaengig,
-    ...verteilen(checks, stufe, (check) => entscheidung(check, beruehrt, blobBereiche), abschluss),
+    ...verteilen(checks, stufe, (check) => entscheidung(check, beruehrt, blobBereiche), abschluss, direkt),
   });
 }
 
