@@ -24,7 +24,7 @@ const MODULE = [
   "kit/night/abhaengigkeiten.mjs",
   "kit/board/dokumente.mjs", "kit/board/adapter.mjs", "kit/board/issue-review.mjs", "kit/board/schutz.mjs",
   "kit/board/hook.mjs", "kit/board/geschuetzt.mjs", "kit/board/grundlagen.mjs", "kit/board/melder.mjs",
-  "kit/board/testhinweise.mjs", "kit/board/ursprung.mjs", "kit/board/wiederholung.mjs",
+  "kit/board/testhinweise.mjs", "kit/board/ursprung.mjs", "kit/board/wiederholung.mjs", "kit/board/grooming.mjs",
 ];
 
 const name = (modul) => modul.replace(/^kit\//, "").replaceAll("/", "-");
