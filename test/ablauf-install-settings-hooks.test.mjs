@@ -131,20 +131,56 @@ test("[installer-9] ein fremder hooks-Eintrag bleibt stehen, unserer kommt daneb
   });
 });
 
-// Issue #1556: Eingetragen werden die englischen Namen. Ein bestehendes Projekt traegt noch
-// die deutschen; daneben darf kein zweiter Eintrag kommen, sonst meldete der Melder doppelt.
-test("[installer-1556] die deutschen Eintraege eines bestehenden Projekts gelten als vorhanden", () => {
-  const deutsch = {
-    hooks: {
-      SessionEnd: [{ hooks: [{ type: "command", command: "node .claude/kit/board.mjs sitzung melden --complete" }] }],
-      Stop: [{ hooks: [{ type: "command", command: "node .claude/kit/board.mjs sitzung melden" }] }],
-      PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook bash-pruefen" }] }],
-    },
-  };
-  mitFixture("install-hooks-deutsch-", deutsch, (dir) => {
+// Issue #1556: Eingetragen werden die englischen Namen. Issue #1569 (Plan #1548 E10): Ein
+// bestehendes Projekt traegt noch die deutschen; das Update schreibt im erkannten Eintrag nur den
+// Befehl um. Daneben kommt kein zweiter Eintrag, sonst liefe der abgewiesene deutsche Aufruf weiter.
+const DEUTSCHE_HOOKS = {
+  SessionEnd: [{ hooks: [{ type: "command", command: "node .claude/kit/board.mjs sitzung melden --complete", timeout: 30 }] }],
+  Stop: [{ hooks: [
+    { type: "command", command: "node .husky/zaehle-zuege.mjs" },
+    { type: "command", command: "node .claude/kit/board.mjs sitzung melden" },
+  ] }],
+  PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook bash-pruefen" }] }],
+};
+
+test("[installer-1569] die deutschen Eintraege eines bestehenden Projekts werden englisch, ohne Doppel", () => {
+  mitFixture("install-hooks-deutsch-", { env: { A: "1" }, hooks: DEUTSCHE_HOOKS }, (dir) => {
     const res = installiere(dir);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
-    assert.deepEqual(liesSettings(dir).hooks, deutsch.hooks, "neben dem deutschen Eintrag kam ein zweiter");
+    const settings = liesSettings(dir);
+    assert.deepEqual(settings.hooks, {
+      SessionEnd: [{ hooks: [{ type: "command", command: "node .claude/kit/board.mjs session report --complete", timeout: 30 }] }],
+      Stop: [{ hooks: [
+        { type: "command", command: "node .husky/zaehle-zuege.mjs" },
+        { type: "command", command: "node .claude/kit/board.mjs session report" },
+      ] }],
+      PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook bash-check" }] }],
+    }, "nur der Befehl wird ersetzt, sonst bleibt der Eintrag, wie er ist");
+    assert.deepEqual(settings.env, { A: "1" });
+    assert.match(res.stdout, /SessionEnd, Stop, PreToolUse/, "die Ausgabe nennt die umgeschriebenen Ereignisse");
+
+    const nachErstem = readFileSync(settingsPfad(dir), "utf-8");
+    const zweiter = installiere(dir, PROJEKT_BESTAND);
+    assert.equal(zweiter.status, 0, `${zweiter.stderr}\n${zweiter.stdout}`);
+    assert.equal(readFileSync(settingsPfad(dir), "utf-8"), nachErstem, "der zweite Lauf hat die Datei veraendert");
+  });
+});
+
+test("[installer-1569] stehen deutscher und englischer Eintrag nebeneinander, bleibt einer", () => {
+  const beide = {
+    hooks: {
+      PreToolUse: [
+        { matcher: "Bash", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook bash-pruefen" }] },
+        { matcher: "Bash", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook bash-check" }] },
+      ],
+    },
+  };
+  mitFixture("install-hooks-beide-", beide, (dir) => {
+    const res = installiere(dir);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.deepEqual(liesSettings(dir).hooks.PreToolUse,
+      [{ matcher: "Bash", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook bash-check" }] }]);
+    assert.equal(kommandos(liesSettings(dir), "Stop").length, 1);
   });
 });
 

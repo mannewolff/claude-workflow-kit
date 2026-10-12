@@ -1,7 +1,7 @@
-// Ablauf-Pruefung: die Schutzfragen des Installers und der Modus --schutz (Issue #1409, Plan #1405) — sichtbar nur am echten Installer mit gepipten Antworten.
+// Ablauf-Pruefung: die Schutzfragen des Installers und der Modus --protection (Issue #1409, Plan #1405) — sichtbar nur am echten Installer mit gepipten Antworten.
 //
 // Der Installer schlaegt bei GitHub mit Build-Dienst vor, Haupt- und Veroeffentlichungszweig
-// zu schuetzen (Kriterium 3), und `node install.mjs --schutz` schaltet den Schutz in einem
+// zu schuetzen (Kriterium 3), und `node install.mjs --protection` schaltet den Schutz in einem
 // bestehenden Projekt nachtraeglich ein (Kriterium 6). Die Einrichtung selbst macht
 // `board.mjs code schutz einrichten`; hier steht statt ihrer eine Attrappe ueber den Test-Hook
 // INSTALL_SCHUTZ_FAKE (E12, wie INSTALL_GLAB_FAKE) — kein Netz, kein echtes GitHub.
@@ -87,7 +87,7 @@ for (const [ergebnis, schreibt] of [["scharf", true], ["anleitung", true], ["off
       const c = config(dir);
       if (schreibt) assert.deepEqual(c.pushPruefung, { ort: "buildDienst", zweig: "mein-pruefzweig" });
       else assert.equal(c.pushPruefung, undefined);
-      if (ergebnis === "nicht moeglich") assert.match(res.stdout, /node install\.mjs --schutz/);
+      if (ergebnis === "nicht moeglich") assert.match(res.stdout, /node install\.mjs --protection/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -141,7 +141,7 @@ for (const [codeHost, satz] of [["gitlab", /GitLab.*Schutz.*noch nicht eingerich
   });
 }
 
-test("Globale Installation stellt keine Schutzfrage und nennt node install.mjs --schutz", () => {
+test("Globale Installation stellt keine Schutzfrage und nennt node install.mjs --protection", () => {
   const dir = fixture("install-schutz-global-");
   try {
     const fake = schutzFake(dir, "scharf");
@@ -149,14 +149,14 @@ test("Globale Installation stellt keine Schutzfrage und nennt node install.mjs -
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.doesNotMatch(res.stdout, BUILD_DIENST_FRAGE);
     assert.doesNotMatch(res.stdout, SCHUTZFRAGE);
-    assert.match(res.stdout, /node install\.mjs --schutz/);
+    assert.match(res.stdout, /node install\.mjs --protection/);
     assert.deepEqual(aufrufe(fake.log), []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-// --- Modus --schutz (E2, E3) ---
+// --- Modus --protection (E2, E3) ---
 
 const BESTAND = {
   codeHost: "github",
@@ -181,7 +181,7 @@ function dateienUnter(dir) {
   return readdirSync(dir, { recursive: true }).map(String).sort();
 }
 
-test("--schutz aendert in der Config nur pushPruefung und schreibt keine Kit-Datei", () => {
+test("--protection aendert in der Config nur pushPruefung und schreibt keine Kit-Datei", () => {
   const dir = fixture("install-schutz-modus-");
   try {
     bestehendesProjekt(dir);
@@ -190,7 +190,7 @@ test("--schutz aendert in der Config nur pushPruefung und schreibt keine Kit-Dat
     const boardVorher = readFileSync(join(dir, ".claude", "kit", "board.mjs"), "utf-8");
     const fake = schutzFake(dir, "scharf");
 
-    const res = installiere(dir, ["j", "j", ""], fake.env, ["--schutz"]);
+    const res = installiere(dir, ["j", "j", ""], fake.env, ["--protection"]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     const nachher = config(dir);
@@ -199,7 +199,7 @@ test("--schutz aendert in der Config nur pushPruefung und schreibt keine Kit-Dat
     assert.deepEqual(nachher, vorher);
     assert.deepEqual(dateienUnter(join(dir, ".claude")), dateienVorher);
     assert.equal(readFileSync(join(dir, ".claude", "kit", "board.mjs"), "utf-8"), boardVorher);
-    assert.ok(!existsSync(join(dir, ".gitignore")), "--schutz fasst die .gitignore nicht an");
+    assert.ok(!existsSync(join(dir, ".gitignore")), "--protection fasst die .gitignore nicht an");
     assert.deepEqual(aufrufe(fake.log),
       [[join(dir, ".claude", "kit", "board.mjs"), "code", "protection", "setup", "--branch", "kit-pruefung"]]);
   } finally {
@@ -207,12 +207,12 @@ test("--schutz aendert in der Config nur pushPruefung und schreibt keine Kit-Dat
   }
 });
 
-test("--schutz bietet den vorhandenen pushPruefung.zweig als Vorgabe an", () => {
+test("--protection bietet den vorhandenen pushPruefung.zweig als Vorgabe an", () => {
   const dir = fixture("install-schutz-zweig-");
   try {
     bestehendesProjekt(dir, { config: { ...BESTAND, pushPruefung: { ort: "buildDienst", zweig: "alter-zweig" } } });
     const fake = schutzFake(dir, "offen");
-    const res = installiere(dir, ["j", "j", ""], fake.env, ["--schutz"]);
+    const res = installiere(dir, ["j", "j", ""], fake.env, ["--protection"]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /\[alter-zweig\]/);
     assert.equal(aufrufe(fake.log)[0].at(-1), "alter-zweig");
@@ -221,13 +221,13 @@ test("--schutz bietet den vorhandenen pushPruefung.zweig als Vorgabe an", () => 
   }
 });
 
-test("--schutz mit einer board.mjs ohne code schutz bricht mit dem Aktualisierungssatz ab", () => {
+test("--protection mit einer board.mjs ohne code schutz bricht mit dem Aktualisierungssatz ab", () => {
   const dir = fixture("install-schutz-alt-");
   try {
     bestehendesProjekt(dir, { kenntSchutz: false });
     const vorher = readFileSync(join(dir, ".claude", "workflow.config.json"), "utf-8");
     const fake = schutzFake(dir, "scharf");
-    const res = installiere(dir, ["j", "j", ""], fake.env, ["--schutz"]);
+    const res = installiere(dir, ["j", "j", ""], fake.env, ["--protection"]);
     assert.notEqual(res.status, 0);
     assert.match(res.stderr, /erst das Kit mit `node install\.mjs` aktualisieren/i);
     assert.doesNotMatch(res.stdout, BUILD_DIENST_FRAGE);

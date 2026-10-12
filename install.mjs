@@ -8,7 +8,9 @@
  * Aufruf:
  *   node install.mjs
  *   node install.mjs --version
- *   node install.mjs --language en|de   (gleichwertig --sprache; stellt ein Projekt um)
+ *   node install.mjs --language en|de   (stellt ein Projekt um)
+ *   node install.mjs --protection       (nur der Schutz des Hauptzweigs)
+ *   node install.mjs --help
  *   npx github:mannewolff/claude-workflow-kit  (nach Veroeffentlichung)
  *
  * Aenderung v1.3.0: Config-Schema nutzt codeHost + issueTracker statt provider.
@@ -16,7 +18,7 @@
  */
 
 import { createInterface } from "node:readline";
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, chmodSync, realpathSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, chmodSync, realpathSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolve, join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -36,7 +38,7 @@ const CLAUDE_WORKFLOW_MD_B64 = "IyBDTEFVREUtd29ya2Zsb3cubWQg4oCUIGNsYXVkZS13b3Jr
 // --- Gate-Register (Base64-eingebettet fuer Single-File-Portabilitaet) ---
 // Die beiden Register benennen die Regeln, gegen die eine fachliche Anforderung bzw. ein
 // Plandokument verstossen kann. Sie gehoeren neben CLAUDE-workflow.md in dasselbe
-// Zielverzeichnis: `/kontext` laedt sie ueber projectDocs (".claude/CLAUDE-*"), und
+// Zielverzeichnis: `/session-start` laedt sie ueber projectDocs (".claude/CLAUDE-*"), und
 // `/issue-review` braucht sie, um einen Fund als `gate` zu klassifizieren.
 // SYNC: Nach jeder Aenderung an templates/CLAUDE-Fachplan.md bzw. templates/CLAUDE-Plan.md:
 //   node tools/sync-blobs.mjs        (Pruefung: node tools/sync-blobs.mjs --check)
@@ -373,10 +375,34 @@ function copySkills(targetDir) {
     console.error(t("keinSkill"));
     process.exit(1);
   }
+  entferneAlteSkills(targetDir);
   return copied;
 }
 
-// Die Regeltexte neben CLAUDE-workflow.md (die Gate-Register): `/kontext` laedt sie ueber
+// Die Ordner der Skill-Namen, die es seit Issue #1566 nicht mehr gibt (Issue #1569, Plan #1548
+// E9). Lagen sie weiter, waeren sie nach dem Update weiter aufrufbar. Geloescht wird ein Ordner
+// nur, wenn seine SKILL.md den gleichnamigen `name:` traegt: Dann ist er die Kopie des alten
+// Kit-Skills und kein eigener Skill, der zufaellig so heisst. Dieselbe Regel raeumt die Kopie im
+// Kit-Repo (tools/sync-blobs.mjs).
+const ALTE_SKILLS = Object.freeze(["fachplan", "kontext", "context", "review", "plan"]);
+
+function alterKitSkill(ordner, name) {
+  const datei = join(ordner, "SKILL.md");
+  if (!existsSync(datei)) return false;
+  const kopf = /^---\r?\n([\s\S]*?)\r?\n---/.exec(readFileSync(datei, "utf-8"));
+  return Boolean(kopf) && new RegExp(`^name:\\s*${name}\\s*$`, "m").test(kopf[1]);
+}
+
+function entferneAlteSkills(targetDir) {
+  for (const name of ALTE_SKILLS) {
+    const ordner = join(targetDir, name);
+    if (!alterKitSkill(ordner, name)) continue;
+    rmSync(ordner, { recursive: true, force: true });
+    console.log(t("skillAltEntfernt", { skill: name }));
+  }
+}
+
+// Die Regeltexte neben CLAUDE-workflow.md (die Gate-Register): `/session-start` laedt sie ueber
 // projectDocs (".claude/CLAUDE-*").
 const REGELTEXTE = Object.freeze({
   "CLAUDE-workflow.md": CLAUDE_WORKFLOW_MD_B64,
@@ -531,7 +557,7 @@ function richteSchutzEin(kitDir, configPfad, zweig) {
 }
 
 /**
- * `node install.mjs --schutz` (E2, E3): nur die Schutzfragen und `code protection setup`,
+ * `node install.mjs --protection` (E2, E3): nur die Schutzfragen und `code protection setup`,
  * in der Config nur `pushPruefung`, keine Kit-Datei.
  */
 async function schutzModus(rl) {
@@ -639,6 +665,7 @@ export const TEXTE = Object.freeze({
       "    Fuer den Claude-Reviewer: reviewCommand mit '{leer}' leeren.",
     skillsBlobKaputt: "  Warnung: eingebetteter Skills-Blob ist kein gueltiges JSON, wird ignoriert.",
     skillLeer: "  Warnung: {skill} ist im eingebetteten Blob leer, wird uebersprungen.",
+    skillAltEntfernt: "  − {skill} (alter Skill-Name, entfernt)",
     keinSkill: "Fehler: Kein einziger Skill konnte kopiert werden (eingebetteter Blob fehlt oder ist beschaedigt).",
     gitlabFrage: "\nGitLab-Labels jetzt automatisch anlegen? (glab muss eingeloggt sein) [j/n]: ",
     gitlabVonHand: '  Labels manuell anlegen: Backlog, Ready, "In progress", "In review", Done',
@@ -650,7 +677,7 @@ export const TEXTE = Object.freeze({
       '  Issues → Boards → "Add list" → je eine Spalte fuer jedes Label anlegen.\n' +
       "  Reihenfolge: Backlog → Ready → In progress → In review → Done\n" +
       "  (Board-Spalten lassen sich nicht per CLI anlegen — das ist eine GitLab-Einschraenkung.)\n",
-    schutzSpaeter: "Später einschalten: node install.mjs --schutz im Projekt.",
+    schutzSpaeter: "Später einschalten: node install.mjs --protection im Projekt.",
     ungeschuetzt: "  Haupt- und Veröffentlichungszweig bleiben ungeschützt: Ein Push an `push main` vorbei kommt ungeprüft durch.",
     jaNeinFrage: "{frage} [J/n]: ",
     schutzGitlab: "  Bei GitLab wird der Schutz des Hauptzweigs noch nicht eingerichtet; Haupt- und Veröffentlichungszweig bleiben ungeschützt.",
@@ -674,6 +701,7 @@ export const TEXTE = Object.freeze({
     umstellungKopf: "\n=== claude-workflow-kit: Umstellung auf {ziel} ===\n",
     umstellungOhneConfig: "Keine .claude/workflow.config.json — ein neues Projekt fragt `node install.mjs` nach der Sprache.",
     spracheFalsch: "--{option} braucht 'de' oder 'en', nicht '{wert}'.",
+    altname: "unbekannt: '{name}' — englischer Name: '{englisch}'",
     labelOffen: "{pfad}: {wert} bleibt; der Name in {ziel} ist {name}",
     boardNicht: "Board nicht erreichbar ({grund}) — die Liste nennt nur die Config.",
     karteAndereSprache: "Karte mit Präfix der anderen Sprache: #{id} {titel}",
@@ -736,6 +764,7 @@ export const TEXTE = Object.freeze({
     keinJsonObjekt: "ist kein lesbares JSON-Objekt",
     hooksSchon: "✓ {pfad}: Kit-Hooks bereits eingetragen",
     hooksEingetragen: "✓ {pfad}: Kit-Hooks eingetragen ({ereignisse})",
+    hooksUmgeschrieben: "✓ {pfad}: Kit-Hooks auf die englischen Namen umgeschrieben ({ereignisse})",
     teileGeschrieben: "✓ {teil}/ geschrieben: {anzahl} Teil(e) in {pfad}",
     agentenGeschrieben: "✓ agents/ geschrieben: {anzahl} Agent(en) in {pfad}",
     windowsNicht: "claude-workflow-kit unterstützt natives Windows ab Version 4.0.0 nicht mehr.",
@@ -745,7 +774,7 @@ export const TEXTE = Object.freeze({
     frageMain: "Haupt-Branch (mainBranch)",
     frageProduction: "Production-Branch (productionBranch)",
     frageReviewScope: "Review-Umfang: 'diff' (nur Aenderungen) oder 'full' (gesamter Quelltext)?",
-    frageVault: "Pfad zum Memory-Vault für /kontext (leer = überspringen): ",
+    frageVault: "Pfad zum Memory-Vault für /session-start (leer = überspringen): ",
     kopiereSkills: "\nKopiere Skills nach {pfad}:",
     configGeschrieben: "\n✓ Config geschrieben: {pfad}",
     specHinweis: "  Hinweis: Der spec-Block wird nicht mehr ausgewertet und kann samt specs/ entfernt werden.",
@@ -784,6 +813,7 @@ export const TEXTE = Object.freeze({
       "    For the Claude reviewer: clear reviewCommand with '{leer}'.",
     skillsBlobKaputt: "  Warning: the embedded skills blob is not valid JSON and is ignored.",
     skillLeer: "  Warning: {skill} is empty in the embedded blob and is skipped.",
+    skillAltEntfernt: "  − {skill} (old skill name, removed)",
     keinSkill: "Error: Not a single skill could be copied (embedded blob missing or damaged).",
     gitlabFrage: "\nCreate the GitLab labels automatically now? (glab must be logged in) [y/n]: ",
     gitlabVonHand: '  Create the labels by hand: Backlog, Ready, "In progress", "In review", Done',
@@ -795,7 +825,7 @@ export const TEXTE = Object.freeze({
       '  Issues → Boards → "Add list" → create one column for each label.\n' +
       "  Order: Backlog → Ready → In progress → In review → Done\n" +
       "  (Board columns cannot be created via CLI — that is a GitLab limitation.)\n",
-    schutzSpaeter: "Switch it on later: node install.mjs --schutz in the project.",
+    schutzSpaeter: "Switch it on later: node install.mjs --protection in the project.",
     ungeschuetzt: "  Main and release branches stay unprotected: a push that bypasses `push main` gets through unchecked.",
     jaNeinFrage: "{frage} [Y/n]: ",
     schutzGitlab: "  GitLab does not set up protection of the main branch yet; main and release branches stay unprotected.",
@@ -819,6 +849,7 @@ export const TEXTE = Object.freeze({
     umstellungKopf: "\n=== claude-workflow-kit: switching to {ziel} ===\n",
     umstellungOhneConfig: "No .claude/workflow.config.json — for a new project `node install.mjs` asks for the language.",
     spracheFalsch: "--{option} takes 'de' or 'en', not '{wert}'.",
+    altname: "unknown: '{name}' — English name: '{englisch}'",
     labelOffen: "{pfad}: {wert} stays; the name in {ziel} is {name}",
     boardNicht: "Board not reachable ({grund}) — the list covers only the config.",
     karteAndereSprache: "Card with prefix of the other language: #{id} {titel}",
@@ -881,6 +912,7 @@ export const TEXTE = Object.freeze({
     keinJsonObjekt: "is not a readable JSON object",
     hooksSchon: "✓ {pfad}: kit hooks already entered",
     hooksEingetragen: "✓ {pfad}: kit hooks entered ({ereignisse})",
+    hooksUmgeschrieben: "✓ {pfad}: kit hooks rewritten to the English names ({ereignisse})",
     teileGeschrieben: "✓ {teil}/ written: {anzahl} part(s) in {pfad}",
     agentenGeschrieben: "✓ agents/ written: {anzahl} agent(s) in {pfad}",
     windowsNicht: "claude-workflow-kit no longer supports native Windows from version 4.0.0.",
@@ -890,7 +922,7 @@ export const TEXTE = Object.freeze({
     frageMain: "Main branch (mainBranch)",
     frageProduction: "Production branch (productionBranch)",
     frageReviewScope: "Review scope: 'diff' (changes only) or 'full' (entire source)?",
-    frageVault: "Path to the memory vault for /kontext (empty = skip): ",
+    frageVault: "Path to the memory vault for /session-start (empty = skip): ",
     kopiereSkills: "\nCopying skills to {pfad}:",
     configGeschrieben: "\n✓ Config written: {pfad}",
     specHinweis: "  Note: the spec block is no longer evaluated and can be removed together with specs/.",
@@ -978,10 +1010,10 @@ function umbenennungsZeile(u) {
   return trenner < 0 ? zeile : `${u.pfad.slice(0, trenner)}: ${zeile}`;
 }
 
-/** Die Zielsprache aus `--language <de|en>`, `--sprache <de|en>` oder `--language=<..>`; sonst `null`. */
+/** Die Zielsprache aus `--language <de|en>` oder `--language=<..>`; sonst `null`. */
 function umstellSprache(argv) {
   for (let i = 0; i < argv.length; i++) {
-    const treffer = /^--(language|sprache)(?:=(.*))?$/.exec(argv[i]);
+    const treffer = /^--(language)(?:=(.*))?$/.exec(argv[i]);
     if (!treffer) continue;
     const wert = (treffer[2] ?? argv[i + 1] ?? "").trim().toLowerCase();
     if (!Object.hasOwn(SPRACHFELD, wert)) throw new Error(t("spracheFalsch", { option: treffer[1], wert }));
@@ -1499,23 +1531,54 @@ function ensureProjectGitignore() {
 // Umleitung die Ausnahme aus `sandbox.excludedCommands` auf. Der Hook weist solche
 // Zeilen vor dem Lauf ab und nennt die richtige Form.
 //
-// `kennungen` sind das, woran ein Eintrag erkennbar ist — unabhaengig davon, welcher Pfad
-// davorsteht und welche Schalter dahinter. Ein Vergleich auf das ganze Kommando
+// `kennung` und `alt` sind das, woran ein Eintrag erkennbar ist — unabhaengig davon, welcher
+// Pfad davorsteht und welche Schalter dahinter. Ein Vergleich auf das ganze Kommando
 // verdoppelte den Eintrag, sobald jemand den Aufruf von Hand angepasst hat.
 //
-// Eingetragen werden die englischen Namen (Issue #1556, Plan #1548 E1); die Kennungen
-// erkennen auch den deutschen Eintrag eines bestehenden Projekts, damit kein zweiter
-// danebenkommt. Ihn zu ersetzen, ist Sache des Updates.
+// Eingetragen werden die englischen Namen (Issue #1556, Plan #1548 E1). Ein bestehendes Projekt
+// traegt noch den deutschen Aufruf `alt`, den board.mjs seit Issue #1557 abweist: Das Update
+// ersetzt darin nur dieses Stueck durch `kennung` (Issue #1569, Plan #1548 E10) — Pfad, Schalter
+// und die uebrigen Felder des Eintrags bleiben.
 const SITZUNG_HOOKS = [
-  { event: "SessionEnd", command: "node .claude/kit/board.mjs session report --complete", kennungen: ["board.mjs session report", "board.mjs sitzung melden"] },
-  { event: "Stop", command: "node .claude/kit/board.mjs session report", kennungen: ["board.mjs session report", "board.mjs sitzung melden"] },
-  { event: "PreToolUse", matcher: "Bash", command: "node .claude/kit/board.mjs hook bash-check", kennungen: ["board.mjs hook bash-check", "board.mjs hook bash-pruefen"] },
+  { event: "SessionEnd", command: "node .claude/kit/board.mjs session report --complete", kennung: "board.mjs session report", alt: "board.mjs sitzung melden" },
+  { event: "Stop", command: "node .claude/kit/board.mjs session report", kennung: "board.mjs session report", alt: "board.mjs sitzung melden" },
+  { event: "PreToolUse", matcher: "Bash", command: "node .claude/kit/board.mjs hook bash-check", kennung: "board.mjs hook bash-check", alt: "board.mjs hook bash-pruefen" },
 ];
 
-/** Traegt eine der Matcher-Gruppen eines Ereignisses bereits den Hook mit einer dieser Kennungen? */
-function hookSchonEingetragen(gruppen, kennungen) {
-  return gruppen.some((g) => Array.isArray(g?.hooks)
-    && g.hooks.some((h) => typeof h?.command === "string" && kennungen.some((k) => h.command.includes(k))));
+/**
+ * Ein Hook-Eintrag nach dem Umschreiben: der erste erkannte mit englischem Befehl, jeder weitere
+ * erkannte `null` — ein Doppel liesse den Melder doppelt laufen. `stand` merkt sich, ob einer
+ * gefunden und ob etwas geaendert wurde.
+ */
+function umgeschriebenerHook(h, { kennung, alt }, stand) {
+  const befehl = typeof h?.command === "string" ? h.command : "";
+  if (!befehl.includes(kennung) && !befehl.includes(alt)) return h;
+  if (stand.gefunden) {
+    stand.geaendert = true;
+    return null;
+  }
+  stand.gefunden = true;
+  if (!befehl.includes(alt)) return h;
+  stand.geaendert = true;
+  return { ...h, command: befehl.replace(alt, kennung) };
+}
+
+/**
+ * Die Matcher-Gruppen eines Ereignisses mit genau einem Eintrag des Kits in englischem Namen —
+ * sofern es ihn schon gab. Eine Gruppe, die nur ein entferntes Doppel trug, entfaellt.
+ */
+function schreibeHooksUm(gruppen, hook) {
+  const stand = { gefunden: false, geaendert: false };
+  const neu = [];
+  for (const g of gruppen) {
+    if (!Array.isArray(g?.hooks)) {
+      neu.push(g);
+      continue;
+    }
+    const hooks = g.hooks.map((h) => umgeschriebenerHook(h, hook, stand)).filter((h) => h !== null);
+    if (hooks.length > 0 || g.hooks.length === 0) neu.push({ ...g, hooks });
+  }
+  return { gruppen: neu, ...stand };
 }
 
 /** Sagt, was von Hand nachzutragen ist — der Rueckfall, wenn wir die Datei nicht anfassen. */
@@ -1548,6 +1611,30 @@ function liesSettings(pfad) {
 }
 
 /**
+ * Schreibt die Eintraege des Kits in `hooks` auf die englischen Namen um und haengt die
+ * fehlenden an. Liefert die Ereignisse, die neu dazukamen, und die, die umgeschrieben wurden.
+ */
+function ordneHooksEin(hooks) {
+  const neu = [];
+  const umgeschrieben = [];
+  for (const hook of SITZUNG_HOOKS) {
+    const { event, matcher, command } = hook;
+    const { gruppen, gefunden, geaendert } = schreibeHooksUm(Array.isArray(hooks[event]) ? hooks[event] : [], hook);
+    if (geaendert) umgeschrieben.push(event);
+    if (gefunden) {
+      hooks[event] = gruppen;
+      continue;
+    }
+    // Angehaengt, nicht vorangestellt: Ein vorhandener Hook des Projekts behaelt seine
+    // Reihenfolge, und unserer ist der letzte.
+    const gruppe = matcher ? { matcher, hooks: [{ type: "command", command }] } : { hooks: [{ type: "command", command }] };
+    hooks[event] = [...gruppen, gruppe];
+    neu.push(event);
+  }
+  return { neu, umgeschrieben };
+}
+
+/**
  * Traegt den Melder in die `hooks` von `.claude/settings.json` ein (idempotent).
  *
  * ERGAENZT, ersetzt nicht: settings.json ist die geteilte Projektdatei von Claude Code
@@ -1567,17 +1654,8 @@ function ensureSitzungsHooks(targetBase) {
 
   const bestand = settings.hooks;
   const hooks = (bestand && typeof bestand === "object" && !Array.isArray(bestand)) ? bestand : {};
-  const neu = [];
-  for (const { event, matcher, command, kennungen } of SITZUNG_HOOKS) {
-    const gruppen = Array.isArray(hooks[event]) ? hooks[event] : [];
-    if (hookSchonEingetragen(gruppen, kennungen)) continue;
-    // Angehaengt, nicht vorangestellt: Ein vorhandener Hook des Projekts behaelt seine
-    // Reihenfolge, und unserer ist der letzte.
-    const gruppe = matcher ? { matcher, hooks: [{ type: "command", command }] } : { hooks: [{ type: "command", command }] };
-    hooks[event] = [...gruppen, gruppe];
-    neu.push(event);
-  }
-  if (neu.length === 0) {
+  const { neu, umgeschrieben } = ordneHooksEin(hooks);
+  if (neu.length === 0 && umgeschrieben.length === 0) {
     console.log(t("hooksSchon", { pfad }));
     return;
   }
@@ -1585,7 +1663,8 @@ function ensureSitzungsHooks(targetBase) {
   settings.hooks = hooks;
   mkdirSync(targetBase, { recursive: true });
   writeFileSync(pfad, JSON.stringify(settings, null, 2) + "\n", "utf-8");
-  console.log(t("hooksEingetragen", { pfad, ereignisse: neu.join(", ") }));
+  if (umgeschrieben.length > 0) console.log(t("hooksUmgeschrieben", { pfad, ereignisse: umgeschrieben.join(", ") }));
+  if (neu.length > 0) console.log(t("hooksEingetragen", { pfad, ereignisse: neu.join(", ") }));
 }
 
 // Schreibt die Teile von night.mjs und board.mjs nach night/ und board/ des Kit-Verzeichnisses
@@ -1680,6 +1759,32 @@ function vorabEnden() {
     console.log(`claude-workflow-kit install.mjs v${VERSION}`);
     process.exit(0);
   }
+  if (process.argv.includes("--help")) {
+    console.log(HILFE);
+    process.exit(0);
+  }
+  altnameAbweisen(process.argv.slice(2));
+}
+
+// Die Hilfe ist englisch, in jedem Projekt (Issue #1569, Fachplan #1527 Kriterium 1).
+const HILFE = [
+  "Usage:",
+  "  node install.mjs                     install or update the kit (asks its questions)",
+  "  node install.mjs --language de|en    switch an existing project to another language",
+  "  node install.mjs --protection        set up only the protection of the main branch",
+  "  node install.mjs --version           print the version",
+  "  node install.mjs --help              print this help",
+].join("\n");
+
+// Die frueheren deutschen Optionen (Issue #1569, Plan #1548 E8): Es gibt sie nicht mehr, auch
+// nicht fuer eine Uebergangszeit. Sie enden mit dem Namen, der jetzt gilt, bevor etwas geschieht.
+const DEUTSCHE_OPTIONEN = Object.freeze({ "--schutz": "--protection", "--sprache": "--language" });
+
+function altnameAbweisen(argv) {
+  for (const argument of argv) {
+    const name = argument.split("=")[0];
+    if (Object.hasOwn(DEUTSCHE_OPTIONEN, name)) throw new Error(t("altname", { name, englisch: DEUTSCHE_OPTIONEN[name] }));
+  }
 }
 
 async function main() {
@@ -1702,7 +1807,7 @@ async function main() {
     ? createInterface({ input: process.stdin, output: process.stdout })
     : { close: () => {} };
 
-  if (process.argv.includes("--schutz")) {
+  if (process.argv.includes("--protection")) {
     console.log(t("schutzKopf"));
     await schutzModus(rl);
     rl.close();

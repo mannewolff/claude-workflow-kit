@@ -126,14 +126,30 @@ test("--language en legt die Sicherung an, benennt Config und Override-Datei um 
   }
 });
 
-test("--sprache de fuehrt zurueck: gleich dem Original bis auf das Sprachfeld", () => {
+test("[1569] --sprache endet mit Exit 1 und nennt --language, die Config bleibt", () => {
+  const dir = deutschesProjekt("install-umstellung-sprache-");
+  try {
+    const vorher = readFileSync(join(dir, ".claude", "workflow.config.json"), "utf-8");
+    for (const argv of [["--sprache", "en"], ["--sprache=en"]]) {
+      const res = installiere(dir, argv, boardFake(dir, KARTEN));
+      assert.equal(res.status, 1, `${res.stderr}\n${res.stdout}`);
+      assert.match(res.stderr, /'--sprache'.*'--language'/);
+    }
+    assert.equal(readFileSync(join(dir, ".claude", "workflow.config.json"), "utf-8"), vorher);
+    assert.equal(existsSync(join(dir, ".claude", "workflow.config.json.vor-umstellung")), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("--language de fuehrt zurueck: gleich dem Original bis auf das Sprachfeld", () => {
   const dir = deutschesProjekt("install-umstellung-zurueck-");
   try {
     const hin = installiere(dir, ["--language", "en"], boardFake(dir, KARTEN));
     assert.equal(hin.status, 0, `${hin.stderr}\n${hin.stdout}`);
     const englisch = readFileSync(join(dir, ".claude", "workflow.config.json"), "utf-8");
 
-    const zurueck = installiere(dir, ["--sprache", "de"], boardFake(dir, KARTEN));
+    const zurueck = installiere(dir, ["--language", "de"], boardFake(dir, KARTEN));
     assert.equal(zurueck.status, 0, `${zurueck.stderr}\n${zurueck.stdout}`);
 
     const { sprache, ...rest } = lies(dir, "workflow.config.json");

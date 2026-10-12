@@ -904,3 +904,66 @@ test("Die Abschlussmeldung nennt die tatsaechliche Zahl der Skills", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// --- Alte Skill-Ordner beim Update (Issue #1569, Plan #1548 E9) ---
+//
+// Die Namen fachplan, kontext, context, review und plan gibt es seit Issue #1566 nicht mehr.
+// Ein bestehendes Projekt traegt ihre Ordner noch; liegen sie weiter, sind sie weiter aufrufbar.
+// Geloescht wird nur ein Ordner, dessen SKILL.md den gleichnamigen `name:` traegt.
+
+const ALTE_SKILLS = ["fachplan", "kontext", "context", "review", "plan"];
+
+function legeSkillAn(dir, ordner, name) {
+  mkdirSync(join(dir, ".claude", "skills", ordner), { recursive: true });
+  writeFileSync(join(dir, ".claude", "skills", ordner, "SKILL.md"), `---\nname: ${name}\ndescription: x\n---\n\nText\n`);
+}
+
+const BEFEHL = (befehl) => [{ type: "command", command: `node .claude/kit/board.mjs ${befehl}` }];
+
+test("[installer-1569] das Update loescht die alten Skill-Ordner und nennt jeden, ein fremder bleibt", () => {
+  const dir = fixture("install-alte-skills-");
+  try {
+    for (const name of ALTE_SKILLS) legeSkillAn(dir, name, name);
+    legeSkillAn(dir, "review-eigen", "review");
+    writeFileSync(join(dir, ".claude", "settings.json"), JSON.stringify({ hooks: {
+      SessionEnd: [{ hooks: BEFEHL("sitzung melden --complete") }],
+      Stop: [{ hooks: BEFEHL("sitzung melden") }],
+      PreToolUse: [{ matcher: "Bash", hooks: BEFEHL("hook bash-pruefen") }],
+    } }, null, 2));
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    for (const name of ALTE_SKILLS) {
+      assert.equal(existsSync(join(dir, ".claude", "skills", name)), false, `${name} liegt noch`);
+      assert.match(res.stdout, new RegExp(`^.*\\b${name}\\b.*entfernt.*$`, "m"), `${name} ist nicht genannt`);
+    }
+    assert.ok(existsSync(join(dir, ".claude", "skills", "review-eigen", "SKILL.md")), "ein eigener Ordner bleibt");
+    assert.doesNotMatch(res.stdout, /review-eigen/);
+    const installiert = readdirSync(join(dir, ".claude", "skills"), { withFileTypes: true })
+      .filter((e) => e.isDirectory() && e.name !== "review-eigen").map((e) => e.name);
+    assert.equal(installiert.length, 17, "die Skillmenge ist 17");
+    assert.deepEqual(JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf-8")).hooks, {
+      SessionEnd: [{ hooks: BEFEHL("session report --complete") }],
+      Stop: [{ hooks: BEFEHL("session report") }],
+      PreToolUse: [{ matcher: "Bash", hooks: BEFEHL("hook bash-check") }],
+    }, "genau die englischen Hooks, ohne Doppel");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[installer-1569] ein alter Ordnername mit fremdem name: bleibt und wird nicht genannt", () => {
+  const dir = fixture("install-alte-skills-fremd-");
+  try {
+    legeSkillAn(dir, "plan", "mein-plan");
+    mkdirSync(join(dir, ".claude", "skills", "kontext"), { recursive: true });
+    writeFileSync(join(dir, ".claude", "skills", "kontext", "notiz.md"), "ohne SKILL.md\n");
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.ok(existsSync(join(dir, ".claude", "skills", "plan", "SKILL.md")));
+    assert.ok(existsSync(join(dir, ".claude", "skills", "kontext", "notiz.md")));
+    assert.doesNotMatch(res.stdout, /entfernt/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

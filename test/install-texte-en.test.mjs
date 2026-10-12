@@ -168,11 +168,22 @@ test("[1455] Umstellung und Schutzmodus eines englischen Projekts melden englisc
     assert.match(falsch.stderr, /--language braucht 'de' oder 'en', nicht 'fr'\./, "ohne Config spricht der Installer deutsch");
 
     schreibeConfig(u, { language: "en", codeHost: "github", issueTracker: "github" });
-    const schutz = installiere(u, ["--schutz"]);
+    const schutz = installiere(u, ["--protection"]);
     assert.equal(schutz.status, 1);
     assert.match(schutz.stdout, /=== claude-workflow-kit: protection of the main branch ===/);
     assert.match(schutz.stderr, /^Error: The installed board\.mjs does not know `code protection` yet/m);
     keinDeutsch(schutz.alles, "Schutzmodus");
+
+    const deutsch = installiere(u, ["--schutz"]);
+    assert.equal(deutsch.status, 1);
+    assert.match(deutsch.stderr, /unknown: '--schutz' — English name: '--protection'/);
+    assert.doesNotMatch(deutsch.stdout, /protection of the main branch/, "ein deutscher Name startet nichts");
+
+    const hilfe = installiere(u, ["--help"]);
+    assert.equal(hilfe.status, 0, hilfe.alles);
+    for (const option of ["--language", "--protection", "--version", "--help"]) assert.match(hilfe.stdout, new RegExp(option));
+    assert.doesNotMatch(hilfe.stdout, /--schutz|--sprache/);
+    assert.match(hilfe.stdout, /^Usage:/m);
 
     const unbekannt = installiere(u, ["--language", "fr"]);
     assert.match(unbekannt.stderr, /--language takes 'de' or 'en', not 'fr'\./);
@@ -187,6 +198,26 @@ test("[1455] Umstellung und Schutzmodus eines englischen Projekts melden englisc
     assert.match(um.stdout, /Board not reachable \(gh: not logged in\)/);
     assert.match(um.stdout, /Back: node install\.mjs --language en/);
     keinDeutsch(um.alles, "Umstellung");
+  });
+});
+
+test("[1569] die Texte nennen nur englische Skill- und Optionsnamen", () => {
+  for (const sprache of ["de", "en"]) {
+    const alles = Object.values(TEXTE[sprache]).join("\n");
+    assert.doesNotMatch(alles, /\/(kontext|fachplan|context|review|plan)\b/, sprache);
+    assert.doesNotMatch(alles, /--schutz|--sprache/, sprache);
+    assert.match(alles, /\/session-start/, sprache);
+  }
+});
+
+test("[1569] ein deutsches Projekt: --sprache endet mit Exit 1 und nennt den englischen Namen", () => {
+  mitUmgebung("install-de-altname-", (u) => {
+    schreibeConfig(u, { sprache: "de", codeHost: "github", issueTracker: "github" });
+    const res = installiere(u, ["--sprache", "en"]);
+    assert.equal(res.status, 1, res.alles);
+    assert.match(res.stderr, /unbekannt: '--sprache' — englischer Name: '--language'/);
+    const hilfe = installiere(u, ["--help"]);
+    assert.match(hilfe.stdout, /^Usage:/m, "die Hilfe ist auch im deutschen Projekt englisch");
   });
 });
 
