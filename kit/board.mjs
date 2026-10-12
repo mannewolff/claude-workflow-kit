@@ -756,7 +756,8 @@ function geschuetztHandlung(treffer, label, freigegeben) {
 
 /**
  * `issue fragen <id> [--body-file <pfad>] [--vergleich <pfad>]` (Issue #1513, Plan #1510 A2,
- * A3, A4, E9): der Grooming-Stand eines Fachplans fuer `/groom`. Rein lesend — geschrieben
+ * A3, A4, E9), englisch `issue questions` mit `--compare` (Issue #1555, Plan #1548 E8): der
+ * Grooming-Stand eines Fachplans fuer `/groom`. Rein lesend — geschrieben
  * wird ueber `issue update --body-file` (A3), Labels bleiben unberuehrt (A4). Die Kommentare
  * liest der Aufruf nur bei `kit:klaeren`: Nur dort gibt es eine Stopp-Frage. Exit 1 allein,
  * wenn `--body-file` gegen den Body der Karte verstoesst.
@@ -826,7 +827,8 @@ async function dispatchIssue(command, args) {
     case "brief":   return issueAuftrag(tracker, args, AUFTRAG_GESCHUETZT);
     case "ursprung":
     case "origin":  return issueUrsprung(tracker, args);
-    case "fragen":  return issueFragen(tracker, args);
+    case "fragen":
+    case "questions": return issueFragen(tracker, args);
     case "label":   return issueLabel(tracker, config, args, HELP);
     case "check-form": return issueCheckForm(tracker, config, args);
     case "check-geschuetzt":

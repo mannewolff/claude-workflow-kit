@@ -33,7 +33,7 @@ import { GitHubIssueTracker, resolveCodeHost, LabelFehltError } from "./adapter.
 // Zyklus mit Absicht: ursprung.mjs liest Karten und Herkunftszeilen von hier. Beide Seiten
 // rufen sich erst zur Laufzeit, keine liest beim Laden einen Wert der anderen.
 import { ursprungLesen, ursprungNachziehen } from "./ursprung.mjs";
-import { SPRACHEN, PRAEFIXE, LABELS, prozessSprache, praefix, labelName, erkennePraefix, erkenneLabel, erkenneMarker, leseMarker, markerWerte,
+import { SPRACHEN, PRAEFIXE, LABELS, internerWert, prozessSprache, praefix, labelName, erkennePraefix, erkenneLabel, erkenneMarker, leseMarker, markerWerte,
   kanonischeUeberschrift, ueberschriftName, ueberschriftZeile, text } from "./namen.mjs";
 import { normalisiereConfig } from "./config-namen.mjs";
 
@@ -527,13 +527,15 @@ export const ARTEN = Object.freeze(Object.keys(PRAEFIXE));
  * Ohne Art bleibt der Titel unveraendert — ein Titel mit Praefix wird nie umgeschrieben.
  * Dieselbe Regel fuer `issue create` und `issue check-form`, damit beide denselben Titel sehen.
  */
-export function titelMitArt(title, art) {
-  if (art === undefined) return { titel: title };
+export function titelMitArt(title, getippt) {
+  if (getippt === undefined) return { titel: title };
+  // `--art requirement|idea|human` traegt ab hier den internen Schluessel (Issue #1555, E5).
+  const art = internerWert("art", getippt);
   if (art === true || !ARTEN.includes(art)) {
     return { fehler: t("artUnbekannt", { arten: ARTEN.join("|") }) };
   }
   if (erkennePraefix(title) !== null) {
-    return { fehler: t("artNebenPraefix", { art, titel: title }) };
+    return { fehler: t("artNebenPraefix", { art: getippt, titel: title }) };
   }
   return { titel: `${praefix(art)} ${String(title).trimStart()}` };
 }
@@ -1323,7 +1325,9 @@ export async function issueStand(tracker, config, args) {
   const aufruf = t("standAufruf");
   if (!id) fail(t("idErforderlich", { aufruf }));
   if (args.labels !== undefined) fail(t("standLabelsGibtsNicht", { aufruf }));
-  if (!STAND_ZUSTAENDE.includes(args.zustand)) {
+  // `--state running|aborted|waiting|done` traegt ab hier den internen Schluessel (Issue #1555, E5).
+  const zustand = internerWert("zustand", args.zustand);
+  if (!STAND_ZUSTAENDE.includes(zustand)) {
     fail(t("standZustandUnbekannt", { wert: args.zustand ?? "", erwartet: STAND_ZUSTAENDE.join(" | ") }));
   }
   if (args["text-file"] === undefined) fail(t("standTextFileErforderlich", { aufruf }));
@@ -1341,7 +1345,7 @@ export async function issueStand(tracker, config, args) {
   const getragen = (await tracker.getIssue(id))?.labels ?? [];
 
   // Erst abnehmen, dann setzen: So haengen nie zwei Laufstand-Labels zugleich.
-  const ziel = labels[args.zustand];
+  const ziel = labels[zustand];
   for (const name of standAbzuraeumen(labels, getragen, ziel)) {
     await tracker.labelIssue(id, name, "remove");
   }
@@ -1360,7 +1364,7 @@ export async function issueStand(tracker, config, args) {
     await tracker.commentIssue(id, neu);
     kommentar = "angelegt";
   }
-  out({ ok: true, id, zustand: args.zustand, kommentar });
+  out({ ok: true, id, zustand, kommentar });
 }
 
 // ============================================================

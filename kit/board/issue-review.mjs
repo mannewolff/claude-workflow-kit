@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 import { BoardError, fail, out, loadConfig, findeImPath, umgebungsWert, configWurzel } from "./grundlagen.mjs";
 import { istFachlich, istPlan, herkunftNummern, normalisiereZeilenenden } from "./dokumente.mjs";
 import { resolveTracker } from "./adapter.mjs";
-import { text, ueberschriftZeile } from "./namen.mjs";
+import { internerWert, text, ueberschriftZeile } from "./namen.mjs";
 import { vorgeschichteAktiv, vorgeschichteSuchen } from "./vorgeschichte.mjs";
 
 // Die Texte an den Menschen liegen unter kit/texte/board-issue-review.mjs (Issue #1526).
@@ -422,7 +422,9 @@ export function issueReviewRoles(args, config = loadConfig(), env = process.env)
       fail(t("rolesEntfallen", { option }));
     }
   }
-  const stufe = args.stufe === true ? fail(t("optionOhneWert", { name: "stufe" })) : args.stufe;
+  // `--stage requirement` traegt ab hier den internen Schluessel `fachlich`, den auch
+  // `reviewStufen` nennt (Issue #1555, Plan #1548 E5).
+  const stufe = args.stufe === true ? fail(t("optionOhneWert", { name: "stufe" })) : internerWert("stufe", args.stufe);
   if (!stufe) fail(t("stufeOptionFehlt", { stufen: REVIEW_STUFEN.join(" | ") }));
   if (!REVIEW_STUFEN.includes(stufe)) {
     fail(t("stufeUnbekannt", { stufe, stufen: REVIEW_STUFEN.join(" | ") }));

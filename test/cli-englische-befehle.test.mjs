@@ -70,6 +70,11 @@ const FAELLE = [
   { de: ["issue", "auftrag", "5", "--spalte", "in_progress", "--json"],
     en: ["issue", befehl("issue", "auftrag"), "5", option("spalte"), "in_progress", "--json"] },
   { de: ["issue", "ursprung", "5"], en: ["issue", befehl("issue", "ursprung"), "5"] },
+  // Die Karte ist kein Fachplan; --vergleich liest die Datei trotzdem und vergleicht (Issue #1555).
+  { de: ["issue", "fragen", "5", "--vergleich", "stand.md"],
+    en: ["issue", befehl("issue", "fragen"), "5", option("vergleich"), "stand.md"] },
+  { de: ["issue", "fragen", "5", "--vergleich", "fehlt.md"],
+    en: ["issue", befehl("issue", "fragen"), "5", option("vergleich"), "fehlt.md"] },
   { de: ["issue", "check-geschuetzt", "5", "--pfad", ".claude/settings.json"],
     en: ["issue", befehl("issue", "check-geschuetzt"), "5", option("pfad"), ".claude/settings.json"] },
   // Der lokale Tracker fuehrt keine Suche: beide Namen enden mit tracker-ohne-suche (Issue #1539).

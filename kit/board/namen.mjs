@@ -432,7 +432,7 @@ export const BEFEHLSNAMEN = Object.freeze({
     issue: Object.freeze({ create: "create", get: "get", list: "list", epics: "epics", activity: "activity",
       move: "move", update: "update", comment: "comment", melden: "report", stand: "run-state",
       auftrag: "brief", ursprung: "origin", label: "label", "check-form": "check-form",
-      "check-geschuetzt": "check-protected", vorgeschichte: "history" }),
+      "check-geschuetzt": "check-protected", vorgeschichte: "history", fragen: "questions" }),
     code: Object.freeze({ "repo-name": "repo-name", pr: "pr", "ci-status": "ci-status", schutz: "protection" }),
     kontext: Object.freeze({ paths: "paths", "last-log": "last-log" }),
     "issue-review": Object.freeze({ reviewers: "reviewers", check: "check", matrix: "matrix", roles: "roles",
@@ -448,5 +448,25 @@ export const BEFEHLSNAMEN = Object.freeze({
   optionen: Object.freeze({ teil: "part", zustand: "state", spalte: "column", pfad: "path", zweig: "branch",
     "nur-pfad": "path-only", stufe: "stage", rolle: "role", datei: "file", "material-datei": "material-file",
     auftrag: "brief", ausgabe: "output", protokoll: "transcript", begriffe: "terms", dateien: "files",
-    ohne: "without" }),
+    ohne: "without", vergleich: "compare" }),
+  // Die Auswahlwerte der Optionen, die ein Verhalten des Kits waehlen (Issue #1555, Plan #1548
+  // E5), je Option interner Schluessel -> englischer Wert: `--art`, `issue stand --zustand` und
+  // `issue-review roles --stufe`. Die internen Schluessel (ARTEN, STAND_ZUSTAENDE, REVIEW_STUFEN,
+  // der Config-Schluessel `reviewStufen.fachlich`) bleiben; abgebildet wird am Einstieg.
+  werte: Object.freeze({
+    art: Object.freeze({ fachlich: "requirement", idee: "idea", mensch: "human", plan: "plan", task: "task" }),
+    zustand: Object.freeze({ laeuft: "running", abgebrochen: "aborted", wartet: "waiting", fertig: "done" }),
+    stufe: Object.freeze({ fachlich: "requirement", plan: "plan", issue: "issue" }),
+  }),
 });
+
+/**
+ * Der interne Schluessel zum getippten Wert der Option `option` (deutscher Optionsname aus
+ * `BEFEHLSNAMEN.werte`): ein englischer Wert wird abgebildet, jeder andere bleibt, wie er ist —
+ * auch ein deutscher, ein unbekannter oder ein fehlender Wert (Issue #1555, E5).
+ */
+export function internerWert(option, wert) {
+  const ebene = Object.hasOwn(BEFEHLSNAMEN.werte, option) ? BEFEHLSNAMEN.werte[option] : null;
+  if (ebene === null || typeof wert !== "string") return wert;
+  return Object.keys(ebene).find((intern) => ebene[intern] === wert) ?? wert;
+}
