@@ -196,7 +196,7 @@ test("die Allowlist fuer fremde Reviewer steht unter dem Abschnitt zur Kette", (
   assert.ok(abschnitt.includes("#### Allowlist für fremde Reviewer"));
 });
 
-// Dass night.mjs --help die Option --kette nennt, prueft ablauf-night-grundlagen-hilfe am
+// Dass night.mjs --help die Option --chain nennt, prueft ablauf-night-grundlagen-hilfe am
 // Programm (Issue #1235); hier steht nur die Seite der Doku.
 test("der dokumentierte Aufruf steht in der Doku: node .claude/kit/night.mjs --kette", () => {
   const abschnitt = dokuAbschnitt(ABSCHNITT);
@@ -216,7 +216,7 @@ test("der Nachtbetrieb-Block der Vorlage nennt beide Routing-Labels und den Beri
   const idx = VORLAGE.indexOf("## Nachtbetrieb");
   assert.ok(idx >= 0, "kein Nachtbetrieb-Abschnitt in der Vorlage");
   const abschnitt = VORLAGE.slice(idx).split(/\n## /)[0];
-  for (const anker of ["`kit:night`", "`kit:nightrun`", "`kit:durchziehen`", "--kette", "Nachtbericht", "`night.kette`", "nebeneinander",
+  for (const anker of ["`kit:night`", "`kit:nightrun`", "`kit:durchziehen`", "--chain", "Nachtbericht", "`night.kette`", "nebeneinander",
     // Seit Issue #898 nennt der Block auch die zweite Auftragsart.
     "`[Plan]`", "Plan-Auftrag"]) {
     assert.ok(abschnitt.includes(anker), `der Nachtbetrieb-Block der Vorlage nennt '${anker}' nicht`);
@@ -230,7 +230,7 @@ test("der Nachtbetrieb-Block der Vorlage nennt beide Routing-Labels und den Beri
 // ausliefert, prueft ablauf-install-flow.test.mjs ([installer-7]); dass der Blob in install.mjs
 // zur Quelle passt, `node tools/sync-blobs.mjs --check`.
 
-test("der /techplan-Skill nennt den Runner-Aufruf --kette", () => {
-  assert.match(SKILL, /node \.claude\/kit\/night\.mjs --kette/);
+test("der /techplan-Skill nennt den Runner-Aufruf --chain", () => {
+  assert.match(SKILL, /node \.claude\/kit\/night\.mjs --chain/);
   assert.doesNotMatch(SKILL, /--stufe plan/);
 });

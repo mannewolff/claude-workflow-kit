@@ -39,7 +39,7 @@ test("[night-1096] eine Vorflug-Session, die den Working Tree veraendert, haelt 
   todo: "Issue #1096: kein Modus des Runners erreicht den harten Stopp im Vorflug — toter Zweig, siehe Abschlussbericht",
 }, () => {
   const ergebnisse = [];
-  for (const modus of [["--kette"], ["--pruefen"]]) {
+  for (const modus of [["--chain"], ["--check"]]) {
     mitPruefProjekt((dir) => {
       const env = { ...umgebung(dir), NIGHT_VORFLUG_CMD: VORFLUG_MIT_REST };
       const res = run(dir, modus, env);
@@ -61,7 +61,7 @@ test("[night-1096] eine Vorflug-Session, die den Working Tree veraendert, haelt 
 test("[night-1096] Gegenprobe: in der Kette bleibt derselbe Rest ohne Stopp", () => {
   mitProjekt((dir) => {
     const env = { ...umgebung(dir), NIGHT_VORFLUG_CMD: VORFLUG_MIT_REST };
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
 
     assert.equal(res.status, 0, `die Kette haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
     assert.match(res.stdout, /Vorflug-Session startet/, "der Vorflug muss gelaufen sein");
@@ -81,7 +81,7 @@ test("[night-1096] meldet der Vorflug des Prueflaufs ein Problem, bekommt jeder 
     const b = fachplan(dir, "[Fachlich] Zweite", PRUEF_LABEL, false);
     const env = pruefUmgebung(dir);
 
-    const res = run(dir, ["--pruefen"], env);
+    const res = run(dir, ["--check"], env);
 
     assert.equal(res.status, 1, `ohne Reviewer muss der Prueflauf anhalten:\n${res.stdout}\n${res.stderr}`);
     assert.match(res.stderr, /Kein Reviewer konfiguriert/);
@@ -104,7 +104,7 @@ test("[night-1096] mehr Kandidaten als --max: die ueberzaehligen bleiben liegen,
     const dritte = fachplan(dir, "[Fachlich] Dritte", PRUEF_LABEL, false);
     const env = pruefUmgebung(dir);
 
-    const res = run(dir, ["--pruefen", "--max", "1"], env);
+    const res = run(dir, ["--check", "--max", "1"], env);
 
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.equal(sessions(env.logPfad).length, 1, "nur der eine Kandidat unter dem Deckel bekommt eine Session");
@@ -131,7 +131,7 @@ test("[night-1096] sind alle Kandidaten uebersprungen, nennt das Laufende sie un
     board(dir, "issue", "label", "add", klaeren, KLAEREN_LABEL);
     const env = pruefUmgebung(dir);
 
-    const res = run(dir, ["--pruefen"], env);
+    const res = run(dir, ["--check"], env);
 
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.equal(sessions(env.logPfad).length, 0, "eine uebersprungene Karte bekommt keine Session");

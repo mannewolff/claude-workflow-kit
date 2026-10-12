@@ -669,7 +669,7 @@
       "properties": {
         "kette": {
           "type": "object",
-          "description": "Budgets und Kennzeichen der Nacht-Kette (night.mjs --kette). Eine fachliche Anforderung oder ein Plandokument mit dem Label geht abends hinein; jede Zahl ist ein Abbruchgrund mit Grund im Bericht, kein Fehler des Prozesses.",
+          "description": "Budgets und Kennzeichen der Nacht-Kette (night.mjs --chain). Eine fachliche Anforderung oder ein Plandokument mit dem Label geht abends hinein; jede Zahl ist ein Abbruchgrund mit Grund im Bericht, kein Fehler des Prozesses.",
           "properties": {
             "label": {
               "type": "string",

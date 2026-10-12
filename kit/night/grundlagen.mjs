@@ -218,12 +218,10 @@ const WERT_FLAGS = {
   "--timeout-min": (args, wert) => { args.timeoutMin = Number(wert); },
 };
 
-// Schalter ohne Wert: Flag -> Feldname, immer auf true. `--chain` und `--check` sind die
-// englischen Namen von `--kette` und `--pruefen` (Issue #1462, Plan #1420 E18).
+// Schalter ohne Wert: Flag -> Feldname, immer auf true. Die Feldnamen `kette` und `pruefen`
+// bleiben intern; getippt werden seit Issue #1565 (Plan #1548 E8) nur `--chain` und `--check`.
 const SCHALTER_FLAGS = {
-  "--kette": "kette",
   "--chain": "kette",
-  "--pruefen": "pruefen",
   "--check": "pruefen",
   "--dry-run": "dryRun",
   "--yolo": "yolo",
@@ -266,6 +264,12 @@ function entfallenesFlag(a) {
   fail(t("entfallenesFlag", { flag: a, zusatz }));
 }
 
+// Die frueheren deutschen Namen (Issue #1565, Plan #1548 E8): Es gibt sie nicht mehr, auch
+// nicht fuer eine Uebergangszeit. Wie ein entfallenes Flag enden sie mit dem Namen, der jetzt
+// gilt, statt als unbekanntes Argument. Der deutsche Name des Waechters erreicht den Parser,
+// weil der Einstieg den Waechter nur noch an `--watcher` erkennt.
+const DEUTSCHE_FLAGS = { "--kette": "--chain", "--pruefen": "--check", "--waechter": "--watcher" };
+
 /**
  * Liest das Argument an Position `i` und gibt die Position des naechsten zurueck.
  *
@@ -277,6 +281,7 @@ function entfallenesFlag(a) {
 function liesArgument(args, argv, i) {
   const a = argv[i];
   if (ENTFALLENE_FLAGS.has(a)) entfallenesFlag(a);
+  if (Object.hasOwn(DEUTSCHE_FLAGS, a)) fail(t("altname", { name: a, englisch: DEUTSCHE_FLAGS[a] }));
   if (a === "--verbose") return liesVerbose(args, argv, i) + 1;
   if (Object.hasOwn(WERT_FLAGS, a)) {
     WERT_FLAGS[a](args, argv[i + 1]);

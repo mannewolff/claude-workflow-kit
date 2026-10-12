@@ -28,7 +28,7 @@ test("[night-21] nimmt der Tracker den Bericht nicht an, wartet er in der Hauptk
     boardFakeInstallieren(dir);
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
-    const erster = run(dir, ["--kette"], { ...env, BOARD_FAKE_ABLEHNEN: F });
+    const erster = run(dir, ["--chain"], { ...env, BOARD_FAKE_ABLEHNEN: F });
     assert.equal(erster.status, 0, erster.stderr);
     const einheit = stand(dir).einheiten.find((e) => e.id === F);
     assert.equal(einheit.ausgang, "fertig", einheit.grund);
@@ -61,7 +61,7 @@ test("[night-21] bleibt der Tracker tot, bleibt der Bericht liegen und der Lauf 
     boardFakeInstallieren(dir);
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
-    assert.equal(run(dir, ["--kette"], { ...env, BOARD_FAKE_ABLEHNEN: F }).status, 0);
+    assert.equal(run(dir, ["--chain"], { ...env, BOARD_FAKE_ABLEHNEN: F }).status, 0);
     const [datei] = wartende(dir);
     const res = run(dir, [], { ...env, BOARD_FAKE_ABLEHNEN: F });
     assert.equal(res.status, 0, res.stderr);
@@ -76,7 +76,7 @@ test("[night-21] im Dry-Run wird nichts nachgetragen", () => {
     boardFakeInstallieren(dir);
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
-    assert.equal(run(dir, ["--kette"], { ...env, BOARD_FAKE_ABLEHNEN: F }).status, 0);
+    assert.equal(run(dir, ["--chain"], { ...env, BOARD_FAKE_ABLEHNEN: F }).status, 0);
     const vorher = wartende(dir);
     assert.equal(vorher.length, 1);
     const res = run(dir, ["--dry-run"], env);
@@ -91,7 +91,7 @@ test("[night-21] scheitert der Vorflug vor der ersten Kette, bekommt jeder Kandi
     const a = fachplan(dir);
     const b = fachplan(dir, "[Fachlich] Ein zweites Anliegen");
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN } });
-    const res = run(dir, ["--kette"], { ...env, NIGHT_VORFLUG_CMD: VORFLUG_KAPUTT });
+    const res = run(dir, ["--chain"], { ...env, NIGHT_VORFLUG_CMD: VORFLUG_KAPUTT });
     assert.equal(res.status, 1, "der Lauf endet wie bisher mit hartem Stopp");
     for (const F of [a, b]) {
       const karte = board(dir, "issue", "get", F);

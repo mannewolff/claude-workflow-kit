@@ -112,7 +112,7 @@ test("ein Absatz nennt die Grenze der Unberuehrtheit beim Tracker local", () => 
   assert.match(absatz, /Ergebnis und kein Rest|kein Rest/, "der Absatz sagt nicht, dass die Kartenaenderung das Ergebnis und kein Rest ist");
 });
 
-// Dass night.mjs --help die Option --pruefen nennt, prueft ablauf-night-grundlagen-hilfe am
+// Dass night.mjs --help die Option --check nennt, prueft ablauf-night-grundlagen-hilfe am
 // Programm (Issue #1235); den Aufruf in der Vorlage prueft der Fall darunter.
 
 test("der Prueflauf-Block der Vorlage nennt Geste, Aufruf, Ausgaenge und das Verhaeltnis zur Kette", () => {
@@ -121,7 +121,7 @@ test("der Prueflauf-Block der Vorlage nennt Geste, Aufruf, Ausgaenge und das Ver
   const abschnitt = VORLAGE.slice(idx).split(/\n## /)[0];
   for (const anker of [
     `\`${PRUEFLAUF_BUDGET_DEFAULTS.label}\``,
-    "node .claude/kit/night.mjs --pruefen",
+    "node .claude/kit/night.mjs --check",
     "`pruefLauf`",
     `\`${REVIEW_FERTIG_LABEL}\``,
     `\`${KLAEREN_LABEL}\``,

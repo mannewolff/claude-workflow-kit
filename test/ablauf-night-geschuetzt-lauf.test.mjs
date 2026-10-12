@@ -142,7 +142,7 @@ test("Kette: die Umsetzungsstufe vermerkt die angehaltene Karte und das abhaengi
     const F = fachplanB(dir);
     const stufen = { ...ERZEUGEN, pakete: PAKETE_DREI, abdeckung: ABDECKUNG_SCHUETZT_ERSTES, umsetzung: UMSETZUNG_MIT_SPUR };
     const env = { ...umgebung(dir, { stufen }), KETTE_GESCHUETZT: PFAD };
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);
@@ -167,7 +167,7 @@ test("Kette: ein Paket, dessen einziger Verstoss I8 ist, bekommt keine Korrektur
     const F = fachplanB(dir);
     const stufen = { ...ERZEUGEN, pakete: PAKETE_DREI, form: ":", umsetzung: UMSETZUNG_MIT_SPUR };
     const env = { ...umgebung(dir, { stufen }), KETTE_GESCHUETZT_BEIM_SCHNEIDEN: PFAD };
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);
@@ -199,7 +199,7 @@ test("Kette: ein Paket, das allein an I7 rot ist, wird in genau einer Korrekturr
     const F = fachplanB(dir);
     const stufen = { ...ERZEUGEN, pakete: PAKET_OHNE_PFAD, form: PFAD_ERGAENZEN, umsetzung: UMSETZUNG_MIT_SPUR };
     const env = umgebung(dir, { stufen });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit } = umsetzung(dir, F);

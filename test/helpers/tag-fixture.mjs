@@ -97,7 +97,7 @@ class HarterStopp extends Error {}
  * Faehrt `laufePrueflauf` im selben Prozess.
  *
  * - `karten`: das Board zu Beginn (Reihenfolge = Board-Reihenfolge)
- * - `argv`: Argumente hinter `--pruefen`, etwa `["--max", "2"]`
+ * - `argv`: Argumente hinter `--check`, etwa `["--max", "2"]`
  * - `budget`: der Block `pruefLauf` der Config
  * - `sitzung(s)`: das Drehbuch je Session; `s` traegt `stufe`, `issue`, `prompt`, `cwd` und das
  *   Board der Attrappe. Rueckgabe `{ zeilen, kosten, ergebnis, ende }`, alles wahlweise; den
@@ -138,7 +138,7 @@ export async function pruefLaufImProzess({
   const cfg = { codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" }, pruefLauf: budget };
   mkdirSync(join(dir, ".claude"), { recursive: true });
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify(cfg, null, 2));
-  const args = parseArgs(["--pruefen", ...argv]);
+  const args = parseArgs(["--check", ...argv]);
   const stempel = "2026-10-06-020000";
 
   try {

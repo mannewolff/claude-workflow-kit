@@ -63,7 +63,7 @@ test("[night-70] das dritte Vorkommen im Worktree laesst die Idee am Board entst
   mitProjekt((dir) => {
     zweiInDerHauptkopie(dir);
     const F = fachplan(dir);
-    const res = run(dir, ["--kette"], kettenUmgebung(dir));
+    const res = run(dir, ["--chain"], kettenUmgebung(dir));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const titel = kartenTitel(dir);
@@ -83,7 +83,7 @@ test("[night-70] ohne Schwellentreffer entsteht keine Idee", () => {
   mitProjekt((dir) => {
     // Nur die eine Buchung der Kette — eins von drei noetigen Vorkommen.
     const F = fachplan(dir);
-    const res = run(dir, ["--kette"], kettenUmgebung(dir));
+    const res = run(dir, ["--chain"], kettenUmgebung(dir));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.equal(kartenTitel(dir).filter((t) => t.startsWith("[Idea]")).length, 0);
     assert.equal(vorschlaege(dir), null, "ohne Vorschlag keine Zustandsdatei");
@@ -98,7 +98,7 @@ test("[night-70] ein Fehlschlag des Vorschlags haelt den Abbau nicht auf", () =>
     // den Arbeitsbaum darum nicht unsauber, anders als ein geloeschtes Kit-Werkzeug.
     writeFileSync(join(dir, ".claude", "befunde-vorschlaege.json"), "{kein json", "utf-8");
     const F = fachplan(dir);
-    const res = run(dir, ["--kette"], kettenUmgebung(dir));
+    const res = run(dir, ["--chain"], kettenUmgebung(dir));
 
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.match(res.stdout, /Vorschlag fuer 'form' fehlgeschlagen/,
@@ -129,7 +129,7 @@ test("[night-70] jede zurueckgegebene Art bekommt ihren eigenen Aufruf", () => {
       review: `${REVIEW_MARKER}; ${buchungen}`,
       pakete: PAKETE_ANLEGEN,
     } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const titel = kartenTitel(dir);
@@ -160,7 +160,7 @@ test("[night-70] board bleibt unberuehrt: die Fixture-Karten sind weiter lesbar"
   mitProjekt((dir) => {
     zweiInDerHauptkopie(dir);
     const F = fachplan(dir);
-    const res = run(dir, ["--kette"], kettenUmgebung(dir));
+    const res = run(dir, ["--chain"], kettenUmgebung(dir));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     const geholt = board(dir, "issue", "get", F);
     assert.equal(geholt.title, "[Fachlich] Ein Anliegen");

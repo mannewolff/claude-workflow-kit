@@ -138,7 +138,7 @@ test("[night-63] auch die Vorflug-Session startet ohne das Auto-Memory des Mensc
     const env = umgebung(dir, { stufen: {} });
     // helfer/ ist im Fixture ignoriert — der Vorflug darf den Working Tree nicht veraendern.
     const envLog = join(dir, "helfer", "vorflug-env.log");
-    const res = ketteRun(dir, ["--kette", "--dry-run"], {
+    const res = ketteRun(dir, ["--chain", "--dry-run"], {
       ...env, NIGHT_VORFLUG_CMD: `${envProbe(envLog)}\n${VORFLUG_OK}`,
     });
     assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);

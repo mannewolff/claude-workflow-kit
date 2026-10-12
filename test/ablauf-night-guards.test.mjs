@@ -698,7 +698,7 @@ test("[night-23] auch die Nacht-Kette stoppt bei ungueltiger settings.json hart,
   try {
     writeFileSync(join(dir, ".claude", "settings.json"), "{kaputt", "utf-8");
     commitAlles(dir);
-    const res = run(dir, process.execPath, [NIGHT, "--kette"], { NIGHT_CLAUDE_CMD: SPUR_FAKE, NIGHT_VORFLUG_CMD: SPUR_FAKE, HOME: home, USERPROFILE: home });
+    const res = run(dir, process.execPath, [NIGHT, "--chain"], { NIGHT_CLAUDE_CMD: SPUR_FAKE, NIGHT_VORFLUG_CMD: SPUR_FAKE, HOME: home, USERPROFILE: home });
     pruefeHartenStopp(res, dir, join(dir, ".claude", "settings.json"));
   } finally {
     rmSync(dir, { recursive: true, force: true });

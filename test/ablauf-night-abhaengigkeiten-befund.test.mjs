@@ -195,7 +195,7 @@ test("[night-1062] in der Umsetzungsstufe der Kette bleibt der Eintrag unter nic
       pakete: PAKETE_MIT_ABHAENGIGKEIT,
       umsetzung: jePaket({ "0003": UMSETZUNG_HALT }, UMSETZUNG_ERFOLG),
     };
-    const res = run(dir, ["--kette"], umgebung(dir, { stufen }));
+    const res = run(dir, ["--chain"], umgebung(dir, { stufen }));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { stufe } = umsetzung(dir, F);

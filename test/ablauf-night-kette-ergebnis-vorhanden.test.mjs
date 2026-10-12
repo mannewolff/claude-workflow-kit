@@ -23,7 +23,7 @@ test("[night-ergebnis] Belegfall 2 (#868): Review am Zeitlimit, Marker im Plan â
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, review: `${REVIEW_MARKER}; sleep 60` } }); // # haengt â€” das Zeitlimit beendet die Session, der Test wartet nicht auf sie
-    const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "6000", NIGHT_TIMEOUT_STUFE: "review" });
+    const res = run(dir, ["--chain"], { ...env, NIGHT_TIMEOUT_MS: "6000", NIGHT_TIMEOUT_STUFE: "review" });
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const einheit = einheitVon(dir, F);

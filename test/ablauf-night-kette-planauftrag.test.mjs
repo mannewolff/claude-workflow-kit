@@ -26,7 +26,7 @@ test("[night-895] Variante B am Plan: hinter abdeckung laeuft die Stufe umsetzun
     const M = planauftrag(dir, F);
     durchziehen(dir, M);
     const env = umgebung(dir, { stufen: { ...STUFEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["pakete", "abdeckung", "umsetzung", "umsetzung"]);

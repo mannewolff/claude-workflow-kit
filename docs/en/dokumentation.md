@@ -934,7 +934,7 @@ Staffing and perspective of the three review levels: the functional concern, the
 
 Night mode. The night chain under kette, the list of allowed model names under modelle. Applies team-wide; a different value in workflow.config.local.json is ignored.
 
-- `night.chain` (German: `night.kette`) — Budgets and markers of the night chain (night.mjs --kette). A functional requirement or a plan document carrying the label goes in in the evening; every number is a reason to stop with the reason in the report, not a failure of the process.
+- `night.chain` (German: `night.kette`) — Budgets and markers of the night chain (night.mjs --chain). A functional requirement or a plan document carrying the label goes in in the evening; every number is a reason to stop with the reason in the report, not a failure of the process.
 - `night.chain.label` (German: `night.kette.label`) — The marker on the functional requirement or the plan document that starts the chain. Each time it is set it authorises exactly one chain; the start consumes it.
 - `night.chain.variantBLabel` (German: `night.kette.varianteBLabel`) — The marker that flags the marked card for the chain's implementation stage (variant B).
 - `night.chain.planMin` (German: `night.kette.planMin`) — Time budget of the plan stage in minutes, including correction rounds.

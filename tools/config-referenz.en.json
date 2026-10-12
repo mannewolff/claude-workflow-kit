@@ -332,8 +332,8 @@
     "text": "Night mode. The night chain under kette, the list of allowed model names under modelle. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "night.kette": {
-    "de": "c2b013e36955",
-    "text": "Budgets and markers of the night chain (night.mjs --kette). A functional requirement or a plan document carrying the label goes in in the evening; every number is a reason to stop with the reason in the report, not a failure of the process."
+    "de": "68bf89a60c7e",
+    "text": "Budgets and markers of the night chain (night.mjs --chain). A functional requirement or a plan document carrying the label goes in in the evening; every number is a reason to stop with the reason in the report, not a failure of the process."
   },
   "night.kette.label": {
     "de": "d60b0aab0b5d",

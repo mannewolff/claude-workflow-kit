@@ -15,7 +15,7 @@ test("[night-19] reisst eine Session das Zeitbudget der Stufe, endet die Kette a
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: "sleep 5; " + PLAN_ANLEGEN } }); // # haengt — das Zeitbudget von 300 ms beendet die Session, der Test wartet die 5 s nicht ab
-    const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "300" });
+    const res = run(dir, ["--chain"], { ...env, NIGHT_TIMEOUT_MS: "300" });
     assert.equal(res.status, 0, res.stderr);
     const lauf = stand(dir);
     const einheit = lauf.einheiten.find((e) => e.id === F);
@@ -39,7 +39,7 @@ test("[night-19] ein Fehlstart der Session bekommt einen zweiten Versuch, scheit
   mitProjekt((dir) => {
     fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: "exit 3" } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 1, `${res.stdout}\n${res.stderr}`);
     assert.equal(sessions(env.logPfad).filter((s) => s.stufe === "plan").length, 2, "der Fehlstart wurde nicht genau einmal wiederholt");
     assert.match(res.stdout, /Umgebungsfehler: Sitzungsstart zu #\d+ gescheitert \(Exit 3\) — 2\. Versuch/);

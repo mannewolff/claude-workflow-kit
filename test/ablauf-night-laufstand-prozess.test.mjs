@@ -272,13 +272,13 @@ test("Rueckfall beim Start: ein verwaister Lauf ohne lebenden Runner wird wie ve
   }
 });
 
-test("--kette --dry-run traegt nichts nach und veraendert weder Label noch Kommentar", () => {
+test("--chain --dry-run traegt nichts nach und veraendert weder Label noch Kommentar", () => {
   const dir = setupProjekt();
   try {
     const a = karte(dir, "Erste", ["kit:nightrun"]);
     const vorher = board(dir, "issue", "get", a);
     const pfad = altesJournal(dir, [[a, "abgebrochen", "abgebrochen, SIGINT"]]);
-    const res = run(dir, process.execPath, [NIGHT, "--kette", "--dry-run"], { NIGHT_CLAUDE_CMD: "true" });
+    const res = run(dir, process.execPath, [NIGHT, "--chain", "--dry-run"], { NIGHT_CLAUDE_CMD: "true" });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
     assert.equal(zeilen(pfad).filter((z) => z.art === "quittung").length, 0);
     assert.deepEqual(board(dir, "issue", "get", a).labels, vorher.labels);

@@ -20,7 +20,7 @@ test("[night-33] die Stufenfolge: Variante A endet nach abdeckung, unveraendert"
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["plan", "review", "pakete", "abdeckung"]);
     assert.equal(hatLabel(board(dir, "issue", "get", F).labels, "kit:night"), false, "das Kettenlabel bleibt beim Start verbraucht");
@@ -32,7 +32,7 @@ test("[night-33] eine Karte mit dem Variante-B-Label fuehrt die Stufe umsetzung,
     const F = fachplan(dir);
     durchziehen(dir, F);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     // Was die Stufe umsetzung im Einzelnen tut, prueft ablauf-night-kette-umsetzung.test.mjs;
     // hier steht nur die Weiche: Unter B kommt sie hinter abdeckung dazu.
@@ -49,7 +49,7 @@ test("[night-33] der Dry-Run nennt je Kandidat die Variante", () => {
     const a = fachplan(dir, "[Fachlich] Variante A");
     const b = fachplan(dir, "[Fachlich] Variante B");
     durchziehen(dir, b);
-    const res = run(dir, ["--kette", "--dry-run", "--max", "2"], umgebung(dir));
+    const res = run(dir, ["--chain", "--dry-run", "--max", "2"], umgebung(dir));
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, new RegExp(`#${a} \\[Fachlich\\] Variante A -> Kette 1 \\(Variante A\\)`));
     assert.match(res.stdout, new RegExp(`#${b} \\[Fachlich\\] Variante B -> Kette 2 \\(Variante B\\)`));
@@ -61,15 +61,15 @@ test("[night-33] --help nennt kit:carry-through und beide Varianten", () => {
   const res = spawnSync(process.execPath, [NIGHT, "--help"], { encoding: "utf-8" });
   assert.equal(res.status, 0);
   assert.match(res.stdout, /kit:carry-through/);
-  assert.match(res.stdout, /Variante A/);
-  assert.match(res.stdout, /Variante B/);
+  assert.match(res.stdout, /variant A/);
+  assert.match(res.stdout, /variant B/);
 });
 
 test("[night-33] die Schlusszeile Morgen-Ritual nennt beide Varianten und das Label aus night.kette.varianteBLabel", () => {
   mitProjekt((dir) => {
     fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     const zeile = res.stdout.split("\n").find((z) => z.includes("Morgen-Ritual:"));
     assert.ok(zeile, "keine Morgen-Ritual-Zeile im Protokoll");

@@ -30,7 +30,7 @@ test("[night-21] nach einem fertigen Lauf traegt der Fachplan genau einen Nachtb
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
-    const res = run(dir, ["--kette"], { ...env, KETTE_RESULT_TEXT: RESULT_TEXT });
+    const res = run(dir, ["--chain"], { ...env, KETTE_RESULT_TEXT: RESULT_TEXT });
     assert.equal(res.status, 0, res.stderr);
     const lauf = stand(dir);
     const einheit = lauf.einheiten.find((e) => e.id === F);
@@ -64,7 +64,7 @@ test("[night-21] nach angehalten steht die Stopp-Frage im Bericht, hinter dem Ha
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_HALT } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, res.stderr);
     const einheit = stand(dir).einheiten.find((e) => e.id === F);
     assert.equal(einheit.ausgang, "angehalten");
@@ -82,7 +82,7 @@ test("[night-21] nach abgebrochen steht der Grund im Bericht; ohne Plan gibt es 
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: {} });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, res.stderr);
     const einheit = stand(dir).einheiten.find((e) => e.id === F);
     assert.equal(einheit.ausgang, "abgebrochen");
@@ -103,7 +103,7 @@ test("[night-21] eine Stopp-Frage im Plan haelt vor dem Review an — der Berich
       stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER },
       plan: planBody({ offeneFragen: "- Ist der Endpunkt ein Vertrag nach aussen?" }),
     });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, res.stderr);
     const text = fachplanText(dir, F);
     assert.match(text, /### Offene Stopp-Frage\n\n- Ist der Endpunkt ein Vertrag nach aussen\?/);
@@ -124,7 +124,7 @@ test("[night-1391] ein festgefahrenes Paket steht unter ### Umsetzung in der Lis
     const env = umgebung(dir, {
       stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, umsetzung: jePaket({ "0003": UMSETZUNG_FESTGEFAHREN }, UMSETZUNG_ERFOLG) },
     });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const einheit = stand(dir).einheiten.find((e) => e.id === F);
@@ -146,7 +146,7 @@ test("[night-1391] ohne Bremsung steht unter ### Umsetzung festgefahren: keine",
     const F = fachplan(dir);
     durchziehen(dir, F);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.match(fachplanText(dir, F), /- angehalten: keine\n- festgefahren: keine\n- nicht begonnen: keine\n/);
   });

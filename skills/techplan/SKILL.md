@@ -10,7 +10,7 @@ Schritt 2 des 9-Schritt-Prozesses: Die KI erstellt einen Plan. Der Plan wird zur
 ## Im Nachtbetrieb
 Erkennungsmerkmal ist **gesetztes `KIT_AGENT_MODEL`** und ausdrücklich kein zweites Signal — dieselbe Bedingung wie im Abschnitt „Im Nachtbetrieb" von `/issue-review`. Der Nacht-Runner stellt dem Auftrag zwar einen Satz voran, der die Betriebsart benennt. **Maßgeblich bleibt allein `KIT_AGENT_MODEL`; der Hinweis im Prompt wiederholt es nur** — sein Fehlen ist keine Entwarnung.
 
-Gestartet wird der Skill nachts vom Nacht-Runner mit `node .claude/kit/night.mjs --kette`, je Fachplan mit dem Label `kit:night` eine frische Session mit `/techplan #N` gegen das `[Fachlich]`-Issue — erste Stufe der Nacht-Kette, die Prüfung des Plans und der Schnitt in Arbeitspakete folgen in derselben Kette.
+Gestartet wird der Skill nachts vom Nacht-Runner mit `node .claude/kit/night.mjs --chain`, je Fachplan mit dem Label `kit:night` eine frische Session mit `/techplan #N` gegen das `[Fachlich]`-Issue — erste Stufe der Nacht-Kette, die Prüfung des Plans und der Schnitt in Arbeitspakete folgen in derselben Kette.
 
 **Nachts wird nicht gefragt — in keiner Lage.** Das gilt für die Bahn (Schritt 0), für jede Unklarheit in der Anforderung (Schritt 1) und für die Diskussion des Plans (Schritt 4). Eine Session, die auf eine Antwort wartet, ist vom Runner nicht von einem Fehlschlag zu unterscheiden. Diese Regel gilt für **jeden unbeaufsichtigten Lauf**, nicht nur für diesen Runner — auch dann, wenn ein anderer Runner den Skill startet.
 

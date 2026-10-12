@@ -201,7 +201,7 @@ class HarterStopp extends Error {}
  * Faehrt `laufeKette` im selben Prozess.
  *
  * - `karten`: das Board zu Beginn (Reihenfolge = Board-Reihenfolge)
- * - `argv`: Argumente hinter `--kette`, etwa `["--dry-run"]` oder `["--max", "2"]`
+ * - `argv`: Argumente hinter `--chain`, etwa `["--dry-run"]` oder `["--max", "2"]`
  * - `kette`, `config`: der Block `night.kette` und weitere Felder der Config
  * - `sitzung(s)`: das Drehbuch je Session; `s` traegt `stufe`, `issue`, `prompt`, `cwd`, `modell`, `planReviewer`, `laufId` und das
  *   Board der Attrappe. Rueckgabe `{ zeilen, kosten, ergebnis, ohneResult, ende }`, alles
@@ -248,7 +248,7 @@ export async function ketteImProzess({
   };
   mkdirSync(join(dir, ".claude"), { recursive: true });
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify(cfg, null, 2));
-  const args = parseArgs(["--kette", ...argv]);
+  const args = parseArgs(["--chain", ...argv]);
   const stempel = "2026-10-06-020000";
 
   try {

@@ -43,7 +43,7 @@ test("[night-69] der Abbau im finally am Kettenende holt die Buchungen der Revie
       review: `${REVIEW_MARKER}; ${BUCHUNG_IM_WORKTREE}`,
       pakete: PAKETE_ANLEGEN,
     } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const zeilen = hauptZeilen(dir);
@@ -65,7 +65,7 @@ test("[night-69] der Abbau vor der Umsetzungsstufe holt die Buchungen zurueck â€
       pakete: `${PAKETE_ANLEGEN}; ${BUCHUNG_IM_WORKTREE}`,
       umsetzung: UMSETZUNG_ERFOLG,
     } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     // Genau eine Zeile: Der Abbau vor der Umsetzungsstufe hat sie geholt, und das

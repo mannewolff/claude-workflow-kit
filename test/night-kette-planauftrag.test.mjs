@@ -99,7 +99,7 @@ test("[night-895] das Durchziehen-Label an der fachlichen Anforderung bleibt wir
   for (const id of einheit.stufen.pakete.ids) assert.ok(backlog.has(id), `Paket #${id} liegt nicht in Backlog`);
 });
 
-test("[night-895] --kette --dry-run nennt den Plan-Auftrag mit fachlicher Quelle und Variante", async () => {
+test("[night-895] --chain --dry-run nennt den Plan-Auftrag mit fachlicher Quelle und Variante", async () => {
   const karten = wurzelUndPlan();
   const vorher = structuredClone(karten);
   const r = await ketteImProzess({ karten, argv: ["--dry-run"], sitzung: GLATT });

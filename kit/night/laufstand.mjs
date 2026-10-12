@@ -704,7 +704,7 @@ export function verwaisteLaeufeAbschliessen(repoRoot = process.cwd()) {
   return abgeschlossen;
 }
 
-/** Der Modus `--waechter <lauf>`: prueft im Takt, bis der Lauf beendet oder verstummt ist. */
+/** Der Modus `--watcher <lauf>`: prueft im Takt, bis der Lauf beendet oder verstummt ist. */
 export async function waechterLaufen(lauf, repoRoot = process.cwd()) {
   if (!lauf) return;
   const configPath = join(repoRoot, ".claude", "workflow.config.json");
@@ -739,7 +739,7 @@ export function waechterStartOptionen(cwd) {
 export function waechterStarten() {
   if (!ZUSTAND.LAUF_STEMPEL || process.env.KIT_NIGHT_WAECHTER === "0") return;
   try {
-    const kind = abh.spawn(process.execPath, [EINSTIEG, "--waechter", ZUSTAND.LAUF_STEMPEL], waechterStartOptionen(process.cwd()));
+    const kind = abh.spawn(process.execPath, [EINSTIEG, "--watcher", ZUSTAND.LAUF_STEMPEL], waechterStartOptionen(process.cwd()));
     kind.on("error", (err) => log(t("waechterFehler", { fehler: err.message })));
     kind.unref();
     WAECHTER_PID = kind.pid ?? null;

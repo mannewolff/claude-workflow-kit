@@ -50,7 +50,7 @@ test("[night-862] ein belegter Lock laesst die Kette unvollstaendig enden, nicht
     const F = fachplanB(dir);
     const pid = lockBelegen(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);
@@ -77,7 +77,7 @@ test("[night-862] der Nachtbericht nennt Auslassung, Sperre und den Stand der Pa
     const F = fachplanB(dir);
     const pid = lockBelegen(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const text = fachplanText(dir, F);
@@ -96,7 +96,7 @@ test("[night-862] eine unsaubere Hauptkopie endet ebenso unvollstaendig", () => 
     const F = fachplanB(dir);
     const schmutz = `echo rest > ${JSON.stringify(dir)}/rest.md`;
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, abdeckung: schmutz, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);
@@ -113,7 +113,7 @@ test("[night-862] eine gelungene Umsetzung bleibt fertig", () => {
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);
@@ -131,7 +131,7 @@ test("[night-862] eine Kette ohne bestellte Umsetzung bleibt vom belegten Lock u
     const F = fachplan(dir);
     lockBelegen(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const einheit = stand(dir).einheiten.find((e) => e.id === F);
@@ -147,7 +147,7 @@ test("[#1290] eine ausgelassene Umsetzung nennt im Abschnitt Ursprungsdokumente 
     const F = fachplanB(dir);
     lockBelegen(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);

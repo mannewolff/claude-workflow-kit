@@ -9,7 +9,7 @@
 // darum vor dem Vorflug jede Kandidatenkarte auf `laeuft`.
 //
 // Seit Issue #1233 laufen die Ketten unten im selben Prozess (`ketteImProzess`, Plan #1199,
-// E6). Belegfall 5 — zwei Laeufe nebeneinander — und der Prueflauf `--pruefen` brauchen den
+// E6). Belegfall 5 — zwei Laeufe nebeneinander — und der Prueflauf `--check` brauchen den
 // Einstieg und stehen in `ablauf-night-kette-protokoll-schritt.test.mjs`.
 
 import { test } from "node:test";

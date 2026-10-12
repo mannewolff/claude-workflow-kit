@@ -51,7 +51,7 @@ const GLATT = { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGE
 test("[night-61] ein Kettenlauf meldet nach dem Start und danach nach jeder erreichten Stufe genau einmal", () => {
   mitCapture((dir, capture) => {
     const F = fachplan(dir);
-    const res = run(dir, ["--kette"], meldeUmgebung(dir, capture, GLATT));
+    const res = run(dir, ["--chain"], meldeUmgebung(dir, capture, GLATT));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.equal(stand(dir).einheiten.find((e) => e.id === F).ausgang, "fertig");
 
@@ -68,7 +68,7 @@ test("[night-61] unter Variante B folgen den vier Stufen die Meldungen der einze
   mitCapture((dir, capture) => {
     const F = fachplan(dir);
     durchziehen(dir, F);
-    const res = run(dir, ["--kette"], meldeUmgebung(dir, capture, { ...GLATT, umsetzung: UMSETZUNG_ERFOLG }));
+    const res = run(dir, ["--chain"], meldeUmgebung(dir, capture, { ...GLATT, umsetzung: UMSETZUNG_ERFOLG }));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.equal(stand(dir).einheiten.find((e) => e.id === F).ausgang, "fertig");
 
@@ -81,7 +81,7 @@ test("[night-61] unter Variante B folgen den vier Stufen die Meldungen der einze
 test("[night-61] bricht eine Stufe ab, wird nach dieser Stufe gemeldet und danach folgt die Abschlussmeldung", () => {
   mitCapture((dir, capture) => {
     const F = fachplan(dir);
-    const res = run(dir, ["--kette"], meldeUmgebung(dir, capture, { plan: PLAN_ANLEGEN, review: REVIEW_HALT }));
+    const res = run(dir, ["--chain"], meldeUmgebung(dir, capture, { plan: PLAN_ANLEGEN, review: REVIEW_HALT }));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.equal(stand(dir).einheiten.find((e) => e.id === F).ausgang, "angehalten");
 
@@ -95,7 +95,7 @@ test("[night-61] auch eine abgebrochene erste Stufe meldet, bevor die Kette ende
   mitCapture((dir, capture) => {
     const F = fachplan(dir);
     // Die Plan-Session legt keinen Plan an: die Stufe endet abgebrochen.
-    const res = run(dir, ["--kette"], meldeUmgebung(dir, capture, {}));
+    const res = run(dir, ["--chain"], meldeUmgebung(dir, capture, {}));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.equal(stand(dir).einheiten.find((e) => e.id === F).ausgang, "abgebrochen");
 
@@ -128,7 +128,7 @@ test("[night-61] kein Weg durch stufenDerKette fuehrt ueber zwei Stufen ohne Mel
 test("[night-61] scheitert die Meldung nach einer Stufe, laeuft die Kette weiter und der Grund steht einmal im Protokoll", () => {
   mitCapture((dir, capture) => {
     const F = fachplan(dir);
-    const res = run(dir, ["--kette"], meldeUmgebung(dir, capture, GLATT, { KETTE_MELDE_FEHLER: "1" }));
+    const res = run(dir, ["--chain"], meldeUmgebung(dir, capture, GLATT, { KETTE_MELDE_FEHLER: "1" }));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.equal(stand(dir).einheiten.find((e) => e.id === F).ausgang, "fertig");
     assert.equal(stand(dir).abschluss, "regulaer");
@@ -141,7 +141,7 @@ test("[night-61] scheitert die Meldung nach einer Stufe, laeuft die Kette weiter
 test("[night-61] ohne toolbox entfaellt die Meldung nach einer Stufe mit derselben einen Protokollzeile", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
-    const res = run(dir, ["--kette"], umgebung(dir, { stufen: GLATT }));
+    const res = run(dir, ["--chain"], umgebung(dir, { stufen: GLATT }));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.equal(stand(dir).einheiten.find((e) => e.id === F).ausgang, "fertig");
     const treffer = res.stdout.match(/Einlieferung entfaellt: issueTracker 'local'/g) ?? [];

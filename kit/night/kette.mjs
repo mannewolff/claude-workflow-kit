@@ -3016,7 +3016,7 @@ async function ketteFahren(args) {
 
   // Der Reviewer-Vorflug bleibt (A16): Die Pruefer-Session braucht die Reviewer in ihrer
   // eigenen Sandbox, und die Vorflug-Session ist die einzige Probe dafuer.
-  await anbindung.fuehreVorflug(args, kandidaten, "--kette --dry-run", (grund) => ketteNichtGestartet(kandidaten, grund));
+  await anbindung.fuehreVorflug(args, kandidaten, "--chain --dry-run", (grund) => ketteNichtGestartet(kandidaten, grund));
 
   if (kandidaten.length === 0) {
     if (uebersprungen.length > 0) {

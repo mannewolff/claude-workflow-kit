@@ -18,7 +18,7 @@
  * Aufruf im Projekt-Root:  node .claude/kit/night.mjs [Flags]
  *
  * Flags:
- *   --kette            Nacht-Kette (Plan #638): je [Fachlich]-Issue mit dem Label aus
+ *   --chain            Nacht-Kette (Plan #638): je [Fachlich]-Issue mit dem Label aus
  *                      night.kette.label eine Kette aus /techplan, Formpruefung,
  *                      /issue-review — im eigenen Worktree, mit Zeit- und Kostenbudget.
  *                      --max zaehlt hier Ketten (Default 3). Laeuft neben einer
@@ -94,12 +94,12 @@
  * per /issues in Arbeitspakete zerlegt werden, #276).
  *
  * Seit Stufe 2 des Prozess-Umbaus (Plan #638) kennt diese Datei zwei Betriebsarten: die
- * Implementierung (ohne Flag) und die Nacht-Kette (--kette). Die Flags --review,
+ * Implementierung (ohne Flag) und die Nacht-Kette (--chain). Die Flags --review,
  * --erzeuge, --stufe, --review-label und --erzeuge-label bleiben dem Parser bekannt und
  * enden mit einer Meldung, die das sagt — ein "unbekanntes Argument" liesse den
  * Menschen raten, ob er sich vertippt hat.
  *
- * Nacht-Kette (--kette, Plan #638, Issue #643): Ein [Fachlich]-Issue mit dem Label aus
+ * Nacht-Kette (--chain, Plan #638, Issue #643): Ein [Fachlich]-Issue mit dem Label aus
  * night.kette.label ist der Auftrag; der Start entfernt das Label (jedes Setzen
  * autorisiert genau eine Kette). Je Kette ein eigener Worktree unter dem
  * Temp-Verzeichnis, darin nacheinander /techplan #F (Stufe plan), issue check-form mit
@@ -173,86 +173,89 @@ const KIT_VERSION = "4.2.4";
 // Vertrag bleibt (E14): die Fehlerklassen von fail(), die Werte des Ergebnisstands und die
 // Feldnamen (`ok`, `fehler`), der Ausgang `harterStopp`.
 //
+// Die Hilfe gibt es einmal, englisch, in jedem Projekt (Issue #1565, Plan #1548 E7); die
+// uebrigen Meldungen stehen zweisprachig in TEXTE.
+//
 // SYNC: Die Vorgaben fuer --model und --label stehen als DEFAULT_MODEL und DEFAULT_LABEL in
 // kit/night/grundlagen.mjs. Der Text steht hier, weil --help antwortet, bevor ein Teil
-// geladen ist; test/night-grundlagen-argumente.test.mjs haelt beide Stellen gleich, der
-// Test der englischen Texte die englische Hilfe.
-export const TEXTE = Object.freeze({
-  de: Object.freeze({
-    hilfe: `Nacht-Runner: arbeitet die Ready-Spalte unbeaufsichtigt ab —
-pro Issue eine frische Headless-Session (/implement-next #N), sequenziell.
-Erfolg wird am Board gemessen (Issue in In review). Gepusht wird nie.
+// geladen ist; test/night-grundlagen-argumente.test.mjs haelt beide Stellen gleich.
+const HILFE = `Night runner: works through the Ready column unattended —
+one fresh headless session per issue (/implement-next #N), one after another.
+Success is measured on the board (issue in In review). It never pushes.
 
-Aufruf (im Projekt-Root):
-  node .claude/kit/night.mjs [Flags]
+Usage (in the project root):
+  node .claude/kit/night.mjs [flags]
 
 Flags:
-  --kette            Nacht-Kette statt Implementierung: je [Requirement]-Issue mit dem
-                     Label aus night.kette.label (Default kit:night) eine Kette aus
-                     /techplan, Formpruefung, /issue-review, /issues und Abdeckung im
-                     eigenen Worktree, mit Nachtbericht am Fachplan. Ein zweites Label
-                     aus night.kette.varianteBLabel (Default kit:carry-through) waehlt
-                     Variante B statt Variante A; ohne dieses Label laeuft Variante A.
-                     Ein Ziel-Label bestimmt, wo die Kette endet: goal:plan,
-                     goal:packages, goal:implementation oder goal:push-prepared.
-                     planreview:1 oder planreview:2 an der Anforderung legt fest, wie
-                     viele Modelle den Plan pruefen. Mit goal:push-prepared folgt nach
-                     allen Ketten einmal die Stufe vorbereitung: /push-main
-                     vorbereiten, ohne Push, Ergebnis in .claude/push-vorbereitung.json
-                     und als Nachtbericht.
-                     --max zaehlt Ketten (Default 3); --label gilt hier nicht, das
-                     Label kommt aus der Config. Budgets in night.kette.
-  --pruefen          Prueflauf am Tag statt Implementierung: je [Requirement]-Issue mit dem
-                     Label aus pruefLauf.label (Default kit:check) eine Session
-                     /issue-review in einem Worktree je Lauf, nacheinander. Der Lauf
-                     bewegt keine Karte und setzt kein Label ausser dem, was die Pruefung
-                     selbst hinterlaesst; begrenzt wird er ueber seine Budgets in
-                     pruefLauf, nicht ueber eine Zahl — --max ist erlaubt, aber nicht
-                     noetig. --label gilt hier nicht, das Label kommt aus der Config.
-                     Eine Vorschau hat er nicht: /issue-review --dry-run zeigt Dokumente
-                     und Reviewer.
-  --max <N>          maximale Session-Starts pro Lauf (Default 10)
-  --model <id>       Modell der Nacht-Sessions (sonst night.modell, sonst claude-opus-5)
-  --timeout-min <N>  Zeitlimit pro Runde in Minuten (Default 60)
-  --dry-run          zeigt Reihenfolge + Abhaengigkeits-Bewertung, startet nichts
-  --yolo             --dangerously-skip-permissions statt auto mode (Warnung!)
-  --no-checks-ok     Start ohne Pruefung der Paketstufe erlauben
-  --label <name>     nur Ready-Issues mit diesem Label verarbeiten
-                     (Default kit:nightrun); --label none schaltet den
-                     Filter ab (altes Verhalten: striktes erstes Ready-Issue)
-  --verbose [no|yes] Live-Verlaufsprotokoll: Tool-Aufrufe und Text-Snippets
-                     der laufenden Session mitloggen (via stream-json). An,
-                     ohne dass es ein Flag braucht; --verbose no schaltet es
-                     ab, --verbose yes ausdruecklich an, --verbose ohne Wert
-                     ist der Vorgabewert und damit wirkungslos
-  --version          Kit-Stand dieser Datei
-  --help, -h         diese Uebersicht
+  --chain            Night chain instead of implementation: for each
+                     [Requirement] issue with the label from night.kette.label (default
+                     kit:night) a chain of /techplan, form check, /issue-review, /issues
+                     and coverage in its own worktree, with a night report on the
+                     requirement. A second label
+                     from night.kette.varianteBLabel (default kit:carry-through) selects
+                     variant B instead of variant A; without that label variant A runs.
+                     A goal label decides where the chain ends: goal:plan, goal:packages,
+                     goal:implementation or goal:push-prepared. planreview:1 or
+                     planreview:2 on the requirement sets how many models review the
+                     plan. With goal:push-prepared the stage preparation follows once after
+                     all chains: prepare /push-main, without a push, result in
+                     .claude/push-vorbereitung.json and as a night report.
+                     --max counts chains (default 3); --label does not apply here, the
+                     label comes from the config. Budgets in night.kette.
+  --check            Check run by day instead of implementation: for each
+                     [Requirement] issue with the label from pruefLauf.label (default
+                     kit:check) one /issue-review session in a worktree per run, one
+                     after another. The run
+                     moves no card and sets no label beyond what the review itself
+                     leaves behind; it is limited by its budgets in pruefLauf, not by a
+                     number — --max is allowed but not needed. --label does not apply
+                     here, the label comes from the config. It has no preview:
+                     /issue-review --dry-run shows documents and reviewers.
+  --max <N>          maximum session starts per run (default 10)
+  --model <id>       model of the night sessions (otherwise night.modell, otherwise claude-opus-5)
+  --timeout-min <N>  time limit per round in minutes (default 60)
+  --dry-run          shows order + dependency assessment, starts nothing
+  --yolo             --dangerously-skip-permissions instead of auto mode (warning!)
+  --no-checks-ok     allow a start without checks at package level
+  --label <name>     process only Ready issues with this label
+                     (default kit:nightrun); --label none switches the
+                     filter off (old behaviour: strictly the first Ready issue)
+  --verbose [no|yes] live log: tool calls and text snippets of the running
+                     session are logged (via stream-json). On without a
+                     flag; --verbose no switches it off, --verbose yes
+                     switches it on explicitly, --verbose without a value
+                     is the default and therefore has no effect
+  --version          kit version of this file
+  --help, -h         this overview
 
-Salvage (immer an): Endet eine Runde ohne Board-Ergebnis, aber mit Aenderungen im
-Working Tree, prueft der Runner selbst nach — mit "checks.mjs run --finish <id>
---fresh", also demselben Lauf, dessen Nachweis das Commit-Gate liest. Sind sie gruen, bekommt
-genau eine Salvage-Session pro Issue die Chance, den Zwischenstand gegen das Issue
-zu pruefen, zu committen und erst bei leerem "git status --porcelain" nach In review
-zu verschieben (Zeitlimit 10 min). Das Kommando dazu steht im Prompt der Session und
-laesst dieselben Laufzeit-Dateien aus, die auch der Rest-Guard nicht als Rest wertet
-— sonst urteilte die Session strenger als der Runner. Rote Checks fuehren zum harten Stopp, und ebenso
-jeder Salvage, der nicht mit sauberem Baum und der Karte in In review endet — das
-Protokoll nennt dann einen von drei Endzustaenden: "SALVAGE-VERSUCH gescheitert"
-(kein Commit, Board nicht bewegt), "SALVAGE UNVOLLSTAENDIG" (Commit, Board nicht
-bewegt) oder "SALVAGE WIDERSPRUECHLICH" (In review, aber Arbeit blieb liegen).
+Salvage (always on): If a round ends without a board result but with changes in the
+working tree, the runner verifies on its own — with "checks.mjs run --finish <id>
+--fresh", the same run whose evidence the commit gate reads. If they are green, exactly
+one salvage session per issue gets the chance to check the intermediate state against
+the issue, to commit, and only with an empty "git status --porcelain" to move it to
+In review (time limit 10 min). The command for this is in the session's prompt and
+leaves out the same runtime files the leftover guard does not count as leftovers
+— otherwise the session would judge more strictly than the runner. Red checks lead to a
+hard stop, and so does every salvage that does not end with a clean tree and the card in
+In review — the log then names one of three end states: "SALVAGE ATTEMPT failed"
+(no commit, board not moved), "SALVAGE INCOMPLETE" (commit, board not moved) or
+"SALVAGE CONTRADICTORY" (In review, but work was left behind).
 
-Ist in der Config "formatFixCommand" gesetzt (z.B. "mvn spotless:apply" oder
-"npx prettier --write ."), laeuft es bei roten Checks genau einmal, danach werden
-die Checks genau einmal wiederholt: ein reiner Formatverstoss kippt so keinen Lauf
-mehr. Bleiben die Checks rot, war das Format nicht die Ursache -> harter Stopp.
-Ohne das Feld aendert sich nichts.
+If "formatFixCommand" is set in the config (e.g. "mvn spotless:apply" or
+"npx prettier --write ."), it runs exactly once on red checks, then the checks are
+repeated exactly once: a pure format violation no longer topples a run this way. If
+the checks stay red, the format was not the cause -> hard stop.
+Without the field nothing changes.
 
-Beispiele:
+Examples:
   caffeinate -i node .claude/kit/night.mjs
   TBX_TOKEN="$(cat .claude/tbx-night.token)" caffeinate -i node .claude/kit/night.mjs
 
-Details: Kapitel "Nachtbetrieb" in der Kit-Dokumentation.
-`,
+Details: chapter "Night operation" in the kit documentation.
+`;
+
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
     dokumenteFehlt: "board/dokumente.mjs fehlt neben night.mjs — der Nacht-Runner braucht den Board-Adapter.",
     boardFehltPraefix: "board.mjs liegt nicht neben night.mjs ({pfad}) — das Praefix {praefix} ist nicht erkennbar.",
     boardFehltAbhaengigkeiten: "board.mjs liegt nicht neben night.mjs ({pfad}) — die Herkunft der Abhaengigkeiten ist nicht lesbar.",
@@ -336,80 +339,6 @@ Details: Kapitel "Nachtbetrieb" in der Kit-Dokumentation.
     morgenRitual: "Morgen-Ritual: /kit-review -> Test -> push main. Protokoll: {pfad}",
   }),
   en: Object.freeze({
-    hilfe: `Night runner: works through the Ready column unattended —
-one fresh headless session per issue (/implement-next #N), one after another.
-Success is measured on the board (issue in In review). It never pushes.
-
-Usage (in the project root):
-  node .claude/kit/night.mjs [flags]
-
-Flags:
-  --chain            Night chain instead of implementation (also --kette): for each
-                     [Requirement] issue with the label from night.kette.label (default
-                     kit:night) a chain of /techplan, form check, /issue-review, /issues
-                     and coverage in its own worktree, with a night report on the
-                     requirement. A second label
-                     from night.kette.varianteBLabel (default kit:carry-through) selects
-                     variant B instead of variant A; without that label variant A runs.
-                     A goal label decides where the chain ends: goal:plan, goal:packages,
-                     goal:implementation or goal:push-prepared. planreview:1 or
-                     planreview:2 on the requirement sets how many models review the
-                     plan. With goal:push-prepared the stage preparation follows once after
-                     all chains: prepare /push-main, without a push, result in
-                     .claude/push-vorbereitung.json and as a night report.
-                     --max counts chains (default 3); --label does not apply here, the
-                     label comes from the config. Budgets in night.kette.
-  --check            Check run by day instead of implementation (also --pruefen): for each
-                     [Requirement] issue with the label from pruefLauf.label (default
-                     kit:check) one /issue-review session in a worktree per run, one
-                     after another. The run
-                     moves no card and sets no label beyond what the review itself
-                     leaves behind; it is limited by its budgets in pruefLauf, not by a
-                     number — --max is allowed but not needed. --label does not apply
-                     here, the label comes from the config. It has no preview:
-                     /issue-review --dry-run shows documents and reviewers.
-  --max <N>          maximum session starts per run (default 10)
-  --model <id>       model of the night sessions (otherwise night.modell, otherwise claude-opus-5)
-  --timeout-min <N>  time limit per round in minutes (default 60)
-  --dry-run          shows order + dependency assessment, starts nothing
-  --yolo             --dangerously-skip-permissions instead of auto mode (warning!)
-  --no-checks-ok     allow a start without checks at package level
-  --label <name>     process only Ready issues with this label
-                     (default kit:nightrun); --label none switches the
-                     filter off (old behaviour: strictly the first Ready issue)
-  --verbose [no|yes] live log: tool calls and text snippets of the running
-                     session are logged (via stream-json). On without a
-                     flag; --verbose no switches it off, --verbose yes
-                     switches it on explicitly, --verbose without a value
-                     is the default and therefore has no effect
-  --version          kit version of this file
-  --help, -h         this overview
-
-Salvage (always on): If a round ends without a board result but with changes in the
-working tree, the runner verifies on its own — with "checks.mjs run --finish <id>
---fresh", the same run whose evidence the commit gate reads. If they are green, exactly
-one salvage session per issue gets the chance to check the intermediate state against
-the issue, to commit, and only with an empty "git status --porcelain" to move it to
-In review (time limit 10 min). The command for this is in the session's prompt and
-leaves out the same runtime files the leftover guard does not count as leftovers
-— otherwise the session would judge more strictly than the runner. Red checks lead to a
-hard stop, and so does every salvage that does not end with a clean tree and the card in
-In review — the log then names one of three end states: "SALVAGE ATTEMPT failed"
-(no commit, board not moved), "SALVAGE INCOMPLETE" (commit, board not moved) or
-"SALVAGE CONTRADICTORY" (In review, but work was left behind).
-
-If "formatFixCommand" is set in the config (e.g. "mvn spotless:apply" or
-"npx prettier --write ."), it runs exactly once on red checks, then the checks are
-repeated exactly once: a pure format violation no longer topples a run this way. If
-the checks stay red, the format was not the cause -> hard stop.
-Without the field nothing changes.
-
-Examples:
-  caffeinate -i node .claude/kit/night.mjs
-  TBX_TOKEN="$(cat .claude/tbx-night.token)" caffeinate -i node .claude/kit/night.mjs
-
-Details: chapter "Night operation" in the kit documentation.
-`,
     dokumenteFehlt: "board/dokumente.mjs is missing next to night.mjs — the night runner needs the board adapter.",
     boardFehltPraefix: "board.mjs is not next to night.mjs ({pfad}) — the prefix {praefix} cannot be recognised.",
     boardFehltAbhaengigkeiten: "board.mjs is not next to night.mjs ({pfad}) — the origin of the dependencies cannot be read.",
@@ -1521,14 +1450,14 @@ export function laufeDryRun(args, ctx) {
 
 async function main() {
   // Der Waechter eines Laufs (Issue #1085) ist kein Lauf: keine Handler, kein Lauf-Kopf.
-  if (process.argv[2] === "--waechter") {
+  if (process.argv[2] === "--watcher") {
     await waechterLaufen(process.argv[3]);
     process.exit(0);
   }
   const args = parseArgs(process.argv.slice(2));
   // Der feste Kit-Stand (Issue #1102, A2): Hat der Lauf einen, arbeitet ein Kind aus ihm, und
   // dieser Prozess reicht nur noch Signale weiter und endet mit dessen Exit-Code. `--version`
-  // und `--help` enden schon in parseArgs, `--dry-run` und `--waechter` brauchen keinen Stand.
+  // und `--help` enden schon in parseArgs, `--dry-run` und `--watcher` brauchen keinen Stand.
   // Vor den Abbruch-Handlern: Ein Signal soll hier das Kind erreichen, nicht diesen Prozess beenden.
   const kindExit = await kitStandSchritt(args, process.argv.slice(2));
   if (kindExit !== null) process.exit(kindExit);
@@ -1553,12 +1482,12 @@ async function main() {
 
   // Vier einander ausschliessende Programme. Kette, Prueflauf und Dry-Run beenden den Prozess
   // selbst; nur die Implementierung kehrt zurueck und laesst main() den Exit-Code bilden.
-  // Die Kette steht vor dem Dry-Run: --kette --dry-run ist ein Trockenlauf DER KETTE.
+  // Die Kette steht vor dem Dry-Run: --chain --dry-run ist ein Trockenlauf DER KETTE.
   if (args.kette) {
     await laufeKette(args);
     return;
   }
-  // Der Prueflauf ebenso vor dem Dry-Run (Plan #904, E17): `--pruefen --dry-run` weist
+  // Der Prueflauf ebenso vor dem Dry-Run (Plan #904, E17): `--check --dry-run` weist
   // `pruefeArgs` ab, und dieser Zweig haelt den Aufruf auch dann bei seinem Lauf, wenn dort
   // je einmal eine Vorschau entstehen sollte.
   if (args.pruefen) {
@@ -1603,7 +1532,7 @@ function alsCliGestartet() {
 function auskunftOhneTeile(argv) {
   const flag = argv.find((a) => a === "--help" || a === "-h" || a === "--version");
   if (flag === undefined) return;
-  process.stdout.write(flag === "--version" ? `night.mjs (claude-workflow-kit v${KIT_VERSION})\n` : t("hilfe"));
+  process.stdout.write(flag === "--version" ? `night.mjs (claude-workflow-kit v${KIT_VERSION})\n` : HILFE);
   process.exit(0);
 }
 

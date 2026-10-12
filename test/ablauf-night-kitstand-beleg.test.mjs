@@ -144,7 +144,7 @@ test("[kitstand-7] Fall 2: ein Prueflauf liest den Skill des Pushs, auch wenn de
       RESULT,
     ].join("\n");
 
-    const res = runner(dir, ["--pruefen"], {
+    const res = runner(dir, ["--check"], {
       NIGHT_CLAUDE_CMD: fake, NIGHT_VORFLUG_CMD: VORFLUG_OK, BELEG_SPUR: spur, BELEG_HAUPT: dir,
     });
     assert.equal(res.status, 0, `der Prueflauf haette durchlaufen muessen:\n${res.stdout}\n${res.stderr}`);

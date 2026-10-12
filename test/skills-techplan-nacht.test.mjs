@@ -61,7 +61,7 @@ test("[skills-2] der Abschnitt `## Im Nachtbetrieb` regelt die Betriebsart", () 
     "die Regel fehlt woertlich — ohne sie improvisiert jede Session neu");
   assert.match(nacht, /KIT_AGENT_MODEL/,
     "das Erkennungsmerkmal der Betriebsart fehlt");
-  assert.match(nacht, /night\.mjs --kette/,
+  assert.match(nacht, /night\.mjs --chain/,
     "wer den Skill nachts startet, steht nicht da");
   assert.match(nacht, /jeden unbeaufsichtigten Lauf/,
     "die Regel haengt sonst an diesem einen Runner");

@@ -1,6 +1,6 @@
 // Die Sperre der Nacht-Kette gegen ungepruefte Fachplaene (Fachplan #702, Plan #716; Issue #718).
 //
-// `--kette` nimmt eine fachliche Anforderung nur auf, wenn sie neben dem Kettenlabel
+// `--chain` nimmt eine fachliche Anforderung nur auf, wenn sie neben dem Kettenlabel
 // auch `review:fertig` traegt. Die Sperre sitzt in `kettenAusschluss` hinter
 // `kit:klaeren` und wirkt dadurch in Lauf und Vorschau gleichermassen: Beide gehen
 // durch dieselbe `waehleKettenKandidaten`.

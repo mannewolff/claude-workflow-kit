@@ -274,9 +274,13 @@ function nachtArgs(argv) {
   }
 }
 
-test("night.mjs: --chain gleicht --kette, --check gleicht --pruefen", () => {
-  assert.deepEqual(nachtArgs(["--chain"]), nachtArgs(["--kette"]));
-  assert.deepEqual(nachtArgs(["--check"]), nachtArgs(["--pruefen"]));
+// Seit Issue #1565 (Plan #1548 E8) gelten nur --chain und --check; die deutschen Namen enden
+// mit dem Hinweis auf den englischen.
+test("night.mjs: --chain und --check setzen die Betriebsart, --kette und --pruefen werden abgewiesen", () => {
+  assert.equal(nachtArgs(["--chain"]).kette, true);
+  assert.equal(nachtArgs(["--check"]).pruefen, true);
+  assert.throws(() => nachtArgs(["--kette"]), /unbekannt: '--kette' — englischer Name: '--chain'/);
+  assert.throws(() => nachtArgs(["--pruefen"]), /unbekannt: '--pruefen' — englischer Name: '--check'/);
 });
 
 // --- worktree.mjs ----------------------------------------------------------------

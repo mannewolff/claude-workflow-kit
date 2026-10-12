@@ -276,7 +276,7 @@ test("[E15] haelt die Kette wegen der Umgebung an, zeigen die Pakete des Auftrag
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, abdeckung: 'echo "Failed to start" >&2; exit 1' } });
-    const res = ketteRun(dir, ["--kette"], env);
+    const res = ketteRun(dir, ["--chain"], env);
     assert.equal(res.status, 1, `${res.stdout}\n${res.stderr}`);
 
     assert.equal(sessions(env.logPfad).filter((s) => s.stufe === "abdeckung").length, 2, "der Sitzungsstart wurde nicht genau einmal wiederholt");

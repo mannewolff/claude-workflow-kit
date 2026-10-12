@@ -624,7 +624,7 @@ test("[night-57] eine wartende Stufen-Session endet abgebrochen, mit Grund, Verm
     // Ohne Plan: Ein entstandener Plan ist das Ergebnis der Stufe und hat Vorrang vor dem
     // Schlusstext (Issue #1207).
     const env = kette.umgebung(dir, { stufen: { plan: ":" } });
-    const res = kette.run(dir, ["--kette"], { ...env, KETTE_RESULT_TEXT: KETTE_WARTE_TEXT });
+    const res = kette.run(dir, ["--chain"], { ...env, KETTE_RESULT_TEXT: KETTE_WARTE_TEXT });
     assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
 
     const e = kettenEinheit(dir, F);
@@ -654,7 +654,7 @@ test("[night-57] der Vermerk einer wartenden Review-Stufe haengt am Plan, nicht 
     const env = kette.umgebung(dir, {
       stufen: { plan: kette.PLAN_ANLEGEN, review: `KETTE_RESULT_TEXT="${KETTE_WARTE_TEXT}"` },
     });
-    const res = kette.run(dir, ["--kette"], env);
+    const res = kette.run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
 
     const e = kettenEinheit(dir, F);
@@ -681,7 +681,7 @@ test("[night-57] dieselbe Stufen-Session ohne wartenden Schlusstext endet fertig
     const env = kette.umgebung(dir, {
       stufen: { plan: kette.PLAN_ANLEGEN, review: kette.REVIEW_MARKER, pakete: kette.PAKETE_ANLEGEN },
     });
-    const res = kette.run(dir, ["--kette"], { ...env, KETTE_RESULT_TEXT: KETTE_FERTIG_TEXT });
+    const res = kette.run(dir, ["--chain"], { ...env, KETTE_RESULT_TEXT: KETTE_FERTIG_TEXT });
     assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
 
     const e = kettenEinheit(dir, F);
@@ -710,7 +710,7 @@ test("[night-57] die Abdeckungs-Stufe bleibt fertig und behaelt ihren Befund, au
         abdeckung: `KETTE_RESULT_TEXT="${befund}"`,
       },
     });
-    const res = kette.run(dir, ["--kette"], env);
+    const res = kette.run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
 
     const e = kettenEinheit(dir, F);
@@ -736,7 +736,7 @@ test("[night-58] der Zusatz der Stufen-Sessions nennt die Regel, der Prompt der 
     const env = kette.umgebung(dir, {
       stufen: { plan: String.raw`printf "%s" "$NIGHT_PROMPT" > "$KETTE_LOG.prompt"` },
     });
-    assert.equal(kette.run(dir, ["--kette"], env).status, 0);
+    assert.equal(kette.run(dir, ["--chain"], env).status, 0);
     const prompt = readFileSync(`${env.logPfad}.prompt`, "utf-8");
     assert.match(prompt, /^\/techplan #0001/, `der Auftrag fehlt im Prompt:\n${prompt}`);
     assert.ok(prompt.includes(KETTE_ZUSATZ), `der Zusatz fehlt am Prompt der Stufe:\n${prompt}`);

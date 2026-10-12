@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { waehleKettenKandidaten, korrekturPrompt, REVIEW_FERTIG_LABEL } from "../kit/night/kette.mjs";
 import { ketteImProzess, fachplanKarte, jeStufe, planAnlegen, GLATT, KETTE_LABEL } from "./helpers/kette-fixture.mjs";
 
-test("[night-19] --kette --dry-run nennt Kandidaten, Uebersprungene und Budget und legt weder Worktree noch Ergebnisstand an", async () => {
+test("[night-19] --chain --dry-run nennt Kandidaten, Uebersprungene und Budget und legt weder Worktree noch Ergebnisstand an", async () => {
   const offen = fachplanKarte("2", { titel: "[Fachlich] Mit offener Frage", labels: [KETTE_LABEL, REVIEW_FERTIG_LABEL, "kit:klaeren"] });
   const r = await ketteImProzess({ karten: [fachplanKarte("1"), offen], argv: ["--dry-run"], sitzung: jeStufe({ plan: planAnlegen() }) });
   assert.equal(r.code, 0, r.ausgabe);

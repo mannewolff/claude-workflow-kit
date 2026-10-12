@@ -150,14 +150,14 @@ A message is recognised by its content; whoever wants to be unambiguous writes "
 ---
 
 ## The check run (optional)
-<!-- de: 82cdca93d24c -->
+<!-- de: f25c5688aa7c -->
 
 The check run (`node .claude/kit/night.mjs --check`) has several requirements checked one after another without anyone watching — by day, beside the working human and beside a night chain. The gesture is the label `kit:check` (field `checkRun.label`) on the `[Requirement]` card; the run consumes it right before its session, every setting authorises exactly one check. Per card one session `/issue-review #N` runs, all in one worktree per run. Three outcomes: `geprueft` (checked: requirement review marker in the body and `review:done` on the card), waiting decision (`kit:clarify` and the question as a comment; the text of the requirement stays unchanged) and incomplete (the comment `## Check incomplete` with reason and step reached, because the check is paid for and its result never reached the body). A marked card without the `[Requirement]` prefix and one with `kit:clarify` is skipped with a reason and keeps its marker; the run never removes `kit:clarify` — only a human may do that. It moves no card, changes nothing about the check itself, answers no question that belongs to a human and leaves no change in the project. Budgets — minutes per check, costs per run — stand in the root block `checkRun` of `workflow.config.json`, not under `night`: the run belongs to the day. Relation to the night chain: it creates the chain's precondition by leaving the card checked; the chain label remains the gesture of the human. Details: chapter "The check run" in the kit documentation. **The run works with a fixed kit revision.** Like the night, every unattended run binds itself at the start to the commit `origin/<mainBranch>` points to — the last push, read without `git fetch`. Fixed with it are the tools including the check before every commit, the skills and the rule texts; what a package of the same night changes in them takes effect only after `push main`. What is checked remains the configuration of the project and its tests; they come from the state of the respective package. The revision stands as the line `Kit-Revision: <commit> (origin/<mainBranch> of <time>)` in the run report (`kitStand` in `.claude/night-run-*.json`), in the night report and on every comment of the run. After a run in the main copy, its installed copy stays at that revision until `node tools/sync-blobs.mjs` brings it to the working copy; until then `sync-blobs --check` names it as outdated.
 
 ---
 
 ## Night mode (optional)
-<!-- de: 5dd6639c991e -->
+<!-- de: 5e61dca2aa63 -->
 
 The night runner (`node .claude/kit/night.mjs`) works through the Ready column unattended: per issue with the routing label `kit:nightrun` a fresh headless session with `/implement-next #N`. Success is measured on the board (issue in In review); failures wander into the backlog with a comment, with an unclean working tree the run stops hard. At night there are commits, never pushes — review, test and `push main` happen in the morning through the human.
 

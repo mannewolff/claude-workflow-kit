@@ -904,7 +904,7 @@ Besetzung und Blickwinkel der drei Prüfstufen: das fachliche Anliegen, der Plan
 
 Der Nachtbetrieb. Die Nacht-Kette unter kette, die Liste erlaubter Modellnamen unter modelle. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
 
-- `night.kette` — Budgets und Kennzeichen der Nacht-Kette (night.mjs --kette). Eine fachliche Anforderung oder ein Plandokument mit dem Label geht abends hinein; jede Zahl ist ein Abbruchgrund mit Grund im Bericht, kein Fehler des Prozesses.
+- `night.kette` — Budgets und Kennzeichen der Nacht-Kette (night.mjs --chain). Eine fachliche Anforderung oder ein Plandokument mit dem Label geht abends hinein; jede Zahl ist ein Abbruchgrund mit Grund im Bericht, kein Fehler des Prozesses.
 - `night.kette.label` — Das Kennzeichen an der fachlichen Anforderung oder am Plandokument, das die Kette startet. Jedes Setzen autorisiert genau eine Kette; der Start verbraucht es.
 - `night.kette.varianteBLabel` — Das Kennzeichen, das die gekennzeichnete Karte für die Umsetzungsstufe der Kette (Variante B) kennzeichnet.
 - `night.kette.planMin` — Zeitbudget der Stufe Plan in Minuten, einschliesslich Korrekturrunden.

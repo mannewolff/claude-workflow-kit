@@ -73,7 +73,7 @@ test("der Waechter startet abgekoppelt und ohne Ausgabe", () => {
   assert.deepEqual(waechterStartOptionen("/repo"), { cwd: "/repo", detached: true, stdio: "ignore" });
 });
 
-test("waechterStarten startet den Einstieg mit --waechter und merkt die PID im Journal", async () => {
+test("waechterStarten startet den Einstieg mit --watcher und merkt die PID im Journal", async () => {
   const { spawn, starts } = startAttrappe(4242);
   await mitProjekt(({ dir }) => {
     ZUSTAND.LAUF_STEMPEL = LAUF;
@@ -82,7 +82,7 @@ test("waechterStarten startet den Einstieg mit --waechter und merkt die PID im J
     const { befehl, args, optionen } = starts[0];
     assert.equal(befehl, process.execPath);
     assert.match(args[0], /[\\/]kit[\\/]night\.mjs$/, "der Waechter ist ein Modus des Einstiegs, nicht des Teils");
-    assert.deepEqual(args.slice(1), ["--waechter", LAUF]);
+    assert.deepEqual(args.slice(1), ["--watcher", LAUF]);
     assert.equal(optionen.detached, true);
     const zeile = journalLesen(join(dir, LAUF_ORDNER, `${LAUF}.jsonl`)).lauf.at(-1);
     assert.equal(zeile.waechterPid, 4242);

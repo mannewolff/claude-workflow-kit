@@ -27,6 +27,7 @@ import { tmpdir } from "node:os";
 import { TEXTE as EINSTIEG_TEXTE } from "../kit/night.mjs";
 import {
   TEXTE as GRUNDLAGEN_TEXTE, grundOhneArbeit, resteText, sicherheitsnetzGrund, boardFehlertext,
+  DEFAULT_MODEL, DEFAULT_LABEL,
 } from "../kit/night/grundlagen.mjs";
 import {
   TEXTE as LAUFSTAND_TEXTE, nightStandLaden, standSetzen, anhaltenVermerken, LAUF_KONTEXT,
@@ -98,29 +99,27 @@ test("[1484] die Texttabelle des Einstiegs hat in beiden Sprachen dieselben Schl
   assert.ok(Object.keys(EINSTIEG_TEXTE.de).length >= 40, "die Tabelle traegt die Meldungen des Einstiegs");
 });
 
-test("[1484] englisch: --help antwortet englisch und nennt dieselben Vorgaben und Flags", () => {
-  // Die deutsche Hilfe haelt test/night-grundlagen-argumente.test.mjs an DEFAULT_MODEL und
-  // DEFAULT_LABEL; die englische nennt dieselben Werte.
-  const DEFAULT_MODEL = /sonst night\.modell, sonst (\S+)\)/.exec(EINSTIEG_TEXTE.de.hilfe)[1];
-  const DEFAULT_LABEL = /\(Default (\S+)\); --label none/.exec(EINSTIEG_TEXTE.de.hilfe)[1];
-  const res = hilfeIn({ language: "en" });
-  assert.equal(res.status, 0, res.stderr);
-  assert.match(res.stdout, /^Night runner:/);
-  assert.ok(res.stdout.includes(`otherwise night.modell, otherwise ${DEFAULT_MODEL})`), "die Hilfe nennt ein anderes Vorgabemodell");
-  assert.ok(res.stdout.includes(`(default ${DEFAULT_LABEL}); --label none`), "die Hilfe nennt ein anderes Vorgabelabel");
-  for (const flag of ["--chain", "--check", "--max", "--model", "--timeout-min", "--dry-run", "--yolo", "--no-checks-ok",
-    "--label", "--verbose", "--version", "--help"]) {
-    assert.match(res.stdout, new RegExp(`^[ \\t]+${flag}[\\s,]`, "m"), `die Hilfe nennt ${flag} nicht als Option`);
-  }
-  for (const deutsch of ["Aufruf", "Pruefung", "Beispiele", "unbeaufsichtigt", "Ketten"]) {
-    assert.ok(!res.stdout.includes(deutsch), `die englische Hilfe enthaelt "${deutsch}"`);
-  }
-});
+// Seit Issue #1565 (Plan #1548 E7) gibt es genau einen Hilfetext, englisch, in jedem Projekt.
+for (const [art, config] of [["englisch", { language: "en" }], ["ohne Spracheinstellung", { issueTracker: "local" }]]) {
+  test(`[1565] ${art}: --help antwortet englisch und nennt dieselben Vorgaben und Flags`, () => {
+    const res = hilfeIn(config);
+    assert.equal(res.status, 0, res.stderr);
+    assert.match(res.stdout, /^Night runner:/);
+    assert.ok(res.stdout.includes(`otherwise night.modell, otherwise ${DEFAULT_MODEL})`), "die Hilfe nennt ein anderes Vorgabemodell");
+    assert.ok(res.stdout.includes(`(default ${DEFAULT_LABEL}); --label none`), "die Hilfe nennt ein anderes Vorgabelabel");
+    for (const flag of ["--chain", "--check", "--max", "--model", "--timeout-min", "--dry-run", "--yolo", "--no-checks-ok",
+      "--label", "--verbose", "--version", "--help"]) {
+      assert.match(res.stdout, new RegExp(`^[ \\t]+${flag}[\\s,]`, "m"), `die Hilfe nennt ${flag} nicht als Option`);
+    }
+    for (const deutsch of ["Aufruf", "Pruefung", "Beispiele", "unbeaufsichtigt", "Ketten", "--kette", "--pruefen"]) {
+      assert.ok(!res.stdout.includes(deutsch), `die englische Hilfe enthaelt "${deutsch}"`);
+    }
+  });
+}
 
-test("[1484] ohne Spracheinstellung bleibt die Hilfe deutsch", () => {
-  const res = hilfeIn({ issueTracker: "local" });
-  assert.equal(res.status, 0, res.stderr);
-  assert.match(res.stdout, /^Nacht-Runner:/);
+test("[1565] die Texttabelle des Einstiegs traegt keine Hilfe", () => {
+  assert.equal(Object.hasOwn(EINSTIEG_TEXTE.de, "hilfe"), false);
+  assert.equal(Object.hasOwn(EINSTIEG_TEXTE.en, "hilfe"), false);
 });
 
 test("[1484] englisch: Start, Dry-Run und Ende stehen in der Form der kanban-kit-Vorlage", () => {

@@ -11,7 +11,7 @@ user-invocable: true
 Step 2 of the 9-step process: the AI creates a plan. The plan is put up for discussion, not for implementation.
 
 ## In night mode
-<!-- de: c9d46b17fff5 -->
+<!-- de: 87653da1babf -->
 
 The distinguishing mark is **a set `KIT_AGENT_MODEL`** and explicitly no second signal — the same condition as in the section "In night mode" of `/issue-review`. The night runner does put a sentence in front of the assignment that names the mode of operation. **Only `KIT_AGENT_MODEL` counts; the hint in the prompt merely repeats it** — its absence is no all-clear.
 
