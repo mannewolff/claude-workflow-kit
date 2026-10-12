@@ -678,7 +678,7 @@
             },
             "varianteBLabel": {
               "type": "string",
-              "default": "kit:durchziehen",
+              "default": "kit:carry-through",
               "description": "Das Kennzeichen, das die gekennzeichnete Karte für die Umsetzungsstufe der Kette (Variante B) kennzeichnet."
             },
             "planMin": {
@@ -1034,7 +1034,7 @@
       "properties": {
         "label": {
           "type": "string",
-          "default": "kit:pruefen",
+          "default": "kit:check",
           "description": "Das Kennzeichen an der fachlichen Anforderung, die der Lauf prüfen lässt. Jedes Setzen autorisiert genau eine Prüfung; der Lauf nimmt es unmittelbar vor der Session dieser Karte ab."
         },
         "pruefungMin": {

@@ -679,7 +679,7 @@ test("pruefLauf: der Block steht in der Wurzel und ist geschlossen", () => {
 test("pruefLauf: die drei Vorgabewerte stehen am Feld", () => {
   const felder = schema.properties.pruefLauf.properties;
   assert.equal(felder.label.type, "string", "label ist keine Zeichenkette");
-  assert.equal(felder.label.default, "kit:pruefen", "die Vorgabe 'kit:pruefen' fehlt am Label");
+  assert.equal(felder.label.default, "kit:check", "die Vorgabe 'kit:check' fehlt am Label");
   assert.equal(felder.pruefungMin.type, "number", "pruefungMin ist keine Zahl");
   assert.equal(felder.pruefungMin.default, 25, "die Vorgabe 25 fehlt an pruefungMin");
   assert.equal(felder.pruefungMin.exclusiveMinimum, 0, "die Untergrenze fehlt an pruefungMin");

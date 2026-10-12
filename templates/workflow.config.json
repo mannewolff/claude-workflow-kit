@@ -43,7 +43,7 @@
   "night": {
     "kette": {
       "label": "kit:night",
-      "varianteBLabel": "kit:durchziehen",
+      "varianteBLabel": "kit:carry-through",
       "planMin": 20,
       "paketeMin": 15,
       "reviewMin": 15,
@@ -61,7 +61,7 @@
     ]
   },
   "pruefLauf": {
-    "label": "kit:pruefen",
+    "label": "kit:check",
     "pruefungMin": 25,
     "kostenUsd": 25
   },

@@ -138,8 +138,8 @@ Nutzung:
       Laufstand einer Karte in einem Zug (Issue #1083): setzt das Label des Zustands
       und nimmt die beiden anderen ab (fertig: alle drei), dazu genau ein Kommentar
       '## Laufstand', bei jedem Aufruf ersetzt. Die Labelnamen kommen aus
-      night.stand.labels der Config (Vorgaben lauf:laeuft, lauf:abgebrochen,
-      lauf:wartet). Kommentare werden streng gelesen; nicht lesbar -> Exit 1, nichts
+      night.stand.labels der Config (Vorgaben run:running, run:aborted,
+      run:waiting). Kommentare werden streng gelesen; nicht lesbar -> Exit 1, nichts
       geschrieben. Ausgabe: { ok, id, zustand, kommentar: angelegt|ersetzt|unveraendert }.
   node board.mjs issue auftrag <id> [--spalte ready|in_progress] [--json]
       Alles, was eine Umsetzung vor dem Beginn braucht, in einem Aufruf (Issue #1023):
