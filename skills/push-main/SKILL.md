@@ -626,7 +626,7 @@ dort. Ein Wackler hält vor dem Commit an und wird erfragt wie dort.
 2. Den Schutz aussetzen:
 
    ```bash
-   node .claude/kit/board.mjs code schutz aussetzen --in <pfad>
+   node .claude/kit/board.mjs code protection suspend --in <pfad>
    ```
 
    Das Kommando setzt das Ruleset des Hauptzweigs nur aus, wenn die Prüf-Zusammenfassung
@@ -642,12 +642,12 @@ dort. Ein Wackler hält vor dem Commit an und wird erfragt wie dort.
    Push ausging:
 
    ```bash
-   node .claude/kit/board.mjs code schutz wiederherstellen
+   node .claude/kit/board.mjs code protection restore
    ```
 
    Scheitert `wiederherstellen`, ist der Lauf ein Fehlschlag, auch wenn der Push gelang
    (E10): Der Skill meldet es so und nennt das Kommando zum Wiederholen
-   (`node .claude/kit/board.mjs code schutz wiederherstellen`). Bis es gelingt, steht der
+   (`node .claude/kit/board.mjs code protection restore`). Bis es gelingt, steht der
    Hauptzweig ungeschützt, und `code schutz status` nennt das unter `fehlt`.
 
 Danach Schritt 8 wie oben, auch nach einem Halt.
@@ -657,12 +657,12 @@ lokalen Weg und dazu, dass der Stand über den Notfallweg kam. In die Abschlussm
 die Ausgabe von:
 
 ```bash
-node .claude/kit/board.mjs code schutz status
+node .claude/kit/board.mjs code protection status
 ```
 
 Nennt sie unter `ungeprueft` den eben gepushten Commit, sagt die Meldung dazu, dass der
 Build-Dienst ihn nachträglich prüfen kann, sobald er wieder läuft, mit dem Kommando
-`node .claude/kit/board.mjs code schutz nachpruefen`. Bis dahin bleibt der Stand als
+`node .claude/kit/board.mjs code protection verify`. Bis dahin bleibt der Stand als
 Ausnahme sichtbar.
 
 ## Modus `vorbereiten` (unbeaufsichtigt)

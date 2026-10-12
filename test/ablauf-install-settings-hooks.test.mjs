@@ -74,7 +74,7 @@ function kommandos(settings, event) {
 
 /** Das eine Kommando des Melders an einem Ereignis. */
 function melderKommando(settings, event) {
-  const treffer = kommandos(settings, event).filter((c) => c.includes("sitzung melden"));
+  const treffer = kommandos(settings, event).filter((c) => c.includes("session report"));
   assert.equal(treffer.length, 1, `${event}: genau ein Eintrag des Melders erwartet, gefunden ${treffer.length}`);
   return treffer[0];
 }
@@ -131,6 +131,23 @@ test("[installer-9] ein fremder hooks-Eintrag bleibt stehen, unserer kommt daneb
   });
 });
 
+// Issue #1556: Eingetragen werden die englischen Namen. Ein bestehendes Projekt traegt noch
+// die deutschen; daneben darf kein zweiter Eintrag kommen, sonst meldete der Melder doppelt.
+test("[installer-1556] die deutschen Eintraege eines bestehenden Projekts gelten als vorhanden", () => {
+  const deutsch = {
+    hooks: {
+      SessionEnd: [{ hooks: [{ type: "command", command: "node .claude/kit/board.mjs sitzung melden --complete" }] }],
+      Stop: [{ hooks: [{ type: "command", command: "node .claude/kit/board.mjs sitzung melden" }] }],
+      PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook bash-pruefen" }] }],
+    },
+  };
+  mitFixture("install-hooks-deutsch-", deutsch, (dir) => {
+    const res = installiere(dir);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.deepEqual(liesSettings(dir).hooks, deutsch.hooks, "neben dem deutschen Eintrag kam ein zweiter");
+  });
+});
+
 test("[installer-9] zweimal installieren ergibt dieselbe Datei wie einmal", () => {
   mitFixture("install-hooks-zweimal-", { env: { A: "1" } }, (dir) => {
     assert.equal(installiere(dir).status, 0);
@@ -156,7 +173,7 @@ test("[installer-9] eine settings.json, die kein Objekt ist, wird nicht angefass
     assert.equal(readFileSync(settingsPfad(dir), "utf-8"), kaputt,
       "was wir nicht lesen koennen, koennen wir auch nicht erhalten — also nicht schreiben");
     assert.match(res.stdout, /settings\.json/, "der Installer sagt, dass er es gelassen hat");
-    assert.match(res.stdout, /sitzung melden/, "und nennt die Eintraege zum Nachtragen von Hand");
+    assert.match(res.stdout, /session report/, "und nennt die Eintraege zum Nachtragen von Hand");
   });
 });
 
@@ -177,7 +194,7 @@ test("[installer-9] bei globalem Install entsteht keine settings.json im Projekt
 /** Die PreToolUse-Gruppen mit Matcher Bash, die unseren Pruef-Hook tragen. */
 function bashPruefGruppen(settings) {
   return (settings.hooks?.PreToolUse ?? []).filter((g) => g.matcher === "Bash"
-    && (g.hooks ?? []).some((h) => h.command?.includes("board.mjs hook bash-pruefen")));
+    && (g.hooks ?? []).some((h) => h.command?.includes("board.mjs hook bash-check")));
 }
 
 test("[installer-995] der Installer traegt den Bash-Pruef-Hook als PreToolUse mit Matcher Bash ein", () => {
@@ -186,7 +203,7 @@ test("[installer-995] der Installer traegt den Bash-Pruef-Hook als PreToolUse mi
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     const gruppen = bashPruefGruppen(liesSettings(dir));
     assert.equal(gruppen.length, 1, "genau ein Eintrag erwartet");
-    assert.deepEqual(gruppen[0].hooks, [{ type: "command", command: "node .claude/kit/board.mjs hook bash-pruefen" }]);
+    assert.deepEqual(gruppen[0].hooks, [{ type: "command", command: "node .claude/kit/board.mjs hook bash-check" }]);
   });
 });
 
@@ -207,7 +224,7 @@ test("[installer-995] die Rueckfallmeldung nennt den Bash-Pruef-Hook mit", () =>
   mitFixture("install-hooks-bash-kaputt-", "{ kaputt\n", (dir) => {
     const res = installiere(dir);
     assert.equal(res.status, 0);
-    assert.match(res.stdout, /PreToolUse \(Bash\): node \.claude\/kit\/board\.mjs hook bash-pruefen/);
+    assert.match(res.stdout, /PreToolUse \(Bash\): node \.claude\/kit\/board\.mjs hook bash-check/);
   });
 });
 

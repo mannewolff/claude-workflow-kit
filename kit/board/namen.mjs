@@ -450,7 +450,7 @@ export const BEFEHLSNAMEN = Object.freeze({
     auftrag: "brief", ausgabe: "output", protokoll: "transcript", begriffe: "terms", dateien: "files",
     ohne: "without", vergleich: "compare" }),
   // Die Auswahlwerte der Optionen, die ein Verhalten des Kits waehlen (Issue #1555, Plan #1548
-  // E5), je Option interner Schluessel -> englischer Wert: `--art`, `issue stand --zustand` und
+  // E5), je Option interner Schluessel -> englischer Wert: `--art`, `issue run-state --state` und
   // `issue-review roles --stufe`. Die internen Schluessel (ARTEN, STAND_ZUSTAENDE, REVIEW_STUFEN,
   // der Config-Schluessel `reviewStufen.fachlich`) bleiben; abgebildet wird am Einstieg.
   werte: Object.freeze({

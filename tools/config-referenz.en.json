@@ -404,8 +404,8 @@
     "text": "After the implementation, the preparation of the push follows automatically if the card's goal reaches that far. A project that says nothing allows the transition; only an explicit false stops the chain before it. An implementation found already done in this run does not block. The preparation does not push; the GO to push stays with the human."
   },
   "night.stand": {
-    "de": "5ef77ff6b9ef",
-    "text": "The run status: how a card of a chain or an implementation night shows its status on the board (board.mjs issue stand). At most one of the three labels is attached, plus exactly one comment '## Laufstand'. If the block or a field in it is missing, the defaults apply."
+    "de": "27a9d88ed630",
+    "text": "The run status: how a card of a chain or an implementation night shows its status on the board (board.mjs issue run-state). At most one of the three labels is attached, plus exactly one comment '## Laufstand'. If the block or a field in it is missing, the defaults apply."
   },
   "night.stand.labels": {
     "de": "43a77f8082fd",

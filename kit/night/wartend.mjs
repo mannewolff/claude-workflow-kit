@@ -1192,7 +1192,7 @@ function geschuetztAuffangen(top, res, minutes) {
   const pfade = abgewieseneSchreibpfade(res?.stdout);
   if (pfade.length === 0) return null;
   const id = String(top.id);
-  const pruef = abh.boardRoh("issue", "check-geschuetzt", id, ...pfade.flatMap((p) => ["--pfad", p]));
+  const pruef = abh.boardRoh("issue", "check-protected", id, ...pfade.flatMap((p) => ["--path", p]));
   const abgewiesen = (pruef.json?.treffer ?? []).filter((t) => t.zeile === GESCHUETZT_ABGEWIESEN);
   if (abgewiesen.length === 0 || !pruef.json?.kommentar) return null;
 

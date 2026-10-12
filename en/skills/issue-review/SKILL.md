@@ -54,17 +54,17 @@ node .claude/kit/board.mjs issue check-form <id>
 Violations — order of the sections, missing identification line, line of origin in the wrong place — are fixed by the calling session itself in the body before a reviewer starts, with `issue update` following the transport rule below. A reviewer checks no form.
 
 ### 3. Choose reviewers
-<!-- de: b91145abaf43 -->
+<!-- de: e5a6c170f454 -->
 
 Read `Author-Model:` (work package: `## Context`; requirement: `## Goal`) or `Plan-Model:` in the head of the plan document. If the value is missing or reads `unbekannt`, ask once and propose a reviewer; unattended the rule proposal applies, and the findings comment notes that.
 ```bash
-node .claude/kit/board.mjs issue-review roles --stage <fachlich|plan|issue> --author <model>
+node .claude/kit/board.mjs issue-review roles --stage <requirement|plan|issue> --author <model>
 ```
 
 The number of reviewers of the stage `plan` can be set by a run via `KIT_PLAN_REVIEWER`; the session takes over the output of the command and does not count itself. `gewaehlt[i]` is paired with `rollen[i]`; only what stands in `gewaehlt` is started. `unterbesetzt: true` runs anyway and stands in line 2 of the comment; `quelle` (`pairs` | `regel`) and an `autorAufgeloest: false` belong there as well.
 
 ### 4. Start reviewers
-<!-- de: e6f982708378 -->
+<!-- de: a4660f1b7a9e -->
 
 Directly before the start the session takes off an existing label: `node .claude/kit/board.mjs issue label remove <id> review:done`. If it does not hang on the card, that is no error. If the run ends prematurely afterwards, the label stays off — the marker in the body keeps saying what was checked; the summary names the label as taken off and not set again.
 

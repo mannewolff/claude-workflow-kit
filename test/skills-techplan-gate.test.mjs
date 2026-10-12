@@ -32,11 +32,11 @@ test("kit/board.mjs: der Rueckstellungs-Kommentar begruendet [Plan] mit /issues 
 });
 
 for (const [name, text] of SKILLS) {
-  // Seit Issue #1025 prueft `issue auftrag` das Praefix und liefert den Kommentar; der
+  // Seit Issue #1025 prueft `issue brief` das Praefix und liefert den Kommentar; der
   // Skill nennt das Praefix und handelt nach der Folge, der Wortlaut steht in kit/board.mjs.
   test(`${name}: nennt [Plan] und laesst den Auftrag das Urteil sprechen`, () => {
     assert.match(text, /\[Plan\]/, "das Praefix wird nicht genannt");
-    assert.match(text, /board\.mjs issue auftrag <id>/, "der Auftrag, der das Gate prueft, fehlt");
+    assert.match(text, /board\.mjs issue brief <id>/, "der Auftrag, der das Gate prueft, fehlt");
   });
 
   test(`${name}: fuehrt [Plan] in den Stop-Punkten`, () => {

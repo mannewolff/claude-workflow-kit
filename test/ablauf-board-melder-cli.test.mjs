@@ -78,7 +78,7 @@ test("unbekannte Befehle der beiden Achsen zeigen die Hilfe und brechen ab", asy
     for (const achse of ["nightrun", "sitzung"]) {
       const res = await runBoardAsync(dir, [achse, "gibtsnicht"], {});
       assert.equal(res.status, 1, achse);
-      assert.match(res.stdout, /node board\.mjs nightrun melden/, `${achse}: die Hilfe fehlt`);
+      assert.match(res.stdout, /node board\.mjs nightrun report/, `${achse}: die Hilfe fehlt`);
       assert.match(res.stderr, new RegExp(`Unbekannter ${achse}-Befehl: 'gibtsnicht'`));
     }
   } finally {

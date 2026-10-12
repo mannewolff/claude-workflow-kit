@@ -57,7 +57,7 @@ git diff origin/<mainBranch>...HEAD > <tmpdir>/review-material.txt
 All relevant source files (no build artefacts, no `node_modules`, no `.git` contents) one after another into `<tmpdir>/review-material.txt`, each with a header line `=== <path> ===` in front.
 
 ### 2. Start the reviewer
-<!-- de: b21e7861db7e -->
+<!-- de: 3fa73083b887 -->
 
 The kit assembles the review brief from the role `kit/rollen/code-review.md`, the list of kinds and the material from step 1; the session writes no prompt and fills in nothing itself:
 

@@ -29,7 +29,7 @@ function text(pfad) {
 
 test("[skills-984] jede Stelle nennt das Praefix `[Mensch]`", () => {
   for (const pfad of STELLEN) {
-    assert.match(text(pfad), /\[Mensch\]/, `${pfad}: das Praefix [Mensch] fehlt`);
+    assert.match(text(pfad), /\[(Mensch|Human)\]/, `${pfad}: das Praefix [Mensch] bzw. [Human] fehlt`);
   }
 });
 
@@ -60,7 +60,7 @@ test("[skills-984] die Praefix-Tabelle der Vorlage fuehrt vier Praefixe, und `[T
 test("[skills-984] die erzeugenden Skills sagen, wann ein Paket `[Mensch]` traegt", () => {
   for (const pfad of ["skills/issues/SKILL.md", "skills/task/SKILL.md"]) {
     const absaetze = text(pfad).split(/\n\s*\n/);
-    const treffer = absaetze.filter((a) => /\[Mensch\]/.test(a) && /ausserhalb des Repositor/i.test(a));
+    const treffer = absaetze.filter((a) => /\[(Mensch|Human)\]/.test(a) && /ausserhalb des Repositor/i.test(a));
     assert.ok(treffer.length >= 1, `${pfad}: kein Absatz sagt, dass [Mensch] fuer Aufgaben ausserhalb des Repositories gilt`);
     assert.match(treffer.join("\n"), /Einstellung|Konto|Zugang|Freigabe/i,
       `${pfad}: die Beispiele (Einstellung, Konto, Zugang, Freigabe) fehlen`);

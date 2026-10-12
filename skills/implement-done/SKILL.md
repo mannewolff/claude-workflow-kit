@@ -26,10 +26,10 @@ node .claude/kit/board.mjs issue list --status in_progress
 ### 1. Auftrag holen und lesen
 
 ```bash
-node .claude/kit/board.mjs issue auftrag <id> --spalte in_progress
+node .claude/kit/board.mjs issue brief <id> --column in_progress
 ```
 
-Ein Aufruf liefert das **Urteil** (`darf beginnen` oder `darf nicht beginnen` samt Grund) mit seiner **Folge**, dazu die Aufgabe mit Kommentaren, die Plan-Entscheidungen im Wortlaut, den fachlichen Anlass, die Geschwister mit Spalte, die Voraussetzungen und die Lücken. `--spalte in_progress`, weil `/implement-test` die Karte schon gezogen hat. Gehandelt wird allein nach der Folge; die Prüfungen dahinter und die Wortlaute der Backlog-Kommentare stehen in `kit/board.mjs`, nicht in diesem Skill:
+Ein Aufruf liefert das **Urteil** (`darf beginnen` oder `darf nicht beginnen` samt Grund) mit seiner **Folge**, dazu die Aufgabe mit Kommentaren, die Plan-Entscheidungen im Wortlaut, den fachlichen Anlass, die Geschwister mit Spalte, die Voraussetzungen und die Lücken. `--column in_progress`, weil `/implement-test` die Karte schon gezogen hat. Gehandelt wird allein nach der Folge; die Prüfungen dahinter und die Wortlaute der Backlog-Kommentare stehen in `kit/board.mjs`, nicht in diesem Skill:
 
 - **`beginnen`** — weiter mit Schritt 2.
 - **`bleibt`** — stoppen, den Grund aus dem Urteil melden, die Karte nicht bewegen und nicht kommentieren.
@@ -72,7 +72,7 @@ Lies alle Abschnitte der Aufgabe im Auftrag erneut; ein weiteres `issue get` bra
 - Implementieren, bis die von `/implement-test` geschriebenen Tests grün sind.
 - Testcode nicht anfassen — außer er ist nachweislich falsch formuliert (widerspricht dem Akzeptanzkriterium, testet das Falsche). Dann Rücksprache mit dem Menschen statt stillschweigender Änderung.
 - Bestehende Muster und Funktionen wiederverwenden. Kein Feature, keine Refactoring, keine Abstraktion, die das Issue nicht verlangt.
-- Ohne Aufsicht (gesetztes `KIT_AGENT_MODEL`) gibt es keine Hintergrundarbeit: Der Hook `bash-pruefen` weist einen Bash-Aufruf mit `run_in_background` ab (Issue #1081) — den Befehl im Vordergrund aufrufen und auf ihn warten. Interaktiv bleibt Hintergrundarbeit erlaubt.
+- Ohne Aufsicht (gesetztes `KIT_AGENT_MODEL`) gibt es keine Hintergrundarbeit: Der Hook `bash-check` weist einen Bash-Aufruf mit `run_in_background` ab (Issue #1081) — den Befehl im Vordergrund aufrufen und auf ihn warten. Interaktiv bleibt Hintergrundarbeit erlaubt.
 
 **Nur die Tests des Pakets laufen lassen.** Die volle Suite ist der teuerste Einzelposten einer Session — sie mehrfach zu starten, kostet Minuten und bringt nichts dazu:
 
@@ -87,7 +87,7 @@ Lies alle Abschnitte der Aufgabe im Auftrag erneut; ein weiteres `issue get` bra
 1. Eigene uncommittete Aenderungen **namentlich** zuruecknehmen, selbst angelegte Dateien loeschen — nie pauschal den ganzen Arbeitsbaum verwerfen. Gemessen wird der eigene Anteil, belegt ueber die eigenen Werkzeugaufrufe.
 2. `node .claude/kit/board.mjs issue move <id> backlog`
 3. `node .claude/kit/board.mjs issue label add <id> kit:geschuetzt` — ein Fehlschlag wird gemeldet und beendet den Halt nicht.
-4. Den Kommentar holen: `node .claude/kit/board.mjs issue check-geschuetzt <id> --pfad <abgewiesener Pfad>`, je abgewiesenem Pfad ein `--pfad`. Das Kommando endet mit Exit 1, das ist der Befund. Das Feld `kommentar` seiner Ausgabe beginnt mit dem Anker `## Geschuetzte Datei` und ist der Text — die Session baut ihn nicht selbst. Er geht als letzte Zeile ergänzt um die Label-Zeile aus Schritt 3 (`Label kit:geschuetzt gesetzt` oder `Label kit:geschuetzt nicht gesetzt`) nach der Transportregel (`CLAUDE-workflow.md`, „Lange Texte ans Board") ans Issue: Datei `<tmpdir>/<id>-geschuetzt.md` stückweise per Shell anlegen, dann `node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-geschuetzt.md` — nie als Argument.
+4. Den Kommentar holen: `node .claude/kit/board.mjs issue check-protected <id> --path <abgewiesener Pfad>`, je abgewiesenem Pfad ein `--path`. Das Kommando endet mit Exit 1, das ist der Befund. Das Feld `kommentar` seiner Ausgabe beginnt mit dem Anker `## Geschuetzte Datei` und ist der Text — die Session baut ihn nicht selbst. Er geht als letzte Zeile ergänzt um die Label-Zeile aus Schritt 3 (`Label kit:geschuetzt gesetzt` oder `Label kit:geschuetzt nicht gesetzt`) nach der Transportregel (`CLAUDE-workflow.md`, „Lange Texte ans Board") ans Issue: Datei `<tmpdir>/<id>-geschuetzt.md` stückweise per Shell anlegen, dann `node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-geschuetzt.md` — nie als Argument.
 5. Melden, welche Datei ein Mensch ändern muss — **kein Commit**. In `/implement-ready` geht der Lauf danach mit dem naechsten Ready-Issue weiter, die anderen Skills enden damit.
 
 Bleibt ein eigener Anteil zurueck, der sich nicht namentlich zuruecknehmen laesst — etwa eine Datei, die vor der Session schon fremde uncommittete Aenderungen trug —, wird **nicht** angehalten: kein Move, kein Label, kein Kommentar, kein Commit. Die Session meldet die Datei und endet; das Paket bleibt in In progress. Auch hier gilt: `kit:geschuetzt` wird nie entfernt.
@@ -170,7 +170,7 @@ Gleiches Format wie `implement-ready` Schritt 6, der Bericht steht unten.
 Bericht ablegen und Karte nach In review ziehen ist **ein** Aufruf. Der Bericht steht als Argument in einfachen Anführungszeichen, ohne Zwischendatei, ohne Heredoc, ohne Pipe:
 
 ```bash
-node .claude/kit/board.mjs issue melden <id> --text '## Abschlussbericht Issue #N
+node .claude/kit/board.mjs issue report <id> --text '## Abschlussbericht Issue #N
 …'
 ```
 
@@ -179,18 +179,18 @@ node .claude/kit/board.mjs issue melden <id> --text '## Abschlussbericht Issue #
 **Über 6.000 Zeichen** geht der Bericht in nummerierten Stücken, jedes ein **eigener** Werkzeugaufruf, weil die Grenze je Aufruf gilt. Ein Stück berührt das Board nicht, und eine Wiederholung überschreibt es:
 
 ```bash
-node .claude/kit/board.mjs issue melden <id> --teil <n> --text '<Stück n>'
+node .claude/kit/board.mjs issue report <id> --part <n> --text '<Stück n>'
 ```
 
 Danach der abschließende Aufruf ohne `--text` — er setzt die Stücke in Nummernfolge zusammen, legt ab, zieht nach In review und räumt die Stücke erst danach:
 
 ```bash
-node .claude/kit/board.mjs issue melden <id>
+node .claude/kit/board.mjs issue report <id>
 ```
 
-Die letzte Zeile `Bericht-Lauf: <stempel>` setzt das Kit; die Session schreibt sie nicht. An ihr erkennt `issue melden` den Bericht dieses Laufs: Eine Wiederholung legt keinen zweiten an, sondern lässt ihn bei gleichem Inhalt stehen und ersetzt ihn bei geändertem. **Scheitert die Meldung**, ist die Karte nicht bewegt, und die Ausgabe nennt den Grund. Die Wiederholung ist der Abschlussaufruf allein — bei der Stückform `issue melden <id>` ohne `--text`, die Stücke liegen noch; bei der Einzelform derselbe Aufruf mit `--text`. Warum `issue melden` von der Transportregel ausgenommen ist, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board".
+Die letzte Zeile `Bericht-Lauf: <stempel>` setzt das Kit; die Session schreibt sie nicht. An ihr erkennt `issue report` den Bericht dieses Laufs: Eine Wiederholung legt keinen zweiten an, sondern lässt ihn bei gleichem Inhalt stehen und ersetzt ihn bei geändertem. **Scheitert die Meldung**, ist die Karte nicht bewegt, und die Ausgabe nennt den Grund. Die Wiederholung ist der Abschlussaufruf allein — bei der Stückform `issue report <id>` ohne `--text`, die Stücke liegen noch; bei der Einzelform derselbe Aufruf mit `--text`. Warum `issue report` von der Transportregel ausgenommen ist, steht in `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board".
 
-Die Ursprungsdokumente zieht `issue melden` selbst nach: Die Abschlussmeldung nennt die Zeilen aus dem Feld `ursprung` seiner Ausgabe (gewandert, lag bereits, nicht nachgezogen samt Kommando), und die Session bewegt Plan und fachliche Anforderung nie selbst.
+Die Ursprungsdokumente zieht `issue report` selbst nach: Die Abschlussmeldung nennt die Zeilen aus dem Feld `ursprung` seiner Ausgabe (gewandert, lag bereits, nicht nachgezogen samt Kommando), und die Session bewegt Plan und fachliche Anforderung nie selbst.
 
 Format des Abschlussberichts:
 

@@ -225,7 +225,7 @@ test("[1481] englisch: der Hook weist Pipe und Hintergrund ab und laesst bei eig
   assert.match(hintergrund.grund, /^Rejected: run_in_background is blocked without supervision \(KIT_AGENT_MODEL set\)\./);
   const kaputt = hookBashPruefen({ eingabeLesen: () => "{", env: {}, cwd: "/nicht/vorhanden" });
   assert.equal(kaputt.exitCode, 0);
-  assert.match(kaputt.stderr, /^board\.mjs hook bash-pruefen: input not readable \(.+\) — call let through\n$/);
+  assert.match(kaputt.stderr, /^board\.mjs hook bash-check: input not readable \(.+\) — call let through\n$/);
   spracheFestlegen("de");
   assert.match(pruefeBashZeile("node werkzeug.mjs x | head", ["node werkzeug.mjs*"]).grund, /^Abgewiesen: /);
 });

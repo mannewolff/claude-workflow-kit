@@ -153,13 +153,13 @@ test("[1410] der Notfallweg setzt den Schutz vor dem Push aus und stellt ihn dan
   const voll = NOTFALL.search(/Schritt 5/);
   assert.match(NOTFALL, /Stufe `push`/, "der Notfallweg nennt die Stufe push nicht");
   assert.match(NOTFALL, /`--wiederholen`/, "der Notfallweg nennt --wiederholen nicht");
-  const aus = NOTFALL.search(/board\.mjs code schutz aussetzen --in <pfad>/);
+  const aus = NOTFALL.search(/board\.mjs code protection suspend --in <pfad>/);
   const push = NOTFALL.search(/git -C <pfad> push origin HEAD:<mainBranch>/);
-  const wieder = NOTFALL.search(/board\.mjs code schutz wiederherstellen/);
+  const wieder = NOTFALL.search(/board\.mjs code protection restore/);
   assert.notEqual(voll, -1, "der volle lokale Lauf (Schritt 5) fehlt");
-  assert.notEqual(aus, -1, "`code schutz aussetzen --in <pfad>` fehlt");
+  assert.notEqual(aus, -1, "`code protection suspend --in <pfad>` fehlt");
   assert.notEqual(push, -1, "der Push auf mainBranch fehlt");
-  assert.notEqual(wieder, -1, "`code schutz wiederherstellen` fehlt");
+  assert.notEqual(wieder, -1, "`code protection restore` fehlt");
   assert.ok(voll < aus && aus < push && push < wieder, "die Reihenfolge Lauf → aussetzen → Push → wiederherstellen stimmt nicht");
   assert.match(NOTFALL, /auch nach[^.]*abgewiesenem Push/, "es steht nicht, dass auch nach abgewiesenem Push wiederhergestellt wird");
 });
@@ -173,8 +173,8 @@ test("[1410] der Notfallweg hält bei gesetztem KIT_AGENT_MODEL an und fragt nic
 test("[1410] der Notfallweg meldet ein gescheitertes Wiederherstellen mit Kommando und nennt den Schutzstand", () => {
   const s = NOTFALL.replaceAll(/\s+/g, " ");
   assert.match(s, /scheitert `wiederherstellen`[^.]*Fehlschlag/i, "ein gescheitertes Wiederherstellen ist kein Fehlschlag");
-  assert.match(NOTFALL, /board\.mjs code schutz status/, "`code schutz status` fehlt in der Abschlussmeldung");
-  assert.match(s, /`ungeprueft`[\s\S]{0,300}code schutz nachpruefen/, "der Hinweis auf `code schutz nachpruefen` bei `ungeprueft` fehlt");
+  assert.match(NOTFALL, /board\.mjs code protection status/, "`code protection status` fehlt in der Abschlussmeldung");
+  assert.match(s, /`ungeprueft`[\s\S]{0,300}code protection verify/, "der Hinweis auf `code protection verify` bei `ungeprueft` fehlt");
 });
 
 test("[1410] der Notfallweg nennt ci-status nicht, der Build-Dienst-Weg nennt den Notfallweg", () => {

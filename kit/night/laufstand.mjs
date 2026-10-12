@@ -122,7 +122,7 @@ let ABBRUCH_LAEUFT = false;
  * Laedt `night.stand` mit Vorgaben und prueft ihn (E6). Rueckgabe `{ fristMin, pauseMin }`
  * oder `{ fehler }` mit dem Feldnamen. `pauseMin` muss unter `fristMin` liegen: Waehrend
  * der Pause vor dem einen Versuch schweigt der Puls, und ein lebender Lauf gaelte sonst
- * schon als verstummt. Die Labelnamen prueft `issue stand` in kit/board.mjs selbst.
+ * schon als verstummt. Die Labelnamen prueft `issue run-state` in kit/board.mjs selbst.
  */
 export function nightStandLaden(cfg) {
   const block = cfg?.night?.stand ?? {};
@@ -171,7 +171,7 @@ function journalZeile(pfad, objekt) {
  * Absturz — wird uebergangen.
  *
  * Der Status eines Stands ist `geschrieben` mit Quittung, `ueberholt`, wenn ein spaeterer
- * Stand derselben Karte quittiert ist (`issue stand` ersetzt, ein Nachtrag des aelteren
+ * Stand derselben Karte quittiert ist (`issue run-state` ersetzt, ein Nachtrag des aelteren
  * ueberschriebe den neueren), sonst `offen`.
  */
 export function journalLesen(pfad) {
@@ -242,13 +242,16 @@ function laufstandText(zeile) {
   return zeile.text ? `${zeile.text}\n\n${kopf.join("\n")}\n` : `${kopf.join("\n")}\n`;
 }
 
+/** Der englische Wert eines Zustands fuer `issue run-state --state` (Issue #1556, Plan #1548 E5). */
+const zustandWert = (zustand) => namen?.BEFEHLSNAMEN.werte.zustand[zustand] ?? zustand;
+
 /** Schreibt einen Journal-Stand ans Board und quittiert ihn; `true`, wenn das Board ihn annahm. */
 function standAnsBoard(pfad, zeile, { repoRoot, budgetMs }) {
   // Mit Prozess-Id und Nummer: Zwei Runner teilen sich sonst die Zwischendatei.
   const datei = join(tmpdir(), `${process.pid}-laufstand-${zeile.karte}-${zeile.nr}.md`);
   writeFileSync(datei, laufstandText(zeile), "utf-8");
   try {
-    const res = abh.board("issue", "stand", zeile.karte, "--zustand", zeile.zustand, "--text-file", datei, { cwd: repoRoot, budgetMs });
+    const res = abh.board("issue", "run-state", zeile.karte, "--state", zustandWert(zeile.zustand), "--text-file", datei, { cwd: repoRoot, budgetMs });
     if (res.status !== 0) {
       log(t("standFehler", { karte: zeile.karte, zustand: zeile.zustand, antwort: res.text.slice(0, 200) }));
       return false;
@@ -274,7 +277,7 @@ function mitProtokollZeile(karte, eintrag) {
 
 /**
  * Der gemeinsame Schreibweg jedes Standwechsels (E5): erst die Journalzeile, dann
- * `issue stand`. Scheitert der Board-Aufruf, bleibt die Zeile offen und wird beim
+ * `issue run-state`. Scheitert der Board-Aufruf, bleibt die Zeile offen und wird beim
  * naechsten Start nachgetragen. Rueckgabe `geschrieben`, `offen` oder `null` ohne Lauf
  * (der Trockenlauf hat keinen Stempel und schreibt keinen Stand).
  *
@@ -332,7 +335,7 @@ export function laufLebt(repoRoot, lauf) {
  * Trockenlauf, neben `berichteNachtragen`. Journale aufsteigend nach Name (der Stempel ist
  * die Zeit), darin in Zeilenfolge. Das Journal eines noch lebenden Laufs bleibt liegen:
  * Er schreibt selbst weiter, und ein Nachtrag von aussen koennte seinen neueren Stand mit
- * einem aelteren ueberschreiben. Idempotent, weil `issue stand` ersetzt.
+ * einem aelteren ueberschreiben. Idempotent, weil `issue run-state` ersetzt.
  */
 export function staendeNachtragen(repoRoot = process.cwd()) {
   const ordner = join(repoRoot, LAUF_ORDNER);

@@ -51,9 +51,9 @@ test("[skills-1383] Schritt 1 schreibt das Material nach <tmpdir>/review-materia
 test("[skills-1383] Schritt 2 laeuft ueber pruefauftrag und kit-pruefer bzw. start --code-review", () => {
   const zwei = schritt(2);
   const kommandos = bash(zwei);
-  assert.match(kommandos, /^node \.claude\/kit\/board\.mjs issue-review pruefauftrag --rolle code-review --material-datei <tmpdir>\/review-material\.txt --datei <tmpdir>\/review-auftrag\.md$/m,
+  assert.match(kommandos, /^node \.claude\/kit\/board\.mjs issue-review review-brief --role code-review --material-file <tmpdir>\/review-material\.txt --file <tmpdir>\/review-auftrag\.md$/m,
     "der Aufruf von pruefauftrag fehlt oder weicht ab");
-  assert.match(kommandos, /^node \.claude\/kit\/board\.mjs issue-review start --code-review --auftrag <tmpdir>\/review-auftrag\.md --ausgabe <tmpdir>\/review-antwort\.md$/m,
+  assert.match(kommandos, /^node \.claude\/kit\/board\.mjs issue-review start --code-review --brief <tmpdir>\/review-auftrag\.md --output <tmpdir>\/review-antwort\.md$/m,
     "der Aufruf von start --code-review fehlt oder weicht ab");
   assert.match(zwei, /`reviewModel`[\s\S]{0,400}`subagent_type: kit-pruefer`/, "reviewModel laeuft nicht ueber kit-pruefer");
   assert.match(zwei, /`Lies <tmpdir>\/review-auftrag\.md`/, "der Auftrag an den Subagenten ist nicht 'Lies <pfad>'");

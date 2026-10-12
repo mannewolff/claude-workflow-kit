@@ -29,7 +29,7 @@ node .claude/kit/board.mjs issue list --status in_progress
 <!-- de: 785d89faa261 -->
 
 ### 1. Fetch and read the brief
-<!-- de: 6be2ce739c19 -->
+<!-- de: c114b2c41505 -->
 
 ```bash
 node .claude/kit/board.mjs issue brief <id> --column in_progress
@@ -74,7 +74,7 @@ One call delivers the **verdict** (`may start` or `may not start` together with 
 Read all sections of the task in the brief again; a further `issue get` is not needed, and the output is not taken apart via `node -e` or `jq`. The acceptance criteria are the yardstick for the implementation, not the existing tests alone.
 
 ### 2. Implement against the tests
-<!-- de: f85a973d7494 -->
+<!-- de: cb9c487566b8 -->
 
 - Implement until the tests written by `/implement-test` are green.
 - Do not touch test code — unless it is demonstrably worded wrongly (contradicts the acceptance criteria, tests the wrong thing). Then consult the human instead of a silent change.
@@ -173,7 +173,7 @@ Stage only explicitly changed files — no `git add -A` or `git add .`.
 **Manual check points do not block the completion.** If the issue carries a section `### Manual check (human, not part of the session close)` (convention from the `issues` skill), the issue is completed as soon as all machine criteria are met. The manual points are **taken over unchanged into the completion report and the board comment**, so that the human knows before the Done move what is still outstanding. They are no reason to halt — headless nobody answers, and a session that gets stuck on them cannot be told apart from a failure by the runner (Issue #215).
 
 ### 5. Report: completion report and In review
-<!-- de: 177fb72483ed -->
+<!-- de: 00a2ced627b8 -->
 
 Same format as `implement-ready` step 6, the report stands below.
 

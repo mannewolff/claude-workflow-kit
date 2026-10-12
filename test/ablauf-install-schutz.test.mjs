@@ -80,7 +80,7 @@ for (const [ergebnis, schreibt] of [["scharf", true], ["anleitung", true], ["off
 
       const kitBoard = join(dir, ".claude", "kit", "board.mjs");
       assert.deepEqual(aufrufe(fake.log),
-        [[kitBoard, "code", "schutz", "einrichten", "--zweig", "mein-pruefzweig"]]);
+        [[kitBoard, "code", "protection", "setup", "--branch", "mein-pruefzweig"]]);
       // Die Ausgabe von `code schutz einrichten` geht woertlich weiter.
       assert.match(res.stdout, /"grund": "Attrappe"/);
 
@@ -201,7 +201,7 @@ test("--schutz aendert in der Config nur pushPruefung und schreibt keine Kit-Dat
     assert.equal(readFileSync(join(dir, ".claude", "kit", "board.mjs"), "utf-8"), boardVorher);
     assert.ok(!existsSync(join(dir, ".gitignore")), "--schutz fasst die .gitignore nicht an");
     assert.deepEqual(aufrufe(fake.log),
-      [[join(dir, ".claude", "kit", "board.mjs"), "code", "schutz", "einrichten", "--zweig", "kit-pruefung"]]);
+      [[join(dir, ".claude", "kit", "board.mjs"), "code", "protection", "setup", "--branch", "kit-pruefung"]]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

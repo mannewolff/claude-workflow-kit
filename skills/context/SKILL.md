@@ -45,7 +45,7 @@ Lies alle Dateien aus `always` relativ zum `vault`-Pfad. Typisch: `Index.md` (St
 Der Skill baut keine Vault-Pfade selbst zusammen. Ein Aufruf liefert sie:
 
 ```bash
-node .claude/kit/board.mjs kontext paths
+node .claude/kit/board.mjs context paths
 ```
 
 Relevante Felder im JSON:

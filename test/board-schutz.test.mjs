@@ -86,7 +86,7 @@ test("[schutz] rulesetSoll: unbekannte Art wird abgewiesen", () => {
   assert.throws(() => rulesetSoll("main", JOBS, "irgendwas"), /Art 'irgendwas'/);
 });
 
-// --- schutzZustand: die fuenf Antworten von `code schutz status` (E1, A7, A9, E10) ---
+// --- schutzZustand: die fuenf Antworten von `code protection status` (E1, A7, A9, E10) ---
 
 test("[schutz] status: ohne Ruleset nicht geschuetzt, fehlt nennt beide Zweige", async () => {
   const zustand = await schutzZustand(host(), CONFIG, KOPF);
@@ -115,7 +115,7 @@ test("[schutz] status: Pflichtjob am Kopf nicht gruen — geschuetzt mit ungepru
   const zustand = await schutzZustand(host({ rulesets: BEIDE(), ci }), CONFIG, KOPF);
   assert.equal(zustand.geschuetzt, true);
   assert.deepEqual(zustand.ungeprueft, { commit: SHA, kommando: NACHPRUEFEN_KOMMANDO });
-  assert.match(zustand.ungeprueft.kommando, /board\.mjs code schutz nachpruefen$/);
+  assert.match(zustand.ungeprueft.kommando, /board\.mjs code protection verify$/);
 });
 
 test("[schutz] status: stehende Rulesets ohne Admin-Recht zaehlen als vollstaendig", async () => {

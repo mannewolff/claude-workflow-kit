@@ -1,7 +1,7 @@
 // Die implement-Skills und geschuetzte Dateien (Issue #1053, Plan #987, E11, E13, E17;
 // Plan-Verifizierung 13, Teil implement-Skills).
 //
-// Zwei Stellen: die Folge `geschuetzt` aus `issue auftrag` in Schritt 0 — das Paket nennt
+// Zwei Stellen: die Folge `geschuetzt` aus `issue brief` in Schritt 0 — das Paket nennt
 // eine geschuetzte Datei und wird gar nicht erst begonnen — und der Rueckfall aus E13 —
 // eine Session scheitert erst beim Schreiben am Schutz, weil die Aufgabe die Datei nicht
 // beim Namen nennt. Der Rueckfall ist nicht der Halt der Stopp-Frage: anderes Label,
@@ -98,7 +98,7 @@ function pruefeRueckfall(text, name) {
     [/\*\*namentlich\*\* zuruecknehmen/, "das namentliche Zuruecknehmen"],
     [/issue move <id> backlog/, "der Move nach Backlog"],
     [LABEL_ADD, `der Aufruf label add ${GESCHUETZT_LABEL}`],
-    [/issue check-geschuetzt <id> --pfad </, "der Kommentar aus check-geschuetzt --pfad"],
+    [/issue check-protected <id> --path </, "der Kommentar aus check-protected --path"],
     [/issue comment <id> --text-file /, "der Kommentar ueber eine Datei"],
   ], `${name} (Rueckfall)`);
   assert.ok(abschnitt.includes(GESCHUETZT_ANKER), `${name}: der Anker ${GESCHUETZT_ANKER} fehlt im Rueckfall`);

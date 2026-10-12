@@ -239,10 +239,10 @@ Gilt nur, wenn `.claude/workflow.config.json` den Schalter `vorgeschichte` auf `
 
 **Suchen.** Ein Kommando sucht, nicht der Autor:
 ```bash
-node .claude/kit/board.mjs issue vorgeschichte --begriffe <begriff> [--begriffe <begriff>]... [--dateien <pfad>]... [--ohne <N>]...
+node .claude/kit/board.mjs issue history --terms <begriff> [--terms <begriff>]... [--files <pfad>]... [--without <N>]...
 ```
 
-Die Suchbegriffe waehlt der Autor aus Titel und Ziel der neuen Anforderung, je Begriff ein `--begriffe`. Der Plan gibt zusaetzlich je Datei aus `## Betroffene Bereiche` ein `--dateien` mit und nimmt seine Fachliche Quelle mit `--ohne <N>` aus den Treffern — sie ist die Anforderung selbst, keine Vorgeschichte. Das Dokument nennt, wonach gesucht wurde, in der Zeile `Suchbegriffe: <a>; <b>; …`, der Plan zusaetzlich in der Zeile `Dateien: <pfad>; …`. Aus diesen Zeilen wiederholt der Pruefauftrag von `/issue-review` dieselbe Suche und legt den Pruefern die gefundenen Fachplaene vollstaendig bei.
+Die Suchbegriffe waehlt der Autor aus Titel und Ziel der neuen Anforderung, je Begriff ein `--terms`. Der Plan gibt zusaetzlich je Datei aus `## Betroffene Bereiche` ein `--files` mit und nimmt seine Fachliche Quelle mit `--without <N>` aus den Treffern — sie ist die Anforderung selbst, keine Vorgeschichte. Das Dokument nennt, wonach gesucht wurde, in der Zeile `Suchbegriffe: <a>; <b>; …`, der Plan zusaetzlich in der Zeile `Dateien: <pfad>; …`. Aus diesen Zeilen wiederholt der Pruefauftrag von `/issue-review` dieselbe Suche und legt den Pruefern die gefundenen Fachplaene vollstaendig bei.
 
 **Ort.** Beim Fachplan steht der Abschnitt `## Vorgeschichte` zwischen `## Nicht-Ziele` und `## Offene Fragen an den PO`. Beim Plan steht der Unterabschnitt `### Vorgeschichte` am Ende von `## Betroffene Bereiche` — ein siebter `##`-Abschnitt waere ein Formverstoss.
 
@@ -314,7 +314,7 @@ Alle **betroffenen** `buildChecks` aus der Config laufen gruen; unberuehrte Bere
 3. **Nur die Shell, kein Dateischreib-Werkzeug.** Unbeaufsichtigt sind Schreibzugriffe ausserhalb des Projektverzeichnisses damit abgewiesen, innerhalb von `.claude/` zustimmungspflichtig.
 4. **Kein Pipe, keine Gruppierung um den Board-Aufruf.**
 
-Eine Datei im Repo machte den Working Tree unsauber, und darauf stoppt der Nacht-Runner hart. Wer knapp schreibt, merkt von der Grenze nichts; wer gruendlich prueft, verloere sonst alles. **Benannte Ausnahme: `issue melden --text` und `--teil`.** Den Abschlussbericht einer Umsetzung traegt `issue melden <id> --text '<bericht>'` als Argument in einfachen Anfuehrungszeichen — ohne Zwischendatei, ohne Heredoc, ohne Pipe; ein `'` im Bericht wird als `'\''` geschrieben. Ueber 6.000 Zeichen geht er in nummerierten Stuecken (`issue melden <id> --teil <n> --text '…'`, jedes ein eigener Werkzeugaufruf), der abschliessende Aufruf `issue melden <id>` ohne `--text` setzt sie zusammen. Grund: Der Ablageort ausserhalb des Projektverzeichnisses war im gemessenen Lauf genau die Stelle, an der ein Bericht scheiterte und doppelt hinausging. Fuer `issue create`, `update` und `comment` gilt die Regel oben unveraendert.
+Eine Datei im Repo machte den Working Tree unsauber, und darauf stoppt der Nacht-Runner hart. Wer knapp schreibt, merkt von der Grenze nichts; wer gruendlich prueft, verloere sonst alles. **Benannte Ausnahme: `issue report --text` und `--part`.** Den Abschlussbericht einer Umsetzung traegt `issue report <id> --text '<bericht>'` als Argument in einfachen Anfuehrungszeichen — ohne Zwischendatei, ohne Heredoc, ohne Pipe; ein `'` im Bericht wird als `'\''` geschrieben. Ueber 6.000 Zeichen geht er in nummerierten Stuecken (`issue report <id> --part <n> --text '…'`, jedes ein eigener Werkzeugaufruf), der abschliessende Aufruf `issue report <id>` ohne `--text` setzt sie zusammen. Grund: Der Ablageort ausserhalb des Projektverzeichnisses war im gemessenen Lauf genau die Stelle, an der ein Bericht scheiterte und doppelt hinausging. Fuer `issue create`, `update` und `comment` gilt die Regel oben unveraendert.
 
 ---
 
@@ -387,7 +387,7 @@ Ein Issue ohne Praefix ist ein Arbeitspaket im Vier-Abschnitt-Format oben. Vier 
 - E1: <Frage>. Gewählt: … Verworfen: … Grund: … Rückbau: …
 ```
 
-`### Entscheidungen` entfaellt, wenn es nichts zu entscheiden gab; sonst traegt der Block die Eintraege im Format aus „Entscheiden statt fragen". Die letzte Zeile `Bericht-Lauf: <stempel>` setzt das Kit (`issue melden`), nicht die Session: Sie kennzeichnet den Bericht eines Laufs, damit eine Wiederholung ihn ersetzt statt einen zweiten anzulegen.
+`### Entscheidungen` entfaellt, wenn es nichts zu entscheiden gab; sonst traegt der Block die Eintraege im Format aus „Entscheiden statt fragen". Die letzte Zeile `Bericht-Lauf: <stempel>` setzt das Kit (`issue report`), nicht die Session: Sie kennzeichnet den Bericht eines Laufs, damit eine Wiederholung ihn ersetzt statt einen zweiten anzulegen.
 
 ---
 

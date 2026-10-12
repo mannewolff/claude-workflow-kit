@@ -47,7 +47,7 @@ Fields from `kontext.config.json` (all optional):
 Read all files from `always` relative to the `vault` path. Typically: `Index.md` (structure + active projects) and `Profil.md` (user profile).
 
 ### 3. Read project notes (mode A only)
-<!-- de: 3121d1f103e5 -->
+<!-- de: d64113d3cdd5 -->
 
 The skill does not assemble vault paths itself. One call delivers them:
 
@@ -64,7 +64,7 @@ Reading order: **`parentNote` first** (unless `null`), **`projectNote` after it*
 
 If one of the two files is missing in the vault: skip quietly, no error. Showing only the `always` files is enough.
 
-**The fallback applies to exactly one case: unknown axis `context`** — a project with an older `board.mjs`. Then fall back to the previous behaviour instead of aborting: call the axis under its old name `kontext` (`node .claude/kit/board.mjs kontext paths`); if that is unknown as well, determine the project name via `node .claude/kit/board.mjs code repo-name` (last segment without `.git`, the `project` field from the config wins), project note `{vault}/Projekte/{name}/{name}.md`, no umbrella note. A session start must not fail because of this.
+**The fallback applies to exactly one case: unknown axis `context`** — a project with an older `board.mjs`. Then fall back to the previous behaviour instead of aborting: call the axis under its old name `kontext` (`node .claude/kit/board.mjs context paths`); if that is unknown as well, determine the project name via `node .claude/kit/board.mjs code repo-name` (last segment without `.git`, the `project` field from the config wins), project note `{vault}/Projekte/{name}/{name}.md`, no umbrella note. A session start must not fail because of this.
 
 **Every other error is reported visibly**, in particular an ambiguous note (two files that differ only in upper/lower case) and a note folder that cannot be read. Output the command's message unchanged and construct no path yourself. Whoever falls back here hides exactly the finding the command has just reported (Issue #286).
 

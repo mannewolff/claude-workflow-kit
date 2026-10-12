@@ -30,7 +30,7 @@ Do not touch a second issue in parallel — one issue in work at a time.
 <!-- de: 785d89faa261 -->
 
 ### 1. Load Ready issues and fetch the brief
-<!-- de: 68c367da158a -->
+<!-- de: 260d405d095b -->
 
 ```bash
 node .claude/kit/board.mjs issue list --status ready
@@ -93,7 +93,7 @@ node .claude/kit/board.mjs issue move <id> in_progress
 What is read is the brief from step 1; a further `issue get` is not needed, and its output is not taken apart via `node -e` or `jq`. Read all sections of the task. The tests are written against the issue, not against the chat.
 
 ### 4. Write only the tests
-<!-- de: 685044fa79a1 -->
+<!-- de: 340067438b67 -->
 
 - Write test file(s) against the acceptance criteria — so that they fail at the current state of the code (red).
 - No production logic. No stub, no mock implementation that already makes the test green.

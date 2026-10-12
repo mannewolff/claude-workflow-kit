@@ -68,7 +68,7 @@ Lies die betroffenen Dateien und vorhandene Muster. Nutze einen Explore-Agenten,
 
 **Vorgeschichte** (nur bei gesetztem Schalter `vorgeschichte`, Regel in `CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“): Steht fest, welche Dateien betroffen sind, ruft der Skill das Kommando mit Begriffen aus Titel und Ziel, je Datei aus `## Betroffene Bereiche` ein `--dateien` und mit `--ohne` für die Fachliche Quelle:
 ```bash
-node .claude/kit/board.mjs issue vorgeschichte --begriffe <begriff> --dateien <pfad> --ohne <N>
+node .claude/kit/board.mjs issue history --terms <begriff> --files <pfad> --without <N>
 ```
 
 ### 3. Plan erstellen

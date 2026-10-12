@@ -104,7 +104,7 @@ test("[bash-pruefen] Muster mit Stern in der Mitte und ohne Stern", () => {
   erlaubt("make install | tail", ["make"]);
 });
 
-// --- Befehl hook bash-pruefen ----------------------------------------------
+// --- Befehl hook bash-check ----------------------------------------------
 
 function projektMitSettings(settings, lokal) {
   const dir = mkdtempSync(join(tmpdir(), "bash-pruefen-"));
@@ -185,7 +185,7 @@ test("[bash-pruefen] Hook: kaputte Eingabe wird mit einer Zeile auf stderr durch
   mitProjekt(SANDBOX, undefined, (dir) => {
     const res = hook(dir, "{ kein json");
     assert.equal(res.status, 0);
-    assert.match(res.stderr, /bash-pruefen/);
+    assert.match(res.stderr, /bash-check/);
     assert.equal(res.stderr.trim().split("\n").length, 1, "genau eine Zeile");
   });
 });

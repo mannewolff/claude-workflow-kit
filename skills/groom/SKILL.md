@@ -17,7 +17,7 @@ Das Mechanische trägt das Kommando `issue fragen`: welche Fragen offen sind, ob
 `/groom #N` nimmt genau einen Fachplan. Erster Schritt, vor allem anderen: **Unbeaufsichtigt** (gesetztes, nicht leeres `KIT_AGENT_MODEL`) beginnt der Skill nicht und meldet das — niemand kann antworten. Dieselbe Bedingung prüft das Kommando und weist mit dem Grund `unbeaufsichtigt` ab.
 
 ```bash
-node .claude/kit/board.mjs issue fragen <N>
+node .claude/kit/board.mjs issue questions <N>
 ```
 
 Die Ausgabe trägt `einstieg` (`start`, `grund`, `meldung`), `fragen` (`vermerk`, `fragen`, `ungegliedert`, `offen`), `stoppKommentar` und `vermerkVorschlag`. Bei `start: false` meldet der Skill die `meldung` und endet ohne Änderung — eine andere Karte als ein `[Fachlich]` (`kein-fachplan`), unbeaufsichtigt (`unbeaufsichtigt`), ein Fachplan ohne `review:fertig` und ohne `kit:klaeren` (`ungeprueft`, der Weg ist zuerst `/issue-review #<N>`), ein Fachplan mit Vermerk „Keine“ und ohne `kit:klaeren` (`nichts-offen`). Nennt das Kommando dazu einen `hinweis` — etwa eine Frage ohne Antwortzeile unter einem gesetzten Vermerk —, steht er in der Meldung; der Skill entfernt den Vermerk nicht.
@@ -54,7 +54,7 @@ Nach jeder Antwort zeigt der Skill, wie er sie einarbeitet:
 Geschrieben wird **erst nach Zustimmung** des Menschen, dann **sofort** — nicht gesammelt am Ende. Bricht die Sitzung ab, bleiben alle bis dahin bestätigten Antworten erhalten. Der neue, vollständige Body entsteht als `<tmpdir>/<N>-groom-body.md` nach der Transportregel; die Kennzeichnungszeilen (`Autor-Modell:`, `Fachplan-Review:`, `Vorlage:`) bleiben unverändert. Vor dem Schreiben prüft das Kommando ihn gegen den Body am Board:
 
 ```bash
-node .claude/kit/board.mjs issue fragen <N> --body-file <tmpdir>/<N>-groom-body.md
+node .claude/kit/board.mjs issue questions <N> --body-file <tmpdir>/<N>-groom-body.md
 ```
 
 Bei `pruefung.ok` (Exit 0) geht er sofort ans Board:
@@ -79,7 +79,7 @@ Die Abschlussmeldung nennt:
 - den Prüfvorschlag aus dem Vergleich mit dem Start-Body:
 
 ```bash
-node .claude/kit/board.mjs issue fragen <N> --vergleich <tmpdir>/<N>-groom-start.md
+node .claude/kit/board.mjs issue questions <N> --compare <tmpdir>/<N>-groom-start.md
 ```
 
 Ist unter `aenderungen` ein Kriterium oder Nicht-Ziel ergänzt, gestrichen oder umformuliert, schlägt der Skill eine erneute Prüfung vor (`/issue-review #<N>`) und nennt die geänderten Kriterien und Nicht-Ziele. Ist die Liste leer, schlägt er nichts vor. Steht der Vermerk, ist der Weg danach `/techplan #<N>`.

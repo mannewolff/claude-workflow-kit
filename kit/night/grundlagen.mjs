@@ -760,7 +760,7 @@ function meldezeile(zeile) {
 }
 
 /**
- * Liefert den Ergebnisstand ueber `board.mjs nightrun melden` an kanban-kit ein (Issue #669).
+ * Liefert den Ergebnisstand ueber `board.mjs nightrun report` an kanban-kit ein (Issue #669).
  *
  * Nie ein Abbruch: Faellt die Einlieferung aus, bleibt die Datei der Rueckfall, und das
  * Protokoll nennt den Grund. Nur der toolbox-Tracker kennt die Schnittstelle; bei jedem
@@ -789,7 +789,7 @@ export function laufMelden({ budgetMs, datei = ZUSTAND.ERGEBNIS_FILE, stand = ZU
     meldezeile(t("einlieferungTracker", { tracker }));
     return;
   }
-  const res = boardRoh("nightrun", "melden", "--datei", datei, { budgetMs, spawn });
+  const res = boardRoh("nightrun", "report", "--file", datei, { budgetMs, spawn });
   if (res.status !== 0) {
     meldezeile(t("einlieferungFehlgeschlagen", { fehler: res.text.trim().slice(0, 300) }));
     return;
@@ -1109,7 +1109,7 @@ export function gitResteAusnahmen(cfg = ZUSTAND.config) {
     ".claude/befunde-vorschlaege.json", // SYNC: kit/befunde.mjs liest sie
     ".claude/befunde.md",
     ".claude/befunde.json",
-    // Die Stuecke eines gestueckelten Abschlussberichts (Issue #1022): `issue melden
+    // Die Stuecke eines gestueckelten Abschlussberichts (Issue #1022): `issue report
     // --teil` legt sie ab, der Abschlussaufruf raeumt sie erst nach Ablage und Zug.
     // Scheitert er, liegen sie bis zur Wiederholung dort — Zwischenstand einer Meldung,
     // kein Code-Zustand, und ohne den Ausschluss stoppte der Rest-Guard (#152) in jedem

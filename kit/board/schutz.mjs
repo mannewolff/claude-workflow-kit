@@ -43,7 +43,7 @@ const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
 // Konstante bleibt der deutsche Wortlaut; `status` meldet ihn in der Projektsprache.
 export const SCHUTZ_AUSGESETZT = TEXTE.de.schutzAusgesetzt;
 // A7: Ein Stand auf dem Hauptzweig ohne Nachweis des Build-Dienstes wird hiermit nachgeprueft.
-export const NACHPRUEFEN_KOMMANDO = "node .claude/kit/board.mjs code schutz nachpruefen";
+export const NACHPRUEFEN_KOMMANDO = "node .claude/kit/board.mjs code protection verify";
 // E8: Diese Aktionen pushen oder aendern den Code-Host — die Nacht pusht nie.
 export const NACHT_GESPERRT = Object.freeze(["einrichten", "aussetzen", "nachpruefen"]);
 

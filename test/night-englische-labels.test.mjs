@@ -254,7 +254,7 @@ test("deutsches Projekt setzt run:running; eine offene [Fachlich]-Karte mit kit:
   const F = "1";
   const lauf = await ketteImProzess({ karten: [fachplanKarte(F, { titel: "[Fachlich] Offen", labels: [KETTE_LABEL, "review:fertig"] })], sitzung: GLATT });
   assert.equal(lauf.code, 0, lauf.ausgabe);
-  const stand = lauf.aufrufe.find((a) => a[1] === "stand" && a[2] === F && a.includes("laeuft"));
+  const stand = lauf.aufrufe.find((a) => a[1] === "run-state" && a[2] === F && a.includes("running"));
   assert.ok(stand, "der Lauf hat die deutsche Karte beansprucht");
   assert.ok(!lauf.aufrufe.some((a) => a[1] === "label" && a[2] === "add" && /^(lauf|ziel):|^kit:(klaeren|geschuetzt|pruefen|durchziehen)$|^review:fertig$/.test(a.at(-1))),
     "der Nachtlauf hat ein deutsches Label gesetzt");

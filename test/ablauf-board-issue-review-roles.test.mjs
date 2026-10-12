@@ -70,11 +70,11 @@ test("[board-6] die Hilfe nennt weder --issue noch label-sync noch synthese-chec
     for (const wort of ["--issue <N>", "--ausschluss", "label-sync", "synthese-check"]) {
       assert.ok(!res.stdout.includes(wort), `die Hilfe nennt '${wort}' noch`);
     }
-    // `--rolle` gehoert seit Issue #1380 zu `pruefauftrag`, aber nicht mehr zu `roles`.
+    // `--role` gehoert seit Issue #1380 zu `review-brief`, aber nicht mehr zu `roles`.
     const rolesZeilen = res.stdout.split("\n").filter((z) => z.includes("issue-review roles"));
     assert.ok(rolesZeilen.length > 0);
-    assert.ok(rolesZeilen.every((z) => !z.includes("--rolle")), "die Hilfe nennt bei roles noch '--rolle'");
-    assert.ok(res.stdout.includes("issue-review roles --stufe <fachlich|plan|issue> --author <modell>"));
+    assert.ok(rolesZeilen.every((z) => !z.includes("--role")), "die Hilfe nennt bei roles noch '--role'");
+    assert.ok(res.stdout.includes("issue-review roles --stage <requirement|plan|issue> --author <modell>"));
   });
 });
 

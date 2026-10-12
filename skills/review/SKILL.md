@@ -56,7 +56,7 @@ Alle relevanten Quelltext-Dateien (keine Build-Artefakte, keine `node_modules`, 
 Den Prüfauftrag montiert das Kit aus der Rolle `kit/rollen/code-review.md`, der Artenliste und dem Material aus Schritt 1; die Session schreibt keinen Prompt und füllt nichts selbst ein:
 
 ```bash
-node .claude/kit/board.mjs issue-review pruefauftrag --rolle code-review --material-datei <tmpdir>/review-material.txt --datei <tmpdir>/review-auftrag.md
+node .claude/kit/board.mjs issue-review review-brief --role code-review --material-file <tmpdir>/review-material.txt --file <tmpdir>/review-auftrag.md
 ```
 
 Welcher der beiden Wege gilt, entscheidet das gesetzte Feld aus der Vorbedingung:
@@ -66,7 +66,7 @@ Welcher der beiden Wege gilt, entscheidet das gesetzte Feld aus der Vorbedingung
 **Bei gesetztem `reviewCommand` — das Kit startet das konfigurierte Kommando** an seiner Lesegrenze (`reviewLesegrenze`), den Auftrag über stdin, die Antwort von stdout in die Ausgabedatei:
 
 ```bash
-node .claude/kit/board.mjs issue-review start --code-review --auftrag <tmpdir>/review-auftrag.md --ausgabe <tmpdir>/review-antwort.md
+node .claude/kit/board.mjs issue-review start --code-review --brief <tmpdir>/review-auftrag.md --output <tmpdir>/review-antwort.md
 ```
 
 Das Agent-Tool kommt hier nicht zum Einsatz: Es kennt nur Claude-Modelle, und ein `reviewCommand` durch dieses Werkzeug zu reichen wäre ein stiller Ausfall.

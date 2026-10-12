@@ -448,7 +448,7 @@ export class GitHubIssueTracker {
     exec("gh", ["issue", "comment", String(id), "--repo", repo, "--body", text]);
   }
 
-  // Strenges Lesen fuer `issue melden` (Issue #1021): Ein Fehler von gh wirft. Hier
+  // Strenges Lesen fuer `issue report` (Issue #1021): Ein Fehler von gh wirft. Hier
   // war schon `getIssue` streng — die eigene Methode gibt es, damit alle vier
   // Adapter dieselbe Schnittstelle haben.
   async kommentareStreng(id) {
@@ -905,7 +905,7 @@ class GitLabIssueTracker {
     return normalizeComments(execJSON("glab", ["api", `projects/:id/issues/${id}/notes`]));
   }
 
-  // Strenges Lesen fuer `issue melden` (Issue #1021): Anders als `_notes` wirft ein
+  // Strenges Lesen fuer `issue report` (Issue #1021): Anders als `_notes` wirft ein
   // Fehler — ein leer gelesener Stand liesse `melden` einen zweiten Bericht anlegen.
   async kommentareStreng(id) {
     return this._notesStreng(id);
@@ -1813,7 +1813,7 @@ export class ToolboxIssueTracker {
     return normalizeComments(await res.json());
   }
 
-  // Strenges Lesen fuer `issue melden` (Issue #1021): Anders als `_comments` wirft
+  // Strenges Lesen fuer `issue report` (Issue #1021): Anders als `_comments` wirft
   // ein Fehler — ein leer gelesener Stand liesse `melden` einen zweiten Bericht
   // anlegen.
   async kommentareStreng(number) {

@@ -1,7 +1,7 @@
 /**
  * board/hook.mjs — Hook gegen Pipe und Umleitung hinter ausgenommenen Kommandos im
  * Board-Werkzeug (Issue #1223, Plan #1199, E17): die Pruefungen `pruefeBashZeile` und
- * `pruefeHintergrund` und der Befehl `hook bash-pruefen`.
+ * `pruefeHintergrund` und der Befehl `hook bash-check`.
  *
  * Ein Teil von kit/board.mjs. Der Einstieg laedt ihn erst nach der Auskunft ueber
  * --version und --help und exportiert seine Namen unveraendert weiter. Dieser Teil
@@ -224,7 +224,7 @@ function bashMusterAus(pfad) {
 }
 
 /**
- * `hook bash-pruefen` — PreToolUse-Hook von Claude Code. Exit 2 mit Begruendung auf
+ * `hook bash-check` — PreToolUse-Hook von Claude Code. Exit 2 mit Begruendung auf
  * stderr weist den Aufruf ab; bei eigenem Fehler laesst der Hook durch (Exit 0, eine
  * Zeile auf stderr): Ein kaputter Hook darf nicht jede Bash-Zeile einer Session sperren.
  *

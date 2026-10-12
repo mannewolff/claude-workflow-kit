@@ -22,7 +22,7 @@ Relevant field:
 <!-- de: 61517d5a750e -->
 
 ### 0. Load the Ready issues and fetch the brief
-<!-- de: 18e743eba135 -->
+<!-- de: f04d63e2f8ae -->
 
 ```bash
 node .claude/kit/board.mjs issue list --status ready
@@ -93,7 +93,7 @@ What is read is the brief from step 0. It already carries task, comments and con
 **If the package carries a note with the anchor `## Night run: waiting session`, `## Night run: time limit reached` or `## Night run: stuck on a check`, name it** — then it has already been started once, and the last known state stands in the note. The second anchor additionally says that the previous run ended at the session time limit, the third that the brake ended it at a check that kept failing the same way; the note names check and error. The German anchors (`## Nachtlauf: …`) count the same. **No halt, no consultation**, only the message: whoever keeps quiet about the note silently continues halfway.
 
 ### 3. Implement
-<!-- de: dbd60d1bd7af -->
+<!-- de: eb49fe63b831 -->
 
 - TDD: write tests first and let them run red, then implement against the tests until green
 - Reuse existing patterns and functions
@@ -217,7 +217,7 @@ Stage only explicitly changed files — no `git add -A` or `git add .`.
 **Manual check points do not block the completion.** If the issue carries a section `### Manual check (human, not part of the session close)` (convention from the `issues` skill), the issue is completed as soon as all machine criteria are met. The manual points are **taken over unchanged into the completion report and the board comment**, so that the human knows before the Done move what is still outstanding. They are no reason to halt — headless nobody answers, and a session that gets stuck on them cannot be told apart from a failure by the runner (Issue #215).
 
 ### 6. Report: completion report and In review
-<!-- de: f8182126262f -->
+<!-- de: 98edece150f5 -->
 
 Filing the report and moving the card to In review is **one** call. The report stands as an argument in single quotes, without intermediate file, without heredoc, without pipe:
 
@@ -275,7 +275,7 @@ Format of the completion report:
 As soon as the issue lies in In review: work through the next issue from the previously loaded Ready array (in array order). If Ready is empty: report completion.
 
 ### State of the project
-<!-- de: 95e265aa4ae9 -->
+<!-- de: c48b6c1aaf00 -->
 
 If this run has brought the last open package of a project to In review — a package with `Plan: Issue #M`, and no other card with the same line still stands in Backlog, Ready or In progress according to `node .claude/kit/board.mjs issue list` —, the closing message begins with the section `## State of the project`:
 

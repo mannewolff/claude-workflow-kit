@@ -79,7 +79,7 @@ Clarify first: what is to be built, which areas of the code are affected, are th
 **Interactive:** ask when something is unclear. What the human decides stands in the same format under `## Architectural decisions`.
 
 ### 2. Read the relevant files
-<!-- de: 1f3f25c3ca1c -->
+<!-- de: 88438b9f1ee7 -->
 
 Read the affected files and existing patterns. Use an Explore agent when the scope is unclear. Actively look for reusable functions and patterns — avoid new code when a suitable implementation already exists.
 

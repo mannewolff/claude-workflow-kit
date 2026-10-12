@@ -158,7 +158,7 @@ function hilfe(config) {
 const ENGLISCHE_ZEILEN = [
   "node board.mjs issue report <id> --text",
   "node board.mjs issue report <id> --part <n>",
-  "node board.mjs issue run-state <id> --state laeuft",
+  "node board.mjs issue run-state <id> --state running",
   "node board.mjs issue brief <id> [--column ready|in_progress] [--json]",
   "node board.mjs issue origin <plan>",
   "node board.mjs issue check-protected <id> [--path <pfad>]",
@@ -188,17 +188,13 @@ const DEUTSCHE_ZEILEN = [
   "node board.mjs hook bash-pruefen",
 ];
 
-test("die Hilfe nennt in einem englischen Projekt die englischen Namen", () => {
-  const text = hilfe({ ...LOKAL, language: "en" });
-  for (const zeile of ENGLISCHE_ZEILEN) assert.ok(text.includes(zeile), `fehlt: ${zeile}`);
-  for (const zeile of DEUTSCHE_ZEILEN) assert.ok(!text.includes(zeile), `deutsch: ${zeile}`);
-  assert.doesNotMatch(text, /--(zustand|teil|spalte|pfad|zweig|stufe|rolle|datei|auftrag|ausgabe|protokoll|nur-pfad|material-datei)\b/);
-});
-
-test("die Hilfe nennt in einem deutschen Projekt die deutschen Namen", () => {
-  for (const config of [LOKAL, { ...LOKAL, language: "de" }]) {
+// Seit Issue #1556 nennt die Hilfe in jedem Projekt die englischen Namen: Die Aufrufer rufen
+// nur noch sie, und das naechste Paket weist die deutschen ab.
+test("die Hilfe nennt in jedem Projekt die englischen Namen", () => {
+  for (const config of [LOKAL, { ...LOKAL, language: "de" }, { ...LOKAL, language: "en" }]) {
     const text = hilfe(config);
-    for (const zeile of DEUTSCHE_ZEILEN) assert.ok(text.includes(zeile), `fehlt: ${zeile}`);
-    for (const zeile of ENGLISCHE_ZEILEN) assert.ok(!text.includes(zeile), `englisch: ${zeile}`);
+    for (const zeile of ENGLISCHE_ZEILEN) assert.ok(text.includes(zeile), `fehlt: ${zeile}`);
+    for (const zeile of DEUTSCHE_ZEILEN) assert.ok(!text.includes(zeile), `deutsch: ${zeile}`);
+    assert.doesNotMatch(text, /--(zustand|teil|spalte|pfad|zweig|stufe|rolle|datei|auftrag|ausgabe|protokoll|nur-pfad|material-datei)\b/);
   }
 });

@@ -549,7 +549,7 @@ const AUFBEREITUNG_PIPE = /(?<!\|)\|(?!\|)\s*(?:jq|node\s+-e|python3?)(?![\w-])/
  *                   per Pipe an `jq`, `node -e` oder `python`, oder jeder Aufruf, dessen
  *                   Eingabe einen ausgelagerten Werkzeugergebnis-Pfad nennt.
  *   null            keine Auskunft — auch ein schreibender Board-Aufruf (`issue move`,
- *                   `issue comment`, `issue melden`) und ein `node -e` ohne Rueckfrage.
+ *                   `issue comment`, `issue report`) und ein `node -e` ohne Rueckfrage.
  *
  * Gezaehlt wird am Aufruf, nicht an der Absicht: Das Muster nach `prueflaufArt`.
  *

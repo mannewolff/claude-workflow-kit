@@ -595,7 +595,7 @@ checks: `<hash> — covered by: build service, check branch <zweig> (green, <poi
 The CI note is dropped — the CI gated before the push.
 
 ## Emergency path (`notfall`)
-<!-- de: 7a33f0ac6c7e -->
+<!-- de: ffeb45ee8a6c -->
 
 `/push-main notfall` publishes when the build service fails and the code host protects the main
 branch (Plan #1405, A6). Only the owner of the repository gets past the protection: on GitHub

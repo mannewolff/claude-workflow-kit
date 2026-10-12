@@ -8,7 +8,7 @@
  * Aenderungen ausschliesslich hier vornehmen, danach `node tools/sync-blobs.mjs`
  * (aktualisiert den eingebetteten Blob in install.mjs).
  *
- * Ausgabe: JSON auf stdout. Einzige Ausnahme: `issue auftrag` ohne --json schreibt
+ * Ausgabe: JSON auf stdout. Einzige Ausnahme: `issue brief` ohne --json schreibt
  * Markdown (Issue #1023). Fehler: Meldung auf stderr, Exit-Code 1.
  *
  * Nutzung:
@@ -30,23 +30,23 @@
  *       des Projektverzeichnisses (Issue #584).
  *       '--idempotency-key <wert>' wiederholt 'issue create' und 'issue comment'
  *       gefahrlos, wenn der Ausgang unklar blieb (Issue #834).
- *   node board.mjs issue melden <id> --text '<bericht>' | --text-file <pfad>
- *   node board.mjs issue melden <id> --teil <n> --text '<stueck>'
- *   node board.mjs issue melden <id>
+ *   node board.mjs issue report <id> --text '<bericht>' | --text-file <pfad>
+ *   node board.mjs issue report <id> --part <n> --text '<stueck>'
+ *   node board.mjs issue report <id>
  *       Legt den Abschlussbericht ab und zieht nach In review, je Lauf idempotent
  *       (Issue #1022): gleicher Bericht desselben Laufs -> nichts, geaenderter ->
- *       ersetzt. --teil schreibt Stueck n nach .claude/berichte/, der Aufruf ohne
+ *       ersetzt. --part schreibt Stueck n nach .claude/berichte/, der Aufruf ohne
  *       --text setzt die Stuecke zusammen und schliesst ab.
- *   node board.mjs issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <pfad>
+ *   node board.mjs issue run-state <id> --state running|aborted|waiting|done --text-file <pfad>
  *       Label und Kommentar '## Laufstand' einer Karte in einem Zug, wiederholbar
  *       (Issue #1083). Labelnamen aus night.stand.labels.
- *   node board.mjs issue auftrag <id> [--spalte ready|in_progress] [--json]
+ *   node board.mjs issue brief <id> [--column ready|in_progress] [--json]
  *       Aufgabe, Voraussetzungen und das Urteil "darf beginnen" in einem Zug, rein
  *       lesend (Issue #1023). Ausgabe Markdown, mit --json als JSON.
- *   node board.mjs issue ursprung <plan>
+ *   node board.mjs issue origin <plan>
  *       Ist der Plan durch, und welche Ursprungsdokumente wandern nach In review
  *       (Issue #1285)? Rein lesend, Ausgabe JSON.
- *   node board.mjs issue ursprung <plan>
+ *   node board.mjs issue origin <plan>
       Stand der Ursprungsdokumente eines Plans (Issue #1285, Plan #1283): durch heisst,
       mindestens ein Paket ('Plan: Issue #M') liegt in In review oder Done und keines in
       Backlog, Ready oder In progress. Je Dokument (Plan, fachliche Anforderung aus
@@ -62,22 +62,22 @@
  *   node board.mjs code ci-status --commit <sha>
  *       Zustand der CI fuer genau diesen Commit (Issue #316). Dispatcht ueber
  *       resolveCodeHost — die Achse haengt am codeHost, nicht am issueTracker.
- *   node board.mjs code schutz status | einrichten [--zweig <z>] | aussetzen --in <pfad>
- *                              | wiederherstellen | nachpruefen [--zweig <z>]
+ *   node board.mjs code protection status | setup [--branch <z>] | suspend --in <pfad>
+ *                              | restore | verify [--branch <z>]
  *       Schutz von Haupt- und Veroeffentlichungszweig (Issue #1408, Plan #1405). status
  *       meldet { geschuetzt, fehlt, ungeprueft }, einrichten schaltet nach der Probe auf
  *       dem Pruefzweig scharf, aussetzen ist der Notfallweg hinter dem Notfall-Gate.
  *       einrichten, aussetzen und nachpruefen sind mit KIT_AGENT_MODEL gesperrt.
- *   node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
-  node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
+ *   node board.mjs context paths [--project <name>] [--date JJJJ-MM-TT]
+  node board.mjs context last-log [--project <name>] [--before JJJJ-MM-TT]
   node board.mjs issue-review reviewers --author <modell>
-  node board.mjs issue-review check [--nur-pfad]
+  node board.mjs issue-review check [--path-only]
   node board.mjs issue-review matrix
-  node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
-  node board.mjs issue-review pruefauftrag --rolle <rolle> --datei <ziel> (--id <N> | --material-datei <pfad>)
+  node board.mjs issue-review roles --stage <requirement|plan|issue> --author <modell>
+  node board.mjs issue-review review-brief --role <rolle> --file <ziel> (--id <N> | --material-file <pfad>)
       Montiert den Pruefauftrag eines Pruefers aus kit/rollen/<rolle>.md (Issue #1380).
-      Nicht zu verwechseln mit 'issue auftrag <id>', dem Umsetzungsauftrag einer Karte.
-  node board.mjs issue-review start --reviewer <name> | --code-review --auftrag <datei> --ausgabe <datei>
+      Nicht zu verwechseln mit 'issue brief <id>', dem Umsetzungsauftrag einer Karte.
+  node board.mjs issue-review start --reviewer <name> | --code-review --brief <datei> --output <datei>
       Startet einen fremden Pruefer ohne Shell mit angehaengter Lesegrenze (Issue #1381).
  */
 
@@ -96,7 +96,7 @@ const HILFE_DE = `board.mjs — Board-Adapter fuer das claude-workflow-kit
 Nutzung:
   node board.mjs issue create --title "..." --body "..." | --body-file <pfad> | --body -
                              [--author-model <modell>] [--derived-from <nummer>]
-                             [--idempotency-key <wert>] [--art fachlich|plan|idee|mensch|task]
+                             [--idempotency-key <wert>] [--art requirement|plan|idea|human|task]
       --art stellt das Titel-Praefix der Art in der Projektsprache voran, etwa
       '[Fachlich]' oder '[Requirement]' (Issue #1427). Ein Titel mit Praefix bleibt
       gueltig; --art daneben ist ein Fehler. Ohne --art bleibt der Titel, wie er ist.
@@ -122,26 +122,26 @@ Nutzung:
                              [--idempotency-key <wert>]
       '-' liest von stdin, gut fuer kurze Texte; fuer lange '--text-file' (Issue #584).
       --idempotency-key wie bei 'issue create' (Issue #834).
-  node board.mjs issue melden <id> --text '<bericht>' | --text-file <pfad>
-  node board.mjs issue melden <id> --teil <n> --text '<stueck>'
-  node board.mjs issue melden <id>
+  node board.mjs issue report <id> --text '<bericht>' | --text-file <pfad>
+  node board.mjs issue report <id> --part <n> --text '<stueck>'
+  node board.mjs issue report <id>
       Legt den Abschlussbericht ab und zieht die Karte danach nach In review (Issue
       #1022). Der Bericht bekommt als letzte Zeile 'Bericht-Lauf: <stempel>' (juengster
       Zug der Karte nach in_progress aus .claude/bewegungen.tsv). Je Lauf idempotent:
       gleicher Inhalt -> nichts geschrieben, geaenderter -> ersetzt, Berichte anderer
       Laeufe bleiben. Ein ' im Bericht wird in der Shell als '\\'' geschrieben.
-      --teil <n> schreibt nur Stueck n nach .claude/berichte/<id>.<n>.md (ohne Board);
+      --part <n> schreibt nur Stueck n nach .claude/berichte/<id>.<n>.md (ohne Board);
       der Aufruf ohne --text setzt die Stuecke in Nummernfolge zusammen, schliesst ab
       und raeumt sie erst danach. Scheitert er, ist die Wiederholung derselbe Aufruf.
       Ausgabe: { ok, id, bericht: angelegt|ersetzt|unveraendert, status: in_review }.
-  node board.mjs issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <pfad>
+  node board.mjs issue run-state <id> --state running|aborted|waiting|done --text-file <pfad>
       Laufstand einer Karte in einem Zug (Issue #1083): setzt das Label des Zustands
       und nimmt die beiden anderen ab (fertig: alle drei), dazu genau ein Kommentar
       '## Laufstand', bei jedem Aufruf ersetzt. Die Labelnamen kommen aus
       night.stand.labels der Config (Vorgaben run:running, run:aborted,
       run:waiting). Kommentare werden streng gelesen; nicht lesbar -> Exit 1, nichts
       geschrieben. Ausgabe: { ok, id, zustand, kommentar: angelegt|ersetzt|unveraendert }.
-  node board.mjs issue auftrag <id> [--spalte ready|in_progress] [--json]
+  node board.mjs issue brief <id> [--column ready|in_progress] [--json]
       Alles, was eine Umsetzung vor dem Beginn braucht, in einem Aufruf (Issue #1023):
       Urteil (darf beginnen | darf nicht beginnen) mit Folge (beginnen | bleibt |
       backlog samt woertlichem Kommentartext | geschuetzt: nennt das Paket eine
@@ -152,18 +152,18 @@ Nutzung:
       'Plan-Entscheidungen:', ohne sie alle), fachlicher Anlass (Ziel und Fachliche
       Akzeptanzkriterien der 'Fachlichen Quelle'), Geschwister des Plans mit Spalte
       (Issue #1024) und Voraussetzungen aus '## Abhaengigkeiten' (erfuellt ab In review).
-      Was sich nicht ermitteln laesst, steht unter Luecken. Rein lesend. --spalte in_progress erwartet die Karte in In progress statt Ready.
+      Was sich nicht ermitteln laesst, steht unter Luecken. Rein lesend. --column in_progress erwartet die Karte in In progress statt Ready.
       Ausgabe: Markdown mit sieben '##'-Gliedern -- die einzige Ausnahme von JSON auf
       stdout; --json liefert dieselben Glieder als Felder. Exit 0 auch bei 'darf nicht
       beginnen', Exit 1 nur, wenn das Paket nicht lesbar ist.
-  node board.mjs issue ursprung <plan>
+  node board.mjs issue origin <plan>
       Stand der Ursprungsdokumente eines Plans (Issue #1285, Plan #1283): durch heisst,
       mindestens ein Paket ('Plan: Issue #M') liegt in In review oder Done und keines in
       Backlog, Ready oder In progress. Je Dokument (Plan, fachliche Anforderung aus
       'Fachliche Quelle:') die Aktion wandert | lag bereits in In review | lag bereits
       in Done | bleibt, mit Grund. Rein lesend, bewegt nichts. Ausgabe: { plan, durch,
       grund, fehlend: [{ id, titel, spalte }], dokumente: [{ id, art, spalte, aktion, grund }] }.
-  node board.mjs issue vorgeschichte [--begriffe <begriff>]... [--dateien <pfad>]... [--ohne <nummer>]... [--bodies]
+  node board.mjs issue history [--terms <begriff>]... [--files <pfad>]... [--without <nummer>]... [--bodies]
       Fruehere Fachplaene des eigenen Boards, archivierte eingeschlossen (Issue #1539, Plan
       #1534): je Begriff ueber die Suche (nur Titel mit [Fachlich]), je Datei ueber die
       Kartennummern der letzten 30 Commits und deren Herkunftskette. Zusammengefuehrt ueber
@@ -172,19 +172,19 @@ Nutzung:
       archiviert, weg, auszug }], weitere }; --bodies legt je Treffer den Body bei. Ohne
       Archiv { ok: false, grund: archiv-nicht-erreichbar | tracker-ohne-suche | abgeschaltet },
       Exit 0 auch dann; der erste Fehlschlag am Board beendet die Suche.
-  node board.mjs issue fragen <id> [--body-file <pfad>] [--vergleich <pfad>]
+  node board.mjs issue questions <id> [--body-file <pfad>] [--compare <pfad>]
       Grooming-Stand eines Fachplans fuer /groom (Issue #1513, Plan #1510): einstieg
       ({ start, grund, meldung }), fragen ({ vermerk, fragen, ungegliedert, offen }),
       stoppKommentar (nur bei kit:klaeren: { kommentar, grund }, sonst null) und
       vermerkVorschlag (der Vermerk 'Keine' mit heutigem Datum, nur ohne offene Frage).
       --body-file prueft einen neuen Body gegen den der Karte (pruefung: { ok,
-      verstoesse }), Exit 1 bei Verstoessen. --vergleich nennt die geaenderten
+      verstoesse }), Exit 1 bei Verstoessen. --compare nennt die geaenderten
       Kriterien und Nicht-Ziele zwischen der Datei und dem Body der Karte (aenderungen).
       Rein lesend: aendert weder Body noch Labels.
   node board.mjs issue label add <id> <name>
   node board.mjs issue label remove <id> <name>
       Zeichnet ein Issue (z. B. kit:klaeren). Status-Labels aendert \`issue move\`.
-  node board.mjs issue check-form <id> [--art fachlich|plan|idee|mensch|task]
+  node board.mjs issue check-form <id> [--art requirement|plan|idea|human|task]
   node board.mjs issue check-form --body-file <pfad> --title "<titel>" [--art ...]
       Formpruefung gegen die maschinellen Gates der Stufe (Issue #628): fachlich
       F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, Arbeitspaket I1 bis I9. Die Stufe
@@ -202,9 +202,9 @@ Nutzung:
       ('Issue #N' am Zeilenanfang), 'dokument' je #N auf eine [Plan]-, [Fachlich]- oder
       [Idee]-Karte. Der Nachtlauf liest beide als Abhaengigkeit; auch sie beruehren weder
       ok noch den Exit-Code. Eine Karte, die sich nicht nachschlagen laesst, bleibt still.
-  node board.mjs issue check-geschuetzt <id> [--pfad <pfad>]
+  node board.mjs issue check-protected <id> [--path <pfad>]
       Geschuetzte Dateien eines Pakets (Issue #1045, Plan #987): Treffer aus Aufgabe und
-      Akzeptanzkriterium gegen die Sperren der Projektwurzel; --pfad (auch mehrfach,
+      Akzeptanzkriterium gegen die Sperren der Projektwurzel; --path (auch mehrfach,
       Issue #1053) nimmt einen beim Schreiben abgewiesenen Pfad dazu, ist er geschuetzt,
       mit der Zeile 'beim Schreiben abgewiesen' — fuer den Rueckfall-Halt, wenn die
       Aufgabe ihn nicht nennt. Dazu das Label kit:geschuetzt
@@ -221,11 +221,11 @@ Nutzung:
       rot vor laeuft vor gruen; 'keine' nur bei codeHost local, ein am Host noch
       unsichtbarer Lauf ist 'laeuft'. 'gestartet' ist die Startzeit des Jobs (ISO) oder
       null, solange er nicht gestartet ist (Issue #1151).
-  node board.mjs code schutz status
-  node board.mjs code schutz einrichten --zweig <z>
-  node board.mjs code schutz aussetzen --in <pfad>
-  node board.mjs code schutz wiederherstellen
-  node board.mjs code schutz nachpruefen [--zweig <z>]
+  node board.mjs code protection status
+  node board.mjs code protection setup --branch <z>
+  node board.mjs code protection suspend --in <pfad>
+  node board.mjs code protection restore
+  node board.mjs code protection verify [--branch <z>]
       Schutz von Haupt- und Veroeffentlichungszweig per Ruleset (Issue #1408).
       status: { geschuetzt, fehlt, ungeprueft }, Exit 0 auch bei geschuetzt false.
       einrichten: Probe — der Kopf von origin/<mainBranch> geht auf den Pruefzweig
@@ -237,48 +237,48 @@ Nutzung:
       wiederherstellen: wieder active, scheitert es Exit 1 mit dem Kommando zum
       Wiederholen. nachpruefen: Kopf erneut auf den Pruefzweig, Ergebnis des
       Build-Dienstes. einrichten, aussetzen, nachpruefen mit KIT_AGENT_MODEL gesperrt.
-  node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
-  node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
+  node board.mjs context paths [--project <name>] [--date JJJJ-MM-TT]
+  node board.mjs context last-log [--project <name>] [--before JJJJ-MM-TT]
   node board.mjs issue-review reviewers --author <modell>
-  node board.mjs issue-review check [--nur-pfad]
+  node board.mjs issue-review check [--path-only]
       Je Reviewer die Lesegrenze; kind command ohne sie ist nicht verfuegbar ('keine
       Lesegrenze'). 'rollen' nennt die fehlenden Rollendateien aller Stufen.
   node board.mjs issue-review matrix
-  node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
+  node board.mjs issue-review roles --stage <requirement|plan|issue> --author <modell>
       'rollenDateien' nennt je Rolle pfad und rolleVorhanden.
       Besetzung und Rollen der Stufe aus reviewStufen; der Autor faellt weg.
-      Bei --stufe plan setzt KIT_PLAN_REVIEWER (1 oder 2) die Pruefzahl vor reviewStufen.
-  node board.mjs issue-review pruefauftrag --rolle <rolle> --datei <ziel> (--id <N> | --material-datei <pfad>)
-      Pruefauftrag fuer einen Pruefer, nicht der Umsetzungsauftrag von 'issue auftrag <id>'.
+      Bei --stage plan setzt KIT_PLAN_REVIEWER (1 oder 2) die Pruefzahl vor reviewStufen.
+  node board.mjs issue-review review-brief --role <rolle> --file <ziel> (--id <N> | --material-file <pfad>)
+      Pruefauftrag fuer einen Pruefer, nicht der Umsetzungsauftrag von 'issue brief <id>'.
       Setzt kit/rollen/<rolle>.md mit Artenliste und Dokument (--id: vom Board, samt
-      'Fachliche Quelle:' und 'Vorlage:') oder Material (--material-datei; bei code-review
-      mit .claude/checks-summary.json) in die Datei --datei. Ausgabe { ok, rolle, datei,
+      'Fachliche Quelle:' und 'Vorlage:') oder Material (--material-file; bei code-review
+      mit .claude/checks-summary.json) in die Datei --file. Ausgabe { ok, rolle, datei,
       zeichen }; Fehler (Exit 1) rolle-fehlt mit pfad, platzhalter-offen, material-fehlt,
       dokument-nicht-lesbar.
-  node board.mjs issue-review start --reviewer <name> | --code-review --auftrag <datei> --ausgabe <datei>
+  node board.mjs issue-review start --reviewer <name> | --code-review --brief <datei> --output <datei>
       Startet einen fremden Pruefer (kind command; --code-review: reviewCommand) ohne Shell:
-      Auftrag ueber stdin, stdout in --ausgabe. Die Lesegrenze steht als letztes Argument —
+      Auftrag ueber stdin, stdout in --output. Die Lesegrenze steht als letztes Argument —
       aus lesegrenze bzw. reviewLesegrenze, sonst aus der Tabelle (codex: --sandbox read-only).
       Braucht 'node .claude/kit/board.mjs*' in sandbox.excludedCommands. Ausgabe { ok,
       reviewer, lesegrenze, ausgabe, zeichen }; Fehler (Exit 1) keine-lesegrenze,
       lesegrenze-aufgehoben mit schalter (--full-auto, --dangerously-bypass-approvals-and-
       sandbox, --sandbox/-s ausser read-only, -c sandbox_mode, --profile/-p), auftrag-fehlt,
       nicht-im-path, ausfall mit exit und stderr-Ausschnitt.
-  node board.mjs nightrun melden --datei <ergebnisstand.json>
+  node board.mjs nightrun report --file <ergebnisstand.json>
       Liefert einen Ergebnisstand des Nacht-Runners an POST /api/kanban/night-runs ein
       (nur issueTracker toolbox); derselbe Lauf wird bei jeder Meldung ersetzt.
       Fuehrt der Stand eine Vorbereitung der Veroeffentlichung, traegt die Meldung
       releasePreparation; weist das Board sie mit HTTP 400 ab, meldet der Befehl genau
       einmal ohne das Feld nach und vermerkt den Rueckfall in der Antwort ('rueckfall').
-  node board.mjs sitzung melden [--protokoll <pfad>] [--complete]
+  node board.mjs session report [--transcript <pfad>] [--complete]
       Meldet den Verbrauch der laufenden interaktiven Sitzung an dieselbe Route
       (kind/mode INTERACTIVE, Issue #734), aufgeteilt nach den Wegmarken aus
-      .claude/wegmarken.tsv. Ohne --protokoll kommt der Pfad als 'transcript_path'
+      .claude/wegmarken.tsv. Ohne --transcript kommt der Pfad als 'transcript_path'
       aus dem Hook-Rumpf auf stdin. --complete meldet das Sitzungsende und leert die
       Wegmarken; ohne das Flag wird hoechstens alle fuenf Minuten gemeldet.
       Schweigt ohne Fehler bei gesetztem KIT_AGENT_MODEL (der Nacht-Runner meldet
       selbst) und ohne Toolbox-Token.
-  node board.mjs hook bash-pruefen
+  node board.mjs hook bash-check
       PreToolUse-Hook fuer Bash (Issue #995): liest den Hook-Rumpf von Claude Code auf
       stdin und weist mit Exit 2 ab, wenn eine Pipe, Umleitung oder ein weiterer Befehl
       einem Kommando aus sandbox.excludedCommands die Ausnahme nimmt. Muster aus
@@ -302,7 +302,7 @@ const HILFE_EN = `board.mjs — board adapter for the claude-workflow-kit
 Usage:
   node board.mjs issue create --title "..." --body "..." | --body-file <pfad> | --body -
                              [--author-model <modell>] [--derived-from <nummer>]
-                             [--idempotency-key <wert>] [--art fachlich|plan|idee|mensch|task]
+                             [--idempotency-key <wert>] [--art requirement|plan|idea|human|task]
       --art puts the title prefix of the kind in front, in the project language, such
       as '[Fachlich]' or '[Requirement]' (Issue #1427). A title with a prefix stays
       valid; --art next to it is an error. Without --art the title stays as it is.
@@ -328,48 +328,48 @@ Usage:
                              [--idempotency-key <wert>]
       '-' reads from stdin, good for short texts; for long ones '--text-file' (Issue #584).
       --idempotency-key as with 'issue create' (Issue #834).
-  node board.mjs issue melden <id> --text '<bericht>' | --text-file <pfad>
-  node board.mjs issue melden <id> --teil <n> --text '<stueck>'
-  node board.mjs issue melden <id>
+  node board.mjs issue report <id> --text '<bericht>' | --text-file <pfad>
+  node board.mjs issue report <id> --part <n> --text '<stueck>'
+  node board.mjs issue report <id>
       Files the completion report and then moves the card to In review (Issue #1022).
       The report gets a run stamp line as its last line (the card's latest move to
       in_progress from .claude/bewegungen.tsv). Idempotent per run: same content ->
       nothing written, changed -> replaced, reports of other runs stay. A ' in the
       report is written in the shell as '\\''.
-      --teil <n> only writes piece n to .claude/berichte/<id>.<n>.md (no board); the
+      --part <n> only writes piece n to .claude/berichte/<id>.<n>.md (no board); the
       call without --text joins the pieces in numeric order, completes and only then
       clears them. If it fails, the retry is the same call.
       Output: { ok, id, bericht: angelegt|ersetzt|unveraendert, status: in_review }.
-  node board.mjs issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <pfad>
+  node board.mjs issue run-state <id> --state running|aborted|waiting|done --text-file <pfad>
       Run status of a card in one go (Issue #1083): sets the label of the state and
       removes the other two (fertig: all three), plus exactly one run status
       comment, replaced on every call. The label names come from
       night.stand.labels in the config. Comments are read strictly; unreadable ->
       exit 1, nothing written. Output: { ok, id, zustand, kommentar: angelegt|ersetzt|unveraendert }.
-  node board.mjs issue auftrag <id> [--spalte ready|in_progress] [--json]
+  node board.mjs issue brief <id> [--column ready|in_progress] [--json]
       Everything an implementation needs before it starts, in one call (Issue #1023):
       verdict (may start | may not start) with consequence (beginnen | bleibt |
       backlog with the literal comment text | geschuetzt: the package names a
       protected file and is not released — backlog, label add kit:geschuetzt, then
-      the halt comment from issue check-geschuetzt plus label line; the label
+      the halt comment from issue check-protected plus label line; the label
       kit:geschuetzt itself results in backlog, Issue #1052), task (title, body,
       labels, column, comments), plan decisions verbatim (selection from the line
       'Plan-Decisions:', without it all of them), business reason (goal and business
       acceptance criteria of the 'Requirement:'), siblings of the plan with column
       (Issue #1024) and prerequisites from '## Dependencies' (met from In review on).
-      What cannot be determined is listed under gaps. Read-only. --spalte in_progress
+      What cannot be determined is listed under gaps. Read-only. --column in_progress
       expects the card in In progress instead of Ready.
       Output: Markdown with seven '##' parts -- the only exception to JSON on stdout;
       --json returns the same parts as fields. Exit 0 also on 'may not start', exit 1
       only if the package is not readable.
-  node board.mjs issue ursprung <plan>
+  node board.mjs issue origin <plan>
       State of the origin documents of a plan (Issue #1285, Plan #1283): done means at
       least one package ('Plan: Issue #M') is in In review or Done and none in Backlog,
       Ready or In progress. Per document (plan, requirement from 'Requirement:') the
       action wandert | lag bereits in In review | lag bereits in Done | bleibt, with a
       reason. Read-only, moves nothing. Output: { plan, durch, grund, fehlend: [{ id,
       titel, spalte }], dokumente: [{ id, art, spalte, aktion, grund }] }.
-  node board.mjs issue vorgeschichte [--begriffe <begriff>]... [--dateien <pfad>]... [--ohne <nummer>]... [--bodies]
+  node board.mjs issue history [--terms <begriff>]... [--files <pfad>]... [--without <nummer>]... [--bodies]
       Earlier requirements of the own board, archived ones included (Issue #1539, Plan
       #1534): per term via the search (only titles with [Requirement]), per file via the
       card numbers of the last 30 commits and their lineage. Merged by number, ordered by
@@ -378,19 +378,19 @@ Usage:
       weitere }; --bodies adds the body of each hit. Without archive { ok: false, grund:
       archiv-nicht-erreichbar | tracker-ohne-suche | abgeschaltet }, exit 0 even then; the
       first failure at the board ends the search.
-  node board.mjs issue fragen <id> [--body-file <pfad>] [--vergleich <pfad>]
+  node board.mjs issue questions <id> [--body-file <pfad>] [--compare <pfad>]
       Grooming state of a requirement for /groom (Issue #1513, Plan #1510): einstieg
       ({ start, grund, meldung }), fragen ({ vermerk, fragen, ungegliedert, offen }),
       stoppKommentar (only with kit:clarify: { kommentar, grund }, otherwise null) and
       vermerkVorschlag (the note 'Keine' with today's date, only without an open
       question). --body-file checks a new body against the card's (pruefung: { ok,
-      verstoesse }), exit 1 on violations. --vergleich lists the changed criteria and
+      verstoesse }), exit 1 on violations. --compare lists the changed criteria and
       non-goals between the file and the card's body (aenderungen).
       Read-only: changes neither body nor labels.
   node board.mjs issue label add <id> <name>
   node board.mjs issue label remove <id> <name>
       Marks an issue (e.g. kit:clarify). Status labels are changed by \`issue move\`.
-  node board.mjs issue check-form <id> [--art fachlich|plan|idee|mensch|task]
+  node board.mjs issue check-form <id> [--art requirement|plan|idea|human|task]
   node board.mjs issue check-form --body-file <pfad> --title "<titel>" [--art ...]
       Form check against the machine gates of the stage (Issue #628): requirement
       F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12, work package I1 to I9. The stage comes
@@ -410,9 +410,9 @@ Usage:
       ('Issue #N' at the start of the line), 'dokument' per #N to a [Plan], [Requirement]
       or [Idea] card. The night run reads both as a dependency; they too affect neither
       ok nor the exit code. A card that cannot be looked up stays silent.
-  node board.mjs issue check-geschuetzt <id> [--pfad <pfad>]
+  node board.mjs issue check-protected <id> [--path <pfad>]
       Protected files of a package (Issue #1045, Plan #987): hits from task and
-      acceptance criteria against the locks of the project root; --pfad (also
+      acceptance criteria against the locks of the project root; --path (also
       repeated, Issue #1053) adds a path rejected on writing, if it is protected, with
       the line 'beim Schreiben abgewiesen' — for the fallback halt when the task does
       not name it. Plus the label kit:geschuetzt and the release — a halt comment
@@ -428,11 +428,11 @@ Usage:
       Precedence rot over laeuft over gruen; 'keine' only with codeHost local, a run
       not yet visible at the host is 'laeuft'. 'gestartet' is the start time of the
       job (ISO) or null as long as it has not started (Issue #1151).
-  node board.mjs code schutz status
-  node board.mjs code schutz einrichten --zweig <z>
-  node board.mjs code schutz aussetzen --in <pfad>
-  node board.mjs code schutz wiederherstellen
-  node board.mjs code schutz nachpruefen [--zweig <z>]
+  node board.mjs code protection status
+  node board.mjs code protection setup --branch <z>
+  node board.mjs code protection suspend --in <pfad>
+  node board.mjs code protection restore
+  node board.mjs code protection verify [--branch <z>]
       Protection of main and publishing branch by ruleset (Issue #1408).
       status: { geschuetzt, fehlt, ungeprueft }, exit 0 also on geschuetzt false.
       setup: probe — the head of origin/<mainBranch> goes to the check branch
@@ -444,27 +444,27 @@ Usage:
       if it fails exit 1 with the command to repeat. verify: head again to the check
       branch, result of the build service. setup, suspend, verify are locked with
       KIT_AGENT_MODEL.
-  node board.mjs kontext paths [--project <name>] [--date JJJJ-MM-TT]
-  node board.mjs kontext last-log [--project <name>] [--before JJJJ-MM-TT]
+  node board.mjs context paths [--project <name>] [--date JJJJ-MM-TT]
+  node board.mjs context last-log [--project <name>] [--before JJJJ-MM-TT]
   node board.mjs issue-review reviewers --author <modell>
-  node board.mjs issue-review check [--nur-pfad]
+  node board.mjs issue-review check [--path-only]
       The read boundary per reviewer; kind command without it is not available
       ('keine Lesegrenze'). 'rollen' names the missing role files of all stages.
   node board.mjs issue-review matrix
-  node board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
+  node board.mjs issue-review roles --stage <requirement|plan|issue> --author <modell>
       'rollenDateien' names pfad and rolleVorhanden per role.
       Cast and roles of the stage from reviewStufen; the author drops out.
-      With --stufe plan, KIT_PLAN_REVIEWER (1 or 2) sets the reviewer count ahead of reviewStufen.
-  node board.mjs issue-review pruefauftrag --rolle <rolle> --datei <ziel> (--id <N> | --material-datei <pfad>)
-      Review brief for a reviewer, not the implementation brief of 'issue auftrag <id>'.
+      With --stage plan, KIT_PLAN_REVIEWER (1 or 2) sets the reviewer count ahead of reviewStufen.
+  node board.mjs issue-review review-brief --role <rolle> --file <ziel> (--id <N> | --material-file <pfad>)
+      Review brief for a reviewer, not the implementation brief of 'issue brief <id>'.
       Puts kit/rollen/<rolle>.md with the list of kinds and the document (--id: from
-      the board, with 'Requirement:' and 'Template:') or material (--material-datei;
-      for code-review with .claude/checks-summary.json) into the file --datei. Output
+      the board, with 'Requirement:' and 'Template:') or material (--material-file;
+      for code-review with .claude/checks-summary.json) into the file --file. Output
       { ok, rolle, datei, zeichen }; errors (exit 1) rolle-fehlt with pfad,
       platzhalter-offen, material-fehlt, dokument-nicht-lesbar.
-  node board.mjs issue-review start --reviewer <name> | --code-review --auftrag <datei> --ausgabe <datei>
+  node board.mjs issue-review start --reviewer <name> | --code-review --brief <datei> --output <datei>
       Starts an outside reviewer (kind command; --code-review: reviewCommand) without
-      a shell: brief via stdin, stdout into --ausgabe. The read boundary is the last
+      a shell: brief via stdin, stdout into --output. The read boundary is the last
       argument — from lesegrenze or reviewLesegrenze, otherwise from the table (codex:
       --sandbox read-only). Needs 'node .claude/kit/board.mjs*' in
       sandbox.excludedCommands. Output { ok, reviewer, lesegrenze, ausgabe, zeichen };
@@ -472,22 +472,22 @@ Usage:
       (--full-auto, --dangerously-bypass-approvals-and-sandbox, --sandbox/-s except
       read-only, -c sandbox_mode, --profile/-p), auftrag-fehlt, nicht-im-path, ausfall
       with exit and an excerpt of stderr.
-  node board.mjs nightrun melden --datei <ergebnisstand.json>
+  node board.mjs nightrun report --file <ergebnisstand.json>
       Delivers a result state of the night runner to POST /api/kanban/night-runs
       (issueTracker toolbox only); the same run is replaced on every report. If the
       state carries a preparation of the release, the report carries
       releasePreparation; if the board rejects it with HTTP 400, the command reports
       exactly once more without the field and notes the fallback in the answer
       ('rueckfall').
-  node board.mjs sitzung melden [--protokoll <pfad>] [--complete]
+  node board.mjs session report [--transcript <pfad>] [--complete]
       Reports the usage of the running interactive session to the same route
       (kind/mode INTERACTIVE, Issue #734), split by the waypoints from
-      .claude/wegmarken.tsv. Without --protokoll the path comes as 'transcript_path'
+      .claude/wegmarken.tsv. Without --transcript the path comes as 'transcript_path'
       from the hook body on stdin. --complete reports the end of the session and
       clears the waypoints; without the flag it reports at most every five minutes.
       Stays silent without error when KIT_AGENT_MODEL is set (the night runner
       reports itself) and without a toolbox token.
-  node board.mjs hook bash-pruefen
+  node board.mjs hook bash-check
       PreToolUse hook for Bash (Issue #995): reads the hook body of Claude Code on
       stdin and rejects with exit 2 when a pipe, redirection or a further command
       takes the exception away from a command in sandbox.excludedCommands. Patterns
@@ -755,7 +755,7 @@ function geschuetztHandlung(treffer, label, freigegeben) {
 }
 
 /**
- * `issue fragen <id> [--body-file <pfad>] [--vergleich <pfad>]` (Issue #1513, Plan #1510 A2,
+ * `issue questions <id> [--body-file <pfad>] [--compare <pfad>]` (Issue #1513, Plan #1510 A2,
  * A3, A4, E9), englisch `issue questions` mit `--compare` (Issue #1555, Plan #1548 E8): der
  * Grooming-Stand eines Fachplans fuer `/groom`. Rein lesend — geschrieben
  * wird ueber `issue update --body-file` (A3), Labels bleiben unberuehrt (A4). Die Kommentare
@@ -860,7 +860,7 @@ async function codeCiStatus(host, args) {
 }
 
 const SCHUTZ_AKTIONEN = ["status", "einrichten", "aussetzen", "wiederherstellen", "nachpruefen"];
-const WIEDERHERSTELLEN_KOMMANDO = "node .claude/kit/board.mjs code schutz wiederherstellen";
+const WIEDERHERSTELLEN_KOMMANDO = "node .claude/kit/board.mjs code protection restore";
 
 /** Der Pruefzweig der Probe (E5): `--zweig`, sonst `pushPruefung.zweig`, sonst `kit-pruefung`. */
 function schutzZweig(config, args) {

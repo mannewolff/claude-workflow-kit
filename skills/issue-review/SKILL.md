@@ -43,7 +43,7 @@ Verstöße — Reihenfolge der Abschnitte, fehlende Kennzeichnungszeile, Herkunf
 ### 3. Reviewer wählen
 Lies `Autor-Modell:` (Arbeitspaket: `## Kontext`; fachliche Anforderung: `## Ziel`) bzw. `Plan-Modell:` im Kopf des Plandokuments. Fehlt der Wert oder lautet er `unbekannt`, frage einmal nach und schlage einen Reviewer vor; unbeaufsichtigt gilt der Regelvorschlag, und der Befunde-Kommentar vermerkt das.
 ```bash
-node .claude/kit/board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
+node .claude/kit/board.mjs issue-review roles --stage <requirement|plan|issue> --author <modell>
 ```
 
 Die Prüferzahl der Stufe `plan` kann ein Lauf über `KIT_PLAN_REVIEWER` setzen; die Session übernimmt die Ausgabe des Kommandos und zählt nicht selbst. `gewaehlt[i]` wird mit `rollen[i]` gepaart; gestartet wird ausschließlich, was in `gewaehlt` steht. `unterbesetzt: true` läuft trotzdem und steht in Zeile 2 des Kommentars; `quelle` (`pairs` | `regel`) und ein `autorAufgeloest: false` gehören ebenfalls dorthin.
@@ -53,12 +53,12 @@ Unmittelbar vor dem Start nimmt die Session ein vorhandenes Label ab: `node .cla
 
 Jeder Reviewer `<n>` aus `gewaehlt` bekommt seinen Prüfauftrag als Datei. Das Kit montiert ihn aus der Rolle unter `kit/rollen/<rolle>.md`, der Artenliste und dem unveränderten Body, beim Plan samt `Fachliche Quelle:` und `Vorlage:`; bei gesetztem Schalter `vorgeschichte` enthält er die gefundenen Fachpläne vollständig, wie sie die Zeilen `Suchbegriffe:` und `Dateien:` des Dokuments finden; die Session schreibt keinen Rollentext ab und füllt nichts selbst ein:
 ```bash
-node .claude/kit/board.mjs issue-review pruefauftrag --rolle <rolle> --id <id> --datei <tmpdir>/<id>-auftrag-<n>.md
+node .claude/kit/board.mjs issue-review review-brief --role <rolle> --id <id> --file <tmpdir>/<id>-auftrag-<n>.md
 ```
 
 Bei `kind: claude` startet die Session das Agent-Tool mit `subagent_type: kit-pruefer` und dem Modell aus `reviewers[].model`; der Auftrag lautet nur `Lies <tmpdir>/<id>-auftrag-<n>.md`, mit wörtlichem Pfad. Der Agent darf nur lesen, seine Abschlussnachricht ist der Befund. Bei `kind: command` startet das Kit das fremde Werkzeug an seiner Lesegrenze, die Antwort steht danach in der Ausgabedatei:
 ```bash
-node .claude/kit/board.mjs issue-review start --reviewer <name> --auftrag <tmpdir>/<id>-auftrag-<n>.md --ausgabe <tmpdir>/<id>-antwort-<n>.md
+node .claude/kit/board.mjs issue-review start --reviewer <name> --brief <tmpdir>/<id>-auftrag-<n>.md --output <tmpdir>/<id>-antwort-<n>.md
 ```
 
 Scheitert `pruefauftrag` oder `start` (Exit 1, etwa `rolle-fehlt` oder `keine-lesegrenze`), ist das ein Ausfall dieses Reviewers in Zeile 2 des Befunde-Kommentars, mit dem Fehler aus der Ausgabe; die Prüfung läuft ohne ihn weiter. Einen Ersatzweg gibt es nicht — keinen selbst geschriebenen Prompt, keinen Start am Kit vorbei.

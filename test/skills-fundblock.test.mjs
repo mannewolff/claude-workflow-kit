@@ -70,7 +70,7 @@ test("[skills-37] weder Skill noch Rolle nennt eine Mangel-Art im eigenen Wortla
 
 test("[skills-1383] beide Skills lassen den Auftrag von pruefauftrag montieren, statt ihn selbst zu fuellen", () => {
   for (const [name, text] of [["issue-review", ISSUE_REVIEW], ["review", REVIEW]]) {
-    assert.match(text, /issue-review pruefauftrag --rolle /, `${name}: ruft pruefauftrag nicht auf`);
+    assert.match(text, /issue-review review-brief --role /, `${name}: ruft review-brief nicht auf`);
     assert.equal(text.includes("befunde.mjs arten"), false, `${name}: fuellt die Artenliste noch selbst`);
   }
 });

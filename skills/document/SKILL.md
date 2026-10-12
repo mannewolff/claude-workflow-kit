@@ -19,7 +19,7 @@ Jede Vault-Datei, in die dieser Skill automatisch schreibt, gehoert genau einem 
 Der Skill baut keine Vault-Pfade selbst zusammen. Ein Aufruf liefert alles:
 
 ```bash
-node .claude/kit/board.mjs kontext paths
+node .claude/kit/board.mjs context paths
 ```
 
 Das JSON enthaelt:
@@ -36,7 +36,7 @@ Das JSON enthaelt:
 ### 1b. Vorgaenger-Eintrag lesen (nur Modus `full`)
 
 ```bash
-node .claude/kit/board.mjs kontext last-log
+node .claude/kit/board.mjs context last-log
 ```
 
 Liefert `{"path": "...", "date": "JJJJ-MM-TT"}` — den juengsten vorhandenen Log-Eintrag **desselben Projekts** — oder `{"path": null}`, wenn es keinen gibt (erster Eintrag eines Projekts, Normalfall, kein Fehler). Der heutige Eintrag ist ausgeschlossen: Eine zweite Session am selben Tag soll nicht sich selbst als Vorgaenger lesen.
@@ -155,7 +155,7 @@ Fuer Vollmodus: ~/.claude/kontext.config.json anlegen mit vault-Pfad.
 
 - Kein Lesen von Vault-Dateien in den Kontext (das ist /kontext)
 - Kein automatisches Schreiben in die Dach-Notiz — nur nach Rueckfrage
-- Kein Selbst-Zusammenbauen von Vault-Pfaden (das macht `board.mjs kontext paths`)
+- Kein Selbst-Zusammenbauen von Vault-Pfaden (das macht `board.mjs context paths`)
 - Keine Code-Änderungen
 - Kein Commit, kein Push
 - Kein Überschreiben bestehender Log-Abschnitte — nur anhängen

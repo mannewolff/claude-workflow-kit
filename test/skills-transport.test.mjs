@@ -29,7 +29,7 @@ const lies = (...teile) => readFileSync(join(repoRoot, ...teile), "utf-8");
 // #583 stellte /issue-review um, #584 die uebrigen sieben Skills, #585 weitet die
 // Pruefung hierauf aus; #574 bringt mit `/task` die dreizehnte Stelle — genau der Fall,
 // fuer den die Aufzaehlung gewaehlt wurde. #1025 nimmt die drei Abschlussberichte der
-// `implement-*`-Skills heraus: Sie melden seither mit `issue melden` (STELLEN_MELDEN unten).
+// `implement-*`-Skills heraus: Sie melden seither mit `issue report` (STELLEN_MELDEN unten).
 export const STELLEN = [
   { datei: "skills/issue-review/SKILL.md", befehl: "Befunde", zweck: "befunde" },
   { datei: "skills/issue-review/SKILL.md", befehl: "Body-Schreibung", zweck: "body" },
@@ -48,7 +48,7 @@ export const STELLEN = [
 const DATEIEN = [...new Set(STELLEN.map((stelle) => stelle.datei))];
 
 // Die drei meldenden Skills (Issue #1025, Plan #1015 E8, E14): Der Abschlussbericht geht
-// als Argument von `issue melden` ans Board, ohne Zwischendatei — die benannte Ausnahme
+// als Argument von `issue report` ans Board, ohne Zwischendatei — die benannte Ausnahme
 // von „Lange Texte ans Board".
 export const STELLEN_MELDEN = [
   "skills/implement-next/SKILL.md",
@@ -56,7 +56,7 @@ export const STELLEN_MELDEN = [
   "skills/implement-done/SKILL.md",
 ];
 
-// Die vier Skills, die ihren Auftrag mit `issue auftrag` holen (Plan #1015 E6).
+// Die vier Skills, die ihren Auftrag mit `issue brief` holen (Plan #1015 E6).
 export const STELLEN_AUFTRAG = [...STELLEN_MELDEN, "skills/implement-test/SKILL.md"];
 
 /** Der Meldeschritt: vom Kopf `### <n>. Melden …` bis zum naechsten `### `. */
@@ -149,12 +149,12 @@ test("[skills-9] Register: der Abschnitt 'Lange Texte ans Board' traegt Regel un
 });
 
 for (const datei of STELLEN_MELDEN) {
-  test(`[skills-1025] ${datei} — Meldeschritt: ein Aufruf issue melden, Bericht als Argument`, () => {
+  test(`[skills-1025] ${datei} — Meldeschritt: ein Aufruf issue report, Bericht als Argument`, () => {
     const schritt = meldeschritt(lies(datei));
     assert.notEqual(schritt, "", `${datei}: kein Abschnitt '### <n>. Melden …'`);
-    assert.match(schritt, /board\.mjs issue melden <id> --text '/, `${datei}: der Aufruf issue melden --text '…' fehlt`);
-    assert.match(schritt, /board\.mjs issue melden <id> --teil <n> --text '/, `${datei}: die Stueckform mit --teil fehlt`);
-    assert.match(schritt, /^node \.claude\/kit\/board\.mjs issue melden <id>$/m, `${datei}: der Abschlussaufruf ohne --text fehlt`);
+    assert.match(schritt, /board\.mjs issue report <id> --text '/, `${datei}: der Aufruf issue report --text '…' fehlt`);
+    assert.match(schritt, /board\.mjs issue report <id> --part <n> --text '/, `${datei}: die Stueckform mit --part fehlt`);
+    assert.match(schritt, /^node \.claude\/kit\/board\.mjs issue report <id>$/m, `${datei}: der Abschlussaufruf ohne --text fehlt`);
     assert.ok(schritt.includes(String.raw`'\''`), `${datei}: die Maskierungsregel '\\'' fehlt im Meldeschritt`);
     assert.match(schritt, /Wiederholung[^.]*Abschlussaufruf/, `${datei}: die Wiederholung nach Fehlschlag fehlt`);
     assert.doesNotMatch(schritt, /issue comment[^\n]*--text-file/, `${datei}: der Meldeschritt nennt noch issue comment --text-file`);
@@ -167,12 +167,12 @@ for (const datei of STELLEN_MELDEN) {
   });
 }
 
-test("[skills-1025] die vier implement-Skills holen den Auftrag mit issue auftrag", () => {
+test("[skills-1025] die vier implement-Skills holen den Auftrag mit issue brief", () => {
   for (const datei of STELLEN_AUFTRAG) {
-    assert.match(lies(datei), /board\.mjs issue auftrag <id>/, `${datei}: nennt issue auftrag nicht`);
+    assert.match(lies(datei), /board\.mjs issue brief <id>/, `${datei}: nennt issue brief nicht`);
   }
-  assert.match(lies("skills/implement-done/SKILL.md"), /issue auftrag <id> --spalte in_progress/,
-    "implement-done fragt nicht mit --spalte in_progress nach");
+  assert.match(lies("skills/implement-done/SKILL.md"), /issue brief <id> --column in_progress/,
+    "implement-done fragt nicht mit --column in_progress nach");
 });
 
 test("[skills-1025] die Backlog-Kommentartexte stehen nur noch in kit/board.mjs, in keinem Skill", async () => {
@@ -187,10 +187,10 @@ test("[skills-1025] die Backlog-Kommentartexte stehen nur noch in kit/board.mjs,
   }
 });
 
-test("[skills-1025] Register: benannte Ausnahme fuer issue melden, Bericht-Lauf vom Kit gesetzt", () => {
+test("[skills-1025] Register: benannte Ausnahme fuer issue report, Bericht-Lauf vom Kit gesetzt", () => {
   const text = lies("templates/CLAUDE-workflow.md");
   const abschnitt = /## Lange Texte ans Board[\s\S]*?(?=\n## |$)/.exec(text)?.[0] ?? "";
-  assert.match(abschnitt, /Ausnahme[\s\S]*issue melden[\s\S]*--teil/, "die Ausnahme fuer issue melden --text/--teil fehlt");
+  assert.match(abschnitt, /Ausnahme[\s\S]*issue report[\s\S]*--part/, "die Ausnahme fuer issue report --text/--part fehlt");
   assert.match(abschnitt, /issue create[\s\S]*update[\s\S]*comment/, "der Satz, dass die Regel fuer create/update/comment bleibt, fehlt");
   const format = /## Abschlussbericht-Format[\s\S]*?(?=\n## |$)/.exec(text)?.[0] ?? "";
   assert.match(format, /Bericht-Lauf:/, "das Format nennt die Zeile Bericht-Lauf: nicht");
@@ -199,7 +199,7 @@ test("[skills-1025] Register: benannte Ausnahme fuer issue melden, Bericht-Lauf 
 test("[skills-1025] /issues schreibt die Kontext-Zeile Plan-Entscheidungen", () => {
   const text = lies("skills/issues/SKILL.md");
   assert.match(text, /^Plan-Entscheidungen: E<n>/m, "die Zeile steht nicht im Muster der Rueckverweise");
-  assert.match(text, /issue auftrag/, "der Satz, wozu issue auftrag die Zeile liest, fehlt");
+  assert.match(text, /issue brief/, "der Satz, wozu issue brief die Zeile liest, fehlt");
 });
 
 test("[skills-9] [skills-10] in keiner der neun Dateien steht eine Variable im Redirect-Ziel", () => {

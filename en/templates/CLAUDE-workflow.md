@@ -247,7 +247,7 @@ Scope alone therefore no longer decides: a change to twelve files without weighi
 ---
 
 ## History
-<!-- de: 306e961ada4d -->
+<!-- de: 9f10afc3f8fd -->
 
 Applies only when `.claude/workflow.config.json` sets the switch `history` to `true`; without it every document comes about as before, without section and without note. With it, the author of a requirement (`/requirement`) and of a plan (`/techplan`) reads, before writing, the earlier requirements on the same subject, archived ones included. An earlier decision blocks nothing; it only becomes visible.
 
@@ -324,7 +324,7 @@ All **affected** `buildChecks` from the config run green; untouched areas are le
 ---
 
 ## Long texts to the board
-<!-- de: 8a86ab0e9f57 -->
+<!-- de: 24646d74747b -->
 
 **Every text a session writes to the board goes via a file outside the project directory — never in the command itself.** First `printenv TMPDIR` — if the output stays empty (Linux and WSL2 without a sandbox), `/tmp` applies —, then piece by piece `cat >` and `cat >>` into `<tmpdir>/<name>.md`, then a call with `--text-file` or `--body-file`. Four rules, each with evidence behind it:
 
@@ -393,7 +393,7 @@ An issue without a prefix is a work package in the four-section format above. Fo
 ---
 
 ## Completion report format
-<!-- de: 4f4cee188170 -->
+<!-- de: dcf1ce1bc1fe -->
 
 ```
 ### Changes

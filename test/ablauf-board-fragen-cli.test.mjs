@@ -1,4 +1,4 @@
-// Ablauf-Pruefung: `issue fragen` startet kit/board.mjs am lokalen Tracker und liest den
+// Ablauf-Pruefung: `issue questions` startet kit/board.mjs am lokalen Tracker und liest den
 // Grooming-Stand eines Fachplans aus stdout (Issue #1513, Plan #1510 A2, A3, A4, E1, E9).
 //
 // Das Kommando ist rein lesend: Body und Labels der Karte bleiben nach jedem Aufruf, wie sie
@@ -33,7 +33,7 @@ function projekt() {
   return dir;
 }
 
-/** Ruft `issue fragen` auf und prueft, dass Datei der Karte unveraendert bleibt. */
+/** Ruft `issue questions` auf und prueft, dass Datei der Karte unveraendert bleibt. */
 function fragen(dir, ...args) {
   const datei = join(dir, "issues", "0001.md");
   const vorher = readFileSync(datei, "utf-8");
@@ -130,11 +130,11 @@ test("--body-file mit gueltigem Body: pruefung.ok true, Exit 0", () => imProjekt
   assert.deepEqual(ausgabe.pruefung, { ok: true, verstoesse: [] });
 }));
 
-test("--vergleich liefert die aenderungen aus kriterienVergleich", () => imProjekt((dir) => {
+test("--compare liefert die aenderungen aus kriterienVergleich", () => imProjekt((dir) => {
   board(dir, "issue", "label", "add", "1", "review:fertig");
   const start = join(dir, "start.md");
   writeFileSync(start, BODY.replace("2. Der Export nennt die Spalten.", "2. Der Export nennt Spalten."), "utf-8");
-  const { status, ausgabe } = fragen(dir, "--vergleich", start);
+  const { status, ausgabe } = fragen(dir, "--compare", start);
   assert.equal(status, 0);
   assert.deepEqual(ausgabe.aenderungen.kriterien.umformuliert,
     [{ nr: 2, vorher: "Der Export nennt Spalten.", nachher: "Der Export nennt die Spalten." }]);
@@ -144,10 +144,10 @@ test("--vergleich liefert die aenderungen aus kriterienVergleich", () => imProje
 test("ohne Kartennummer: Exit 1 mit Meldung", () => imProjekt((dir) => {
   const res = runBoard(dir, ["issue", "fragen"], MIT_AUFSICHT);
   assert.equal(res.status, 1);
-  assert.match(res.stderr, /issue fragen/);
+  assert.match(res.stderr, /issue questions/);
 }));
 
-test("die Hilfe nennt issue fragen", () => imProjekt((dir) => {
+test("die Hilfe nennt issue questions", () => imProjekt((dir) => {
   const res = runBoard(dir, ["--help"]);
-  assert.match(res.stdout, /issue fragen <id> \[--body-file <pfad>\] \[--vergleich <pfad>\]/);
+  assert.match(res.stdout, /issue questions <id> \[--body-file <pfad>\] \[--compare <pfad>\]/);
 }));

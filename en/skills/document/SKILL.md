@@ -19,7 +19,7 @@ Every vault file this skill writes into automatically belongs to exactly one rep
 <!-- de: 785d89faa261 -->
 
 ### 1. Fetch the target paths
-<!-- de: fea43e1178e2 -->
+<!-- de: 83bad8bfd3b1 -->
 
 The skill does not assemble vault paths itself. One call delivers everything:
 
@@ -34,12 +34,12 @@ The JSON contains:
 - `parentNote`: absolute file of the umbrella note — only set if `parentProject` is configured, otherwise `null`
 - `project`, `parentProject`, `vault`: for the confirmation message
 
-**The fallback applies to exactly one case: unknown axis `context`** — a project with an older `board.mjs`. Then fall back to the previous behaviour instead of aborting: call the axis under its old name `kontext` (`node .claude/kit/board.mjs kontext paths`); if that is unknown as well, read `kontext.config.json` yourself (local `.claude/kontext.config.json` before global `~/.claude/kontext.config.json`), project name via `node .claude/kit/board.mjs code repo-name` (last segment; in local mode without a git remote the adapter delivers the directory name — expected behaviour, no error), log to `{vault}/Log/YYYY-MM-DD.md`, project note to `{vault}/Projekte/{name}/{name}.md`, no umbrella note. Say explicitly in the confirmation that the fallback took effect and that `board.mjs` is outdated. A missing command must not make `/document` fail.
+**The fallback applies to exactly one case: unknown axis `context`** — a project with an older `board.mjs`. Then fall back to the previous behaviour instead of aborting: call the axis under its old name `kontext` (`node .claude/kit/board.mjs context paths`); if that is unknown as well, read `kontext.config.json` yourself (local `.claude/kontext.config.json` before global `~/.claude/kontext.config.json`), project name via `node .claude/kit/board.mjs code repo-name` (last segment; in local mode without a git remote the adapter delivers the directory name — expected behaviour, no error), log to `{vault}/Log/YYYY-MM-DD.md`, project note to `{vault}/Projekte/{name}/{name}.md`, no umbrella note. Say explicitly in the confirmation that the fallback took effect and that `board.mjs` is outdated. A missing command must not make `/document` fail.
 
 **Every other error aborts visibly**, in particular an ambiguous note (two files that differ only in upper/lower case) and a note folder that cannot be read. Output the command's message unchanged and write nothing. If the fallback took effect here, it would catch exactly the new error and in the end create the second note after all (Issue #286).
 
 ### 1b. Read the predecessor entry (mode `full` only)
-<!-- de: 554168c47cbc -->
+<!-- de: fc6356d40da8 -->
 
 ```bash
 node .claude/kit/board.mjs context last-log
@@ -162,7 +162,7 @@ For full mode: create ~/.claude/kontext.config.json with the vault path.
 ```
 
 ## What this skill does not do
-<!-- de: 9b4dc08e70eb -->
+<!-- de: 736b52e777ae -->
 
 - No reading of vault files into the context (that is /context)
 - No automatic writing into the umbrella note — only after asking

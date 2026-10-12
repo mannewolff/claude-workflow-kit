@@ -28,7 +28,7 @@ import { berichtAbhaengigkeiten } from "../../kit/night/bericht.mjs";
 import { wartendAbhaengigkeiten } from "../../kit/night/wartend.mjs";
 import { verbrauchLeer } from "../../kit/night/session.mjs";
 import { REVIEW_FERTIG_LABEL, ketteAnbinden, ketteBudgetSetzen, laufeKette } from "../../kit/night/kette.mjs";
-import { erkenneLabel } from "../../kit/board/namen.mjs";
+import { erkenneLabel, internerWert } from "../../kit/board/namen.mjs";
 import { boardAttrappe } from "./board-attrappe.mjs";
 import { psLeer, spawnAttrappe, stdoutFangen, uhrAttrappe } from "./session-attrappe.mjs";
 import { fachplanBody, planBody } from "./kette-texte.mjs";
@@ -74,7 +74,7 @@ function textOderDatei(args, name) {
 
 /**
  * Das Board der Kette: die Board-Attrappe, ergaenzt um die Befehle, die Kette und Laufstand
- * brauchen — `issue create`, `update`, `comment` mit Text oder Datei, `stand`, `check-form` —
+ * brauchen — `issue create`, `update`, `comment` mit Text oder Datei, `run-state`, `check-form` —
  * und `issue list` mit Body, wie der Tracker ihn liefert. `ablehnen(cliArgs)` laesst einen
  * Aufruf scheitern; `boardRoh` liefert dann `{ status: 1 }` statt zu werfen. `schlucken(cliArgs)`
  * nimmt einen Aufruf an und speichert nichts — das Board meldet Erfolg, die Karte bleibt, wie sie
@@ -113,9 +113,9 @@ export function ketteBoard(anfang, { jetzt, formPruefung, ablehnen = () => false
     },
     // Wie `issueStand` im Board-Teil dokumente: Labels erst ab-, dann ansetzen, den juengsten
     // Laufstand ersetzen statt einen zweiten anzuhaengen.
-    stand: ([id, ...args]) => {
+    "run-state": ([id, ...args]) => {
       const ziel = karte(id);
-      const zustand = option(args, "zustand");
+      const zustand = internerWert("zustand", option(args, "state"));
       const rumpf = textOderDatei(args, "text").replaceAll("\r\n", "\n").trim();
       const neu = rumpf.startsWith("## Laufstand") ? rumpf : `## Laufstand\n\n${rumpf}`;
       ziel.labels = ziel.labels.filter((l) => !STAND_SACHEN.has(erkenneLabel(l)));

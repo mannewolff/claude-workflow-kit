@@ -29,8 +29,8 @@ const WIDERSPRUCH = "`- Widerspruch: #N „<Zitat>“ — <Fundstelle>; <warum>`
 const REGEL = {
   de: {
     text: abschnitt(lies("templates", "CLAUDE-workflow.md"), "## Vorgeschichte"),
-    kommando: "node .claude/kit/board.mjs issue vorgeschichte --begriffe",
-    optionen: ["--dateien", "--ohne"],
+    kommando: "node .claude/kit/board.mjs issue history --terms",
+    optionen: ["--files", "--without"],
     orte: [/`## Vorgeschichte` zwischen `## Nicht-Ziele` und `## Offene Fragen an den PO`/, /`### Vorgeschichte` am Ende von `## Betroffene Bereiche`/],
     rechenregel: /\(Treffer des Kommandos − im Dokument genannte Fundstellen\) \+ `weitere`/,
     keinHalt: /[Kk]ein Halt/,
@@ -79,7 +79,7 @@ test("/requirement verweist auf den Abschnitt Vorgeschichte, DE und EN", () => {
 test("/techplan ruft das Kommando in Schritt 2 und nennt `### Vorgeschichte` samt woertlicher Uebernahme", () => {
   const skill = lies("skills", "techplan", "SKILL.md");
   const schritt2 = skill.slice(skill.indexOf("### 2. "), skill.indexOf("### 3. "));
-  assert.match(schritt2, /issue vorgeschichte --begriffe .*--dateien .*--ohne/);
+  assert.match(schritt2, /issue history --terms .*--files .*--without/);
   const schritt3 = skill.slice(skill.indexOf("### 3. "), skill.indexOf("### 4. "));
   assert.ok(schritt3.includes("`### Vorgeschichte`"), "`### Vorgeschichte` fehlt in Schritt 3");
   assert.match(schritt3, /`- Widerspruch:`-Zeilen aus `## Vorgeschichte` der Fachlichen Quelle wörtlich/);

@@ -35,7 +35,7 @@ export const TEXTE = Object.freeze({
     idsLeer: "--ids braucht mindestens eine Kartennummer: board.mjs issue activity --ids 12,13",
     wegmarkeNichtGeschrieben: "Hinweis: Wegmarke nicht geschrieben ({pfad}): {grund}",
     bewegungNichtProtokolliert: "Hinweis: Bewegung nicht protokolliert ({pfad}): {grund}",
-    planErforderlich: "Plan-Nummer ist erforderlich: board.mjs issue ursprung <plan>",
+    planErforderlich: "Plan-Nummer ist erforderlich: board.mjs issue origin <plan>",
     labelUnbekannt: "Unbekannter label-Befehl: '{aktion}'. Erwartet: {erwartet}",
     labelNameErforderlich: "name ist erforderlich: board.mjs issue label add <id> <name>",
     labelZuViele: "Zu viele Argumente: '{zuviel}'. Erwartet genau <id> und <name>.",
@@ -54,7 +54,7 @@ export const TEXTE = Object.freeze({
     stdinUnlesbar: "--{flag} -: stdin ist nicht lesbar ({grund}).",
     quelleLeer: "--{flag} ist erforderlich und darf nicht leer sein (Argument, {dateiFlag} oder '-' fuer stdin).",
     // Ab ursprungEinhaengen bis zum Dateiende (Issue #1479).
-    meldenAufruf: "issue melden <id> [--teil <n>] --text '…'",
+    meldenAufruf: "issue report <id> [--part <n>] --text '…'",
     meldenTeilKeineZahl: "--teil '{wert}' ist keine positive Ganzzahl.",
     meldenTeilOhneText: "--teil braucht --text '…' mit dem Stueck.",
     meldenTextUndStuecke: "Fuer Issue {id} liegen {anzahl} Stueck(e) unter .claude/{ordner}/ — "
@@ -77,7 +77,7 @@ export const TEXTE = Object.freeze({
     ursprungAbschnittNichtGeschrieben: "Abschnitt nicht geschrieben",
     standLabelLeer: "night.stand.labels.{zustand} muss ein nicht leerer Text sein, ist {wert}.",
     standLabelsGleich: "night.stand.labels: die drei Namen muessen verschieden sein ({namen}).",
-    standAufruf: "issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <datei>",
+    standAufruf: "issue run-state <id> --state running|aborted|waiting|done --text-file <datei>",
     standLabelsGibtsNicht: "--labels gibt es nicht: Die Namen kommen aus night.stand.labels der Config. board.mjs {aufruf}",
     standZustandUnbekannt: "--zustand '{wert}' unbekannt. Erwartet: {erwartet}",
     standTextFileErforderlich: "--text-file ist erforderlich: board.mjs {aufruf}",

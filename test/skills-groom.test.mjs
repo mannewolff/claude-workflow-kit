@@ -2,7 +2,7 @@
 //
 // `/groom` fuehrt das Grooming eines geprueften Fachplans mit dem PO. Das Mechanische — welche
 // Fragen offen sind, ob der Ablauf beginnen darf, ob ein neuer Body etwas verliert — liegt im
-// Kommando `issue fragen` (A1); geprueft wird hier, dass der Skill-Text es benutzt und die
+// Kommando `issue questions` (A1); geprueft wird hier, dass der Skill-Text es benutzt und die
 // Urteilsregeln traegt, die im Werkzeug nicht stehen koennen.
 //
 // Geprueft wird der Skill-TEXT, nicht die Laufzeit, und ausschliesslich die Quelle unter
@@ -43,23 +43,23 @@ test("[groom] der Skill traegt Frontmatter mit name: groom und user-invocable: t
 
 // --- Werkzeug statt Text (A1, A3) ---------------------------------------------
 
-test("[groom] der Einstieg laeuft ueber issue fragen und endet bei start: false ohne Aenderung", () => {
-  assert.match(BASH, /node \.claude\/kit\/board\.mjs issue fragen <N>$/m, "der Aufruf issue fragen <N> fehlt");
+test("[groom] der Einstieg laeuft ueber issue questions und endet bei start: false ohne Aenderung", () => {
+  assert.match(BASH, /node \.claude\/kit\/board\.mjs issue questions <N>$/m, "der Aufruf issue questions <N> fehlt");
   assert.match(SKILL, /start: false/, "das Ende bei start: false fehlt");
   assert.match(SKILL, /start: false[^\n]*ohne (?:jede )?(?:Ä|Ae)nderung/, "bei start: false endet der Skill nicht ohne Änderung");
 });
 
-test("[groom] vor jedem Schreiben prueft issue fragen --body-file, geschrieben wird mit issue update --body-file", () => {
-  assert.match(BASH, /board\.mjs issue fragen <N> --body-file <tmpdir>\/<N>-groom-body\.md/, "die Prüfung mit --body-file fehlt");
+test("[groom] vor jedem Schreiben prueft issue questions --body-file, geschrieben wird mit issue update --body-file", () => {
+  assert.match(BASH, /board\.mjs issue questions <N> --body-file <tmpdir>\/<N>-groom-body\.md/, "die Prüfung mit --body-file fehlt");
   assert.match(BASH, /board\.mjs issue update <N> --body-file <tmpdir>\/<N>-groom-body\.md/, "issue update --body-file fehlt");
-  const pruefen = BASH.indexOf("issue fragen <N> --body-file");
+  const pruefen = BASH.indexOf("issue questions <N> --body-file");
   const schreiben = BASH.indexOf("issue update <N> --body-file");
   assert.ok(pruefen < schreiben, "die Prüfung steht nicht vor dem Schreiben");
 });
 
-test("[groom] der Start-Body liegt unter <tmpdir>/<N>-groom-start.md, am Ende vergleicht --vergleich", () => {
+test("[groom] der Start-Body liegt unter <tmpdir>/<N>-groom-start.md, am Ende vergleicht --compare", () => {
   assert.match(SKILL, /<tmpdir>\/<N>-groom-start\.md/, "der Start-Body-Pfad fehlt");
-  assert.match(BASH, /board\.mjs issue fragen <N> --vergleich <tmpdir>\/<N>-groom-start\.md/, "der Vergleich fehlt");
+  assert.match(BASH, /board\.mjs issue questions <N> --compare <tmpdir>\/<N>-groom-start\.md/, "der Vergleich fehlt");
   assert.match(SKILL, /Lange Texte ans Board/, "der Verweis auf die Transportregel fehlt");
   assert.match(SKILL, /eigene[rnm]?\*{0,2} Werkzeugaufruf/, "der eigene Werkzeugaufruf je Stück fehlt");
   assert.match(SKILL, /unvollst(ä|ae)ndige Datei wird nicht/, "der Satz zur unvollständigen Datei fehlt");

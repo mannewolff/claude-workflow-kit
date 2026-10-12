@@ -2550,7 +2550,7 @@ function ursprungSpalten(ids) {
  * Der Stand der Ursprungsdokumente nach der Stufe umsetzung (Issue #1290, Plan #1283 A10,
  * A11): an einer Stelle hinter `stufeMitErgebnis`, gleich ob die Stufe lief, ausgelassen oder
  * vorgefunden wurde, als `stufen.umsetzung.ursprung` — `{ vorher, auswertung }` mit der
- * Ausgabe von `issue ursprung <plan>`, oder `{ fehler }`. Nur lesend und ueber `boardRoh`:
+ * Ausgabe von `issue origin <plan>`, oder `{ fehler }`. Nur lesend und ueber `boardRoh`:
  * Ein Lesefehler haelt die Kette nicht an, `abh.board` liesse den Lauf nach dem zweiten
  * Versuch anhalten.
  */
@@ -2559,7 +2559,7 @@ function ursprungFesthalten(kette, planId, vorher) {
   if (!stand) return;
   let res;
   try {
-    res = abh.boardRoh("issue", "ursprung", String(planId));
+    res = abh.boardRoh("issue", "origin", String(planId));
   } catch (e) {
     res = { status: 1, json: null, text: e.message };
   }
@@ -2860,7 +2860,7 @@ function lesenUndSchreiben(a, { lesen, schreiben, host, eintrag }) {
  * die Uebernahme mit der alten Lauf-ID. Nach dem letzten Schreiben wartet er die Frist
  * einmal fuer alle Karten ab — jede liegt so mindestens die Frist hinter ihrem Schreiben —
  * und liest wieder: Gehoert der juengste Laufstand dann ihm, ist die Wurzel seine, denn
- * `issue stand` ersetzt immer den juengsten und der letzte Schreiber gewinnt. Sonst traegt
+ * `issue run-state` ersetzt immer den juengsten und der letzte Schreiber gewinnt. Sonst traegt
  * er die Karte im Journal als `abgegeben` aus und schreibt nichts mehr an sie.
  *
  * Eingespeist fuer die Tests: `lesen` (`issue get`), `schreiben` (`standSetzen`), `warten`,

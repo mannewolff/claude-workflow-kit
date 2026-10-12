@@ -709,7 +709,7 @@ export async function issueMove(tracker, args) {
   // Bewegungsprotokoll gilt dasselbe — es saehe sonst Ruecklaeufer, die es nicht gab.
   wegmarkeSchreiben(id, toStatus);
   bewegungSchreiben(id, toStatus);
-  // Nach dem eigenen Zug, wie in `issue melden` (Issue #1287, Plan #1283 A2, E1): Auch die
+  // Nach dem eigenen Zug, wie in `issue report` (Issue #1287, Plan #1283 A2, E1): Auch die
   // Rettung und ein Zug des Menschen nach Done koennen das letzte Paket sein. Gezogen wird
   // nur nach In review; kein Fehler hier aendert Exit-Code oder Zug des Pakets (A8).
   const ursprung = URSPRUNG_AUSLOESER.has(toStatus) ? await ursprungDesPakets(tracker, id) : null;
@@ -1029,7 +1029,7 @@ function traegtLaufZeile(body, laufZeile) {
 const vergleichbar = (text) => String(text ?? "").replaceAll("\r\n", "\n").trimEnd();
 
 // Abschnitt `### Ursprungsdokumente` im Abschlussbericht (Issue #1286, Plan #1283 A9, E6).
-// Er steht unmittelbar vor dem Schwanz aus `Kit-Stand:` und `Bericht-Lauf:`; `issue melden`
+// Er steht unmittelbar vor dem Schwanz aus `Kit-Stand:` und `Bericht-Lauf:`; `issue report`
 // schreibt ihn nach dem Zug, und `berichtAblegen` fuehrt ihn bei einer Wiederholung mit.
 // Geschrieben in der Projektsprache wie der Bericht, den er ergaenzt (Issue #1479).
 // Zurueckgelesen unter beiden Namen (Issue #1460): `### Ursprungsdokumente` oder `### Origin documents`.
@@ -1067,7 +1067,7 @@ function ursprungEinhaengen(body, abschnitt) {
   return `${zeilen.slice(0, ende).join("\n").trimEnd()}\n\n${abschnitt}\n\n${zeilen.slice(ende).join("\n")}`;
 }
 
-// `issue melden <id> --teil <n> --text '…'`: nur das Stueck ablegen, kein Board-Zugriff.
+// `issue report <id> --part <n> --text '…'`: nur das Stueck ablegen, kein Board-Zugriff.
 async function meldenStueck(id, args, hatText) {
   if (!/^\d+$/.test(String(args.teil)) || Number(args.teil) < 1) {
     fail(t("meldenTeilKeineZahl", { wert: args.teil }));
@@ -1116,7 +1116,7 @@ async function berichtAblegen(tracker, id, text, laufZeile) {
 }
 
 /**
- * `issue melden <id>` — legt den Abschlussbericht eines Laufs ab und zieht die Karte nach
+ * `issue report <id>` — legt den Abschlussbericht eines Laufs ab und zieht die Karte nach
  * In review, in einem Aufruf (Issue #1022, Plan #1015 E2, E8, E9, E10).
  *
  * Drei Formen:
@@ -1250,7 +1250,7 @@ async function ursprungMelden(tracker, id, laufZeile) {
 }
 
 // ============================================================
-// Laufstand einer Karte: issue stand (Issue #1083, Plan #1079 E1, E3, E4)
+// Laufstand einer Karte: issue run-state (Issue #1083, Plan #1079 E1, E3, E4)
 // ============================================================
 
 // Die Sache je Zustand im Namen-Register (Issue #1428, Plan #1420 E7).
@@ -1292,7 +1292,7 @@ const istLaufstand = (body) => {
 };
 
 /**
- * Die Labels, die `issue stand` vor dem Setzen abnimmt (Issue #1552, Plan #1548 E3): je
+ * Die Labels, die `issue run-state` vor dem Setzen abnimmt (Issue #1552, Plan #1548 E3): je
  * Zustand der Config-Wert und jeder getragene Name, den das Register als Sache des Zustands
  * erkennt — so geht auch ein deutsches `lauf:laeuft` ab, wenn das Kit `run:running` schreibt.
  * Das Label des Ziels selbst bleibt; fremde Labels bleiben unberuehrt.
@@ -1310,7 +1310,7 @@ export function standAbzuraeumen(labels, getragen, ziel) {
 }
 
 /**
- * `issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <datei>` —
+ * `issue run-state <id> --state running|aborted|waiting|done --text-file <datei>` —
  * setzt das Label des Zustands, nimmt die beiden anderen ab (bei `fertig` alle drei) und
  * ersetzt den Kommentar mit Anker `## Laufstand` oder legt ihn an. Abgenommen wird auch jeder
  * getragene Name derselben Sache in der anderen Sprache (`standAbzuraeumen`).

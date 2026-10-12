@@ -20,7 +20,7 @@ Zwei Karten sind ein zulässiger Eingang, und die Nummer kommt als Argument: `/f
 Extrahiere aus der Anforderung die fachliche Substanz. Frage nach, wenn Ziel oder Nutzen unklar sind — aber kläre nur Fachliches, keine Technik.
 
 ### 2. Genau ein fachliches Issue anlegen
-Titel: `<Titel>` ohne Präfix — `--art fachlich` an `issue check-form` und `issue create` stellt das Präfix der Projektsprache voran (`[Fachlich]` im deutschen Projekt); an ihm erkennen alle anderen Skills und der Nacht-Runner fachliche Issues. Body im Story-Format mit vier Abschnitten; bei gesetztem Schalter `vorgeschichte` steht dazu `## Vorgeschichte` zwischen `## Nicht-Ziele` und `## Offene Fragen an den PO`, gesucht und geschrieben nach `CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“:
+Titel: `<Titel>` ohne Präfix — `--art requirement` an `issue check-form` und `issue create` stellt das Präfix `[Requirement]` voran; an ihm erkennen alle anderen Skills und der Nacht-Runner fachliche Issues. Body im Story-Format mit vier Abschnitten; bei gesetztem Schalter `vorgeschichte` steht dazu `## Vorgeschichte` zwischen `## Nicht-Ziele` und `## Offene Fragen an den PO`, gesucht und geschrieben nach `CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“:
 ```markdown
 ## Ziel
 Wer braucht was, und warum? (Nutzerwirkung in PO-Sprache)
@@ -65,11 +65,11 @@ TEIL2
 
 Vor dem Anlegen prüft ein Kommando die Form; erst bei `ok: true` folgt `issue create`, Verstöße werden in der Datei behoben und erneut geprüft:
 ```bash
-node .claude/kit/board.mjs issue check-form --art fachlich --body-file <tmpdir>/neues-issue.md --title "<Titel>"
+node .claude/kit/board.mjs issue check-form --art requirement --body-file <tmpdir>/neues-issue.md --title "<Titel>"
 ```
 
 ```bash
-node .claude/kit/board.mjs issue create --art fachlich --title "<Titel>" --body-file <tmpdir>/neues-issue.md
+node .claude/kit/board.mjs issue create --art requirement --title "<Titel>" --body-file <tmpdir>/neues-issue.md
 ```
 
 Scheitert ein Dateischritt, wird die unvollstaendige Datei nicht uebertragen; scheitert der Board-Aufruf, meldet der Skill den Fehler mit dem Pfad und endet ohne weitere Mutation.

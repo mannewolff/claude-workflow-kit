@@ -1,6 +1,6 @@
-// Ablauf-Pruefung: Exit-Code, Nacht-Sperre und Hilfe von `code schutz` zeigt nur der gestartete Einstieg kit/board.mjs (codeSchutz bricht ueber fail() mit process.exit ab und ist nicht exportiert); im selben Prozess gibt es dafuer keine Funktion eines Teils.
+// Ablauf-Pruefung: Exit-Code, Nacht-Sperre und Hilfe von `code protection` zeigt nur der gestartete Einstieg kit/board.mjs (codeSchutz bricht ueber fail() mit process.exit ab und ist nicht exportiert); im selben Prozess gibt es dafuer keine Funktion eines Teils.
 //
-// Die CLI `code schutz status|einrichten|aussetzen|wiederherstellen|nachpruefen`
+// Die CLI `code protection status|einrichten|aussetzen|wiederherstellen|nachpruefen`
 // (Issue #1408, Plan #1405, A10). Die Logik dahinter pruefen `board-schutz.test.mjs` mit
 // gefaelschtem Host und `board-adapter-schutz-github.test.mjs` mit gefaelschtem `gh`. Hier
 // laeuft der Einstieg mit derselben `gh`-Faelschung wie in
@@ -57,7 +57,7 @@ function ghRegeln({ runList = null, rulesets = [] } = {}) {
   ];
 }
 
-/** Startet `code schutz <args>` im Fixture und liefert Ergebnis samt Mitschrift. */
+/** Startet `code protection <args>` im Fixture und liefert Ergebnis samt Mitschrift. */
 function schutz(args, { git = gitRegeln(), gh = ghRegeln(), env = OHNE_NACHT } = {}) {
   const dir = setupProjekt(CONFIG, "board-schutz-cli-");
   fakeCli(dir, "git", git);
@@ -133,7 +133,7 @@ test("[schutz-cli] aussetzen ohne gruene Zusammenfassung der Stufe push aendert 
 test("[schutz-cli] wiederherstellen: scheitert es, Exit ungleich 0 mit dem Kommando zum Wiederholen", () => {
   const { res } = schutz(["wiederherstellen"], { gh: ghRegeln({ rulesets: [] }) });
   assert.notEqual(res.status, 0);
-  assert.match(res.stderr, /code schutz wiederherstellen/);
+  assert.match(res.stderr, /code protection restore/);
 });
 
 test("[schutz-cli] wiederherstellen setzt das Ruleset des Hauptzweigs auf active", () => {
@@ -180,14 +180,14 @@ test("[schutz-cli] eine unbekannte Aktion endet mit Exit 1 und nennt die fuenf A
   assert.match(res.stderr, /status \| einrichten \| aussetzen \| wiederherstellen \| nachpruefen/);
 });
 
-test("[schutz-cli] der HELP-Text nennt code schutz mit allen fuenf Aktionen", () => {
+test("[schutz-cli] der HELP-Text nennt code protection mit allen fuenf Aktionen", () => {
   const dir = setupProjekt(CONFIG, "board-schutz-help-");
   try {
     const res = runBoard(dir, ["--help"]);
     assert.equal(res.status, 0);
-    assert.match(res.stdout, /code schutz/);
-    for (const aktion of ["status", "einrichten --zweig", "aussetzen --in", "wiederherstellen", "nachpruefen"]) {
-      assert.match(res.stdout, new RegExp(`code schutz ${aktion}`));
+    assert.match(res.stdout, /code protection/);
+    for (const aktion of ["status", "setup --branch", "suspend --in", "restore", "verify"]) {
+      assert.match(res.stdout, new RegExp(`code protection ${aktion}`));
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });

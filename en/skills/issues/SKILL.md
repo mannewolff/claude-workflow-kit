@@ -35,7 +35,7 @@ Decision: <question>. Chosen: <route>. Rejected: <alternative>. Reason: <one sen
 A stop question is asked interactively; unattended the skill ends with the comment `No input for /issues: open stop question` on the plan and creates no package. Stop class and format are not repeated.
 
 ### 2. Cut issues
-<!-- de: d1beed1b2cf2 -->
+<!-- de: 007a7609f3cf -->
 
 One issue = one logical step that can be tested on its own. Criteria:
 - An issue solves exactly one thing and can be committed and reviewed in isolation
@@ -78,14 +78,14 @@ Criteria convention: the section `## Acceptance criteria` contains **only criter
 
 The heading is the anchor by which `implement-*` and the night runner recognise the block — reworded in spirit, it does not work. What the convention does **not** allow: declaring a criterion manual just because it would be tedious to check automatically. The question is not "is it inconvenient" but "does it need a human judgement or a human action". Creating a throw-away directory and running a command in it can be automated and belongs above; judging whether a document is understandable belongs below. Without this boundary everything inconvenient wanders into the lower block over time.
 
-Human-step convention: if the **whole** task of a package lies outside the repository — a setting in a web interface, an account, an access, a release — and no move of a session can do it, the title carries the prefix `[Human]`. That is something different from the block `### Manual check` above: that one takes a **part** of a package out of the session close, `[Human]` takes the **whole** package out of the implementation. Otherwise it stays a work package in the four-section format and falls into the stage `issue` with `issue check-form`; the task describes the action, the acceptance criteria how the human recognises that it is done. Without the prefix the night runner starts a session that recognises the case correctly and does nothing — but it cannot tell this correct inaction apart from a failure, and the card wanders into the backlog, where it looks like a failed package.
+Human-step convention: if the **whole** task of a package lies outside the repository — a setting in a web interface, an account, an access, a release — and no move of a session can do it, it is a human package: it is created with `issue create --art human`, and the kit puts the title prefix `[Human]` in front; the title itself then carries no prefix. That is something different from the block `### Manual check` above: that one takes a **part** of a package out of the session close, `[Human]` takes the **whole** package out of the implementation. Otherwise it stays a work package in the four-section format and falls into the stage `issue` with `issue check-form`; the task describes the action, the acceptance criteria how the human recognises that it is done. Without the prefix the night runner starts a session that recognises the case correctly and does nothing — but it cannot tell this correct inaction apart from a failure, and the card wanders into the backlog, where it looks like a failed package.
 
-Convention "Protected file": if a planned change names a protected path — a file only a human may write —, it is separated out while cutting as a `[Human]` card of its own. The remaining package names this card under `## Dependencies` as `Issue #N`; as long as it is not done, the dependency mechanism holds the remaining package back. Which paths are protected is not copied here: what counts are `GESCHUETZTE_PFADE` in `kit/board.mjs` and the `deny` entries of the settings. Separate from that is the installed copy (`.claude/kit/`, `.claude/skills/`, `.claude/CLAUDE-*.md`): a package that wants to change the copy is cut wrongly — the source is meant, and `node tools/sync-blobs.mjs` or a kit update carries the copy along. `issue check-form` rejects both: a protected path as I8, the installed copy in `## Task` as I9. A `[Human]` package itself is exempt from I7 to I9. If a package only talks about a protected path without changing it — in a test, a block list, the documentation —, `(nur genannt)` directly behind the backtick path marks the mere mention, for example ``Extend the list `AUSNAHMEN` by `.claude/settings.json` (nur genannt).``: this path then counts on this line neither for I8 nor for I7. The marker is a machine value and stays German. A second occurrence without the marker stays a hit, and if the session does write the path, Claude Code rejects the write.
+Convention "Protected file": if a planned change names a protected path — a file only a human may write —, it is separated out while cutting as a `[Human]` card of its own (`--art human`). The remaining package names this card under `## Dependencies` as `Issue #N`; as long as it is not done, the dependency mechanism holds the remaining package back. Which paths are protected is not copied here: what counts are `GESCHUETZTE_PFADE` in `kit/board.mjs` and the `deny` entries of the settings. Separate from that is the installed copy (`.claude/kit/`, `.claude/skills/`, `.claude/CLAUDE-*.md`): a package that wants to change the copy is cut wrongly — the source is meant, and `node tools/sync-blobs.mjs` or a kit update carries the copy along. `issue check-form` rejects both: a protected path as I8, the installed copy in `## Task` as I9. A human package itself is exempt from I7 to I9. If a package only talks about a protected path without changing it — in a test, a block list, the documentation —, `(nur genannt)` directly behind the backtick path marks the mere mention, for example ``Extend the list `AUSNAHMEN` by `.claude/settings.json` (nur genannt).``: this path then counts on this line neither for I8 nor for I7. The marker is a machine value and stays German. A second occurrence without the marker stays a hit, and if the session does write the path, Claude Code rejects the write.
 
 Convention "Files in backticks": `## Task` names the files the package changes as backtick tokens — a token with `/` or with a file extension, not a label or a constant. Every detection starts from there; `issue check-form` rejects a package without such a file path in `## Task` (I7).
 
 ### 3. Create issues in the four-section format
-<!-- de: a3025a56e488 -->
+<!-- de: 42f190942935 -->
 
 Every issue gets four sections:
 ```
@@ -172,6 +172,15 @@ node .claude/kit/board.mjs issue check-form --body-file <tmpdir>/neues-issue.md 
 
 ```bash
 node .claude/kit/board.mjs issue create --title "Title" --body-file <tmpdir>/neues-issue.md
+```
+
+The skill checks and creates a human package with `--art human`, both times with the same title without prefix:
+```bash
+node .claude/kit/board.mjs issue check-form --body-file <tmpdir>/neues-issue.md --title "<title>" --art human
+```
+
+```bash
+node .claude/kit/board.mjs issue create --title "Title" --body-file <tmpdir>/neues-issue.md --art human
 ```
 
 **The `hinweise` from `check-form` and `create` are read.** Besides `ok` and `verstoesse`, the JSON can carry the key `hinweise`. An entry with `art: schreibweise` names a number from explanatory text, an entry with `art: dokument` a reference to a document, an entry with `art: unbekannt` a number the board does not know — it counts as met, so a typo would hold nothing. None of the three touches `ok` or the exit code, but they show what the night run will read as a dependency. Per entry: if the number is not meant, the text is corrected before creating — the number leaves the section or moves into `## Context` —, and `check-form` runs again. If it is meant, the text stays, and the close names the hint with package and number. If only `create` reports a hint, the same rule applies; the correction then goes via `issue update <id> --body-file <tmpdir>/neues-issue.md` to the created card. Unattended the same applies without asking back: the session decides on each number itself.

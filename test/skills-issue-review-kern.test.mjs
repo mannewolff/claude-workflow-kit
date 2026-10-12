@@ -66,9 +66,9 @@ test("[skills-1383] Schritt 4 montiert je Reviewer den Auftrag und startet ueber
   assert.ok(i > 0, "Schritt 4 fehlt");
   const schritt = SKILL.slice(i, SKILL.indexOf("\n### 5.", i));
   const bash = [...schritt.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]).join("\n");
-  assert.match(bash, /^node \.claude\/kit\/board\.mjs issue-review pruefauftrag --rolle <rolle> --id <id> --datei <tmpdir>\/<id>-auftrag-<n>\.md$/m,
+  assert.match(bash, /^node \.claude\/kit\/board\.mjs issue-review review-brief --role <rolle> --id <id> --file <tmpdir>\/<id>-auftrag-<n>\.md$/m,
     "der Aufruf von pruefauftrag fehlt oder weicht ab");
-  assert.match(bash, /^node \.claude\/kit\/board\.mjs issue-review start --reviewer <name> --auftrag <tmpdir>\/<id>-auftrag-<n>\.md --ausgabe <tmpdir>\/<id>-antwort-<n>\.md$/m,
+  assert.match(bash, /^node \.claude\/kit\/board\.mjs issue-review start --reviewer <name> --brief <tmpdir>\/<id>-auftrag-<n>\.md --output <tmpdir>\/<id>-antwort-<n>\.md$/m,
     "der Aufruf von start fuer kind command fehlt oder weicht ab");
   assert.match(schritt, /`kind: claude`[\s\S]{0,300}`subagent_type: kit-pruefer`/, "kind claude laeuft nicht ueber kit-pruefer");
   assert.match(schritt, /`reviewers\[\]\.model`/, "das Modell kommt nicht aus reviewers[].model");
@@ -108,7 +108,7 @@ test("[skills-13] die Stufe steht unter 1b und kennt [Task]", () => {
 
 test("[skills-13] die Reviewer kommen aus roles mit Stufe und Autor", () => {
   const bash = codebloecke("bash").join("\n");
-  assert.match(bash, /issue-review roles --stufe <fachlich\|plan\|issue> --author <modell>$/m);
+  assert.match(bash, /issue-review roles --stage <requirement\|plan\|issue> --author <modell>$/m);
   assert.doesNotMatch(bash, /--issue <N>/, "roles kennt --issue seit Stufe 2 nicht mehr");
   assert.match(SKILL, /gestartet wird ausschließlich, was in `gewaehlt` steht/);
 });
@@ -173,7 +173,7 @@ test("[skills-13] review:fertig ist eine sichtbare Spur am Board, abgenommen vor
   const add = SKILL.indexOf("issue label add <id> review:fertig");
   assert.ok(remove > 0, "das Abnehmen fehlt");
   assert.ok(add > 0, "das Setzen fehlt");
-  assert.ok(remove > SKILL.indexOf("### 4. Reviewer starten") && remove < SKILL.indexOf("issue-review pruefauftrag"),
+  assert.ok(remove > SKILL.indexOf("### 4. Reviewer starten") && remove < SKILL.indexOf("issue-review review-brief"),
     "das Abnehmen steht nicht unmittelbar vor dem Reviewer-Start");
   assert.ok(add > SKILL.indexOf("issue comment <id> --text-file <tmpdir>/<id>-einarbeitung.md"),
     "das Setzen steht nicht nach dem Einarbeitungs-Kommentar");

@@ -245,7 +245,7 @@ test("--help nennt das Kommando unter beiden Namen", async () => {
     for (const befehl of ["vorgeschichte", "history"]) {
       const res = await runBoardAsync(dir, ["issue", befehl, "--help"], MIT_TOKEN);
       assert.equal(res.status, 0, res.stderr);
-      assert.match(res.stdout, /issue vorgeschichte/);
+      assert.match(res.stdout, /issue history/);
     }
     assert.equal(requests.length, 0);
   });

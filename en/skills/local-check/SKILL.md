@@ -26,7 +26,7 @@ That these fields lie in the repository is the point: if everyone had their own 
 If the config is missing: run `buildChecks: []` and point out that no checks are configured.
 
 ## Mandatory checks
-<!-- de: 20b38d7cf912 -->
+<!-- de: 3c9834a13445 -->
 
 **Guardrail: a coverage/quality gate is a floor, not proof of full coverage.** Green means "above the agreed threshold", not "completely tested". As a trust signal a metric only holds if it stays honest: a gap must mean genuinely untested logic, never silently excluded noise. If the coverage report lies below the target agreed in the project (see the project guide or `workflow.config.json`), flag that explicitly as a signal instead of silently waving it through — the human decides whether to look into it or add tests.
 

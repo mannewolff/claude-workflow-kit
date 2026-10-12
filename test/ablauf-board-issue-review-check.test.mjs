@@ -187,7 +187,7 @@ test("Die Hilfe nennt die issue-review-Achse", () => {
     const res = runBoard(dir, ["--help"]);
     assert.match(res.stdout, /issue-review reviewers/);
     assert.match(res.stdout, /issue-review check/);
-    assert.match(res.stdout, /issue-review start --reviewer <name> \| --code-review --auftrag <datei> --ausgabe <datei>/);
+    assert.match(res.stdout, /issue-review start --reviewer <name> \| --code-review --brief <datei> --output <datei>/);
   });
 });
 

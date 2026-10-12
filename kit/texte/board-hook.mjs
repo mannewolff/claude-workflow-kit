@@ -25,7 +25,7 @@ export const TEXTE = Object.freeze({
       + "noch laeuft, ist die Sitzung zu Ende und sein Ergebnis verloren. Richtige Form: denselben "
       + "Befehl im Vordergrund aufrufen und auf ihn warten; das Bash-Zeitlimit der Session reicht "
       + "bis knapp unter das Rundenlimit (Issue #668).",
-    durchgelassen: "board.mjs hook bash-pruefen: {warum} — Aufruf durchgelassen",
+    durchgelassen: "board.mjs hook bash-check: {warum} — Aufruf durchgelassen",
     eingabeUnlesbar: "Eingabe nicht lesbar ({grund})",
     dateiUnlesbar: "{pfad} nicht lesbar ({grund})",
     hookUnbekannt: "Unbekannter hook-Befehl: '{befehl}'",
@@ -41,7 +41,7 @@ export const TEXTE = Object.freeze({
       + "still running, the session is over and its result is lost. Correct form: call the same "
       + "command in the foreground and wait for it; the session's Bash time limit reaches "
       + "just below the round limit (Issue #668).",
-    durchgelassen: "board.mjs hook bash-pruefen: {warum} — call let through",
+    durchgelassen: "board.mjs hook bash-check: {warum} — call let through",
     eingabeUnlesbar: "input not readable ({grund})",
     dateiUnlesbar: "{pfad} not readable ({grund})",
     hookUnbekannt: "Unknown hook command: '{befehl}'",

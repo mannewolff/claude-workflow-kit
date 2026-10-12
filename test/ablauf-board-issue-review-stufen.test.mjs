@@ -144,7 +144,7 @@ test("reviewStufen: ein Block, der kein Objekt ist, bricht ab", () => {
 
 // --- Hilfe und Kopfkommentar ---
 
-const SYNTAX = "issue-review roles --stufe <fachlich|plan|issue> --author <modell>";
+const SYNTAX = "issue-review roles --stage <requirement|plan|issue> --author <modell>";
 
 test("Die Hilfe nennt die volle Syntax von issue-review roles", () => {
   mitStufen(STUFEN, (dir) => {

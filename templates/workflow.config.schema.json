@@ -771,7 +771,7 @@
         },
         "stand": {
           "type": "object",
-          "description": "Der Laufstand: wie eine Karte einer Kette oder Umsetzungsnacht ihren Stand am Board zeigt (board.mjs issue stand). Höchstens eines der drei Labels hängt, dazu genau ein Kommentar '## Laufstand'. Fehlt der Block oder ein Feld darin, gelten die Vorgaben.",
+          "description": "Der Laufstand: wie eine Karte einer Kette oder Umsetzungsnacht ihren Stand am Board zeigt (board.mjs issue run-state). Höchstens eines der drei Labels hängt, dazu genau ein Kommentar '## Laufstand'. Fehlt der Block oder ein Feld darin, gelten die Vorgaben.",
           "properties": {
             "labels": {
               "type": "object",
