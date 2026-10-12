@@ -1,5 +1,5 @@
 ---
-name: context
+name: session-start
 description: Lädt den Memory-Vault und gibt einen kurzen Session-Start-Stand. Nutze diesen Skill wenn der Nutzer /context (Altname /kontext) aufruft oder die Session mit dem Projektstand starten will.
 user-invocable: true
 ---

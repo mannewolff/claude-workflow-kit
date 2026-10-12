@@ -1,6 +1,6 @@
 // Der Kommando-Reviewer in /review (Issue #434).
 //
-// `skills/review/SKILL.md` startete den Reviewer ausschliesslich als Subagent
+// `skills/kit-review/SKILL.md` startete den Reviewer ausschliesslich als Subagent
 // ueber das Agent-Tool — und das Agent-Tool kennt nur Claude-Modelle. Ein
 // `reviewCommand` in der Config waere damit still wirkungslos gewesen: Die
 // Installer-Regel aus Issue #433 laesst die Config durch, der Skill haette sie
@@ -18,7 +18,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SKILL = readFileSync(join(repoRoot, "skills", "review", "SKILL.md"), "utf-8");
+const SKILL = readFileSync(join(repoRoot, "skills", "kit-review", "SKILL.md"), "utf-8");
 
 test("der Reviewer-Start unterscheidet nach Reviewer-Art", () => {
   // Ohne Fallunterscheidung reicht der Skill `reviewCommand` an ein Werkzeug

@@ -76,7 +76,7 @@ const TRANSPORT = [
   'skills/requirement/SKILL.md',
   'skills/issue-review/SKILL.md',
   'skills/issues/SKILL.md',
-  'skills/review/SKILL.md',
+  'skills/kit-review/SKILL.md',
   'skills/task/SKILL.md',
   'skills/techplan/SKILL.md',
 ];

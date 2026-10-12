@@ -4,7 +4,8 @@
 // Stand. Genau dann fährt der Skill den Nach-Push-Schritt, den `RELEASING.md` nennt — im
 // Kit-Repo `node tools/sync-blobs.mjs`, damit die installierte Kopie diesem Stand folgt.
 //
-// Geprüft wird Text, nicht Verhalten — wie in test/skills-push-main.test.mjs.
+// Geprüft wird Text, nicht Verhalten — wie in test/skills-push-main.test.mjs. Seit Issue #1566
+// gibt es den Skill nur in einer Fassung.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -36,17 +37,6 @@ const FASSUNGEN = [
     schritt8: "### 8. Rückweg, Nachziehen, Worktree abbauen",
     schritt4: "### 4. Release-Dateien erzeugen",
     begriff: "Nach-Push-Schritt",
-    wahr: "**`nachziehen: true`**",
-    falsch: "**`nachziehen: false`**",
-    abbau: "worktree.mjs remove",
-    rebase: "git rebase origin/<mainBranch>",
-  },
-  {
-    name: "englisch",
-    text: lies("en", "skills", "push-main", "SKILL.md"),
-    schritt8: "### 8. Way back, catching up, tearing down the worktree",
-    schritt4: "### 4. Create release files",
-    begriff: "post-push step",
     wahr: "**`nachziehen: true`**",
     falsch: "**`nachziehen: false`**",
     abbau: "worktree.mjs remove",

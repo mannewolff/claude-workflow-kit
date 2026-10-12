@@ -17,7 +17,7 @@
  * RELEASING.md braucht keine zusaetzliche Reihenfolge-Regel.
  */
 
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, statSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -48,7 +48,7 @@ const versteckt = (datei) => datei.startsWith(".");
 
 // Liest einen Ordner mit einer Unterordner-Ebene (z.B. skills/<name>/<datei>)
 // zu { name: { datei: inhalt } } ein — Grundlage fuer einen gemeinsamen Blob.
-// Ein fehlender Ordner ergibt {} wie bei buildFileJson: Der Spiegel en/skills/ kann fehlen.
+// Ein fehlender Ordner ergibt {} wie bei buildFileJson.
 function buildDirJson(dir) {
   const result = {};
   if (!existsSync(dir)) return result;
@@ -136,8 +136,7 @@ const BLOBS = [
   { constName: "AGENTS_B64", sourceFiles: join(root, "agents") },
   // Der Spiegel en/ (Issue #1464, Plan #1420 E17): je Quelle ein englischer Blob neben dem
   // deutschen. Der Installer waehlt je Projektsprache und faellt fuer eine fehlende englische
-  // Fassung auf die deutsche zurueck. Nicht skills/en/: buildDirJson buke den Ordner als Skill.
-  { constName: "SKILLS_EN_B64", sourceDir: join(root, "en", "skills") },
+  // Fassung auf die deutsche zurueck. Skills gibt es seit Issue #1566 nur in einer Fassung.
   { constName: "TEMPLATES_EN_B64", sourceFiles: join(root, "en", "templates") },
   { constName: "AGENTS_EN_B64", sourceFiles: join(root, "en", "agents") },
   { constName: "KIT_ROLLEN_EN_B64", sourceFiles: join(root, "en", "kit", "rollen") },
@@ -354,6 +353,27 @@ function kopieSchreiben(ziel, soll, ordner) {
       `oder die Datei von Hand kopieren.\n`
     );
     process.exit(1);
+  }
+}
+
+// Die Ordner der Skill-Namen, die es seit Issue #1566 nicht mehr gibt (Plan #1548 E9). Geraeumt
+// wird ein Ordner nur, wenn seine SKILL.md den gleichnamigen `name:` traegt: Dann ist er die
+// Kopie des alten Kit-Skills und kein eigener Skill, der zufaellig so heisst. Er zaehlt als
+// veraltete Kopie, damit `--check` ihn meldet.
+const ALTE_SKILLS = ["fachplan", "kontext", "context", "review", "plan"];
+
+function alterKitSkill(name) {
+  const datei = join(LOCAL_SKILLS, name, "SKILL.md");
+  if (!existsSync(datei)) return false;
+  const kopf = /^---\r?\n([\s\S]*?)\r?\n---/.exec(readFileSync(datei, "utf-8"));
+  return Boolean(kopf) && new RegExp(`^name:\\s*${name}\\s*$`, "m").test(kopf[1]);
+}
+
+if (existsSync(LOCAL_SKILLS) && !laufStand) {
+  for (const name of ALTE_SKILLS) {
+    if (!alterKitSkill(name)) continue;
+    copyDrift.push(`.claude/skills/${name}/ (entfernt)`);
+    if (!checkOnly) rmSync(join(LOCAL_SKILLS, name), { recursive: true, force: true });
   }
 }
 

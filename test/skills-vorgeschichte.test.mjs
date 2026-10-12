@@ -4,7 +4,8 @@
 // „Vorgeschichte“ (englisch „History“); `/requirement` verweist darauf, `/techplan` ruft das
 // Kommando in Schritt 2 und nennt `### Vorgeschichte` in Schritt 3, `/issue-review` sagt, dass
 // der Pruefauftrag die gefundenen Fachplaene vollstaendig enthaelt. Geprueft wird Text, nicht
-// Verhalten — wie in den uebrigen Skill-Tests.
+// Verhalten — wie in den uebrigen Skill-Tests. Die Skills gibt es seit Issue #1566 nur in einer
+// Fassung; zweisprachig bleibt der Regeltext.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -71,9 +72,8 @@ for (const [sprache, r] of Object.entries(REGEL)) {
   });
 }
 
-test("/requirement verweist auf den Abschnitt Vorgeschichte, DE und EN", () => {
+test("/requirement verweist auf den Abschnitt Vorgeschichte", () => {
   assert.match(lies("skills", "requirement", "SKILL.md"), /`CLAUDE-workflow\.md`, Abschnitt „Vorgeschichte“/);
-  assert.match(lies("en", "skills", "requirement", "SKILL.md"), /`CLAUDE-workflow\.md`, section "History"/);
 });
 
 test("/techplan ruft das Kommando in Schritt 2 und nennt `### Vorgeschichte` samt woertlicher Uebernahme", () => {
@@ -87,14 +87,6 @@ test("/techplan ruft das Kommando in Schritt 2 und nennt `### Vorgeschichte` sam
   assert.match(nacht, /Widerspruch .*kein E-Eintrag und keine Stopp-Frage/);
 });
 
-test("/techplan EN nennt Kommando, `### History` und die woertliche Uebernahme", () => {
-  const skill = lies("en", "skills", "techplan", "SKILL.md");
-  assert.match(skill, /issue history --terms .*--files .*--without/);
-  assert.ok(skill.includes("`### History`"), "`### History` fehlt");
-  assert.match(skill, /`- Widerspruch:` lines from `## History` of the business source verbatim/);
-});
-
-test("/issue-review nennt die Vorgeschichte im Pruefauftrag, DE und EN", () => {
+test("/issue-review nennt die Vorgeschichte im Pruefauftrag", () => {
   assert.match(lies("skills", "issue-review", "SKILL.md"), /Schalter `vorgeschichte`.*gefundenen Fachpläne vollständig/);
-  assert.match(lies("en", "skills", "issue-review", "SKILL.md"), /switch `history`.*requirements found in full/);
 });

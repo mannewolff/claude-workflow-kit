@@ -46,12 +46,12 @@ With a global installation, an eighth question follows about the vault path for 
 Afterwards the seventeen skills are in `.claude/skills/` (or globally in `~/.claude/skills/`), and a `.claude/workflow.config.json` with your answers as well as the board adapter (Board-Adapter) (`.claude/kit/board.mjs`) are in the repo. Restart Claude Code, and the skills show up in `/help`.
 
 ## The seventeen skills
-<!-- de: 1524fb48be8a -->
+<!-- de: af5b54763a9f -->
 
 | Command | What for |
 |--------|-------|
-| `/context` | Load context, overview of the situation at session start (old name `/kontext`) |
-| `/requirement` | Optional: requirement as a business issue for the PO loop (PO-Schleife) (see [documentation](./dokumentation.md#po-loop-business-and-technical-issues)) (old name `/fachplan`) |
+| `/session-start` | Load context, overview of the situation at session start |
+| `/requirement` | Optional: requirement as a business issue for the PO loop (PO-Schleife) (see [documentation](./dokumentation.md#po-loop-business-and-technical-issues)) |
 | `/groom` | Decide the open questions of a reviewed business plan (Fachplan) one by one with the PO |
 | `/techplan` | Plan from the requirement, implements nothing |
 | `/issues` | Plan into small issues (GitHub, GitLab or local) |
@@ -62,7 +62,7 @@ Afterwards the seventeen skills are in `.claude/skills/` (or globally in `~/.cla
 | `/implement-done` | Granular entry: implement against the red tests (green) |
 | `/implement-next` | Exactly one Ready issue (`#N` binding, otherwise the top one), then stop — building block of night mode (Nachtbetrieb) |
 | `/local-check` | Mandatory checks plus UI verification |
-| `/review` | Review by Opus in a fresh session |
+| `/kit-review` | Review by Opus in a fresh session |
 | `/retro` | AI retrospective, consolidate memory |
 | `/push-main` | Push to main, only you |
 | `/merge-production` | PR to production, only you |

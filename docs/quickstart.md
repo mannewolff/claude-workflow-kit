@@ -46,8 +46,8 @@ Danach liegen die siebzehn Skills in `.claude/skills/` (oder global in `~/.claud
 
 | Befehl | Wofür |
 |--------|-------|
-| `/context` | Kontext laden, Lageüberblick zu Session-Start (Altname `/kontext`) |
-| `/requirement` | Optional: Anforderung als fachliches Issue für die PO-Schleife (siehe [Dokumentation](./dokumentation.md#po-schleife-fachliche-und-technische-issues)) (Altname `/fachplan`) |
+| `/session-start` | Kontext laden, Lageüberblick zu Session-Start |
+| `/requirement` | Optional: Anforderung als fachliches Issue für die PO-Schleife (siehe [Dokumentation](./dokumentation.md#po-schleife-fachliche-und-technische-issues)) |
 | `/groom` | Offene Fragen eines geprüften Fachplans einzeln mit dem PO entscheiden |
 | `/techplan` | Plan aus der Anforderung, implementiert nichts |
 | `/issues` | Plan in kleinteilige Issues (GitHub, GitLab oder lokal) |
@@ -58,7 +58,7 @@ Danach liegen die siebzehn Skills in `.claude/skills/` (oder global in `~/.claud
 | `/implement-done` | Granularer Einstieg: gegen die roten Tests implementieren (grün) |
 | `/implement-next` | Genau ein Ready-Issue (`#N` verbindlich, sonst das oberste), dann Ende — Baustein des Nachtbetriebs |
 | `/local-check` | Pflicht-Checks plus UI-Verifikation |
-| `/review` | Review durch Opus in frischer Session |
+| `/kit-review` | Review durch Opus in frischer Session |
 | `/retro` | KI-Retrospektive, Memory konsolidieren |
 | `/push-main` | Push auf main, nur du |
 | `/merge-production` | PR nach production, nur du |

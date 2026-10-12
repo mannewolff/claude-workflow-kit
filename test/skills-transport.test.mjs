@@ -39,7 +39,7 @@ export const STELLEN = [
   { datei: "skills/requirement/SKILL.md", befehl: "issue create" },
   { datei: "skills/task/SKILL.md", befehl: "issue create" },
   { datei: "skills/techplan/SKILL.md", befehl: "issue create (mehrzeilig)" },
-  { datei: "skills/review/SKILL.md", befehl: "Review-Ergebnis" },
+  { datei: "skills/kit-review/SKILL.md", befehl: "Review-Ergebnis" },
   // #1514 bringt mit `/groom` die Body-Schreibung nach jeder Zustimmung (Plan #1510, Review-Fund 8).
   { datei: "skills/groom/SKILL.md", befehl: "issue update --body-file" },
 ];

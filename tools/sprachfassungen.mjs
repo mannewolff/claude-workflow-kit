@@ -21,7 +21,8 @@
  * einen Verweis auf das deutsche Original.
  *
  * Der Spiegel `en/` (Issue #1465, Plan #1420 E17): `en/<pfad>` ist die englische Fassung von
- * `<pfad>`, etwa `en/skills/<name>/SKILL.md` von `skills/<name>/SKILL.md`. Geprüft wird mit
+ * `<pfad>`, etwa `en/agents/<name>.md` von `agents/<name>.md`; Skills gibt es seit Issue #1566
+ * nur in einer Fassung, `en/skills/` entfällt. Geprüft wird mit
  * denselben Stempeln, aber ohne Gleichheit der Codeblöcke — die englischen Befehle tragen
  * die englischen Namen. Eine fehlende Fassung und ein lückenloses Anfangsstück sind dort
  * immer erlaubt, unabhängig von `englischAktiv`.

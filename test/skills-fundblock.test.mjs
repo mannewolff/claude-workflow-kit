@@ -19,7 +19,7 @@ import { arten } from "../kit/findings.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const ISSUE_REVIEW = readFileSync(join(repoRoot, "skills", "issue-review", "SKILL.md"), "utf-8");
-const REVIEW = readFileSync(join(repoRoot, "skills", "review", "SKILL.md"), "utf-8");
+const REVIEW = readFileSync(join(repoRoot, "skills", "kit-review", "SKILL.md"), "utf-8");
 const rolle = (name) => readFileSync(join(repoRoot, "kit", "rollen", `${name}.md`), "utf-8");
 
 const DOKUMENT_ROLLEN = ["pruefbarkeit", "form-beobachtbarkeit", "abgrenzung", "architektur-bestand", "schnitt-abhaengigkeiten"];

@@ -18,7 +18,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SKILL = readFileSync(join(repoRoot, "skills", "context", "SKILL.md"), "utf-8");
+const SKILL = readFileSync(join(repoRoot, "skills", "session-start", "SKILL.md"), "utf-8");
 
 /** Absaetze des Skills (durch Leerzeilen getrennt). */
 function absaetze() {

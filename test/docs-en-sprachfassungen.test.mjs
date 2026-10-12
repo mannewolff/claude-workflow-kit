@@ -15,7 +15,8 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TOOL = join(repoRoot, "tools", "sprachfassungen.mjs");
-const SKILL = "en/skills/probe/SKILL.md";
+// Seit Issue #1566 gibt es keine englischen Skills mehr; der Spiegel traegt Vorlagen, Rollen und Agenten.
+const PAAR = "en/agents/probe.md";
 
 function lauf(args, root) {
   return spawnSync(process.execPath, [TOOL, ...args], { encoding: "utf-8", env: { ...process.env, KIT_ROOT: root } });
@@ -45,7 +46,7 @@ const DEUTSCH = [
 
 /** Die Stempel der deutschen Quelle, wie --erwartet sie ausgibt: [{ stempel, kopf }]. */
 function erwartet(dir) {
-  const res = lauf(["--erwartet", SKILL], dir);
+  const res = lauf(["--erwartet", PAAR], dir);
   assert.equal(res.status, 0, res.stderr);
   return res.stdout
     .trim()
@@ -94,9 +95,9 @@ function mitFixture(fn) {
     mkdirSync(join(dir, "docs", "en"), { recursive: true });
     mkdirSync(join(dir, "docs-site"));
     writeFileSync(join(dir, "docs-site", "sprachen.json"), JSON.stringify({ englischAktiv: true, historisch: [] }));
-    mkdirSync(join(dir, "skills", "probe"), { recursive: true });
-    mkdirSync(join(dir, "en", "skills", "probe"), { recursive: true });
-    writeFileSync(join(dir, "skills", "probe", "SKILL.md"), DEUTSCH);
+    mkdirSync(join(dir, "agents"), { recursive: true });
+    mkdirSync(join(dir, "en", "agents"), { recursive: true });
+    writeFileSync(join(dir, "agents", "probe.md"), DEUTSCH);
     return fn(dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -104,10 +105,10 @@ function mitFixture(fn) {
 }
 
 function schreibeEn(dir, text) {
-  writeFileSync(join(dir, SKILL), text);
+  writeFileSync(join(dir, PAAR), text);
 }
 
-test("--erwartet en/skills/<name>/SKILL.md gibt die Stempel der deutschen Quelle aus", () => {
+test("--erwartet en/agents/<name>.md gibt die Stempel der deutschen Quelle aus", () => {
   mitFixture((dir) => {
     const st = erwartet(dir);
     assert.deepEqual(
@@ -128,11 +129,11 @@ test("ein Paar mit passenden Stempeln ist gruen", () => {
 test("ein veralteter Stempel ist rot mit Seite, Abschnitt und erwartetem Stempel", () => {
   mitFixture((dir) => {
     schreibeEn(dir, englisch(erwartet(dir)));
-    writeFileSync(join(dir, "skills", "probe", "SKILL.md"), DEUTSCH.replace("Schluss.", "Schluss, geaendert."));
+    writeFileSync(join(dir, "agents", "probe.md"), DEUTSCH.replace("Schluss.", "Schluss, geaendert."));
     const neu = erwartet(dir).find((s) => s.kopf === "## Ende");
     const res = lauf(["--check"], dir);
     assert.equal(res.status, 1);
-    assert.match(res.stderr, /en\/skills\/probe\/SKILL\.md/);
+    assert.match(res.stderr, /en\/agents\/probe\.md/);
     assert.match(res.stderr, /## Ende/);
     assert.ok(res.stderr.includes(`<!-- de: ${neu.stempel} -->`), res.stderr);
     assert.doesNotMatch(res.stderr, /## Ablauf/);
@@ -165,7 +166,7 @@ test("ein lueckenloses Anfangsstueck ist gruen, eine Luecke nicht", () => {
     schreibeEn(dir, voll.slice(0, voll.indexOf("## Steps")) + voll.slice(voll.indexOf("## End")));
     const res = lauf(["--check"], dir);
     assert.equal(res.status, 1);
-    assert.match(res.stderr, /en\/skills\/probe\/SKILL\.md/);
+    assert.match(res.stderr, /en\/agents\/probe\.md/);
     assert.match(res.stderr, /## Ablauf/);
   });
 });

@@ -202,15 +202,15 @@ test("Ein neues englisches Projekt bekommt englische Schluessel", () => {
   }
 });
 
-// --- Skills und Regeltexte je Projektsprache (Issue #1464, Plan #1420 E12, E17) ---
+// --- Regeltexte, Pruefer und Pruefrollen je Projektsprache (Issue #1464, Plan #1420 E12, E17) ---
 //
-// Der Spiegel en/ reist als eigene Blobs in install.mjs. Solange er leer ist, hat keine Datei
+// Skills gibt es seit Issue #1566 nur in einer Fassung: Jedes Projekt bekommt dieselben, und die
+// Umstellung laesst sie stehen. Der Spiegel en/ reist als eigene Blobs in install.mjs. Solange er leer ist, hat keine Datei
 // eine englische Fassung; die Faelle unten brauchen aber beides, eine englische und eine
 // fehlende. Darum laeuft eine Kopie des Installers, deren Spiegel-Blobs einen Teil tragen —
 // genau so, wie tools/sync-blobs.mjs sie aus en/ backt.
 
 const SPIEGEL = {
-  SKILLS_EN_B64: { fachplan: { "SKILL.md": "# Requirement (en)\n" } },
   TEMPLATES_EN_B64: { "CLAUDE-workflow.md": "# Workflow (en)\n" },
   AGENTS_EN_B64: { "kit-pruefer.md": "# Checker (en)\n" },
   KIT_ROLLEN_EN_B64: { "code-review.md": "# Code review (en)\n" },
@@ -232,16 +232,25 @@ function installerMitSpiegel(dir) {
 const deutscheQuelle = (...teile) => readFileSync(join(repoRoot, ...teile), "utf-8");
 const installiert = (dir, ...teile) => readFileSync(join(dir, ".claude", ...teile), "utf-8");
 
-/** Englische Fassung, wo der Spiegel sie traegt, sonst die deutsche. */
+/** Englische Fassung, wo der Spiegel sie traegt, sonst die deutsche. Die Skills nur in einer Fassung. */
 function assertFassungen(dir, sprache) {
   const en = sprache === "en";
-  assert.equal(installiert(dir, "skills", "fachplan", "SKILL.md"), en ? "# Requirement (en)\n" : deutscheQuelle("skills", "fachplan", "SKILL.md"));
-  assert.equal(installiert(dir, "skills", "techplan", "SKILL.md"), deutscheQuelle("skills", "techplan", "SKILL.md"), "ohne englische Fassung deutsch");
+  assertSkills(dir);
   assert.equal(installiert(dir, "CLAUDE-workflow.md"), en ? "# Workflow (en)\n" : deutscheQuelle("templates", "CLAUDE-workflow.md"));
   assert.equal(installiert(dir, "CLAUDE-Plan.md"), deutscheQuelle("templates", "CLAUDE-Plan.md"));
   assert.equal(installiert(dir, "agents", "kit-pruefer.md"), en ? "# Checker (en)\n" : deutscheQuelle("agents", "kit-pruefer.md"));
   assert.equal(installiert(dir, "kit", "rollen", "code-review.md"), en ? "# Code review (en)\n" : deutscheQuelle("kit", "rollen", "code-review.md"));
   assert.equal(installiert(dir, "kit", "rollen", "pruefbarkeit.md"), deutscheQuelle("kit", "rollen", "pruefbarkeit.md"));
+}
+
+/** Jeder Skill liegt in der einen Fassung aus skills/, keiner der alten Namen. */
+function assertSkills(dir) {
+  for (const name of ["requirement", "techplan", "session-start", "kit-review"]) {
+    assert.equal(installiert(dir, "skills", name, "SKILL.md"), deutscheQuelle("skills", name, "SKILL.md"), name);
+  }
+  for (const alt of ["fachplan", "kontext", "context", "review", "plan"]) {
+    assert.equal(existsSync(join(dir, ".claude", "skills", alt)), false, `${alt} wurde installiert`);
+  }
 }
 
 const NEU = ["projekt", "github", "j", "j", "pruefzweig", "github", "", "", "", "", "", "", ""];
@@ -251,7 +260,7 @@ const schutzFake = (dir) => {
   return { INSTALL_SCHUTZ_FAKE: skript };
 };
 
-test("Ein neues englisches Projekt bekommt die englischen Fassungen unter den gewohnten Pfaden, fehlende deutsch und genannt", () => {
+test("Ein neues englisches Projekt bekommt die englischen Fassungen unter den gewohnten Pfaden, fehlende deutsch und genannt, Skills in der einen Fassung", () => {
   const dir = fixture("install-fassung-en-");
   try {
     const res = installiere(dir, [], schutzFake(dir), ["en", ...NEU], installerMitSpiegel(dir));
@@ -259,9 +268,7 @@ test("Ein neues englisches Projekt bekommt die englischen Fassungen unter den ge
     assertFassungen(dir, "en");
 
     const rueckfall = res.stdout.split("\n").filter((z) => z.includes("Installed in German"));
-    const skills = rueckfall.find((z) => z.includes(join(dir, ".claude", "skills"))) ?? "";
-    assert.match(skills, /\btechplan\b/);
-    assert.doesNotMatch(skills, /\bfachplan\b/, "eine englische Fassung ist kein Rueckfall");
+    assert.ok(!rueckfall.some((z) => z.includes(join(dir, ".claude", "skills"))), "Skills haben nur eine Fassung, also keinen Rueckfall");
     const regeltexte = rueckfall.find((z) => z.includes("CLAUDE-Plan.md")) ?? "";
     assert.doesNotMatch(regeltexte, /CLAUDE-workflow\.md/);
     assert.ok(rueckfall.some((z) => z.includes("pruefbarkeit.md") && !z.includes("code-review.md")), "die Pruefrollen werden genannt");
@@ -283,21 +290,36 @@ test("Ein neues deutsches Projekt bekommt die deutschen Fassungen und keinen Rue
   }
 });
 
-test("Die Umstellung tauscht Skills und Regeltexte, hin und zurueck, und nennt, was deutsch bleibt", () => {
+/** Prueft Regeltexte, Pruefer und Pruefrollen; die Skills prueft der Aufrufer selbst. */
+function assertSprachdateien(dir, sprache) {
+  const en = sprache === "en";
+  assert.equal(installiert(dir, "CLAUDE-workflow.md"), en ? "# Workflow (en)\n" : deutscheQuelle("templates", "CLAUDE-workflow.md"));
+  assert.equal(installiert(dir, "agents", "kit-pruefer.md"), en ? "# Checker (en)\n" : deutscheQuelle("agents", "kit-pruefer.md"));
+  assert.equal(installiert(dir, "kit", "rollen", "code-review.md"), en ? "# Code review (en)\n" : deutscheQuelle("kit", "rollen", "code-review.md"));
+}
+
+test("Die Umstellung tauscht Regeltexte, Pruefer und Rollen, keine Skills, hin und zurueck, und nennt, was deutsch bleibt", () => {
   const dir = deutschesProjekt("install-umstellung-fassung-");
   try {
+    // Ein Skill, den der Mensch angepasst hat: Die Umstellung tauscht keine Skills mehr.
+    mkdirSync(join(dir, ".claude", "skills", "techplan"), { recursive: true });
+    writeFileSync(join(dir, ".claude", "skills", "techplan", "SKILL.md"), "# eigen\n");
     const installer = installerMitSpiegel(dir);
     const hin = installiere(dir, ["--language", "en"], boardFake(dir, KARTEN), [], installer);
     assert.equal(hin.status, 0, `${hin.stderr}\n${hin.stdout}`);
-    assertFassungen(dir, "en");
+    assertSprachdateien(dir, "en");
+    assert.equal(installiert(dir, "skills", "techplan", "SKILL.md"), "# eigen\n", "die Umstellung hat einen Skill getauscht");
+    assert.equal(existsSync(join(dir, ".claude", "skills", "requirement")), false, "die Umstellung hat Skills angelegt");
     // Berichtet wird in der Sprache vor der Umstellung, die Liste steht unter "Offen".
     const offen = hin.stdout.slice(hin.stdout.indexOf("Offen ("));
-    assert.match(offen, /Deutsch installiert.*skills: .*\btechplan\b/);
+    assert.match(offen, /Deutsch installiert.*CLAUDE-Plan\.md/);
+    assert.doesNotMatch(offen, /Deutsch installiert.*skills/);
     assert.equal(existsSync(join(dir, ".claude", "kit", "board.mjs")), false, "die Umstellung schreibt nur die Sprachfassungen");
 
     const zurueck = installiere(dir, ["--language", "de"], boardFake(dir, KARTEN), [], installer);
     assert.equal(zurueck.status, 0, `${zurueck.stderr}\n${zurueck.stdout}`);
-    assertFassungen(dir, "de");
+    assertSprachdateien(dir, "de");
+    assert.equal(installiert(dir, "skills", "techplan", "SKILL.md"), "# eigen\n");
     assert.doesNotMatch(zurueck.stdout, /Deutsch installiert|Installed in German/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
