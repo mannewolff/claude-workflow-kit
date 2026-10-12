@@ -182,9 +182,10 @@ const KETTE_OHNE = [
   { von: "export function korrekturPrompt", bis: "/** Der Text eines Abschnitts" },
 ];
 
+// Die Tabelle liegt seit Issue #1525 in kit/texte/; gescannt wird das Modul ohne sie.
 test("[1491] der erste Teil der Kette gibt in einem englischen Projekt keine deutsche Meldung aus", () => {
   const bereich = { bis: "async function formSicherstellen", ohne: KETTE_OHNE };
-  assert.deepEqual(deutschAmHelferVorbei("kit/night/kette.mjs", KETTE_TEXTE, [], bereich), [],
+  assert.deepEqual(deutschAmHelferVorbei("kit/night/kette.mjs", null, [], bereich), [],
     "kit/night/kette.mjs: deutsche Texte am Texthelfer vorbei");
   assert.deepEqual(deutschImEnglischen(KETTE_TEXTE), [], "kit/night/kette.mjs: deutsche Woerter in der englischen Tabelle");
 });
@@ -258,7 +259,7 @@ const KETTE_VERTRAG = ["## Testhinweise der Formpruefung", "nicht-vorbereitet"];
 
 test("[1492] der zweite Teil der Kette gibt in einem englischen Projekt keine deutsche Meldung aus", () => {
   const bereich = { bis: "async function mitMeldung", ohne: KETTE_OHNE };
-  assert.deepEqual(deutschAmHelferVorbei("kit/night/kette.mjs", KETTE_TEXTE, KETTE_VERTRAG, bereich), [],
+  assert.deepEqual(deutschAmHelferVorbei("kit/night/kette.mjs", null, KETTE_VERTRAG, bereich), [],
     "kit/night/kette.mjs: deutsche Texte am Texthelfer vorbei");
   assert.deepEqual(deutschImEnglischen(KETTE_TEXTE), [], "kit/night/kette.mjs: deutsche Woerter in der englischen Tabelle");
 });
@@ -330,7 +331,7 @@ test("[1493] englisch: der Wartetext an der Projektgrenze in der Form der Vorlag
 });
 
 test("[1493] die ganze Kette gibt in einem englischen Projekt keine deutsche Meldung aus", () => {
-  assert.deepEqual(deutschAmHelferVorbei("kit/night/kette.mjs", KETTE_TEXTE, KETTE_VERTRAG, { ohne: KETTE_OHNE }), [],
+  assert.deepEqual(deutschAmHelferVorbei("kit/night/kette.mjs", null, KETTE_VERTRAG, { ohne: KETTE_OHNE }), [],
     "kit/night/kette.mjs: deutsche Texte am Texthelfer vorbei");
   assert.deepEqual(deutschImEnglischen(KETTE_TEXTE), [], "kit/night/kette.mjs: deutsche Woerter in der englischen Tabelle");
 });

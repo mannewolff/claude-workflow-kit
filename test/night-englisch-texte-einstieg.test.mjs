@@ -334,9 +334,11 @@ const GRUPPE = [
   ["kit/night/tag.mjs", TAG_TEXTE],
 ];
 
+// Die Tabellen der Teile unter kit/night/ liegen seit Issue #1525 in kit/texte/; nur der Einstieg traegt
+// seine noch selbst.
 test("[1486] die Gruppe gibt in einem englischen Projekt keine deutsche Meldung aus", () => {
   for (const [datei, tabelle] of GRUPPE) {
-    assert.deepEqual(deutschAmHelferVorbei(datei, tabelle), [], `${datei}: deutsche Texte am Texthelfer vorbei`);
+    assert.deepEqual(deutschAmHelferVorbei(datei, datei.startsWith("kit/night/") ? null : tabelle), [], `${datei}: deutsche Texte am Texthelfer vorbei`);
     assert.deepEqual(deutschImEnglischen(tabelle), [], `${datei}: deutsche Woerter in der englischen Tabelle`);
   }
 });

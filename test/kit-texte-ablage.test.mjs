@@ -14,10 +14,16 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-// Die Module, deren Tabelle schon unter kit/texte/ liegt.
-const MODULE = ["kit/aufwand.mjs", "kit/befunde.mjs", "kit/board.mjs", "kit/worktree.mjs"];
+// Die Module, deren Tabelle schon unter kit/texte/ liegt. Die Teile unter kit/night/ legen
+// ihre Tabelle als night-<modul>.mjs ab (Issue #1525).
+const MODULE = [
+  "kit/aufwand.mjs", "kit/befunde.mjs", "kit/board.mjs", "kit/worktree.mjs",
+  "kit/night/kette.mjs", "kit/night/bericht.mjs", "kit/night/wartend.mjs", "kit/night/grundlagen.mjs",
+  "kit/night/session.mjs", "kit/night/tag.mjs", "kit/night/kitstand.mjs", "kit/night/laufstand.mjs",
+  "kit/night/abhaengigkeiten.mjs",
+];
 
-const name = (modul) => modul.split("/").pop();
+const name = (modul) => modul.replace(/^kit\//, "").replaceAll("/", "-");
 
 for (const modul of MODULE) {
   test(`${modul}: die Tabelle liegt unter kit/texte/${name(modul)}`, async () => {

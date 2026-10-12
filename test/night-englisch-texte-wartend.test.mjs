@@ -452,9 +452,10 @@ const GRUPPE = [
   ["kit/night/kitstand.mjs", KITSTAND_TEXTE],
 ];
 
+// Die Tabellen der Teile unter kit/night/ liegen seit Issue #1525 in kit/texte/; gescannt wird das Modul ohne sie.
 test("[1487] die Gruppe gibt in einem englischen Projekt keine deutsche Meldung aus", () => {
   for (const [datei, tabelle, bereich] of GRUPPE) {
-    assert.deepEqual(deutschAmHelferVorbei(datei, tabelle, VERTRAG, bereich), [], `${datei}: deutsche Texte am Texthelfer vorbei`);
+    assert.deepEqual(deutschAmHelferVorbei(datei, null, VERTRAG, bereich), [], `${datei}: deutsche Texte am Texthelfer vorbei`);
     assert.deepEqual(deutschImEnglischen(tabelle), [], `${datei}: deutsche Woerter in der englischen Tabelle`);
   }
 });

@@ -4,7 +4,8 @@
 // Geprueft wird zweierlei: dass der Absatz alle sechs Faelle beider Lauf-Arten, den
 // Vorrang der Rueckstellung, den Rueckfall-Satz und die Sonderstellung des nicht
 // schreibbaren Locks nennt — und dass jeder woertlich zitierte Fallsatz so auch in
-// `kit/night/grundlagen.mjs` steht, wo sie seit Issue #1224 gebildet werden. Eine Doku, die
+// `kit/night/grundlagen.mjs` steht, wo sie seit Issue #1224 gebildet werden — die festen Saetze
+// seit Issue #1525 in seiner Texttabelle `kit/texte/night-grundlagen.mjs`. Eine Doku, die
 // einen Wortlaut nur ungefaehr wiedergibt, laesst den Leser morgens einen Satz suchen, den
 // es nicht gibt.
 
@@ -18,7 +19,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
 const DOKU = lies("docs", "dokumentation.md");
-const NIGHT = lies("kit", "night", "grundlagen.mjs");
+const NIGHT = lies("kit", "night", "grundlagen.mjs") + lies("kit", "texte", "night-grundlagen.mjs");
 
 /** Die Darstellung — ab der fetten Ueberschrift bis zum naechsten Thema. Sie umfasst
  *  mehrere Absaetze: die Faelle, den Vorrang und den Sonderfall des Locks. */

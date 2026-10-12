@@ -262,9 +262,10 @@ test("[1450] englisch: der Abhaengigkeitsblock mit DOKUMENT_SATZ_ERST und den Kr
 // `nicht-vorbereitet` der Vorbereitung.
 const BERICHT_VERTRAG = ["bleibt", "nicht-vorbereitet"];
 
+// Die Tabellen der Teile unter kit/night/ liegen seit Issue #1525 in kit/texte/; gescannt wird das Modul ohne sie.
 test("[1450] beide Module geben in einem englischen Projekt keine deutsche Meldung aus", () => {
   for (const [datei, tabelle, vertrag] of [["kit/night/bericht.mjs", BERICHT_TEXTE, BERICHT_VERTRAG], ["kit/night/abhaengigkeiten.mjs", ABH_TEXTE, []]]) {
-    assert.deepEqual(deutschAmHelferVorbei(datei, tabelle, vertrag), [], `${datei}: deutsche Texte am Texthelfer vorbei`);
+    assert.deepEqual(deutschAmHelferVorbei(datei, null, vertrag), [], `${datei}: deutsche Texte am Texthelfer vorbei`);
     assert.deepEqual(deutschImEnglischen(tabelle), [], `${datei}: deutsche Woerter in der englischen Tabelle`);
   }
 });
