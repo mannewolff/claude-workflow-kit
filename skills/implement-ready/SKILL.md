@@ -250,6 +250,7 @@ Format des Abschlussberichts:
 - hinweis: <Datei und Grund>   (je Fund einer Hinweis-Pruefung, direkt unter ihrer Zeile)
 - ausgelassen: <Kommando> → <Grund>
 - bei `leeresPaket`: keine Pruefung, weil nichts veraendert wurde
+- Szenario „<Titel>“ → Test <Testname>   (je Szenario, das das Paket aus dem Fachplan uebernommen hat)
 
 ### Hinweise
 - <verbleibende Risiken, offene Punkte, manuelle Folgeschritte>

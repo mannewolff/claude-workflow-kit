@@ -393,14 +393,14 @@ An issue without a prefix is a work package in the four-section format above. Fo
 ---
 
 ## Completion report format
-<!-- de: dcf1ce1bc1fe -->
+<!-- de: 7ab64e4f2da3 -->
 
 ```
 ### Changes
 - `File` — short description of the effect
 
 ### Tests and checks
-- <lines from the block `For the completion report:` of `checks.mjs run`, verbatim: first `Wait time: <s> s, together <s> s in <n> runs for card #<n>` (without card number `Wait time: <s> s`), after a red partial run `Partial run: only the checks red last time`, then `ran: <command> → <result>, <duration> — <reason>`, after a flaky check directly below `Flaky: <command> → red first, then green`, or `skipped: <command> → <reason>`>
+- <lines from the block `For the completion report:` of `checks.mjs run`, verbatim: first `Wait time: <s> s, together <s> s in <n> runs for card #<n>` (without card number `Wait time: <s> s`), after a red partial run `Partial run: only the checks red last time`, then `ran: <command> → <result>, <duration> — <reason>`, after a flaky check directly below `Flaky: <command> → red first, then green`, or `skipped: <command> → <reason>`; then per scenario the package took over from the requirement, `- Scenario "<title>" → test <test name>`>
 
 ### Notes
 - <remaining risks, open points, manual follow-up steps>

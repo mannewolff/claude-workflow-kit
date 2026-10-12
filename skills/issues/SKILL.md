@@ -58,7 +58,7 @@ Stimmen beide ueberein, genuegt die `Autor-Modell`-Zeile. **Weichen sie ab, steh
 
 Kopien-Konvention: Aendert ein Issue eine Datei, von der das Repo eine Dogfooding-Kopie fuehrt (Skills, Kit-Tools), verlangt die Aufgabe **`node tools/sync-blobs.mjs`** — nicht "die Kopie mitziehen". Das Tool gleicht `.claude/kit/` und `.claude/skills/` selbst ab und macht `--check` rot, wenn etwas driftet.
 
-Kriterien-Konvention: Der Abschnitt `## Akzeptanzkriterium` enthaelt **ausschliesslich Kriterien, die eine Session selbst pruefen kann** — ausfuehrbare Kommandos, Dateizustaende, Testergebnisse. Was ein menschliches Urteil oder eine menschliche Handlung braucht (Klick durch eine UI, Blick auf ein gerendertes Dokument, Urteil ueber Textqualitaet, Livetest gegen eine fremde Instanz), kommt in einen eigenen Block mit **woertlich dieser Ueberschrift**:
+Kriterien-Konvention: Der Abschnitt `## Akzeptanzkriterium` enthaelt **ausschliesslich Kriterien, die eine Session selbst pruefen kann** — ausfuehrbare Kommandos, Dateizustaende, Testergebnisse. Einzige Ausnahme: das Szenario aus dem Fachplan (Konvention „Szenario im Paket“ unten) — es ist Gegenstand des Kriteriums, kein Pruefschritt. Was ein menschliches Urteil oder eine menschliche Handlung braucht (Klick durch eine UI, Blick auf ein gerendertes Dokument, Urteil ueber Textqualitaet, Livetest gegen eine fremde Instanz), kommt in einen eigenen Block mit **woertlich dieser Ueberschrift**:
 ```markdown
 ## Akzeptanzkriterium
 - <maschinell pruefbar>
@@ -68,6 +68,8 @@ Kriterien-Konvention: Der Abschnitt `## Akzeptanzkriterium` enthaelt **ausschlie
 ```
 
 Die Ueberschrift ist der Anker, an dem `implement-*` und der Nacht-Runner den Block erkennen — sinngemaess umformuliert wirkt sie nicht. Was die Konvention **nicht** erlaubt: ein Kriterium als manuell zu deklarieren, nur weil es muehsam automatisch zu pruefen waere. Die Frage lautet nicht "ist es unbequem", sondern "braucht es ein menschliches Urteil oder eine menschliche Handlung". Ein Wegwerf-Verzeichnis anzulegen und ein Kommando darin laufen zu lassen ist automatisierbar und gehoert nach oben; zu beurteilen, ob eine Doku verstaendlich ist, gehoert nach unten. Ohne diese Grenze wandert mit der Zeit alles Unbequeme in den unteren Block.
+
+Konvention „Szenario im Paket“: Entsteht ein Paket aus einem Fachplan mit Szenarien, traegt jedes beteiligte Paket das Szenario woertlich im Abschnitt `## Akzeptanzkriterium` — als Block `Szenario: <Titel>` mit seinen Zeilen, direkt vor dem pruefbaren Kriterium, das den Test mit dem Titel im Namen nennt: `test("Szenario: <Titel>", …)` oder die Entsprechung des Testwerkzeugs, keine Kennung. Das Szenario ersetzt das pruefbare Kriterium nicht. Erfuellen mehrere Pakete ein Szenario gemeinsam, nennen es alle; das vollendende Paket, das das beobachtbare Ergebnis herstellt, traegt den Test.
 
 Menschenschritt-Konvention: Liegt die **ganze** Aufgabe eines Pakets ausserhalb des Repositories — eine Einstellung in einer Weboberflaeche, ein Konto, ein Zugang, eine Freigabe — und kann kein Zug einer Sitzung sie erledigen, ist es ein Menschenpaket: Es wird mit `issue create --art human` angelegt, und das Kit stellt dem Titel das Praefix `[Human]` voran; der Titel selbst traegt dann kein Praefix. Das ist etwas anderes als der Block `### Manuelle Pruefung` darueber: Der nimmt einen **Teil** eines Pakets aus dem Session-Abschluss heraus, `[Human]` nimmt das **ganze** Paket aus der Umsetzung. Sonst bleibt es ein Arbeitspaket im Vier-Abschnitt-Format und faellt bei `issue check-form` in die Stufe `issue`; die Aufgabe beschreibt die Handlung, das Akzeptanzkriterium, woran der Mensch erkennt, dass sie getan ist. Ohne das Praefix startet der Nacht-Runner eine Session, die den Fall zwar richtig erkennt und nichts tut — er kann diese richtige Untaetigkeit aber nicht von einem Fehlschlag unterscheiden, und die Karte wandert ins Backlog, wo sie wie ein gescheitertes Paket aussieht.
 
@@ -130,7 +132,6 @@ node .claude/kit/board.mjs issue create --title "Titel" --derived-from <M> --bod
 **Abgrenzung zur Plan-Modell-Konvention (Issue #266):** `Plan-Modell:` sagt, **welches Modell** den Plan geschrieben hat — den Urheber. `Plan: Issue #M` sagt, **wo er steht** — den Fundort. Beide Zeilen sind unabhängig voneinander: `Plan-Modell:` darf bei identischem Plan- und Issue-Autor entfallen, die `Plan:`-Zeile wird davon nicht berührt und steht auch dann.
 
 **Zwei Randfälle:**
-
 - **Plan ohne `[Plan]`-Issue:** `/issues` nimmt auch einen Plan an, der lediglich in derselben Session freigegeben wurde. Dann entsteht **keine `Plan:`-Zeile**, keine `Plan-Entscheidungen:`-Zeile und auch kein Platzhalter — die Zeile hängt allein daran, ob ein `[Plan]`-Issue als Quelle vorliegt.
 - **Plan ohne fachliche Quelle:** Steht hinter dem Plandokument keine fachliche Anforderung, steht nur `Plan: Issue #M`.
 

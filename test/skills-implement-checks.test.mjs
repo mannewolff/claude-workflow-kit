@@ -290,3 +290,31 @@ for (const name of ["implement-next", "implement-ready", "implement-done", "impl
       "es fehlt, dass die Zeile `Gewackelt:` wortgetreu in den Bericht geht");
   });
 }
+
+// --- Zeile je uebernommenem Szenario (Issue #1595, Plan #1588) -----------------
+//
+// Kriterium 9 aus #1586: Der Abschlussbericht nennt zu jedem uebernommenen Szenario den
+// Test, damit der Mensch ihn am Board findet, ohne in den Code zu schauen.
+
+function abschnittTestsUndChecks(text) {
+  const start = text.indexOf("### Tests und Checks");
+  assert.notEqual(start, -1, "der Abschnitt '### Tests und Checks' fehlt");
+  return text.slice(start, text.indexOf("### Hinweise", start));
+}
+
+for (const name of ["implement-next", "implement-ready", "implement-done"]) {
+  test(`${name}: der Abschnitt Tests und Checks nennt je Szenario den Test`, () => {
+    const text = readFileSync(join(repoRoot, "skills", name, "SKILL.md"), "utf-8");
+    assert.match(abschnittTestsUndChecks(text), /- Szenario „<Titel>“ → Test <Testname>/);
+  });
+}
+
+test("templates/CLAUDE-workflow.md: das Abschlussbericht-Format nennt je Szenario den Test, deutsch und englisch", () => {
+  const de = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
+  assert.match(abschnittTestsUndChecks(de.slice(de.indexOf("## Abschlussbericht-Format"))),
+    /- Szenario „<Titel>“ → Test <Testname>/);
+  const en = readFileSync(join(repoRoot, "en", "templates", "CLAUDE-workflow.md"), "utf-8");
+  const start = en.indexOf("### Tests and checks");
+  assert.notEqual(start, -1, "der Abschnitt '### Tests and checks' fehlt");
+  assert.match(en.slice(start, en.indexOf("### Notes", start)), /- Scenario "<title>" → test <test name>/);
+});

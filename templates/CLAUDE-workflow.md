@@ -378,7 +378,7 @@ Ein Issue ohne Praefix ist ein Arbeitspaket im Vier-Abschnitt-Format oben. Vier 
 - `Datei` — kurze Beschreibung der Wirkung
 
 ### Tests und Checks
-- <Zeilen aus dem Block `Fuer den Abschlussbericht:` von `checks.mjs run`, wortgetreu: zuerst `Wartezeit: <s> s, zusammen <s> s in <n> Laeufen fuer Karte #<n>` (ohne Kartennummer `Wartezeit: <s> s`), nach einem roten Teillauf `Teillauf: nur die zuletzt roten Pruefungen`, dann `gelaufen: <Kommando> → <Ergebnis>, <Dauer> — <Grund>`, nach einer gewackelten Pruefung direkt darunter `Gewackelt: <Kommando> → erst rot, dann gruen`, bzw. `ausgelassen: <Kommando> → <Grund>`>
+- <Zeilen aus dem Block `Fuer den Abschlussbericht:` von `checks.mjs run`, wortgetreu: zuerst `Wartezeit: <s> s, zusammen <s> s in <n> Laeufen fuer Karte #<n>` (ohne Kartennummer `Wartezeit: <s> s`), nach einem roten Teillauf `Teillauf: nur die zuletzt roten Pruefungen`, dann `gelaufen: <Kommando> → <Ergebnis>, <Dauer> — <Grund>`, nach einer gewackelten Pruefung direkt darunter `Gewackelt: <Kommando> → erst rot, dann gruen`, bzw. `ausgelassen: <Kommando> → <Grund>`; danach je Szenario, das das Paket aus dem Fachplan uebernommen hat, `- Szenario „<Titel>“ → Test <Testname>`>
 
 ### Hinweise
 - <Restrisiken, offene Punkte, manuelle Folgeschritte>
