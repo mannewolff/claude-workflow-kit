@@ -1914,6 +1914,67 @@ export class ToolboxIssueTracker {
       method: "DELETE",
     }));
   }
+
+  // Die drei lesenden Archiv-Aufrufe fuer `issue vorgeschichte` (Issue #1538, Plan #1534).
+  // Sie erreichen auch archivierte Karten des gebundenen Boards (kanban-kit, Anforderung
+  // 1571). Ein Fehlschlag wirft wie jeder andere Aufruf; erst das Kommando bildet ihn auf
+  // `archiv-nicht-erreichbar` ab, damit die Regel „Ende beim ersten Fehlschlag“ an einer
+  // Stelle sitzt.
+
+  /**
+   * Suche ueber Titel, Text und Kommentare, archivierte Karten eingeschlossen. Ohne
+   * `kind`-Parameter (E8): Was ein Fachplan ist, entscheidet das Kommando. Gelesen wird
+   * ueber `nextCursor` in Teilen, bis keiner mehr kommt oder `limit` Treffer da sind;
+   * `mehr` sagt, ob hinter dem Schnitt noch Treffer lagen.
+   */
+  async sucheFachplaene(begriff, { limit }) {
+    const treffer = [];
+    let cursor = null;
+    for (;;) {
+      const query = new URLSearchParams({ q: begriff });
+      if (cursor) query.set("cursor", cursor);
+      const res = await this._fetch(`/api/kanban/search?${query}`);  // NOSONAR S9382: der naechste Teil braucht den Cursor des vorigen
+      const teil = await res.json();
+      for (const hit of teil.hits || []) {
+        if (treffer.length === limit) return { treffer, mehr: true };
+        treffer.push({ nummer: hit.number, titel: hit.title, archiviert: Boolean(hit.archived) });
+      }
+      cursor = teil.nextCursor || null;
+      if (!cursor) return { treffer, mehr: false };
+      if (treffer.length === limit) return { treffer, mehr: true };
+    }
+  }
+
+  /** Eine Karte nach Nummer, auch archiviert; `null`, wenn der Server sie mit 404 nicht kennt. */
+  async karteNachNummer(n) {
+    let res;
+    try {
+      res = await this._fetch(`/api/kanban/items/by-number/${Number(n)}`);
+    } catch (e) {
+      // Papierkorb, fremdes Board und eine Instanz ohne die Route sehen hier gleich aus
+      // (E7): Fuer das Kommando fehlt die Karte, das Archiv selbst ist erreichbar.
+      if (e instanceof BoardError && e.status === 404) return null;
+      throw e;
+    }
+    const detail = await res.json();
+    return { nummer: detail.item?.number, titel: detail.item?.title, body: detail.item?.body ?? "", archiviert: Boolean(detail.archived) };
+  }
+
+  /**
+   * Die Herkunft einer Karte: ihre Vorfahren in der Reihenfolge des Servers, von der
+   * Karte aufwaerts. Ein Glied, das fehlt oder im Papierkorb liegt, bleibt als `gap: true`
+   * stehen — die Kette soll zeigen, dass dort etwas war.
+   */
+  async herkunftskette(n) {
+    const res = await this._fetch(`/api/kanban/items/by-number/${Number(n)}/lineage`);
+    const kette = await res.json();
+    return (kette.ancestors || []).map((g) => ({
+      nummer: g.number,
+      titel: g.title ?? null,
+      archiviert: Boolean(g.archived),
+      gap: Boolean(g.gap),
+    }));
+  }
 }
 
 
