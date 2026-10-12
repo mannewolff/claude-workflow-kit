@@ -66,7 +66,7 @@ test("[1477] die Hilfe steht in jedem Projekt englisch (seit Issue #1557, Plan #
 
 test("[1477] englische Stichproben: Fehlerpraefix und Abweisungen der Achsen und Befehle", () => {
   const faelle = [
-    [["achse"], /^Error: Unknown axis: 'achse'\. Expected: issue \| code \| context \| issue-review \| nightrun \| session \| hook \| names$/m],
+    [["achse"], /^Error: Unknown axis: 'achse'\. Expected: issue \| code \| context \| issue-review \| nightrun \| session \| hook \| scenarios \| names$/m],
     [["issue", "gibtsnicht"], /^Error: Unknown issue command: 'gibtsnicht'$/m],
     [["code", "gibtsnicht"], /^Error: Unknown code command: 'gibtsnicht'$/m],
     [["context", "gibtsnicht"], /^Error: Unknown context command: 'gibtsnicht'$/m],
@@ -90,7 +90,7 @@ test("[1477] englische Stichproben: Fehlerpraefix und Abweisungen der Achsen und
 test("[1477] dieselben Abweisungen bleiben in einem deutschen Projekt deutsch", () => {
   const res = lauf(undefined, ["achse"]);
   assert.equal(res.status, 1);
-  assert.match(res.stderr, /^Fehler: Unbekannte Achse: 'achse'\. Erwartet: issue \| code \| context \| issue-review \| nightrun \| session \| hook \| names$/m);
+  assert.match(res.stderr, /^Fehler: Unbekannte Achse: 'achse'\. Erwartet: issue \| code \| context \| issue-review \| nightrun \| session \| hook \| scenarios \| names$/m);
   const pr = lauf("de", ["code", "pr"]);
   assert.match(pr.stderr, /^Fehler: --from ist erforderlich$/m);
 });

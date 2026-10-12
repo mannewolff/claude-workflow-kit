@@ -1,6 +1,7 @@
 {
   "codeHost": "github",
   "issueTracker": "toolbox",
+  "szenarienAb": 1597,
   "buildChecks": [
     {
       "cmd": "node tools/sync-blobs.mjs --check",

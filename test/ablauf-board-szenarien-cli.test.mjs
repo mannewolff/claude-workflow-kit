@@ -8,7 +8,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { setupProjekt, runBoard, board } from "./helpers/board-fixture.mjs";
@@ -103,5 +103,36 @@ test("[board-1590] issue create prueft F12 nicht bei Arbeitspaket, Plan und Idee
       assert.equal(res.status, 0, `${art}: ${res.stderr}`);
     }
     assert.equal(board(dir, "issue", "list").length, 3);
+  });
+});
+
+// `scenarios baseline` (Issue #1591, Plan #1588 E3): die hoechste Nummer am Board plus eins,
+// numerisch auch bei den gepolsterten Dateinamen des lokalen Trackers. Es schreibt nichts.
+test("[board-1591] scenarios baseline liefert bei gepolsterten Nummern 0009 und 0010 { ab: 11 }", () => {
+  mitProjekt("de", (dir) => {
+    mkdirSync(join(dir, "issues"), { recursive: true });
+    for (const id of ["0009", "0010"]) {
+      writeFileSync(join(dir, "issues", `${id}.md`), `---\nid: "${id}"\ntitle: Karte ${id}\nstatus: done\n---\nText\n`);
+    }
+    const vorher = readFileSync(join(dir, ".claude", "workflow.config.json"), "utf-8");
+    const res = runBoard(dir, ["scenarios", "baseline"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.deepEqual(JSON.parse(res.stdout), { ab: 11 });
+    assert.equal(readFileSync(join(dir, ".claude", "workflow.config.json"), "utf-8"), vorher);
+  });
+});
+
+test("[board-1591] scenarios baseline auf einem leeren Board liefert { ab: 1 }", () => {
+  mitProjekt("de", (dir) => {
+    const res = runBoard(dir, ["scenarios", "baseline"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.deepEqual(JSON.parse(res.stdout), { ab: 1 });
+  });
+});
+
+test("[board-1591] scenarios ohne bekannten Befehl wird abgewiesen", () => {
+  mitProjekt("de", (dir) => {
+    const res = runBoard(dir, ["scenarios", "irgendwas"]);
+    assert.equal(res.status, 1);
   });
 });

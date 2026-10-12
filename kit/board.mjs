@@ -296,6 +296,12 @@ Usage:
       takes the exception away from a command in sandbox.excludedCommands. Patterns
       from .claude/settings.json and .claude/settings.local.json.
 
+  node board.mjs scenarios baseline
+      The cut-off for the scenario duty (Issue #1591, Plan #1588 E3): lists every
+      card without a status once and prints { ab: <highest number + 1> }, numeric
+      also for the padded numbers of the local tracker. Writes nothing; the
+      installer enters the value as 'scenariosFrom' when the field is missing.
+
   node board.mjs names
       The fixed lines of the skills in the project language (Issue #1558, Plan #1548):
       headings, markers, review and incorporation heads. Output: { language, lines:
@@ -386,7 +392,7 @@ export const { TEXTE } = await import("./texte/board.mjs");
 /** Ein Text des Einstiegs in der Projektsprache (Issue #1477, E13). */
 const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
 /** Die Achsen von board.mjs, englisch wie jeder Name, den das Kommando annimmt (Issue #1557). */
-const ACHSEN = ["issue", "code", "context", "issue-review", "nightrun", "session", "hook", "names"];
+const ACHSEN = ["issue", "code", "context", "issue-review", "nightrun", "session", "hook", "scenarios", "names"];
 /**
  * Bricht mit einer Meldung ab wie `fail` aus den Grundlagen, das Praefix in der Projektsprache.
  * `fail` selbst stellen die Grundlagen um (Issue #1483).
@@ -790,6 +796,18 @@ async function dispatchKontext(command, args) {
 }
 
 /**
+ * `scenarios baseline` (Issue #1591, Plan #1588 E3): die hoechste Nummer aller Karten plus eins.
+ * Ein Aufruf ohne Status, damit auch Karten ohne Spalte zaehlen; `Number(id)` macht aus den
+ * gepolsterten lokalen Nummern Zahlen. Schreibt nichts — das Feld setzt der Installer.
+ */
+async function dispatchSzenarien(command) {
+  if (command !== "baseline") unbekannterBefehl("scenarios", command);
+  const karten = await resolveTracker(loadConfig()).listIssues();
+  const nummern = karten.map((k) => Number(k.id)).filter(Number.isFinite);
+  out({ ab: Math.max(0, ...nummern) + 1 });
+}
+
+/**
  * Weist einen frueheren deutschen Namen ab (Issue #1557, Plan #1548, Entscheidung „Abweisung
  * statt Uebergang“): Achse, Befehl, Aktion von `code protection`, Option oder Auswahlwert von
  * `--art`, `--state` und `--stage`. Exit 1 mit der Meldung, die den englischen Namen nennt —
@@ -877,6 +895,8 @@ async function main() {
     await dispatchSitzung(command, args, HELP);
   } else if (axis === "hook") {
     await dispatchHook(command, HELP);
+  } else if (axis === "scenarios") {
+    await dispatchSzenarien(command);
   } else if (axis === "names") {
     // Achse ohne Unterbefehl (Issue #1558): die festen Zeilen in der Projektsprache.
     const language = projektSprache(readWorkflowConfig());

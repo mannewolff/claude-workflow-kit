@@ -25,7 +25,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, realpathSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -49,8 +49,31 @@ function installiere(dir, antworten, extraEnv = {}) {
     cwd: dir,
     input: antworten.join("\n") + "\n",
     encoding: "utf-8",
-    env: { ...process.env, HOME: join(dir, "home"), USERPROFILE: join(dir, "home"), ...extraEnv },
+    env: {
+      ...process.env, HOME: join(dir, "home"), USERPROFILE: join(dir, "home"),
+      INSTALL_SZENARIEN_FAKE: szenarienFake(dir, { ab: 1 }).skript, ...extraEnv,
+    },
   });
+}
+
+/**
+ * Die Attrappe fuer `node <kitDir>/board.mjs scenarios baseline` (Issue #1591, E15), wie
+ * INSTALL_SCHUTZ_FAKE: Jeder Installer-Lauf dieser Datei bekommt sie, damit keiner mit
+ * `github` oder `toolbox` ins Netz geht. `antwort` geht als JSON aus; `null` heisst, das Board
+ * antwortet nicht (Exit 1). Die Argumente landen im Log.
+ */
+function szenarienFake(dir, antwort, name = "szenarien-fake") {
+  const skript = join(dir, `${name}.mjs`);
+  const log = join(dir, `${name}.log`);
+  writeFileSync(skript, [
+    'import { appendFileSync } from "node:fs";',
+    `appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + "\\n");`,
+    antwort === null
+      ? String.raw`process.stderr.write("Board nicht erreichbar\n"); process.exit(1);`
+      : `console.log(JSON.stringify(${JSON.stringify(antwort)}));`,
+    "",
+  ].join("\n"));
+  return { env: { INSTALL_SZENARIEN_FAKE: skript }, log };
 }
 
 // Antworten fuer den kuerzesten Weg: projektlokal, GitHub, alle Defaults. Nach dem Code-Host
@@ -687,6 +710,54 @@ test("[installer-5] Die Hook-Namen sind Umgebungsvariablen, kein Kommandozeilenf
 // Blob-Hook allein nur den Fehlerpfad oeffnete und danach der Dateisystem-Fallback
 // griff. Mit dem Wegfall des Fallbacks fuehrt der Blob-Hook direkt in den Abbruch —
 // der Test dafuer steht oben und faehrt das echte install.mjs.
+
+// --- Stichtag der Szenarien-Pflicht (Issue #1591, Plan #1588 E3, E4, E15) ---
+
+test("[installer-1591] fehlt szenarienAb, setzt der Installer den Wert aus scenarios baseline", () => {
+  const dir = fixture("install-szenarien-fehlt-");
+  try {
+    const fake = szenarienFake(dir, { ab: 42 }, "stichtag");
+    const res = installiere(dir, PROJEKT_GITHUB, fake.env);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.deepEqual(JSON.parse(readFileSync(fake.log, "utf-8").trim()),
+      [join(realpathSync(dir), ".claude", "kit", "board.mjs"), "scenarios", "baseline"]);
+    assert.equal(config(dir).szenarienAb, 42);
+    assert.equal(config(dir).codeHost, "github", "der Rest der Config bleibt");
+    assert.match(res.stdout, /szenarienAb eingetragen: 42/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[installer-1591] steht szenarienAb, bleibt der Wert und das Board wird nicht gefragt", () => {
+  const dir = fixture("install-szenarien-steht-");
+  try {
+    installiere(dir, PROJEKT_GITHUB);
+    writeFileSync(join(dir, ".claude", "workflow.config.json"),
+      JSON.stringify({ ...config(dir), szenarienAb: 7 }, null, 2), "utf-8");
+    const fake = szenarienFake(dir, { ab: 42 }, "stichtag");
+    const res = installiere(dir, PROJEKT_GITHUB_BESTAND, fake.env);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.equal(config(dir).szenarienAb, 7);
+    assert.equal(existsSync(fake.log), false, "scenarios baseline darf nicht laufen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[installer-1591] antwortet das Board nicht, fehlt szenarienAb, die Meldung nennt scenarios baseline", () => {
+  const dir = fixture("install-szenarien-board-weg-");
+  try {
+    const fake = szenarienFake(dir, null, "stichtag");
+    const res = installiere(dir, PROJEKT_GITHUB, fake.env);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.equal(Object.hasOwn(config(dir), "szenarienAb"), false);
+    assert.match(res.stdout, /node \.claude\/kit\/board\.mjs scenarios baseline/);
+    assert.match(res.stdout, /Fertig|fertig/, "das Update laeuft weiter");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 // --- Re-Install ---
 
