@@ -152,8 +152,8 @@
     "text": "Target branch for the PR in step 9 (merge production). Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "pushPruefung": {
-    "de": "049ebee20d2a",
-    "text": "Where the full check run before 'push main' takes place. 'lokal' (default): /push-main runs it with 'checks.mjs run --stage push' on your own machine. An object with ort 'buildDienst' moves it to the project's build service: /push-main pushes the state to the check branch, waits for the result via 'board.mjs code ci-status --commit' and pushes mainBranch only on green. The obligation is the same in both places — green before the push; productionBranch stays untouched. On the check branch the build service must run the same mandatory checks as the local run of stage push. Protection of the main and release branches is set up by 'board.mjs code schutz einrichten'; the installer writes 'pushPruefung' only after its probe on the check branch has passed. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "d3a632f42a32",
+    "text": "Where the full check run before 'push main' takes place. 'lokal' (default): /push-main runs it with 'checks.mjs run --stage push' on your own machine. An object with ort 'buildDienst' moves it to the project's build service: /push-main pushes the state to the check branch, waits for the result via 'board.mjs code ci-status --commit' and pushes mainBranch only on green. The obligation is the same in both places — green before the push; productionBranch stays untouched. On the check branch the build service must run the same mandatory checks as the local run of stage push. Protection of the main and release branches is set up by 'board.mjs code protection setup'; the installer writes 'pushPruefung' only after its probe on the check branch has passed. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "pushPruefung.ort": {
     "de": "a35216b866c3",
@@ -292,8 +292,8 @@
     "text": "Staffing and perspective of the three review levels: the functional concern, the plan to get there, the single work package. While issueReview describes WHO reviews at all, this states how many review per level and in which roles. 'rollen' must contain exactly 'reviewer' distinct, non-empty names — otherwise a hard error. If the whole block is missing, each level uses the roles of the role catalogue with one reviewer per role: fachlich 'form-beobachtbarkeit' and 'abgrenzung', plan 'architektur-bestand' and 'schnitt-abhaengigkeiten', issue 'pruefbarkeit'; if only one level is missing in an existing block, that is an error. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "reviewStufen.fachlich": {
-    "de": "217f375f402c",
-    "text": "Review of the functional concern ([Fachlich] issue) before a plan is made from it."
+    "de": "120e5e9d6b17",
+    "text": "Review of the functional concern ([Requirement] issue) before a plan is made from it."
   },
   "reviewStufen.fachlich.reviewer": {
     "de": "d7efcb6fed68",
@@ -380,8 +380,8 @@
     "text": "Maximum number of correction sessions per document after a red form check."
   },
   "night.kette.uebergaenge": {
-    "de": "81cd74dfa560",
-    "text": "Which transitions of the chain may follow automatically. A blocked transition ends with lauf:wartet and 'wartet: Übergang <x> im Projekt nicht freigegeben — weiter mit kit:night' (waiting: transition not released in the project); a new kit:night resumes at the waiting stage. If the block or a field in it is missing, the behaviour from before the setting applies: the first three transitions follow, and a card with the variant B label is implemented after the coverage."
+    "de": "302a09ef73af",
+    "text": "Which transitions of the chain may follow automatically. A blocked transition ends with run:waiting and 'wartet: Übergang <x> im Projekt nicht freigegeben — weiter mit kit:night' (waiting: transition not released in the project); a new kit:night resumes at the waiting stage. If the block or a field in it is missing, the behaviour from before the setting applies: the first three transitions follow, and a card with the variant B label is implemented after the coverage."
   },
   "night.kette.uebergaenge.planReview": {
     "de": "a5a50e2cc338",

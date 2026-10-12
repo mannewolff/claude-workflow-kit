@@ -50,7 +50,7 @@ test("die Doku beschreibt, was --derived-from sendet", () => {
 
 test("die Doku nennt, wer die Option setzt und was die uebrigen Tracker tun", () => {
   const a = HERKUNFT();
-  for (const skill of ["/fachplan", "/task", "/techplan", "/issues"]) {
+  for (const skill of ["/requirement", "/task", "/techplan", "/issues"]) {
     assert.ok(a.includes(skill), `der Skill ${skill} ist nicht als Setzer benannt`);
   }
   assert.match(a, /GitHub, GitLab und local|github.*gitlab.*local/i,
@@ -62,7 +62,7 @@ test("die Doku nennt, wer die Option setzt und was die uebrigen Tracker tun", ()
     "dass sie den Wert nicht uebertragen, fehlt");
 });
 
-// `/task` ist der zweite Nie-Setzer neben `/fachplan` — aber aus einem anderen Grund:
+// `/task` ist der zweite Nie-Setzer neben `/requirement` — aber aus einem anderen Grund:
 // Die fachliche Anforderung ist die WURZEL einer Kette, ein `[Task]` steht ueberhaupt in
 // keiner (Issue #574). Geprueft wird deshalb nicht bloss die Anwesenheit des Namens,
 // sondern die Begruendung daneben. Ohne sie liest die naechste Sitzung das `nie` als

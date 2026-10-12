@@ -72,7 +72,7 @@ test("[skills-984] die Doku fuehrt das vierte Gate in der Liste der uebersprunge
   const doku = text("docs/dokumentation.md");
   const absaetze = doku.split(/\n\s*\n/);
   const treffer = absaetze.filter(
-    (a) => /\[Fachlich\]/.test(a) && /\[Idee\]/.test(a) && /\[Plan\]/.test(a) && /\[Mensch\]/.test(a),
+    (a) => /\[Requirement\]/.test(a) && /\[Idea\]/.test(a) && /\[Plan\]/.test(a) && /\[Human\]/.test(a),
   );
   assert.ok(treffer.length >= 1, "kein Absatz der Doku fuehrt alle vier uebersprungenen Sorten zusammen");
   assert.doesNotMatch(treffer.join("\n"), /Drei Sorten Issue/, "die Doku spricht weiter von drei Sorten");

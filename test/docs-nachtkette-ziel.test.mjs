@@ -51,7 +51,7 @@ const W3_WORTLAUT =
   "beim `push main` oder in der Vorbereitung der Nacht für genau den Commit, den `push main` unverändert übernimmt; fährt das Projekt sie im Build-Dienst, läuft sie immer beim `push main` auf dem Prüfzweig";
 
 // Der Regeltext nennt die Labels seit Issue #1571 englisch.
-const GO_ZIEL = ["das GO ueber kit:durchziehen oder ein Ziel ab umsetzung", englisch(/`kit:durchziehen` oder ein Ziel ab `umsetzung`/)];
+const GO_ZIEL = ["das GO ueber kit:carry-through oder ein Ziel ab umsetzung", englisch(/`kit:carry-through` oder ein Ziel ab `umsetzung`/)];
 
 const W3_ANGABEN = [
   ["den W3-Wortlaut samt Build-Dienst-Satz (E14, E17)", new RegExp(esc(W3_WORTLAUT))],
@@ -81,7 +81,7 @@ const W1_VORLAGE = abschnitt(VORLAGE, "### W1 — Die drei Stop-Punkte bleiben m
 const STOP_VORLAGE = abschnitt(VORLAGE, "## Die drei Stop-Punkte (nie automatisiert)");
 const NACHT_VORLAGE = abschnitt(VORLAGE, "## Nachtbetrieb (optional)");
 
-test("[ziel-1] Stop-Punkte und W1 nennen das GO ueber kit:durchziehen oder ein Ziel ab umsetzung", () => {
+test("[ziel-1] Stop-Punkte und W1 nennen das GO ueber kit:carry-through oder ein Ziel ab umsetzung", () => {
   for (const [ort, text] of [["Stop-Punkte", STOP_VORLAGE], ["W1", W1_VORLAGE]]) {
     assert.ok(text, `der Abschnitt ${ort} fehlt in der Vorlage`);
     assert.deepEqual(fehlend(text, [GO_ZIEL]), [], `${ort} nennt das GO am Ziel nicht`);
@@ -116,7 +116,7 @@ const ALS_NAECHSTES = {
 
 const ZIEL_TABELLE = KETTE_ZIELE.map(({ ziel, endstufe }) => [
   `die Tabellenzeile ${ziel} mit letzter Stufe ${endstufe}`,
-  new RegExp(`^\\| \`${esc(ZIEL_LABEL_PRAEFIX + ziel)}\` \\| \`${endstufe}\` \\|[^\\n]*${esc(ALS_NAECHSTES[ziel])}[^\\n]*\\|$`, "m"),
+  englisch(new RegExp(`^\\| \`${esc(ZIEL_LABEL_PRAEFIX + ziel)}\` \\| \`${endstufe}\` \\|[^\\n]*${esc(ALS_NAECHSTES[ziel])}[^\\n]*\\|$`, "m")),
 ]);
 
 const ZIEL_ANGABEN = [
@@ -124,8 +124,8 @@ const ZIEL_ANGABEN = [
   ["planreview:2", /`planreview:2`/],
   ["die Labels je Board einmal anlegen", /je Board einmal angelegt/],
   ["den Anker der Ablehnung (E3)", new RegExp(esc(`\`${KETTE_ZIEL_ANKER}\``))],
-  ["mehr als ein Ziel als Ablehnung (E3)", /mehr als ein `ziel:\*`/],
-  ["ziel:plan am Plandokument als Ablehnung (E3)", /`ziel:plan` an einem Plandokument/],
+  ["mehr als ein Ziel als Ablehnung (E3)", /mehr als ein `goal:\*`/],
+  ["goal:plan am Plandokument als Ablehnung (E3)", /`goal:plan` an einem Plandokument/],
   ["planreview am Plandokument als Ablehnung (E3)", /`planreview:\*` an einem Plandokument/],
   ["planreview bei schon geprueftem Plan als Ablehnung (E3)", /`planreview:\*`[^.]*`Plan-Review:`/],
 ];
@@ -137,7 +137,7 @@ const LAUFSTAND_ANGABEN = [
 ];
 
 const PUSH_ANGABEN = [
-  ["den Modus vorbereiten", /`\/push-main vorbereiten`/],
+  ["den Modus vorbereiten", /`\/push-main prepare`/],
   ["die Uebernahme am Morgen", /Übernimmt den Stand der Nacht vom <zeitpunkt> \(<commit>\)/],
   ["die feste Stelle", /`\.claude\/push-vorbereitung\.json`/],
   ["die Uebernahme auch ueber den Build-Dienst (E17)", /Build-Dienst[^.]*Prüfzweig[^.]*/],

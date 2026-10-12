@@ -4,16 +4,16 @@
 A thin tool layer that makes a 9-step core process for AI-assisted development executable in Claude Code. The kit automates the AI steps and deliberately leaves the three human responsibility thresholds in place.
 
 ## Concept
-<!-- de: 630985a49dab -->
+<!-- de: d9e41c05d541 -->
 
 The kit is not a platform and not an agent. It is a library of seventeen skills, a project-local config and an installer.
 
 The skills are written independently of any project. Everything project-specific (build commands, branch names, review model) comes from the config file. An update to a skill therefore applies in every project in which you use the kit. You do not have to adjust anything in each repo when the process evolves.
 
-The core process has nine steps. Step 1 is your requirement; the AI takes over steps 2, 3, 5, 6 and 7. The three human stop points (Stop-Punkte) are step 4 (GO), step 8 (push) and step 9 (merge); between push and merge you check the test server. Ten further skills stand outside the numbering and structure the working rhythm: /kontext, /fachplan, /groom, /issue-review, /task, /implement-test and /implement-done, /implement-next, /retro and /document.
+The core process has nine steps. Step 1 is your requirement; the AI takes over steps 2, 3, 5, 6 and 7. The three human stop points (Stop-Punkte) are step 4 (GO), step 8 (push) and step 9 (merge); between push and merge you check the test server. Ten further skills stand outside the numbering and structure the working rhythm: /session-start, /requirement, /groom, /issue-review, /task, /implement-test and /implement-done, /implement-next, /retro and /document.
 
 ## Prerequisites
-<!-- de: c8c7a036ea0f -->
+<!-- de: ef742ae30117 -->
 
 **Node.js 18 or later.** The installer is written in Node and therefore runs on macOS, Linux and Windows via WSL2 without depending on a particular shell ecosystem.
 
@@ -33,10 +33,10 @@ The core process has nine steps. Step 1 is your requirement; the AI takes over s
 
 **A project board, if you use GitHub or GitLab as issue tracker.** The board needs these five columns (Spalten): Backlog, Ready, In progress, In review, Done. On GitHub these are project board columns (GitHub Projects), on GitLab they are represented by labels. In local mode there is no board — the adapter writes and reads YAML frontmatter files directly.
 
-**`kontext.config.json` for /kontext and /document (optional).** Both skills also run without this file, in degraded mode. If you want persistent cross-project memory: With a global installation the installer asks for the vault path and creates the file automatically; with a project-local installation you create it manually. Details in the section [kontext.config.json](/en/dokumentation#kontext-config-json-reference).
+**`kontext.config.json` for /session-start and /document (optional).** Both skills also run without this file, in degraded mode. If you want persistent cross-project memory: With a global installation the installer asks for the vault path and creates the file automatically; with a project-local installation you create it manually. Details in the section [kontext.config.json](/en/dokumentation#kontext-config-json-reference).
 
 ## Installation
-<!-- de: e1b807c5b8a4 -->
+<!-- de: 58262c124d88 -->
 
 Change into your project folder and run:
 
@@ -75,11 +75,11 @@ The installer asks nine questions — with a global installation a tenth follows
 
 **9. Commit gate (project-local only).** Whether the installer hooks in the commit gate, i.e. sets `git config core.hooksPath .githooks` — see [The commit gate](#the-commit-gate). The question only appears if neither another `core.hooksPath` is in effect nor an active file lies in the hooks directory; the default is no.
 
-**10. Vault path (global installation only).** Path to the memory vault for /kontext and /document. Leaving it empty skips the step; with a path the installer writes the global `~/.claude/kontext.config.json`.
+**10. Vault path (global installation only).** Path to the memory vault for /session-start and /document. Leaving it empty skips the step; with a path the installer writes the global `~/.claude/kontext.config.json`.
 
-**Protecting the main branch (after the code host question).** With `github` and a project-local installation, the installer asks three more questions: whether the project has a build service (GitHub Actions), whether it should move the check before the push there and protect the main and release branches, and which check branch to use (default `kit-pruefung`). Both yes/no questions are preselected with yes. A no leaves everything as before, and the installer says in one sentence that a push bypassing `push main` gets through unchecked. In the other cases it does not ask but states one sentence: with `gitlab` the protection is not set up yet, with `local` the check stays on your own machine, and with a global installation it points to `node install.mjs --schutz` in the project, because protection applies per repository.
+**Protecting the main branch (after the code host question).** With `github` and a project-local installation, the installer asks three more questions: whether the project has a build service (GitHub Actions), whether it should move the check before the push there and protect the main and release branches, and which check branch to use (default `kit-pruefung`). Both yes/no questions are preselected with yes. A no leaves everything as before, and the installer says in one sentence that a push bypassing `push main` gets through unchecked. In the other cases it does not ask but states one sentence: with `gitlab` the protection is not set up yet, with `local` the check stays on your own machine, and with a global installation it points to `node install.mjs --protection` in the project, because protection applies per repository.
 
-With yes, the installer calls `node .claude/kit/board.mjs code schutz einrichten --zweig <zweig>`. The command first pushes the state of `origin/<mainBranch>` to the check branch as a probe and waits to see whether the build service runs the mandatory checks there; this can take a few minutes. Its result is one of four:
+With yes, the installer calls `node .claude/kit/board.mjs code protection setup --branch <zweig>`. The command first pushes the state of `origin/<mainBranch>` to the check branch as a probe and waits to see whether the build service runs the mandatory checks there; this can take a few minutes. Its result is one of four:
 
 | Result | Meaning | `pushPruefung` |
 |---|---|---|
@@ -88,7 +88,7 @@ With yes, the installer calls `node .claude/kit/board.mjs code schutz einrichten
 | `offen` | The build service ran nothing on the check branch or did not finish. The output describes what has to run there. | stays unchanged |
 | `nicht moeglich` | The code host knows no protection, or `origin/<mainBranch>` is missing. | stays unchanged |
 
-**Later: `node install.mjs --schutz`.** An existing project switches protection on without reinstalling the kit. The call asks only the protection questions, calls `code schutz einrichten` and changes nothing in `.claude/workflow.config.json` but `pushPruefung`; all other settings and kit files stay untouched. It requires an installed `board.mjs` that already knows `code schutz`. Whether a project is protected is then reported at any time by `node .claude/kit/board.mjs code schutz status` (see [Board adapter](#board-adapter)).
+**Later: `node install.mjs --protection`.** An existing project switches protection on without reinstalling the kit. The call asks only the protection questions, calls `code protection setup` and changes nothing in `.claude/workflow.config.json` but `pushPruefung`; all other settings and kit files stay untouched. It requires an installed `board.mjs` that already knows `code protection`. Whether a project is protected is then reported at any time by `node .claude/kit/board.mjs code protection status` (see [Board adapter](#board-adapter)).
 
 The installer copies the seventeen skills, writes a `.claude/workflow.config.json` with your answers, places a `CLAUDE-workflow.md` with the process description as well as the two gate registers `CLAUDE-Fachplan.md` and `CLAUDE-Plan.md`, and writes the board adapter to `.claude/kit/board.mjs`. The parts of the tools sit in subdirectories next to it: `night/` and `board/` for the night runner and the board adapter, `rollen/` for the review roles and `texte/` for the text tables of the tools in both languages. With GitLab it additionally asks whether it should create the five labels automatically. No background process, no service, no registry entries.
 
@@ -166,9 +166,9 @@ Compare this with the current kit version (`node install.mjs --version`, or the 
 The version number is deliberately the same as that of the kit, not a separate count per file: A copy with `v1.22.0` is exactly the state that kit 1.22.0 shipped. If the two files drift apart — for instance because only one of them was replaced —, the night runner warns at start and keeps running anyway.
 
 ## What is the vault?
-<!-- de: 9be3897f8ddc -->
+<!-- de: b245a5dbb995 -->
 
-The vault is a personal memory store outside the repo. It holds cross-project knowledge: your profile, working rules, decision history and daily logs. /kontext loads it at the start of a session, /document writes into it at the end of a session.
+The vault is a personal memory store outside the repo. It holds cross-project knowledge: your profile, working rules, decision history and daily logs. /session-start loads it at the start of a session, /document writes into it at the end of a session.
 
 The vault is optional. Without a vault, both skills run in degraded mode (details in the section [What happens without a vault?](/en/dokumentation#what-happens-without-a-vault)).
 
@@ -188,7 +188,7 @@ If you want to set up a vault, create a directory and enter the path in `~/.clau
 You configure the file names of the always files (Index.md, Profil.md) yourself in `kontext.config.json`. The directory structure under `Projekte/` and `Log/` is expected by the skills and must be created manually once.
 
 ## The config file
-<!-- de: da6dab78e039 -->
+<!-- de: 71deb697086a -->
 
 `.claude/workflow.config.json` is the only project-local place. All skills read exclusively from this file (project parameters are hard-coded nowhere else).
 
@@ -216,7 +216,7 @@ With `issueTracker: github`, the adapter creates a cache file `.claude/board-met
 
 `columns` controls the column names on the board. The five keys (`backlog`, `ready`, `in_progress`, `in_review`, `done`) are fixed — they appear in the frontmatter of the issue files and are the internal status values. The values are the displayed names and can be chosen freely. On GitHub the values correspond to the column names in the project board, on GitLab to the label names. Without `columns` in the config, the defaults apply: Backlog, Ready, In progress, In review, Done.
 
-`buildChecks` holds the commands that `/local-check` runs — the **affected** ones, selected by the areas (Bereiche) the work package (Arbeitspaket) has touched (see [Area-based checks](#area-based-checks-checkareas)); all commands that run must be green before the skill reports completion. Without `checkAreas`, all of them run as before. `mutationCommand` is kept out of `buildChecks` because mutation testing runs considerably longer (an empty string disables it). `reviewScope` controls the scope for `/review`. `reviewModel` pins the model across session boundaries. `triggers` holds the natural-language phrases in case you prefer typing to slash commands.
+`buildChecks` holds the commands that `/local-check` runs — the **affected** ones, selected by the areas (Bereiche) the work package (Arbeitspaket) has touched (see [Area-based checks](#area-based-checks-checkareas)); all commands that run must be green before the skill reports completion. Without `checkAreas`, all of them run as before. `mutationCommand` is kept out of `buildChecks` because mutation testing runs considerably longer (an empty string disables it). `reviewScope` controls the scope for `/kit-review`. `reviewModel` pins the model across session boundaries. `triggers` holds the natural-language phrases in case you prefer typing to slash commands.
 
 **Backward compatibility:** Repos that still have `"provider": "github"` or `"provider": "gitlab"` in their config keep working. The adapter migrates the field to `codeHost` and `issueTracker` automatically when reading it.
 
@@ -338,7 +338,7 @@ Not every mandatory check belongs at every point in time. Running an integration
 **Not to be confused.** The term *stage* (*Stufe*) has three meanings in the kit: `reviewStufen` are the [check stages of the review](/en/dokumentation#three-check-stages-the-check-moves-up), the task level (Aufgabenstufe) of a work package (`schwer`/`mittel`/`leicht`) controls the model of the [night chain](/en/dokumentation#second-mode-the-night-chain) (Nacht-Kette), and `stufe` is the point in time of a mandatory check. The three have nothing to do with each other.
 
 ### Completion and publishing: `nichtBeimAbschluss`
-<!-- de: 972fa1f15021 -->
+<!-- de: 4fac63385f88 -->
 
 The staging above moves a **whole check** to a later point in time. Sometimes, though, the check is right at its point in time and only its *scope* is too large: The unit tests of a work package say whether this package holds — the integration tests say whether the parts fit together, and that is not yet a question at the completion of a single card. A `buildChecks` entry of the package stage can therefore say **why** it does not have to carry the completion of a single card:
 
@@ -367,7 +367,7 @@ The unit tests (surefire) run at the completion of every card. The integration t
 | `zusammenspiel` | The check checks how several parts work together. |
 | `volleTestmenge` | The check only gains its finding from the complete set of tests. |
 
-**Only the completion run skips.** The axis only takes effect if the call carries `--abschluss <kartennummer>` — the implement skills set it at the completion of exactly one card, and only they do. `/local-check`, the commit gate, the night runner's re-check and every manual run include the check. The card number is mandatory because the [average check time per card](#what-the-reduction-brings-the-average-check-time-per-card) needs it.
+**Only the completion run skips.** The axis only takes effect if the call carries `--finish <kartennummer>` — the implement skills set it at the completion of exactly one card, and only they do. `/local-check`, the commit gate, the night runner's re-check and every manual run include the check. The card number is mandatory because the [average check time per card](#what-the-reduction-brings-the-average-check-time-per-card) needs it.
 
 **Postponed, not waived.** Every check skipped this way runs **before publishing** in `/push-main`, there in full scope. In the report of the completion run it appears as an omission with its reason — not a shortcoming but its point in time.
 
@@ -391,9 +391,9 @@ An area is touched directly if a changed file matches one of its patterns or car
 **A missing field means unchanged behaviour.** Whoever writes nothing notices nothing of the axis — and whoever cannot call their tests separately by kind keeps getting the previous scope. The axis applies team-wide; a deviating value in `workflow.config.local.json` has no effect.
 
 ### Who was it? The culprit search
-<!-- de: 6dec08ad38b1 -->
+<!-- de: cf81ecf058e0 -->
 
-Because completing a card checks less, a postponed check only fails before the push — that is, at a point in time at which several finished cards lie on top of each other. So that nobody has to search for the cause by hand, a **red run with `--stufe push`** names on its own the cards whose change touches the failing check:
+Because completing a card checks less, a postponed check only fails before the push — that is, at a point in time at which several finished cards lie on top of each other. So that nobody has to search for the cause by hand, a **red run with `--stage push`** names on its own the cards whose change touches the failing check:
 
 ```
 Verursacher (mvn -q verify -DskipUnitTests): Issue #902 (a1b2c3d), Issue #901 (e4f5a6b)
@@ -403,14 +403,14 @@ Verursacher (mvn -q verify -DskipUnitTests): Issue #902 (a1b2c3d), Issue #901 (e
 
 The search covers the window `<anchor>..HEAD` — the anchor is the `--since` value that `/push-main` passes as `git merge-base HEAD origin/<mainBranch>`. The run reads the card number from the **commit message**: `(Issue #<n>)` in the subject, as the implement skills write it, additionally `Refs #<n>` in the body; the subject wins. A look at the board deliberately does not happen — `checks.mjs` runs in the commit gate and in every session and works without network. The price is the commit without a recognisable number: It appears as `Commit ohne Karte <sha>` ("commit without card") and does not disappear.
 
-Touched is determined generously, in the same direction as the selection of the check run (Prüflauf) itself: A check without `areas` counts as touched by every card, and a card with a file without an area pattern as a suspect for every check. In case of ambiguity, **all** candidates are listed. If no card is found or the anchor cannot be resolved, a **sentence** stands there instead of a list — "none found" and "not determinable" are different things. The release stage (`--stufe merge`) does not search: There the base is `HEAD` itself, and the window would be empty.
+Touched is determined generously, in the same direction as the selection of the check run (Prüflauf) itself: A check without `areas` counts as touched by every card, and a card with a file without an area pattern as a suspect for every check. In case of ambiguity, **all** candidates are listed. If no card is found or the anchor cannot be resolved, a **sentence** stands there instead of a list — "none found" and "not determinable" are different things. The release stage (`--stage merge`) does not search: There the base is `HEAD` itself, and the window would be empty.
 
 **The repair is a new card.** The named card does not move back out of *In review* — it is finished and checked; what was found concerns how the parts work together. The culprit list is a lead, not a verdict.
 
 ### What the reduction brings: the average check time per card
-<!-- de: b4a58352c655 -->
+<!-- de: 52bbffbf6cf8 -->
 
-Whether the smaller completion scope brings anything is told by the effectiveness (Wirksamkeit) evaluation (`node .claude/kit/wirksamkeit.mjs auswerten`). Its report `.claude/wirksamkeit.md` carries a block of its own for this, **"Mittlere Prüfzeit je Karte"** ("average check time per card"): the measured time per card, computed over all **completion runs** of that card, next to it the comparison value that the same runs would have cost without the omissions, and per skipped check one line on what it cost on average when publishing.
+Whether the smaller completion scope brings anything is told by the effectiveness (Wirksamkeit) evaluation (`node .claude/kit/effectiveness.mjs evaluate`). Its report `.claude/wirksamkeit.md` carries a block of its own for this, **"Mittlere Prüfzeit je Karte"** ("average check time per card"): the measured time per card, computed over all **completion runs** of that card, next to it the comparison value that the same runs would have cost without the omissions, and per skipped check one line on what it cost on average when publishing.
 
 The reference unit is the **card**, not the run — a card that completes three times counts once with the sum of its runs. And **only completion runs** count: Check times during the work and when publishing stay out. If the basis is missing — no completion line with a card number in the window, or a skipped check that never ran when publishing —, the block says "nicht gemessen" ("not measured") and not 0.
 
@@ -428,21 +428,21 @@ The case really occurs: A Maven chain whose last link swallows the return value 
 **And if the green output legitimately contains `[ERROR]`?** Then that belongs to the command, not to the check. Two ways: make the tool quieter (log level, a `--quiet`, a different reporter), or let `cmd` point to a project script of your own that filters out the known harmless line and passes the **return value on unchanged**. Both stay visible in the project and affect only the one command concerned.
 
 ### Unchanged state: the result is carried over
-<!-- de: fcdb5a79ac5c -->
+<!-- de: a284b3f89cab -->
 
 `checks.mjs run` only runs its commands if there is something new to measure. If the state has **not changed** since the last run, none runs — the command carries over that run's result and reports:
 
 ```
-Stand unveraendert seit 2026-09-22T17:18:04.921Z: Ergebnis uebernommen (gruen). Neu pruefen mit --frisch.
+Stand unveraendert seit 2026-09-22T17:18:04.921Z: Ergebnis uebernommen (gruen). Neu pruefen mit --fresh.
 ```
 
-(State unchanged since that point in time: the result is carried over, green; `--frisch` checks anew.)
+(State unchanged since that point in time: the result is carried over, green; `--fresh` checks anew.)
 
 **Unchanged means:** the same anchor (`basis`), the same stage, the same list of changed files with the same blob hashes and the same check configuration (`buildChecks` and `checkAreas`, as `configHash` in the summary). In addition, the previous summary must be **complete**. If even one of these details differs, or the file is missing or unreadable, everything runs as before. There is deliberately no time window: What makes a result valid is its content, not the clock.
 
-**A red result is carried over too**, including the exit code; the message then names the red command (`Ergebnis uebernommen (rot: mvn verify)`, "result carried over (red: …)"). The same state yields the same red — a second run would cost the same minutes for the same answer. Whoever suspects a flaky test forces the real run with `--frisch`.
+**A red result is carried over too**, including the exit code; the message then names the red command (`Ergebnis uebernommen (rot: mvn verify)`, "result carried over (red: …)"). The same state yields the same red — a second run would cost the same minutes for the same answer. Whoever suspects a flaky test forces the real run with `--fresh`.
 
-**After a fix, the most recently red checks run first.** If the previous run was red and since then only the state has changed, not the selection — the same anchor, the same stage, the same check configuration, the same selected commands in the same order, but different files or blob hashes —, the same call first runs a **partial run** with only the commands that were last `rot`, along the same axes as the full run (marked ones concurrently, then). If they turn green, the full run follows exactly once in the same call as evidence; the summary at the end is its summary. If they stay red, the call ends red: The others are set to `nicht gestartet` ("not started"), the summary carries `teillauf: true`, and the report block names, after the line `Wartezeit:`, the line `Teillauf: nur die zuletzt roten Pruefungen` ("partial run: only the most recently red checks"). A partial run therefore never appears green in the file. If the fix changes the selection, if the previous run was green or if `--frisch` is given, everything runs at once. After a fix, the same call as before is therefore enough; targeted single tests during the fix remain allowed. The waiting time of the call covers the partial run and the full run.
+**After a fix, the most recently red checks run first.** If the previous run was red and since then only the state has changed, not the selection — the same anchor, the same stage, the same check configuration, the same selected commands in the same order, but different files or blob hashes —, the same call first runs a **partial run** with only the commands that were last `rot`, along the same axes as the full run (marked ones concurrently, then). If they turn green, the full run follows exactly once in the same call as evidence; the summary at the end is its summary. If they stay red, the call ends red: The others are set to `nicht gestartet` ("not started"), the summary carries `teillauf: true`, and the report block names, after the line `Wartezeit:`, the line `Teillauf: nur die zuletzt roten Pruefungen` ("partial run: only the most recently red checks"). A partial run therefore never appears green in the file. If the fix changes the selection, if the previous run was green or if `--fresh` is given, everything runs at once. After a fix, the same call as before is therefore enough; targeted single tests during the fix remain allowed. The waiting time of the call covers the partial run and the full run.
 
 **The output of a red check is kept as a file.** Every command that is not green stores its complete output under `.claude/checks-protokolle/<nn>-<kurzname>.log`, numbered in config order. The report line ends with `— Ausgabe: <pfad>` ("output: `<path>`"), and the entry in the summary carries the field `protokoll`. That way a red can be examined without running the same run a second time, even if a session's tool output cuts out the middle (#1196). Every real run empties the folder, a carried-over one leaves it in place together with the path. If storing fails, a notice on stderr is all; the outcome of the run does not change. The night runner's leftover guard does not count the folder as abandoned work.
 
@@ -450,18 +450,18 @@ Stand unveraendert seit 2026-09-22T17:18:04.921Z: Ergebnis uebernommen (gruen). 
 
 **The check named is the one that is actually red.** The carry-over message, the [commit gate](#the-commit-gate) and the night runner's check status (`rotesKommando`) name the first command with result `rot`, and only if there is none, the first one that is not green — after a red partial run, not-started ones stand before the red group.
 
-**The waiting time is at the top of the report block.** The block `Fuer den Abschlussbericht:` begins with the line `Wartezeit: <s> s, zusammen <s> s in <n> Laeufen fuer Karte #<n>` ("waiting time: `<s>` s, together `<s>` s in `<n>` runs for card `#<n>`"), without a card number after `--abschluss` only with `Wartezeit: <s> s`. The first number is the wall-clock time of this run from the call to the result (field `wartezeitMs`; `dauerGesamtMs` remains the sum of the individual durations). The second adds up all runs of the same card (field `wartezeitKarte`): If the previous summary carries the same card, it is added, otherwise started anew. A carried-over run counts as a run without time. At night the sum starts anew with every session, because the runner discards the summary before every round; the sum across sessions is provided by the night report.
+**The waiting time is at the top of the report block.** The block `Fuer den Abschlussbericht:` begins with the line `Wartezeit: <s> s, zusammen <s> s in <n> Laeufen fuer Karte #<n>` ("waiting time: `<s>` s, together `<s>` s in `<n>` runs for card `#<n>`"), without a card number after `--finish` only with `Wartezeit: <s> s`. The first number is the wall-clock time of this run from the call to the result (field `wartezeitMs`; `dauerGesamtMs` remains the sum of the individual durations). The second adds up all runs of the same card (field `wartezeitKarte`): If the previous summary carries the same card, it is added, otherwise started anew. A carried-over run counts as a run without time. At night the sum starts anew with every session, because the runner discards the summary before every round; the sum across sessions is provided by the night report.
 
 **The evidence stays fresh.** A carried-over run rewrites the summary, with a new `zeitpunkt` and the field `uebernommen` (the point in time of the last real run). The [commit gate](#the-commit-gate) thus gets valid evidence for exactly this state. The execution log `.claude/ausfuehrungen.tsv` gets **no** line: A carried-over result is not an execution and costs no time.
 
 **Why this is in the tool.** The night runs showed sessions that started the same green `run` three to nine times per work package — mostly without a change in between, often only to filter the output differently. The rule "write the output to a file once and read from there" has been in the skill text for a long time and did not work. By the yardstick "rule in the text or rule in the tool", it therefore belongs here.
 
 ### Flaky checks: repeated once
-<!-- de: a3325e933627 -->
+<!-- de: 96658cff0212 -->
 
 Some checks are green one time and red the next on the same state, such as a test that depends on the time of day, the load on the machine or the order of execution. So that such a check does not fail a package unjustly and still gets noticed, `checks.mjs run` repeats every red check **exactly once** on the same state wherever a result decides about a package or a release.
 
-**Where a check is repeated.** In the closing check of a package (`--abschluss`), in the check run before `push main` and before `merge production` (both with `--wiederholen`) and in the evidence run that the night's preparation runs on the path through the build service. Only the red check is repeated, not the whole run, and immediately, before the rest of the run continues. The partial run and the full run each repeat at most once; advisory checks are never repeated.
+**Where a check is repeated.** In the closing check of a package (`--finish`), in the check run before `push main` and before `merge production` (both with `--retry`) and in the evidence run that the night's preparation runs on the path through the build service. Only the red check is repeated, not the whole run, and immediately, before the rest of the run continues. The partial run and the full run each repeat at most once; advisory checks are never repeated.
 
 **What comes out of it.** Red and then green means: the check **flaked**. It counts as passed, the output names it, and the report block carries, below its `gelaufen:` line, the line `Gewackelt: <Kommando> → erst rot, dann gruen` ("flaked: `<command>` → first red, then green"), with the path of the first run's output (suffix `-erstlauf`). Red and red again stays red, as without a repetition.
 
@@ -469,9 +469,9 @@ Some checks are green one time and red the next on the same state, such as a tes
 
 **Stop before publishing.** If a check flaked in the check run before `push main` or `merge production`, the skill stops after the green run and before the commit, names the check and asks „Trotzdem fortfahren? (ja/nein)“ (continue anyway? (yes/no)). Only `ja` continues. At night nobody asks: the preparation turns green into `gruen-offen` and records `Gewackelt: <Kommando> — Entscheidung beim push main` (flaked: `<command>` — decision at push main) as an open item, which `push main` asks about in the morning before the push.
 
-**The repair candidate.** From **three flakes** within the time window, a check is marked in the effectiveness evaluation as a candidate for repair. `node .claude/kit/wirksamkeit.mjs kandidaten` prints one line `Reparaturkandidat: <cmd> — <n> Wackler im Zeitfenster` (repair candidate: `<cmd>` — `<n>` flakes in the time window) per such check. Before `push main` and `merge production` they are named but do not stop the run. The threshold is fixed and not configurable.
+**The repair candidate.** From **three flakes** within the time window, a check is marked in the effectiveness evaluation as a candidate for repair. `node .claude/kit/effectiveness.mjs candidates` prints one line `Reparaturkandidat: <cmd> — <n> Wackler im Zeitfenster` (repair candidate: `<cmd>` — `<n>` flakes in the time window) per such check. Before `push main` and `merge production` they are named but do not stop the run. The threshold is fixed and not configurable.
 
-**The limits.** During implementation, that is in every `checks.mjs run` without `--abschluss` and without `--wiederholen`, in `/local-check` and at the commit gate, every check runs exactly once as before. The job in the build service runs `--stufe push` without the switch and does not repeat, nor does the night runner's re-check. A flake therefore only shows where a repetition is deliberate; on an unchanged state the kit carries over the result instead of checking anew.
+**The limits.** During implementation, that is in every `checks.mjs run` without `--finish` and without `--retry`, in `/local-check` and at the commit gate, every check runs exactly once as before. The job in the build service runs `--stage push` without the switch and does not repeat, nor does the night runner's re-check. A flake therefore only shows where a repetition is deliberate; on an unchanged state the kit carries over the result instead of checking anew.
 
 ### No lock between check runs
 <!-- de: 187b196aea32 -->
@@ -498,13 +498,13 @@ The wall-clock time itself appears as `duration_ms` at the end of an ordinary `n
 The numbers apply to the machine on which they were measured and become outdated with every new test. Whoever needs the list collects it anew instead of extending an older one.
 
 ### The narrowing in the kit itself
-<!-- de: 2f99113a5b60 -->
+<!-- de: 2da82e04d34d -->
 
 The kit has brought the area-based selection along for a long time, but for a long time did not use it in its own repo: Without `checkAreas` and with `node --test` as the only entry, every check status reported full scope. How the narrowing looks in a grown project can therefore be read here — with all the concessions it costs.
 
 **Nine parts.** `nachtrunner`, `board`, `pruefungen`, `einstellungen`, `worktree`, `installer`, `skills-doku`, `konfiguration` and `preise`. They overlap on purpose, but more sparingly than before: Since issue #933, **no** part (Teil) claims the whole tool directory any more — the pattern `kit/**` once stood both in `installer` and in `skills-doku` and so pulled in the same doc, CLI, sync and installer tests with every change to any kit file. Instead, every source file under `kit/` carries the part of its measured entanglement, and since issue #936 `kit/preise.mjs` is a part of its own instead of being in three parts at once. A part is not ownership of a file but the answer to the question "which check must run if this changes?" — and more than one part may answer yes to that.
 
-**Six test calls, not one per part.** The test suite does not fall apart into independent pieces, because the kit tools load each other: `kit/night.mjs` pulls in `board.mjs`, `checks.mjs`, `aufwand.mjs`, `wirksamkeit.mjs` and `befunde.mjs`, `.githooks/gate.mjs` loads `checks.mjs`, and almost fifty night tests name `board.mjs`. On top of that, `checks.mjs run` runs the entries without the axis `gleichzeitig` **one after another**: Every additional such entry lengthens the full scope by the start-up cost of another run that no longer parallelises its files with the others. Only marked entries run side by side in the first phase (see [No lock between check runs](#no-lock-between-check-runs)). The split therefore narrows more coarsely than the parts would allow — it remains a trade-off between the gain in the narrowed case and the surcharge in the full scope.
+**Six test calls, not one per part.** The test suite does not fall apart into independent pieces, because the kit tools load each other: `kit/night.mjs` pulls in `board.mjs`, `checks.mjs`, `effort.mjs`, `effectiveness.mjs` and `findings.mjs`, `.githooks/gate.mjs` loads `checks.mjs`, and almost fifty night tests name `board.mjs`. On top of that, `checks.mjs run` runs the entries without the axis `gleichzeitig` **one after another**: Every additional such entry lengthens the full scope by the start-up cost of another run that no longer parallelises its files with the others. Only marked entries run side by side in the first phase (see [No lock between check runs](#no-lock-between-check-runs)). The split therefore narrows more coarsely than the parts would allow — it remains a trade-off between the gain in the narrowed case and the surcharge in the full scope.
 
 **What remains without a part is a statement too.** Since issue #935 every versioned source file is assigned — including `eslint.config.mjs`, `package.json`, `.claude/workflow.config.json` (a part of its own, `konfiguration`) and every helper under `test/helpers/**`, which is in the parts whose tests load it. What remains are the files for which there really is nothing to check: They are listed with a reason of their own in [`ohnePruefung`](/en/dokumentation#ohnepruefung) — `CHANGELOG.md`, `LICENSE`, the licence texts of the fonts, the note documents in the root. Whoever puts a file neither in a part nor in the exemption gets the full scope with every change to it; that is the safe direction and no punishment.
 
@@ -552,7 +552,7 @@ The captured number counts as a percentage, like the `marke` — one unit, not t
 **The measurement belongs to its stage, not into an acceptance criterion.** A work package that writes the mutation run into the card as a criterion runs it once per package instead of once per publication — and thereby costs the round time the package lacks; such a full run drove a night round exactly into the round time limit, including a lost final message. `issue check-form` therefore rejects a package whose `## Akzeptanzkriterium` names `mutationCommand` or the command of the `guete` entry (gate I6); the right place is a `buildChecks` entry with `stufe: push`.
 
 ## Language of the kit
-<!-- de: ccfcd9d85b1a -->
+<!-- de: f2cc7129f8d2 -->
 
 The kit can be set to German or English per project. The setting is called [`language`](#language), with the values `de` and `en`; if it is missing, German applies. A new project chooses its language with the installer's first question, `Sprache / Language [de/en] (de)`. An existing project stays German after every update until you switch it.
 
@@ -564,7 +564,7 @@ The kit can be set to German or English per project. The setting is called [`lan
 node install.mjs --language en
 ```
 
-`--sprache en` is equivalent. The installer first creates a backup of the config, `.claude/workflow.config.json.vor-umstellung`, holding the state before the switch. Then it sets the language setting and renames the settings in `workflow.config.json` and `workflow.config.local.json` to the names of the new language. Fixed values that the kit itself defines also get their name in the new language; values you chose yourself, such as your own label names, stay as they are. The switch does not touch labels and title prefixes on the board; the kit understands both names there. Without a switch, everything keeps running as before.
+The installer first creates a backup of the config, `.claude/workflow.config.json.vor-umstellung`, holding the state before the switch. Then it sets the language setting and renames the settings in `workflow.config.json` and `workflow.config.local.json` to the names of the new language. Fixed values that the kit itself defines also get their name in the new language; values you chose yourself, such as your own label names, stay as they are. The switch does not touch labels and title prefixes on the board; the kit understands both names there. Without a switch, everything keeps running as before.
 
 **The report.** At the end the installer lists under `Umbenannt` (renamed) every renamed setting with its old and new name. Under `Offen` (open) it names what the switch does not take care of: config fields holding a kit label of the other language, cards with a title prefix of the other language, kit labels of the new language that are on no card and may still be missing on the board, and that skills and rule texts stay German until the kit ships them in English. If the board cannot be reached, the report says so, and the switch applies anyway.
 
@@ -577,36 +577,36 @@ node install.mjs --language de
 It renames the settings back to the German names. If you need exactly the state before the switch, copy the backup back to `.claude/workflow.config.json`.
 
 ### Labels and title prefixes
-<!-- de: ffd34729fb4d -->
+<!-- de: 3d3bd5ab0425 -->
 
-Every label and every title prefix the kit knows has a German and an English name. In every project the kit recognises both names of the same thing and treats them alike, whatever language is set. Old cards with a German prefix can therefore sit next to new ones with an English prefix. When the kit itself sets a label or creates a card, it uses the name in the project language. The release rights apply under both names as well: a label that only a human may remove may also only be removed by a human under its English name.
+Every label and every title prefix of the kit has one name, the English one, in every project, including a German one. When the kit sets a label or creates a card, it uses this name.
 
-| Thing | German | English |
-|-------|---------|----------|
-| question waits for the human | `kit:klaeren` | `kit:clarify` |
-| protected file waits for the human | `kit:geschuetzt` | `kit:protected` |
-| variant B of the night chain | `kit:durchziehen` | `kit:carry-through` |
-| check run | `kit:pruefen` | `kit:check` |
-| run is running | `lauf:laeuft` | `run:running` |
-| run aborted | `lauf:abgebrochen` | `run:aborted` |
-| run is waiting | `lauf:wartet` | `run:waiting` |
-| trace of the review | `review:fertig` | `review:done` |
-| goal of the chain: plan | `ziel:plan` | `goal:plan` |
-| goal of the chain: packages | `ziel:pakete` | `goal:packages` |
-| goal of the chain: implementation | `ziel:umsetzung` | `goal:implementation` |
-| goal of the chain: push prepared | `ziel:push-vorbereitet` | `goal:push-prepared` |
-| prefix of the business requirement | `[Fachlich]` | `[Requirement]` |
-| prefix of the idea | `[Idee]` | `[Idea]` |
-| prefix of the human step | `[Mensch]` | `[Human]` |
+| Thing | Name |
+|-------|------|
+| question waits for the human | `kit:clarify` |
+| protected file waits for the human | `kit:protected` |
+| variant B of the night chain | `kit:carry-through` |
+| check run | `kit:check` |
+| run is running | `run:running` |
+| run aborted | `run:aborted` |
+| run is waiting | `run:waiting` |
+| trace of the review | `review:done` |
+| goal of the chain: plan | `goal:plan` |
+| goal of the chain: packages | `goal:packages` |
+| goal of the chain: implementation | `goal:implementation` |
+| goal of the chain: push prepared | `goal:push-prepared` |
+| prefix of the business requirement | `[Requirement]` |
+| prefix of the idea | `[Idea]` |
+| prefix of the human step | `[Human]` |
 
-`kit:night`, `kit:nightrun`, `planreview:1`, `planreview:2`, `[Plan]` and `[Task]` have the same name in both languages.
+Added to these are `kit:night`, `kit:nightrun`, `planreview:1`, `planreview:2`, `[Plan]` and `[Task]`.
 
-**The kind instead of the prefix.** `issue create` and `issue check-form` accept the kind of a card with `--art fachlich|plan|idee|mensch|task`. The kit then puts the prefix of the project language in front of the title, for example `[Requirement]` in an English project. A title that already carries a prefix stays valid; `--art` alongside it is an error. Without `--art` the title stays as it is.
+**Cards with the former German names keep working.** Open cards still carry prefixes such as `[Fachlich]` or labels such as `kit:klaeren`. The kit recognises the former German names when reading and treats them like the English ones, but writes only the English ones. A German label the kit would remove, it removes just the same; uninvolved labels stay unchanged. The release rights apply under both names as well: a label that only a human may remove may also only be removed by a human under its German name. Which German name belongs to which English one is given in the [table old → new](/en/dokumentation#skills-commands-and-entry-files).
 
-**How long the German names stay valid.** The German labels and prefixes remain valid throughout versions 4 and 5. In English projects the German legacy names can be dropped at the earliest with version 6, and only after an announcement.
+**The kind instead of the prefix.** `issue create` and `issue check-form` accept the kind of a card with `--art requirement|plan|idea|human|task`. The kit then puts the matching prefix in front of the title, for example `[Requirement]`. A title that already carries a prefix stays valid; `--art` alongside it is an error. Without `--art` the title stays as it is.
 
 ### Messages, reports and markers
-<!-- de: 4b642edfecfe -->
+<!-- de: a145a2a3f050 -->
 
 What the kit outputs and writes to the cards is in the project language: the messages of the tools, the block `Fuer den Abschlussbericht:` of `checks.mjs`, night and run reports, notes and comments on the cards, the installer, the settings interface and the local board interface. A change of language takes effect from the next call; what is already on the board stays as it is.
 
@@ -629,7 +629,7 @@ What the kit outputs and writes to the cards is in the project language: the mes
 | chain without check | `## Kette nicht gestartet: Pruefung fehlt` | `## Chain not started: check missing` |
 | chain with unsuitable setting | `## Kette nicht gestartet: unpassende Einstellung` | `## Chain not started: unsuitable setting` |
 | no input for `/issues` | `Kein Eingang für /issues` | `No input for /issues` |
-| follow-up sentence of a halt | `Daraus soll per /fachplan eine fachliche Anforderung entstehen.` | `A requirement is to be created from this via /requirement.` |
+| follow-up sentence of a halt | `Daraus soll per /requirement eine fachliche Anforderung entstehen.` | `A requirement is to be created from this via /requirement.` |
 | superseded package | `Ueberholt durch Plan #` | `Superseded by plan #` |
 | identifier of the report | `Bericht-Lauf:` | `Report-Run:` |
 | revision of the kit | `Kit-Stand:` | `Kit-Revision:` |
@@ -658,71 +658,115 @@ What the kit outputs and writes to the cards is in the project language: the mes
 - the vocabulary of the result state and the journal,
 - the enumerations of the message to the control room, `stages`, `errorClass` and `state`, and the field `grundArt` with the values `abhaengigkeit`, `klaeren`, `ohneInReview`, `zeitbudget` and `sonst`,
 - the file names under `.claude/`,
-- the form words of the findings that `kit/befunde.mjs` reads: the marks `KRITISCH`, `BLOCKER`, `WICHTIG` and `HINWEIS`, `Fundstelle:`, `Vorschlag:`, `Gegenprobe:` with `— geprueft, bestaetigt` and `— nicht geprueft`, `Art:` and the kind names.
+- the form words of the findings that `kit/findings.mjs` reads: the marks `KRITISCH`, `BLOCKER`, `WICHTIG` and `HINWEIS`, `Fundstelle:`, `Vorschlag:`, `Gegenprobe:` with `— geprueft, bestaetigt` and `— nicht geprueft`, `Art:` and the kind names.
 
 Translated are the free texts of the message to the control room, `title`, `excerpt`, `abortReason` and `noWorkReason`, and all displays.
 
 ### Skills, commands and entry files
-<!-- de: 294755f3865c -->
+<!-- de: 4ea05ba2f545 -->
 
-Skills, commands and tool files also have an English name. The German one stays valid alongside it and calls the same thing, in every project, whichever language is set. In an English project the help of `kit/board.mjs` gives the English names. No file is renamed: hooks, sandbox exceptions and projects keep naming the old paths.
+Since version 5 every skill, command file, command, option and choice value of the kit has exactly one name, the English one, in every project. A former German name is rejected: the command ends with exit code 1 and names the English name, for example `unbekannt: 'melden' — englischer Name: 'report'`. There is no transition period. The German skills no longer exist; the update deletes their folders. Title prefixes and labels are different: the kit still recognises the German names on open cards, but writes only the English ones (see [Labels and title prefixes](/en/dokumentation#labels-and-title-prefixes)).
 
-**Skills.** Two skills have a new name; the others are already English and stay. The old name is a forwarding skill that runs the new skill with the same arguments.
+The update rewrites the calls it created itself, such as the hook in `.claude/settings.json`. Every other place that calls the kit under an old name it lists at the end with the old and the new name: found in `.claude/settings.json`, `.claude/settings.local.json`, the scripts of `package.json` and `crontab -l`. Schedules and your own scripts in other places, such as LaunchAgents, you check yourself against the table below.
 
-| Skill | German (old name) | English |
-|-------|-------------------|----------|
-| load context | `/kontext` | `/context` |
-| business requirement | `/fachplan` | `/requirement` |
+**Table old → new.** Whatever is not listed here already had an English name before, such as `issue create` or `--title`.
 
-**Entry files.** The tools with a German file name get an English entry file next to them. It calls the German file with the same arguments and ends with its exit code.
+**Skills.**
 
-| German | English |
-|---------|----------|
+| Old | New |
+|-----|-----|
+| `/kontext`, `/context` | `/session-start` |
+| `/fachplan` | `/requirement` |
+| `/review` | `/kit-review` |
+| `/plan` (signpost) | dropped, the planning step is `/techplan` |
+
+**Command files.**
+
+| Old | New |
+|-----|-----|
 | `kit/befunde.mjs` | `kit/findings.mjs` |
 | `kit/aufwand.mjs` | `kit/effort.mjs` |
 | `kit/wirksamkeit.mjs` | `kit/effectiveness.mjs` |
 | `einstellungen.mjs` | `settings.mjs` |
 
-**Commands of `kit/board.mjs`.** The table lists only what differs; commands such as `issue create` or `issue move` and options such as `--title` are already English.
+**Commands.**
 
-| German | English |
-|---------|----------|
-| `kontext` | `context` |
-| `sitzung` | `session` |
-| `issue melden`, `nightrun melden`, `sitzung melden` | `issue report`, `nightrun report`, `session report` |
-| `issue stand` | `issue run-state` |
-| `issue auftrag` | `issue brief` |
-| `issue ursprung` | `issue origin` |
-| `issue check-geschuetzt` | `issue check-protected` |
-| `issue-review pruefauftrag` | `issue-review review-brief` |
-| `hook bash-pruefen` | `hook bash-check` |
-| `code schutz` | `code protection` |
-| `einrichten`, `aussetzen`, `wiederherstellen`, `nachpruefen` (actions of `code schutz`) | `setup`, `suspend`, `restore`, `verify` |
-| `--teil`, `--zustand`, `--spalte`, `--pfad`, `--zweig`, `--nur-pfad` | `--part`, `--state`, `--column`, `--path`, `--branch`, `--path-only` |
-| `--stufe`, `--rolle`, `--datei`, `--material-datei`, `--auftrag`, `--ausgabe`, `--protokoll` | `--stage`, `--role`, `--file`, `--material-file`, `--brief`, `--output`, `--transcript` |
-
-**Commands of the other tools.**
-
-| Tool | German | English |
-|----------|---------|----------|
-| `kit/checks.mjs` | `bereiche`, `--stufe`, `--bereich`, `--abschluss`, `--frisch`, `--wiederholen` | `areas`, `--stage`, `--area`, `--finish`, `--fresh`, `--retry` |
-| `kit/night.mjs` | `--kette`, `--pruefen` | `--chain`, `--check` |
-| `kit/befunde.mjs` | `arten`, `pruefen`, `buchen`, `vorschlag`, `auswerten`, `befund` | `kinds`, `check`, `record`, `suggest`, `evaluate`, `finding` |
-| `kit/befunde.mjs` (options) | `--datei`, `--stufe`, `--karte`, `--art`, `--abgelehnt` | `--file`, `--stage`, `--card`, `--kind`, `--rejected` |
-| `kit/wirksamkeit.mjs` | `auswerten`, `befund`, `kandidaten`, `--fenster` | `evaluate`, `finding`, `candidates`, `--window` |
+| Command | Old | New |
+|----------|-----|-----|
+| `kit/board.mjs` | `kontext`, `sitzung` | `context`, `session` |
+| `kit/board.mjs` | `issue melden`, `nightrun melden`, `sitzung melden` | `issue report`, `nightrun report`, `session report` |
+| `kit/board.mjs` | `issue stand`, `issue auftrag`, `issue ursprung` | `issue run-state`, `issue brief`, `issue origin` |
+| `kit/board.mjs` | `issue check-geschuetzt`, `issue vorgeschichte`, `issue fragen` | `issue check-protected`, `issue history`, `issue questions` |
+| `kit/board.mjs` | `issue-review pruefauftrag` | `issue-review review-brief` |
+| `kit/board.mjs` | `hook bash-pruefen` | `hook bash-check` |
+| `kit/board.mjs` | `code schutz` with `einrichten`, `aussetzen`, `wiederherstellen`, `nachpruefen` | `code protection` with `setup`, `suspend`, `restore`, `verify` |
+| `kit/checks.mjs` | `bereiche` | `areas` |
+| `kit/findings.mjs` | `arten`, `pruefen`, `buchen`, `vorschlag`, `auswerten`, `befund` | `kinds`, `check`, `record`, `suggest`, `evaluate`, `finding` |
+| `kit/effort.mjs` | `auswerten`, `befund`, `auskunft` | `evaluate`, `finding`, `info` |
+| `kit/effectiveness.mjs` | `auswerten`, `befund`, `kandidaten` | `evaluate`, `finding`, `candidates` |
 | `kit/worktree.mjs` | `anlegen`, `entfernen`, `im`, `nachziehen-pruefen`, `rueckweg` | `create`, `remove`, `in`, `catch-up-check`, `return` |
-| `kit/worktree.mjs` (preparation) | `vorbereitung-festhalten`, `vorbereitung-pruefen` | `record-preparation`, `check-preparation` |
-| `kit/worktree.mjs` (options) | `--praefix`, `--ergebnis`, `--offen`, `--verwerfen` | `--prefix`, `--result`, `--open`, `--discard` |
+| `kit/worktree.mjs` | `vorbereitung-festhalten`, `vorbereitung-pruefen` | `record-preparation`, `check-preparation` |
 
-**How long the German names apply.** The German names of the skills, commands and entry files stay valid through versions 4 and 5. In English projects they can be dropped at the earliest with version 6, and only after an announcement.
+**Options.**
+
+| Command | Old | New |
+|----------|-----|-----|
+| `kit/board.mjs` | `--teil`, `--zustand`, `--spalte`, `--pfad`, `--zweig`, `--nur-pfad` | `--part`, `--state`, `--column`, `--path`, `--branch`, `--path-only` |
+| `kit/board.mjs` | `--stufe`, `--rolle`, `--datei`, `--material-datei`, `--auftrag`, `--ausgabe`, `--protokoll` | `--stage`, `--role`, `--file`, `--material-file`, `--brief`, `--output`, `--transcript` |
+| `kit/board.mjs` | `--begriffe`, `--dateien`, `--ohne`, `--vergleich` | `--terms`, `--files`, `--without`, `--compare` |
+| `kit/checks.mjs` | `--stufe`, `--bereich`, `--abschluss`, `--frisch`, `--wiederholen` | `--stage`, `--area`, `--finish`, `--fresh`, `--retry` |
+| `kit/night.mjs` | `--kette`, `--pruefen`, `--waechter` | `--chain`, `--check`, `--watcher` |
+| `kit/findings.mjs` | `--datei`, `--stufe`, `--karte`, `--art`, `--abgelehnt` | `--file`, `--stage`, `--card`, `--kind`, `--rejected` |
+| `kit/effort.mjs` | `--laeufe` | `--runs` |
+| `kit/effectiveness.mjs` | `--fenster` | `--window` |
+| `kit/worktree.mjs` | `--praefix`, `--ergebnis`, `--offen`, `--verwerfen` | `--prefix`, `--result`, `--open`, `--discard` |
+| `install.mjs` | `--sprache`, `--schutz` | `--language`, `--protection` |
+
+**Choice values.**
+
+| Place | Old | New |
+|--------|-----|-----|
+| `kit/board.mjs --art` | `fachlich`, `idee`, `mensch` | `requirement`, `idea`, `human` |
+| `kit/board.mjs --state` | `laeuft`, `abgebrochen`, `wartet`, `fertig` | `running`, `aborted`, `waiting`, `done` |
+| `kit/board.mjs --stage` | `fachlich` | `requirement` |
+| `kit/checks.mjs --stage` | `paket` | `package` |
+| `kit/findings.mjs --stage` | `fachlich` | `requirement` |
+| `kit/worktree.mjs --result` | `gruen`, `gruen-offen`, `rot` | `green`, `green-open`, `red` |
+| `kit/worktree.mjs --fetch` | `fehlgeschlagen` | `failed` |
+| `/push-main` | `vorbereiten`, `notfall` | `prepare`, `emergency` |
+
+**Title prefixes.** New cards carry only the English ones; the kit still recognises the German ones on open cards.
+
+| Old | New |
+|-----|-----|
+| `[Fachlich]` | `[Requirement]` |
+| `[Idee]` | `[Idea]` |
+| `[Mensch]` | `[Human]` |
+
+**Labels.** The kit sets only the English ones; it still recognises the German ones on open cards and removes them wherever it would remove the English one.
+
+| Old | New |
+|-----|-----|
+| `kit:klaeren` | `kit:clarify` |
+| `kit:geschuetzt` | `kit:protected` |
+| `kit:durchziehen` | `kit:carry-through` |
+| `kit:pruefen` | `kit:check` |
+| `lauf:laeuft` | `run:running` |
+| `lauf:abgebrochen` | `run:aborted` |
+| `lauf:wartet` | `run:waiting` |
+| `review:fertig` | `review:done` |
+| `ziel:plan` | `goal:plan` |
+| `ziel:pakete` | `goal:packages` |
+| `ziel:umsetzung` | `goal:implementation` |
+| `ziel:push-vorbereitet` | `goal:push-prepared` |
 
 ## Settings through the interface
-<!-- de: 5640e7dafde7 -->
+<!-- de: dc9cd974a581 -->
 
-Instead of editing the config files by hand, the process settings can be maintained through a local interface. It is **not installed** but downloaded as a single file: [einstellungen.mjs](https://docs.mwolff.org/einstellungen.mjs). It works across all projects under one folder and therefore belongs in none of them.
+Instead of editing the config files by hand, the process settings can be maintained through a local interface. It is **not installed** but downloaded as a single file: [settings.mjs](https://docs.mwolff.org/settings.mjs). It works across all projects under one folder and therefore belongs in none of them.
 
 ```bash
-node einstellungen.mjs ~/ki-projects
+node settings.mjs ~/ki-projects
 ```
 
 **Which projects appear.** The given folder itself and every direct subdirectory, provided it contains `.claude/workflow.config.json`. Without an argument, the working directory applies. No deeper search takes place.
@@ -741,7 +785,7 @@ node einstellungen.mjs ~/ki-projects
 
 **Checking before saving.** The interface rejects invalid values with a reason, including those that only become invalid in combination with another setting. A setting it does not know is shown as a warning and left in place on saving. Whoever empties the mandatory checks or switches off the review duty before Ready has to confirm this explicitly. If the file has changed since loading, the interface does not save and asks whether the own change should be discarded or applied anew.
 
-**Kit version.** A project with a newer kit version than the downloaded interface — or without a recognisable version — is read-only; a current `einstellungen.mjs` helps then.
+**Kit version.** A project with a newer kit version than the downloaded interface — or without a recognisable version — is read-only; a current `settings.mjs` helps then.
 
 **What it does not do.** It shows no Claude Code settings (permissions, sandbox, environment values), creates no config in a project without one, and does not check whether configured commands actually run or models are reachable. The text files remain the source; whoever prefers to work there can continue to do so.
 
@@ -844,7 +888,7 @@ Target branch for the PR in step 9 (merge production). Applies team-wide; a diff
 
 ### `pushCheck` (German: `pushPruefung`)
 
-Where the full check run before 'push main' takes place. 'lokal' (default): /push-main runs it with 'checks.mjs run --stage push' on your own machine. An object with ort 'buildDienst' moves it to the project's build service: /push-main pushes the state to the check branch, waits for the result via 'board.mjs code ci-status --commit' and pushes mainBranch only on green. The obligation is the same in both places — green before the push; productionBranch stays untouched. On the check branch the build service must run the same mandatory checks as the local run of stage push. Protection of the main and release branches is set up by 'board.mjs code schutz einrichten'; the installer writes 'pushPruefung' only after its probe on the check branch has passed. Applies team-wide; a different value in workflow.config.local.json is ignored. (valid: `lokal`)
+Where the full check run before 'push main' takes place. 'lokal' (default): /push-main runs it with 'checks.mjs run --stage push' on your own machine. An object with ort 'buildDienst' moves it to the project's build service: /push-main pushes the state to the check branch, waits for the result via 'board.mjs code ci-status --commit' and pushes mainBranch only on green. The obligation is the same in both places — green before the push; productionBranch stays untouched. On the check branch the build service must run the same mandatory checks as the local run of stage push. Protection of the main and release branches is set up by 'board.mjs code protection setup'; the installer writes 'pushPruefung' only after its probe on the check branch has passed. Applies team-wide; a different value in workflow.config.local.json is ignored. (valid: `lokal`)
 
 - `pushCheck.location` (German: `pushPruefung.ort`) — The place of the full run: the project's build service. (valid: `buildDienst`)
 - `pushCheck.branch` (German: `pushPruefung.zweig`) — The check branch to which /push-main pushes the state before the push and which it deletes again afterwards. Not mainBranch and not productionBranch.
@@ -920,7 +964,7 @@ Issue review across several models. Reviewers who did not write the document rea
 
 Staffing and perspective of the three review levels: the functional concern, the plan to get there, the single work package. While issueReview describes WHO reviews at all, this states how many review per level and in which roles. 'rollen' must contain exactly 'reviewer' distinct, non-empty names — otherwise a hard error. If the whole block is missing, each level uses the roles of the role catalogue with one reviewer per role: fachlich 'form-beobachtbarkeit' and 'abgrenzung', plan 'architektur-bestand' and 'schnitt-abhaengigkeiten', issue 'pruefbarkeit'; if only one level is missing in an existing block, that is an error. Applies team-wide; a different value in workflow.config.local.json is ignored.
 
-- `reviewStages.requirement` (German: `reviewStufen.fachlich`) — Review of the functional concern ([Fachlich] issue) before a plan is made from it.
+- `reviewStages.requirement` (German: `reviewStufen.fachlich`) — Review of the functional concern ([Requirement] issue) before a plan is made from it.
 - `reviewStages.requirement.reviewer` (German: `reviewStufen.fachlich.reviewer`) — How many reviewers review this level.
 - `reviewStages.requirement.roles` (German: `reviewStufen.fachlich.rollen`) — One role name per reviewer, in the order of assignment.
 - `reviewStages.plan` (German: `reviewStufen.plan`) — Review of the plan document ([Plan] issue) before it is split into work packages.
@@ -946,7 +990,7 @@ Night mode. The night chain under kette, the list of allowed model names under m
 - `night.chain.costUsd` (German: `night.kette.kostenUsd`) — Cost budget per chain in US dollars, summed over all sessions of the chain; checked after every session.
 - `night.chain.costUsdB` (German: `night.kette.kostenUsdB`) — Cost budget per chain in US dollars for the implementation stage (variant B), summed over all sessions of the chain; checked after every session.
 - `night.chain.correctionRounds` (German: `night.kette.korrekturrunden`) — Maximum number of correction sessions per document after a red form check.
-- `night.chain.transitions` (German: `night.kette.uebergaenge`) — Which transitions of the chain may follow automatically. A blocked transition ends with lauf:wartet and 'wartet: Übergang `<x>` im Projekt nicht freigegeben — weiter mit kit:night' (waiting: transition not released in the project); a new kit:night resumes at the waiting stage. If the block or a field in it is missing, the behaviour from before the setting applies: the first three transitions follow, and a card with the variant B label is implemented after the coverage.
+- `night.chain.transitions` (German: `night.kette.uebergaenge`) — Which transitions of the chain may follow automatically. A blocked transition ends with run:waiting and 'wartet: Übergang `<x>` im Projekt nicht freigegeben — weiter mit kit:night' (waiting: transition not released in the project); a new kit:night resumes at the waiting stage. If the block or a field in it is missing, the behaviour from before the setting applies: the first three transitions follow, and a card with the variant B label is implemented after the coverage.
 - `night.chain.transitions.planReview` (German: `night.kette.uebergaenge.planReview`) — After the plan, the review of the plan follows automatically.
 - `night.chain.transitions.reviewPackages` (German: `night.kette.uebergaenge.reviewPakete`) — After the review of the plan, the work packages follow automatically.
 - `night.chain.transitions.packagesCoverage` (German: `night.kette.uebergaenge.paketeAbdeckung`) — After the work packages, the coverage against the functional requirement follows automatically.
@@ -1022,7 +1066,7 @@ Before a requirement or plan is written, searches earlier requirements on the pr
 <!-- einstellungen:ende -->
 
 ## The seventeen skills and the 9-step core process
-<!-- de: fe3ae6bffe48 -->
+<!-- de: 4a61bea00ec0 -->
 
 The process has **nine** steps, seven of them with a skill. The remaining nine skills are tools alongside it: helpful, often used — but the process runs without them too.
 
@@ -1034,14 +1078,14 @@ The process has **nine** steps, seven of them with a skill. The remaining nine s
 | **4** | **GO: pull issues to Ready** | **Human** | (no skill) |
 | 5 | Implement Ready issues | AI | /implement-ready |
 | 6 | Run local checks | AI | /local-check |
-| 7 | Carry out the review | AI | /review |
+| 7 | Carry out the review | AI | /kit-review |
 | **8** | **Push to main** | **Human** | /push-main |
 | **9** | **Merge to production** | **Human** | /merge-production |
 
 Between step 8 and step 9 you check the test server in the browser — no skill of its own, but mandatory. This numbering is the same as in `CLAUDE-workflow.md` and in the skill definitions.
 
 ### Tools alongside the process
-<!-- de: c9c0e90ec33c -->
+<!-- de: bb4d7411ad41 -->
 
 They carry no number, because a number would claim an order and an obligation that do not exist. The nine steps are the process from the whitepaper; what is listed here is a tool of the kit.
 
@@ -1049,8 +1093,8 @@ They carry no number, because a number would claim an order and an obligation th
 
 | Skill | What for |
 |-------|-------|
-| `/kontext` | Session start: load the vault, project status |
-| `/fachplan` | Requirement as a business issue for grooming with the PO |
+| `/session-start` | Session start: load the vault, project status |
+| `/requirement` | Requirement as a business issue for grooming with the PO |
 | `/issue-review` | have a business requirement (fachliche Anforderung), plan document (Plandokument) **or** work package reviewed — one command, three stages |
 | `/groom` | decide the open questions of a reviewed business plan (Fachplan) one by one with the PO |
 | `/retro` | AI retrospective, consolidate memory |
@@ -1074,8 +1118,8 @@ They carry no number, because a number would claim an order and an obligation th
 
 Whoever introduces the kit can start with the nine steps and add the tools later. Conversely: whoever builds the next useful skill enters it here — not as an intermediate number.
 
-### /kontext
-<!-- de: c89231e515ea -->
+### /session-start
+<!-- de: 606d2dc116da -->
 
 
 **Tool alongside the process, session start.**
@@ -1084,30 +1128,30 @@ The skill loads the context you need to be ready to work immediately, without ha
 
 If a vault is configured, it loads the `always` files from it (profile, working rules), recognises the project note automatically from the repo name and reads additional `projectDocs`. Without a vault, it fetches the initiatives through the board adapter and reads `projectDocs` from the repo. The output is a short situation overview: running initiatives, recent decisions — of these only the most recent day documented in the project note — and what comes next. The individual work packages are on the board; the session start does not repeat them.
 
-### /fachplan
-<!-- de: c625a259068c -->
+### /requirement
+<!-- de: 380455809195 -->
 
 **Tool alongside the process, before step 2 — only for projects with a product owner ([PO loop (PO-Schleife)](/en/dokumentation#po-loop-business-and-technical-issues)).**
 
-The skill turns a raw requirement (dictated, from an email, from the chat) into exactly one **business issue**: title with the prefix `[Fachlich]`, body in story format (goal, business acceptance criteria, non-goals, open questions to the PO) — strictly free of technology, in PO language. The issue is the hand-over artefact to the PO and is groomed directly on the board — the PO's answers and additions belong in the **body**, not in comments — the body carries the negotiated state, comments the history. (`board.mjs issue get` now returns the comments as well, but a requirement you have to piece together from a discussion has no unambiguous state.)
+The skill turns a raw requirement (dictated, from an email, from the chat) into exactly one **business issue**: title with the prefix `[Requirement]`, body in story format (goal, business acceptance criteria, non-goals, open questions to the PO) — strictly free of technology, in PO language. The issue is the hand-over artefact to the PO and is groomed directly on the board — the PO's answers and additions belong in the **body**, not in comments — the body carries the negotiated state, comments the history. (`board.mjs issue get` now returns the comments as well, but a requirement you have to piece together from a discussion has no unambiguous state.)
 
 Before creating it, `issue check-form` checks the form of the business issue. The skill creates no technical plan and no technical issues; those come after the PO's approval through `/techplan #N`. Whoever has no PO skips this step and starts with `/techplan` as usual.
 
 ### /groom
-<!-- de: f50ea6dbc3ff -->
+<!-- de: 1b5e5e25f75d -->
 
 **Tool alongside the process, between `/issue-review` and `/techplan` — only for projects with a product owner.**
 
 A reviewed business plan often still carries open questions to the PO. `/groom #N` leads through them: each open question under `## Offene Fragen an den PO` comes on its own, with a recommendation and its reasoning, and the human decides exactly this one question. The session shows how it works the answer in — the answer line under the question and the change to goal, criteria or non-goals — and writes to the body immediately after approval. A question can be deferred; a follow-up question comes in the same pass. Once all questions are decided, it sets the note “Keine” that the night chain reads.
 
-**Input:** exactly one `[Fachlich]` with the label `review:fertig` or `kit:klaeren`. With `kit:klaeren`, the stop question of the halted review comes first; at the end the human removes the label and has the plan reviewed again. If an answer changed criteria or non-goals, the skill proposes a new review.
+**Input:** exactly one `[Requirement]` with the label `review:done` or `kit:clarify`. With `kit:clarify`, the stop question of the halted review comes first; at the end the human removes the label and has the plan reviewed again. If an answer changed criteria or non-goals, the skill proposes a new review.
 
 **Stop points:** Unattended, the skill does not start — nobody can answer. It writes nothing without approval, removes no label and creates no plan.
 
-The mechanical part — which questions are open, whether the run may start, which comment carries the stop question, how the note reads — comes from `node .claude/kit/board.mjs issue fragen <N>`; the command only reads.
+The mechanical part — which questions are open, whether the run may start, which comment carries the stop question, how the note reads — comes from `node .claude/kit/board.mjs issue questions <N>`; the command only reads.
 
 ### /task
-<!-- de: f1126a942979 -->
+<!-- de: 221b49624a93 -->
 
 **Replaces steps 2 and 3 — the entry into [lane 3](/en/dokumentation#three-lanes).**
 
@@ -1118,11 +1162,11 @@ For this, `/task` creates **exactly one work package**: title with the prefix `[
 Four properties distinguish it from `/techplan`:
 
 - **It asks before it creates.** The skill names the lane in one sentence and waits for a word from you. Unattended (with `KIT_AGENT_MODEL` set, i.e. in night mode (Nachtbetrieb)), it ends at this point and creates **nothing**: a choice of lane that confirms itself is no longer a choice. That is why no `[Task]` can arise at night — `/techplan` records a lane-3 verdict as a plan instead.
-- **It takes only two sources.** The chat or an `[Idee]` (`/task #N`). It rejects a `[Fachlich]` or `[Plan]` document without creating anything: there the full path has already begun, and a `[Task]` next to it would be a second truth about what gets built. If the task arose from an idea, a comment `Fortsetzung: Issue #T` (continuation: issue #T) remains on the idea.
+- **It takes only two sources.** The chat or an `[Idea]` (`/task #N`). It rejects a `[Requirement]` or `[Plan]` document without creating anything: there the full path has already begun, and a `[Task]` next to it would be a second truth about what gets built. If the task arose from an idea, a comment `Fortsetzung: Issue #T` (continuation: issue #T) remains on the idea.
 - **It has no ancestor.** No `--derived-from`, no `Plan:` line and no `Fachliche Quelle:` line.
 - **It decides instead of asking.** Whatever is unclear while writing the package and is not in the stop class (Stopp-Klasse) from `CLAUDE-workflow.md`, the skill decides itself and records it as an `Entscheidung:` line in the context. Only a question from the stop class goes to you.
 
-**A `[Task]` is a work package, not a document.** It is implemented and pulled to Ready like a package without a prefix, and falls into the stage `issue` when reviewed. That distinguishes it from `[Fachlich]`, `[Plan]` and `[Idee]`, which are never implemented.
+**A `[Task]` is a work package, not a document.** It is implemented and pulled to Ready like a package without a prefix, and falls into the stage `issue` when reviewed. That distinguishes it from `[Requirement]`, `[Plan]` and `[Idea]`, which are never implemented.
 
 ### /techplan
 <!-- de: 7ccf13c7837f -->
@@ -1137,7 +1181,7 @@ The skill implements nothing. **It does not create technical issues** — they o
 There is one exception: as soon as you approve the plan, for lane 2 the skill itself creates the plan document as an issue with the title prefix `[Plan]` — with the plan as the body, `Plan-Modell:` in the header and, if the plan arose from `/techplan #N` against a business issue, `Fachliche Quelle: Issue #N`. It records the approved state instead of implementing it: what was decided between requirement and work packages — architecture, cut, trade-offs — would otherwise be written down nowhere. `[Plan]` issues are never implemented (see the gate further below); they are broken down with `/issues #N`. For lane 1 no plan document arises.
 
 ### /issues
-<!-- de: c7a6927dbb1f -->
+<!-- de: ff39bca88960 -->
 
 
 **Step 3, after the plan approval.**
@@ -1146,7 +1190,7 @@ The approved plan becomes one or more issues. Each issue is small enough to be t
 
 From this point on, the issue is the source of truth (not the chat, not your memory, not the plan text). The issues land in the backlog. The skill decides ambiguities outside the stop class and records them as an `Entscheidung:` line in the package's context; before creating them, `issue check-form` checks every package. A package review is no longer the rule — whoever wants one calls `/issue-review #N`.
 
-**What the night run reads as a dependency.** The section `## Abhängigkeiten` contains `Keine.` (none) or references of the form `Issue #N`. Every local `#N` in the section counts as a dependency, including in explanations: "Nicht #N: …" (not #N: …) holds the package back just as much as `Issue #N`. Only references of the form `owner/repo#N` do not count. A reference line begins, after optional whitespace and an optional list marker (`-`, `*`, `+`, `1.`), with `Issue #N` and carries no further local number; every other number comes from explanatory text, including one in the section's code block. The addition `(wartet auf Push)` (waits for push) after the reference line says that the package needs the changed tool, skill or rule text of the other package as a tool and can only run after its push; if it merely builds on its code, the addition is dropped. When writing, `issue check-form`, `issue create` and `issue update` report under `hinweise` one entry `schreibweise` for each number from text and one entry `dokument` for each reference to a document (`[Plan]`, `[Fachlich]`, `[Idee]`), including one from a reference line. The package is created anyway; `ok` and the exit code remain unaffected. `/issues` and `/task` read the entries: they correct an unintended number before creating the package, an intended one stays and is mentioned in the conclusion. The document notice says: the document is not a work package and is not completed by implementation — a plan document never, a business requirement or idea only once its packages are finished. The night run still counts the reference as a dependency. The dry run and the deferral comment name, for each dependency, met or unmet, its origin (reference line or explanatory text) with the passage. If packages hold each other back, directly or through a chain, the cycle finding appears as a line of its own `Kreis: #A -> #B -> #A` (cycle: …); a package that is not itself in the cycle but hangs on it through its unmet dependencies gets the addition "dieses Paket wartet auf einen Kreis" (this package waits on a cycle). How that looks in the night run is described under [Night mode](/en/dokumentation#night-mode).
+**What the night run reads as a dependency.** The section `## Abhängigkeiten` contains `Keine.` (none) or references of the form `Issue #N`. Every local `#N` in the section counts as a dependency, including in explanations: "Nicht #N: …" (not #N: …) holds the package back just as much as `Issue #N`. Only references of the form `owner/repo#N` do not count. A reference line begins, after optional whitespace and an optional list marker (`-`, `*`, `+`, `1.`), with `Issue #N` and carries no further local number; every other number comes from explanatory text, including one in the section's code block. The addition `(wartet auf Push)` (waits for push) after the reference line says that the package needs the changed tool, skill or rule text of the other package as a tool and can only run after its push; if it merely builds on its code, the addition is dropped. When writing, `issue check-form`, `issue create` and `issue update` report under `hinweise` one entry `schreibweise` for each number from text and one entry `dokument` for each reference to a document (`[Plan]`, `[Requirement]`, `[Idea]`), including one from a reference line. The package is created anyway; `ok` and the exit code remain unaffected. `/issues` and `/task` read the entries: they correct an unintended number before creating the package, an intended one stays and is mentioned in the conclusion. The document notice says: the document is not a work package and is not completed by implementation — a plan document never, a business requirement or idea only once its packages are finished. The night run still counts the reference as a dependency. The dry run and the deferral comment name, for each dependency, met or unmet, its origin (reference line or explanatory text) with the passage. If packages hold each other back, directly or through a chain, the cycle finding appears as a line of its own `Kreis: #A -> #B -> #A` (cycle: …); a package that is not itself in the cycle but hangs on it through its unmet dependencies gets the addition "dieses Paket wartet auf einen Kreis" (this package waits on a cycle). How that looks in the night run is described under [Night mode](/en/dokumentation#night-mode).
 
 Every created issue carries in its context section the line `Empfohlenes Modell: <name>`, with the name from `night.modelle` — first entry of the list for architecture and security logic, last for mechanical tasks. **In night mode it takes effect by itself:** the runner starts the session of this card with this model. If the list is missing, the line is dropped without replacement. In conclusion the skill also lists the issues with the same recommendation and one sentence of reasoning each in a table — so before the GO you see what would run with what, without reading the plan context again, and you can change the line in a package before you pull it to Ready.
 
@@ -1191,36 +1235,36 @@ Which issue is next is decided by the argument. `/implement-next` without an arg
 Delimitation: `/implement-ready` works through the whole column in one session; `/implement-test` and `/implement-done` split an issue into a red and a green phase; `/implement-next` does one complete issue and then stops. Interactively it is the "do exactly one" variant — it plays its main role in [night mode](/en/dokumentation#night-mode), where the night runner starts a fresh session with exactly this skill for each issue.
 
 ### /issue-review
-<!-- de: 20d3e0670364 -->
+<!-- de: a014d2db4b77 -->
 
 **Tool alongside the process — has the business plan and the plan read by other models.**
 
-Models that did not write the document deliver findings as a comment; the calling session incorporates them or rejects them with one sentence, writes the stage's marker as a trace and sets the label `review:fertig` as a visible trace on the board (to be created once per board; a finding of the stop class sets `kit:klaeren` instead). Which roles and how many reviewers is said by `reviewStufen`; `issue check-form` checks the form beforehand. Every reviewer gets its review brief as a file that `issue-review pruefauftrag` assembles from the role under `kit/rollen/`; a Claude reviewer reads it as the reader agent `kit-pruefer`, a third-party one runs via `issue-review start` at its read boundary. Neither of them can change anything. Work packages are reviewed only on explicit request; the rule is Ready, not a package review. Details under [Issue review across multiple models](/en/dokumentation#issue-review-across-multiple-models).
+Models that did not write the document deliver findings as a comment; the calling session incorporates them or rejects them with one sentence, writes the stage's marker as a trace and sets the label `review:done` as a visible trace on the board (to be created once per board; a finding of the stop class sets `kit:clarify` instead). Which roles and how many reviewers is said by `reviewStufen`; `issue check-form` checks the form beforehand. Every reviewer gets its review brief as a file that `issue-review review-brief` assembles from the role under `kit/rollen/`; a Claude reviewer reads it as the reader agent `kit-pruefer`, a third-party one runs via `issue-review start` at its read boundary. Neither of them can change anything. Work packages are reviewed only on explicit request; the rule is Ready, not a package review. Details under [Issue review across multiple models](/en/dokumentation#issue-review-across-multiple-models).
 
-`review:fertig` is at the same time a prerequisite of the night chain: without the label on the business plan, the chain skips the requirement (see [Second mode: the night chain](/en/dokumentation#second-mode-the-night-chain)). The label remains a mere trace and does not release the content — if a requirement is still changed substantially after the review, remove the label or have the requirement reviewed again; the nightly run does not detect a later change.
+`review:done` is at the same time a prerequisite of the night chain: without the label on the business plan, the chain skips the requirement (see [Second mode: the night chain](/en/dokumentation#second-mode-the-night-chain)). The label remains a mere trace and does not release the content — if a requirement is still changed substantially after the review, remove the label or have the requirement reviewed again; the nightly run does not detect a later change.
 
 ### /local-check
-<!-- de: 84eee40098f0 -->
+<!-- de: 4d974df19f44 -->
 
 **Step 6, before the review.**
 
 The skill calls `node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranch>)"`: the command selects the **affected** `buildChecks` and runs exactly those — the ones marked with `gleichzeitig` first, side by side, the rest afterwards, one after the other. The `merge-base` anchor is the right one here because the skill runs after the local commit — it measures everything that has been added since the last push (see [Area-based checks](/en/dokumentation#area-based-checks-checkareas)). After that, `mutationCommand` runs, if set; it stands outside the selection. For frontend changes, the skill reminds you of the manual UI verification in the browser and notes in the report when it could not be done automatically.
 
-**The package stage is run** (see [Staged checks](/en/dokumentation#staged-checks-stufe)). The call carries no `--stufe`: this step is the local check before the human test round, and making it expensive would take away its benefit. A check with the stage `push` or `merge` therefore appears as an omission with its stage as the reason — it runs in `/push-main` or `/merge-production` respectively.
+**The package stage is run** (see [Staged checks](/en/dokumentation#staged-checks-stufe)). The call carries no `--stage`: this step is the local check before the human test round, and making it expensive would take away its benefit. A check with the stage `push` or `merge` therefore appears as an omission with its stage as the reason — it runs in `/push-main` or `/merge-production` respectively.
 
 The output is a checklist with green ticks or a red stop; omitted checks appear in it as a line of their own with their reason, so that a shortened run does not look like a complete one. A red check blocks the rest of the process. There are no exceptions and no overriding.
 
-### /review
-<!-- de: 137a45e48e3e -->
+### /kit-review
+<!-- de: acc08a75b21c -->
 
 **Step 7, after the local check.**
 
 The skill opens a new Claude session without the implementation context of the current session. A reviewer who does not know how the code came about reads it as a stranger and sees problems that the implementer does not notice.
 
-Depending on `reviewScope`, the reviewer gets the diff or all files in the repo. The review brief is assembled by `issue-review pruefauftrag` from the role `kit/rollen/code-review.md` and this material. It is read by the reader agent `kit-pruefer` with the model from `reviewModel` or, if `reviewCommand` is set, by the third-party CLI that `issue-review start --code-review` starts at its read boundary (`reviewLesegrenze`). If either call fails, `/review` aborts visibly, without a comment and without a move to In review. The findings land as a comment in the issue or PR. For security patterns that require a corpus-driven approach (secrets scan, SQL concatenation, missing input validation), the skill does not rely on the model alone. These checks belong in your CI.
+Depending on `reviewScope`, the reviewer gets the diff or all files in the repo. The review brief is assembled by `issue-review review-brief` from the role `kit/rollen/code-review.md` and this material. It is read by the reader agent `kit-pruefer` with the model from `reviewModel` or, if `reviewCommand` is set, by the third-party CLI that `issue-review start --code-review` starts at its read boundary (`reviewLesegrenze`). If either call fails, `/kit-review` aborts visibly, without a comment and without a move to In review. The findings land as a comment in the issue or PR. For security patterns that require a corpus-driven approach (secrets scan, SQL concatenation, missing input validation), the skill does not rely on the model alone. These checks belong in your CI.
 
 ### /push-main
-<!-- de: 4350d4756702 -->
+<!-- de: ad521eedb4eb -->
 
 
 **Step 8, after the review, on your explicit command.**
@@ -1229,25 +1273,25 @@ Pushes the current commit batch to the main branch. Only you type this skill. It
 
 A red `/local-check` from step 6 blocks this step mechanically: you have no green mandatory check, so no push.
 
-**The stage `push` is run** — the skill calls `checks.mjs run --stufe push` and thereby runs the package stage **and** everything your project has scheduled for the moment of publishing (see [Staged checks](/en/dokumentation#staged-checks-stufe)). And **every one** of these checks: before the push, none is selected by area any more, and an empty package omits nothing here. This run takes noticeably longer than the one before the commit; the command names in advance what is added compared with the package stage.
+**The stage `push` is run** — the skill calls `checks.mjs run --stage push` and thereby runs the package stage **and** everything your project has scheduled for the moment of publishing (see [Staged checks](/en/dokumentation#staged-checks-stufe)). And **every one** of these checks: before the push, none is selected by area any more, and an empty package omits nothing here. This run takes noticeably longer than the one before the commit; the command names in advance what is added compared with the package stage.
 
-**A flaky check stops the run.** The run uses `--wiederholen`: a red check is repeated once on the same state, and if one flaked in the process, the skill asks „Trotzdem fortfahren? (ja/nein)“ (continue anyway? (yes/no)) before the commit (see [Flaky checks](/en/dokumentation#flaky-checks-repeated-once)).
+**A flaky check stops the run.** The run uses `--retry`: a red check is repeated once on the same state, and if one flaked in the process, the skill asks „Trotzdem fortfahren? (ja/nein)“ (continue anyway? (yes/no)) before the commit (see [Flaky checks](/en/dokumentation#flaky-checks-repeated-once)).
 
 **Pre-push step from `RELEASING.md`.** If your repo's `RELEASING.md` names a pre-push step, the skill runs it after its commit and before the push, in the background, and waits for it to end. Exit 0 means push; exit 1 means red, and the push happens only if you answer the question „Vor-Push-Prüfung rot. Trotzdem pushen? (ja/nein)“ (pre-push check red. Push anyway? (yes/no)) with `ja`; any other exit stops without a push. Without such a step, `push main` does not wait for the CI.
 
-**Prepared at night: the mode `vorbereiten`.** A night chain with the goal `ziel:push-vorbereitet` (see [How far a chain runs](/en/dokumentation#how-far-a-chain-runs-the-goal)) starts `/push-main vorbereiten` at the end of the run — as the only call of this skill without your trigger phrase, because it does not push. The session works in a worktree of its own on the local `main`, rebased onto `origin/main`, and runs everything that can be done before publishing without you and without a push: the generation steps from `RELEASING.md` (version note, change note), the full check run of the stage `push` and the local commit. No push — neither to `main` nor to a check or preview branch, no tag. Whatever needs a human or a push, such as the pre-push step from `RELEASING.md` or a visual check of the interface, is not started but stated as open in the message. The result is called `gruen`, `gruen-offen` (green, check open) or `rot` and lies at the fixed location `.claude/push-vorbereitung.json`, the commit under `refs/kit/push-vorbereitet`.
+**Prepared at night: the mode `prepare`.** A night chain with the goal `goal:push-prepared` (see [How far a chain runs](/en/dokumentation#how-far-a-chain-runs-the-goal)) starts `/push-main prepare` at the end of the run — as the only call of this skill without your trigger phrase, because it does not push. The session works in a worktree of its own on the local `main`, rebased onto `origin/main`, and runs everything that can be done before publishing without you and without a push: the generation steps from `RELEASING.md` (version note, change note), the full check run of the stage `push` and the local commit. No push — neither to `main` nor to a check or preview branch, no tag. Whatever needs a human or a push, such as the pre-push step from `RELEASING.md` or a visual check of the interface, is not started but stated as open in the message. The result is called `gruen`, `gruen-offen` (green, check open) or `rot` and lies at the fixed location `.claude/push-vorbereitung.json`, the commit under `refs/kit/push-vorbereitet`.
 
 **The takeover in the morning.** When you type `push main`, the skill first asks whether it may take over the preparation. It does so only if the preparation's result was `gruen` or `gruen-offen` and nothing has changed since: your local `main`, `origin/main` and the prepared commit are still where the night saw them. Then it does not check again, does not generate the version note and change note a second time, and writes `Übernimmt den Stand der Nacht vom <zeitpunkt> (<commit>)` (takes over the night's state from `<time>`, commit `<commit>`). Whatever stayed open at night it catches up on before the push; an open visual check it asks you about. If the state is red or changed, it names the reason in one line and runs as without preparation, with a full check run. After the push and whenever it does not take over, it discards the file and the reference.
 
 **On the path through the build service.** If your project runs the full run with `pushPruefung` in the build service, the night cannot run it without pushing to the check branch. The preparation then runs only the evidence run of the package stage over the release files and commits; on green the result is called `gruen-offen`, and the first open item reads `voller Lauf im Build-Dienst (Prüfzweig <zweig>)` (full run in the build service, check branch `<branch>`). In the morning, `push main` takes over the commit as above, pushes it to the check branch, waits for the build service and pushes `main` only on green.
 
-**The emergency path: `/push-main notfall`.** If the build service fails while the code host protects the main branch, the owner of the repository can still publish. The prerequisite is a full green run of stage `push` on your own machine as a substitute check: the skill runs it as on the local path, even if `pushPruefung` names the build service, and a red run stops. After that, in this order:
+**The emergency path: `/push-main emergency`.** If the build service fails while the code host protects the main branch, the owner of the repository can still publish. The prerequisite is a full green run of stage `push` on your own machine as a substitute check: the skill runs it as on the local path, even if `pushPruefung` names the build service, and a red run stops. After that, in this order:
 
-1. `node .claude/kit/board.mjs code schutz aussetzen --in <pfad>` — suspends the ruleset of the main branch only if the check summary of the worktree attests a green run of stage `push` for exactly this state. On GitHub only someone with admin rights can suspend it.
+1. `node .claude/kit/board.mjs code protection suspend --in <pfad>` — suspends the ruleset of the main branch only if the check summary of the worktree attests a green run of stage `push` for exactly this state. On GitHub only someone with admin rights can suspend it.
 2. The push to the main branch, without `--force`.
-3. `node .claude/kit/board.mjs code schutz wiederherstellen` — immediately, however the push went. If it fails, the run is a failure, even after a successful push; until it is repeated the main branch stands unprotected, and `code schutz status` says so.
+3. `node .claude/kit/board.mjs code protection restore` — immediately, however the push went. If it fails, the run is a failure, even after a successful push; until it is repeated the main branch stands unprotected, and `code protection status` says so.
 
-The emergency path runs **only interactively** and, like every push, needs the typed trigger phrase. If `KIT_AGENT_MODEL` is set, the skill stops before the first step. The state that reached the main branch this way without evidence from the build service appears in `code schutz status` under `ungeprueft` until `code schutz nachpruefen` has checked it green in the build service.
+The emergency path runs **only interactively** and, like every push, needs the typed trigger phrase. If `KIT_AGENT_MODEL` is set, the skill stops before the first step. The state that reached the main branch this way without evidence from the build service appears in `code protection status` under `ungeprueft` until `code protection verify` has checked it green in the build service.
 
 ### Checking the test server (human, between step 8 and step 9)
 <!-- de: 2940a24483a9 -->
@@ -1255,7 +1299,7 @@ The emergency path runs **only interactively** and, like every push, needs the t
 After the push, the test server picks up the change automatically or you deploy manually. You check the result in the browser: the golden path, critical edge cases, no visible regressions. Only after this check do you go to step 9.
 
 ### /merge-production
-<!-- de: 42f55c17f7f8 -->
+<!-- de: 8fd89295754f -->
 
 **Step 9, after the test server check, on your explicit command.**
 
@@ -1267,7 +1311,7 @@ Creates a pull request (GitHub) or merge request (GitLab) from main to productio
 
 **Before that there is a stop: `push main` first.** There is never a `merge production` without a preceding `push main`. If your local `main` carries commits that are not on `origin/main`, the skill ends before the worktree with the message „Erst `push main` — dieser Stand ist noch nicht veröffentlicht und nicht geprüft.“ (`push main` first — this state is not yet published and not checked.)
 
-**The stage `merge`, the release stage, is run** — the skill calls `checks.mjs run --stufe merge`. It checks only what `push main` did not check: the checks with `stufe: "merge"` always, those of the package stage by area over the release files (bump, stamp, changelog), those of the stage `push` not — they appear under `ausgelassen` with the reason `Stufe push, geprueft beim push main` (stage push, checked at push main) (see [Staged checks](/en/dokumentation#staged-checks-stufe)). No mandatory check is dropped as a result: the package and push stages ran at `push main` for the same state. It is the last run before production.
+**The stage `merge`, the release stage, is run** — the skill calls `checks.mjs run --stage merge`. It checks only what `push main` did not check: the checks with `stufe: "merge"` always, those of the package stage by area over the release files (bump, stamp, changelog), those of the stage `push` not — they appear under `ausgelassen` with the reason `Stufe push, geprueft beim push main` (stage push, checked at push main) (see [Staged checks](/en/dokumentation#staged-checks-stufe)). No mandatory check is dropped as a result: the package and push stages ran at `push main` for the same state. It is the last run before production.
 
 The reason for a second gate next to the mandatory checks: the local `buildChecks` measure only what your machine can measure — they do not measure what the CI measures. A CI job can fail on something the local run does not see, for example a different runtime environment or a fresh checkout without local files. Without the query, a release would go to production while exactly this job fails, although the information is available.
 
@@ -1321,9 +1365,9 @@ If a vault is configured, the skill writes a daily log entry in `{vault}/Log/YYY
 The documentation does not arise as an after-the-fact duty, but as the automatic conclusion of every unit of work. What is not documented no longer exists in the next session.
 
 ## A complete pass
-<!-- de: 8aa6860d47f2 -->
+<!-- de: f1f4420e12eb -->
 
-You call `/kontext` to start the session with a fresh situation overview.
+You call `/session-start` to start the session with a fresh situation overview.
 
 **Steps 1 and 2:** you dictate the requirement (step 1) and call `/techplan` (step 2). You read the plan, give feedback and approve it.
 
@@ -1335,7 +1379,7 @@ You call `/kontext` to start the session with a fresh situation overview.
 
 **Step 6:** you call `/local-check`. All checks must be green.
 
-**Step 7:** you call `/review`. A fresh look without the context of how it came about. You read the review. If there are findings you want to address, you go back to step 5.
+**Step 7:** you call `/kit-review`. A fresh look without the context of how it came about. You read the review. If there are findings you want to address, you go back to step 5.
 
 **Step 8:** you call `/push-main` (explicit trigger phrase). Main is now up to date.
 
@@ -1403,16 +1447,16 @@ When in doubt, lane 2 applies; that also covers an unclear need to weigh up. Bef
 **A special case worth naming: rejection as a valid result.** A tool reports a finding, and the finding is defensibly rejected — that, too, is work, and it is typical lane-3 work. So that the rejection holds, the acceptance criterion of such a `[Task]` is the **versioned suppression rule** that the tool itself evaluates, with the justification right next to it: The tool reads the rule, the justification addresses humans and later sessions. In the kit the pattern lives in `sonar-project.properties` — the exclusion of the rule `javascript:S4036` as a versioned line, with a written-out explanation above it of why it is defensible. A rejection marked as "accepted" by hand in the web UI, in contrast, does not hold: The next finding of the same kind arises outside of it. Such a task is verified by running the same tool again — the rejected finding stays away, **and an independent control finding is still reported**; without it, a silent tool cannot be told apart from an effective exclusion. If a tool lacks a versionable route, developing one belongs in an initiative (Vorhaben) of its own, and no cross-tool register is created — it would be a second list next to the rule files that none of the tools reads.
 
 ## PO loop: business and technical issues
-<!-- de: f7a54c447773 -->
+<!-- de: 91474c2b4b4d -->
 
 In practice a product owner (or a proxy PO in the company) feeds in the requirements — and wants to accept the plan on the business side before any technology is designed. For this the kit optionally separates two kinds of issue, following the discovery/delivery pattern — the PO loop (PO-Schleife):
 
-- **Business issues** (title prefix `[Fachlich]`, created with [/fachplan](/en/dokumentation#fachplan)): describe the what and why in PO language — story format with goal, business acceptance criteria, non-goals and open questions. They are **groomed** on the board — the negotiation with the PO takes place **in the body** (answers and additions directly in the text), not in comments — and are **never implemented**.
+- **Business issues** (title prefix `[Requirement]`, created with [/requirement](/en/dokumentation#requirement)): describe the what and why in PO language — story format with goal, business acceptance criteria, non-goals and open questions. They are **groomed** on the board — the negotiation with the PO takes place **in the body** (answers and additions directly in the text), not in comments — and are **never implemented**.
 - **Technical issues** (four-section format as before): arise only when the PO says "that's it" — then `/techplan #N` reads the business issue **with its complete body** as the source of requirements, and `/issues` cuts the technical issues from it.
 
 **The flow:**
 
-1. `/fachplan <requirement>` → business issue in the backlog (or in the idea pool, see below).
+1. `/requirement <requirement>` → business issue in the backlog (or in the idea pool, see below).
 2. Groom directly on the issue until the PO gives the business approval.
 3. `/techplan #N` → technical plan from the business issue.
 4. `/issues` → technical issues; each carries the back references **in the context section**.
@@ -1429,12 +1473,12 @@ In practice a product owner (or a proxy PO in the company) feeds in the requirem
 
   The `Plan:` line only arises when a `[Plan]` issue exists as a source; if the plan was merely approved in the same session, it is left out. It is independent of `Plan-Modell:` — that one names the **author** of the plan, this one its **location**.
 - **Never in the dependencies — neither of them.** An `Issue #N` reference in the dependencies section would be treated by the night runner (Nacht-Runner) as an unmet dependency. The business issue only becomes Done when its technical children are finished, and the plan document (Plandokument) never becomes Done through implementation — all children would stay deferred for good (chicken and egg).
-- **Business issues never go to Ready.** Ready means implementable. If one lands there anyway, the mechanical guardrail (Leitplanke) takes effect: `/implement-ready`, `/implement-next` and the night runner put it back into the backlog with a comment, without starting a session. The same gate applies to **ideas** (title prefix `[Idee]`) — a raw idea is a requirement, not a work package — and to **plan documents** (title prefix `[Plan]`): A plan describes a route, it is not a task and must first be broken down into work packages with `/issues`. And it applies to **human steps** (title prefix `[Mensch]`): a work package whose task lies outside the repository — a setting in a web interface, an account, an access, an approval. Unlike the other three it is not a document and falls into the stage `issue` in `issue check-form`; only nobody but the human can carry it out, and its comment therefore says that the card (Karte) is waiting and has not failed.
+- **Business issues never go to Ready.** Ready means implementable. If one lands there anyway, the mechanical guardrail (Leitplanke) takes effect: `/implement-ready`, `/implement-next` and the night runner put it back into the backlog with a comment, without starting a session. The same gate applies to **ideas** (title prefix `[Idea]`) — a raw idea is a requirement, not a work package — and to **plan documents** (title prefix `[Plan]`): A plan describes a route, it is not a task and must first be broken down into work packages with `/issues`. And it applies to **human steps** (title prefix `[Human]`): a work package whose task lies outside the repository — a setting in a web interface, an account, an access, an approval. Unlike the other three it is not a document and falls into the stage `issue` in `issue check-form`; only nobody but the human can carry it out, and its comment therefore says that the card (Karte) is waiting and has not failed.
 - **Life cycle:** The **human** moves business issues and plan documents out of the backlog only **to Done** or not at all; the guardrails only push them back out of Ready. **In review** means for them "everything built, review is due", and this column (Spalte) is set by the kit: As soon as a plan is through — at least one package verifiably in In review or Done, none in Backlog, Ready or In progress —, it pulls the plan document and the business requirement there, the requirement only once every one of its plans not marked as superseded is through. Whatever already lies in In review or Done stays. It makes no difference which route built the last package: night chain (Nacht-Kette), implementation night or a session during the day. If a package then goes back from review, the document stays where it is.
 
-  **There is a trap that goes with it:** The night chain (`night.mjs --kette`) reads only the backlog column and also places the plan and the packages there. Whoever moves a business issue out of the backlog **before** its chain takes it away from the night run — it is then no longer a candidate, and without anything failing. The way out is the interactive route with an explicit number — `/techplan #N`, `/issue-review #N`, `/issues #M` —: It works **independently of column and existing marker**. That is exactly what makes it the way out.
-- **Recognition via the title (stage 1):** The `[Fachlich]` prefix works with all four trackers without changing an adapter. A real label axis (labels exist in GitHub, GitLab and kanban-kit — the board adapter (Board-Adapter) interface just does not pass them through yet) is planned as an expansion stage.
-- **An idea has exactly two routes forward.** If it calls for a **trade-off**, `/fachplan #N` turns it into a business requirement; if there is **nothing to weigh up** or the human has already decided, it becomes exactly one work package with `/task #N`. Which case applies is decided by the human with the call — whether there is something to weigh up is exactly the question a human answers, and a skill that answered it for itself would make the decision it is meant to hand over. Both skills name the other route in their rejection, so that a wrong call does not lead nowhere. The route straight into a technical plan does not count: It would skip the point at which the goal is decided.
+  **There is a trap that goes with it:** The night chain (`night.mjs --chain`) reads only the backlog column and also places the plan and the packages there. Whoever moves a business issue out of the backlog **before** its chain takes it away from the night run — it is then no longer a candidate, and without anything failing. The way out is the interactive route with an explicit number — `/techplan #N`, `/issue-review #N`, `/issues #M` —: It works **independently of column and existing marker**. That is exactly what makes it the way out.
+- **Recognition via the title (stage 1):** The `[Requirement]` prefix works with all four trackers without changing an adapter. A real label axis (labels exist in GitHub, GitLab and kanban-kit — the board adapter (Board-Adapter) interface just does not pass them through yet) is planned as an expansion stage.
+- **An idea has exactly two routes forward.** If it calls for a **trade-off**, `/requirement #N` turns it into a business requirement; if there is **nothing to weigh up** or the human has already decided, it becomes exactly one work package with `/task #N`. Which case applies is decided by the human with the call — whether there is something to weigh up is exactly the question a human answers, and a skill that answered it for itself would make the decision it is meant to hand over. Both skills name the other route in their rejection, so that a wrong call does not lead nowhere. The route straight into a technical plan does not count: It would skip the point at which the goal is decided.
 - **Placement in kanban-kit:** New business issues land there in the project's idea pool — pool = unsifted raw requirement, scheduling into the backlog = in business work (from then on addressable and groomable), `/techplan #N` = approved on the business side.
 
 After the review by the models (`/issue-review #N`), grooming runs with [/groom](/en/dokumentation#groom) `#N`: the skill presents the open questions one by one, works each answer into the body after approval and finally sets the note “Keine”. Then follows `/techplan #N`.
@@ -1442,7 +1486,7 @@ After the review by the models (`/issue-review #N`), grooming runs with [/groom]
 Without a PO the loop is invisible: calling `/techplan` directly remains the normal route.
 
 ## History
-<!-- de: 410e5df99cd7 -->
+<!-- de: 338db9dc721a -->
 
 Otherwise a new business plan (Fachplan) or plan only knows what is currently in the conversation or in the stock. Earlier business plans on the same subject disappear from view with the archive, and with them the reasons for earlier decisions. The history (Vorgeschichte) brings them back before writing, so that an earlier decision is not silently overridden. It locks nothing, it only makes things visible.
 
@@ -1451,7 +1495,7 @@ Otherwise a new business plan (Fachplan) or plan only knows what is currently in
 **Searching.** Not the author searches the board, but a command:
 
 ```bash
-node .claude/kit/board.mjs issue vorgeschichte --begriffe <begriff> [--dateien <pfad>]... [--ohne <N>]...
+node .claude/kit/board.mjs issue history --terms <begriff> [--files <pfad>]... [--without <N>]...
 ```
 
 `/requirement` and `/techplan` call it themselves. The search terms come from the title and goal of the new requirement; the plan additionally passes the files from `## Betroffene Bereiche` and so also finds the business plans from which these parts of the project arose. The document names what was searched for, and `/issue-review` hands the reviewers the business plans found in full.
@@ -1465,25 +1509,25 @@ node .claude/kit/board.mjs issue vorgeschichte --begriffe <begriff> [--dateien <
 **Contradictions stop nothing.** If the new requirement contradicts an earlier PO answer or an earlier non-goal, the contradiction stands with quote and reference in the history section, not under the open questions, and does not count toward the five. No stop, not even at night: the night chain (Nacht-Kette) keeps running, and the night report names the contradiction so that the human sees it in the morning. The exact rule is in `.claude/CLAUDE-workflow.md`, section "History".
 
 ## The check run
-<!-- de: 31fbb7820c2e -->
+<!-- de: 3e01db3c5c45 -->
 
 **A run during the day that has several marked business requirements reviewed one after another.** Reviewing during the day is a conversation: Every finding wants to be discussed, every question of the stop class (Stopp-Klasse) answered. The check run (Prüflauf) takes exactly that off your hands — mark requirements, start the run, look later. For each card a session `/issue-review #N` runs without anyone answering in between; afterwards every card shows where things stand: reviewed and ready, or a decision is waiting. Everything outside the stop class was decided by the review and recorded in the document. **This sorting is the gain.**
 
-The run belongs to the **day** and therefore has a chapter of its own, not under [Night mode](/en/dokumentation#night-mode): It runs alongside the working human and alongside a night chain, and it is not tripped up by an unclean working tree or by a package in In progress. It has exactly one relation to the night chain: It **establishes the chain's prerequisite** — a card left reviewed carries the `review:fertig` that the chain requires. The **chain label** remains the human's gesture; the check run never sets it.
+The run belongs to the **day** and therefore has a chapter of its own, not under [Night mode](/en/dokumentation#night-mode): It runs alongside the working human and alongside a night chain, and it is not tripped up by an unclean working tree or by a package in In progress. It has exactly one relation to the night chain: It **establishes the chain's prerequisite** — a card left reviewed carries the `review:done` that the chain requires. The **chain label** remains the human's gesture; the check run never sets it.
 
-**The gesture:** the label `kit:pruefen` on the business requirement (label name from `pruefLauf.label`, see [All settings](/en/dokumentation#prueflauf); to be created on the board once). The run **consumes it** immediately before the session for this card — every setting of it authorises exactly one review; an abort leads to a note with the reason and a new gesture, not to a silent repetition. Together with the marker it also removes a `review:fertig` from a previous run: Only this way does the state after the session answer the question about **this** review and not about an earlier one. It **never** removes `kit:klaeren` — only a human may do that, otherwise a run would give itself its own approval.
+**The gesture:** the label `kit:check` on the business requirement (label name from `pruefLauf.label`, see [All settings](/en/dokumentation#prueflauf); to be created on the board once). The run **consumes it** immediately before the session for this card — every setting of it authorises exactly one review; an abort leads to a note with the reason and a new gesture, not to a silent repetition. Together with the marker it also removes a `review:done` from a previous run: Only this way does the state after the session answer the question about **this** review and not about an earlier one. It **never** removes `kit:clarify` — only a human may do that, otherwise a run would give itself its own approval.
 
 **Fixed kit state.** Like every unattended run, the check run works with a fixed state of the kit: At the start it binds itself to the commit that `origin/<mainBranch>` points to — the last push, read without `git fetch`. Fixed are thus the tools including the check before every commit, the skills and the rule texts; whatever a package of the same night changes in them only takes effect after `push main`. The object of the check remains the project's configuration and its tests; they come from the state of the respective package. The state appears as the line `Kit-Stand: <commit> (origin/<mainBranch> vom <Zeit>)` (kit state: commit, origin/mainBranch as of time) in the run report (`kitStand` in `.claude/night-run-*.json`), in the night report and on every comment of the run. After a run in the main copy, its installed copy stays at its state until `node tools/sync-blobs.mjs` brings it to the working copy; until then `sync-blobs --check` names it as outdated. In the kit repo, `push main` catches this up itself: after catching up the main copy it runs the post-push step from `RELEASING.md`, `node tools/sync-blobs.mjs`, and the installed copy stands on the state just published (issue #1523). A machine that fetches the state only via `git pull` keeps calling `sync-blobs` by hand.
 
 **Start:**
 
 ```bash
-node .claude/kit/night.mjs --pruefen
+node .claude/kit/night.mjs --check
 ```
 
-The run **has no preview** — `--pruefen --dry-run` is rejected, and `/issue-review --dry-run` shows documents and reviewers anyway. What will run is in the candidate list that the run logs before the first session. `--label` does not apply here (the marker comes from the config), and neither do `--kette` and `--pruefen` together: Those are two runs with budgets, labels and worktrees of their own. `--max N` is allowed, but **not needed** — the run is limited by its budgets, not by a number; without `--max` there is no numeric cap.
+The run **has no preview** — `--check --dry-run` is rejected, and `/issue-review --dry-run` shows documents and reviewers anyway. What will run is in the candidate list that the run logs before the first session. `--label` does not apply here (the marker comes from the config), and neither do `--chain` and `--check` together: Those are two runs with budgets, labels and worktrees of their own. `--max N` is allowed, but **not needed** — the run is limited by its budgets, not by a number; without `--max` there is no numeric cap.
 
-**The candidates:** every card that carries the marker and has the title `[Fachlich]`. **Without a column condition**, unlike the night chain: A business document never goes to Ready, and the gesture applies to the card, not to its location. Whatever carries the marker but is not reviewed appears in the list as `uebersprungen` (skipped) with a reason and **keeps its marker**: a `[Plan]` document or a work package (the check run applies to business requirements only) and a card with `kit:klaeren` (a question is waiting there for a human, and a second review does not answer it). Cards above a set `--max` count as `liegengeblieben` (left over) — that is not an exclusion. If not a single card carries the marker, the run says so and names the existing labels. Before the first review the **reviewer pre-flight** runs as with the chain: If it fails, every candidate gets the comment `Pruefung nicht gestartet` (review not started) with a reason and keeps its marker — nothing ran.
+**The candidates:** every card that carries the marker and has the title `[Requirement]`. **Without a column condition**, unlike the night chain: A business document never goes to Ready, and the gesture applies to the card, not to its location. Whatever carries the marker but is not reviewed appears in the list as `uebersprungen` (skipped) with a reason and **keeps its marker**: a `[Plan]` document or a work package (the check run applies to business requirements only) and a card with `kit:clarify` (a question is waiting there for a human, and a second review does not answer it). Cards above a set `--max` count as `liegengeblieben` (left over) — that is not an exclusion. If not a single card carries the marker, the run says so and names the existing labels. Before the first review the **reviewer pre-flight** runs as with the chain: If it fails, every candidate gets the comment `Pruefung nicht gestartet` (review not started) with a reason and keeps its marker — nothing ran.
 
 **The worktree:** one per **run**, not per card (`pruefung-…` under the temp directory, a prefix of its own next to that of the chain). The sessions read and write on the board, not in the working tree; a worktree per card would cost time for a separation without a subject. After the run it is removed; a left-over one is cleared by the next start — only one with **its** prefix and only if its runner is no longer alive, so that a concurrently running check run or night chain keeps its own. Like the chain, the check run claims every root with the run status (Laufstand) `läuft` (running) together with the run ID and leaves out one claimed by a live runner (see "One runner per root" in the chapter Night mode).
 
@@ -1493,8 +1537,8 @@ The run **has no preview** — `--pruefen --dry-run` is rejected, and `/issue-re
 
 | Result | Trace on the card | what is next |
 |---|---|---|
-| reviewed | business plan review marker in the body and the label `review:fertig`, findings and their incorporation as comments | nothing — the card meets the admission prerequisite of the night chain |
-| pending decision | `kit:klaeren` and the question as a comment; the text of the requirement stays **unchanged** | answer the question and remove `kit:klaeren` — both by hand |
+| reviewed | business plan review marker in the body and the label `review:done`, findings and their incorporation as comments | nothing — the card meets the admission prerequisite of the night chain |
+| pending decision | `kit:clarify` and the question as a comment; the text of the requirement stays **unchanged** | answer the question and remove `kit:clarify` — both by hand |
 | incomplete | the comment `## Pruefung unvollstaendig` (review incomplete) with reason, step reached (`gestartet`, `befunde`, `eingearbeitet` — started, findings, incorporated) and the route forward | run `/issue-review #N` by hand |
 
 The third outcome is shown separately and is neither of the first two: The review has then been paid for, its findings are on the board, but the body carries no marker — without the note the card would later look untouched. A session that started a long piece of work and ended while waiting for it instead only gets the note `## Nachtlauf: wartende Sitzung` (night run: waiting session); two comments for one abort say nothing that one does not say.
@@ -1504,7 +1548,7 @@ The third outcome is shown separately and is neither of the first two: The revie
 ```json
 {
   "pruefLauf": {
-    "label": "kit:pruefen",
+    "label": "kit:check",
     "pruefungMin": 25,
     "kostenUsd": 25
   }
@@ -1515,18 +1559,18 @@ The third outcome is shown separately and is neither of the first two: The revie
 
 **The result list is on the console** (and in the log `.claude/night-run-<datum>.log`), because the run belongs to the day: Whoever starts it sees its result. One line per card with number, title, result and version — for a pending decision also the question, for an abort the step reached —, below it a sum line over the five outcomes. The [result state as JSON](/en/dokumentation#night-mode) arises as with every unattended run, with one unit per card including outcome, version, duration and key figures.
 
-**What the run does not do.** It moves **no card** between columns, pulls nothing to Ready, sets no chain label and removes no `kit:klaeren`. Nor does it change anything about the review itself: Who reviews, in which role and with which questions stays as it is — it is the same review as by hand, only without the conversation. And it answers no question that belongs to a human; it sorts.
+**What the run does not do.** It moves **no card** between columns, pulls nothing to Ready, sets no chain label and removes no `kit:clarify`. Nor does it change anything about the review itself: Who reviews, in which role and with which questions stays as it is — it is the same review as by hand, only without the conversation. And it answers no question that belongs to a human; it sorts.
 
 **The limit of being untouched.** The run leaves no change in the project — the state of the working directory is the same before and after the run, even if someone works in it in the meantime. One exception belongs to this, and it is none: With the tracker `local` the board lies **in the repo**, and the config in the worktree points to `issues/` of the main copy so that the sessions write there. These cards therefore change — that is the **result and not a leftover**. Everything outside the board stays untouched.
 
 **Afterwards:** A card left reviewed meets the admission prerequisite of the night chain — the **GO remains yours**: The chain label is still set by a human. If the result is available before the nightly selection, the chain runs the same evening, otherwise next time.
 
 ## Night mode
-<!-- de: 4f4008a6a8f0 -->
+<!-- de: 5be8e3b4a96f -->
 
 Night mode (Nachtbetrieb) knows **two operating modes**: the **implementation night** (Umsetzungsnacht), which this section describes, and the **night chain** (see [Second mode](/en/dokumentation#second-mode-the-night-chain)), which turns a business plan into the reviewed plan and the work packages without building anything. Both are the night; the [check run](#the-check-run), which has business requirements reviewed, belongs to the day and has its own chapter. The implementation night works through the Ready column unattended — with a **fresh session per issue**, so that no context accumulates over many issues and quality does not degrade creepingly. The night runner (`.claude/kit/night.mjs`, comes with the installer) starts one headless session per issue with `/implement-next #N` — the issue is **handed to the session bindingly**, it does not choose it itself — waits for it to end and checks success exclusively on the board: issue in In review = success. Nothing is **ever** pushed at night — the three stop points remain human, unchanged.
 
-**Evening ritual (the GO):** Pull issues to Ready and bring them into the desired order by drag & drop — the runner works through the column from top to bottom. Dependencies must be written as `Issue #N` in the dependencies section (see issue format): The runner automatically defers issues with unfulfilled `#N` references. Four kinds of card it skips mechanically — commented back to the backlog, without starting a session: business issues (`[Fachlich]` title, [PO loop](#po-loop-business-and-technical-issues)), **ideas** (`[Idee]` title), **plan documents** (`[Plan]` title) and **human steps** (Menschenschritte, `[Mensch]` title). A raw idea is not an implementable issue — with trade-offs it goes through `/fachplan #N`, without trade-offs through `/task #N`; a plan document describes a route and is only cut into work packages by `/issues`. Without the gate a session would reject them correctly, but the runner cannot tell this rejection from a failure — the session is burned and the comment on the board misleading. With a plan document it would be worse: It would carry no reason for rejection in itself and would be implemented, and that would look like a success on the board. A **human step**, by contrast, is a work package, but its task lies outside the repository — a setting in a web interface, an account, an access, an approval —, and no move of a session gets it done. Its comment says explicitly that the card is **waiting** and has not failed: Without the gate the runner would count the session's correct inaction as a failure, and the card would look like a failed package in the backlog (documented case: kanban-kit #1256). After acting, the human moves it on themselves. Also deferred is every card whose task or acceptance criterion names a **protected file** and that the human has not released, as well as a card with the label `kit:geschuetzt` — more on this under [The halt at a protected file](/en/dokumentation#the-halt-at-a-protected-file).
+**Evening ritual (the GO):** Pull issues to Ready and bring them into the desired order by drag & drop — the runner works through the column from top to bottom. Dependencies must be written as `Issue #N` in the dependencies section (see issue format): The runner automatically defers issues with unfulfilled `#N` references. Four kinds of card it skips mechanically — commented back to the backlog, without starting a session: business issues (`[Requirement]` title, [PO loop](#po-loop-business-and-technical-issues)), **ideas** (`[Idea]` title), **plan documents** (`[Plan]` title) and **human steps** (Menschenschritte, `[Human]` title). A raw idea is not an implementable issue — with trade-offs it goes through `/requirement #N`, without trade-offs through `/task #N`; a plan document describes a route and is only cut into work packages by `/issues`. Without the gate a session would reject them correctly, but the runner cannot tell this rejection from a failure — the session is burned and the comment on the board misleading. With a plan document it would be worse: It would carry no reason for rejection in itself and would be implemented, and that would look like a success on the board. A **human step**, by contrast, is a work package, but its task lies outside the repository — a setting in a web interface, an account, an access, an approval —, and no move of a session gets it done. Its comment says explicitly that the card is **waiting** and has not failed: Without the gate the runner would count the session's correct inaction as a failure, and the card would look like a failed package in the backlog (documented case: kanban-kit #1256). After acting, the human moves it on themselves. Also deferred is every card whose task or acceptance criterion names a **protected file** and that the human has not released, as well as a card with the label `kit:protected` — more on this under [The halt at a protected file](/en/dokumentation#the-halt-at-a-protected-file).
 
 **Why a card waits at the dependency gate.** The deferral comment remains the one sentence `Nachtlauf: Abhaengigkeit #N nicht erfuellt (liegt in Backlog, Ready oder In progress) — Issue zurueckgestellt.` (night run: dependency #N not fulfilled, it lies in Backlog, Ready or In progress — issue deferred). Below it, separated by a blank line, comes the block `Abhaengigkeiten, wie der Nachtlauf sie liest:` (dependencies as the night run reads them) with one line per dependency: number and title, fulfilled or unfulfilled, the origin (from a reference line or from explanatory text) together with the text passage and, for a document, the document hint. After that the cycles follow as `Kreis: #A -> #B -> #A` (cycle), with the addition „dieses Paket wartet auf einen Kreis“ (this package waits on a cycle) if the package only depends on it. The log names every cycle in a second log line; log line, result state and chain report otherwise keep the one-line sentence. The trial run (`--dry-run`) shows the same lines indented below the line of every package with at least one dependency, also for packages that would get a session; the first line of the package stays unchanged. That way you recognise an accidental dependency without opening the package. The convention for this is under [/issues](#issues).
 
@@ -1553,7 +1597,7 @@ Flags: `--max <N>` (session limit per night, default 10), `--model <id>` (model 
 
 The final completion message still lands in the log as well; the streaming complements it and does not replace it. It is switched off explicitly with `--verbose no` — then the runner logs only start and end per round, and during a long session you cannot see what it is working on right now (`claude -p` only outputs its completion message at the end). Forgetting the flag used to cost the progress log in exactly the night you needed it; that is why the default has been reversed since issue #867. A bare `--verbose` stays permitted and without effect, so that existing calls and scripts keep running unchanged.
 
-**The result state — the night as JSON.** Every run puts, next to the text log (`.claude/night-run-<datum>.log`), a machine-readable result state (Ergebnisstand) under `.claude/night-run-<datum>-<uhrzeit>.json`: per work package one unit with outcome, duration, commit and the key figures of the session (cost, API duration, turns), plus the conclusion of the whole run (`regulaer` or `harterStopp`, in the stop case with error class and reason). The outcomes of a unit are: `erfolg`, `zurueckgestellt`, `angehalten` (see below), `uebersprungen`, `liegengeblieben`, `abgebrochen` (a package without result whose leftovers are in the stash, see "When something goes wrong") and `harterStopp`. The file is rewritten completely after every round, so an aborted run leaves the state up to the abort. **Consumption:** Next to cost, API duration and turns, the key figures of every session carry the four token amounts from the CLI — `eingabeTokens`, `ausgabeTokens`, `cacheErzeugtTokens`, `cacheGelesenTokens`. Every unit sums them as `verbrauch` over all its sessions (including salvage and chain stages) and names its kind of run as `art`; the run header carries `verbrauch` over all sessions of the run, including the pre-flight, and `verbrauchOhneEinheit` as the part that belongs to no card. A field for which no amount ever arrived stays `null` — a 0 would claim that nothing was consumed. **Check runs:** Next to `zeiten` every unit carries `prueflaeufe` with the block `arbeit` — what check runs the session started during its work: `anzahl` all of them (a Bash call whose first program is that of a configured check group), `volle` those of them that literally matched a check group command, `volleNoetig` the sanctioned group runs via `checks.mjs run --bereich <name>`, and `dauerMs` the sum of their spans. Several sessions of a card add up like the times. The completion attempt — `checks.mjs run` without `--bereich` — is deliberately **not** in `anzahl`, otherwise it would count twice: It has its own block `abschluss` next to `arbeit`, with `anzahl` and `dauerMs`. An adopted run (`Ergebnis uebernommen` — result adopted —, because the state is unchanged) counts there as an attempt **without** duration — `checks.mjs` passes on the values of the earlier run, and a span of this call would be inherited, not measured. A session without a requested stream (command stage with a third-party program) contributes nothing; if no session of the card measured, the field is missing entirely — "not measured" is something other than "none". Only the measurement is stored: What follows from it — runs per completion, share of the running time, distance to the target mark `night.zielUmsetzungMin` — is calculated by the report. **Lookups:** The last two fields a unit is created with are `umsetzung` and `auskunft`. `umsetzung` is `true` as soon as a session of the unit started with `/implement-next`, `/implement-ready`, `/implement-test` or `/implement-done`; chain stages, card creation and check runs stay `false`, decided at the start of the session and not by the kind of run. `auskunft` is `{ ms, aufrufe }`: the time spent on queries to the board and on processing their answers. What is measured is the span from the tool call to its result. Thinking time does not count. As a query count `board.mjs issue get|list|epics|activity|auftrag`, `board.mjs kontext`, `gh`/`glab issue view|list` and `gh api …/issues…`. As processing counts such a query piped to `jq`, `node -e` or `python`, and also every call that names a result path offloaded by Claude Code (`tool-results/`). Writing calls such as `issue move`, `issue comment` and `issue melden` do not count. Several sessions of a card add up. `null` means "not measured": no session, or a command stage without a stream. An observed session without any lookup, by contrast, carries `{ ms: 0, aufrufe: 0 }`. `complete` is `false` in the file while the run is running and only becomes `true` at the regular end — a hard stop leaves it at `false` there (the report to the board says something different about this, see the paragraph "Delivery to the board" further below). The time of day belongs in the name because the text log is a daily file for appending, but JSON cannot be appended to — the second run of a day would otherwise overwrite the first. **The only exclusion is `--dry-run`**: A dry run works through nothing and has nothing to report.
+**The result state — the night as JSON.** Every run puts, next to the text log (`.claude/night-run-<datum>.log`), a machine-readable result state (Ergebnisstand) under `.claude/night-run-<datum>-<uhrzeit>.json`: per work package one unit with outcome, duration, commit and the key figures of the session (cost, API duration, turns), plus the conclusion of the whole run (`regulaer` or `harterStopp`, in the stop case with error class and reason). The outcomes of a unit are: `erfolg`, `zurueckgestellt`, `angehalten` (see below), `uebersprungen`, `liegengeblieben`, `abgebrochen` (a package without result whose leftovers are in the stash, see "When something goes wrong") and `harterStopp`. The file is rewritten completely after every round, so an aborted run leaves the state up to the abort. **Consumption:** Next to cost, API duration and turns, the key figures of every session carry the four token amounts from the CLI — `eingabeTokens`, `ausgabeTokens`, `cacheErzeugtTokens`, `cacheGelesenTokens`. Every unit sums them as `verbrauch` over all its sessions (including salvage and chain stages) and names its kind of run as `art`; the run header carries `verbrauch` over all sessions of the run, including the pre-flight, and `verbrauchOhneEinheit` as the part that belongs to no card. A field for which no amount ever arrived stays `null` — a 0 would claim that nothing was consumed. **Check runs:** Next to `zeiten` every unit carries `prueflaeufe` with the block `arbeit` — what check runs the session started during its work: `anzahl` all of them (a Bash call whose first program is that of a configured check group), `volle` those of them that literally matched a check group command, `volleNoetig` the sanctioned group runs via `checks.mjs run --area <name>`, and `dauerMs` the sum of their spans. Several sessions of a card add up like the times. The completion attempt — `checks.mjs run` without `--area` — is deliberately **not** in `anzahl`, otherwise it would count twice: It has its own block `abschluss` next to `arbeit`, with `anzahl` and `dauerMs`. An adopted run (`Ergebnis uebernommen` — result adopted —, because the state is unchanged) counts there as an attempt **without** duration — `checks.mjs` passes on the values of the earlier run, and a span of this call would be inherited, not measured. A session without a requested stream (command stage with a third-party program) contributes nothing; if no session of the card measured, the field is missing entirely — "not measured" is something other than "none". Only the measurement is stored: What follows from it — runs per completion, share of the running time, distance to the target mark `night.zielUmsetzungMin` — is calculated by the report. **Lookups:** The last two fields a unit is created with are `umsetzung` and `auskunft`. `umsetzung` is `true` as soon as a session of the unit started with `/implement-next`, `/implement-ready`, `/implement-test` or `/implement-done`; chain stages, card creation and check runs stay `false`, decided at the start of the session and not by the kind of run. `auskunft` is `{ ms, aufrufe }`: the time spent on queries to the board and on processing their answers. What is measured is the span from the tool call to its result. Thinking time does not count. As a query count `board.mjs issue get|list|epics|activity|auftrag`, `board.mjs context`, `gh`/`glab issue view|list` and `gh api …/issues…`. As processing counts such a query piped to `jq`, `node -e` or `python`, and also every call that names a result path offloaded by Claude Code (`tool-results/`). Writing calls such as `issue move`, `issue comment` and `issue report` do not count. Several sessions of a card add up. `null` means "not measured": no session, or a command stage without a stream. An observed session without any lookup, by contrast, carries `{ ms: 0, aufrufe: 0 }`. `complete` is `false` in the file while the run is running and only becomes `true` at the regular end — a hard stop leaves it at `false` there (the report to the board says something different about this, see the paragraph "Delivery to the board" further below). The time of day belongs in the name because the text log is a daily file for appending, but JSON cannot be appended to — the second run of a day would otherwise overwrite the first. **The only exclusion is `--dry-run`**: A dry run works through nothing and has nothing to report.
 
 **The check runs and the target mark appear in both reports.** A measurement is only useful if someone reads it, and the night reports in two places: The implementation night writes its check report to the console and into the daily log, the chain leaves its night report as a comment on the marked card. The block `Prueflaeufe und Zielmarke:` (check runs and target mark) appears in **both** places — in the log below the checks of the sessions, in the night report under `### Umsetzung` — and carries one line per package with the round duration, the number of check runs, of those the `volle` and the `Gruppenlaeufe` (group runs), and the number of completion attempts. If no session of the card measured, the line says `Prueflaeufe nicht gemessen` (check runs not measured) and names no zero. Below it the sum: `- N von M Paketen unter <marke> Minuten.` (N of M packages under `<mark>` minutes) — the mark is `night.zielUmsetzungMin`, without the field the default 10 applies. Only units that went through an implementation round are counted; the business plan unit of the chain and packages without a session stay out. The calculation uses the round duration including all checks and corrections, and it is calculated in the report — a second copy in the file would be the same truth in a second place. **Gaps in the mapping** appear alongside: If the check summary of a package carried files without an area pattern (`ohneZuordnung`), the report names **every** one of them by name. That colours nothing red — the completion of the package stays untouched; it is a finding for the morning that an area needs a pattern.
 
@@ -1561,13 +1605,13 @@ The final completion message still lands in the log as well; the streaming compl
 
 **The reason for a hard stop is in the file as text.** The error class says *where* it broke (`harterStopp`, `umgebung`, `tracker`, `zustand`) — the reason says *what* happened, verbatim with the sentence that goes into the text log anyway. It stands in **exactly one place**: in the field `grund` of the affected unit, to which the run refers via `fehlerEinheit`. Only the pre-flight stop knows no card — it runs before a candidate has been drawn —, and so its reason is in the run's `fehlerText`, and `fehlerEinheit` stays empty there. For an unclean working tree the reason additionally names the left-over files; **from the eleventh entry on** it is shortened to the count and the first ten, in the order of `git status --porcelain`. Before, you had to search the text log or start a session for exactly this question. If, against expectation, a reason is missing, the run carries the last remembered stop text together with a note that the handover broke, otherwise a substitute text with a request to report it — the field is never empty.
 
-**A run without work names its reason.** If a night ends without a single work package having been up, the run header carries the field `noWorkReason` for it — verbatim with the sentence that goes into the text log anyway. There are six named cases. In the **implementation night**: Ready is empty (`Ready ist leer — nichts zu tun.` — Ready is empty, nothing to do), none of the Ready issues carries the routing label (`Keine der <N> Karten in Ready traegt das Label '<name>' — nichts zu tun.` — none of the N cards in Ready carries the label), all cards were deferred at the gate (`Alle <N> Karten in Ready wurden am Gate zurueckgestellt — …` — all N cards were deferred at the gate) or the implementation is occupied by another run (`Die Umsetzung ist belegt: <grund> — der Lauf endet ohne Paket.` — the implementation is occupied, the run ends without a package). With `--kette`: no card carries the chain label (`Keine Kette zu fahren: keine Karte traegt das Label '<name>'.` — no chain to run, no card carries the label) or all were skipped because a prerequisite is missing (`Keine Kette zu fahren: alle <N> gekennzeichneten Karten mit dem Label '<name>' wurden uebersprungen, …` — all N marked cards were skipped). Every sentence carries the label and the number or the holding process, so that the morning recognises the case without asking and does not first have to read the text log alongside.
+**A run without work names its reason.** If a night ends without a single work package having been up, the run header carries the field `noWorkReason` for it — verbatim with the sentence that goes into the text log anyway. There are six named cases. In the **implementation night**: Ready is empty (`Ready ist leer — nichts zu tun.` — Ready is empty, nothing to do), none of the Ready issues carries the routing label (`Keine der <N> Karten in Ready traegt das Label '<name>' — nichts zu tun.` — none of the N cards in Ready carries the label), all cards were deferred at the gate (`Alle <N> Karten in Ready wurden am Gate zurueckgestellt — …` — all N cards were deferred at the gate) or the implementation is occupied by another run (`Die Umsetzung ist belegt: <grund> — der Lauf endet ohne Paket.` — the implementation is occupied, the run ends without a package). With `--chain`: no card carries the chain label (`Keine Kette zu fahren: keine Karte traegt das Label '<name>'.` — no chain to run, no card carries the label) or all were skipped because a prerequisite is missing (`Keine Kette zu fahren: alle <N> gekennzeichneten Karten mit dem Label '<name>' wurden uebersprungen, …` — all N marked cards were skipped). Every sentence carries the label and the number or the holding process, so that the morning recognises the case without asking and does not first have to read the text log alongside.
 
 **The deferral sentence takes precedence over `Ready ist leer`.** If the run emptied Ready itself by deferring every card at the gate, it says exactly that — and does not claim that Ready was empty from the start. And a run that ended without a session, without any of the six cases applying, does not stay silent but carries the fallback sentence `Kein Grund ermittelbar — … bitte melden.` (no reason determinable — please report): An empty field would leave open whether there was nothing to say or a situation remained unnamed.
 
 **An implementation lock that cannot be written is not a quiet run.** If the lock file cannot be written, that is a fault of the environment: The run ends as a hard stop of error class `umgebung`, the reason is in the run's `fehlerText`, and `noWorkReason` is absent — without `noWorkReason` you can see at a glance in the morning that something broke here. A merely **occupied** lock, by contrast, stays a quiet run with a reason (`Die Umsetzung ist belegt: …`). Without the field an empty night looked like an aborted one in the evaluation: no unit, no hard stop, no hint that there was simply nothing to do. A run with work does not carry it.
 
-**Delivery to the board.** With `issueTracker: toolbox` the runner delivers the result state to kanban-kit continuously — after every unit and at the end, via `board.mjs nightrun melden` to `POST /api/kanban/night-runs`, with the project-bound token. **The first report goes out before the first work package is up:** immediately after the result state has been created, with an empty package list and `complete: false`. A run that already stalls in the pre-flight or in the first session is thus visible on the board — before, it could not be told apart from a night that never started. The start report produces no log line, and in the dry run it is dropped like every other report. kanban-kit replaces the same run with every report. **A hard stop arrives as a completed run:** The report carries `complete: true` together with `abortReason` — the reason for the stop, shortened to the 4,000 characters of the contract —, and the board thereby evaluates the run as a fault and shows the reason. The **file**, unaffected by this, keeps `complete: false`, because the run never got through. Before, nobody reported the stop: The night stayed on the board unfinished among the active runs, although it had long been dead. The reason arises as a cascade — the run's `fehlerText`, otherwise the `grund` of the unit designated by `fehlerEinheit`, otherwise "Harter Stopp" (hard stop) with the error class. A single broken chain is **not** an abort of the run: It ends regularly and reports no `abortReason`; its outcome is on the red package. For this the board must be at least on kanban-kit **v2.7.0** — an older one silently discards the unknown field and would show the stop as a night completed green. If the delivery fails, the run does **not** end as a failure: The log names the reason, and the file remains the fallback. With every other tracker the delivery is dropped with a log line.
+**Delivery to the board.** With `issueTracker: toolbox` the runner delivers the result state to kanban-kit continuously — after every unit and at the end, via `board.mjs nightrun report` to `POST /api/kanban/night-runs`, with the project-bound token. **The first report goes out before the first work package is up:** immediately after the result state has been created, with an empty package list and `complete: false`. A run that already stalls in the pre-flight or in the first session is thus visible on the board — before, it could not be told apart from a night that never started. The start report produces no log line, and in the dry run it is dropped like every other report. kanban-kit replaces the same run with every report. **A hard stop arrives as a completed run:** The report carries `complete: true` together with `abortReason` — the reason for the stop, shortened to the 4,000 characters of the contract —, and the board thereby evaluates the run as a fault and shows the reason. The **file**, unaffected by this, keeps `complete: false`, because the run never got through. Before, nobody reported the stop: The night stayed on the board unfinished among the active runs, although it had long been dead. The reason arises as a cascade — the run's `fehlerText`, otherwise the `grund` of the unit designated by `fehlerEinheit`, otherwise "Harter Stopp" (hard stop) with the error class. A single broken chain is **not** an abort of the run: It ends regularly and reports no `abortReason`; its outcome is on the red package. For this the board must be at least on kanban-kit **v2.7.0** — an older one silently discards the unknown field and would show the stop as a night completed green. If the delivery fails, the run does **not** end as a failure: The log names the reason, and the file remains the fallback. With every other tracker the delivery is dropped with a log line.
 
 The **text log** — that is, the `.log` file from above — stays alongside unchanged and remains the way for whoever wants the details; the result state does not replace it, it complements it with an evaluable form. Two version details are in the file: `schemaFassung` as the first field names the version of the format — needed by whoever evaluates the file — and `erzeugtVon` the kit state that wrote it, for whoever wants to know when looking which runner was at work. Kept separate because a kit release does not change the `schemaFassung` and a format change does not wait for a release. The runner does not count the file as an unclean working tree — it does not have to be committed; whoever's `.gitignore` does not list `.claude/*` will still see it in `git status` in the morning.
 
@@ -1664,7 +1708,7 @@ A command outside the allowlist is rejected immediately in headless operation; a
 }
 ```
 
-**Kit scripts with board access.** The kit, too, needs entries in `sandbox.excludedCommands`, namely for every script that reaches the board — directly or via a subprocess. A subprocess inherits the sandbox: `node .claude/kit/befunde.mjs vorschlag` starts `board.mjs` via `spawnSync`, and this `board.mjs` has no network as long as `befunde.mjs` itself is not in the list — the entry for `board.mjs` alone is not enough. The same applies to `wirksamkeit.mjs`. Add to that the reviewer command:
+**Kit scripts with board access.** The kit, too, needs entries in `sandbox.excludedCommands`, namely for every script that reaches the board — directly or via a subprocess. A subprocess inherits the sandbox: `node .claude/kit/findings.mjs suggest` starts `board.mjs` via `spawnSync`, and this `board.mjs` has no network as long as `findings.mjs` itself is not in the list — the entry for `board.mjs` alone is not enough. The same applies to `effectiveness.mjs`. Add to that the reviewer command:
 
 ```json
 {
@@ -1673,8 +1717,8 @@ A command outside the allowlist is rejected immediately in headless operation; a
     "excludedCommands": [
       "node .claude/kit/board.mjs*",
       "node .claude/kit/night.mjs*",
-      "node .claude/kit/befunde.mjs*",
-      "node .claude/kit/wirksamkeit.mjs*",
+      "node .claude/kit/findings.mjs*",
+      "node .claude/kit/effectiveness.mjs*",
       "codex *"
     ]
   }
@@ -1695,20 +1739,20 @@ The setup recipe for night mode therefore has three layers that must all fit: th
 
 **Pipe and redirection lift the exception (from Claude Code 2.1.277).** Claude Code now only takes a compound line out of the sandbox if **every** part matches an entry in `excludedCommands`. `node .claude/kit/board.mjs issue-review check 2>&1 | head -40` therefore runs entirely in the sandbox, because `head` is in no list — including the codex that `board.mjs` starts, and without network. The same applies to a redirection into or out of a file (`codex exec … < prompt.txt`, `… > liste.json`), even if nothing else is in the line. Only `2>&1` (and any other redirection to a descriptor such as `>&2`) leaves the exception in place, measured under 2.1.283.
 
-**No `cd` into the release worktree (Issue #1372).** `/push-main` and `/merge-production` create their worktree under the temp directory. Claude Code resets the working directory away from there after every call, and `cd <pfad> && node .claude/kit/checks.mjs …` would drop out of `excludedCommands` under the rule above. The skills therefore name the worktree in every call themselves: `git -C <pfad> …`, `node .claude/kit/checks.mjs run --in <pfad> …` and, for any other command, `node .claude/kit/worktree.mjs im <pfad> -- <kommando>`. `worktree.mjs anlegen` returns the path as a realpath, because `npm ci --prefix` fails through the macOS symlink of the temp directory. Anyone who still wants to work with `cd` in the worktree adds the temp directory and its realpath under `permissions.additionalDirectories`.
+**No `cd` into the release worktree (Issue #1372).** `/push-main` and `/merge-production` create their worktree under the temp directory. Claude Code resets the working directory away from there after every call, and `cd <pfad> && node .claude/kit/checks.mjs …` would drop out of `excludedCommands` under the rule above. The skills therefore name the worktree in every call themselves: `git -C <pfad> …`, `node .claude/kit/checks.mjs run --in <pfad> …` and, for any other command, `node .claude/kit/worktree.mjs in <pfad> -- <kommando>`. `worktree.mjs create` returns the path as a realpath, because `npm ci --prefix` fails through the macOS symlink of the temp directory. Anyone who still wants to work with `cd` in the worktree adds the temp directory and its realpath under `permissions.additionalDirectories`.
 
-The installer therefore enters a **`PreToolUse` hook** with matcher `Bash` into the `hooks` block of the project's `settings.json`: `node .claude/kit/board.mjs hook bash-pruefen`. It reads the patterns from `sandbox.excludedCommands` and — only out of consideration for older settings, Claude Code itself does not know the key — `sandbox.network.excludedCommands` from `.claude/settings.json` and `.claude/settings.local.json`, and rejects a Bash line (exit 2, reason to the session) if a part of it matches a pattern and the line at the same time
+The installer therefore enters a **`PreToolUse` hook** with matcher `Bash` into the `hooks` block of the project's `settings.json`: `node .claude/kit/board.mjs hook bash-check`. It reads the patterns from `sandbox.excludedCommands` and — only out of consideration for older settings, Claude Code itself does not know the key — `sandbox.network.excludedCommands` from `.claude/settings.json` and `.claude/settings.local.json`, and rejects a Bash line (exit 2, reason to the session) if a part of it matches a pattern and the line at the same time
 
 - redirects into or out of a file (`<`, `>`, `>>`, `&>`, here-doc), or
 - contains a pipe or a further command (`|`, `&&`, `||`, `;`, line break) whose parts do not all match.
 
 Characters in quotation marks do not count (`--text "a > b"` stays allowed), nor do lines without a matching pattern. The reason names the pattern and the correct form: call the command alone; Claude Code itself stores a large output in a file, which a second call can filter. If the hook cannot read its input or a settings file, it lets the call through and writes a line to stderr — a broken hook locks no session.
 
-**No background work without supervision.** The same hook `bash-pruefen` rejects a Bash call with `run_in_background: true` as soon as `KIT_AGENT_MODEL` is set (exit 2, reason to the session). An unattended session has no follow-up turn: If it ends its turn while the command is still running, the session is over and its result lost — in the night of 30.09.2026 with #1065, although the rule was in the skills. The right way is to call the command in the foreground; the session's Bash time limit reaches to just below the round limit (#668). Interactively, background work stays allowed. The hook does not cover the tool `Agent`: Whether an agent runs in the background is not reliably stated in the call (#1081).
+**No background work without supervision.** The same hook `bash-check` rejects a Bash call with `run_in_background: true` as soon as `KIT_AGENT_MODEL` is set (exit 2, reason to the session). An unattended session has no follow-up turn: If it ends its turn while the command is still running, the session is over and its result lost — in the night of 30.09.2026 with #1065, although the rule was in the skills. The right way is to call the command in the foreground; the session's Bash time limit reaches to just below the round limit (#668). Interactively, background work stays allowed. The hook does not cover the tool `Agent`: Whether an agent runs in the background is not reliably stated in the call (#1081).
 
 **When something goes wrong:** The runner distinguishes three cases. **Infrastructure false start** — the session itself ends with exit ≠ 0 (auth expired, CLI broken): hard stop, the issue stays untouched in Ready, because nothing is wrong with it; the CLI error message is directly in the console log. That way a broken environment does not clear out the whole Ready column. **Functional failure** — the session ends cleanly (exit 0), but the issue is not in In review: the runner comments on it and puts it back into the backlog, and the run continues with the next issue. A **timeout** (`--timeout-min`) counts as issue-specific — the session ran out of time — and is treated like a functional failure; **why** it ran out does not follow from this and is at most in the note on the package (see [The time-limit abort](/en/dokumentation#the-time-limit-abort)). If a round without a result leaves an unclean working tree and the rescue (salvage, see below) fails as well, the runner secures the leftovers with `git stash push --include-untracked -m "nachtrest #<id> <lauf>"`: Exactly what counts as a leftover is secured, including unversioned files. The card goes to the backlog, its comment and its run status `abgebrochen` name the stash, and the run continues with the next package. That way a package that fails at itself only stops itself, and still nothing is built on half-finished changes. You get the leftovers back with `git stash list` and `git stash apply stash@{<n>}`. A package that depends on a package aborted in this run goes back at the dependency gate as before and additionally shows the run status `wartet` with „hängt an #N (abgebrochen in diesem Lauf)“ (depends on #N, aborted in this run). A hard stop (exit ≠ 0) remains where a commit may be incomplete: for leftovers after a **successful** round, for a rescue that committed or pulled the card to In review and still leaves leftovers, and when the leftovers cannot be secured. Every package appears with its run status on its own card: `laeuft` at the start of the round, `fertig` at In review with proof, `wartet` at a halt and otherwise `abgebrochen` with a reason. Before the start the runner also checks: no issue in In progress (crash leftover), clean working tree, `buildChecks` present.
 
-**The fourth outcome: `angehalten`.** An implementation session decides instead of asking: Whatever is unclear during implementation and is not in the stop class from `CLAUDE-workflow.md` is decided and recorded in the completion report under `### Entscheidungen`. If, however, a question of the stop class comes up, the session does not choose but **halts**: It takes back its own share of the changes, marks the issue with `kit:klaeren`, states the question as a board comment and moves it to the backlog. The runner recognises this by the comment, writes a log line of its own and **keeps running**.
+**The fourth outcome: `angehalten`.** An implementation session decides instead of asking: Whatever is unclear during implementation and is not in the stop class from `CLAUDE-workflow.md` is decided and recorded in the completion report under `### Entscheidungen`. If, however, a question of the stop class comes up, the session does not choose but **halts**: It takes back its own share of the changes, marks the issue with `kit:clarify`, states the question as a board comment and moves it to the backlog. The runner recognises this by the comment, writes a log line of its own and **keeps running**.
 
 This outcome must be distinguished from the two neighbouring ones, and that is exactly why it has a name of its own:
 
@@ -1718,24 +1762,24 @@ This outcome must be distinguished from the two neighbouring ones, and that is e
 | `angehalten` | the task is solvable, but a decision is missing | the session itself — the runner does nothing here | continue with the next issue |
 | `harterStopp` | the environment or the working tree is broken | nobody, the issue stays untouched | the run ends |
 
-A halt is **not a failure**: The session acted correctly by not guessing. That is why it appears in the result state as a counter of its own next to `erfolg`, `zurueckgestellt` and `fehlschlag` — whoever had to look for the waiting decisions in the deferral count in the morning would not find them. The way forward leads via `/fachplan #T`: The skill takes the halted task together with the decision comment as input and turns it into a business requirement. The same number form has a second input — an `[Idee]` that calls for a trade-off; if there is nothing to weigh up about it, `/task #N` is the way instead. Only the human removes `kit:klaeren` in the process.
+A halt is **not a failure**: The session acted correctly by not guessing. That is why it appears in the result state as a counter of its own next to `erfolg`, `zurueckgestellt` and `fehlschlag` — whoever had to look for the waiting decisions in the deferral count in the morning would not find them. The way forward leads via `/requirement #T`: The skill takes the halted task together with the decision comment as input and turns it into a business requirement. The same number form has a second input — an `[Idea]` that calls for a trade-off; if there is nothing to weigh up about it, `/task #N` is the way instead. Only the human removes `kit:clarify` in the process.
 
 #### The halt at a protected file
-<!-- de: 942f31be7081 -->
+<!-- de: 094585c5855e -->
 
-**A protected file (geschützte Datei) is not a question but an action.** Some files may only be written by a human — in the kit, the settings under `.claude/` (`settings.json`, `settings.local.json`, `.claude/hooks/`). If a package has to change one of them, it halts, and it does so with the label `kit:geschuetzt` instead of `kit:klaeren`: With `kit:klaeren` a decision is waiting, with `kit:geschuetzt` an action. Like `review:fertig`, the label has to be created once per board; the machine sets it, only the human may remove it. The halt comment begins with `## Geschuetzte Datei` (protected file), names every file with the quoted line from the package and records as its last line `Label kit:geschuetzt gesetzt` (label set) or, if the label is missing on the board, `Label kit:geschuetzt nicht gesetzt` (label not set). The run does not abort because of the missing label; the card is only released, however, after a halt with the label set.
+**A protected file (geschützte Datei) is not a question but an action.** Some files may only be written by a human — in the kit, the settings under `.claude/` (`settings.json`, `settings.local.json`, `.claude/hooks/`). If a package has to change one of them, it halts, and it does so with the label `kit:protected` instead of `kit:clarify`: With `kit:clarify` a decision is waiting, with `kit:protected` an action. Like `review:done`, the label has to be created once per board; the machine sets it, only the human may remove it. The halt comment begins with `## Geschuetzte Datei` (protected file), names every file with the quoted line from the package and records as its last line `Label kit:protected gesetzt` (label set) or, if the label is missing on the board, `Label kit:protected nicht gesetzt` (label not set). The run does not abort because of the missing label; the card is only released, however, after a halt with the label set.
 
-**Before the start.** The night runner checks every Ready package against the protected paths before a session begins: If the task or the acceptance criterion names a protected file and the package is not released, it goes to the backlog, gets the label and the halt comment, and the run continues. In the **implementation stage of the chain** (variant B) the package is already in the backlog; there the runner sets label and comment without a move, and every package that depends on it gets the dependency comment and stays put as well. The same check is delivered by `issue auftrag` during the day with the consequence `geschuetzt`.
+**Before the start.** The night runner checks every Ready package against the protected paths before a session begins: If the task or the acceptance criterion names a protected file and the package is not released, it goes to the backlog, gets the label and the halt comment, and the run continues. In the **implementation stage of the chain** (variant B) the package is already in the backlog; there the runner sets label and comment without a move, and every package that depends on it gets the dependency comment and stays put as well. The same check is delivered by `issue brief` during the day with the consequence `geschuetzt`.
 
-**When only the writing fails.** If the package does not name the file and Claude Code rejects the write access, the session halts by itself: take back its own share by name, backlog, label, halt comment via `issue check-geschuetzt <id> --pfad <pfad>`. If it does not follow this and leaves an unclean tree without a halt, the runner catches the case: If its stream carries a rejected `Write` or `Edit` on a protected path in `permission_denials`, it secures the intermediate state in the stash `nachtrest #<id> <lauf>`, moves the card to the backlog, records the halt together with the location of the intermediate state and continues with the next package.
+**When only the writing fails.** If the package does not name the file and Claude Code rejects the write access, the session halts by itself: take back its own share by name, backlog, label, halt comment via `issue check-protected <id> --path <pfad>`. If it does not follow this and leaves an unclean tree without a halt, the runner catches the case: If its stream carries a rejected `Write` or `Edit` on a protected path in `permission_denials`, it secures the intermediate state in the stash `nachtrest #<id> <lauf>`, moves the card to the backlog, records the halt together with the location of the intermediate state and continues with the next package.
 
 **In the report** the halt appears with the kind `geschuetzt`, separate from the stop questions: as a key figure of its own „Geschuetzte Dateien“ (protected files) and under „Wartende Handlung an geschuetzter Datei“ (pending action at a protected file), not under „Offene Stopp-Frage“ (open stop question).
 
-**The way back:** make the change to the file yourself, remove the label `kit:geschuetzt`, move the card to Ready. On the next attempt the package counts as released and runs through normally.
+**The way back:** make the change to the file yourself, remove the label `kit:protected`, move the card to Ready. On the next attempt the package counts as released and runs through normally.
 
 **An old initiative note is not a leftover.** Until Spec-Driven Development was dismantled, `/techplan` stored waiting notes as `.claude/vorhaben-wartend-<k>.md`. Today none are created any more; where one still lies around, the leftover guard does not count it as a leftover — also in a project whose `.gitignore` does not cover `.claude/`. The file can be deleted.
 
-**Salvage — when the work is finished but the board does not know it.** A headless session has no follow-up turn. If it starts a long check in the background and ends its turn before the result is there, the result is lost — the board shows a failure although the work was complete. Before the runner stops hard on "not in In review AND dirty", it therefore checks for itself — with **`node .claude/kit/checks.mjs run --abschluss <id> --frisch`** in the project, that is exactly the run that the completion of a card also performs. The route via `checks.mjs` is the core of the matter: This run leaves the summary `.claude/checks-summary.json`, and **it is exactly what the commit gate reads**. When the runner used to run the `buildChecks` itself, it measured green at a place the gate does not know — the summary still held the session's red result, and the salvage session could not commit: In this situation the rescue could never succeed. Now there is one truth about "green" instead of two. `--frisch` belongs to it, otherwise the command would, on an unchanged state, adopt exactly the red result the runner doubts; `--abschluss <id>` keeps the scope of a card completion (package stage, without integration checks (Zusammenspiel-Prüfungen) and without quality measurement) and assigns the run to the card. With the route comes its **area-based selection**: The checks of the touched areas run — a separate, further selection would again be the second truth that the incident cost. Checks with `stufe` `push` or `merge` stay out as before, they are only due at publishing. If the checks are green, **exactly one** salvage session per issue gets the chance to check the intermediate state against the issue, commit it and move the board (time limit 10 minutes; it no longer runs any builds). Red checks and a failed attempt each have a log line of their own. Without a commit the leftovers go into the stash and the run continues (see "When something goes wrong"). The pre-check merges the `env` block from `.claude/settings.json` and `.claude/settings.local.json` into its environment — otherwise it lacks project-specific variables (for Testcontainers, for example) that otherwise only Claude Code's own Bash calls get, and it reports a false red.
+**Salvage — when the work is finished but the board does not know it.** A headless session has no follow-up turn. If it starts a long check in the background and ends its turn before the result is there, the result is lost — the board shows a failure although the work was complete. Before the runner stops hard on "not in In review AND dirty", it therefore checks for itself — with **`node .claude/kit/checks.mjs run --finish <id> --fresh`** in the project, that is exactly the run that the completion of a card also performs. The route via `checks.mjs` is the core of the matter: This run leaves the summary `.claude/checks-summary.json`, and **it is exactly what the commit gate reads**. When the runner used to run the `buildChecks` itself, it measured green at a place the gate does not know — the summary still held the session's red result, and the salvage session could not commit: In this situation the rescue could never succeed. Now there is one truth about "green" instead of two. `--fresh` belongs to it, otherwise the command would, on an unchanged state, adopt exactly the red result the runner doubts; `--finish <id>` keeps the scope of a card completion (package stage, without integration checks (Zusammenspiel-Prüfungen) and without quality measurement) and assigns the run to the card. With the route comes its **area-based selection**: The checks of the touched areas run — a separate, further selection would again be the second truth that the incident cost. Checks with `stufe` `push` or `merge` stay out as before, they are only due at publishing. If the checks are green, **exactly one** salvage session per issue gets the chance to check the intermediate state against the issue, commit it and move the board (time limit 10 minutes; it no longer runs any builds). Red checks and a failed attempt each have a log line of their own. Without a commit the leftovers go into the stash and the run continues (see "When something goes wrong"). The pre-check merges the `env` block from `.claude/settings.json` and `.claude/settings.local.json` into its environment — otherwise it lacks project-specific variables (for Testcontainers, for example) that otherwise only Claude Code's own Bash calls get, and it reports a false red.
 
 **If the salvage does not carry, there are three end states — not one.** They call for three different moves in the morning. The first secures the leftovers in the stash, and the night continues. The other two end in a hard stop, because a commit may be incomplete there. Log line, board comment and the `grund` of the result state therefore name them:
 
@@ -1762,7 +1806,7 @@ Whether a commit was made is told by comparing the commit hash before and after 
 
 **In the night chain** a stage session with a waiting closing text ends as `abgebrochen`, with the same reason, and its note is attached to the document of the stage — to the plan, to the package. The only exception is the stage `abdeckung`: Its information *is* a text about running work, and a detection there would discard the finding precisely when it has something to say.
 
-**It is counted.** `aufwand.mjs` keeps the sessions that ended waiting as a figure of their own and names them in the finding in a line of their own — also at zero, and then explicitly as zero: The case is rare, and silence would leave open whether it did not occur or was not counted.
+**It is counted.** `effort.mjs` keeps the sessions that ended waiting as a figure of their own and names them in the finding in a line of their own — also at zero, and then explicitly as zero: The case is rare, and silence would leave open whether it did not occur or was not counted.
 
 **The hard stop names the reason, not only the state.** Up to v1.53 the log said „nicht in In review UND Working Tree dirty" (not in In review AND working tree dirty) — that is the consequence. Whoever reviews in the morning now distinguishes five cases with five different next steps:
 
@@ -1796,15 +1840,15 @@ Three states of the progress are distinguished and appear differently in the tex
 **The yardstick of the estimate is the time limit of *one session*** — `--timeout-min`, default 60 minutes, also in the night chain, where every session starts with the same limit. Expressly **not** meant is `night.kette.umsetzungMin`: That is the budget of the whole implementation stage, is only checked between two sessions and says nothing about a single package. Nor is the target mark `night.zielUmsetzungMin` meant — it is a benchmark for the evaluation, not an abort limit.
 
 ### The stuck package
-<!-- de: 025a5a67e2d4 -->
+<!-- de: a486800c5b8c -->
 
 **A session that fails at the same check again and again ends before its time limit.** Until then such a package ran on until the clock stopped it, by default after 60 minutes: The session changed something, the check stayed red, for the same reason as before. The time was missing for the other packages of the night, and in the morning the package only carried the note about the time limit, not what it was stuck on. Since then the check tool brakes by itself.
 
 **Counting is per check.** `checks.mjs run` remembers its failure fingerprint for every red command: the names of the failed tests, for a check without test names such as a build the first error message. Timestamps, durations, temporary paths and random values are ignored. If the same check fails in a row with the same fingerprint, its sequence grows; green results of other checks do not interrupt it. It only ends when exactly this check turns green or fails differently — a different test than before counts as progress. Every real run via `checks.mjs run` counts as an attempt, partial runs included; an adopted result does not count, nor does a test the session starts outside the tool.
 
-**The limit is `night.festgefahrenNach`**, default 3. When the sequence reaches it, the run announces the last allowed attempt. Unattended (`KIT_AGENT_MODEL` set) the next call runs nothing any more, not even with `--frisch`: It prints `Pruefung festgefahren: <Kommando> — <Fehler>` (check stuck), leaves the previous summary in place, adds only `festgefahren.ausgeloest` and ends with exit code 3. The brake is a rule of the tool, not a request to the model: The session gets no check result any more. The night runner recognises the mark in the stream and ends the session.
+**The limit is `night.festgefahrenNach`**, default 3. When the sequence reaches it, the run announces the last allowed attempt. Unattended (`KIT_AGENT_MODEL` set) the next call runs nothing any more, not even with `--fresh`: It prints `Pruefung festgefahren: <Kommando> — <Fehler>` (check stuck), leaves the previous summary in place, adds only `festgefahren.ausgeloest` and ends with exit code 3. The brake is a rule of the tool, not a request to the model: The session gets no check result any more. The night runner recognises the mark in the stream and ends the session.
 
-**What the runner does afterwards.** No rescue attempt begins for the package; it would only run against the same red check again. If there are changes in the working directory, it secures them as for every aborted package in the stash `nachtrest #<id> <lauf>`; if that fails, the night ends with a hard stop. The package gets the run status `lauf:abgebrochen` with the reason `Grund: Session an einer Pruefung festgefahren` (session stuck at a check) and goes to the backlog, the other packages continue on a clean state. There is no label of its own.
+**What the runner does afterwards.** No rescue attempt begins for the package; it would only run against the same red check again. If there are changes in the working directory, it secures them as for every aborted package in the stash `nachtrest #<id> <lauf>`; if that fails, the night ends with a hard stop. The package gets the run status `run:aborted` with the reason `Grund: Session an einer Pruefung festgefahren` (session stuck at a check) and goes to the backlog, the other packages continue on a clean state. There is no label of its own.
 
 **How you recognise it in the morning.** The package carries a note under the anchor `## Nachtlauf: an einer Pruefung festgefahren` (night run: stuck at a check). It names the check, the recurring error, the number of attempts, the running time up to the abort and the time limit of the session; the stash name is in the comment before it, and if there was nothing to secure, the note says so itself. In the night report the package appears as an outcome of its own: in the check report a line `festgefahren an <Prüfung> (<n> Versuche)` with running time, time limit and `gesparte Zeit (Schaetzung)` (saved time, estimate), under the chain's `### Umsetzung` in the list „festgefahren“, and the runner's closing line counts `, N festgefahren`. That separates it from the time-limit abort and from the waiting session: There the time ran out or the session waited; here it demonstrably hung at a check.
 
@@ -1813,26 +1857,26 @@ Three states of the progress are distinguished and appear differently in the tex
 **Interactively nothing aborts.** If `KIT_AGENT_MODEL` is empty, after the last allowed and every further identical failure the run only prints `Hinweis: festgefahren an <Kommando> — <n>-mal gleich gescheitert (<Fehler>)` (hint: stuck at a command, failed the same way n times); result and exit code stay the same, you decide.
 
 ### Second mode: the night chain
-<!-- de: 7917d98cdeac -->
+<!-- de: 230735470115 -->
 
 **Since the process rework (September 2026) there have been two operating modes: the implementation night above and the night chain.** The former modes review and generation were dropped from the runner with stage 2 of the rework; the check chain behind them — marker as gate, finding classes, synthesis, routing label per stage — already went with stage 1 (implementation plan in `docs/prozess-umbau-stufe-1.md`). The chain replaces both: A business requirement goes in in the evening, and in the morning a reviewed plan, the work packages and a report are attached to it — or a finished plan goes in and comes back out as work packages (see [A finished plan as an order](/en/dokumentation#a-finished-plan-as-an-order)). What happens to the packages afterwards is decided by the **variant** (Variante) of the marked card: Under **variant A** the chain implements **nothing** — the packages stay in the backlog, the GO to Ready is still yours, and the implementation is the night after. Under **variant B** the chain moves the packages to Ready itself and implements them in the same night — your GO then already lies in the marking of the card, no longer in the individual move to Ready.
 
-**The gesture:** the label `kit:night` on the groomed `[Fachlich]` issue in the backlog — or on a finished `[Plan]` document, see [A finished plan as an order](/en/dokumentation#a-finished-plan-as-an-order). The runner **consumes it at the start** of the chain — every setting authorises exactly one chain; an abort leads to a report with a reason and a new gesture, not to a silent repetition. The label name comes from `night.kette.label` and has to be created once on the board (GitHub `gh label create`, kanban-kit `POST /api/boards/{boardId}/labels`).
+**The gesture:** the label `kit:night` on the groomed `[Requirement]` issue in the backlog — or on a finished `[Plan]` document, see [A finished plan as an order](/en/dokumentation#a-finished-plan-as-an-order). The runner **consumes it at the start** of the chain — every setting authorises exactly one chain; an abort leads to a report with a reason and a new gesture, not to a silent repetition. The label name comes from `night.kette.label` and has to be created once on the board (GitHub `gh label create`, kanban-kit `POST /api/boards/{boardId}/labels`).
 
-**The review as a prerequisite.** The chain label alone is no longer enough: At the start of the run the marked card must additionally carry the label `review:fertig` — the business requirement just as much as the plan document of a plan order (Plan-Auftrag). The way there is `/issue-review <Nummer>`, which reviews the card and sets `review:fertig`. If it is missing, the card is skipped: It keeps its chain label, the gesture is not consumed, and it gets once the comment with the anchor `## Kette nicht gestartet: Pruefung fehlt` (chain not started: review missing), which names the reason and the way via `/issue-review`. This is a different case from the run status `Kette nicht gestartet` (chain not started) after a failed reviewer pre-flight: There the reviewers were not reachable, here the review of the requirement itself is missing — both begin with the same text, but the hint is a comment of its own with an anchor, while the pre-flight finding is in the run status. Like `kit:night` and `kit:durchziehen`, `review:fertig` has to be created once on the board; if not a single card carries it, the runner reports this in the log.
+**The review as a prerequisite.** The chain label alone is no longer enough: At the start of the run the marked card must additionally carry the label `review:done` — the business requirement just as much as the plan document of a plan order (Plan-Auftrag). The way there is `/issue-review <Nummer>`, which reviews the card and sets `review:done`. If it is missing, the card is skipped: It keeps its chain label, the gesture is not consumed, and it gets once the comment with the anchor `## Kette nicht gestartet: Pruefung fehlt` (chain not started: review missing), which names the reason and the way via `/issue-review`. This is a different case from the run status `Kette nicht gestartet` (chain not started) after a failed reviewer pre-flight: There the reviewers were not reachable, here the review of the requirement itself is missing — both begin with the same text, but the hint is a comment of its own with an anchor, while the pre-flight finding is in the run status. Like `kit:night` and `kit:carry-through`, `review:done` has to be created once on the board; if not a single card carries it, the runner reports this in the log.
 
-**The variant:** a second, independent label on the same card, `kit:durchziehen` (`night.kette.varianteBLabel`), marks it for variant B. It is read where `kit:night` is as well — for a plan order, that is, on the plan, not on the business requirement behind it. Unlike `kit:night` it is **not consumed** — it stays on the card, because it marks the card itself and not just the one run; a later chain for it (for example after `angehalten`) reads it again. If it is missing, variant A applies. Like `kit:night` it has to be created once on the board.
+**The variant:** a second, independent label on the same card, `kit:carry-through` (`night.kette.varianteBLabel`), marks it for variant B. It is read where `kit:night` is as well — for a plan order, that is, on the plan, not on the business requirement behind it. Unlike `kit:night` it is **not consumed** — it stays on the card, because it marks the card itself and not just the one run; a later chain for it (for example after `angehalten`) reads it again. If it is missing, variant A applies. Like `kit:night` it has to be created once on the board.
 
 **Start:**
 
 ```bash
-node .claude/kit/night.mjs --kette --dry-run   # candidates, reviewer state, budgets — starts nothing
-node .claude/kit/night.mjs --kette             # real run
+node .claude/kit/night.mjs --chain --dry-run   # candidates, reviewer state, budgets — starts nothing
+node .claude/kit/night.mjs --chain             # real run
 ```
 
-Flags: `--max <N>` counts **chains** here (default 3); `--model <id>` and `--verbose` as above — so the live history log also runs here without a flag, `--verbose no` switches it off. `--label` does not apply here — the chain reads its label from the config, and `--kette --label` is rejected. The runner rejects the switches of the dropped modes with a hint at `--kette`; an old routing label that is still set gets a log line, no effect. The `buildChecks` requirement does not apply to the chain: It builds nothing and commits nothing.
+Flags: `--max <N>` counts **chains** here (default 3); `--model <id>` and `--verbose` as above — so the live history log also runs here without a flag, `--verbose no` switches it off. `--label` does not apply here — the chain reads its label from the config, and `--chain --label` is rejected. The runner rejects the switches of the dropped modes with a hint at `--chain`; an old routing label that is still set gets a log line, no effect. The `buildChecks` requirement does not apply to the chain: It builds nothing and commits nothing.
 
-**Conditions:** A candidate carries the label, has the title `[Fachlich]` (or `[Plan]`, see [A finished plan as an order](/en/dokumentation#a-finished-plan-as-an-order)), is in the **backlog** and carries no `kit:klaeren` — there an answer is waiting that has to be in the plan beforehand. A card without either prefix is skipped with the reason that the marker applies to the business requirement or to the plan document. Whatever carries the label but may not run appears with a reason as `uebersprungen` in the result state, and the label stays. Before the first chain the **reviewer pre-flight** runs as before: a pre-flight session of its own checks the reviewers and the tracker in the environment of the sessions, not in the runner (see the allowlist below). Even before that, every candidate is set in the [run status](/en/dokumentation#the-run-status) to `lauf:laeuft` with „Lauf angenommen um …, Vorabprüfung läuft“ (run accepted at …, pre-check running) — if the run dies in the pre-check, the card is thus not left without a trace. If the pre-flight fails, this becomes `lauf:abgebrochen` with `Kette nicht gestartet um <Zeit>: <Grund>` (chain not started at a time, with reason) in the run status, every candidate keeps its label, and the run ends hard — the gesture is not consumed, because nothing ran. A comment of its own is no longer created for this. A dry run sets no status. Unlike the implementation night, the chain requires **neither a clean working tree nor an empty In progress column**: It works in a worktree of its own and runs alongside an implementation night.
+**Conditions:** A candidate carries the label, has the title `[Requirement]` (or `[Plan]`, see [A finished plan as an order](/en/dokumentation#a-finished-plan-as-an-order)), is in the **backlog** and carries no `kit:clarify` — there an answer is waiting that has to be in the plan beforehand. A card without either prefix is skipped with the reason that the marker applies to the business requirement or to the plan document. Whatever carries the label but may not run appears with a reason as `uebersprungen` in the result state, and the label stays. Before the first chain the **reviewer pre-flight** runs as before: a pre-flight session of its own checks the reviewers and the tracker in the environment of the sessions, not in the runner (see the allowlist below). Even before that, every candidate is set in the [run status](/en/dokumentation#the-run-status) to `run:running` with „Lauf angenommen um …, Vorabprüfung läuft“ (run accepted at …, pre-check running) — if the run dies in the pre-check, the card is thus not left without a trace. If the pre-flight fails, this becomes `run:aborted` with `Kette nicht gestartet um <Zeit>: <Grund>` (chain not started at a time, with reason) in the run status, every candidate keeps its label, and the run ends hard — the gesture is not consumed, because nothing ran. A comment of its own is no longer created for this. A dry run sets no status. Unlike the implementation night, the chain requires **neither a clean working tree nor an empty In progress column**: It works in a worktree of its own and runs alongside an implementation night.
 
 **The worktree.** Every chain gets a `git worktree` under the temp directory (`kette-<repo>-<F>-<stempel>`), into which the runner mirrors the main copy's `.claude/` — kit copy, skills, settings, tokens —, without the logs. With the local tracker, the config in the worktree points to the `issues` directory of the main copy, so that the cards are created there. After the chain the worktree is removed, and worktrees left behind are cleaned up by the next start.
 
@@ -1842,10 +1886,10 @@ Flags: `--max <N>` counts **chains** here (default 3); `--model <id>` and `--ver
 |---|---|---|---|
 | plan | `/techplan #F` | a `[Plan]` document with `Fachliche Quelle: Issue #F` — if there are several, the most recent | no plan: `abgebrochen`; stop question in `## Offene Fragen`: `angehalten` |
 | form check | `issue check-form` in the chain's worktree, on red a correction session with exactly the violations; if test hints remain on the plan, the runner writes them as a comment `## Testhinweise der Formpruefung` (test hints of the form check) on the plan | green form, up to `korrekturrunden` rounds per document; test hints stop nothing | still red: `abgebrochen` |
-| review | `/issue-review #M` — the reviewer of the stage `plan` | marker `Plan-Review:`, findings and incorporation as comments on the plan | `kit:klaeren` on the plan: `angehalten` with the question from the last comment |
+| review | `/issue-review #M` — the reviewer of the stage `plan` | marker `Plan-Review:`, findings and incorporation as comments on the plan | `kit:clarify` on the plan: `angehalten` with the question from the last comment |
 | pakete | `/issues #M` | only cards with `Plan: Issue #M` count; each goes through the form check | no package and the comment `Kein Eingang für /issues` (no input for /issues) on the plan: `angehalten`; no package without it: `abgebrochen` |
 | abdeckung | a reading session holds the packages against the business plan | its text — mapping, without package, growth — in the result state and in the report | never: The coverage is information, not a gate; if it is missing, the reason is in the report |
-| umsetzung (variant B only) | `/implement-next #P` per work package, word for word as in the implementation night | package moved to Ready, implemented (In review) or deferred; the session learns nothing about the chain, it sees a regular Ready package | lock `night-umsetzung.lock` already held **or** main copy unclean before the first package: stage skipped, fallback to variant A, `unvollstaendig`; hard stop: `abgebrochen`; at least one package halts on a stop question: `angehalten` (the package already carries `kit:klaeren` itself, the business plan gets no second halt) |
+| umsetzung (variant B only) | `/implement-next #P` per work package, word for word as in the implementation night | package moved to Ready, implemented (In review) or deferred; the session learns nothing about the chain, it sees a regular Ready package | lock `night-umsetzung.lock` already held **or** main copy unclean before the first package: stage skipped, fallback to variant A, `unvollstaendig`; hard stop: `abgebrochen`; at least one package halts on a stop question: `angehalten` (the package already carries `kit:clarify` itself, the business plan gets no second halt) |
 
 Other new cards without the origin line appear as „nicht zuordenbar" (not assignable) in the report; if the coverage session writes to the board contrary to its instructions, the report records that too.
 
@@ -1864,7 +1908,7 @@ Other new cards without the origin line appear as „nicht zuordenbar" (not assi
   "night": {
     "kette": {
       "label": "kit:night",
-      "varianteBLabel": "kit:durchziehen",
+      "varianteBLabel": "kit:carry-through",
       "planMin": 20,
       "reviewMin": 15,
       "paketeMin": 15,
@@ -1887,57 +1931,57 @@ The minutes apply per stage (correction rounds count against their stage), `kost
 
 **Waiting reports.** If the tracker does not accept the comment, the report lies as `.claude/night-bericht-<F>-<stempel>.md` in the main copy — not a leftover in the working tree, like `night-run-*` —, and the field `bericht` of the unit names the path. At the next start of any operating mode (not in a dry run) the runner delivers waiting reports and deletes the file; if the tracker stays dead, the file stays and the run continues.
 
-**The way back after `angehalten`.** The chain writes the one question as a comment `## Kette angehalten` (chain halted) on the **marked card** — the one on which you set the label in the evening — and sets `kit:klaeren` there; plan and the packages cut up to then stay as a draft. The way forward leads via the **plan**, and the comment lists its steps: the answer as an entry under `## Architektonische Entscheidungen` of the plan, `## Offene Fragen` back to `- Keine.` (an addition after it is allowed), `/issue-review #M`, remove `kit:klaeren` from the plan and from the business requirement, finally `kit:night` on the plan. The next chain then takes it as a **plan order** and continues from the stage `pakete` on. The answer does **not** belong under `## Offene Fragen`: There the chain reads it as a further open question and skips the plan with your own answer text as the exclusion reason. If instead a new plan is created (because you start again from the business plan), it is the valid one; older plans for the same business plan get the comment `Ueberholt durch Plan #M2` (superseded by plan #M2; no label, no move) and appear in the report under „Ueberholt" (superseded). The chain reads each of these comments back once; if it does not find it on the card again, it continues, but lists the plan not as superseded but with a reason under „Ueberholt, nicht bestaetigt" (superseded, not confirmed) — a report that claims an action nobody sees on the board is worse than none. `kit:klaeren` is removed exclusively by the human — a run that was allowed to clear its own `kit:klaeren` could release itself.
+**The way back after `angehalten`.** The chain writes the one question as a comment `## Kette angehalten` (chain halted) on the **marked card** — the one on which you set the label in the evening — and sets `kit:clarify` there; plan and the packages cut up to then stay as a draft. The way forward leads via the **plan**, and the comment lists its steps: the answer as an entry under `## Architektonische Entscheidungen` of the plan, `## Offene Fragen` back to `- Keine.` (an addition after it is allowed), `/issue-review #M`, remove `kit:clarify` from the plan and from the business requirement, finally `kit:night` on the plan. The next chain then takes it as a **plan order** and continues from the stage `pakete` on. The answer does **not** belong under `## Offene Fragen`: There the chain reads it as a further open question and skips the plan with your own answer text as the exclusion reason. If instead a new plan is created (because you start again from the business plan), it is the valid one; older plans for the same business plan get the comment `Ueberholt durch Plan #M2` (superseded by plan #M2; no label, no move) and appear in the report under „Ueberholt" (superseded). The chain reads each of these comments back once; if it does not find it on the card again, it continues, but lists the plan not as superseded but with a reason under „Ueberholt, nicht bestaetigt" (superseded, not confirmed) — a report that claims an action nobody sees on the board is worse than none. `kit:clarify` is removed exclusively by the human — a run that was allowed to clear its own `kit:clarify` could release itself.
 
-**Chain and implementation side by side.** The two operating modes mean different cards and columns: `kit:night` on the business plan in the backlog, `kit:nightrun` on the work package in Ready. A run is always exactly one operating mode (`--kette` or not), but two runs may drive at the same time — the chain in the worktree, the implementation in the main copy. One restriction applies under **variant B**: Its stage `umsetzung` builds in the main copy like the implementation night, not in the worktree, and both take the same lock `.claude/night-umsetzung.lock` for it — whoever holds it first builds. The implementation night skips its implementation when the lock is taken; the chain waits and tries again every 60 seconds, at most until its implementation budget (`night.kette.umsetzungMin`) is used up — the waiting time counts towards it, the run status stays `läuft` with the text „wartet auf die Umsetzung seit …“ (waiting for the implementation since …). If the implementation does not become free, the chain skips it and ends as `unvollstaendig`. Under variant A the restriction does not apply: The chain never builds, and the lock stays free. **The state of the main copy does not hold up the chain:** Uncommitted leftovers — for example from an implementation night running in parallel — it checks neither beforehand nor after the pre-flight session, because it does not touch the main copy at all. Only under variant B does it measure it once before the first package: If the main copy is not clean then, it skips the implementation **regularly** as with the held lock — the packages stay in the backlog, the reason with the file names is in the report, and the run ends without an error. Cleaning up and moving the packages to Ready yourself is then left to the human.
+**Chain and implementation side by side.** The two operating modes mean different cards and columns: `kit:night` on the business plan in the backlog, `kit:nightrun` on the work package in Ready. A run is always exactly one operating mode (`--chain` or not), but two runs may drive at the same time — the chain in the worktree, the implementation in the main copy. One restriction applies under **variant B**: Its stage `umsetzung` builds in the main copy like the implementation night, not in the worktree, and both take the same lock `.claude/night-umsetzung.lock` for it — whoever holds it first builds. The implementation night skips its implementation when the lock is taken; the chain waits and tries again every 60 seconds, at most until its implementation budget (`night.kette.umsetzungMin`) is used up — the waiting time counts towards it, the run status stays `läuft` with the text „wartet auf die Umsetzung seit …“ (waiting for the implementation since …). If the implementation does not become free, the chain skips it and ends as `unvollstaendig`. Under variant A the restriction does not apply: The chain never builds, and the lock stays free. **The state of the main copy does not hold up the chain:** Uncommitted leftovers — for example from an implementation night running in parallel — it checks neither beforehand nor after the pre-flight session, because it does not touch the main copy at all. Only under variant B does it measure it once before the first package: If the main copy is not clean then, it skips the implementation **regularly** as with the held lock — the packages stay in the backlog, the reason with the file names is in the report, and the run ends without an error. Cleaning up and moving the packages to Ready yourself is then left to the human.
 
 **One runner per root.** Several chains and check runs may run side by side, also on two computers on the same board. A business root — the requirement together with the plans for it — is processed by exactly one runner. It claims the root during selection: It reads the run status of the card, writes its own run status `läuft` with the lines `Lauf-ID: <host>/<pid>/<stempel>`, `Stand: <Zeit>` and `Position: <k> von <n>`, waits for a confirmation period and reads again. If the most recent run status then belongs to it, the root is its own; otherwise it leaves it out, names it in the log with the reason „bereits von einem laufenden Runner beansprucht (`<Lauf-ID>`)“ (already claimed by a running runner) and enters it in the journal as `abgegeben`, without touching the card further. So you recognise a claimed card by the run status `läuft` with a run ID. **Takeover after a crash:** A run ID counts as dead if on the same computer its process is no longer running, or, from another computer, if `Stand:` is older than position times the total budget of the kind of run plus 15 minutes. Then a later start takes over the root and names the takeover in the log; the marking stays, nobody has to mark again. **Only what belongs to a dead process is cleaned up:** Every worktree and every kit state carries a holder file `<ordner>.halter` with computer and process; a start only removes folders without a holder or with a finished process and names the removed leftovers in the log.
 
 #### How far a chain runs: the goal
-<!-- de: 5371e62f2ce1 -->
+<!-- de: 2ea8963155eb -->
 
 **The goal (Ziel) says where the chain ends.** Without a further label a chain runs as far as variant and project allow. With a goal label you decide per card how far it should run this time: This business plan you only let be planned and reviewed, that one up to the packages, a third up to the implementation and a fourth up to the prepared publication. The stages are in a fixed order; a goal only determines where the chain ends, nothing can be skipped or rearranged. The goal is attached to the same card as `kit:night` — to the business requirement or to the plan document — and only works together with it: A goal without `kit:night` starts nothing and stays in place.
 
 | Goal | last stage | what is yours in the morning |
 |---|---|---|
-| `ziel:plan` | `review` | Read the plan, then `kit:night` on the plan. The plan is reviewed, there are no packages yet; the next chain breaks it down as a plan order. |
-| `ziel:pakete` | `abdeckung` | Move packages to Ready. Plan, packages and their coverage against the requirement are there, nothing is built. |
-| `ziel:umsetzung` | `umsetzung` | Test the packages in In review, then `push main`. The chain moved the packages to Ready itself and implemented them, as under variant B. |
-| `ziel:push-vorbereitet` | `vorbereitung` | Read the preparation's message, then `push main`. In addition, version note and change note are ready as a checked commit, see [/push-main](/en/dokumentation#push-main). |
+| `goal:plan` | `review` | Read the plan, then `kit:night` on the plan. The plan is reviewed, there are no packages yet; the next chain breaks it down as a plan order. |
+| `goal:packages` | `abdeckung` | Move packages to Ready. Plan, packages and their coverage against the requirement are there, nothing is built. |
+| `goal:implementation` | `umsetzung` | Test the packages in In review, then `push main`. The chain moved the packages to Ready itself and implemented them, as under variant B. |
+| `goal:push-prepared` | `vorbereitung` | Read the preparation's message, then `push main`. In addition, version note and change note are ready as a checked commit, see [/push-main](/en/dokumentation#push-main). |
 
-After the end at the goal, the last column appears verbatim in the [run status](/en/dokumentation#the-run-status), in the line `Als Nächstes:` (next) under the header `fertig bis <Ziel>` (finished up to the goal). If a human step (Menschenschritt) is waiting among the packages not yet started (`[Mensch]` card), it says instead `Menschenschritt #<N> erledigen, dann kit:night an #<Karte> — <K> Paket(e) hängen daran.` (complete the human step, then kit:night on the card — so many packages depend on it), and the night report lists under `### Ausgang` under `fertig` per human step the line `wartet auf Menschenschritt #<N> <Titel> — daran hängen #A, #B, …` (waits for the human step with its title — #A, #B, … depend on it) (also the packages that depend on it only indirectly via others).
+After the end at the goal, the last column appears verbatim in the [run status](/en/dokumentation#the-run-status), in the line `Als Nächstes:` (next) under the header `fertig bis <Ziel>` (finished up to the goal). If a human step (Menschenschritt) is waiting among the packages not yet started (`[Human]` card), it says instead `Menschenschritt #<N> erledigen, dann kit:night an #<Karte> — <K> Paket(e) hängen daran.` (complete the human step, then kit:night on the card — so many packages depend on it), and the night report lists under `### Ausgang` under `fertig` per human step the line `wartet auf Menschenschritt #<N> <Titel> — daran hängen #A, #B, …` (waits for the human step with its title — #A, #B, … depend on it) (also the packages that depend on it only indirectly via others).
 
-**The GO is in the goal.** A goal from `umsetzung` onwards is at the same time the GO for the packages of this card, just like `kit:durchziehen`. That stays valid and counts as `ziel:umsetzung`; if both are on one card, the one reaching further applies. Without either of them the night moves no package to Ready. Not even `ziel:push-vorbereitet` releases the push: It remains your trigger phrase `push main`.
+**The GO is in the goal.** A goal from `umsetzung` onwards is at the same time the GO for the packages of this card, just like `kit:carry-through`. That stays valid and counts as `goal:implementation`; if both are on one card, the one reaching further applies. Without either of them the night moves no package to Ready. Not even `goal:push-prepared` releases the push: It remains your trigger phrase `push main`.
 
 **How many models review the plan.** On a business requirement, `planreview:1` or `planreview:2` determines whether one model or two different ones review the plan; there is no more than that. Without a label the project's setting applies. You choose two when a plan seems delicate enough to you. The review stage passes the number to its session as `KIT_PLAN_REVIEWER`.
 
-**Consumed like `kit:night`.** At the start the runner removes `kit:night`, the goal and `planreview:*` together — every setting applies to exactly one run. What was set you read afterwards in the run status in the lines `Ziel:` (goal) and `Prüfer:` (reviewers). If you restart a chain after a halt or after it stopped at the project limit, only a newly set goal applies; without one it behaves like a chain without a goal. `kit:durchziehen`, by contrast, is still not consumed.
+**Consumed like `kit:night`.** At the start the runner removes `kit:night`, the goal and `planreview:*` together — every setting applies to exactly one run. What was set you read afterwards in the run status in the lines `Ziel:` (goal) and `Prüfer:` (reviewers). If you restart a chain after a halt or after it stopped at the project limit, only a newly set goal applies; without one it behaves like a chain without a goal. `kit:carry-through`, by contrast, is still not consumed.
 
-**Create the labels once per board.** `ziel:plan`, `ziel:pakete`, `ziel:umsetzung`, `ziel:push-vorbereitet`, `planreview:1` and `planreview:2` have to be created once per board like `kit:night` (GitHub `gh label create`, kanban-kit `POST /api/boards/{boardId}/labels`). Their names are fixed and not configurable.
+**Create the labels once per board.** `goal:plan`, `goal:packages`, `goal:implementation`, `goal:push-prepared`, `planreview:1` and `planreview:2` have to be created once per board like `kit:night` (GitHub `gh label create`, kanban-kit `POST /api/boards/{boardId}/labels`). Their names are fixed and not configurable.
 
 **What does not fit is rejected before anything is created.** The selection rejects a card with the reason `unpassende Einstellung: …` (unsuitable setting) if it
 
-- carries more than one `ziel:*` or both `planreview:*`,
-- carries `ziel:plan` as a plan document (the plan already exists) — meant is `ziel:plan` on a plan document,
+- carries more than one `goal:*` or both `planreview:*`,
+- carries `goal:plan` as a plan document (the plan already exists) — meant is `goal:plan` on a plan document,
 - carries a `planreview:*` as a plan document — the number of reviewers only applies on the business requirement, `planreview:*` on a plan document is therefore rejected,
 - carries `planreview:*` as a business requirement, but its plan already has a `Plan-Review:` marker.
 
 The card then keeps all its labels and gets once the comment `## Kette nicht gestartet: unpassende Einstellung` (chain not started: unsuitable setting) with the reason and the step that makes it startable again. The gesture is not consumed.
 
-**The project remains the upper limit.** If `night.kette.uebergaenge` blocks a transition before the goal, the chain ends there: The run status shows `lauf:wartet` with `wartet: Übergang <x> im Projekt nicht freigegeben — weiter mit kit:night` (waits: transition not released in the project — continue with kit:night) and names in the line `Grenze:` (limit) the last reachable stage, and the night report additionally writes under `### Ausgang` the line `an der Projektgrenze stehen geblieben, nicht am Ziel <z>` (stopped at the project limit, not at the goal). For the transition into the preparation there is the fifth switch `umsetzungVorbereitung`; without an entry it is `true`, only an explicit `false` stops the chain before the preparation.
+**The project remains the upper limit.** If `night.kette.uebergaenge` blocks a transition before the goal, the chain ends there: The run status shows `run:waiting` with `wartet: Übergang <x> im Projekt nicht freigegeben — weiter mit kit:night` (waits: transition not released in the project — continue with kit:night) and names in the line `Grenze:` (limit) the last reachable stage, and the night report additionally writes under `### Ausgang` the line `an der Projektgrenze stehen geblieben, nicht am Ziel <z>` (stopped at the project limit, not at the goal). For the transition into the preparation there is the fifth switch `umsetzungVorbereitung`; without an entry it is `true`, only an explicit `false` stops the chain before the preparation.
 
-**The preparation belongs to the whole state.** If at least one chain reaches the goal `push-vorbereitet`, the stage `vorbereitung` follows once after all chains of the run. It waits until nothing is building any more — until the implementation lock is free and no other run of this project is building —, at most `night.kette.vorbereitungMin` minutes (default 120, waiting and check run together). Then it starts `/push-main vorbereiten` in a worktree of its own; what happens there and how `push main` takes over the state in the morning is described under [/push-main](/en/dokumentation#push-main). Nothing is pushed at night. The message appears as a night report of its own `## Nachtbericht, Kette <stempel> — Vorbereitung` (night report, chain — preparation) on every card that triggered the preparation — with result, checked state, the packages in the state, open checks and, if applicable, the red check together with the cards it touches —, and at the fixed place `.claude/push-vorbereitung.json`. If the deadline expires, the result is called „nicht vorbereitet“ (not prepared) with the reason.
+**The preparation belongs to the whole state.** If at least one chain reaches the goal `push-vorbereitet`, the stage `vorbereitung` follows once after all chains of the run. It waits until nothing is building any more — until the implementation lock is free and no other run of this project is building —, at most `night.kette.vorbereitungMin` minutes (default 120, waiting and check run together). Then it starts `/push-main prepare` in a worktree of its own; what happens there and how `push main` takes over the state in the morning is described under [/push-main](/en/dokumentation#push-main). Nothing is pushed at night. The message appears as a night report of its own `## Nachtbericht, Kette <stempel> — Vorbereitung` (night report, chain — preparation) on every card that triggered the preparation — with result, checked state, the packages in the state, open checks and, if applicable, the red check together with the cards it touches —, and at the fixed place `.claude/push-vorbereitung.json`. If the deadline expires, the result is called „nicht vorbereitet“ (not prepared) with the reason.
 
 #### A finished plan as an order
-<!-- de: 765aa661c420 -->
+<!-- de: 72a06cd7f1dc -->
 
 **The gesture on the plan.** The chain accepts not only a business requirement but also a finished plan document: `kit:night` on a `[Plan]` issue in the backlog starts a **plan order**. That is the way back from a halt (see below) and at the same time the way to have a plan written by hand during the day broken down overnight.
 
-**The four conditions** are the same as for the business requirement, only measured on the other card: The plan is in the **backlog**, carries `review:fertig`, carries **no** `kit:klaeren` and has a recognisable business origin — the line `Fachliche Quelle: Issue #N` in its context. If one of them is missing, the plan is skipped with a reason and keeps its chain label; the gesture is not consumed. This also includes an open question in the document itself: Under `## Offene Fragen` it must say `- Keine.` (an addition after it is allowed).
+**The four conditions** are the same as for the business requirement, only measured on the other card: The plan is in the **backlog**, carries `review:done`, carries **no** `kit:clarify` and has a recognisable business origin — the line `Fachliche Quelle: Issue #N` in its context. If one of them is missing, the plan is skipped with a reason and keeps its chain label; the gesture is not consumed. This also includes an open question in the document itself: Under `## Offene Fragen` it must say `- Keine.` (an addition after it is allowed).
 
 **What is dropped.** A plan order does **not** run the stages `plan` and `review` — the plan is written and reviewed. The run starts at the stage `pakete` (`/issues #M`) and continues as usual: coverage against the business requirement `#N`, under variant B the implementation. The plan stays untouched: **No** second `[Plan]` document is created, its number moves unchanged into the origin line of the packages and into the report, and **no** older plan gets an `Ueberholt durch Plan` comment. In the report the plan stage therefore appears as `als Auftrag uebernommen, nicht neu geschrieben` instead of with duration and cost.
 
-**The variant on the plan.** The chain reads `kit:durchziehen` on the same card as `kit:night` — for a plan order, that is, on the plan. A `kit:durchziehen` on the business requirement behind it has no effect: **Variant B** only applies if the plan itself is marked.
+**The variant on the plan.** The chain reads `kit:carry-through` on the same card as `kit:night` — for a plan order, that is, on the plan. A `kit:carry-through` on the business requirement behind it has no effect: **Variant B** only applies if the plan itself is marked.
 
 **Two collision rules** resolve cases where more is marked than necessary:
 
@@ -1967,17 +2011,17 @@ The **pre-flight of the night runner**, by contrast, still checks the reviewers 
 The entry names the **tool**, not the full command line — for the same reason as with the buildChecks above (prefix matching). Whoever has configured several foreign CLIs enters each one individually. A setup with exclusively `kind: "claude"` reviewers does not need the tool entry.
 
 ### The run status
-<!-- de: 4bcd7299093a -->
+<!-- de: c2eaf1aa265a -->
 
 **The state of a run is on the board, not in the process.** Until then it lived in the running runner: If the process died, the knowledge died with it, because the night report is only written at the exit, and a crash is not an exit. That is why every card of a chain or implementation night carries its own state, visible without a look into the log.
 
-**Three labels and a comment.** The card carries at most one of the three labels `lauf:laeuft`, `lauf:abgebrochen` and `lauf:wartet`, plus exactly one comment `## Laufstand` (run status), which is replaced at every change. It names the last step begun and the last step completed, each with a point in time. The comment is a board, not a history; the night report remains the history. Whoever wants to know *what* happened in a night reads the report; whoever wants to know *where* a card stands now reads the run status.
+**Three labels and a comment.** The card carries at most one of the three labels `run:running`, `run:aborted` and `run:waiting`, plus exactly one comment `## Laufstand` (run status), which is replaced at every change. It names the last step begun and the last step completed, each with a point in time. The comment is a board, not a history; the night report remains the history. Whoever wants to know *what* happened in a night reads the report; whoever wants to know *where* a card stands now reads the run status.
 
-**Abort and halt can be told apart.** `lauf:abgebrochen` means: technically aborted, repeating is enough. `lauf:wartet` says verbatim in the run status what the card is waiting for, in one of three forms:
+**Abort and halt can be told apart.** `run:aborted` means: technically aborted, repeating is enough. `run:waiting` says verbatim in the run status what the card is waiting for, in one of three forms:
 
 - `wartet: Übergang <x> im Projekt nicht freigegeben — weiter mit kit:night` (waits: transition not released in the project — continue with kit:night) — the project has not released the transition (see below);
-- `wartet: Karte ohne Freigabe zur Umsetzung` (waits: card without release for implementation) — the transition into the implementation is released, but the card carries no `kit:durchziehen`;
-- „Halt: Frage wartet auf den Menschen — siehe `## Kette angehalten`“ (halt: question waits for the human — see `## Kette angehalten`) — a halt on the content. The path for it via `kit:klaeren` and the comment `## Kette angehalten` stays as it is.
+- `wartet: Karte ohne Freigabe zur Umsetzung` (waits: card without release for implementation) — the transition into the implementation is released, but the card carries no `kit:carry-through`;
+- „Halt: Frage wartet auf den Menschen — siehe `## Kette angehalten`“ (halt: question waits for the human — see `## Kette angehalten`) — a halt on the content. The path for it via `kit:clarify` and the comment `## Kette angehalten` stays as it is.
 
 **Goal, number of reviewers and limit.** If the card carried a goal or a `planreview:*` at the start, their values are in every version below the header, because the labels themselves are used up by then: `Ziel: <plan|pakete|umsetzung|push-vorbereitet>` (goal), `Prüfer: <1|2>` (reviewers) and, if the project blocks a transition before the goal, `Grenze: <letzte erreichbare Stufe>` (limit: last reachable stage). If the chain ends at its goal, the header reads `fertig bis <Ziel>` (finished up to goal), and below it is the line `Als Nächstes:` (next) with the step that now belongs to you (see [How far a chain runs](/en/dokumentation#how-far-a-chain-runs-the-goal)). Without a goal and without `planreview:*` the run status looks as it did before.
 
@@ -1985,44 +2029,44 @@ The entry names the **tool**, not the full command line — for the same reason 
 
 **Repeat with the same gesture.** There is no command of its own for a single step. `kit:night` on the card starts the chain at the first stage without a result: What is already there — plan, review note, packages, coverage, implemented packages in In review — counts as done and is not created twice, even if the previous run then failed at the clock or at the board. An existing plan counts as a result as long as it is not in Done; a fresh plan is only created once the old one is in Done. Whoever wants a new plan closes the old plan.
 
-**Release transitions individually.** Which transitions of the chain may follow automatically is set by the project in `night.kette.uebergaenge`, with the four switches `planReview`, `reviewPakete`, `paketeAbdeckung` and `abdeckungUmsetzung`. The kit's default releases the first three. For `abdeckungUmsetzung` there is no default: Without an entry the behaviour from before the setting applies, a chain with `kit:durchziehen` implements after the coverage, one without ends there `fertig` (finished). `abdeckungUmsetzung` only works together with `kit:durchziehen` on the card: The GO can never be given project-wide, it stays on the individual card. An explicit `false` stops a chain with `kit:durchziehen` before the implementation, a `true` lets a chain without the label end with `wartet: Karte ohne Freigabe zur Umsetzung`. A blocked transition ends with `lauf:wartet` in the first form above.
+**Release transitions individually.** Which transitions of the chain may follow automatically is set by the project in `night.kette.uebergaenge`, with the four switches `planReview`, `reviewPakete`, `paketeAbdeckung` and `abdeckungUmsetzung`. The kit's default releases the first three. For `abdeckungUmsetzung` there is no default: Without an entry the behaviour from before the setting applies, a chain with `kit:carry-through` implements after the coverage, one without ends there `fertig` (finished). `abdeckungUmsetzung` only works together with `kit:carry-through` on the card: The GO can never be given project-wide, it stays on the individual card. An explicit `false` stops a chain with `kit:carry-through` before the implementation, a `true` lets a chain without the label end with `wartet: Karte ohne Freigabe zur Umsetzung`. A blocked transition ends with `run:waiting` in the first form above.
 
 **One attempt, only for the living run.** An automatic attempt only exists for environment errors, as long as the run is alive: The board was not reachable, or a session did not come about. Then the run tries the step again exactly once after a pause, and the run status notes „2. Versuch“ (2nd attempt). If that fails too, the run halts visibly. A session that came about and ended without a result, at the time limit or without proof is a package error and gets no attempt. A dead run is not repeated: It cannot repeat itself, and a restart from outside would be a run without a gesture. After the deadline its cards show „nicht beendet“ (not finished), and it continues with `kit:night`.
 
 #### The watchdog
-<!-- de: a582e9f94c54 -->
+<!-- de: b5355a8d7893 -->
 
 Who notices a run that died without saying goodbye, and when it counts as silent.
 
-At the start of the run the runner starts a detached watchdog (Wächter), which checks every minute. For this the run writes a sign of life to its pulse file `.claude/lauf/<lauf>.puls` every minute. It only counts as silent once this sign of life is older than the deadline `night.stand.fristMin` (default 10 minutes) **and** the runner process no longer exists. A run that is alive therefore never counts as silent, even if a step writes no pulse for a long time. If the run is silent, the watchdog sets every card still on `laeuft` to `lauf:abgebrochen` with `nicht beendet, letztes Lebenszeichen <zeit>, Frist <n> min` (not finished, last sign of life, deadline) and ends. There is no restart. If the watchdog died with the computer, the next run makes up for it at its start.
+At the start of the run the runner starts a detached watchdog (Wächter), which checks every minute. For this the run writes a sign of life to its pulse file `.claude/lauf/<lauf>.puls` every minute. It only counts as silent once this sign of life is older than the deadline `night.stand.fristMin` (default 10 minutes) **and** the runner process no longer exists. A run that is alive therefore never counts as silent, even if a step writes no pulse for a long time. If the run is silent, the watchdog sets every card still on `laeuft` to `run:aborted` with `nicht beendet, letztes Lebenszeichen <zeit>, Frist <n> min` (not finished, last sign of life, deadline) and ends. There is no restart. If the watchdog died with the computer, the next run makes up for it at its start.
 
 #### The journal
-<!-- de: 9284a7775bf3 -->
+<!-- de: 5e01a22f58d6 -->
 
 What a run records along the way so that its state survives the process.
 
 Every run writes every state, before it hands it to the board, as a line into its journal `.claude/lauf/<lauf>.jsonl`. If the board does not accept a state, the line stays open, and on the board the last visible state applies. Open lines are filled in as soon as the board answers again: in the same run at the next state, otherwise at the start of the next run. The log names every catch-up with „Laufstand nachgetragen“ (run status filled in). The journal is the memory of the run; you only have to read it if the board remained owing a state.
 
-**Partial cut.** If the stage `pakete` dies in the middle of the cut, the card carries „pakete begonnen für #M“ (packages begun for #M) without „pakete fertig für #M“ (packages finished for #M). The next run then does not repeat the stage, but shows `lauf:abgebrochen` with „Teilschnitt vorhanden (#a, #b) — eine Wiederholung legte doppelt an; Teilschnitt am Board aufräumen, dann erneut kit:night“ (partial cut present — a repetition would create duplicates; clean up the partial cut on the board, then kit:night again). Cleaning up means: close or delete the named packages on the board, then put `kit:night` on the card again. Packages without any run status entry, for example created by hand, are not a partial cut.
+**Partial cut.** If the stage `pakete` dies in the middle of the cut, the card carries „pakete begonnen für #M“ (packages begun for #M) without „pakete fertig für #M“ (packages finished for #M). The next run then does not repeat the stage, but shows `run:aborted` with „Teilschnitt vorhanden (#a, #b) — eine Wiederholung legte doppelt an; Teilschnitt am Board aufräumen, dann erneut kit:night“ (partial cut present — a repetition would create duplicates; clean up the partial cut on the board, then kit:night again). Cleaning up means: close or delete the named packages on the board, then put `kit:night` on the card again. Packages without any run status entry, for example created by hand, are not a partial cut.
 
 **Leftovers in the stash.** If a failed package leaves changes in the working tree and the salvage does not succeed, they lie in the stash `nachtrest #<id> <lauf>`, and the run status of the package names it. You get them back with `git stash list` and `git stash apply stash@{<n>}`; once the package is done, `git stash drop stash@{<n>}` clears the entry.
 
 #### The evidence cases
-<!-- de: 3fafe4c52e7d -->
+<!-- de: 8276a1cc01d4 -->
 
 For every evidence case (Belegfall) of the business requirement: what state the card shows on the board afterwards and with which gesture it continues.
 
 | Case | Card state afterwards | Way forward |
 |---|---|---|
-| Without a trace: the run dies in the pre-check | first `lauf:laeuft` with „Lauf angenommen um …, Vorabprüfung läuft“ (run accepted at …, pre-check running), after the deadline `lauf:abgebrochen` with `nicht beendet, letztes Lebenszeichen <zeit>, Frist <n> min` | read the log, fix the cause, then put `kit:night` on the card again |
-| Aborted although finished: the review stage exceeds the time budget, the review note is already in the plan | `lauf:abgebrochen` with the reason; the run status names the last completed step | put `kit:night` on the card again: The stage counts as found, the chain starts at the first stage without a result |
-| Outcome unknown: the board is briefly unreachable | if the attempt after the pause succeeds, the state of the card with „2. Versuch“; if it fails, `lauf:abgebrochen` with `abgebrochen, Umgebungsfehler um <zeit>: …` (aborted, environment error at), the remaining cards of the run `lauf:wartet` with `nicht begonnen: der Lauf hielt um <zeit> an — …` (not begun: the run halted at) | after a successful attempt nothing; otherwise, once the board answers again, start the run again or put `kit:night` on the chain again |
-| A package halts the night: session without commit, time limit or waiting session | only this package `lauf:abgebrochen` with reason, it goes to the backlog; dependent packages `lauf:wartet` with „hängt an #N (abgebrochen in diesem Lauf)“ (depends on #N, aborted in this run); leftovers in the stash `nachtrest #<id> <lauf>`; the remaining packages keep running | read the reason, fetch leftovers from the stash if needed, improve the package and pull it back to Ready |
-| A package gets stuck: the same check fails `night.festgefahrenNach` times the same way, long before the time limit | only this package `lauf:abgebrochen` with `Grund: Session an einer Pruefung festgefahren`, note `## Nachtlauf: an einer Pruefung festgefahren` with check, error and attempts, it goes to the backlog; leftovers in the stash `nachtrest #<id> <lauf>`; in the night report the outcome of its own `festgefahren`, not time limit or waiting session; the remaining packages keep running | read the error in the note, fetch leftovers from the stash if needed, improve the package and pull it back to Ready |
+| Without a trace: the run dies in the pre-check | first `run:running` with „Lauf angenommen um …, Vorabprüfung läuft“ (run accepted at …, pre-check running), after the deadline `run:aborted` with `nicht beendet, letztes Lebenszeichen <zeit>, Frist <n> min` | read the log, fix the cause, then put `kit:night` on the card again |
+| Aborted although finished: the review stage exceeds the time budget, the review note is already in the plan | `run:aborted` with the reason; the run status names the last completed step | put `kit:night` on the card again: The stage counts as found, the chain starts at the first stage without a result |
+| Outcome unknown: the board is briefly unreachable | if the attempt after the pause succeeds, the state of the card with „2. Versuch“; if it fails, `run:aborted` with `abgebrochen, Umgebungsfehler um <zeit>: …` (aborted, environment error at), the remaining cards of the run `run:waiting` with `nicht begonnen: der Lauf hielt um <zeit> an — …` (not begun: the run halted at) | after a successful attempt nothing; otherwise, once the board answers again, start the run again or put `kit:night` on the chain again |
+| A package halts the night: session without commit, time limit or waiting session | only this package `run:aborted` with reason, it goes to the backlog; dependent packages `run:waiting` with „hängt an #N (abgebrochen in diesem Lauf)“ (depends on #N, aborted in this run); leftovers in the stash `nachtrest #<id> <lauf>`; the remaining packages keep running | read the reason, fetch leftovers from the stash if needed, improve the package and pull it back to Ready |
+| A package gets stuck: the same check fails `night.festgefahrenNach` times the same way, long before the time limit | only this package `run:aborted` with `Grund: Session an einer Pruefung festgefahren`, note `## Nachtlauf: an einer Pruefung festgefahren` with check, error and attempts, it goes to the backlog; leftovers in the stash `nachtrest #<id> <lauf>`; in the night report the outcome of its own `festgefahren`, not time limit or waiting session; the remaining packages keep running | read the error in the note, fetch leftovers from the stash if needed, improve the package and pull it back to Ready |
 | Interleaved logs: chain and check run run at the same time | every run status names in the line `Protokoll:` the file `.claude/protokolle/<lauf>/<karte>-<stufe>.log` of its step | open the named file; in the daily log the run ID in `[<Zeitpunkt> <lauf>]` separates the runs |
 
 ### Running with a local model
-<!-- de: 832819589c2e -->
+<!-- de: f9e64ca25f4d -->
 
 > **Untested.** This section describes a path that follows from the architecture of the runner and should work without any change to the kit — but it has **not been tried in practice** here. Neither was LiteLLM set up nor was a run made against a local model. Take it as a reasoned proposal, not as a report of experience.
 
@@ -2051,7 +2095,7 @@ ANTHROPIC_BASE_URL=http://localhost:4000 \
 
 **Split via labels.** The [routing label](/en/dokumentation#night-mode) is enough for the separation, no new flag is needed: Give the simple issues a label of their own (say `kit:lokal`) and run two runs one after the other — one with the local model and this label, a regular one with `kit:nightrun`.
 
-**The review stays untouched.** `/review` uses the `reviewModel` from the `workflow.config.json` and is completely decoupled from the night run model. What a local model built at night is still examined by the strong model in the morning.
+**The review stays untouched.** `/kit-review` uses the `reviewModel` from the `workflow.config.json` and is completely decoupled from the night run model. What a local model built at night is still examined by the strong model in the morning.
 
 **Where the limits are — unvarnished.** A night session must be able to do more than write code: It must call tools reliably (board operations via `board.mjs`, file edits, Git), sustain a multi-stage chain and commit cleanly at the end. In our experience small models break exactly at that, not at the programming itself. Projects with sharp gates — mutation tests, coverage ratchets, multi-stage build chains — are realistically out of reach for a small local model. The sensible area of use is changes without a test obligation: documentation, text corrections, configuration values, small mechanical adjustments.
 
@@ -2066,14 +2110,14 @@ ANTHROPIC_BASE_URL=http://localhost:4000 \
 
 The progress log shows you every tool call of the session without further ado. From it you see within minutes whether the model handles the board operations cleanly — that is the quickest feasibility test, and it decides the question before you invest a whole night.
 
-**Morning ritual:** Read the log (`.claude/night-run-<datum>.log`: issue, duration, result, commit per round) — the same state is additionally available for evaluation as `.claude/night-run-<datum>-<uhrzeit>.json` next to it —, then as always `/review` → your own test → `push main`. Deferred issues are in the backlog with a comment.
+**Morning ritual:** Read the log (`.claude/night-run-<datum>.log`: issue, duration, result, commit per round) — the same state is additionally available for evaluation as `.claude/night-run-<datum>-<uhrzeit>.json` next to it —, then as always `/kit-review` → your own test → `push main`. Deferred issues are in the backlog with a comment.
 
 ## Effort of the process
-<!-- de: 4c66b3f30b69 -->
+<!-- de: ae84c8654306 -->
 
-Since issue #748/#749 every result state of a night session (`.claude/night-run-<datum>-<uhrzeit>.json`) already carries duration, cost, quantity, model and check status. `node .claude/kit/aufwand.mjs auswerten` reads the most recent of them, aggregates time, checks, scope, cost and the effort per task level and writes from this `.claude/aufwand.md` (for humans) and `.claude/aufwand.json` (for the two output places below). The tool only says what stands out — never what to do, and it stays silent when nothing stands out.
+Since issue #748/#749 every result state of a night session (`.claude/night-run-<datum>-<uhrzeit>.json`) already carries duration, cost, quantity, model and check status. `node .claude/kit/effort.mjs evaluate` reads the most recent of them, aggregates time, checks, scope, cost and the effort per task level and writes from this `.claude/aufwand.md` (for humans) and `.claude/aufwand.json` (for the two output places below). The tool only says what stands out — never what to do, and it stays silent when nothing stands out.
 
-**Where the finding appears.** In exactly two places, and both together: as a closing block in the run log `.claude/night-run-<datum>.log`, which every unattended run writes itself at the end, and in the skill `/push-main`, which runs `node .claude/kit/aufwand.mjs befund` before the first step and shows the output. Both are necessary: If night mode starts without any human involvement in future, perhaps nobody reads the run report any more; publishing, by contrast, remains a step that a human triggers themselves.
+**Where the finding appears.** In exactly two places, and both together: as a closing block in the run log `.claude/night-run-<datum>.log`, which every unattended run writes itself at the end, and in the skill `/push-main`, which runs `node .claude/kit/effort.mjs finding` before the first step and shows the output. Both are necessary: If night mode starts without any human involvement in future, perhaps nobody reads the run report any more; publishing, by contrast, remains a step that a human triggers themselves.
 
 **By task level.** The report carries a section of its own that shows one line per pair of task level and thoroughness (`effort`): units, duration, cost, red check states and rework, every number with the number of runs that carry it. That way a level can be compared before and after a change of its thoroughness, without running a comparison run of its own for it. The same block is in `.claude/aufwand.json` as `jeStufe`.
 
@@ -2087,23 +2131,23 @@ Since issue #748/#749 every result state of a night session (`.claude/night-run-
 
 **Lookups.** A report block of its own, "Auskünfte" (lookups), shows per implementation unit the time spent on fetching and taking apart board lookups, in minutes and with the number of calls — measured by the night runner as the span from the tool call to its result for every query to the board and every processing of its answer; thinking time does not count. Below it is the average over the implementation units together with the number of units that carry it. An implementation unit is one whose session started with `/implement-next`, `/implement-ready`, `/implement-test` or `/implement-done`; all others (chain, creating cards, check runs) stand in a line of their own "keine Umsetzung" (no implementation) and do not go into the average. A unit without measurement (`auskunft: null`) and one from a state before issue #1026 without the field stand as "nicht gemessen" and never go into the average as 0. The same block is in `.claude/aufwand.json` as `auskuenfte`.
 
-**Measuring transcripts afterwards.** `node .claude/kit/aufwand.mjs auskunft <transkript…>` measures Claude Code transcripts (`*.jsonl` under `~/.claude/projects/<projekt>/`) with **the same** rule as the night runner — that way a reference value can be determined from a run that lay before the measurement. The output names minutes and calls per file and in total, with several files also the average per file. A file that cannot be read or one without timestamps is reported explicitly and not counted as 0; the command then ends with exit 1.
+**Measuring transcripts afterwards.** `node .claude/kit/effort.mjs info <transkript…>` measures Claude Code transcripts (`*.jsonl` under `~/.claude/projects/<projekt>/`) with **the same** rule as the night runner — that way a reference value can be determined from a run that lay before the measurement. The output names minutes and calls per file and in total, with several files also the average per file. A file that cannot be read or one without timestamps is reported explicitly and not counted as 0; the command then ends with exit 1.
 
 **No gate.** The finding holds up neither a run nor `/push-main`. A failure of the evaluation is a log line, not an abort.
 
 **Changing the number of runs and the thresholds.** Both are in the optional block `aufwand` of the `.claude/workflow.config.json` (see [All settings](/en/dokumentation#all-settings)) — if the block or a field in it is missing, the built-in defaults apply, so an existing project gets the evaluation without further setup. `aufwand.laeufe` determines how many of the most recent result states are included; `aufwand.schwellen` carries the four limit values (`pruefungAnteil`, `eingrenzungOhneWirkung`, `werkzeugAnteil`, `schreibkostenAnteil`) from which a finding appears. In the settings interface the block is under the topic "Nachtbetrieb" (night mode).
 
 ## Consumption of interactive sessions
-<!-- de: abc7e20ecb06 -->
+<!-- de: 2f6c9a20dd00 -->
 
-The night run reports its consumption itself (see above). For the sessions in which you sit at the computer yourself, the **session reporter** (Sitzungs-Melder) does that: `board.mjs sitzung melden` reads the session transcript of Claude Code, sums input, output and cache tokens and delivers them via the same route as the runner — `POST /api/kanban/night-runs`, only with `kind`/`mode` **INTERACTIVE** and the start time of the session as the key. It takes the path of the transcript from `--protokoll` or as `transcript_path` from the body that a Claude Code hook passes in on stdin.
+The night run reports its consumption itself (see above). For the sessions in which you sit at the computer yourself, the **session reporter** (Sitzungs-Melder) does that: `board.mjs session report` reads the session transcript of Claude Code, sums input, output and cache tokens and delivers them via the same route as the runner — `POST /api/kanban/night-runs`, only with `kind`/`mode` **INTERACTIVE** and the start time of the session as the key. It takes the path of the transcript from `--transcript` or as `transcript_path` from the body that a Claude Code hook passes in on stdin.
 
 **Who calls it.** Nobody by hand. With a project-local installation the installer enters two entries into the `hooks` block of `.claude/settings.json`, and Claude Code calls the reporter by itself:
 
 | Event | Call | Effect |
 |---|---|---|
-| `Stop` | `node .claude/kit/board.mjs sitzung melden` | ongoing, `complete: false`, throttled to one report per five minutes |
-| `SessionEnd` | `node .claude/kit/board.mjs sitzung melden --complete` | final, `complete: true` — afterwards the waypoint file is empty |
+| `Stop` | `node .claude/kit/board.mjs session report` | ongoing, `complete: false`, throttled to one report per five minutes |
+| `SessionEnd` | `node .claude/kit/board.mjs session report --complete` | final, `complete: true` — afterwards the waypoint file is empty |
 
 The entries are in the **project** file and not in the user settings under `~/.claude`: The target project comes from the binding of the token in the working directory, and a user-wide setting would report from every directory — including every foreign one.
 
@@ -2144,20 +2188,20 @@ For such recurring, class-wide errors the same principle applies as with the cov
 A document is the source of truth for the next step. An error in it propagates, and the author does not see it, because they have in their head the context from which the document arose. `/issue-review` has models read it that did **not** write it: They deliver findings, and the session that called the skill works them in or rejects them with one sentence. Findings are support, not a gate — whether a stage is finished is said by a command or a human, never by a model marker.
 
 ### Three check stages — the check moves up
-<!-- de: 2a37d6748cb5 -->
+<!-- de: 9b50d7fd2ecb -->
 
 Which stage applies is decided by the title prefix, and every stage leaves its own trace:
 
 | Stage | Checks | Proof |
 |---|---|---|
-| `fachlich` | a `[Fachlich]` issue — the business requirement from [/fachplan](/en/dokumentation#fachplan) | `Fachplan-Review: …` |
+| `fachlich` | a `[Requirement]` issue — the business requirement from [/requirement](/en/dokumentation#requirement) | `Fachplan-Review: …` |
 | `plan` | a `[Plan]` issue — the plan document from [/techplan](/en/dokumentation#techplan) | `Plan-Review: …` |
 | `issue` | a technical work package from [/issues](/en/dokumentation#issues) | `Issue-Review: …` |
 | `issue` | a `[Task]` work package from [/task](/en/dokumentation#task) — `[Task]` is **not a document prefix** | `Issue-Review: …` |
 
 **Where the proof is:** for the work package in the section `## Kontext`, for the business requirement in the section `## Ziel` next to `Autor-Modell:`, for the plan document before `## Ziel` next to `Plan-Modell:`. The marker is a trace, not a release: No skill reads it as a condition for the next step.
 
-**The call is always the same: `/issue-review #N`.** There is deliberately no command of its own per stage — which one applies, the skill reads from the title prefix. That applies interactively just as in night mode; the difference is only whether it asks before writing. Without a number the skill takes all `[Fachlich]` and `[Plan]` documents from the backlog that do not yet carry a marker of their stage. It only checks work packages with an explicit number: The normal case is Ready without a package review, and what a package does wrong is caught by the build gates and the code review. `[Idee]` is always excluded.
+**The call is always the same: `/issue-review #N`.** There is deliberately no command of its own per stage — which one applies, the skill reads from the title prefix. That applies interactively just as in night mode; the difference is only whether it asks before writing. Without a number the skill takes all `[Requirement]` and `[Plan]` documents from the backlog that do not yet carry a marker of their stage. It only checks work packages with an explicit number: The normal case is Ready without a package review, and what a package does wrong is caught by the build gates and the code review. `[Idea]` is always excluded.
 
 **Why upwards.** The reach of an error grows downwards: An error in the business requirement propagates into the plan, from there into every work package and into all code. Errors found earlier are cheaper to fix and prevent the most.
 
@@ -2175,20 +2219,20 @@ Which stage applies is decided by the title prefix, and every stage leaves its o
 ```
 
 ### Procedure
-<!-- de: 7aa8e1713bb6 -->
+<!-- de: 8c0a56865013 -->
 
-Pre-flight with `issue-review check`, then `issue check-form <id>`, then `issue-review roles --stufe <stufe> --author <modell>` for roles and staffing. Every reviewer gets the same body and its role: `form-beobachtbarkeit` and `abgrenzung` for the business requirement, `architektur-bestand` (the senior who knows the existing code) and `schnitt-abhaengigkeiten` for the plan, `pruefbarkeit` for the work package; every role carries the cut question "What can go?". The plan reviewer additionally gets the body of the card named in `Fachliche Quelle:` — from the board, never from the conversation — and the path of a `Vorlage:` line; with it, it also checks whether the plan delivers every goal, every acceptance criterion and every answered question of the source. Without a source this input is dropped.
+Pre-flight with `issue-review check`, then `issue check-form <id>`, then `issue-review roles --stage <stufe> --author <modell>` for roles and staffing. Every reviewer gets the same body and its role: `form-beobachtbarkeit` and `abgrenzung` for the business requirement, `architektur-bestand` (the senior who knows the existing code) and `schnitt-abhaengigkeiten` for the plan, `pruefbarkeit` for the work package; every role carries the cut question "What can go?". The plan reviewer additionally gets the body of the card named in `Fachliche Quelle:` — from the board, never from the conversation — and the path of a `Vorlage:` line; with it, it also checks whether the plan delivers every goal, every acceptance criterion and every answered question of the source. Without a source this input is dropped.
 
-**The review brief is created in the kit, not in the session.** `node .claude/kit/board.mjs issue-review pruefauftrag --rolle <rolle> --id <id> --datei <pfad>` assembles it from the role file, the list of finding types and the unchanged body, for the plan together with source and template, and writes it to a file outside the project. The session copies no role text and fills in nothing itself. A Claude reviewer starts as the agent `kit-pruefer` with the model from `reviewers[].model`; its brief reads only `Lies <pfad>`. A third-party reviewer starts via `node .claude/kit/board.mjs issue-review start --reviewer <name> --auftrag <pfad> --ausgabe <pfad>`: the kit passes the brief via stdin, appends the read boundary to the command line and writes the answer to the output file. If either call fails — for instance with `rolle-fehlt` or `keine-lesegrenze` —, this reviewer drops out, the failure appears in line 2 of the findings comment, and the review continues without it. There is no fallback with a self-written prompt.
+**The review brief is created in the kit, not in the session.** `node .claude/kit/board.mjs issue-review review-brief --role <rolle> --id <id> --file <pfad>` assembles it from the role file, the list of finding types and the unchanged body, for the plan together with source and template, and writes it to a file outside the project. The session copies no role text and fills in nothing itself. A Claude reviewer starts as the agent `kit-pruefer` with the model from `reviewers[].model`; its brief reads only `Lies <pfad>`. A third-party reviewer starts via `node .claude/kit/board.mjs issue-review start --reviewer <name> --brief <pfad> --output <pfad>`: the kit passes the brief via stdin, appends the read boundary to the command line and writes the answer to the output file. If either call fails — for instance with `rolle-fehlt` or `keine-lesegrenze` —, this reviewer drops out, the failure appears in line 2 of the findings comment, and the review continues without it. There is no fallback with a self-written prompt.
 
-The findings go as a comment `## <Stufe>-Review, Runde 1` (review, round 1) to the document. If not a single reviewer ran, `befunde.mjs pruefen` reports the entry `keine-pruefer`, and `review:fertig` is not set: the stage then counts as not reviewed. Then the calling session works in every finding or rejects it with one sentence, according to the rule "decide instead of asking" (Entscheiden statt fragen) from `CLAUDE-workflow.md`: interactively after a word of approval, unattended directly; only a finding of the stop class halts and marks the document with `kit:klaeren`. The new body goes via `issue update`, together with the marker line of the stage — unattended with the addition `, Nachtlauf` (night run) — and a comment `## Einarbeitung, Runde 1` (incorporation, round 1) with the list adopted / rejected and reason. One round, no second: Further rounds, in our experience, find matters of taste.
+The findings go as a comment `## <Stufe>-Review, Runde 1` (review, round 1) to the document. If not a single reviewer ran, `findings.mjs check` reports the entry `keine-pruefer`, and `review:done` is not set: the stage then counts as not reviewed. Then the calling session works in every finding or rejects it with one sentence, according to the rule "decide instead of asking" (Entscheiden statt fragen) from `CLAUDE-workflow.md`: interactively after a word of approval, unattended directly; only a finding of the stop class halts and marks the document with `kit:clarify`. The new body goes via `issue update`, together with the marker line of the stage — unattended with the addition `, Nachtlauf` (night run) — and a comment `## Einarbeitung, Runde 1` (incorporation, round 1) with the list adopted / rejected and reason. One round, no second: Further rounds, in our experience, find matters of taste.
 
 ### Configuration
-<!-- de: 0f25ed0f863c -->
+<!-- de: 4f9bbc37aa30 -->
 
 The installer puts `.claude/workflow.config.example.json` next to the real config; take the `issueReview` block from it. **The installer does not write it itself** — `reviewers` depends on which CLIs are on the machine, and `pairs` is a decision. A reviewer is an adapter: `kind: claude` runs as the reader agent `kit-pruefer` with the configured `model`, `kind: command` as any CLI with the prompt via stdin and the answer on stdout — Codex, Gemini, a script of your own. Who reviews whom is in `pairs`; otherwise the rule "the foremost reviewers that are not the author" applies. The assignment is shown by `issue-review matrix`.
 
-**Roles as files.** Every role has its wording in exactly one place: `kit/rollen/<rolle>.md` — `form-beobachtbarkeit`, `abgrenzung`, `architektur-bestand`, `schnitt-abhaengigkeiten`, `pruefbarkeit` and `code-review` for `/review`. Installer and update place the files under `.claude/kit/rollen/`. Whoever changes the wording of a role changes it for every reviewer of that role, whatever the model. If a role file is missing, only that reviewer drops out. `issue-review roles` and `issue-review check` also name the role files.
+**Roles as files.** Every role has its wording in exactly one place: `kit/rollen/<rolle>.md` — `form-beobachtbarkeit`, `abgrenzung`, `architektur-bestand`, `schnitt-abhaengigkeiten`, `pruefbarkeit` and `code-review` for `/kit-review`. Installer and update place the files under `.claude/kit/rollen/`. Whoever changes the wording of a role changes it for every reviewer of that role, whatever the model. If a role file is missing, only that reviewer drops out. `issue-review roles` and `issue-review check` also name the role files.
 
 **Read only, for every reviewer.** A Claude reviewer runs as the agent `kit-pruefer`, whose tools are restricted to `Read, Grep, Glob`: it can read and search, but cannot write a file or run a command, even if its brief asks for it. A third-party reviewer gets the same boundary through its tool's read-only switch, the **read boundary** (Lesegrenze):
 
@@ -2343,22 +2387,22 @@ If number and comments do not matter, it also works without the tool: read `gh i
 | `local` | none | none |
 
 ### Board adapter
-<!-- de: 27679803a2ff -->
+<!-- de: 9fbaf2a14946 -->
 
 All board operations run through `.claude/kit/board.mjs`. The adapter has two main areas:
 
-- **Issue tracker interface:** `issue create`, `issue list`, `issue get`, `issue activity`, `issue move`, `issue comment`, `issue melden`, `issue auftrag`, `issue ursprung`, `issue epics`
-- **Code host interface:** `code repo-name`, `code pr`, `code schutz`
+- **Issue tracker interface:** `issue create`, `issue list`, `issue get`, `issue activity`, `issue move`, `issue comment`, `issue report`, `issue brief`, `issue origin`, `issue epics`
+- **Code host interface:** `code repo-name`, `code pr`, `code protection`
 
-**`code schutz` sets up protection of the main and release branches and reports on it.** Five actions, each with JSON on stdout:
+**`code protection` sets up protection of the main and release branches and reports on it.** Five actions, each with JSON on stdout:
 
-- `node .claude/kit/board.mjs code schutz status` — the state as `{ geschuetzt, fehlt, ungeprueft }`. `fehlt` names every missing part, for example a ruleset that is not set or is suspended. `ungeprueft` is `null` or `{ commit, kommando }`: the state on the main branch that lacks green evidence from the build service, together with the command that catches up on it. Exit 0 even with `geschuetzt: false`, as with `code ci-status`.
-- `code schutz einrichten [--zweig <z>]` — probe on the check branch, then the rulesets; result `scharf`, `anleitung`, `offen` or `nicht moeglich` (see [Installation](#installation)). Without `--zweig`, `pushPruefung.zweig` applies, otherwise `kit-pruefung`.
-- `code schutz aussetzen --in <pfad>` — suspends the ruleset of the main branch, only with a green run of stage `push` in the worktree `<pfad>`; part of the emergency path of [/push-main](#push-main).
-- `code schutz wiederherstellen` — switches the ruleset back on. If it fails, protection stays suspended, and the message names the command to repeat.
-- `code schutz nachpruefen [--zweig <z>]` — has the build service check the current state of the main branch afterwards via the check branch, for example after the emergency path.
+- `node .claude/kit/board.mjs code protection status` — the state as `{ geschuetzt, fehlt, ungeprueft }`. `fehlt` names every missing part, for example a ruleset that is not set or is suspended. `ungeprueft` is `null` or `{ commit, kommando }`: the state on the main branch that lacks green evidence from the build service, together with the command that catches up on it. Exit 0 even with `geschuetzt: false`, as with `code ci-status`.
+- `code protection setup [--branch <z>]` — probe on the check branch, then the rulesets; result `scharf`, `anleitung`, `offen` or `nicht moeglich` (see [Installation](#installation)). Without `--branch`, `pushPruefung.zweig` applies, otherwise `kit-pruefung`.
+- `code protection suspend --in <pfad>` — suspends the ruleset of the main branch, only with a green run of stage `push` in the worktree `<pfad>`; part of the emergency path of [/push-main](#push-main).
+- `code protection restore` — switches the ruleset back on. If it fails, protection stays suspended, and the message names the command to repeat.
+- `code protection verify [--branch <z>]` — has the build service check the current state of the main branch afterwards via the check branch, for example after the emergency path.
 
-`einrichten`, `aussetzen` and `nachpruefen` push or change the code host. With `KIT_AGENT_MODEL` set, i.e. unattended, they therefore abort; `status` stays allowed. The night never pushes, and the lock sits in the tool rather than only in the skill text.
+`setup`, `suspend` and `verify` push or change the code host. With `KIT_AGENT_MODEL` set, i.e. unattended, they therefore abort; `status` stays allowed. The night never pushes, and the lock sits in the tool rather than only in the skill text.
 
 **`issue list` returns work packages, `issue epics` returns initiatives.** The separation is strict: Initiatives never appear in `issue list`, not even without a status filter. They are brackets over several cards, not work — whoever counts them in a list of open issues takes them for work packages with a thin description. `issue epics` returns them with their short code and progress (`#360 [HER] … 8/8`), that is with the information an initiative actually carries.
 
@@ -2366,19 +2410,19 @@ All board operations run through `.claude/kit/board.mjs`. The adapter has two ma
 
 **Comments carry their ID.** Every entry in `comments` of `issue get` has the fields `author`, `body`, `createdAt` and `id`. `id` is the identifier under which the comment can be replaced on the platform: for GitHub the numeric REST ID from the anchor `#issuecomment-<n>` (not the GraphQL node ID `IC_…`), for GitLab the note ID, for toolbox the comment ID of the API, for the local tracker the running number of the appended `**Kommentar**` block. If the platform provides none, it says `id: null`. `issue get` remains lenient here: If the comment route is not reachable, the card comes with `comments: []` and a hint on stderr.
 
-**`issue melden` files the completion report and moves to In review — in one call.** `node .claude/kit/board.mjs issue melden <id> --text '<bericht>'` replaces the sequence of `issue move … in_review`, intermediate file and `issue comment --text-file`. The output is `{ "ok": true, "id", "bericht": "angelegt" | "ersetzt" | "unveraendert", "status": "in_review" }` (created, replaced, unchanged). A `'` in the report is written in the shell as `'\''`; the command files the text unchanged. `--text-file <pfad>` remains for manual calls.
+**`issue report` files the completion report and moves to In review — in one call.** `node .claude/kit/board.mjs issue report <id> --text '<bericht>'` replaces the sequence of `issue move … in_review`, intermediate file and `issue comment --text-file`. The output is `{ "ok": true, "id", "bericht": "angelegt" | "ersetzt" | "unveraendert", "status": "in_review" }` (created, replaced, unchanged). A `'` in the report is written in the shell as `'\''`; the command files the text unchanged. `--text-file <pfad>` remains for manual calls.
 
-- **Idempotent per run.** The filed report carries as its last line `Bericht-Lauf: <stempel>`. The stamp is the time of the card's most recent move to `in_progress` from `.claude/bewegungen.tsv` — not from `.claude/wegmarken.tsv`, which `sitzung melden --complete` empties. If the command already finds one with the same line among the comments, it writes nothing if the content is the same (`unveraendert`) and replaces it otherwise (`ersetzt`); otherwise it creates one (`angelegt`). Reports with a different `Bericht-Lauf` line, that is from earlier runs, remain untouched. If there is no `in_progress` move of the card at all, the call ends with exit 1 without writing anything.
+- **Idempotent per run.** The filed report carries as its last line `Bericht-Lauf: <stempel>`. The stamp is the time of the card's most recent move to `in_progress` from `.claude/bewegungen.tsv` — not from `.claude/wegmarken.tsv`, which `session report --complete` empties. If the command already finds one with the same line among the comments, it writes nothing if the content is the same (`unveraendert`) and replaces it otherwise (`ersetzt`); otherwise it creates one (`angelegt`). Reports with a different `Bericht-Lauf` line, that is from earlier runs, remain untouched. If there is no `in_progress` move of the card at all, the call ends with exit 1 without writing anything.
 - **First the filing, then the move.** The comments are read strictly: If that is not possible, the call ends with exit 1, writes no report and leaves the card where it is — a state read as empty would otherwise lead to a duplicate report. If the filing fails, the card stays in In progress. Only after the filing does the command move to In review and record the move like `issue move` in `.claude/wegmarken.tsv` and `.claude/bewegungen.tsv`.
-- **Splitting.** For reports over 6,000 characters, `issue melden <id> --teil <n> --text '…'` writes only piece `n` to `.claude/berichte/<id>.<n>.md`, without board access; a repetition overwrites the piece. `issue melden <id>` without `--text` assembles the pieces in numerical order, each on a new line, files, moves and only then clears the pieces. If the completion fails, they stay in place, and the repetition is the same completion call. The command rejects `--text` alongside existing pieces of the same card. `.claude/berichte/` is in the installer's `.gitignore` block and is exempt from the night runner's leftover guard.
+- **Splitting.** For reports over 6,000 characters, `issue report <id> --part <n> --text '…'` writes only piece `n` to `.claude/berichte/<id>.<n>.md`, without board access; a repetition overwrites the piece. `issue report <id>` without `--text` assembles the pieces in numerical order, each on a new line, files, moves and only then clears the pieces. If the completion fails, they stay in place, and the repetition is the same completion call. The command rejects `--text` alongside existing pieces of the same card. `.claude/berichte/` is in the installer's `.gitignore` block and is exempt from the night runner's leftover guard.
 - **toolbox without PATCH route.** An older Toolbox instance does not know `PATCH /api/kanban/items/<item>/comments/<kommentar>`. If a changed report has to be replaced there, the call ends with exit 1, the message names the missing route, and no second report is created. The card stays in In progress. An unchanged report does not need the route.
 
-**`issue ursprung` evaluates whether a plan is through.** `node .claude/kit/board.mjs issue ursprung <plan-nr>` returns as JSON whether the plan is through, which packages are missing and where the plan document and business requirement belong. The command is purely reading: It moves no card and writes no comment.
+**`issue origin` evaluates whether a plan is through.** `node .claude/kit/board.mjs issue origin <plan-nr>` returns as JSON whether the plan is through, which packages are missing and where the plan document and business requirement belong. The command is purely reading: It moves no card and writes no comment.
 
-**`issue auftrag` returns what an implementation needs before the start — in one call.** `node .claude/kit/board.mjs issue auftrag <id>` replaces the follow-up queries about column, prefix, label, protected files and dependencies. The command is purely reading: It moves no card and writes no comment.
+**`issue brief` returns what an implementation needs before the start — in one call.** `node .claude/kit/board.mjs issue brief <id>` replaces the follow-up queries about column, prefix, label, protected files and dependencies. The command is purely reading: It moves no card and writes no comment.
 
-- **Verdict and consequence.** The check runs in this order: If the card is not in Ready, the verdict is „darf nicht beginnen“ (must not begin) with consequence `bleibt` and the reason „liegt nicht (mehr) in Ready“ (is not (or no longer) in Ready). If the title carries `[Fachlich]`, `[Idee]`, `[Plan]` or `[Mensch]` or the card the label `kit:klaeren`, the consequence is `backlog`, and the output contains verbatim the comment the session attaches to the card before moving it to the backlog. The same text is in the night runner with the prefix `Nachtlauf: `. Next come the protected files, in the same order as in the night runner. If the card carries the label `kit:geschuetzt`, the consequence is `backlog` with a comment of its own: A human action is waiting, and the label stays, because only the human may remove it. If the package names a protected file in its task or acceptance criterion and the human has not released it, the consequence is `geschuetzt`. The comment is then verbatim the halt text that `issue check-geschuetzt` returns as `kommentar`, still without the label line. The reason names the steps: card to backlog, `issue label add <id> kit:geschuetzt`, in case of a failure report it and carry on, then the comment with the last line `Label kit:geschuetzt gesetzt` or `Label kit:geschuetzt nicht gesetzt` (label set, label not set). A released card goes on to the prerequisites. If a prerequisite is unfulfilled or cannot be determined, the consequence is `bleibt` again. Otherwise the verdict is „darf beginnen“ (may begin) with consequence `beginnen`.
-- **`--spalte in_progress`** expects the card in In progress instead of Ready — for `/implement-done` and the continuation after `/implement-test`.
+- **Verdict and consequence.** The check runs in this order: If the card is not in Ready, the verdict is „darf nicht beginnen“ (must not begin) with consequence `bleibt` and the reason „liegt nicht (mehr) in Ready“ (is not (or no longer) in Ready). If the title carries `[Requirement]`, `[Idea]`, `[Plan]` or `[Human]` or the card the label `kit:clarify`, the consequence is `backlog`, and the output contains verbatim the comment the session attaches to the card before moving it to the backlog. The same text is in the night runner with the prefix `Nachtlauf: `. Next come the protected files, in the same order as in the night runner. If the card carries the label `kit:protected`, the consequence is `backlog` with a comment of its own: A human action is waiting, and the label stays, because only the human may remove it. If the package names a protected file in its task or acceptance criterion and the human has not released it, the consequence is `geschuetzt`. The comment is then verbatim the halt text that `issue check-protected` returns as `kommentar`, still without the label line. The reason names the steps: card to backlog, `issue label add <id> kit:protected`, in case of a failure report it and carry on, then the comment with the last line `Label kit:protected gesetzt` or `Label kit:protected nicht gesetzt` (label set, label not set). A released card goes on to the prerequisites. If a prerequisite is unfulfilled or cannot be determined, the consequence is `bleibt` again. Otherwise the verdict is „darf beginnen“ (may begin) with consequence `beginnen`.
+- **`--column in_progress`** expects the card in In progress instead of Ready — for `/implement-done` and the continuation after `/implement-test`.
 - **Task.** Title, complete body, labels, column and the card's comments. A returned card thus shows its review findings.
 - **Plan decisions.** The command finds the plan via the whole line `Plan: Issue #M` in the package. The context line `Plan-Entscheidungen: E1, E3` selects. Output is the wording of each named entry from `## Architektonische Entscheidungen` of the plan: the line `- E<n>:` together with its indented continuation lines. `Plan-Entscheidungen: Keine.` means the package invokes no decision. If the line is missing (legacy stock), all E entries of the plan come with the explicit sentence that the package names no selection. Only this one line is searched, not the free text of the package.
 - **Business occasion.** The source is the line `Fachliche Quelle: Issue #N` in the package, otherwise the same line in the plan. Output are `## Ziel` and `## Fachliche Akzeptanzkriterien` of the source verbatim (code blocks in them remain content) and the sentence „Voller Text: `node .claude/kit/board.mjs issue get <N>`“ (full text: …). An implementation does not have to read the rest of the text.
@@ -2388,18 +2432,18 @@ All board operations run through `.claude/kit/board.mjs`. The adapter has two ma
 - **Output.** The default is Markdown with seven `##` parts in fixed order: Urteil, Aufgabe, Plan-Entscheidungen, Fachlicher Anlass, Geschwister, Voraussetzungen, Lücken (verdict, task, plan decisions, business occasion, siblings, prerequisites, gaps). Body, comments, goal and criteria are fenced in code blocks. `--json` returns the same parts as fields (`urteil`, `aufgabe`, `planEntscheidungen` with `plan`, `auswahl`, `hinweis`, `eintraege`; `fachlicherAnlass` with `quelle`, `herkunft`, `ziel`, `kriterien`, `vollerText`; `geschwister` with `plan`, `hinweis`, `karten`; `voraussetzungen`, `luecken`). This is the only exception to "output: JSON on stdout".
 - **Exit code.** 0 also for „darf nicht beginnen“, because that is information and not an error. 1 only if the package itself cannot be read.
 
-Only the trackers **local** and **toolbox** know initiatives. With **github** and **gitlab**, `issue epics` rejects with a message naming both capable trackers — there the failure is the normal case, and callers like `/kontext` skip it silently.
+Only the trackers **local** and **toolbox** know initiatives. With **github** and **gitlab**, `issue epics` rejects with a message naming both capable trackers — there the failure is the normal case, and callers like `/session-start` skip it silently.
 
-**Form check: `issue check-form`.** The mechanical gates from the registers `CLAUDE-Fachplan.md` and `CLAUDE-Plan.md` are checked by a command, not a model: `node .claude/kit/board.mjs issue check-form <id>` against a card, or `issue check-form --body-file <pfad> --title "<titel>"` against a file before it is created. The stage comes from the title prefix. Checked are, for `[Fachlich]`, F1, F2, F6, F7, F9 and F11, for `[Plan]` P1, P2, P3, P6 and P12, for the work package (with or without `[Task]`, likewise for `[Mensch]`) I1 to I5: the four sections in order with `## Abhängigkeiten` last, `Autor-Modell:` in the context, dependencies as `Keine.` or `#N`, no origin line in the dependencies section, and, with a line `Vorlage: <Pfad> — verbindlich` in the context, an acceptance via screenshot in the acceptance criterion. Added to these are I7 to I9: `## Aufgabe` names at least one file as a backtick path (I7), no named file is protected (I8, against the locks from the settings of the project root; a path immediately followed by `(nur genannt)` (only mentioned) is a mere mention and counts in this line neither for I8 nor for I7 — for instance ``die Liste `AUSNAHMEN` um `.claude/settings.json` (nur genannt) ergänzen``; the same exception applies in the night runner's gate and in `issue auftrag`), and `## Aufgabe` does not name the installed copy under `.claude/kit/` instead of the source (I9). A `[Mensch]` package passes all three — its task lies outside the repository. In the form stage of the chain, I8 is not a correction case: The violation is logged, and the card runs into the gate for protected files in the implementation stage; I7 and I9 are corrected by the chain. Which protected files a package names, whether it is released and what the halt comment says is returned by `issue check-geschuetzt <id>`; `--pfad <pfad>` (also several times) adds a path that was rejected when writing. Reading is done without code blocks and with umlauts in both spellings. The output is always JSON with `ok`, `stufe` and `verstoesse`; in case of violations the command ends with exit 1, a rejected call carries `fehler`. The `[Urteil]` gates remain the reviewer's business, and the command never writes to the board. For `[Plan]` the test hints are added: If the plan lists in `## Betroffene Bereiche` or `## Geplante Änderungen` a building block that has a test of its own, and it names this test nowhere, there is one entry `{ baustein, test, meldung }` under `hinweise` per unnamed test. Which tests belong to a building block is said by the locations of the setting `testAblagen` (without it the defaults for TypeScript and Java, `[]` switches off); the stock is the versioned files (`git ls-files`). For the work package, `hinweise` holds the dependency hints `{ art, nummer, stelle, meldung }` with `art` `schreibweise` or `dokument`; `issue create` and `issue update` return them after writing as well (see [/issues](#issues)). The `hinweise` are not part of `ok` and never lead to exit 1, and without a hit the key is missing entirely.
+**Form check: `issue check-form`.** The mechanical gates from the registers `CLAUDE-Fachplan.md` and `CLAUDE-Plan.md` are checked by a command, not a model: `node .claude/kit/board.mjs issue check-form <id>` against a card, or `issue check-form --body-file <pfad> --title "<titel>"` against a file before it is created. The stage comes from the title prefix. Checked are, for `[Requirement]`, F1, F2, F6, F7, F9 and F11, for `[Plan]` P1, P2, P3, P6 and P12, for the work package (with or without `[Task]`, likewise for `[Human]`) I1 to I5: the four sections in order with `## Abhängigkeiten` last, `Autor-Modell:` in the context, dependencies as `Keine.` or `#N`, no origin line in the dependencies section, and, with a line `Vorlage: <Pfad> — verbindlich` in the context, an acceptance via screenshot in the acceptance criterion. Added to these are I7 to I9: `## Aufgabe` names at least one file as a backtick path (I7), no named file is protected (I8, against the locks from the settings of the project root; a path immediately followed by `(nur genannt)` (only mentioned) is a mere mention and counts in this line neither for I8 nor for I7 — for instance ``die Liste `AUSNAHMEN` um `.claude/settings.json` (nur genannt) ergänzen``; the same exception applies in the night runner's gate and in `issue brief`), and `## Aufgabe` does not name the installed copy under `.claude/kit/` instead of the source (I9). A `[Human]` package passes all three — its task lies outside the repository. In the form stage of the chain, I8 is not a correction case: The violation is logged, and the card runs into the gate for protected files in the implementation stage; I7 and I9 are corrected by the chain. Which protected files a package names, whether it is released and what the halt comment says is returned by `issue check-protected <id>`; `--path <pfad>` (also several times) adds a path that was rejected when writing. Reading is done without code blocks and with umlauts in both spellings. The output is always JSON with `ok`, `stufe` and `verstoesse`; in case of violations the command ends with exit 1, a rejected call carries `fehler`. The `[Urteil]` gates remain the reviewer's business, and the command never writes to the board. For `[Plan]` the test hints are added: If the plan lists in `## Betroffene Bereiche` or `## Geplante Änderungen` a building block that has a test of its own, and it names this test nowhere, there is one entry `{ baustein, test, meldung }` under `hinweise` per unnamed test. Which tests belong to a building block is said by the locations of the setting `testAblagen` (without it the defaults for TypeScript and Java, `[]` switches off); the stock is the versioned files (`git ls-files`). For the work package, `hinweise` holds the dependency hints `{ art, nummer, stelle, meldung }` with `art` `schreibweise` or `dokument`; `issue create` and `issue update` return them after writing as well (see [/issues](#issues)). The `hinweise` are not part of `ok` and never lead to exit 1, and without a hit the key is missing entirely.
 
-**Templates through the chain.** If the human brings a design draft, a mockup or a sketch, `/fachplan`, `/techplan` and `/issues` carry it on as the line `Vorlage: <Pfad> — verbindlich | Anregung` (template: binding | suggestion): in the goal of the business plan, in the head of the plan, in the context of every package that touches a view. "Binding" means: The plan decides no design question against the template, every affected package names the place in the template and is accepted via a screenshot next to it, and `/fachplan` asks whether the project's design source should be switched over first. Without this trace a template evaporates between the stages — all checks green, and the view looks as before.
+**Templates through the chain.** If the human brings a design draft, a mockup or a sketch, `/requirement`, `/techplan` and `/issues` carry it on as the line `Vorlage: <Pfad> — verbindlich | Anregung` (template: binding | suggestion): in the goal of the business plan, in the head of the plan, in the context of every package that touches a view. "Binding" means: The plan decides no design question against the template, every affected package names the place in the template and is accepted via a screenshot next to it, and `/requirement` asks whether the project's design source should be switched over first. Without this trace a template evaporates between the stages — all checks green, and the view looks as before.
 
 The skills call only the adapter — they know nothing about `gh` or `glab`. You can change `issueTracker` and `codeHost` in the config at any time; all skills adapt on their next call.
 
 **Processing order = board order.** `issue list --status <spalte>` returns the issues in the order of the board column (top first), not numerically — so you control the processing of `/implement-ready` by drag and drop in the Ready column. Implemented per tracker: GitHub via the manual project order of `gh project item-list` (applies to the standard board view; a view with its own sorting displays differently from what the API returns), GitLab via `--order relative_position`, the own Kanban via the column position of the API. Two deliberate exceptions: the local file tracker knows no positions and stays numerical, and `issue list` without a status filter stays stably numerical everywhere (there is no board order across columns). Consequence: The processing order depends on the board state and is no longer deterministically numerical — that is intended.
 
 #### Origin on the board: `--derived-from`
-<!-- de: 1ac69762b21f -->
+<!-- de: 523d3b5f6f1d -->
 
 `issue create` optionally accepts `--derived-from <nummer>` and sends the **project-wide card number** of the **nearest ancestor** along as the field `derivedFrom`. That way the board knows the chain business plan → plan → work package as data and does not have to piece it together from description texts.
 
@@ -2407,9 +2451,9 @@ Only **one** reference is ever set, the one to the next higher stage — the res
 
 | Skill | Reference |
 |---|---|
-| `/fachplan` | **never** — the business requirement is the root and has no ancestor |
+| `/requirement` | **never** — the business requirement is the root and has no ancestor |
 | `/task` | **never** — a `[Task]` has no ancestor; it stands in no chain at all, not even as a root |
-| `/techplan` | to the `[Fachlich]` issue if the plan came from `/techplan #N`; for a plan from the chat none at all |
+| `/techplan` | to the `[Requirement]` issue if the plan came from `/techplan #N`; for a plan from the chat none at all |
 | `/issues` | to the `[Plan]` issue, failing that to the business issue, otherwise none at all |
 
 The adapter checks the form before every network call: Whatever is not a positive integer ends with exit 1 — explicitly also the **bare flag** without a value, which would otherwise pass as `1`. Whether the number exists, points to the card itself or closes a cycle is checked by the server; the upper limit is its business as well and is deliberately not rebuilt here.
@@ -2659,7 +2703,7 @@ In a new project you only need to run the installer or copy `workflow.config.jso
 If several projects work against the same Toolbox/kanban-kit tracker, each project gets its own project/board-bound token: via the `TBX_TOKEN` environment variable or via `toolbox.tokenFile` in the config (gitignored file, no plain-text token in the shared `workflow.config.json`). Precedence and an example are in the section [Toolbox (private setup)](#toolbox-private-setup).
 
 ## Troubleshooting
-<!-- de: e73e098a89dd -->
+<!-- de: 5e2f919f616e -->
 
 **The skills do not show up in `/help`.**
 Did you restart Claude Code after the installation? The skills are loaded at start. Also check whether the files are in the right directory: `~/.claude/skills/` for a global installation, `.claude/skills/` for a project-local one.
@@ -2667,19 +2711,19 @@ Did you restart Claude Code after the installation? The skills are loaded at sta
 **`/implement-ready` does nothing or reports "Ready ist leer".**
 ("Ready is empty".) At least one issue must be in the Ready column (GitHub) or marked with the label `~Ready` (GitLab). The skill processes only Ready, it does not pull any issues forward from the backlog.
 
-**`/review` produces thin or overly general findings.**
+**`/kit-review` produces thin or overly general findings.**
 Check `reviewScope` in the config. With `diff` the reviewer sees only the changed lines. For larger refactorings, switch to `full`. In very large repos `full` can overload the context window; then better use `diff` and add manually selected file paths in the review prompt.
 
 **`/push-main` does not happen, or the AI does not ask for it.**
 The skill is locked against autonomous invocation. You have to type the exact trigger phrase (by default `push main`). An earlier approval in the same session does not apply to new commits.
 
-**`/kontext` or `/document` reports an error.**
+**`/session-start` or `/document` reports an error.**
 Check whether `kontext.config.json` exists (globally in `~/.claude/` or locally in `.claude/`). Both skills also run without a vault in degraded mode. If you use `codeHost: github` or `issueTracker: github`, `gh` must be authenticated. If you use `gitlab`, `glab` needs `auth login`. In local mode there is no external CLI dependency.
 
 ## kontext.config.json: reference
-<!-- de: aa2a976ed958 -->
+<!-- de: 1781f0f6e841 -->
 
-Configures the `/kontext` skill (session start) and the `/document` skill (session end). Both read the same file, so you specify the vault path and always files only once.
+Configures the `/session-start` skill (session start) and the `/document` skill (session end). Both read the same file, so you specify the vault path and always files only once.
 
 ### Why two config files?
 <!-- de: dff531742346 -->
@@ -2689,14 +2733,14 @@ Configures the `/kontext` skill (session start) and the `/document` skill (sessi
 `kontext.config.json` is personal: your memory vault, your always files. It points to your local infrastructure and does not belong in the repo. Two developers in the same repo have different vaults and different profile files.
 
 ### Storage locations
-<!-- de: 2f74f211b749 -->
+<!-- de: 1f5f1feb8493 -->
 
 | Path | Purpose |
 |------|-------|
 | `~/.claude/kontext.config.json` | Global, applies to all projects on this machine |
 | `.claude/kontext.config.json` | Project-local, overrides individual fields of the global config |
 
-The files are **merged field by field, local fields win**. Fields not in the local config are inherited from the global one. If no config is found, `/kontext` and `/document` run in degraded mode.
+The files are **merged field by field, local fields win**. Fields not in the local config are inherited from the global one. If no config is found, `/session-start` and `/document` run in degraded mode.
 
 ### Fields
 <!-- de: 3e7a8e755ff9 -->
@@ -2717,11 +2761,11 @@ The files are **merged field by field, local fields win**. Fields not in the loc
 The complete setup with vault structure and example config is in the [`kontext.config.json` reference](/en/kontext-config-reference); the principle behind it under [One file, one writer](#one-file-one-writer).
 
 ### What happens without a vault?
-<!-- de: c0319328d3e4 -->
+<!-- de: 1466735de85a -->
 
 If `vault` is not set or no config file is found, both skills continue in degraded mode:
 
-`/kontext` loads the initiatives via the board adapter and reads `projectDocs` from the repo. At the end a hint appears: "Kein Vault konfiguriert, arbeite ohne persistentes Memory." (no vault configured, working without persistent memory).
+`/session-start` loads the initiatives via the board adapter and reads `projectDocs` from the repo. At the end a hint appears: "Kein Vault konfiguriert, arbeite ohne persistentes Memory." (no vault configured, working without persistent memory).
 
 `/document` writes the daily log to `docs/session-log/YYYY-MM-DD.md` in the project directory. At the end: "Kein Vault konfiguriert. Log ins Projektverzeichnis geschrieben." (no vault configured, log written to the project directory).
 
@@ -2740,17 +2784,17 @@ find .claude -maxdepth 1 -name "CLAUDE-*" -type f
 Patterns without hits are silently skipped (no error, no abort).
 
 ### Checking paths without starting a skill
-<!-- de: f04a33734ee7 -->
+<!-- de: 14f28430438c -->
 
 The target paths are computed by the board adapter, not by the skill prompt:
 
 ```bash
-node .claude/kit/board.mjs kontext paths
+node .claude/kit/board.mjs context paths
 ```
 
 The output names the daily log, the project note and — in a multi-repo setup — the umbrella note, each as an absolute path. If they are correct here, they are correct in the skill as well. The project name is determined in the order `--project` → `project` from the config → repo name → directory name; if the repo name differs from the vault folder name, you enter the correct name as the `project` field in the local config.
 
-`node .claude/kit/board.mjs kontext last-log` additionally returns the most recent existing log entry of the same project — `/document` thereby picks up from the previous entry instead of starting from zero.
+`node .claude/kit/board.mjs context last-log` additionally returns the most recent existing log entry of the same project — `/document` thereby picks up from the previous entry instead of starting from zero.
 
 ### Examples
 <!-- de: bbc9c7de8965 -->

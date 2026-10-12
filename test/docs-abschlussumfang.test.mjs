@@ -121,7 +121,7 @@ test("der Unterabschnitt zeigt das Maven-Beispiel mit surefire, failsafe und jac
 
 test("der Unterabschnitt nennt die Bedingungen der Achse", () => {
   const text = dokuAbschnitt(/^### Abschluss und Veröffentlichen: `nichtBeimAbschluss`$/m);
-  assert.match(text, /`--abschluss/, "dass nur der Abschlusslauf auslaesst, fehlt");
+  assert.match(text, /`--finish/, "dass nur der Abschlusslauf auslaesst, fehlt");
   assert.match(text, /`paket`/, "dass die Achse an der Paketstufe gilt, fehlt");
   assert.match(text, /fehlende[sn]? Feld|[Oo]hne (das )?Feld/,
     "dass ein fehlendes Feld unveraendertes Verhalten bedeutet, fehlt");
@@ -133,7 +133,7 @@ test("der Unterabschnitt nennt die Bedingungen der Achse", () => {
 
 test("die Doku beschreibt die Verursachersuche des roten Push-Laufs", () => {
   const text = dokuAbschnitt(/^### Wer war es\? Die Verursachersuche$/m);
-  assert.match(text, /`--stufe push`|Stufe `push`/,
+  assert.match(text, /`--stage push`|Stufe `push`/,
     "dass die Suche nur an der Push-Stufe laeuft, fehlt");
   assert.match(text, /\(Issue #/, "das Muster der Kartennummer im Commit-Betreff fehlt");
   assert.match(text, /Refs #/, "das zweite Muster (`Refs #<n>`) fehlt");

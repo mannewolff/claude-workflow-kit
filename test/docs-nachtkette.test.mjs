@@ -21,12 +21,13 @@ import { KETTE_BUDGET_DEFAULTS as KETTE_VORGABEN } from "../kit/night/session.mj
 import { LABELS } from "../kit/board/namen.mjs";
 import { englisch } from "./helpers/labels.mjs";
 import { BERICHT_ANKER } from "../kit/night/bericht.mjs";
-import { KETTE_HALT_ANKER, REVIEW_FERTIG_LABEL, KETTE_UNGEPRUEFT_ANKER } from "../kit/night/kette.mjs";
+import { KETTE_HALT_ANKER, KETTE_UNGEPRUEFT_ANKER } from "../kit/night/kette.mjs";
 import { grundOhneArbeit } from "../kit/night/grundlagen.mjs";
 
 // Die Doku nennt das Variante-B-Label bis zu ihrer Umstellung (Plan #1548, eigenes Paket) unter
 // dem deutschen Namen; das Kit setzt seit Issue #1553 den englischen.
-const KETTE_BUDGET_DEFAULTS = { ...KETTE_VORGABEN, varianteBLabel: LABELS.durchziehen.de };
+const KETTE_BUDGET_DEFAULTS = { ...KETTE_VORGABEN, varianteBLabel: LABELS.durchziehen.en };
+const REVIEW_FERTIG_LABEL = LABELS.reviewFertig.en;
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
@@ -59,14 +60,14 @@ test("der Abschnitt nennt Geste, Bedingung, Ausgaenge, Rueckweg, Budget-Felder u
   const erwartet = [
     ["die Geste", "`kit:night`"],
     ["die Spalte der Kandidaten", "Backlog"],
-    ["den Ausschluss durch eine offene Entscheidung", "`kit:klaeren`"],
+    ["den Ausschluss durch eine offene Entscheidung", "`kit:clarify`"],
     ["den Ausgang fertig", "`fertig`"],
     // Issue #862: Eine Kette, deren bestellte Umsetzung ausblieb, ist weder gelungen noch
     // gescheitert. Wer den gelben Vorgang morgens am Brett sieht, sucht hier nach dem Wort.
     ["den Ausgang unvollstaendig", "`unvollstaendig`"],
     ["den Ausgang angehalten", "`angehalten`"],
     ["den Ausgang abgebrochen", "`abgebrochen`"],
-    ["das Flag des Modus", "--kette"],
+    ["das Flag des Modus", "--chain"],
     ["den Halt-Kommentar", `\`${KETTE_HALT_ANKER}\``],
     ["den Anker des Berichts", `\`${BERICHT_ANKER} <stempel>\``],
     ["den Config-Block", "`night.kette`"],
@@ -77,12 +78,12 @@ test("der Abschnitt nennt Geste, Bedingung, Ausgaenge, Rueckweg, Budget-Felder u
     ["die wartenden Berichte", ".claude/night-bericht-"],
     // Issue #1090 (E17): Der Befund des gescheiterten Vorflugs steht im Laufstand, nicht
     // mehr in einem eigenen Kommentar — der Wortlaut bleibt.
-    ["den Laufstand bei gescheitertem Vorflug", "`lauf:abgebrochen` mit `Kette nicht gestartet"],
+    ["den Laufstand bei gescheitertem Vorflug", "`run:aborted` mit `Kette nicht gestartet"],
     ["den Vorab-Stand", "Lauf angenommen um …, Vorabprüfung läuft"],
     ["die Pruefung als Voraussetzung", `\`${REVIEW_FERTIG_LABEL}\``],
     ["den Anker der uebersprungenen Pruefung", `\`${KETTE_UNGEPRUEFT_ANKER}\``],
     ["den Satz zum Verlauf", "Dieser Bericht ist Verlauf"],
-    ["das Label der Umsetzungsstufe", "`kit:durchziehen`"],
+    ["das Label der Umsetzungsstufe", "`kit:carry-through`"],
     ["die Umsetzungsstufe", "Variante B"],
     ["den Umsetzungs-Lock", "night-umsetzung.lock"],
   ];
@@ -134,7 +135,7 @@ test("der Abschnitt fuehrt den Plan als zweite Auftragsart mit Geste, Bedingunge
     ["die Geste am Plan", "`[Plan]`"],
     ["die Spalte der Kandidaten", "Backlog"],
     ["die erkennbare fachliche Herkunft", "Fachliche Quelle: Issue #"],
-    ["die wartende Entscheidung als Ausschluss", "`kit:klaeren`"],
+    ["die wartende Entscheidung als Ausschluss", "`kit:clarify`"],
     ["die Pruefung als Bedingung", `\`${REVIEW_FERTIG_LABEL}\``],
     ["die entfallende Stufe plan", "`plan`"],
     ["die entfallende Stufe review", "`review`"],
@@ -174,7 +175,7 @@ test("der Rueckweg aus dem Halt nennt seine Schritte und muendet im Plan-Auftrag
     ["die Entscheidung im Plan", "## Architektonische Entscheidungen"],
     ["den Sollwert der offenen Fragen", "`- Keine.`"],
     ["die erneute Pruefung", "/issue-review"],
-    ["das Abnehmen des Labels", "`kit:klaeren`"],
+    ["das Abnehmen des Labels", "`kit:clarify`"],
     ["das Kettenlabel am Plan", "an den Plan"],
     ["die Auftragsart der naechsten Kette", "Plan-Auftrag"],
   ]) {
@@ -199,9 +200,9 @@ test("die Allowlist fuer fremde Reviewer steht unter dem Abschnitt zur Kette", (
 
 // Dass night.mjs --help die Option --chain nennt, prueft ablauf-night-grundlagen-hilfe am
 // Programm (Issue #1235); hier steht nur die Seite der Doku.
-test("der dokumentierte Aufruf steht in der Doku: node .claude/kit/night.mjs --kette", () => {
+test("der dokumentierte Aufruf steht in der Doku: node .claude/kit/night.mjs --chain", () => {
   const abschnitt = dokuAbschnitt(ABSCHNITT);
-  assert.ok(abschnitt.includes("node .claude/kit/night.mjs --kette"), "der Aufruf steht nicht in der Doku");
+  assert.ok(abschnitt.includes("node .claude/kit/night.mjs --chain"), "der Aufruf steht nicht in der Doku");
 });
 
 // Die entfallenen Modi duerfen nirgends mehr als Weg genannt werden — eine Doku,
@@ -217,7 +218,7 @@ test("der Nachtbetrieb-Block der Vorlage nennt beide Routing-Labels und den Beri
   const idx = VORLAGE.indexOf("## Nachtbetrieb");
   assert.ok(idx >= 0, "kein Nachtbetrieb-Abschnitt in der Vorlage");
   const abschnitt = VORLAGE.slice(idx).split(/\n## /)[0];
-  for (const anker of ["`kit:night`", "`kit:nightrun`", "`kit:durchziehen`", "--chain", "Nachtbericht", "`night.kette`", "nebeneinander",
+  for (const anker of ["`kit:night`", "`kit:nightrun`", "`kit:carry-through`", "--chain", "Nachtbericht", "`night.kette`", "nebeneinander",
     // Seit Issue #898 nennt der Block auch die zweite Auftragsart.
     "`[Plan]`", "Plan-Auftrag"]) {
     // Der Regeltext nennt die Labels seit Issue #1571 englisch.
@@ -234,5 +235,5 @@ test("der Nachtbetrieb-Block der Vorlage nennt beide Routing-Labels und den Beri
 
 test("der /techplan-Skill nennt den Runner-Aufruf --chain", () => {
   assert.match(SKILL, /node \.claude\/kit\/night\.mjs --chain/);
-  assert.doesNotMatch(SKILL, /--stufe plan/);
+  assert.doesNotMatch(SKILL, /--stage plan/);
 });

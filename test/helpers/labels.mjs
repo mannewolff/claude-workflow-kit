@@ -18,7 +18,7 @@ const esc = (s) => s.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 
 /**
  * Eine Erwartung mit den englischen Label- und Praefixnamen statt der deutschen (Issue #1571):
- * Der Regeltext nennt nur noch die englischen, die Doku bis zu ihrer Umstellung die deutschen.
+ * Regeltext und Doku nennen nur noch die englischen (Issues #1571, #1572).
  * Nimmt einen Text oder einen regulaeren Ausdruck und gibt dasselbe zurueck.
  */
 export function englisch(wert) {

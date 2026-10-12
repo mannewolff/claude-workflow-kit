@@ -1,4 +1,4 @@
-// Vorlage und Dokumentation beschreiben kit:geschuetzt, das Gate vor dem Start, den Halt an
+// Vorlage und Dokumentation beschreiben kit:protected, das Gate vor dem Start, den Halt an
 // einer geschuetzten Datei und die Formgates I7 bis I9 (Issue #1055, Plan #987, Verifizierung
 // 13; fachliche Quelle #868).
 //
@@ -16,10 +16,9 @@ import { fileURLToPath } from "node:url";
 import { GESCHUETZT_ANKER } from "../kit/night/wartend.mjs";
 import { LABELS } from "../kit/board/namen.mjs";
 
-// Die Doku nennt das Label bis zu ihrer Umstellung (Plan #1548, eigenes Paket) unter dem
-// deutschen Namen; das Kit schreibt seit Issue #1552 den englischen, der Regeltext nennt ihn
-// seit Issue #1571.
-const GESCHUETZT_LABEL = LABELS.geschuetzt.de;
+// Das Kit schreibt das Label seit Issue #1552 englisch; der Regeltext nennt es seit Issue
+// #1571, die Doku seit Issue #1572 unter diesem Namen.
+const GESCHUETZT_LABEL = LABELS.geschuetzt.en;
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (pfad) => readFileSync(join(repoRoot, pfad), "utf-8");
@@ -29,7 +28,7 @@ const TEXTE = {
   "docs/dokumentation.md": lies("docs/dokumentation.md"),
 };
 // Je Text die Sprache, in der er die Labels nennt.
-const SPRACHE = { "templates/CLAUDE-workflow.md": "en", "docs/dokumentation.md": "de" };
+const SPRACHE = { "templates/CLAUDE-workflow.md": "en", "docs/dokumentation.md": "en" };
 
 for (const [name, text] of Object.entries(TEXTE)) {
   const label = LABELS.geschuetzt[SPRACHE[name]];
@@ -48,11 +47,11 @@ for (const [name, text] of Object.entries(TEXTE)) {
   });
 }
 
-test("[docs-1055] die Dokumentation nennt I7, I8, I9, issue check-geschuetzt samt --pfad und die Halt-Art geschuetzt", () => {
+test("[docs-1055] die Dokumentation nennt I7, I8, I9, issue check-protected samt --path und die Halt-Art geschuetzt", () => {
   const doku = TEXTE["docs/dokumentation.md"];
   for (const gate of ["I7", "I8", "I9"]) assert.match(doku, new RegExp(`\\b${gate}\\b`), `das Formgate ${gate} fehlt`);
-  assert.match(doku, /`issue check-geschuetzt <id>`/, "das Kommando issue check-geschuetzt fehlt");
-  assert.match(doku, /--pfad/, "der Schalter --pfad fehlt");
+  assert.match(doku, /`issue check-protected <id>`/, "das Kommando issue check-protected fehlt");
+  assert.match(doku, /--path/, "der Schalter --path fehlt");
   assert.match(doku, /Halt-Art „geschuetzt“|Art `geschuetzt`/, "die Halt-Art geschuetzt fehlt");
 });
 
