@@ -2,6 +2,17 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [4.2.4] - 2026-10-12
+- /groom in Regeltext, Doku und Nachbar-Skills (#1515)
+- Skill /groom mit Skill-Zahl und Kurzanleitung (#1514)
+- Kommando issue fragen: Grooming-Stand eines Fachplans lesen (#1513)
+- Grooming-Modul, Teil 2: Body-Prüfung und Vergleich von Kriterien und Nicht-Zielen (#1512)
+- Grooming-Modul, Teil 1: offene Fragen lesen, Einstieg und Stopp-Kommentar (#1511)
+- Texttabellen ziehen nach kit/texte/: Module unter kit/board/ (#1526)
+- Texttabellen ziehen nach kit/texte/: Module unter kit/night/ (#1525)
+- Texttabellen ziehen nach kit/texte/: Teil anlegen und Einzeldateien (#1524)
+- push main frischt die installierte Kopie nach dem Nachziehen auf (#1523)
+
 ## [4.2.3] - 2026-10-12
 - Versionsstempel lösen beim Nachweislauf keine Bereiche aus (#1521)
 - Schnelle Prüfungen laufen vor den gleichzeitigen (vorab) (#1519)

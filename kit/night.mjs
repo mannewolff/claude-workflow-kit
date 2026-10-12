@@ -162,7 +162,7 @@ import { homedir } from "node:os";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "4.2.3";
+const KIT_VERSION = "4.2.4";
 
 // ============================================================
 // Texte an den Menschen (Issue #1484, Plan #1420 E13/E14)

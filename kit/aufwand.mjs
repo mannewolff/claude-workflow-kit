@@ -68,7 +68,7 @@ const { text: textAusTabelle = (tabelle, schluessel, werte = {}) =>
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "4.2.3";
+const KIT_VERSION = "4.2.4";
 
 const CLAUDE_DIR = ".claude";
 const STAND_DATEI = "aufwand.json";
