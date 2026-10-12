@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { englisch } from "./helpers/labels.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
@@ -62,6 +63,8 @@ const ANGABEN = [
   ["den Vermerk 2. Versuch (E13)", /„2\. Versuch“/],
   ["dass ein gestorbener Lauf nicht wiederholt wird (E7, E13)", /gestorbene[rn]? Lauf wird nicht wiederholt/],
 ];
+// Der Regeltext nennt die Labels seit Issue #1571 englisch, die Doku bis zu ihrer Umstellung deutsch.
+const ANGABEN_VORLAGE = ANGABEN.map(([name, muster]) => [name, englisch(muster)]);
 
 // Das Geruest des Doku-Unterabschnitts: die Ueberschriften, unter die die folgenden Pakete
 // des Plans ihren Inhalt schreiben.
@@ -81,7 +84,7 @@ const LAUFSTAND_DOKU = abschnitt(abschnitt(DOKU, "## Nachtbetrieb"), "### Der La
 
 test("[docs-laufstand-1] der Nachtbetrieb-Abschnitt der Vorlage beschreibt den Laufstand", () => {
   assert.ok(NACHT_VORLAGE, "der Abschnitt '## Nachtbetrieb (optional)' fehlt in der Vorlage");
-  assert.deepEqual(fehlend(NACHT_VORLAGE, ANGABEN), [], "der Nachtbetrieb-Abschnitt der Vorlage nennt nicht alles");
+  assert.deepEqual(fehlend(NACHT_VORLAGE, ANGABEN_VORLAGE), [], "der Nachtbetrieb-Abschnitt der Vorlage nennt nicht alles");
 });
 
 test("[docs-laufstand-2] das Nachtbetrieb-Kapitel der Doku hat den Unterabschnitt 'Der Laufstand' samt Geruest", () => {
@@ -95,7 +98,7 @@ test("[docs-laufstand-2] das Nachtbetrieb-Kapitel der Doku hat den Unterabschnit
 
 test("[docs-laufstand-3] eine Kopie ohne eine Angabe wird als unvollstaendig erkannt", () => {
   for (const [ort, text, angaben] of [
-    ["Vorlage", NACHT_VORLAGE, ANGABEN],
+    ["Vorlage", NACHT_VORLAGE, ANGABEN_VORLAGE],
     ["Doku", LAUFSTAND_DOKU, [...ANGABEN, ...GERUEST]],
   ]) {
     for (const [name, muster] of angaben) {

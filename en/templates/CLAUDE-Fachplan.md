@@ -1,5 +1,5 @@
 # CLAUDE-Fachplan.md — Gates for the requirement
-<!-- de: 8a75555da6c3 -->
+<!-- de: 1b36309c30af -->
 
 **As of 2026-08-28.** Review by fable incorporated, open decisions made.
 
@@ -54,7 +54,7 @@ Applies to every `[maschinell]` gate and thus to every test that later comes fro
 ---
 
 ## F1 — The four sections, exactly once and in this order `[maschinell]`
-<!-- de: 6c0eedcd9560 -->
+<!-- de: d46addb7aa93 -->
 
 `## Goal`, `## Business acceptance criteria`, `## Non-goals`, `## Open questions for the PO`
 (in a German project `## Ziel`, `## Fachliche Akzeptanzkriterien`, `## Nicht-Ziele`,
@@ -157,7 +157,7 @@ check this gate.
 it from a discussion — and the requirement then has no unambiguous state.
 
 ## F9 — The root carries no origin line `[maschinell]`
-<!-- de: 3227c57010c5 -->
+<!-- de: 3791bd8453d3 -->
 
 Neither `Requirement: Issue #N` nor `Plan: Issue #M` (in a German project
 `Fachliche Quelle: Issue #N`).

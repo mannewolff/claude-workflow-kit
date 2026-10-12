@@ -1,32 +1,35 @@
 // Die englischen Prüfrollen unter en/kit/rollen/ tragen dieselben Formwörter der Befunde wie
-// die deutschen (Issue #1509, Plan #1420 E14, E17).
+// die deutschen (Issue #1509, Plan #1420 E14, E17), die Fundblock-Zeilen in ihrer englischen
+// Fassung (Issue #1571, Plan #1548 E19).
 //
-// `kit/findings.mjs check|buchen` liest die Funde der Prüfer in beiden Projektsprachen mit
-// denselben deutschen Formwörtern: den Marken, `Gegenprobe:` mit seinem Stand und `Art:`.
-// Eine englische Rolle, die sie übersetzte, brächte ihre Prüfer dazu, Funde zu schreiben, die
-// die Formprüfung abweist. Dazu müssen die Platzhalter, die die Montage einsetzt, dieselben sein.
+// `kit/findings.mjs check|record` liest die Funde der Prüfer in beiden Projektsprachen: die
+// Marken und `— nicht geprueft` deutsch, `Gegenprobe:`, `Art:` und `— geprueft, bestaetigt`
+// in beiden Fassungen aus dem Register (`MARKER`). Eine englische Rolle, die ein Formwort
+// anders übersetzte, brächte ihre Prüfer dazu, Funde zu schreiben, die die Formprüfung
+// abweist. Dazu müssen die Platzhalter, die die Montage einsetzt, dieselben sein.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { MARKER } from "../kit/board/namen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const deDir = join(repoRoot, "kit", "rollen");
 const enDir = join(repoRoot, "en", "kit", "rollen");
 const rollen = readdirSync(deDir).filter((d) => d.endsWith(".md")).sort();
 
-// Die Formwörter, die findings.mjs liest (E14), in der Schreibweise, die die Rollen vorgeben.
+// Die Formwörter, die findings.mjs liest (E14), in der Schreibweise, die die Rollen vorgeben:
+// je deutsches Formwort das der englischen Rolle. Die Fundblock-Zeilen kommen aus dem Register
+// (E19), die übrigen bleiben deutsch.
 const FORMWOERTER = [
-  "KRITISCH",
-  "BLOCKER",
-  "WICHTIG",
-  "HINWEIS",
-  "Gegenprobe:",
-  "— geprueft, bestaetigt",
-  "— nicht geprueft",
-  "Art:",
+  ["KRITISCH", "KRITISCH"],
+  ["BLOCKER", "BLOCKER"],
+  ["WICHTIG", "WICHTIG"],
+  ["HINWEIS", "HINWEIS"],
+  ...["gegenprobe", "geprueftBestaetigt", "art"].map((s) => [MARKER[s].de, MARKER[s].en]),
+  ["— nicht geprueft", "— nicht geprueft"],
 ];
 
 // findings.mjs nimmt den Stand mit und ohne Umlaute an (`geprüft, bestätigt`); verglichen
@@ -44,12 +47,12 @@ test("jede deutsche Rolle hat eine englische Fassung unter en/kit/rollen/", () =
   for (const name of rollen) assert.ok(existsSync(join(enDir, name)), `en/kit/rollen/${name} fehlt`);
 });
 
-test("die englischen Rollen tragen dieselben Formwörter der Befunde wie die deutschen (E14)", () => {
+test("die englischen Rollen tragen dieselben Formwörter der Befunde wie die deutschen (E14, E19)", () => {
   for (const name of rollen) {
     const de = lies(deDir, name);
     const en = lies(enDir, name);
-    for (const wort of FORMWOERTER) {
-      assert.equal(en.includes(wort), de.includes(wort), `${name}: Formwort "${wort}" weicht ab`);
+    for (const [wortDe, wortEn] of FORMWOERTER) {
+      assert.equal(en.includes(wortEn), de.includes(wortDe), `${name}: Formwort "${wortDe}" / "${wortEn}" weicht ab`);
     }
   }
 });

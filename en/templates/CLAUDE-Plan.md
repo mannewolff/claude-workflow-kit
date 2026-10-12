@@ -1,5 +1,5 @@
 # CLAUDE-Plan.md — Gates for the plan document
-<!-- de: e07c35252e7f -->
+<!-- de: 45d5474a680e -->
 
 **As of 2026-08-28.** Review by fable incorporated, open decisions made.
 
@@ -60,14 +60,14 @@ separates them mechanically.
 from it carry their own `Author-Model`. Without it the chain breaks off exactly in between.
 
 ## P4 — `Requirement: Issue #N` stands exactly when the plan came from it `[maschinell + Urteil]`
-<!-- de: 775c6a486829 -->
+<!-- de: f166fba66471 -->
 
 If the plan came from `/techplan #N` against a `[Requirement]` issue: the line stands
 (in a German project `Fachliche Quelle: Issue #N`). Otherwise: the line is missing, no
 placeholder either.
 
 **Only the present line is `[maschinell]`:** #N must exist or demonstrably have existed and
-carry `[Requirement]` (or `[Fachlich]`). **A source deleted later is no violation** — the
+carry `[Requirement]` (an older card also its German predecessor). **A source deleted later is no violation** — the
 body line is precisely the surviving trail when the card is gone (idea #367; #300 refers to
 the deleted #285).
 

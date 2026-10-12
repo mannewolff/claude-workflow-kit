@@ -10,8 +10,8 @@ Review the following material and report on:
 For each finding, one block with these details:
 - Severity KRITISCH / WICHTIG / HINWEIS as a bold header line (the marks stay German: KRITISCH means critical, WICHTIG important, HINWEIS note)
 - File and line (if derivable from the material), a concrete description of the problem and a proposal for the fix
-- Gegenprobe: <observation that would refute the finding> — geprueft, bestaetigt (if you did not carry it out: — nicht geprueft)
-- Art: <name> from this list, the name only:
+- Counter-check: <observation that would refute the finding> — checked, confirmed (if you did not carry it out: — nicht geprueft)
+- Kind: <name> from this list, the name only (the names stay German):
 {{ARTEN}}
 A finding that your own counter-check refuted is not reported.
 

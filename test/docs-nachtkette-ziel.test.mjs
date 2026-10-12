@@ -19,6 +19,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { KETTE_ZIELE, PLANREVIEW_LABELS, ZIEL_LABEL_PRAEFIX } from "../kit/night/session.mjs";
 import { KETTE_ZIEL_ANKER } from "../kit/night/kette.mjs";
+import { englisch } from "./helpers/labels.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
@@ -49,7 +50,8 @@ const ZIEL_LABELS = KETTE_ZIELE.map(({ ziel }) => `${ZIEL_LABEL_PRAEFIX}${ziel}`
 const W3_WORTLAUT =
   "beim `push main` oder in der Vorbereitung der Nacht für genau den Commit, den `push main` unverändert übernimmt; fährt das Projekt sie im Build-Dienst, läuft sie immer beim `push main` auf dem Prüfzweig";
 
-const GO_ZIEL = ["das GO ueber kit:durchziehen oder ein Ziel ab umsetzung", /`kit:durchziehen` oder ein Ziel ab `umsetzung`/];
+// Der Regeltext nennt die Labels seit Issue #1571 englisch.
+const GO_ZIEL = ["das GO ueber kit:durchziehen oder ein Ziel ab umsetzung", englisch(/`kit:durchziehen` oder ein Ziel ab `umsetzung`/)];
 
 const W3_ANGABEN = [
   ["den W3-Wortlaut samt Build-Dienst-Satz (E14, E17)", new RegExp(esc(W3_WORTLAUT))],
@@ -71,7 +73,7 @@ const NACHT_ANGABEN = [
   ["den Nachweislauf der Paketstufe bei pushPruefung im Build-Dienst (E17)", /`pushPruefung`[^.]*Build-Dienst[^.]*Nachweislauf der Paketstufe/],
   ["den vollen Lauf im Build-Dienst als offenen Punkt (E17)", /voller Lauf im Build-Dienst \(Prüfzweig <zweig>\)/],
   ["die feste Stelle .claude/push-vorbereitung.json", /`\.claude\/push-vorbereitung\.json`/],
-];
+].map(([name, muster]) => [name, englisch(muster)]);
 
 const PFLICHT_VORLAGE = abschnitt(VORLAGE, "## Pflichtchecks vor Push (Schritt 6)");
 const W3_VORLAGE = abschnitt(VORLAGE, "### W3 — Rote Pflichtchecks blockieren den Push mechanisch `[Urteil]`");

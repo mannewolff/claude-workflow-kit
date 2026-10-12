@@ -19,6 +19,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { KETTE_BUDGET_DEFAULTS as KETTE_VORGABEN } from "../kit/night/session.mjs";
 import { LABELS } from "../kit/board/namen.mjs";
+import { englisch } from "./helpers/labels.mjs";
 import { BERICHT_ANKER } from "../kit/night/bericht.mjs";
 import { KETTE_HALT_ANKER, REVIEW_FERTIG_LABEL, KETTE_UNGEPRUEFT_ANKER } from "../kit/night/kette.mjs";
 import { grundOhneArbeit } from "../kit/night/grundlagen.mjs";
@@ -219,7 +220,8 @@ test("der Nachtbetrieb-Block der Vorlage nennt beide Routing-Labels und den Beri
   for (const anker of ["`kit:night`", "`kit:nightrun`", "`kit:durchziehen`", "--chain", "Nachtbericht", "`night.kette`", "nebeneinander",
     // Seit Issue #898 nennt der Block auch die zweite Auftragsart.
     "`[Plan]`", "Plan-Auftrag"]) {
-    assert.ok(abschnitt.includes(anker), `der Nachtbetrieb-Block der Vorlage nennt '${anker}' nicht`);
+    // Der Regeltext nennt die Labels seit Issue #1571 englisch.
+    assert.ok(abschnitt.includes(englisch(anker)), `der Nachtbetrieb-Block der Vorlage nennt '${englisch(anker)}' nicht`);
   }
 });
 

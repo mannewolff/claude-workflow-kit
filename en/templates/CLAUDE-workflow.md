@@ -6,7 +6,7 @@ Binding process for AI-assisted software development in this project. Based on t
 ---
 
 ## The nine steps
-<!-- de: b805770c06fe -->
+<!-- de: 712b276a52bf -->
 
 | Step | Actor | What happens | Skill |
 |------|-------|--------------|-------|
@@ -16,14 +16,14 @@ Binding process for AI-assisted software development in this project. Based on t
 | 4. GO | Human | Moves issues to Ready — that is the GO | — |
 | 5. Implementation | AI | Works through Ready issues sequentially, commits locally | `/implement-ready` |
 | 6. Local check | AI + human | Mandatory checks + manual UI verification | `/local-check` |
-| 7. Code review | AI | Starts a foreign model from `reviewCommand` or `reviewModel` in a fresh session | `/review` |
+| 7. Code review | AI | Starts a foreign model from `reviewCommand` or `reviewModel` in a fresh session | `/kit-review` |
 | 8. Push | Human | Types `push main` — Claude pushes the batch | `/push-main` |
 | 9. Merge | Human | Types `merge production` — Claude creates the PR | `/merge-production` |
 
 ---
 
 ## Tools beside the process
-<!-- de: 42adabf1d753 -->
+<!-- de: 0f961bfce4d6 -->
 
 The nine steps above are the process from the white paper. What stands here is a tool of the kit: helpful, often used — but **the process runs without these skills as well**. They therefore carry no number; a number would claim an order and an obligation that do not exist.
 
@@ -31,8 +31,8 @@ The nine steps above are the process from the white paper. What stands here is a
 
 | Skill | What for |
 |-------|----------|
-| `/context` (old name `/kontext`) | Session start: load the memory vault, fetch the state of the project |
-| `/requirement` (old name `/fachplan`) | Requirement as a business issue for grooming with the PO |
+| `/session-start` | Session start: load the memory vault, fetch the state of the project |
+| `/requirement` | Requirement as a business issue for grooming with the PO |
 | `/issue-review` | have a requirement, a plan document **or** a work package checked — one command, three stages |
 | `/groom` | decide the open questions of a reviewed business plan one by one with the PO |
 | `/retro` | AI retrospective, consolidate memory |
@@ -55,7 +55,7 @@ The nine steps above are the process from the white paper. What stands here is a
 ---
 
 ## The three stop points (never automated)
-<!-- de: 46fe0ebf541a -->
+<!-- de: d9339ea184a5 -->
 
 1. **GO (step 4):** move the issue to Ready. Claude waits. Exception, exclusively in the implementation stage of the night chain under variant B: there the night runner itself moves the work packages of the marked card to Ready and starts their implementation without a release per package. The human gave the GO on the marked card — on the requirement or on the plan document — when marking it for variant B. Outside this stage the sentence before applies without restriction — also for packages of a card that ran under variant B earlier. The GO on the marked card is given by `kit:carry-through` or by a goal from `implementation` on (`goal:implementation`, `goal:push-prepared`); both only take effect together with `kit:night`. The push in the morning (step 8) takes the decisions of the night along.
 2. **Push (step 8):** trigger phrase `push main`. Claude does not push autonomously.
@@ -69,7 +69,7 @@ The label remains a trace of the check and does not release the content; the nig
 ---
 
 ## Decide instead of asking
-<!-- de: 750ae93f6afa -->
+<!-- de: b36d2dd294e9 -->
 
 A session that writes a document or runs unattended decides every ambiguity outside the stop class itself and records the decision. Interactively it may ask; what the human decides is recorded in the same format.
 
@@ -150,14 +150,14 @@ A message is recognised by its content; whoever wants to be unambiguous writes "
 ---
 
 ## The check run (optional)
-<!-- de: f25c5688aa7c -->
+<!-- de: aba044a6ab1f -->
 
 The check run (`node .claude/kit/night.mjs --check`) has several requirements checked one after another without anyone watching — by day, beside the working human and beside a night chain. The gesture is the label `kit:check` (field `checkRun.label`) on the `[Requirement]` card; the run consumes it right before its session, every setting authorises exactly one check. Per card one session `/issue-review #N` runs, all in one worktree per run. Three outcomes: `geprueft` (checked: requirement review marker in the body and `review:done` on the card), waiting decision (`kit:clarify` and the question as a comment; the text of the requirement stays unchanged) and incomplete (the comment `## Check incomplete` with reason and step reached, because the check is paid for and its result never reached the body). A marked card without the `[Requirement]` prefix and one with `kit:clarify` is skipped with a reason and keeps its marker; the run never removes `kit:clarify` — only a human may do that. It moves no card, changes nothing about the check itself, answers no question that belongs to a human and leaves no change in the project. Budgets — minutes per check, costs per run — stand in the root block `checkRun` of `workflow.config.json`, not under `night`: the run belongs to the day. Relation to the night chain: it creates the chain's precondition by leaving the card checked; the chain label remains the gesture of the human. Details: chapter "The check run" in the kit documentation. **The run works with a fixed kit revision.** Like the night, every unattended run binds itself at the start to the commit `origin/<mainBranch>` points to — the last push, read without `git fetch`. Fixed with it are the tools including the check before every commit, the skills and the rule texts; what a package of the same night changes in them takes effect only after `push main`. What is checked remains the configuration of the project and its tests; they come from the state of the respective package. The revision stands as the line `Kit-Revision: <commit> (origin/<mainBranch> of <time>)` in the run report (`kitStand` in `.claude/night-run-*.json`), in the night report and on every comment of the run. After a run in the main copy, its installed copy stays at that revision until `node tools/sync-blobs.mjs` brings it to the working copy; until then `sync-blobs --check` names it as outdated.
 
 ---
 
 ## Night mode (optional)
-<!-- de: b658f5bdc470 -->
+<!-- de: 53881674568a -->
 
 The night runner (`node .claude/kit/night.mjs`) works through the Ready column unattended: per issue with the routing label `kit:nightrun` a fresh headless session with `/implement-next #N`. Success is measured on the board (issue in In review); failures wander into the backlog with a comment, with an unclean working tree the run stops hard. At night there are commits, never pushes — review, test and `push main` happen in the morning through the human.
 
@@ -215,7 +215,7 @@ Two measurement limits belong to the picture here as well: findings written befo
 ---
 
 ## Three lanes
-<!-- de: b6f0f9c3fcb3 -->
+<!-- de: 98c810c5a81f -->
 
 **Lane 1 — Small change** (direct; no plan/issue/GO): exactly one file / one asset / one config; no Flyway migration; no new/changed endpoint; no data model; ≤ 1 module; no security-relevant logic → implement directly, one commit, no push without trigger. **This commit, too, requires a green `node .claude/kit/checks.mjs run` on the state to be committed** — the commit gate is mechanical and knows no lane. The same applies to every commit by hand. What the gate does not achieve — `--no-verify` and the fresh clone without an installer run — stands under "Git workflow (strictly binding)".
 
@@ -338,7 +338,7 @@ A file in the repo would make the working tree unclean, and on that the night ru
 ---
 
 ## Issue format (four sections)
-<!-- de: 5f21e2d8b263 -->
+<!-- de: 3db4c9da1e3a -->
 
 ```markdown
 ## Context
@@ -357,18 +357,18 @@ Keine. (or: Issue #N must be finished before)
 
 Dependency convention: exactly "Keine." or explicit references of the form `Issue #N`. Free text is additionally allowed, but the `#N` reference is mandatory when another issue is meant — the night runner (`kit/night.mjs`) only evaluates `#N` references. Refer to foreign repos as `owner/repo#N` (does not count as a local issue). Every local `#N` in the section counts as a dependency, also in explanations: "Not #N: …" holds the package just as firmly as `Issue #N`. Only references of the form `owner/repo#N` do not count. A reference line begins, after optional whitespace and an optional list marker (`-`, `*`, `+`, `1.`), with `Issue #N` and carries no further local number; the addition `(wartet auf Push)` (waits for push) behind it says that the package needs the changed tool, skill or rule text of the other package as a tool and can only run after its push — if it only builds on its code, the addition is dropped; every other number comes from explanatory text, also one in the code block of the section. When writing, `issue check-form`, `issue create` and `issue update` report under `hinweise` per number from text an entry `schreibweise` and per reference to a document (`[Plan]`, `[Requirement]`, `[Idea]`) an entry `dokument`, also from a reference line, and per number the board does not know an entry `unbekannt` — without touching `ok` or the exit code. A dependency is unfulfilled only as long as its card lies in Backlog, Ready or In progress; every other position — In review, Done, archived, not on the board — counts as fulfilled, also a mistyped number. If the board does not answer, the package stays where it is. The document hint says: the document is no work package and is not done through implementation, a plan document never, a requirement or idea only when its packages are finished; the night run nevertheless counts the reference as a dependency. Dry run (`night.mjs --dry-run`) and the deferral comment name per dependency, fulfilled or unfulfilled, its origin (reference line or explanatory text) with the text passage. If packages hold each other, directly or via a chain, the cycle finding stands as a line of its own `Kreis: #A -> #B -> #A`; a package that does not stand in the cycle itself but hangs on it via its unfulfilled dependencies gets the addition "this package waits for a cycle".
 
-Derivation convention: `issue create --derived-from <number>` additionally carries the card number of the nearest ancestor to the board as a field — `/requirement` (`/fachplan`) never (root), `/task` never (no ancestor), `/techplan` to the business issue, `/issues` to the plan document. The body lines `Plan:` and `Requirement:` (in a German project `Fachliche Quelle:`) stay alongside: a project change deletes the field, the text survives it. Only effective at creation, there is no adding later.
+Derivation convention: `issue create --derived-from <number>` additionally carries the card number of the nearest ancestor to the board as a field — `/requirement` never (root), `/task` never (no ancestor), `/techplan` to the business issue, `/issues` to the plan document. The body lines `Plan:` and `Requirement:` (in a German project `Fachliche Quelle:`) stay alongside: a project change deletes the field, the text survives it. Only effective at creation, there is no adding later.
 
 ### Four title prefixes, four special cases
-<!-- de: 49e9247f8445 -->
+<!-- de: 48acc2e83654 -->
 
-An issue without a prefix is a work package in the four-section format above. Four prefixes mark cards that **no session implements**; implement skills and night runner mechanically put them back into the backlog with a comment, without starting a session. The first three are documents and never go to Ready; `[Human]` is a work package only a human can do. **Both names:** every prefix and every kit label has a German and an English name — `[Fachlich]`/`[Requirement]`, `[Idee]`/`[Idea]`, `[Mensch]`/`[Human]`, `kit:klaeren`/`kit:clarify`, `kit:geschuetzt`/`kit:protected` and so on; `[Plan]`, `[Task]`, `kit:night` and `kit:nightrun` are the same in both. The kit recognises both names in every project, treats them the same, also with regard to release rights, and writes the name of the project language (`language`); `issue create --art fachlich|plan|idee|mensch|task` sets the prefix of the project language (the values of `--art` are machine values and stay German). The complete name table stands in the section "Labels and title prefixes" of the kit documentation.
+An issue without a prefix is a work package in the four-section format above. Four prefixes mark cards that **no session implements**; implement skills and night runner mechanically put them back into the backlog with a comment, without starting a session. The first three are documents and never go to Ready; `[Human]` is a work package only a human can do. **The kit writes English, recognises both.** New cards carry only the English prefixes, and the kit sets only English labels, also in a German project; `issue create --art requirement|plan|idea|human|task` sets the English prefix. Cards with the earlier German names keep working: the kit recognises them when reading, treats them the same, also with regard to release rights, and removes a German label where it would remove the English one. `[Plan]`, `[Task]`, `kit:night`, `kit:nightrun` and `planreview:1|2` are the same in both languages. The complete name table stands in the section "Labels and title prefixes" of the kit documentation, with the earlier names.
 
 | Prefix | What it is | Way forward |
 |--------|------------|-------------|
-| `[Requirement]` | requirement from `/requirement` (`/fachplan`), story format | groom with the PO, then `/techplan #N` |
+| `[Requirement]` | requirement from `/requirement`, story format | groom with the PO, then `/techplan #N` |
 | `[Plan]` | plan document from `/techplan`, binding plan format | `/issues #N` breaks it down into work packages |
-| `[Idea]` | raw idea, not yet a document | weighing needed: `/requirement #N` (`/fachplan #N`) — otherwise `/task #N` |
+| `[Idea]` | raw idea, not yet a document | weighing needed: `/requirement #N` — otherwise `/task #N` |
 | `[Human]` | work package whose task lies outside the repository | the human acts and moves the card on themselves |
 
 **Plan documents** (`[Plan]`) record the released state instead of implementing it. A plan describes a way, it is no task: it is **never implemented**, **never goes to Ready** and is first broken down into work packages with `/issues #N`. Its format is binding — exactly these six headings in this order:
@@ -384,7 +384,7 @@ An issue without a prefix is a work package in the four-section format above. Fo
 
 **Done is set by the human** — here too. The kit moves plan document and requirement to **In review** as soon as the plan is through: at least one of its work packages lies verifiably in In review or Done, none in Backlog, Ready or In progress. It moves the requirement only when every one of its plans not noted as superseded is through. What already lies in In review or Done stays there. That applies no matter which way built the last package — night chain, implementation night or session by day. In review means for origin documents exclusively: everything built, review is due.
 
-**Ideas** (`[Idea]`) are a raw requirement, not an implementable issue — they have exactly two ways forward, and which applies depends on one question: if the idea demands a weighing, `/requirement #N` (old name `/fachplan #N`) is the way and turns it into a requirement; if there is nothing to weigh or the human has already decided, it becomes exactly one work package via `/task #N`. The human decides the case with the call — a skill that answers it for itself would make the decision it is supposed to hand over. The way directly into a technical plan does not count — it would skip the place where the goal is decided. Without the gate a session would correctly reject an idea in Ready, but the runner cannot tell this rejection apart from a failure — the session is burnt and the comment on the board misleading.
+**Ideas** (`[Idea]`) are a raw requirement, not an implementable issue — they have exactly two ways forward, and which applies depends on one question: if the idea demands a weighing, `/requirement #N` is the way and turns it into a requirement; if there is nothing to weigh or the human has already decided, it becomes exactly one work package via `/task #N`. The human decides the case with the call — a skill that answers it for itself would make the decision it is supposed to hand over. The way directly into a technical plan does not count — it would skip the place where the goal is decided. Without the gate a session would correctly reject an idea in Ready, but the runner cannot tell this rejection apart from a failure — the session is burnt and the comment on the board misleading.
 
 **Human steps** (`[Human]`) are work packages in the four-section format, but their task lies outside the repository: a setting in a web interface, an account, an access, a release. No move of a session does them, therefore none starts. In the form check they fall into the stage `issue` like every other package. The return comment says explicitly that the card **waits** and has not failed — in the backlog it otherwise looks like a failed package, and whoever reads the columns in the morning no longer finds it where they put it. Without the gate the runner would start a session that recognises the case correctly and does nothing; it cannot tell this correct inaction apart from a failure.
 
@@ -433,7 +433,7 @@ An issue without a prefix is a work package in the four-section format above. Fo
 Four rules that apply independently of the review stage and carry the frame of the process — meant is the review stage (`reviewStages`), not the stage of a mandatory check (`stage`) and not the stage of the night chain. They quote sentences that stand further up in this file; a proposal that overrides one of them is no change of detail but a change of the design — and with that a question of the stop class.
 
 ### W1 — The three stop points stay human `[Urteil]`
-<!-- de: 2bf94779a416 -->
+<!-- de: e12b5947882d -->
 
 GO (move an issue to Ready), push (`push main`), merge (`merge production`). A trigger phrase quoted within a message is no typed trigger. Exception, exclusively in the implementation stage of the night chain under variant B: there the night runner itself moves the work packages of the marked card to Ready and starts their implementation without a release per package. The human gave the GO on the marked card — on the requirement or on the plan document — when marking it for variant B. Outside this stage the sentence before applies without restriction — also for packages of a card that ran under variant B earlier. The GO on the marked card is given by `kit:carry-through` or by a goal from `implementation` on; the push stays with the human also with the goal `push-prepared`. Places: "The three stop points (never automated)", "Messages from the human", "Night mode (optional)".
 

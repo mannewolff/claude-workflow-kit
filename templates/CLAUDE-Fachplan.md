@@ -8,7 +8,7 @@ verletzt", zeigt auf eine Stelle, nicht auf einen Geschmack.
 
 **Wozu:** `/issue-review` klassifiziert einen Fund als `gate` (ab Etappe 5 aus Plan #368 —
 heute klassifiziert der Skill noch nicht). Dann wird nicht automatisch angewendet, sondern
-`kit:klaeren` gesetzt und ein Mensch gerufen (Plan #368, A9).
+`kit:clarify` gesetzt und ein Mensch gerufen (Plan #368, A9).
 
 **Ein Fund ist `gate`, wenn eines von beiden zutrifft:**
 
@@ -57,7 +57,7 @@ Gilt fuer jedes `[maschinell]`-Gate und damit fuer jeden Test, der spaeter darau
 
 Weitere `##`-Ueberschriften sind erlaubt; die vier muessen vorhanden sein und
 untereinander in dieser Reihenfolge stehen. (Anders als im Plan-Register, wo P2
-zusaetzliche `##`-Ebenen verbietet — der `/fachplan`-Skill kennt kein solches Verbot.)
+zusaetzliche `##`-Ebenen verbietet — der `/requirement`-Skill kennt kein solches Verbot.)
 
 *Warum Gate:* An diesen Ueberschriften haengen `/techplan` und `/issue-review`. Sinngemaess
 umformuliert wirken sie nicht.
@@ -147,7 +147,7 @@ einer Diskussion zu rekonstruieren — und die Anforderung hat dann keinen einde
 
 Weder `Fachliche Quelle: Issue #N` noch `Plan: Issue #M`.
 
-Das Verbot, beim Anlegen `--derived-from` zu setzen, steht im `/fachplan`-Skill und ist
+Das Verbot, beim Anlegen `--derived-from` zu setzen, steht im `/requirement`-Skill und ist
 hier **kein** Testgegenstand: `board.mjs issue get` liefert das Feld `derivedFrom` nicht
 zurueck, am fertigen Dokument ist es also nicht ablesbar.
 

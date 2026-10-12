@@ -40,7 +40,8 @@ const PLAN_FORMAT = [
 test("die Vorlage nennt alle drei Titel-Praefixe", () => {
   // [Idee] fehlte hier bisher ganz — die Datei ist der Blob, den jede
   // Neuinstallation bekommt, das Gate waere dort dauerhaft unsichtbar gewesen.
-  for (const praefix of ["[Fachlich]", "[Idee]", "[Plan]"]) {
+  // Seit Issue #1571 nennt die Vorlage die englischen Praefixe.
+  for (const praefix of ["[Requirement]", "[Idea]", "[Plan]"]) {
     assert.ok(VORLAGE.includes(praefix), `Titel-Praefix fehlt in der Vorlage: ${praefix}`);
   }
 });

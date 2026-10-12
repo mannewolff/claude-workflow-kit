@@ -19,12 +19,13 @@ import { fileURLToPath } from "node:url";
 import { PRUEFLAUF_BUDGET_DEFAULTS as PRUEFLAUF_VORGABEN } from "../kit/night/session.mjs";
 import { PRUEFLAUF_REST_ANKER } from "../kit/night/tag.mjs";
 import { LABELS } from "../kit/board/namen.mjs";
+import { englisch } from "./helpers/labels.mjs";
 
 // Skills und Doku nennen das Label bis zu ihrer Umstellung (Plan #1548, eigene Pakete) unter dem
 // deutschen Namen; das Kit schreibt seit Issue #1552 den englischen.
 const KLAEREN_LABEL = LABELS.klaeren.de;
-// Ebenso die Vorgabe des Prueflauf-Kennzeichens: Das Kit setzt seit Issue #1553 `kit:check`, Doku
-// und Vorlage nennen bis zu ihrer Umstellung den deutschen Namen.
+// Ebenso die Vorgabe des Prueflauf-Kennzeichens: Das Kit setzt seit Issue #1553 `kit:check`, die Doku
+// nennt bis zu ihrer Umstellung den deutschen Namen, die Vorlage seit Issue #1571 den englischen.
 const PRUEFLAUF_BUDGET_DEFAULTS = { ...PRUEFLAUF_VORGABEN, label: LABELS.pruefen.de };
 import { REVIEW_FERTIG_LABEL } from "../kit/night/kette.mjs";
 
@@ -128,7 +129,8 @@ test("der Prueflauf-Block der Vorlage nennt Geste, Aufruf, Ausgaenge und das Ver
     PRUEFLAUF_REST_ANKER,
     "Kettenlabel",
   ]) {
-    assert.ok(abschnitt.includes(anker), `der Prueflauf-Block der Vorlage nennt '${anker}' nicht`);
+    // Der Regeltext nennt die Labels seit Issue #1571 englisch.
+    assert.ok(abschnitt.includes(englisch(anker)), `der Prueflauf-Block der Vorlage nennt '${englisch(anker)}' nicht`);
   }
   // Der Abschnitt steht neben dem Nachtbetrieb, nicht darin: Der Lauf gehoert dem Tag.
   assert.ok(idx < VORLAGE.indexOf("## Nachtbetrieb"), "der Prueflauf-Block steht nicht vor dem Nachtbetrieb-Block");

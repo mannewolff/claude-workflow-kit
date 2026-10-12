@@ -494,7 +494,7 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/docs-*.test.mjs\" \"test/skills-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\" \"test/rollen-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/docs-*.test.mjs\" \"test/skills-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\" \"test/rollen-*.test.mjs\" \"test/texte-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "aufwand",
@@ -876,7 +876,8 @@
       "kit/rollen/**",
       "en/**",
       "agents/**",
-      "test/rollen-*.test.mjs"
+      "test/rollen-*.test.mjs",
+      "test/texte-*.test.mjs"
     ],
     "konfiguration": [
       ".claude/workflow.config.json"

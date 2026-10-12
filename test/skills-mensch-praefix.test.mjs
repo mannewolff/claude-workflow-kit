@@ -48,7 +48,8 @@ test("[skills-984] die Praefix-Tabelle der Vorlage fuehrt vier Praefixe, und `[T
   const kopf = /^### Vier Titel-Praefixe, vier Sonderfaelle$/m;
   assert.match(vorlage, kopf, "die Ueberschrift nennt nicht vier Praefixe");
   const abschnitt = vorlage.slice(vorlage.search(kopf)).split(/\n---\n/)[0];
-  for (const praefix of ["[Fachlich]", "[Plan]", "[Idee]", "[Mensch]"]) {
+  // Seit Issue #1571 nennt die Vorlage die englischen Praefixe.
+  for (const praefix of ["[Requirement]", "[Plan]", "[Idea]", "[Human]"]) {
     assert.match(abschnitt, new RegExp(`^\\|[^\n]*\`\\${praefix.slice(0, -1)}\\]\``, "m"),
       `die Tabelle fuehrt ${praefix} nicht als Zeile`);
   }

@@ -61,21 +61,22 @@ test("die gestrichenen Abschnitte sind weg", () => {
 // Pruefung als Bedingung beider Auftragsarten der Kette. Seit Issue #910 ein viertes: Der
 // Prueflauf-Block nennt sie als die Spur, die eine geprueft hinterlassene Karte traegt —
 // dort entsteht sie. Die Leitplanke bleibt scharf — genau vier, zwei davon im Absatz zu
-// /issue-review, das dritte im Nachtbetrieb-Block, das vierte im Prueflauf-Block.
-test("review:fertig steht zweimal im selben Absatz: als Spur und als Voraussetzung der Nacht-Kette", () => {
-  assert.equal(VORLAGE.split("review:fertig").length, 5, "review:fertig steht nicht genau viermal");
+// /issue-review, das dritte im Nachtbetrieb-Block, das vierte im Prueflauf-Block. Seit Issue
+// #1571 heisst das Label im Regeltext `review:done`.
+test("review:done steht zweimal im selben Absatz: als Spur und als Voraussetzung der Nacht-Kette", () => {
+  assert.equal(VORLAGE.split("review:done").length, 5, "review:done steht nicht genau viermal");
   const nachtbetrieb = VORLAGE.slice(VORLAGE.indexOf("## Nachtbetrieb (optional)")).split(/\n## /)[0];
-  assert.equal(nachtbetrieb.split("review:fertig").length, 2, "der Nachtbetrieb-Block nennt review:fertig nicht genau einmal");
+  assert.equal(nachtbetrieb.split("review:done").length, 2, "der Nachtbetrieb-Block nennt review:done nicht genau einmal");
   const prueflauf = VORLAGE.slice(VORLAGE.indexOf("## Der Prueflauf (optional)")).split(/\n## /)[0];
-  assert.equal(prueflauf.split("review:fertig").length, 2, "der Prueflauf-Block nennt review:fertig nicht genau einmal");
+  assert.equal(prueflauf.split("review:done").length, 2, "der Prueflauf-Block nennt review:done nicht genau einmal");
   const zeilen = VORLAGE.split("\n");
   const start = zeilen.findIndex((z) => z.startsWith("**Der Aufruf ist immer derselbe: `/issue-review #N`.**"));
   assert.ok(start >= 0, "der Absatz zu /issue-review fehlt");
   let ende = start;
   while (zeilen[ende + 1] !== undefined && zeilen[ende + 1].trim() !== "") ende++;
   const absatz = zeilen.slice(start, ende + 1).join("\n");
-  assert.equal(absatz.split("review:fertig").length, 3, "beide Vorkommen stehen nicht im selben Absatz");
-  assert.match(absatz, /`review:fertig` als sichtbare Spur am Board/);
+  assert.equal(absatz.split("review:done").length, 3, "beide Vorkommen stehen nicht im selben Absatz");
+  assert.match(absatz, /`review:done` als sichtbare Spur am Board/);
   assert.match(absatz, /je Board einmal angelegt/);
   assert.match(absatz, /Nacht-Kette verlangt diese Spur aber als Voraussetzung/);
   assert.match(absatz, /wird uebersprungen, auch wenn sie das Kettenlabel traegt/);

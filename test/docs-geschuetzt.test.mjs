@@ -16,8 +16,9 @@ import { fileURLToPath } from "node:url";
 import { GESCHUETZT_ANKER } from "../kit/night/wartend.mjs";
 import { LABELS } from "../kit/board/namen.mjs";
 
-// Skills und Doku nennen das Label bis zu ihrer Umstellung (Plan #1548, eigene Pakete) unter dem
-// deutschen Namen; das Kit schreibt seit Issue #1552 den englischen.
+// Die Doku nennt das Label bis zu ihrer Umstellung (Plan #1548, eigenes Paket) unter dem
+// deutschen Namen; das Kit schreibt seit Issue #1552 den englischen, der Regeltext nennt ihn
+// seit Issue #1571.
 const GESCHUETZT_LABEL = LABELS.geschuetzt.de;
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -27,18 +28,22 @@ const TEXTE = {
   "templates/CLAUDE-workflow.md": lies("templates/CLAUDE-workflow.md"),
   "docs/dokumentation.md": lies("docs/dokumentation.md"),
 };
+// Je Text die Sprache, in der er die Labels nennt.
+const SPRACHE = { "templates/CLAUDE-workflow.md": "en", "docs/dokumentation.md": "de" };
 
 for (const [name, text] of Object.entries(TEXTE)) {
-  test(`[docs-1055] ${name} nennt ${GESCHUETZT_LABEL} samt „je Board einmal anzulegen“ und den Anker`, () => {
-    assert.ok(text.includes(`\`${GESCHUETZT_LABEL}\``), `${name}: das Label ${GESCHUETZT_LABEL} fehlt`);
+  const label = LABELS.geschuetzt[SPRACHE[name]];
+  const klaeren = LABELS.klaeren[SPRACHE[name]];
+  test(`[docs-1055] ${name} nennt ${label} samt „je Board einmal anzulegen“ und den Anker`, () => {
+    assert.ok(text.includes(`\`${label}\``), `${name}: das Label ${label} fehlt`);
     assert.match(text, /je Board einmal anzulegen/, `${name}: der Satz „je Board einmal anzulegen“ fehlt`);
     assert.ok(text.includes(GESCHUETZT_ANKER), `${name}: der Anker ${GESCHUETZT_ANKER} fehlt`);
   });
 
-  test(`[docs-1055] ${name} sagt, dass ${GESCHUETZT_LABEL} allein der Mensch abnimmt`, () => {
-    const absatz = text.split("\n").find((z) => z.includes(`\`${GESCHUETZT_LABEL}\``) && /je Board einmal anzulegen/.test(z));
+  test(`[docs-1055] ${name} sagt, dass ${label} allein der Mensch abnimmt`, () => {
+    const absatz = text.split("\n").find((z) => z.includes(`\`${label}\``) && /je Board einmal anzulegen/.test(z));
     assert.ok(absatz, `${name}: kein Absatz nennt Label und „je Board einmal anzulegen“ zusammen`);
-    assert.match(absatz, /kit:klaeren/, `${name}: der Absatz grenzt nicht gegen kit:klaeren ab`);
+    assert.ok(absatz.includes(klaeren), `${name}: der Absatz grenzt nicht gegen ${klaeren} ab`);
     assert.match(absatz, /nur der Mensch|allein (der|ein) Mensch/, `${name}: die Abnahme durch den Menschen fehlt`);
   });
 }

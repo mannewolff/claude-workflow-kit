@@ -4,7 +4,7 @@
 
 Gate-Register fuer die Stufe `plan`. Aufbau und Zweck wie in `CLAUDE-Fachplan.md`: Was
 hier steht, ist eine Regel, gegen die ein Plan verstossen kann — und ein Verstoss setzt
-`kit:klaeren`, statt automatisch angewendet zu werden (Plan #368, A9; klassifiziert wird
+`kit:clarify`, statt automatisch angewendet zu werden (Plan #368, A9; klassifiziert wird
 ab Etappe 5 aus #368, heute noch nicht).
 
 **Wann ein Fund `gate` ist** — beide Richtungen, Dokument-Verstoss und Verstoss durch den
@@ -54,11 +54,12 @@ dazwischen ab.
 
 ## P4 — `Fachliche Quelle: Issue #N` steht genau dann, wenn der Plan daraus entstand `[maschinell + Urteil]`
 
-Entstand der Plan aus `/techplan #N` gegen ein `[Fachlich]`-Issue: Zeile steht. Sonst: Zeile
+Entstand der Plan aus `/techplan #N` gegen ein `[Requirement]`-Issue: Zeile steht. Sonst: Zeile
 fehlt, auch kein Platzhalter.
 
 **`[maschinell]` ist davon nur die vorhandene Zeile:** #N muss existieren oder
-nachweislich existiert haben und `[Fachlich]` tragen. **Eine spaeter geloeschte Quelle
+nachweislich existiert haben und `[Requirement]` tragen (eine aeltere Karte auch den deutschen
+Vorgaenger). **Eine spaeter geloeschte Quelle
 ist kein Verstoss** — die Body-Zeile ist gerade die ueberlebende Spur, wenn die Karte
 weg ist (Idee #367; #300 verweist auf das geloeschte #285).
 
