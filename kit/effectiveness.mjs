@@ -85,7 +85,7 @@ const { normalisiereConfig = (roh) => ({ config: roh, hinweise: [] }) } =
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "5.0.1";
+const KIT_VERSION = "5.0.2";
 
 const CLAUDE_DIR = ".claude";
 const STAND_DATEI = "wirksamkeit.json";

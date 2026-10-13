@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [5.0.2] - 2026-10-13
+- Retro zählt Pakete, die die Nacht-Kette selbst nach Ready zieht, als vierte Gruppe (#1607)
+- check-form trennt Szenarien-Prüfung und Stichtag-Hinweis in zwei Schalter (#1606)
+- Vorgabe Englisch für neue Projekte (#1474)
+- Konfigurationsänderungen durch installer 5.0
+
 ## [5.0.1] - 2026-10-13
 - Test ablauf-night-klaeren misst den Labelnamen am Register (#1604)
 - issue report zieht nur mit Commit, der die Karte nennt (#1584)
