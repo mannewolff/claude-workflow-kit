@@ -1,7 +1,7 @@
 # 5-minute guide
-<!-- de: 65e520054be1 -->
+<!-- de: 050ebd73e593 -->
 
-You have a process for AI-assisted development, and you want to make it executable in Claude Code without giving up your stop points (Stop-Punkte). The kit gives you seventeen skills, a config and an installer. In five minutes it is running.
+You have a process for AI-assisted development, and you want to make it executable in Claude Code without giving up your stop points (Stop-Punkte). The kit gives you eighteen skills, a config and an installer. In five minutes it is running.
 
 ## Prerequisites
 <!-- de: dd6489dcf11f -->
@@ -14,7 +14,7 @@ You have a process for AI-assisted development, and you want to make it executab
 - On Windows: WSL2, see [Windows via WSL2](/en/wsl2)
 
 ## Installing
-<!-- de: 15834a57fd71 -->
+<!-- de: 26d34895dd13 -->
 
 Download the installer and start it in the project folder:
 
@@ -43,14 +43,15 @@ Then the installer asks seven things:
 
 With a global installation, an eighth question follows about the vault path for `/session-start` and `/document` (leaving it empty skips it).
 
-Afterwards the seventeen skills are in `.claude/skills/` (or globally in `~/.claude/skills/`), and a `.claude/workflow.config.json` with your answers as well as the board adapter (Board-Adapter) (`.claude/kit/board.mjs`) are in the repo. Restart Claude Code, and the skills show up in `/help`.
+Afterwards the eighteen skills are in `.claude/skills/` (or globally in `~/.claude/skills/`), and a `.claude/workflow.config.json` with your answers as well as the board adapter (Board-Adapter) (`.claude/kit/board.mjs`) are in the repo. Restart Claude Code, and the skills show up in `/help`.
 
-## The seventeen skills
-<!-- de: af5b54763a9f -->
+## The eighteen skills
+<!-- de: 1bbd906f20a1 -->
 
 | Command | What for |
 |--------|-------|
 | `/session-start` | Load context, overview of the situation at session start |
+| `/triage` | Talk an idea with its attachments through, propose a lane and start the path you choose |
 | `/requirement` | Optional: requirement as a business issue for the PO loop (PO-Schleife) (see [documentation](./dokumentation.md#po-loop-business-and-technical-issues)) |
 | `/groom` | Decide the open questions of a reviewed business plan (Fachplan) one by one with the PO |
 | `/techplan` | Plan from the requirement, implements nothing |

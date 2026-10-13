@@ -50,8 +50,8 @@ test("Fixture: Fassung, Stand und Liste der eingebauten Kommandos", () => {
   for (const k of ["context", "review", "plan", "init", "code-review"]) assert.ok(f.kommandos.includes(k), `${k} fehlt`);
 });
 
-test("es gibt die 17 Skills", () => {
-  assert.equal(SKILLS.length, 17, SKILLS.join(", "));
+test("es gibt die 18 Skills", () => {
+  assert.equal(SKILLS.length, 18, SKILLS.join(", "));
 });
 
 for (const name of SKILLS) {
@@ -110,7 +110,7 @@ for (const name of SKILLS) {
 // Markerzeilen schreibt, nennt das Kommando und die Regel.
 const SCHREIBENDE = ["requirement", "techplan", "issues", "issue-review", "groom", "task",
   "implement-next", "implement-ready", "implement-test", "implement-done", "kit-review",
-  "push-main", "retro", "document"];
+  "push-main", "retro", "document", "triage"];
 
 for (const name of SCHREIBENDE) {
   test(`${name}: nennt board.mjs names und schreibt die ausgegebene Fassung`, () => {

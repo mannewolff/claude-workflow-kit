@@ -1,6 +1,6 @@
 # 5-Minuten-Guide
 
-Du hast einen Prozess für die KI-gestützte Entwicklung, und du willst ihn in Claude Code ausführbar machen, ohne deine Stop-Punkte aufzugeben. Das Kit gibt dir siebzehn Skills, eine Config und einen Installer. In fünf Minuten läuft es.
+Du hast einen Prozess für die KI-gestützte Entwicklung, und du willst ihn in Claude Code ausführbar machen, ohne deine Stop-Punkte aufzugeben. Das Kit gibt dir achtzehn Skills, eine Config und einen Installer. In fünf Minuten läuft es.
 
 ## Voraussetzungen
 
@@ -40,13 +40,14 @@ Danach fragt der Installer sieben Dinge:
 
 Bei globaler Installation folgt eine achte Frage nach dem Vault-Pfad für `/session-start` und `/document` (leer lassen überspringt sie).
 
-Danach liegen die siebzehn Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten sowie der Board-Adapter (`.claude/kit/board.mjs`) stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
+Danach liegen die achtzehn Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten sowie der Board-Adapter (`.claude/kit/board.mjs`) stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
 
-## Die siebzehn Skills
+## Die achtzehn Skills
 
 | Befehl | Wofür |
 |--------|-------|
 | `/session-start` | Kontext laden, Lageüberblick zu Session-Start |
+| `/triage` | Eine Idee mit Anhängen durchsprechen, Bahn vorschlagen und nach deiner Wahl den Weg beginnen |
 | `/requirement` | Optional: Anforderung als fachliches Issue für die PO-Schleife (siehe [Dokumentation](./dokumentation.md#po-schleife-fachliche-und-technische-issues)) |
 | `/groom` | Offene Fragen eines geprüften Fachplans einzeln mit dem PO entscheiden |
 | `/techplan` | Plan aus der Anforderung, implementiert nichts |

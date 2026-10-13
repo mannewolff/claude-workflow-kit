@@ -24,12 +24,12 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...teile) => readFileSync(join(repoRoot, ...teile), "utf-8");
 
-// Die englische Fassung zaehlt mit "seventeen" (Issue #1370, seit #1514 mit /groom); die Konfiguration traegt beide
+// Die englische Fassung zaehlt mit "eighteen" (Issue #1370, seit #1514 mit /groom, seit #1630 mit /triage); die Konfiguration traegt beide
 // Beschreibungen und steht deshalb in beiden Listen.
 const SPRACHEN = [
   {
-    zaehlwort: "siebzehn",
-    alteZaehlung: /vierzehn Skills|zw(ö|oe)lf Skills|f(ü|ue)nfzehn Skills|sechzehn Skills/i,
+    zaehlwort: "achtzehn",
+    alteZaehlung: /vierzehn Skills|zw(ö|oe)lf Skills|f(ü|ue)nfzehn Skills|sechzehn Skills|siebzehn Skills/i,
     dateien: [
       ["docs", "dokumentation.md"],
       ["docs", "quickstart.md"],
@@ -39,8 +39,8 @@ const SPRACHEN = [
     ],
   },
   {
-    zaehlwort: "seventeen",
-    alteZaehlung: /fourteen skills|twelve skills|fifteen skills|sixteen skills/i,
+    zaehlwort: "eighteen",
+    alteZaehlung: /fourteen skills|twelve skills|fifteen skills|sixteen skills|seventeen skills/i,
     dateien: [
       ["docs", "en", "dokumentation.md"],
       ["docs", "en", "quickstart.md"],
