@@ -76,8 +76,9 @@ test("[night-19] waehleKettenKandidaten: nur Karten mit Label, in Reihenfolge, m
   assert.deepEqual(r.kandidaten.map((a) => [a.art, a.F, a.planId]), [["fachplan", "1", null], ["fachplan", "6", null]]);
   assert.deepEqual(r.liegengeblieben.map((k) => k.id), ["7"]);
   assert.deepEqual(r.uebersprungen.map((u) => [u.id, u.grund.split(" — ")[0].split(",")[0]]), [
-    // #3 ist ein [Plan] ohne Herkunftszeile: seit #895 laeuft an ihm `planAusschluss`.
-    ["3", "die fachliche Herkunft ist nicht erkennbar"],
+    // #3 ist ein [Plan] ohne Herkunftszeile: seit #895 laeuft an ihm `planAusschluss`, und seit
+    // Plan #1645 ist er seine eigene Wurzel — ihn haelt der naechste Grund, der fehlende Abschnitt.
+    ["3", "eine Entscheidung wartet: kein Abschnitt ## Offene Fragen; sie gehoert als Eintrag unter '## Architektonische Entscheidungen' des Plans"],
     ["4", "steht in ready"],
     ["5", "traegt kit:clarify"],
     ["8", "ungeprueft: Label 'review:done' fehlt"],

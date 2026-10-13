@@ -45,8 +45,9 @@ export const TEXTE = Object.freeze({
     poFragen: "{frage}; die Fragen im Body beantworten und '## {name}' auf 'Keine' setzen",
     szenarienFehlen: "Fachplan #{id} hat keinen Abschnitt Szenarien; er entsteht beim Groomen (`/groom #{id}`)",
     stichtagFehlt: "Hinweis: {hinweis}",
-    herkunftFehlt: "die fachliche Herkunft ist nicht erkennbar — die Zeile '{feld} Issue #N' fehlt im Plan oder nennt keine "
-      + "Karte dieses Boards (die Nummer wird zeichengleich verglichen, fuehrende Nullen zaehlen mit)",
+    quelleInsLeere: "die Zeile '{zeile}' verweist ins Leere — sie nennt keine Karte dieses Boards in der Form 'Issue #N' "
+      + "(die Nummer wird zeichengleich verglichen, fuehrende Nullen zaehlen mit); die Zeile berichtigen, oder sie "
+      + "entfernen, wenn der Plan keine fachliche Anforderung hat",
     planKlaeren: "traegt {label} — die Entscheidung gehoert in den Plan, danach nimmt ein Mensch das Label ab",
     planEntscheidung: "eine Entscheidung wartet: {frage}; sie gehoert als Eintrag unter '## {entscheidungen}' des Plans, "
       + "danach traegt '## {offen}' wieder '{keine}' — ein Satz in der fachlichen Anforderung genuegt nicht",
@@ -142,9 +143,12 @@ export const TEXTE = Object.freeze({
       + "NICHT in diesen Abschnitt: Dort liest die naechste Kette sie als weitere offene Frage und ueberspringt den Plan.",
     wegReview: "3. /issue-review #{id} laufen lassen.",
     wegKlaeren: "{n}. {label} an {plan} abnehmen — und an der fachlichen Anforderung #{fachplan}, wenn es dort noch haengt.",
+    wegKlaerenOhne: "{n}. {label} an {plan} abnehmen.",
     wegLabel: "{n}. Zuletzt das Label {label} an {plan} setzen.",
     wegKopf: "Die Entscheidung gehoert in {plan}, nicht in die fachliche Anforderung #{fachplan}: Die naechste Kette nimmt den "
       + "Plan als Auftrag und faehrt von der Stufe pakete an weiter. Der Weg nach vorn:",
+    wegKopfOhne: "Die Entscheidung gehoert in {plan}: Die naechste Kette nimmt den Plan als Auftrag und faehrt von der "
+      + "Stufe pakete an weiter. Der Weg nach vorn:",
     wegEntwurf: "Bis dahin geschnittene Pakete bleiben als Entwurf stehen.",
     haltKopf: "Kette {stempel}, Stufe {stufe}, Dokument #{dok}: {grund}.",
     bauendProzess: "{lauf} (Prozess {pid})",
@@ -208,6 +212,7 @@ export const TEXTE = Object.freeze({
     ursprungNichtLesbar: "issue ursprung {id} nicht lesbar ({grund})",
     ursprungZeile: "  Ursprungsdokumente zu Plan #{id}: {stand}.",
     ketteStartPlan: "Kette {nummer}/{max}: Plan #{plan} (fachliche Quelle #{quelle}) — {titel}",
+    ketteStartPlanOhne: "Kette {nummer}/{max}: Plan #{plan} (ohne fachliche Anforderung) — {titel}",
     ketteStartIssue: "Kette {nummer}/{max}: Issue #{id} — {titel}",
     labelEntfernt: "  Label '{label}' entfernt — jedes Setzen autorisiert genau eine Kette.",
     zielLabelsEntfernt: "  Label {namen} entfernt — Ziel {ziel}, Pruefer {pruefer} festgehalten.",
@@ -235,6 +240,7 @@ export const TEXTE = Object.freeze({
     dryBudget: "Budget: Plan {plan} min, Pakete {pakete} min, Review {review} min, Abdeckung {abdeckung} min, {kosten} "
       + "$ je Kette, {runden} Korrekturrunde(n).",
     dryPlanAuftrag: "Plan-Auftrag, fachliche Quelle #{quelle}, ",
+    dryPlanAuftragOhne: "Plan-Auftrag ohne fachliche Anforderung, ",
     dryKette: "  #{id} {titel} -> Kette {nummer} ({art}Variante {variante})",
     dryEnde: "Dry-Run beendet: {anzahl} Kette(n) wuerden laufen — kein Worktree, kein Label veraendert.",
     ueberMax: "  #{id} {titel} -> ueber --max {max}, bleibt liegen.",
@@ -274,8 +280,9 @@ export const TEXTE = Object.freeze({
     poFragen: "{frage}; answer the questions in the body and set '## {name}' to 'Keine'",
     szenarienFehlen: "requirement #{id} has no scenarios section; it is added during grooming (`/groom #{id}`)",
     stichtagFehlt: "Note: {hinweis}",
-    herkunftFehlt: "the requirement origin is not recognizable — the line '{feld} Issue #N' is missing in the plan or names "
-      + "no card of this board (the number is compared character by character, leading zeros count)",
+    quelleInsLeere: "the line '{zeile}' points nowhere — it names no card of this board in the form 'Issue #N' "
+      + "(the number is compared character by character, leading zeros count); correct the line, or remove it if "
+      + "the plan has no requirement",
     planKlaeren: "carries {label} — the decision belongs in the plan, afterwards a human removes the label",
     planEntscheidung: "a decision is waiting: {frage}; it belongs as an entry under '## {entscheidungen}' of the plan, "
       + "afterwards '## {offen}' carries '{keine}' again — a sentence in the requirement is not enough",
@@ -371,9 +378,12 @@ export const TEXTE = Object.freeze({
       + "belong in this section: there the next chain reads it as a further open question and skips the plan.",
     wegReview: "3. Run /issue-review #{id}.",
     wegKlaeren: "{n}. Remove {label} from {plan} — and from the requirement #{fachplan}, if it still hangs there.",
+    wegKlaerenOhne: "{n}. Remove {label} from {plan}.",
     wegLabel: "{n}. Finally set the label {label} on {plan}.",
     wegKopf: "The decision belongs in {plan}, not in the requirement #{fachplan}: the next chain takes the plan as its "
       + "order and continues from the stage pakete. The way forward:",
+    wegKopfOhne: "The decision belongs in {plan}: the next chain takes the plan as its order and continues from the "
+      + "stage pakete. The way forward:",
     wegEntwurf: "Packages cut up to then remain as drafts.",
     haltKopf: "Chain {stempel}, stage {stufe}, document #{dok}: {grund}.",
     bauendProzess: "{lauf} (process {pid})",
@@ -437,6 +447,7 @@ export const TEXTE = Object.freeze({
     ursprungNichtLesbar: "issue ursprung {id} not readable ({grund})",
     ursprungZeile: "  Origin documents for plan #{id}: {stand}.",
     ketteStartPlan: "Chain {nummer}/{max}: plan #{plan} (requirement #{quelle}) — {titel}",
+    ketteStartPlanOhne: "Chain {nummer}/{max}: plan #{plan} (without requirement) — {titel}",
     ketteStartIssue: "Chain {nummer}/{max}: Issue #{id} — {titel}",
     labelEntfernt: "  Label '{label}' removed — each setting authorizes exactly one chain.",
     zielLabelsEntfernt: "  Label {namen} removed — goal {ziel}, reviewers {pruefer} recorded.",
@@ -464,6 +475,7 @@ export const TEXTE = Object.freeze({
     dryBudget: "Budget: plan {plan} min, packages {pakete} min, review {review} min, coverage {abdeckung} min, "
       + "{kosten} $ per chain, {runden} correction round(s).",
     dryPlanAuftrag: "plan order, requirement #{quelle}, ",
+    dryPlanAuftragOhne: "plan order without requirement, ",
     dryKette: "  #{id} {titel} -> chain {nummer} ({art}variant {variante})",
     dryEnde: "Dry run finished: {anzahl} chain(s) would run — no worktree, no label changed.",
     ueberMax: "  #{id} {titel} -> over --max {max}, remains pending.",
