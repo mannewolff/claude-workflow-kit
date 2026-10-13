@@ -110,7 +110,7 @@ test("[1455] ein neues englisches Projekt: ab der Antwort spricht der Installer 
     assert.equal(res.status, 0, res.alles);
     assert.equal(lies(u, "workflow.config.json").language, "en");
 
-    const nachAntwort = res.alles.slice(res.alles.indexOf("Sprache / Language [de/en] (de): en"));
+    const nachAntwort = res.alles.slice(res.alles.indexOf("Sprache / Language [de/en] (en): en"));
     assert.match(nachAntwort, /This installer sets up the claude-workflow-kit skill library\./);
     assert.match(nachAntwort, /\[global\/project\]: /);
     assert.match(nachAntwort, /Please enter 'global' or 'project'\./);
@@ -126,7 +126,7 @@ test("[1455] ein neues englisches Projekt: ab der Antwort spricht der Installer 
 
 test("[1455] vor der Antwort bleibt die Sprachfrage zweisprachig, eine deutsche Antwort spricht deutsch", () => {
   mitUmgebung("install-de-neu-", (u) => {
-    const res = installiere(u, [], ["fr", "", "projekt", "local", "local", "", "", "", "", "", ""]);
+    const res = installiere(u, [], ["fr", "de", "projekt", "local", "local", "", "", "", "", "", ""]);
     assert.equal(res.status, 0, res.alles);
     assert.match(res.stderr, /Bitte 'de' oder 'en' eingeben\. \/ Please enter 'de' or 'en'\./);
     assert.match(res.stdout, /Dieser Installer richtet die claude-workflow-kit-Skill-Bibliothek ein\./);

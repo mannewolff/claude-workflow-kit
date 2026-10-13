@@ -14,6 +14,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { pruefe } from "./helpers/mini-validator.mjs";
+import { normalisiereConfig } from "../kit/board/config-namen.mjs";
 import { mitRepo, plan, checks } from "./helpers/checks-repo.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -55,7 +56,8 @@ test("pushPruefung: das Schema weist anderes ab", () => {
 });
 
 test("pushPruefung: die Vorlage trägt die Vorgabe lokal", () => {
-  const vorlage = JSON.parse(readFileSync(join(repoRoot, "templates", "workflow.config.json"), "utf-8"));
+  // Die Vorlage traegt seit Version 5 englische Namen (Issue #1474); gelesen wird wie im Kit.
+  const vorlage = normalisiereConfig(JSON.parse(readFileSync(join(repoRoot, "templates", "workflow.config.json"), "utf-8"))).config;
   assert.equal(vorlage.pushPruefung, "lokal");
 });
 

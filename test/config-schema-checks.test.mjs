@@ -33,6 +33,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { pruefe, istObjekt } from "./helpers/mini-validator.mjs";
+import { normalisiereConfig } from "../kit/board/config-namen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -302,9 +303,11 @@ test("guete: die Beschreibung des Musters nennt genau eine Gruppe", () => {
 
 // --- Bestand ---
 
-const beispielConfig = JSON.parse(
+// Seit Version 5 traegt die Vorlage englische Namen (Issue #1474); das Schema kennt die
+// internen Namen. Gelesen wird darum wie im Kit: erst normalisieren, dann pruefen.
+const beispielConfig = normalisiereConfig(JSON.parse(
   readFileSync(join(repoRoot, "templates", "workflow.config.json"), "utf-8")
-);
+)).config;
 
 test("eine Bestandsconfig mit reiner String-Liste bleibt gueltig", () => {
   // Die Bestandsform ist buildChecks als flache Liste von Kommandozeilen. Sie muss

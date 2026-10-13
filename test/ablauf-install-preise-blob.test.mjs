@@ -38,7 +38,7 @@ const INSTALLER = join(repoRoot, "install.mjs");
 const AUSGELIEFERT = ["preise.mjs", "effort.mjs", "effectiveness.mjs", "findings.mjs", "worktree.mjs"];
 
 // Der kuerzeste Weg durch die Fragen: projektlokal, GitHub, alle Defaults.
-const PROJEKT_GITHUB = ["", "projekt", "github", "j", "n", "github", "", "", "", "", "", ""];
+const PROJEKT_GITHUB = ["de", "projekt", "github", "j", "n", "github", "", "", "", "", "", ""];
 
 function installiere(dir) {
   return spawnSync(process.execPath, [INSTALLER], {

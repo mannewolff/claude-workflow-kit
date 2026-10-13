@@ -76,7 +76,7 @@ test("mit INSTALL_GLAB_FAKE startet install.mjs das Node-Skript mit dem laufende
 // angelegt, ohne dass der Test es merkt.
 // Die zehnte, leere Zeile ueberspringt die Bereichsfrage (Issue #1009); ohne sie
 // fraesse diese das 'j'.
-const ANTWORTEN = ["", "projekt", "gitlab", "gitlab", "", "", "", "", "", "", "j"].join("\n") + "\n";
+const ANTWORTEN = ["de", "projekt", "gitlab", "gitlab", "", "", "", "", "", "", "j"].join("\n") + "\n";
 
 test("install.mjs uebergibt Labelnamen mit Leerzeichen als ein Argument", () => {
   const dir = mkdtempSync(join(tmpdir(), "install-labels-"));

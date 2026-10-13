@@ -32,7 +32,7 @@ const AREAS_HINWEIS = /wirken erst, wenn die Prüfkommandos in workflow\.config\
 // Ein neues Projekt beantwortet zuerst die Sprachfrage (Issue #1430), "" heisst Deutsch;
 // ein Lauf auf einer Bestandsconfig wird nicht nach ihr gefragt.
 const VORSPANN_BESTAND = ["projekt", "github", "j", "n", "github", "", "", "", "", ""];
-const VORSPANN = ["", ...VORSPANN_BESTAND];
+const VORSPANN = ["de", ...VORSPANN_BESTAND];
 
 function fixture(praefix) {
   const dir = mkdtempSync(join(tmpdir(), praefix));
@@ -115,7 +115,7 @@ test("Die Bereichsfrage ist die letzte Frage der projektlokalen Installation", (
 
 test("Globale Installation stellt keine Bereichsfrage", () => {
   mitFixture("install-bereiche-global-", (dir) => {
-    const res = installiere(dir, ["", "global", "github", "github", "", "", "", "", "", ""]);
+    const res = installiere(dir, ["de", "global", "github", "github", "", "", "", "", "", ""]);
     const ausgabe = res.stdout + res.stderr;
     assert.equal(res.status, 0, ausgabe);
     assert.ok(!ausgabe.includes(BEREICH_FRAGE), ausgabe);

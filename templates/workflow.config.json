@@ -1,4 +1,5 @@
 {
+  "language": "en",
   "codeHost": "github",
   "issueTracker": "github",
   "buildChecks": [
@@ -19,7 +20,7 @@
   "formatFixCommand": "",
   "mainBranch": "main",
   "productionBranch": "production",
-  "pushPruefung": "lokal",
+  "pushCheck": "local",
   "reviewScope": "diff",
   "reviewModel": "claude-opus-5",
   "triggers": {
@@ -41,29 +42,29 @@
     "projectNumber": 1
   },
   "night": {
-    "kette": {
+    "chain": {
       "label": "kit:night",
-      "varianteBLabel": "kit:carry-through",
+      "variantBLabel": "kit:carry-through",
       "planMin": 20,
-      "paketeMin": 15,
+      "packagesMin": 15,
       "reviewMin": 15,
-      "abdeckungMin": 10,
-      "umsetzungMin": 120,
-      "kostenUsd": 50,
-      "kostenUsdB": 150,
-      "korrekturrunden": 2
+      "coverageMin": 10,
+      "implementationMin": 120,
+      "costUsd": 50,
+      "costUsdB": 150,
+      "correctionRounds": 2
     },
-    "zielUmsetzungMin": 10,
-    "festgefahrenNach": 3,
-    "modelle": [
+    "goalImplementationMin": 10,
+    "stuckAfter": 3,
+    "models": [
       "claude-opus-5",
       "claude-sonnet-5"
     ]
   },
-  "pruefLauf": {
+  "checkRun": {
     "label": "kit:check",
-    "pruefungMin": 25,
-    "kostenUsd": 25
+    "checkMin": 25,
+    "costUsd": 25
   },
   "issueReview": {
     "requiredBeforeReady": false,
@@ -103,24 +104,24 @@
       ]
     }
   },
-  "reviewStufen": {
-    "fachlich": {
+  "reviewStages": {
+    "requirement": {
       "reviewer": 2,
-      "rollen": [
+      "roles": [
         "form-beobachtbarkeit",
         "abgrenzung"
       ]
     },
     "plan": {
       "reviewer": 2,
-      "rollen": [
+      "roles": [
         "architektur-bestand",
         "schnitt-abhaengigkeiten"
       ]
     },
     "issue": {
       "reviewer": 1,
-      "rollen": [
+      "roles": [
         "pruefbarkeit"
       ]
     }

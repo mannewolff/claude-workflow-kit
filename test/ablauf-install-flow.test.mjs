@@ -88,7 +88,7 @@ function szenarienFake(dir, antwort, name = "szenarien-fake") {
 // an erster Stelle, "" heisst Deutsch. Ein bestehendes Projekt wird nicht nach ihr gefragt —
 // ein zweiter Lauf auf demselben Verzeichnis antwortet deshalb mit PROJEKT_GITHUB_BESTAND.
 const PROJEKT_GITHUB_BESTAND = ["projekt", "github", "j", "n", "github", "", "", "", "", "", "", ""];
-const PROJEKT_GITHUB = ["", ...PROJEKT_GITHUB_BESTAND];
+const PROJEKT_GITHUB = ["de", ...PROJEKT_GITHUB_BESTAND];
 
 function config(dir) {
   return JSON.parse(readFileSync(join(dir, ".claude", "workflow.config.json"), "utf-8"));
@@ -330,7 +330,7 @@ test("Rollen und Leser-Agent landen projektweit unter .claude/", () => {
 test("Rollen und Leser-Agent landen global unter ~/.claude/", () => {
   const dir = fixture("install-rollen-global-");
   try {
-    const res = installiere(dir, ["", "global", "github", "github", "", "", "", "", "", ""]);
+    const res = installiere(dir, ["de", "global", "github", "github", "", "", "", "", "", ""]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     rollenUndAgentPruefen(join(dir, "home", ".claude"));
   } finally {
@@ -342,7 +342,7 @@ test("Globaler Install schreibt nach HOME und legt kontext.config.json mit Vault
   const dir = fixture("install-global-");
   try {
     const vault = join(dir, "mein-vault");
-    const res = installiere(dir, ["", "global", "github", "github", "", "", "", "", "", vault]);
+    const res = installiere(dir, ["de", "global", "github", "github", "", "", "", "", "", vault]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     const home = join(dir, "home", ".claude");
@@ -366,7 +366,7 @@ test("Globaler Install schreibt nach HOME und legt kontext.config.json mit Vault
 test("Globaler Install ohne Vault-Pfad legt keine kontext.config.json an", () => {
   const dir = fixture("install-global-novault-");
   try {
-    const res = installiere(dir, ["", "global", "github", "github", "", "", "", "", "", ""]);
+    const res = installiere(dir, ["de", "global", "github", "github", "", "", "", "", "", ""]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.ok(!existsSync(join(dir, "home", ".claude", "kontext.config.json")),
       "ohne Vault-Pfad darf keine kontext.config.json entstehen");
@@ -380,16 +380,30 @@ test("Globaler Install ohne Vault-Pfad legt keine kontext.config.json an", () =>
 // Die Frage steht zuerst und zweisprachig, weil gerade ein Mensch ohne Deutschkenntnisse sie
 // lesen muss. Die Antwort steht unter dem Namen ihrer Sprache in der Config.
 
-test("Die Sprachfrage steht bei einem neuen Projekt zuerst, eine leere Antwort schreibt sprache: de", () => {
+test("Die Sprachfrage steht bei einem neuen Projekt zuerst, die Antwort de schreibt sprache: de", () => {
   const dir = fixture("install-sprache-de-");
   try {
     const res = installiere(dir, PROJEKT_GITHUB);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
-    const sprachfrage = res.stdout.indexOf("Sprache / Language [de/en] (de): ");
+    const sprachfrage = res.stdout.indexOf("Sprache / Language [de/en] (en): ");
     assert.ok(sprachfrage >= 0, "die Sprachfrage fehlt");
     assert.ok(sprachfrage < res.stdout.indexOf("[global/projekt]"), "die Sprachfrage muss vor der Scope-Frage stehen");
     assert.equal(config(dir).sprache, "de");
     assert.equal("language" in config(dir), false, "ein deutsches Projekt traegt den deutschen Namen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Seit Version 5 ist Englisch die Vorgabe (Issue #1474, E19): Die leere Antwort ergibt ein
+// englisches Projekt.
+test("Eine leere Antwort auf die Sprachfrage schreibt language: en", () => {
+  const dir = fixture("install-sprache-leer-");
+  try {
+    const res = installiere(dir, ["", ...PROJEKT_GITHUB_BESTAND]);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.equal(config(dir).language, "en");
+    assert.equal("sprache" in config(dir), false, "ein englisches Projekt traegt den englischen Namen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -441,7 +455,7 @@ test("Ein bestehendes Projekt ohne Sprachfeld wird nicht gefragt und bekommt kei
 test("Eine leere Antwort auf die Scope-Frage bedeutet global", () => {
   const dir = fixture("install-scope-default-");
   try {
-    const res = installiere(dir, ["", "", "github", "github", "", "", "", "", "", ""]);
+    const res = installiere(dir, ["de", "", "github", "github", "", "", "", "", "", ""]);
     assert.equal(res.status, 0, res.stderr);
     assert.ok(existsSync(join(dir, "home", ".claude", "workflow.config.json")));
   } finally {
@@ -452,7 +466,7 @@ test("Eine leere Antwort auf die Scope-Frage bedeutet global", () => {
 test("Eine unverstaendliche Scope-Antwort wird zurueckgewiesen und neu gefragt", () => {
   const dir = fixture("install-scope-ungueltig-");
   try {
-    const res = installiere(dir, ["", "vielleicht", "projekt", "github", "j", "n", "github", "", "", "", "", "", ""]);
+    const res = installiere(dir, ["de", "vielleicht", "projekt", "github", "j", "n", "github", "", "", "", "", "", ""]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout + res.stderr, /Bitte 'global' oder 'projekt' eingeben/);
     assert.ok(existsSync(join(dir, ".claude", "workflow.config.json")),
@@ -465,7 +479,7 @@ test("Eine unverstaendliche Scope-Antwort wird zurueckgewiesen und neu gefragt",
 test("Ein ungueltiger codeHost bricht den Piped-Modus mit Fehlermeldung ab", () => {
   const dir = fixture("install-codehost-ungueltig-");
   try {
-    const res = installiere(dir, ["", "projekt", "bitbucket", "github", "", "", "", ""]);
+    const res = installiere(dir, ["de", "projekt", "bitbucket", "github", "", "", "", ""]);
     assert.equal(res.status, 1, "eine ungueltige Auswahl darf nicht stillschweigend durchgehen");
     assert.match(res.stdout + res.stderr, /Fehler/);
     assert.ok(!existsSync(join(dir, ".claude", "workflow.config.json")),
@@ -478,7 +492,7 @@ test("Ein ungueltiger codeHost bricht den Piped-Modus mit Fehlermeldung ab", () 
 test("Ein reviewModel ohne claude-Praefix wird von der pattern-Regel abgelehnt", () => {
   const dir = fixture("install-reviewmodel-");
   try {
-    const res = installiere(dir, ["", "projekt", "github", "j", "n", "github", "", "", "", "gpt-4"]);
+    const res = installiere(dir, ["de", "projekt", "github", "j", "n", "github", "", "", "", "gpt-4"]);
     assert.equal(res.status, 1);
     assert.match(res.stdout + res.stderr, /reviewModel muss eine Claude-Modell-ID sein/);
   } finally {
@@ -851,7 +865,7 @@ test("Ein altes provider-Feld wird auf codeHost und issueTracker migriert", () =
 test("GitLab-Install ohne Label-Anlage zeigt die manuelle Anleitung", () => {
   const dir = fixture("install-gitlab-nein-");
   try {
-    const res = installiere(dir, ["", "projekt", "gitlab", "gitlab", "", "", "", "", "", "", "n"]);
+    const res = installiere(dir, ["de", "projekt", "gitlab", "gitlab", "", "", "", "", "", "", "n"]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.match(res.stdout, /Labels manuell anlegen: Backlog, Ready/);
     assert.match(res.stdout, /Leerzeichen in den Namen verwenden, kein Bindestrich/);

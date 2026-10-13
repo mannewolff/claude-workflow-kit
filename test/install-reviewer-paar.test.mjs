@@ -60,7 +60,7 @@ function schreibeConfig(dir, werte) {
 // Ein neues Projekt beantwortet zuerst die Sprachfrage (Issue #1430), "" heisst Deutsch;
 // ein Lauf auf einer Bestandsconfig wird nicht nach ihr gefragt.
 const ALLES_DEFAULT_BESTAND = ["projekt", "github", "j", "n", "github", "", "", "", "", ""];
-const ALLES_DEFAULT = ["", ...ALLES_DEFAULT_BESTAND];
+const ALLES_DEFAULT = ["de", ...ALLES_DEFAULT_BESTAND];
 
 // --- Frischer Install: der DEFAULTS-Spread setzt den Claude-Reviewer ---
 
@@ -93,7 +93,7 @@ test("frischer Install mit Kommando-Reviewer schreibt reviewCommand und KEIN rev
   const dir = fixture("paar-frisch-kommando-");
   try {
     const res = installiere(dir,
-      ["", "projekt", "github", "j", "n", "github", "", "", "", "-", "codex exec --model gpt-5", ""]);
+      ["de", "projekt", "github", "j", "n", "github", "", "", "", "-", "codex exec --model gpt-5", ""]);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     const c = config(dir);
@@ -168,7 +168,7 @@ test("[installer-3] Der Widerspruchs-Hinweis steht im Installer und VOR der erst
 test("werden beide Felder aktiv geleert, bricht der Installer ab", () => {
   const dir = fixture("paar-keins-");
   try {
-    const res = installiere(dir, ["", "projekt", "github", "j", "n", "github", "", "", "", "-", "-", ""]);
+    const res = installiere(dir, ["de", "projekt", "github", "j", "n", "github", "", "", "", "-", "-", ""]);
     assert.equal(res.status, 1, "ohne Reviewer laeuft /review ins Leere — das darf nicht durchgehen");
 
     const meldung = res.stdout + res.stderr;
