@@ -95,7 +95,7 @@ import { spawnSync } from "node:child_process";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "5.1.1";
+const KIT_VERSION = "5.1.2";
 
 // Die Hilfe gibt es je Kommando genau einmal, englisch, in jedem Projekt (Issue #1557, Plan
 // #1548 E7). Sie antwortet, bevor ein Teil geladen ist (Plan #1199, E2).
