@@ -2,6 +2,21 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [5.1.1] - 2026-10-13
+- Prozesstext und Doku nennen den Weg einer Idee über /triage (#1632)
+- /techplan, /requirement und /task nehmen eine Idee aus /triage an (#1631)
+- Skill /triage spricht eine Idee durch und bringt sie auf ihre Bahn (#1630)
+- issue triage --finish verschiebt die Vorlage und löscht die Ablage einer Idee (#1629)
+- Kommando issue triage liest Einstieg, Ablage und geklärten Stand einer Idee (#1628)
+- Leser des geklärten Stands und neue feste Zeilen für /triage (#1627)
+- Fester Zeitpunkt im Testhelfer berichtMitPlanBody (#1610)
+- Prüfrolle architektur-bestand meldet einen nicht erklärten Vertrag (#1617)
+- Stopp-Klasse nennt Verträge, /techplan, /issues und /issue-review führen sie (#1616)
+- Kommando code contract-repo holt den gebauten Stand des Partnerrepos (#1615)
+- Config-Feld vertragsRepos nennt das Partnerrepo eines Projekts (#1614)
+- P14 im Plan-Register und in der Doku, Korrekturauftrag darf die Vertragsfrage schreiben (#1613)
+- Plan-Gate P14: Verträge mit dem anderen Repo in fester Form (#1612)
+
 ## [5.1.0] - 2026-10-13
 - Retro zählt Pakete, die die Nacht-Kette selbst nach Ready zieht, als vierte Gruppe (#1607)
 - check-form trennt Szenarien-Prüfung und Stichtag-Hinweis in zwei Schalter (#1606)
