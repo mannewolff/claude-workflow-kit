@@ -109,3 +109,80 @@ test("--body-file mit unlesbarer Datei: Fehlermeldung", () => imProjekt((dir) =>
   assert.notEqual(res.status, 0);
   assert.match(res.stderr, /body-file/);
 }));
+
+// --finish (Issue #1629, Plan #1623 A3, A13, E2): schliesst die Ablage ab — mit --template
+// wandert die Vorlage vorher nach design/ideas/<N>/. Der Body der Karte bleibt unberuehrt.
+
+/** Ruft `issue triage` mit Schalter auf und prueft, dass die Karte unveraendert bleibt. */
+function abschliessen(dir, args, env = MIT_AUFSICHT) {
+  const datei = join(dir, "issues", "0001.md");
+  const vorher = readFileSync(datei, "utf-8");
+  const res = runBoard(dir, ["issue", "triage", "1", "--finish", ...args], env);
+  assert.equal(readFileSync(datei, "utf-8"), vorher, "Body oder Labels geaendert");
+  return { status: res.status, stderr: res.stderr, ausgabe: res.stdout ? JSON.parse(res.stdout) : null };
+}
+
+/** Legt die Ablage der Karte 1 mit den genannten Dateien an. */
+function ablage(dir, dateien) {
+  const pfad = join(dir, ".claude", "ideas", "1");
+  mkdirSync(pfad, { recursive: true });
+  for (const [name, inhalt] of Object.entries(dateien)) writeFileSync(join(pfad, name), inhalt);
+  return pfad;
+}
+
+test("--finish: die Ablage ist geloescht, Exit 0", () => imProjekt((dir) => {
+  const pfad = ablage(dir, { "skizze.png": "bild" });
+  const { status, ausgabe } = abschliessen(dir, []);
+  assert.equal(status, 0);
+  assert.deepEqual(ausgabe.abschluss, { ok: true, pfad: ".claude/ideas/1", geloescht: true, vorlage: null, meldung: null });
+  assert.equal(existsSync(pfad), false);
+}));
+
+test("--finish --template: die Vorlage liegt unter design/ideas/1, der Rest ist weg", () => imProjekt((dir) => {
+  const pfad = ablage(dir, { "skizze.png": "bild", "begleit.pdf": "pdf" });
+  const { status, ausgabe } = abschliessen(dir, ["--template", "skizze.png"]);
+  assert.equal(status, 0);
+  assert.equal(ausgabe.abschluss.vorlage, "design/ideas/1/skizze.png");
+  assert.equal(readFileSync(join(dir, "design", "ideas", "1", "skizze.png"), "utf-8"), "bild");
+  assert.equal(existsSync(pfad), false);
+}));
+
+test("--finish --template mit fehlender Datei: Exit 1, die Ablage bleibt", () => imProjekt((dir) => {
+  const pfad = ablage(dir, { "begleit.pdf": "pdf" });
+  const { status, ausgabe } = abschliessen(dir, ["--template", "skizze.png"]);
+  assert.equal(status, 1);
+  assert.equal(ausgabe.abschluss.ok, false);
+  assert.match(ausgabe.abschluss.meldung, /skizze\.png/);
+  assert.ok(existsSync(join(pfad, "begleit.pdf")));
+}));
+
+test("--template ohne --finish: Fehlermeldung, nichts aendert sich", () => imProjekt((dir) => {
+  const pfad = ablage(dir, { "skizze.png": "bild" });
+  const res = runBoard(dir, ["issue", "triage", "1", "--template", "skizze.png"], MIT_AUFSICHT);
+  assert.notEqual(res.status, 0);
+  assert.match(res.stderr, /--finish/);
+  assert.ok(existsSync(join(pfad, "skizze.png")));
+}));
+
+test("--finish an einer Karte, die keine Idee ist: Exit 1, die Ablage bleibt", () => imProjekt((dir) => {
+  const pfad = ablage(dir, { "skizze.png": "bild" });
+  const { status, ausgabe } = abschliessen(dir, []);
+  assert.equal(status, 1);
+  assert.equal(ausgabe.einstieg.grund, "keine-idee");
+  assert.equal(ausgabe.abschluss.ok, false);
+  assert.ok(existsSync(join(pfad, "skizze.png")));
+}, "[Plan] Export"));
+
+test("Szenario: Unbeaufsichtigt beginnt nichts", () => imProjekt((dir) => {
+  const pfad = ablage(dir, { "skizze.png": "bild" });
+  const { ausgabe: lesend } = triage(dir, ["1"], { KIT_AGENT_MODEL: "claude-opus-5-5" });
+  assert.equal(lesend.einstieg.start, false);
+  assert.equal(lesend.einstieg.grund, "unbeaufsichtigt");
+  const { status, ausgabe } = abschliessen(dir, ["--template", "skizze.png"], { KIT_AGENT_MODEL: "claude-opus-5-5" });
+  assert.equal(status, 1);
+  assert.equal(ausgabe.einstieg.start, false);
+  assert.equal(ausgabe.einstieg.grund, "unbeaufsichtigt");
+  assert.deepEqual(ausgabe.abschluss, { ok: false, pfad: ".claude/ideas/1", geloescht: false, vorlage: null, meldung: ausgabe.einstieg.meldung });
+  assert.ok(existsSync(join(pfad, "skizze.png")));
+  assert.equal(existsSync(join(dir, "design")), false);
+}));

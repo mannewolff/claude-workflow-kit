@@ -6,15 +6,15 @@
  *
  * Reine Funktionen ohne Board-Zugriff; den Zugriff traegt allein der Einstieg in
  * kit/board.mjs, `issue triage`. Gespraechsfuehrung, Empfehlung und Bahnvorschlag sind Urteil
- * der Session und stehen im Skill, nicht hier (A2). Das Abschliessen der Ablage (`--finish`)
- * folgt in einem eigenen Paket.
+ * der Session und stehen im Skill, nicht hier (A2). `ablageAbschliessen` raeumt die Ablage,
+ * sobald der gewaehlte Weg begonnen hat (`--finish`, Issue #1629, A13, E2).
  *
  * QUELLE DER WAHRHEIT: Diese Datei wird im Kit-Repo (claude-workflow-kit) gepflegt.
  * Aenderungen ausschliesslich hier vornehmen, danach `node tools/sync-blobs.mjs`.
  */
 
-import { existsSync, readdirSync } from "node:fs";
-import { extname, join } from "node:path";
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { basename, extname, join } from "node:path";
 
 import { fenceLauf, istIdee, normalisiereZeilenenden, zerlegeAbschnitte } from "./dokumente.mjs";
 import { fragenLesen } from "./grooming.mjs";
@@ -72,6 +72,34 @@ export function ablageLesen(wurzel, id) {
       : { name: e.name, gelesen: GELESEN.has(extname(e.name).toLowerCase()), vorlageZiel: `${VORLAGE_ORT}/${n}/${e.name}` }))
     .sort((a, b) => (a.name < b.name ? -1 : Number(a.name > b.name)));
   return { pfad, vorhanden: true, dateien };
+}
+
+/**
+ * Schliesst die Ablage `.claude/ideas/<id>/` unter `wurzel` ab (A13, E2): Mit `vorlage` wandert
+ * genau diese Datei zuerst nach `design/ideas/<id>/<datei>`, danach wird die Ablage vollstaendig
+ * geloescht. `{ ok, pfad, geloescht, vorlage, meldung }`, `pfad` und `vorlage` relativ zur
+ * Wurzel. Liegt die genannte Vorlage nicht als Datei direkt in der Ablage, bleibt alles stehen
+ * (`ok: false` mit Meldung). Eine fehlende Ablage ohne Vorlage ist kein Fehler.
+ */
+export function ablageAbschliessen(wurzel, id, vorlage = null) {
+  const n = nummer(id);
+  const pfad = `${ABLAGE}/${n}`;
+  const verzeichnis = join(wurzel, ABLAGE, n);
+  const ergebnis = { ok: true, pfad, geloescht: false, vorlage: null, meldung: null };
+  if (vorlage !== null && vorlage !== undefined) {
+    const name = String(vorlage);
+    const quelle = join(verzeichnis, name);
+    const direkt = name !== "" && basename(name) === name && name !== "." && name !== "..";
+    if (!direkt || !existsSync(quelle) || !statSync(quelle).isFile()) {
+      return { ...ergebnis, ok: false, meldung: t("vorlageFehlt", { datei: name, pfad }) };
+    }
+    mkdirSync(join(wurzel, VORLAGE_ORT, n), { recursive: true });
+    renameSync(quelle, join(wurzel, VORLAGE_ORT, n, name));
+    ergebnis.vorlage = `${VORLAGE_ORT}/${n}/${name}`;
+  }
+  if (!existsSync(verzeichnis)) return ergebnis;
+  rmSync(verzeichnis, { recursive: true, force: true });
+  return { ...ergebnis, geloescht: true };
 }
 
 /** Die Zeilen des Abschnitts `## Geklärter Stand` (beide Sprachen) ohne Codezeilen. */

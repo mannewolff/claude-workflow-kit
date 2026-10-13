@@ -203,7 +203,13 @@ Usage:
       ({ punkte, offen, bahn, vorlage, ergebnis } from '## Clarified state', ergebnis from
       the 'Result:' line or a comment 'Fortsetzung: ...'). --body-file checks a new body
       against the card's (pruefung: { ok, verstoesse }), exit 1 if the text of the idea
-      changed or a confirmed point lost its answer line. Read-only.
+      changed or a confirmed point lost its answer line. Read-only without --finish.
+  node board.mjs issue triage <id> --finish [--template <file>]
+      Closes the attachments folder of an idea once the chosen path has begun (Issue #1629,
+      Plan #1623 A13, E2): --template first moves that file from .claude/ideas/<id>/ to
+      design/ideas/<id>/<file>, then the folder is deleted. abschluss: { ok, pfad,
+      geloescht, vorlage, meldung }. Exit 1 if einstieg says start: false or the template
+      is not a file in the folder; then nothing is moved or deleted. Never touches the card.
   node board.mjs issue label add <id> <name>
   node board.mjs issue label remove <id> <name>
       Marks an issue (e.g. kit:clarify). Status labels are changed by \`issue move\`.
@@ -596,26 +602,36 @@ async function issueFragen(tracker, config, args) {
 }
 
 /**
- * `issue triage <id> [--body-file <pfad>]` (Issue #1628, Plan #1623 A2, A3, A11, E5): Einstieg,
- * Ablage und geklaerter Stand einer Idee fuer `/triage`. Rein lesend — geschrieben wird ueber
- * `issue update --body-file`, die Ablage legt der Aufruf nie an. Exit 1 allein, wenn
- * `--body-file` gegen den Body der Karte verstoesst.
+ * `issue triage <id> [--body-file <pfad>] [--finish [--template <datei>]]` (Issue #1628, #1629,
+ * Plan #1623 A2, A3, A11, A13, E2, E5): Einstieg, Ablage und geklaerter Stand einer Idee fuer
+ * `/triage`. Ohne `--finish` rein lesend — geschrieben wird ueber `issue update --body-file`, die
+ * Ablage legt der Aufruf nie an. `--finish` schliesst die Ablage ab, nur wenn der Einstieg
+ * `start: true` meldet (A3); die Karte beruehrt es nie. Exit 1, wenn `--body-file` gegen den Body
+ * der Karte verstoesst oder der Abschluss nicht stattfand.
  */
 async function issueTriage(tracker, args) {
   const id = args._[0];
   if (id === undefined) abbruch(t("triageOhneId"));
-  const { triageEinstieg, ablageLesen, standLesen, triageKoerperPruefen } = await import("./board/triage.mjs");
+  if (args.template !== undefined && args.finish === undefined) abbruch(t("triageVorlageOhneFinish"));
+  if (args.template === true) abbruch(t("optionOhneWert", { option: "template" }));
+  const { triageEinstieg, ablageLesen, ablageAbschliessen, standLesen, triageKoerperPruefen } = await import("./board/triage.mjs");
   const neu = optionDatei(args, "body-file");
   const issue = await tracker.getIssue(String(id));
   const body = issue.body || "";
+  const einstieg = triageEinstieg({ ...issue, id: String(id) }, process.env);
   const ausgabe = {
-    einstieg: triageEinstieg({ ...issue, id: String(id) }, process.env),
+    einstieg,
     ablage: ablageLesen(configWurzel(), String(id)),
     stand: standLesen(body, await kartenKommentare(tracker, String(id), issue)),
   };
   if (neu !== null) ausgabe.pruefung = triageKoerperPruefen(body, neu);
+  if (args.finish !== undefined) {
+    ausgabe.abschluss = einstieg.start
+      ? ablageAbschliessen(configWurzel(), String(id), args.template ?? null)
+      : { ok: false, pfad: ausgabe.ablage.pfad, geloescht: false, vorlage: null, meldung: einstieg.meldung };
+  }
   out(ausgabe);
-  if (ausgabe.pruefung && !ausgabe.pruefung.ok) process.exit(1);
+  if ((ausgabe.pruefung && !ausgabe.pruefung.ok) || (ausgabe.abschluss && !ausgabe.abschluss.ok)) process.exit(1);
 }
 
 /**
