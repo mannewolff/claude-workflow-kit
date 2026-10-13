@@ -1,7 +1,6 @@
 {
   "codeHost": "github",
   "issueTracker": "toolbox",
-  "szenarienAb": 1597,
   "buildChecks": [
     {
       "cmd": "node tools/sync-blobs.mjs --check",
@@ -604,6 +603,7 @@
     "in_review": "In review",
     "done": "Done"
   },
+  "szenarienAb": 1597,
   "installCommand": "npm ci",
   "checkAreas": {
     "nacht-einstieg": [
