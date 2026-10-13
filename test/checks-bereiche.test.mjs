@@ -11,8 +11,8 @@ import { mitRepo, checks, datei, git } from "./helpers/checks-repo.mjs";
 
 /** Erfolgreicher `bereiche`-Aufruf, JSON geparst. */
 function bereiche(dir) {
-  const res = checks(dir, "bereiche");
-  assert.equal(res.status, 0, `checks.mjs bereiche schlug fehl (${res.status}): ${res.stderr}`);
+  const res = checks(dir, "areas");
+  assert.equal(res.status, 0, `checks.mjs areas schlug fehl (${res.status}): ${res.stderr}`);
   return JSON.parse(res.stdout);
 }
 
@@ -116,7 +116,7 @@ test("[checks-1004] das Inventar trennt freigestellte von unzugeordneten version
 
 test("[checks-1004] bereiche ohne Config bricht ab wie plan und run", async () => {
   await mitRepo({ ohneConfig: true }, async (dir) => {
-    const res = checks(dir, "bereiche");
+    const res = checks(dir, "areas");
     assert.notEqual(res.status, 0);
     assert.match(res.stderr, /workflow\.config\.json/);
   });

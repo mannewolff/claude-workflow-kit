@@ -191,7 +191,7 @@ const skill = (name) => liesDatei(join(repoRoot, "skills", name, "SKILL.md"), "u
 test("die Skills zeigen einen Weg ohne Kommandozeilen-Argument", () => {
   // Seit Issue #583/#584 ist das der Dateiweg (--text-file) statt stdin: Der Parser
   // weist einen Aufruf ab, der den ganzen Text traegt — auch im Heredoc.
-  for (const name of ["issue-review", "review", "implement-ready", "implement-next"]) {
+  for (const name of ["issue-review", "kit-review", "implement-ready", "implement-next"]) {
     const text = skill(name);
     assert.doesNotMatch(text, /issue comment <[^>]*> --text "/,
       `${name}: zeigt noch den Argument-Weg`);

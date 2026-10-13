@@ -18,10 +18,13 @@ test("[night-33] varianteVon: Karte mit dem Label ergibt B, ohne A", () => {
   assert.equal(varianteVon({ labels: ["kit:night"] }, budget), "A");
 });
 
-test("[night-33] varianteVon mit einem abweichenden varianteBLabel aus dem Budget: B nur beim passenden Label", () => {
+test("[night-33] varianteVon mit einem abweichenden varianteBLabel aus dem Budget: B beim gesetzten Label und bei beiden Vorgabenamen", () => {
   const budget = { varianteBLabel: "kit:weiterziehen" };
   assert.equal(varianteVon({ labels: ["kit:weiterziehen"] }, budget), "B");
-  assert.equal(varianteVon({ labels: ["kit:durchziehen"] }, budget), "A", "das Default-Label gilt hier nicht, wenn das Budget ein anderes traegt");
+  // Seit Issue #1425 (Plan #1420, E7) gelten neben dem gesetzten Wert beide Vorgabenamen.
+  assert.equal(varianteVon({ labels: ["kit:durchziehen"] }, budget), "B");
+  assert.equal(varianteVon({ labels: ["kit:carry-through"] }, budget), "B");
+  assert.equal(varianteVon({ labels: ["kit:sonstwas"] }, budget), "A", "ein fremdes Label zaehlt nicht");
 });
 
 test("[night-33] varianteVon bei fehlenden labels, leerem Array und fehlendem budget ergibt A ohne Wurf", () => {

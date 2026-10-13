@@ -38,6 +38,7 @@ function setupProjekt() {
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
   }, null, 2));
@@ -83,7 +84,7 @@ test("Nachtlauf: [Idee]-Issue wird kommentiert uebersprungen, normales Issue lae
     const backlog = board(dir, "issue", "list", "--status", "backlog").map((i) => String(i.id));
     assert.ok(backlog.includes(String(idee.id)), "[Idee]-Issue liegt nicht im Backlog");
     const kommentare = issuesDirText(dir);
-    assert.match(kommentare, /Idee.*\/fachplan.*\/task.*nicht implementiert/s);
+    assert.match(kommentare, /Idee.*\/requirement.*\/task.*nicht implementiert/s);
     assert.doesNotMatch(kommentare, /Idee[^\n]*techplan/, "der Kommentar schickt die Idee noch nach /techplan");
 
     // Normales Issue lief, und zwar als einzige Session.

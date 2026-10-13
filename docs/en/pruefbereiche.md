@@ -35,9 +35,9 @@ Test helpers stay in the patterns of all areas that use them. A file without a p
 The derivation only takes effect in projects with JavaScript sources — files with the extension `.mjs`, `.cjs` or `.js` — once these import one another. Projects in other languages (Java, Python, TypeScript builds without these extensions …) get no dependent areas from the graph. They assign exclusively via the patterns in `checkAreas`; the assignment aid below shows them where a cut is missing.
 
 ### Non-literal imports are invisible
-<!-- de: e8d435f65364 -->
+<!-- de: aa24b5afbc64 -->
 
-The analysis sees static and dynamic imports with a **literal** path (`import "./x.mjs"`, `await import("./x.mjs")`). An import whose path only comes into being at runtime — for instance via `pathToFileURL(join(dir, name))` — it does not see. In the kit this concerns the night runner's neighbour imports of `board.mjs`, `checks.mjs`, `aufwand.mjs`, `wirksamkeit.mjs` and `befunde.mjs`, as well as the Windows import of the board part in `checks.mjs`.
+The analysis sees static and dynamic imports with a **literal** path (`import "./x.mjs"`, `await import("./x.mjs")`). An import whose path only comes into being at runtime — for instance via `pathToFileURL(join(dir, name))` — it does not see. In the kit this concerns the night runner's neighbour imports of `board.mjs`, `checks.mjs`, `effort.mjs`, `effectiveness.mjs` and `findings.mjs`, as well as the Windows import of the board part in `checks.mjs`.
 
 Such couplings belong **by hand** in the `areas` of the check command whose part loads the neighbour. The kit pins this down with a coupling gate (`test/config-teile.test.mjs` via `tools/verflechtung.mjs`), which measures the mention of source paths as strings.
 

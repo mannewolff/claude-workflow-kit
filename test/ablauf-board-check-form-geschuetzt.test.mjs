@@ -106,7 +106,7 @@ test("I8 weist eine geschuetzte Datei in der Aufgabe ab und nennt Pfad und Zeile
     assert.equal(i8.length, 1);
     assert.ok(i8[0].meldung.includes(EINSTELLUNGEN), i8[0].meldung);
     assert.ok(i8[0].meldung.includes(zeile), i8[0].meldung);
-    assert.match(i8[0].meldung, /\[Mensch\]-Karte/);
+    assert.match(i8[0].meldung, /\[Human\]-Karte/);
     assert.equal(gate(r, "I7").length, 0, "ein geschuetzter Pfad ist auch ein Pfad");
   });
 });
@@ -183,7 +183,9 @@ test("die Hilfe zu check-form nennt I1 bis I9", () => {
   const dir = setupProjekt({ codeHost: "local", issueTracker: "local" }, "board-check-form-geschuetzt-");
   try {
     const res = runBoard(dir, ["--help"]);
-    assert.match(res.stdout, /Arbeitspaket I1 bis I9/);
+    assert.match(res.stdout, /work package I1 to I9/);
+    // F12 steht in derselben Gate-Zeile (Issue #1590).
+    assert.match(res.stdout, /requirement\s+F1 F2 F6 F7 F9 F11 F12, plan/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

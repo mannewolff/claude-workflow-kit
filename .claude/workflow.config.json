@@ -3,6 +3,22 @@
   "issueTracker": "toolbox",
   "buildChecks": [
     {
+      "cmd": "node tools/sync-blobs.mjs --check",
+      "vorab": true
+    },
+    {
+      "cmd": "npx eslint kit tools test install.mjs .githooks",
+      "vorab": true
+    },
+    {
+      "cmd": "node --test test/checks-leichtigkeit.test.mjs",
+      "vorab": true,
+      "areas": [
+        "pruefungen",
+        "testdateien"
+      ]
+    },
+    {
       "cmd": "node --test --test-concurrency=2 \"test/night-kette-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
@@ -19,15 +35,19 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/board-ac*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-mensch-*.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-u*.test.mjs\" \"test/cli-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/board-ac*.test.mjs\" \"test/board-c*.test.mjs\" \"test/board-e*.test.mjs\" \"test/board-k*.test.mjs\" \"test/board-l*.test.mjs\" \"test/board-mensch-*.test.mjs\" \"test/board-namen-*.test.mjs\" \"test/board-names.test.mjs\" \"test/board-o*.test.mjs\" \"test/board-p*.test.mjs\" \"test/board-r*.test.mjs\" \"test/board-s*.test.mjs\" \"test/board-u*.test.mjs\" \"test/cli-*.test.mjs\" \"test/aufrufer-englisch.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
         "board-dokumente",
         "board-einstieg",
+        "board-geschuetzt",
         "board-grundlagen",
+        "board-hook",
         "board-issue-review",
+        "board-szenarien",
         "board-testhinweise",
+        "board-wiederholung",
         "nacht-einstieg",
         "nacht-wartend",
         "pruefungen"
@@ -41,10 +61,21 @@
         "befunde",
         "board-adapter",
         "board-dokumente",
+        "board-geschuetzt",
+        "board-grundlagen",
         "board-melder",
         "board-wiederholung",
         "installer",
+        "nacht-abhaengigkeiten",
+        "nacht-bericht",
         "nacht-einstieg",
+        "nacht-grundlagen",
+        "nacht-kette",
+        "nacht-kitstand",
+        "nacht-laufstand",
+        "nacht-session",
+        "nacht-tag",
+        "nacht-wartend",
         "preise",
         "pruefungen",
         "sync"
@@ -93,13 +124,15 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/board-dokumente-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/board-dokumente-*.test.mjs\" \"test/board-vorgeschichte-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
         "board-dokumente",
         "board-grundlagen",
-        "board-wiederholung"
+        "board-issue-review",
+        "board-wiederholung",
+        "nacht-abhaengigkeiten"
       ]
     },
     {
@@ -110,7 +143,9 @@
         "board-dokumente",
         "board-geschuetzt",
         "board-grundlagen",
-        "board-wiederholung"
+        "board-wiederholung",
+        "nacht-kette",
+        "nacht-wartend"
       ]
     },
     {
@@ -123,6 +158,18 @@
         "board-grundlagen",
         "board-testhinweise",
         "board-wiederholung"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/board-grooming-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-adapter",
+        "board-dokumente",
+        "board-grooming",
+        "board-grundlagen",
+        "board-wiederholung",
+        "nacht-kette"
       ]
     },
     {
@@ -143,6 +190,7 @@
       "areas": [
         "board-adapter",
         "board-dokumente",
+        "board-einstieg",
         "board-grundlagen",
         "board-melder",
         "board-wiederholung",
@@ -202,9 +250,11 @@
         "aufwand",
         "board-adapter",
         "board-einstieg",
+        "board-grundlagen",
         "board-wiederholung",
         "nacht-einstieg",
         "nacht-grundlagen",
+        "nacht-kette",
         "nacht-kitstand",
         "nacht-laufstand",
         "nacht-session",
@@ -217,6 +267,7 @@
       "gleichzeitig": true,
       "areas": [
         "board-dokumente",
+        "board-grundlagen",
         "board-wiederholung",
         "nacht-abhaengigkeiten",
         "nacht-bericht",
@@ -250,7 +301,7 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/night-tag-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/night-tag-*.test.mjs\" \"test/night-englische-labels.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-dokumente",
@@ -274,6 +325,7 @@
         "board-dokumente",
         "board-einstieg",
         "board-geschuetzt",
+        "board-grooming",
         "board-grundlagen",
         "board-hook",
         "board-issue-review",
@@ -287,6 +339,19 @@
     {
       "cmd": "node --test --test-concurrency=2 \"test/ablauf-night-*.test.mjs\"",
       "gleichzeitig": true,
+      "nichtBeimAbschluss": "zusammenspiel",
+      "abschlussBereiche": [
+        "nacht-einstieg",
+        "nacht-grundlagen",
+        "nacht-laufstand",
+        "nacht-abhaengigkeiten",
+        "nacht-kitstand",
+        "nacht-session",
+        "nacht-bericht",
+        "nacht-wartend",
+        "nacht-kette",
+        "nacht-tag"
+      ],
       "areas": [
         "aufwand",
         "befunde",
@@ -294,6 +359,7 @@
         "board-dokumente",
         "board-einstieg",
         "board-geschuetzt",
+        "board-grundlagen",
         "board-melder",
         "board-wiederholung",
         "installer",
@@ -348,15 +414,8 @@
         "pruefungen",
         "sync",
         "wirksamkeit",
-        "workflow-vorlage"
-      ]
-    },
-    {
-      "cmd": "node --test test/checks-leichtigkeit.test.mjs",
-      "gleichzeitig": true,
-      "areas": [
-        "pruefungen",
-        "testdateien"
+        "workflow-vorlage",
+        "worktree"
       ]
     },
     {
@@ -369,27 +428,84 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/install-*.test.mjs\" \"test/tools-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/derived-*.test.mjs\" \"test/copy-*.test.mjs\" \"test/sync-*.test.mjs\" \"test/kit-*.test.mjs\" \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/install-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/copy-*.test.mjs\" \"test/sync-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
-        "aufwand",
-        "befunde",
+        "board-grundlagen",
+        "einstellungen",
+        "installer",
+        "konfiguration",
+        "sync"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/tools-*.test.mjs\" \"test/derived-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
         "board-dokumente",
+        "board-grundlagen",
+        "einstellungen",
+        "herkunft",
+        "installer",
+        "pruefungen",
+        "skills-doku",
+        "sync"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
         "board-einstieg",
         "board-grundlagen",
         "board-issue-review",
         "einstellungen",
-        "frischer-checkout",
-        "herkunft",
         "installer",
         "konfiguration",
         "nacht-einstieg",
-        "preise",
+        "nacht-grundlagen",
+        "nacht-kitstand",
+        "nacht-session",
         "pruefungen",
         "skills-doku",
         "sync",
         "wirksamkeit",
-        "workflow-vorlage",
+        "workflow-vorlage"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/kit-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "aufwand",
+        "befunde",
+        "board-adapter",
+        "board-dokumente",
+        "board-einstieg",
+        "board-geschuetzt",
+        "board-grooming",
+        "board-grundlagen",
+        "board-hook",
+        "board-issue-review",
+        "board-melder",
+        "board-testhinweise",
+        "board-wiederholung",
+        "einstellungen",
+        "installer",
+        "konfiguration",
+        "nacht-abhaengigkeiten",
+        "nacht-bericht",
+        "nacht-grundlagen",
+        "nacht-kette",
+        "nacht-kitstand",
+        "nacht-laufstand",
+        "nacht-session",
+        "nacht-tag",
+        "nacht-wartend",
+        "pruefungen",
+        "skills-doku",
+        "sync",
+        "wirksamkeit",
         "worktree"
       ]
     },
@@ -400,27 +516,22 @@
         "aufwand",
         "befunde",
         "board-einstieg",
-        "board-grundlagen",
-        "board-issue-review",
         "einstellungen",
         "frischer-checkout",
         "herkunft",
         "installer",
         "konfiguration",
         "nacht-einstieg",
-        "nacht-laufstand",
-        "nacht-session",
         "preise",
         "pruefungen",
         "skills-doku",
         "sync",
         "wirksamkeit",
-        "workflow-vorlage",
         "worktree"
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/docs-*.test.mjs\" \"test/skills-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\" \"test/rollen-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/docs-*.test.mjs\" \"test/skills-*.test.mjs\" \"test/workflow-*.test.mjs\" \"test/push-*.test.mjs\" \"test/mitteilung-*.test.mjs\" \"test/vergleiche-*.test.mjs\" \"test/rollen-*.test.mjs\" \"test/texte-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "aufwand",
@@ -471,9 +582,7 @@
       "cmd": "node tools/frischer-checkout.mjs",
       "always": true,
       "stufe": "push"
-    },
-    "node tools/sync-blobs.mjs --check",
-    "npx eslint kit tools test install.mjs .githooks"
+    }
   ],
   "mutationCommand": "",
   "mainBranch": "main",
@@ -494,6 +603,7 @@
     "in_review": "In review",
     "done": "Done"
   },
+  "szenarienAb": 1597,
   "installCommand": "npm ci",
   "checkAreas": {
     "nacht-einstieg": [
@@ -537,56 +647,69 @@
     ],
     "nacht-grundlagen": [
       "kit/night/grundlagen.mjs",
+      "kit/texte/night-grundlagen.mjs",
       "test/night-grundlagen-*.test.mjs"
     ],
     "nacht-laufstand": [
       "kit/night/laufstand.mjs",
+      "kit/texte/night-laufstand.mjs",
       "test/night-laufstand-*.test.mjs",
       "test/helpers/laufstand-attrappe.mjs"
     ],
     "nacht-abhaengigkeiten": [
       "kit/night/abhaengigkeiten.mjs",
+      "kit/texte/night-abhaengigkeiten.mjs",
       "test/night-abhaengigkeiten-*.test.mjs"
     ],
     "nacht-kitstand": [
       "kit/night/kitstand.mjs",
+      "kit/texte/night-kitstand.mjs",
       "test/night-kitstand-*.test.mjs"
     ],
     "nacht-session": [
       "kit/night/session.mjs",
+      "kit/texte/night-session.mjs",
       "kit/night/laufvariablen.mjs",
       "test/night-session-*.test.mjs",
       "test/helpers/session-attrappe.mjs"
     ],
     "nacht-bericht": [
       "kit/night/bericht.mjs",
+      "kit/texte/night-bericht.mjs",
       "test/night-bericht-*.test.mjs"
     ],
     "nacht-wartend": [
       "kit/night/wartend.mjs",
+      "kit/texte/night-wartend.mjs",
       "test/night-wartend-*.test.mjs"
     ],
     "nacht-kette": [
       "kit/night/kette.mjs",
+      "kit/texte/night-kette.mjs",
       "test/night-kette-*.test.mjs",
       "test/helpers/kette-fixture.mjs",
       "test/helpers/kette-texte.mjs"
     ],
     "nacht-tag": [
       "kit/night/tag.mjs",
+      "kit/texte/night-tag.mjs",
       "test/night-tag-*.test.mjs",
       "test/helpers/tag-fixture.mjs"
     ],
     "board-einstieg": [
       "kit/board.mjs",
+      "kit/texte/board.mjs",
       "kit/board-ui.mjs",
       "tools/migrate-issues.mjs",
       "test/board-ac*.test.mjs",
       "test/board-c*.test.mjs",
+      "test/board-e*.test.mjs",
       "test/board-i*.test.mjs",
       "test/board-k*.test.mjs",
       "test/board-l*.test.mjs",
       "test/board-mensch-*.test.mjs",
+      "test/board-namen-*.test.mjs",
+      "test/board-names.test.mjs",
       "test/board-o*.test.mjs",
       "test/board-p*.test.mjs",
       "test/board-r*.test.mjs",
@@ -596,6 +719,7 @@
       "test/migrate-*.test.mjs",
       "test/ablauf-migrate-*.test.mjs",
       "test/cli-*.test.mjs",
+      "test/aufrufer-englisch.test.mjs",
       "startboard.sh",
       "test/helpers/board-fixture.mjs",
       "test/helpers/zeilenenden.mjs",
@@ -604,16 +728,22 @@
     ],
     "board-grundlagen": [
       "kit/board/grundlagen.mjs",
+      "kit/texte/board-grundlagen.mjs",
+      "kit/board/namen.mjs",
+      "kit/board/config-namen.mjs",
       "test/board-grundlagen-*.test.mjs",
       "test/helpers/board-attrappe.mjs"
     ],
     "board-wiederholung": [
       "kit/board/wiederholung.mjs",
+      "kit/texte/board-wiederholung.mjs",
       "test/board-wiederholung-*.test.mjs"
     ],
     "board-adapter": [
       "kit/board/adapter.mjs",
+      "kit/texte/board-adapter.mjs",
       "kit/board/schutz.mjs",
+      "kit/texte/board-schutz.mjs",
       "test/board-adapter-*.test.mjs",
       "test/board-schutz.test.mjs",
       "test/helpers/adapter-fixture.mjs",
@@ -623,27 +753,47 @@
     ],
     "board-dokumente": [
       "kit/board/dokumente.mjs",
+      "kit/texte/board-dokumente.mjs",
       "kit/board/ursprung.mjs",
+      "kit/texte/board-ursprung.mjs",
+      "kit/board/vorgeschichte.mjs",
+      "kit/texte/board-vorgeschichte.mjs",
+      "test/board-vorgeschichte-*.test.mjs",
       "test/board-dokumente-*.test.mjs"
     ],
     "board-geschuetzt": [
       "kit/board/geschuetzt.mjs",
+      "kit/texte/board-geschuetzt.mjs",
       "test/board-geschuetzt-*.test.mjs"
     ],
     "board-testhinweise": [
       "kit/board/testhinweise.mjs",
+      "kit/texte/board-testhinweise.mjs",
       "test/board-testhinweise-*.test.mjs"
+    ],
+    "board-grooming": [
+      "kit/board/grooming.mjs",
+      "kit/texte/board-grooming.mjs",
+      "test/board-grooming-*.test.mjs"
+    ],
+    "board-szenarien": [
+      "kit/board/szenarien.mjs",
+      "kit/texte/board-szenarien.mjs",
+      "test/board-szenarien.test.mjs"
     ],
     "board-issue-review": [
       "kit/board/issue-review.mjs",
+      "kit/texte/board-issue-review.mjs",
       "test/board-issue-review-*.test.mjs"
     ],
     "board-melder": [
       "kit/board/melder.mjs",
+      "kit/texte/board-melder.mjs",
       "test/board-melder-*.test.mjs"
     ],
     "board-hook": [
       "kit/board/hook.mjs",
+      "kit/texte/board-hook.mjs",
       "test/board-hook-*.test.mjs"
     ],
     "pruefungen": [
@@ -666,26 +816,28 @@
       "test/fixtures/mvn-verify-*.log"
     ],
     "aufwand": [
-      "kit/aufwand.mjs",
+      "kit/effort.mjs",
+      "kit/texte/effort.mjs",
       "test/aufwand-*.test.mjs",
       "test/ablauf-aufwand-*.test.mjs",
       "test/helpers/aufwand-fixture.mjs",
       "test/fixtures/aufwand/**"
     ],
     "wirksamkeit": [
-      "kit/wirksamkeit.mjs",
+      "kit/effectiveness.mjs",
       "test/wirksamkeit-*.test.mjs",
       "test/ablauf-wirksamkeit-*.test.mjs",
       "test/helpers/wirksamkeit-fixture.mjs"
     ],
     "befunde": [
-      "kit/befunde.mjs",
+      "kit/findings.mjs",
+      "kit/texte/findings.mjs",
       "test/befunde-*.test.mjs",
       "test/ablauf-befunde-*.test.mjs",
       "test/helpers/zeilenenden.mjs"
     ],
     "einstellungen": [
-      "kit/einstellungen.mjs",
+      "kit/settings.mjs",
       "tools/config-referenz.mjs",
       "tools/config-referenz.en.json",
       "templates/workflow.config.json",
@@ -699,7 +851,8 @@
       "test/helpers/oberflaeche-vm.mjs"
     ],
     "worktree": [
-      "kit/worktree.mjs"
+      "kit/worktree.mjs",
+      "kit/texte/worktree.mjs"
     ],
     "sync": [
       "tools/sync-blobs.mjs",
@@ -757,14 +910,17 @@
       "test/vergleiche-*.test.mjs",
       "test/helpers/zeilenenden.mjs",
       "test/fixtures/push-main-*.md",
+      "test/fixtures/claude-code-kommandos.json",
       ".github/workflows/**",
       "docs-site/**",
       "docs-site/sprachen.json",
       "tools/sprachfassungen.mjs",
       "package.json",
       "kit/rollen/**",
+      "en/**",
       "agents/**",
-      "test/rollen-*.test.mjs"
+      "test/rollen-*.test.mjs",
+      "test/texte-*.test.mjs"
     ],
     "konfiguration": [
       ".claude/workflow.config.json"
@@ -939,5 +1095,10 @@
   "toolbox": {
     "host": "https://kanban.mwolff.org",
     "ideaStored": false
-  }
+  },
+  "pushPruefung": {
+    "ort": "buildDienst",
+    "zweig": "kit-pruefung"
+  },
+  "vorgeschichte": true
 }

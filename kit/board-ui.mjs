@@ -13,10 +13,28 @@
  */
 
 import { createServer } from "node:http";
-import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync, mkdirSync, statSync, realpathSync } from "node:fs";
 import { readdir, readFile, mkdir, rename, stat } from "node:fs/promises";
 import { resolve, join, basename } from "node:path";
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+// Der Normalisierer der Einstellungsnamen aus dem Board-Teil config-namen (Issue #1436, Plan
+// #1420 E10): Er bildet eine englisch benannte Config auf die deutschen Namen ab, die dieses
+// Modul liest. Dynamisch und abgefangen, denn das Modul laeuft auch allein ohne den Board-Teil;
+// fehlt er, bleibt die Config, wie sie gelesen wurde.
+const { normalisiereConfig = (roh) => ({ config: roh, hinweise: [] }) } =
+  await import(new URL("./board/config-namen.mjs", import.meta.url).href).catch(() => ({}));
+
+// Der Texthelfer aus dem Board-Teil namen (Issue #1500, Plan #1420 E13): Er setzt die Werte
+// ein und liest die Sprache des Prozesses aus der Config. Nach demselben Muster wie oben
+// dynamisch und abgefangen; ohne den Board-Teil (etwa als einzeln geladene Datei) bleibt es
+// bei Deutsch.
+const {
+  text: textAusTabelle = (tabelle, schluessel, werte = {}) =>
+    tabelle.de[schluessel].replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name])),
+  prozessSprache = () => "de",
+} = await import(new URL("./board/namen.mjs", import.meta.url).href).catch(() => ({}));
 
 // Versionskennung (x.y.z). Einzige Anzeige-Quelle — funktioniert auch fuer die
 // standalone ins Kit synchronisierte board-ui.mjs (kein package.json noetig).
@@ -42,23 +60,140 @@ function parseArgs(argv) {
   return result;
 }
 
-function helpText() {
-  return `board-ui.mjs (v${VERSION}) — ein einfacher Viewer. Diese Datei wird ins
-Projektverzeichnis unter .claude/kit/board-ui.mjs kopiert und von dort, vom
-Projekt-Root aus, aufgerufen. Sie stellt ein einfaches Kanban-Board bereit,
-um die lokalen Issues (issues/*.md) zu visualisieren.
+// --- Texte (Issue #1500, Plan #1420 E13) ---
+//
+// Jede Ausgabe an den Menschen steht hier, je Sprache unter demselben Schluessel. Die Seite
+// bekommt die Tabelle ihrer Sprache eingebettet (siehe `seite`). Vertrag bleibt (E14): die
+// Feldnamen der Antworten, die Spaltenschluessel und der Kommentar-Marker `**Kommentar**`.
+export const TEXTE = {
+  de: {
+    archiviert: "Archiviert: {datei}",
+    titelLeer: "Titel darf nicht leer sein",
+    statusUngueltig: "Ungueltiger Status '{status}'. Gueltig: {gueltig}",
+    issueFehlt: "Issue {id} nicht gefunden",
+    kommentarLeer: "Leerer Kommentar",
+    idsKeinArray: "ids muss ein Array sein",
+    goCommit: "GO: #{id} nach ready",
+    goCommitFehler: "GO-Commit fehlgeschlagen (nicht kritisch): {fehler}",
+    seitenTitel: "claude-workflow-kit Board",
+    untertitel: "Lokaler Modus — Dateien in issues/",
+    ansichtBoard: "Board",
+    ansichtListe: "Liste",
+    ansichtEpics: "Epics",
+    neu: "+ Neu",
+    // Seitenskript ab renderMarkdown und Start (Issue #1501).
+    statusArchiv: "Archiv",
+    keineIssues: "Keine Issues",
+    kommentarKopf: "Kommentar · {ts}",
+    bearbeiten: "Bearbeiten",
+    schliessen: "Schliessen",
+    kommentarPlatzhalter: "Kommentar schreiben...",
+    senden: "Senden",
+    feldTitel: "Titel",
+    feldBeschreibung: "Beschreibung",
+    speichern: "Speichern",
+    abbrechen: "Abbrechen",
+    feldKuerzel: "Kürzel",
+    kuerzelPlatzhalter: "leer = aus Titel",
+    feldFarbe: "Farbe",
+    speichernFehler: "Speichern fehlgeschlagen: {fehler}",
+    vorlageNeuesIssue: "\n## Kontext\n\n## Aufgabe\n\n## Akzeptanzkriterium\n\n## Abhaengigkeiten\n",
+    neuesIssue: "Neues Issue",
+    feldTyp: "Typ",
+    feldEpic: "Epic",
+    keinEpic: "(kein Epic)",
+    titelPlatzhalter: "Kurzer, praeziser Titel",
+    anlegen: "Anlegen",
+    anlegenFehler: "Anlegen fehlgeschlagen: {fehler}",
+    farbeAutomatisch: "automatisch",
+    keineEpics: "Noch keine Epics. Lege über „+ Neu\" ein Issue vom Typ Epic an.",
+    storiesFertig: "{done}/{total} Stories fertig",
+    alleEpics: "← Alle Epics",
+    neueStory: "+ Neue Story",
+    keineStories: "Noch keine Stories in diesem Epic. Lege über „+ Neue Story“ eine an.",
+    reihenfolgeAendern: "Reihenfolge ändern",
+    spaltenbreiteZiehen: "Spaltenbreite ziehen",
+    untertitelMitRoot: "Lokaler Modus — Dateien in issues/ — {root}",
+    archivierungFehler: "Archivierung fehlgeschlagen: {fehler}",
+    laeuftAuf: "Board läuft auf http://localhost:{port}",
+    issuesVerzeichnis: "Issues-Verzeichnis: {pfad}",
+  },
+  en: {
+    archiviert: "Archived: {datei}",
+    titelLeer: "Title must not be empty",
+    statusUngueltig: "Invalid status '{status}'. Valid: {gueltig}",
+    issueFehlt: "Issue {id} not found",
+    kommentarLeer: "Empty comment",
+    idsKeinArray: "ids must be an array",
+    goCommit: "GO: #{id} to ready",
+    goCommitFehler: "GO commit failed (not critical): {fehler}",
+    seitenTitel: "claude-workflow-kit Board",
+    untertitel: "Local mode — files in issues/",
+    ansichtBoard: "Board",
+    ansichtListe: "List",
+    ansichtEpics: "Epics",
+    neu: "+ New",
+    statusArchiv: "Archive",
+    keineIssues: "No issues",
+    kommentarKopf: "Comment · {ts}",
+    bearbeiten: "Edit",
+    schliessen: "Close",
+    kommentarPlatzhalter: "Write a comment...",
+    senden: "Send",
+    feldTitel: "Title",
+    feldBeschreibung: "Description",
+    speichern: "Save",
+    abbrechen: "Cancel",
+    feldKuerzel: "Short code",
+    kuerzelPlatzhalter: "empty = from title",
+    feldFarbe: "Colour",
+    speichernFehler: "Saving failed: {fehler}",
+    vorlageNeuesIssue: "\n## Context\n\n## Task\n\n## Acceptance criteria\n\n## Dependencies\n",
+    neuesIssue: "New issue",
+    feldTyp: "Type",
+    feldEpic: "Epic",
+    keinEpic: "(no epic)",
+    titelPlatzhalter: "Short, precise title",
+    anlegen: "Create",
+    anlegenFehler: "Creating failed: {fehler}",
+    farbeAutomatisch: "automatic",
+    keineEpics: "No epics yet. Use \"+ New\" to create an issue of type Epic.",
+    storiesFertig: "{done}/{total} stories done",
+    alleEpics: "← All epics",
+    neueStory: "+ New story",
+    keineStories: "No stories in this epic yet. Use \"+ New story\" to create one.",
+    reihenfolgeAendern: "Change order",
+    spaltenbreiteZiehen: "Drag column width",
+    untertitelMitRoot: "Local mode — files in issues/ — {root}",
+    archivierungFehler: "Archiving failed: {fehler}",
+    laeuftAuf: "Board running at http://localhost:{port}",
+    issuesVerzeichnis: "Issues directory: {pfad}",
+  },
+};
 
-Nutzung (vom Projekt-Root aus):
+/** Der Text zu `schluessel` in der Sprache des Prozesses, mit eingesetzten Werten. */
+function t(schluessel, werte) {
+  return textAusTabelle(TEXTE, schluessel, werte);
+}
+
+// Die Hilfe gibt es genau einmal, englisch, in jedem Projekt (Issue #1564, Plan #1548 E7).
+export function helpText() {
+  return `board-ui.mjs (v${VERSION}) — a simple viewer. This file is copied into the
+project directory as .claude/kit/board-ui.mjs and run from there, from the
+project root. It provides a simple Kanban board to visualise the local
+issues (issues/*.md).
+
+Usage (from the project root):
   node .claude/kit/board-ui.mjs [--port <Port>] [--name <Board-Name>] [-h|--help]
 
-Parameter:
-  --port <Port>       Port fuer den HTTP-Server (Default: 3000)
-  --name <Name>       Board-Titel im Header
-  -h, --help          Diese Hilfe anzeigen und beenden
+Options:
+  --port <Port>       Port for the HTTP server (default: 3000)
+  --name <Name>       Board title in the header
+  -h, --help          Show this help and exit
 
-Konfiguration (optional, .claude/workflow.config.json oder workflow.config.json):
-  local.uiPort        Ueberschreibt den Port. Vorrang: config.local.uiPort > --port > 3000.
-  local.issuesDir     Verzeichnis mit den Issue-Dateien (Default: issues)
+Configuration (optional, .claude/workflow.config.json or workflow.config.json):
+  local.uiPort        Overrides the port. Precedence: config.local.uiPort > --port > 3000.
+  local.issuesDir     Directory with the issue files (default: issues)
 `;
 }
 
@@ -72,7 +207,7 @@ function loadConfig() {
   for (const p of candidates) {
     if (existsSync(p)) {
       try {
-        return JSON.parse(readFileSync(p, "utf-8"));
+        return normalisiereConfig(JSON.parse(readFileSync(p, "utf-8"))).config;
       } catch {
         // ignorieren, naechste Datei versuchen
       }
@@ -215,7 +350,7 @@ async function archiveOldIssues(issuesDir) {
     if (isNaN(doneTs) || now - doneTs < THREE_DAYS_MS) continue;
     await mkdir(archiveDir, { recursive: true });
     await rename(path, join(archiveDir, f));
-    process.stdout.write(`Archiviert: ${f}\n`);
+    process.stdout.write(t("archiviert", { datei: f }) + "\n");
   }
 }
 
@@ -227,7 +362,7 @@ function handleRequest(req, res, issuesDir) {
   // GET /
   if (req.method === "GET" && url.pathname === "/") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    res.end(HTML);
+    res.end(seite());
     return;
   }
 
@@ -293,7 +428,7 @@ function handleRequest(req, res, issuesDir) {
         const { title, body: issueBody, type, parent, shortcode, color } = JSON.parse(body);
         if (!title || !title.trim()) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Titel darf nicht leer sein" }));
+          res.end(JSON.stringify({ error: t("titelLeer") }));
           return;
         }
         const created = createIssue(issuesDir, {
@@ -326,13 +461,13 @@ function handleRequest(req, res, issuesDir) {
         const valid = Object.keys(columnMap(config));
         if (!valid.includes(to)) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: `Ungueltiger Status '${to}'. Gueltig: ${valid.join(", ")}` }));
+          res.end(JSON.stringify({ error: t("statusUngueltig", { status: to, gueltig: valid.join(", ") }) }));
           return;
         }
         const file = join(issuesDir, `${id}.md`);
         if (!existsSync(file)) {
           res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: `Issue ${id} nicht gefunden` }));
+          res.end(JSON.stringify({ error: t("issueFehlt", { id }) }));
           return;
         }
         const raw = readFileSync(file, "utf-8");
@@ -350,9 +485,9 @@ function handleRequest(req, res, issuesDir) {
           try {
             execFileSync("git", ["add", "--", file], { stdio: "pipe" });
             // --only: nur die Issue-Datei committen, fremde gestagte Aenderungen bleiben im Index
-            execFileSync("git", ["commit", "-o", "-m", `GO: #${id} nach ready`, "--", file], { stdio: "pipe" });
+            execFileSync("git", ["commit", "-o", "-m", t("goCommit", { id }), "--", file], { stdio: "pipe" });
           } catch (e) {
-            process.stderr.write(`GO-Commit fehlgeschlagen (nicht kritisch): ${e.message}\n`);
+            process.stderr.write(t("goCommitFehler", { fehler: e.message }) + "\n");
           }
         }
 
@@ -377,13 +512,13 @@ function handleRequest(req, res, issuesDir) {
         const { title, body: newBody, shortcode, color } = JSON.parse(body);
         if (!title || !title.trim()) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Titel darf nicht leer sein" }));
+          res.end(JSON.stringify({ error: t("titelLeer") }));
           return;
         }
         const file = join(issuesDir, `${id}.md`);
         if (!existsSync(file)) {
           res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: `Issue ${id} nicht gefunden` }));
+          res.end(JSON.stringify({ error: t("issueFehlt", { id }) }));
           return;
         }
         const raw = readFileSync(file, "utf-8");
@@ -422,13 +557,13 @@ function handleRequest(req, res, issuesDir) {
         const { text } = JSON.parse(body);
         if (!text || !text.trim()) {
           res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "Leerer Kommentar" }));
+          res.end(JSON.stringify({ error: t("kommentarLeer") }));
           return;
         }
         const file = join(issuesDir, `${id}.md`);
         if (!existsSync(file)) {
           res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: `Issue ${id} nicht gefunden` }));
+          res.end(JSON.stringify({ error: t("issueFehlt", { id }) }));
           return;
         }
         const now = new Date();
@@ -453,7 +588,7 @@ function handleRequest(req, res, issuesDir) {
     req.on("end", () => {
       try {
         const { ids } = JSON.parse(body);
-        if (!Array.isArray(ids)) throw new Error("ids muss ein Array sein");
+        if (!Array.isArray(ids)) throw new Error(t("idsKeinArray"));
         ids.forEach((id, idx) => {
           const file = join(issuesDir, `${id}.md`);
           if (!existsSync(file)) return;
@@ -478,11 +613,16 @@ function handleRequest(req, res, issuesDir) {
 
 // --- HTML (eingebettet, kein Build-Step, keine externen Abhaengigkeiten) ---
 
-const HTML = `<!DOCTYPE html>
-<html lang="de">
+// Je Aufruf gebaut, damit die Seite die Sprache des Prozesses traegt (Issue #1500).
+export function seite() {
+  const sprache = prozessSprache();
+  // Die Tabelle der Seite; "<" maskiert, damit kein Text das Skript beendet.
+  const texteSeite = JSON.stringify(TEXTE[sprache]).replaceAll("<", "\\u003c");
+  return `<!DOCTYPE html>
+<html lang="${sprache}">
 <head>
 <meta charset="utf-8">
-<title>claude-workflow-kit Board</title>
+<title>${t("seitenTitel")}</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1005,16 +1145,16 @@ const HTML = `<!DOCTYPE html>
 <body>
 
 <header>
-  <h1 id="board-title">claude-workflow-kit Board</h1>
+  <h1 id="board-title">${t("seitenTitel")}</h1>
   <span class="copyright" id="board-copyright"></span>
   <span class="version" id="board-version"></span>
-  <span class="subtitle" id="board-subtitle">Lokaler Modus — Dateien in issues/</span>
+  <span class="subtitle" id="board-subtitle">${t("untertitel")}</span>
   <div class="view-toggle">
-    <button class="view-btn active" id="btn-board" onclick="switchView('board')">Board</button>
-    <button class="view-btn" id="btn-list" onclick="switchView('list')">Liste</button>
-    <button class="view-btn" id="btn-epics" onclick="switchView('epics')">Epics</button>
+    <button class="view-btn active" id="btn-board" onclick="switchView('board')">${t("ansichtBoard")}</button>
+    <button class="view-btn" id="btn-list" onclick="switchView('list')">${t("ansichtListe")}</button>
+    <button class="view-btn" id="btn-epics" onclick="switchView('epics')">${t("ansichtEpics")}</button>
   </div>
-  <button class="new-issue-btn" onclick="openNewIssueModal()">+ Neu</button>
+  <button class="new-issue-btn" onclick="openNewIssueModal()">${t("neu")}</button>
 </header>
 
 <div class="board" id="board"></div>
@@ -1022,6 +1162,20 @@ const HTML = `<!DOCTYPE html>
 <div class="epics-view" id="epics-view" style="display:none"></div>
 
 <script>
+const TEXTE_SEITE = ${texteSeite};
+
+// Nach derselben Regel wie der Texthelfer aus kit/board/namen.mjs: ein fehlender Text oder
+// Wert wirft, nie still die andere Sprache.
+function tx(schluessel, werte) {
+  const vorlage = Object.prototype.hasOwnProperty.call(TEXTE_SEITE, schluessel) ? TEXTE_SEITE[schluessel] : undefined;
+  if (typeof vorlage !== "string") throw new Error("kein Text \\"" + schluessel + "\\"");
+  const w = werte || {};
+  return vorlage.replace(/\\{([A-Za-z_]\\w*)\\}/g, function (_, name) {
+    if (!Object.prototype.hasOwnProperty.call(w, name)) throw new Error("Text \\"" + schluessel + "\\" ohne Wert fuer {" + name + "}");
+    return String(w[name]);
+  });
+}
+
 let COLUMNS = [
   { key: "backlog",     label: "Backlog" },
   { key: "ready",       label: "Ready" },
@@ -1106,7 +1260,7 @@ function buildBoard(issues) {
     const body = colEl.querySelector(".column-body");
 
     if (colIssues.length === 0) {
-      body.innerHTML = '<div class="empty">Keine Issues</div>';
+      body.innerHTML = '<div class="empty">' + escHtml(tx("keineIssues")) + '</div>';
     } else {
       for (const issue of colIssues) {
         body.appendChild(buildCard(issue));
@@ -1137,7 +1291,7 @@ const STATUS_BADGE = {
   in_progress: { bg: "#fffae6", color: "#7a6000", label: "In Progress" },
   in_review:   { bg: "#ffedeb", color: "#bf2600", label: "In Review" },
   done:        { bg: "#e3fcef", color: "#006644", label: "Done" },
-  archived:    { bg: "#f0f0f0", color: "#666", label: "Archiv" },
+  archived:    { bg: "#f0f0f0", color: "#666", label: tx("statusArchiv") },
 };
 
 function parseIssueBody(raw) {
@@ -1161,7 +1315,7 @@ function openModal(issue) {
 
   const commentsHtml = comments.map(c =>
     \`<div class="modal-comment">
-      <div class="modal-comment-meta">Kommentar · \${escHtml(c.ts)}</div>
+      <div class="modal-comment-meta">\${escHtml(tx("kommentarKopf", { ts: c.ts }))}</div>
       <div class="modal-comment-body">\${renderMarkdown(c.text)}</div>
     </div>\`
   ).join("");
@@ -1171,14 +1325,14 @@ function openModal(issue) {
   window_.innerHTML =
     \`<div class="modal-header">
       <div class="modal-title">\${escHtml(issue.title)}</div>
-      <div class="modal-meta">\${badgeHtml}<span>#\${escHtml(issue.id)}</span><button class="modal-edit-btn" type="button">Bearbeiten</button></div>
+      <div class="modal-meta">\${badgeHtml}<span>#\${escHtml(issue.id)}</span><button class="modal-edit-btn" type="button">\${escHtml(tx("bearbeiten"))}</button></div>
       <button class="modal-close" aria-label="Schliessen">×</button>
     </div>
     <div class="modal-body">\${renderMarkdown(mainBody)}</div>
     \${comments.length ? \`<div class="modal-comments">\${commentsHtml}</div>\` : ""}
     <div class="modal-comment-form">
-      <textarea placeholder="Kommentar schreiben..."></textarea>
-      <button class="modal-comment-send" disabled>Senden</button>
+      <textarea placeholder="\${escAttr(tx("kommentarPlatzhalter"))}"></textarea>
+      <button class="modal-comment-send" disabled>\${escHtml(tx("senden"))}</button>
     </div>\`;
 
   overlay.appendChild(window_);
@@ -1246,15 +1400,15 @@ function enterEditMode(window_, issue, mainBody) {
   const bodyEl = window_.querySelector(".modal-body");
   bodyEl.innerHTML =
     \`<div class="new-issue-field">
-      <label for="edit-issue-title">Titel</label>
+      <label for="edit-issue-title">\${escHtml(tx("feldTitel"))}</label>
       <input id="edit-issue-title" type="text">
     </div>
     <div class="new-issue-field">
-      <label for="edit-issue-body">Beschreibung</label>
+      <label for="edit-issue-body">\${escHtml(tx("feldBeschreibung"))}</label>
       <textarea id="edit-issue-body"></textarea>
     </div>
-    <button class="modal-comment-send edit-save-btn">Speichern</button>
-    <button class="modal-edit-cancel-btn" type="button">Abbrechen</button>\`;
+    <button class="modal-comment-send edit-save-btn">\${escHtml(tx("speichern"))}</button>
+    <button class="modal-edit-cancel-btn" type="button">\${escHtml(tx("abbrechen"))}</button>\`;
 
   const titleInput = bodyEl.querySelector("#edit-issue-title");
   const bodyInput = bodyEl.querySelector("#edit-issue-body");
@@ -1269,9 +1423,9 @@ function enterEditMode(window_, issue, mainBody) {
     const field = document.createElement("div");
     field.className = "new-issue-field";
     field.innerHTML =
-      '<label for="edit-issue-shortcode">Kürzel</label>' +
-      '<input id="edit-issue-shortcode" type="text" maxlength="6" placeholder="leer = aus Titel">' +
-      '<label style="margin-top:8px">Farbe</label>' +
+      '<label for="edit-issue-shortcode">' + escHtml(tx("feldKuerzel")) + '</label>' +
+      '<input id="edit-issue-shortcode" type="text" maxlength="6" placeholder="' + escAttr(tx("kuerzelPlatzhalter")) + '">' +
+      '<label style="margin-top:8px">' + escHtml(tx("feldFarbe")) + '</label>' +
       '<div class="epic-color-picker" id="edit-issue-color"></div>';
     titleInput.closest(".new-issue-field").after(field);
     shortcodeInput = field.querySelector("#edit-issue-shortcode");
@@ -1296,7 +1450,7 @@ function enterEditMode(window_, issue, mainBody) {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      alert("Speichern fehlgeschlagen: " + (err.error || res.status));
+      alert(tx("speichernFehler", { fehler: err.error || res.status }));
       saveBtn.disabled = false;
       return;
     }
@@ -1327,7 +1481,7 @@ function closeModal() {
   document.removeEventListener("keydown", handleEsc);
 }
 
-const NEW_ISSUE_TEMPLATE = "\\n## Kontext\\n\\n## Aufgabe\\n\\n## Akzeptanzkriterium\\n\\n## Abhaengigkeiten\\n";
+const NEW_ISSUE_TEMPLATE = tx("vorlageNeuesIssue");
 
 async function openNewIssueModal(opts) {
   opts = opts || {};
@@ -1341,12 +1495,12 @@ async function openNewIssueModal(opts) {
   window_.className = "modal-window";
   window_.innerHTML =
     \`<div class="modal-header">
-      <div class="modal-title">Neues Issue</div>
+      <div class="modal-title">\${escHtml(tx("neuesIssue"))}</div>
       <button class="modal-close" aria-label="Schliessen">×</button>
     </div>
     <div class="modal-body">
       <div class="new-issue-field">
-        <label for="new-issue-type">Typ</label>
+        <label for="new-issue-type">\${escHtml(tx("feldTyp"))}</label>
         <select id="new-issue-type">
           <option value="task">Task</option>
           <option value="story">Story</option>
@@ -1354,25 +1508,25 @@ async function openNewIssueModal(opts) {
         </select>
       </div>
       <div class="new-issue-field" id="new-issue-parent-field">
-        <label for="new-issue-parent">Epic</label>
+        <label for="new-issue-parent">\${escHtml(tx("feldEpic"))}</label>
         <select id="new-issue-parent"></select>
       </div>
       <div class="new-issue-field" id="new-issue-epic-fields" style="display:none">
-        <label for="new-issue-shortcode">Kürzel</label>
-        <input id="new-issue-shortcode" type="text" maxlength="6" placeholder="leer = aus Titel">
-        <label style="margin-top:8px">Farbe</label>
+        <label for="new-issue-shortcode">\${escHtml(tx("feldKuerzel"))}</label>
+        <input id="new-issue-shortcode" type="text" maxlength="6" placeholder="\${escAttr(tx("kuerzelPlatzhalter"))}">
+        <label style="margin-top:8px">\${escHtml(tx("feldFarbe"))}</label>
         <div class="epic-color-picker" id="new-issue-color"></div>
       </div>
       <div class="new-issue-field">
-        <label for="new-issue-title">Titel</label>
-        <input id="new-issue-title" type="text" placeholder="Kurzer, praeziser Titel">
+        <label for="new-issue-title">\${escHtml(tx("feldTitel"))}</label>
+        <input id="new-issue-title" type="text" placeholder="\${escAttr(tx("titelPlatzhalter"))}">
       </div>
       <div class="new-issue-field">
-        <label for="new-issue-body">Beschreibung</label>
+        <label for="new-issue-body">\${escHtml(tx("feldBeschreibung"))}</label>
         <textarea id="new-issue-body"></textarea>
       </div>
-      <button class="modal-comment-send new-issue-create" disabled>Anlegen</button>
-      <button class="modal-edit-cancel-btn new-issue-cancel" type="button">Abbrechen</button>
+      <button class="modal-comment-send new-issue-create" disabled>\${escHtml(tx("anlegen"))}</button>
+      <button class="modal-edit-cancel-btn new-issue-cancel" type="button">\${escHtml(tx("abbrechen"))}</button>
     </div>\`;
 
   overlay.appendChild(window_);
@@ -1393,7 +1547,7 @@ async function openNewIssueModal(opts) {
   const getEpicColor = buildColorPicker(window_.querySelector("#new-issue-color"), "");
   bodyInput.value = NEW_ISSUE_TEMPLATE;
 
-  parentSelect.innerHTML = '<option value="">(kein Epic)</option>' +
+  parentSelect.innerHTML = '<option value="">' + escHtml(tx("keinEpic")) + '</option>' +
     epics.map(function (e) {
       return '<option value="' + escHtml(e.id) + '">' + escHtml(epicShortcode(e)) + ' – ' + escHtml(e.title) + '</option>';
     }).join('');
@@ -1432,7 +1586,7 @@ async function openNewIssueModal(opts) {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      alert("Anlegen fehlgeschlagen: " + (err.error || res.status));
+      alert(tx("anlegenFehler", { fehler: err.error || res.status }));
       createBtn.disabled = false;
       return;
     }
@@ -1497,6 +1651,11 @@ function escHtml(str) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+// Fuer Texte in Attributwerten (title, placeholder): zusaetzlich das Anfuehrungszeichen.
+function escAttr(str) {
+  return escHtml(str).replace(/"/g, "&quot;");
 }
 
 async function moveIssue(id, to) {
@@ -1568,7 +1727,7 @@ function buildColorPicker(container, initial) {
     b.type = 'button';
     b.className = 'epic-swatch' + (val === selected ? ' selected' : '');
     if (val) { b.style.background = val; b.title = val; }
-    else { b.classList.add('epic-swatch-auto'); b.textContent = 'A'; b.title = 'automatisch'; }
+    else { b.classList.add('epic-swatch-auto'); b.textContent = 'A'; b.title = tx('farbeAutomatisch'); }
     b.addEventListener('click', function () {
       selected = val;
       swatches.forEach(function (s) { s.el.classList.toggle('selected', s.val === selected); });
@@ -1603,7 +1762,7 @@ function buildEpics(epics) {
   if (!epics.length) {
     const empty = document.createElement('div');
     empty.className = 'epics-empty';
-    empty.textContent = 'Noch keine Epics. Lege über „+ Neu" ein Issue vom Typ Epic an.';
+    empty.textContent = tx('keineEpics');
     container.appendChild(empty);
     return;
   }
@@ -1624,7 +1783,7 @@ function buildEpics(epics) {
       '<div class="epic-desc">' + escHtml(bodyExcerpt(epic.body || '')) + '</div>' +
       '<div class="epic-progress">' +
         '<div class="epic-progress-bar"><div class="epic-progress-fill" style="width:' + pct + '%;background:' + escHtml(color) + '"></div></div>' +
-        '<span class="epic-progress-label">' + done + '/' + total + ' Stories fertig</span>' +
+        '<span class="epic-progress-label">' + escHtml(tx('storiesFertig', { done: done, total: total })) + '</span>' +
       '</div>';
     card.addEventListener('click', () => openEpicDetail(epic));
     container.appendChild(card);
@@ -1645,10 +1804,10 @@ async function openEpicDetail(epic) {
   const head = document.createElement('div');
   head.className = 'epic-detail-head';
   head.innerHTML =
-    '<button class="epic-back" type="button">← Alle Epics</button>' +
+    '<button class="epic-back" type="button">' + escHtml(tx('alleEpics')) + '</button>' +
     '<div class="epic-detail-title"><span class="epic-dot" style="background:' + escHtml(color) + '"></span>' + codeHtml +
       '<span class="epic-name">' + escHtml(epic.title) + '</span></div>' +
-    '<button class="new-issue-btn epic-add-story" type="button">+ Neue Story</button>';
+    '<button class="new-issue-btn epic-add-story" type="button">' + escHtml(tx('neueStory')) + '</button>';
   container.appendChild(head);
   head.querySelector('.epic-back').addEventListener('click', () => loadEpics());
   head.querySelector('.epic-add-story').addEventListener('click', () => openNewIssueModal({ type: 'story', parent: epic.id }));
@@ -1656,7 +1815,7 @@ async function openEpicDetail(epic) {
   if (!children.length) {
     const empty = document.createElement('div');
     empty.className = 'epics-empty';
-    empty.textContent = 'Noch keine Stories in diesem Epic. Lege über „+ Neue Story“ eine an.';
+    empty.textContent = tx('keineStories');
     container.appendChild(empty);
     return;
   }
@@ -1695,7 +1854,7 @@ const LIST_STATUSES = [
   { key: 'in_progress', label: 'In Progress' },
   { key: 'in_review',   label: 'In Review' },
   { key: 'done',        label: 'Done' },
-  { key: 'archived',    label: 'Archiv' },
+  { key: 'archived',    label: tx('statusArchiv') },
 ];
 
 function bodyExcerpt(raw) {
@@ -1736,7 +1895,7 @@ function buildList(issues) {
   if (visible.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'empty';
-    empty.textContent = 'Keine Issues';
+    empty.textContent = tx('keineIssues');
     container.appendChild(empty);
     return;
   }
@@ -1804,11 +1963,11 @@ function buildListRow(issue) {
   }
 
   row.innerHTML =
-    \`<span class="list-handle\${isArchived ? ' disabled' : ''}" title="Reihenfolge ändern">⠿</span>
+    \`<span class="list-handle\${isArchived ? ' disabled' : ''}" title="\${escAttr(tx('reihenfolgeAendern'))}">⠿</span>
      <span class="list-id">#\${escHtml(issue.id)}</span>
      \${badgeEl}\${epicEl}
      <span class="list-title">\${escHtml(issue.title)}</span>
-     <span class="list-resizer" title="Spaltenbreite ziehen"></span>
+     <span class="list-resizer" title="\${escAttr(tx('spaltenbreiteZiehen'))}"></span>
      <span class="list-excerpt">\${escHtml(bodyExcerpt(issue.body || ''))}</span>\`;
 
   const resizer = row.querySelector('.list-resizer');
@@ -1953,7 +2112,7 @@ async function init() {
   }
   if (cfg.root) {
     document.getElementById("board-subtitle").textContent =
-      "Lokaler Modus — Dateien in issues/ — " + cfg.root;
+      tx("untertitelMitRoot", { root: cfg.root });
   }
   if (cfg.version) {
     document.getElementById("board-version").textContent = "v" + cfg.version;
@@ -1967,33 +2126,51 @@ init();
 </script>
 </body>
 </html>`;
+}
 
 // --- Start ---
 
-const args = parseArgs(process.argv.slice(2));
-if (args.help) {
-  process.stdout.write(helpText());
-  process.exit(0);
-}
-const config = loadConfig();
-const issuesDir = resolve(config.local?.issuesDir || "issues");
-// Vorrang: config.local.uiPort (workflow.config.json) > --port > Default 3000.
-const port = config.local?.uiPort ?? args.port ?? 3000;
+// Gesetzt erst beim Start als Kommando; handleRequest liest beides.
+let args = {};
+let config = {};
 
-const server = createServer((req, res) => {
-  try {
-    handleRequest(req, res, issuesDir);
-  } catch (e) {
-    res.writeHead(500);
-    res.end(e.message);
+function starten(argv) {
+  args = parseArgs(argv);
+  if (args.help) {
+    process.stdout.write(helpText());
+    process.exit(0);
   }
-});
+  config = loadConfig();
+  const issuesDir = resolve(config.local?.issuesDir || "issues");
+  // Vorrang: config.local.uiPort (workflow.config.json) > --port > Default 3000.
+  const port = config.local?.uiPort ?? args.port ?? 3000;
 
-const logArchiveError = (e) => process.stderr.write(`Archivierung fehlgeschlagen: ${e.message}\n`);
-archiveOldIssues(issuesDir).catch(logArchiveError);
-setInterval(() => archiveOldIssues(issuesDir).catch(logArchiveError), 60 * 60 * 1000);
+  const server = createServer((req, res) => {
+    try {
+      handleRequest(req, res, issuesDir);
+    } catch (e) {
+      res.writeHead(500);
+      res.end(e.message);
+    }
+  });
 
-server.listen(port, () => {
-  console.log(`Board läuft auf http://localhost:${port}`);
-  console.log(`Issues-Verzeichnis: ${issuesDir}`);
-});
+  const logArchiveError = (e) => process.stderr.write(`${t("archivierungFehler", { fehler: e.message })}\n`);
+  archiveOldIssues(issuesDir).catch(logArchiveError);
+  setInterval(() => archiveOldIssues(issuesDir).catch(logArchiveError), 60 * 60 * 1000);
+
+  server.listen(port, () => {
+    console.log(t("laeuftAuf", { port }));
+    console.log(t("issuesVerzeichnis", { pfad: issuesDir }));
+  });
+}
+
+// Nur als Kommando starten, nicht beim Import durch die Tests (Issue #1500).
+// realpathSync statt resolve: Node loest fuer import.meta.url Symlinks auf (macOS:
+// /var -> /private/var), ein nur normalisierter argv[1] wuerde dann nie passen.
+let alsKommando = false;
+if (process.argv[1]) {
+  try {
+    alsKommando = realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+  } catch { /* argv[1] nicht aufloesbar -> kein Start */ }
+}
+if (alsKommando) starten(process.argv.slice(2));

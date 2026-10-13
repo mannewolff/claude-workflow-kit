@@ -72,8 +72,8 @@ for (const { name, text } of SKILLS) {
   // Zehn-Minuten-Marke, und der Beobachter zaehlt ihn getrennt.
   test(`${name}: der Block nennt den sanktionierten Gruppenlauf`, () => {
     const block = regelblock(text);
-    assert.match(block, /checks\.mjs run --bereich <name>/,
-      "der Block nennt den Bereichslauf `checks.mjs run --bereich <name>` nicht");
+    assert.match(block, /checks\.mjs run --area <name>/,
+      "der Block nennt den Bereichslauf `checks.mjs run --area <name>` nicht");
     assert.match(block, /kein Versto(ß|ss)/,
       "der Block sagt nicht, dass der Bereichslauf kein Verstoss gegen die Zehn-Minuten-Marke ist");
   });
@@ -98,8 +98,8 @@ for (const { name, text } of SKILLS) {
     const block = regelblock(text);
     assert.match(block, /^3\..*unver(ä|ae)ndertem Stand/m,
       "Punkt 3 nennt den unveraenderten Stand nicht");
-    assert.match(block, /^3\..*--frisch/m,
-      "Punkt 3 nennt den Schalter `--frisch` nicht, mit dem der echte Lauf erzwungen wird");
+    assert.match(block, /^3\..*--fresh/m,
+      "Punkt 3 nennt den Schalter `--fresh` nicht, mit dem der echte Lauf erzwungen wird");
   });
 
   // Punkt 4: Die Ablage aus Issue #835 — jetzt als Hinweis, nicht mehr als
@@ -123,7 +123,7 @@ for (const { name, text } of SKILLS) {
     const block = regelblock(text);
     assert.match(block, /^5\..*rot/m,
       "Punkt 5 nennt den roten Lauf nicht");
-    assert.match(block, /^5\..*genügt nach der Korrektur derselbe Aufruf `checks\.mjs run --abschluss <kartennummer>`/m,
+    assert.match(block, /^5\..*genügt nach der Korrektur derselbe Aufruf `checks\.mjs run --finish <kartennummer>`/m,
       "Punkt 5 sagt nicht, dass nach der Korrektur derselbe Aufruf genuegt");
     assert.match(block, /^5\..*zuerst die zuletzt roten Prüfungen/m,
       "Punkt 5 sagt nicht, dass der Aufruf selbst zuerst die zuletzt roten Pruefungen faehrt");

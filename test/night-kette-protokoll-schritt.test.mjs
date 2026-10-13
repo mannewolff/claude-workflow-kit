@@ -9,7 +9,7 @@
 // darum vor dem Vorflug jede Kandidatenkarte auf `laeuft`.
 //
 // Seit Issue #1233 laufen die Ketten unten im selben Prozess (`ketteImProzess`, Plan #1199,
-// E6). Belegfall 5 — zwei Laeufe nebeneinander — und der Prueflauf `--pruefen` brauchen den
+// E6). Belegfall 5 — zwei Laeufe nebeneinander — und der Prueflauf `--check` brauchen den
 // Einstieg und stehen in `ablauf-night-kette-protokoll-schritt.test.mjs`.
 
 import { test } from "node:test";
@@ -48,7 +48,7 @@ test("[protokoll-schritt] scheitert der Vorflug, steht jede Karte auf abgebroche
   for (const F of ["1", "2"]) {
     const karte = r.karte(F);
     assert.ok(karte.labels.includes("kit:night"), `kit:night an #${F} bleibt`);
-    assert.ok(karte.labels.includes("lauf:abgebrochen"), `Labels: ${karte.labels}`);
+    assert.ok(karte.labels.includes("run:aborted"), `Labels: ${karte.labels}`);
     const text = kartenText(r, F);
     assert.equal(text.split("## Laufstand").length - 1, 1, "genau ein Laufstand-Kommentar");
     assert.match(text, /Kette nicht gestartet um \S+: Die Vorflug-Session lieferte kein Ergebnis/);
@@ -71,7 +71,7 @@ test("[protokoll-schritt] eine angehaltene Kette setzt wartet mit dem Wortlaut a
   assert.equal(r.code, 0, r.ausgabe);
   assert.equal(r.lauf.einheiten.find((e) => e.id === "1").ausgang, "angehalten");
   const karte = r.karte("1");
-  assert.ok(karte.labels.includes("lauf:wartet"), `Labels: ${karte.labels}`);
+  assert.ok(karte.labels.includes("run:waiting"), `Labels: ${karte.labels}`);
   assert.ok(karte.labels.includes(KLAEREN_LABEL));
   const text = kartenText(r, "1");
   assert.ok(text.includes(`Halt: Frage wartet auf den Menschen — siehe \`${KETTE_HALT_ANKER}\``), text);

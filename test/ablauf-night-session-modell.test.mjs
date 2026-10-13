@@ -62,6 +62,7 @@ function setupProjekt(praefix, optionen = {}) {
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   schreibeConfig(dir, optionen);
   // Die Konfigurationsdatei bleibt untracked (Issue #711): Der E19-Test schreibt sie
   // waehrend des Laufs um, und eine getrackte Datei machte damit den Baum dirty — der

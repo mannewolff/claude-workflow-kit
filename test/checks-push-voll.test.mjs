@@ -36,7 +36,7 @@ test("[checks-7] die Push-Stufe faehrt jede faellige Pruefung, auch im unberuehr
   await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const ergebnis = plan(dir, "--stufe", "push");
+    const ergebnis = plan(dir, "--stage", "push");
 
     assert.deepEqual(ergebnis.bereiche, ["frontend"], "der Bereich ist beruehrt");
     assert.deepEqual(kommandos(ergebnis.laufen), ["echo build", "echo verify", "echo e2e"]);
@@ -51,7 +51,7 @@ test("[checks-7] die Push-Stufe faehrt jede faellige Pruefung, auch im unberuehr
 
 test("[checks-7] die Push-Stufe faehrt jede faellige Pruefung, auch wenn das Paket leer ist", async () => {
   await mitRepo({ config: CONFIG }, async (dir) => {
-    const ergebnis = plan(dir, "--stufe", "push");
+    const ergebnis = plan(dir, "--stage", "push");
 
     assert.equal(ergebnis.leeresPaket, false, "an der Push-Stufe greift die Leerpaket-Auslassung nicht");
     assert.deepEqual(ergebnis.geaendert, [], "das Paket ist trotzdem leer, und das steht auch so da");
@@ -64,7 +64,7 @@ test("[checks-7] vollerUmfang bleibt an der Push-Stufe false — sie ist eine En
   await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const ergebnis = plan(dir, "--stufe", "push");
+    const ergebnis = plan(dir, "--stage", "push");
 
     assert.equal(ergebnis.vollerUmfang, false);
   });
@@ -99,7 +99,7 @@ test("[checks-7] die Freigabestufe faehrt nicht mehr alles: die Push-Stufe lief 
   await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "frontend/src/App.tsx");
 
-    const ergebnis = plan(dir, "--stufe", "merge");
+    const ergebnis = plan(dir, "--stage", "merge");
 
     assert.deepEqual(kommandos(ergebnis.laufen), ["echo build", "echo release"]);
     assert.equal(eintrag(ergebnis.ausgelassen, "echo verify").grund, "Bereich backend unberuehrt");
@@ -115,7 +115,7 @@ test("[checks-7] die Push-Stufe bestimmt basis, geaendert und hashes wie ein Lau
 
     assert.equal((await run(dir)).status, 0);
     const ohneFlag = zusammenfassung(dir);
-    assert.equal((await run(dir, "--stufe", "push")).status, 0);
+    assert.equal((await run(dir, "--stage", "push")).status, 0);
     const mitFlag = zusammenfassung(dir);
 
     assert.equal(mitFlag.basis, ohneFlag.basis);

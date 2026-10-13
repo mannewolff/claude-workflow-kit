@@ -38,7 +38,7 @@ function absatz(text, marke, name) {
 
 function pruefeGeschuetzt(text, name) {
   const a = absatz(text, GESCHUETZT_MARKE, name);
-  assert.match(a, /`\[Mensch\]`-Karte/, `${name}: das Heraustrennen als \`[Mensch]\`-Karte fehlt`);
+  assert.match(a, /`\[(Mensch|Human)\]`-Karte/, `${name}: das Heraustrennen als \`[Human]\`-Karte fehlt`);
   assert.match(a, /`Issue #N`/, `${name}: die Abhaengigkeit als \`Issue #N\` fehlt`);
   assert.match(a, /GESCHUETZTE_PFADE/, `${name}: der Verweis auf GESCHUETZTE_PFADE fehlt`);
   assert.match(a, /installierte[nr]? Kopie/, `${name}: die Abgrenzung zur installierten Kopie fehlt`);
@@ -63,7 +63,7 @@ for (const name of SKILLS) {
   test(`${name}: abgewandelte Kopie ohne eine der Konventionen wird rot`, () => {
     const text = quelle(name);
     assert.throws(() => pruefeGeschuetzt(text.replace(GESCHUETZT_MARKE, "Konvention X"), name));
-    assert.throws(() => pruefeGeschuetzt(text.replace("`[Mensch]`-Karte", "Karte"), name));
+    assert.throws(() => pruefeGeschuetzt(text.replace(/`\[(Mensch|Human)\]`-Karte/, "Karte"), name));
     assert.throws(() => pruefeBackticks(text.replace(BACKTICK_MARKE, "Konvention Y"), name));
     assert.throws(() => pruefeBackticks(text.replaceAll(/\bI7\b/g, "Ix"), name));
   });

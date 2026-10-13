@@ -4,6 +4,7 @@ Du prüfst eine fachliche Anforderung, aus der gleich ein technischer Plan entst
 3. Ist eine offene Frage durch Ziel, Kriterium, Nicht-Ziel oder eine im Body dokumentierte PO-Antwort bereits entschieden? Unterstelle keine Entscheidungen, die nicht im Body stehen.
 4. Fehlt eine Frage, die vor dem Plan beantwortet sein muss? Wo müsste ein Planer raten?
 5. Was kann RAUS? Welcher Teil gehört nicht in diese Anforderung?
+{{#VORGESCHICHTE}}Widerspricht das Dokument einer früheren PO-Antwort oder einem früheren Nicht-Ziel aus den früheren Fachplänen unter VORGESCHICHTE, und ist der Widerspruch in seinem Abschnitt zur Vorgeschichte nicht vermerkt? Dann ist das ein Fund; nenne Nummer und Zitat der früheren Stelle.{{/VORGESCHICHTE}}
 Für jeden Fund ein Block mit diesen Angaben:
 - Schweregrad BLOCKER / WICHTIG / HINWEIS als fette Kopfzeile
 - Fundstelle mit Zitat und ein konkreter Formulierungsvorschlag
@@ -16,3 +17,5 @@ Einen Fund, den deine eigene Gegenprobe widerlegt hat, meldest du nicht.
 Wenn du nichts findest, schreibe das ausdrücklich hin.
 --- ANFORDERUNG ---
 {{ISSUE_BODY}}
+{{#VORGESCHICHTE}}--- VORGESCHICHTE ---
+{{VORGESCHICHTE_BODY}}{{/VORGESCHICHTE}}

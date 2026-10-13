@@ -1,4 +1,4 @@
-// Der Rollenkatalog in kit/einstellungen.mjs gegen die Rollendateien unter kit/rollen/
+// Der Rollenkatalog in kit/settings.mjs gegen die Rollendateien unter kit/rollen/
 // (Issue #722, Plan #721 E4, E5; seit Issue #1383 die Rollendateien statt des Skilltexts).
 //
 // Die Oberfläche soll zu einer Prüfstufe die Rollennamen anbieten, die es wirklich gibt.
@@ -14,7 +14,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ROLLEN_KATALOG } from "../kit/einstellungen.mjs";
+import { ROLLEN_KATALOG } from "../kit/settings.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -32,7 +32,7 @@ for (const [stufe, rollen] of Object.entries(ROLLEN_KATALOG)) {
 }
 
 test("[einstellungen-1383] der SYNC-Kommentar am Katalog zeigt auf kit/rollen/", () => {
-  const quelle = readFileSync(join(repoRoot, "kit", "einstellungen.mjs"), "utf-8");
+  const quelle = readFileSync(join(repoRoot, "kit", "settings.mjs"), "utf-8");
   const vor = quelle.slice(0, quelle.indexOf("export const ROLLEN_KATALOG"));
   const kommentar = vor.slice(vor.lastIndexOf("/**"));
   assert.match(kommentar, /SYNC:[^\n]*kit\/rollen\//, "der SYNC-Kommentar zeigt nicht auf kit/rollen/");

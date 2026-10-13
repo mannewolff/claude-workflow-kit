@@ -64,6 +64,7 @@ function mitDir(fn) {
     mkdirSync(join(dir, "helfer"), { recursive: true });
     copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
     cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+    cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
     copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));
     writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
       codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
@@ -111,7 +112,7 @@ function einheit(dir, id) {
 
 /** Die Strom-Zeilen eines gebremsten `checks.mjs run`, als Shell-Befehle. */
 function gebremstImStrom() {
-  const aufruf = { type: "assistant", message: { content: [{ type: "tool_use", id: "c1", name: "Bash", input: { command: "node .claude/kit/checks.mjs run --abschluss 1" } }] } };
+  const aufruf = { type: "assistant", message: { content: [{ type: "tool_use", id: "c1", name: "Bash", input: { command: "node .claude/kit/checks.mjs run --finish 1" } }] } };
   const ergebnis = {
     type: "user",
     message: { content: [{ type: "tool_result", tool_use_id: "c1", content: `Exit code 3\n${FESTGEFAHREN_MARKE} ${PRUEFUNG} — ${FEHLER}\n3-mal gleich gescheitert; es laeuft keine Pruefung mehr (Exit 3).\n` }] },
@@ -178,7 +179,7 @@ test("[night-1390] festgefahren mit Aenderungen: kein Salvage, Stash, Vermerk, B
     assert.ok(!("zeitlimitBeendet" in e), JSON.stringify(e));
 
     // Laufstand abgebrochen (E10), mit dem Stash im Grund.
-    assert.ok(labels(dir, fest).includes("lauf:abgebrochen"), `Labels #${fest}: ${labels(dir, fest)}`);
+    assert.ok(labels(dir, fest).includes("run:aborted"), `Labels #${fest}: ${labels(dir, fest)}`);
     assert.match(laufstand(dir, fest), /Runde beendet: festgefahren um /);
     assert.match(laufstand(dir, fest), new RegExp(`Stash „nachtrest #${fest} `));
   });
@@ -219,7 +220,7 @@ test("[night-1390] festgefahren bei sauberem Baum: kein Stash, Vermerk unter dem
     assert.equal(e.ausgang, "festgefahren");
     assert.ok(!("zeitlimitBeendet" in e), JSON.stringify(e));
     assert.equal(Object.keys(e).at(-1), "festgefahren");
-    assert.ok(labels(dir, fest).includes("lauf:abgebrochen"), `Labels #${fest}: ${labels(dir, fest)}`);
+    assert.ok(labels(dir, fest).includes("run:aborted"), `Labels #${fest}: ${labels(dir, fest)}`);
     // Die Schlusszeile nennt das festgefahrene Paket (Issue #1391, Plan #1386, E13).
     assert.match(res.stdout, /Nacht-Runner beendet: 0 erfolgreich, 0 zurueckgestellt, 0 ohne gueltigen Nachweis, 1 Session\(s\) gestartet, 0 angehalten, 1 festgefahren\./);
   });

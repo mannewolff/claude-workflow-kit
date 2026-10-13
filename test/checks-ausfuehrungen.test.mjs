@@ -92,11 +92,11 @@ test("[checks-7] zwei run-Runden einer Sitzung ergeben zwei Zeilensaetze — gen
     datei(dir, "src/a.txt");
 
     await run(dir);
-    // `--frisch`, weil der Stand zwischen den Runden derselbe ist: Ohne den
+    // `--fresh`, weil der Stand zwischen den Runden derselbe ist: Ohne den
     // Schalter uebernaehme die zweite Runde das Ergebnis der ersten (Issue #863)
     // und waere keine Ausfuehrung mehr. Gemeint ist hier die echte zweite Runde,
     // wie sie nach einem Fix entsteht.
-    await run(dir, "--frisch");
+    await run(dir, "--fresh");
 
     assert.equal(ausfuehrungen(dir).length, 2, "die zweite Runde haengt an, statt die erste zu ersetzen");
     assert.equal(zusammenfassung(dir).laufen.length, 1, "die Zusammenfassung kennt nur die letzte Runde");
@@ -130,10 +130,10 @@ test("[checks-7] ist das Protokoll nicht schreibbar, bleiben Ausgang und Ausgabe
   await mitRepo({ config }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    // Beide Laeufe mit `--frisch`: Der Stand ist zwischen ihnen derselbe, und ein
+    // Beide Laeufe mit `--fresh`: Der Stand ist zwischen ihnen derselbe, und ein
     // uebernommenes Ergebnis ruehrte das Protokoll gar nicht erst an (Issue #863) —
     // der Fall, um den es hier geht, entstuende nie.
-    const ohneFehler = await run(dir, "--frisch");
+    const ohneFehler = await run(dir, "--fresh");
     assert.equal(ohneFehler.status, 0, ohneFehler.stderr);
     assert.equal(ohneFehler.stderr, "", "Vorbedingung: der ungestoerte Lauf schweigt auf stderr");
 
@@ -142,7 +142,7 @@ test("[checks-7] ist das Protokoll nicht schreibbar, bleiben Ausgang und Ausgabe
     rmSync(ausfuehrungenPfad(dir), { force: true });
     mkdirSync(ausfuehrungenPfad(dir), { recursive: true });
 
-    const mitFehler = await run(dir, "--frisch");
+    const mitFehler = await run(dir, "--fresh");
 
     assert.equal(mitFehler.status, ohneFehler.status, "der Exit-Code bleibt derselbe");
     // Die Zeile `Wartezeit:` (Issue #1069) misst die Wandzeit jedes Laufs und darf
@@ -228,14 +228,14 @@ test("[checks-7] ein Abschlusslauf mit Kartennummer traegt anlass, Laufkennung u
   await mitRepo({ config: DREI_CMD }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    const res = await run(dir, "--abschluss", "948");
+    const res = await run(dir, "--finish", "948");
 
     assert.equal(res.status, 0, res.stderr);
     const zeilen = ausfuehrungen(dir).map(spalten);
     assert.equal(zeilen.length, 2, "Vorbedingung: zwei ausgefuehrte Kommandos");
     for (const z of zeilen) {
       assert.equal(z.anlass, "abschluss", "der Schalter am Aufruf bestimmt den Anlass");
-      assert.equal(z.karte, "948", "die Nummer hinter --abschluss steht als Karte");
+      assert.equal(z.karte, "948", "die Nummer hinter --finish steht als Karte");
     }
     // Dieselbe Kennung fuer alle Zeilen EINES run-Aufrufs — sonst liesse sich
     // "je Lauf" nicht von "je Kommando" trennen.
@@ -251,7 +251,7 @@ test("[checks-7] ein Abschlusslauf ohne Kartennummer laesst die Kartenspalte lee
   await mitRepo({ config: DREI_CMD }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    const res = await run(dir, "--abschluss");
+    const res = await run(dir, "--finish");
 
     assert.equal(res.status, 0, res.stderr);
     const zeilen = ausfuehrungen(dir).map(spalten);
@@ -264,8 +264,8 @@ test("[checks-7] ein Abschlusslauf ohne Kartennummer laesst die Kartenspalte lee
   });
 });
 
-test("[checks-7] ohne --abschluss steht die Stufe des Laufs als Anlass", async () => {
-  for (const [cliArgs, anlass] of [[[], "paket"], [["--stufe", "push"], "push"], [["--stufe", "merge"], "merge"]]) {
+test("[checks-7] ohne --finish steht die Stufe des Laufs als Anlass", async () => {
+  for (const [cliArgs, anlass] of [[[], "paket"], [["--stage", "push"], "push"], [["--stage", "merge"], "merge"]]) {
     await mitRepo({ config: DREI_CMD }, async (dir) => {
       datei(dir, "src/a.txt");
 
@@ -276,7 +276,7 @@ test("[checks-7] ohne --abschluss steht die Stufe des Laufs als Anlass", async (
       assert.ok(zeilen.length > 0, `Vorbedingung im Fall '${anlass}': es lief etwas`);
       for (const z of zeilen) {
         assert.equal(z.anlass, anlass, `Anlass im Fall '${anlass}'`);
-        assert.equal(z.karte, "", "ohne --abschluss gibt es keine Karte");
+        assert.equal(z.karte, "", "ohne --finish gibt es keine Karte");
       }
       assert.equal(zeilen[0].lauf, zusammenfassung(dir).zeitpunkt, `Laufkennung im Fall '${anlass}'`);
     });
@@ -290,7 +290,7 @@ test("[checks-7] ein Protokoll mit alten Zeilen ohne die drei Spalten bleibt les
     const alt = "2026-01-01T00:00:00.000Z\techo frueher\tgruen\t7";
     writeFileSync(ausfuehrungenPfad(dir), `${alt}\n`, "utf-8");
 
-    await run(dir, "--abschluss", "948");
+    await run(dir, "--finish", "948");
 
     const zeilen = ausfuehrungen(dir);
     assert.equal(zeilen[0], alt, "die alte Zeile bleibt Zeichen fuer Zeichen stehen");

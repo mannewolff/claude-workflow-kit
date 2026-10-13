@@ -66,7 +66,7 @@ test("lesegrenzeVon: ein unbekanntes Werkzeug ohne Feld hat keine Lesegrenze", (
 test("start: der Auftrag geht ueber stdin, die Lesegrenze steht als letztes Argument", () => {
   mitDateien(({ auftrag, ausgabe }) => {
     const { spawn, aufrufe } = spawnMit({ status: 0, stdout: "BEFUNDE\n", stderr: "" });
-    const antwort = issueReviewStart({ reviewer: "gpt-astra", auftrag, ausgabe }, { config: config([OPUS, CODEX]), spawn, verfuegbar: IM_PATH });
+    const antwort = issueReviewStart({ reviewer: "gpt-astra", brief: auftrag, output: ausgabe }, { config: config([OPUS, CODEX]), spawn, verfuegbar: IM_PATH });
     assert.deepEqual(antwort, { ok: true, reviewer: "gpt-astra", lesegrenze: "--sandbox read-only", ausgabe, zeichen: 8 });
     assert.equal(aufrufe.length, 1);
     assert.equal(aufrufe[0].befehl, PFAD);
@@ -80,7 +80,7 @@ test("start: der Auftrag geht ueber stdin, die Lesegrenze steht als letztes Argu
 test("start: die Lesegrenze aus dem Feld wird angehaengt", () => {
   mitDateien(({ auftrag, ausgabe }) => {
     const { spawn, aufrufe } = spawnMit({ status: 0, stdout: "x", stderr: "" });
-    const antwort = issueReviewStart({ reviewer: "fremd", auftrag, ausgabe }, { config: config([FREMD]), spawn, verfuegbar: IM_PATH });
+    const antwort = issueReviewStart({ reviewer: "fremd", brief: auftrag, output: ausgabe }, { config: config([FREMD]), spawn, verfuegbar: IM_PATH });
     assert.equal(antwort.ok, true);
     assert.deepEqual(aufrufe[0].args, ["run", "--nur-lesen", "--kein-netz"]);
   });
@@ -88,7 +88,7 @@ test("start: die Lesegrenze aus dem Feld wird angehaengt", () => {
 
 test("start: ohne bekannte Lesegrenze startet kein Pruefer", () => {
   mitDateien(({ auftrag, ausgabe }) => {
-    const antwort = issueReviewStart({ reviewer: "ohne", auftrag, ausgabe }, { config: config([OHNE]), spawn: KEIN_AUFRUF, verfuegbar: IM_PATH });
+    const antwort = issueReviewStart({ reviewer: "ohne", brief: auftrag, output: ausgabe }, { config: config([OHNE]), spawn: KEIN_AUFRUF, verfuegbar: IM_PATH });
     assert.equal(antwort.ok, false);
     assert.equal(antwort.fehler, "keine-lesegrenze");
     assert.equal(antwort.reviewer, "ohne");
@@ -113,7 +113,7 @@ for (const [was, command] of [
   test(`start: ${was} wird abgewiesen, ohne zu starten`, () => {
     mitDateien(({ auftrag, ausgabe }) => {
       const reviewer = { name: "gpt-astra", kind: "command", command };
-      const antwort = issueReviewStart({ reviewer: "gpt-astra", auftrag, ausgabe }, { config: config([reviewer]), spawn: KEIN_AUFRUF, verfuegbar: IM_PATH });
+      const antwort = issueReviewStart({ reviewer: "gpt-astra", brief: auftrag, output: ausgabe }, { config: config([reviewer]), spawn: KEIN_AUFRUF, verfuegbar: IM_PATH });
       assert.equal(antwort.ok, false);
       assert.equal(antwort.fehler, "lesegrenze-aufgehoben");
       assert.ok(antwort.schalter, "der Schalter wird genannt");
@@ -125,7 +125,7 @@ for (const [was, command] of [
 test("start: ein aufhebender Schalter im Feld lesegrenze wird ebenso abgewiesen", () => {
   mitDateien(({ auftrag, ausgabe }) => {
     const reviewer = { name: "fremd", kind: "command", command: "fremdtool run", lesegrenze: "--full-auto" };
-    const antwort = issueReviewStart({ reviewer: "fremd", auftrag, ausgabe }, { config: config([reviewer]), spawn: KEIN_AUFRUF, verfuegbar: IM_PATH });
+    const antwort = issueReviewStart({ reviewer: "fremd", brief: auftrag, output: ausgabe }, { config: config([reviewer]), spawn: KEIN_AUFRUF, verfuegbar: IM_PATH });
     assert.equal(antwort.fehler, "lesegrenze-aufgehoben");
     assert.equal(antwort.schalter, "--full-auto");
   });
@@ -135,14 +135,14 @@ test("start: --sandbox read-only in der Kommandozeile ist erlaubt", () => {
   mitDateien(({ auftrag, ausgabe }) => {
     const reviewer = { name: "gpt-astra", kind: "command", command: "codex exec -s read-only" };
     const { spawn } = spawnMit({ status: 0, stdout: "x", stderr: "" });
-    assert.equal(issueReviewStart({ reviewer: "gpt-astra", auftrag, ausgabe }, { config: config([reviewer]), spawn, verfuegbar: IM_PATH }).ok, true);
+    assert.equal(issueReviewStart({ reviewer: "gpt-astra", brief: auftrag, output: ausgabe }, { config: config([reviewer]), spawn, verfuegbar: IM_PATH }).ok, true);
   });
 });
 
 test("start: Exit ungleich 0 ist ein Ausfall mit stderr-Ausschnitt, ohne Ausgabedatei", () => {
   mitDateien(({ auftrag, ausgabe }) => {
     const { spawn } = spawnMit({ status: 2, stdout: "halb", stderr: "Warnung\nmodel is not supported\n" });
-    const antwort = issueReviewStart({ reviewer: "gpt-astra", auftrag, ausgabe }, { config: config([CODEX]), spawn, verfuegbar: IM_PATH });
+    const antwort = issueReviewStart({ reviewer: "gpt-astra", brief: auftrag, output: ausgabe }, { config: config([CODEX]), spawn, verfuegbar: IM_PATH });
     assert.equal(antwort.ok, false);
     assert.equal(antwort.fehler, "ausfall");
     assert.equal(antwort.exit, 2);
@@ -154,7 +154,7 @@ test("start: Exit ungleich 0 ist ein Ausfall mit stderr-Ausschnitt, ohne Ausgabe
 test("start: der stderr-Ausschnitt ist auf das Ende gekuerzt", () => {
   mitDateien(({ auftrag, ausgabe }) => {
     const { spawn } = spawnMit({ status: 1, stdout: "", stderr: `${"a".repeat(5000)}ENDE` });
-    const antwort = issueReviewStart({ reviewer: "gpt-astra", auftrag, ausgabe }, { config: config([CODEX]), spawn, verfuegbar: IM_PATH });
+    const antwort = issueReviewStart({ reviewer: "gpt-astra", brief: auftrag, output: ausgabe }, { config: config([CODEX]), spawn, verfuegbar: IM_PATH });
     assert.ok(antwort.stderr.length <= 1000);
     assert.ok(antwort.stderr.endsWith("ENDE"));
   });
@@ -162,11 +162,11 @@ test("start: der stderr-Ausschnitt ist auf das Ende gekuerzt", () => {
 
 test("start: ein per Signal beendeter oder nicht startbarer Pruefer ist ein Ausfall", () => {
   mitDateien(({ auftrag, ausgabe }) => {
-    const signal = issueReviewStart({ reviewer: "gpt-astra", auftrag, ausgabe }, { config: config([CODEX]), spawn: () => ({ status: null, signal: "SIGKILL" }), verfuegbar: IM_PATH });
+    const signal = issueReviewStart({ reviewer: "gpt-astra", brief: auftrag, output: ausgabe }, { config: config([CODEX]), spawn: () => ({ status: null, signal: "SIGKILL" }), verfuegbar: IM_PATH });
     assert.equal(signal.fehler, "ausfall");
     assert.match(signal.stderr, /SIGKILL/);
     const fehler = Object.assign(new Error("spawnSync codex ENOENT"), { code: "ENOENT" });
-    const start = issueReviewStart({ reviewer: "gpt-astra", auftrag, ausgabe }, { config: config([CODEX]), spawn: () => ({ status: null, signal: null, error: fehler }), verfuegbar: IM_PATH });
+    const start = issueReviewStart({ reviewer: "gpt-astra", brief: auftrag, output: ausgabe }, { config: config([CODEX]), spawn: () => ({ status: null, signal: null, error: fehler }), verfuegbar: IM_PATH });
     assert.equal(start.fehler, "ausfall");
     assert.match(start.stderr, /ENOENT/);
   });
@@ -174,7 +174,7 @@ test("start: ein per Signal beendeter oder nicht startbarer Pruefer ist ein Ausf
 
 test("start: ein Werkzeug ausserhalb des PATH ist ein Ausfall ohne Start", () => {
   mitDateien(({ auftrag, ausgabe }) => {
-    const antwort = issueReviewStart({ reviewer: "gpt-astra", auftrag, ausgabe }, { config: config([CODEX]), spawn: KEIN_AUFRUF, verfuegbar: NICHT_IM_PATH });
+    const antwort = issueReviewStart({ reviewer: "gpt-astra", brief: auftrag, output: ausgabe }, { config: config([CODEX]), spawn: KEIN_AUFRUF, verfuegbar: NICHT_IM_PATH });
     assert.equal(antwort.ok, false);
     assert.equal(antwort.fehler, "nicht-im-path");
     assert.match(antwort.grund, /codex nicht im PATH/);
@@ -185,7 +185,7 @@ test("start --code-review liest reviewCommand und reviewLesegrenze", () => {
   mitDateien(({ auftrag, ausgabe }) => {
     const { spawn, aufrufe } = spawnMit({ status: 0, stdout: "CODE-BEFUNDE", stderr: "" });
     const cfg = { reviewCommand: "fremdtool review", reviewLesegrenze: "--nur-lesen" };
-    const antwort = issueReviewStart({ "code-review": true, auftrag, ausgabe }, { config: cfg, spawn, verfuegbar: IM_PATH });
+    const antwort = issueReviewStart({ "code-review": true, brief: auftrag, output: ausgabe }, { config: cfg, spawn, verfuegbar: IM_PATH });
     assert.equal(antwort.ok, true);
     assert.equal(antwort.reviewer, "reviewCommand");
     assert.deepEqual(aufrufe[0].args, ["review", "--nur-lesen"]);
@@ -196,9 +196,9 @@ test("start --code-review liest reviewCommand und reviewLesegrenze", () => {
 test("start --code-review: codex ohne reviewLesegrenze nimmt die Tabelle, ein fremdes Werkzeug startet nicht", () => {
   mitDateien(({ auftrag, ausgabe }) => {
     const { spawn, aufrufe } = spawnMit({ status: 0, stdout: "", stderr: "" });
-    issueReviewStart({ "code-review": true, auftrag, ausgabe }, { config: { reviewCommand: "codex exec" }, spawn, verfuegbar: IM_PATH });
+    issueReviewStart({ "code-review": true, brief: auftrag, output: ausgabe }, { config: { reviewCommand: "codex exec" }, spawn, verfuegbar: IM_PATH });
     assert.deepEqual(aufrufe[0].args, ["exec", "--sandbox", "read-only"]);
-    const ohne = issueReviewStart({ "code-review": true, auftrag, ausgabe }, { config: { reviewCommand: "fremdtool review" }, spawn: KEIN_AUFRUF, verfuegbar: IM_PATH });
+    const ohne = issueReviewStart({ "code-review": true, brief: auftrag, output: ausgabe }, { config: { reviewCommand: "fremdtool review" }, spawn: KEIN_AUFRUF, verfuegbar: IM_PATH });
     assert.equal(ohne.fehler, "keine-lesegrenze");
   });
 });
@@ -206,13 +206,13 @@ test("start --code-review: codex ohne reviewLesegrenze nimmt die Tabelle, ein fr
 // --- Aufruffehler werfen; der Befehl macht daraus fail ---
 
 for (const [was, args, cfg, muster] of [
-  ["weder --reviewer noch --code-review", { auftrag: "a", ausgabe: "b" }, config([CODEX]), /--reviewer <name> oder --code-review/],
-  ["--reviewer und --code-review", { reviewer: "gpt-astra", "code-review": true, auftrag: "a", ausgabe: "b" }, config([CODEX]), /--reviewer <name> oder --code-review/],
-  ["fehlendes --auftrag", { reviewer: "gpt-astra", ausgabe: "b" }, config([CODEX]), /--auftrag fehlt/],
-  ["fehlendes --ausgabe", { reviewer: "gpt-astra", auftrag: "a" }, config([CODEX]), /--ausgabe fehlt/],
-  ["unbekannter Reviewer", { reviewer: "gibtsnicht", auftrag: "a", ausgabe: "b" }, config([CODEX]), /'gibtsnicht' steht nicht in issueReview.reviewers/],
-  ["claude-Reviewer", { reviewer: "opus", auftrag: "a", ausgabe: "b" }, config([OPUS]), /kind 'claude'.*kit-pruefer/],
-  ["--code-review ohne reviewCommand", { "code-review": true, auftrag: "a", ausgabe: "b" }, {}, /reviewCommand/],
+  ["weder --reviewer noch --code-review", { brief: "a", output: "b" }, config([CODEX]), /--reviewer <name> oder --code-review/],
+  ["--reviewer und --code-review", { reviewer: "gpt-astra", "code-review": true, brief: "a", output: "b" }, config([CODEX]), /--reviewer <name> oder --code-review/],
+  ["fehlendes --brief", { reviewer: "gpt-astra", output: "b" }, config([CODEX]), /--brief fehlt/],
+  ["fehlendes --output", { reviewer: "gpt-astra", brief: "a" }, config([CODEX]), /--output fehlt/],
+  ["unbekannter Reviewer", { reviewer: "gibtsnicht", brief: "a", output: "b" }, config([CODEX]), /'gibtsnicht' steht nicht in issueReview.reviewers/],
+  ["claude-Reviewer", { reviewer: "opus", brief: "a", output: "b" }, config([OPUS]), /kind 'claude'.*kit-pruefer/],
+  ["--code-review ohne reviewCommand", { "code-review": true, brief: "a", output: "b" }, {}, /reviewCommand/],
 ]) {
   test(`start: ${was} ist ein Aufruffehler`, () => {
     assert.throws(() => issueReviewStart(args, { config: cfg, spawn: KEIN_AUFRUF, verfuegbar: IM_PATH }), muster);
@@ -221,7 +221,7 @@ for (const [was, args, cfg, muster] of [
 
 test("start: ein fehlender Auftrag ist ein Fehler ohne Start", () => {
   mitDateien(({ ausgabe }) => {
-    const antwort = issueReviewStart({ reviewer: "gpt-astra", auftrag: "/gibt/es/nicht.md", ausgabe }, { config: config([CODEX]), spawn: KEIN_AUFRUF, verfuegbar: IM_PATH });
+    const antwort = issueReviewStart({ reviewer: "gpt-astra", brief: "/gibt/es/nicht.md", output: ausgabe }, { config: config([CODEX]), spawn: KEIN_AUFRUF, verfuegbar: IM_PATH });
     assert.equal(antwort.ok, false);
     assert.equal(antwort.fehler, "auftrag-fehlt");
   });

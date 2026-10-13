@@ -76,14 +76,14 @@ async function mitAufbau(fn, config = CONFIG) {
 test("roter Lauf, Korrektur: derselbe Aufruf faehrt zuerst nur das rote Kommando und danach alle", async () => {
   await mitAufbau(async (dir) => {
     rotMachen(dir, "b");
-    const erster = await run(dir, "--abschluss", "7");
+    const erster = await run(dir, "--finish", "7");
     assert.equal(erster.status, 1, erster.stdout);
     // Der Abschlusslauf wiederholt das rote einmal (Issue #1396).
     assert.deepEqual(gefahren(dir), ["a", "b", "b"]);
 
     gruenMachen(dir, "b");
     datei(dir, "src/a.txt", "korrigiert\n");
-    const zweiter = await run(dir, "--abschluss", "7");
+    const zweiter = await run(dir, "--finish", "7");
 
     assert.equal(zweiter.status, 0, zweiter.stdout);
     assert.deepEqual(gefahren(dir), ["b", "a", "b"], "zuerst das rote allein, danach der volle Lauf");
@@ -177,7 +177,7 @@ test("unveraenderter Stand uebernimmt wie heute; ein gruener Vorlauf loest keine
   });
 });
 
-test("--frisch faehrt direkt voll, ohne Teillauf", async () => {
+test("--fresh faehrt direkt voll, ohne Teillauf", async () => {
   await mitAufbau(async (dir) => {
     rotMachen(dir, "b");
     await run(dir);
@@ -185,7 +185,7 @@ test("--frisch faehrt direkt voll, ohne Teillauf", async () => {
 
     gruenMachen(dir, "b");
     datei(dir, "src/a.txt", "korrigiert\n");
-    const zweiter = await run(dir, "--frisch");
+    const zweiter = await run(dir, "--fresh");
 
     assert.equal(zweiter.status, 0, zweiter.stdout);
     assert.deepEqual(gefahren(dir), ["a", "b"]);

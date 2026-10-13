@@ -37,7 +37,7 @@ function einheitVon(dir, id) {
 }
 
 function wartetMit(dir, F, text) {
-  assert.ok(labels(dir, F).includes("lauf:wartet"), `Labels: ${labels(dir, F)}`);
+  assert.ok(labels(dir, F).includes("run:waiting"), `Labels: ${labels(dir, F)}`);
   assert.ok(kartenText(dir, F).includes(text), `Laufstand ohne '${text}':\n${kartenText(dir, F)}`);
 }
 
@@ -45,7 +45,7 @@ test("[night-uebergaenge] planReview: false — nach der Planstufe wartet die Ka
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: ERZEUGEN });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["plan"]);
@@ -54,11 +54,11 @@ test("[night-uebergaenge] planReview: false — nach der Planstufe wartet die Ka
     wartetMit(dir, F, "wartet: Übergang planReview im Projekt nicht freigegeben — weiter mit kit:night");
 
     board(dir, "issue", "label", "add", F, "kit:night");
-    const zweiter = run(dir, ["--kette"], env);
+    const zweiter = run(dir, ["--chain"], env);
     assert.equal(zweiter.status, 0, `${zweiter.stdout}\n${zweiter.stderr}`);
     assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["plan", "review", "pakete", "abdeckung"]);
     assert.equal(einheitVon(dir, F).ausgang, "fertig");
-    assert.ok(!labels(dir, F).includes("lauf:wartet"), `Labels: ${labels(dir, F)}`);
+    assert.ok(!labels(dir, F).includes("run:waiting"), `Labels: ${labels(dir, F)}`);
   }, { uebergaenge: { planReview: false } });
 });
 
@@ -66,12 +66,12 @@ test("[night-uebergaenge] ohne Feld, Variante A: die drei ersten Uebergaenge fol
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: MIT_UMSETZUNG });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["plan", "review", "pakete", "abdeckung"]);
     assert.equal(einheitVon(dir, F).ausgang, "fertig");
-    assert.ok(!labels(dir, F).some((l) => l.startsWith("lauf:")), `Labels: ${labels(dir, F)}`);
+    assert.ok(!labels(dir, F).some((l) => l.startsWith("run:")), `Labels: ${labels(dir, F)}`);
   }, { uebergaenge: undefined });
 });
 
@@ -82,7 +82,7 @@ test("[night-uebergaenge] ohne Feld, Variante B: nach der Abdeckung folgt die Um
     const F = fachplan(dir);
     board(dir, "issue", "label", "add", F, "kit:durchziehen");
     const env = umgebung(dir, { stufen: MIT_UMSETZUNG });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const stufen = sessions(env.logPfad).map((s) => s.stufe);
@@ -90,7 +90,7 @@ test("[night-uebergaenge] ohne Feld, Variante B: nach der Abdeckung folgt die Um
     assert.ok(stufen.length > 4 && stufen.slice(4).every((s) => s === "umsetzung"), `Stufen: ${stufen}`);
     const einheit = einheitVon(dir, F);
     assert.notEqual(einheit.stufen.umsetzung, undefined, "die Stufe umsetzung lief");
-    assert.ok(!labels(dir, F).includes("lauf:wartet"), `Labels: ${labels(dir, F)}`);
+    assert.ok(!labels(dir, F).includes("run:waiting"), `Labels: ${labels(dir, F)}`);
     assert.ok(!kartenText(dir, F).includes("wartet: Übergang abdeckungUmsetzung"), kartenText(dir, F));
   }, { uebergaenge: undefined });
 });
@@ -99,7 +99,7 @@ test("[night-uebergaenge] abdeckungUmsetzung: true ohne kit:durchziehen — die 
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: MIT_UMSETZUNG });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["plan", "review", "pakete", "abdeckung"]);
@@ -113,7 +113,7 @@ test("[night-uebergaenge] abdeckungUmsetzung: false mit kit:durchziehen — wart
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: MIT_UMSETZUNG });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe), ["plan", "review", "pakete", "abdeckung"]);

@@ -19,7 +19,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { bereichsFolgen, checkForm, checkSetzen, paarungsFolgen, projektZustand, schluesselUmbenennen, speichere, vorschau } from "../kit/einstellungen.mjs";
+import { bereichsFolgen, checkForm, checkSetzen, paarungsFolgen, projektZustand, schluesselUmbenennen, speichere, vorschau, zusatzregeln } from "../kit/settings.mjs";
 import { projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const ECHT = JSON.parse(readFileSync(new URL("../.claude/workflow.config.json", import.meta.url), "utf-8"));
@@ -354,6 +354,45 @@ test("[einstellungen-12] bereichsFolgen ohne Umbenennung, ohne Entfernung und oh
   });
   // Die uebergebenen Kommandos bleiben unveraendert.
   assert.deepEqual(checks, [{ cmd: "eslint", areas: ["kit"] }]);
+});
+
+// --- abschlussBereiche zieht mit (Issue #1532, Plan #1529, E7) -------------
+//
+// Ohne Nachziehen stuende nach einer Umbenennung ein alter Name im Feld, der Befund griffe, und
+// die Config waere in der Oberflaeche nicht mehr speicherbar — das Feld hat kein Bedienelement.
+
+const NACHT = { cmd: "night", areas: ["kit", "nacht"], nichtBeimAbschluss: "zusammenspiel", abschlussBereiche: ["nacht"] };
+
+test("[einstellungen-abschlussBereiche] bereichsFolgen benennt einen Bereich in abschlussBereiche mit um", () => {
+  const folge = bereichsFolgen([NACHT], [{ von: "nacht", nach: "nachtlauf" }], []);
+  assert.deepEqual(folge.buildChecks, [{ ...NACHT, areas: ["kit", "nachtlauf"], abschlussBereiche: ["nachtlauf"] }]);
+  // Auch an einem Eintrag ohne areas, der beim Bereich nichts zu fragen hat.
+  const immer = { cmd: "night", always: true, nichtBeimAbschluss: "zusammenspiel", abschlussBereiche: ["nacht", "doku"] };
+  assert.deepEqual(bereichsFolgen([immer], [{ von: "doku", nach: "docs" }], []).buildChecks,
+    [{ ...immer, abschlussBereiche: ["nacht", "docs"] }]);
+});
+
+test("[einstellungen-abschlussBereiche] ein entfernter Bereich faellt aus abschlussBereiche", () => {
+  const eintrag = { ...NACHT, abschlussBereiche: ["kit", "nacht"] };
+  const folge = bereichsFolgen([eintrag], [], ["nacht"]);
+  assert.deepEqual(folge.buildChecks, [{ ...NACHT, areas: ["kit"], abschlussBereiche: ["kit"] }]);
+  assert.deepEqual(eintrag.abschlussBereiche, ["kit", "nacht"], "der uebergebene Eintrag blieb nicht unveraendert");
+});
+
+test("[einstellungen-abschlussBereiche] bleibt abschlussBereiche leer, meldet die Pruefung den Befund", () => {
+  const folge = bereichsFolgen([NACHT], [], ["nacht"]);
+  assert.deepEqual(folge.buildChecks, [{ ...NACHT, areas: ["kit"], abschlussBereiche: [] }]);
+  const befunde = zusatzregeln({ checkAreas: { kit: ["kit/**"] }, buildChecks: ["node --test", ...folge.buildChecks] });
+  const b = befunde.filter((x) => x.pfad === "buildChecks[1].abschlussBereiche");
+  assert.equal(b.length, 1, JSON.stringify(befunde));
+  assert.equal(b[0].art, "fehler");
+});
+
+test("[einstellungen-abschlussBereiche] ein unberuehrtes abschlussBereiche laesst den Eintrag derselbe bleiben", () => {
+  const immer = { cmd: "night", always: true, nichtBeimAbschluss: "zusammenspiel", abschlussBereiche: ["nacht"] };
+  const folge = bereichsFolgen([immer], [{ von: "doku", nach: "docs" }], ["kit"]);
+  assert.equal(folge.buildChecks[0], immer);
+  assert.deepEqual(folge.betroffen, []);
 });
 
 // ============================================================

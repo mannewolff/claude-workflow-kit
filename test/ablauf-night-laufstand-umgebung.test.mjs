@@ -61,6 +61,7 @@ function setupProjekt() {
   mkdirSync(join(dir, "helfer"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(kit, "board-echt.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(kit, "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(kit, "texte"), { recursive: true });
   const stoerung = join(dir, "helfer", "stoerung.json");
   writeFileSync(join(kit, "board.mjs"), [
     'import { readFileSync, writeFileSync, existsSync } from "node:fs";',
@@ -174,11 +175,11 @@ test("[E15] scheitert auch der zweite Versuch am Board, haelt der Lauf an und di
     assert.equal(spalte(dir, a), "in_review");
     assert.doesNotMatch(laufstand(dir, a), /2\. Versuch/);
 
-    assert.ok(labels(dir, b).includes("lauf:abgebrochen"), `Labels #${b}: ${labels(dir, b)}`);
+    assert.ok(labels(dir, b).includes("run:aborted"), `Labels #${b}: ${labels(dir, b)}`);
     assert.match(laufstand(dir, b), /2\. Versuch/);
     assert.match(laufstand(dir, b), /Board-Timeout/);
 
-    assert.ok(labels(dir, c).includes("lauf:wartet"), `Labels #${c}: ${labels(dir, c)}`);
+    assert.ok(labels(dir, c).includes("run:waiting"), `Labels #${c}: ${labels(dir, c)}`);
     const text = laufstand(dir, c);
     assert.match(text, /nicht begonnen/);
     assert.match(text, /Board-Timeout/, "der Grund fehlt");
@@ -223,9 +224,9 @@ test("[#1008] scheitert auch der zweite Sitzungsstart, haelt der Lauf an", () =>
     assert.deepEqual(sitzungen(log), [a, a]);
     assert.match(res.stdout, /INFRASTRUKTUR-FEHLSCHLAG/);
     assert.equal(spalte(dir, a), "ready", "eine kaputte Umgebung bewegt keine Karte");
-    assert.ok(labels(dir, a).includes("lauf:abgebrochen"), `Labels #${a}: ${labels(dir, a)}`);
+    assert.ok(labels(dir, a).includes("run:aborted"), `Labels #${a}: ${labels(dir, a)}`);
     assert.match(laufstand(dir, a), /2\. Versuch/);
-    assert.ok(labels(dir, b).includes("lauf:wartet"), `Labels #${b}: ${labels(dir, b)}`);
+    assert.ok(labels(dir, b).includes("run:waiting"), `Labels #${b}: ${labels(dir, b)}`);
     assert.match(laufstand(dir, b), /nicht begonnen/);
   });
 });
@@ -248,7 +249,7 @@ test("[E13] eine Sitzung, die zustande kam und ohne Ergebnis endete, ist ein Pak
     assert.notEqual(spalte(dir, a), "in_review");
     assert.equal(spalte(dir, b), "in_review");
     // Der Paketfehler steht an seiner Karte (Issue #1089, E2): abgebrochen, mit Grund.
-    assert.ok(labels(dir, a).includes("lauf:abgebrochen"), `Labels #${a}: ${labels(dir, a)}`);
+    assert.ok(labels(dir, a).includes("run:aborted"), `Labels #${a}: ${labels(dir, a)}`);
     assert.match(laufstand(dir, a), /Runde beendet: deferred um [^\n]+\n\nGrund: /);
   });
 });
@@ -260,11 +261,11 @@ test("[E2] jedes Paket steht mit Laufstand: laeuft zu Rundenbeginn, danach sein 
     const a = karte(dir, "Ein Paket");
     const log = join(dir, "helfer", "sessions.log");
     // Die Session sieht ihre eigene Karte: Der Stand `laeuft` steht schon, waehrend sie arbeitet.
-    const res = run(dir, [], { NIGHT_CLAUDE_CMD: fake(log, `grep -q "lauf:laeuft" issues/$NIGHT_ISSUE_ID.md && echo laeuft >> ${JSON.stringify(log)}; ${ERFOLG}`) });
+    const res = run(dir, [], { NIGHT_CLAUDE_CMD: fake(log, `grep -q "run:running" issues/$NIGHT_ISSUE_ID.md && echo laeuft >> ${JSON.stringify(log)}; ${ERFOLG}`) });
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.deepEqual(sitzungen(log), [a, "laeuft"], "zu Rundenbeginn stand kein laeuft an der Karte");
     // Ohne Pruefnachweis kein `fertig`: Die Karte steht in In review, ihr Stand nennt den Mangel.
-    assert.ok(labels(dir, a).includes("lauf:abgebrochen"), `Labels #${a}: ${labels(dir, a)}`);
+    assert.ok(labels(dir, a).includes("run:aborted"), `Labels #${a}: ${labels(dir, a)}`);
     assert.match(laufstand(dir, a), /Runde beendet: fehlschlag um [^\n]+\n\nNachweis fehlt/);
   });
 });
@@ -275,7 +276,7 @@ test("[E15] haelt die Kette wegen der Umgebung an, zeigen die Pakete des Auftrag
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, abdeckung: 'echo "Failed to start" >&2; exit 1' } });
-    const res = ketteRun(dir, ["--kette"], env);
+    const res = ketteRun(dir, ["--chain"], env);
     assert.equal(res.status, 1, `${res.stdout}\n${res.stderr}`);
 
     assert.equal(sessions(env.logPfad).filter((s) => s.stufe === "abdeckung").length, 2, "der Sitzungsstart wurde nicht genau einmal wiederholt");
@@ -283,14 +284,14 @@ test("[E15] haelt die Kette wegen der Umgebung an, zeigen die Pakete des Auftrag
     const einheit = lauf.einheiten.find((e) => e.id === F);
     assert.ok(einheit, "keine Einheit der Kette");
     const fachKarte = readFileSync(join(dir, "issues", `${F}.md`), "utf-8");
-    assert.match(fachKarte, /lauf:abgebrochen/);
+    assert.match(fachKarte, /run:aborted/);
     assert.match(fachKarte, /2\. Versuch/);
 
     const pakete = readdirSync(join(dir, "issues")).map((n) => readFileSync(join(dir, "issues", n), "utf-8"))
       .filter((t) => /^title: "?Paket \d/m.test(t));
     assert.equal(pakete.length, 2, "die Pakete fehlen");
     for (const text of pakete) {
-      assert.match(text, /lauf:wartet/);
+      assert.match(text, /run:waiting/);
       assert.match(text, /nicht begonnen/);
     }
   }, {}, "night-umgebung-kette-", { night: { stand: { pauseMin: PAUSE_MIN } } });

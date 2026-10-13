@@ -42,6 +42,7 @@ function setupProjekt() {
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   // Die Salvage-Vorpruefung faehrt seit Issue #919 `checks.mjs run` im Zielprojekt,
   // damit sie denselben Nachweis hinterlaesst, den das Commit-Gate liest. Ohne die
   // Datei im Fixture gaebe es keine Pflicht-Pruefung und damit keinen Rettungsversuch.
@@ -137,7 +138,7 @@ test("[night-63] auch die Vorflug-Session startet ohne das Auto-Memory des Mensc
     const env = umgebung(dir, { stufen: {} });
     // helfer/ ist im Fixture ignoriert — der Vorflug darf den Working Tree nicht veraendern.
     const envLog = join(dir, "helfer", "vorflug-env.log");
-    const res = ketteRun(dir, ["--kette", "--dry-run"], {
+    const res = ketteRun(dir, ["--chain", "--dry-run"], {
       ...env, NIGHT_VORFLUG_CMD: `${envProbe(envLog)}\n${VORFLUG_OK}`,
     });
     assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);

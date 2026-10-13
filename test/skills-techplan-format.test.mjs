@@ -115,3 +115,9 @@ test("Plan-Modell und Fachliche Quelle sind kein siebter Abschnitt", () => {
   assert.match(SKILL, /Plan-Modell: [\s\S]{0,400}kein siebter Abschnitt/,
     "der Skill stellt nicht klar, dass die Metadaten nicht zum Format zaehlen");
 });
+
+// Kriterium 9 des Fachplans #1586 (Issue #1594): Die Verifizierung nennt je Szenario den
+// Test mit dessen Titel im Namen, damit der Mensch ihn am Board findet.
+test("Verifizierung nennt je Szenario den Test mit dem Titel im Namen", () => {
+  assert.match(SKILL, /`## Verifizierung` — [^\n]*nennt der Abschnitt je Szenario den Test, der den Titel des Szenarios im Namen trägt/);
+});

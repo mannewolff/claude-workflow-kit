@@ -31,7 +31,7 @@ Die Ableitung wirkt nur in Projekten mit JavaScript-Quellen — Dateien mit der 
 
 ### Nicht literale Importe sind unsichtbar
 
-Die Erhebung sieht statische und dynamische Importe mit **literalem** Pfad (`import "./x.mjs"`, `await import("./x.mjs")`). Einen Import, dessen Pfad erst zur Laufzeit entsteht — etwa über `pathToFileURL(join(dir, name))` —, sieht sie nicht. Im Kit betrifft das die Nachbar-Importe des Nacht-Runners auf `board.mjs`, `checks.mjs`, `aufwand.mjs`, `wirksamkeit.mjs` und `befunde.mjs` sowie den Windows-Import des Board-Teils in `checks.mjs`.
+Die Erhebung sieht statische und dynamische Importe mit **literalem** Pfad (`import "./x.mjs"`, `await import("./x.mjs")`). Einen Import, dessen Pfad erst zur Laufzeit entsteht — etwa über `pathToFileURL(join(dir, name))` —, sieht sie nicht. Im Kit betrifft das die Nachbar-Importe des Nacht-Runners auf `board.mjs`, `checks.mjs`, `effort.mjs`, `effectiveness.mjs` und `findings.mjs` sowie den Windows-Import des Board-Teils in `checks.mjs`.
 
 Solche Kopplungen gehören **von Hand** in die `areas` des Prüfkommandos, dessen Teil den Nachbarn lädt. Das Kit hält das mit einem Kopplungs-Gate fest (`test/config-teile.test.mjs` über `tools/verflechtung.mjs`), das die Nennung von Quellpfaden als Zeichenkette misst.
 

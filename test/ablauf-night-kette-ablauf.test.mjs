@@ -21,7 +21,7 @@ test("[night-19] eine unsaubere Hauptkopie haelt die Kette nicht auf (Issue #878
     // Er steht schon vor dem Start da — die Kette misst ihn gar nicht erst.
     writeFileSync(join(dir, "unfertig.md"), "ein Rest aus einem anderen Lauf\n");
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.doesNotMatch(res.stdout, /HARTER STOPP/, "die Kette stoppte wegen des fremden Rests hart");
 
@@ -47,7 +47,7 @@ const VOLLER_BLOCK = {
 test("[night-28] ohne gesetzte Budget-Felder traegt der Lauf-Kopf budgetAusDefault und das Protokoll die Hinweiszeile", () => {
   mitProjekt((dir) => {
     const env = umgebung(dir);
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     const lauf = stand(dir);
     assert.deepEqual(lauf.budgetAusDefault,
@@ -60,7 +60,7 @@ test("[night-28] ohne gesetzte Budget-Felder traegt der Lauf-Kopf budgetAusDefau
 
 test("[night-28] mit vollstaendigem Block fehlen budgetAusDefault und die Hinweiszeile", () => {
   mitProjekt((dir) => {
-    const res = run(dir, ["--kette"], umgebung(dir));
+    const res = run(dir, ["--chain"], umgebung(dir));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.equal("budgetAusDefault" in stand(dir), false);
     assert.doesNotMatch(res.stdout, /aus den Defaults/);
@@ -69,7 +69,7 @@ test("[night-28] mit vollstaendigem Block fehlen budgetAusDefault und die Hinwei
 
 test("[night-28] fehlt genau ein Feld, nennt der Lauf genau dieses", () => {
   mitProjekt((dir) => {
-    const res = run(dir, ["--kette"], umgebung(dir));
+    const res = run(dir, ["--chain"], umgebung(dir));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.deepEqual(stand(dir).budgetAusDefault, ["reviewMin"]);
     assert.match(res.stdout, /aus den Defaults: reviewMin=15/);
@@ -82,7 +82,7 @@ test("[night-29] [night-30] die Kette traegt Verbrauch je Einheit und Lauf, den 
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     const lauf = stand(dir);
     const e = lauf.einheiten.find((x) => x.id === F);
@@ -98,7 +98,7 @@ test("[night-29] [night-30] die Kette traegt Verbrauch je Einheit und Lauf, den 
 // eigener Prozess je Lauf zeigt sie verlaesslich.
 test("[night-31] mit lokalem Tracker entfaellt die Einlieferung und das Protokoll sagt es", () => {
   mitProjekt((dir) => {
-    const res = run(dir, ["--kette"], umgebung(dir));
+    const res = run(dir, ["--chain"], umgebung(dir));
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, /Einlieferung entfaellt: issueTracker 'local'/);
   });
@@ -108,7 +108,7 @@ test("[night-31] eine gescheiterte Einlieferung beendet den Lauf nicht als Fehls
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = { ...umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN } }), NIGHT_MELDEN_ERZWINGEN: "1" };
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.match(res.stdout, /Einlieferung fehlgeschlagen: .*nur mit issueTracker toolbox/);
     assert.equal(stand(dir).einheiten.find((x) => x.id === F).ausgang, "fertig");
@@ -143,7 +143,7 @@ test("[night-19] die Paket-Formpruefung schreibt keinen Testhinweis-Kommentar, a
     // Testhinweise, also auch keinen Kommentar.
     const paketMitNav = PAKETE_ANLEGEN.replaceAll("Paket %s in", `Paket %s: ${NAV}, in`);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: paketMitNav } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     const einheit = stand(dir).einheiten.find((e) => e.id === F);
     assert.equal(einheit.ausgang, "fertig", einheit.grund);

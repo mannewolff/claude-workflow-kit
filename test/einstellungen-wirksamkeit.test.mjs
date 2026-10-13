@@ -16,7 +16,7 @@ import assert from "node:assert/strict";
 
 import {
   aenderungAnwenden, pruefe, pruefeSchema, teilFuer, THEMEN, vorgabeAus,
-} from "../kit/einstellungen.mjs";
+} from "../kit/settings.mjs";
 
 const fehler = (befunde) => befunde.filter((b) => b.art === "fehler");
 

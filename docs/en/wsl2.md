@@ -1,7 +1,7 @@
 # Windows via WSL2
-<!-- de: eefb0bdcb792 -->
+<!-- de: dd060c06342d -->
 
-On Windows, the kit runs in WSL2, the Linux that Windows itself ships with. There it works just as on macOS and Linux, without special paths. This guide takes you from a fresh Windows machine to the first session start with `/kontext` and the first green `/local-check`.
+On Windows, the kit runs in WSL2, the Linux that Windows itself ships with. There it works just as on macOS and Linux, without special paths. This guide takes you from a fresh Windows machine to the first session start with `/session-start` and the first green `/local-check`.
 
 Native Windows and Git Bash are no longer supported as of 4.0.0.
 
@@ -13,7 +13,7 @@ Native Windows and Git Bash are no longer supported as of 4.0.0.
 - **Administrator rights** for setting up WSL2. Afterwards you work as a normal user.
 
 ## Steps
-<!-- de: 622344e2f68c -->
+<!-- de: a8d4cb939e46 -->
 
 1. **Enable WSL2.** Open PowerShell as administrator (right-click on Start → "Terminal (Admin)") and enter:
 
@@ -73,11 +73,11 @@ Native Windows and Git Bash are no longer supported as of 4.0.0.
    Then, in the session:
 
    ```
-   /kontext
+   /session-start
    /local-check
    ```
 
-   Done when `/kontext` prints the project status and `/local-check` ends with a green checklist. With way B you also check that the session really works in WSL2: Ask Claude to run `uname -s` — the answer must be `Linux`.
+   Done when `/session-start` prints the project status and `/local-check` ends with a green checklist. With way B you also check that the session really works in WSL2: Ask Claude to run `uname -s` — the answer must be `Linux`.
 
 ## Where the project lives
 <!-- de: de103583a149 -->

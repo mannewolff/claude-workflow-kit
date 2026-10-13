@@ -196,19 +196,19 @@ const folge = (dir, cmd) => zusammenfassung(dir).festgefahren?.folgen?.[cmd];
 test("Zaehlung je Pruefung ueber Abschluss-, Bereichs- und Teillauf; laufen[].fehler traegt den Abdruck", async () => {
   await mitAufbau(async (dir) => {
     scheitert(dir, "a");
-    const erster = await lauf(dir, INTERAKTIV, "--abschluss", "7");
+    const erster = await lauf(dir, INTERAKTIV, "--finish", "7");
     assert.equal(erster.status, 1, erster.stdout);
     assert.equal(eintrag(zusammenfassung(dir).laufen, A).fehler, "rechnet");
     assert.deepEqual(folge(dir, A), { fehler: "rechnet", versuche: 1 });
 
     aendern(dir);
     scheitert(dir, "a");
-    await lauf(dir, INTERAKTIV, "--bereich", "kern");
+    await lauf(dir, INTERAKTIV, "--area", "kern");
     assert.equal(folge(dir, A).versuche, 2, "der Bereichslauf zaehlt mit");
 
     aendern(dir);
     scheitert(dir, "a");
-    const teil = await lauf(dir, INTERAKTIV, "--bereich", "kern");
+    const teil = await lauf(dir, INTERAKTIV, "--area", "kern");
     assert.match(teil.stdout, /Teillauf/);
     assert.equal(folge(dir, A).versuche, 3, "der Teillauf zaehlt mit");
     const keys = Object.keys(zusammenfassung(dir));
@@ -230,9 +230,9 @@ test("eine Uebernahme zaehlt nicht und reicht das Feld unveraendert weiter", asy
 test("ein gruenes anderes Kommando unterbricht die Folge nicht; nicht gestartet zaehlt nicht", async () => {
   await mitAufbau(async (dir) => {
     scheitert(dir, "b");
-    await lauf(dir, INTERAKTIV, "--frisch");
+    await lauf(dir, INTERAKTIV, "--fresh");
     aendern(dir);
-    await lauf(dir, INTERAKTIV, "--frisch");
+    await lauf(dir, INTERAKTIV, "--fresh");
     const z = zusammenfassung(dir);
     assert.equal(eintrag(z.laufen, A).ergebnis, "gruen");
     assert.deepEqual(folge(dir, B), { fehler: "rechnet", versuche: 2 });
@@ -241,7 +241,7 @@ test("ein gruenes anderes Kommando unterbricht die Folge nicht; nicht gestartet 
     // a rot bricht vor b ab: b bleibt nicht gestartet und behaelt seine Folge.
     aendern(dir);
     scheitert(dir, "a");
-    await lauf(dir, INTERAKTIV, "--frisch");
+    await lauf(dir, INTERAKTIV, "--fresh");
     assert.equal(eintrag(zusammenfassung(dir).laufen, B).ergebnis, "nicht gestartet");
     assert.deepEqual(folge(dir, B), { fehler: "rechnet", versuche: 2 });
   });
@@ -274,7 +274,7 @@ async function dreimalGleich(dir, env) {
   for (let i = 0; i < 3; i += 1) {
     aendern(dir);
     scheitert(dir, "a");
-    ergebnisse.push(await lauf(dir, env, "--abschluss", "7"));
+    ergebnisse.push(await lauf(dir, env, "--finish", "7"));
   }
   return ergebnisse;
 }
@@ -289,7 +289,7 @@ test("unbeaufsichtigt: der letzte erlaubte Versuch wird angekuendigt, der naechs
     const vorige = zusammenfassung(dir);
 
     aendern(dir);
-    const bremse = await lauf(dir, UNBEAUFSICHTIGT, "--abschluss", "7");
+    const bremse = await lauf(dir, UNBEAUFSICHTIGT, "--finish", "7");
     assert.equal(bremse.status, 3, bremse.stdout + bremse.stderr);
     assert.ok(bremse.stdout.includes(`${FESTGEFAHREN_MARKE} ${A}`), bremse.stdout);
     assert.ok(bremse.stdout.includes("rechnet"), "die Bremsmarke nennt den Fehler");
@@ -306,8 +306,8 @@ test("unbeaufsichtigt: der letzte erlaubte Versuch wird angekuendigt, der naechs
     assert.equal(versuche, 3);
     assert.ok(!Number.isNaN(Date.parse(zeitpunkt)));
 
-    const frisch = await lauf(dir, UNBEAUFSICHTIGT, "--frisch");
-    assert.equal(frisch.status, 3, "auch --frisch bremst");
+    const frisch = await lauf(dir, UNBEAUFSICHTIGT, "--fresh");
+    assert.equal(frisch.status, 3, "auch --fresh bremst");
     assert.deepEqual(gefahren(dir), []);
   });
 });
@@ -323,7 +323,7 @@ test("interaktiv: Hinweiszeile auf stderr ab dem letzten erlaubten Fehlschlag, k
 
     aendern(dir);
     scheitert(dir, "a");
-    const vierter = await lauf(dir, INTERAKTIV, "--abschluss", "7");
+    const vierter = await lauf(dir, INTERAKTIV, "--finish", "7");
     assert.equal(vierter.status, 1, "interaktiv bremst nichts");
     assert.ok(vierter.stderr.includes(`Hinweis: festgefahren an ${A} — 4-mal gleich gescheitert (rechnet)`));
     assert.equal(zusammenfassung(dir).festgefahren.ausgeloest, undefined);

@@ -16,7 +16,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { aufrufen } from "../kit/befunde.mjs";
+import { aufrufen } from "../kit/findings.mjs";
 
 /** Ein Fundblock in der Form aus dem Regeltext, Bausteine je Test austauschbar. */
 function fund({ titel = "W — Ein Fund.", stand = "geprueft, bestaetigt", uebernahme = "uebernommen", art = "doppelung", marke = "WICHTIG", zusatz = [] } = {}) {
@@ -38,11 +38,11 @@ function fund({ titel = "W — Ein Fund.", stand = "geprueft, bestaetigt", ueber
  * damit sie im Vergleichsstand-Zwilling dieses Helpers nie als Tree-Aenderung
  * zaehlt — hier ist das nur Gleichklang.
  */
-function buchen(dir, text, args = ["--stufe", "plan", "--karte", "797"]) {
+function buchen(dir, text, args = ["--stage", "plan", "--card", "797"]) {
   mkdirSync(join(dir, ".claude"), { recursive: true });
   const datei = join(dir, ".claude", "befunde-eingang.md");
   writeFileSync(datei, text, "utf-8");
-  return aufrufen(["buchen", "--datei", datei, ...args], { cwd: dir });
+  return aufrufen(["record", "--file", datei, ...args], { cwd: dir });
 }
 
 function protokoll(dir) {
@@ -91,7 +91,7 @@ test("[befunde-1213] der Zeitpunkt der Buchung kommt aus der uebergebenen Uhr", 
     mkdirSync(join(dir, ".claude"), { recursive: true });
     const datei = join(dir, ".claude", "befunde-eingang.md");
     writeFileSync(datei, fund(), "utf-8");
-    const res = aufrufen(["buchen", "--datei", datei, "--stufe", "plan", "--karte", "797"],
+    const res = aufrufen(["record", "--file", datei, "--stage", "plan", "--card", "797"],
       { cwd: dir, jetzt: () => new Date("2026-10-05T08:00:00.000Z") });
 
     assert.equal(res.status, 0, res.stderr);
@@ -111,7 +111,7 @@ test("ein zweiter Aufruf haengt an und leert die Datei nie", () => {
 test("die Zeile traegt sieben tabulatorgetrennte Spalten ohne Modellnamen", () => {
   mitDir((dir) => {
     const text = ["### Reviewer 1: architektur-bestand, fable (claude-fable-5.1)", "", fund()].join("\n");
-    const res = buchen(dir, text, ["--stufe", "plan", "--karte", "797"]);
+    const res = buchen(dir, text, ["--stage", "plan", "--card", "797"]);
     assert.equal(res.status, 0, res.stderr);
     const spalten = protokoll(dir)[0].split("\t");
     assert.equal(spalten.length, 7);
@@ -150,7 +150,7 @@ test("die Rolle stammt aus dem jeweils letzten Reviewer-Kopf vor dem Fund", () =
 test("der Beispielkopf aus /issue-review Schritt 5 bucht seine Rolle (Issue #1182)", () => {
   mitDir((dir) => {
     const text = ["## Fachplan-Review, Runde 1", "", "### Reviewer 1: form-beobachtbarkeit, fable", "", fund()].join("\n");
-    const res = buchen(dir, text, ["--stufe", "fachlich", "--karte", "1180"]);
+    const res = buchen(dir, text, ["--stage", "requirement", "--card", "1180"]);
     assert.equal(res.status, 0, res.stderr);
     assert.equal(protokoll(dir)[0].split("\t")[3], "form-beobachtbarkeit");
   });
@@ -165,7 +165,7 @@ test("ohne Reviewer-Kopf steht 'unbekannt', bei --stufe code 'code-review'", () 
   mitDir((dir) => {
     // Ohne Pruef-Zusammenfassung ist der Vergleichsstand nicht-vergleichbar —
     // gebucht wird trotzdem, mit dem Fallback der Code-Stufe als Rolle.
-    const res = buchen(dir, fund(), ["--stufe", "code", "--karte", "5"]);
+    const res = buchen(dir, fund(), ["--stage", "code", "--card", "5"]);
     assert.equal(res.status, 0, res.stderr);
     const spalten = protokoll(dir)[0].split("\t");
     assert.equal(spalten[3], "code-review");
@@ -270,14 +270,69 @@ test("im Leerfall bleibt die Ausgabe JSON und es entsteht keine Protokolldatei",
 test("ein Aufruf ohne Pflichtargument oder mit unbekannter Stufe wird mit JSON abgewiesen", () => {
   mitDir((dir) => {
     for (const args of [
-      ["buchen", "--stufe", "plan", "--karte", "1"],
-      ["buchen", "--datei", "x.md", "--karte", "1"],
-      ["buchen", "--datei", "x.md", "--stufe", "plan"],
-      ["buchen", "--datei", "x.md", "--stufe", "commit", "--karte", "1"],
+      ["record", "--stage", "plan", "--card", "1"],
+      ["record", "--file", "x.md", "--card", "1"],
+      ["record", "--file", "x.md", "--stage", "plan"],
+      ["record", "--file", "x.md", "--stage", "commit", "--card", "1"],
     ]) {
       const res = aufrufen(args, { cwd: dir });
       assert.equal(res.status, 1, `Aufruf ${args.join(" ")} muss abgewiesen werden`);
       assert.equal(JSON.parse(res.stdout).ok, false);
     }
+  });
+});
+
+// Die Fundblock-Zeilen stehen in der Projektsprache (Issue #1559, Plan #1548 E19): Ein Block
+// mit `Counter-check:`, `— checked, confirmed` und `Kind:` wird wie der deutsche gebucht; die
+// Werte hinter `Kind:` bleiben die deutschen Artnamen (E5).
+test("[1559] ein Fundblock mit englischen Zeilen wird gebucht", () => {
+  mitDir((dir) => {
+    const text = [
+      "#### WICHTIG",
+      "",
+      "**W — An English finding.**",
+      "Counter-check: An observation. — checked, confirmed",
+      "Kind: luecke",
+      "Uebernahme: uebernommen",
+    ].join("\n");
+    const res = buchen(dir, text);
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(JSON.parse(res.stdout).geschrieben, 1, res.stdout);
+    assert.equal(protokoll(dir)[0].split("\t")[4], "luecke");
+  });
+});
+
+test("[1559] pruefen meldet an einem vollstaendigen englischen Fundblock keine fehlende Angabe", () => {
+  mitDir((dir) => {
+    const datei = join(dir, "funde.md");
+    writeFileSync(datei, [
+      "#### WICHTIG",
+      "",
+      "**W — An English finding.**",
+      "Counter-check: An observation. — checked, confirmed",
+      "Kind: form",
+    ].join("\n"), "utf-8");
+    const res = aufrufen(["check", "--file", datei], { cwd: dir });
+    assert.equal(res.status, 0, res.stderr);
+    assert.deepEqual(JSON.parse(res.stdout).eintraege, []);
+  });
+});
+
+// Auch der Uebernahme- und der Angabenvermerk stehen in der Projektsprache (Issue #1568):
+// `Adoption: adopted` bucht wie `Uebernahme: uebernommen`, `Adoption: rejected` und
+// `Details: incomplete` buchen nicht.
+test("[1568] ein Fundblock mit englischem Uebernahmevermerk wird gebucht, abgelehnt und unvollstaendig nicht", () => {
+  mitDir((dir) => {
+    const block = (titel, ...zeilen) => [`**W — ${titel}.**`, "Counter-check: An observation. — checked, confirmed", "Kind: luecke", ...zeilen, ""];
+    const text = [
+      "#### WICHTIG",
+      "",
+      ...block("Adopted", "Adoption: adopted"),
+      ...block("Rejected", "Adoption: rejected"),
+      ...block("Incomplete", "Details: incomplete", "Adoption: adopted"),
+    ].join("\n");
+    const res = buchen(dir, text);
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(JSON.parse(res.stdout).geschrieben, 1, res.stdout);
   });
 });

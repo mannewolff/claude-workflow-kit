@@ -5,7 +5,7 @@
 // `.claude/befunde.json` (fuer die Ausgabestellen). `befund` liest allein den Stand und
 // gibt den Befundblock als Text aus.
 //
-// Dieselben zwei Zusagen wie bei kit/aufwand.mjs und kit/wirksamkeit.mjs: Exit 0 IN
+// Dieselben zwei Zusagen wie bei kit/effort.mjs und kit/effectiveness.mjs: Exit 0 IN
 // JEDEM FALL — auch ohne Datei, mit leerer und mit kaputter Datei, denn der Befund ist
 // kein Gate — und byteweise LEERE Ausgabe ohne Befund, ohne Ueberschrift und ohne
 // beruhigenden Satz.
@@ -20,7 +20,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { aufrufen } from "../kit/befunde.mjs";
+import { aufrufen } from "../kit/findings.mjs";
 
 /** Eine Protokollzeile in der Form, die `buchen` schreibt. */
 function zeile({ zeitpunkt = "2026-09-20T10:00:00.000Z", stufe = "plan", karte = "42", rolle = "pruefbarkeit", art = "luecke", marke = "WICHTIG", vergleichsstand = "-" } = {}) {
@@ -57,7 +57,7 @@ const bericht = (dir) => readFileSync(berichtPfad(dir), "utf-8");
 
 /** `auswerten` im Projekt; die Ausgabe ist immer JSON. */
 function auswerten(dir) {
-  const res = befunde(dir, "auswerten");
+  const res = befunde(dir, "evaluate");
   assert.equal(res.status, 0, res.stderr || res.stdout);
   return JSON.parse(res.stdout);
 }
@@ -234,7 +234,7 @@ test("[befunde-befund] mit Vorkommen gibt der Befund je Art eine Zeile mit Zahl 
   mitProjekt({ zeilen, vorschlaege }, (dir) => {
     auswerten(dir);
 
-    const res = befunde(dir, "befund");
+    const res = befunde(dir, "finding");
 
     assert.equal(res.status, 0, res.stderr);
     const [kopf, ...rest] = res.stdout.split("\n");
@@ -253,7 +253,7 @@ test("[befunde-befund] eine Urteils-Art nennt 'kein Vorschlag (Urteils-Art)' sta
   mitProjekt({ zeilen, vorschlaege }, (dir) => {
     auswerten(dir);
 
-    const { stdout } = befunde(dir, "befund");
+    const { stdout } = befunde(dir, "finding");
 
     const zeileLuecke = stdout.split("\n").find((z) => /`luecke`/.test(z));
     assert.ok(zeileLuecke, `die Art 'luecke' fehlt im Befundblock:\n${stdout}`);
@@ -270,7 +270,7 @@ test("[befunde-befund] die Stufe code steht auch im Befundblock getrennt", () =>
   mitProjekt({ zeilen }, (dir) => {
     auswerten(dir);
 
-    const { stdout } = befunde(dir, "befund");
+    const { stdout } = befunde(dir, "finding");
 
     const zeileCode = stdout.split("\n").find((z) => /Stufe `code`/.test(z));
     assert.ok(zeileCode, `im Befundblock steht keine Zeile zur Stufe code:\n${stdout}`);
@@ -283,7 +283,7 @@ test("[befunde-befund] ohne Vorkommen bleibt die Ausgabe byteweise leer", () => 
   mitProjekt({ zeilen: [] }, (dir) => {
     auswerten(dir);
 
-    const res = befunde(dir, "befund");
+    const res = befunde(dir, "finding");
 
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.stdout, "", `erwartet war eine leere Ausgabe, kam: ${JSON.stringify(res.stdout)}`);
@@ -293,7 +293,7 @@ test("[befunde-befund] ohne Vorkommen bleibt die Ausgabe byteweise leer", () => 
 
 test("[befunde-befund] ohne befunde.json bleibt die Ausgabe leer und der Exit-Code 0", () => {
   mitProjekt({}, (dir) => {
-    const res = befunde(dir, "befund");
+    const res = befunde(dir, "finding");
 
     assert.equal(res.status, 0, `ohne Datei darf der Befund nichts aufhalten: ${res.stderr}`);
     assert.equal(res.stdout, "");
@@ -306,7 +306,7 @@ test("[befunde-befund] mit leerer und mit unlesbarer befunde.json bleibt die Aus
     for (const inhalt of ["", "{ das ist kein JSON", JSON.stringify({ erzeugtAm: "2026-09-01T00:00:00.000Z" })]) {
       writeFileSync(standPfad(dir), inhalt, "utf-8");
 
-      const res = befunde(dir, "befund");
+      const res = befunde(dir, "finding");
 
       assert.equal(res.status, 0, res.stderr);
       assert.equal(res.stdout, "", `bei Inhalt ${JSON.stringify(inhalt.slice(0, 20))} kam Ausgabe`);
@@ -321,7 +321,7 @@ test("[befunde-befund] in einem Projekt ohne befunde.tsv bleibt der Befund auch 
   mitProjekt({}, (dir) => {
     auswerten(dir);
 
-    const res = befunde(dir, "befund");
+    const res = befunde(dir, "finding");
 
     assert.equal(res.status, 0, res.stderr);
     assert.equal(res.stdout, "", `ohne Protokoll darf nichts dastehen, kam: ${JSON.stringify(res.stdout)}`);
@@ -332,7 +332,7 @@ test("[befunde-befund] der Befund gibt keine Handlungsempfehlung", () => {
   mitProjekt({ zeilen: Array.from({ length: 3 }, () => zeile({ art: "luecke" })) }, (dir) => {
     auswerten(dir);
 
-    const { stdout } = befunde(dir, "befund");
+    const { stdout } = befunde(dir, "finding");
 
     assert.notEqual(stdout, "", "der Befund haette ausloesen muessen");
     assert.doesNotMatch(stdout, /sollte|empfehl|besser w(ae|ä)re|ratsam/i, "der Befund gibt eine Handlungsempfehlung");
@@ -341,10 +341,10 @@ test("[befunde-befund] der Befund gibt keine Handlungsempfehlung", () => {
 
 test("[befunde-befund] befund weist ein ueberzaehliges Argument ab, ohne etwas auszugeben", () => {
   mitProjekt({}, (dir) => {
-    const res = befunde(dir, "befund", "--art", "luecke");
+    const res = befunde(dir, "finding", "--kind", "luecke");
 
     assert.notEqual(res.status, 0, "ein unbekanntes Argument gehoert abgewiesen");
     assert.equal(res.stdout, "", "auf stdout gehoert hier kein Text, den ein Skill weiterreicht");
-    assert.match(res.stderr, /--art/);
+    assert.match(res.stderr, /--kind/);
   });
 });

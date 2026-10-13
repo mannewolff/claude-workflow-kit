@@ -1,4 +1,4 @@
-// Der lokale Server von kit/einstellungen.mjs (Issue #677, Plan #674 E8, E11, E16).
+// Der lokale Server von kit/settings.mjs (Issue #677, Plan #674 E8, E11, E16).
 //
 // `buildChecks` sind Kommandos, die Commit-Gate und Nacht-Runner ausfuehren. Jede Webseite
 // im Browser kann Anfragen an 127.0.0.1 schicken — ohne Token, Host- und Origin-Pruefung

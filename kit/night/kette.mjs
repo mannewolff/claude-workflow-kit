@@ -34,7 +34,7 @@ import { tmpdir } from "node:os";
 
 import { ZUSTAND, NACHBAR_DIR, log, board, boardRoh, einheitAnlegen, einheitErgaenzen, gitClean, gitReste,
   laufMelden, resteText, schreibeErgebnisstand, schrittBeginnen, schrittEnden, vergleicheText,
-  vermerkeOhneArbeit } from "./grundlagen.mjs";
+  normalisiereConfig, vermerkeOhneArbeit } from "./grundlagen.mjs";
 import { ABBRUCH_BUDGET_MS, LAUF_KONTEXT, LAUF_ORDNER, RECHNER, abgeben, exitText, journalLesen, laufAnhalten,
   laufLebt, laufPositionSetzen, pulsZustandSetzen, standSetzen } from "./laufstand.mjs";
 import { UMSETZUNG_WARTEN_MS, VORBEREITUNG_DATEI, aufUmsetzungWarten, befundeZurueckUndVorschlagen, kitStandAbgeben, kitStandInBaum, prozessLaeuft,
@@ -43,18 +43,49 @@ import { ENTSCHEIDUNGEN_NAME, OFFENE_FRAGEN_NAME, OFFENE_FRAGEN_UEBERSCHRIFT, PO
   abschnittLesen, leseKarte, wartetAufPush } from "./abhaengigkeiten.mjs";
 import { flatten, kennzahlenAddieren, ketteBudgetDefaults, kostenAddieren, KETTE_BUDGET_DEFAULTS, ladeKetteBudget,
   ladeKetteUebergaenge, ladePruefLaufBudget, leseErgebnisText, leseKennzahlen, neueKommentare, runSession,
-  KETTE_ZIELE, PLANREVIEW_LABELS, pruefreihenVon, SESSION_ABHAENGIGKEITEN, varianteVon, zielVon, ZIEL_LABEL_PRAEFIX } from "./session.mjs";
+  KETTE_ZIELE, PLANREVIEW_LABELS, pruefreihenVon, SESSION_ABHAENGIGKEITEN, varianteVon, zielVon, zielLabelName,
+  istZielLabel, kennzeichenName, kennzeichenNamen, kitLabel } from "./session.mjs";
 import { berichtFuerKette, berichtSchreiben, hatPlanReviewMarker, kommentareVon, planReviewWert,
   pruefBericht, vorbereitungsBericht, wartendeMenschenschritte } from "./bericht.mjs";
 import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, geschuetztAmBoardVermerken, hatKlaerenLabel, laufeRunde,
-  pruefeIssueGates, rundenMerker, wartendVermerk, wartendeSession } from "./wartend.mjs";
+  pruefeIssueGates, rundenMerker, traegtLabel, wartendVermerk, wartendeSession } from "./wartend.mjs";
+
+// Die Texte an den Menschen liegen unter kit/texte/night-kette.mjs (Issue #1525).
+import { TEXTE } from "../texte/night-kette.mjs";
+
+export { TEXTE };
+
+// Das Register aus dem Board-Teil, abgefangen: Fehlt board/namen.mjs neben night.mjs, bleiben
+// die Texte deutsch, und die Marker sind nicht lesbar (unten bei `markerWerte`).
+const namen = await import(pathToFileURL(join(NACHBAR_DIR, "board", "namen.mjs")).href).catch(() => null);
+// Der Leser fuer den Abschnitt Szenarien, ebenso abgefangen (Plan #1588 A7, Issue #1593): Fehlt
+// board/szenarien.mjs, prueft die Kette keine Szenarien und nennt keinen Stichtag.
+const szenarien = await import(pathToFileURL(join(NACHBAR_DIR, "board", "szenarien.mjs")).href).catch(() => null);
+
+function t(schluessel, werte = {}) {
+  if (namen) return namen.text(TEXTE, schluessel, werte);
+  return TEXTE.de[schluessel].replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
+}
+
+/** Der Text zu `schluessel` in der Sprache `sprache`, fuer die Leser, die beide Sprachen erkennen. */
+const textIn = (sprache, schluessel, werte = {}) => TEXTE[sprache][schluessel]
+  .replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
+
+/** Ein Name aus dem Register in der Sprache des Prozesses; ohne Register der deutsche. */
+const nameDerSprache = (art, sache, deutsch) => (namen ? namen[art](sache, namen.prozessSprache()) : deutsch);
+
+/**
+ * Ein Titel-Praefix, wie der Nachtlauf es nennt: englisch, in jedem Projekt (Issue #1553, Plan
+ * #1548 E2). `rueckfall` gilt ohne Register und ist selbst der englische Name.
+ */
+const kitPraefix = (art, rueckfall) => (namen ? namen.praefix(art) : rueckfall);
 
 // Die Praefixe kommen aus dem Board-Teil dokumente (Issue #1218). Abgefangen wie im Einstieg:
 // Fehlt der Teil, wirft jede Funktion erst, wenn jemand sie braucht — ein stilles `false`
 // liesse ein Plandokument als Arbeitspaket durch. Der Pfad ist nicht literal, deshalb nennt
 // die Gruppe dieses Teils den Bereich board-dokumente von Hand (E3).
 const praefixFehlt = (was) => () => {
-  throw new Error(`board/dokumente.mjs fehlt neben night.mjs (${join(NACHBAR_DIR, "board")}) — das Praefix ${was} ist nicht erkennbar.`);
+  throw new Error(t("praefixFehlt", { pfad: join(NACHBAR_DIR, "board"), praefix: was }));
 };
 const {
   istFachlich: isFachlich,
@@ -62,11 +93,18 @@ const {
   istIdee: isIdee,
   istMensch: isMensch,
 } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "dokumente.mjs")).href).catch(() => ({
-  istFachlich: praefixFehlt("[Fachlich]"),
+  istFachlich: praefixFehlt("[Requirement]"),
   istPlan: praefixFehlt("[Plan]"),
-  istIdee: praefixFehlt("[Idee]"),
-  istMensch: praefixFehlt("[Mensch]"),
+  istIdee: praefixFehlt("[Idea]"),
+  istMensch: praefixFehlt("[Human]"),
 }));
+
+// Die Marker in Body und Kommentaren kommen aus dem Register im Board-Teil und gelten unter
+// beiden Namen (Issue #1443, Plan #1420 E15). Fehlt es, wirft der Ersatz beim ersten Lesen.
+const namenFehlt = () => {
+  throw new Error(t("namenFehlt", { pfad: join(NACHBAR_DIR, "board") }));
+};
+const { erkenneMarker, markerWerte } = namen ?? { erkenneMarker: namenFehlt, markerWerte: namenFehlt };
 
 // --- Anbindung an den Einstieg (Plan #1199, E16) ---
 
@@ -74,17 +112,17 @@ const {
 // ist, hat keinen.
 const anbindung = {
   laufAbschliessen: () => {
-    throw new Error("laufAbschliessen ist nicht angebunden — der Einstieg kit/night.mjs setzt es beim Laden.");
+    throw new Error(t("nichtAngebunden", { haken: "laufAbschliessen" }));
   },
   fuehreVorflug: () => {
-    throw new Error("fuehreVorflug ist nicht angebunden — der Einstieg kit/night.mjs setzt es beim Laden.");
+    throw new Error(t("nichtAngebunden", { haken: "fuehreVorflug" }));
   },
 };
 
 /** Setzt die Haken aus `anbindung`; nicht genannte behalten ihren Wert. */
 export function ketteAnbinden(haken) {
   for (const [name, fn] of Object.entries(haken)) {
-    if (!Object.hasOwn(anbindung, name)) throw new Error(`ketteAnbinden kennt keinen Haken '${name}'`);
+    if (!Object.hasOwn(anbindung, name)) throw new Error(t("hakenUnbekannt", { name }));
     anbindung[name] = fn;
   }
 }
@@ -136,7 +174,7 @@ export function ketteAbhaengigkeiten(neu) {
     return;
   }
   for (const [name, fn] of Object.entries(neu)) {
-    if (!Object.hasOwn(KETTE_ABHAENGIGKEITEN, name)) throw new Error(`ketteAbhaengigkeiten kennt keine Abhaengigkeit '${name}'`);
+    if (!Object.hasOwn(KETTE_ABHAENGIGKEITEN, name)) throw new Error(t("abhaengigkeitUnbekannt", { name }));
     abh[name] = fn;
   }
 }
@@ -169,8 +207,9 @@ export function ketteBudgetStand() {
 }
 
 // Was die Protokollzeile je Lauf-Art ueber ihren Config-Block sagen muss. Getrennt von der
-// Zeile selbst, weil nur diese drei Angaben sich unterscheiden — der Satzbau nicht.
-const KETTE_BUDGET_TEXT = { name: "der Kette", block: "night.kette", defaults: KETTE_BUDGET_DEFAULTS };
+// Zeile selbst, weil nur diese drei Angaben sich unterscheiden — der Satzbau nicht. Eine
+// Funktion, damit der Name in der Sprache des Prozesses steht.
+const ketteBudgetText = () => ({ name: t("budgetName"), block: "night.kette", defaults: KETTE_BUDGET_DEFAULTS });
 
 /**
  * Die Protokollzeile zu den Budgets aus den Defaults (Issue #659), `null` ohne solche.
@@ -180,13 +219,11 @@ const KETTE_BUDGET_TEXT = { name: "der Kette", block: "night.kette", defaults: K
  * `text` nennt den Lauf und seinen Block (Issue #909): Kette und Prueflauf bilden dieselbe
  * Zeile, und zwei Fassungen desselben Satzes liefen bei der ersten Aenderung auseinander.
  */
-export function budgetDefaultsZeile(budget, ausDefault, text = KETTE_BUDGET_TEXT) {
+export function budgetDefaultsZeile(budget, ausDefault, text = ketteBudgetText()) {
   if (ausDefault.length === 0) return null;
   const werte = ausDefault.map((feld) => `${feld}=${budget[feld]}`).join(", ");
-  const ganz = ausDefault.length === Object.keys(text.defaults).length
-    ? ` — ${text.block} in .claude/workflow.config.json fehlt oder setzt kein Feld.`
-    : "";
-  return `Budget ${text.name} aus den Defaults: ${werte}${ganz}`;
+  const ganz = ausDefault.length === Object.keys(text.defaults).length ? t("budgetBlockLeer", { block: text.block }) : "";
+  return t("budgetDefaults", { name: text.name, werte, ganz });
 }
 
 // --- Wurzel belegt (Plan #1113, E5, E6) ---
@@ -207,14 +244,21 @@ function wurzelObergrenzeMs({ kette, pruefLauf }) {
   return Math.max(ketteMin, pruefLauf.pruefungMin) * 60_000;
 }
 
-/** Lauf-ID, Stand und Position aus einem Laufstand-Text (#1186) — `null` ohne Lauf-ID. */
+/** Ist der Kommentar ein Laufstand, unter beiden Namen des Ankers (Issue #1443)? */
+const istLaufstandKommentar = (kommentar) => erkenneMarker(kommentar) === "laufstand";
+
+/** Der erste Rest hinter dem Marker `sache`, auf den `ausdruck` passt: sein erster Capture, sonst undefined. */
+const markerCapture = (text, sache, ausdruck) => markerWerte(text, sache, { eingerueckt: false }).map((rest) => ausdruck.exec(rest)?.[1]).find(Boolean);
+
+/** Lauf-ID, Stand und Position aus einem Laufstand-Text (#1186) — `null` ohne Lauf-ID. Marker unter beiden Namen (#1443). */
 function laufstandKopf(text) {
   const t = String(text ?? "");
-  const laufId = /^Lauf-ID:[^\S\n]*(\S+)[^\S\n]*$/m.exec(t)?.[1];
+  const einWort = /^[^\S\n]*(\S+)[^\S\n]*$/;
+  const laufId = markerCapture(t, "laufId", einWort);
   if (!laufId) return null;
   const [host, pid] = laufId.split("/");
-  const stand = Date.parse(/^Stand:[^\S\n]*(\S+)[^\S\n]*$/m.exec(t)?.[1] ?? "");
-  const k = Number(/^Position:[^\S\n]*(\d+)[^\S\n]+von[^\S\n]+\d+[^\S\n]*$/m.exec(t)?.[1]);
+  const stand = Date.parse(markerCapture(t, "stand", einWort) ?? "");
+  const k = Number(markerCapture(t, "position", /^[^\S\n]*(\d+)[^\S\n]+von[^\S\n]+\d+[^\S\n]*$/));
   return { laufId, host, pid: Number(pid), stand, k: k > 0 ? k : 1 };
 }
 
@@ -266,8 +310,12 @@ export function wurzelBelegt(F, issues, staende, jetzt, host, { budgets = { kett
  */
 export const REVIEW_FERTIG_LABEL = "review:fertig";
 
+/** Der Name, unter dem der Nachtlauf `review:fertig` nennt: `review:done`, in jedem Projekt (Issue #1553). */
+export const reviewFertigLabelName = () => kitLabel("reviewFertig", "review:done");
+
+// Erkannt unter jedem Namen des Labels, auch `review:done` (Issue #1424, Plan #1420 E8).
 export function hatReviewFertigLabel(issue) {
-  return (issue?.labels || []).includes(REVIEW_FERTIG_LABEL);
+  return traegtLabel(issue?.labels, "reviewFertig");
 }
 
 /**
@@ -277,7 +325,21 @@ export function hatReviewFertigLabel(issue) {
  * die Faelle wiedererkennen will (der Kommentar an der abgelehnten Anforderung), prueft
  * auf dieses Praefix und nicht auf den ganzen Text.
  */
-export const UNGEPRUEFT_PRAEFIX = `ungeprueft: Label '${REVIEW_FERTIG_LABEL}' fehlt`;
+const ungeprueftPraefix = (label) => t("ungeprueftPraefix", { label });
+// Die deutsche Fassung, unabhaengig von der Sprache des Prozesses, mit dem Labelnamen, den der
+// Nachtlauf nennt (Issue #1553). Den alten Grund mit `review:fertig` erkennt `istUngeprueftGrund`.
+export const UNGEPRUEFT_PRAEFIX = textIn("de", "ungeprueftPraefix", { label: reviewFertigLabelName() });
+
+/**
+ * Ob ein Grund der Grund „Pruefung fehlt" ist — in jeder Sprache und unter dem Labelnamen
+ * jeder Sprache: Der Grund steht in der Projektsprache und nennt deren Labelnamen (Issue
+ * #1429, #1491), erkannt wird er immer.
+ */
+export function istUngeprueftGrund(grund) {
+  const g = String(grund);
+  const labels = [REVIEW_FERTIG_LABEL, reviewFertigLabelName()];
+  return Object.keys(TEXTE).some((sprache) => labels.some((label) => g.startsWith(textIn(sprache, "ungeprueftPraefix", { label }))));
+}
 
 /**
  * Grund und naechster Schritt fuer eine Karte ohne `review:fertig` — getrennt geliefert.
@@ -287,8 +349,10 @@ export const UNGEPRUEFT_PRAEFIX = `ungeprueft: Label '${REVIEW_FERTIG_LABEL}' fe
  * Label waere `kit:night` im Text schlicht falsch (Plan #716, E8).
  */
 export function pruefungFehltGrund(id, kettenLabel) {
-  const schritt = `mit /issue-review #${id} pruefen lassen, das setzt ${REVIEW_FERTIG_LABEL}; das Label ${kettenLabel} bleibt dran`;
-  return { praefix: UNGEPRUEFT_PRAEFIX, schritt, text: `${UNGEPRUEFT_PRAEFIX} — ${schritt}` };
+  const label = reviewFertigLabelName();
+  const praefix = ungeprueftPraefix(label);
+  const schritt = t("pruefungFehltSchritt", { id, label, kettenLabel });
+  return { praefix, schritt, text: t("pruefungFehlt", { praefix, schritt }) };
 }
 
 /**
@@ -311,7 +375,12 @@ export const KETTE_UNGEPRUEFT_ANKER = "## Kette nicht gestartet: Pruefung fehlt"
  * #1243, A9; Issue #1244) — wie `UNGEPRUEFT_PRAEFIX` erkennt `uebersprungeneVerbuchen`
  * daran die Karten, die einen Hinweis bekommen.
  */
-export const ZIEL_UNPASSEND_PRAEFIX = "unpassende Einstellung: ";
+export const ZIEL_UNPASSEND_PRAEFIX = textIn("de", "zielUnpassendPraefix");
+
+/** Ob ein Grund der einer unpassenden Einstellung ist, in jeder Sprache (Issue #1491). */
+export function istZielUnpassendGrund(grund) {
+  return Object.keys(TEXTE).some((sprache) => String(grund).startsWith(textIn(sprache, "zielUnpassendPraefix")));
+}
 
 /** Der Anker des einmaligen Hinweises an einer solchen Karte, gebaut wie `KETTE_UNGEPRUEFT_ANKER`. */
 export const KETTE_ZIEL_ANKER = "## Kette nicht gestartet: unpassende Einstellung";
@@ -338,13 +407,14 @@ const STOPP_FRAGE_ZITAT = 120;
  */
 export function stoppFragenGrund(body) {
   const abschnitt = abschnittLesen(body, OFFENE_FRAGEN_UEBERSCHRIFT);
-  if (abschnitt === null) return `kein Abschnitt ## ${OFFENE_FRAGEN_NAME}`;
+  const name = nameDerSprache("ueberschriftName", "offeneFragen", OFFENE_FRAGEN_NAME);
+  if (abschnitt === null) return t("stoppAbschnittFehlt", { name });
   // Nur Zeilen ausserhalb eines Fence: Ein Plan, der die Regelform als Beispiel zeigt,
   // haette sich sonst mit seinem eigenen Codeblock freigegeben.
   const erste = abschnitt.zeilen.find((z, i) => abschnitt.ausserhalb[i] && z.trim() !== "");
-  if (erste === undefined) return `Abschnitt ## ${OFFENE_FRAGEN_NAME} ist leer`;
+  if (erste === undefined) return t("stoppAbschnittLeer", { name });
   if (erste.trim().startsWith(KEINE_STOPP_FRAGEN)) return null;
-  return `offene Stopp-Frage: ${flatten(erste, STOPP_FRAGE_ZITAT)}`;
+  return t("stoppFrageOffen", { frage: flatten(erste, STOPP_FRAGE_ZITAT) });
 }
 
 // Wie eine fachliche Anforderung sagt, dass keine Frage mehr offen ist: die erste
@@ -375,7 +445,7 @@ export function offeneFragenGrund(body) {
   const erste = abschnitt.zeilen.find((z, i) => abschnitt.ausserhalb[i] && z.trim() !== "");
   if (erste === undefined) return null;
   if (KEINE_PO_FRAGEN.test(erste.trim())) return null;
-  return `offene Frage an den PO: ${flatten(erste, STOPP_FRAGE_ZITAT)}`;
+  return t("poFrageOffen", { frage: flatten(erste, STOPP_FRAGE_ZITAT) });
 }
 
 // --- Das Erfolgssignal der Erzeugung (Issue #520) ---
@@ -385,6 +455,17 @@ export function offeneFragenGrund(body) {
 // Feld wertet allein der toolbox-Adapter aus, die uebrigen Tracker nehmen es folgenlos
 // an; die Zeilen stehen im Body und tragen ueberall.
 export const HERKUNFT_FELD = { plan: "Fachliche Quelle", issue: "Plan" };
+
+/**
+ * Die Nummern der GANZEN Herkunftszeilen `<feld>: Issue #N` zeichengleich, mit fuehrenden
+ * Nullen. Das Feld kommt mit seinem deutschen Namen aus `HERKUNFT_FELD`, gelesen wird es
+ * unter beiden Namen des Markers (Issue #1443).
+ */
+function herkunftZeilen(body, feld) {
+  // `[^\S\n]` statt `\s`: Das Zeilenende hinter der Nummer bleibt hart.
+  return markerWerte(String(body ?? ""), erkenneMarker(`${feld}:`))
+    .map((rest) => /^[^\S\n]*Issue[^\S\n]*#(\d+)[^\S\n]*$/.exec(rest)?.[1]).filter(Boolean);
+}
 
 /**
  * Traegt dieses Dokument die Zielstufe des Laufs (Issue #520)?
@@ -425,13 +506,7 @@ export function stammtAusErzeugung(issue, quelleId, stufe) {
   // lokalen Tracker also mitsamt fuehrenden Nullen.
   const nummer = String(quelleId ?? "");
   if (!/^\d+$/.test(nummer)) return false;
-  // `[^\S\n]` statt `\s`: `\s*$` duerfte mit dem m-Flag ueber Zeilenumbrueche laufen und
-  // haette das Zeilenende damit wieder aufgeweicht.
-  const zeile = new RegExp(
-    String.raw`^[^\S\n]*${HERKUNFT_FELD[stufe]}:[^\S\n]*Issue[^\S\n]*#${nummer}[^\S\n]*$`,
-    "m",
-  );
-  return zeile.test(issue?.body || "");
+  return herkunftZeilen(issue?.body, HERKUNFT_FELD[stufe]).includes(nummer);
 }
 
 /**
@@ -447,11 +522,7 @@ export function stammtAusErzeugung(issue, quelleId, stufe) {
  * vergleicht, vergleicht zeichengleich.
  */
 export function fachlicheQuelleVon(body) {
-  const zeile = new RegExp(
-    String.raw`^[^\S\n]*${HERKUNFT_FELD.plan}:[^\S\n]*Issue[^\S\n]*#(\d+)[^\S\n]*$`,
-    "m",
-  );
-  return zeile.exec(String(body ?? ""))?.[1] ?? null;
+  return herkunftZeilen(body, HERKUNFT_FELD.plan)[0] ?? null;
 }
 
 
@@ -475,11 +546,11 @@ export function fachlicheQuelleVon(body) {
 // Nachricht aus. Der Satz ueber das Board widersprach ihrem Auftrag, darum bekommt sie
 // `ABDECKUNG_ZUSATZ` — dieselben Saetze ohne ihn (Issue #1106).
 //
-// Exportiert fuer die Tests.
-export const KETTE_ZUSATZ = "Dieser Lauf ist unbeaufsichtigt: Es sieht niemand zu, und es wird nicht gefragt. "
-  + "Schreibe dein Ergebnis ans Board, bevor die Session endet. "
-  + "Beende deine Arbeit nicht, solange eine von dir angestossene lange Arbeit laeuft: "
-  + "Warte auf ihr Ergebnis oder brich sie ab und melde den Abbruch als Fehlschlag.";
+// Der Zusatz steht in der Sprache des Projekts in TEXTE (`ketteZusatz`, Issue #1471);
+// `KETTE_ZUSATZ` bleibt der deutsche Wortlaut, exportiert fuer die Tests.
+export const KETTE_ZUSATZ = textIn("de", "ketteZusatz");
+/** Der Zusatz der Stufen-Sessions in der Sprache des Prozesses. */
+export const ketteZusatz = () => t("ketteZusatz");
 export const ABDECKUNG_ZUSATZ = "Dieser Lauf ist unbeaufsichtigt: Es sieht niemand zu, und es wird nicht gefragt. "
   + "Gib dein Ergebnis als letzte Nachricht aus, bevor die Session endet. "
   + "Beende deine Arbeit nicht, solange eine von dir angestossene lange Arbeit laeuft: "
@@ -502,7 +573,7 @@ const KETTE_AUSGAENGE = ["fertig", "unvollstaendig", "angehalten", "abgebrochen"
  * Der Anfang des Grundes, den eine Kette traegt, deren bestellte Umsetzung ausblieb
  * (Issue #862) — woertlich aus dem Arbeitspaket. Exportiert fuer die Tests.
  */
-export const UMSETZUNG_AUSGELASSEN_PRAEFIX = "Umsetzung ausgelassen: ";
+export const UMSETZUNG_AUSGELASSEN_PRAEFIX = textIn("de", "umsetzungAusgelassenPraefix");
 // Woran der Runner den Halt von /issues erkennt: der Kommentar, den der Skill
 // unbeaufsichtigt an den Plan schreibt, wenn er kein Paket anlegt (skills-14).
 export const ISSUES_HALT_KOPF = "Kein Eingang für /issues";
@@ -514,6 +585,8 @@ export const ISSUES_HALT_KOPF = "Kein Eingang für /issues";
  */
 export const ABDECKUNG_PROMPT = [
   "Aendere dabei NICHTS: kein Kommentar, keine Karte, kein Label, keine Datei.",
+  "",
+  "Traegt der Fachplan einen Abschnitt Szenarien, halte auch sie gegen die Pakete: Jedes Szenario des Fachplans steht woertlich in mindestens einem Arbeitspaket; ein Szenario, das in keinem Paket steht, nennst du unter \"Ohne Paket\" mit seinem Titel. Nach Tests fragt diese Pruefung nicht.",
   "",
   "Gib als letzte Nachricht genau diese drei Abschnitte aus, in Markdown:",
     "",
@@ -548,9 +621,9 @@ export function abdeckungPrompt(fachplanId, planId, paketIds) {
  * ohne beide Praefixe bekommt dort ihren Grund. Zwei Praefix-Proben — eine je Art —
  * liefen bei der ersten Aenderung auseinander.
  */
-function kettenAusschluss(issue, kettenLabel) {
-  if (issue.status !== "backlog") return `steht in ${issue.status ?? "unbekannt"}, nicht in Backlog`;
-  if (hatKlaerenLabel(issue)) return `traegt ${KLAEREN_LABEL} — die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen, dann das Label abnehmen`;
+function kettenAusschluss(issue, kettenLabel, config) {
+  if (issue.status !== "backlog") return t("nichtInBacklog", { status: issue.status ?? t("unbekannt") });
+  if (hatKlaerenLabel(issue)) return t("ketteKlaeren", { label: klaerenLabelName() });
   if (!hatReviewFertigLabel(issue)) return pruefungFehltGrund(issue.id, kettenLabel).text;
   // Zuletzt die offenen Fragen an den PO (Issue #916): Wer die Pruefung noch gar nicht
   // laufen liess, soll das zuerst erfahren; die Fragen sind der naechste Schritt danach.
@@ -558,9 +631,35 @@ function kettenAusschluss(issue, kettenLabel) {
   // PO-Fragen ausdruecklich nicht beantworten, also sagt das Label darueber nichts.
   const poFrage = offeneFragenGrund(issue?.body || "");
   if (poFrage !== null) {
-    return `${poFrage}; die Fragen im Body beantworten und '## ${PO_FRAGEN_NAME}' auf 'Keine' setzen`;
+    return t("poFragen", { frage: poFrage, name: nameDerSprache("ueberschriftName", "poFragen", PO_FRAGEN_NAME) });
   }
-  return null;
+  // Nach den PO-Fragen die Szenarien (Issue #1593, Kriterium 4): Ein pflichtiger Fachplan
+  // ohne vollstaendiges Szenario laeuft in keinen Plan; Altbestand und ein fehlender
+  // Stichtag schliessen nicht aus (Kriterium 5, A6).
+  return szenarienGrund(issue, config);
+}
+
+/** Der Grund, wenn ein pflichtiger Fachplan kein vollstaendiges Szenario traegt — sonst `null`. */
+function szenarienGrund(issue, config) {
+  if (!szenarien || szenarien.szenarienPflicht(issue.id, config) !== true) return null;
+  if (szenarien.szenarienLesen(issue?.body || "").szenarien.some((s) => s.vollstaendig)) return null;
+  return t("szenarienFehlen", { id: issue.id });
+}
+
+/**
+ * Der Hinweis auf den fehlenden Stichtag `szenarienAb` (Plan #1588 E14) — `null`, wenn er
+ * gesetzt ist. Die Kette nennt ihn einmal je Lauf im Protokoll und im Nachtbericht.
+ */
+export function stichtagFehltHinweis(config) {
+  // Ohne Stichtag antwortet `szenarienPflicht` weder `true` noch `false`.
+  if (!szenarien || typeof szenarien.szenarienPflicht(null, config) === "boolean") return null;
+  return szenarien.stichtagHinweis();
+}
+
+/** Die eine Protokollzeile je Lauf, wenn der Stichtag fehlt (E14) — kein Kommentar, kein Laufstand. */
+function stichtagNennen() {
+  const hinweis = stichtagFehltHinweis(ZUSTAND.config);
+  if (hinweis) log(t("stichtagFehlt", { hinweis }));
 }
 
 /**
@@ -580,15 +679,20 @@ function kettenAusschluss(issue, kettenLabel) {
  * Boards treffen, zeichengleich — siehe `fachlicheQuelleVon`.
  */
 export function planAusschluss(issue, kettenLabel, karten) {
-  if (issue?.status !== "backlog") return `steht in ${issue?.status ?? "unbekannt"}, nicht in Backlog`;
+  if (issue?.status !== "backlog") return t("nichtInBacklog", { status: issue?.status ?? t("unbekannt") });
   const quelle = fachlicheQuelleVon(issue?.body || "");
   if (quelle === null || !(karten || []).some((k) => String(k?.id) === quelle)) {
-    return `die fachliche Herkunft ist nicht erkennbar — die Zeile '${HERKUNFT_FELD.plan}: Issue #N' fehlt im Plan oder nennt keine Karte dieses Boards (die Nummer wird zeichengleich verglichen, fuehrende Nullen zaehlen mit)`;
+    return t("herkunftFehlt", { feld: nameDerSprache("markerName", "fachlicheQuelle", `${HERKUNFT_FELD.plan}:`) });
   }
-  if (hatKlaerenLabel(issue)) return `traegt ${KLAEREN_LABEL} — die Entscheidung gehoert in den Plan, danach nimmt ein Mensch das Label ab`;
+  if (hatKlaerenLabel(issue)) return t("planKlaeren", { label: klaerenLabelName() });
   const frage = stoppFragenGrund(issue?.body || "");
   if (frage !== null) {
-    return `eine Entscheidung wartet: ${frage}; sie gehoert als Eintrag unter '## ${ENTSCHEIDUNGEN_NAME}' des Plans, danach traegt '## ${OFFENE_FRAGEN_NAME}' wieder '${KEINE_STOPP_FRAGEN}' — ein Satz in der fachlichen Anforderung genuegt nicht`;
+    return t("planEntscheidung", {
+      frage,
+      entscheidungen: nameDerSprache("ueberschriftName", "architektonischeEntscheidungen", ENTSCHEIDUNGEN_NAME),
+      offen: nameDerSprache("ueberschriftName", "offeneFragen", OFFENE_FRAGEN_NAME),
+      keine: KEINE_STOPP_FRAGEN,
+    });
   }
   if (!hatReviewFertigLabel(issue)) return pruefungFehltGrund(issue.id, kettenLabel).text;
   return null;
@@ -605,29 +709,29 @@ export function planAusschluss(issue, kettenLabel, karten) {
  */
 export function zielAusschluss(karte, art, plan) {
   const labels = karte?.labels || [];
-  const schritt = "die Karte behaelt ihre Labels";
-  const ziele = labels.filter((l) => String(l).startsWith(ZIEL_LABEL_PRAEFIX));
-  if (ziele.length > 1) {
-    return `${ZIEL_UNPASSEND_PRAEFIX}mehr als ein Ziel (${ziele.join(", ")}) — alle bis auf eines abnehmen; ${schritt}`;
-  }
+  const praefix = t("zielUnpassendPraefix");
+  const schritt = t("zielSchritt");
+  const ziele = labels.filter(istZielLabel);
+  if (ziele.length > 1) return t("zielMehrere", { praefix, ziele: ziele.join(", "), schritt });
   const pruefer = PLANREVIEW_LABELS.filter((l) => labels.includes(l));
-  if (pruefer.length > 1) {
-    return `${ZIEL_UNPASSEND_PRAEFIX}${pruefer.join(" und ")} zugleich — eines abnehmen; ${schritt}`;
-  }
-  if (art === "plan" && labels.includes(`${ZIEL_LABEL_PRAEFIX}plan`)) {
-    return `${ZIEL_UNPASSEND_PRAEFIX}${ZIEL_LABEL_PRAEFIX}plan an einem Plandokument — der Plan steht schon; ein weiter reichendes Ziel setzen oder das Label abnehmen; ${schritt}`;
-  }
-  if (art === "plan" && pruefer.length === 1) {
-    return `${ZIEL_UNPASSEND_PRAEFIX}${pruefer[0]} an einem Plandokument — die Prueferzahl gilt nur an der fachlichen Anforderung; das Label abnehmen; ${schritt}`;
-  }
+  if (pruefer.length > 1) return t("prueferZugleich", { praefix, pruefer: pruefer.join(t("prueferUnd")), schritt });
+  const zielPlan = kennzeichenName(labels, zielLabelName("plan"), "zielPlan");
+  if (art === "plan" && zielPlan) return t("zielPlanAmPlan", { praefix, label: zielPlan, schritt });
+  if (art === "plan" && pruefer.length === 1) return t("prueferAmPlan", { praefix, label: pruefer[0], schritt });
   if (art === "fachplan" && pruefer.length === 1 && plan && hatPlanReviewMarker(plan.body || "")) {
-    return `${ZIEL_UNPASSEND_PRAEFIX}${pruefer[0]}, aber Plan #${plan.id} ist schon geprueft — das Label abnehmen oder das Kettenlabel an den Plan setzen; ${schritt}`;
+    return t("planSchonGeprueft", { praefix, label: pruefer[0], plan: plan.id, schritt });
   }
   return null;
 }
 
 /** Der Grund an einer gekennzeichneten Karte, die keine der beiden Auftragsarten traegt. */
-const KEINE_AUFTRAGSART_GRUND = "weder [Fachlich] noch [Plan] — das Kennzeichen gilt an der fachlichen Anforderung oder am Plandokument";
+const keineAuftragsartGrund = () => t("keineAuftragsart", {
+  fachlich: kitPraefix("fachlich", "[Requirement]"),
+  plan: kitPraefix("plan", "[Plan]"),
+});
+
+/** Der Name, unter dem der Nachtlauf `kit:klaeren` nennt: `kit:clarify`, in jedem Projekt (Issue #1553). */
+const klaerenLabelName = () => kitLabel("klaeren", "kit:clarify");
 
 /** Die Auftragsart am Titel-Praefix — `null`, wenn die Karte keine der beiden traegt. */
 function auftragsartVon(titel) {
@@ -660,10 +764,10 @@ function auftragAus(issue, art) {
 function kollisionsGrund(auftrag, juengster) {
   if (juengster === null) return null;
   if (auftrag.art === "fachplan") {
-    return `zu dieser Anforderung ist Plan #${juengster.id} gekennzeichnet — er laeuft an ihrer Stelle, ein zweiter Plan entstuende sonst daneben`;
+    return t("kollisionAnforderung", { plan: juengster.id });
   }
   if (juengster.id !== auftrag.planId) {
-    return `zur fachlichen Quelle #${auftrag.F} ist ein juengerer Plan gekennzeichnet — #${juengster.id} laeuft an seiner Stelle`;
+    return t("kollisionPlan", { quelle: auftrag.F, plan: juengster.id });
   }
   return null;
 }
@@ -680,8 +784,8 @@ function juengsterPlanAmBoard(issues, F) {
 }
 
 /** Der Ausschluss je Auftragsart, danach die unpassende Einstellung (Issue #1244) — `null`, wenn die Karte laeuft. */
-function ausschlussGrund(issue, art, label, issues) {
-  const grund = art === "plan" ? planAusschluss(issue, label, issues) : kettenAusschluss(issue, label);
+function ausschlussGrund(issue, art, label, issues, config) {
+  const grund = art === "plan" ? planAusschluss(issue, label, issues) : kettenAusschluss(issue, label, config);
   return grund ?? zielAusschluss(issue, art, art === "fachplan" ? juengsterPlanAmBoard(issues, issue.id) : null);
 }
 
@@ -710,8 +814,9 @@ function ausschlussGrund(issue, art, label, issues) {
  * liefert den lebenden Halter `{ karte, laufId }` oder `null`, wie `wurzelBelegt`. Auch sie
  * verbraucht keinen Platz.
  */
-export function waehleKettenKandidaten(issues, label, max, { belegt = () => null } = {}) {
-  const alle = (issues || []).filter((i) => (i?.labels || []).includes(label));
+export function waehleKettenKandidaten(issues, label, max, { belegt = () => null, sache = "night", config = ZUSTAND.config } = {}) {
+  // Der gesetzte Wert und beide Vorgabenamen (Issue #1425, Plan #1420 E7).
+  const alle = (issues || []).filter((i) => kennzeichenName(i?.labels, label, sache));
   const gruende = new Map();
   const auftraege = [];
 
@@ -728,10 +833,10 @@ export function waehleKettenKandidaten(issues, label, max, { belegt = () => null
   for (const issue of alle) {
     const art = auftragsartVon(issue?.title ?? "");
     if (art === null) {
-      gruende.set(String(issue.id), KEINE_AUFTRAGSART_GRUND);
+      gruende.set(String(issue.id), keineAuftragsartGrund());
       continue;
     }
-    const grund = ausschlussGrund(issue, art, label, issues || []);
+    const grund = ausschlussGrund(issue, art, label, issues || [], config);
     if (grund === null) auftraege.push(auftragAus(issue, art));
     else gruende.set(String(issue.id), grund);
   }
@@ -773,7 +878,7 @@ export function korrekturPrompt(dokId, verstoesse) {
     `und uebertrage ihn mit \`node .claude/kit/board.mjs issue update ${dokId} --body-file <pfad>\`.`,
     "Aendere sonst nichts: keinen Inhalt, keine anderen Karten, keine Dateien im Projekt.",
     "",
-    KETTE_ZUSATZ,
+    ketteZusatz(),
   ].join("\n");
 }
 
@@ -794,8 +899,11 @@ export function trackerImWorktreeUmleiten(wt, repoRoot) {
   if (ZUSTAND.config.issueTracker !== "local") return;
   const pfad = join(wt, ".claude", "workflow.config.json");
   if (!existsSync(pfad)) return;
+  // Gelesen wird normalisiert, zurueckgeschrieben die Datei in ihrer eigenen Sprache (Issue #1436):
+  // `local` und `issuesDir` heissen in beiden Sprachen gleich.
   const wtConfig = JSON.parse(readFileSync(pfad, "utf-8"));
-  wtConfig.local = { ...wtConfig.local, issuesDir: resolve(repoRoot, ZUSTAND.config.local?.issuesDir || "issues") };
+  const { config: gelesen } = normalisiereConfig(wtConfig);
+  wtConfig.local = { ...gelesen.local, issuesDir: resolve(repoRoot, ZUSTAND.config.local?.issuesDir || "issues") };
   writeFileSync(pfad, JSON.stringify(wtConfig, null, 2) + "\n", "utf-8");
 }
 
@@ -827,7 +935,7 @@ export function wartendVermerken(dokId, stufe, schlusstext) {
   writeFileSync(pfad, wartendVermerk(schlusstext), "utf-8");
   try {
     abh.board("issue", "comment", String(dokId), "--text-file", pfad);
-    log(`  Stufe ${stufe}: ${GRUND_WARTEND} — Vermerk '${WARTEND_ANKER}' an #${dokId} geschrieben.`);
+    log(t("wartendVermerkt", { stufe, grund: GRUND_WARTEND, anker: WARTEND_ANKER, id: dokId }));
   } finally {
     rmSync(pfad, { force: true });
   }
@@ -843,7 +951,7 @@ export function wartendVermerken(dokId, stufe, schlusstext) {
 export function wartendBeendet(stufe, schlusstext, dokId, ergebnisDa) {
   if (stufe === STUFE_OHNE_WARTEND_ERKENNUNG || !wartendeSession(schlusstext)) return false;
   if (ergebnisDa?.()) {
-    log(`  Stufe ${stufe}: Schlusstext klang nach Warten, das Ergebnis liegt aber vor — die Session gilt als fertig.`);
+    log(t("wartendErgebnisDa", { stufe }));
     return false;
   }
   if (dokId) wartendVermerken(dokId, stufe, schlusstext);
@@ -875,26 +983,25 @@ export function wartendBeendet(stufe, schlusstext, dokId, ergebnisDa) {
 async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, { dokId = null, ergebnisDa = null, extraEnv } = {}) {
   const rest = budgetMs - (abh.jetzt().getTime() - stufeStart);
   if (rest < KETTE_MINDEST_REST_MS) {
-    return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe} erschoepft, bevor eine weitere Session starten konnte`, dauerMs: 0, kennzahlen: null, sitzungsAbbruch: true };
+    return { ausgang: "abgebrochen", grund: t("zeitbudgetErschoepft", { stufe }), grundArt: "zeitbudget", dauerMs: 0, kennzahlen: null, sitzungsAbbruch: true };
   }
-  const t = abh.jetzt().getTime();
+  const beginn = abh.jetzt().getTime();
   const res = await runSession(kette.F, kette.args, {
-    prompt: `${prompt}\n\n${stufe === "abdeckung" ? ABDECKUNG_ZUSATZ : KETTE_ZUSATZ}`, cwd: kette.wt, stream: true, stufe, timeoutMs: rest,
+    prompt: `${prompt}\n\n${stufe === "abdeckung" ? ABDECKUNG_ZUSATZ : ketteZusatz()}`, cwd: kette.wt, stream: true, stufe, timeoutMs: rest,
     ...(extraEnv ? { extraEnv } : {}),
   }, { spawn: abh.spawn, spawnSync: abh.spawnSync });
-  const dauerMs = abh.jetzt().getTime() - t;
+  const dauerMs = abh.jetzt().getTime() - beginn;
   const minuten = (dauerMs / 60000).toFixed(1);
   const kennzahlen = leseKennzahlen(res.stdout);
   kostenAddieren(kette.kosten, kennzahlen);
   if (ZUSTAND.LAUF) kostenAddieren(ZUSTAND.LAUF, kennzahlen);
   const timedOut = res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM";
   if (timedOut) {
-    return { ausgang: "abgebrochen", grund: `Zeitbudget ${stufe}: die Session wurde nach ${minuten} min am Limit beendet`, dauerMs, kennzahlen, sitzungsAbbruch: true };
+    return { ausgang: "abgebrochen", grund: t("zeitbudgetLimit", { stufe, minuten }), grundArt: "zeitbudget", dauerMs, kennzahlen, sitzungsAbbruch: true };
   }
-  if (res.umgebungGescheitert) laufAnhalten(`Sitzungsstart der Stufe ${stufe} zu #${kette.F} auch im 2. Versuch gescheitert (${exitText(res)})`);
+  if (res.umgebungGescheitert) laufAnhalten(t("sitzungsstartGescheitert", { stufe, id: kette.F, exit: exitText(res) }));
   if (res.error || res.status !== 0) {
-    const exitInfo = exitText(res);
-    return { ausgang: "abgebrochen", grund: `technischer Fehler: die Session der Stufe ${stufe} endete mit ${exitInfo}`, dauerMs, kennzahlen, sitzungsAbbruch: true };
+    return { ausgang: "abgebrochen", grund: t("technischerFehler", { stufe, exit: exitText(res) }), dauerMs, kennzahlen, sitzungsAbbruch: true };
   }
   // Die wartende Sitzung (Plan #773, Issue #778) — hinter Zeitbudget und technischem
   // Fehler, weil sie ein REGULAERES Ende verfeinert: Die Session hat eine lange Arbeit
@@ -914,7 +1021,7 @@ async function ketteSession(kette, stufe, prompt, stufeStart, budgetMs, { dokId 
   // angelegter Plan nicht im Ergebnisstand.
   const deckel = kettenKostendeckel(kette);
   if (kette.kosten.kostenSumme > deckel && !kette.kostenGrund) {
-    kette.kostenGrund = `Kostenbudget: ${kette.kosten.kostenSumme.toFixed(2)} $ von ${deckel} $ nach der Stufe ${stufe}`;
+    kette.kostenGrund = t("kostenbudget", { summe: kette.kosten.kostenSumme.toFixed(2), deckel, stufe });
   }
   return { ausgang: "fertig", dauerMs, kennzahlen, res };
 }
@@ -948,7 +1055,7 @@ async function stufePlan(kette) {
   const summe = (s) => { stand.dauerMs += s.dauerMs; stand.kennzahlen = kennzahlenAddieren(stand.kennzahlen, s.kennzahlen); };
 
   const vorher = new Set(abh.board("issue", "list").map((i) => String(i.id)));
-  log(`  Stufe plan: /techplan #${F} (Budget ${budget.planMin} min).`);
+  log(t("planStart", { id: F, minuten: budget.planMin }));
   // Das Ergebnis ist die Herkunftszeile, nicht der Session-Text (E2): nur neue
   // [Plan]-Karten mit `Fachliche Quelle: Issue #F`; bei mehreren die hoechste Nummer.
   const neuePlaene = () => abh.board("issue", "list")
@@ -960,11 +1067,11 @@ async function stufePlan(kette) {
   if (s.ausgang !== "fertig") return s;
 
   const neue = neuePlaene();
-  if (neue.length === 0) return { ausgang: "abgebrochen", grund: "kein Plan entstanden — die Session hat kein [Plan]-Dokument mit der Herkunftszeile angelegt" };
+  if (neue.length === 0) return { ausgang: "abgebrochen", grund: t("keinPlan", { plan: kitPraefix("plan", "[Plan]") }) };
   stand.id = String(neue[0].id);
   stand.weitere = neue.slice(1).map((i) => String(i.id));
-  const weitere = stand.weitere.length ? ` (weitere: ${stand.weitere.map((i) => "#" + i).join(", ")})` : "";
-  log(`  Plan #${stand.id} entstanden aus Issue #${F}${weitere}.`);
+  const weitere = stand.weitere.length ? t("planWeitere", { ids: stand.weitere.map((i) => "#" + i).join(", ") }) : "";
+  log(t("planEntstanden", { plan: stand.id, id: F, weitere }));
   if (kostenErschoepft(kette)) return kostenErschoepft(kette);
 
   const form = await formSicherstellen(kette, stand, stufeStart, budgetMs, summe);
@@ -974,7 +1081,7 @@ async function stufePlan(kette) {
   const body = abh.board("issue", "get", stand.id).body;
   const grund = stoppFragenGrund(body);
   if (grund !== null) {
-    return { ausgang: "angehalten", grund: `Stopp-Frage im Plan #${stand.id}`, dokId: stand.id, frage: abschnittText(body, OFFENE_FRAGEN_UEBERSCHRIFT) || grund };
+    return { ausgang: "angehalten", grund: t("stoppFrageImPlan", { plan: stand.id }), dokId: stand.id, frage: abschnittText(body, OFFENE_FRAGEN_UEBERSCHRIFT) || grund };
   }
   return { ausgang: "fertig", id: stand.id };
 }
@@ -991,7 +1098,7 @@ async function formSicherstellen(kette, stand, stufeStart, budgetMs, summe) {
   const { budget } = kette;
   for (;;) {
     const form = abh.boardRoh("issue", "check-form", stand.id, { cwd: kette.wt });
-    if (!form.json) return { ausgang: "abgebrochen", grund: `technischer Fehler: check-form #${stand.id} lieferte kein JSON (${form.text.slice(0, 200)})` };
+    if (!form.json) return { ausgang: "abgebrochen", grund: t("formKeinJson", { id: stand.id, text: form.text.slice(0, 200) }) };
     // I8 ist kein Korrekturfall (Plan #987, E15): Die geschuetzte Datei verlangt eine
     // [Mensch]-Karte und eine Teilung, und der korrekturPrompt verbietet beides. Der Verstoss
     // steht im Protokoll, die Karte laeuft ins Gate der Umsetzungsstufe.
@@ -999,10 +1106,10 @@ async function formSicherstellen(kette, stand, stufeStart, budgetMs, summe) {
     const zuKorrigieren = (form.json.verstoesse || []).filter((v) => v.gate !== "I8");
     if (geschuetzt.length > 0) {
       const meldungen = geschuetzt.map((v) => `${v.gate}: ${v.meldung}`).join("; ");
-      log(`  Formpruefung #${stand.id}: ${meldungen} — kein Korrekturfall, das Paket haelt in der Umsetzungsstufe an.`);
+      log(t("formGeschuetzt", { id: stand.id, meldungen }));
     }
     if (form.json.ok || zuKorrigieren.length === 0) {
-      log(`  Formpruefung #${stand.id} gruen.`);
+      log(t("formGruen", { id: stand.id }));
       // Nur Eintraege mit Baustein und Test sind Testhinweise; Abhaengigkeits-Hinweise der
       // Pakete (Plan #1057 E4) tragen keine und bleiben hier ohne Kommentar (Issue #1059).
       testhinweiseVermerken(stand.id, (form.json.hinweise || []).filter((h) => h.baustein && h.test));
@@ -1010,10 +1117,10 @@ async function formSicherstellen(kette, stand, stufeStart, budgetMs, summe) {
     }
     const verstoesse = zuKorrigieren.map((v) => `${v.gate}: ${v.meldung}`).join("; ");
     if (stand.korrekturrunden >= budget.korrekturrunden) {
-      return { ausgang: "abgebrochen", grund: `Form nach ${stand.korrekturrunden} Korrekturrunde(n) weiterhin verletzt (#${stand.id}): ${verstoesse}` };
+      return { ausgang: "abgebrochen", grund: t("formVerletzt", { runden: stand.korrekturrunden, id: stand.id, verstoesse }) };
     }
     stand.korrekturrunden++;
-    log(`  Formpruefung #${stand.id} rot (${verstoesse}) — Korrekturrunde ${stand.korrekturrunden} von ${budget.korrekturrunden}.`);
+    log(t("formRot", { id: stand.id, verstoesse, runde: stand.korrekturrunden, max: budget.korrekturrunden }));
     const k = await ketteSession(kette, "form", korrekturPrompt(stand.id, zuKorrigieren), stufeStart, budgetMs, { dokId: stand.id });
     summe(k);
     if (k.ausgang !== "fertig") return k;
@@ -1041,8 +1148,8 @@ function testhinweiseVermerken(dokId, hinweise) {
   writeFileSync(pfad, text, "utf-8");
   try {
     const res = abh.boardRoh("issue", "comment", dokId, "--text-file", pfad);
-    if (res.status === 0) log(`  ${hinweise.length} Testhinweis(e) als Kommentar '${TESTHINWEIS_ANKER}' an Plan #${dokId} geschrieben.`);
-    else log(`  Testhinweise an Plan #${dokId} nicht geschrieben (${res.text.slice(0, 200)}) — die Kette laeuft weiter.`);
+    if (res.status === 0) log(t("testhinweiseGeschrieben", { anzahl: hinweise.length, anker: TESTHINWEIS_ANKER, id: dokId }));
+    else log(t("testhinweiseNicht", { id: dokId, text: res.text.slice(0, 200) }));
   } finally {
     rmSync(pfad, { force: true });
   }
@@ -1070,17 +1177,17 @@ function reviewRestVermerken(kette, planId, grund) {
   const text = [
     REVIEW_REST_ANKER,
     "",
-    `Kette ${ZUSTAND.LAUF_STEMPEL ?? "ohne Stempel"}, Stufe review: Die Pruefung ist gelaufen, ihre Befunde stehen als Kommentar an diesem Dokument.`,
+    t("reviewRestGelaufen", { stempel: ZUSTAND.LAUF_STEMPEL ?? t("ohneStempel") }),
     "",
-    `Die Einarbeitung fehlt — der Lauf endete davor (${grund}) —, und der Body ist deshalb unveraendert: Er traegt keinen Plan-Review-Marker, obwohl geprueft wurde.`,
+    t("reviewRestFehlt", { grund }),
     "",
-    `Weg nach vorn: /issue-review #${planId} von Hand fahren.`,
+    t("reviewRestWeg", { id: planId }),
     "",
   ].join("\n");
   writeFileSync(pfad, text, "utf-8");
   try {
     abh.board("issue", "comment", planId, "--text-file", pfad);
-    log(`  Review #${planId} abgebrochen, Befunde ohne Einarbeitung — Vermerk '${REVIEW_REST_ANKER}' an Plan #${planId} geschrieben.`);
+    log(t("reviewRestVermerkt", { id: planId, anker: REVIEW_REST_ANKER }));
   } finally {
     rmSync(pfad, { force: true });
   }
@@ -1094,7 +1201,7 @@ async function stufeReview(kette, planId) {
   const stand = { dauerMs: 0, kennzahlen: null, marker: false };
   kette.stufen.review = stand;
   const vorher = abh.board("issue", "get", planId);
-  log(`  Stufe review: /issue-review #${planId} (Budget ${budget.reviewMin} min).`);
+  log(t("reviewStart", { id: planId, minuten: budget.reviewMin }));
   // Ergebnis der Stufe ist eine Marker-Zeile, die nach der Session da und anders als vorher
   // ist — neu oder mit neuem Datum (Issue #1207). Das Label `review:fertig` taugt dafuer
   // nicht: Es kann von einer frueheren Pruefung stehen.
@@ -1123,9 +1230,9 @@ async function stufeReview(kette, planId) {
   stand.marker = hatPlanReviewMarker(nachher.body);
   if (hatKlaerenLabel(nachher)) {
     const neue = neueKommentare(vorher, nachher);
-    return { ausgang: "angehalten", grund: `Stopp-Frage aus dem Review von #${planId}`, dokId: planId, frage: neue.at(-1) ?? `siehe den letzten Kommentar an #${planId}` };
+    return { ausgang: "angehalten", grund: t("reviewStoppFrage", { id: planId }), dokId: planId, frage: neue.at(-1) ?? t("letzterKommentar", { id: planId }) };
   }
-  log(`  Review #${planId} durch${stand.marker ? ", Marker gesetzt" : ""}.`);
+  log(t("reviewDurch", { id: planId, marker: stand.marker ? t("reviewMarker") : "" }));
   return { ausgang: "fertig" };
 }
 
@@ -1146,7 +1253,7 @@ async function stufePakete(kette, planId) {
 
   const vorherIds = new Set(abh.board("issue", "list").map((i) => String(i.id)));
   const vorherPlan = abh.board("issue", "get", planId);
-  log(`  Stufe pakete: /issues #${planId} (Budget ${budget.paketeMin} min).`);
+  log(t("paketeStart", { id: planId, minuten: budget.paketeMin }));
   const paketeEntstanden = () => abh.board("issue", "list").some((i) => !vorherIds.has(String(i.id)) && stammtAusErzeugung(i, planId, "issue"));
   const s = await ketteSession(kette, "pakete", `/issues #${planId}`, stufeStart, budgetMs, { dokId: planId, ergebnisDa: paketeEntstanden });
   summe(s);
@@ -1157,17 +1264,17 @@ async function stufePakete(kette, planId) {
   stand.ids = pakete.map((i) => String(i.id));
   stand.nichtZuordenbar = neue.filter((i) => !stammtAusErzeugung(i, planId, "issue")).map((i) => String(i.id));
   if (stand.nichtZuordenbar.length > 0) {
-    log(`  Neue Karten ohne Herkunftszeile 'Plan: Issue #${planId}', nicht zuordenbar: ${stand.nichtZuordenbar.map((i) => "#" + i).join(", ")}.`);
+    log(t("nichtZuordenbar", { id: planId, ids: stand.nichtZuordenbar.map((i) => "#" + i).join(", ") }));
   }
   if (pakete.length === 0) {
     const nachherPlan = abh.board("issue", "get", planId);
-    const halt = neueKommentare(vorherPlan, nachherPlan).find((k) => String(k).startsWith(ISSUES_HALT_KOPF));
+    const halt = neueKommentare(vorherPlan, nachherPlan).find((k) => erkenneMarker(String(k)) === "issuesHalt");
     if (halt) {
-      return { ausgang: "angehalten", grund: `Stopp-Frage beim Schneiden von #${planId}`, dokId: planId, frage: halt };
+      return { ausgang: "angehalten", grund: t("paketeStoppFrage", { id: planId }), dokId: planId, frage: halt };
     }
-    return { ausgang: "abgebrochen", grund: `kein Paket entstanden — die Session hat keine Karte mit 'Plan: Issue #${planId}' angelegt` };
+    return { ausgang: "abgebrochen", grund: t("keinPaket", { id: planId }) };
   }
-  log(`  Pakete aus Plan #${planId}: ${stand.ids.map((i) => "#" + i).join(", ")}.`);
+  log(t("paketeAusPlan", { id: planId, ids: stand.ids.map((i) => "#" + i).join(", ") }));
   if (kostenErschoepft(kette)) return kostenErschoepft(kette);
 
   // Formpruefung je Paket, mit demselben Korrekturbudget je Dokument wie beim Plan.
@@ -1193,20 +1300,20 @@ async function stufeAbdeckung(kette, fachplanId, planId, paketIds) {
   kette.stufen.abdeckung = stand;
   const vorherKarten = abh.board("issue", "list").length;
   const vorherFachplan = abh.board("issue", "get", fachplanId);
-  log(`  Stufe abdeckung: Pakete gegen Fachplan #${fachplanId} (Budget ${budget.abdeckungMin} min).`);
+  log(t("abdeckungStart", { id: fachplanId, minuten: budget.abdeckungMin }));
   const s = await ketteSession(kette, "abdeckung", abdeckungPrompt(fachplanId, planId, paketIds), abh.jetzt().getTime(), budget.abdeckungMin * 60 * 1000);
   stand.dauerMs = s.dauerMs;
   stand.kennzahlen = s.kennzahlen;
   if (s.ausgang !== "fertig") {
     stand.grund = s.grund;
-    log(`  Abdeckung ohne Text: ${s.grund}.`);
+    log(t("abdeckungOhneText", { grund: s.grund }));
     return { ausgang: "fertig" };
   }
   if (kostenErschoepft(kette)) return kostenErschoepft(kette);
   stand.text = leseErgebnisText(s.res.stdout);
   if (stand.text === null) {
-    stand.grund = "die Abdeckungs-Session lieferte keinen Text";
-    log(`  Abdeckung ohne Text: ${stand.grund}.`);
+    stand.grund = t("abdeckungKeinText");
+    log(t("abdeckungOhneText", { grund: stand.grund }));
   }
   // Der Prompt verbietet Schreiben; ein Verstoss ist ein Befund fuer den Morgen, kein
   // Grund, die Pakete zu verwerfen.
@@ -1214,7 +1321,7 @@ async function stufeAbdeckung(kette, fachplanId, planId, paketIds) {
   const nachherFachplan = abh.board("issue", "get", fachplanId);
   if (nachherKarten !== vorherKarten || neueKommentare(vorherFachplan, nachherFachplan).length > 0) {
     kette.abdeckungSchrieb = true;
-    log("  Hinweis: die Abdeckungs-Session hat am Board geschrieben, obwohl sie nur lesen soll — steht im Ergebnisstand.");
+    log(t("abdeckungSchrieb"));
   }
   return { ausgang: "fertig" };
 }
@@ -1222,12 +1329,10 @@ async function stufeAbdeckung(kette, fachplanId, planId, paketIds) {
 // --- Stufe Umsetzung, nur unter Variante B (Plan #691, E4-E8, E11, E14, E16-E18) ---
 
 /** Der Kommentar an einem selbst gezogenen Paket, das nicht in In review endet (E7). */
-const UMSETZUNG_RUECKSTELLUNG = "Nacht-Kette, Variante B: Der Runner hatte dieses Paket fuer die Umsetzungsstufe "
-  + "selbst nach Ready gezogen; die Runde endete nicht in In review. Es geht zurueck nach Backlog — ein Paket in "
-  + "Ready waere fuer die naechste Nacht und fuer /implement-ready ein GO, das niemand gegeben hat.";
+const umsetzungRueckstellung = () => t("umsetzungRueckstellung");
 
 /** Der Grund, mit dem ein bereits von der Session zurueckgelegtes Paket im Bericht steht. */
-const UMSETZUNG_SCHON_ZURUECK = "die Runde endete ohne In-review-Ergebnis; die Session hatte das Paket selbst zurueckgelegt";
+const umsetzungSchonZurueck = () => t("umsetzungSchonZurueck");
 
 /**
  * Bucht die Kosten der eben gelaufenen Runde auf die Kette.
@@ -1284,15 +1389,15 @@ function paketeAbschliessen(stand, gezogen) {
     }
     if (stand.angehalten.includes(id)) continue;
     if (status === "backlog") {
-      stand.zurueckgestellt.push({ id, grund: UMSETZUNG_SCHON_ZURUECK });
+      stand.zurueckgestellt.push({ id, grund: umsetzungSchonZurueck() });
       continue;
     }
-    stand.zurueckgestellt.push({ id, grund: `die Runde endete in ${status ?? "unbekanntem Zustand"} statt in In review` });
-    abh.boardRoh("issue", "comment", id, "--text", UMSETZUNG_RUECKSTELLUNG);
+    stand.zurueckgestellt.push({ id, grund: t("rundeEndeteIn", { status: status ?? t("statusUnbekannt") }) });
+    abh.boardRoh("issue", "comment", id, "--text", umsetzungRueckstellung());
     const move = abh.boardRoh("issue", "move", id, "backlog");
     log(move.status === 0
-      ? `  Paket #${id} nach Backlog zurueckgestellt — es steht nicht in In review.`
-      : `  Paket #${id} liess sich nicht zurueckstellen (${move.text.slice(0, 200)}) — bitte morgens sichten.`);
+      ? t("paketZurueckgestellt", { id })
+      : t("paketNichtZurueck", { id, text: move.text.slice(0, 200) }));
   }
 }
 
@@ -1312,7 +1417,7 @@ function paketeNichtBegonnen(stand, ids, grund, zusatz = {}) {
     stand.nichtBegonnen.push({ id: String(id), grund, ...zusatz });
     NICHT_BEGONNEN_GESAMT++;
     if (zusatz.mensch) MENSCHENSCHRITTE_OFFEN.add(String(id));
-    log(`  Paket #${id} nicht begonnen: ${grund}.`);
+    log(t("paketNichtBegonnen", { id, grund }));
   }
 }
 
@@ -1337,11 +1442,11 @@ function gateZusatz(karte, gate) {
 function umsetzungBudgetGrund(kette, lauf) {
   const restMs = lauf.budgetMs - (abh.jetzt().getTime() - lauf.stufeStart);
   if (restMs < KETTE_MINDEST_REST_MS) {
-    return `Zeitbudget umsetzung (${kette.budget.umsetzungMin} min) erschoepft, bevor eine weitere Session starten konnte`;
+    return t("umsetzungZeitbudget", { minuten: kette.budget.umsetzungMin });
   }
   const deckel = kettenKostendeckel(kette);
   if (kette.kosten.kostenSumme > deckel) {
-    return `Kostenbudget: ${kette.kosten.kostenSumme.toFixed(2)} $ von ${deckel} $ erschoepft`;
+    return t("umsetzungKosten", { summe: kette.kosten.kostenSumme.toFixed(2), deckel });
   }
   return null;
 }
@@ -1352,7 +1457,7 @@ function umsetzungBudgetGrund(kette, lauf) {
  * der Karte schon denselben Vermerk, liefert die Funktion `null`.
  */
 export function pushVermerk(karte, verweise) {
-  const text = `Nachtlauf: Paket wartet auf einen Push (${verweise}). Nach \`push main\` kann es nach Ready gezogen werden.`;
+  const text = t("pushVermerk", { verweise });
   return kommentareVon(karte).at(-1)?.trim() === text ? null : text;
 }
 
@@ -1361,7 +1466,7 @@ function wartenAmBoardVermerken(karte, verweise) {
   const text = pushVermerk(karte, verweise);
   if (text === null) return;
   const res = abh.boardRoh("issue", "comment", String(karte.id), "--text", text);
-  if (res.status !== 0) log(`  Paket #${karte.id}: Push-Vermerk nicht geschrieben (${res.text.slice(0, 200)}) — bitte morgens sichten.`);
+  if (res.status !== 0) log(t("pushVermerkNicht", { id: karte.id, text: res.text.slice(0, 200) }));
 }
 
 /**
@@ -1377,7 +1482,7 @@ function wartenAmBoardVermerken(karte, verweise) {
 async function umsetzePaket(kette, id, lauf, zaehler) {
   const karte = leseKarte(id);
   if (!karte) {
-    paketeNichtBegonnen(lauf.stand, [id], "die Karte war am Board nicht lesbar");
+    paketeNichtBegonnen(lauf.stand, [id], t("karteNichtLesbar"));
     return null;
   }
   const gate = pruefeIssueGates(karte);
@@ -1390,9 +1495,9 @@ async function umsetzePaket(kette, id, lauf, zaehler) {
     } else if (gate.unmet) {
       const text = gate.block ? `${gate.kommentar}\n\n${gate.block}` : gate.kommentar;
       const res = abh.boardRoh("issue", "comment", id, "--text", text);
-      if (res.status !== 0) log(`  Paket #${id}: Abhaengigkeits-Kommentar nicht geschrieben (${res.text.slice(0, 200)}) — bitte morgens sichten.`);
+      if (res.status !== 0) log(t("abhaengigkeitNicht", { id, text: res.text.slice(0, 200) }));
     }
-    paketeNichtBegonnen(lauf.stand, [id], gate.kommentar.replace(/^Nachtlauf:\s*/, ""), gateZusatz(karte, gate));
+    paketeNichtBegonnen(lauf.stand, [id], gate.kommentar.replace(/^(?:Nachtlauf|Night run):\s*/, ""), gateZusatz(karte, gate));
     return null;
   }
   // Wartet das Paket auf einen Push (Issue #1104), zieht die Kette es nicht nach Ready: Es
@@ -1401,14 +1506,14 @@ async function umsetzePaket(kette, id, lauf, zaehler) {
   const push = wartetAufPush(karte.body);
   if (push.length > 0) {
     const verweise = push.map((n) => "Issue #" + n).join(", ");
-    paketeNichtBegonnen(lauf.stand, [id], `wartet auf einen Push (${verweise})`);
+    paketeNichtBegonnen(lauf.stand, [id], t("wartetAufPush", { verweise }));
     wartenAmBoardVermerken(karte, verweise);
     return null;
   }
 
   abh.board("issue", "move", id, "ready");
   lauf.gezogen.add(id);
-  log(`  Paket #${id} nach Ready gezogen — Session ${zaehler} der Stufe umsetzung.`);
+  log(t("paketGezogen", { id, zaehler }));
   // Test-Hook wie NIGHT_MELDEN_ERZWINGEN: Von aussen laesst sich hier sonst keine
   // Ausnahme ausloesen, und der Wurf-Pfad der Rueckstellpflicht bliebe ungeprueft —
   // genau der Pfad, der ein Paket in Ready zuruecklassen wuerde.
@@ -1421,7 +1526,7 @@ async function umsetzePaket(kette, id, lauf, zaehler) {
     // Die Art je Paket (Issue #1050): Stufengrund und Bericht nennen sie.
     lauf.stand.haltArten[id] = rundenMerker().haltArt ?? "klaeren";
   }
-  return ausgang === "hardStop" ? `Stufe umsetzung: harter Stopp in der Runde zu Paket #${id}` : null;
+  return ausgang === "hardStop" ? t("harterStopp", { id }) : null;
 }
 
 /**
@@ -1433,12 +1538,12 @@ async function umsetzePaket(kette, id, lauf, zaehler) {
 export function umsetzungHaltGrund(stand) {
   const art = (id) => stand.haltArten?.[id] ?? "klaeren";
   const teile = [];
-  for (const [a, text] of [["klaeren", "haelt an einer Stopp-Frage"], ["geschuetzt", "haelt an einer geschuetzten Datei"]]) {
+  for (const [a, text] of [["klaeren", t("haeltKlaeren")], ["geschuetzt", t("haeltGeschuetzt")]]) {
     const ids = stand.angehalten.filter((id) => art(id) === a);
     if (ids.length > 0) teile.push(`${ids.map((id) => "#" + id).join(", ")} ${text}`);
   }
   return {
-    grund: `Stufe umsetzung: ${teile.join("; ")}`,
+    grund: t("haltGrund", { teile: teile.join("; ") }),
     haltArt: stand.angehalten.some((id) => art(id) === "klaeren") ? "klaeren" : "geschuetzt",
   };
 }
@@ -1453,7 +1558,7 @@ async function umsetzungSchleife(kette, paketIds, lauf) {
     }
     const stopp = await umsetzePaket(kette, String(paketIds[i]), lauf, `${i + 1}/${paketIds.length}`);
     if (stopp) {
-      paketeNichtBegonnen(lauf.stand, paketIds.slice(i + 1), "der Lauf ist an einem frueheren Paket hart gestoppt");
+      paketeNichtBegonnen(lauf.stand, paketIds.slice(i + 1), t("frueherGestoppt"));
       return { ausgang: "abgebrochen", grund: stopp };
     }
   }
@@ -1493,8 +1598,8 @@ function umsetzungAusgelassen(kette, stand, paketIds, stufeStart, grund, zusatz 
   paketeNichtBegonnen(stand, paketIds, grund);
   stand.ausgelassen = grund;
   stand.dauerMs = abh.jetzt().getTime() - stufeStart;
-  log(`  Stufe umsetzung ausgelassen: ${grund} — Rueckfall auf Variante A, die Pakete bleiben in Backlog.${zusatz}`);
-  return { ausgang: "unvollstaendig", grund: `${UMSETZUNG_AUSGELASSEN_PRAEFIX}${grund}` };
+  log(t("umsetzungAusgelassen", { grund, zusatz }));
+  return { ausgang: "unvollstaendig", grund: `${t("umsetzungAusgelassenPraefix")}${grund}` };
 }
 
 async function stufeUmsetzung(kette, paketIds) {
@@ -1528,12 +1633,12 @@ async function stufeUmsetzung(kette, paketIds) {
       befundeZurueckUndVorschlagen(kette);
       worktreeEntfernen(kette.wt, kette.repoRoot);
       kette.wt = null;
-      log(`  Worktree abgebaut — die Stufe umsetzung baut in der Hauptkopie ${kette.repoRoot}.`);
+      log(t("worktreeAbgebaut", { pfad: kette.repoRoot }));
     }
     // Variante B baut in der Hauptkopie: Auch dort arbeiten die Sessions mit dem festen
     // Kit-Stand (Issue #1102, A3). Die Markierung ist vom Sauberkeits-Guard ausgenommen.
     kitStandInBaum(kette.repoRoot);
-    log(`  Stufe umsetzung: ${paketIds.length} Paket(e) (Budget ${budget.umsetzungMin} min, Kostendeckel ${kettenKostendeckel(kette)} $).`);
+    log(t("umsetzungStart", { anzahl: paketIds.length, minuten: budget.umsetzungMin, deckel: kettenKostendeckel(kette) }));
 
     // Einmal vor dem ersten Paket: Was die Sessions selbst hinterlassen, pruefen danach
     // Rest-Guard und Dirty-Guard in `werteRunde`.
@@ -1543,9 +1648,8 @@ async function stufeUmsetzung(kette, paketIds) {
     // Mensch bereinigen kann. Die Arbeitspakete stehen fertig da, sie lassen sich heute
     // nacht nur nicht bauen — derselbe Rueckfall auf Variante A, und derselbe Ausgang.
     if (!abh.gitClean(kette.repoRoot)) {
-      const grund = `die Hauptkopie ist vor dem ersten Paket nicht sauber (${resteText(abh.gitReste(kette.repoRoot))})`;
-      return umsetzungAusgelassen(kette, stand, paketIds, stufeStart, grund,
-        " Bitte bereinigen und die Pakete selbst nach Ready ziehen.");
+      const grund = t("hauptkopieUnsauber", { reste: resteText(abh.gitReste(kette.repoRoot)) });
+      return umsetzungAusgelassen(kette, stand, paketIds, stufeStart, grund, t("hauptkopieBereinigen"));
     }
 
     let ergebnis;
@@ -1572,7 +1676,12 @@ async function stufeUmsetzung(kette, paketIds) {
 }
 
 /** Der Grund, der im Bericht hinter einem nicht bestaetigten Ueberholt-Kommentar steht. */
-export const UEBERHOLT_UNBESTAETIGT_GRUND = "der Kommentar wurde geschrieben, war danach aber an der Karte nicht auffindbar";
+export const UEBERHOLT_UNBESTAETIGT_GRUND = textIn("de", "ueberholtUnbestaetigt");
+
+/** Traegt der Kommentar eine Zeile `Ueberholt durch Plan #<plan>`, unter beiden Namen (Issue #1443)? */
+function traegtUeberholt(kommentar, plan) {
+  return markerWerte(kommentar, "ueberholt").some((rest) => rest.startsWith(String(plan)));
+}
 
 /**
  * Aeltere Plandokumente zum selben Fachplan sind mit dem neuen Plan ueberholt (Plan
@@ -1593,14 +1702,14 @@ function aeltereUeberholen(kette, aeltere, neuerPlan) {
   for (const id of aeltere) {
     // Der Anker steht am Zeilenanfang des geschriebenen Textes und traegt den
     // Kettenstempel nicht — er bleibt ueber Laeufe hinweg wiedererkennbar.
-    const anker = `Ueberholt durch Plan #${neuerPlan}`;
-    abh.board("issue", "comment", id, "--text", `${anker} (Kette ${ZUSTAND.LAUF_STEMPEL ?? "ohne Stempel"}). Die naechste Kette begann von vorn; dieser Entwurf bleibt nur als Verlauf.`);
-    if (kommentareVon(abh.board("issue", "get", id)).some((k) => k.includes(anker))) {
+    const anker = `${nameDerSprache("markerName", "ueberholt", "Ueberholt durch Plan #")}${neuerPlan}`;
+    abh.board("issue", "comment", id, "--text", t("ueberholtKommentar", { anker, stempel: ZUSTAND.LAUF_STEMPEL ?? t("ohneStempel") }));
+    if (kommentareVon(abh.board("issue", "get", id)).some((k) => traegtUeberholt(k, neuerPlan))) {
       ueberholt.push(id);
-      log(`  Plan #${id} als ueberholt kommentiert (neuer Plan #${neuerPlan}).`);
+      log(t("ueberholtKommentiert", { id, neu: neuerPlan }));
     } else {
-      ueberholtUnbestaetigt.push({ id, grund: UEBERHOLT_UNBESTAETIGT_GRUND });
-      log(`  Plan #${id}: der Ueberholt-Kommentar ist am Board nicht auffindbar — im Bericht als nicht bestaetigt gefuehrt.`);
+      ueberholtUnbestaetigt.push({ id, grund: t("ueberholtUnbestaetigt") });
+      log(t("ueberholtNichtAuffindbar", { id }));
     }
   }
   return { ueberholt, ueberholtUnbestaetigt };
@@ -1625,23 +1734,22 @@ function aeltereUeberholen(kette, aeltere, neuerPlan) {
  * `review:fertig` schon, sonst haette `planAusschluss` ihn nie als Auftrag durchgelassen.
  */
 function haltWegNachVorn(kette, planId) {
-  const P = `Plan #${planId}`;
+  const plan = t("planName", { id: planId });
   const schritte = [
-    `1. Die Antwort als Eintrag unter '## ${ENTSCHEIDUNGEN_NAME}' von ${P} schreiben.`,
-    `2. '## ${OFFENE_FRAGEN_NAME}' von ${P} wieder auf '${KEINE_STOPP_FRAGEN}' setzen (ein Zusatz dahinter ist erlaubt).`
-      + " Die Antwort gehoert NICHT in diesen Abschnitt: Dort liest die naechste Kette sie als weitere offene Frage und ueberspringt den Plan.",
+    t("wegAntwort", { entscheidungen: nameDerSprache("ueberschriftName", "architektonischeEntscheidungen", ENTSCHEIDUNGEN_NAME), plan }),
+    t("wegOffen", { offen: nameDerSprache("ueberschriftName", "offeneFragen", OFFENE_FRAGEN_NAME), plan, keine: KEINE_STOPP_FRAGEN }),
   ];
-  if (kette.art !== "plan") schritte.push(`3. /issue-review #${planId} laufen lassen.`);
+  if (kette.art !== "plan") schritte.push(t("wegReview", { id: planId }));
   schritte.push(
-    `${schritte.length + 1}. ${KLAEREN_LABEL} an ${P} abnehmen — und an der fachlichen Anforderung #${kette.F}, wenn es dort noch haengt.`,
-    `${schritte.length + 2}. Zuletzt das Label ${kette.budget.label} an ${P} setzen.`,
+    t("wegKlaeren", { n: schritte.length + 1, label: klaerenLabelName(), plan, fachplan: kette.F }),
+    t("wegLabel", { n: schritte.length + 2, label: kette.budget.label, plan }),
   );
   return [
-    `Die Entscheidung gehoert in ${P}, nicht in die fachliche Anforderung #${kette.F}: Die naechste Kette nimmt den Plan als Auftrag und faehrt von der Stufe pakete an weiter. Der Weg nach vorn:`,
+    t("wegKopf", { plan, fachplan: kette.F }),
     "",
     ...schritte,
     "",
-    "Bis dahin geschnittene Pakete bleiben als Entwurf stehen.",
+    t("wegEntwurf"),
   ];
 }
 
@@ -1663,7 +1771,7 @@ function haltAmAuftrag(kette, ergebnis) {
   const text = [
     KETTE_HALT_ANKER,
     "",
-    `Kette ${ZUSTAND.LAUF_STEMPEL ?? "ohne Stempel"}, Stufe ${ergebnis.stufe}, Dokument #${ergebnis.dokId}: ${ergebnis.grund}.`,
+    t("haltKopf", { stempel: ZUSTAND.LAUF_STEMPEL ?? t("ohneStempel"), stufe: ergebnis.stufe, dok: ergebnis.dokId, grund: ergebnis.grund }),
     "",
     ergebnis.frage,
     "",
@@ -1680,7 +1788,7 @@ function haltAmAuftrag(kette, ergebnis) {
   // Der Halt-Stand (Issue #1090, E1): Erst mit ihm ist am Board ohne Deutung zu sehen, dass
   // eine Frage wartet und kein technischer Abbruch vorliegt — auch wenn die Kette ausserhalb
   // einer Stufe anhielt.
-  ketteStand(kette, "wartet", HALT_WARTET);
+  ketteStand(kette, "wartet", haltWartet());
 }
 
 // --- Warten auf die Vorbereitung der Veroeffentlichung (Plan #1243, E8; Issue #1250) ---
@@ -1708,7 +1816,7 @@ function bauendeLaeufe(repoRoot) {
       continue;
     }
     if (puls?.art === "pruefung" || puls?.phase === PHASE_VORBEREITUNG_WARTET) continue;
-    if (laufLebt(repoRoot, lauf)) bauend.push(`${lauf} (Prozess ${puls.pid})`);
+    if (laufLebt(repoRoot, lauf)) bauend.push(t("bauendProzess", { lauf, pid: puls.pid }));
   }
   return bauend;
 }
@@ -1738,7 +1846,7 @@ export async function aufVorbereitungWarten(kette, { fristMin = kette.budget?.vo
       const versuch = vorbereitungVersuchen(kette.repoRoot);
       if (versuch.lock) return versuch.lock;
       const rest = fristMs - (abh.jetzt().getTime() - start);
-      if (rest <= 0) return { ok: false, grund: `${versuch.hindernis} — Frist ${fristMin} min fuer die Vorbereitung abgelaufen` };
+      if (rest <= 0) return { ok: false, grund: t("fristAbgelaufen", { hindernis: versuch.hindernis, minuten: fristMin }) };
       await abh.schlafen(Math.min(UMSETZUNG_WARTEN_MS, rest));
     }
   } finally {
@@ -1751,7 +1859,7 @@ export async function aufVorbereitungWarten(kette, { fristMin = kette.budget?.vo
  * Schreibfehler, der nicht wartet, sonst `{ hindernis }` mit dem Grund, weiter zu warten.
  */
 function vorbereitungVersuchen(repoRoot) {
-  const bauendText = (bauend) => `es baut noch: ${bauend.join(", ")}`;
+  const bauendText = (bauend) => t("baut", { laeufe: bauend.join(", ") });
   let bauend = bauendeLaeufe(repoRoot);
   if (bauend.length > 0) return { hindernis: bauendText(bauend) };
   const lock = umsetzungLockNehmen(repoRoot);
@@ -1767,9 +1875,10 @@ function vorbereitungVersuchen(repoRoot) {
 
 // --- Die Vorbereitung der Veroeffentlichung (Plan #1243, A4, A5, A6, E12, E17; Issue #1254) ---
 
-// Der Auftrag der Session: der Modus `vorbereiten` von /push-main (#1253). Er legt seinen
-// Worktree selbst an und haelt das Ergebnis ueber `worktree.mjs vorbereitung-festhalten` fest.
-const VORBEREITUNG_PROMPT = "/push-main vorbereiten";
+// Der Auftrag der Session: der Modus `prepare` von /push-main (#1253; englisch seit Issue #1568,
+// Plan #1548 E14). Er legt seinen Worktree selbst an und haelt das Ergebnis ueber
+// `worktree.mjs record-preparation` fest.
+const VORBEREITUNG_PROMPT = "/push-main prepare";
 
 /** Das Ergebnis einer Vorbereitung, die keinen Stand dieses Laufs festhielt. */
 const nichtVorbereitet = (grund) => ({ ergebnis: "nicht-vorbereitet", grund });
@@ -1786,15 +1895,17 @@ function vorbereitungLesen(repoRoot, seit) {
   try {
     daten = JSON.parse(readFileSync(join(repoRoot, ...VORBEREITUNG_DATEI.split("/")), "utf-8"));
   } catch {
-    return nichtVorbereitet(`${VORBEREITUNG_DATEI} fehlt oder ist unlesbar — die Session hat keinen Stand festgehalten`);
+    return nichtVorbereitet(t("vorbereitungFehlt", { datei: VORBEREITUNG_DATEI }));
   }
   const laufId = ZUSTAND.LAUF?.start ?? null;
   if (daten?.laufId !== laufId) {
-    return nichtVorbereitet(`${VORBEREITUNG_DATEI} stammt aus einem anderen Lauf (laufId ${daten?.laufId ?? "keine"}, erwartet ${laufId})`);
+    return nichtVorbereitet(t("vorbereitungFremd", { datei: VORBEREITUNG_DATEI, fremd: daten?.laufId ?? t("vorbereitungKeine"), erwartet: laufId }));
   }
   const zeit = Date.parse(daten.zeitpunkt);
   if (Number.isNaN(zeit) || zeit < seit.getTime()) {
-    return nichtVorbereitet(`${VORBEREITUNG_DATEI} traegt den Zeitpunkt ${daten.zeitpunkt ?? "keiner"}, vor dem Beginn der Vorbereitung um ${seit.toISOString()}`);
+    return nichtVorbereitet(t("vorbereitungZuFrueh", {
+      datei: VORBEREITUNG_DATEI, zeitpunkt: daten.zeitpunkt ?? t("vorbereitungKeiner"), seit: seit.toISOString(),
+    }));
   }
   return daten;
 }
@@ -1815,7 +1926,7 @@ async function vorbereitungFahren(kette, start, fristMin) {
     if (daten.ergebnis === "nicht-vorbereitet" && session.ausgang !== "fertig") return nichtVorbereitet(`${session.grund}; ${daten.grund}`);
     return daten;
   } catch (e) {
-    return nichtVorbereitet(`technischer Fehler: ${e.message}`);
+    return nichtVorbereitet(t("vorbereitungTechnisch", { meldung: e.message }));
   } finally {
     lock.freigeben();
   }
@@ -1824,7 +1935,7 @@ async function vorbereitungFahren(kette, start, fristMin) {
 /**
  * Die Stufe `vorbereitung` des Laufs (A4): einmal nach allen Ketten, fuer alle Ketten, deren
  * Umsetzung mit Ziel `push-vorbereitet` fertig wurde. Sie wartet, bis nichts mehr baut, faehrt
- * die Session `/push-main vorbereiten` in der Hauptkopie und prueft deren Datei. Jede
+ * die Session `/push-main prepare` in der Hauptkopie und prueft deren Datei. Jede
  * ausloesende Karte bekommt die Stufenzeilen im Laufstand und einen eigenen Nachtbericht
  * `— Vorbereitung` mit derselben Meldung (E12); das Ergebnis steht als `vorbereitung` im
  * Ergebnisstand. Ein `gruen-offen` mit dem Build-Dienst-Punkt geht unveraendert weiter, und
@@ -1835,15 +1946,15 @@ export async function vorbereitungLaufen(ketten) {
   const start = abh.jetzt();
   const fristMin = erste.budget?.vorbereitungMin ?? KETTE_BUDGET_DEFAULTS.vorbereitungMin;
   const karten = ketten.map((k) => String(k.karte.id));
-  log(`Vorbereitung der Veroeffentlichung fuer ${karten.map((id) => "#" + id).join(", ")}: hoechstens ${fristMin} min, Warten eingeschlossen.`);
+  log(t("vorbereitungStart", { karten: karten.map((id) => "#" + id).join(", "), minuten: fristMin }));
   for (const k of ketten) stufeBeginnt(k, "vorbereitung", k.karte.id);
   const vorbereitung = { ...(await vorbereitungFahren(erste, start, fristMin)), karten };
   const vorbereitet = vorbereitung.ergebnis !== "nicht-vorbereitet";
   const grund = vorbereitung.grund ? ` — ${vorbereitung.grund}` : "";
-  log(`  Vorbereitung: ${vorbereitung.ergebnis}${grund}.`);
+  log(t("vorbereitungErgebnis", { ergebnis: vorbereitung.ergebnis, grund }));
   for (const k of ketten) {
     stufeEndet(k, "vorbereitung", k.karte.id, vorbereitet ? { ausgang: "fertig" } : { ausgang: "abgebrochen", grund: vorbereitung.grund });
-    if (vorbereitet) log(`  Ziel ${k.ziel} erreicht nach vorbereitung — #${k.karte.id}.`);
+    if (vorbereitet) log(t("vorbereitungZiel", { ziel: k.ziel, id: k.karte.id }));
     // Mit eigenem Stempel: Ein wartender Bericht der Kette liegt sonst unter demselben Namen.
     berichtSchreiben(String(k.karte.id), vorbereitungsBericht(k.karte, vorbereitung),
       { stempel: `${ZUSTAND.LAUF_STEMPEL}-vorbereitung`, repoRoot: k.repoRoot });
@@ -1867,10 +1978,10 @@ export async function vorbereitungLaufen(ketten) {
 function ketteNichtGestartet(kandidaten, grund) {
   const zeit = abh.jetzt().toISOString();
   for (const k of kandidaten) {
-    const ergebnis = standSetzen(k.id, "abgebrochen", `Kette nicht gestartet um ${zeit}: ${grund}`, { budgetMs: ABBRUCH_BUDGET_MS });
+    const ergebnis = standSetzen(k.id, "abgebrochen", t("nichtGestartetStand", { zeit, grund }), { budgetMs: ABBRUCH_BUDGET_MS });
     log(ergebnis === "geschrieben"
-      ? `  #${k.id}: Laufstand 'Kette nicht gestartet' geschrieben, Label bleibt.`
-      : `  #${k.id}: Laufstand 'Kette nicht gestartet' nicht geschrieben — bleibt offen im Journal.`);
+      ? t("nichtGestartetGeschrieben", { id: k.id })
+      : t("nichtGestartetOffen", { id: k.id }));
   }
 }
 
@@ -1891,17 +2002,24 @@ function ketteNichtGestartet(kandidaten, grund) {
 function pruefungFehltKommentieren(u, anker = KETTE_UNGEPRUEFT_ANKER) {
   const karte = leseKarte(u.id);
   if (!karte) {
-    log(`  #${u.id}: Hinweis-Kommentar nicht geschrieben (Karte nicht lesbar).`);
+    log(t("hinweisNichtLesbar", { id: u.id }));
     return;
   }
-  if (kommentareVon(karte).some((k) => k.includes(anker))) {
-    log(`  #${u.id}: Hinweis-Kommentar steht schon am Board — kein zweiter.`);
+  if (kommentareVon(karte).some((k) => traegtAnker(k, anker))) {
+    log(t("hinweisSchonDa", { id: u.id }));
     return;
   }
-  const res = abh.boardRoh("issue", "comment", String(u.id), "--text", `${anker}\n\n${u.grund}.\n`);
+  const kopf = namen ? namen.markerName(namen.erkenneMarker(anker), namen.prozessSprache()) : anker;
+  const res = abh.boardRoh("issue", "comment", String(u.id), "--text", `${kopf}\n\n${u.grund}.\n`);
   log(res.status === 0
-    ? `  #${u.id}: Hinweis-Kommentar geschrieben, Label bleibt.`
-    : `  #${u.id}: Hinweis-Kommentar nicht geschrieben (${res.text.slice(0, 120)}).`);
+    ? t("hinweisGeschrieben", { id: u.id })
+    : t("hinweisNicht", { id: u.id, text: res.text.slice(0, 120) }));
+}
+
+/** Traegt der Kommentar den Anker, unter beiden Namen? Je Zeile, wie `k.includes(anker)` es tat (Issue #1443). */
+function traegtAnker(kommentar, anker) {
+  const sache = erkenneMarker(anker);
+  return String(kommentar).split("\n").some((z) => erkenneMarker(z) === sache);
 }
 
 /**
@@ -1919,8 +2037,8 @@ function pruefungFehltKommentieren(u, anker = KETTE_UNGEPRUEFT_ANKER) {
  */
 function hinweisAufUnbekanntesKennzeichen(alle, abgelehnt, kettenLabel) {
   if (abgelehnt.length === 0 || (alle || []).some(hatReviewFertigLabel)) return;
-  log(`Hinweis: keine Karte am Board traegt '${REVIEW_FERTIG_LABEL}' — deshalb wird jeder Auftrag abgelehnt.`);
-  log(`  Entweder ist das Kennzeichen am Board noch nicht angelegt — dann einmal anlegen, wie das Label '${kettenLabel}' —, oder es hat noch keine Anforderung eine Pruefung hinter sich (/issue-review <Nummer> setzt es).`);
+  log(t("kennzeichenUnbekannt", { label: reviewFertigLabelName() }));
+  log(t("kennzeichenWege", { kettenLabel }));
 }
 
 /**
@@ -1935,15 +2053,15 @@ function hinweisAufUnbekanntesKennzeichen(alle, abgelehnt, kettenLabel) {
 function uebersprungeneVerbuchen(uebersprungen, alle, kettenLabel, dryRun) {
   // Erkannt am festen Praefix, nicht am ganzen Grundtext: Der traegt je Karte ihre
   // Nummer und ist deshalb kein Vergleichswert.
-  const abgelehnt = uebersprungen.filter((u) => String(u.grund).startsWith(UNGEPRUEFT_PRAEFIX));
+  const abgelehnt = uebersprungen.filter((u) => istUngeprueftGrund(u.grund));
   for (const u of uebersprungen) {
-    log(`  #${u.id} ${u.title} -> uebersprungen (${u.grund})`);
-    einheitErgaenzen(einheitAnlegen(u.id, u.title), { ausgang: "uebersprungen", grund: u.grund });
+    log(t("uebersprungen", { id: u.id, titel: u.title, grund: u.grund }));
+    einheitErgaenzen(einheitAnlegen(u.id, u.title), { ausgang: "uebersprungen", grund: u.grund, grundArt: "sonst" });
     // Der Dry-Run schreibt nichts ans Board; der Hinweis auf das Kennzeichen kommt
     // auch dort, er ist nur eine Protokollzeile.
     if (!dryRun && abgelehnt.includes(u)) pruefungFehltKommentieren(u);
     // Die unpassende Einstellung (Issue #1244, A9) auf demselben Weg, mit eigenem Anker.
-    if (!dryRun && String(u.grund).startsWith(ZIEL_UNPASSEND_PRAEFIX)) pruefungFehltKommentieren(u, KETTE_ZIEL_ANKER);
+    if (!dryRun && istZielUnpassendGrund(u.grund)) pruefungFehltKommentieren(u, KETTE_ZIEL_ANKER);
   }
   hinweisAufUnbekanntesKennzeichen(alle, abgelehnt, kettenLabel);
 }
@@ -1988,24 +2106,42 @@ async function mitMeldung(stufe) {
 // Ein Plan in Done zaehlt nicht: Wer einen frischen Plan will, schliesst den alten (E9).
 const PLAN_VORHANDEN_SPALTEN = new Set(["backlog", "ready", "in_review"]);
 const PAKET_UMGESETZT_SPALTEN = new Set(["in_review", "done"]);
-// Der Kopf des Kommentars, den `werteInReview` an ein Paket mit Nachweis-Mangel schreibt.
-const NACHWEIS_MANGEL_KOPF = "Nachtlauf: Nachweis ";
-// Der Wortlaut des Teilschnitts (E10) — hinter der Liste der angelegten Pakete.
-const TEILSCHNITT_FOLGE = "eine Wiederholung legte doppelt an; Teilschnitt am Board aufräumen, dann erneut kit:night";
+// Der Kopf des Kommentars, den `werteInReview` an ein Paket mit Nachweis-Mangel schreibt, ist
+// der Marker `nachweisMangel` im Register (Issue #1443).
+// Der Wortlaut des Teilschnitts (E10) steht als `teilschnitt` in TEXTE.
 
-/** Ein Laufstand-Eintrag einer Stufe: `<stufe> begonnen|fertig für #<ziel>`. */
-const stufenEintrag = (stufe, was, ziel) => `${stufe} ${was} für #${ziel}`;
+// Die Woerter `begonnen|fertig` eines Stufeneintrags, je Schluessel in TEXTE.
+const EINTRAG_WORT = Object.freeze({ begonnen: "eintragBegonnen", fertig: "eintragFertig" });
 
-/** Traegt einer der Texte den Eintrag — mit Zahlgrenze, sonst passte #12 auf #123. */
+/** Die Sprache des Prozesses; ohne Register Deutsch. */
+const spracheJetzt = () => (namen ? namen.prozessSprache() : "de");
+
+/** Das Wort einer Stufe im Laufstand in `sprache` — englisch nach der Vorlage `packages`, `coverage` … */
+const stufenWortIn = (sprache, stufe) => textIn(sprache, `stufenwort${stufe[0].toUpperCase()}${stufe.slice(1)}`);
+
+/** Der Stufeneintrag in der Sprache `sprache`: `<stufe> begonnen|fertig für #<ziel>`. */
+const stufenEintragIn = (sprache, stufe, was, ziel) => textIn(sprache, "stufenEintrag",
+  { stufe: stufenWortIn(sprache, stufe), was: textIn(sprache, EINTRAG_WORT[was]), ziel });
+
+/** Ein Laufstand-Eintrag einer Stufe in der Sprache des Prozesses; die Sprachen mischen sich darin nicht. */
+const stufenEintrag = (stufe, was, ziel) => stufenEintragIn(spracheJetzt(), stufe, was, ziel);
+
+const regexText = (text) => text.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+
+/**
+ * Traegt einer der Texte den Eintrag — in einer der beiden Sprachen, denn ein frueherer Lauf
+ * kann in der anderen geschrieben haben; mit Zahlgrenze, sonst passte #12 auf #123.
+ */
 function eintragDa(texte, stufe, was, ziel) {
-  const muster = new RegExp(`(?:^|[^\\w])${stufe} ${was} für #${ziel}(?!\\d)`, "m");
-  return texte.some((t) => muster.test(t));
+  const muster = Object.keys(TEXTE).map((sprache) =>
+    new RegExp(`(?:^|[^\\w])${regexText(stufenEintragIn(sprache, stufe, was, ziel))}(?!\\d)`, "m"));
+  return texte.some((t) => muster.some((m) => m.test(t)));
 }
 
 /**
  * Der Kommentar `## Laufstand` einer Karte, wie er jetzt am Board steht — leer ohne ihn.
  */
-const laufstandAmBoard = (karteId) => kommentareVon(leseKarte(karteId)).filter((k) => k.startsWith("## Laufstand"));
+const laufstandAmBoard = (karteId) => kommentareVon(leseKarte(karteId)).filter(istLaufstandKommentar);
 
 /**
  * Der Laufstand-Text der tragenden Karte aus allen Quellen (E10): der Kommentar, wie ihn
@@ -2035,7 +2171,7 @@ function laufstandTexte(auftrag) {
  */
 export function paketUmgesetzt(issue) {
   if (!issue || !PAKET_UMGESETZT_SPALTEN.has(issue.status)) return false;
-  return !kommentareVon(issue).some((k) => k.startsWith(NACHWEIS_MANGEL_KOPF));
+  return !kommentareVon(issue).some((k) => erkenneMarker(k) === "nachweisMangel");
 }
 
 /** Die Arbeitspakete zum Plan am Board, aufsteigend nach Nummer. */
@@ -2092,11 +2228,11 @@ function teilschnitt(auftrag, planId) {
   if (!eintragDa(laufstandTexte(auftrag), "pakete", "begonnen", planId)) return null;
   const ids = paketeZumPlan(planId);
   if (ids.length === 0) return null;
-  return { ausgang: "abgebrochen", grund: `Teilschnitt vorhanden (${ids.map((id) => "#" + id).join(", ")}) — ${TEILSCHNITT_FOLGE}` };
+  return { ausgang: "abgebrochen", grund: t("teilschnitt", { ids: ids.map((id) => "#" + id).join(", ") }) };
 }
 
 // Der Wortlaut von `wartet` bei einem inhaltlichen Halt (E1), wie er im Regeltext steht.
-const HALT_WARTET = `Halt: Frage wartet auf den Menschen — siehe \`${KETTE_HALT_ANKER}\``;
+const haltWartet = () => t("haltWartet", { anker: KETTE_HALT_ANKER });
 
 /**
  * Schreibt den Laufstand der tragenden Karte (E2): zuletzt begonnener und zuletzt
@@ -2106,8 +2242,8 @@ const HALT_WARTET = `Halt: Frage wartet auf den Menschen — siehe \`${KETTE_HAL
 function ketteStand(kette, zustand, kopf = null) {
   const s = kette.laufstand;
   const zuletzt = [
-    ...(s.begonnen ? [`zuletzt begonnen: ${s.begonnen}`] : []),
-    ...(s.abgeschlossen ? [`zuletzt abgeschlossen: ${s.abgeschlossen}`] : []),
+    ...(s.begonnen ? [t("zuletztBegonnen", { eintrag: s.begonnen })] : []),
+    ...(s.abgeschlossen ? [t("zuletztAbgeschlossen", { eintrag: s.abgeschlossen })] : []),
   ];
   const bloecke = [kopf, zielZeilen(kette).join("\n"), zuletzt.join("\n")].filter(Boolean);
   standSetzen(kette.karte.id, zustand, bloecke.join("\n\n"), { repoRoot: kette.repoRoot });
@@ -2122,10 +2258,20 @@ function ketteStand(kette, zustand, kopf = null) {
 function zielZeilen(kette) {
   const grenze = grenzeVorZiel(kette);
   return [
-    ...(kette.ziel ? [`Ziel: ${kette.ziel}`] : []),
-    ...(kette.planReviewer ? [`Prüfer: ${kette.planReviewer}`] : []),
-    ...(grenze ? [`Grenze: ${grenze}`] : []),
+    ...(kette.ziel ? [`${nameDerSprache("markerName", "ziel", "Ziel:")} ${zielWort(kette.ziel)}`] : []),
+    ...(kette.planReviewer ? [`${nameDerSprache("markerName", "pruefer", "Prüfer:")} ${kette.planReviewer}`] : []),
+    ...(grenze ? [`${nameDerSprache("markerName", "grenze", "Grenze:")} ${stufenWortIn(spracheJetzt(), grenze)}`] : []),
   ];
+}
+
+/**
+ * Das Ziel, wie es der Laufstand nennt: der Name des Ziel-Labels ohne Praefix, englisch also
+ * `packages` zu `goal:packages` (Vorlage am Plan #1420). Ein Wort des Textes in der Sprache
+ * des Prozesses, kein Label — darum nicht englisch in jedem Projekt (Issue #1553).
+ */
+function zielWort(ziel) {
+  const sache = KETTE_ZIELE.find((z) => z.ziel === ziel)?.sache;
+  return sache ? nameDerSprache("labelName", sache, `ziel:${ziel}`).replace(/^[^:]*:/, "") : ziel;
 }
 
 // Die Stufen der Kette in fester Folge, je mit dem Uebergang, ueber den sie folgt (E5).
@@ -2151,11 +2297,12 @@ function grenzeVorZiel(kette) {
 }
 
 // Was nach dem Ende am Ziel dem Menschen gehoert (E5), je Ziel.
+// Die Saetze stehen in TEXTE, hier ihre Schluessel.
 const ALS_NAECHSTES = Object.freeze({
-  plan: "Plan lesen, dann `kit:night` an den Plan.",
-  pakete: "Pakete nach Ready ziehen.",
-  umsetzung: "Pakete in In review testen, dann `push main`.",
-  "push-vorbereitet": "Meldung der Vorbereitung lesen, dann `push main`.",
+  plan: "naechstesPlan",
+  pakete: "naechstesPakete",
+  umsetzung: "naechstesUmsetzung",
+  "push-vorbereitet": "naechstesPushVorbereitet",
 });
 
 /**
@@ -2164,27 +2311,28 @@ const ALS_NAECHSTES = Object.freeze({
  */
 function alsNaechstes(kette) {
   const wartend = wartendeMenschenschritte(kette.stufen?.umsetzung);
-  if (wartend.length === 0) return ALS_NAECHSTES[kette.ziel];
+  if (wartend.length === 0) return t(ALS_NAECHSTES[kette.ziel]);
   const haengen = new Set(wartend.flatMap((w) => w.haengen));
-  return `Menschenschritt ${wartend.map((w) => "#" + w.id).join(", ")} erledigen, dann kit:night an #${kette.karte.id} — ${haengen.size} Paket(e) hängen daran.`;
+  return t("naechstesMenschenschritt", { ids: wartend.map((w) => "#" + w.id).join(", "), id: kette.karte.id, anzahl: haengen.size });
 }
 
 /** Der Laufstand zum Beginn einer Stufe. `ziel` ist die Karte, an der sie arbeitet. */
 function stufeBeginnt(kette, stufe, ziel) {
-  kette.laufstand.begonnen = `${stufenEintrag(stufe, "begonnen", ziel)} um ${abh.jetzt().toISOString()}`;
+  kette.laufstand.begonnen = t("stufenEintragZeit", { eintrag: stufenEintrag(stufe, "begonnen", ziel), zeit: abh.jetzt().toISOString() });
   ketteStand(kette, "laeuft");
 }
 
 /** Der Laufstand zum Ende einer Stufe — `fertig`, oder ihr Abbruch beziehungsweise Halt. */
 function stufeEndet(kette, stufe, ziel, ergebnis) {
   if (ergebnis.ausgang === "fertig") {
-    kette.laufstand.abgeschlossen = `${stufenEintrag(stufe, "fertig", ziel)} um ${abh.jetzt().toISOString()}`;
-    ketteStand(kette, "fertig", endetAmZiel(kette, stufe) ? `fertig bis ${kette.ziel}\nAls Nächstes: ${alsNaechstes(kette)}` : null);
+    kette.laufstand.abgeschlossen = t("stufenEintragZeit", { eintrag: stufenEintrag(stufe, "fertig", ziel), zeit: abh.jetzt().toISOString() });
+    ketteStand(kette, "fertig", endetAmZiel(kette, stufe) ? t("fertigBis", { ziel: zielWort(kette.ziel), naechstes: alsNaechstes(kette) }) : null);
   } else if (ergebnis.ausgang === "angehalten") {
     // Haelt ein Paket der Umsetzung an, steht die Frage am Paket, nicht an dieser Karte (E17).
-    ketteStand(kette, "wartet", ergebnis.ohneHaltAmFachplan ? `Halt: ${ergebnis.grund}` : HALT_WARTET);
+    ketteStand(kette, "wartet", ergebnis.ohneHaltAmFachplan ? t("haltMitGrund", { grund: ergebnis.grund }) : haltWartet());
   } else {
-    ketteStand(kette, ergebnis.ausgang === "abgebrochen" ? "abgebrochen" : "fertig", `${ergebnis.ausgang}: Stufe ${stufe}: ${ergebnis.grund ?? "ohne Grund"}`);
+    ketteStand(kette, ergebnis.ausgang === "abgebrochen" ? "abgebrochen" : "fertig",
+      t("ausgangStufe", { ausgang: ergebnis.ausgang, stufe, grund: ergebnis.grund ?? t("ohneGrund") }));
   }
 }
 
@@ -2197,14 +2345,14 @@ function stufeEndet(kette, stufe, ziel, ergebnis) {
 async function stufeMitErgebnis(kette, stufe, ziel, { auftrag, laufen, vorfinden, vorab = null }) {
   const vorhanden = ergebnisVorhanden(stufe, auftrag);
   if (vorhanden) {
-    log(`  Stufe ${stufe}: Ergebnis liegt vor — keine Session, die Stufe gilt als fertig.`);
+    log(t("ergebnisLiegtVor", { stufe }));
     const ergebnis = vorfinden(vorhanden);
     stufeEndet(kette, stufe, ziel, ergebnis);
     return ergebnis;
   }
   const sperre = vorab?.();
   if (sperre) {
-    log(`  Stufe ${stufe}: ${sperre.grund}.`);
+    log(t("stufeZeile", { stufe, grund: sperre.grund }));
     stufeEndet(kette, stufe, ziel, sperre);
     return sperre;
   }
@@ -2228,7 +2376,7 @@ async function stufeLaufen(kette, stufe, ziel, { auftrag, laufen, vorfinden }) {
   if (ergebnis.ausgang === "abgebrochen" && ergebnis.sitzungsAbbruch && !kette.kostenGrund) {
     const nachher = ergebnisVorhanden(stufe, auftrag);
     if (nachher) {
-      log(`  Stufe ${stufe}: abgebrochen (${ergebnis.grund}), das Ergebnis liegt aber vor — die Stufe gilt als fertig.`);
+      log(t("abgebrochenErgebnisDa", { stufe, grund: ergebnis.grund }));
       ergebnis = vorfinden(nachher, kette.stufen[stufe]);
     }
   }
@@ -2239,8 +2387,8 @@ async function stufeLaufen(kette, stufe, ziel, { auftrag, laufen, vorfinden }) {
 // --- Freigegebene Uebergaenge (Issue #1087, Plan #1079 E1, E12) ---
 
 // Die beiden Wortlaute von `wartet` aus E1, wie sie im Regeltext stehen.
-const uebergangNichtFreigegeben = (uebergang) => `wartet: Übergang ${uebergang} im Projekt nicht freigegeben — weiter mit kit:night`;
-const OHNE_FREIGABE_ZUR_UMSETZUNG = "wartet: Karte ohne Freigabe zur Umsetzung";
+const uebergangNichtFreigegeben = (uebergang) => t("uebergangNichtFreigegeben", { uebergang });
+const ohneFreigabeZurUmsetzung = () => t("ohneFreigabeZurUmsetzung");
 
 /**
  * Folgt die naechste Stufe automatisch? Gesperrt wird nur das Folgen auf eine Stufe, die in
@@ -2253,7 +2401,7 @@ const uebergangGesperrt = (kette, uebergang, vorige) => !vorige.vorgefunden && k
 
 /** Ende der Kette vor `stufe`: Laufstand `wartet` mit dem Wortlaut, Ausgang `unvollstaendig`. */
 function ketteWartet(kette, stufe, text) {
-  log(`  Stufe ${stufe}: ${text}.`);
+  log(t("stufeZeile", { stufe, grund: text }));
   ketteStand(kette, "wartet", text);
   return { ausgang: "unvollstaendig", grund: text, stufe };
 }
@@ -2274,7 +2422,7 @@ function anDerGrenze(kette, stufe, uebergang) {
  */
 function vorDerUmsetzung(kette, abdeckung) {
   if (kette.variante !== "B") {
-    return kette.uebergaenge.abdeckungUmsetzung === true ? ketteWartet(kette, "umsetzung", OHNE_FREIGABE_ZUR_UMSETZUNG) : { ausgang: "fertig" };
+    return kette.uebergaenge.abdeckungUmsetzung === true ? ketteWartet(kette, "umsetzung", ohneFreigabeZurUmsetzung()) : { ausgang: "fertig" };
   }
   return uebergangGesperrt(kette, "abdeckungUmsetzung", abdeckung)
     ? anDerGrenze(kette, "umsetzung", "abdeckungUmsetzung")
@@ -2288,7 +2436,7 @@ function vorDerUmsetzung(kette, abdeckung) {
  */
 function amZiel(kette, stufe) {
   if (!endetAmZiel(kette, stufe)) return null;
-  log(`  Ziel ${kette.ziel} erreicht nach ${stufe} — die Kette endet hier.`);
+  log(t("zielErreicht", { ziel: zielWort(kette.ziel), stufe }));
   return { ausgang: "fertig", zielErreicht: true };
 }
 
@@ -2382,7 +2530,7 @@ async function stufenDerKette(kette) {
     auftrag: { ...auftrag, planId },
     laufen: () => stufeAbdeckung(kette, kette.F, planId, pakete.ids),
     vorfinden: () => {
-      kette.stufen.abdeckung = { dauerMs: 0, kennzahlen: null, text: null, grund: "aus einem frueheren Lauf vorgefunden — der Text steht in dessen Bericht", vorgefunden: true };
+      kette.stufen.abdeckung = { dauerMs: 0, kennzahlen: null, text: null, grund: t("abdeckungVorgefunden"), vorgefunden: true };
       return { ausgang: "fertig", vorgefunden: true };
     },
   }));
@@ -2434,7 +2582,7 @@ function ursprungSpalten(ids) {
  * Der Stand der Ursprungsdokumente nach der Stufe umsetzung (Issue #1290, Plan #1283 A10,
  * A11): an einer Stelle hinter `stufeMitErgebnis`, gleich ob die Stufe lief, ausgelassen oder
  * vorgefunden wurde, als `stufen.umsetzung.ursprung` — `{ vorher, auswertung }` mit der
- * Ausgabe von `issue ursprung <plan>`, oder `{ fehler }`. Nur lesend und ueber `boardRoh`:
+ * Ausgabe von `issue origin <plan>`, oder `{ fehler }`. Nur lesend und ueber `boardRoh`:
  * Ein Lesefehler haelt die Kette nicht an, `abh.board` liesse den Lauf nach dem zweiten
  * Versuch anhalten.
  */
@@ -2443,17 +2591,17 @@ function ursprungFesthalten(kette, planId, vorher) {
   if (!stand) return;
   let res;
   try {
-    res = abh.boardRoh("issue", "ursprung", String(planId));
+    res = abh.boardRoh("issue", "origin", String(planId));
   } catch (e) {
     res = { status: 1, json: null, text: e.message };
   }
   if (res.status === 0 && res.json) {
     stand.ursprung = { vorher, auswertung: res.json };
-    log(`  Ursprungsdokumente zu Plan #${planId}: ${res.json.durch ? "Plan durch" : res.json.grund ?? "Plan nicht durch"}.`);
+    log(t("ursprungZeile", { id: planId, stand: res.json.durch ? t("ursprungDurch") : res.json.grund ?? t("ursprungNichtDurch") }));
   } else {
     const grund = res.text || "Exit " + res.status;
-    stand.ursprung = { fehler: `issue ursprung ${planId} nicht lesbar (${grund})` };
-    log(`  Ursprungsdokumente zu Plan #${planId}: ${stand.ursprung.fehler}.`);
+    stand.ursprung = { fehler: t("ursprungNichtLesbar", { id: planId, grund }) };
+    log(t("ursprungZeile", { id: planId, stand: stand.ursprung.fehler }));
   }
 }
 
@@ -2470,26 +2618,33 @@ function ursprungFesthalten(kette, planId, vorher) {
 function ketteBeginnen(kette, auftrag, nummer, args) {
   const karte = auftrag.karte;
   log(auftrag.art === "plan"
-    ? `Kette ${nummer}/${args.max}: Plan #${auftrag.planId} (fachliche Quelle #${kette.F}) — ${karte.title}`
-    : `Kette ${nummer}/${args.max}: Issue #${kette.F} — ${karte.title}`);
+    ? t("ketteStartPlan", { nummer, max: args.max, plan: auftrag.planId, quelle: kette.F, titel: karte.title })
+    : t("ketteStartIssue", { nummer, max: args.max, id: kette.F, titel: karte.title }));
   // Das Kennzeichen ist mit dem Start verbraucht (A2): Ein Abbruch fuehrt zu einem
   // Bericht mit Grund und einer neuen Geste, nicht zur stillen Wiederholung.
-  abh.board("issue", "label", "remove", String(karte.id), kette.budget.label);
-  log(`  Label '${kette.budget.label}' entfernt — jedes Setzen autorisiert genau eine Kette.`);
+  // Abgenommen wird der Name, den die Karte traegt, jeder, wenn sie mehrere traegt (Issue #1425).
+  const kennzeichen = kennzeichenNamen(karte.labels, kette.budget.label, "night");
+  for (const label of kennzeichen.length > 0 ? kennzeichen : [kette.budget.label]) {
+    abh.board("issue", "label", "remove", String(karte.id), label);
+    log(t("labelEntfernt", { label }));
+  }
   // Ziel und Prueferzahl gelten ebenso fuer genau diesen Lauf (E1): Sie stehen danach nur
   // noch in der Kette, eine stehengebliebene Angabe wirkte sonst still in der naechsten.
   kette.ziel = zielVon(karte, kette.budget);
   kette.planReviewer = pruefreihenVon(karte);
-  const verbraucht = (karte.labels || []).filter((l) => String(l).startsWith(ZIEL_LABEL_PRAEFIX) || PLANREVIEW_LABELS.includes(l));
+  const verbraucht = (karte.labels || []).filter((l) => istZielLabel(l) || PLANREVIEW_LABELS.includes(l));
   for (const label of verbraucht) abh.board("issue", "label", "remove", String(karte.id), label);
   if (verbraucht.length > 0) {
-    const namen = verbraucht.map((l) => "'" + l + "'").join(", ");
-    log(`  Label ${namen} entfernt — Ziel ${kette.ziel ?? "keins"}, Pruefer ${kette.planReviewer ?? "nach Projekt"} festgehalten.`);
+    log(t("zielLabelsEntfernt", {
+      namen: verbraucht.map((l) => "'" + l + "'").join(", "),
+      ziel: kette.ziel ? zielWort(kette.ziel) : t("zielKeins"),
+      pruefer: kette.planReviewer ?? t("prueferNachProjekt"),
+    }));
   }
 
   if (auftrag.art === "plan") {
     kette.stufen.plan = { id: auftrag.planId, uebernommen: true, dauerMs: 0, kennzahlen: null, korrekturrunden: 0, weitere: [] };
-    log(`  Plan #${auftrag.planId} uebernommen — die Stufen plan und review entfallen.`);
+    log(t("planUebernommen", { id: auftrag.planId }));
     return [];
   }
   // Ein vorgefundener Plan (E9) ist das Ergebnis der Stufe plan, kein neuer: Er ueberholt
@@ -2502,7 +2657,7 @@ function ketteBeginnen(kette, auftrag, nummer, args) {
 }
 
 /** Der Grund einer Kette, deren Karte beim Start das Startkennzeichen nicht mehr traegt (Issue #1263). */
-export const KENNZEICHEN_ZURUECK_GRUND = "Startkennzeichen nach Laufbeginn zurückgenommen";
+export const kennzeichenZurueckGrund = () => t("kennzeichenZurueck");
 
 /**
  * Die gekennzeichnete Karte, wie sie beim Start der Kette am Board steht (Issue #1263):
@@ -2527,10 +2682,10 @@ function karteBeimStart(auftrag) {
       plan = juengsterPlanAmBoard(abh.board("issue", "list"), alt.id);
     }
   } catch (e) {
-    log(`  #${alt.id} nicht frisch lesbar (${e.message}) — die Kette faehrt mit dem Stand vom Laufbeginn.`);
+    log(t("nichtFrischLesbar", { id: alt.id, text: e.message }));
     return { karte: alt };
   }
-  if (!(karte?.labels || []).includes(KETTE_BUDGET.label)) return { grund: KENNZEICHEN_ZURUECK_GRUND };
+  if (!kennzeichenName(karte?.labels, KETTE_BUDGET.label, "night")) return { grund: kennzeichenZurueckGrund() };
   const grund = zielAusschluss(karte, auftrag.art, plan);
   return grund ? { grund } : { karte: { ...alt, ...karte } };
 }
@@ -2544,10 +2699,12 @@ function karteBeimStart(auftrag) {
  */
 function ketteNichtMehrFreigegeben(auftrag, nummer, args, grund) {
   const { id, title } = auftrag.karte;
-  log(`Kette ${nummer}/${args.max}: #${id} beim Start nicht mehr freigegeben.`);
+  log(t("nichtMehrFreigegeben", { nummer, max: args.max, id }));
   uebersprungeneVerbuchen([{ id: String(id), title: title ?? "", grund }], [], KETTE_BUDGET.label, false);
-  const zuletzt = String((auftrag.laufstandVorher ?? []).at(-1) ?? "").split("\n").filter((z) => z.startsWith("zuletzt "));
-  const text = [`Kette nicht gestartet um ${abh.jetzt().toISOString()}: ${grund}`, zuletzt.join("\n")].filter(Boolean).join("\n\n");
+  // Die `zuletzt`-Zeilen in beiden Sprachen: Der vorige Lauf kann in der anderen geschrieben haben.
+  const istZuletzt = (z) => Object.keys(TEXTE).some((sprache) => z.startsWith(textIn(sprache, "zuletztPraefix")));
+  const zuletzt = String((auftrag.laufstandVorher ?? []).at(-1) ?? "").split("\n").filter(istZuletzt);
+  const text = [t("nichtGestartetStand", { zeit: abh.jetzt().toISOString(), grund }), zuletzt.join("\n")].filter(Boolean).join("\n\n");
   standSetzen(id, "abgebrochen", text, { budgetMs: ABBRUCH_BUDGET_MS });
   return { ausgang: "uebersprungen", vorbereitung: false, kette: null };
 }
@@ -2585,6 +2742,8 @@ async function ketteMitKarte(auftrag, nummer, args) {
     uebergaenge: KETTE_UEBERGAENGE,
     // Der Laufstand vor dem Vorab-Stand dieses Laufs (Issue #1090) — fuer die Ergebnispruefung.
     laufstandVorher: auftrag.laufstandVorher,
+    // Der Hinweis fuer den Nachtbericht, wenn `szenarienAb` fehlt (Issue #1593, E14).
+    stichtagFehlt: stichtagFehltHinweis(ZUSTAND.config),
   };
   // Haelt der Lauf wegen der Umgebung an, sind die naechsten die Pakete des Auftrags ohne
   // Ergebnis (E15).
@@ -2602,7 +2761,7 @@ async function ketteMitKarte(auftrag, nummer, args) {
     trackerImWorktreeUmleiten(kette.wt, kette.repoRoot);
     log(`  Worktree: ${kette.wt}`);
   } catch (e) {
-    ergebnis = { ausgang: "abgebrochen", grund: `technischer Fehler: ${e.message}` };
+    ergebnis = { ausgang: "abgebrochen", grund: t("worktreeFehler", { meldung: e.message }) };
   }
   try {
     if (!ergebnis) ergebnis = await stufenDerKette(kette);
@@ -2614,7 +2773,7 @@ async function ketteMitKarte(auftrag, nummer, args) {
     // Vorab-Stand `laeuft` weiter an der Karte (Issue #1090, E17).
     if (!kette.standGesetzt) {
       const zustand = { abgebrochen: "abgebrochen", angehalten: "wartet" }[ergebnis.ausgang] ?? "fertig";
-      ketteStand(kette, zustand, `${ergebnis.ausgang}: ${ergebnis.grund ?? "ohne Grund"}`);
+      ketteStand(kette, zustand, `${ergebnis.ausgang}: ${ergebnis.grund ?? t("ohneGrund")}`);
     }
     const neuerPlan = kette.stufen.plan?.id;
     const ueberholung = neuerPlan && aeltere.length > 0
@@ -2622,7 +2781,9 @@ async function ketteMitKarte(auftrag, nummer, args) {
       : { ueberholt: [], ueberholtUnbestaetigt: [] };
     einheitErgaenzen(einheit, {
       ausgang: ergebnis.ausgang,
-      ...(ergebnis.grund ? { grund: ergebnis.grund } : {}),
+      // Die Art des Grundes liest der Melder statt des Textes (Issue #1426): Sie traegt nur
+      // das Ergebnis einer Stufe, deren Grund eingeordnet ist — sonst `sonst`.
+      ...(ergebnis.grund ? { grund: ergebnis.grund, grundArt: ergebnis.grundArt ?? "sonst" } : {}),
       // Die Auftragsart und — nur beim Plan-Auftrag — die fachliche Wurzel (Issue #895):
       // Die Einheit traegt die Nummer der gekennzeichneten Karte, und ohne `fachplan`
       // waere von aussen nicht zu sehen, wogegen die Abdeckung gehalten hat.
@@ -2653,7 +2814,7 @@ async function ketteMitKarte(auftrag, nummer, args) {
     }
   }
   const zusatz = ergebnis.grund ? ` — ${ergebnis.grund}` : "";
-  log(`  Kette zu Issue #${F}: ${ergebnis.ausgang}${zusatz} (${kette.kosten.kostenSumme.toFixed(2)} $).`);
+  log(t("ketteEnde", { id: F, ausgang: ergebnis.ausgang, zusatz, kosten: kette.kosten.kostenSumme.toFixed(2) }));
   return { ausgang: ergebnis.ausgang, vorbereitung: ergebnis.vorbereitung === true, kette };
 }
 
@@ -2668,7 +2829,7 @@ function warneVorAltenLabels(issues) {
   for (const issue of issues) {
     for (const alt of ALTE_ROUTING_LABELS) {
       if ((issue.labels || []).includes(alt)) {
-        log(`Hinweis: #${issue.id} traegt das Label '${alt}', das es seit Stufe 2 nicht mehr gibt — es hat keine Wirkung. Die Nacht-Kette startet ueber '${KETTE_BUDGET.label}' an der fachlichen Anforderung oder am Plandokument.`);
+        log(t("alteLabels", { id: issue.id, alt, label: KETTE_BUDGET.label }));
       }
     }
   }
@@ -2682,18 +2843,23 @@ const bestaetigungsfristMs = () => (process.env.NIGHT_BESTAETIGUNG_MS !== undefi
   : BESTAETIGUNGSFRIST_MS);
 
 /** Der Grund, mit dem ein Runner eine Wurzel auslaesst, die ein anderer haelt (Kriterium 3 aus #1014). */
-export const beanspruchtGrund = (laufId) => `bereits von einem laufenden Runner beansprucht (${laufId})`;
+export const beanspruchtGrund = (laufId) => t("beansprucht", { laufId });
 
-/** Der Name des Labels `laeuft` aus `night.stand.labels` — dieselbe Vorgabe wie in kit/board.mjs. */
-const laeuftLabel = () => ZUSTAND.config?.night?.stand?.labels?.laeuft?.trim() || "lauf:laeuft";
+/**
+ * Der Name des Labels `laeuft` aus `night.stand.labels` — dieselbe Vorgabe wie in kit/board.mjs:
+ * ohne gesetzten Wert `run:running`, in jedem Projekt (Issue #1553, Plan #1548 E2).
+ */
+export const laeuftLabelName = (config) => config?.night?.stand?.labels?.laeuft?.trim()
+  || kitLabel("laufLaeuft", "run:running");
+const laeuftLabel = () => laeuftLabelName(ZUSTAND.config);
 
 /**
  * Die Laufstand-Kommentare einer gelesenen Karte und ihr juengster Stand fuer
  * `wurzelBelegt` — `zustand` ist `laeuft`, wenn die Karte das Label traegt.
  */
 function laufstandDerKarte(karte) {
-  const texte = kommentareVon(karte).filter((k) => k.startsWith("## Laufstand"));
-  const zustand = (karte?.labels || []).includes(laeuftLabel()) ? "laeuft" : null;
+  const texte = kommentareVon(karte).filter(istLaufstandKommentar);
+  const zustand = kennzeichenName(karte?.labels, laeuftLabel(), "laufLaeuft") ? "laeuft" : null;
   return { texte, stand: texte.length > 0 ? { zustand, text: texte.at(-1) } : null };
 }
 
@@ -2705,12 +2871,12 @@ function laufstandDerKarte(karte) {
 function lesenUndSchreiben(a, { lesen, schreiben, host, eintrag }) {
   const id = String(a.karte.id);
   const karte = lesen(id);
-  if (!karte) return { grund: "Laufstand nicht lesbar — nicht beansprucht" };
+  if (!karte) return { grund: t("laufstandNichtLesbar") };
   const { texte, stand } = laufstandDerKarte(karte);
   const halter = wurzelBelegt(a.F, [karte], stand ? { [id]: stand } : {}, abh.jetzt(), host);
   if (halter) return { grund: beanspruchtGrund(halter.laufId) };
   const alt = stand?.zustand === "laeuft" ? laufstandKopf(stand.text) : null;
-  if (alt) log(`  #${id}: Wurzel #${a.F} uebernommen — der Runner ${alt.laufId} laeuft nicht mehr.`);
+  if (alt) log(t("wurzelUebernommen", { id, wurzel: a.F, laufId: alt.laufId }));
   a.laufstandVorher = texte;
   schreiben(id, "laeuft", eintrag);
   return alt ? { uebernommen: { id, laufId: alt.laufId } } : {};
@@ -2728,7 +2894,7 @@ function lesenUndSchreiben(a, { lesen, schreiben, host, eintrag }) {
  * die Uebernahme mit der alten Lauf-ID. Nach dem letzten Schreiben wartet er die Frist
  * einmal fuer alle Karten ab — jede liegt so mindestens die Frist hinter ihrem Schreiben —
  * und liest wieder: Gehoert der juengste Laufstand dann ihm, ist die Wurzel seine, denn
- * `issue stand` ersetzt immer den juengsten und der letzte Schreiber gewinnt. Sonst traegt
+ * `issue run-state` ersetzt immer den juengsten und der letzte Schreiber gewinnt. Sonst traegt
  * er die Karte im Journal als `abgegeben` aus und schreibt nichts mehr an sie.
  *
  * Eingespeist fuer die Tests: `lesen` (`issue get`), `schreiben` (`standSetzen`), `warten`,
@@ -2744,7 +2910,7 @@ export function beanspruchen(auftraege, {
   host = RECHNER,
   frist = bestaetigungsfristMs(),
 } = {}) {
-  const eintrag = `Lauf angenommen um ${abh.jetzt().toISOString()}, Vorabprüfung läuft`;
+  const eintrag = t("laufAngenommen", { zeit: abh.jetzt().toISOString() });
   const geschrieben = [];
   const abgegeben = [];
   const uebernommen = [];
@@ -2766,7 +2932,7 @@ export function beanspruchen(auftraege, {
       continue;
     }
     austragen(id);
-    auslassen(a, karte ? beanspruchtGrund(juengster?.laufId ?? "ohne Lauf-ID") : "Bestaetigung nicht lesbar — nicht beansprucht");
+    auslassen(a, karte ? beanspruchtGrund(juengster?.laufId ?? t("ohneLaufId")) : t("bestaetigungNichtLesbar"));
   }
   return { beansprucht, abgegeben, uebernommen };
 }
@@ -2777,16 +2943,16 @@ export function beanspruchen(auftraege, {
  * die Plaene zu ihr. Rueckgabe ist `belegt(F)` fuer `waehleKettenKandidaten` und
  * `waehlePruefLaufKandidaten`.
  */
-export function belegteWurzeln(alle, label) {
+export function belegteWurzeln(alle, label, sache) {
   const wurzeln = new Set();
-  for (const i of alle.filter((k) => (k?.labels || []).includes(label))) {
+  for (const i of alle.filter((k) => kennzeichenName(k?.labels, label, sache))) {
     wurzeln.add(String(i.id));
     const quelle = isPlan(i?.title ?? "") ? fachlicheQuelleVon(i?.body || "") : null;
     if (quelle) wurzeln.add(quelle);
   }
   const lesbar = (i) => wurzeln.has(String(i.id)) || (isPlan(i?.title ?? "") && wurzeln.has(fachlicheQuelleVon(i?.body || "")));
   const staende = new Map();
-  for (const i of alle.filter((k) => (k?.labels || []).includes(laeuftLabel()) && lesbar(k))) {
+  for (const i of alle.filter((k) => kennzeichenName(k?.labels, laeuftLabel(), "laufLaeuft") && lesbar(k))) {
     const karte = leseKarte(i.id);
     const stand = karte ? laufstandDerKarte(karte).stand : null;
     if (stand) staende.set(String(i.id), stand);
@@ -2819,7 +2985,7 @@ export function vorabStandSetzen(args, auftraege) {
  */
 export async function laufeKette(args, abhaengigkeiten = {}) {
   for (const name of Object.keys(abhaengigkeiten)) {
-    if (!Object.hasOwn(KETTE_ABHAENGIGKEITEN, name)) throw new Error(`laufeKette kennt keine Abhaengigkeit '${name}'`);
+    if (!Object.hasOwn(KETTE_ABHAENGIGKEITEN, name)) throw new Error(t("laufeKetteUnbekannt", { name }));
   }
   const vorher = { ...abh };
   Object.assign(abh, abhaengigkeiten);
@@ -2856,15 +3022,16 @@ async function ketteFahren(args) {
   const defaultsZeile = budgetDefaultsZeile(budget, KETTE_BUDGET_AUS_DEFAULT);
   if (defaultsZeile) log(defaultsZeile);
   if (!args.dryRun) {
-    for (const p of worktreesAufraeumen(repoRoot)) log(`Liegengebliebenen Worktree entfernt: ${p}`);
+    for (const p of worktreesAufraeumen(repoRoot)) log(t("worktreeEntfernt", { pfad: p }));
   }
   const alle = abh.board("issue", "list");
   warneVorAltenLabels(alle);
-  const auswahl = waehleKettenKandidaten(alle, budget.label, args.max, { belegt: belegteWurzeln(alle, budget.label) });
+  const auswahl = waehleKettenKandidaten(alle, budget.label, args.max, { belegt: belegteWurzeln(alle, budget.label, "night") });
   const { liegengeblieben } = auswahl;
+  stichtagNennen();
   uebersprungeneVerbuchen(auswahl.uebersprungen, alle, budget.label, args.dryRun);
   for (const l of liegengeblieben) {
-    log(`  #${l.id} ${l.title} -> ueber --max ${args.max}, bleibt liegen.`);
+    log(t("ueberMax", { id: l.id, titel: l.title, max: args.max }));
     einheitErgaenzen(einheitAnlegen(l.id, l.title), { ausgang: "liegengeblieben" });
   }
 
@@ -2876,15 +3043,15 @@ async function ketteFahren(args) {
   // Vorflug, Nicht-gestartet-Kommentar und Tracker-Probe arbeiten mit Karten, nicht mit
   // Auftraegen (Issue #895): Ihr Verhalten haengt an keiner der beiden Auftragsarten.
   const kandidaten = auftraege.map((a) => a.karte);
-  if (kandidaten.length === 0 && uebersprungen.length === 0 && !alle.some((i) => (i.labels || []).includes(budget.label))) {
+  if (kandidaten.length === 0 && uebersprungen.length === 0 && !alle.some((i) => kennzeichenName(i.labels, budget.label, "night"))) {
     const vorhanden = [...new Set(alle.flatMap((i) => i.labels || []))];
-    log(`WARNUNG: keine Karte traegt das Label '${budget.label}' — es wird nichts verarbeitet.`);
-    log(`  Vorhandene Labels: ${vorhanden.length ? vorhanden.join(", ") : "keine"}`);
+    log(t("keinLabelWarnung", { label: budget.label }));
+    log(t("vorhandeneLabels", { labels: vorhanden.length ? vorhanden.join(", ") : t("keineLabels") }));
   }
 
   // Der Reviewer-Vorflug bleibt (A16): Die Pruefer-Session braucht die Reviewer in ihrer
   // eigenen Sandbox, und die Vorflug-Session ist die einzige Probe dafuer.
-  await anbindung.fuehreVorflug(args, kandidaten, "--kette --dry-run", (grund) => ketteNichtGestartet(kandidaten, grund));
+  await anbindung.fuehreVorflug(args, kandidaten, "--chain --dry-run", (grund) => ketteNichtGestartet(kandidaten, grund));
 
   if (kandidaten.length === 0) {
     if (uebersprungen.length > 0) {
@@ -2897,20 +3064,27 @@ async function ketteFahren(args) {
   }
 
   if (args.dryRun) {
-    log(`Budget: Plan ${budget.planMin} min, Pakete ${budget.paketeMin} min, Review ${budget.reviewMin} min, Abdeckung ${budget.abdeckungMin} min, ${budget.kostenUsd} $ je Kette, ${budget.korrekturrunden} Korrekturrunde(n).`);
+    log(t("dryBudget", {
+      plan: budget.planMin, pakete: budget.paketeMin, review: budget.reviewMin, abdeckung: budget.abdeckungMin,
+      kosten: budget.kostenUsd, runden: budget.korrekturrunden,
+    }));
     auftraege.forEach((a, i) => {
-      const art = a.art === "plan" ? `Plan-Auftrag, fachliche Quelle #${a.F}, ` : "";
-      log(`  #${a.karte.id} ${a.karte.title} -> Kette ${i + 1} (${art}Variante ${varianteVon(a.karte, budget)})`);
+      const art = a.art === "plan" ? t("dryPlanAuftrag", { quelle: a.F }) : "";
+      log(t("dryKette", { id: a.karte.id, titel: a.karte.title, nummer: i + 1, art, variante: varianteVon(a.karte, budget) }));
     });
-    log(`Dry-Run beendet: ${auftraege.length} Kette(n) wuerden laufen — kein Worktree, kein Label veraendert.`);
+    log(t("dryEnde", { anzahl: auftraege.length }));
     return abh.beenden(0);
   }
 
   MENSCHENSCHRITTE_OFFEN.clear();
   const zaehler = await kettenUndVorbereitung(auftraege, args);
-  const menschenschritte = MENSCHENSCHRITTE_OFFEN.size > 0 ? `, ${MENSCHENSCHRITTE_OFFEN.size} Menschenschritt(e) offen` : "";
-  log(`Nacht-Kette beendet: ${zaehler.fertig} fertig, ${zaehler.unvollstaendig} unvollstaendig, ${zaehler.angehalten} angehalten, ${zaehler.abgebrochen} abgebrochen, ${uebersprungen.length + zaehler.uebersprungen} uebersprungen, ${liegengeblieben.length} liegengeblieben, ${NICHT_BEGONNEN_GESAMT} Paket(e) nicht begonnen${menschenschritte}.`);
-  log(`Morgen-Ritual: Plaene und Pakete sichten, Abdeckung lesen, Pakete nach Ready ziehen — das GO bleibt deins. Nach Variante A liegen die Pakete morgens in Backlog; Variante B (Label '${budget.varianteBLabel}') hat sie in derselben Nacht umgesetzt, sie stehen dann in In review. Protokoll: ${ZUSTAND.LOG_FILE}`);
+  const menschenschritte = MENSCHENSCHRITTE_OFFEN.size > 0 ? t("menschenschritteOffen", { anzahl: MENSCHENSCHRITTE_OFFEN.size }) : "";
+  log(t("ketteBeendet", {
+    fertig: zaehler.fertig, unvollstaendig: zaehler.unvollstaendig, angehalten: zaehler.angehalten, abgebrochen: zaehler.abgebrochen,
+    uebersprungen: uebersprungen.length + zaehler.uebersprungen, liegengeblieben: liegengeblieben.length,
+    nichtBegonnen: NICHT_BEGONNEN_GESAMT, menschenschritte,
+  }));
+  log(t("morgenRitual", { label: budget.varianteBLabel, pfad: ZUSTAND.LOG_FILE }));
   anbindung.laufAbschliessen("regulaer");
   return abh.beenden(0);
 }

@@ -59,6 +59,7 @@ function setupProjekt(buildChecks) {
     copyFileSync(join(repoRoot, "kit", name), join(dir, ".claude", "kit", name));
   }
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   mkdirSync(join(dir, ".githooks"), { recursive: true });
   copyFileSync(join(repoRoot, ".githooks", "gate.mjs"), join(dir, ".githooks", "gate.mjs"));
   writeFileSync(join(dir, ".githooks", "pre-commit"),
@@ -103,7 +104,7 @@ function readyIssue(dir) {
 const REGULAER = [
   `echo arbeit > kit/work-$NIGHT_ISSUE_ID.txt`,
   `touch .rot`,
-  `node .claude/kit/checks.mjs run --abschluss "$NIGHT_ISSUE_ID" --frisch > /dev/null 2>&1`,
+  `node .claude/kit/checks.mjs run --finish "$NIGHT_ISSUE_ID" --fresh > /dev/null 2>&1`,
   `rm -f .rot`,
 ].join("\n");
 

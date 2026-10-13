@@ -90,7 +90,7 @@ const WIRK_MIT_BEFUND = {
 };
 const WIRK_OHNE_BEFUND = { ...WIRK_MIT_BEFUND, befund: [] };
 
-// Die Kopfzeile, die `befundText` in kit/wirksamkeit.mjs baut — an ihr haengt der
+// Die Kopfzeile, die `befundText` in kit/effectiveness.mjs baut — an ihr haengt der
 // Nachweis, dass ohne Befund nichts im Protokoll steht.
 const WIRK_KOPF = `Auswertung vom ${WIRK_MIT_BEFUND.erzeugtAm}, Fenster 30 Tage seit 2026-08-21.`;
 
@@ -99,7 +99,7 @@ function stubMitErgebnis(wer, ergebnis) {
   return `${captureKopf(wer)}process.stdout.write(${JSON.stringify(JSON.stringify(ergebnis, null, 2))});\n`;
 }
 
-// Der Fehlerfall des echten Werkzeugs: JSON auf stdout, Exit 1 (kit/wirksamkeit.mjs, main()).
+// Der Fehlerfall des echten Werkzeugs: JSON auf stdout, Exit 1 (kit/effectiveness.mjs, main()).
 const WIRK_STUB_EXIT_UNGLEICH_NULL = `${captureKopf("wirksamkeit")}`
   + `process.stdout.write(${JSON.stringify(JSON.stringify({ ok: false, fehler: "Probefehler beim Auswerten der Wirksamkeit" }))});\n`
   + "process.exit(1);\n";
@@ -112,8 +112,9 @@ function setupProjekt(praefix, {
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
-  if (aufwandStub !== null) writeFileSync(join(dir, ".claude", "kit", "aufwand.mjs"), aufwandStub);
-  if (wirksamkeitStub !== null) writeFileSync(join(dir, ".claude", "kit", "wirksamkeit.mjs"), wirksamkeitStub);
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
+  if (aufwandStub !== null) writeFileSync(join(dir, ".claude", "kit", "effort.mjs"), aufwandStub);
+  if (wirksamkeitStub !== null) writeFileSync(join(dir, ".claude", "kit", "effectiveness.mjs"), wirksamkeitStub);
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"],
     local: { issuesDir: "issues" },
@@ -192,7 +193,7 @@ test("[night-60] laufAbschliessen ruft erst den Aufwand, dann die Wirksamkeit, u
     const gerufen = aufrufe(capture);
     assert.deepEqual(gerufen.map((a) => a.wer), ["aufwand", "wirksamkeit"],
       `erst der Aufwand, dann die Wirksamkeit — je genau einmal: ${JSON.stringify(gerufen)}`);
-    assert.deepEqual(gerufen[1].argv, ["auswerten"], "die Wirksamkeits-Auswertung wird mit 'auswerten' gerufen");
+    assert.deepEqual(gerufen[1].argv, ["evaluate"], "die Wirksamkeits-Auswertung wird mit 'evaluate' gerufen");
 
     const wirk = gerufen[1].gesehen;
     assert.equal(wirk.length, 1, `genau ein Ergebnisstand zum Zeitpunkt des Aufrufs: ${JSON.stringify(wirk)}`);
@@ -275,7 +276,7 @@ test("[night-60] ein Kindprozess mit Exit ungleich 0 ist eine Protokollzeile, ke
   });
 });
 
-test("[night-60] fehlt wirksamkeit.mjs ganz, endet der Lauf mit unveraendertem Exit-Code und einer Zeile", () => {
+test("[night-60] fehlt effectiveness.mjs ganz, endet der Lauf mit unveraendertem Exit-Code und einer Zeile", () => {
   mitProjekt("night-wirk-fehlt-", { wirksamkeitStub: null }, (dir, capture) => {
     const res = laufMitEinemPaket(dir, capture);
     assert.equal(res.status, 0, `der Lauf haette unveraendert enden muessen: ${res.stderr}\n${res.stdout}`);

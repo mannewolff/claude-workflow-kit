@@ -140,6 +140,7 @@ function setupProjekt(praefix) {
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
@@ -214,7 +215,7 @@ test("[night-halt] die Logzeile einer Stopp-Frage bleibt die offene Entscheidung
 
 for (const [art, fake, muster] of [
   ["geschuetzt", geschuetztFake(false), /HALT MIT UNSAUBEREM BAUM nach [\d.]+ min: Issue #\d+ haelt an einer geschuetzten Datei, aber der Working Tree ist dirty — kein Salvage, harter Stopp\./],
-  ["klaeren", klaerenFake, /HALT MIT UNSAUBEREM BAUM nach [\d.]+ min: Issue #\d+ traegt kit:klaeren, aber der Working Tree ist dirty — kein Salvage, harter Stopp\./],
+  ["klaeren", klaerenFake, /HALT MIT UNSAUBEREM BAUM nach [\d.]+ min: Issue #\d+ traegt kit:clarify, aber der Working Tree ist dirty — kein Salvage, harter Stopp\./],
 ]) {
   test(`[night-halt] der Dirty-Guard stoppt hart, wenn ein ${art}-Halt an einem unsauberen Baum haengt`, () => {
     const dir = setupProjekt(`night-geschuetzt-halt-dirty-${art}-`);

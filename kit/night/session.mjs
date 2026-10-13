@@ -27,7 +27,7 @@ import { existsSync, readFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { ZUSTAND, NACHBAR_CHECKS, CHECKS_PATH, DEFAULT_MODEL, log,
+import { ZUSTAND, NACHBAR_CHECKS, NACHBAR_DIR, CHECKS_PATH, DEFAULT_MODEL, log,
   schrittZweiterVersuch, schrittProtokollieren, fail, schreibeErgebnisstand, ladeConfigMitOverrides,
   salvageSauberkeitsKommando } from "./grundlagen.mjs";
 import { pulsSchreiben, zweiterVersuch, sitzungsStartGescheitert, exitText } from "./laufstand.mjs";
@@ -37,6 +37,20 @@ import { kitStandUmgebung, laufKennungUmgebung } from "./kitstand.mjs";
 import { LAUF_VARIABLEN, ohneLaufVariablen } from "./laufvariablen.mjs";
 export { LAUF_VARIABLEN, ohneLaufVariablen };
 
+// Die Texte an den Menschen liegen unter kit/texte/night-session.mjs (Issue #1525).
+import { TEXTE } from "../texte/night-session.mjs";
+
+export { TEXTE };
+
+// Das Register aus dem Board-Teil, abgefangen: Fehlt board/namen.mjs neben night.mjs, bleiben
+// die Texte deutsch, und die Marker sind nicht lesbar (unten bei `markerWerte`).
+const namen = await import(pathToFileURL(join(NACHBAR_DIR, "board", "namen.mjs")).href).catch(() => null);
+
+function t(schluessel, werte = {}) {
+  if (namen) return namen.text(TEXTE, schluessel, werte);
+  return TEXTE.de[schluessel].replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
+}
+
 // Der Ort der Pruef-Zusammenfassung kommt aus checks.mjs und wird NICHT nachgerechnet (Issue
 // #428). Bedingt und mit werfendem Ersatz wie im Einstieg: Fehlt der Nachbar, wirft der Stub
 // erst, wenn wirklich jemand den Pfad braucht. Der Pfad ist nicht literal, deshalb nennt die
@@ -45,7 +59,7 @@ const { zusammenfassungPfad } = existsSync(NACHBAR_CHECKS)
   ? await import(pathToFileURL(NACHBAR_CHECKS).href)
   : {
       zusammenfassungPfad: () => {
-        throw new Error(`checks.mjs liegt nicht neben night.mjs (${NACHBAR_CHECKS}) — der Ort der Pruef-Zusammenfassung ist unbekannt.`);
+        throw new Error(t("checksFehlt", { pfad: NACHBAR_CHECKS }));
       },
     };
 
@@ -264,10 +278,10 @@ function ergebnisText(block) {
  *
  *   "voll"      woertlich ein `buildChecks`-Kommando: die vollstaendige Gruppe waehrend
  *               der Arbeit, und genau das ist der Verstoss, den dieser Zaehler sichtbar macht.
- *   "bereich"   `checks.mjs run --bereich <name>`: der sanktionierte Gruppenlauf (E3).
+ *   "bereich"   `checks.mjs run --area <name>`: der sanktionierte Gruppenlauf (E3).
  *               Er zaehlt eigens, damit er nicht unter die Verstoesse geraet.
  *   "gezielt"   dasselbe Programm wie ein `buildChecks`-Kommando, aber anderer Umfang.
- *   "abschluss" `checks.mjs run` ohne `--bereich`: der Abschlussversuch (E9). Er zaehlt in
+ *   "abschluss" `checks.mjs run` ohne `--area`: der Abschlussversuch (E9). Er zaehlt in
  *               seinem EIGENEN Block und nie in der Arbeit — dort stuende er zweimal.
  *   null        kein Prueflauf.
  *
@@ -281,7 +295,7 @@ function prueflaufArt(kommando, programme, woertlich) {
   const worte = text.split(" ");
   const idx = worte.findIndex((w) => w.replaceAll(/["']/g, "").endsWith("checks.mjs"));
   if (idx >= 0 && worte[idx + 1] === "run") {
-    return worte.slice(idx + 2).some((w) => w === "--bereich" || w.startsWith("--bereich=")) ? "bereich" : "abschluss";
+    return worte.slice(idx + 2).some((w) => w === "--area" || w.startsWith("--area=")) ? "bereich" : "abschluss";
   }
   if (woertlich.has(text)) return "voll";
   const programm = erstesProgramm(text);
@@ -308,7 +322,7 @@ function prueflaufArt(kommando, programme, woertlich) {
  * `zeile(roh, ts)` nimmt eine Rohzeile oder ein geparstes Objekt mit dem Zeitstempel ihrer
  * ANKUNFT, `ergebnis()` liefert jederzeit `{ anzahl, volle, volleNoetig, dauerMs, abschluss }`.
  * `abschluss` (Issue #926, E9) zaehlt die Abschlussversuche — `checks.mjs run` ohne
- * `--bereich` — und ihre Spannen, in einem eigenen Block neben der Arbeit: In `anzahl`
+ * `--area` — und ihre Spannen, in einem eigenen Block neben der Arbeit: In `anzahl`
  * stuende derselbe Lauf zweimal. Was aus beidem FOLGT — Laeufe je Abschluss, Anteil an der
  * Laufzeit, Abstand zur Zielmarke — rechnet der Bericht, nicht dieser Zaehler (E7).
  */
@@ -535,12 +549,12 @@ const AUFBEREITUNG_PIPE = /(?<!\|)\|(?!\|)\s*(?:jq|node\s+-e|python3?)(?![\w-])/
  *                   per Pipe an `jq`, `node -e` oder `python`, oder jeder Aufruf, dessen
  *                   Eingabe einen ausgelagerten Werkzeugergebnis-Pfad nennt.
  *   null            keine Auskunft — auch ein schreibender Board-Aufruf (`issue move`,
- *                   `issue comment`, `issue melden`) und ein `node -e` ohne Rueckfrage.
+ *                   `issue comment`, `issue report`) und ein `node -e` ohne Rueckfrage.
  *
  * Gezaehlt wird am Aufruf, nicht an der Absicht: Das Muster nach `prueflaufArt`.
  *
  * SYNC: `TOOL_RESULTS_PFAD`, `RUECKFRAGE_MUSTER`, `AUFBEREITUNG_PIPE` und diese Funktion
- * stehen als Kopie in kit/aufwand.mjs (Issue #1027), das damit Transkripte nachtraeglich
+ * stehen als Kopie in kit/effort.mjs (Issue #1027), das damit Transkripte nachtraeglich
  * misst. Den Gleichlauf haelt test/night-auskunft-gleichlauf.test.mjs.
  */
 export function auskunftArt(block) {
@@ -596,6 +610,11 @@ export function auskunftBeobachter() {
       return { ms, aufrufe };
     },
   };
+}
+
+/** Der Vorgabeprompt einer Umsetzungs-Session zu `issueId`, in der Sprache des Prozesses. */
+export function vorgabePrompt(issueId) {
+  return t("vorgabePrompt", { id: issueId });
 }
 
 /**
@@ -975,11 +994,22 @@ export function leseErgebnisText(stdout) {
 
 // --- Das Modell einer Karte (Issue #665) ---
 
-// So eng gefasst wie AUTOR_MODELL_ZEILE in kit/board.mjs: Anker am Zeilenanfang, damit
+// Die Marker der Karte kommen aus dem Register im Board-Teil und gelten unter beiden Namen
+// (Issue #1443, Plan #1420 E15). Fehlt es neben night.mjs, ist keine Zeile lesbar — laut,
+// nicht still als "keine Zeile".
+const markerWerte = namen?.markerWerte
+  ?? (() => { throw new Error(t("namenFehlt", { pfad: join(NACHBAR_DIR, "board") })); });
+
+// So eng gefasst wie AUTOR_MODELL_ZEILE in kit/board.mjs: der Marker am Zeilenanfang, damit
 // eine Erwaehnung im Fliesstext nicht trifft, und `\S+` als Wert — kein Leerraum, kein
 // zweites Wort. Ein Wert wie `claude-opus-5 --yolo` faellt damit schon hier durch und
-// nicht erst am Vergleich mit der Liste.
-const EMPFOHLENES_MODELL_ZEILE = /^Empfohlenes Modell:[^\S\n]*(\S+)[^\S\n]*$/m;
+// nicht erst am Vergleich mit der Liste. Der Ausdruck sieht den Rest hinter dem Marker.
+const EIN_WORT = /^[^\S\n]*(\S+)[^\S\n]*$/;
+
+/** Das Wort der ersten Zeile mit dem Marker `sache`, deren Rest genau ein Wort ist — sonst `null`. */
+function wortHinter(body, sache) {
+  return markerWerte(String(body ?? ""), sache, { eingerueckt: false }).map((rest) => EIN_WORT.exec(rest)?.[1]).find(Boolean) ?? null;
+}
 
 /**
  * Das Modell, mit dem die Session dieser Karte starten soll (Issue #665).
@@ -1007,28 +1037,26 @@ export function empfohlenesModell(body, erlaubte) {
   const liste = Array.isArray(erlaubte) ? erlaubte : [];
   if (liste.length === 0) return { modell: null, grund: null };
 
-  const treffer = EMPFOHLENES_MODELL_ZEILE.exec(String(body ?? ""));
-  if (!treffer) return { modell: null, grund: null };
+  const name = wortHinter(body, "empfohlenesModell");
+  if (name === null) return { modell: null, grund: null };
 
-  const name = treffer[1];
   // Fuehrender Bindestrich: nie ein Modellname, immer ein Flag. Der Vergleich mit der
   // Liste wuerde ihn ohnehin abweisen — die eigene Zeile steht hier, weil diese Stelle
   // die ist, an der jemand spaeter eine Abkuerzung einbauen koennte.
   if (name.startsWith("-")) {
-    return { modell: null, grund: `Empfohlenes Modell "${name}" beginnt mit einem Bindestrich und ist kein Modellname — Modell des Laufs.` };
+    return { modell: null, grund: t("modellBindestrich", { name }) };
   }
   if (!liste.includes(name)) {
-    return { modell: null, grund: `Empfohlenes Modell "${name}" steht nicht in night.modelle — Modell des Laufs.` };
+    return { modell: null, grund: t("modellNichtErlaubt", { name }) };
   }
   return { modell: name, grund: null };
 }
 
 // --- Die Stufe einer Karte (Issue #709, Plan #707) ---
 
-// Derselbe enge Anker wie EMPFOHLENES_MODELL_ZEILE: Zeilenanfang, ein Wort ohne Leerraum.
-// Eine Erwaehnung im Fliesstext ("... siehe Aufgabenstufe: leicht ...") trifft er nicht,
-// und ein Wert aus zwei Woertern faellt schon hier durch.
-const AUFGABENSTUFE_ZEILE = /^Aufgabenstufe:[^\S\n]*(\S+)[^\S\n]*$/m;
+// Derselbe enge Anker wie beim empfohlenen Modell (`wortHinter`): Zeilenanfang, ein Wort
+// ohne Leerraum. Eine Erwaehnung im Fliesstext ("... siehe Aufgabenstufe: leicht ...") trifft
+// er nicht, und ein Wert aus zwei Woertern faellt schon hier durch.
 
 // Die Ordnung der Stufen, von der leichtesten zur schwersten. Sie ist die Richtung, in die
 // ausgewichen wird: nach oben, nie nach unten. Eine Aufgabe, fuer die die vorgesehene Stufe
@@ -1050,12 +1078,11 @@ export const STUFEN_ORDNUNG = ["leicht", "mittel", "schwer"];
  * der Normalfall und kein Befund. Bestandspakete tragen die Zeile nicht (Plan #707, E12).
  */
 export function aufgabenStufe(body) {
-  const treffer = AUFGABENSTUFE_ZEILE.exec(String(body ?? ""));
-  if (!treffer) return { stufe: null, grund: null };
+  const wert = wortHinter(body, "aufgabenstufe");
+  if (wert === null) return { stufe: null, grund: null };
 
-  const wert = treffer[1];
   if (!STUFEN_ORDNUNG.includes(wert)) {
-    return { stufe: null, grund: `Aufgabenstufe "${wert}" ist kein bekannter Stufenwert (schwer, mittel, leicht) — keine Stufe.` };
+    return { stufe: null, grund: t("stufeUnbekannt", { wert }) };
   }
   return { stufe: wert, grund: null };
 }
@@ -1141,15 +1168,15 @@ export function stufeStartbar(eintrag, erlaubteModelle) {
 
   if (modell) {
     const liste = Array.isArray(erlaubteModelle) ? erlaubteModelle : [];
-    if (!liste.includes(modell)) return { ok: false, grund: `Modell "${modell}" steht nicht in night.modelle` };
+    if (!liste.includes(modell)) return { ok: false, grund: t("startModellNichtErlaubt", { modell }) };
     return { ok: true, grund: null };
   }
 
-  if (!kommando) return { ok: false, grund: "weder modell noch kommando gesetzt" };
+  if (!kommando) return { ok: false, grund: t("startOhneEintrag") };
 
   const woerter = kommando.trim().split(/\s+/);
   const programm = woerter.find((w) => !ZUWEISUNG.test(w));
-  if (!programm) return { ok: false, grund: `die Kommandozeile "${kommando}" nennt nur Umgebung und kein Programm` };
+  if (!programm) return { ok: false, grund: t("startNurUmgebung", { kommando }) };
 
   // Das Wort steht als Argument daneben und nie im Shell-String — dieselbe Trennung wie
   // beim spaeteren Start (E9), damit die Pruefung nicht zur Einsetzungsluecke wird.
@@ -1157,8 +1184,8 @@ export function stufeStartbar(eintrag, erlaubteModelle) {
     encoding: "utf-8",
     env: process.env,
   });
-  if (res.error) return { ok: false, grund: `die Shell fuer "${programm}" liess sich nicht starten: ${res.error.message}` };
-  if (res.status !== 0) return { ok: false, grund: `das Programm "${programm}" ist ueber die Shell nicht auffindbar` };
+  if (res.error) return { ok: false, grund: t("startShell", { programm, fehler: res.error.message }) };
+  if (res.status !== 0) return { ok: false, grund: t("startNichtAuffindbar", { programm }) };
   return { ok: true, grund: null };
 }
 
@@ -1178,18 +1205,18 @@ export function stufeStartbar(eintrag, erlaubteModelle) {
 export function modellFuerStufe(einstellung, stufe, erlaubteModelle) {
   const stufen = einstellung?.stufen ?? {};
   const start = STUFEN_ORDNUNG.indexOf(stufe);
-  if (start < 0) return { stufeVerwendet: null, eintrag: null, grund: `"${stufe}" ist keine Aufgabenstufe` };
+  if (start < 0) return { stufeVerwendet: null, eintrag: null, grund: t("keineAufgabenstufe", { stufe }) };
 
   const uebersprungen = [];
   for (const kandidat of STUFEN_ORDNUNG.slice(start)) {
     const eintrag = stufen[kandidat];
     if (!eintrag) {
-      uebersprungen.push(`Stufe ${kandidat} nicht belegt`);
+      uebersprungen.push(t("stufeNichtBelegt", { stufe: kandidat }));
       continue;
     }
     const { ok, grund } = stufeStartbar(eintrag, erlaubteModelle);
     if (!ok) {
-      uebersprungen.push(`Stufe ${kandidat} nicht startbar: ${grund}`);
+      uebersprungen.push(t("stufeNichtStartbar", { stufe: kandidat, grund }));
       continue;
     }
     return { stufeVerwendet: kandidat, eintrag, grund: uebersprungen.length > 0 ? uebersprungen.join("; ") : null };
@@ -1239,7 +1266,7 @@ export function paketWahl({ body, einstellung, erlaubteModelle, laufModell }) {
   if (ausKarte) {
     // Die doppelte Angabe ist kein Fehler, sondern eine Auskunft: Der Mensch soll sehen,
     // dass die Stufe der Karte an diesem Paket ohne Wirkung blieb.
-    const doppelt = stufe ? `Karte nennt Modell und Aufgabenstufe ${stufe} — der Modellname gewinnt.` : null;
+    const doppelt = stufe ? t("modellUndStufe", { stufe }) : null;
     return { ...rahmen, modell: ausKarte, herkunft: "karte", grund: gruendeFassen(doppelt, stufenGrund) };
   }
 
@@ -1291,7 +1318,7 @@ export function frischeStufenFelder(configPfad, stand) {
     const frisch = ladeConfigMitOverrides(configPfad);
     return { stufen: frisch?.night?.stufen, stufenRegel: frisch?.night?.stufenRegel, grund: null };
   } catch (err) {
-    return vomStart(`die Einstellung liess sich nicht frisch lesen (${err.message}) — es gilt der Stand des Laufbeginns.`);
+    return vomStart(t("einstellungNichtFrisch", { fehler: err.message }));
   }
 }
 
@@ -1605,7 +1632,7 @@ export function runProcess(cmd, cmdArgs, { issueId, timeoutMs, useStream, verbos
           jetzt, schlaf, spawnSync: abfragen,
         });
         if (!leer) {
-          log(`  Hinweis: Nach dem Ende der Session liefen noch Prozesse ihrer Gruppe, als die Frist ablief — die folgende Messung kann von ihnen gestoert sein.`);
+          log(t("prozesseNachEnde"));
         }
       }
       done({ status: code, signal, error, stdout, stderr });
@@ -1752,10 +1779,10 @@ export function sessionStart({ testCmd, kommando, prompt, modell, args, opts }) 
  */
 function programmFehlt(res, { kommando, cmd }) {
   if (!kommando) {
-    fail("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?", "umgebung");
+    fail(t("claudeFehlt"), "umgebung");
     return;
   }
-  res.startfehler = `die Shell "${cmd}" fuer die Kommando-Stufe wurde nicht gefunden`;
+  res.startfehler = t("shellFehlt", { cmd });
 }
 
 // Exportiert fuer die Kette und ihre Tests. `abh` sind die Abhaengigkeiten aus
@@ -1776,7 +1803,7 @@ export async function runSession(issueId, args, opts = {}, abh = {}) {
   // Das Issue wird der Session verbindlich uebergeben (Issue #191) — sie waehlt
   // nicht mehr selbst. Der Prompt geht zusaetzlich als NIGHT_PROMPT in die
   // Kindprozess-Umgebung, damit der Auftrag auch im Test-Hook-Pfad sichtbar ist.
-  const prompt = opts.prompt || `/implement-next #${issueId}`;
+  const prompt = opts.prompt || vorgabePrompt(issueId);
   // Das Modell dieser Session (Issue #665). `opts.model ?? args.model` statt eines
   // Pflichtparameters: `runSession` ist exportiert und wird an mehreren Stellen mit
   // `args` allein gerufen — die Kette behaelt so ohne Zutun das Modell des Laufs.
@@ -1866,7 +1893,7 @@ export async function runSession(issueId, args, opts = {}, abh = {}) {
   // Pause (Issue #1088, E13). Scheitert auch er, traegt das Ergebnis `umgebungGescheitert`,
   // und der Aufrufer haelt den Lauf an. Ohne Stempel (Import durch Tests) kein Versuch.
   if (ZUSTAND.LAUF_STEMPEL && !opts.zweiterVersuch && sitzungsStartGescheitert(res, kommando)) {
-    zweiterVersuch(`Sitzungsstart zu #${issueId} gescheitert (${exitText(res)})`);
+    zweiterVersuch(t("sitzungsstartGescheitert", { id: issueId, exit: exitText(res) }));
     schrittZweiterVersuch();
     const zweiter = await runSession(issueId, args, { ...opts, zweiterVersuch: true }, abh);
     zweiter.zweiterVersuch = true;
@@ -2026,7 +2053,7 @@ function checkEnv() {
  *     durch, in der sie keines hat.
  */
 // SYNC: derselbe Default steht in kit/checks.mjs (normalisiere) und wird in
-// kit/einstellungen.mjs geprueft. Dieselbe Auslassung trifft kit/checks.mjs
+// kit/settings.mjs geprueft. Dieselbe Auslassung trifft kit/checks.mjs
 // (`verteilen` im Abschlusslauf) und dieselbe Bedingung `pruefeAbschlussGate`.
 export function paketstufenChecks(cfg) {
   return (cfg.buildChecks || []).filter((eintrag) => {
@@ -2162,7 +2189,7 @@ function bewerteLaufSync(eintrag, gruen, ausgabe) {
   // alles, was Protokoll und Sichtung am Morgen vom Befund zu sehen bekommen.
   const merkmal = fehlermerkmal(ausgabe);
   if (merkmal !== null) {
-    return { bestanden: false, zeilen: `Fehlermerkmal in der Ausgabe: '${merkmal}' — der Lauf gilt als rot\n` };
+    return { bestanden: false, zeilen: `${t("merkmalRot", { merkmal })}\n` };
   }
 
   // Die Guetemessung wird nur nach einem gruenen Kommando gewertet, aus demselben
@@ -2181,8 +2208,8 @@ function bewerteLaufSync(eintrag, gruen, ausgabe) {
 
   const auswertung = gueteAuswerten(guete, ausgabe);
   const zeilen = auswertung.anteil === null
-    ? `Guete: kein auswertbares Ergebnis (${auswertung.grund})\n`
-    : `Guete: ${auswertung.anteil} % erreicht, Marke ${guete.marke} % — ${auswertung.grund}\n`;
+    ? `${t("gueteOhneErgebnis", { grund: auswertung.grund })}\n`
+    : `${t("gueteErgebnis", { anteil: auswertung.anteil, marke: guete.marke, grund: auswertung.grund })}\n`;
   return { bestanden: auswertung.erfuellt, zeilen };
 }
 
@@ -2226,11 +2253,11 @@ const CHECKS_MAX_BUFFER = 256 * 1024 * 1024;
  * gelingen. `checks.mjs run` schreibt denselben Nachweis, den `.githooks/gate.mjs`
  * liest; damit gibt es eine Wahrheit ueber "gruen" statt zweier.
  *
- * `--frisch` ist Pflicht und keine Bequemlichkeit: Ohne den Schalter uebernaehme das
+ * `--fresh` ist Pflicht und keine Bequemlichkeit: Ohne den Schalter uebernaehme das
  * Kommando das Ergebnis der Session, wenn sich seither nichts geaendert hat — also
  * genau ihr rotes, das der Runner gerade anzweifelt.
  *
- * `--abschluss <karte>` haelt den Umfang, den die Vorpruefung immer hatte: die
+ * `--finish <karte>` haelt den Umfang, den die Vorpruefung immer hatte: die
  * Paketstufe ohne `nichtBeimAbschluss` und ohne Guetemessung (Plan #944, E14). Der
  * Salvage IST der Abschluss dieser Karte — ohne die Nummer koennte die Wirksamkeit
  * ihre Kennzahl je Karte nicht rechnen (Issue #951).
@@ -2240,9 +2267,9 @@ const CHECKS_MAX_BUFFER = 256 * 1024 * 1024;
  */
 function runChecksCliSync(karte, abfragen) {
   if (!existsSync(CHECKS_PATH)) {
-    return { ok: false, output: `${CHECKS_PATH} liegt nicht vor — die Pflicht-Pruefungen lassen sich nicht fahren.\n`, rotesKommando: null };
+    return { ok: false, output: `${t("checksFehltPfad", { pfad: CHECKS_PATH })}\n`, rotesKommando: null };
   }
-  const cliArgs = [CHECKS_PATH, "run", "--abschluss", String(karte), "--frisch"];
+  const cliArgs = [CHECKS_PATH, "run", "--finish", String(karte), "--fresh"];
   // Der Puls davor und danach (Issue #1084, E6): Der volle Pruefumfang blockiert den Takt.
   pulsSchreiben();
   const res = abfragen(process.execPath, cliArgs, {
@@ -2265,7 +2292,7 @@ function runChecksCliSync(karte, abfragen) {
 // Bleiben sie rot, war das Format nicht die Ursache -> harter Stopp wie bisher.
 // Ohne formatFixCommand ist das Verhalten exakt wie vor #169.
 //
-// Beide Durchgaenge gehen ueber `checks.mjs run --frisch` (Issue #919): Der zweite ist
+// Beide Durchgaenge gehen ueber `checks.mjs run --fresh` (Issue #919): Der zweite ist
 // der, dessen Nachweis am Ende liegenbleibt — er muss den Stand NACH dem Format-Fix
 // bezeugen, sonst wiese das Gate die Rettung wegen der geaenderten Blobs ab.
 //
@@ -2279,15 +2306,15 @@ export function verifyChecksForSalvage(cfg, karte, abh = {}) {
   const fixCmd = (cfg.formatFixCommand || "").trim();
   if (!fixCmd) return { ok: false, output: first.output, formatFixCmd: null, rotesKommando: first.rotesKommando };
 
-  log(`  buildChecks rot — einmaliger Format-Fix wird angewendet: ${fixCmd}`);
+  log(t("formatFixStart", { cmd: fixCmd }));
   // fixCmd kommt aus der Config und braucht deshalb eine Shell (Issue #199). Startet sie
   // nicht, steht das im Log, und der zweite Durchgang bleibt rot.
   const fix = konfigKommandoSync(fixCmd, checkEnv(), abfragen);
-  if (fix.status === null && fix.stderr) log(`  Format-Fix nicht gestartet: ${fix.stderr.trim()}`);
+  if (fix.status === null && fix.stderr) log(t("formatFixNichtGestartet", { fehler: fix.stderr.trim() }));
 
   const second = runChecksCliSync(karte, abfragen);
   if (!second.ok) return { ok: false, output: second.output, formatFixCmd: null, rotesKommando: second.rotesKommando };
-  log(`  FORMAT-FIX angewendet, buildChecks jetzt gruen — der Lauf geht weiter.`);
+  log(t("formatFixGruen"));
   return { ok: true, output: second.output, formatFixCmd: fixCmd, rotesKommando: null };
 }
 
@@ -2305,7 +2332,7 @@ export function salvagePrompt(issueId, checksOutput, formatFixCmd) {
   const tail = (checksOutput || "").trim().split("\n").slice(-15).join("\n");
   return [
     `Die Pflicht-Checks (buildChecks) dieses Projekts wurden soeben EXTERN ausgefuehrt und sind GRUEN.`,
-    `Gefahren wurden sie mit "node .claude/kit/checks.mjs run --abschluss ${issueId} --frisch"; der Nachweis`,
+    `Gefahren wurden sie mit "node .claude/kit/checks.mjs run --finish ${issueId} --fresh"; der Nachweis`,
     `liegt in .claude/checks-summary.json, und das Commit-Gate liest genau ihn.`,
     `Fuehre sie NICHT erneut aus und starte keine langen Builds.`,
     ``,
@@ -2344,7 +2371,7 @@ export function salvagePrompt(issueId, checksOutput, formatFixCmd) {
     // Pakets gar nicht faehrt — die Session hielt die Gruen-Annahme darum zu Recht fuer
     // falsch und verweigerte den Commit. Jetzt ist es die Ausgabe desselben Laufs, der
     // den Nachweis geschrieben hat, samt seiner Auslassungen.
-    `Nicht pushen. Letzte Zeilen der externen Check-Ausgabe (checks.mjs run --abschluss ${issueId} --frisch):`,
+    `Nicht pushen. Letzte Zeilen der externen Check-Ausgabe (checks.mjs run --finish ${issueId} --fresh):`,
     tail,
   ].join("\n");
 }
@@ -2373,9 +2400,44 @@ export function laufModell(args, config) {
   if (wert === undefined || wert === null || wert === "") return { modell: DEFAULT_MODEL, herkunft: "Vorgabe", fehler: null };
   const erlaubt = Array.isArray(config.night.modelle) ? config.night.modelle : [];
   if (!erlaubt.includes(wert)) {
-    return { modell: null, herkunft: "night.modell", fehler: `night.modell '${wert}' steht nicht in night.modelle — bitte dort eintragen oder night.modell aendern.` };
+    return { modell: null, herkunft: "night.modell", fehler: t("laufModellNichtErlaubt", { wert }) };
   }
   return { modell: wert, herkunft: "night.modell", fehler: null };
+}
+
+// --- Kit-Labels unter beiden Namen (Issue #1425, Plan #1420 E3, E7) ---
+
+// Das Register der Namenspaare liegt im Board-Teil. Fehlt es neben night.mjs, gilt nur der
+// Name, den der Aufrufer nennt — wie vor dem Register — und geschrieben wird der englische.
+const { erkenneLabel, labelName } = await import(pathToFileURL(join(NACHBAR_DIR, "board", "namen.mjs")).href)
+  .catch(() => ({ erkenneLabel: () => null }));
+
+/**
+ * Der Name eines Kit-Labels, den der Nachtlauf setzt und nennt — englisch, in jedem Projekt
+ * (Issue #1553, Plan #1548 E2; vorher in der Projektsprache, Issue #1429). Fuer die Vorgaben
+ * ohne gesetzten Config-Wert und alles, was der Nachtlauf nach aussen nennt. `rueckfall` gilt,
+ * wenn das Register fehlt, und ist selbst der englische Name.
+ */
+export function kitLabel(sache, rueckfall) {
+  return labelName ? labelName(sache) : rueckfall;
+}
+
+/**
+ * Der Name, unter dem die Karte ein Kennzeichen traegt — `null`, wenn sie es nicht traegt.
+ *
+ * Erkannt werden `name` selbst, meist der Wert aus der Config, und jeder Name der Sache
+ * `sache` im Register (E7): Ein gesetzter Wert gilt unveraendert, die beiden Vorgabenamen
+ * gelten daneben. Ohne `sache` gilt die Sache von `name`; ein Name ausserhalb des Registers
+ * steht dann fuer sich allein. Wer ein Label abnimmt, nimmt diesen Namen ab — nicht den der
+ * Config, den die Karte vielleicht gar nicht traegt.
+ */
+export function kennzeichenName(labels, name, sache = erkenneLabel(name)) {
+  return kennzeichenNamen(labels, name, sache)[0] ?? null;
+}
+
+/** Alle Namen, unter denen die Karte das Kennzeichen traegt — zum Abnehmen, wenn sie beide traegt. */
+export function kennzeichenNamen(labels, name, sache = erkenneLabel(name)) {
+  return (labels || []).filter((l) => l === name || (sache !== null && erkenneLabel(l) === sache));
 }
 
 // --- Budgets der Nacht-Kette (Plan #638, A6; night.kette) ---
@@ -2383,7 +2445,7 @@ export function laufModell(args, config) {
 // Startwerte aus Fachplan #635, Kriterium 6. Alle Zeiten in Minuten, Kosten in US-Dollar.
 export const KETTE_BUDGET_DEFAULTS = Object.freeze({
   label: "kit:night",
-  varianteBLabel: "kit:durchziehen",
+  varianteBLabel: "kit:carry-through",
   planMin: 20,
   paketeMin: 15,
   reviewMin: 15,
@@ -2406,23 +2468,25 @@ export const KETTE_BUDGET_DEFAULTS = Object.freeze({
  */
 export function ladeKetteBudget(config) {
   const block = config?.night?.kette ?? {};
-  const budget = { ...KETTE_BUDGET_DEFAULTS };
+  // Die Vorgaben der Kennzeichen englisch; ein gesetzter Wert gilt unveraendert (E7).
+  const budget = { ...KETTE_BUDGET_DEFAULTS, label: kitLabel("night", KETTE_BUDGET_DEFAULTS.label),
+    varianteBLabel: kitLabel("durchziehen", KETTE_BUDGET_DEFAULTS.varianteBLabel) };
   if (block.label !== undefined) {
-    if (typeof block.label !== "string" || block.label.trim() === "") throw new Error("night.kette.label muss ein nicht leerer Text sein");
+    if (typeof block.label !== "string" || block.label.trim() === "") throw new Error(t("nichtLeererText", { feld: "night.kette.label" }));
     budget.label = block.label.trim();
   }
   if (block.varianteBLabel !== undefined) {
-    if (typeof block.varianteBLabel !== "string" || block.varianteBLabel.trim() === "") throw new Error("night.kette.varianteBLabel muss ein nicht leerer Text sein");
+    if (typeof block.varianteBLabel !== "string" || block.varianteBLabel.trim() === "") throw new Error(t("nichtLeererText", { feld: "night.kette.varianteBLabel" }));
     budget.varianteBLabel = block.varianteBLabel.trim();
   }
   for (const feld of ["planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "vorbereitungMin", "kostenUsd", "kostenUsdB", "korrekturrunden"]) {
     if (block[feld] === undefined) continue;
     const wert = block[feld];
     if (typeof wert !== "number" || !Number.isFinite(wert) || wert <= 0) {
-      throw new Error(`night.kette.${feld} muss eine Zahl groesser 0 sein, ist ${JSON.stringify(wert)}`);
+      throw new Error(t("zahlGroesserNull", { feld: `night.kette.${feld}`, wert: JSON.stringify(wert) }));
     }
     if (feld === "korrekturrunden" && !Number.isInteger(wert)) {
-      throw new Error(`night.kette.korrekturrunden muss ganzzahlig sein, ist ${wert}`);
+      throw new Error(t("ganzzahlig", { feld: "night.kette.korrekturrunden", wert }));
     }
     budget[feld] = wert;
   }
@@ -2454,10 +2518,10 @@ export function ladeKetteUebergaenge(config) {
   const block = config?.night?.kette?.uebergaenge;
   const uebergaenge = { ...KETTE_UEBERGAENGE_DEFAULTS };
   if (block === undefined) return uebergaenge;
-  if (block === null || typeof block !== "object" || Array.isArray(block)) throw new Error("night.kette.uebergaenge muss ein Objekt mit Wahrheitswerten sein");
+  if (block === null || typeof block !== "object" || Array.isArray(block)) throw new Error(t("uebergaengeKeinObjekt"));
   for (const [feld, wert] of Object.entries(block)) {
-    if (!Object.hasOwn(KETTE_UEBERGAENGE_DEFAULTS, feld)) throw new Error(`night.kette.uebergaenge.${feld} ist kein Uebergang der Kette (bekannt: ${Object.keys(KETTE_UEBERGAENGE_DEFAULTS).join(", ")})`);
-    if (typeof wert !== "boolean") throw new Error(`night.kette.uebergaenge.${feld} muss true oder false sein, ist ${JSON.stringify(wert)}`);
+    if (!Object.hasOwn(KETTE_UEBERGAENGE_DEFAULTS, feld)) throw new Error(t("uebergangUnbekannt", { feld, bekannt: Object.keys(KETTE_UEBERGAENGE_DEFAULTS).join(", ") }));
+    if (typeof wert !== "boolean") throw new Error(t("uebergangKeinWahrheitswert", { feld, wert: JSON.stringify(wert) }));
     uebergaenge[feld] = wert;
   }
   return uebergaenge;
@@ -2480,7 +2544,7 @@ export function ketteBudgetDefaults(config) {
 // Startwerte aus Plan #904. Der Block steht in der WURZEL der Config und nicht unter
 // `night`: Der Lauf gehoert dem Tag, und unter `night` behauptete der Name das Gegenteil.
 export const PRUEFLAUF_BUDGET_DEFAULTS = Object.freeze({
-  label: "kit:pruefen",
+  label: "kit:check",
   pruefungMin: 25,
   kostenUsd: 25,
 });
@@ -2495,16 +2559,16 @@ export const PRUEFLAUF_BUDGET_DEFAULTS = Object.freeze({
  */
 export function ladePruefLaufBudget(config) {
   const block = config?.pruefLauf ?? {};
-  const budget = { ...PRUEFLAUF_BUDGET_DEFAULTS };
+  const budget = { ...PRUEFLAUF_BUDGET_DEFAULTS, label: kitLabel("pruefen", PRUEFLAUF_BUDGET_DEFAULTS.label) };
   if (block.label !== undefined) {
-    if (typeof block.label !== "string" || block.label.trim() === "") throw new Error("pruefLauf.label muss ein nicht leerer Text sein");
+    if (typeof block.label !== "string" || block.label.trim() === "") throw new Error(t("nichtLeererText", { feld: "pruefLauf.label" }));
     budget.label = block.label.trim();
   }
   for (const feld of ["pruefungMin", "kostenUsd"]) {
     if (block[feld] === undefined) continue;
     const wert = block[feld];
     if (typeof wert !== "number" || !Number.isFinite(wert) || wert <= 0) {
-      throw new Error(`pruefLauf.${feld} muss eine Zahl groesser 0 sein, ist ${JSON.stringify(wert)}`);
+      throw new Error(t("zahlGroesserNull", { feld: `pruefLauf.${feld}`, wert: JSON.stringify(wert) }));
     }
     budget[feld] = wert;
   }
@@ -2538,18 +2602,40 @@ export function varianteVon(issue, budget) {
 
 // Die Ziele in der festen Reihenfolge der Stufen, je mit der Stufe, nach der die Kette
 // endet (A2). Die Labels sind bewusst nicht konfigurierbar (A1): kanban-kit liest sie fest.
+// `sache` ist der Eintrag im Register kit/board/namen.mjs: Erkannt wird jedes Ziel unter
+// beiden Namen, `ziel:plan` wie `goal:plan` (Issue #1425). `label` ist der englische Name,
+// den der Nachtlauf schreibt, wenn das Register fehlt (Issue #1553).
 export const KETTE_ZIELE = Object.freeze([
-  Object.freeze({ ziel: "plan", endstufe: "review" }),
-  Object.freeze({ ziel: "pakete", endstufe: "abdeckung" }),
-  Object.freeze({ ziel: "umsetzung", endstufe: "umsetzung" }),
-  Object.freeze({ ziel: "push-vorbereitet", endstufe: "vorbereitung" }),
+  Object.freeze({ ziel: "plan", endstufe: "review", sache: "zielPlan", label: "goal:plan" }),
+  Object.freeze({ ziel: "pakete", endstufe: "abdeckung", sache: "zielPakete", label: "goal:packages" }),
+  Object.freeze({ ziel: "umsetzung", endstufe: "umsetzung", sache: "zielUmsetzung", label: "goal:implementation" }),
+  Object.freeze({ ziel: "push-vorbereitet", endstufe: "vorbereitung", sache: "zielPushVorbereitet", label: "goal:push-prepared" }),
 ]);
 export const ZIEL_LABEL_PRAEFIX = "ziel:";
+// Die Praefixe beider Sprachen; auch ein unbekanntes `goal:*` zaehlt als Ziel-Label.
+const ZIEL_LABEL_PRAEFIXE = Object.freeze([ZIEL_LABEL_PRAEFIX, "goal:"]);
+
+/**
+ * Der Name des Ziel-Labels, englisch in jedem Projekt: `goal:packages` (Issue #1553, Plan #1548
+ * E2; vorher in der Projektsprache, Issue #1429).
+ */
+export function zielLabelName(ziel) {
+  const eintrag = KETTE_ZIELE.find((z) => z.ziel === ziel);
+  if (!eintrag) throw new Error(t("zielUnbekannt", { ziel }));
+  return kitLabel(eintrag.sache, eintrag.label);
+}
+
+/** Ob ein Label ein Ziel-Label ist, `ziel:*` oder `goal:*`, bekannt oder nicht. */
+export function istZielLabel(label) {
+  return ZIEL_LABEL_PRAEFIXE.some((p) => String(label).startsWith(p));
+}
 export const PLANREVIEW_LABELS = Object.freeze(["planreview:1", "planreview:2"]);
 
 /**
  * Das wirksame Ziel einer Karte (A3): das weiter reichende aus Ziel-Label und dem Label
- * aus `budget.varianteBLabel`, das als `umsetzung` zaehlt. Ohne beides `null` — dann
+ * aus `budget.varianteBLabel`, das als `umsetzung` zaehlt. Beide zaehlen unter jedem ihrer
+ * Namen, das Durchziehen-Label auch unter beiden Vorgabenamen neben einem gesetzten Wert
+ * (Issue #1425, Plan #1420 E7). Ohne beides `null` — dann
  * bleibt es beim heutigen Verhalten. Rein wie `varianteVon`: Ein unbekanntes `ziel:*`
  * zaehlt nicht, mehrere Ziel-Labels lehnt erst `zielAusschluss` ab, hier gilt das
  * weiteste.
@@ -2558,10 +2644,10 @@ export function zielVon(karte, budget) {
   const labels = karte?.labels || [];
   const durchziehen = budget?.varianteBLabel;
   let rang = -1;
-  KETTE_ZIELE.forEach(({ ziel }, i) => {
-    if (labels.includes(`${ZIEL_LABEL_PRAEFIX}${ziel}`)) rang = Math.max(rang, i);
+  KETTE_ZIELE.forEach(({ ziel, sache }, i) => {
+    if (kennzeichenName(labels, `${ZIEL_LABEL_PRAEFIX}${ziel}`, sache)) rang = Math.max(rang, i);
   });
-  if (durchziehen && labels.includes(durchziehen)) {
+  if (durchziehen && kennzeichenName(labels, durchziehen, "durchziehen")) {
     rang = Math.max(rang, KETTE_ZIELE.findIndex((z) => z.ziel === "umsetzung"));
   }
   return rang < 0 ? null : KETTE_ZIELE[rang].ziel;
@@ -2755,20 +2841,20 @@ export function normalisiereVorflug(roh, reviewers) {
     if (r.kind !== "command") return { ...basis, verfuegbar: true };
     const meldung = gemeldet.get(r.name);
     if (!meldung) {
-      return { ...basis, verfuegbar: false, grund: "die Vorflug-Session hat zu diesem Reviewer nichts gemeldet" };
+      return { ...basis, verfuegbar: false, grund: t("vorflugNichtsGemeldet") };
     }
     if (meldung.verfuegbar === true) return { ...basis, verfuegbar: true };
-    return { ...basis, verfuegbar: false, grund: String(meldung.grund || "").trim() || "ohne Grund als nicht verfuegbar gemeldet" };
+    return { ...basis, verfuegbar: false, grund: String(meldung.grund || "").trim() || t("vorflugOhneGrund") };
   });
 
-  const t = roh?.tracker || {};
-  const erreichbar = t.erreichbar === true;
+  const gemeldetTracker = roh?.tracker || {};
+  const erreichbar = gemeldetTracker.erreichbar === true;
   const tracker = {
     erreichbar,
     umgebung: UMGEBUNG_SESSION,
-    geprueft: t.geprueft ? String(t.geprueft) : null,
-    ...(t.uebersprungen ? { uebersprungen: String(t.uebersprungen) } : {}),
-    ...(erreichbar ? {} : { grund: String(t.grund || "").trim() || "die Vorflug-Session hat keinen Tracker-Befund gemeldet" }),
+    geprueft: gemeldetTracker.geprueft ? String(gemeldetTracker.geprueft) : null,
+    ...(gemeldetTracker.uebersprungen ? { uebersprungen: String(gemeldetTracker.uebersprungen) } : {}),
+    ...(erreichbar ? {} : { grund: String(gemeldetTracker.grund || "").trim() || t("vorflugKeinTracker") }),
   };
   return { reviewers: befunde, tracker };
 }
@@ -2800,7 +2886,7 @@ async function runVorflugSession(args, prompt, abh = {}) {
     extraEnv: { NIGHT_PROMPT: prompt, KIT_AGENT_MODEL: VORFLUG_MODEL, NIGHT_VORFLUG: "1", ...laufKennungUmgebung() },
   }, abh);
   if (ZUSTAND.LOG_FILE) {
-    appendFileSync(ZUSTAND.LOG_FILE, `--- Vorflug-Session ---\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
+    appendFileSync(ZUSTAND.LOG_FILE, `${t("vorflugProtokoll")}\n${res.stdout || ""}${res.stderr || ""}\n`, "utf-8");
   }
   const kennzahlen = leseKennzahlen(res.stdout);
   verbrauchErfassen(null, kennzahlen);
@@ -2831,8 +2917,8 @@ export async function reviewerVorflug(args, reviewers, trackerId, abh = {}) {
     tracker: { erreichbar: false, umgebung: UMGEBUNG_SESSION, geprueft: null, grund },
   });
 
-  if (res.error?.code === "ETIMEDOUT") return gescheitert(`Zeitlimit von ${timeoutMs} ms ueberschritten`);
-  if (res.error?.code === "ENOENT") return gescheitert("claude-CLI nicht gefunden. Ist Claude Code installiert und im PATH?");
+  if (res.error?.code === "ETIMEDOUT") return gescheitert(t("vorflugZeitlimit", { ms: timeoutMs }));
+  if (res.error?.code === "ENOENT") return gescheitert(t("claudeFehlt"));
   if (res.error) return gescheitert(res.error.message);
 
   // Im Strom steht der Befund im Text des result-Ereignisses; ohne Strom (Test-Fakes, eine
@@ -2840,8 +2926,8 @@ export async function reviewerVorflug(args, reviewers, trackerId, abh = {}) {
   const roh = parseVorflugBefund(leseErgebnisText(res.stdout) ?? res.stdout);
   if (!roh) {
     return gescheitert(res.status === 0
-      ? "die Vorflug-Session endete ohne auswertbaren Befund-Block"
-      : `die Vorflug-Session endete mit Exit ${res.status} und ohne auswertbaren Befund-Block`);
+      ? t("vorflugOhneBlock")
+      : t("vorflugExitOhneBlock", { status: res.status }));
   }
   return { sessionStartbar: true, grund: null, ...normalisiereVorflug(roh, reviewers) };
 }

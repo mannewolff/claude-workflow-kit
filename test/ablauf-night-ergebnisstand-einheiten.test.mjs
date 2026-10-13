@@ -156,6 +156,7 @@ test("ein zurueckgestelltes Paket erscheint als eigene Einheit mit Grund, nicht 
     const e = einheit(dir, id);
     assert.equal(e.ausgang, "zurueckgestellt");
     assert.match(e.grund, /Idee/, `der Grund nennt das Gate nicht: ${e.grund}`);
+    assert.equal(e.grundArt, "sonst", "ein Titel-Gate hat keine eigene Art (Issue #1426)");
     assert.equal(stand(dir).abschluss, "regulaer");
   } finally {
     rmSync(dir, { recursive: true, force: true });

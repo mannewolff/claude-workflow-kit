@@ -53,6 +53,7 @@ function mitDir(fn) {
     mkdirSync(join(dir, "helfer"), { recursive: true });
     copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
     cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+    cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
     copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));
     writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
       codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
@@ -134,10 +135,10 @@ test("[Belegfall 4] ein Paket ohne Ergebnis und eines mit Resten nach gescheiter
     assert.doesNotMatch(git(dir, "show", "--name-only", "--format=", "HEAD"), /neu-|code\.txt/, "das naechste Paket baute auf den Resten auf");
 
     // Beide gescheiterten Pakete stehen mit Stand und Grund.
-    assert.ok(labels(dir, ohne).includes("lauf:abgebrochen"), `Labels #${ohne}: ${labels(dir, ohne)}`);
+    assert.ok(labels(dir, ohne).includes("run:aborted"), `Labels #${ohne}: ${labels(dir, ohne)}`);
     assert.match(laufstand(dir, ohne), /Runde beendet: deferred um /);
     assert.match(laufstand(dir, ohne), /Grund: [^\n]+; die Karte ging ins Backlog/);
-    assert.ok(labels(dir, reste).includes("lauf:abgebrochen"), `Labels #${reste}: ${labels(dir, reste)}`);
+    assert.ok(labels(dir, reste).includes("run:aborted"), `Labels #${reste}: ${labels(dir, reste)}`);
     assert.match(laufstand(dir, reste), /Runde beendet: abgebrochen um /);
     assert.match(laufstand(dir, reste), new RegExp(`Stash „nachtrest #${reste} `));
     assert.match(laufstand(dir, reste), /SALVAGE-VERSUCH gescheitert/);
@@ -145,7 +146,7 @@ test("[Belegfall 4] ein Paket ohne Ergebnis und eines mit Resten nach gescheiter
     assert.match(roh(dir, reste), new RegExp(`Die Reste liegen im Stash „nachtrest #${reste} `));
 
     // Das abhaengige Paket wartet, sein Rueckstell-Kommentar ist der von heute.
-    assert.ok(labels(dir, abhaengig).includes("lauf:wartet"), `Labels #${abhaengig}: ${labels(dir, abhaengig)}`);
+    assert.ok(labels(dir, abhaengig).includes("run:waiting"), `Labels #${abhaengig}: ${labels(dir, abhaengig)}`);
     assert.match(laufstand(dir, abhaengig), new RegExp(`hängt an #${Number(reste)} \\(abgebrochen in diesem Lauf\\)`));
     assert.ok(roh(dir, abhaengig).includes(`Nachtlauf: Abhaengigkeit #${Number(reste)} nicht erfuellt (liegt in Backlog, Ready oder In progress) — Issue zurueckgestellt.\n\nAbhaengigkeiten, wie der Nachtlauf sie liest:`));
     assert.equal(spalte(dir, abhaengig), "backlog");
@@ -154,7 +155,7 @@ test("[Belegfall 4] ein Paket ohne Ergebnis und eines mit Resten nach gescheiter
     assert.equal(spalte(dir, frei), "in_review");
     assert.deepEqual(journalZustaende(dir, frei), ["laeuft", "fertig"]);
     assert.match(laufstand(dir, frei), /In review mit Nachweis \(geprueft\), Commit [0-9a-f]+/);
-    assert.ok(!labels(dir, frei).some((l) => l.startsWith("lauf:")), `Labels #${frei}: ${labels(dir, frei)}`);
+    assert.ok(!labels(dir, frei).some((l) => l.startsWith("run:")), `Labels #${frei}: ${labels(dir, frei)}`);
     assert.deepEqual(journalZustaende(dir, ohne), ["laeuft", "abgebrochen"]);
     assert.deepEqual(journalZustaende(dir, abhaengig), ["wartet"]);
 
@@ -173,7 +174,7 @@ test("[E14] Reste nach einem Erfolg bleiben harter Stopp — kein Stash, kein we
     assert.deepEqual(sitzungen(log), [a]);
     assert.equal(git(dir, "stash", "list"), "");
     assert.ok(existsSync(join(dir, "rest.txt")), "der Rest wurde angefasst");
-    assert.ok(labels(dir, a).includes("lauf:abgebrochen"), `Labels #${a}: ${labels(dir, a)}`);
+    assert.ok(labels(dir, a).includes("run:aborted"), `Labels #${a}: ${labels(dir, a)}`);
     assert.equal(spalte(dir, b), "ready");
   });
 });

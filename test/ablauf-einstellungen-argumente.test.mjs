@@ -1,6 +1,6 @@
-// Ablauf-Pruefung: der Abbruch mit Meldung bei einem falschen Argument entsteht erst in main() von kit/einstellungen.mjs, also nur beim Start als Programm.
+// Ablauf-Pruefung: der Abbruch mit Meldung bei einem falschen Argument entsteht erst in main() von kit/settings.mjs, also nur beim Start als Programm.
 //
-// Die Argumente der Oberflaeche: `leseArgumente` aus kit/einstellungen.mjs (Issue #1096).
+// Die Argumente der Oberflaeche: `leseArgumente` aus kit/settings.mjs (Issue #1096).
 //
 // Direkt aufgerufen, ohne Server: Geprueft wird der Rueckgabewert. Nur der fehlerhafte Port
 // geht zusaetzlich einmal durch die Kommandozeile, weil der Abbruch mit Meldung erst in
@@ -11,9 +11,9 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { leseArgumente } from "../kit/einstellungen.mjs";
+import { leseArgumente } from "../kit/settings.mjs";
 
-const EINSTELLUNGEN = join(dirname(fileURLToPath(import.meta.url)), "..", "kit", "einstellungen.mjs");
+const EINSTELLUNGEN = join(dirname(fileURLToPath(import.meta.url)), "..", "kit", "settings.mjs");
 
 test("[einstellungen-1096] ein Ordner als Argument wird der Ordner der Oberflaeche", () => {
   const args = leseArgumente(["/ein/projekt"]);

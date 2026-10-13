@@ -12,6 +12,35 @@
 # dem Kit des letzten Pushs, prueft auch dessen Gate. Bedingung sind alle drei:
 # KIT_STAND_PFAD ist gesetzt, der Baum traegt die Markierung .claude/kit-stand.json, und
 # das Gate des Stands liegt vor. Die Variable allein erbt jedes Fixture-Repo eines Tests.
+#
+# Meldungen in der Projektsprache (Issue #1458, Plan #1420 E13): je Meldung ein Wert
+# de_<schluessel> und en_<schluessel>, Werte per printf %s. Die Sprache liest der Hook ohne
+# node aus .claude/workflow.config.json — eine der Meldungen gilt gerade dem fehlenden node:
+# "language", sonst "sprache", sonst de; ein unbekannter Wert gilt als de.
+# SYNC: dieselbe Regel wie projektSprache in .githooks/gate.mjs und kit/board/namen.mjs.
+de_gate_fehlt='pre-commit: %s fehlt — Commit abgewiesen.'
+en_gate_fehlt='pre-commit: %s is missing — commit rejected.'
+de_node_fehlt='pre-commit: node nicht im PATH — Commit abgewiesen.'
+en_node_fehlt='pre-commit: node not in PATH — commit rejected.'
+
+feldwert() {
+  sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\([^\"]*\)\".*/\1/p" .claude/workflow.config.json 2>/dev/null | head -n 1
+}
+sprache=de
+if [ -f .claude/workflow.config.json ]; then
+  wert="$(feldwert language)"
+  [ -n "$wert" ] || wert="$(feldwert sprache)"
+  [ "$wert" = en ] && sprache=en
+fi
+
+# melde <schluessel> [wert…]: die Meldung in der Projektsprache nach stderr.
+melde() {
+  eval "vorlage=\$${sprache}_$1"
+  shift
+  # shellcheck disable=SC2059 # die Vorlage ist das Format
+  printf "$vorlage\n" "$@" >&2
+}
+
 gate="$(dirname "$0")/gate.mjs"
 if [ -n "$KIT_STAND_PFAD" ] && [ -f "$KIT_STAND_PFAD/.githooks/gate.mjs" ]; then
   wurzel="$(git rev-parse --show-toplevel 2>/dev/null)"
@@ -20,11 +49,11 @@ if [ -n "$KIT_STAND_PFAD" ] && [ -f "$KIT_STAND_PFAD/.githooks/gate.mjs" ]; then
   fi
 fi
 if [ ! -f "$gate" ]; then
-  echo "pre-commit: $gate fehlt — Commit abgewiesen." >&2
+  melde gate_fehlt "$gate"
   exit 1
 fi
 if ! command -v node >/dev/null 2>&1; then
-  echo "pre-commit: node nicht im PATH — Commit abgewiesen." >&2
+  melde node_fehlt
   exit 1
 fi
 exec node "$gate" pre-commit

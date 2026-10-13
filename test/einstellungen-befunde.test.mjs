@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   aenderungAnwenden, pruefe, pruefeSchema, teilFuer, THEMEN, vorgabeAus,
-} from "../kit/einstellungen.mjs";
+} from "../kit/settings.mjs";
 
 const fehler = (befunde) => befunde.filter((b) => b.art === "fehler");
 

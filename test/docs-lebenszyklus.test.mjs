@@ -61,13 +61,13 @@ test("der Lebenszyklus-Eintrag nennt Done als Geste des Menschen und In review a
   assert.doesNotMatch(eintrag, /gleichwertig/i, "der Eintrag nennt noch zwei gleichwertige Wege");
 });
 
-// Die Falle des Verfahrens: Die Nacht-Kette (`night.mjs --kette`) liest ausschliesslich
+// Die Falle des Verfahrens: Die Nacht-Kette (`night.mjs --chain`) liest ausschliesslich
 // die Backlog-Spalte und legt ihre Pakete dort ab. Wer ein Dokument VOR seiner Kette
 // als Klammer nach In review zieht, nimmt es dem Nachtlauf weg — ohne dass irgendetwas
 // fehlschlaegt (Plan #638, Issue #646).
 test("der Lebenszyklus-Eintrag nennt die Backlog-Beschraenkung der Kette samt Folge", () => {
   const eintrag = lebenszyklusEintrag(DOKU);
-  assert.match(eintrag, /night\.mjs --kette/, "die Nacht-Kette wird nicht benannt");
+  assert.match(eintrag, /night\.mjs --chain/, "die Nacht-Kette wird nicht benannt");
   assert.match(eintrag, /Backlog/, "die Backlog-Beschraenkung fehlt");
   assert.match(eintrag, /Pakete dort ab/, "dass die Pakete im Backlog landen, steht nicht da");
   assert.match(eintrag, /kein(e)? Kandidat/i, "die Folge (kein Kandidat mehr) fehlt");

@@ -10,6 +10,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { hatLabel } from "./helpers/labels.mjs";
 import { REVIEW_FERTIG_LABEL } from "../kit/night/kette.mjs";
 import {
   ketteImProzess, fachplanKarte, jeStufe, planAnlegen, planBody, reviewHalt, reviewMarker, KETTE_LABEL,
@@ -29,15 +30,15 @@ test("[night-19] eine Stopp-Frage im Plan haelt die Kette an: Kommentar und kit:
   assert.equal(r.code, 0, r.ausgabe);
 
   const fach = r.karte("1");
-  assert.ok(fach.labels.includes("kit:klaeren"), "kit:klaeren fehlt am Fachplan");
-  assert.ok(!fach.labels.includes("kit:night"), "das Label ist verbraucht");
+  assert.ok(hatLabel(fach.labels, "kit:klaeren"), "kit:klaeren fehlt am Fachplan");
+  assert.ok(!hatLabel(fach.labels, "kit:night"), "das Label ist verbraucht");
   const text = kommentare(r, "1");
   assert.match(text, /## Kette angehalten/);
   assert.match(text, /Ist der neue Endpunkt eine Schnittstelle/);
   assert.match(text, /Stufe plan, Dokument #2\b/);
   // Der Weg nach vorn fuehrt ueber den Plan, nicht ueber den Fachplan (Issue #896);
   // der Wortlaut selbst steht in night-kette-halt-planauftrag.test.mjs auf der Probe.
-  assert.match(text, /kit:klaeren an Plan #2 abnehmen/);
+  assert.match(text, /kit:clarify an Plan #2 abnehmen/);
   assert.match(text, /das Label kit:night an Plan #2 setzen/);
 
   const plan = r.karte("2");
@@ -54,7 +55,7 @@ test("[night-19] eine Stopp-Frage im Plan haelt die Kette an: Kommentar und kit:
 test("[night-19] kit:klaeren nach dem Review haelt die Kette an, die Frage ist der letzte Kommentar am Plan", async () => {
   const r = await ketteImProzess({ karten: [fachplanKarte("1")], sitzung: jeStufe({ plan: planAnlegen(), review: reviewHalt }) });
   assert.equal(r.code, 0, r.ausgabe);
-  assert.ok(r.karte("1").labels.includes("kit:klaeren"));
+  assert.ok(hatLabel(r.karte("1").labels, "kit:klaeren"));
   const text = kommentare(r, "1");
   assert.match(text, /## Kette angehalten/);
   assert.match(text, /Stufe review, Dokument #2\b/);
@@ -79,7 +80,7 @@ test("[night-19] ein Fachplan mit kit:klaeren und einer in Ready werden ueberspr
   }
   const grund = (id) => r.lauf.einheiten.find((e) => e.id === id).grund;
   assert.equal(r.lauf.einheiten.find((e) => e.id === "1").ausgang, "uebersprungen");
-  assert.match(grund("1"), /traegt kit:klaeren/);
+  assert.match(grund("1"), /traegt kit:clarify/);
   assert.match(grund("2"), /steht in ready, nicht in Backlog/);
   // Der Plan traegt keine Herkunftszeile: Seit Issue #895 lehnt ihn `planAusschluss`
   // als Plan-Auftrag ab, nicht mehr die Praefix-Probe des Fachplan-Auftrags.

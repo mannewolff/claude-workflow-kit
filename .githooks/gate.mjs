@@ -18,7 +18,7 @@
 // Stand, den so nie jemand geprueft hat (Plan #467, A3).
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -26,9 +26,74 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const HILFE = "node .claude/kit/checks.mjs run";
 
+/**
+ * Die Texte des Gates in beiden Sprachen (Issue #1458, Plan #1420 E13). Das Gate laeuft in
+ * jedem Projekt allein und importiert nur Node-Bordmittel; es traegt seine Tabelle deshalb
+ * selbst, statt den Texthelfer aus kit/board/namen.mjs zu laden. Vertragswerte wie das
+ * Ergebnis einer Pruefung (`rot`) und die Option `--area` gehen unuebersetzt ein (E14).
+ */
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    abgewiesen: "Commit abgewiesen — {grund}.\n  {hilfe}\n",
+    abgewiesenPfad: "Commit abgewiesen — {pfad}: {grund}.\n  {hilfe}\n",
+    checksFehlt: "checks.mjs liegt weder unter .claude/kit/ noch unter kit/ — bitte den Installer laufen lassen",
+    zusammenfassungFehlt: "die Pruef-Zusammenfassung fehlt",
+    zusammenfassungUnlesbar: "die Pruef-Zusammenfassung ist unlesbar",
+    altesFormat: "die Pruef-Zusammenfassung hat ein altes Format ohne hashes — bitte den Installer laufen lassen",
+    gitFehler: "{kommando} schlug fehl: {fehler}",
+    pruefungEndete: "die Pruefung endete {ergebnis} ({cmd})",
+    bereichslauf: "die Pruefung lief eingegrenzt auf den Bereich '{bereich}' und deckt den Commit nicht — bitte '{hilfe}' ohne --area fahren",
+    loeschungNichtGeprueft: "Loeschung nicht geprueft",
+    nichtGeprueft: "nicht geprueft",
+    geaendert: "nach der Pruefung geaendert",
+    einzigesKommando: "gate.mjs: einziges Kommando ist 'pre-commit'.\n",
+  }),
+  en: Object.freeze({
+    abgewiesen: "Commit rejected — {grund}.\n  {hilfe}\n",
+    abgewiesenPfad: "Commit rejected — {pfad}: {grund}.\n  {hilfe}\n",
+    checksFehlt: "checks.mjs is in neither .claude/kit/ nor kit/ — please run the installer",
+    zusammenfassungFehlt: "the check summary is missing",
+    zusammenfassungUnlesbar: "the check summary is unreadable",
+    altesFormat: "the check summary has an old format without hashes — please run the installer",
+    gitFehler: "{kommando} failed: {fehler}",
+    pruefungEndete: "the check ended {ergebnis} ({cmd})",
+    bereichslauf: "the check ran limited to the area '{bereich}' and does not cover the commit — please run '{hilfe}' without --area",
+    loeschungNichtGeprueft: "deletion not checked",
+    nichtGeprueft: "not checked",
+    geaendert: "changed after the check",
+    einzigesKommando: "gate.mjs: the only command is 'pre-commit'.\n",
+  }),
+});
+
+let sprache = null;
+
+/**
+ * Die Sprache des Projekts, einmal aus `.claude/workflow.config.json` im cwd gelesen:
+ * `language`, sonst `sprache`, sonst `de`; ein unbekannter Wert gilt als `de`.
+ * SYNC: dieselbe Regel wie `projektSprache` in kit/board/namen.mjs.
+ */
+function projektSprache() {
+  if (sprache === null) {
+    let config = {};
+    try {
+      config = JSON.parse(readFileSync(join(process.cwd(), ".claude", "workflow.config.json"), "utf-8"));
+    } catch {
+      // keine oder kaputte Config: Vorgabe
+    }
+    const wert = config?.language ?? config?.sprache;
+    sprache = wert === "en" || wert === "de" ? wert : "de";
+  }
+  return sprache;
+}
+
+/** Der Text zu `schluessel` in der Projektsprache, die Platzhalter `{name}` ersetzt. */
+function text(schluessel, werte = {}) {
+  return TEXTE[projektSprache()][schluessel].replaceAll(/\{([A-Za-z_]\w*)\}/g, (_, name) => String(werte[name]));
+}
+
 function ab(grund, pfad) {
-  const wo = pfad ? `${pfad}: ` : "";
-  process.stderr.write(`Commit abgewiesen — ${wo}${grund}.\n  ${HILFE}\n`);
+  const werte = { grund, pfad, hilfe: HILFE };
+  process.stderr.write(text(pfad ? "abgewiesenPfad" : "abgewiesen", werte));
   process.exit(1);
 }
 
@@ -54,24 +119,24 @@ async function ladeZusammenfassungPfad() {
   for (const ort of orte) {
     if (existsSync(ort)) return (await import(pathToFileURL(ort).href)).zusammenfassungPfad;
   }
-  ab("checks.mjs liegt weder unter .claude/kit/ noch unter kit/ — bitte den Installer laufen lassen");
+  ab(text("checksFehlt"));
   return null;
 }
 
 /** Die Zusammenfassung, gepruft auf Form. */
 function leseZusammenfassung(pfad) {
-  if (!existsSync(pfad)) ab("die Pruef-Zusammenfassung fehlt");
+  if (!existsSync(pfad)) ab(text("zusammenfassungFehlt"));
   let daten;
   try {
     daten = JSON.parse(readFileSync(pfad, "utf-8"));
   } catch {
-    ab("die Pruef-Zusammenfassung ist unlesbar");
+    ab(text("zusammenfassungUnlesbar"));
   }
   // Ein gueltiges JSON ohne `hashes` stammt aus einer checks.mjs vor Issue #469.
   // Ohne diesen Zweig wuerde jede Datei einzeln als ungeprueft gemeldet, und das
   // genannte Heilkommando heilte nichts, solange die alte Datei liegt.
   if (!Array.isArray(daten.laufen) || daten.hashes === null || typeof daten.hashes !== "object") {
-    ab("die Pruef-Zusammenfassung hat ein altes Format ohne hashes — bitte den Installer laufen lassen");
+    ab(text("altesFormat"));
   }
   return daten;
 }
@@ -87,7 +152,7 @@ function leseZusammenfassung(pfad) {
  */
 function indexEintraege() {
   const res = git("diff", "--cached", "--name-status", "-z", "--no-renames");
-  if (res.status !== 0) ab(`git diff --cached schlug fehl: ${(res.stderr || "").trim()}`);
+  if (res.status !== 0) ab(text("gitFehler", { kommando: "git diff --cached", fehler: (res.stderr || "").trim() }));
   const felder = res.stdout.split("\0");
   const eintraege = [];
   for (let i = 0; i + 1 < felder.length; i += 2) {
@@ -99,7 +164,7 @@ function indexEintraege() {
 /** Blob-Hash je gestagtem Pfad, so wie git ihn committen wird. */
 function indexHashes() {
   const res = git("ls-files", "--stage", "-z");
-  if (res.status !== 0) ab(`git ls-files --stage schlug fehl: ${(res.stderr || "").trim()}`);
+  if (res.status !== 0) ab(text("gitFehler", { kommando: "git ls-files --stage", fehler: (res.stderr || "").trim() }));
   const hashes = new Map();
   for (const zeile of res.stdout.split("\0")) {
     if (!zeile) continue;
@@ -120,15 +185,15 @@ function preCommit(zusammenfassungPfad) {
   // Pruefung nennen, die tatsaechlich rot war.
   // SYNC: dieselbe Regel wie `rotesKommando` in kit/checks.mjs und `lesePruefung` in kit/night.mjs.
   const rot = daten.laufen.find((e) => e.ergebnis === "rot") ?? daten.laufen.find((e) => e.ergebnis !== "gruen");
-  if (rot) ab(`die Pruefung endete ${rot.ergebnis} (${rot.cmd})`);
+  if (rot) ab(text("pruefungEndete", { ergebnis: rot.ergebnis, cmd: rot.cmd }));
 
-  // Ein Bereichslauf ist ein TEILNACHWEIS (Issue #922, Code-Review): `--bereich` grenzt
+  // Ein Bereichslauf ist ein TEILNACHWEIS (Issue #922, Code-Review): `--area` grenzt
   // die gefahrenen Pruefungen auf einen Bereich ein, bestimmt `geaendert` und `hashes`
   // aber weiterhin aus dem Anker. Ohne diesen Zweig traegt jede geaenderte Datei einen
   // Hash und das Gate liesse den Commit durch — auch fuer Bereiche, deren Pruefungen nie
   // liefen. Der eingegrenzte Lauf bleibt richtig; er ist nur kein Abschlussnachweis.
   if (typeof daten.bereichWahl === "string") {
-    ab(`die Pruefung lief eingegrenzt auf den Bereich '${daten.bereichWahl}' und deckt den Commit nicht — bitte 'node .claude/kit/checks.mjs run' ohne --bereich fahren`);
+    ab(text("bereichslauf", { bereich: daten.bereichWahl, hilfe: HILFE }));
   }
 
   const geprueft = daten.hashes;
@@ -136,17 +201,32 @@ function preCommit(zusammenfassungPfad) {
   for (const { status, pfad } of indexEintraege()) {
     const geloescht = status.startsWith("D");
     if (!(pfad in geprueft)) {
-      ab(geloescht ? "Loeschung nicht geprueft" : "nicht geprueft", pfad);
+      ab(text(geloescht ? "loeschungNichtGeprueft" : "nichtGeprueft"), pfad);
     }
     if (geloescht) continue;
-    if (geprueft[pfad] !== imIndex.get(pfad)) ab("nach der Pruefung geaendert", pfad);
+    if (geprueft[pfad] !== imIndex.get(pfad)) ab(text("geaendert"), pfad);
   }
   return 0;
 }
 
-const [befehl] = process.argv.slice(2);
-if (befehl !== "pre-commit") {
-  process.stderr.write("gate.mjs: einziges Kommando ist 'pre-commit'.\n");
-  process.exit(2);
+/**
+ * Laedt ein anderes Programm diese Datei als Modul (der Test der Texttabelle), laeuft das
+ * Gate nicht. Im Zweifel laeuft es: Ein Gate, das still nichts tut, liesse jeden Commit durch.
+ * realpathSync, weil Node fuer import.meta.url Symlinks aufloest (macOS: /var -> /private/var).
+ */
+function alsModulGeladen() {
+  try {
+    return Boolean(process.argv[1]) && realpathSync(process.argv[1]) !== realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
 }
-process.exit(preCommit(await ladeZusammenfassungPfad()));
+
+if (!alsModulGeladen()) {
+  const [befehl] = process.argv.slice(2);
+  if (befehl !== "pre-commit") {
+    process.stderr.write(text("einzigesKommando"));
+    process.exit(2);
+  }
+  process.exit(preCommit(await ladeZusammenfassungPfad()));
+}

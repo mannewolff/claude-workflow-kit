@@ -29,10 +29,21 @@ import { homedir } from "node:os";
 
 import { VALID_STATUSES, COLUMN_DEFAULTS, columnLabels, BoardError, fail, out, configWurzel,
   readWorkflowConfig } from "./grundlagen.mjs";
-import { GitHubIssueTracker, resolveCodeHost } from "./adapter.mjs";
+import { GitHubIssueTracker, resolveCodeHost, LabelFehltError } from "./adapter.mjs";
 // Zyklus mit Absicht: ursprung.mjs liest Karten und Herkunftszeilen von hier. Beide Seiten
 // rufen sich erst zur Laufzeit, keine liest beim Laden einen Wert der anderen.
 import { ursprungLesen, ursprungNachziehen } from "./ursprung.mjs";
+import { SPRACHEN, PRAEFIXE, LABELS, EINGABEWERTE, internerWert, prozessSprache, praefix, labelName, erkennePraefix, erkenneLabel, erkenneMarker, leseMarker, markerWerte,
+  kanonischeUeberschrift, ueberschriftName, ueberschriftZeile, text } from "./namen.mjs";
+import { normalisiereConfig } from "./config-namen.mjs";
+
+// Die Texte an den Menschen liegen unter kit/texte/board-dokumente.mjs (Issue #1526).
+import { TEXTE } from "../texte/board-dokumente.mjs";
+
+export { TEXTE };
+
+/** Ein Text dieses Teils in der Projektsprache (Issue #1478, E13). */
+const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
 
 // ============================================================
 // Kontext-Achse (Vault-Pfade fuer /kontext und /document, Issue #202)
@@ -197,7 +208,7 @@ function readKontextConfigFile(pfad) {
   try {
     return JSON.parse(readFileSync(pfad, "utf-8"));
   } catch {
-    fail(`kontext.config.json konnte nicht gelesen werden: ${pfad}`);
+    fail(t("kontextConfigUnlesbar", { pfad }));
   }
 }
 
@@ -262,10 +273,22 @@ export function heute() {
 // stufte den Ausdruck nach einem Text als linear ein, bei dem die Zeile sauber
 // endet. Erst ein Text, dessen PRAEFIX passt und dessen Rest scheitert, loest
 // das Backtracking aus.
+//
+// Seit Issue #1443 liest `autorModellSicherstellen` die Zeile ueber das Register unter beiden
+// Namen; der Ausdruck bleibt als exportierte Form der deutschen Zeile.
 export const AUTOR_MODELL_ZEILE = /^Autor-Modell:[^\S\n]*(\S(?:[^\n]*\S)?)[^\S\n]*$/m;
-const AUTOR_MODELL_HILFE =
-  'Der Body braucht eine Zeile "Autor-Modell: <modell>" im Kontext-Abschnitt. ' +
-  'Alternativ --author-model <modell> setzen; im Nachtbetrieb genuegt gesetztes KIT_AGENT_MODEL.';
+
+/** Die erste Zeile `## Kontext` (oder `## Context`) mit Zeilenende: `{ ende }` hinter ihr, sonst null. */
+function kontextKopf(body) {
+  let offset = 0;
+  for (const zeile of body.split("\n")) {
+    const naechste = offset + zeile.length + 1;
+    if (naechste > body.length) return null; // die letzte Zeile ohne Umbruch zaehlte nie
+    if (erkenneMarker(zeile) === "kontext" && zeile.startsWith("## ")) return { ende: naechste };
+    offset = naechste;
+  }
+  return null;
+}
 
 /**
  * Liefert den Body mit garantierter Autor-Modell-Zeile — oder bricht ab.
@@ -275,23 +298,25 @@ const AUTOR_MODELL_HILFE =
  * stilles Ueberschreiben: Wer eine Autorschaft ueberschreibt, faelscht sie.
  */
 export function autorModellSicherstellen(body, flagWert, env = process.env) {
-  const vorhanden = body.match(AUTOR_MODELL_ZEILE);
+  // Die Zeile unter beiden Namen ueber das Register (Issue #1443); der Wert reicht wie bei
+  // AUTOR_MODELL_ZEILE vom ersten bis zum letzten Nicht-Leerzeichen.
+  const vorhanden = markerWerte(body, "autorModell", { eingerueckt: false }).map((w) => w.trim()).find((w) => w !== "");
   const flag = typeof flagWert === "string" ? flagWert.trim() : "";
   if (vorhanden) {
-    if (flag && flag !== vorhanden[1]) {
-      fail(`--author-model '${flag}' widerspricht der vorhandenen Zeile 'Autor-Modell: ${vorhanden[1]}'. Eine der beiden weglassen.`);
+    if (flag && flag !== vorhanden) {
+      fail(t("autorModellWiderspruch", { flag, vorhanden }));
     }
     return body;
   }
   const wert = flag || (env.KIT_AGENT_MODEL || "").trim();
-  if (!wert) fail(`Kein Autor-Modell angegeben. ${AUTOR_MODELL_HILFE}`);
+  if (!wert) fail(t("autorModellFehlt"));
 
   // Ans Ende des Kontext-Abschnitts, nicht ans Dateiende: Dort suchen der
   // /issues-Skill und /issue-review sie. Ohne Kontext-Abschnitt (Ideen, fremde
   // Formate) kommt sie an den Anfang — Hauptsache, sie ist da und auffindbar.
-  const kontext = body.match(/^## Kontext[^\n]*\n/m);
+  const kontext = kontextKopf(body);
   if (!kontext) return `Autor-Modell: ${wert}\n\n${body}`;
-  const start = kontext.index + kontext[0].length;
+  const start = kontext.ende;
   const naechsterAbschnitt = body.slice(start).search(/^## /m);
   const ende = naechsterAbschnitt === -1 ? body.length : start + naechsterAbschnitt;
   // `(?<!\n)` statt blossem `\n+$`: Der Lookbehind laesst nur den ANFANG des
@@ -339,26 +364,34 @@ export function autorModellSicherstellen(body, flagWert, env = process.env) {
  * fuehrender Leerraum erlaubt, Gross- und Kleinschreibung gleichgueltig, das
  * Praefix steht am Titelanfang. `[Fachplan]`, `[Konzept]`, `Fachlich: …` und ein
  * `[Plan]` mitten im Titel sind KEIN Praefix — sie bezeichnen Arbeitspakete.
+ *
+ * Seit Issue #1423 kommen die Namen aus dem Register kit/board/namen.mjs, und jede Art gilt
+ * unter beiden: `[Requirement]` wie `[Fachlich]`, `[Idea]` wie `[Idee]`, `[Human]` wie
+ * `[Mensch]` — gleich, welche Sprache das Projekt hat (Plan #1420 E3, E4).
  */
-export const FACHLICH_PRAEFIX = /^\s*\[fachlich\]/i;
-export const PLAN_PRAEFIX = /^\s*\[plan\]/i;
-export const IDEE_PRAEFIX = /^\s*\[idee\]/i;
-export const MENSCH_PRAEFIX = /^\s*\[mensch\]/i;
+const praefixRegex = (art) => {
+  const maskiert = [...new Set(SPRACHEN.map((s) => praefix(art, s)))].map((n) => n.replaceAll(/[[\]]/g, String.raw`\$&`));
+  return new RegExp(String.raw`^\s*(?:` + maskiert.join("|") + ")", "i");
+};
+export const FACHLICH_PRAEFIX = praefixRegex("fachlich");
+export const PLAN_PRAEFIX = praefixRegex("plan");
+export const IDEE_PRAEFIX = praefixRegex("idee");
+export const MENSCH_PRAEFIX = praefixRegex("mensch");
 
 export function istFachlich(title) {
-  return FACHLICH_PRAEFIX.test(title || "");
+  return erkennePraefix(title) === "fachlich";
 }
 
 export function istPlan(title) {
-  return PLAN_PRAEFIX.test(title || "");
+  return erkennePraefix(title) === "plan";
 }
 
 export function istIdee(title) {
-  return IDEE_PRAEFIX.test(title || "");
+  return erkennePraefix(title) === "idee";
 }
 
 export function istMensch(title) {
-  return MENSCH_PRAEFIX.test(title || "");
+  return erkennePraefix(title) === "mensch";
 }
 
 // ============================================================
@@ -375,8 +408,11 @@ export function istMensch(title) {
 // erzwingt keine identische Semantik, und zwei Auslegungen derselben Zeile
 // waeren am Board nicht zu sehen.
 
-/** Kontextueberschrift — dieselbe Form, die `autorModellSicherstellen` erkennt. */
-const KONTEXT_UEBERSCHRIFT = /^## Kontext(?:[ \t].*)?$/;
+/** Kontextueberschrift unter beiden Namen (Issue #1443): `## Kontext`, auch mit Zusatz nach Leerraum. */
+const istKontextUeberschrift = (zeile) => {
+  const m = zeile.startsWith("## ") ? leseMarker(zeile) : null;
+  return m?.sache === "kontext" && (m.rest === "" || /^[ \t]/.test(m.rest));
+};
 // Der negative Lookahead ist der Kern (Issue #403): Ohne ihn akzeptieren `{3,} und
 // [^\n]* dieselben Zeichen, und eine Zeile aus lauter Backticks ohne Zeilenende
 // laesst die Engine jede Aufteilung durchprobieren — 78 ms bei 16 KiB, quadratisch
@@ -436,7 +472,7 @@ export function kontextGrenzen(text) {
   for (const zeile of text.split("\n")) {
     if (!imFence(zeile)) {
       if (start === -1) {
-        if (KONTEXT_UEBERSCHRIFT.test(zeile)) start = offset;
+        if (istKontextUeberschrift(zeile)) start = offset;
       } else if (zeile.startsWith("## ")) {
         return { start, ende: offset };
       }
@@ -461,10 +497,10 @@ export function kontextGrenzen(text) {
  */
 function derivedFromOption(wert) {
   if (wert === undefined) return undefined;
-  if (wert === true) fail("--derived-from braucht einen Wert (Kartennummer des naechsten Vorfahren)");
+  if (wert === true) fail(t("derivedFromOhneWert"));
   const nummer = Number(wert);
   if (!Number.isInteger(nummer) || nummer < 1) {
-    fail(`--derived-from '${wert}' ist keine positive Ganzzahl.`);
+    fail(t("derivedFromKeineZahl", { wert }));
   }
   return nummer;
 }
@@ -477,12 +513,39 @@ function derivedFromOption(wert) {
  */
 function idempotenzOption(wert) {
   if (wert === undefined) return undefined;
-  if (wert === true || String(wert).trim() === "") fail("--idempotency-key braucht einen Wert.");
+  if (wert === true || String(wert).trim() === "") fail(t("idempotenzOhneWert"));
   return String(wert).trim();
 }
 
+/** Die Werte von `--art`, wie das Namen-Register sie kennt (Plan #1420 E6). */
+export const ARTEN = Object.freeze(Object.keys(PRAEFIXE));
+
+/**
+ * Der Titel mit dem englischen Praefix der Art (Issue #1427, E6; englisch in jedem Projekt seit
+ * Issue #1552, Plan #1548 E2): `{ titel }`,
+ * oder `{ fehler }`, wenn die Art unbekannt ist oder der Titel schon ein Praefix traegt.
+ * Ohne Art bleibt der Titel unveraendert — ein Titel mit Praefix wird nie umgeschrieben.
+ * Dieselbe Regel fuer `issue create` und `issue check-form`, damit beide denselben Titel sehen.
+ */
+export function titelMitArt(title, getippt) {
+  if (getippt === undefined) return { titel: title };
+  // `--art requirement|idea|human` traegt ab hier den internen Schluessel (Issue #1555, E5);
+  // getippt wird nur der englische Wert (Issue #1557).
+  const art = internerWert("art", getippt);
+  if (art === true || !ARTEN.includes(art)) {
+    return { fehler: t("artUnbekannt", { arten: ARTEN.map((a) => EINGABEWERTE.art[a]).join("|") }) };
+  }
+  if (erkennePraefix(title) !== null) {
+    return { fehler: t("artNebenPraefix", { art: getippt, titel: title }) };
+  }
+  return { titel: `${praefix(art)} ${String(title).trimStart()}` };
+}
+
 export async function issueCreate(tracker, args) {
-  if (!args.title) fail("--title ist erforderlich");
+  if (!args.title) fail(t("titelErforderlich"));
+  // Vor jedem Netzaufruf: Ein Widerspruch zwischen --art und Titel legt keine Karte an.
+  const { titel, fehler } = titelMitArt(args.title, args.art);
+  if (fehler) fail(fehler);
   // Ohne jede Body-Quelle bleibt der Body leer — der lokale Tracker setzt dann
   // seine Abschnitts-Vorlage. leseTextQuelle wuerde einen leeren Text ablehnen,
   // deshalb wird es nur befragt, wenn ueberhaupt eine Quelle angegeben ist.
@@ -492,8 +555,15 @@ export async function issueCreate(tracker, args) {
   const derivedFrom = derivedFromOption(args["derived-from"]);
   const idempotencyKey = idempotenzOption(args["idempotency-key"]);
   const roh = hatQuelle ? await leseTextQuelle(args.body, args["body-file"], "body") : "";
+  // Gate F12 vor dem Anlegen (Issue #1590, Plan #1588 E12): Ein Fachplan ohne vollstaendiges
+  // Szenario entsteht nicht. Dynamisch, weil szenarien.mjs dieses Modul importiert.
+  if (istFachlich(titel)) {
+    const { szenarienVerstoss } = await import("./szenarien.mjs");
+    const meldung = szenarienVerstoss(roh);
+    if (meldung) fail(t("fachplanOhneSzenarien", { meldung }));
+  }
   const felder = {
-    title: args.title,
+    title: titel,
     // Die Autor-Modell-Leitplanke laeuft auf dem AUFGELOESTEN Text (Issue #271):
     // Stuende sie vor der Aufloesung, wuerde ein '-' oder ein Dateipfad geprueft
     // statt des Inhalts — und ein Body mit korrekter Zeile in der Datei abgelehnt.
@@ -514,20 +584,20 @@ export async function issueCreate(tracker, args) {
 
 export async function issueGet(tracker, args) {
   const id = args._[0];
-  if (!id) fail("id ist erforderlich: board.mjs issue get <id>");
+  if (!id) fail(t("idErforderlich", { aufruf: "issue get <id>" }));
   out(await tracker.getIssue(id));
 }
 
 export async function issueList(tracker, args) {
   if (args.status && !VALID_STATUSES.includes(args.status)) {
-    fail(`Ungueltiger Status '${args.status}'. Gueltig: ${VALID_STATUSES.join(", ")}`);
+    fail(t("statusUngueltig", { status: args.status, gueltig: VALID_STATUSES.join(", ") }));
   }
   out(await tracker.listIssues(args.status));
 }
 
 export async function issueEpics(tracker) {
   if (typeof tracker.listEpics !== "function") {
-    fail("epics wird von diesem Tracker nicht unterstuetzt (verfuegbar bei: local, toolbox)");
+    fail(t("epicsNichtUnterstuetzt"));
   }
   out(await tracker.listEpics());
 }
@@ -535,7 +605,7 @@ export async function issueEpics(tracker) {
 /**
  * Aktivitaetsverlauf einer Karte (Issue #460).
  *
- * Auswertungen wie `wirksamkeit.mjs` lesen daraus die Ereignisdaten: Die
+ * Auswertungen wie `effectiveness.mjs` lesen daraus die Ereignisdaten: Die
  * Karten-Route fuehrt kein Anlagedatum — an der Instanz belegt am 2026-09-02
  * (manuelle Pruefung zu Issue #457). Der Verlauf geht unveraendert durch,
  * einschliesslich seiner Reihenfolge; wer das aelteste Ereignis braucht, sucht
@@ -549,19 +619,19 @@ export async function issueActivity(tracker, config, args) {
   // gewinnen: Welcher das waere, kann der Aufrufer nicht wissen, und die Ausgabeform
   // der beiden ist verschieden (Liste gegen Objekt).
   if (ids !== undefined && id) {
-    fail("--ids und eine Einzelnummer schliessen sich aus: board.mjs issue activity <id> | issue activity --ids <n,n,...>");
+    fail(t("activityBeides"));
   }
-  if (ids === undefined && !id) fail("id ist erforderlich: board.mjs issue activity <id> | --ids <n,n,...>");
+  if (ids === undefined && !id) fail(t("idErforderlich", { aufruf: "issue activity <id> | --ids <n,n,...>" }));
   if (typeof tracker.listActivity !== "function") {
-    const name = config?.issueTracker ?? "dieser Tracker";
-    fail(`activity wird von diesem Tracker nicht unterstuetzt — '${name}' fuehrt keinen Aktivitaetsverlauf (verfuegbar bei: local, toolbox)`);
+    const name = config?.issueTracker ?? t("dieserTracker");
+    fail(t("activityNichtUnterstuetzt", { name }));
   }
   if (ids !== undefined) {
     // `--ids` ohne Wert kommt als `true` aus parseArgs. Ein leerer oder nur aus Kommas
     // bestehender Wert bliebe sonst eine Sammelabfrage ueber nichts und gaebe `{}` aus —
     // von einem Ergebnis ohne Ruecklaeufer nicht zu unterscheiden.
     const nummern = (ids === true ? [] : String(ids).split(",").map((n) => n.trim()).filter(Boolean));
-    if (!nummern.length) fail("--ids braucht mindestens eine Kartennummer: board.mjs issue activity --ids 12,13");
+    if (!nummern.length) fail(t("idsLeer"));
     out(await tracker.listActivityMany(nummern));
     return;
   }
@@ -596,7 +666,7 @@ function wegmarkeSchreiben(id, status, jetzt = new Date()) {
     mkdirSync(dirname(pfad), { recursive: true });
     appendFileSync(pfad, `${jetzt.toISOString()}\t${id}\t${status}\n`, "utf-8");
   } catch (e) {
-    process.stderr.write(`Hinweis: Wegmarke nicht geschrieben (${pfad}): ${e.message}\n`);
+    process.stderr.write(`${t("wegmarkeNichtGeschrieben", { pfad, grund: e.message })}\n`);
   }
 }
 
@@ -630,16 +700,16 @@ function bewegungSchreiben(id, status, jetzt = new Date()) {
     mkdirSync(dirname(pfad), { recursive: true });
     appendFileSync(pfad, `${jetzt.toISOString()}\t${id}\t${status}\n`, "utf-8");
   } catch (e) {
-    process.stderr.write(`Hinweis: Bewegung nicht protokolliert (${pfad}): ${e.message}\n`);
+    process.stderr.write(`${t("bewegungNichtProtokolliert", { pfad, grund: e.message })}\n`);
   }
 }
 
 export async function issueMove(tracker, args) {
   const [id, toStatus] = args._;
-  if (!id) fail("id ist erforderlich: board.mjs issue move <id> <status>");
-  if (!toStatus) fail("status ist erforderlich: board.mjs issue move <id> <status>");
+  if (!id) fail(t("idErforderlich", { aufruf: "issue move <id> <status>" }));
+  if (!toStatus) fail(t("statusErforderlich"));
   if (!VALID_STATUSES.includes(toStatus)) {
-    fail(`Ungueltiger Status '${toStatus}'. Gueltig: ${VALID_STATUSES.join(", ")}`);
+    fail(t("statusUngueltig", { status: toStatus, gueltig: VALID_STATUSES.join(", ") }));
   }
   await tracker.moveIssue(id, toStatus);
   // Erst nach dem Zug: Eine Wegmarke auf eine gescheiterte Bewegung waere eine Buchung
@@ -647,7 +717,7 @@ export async function issueMove(tracker, args) {
   // Bewegungsprotokoll gilt dasselbe — es saehe sonst Ruecklaeufer, die es nicht gab.
   wegmarkeSchreiben(id, toStatus);
   bewegungSchreiben(id, toStatus);
-  // Nach dem eigenen Zug, wie in `issue melden` (Issue #1287, Plan #1283 A2, E1): Auch die
+  // Nach dem eigenen Zug, wie in `issue report` (Issue #1287, Plan #1283 A2, E1): Auch die
   // Rettung und ein Zug des Menschen nach Done koennen das letzte Paket sein. Gezogen wird
   // nur nach In review; kein Fehler hier aendert Exit-Code oder Zug des Pakets (A8).
   const ursprung = URSPRUNG_AUSLOESER.has(toStatus) ? await ursprungDesPakets(tracker, id) : null;
@@ -662,7 +732,7 @@ const URSPRUNG_AUSLOESER = new Set(["in_review", "done"]);
  */
 export async function issueUrsprung(tracker, args) {
   const id = args._[0];
-  if (!id) fail("Plan-Nummer ist erforderlich: board.mjs issue ursprung <plan>");
+  if (!id) fail(t("planErforderlich"));
   out(await ursprungLesen(tracker, id));
 }
 
@@ -695,15 +765,15 @@ export async function issueLabel(tracker, config, args, hilfe = "") {
   const [aktion, id, name, ...zuviel] = args._;
   const labelFail = (msg) => labelFailMit(msg, hilfe);
   if (!LABEL_AKTIONEN.includes(aktion)) {
-    labelFail(`Unbekannter label-Befehl: '${aktion ?? ""}'. Erwartet: ${LABEL_AKTIONEN.join(" | ")}`);
+    labelFail(t("labelUnbekannt", { aktion: aktion ?? "", erwartet: LABEL_AKTIONEN.join(" | ") }));
   }
-  if (!id) labelFail("id ist erforderlich: board.mjs issue label add <id> <name>");
-  if (!name) labelFail("name ist erforderlich: board.mjs issue label add <id> <name>");
+  if (!id) labelFail(t("idErforderlich", { aufruf: "issue label add <id> <name>" }));
+  if (!name) labelFail(t("labelNameErforderlich"));
   if (zuviel.length > 0) {
-    labelFail(`Zu viele Argumente: '${zuviel.join(" ")}'. Erwartet genau <id> und <name>.`);
+    labelFail(t("labelZuViele", { zuviel: zuviel.join(" ") }));
   }
   if (/[,\n]/.test(name)) {
-    labelFail(`Labelname darf kein Komma und keinen Zeilenumbruch enthalten: '${name}'`);
+    labelFail(t("labelNameUngueltig", { name }));
   }
 
   // Spaltennamen sind bei GitLab selbst Labels — ohne diese Sperre koennte das
@@ -712,11 +782,55 @@ export async function issueLabel(tracker, config, args, hilfe = "") {
   // Projekt einmal den Status aendert und einmal nicht, ist die schlechtere Wahl.
   // Verglichen wird exakt — nur der wortgleiche Name ist das Statuslabel.
   if (Object.values(columnLabels(config)).includes(name)) {
-    fail(`Status-Label \`${name}\` nur ueber \`issue move\` aendern`);
+    fail(t("statusLabel", { name }));
   }
 
-  await tracker.labelIssue(id, name, aktion);
-  out({ ok: true, id, label: name, aktion });
+  out({ ok: true, id, ...await labelAbbilden(tracker, config, aktion, id, name), aktion });
+}
+
+/**
+ * Die Abbildung der Kit-Labels in `issue label` (Issue #1428, Plan #1420 E6): Kit-eigene
+ * Labels gehoeren dem Kit. `add` setzt den englischen Namen, in jedem Projekt (Issue #1552,
+ * Plan #1548 E2); fehlt er am Board, endet der Aufruf mit dem Hinweis, die Labels anzulegen —
+ * einen Rueckfall auf den deutschen Namen gibt es nicht mehr. `remove` nimmt den Namen ab,
+ * den die Karte traegt — GitHub und GitLab melden beim Abnehmen eines nicht gesetzten Labels
+ * keinen Fehler, `remove kit:clarify` taete an einer Karte mit dem deutschen Namen sonst still
+ * nichts. Fremde Labels und Kit-Labels mit einem Namen fuer beide Sprachen gehen unveraendert
+ * durch.
+ *
+ * Liefert `{ label }` mit dem geschriebenen Namen, dazu `hinweise` als
+ * `{ art: "nicht-getragen" | "beide", meldung }`, wenn es etwas zu sagen gibt.
+ */
+export async function labelAbbilden(tracker, config, aktion, id, name) {
+  const sache = erkenneLabel(name);
+  if (!sache || LABELS[sache].de === LABELS[sache].en) {
+    await tracker.labelIssue(id, name, aktion);
+    return { label: name };
+  }
+
+  if (aktion === "add") {
+    const label = labelName(sache);
+    try {
+      await tracker.labelIssue(id, label, "add");
+    } catch (e) {
+      if (!(e instanceof LabelFehltError)) throw e;
+      throw new LabelFehltError(t("labelFehltAnlegen", { label, grund: e.message }));
+    }
+    return { label };
+  }
+
+  const namen = [labelName(sache), ...SPRACHEN.map((s) => labelName(sache, s)).filter((n) => n !== labelName(sache))];
+
+  const karte = await tracker.getIssue(id);
+  const getragen = namen.filter((n) => (karte.labels || []).includes(n));
+  if (getragen.length === 0) {
+    const meldung = t("labelNichtGetragen", { id, namen: namen.join(t("labelWederNoch")) });
+    return { label: name, hinweise: [{ art: "nicht-getragen", meldung }] };
+  }
+  for (const n of getragen) await tracker.labelIssue(id, n, "remove");
+  if (getragen.length === 1) return { label: getragen[0] };
+  const meldung = t("labelBeide", { id, namen: getragen.join(", ") });
+  return { label: name, hinweise: [{ art: "beide", meldung }] };
 }
 
 /**
@@ -748,30 +862,30 @@ export async function leseTextQuelle(direkt, dateiPfad, flagName) {
 
   // Beide angegeben: Fehler statt Vorrangregel. Wer beides setzt, meint etwas
   // anderes als das, was eine stille Vorrangregel taete.
-  if (hatDirekt && hatDatei) fail(`--${flagName} und ${dateiFlag} schliessen sich aus — nur eine Quelle angeben.`);
-  if (dateiPfad === true) fail(`${dateiFlag} braucht einen Pfad.`);
-  if (direkt === true) fail(`--${flagName} braucht einen Wert (oder '-' fuer stdin).`);
+  if (hatDirekt && hatDatei) fail(t("quelleBeides", { flag: flagName, dateiFlag }));
+  if (dateiPfad === true) fail(t("quelleOhnePfad", { dateiFlag }));
+  if (direkt === true) fail(t("quelleOhneWert", { flag: flagName }));
 
   let text;
   if (hatDatei) {
-    if (!existsSync(dateiPfad)) fail(`${dateiFlag}: Datei nicht gefunden: ${dateiPfad}`);
+    if (!existsSync(dateiPfad)) fail(t("quelleDateiFehlt", { dateiFlag, pfad: dateiPfad }));
     try {
       text = readFileSync(dateiPfad, "utf-8");
     } catch (e) {
-      fail(`${dateiFlag}: ${dateiPfad} ist nicht lesbar (${e.code || e.message}).`);
+      fail(t("quelleUnlesbar", { dateiFlag, pfad: dateiPfad, grund: e.code || e.message }));
     }
   } else if (direkt === "-") {
     try {
       text = await stdinLesen();
     } catch (e) {
-      fail(`--${flagName} -: stdin ist nicht lesbar (${e.code || e.message}).`);
+      fail(t("stdinUnlesbar", { flag: flagName, grund: e.code || e.message }));
     }
   } else {
     text = direkt;
   }
 
   if (typeof text !== "string" || text.trim() === "") {
-    fail(`--${flagName} ist erforderlich und darf nicht leer sein (Argument, ${dateiFlag} oder '-' fuer stdin).`);
+    fail(t("quelleLeer", { flag: flagName, dateiFlag }));
   }
   return text;
 }
@@ -788,7 +902,7 @@ function stdinLesen() {
 
 export async function issueComment(tracker, args) {
   const id = args._[0];
-  if (!id) fail("id ist erforderlich: board.mjs issue comment <id> --text \"...\"");
+  if (!id) fail(t("idErforderlich", { aufruf: 'issue comment <id> --text "..."' }));
   // Vor jeder Textaufloesung: Ein fehlerhafter Schalter soll nicht erst eine Datei
   // lesen und schon gar nichts ans Board schicken.
   const idempotencyKey = idempotenzOption(args["idempotency-key"]);
@@ -836,7 +950,7 @@ function lebendeKitStandMarkierung(baum) {
  */
 export function kitStandZeileFuer(text, { env = process.env, baum = process.cwd(), config = null } = {}) {
   if (!env.KIT_STAND) return null;
-  if (String(text).split(/\r?\n/).some((z) => z.startsWith(KIT_STAND_PRAEFIX))) return null;
+  if (markerWerte(text, "kitStand").length > 0) return null;
   const markierung = lebendeKitStandMarkierung(baum);
   if (!markierung) return null;
   const commit = String(env.KIT_STAND);
@@ -850,7 +964,7 @@ export function kitStandZeileFuer(text, { env = process.env, baum = process.cwd(
 
 function ladeMainBranch(baum) {
   try {
-    return JSON.parse(readFileSync(join(baum, ".claude", "workflow.config.json"), "utf-8")).mainBranch || "main";
+    return normalisiereConfig(JSON.parse(readFileSync(join(baum, ".claude", "workflow.config.json"), "utf-8"))).config.mainBranch || "main";
   } catch {
     return "main";
   }
@@ -889,6 +1003,23 @@ function laufkennung(id) {
   return stempel;
 }
 
+/**
+ * Der kurze Hash des juengsten Commits seit `seit`, dessen Nachricht `Issue #<N>` nennt,
+ * mit Wortgrenze nach der Nummer (`Issue #50` belegt nicht Karte 5), oder null — auch,
+ * wenn git scheitert (Issue #1584). Der Start ist injizierbar wie bei `exec`.
+ */
+export function commitBeleg(id, seit, { spawn = spawnSync, baum = process.cwd() } = {}) {
+  const res = spawn("git", ["log", `--since=${seit}`, "--format=%h%x1f%B%x1e"], { cwd: baum, encoding: "utf-8" });
+  if (res.error || res.status !== 0) return null;
+  const nummer = kartenSchluessel(id).replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+  const muster = new RegExp(`Issue #0*${nummer}\\b`);
+  for (const satz of String(res.stdout ?? "").split("\x1e")) {
+    const [hash, nachricht = ""] = satz.trimStart().split("\x1f");
+    if (hash && muster.test(nachricht)) return hash;
+  }
+  return null;
+}
+
 // Die Stuecke einer Karte in Nummernfolge (numerisch, nicht lexikalisch: 10 nach 2).
 function berichtStuecke(id) {
   const ordner = resolve(".claude", BERICHTE_ORDNER);
@@ -911,12 +1042,23 @@ function stueckeZusammensetzen(stuecke) {
   }, "");
 }
 
+/**
+ * Traegt der Kommentar die Laufzeile `Bericht-Lauf: <stempel>` — unter beiden Namen des
+ * Markers, der Stempel zeichengleich (Issue #1443).
+ */
+function traegtLaufZeile(body, laufZeile) {
+  const stempel = leseMarker(laufZeile)?.rest.trim();
+  return markerWerte(body, "berichtLauf").some((w) => w.trim() === stempel);
+}
+
 const vergleichbar = (text) => String(text ?? "").replaceAll("\r\n", "\n").trimEnd();
 
 // Abschnitt `### Ursprungsdokumente` im Abschlussbericht (Issue #1286, Plan #1283 A9, E6).
-// Er steht unmittelbar vor dem Schwanz aus `Kit-Stand:` und `Bericht-Lauf:`; `issue melden`
+// Er steht unmittelbar vor dem Schwanz aus `Kit-Stand:` und `Bericht-Lauf:`; `issue report`
 // schreibt ihn nach dem Zug, und `berichtAblegen` fuehrt ihn bei einer Wiederholung mit.
-const URSPRUNG_ABSCHNITT = "### Ursprungsdokumente";
+// Geschrieben in der Projektsprache wie der Bericht, den er ergaenzt (Issue #1479).
+// Zurueckgelesen unter beiden Namen (Issue #1460): `### Ursprungsdokumente` oder `### Origin documents`.
+const URSPRUNG_KOPF = ueberschriftZeile("ursprungsdokumente", 3);
 
 // Index der ersten Zeile des Schwanzes: die letzten Zeilen, die mit `Kit-Stand:` oder
 // `Bericht-Lauf:` beginnen oder leer sind, ohne fuehrende Leerzeilen.
@@ -924,7 +1066,7 @@ function schwanzBeginn(zeilen) {
   let beginn = zeilen.length;
   for (let i = zeilen.length - 1; i >= 0; i--) {
     const z = zeilen[i];
-    if (z.trim() !== "" && !z.startsWith(KIT_STAND_PRAEFIX) && !z.startsWith(BERICHT_LAUF)) break;
+    if (z.trim() !== "" && !["kitStand", "berichtLauf"].includes(erkenneMarker(z))) break;
     if (z.trim() !== "") beginn = i;
   }
   return beginn;
@@ -933,7 +1075,7 @@ function schwanzBeginn(zeilen) {
 /** `{ ohne, abschnitt }`: der Bericht ohne den Abschnitt und der Abschnitt selbst oder null. */
 function ursprungAbtrennen(body) {
   const zeilen = String(body ?? "").replaceAll("\r\n", "\n").split("\n");
-  const kopf = zeilen.indexOf(URSPRUNG_ABSCHNITT);
+  const kopf = zeilen.findIndex((z) => URSPRUNG_KOPF.test(z));
   const ende = schwanzBeginn(zeilen);
   if (kopf === -1 || kopf >= ende) return { ohne: body, abschnitt: null };
   const vorher = zeilen.slice(0, kopf).join("\n").trimEnd();
@@ -950,14 +1092,14 @@ function ursprungEinhaengen(body, abschnitt) {
   return `${zeilen.slice(0, ende).join("\n").trimEnd()}\n\n${abschnitt}\n\n${zeilen.slice(ende).join("\n")}`;
 }
 
-// `issue melden <id> --teil <n> --text '…'`: nur das Stueck ablegen, kein Board-Zugriff.
+// `issue report <id> --part <n> --text '…'`: nur das Stueck ablegen, kein Board-Zugriff.
 async function meldenStueck(id, args, hatText) {
-  if (!/^\d+$/.test(String(args.teil)) || Number(args.teil) < 1) {
-    fail(`--teil '${args.teil}' ist keine positive Ganzzahl.`);
+  if (!/^\d+$/.test(String(args.part)) || Number(args.part) < 1) {
+    fail(t("meldenTeilKeineZahl", { wert: args.part }));
   }
-  if (!hatText) fail("--teil braucht --text '…' mit dem Stueck.");
+  if (!hatText) fail(t("meldenTeilOhneText"));
   const text = await leseTextQuelle(args.text, args["text-file"], "text");
-  const nummer = Number(args.teil);
+  const nummer = Number(args.part);
   const pfad = resolve(".claude", BERICHTE_ORDNER, `${kartenSchluessel(id)}.${nummer}.md`);
   mkdirSync(dirname(pfad), { recursive: true });
   writeFileSync(pfad, text, "utf-8");
@@ -977,16 +1119,16 @@ async function berichtAblegen(tracker, id, text, laufZeile) {
   try {
     kommentare = await tracker.kommentareStreng(id);
   } catch (e) {
-    fail(`Kommentare von Issue ${id} nicht lesbar — kein Bericht geschrieben, Karte bleibt: ${e.message}`);
+    fail(t("berichtKommentareUnlesbar", { id, grund: e.message }));
   }
-  const dieserLauf = kommentare.filter((c) => String(c.body ?? "").replaceAll("\r", "").split("\n").includes(laufZeile));
+  const dieserLauf = kommentare.filter((c) => traegtLaufZeile(c.body, laufZeile));
   try {
     // Ein Abschnitt `### Ursprungsdokumente` gehoert nicht zum Text der Session: Er zaehlt
     // beim Vergleich nicht und bleibt beim Ersetzen unveraendert stehen (E6).
     if (dieserLauf.some((c) => vergleichbar(ursprungAbtrennen(c.body).ohne) === vergleichbar(neu))) return "unveraendert";
     if (dieserLauf.length > 0) {
       const ziel = dieserLauf.at(-1);
-      if (ziel.id == null) throw new BoardError("der Bericht dieses Laufs traegt keine Kommentar-ID.");
+      if (ziel.id == null) throw new BoardError(t("berichtOhneKommentarId"));
       const { abschnitt } = ursprungAbtrennen(ziel.body);
       await tracker.ersetzeKommentar(id, ziel.id, abschnitt ? ursprungEinhaengen(neu, abschnitt) : neu);
       return "ersetzt";
@@ -994,17 +1136,17 @@ async function berichtAblegen(tracker, id, text, laufZeile) {
     await tracker.commentIssue(id, neu);
     return "angelegt";
   } catch (e) {
-    fail(`Bericht fuer Issue ${id} nicht abgelegt, Karte bleibt in In progress: ${e.message}`);
+    fail(t("berichtNichtAbgelegt", { id, grund: e.message }));
   }
 }
 
 /**
- * `issue melden <id>` — legt den Abschlussbericht eines Laufs ab und zieht die Karte nach
+ * `issue report <id>` — legt den Abschlussbericht eines Laufs ab und zieht die Karte nach
  * In review, in einem Aufruf (Issue #1022, Plan #1015 E2, E8, E9, E10).
  *
  * Drei Formen:
  *  - `--text '…'` (oder `--text-file` von Hand): Bericht direkt, dann Abschluss.
- *  - `--teil <n> --text '…'`: schreibt nur Stueck n nach `.claude/berichte/<id>.<n>.md`,
+ *  - `--part <n> --text '…'`: schreibt nur Stueck n nach `.claude/berichte/<id>.<n>.md`,
  *    ueberschreibt es bei Wiederholung, beruehrt das Board nicht.
  *  - ohne beides: setzt die Stuecke zusammen und schliesst ab. Geraeumt wird erst nach
  *    Ablage UND Zug — scheitert einer davon, ist die Wiederholung dieser Aufruf allein.
@@ -1014,33 +1156,39 @@ async function berichtAblegen(tracker, id, text, laufZeile) {
  * sonst ersetzt, nie ein zweiter angelegt. Deshalb werden die Kommentare STRENG gelesen:
  * Ein leer gelesener Stand wuerde den Bericht doppeln. Die Reihenfolge Ablage vor Zug
  * haelt eine Karte ohne Bericht aus In review heraus.
+ *
+ * Gezogen wird nur mit Beleg (Issue #1584): ein Commit dieses Laufs, der `Issue #<N>`
+ * nennt, eine `[Mensch]`-Karte oder `--without-commit '<Begruendung>'`, die als Zeile im
+ * Bericht steht. Ohne Beleg bleiben Board und Stuecke unberuehrt.
  */
-export async function issueMelden(tracker, args) {
+export async function issueMelden(tracker, args, { spawn = spawnSync } = {}) {
   const id = args._[0];
-  if (!id) fail("id ist erforderlich: board.mjs issue melden <id> [--teil <n>] --text '…'");
+  if (!id) fail(t("idErforderlich", { aufruf: t("meldenAufruf") }));
   const hatText = args.text !== undefined || args["text-file"] !== undefined;
 
-  if (args.teil !== undefined) {
+  if (args.part !== undefined) {
     await meldenStueck(id, args, hatText);
     return;
   }
 
   const stuecke = berichtStuecke(id);
   if (hatText && stuecke.length > 0) {
-    fail(`Fuer Issue ${id} liegen ${stuecke.length} Stueck(e) unter .claude/${BERICHTE_ORDNER}/ — `
-      + "entweder --text oder den Abschluss ohne --text aufrufen, nicht beides.");
+    fail(t("meldenTextUndStuecke", { id, anzahl: stuecke.length, ordner: BERICHTE_ORDNER }));
   }
   if (!hatText && stuecke.length === 0) {
-    fail(`Kein Bericht fuer Issue ${id}: weder --text noch Stuecke unter .claude/${BERICHTE_ORDNER}/.`);
+    fail(t("meldenKeinBericht", { id, ordner: BERICHTE_ORDNER }));
   }
   const text = hatText ? await leseTextQuelle(args.text, args["text-file"], "text") : stueckeZusammensetzen(stuecke);
 
   const stempel = laufkennung(id);
   if (!stempel) {
-    fail(`Kein Zug von Issue ${id} nach in_progress in .claude/${BEWEGUNGEN_DATEI} — `
-      + "ohne Laufkennung kein Bericht. Nichts geschrieben.");
+    fail(t("meldenKeinZug", { id, datei: BEWEGUNGEN_DATEI }));
   }
-  const bericht = await berichtAblegen(tracker, id, text, `${BERICHT_LAUF} ${stempel}`);
+  const commit = await meldenCommit(tracker, id, args, stempel, spawn);
+  const zuMelden = commit === "ohne"
+    ? `${text.trimEnd()}\n\n${t("meldenOhneCommitZeile", { grund: einzeilig(args["without-commit"]) })}`
+    : text;
+  const bericht = await berichtAblegen(tracker, id, zuMelden, `${BERICHT_LAUF} ${stempel}`);
 
   // Wie `issue move`: Buchungen erst nach dem geglueckten Zug.
   await tracker.moveIssue(id, "in_review");
@@ -1052,22 +1200,53 @@ export async function issueMelden(tracker, args) {
     try { rmdirSync(resolve(".claude", BERICHTE_ORDNER)); } catch { /* nicht leer — Stuecke anderer Karten */ }
   }
   const ursprung = await ursprungMelden(tracker, id, `${BERICHT_LAUF} ${stempel}`);
-  out({ ok: true, id, bericht, status: "in_review", ...(ursprung ? { ursprung } : {}) });
+  out({ ok: true, id, bericht, status: "in_review", commit, ...(ursprung ? { ursprung } : {}) });
+}
+
+/**
+ * Der Beleg, dass dieser Lauf etwas festgeschrieben hat (Issue #1584): der kurze Hash eines
+ * Commits seit dem Zug nach In progress, der `Issue #<N>` nennt, `"ohne"` mit
+ * `--without-commit '<Begruendung>'` oder `"mensch"` bei einer `[Mensch]`-Karte ohne solchen
+ * Commit. Fehlt er,
+ * endet der Aufruf mit Exit 1, bevor Board oder Stuecke beruehrt sind.
+ */
+async function meldenCommit(tracker, id, args, stempel, spawn) {
+  const grund = args["without-commit"];
+  if (grund !== undefined) {
+    if (typeof grund !== "string" || grund.trim() === "") fail(t("meldenOhneCommitLeer"));
+    return "ohne";
+  }
+  const hash = commitBeleg(id, stempel, { spawn });
+  if (hash) return hash;
+  // Die Karte erst ohne Commit lesen: Der uebliche Weg kostet so keinen Board-Aufruf mehr.
+  let karte;
+  try {
+    karte = await tracker.getIssue(id);
+  } catch (e) {
+    fail(t("meldenKarteUnlesbar", { id, grund: e.message }));
+  }
+  if (istMensch(karte?.title ?? "")) return "mensch";
+  fail(t("meldenKeinCommit", { id, nummer: kartenSchluessel(id), seit: stempel }));
 }
 
 // Ein Grund kann mehrzeilig sein (Adapter-Meldungen); im Listenpunkt steht er auf einer Zeile.
 const einzeilig = (text) => String(text ?? "").replaceAll(/\s+/g, " ").trim();
 
+// Die `aktion` ist Vertrag (E14): `wandert`, `bleibt` oder `lag bereits in <Spalte>`.
+const LAG_BEREITS = /^lag bereits in (.+)$/;
+
 function ursprungZeile(d, fehler) {
-  const name = d.art === "plan" ? `Plan #${d.id}` : `Fachliche Anforderung #${d.id}`;
-  if (fehler) return `- ${name}: ${fehler.art} (${einzeilig(fehler.grund)}) — nachziehen mit \`${fehler.kommando}\``;
-  if (d.aktion === "wandert") return `- ${name}: nach In review gewandert`;
-  if (d.aktion === "bleibt") return `- ${name}: bleibt — ${einzeilig(d.grund)}`;
+  const name = t(d.art === "plan" ? "ursprungPlan" : "ursprungFachlich", { id: d.id });
+  if (fehler) return t("ursprungFehler", { name, art: fehler.art, grund: einzeilig(fehler.grund), kommando: fehler.kommando });
+  if (d.aktion === "wandert") return t("ursprungGewandert", { name });
+  if (d.aktion === "bleibt") return t("ursprungBleibt", { name, grund: einzeilig(d.grund) });
+  const lag = LAG_BEREITS.exec(d.aktion);
+  if (lag) return t("ursprungLagBereits", { name, spalte: lag[1] });
   return `- ${name}: ${d.aktion}`;
 }
 
 function ursprungAbschnittText(ergebnis) {
-  const zeilen = [URSPRUNG_ABSCHNITT];
+  const zeilen = [`### ${ueberschriftName("ursprungsdokumente", prozessSprache())}`];
   for (const d of ergebnis.dokumente) zeilen.push(ursprungZeile(d, ergebnis.fehler.find((f) => f.id === d.id)));
   for (const f of ergebnis.fehler.filter((f) => !ergebnis.dokumente.some((d) => d.id === f.id))) {
     zeilen.push(`- ${f.art}: ${einzeilig(f.grund)}`);
@@ -1086,8 +1265,8 @@ async function ursprungDesPakets(tracker, id) {
   try {
     karte = await tracker.getIssue(id);
   } catch (e) {
-    return { plan: null, durch: false, grund: `Paket nicht lesbar (${e.message})`, fehlend: [], dokumente: [],
-      fehler: [{ id: kartenSchluessel(id), art: "Paket nicht lesbar", grund: e.message }] };
+    return { plan: null, durch: false, grund: t("ursprungPaketNichtLesbarGrund", { grund: e.message }), fehlend: [], dokumente: [],
+      fehler: [{ id: kartenSchluessel(id), art: t("ursprungPaketNichtLesbar"), grund: e.message }] };
   }
   if (istPlan(karte.title) || istFachlich(karte.title)) return null;
   const planNr = herkunftNummern(karte.body ?? "", "Plan")[0];
@@ -1096,7 +1275,7 @@ async function ursprungDesPakets(tracker, id) {
     return await ursprungNachziehen(tracker, planNr);
   } catch (e) {
     return { plan: planNr, durch: false, grund: e.message, fehlend: [], dokumente: [],
-      fehler: [{ id: planNr, art: "Nachziehen gescheitert", grund: e.message }] };
+      fehler: [{ id: planNr, art: t("ursprungNachziehenGescheitert"), grund: e.message }] };
   }
 }
 
@@ -1118,55 +1297,82 @@ async function ursprungMelden(tracker, id, laufZeile) {
 
   try {
     const kommentare = await tracker.kommentareStreng(id);
-    const ziel = kommentare.findLast((c) => String(c.body ?? "").replaceAll("\r", "").split("\n").includes(laufZeile));
-    if (!ziel || ziel.id == null) throw new BoardError("Bericht dieses Laufs nicht gefunden.");
+    const ziel = kommentare.findLast((c) => traegtLaufZeile(c.body, laufZeile));
+    if (!ziel || ziel.id == null) throw new BoardError(t("berichtNichtGefunden"));
     if (ursprungAbtrennen(ziel.body).abschnitt === null) {
       await tracker.ersetzeKommentar(id, ziel.id, ursprungEinhaengen(ziel.body, ursprungAbschnittText(ergebnis)));
     }
   } catch (e) {
-    ergebnis.fehler.push({ id: kartenSchluessel(id), art: "Abschnitt nicht geschrieben", grund: e.message });
+    ergebnis.fehler.push({ id: kartenSchluessel(id), art: t("ursprungAbschnittNichtGeschrieben"), grund: e.message });
   }
   return ergebnis;
 }
 
 // ============================================================
-// Laufstand einer Karte: issue stand (Issue #1083, Plan #1079 E1, E3, E4)
+// Laufstand einer Karte: issue run-state (Issue #1083, Plan #1079 E1, E3, E4)
 // ============================================================
 
+// Die Sache je Zustand im Namen-Register (Issue #1428, Plan #1420 E7).
+const STAND_LABEL_SACHEN = Object.freeze({ laeuft: "laufLaeuft", abgebrochen: "laufAbgebrochen", wartet: "laufWartet" });
+
 // SYNC: dieselben Vorgaben stehen in templates/workflow.config.schema.json unter
-// `night.stand.labels` — test/ablauf-board-dokumente-stand.test.mjs vergleicht beide.
-export const STAND_LABEL_VORGABEN = Object.freeze({
-  laeuft: "lauf:laeuft",
-  abgebrochen: "lauf:abgebrochen",
-  wartet: "lauf:wartet",
-});
+// `night.stand.labels` — test/ablauf-board-dokumente-stand.test.mjs vergleicht beide. Ohne
+// gesetzten Wert gilt der englische Name, in jedem Projekt (Issue #1552, Plan #1548 E2).
+export const STAND_LABEL_VORGABEN = Object.freeze(Object.fromEntries(
+  Object.entries(STAND_LABEL_SACHEN).map(([zustand, sache]) => [zustand, labelName(sache)])));
 const STAND_ZUSTAENDE = [...Object.keys(STAND_LABEL_VORGABEN), "fertig"];
 const LAUFSTAND_ANKER = "## Laufstand";
 
-/** Die drei Labelnamen aus `night.stand.labels`, fehlende aus den Vorgaben (E4). */
-function standLabels(config) {
+/**
+ * Die drei Labelnamen aus `night.stand.labels`, fehlende aus den englischen Vorgaben (E4).
+ * Ein gesetzter Wert gilt unveraendert (Plan #1420 E7).
+ */
+export function standLabels(config) {
   const block = config?.night?.stand?.labels ?? {};
   const labels = { ...STAND_LABEL_VORGABEN };
   for (const zustand of Object.keys(STAND_LABEL_VORGABEN)) {
     const wert = block[zustand];
     if (wert === undefined) continue;
     if (typeof wert !== "string" || wert.trim() === "") {
-      fail(`night.stand.labels.${zustand} muss ein nicht leerer Text sein, ist ${JSON.stringify(wert)}.`);
+      fail(t("standLabelLeer", { zustand, wert: JSON.stringify(wert) }));
     }
     labels[zustand] = wert.trim();
   }
   if (new Set(Object.values(labels)).size !== Object.keys(labels).length) {
-    fail(`night.stand.labels: die drei Namen muessen verschieden sein (${Object.values(labels).join(", ")}).`);
+    fail(t("standLabelsGleich", { namen: Object.values(labels).join(", ") }));
   }
   return labels;
 }
 
-const istLaufstand = (body) => String(body ?? "").replaceAll("\r", "").trimStart().split("\n")[0].trim() === LAUFSTAND_ANKER;
+// Die erste Zeile ist der Anker allein, unter beiden Namen (Issue #1443).
+const istLaufstand = (body) => {
+  const m = leseMarker(String(body ?? "").replaceAll("\r", "").trimStart().split("\n")[0]);
+  return m?.sache === "laufstand" && m.rest.trim() === "";
+};
 
 /**
- * `issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <datei>` —
+ * Die Labels, die `issue run-state` vor dem Setzen abnimmt (Issue #1552, Plan #1548 E3): je
+ * Zustand der Config-Wert und jeder getragene Name, den das Register als Sache des Zustands
+ * erkennt — so geht auch ein deutsches `lauf:laeuft` ab, wenn das Kit `run:running` schreibt.
+ * Das Label des Ziels selbst bleibt; fremde Labels bleiben unberuehrt.
+ */
+export function standAbzuraeumen(labels, getragen, ziel) {
+  const weg = new Set();
+  for (const [zustand, name] of Object.entries(labels)) {
+    weg.add(name);
+    for (const g of getragen || []) {
+      if (erkenneLabel(g) === STAND_LABEL_SACHEN[zustand]) weg.add(g);
+    }
+  }
+  weg.delete(ziel);
+  return [...weg];
+}
+
+/**
+ * `issue run-state <id> --state running|aborted|waiting|done --text-file <datei>` —
  * setzt das Label des Zustands, nimmt die beiden anderen ab (bei `fertig` alle drei) und
- * ersetzt den Kommentar mit Anker `## Laufstand` oder legt ihn an.
+ * ersetzt den Kommentar mit Anker `## Laufstand` oder legt ihn an. Abgenommen wird auch jeder
+ * getragene Name derselben Sache in der anderen Sprache (`standAbzuraeumen`).
  *
  * Wiederholbar wie `berichtAblegen`: gleicher Inhalt -> nichts geschrieben, anderer ->
  * ersetzt, nie ein zweiter. Darum wird STRENG gelesen, und zwar vor jedem Schreiben — ein
@@ -1175,13 +1381,16 @@ const istLaufstand = (body) => String(body ?? "").replaceAll("\r", "").trimStart
  */
 export async function issueStand(tracker, config, args) {
   const id = args._[0];
-  const nutzung = "board.mjs issue stand <id> --zustand laeuft|abgebrochen|wartet|fertig --text-file <datei>";
-  if (!id) fail(`id ist erforderlich: ${nutzung}`);
-  if (args.labels !== undefined) fail(`--labels gibt es nicht: Die Namen kommen aus night.stand.labels der Config. ${nutzung}`);
-  if (!STAND_ZUSTAENDE.includes(args.zustand)) {
-    fail(`--zustand '${args.zustand ?? ""}' unbekannt. Erwartet: ${STAND_ZUSTAENDE.join(" | ")}`);
+  const aufruf = t("standAufruf");
+  if (!id) fail(t("idErforderlich", { aufruf }));
+  if (args.labels !== undefined) fail(t("standLabelsGibtsNicht", { aufruf }));
+  // `--state running|aborted|waiting|done` traegt ab hier den internen Schluessel (Issue #1555, E5).
+  const zustand = internerWert("state", args.state);
+  if (!STAND_ZUSTAENDE.includes(zustand)) {
+    const erwartet = STAND_ZUSTAENDE.map((z) => EINGABEWERTE.state[z]).join(" | ");
+    fail(t("standZustandUnbekannt", { wert: args.state ?? "", erwartet }));
   }
-  if (args["text-file"] === undefined) fail(`--text-file ist erforderlich: ${nutzung}`);
+  if (args["text-file"] === undefined) fail(t("standTextFileErforderlich", { aufruf }));
   const labels = standLabels(config);
   const text = await leseTextQuelle(undefined, args["text-file"], "text");
   const rumpf = text.replaceAll("\r\n", "\n").trim();
@@ -1191,13 +1400,14 @@ export async function issueStand(tracker, config, args) {
   try {
     kommentare = await tracker.kommentareStreng(id);
   } catch (e) {
-    fail(`Kommentare von Issue ${id} nicht lesbar — kein Laufstand geschrieben: ${e.message}`);
+    fail(t("standKommentareUnlesbar", { id, grund: e.message }));
   }
+  const getragen = (await tracker.getIssue(id))?.labels ?? [];
 
   // Erst abnehmen, dann setzen: So haengen nie zwei Laufstand-Labels zugleich.
-  const ziel = labels[args.zustand];
-  for (const name of Object.values(labels)) {
-    if (name !== ziel) await tracker.labelIssue(id, name, "remove");
+  const ziel = labels[zustand];
+  for (const name of standAbzuraeumen(labels, getragen, ziel)) {
+    await tracker.labelIssue(id, name, "remove");
   }
   if (ziel) await tracker.labelIssue(id, ziel, "add");
 
@@ -1207,14 +1417,14 @@ export async function issueStand(tracker, config, args) {
     kommentar = "unveraendert";
   } else if (staende.length > 0) {
     const alt = staende.at(-1);
-    if (alt.id == null) fail(`Der Laufstand an Issue ${id} traegt keine Kommentar-ID — nicht ersetzt.`);
+    if (alt.id == null) fail(t("standOhneKommentarId", { id }));
     await tracker.ersetzeKommentar(id, alt.id, neu);
     kommentar = "ersetzt";
   } else {
     await tracker.commentIssue(id, neu);
     kommentar = "angelegt";
   }
-  out({ ok: true, id, zustand: args.zustand, kommentar });
+  out({ ok: true, id, zustand, kommentar });
 }
 
 // ============================================================
@@ -1227,36 +1437,37 @@ export async function issueStand(tracker, config, args) {
 // SYNC: dieselben Texte stehen mit dem Praefix `Nachtlauf: ` in kit/night.mjs
 // (`pruefeIssueGates`). Wer einen hier aendert, aendert ihn dort mit — der
 // Gleichlauf-Test in test/ablauf-board-dokumente-auftrag.test.mjs vergleicht beide Seiten.
+// In der Projektsprache (Issue #1479); der Gleichlauf gilt fuer die deutsche Fassung. Die
+// Labels nennen beide Seiten englisch, in jedem Projekt (Issue #1553, Plan #1548 E15).
 export const AUFTRAG_BACKLOG_TEXTE = {
-  fachlich: (id) => `Fachliches Issue — wird nicht implementiert, bitte per /techplan #${id} in technische Issues ueberfuehren.`,
-  idee: (id) => `Idee — mit Abwaegung erst /fachplan #${id}, ohne Abwaegung /task #${id}, wird nicht implementiert.`,
-  plan: (id) => `Plan-Dokument — wird nicht implementiert, bitte per /issues #${id} in Arbeitspakete ueberfuehren.`,
-  mensch: () => "Menschenschritt — wird nicht implementiert, die Karte wartet auf einen Menschen und ist nicht gescheitert.",
-  klaeren: () => "Traegt kit:klaeren — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.",
+  fachlich: (id) => t("backlogFachlich", { id }),
+  idee: (id) => t("backlogIdee", { id }),
+  plan: (id) => t("backlogPlan", { id }),
+  mensch: () => t("backlogMensch"),
+  klaeren: () => t("backlogKlaeren", { label: labelName("klaeren") }),
   // SYNC: `GESCHUETZT_LABEL_GATE_TEXT` in kit/night.mjs (Issue #1046, #1052).
-  geschuetzt: () => "Traegt kit:geschuetzt — eine menschliche Handlung an einer geschuetzten Datei wartet, wird nicht implementiert. Das Label nimmt nur ein Mensch ab.",
+  geschuetzt: () => t("backlogGeschuetzt", { label: labelName("geschuetzt") }),
 };
 
 // Dieselbe Pruefreihenfolge wie `pruefeIssueGates` in kit/night.mjs: erst die Praefixe,
 // dann das Label.
 const AUFTRAG_PRAEFIXE = [
-  [istFachlich, "fachlich", "Titel-Praefix [Fachlich]"],
-  [istIdee, "idee", "Titel-Praefix [Idee]"],
-  [istPlan, "plan", "Titel-Praefix [Plan]"],
-  [istMensch, "mensch", "Titel-Praefix [Mensch]"],
+  [istFachlich, "fachlich"],
+  [istIdee, "idee"],
+  [istPlan, "plan"],
+  [istMensch, "mensch"],
 ];
-const AUFTRAG_KLAEREN = "kit:klaeren";
 const AUFTRAG_SPALTEN = new Set(["ready", "in_progress"]);
 // Die Spalten, in denen eine Voraussetzung unerfuellt ist (Issue #1149); jede andere Lage
 // gilt als erfuellt — wie `satisfiedIds` in kit/night.mjs.
 const AUFTRAG_UNERFUELLT = ["backlog", "ready", "in_progress"];
-const KEIN_VORHABEN = "kein Vorhaben";
 
 // SYNC: nachgebaut aus `parseDeps` in kit/night.mjs (DEPS_UEBERSCHRIFT, ABSCHNITTS_ENDE,
 // LOKALE_REFERENZ, abschnittLesen) — bewusst kein Import, board.mjs laedt den Runner
 // nicht. Der Gleichlauf-Test in test/ablauf-board-dokumente-auftrag.test.mjs faehrt beide Lesungen ueber
 // dieselben Fixtures.
-const DEPS_UEBERSCHRIFT = /^ {0,3}##\s*Abh(?:ä|ae)ngigkeiten\s*$/i;
+// Unter beiden Namen (Issue #1460): `## Abhaengigkeiten` oder `## Dependencies`.
+const DEPS_UEBERSCHRIFT = ueberschriftZeile("abhaengigkeiten");
 const DEPS_ABSCHNITTS_ENDE = /^ {0,3}##\s/;
 const DEPS_REFERENZ = /(?<![\w`/#])#(\d+)/g;
 
@@ -1314,19 +1525,19 @@ export async function abhaengigkeitsHinweise(body, tracker) {
     if (herkunft === "text") {
       hinweise.push({
         art: "schreibweise", nummer, stelle,
-        meldung: `#${nummer} zählt als Abhängigkeit — sie steht nicht in einer Verweiszeile (‚Issue #${nummer}‘): ${stelle}`,
+        meldung: t("hinweisSchreibweise", { nummer, stelle }),
       });
     }
     const dokument = await dokumentArt(tracker, nummer);
     if (dokument?.unbekannt) {
       hinweise.push({
         art: "unbekannt", nummer, stelle,
-        meldung: `#${nummer} steht nicht auf dem Board (archiviert oder nicht vorhanden?) — sie gilt als erfüllt`,
+        meldung: t("hinweisUnbekannt", { nummer }),
       });
     } else if (dokument) {
       hinweise.push({
         art: "dokument", nummer, stelle,
-        meldung: `#${nummer} ist ein Dokument (${dokument.praefix}), kein Arbeitspaket — ${dokument.satz}`,
+        meldung: t("hinweisDokument", { nummer, praefix: dokument.praefix, satz: dokument.satz }),
       });
     }
   }
@@ -1344,10 +1555,10 @@ async function dokumentArt(tracker, nummer) {
   } catch (e) {
     return karteUnbekannt(e) ? { unbekannt: true } : null;
   }
-  const erst = "eine fachliche Anforderung oder Idee ist erst erledigt, wenn ihre Pakete fertig sind";
-  if (istPlan(titel)) return { praefix: "[Plan]", satz: "ein Plandokument wird nie durch Umsetzung erledigt" };
-  if (istFachlich(titel)) return { praefix: "[Fachlich]", satz: erst };
-  if (istIdee(titel)) return { praefix: "[Idee]", satz: erst };
+  const sprache = prozessSprache();
+  if (istPlan(titel)) return { praefix: praefix("plan", sprache), satz: t("dokumentPlanSatz") };
+  if (istFachlich(titel)) return { praefix: praefix("fachlich", sprache), satz: t("dokumentErstSatz") };
+  if (istIdee(titel)) return { praefix: praefix("idee", sprache), satz: t("dokumentErstSatz") };
   return null;
 }
 
@@ -1413,28 +1624,26 @@ async function auftragVoraussetzung(tracker, nummer, spaltenListen) {
   try {
     karte = await tracker.getIssue(String(nummer));
   } catch (e) {
-    if (karteUnbekannt(e)) return { id: String(nummer), titel: null, spalte: null, befund: "erfuellt", grund: NICHT_AUF_DEM_BOARD };
-    return { id: String(nummer), titel: null, spalte: null, befund: "nicht feststellbar", grund: `Karte nicht lesbar: ${e.message}` };
+    if (karteUnbekannt(e)) return { id: String(nummer), titel: null, spalte: null, befund: "erfuellt", grund: t("nichtAufDemBoard") };
+    return { id: String(nummer), titel: null, spalte: null, befund: "nicht feststellbar", grund: t("karteNichtLesbar", { grund: e.message }) };
   }
   let spalte;
   try {
     spalte = await auftragSpalte(tracker, { ...karte, id: String(nummer) }, AUFTRAG_UNERFUELLT, spaltenListen);
   } catch (e) {
-    return { id: String(nummer), titel: karte.title ?? null, spalte: null, befund: "nicht feststellbar", grund: `Spalte nicht lesbar: ${e.message}` };
+    return { id: String(nummer), titel: karte.title ?? null, spalte: null, befund: "nicht feststellbar", grund: t("spalteNichtLesbar", { grund: e.message }) };
   }
   const eintrag = { id: String(nummer), titel: karte.title ?? null, spalte };
   return { ...eintrag, befund: AUFTRAG_UNERFUELLT.includes(spalte) ? "unerfuellt" : "erfuellt" };
 }
 
-const NICHT_AUF_DEM_BOARD = "steht nicht auf dem Board";
-
 /**
  * Der Tracker kennt die Nummer nicht — anders als ein Abruf, der scheitert (Issue #1149).
- * Lokaler Tracker und Toolbox werfen `Issue <n> nicht gefunden`, gh und glab ihre eigene
+ * Lokaler Tracker und Toolbox werfen `Issue <n> nicht gefunden` (englisch `not found`), gh und glab ihre eigene
  * Meldung. Ein fehlendes CLI ("gh nicht gefunden") zaehlt nicht dazu.
  */
 function karteUnbekannt(e) {
-  if (e instanceof BoardError) return /^Issue \S+ nicht gefunden/.test(e.message);
+  if (e instanceof BoardError) return /^Issue \S+ (?:nicht gefunden|not found)/.test(e.message);
   return /Could not resolve to an issue|404 Not Found/i.test(String(e?.message ?? ""));
 }
 
@@ -1447,24 +1656,25 @@ const ohneFuehrendeNullen = (id) => String(id).replace(/^0+(?=\d)/, "");
  * Tracker seine Nummern mit ihnen schreibt.
  */
 export function herkunftNummern(body, feld) {
-  // `[^\S\n]` statt `\s`: `\s*$` duerfte mit dem m-Flag ueber Zeilenumbrueche laufen.
-  const zeile = new RegExp(String.raw`^[^\S\n]*${feld}:[^\S\n]*Issue[^\S\n]*#(\d+)[^\S\n]*$`, "gm");
-  return [...normalisiereZeilenenden(body).matchAll(zeile)].map((m) => ohneFuehrendeNullen(m[1]));
+  // Das Feld kommt mit seinem deutschen Namen; gelesen wird es unter beiden (Issue #1443).
+  const sache = erkenneMarker(`${feld}:`);
+  if (sache === null) throw new Error(`herkunftNummern: unbekanntes Feld "${feld}"`);
+  return markerWerte(body, sache).map((rest) => HERKUNFT_REST.exec(rest)?.[1]).filter(Boolean).map(ohneFuehrendeNullen);
 }
+
+// Der Rest einer Herkunftszeile hinter dem Feld: `Issue #N` bis zum Zeilenende.
+const HERKUNFT_REST = /^[^\S\n]*Issue[^\S\n]*#(\d+)[^\S\n]*$/;
 
 // Die Kontext-Zeile `Plan-Entscheidungen: E1, E3` (oder `Keine.`), die `/issues` in jedes
 // Paket aus einem Plan schreibt (Plan #1015, E1). Gelesen werden die `E<n>` nur aus dieser
-// einen Zeile — eine Freitextsuche im Paket traefe auch `E2E`.
-const PLAN_AUSWAHL_FELD = "Plan-Entscheidungen:";
+// einen Zeile — eine Freitextsuche im Paket traefe auch `E2E`. Der Name kommt aus dem
+// Register, erkannt werden beide (Issue #1443).
 const E_NUMMER = /\bE(\d+)\b/g;
 
 /** Die genannten `E<n>` ohne Doppelte, `[]` bei `Keine.`, `null` ohne die Zeile (Altbestand). */
 function planAuswahlLesen(body) {
-  // Zeilenweise statt eines `^…(.*)$`-Ausdrucks mit m-Flag (sonarjs/slow-regex).
-  const zeile = normalisiereZeilenenden(body).split("\n").map((z) => z.trimStart())
-    .find((z) => z.startsWith(PLAN_AUSWAHL_FELD));
-  if (zeile === undefined) return null;
-  const wert = zeile.slice(PLAN_AUSWAHL_FELD.length);
+  const wert = markerWerte(body, "planEntscheidungen")[0];
+  if (wert === undefined) return null;
   return [...new Set([...wert.matchAll(E_NUMMER)].map((t) => `E${Number(t[1])}`))];
 }
 
@@ -1478,8 +1688,8 @@ function abschnittWoertlich(body, name) {
   const imFence = fenceLauf();
   // Je Zeile die Ueberschrift ausserhalb eines Codeblocks, sonst null.
   const koepfe = zeilen.map((z) => (imFence(z) ? null : ABSCHNITT_ZEILE.exec(z)?.[1] ?? null));
-  const soll = normUeberschrift(name);
-  const start = koepfe.findIndex((k) => k !== null && normUeberschrift(k) === soll);
+  const soll = kanonischeUeberschrift(name);
+  const start = koepfe.findIndex((k) => k !== null && kanonischeUeberschrift(k) === soll);
   if (start < 0) return null;
   const naechster = koepfe.findIndex((k, i) => i > start && k !== null);
   const inhalt = zeilen.slice(start + 1, naechster < 0 ? zeilen.length : naechster);
@@ -1519,29 +1729,30 @@ function planEintraegeLesen(planBody) {
 function auftragPlanEntscheidungen(karte, planNr, plan, luecken) {
   const auswahl = planAuswahlLesen(karte.body);
   const glied = (hinweis, eintraege = []) => ({ plan: planNr, auswahl, hinweis, eintraege });
+  const luecke = (was) => luecken.push(t("lueckePlanEntscheidungen", { was }));
   if (planNr === null) {
-    luecken.push(`Plan-Entscheidungen: ${KEIN_VORHABEN} — das Paket nennt keine Zeile \`Plan: Issue #M\``);
-    return glied(KEIN_VORHABEN);
+    luecke(t("keinVorhabenGrund"));
+    return glied(t("keinVorhaben"));
   }
   if (plan.fehler) {
-    luecken.push(`Plan-Entscheidungen: Plan #${planNr} nicht lesbar (${plan.fehler})`);
+    luecke(t("lueckePlanNichtLesbar", { plan: planNr, grund: plan.fehler }));
     return glied(null);
   }
   if (auswahl !== null && auswahl.length === 0) {
-    return glied("Das Paket beruft sich auf keine Plan-Entscheidung (`Plan-Entscheidungen: Keine.`).");
+    return glied(t("hinweisKeineAuswahl"));
   }
   const alle = planEintraegeLesen(plan.body) ?? [];
   if (alle.length === 0) {
-    luecken.push(`Plan-Entscheidungen: Plan #${planNr} hat unter \`## Architektonische Entscheidungen\` keinen Eintrag \`- E<n>:\``);
+    luecke(t("lueckePlanOhneEintrag", { plan: planNr, abschnitt: ueberschriftName("architektonischeEntscheidungen", prozessSprache()) }));
   }
   if (auswahl === null) {
-    return glied("Das Paket nennt keine Auswahl (Zeile `Plan-Entscheidungen:` fehlt) — es folgen alle Einträge des Plans.", alle);
+    return glied(t("hinweisAlleEintraege"), alle);
   }
   const eintraege = [];
   for (const id of auswahl) {
     const eintrag = alle.find((e) => e.id === id);
     if (eintrag) eintraege.push(eintrag);
-    else if (alle.length > 0) luecken.push(`Plan-Entscheidung ${id}: fehlt im Plan #${planNr}`);
+    else if (alle.length > 0) luecken.push(t("lueckeEntscheidungFehlt", { e: id, plan: planNr }));
   }
   return glied(null, eintraege);
 }
@@ -1552,8 +1763,9 @@ async function auftragFachlicherAnlass(tracker, karte, plan, luecken) {
   const ausPlan = plan?.body === undefined ? undefined : herkunftNummern(plan.body, "Fachliche Quelle")[0];
   const quelle = ausPaket ?? ausPlan ?? null;
   const leer = { quelle: null, herkunft: null, ziel: null, kriterien: null, vollerText: null };
+  const luecke = (was) => luecken.push(t("lueckeAnlass", { was }));
   if (quelle === null) {
-    luecken.push("Fachlicher Anlass: weder das Paket noch sein Plan nennt eine Zeile `Fachliche Quelle: Issue #N`");
+    luecke(t("anlassOhneQuelle"));
     return leer;
   }
   const anlass = {
@@ -1561,19 +1773,20 @@ async function auftragFachlicherAnlass(tracker, karte, plan, luecken) {
     herkunft: ausPaket ? "paket" : "plan",
     ziel: null,
     kriterien: null,
-    vollerText: `Voller Text: \`node .claude/kit/board.mjs issue get ${quelle}\``,
+    vollerText: t("anlassVollerText", { quelle }),
   };
   let body;
   try {
     body = (await tracker.getIssue(quelle)).body ?? "";
   } catch (e) {
-    luecken.push(`Fachlicher Anlass: Issue #${quelle} nicht lesbar (${e.message})`);
+    luecke(t("anlassNichtLesbar", { quelle, grund: e.message }));
     return anlass;
   }
   anlass.ziel = abschnittWoertlich(body, "Ziel");
   anlass.kriterien = abschnittWoertlich(body, "Fachliche Akzeptanzkriterien");
-  if (anlass.ziel === null) luecken.push(`Fachlicher Anlass: Abschnitt \`## Ziel\` fehlt in Issue #${quelle}`);
-  if (anlass.kriterien === null) luecken.push(`Fachlicher Anlass: Abschnitt \`## Fachliche Akzeptanzkriterien\` fehlt in Issue #${quelle}`);
+  const fehlt = (sache) => luecke(t("anlassAbschnittFehlt", { quelle, abschnitt: ueberschriftName(sache, prozessSprache()) }));
+  if (anlass.ziel === null) fehlt("ziel");
+  if (anlass.kriterien === null) fehlt("fachlicheKriterien");
   return anlass;
 }
 
@@ -1610,22 +1823,22 @@ export async function auftragAlleKarten(tracker, spaltenListen) {
 /** Geschwister nach Plan #1015, E7: alle Karten mit der ganzen Zeile `Plan: Issue #M`. */
 async function auftragGeschwister(tracker, nummer, planNr, spaltenListen, luecken) {
   if (planNr === null) {
-    luecken.push(`Geschwister: ${KEIN_VORHABEN} — das Paket nennt keine Zeile \`Plan: Issue #M\``);
-    return { plan: null, hinweis: KEIN_VORHABEN, karten: [] };
+    luecken.push(t("lueckeGeschwister", { was: t("keinVorhabenGrund") }));
+    return { plan: null, hinweis: t("keinVorhaben"), karten: [] };
   }
   let alle;
   try {
     alle = await auftragAlleKarten(tracker, spaltenListen);
   } catch (e) {
-    luecken.push(`Geschwister: Karten nicht lesbar (${e.message})`);
-    return { plan: planNr, hinweis: "Karten nicht lesbar (siehe Lücken)", karten: [] };
+    luecken.push(t("lueckeGeschwister", { was: t("geschwisterNichtLesbar", { grund: e.message }) }));
+    return { plan: planNr, hinweis: t("geschwisterHinweisNichtLesbar"), karten: [] };
   }
   const karten = alle
     .filter((k) => k.id !== nummer && herkunftNummern(k.body, "Plan").includes(planNr))
     .sort((a, b) => Number(a.id) - Number(b.id))
     .map(({ id, titel, spalte }) => ({ id, titel, spalte }));
   for (const k of karten.filter((g) => g.spalte === null)) {
-    luecken.push(`Geschwister #${k.id}: Spalte nicht feststellbar (in keiner Spalte des Boards)`);
+    luecken.push(t("lueckeGeschwisterSpalte", { id: k.id }));
   }
   return { plan: planNr, hinweis: null, karten };
 }
@@ -1646,10 +1859,8 @@ async function auftragKommentare(tracker, id, karte) {
 function geschuetztSchritte(id, treffer, geschuetzt) {
   const { GESCHUETZT_LABEL, GESCHUETZT_LABEL_GESETZT, GESCHUETZT_LABEL_NICHT_GESETZT } = geschuetzt;
   const pfade = [...new Set(treffer.map((t) => t.pfad))].join(", ");
-  return `Geschuetzte Datei ${pfade} — eine menschliche Handlung wartet, wird nicht implementiert. `
-    + `Schritte: 1. Karte nach Backlog. 2. \`node .claude/kit/board.mjs issue label add ${id} ${GESCHUETZT_LABEL}\` — `
-    + "scheitert er, den Fehlschlag melden und nicht aufhoeren. 3. Den Kommentar unten woertlich ans Issue, "
-    + `als letzte Zeile ergaenzt um \`${GESCHUETZT_LABEL_GESETZT}\` oder, wenn Schritt 2 scheiterte, \`${GESCHUETZT_LABEL_NICHT_GESETZT}\`.`;
+  return t("geschuetztSchritte", { pfade, id, label: GESCHUETZT_LABEL, gesetzt: GESCHUETZT_LABEL_GESETZT,
+    nichtGesetzt: GESCHUETZT_LABEL_NICHT_GESETZT });
 }
 
 // Das Urteil nach Plan #1015, E6, um die geschuetzten Dateien erweitert (Issue #1052, Plan
@@ -1659,20 +1870,26 @@ function geschuetztSchritte(id, treffer, geschuetzt) {
 // Konstanten) fuehrt der Abschnitt "Geschuetzte Pfade"; der Aufrufer reicht sie herein
 // (Issue #1218), damit dieser Teil nicht aus dem Einstieg importiert.
 function auftragUrteil(id, spalte, erwartet, karte, voraussetzungen, kommentare, geschuetzt) {
-  const { GESCHUETZT_LABEL, geschuetzteTreffer, geschuetztFreigabe, geschuetztKommentar } = geschuetzt;
-  const nicht = (folge, grund, kommentar = null) => ({ urteil: "darf nicht beginnen", folge, grund, kommentar });
+  const { geschuetzteTreffer, geschuetztFreigabe, geschuetztKommentar } = geschuetzt;
+  const nicht = (folge, grund, kommentar = null) => ({ urteil: t("urteilDarfNicht"), folge, grund, kommentar });
   if (spalte !== erwartet) {
-    const wo = spalte ? COLUMN_DEFAULTS[spalte] : "keiner bestimmbaren Spalte";
-    return nicht("bleibt", `Issue #${id} liegt nicht (mehr) in ${COLUMN_DEFAULTS[erwartet]}, sondern in ${wo}.`);
+    const wo = spalte ? COLUMN_DEFAULTS[spalte] : t("urteilKeineSpalte");
+    return nicht("bleibt", t("urteilNichtInSpalte", { id, erwartet: COLUMN_DEFAULTS[erwartet], wo }));
   }
-  const praefix = AUFTRAG_PRAEFIXE.find(([passt]) => passt(karte.title));
-  if (praefix) return nicht("backlog", `${praefix[2]} — wird nicht implementiert.`, AUFTRAG_BACKLOG_TEXTE[praefix[1]](id));
-  if ((karte.labels || []).includes(AUFTRAG_KLAEREN)) {
-    return nicht("backlog", `Label ${AUFTRAG_KLAEREN} — eine offene Entscheidung wartet.`, AUFTRAG_BACKLOG_TEXTE.klaeren(id));
+  const art = AUFTRAG_PRAEFIXE.find(([passt]) => passt(karte.title))?.[1];
+  if (art) {
+    return nicht("backlog", t("urteilPraefix", { praefix: praefix(art, prozessSprache()) }), AUFTRAG_BACKLOG_TEXTE[art](id));
   }
+  // Beide Labels unter jedem ihrer Namen (Issue #1424, Plan #1420 E8); der Grund nennt den
+  // Namen, den die Karte traegt.
   const labels = karte.labels || [];
-  if (labels.includes(GESCHUETZT_LABEL)) {
-    return nicht("backlog", `Label ${GESCHUETZT_LABEL} — eine menschliche Handlung an einer geschuetzten Datei wartet; das Label bleibt.`, AUFTRAG_BACKLOG_TEXTE.geschuetzt(id));
+  const klaeren = labels.find((name) => erkenneLabel(name) === "klaeren");
+  if (klaeren) {
+    return nicht("backlog", t("urteilKlaeren", { label: klaeren }), AUFTRAG_BACKLOG_TEXTE.klaeren(id));
+  }
+  const geschuetztLabel = labels.find((name) => erkenneLabel(name) === "geschuetzt");
+  if (geschuetztLabel) {
+    return nicht("backlog", t("urteilGeschuetztLabel", { label: geschuetztLabel }), AUFTRAG_BACKLOG_TEXTE.geschuetzt(id));
   }
   const treffer = geschuetzteTreffer(karte.body || "", karte.title || "", configWurzel());
   if (treffer.length > 0 && !geschuetztFreigabe(treffer, kommentare, labels)) {
@@ -1680,10 +1897,10 @@ function auftragUrteil(id, spalte, erwartet, karte, voraussetzungen, kommentare,
   }
   const offen = voraussetzungen.filter((v) => v.befund !== "erfuellt");
   if (offen.length > 0) {
-    const liste = offen.map((v) => `#${v.id} ${v.befund}`).join(", ");
-    return nicht("bleibt", `Voraussetzung ${liste} (unerfuellt ist, was in Backlog, Ready oder In progress liegt).`);
+    const liste = offen.map((v) => `#${v.id} ${befundText(v.befund)}`).join(", ");
+    return nicht("bleibt", t("urteilVoraussetzung", { liste }));
   }
-  return { urteil: "darf beginnen", folge: "beginnen", grund: null, kommentar: null };
+  return { urteil: t("urteilDarfBeginnen"), folge: "beginnen", grund: null, kommentar: null };
 }
 
 // Ein Text im Codeblock, dessen Zaun laenger ist als jeder Backtick-Lauf im Text: So
@@ -1702,67 +1919,79 @@ function ohneSchlussUmbrueche(text) {
 }
 
 function auftragKommentarBlock(k) {
-  return `\n\n${k.author || "unbekannt"}, ${k.createdAt || "ohne Datum"}:\n\n${eingezaeunt(k.body)}`;
+  return `\n\n${k.author || t("auftragKommentarUnbekannt")}, ${k.createdAt || t("auftragKommentarOhneDatum")}:\n\n${eingezaeunt(k.body)}`;
+}
+
+// Der Befund in Worten; im JSON bleibt er Vertrag (E14).
+function befundText(befund) {
+  if (befund === "erfuellt") return t("befundErfuellt");
+  if (befund === "unerfuellt") return t("befundUnerfuellt");
+  return t("nichtFeststellbar");
 }
 
 function auftragVoraussetzungZeile(v) {
   const grund = v.grund ? " (" + v.grund + ")" : "";
-  const spalte = v.spalte ?? (v.befund === "erfuellt" ? "keine" : "nicht feststellbar");
-  return `- #${v.id} ${v.titel ?? "(ohne Titel)"} — Spalte: ${spalte} — ${v.befund}${grund}`;
+  const spalte = v.spalte ?? (v.befund === "erfuellt" ? t("auftragKeine") : t("nichtFeststellbar"));
+  return t("auftragVoraussetzung", { id: v.id, titel: v.titel ?? t("auftragOhneTitel"), spalte, befund: befundText(v.befund), grund });
 }
+
+const auftragGlied = (schluessel, inhalt) => `## ${t(schluessel)}\n\n${inhalt}`;
 
 function auftragMarkdown(a) {
   const u = a.urteil;
-  const teile = [`## Urteil\n\n${u.urteil} — Folge: ${u.folge}`];
-  if (u.grund) teile[0] += `\nGrund: ${u.grund}`;
-  if (u.kommentar) teile[0] += `\n\nKommentar fuer die Karte (woertlich):\n\n${u.kommentar}`;
+  let urteil = t("auftragUrteilZeile", { urteil: u.urteil, folge: u.folge });
+  if (u.grund) urteil += `\n${t("auftragGrund", { grund: u.grund })}`;
+  if (u.kommentar) urteil += `\n\n${t("auftragKommentarWoertlich")}\n\n${u.kommentar}`;
+  const teile = [auftragGlied("auftragKopfUrteil", urteil)];
 
   const auf = a.aufgabe;
-  let aufgabe = `## Aufgabe\n\nIssue #${auf.id}: ${auf.titel}\nSpalte: ${auf.spalte ?? "nicht feststellbar"}\n`
-    + `Labels: ${auf.labels.length ? auf.labels.join(", ") : "keine"}\n\n${eingezaeunt(auf.body)}`;
+  let aufgabe = `Issue #${auf.id}: ${auf.titel}\n${t("auftragSpalte", { spalte: auf.spalte ?? t("nichtFeststellbar") })}\n`
+    + `${t("auftragLabels", { labels: auf.labels.length ? auf.labels.join(", ") : t("auftragKeine") })}\n\n${eingezaeunt(auf.body)}`;
   const kommentarBloecke = auf.kommentare.map(auftragKommentarBlock).join("");
   aufgabe += auf.kommentare.length === 0
-    ? "\n\nKommentare: keine"
-    : `\n\nKommentare (${auf.kommentare.length}):${kommentarBloecke}`;
-  teile.push(aufgabe);
+    ? `\n\n${t("auftragKommentareKeine")}`
+    : `\n\n${t("auftragKommentareAnzahl", { anzahl: auf.kommentare.length })}${kommentarBloecke}`;
+  teile.push(auftragGlied("auftragKopfAufgabe", aufgabe));
 
-  teile.push(`## Plan-Entscheidungen\n\n${planEntscheidungenMarkdown(a.planEntscheidungen)}`);
-  teile.push(`## Fachlicher Anlass\n\n${fachlicherAnlassMarkdown(a.fachlicherAnlass, a.planEntscheidungen.plan)}`);
-  teile.push(`## Geschwister\n\n${geschwisterMarkdown(a.geschwister)}`);
+  teile.push(auftragGlied("auftragKopfPlan", planEntscheidungenMarkdown(a.planEntscheidungen)));
+  teile.push(auftragGlied("auftragKopfAnlass", fachlicherAnlassMarkdown(a.fachlicherAnlass, a.planEntscheidungen.plan)));
+  teile.push(auftragGlied("auftragKopfGeschwister", geschwisterMarkdown(a.geschwister)));
 
-  const voraus = a.voraussetzungen.length === 0 ? "Keine." : a.voraussetzungen.map(auftragVoraussetzungZeile).join("\n");
-  teile.push(`## Voraussetzungen\n\n${voraus}`);
-  teile.push(`## Lücken\n\n${a.luecken.length === 0 ? "Keine." : a.luecken.map((l) => "- " + l).join("\n")}`);
+  const keine = t("auftragKeinePunkt");
+  const voraus = a.voraussetzungen.length === 0 ? keine : a.voraussetzungen.map(auftragVoraussetzungZeile).join("\n");
+  teile.push(auftragGlied("auftragKopfVoraussetzungen", voraus));
+  teile.push(auftragGlied("auftragKopfLuecken", a.luecken.length === 0 ? keine : a.luecken.map((l) => "- " + l).join("\n")));
   return `${teile.join("\n\n")}\n`;
 }
 
-const OHNE_PLAN_MARKDOWN = `${KEIN_VORHABEN} — das Paket nennt keine Zeile \`Plan: Issue #M\` (siehe Lücken)`;
-
 function planEntscheidungenMarkdown(p) {
-  if (p.plan === null) return OHNE_PLAN_MARKDOWN;
+  if (p.plan === null) return t("auftragOhnePlan");
   const teile = [`Plan: Issue #${p.plan}`];
   if (p.hinweis) teile.push(p.hinweis);
   if (p.eintraege.length > 0) teile.push(p.eintraege.map((e) => e.text).join("\n"));
-  else if (!p.hinweis) teile.push("keine (siehe Lücken)");
+  else if (!p.hinweis) teile.push(t("auftragKeineSieheLuecken"));
   return teile.join("\n\n");
 }
 
 function fachlicherAnlassMarkdown(f, planNr) {
-  if (f.quelle === null) return "keine fachliche Quelle (siehe Lücken)";
-  const herkunft = f.herkunft === "paket" ? "aus dem Paket" : `aus dem Plan #${planNr}`;
-  const abschnitt = (text) => (text === null ? "fehlt (siehe Lücken)" : eingezaeunt(text));
-  return `Fachliche Quelle: Issue #${f.quelle} (${herkunft})\n\n### Ziel\n\n${abschnitt(f.ziel)}\n\n`
-    + `### Fachliche Akzeptanzkriterien\n\n${abschnitt(f.kriterien)}\n\n${f.vollerText}`;
+  if (f.quelle === null) return t("auftragKeineQuelle");
+  const herkunft = f.herkunft === "paket" ? t("auftragAusPaket") : t("auftragAusPlan", { plan: planNr });
+  const abschnitt = (text) => (text === null ? t("auftragFehlt") : eingezaeunt(text));
+  const sprache = prozessSprache();
+  return `${t("auftragQuelle", { quelle: f.quelle, herkunft })}\n\n### ${ueberschriftName("ziel", sprache)}\n\n${abschnitt(f.ziel)}\n\n`
+    + `### ${ueberschriftName("fachlicheKriterien", sprache)}\n\n${abschnitt(f.kriterien)}\n\n${f.vollerText}`;
 }
 
 function geschwisterMarkdown(g) {
-  if (g.plan === null) return OHNE_PLAN_MARKDOWN;
-  const zeilen = g.karten.map((k) => `- #${k.id} ${k.titel || "(ohne Titel)"} — Spalte: ${k.spalte ?? "nicht feststellbar"}`);
-  return `Plan: Issue #${g.plan}\n\n${g.hinweis ?? (zeilen.length > 0 ? zeilen.join("\n") : "Keine.")}`;
+  if (g.plan === null) return t("auftragOhnePlan");
+  const zeilen = g.karten.map((k) => t("auftragGeschwisterZeile", {
+    id: k.id, titel: k.titel || t("auftragOhneTitel"), spalte: k.spalte ?? t("nichtFeststellbar"),
+  }));
+  return `Plan: Issue #${g.plan}\n\n${g.hinweis ?? (zeilen.length > 0 ? zeilen.join("\n") : t("auftragKeinePunkt"))}`;
 }
 
 /**
- * `issue auftrag <id> [--spalte ready|in_progress] [--json]` — Aufgabe, Voraussetzungen
+ * `issue brief <id> [--column ready|in_progress] [--json]` — Aufgabe, Voraussetzungen
  * und das Urteil, ob eine Umsetzung beginnen darf, in einem Aufruf (Issue #1023, Plan
  * #1015 E2, E3, E5, E6), dazu Plan-Entscheidungen, fachlicher Anlass und Geschwister
  * (Issue #1024, E1, E4, E7). Jede Angabe, die sich nicht ermitteln laesst, steht unter
@@ -1779,15 +2008,15 @@ function geschwisterMarkdown(g) {
  */
 export async function issueAuftrag(tracker, args, geschuetzt) {
   const id = args._[0];
-  if (!id) fail("id ist erforderlich: board.mjs issue auftrag <id> [--spalte ready|in_progress] [--json]");
-  const erwartet = args.spalte ?? "ready";
-  if (!AUFTRAG_SPALTEN.has(erwartet)) fail(`--spalte '${erwartet}' ist keine erwartbare Spalte (ready | in_progress).`);
+  if (!id) fail(t("idErforderlich", { aufruf: t("auftragAufruf") }));
+  const erwartet = args.column ?? "ready";
+  if (!AUFTRAG_SPALTEN.has(erwartet)) fail(t("auftragSpalteUngueltig", { spalte: erwartet }));
 
   let karte;
   try {
     karte = await tracker.getIssue(String(id));
   } catch (e) {
-    fail(`Paket ${id} nicht lesbar: ${e.message}`);
+    fail(t("paketNichtLesbar", { id, grund: e.message }));
   }
   const nummer = String(karte.id ?? id).replace(/^0+(?=\d)/, "");
   const spaltenListen = new Map();
@@ -1809,9 +2038,9 @@ export async function issueAuftrag(tracker, args, geschuetzt) {
   const planEntscheidungen = auftragPlanEntscheidungen(karte, planNr, plan, luecken);
   const fachlicherAnlass = await auftragFachlicherAnlass(tracker, karte, plan, luecken);
   const geschwister = await auftragGeschwister(tracker, nummer, planNr, spaltenListen, luecken);
-  if (spalte === null) luecken.push("Spalte des Pakets: nicht feststellbar");
+  if (spalte === null) luecken.push(t("lueckeSpalte"));
   for (const v of voraussetzungen.filter((x) => x.befund === "nicht feststellbar")) {
-    luecken.push(`Voraussetzung #${v.id}: nicht feststellbar (${v.grund})`);
+    luecken.push(t("lueckeVoraussetzung", { id: v.id, grund: v.grund }));
   }
 
   const kommentare = (await auftragKommentare(tracker, id, karte)).map((k) => ({ author: k.author ?? "", createdAt: k.createdAt ?? null, body: k.body ?? "" }));
@@ -1844,7 +2073,7 @@ export async function issueAuftrag(tracker, args, geschuetzt) {
 // versehentlich geleerter Issue-Body ist nicht wiederherstellbar.
 export async function issueUpdate(tracker, args) {
   const id = args._[0];
-  if (!id) fail("id ist erforderlich: board.mjs issue update <id> --body \"...\"");
+  if (!id) fail(t("idErforderlich", { aufruf: 'issue update <id> --body "..."' }));
   const neu = await leseTextQuelle(args.body, args["body-file"], "body");
   // Seit Plan #638 (A15) ohne Pruefvorgabe-Leitplanke: Der Body wird geschrieben, wie
   // er kommt.
@@ -1856,15 +2085,24 @@ export async function issueUpdate(tracker, args) {
 // Formpruefung: issue check-form (Issue #628)
 // ============================================================
 
-export const CHECK_FORM_WEGE =
-  "check-form nimmt genau einen Eingabeweg: eine Kartennummer <id> ODER "
-  + "--body-file <pfad> zusammen mit --title \"<titel>\"";
+/** Die Titel der Formatueberschriften `sachen`, wie `zerlegeAbschnitte` sie liefert. */
+export function abschnittsTitel(...sachen) {
+  return sachen.map((sache) => kanonischeUeberschrift(ueberschriftName(sache, "de")));
+}
 
-/** Die Pflichtabschnitte je Stufe, normalisiert (klein, transliteriert). */
+/** Die Eingabewege von `issue check-form` in der Projektsprache (Issue #1479). */
+export function checkFormWege() {
+  return t("checkFormWege");
+}
+
+/**
+ * Die Pflichtabschnitte je Stufe, normalisiert (klein, transliteriert) unter ihrem deutschen
+ * Namen; `zerlegeAbschnitte` fuehrt einen englischen Titel auf ihn zurueck (Issue #1460).
+ */
 export const CHECK_FORM_ABSCHNITTE = {
-  fachlich: ["ziel", "fachliche akzeptanzkriterien", "nicht-ziele", "offene fragen an den po"],
-  plan: ["ziel", "betroffene bereiche", "architektonische entscheidungen", "geplante aenderungen", "offene fragen", "verifizierung"],
-  issue: ["kontext", "aufgabe", "akzeptanzkriterium", "abhaengigkeiten"],
+  fachlich: abschnittsTitel("ziel", "fachlicheKriterien", "nichtZiele", "poFragen"),
+  plan: abschnittsTitel("ziel", "betroffeneBereiche", "architektonischeEntscheidungen", "geplanteAenderungen", "offeneFragen", "verifizierung"),
+  issue: abschnittsTitel("kontext", "aufgabe", "akzeptanzkriterium", "abhaengigkeiten"),
 };
 
 // Die Kopfzeile eines `##`-Abschnitts; Gruppe 1 ist ihr Titel.
@@ -1872,22 +2110,17 @@ export const CHECK_FORM_ABSCHNITTE = {
 // Der Titel laeuft greedy bis zum Zeilenende, und dahinter steht nichts mehr, was
 // scheitern koennte: Das alte `(.+?)[ \t]*$` war ein S8786-Fund (Issue #877), weil das
 // lazy Stueck und der Leerraum-Lauf dieselben Zeichen akzeptierten. Den Leerraum am Ende
-// stutzt ohnehin `normUeberschrift` — im Ausdruck stand er doppelt.
+// stutzt ohnehin `kanonischeUeberschrift` — im Ausdruck stand er doppelt.
 export const ABSCHNITT_ZEILE = /^##[ \t]+([^\n]+)/;
-
-/** Ueberschriften vergleichbar machen: Umlaute zaehlen in beiden Schreibweisen. */
-function normUeberschrift(text) {
-  return String(text).trim().toLowerCase()
-    .replaceAll("ä", "ae").replaceAll("ö", "oe").replaceAll("ü", "ue").replaceAll("ß", "ss")
-    .replaceAll(/\s+/g, " ");
-}
 
 /**
  * Zerlegt den Body ohne Codebloecke in Kopf und `##`-Abschnitte.
  *
  * Dieselbe Fence-Auslegung wie ueberall im Adapter (`fenceLauf`): Eine
  * Ueberschrift im Codeblock existiert fuer die Pruefung nicht — weder als
- * Treffer noch als Verstoss. `###` ist keine Abschnittsgrenze.
+ * Treffer noch als Verstoss. `###` ist keine Abschnittsgrenze. Der Titel ist kanonisch
+ * (`kanonischeUeberschrift`, Issue #1460): `## Dependencies` heisst wie `## Abhaengigkeiten`
+ * `abhaengigkeiten`, damit die Formgates beide Namen gleich behandeln.
  */
 export function zerlegeAbschnitte(body) {
   const imFence = fenceLauf();
@@ -1898,7 +2131,7 @@ export function zerlegeAbschnitte(body) {
     if (imFence(zeile)) continue;
     const m = ABSCHNITT_ZEILE.exec(zeile);
     if (m) {
-      aktuell = { titel: normUeberschrift(m[1]), zeilen: [] };
+      aktuell = { titel: kanonischeUeberschrift(m[1]), zeilen: [] };
       abschnitte.push(aktuell);
       continue;
     }

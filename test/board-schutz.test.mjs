@@ -86,7 +86,7 @@ test("[schutz] rulesetSoll: unbekannte Art wird abgewiesen", () => {
   assert.throws(() => rulesetSoll("main", JOBS, "irgendwas"), /Art 'irgendwas'/);
 });
 
-// --- schutzZustand: die fuenf Antworten von `code schutz status` (E1, A7, A9, E10) ---
+// --- schutzZustand: die fuenf Antworten von `code protection status` (E1, A7, A9, E10) ---
 
 test("[schutz] status: ohne Ruleset nicht geschuetzt, fehlt nennt beide Zweige", async () => {
   const zustand = await schutzZustand(host(), CONFIG, KOPF);
@@ -115,7 +115,7 @@ test("[schutz] status: Pflichtjob am Kopf nicht gruen — geschuetzt mit ungepru
   const zustand = await schutzZustand(host({ rulesets: BEIDE(), ci }), CONFIG, KOPF);
   assert.equal(zustand.geschuetzt, true);
   assert.deepEqual(zustand.ungeprueft, { commit: SHA, kommando: NACHPRUEFEN_KOMMANDO });
-  assert.match(zustand.ungeprueft.kommando, /board\.mjs code schutz nachpruefen$/);
+  assert.match(zustand.ungeprueft.kommando, /board\.mjs code protection verify$/);
 });
 
 test("[schutz] status: stehende Rulesets ohne Admin-Recht zaehlen als vollstaendig", async () => {
@@ -243,22 +243,22 @@ test("[schutz] notfallGate: gruener push-Lauf mit unveraendertem Stand geht durc
 
 // --- nachtSperre (E8) ---
 
-test("[schutz] nachtSperre: mit KIT_AGENT_MODEL gesperrt fuer einrichten, aussetzen, nachpruefen, nicht fuer status", () => {
+test("[schutz] nachtSperre: mit KIT_AGENT_MODEL gesperrt fuer setup, suspend, verify, nicht fuer status", () => {
   const nacht = { KIT_AGENT_MODEL: "claude-sonnet-5-5" };
-  for (const aktion of ["einrichten", "aussetzen", "nachpruefen"]) {
+  for (const aktion of ["setup", "suspend", "verify"]) {
     assert.throws(() => nachtSperre(aktion, nacht), new RegExp(aktion));
   }
   assert.doesNotThrow(() => nachtSperre("status", nacht));
 });
 
 test("[schutz] nachtSperre: ohne KIT_AGENT_MODEL alles erlaubt, Vorgabe ist process.env", () => {
-  for (const aktion of ["einrichten", "aussetzen", "nachpruefen", "status"]) {
+  for (const aktion of ["setup", "suspend", "verify", "status"]) {
     assert.doesNotThrow(() => nachtSperre(aktion, {}));
   }
   const vorher = process.env.KIT_AGENT_MODEL;
   process.env.KIT_AGENT_MODEL = "claude-sonnet-5-5";
   try {
-    assert.throws(() => nachtSperre("aussetzen"));
+    assert.throws(() => nachtSperre("suspend"));
   } finally {
     if (vorher === undefined) delete process.env.KIT_AGENT_MODEL; else process.env.KIT_AGENT_MODEL = vorher;
   }
@@ -408,7 +408,7 @@ test("[schutz] einrichten: offen ohne Lauf binnen 5 Minuten, mit dem offenen Sch
   const h = probeHost({ ciFolge: [LEER] });
   const ergebnis = await einrichten(h, CONFIG, ZWEIG, uhr());
   assert.equal(ergebnis.ergebnis, "offen");
-  assert.match(ergebnis.schritt, /checks\.mjs run --stufe push --since "\$\(git merge-base HEAD origin\/main\)"/);
+  assert.match(ergebnis.schritt, /checks\.mjs run --stage push --since "\$\(git merge-base HEAD origin\/main\)"/);
   assert.match(ergebnis.schritt, /kit-pruefung/);
   assert.equal(h.aufrufe.some((a) => a.startsWith("upsertRuleset")), false);
 });

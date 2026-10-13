@@ -61,11 +61,11 @@ function setup() {
   return { repo, pfad, commit: git(pfad, "rev-parse", "HEAD") };
 }
 
-test("vorbereitung-festhalten, vorbereitung-pruefen und --verwerfen als Prozess", () => {
+test("record-preparation, check-preparation und --discard als Prozess", () => {
   const s = setup();
   const env = { KIT_NIGHT_RUN: "2026-10-07T01:00:00.000Z", KIT_STAND: "abc123" };
 
-  const fest = werkzeug(s.repo, env, "vorbereitung-festhalten", s.pfad, "--ergebnis", "gruen", "--offen", "Sichtpruefung der Oberflaeche", "--fetch", "fehlgeschlagen");
+  const fest = werkzeug(s.repo, env, "record-preparation", s.pfad, "--result", "green", "--open", "Sichtpruefung der Oberflaeche", "--fetch", "failed");
   assert.equal(fest.status, 0, JSON.stringify(fest.stand));
   assert.equal(fest.stand.ok, true);
   assert.equal(fest.stand.ergebnis, "gruen-offen");
@@ -78,22 +78,22 @@ test("vorbereitung-festhalten, vorbereitung-pruefen und --verwerfen als Prozess"
   assert.equal(fest.stand.kitStand, "abc123");
   assert.ok(existsSync(join(s.repo, ".claude", "push-vorbereitung.json")));
 
-  const urteil = werkzeug(s.repo, {}, "vorbereitung-pruefen");
+  const urteil = werkzeug(s.repo, {}, "check-preparation");
   assert.equal(urteil.status, 0);
   assert.deepEqual(urteil.stand, {
     ok: true, uebernehmen: true, grund: null, commit: s.commit, offen: ["Sichtpruefung der Oberflaeche"], zeitpunkt: fest.stand.zeitpunkt,
   });
 
-  const weg = werkzeug(s.repo, {}, "vorbereitung-pruefen", "--verwerfen");
+  const weg = werkzeug(s.repo, {}, "check-preparation", "--discard");
   assert.equal(weg.status, 0);
   assert.deepEqual(weg.stand, { ok: true, verworfen: { datei: true, referenz: true } });
   assert.equal(existsSync(join(s.repo, ".claude", "push-vorbereitung.json")), false);
 });
 
-test("vorbereitung-festhalten ohne --ergebnis endet mit Exit 1 und Grund", () => {
+test("record-preparation ohne --result endet mit Exit 1 und Grund", () => {
   const s = setup();
-  const res = werkzeug(s.repo, {}, "vorbereitung-festhalten", s.pfad);
+  const res = werkzeug(s.repo, {}, "record-preparation", s.pfad);
   assert.equal(res.status, 1);
   assert.equal(res.stand.ok, false);
-  assert.match(res.stand.fehler, /--ergebnis/);
+  assert.match(res.stand.fehler, /--result <green\|green-open\|red>/);
 });

@@ -28,6 +28,7 @@ import { berichtAbhaengigkeiten } from "../../kit/night/bericht.mjs";
 import { wartendAbhaengigkeiten } from "../../kit/night/wartend.mjs";
 import { verbrauchLeer } from "../../kit/night/session.mjs";
 import { REVIEW_FERTIG_LABEL, ketteAnbinden, ketteBudgetSetzen, laufeKette } from "../../kit/night/kette.mjs";
+import { erkenneLabel, internerWert } from "../../kit/board/namen.mjs";
 import { boardAttrappe } from "./board-attrappe.mjs";
 import { psLeer, spawnAttrappe, stdoutFangen, uhrAttrappe } from "./session-attrappe.mjs";
 import { fachplanBody, planBody } from "./kette-texte.mjs";
@@ -40,8 +41,12 @@ export const UHR_START = Date.UTC(2026, 9, 6, 2, 0, 0);
 /** Das Kettenlabel der Vorgabe. */
 export const KETTE_LABEL = "kit:night";
 
-/** Die Laufstand-Labels der Vorgabe von `issue stand` (`STAND_LABEL_VORGABEN` im Board-Teil dokumente). */
-const STAND_LABELS = { laeuft: "lauf:laeuft", abgebrochen: "lauf:abgebrochen", wartet: "lauf:wartet" };
+/**
+ * Die Laufstand-Labels der Vorgabe von `issue stand` (`STAND_LABEL_VORGABEN` im Board-Teil
+ * dokumente), englisch seit Issue #1552. Abgenommen wird jeder Name derselben Sache.
+ */
+const STAND_LABELS = { laeuft: "run:running", abgebrochen: "run:aborted", wartet: "run:waiting" };
+const STAND_SACHEN = new Set(["laufLaeuft", "laufAbgebrochen", "laufWartet"]);
 
 /** Eine fachliche Anforderung als Karte der Attrappe: gekennzeichnet und geprueft, wenn nicht anders gesagt. */
 export function fachplanKarte(id, { titel = "[Fachlich] Ein Anliegen", labels = [KETTE_LABEL, REVIEW_FERTIG_LABEL], body = fachplanBody(), status = "backlog" } = {}) {
@@ -69,7 +74,7 @@ function textOderDatei(args, name) {
 
 /**
  * Das Board der Kette: die Board-Attrappe, ergaenzt um die Befehle, die Kette und Laufstand
- * brauchen — `issue create`, `update`, `comment` mit Text oder Datei, `stand`, `check-form` —
+ * brauchen — `issue create`, `update`, `comment` mit Text oder Datei, `run-state`, `check-form` —
  * und `issue list` mit Body, wie der Tracker ihn liefert. `ablehnen(cliArgs)` laesst einen
  * Aufruf scheitern; `boardRoh` liefert dann `{ status: 1 }` statt zu werfen. `schlucken(cliArgs)`
  * nimmt einen Aufruf an und speichert nichts — das Board meldet Erfolg, die Karte bleibt, wie sie
@@ -108,12 +113,12 @@ export function ketteBoard(anfang, { jetzt, formPruefung, ablehnen = () => false
     },
     // Wie `issueStand` im Board-Teil dokumente: Labels erst ab-, dann ansetzen, den juengsten
     // Laufstand ersetzen statt einen zweiten anzuhaengen.
-    stand: ([id, ...args]) => {
+    "run-state": ([id, ...args]) => {
       const ziel = karte(id);
-      const zustand = option(args, "zustand");
+      const zustand = internerWert("state", option(args, "state"));
       const rumpf = textOderDatei(args, "text").replaceAll("\r\n", "\n").trim();
       const neu = rumpf.startsWith("## Laufstand") ? rumpf : `## Laufstand\n\n${rumpf}`;
-      ziel.labels = ziel.labels.filter((l) => !Object.values(STAND_LABELS).includes(l));
+      ziel.labels = ziel.labels.filter((l) => !STAND_SACHEN.has(erkenneLabel(l)));
       if (STAND_LABELS[zustand]) ziel.labels.push(STAND_LABELS[zustand]);
       const alt = ziel.comments.findLast((c) => c.body.startsWith("## Laufstand"));
       if (alt) alt.body = neu;
@@ -196,7 +201,7 @@ class HarterStopp extends Error {}
  * Faehrt `laufeKette` im selben Prozess.
  *
  * - `karten`: das Board zu Beginn (Reihenfolge = Board-Reihenfolge)
- * - `argv`: Argumente hinter `--kette`, etwa `["--dry-run"]` oder `["--max", "2"]`
+ * - `argv`: Argumente hinter `--chain`, etwa `["--dry-run"]` oder `["--max", "2"]`
  * - `kette`, `config`: der Block `night.kette` und weitere Felder der Config
  * - `sitzung(s)`: das Drehbuch je Session; `s` traegt `stufe`, `issue`, `prompt`, `cwd`, `modell`, `planReviewer`, `laufId` und das
  *   Board der Attrappe. Rueckgabe `{ zeilen, kosten, ergebnis, ohneResult, ende }`, alles
@@ -243,7 +248,7 @@ export async function ketteImProzess({
   };
   mkdirSync(join(dir, ".claude"), { recursive: true });
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify(cfg, null, 2));
-  const args = parseArgs(["--kette", ...argv]);
+  const args = parseArgs(["--chain", ...argv]);
   const stempel = "2026-10-06-020000";
 
   try {
@@ -421,7 +426,7 @@ export const VORBEREITUNG_GRUEN = Object.freeze({
 /**
  * Stufe vorbereitung: legt `.claude/push-vorbereitung.json` in der Hauptkopie ab, mit der
  * Laufkennung aus der Umgebung der Session und einem Zeitpunkt eine Stunde nach Uhrbeginn —
- * so, wie `/push-main vorbereiten` sie ueber `worktree.mjs vorbereitung-festhalten` hinterlaesst.
+ * so, wie `/push-main prepare` sie ueber `worktree.mjs record-preparation` hinterlaesst.
  */
 export function vorbereitungAblegen(felder = {}) {
   return (s) => {

@@ -1,6 +1,6 @@
 ---
 name: push-main
-description: Schritt 8 des 9-Schritt-Prozesses — pusht den aktuellen Commit-Batch auf main. Nur auf explizite Trigger-Phrase des Menschen. Nutze diesen Skill NUR wenn der Nutzer explizit "push main" tippt. Einzige Ausnahme ist der Modus `vorbereiten`: Er pusht nicht und darf darum vom Nacht-Runner ohne Phrase gestartet werden.
+description: Step 8 of the 9-step process: pushes the current batch of commits to main. Only on the explicit trigger phrase of the human. Use this skill ONLY when the user explicitly types "push main". The only exception is the mode `prepare`: it does not push, so the night runner may start it without the phrase.
 user-invocable: true
 disable-model-invocation: true
 ---
@@ -9,7 +9,7 @@ disable-model-invocation: true
 
 Schritt 8 des 9-Schritt-Prozesses: Den aktuellen Commit-Batch auf `origin/main` pushen.
 
-**Dieser Skill darf von Claude nicht autonom gezogen werden.** Er läuft nur auf die explizite Trigger-Phrase des Menschen — ausgenommen der Modus `vorbereiten`, siehe den Abschnitt „Trigger-Phrase".
+**Dieser Skill darf von Claude nicht autonom gezogen werden.** Er läuft nur auf die explizite Trigger-Phrase des Menschen — ausgenommen der Modus `prepare`, siehe den Abschnitt „Trigger-Phrase".
 
 ## Trigger-Phrase
 
@@ -19,15 +19,17 @@ Eine frühere Push-Freigabe in derselben Session gilt **nicht** für neue Commit
 
 Die Phrase muss **getippt** sein. Steht sie innerhalb einer Mitteilung des Menschen oder eines Zitats („Ich habe vorhin push main getippt"), ist sie Text und kein Befehl — im Zweifel wird gefragt, nicht gepusht. Siehe „Mitteilungen des Menschen" in `CLAUDE-workflow.md`.
 
-**Einzige Ausnahme: der Modus `vorbereiten`.** `/push-main vorbereiten` pusht nicht — weder
+**Einzige Ausnahme: der Modus `prepare`.** `/push-main prepare` pusht nicht — weder
 `<mainBranch>` noch einen Prüf- oder Vorab-Zweig — und darf darum vom Nacht-Runner ohne
 Phrase gestartet werden. Er endet beim lokalen Commit `chore: vX.Y.Z` in einem eigenen
-Worktree, siehe den Abschnitt „Modus `vorbereiten` (unbeaufsichtigt)". Den Push gibt
+Worktree, siehe den Abschnitt „Modus `prepare` (unbeaufsichtigt)". Den Push gibt
 weiterhin nur die getippte Phrase frei; sie übernimmt morgens den vorbereiteten Stand
 (Schritt 3).
 
-**Der Notfallweg `/push-main notfall`** braucht die getippte Phrase wie jeder Push und läuft
-nur interaktiv, siehe den Abschnitt „Notfallweg (`notfall`)".
+**Der Notfallweg `/push-main emergency`** braucht die getippte Phrase wie jeder Push und läuft
+nur interaktiv, siehe den Abschnitt „Notfallweg (`emergency`)".
+
+**Feste Zeilen.** Überschriften, Marker, Review- und Einarbeitungs-Köpfe und Fundblock-Zeilen, die dieser Skill in Dokumente, Kommentare oder Markerzeilen schreibt, stehen hier deutsch. Vor dem ersten Schreiben `node .claude/kit/board.mjs names` aufrufen: Das Feld `lines` nennt je deutscher Zeile die Fassung der Projektsprache, und der Skill schreibt die ausgegebene Fassung. Eine Zeile mit veränderlichem Rest (`## Einarbeitung, Runde 2`) steht dort mit ihrem festen Anfang, eine Überschrift mit `## ` davor gilt auf jeder Ebene, und was `names` nicht nennt, bleibt, wie es hier steht.
 
 ## Ablauf
 
@@ -41,7 +43,7 @@ ist die Wartezeit: Der eine Prüflauf über den fertigen Stand dauert so lange w
 **Aufwand melden.** Noch vor dem ersten Schritt:
 
 ```bash
-node .claude/kit/aufwand.mjs befund
+node .claude/kit/effort.mjs finding
 ```
 
 Zeige die Ausgabe **unverändert**. Sie ist bereits die Form, in der der Aufwands-Befund an
@@ -53,7 +55,7 @@ der Prozess gekostet hat.
 Unmittelbar danach der zweite Befund:
 
 ```bash
-node .claude/kit/wirksamkeit.mjs befund
+node .claude/kit/effectiveness.mjs finding
 ```
 
 Für ihn gelten **dieselben Regeln**: Ausgabe unverändert zeigen, und er liest allein
@@ -64,7 +66,7 @@ beanstandet hat. Auch er ist kein Gate.
 Unmittelbar danach der dritte Befund:
 
 ```bash
-node .claude/kit/befunde.mjs befund
+node .claude/kit/findings.mjs finding
 ```
 
 Auch für ihn gelten **dieselben Regeln**, und er liest allein `.claude/befunde.json`. Er
@@ -99,7 +101,7 @@ Gelesen werden:
   liest den Wert nicht selbst aus der Config, sondern aus dem Feld `pushPruefung` von:
 
   ```bash
-  node .claude/kit/checks.mjs plan --stufe push
+  node .claude/kit/checks.mjs plan --stage push
   ```
 
   Bei `"lokal"` gelten die Schritte unten unverändert. Bei `buildDienst` ersetzt der
@@ -132,7 +134,7 @@ der Nacht übernommen werden darf — in dieser Reihenfolge:
 
 ```bash
 git fetch origin <mainBranch>
-node .claude/kit/worktree.mjs vorbereitung-pruefen
+node .claude/kit/worktree.mjs check-preparation
 ```
 
 Das Kommando holt selbst nichts; es vergleicht die Datei `.claude/push-vorbereitung.json`
@@ -141,26 +143,26 @@ mit dem eben geholten Stand (Plan #1243, E10). Danach entsteht der Worktree:
 - **`uebernehmen: true`** — auf dem vorbereiteten Commit:
 
   ```bash
-  node .claude/kit/worktree.mjs anlegen --praefix release --ref refs/kit/push-vorbereitet
+  node .claude/kit/worktree.mjs create --prefix release --ref refs/kit/push-vorbereitet
   ```
 
 - **`uebernehmen: false`** — wie bisher auf dem lokalen `<mainBranch>`:
 
   ```bash
-  node .claude/kit/worktree.mjs anlegen --praefix release --ref <mainBranch>
+  node .claude/kit/worktree.mjs create --prefix release --ref <mainBranch>
   ```
 
 **Nach dem Push und bei jedem Nicht-Übernehmen** werden Datei und Referenz verworfen —
 beim Nicht-Übernehmen sofort hier, sonst nach dem Push in Schritt 7:
 
 ```bash
-node .claude/kit/worktree.mjs vorbereitung-pruefen --verwerfen
+node .claude/kit/worktree.mjs check-preparation --discard
 ```
 
 Beim Nicht-Übernehmen nennt der Skill den `grund` in einer Zeile; fehlt die Datei, entfällt
 die Zeile.
 
-Das Kommando `anlegen` räumt liegengebliebene Release-Worktrees ab, legt den neuen außerhalb des
+Das Kommando `create` räumt liegengebliebene Release-Worktrees ab, legt den neuen außerhalb des
 Repos an, spiegelt `.claude/` hinein (Kit-Kopie, Config, Token) und gibt den Pfad als JSON
 aus. Die Worktrees der Nacht (`kette`, `pruefung`) bleiben unberührt.
 
@@ -187,7 +189,7 @@ jeder Aufruf den Worktree selbst und steht allein:
 - **git:** `git -C <pfad> …`
 - **der Prüflauf:** `checks.mjs run --in <pfad> …` (Schritt 5)
 - **jedes andere Kommando**, etwa aus `RELEASING.md`:
-  `node .claude/kit/worktree.mjs im <pfad> -- <kommando> [argumente]` — es startet das
+  `node .claude/kit/worktree.mjs in <pfad> -- <kommando> [argumente]` — es startet das
   Kommando ohne Shell mit dem Worktree als Arbeitsverzeichnis und reicht Ausgabe und
   Exitcode durch.
 
@@ -197,7 +199,7 @@ und `--in` steht der Baum in jedem Aufruf.
 **Bei Übernahme entfallen die Schritte 4 bis 6.** Der vorbereitete Commit trägt Bump und
 Changelog schon, und sein Prüflauf war grün; ein zweiter Bump wäre eine weitere Version.
 Statt der drei Schritte steht eine Zeile mit `zeitpunkt` und `commit` aus der Ausgabe von
-`vorbereitung-pruefen`:
+`check-preparation`:
 
 > `Übernimmt den Stand der Nacht vom <zeitpunkt> (<commit>)`
 
@@ -209,13 +211,13 @@ wird vor dem Push als Frage an den Menschen gestellt; pusht wird nur nach seinem
 Ein offener Punkt `Gewackelt: <cmd> — Entscheidung beim push main` (ein Wackler im Lauf
 der Nacht, Plan #1395, E14) wird wie jeder offene Punkt vor dem Push in Schritt 7 erfragt,
 mit der Frage aus Schritt 5: Der Skill nennt die Prüfung und die Reparaturkandidaten aus
-`wirksamkeit.mjs kandidaten` und fragt „Trotzdem fortfahren? (ja/nein)“; nur `ja` pusht.
+`effectiveness.mjs candidates` und fragt „Trotzdem fortfahren? (ja/nein)“; nur `ja` pusht.
 Die Fortschrittszeilen zählen die entfallenen Schritte nicht mit.
 
 **Abhängigkeiten im frischen Worktree.** Er trägt nur, was versioniert ist, plus das
 gespiegelte `.claude/`. Braucht ein Pflichtcheck Abhängigkeiten **im Projektverzeichnis**
 (`node_modules`, `.venv`, `vendor/`), fehlen sie dort. Ist `installCommand` in der Config
-gesetzt, stellt `worktree.mjs anlegen` sie bereits selbst her — das Feld nennt das
+gesetzt, stellt `worktree.mjs create` sie bereits selbst her — das Feld nennt das
 Installationskommando des Projekts (`npm ci`, `uv sync`, …), und ein roter Lauf baut den
 Worktree wieder ab. Ohne gesetztes Feld bleibt es am Aufrufer: Dann werden sie vor dem
 Prüflauf von Hand angelegt. **Nicht** aus der
@@ -234,8 +236,8 @@ Prüfe, ob im Repo-Root eine `RELEASING.md` liegt.
 - **Ja:** Führe die dort unter dem Push-Trigger (`push main`) beschriebenen Schritte aus —
   **bis zum ersten festschreibenden Schritt**, also typischerweise Bump, Stempel und
   Changelog. Nicht committen, nicht pushen: Das kommt aus Schritt 5 und 6. Jeder Schritt
-  läuft im Worktree über `node .claude/kit/worktree.mjs im <pfad> -- <kommando>`, etwa
-  `node .claude/kit/worktree.mjs im <pfad> -- node tools/version.mjs --patch`.
+  läuft im Worktree über `node .claude/kit/worktree.mjs in <pfad> -- <kommando>`, etwa
+  `node .claude/kit/worktree.mjs in <pfad> -- node tools/version.mjs --patch`.
 - **Nein:** Nichts weiter tun — direkt weiter zu Schritt 5.
 
 **Fremde `RELEASING.md`.** Die Grenze ist der erste Schritt, der festschreibt oder
@@ -243,6 +245,9 @@ veröffentlicht (`git commit`, `git push`, `git tag`, ein Release-Kommando). All
 fährt der Skill; ab dort übernimmt er mit Lauf, Commit und Push. Stehen **hinter** dem
 ersten festschreibenden Schritt noch weitere Schritte, führt der Skill sie nach seinem
 Commit aus und sagt das im Abschlussbericht.
+
+**Nach-Push-Schritt.** Nennt `RELEASING.md` einen Nach-Push-Schritt, gehört er nicht in
+diesen Schritt: Der Skill fährt ihn in Schritt 8, in der Hauptkopie nach dem Nachziehen.
 
 Der Skill selbst kennt keine projektspezifische Versions- oder Release-Logik; diese lebt
 ausschließlich in der `RELEASING.md` des jeweiligen Repos.
@@ -257,12 +262,12 @@ Worktree**, und dort misst der Lauf sie. Genau diesen Stand misst **ein** Lauf:
 Der Lauf misst mit `--in` im Worktree (Issue #1372):
 
 ```bash
-node .claude/kit/checks.mjs run --in <pfad> --stufe push --wiederholen --since "$(git -C <pfad> merge-base HEAD origin/<mainBranch>)"
+node .claude/kit/checks.mjs run --in <pfad> --stage push --retry --since "$(git -C <pfad> merge-base HEAD origin/<mainBranch>)"
 ```
 
 `<mainBranch>` ist der Wert aus der Config (Default: `main`).
 
-**`--wiederholen`: eine rote Prüfung einmal auf demselben Stand** (Plan #1395, E2). Ist sie
+**`--retry`: eine rote Prüfung einmal auf demselben Stand** (Plan #1395, E2). Ist sie
 bei der Wiederholung grün, gilt sie als bestanden und hat gewackelt; der Berichtsblock
 trägt unter ihrer Zeile `gelaufen:` die Zeile `Gewackelt: <cmd> → erst rot, dann gruen`.
 Bleibt sie rot, ist sie rot wie bisher.
@@ -317,7 +322,7 @@ vorige Zusammenfassung. Dann, in dieser Reihenfolge:
 2. Die Reparaturkandidaten holen und nennen (Plan #1395, E15):
 
    ```bash
-   node .claude/kit/wirksamkeit.mjs kandidaten
+   node .claude/kit/effectiveness.mjs candidates
    ```
 
    Es liest `.claude/wirksamkeit.json` der Hauptkopie und gibt je Kandidat eine Zeile
@@ -328,8 +333,8 @@ vorige Zusammenfassung. Dann, in dieser Reihenfolge:
    der Worktree wird abgebaut.
 
 `checks.mjs run` endet in diesem Fall mit Exitcode 0 — die Prüfung ist bestanden, die
-Entscheidung liegt beim Menschen. **Ohne Wackler** ruft der Skill `wirksamkeit.mjs
-kandidaten` ebenfalls, an derselben Stelle: Reparaturkandidaten ohne Wackler werden genannt,
+Entscheidung liegt beim Menschen. **Ohne Wackler** ruft der Skill `effectiveness.mjs
+candidates` ebenfalls, an derselben Stelle: Reparaturkandidaten ohne Wackler werden genannt,
 halten aber nicht an.
 
 Warum überhaupt noch ein Lauf, wenn `/implement-ready` und `/local-check` je Issue schon
@@ -338,14 +343,14 @@ früherer Lauf gesehen. Ohne Nachweis für genau diesen Stand weist das Commit-G
 Commit ab.
 
 **Befunde buchen, wenn Code-Review-Befunde eingearbeitet wurden.** Sind vor diesem Push
-Funde aus einem `/review` eingearbeitet worden, hält die Session das in einem
+Funde aus einem `/kit-review` eingearbeitet worden, hält die Session das in einem
 Einarbeitungs-Kommentar am Issue fest — übernommen / abgelehnt mit Grund je Fund, im Muster
 von `/issue-review` —, ergänzt den Befunde-Text je Fundblock um die Zeile
 `Uebernahme: uebernommen` beziehungsweise `Uebernahme: abgelehnt` und schreibt ihn nach der
 Transportregel als eigene Datei außerhalb des Projektverzeichnisses:
 
 ```bash
-node .claude/kit/worktree.mjs im <pfad> -- node .claude/kit/befunde.mjs buchen --datei <tmpdir>/<id>-buchung.md --stufe code --karte <id>
+node .claude/kit/worktree.mjs in <pfad> -- node .claude/kit/findings.mjs record --file <tmpdir>/<id>-buchung.md --stage code --card <id>
 ```
 
 **Gebucht wird im Worktree**, weil der Vergleichsstand die Zusammenfassung des Prüflaufs
@@ -393,7 +398,7 @@ Push fährt allein die Commits aus Schritt 2.
 
 **Vor-Push-Schritt.** Nennt `RELEASING.md` einen Vor-Push-Schritt, fährt der Skill ihn
 nach dem Commit (Schritt 6) und vor dem Push, im Worktree über
-`node .claude/kit/worktree.mjs im <pfad> -- <kommando>`, **im Hintergrund**, und wartet
+`node .claude/kit/worktree.mjs in <pfad> -- <kommando>`, **im Hintergrund**, und wartet
 auf dessen Ende — er kann länger laufen, als ein Werkzeugaufruf im Vordergrund darf, und
 endet nach seiner eigenen Frist von selbst. Seine Fortschrittszeilen und seine Schlusszeile
 zeigt der Skill, bevor er pusht. Er ist kein eigener Schritt: Die Zählung bleibt `von 9`.
@@ -416,7 +421,7 @@ Fast-Forward; wird er abgewiesen, ist `origin` zwischenzeitlich weitergelaufen �
 der Lauf mit dieser Meldung, und der Mensch entscheidet.
 
 Nach dem Push auf `<mainBranch>` — auch auf dem Weg über den Build-Dienst — verwirft der
-Skill eine übernommene Vorbereitung mit `vorbereitung-pruefen --verwerfen`, wie in
+Skill eine übernommene Vorbereitung mit `check-preparation --discard`, wie in
 Schritt 3 beschrieben. Ohne Push bleibt sie für den nächsten Anlauf liegen.
 
 ### 8. Rückweg, Nachziehen, Worktree abbauen
@@ -430,7 +435,7 @@ dieser Weg beseitigt.
 Erst das, was in der Hauptkopie weiterzählt:
 
 ```bash
-node .claude/kit/worktree.mjs rueckweg <pfad>
+node .claude/kit/worktree.mjs return <pfad>
 ```
 
 Das Kommando ersetzt `.claude/checks-summary.json` der Hauptkopie durch die des Worktrees
@@ -439,26 +444,35 @@ Das Kommando ersetzt `.claude/checks-summary.json` der Hauptkopie durch die des 
 `befundeArten` die Arten, die damit die Schwelle erreichen. Für **jede** davon ein Aufruf:
 
 ```bash
-node .claude/kit/befunde.mjs vorschlag --art <a>
+node .claude/kit/findings.mjs suggest --kind <a>
 ```
 
 Dann das lokale `<mainBranch>`, das nach dem Push aus dem Worktree hinter `origin`
 zurückliegt:
 
 ```bash
-node .claude/kit/worktree.mjs nachziehen-pruefen
+node .claude/kit/worktree.mjs catch-up-check
 ```
 
 - **`nachziehen: true`** — in der Hauptkopie `git fetch origin <mainBranch>` und
-  `git rebase origin/<mainBranch>`.
+  `git rebase origin/<mainBranch>`. Ist das Rebase durch, fährt der Skill den
+  **Nach-Push-Schritt** aus `RELEASING.md`, falls sie einen nennt — in der Hauptkopie, als
+  eigener Aufruf ohne Verkettung. Die Hauptkopie steht dann auf dem eben veröffentlichten
+  Stand, an den sich auch jeder unbeaufsichtigte Lauf bindet. Scheitert er, steht das als
+  eine Zeile im Bericht, mit seiner Meldung — kein Halt, der Push ist schon geschehen.
 - **`nachziehen: false`** — **nicht** nachziehen. Der Skill nennt den `grund` und gibt die
-  beiden Kommandos als kopierbare Zeile aus. Ein Rebase unter einer laufenden Umsetzung
+  beiden Kommandos als kopierbare Zeile aus, dahinter das Kommando des Nach-Push-Schritts,
+  falls `RELEASING.md` einen nennt: Er entfällt dann, denn er soll dem veröffentlichten
+  Stand folgen, nicht einem älteren. Ein Rebase unter einer laufenden Umsetzung
   verschöbe ihr den Boden, und in einem schmutzigen Baum hielte er ohnehin an.
+
+Nennt `RELEASING.md` keinen Nach-Push-Schritt, oder gibt es keine `RELEASING.md`, entfällt
+er ersatzlos.
 
 Zuletzt der Abbau:
 
 ```bash
-node .claude/kit/worktree.mjs entfernen <pfad>
+node .claude/kit/worktree.mjs remove <pfad>
 ```
 
 ### 9. Bestätigung
@@ -481,7 +495,7 @@ den Bericht — ein Lauf ohne Commit sieht sonst aus wie ein Lauf mit Commit.
 
 **Wackler und Reparaturkandidaten.** Der Bericht nennt jede `Gewackelt:`-Zeile des
 Prüflaufs unverändert samt der Antwort des Menschen auf die Rückfrage und jede Zeile
-`Reparaturkandidat:` aus `wirksamkeit.mjs kandidaten` (Schritt 5). Ohne beides entfällt
+`Reparaturkandidat:` aus `effectiveness.mjs candidates` (Schritt 5). Ohne beides entfällt
 der Absatz.
 
 **In den Bericht gehören außerdem:** der Pfad des Worktrees und sein Abbau, ob das lokale
@@ -495,7 +509,7 @@ Hinweis auf nächsten Schritt:
 
 ## Weg über den Build-Dienst (`pushPruefung`)
 
-Gilt nur, wenn `checks.mjs plan --stufe push` in Schritt 1 `pushPruefung` als Objekt mit
+Gilt nur, wenn `checks.mjs plan --stage push` in Schritt 1 `pushPruefung` als Objekt mit
 `"ort": "buildDienst"` meldet (Issue #1216, Plan #1199 E14). Der volle Lauf findet dann im
 Build-Dienst des Projekts statt statt auf diesem Rechner. **Die Pflicht ist dieselbe:**
 Grün vor dem Push auf `<mainBranch>`, ein Rot hält an, `productionBranch` bleibt
@@ -506,7 +520,7 @@ Fortschrittszeilen bleiben; anders sind nur Schritt 5 und Schritt 7.
 Stufe `push` über den Batch:
 
 ```bash
-node .claude/kit/checks.mjs run --stufe push --since "$(git merge-base HEAD origin/<mainBranch>)"
+node .claude/kit/checks.mjs run --stage push --since "$(git merge-base HEAD origin/<mainBranch>)"
 ```
 
 Diesen Job richtet das Projekt in seinem Build-Dienst ein — dieser Skill legt ihn nicht an.
@@ -518,10 +532,10 @@ Commit-Gate verlangt für die Release-Dateien aus Schritt 4 trotzdem einen grün
 sie gesehen hat. Ihn liefert ein Lauf der Paketstufe über genau diese Dateien, im Worktree:
 
 ```bash
-node .claude/kit/checks.mjs run --in <pfad> --since HEAD --wiederholen
+node .claude/kit/checks.mjs run --in <pfad> --since HEAD --retry
 ```
 
-Mit `--wiederholen` wie in Schritt 5 (Plan #1395, E3), und ein Wackler hält vor dem Commit
+Mit `--retry` wie in Schritt 5 (Plan #1395, E3), und ein Wackler hält vor dem Commit
 an wie dort. Der Job des Build-Dienstes oben bleibt ohne den Schalter (E18).
 
 Rot hält an wie in Schritt 5: kein Commit, kein Push, weiter mit Schritt 8. Hat Schritt 4
@@ -533,10 +547,13 @@ nichts erzeugt, meldet er `leeresPaket`, und Schritt 6 entfällt wie beschrieben
 1. Den Stand auf den Prüfzweig pushen:
 
    ```bash
-   git -C <pfad> push origin HEAD:<zweig>
+   git -C <pfad> push origin HEAD:refs/heads/<zweig>
    ```
 
-   Wird er abgewiesen, liegt auf `<zweig>` noch ein fremder Stand — der Lauf endet mit
+   Der volle Name `refs/heads/<zweig>` ist nötig: Der Worktree steht auf einem losgelösten
+   `HEAD`, und den Prüfzweig gibt es vor dem Push nicht, weil Schritt 8 ihn nach jedem Lauf
+   löscht. Mit dem kurzen Namen weist git den Push ab, weil es das Ziel nicht als Zweig
+   erkennt (Issue #1518). Wird er abgewiesen, liegt auf `<zweig>` noch ein fremder Stand — der Lauf endet mit
    dieser Meldung, weiter mit Schritt 8. Kein `--force`.
 2. Warten, bis der Build-Dienst fertig ist. `<sha>` ist die Ausgabe von `git -C <pfad> rev-parse HEAD`:
 
@@ -549,7 +566,7 @@ nichts erzeugt, meldet er `leeresPaket`, und Schritt 6 entfällt wie beschrieben
    Lauf noch nicht sichtbar ist — das ist kein Fehler. Läuft die Frist ab, ist das ein
    Fehlschlag: kein Push auf `<mainBranch>`, weiter mit Schritt 8. Ein Fehlschlag des
    Aufrufs selbst (Netz, Anmeldung) zählt genauso. In beiden Fällen nennt der Skill dem
-   Inhaber den Notfallweg `/push-main notfall` als Möglichkeit, falls der Build-Dienst
+   Inhaber den Notfallweg `/push-main emergency` als Möglichkeit, falls der Build-Dienst
    ausgefallen ist (Abschnitt „Notfallweg“), und startet ihn nicht selbst.
 3. `<mainBranch>` nur bei `gruen` pushen — mit demselben Kommando wie in Schritt 7:
 
@@ -586,21 +603,21 @@ das Löschen, steht es in einer Zeile im Bericht und hält den Abbau nicht auf.
 Build-Dienst: `<hash> — gedeckt von: Build-Dienst, Prüfzweig <zweig> (gruen, <Zeitpunkt>)`.
 Der CI-Hinweis entfällt — die CI hat vor dem Push gegatet.
 
-## Notfallweg (`notfall`)
+## Notfallweg (`emergency`)
 
-`/push-main notfall` veröffentlicht, wenn der Build-Dienst ausfällt und der Code-Host den
+`/push-main emergency` veröffentlicht, wenn der Build-Dienst ausfällt und der Code-Host den
 Hauptzweig schützt (Plan #1405, A6). Am Schutz vorbei kommt nur der Inhaber des
 Repositories: Aussetzen kann bei GitHub nur, wer Admin-Rechte hat — das setzt der Code-Host
 durch, nicht das Kit. Die Rulesets tragen keine dauerhafte Umgehung; der Schutz fällt nur
 für diesen einen Push weg.
 
 **Nur interaktiv.** Ist `KIT_AGENT_MODEL` gesetzt, hält der Skill vor Schritt 1 an — kein
-Worktree, kein Lauf, kein Push. `code schutz aussetzen` bricht ohne Aufsicht ohnehin ab
+Worktree, kein Lauf, kein Push. `code protection suspend` bricht ohne Aufsicht ohnehin ab
 (E8); der Halt im Skill kommt dem zuvor. Auch hier braucht es die getippte Trigger-Phrase
 des Menschen.
 
 **Schritte 1 bis 6 wie auf dem lokalen Weg**, auch wenn `pushPruefung` den Build-Dienst
-nennt: Schritt 5 ist der volle lokale Lauf der Stufe `push` mit `--wiederholen` im
+nennt: Schritt 5 ist der volle lokale Lauf der Stufe `push` mit `--retry` im
 Worktree, die Ersatzprüfung für den ausgefallenen Build-Dienst. Ein roter Lauf hält an wie
 dort. Ein Wackler hält vor dem Commit an und wird erfragt wie dort.
 
@@ -611,7 +628,7 @@ dort. Ein Wackler hält vor dem Commit an und wird erfragt wie dort.
 2. Den Schutz aussetzen:
 
    ```bash
-   node .claude/kit/board.mjs code schutz aussetzen --in <pfad>
+   node .claude/kit/board.mjs code protection suspend --in <pfad>
    ```
 
    Das Kommando setzt das Ruleset des Hauptzweigs nur aus, wenn die Prüf-Zusammenfassung
@@ -627,13 +644,13 @@ dort. Ein Wackler hält vor dem Commit an und wird erfragt wie dort.
    Push ausging:
 
    ```bash
-   node .claude/kit/board.mjs code schutz wiederherstellen
+   node .claude/kit/board.mjs code protection restore
    ```
 
-   Scheitert `wiederherstellen`, ist der Lauf ein Fehlschlag, auch wenn der Push gelang
+   Scheitert `restore`, ist der Lauf ein Fehlschlag, auch wenn der Push gelang
    (E10): Der Skill meldet es so und nennt das Kommando zum Wiederholen
-   (`node .claude/kit/board.mjs code schutz wiederherstellen`). Bis es gelingt, steht der
-   Hauptzweig ungeschützt, und `code schutz status` nennt das unter `fehlt`.
+   (`node .claude/kit/board.mjs code protection restore`). Bis es gelingt, steht der
+   Hauptzweig ungeschützt, und `code protection status` nennt das unter `fehlt`.
 
 Danach Schritt 8 wie oben, auch nach einem Halt.
 
@@ -642,17 +659,17 @@ lokalen Weg und dazu, dass der Stand über den Notfallweg kam. In die Abschlussm
 die Ausgabe von:
 
 ```bash
-node .claude/kit/board.mjs code schutz status
+node .claude/kit/board.mjs code protection status
 ```
 
 Nennt sie unter `ungeprueft` den eben gepushten Commit, sagt die Meldung dazu, dass der
 Build-Dienst ihn nachträglich prüfen kann, sobald er wieder läuft, mit dem Kommando
-`node .claude/kit/board.mjs code schutz nachpruefen`. Bis dahin bleibt der Stand als
+`node .claude/kit/board.mjs code protection verify`. Bis dahin bleibt der Stand als
 Ausnahme sichtbar.
 
-## Modus `vorbereiten` (unbeaufsichtigt)
+## Modus `prepare` (unbeaufsichtigt)
 
-`/push-main vorbereiten` startet der Nacht-Runner am Ende eines Laufs, wenn eine Kette das
+`/push-main prepare` startet der Nacht-Runner am Ende eines Laufs, wenn eine Kette das
 Ziel „Veröffentlichung vorbereitet" erreicht hat (Plan #1243, A5). Die Session läuft in der
 Hauptkopie, während der Runner die Umsetzungssperre hält: Nichts baut mehr. Sie fährt alles,
 was vor dem Veröffentlichen ohne Menschen und ohne Push geht, und hält das Ergebnis fest.
@@ -662,42 +679,42 @@ Morgens übernimmt `push main` den Stand, wenn er sich nicht geändert hat (Schr
 
 - **Schritt 3:** Der Fetch in der Hauptkopie (`git fetch origin <mainBranch>`) ist erlaubt,
   weil der Runner die Umsetzungssperre hält — kein Bau verliert dabei den Boden.
-  `vorbereitung-pruefen` entfällt. Der Worktree entsteht mit eigenem Präfix:
+  `check-preparation` entfällt. Der Worktree entsteht mit eigenem Präfix:
 
   ```bash
-  node .claude/kit/worktree.mjs anlegen --praefix vorbereitung --ref <mainBranch>
+  node .claude/kit/worktree.mjs create --prefix vorbereitung --ref <mainBranch>
   ```
 
   Danach `git -C <pfad> rebase origin/<mainBranch>` wie oben. **Scheitert der
   Fetch**, ist das kein Abbruch: Gerebased wird auf die vorhandene Referenz
   `origin/<mainBranch>`, der Lauf geht weiter und übergibt beim Festhalten
-  `--fetch fehlgeschlagen`. Ein Rebase-Konflikt endet wie oben ohne Festhalten; der Runner
+  `--fetch failed`. Ein Rebase-Konflikt endet wie oben ohne Festhalten; der Runner
   liest dann keine Vorbereitung dieses Laufs.
 - **Schritt 4:** Ohne `RELEASING.md` entfällt er wie oben (E15).
 - **Schritt 5:** der volle Prüflauf der Push-Stufe. Auf dem Weg über den Build-Dienst ist
   Schritt 5 der Nachweislauf der Paketstufe aus dem Abschnitt „Weg über den Build-Dienst"
-  (`checks.mjs run --in <pfad> --since HEAD --wiederholen`), danach der Commit (E17). Der volle Lauf im Build-Dienst
+  (`checks.mjs run --in <pfad> --since HEAD --retry`), danach der Commit (E17). Der volle Lauf im Build-Dienst
   bleibt offen und läuft morgens in Schritt 7. Ein Wackler hält nachts nicht an und wird
-  nicht erfragt: `vorbereitung-festhalten` macht aus ihm selbst einen offenen Punkt
+  nicht erfragt: `record-preparation` macht aus ihm selbst einen offenen Punkt
   `Gewackelt: <cmd> — Entscheidung beim push main` (Plan #1395, E14).
 - **Schritt 6:** der Commit `chore: vX.Y.Z` im Worktree, wie oben.
 
 **Statt Schritt 7** hält die Session das Ergebnis fest, auch nach einem roten Prüflauf:
 
 ```bash
-node .claude/kit/worktree.mjs vorbereitung-festhalten <pfad> --ergebnis <gruen|gruen-offen|rot>
+node .claude/kit/worktree.mjs record-preparation <pfad> --result <green|green-open|red>
 ```
 
-- Nach einem gescheiterten Fetch zusätzlich `--fetch fehlgeschlagen`.
+- Nach einem gescheiterten Fetch zusätzlich `--fetch failed`.
 - Der Vor-Push-Schritt aus `RELEASING.md` und eine UI-Prüfung, die nach `/local-check`,
-  Schritt 3, nötig ist, gehen je als `--offen "<Text>"` mit. **Gestartet werden sie nicht**
+  Schritt 3, nötig ist, gehen je als `--open "<Text>"` mit. **Gestartet werden sie nicht**
   (E9): Ob ein Vor-Push-Schritt pusht, ist nachts nicht prüfbar. Mit einem offenen Punkt
-  heißt das Ergebnis `gruen-offen`.
+  heißt das Ergebnis `green-open`.
 - Den Build-Dienst-Punkt setzt das Kommando selbst — die Session übergibt ihn nicht.
 
-**Danach Schritt 8 ohne Nachziehen:** `rueckweg` und `entfernen` wie oben,
-`nachziehen-pruefen` und das Rebase des lokalen `<mainBranch>` entfallen. Schritt 9 meldet
-das Ergebnis von `vorbereitung-festhalten`.
+**Danach Schritt 8 ohne Nachziehen:** `return` und `remove` wie oben,
+`catch-up-check` und das Rebase des lokalen `<mainBranch>` entfallen. Schritt 9 meldet
+das Ergebnis von `record-preparation`.
 
 **Kein Push** — weder auf `<mainBranch>`, noch auf den Prüfzweig, noch auf einen
 Vorab-Zweig: kein Prüfzweig, kein Vorab-Zweig, kein Tag. Der Modus endet beim lokalen
@@ -717,7 +734,7 @@ Commit im Worktree; was nur mit einem Push ginge, ist offen.
 - Kein Push auf den Prüfzweig außerhalb des Wegs über den Build-Dienst, und auf ihm kein
   Push auf `<mainBranch>` ohne grünes Ergebnis des Build-Dienstes
 - Kein Push ohne vorherige Bestätigung durch den Menschen (Trigger-Phrase)
-- Kein Push im Modus `vorbereiten`, auch nicht auf den Prüfzweig oder einen Vorab-Zweig
+- Kein Push im Modus `prepare`, auch nicht auf den Prüfzweig oder einen Vorab-Zweig
 - Kein automatischer Push nach Commit, nach grünem Check oder nach Review
 - Kein Halt wegen des Aufwands-, des Wirksamkeits- oder des Befunds zu den
   Modell-Prüfungen: Alle drei sind **kein Gate**, weder ihr Inhalt noch ihr Fehlschlag

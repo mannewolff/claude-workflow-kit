@@ -16,7 +16,7 @@ import {
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG, durchziehen,
 } from "./helpers/kette-ablauf.mjs";
 
-/** Eine Protokollzeile, wie `befunde.mjs buchen` sie schreibt — sieben Spalten, Art in Spalte 5. */
+/** Eine Protokollzeile, wie `findings.mjs record` sie schreibt — sieben Spalten, Art in Spalte 5. */
 function zeile(art) {
   return `2026-09-22T00:00:00.000Z\tplan\t2\treviewer\t${art}\tWICHTIG\t-`;
 }
@@ -43,7 +43,7 @@ test("[night-69] der Abbau im finally am Kettenende holt die Buchungen der Revie
       review: `${REVIEW_MARKER}; ${BUCHUNG_IM_WORKTREE}`,
       pakete: PAKETE_ANLEGEN,
     } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const zeilen = hauptZeilen(dir);
@@ -65,7 +65,7 @@ test("[night-69] der Abbau vor der Umsetzungsstufe holt die Buchungen zurueck �
       pakete: `${PAKETE_ANLEGEN}; ${BUCHUNG_IM_WORKTREE}`,
       umsetzung: UMSETZUNG_ERFOLG,
     } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     // Genau eine Zeile: Der Abbau vor der Umsetzungsstufe hat sie geholt, und das

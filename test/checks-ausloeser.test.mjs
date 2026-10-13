@@ -91,7 +91,7 @@ test("[checks-1004] an der Push-Stufe zaehlen bereichsgebundene Kommandos als 'v
   await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    await run(dir, "--stufe", "push");
+    await run(dir, "--stage", "push");
 
     for (const cmd of ["echo kern", "echo doku", "echo push"]) {
       const z = zeileVon(dir, cmd);
@@ -105,7 +105,7 @@ test("[checks-1004] an der Freigabestufe zaehlt die Stufe merge als 'veroeffentl
   await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    await run(dir, "--stufe", "merge");
+    await run(dir, "--stage", "merge");
 
     assert.equal(zeileVon(dir, "echo merge").ausloeser, "veroeffentlichung");
     const kern = zeileVon(dir, "echo kern");
@@ -123,11 +123,11 @@ test("[checks-1004] ein nicht aufloesbarer Anker zaehlt als 'anker'", async () =
   });
 });
 
-test("[checks-1004] --bereich zaehlt als 'bereiche' mit genau diesem Bereich", async () => {
+test("[checks-1004] --area zaehlt als 'bereiche' mit genau diesem Bereich", async () => {
   await mitRepo({ config: CONFIG }, async (dir) => {
     datei(dir, "src/a.txt");
 
-    await run(dir, "--bereich", "doku");
+    await run(dir, "--area", "doku");
 
     const doku = zeileVon(dir, "echo doku");
     assert.deepEqual([doku.ausloeser, doku.bereiche], ["bereiche", "doku"]);

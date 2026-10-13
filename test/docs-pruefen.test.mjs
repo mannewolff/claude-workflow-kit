@@ -16,10 +16,18 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PRUEFLAUF_BUDGET_DEFAULTS } from "../kit/night/session.mjs";
+import { PRUEFLAUF_BUDGET_DEFAULTS as PRUEFLAUF_VORGABEN } from "../kit/night/session.mjs";
 import { PRUEFLAUF_REST_ANKER } from "../kit/night/tag.mjs";
-import { KLAEREN_LABEL } from "../kit/night/wartend.mjs";
-import { REVIEW_FERTIG_LABEL } from "../kit/night/kette.mjs";
+import { LABELS } from "../kit/board/namen.mjs";
+import { englisch } from "./helpers/labels.mjs";
+
+// Skills und Doku nennen das Label bis zu ihrer Umstellung (Plan #1548, eigene Pakete) unter dem
+// deutschen Namen; das Kit schreibt seit Issue #1552 den englischen.
+const KLAEREN_LABEL = LABELS.klaeren.en;
+// Ebenso die Vorgabe des Prueflauf-Kennzeichens: Das Kit setzt seit Issue #1553 `kit:check`, die Doku
+// nennt bis zu ihrer Umstellung den deutschen Namen, die Vorlage seit Issue #1571 den englischen.
+const PRUEFLAUF_BUDGET_DEFAULTS = { ...PRUEFLAUF_VORGABEN, label: LABELS.pruefen.en };
+const REVIEW_FERTIG_LABEL = LABELS.reviewFertig.en;
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
@@ -50,9 +58,9 @@ test("das Kapitel nennt Geste, Aufruf, Bedingungen, Ausgaenge und Vermerke beim 
   const kapitel = dokuKapitel(KAPITEL);
   const erwartet = [
     ["die Geste", `\`${PRUEFLAUF_BUDGET_DEFAULTS.label}\``],
-    ["den Aufruf", "node .claude/kit/night.mjs --pruefen"],
+    ["den Aufruf", "node .claude/kit/night.mjs --check"],
     ["den Config-Block", "`pruefLauf`"],
-    ["die Art der Kandidaten", "`[Fachlich]`"],
+    ["die Art der Kandidaten", "`[Requirement]`"],
     ["den Ausschluss durch eine offene Entscheidung", `\`${KLAEREN_LABEL}\``],
     ["den Ausgang geprueft", "geprüft"],
     ["den Ausgang wartende Entscheidung", "wartende Entscheidung"],
@@ -84,7 +92,7 @@ test("die dokumentierten Startwerte der Budgets sind die des Programms", () => {
 });
 
 // Die eine Regel, die man nicht raten kann: Das Kennzeichen ist mit dem Start verbraucht,
-// und `kit:klaeren` nimmt nur ein Mensch ab — ein Lauf, der es selbst abnahm, gaebe sich
+// und `kit:clarify` nimmt nur ein Mensch ab — ein Lauf, der es selbst abnahm, gaebe sich
 // seine eigene Freigabe.
 test("ein Absatz erklaert den Verbrauch des Kennzeichens und das Label, das nur ein Mensch abnimmt", () => {
   const kapitel = dokuKapitel(KAPITEL);
@@ -105,7 +113,7 @@ test("ein Absatz nennt die Grenze der Unberuehrtheit beim Tracker local", () => 
   assert.match(absatz, /Ergebnis und kein Rest|kein Rest/, "der Absatz sagt nicht, dass die Kartenaenderung das Ergebnis und kein Rest ist");
 });
 
-// Dass night.mjs --help die Option --pruefen nennt, prueft ablauf-night-grundlagen-hilfe am
+// Dass night.mjs --help die Option --check nennt, prueft ablauf-night-grundlagen-hilfe am
 // Programm (Issue #1235); den Aufruf in der Vorlage prueft der Fall darunter.
 
 test("der Prueflauf-Block der Vorlage nennt Geste, Aufruf, Ausgaenge und das Verhaeltnis zur Kette", () => {
@@ -114,14 +122,15 @@ test("der Prueflauf-Block der Vorlage nennt Geste, Aufruf, Ausgaenge und das Ver
   const abschnitt = VORLAGE.slice(idx).split(/\n## /)[0];
   for (const anker of [
     `\`${PRUEFLAUF_BUDGET_DEFAULTS.label}\``,
-    "node .claude/kit/night.mjs --pruefen",
+    "node .claude/kit/night.mjs --check",
     "`pruefLauf`",
     `\`${REVIEW_FERTIG_LABEL}\``,
     `\`${KLAEREN_LABEL}\``,
     PRUEFLAUF_REST_ANKER,
     "Kettenlabel",
   ]) {
-    assert.ok(abschnitt.includes(anker), `der Prueflauf-Block der Vorlage nennt '${anker}' nicht`);
+    // Der Regeltext nennt die Labels seit Issue #1571 englisch.
+    assert.ok(abschnitt.includes(englisch(anker)), `der Prueflauf-Block der Vorlage nennt '${englisch(anker)}' nicht`);
   }
   // Der Abschnitt steht neben dem Nachtbetrieb, nicht darin: Der Lauf gehoert dem Tag.
   assert.ok(idx < VORLAGE.indexOf("## Nachtbetrieb"), "der Prueflauf-Block steht nicht vor dem Nachtbetrieb-Block");

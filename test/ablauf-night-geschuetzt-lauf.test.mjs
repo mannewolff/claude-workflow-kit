@@ -15,6 +15,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { hatLabel } from "./helpers/labels.mjs";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -61,14 +62,14 @@ function haltKommentar(dir, id) {
   const karte = board(dir, "issue", "get", id);
   const treffer = boardModul.geschuetzteTreffer(karte.body, karte.title, dir);
   assert.ok(treffer.length > 0, `Paket #${id} nennt keine geschuetzte Datei`);
-  return `${boardModul.geschuetztKommentar(treffer)}\n\nLabel kit:geschuetzt gesetzt`;
+  return `${boardModul.geschuetztKommentar(treffer)}\n\nLabel kit:protected gesetzt`;
 }
 
 /** Die Karte mit geschuetzter Datei: Backlog, Label, genau der eine Halt-Kommentar. */
 function istAngehalten(dir, id) {
   const karte = board(dir, "issue", "get", id);
   assert.equal(karte.status, "backlog", `Paket #${id} steht in ${karte.status}`);
-  assert.ok((karte.labels || []).includes("kit:geschuetzt"), `Paket #${id} traegt kit:geschuetzt nicht`);
+  assert.ok(hatLabel(karte.labels, "kit:geschuetzt"), `Paket #${id} traegt kit:geschuetzt nicht`);
   const halt = kommentare(dir, id).filter((k) => k.includes(boardModul.GESCHUETZT_ANKER));
   assert.deepEqual(halt, [haltKommentar(dir, id)], `Paket #${id} traegt nicht genau den einen Halt-Kommentar`);
 }
@@ -141,7 +142,7 @@ test("Kette: die Umsetzungsstufe vermerkt die angehaltene Karte und das abhaengi
     const F = fachplanB(dir);
     const stufen = { ...ERZEUGEN, pakete: PAKETE_DREI, abdeckung: ABDECKUNG_SCHUETZT_ERSTES, umsetzung: UMSETZUNG_MIT_SPUR };
     const env = { ...umgebung(dir, { stufen }), KETTE_GESCHUETZT: PFAD };
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);
@@ -166,7 +167,7 @@ test("Kette: ein Paket, dessen einziger Verstoss I8 ist, bekommt keine Korrektur
     const F = fachplanB(dir);
     const stufen = { ...ERZEUGEN, pakete: PAKETE_DREI, form: ":", umsetzung: UMSETZUNG_MIT_SPUR };
     const env = { ...umgebung(dir, { stufen }), KETTE_GESCHUETZT_BEIM_SCHNEIDEN: PFAD };
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);
@@ -198,7 +199,7 @@ test("Kette: ein Paket, das allein an I7 rot ist, wird in genau einer Korrekturr
     const F = fachplanB(dir);
     const stufen = { ...ERZEUGEN, pakete: PAKET_OHNE_PFAD, form: PFAD_ERGAENZEN, umsetzung: UMSETZUNG_MIT_SPUR };
     const env = umgebung(dir, { stufen });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit } = umsetzung(dir, F);

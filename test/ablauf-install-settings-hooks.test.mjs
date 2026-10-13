@@ -33,8 +33,11 @@ const INSTALLER = join(repoRoot, "install.mjs");
 // Kein Git-Repo im Wegwerf-Verzeichnis: Die Gate-Frage entfaellt damit und verbraucht
 // keine Antwortzeile. Acht Antworten — Scope, codeHost, issueTracker, mainBranch,
 // productionBranch, reviewScope, reviewModel, reviewCommand.
-const PROJEKT = ["projekt", "github", "j", "n", "toolbox", "", "", "", "", ""];
-const GLOBAL = ["global", "github", "toolbox", "", "", "", "", "", ""];
+// Ein neues Projekt beantwortet davor die Sprachfrage (Issue #1430), "" heisst Deutsch; ein
+// zweiter Lauf auf derselben Config wird nicht nach ihr gefragt und antwortet mit PROJEKT_BESTAND.
+const PROJEKT_BESTAND = ["projekt", "github", "j", "n", "toolbox", "", "", "", "", ""];
+const PROJEKT = ["", ...PROJEKT_BESTAND];
+const GLOBAL = ["", "global", "github", "toolbox", "", "", "", "", "", ""];
 
 function installiere(dir, antworten = PROJEKT) {
   return spawnSync(process.execPath, [INSTALLER], {
@@ -71,7 +74,7 @@ function kommandos(settings, event) {
 
 /** Das eine Kommando des Melders an einem Ereignis. */
 function melderKommando(settings, event) {
-  const treffer = kommandos(settings, event).filter((c) => c.includes("sitzung melden"));
+  const treffer = kommandos(settings, event).filter((c) => c.includes("session report"));
   assert.equal(treffer.length, 1, `${event}: genau ein Eintrag des Melders erwartet, gefunden ${treffer.length}`);
   return treffer[0];
 }
@@ -128,11 +131,64 @@ test("[installer-9] ein fremder hooks-Eintrag bleibt stehen, unserer kommt daneb
   });
 });
 
+// Issue #1556: Eingetragen werden die englischen Namen. Issue #1569 (Plan #1548 E10): Ein
+// bestehendes Projekt traegt noch die deutschen; das Update schreibt im erkannten Eintrag nur den
+// Befehl um. Daneben kommt kein zweiter Eintrag, sonst liefe der abgewiesene deutsche Aufruf weiter.
+const DEUTSCHE_HOOKS = {
+  SessionEnd: [{ hooks: [{ type: "command", command: "node .claude/kit/board.mjs sitzung melden --complete", timeout: 30 }] }],
+  Stop: [{ hooks: [
+    { type: "command", command: "node .husky/zaehle-zuege.mjs" },
+    { type: "command", command: "node .claude/kit/board.mjs sitzung melden" },
+  ] }],
+  PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook bash-pruefen" }] }],
+};
+
+test("[installer-1569] die deutschen Eintraege eines bestehenden Projekts werden englisch, ohne Doppel", () => {
+  mitFixture("install-hooks-deutsch-", { env: { A: "1" }, hooks: DEUTSCHE_HOOKS }, (dir) => {
+    const res = installiere(dir);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    const settings = liesSettings(dir);
+    assert.deepEqual(settings.hooks, {
+      SessionEnd: [{ hooks: [{ type: "command", command: "node .claude/kit/board.mjs session report --complete", timeout: 30 }] }],
+      Stop: [{ hooks: [
+        { type: "command", command: "node .husky/zaehle-zuege.mjs" },
+        { type: "command", command: "node .claude/kit/board.mjs session report" },
+      ] }],
+      PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook bash-check" }] }],
+    }, "nur der Befehl wird ersetzt, sonst bleibt der Eintrag, wie er ist");
+    assert.deepEqual(settings.env, { A: "1" });
+    assert.match(res.stdout, /SessionEnd, Stop, PreToolUse/, "die Ausgabe nennt die umgeschriebenen Ereignisse");
+
+    const nachErstem = readFileSync(settingsPfad(dir), "utf-8");
+    const zweiter = installiere(dir, PROJEKT_BESTAND);
+    assert.equal(zweiter.status, 0, `${zweiter.stderr}\n${zweiter.stdout}`);
+    assert.equal(readFileSync(settingsPfad(dir), "utf-8"), nachErstem, "der zweite Lauf hat die Datei veraendert");
+  });
+});
+
+test("[installer-1569] stehen deutscher und englischer Eintrag nebeneinander, bleibt einer", () => {
+  const beide = {
+    hooks: {
+      PreToolUse: [
+        { matcher: "Bash", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook bash-pruefen" }] },
+        { matcher: "Bash", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook bash-check" }] },
+      ],
+    },
+  };
+  mitFixture("install-hooks-beide-", beide, (dir) => {
+    const res = installiere(dir);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.deepEqual(liesSettings(dir).hooks.PreToolUse,
+      [{ matcher: "Bash", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook bash-check" }] }]);
+    assert.equal(kommandos(liesSettings(dir), "Stop").length, 1);
+  });
+});
+
 test("[installer-9] zweimal installieren ergibt dieselbe Datei wie einmal", () => {
   mitFixture("install-hooks-zweimal-", { env: { A: "1" } }, (dir) => {
     assert.equal(installiere(dir).status, 0);
     const nachErstem = readFileSync(settingsPfad(dir), "utf-8");
-    const zweiter = installiere(dir);
+    const zweiter = installiere(dir, PROJEKT_BESTAND);
     assert.equal(zweiter.status, 0, `${zweiter.stderr}\n${zweiter.stdout}`);
 
     // Byteweise: Ein zweiter Eintrag faellt ueber einen Vergleich der Kommandoliste
@@ -153,7 +209,7 @@ test("[installer-9] eine settings.json, die kein Objekt ist, wird nicht angefass
     assert.equal(readFileSync(settingsPfad(dir), "utf-8"), kaputt,
       "was wir nicht lesen koennen, koennen wir auch nicht erhalten — also nicht schreiben");
     assert.match(res.stdout, /settings\.json/, "der Installer sagt, dass er es gelassen hat");
-    assert.match(res.stdout, /sitzung melden/, "und nennt die Eintraege zum Nachtragen von Hand");
+    assert.match(res.stdout, /session report/, "und nennt die Eintraege zum Nachtragen von Hand");
   });
 });
 
@@ -174,7 +230,7 @@ test("[installer-9] bei globalem Install entsteht keine settings.json im Projekt
 /** Die PreToolUse-Gruppen mit Matcher Bash, die unseren Pruef-Hook tragen. */
 function bashPruefGruppen(settings) {
   return (settings.hooks?.PreToolUse ?? []).filter((g) => g.matcher === "Bash"
-    && (g.hooks ?? []).some((h) => h.command?.includes("board.mjs hook bash-pruefen")));
+    && (g.hooks ?? []).some((h) => h.command?.includes("board.mjs hook bash-check")));
 }
 
 test("[installer-995] der Installer traegt den Bash-Pruef-Hook als PreToolUse mit Matcher Bash ein", () => {
@@ -183,7 +239,7 @@ test("[installer-995] der Installer traegt den Bash-Pruef-Hook als PreToolUse mi
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     const gruppen = bashPruefGruppen(liesSettings(dir));
     assert.equal(gruppen.length, 1, "genau ein Eintrag erwartet");
-    assert.deepEqual(gruppen[0].hooks, [{ type: "command", command: "node .claude/kit/board.mjs hook bash-pruefen" }]);
+    assert.deepEqual(gruppen[0].hooks, [{ type: "command", command: "node .claude/kit/board.mjs hook bash-check" }]);
   });
 });
 
@@ -192,7 +248,7 @@ test("[installer-995] zweiter Lauf laesst die Datei byteweise gleich, fremde Pre
   mitFixture("install-hooks-bash-zweimal-", { hooks: { PreToolUse: [fremd] } }, (dir) => {
     assert.equal(installiere(dir).status, 0);
     const nachErstem = readFileSync(settingsPfad(dir), "utf-8");
-    assert.equal(installiere(dir).status, 0);
+    assert.equal(installiere(dir, PROJEKT_BESTAND).status, 0);
     assert.equal(readFileSync(settingsPfad(dir), "utf-8"), nachErstem, "der zweite Lauf hat die Datei veraendert");
     const settings = liesSettings(dir);
     assert.deepEqual(settings.hooks.PreToolUse[0], fremd, "der fremde Hook bleibt vorn stehen");
@@ -204,7 +260,7 @@ test("[installer-995] die Rueckfallmeldung nennt den Bash-Pruef-Hook mit", () =>
   mitFixture("install-hooks-bash-kaputt-", "{ kaputt\n", (dir) => {
     const res = installiere(dir);
     assert.equal(res.status, 0);
-    assert.match(res.stdout, /PreToolUse \(Bash\): node \.claude\/kit\/board\.mjs hook bash-pruefen/);
+    assert.match(res.stdout, /PreToolUse \(Bash\): node \.claude\/kit\/board\.mjs hook bash-check/);
   });
 });
 

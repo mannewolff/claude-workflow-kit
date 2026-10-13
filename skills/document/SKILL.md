@@ -1,6 +1,6 @@
 ---
 name: document
-description: Schreibt nach der Session einen Tageslog-Eintrag in den Vault und aktualisiert die Projektnotiz. Nutze diesen Skill wenn der Nutzer /document aufruft oder die Session dokumentieren will.
+description: Writes a daily log entry to the vault after the session and updates the project note. Use this skill when the user invokes /document or wants to document the session.
 user-invocable: true
 ---
 
@@ -12,6 +12,8 @@ Werkzeug neben dem Prozess, am Session-Ende: Was in dieser Session gebaut, entsc
 
 Jede Vault-Datei, in die dieser Skill automatisch schreibt, gehoert genau einem Repo. Teilen sich mehrere Service-Repos einen Vault, ist eine gemeinsam beschriebene Datei die Kollisionsstelle: parallele Sessions ueberschreiben Abschnitte, in einem synchronisierten Vault entsteht ein Sync-Konflikt. Geteilte Dateien werden deshalb gelesen oder nur mit ausdruecklicher Zustimmung geschrieben — die Dach-Notiz ist der einzige geteilte Schreibort und bewusst nicht automatisiert.
 
+**Feste Zeilen.** Überschriften, Marker, Review- und Einarbeitungs-Köpfe und Fundblock-Zeilen, die dieser Skill in Dokumente, Kommentare oder Markerzeilen schreibt, stehen hier deutsch. Vor dem ersten Schreiben `node .claude/kit/board.mjs names` aufrufen: Das Feld `lines` nennt je deutscher Zeile die Fassung der Projektsprache, und der Skill schreibt die ausgegebene Fassung. Eine Zeile mit veränderlichem Rest (`## Einarbeitung, Runde 2`) steht dort mit ihrem festen Anfang, eine Überschrift mit `## ` davor gilt auf jeder Ebene, und was `names` nicht nennt, bleibt, wie es hier steht.
+
 ## Ablauf
 
 ### 1. Zielpfade holen
@@ -19,7 +21,7 @@ Jede Vault-Datei, in die dieser Skill automatisch schreibt, gehoert genau einem 
 Der Skill baut keine Vault-Pfade selbst zusammen. Ein Aufruf liefert alles:
 
 ```bash
-node .claude/kit/board.mjs kontext paths
+node .claude/kit/board.mjs context paths
 ```
 
 Das JSON enthaelt:
@@ -29,14 +31,14 @@ Das JSON enthaelt:
 - `parentNote`: absolute Datei der Dach-Notiz — nur gesetzt wenn `parentProject` konfiguriert ist, sonst `null`
 - `project`, `parentProject`, `vault`: fuer die Bestaetigungsmeldung
 
-**Der Fallback gilt genau einem Fall: unbekannte Achse `kontext`** — ein Projekt mit aelterer `board.mjs`. Dann auf das bisherige Verhalten zurueckfallen statt abzubrechen: `kontext.config.json` selbst lesen (lokal `.claude/kontext.config.json` vor global `~/.claude/kontext.config.json`), Projektname ueber `node .claude/kit/board.mjs code repo-name` (letztes Segment; im lokalen Modus ohne git-Remote liefert der Adapter den Verzeichnisnamen — erwartetes Verhalten, kein Fehler), Log nach `{vault}/Log/JJJJ-MM-TT.md`, Projektnotiz nach `{vault}/Projekte/{name}/{name}.md`, keine Dach-Notiz. In der Bestaetigung ausdruecklich sagen, dass der Fallback gegriffen hat und `board.mjs` veraltet ist. Ein fehlendes Kommando darf `/document` nicht scheitern lassen.
+**Der Fallback gilt genau einem Fall: unbekannte Achse `context`** — ein Projekt mit aelterer `board.mjs`. Dann auf das bisherige Verhalten zurueckfallen statt abzubrechen: `kontext.config.json` selbst lesen (lokal `.claude/kontext.config.json` vor global `~/.claude/kontext.config.json`), Projektname ueber `node .claude/kit/board.mjs code repo-name` (letztes Segment; im lokalen Modus ohne git-Remote liefert der Adapter den Verzeichnisnamen — erwartetes Verhalten, kein Fehler), Log nach `{vault}/Log/JJJJ-MM-TT.md`, Projektnotiz nach `{vault}/Projekte/{name}/{name}.md`, keine Dach-Notiz. In der Bestaetigung ausdruecklich sagen, dass der Fallback gegriffen hat und `board.mjs` veraltet ist. Ein fehlendes Kommando darf `/document` nicht scheitern lassen.
 
 **Jeder andere Fehler wird sichtbar abgebrochen**, insbesondere eine mehrdeutige Notiz (zwei Dateien, die sich nur in der Gross-/Kleinschreibung unterscheiden) und ein nicht lesbarer Notizordner. Die Meldung des Kommandos unveraendert ausgeben und nichts schreiben. Wuerde der Fallback hier greifen, faenge er genau den neuen Fehler ab und legte am Ende doch die zweite Notiz an (Issue #286).
 
 ### 1b. Vorgaenger-Eintrag lesen (nur Modus `full`)
 
 ```bash
-node .claude/kit/board.mjs kontext last-log
+node .claude/kit/board.mjs context last-log
 ```
 
 Liefert `{"path": "...", "date": "JJJJ-MM-TT"}` — den juengsten vorhandenen Log-Eintrag **desselben Projekts** — oder `{"path": null}`, wenn es keinen gibt (erster Eintrag eines Projekts, Normalfall, kein Fehler). Der heutige Eintrag ist ausgeschlossen: Eine zweite Session am selben Tag soll nicht sich selbst als Vorgaenger lesen.
@@ -153,9 +155,9 @@ Fuer Vollmodus: ~/.claude/kontext.config.json anlegen mit vault-Pfad.
 
 ## Was dieser Skill nicht tut
 
-- Kein Lesen von Vault-Dateien in den Kontext (das ist /kontext)
+- Kein Lesen von Vault-Dateien in den Kontext (das ist /session-start)
 - Kein automatisches Schreiben in die Dach-Notiz — nur nach Rueckfrage
-- Kein Selbst-Zusammenbauen von Vault-Pfaden (das macht `board.mjs kontext paths`)
+- Kein Selbst-Zusammenbauen von Vault-Pfaden (das macht `board.mjs context paths`)
 - Keine Code-Änderungen
 - Kein Commit, kein Push
 - Kein Überschreiben bestehender Log-Abschnitte — nur anhängen

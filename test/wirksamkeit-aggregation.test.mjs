@@ -125,12 +125,12 @@ test("[wirksamkeit-1] ohne Protokoll und ohne buildChecks steht 'keine Pruefung 
 
 test("[wirksamkeit-1] ein abgewiesener Aufruf gibt JSON auf stdout aus", () => {
   mitProjekt({ zeilen: [] }, (dir) => {
-    const res = wirksamkeit(dir, "auswerten", "--fenster", "keineZahl");
+    const res = wirksamkeit(dir, "evaluate", "--window", "keineZahl");
 
     assert.notEqual(res.status, 0);
     const json = JSON.parse(res.stdout);
     assert.equal(json.ok, false);
-    assert.match(json.fehler, /--fenster/);
+    assert.match(json.fehler, /--window/);
   });
 });
 

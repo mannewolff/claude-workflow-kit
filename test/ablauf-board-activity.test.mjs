@@ -3,7 +3,7 @@
 // Tests fuer `issue activity` (Issue #460).
 //
 // Das Kommando gibt den Aktivitaetsverlauf einer Karte aus. Auswertungen wie
-// `wirksamkeit.mjs` lesen daraus die Ereignisdaten, seit an der Instanz belegt ist,
+// `effectiveness.mjs` lesen daraus die Ereignisdaten, seit an der Instanz belegt ist,
 // dass die Karten-Route kein Anlagedatum fuehrt (Issue #457, manuelle Pruefung vom
 // 2026-09-02).
 //

@@ -122,16 +122,16 @@ function skillText(name) {
 }
 
 for (const name of ABSCHLUSS_SKILLS) {
-  test(`${name}: der Pruefaufruf vor dem Commit traegt --abschluss <kartennummer>`, () => {
+  test(`${name}: der Pruefaufruf vor dem Commit traegt --finish <kartennummer>`, () => {
     const text = skillText(name);
-    assert.match(text, /checks\.mjs run --abschluss <kartennummer>/,
+    assert.match(text, /checks\.mjs run --finish <kartennummer>/,
       "der Abschlusslauf nennt die Kartennummer nicht — dann rechnet die Kennzahl je Karte nicht");
   });
 
   test(`${name}: der Skill begruendet den Abschlusslauf`, () => {
     const text = skillText(name);
     assert.match(text, /Abschluss genau einer Karte/i,
-      "es fehlt der Satz, warum hier `--abschluss` gesetzt wird");
+      "es fehlt der Satz, warum hier `--finish` gesetzt wird");
   });
 }
 
@@ -143,18 +143,18 @@ for (const name of ["implement-next", "implement-ready", "implement-done"]) {
   });
 }
 
-test("local-check: der Pruefaufruf setzt kein --abschluss", () => {
+test("local-check: der Pruefaufruf setzt kein --finish", () => {
   const text = skillText("local-check");
   const zeilen = text
     .split("\n")
     .filter((z) => z.includes("checks.mjs run") && z.trimStart().startsWith("node "));
   assert.ok(zeilen.length > 0, "der Aufruf `checks.mjs run` fehlt ganz");
   for (const zeile of zeilen) {
-    assert.doesNotMatch(zeile, /--abschluss/,
+    assert.doesNotMatch(zeile, /--finish/,
       "`/local-check` misst mehrere Pakete gegen den Merge-Base — das ist kein Kartenabschluss");
   }
-  assert.match(text, /kein `--abschluss`/,
-    "es fehlt der Satz, warum hier kein `--abschluss` gesetzt wird — sonst liest ihn die naechste Session als Versehen");
+  assert.match(text, /kein `--finish`/,
+    "es fehlt der Satz, warum hier kein `--finish` gesetzt wird — sonst liest ihn die naechste Session als Versehen");
 });
 
 test("push-main: der rote Zweig nennt die Verursacher-Karten und die neue Karte", () => {
@@ -186,7 +186,7 @@ for (const { name, text } of SKILLS) {
 
   // Plan E11: Wer eine Datei anlegt, ordnet sie zu.
   test(`${name}: die Regel zu neu angelegten Dateien im vollen Umfang steht am Pruefschritt`, () => {
-    const pruefschritt = text.slice(text.indexOf("checks.mjs run --abschluss"),
+    const pruefschritt = text.slice(text.indexOf("checks.mjs run --finish"),
       text.search(/### \d+\. Lokal committen/));
     assert.match(pruefschritt, /voller Umfang/);
     assert.match(pruefschritt, /checkAreas/);
@@ -290,3 +290,31 @@ for (const name of ["implement-next", "implement-ready", "implement-done", "impl
       "es fehlt, dass die Zeile `Gewackelt:` wortgetreu in den Bericht geht");
   });
 }
+
+// --- Zeile je uebernommenem Szenario (Issue #1595, Plan #1588) -----------------
+//
+// Kriterium 9 aus #1586: Der Abschlussbericht nennt zu jedem uebernommenen Szenario den
+// Test, damit der Mensch ihn am Board findet, ohne in den Code zu schauen.
+
+function abschnittTestsUndChecks(text) {
+  const start = text.indexOf("### Tests und Checks");
+  assert.notEqual(start, -1, "der Abschnitt '### Tests und Checks' fehlt");
+  return text.slice(start, text.indexOf("### Hinweise", start));
+}
+
+for (const name of ["implement-next", "implement-ready", "implement-done"]) {
+  test(`${name}: der Abschnitt Tests und Checks nennt je Szenario den Test`, () => {
+    const text = readFileSync(join(repoRoot, "skills", name, "SKILL.md"), "utf-8");
+    assert.match(abschnittTestsUndChecks(text), /- Szenario „<Titel>“ → Test <Testname>/);
+  });
+}
+
+test("templates/CLAUDE-workflow.md: das Abschlussbericht-Format nennt je Szenario den Test, deutsch und englisch", () => {
+  const de = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
+  assert.match(abschnittTestsUndChecks(de.slice(de.indexOf("## Abschlussbericht-Format"))),
+    /- Szenario „<Titel>“ → Test <Testname>/);
+  const en = readFileSync(join(repoRoot, "en", "templates", "CLAUDE-workflow.md"), "utf-8");
+  const start = en.indexOf("### Tests and checks");
+  assert.notEqual(start, -1, "der Abschnitt '### Tests and checks' fehlt");
+  assert.match(en.slice(start, en.indexOf("### Notes", start)), /- Scenario "<title>" → test <test name>/);
+});

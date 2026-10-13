@@ -90,7 +90,7 @@ test("[skills-7] unbeaufsichtigt endet der Skill und legt nichts an", () => {
 
 // --- Schritt 1: welche Quelle zaehlt ------------------------------------------
 
-test("[skills-7] eine `[Idee]` ist ein zulaessiger Eingang, mit Spur zurueck", () => {
+test("[skills-7] eine `[Idea]` ist ein zulaessiger Eingang, mit Spur zurueck", () => {
   assert.match(SKILL, /\/task #N/, "der Aufruf mit Nummer fehlt");
   assert.match(
     SKILL,
@@ -104,8 +104,8 @@ test("[skills-7] eine `[Idee]` ist ein zulaessiger Eingang, mit Spur zurueck", (
   );
 });
 
-test("[skills-7] `[Fachlich]` und `[Plan]` werden als Quelle abgelehnt, ohne anzulegen", () => {
-  assert.match(SKILL, /\[Fachlich\]/, "das Praefix [Fachlich] ist nicht genannt");
+test("[skills-7] `[Requirement]` und `[Plan]` werden als Quelle abgelehnt, ohne anzulegen", () => {
+  assert.match(SKILL, /\[Requirement\]/, "das Praefix [Requirement] ist nicht genannt");
   assert.match(SKILL, /\[Plan\]/, "das Praefix [Plan] ist nicht genannt");
   assert.match(
     SKILL,
@@ -121,11 +121,11 @@ test("[skills-7] `[Fachlich]` und `[Plan]` werden als Quelle abgelehnt, ohne anz
 
 // --- Schritt 3/4: Body und Anlegen --------------------------------------------
 
-test("[skills-7] der Titel traegt das Praefix `[Task]` und das Anlegen nennt --author-model", () => {
+test("[skills-7] das Anlegen nennt --art task und das Anlegen nennt --author-model", () => {
   const aufrufe = codebloecke().filter((block) => /board\.mjs issue create/.test(block));
   assert.ok(aufrufe.length > 0, "kein `issue create`-Aufruf im Skill");
   const zusammen = aufrufe.join("\n");
-  assert.match(zusammen, /--title "\[Task\] /, "der Titel traegt das Praefix [Task] nicht");
+  assert.match(zusammen, /--art task --title "<Titel>"/, "das Anlegen nennt --art task nicht");
   assert.match(zusammen, /--author-model/, "--author-model fehlt im Aufruf");
   assert.match(zusammen, /--body-file/, "der Body geht nicht ueber eine Datei");
 });
@@ -212,12 +212,13 @@ test("[skills-7] der Skill verweist auf 'Entscheiden statt fragen' und nennt die
 // Die Grenze wandert nur mit einer beschlossenen Regel mit, nicht mit Zuwachs nebenbei.
 // Zuletzt +2 fuer die `hinweise` aus `check-form` und `create` (Issue #1065, Plan #1057 E4):
 // Der Skill legt ein Paket an und muss sagen, was er mit einer Nummer tut, die der Nachtlauf
-// als Abhaengigkeit lesen wird. Davor +2 fuer das Praefix `[Mensch]` (Issue #984): Der Skill
+// als Abhaengigkeit lesen wird. Davor +2 fuer das Praefix `[Human]` (Issue #984): Der Skill
 // legt Arbeitspakete an und muss sagen, wann eines nicht `[Task]` heisst, sondern
-// `[Mensch]` — eine Aufgabe ausserhalb des Repositories, die keine Sitzung erledigt.
+// `[Human]` — eine Aufgabe ausserhalb des Repositories, die keine Sitzung erledigt.
+// Die Grenze stieg um die zwei Zeilen des Absatzes „Feste Zeilen“ (Issue #1568).
 test("[skills-7] der Skill bleibt kurz und begruendet keine Regel mit einem Issue", () => {
   const zeilen = SKILL.split("\n").length;
-  assert.ok(zeilen < 124, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 124`);
+  assert.ok(zeilen < 126, `der Skill hat ${zeilen} Zeilen, erlaubt sind weniger als 126`);
   assert.doesNotMatch(SKILL, /Issue #\d/, "eine Regel wird mit einer Issue-Nummer begruendet");
 });
 

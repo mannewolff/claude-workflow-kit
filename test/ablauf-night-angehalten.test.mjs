@@ -54,6 +54,7 @@ function setupProjekt(praefix) {
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   // Die Salvage-Vorpruefung faehrt seit Issue #919 `checks.mjs run` im Zielprojekt,
   // damit sie denselben Nachweis hinterlaesst, den das Commit-Gate liest. Ohne die
   // Datei im Fixture gaebe es keine Pflicht-Pruefung und damit keinen Rettungsversuch.
@@ -211,7 +212,7 @@ test("[night-14] Nachtlauf: Halt mit unsauberem Baum loest keinen Salvage aus un
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
 
     assert.equal(res.status, 1, `night.mjs haette hart stoppen muessen: ${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, /HALT MIT UNSAUBEREM BAUM nach [\d.]+ min: Issue #\d+ traegt kit:klaeren, aber der Working Tree ist dirty — kein Salvage, harter Stopp\./,
+    assert.match(res.stdout, /HALT MIT UNSAUBEREM BAUM nach [\d.]+ min: Issue #\d+ traegt kit:clarify, aber der Working Tree ist dirty — kein Salvage, harter Stopp\./,
       `die eigene Zeile des Halt-Stopps fehlt: ${res.stdout}`);
     assert.doesNotMatch(res.stdout, /SALVAGE-VERSUCH/, "an einer angehaltenen Karte darf kein Salvage laufen");
 

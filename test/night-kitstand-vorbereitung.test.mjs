@@ -1,7 +1,7 @@
 // Die vorbereitete Veroeffentlichung (Issue #1246, Plan #1243, A5, A6, E10, E11, E15, E17),
 // im selben Prozess gegen den Teil kit/night/kitstand.mjs. Git laeuft echt an einem
 // Wegwerf-Repo — Referenzen und Commit-Hashes sind das, was hier belegt wird —, den Weg
-// der Push-Stufe (`checks.mjs plan --stufe push`) sagt die eingesetzte Abhaengigkeit
+// der Push-Stufe (`checks.mjs plan --stage push`) sagt die eingesetzte Abhaengigkeit
 // `pushWeg` (Plan #1199, E6).
 
 import { test, afterEach } from "node:test";

@@ -19,6 +19,8 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
+import { hatLabel } from "./helpers/labels.mjs";
+import { LABELS } from "../kit/board/namen.mjs";
 
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -39,6 +41,7 @@ function setupProjekt() {
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
   }, null, 2));
@@ -82,7 +85,7 @@ test("Nachtlauf: Ready-Issue mit kit:klaeren wird kommentiert uebersprungen", ()
     assert.ok(backlog.includes(String(gezeichnet.id)), "gezeichnetes Issue liegt nicht im Backlog");
 
     assert.deepEqual(kommentare(issueText(dir, gezeichnet.id)), [
-      `Nachtlauf: Traegt kit:klaeren — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.`,
+      `Nachtlauf: Traegt kit:clarify — eine offene Entscheidung wartet auf einen Menschen, wird nicht implementiert.`,
     ]);
 
     const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
@@ -106,7 +109,7 @@ test("Nachtlauf entfernt das Label NIE", () => {
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}`);
 
-    assert.ok(board(dir, "issue", "get", String(gezeichnet.id)).labels.includes("kit:klaeren"),
+    assert.ok(hatLabel(board(dir, "issue", "get", String(gezeichnet.id)).labels, "kit:klaeren"),
       "der Lauf hat kit:klaeren entfernt — A4 verletzt");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -125,7 +128,7 @@ test("Dry-Run weist gezeichnete Issues aus, ohne etwas zu bewegen", () => {
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--dry-run"], { NIGHT_CLAUDE_CMD: fake });
     assert.equal(res.status, 0, `dry-run schlug fehl: ${res.stderr}\n${res.stdout}`);
-    assert.match(res.stdout, /wuerde ins Backlog \(kit:klaeren, offene Entscheidung\)/);
+    assert.match(res.stdout, /wuerde ins Backlog \(kit:clarify, offene Entscheidung\)/);
     assert.match(res.stdout, /0 Session\(s\) wuerden starten/);
 
     const ready = board(dir, "issue", "list", "--status", "ready").map((i) => String(i.id));
@@ -138,15 +141,20 @@ test("Dry-Run weist gezeichnete Issues aus, ohne etwas zu bewegen", () => {
 
 // --- Skill-Texte ---
 
-test("implement-ready und implement-next nennen kit:klaeren, die anderen beiden nicht", () => {
+// Die Namen kommen aus dem Register (Issue #1604): Seit #1567 nennen die Skills nur den
+// englischen Namen; ein Literal hier veraltete beim naechsten Umbenennen wieder still.
+test("implement-ready und implement-next nennen kit:clarify, die anderen beiden nicht", () => {
   const lies = (skill) => readFileSync(join(repoRoot, "skills", skill, "SKILL.md"), "utf-8");
+  const { de, en } = LABELS.klaeren;
   for (const skill of ["implement-ready", "implement-next"]) {
-    assert.match(lies(skill), /kit:klaeren/, `${skill} nennt kit:klaeren nicht`);
+    assert.ok(lies(skill).includes(en), `${skill} nennt ${en} nicht`);
   }
   // Konvention, festgehalten im Kopf von skills-plan-gate.test.mjs: Nur ready/next
   // und der Nacht-Runner tragen die mechanische Leitplanke.
   for (const skill of ["implement-test", "implement-done"]) {
-    assert.doesNotMatch(lies(skill), /kit:klaeren/,
-      `${skill} nennt kit:klaeren — die Konvention wird hier nicht erweitert`);
+    for (const name of [en, de]) {
+      assert.ok(!lies(skill).includes(name),
+        `${skill} nennt ${name} — die Konvention wird hier nicht erweitert`);
+    }
   }
 });

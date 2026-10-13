@@ -1,6 +1,6 @@
 // Die Sperre der Nacht-Kette gegen ungepruefte Fachplaene (Fachplan #702, Plan #716; Issue #718).
 //
-// `--kette` nimmt eine fachliche Anforderung nur auf, wenn sie neben dem Kettenlabel
+// `--chain` nimmt eine fachliche Anforderung nur auf, wenn sie neben dem Kettenlabel
 // auch `review:fertig` traegt. Die Sperre sitzt in `kettenAusschluss` hinter
 // `kit:klaeren` und wirkt dadurch in Lauf und Vorschau gleichermassen: Beide gehen
 // durch dieselbe `waehleKettenKandidaten`.
@@ -33,14 +33,14 @@ test("[night-19] ohne review:fertig geht der Fachplan mit Grund und naechstem Sc
   const grund = r.uebersprungen[0].grund;
   assert.ok(grund.startsWith(UNGEPRUEFT_PRAEFIX), `der Grund beginnt nicht mit dem festen Praefix: ${grund}`);
   assert.match(grund, /\/issue-review #2 pruefen lassen/);
-  assert.match(grund, /das setzt review:fertig/);
+  assert.match(grund, /das setzt review:done/);
   assert.match(grund, /das Label kit:night bleibt dran/);
 });
 
 test("[night-19] der Grundtext trennt festes Praefix und Schritt-Teil", () => {
   const g = pruefungFehltGrund("0007", "kit:eigenes");
   assert.equal(g.praefix, UNGEPRUEFT_PRAEFIX);
-  assert.equal(g.praefix, "ungeprueft: Label 'review:fertig' fehlt");
+  assert.equal(g.praefix, "ungeprueft: Label 'review:done' fehlt");
   assert.match(g.schritt, /^mit \/issue-review #0007 pruefen lassen/);
   assert.ok(!g.schritt.includes(g.praefix), "der Schritt-Teil wiederholt das Praefix nicht");
   assert.ok(g.text.startsWith(g.praefix) && g.text.includes(g.schritt), "der Text setzt beide Teile zusammen");
@@ -50,7 +50,7 @@ test("[night-19] kit:klaeren gewinnt ueber die fehlende Pruefung — der spezifi
   const karten = [{ id: "3", title: "[Fachlich] Offene Frage", status: "backlog", labels: ["kit:night", "kit:klaeren"] }];
   const r = waehleKettenKandidaten(karten, "kit:night", 5);
   assert.equal(r.kandidaten.length, 0);
-  assert.match(r.uebersprungen[0].grund, /^traegt kit:klaeren/);
+  assert.match(r.uebersprungen[0].grund, /^traegt kit:clarify/);
   assert.ok(!r.uebersprungen[0].grund.startsWith(UNGEPRUEFT_PRAEFIX), "die Pruefsperre hat den Klaeren-Grund verdraengt");
 });
 
@@ -66,7 +66,7 @@ test("[night-19] der Dry-Run zeigt die Ablehnung mit Grund und naechstem Schritt
   const r = await ketteImProzess({ karten: [GEPRUEFT("1"), UNGEPRUEFT("2")], argv: ["--dry-run"] });
   assert.equal(r.code, 0);
   assert.match(r.ausgabe, /#1 \[Fachlich\] Geprueft -> Kette 1/);
-  assert.match(r.ausgabe, /#2 .*-> uebersprungen \(ungeprueft: Label 'review:fertig' fehlt/);
+  assert.match(r.ausgabe, /#2 .*-> uebersprungen \(ungeprueft: Label 'review:done' fehlt/);
   assert.match(r.ausgabe, /\/issue-review #2 pruefen lassen/);
   assert.match(r.ausgabe, /das Label kit:night bleibt dran/);
   assert.match(r.ausgabe, /Dry-Run beendet: 1 Kette\(n\) wuerden laufen/);
@@ -109,7 +109,7 @@ test("[night-42] die abgelehnte Anforderung bekommt einmal den Kommentar mit Ank
   assert.equal(ankerZaehlen(r, "7"), 1, "der Hinweis-Kommentar steht nicht genau einmal an der Karte");
   const text = kommentare(r, "7").join("\n");
   assert.match(text, /\/issue-review #7 pruefen lassen/);
-  assert.match(text, /das setzt review:fertig/);
+  assert.match(text, /das setzt review:done/);
   assert.match(text, /das Label kit:night bleibt dran/);
   assert.match(r.ausgabe, /#7: Hinweis-Kommentar geschrieben/);
 });
@@ -145,7 +145,7 @@ test("[night-42] ein fehlgeschlagener Board-Aufruf wird protokolliert und bricht
 test("[night-42] traegt keine Karte review:fertig, meldet der Lauf das unbekannte Kennzeichen", async () => {
   const r = await ketteImProzess({ karten: [UNGEPRUEFT("1")] });
   assert.equal(r.code, 0);
-  assert.match(r.ausgabe, /keine Karte am Board traegt 'review:fertig'/);
+  assert.match(r.ausgabe, /keine Karte am Board traegt 'review:done'/);
   assert.match(r.ausgabe, /noch nicht angelegt/);
   assert.match(r.ausgabe, /\/issue-review/);
 });
@@ -153,7 +153,7 @@ test("[night-42] traegt keine Karte review:fertig, meldet der Lauf das unbekannt
 test("[night-42] der Hinweis erscheint auch in der Vorschau", async () => {
   const r = await ketteImProzess({ karten: [UNGEPRUEFT("1")], argv: ["--dry-run"] });
   assert.equal(r.code, 0);
-  assert.match(r.ausgabe, /keine Karte am Board traegt 'review:fertig'/);
+  assert.match(r.ausgabe, /keine Karte am Board traegt 'review:done'/);
 });
 
 test("[night-42] der Hinweis bleibt aus, sobald eine Karte der Liste das Label traegt", async () => {
@@ -170,7 +170,7 @@ test("[night-42] ohne Ablehnung wegen fehlender Pruefung bleibt der Hinweis aus"
     karten: [fachplanKarte("1", { titel: "[Fachlich] Offene Frage", labels: [KETTE_LABEL, "kit:klaeren"] })],
   });
   assert.equal(r.code, 0);
-  assert.match(r.ausgabe, /traegt kit:klaeren/);
+  assert.match(r.ausgabe, /traegt kit:clarify/);
   assert.ok(!/keine Karte am Board traegt/.test(r.ausgabe), `der Hinweis steht ohne Adressaten:\n${r.ausgabe}`);
   assert.equal(ankerZaehlen(r, "1"), 0, "die Karte mit kit:klaeren wurde faelschlich kommentiert");
 });

@@ -25,7 +25,7 @@ test("[1282] ein Pruefkommando erbt die Variablen des Nachtlaufs nicht, KIT_ROOT
 
     const res = await checksMit(dir, {
       env: { NIGHT_KETTE_STUFE: "vorbereitung", KIT_NIGHT_RUN: "1", NIGHT_ISSUE_ID: "1", KIT_ROOT: dir },
-    }, "run", "--frisch");
+    }, "run", "--fresh");
 
     assert.equal(res.status, 0, `run endete mit ${res.status}: ${res.stdout}${res.stderr}`);
     const kind = umgebungImKind(dir);
@@ -41,7 +41,7 @@ test("[1282] eine im Eintrag ausdruecklich gesetzte Variable bleibt", async () =
   await mitRepo({ config }, async (dir) => {
     datei(dir, "src/x.txt");
 
-    const res = await checksMit(dir, { env: { NIGHT_ISSUE_ID: "1" } }, "run", "--frisch");
+    const res = await checksMit(dir, { env: { NIGHT_ISSUE_ID: "1" } }, "run", "--fresh");
 
     assert.equal(res.status, 0, `run endete mit ${res.status}: ${res.stdout}${res.stderr}`);
     assert.equal(umgebungImKind(dir).NIGHT_ISSUE_ID, "7");

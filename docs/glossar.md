@@ -2,7 +2,7 @@
 
 Die Dokumentation erscheint auf Deutsch und auf Englisch. Diese Tabelle ordnet die Konzeptbegriffe des Kits einander zu: Die englische Fassung verwendet die Begriffe aus der rechten Spalte und nennt beim ersten Vorkommen auf einer Seite den deutschen Begriff in Klammern.
 
-Unverändert bleiben in beiden Sprachen Befehle, Labels, Titel-Präfixe der Karten (`[Plan]`, `[Mensch]` …), Einstellungsnamen und wörtlich zitierte Meldungen der Werkzeuge. Sie stehen deshalb nicht in dieser Tabelle.
+Unverändert bleiben in beiden Sprachen Befehle und wörtlich zitierte Meldungen der Werkzeuge. Labels und Titel-Präfixe der Karten sind in beiden Sprachen englisch, etwa `kit:clarify` oder `[Human]`. Die vollständige Namenstabelle steht unter [Labels und Titel-Präfixe](/dokumentation#labels-und-titel-prafixe). Einstellungsnamen stehen unter [Alle Einstellungen](/dokumentation#alle-einstellungen). Auch Skills, Befehle und Einstiegsdateien tragen nur englische Namen, etwa `/requirement`, `/session-start` oder `issue report`; sie stehen unter [Skills, Befehle und Einstiegsdateien](/dokumentation#skills-befehle-und-einstiegsdateien). Sie alle stehen deshalb nicht in dieser Tabelle.
 
 | Deutsch | Englisch |
 |---------|----------|

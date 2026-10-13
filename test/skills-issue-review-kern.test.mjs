@@ -57,7 +57,7 @@ test("[skills-1383] der Skill traegt keinen Rollentext mehr", () => {
   for (const platzhalter of ["{{ARTEN}}", "{{ISSUE_BODY}}", "{{QUELLE_BODY}}", "{{VORLAGE_PFAD}}"]) {
     assert.equal(SKILL.includes(platzhalter), false, `der Platzhalter ${platzhalter} steht noch im Skill`);
   }
-  assert.equal(SKILL.includes("befunde.mjs arten"), false, "die Anweisung, {{ARTEN}} selbst zu fuellen, steht noch im Skill");
+  assert.equal(SKILL.includes("findings.mjs kinds"), false, "die Anweisung, {{ARTEN}} selbst zu fuellen, steht noch im Skill");
   assert.equal(SKILL.includes("**Die fachliche Quelle im Plan-Review.**"), false, "der Absatz zur fachlichen Quelle steht noch im Skill");
 });
 
@@ -66,16 +66,16 @@ test("[skills-1383] Schritt 4 montiert je Reviewer den Auftrag und startet ueber
   assert.ok(i > 0, "Schritt 4 fehlt");
   const schritt = SKILL.slice(i, SKILL.indexOf("\n### 5.", i));
   const bash = [...schritt.matchAll(/```bash\n([\s\S]*?)```/g)].map((m) => m[1]).join("\n");
-  assert.match(bash, /^node \.claude\/kit\/board\.mjs issue-review pruefauftrag --rolle <rolle> --id <id> --datei <tmpdir>\/<id>-auftrag-<n>\.md$/m,
-    "der Aufruf von pruefauftrag fehlt oder weicht ab");
-  assert.match(bash, /^node \.claude\/kit\/board\.mjs issue-review start --reviewer <name> --auftrag <tmpdir>\/<id>-auftrag-<n>\.md --ausgabe <tmpdir>\/<id>-antwort-<n>\.md$/m,
+  assert.match(bash, /^node \.claude\/kit\/board\.mjs issue-review review-brief --role <rolle> --id <id> --file <tmpdir>\/<id>-auftrag-<n>\.md$/m,
+    "der Aufruf von review-brief fehlt oder weicht ab");
+  assert.match(bash, /^node \.claude\/kit\/board\.mjs issue-review start --reviewer <name> --brief <tmpdir>\/<id>-auftrag-<n>\.md --output <tmpdir>\/<id>-antwort-<n>\.md$/m,
     "der Aufruf von start fuer kind command fehlt oder weicht ab");
   assert.match(schritt, /`kind: claude`[\s\S]{0,300}`subagent_type: kit-pruefer`/, "kind claude laeuft nicht ueber kit-pruefer");
   assert.match(schritt, /`reviewers\[\]\.model`/, "das Modell kommt nicht aus reviewers[].model");
   assert.match(schritt, /`Lies <tmpdir>\/<id>-auftrag-<n>\.md`/, "der Auftrag an den Subagenten ist nicht 'Lies <pfad>'");
   assert.match(schritt, /`kind: command`/, "kind command ist nicht genannt");
-  assert.match(schritt, /Scheitert `pruefauftrag` oder `start`[\s\S]{0,300}Ausfall[\s\S]{0,200}Zeile 2/,
-    "ein Fehlschlag von pruefauftrag oder start ist kein Ausfall in Zeile 2");
+  assert.match(schritt, /Scheitert `review-brief` oder `start`[\s\S]{0,300}Ausfall[\s\S]{0,200}Zeile 2/,
+    "ein Fehlschlag von review-brief oder start ist kein Ausfall in Zeile 2");
 });
 
 test("[skills-13] gestrichene Regeln kommen im Skill nicht mehr vor", () => {
@@ -108,7 +108,7 @@ test("[skills-13] die Stufe steht unter 1b und kennt [Task]", () => {
 
 test("[skills-13] die Reviewer kommen aus roles mit Stufe und Autor", () => {
   const bash = codebloecke("bash").join("\n");
-  assert.match(bash, /issue-review roles --stufe <fachlich\|plan\|issue> --author <modell>$/m);
+  assert.match(bash, /issue-review roles --stage <requirement\|plan\|issue> --author <modell>$/m);
   assert.doesNotMatch(bash, /--issue <N>/, "roles kennt --issue seit Stufe 2 nicht mehr");
   assert.match(SKILL, /gestartet wird ausschließlich, was in `gewaehlt` steht/);
 });
@@ -120,7 +120,9 @@ test("[skills-13] jede Dokument-Rolle steht als Datei mit Streich-Frage und Plat
     assert.match(p, /RAUS/, `${name}: die Streich-Frage fehlt`);
     assert.match(p, /BLOCKER \/ WICHTIG \/ HINWEIS/, `${name}: die Schweregrade fehlen`);
     assert.doesNotMatch(p, /Klasse|gate|alternativen|korrektur/, `${name}: verlangt noch eine Fundklasse`);
-    assert.ok(p.split("\n").length <= 25, `${name}: laenger als 25 Zeilen`);
+    // Die Vorgeschichte erscheint nur mit Schalter (Issue #1540); gemessen wird der Rahmen ohne sie.
+    const ohneVorgeschichte = p.replaceAll(/\{\{#VORGESCHICHTE\}\}[\s\S]*?\{\{\/VORGESCHICHTE\}\}\n/g, "");
+    assert.ok(ohneVorgeschichte.split("\n").length <= 25, `${name}: laenger als 25 Zeilen`);
   }
 });
 
@@ -154,7 +156,7 @@ test("[skills-13] die Session arbeitet ein oder lehnt ab; die Stopp-Klasse haelt
   assert.match(SKILL, /übernehmen oder mit einem Satz ablehnen/);
   assert.match(SKILL, /Stopp-Klasse/);
   const bash = codebloecke("bash").join("\n");
-  assert.match(bash, /issue label add <id> kit:klaeren/);
+  assert.match(bash, /issue label add <id> kit:clarify/);
   assert.match(SKILL, /unbeaufsichtigt zeichnet die Session das Dokument, schreibt keinen Body/);
   assert.match(SKILL, /wartet auf ein Wort, bevor sie schreibt/);
 });
@@ -166,21 +168,21 @@ test("[skills-13] unbeaufsichtigt wird an keiner Stelle gefragt", () => {
   assert.match(SKILL, /unbeaufsichtigt schreibt sie direkt/);
 });
 
-test("[skills-13] review:fertig ist eine sichtbare Spur am Board, abgenommen vor dem Start, gesetzt nach der Einarbeitung", () => {
-  const remove = SKILL.indexOf("issue label remove <id> review:fertig");
-  const add = SKILL.indexOf("issue label add <id> review:fertig");
+test("[skills-13] review:done ist eine sichtbare Spur am Board, abgenommen vor dem Start, gesetzt nach der Einarbeitung", () => {
+  const remove = SKILL.indexOf("issue label remove <id> review:done");
+  const add = SKILL.indexOf("issue label add <id> review:done");
   assert.ok(remove > 0, "das Abnehmen fehlt");
   assert.ok(add > 0, "das Setzen fehlt");
-  assert.ok(remove > SKILL.indexOf("### 4. Reviewer starten") && remove < SKILL.indexOf("issue-review pruefauftrag"),
+  assert.ok(remove > SKILL.indexOf("### 4. Reviewer starten") && remove < SKILL.indexOf("issue-review review-brief"),
     "das Abnehmen steht nicht unmittelbar vor dem Reviewer-Start");
   assert.ok(add > SKILL.indexOf("issue comment <id> --text-file <tmpdir>/<id>-einarbeitung.md"),
     "das Setzen steht nicht nach dem Einarbeitungs-Kommentar");
-  assert.equal(SKILL.split("issue label add <id> review:fertig").length, 2, "das Setzen steht nicht genau einmal");
-  assert.equal(SKILL.split("issue label remove <id> review:fertig").length, 2, "das Abnehmen steht nicht genau einmal");
-  assert.match(SKILL, /Trifft ein Fund die Stopp-Klasse und wird `kit:klaeren` gesetzt, entfaellt `review:fertig`\./);
+  assert.equal(SKILL.split("issue label add <id> review:done").length, 2, "das Setzen steht nicht genau einmal");
+  assert.equal(SKILL.split("issue label remove <id> review:done").length, 2, "das Abnehmen steht nicht genau einmal");
+  assert.match(SKILL, /Trifft ein Fund die Stopp-Klasse und wird `kit:clarify` gesetzt, entfaellt `review:done`\./);
   assert.match(SKILL, /Endet der Lauf danach vorzeitig, bleibt das Label ab/);
   assert.match(SKILL, /am Board nicht definiert/);
-  assert.match(SKILL, /Kein Marker gibt einen Schritt frei; er ist eine Spur\. Auch `review:fertig` ist Spur, keine Freigabe\./);
+  assert.match(SKILL, /Kein Marker gibt einen Schritt frei; er ist eine Spur\. Auch `review:done` ist Spur, keine Freigabe\./);
   assert.match(SKILL, /Nacht-Kette verlangt dieses Label als Voraussetzung/);
   // Seit Issue #898 nimmt die Kette zwei Auftragsarten an; das Label ist fuer beide
   // Voraussetzung, und der Satz muss auch das Plandokument nennen.
@@ -190,7 +192,7 @@ test("[skills-13] review:fertig ist eine sichtbare Spur am Board, abgenommen vor
 
 // Die fachliche Quelle im Plan-Review (Issue #684): Der Reviewer prueft nicht nur, ob der
 // Plan zum Code passt, sondern ob er herstellt, was die Quelle verlangt. Seit Issue #1383
-// steht das in der Rollendatei, und `pruefauftrag --id` loest Quelle und Vorlage selbst auf.
+// steht das in der Rollendatei, und `review-brief --id` loest Quelle und Vorlage selbst auf.
 test("[skills-25] die Rolle architektur-bestand traegt die fachliche Quelle, die Vorlage und eine sechste Frage", () => {
   const plan = rolle("architektur-bestand");
   assert.match(plan, /6\. Stellt der Plan her, was die fachliche Quelle verlangt/);
@@ -200,7 +202,7 @@ test("[skills-25] die Rolle architektur-bestand traegt die fachliche Quelle, die
   assert.ok(plan.indexOf("--- PLAN ---") < plan.indexOf("--- FACHLICHE QUELLE ---"), "die Quelle steht hinter dem Plan");
 });
 
-test("[skills-25] der Skill holt die Quelle nicht selbst, das montiert pruefauftrag", () => {
+test("[skills-25] der Skill holt die Quelle nicht selbst, das montiert review-brief", () => {
   const i = SKILL.indexOf("### 4. Reviewer starten");
   const schritt = SKILL.slice(i, SKILL.indexOf("\n### 5.", i));
   assert.match(schritt, /`Fachliche Quelle:`/, "Schritt 4 sagt nicht, dass die fachliche Quelle mitkommt");
@@ -208,8 +210,17 @@ test("[skills-25] der Skill holt die Quelle nicht selbst, das montiert pruefauft
   assert.doesNotMatch(SKILL, /issue get <N>/, "der Skill holt die Quelle noch selbst");
 });
 
-test("[skills-1383] Schritt 6 setzt review:fertig nicht, wenn pruefen keine-pruefer meldet", () => {
+test("[skills-1383] Schritt 6 setzt review:done nicht, wenn pruefen keine-pruefer meldet", () => {
   const i = SKILL.indexOf("### 6. Einarbeiten");
   const schritt = SKILL.slice(i, SKILL.indexOf("\n### 7.", i));
-  assert.match(schritt, /Meldet `befunde\.mjs pruefen` den Eintrag `keine-pruefer`, wird `review:fertig` nicht gesetzt/);
+  assert.match(schritt, /Meldet `findings\.mjs check` den Eintrag `keine-pruefer`, wird `review:done` nicht gesetzt/);
+});
+
+// E7 aus Plan #1588 (Issue #1594): F12 behebt die Session nicht selbst und haelt nicht an;
+// die Zusammenfassung nennt /groom #N, weil /groom die Pruefung voraussetzt.
+test("[1594-4] Form vor Inhalt nimmt F12 aus: kein eigener Fix, kein Halt, /groom #N", () => {
+  const form = SKILL.slice(SKILL.indexOf("### 2. Form vor Inhalt"), SKILL.indexOf("### 3. Reviewer wählen"));
+  assert.match(form, /\*\*Ausnahme F12:\*\*/);
+  assert.match(form, /der einzige Formverstoß, den die Session nicht selbst behebt/);
+  assert.match(form, /Die Prüfung läuft weiter, und die Zusammenfassung nennt `\/groom #N`/);
 });

@@ -128,12 +128,12 @@ test("issue-review check: ein Kommando ohne Lesegrenze ist nicht verfuegbar, Exi
 // Einmal echt: Das Kit startet das Werkzeug ohne Shell, der Auftrag geht ueber stdin, stdout
 // landet in der Ausgabedatei, die Lesegrenze steht als letztes Argument.
 
-test("issue-review start: der Pruefer liest den Auftrag von stdin, die Antwort steht in --ausgabe", () => {
+test("issue-review start: der Pruefer liest den Auftrag von stdin, die Antwort steht in --output", () => {
   mitReview({ reviewers: [{ name: "fake", kind: "command", command: "antwortet --flag", lesegrenze: "--nur-lesen" }] }, (dir) => {
     const argv = join(dir, "argv.txt");
     fakeBinary(dir, "antwortet", 0o755, `printf '%s\\n' "$@" > ${JSON.stringify(argv)}\nprintf 'ANTWORT:'\ncat`);
     writeFileSync(join(dir, "auftrag.md"), "AUFTRAG\n");
-    const res = runBoard(dir, ["issue-review", "start", "--reviewer", "fake", "--auftrag", "auftrag.md", "--ausgabe", "antwort.md"]);
+    const res = runBoard(dir, ["issue-review", "start", "--reviewer", "fake", "--brief", "auftrag.md", "--output", "antwort.md"]);
     assert.equal(res.status, 0, res.stderr);
     assert.equal(JSON.parse(res.stdout).ok, true);
     assert.equal(readFileSync(join(dir, "antwort.md"), "utf-8"), "ANTWORT:AUFTRAG\n");
@@ -146,7 +146,7 @@ test("issue-review start: ein aufhebender Schalter endet mit Exit 1, ohne zu sta
     const spur = join(dir, "gestartet.txt");
     fakeBinary(dir, "schreibt", 0o755, `touch ${JSON.stringify(spur)}`);
     writeFileSync(join(dir, "auftrag.md"), "AUFTRAG\n");
-    const res = runBoard(dir, ["issue-review", "start", "--reviewer", "astra", "--auftrag", "auftrag.md", "--ausgabe", "antwort.md"]);
+    const res = runBoard(dir, ["issue-review", "start", "--reviewer", "astra", "--brief", "auftrag.md", "--output", "antwort.md"]);
     assert.equal(res.status, 1);
     assert.equal(JSON.parse(res.stdout).fehler, "lesegrenze-aufgehoben");
     assert.equal(existsSync(spur), false, "das Werkzeug wurde gestartet");
@@ -156,7 +156,7 @@ test("issue-review start: ein aufhebender Schalter endet mit Exit 1, ohne zu sta
 
 test("issue-review start: ein Aufruffehler endet mit Exit 1 und Meldung", () => {
   mitReview({ reviewers: ALLE }, (dir) => {
-    const res = runBoard(dir, ["issue-review", "start", "--auftrag", "a.md", "--ausgabe", "b.md"]);
+    const res = runBoard(dir, ["issue-review", "start", "--brief", "a.md", "--output", "b.md"]);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /--reviewer <name> oder --code-review/);
   });
@@ -187,7 +187,7 @@ test("Die Hilfe nennt die issue-review-Achse", () => {
     const res = runBoard(dir, ["--help"]);
     assert.match(res.stdout, /issue-review reviewers/);
     assert.match(res.stdout, /issue-review check/);
-    assert.match(res.stdout, /issue-review start --reviewer <name> \| --code-review --auftrag <datei> --ausgabe <datei>/);
+    assert.match(res.stdout, /issue-review start --reviewer <name> \| --code-review --brief <file> --output <file>/);
   });
 });
 

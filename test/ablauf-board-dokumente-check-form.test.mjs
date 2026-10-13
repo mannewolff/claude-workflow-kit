@@ -5,7 +5,7 @@
 //
 // Was bisher ein Modell im Review pruefte (vier Ueberschriften in der richtigen
 // Reihenfolge, `Autor-Modell:` im richtigen Abschnitt), entscheidet jetzt ein
-// Kommando in Millisekunden: fachlich F1 F2 F6 F7 F9 F11, plan P1 P2 P3 P6 P12,
+// Kommando in Millisekunden: fachlich F1 F2 F6 F7 F9 F11 F12, plan P1 P2 P3 P6 P12,
 // Arbeitspaket I1 bis I5. Zwei Eingaenge — Kartennummer oder Datei mit Titel —,
 // immer JSON, Exit 1 bei Verstoessen, ein abgewiesener Aufruf traegt `fehler`.
 //
@@ -51,6 +51,13 @@ Autor-Modell: fixture-modell
 
 ## Fachliche Akzeptanzkriterien
 - Der Nutzer sieht es.
+
+## Szenarien
+
+### Szenario: Der Nutzer sieht es
+- Angenommen ein Nutzer am Board
+- Wenn er die Karte oeffnet
+- Dann sieht er es
 
 ## Nicht-Ziele
 - Nichts weiter.
@@ -113,7 +120,7 @@ test("[board-5] ein Plan mit sechs korrekten Abschnitten ist gruen, Stufe plan, 
   });
 });
 
-test("[board-5] eine fachliche Anforderung mit vier Abschnitten ist gruen, Stufe fachlich", () => {
+test("[board-5] eine fachliche Anforderung mit vier Abschnitten und Szenarien ist gruen, Stufe fachlich", () => {
   mitProjekt((dir) => {
     const r = dateiWeg(dir, FACHLICH, "[Fachlich] Etwas");
     assert.equal(r.status, 0, r.stderr);
@@ -532,6 +539,213 @@ test("[board-5] die Hilfe nennt issue check-form mit beiden Aufrufformen", () =>
   mitProjekt((dir) => {
     const res = runBoard(dir, ["--help"]);
     assert.match(res.stdout, /issue check-form <id>/);
-    assert.match(res.stdout, /issue check-form --body-file <pfad> --title/);
+    assert.match(res.stdout, /issue check-form --body-file <path> --title/);
+  });
+});
+
+// --- Hinweis auf fehlende Vorgeschichte (Issue #1542, Plan #1534 A11) ----------
+
+const MIT_VORGESCHICHTE = { ...CONFIG, vorgeschichte: true };
+
+function vorgeschichteHinweise(json) {
+  return (json.hinweise ?? []).filter((h) => h.art === "vorgeschichte");
+}
+
+test("[board-5] Vorgeschichte: Schalter an, Fachplan ohne Abschnitt → Hinweis, ok bleibt true", () => {
+  mitProjektConfig(MIT_VORGESCHICHTE, (dir) => {
+    const r = dateiWeg(dir, FACHLICH, "[Fachlich] x");
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
+    const h = vorgeschichteHinweise(r.json);
+    assert.equal(h.length, 1, JSON.stringify(r.json));
+    assert.match(h[0].meldung, /## Vorgeschichte/);
+    assert.equal(h[0].baustein, undefined);
+    assert.equal(h[0].test, undefined);
+  });
+});
+
+test("[board-5] Vorgeschichte: Schalter an, Plan ohne ### Vorgeschichte → Hinweis", () => {
+  mitProjektConfig(MIT_VORGESCHICHTE, (dir) => {
+    const r = dateiWeg(dir, PLAN, "[Plan] x");
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(r.json.ok, true, JSON.stringify(r.json));
+    const h = vorgeschichteHinweise(r.json);
+    assert.equal(h.length, 1, JSON.stringify(r.json));
+    assert.match(h[0].meldung, /### Vorgeschichte/);
+  });
+});
+
+test("[board-5] Vorgeschichte: Schalter an, Abschnitt vorhanden (auch englisch) → kein Hinweis", () => {
+  mitProjektConfig(MIT_VORGESCHICHTE, (dir) => {
+    const fachlich = dateiWeg(dir, FACHLICH + "\n## Vorgeschichte\n- Nichts Einschlaegiges gefunden.\n", "[Fachlich] x");
+    assert.deepEqual(vorgeschichteHinweise(fachlich.json), [], JSON.stringify(fachlich.json));
+    const englisch = dateiWeg(dir, FACHLICH + "\n## History\n- Nothing relevant.\n", "[Fachlich] x");
+    assert.deepEqual(vorgeschichteHinweise(englisch.json), [], JSON.stringify(englisch.json));
+    const plan = dateiWeg(dir, PLAN.replace("## Offene Fragen\n", "### Vorgeschichte\n- Nichts Einschlaegiges gefunden.\n\n## Offene Fragen\n"), "[Plan] x");
+    assert.equal(plan.json.ok, true, JSON.stringify(plan.json));
+    assert.deepEqual(vorgeschichteHinweise(plan.json), [], JSON.stringify(plan.json));
+  });
+});
+
+test("[board-5] Vorgeschichte: Schalter aus → kein Hinweis, Ausgabe wie bisher", () => {
+  mitProjekt((dir) => {
+    assert.deepEqual(dateiWeg(dir, FACHLICH, "[Fachlich] x").json, { ok: true, stufe: "fachlich", verstoesse: [] });
+    assert.deepEqual(dateiWeg(dir, PLAN, "[Plan] x").json, { ok: true, stufe: "plan", verstoesse: [] });
+  });
+});
+
+test("[board-5] Vorgeschichte: Arbeitspaket → kein Hinweis, auch mit Schalter", () => {
+  mitProjektConfig(MIT_VORGESCHICHTE, (dir) => {
+    const r = dateiWeg(dir, PAKET, "[Task] x");
+    assert.deepEqual(vorgeschichteHinweise(r.json), [], JSON.stringify(r.json));
+  });
+});
+
+// --- F12: Abschnitt Szenarien (Issue #1590, Plan #1588 A3, A4, A6) ------------------
+
+const SZENARIEN_DE = `## Szenarien
+
+### Szenario: Der Nutzer sieht es
+- Angenommen ein Nutzer am Board
+- Wenn er die Karte oeffnet
+- Dann sieht er es
+
+`;
+
+const SZENARIEN_EN = `## Scenarios
+
+### Scenario: The user sees it
+- Given a user at the board
+- When they open the card
+- Then they see it
+
+`;
+
+/** Der Fachplan der Sprache mit dem Abschnitt Szenarien `szenarien` an seiner Stelle. */
+function fachplanMit(szenarien) {
+  return FACHLICH.replace(SZENARIEN_DE, szenarien);
+}
+
+const F12_FAELLE = {
+  de: {
+    ohne: "",
+    leer: "## Szenarien\n\n",
+    ohneDann: SZENARIEN_DE.replace("- Dann sieht er es\n", ""),
+    voll: SZENARIEN_DE,
+    satz: /^Der Fachplan braucht einen Abschnitt Szenarien mit mindestens einem vollständigen Szenario\.\n/,
+    form: /### Szenario: <Titel>\n- Angenommen <Ausgangslage>\n- Wenn <Handlung>\n- Dann <beobachtbares Ergebnis>/,
+  },
+  en: {
+    ohne: "",
+    leer: "## Scenarios\n\n",
+    ohneDann: SZENARIEN_EN.replace("- Then they see it\n", ""),
+    voll: SZENARIEN_EN,
+    satz: /^The requirement needs a Scenarios section with at least one complete scenario\.\n/,
+    form: /### Scenario: <title>\n- Given <starting point>\n- When <action>\n- Then <observable result>/,
+  },
+};
+
+function f12(json) {
+  return json.verstoesse.filter((v) => v.gate === "F12");
+}
+
+for (const sprache of ["de", "en"]) {
+  const fall = F12_FAELLE[sprache];
+  const config = { ...CONFIG, language: sprache };
+
+  for (const [name, abschnitt] of [["ohne Abschnitt", fall.ohne], ["mit leerem Abschnitt", fall.leer], ["mit einem Szenario ohne Dann", fall.ohneDann]]) {
+    test(`[board-1590] F12 (${sprache}): --body-file ${name} -> ok: false, ein Satz und die Form in der Projektsprache`, () => {
+      mitProjektConfig(config, (dir) => {
+        const pfad = join(dir, "eingaben", "f.md");
+        writeFileSync(pfad, fachplanMit(abschnitt));
+        const res = runBoard(dir, ["issue", "check-form", "--art", "requirement", "--body-file", pfad, "--title", "x"]);
+        const json = JSON.parse(res.stdout);
+        assert.equal(res.status, 1, res.stdout);
+        assert.equal(json.ok, false);
+        const [verstoss, ...rest] = f12(json);
+        assert.equal(rest.length, 0, JSON.stringify(json));
+        assert.match(verstoss.meldung, fall.satz);
+        assert.match(verstoss.meldung, fall.form);
+      });
+    });
+  }
+
+  test(`[board-1590] F12 (${sprache}): --body-file mit einem vollstaendigen Szenario -> ok: true`, () => {
+    mitProjektConfig(config, (dir) => {
+      const pfad = join(dir, "eingaben", "f.md");
+      writeFileSync(pfad, fachplanMit(fall.voll));
+      const res = runBoard(dir, ["issue", "check-form", "--art", "requirement", "--body-file", pfad, "--title", "x"]);
+      assert.equal(res.status, 0, res.stdout);
+      assert.deepEqual(JSON.parse(res.stdout), { ok: true, stufe: "fachlich", verstoesse: [] });
+    });
+  });
+}
+
+test("[board-1590] F12: ein vollstaendiges neben einem unvollstaendigen Szenario ist kein Verstoss", () => {
+  mitProjekt((dir) => {
+    const zwei = SZENARIEN_DE + "### Szenario: Halb\n- Angenommen etwas\n\n";
+    const r = dateiWeg(dir, fachplanMit(zwei), "[Fachlich] x");
+    assert.equal(r.status, 0, JSON.stringify(r.json));
+  });
+});
+
+test("[board-1590] F12: der Abschnitt hinter den Nicht-Zielen verstoesst, F1 bleibt still", () => {
+  mitProjekt((dir) => {
+    const body = fachplanMit("") + "\n" + SZENARIEN_DE;
+    const r = dateiWeg(dir, body, "[Fachlich] x");
+    assert.equal(r.status, 1);
+    assert.deepEqual(gates(r), ["F12"]);
+    assert.match(f12(r.json)[0].meldung, /steht nicht zwischen/);
+  });
+});
+
+/** Legt zwei Fachplaene an (0001 mit, 0002 ohne Szenarien nach dem Anlegen) und prueft beide. */
+function boardWeg(config) {
+  return mitProjektConfig(config, (dir) => {
+    const voll = join(dir, "eingaben", "voll.md");
+    const ohne = join(dir, "eingaben", "ohne.md");
+    writeFileSync(voll, FACHLICH);
+    writeFileSync(ohne, fachplanMit(""));
+    const ids = ["Alt", "Neu"].map((titel) => {
+      const { id } = board(dir, "issue", "create", "--title", `[Fachlich] ${titel}`, "--body-file", voll);
+      // Ein Body-Update wird nie abgewiesen (E13): So entsteht die Karte ohne Abschnitt.
+      board(dir, "issue", "update", String(id), "--body-file", ohne);
+      return String(id);
+    });
+    return ids.map((id) => {
+      const res = runBoard(dir, ["issue", "check-form", id]);
+      return { id, status: res.status, json: JSON.parse(res.stdout) };
+    });
+  });
+}
+
+test("[board-1590] F12 ueber <id>: nur ab szenarienAb, darunter nicht", () => {
+  const [alt, neu] = boardWeg({ ...CONFIG, szenarienAb: 2 });
+  assert.equal(alt.status, 0, JSON.stringify(alt.json));
+  assert.deepEqual(f12(alt.json), []);
+  assert.equal(alt.json.hinweise, undefined);
+  assert.equal(neu.status, 1, JSON.stringify(neu.json));
+  assert.equal(f12(neu.json).length, 1);
+});
+
+test("[board-1590] F12 ueber <id>: ohne szenarienAb kein Verstoss, aber ein Hinweis szenarien-stichtag", () => {
+  for (const ergebnis of boardWeg(CONFIG)) {
+    assert.equal(ergebnis.status, 0, JSON.stringify(ergebnis.json));
+    assert.deepEqual(f12(ergebnis.json), []);
+    const hinweise = (ergebnis.json.hinweise ?? []).filter((h) => h.art === "szenarien-stichtag");
+    assert.equal(hinweise.length, 1, JSON.stringify(ergebnis.json));
+    assert.match(hinweise[0].meldung, /szenarienAb/);
+    assert.equal(hinweise[0].baustein, undefined);
+    assert.equal(hinweise[0].test, undefined);
+  }
+});
+
+test("[board-1590] die Hilfe nennt F12 bei check-form und bei issue create", () => {
+  mitProjekt((dir) => {
+    const res = runBoard(dir, ["--help"]);
+    assert.match(res.stdout, /requirement\s+F1 F2 F6 F7 F9 F11 F12,/);
+    assert.match(res.stdout, /F12/);
+    const create = res.stdout.split("node board.mjs issue get")[0];
+    assert.match(create, /F12/);
   });
 });

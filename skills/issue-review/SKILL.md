@@ -1,6 +1,6 @@
 ---
 name: issue-review
-description: Lässt Fachplan und Plan von fremden Modellen lesen, bevor daraus etwas entsteht; Arbeitspakete auf Aufruf. Nutze diesen Skill wenn der Nutzer /issue-review aufruft oder ein Dokument vor dem nächsten Schritt schärfen will.
+description: Has foreign models read a requirement or a plan before anything is built from it; work packages on request. Use this skill when the user invokes /issue-review or wants to sharpen a document before the next step.
 user-invocable: true
 ---
 
@@ -12,11 +12,13 @@ Vorbedingung: `.claude/workflow.config.json` trägt den Block `issueReview` mit 
 ## Aufruf
 ```
 /issue-review #N [#M …]     # genau diese Dokumente, unabhängig von Spalte und Marker
-/issue-review                # alle [Fachlich]- und [Plan]-Dokumente in Backlog ohne Marker ihrer Stufe
+/issue-review                # alle [Requirement]- und [Plan]-Dokumente in Backlog ohne Marker ihrer Stufe
 /issue-review --dry-run      # nur Vorflug, nichts starten
 ```
 
-Arbeitspakete — mit und ohne `[Task]` — werden nur mit expliziter Nummer geprüft; der Regelfall ist Ready ohne Paket-Review. `[Idee]` wird immer übersprungen und in der Zusammenfassung genannt.
+Arbeitspakete — mit und ohne `[Task]` — werden nur mit expliziter Nummer geprüft; der Regelfall ist Ready ohne Paket-Review. `[Idea]` wird immer übersprungen und in der Zusammenfassung genannt.
+
+**Feste Zeilen.** Überschriften, Marker, Review- und Einarbeitungs-Köpfe und Fundblock-Zeilen, die dieser Skill in Dokumente, Kommentare oder Markerzeilen schreibt, stehen hier deutsch. Vor dem ersten Schreiben `node .claude/kit/board.mjs names` aufrufen: Das Feld `lines` nennt je deutscher Zeile die Fassung der Projektsprache, und der Skill schreibt die ausgegebene Fassung. Eine Zeile mit veränderlichem Rest (`## Einarbeitung, Runde 2`) steht dort mit ihrem festen Anfang, eine Überschrift mit `## ` davor gilt auf jeder Ebene, und was `names` nicht nennt, bleibt, wie es hier steht.
 
 ## Ablauf
 ### 0. Vorflug
@@ -25,11 +27,11 @@ Arbeitspakete — mit und ohne `[Task]` — werden nur mit expliziter Nummer gep
 ### 1b. Stufe bestimmen
 | Präfix | Stufe | Dokument |
 |---|---|---|
-| `[Fachlich]` | `fachlich` | fachliche Anforderung aus `/fachplan` |
+| `[Requirement]` | `fachlich` | fachliche Anforderung aus `/requirement` |
 | `[Plan]` | `plan` | Plandokument aus `/techplan` |
 | kein Präfix | `issue` | Arbeitspaket aus `/issues` |
 | `[Task]` | `issue` | Arbeitspaket aus `/task` (Bahn 3) |
-| `[Idee]` | — | ausgeschlossen |
+| `[Idea]` | — | ausgeschlossen |
 
 Die Erkennung ist die von `stufeAusTitel` in `kit/board.mjs`: Groß- und Kleinschreibung egal, führender Leerraum erlaubt, ein Präfix mitten im Titel zählt nicht.
 
@@ -40,33 +42,35 @@ node .claude/kit/board.mjs issue check-form <id>
 
 Verstöße — Reihenfolge der Abschnitte, fehlende Kennzeichnungszeile, Herkunftszeile am falschen Ort — behebt die aufrufende Session selbst im Body, bevor ein Reviewer startet, mit `issue update` nach der Transportregel unten. Ein Reviewer prüft keine Form.
 
+**Ausnahme F12:** Fehlen einem Fachplan die Szenarien, ist das der einzige Formverstoß, den die Session nicht selbst behebt — Szenarien ergänzt das Grooming mit dem PO. Die Prüfung läuft weiter, und die Zusammenfassung nennt `/groom #N` als Weg zu den Szenarien. Ein Halt wäre eine Sackgasse: `/groom` setzt die Prüfung voraus.
+
 ### 3. Reviewer wählen
 Lies `Autor-Modell:` (Arbeitspaket: `## Kontext`; fachliche Anforderung: `## Ziel`) bzw. `Plan-Modell:` im Kopf des Plandokuments. Fehlt der Wert oder lautet er `unbekannt`, frage einmal nach und schlage einen Reviewer vor; unbeaufsichtigt gilt der Regelvorschlag, und der Befunde-Kommentar vermerkt das.
 ```bash
-node .claude/kit/board.mjs issue-review roles --stufe <fachlich|plan|issue> --author <modell>
+node .claude/kit/board.mjs issue-review roles --stage <requirement|plan|issue> --author <modell>
 ```
 
 Die Prüferzahl der Stufe `plan` kann ein Lauf über `KIT_PLAN_REVIEWER` setzen; die Session übernimmt die Ausgabe des Kommandos und zählt nicht selbst. `gewaehlt[i]` wird mit `rollen[i]` gepaart; gestartet wird ausschließlich, was in `gewaehlt` steht. `unterbesetzt: true` läuft trotzdem und steht in Zeile 2 des Kommentars; `quelle` (`pairs` | `regel`) und ein `autorAufgeloest: false` gehören ebenfalls dorthin.
 
 ### 4. Reviewer starten
-Unmittelbar vor dem Start nimmt die Session ein vorhandenes Label ab: `node .claude/kit/board.mjs issue label remove <id> review:fertig`. Hängt es nicht an der Karte, ist das kein Fehler. Endet der Lauf danach vorzeitig, bleibt das Label ab — der Marker im Body sagt weiter, was geprüft wurde; die Zusammenfassung nennt das Label als abgenommen und nicht wieder gesetzt.
+Unmittelbar vor dem Start nimmt die Session ein vorhandenes Label ab: `node .claude/kit/board.mjs issue label remove <id> review:done`. Hängt es nicht an der Karte, ist das kein Fehler. Endet der Lauf danach vorzeitig, bleibt das Label ab — der Marker im Body sagt weiter, was geprüft wurde; die Zusammenfassung nennt das Label als abgenommen und nicht wieder gesetzt.
 
-Jeder Reviewer `<n>` aus `gewaehlt` bekommt seinen Prüfauftrag als Datei. Das Kit montiert ihn aus der Rolle unter `kit/rollen/<rolle>.md`, der Artenliste und dem unveränderten Body, beim Plan samt `Fachliche Quelle:` und `Vorlage:`; die Session schreibt keinen Rollentext ab und füllt nichts selbst ein:
+Jeder Reviewer `<n>` aus `gewaehlt` bekommt seinen Prüfauftrag als Datei. Das Kit montiert ihn aus der Rolle unter `kit/rollen/<rolle>.md`, der Artenliste und dem unveränderten Body, beim Plan samt `Fachliche Quelle:` und `Vorlage:`; bei gesetztem Schalter `vorgeschichte` enthält er die gefundenen Fachpläne vollständig, wie sie die Zeilen `Suchbegriffe:` und `Dateien:` des Dokuments finden; die Session schreibt keinen Rollentext ab und füllt nichts selbst ein:
 ```bash
-node .claude/kit/board.mjs issue-review pruefauftrag --rolle <rolle> --id <id> --datei <tmpdir>/<id>-auftrag-<n>.md
+node .claude/kit/board.mjs issue-review review-brief --role <rolle> --id <id> --file <tmpdir>/<id>-auftrag-<n>.md
 ```
 
 Bei `kind: claude` startet die Session das Agent-Tool mit `subagent_type: kit-pruefer` und dem Modell aus `reviewers[].model`; der Auftrag lautet nur `Lies <tmpdir>/<id>-auftrag-<n>.md`, mit wörtlichem Pfad. Der Agent darf nur lesen, seine Abschlussnachricht ist der Befund. Bei `kind: command` startet das Kit das fremde Werkzeug an seiner Lesegrenze, die Antwort steht danach in der Ausgabedatei:
 ```bash
-node .claude/kit/board.mjs issue-review start --reviewer <name> --auftrag <tmpdir>/<id>-auftrag-<n>.md --ausgabe <tmpdir>/<id>-antwort-<n>.md
+node .claude/kit/board.mjs issue-review start --reviewer <name> --brief <tmpdir>/<id>-auftrag-<n>.md --output <tmpdir>/<id>-antwort-<n>.md
 ```
 
-Scheitert `pruefauftrag` oder `start` (Exit 1, etwa `rolle-fehlt` oder `keine-lesegrenze`), ist das ein Ausfall dieses Reviewers in Zeile 2 des Befunde-Kommentars, mit dem Fehler aus der Ausgabe; die Prüfung läuft ohne ihn weiter. Einen Ersatzweg gibt es nicht — keinen selbst geschriebenen Prompt, keinen Start am Kit vorbei.
+Scheitert `review-brief` oder `start` (Exit 1, etwa `rolle-fehlt` oder `keine-lesegrenze`), ist das ein Ausfall dieses Reviewers in Zeile 2 des Befunde-Kommentars, mit dem Fehler aus der Ausgabe; die Prüfung läuft ohne ihn weiter. Einen Ersatzweg gibt es nicht — keinen selbst geschriebenen Prompt, keinen Start am Kit vorbei.
 
 ### 5. Befunde ans Board
 Ein Kommentar je Lauf. Erste Zeile wörtlich `## <Stufe>-Review, Runde 1` mit `Issue`, `Fachplan` oder `Plan`; Zeile 2 nennt Ausfall, Unterbesetzung oder den Regelvorschlag beim Autor-Modell, sonst bleibt sie leer; darunter je Reviewer der Kopf wörtlich `### Reviewer <n>: <rolle>, <modell>`, etwa `### Reviewer 1: form-beobachtbarkeit, fable`, und darunter seine Funde. Aus diesem Kopf bucht `buchen` die Rolle; in anderer Form fällt sie auf „unbekannt“. Datei `<tmpdir>/<id>-befunde.md`, dann die Form der Funde prüfen:
 ```bash
-node .claude/kit/befunde.mjs pruefen --datei <tmpdir>/<id>-befunde.md
+node .claude/kit/findings.mjs check --file <tmpdir>/<id>-befunde.md
 ```
 
 Meldet das Kommando fehlende Angaben, fordert die Session sie beim liefernden Reviewer genau **einmal** nach und schreibt die Datei neu. Den fehlenden `reviewer-kopf` setzt die Session selbst, ohne Nachforderung — der Kopf stammt von ihr, nicht vom Reviewer; einen Kopf ohne gelaufenen Reviewer schreibt sie nie. Bleibt eine Angabe danach aus, trägt der betroffene Fundblock die Zeile `Angaben: unvollstaendig`. **Kein Gate:** Weder eine fehlende Angabe noch eine ausgebliebene Nachlieferung hält den Lauf auf; scheitert das Kommando selbst, steht das als eine Zeile in Zeile 2 des Kommentars. Der Kommentar geht in jedem dieser Fälle ans Board:
@@ -79,7 +83,7 @@ Kommt dieser Kommentar nicht an, endet der Skill ohne weitere Mutation.
 ### 6. Einarbeiten
 Die aufrufende Session geht jeden Fund durch und entscheidet nach `CLAUDE-workflow.md`, Abschnitt „Entscheiden statt fragen": übernehmen oder mit einem Satz ablehnen. Trifft ein Fund die Stopp-Klasse, wird interaktiv gefragt; unbeaufsichtigt zeichnet die Session das Dokument, schreibt keinen Body und endet nach dem Einarbeitungs-Kommentar:
 ```bash
-node .claude/kit/board.mjs issue label add <id> kit:klaeren
+node .claude/kit/board.mjs issue label add <id> kit:clarify
 ```
 
 Interaktiv zeigt sie die Liste (übernommen / abgelehnt mit Grund) und wartet auf ein Wort, bevor sie schreibt; unbeaufsichtigt schreibt sie direkt. Geschrieben wird der vollständige neue Body — vorhandene Kennzeichnungszeilen (`Autor-Modell:`, `Plan-Modell:`, `Fachliche Quelle:`, `Plan:`) bleiben erhalten — über `<tmpdir>/<id>-body.md`:
@@ -98,16 +102,21 @@ Kein Fund ist auch ein Ergebnis: Marker schreiben, Kommentar mit „keine Funde"
 node .claude/kit/board.mjs issue comment <id> --text-file <tmpdir>/<id>-einarbeitung.md
 ```
 
-Dann die Buchung: Je Fundblock ergänzt die Session im Befunde-Text die Zeile `Uebernahme: uebernommen` beziehungsweise `Uebernahme: abgelehnt` — dieselbe Entscheidung, die der Kommentar in Prosa trägt —, schreibt den Text nach der Transportregel als `<tmpdir>/<id>-buchung.md` und bucht ihn mit der Stufe des Laufs aus Schritt 1b; für **jede** Art, die `buchen` unter `arten` als `erreicht` und mit `vorschlag: true` meldet, folgt ein Vorschlag — eine Urteils-Art (`vorschlag: false`) erzeugt keinen. **Kein Gate:** Ein Fehlschlag von `buchen` oder `vorschlag` steht in **einer Zeile** und hält weder Lauf noch Label auf — das Protokoll ist Buchhaltung, keine Bedingung. Wird der Lauf mit `kit:klaeren` geparkt, **wird nicht gebucht**: Dort hat niemand über die Funde entschieden, und ein Fund ohne Übernahmevermerk gehört nicht ins Protokoll. Im Worktree eines Runners legt `vorschlag` nichts an und meldet das mit Grund: Das ist kein Fehlschlag, die Zusammenfassung nennt es als „Vorschlag folgt beim Abbau“.
+Dann die Buchung: Je Fundblock ergänzt die Session im Befunde-Text die Zeile `Uebernahme: uebernommen` beziehungsweise `Uebernahme: abgelehnt` — dieselbe Entscheidung, die der Kommentar in Prosa trägt —, schreibt den Text nach der Transportregel als `<tmpdir>/<id>-buchung.md` und bucht ihn mit der Stufe des Laufs aus Schritt 1b; für **jede** Art, die `buchen` unter `arten` als `erreicht` und mit `vorschlag: true` meldet, folgt ein Vorschlag — eine Urteils-Art (`vorschlag: false`) erzeugt keinen. **Kein Gate:** Ein Fehlschlag von `buchen` oder `vorschlag` steht in **einer Zeile** und hält weder Lauf noch Label auf — das Protokoll ist Buchhaltung, keine Bedingung. Wird der Lauf mit `kit:clarify` geparkt, **wird nicht gebucht**: Dort hat niemand über die Funde entschieden, und ein Fund ohne Übernahmevermerk gehört nicht ins Protokoll. Im Worktree eines Runners legt `vorschlag` nichts an und meldet das mit Grund: Das ist kein Fehlschlag, die Zusammenfassung nennt es als „Vorschlag folgt beim Abbau“.
 ```bash
-node .claude/kit/befunde.mjs buchen --datei <tmpdir>/<id>-buchung.md --stufe <fachlich|plan|issue> --karte <id>
-node .claude/kit/befunde.mjs vorschlag --art <a>
+node .claude/kit/findings.mjs record --file <tmpdir>/<id>-buchung.md --stage <requirement|plan|issue> --card <id>
+node .claude/kit/findings.mjs suggest --kind <a>
 ```
 
-Danach das Label als sichtbare Spur am Board: `node .claude/kit/board.mjs issue label add <id> review:fertig`. Es ist eine Spur, keine Freigabe, und meint den Stand des Marker-Datums. Trifft ein Fund die Stopp-Klasse und wird `kit:klaeren` gesetzt, entfaellt `review:fertig`. Meldet `befunde.mjs pruefen` den Eintrag `keine-pruefer`, wird `review:fertig` nicht gesetzt: Ohne einen einzigen gelaufenen Reviewer ist die Stufe nicht geprüft, und die Zusammenfassung nennt das. Ist das Label am Board nicht definiert, meldet der Skill die Fehlermeldung des Adapters und läuft weiter; Body, Marker und Kommentare stehen dann trotzdem, und die Zusammenfassung nennt das fehlende Label. Die Nacht-Kette verlangt dieses Label als Voraussetzung, bevor sie eine fachliche Anforderung oder ein Plandokument aufnimmt; die Spur bleibt trotzdem nur Spur, keine Freigabe. Das Label bezeugt allein die Pruefung durch die Modelle — **nicht**, dass der PO die Fragen unter `## Offene Fragen an den PO` beantwortet hat; die Reviewer duerfen sie ausdruecklich nicht beantworten. Die Kette verlangt beides: Eine Anforderung mit `review:fertig` und offenen Fragen wird mit Grund uebersprungen, bis in der **ersten** Zeile des Abschnitts ein Vermerk steht, der mit `Keine` beginnt — beantwortete Fragen allein genuegen nicht, die Kette liest nur diese eine Zeile. Wird eine Anforderung nach der Pruefung wesentlich geaendert, das Label abnehmen oder neu pruefen lassen — der naechtliche Lauf erkennt eine nachtraegliche Aenderung nicht.
+Danach das Label als sichtbare Spur am Board: `node .claude/kit/board.mjs issue label add <id> review:done`. Es ist eine Spur, keine Freigabe, und meint den Stand des Marker-Datums. Trifft ein Fund die Stopp-Klasse und wird `kit:clarify` gesetzt, entfaellt `review:done`. Meldet `findings.mjs check` den Eintrag `keine-pruefer`, wird `review:done` nicht gesetzt: Ohne einen einzigen gelaufenen Reviewer ist die Stufe nicht geprüft, und die Zusammenfassung nennt das. Ist das Label am Board nicht definiert, meldet der Skill die Fehlermeldung des Adapters und läuft weiter; Body, Marker und Kommentare stehen dann trotzdem, und die Zusammenfassung nennt das fehlende Label. Die Nacht-Kette verlangt dieses Label als Voraussetzung, bevor sie eine fachliche Anforderung oder ein Plandokument aufnimmt; die Spur bleibt trotzdem nur Spur, keine Freigabe. Das Label bezeugt allein die Pruefung durch die Modelle — **nicht**, dass der PO die Fragen unter `## Offene Fragen an den PO` beantwortet hat; die Reviewer duerfen sie ausdruecklich nicht beantworten. Die Kette verlangt beides: Eine Anforderung mit `review:done` und offenen Fragen wird mit Grund uebersprungen, bis in der **ersten** Zeile des Abschnitts ein Vermerk steht, der mit `Keine` beginnt — beantwortete Fragen allein genuegen nicht, die Kette liest nur diese eine Zeile. Wird eine Anforderung nach der Pruefung wesentlich geaendert, das Label abnehmen oder neu pruefen lassen — der naechtliche Lauf erkennt eine nachtraegliche Aenderung nicht.
+
+Bei einer fachlichen Anforderung danach `node .claude/kit/board.mjs issue questions <id>`. Trägt `fragen.vermerk` einen Wert — die erste Zeile unter `## Offene Fragen an den PO` beginnt mit „Keine“ —, folgt `node .claude/kit/board.mjs issue label add <id> kit:clarified`. Das Label zeigt am Board, dass keine Frage an den PO offen ist; es ist eine Hilfe für den Menschen, kein Kriterium, die Kette prüft weiter den Vermerk. Wird `kit:clarify` gesetzt, entfällt es wie `review:done`. Abgenommen wird es vom Kit nie. Ist es am Board nicht definiert, meldet der Skill die Fehlermeldung des Adapters und läuft weiter.
+
 
 ### 7. Abschluss
-Zusammenfassung je Dokument: Stufe, Zahl der Funde, übernommen / abgelehnt, Zahl der **gebuchten** Funde und die dabei entstandenen oder ergänzten **Vorschläge** (bei einem Fehlschlag der Buchung dessen eine Zeile), Marker und `review:fertig` gesetzt, Label abgenommen und nicht wieder gesetzt, oder `kit:klaeren`, übersprungene Dokumente mit Grund. Dann: Ready ist das GO des Menschen — der Marker gibt nichts frei.
+Zusammenfassung je Dokument: Stufe, Zahl der Funde, übernommen / abgelehnt, Zahl der **gebuchten** Funde und die dabei entstandenen oder ergänzten **Vorschläge** (bei einem Fehlschlag der Buchung dessen eine Zeile), Marker und `review:done` gesetzt, `kit:clarified` gesetzt oder nicht (bei einem fehlenden Label dessen Fehlermeldung), Label abgenommen und nicht wieder gesetzt, oder `kit:clarify`, übersprungene Dokumente mit Grund. Dann: Ready ist das GO des Menschen — der Marker gibt nichts frei.
+
+Steht `kit:clarify` an einem `[Requirement]`, nennt die Zusammenfassung `/groom #N` als Weg zur Antwort. Meldete die Formprüfung F12, nennt sie `/groom #N` als Weg zu den Szenarien.
 
 ## Lange Texte ans Board
 Befunde, Body und Einarbeitung entstehen nach der Transportregel aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board": nie als Kommandozeilen-Argument, sondern stückweise in eine Datei außerhalb des Projektverzeichnisses (`printenv TMPDIR`, bleibt die Ausgabe leer (Linux und WSL2 ohne Sandbox), gilt `/tmp`; dann `cat >` und `cat >>` mit je höchstens 6.000 Zeichen), jedes Stück ein **eigener** Werkzeugaufruf mit wörtlichem Pfad, dann ein Aufruf mit `--text-file` bzw. `--body-file`. Scheitert ein Dateischritt, wird die unvollständige Datei nicht übertragen; scheitert ein Board-Aufruf, meldet der Skill den Fehler mit dem Pfad und endet ohne weitere Mutation.
@@ -115,6 +124,6 @@ Befunde, Body und Einarbeitung entstehen nach der Transportregel aus `CLAUDE-wor
 ## Stop-Punkte
 - Kein Ziehen nach Ready — das ist das GO des Menschen. Ausnahme, ausschliesslich in der Umsetzungsstufe der Nacht-Kette unter Variante B: Dort zieht der Nacht-Runner die entstandenen Arbeitspakete selbst nach Ready. Die Ausnahme gilt dem Runner, nicht diesem Skill — keine Ready-Bewegung durch diesen Skill.
 - Interaktiv kein Schreiben in den Body ohne ein Wort der Zustimmung.
-- Kein Marker gibt einen Schritt frei; er ist eine Spur. Auch `review:fertig` ist Spur, keine Freigabe.
+- Kein Marker gibt einen Schritt frei; er ist eine Spur. Auch `review:done` ist Spur, keine Freigabe.
 - Kein Ersatz-Reviewer aus eigenem Antrieb — die Besetzung kommt aus `roles`.
-- Kein Review von `[Idee]`.
+- Kein Review von `[Idea]`.

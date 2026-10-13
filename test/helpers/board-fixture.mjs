@@ -22,6 +22,7 @@
 
 import { spawnSync, execFile } from "node:child_process";
 import { join, dirname } from "node:path";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { fakePath, TEST_TOOLBOX_BUDGET_MS } from "./adapter-fixture.mjs";
@@ -108,4 +109,25 @@ export function runBoardAsync(dir, cliArgs, extraEnv = {}, stdinText = "") {
     });
     kind.stdin.end(stdinText);
   });
+}
+
+/**
+ * Macht das Fixture zum Git-Repo (falls noch keines) und legt einen leeren Commit an,
+ * Nachricht per Default `Paket (Issue #<id>)` — der Beleg, den `issue report` seit Issue
+ * #1584 vor dem Zug verlangt. Globale und System-Config bleiben aussen vor, damit kein
+ * Signier- oder Hook-Zwang der Entwicklermaschine durchschlaegt. Liefert den kurzen Hash.
+ */
+export function commitFuer(dir, id, nachricht = `Paket (Issue #${id})`) {
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: join(dir, ".gitconfig-leer"), GIT_CONFIG_NOSYSTEM: "1" };
+  const git = (...a) => {
+    const res = spawnSync("git", a, { cwd: dir, encoding: "utf-8", env });
+    if (res.status !== 0) throw new Error(`git ${a.join(" ")}: ${res.stderr}`);
+    return res.stdout.trim();
+  };
+  if (!existsSync(join(dir, ".git"))) {
+    git("init", "-q");
+  }
+  git("-c", "user.email=t@example.invalid", "-c", "user.name=T", "-c", "commit.gpgsign=false",
+    "commit", "-q", "--allow-empty", "--no-verify", "-m", nachricht);
+  return git("rev-parse", "--short", "HEAD");
 }

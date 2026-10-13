@@ -228,7 +228,7 @@ test("[aufwand-1] --laeufe sticht den Config-Block", () => {
     unauffaellig({ stempel: "2026-09-03-100000" }),
   ];
   mitProjekt({ laeufe, config: { aufwand: { laeufe: 2 } } }, (dir) => {
-    assert.equal(auswerten(dir, "--laeufe", "1").laeufe.einbezogen, 1);
+    assert.equal(auswerten(dir, "--runs", "1").laeufe.einbezogen, 1);
   });
 });
 

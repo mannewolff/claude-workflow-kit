@@ -71,9 +71,10 @@ export function setupProjekt(kette = {}, praefix = "night-kette-", configZusatz 
   mkdirSync(join(dir, "issues"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
-  // Der Rueckweg der Befunde ruft `befunde.mjs vorschlag` als Kindprozess (Issue #804);
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
+  // Der Rueckweg der Befunde ruft `findings.mjs suggest` als Kindprozess (Issue #804);
   // ohne die Kopie waere jeder Ketten-Test blind fuer den Vorschlag am Board.
-  copyFileSync(join(repoRoot, "kit", "befunde.mjs"), join(dir, ".claude", "kit", "befunde.mjs"));
+  copyFileSync(join(repoRoot, "kit", "findings.mjs"), join(dir, ".claude", "kit", "findings.mjs"));
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({ ...CONFIG, ...configZusatz, night: { ...configZusatz.night, kette } }, null, 2));
   // helfer/ traegt Fake-Dateien und Protokoll der Tests — ignoriert, damit der Vorflug
   // des Runners den Arbeitsbaum weiter als sauber sieht.
@@ -413,12 +414,12 @@ export function meldeCaptureInstallieren(dir) {
     'import { readFileSync, appendFileSync } from "node:fs";',
     `import { nachtlaufMeldung } from ${JSON.stringify("file://" + echt)};`,
     "const args = process.argv.slice(2);",
-    'if (args[0] === "nightrun" && args[1] === "melden") {',
+    'if (args[0] === "nightrun" && args[1] === "report") {',
     '  if (process.env.KETTE_MELDE_FEHLER) {',
     String.raw`    process.stderr.write("Fehler: Einlieferung abgewiesen (Melde-Fake)\n");`,
     "    process.exit(1);",
     "  }",
-    '  const datei = args[args.indexOf("--datei") + 1];',
+    '  const datei = args[args.indexOf("--file") + 1];',
     '  const stand = JSON.parse(readFileSync(datei, "utf-8"));',
     "  let sessions = 0;",
     String.raw`  try { sessions = readFileSync(process.env.KETTE_LOG, "utf-8").split("\n").filter(Boolean).length; } catch { sessions = 0; }`,

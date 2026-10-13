@@ -15,6 +15,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
+import { mitSzenarien } from "./helpers/szenarien-fixture.mjs";
 
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -38,6 +39,7 @@ function setupProjekt() {
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local",
     issueTracker: "local",
@@ -72,7 +74,7 @@ function issuesDirText(dir) {
 test("Nachtlauf: fachliches Issue wird kommentiert uebersprungen, normales Issue laeuft", () => {
   const dir = setupProjekt();
   try {
-    const fachlich = board(dir, "issue", "create", "--title", "[Fachlich] Kunden-Selbstauskunft", "--body", "## Ziel\nPO-Story.");
+    const fachlich = board(dir, "issue", "create", "--title", "[Fachlich] Kunden-Selbstauskunft", "--body", mitSzenarien("## Ziel\nPO-Story."));
     const normal = board(dir, "issue", "create", "--title", "Normales technisches Issue", "--body", "## Abhaengigkeiten\nKeine.");
     board(dir, "issue", "move", String(fachlich.id), "ready");
     board(dir, "issue", "move", String(normal.id), "ready");
@@ -102,7 +104,7 @@ test("Nachtlauf: fachliches Issue wird kommentiert uebersprungen, normales Issue
 test("Dry-Run weist fachliche Issues als uebersprungen aus, ohne etwas zu bewegen", () => {
   const dir = setupProjekt();
   try {
-    const fachlich = board(dir, "issue", "create", "--title", "[Fachlich] Reporting-Wunsch", "--body", "## Ziel\nStory.");
+    const fachlich = board(dir, "issue", "create", "--title", "[Fachlich] Reporting-Wunsch", "--body", mitSzenarien("## Ziel\nStory."));
     board(dir, "issue", "move", String(fachlich.id), "ready");
 
     const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--dry-run"]);
@@ -115,4 +117,61 @@ test("Dry-Run weist fachliche Issues als uebersprungen aus, ohne etwas zu bewege
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// --- Szenarien in der Nacht-Kette (Issue #1593, Plan #1588 A6, A7, E13, E14) -----------------
+//
+// Ein pflichtiger Fachplan ohne vollstaendiges Szenario laeuft auch nachts in keinen Plan
+// (Kriterium 4 der fachlichen Quelle #1586); Altbestand unter dem Stichtag bleibt unbeanstandet
+// (Kriterium 5). Fehlt der Stichtag, nennt die Kette das einmal je Lauf im Protokoll und im
+// Nachtbericht, ohne Kommentar und ohne Laufstand.
+
+const kette = await import("./helpers/kette-ablauf.mjs");
+
+/** Der Fachplan #F ohne seinen Abschnitt Szenarien — `issue update` weist das nicht ab (E13). */
+function ohneSzenarien(dir, F) {
+  const body = kette.fachplanBody().replace(/## Szenarien\n[\s\S]*?(?=## Nicht-Ziele)/, "");
+  assert.ok(!body.includes("Szenari"), "der Abschnitt ist noch im Body");
+  kette.board(dir, "issue", "update", F, "--body", body);
+}
+
+test("Szenario: pflichtiger Fachplan ohne Abschnitt Szenarien wird von der Kette ausgeschlossen", () => {
+  kette.mitProjekt((dir) => {
+    const F = kette.fachplan(dir);
+    ohneSzenarien(dir, F);
+    const res = kette.run(dir, ["--chain", "--dry-run"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.ok(res.stdout.includes(`#${F} [Fachlich] Ein Anliegen -> uebersprungen (Fachplan #${F} hat keinen Abschnitt Szenarien; er entsteht beim Groomen (\`/groom #${F}\`))`),
+      res.stdout);
+    assert.ok(!res.stdout.includes("-> Kette 1"), "die Kette darf nicht anlaufen");
+  }, {}, "night-szenarien-", { szenarienAb: 1 });
+});
+
+test("Szenario: Altbestand ohne Abschnitt Szenarien wird von der Kette nicht ausgeschlossen", () => {
+  kette.mitProjekt((dir) => {
+    const F = kette.fachplan(dir);
+    ohneSzenarien(dir, F);
+    const res = kette.run(dir, ["--chain", "--dry-run"]);
+    assert.equal(res.status, 0, res.stderr);
+    assert.ok(res.stdout.includes(`#${F} [Fachlich] Ein Anliegen -> Kette 1`), res.stdout);
+    assert.ok(!res.stdout.includes("keinen Abschnitt Szenarien"), res.stdout);
+    assert.ok(!res.stdout.includes("Stichtag fehlt"), "mit Stichtag kein Hinweis");
+  }, {}, "night-szenarien-", { szenarienAb: 99 });
+});
+
+test("Szenario: fehlt der Stichtag, nennt die Kette ihn im Protokoll und im Nachtbericht", () => {
+  kette.mitProjekt((dir) => {
+    const F = kette.fachplan(dir);
+    const env = kette.umgebung(dir, { stufen: { plan: kette.PLAN_ANLEGEN, review: kette.REVIEW_MARKER, pakete: kette.PAKETE_ANLEGEN } });
+    const res = kette.run(dir, ["--chain"], env);
+    assert.equal(res.status, 0, res.stderr);
+    const zeilen = res.stdout.split("\n").filter((z) => z.includes("Stichtag fehlt"));
+    assert.equal(zeilen.length, 1, `genau eine log-Zeile je Lauf:\n${res.stdout}`);
+    assert.match(zeilen[0], /szenarienAb/);
+
+    const text = readFileSync(join(dir, "issues", `${F}.md`), "utf-8");
+    assert.match(text, /### Hinweise\n\n- Stichtag fehlt: `szenarienAb`/);
+    // Kein eigener Kommentar: Der Hinweis steht genau einmal, im Nachtbericht.
+    assert.equal(text.split("Stichtag fehlt").length - 1, 1, "der Hinweis steht nur im Nachtbericht");
+  }, {}, "night-szenarien-");
 });

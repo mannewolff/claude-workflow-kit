@@ -53,6 +53,7 @@ function setupProjekt({ mitBoard = true, mitConfig = true, mitGit = true, config
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   if (mitBoard) copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   if (mitBoard) cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  if (mitBoard) cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   if (mitConfig) {
     writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
       codeHost: "local", issueTracker: "local", buildChecks: ["true"],

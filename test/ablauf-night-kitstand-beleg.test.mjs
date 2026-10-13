@@ -26,6 +26,7 @@ import {
   VORFLUG_OK, RESULT, GATE_MARKE, kitFixture, git, sha256, syncBlobs, runner, board, laufStand,
   standWorktrees, aufraeumen,
 } from "./helpers/kitstand-fixture.mjs";
+import { mitSzenarien } from "./helpers/szenarien-fixture.mjs";
 
 function spurZeilen(pfad) {
   return existsSync(pfad) ? readFileSync(pfad, "utf-8").trim().split("\n").filter(Boolean) : [];
@@ -42,7 +43,7 @@ function hashInSpur(name, pfad) {
 /** Ein Abschluss wie in /implement-next: pruefen, gezielt stagen, committen, melden. */
 function abschluss(dateien) {
   return [
-    'node .claude/kit/checks.mjs run --abschluss "$NIGHT_ISSUE_ID" >/dev/null',
+    'node .claude/kit/checks.mjs run --finish "$NIGHT_ISSUE_ID" >/dev/null',
     `git add ${dateien}`,
     'git commit -q -m "Paket $NIGHT_ISSUE_ID (Issue #$NIGHT_ISSUE_ID)"',
     'node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review >/dev/null',
@@ -130,7 +131,7 @@ test("[kitstand-7] Fall 2: ein Prueflauf liest den Skill des Pushs, auch wenn de
     syncBlobs(dir);
 
     const karte = board(dir, "issue", "create", "--title", "[Fachlich] Ein Anliegen", "--body",
-      "## Ziel\n\nEin Anliegen.\n\n## Fachliche Akzeptanzkriterien\n\n- Eines.\n").id;
+      mitSzenarien("## Ziel\n\nEin Anliegen.\n\n## Fachliche Akzeptanzkriterien\n\n- Eines.\n")).id;
     board(dir, "issue", "label", "add", String(karte), "kit:pruefen");
 
     // Die Sitzung laeuft im Worktree. Waehrend sie laeuft, aendert der Mensch in der
@@ -144,7 +145,7 @@ test("[kitstand-7] Fall 2: ein Prueflauf liest den Skill des Pushs, auch wenn de
       RESULT,
     ].join("\n");
 
-    const res = runner(dir, ["--pruefen"], {
+    const res = runner(dir, ["--check"], {
       NIGHT_CLAUDE_CMD: fake, NIGHT_VORFLUG_CMD: VORFLUG_OK, BELEG_SPUR: spur, BELEG_HAUPT: dir,
     });
     assert.equal(res.status, 0, `der Prueflauf haette durchlaufen muessen:\n${res.stdout}\n${res.stderr}`);

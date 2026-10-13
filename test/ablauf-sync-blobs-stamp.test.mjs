@@ -28,10 +28,10 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Die gestempelten Kit-Dateien (STAMPED in sync-blobs.mjs). Bewusst eine Konstante:
 // Kommt ein Werkzeug dazu (checks.mjs mit Issue #425, preise.mjs mit Issue #734,
-// aufwand.mjs mit Issue #750, wirksamkeit.mjs mit Issue #787, befunde.mjs mit
+// effort.mjs mit Issue #750, effectiveness.mjs mit Issue #787, findings.mjs mit
 // Issue #799), faellt hier genau eine Stelle an statt drei ueber die Datei
 // verteilte Literale.
-const KIT_DATEIEN = ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs", "worktree.mjs"];
+const KIT_DATEIEN = ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "effort.mjs", "effectiveness.mjs", "findings.mjs", "worktree.mjs"];
 
 // Minimales Repo mit allem, was sync-blobs.mjs anfasst: die Blob-Quellen und
 // eine install.mjs mit allen Konstanten plus VERSION.
@@ -55,8 +55,15 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
   writeFileSync(join(dir, "skills", "beispiel", "SKILL.md"), "# Beispiel-Skill\n");
   // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
   writeFileSync(join(dir, "templates", "workflow.config.schema.json"), JSON.stringify({ properties: { codeHost: { type: "string" } } }) + "\n");
-  writeFileSync(join(dir, "kit", "einstellungen.mjs"),
-    `const KIT_VERSION = "${kitVersion}";\nconst SCHEMA_B64 = "";\nconsole.log("einstellungen");\n`);
+  writeFileSync(join(dir, "kit", "settings.mjs"),
+    `const KIT_VERSION = "${kitVersion}";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\nconsole.log("einstellungen");\n`);
+  // Seit Issue #1437: die Namenstabelle, die sync-blobs ebenfalls einbettet.
+  mkdirSync(join(dir, "kit", "board"), { recursive: true });
+  writeFileSync(join(dir, "kit", "board", "config-namen.mjs"), "export {};\n");
+  writeFileSync(join(dir, "kit", "board", "namen.mjs"), "export {};\n");
+  // Seit Issue #1441: die englische Referenz, die sync-blobs ebenfalls einbettet.
+  mkdirSync(join(dir, "tools"), { recursive: true });
+  writeFileSync(join(dir, "tools", "config-referenz.en.json"), "{}\n");
   for (const datei of KIT_DATEIEN) {
     writeFileSync(join(dir, "kit", datei),
       `const KIT_VERSION = "${kitVersion}";\nconsole.log("${datei}");\n`);
@@ -71,15 +78,19 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
     `const NIGHT_MJS_B64 = "";`,
     `const CHECKS_MJS_B64 = "";`,
     `const PREISE_MJS_B64 = "";`,
-    `const AUFWAND_MJS_B64 = "";`,
-    `const WIRKSAMKEIT_MJS_B64 = "";`,
-    `const BEFUNDE_MJS_B64 = "";`,
     `const WORKTREE_MJS_B64 = "";`,
+    `const FINDINGS_MJS_B64 = "";`,
+    `const EFFORT_MJS_B64 = "";`,
+    `const EFFECTIVENESS_MJS_B64 = "";`,
     `const KIT_NIGHT_B64 = "";`,
     `const KIT_BOARD_B64 = "";`,
     `const KIT_ROLLEN_B64 = "";`,
+    `const KIT_TEXTE_B64 = "";`,
     `const GATE_MJS_B64 = "";\nconst PRE_COMMIT_B64 = "";\nconst SKILLS_B64 = "";`,
     `const AGENTS_B64 = "";`,
+    `const TEMPLATES_EN_B64 = "";`,
+    `const AGENTS_EN_B64 = "";`,
+    `const KIT_ROLLEN_EN_B64 = "";`,
     "",
   ].join("\n"));
   return dir;
@@ -240,12 +251,12 @@ test("Lokale Kopie: ohne .claude/kit/ laeuft sync-blobs durch und legt nichts an
 
 // --- Download-Datei: Stempel ohne Kopie, eingebettetes Schema (Issue #676) ---
 
-test("[installer-8] einstellungen.mjs wird gestempelt, aber nicht nach .claude/kit/ kopiert", () => {
+test("[installer-8] settings.mjs wird gestempelt, aber nicht nach .claude/kit/ kopiert", () => {
   const dir = setupFixture("2.5.0", "1.0.0", { lokaleKopie: true });
   try {
     assert.equal(syncBlobs(dir).status, 0);
-    assert.equal(stempel(dir, "einstellungen.mjs"), "2.5.0");
-    assert.equal(existsSync(join(dir, ".claude", "kit", "einstellungen.mjs")), false, "die Download-Datei gehoert in kein Projekt");
+    assert.equal(stempel(dir, "settings.mjs"), "2.5.0");
+    assert.equal(existsSync(join(dir, ".claude", "kit", "settings.mjs")), false, "die Download-Datei gehoert in kein Projekt");
     assert.equal(existsSync(join(dir, ".claude", "kit", "board.mjs")), true, "die uebrigen Kopien entstehen weiter");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -256,7 +267,7 @@ test("[installer-8] das Schema wird eingebettet, und --check meldet eine Abweich
   const dir = setupFixture("2.5.0", "1.0.0");
   try {
     assert.equal(syncBlobs(dir).status, 0);
-    const lies = () => readFileSync(join(dir, "kit", "einstellungen.mjs"), "utf-8").match(/const SCHEMA_B64 = "([^"]*)";/)[1];
+    const lies = () => readFileSync(join(dir, "kit", "settings.mjs"), "utf-8").match(/const SCHEMA_B64 = "([^"]*)";/)[1];
     const vorlage = readFileSync(join(dir, "templates", "workflow.config.schema.json"), "utf-8");
     assert.equal(Buffer.from(lies(), "base64").toString("utf-8"), vorlage);
     assert.equal(syncBlobs(dir, "--check").status, 0);
@@ -264,7 +275,7 @@ test("[installer-8] das Schema wird eingebettet, und --check meldet eine Abweich
     writeFileSync(join(dir, "templates", "workflow.config.schema.json"), JSON.stringify({ properties: {} }) + "\n");
     const res = syncBlobs(dir, "--check");
     assert.equal(res.status, 1);
-    assert.match(res.stderr, /einstellungen\.mjs/);
+    assert.match(res.stderr, /settings\.mjs/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -272,22 +283,22 @@ test("[installer-8] das Schema wird eingebettet, und --check meldet eine Abweich
 
 // --- Das Aufwands-Werkzeug (Issue #750) --------------------------------------
 //
-// Ohne Stempel, Blob und Dogfooding-Kopie gaebe es `.claude/kit/aufwand.mjs` nicht —
+// Ohne Stempel, Blob und Dogfooding-Kopie gaebe es `.claude/kit/effort.mjs` nicht —
 // und die Skills dieses Repos riefen ein Kommando auf, das im eigenen Klon nicht liegt.
 // Deshalb gehoert die Auslieferung mit ins Paket, das das Werkzeug anlegt.
 
-test("[installer-11] aufwand.mjs wird gestempelt und nach .claude/kit/ kopiert", () => {
+test("[installer-11] effort.mjs wird gestempelt und nach .claude/kit/ kopiert", () => {
   const dir = setupFixture("2.5.0", "1.0.0", { lokaleKopie: true });
   try {
     assert.equal(syncBlobs(dir).status, 0);
 
-    assert.equal(stempel(dir, "aufwand.mjs"), "2.5.0");
+    assert.equal(stempel(dir, "effort.mjs"), "2.5.0");
     assert.equal(
-      readFileSync(join(dir, ".claude", "kit", "aufwand.mjs"), "utf-8"),
-      readFileSync(join(dir, "kit", "aufwand.mjs"), "utf-8"),
-      ".claude/kit/aufwand.mjs weicht von der Quelle ab"
+      readFileSync(join(dir, ".claude", "kit", "effort.mjs"), "utf-8"),
+      readFileSync(join(dir, "kit", "effort.mjs"), "utf-8"),
+      ".claude/kit/effort.mjs weicht von der Quelle ab"
     );
-    const b64 = readFileSync(join(dir, "install.mjs"), "utf-8").match(/const AUFWAND_MJS_B64 = "([^"]*)";/)[1];
+    const b64 = readFileSync(join(dir, "install.mjs"), "utf-8").match(/const EFFORT_MJS_B64 = "([^"]*)";/)[1];
     assert.match(Buffer.from(b64, "base64").toString("utf-8"), /const KIT_VERSION = "2\.5\.0";/,
       "der eingebettete Blob traegt nicht die gestempelte Fassung");
   } finally {
@@ -295,21 +306,21 @@ test("[installer-11] aufwand.mjs wird gestempelt und nach .claude/kit/ kopiert",
   }
 });
 
-test("[installer-11] --check meldet eine Abweichung von kit/aufwand.mjs", () => {
+test("[installer-11] --check meldet eine Abweichung von kit/effort.mjs", () => {
   // Bewusst ohne lokale Kopie: Sonst schluege auch der copyDrift an, und der Lauf waere
-  // ebenso rot, wenn aufwand.mjs nur in STAMPED stuende.
+  // ebenso rot, wenn effort.mjs nur in STAMPED stuende.
   const dir = setupFixture("2.5.0", "1.0.0");
   try {
     assert.equal(syncBlobs(dir).status, 0);
     assert.equal(syncBlobs(dir, "--check").status, 0);
 
-    const pfad = join(dir, "kit", "aufwand.mjs");
+    const pfad = join(dir, "kit", "effort.mjs");
     writeFileSync(pfad, readFileSync(pfad, "utf-8") + 'console.log("nachtraeglich");\n');
 
     const res = syncBlobs(dir, "--check");
     assert.equal(res.status, 1, "--check haette den Blob-Drift melden muessen");
     const meldung = res.stderr + res.stdout;
-    assert.match(meldung, /AUFWAND_MJS_B64/, "die Meldung nennt die betroffene Konstante nicht");
+    assert.match(meldung, /EFFORT_MJS_B64/, "die Meldung nennt die betroffene Konstante nicht");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -318,21 +329,21 @@ test("[installer-11] --check meldet eine Abweichung von kit/aufwand.mjs", () => 
 // --- Das Wirksamkeits-Werkzeug (Issue #787) ----------------------------------
 //
 // Dieselbe Auslieferungskette wie beim Aufwands-Werkzeug darueber: Ohne Stempel, Blob
-// und Dogfooding-Kopie gaebe es `.claude/kit/wirksamkeit.mjs` nicht — und kein
-// Folgepaket koennte `node .claude/kit/wirksamkeit.mjs` aufrufen.
+// und Dogfooding-Kopie gaebe es `.claude/kit/effectiveness.mjs` nicht — und kein
+// Folgepaket koennte `node .claude/kit/effectiveness.mjs` aufrufen.
 
-test("[installer-13] wirksamkeit.mjs wird gestempelt und nach .claude/kit/ kopiert", () => {
+test("[installer-13] effectiveness.mjs wird gestempelt und nach .claude/kit/ kopiert", () => {
   const dir = setupFixture("2.5.0", "1.0.0", { lokaleKopie: true });
   try {
     assert.equal(syncBlobs(dir).status, 0);
 
-    assert.equal(stempel(dir, "wirksamkeit.mjs"), "2.5.0");
+    assert.equal(stempel(dir, "effectiveness.mjs"), "2.5.0");
     assert.equal(
-      readFileSync(join(dir, ".claude", "kit", "wirksamkeit.mjs"), "utf-8"),
-      readFileSync(join(dir, "kit", "wirksamkeit.mjs"), "utf-8"),
-      ".claude/kit/wirksamkeit.mjs weicht von der Quelle ab"
+      readFileSync(join(dir, ".claude", "kit", "effectiveness.mjs"), "utf-8"),
+      readFileSync(join(dir, "kit", "effectiveness.mjs"), "utf-8"),
+      ".claude/kit/effectiveness.mjs weicht von der Quelle ab"
     );
-    const b64 = readFileSync(join(dir, "install.mjs"), "utf-8").match(/const WIRKSAMKEIT_MJS_B64 = "([^"]*)";/)[1];
+    const b64 = readFileSync(join(dir, "install.mjs"), "utf-8").match(/const EFFECTIVENESS_MJS_B64 = "([^"]*)";/)[1];
     assert.match(Buffer.from(b64, "base64").toString("utf-8"), /const KIT_VERSION = "2\.5\.0";/,
       "der eingebettete Blob traegt nicht die gestempelte Fassung");
   } finally {
@@ -340,21 +351,21 @@ test("[installer-13] wirksamkeit.mjs wird gestempelt und nach .claude/kit/ kopie
   }
 });
 
-test("[installer-13] --check meldet eine Abweichung von kit/wirksamkeit.mjs", () => {
+test("[installer-13] --check meldet eine Abweichung von kit/effectiveness.mjs", () => {
   // Bewusst ohne lokale Kopie: Sonst schluege auch der copyDrift an, und der Lauf waere
-  // ebenso rot, wenn wirksamkeit.mjs nur in STAMPED stuende.
+  // ebenso rot, wenn effectiveness.mjs nur in STAMPED stuende.
   const dir = setupFixture("2.5.0", "1.0.0");
   try {
     assert.equal(syncBlobs(dir).status, 0);
     assert.equal(syncBlobs(dir, "--check").status, 0);
 
-    const pfad = join(dir, "kit", "wirksamkeit.mjs");
+    const pfad = join(dir, "kit", "effectiveness.mjs");
     writeFileSync(pfad, readFileSync(pfad, "utf-8") + 'console.log("nachtraeglich");\n');
 
     const res = syncBlobs(dir, "--check");
     assert.equal(res.status, 1, "--check haette den Blob-Drift melden muessen");
     const meldung = res.stderr + res.stdout;
-    assert.match(meldung, /WIRKSAMKEIT_MJS_B64/, "die Meldung nennt die betroffene Konstante nicht");
+    assert.match(meldung, /EFFECTIVENESS_MJS_B64/, "die Meldung nennt die betroffene Konstante nicht");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -363,21 +374,21 @@ test("[installer-13] --check meldet eine Abweichung von kit/wirksamkeit.mjs", ()
 // --- Das Befunde-Werkzeug (Issue #799) ---------------------------------------
 //
 // Dieselbe Auslieferungskette wie bei den beiden Werkzeugen darueber. Der Regeltext
-// verweist fuer die Artenliste auf `node .claude/kit/befunde.mjs arten` — ohne Stempel,
+// verweist fuer die Artenliste auf `node .claude/kit/findings.mjs kinds` — ohne Stempel,
 // Blob und Dogfooding-Kopie ginge dieser Verweis in jedem Projekt ins Leere.
 
-test("[installer-14] befunde.mjs wird gestempelt und nach .claude/kit/ kopiert", () => {
+test("[installer-14] findings.mjs wird gestempelt und nach .claude/kit/ kopiert", () => {
   const dir = setupFixture("2.5.0", "1.0.0", { lokaleKopie: true });
   try {
     assert.equal(syncBlobs(dir).status, 0);
 
-    assert.equal(stempel(dir, "befunde.mjs"), "2.5.0");
+    assert.equal(stempel(dir, "findings.mjs"), "2.5.0");
     assert.equal(
-      readFileSync(join(dir, ".claude", "kit", "befunde.mjs"), "utf-8"),
-      readFileSync(join(dir, "kit", "befunde.mjs"), "utf-8"),
-      ".claude/kit/befunde.mjs weicht von der Quelle ab"
+      readFileSync(join(dir, ".claude", "kit", "findings.mjs"), "utf-8"),
+      readFileSync(join(dir, "kit", "findings.mjs"), "utf-8"),
+      ".claude/kit/findings.mjs weicht von der Quelle ab"
     );
-    const b64 = readFileSync(join(dir, "install.mjs"), "utf-8").match(/const BEFUNDE_MJS_B64 = "([^"]*)";/)[1];
+    const b64 = readFileSync(join(dir, "install.mjs"), "utf-8").match(/const FINDINGS_MJS_B64 = "([^"]*)";/)[1];
     assert.match(Buffer.from(b64, "base64").toString("utf-8"), /const KIT_VERSION = "2\.5\.0";/,
       "der eingebettete Blob traegt nicht die gestempelte Fassung");
   } finally {
@@ -385,21 +396,21 @@ test("[installer-14] befunde.mjs wird gestempelt und nach .claude/kit/ kopiert",
   }
 });
 
-test("[installer-14] --check meldet eine Abweichung von kit/befunde.mjs", () => {
+test("[installer-14] --check meldet eine Abweichung von kit/findings.mjs", () => {
   // Bewusst ohne lokale Kopie: Sonst schluege auch der copyDrift an, und der Lauf waere
-  // ebenso rot, wenn befunde.mjs nur in STAMPED stuende.
+  // ebenso rot, wenn findings.mjs nur in STAMPED stuende.
   const dir = setupFixture("2.5.0", "1.0.0");
   try {
     assert.equal(syncBlobs(dir).status, 0);
     assert.equal(syncBlobs(dir, "--check").status, 0);
 
-    const pfad = join(dir, "kit", "befunde.mjs");
+    const pfad = join(dir, "kit", "findings.mjs");
     writeFileSync(pfad, readFileSync(pfad, "utf-8") + 'console.log("nachtraeglich");\n');
 
     const res = syncBlobs(dir, "--check");
     assert.equal(res.status, 1, "--check haette den Blob-Drift melden muessen");
     const meldung = res.stderr + res.stdout;
-    assert.match(meldung, /BEFUNDE_MJS_B64/, "die Meldung nennt die betroffene Konstante nicht");
+    assert.match(meldung, /FINDINGS_MJS_B64/, "die Meldung nennt die betroffene Konstante nicht");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -409,11 +420,11 @@ test("[installer-14] --check meldet eine von Hand geaenderte Kopie unter .claude
   const dir = setupFixture("2.5.0", "1.0.0", { lokaleKopie: true });
   try {
     assert.equal(syncBlobs(dir).status, 0);
-    writeFileSync(join(dir, ".claude", "kit", "befunde.mjs"), "von Hand verbogen\n");
+    writeFileSync(join(dir, ".claude", "kit", "findings.mjs"), "von Hand verbogen\n");
 
     const res = syncBlobs(dir, "--check");
     assert.equal(res.status, 1, "--check haette die abweichende Kopie melden muessen");
-    assert.match(res.stderr + res.stdout, /\.claude\/kit\/befunde\.mjs/, "die Meldung nennt die Kopie nicht");
+    assert.match(res.stderr + res.stdout, /\.claude\/kit\/findings\.mjs/, "die Meldung nennt die Kopie nicht");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -446,8 +457,9 @@ test("[teile] ein Teil unter kit/night/ landet ungestempelt im Blob und in .clau
     assert.equal(readFileSync(join(dir, ".claude", "kit", "night", "probe.mjs"), "utf-8"), probe,
       "der Teil fehlt in der Kopie unter .claude/kit/night/");
     assert.deepEqual(blobInhalt(dir, "KIT_NIGHT_B64"), { "probe.mjs": probe });
-    assert.deepEqual(blobInhalt(dir, "KIT_BOARD_B64"), {}, "ein fehlendes kit/board/ ergibt einen leeren Blob");
-    assert.equal(existsSync(join(dir, ".claude", "kit", "board")), false, "ohne Teil entsteht kein Verzeichnis in der Kopie");
+    // kit/board/ traegt seit Issue #1437 die eingebettete Namenstabelle; ohne Teil bleibt kit/rollen/.
+    assert.deepEqual(blobInhalt(dir, "KIT_ROLLEN_B64"), {}, "ein fehlendes kit/rollen/ ergibt einen leeren Blob");
+    assert.equal(existsSync(join(dir, ".claude", "kit", "rollen")), false, "ohne Teil entsteht kein Verzeichnis in der Kopie");
     assert.equal(syncBlobs(dir, "--check").status, 0, "--check haette danach gruen sein muessen");
   } finally {
     rmSync(dir, { recursive: true, force: true });

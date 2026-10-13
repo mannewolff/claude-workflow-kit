@@ -1,4 +1,4 @@
-// Ablauf-Pruefung: Belegfall 5 braucht zwei Laeufe des Einstiegs kit/night.mjs nebeneinander mit getrennten Lauf-Kennungen, Tagesprotokoll und Schrittprotokollen auf der Platte, und der Prueflauf --pruefen hat keinen Lauf im selben Prozess.
+// Ablauf-Pruefung: Belegfall 5 braucht zwei Laeufe des Einstiegs kit/night.mjs nebeneinander mit getrennten Lauf-Kennungen, Tagesprotokoll und Schrittprotokollen auf der Platte, und der Prueflauf --check hat keinen Lauf im selben Prozess.
 //
 // Protokoll je Schritt, Vorab-Stand und Halt-Stand (Issue #1090, Plan #1079 E1, E16, E17).
 //
@@ -54,7 +54,7 @@ test("[protokoll-schritt] Belegfall 5: Kette und Prueflauf gleichzeitig schreibe
           // Der Prueflauf schreibt in eine eigene Datei — im Output der Plan-Session stuende
           // er sonst im Schrittprotokoll der Kette. KIT_STAND ist geleert: Der Prueflauf ist
           // ein eigener Lauf, kein Kind aus dem Stand der Kette.
-          plan: `(cd "$PRUEF_DIR" && KIT_STAND= KIT_STAND_PFAD= node "$PRUEF_NIGHT" --pruefen) > "$PRUEF_AUSGABE" 2>&1; echo $? > "$PRUEF_STATUS"; ${PLAN_ANLEGEN}`,
+          plan: `(cd "$PRUEF_DIR" && KIT_STAND= KIT_STAND_PFAD= node "$PRUEF_NIGHT" --check) > "$PRUEF_AUSGABE" 2>&1; echo $? > "$PRUEF_STATUS"; ${PLAN_ANLEGEN}`,
           review: REVIEW_MARKER,
           pakete: PAKETE_ANLEGEN,
           pruefung: jePaket({ [G]: PRUEFUNG_GEPRUEFT }),
@@ -67,7 +67,7 @@ test("[protokoll-schritt] Belegfall 5: Kette und Prueflauf gleichzeitig schreibe
       PRUEF_STATUS: pruefStatus,
       KIT_NIGHT_WAECHTER: "0",
     };
-    const k = run(dir, ["--kette"], env);
+    const k = run(dir, ["--chain"], env);
     assert.equal(k.status, 0, `${k.stdout}\n${k.stderr}`);
     assert.ok(existsSync(pruefStatus), "die Plan-Session hat den Prueflauf nicht gestartet");
     assert.equal(readFileSync(pruefStatus, "utf-8").trim(), "0", readFileSync(pruefAusgabe, "utf-8"));
@@ -117,7 +117,7 @@ test("[protokoll-schritt] der Prueflauf beansprucht seine Karte und schliesst de
       ...umgebung(dir, { stufen: { pruefung: jePaket({ [G]: PRUEFUNG_GEPRUEFT }) } }),
       PRUEFUNG_BODY: fachplanBody({ marker: FACHPLAN_MARKER }),
     };
-    const res = run(dir, ["--pruefen"], env);
+    const res = run(dir, ["--check"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.ok(!board(dir, "issue", "get", G).labels.some((l) => l.startsWith("lauf:")), "fertig traegt kein Laufstand-Label");
     assert.ok(kartenText(dir, G).includes("## Laufstand"));

@@ -2,7 +2,7 @@
 // Baustein D, E3, E4, E7; Issue #1188).
 //
 // Das Board kennt kein bedingtes Schreiben. Der Schutz laeuft ueber den Laufstand: lesen,
-// schreiben, die Bestaetigungsfrist warten, wiederlesen. `issue stand` ersetzt immer den
+// schreiben, die Bestaetigungsfrist warten, wiederlesen. `issue run-state` ersetzt immer den
 // juengsten Laufstand, darum gewinnt der letzte Schreiber. Geprueft mit eingespeistem
 // Board — zwei Runner teilen sich darin eine Karte —, die gescheiterte Vorbereitung und der
 // zweite Start neben einem lebenden Runner ueber `laufeKette` mit der Board-Attrappe.
@@ -33,8 +33,8 @@ function totePid() {
 }
 
 /**
- * Ein Board mit Karten im Format von GitHub (Kommentare als Array). `issue stand` ersetzt
- * den juengsten Laufstand oder legt ihn an und setzt `lauf:laeuft` — wie `issue stand` des Board-Werkzeugs.
+ * Ein Board mit Karten im Format von GitHub (Kommentare als Array). `issue run-state` ersetzt
+ * den juengsten Laufstand oder legt ihn an und setzt `lauf:laeuft` — wie `issue run-state` des Board-Werkzeugs.
  */
 function fakeBoard(karten) {
   const ablage = new Map(karten.map((k) => [String(k.id), { labels: [], comments: [], ...k, id: String(k.id) }]));
@@ -217,7 +217,7 @@ test("scheitert die Vorbereitung, bleibt die Kennzeichnung stehen und der Laufst
   assert.notEqual(r.code, 0, "ein kaputter Vorflug haelt den Lauf an");
   const karte = r.karte("1");
   assert.ok(karte.labels.includes("kit:night"), `die Kennzeichnung muss stehen bleiben: ${karte.labels}`);
-  assert.ok(karte.labels.includes("lauf:abgebrochen"), `der Laufstand muss abgebrochen sein: ${karte.labels}`);
+  assert.ok(karte.labels.includes("run:aborted"), `der Laufstand muss abgebrochen sein: ${karte.labels}`);
 });
 
 test("ein laufender Runner auf demselben Rechner: der zweite Start laesst die Wurzel aus und schreibt nichts", async () => {
@@ -226,7 +226,7 @@ test("ein laufender Runner auf demselben Rechner: der zweite Start laesst die Wu
   const r = await ketteImProzess({
     karten: [fachplanKarte("1", { titel: "[Fachlich] Die Wurzel" })],
     vorher: ({ board }) => {
-      board("issue", "stand", "1", "--zustand", "laeuft", "--text", `Lauf angenommen\n\nLauf-ID: ${halter}\nStand: ${new Date(UHR_START).toISOString()}\n`);
+      board("issue", "run-state", "1", "--state", "running", "--text", `Lauf angenommen\n\nLauf-ID: ${halter}\nStand: ${new Date(UHR_START).toISOString()}\n`);
     },
   });
   assert.equal(r.code, 0, r.ausgabe);

@@ -40,8 +40,8 @@ function isoliertAufrufen(datei, cliArgs) {
 
 // Die Dateien, die --version kennen. checks.mjs traegt zwar denselben Stempel,
 // hat aber bewusst kein --version-Flag; es gehoert deshalb nicht in diese Liste.
-// einstellungen.mjs (Issue #679) ist Download statt Installation, traegt aber denselben Stempel.
-const MIT_VERSION_FLAG = ["board.mjs", "night.mjs", "einstellungen.mjs"];
+// settings.mjs (Issue #679) ist Download statt Installation, traegt aber denselben Stempel.
+const MIT_VERSION_FLAG = ["board.mjs", "night.mjs", "settings.mjs"];
 
 for (const datei of MIT_VERSION_FLAG) {
   test(`${datei}: --version gibt die Kit-Version aus, ohne weiteren Repo-Kontext`, () => {

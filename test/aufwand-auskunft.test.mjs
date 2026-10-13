@@ -17,7 +17,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { mitProjekt, lauf, einheit, auswerten, bericht, stand, aufwand } from "./helpers/aufwand-fixture.mjs";
-import { transkriptMessen } from "../kit/aufwand.mjs";
+import { transkriptMessen } from "../kit/effort.mjs";
 
 const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 const SPANNEN = join(FIXTURES, "aufwand", "transkript-spannen.jsonl");
@@ -115,7 +115,7 @@ test("[aufwand-1027] auskunft misst ein Transkript mit bekannten Spannen", () =>
   // 30 s Rueckfrage, 90 s Nachlesen eines ausgelagerten Ergebnisses, 60 s Pipe an jq;
   // der `git status` dazwischen dauert vier Minuten und zaehlt nicht.
   mitProjekt({}, (dir) => {
-    const res = aufwand(dir, "auskunft", SPANNEN);
+    const res = aufwand(dir, "info", SPANNEN);
 
     assert.equal(res.status, 0, res.stderr);
     assert.match(res.stdout, /transkript-spannen\.jsonl: 3,0 min, 3 Aufrufe/);
@@ -126,7 +126,7 @@ test("[aufwand-1027] auskunft misst ein Transkript mit bekannten Spannen", () =>
 test("[aufwand-1027] eine Datei ohne Zeitstempel und eine unlesbare werden gemeldet, nicht als 0 gezaehlt", () => {
   mitProjekt({}, (dir) => {
     const fehlt = join(dir, "gibt-es-nicht.jsonl");
-    const res = aufwand(dir, "auskunft", SPANNEN, OHNE_ZEIT, fehlt);
+    const res = aufwand(dir, "info", SPANNEN, OHNE_ZEIT, fehlt);
 
     assert.equal(res.status, 1, "eine nicht messbare Datei ist ein Fehlschlag des Aufrufs");
     assert.match(res.stdout, /transkript-ohne-zeitstempel\.jsonl: ohne Zeitstempel — nicht gemessen/);
@@ -144,9 +144,9 @@ test("[aufwand-1027] transkriptMessen: Aufruf ohne Ergebnis zaehlt, seine Spanne
 
 test("[aufwand-1027] auskunft ohne Datei wird abgewiesen", () => {
   mitProjekt({}, (dir) => {
-    const res = aufwand(dir, "auskunft");
+    const res = aufwand(dir, "info");
     assert.equal(res.status, 1);
-    assert.match(res.stderr, /auskunft.*Transkript/);
+    assert.match(res.stderr, /'info'.*Transkript/);
   });
 });
 
@@ -154,7 +154,7 @@ test("[aufwand-1027] ein unbekannter Unterbefehl nennt alle drei", () => {
   mitProjekt({}, (dir) => {
     const res = aufwand(dir, "zaehlen");
     assert.equal(res.status, 1);
-    assert.match(res.stderr, /auswerten, befund oder auskunft/);
-    assert.match(res.stdout, /aufwand\.mjs auskunft <transkript/, "die Hilfe nennt den Unterbefehl");
+    assert.match(res.stderr, /evaluate, finding oder info/);
+    assert.match(res.stdout, /effort\.mjs info <transcript/, "die Hilfe nennt den Unterbefehl");
   });
 });

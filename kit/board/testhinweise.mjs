@@ -22,8 +22,16 @@ import { basename, extname } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { escapeRegex, pruefeFachlich, pruefePlan, pruefeIssue } from "./geschuetzt.mjs";
-import { zerlegeAbschnitte, normalisiereZeilenenden } from "./dokumente.mjs";
+import { zerlegeAbschnitte, abschnittsTitel, normalisiereZeilenenden } from "./dokumente.mjs";
 import { stufeAusTitel } from "./issue-review.mjs";
+import { text, ueberschriftZeile } from "./namen.mjs";
+import { vorgeschichteAktiv } from "./vorgeschichte.mjs";
+import { stichtagHinweis as stichtagText } from "./szenarien.mjs";
+
+// Die Texte an den Menschen liegen unter kit/texte/board-testhinweise.mjs (Issue #1526).
+import { TEXTE } from "../texte/board-testhinweise.mjs";
+
+export { TEXTE };
 
 // ------------------------------------------------------------
 // Testhinweise fuer Plaene (Issue #1031, Plan #1029)
@@ -151,7 +159,8 @@ export function genannteDateien(text, verzeichnis, { stamm = false } = {}) {
 }
 
 // Nur hier fuehrt ein Plan seine Bausteine (A6); Ziel und Verifizierung erwaehnen nur.
-const BAUSTEIN_ABSCHNITTE = new Set(["betroffene bereiche", "geplante aenderungen"]);
+// Ueber das Register unter beiden Namen (Issue #1460).
+const BAUSTEIN_ABSCHNITTE = new Set(abschnittsTitel("betroffeneBereiche", "geplanteAenderungen"));
 
 /**
  * Die Testhinweise eines Plans (A6 bis A9). Bausteine sind die Dateien, die
@@ -184,7 +193,7 @@ export function pruefeTestNennung(abschnitte, body, dateien, config) {
         hinweise.push({
           baustein,
           test,
-          meldung: `Zu ${baustein} gehört ${test}, der Plan nennt ihn nicht. Bleibt er grün, oder fehlt er in der Liste der Änderungen?`,
+          meldung: text(TEXTE, "testNichtGenannt", { baustein, test }),
         });
       }
     }
@@ -230,19 +239,39 @@ export function versionierteDateien() {
  * Beim Arbeitspaket haengt `issue check-form` die Hinweise zum Abschnitt
  * `## Abhaengigkeiten` an (`abhaengigkeitsHinweise`, Issue #1060) — nicht hier, weil sie
  * das Board nachschlagen und `pruefeForm` rein bleibt. Auch sie sind kein Gate.
+ *
+ * Bei gesetztem Schalter `vorgeschichte` meldet ein Fachplan ohne `## Vorgeschichte` und ein
+ * Plan ohne `### Vorgeschichte` einen Hinweis `{ art: "vorgeschichte", meldung }` (Issue #1542,
+ * Plan #1534 A11) — kein Gate, und ohne `baustein` und `test`, damit der Nacht-Runner ihn
+ * nicht vermerkt.
+ *
+ * Zwei Schalter fuer die Szenarien beim Fachplan (Issue #1590, Plan #1588 A4, A6; getrennt seit
+ * Issue #1606): `szenarien` sagt, ob Gate F12 prueft; `stichtagHinweis` meldet den Hinweis
+ * `{ art: "szenarien-stichtag", meldung }` — ebenfalls ohne `baustein` und `test`. Beide sind
+ * Booleans; den dritten Wert der Pflicht (ohne Stichtag) loest der Aufrufer in `issue check-form` auf.
  */
-export function pruefeForm(body, title, config = {}, dateien = [], wurzel = ".") {
+export function pruefeForm(body, title, config = {}, dateien = [], wurzel = ".", { szenarien = false, stichtagHinweis = false } = {}) {
   const stufe = stufeAusTitel(title);
   const { kopf, abschnitte } = zerlegeAbschnitte(body);
   const alleZeilen = [...kopf, ...abschnitte.flatMap((a) => a.zeilen)];
   let verstoesse;
-  if (stufe === "fachlich") verstoesse = pruefeFachlich(abschnitte, alleZeilen);
+  if (stufe === "fachlich") verstoesse = pruefeFachlich(abschnitte, alleZeilen, { szenarien });
   else if (stufe === "plan") verstoesse = pruefePlan(kopf, abschnitte, alleZeilen);
   else verstoesse = pruefeIssue(abschnitte, config, title, wurzel);
   const ergebnis = { ok: verstoesse.length === 0, stufe, verstoesse };
-  if (stufe === "plan") {
-    const hinweise = pruefeTestNennung(abschnitte, normalisiereZeilenenden(body), dateien, config);
-    if (hinweise.length > 0) ergebnis.hinweise = hinweise;
-  }
+  const hinweise = stufe === "plan" ? pruefeTestNennung(abschnitte, normalisiereZeilenenden(body), dateien, config) : [];
+  const vorgeschichte = vorgeschichteHinweis(body, stufe, config);
+  if (vorgeschichte) hinweise.push(vorgeschichte);
+  if (stufe === "fachlich" && stichtagHinweis) hinweise.push({ art: "szenarien-stichtag", meldung: stichtagText() });
+  if (hinweise.length > 0) ergebnis.hinweise = hinweise;
   return ergebnis;
+}
+
+/** Der Hinweis auf einen fehlenden Abschnitt zur Vorgeschichte, oder null (Issue #1542). */
+function vorgeschichteHinweis(body, stufe, config) {
+  if (!vorgeschichteAktiv(config) || (stufe !== "fachlich" && stufe !== "plan")) return null;
+  const ebene = stufe === "plan" ? 3 : 2;
+  const kopf = ueberschriftZeile("vorgeschichte", ebene);
+  if (normalisiereZeilenenden(body).split("\n").some((zeile) => kopf.test(zeile))) return null;
+  return { art: "vorgeschichte", meldung: text(TEXTE, stufe === "plan" ? "vorgeschichtePlan" : "vorgeschichteFachlich") };
 }

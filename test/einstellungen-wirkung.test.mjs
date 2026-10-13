@@ -1,4 +1,4 @@
-// Der Nachbau `waehleReviewer` in kit/einstellungen.mjs gegen das Original
+// Der Nachbau `waehleReviewer` in kit/settings.mjs gegen das Original
 // `pickReviewers` in kit/board.mjs (Issue #722, Plan #721 E3).
 //
 // Die Oberfläche wird als einzelne Datei ausgeliefert und hat keine Nachbardatei, aus der
@@ -11,7 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { pickReviewers } from "../kit/board/issue-review.mjs";
-import { waehleReviewer } from "../kit/einstellungen.mjs";
+import { waehleReviewer } from "../kit/settings.mjs";
 
 const REVIEWER = [
   { name: "opus", kind: "claude", model: "claude-opus-5" },

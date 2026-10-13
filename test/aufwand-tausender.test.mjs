@@ -2,11 +2,11 @@
 // werkzeugen als super-linear meldet (S8786, Issue #877):
 // `ziffern.replaceAll(/\B(?=(\d{3})+$)/g, ".")`.
 //
-// Der Ausdruck steht — wie die uebrigen Textformen — wortgleich in kit/aufwand.mjs und
-// kit/wirksamkeit.mjs (SYNC-Vermerk aus #440). Beide werden hier gegen dieselbe Liste
+// Der Ausdruck steht — wie die uebrigen Textformen — wortgleich in kit/effort.mjs und
+// kit/effectiveness.mjs (SYNC-Vermerk aus #440). Beide werden hier gegen dieselbe Liste
 // gefahren: Driften sie auseinander, faellt es hier auf und nicht erst im Bericht.
 //
-// Die Datei heisst nach kit/aufwand.mjs, obwohl sie beide prueft: Das Muster
+// Die Datei heisst nach kit/effort.mjs, obwohl sie beide prueft: Das Muster
 // `test/aufwand-*.test.mjs` der buildChecks fasst sie damit, und dasselbe Kommando faehrt
 // ohnehin auch `test/wirksamkeit-*`. Ein Name ausserhalb aller Muster liesse jedes
 // kuenftige Arbeitspaket den vollen Testumfang fahren.
@@ -18,8 +18,8 @@ import assert from "node:assert/strict";
 
 import { pruefeLinear } from "./helpers/wachstum.mjs";
 
-import { tausenderPunkte as aufwandPunkte, zahlform as aufwandZahl } from "../kit/aufwand.mjs";
-import { tausenderPunkte as wirksamkeitPunkte, zahlform as wirksamkeitZahl } from "../kit/wirksamkeit.mjs";
+import { tausenderPunkte as aufwandPunkte, zahlform as aufwandZahl } from "../kit/effort.mjs";
+import { tausenderPunkte as wirksamkeitPunkte, zahlform as wirksamkeitZahl } from "../kit/effectiveness.mjs";
 
 const PUNKTE = [["aufwand", aufwandPunkte], ["wirksamkeit", wirksamkeitPunkte]];
 const ZAHL = [["aufwand", aufwandZahl], ["wirksamkeit", wirksamkeitZahl]];

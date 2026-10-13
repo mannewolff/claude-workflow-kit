@@ -1,4 +1,4 @@
-// Team- und persönliche Ebene in kit/einstellungen.mjs (Issue #676, Plan #674 E6).
+// Team- und persönliche Ebene in kit/settings.mjs (Issue #676, Plan #674 E6).
 //
 // Dazu die einfachen Gruppen aus Issue #731 (Plan #721 E8): Eine persönliche Abweichung an
 // einem einzelnen Feld legt das vollständige geltende Objekt ab, weil `mergeWorkflowConfig`
@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import {
   ebenen, aenderungAnwenden, mergeWorkflowConfig, projektZustand, speichere,
   gruppenZeilen, gruppeSetzen, GRUPPEN_AUSNAHMEN, SCHEMA,
-} from "../kit/einstellungen.mjs";
+} from "../kit/settings.mjs";
 import { projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");

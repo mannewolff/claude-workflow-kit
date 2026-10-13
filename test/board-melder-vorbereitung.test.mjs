@@ -130,7 +130,7 @@ function abweisung(status) {
 
 function melden(datei, senden) {
   const zeilen = [];
-  const lauf = nightrunMelden({ datei: "x" }, {
+  const lauf = nightrunMelden({ file: "x" }, {
     config: TOOLBOX, lesen: () => JSON.stringify(datei), senden, jetzt: () => JETZT, melde: (z) => zeilen.push(z),
   });
   return { lauf, zeilen };

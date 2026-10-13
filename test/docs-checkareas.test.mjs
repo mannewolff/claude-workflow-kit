@@ -222,9 +222,9 @@ test("das Nachtbetriebs-Kapitel nennt beide Stellen, an denen Auslassungen sicht
 // Beides muss dastehen, sonst ist der Absatz in die eine oder die andere Richtung falsch.
 test("der Salvage-Absatz weist den Weg ueber checks.mjs und den Nachweis fuer das Gate aus", () => {
   const kapitel = DOKU.slice(DOKU.indexOf("## Nachtbetrieb")).split(/\n## /)[0];
-  // `--frisch` als zweites Muster und nicht `checks.mjs run`: Das Kommando steht im
+  // `--fresh` als zweites Muster und nicht `checks.mjs run`: Das Kommando steht im
   // Kapitel auch im Absatz ueber die Prueflaeufe, der Schalter nur hier.
-  const absatz = absatzMit(kapitel, /Salvage/, /--frisch/);
+  const absatz = absatzMit(kapitel, /Salvage/, /--fresh/);
   assert.ok(absatz, "kein Salvage-Absatz, der den erzwungenen Lauf nennt");
   assert.match(absatz, /checks\.mjs run/,
     "es steht nicht, dass die Vorpruefung ueber checks.mjs run geht");

@@ -26,6 +26,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { SCHLUESSEL } from "../kit/board/config-namen.mjs";
 
 // KIT_ROOT ist ein Test-Hook wie in tools/copy-downloads-for-docs.mjs (Issue #186).
 const root = process.env.KIT_ROOT
@@ -106,15 +107,37 @@ function stempelVon(text) {
   return createHash("sha256").update(String(text).replaceAll("\r\n", "\n").replaceAll("\r", "\n")).digest("hex").slice(0, 12);
 }
 
+/**
+ * Der englische Pfad zu einem deutschen (Issue #1439, Plan #1420 E20): jedes Glied nach
+ * kit/board/config-namen.mjs, `[]` und `*` bleiben stehen, ein Glied ausserhalb der Tabelle
+ * auch.
+ */
+function englischerPfad(pfad) {
+  const glieder = pfad.split(".");
+  return glieder
+    .map((glied, i) => {
+      const name = glied.replace(/\[\]$/, "");
+      const englisch = SCHLUESSEL[[...glieder.slice(0, i), name].join(".")] ?? name;
+      return glied.endsWith("[]") ? `${englisch}[]` : englisch;
+    })
+    .join(".");
+}
+
 /** Der Rahmentext, der nicht aus dem Schema stammt, je Sprache (Plan-Review #1348, Fund 7). */
 const RAHMEN = {
   de: {
     hinweis: "_Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node tools/config-referenz.mjs`; Änderungen gehören ins Schema, nicht hierher._",
     gueltig: "gültig",
+    name: (pfad) => `\`${pfad}\``,
   },
   en: {
     hinweis: "_This section is generated from `templates/workflow.config.schema.json` by `node tools/config-referenz.mjs`; changes belong in the schema, not here._",
     gueltig: "valid",
+    // Englischer Name, dahinter der deutsche Altname, wenn er abweicht (Kriterium 10, #1416).
+    name: (pfad) => {
+      const englisch = englischerPfad(pfad);
+      return englisch === pfad ? `\`${pfad}\`` : `\`${englisch}\` (German: \`${pfad}\`)`;
+    },
   },
 };
 
@@ -128,10 +151,10 @@ function referenz(liste, sprache, texte) {
     const text = entschaerft(texte(e));
     if (e.wurzel) {
       if (offen) teile.push("");
-      teile.push(`### \`${e.pfad}\``, "", `${text}${werte(e.werte)}`, "");
+      teile.push(`### ${rahmen.name(e.pfad)}`, "", `${text}${werte(e.werte)}`, "");
       offen = false;
     } else {
-      teile.push(`- \`${e.pfad}\` — ${text}${werte(e.werte)}`);
+      teile.push(`- ${rahmen.name(e.pfad)} — ${text}${werte(e.werte)}`);
       offen = true;
     }
   }

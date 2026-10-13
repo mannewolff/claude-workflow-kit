@@ -19,6 +19,12 @@
  */
 
 import { RUECKMELDUNG } from "./grundlagen.mjs";
+import { text } from "./namen.mjs";
+
+// Die Texte an den Menschen liegen unter kit/texte/board-wiederholung.mjs (Issue #1526).
+import { TEXTE } from "../texte/board-wiederholung.mjs";
+
+export { TEXTE };
 
 // ============================================================
 // Wiederholung gegen Ueberlast (Issue #834)
@@ -110,9 +116,14 @@ export function proxyGesetzt(env) {
 /**
  * Der Satz, der einem Netzfehler hinter einem Proxy die Ursache nennt (Issue #998):
  * "fetch failed" allein laedt zur Fehldiagnose und zum Umgehen der Sandbox ein.
+ * `proxyHinweis()` nennt ihn in der Sprache des Prozesses; die Konstante bleibt der
+ * deutsche Wortlaut fuer die, die ihn schon importieren.
  */
-export const PROXY_HINWEIS = "Der Aufruf lief hinter einem Proxy (HTTPS_PROXY). Die uebliche Abhilfe ist "
-  + "NODE_USE_ENV_PROXY=1 vor dem Aufruf, nicht das Verlassen der Sandbox.";
+export const PROXY_HINWEIS = TEXTE.de.proxyHinweis;
+
+export function proxyHinweis() {
+  return text(TEXTE, "proxyHinweis");
+}
 
 /**
  * Ordnet einen fetch-Wurf ein: `zeitablauf` (die eigene Zeitgrenze hat abgebrochen),

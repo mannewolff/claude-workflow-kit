@@ -174,7 +174,7 @@ test("[night-ergebnis] Teilschnitt im Laufstand: abgebrochen mit den Paketen, ke
   assert.equal(einheit.ausgang, "abgebrochen");
   assert.equal(einheit.grund, "Teilschnitt vorhanden (#3, #4) — eine Wiederholung legte doppelt an; Teilschnitt am Board aufräumen, dann erneut kit:night");
   assert.equal(r.karten.filter((i) => /^Paket /.test(i.title)).length, 2);
-  assert.ok(r.karte(F).labels.includes("lauf:abgebrochen"), `Labels: ${r.karte(F).labels}`);
+  assert.ok(r.karte(F).labels.includes("run:aborted"), `Labels: ${r.karte(F).labels}`);
   assert.match(kommentare(r, F), /Teilschnitt vorhanden/);
 });
 

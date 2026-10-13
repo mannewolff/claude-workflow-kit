@@ -43,6 +43,7 @@ export function setupProjekt(praefix, night = null) {
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"],
     local: { issuesDir: "issues" },
@@ -85,8 +86,8 @@ const BOARD_STUB = [
   'import { nachtlaufMeldung } from "./board-real.mjs";',
   "",
   "const args = process.argv.slice(2);",
-  'if (args[0] === "nightrun" && args[1] === "melden") {',
-  '  const datei = args[args.indexOf("--datei") + 1];',
+  'if (args[0] === "nightrun" && args[1] === "report") {',
+  '  const datei = args[args.indexOf("--file") + 1];',
   '  const stand = JSON.parse(readFileSync(datei, "utf-8"));',
   String.raw`  appendFileSync(process.env.NIGHT43_CAPTURE, JSON.stringify(nachtlaufMeldung(stand)) + "\n");`,
   String.raw`  process.stdout.write(JSON.stringify({ ok: true, outcome: "TEST" }) + "\n");`,
@@ -104,6 +105,7 @@ export function setupProjektMitMeldeCapture(praefix) {
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board-real.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   writeFileSync(join(dir, ".claude", "kit", "board.mjs"), BOARD_STUB);
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"],

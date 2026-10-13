@@ -20,7 +20,7 @@ test("[night-22] eine Session, die stdin bis zum Dateiende liest, endet sofort s
     const env = umgebung(dir, { stufen: { plan: "cat > /dev/null" } });
     // 20 s statt 2 s (Issue #1080): Die Session soll sofort enden; 2 s riss unter Last
     // schon der Start. Haelt stdin sie fest, wartet der Test im Fehlerfall 20 s.
-    const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "20000" });
+    const res = run(dir, ["--chain"], { ...env, NIGHT_TIMEOUT_MS: "20000" });
     assert.equal(res.status, 0, res.stderr);
     const einheit = stand(dir).einheiten.find((e) => e.id === F);
     assert.equal(einheit.ausgang, "abgebrochen");
@@ -34,7 +34,7 @@ test("[night-22] auch die Vorflug-Session bekommt ein geschlossenes stdin", () =
   mitProjekt((dir) => {
     fachplan(dir);
     const env = umgebung(dir, { stufen: {} });
-    const res = run(dir, ["--kette", "--dry-run"], {
+    const res = run(dir, ["--chain", "--dry-run"], {
       ...env, NIGHT_VORFLUG_CMD: `cat > /dev/null; ${VORFLUG_OK}`, NIGHT_VORFLUG_TIMEOUT_MS: "2000",
     });
     assert.equal(res.status, 0, res.stderr);

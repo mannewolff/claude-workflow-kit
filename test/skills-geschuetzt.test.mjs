@@ -1,11 +1,11 @@
 // Die implement-Skills und geschuetzte Dateien (Issue #1053, Plan #987, E11, E13, E17;
 // Plan-Verifizierung 13, Teil implement-Skills).
 //
-// Zwei Stellen: die Folge `geschuetzt` aus `issue auftrag` in Schritt 0 — das Paket nennt
+// Zwei Stellen: die Folge `geschuetzt` aus `issue brief` in Schritt 0 — das Paket nennt
 // eine geschuetzte Datei und wird gar nicht erst begonnen — und der Rueckfall aus E13 —
 // eine Session scheitert erst beim Schreiben am Schutz, weil die Aufgabe die Datei nicht
 // beim Namen nennt. Der Rueckfall ist nicht der Halt der Stopp-Frage: anderes Label,
-// anderer Anker, Backlog vor dem Label, und kein `/fachplan` als Weg nach vorn.
+// anderer Anker, Backlog vor dem Label, und kein `/requirement` als Weg nach vorn.
 //
 // Geprueft wird der Skill-TEXT der Quelle unter `skills/`. Label und Anker kommen aus den
 // Konstanten in kit/night.mjs, nicht aus Abschriften (Muster test/skills-task-halt.test.mjs):
@@ -20,7 +20,12 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { GESCHUETZT_ANKER, GESCHUETZT_LABEL, HALT_FOLGESATZ } from "../kit/night/wartend.mjs";
+import { GESCHUETZT_ANKER, HALT_FOLGESAETZE } from "../kit/night/wartend.mjs";
+import { LABELS } from "../kit/board/namen.mjs";
+
+// Die Skills nennen das Label seit Issue #1567 (Plan #1548) unter dem englischen Namen, den das
+// Kit seit Issue #1552 schreibt.
+const GESCHUETZT_LABEL = LABELS.geschuetzt.en;
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -80,7 +85,7 @@ function pruefeFolge(text, name) {
   assert.doesNotMatch(eintrag, /issue comment <id> --text '/, `${name}: der Halt-Kommentar geht als Argument`);
 }
 
-/** Leitplanke: `kit:geschuetzt` wird wie `kit:klaeren` nie entfernt. */
+/** Leitplanke: `kit:protected` wird wie `kit:clarify` nie entfernt. */
 function pruefeLeitplanke(text, name) {
   const muster = new RegExp(`\`${GESCHUETZT_LABEL}\` wird[^\\n]*nie entfernt`);
   assert.match(text, muster, `${name}: die Leitplanke, dass ${GESCHUETZT_LABEL} nie entfernt wird, fehlt`);
@@ -93,7 +98,7 @@ function pruefeRueckfall(text, name) {
     [/\*\*namentlich\*\* zuruecknehmen/, "das namentliche Zuruecknehmen"],
     [/issue move <id> backlog/, "der Move nach Backlog"],
     [LABEL_ADD, `der Aufruf label add ${GESCHUETZT_LABEL}`],
-    [/issue check-geschuetzt <id> --pfad </, "der Kommentar aus check-geschuetzt --pfad"],
+    [/issue check-protected <id> --path </, "der Kommentar aus check-protected --path"],
     [/issue comment <id> --text-file /, "der Kommentar ueber eine Datei"],
   ], `${name} (Rueckfall)`);
   assert.ok(abschnitt.includes(GESCHUETZT_ANKER), `${name}: der Anker ${GESCHUETZT_ANKER} fehlt im Rueckfall`);
@@ -101,8 +106,8 @@ function pruefeRueckfall(text, name) {
   assert.match(abschnitt, /Label-Zeile/, `${name}: die Label-Zeile fehlt`);
   assert.match(abschnitt, /bleibt in In progress/, `${name}: der Fall ohne namentliche Ruecknahme fehlt`);
   assert.match(abschnitt, /nie[^.]*umgangen|nicht[^.]*umgeh/, `${name}: dass der Schutz nicht umgangen wird, fehlt`);
-  assert.ok(!abschnitt.includes(HALT_FOLGESATZ), `${name}: der Rueckfall traegt den Folgesatz der Stopp-Frage`);
-  assert.ok(!abschnitt.includes("kit:klaeren"), `${name}: der Rueckfall nennt kit:klaeren`);
+  assert.ok(!HALT_FOLGESAETZE.some((satz) => abschnitt.includes(satz)), `${name}: der Rueckfall traegt den Folgesatz der Stopp-Frage`);
+  assert.ok(!abschnitt.includes("kit:clarify"), `${name}: der Rueckfall nennt kit:clarify`);
 }
 
 function pruefeSkill(text, name) {

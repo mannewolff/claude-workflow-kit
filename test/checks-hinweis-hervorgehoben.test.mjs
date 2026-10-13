@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { mitRepo, checks, datei, git } from "./helpers/checks-repo.mjs";
 
 const HINWEIS = (cmd) =>
-  `hinweis: ${cmd} ist jedem Bereich zugeordnet und laeuft bei jeder Aenderung — Zuschnitt pruefen (checks.mjs bereiche)`;
+  `hinweis: ${cmd} ist jedem Bereich zugeordnet und laeuft bei jeder Aenderung — Zuschnitt pruefen (checks.mjs areas)`;
 
 /** Erfolgreicher Aufruf mit JSON-Ausgabe. */
 function json(dir, ...args) {
@@ -54,7 +54,7 @@ test("[checks-1214] ein Kommando mit allen Bereichen ist breit und bekommt die H
     checkAreas: BEREICHE,
   };
   await mitRepo({ config }, async (dir) => {
-    const ausgabe = json(dir, "bereiche");
+    const ausgabe = json(dir, "areas");
     assert.equal(urteil(ausgabe, "echo alles").breit, true);
     assert.equal(urteil(ausgabe, "echo kern").breit, false);
     assert.equal(urteil(ausgabe, "echo doku").breit, false);
@@ -78,7 +78,7 @@ test("[checks-1214] ein Kommando mit allen Bereichen bis auf einen ist breit", a
     checkAreas: BEREICHE,
   };
   await mitRepo({ config }, async (dir) => {
-    assert.equal(urteil(json(dir, "bereiche"), "echo fast").breit, true);
+    assert.equal(urteil(json(dir, "areas"), "echo fast").breit, true);
     aendern(dir);
     const block = await berichtsblock(dir);
     assert.ok(block.includes(HINWEIS("echo fast")), block.join("\n"));
@@ -96,7 +96,7 @@ test("[checks-1214] unter drei bereichsgebundenen Kommandos ist keines breit und
     checkAreas: BEREICHE,
   };
   await mitRepo({ config }, async (dir) => {
-    const ausgabe = json(dir, "bereiche");
+    const ausgabe = json(dir, "areas");
     assert.equal(urteil(ausgabe, "echo alles").breit, false);
     assert.equal(ausgabe.kommandoUrteile.length, 2, "nur bereichsgebundene Kommandos der Paketstufe");
 
@@ -118,7 +118,7 @@ test("[checks-1214] ein gekoppelter Bereich mit Grund unterdrueckt die Zeile, da
     gekoppelteBereiche: [{ bereich: "werkzeug", grund: "Jede Testgruppe laedt das Werkzeug." }],
   };
   await mitRepo({ config }, async (dir) => {
-    const alles = urteil(json(dir, "bereiche"), "echo alles");
+    const alles = urteil(json(dir, "areas"), "echo alles");
     assert.equal(alles.breit, true, "die Kopplung ist kein Ausschalter des Urteils");
     assert.equal(alles.kopplungsgrund, "Jede Testgruppe laedt das Werkzeug.");
 
@@ -139,7 +139,7 @@ test("[checks-1214] das Urteil hervorgehoben je Bereich bleibt unveraendert", as
     checkAreas: BEREICHE,
   };
   await mitRepo({ config }, async (dir) => {
-    const ausgabe = json(dir, "bereiche");
+    const ausgabe = json(dir, "areas");
     const je = Object.fromEntries(ausgabe.bereiche.map((b) => [b.name, [b.nennend, b.von, b.hervorgehoben]]));
     // kern und doku stehen in 2 von 3 (alle bis auf eines), werkzeug nur in 1 von 3.
     assert.deepEqual(je, { kern: [2, 3, true], doku: [2, 3, true], werkzeug: [1, 3, false] });

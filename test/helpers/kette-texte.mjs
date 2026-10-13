@@ -4,13 +4,16 @@
 // Bewusst ohne Import: Laedt der Prozesslauf diese Datei, haengen seine Tests an keinem
 // Teil unter kit/night/ — das Kopplungs-Gate in `test/config-teile.test.mjs` misst Importe.
 
+// Ein vollstaendiges Szenario: Ohne es legt `issue create` keinen Fachplan an (Gate F12, Issue #1590).
+const SZENARIEN = "## Szenarien\n\n### Szenario: Eines\n- Angenommen ein Anliegen\n- Wenn es eintritt\n- Dann geschieht eines\n\n";
+
 /**
  * Der Body einer fachlichen Anforderung. `marker` setzt die Zeile `Fachplan-Review:` in den
  * Kopf — so sieht eine Karte aus, die schon eine Pruefung hinter sich hat (Plan #904, E16).
  */
 export function fachplanBody({ marker = null } = {}) {
   const kopf = marker ? `Autor-Modell: claude-opus-5\n${marker}` : "Autor-Modell: claude-opus-5";
-  return `## Ziel\n\nEin Anliegen.\n\n${kopf}\n\n## Fachliche Akzeptanzkriterien\n\n- Eines.\n\n## Nicht-Ziele\n\n- Keines.\n\n## Offene Fragen an den PO\n\nKeine offenen Fragen.\n`;
+  return `## Ziel\n\nEin Anliegen.\n\n${kopf}\n\n## Fachliche Akzeptanzkriterien\n\n- Eines.\n\n${SZENARIEN}## Nicht-Ziele\n\n- Keines.\n\n## Offene Fragen an den PO\n\nKeine offenen Fragen.\n`;
 }
 
 /**

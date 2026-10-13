@@ -32,14 +32,14 @@ function anlegeKommando(text) {
 const stopPunkt = () => SKILL.slice(SKILL.indexOf("## Stop-Punkt"));
 
 test("der Skill legt das Plan-Dokument mit dem Titel-Praefix [Plan] an", () => {
-  assert.match(SKILL, /\[Plan\] /,
+  assert.match(SKILL, /--art plan[\s\S]*\[Plan\]/,
     "das Titel-Praefix fehlt — daran erkennen die uebrigen Skills und der Nacht-Runner Plandokumente");
   assert.match(SKILL, /Plan-Dokument/,
     "der Begriff fehlt — ohne ihn ist unklar, was angelegt wird");
 });
 
-test("die Titelherkunft ist festgelegt: Quell-Issue ohne [Fachlich], sonst aus dem Ziel", () => {
-  assert.match(SKILL, /ohne dessen `\[Fachlich\]`-Präfix/,
+test("die Titelherkunft ist festgelegt: Quell-Issue ohne [Requirement], sonst aus dem Ziel", () => {
+  assert.match(SKILL, /ohne dessen `\[Requirement\]`-Präfix/,
     "die Titelherkunft bei /techplan #N fehlt — das Praefix wuerde sonst mitgeschleppt");
   assert.match(SKILL, /`## Ziel`-Abschnitts/,
     "die Titelherkunft ohne Quell-Issue fehlt");

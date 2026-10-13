@@ -33,8 +33,21 @@ function mitFake(config, praefix, cli, regeln, fn) {
   }
 }
 
-function mitGitHub(fn, regeln = []) {
-  return mitFake(GITHUB, "board-label-gh-", "gh", [
+// Die Karte, wie `issue get` sie liest: `remove` eines Kit-Labels nimmt den Namen ab, den die
+// Karte traegt (Issue #1428), und liest sie dafuer.
+const GH_KARTE = (labels) => ({
+  match: "^issue view 7",
+  stdout: JSON.stringify({ number: 7, title: "Ein Issue", body: "", state: "OPEN", comments: [],
+    labels: labels.map((name) => ({ name })), createdAt: "2026-08-14T00:00:00Z" }) + "\n",
+});
+const GL_KARTE = (labels) => ({
+  match: "^issue view 7",
+  stdout: JSON.stringify({ iid: 7, title: "Ein Issue", description: "", state: "opened", labels,
+    created_at: "2026-08-14T00:00:00Z" }) + "\n",
+});
+
+function mitGitHub(fn, regeln = [], config = GITHUB) {
+  return mitFake(config, "board-label-gh-", "gh", [
     ...regeln,
     { match: "^repo view", stdout: "besitzer/mein-repo\n" },
     { match: "^issue edit", stdout: "" },
@@ -92,30 +105,63 @@ const LOKAL_OHNE_LABELS = LOKAL_MIT_LABELS.replace("labels: kit:nightrun, fix\n"
 
 test("github: add setzt das Label ueber `gh issue edit --add-label`", () => {
   mitGitHub((dir) => {
-    assert.deepEqual(board(dir, "issue", "label", "add", "7", "kit:klaeren"), {
-      ok: true, id: "7", label: "kit:klaeren", aktion: "add",
+    assert.deepEqual(board(dir, "issue", "label", "add", "7", "kit:clarify"), {
+      ok: true, id: "7", label: "kit:clarify", aktion: "add",
     });
     assert.match(
       aufrufZeilen(dir, "gh").join("\n"),
-      /issue edit 7 --repo besitzer\/mein-repo --add-label kit:klaeren/,
+      /issue edit 7 --repo besitzer\/mein-repo --add-label kit:clarify/,
     );
   });
 });
 
 test("github: remove entfernt das Label ueber `--remove-label`", () => {
   mitGitHub((dir) => {
-    board(dir, "issue", "label", "remove", "7", "kit:klaeren");
+    board(dir, "issue", "label", "remove", "7", "kit:clarify");
     assert.match(
       aufrufZeilen(dir, "gh").join("\n"),
-      /issue edit 7 --repo besitzer\/mein-repo --remove-label kit:klaeren/,
+      /issue edit 7 --repo besitzer\/mein-repo --remove-label kit:clarify/,
     );
-  });
+  }, [GH_KARTE(["kit:clarify"])]);
+});
+
+// Issue #1552 (Plan #1548 E2): `add` setzt in jedem Projekt den englischen Namen; fehlt er am
+// Board, endet der Aufruf mit Hinweis, die Labels anzulegen — ohne deutschen Rueckfall.
+test("github: add setzt auch in einem deutschen Projekt kit:clarify, gleich unter welchem Namen gerufen", () => {
+  mitGitHub((dir) => {
+    assert.equal(board(dir, "issue", "label", "add", "7", "kit:klaeren").label, "kit:clarify");
+    const zeilen = aufrufZeilen(dir, "gh").join("\n");
+    assert.match(zeilen, /--add-label kit:clarify/);
+    assert.doesNotMatch(zeilen, /--add-label kit:klaeren/);
+  }, [], { ...GITHUB, language: "de" });
+});
+
+test("github: add ohne kit:clarify am Board endet mit Hinweis, ohne auf kit:klaeren zurueckzufallen", () => {
+  mitGitHub((dir) => {
+    const res = runBoard(dir, ["issue", "label", "add", "7", "kit:klaeren"]);
+    assert.notEqual(res.status, 0);
+    assert.match(res.stderr, /kit:clarify/);
+    assert.match(res.stderr, /anlegen/);
+    assert.doesNotMatch(aufrufZeilen(dir, "gh").join("\n"), /--add-label kit:klaeren/);
+  }, [
+    { match: "--add-label kit:clarify", stderr: "could not add label: 'kit:clarify' not found\n", exit: 1 },
+  ]);
+});
+
+// Issue #1428: Eine alte Karte traegt `kit:klaeren`; `remove kit:clarify` nimmt genau das ab.
+test("github: remove nimmt den Namen ab, den die Karte traegt", () => {
+  mitGitHub((dir) => {
+    assert.equal(board(dir, "issue", "label", "remove", "7", "kit:clarify").label, "kit:klaeren");
+    const zeilen = aufrufZeilen(dir, "gh").join("\n");
+    assert.match(zeilen, /--remove-label kit:klaeren/);
+    assert.doesNotMatch(zeilen, /--remove-label kit:clarify/);
+  }, [GH_KARTE(["kit:nightrun", "kit:klaeren"])], { ...GITHUB, language: "en" });
 });
 
 test("github: ein zweiter add-Aufruf bleibt bei Exit 0 (idempotent)", () => {
   mitGitHub((dir) => {
-    board(dir, "issue", "label", "add", "7", "kit:klaeren");
-    const zweiter = runBoard(dir, ["issue", "label", "add", "7", "kit:klaeren"]);
+    board(dir, "issue", "label", "add", "7", "kit:clarify");
+    const zweiter = runBoard(dir, ["issue", "label", "add", "7", "kit:clarify"]);
     assert.equal(zweiter.status, 0, zweiter.stderr);
   });
 });
@@ -135,12 +181,12 @@ test("github: unbekannte Labeldefinition schlaegt durch", () => {
 
 test("gitlab: add und remove nutzen --label und --unlabel", () => {
   mitGitLab((dir) => {
-    board(dir, "issue", "label", "add", "7", "kit:klaeren");
-    board(dir, "issue", "label", "remove", "7", "kit:klaeren");
+    board(dir, "issue", "label", "add", "7", "kit:clarify");
+    board(dir, "issue", "label", "remove", "7", "kit:clarify");
     const zeilen = aufrufZeilen(dir, "glab").join("\n");
-    assert.match(zeilen, /issue update 7 --label kit:klaeren/);
-    assert.match(zeilen, /issue update 7 --unlabel kit:klaeren/);
-  });
+    assert.match(zeilen, /issue update 7 --label kit:clarify/);
+    assert.match(zeilen, /issue update 7 --unlabel kit:clarify/);
+  }, [GL_KARTE(["kit:clarify"]), { match: "^api ", stdout: "[]\n" }]);
 });
 
 // Bei GitLab SIND die Spaltennamen Labels. Ohne diese Sperre koennte das generische
@@ -160,11 +206,11 @@ test("gitlab: ein Status-Label wird abgewiesen, ohne glab zu rufen", () => {
 // nur die Status-Labels, nicht alles.
 test("gitlab: ein anschliessendes move erhaelt das gesetzte Label", () => {
   mitGitLab((dir) => {
-    board(dir, "issue", "label", "add", "7", "kit:klaeren");
+    board(dir, "issue", "label", "add", "7", "kit:clarify");
     board(dir, "issue", "move", "7", "ready");
     const moveZeile = aufrufZeilen(dir, "glab").find((z) => z.includes("--label Ready"));
     assert.ok(moveZeile, "kein move-Aufruf mit --label Ready gefunden");
-    assert.doesNotMatch(moveZeile, /--unlabel kit:klaeren/);
+    assert.doesNotMatch(moveZeile, /--unlabel kit:clarify/);
   });
 });
 
@@ -172,18 +218,18 @@ test("gitlab: ein anschliessendes move erhaelt das gesetzte Label", () => {
 
 test("local: add haengt das Label an, remove nimmt es heraus", () => {
   mitLokal((dir) => {
-    board(dir, "issue", "label", "add", "7", "kit:klaeren");
-    assert.match(lokalesIssue(dir), /^labels: kit:nightrun, fix, kit:klaeren$/m);
+    board(dir, "issue", "label", "add", "7", "kit:clarify");
+    assert.match(lokalesIssue(dir), /^labels: kit:nightrun, fix, kit:clarify$/m);
 
-    board(dir, "issue", "label", "remove", "7", "kit:klaeren");
+    board(dir, "issue", "label", "remove", "7", "kit:clarify");
     assert.match(lokalesIssue(dir), /^labels: kit:nightrun, fix$/m);
   }, LOKAL_MIT_LABELS);
 });
 
 test("local: add legt das Feld an, wenn es noch keines gibt", () => {
   mitLokal((dir) => {
-    board(dir, "issue", "label", "add", "7", "kit:klaeren");
-    assert.match(lokalesIssue(dir), /^labels: kit:klaeren$/m);
+    board(dir, "issue", "label", "add", "7", "kit:clarify");
+    assert.match(lokalesIssue(dir), /^labels: kit:clarify$/m);
   }, LOKAL_OHNE_LABELS);
 });
 
@@ -230,7 +276,7 @@ test("local: unbekanntes Issue meldet den Pfad", () => {
 test("toolbox: label greift zum Server, statt vorab abzuweisen", () => {
   const dir = setupProjekt(TOOLBOX, "board-label-tbx-");
   try {
-    const res = runBoard(dir, ["issue", "label", "add", "7", "kit:klaeren"], { TBX_TOKEN: "t" });
+    const res = runBoard(dir, ["issue", "label", "add", "7", "kit:clarify"], { TBX_TOKEN: "t" });
     // Der Host im Fixture ist unerreichbar — genau daran ist zu erkennen, dass der
     // Adapter es ueberhaupt versucht hat.
     assert.notEqual(res.status, 0);

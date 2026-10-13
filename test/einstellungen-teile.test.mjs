@@ -11,7 +11,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { SCHEMA, TEILE, THEMEN, ebenen, projektZustand, teilFuer, vorgabeAus } from "../kit/einstellungen.mjs";
+import { SCHEMA, TEILE, THEMEN, ebenen, projektZustand, teilFuer, vorgabeAus } from "../kit/settings.mjs";
 import { projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const WURZELN = Object.keys(SCHEMA.properties).filter((f) => f !== "version");

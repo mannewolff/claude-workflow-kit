@@ -72,7 +72,7 @@ test("[skills-30] die Fortschrittszeilen nennen unveraendert dieselben Schrittza
 test("[skills-30] Schritt 4 erzeugt die Release-Dateien, Schritt 3 den Worktree", () => {
   const worktree = SKILL.indexOf("### 3. ");
   assert.notEqual(worktree, -1, "Schritt 3 fehlt");
-  assert.match(SKILL.slice(worktree).split(/\n### /)[0], /worktree\.mjs anlegen/,
+  assert.match(SKILL.slice(worktree).split(/\n### /)[0], /worktree\.mjs create/,
     "Schritt 3 legt keinen Worktree an");
 
   const start = SKILL.indexOf("### 4. ");
@@ -81,9 +81,9 @@ test("[skills-30] Schritt 4 erzeugt die Release-Dateien, Schritt 3 den Worktree"
   assert.match(abschnitt, /RELEASING\.md/, "Schritt 4 nennt die `RELEASING.md` nicht mehr");
 });
 
-test("[skills-30] der Block ruft `aufwand.mjs befund` und zeigt die Ausgabe unveraendert", () => {
+test("[skills-30] der Block ruft `effort.mjs finding` und zeigt die Ausgabe unveraendert", () => {
   const { text } = aufwandBlock();
-  assert.match(text, /node \.claude\/kit\/aufwand\.mjs befund/, "der Aufruf fehlt");
+  assert.match(text, /node \.claude\/kit\/effort\.mjs finding/, "der Aufruf fehlt");
   assert.match(text, /unver[aä]ndert/i, "es steht nicht, dass die Ausgabe unveraendert gezeigt wird");
 });
 
@@ -91,18 +91,18 @@ test("[skills-30] der Block ruft `aufwand.mjs befund` und zeigt die Ausgabe unve
 // unmittelbar hinter dem Aufwand. Die Reihenfolge ist Teil der Aussage — der Aufwand
 // ist der aeltere Befund, und wer die beiden tauscht, aendert, was ein Mensch zuerst
 // liest, ohne dass ein Gate es meldet.
-test("[skills-30] der Block ruft beide Befunde, `wirksamkeit.mjs befund` hinter `aufwand.mjs befund`", () => {
+test("[skills-30] der Block ruft beide Befunde, `effectiveness.mjs finding` hinter `effort.mjs finding`", () => {
   const { text } = aufwandBlock();
-  const aufwand = text.indexOf("node .claude/kit/aufwand.mjs befund");
-  const wirksamkeit = text.indexOf("node .claude/kit/wirksamkeit.mjs befund");
-  assert.notEqual(aufwand, -1, "der Aufruf `aufwand.mjs befund` fehlt");
-  assert.notEqual(wirksamkeit, -1, "der Aufruf `wirksamkeit.mjs befund` fehlt");
+  const aufwand = text.indexOf("node .claude/kit/effort.mjs finding");
+  const wirksamkeit = text.indexOf("node .claude/kit/effectiveness.mjs finding");
+  assert.notEqual(aufwand, -1, "der Aufruf `effort.mjs finding` fehlt");
+  assert.notEqual(wirksamkeit, -1, "der Aufruf `effectiveness.mjs finding` fehlt");
   assert.ok(wirksamkeit > aufwand, "der Wirksamkeits-Befund steht vor dem Aufwands-Befund");
 });
 
 test("[skills-30] fuer den Wirksamkeits-Befund gelten dieselben Regeln wie fuer den Aufwands-Befund", () => {
   const { text } = aufwandBlock();
-  const ab = text.slice(text.indexOf("node .claude/kit/wirksamkeit.mjs befund"));
+  const ab = text.slice(text.indexOf("node .claude/kit/effectiveness.mjs finding"));
   assert.match(ab, /dieselben Regeln|denselben Regeln/, "es steht nicht, dass dieselben Regeln gelten");
   assert.match(ab, /\.claude\/wirksamkeit\.json/, "die gelesene Datei des zweiten Befunds fehlt");
 });
@@ -111,20 +111,20 @@ test("[skills-30] fuer den Wirksamkeits-Befund gelten dieselben Regeln wie fuer 
 // unmittelbar hinter der Wirksamkeit. Dieselbe Begruendung wie beim zweiten — die
 // Reihenfolge ist Teil der Aussage, und `/retro` laeuft nur alle ein bis zwei Wochen
 // und truege die Zahl damit zu spaet.
-test("[skills-30] der Block ruft `befunde.mjs befund` unmittelbar hinter `wirksamkeit.mjs befund`", () => {
+test("[skills-30] der Block ruft `findings.mjs finding` unmittelbar hinter `effectiveness.mjs finding`", () => {
   const { text } = aufwandBlock();
-  const wirksamkeit = text.indexOf("node .claude/kit/wirksamkeit.mjs befund");
-  const befunde = text.indexOf("node .claude/kit/befunde.mjs befund");
-  assert.notEqual(befunde, -1, "der Aufruf `befunde.mjs befund` fehlt");
+  const wirksamkeit = text.indexOf("node .claude/kit/effectiveness.mjs finding");
+  const befunde = text.indexOf("node .claude/kit/findings.mjs finding");
+  assert.notEqual(befunde, -1, "der Aufruf `findings.mjs finding` fehlt");
   assert.ok(befunde > wirksamkeit, "der Befunde-Block steht vor dem Wirksamkeits-Block");
   // Unmittelbar heisst: kein weiterer Kit-Aufruf dazwischen.
   const dazwischen = text.slice(wirksamkeit, befunde).match(/node \.claude\/kit\/\S+/g) ?? [];
-  assert.deepEqual(dazwischen, ["node .claude/kit/wirksamkeit.mjs"],
+  assert.deepEqual(dazwischen, ["node .claude/kit/effectiveness.mjs"],
     `zwischen den beiden Befunden steht ein weiterer Aufruf: ${dazwischen.join(", ")}`);
 });
 
 test("[skills-30] der Befunde-Block steht vor dem ersten nummerierten Schritt", () => {
-  const befunde = SKILL.indexOf("node .claude/kit/befunde.mjs befund");
+  const befunde = SKILL.indexOf("node .claude/kit/findings.mjs finding");
   const schritt1 = SKILL.indexOf("### 1. Config lesen");
   assert.notEqual(befunde, -1, "der Aufruf fehlt im Skill");
   assert.ok(befunde < schritt1, "der Befunde-Block steht hinter Schritt 1 — dann liefe er erst nach der Config");
@@ -132,14 +132,14 @@ test("[skills-30] der Befunde-Block steht vor dem ersten nummerierten Schritt", 
 
 test("[skills-30] fuer den Befunde-Befund gelten dieselben Regeln, und er liest allein seinen Stand", () => {
   const { text } = aufwandBlock();
-  const ab = text.slice(text.indexOf("node .claude/kit/befunde.mjs befund"));
+  const ab = text.slice(text.indexOf("node .claude/kit/findings.mjs finding"));
   assert.match(ab, /dieselben Regeln|denselben Regeln/, "es steht nicht, dass dieselben Regeln gelten");
   assert.match(ab, /\.claude\/befunde\.json/, "die gelesene Datei des dritten Befunds fehlt");
 });
 
 test("[skills-30] ein Projekt ohne Modell-Pruefungen sieht nichts, und das bleibt unkommentiert", () => {
   const { text } = aufwandBlock();
-  const ab = text.slice(text.indexOf("node .claude/kit/befunde.mjs befund"));
+  const ab = text.slice(text.indexOf("node .claude/kit/findings.mjs finding"));
   assert.match(ab, /Fehlt die Datei|ohne .*Pr(ue|ü)fung|kein.*Protokoll/i,
     "der Fall des Projekts ohne Modell-Pruefungen kommt nicht vor");
 });

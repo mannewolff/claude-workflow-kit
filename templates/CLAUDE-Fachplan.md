@@ -8,7 +8,7 @@ verletzt", zeigt auf eine Stelle, nicht auf einen Geschmack.
 
 **Wozu:** `/issue-review` klassifiziert einen Fund als `gate` (ab Etappe 5 aus Plan #368 —
 heute klassifiziert der Skill noch nicht). Dann wird nicht automatisch angewendet, sondern
-`kit:klaeren` gesetzt und ein Mensch gerufen (Plan #368, A9).
+`kit:clarify` gesetzt und ein Mensch gerufen (Plan #368, A9).
 
 **Ein Fund ist `gate`, wenn eines von beiden zutrifft:**
 
@@ -57,7 +57,7 @@ Gilt fuer jedes `[maschinell]`-Gate und damit fuer jeden Test, der spaeter darau
 
 Weitere `##`-Ueberschriften sind erlaubt; die vier muessen vorhanden sein und
 untereinander in dieser Reihenfolge stehen. (Anders als im Plan-Register, wo P2
-zusaetzliche `##`-Ebenen verbietet — der `/fachplan`-Skill kennt kein solches Verbot.)
+zusaetzliche `##`-Ebenen verbietet — der `/requirement`-Skill kennt kein solches Verbot.)
 
 *Warum Gate:* An diesen Ueberschriften haengen `/techplan` und `/issue-review`. Sinngemaess
 umformuliert wirken sie nicht.
@@ -147,7 +147,7 @@ einer Diskussion zu rekonstruieren — und die Anforderung hat dann keinen einde
 
 Weder `Fachliche Quelle: Issue #N` noch `Plan: Issue #M`.
 
-Das Verbot, beim Anlegen `--derived-from` zu setzen, steht im `/fachplan`-Skill und ist
+Das Verbot, beim Anlegen `--derived-from` zu setzen, steht im `/requirement`-Skill und ist
 hier **kein** Testgegenstand: `board.mjs issue get` liefert das Feld `derivedFrom` nicht
 zurueck, am fertigen Dokument ist es also nicht ablesbar.
 
@@ -172,6 +172,37 @@ nach `trimStart()` geprueft). Traegt eine fachliche Anforderung diesen
 Marker, haelt der Nacht-Runner sie fuer ein freigabereifes Arbeitspaket und zieht sie in
 die Implementierung.
 
+## F12 — Der Abschnitt `## Szenarien` traegt mindestens ein vollstaendiges Szenario `[maschinell]`
+
+Der Abschnitt `## Szenarien` (englisch `## Scenarios`) ist vorhanden, steht zwischen
+`## Fachliche Akzeptanzkriterien` und `## Nicht-Ziele` und enthaelt mindestens ein
+vollstaendiges Szenario: eine Ueberschrift `### Szenario: <Titel>` und darunter je
+mindestens eine Listenzeile `Angenommen`, `Wenn`, `Dann` in dieser Reihenfolge; `Und`
+darf dazwischen stehen. Die Schluesselwoerter gelten in der Projektsprache — im
+englischen Projekt `### Scenario: <title>` mit `Given`, `When`, `Then`, `And`.
+
+```markdown
+## Szenarien
+
+### Szenario: Fachplan ohne Szenarien wird abgewiesen
+- Angenommen ein Projekt auf der Kit-Version mit der Pflicht
+- Wenn der Mensch ueber das Kit einen Fachplan ohne Abschnitt Szenarien anlegt
+- Dann legt das Kit nichts an
+- Und die Meldung zeigt die Form eines Szenarios
+```
+
+**Geltung:** Beim Pruefen einer Datei (`issue check-form --body-file`) und beim Anlegen
+(`issue create` mit `--art requirement` oder dem Fachplan-Praefix im Titel) immer — ein
+Verstoss legt nichts an und endet mit Exit 1. Beim Pruefen einer Karte am Board
+(`issue check-form <id>`) nur, wenn ihre Nummer mindestens `szenarienAb` aus der
+`workflow.config.json` ist. Fehlt das Feld, gilt F12 fuer keine Karte am Board, und die
+Pruefung nennt den fehlenden Stichtag als Hinweis. F1 bleibt bei vier Abschnitten.
+
+*Warum Gate:* Ein Szenario trennt Ausgangslage, Handlung und beobachtbares Ergebnis schon
+beim Schreiben; ein fehlender Stichtag oder ein unbeobachtbares Ergebnis faellt dann dort
+auf und nicht erst im Review. Der Stichtag schuetzt die Fachplaene, die beim Update auf
+diese Pflicht schon am Board liegen: Sie bleiben gueltig.
+
 ---
 
 ## Ausdruecklich kein Gate
@@ -187,6 +218,10 @@ Damit der Reviewer nicht alles zum Gate erklaert:
 - **Ein leerer Abschnitt `## Offene Fragen an den PO`** (siehe F7).
 - **Technische Begriffe an sich.** Erst eine vorgeschriebene Loesung verletzt F3.
 - **Schreibweise und Terminologie**, solange F3 gewahrt bleibt.
+- **Weitere unvollstaendige Szenarien** neben einem vollstaendigen (siehe F12). Sie sind
+  ein Fund der Pruefung, kein Formverstoss.
+- **Die Zahl der Szenarien ueber eins.** Nicht jedes fachliche Akzeptanzkriterium braucht
+  ein Szenario.
 
 Ein Fund zu diesen Punkten ist trotzdem ein Fund — er wird angewendet oder verworfen. Ob
 er einen Menschen ruft, entscheidet Ausloeser 2 aus A9, nicht dieses Register.

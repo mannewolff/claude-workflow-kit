@@ -97,7 +97,7 @@ test("toolbox: ein Token aus der Datei wird gelesen, wenn TBX_TOKEN fehlt", asyn
 // Vault-Pfade: der Ordner und der Repo-Name
 // ============================================================
 
-test("kontext paths: ein fehlender Notizordner ist kein Fehler", () => {
+test("context paths: ein fehlender Notizordner ist kein Fehler", () => {
   const dir = setupProjekt(LOKAL, "board-rest-ordner-fehlt-");
   try {
     const vault = join(dir, "vault");
@@ -105,7 +105,7 @@ test("kontext paths: ein fehlender Notizordner ist kein Fehler", () => {
     writeFileSync(join(dir, ".claude", "kontext.config.json"),
       JSON.stringify({ vault, project: "neu" }), "utf-8");
 
-    const res = runBoard(dir, ["kontext", "paths"]);
+    const res = runBoard(dir, ["context", "paths"]);
 
     assert.equal(res.status, 0, `paths haette durchlaufen muessen: ${res.stderr}`);
     const daten = JSON.parse(res.stdout);
@@ -117,7 +117,7 @@ test("kontext paths: ein fehlender Notizordner ist kein Fehler", () => {
   }
 });
 
-test("kontext paths: ein nicht lesbarer Notizordner wird gemeldet", MIT_DATEIRECHTEN, () => {
+test("context paths: ein nicht lesbarer Notizordner wird gemeldet", MIT_DATEIRECHTEN, () => {
   const dir = setupProjekt(LOKAL, "board-rest-ordner-gesperrt-");
   const ordner = join(dir, "vault", "Projekte", "gesperrt");
   try {
@@ -126,12 +126,12 @@ test("kontext paths: ein nicht lesbarer Notizordner wird gemeldet", MIT_DATEIREC
     // muss den Unterschied machen — sonst sucht man die Notiz statt der Rechte.
     chmodSync(ordner, 0o000);
 
-    const res = runBoard(dir, ["kontext", "paths", "--project", "gesperrt"], {
+    const res = runBoard(dir, ["context", "paths", "--project", "gesperrt"], {
       KIT_KONTEXT_CONFIG: "",
     });
     writeFileSync(join(dir, ".claude", "kontext.config.json"),
       JSON.stringify({ vault: join(dir, "vault"), project: "gesperrt" }), "utf-8");
-    const zweiter = runBoard(dir, ["kontext", "paths"]);
+    const zweiter = runBoard(dir, ["context", "paths"]);
 
     // Der erste Lauf laeuft ohne Vault-Config im Degraded Mode; erst der zweite
     // erreicht den Ordner.
@@ -145,10 +145,10 @@ test("kontext paths: ein nicht lesbarer Notizordner wird gemeldet", MIT_DATEIREC
   }
 });
 
-test("kontext last-log ohne Vault liefert path null", () => {
+test("context last-log ohne Vault liefert path null", () => {
   const dir = setupProjekt(LOKAL, "board-rest-lastlog-");
   try {
-    const res = runBoard(dir, ["kontext", "last-log"]);
+    const res = runBoard(dir, ["context", "last-log"]);
 
     assert.equal(res.status, 0, `last-log haette durchlaufen muessen: ${res.stderr}`);
     assert.deepEqual(JSON.parse(res.stdout), { path: null },

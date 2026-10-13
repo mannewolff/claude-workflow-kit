@@ -18,7 +18,9 @@ import {
 
 /** Der juengste Laufstand-Kommentar einer Karte, leer ohne ihn. */
 const laufstandVon = (karte) => kommentareVon(karte).findLast((k) => k.startsWith("## Laufstand")) ?? "";
-const laufLabels = (karte) => karte.labels.filter((l) => l.startsWith("lauf:"));
+// Laufstand-Labels unter beiden Namen: geschrieben wird englisch (Issue #1553), ein deutscher
+// Halter bleibt, wie er ist.
+const laufLabels = (karte) => karte.labels.filter((l) => l.startsWith("lauf:") || l.startsWith("run:"));
 
 // --- Die Zuordnung der Ausgaenge (E8) ---
 
@@ -54,9 +56,9 @@ test("[night-1189] die Ausgaenge einer Session setzen den Laufstand der Karte", 
   assert.equal(r.code, 0, r.ausgabe);
   assert.deepEqual(laufLabels(r.karte("1")), [], "fertig traegt kein Laufstand-Label");
   assert.match(laufstandVon(r.karte("1")), /geprueft/);
-  assert.deepEqual(laufLabels(r.karte("2")), ["lauf:wartet"]);
+  assert.deepEqual(laufLabels(r.karte("2")), ["run:waiting"]);
   assert.match(laufstandVon(r.karte("2")), /Welche der beiden Zielgruppen/);
-  assert.deepEqual(laufLabels(r.karte("3")), ["lauf:abgebrochen"]);
+  assert.deepEqual(laufLabels(r.karte("3")), ["run:aborted"]);
   assert.match(laufstandVon(r.karte("3")), /unvollstaendig/);
   assert.match(laufstandVon(r.karte("3")), /Fachplan-Review-Marker/, "der Grund steht im Laufstand");
   for (const id of ["1", "2", "3"]) {
@@ -72,7 +74,7 @@ test("[night-1189] am Kostendeckel uebersprungene Karten brechen mit Grund ab", 
   });
   assert.equal(r.code, 0, r.ausgabe);
   assert.equal(r.sitzungen.length, 1);
-  assert.deepEqual(laufLabels(r.karte("2")), ["lauf:abgebrochen"]);
+  assert.deepEqual(laufLabels(r.karte("2")), ["run:aborted"]);
   assert.match(laufstandVon(r.karte("2")), /Kostenbudget: 3\.00 \$ von 2 \$/);
   assert.ok(r.karte("2").labels.includes(PRUEF_LABEL), "das Kennzeichen bleibt");
 });

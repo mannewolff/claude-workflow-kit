@@ -18,7 +18,7 @@ test("[night-36] [night-41] [night-42] die Kette-Einheit des Ergebnisstands trae
     const F = fachplan(dir, "[Fachlich] Ein Anliegen");
     durchziehen(dir, F);
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: REVIEW_MARKER, pakete: PAKETE_ANLEGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const einheit = stand(dir).einheiten.find((e) => e.id === F);

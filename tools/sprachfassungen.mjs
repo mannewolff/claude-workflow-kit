@@ -20,9 +20,17 @@
  * `true` ist jede Seite vollständig Pflicht. Die Seiten unter `historisch` brauchen nur
  * einen Verweis auf das deutsche Original.
  *
+ * Der Spiegel `en/` (Issue #1465, Plan #1420 E17): `en/<pfad>` ist die englische Fassung von
+ * `<pfad>`, etwa `en/agents/<name>.md` von `agents/<name>.md`; Skills gibt es seit Issue #1566
+ * nur in einer Fassung, `en/skills/` entfällt. Geprüft wird mit
+ * denselben Stempeln, aber ohne Gleichheit der Codeblöcke — die englischen Befehle tragen
+ * die englischen Namen. Eine fehlende Fassung und ein lückenloses Anfangsstück sind dort
+ * immer erlaubt, unabhängig von `englischAktiv`.
+ *
  * Nutzung:
  *   node tools/sprachfassungen.mjs --check             alle Paare prüfen, Exit 1 bei Abweichung
  *   node tools/sprachfassungen.mjs --erwartet <seite>  Stempel einer deutschen Seite ausgeben
+ *   node tools/sprachfassungen.mjs --erwartet en/<pfad>  Stempel der deutschen Quelle von en/<pfad>
  */
 
 import { readFileSync, readdirSync, existsSync } from "node:fs";
@@ -37,6 +45,7 @@ const root = process.env.KIT_ROOT
   : resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DOCS = join(root, "docs");
 const EN = join(DOCS, "en");
+const SPIEGEL = join(root, "en");
 const SPRACHEN = join(root, "docs-site", "sprachen.json");
 const START = "<!-- einstellungen:start -->";
 const ENDE = "<!-- einstellungen:ende -->";
@@ -137,7 +146,7 @@ function erwartung(a) {
  * Prüft die englische Überschrift an Position k gegen die deutsche. Liefert true, wenn
  * die Reihenfolge ab hier nicht mehr stimmt und weitere Positionen nur Folgefehler wären.
  */
-function pruefePosition(k, de, en, gefunden, melde) {
+function pruefePosition(k, de, en, gefunden, melde, struktur) {
   const d = de[k];
   const s = gefunden[k];
   if (en[k].ebene !== d.ebene) {
@@ -145,7 +154,7 @@ function pruefePosition(k, de, en, gefunden, melde) {
     return true;
   }
   if (s === d.stempel) {
-    pruefeStruktur(d, en[k], melde);
+    struktur(d, en[k]);
     return false;
   }
   const j = de.findIndex((x, i) => i > 0 && x.stempel === s);
@@ -159,15 +168,18 @@ function pruefePosition(k, de, en, gefunden, melde) {
   return true;
 }
 
-/** Prüft ein Seitenpaar und liefert die Abweichungen als Meldungen. */
-function pruefePaar(seite, de, en, aktiv) {
-  const ort = `docs/en/${seite}.md`;
+/**
+ * Prüft ein Seitenpaar und liefert die Abweichungen als Meldungen. `mitCode: false` lässt
+ * den Vergleich der Codeblöcke aus (Spiegel `en/`).
+ */
+function pruefePaar(ort, de, en, { aktiv, mitCode = true }) {
   const meldungen = [];
   const melde = (a, text) => meldungen.push(`${ort}, Abschnitt "${name(a)}": ${text}, ${erwartung(a)}`);
+  const struktur = (d, e) => pruefeStruktur(d, e, melde, mitCode);
 
   if (!de[0].leer) {
     const s = gefundenerStempel(en[0], 0);
-    if (s === de[0].stempel) pruefeStruktur(de[0], en[0], melde);
+    if (s === de[0].stempel) struktur(de[0], en[0]);
     else melde(de[0], s ? `Stempel veraltet (gefunden ${s})` : "Stempel fehlt");
   }
 
@@ -177,15 +189,15 @@ function pruefePaar(seite, de, en, aktiv) {
       meldungen.push(`${ort}, Abschnitt "${en[k].kopf}": überzählige Überschrift, die deutsche Seite endet vorher`);
       break;
     }
-    if (pruefePosition(k, de, en, gefunden, melde)) break;
+    if (pruefePosition(k, de, en, gefunden, melde, struktur)) break;
   }
 
   if (aktiv) for (const d of de.slice(en.length)) melde(d, "Abschnitt fehlt");
   return meldungen;
 }
 
-function pruefeStruktur(d, e, melde) {
-  if (d.code.join(",") !== e.code.join(",")) {
+function pruefeStruktur(d, e, melde, mitCode) {
+  if (mitCode && d.code.join(",") !== e.code.join(",")) {
     melde(d, `Codeblöcke weichen ab (deutsch: ${d.code.length} [${d.code.join(", ")}], englisch: ${e.code.length} [${e.code.join(", ")}])`);
   }
   if (d.tabelle !== e.tabelle) melde(d, `Tabellenzeilen weichen ab (deutsch: ${d.tabelle}, englisch: ${e.tabelle})`);
@@ -222,10 +234,33 @@ function pruefeHistorisch(seite, enPfad, aktiv) {
 function pruefeSeite(seite, aktiv) {
   const enPfad = join(EN, `${seite}.md`);
   const de = abschnitte(lies(join(DOCS, `${seite}.md`)));
-  if (existsSync(enPfad)) return pruefePaar(seite, de, abschnitte(lies(enPfad)), aktiv);
+  if (existsSync(enPfad)) return pruefePaar(`docs/en/${seite}.md`, de, abschnitte(lies(enPfad)), { aktiv });
   if (!aktiv) return [];
   const erster = de.find((a, i) => i > 0 || !a.leer) ?? de[0];
   return [`docs/en/${seite}.md fehlt, Abschnitt "${name(erster)}", ${erwartung(erster)}`];
+}
+
+/** Die Markdown-Dateien unter dem Spiegel `en/`, relativ zu ihm und mit `/` getrennt. */
+function spiegelDateien(dir = SPIEGEL, praefix = "") {
+  if (!existsSync(dir)) return [];
+  const aus = [];
+  for (const e of readdirSync(dir, { withFileTypes: true }).sort((a, b) => vergleicheText(a.name, b.name))) {
+    if (e.name.startsWith(".")) continue;
+    if (e.isDirectory()) aus.push(...spiegelDateien(join(dir, e.name), `${praefix}${e.name}/`));
+    else if (e.isFile() && e.name.endsWith(".md")) aus.push(`${praefix}${e.name}`);
+  }
+  return aus;
+}
+
+/** Prüft `en/<pfad>` gegen `<pfad>`: Stempel ja, Codeblöcke nein, Anfangsstück erlaubt (E17). */
+function pruefeSpiegel(pfad) {
+  const ort = `en/${pfad}`;
+  const quelle = join(root, ...pfad.split("/"));
+  if (!existsSync(quelle)) return [`${ort}: deutsche Quelle ${pfad} fehlt`];
+  return pruefePaar(ort, abschnitte(lies(quelle)), abschnitte(lies(join(SPIEGEL, ...pfad.split("/")))), {
+    aktiv: false,
+    mitCode: false,
+  });
 }
 
 function check() {
@@ -238,19 +273,30 @@ function check() {
     if (historisch.has(seite)) meldungen.push(...pruefeHistorisch(seite, enPfad, aktiv));
     else meldungen.push(...pruefeSeite(seite, aktiv));
   }
+  const spiegel = spiegelDateien();
+  for (const pfad of spiegel) meldungen.push(...pruefeSpiegel(pfad));
   if (meldungen.length) {
     for (const m of meldungen) process.stderr.write(`${m}\n`);
     process.stderr.write(`Sprachfassungen weichen ab: ${meldungen.length} Abweichung(en). Stempel einer Seite: node tools/sprachfassungen.mjs --erwartet <seite>\n`);
     process.exit(1);
   }
-  process.stdout.write(`Sprachfassungen gleich: ${geprueft} englische Seite(n) geprüft, englischAktiv: ${aktiv}\n`);
+  process.stdout.write(
+    `Sprachfassungen gleich: ${geprueft} englische Seite(n) und ${spiegel.length} Datei(en) unter en/ geprüft, englischAktiv: ${aktiv}\n`
+  );
 }
 
 function erwartet(seite) {
   if (!seite) fehler("--erwartet braucht eine Seite, zum Beispiel --erwartet wsl2");
-  const kurz = basename(seite, ".md");
-  const pfad = join(DOCS, `${kurz}.md`);
-  if (!existsSync(pfad)) fehler(`docs/${kurz}.md gibt es nicht`);
+  let pfad;
+  if (seite.startsWith("en/")) {
+    const rest = seite.slice(3);
+    pfad = join(root, ...rest.split("/"));
+    if (!existsSync(pfad)) fehler(`${rest} gibt es nicht`);
+  } else {
+    const kurz = basename(seite, ".md");
+    pfad = join(DOCS, `${kurz}.md`);
+    if (!existsSync(pfad)) fehler(`docs/${kurz}.md gibt es nicht`);
+  }
   for (const a of abschnitte(lies(pfad))) {
     if (a.ebene === 0 && a.leer) continue;
     process.stdout.write(`<!-- de: ${a.stempel} -->  ${name(a)}\n`);

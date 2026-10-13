@@ -20,6 +20,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { setupProjekt, runBoard, board } from "./helpers/board-fixture.mjs";
+import { mitSzenarien } from "./helpers/szenarien-fixture.mjs";
 
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
 
@@ -124,7 +125,7 @@ test("[board-9] ist die Wegmarke nicht schreibbar, wird die Karte trotzdem versc
 // in_progress waere fuer den Melder Rauschen.
 test("[ursprung] Zuege der Dokumente schreiben keine Wegmarke (E9)", () => {
   mitProjekt((dir) => {
-    board(dir, "issue", "create", "--title", "[Fachlich] Anforderung", "--body", "## Ziel\nz");
+    board(dir, "issue", "create", "--title", "[Fachlich] Anforderung", "--body", mitSzenarien("## Ziel\nz"));
     board(dir, "issue", "create", "--title", "[Plan] Plan", "--body", "Fachliche Quelle: Issue #0001\n\n## Ziel\nz");
     board(dir, "issue", "create", "--title", "Paket", "--body", "## Kontext\nPlan: Issue #0002\n\n## Aufgabe\na");
     const e = board(dir, "issue", "move", "0003", "in_review");

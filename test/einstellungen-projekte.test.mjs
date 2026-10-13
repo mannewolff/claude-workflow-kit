@@ -1,11 +1,11 @@
-// Projektsuche und Kit-Stand in kit/einstellungen.mjs (Issue #677, Plan #674 E9, E10).
+// Projektsuche und Kit-Stand in kit/settings.mjs (Issue #677, Plan #674 E9, E10).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
-import { vergleicheVersion } from "../kit/einstellungen.mjs";
+import { vergleicheVersion } from "../kit/settings.mjs";
 import { mitServer, projekt } from "./helpers/einstellungen-fixture.mjs";
 
 test("[einstellungen-5] gefunden werden der Startordner und direkte Unterverzeichnisse mit Config", async () => {

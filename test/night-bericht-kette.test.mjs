@@ -122,3 +122,38 @@ test("[kitstand-zeile] der Nachtbericht traegt die Kit-Stand-Zeile des Laufs, oh
   const ohne = berichtBauen({ ausgang: "fertig" }, { stempel: "s", kitStand: null });
   assert.ok(!ohne.includes("Kit-Stand:"), "ohne festen Stand keine Zeile");
 });
+
+// Issue #1541 (Plan #1534, fachlich #1415, Kriterium 2): Ein Widerspruch zur Vorgeschichte
+// haelt nachts nichts an, aber der Nachtbericht nennt ihn. `/techplan` uebernimmt die
+// `- Widerspruch:`-Zeilen der Fachlichen Quelle woertlich in `### Vorgeschichte` des Plans;
+// der Bericht liest nur den Plan. Der Abschnitt endet an `##` oder `###`.
+function berichtMitPlanBody(body) {
+  const einheit = { id: "7", ausgang: "fertig", stufen: { plan: { id: "12" } } };
+  return berichtBauen(einheit, { plan: { id: "12", title: "[Plan] X", body }, stempel: "s" });
+}
+
+const WIDERSPRUCH_1 = "- Widerspruch: #900 sagte „kein Export“ (PO-Antwort F2), die neue Anforderung verlangt ihn.";
+const WIDERSPRUCH_2 = "- Widerspruch: #901 Nicht-Ziel „keine Nachtläufe am Wochenende“ — Fundstelle: Nicht-Ziele.";
+
+test("[night-1541] zwei Widersprueche: Kopf und beide Zeilen woertlich", () => {
+  const body = `## Ziel\n\nx\n\n## Betroffene Bereiche\n\n### Vorgeschichte\n\nSuchbegriffe: Export\n\n- #900 Export — PO-Antwort zaehlt.\n${WIDERSPRUCH_1}\n${WIDERSPRUCH_2}\n\n## Architektonische Entscheidungen\n\n- A1 — x.\n`;
+  const text = berichtMitPlanBody(body);
+  assert.ok(text.includes(`### Widersprüche zur Vorgeschichte\n\n${WIDERSPRUCH_1}\n${WIDERSPRUCH_2}\n\n`), text);
+  // Auch unter dem englischen Namen der Ueberschrift.
+  assert.ok(berichtMitPlanBody(body.replace("### Vorgeschichte", "### History")).includes(`### Widersprüche zur Vorgeschichte\n\n${WIDERSPRUCH_1}\n`));
+});
+
+test("[night-1541] der Abschnitt endet an der naechsten `###`-Ueberschrift", () => {
+  const fremd = "- Widerspruch: steht unter einer anderen Ueberschrift.";
+  const text = berichtMitPlanBody(`## Betroffene Bereiche\n\n### Vorgeschichte\n\n${WIDERSPRUCH_1}\n\n### Dateien\n\n${fremd}\n\n## Offene Fragen\n\n- Keine.\n`);
+  assert.ok(text.includes(`### Widersprüche zur Vorgeschichte\n\n${WIDERSPRUCH_1}\n\n`), text);
+  assert.ok(!text.includes(fremd), "nur die Zeilen der Vorgeschichte");
+});
+
+test("[night-1541] ohne Vorgeschichte und ohne Widerspruch entfaellt der Kopf, die Zeilenfolge bleibt", () => {
+  const ohne = berichtMitPlanBody("## Ziel\n\nx\n");
+  assert.ok(!ohne.includes("Widersprüche zur Vorgeschichte"));
+  assert.equal(ohne, berichtMitPlanBody("## Ziel\n\nx\n\n## Betroffene Bereiche\n\n### Vorgeschichte\n\n- #900 Export — zaehlt.\n"));
+  assert.equal(ohne.split("\n").filter((z) => z.startsWith("### ")).join("|"),
+    "### Ausgang|### Stufen|### Entscheidungen der Nacht|### Abgelehnte Befunde|### Abdeckung gegen den Fachplan|### Kennzahlen");
+});

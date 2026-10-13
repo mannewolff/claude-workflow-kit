@@ -1,7 +1,7 @@
-// Ablauf-Pruefung: `issue check-geschuetzt` fuehrt der Einstieg kit/board.mjs; er liest Karte und
+// Ablauf-Pruefung: `issue check-protected` fuehrt der Einstieg kit/board.mjs; er liest Karte und
 // Kommentare ueber den Tracker, und der Befund ist JSON-Ausgabe und Exitcode des Prozesses.
 //
-// `issue check-geschuetzt` — Treffer, Freigabe und Halt-Kommentar eines Pakets (Issue #1045,
+// `issue check-protected` — Treffer, Freigabe und Halt-Kommentar eines Pakets (Issue #1045,
 // Plan #987, E5, E6, E11, E17).
 //
 // Der Halt-Kommentar ist Schreib- und Leseformat zugleich: Das Gate liest beim naechsten
@@ -67,7 +67,7 @@ function lokalDatei({ titel = "[Task] Paket", body, labels = [], kommentare = []
 }
 
 function mitLokal(karte, fn) {
-  const dir = setupProjekt(LOKAL, "board-check-geschuetzt-");
+  const dir = setupProjekt(LOKAL, "board-check-protected-");
   mkdirSync(join(dir, "issues"), { recursive: true });
   const datei = join(dir, "issues", "0007.md");
   writeFileSync(datei, lokalDatei(karte), "utf-8");
@@ -167,7 +167,7 @@ for (const fall of FAELLE) {
   test(`local: ${fall.name}`, () => {
     mitLokal(fall.karte, (dir, datei) => {
       const vorher = readFileSync(datei, "utf-8");
-      fall.pruefe(runBoard(dir, ["issue", "check-geschuetzt", "7"]));
+      fall.pruefe(runBoard(dir, ["issue", "check-protected", "7"]));
       assert.equal(readFileSync(datei, "utf-8"), vorher, "Spalte, Labels und Kommentare bleiben unveraendert");
     });
   });
@@ -175,10 +175,10 @@ for (const fall of FAELLE) {
 
 test("local: Rundlauf ueber das Kommando — der ausgegebene Kommentar gibt nach Abnahme des Labels frei", () => {
   mitLokal({ body: paket({ kriterium: KRITERIUM_ZEILE }) }, (dir, datei) => {
-    const erst = json(runBoard(dir, ["issue", "check-geschuetzt", "7"]));
+    const erst = json(runBoard(dir, ["issue", "check-protected", "7"]));
     assert.equal(erst.ok, false);
     writeFileSync(datei, lokalDatei({ body: paket({ kriterium: KRITERIUM_ZEILE }), kommentare: [`${erst.kommentar}\n\n${GESCHUETZT_LABEL_GESETZT}`] }), "utf-8");
-    const res = runBoard(dir, ["issue", "check-geschuetzt", "7"]);
+    const res = runBoard(dir, ["issue", "check-protected", "7"]);
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual({ ok: json(res).ok, freigegeben: json(res).freigegeben }, { ok: true, freigegeben: true });
   });
@@ -186,9 +186,9 @@ test("local: Rundlauf ueber das Kommando — der ausgegebene Kommentar gibt nach
 
 test("local: die Schreibsperren der Projektwurzel zaehlen mit", () => {
   mitLokal({ body: paket({ aufgabe: "In `geheim/schluessel.txt` etwas aendern." }) }, (dir) => {
-    assert.equal(runBoard(dir, ["issue", "check-geschuetzt", "7"]).status, 0);
+    assert.equal(runBoard(dir, ["issue", "check-protected", "7"]).status, 0);
     writeFileSync(join(dir, EINSTELLUNGEN), JSON.stringify({ permissions: { deny: ["Edit(geheim/**)"] } }), "utf-8");
-    const res = runBoard(dir, ["issue", "check-geschuetzt", "7"]);
+    const res = runBoard(dir, ["issue", "check-protected", "7"]);
     assert.equal(res.status, 1);
     assert.deepEqual(json(res).treffer.map((t) => t.pfad), ["geheim/schluessel.txt"]);
   });
@@ -196,26 +196,26 @@ test("local: die Schreibsperren der Projektwurzel zaehlen mit", () => {
 
 test("local: ohne Kartennummer oder mit unbekannter Karte Exit 1", () => {
   mitLokal({ body: UNBETROFFEN }, (dir) => {
-    const ohne = runBoard(dir, ["issue", "check-geschuetzt"]);
+    const ohne = runBoard(dir, ["issue", "check-protected"]);
     assert.equal(ohne.status, 1);
-    assert.match(ohne.stderr, /check-geschuetzt/);
-    assert.equal(runBoard(dir, ["issue", "check-geschuetzt", "99"]).status, 1);
+    assert.match(ohne.stderr, /check-geschuetzt|check-protected/);
+    assert.equal(runBoard(dir, ["issue", "check-protected", "99"]).status, 1);
   });
 });
 
 test("der Hilfetext nennt das Kommando", () => {
   mitLokal({ body: UNBETROFFEN }, (dir) => {
     const res = runBoard(dir, ["--help"]);
-    assert.match(res.stdout, /issue check-geschuetzt <id>/);
-    assert.match(res.stdout, /issue check-geschuetzt <id> \[--pfad <pfad>\]/);
+    assert.match(res.stdout, /issue check-protected <id>/);
+    assert.match(res.stdout, /issue check-protected <id> \[--path <path>\]/);
   });
 });
 
-// --- --pfad: der beim Schreiben abgewiesene Pfad (Issue #1053, Plan #987, E13, E17) ---
+// --- --path: der beim Schreiben abgewiesene Pfad (Issue #1053, Plan #987, E13, E17) ---
 
-test("local: --pfad mit geschuetztem Pfad ergibt ok false und den Pfad in der Backtick-Liste", () => {
+test("local: --path mit geschuetztem Pfad ergibt ok false und den Pfad in der Backtick-Liste", () => {
   mitLokal({ body: UNBETROFFEN }, (dir) => {
-    const res = runBoard(dir, ["issue", "check-geschuetzt", "7", "--pfad", EINSTELLUNGEN]);
+    const res = runBoard(dir, ["issue", "check-protected", "7", "--path", EINSTELLUNGEN]);
     assert.equal(res.status, 1, res.stderr);
     const r = json(res);
     assert.equal(r.ok, false);
@@ -226,42 +226,42 @@ test("local: --pfad mit geschuetztem Pfad ergibt ok false und den Pfad in der Ba
   });
 });
 
-test("local: --pfad — der Kommentar samt 'gesetzt' wird von geschuetztFreigabe als Halt-Kommentar erkannt", () => {
+test("local: --path — der Kommentar samt 'gesetzt' wird von geschuetztFreigabe als Halt-Kommentar erkannt", () => {
   mitLokal({ body: UNBETROFFEN }, (dir) => {
-    const r = json(runBoard(dir, ["issue", "check-geschuetzt", "7", "--pfad", EINSTELLUNGEN]));
+    const r = json(runBoard(dir, ["issue", "check-protected", "7", "--path", EINSTELLUNGEN]));
     const body = `${r.kommentar}\n\n${GESCHUETZT_LABEL_GESETZT}`;
     assert.equal(geschuetztFreigabe(r.treffer, [{ body }], []), true);
     assert.equal(geschuetztFreigabe(r.treffer, [{ body }], [GESCHUETZT_LABEL]), false, "solange das Label haengt");
   });
 });
 
-test("local: --pfad mehrfach — jeder geschuetzte Pfad ist ein Treffer, ein fremder keiner", () => {
+test("local: --path mehrfach — jeder geschuetzte Pfad ist ein Treffer, ein fremder keiner", () => {
   mitLokal({ body: UNBETROFFEN }, (dir) => {
-    const r = json(runBoard(dir, ["issue", "check-geschuetzt", "7", "--pfad", EINSTELLUNGEN, "--pfad", "kit/board.mjs", "--pfad", LOKAL_EINSTELLUNGEN]));
+    const r = json(runBoard(dir, ["issue", "check-protected", "7", "--path", EINSTELLUNGEN, "--path", "kit/board.mjs", "--path", LOKAL_EINSTELLUNGEN]));
     assert.deepEqual(r.treffer.map((t) => t.pfad), [EINSTELLUNGEN, LOKAL_EINSTELLUNGEN]);
   });
 });
 
-test("local: --pfad mit fremdem Pfad ergibt keinen Treffer", () => {
+test("local: --path mit fremdem Pfad ergibt keinen Treffer", () => {
   mitLokal({ body: UNBETROFFEN }, (dir) => {
-    const res = runBoard(dir, ["issue", "check-geschuetzt", "7", "--pfad", "kit/board.mjs"]);
+    const res = runBoard(dir, ["issue", "check-protected", "7", "--path", "kit/board.mjs"]);
     assert.equal(res.status, 0, res.stderr);
     const r = json(res);
     assert.deepEqual({ ok: r.ok, treffer: r.treffer, kommentar: r.kommentar }, { ok: true, treffer: [], kommentar: null });
   });
 });
 
-test("local: --pfad absolut unter der Projektwurzel trifft wie relativ", () => {
+test("local: --path absolut unter der Projektwurzel trifft wie relativ", () => {
   mitLokal({ body: UNBETROFFEN }, (dir) => {
     const absolut = join(realpathSync(dir), EINSTELLUNGEN);
-    const r = json(runBoard(dir, ["issue", "check-geschuetzt", "7", "--pfad", absolut]));
+    const r = json(runBoard(dir, ["issue", "check-protected", "7", "--path", absolut]));
     assert.deepEqual(r.treffer, [{ pfad: absolut, zeile: GESCHUETZT_ABGEWIESEN }]);
   });
 });
 
-test("local: --pfad ergaenzt die Treffer aus dem Body", () => {
+test("local: --path ergaenzt die Treffer aus dem Body", () => {
   mitLokal({ body: paket() }, (dir) => {
-    const r = json(runBoard(dir, ["issue", "check-geschuetzt", "7", "--pfad", LOKAL_EINSTELLUNGEN]));
+    const r = json(runBoard(dir, ["issue", "check-protected", "7", "--path", LOKAL_EINSTELLUNGEN]));
     assert.deepEqual(r.treffer, [
       { pfad: EINSTELLUNGEN, zeile: AUFGABE_ZEILE },
       { pfad: LOKAL_EINSTELLUNGEN, zeile: GESCHUETZT_ABGEWIESEN },
@@ -281,11 +281,11 @@ test("toolbox", async (t) => {
     kommentare[900 + i] = (f.karte.kommentare || []).map((body, j) => ({ id: 40 + j, author: "manne", body, createdAt: "2026-09-28T08:00:00Z" }));
   });
   const { server, requests, host } = await starteServer(toolboxMitKommentaren({ karten, kommentare }));
-  const dir = setupProjekt({ codeHost: "local", issueTracker: "toolbox", toolbox: { host } }, "board-check-geschuetzt-tbx-");
+  const dir = setupProjekt({ codeHost: "local", issueTracker: "toolbox", toolbox: { host } }, "board-check-protected-tbx-");
   try {
     for (const [i, fall] of FAELLE.entries()) {
       await t.test(fall.name, async () => {
-        fall.pruefe(await runBoardAsync(dir, ["issue", "check-geschuetzt", String(10 + i)], { TBX_TOKEN: "test-token" }));
+        fall.pruefe(await runBoardAsync(dir, ["issue", "check-protected", String(10 + i)], { TBX_TOKEN: "test-token" }));
       });
     }
     await t.test("nur lesende Requests", () => {

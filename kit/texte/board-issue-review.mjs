@@ -1,0 +1,106 @@
+/**
+ * texte/board-issue-review.mjs — die Texttabelle von board/issue-review.mjs (Issue #1526). Eigener Teil, damit
+ * `sonar.cpd.exclusions` die gleich gebauten Haelften de und en ausnehmen kann, ohne die
+ * Logik des Moduls aus der Duplikatsmessung zu nehmen. Das Modul importiert die Tabelle und
+ * exportiert sie unter demselben Namen weiter.
+ */
+
+// ============================================================
+// Texte an den Menschen (Issue #1481, Plan #1420 E13/E14)
+// ============================================================
+
+/**
+ * Die Meldungen der Issue-Review-Achse je Sprache. Vertragswerte bleiben ausserhalb (E14):
+ * Feldnamen und die Werte von `fehler`, `geprueft`, `quelle` und `stufenQuelle`, die
+ * Config-Schluessel, Stufen- und Rollennamen und die Befehlsnamen.
+ */
+export const TEXTE = Object.freeze({
+  de: Object.freeze({
+    pairsKeineListe: "{wo}: muss eine Liste von Reviewer-Namen sein.",
+    pairsSelbst: "{wo}: nennt '{autor}' sich selbst — der Autor darf nicht sein eigener Reviewer sein.",
+    pairsUnbekannt: "{wo}: '{name}' steht nicht in issueReview.reviewers.",
+    reviewerOhneName: "{wo}: 'name' fehlt oder ist leer.",
+    reviewerKind: "{wo} ('{name}'): 'kind' muss {erlaubt} sein, ist '{kind}'.",
+    oder: " oder ",
+    reviewerFeldFehlt: "{wo} ('{name}'): '{feld}' fehlt.",
+    lesegrenzeNurCommand: "{wo} ('{name}'): 'lesegrenze' gilt nur bei kind 'command'.",
+    lesegrenzeKeinText: "{wo} ('{name}'): 'lesegrenze' muss ein Text sein.",
+    stufenKeinObjekt: "reviewStufen: muss ein Objekt mit den Stufen {stufen} sein.",
+    stufeFehlt: "{wo}: fehlt oder ist kein Objekt mit 'reviewer' und 'rollen'.",
+    stufeReviewer: "{wo}.reviewer: muss eine positive Ganzzahl sein, ist '{wert}'.",
+    stufeRollenListe: "{wo}.rollen: muss eine Liste von Rollennamen sein.",
+    stufeRolleLeer: "{wo}.rollen[{i}]: muss ein nicht leerer Rollenname sein.",
+    stufeRolleDoppelt: "{wo}.rollen: nennt einen Rollennamen doppelt.",
+    stufeRollenzahl: "{wo}: rollen.length ({rollen}) stimmt nicht mit reviewer ({reviewer}) ueberein.",
+    planReviewerUngueltig: "KIT_PLAN_REVIEWER '{wert}' ist ungueltig — erlaubt sind 1 oder 2.",
+    planReviewerZuWenige: "planreview:2 verlangt zwei Reviewer, verfügbar ist einer",
+    keineLesegrenze: "keine Lesegrenze",
+    lesegrenzeAufgehoben: "'{schalter}' hebt die Lesegrenze auf",
+    zeitlimit: "Zeitlimit von {ms} ms ueberschritten",
+    signal: "Durch Signal {signal} beendet",
+    optionOhneWert: "--{name} braucht einen Wert",
+    rolesEntfallen: "--{option} gibt es seit Stufe 2 des Prozess-Umbaus nicht mehr — roles kennt nur --stage und --author.",
+    stufeOptionFehlt: "--stage fehlt. Erwartet: {stufen}",
+    stufeUnbekannt: "--stage '{stufe}' ist keine bekannte Stufe. Erwartet: {stufen}",
+    autorFehlt: "--author fehlt — ohne Autor greifen weder pairs noch der Selbstausschluss.",
+    nichtImPath: "{datei} nicht im PATH",
+    keineReviewer: "issueReview.reviewers ist leer oder fehlt — Block aus .claude/workflow.config.example.json uebernehmen",
+    pruefauftragFehler: "issue-review review-brief: {meldung}",
+    optionFehlt: "--{name} fehlt",
+    keinRollenname: "--role '{rolle}' ist kein Rollenname (Kleinbuchstaben, Ziffern, Bindestrich)",
+    idOderMaterial: "entweder --id <N> oder --material-file <pfad> angeben",
+    startFehler: "issue-review start: {meldung}",
+    reviewerOderCodeReview: "entweder --reviewer <name> oder --code-review angeben",
+    codeReviewOhneKommando: "--code-review braucht reviewCommand in der Config",
+    reviewerUnbekannt: "'{name}' steht nicht in issueReview.reviewers",
+    reviewerClaude: "'{name}' hat kind '{kind}' — Claude-Pruefer laufen ueber den Agenten kit-pruefer",
+    befehlUnbekannt: "Unbekannter issue-review-Befehl: '{befehl}'",
+    vorgeschichteKopf: "#{nummer} {titel} — archiviert: {archiviert}",
+    ja: "ja",
+    nein: "nein",
+  }),
+  en: Object.freeze({
+    pairsKeineListe: "{wo}: must be a list of reviewer names.",
+    pairsSelbst: "{wo}: names '{autor}' itself — the author must not be their own reviewer.",
+    pairsUnbekannt: "{wo}: '{name}' is not listed in issueReview.reviewers.",
+    reviewerOhneName: "{wo}: 'name' is missing or empty.",
+    reviewerKind: "{wo} ('{name}'): 'kind' must be {erlaubt}, is '{kind}'.",
+    oder: " or ",
+    reviewerFeldFehlt: "{wo} ('{name}'): '{feld}' is missing.",
+    lesegrenzeNurCommand: "{wo} ('{name}'): 'lesegrenze' only applies to kind 'command'.",
+    lesegrenzeKeinText: "{wo} ('{name}'): 'lesegrenze' must be a text.",
+    stufenKeinObjekt: "reviewStufen: must be an object with the stages {stufen}.",
+    stufeFehlt: "{wo}: missing or not an object with 'reviewer' and 'rollen'.",
+    stufeReviewer: "{wo}.reviewer: must be a positive integer, is '{wert}'.",
+    stufeRollenListe: "{wo}.rollen: must be a list of role names.",
+    stufeRolleLeer: "{wo}.rollen[{i}]: must be a non-empty role name.",
+    stufeRolleDoppelt: "{wo}.rollen: names a role twice.",
+    stufeRollenzahl: "{wo}: rollen.length ({rollen}) does not match reviewer ({reviewer}).",
+    planReviewerUngueltig: "KIT_PLAN_REVIEWER '{wert}' is invalid — allowed are 1 or 2.",
+    planReviewerZuWenige: "planreview:2 requires two reviewers, one is available",
+    keineLesegrenze: "no read boundary",
+    lesegrenzeAufgehoben: "'{schalter}' lifts the read boundary",
+    zeitlimit: "Time limit of {ms} ms exceeded",
+    signal: "Ended by signal {signal}",
+    optionOhneWert: "--{name} needs a value",
+    rolesEntfallen: "--{option} no longer exists since stage 2 of the process rework — roles only knows --stage and --author.",
+    stufeOptionFehlt: "--stage missing. Expected: {stufen}",
+    stufeUnbekannt: "--stage '{stufe}' is not a known stage. Expected: {stufen}",
+    autorFehlt: "--author missing — without an author neither pairs nor the self-exclusion apply.",
+    nichtImPath: "{datei} not in PATH",
+    keineReviewer: "issueReview.reviewers is empty or missing — copy the block from .claude/workflow.config.example.json",
+    pruefauftragFehler: "issue-review review-brief: {meldung}",
+    optionFehlt: "--{name} missing",
+    keinRollenname: "--role '{rolle}' is not a role name (lowercase letters, digits, hyphen)",
+    idOderMaterial: "specify either --id <N> or --material-file <path>",
+    startFehler: "issue-review start: {meldung}",
+    reviewerOderCodeReview: "specify either --reviewer <name> or --code-review",
+    codeReviewOhneKommando: "--code-review needs reviewCommand in the config",
+    reviewerUnbekannt: "'{name}' is not listed in issueReview.reviewers",
+    reviewerClaude: "'{name}' has kind '{kind}' — Claude reviewers run through the agent kit-pruefer",
+    befehlUnbekannt: "Unknown issue-review command: '{befehl}'",
+    vorgeschichteKopf: "#{nummer} {titel} — archived: {archiviert}",
+    ja: "yes",
+    nein: "no",
+  }),
+});

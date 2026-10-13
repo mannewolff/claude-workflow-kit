@@ -80,7 +80,7 @@ const CONFIG = {
 };
 
 test("roles --stufe plan uebernimmt KIT_PLAN_REVIEWER mit stufenQuelle lauf", () => {
-  const erg = issueReviewRoles({ stufe: "plan", author: "opus" }, CONFIG, { KIT_PLAN_REVIEWER: "2" });
+  const erg = issueReviewRoles({ stage: "plan", author: "opus" }, CONFIG, { KIT_PLAN_REVIEWER: "2" });
   assert.equal(erg.reviewer, 2);
   assert.deepEqual(erg.rollen, ["architektur-bestand", "schnitt-abhaengigkeiten"]);
   assert.equal(erg.stufenQuelle, "lauf");
@@ -89,14 +89,14 @@ test("roles --stufe plan uebernimmt KIT_PLAN_REVIEWER mit stufenQuelle lauf", ()
 });
 
 test("roles ohne KIT_PLAN_REVIEWER bleibt unveraendert", () => {
-  const erg = issueReviewRoles({ stufe: "plan", author: "opus" }, CONFIG, {});
+  const erg = issueReviewRoles({ stage: "plan", author: "opus" }, CONFIG, {});
   assert.equal(erg.reviewer, 1);
   assert.deepEqual(erg.rollen, ["architektur-bestand"]);
   assert.equal(erg.stufenQuelle, "stufen");
 });
 
 test("roles anderer Stufen beachtet KIT_PLAN_REVIEWER nicht", () => {
-  const erg = issueReviewRoles({ stufe: "issue", author: "opus" }, CONFIG, { KIT_PLAN_REVIEWER: "2" });
+  const erg = issueReviewRoles({ stage: "issue", author: "opus" }, CONFIG, { KIT_PLAN_REVIEWER: "2" });
   assert.equal(erg.reviewer, 1);
   assert.equal(erg.stufenQuelle, "stufen");
 });
@@ -104,7 +104,7 @@ test("roles anderer Stufen beachtet KIT_PLAN_REVIEWER nicht", () => {
 test("roles --stufe plan wirft bei Unterbesetzung den BoardError durch", () => {
   const knapp = { ...CONFIG, issueReview: { reviewers: CONFIG.issueReview.reviewers.slice(0, 2) } };
   assert.throws(
-    () => issueReviewRoles({ stufe: "plan", author: "opus" }, knapp, { KIT_PLAN_REVIEWER: "2" }),
+    () => issueReviewRoles({ stage: "plan", author: "opus" }, knapp, { KIT_PLAN_REVIEWER: "2" }),
     (err) => err instanceof BoardError && /verfügbar ist einer/.test(err.message),
   );
 });

@@ -180,7 +180,7 @@ test("[night-35] ein lebender Lock haelt die Umsetzungsstufe ab: die Kette endet
     const F = fachplanB(dir);
     lockSchreiben(dir, `${process.pid}\n`);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const einheit = stand(dir).einheiten.find((e) => e.id === F);
@@ -208,7 +208,7 @@ test("[night-35] die Umsetzungsstufe haelt den Lock waehrend ihrer Sessions und 
     const stufen = { ...ERZEUGEN, umsetzung: `${probe(dir)}; ${UMSETZUNG_ERFOLG}` };
     const env = umgebung(dir, { stufen });
     fachplanB(dir);
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const gesehen = probeStand(dir);
@@ -224,7 +224,7 @@ test("[night-35] ein verwaister Lock haelt die Umsetzungsstufe nicht ab", () => 
     const F = fachplanB(dir);
     lockSchreiben(dir, `${totePid()}\n`);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const einheit = stand(dir).einheiten.find((e) => e.id === F);
@@ -239,22 +239,22 @@ test("[night-35] nach einem Wurf aus der Umsetzung heraus bleibt kein Lock liege
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
     // Derselbe Test-Hook wie in ablauf-night-kette-umsetzung: der Wurf trifft zwischen dem Zug
     // nach Ready und der Session des ersten Pakets, also mitten in der Stufe.
-    const res = run(dir, ["--kette"], { ...env, NIGHT_KETTE_WURF: "0003" });
+    const res = run(dir, ["--chain"], { ...env, NIGHT_KETTE_WURF: "0003" });
     assert.notEqual(res.status, 0, "ein Wurf aus der Stufe heraus endet nicht regulaer");
     assert.equal(existsSync(lockPfad(dir)), false, "der Lock blieb nach dem Wurf liegen");
   });
 });
 
-test("[night-35] --kette --dry-run legt keinen Lock an und raeumt keinen vorhandenen weg", () => {
+test("[night-35] --chain --dry-run legt keinen Lock an und raeumt keinen vorhandenen weg", () => {
   mitProjekt((dir) => {
     fachplanB(dir);
     const env = umgebung(dir, { stufen: ERZEUGEN });
-    const ohne = run(dir, ["--kette", "--dry-run"], env);
+    const ohne = run(dir, ["--chain", "--dry-run"], env);
     assert.equal(ohne.status, 0, `${ohne.stdout}\n${ohne.stderr}`);
     assert.equal(existsSync(lockPfad(dir)), false, "der Dry-Run legte einen Lock an");
 
     lockSchreiben(dir, `${process.pid}\n`);
-    const mit = run(dir, ["--kette", "--dry-run"], env);
+    const mit = run(dir, ["--chain", "--dry-run"], env);
     assert.equal(mit.status, 0, `${mit.stdout}\n${mit.stderr}`);
     assert.equal(readFileSync(lockPfad(dir), "utf-8").trim(), String(process.pid), "der Dry-Run raeumte den Lock weg");
   });

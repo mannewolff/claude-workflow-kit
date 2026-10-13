@@ -24,7 +24,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   abgeleitet, mergeWorkflowConfig, persoenlichErlaubt, pruefe, SEITEN_BAUSTEINE, zusatzregeln,
-} from "../kit/einstellungen.mjs";
+} from "../kit/settings.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 

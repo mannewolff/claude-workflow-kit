@@ -1,9 +1,9 @@
-// Ablauf-Pruefung: Ob die Kette je Art an der Schwelle befunde.mjs vorschlag ruft und ein Fehlschlag den Abbau nicht aufhaelt, zeigt nur der echte Runner mit Worktree und lokalem Tracker.
+// Ablauf-Pruefung: Ob die Kette je Art an der Schwelle findings.mjs suggest ruft und ein Fehlschlag den Abbau nicht aufhaelt, zeigt nur der echte Runner mit Worktree und lokalem Tracker.
 //
 // Der Vorschlag am Ende des Rueckwegs (Issue #804, night-70).
 //
 // Nach `befundeZurueck` ruft die Nacht-Kette fuer JEDE zurueckgegebene Mangel-Art
-// `befunde.mjs vorschlag --art <a>` und protokolliert das Ergebnis. Der Aufruf steht am
+// `findings.mjs suggest --kind <a>` und protokolliert das Ergebnis. Der Aufruf steht am
 // Anlass und nicht erst beim naechsten `push main` (Plan #797, E9): Ein zweiter Ort
 // waere ein zweiter Zeitpunkt, zu dem dieselbe Zahl anders herauskommen kann.
 //
@@ -21,7 +21,7 @@ import {
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-ablauf.mjs";
 
-/** Eine Protokollzeile, wie `befunde.mjs buchen` sie schreibt — sieben Spalten, Art in Spalte 5. */
+/** Eine Protokollzeile, wie `findings.mjs record` sie schreibt — sieben Spalten, Art in Spalte 5. */
 function zeile(art) {
   return `2026-09-22T00:00:00.000Z\tplan\t2\treviewer\t${art}\tWICHTIG\t-`;
 }
@@ -63,11 +63,11 @@ test("[night-70] das dritte Vorkommen im Worktree laesst die Idee am Board entst
   mitProjekt((dir) => {
     zweiInDerHauptkopie(dir);
     const F = fachplan(dir);
-    const res = run(dir, ["--kette"], kettenUmgebung(dir));
+    const res = run(dir, ["--chain"], kettenUmgebung(dir));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const titel = kartenTitel(dir);
-    assert.ok(titel.includes("[Idee] Maschinelle Pruefung fuer Mangel-Art form?"),
+    assert.ok(titel.includes("[Idea] Maschinelle Pruefung fuer Mangel-Art form?"),
       `die Idee fehlt am Board:\n${titel.join("\n")}`);
     assert.match(res.stdout, /Vorschlag fuer 'form' angelegt/,
       "der Runner protokolliert den Vorschlag");
@@ -83,9 +83,9 @@ test("[night-70] ohne Schwellentreffer entsteht keine Idee", () => {
   mitProjekt((dir) => {
     // Nur die eine Buchung der Kette — eins von drei noetigen Vorkommen.
     const F = fachplan(dir);
-    const res = run(dir, ["--kette"], kettenUmgebung(dir));
+    const res = run(dir, ["--chain"], kettenUmgebung(dir));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-    assert.equal(kartenTitel(dir).filter((t) => t.startsWith("[Idee]")).length, 0);
+    assert.equal(kartenTitel(dir).filter((t) => t.startsWith("[Idea]")).length, 0);
     assert.equal(vorschlaege(dir), null, "ohne Vorschlag keine Zustandsdatei");
     assert.ok(String(F));
   });
@@ -98,7 +98,7 @@ test("[night-70] ein Fehlschlag des Vorschlags haelt den Abbau nicht auf", () =>
     // den Arbeitsbaum darum nicht unsauber, anders als ein geloeschtes Kit-Werkzeug.
     writeFileSync(join(dir, ".claude", "befunde-vorschlaege.json"), "{kein json", "utf-8");
     const F = fachplan(dir);
-    const res = run(dir, ["--kette"], kettenUmgebung(dir));
+    const res = run(dir, ["--chain"], kettenUmgebung(dir));
 
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.match(res.stdout, /Vorschlag fuer 'form' fehlgeschlagen/,
@@ -106,7 +106,7 @@ test("[night-70] ein Fehlschlag des Vorschlags haelt den Abbau nicht auf", () =>
     assert.match(res.stdout, /der Abbau geht weiter/);
     assert.equal(readFileSync(join(dir, ".claude", "befunde-vorschlaege.json"), "utf-8"), "{kein json",
       "kein halb vermerkter Vorschlag");
-    assert.equal(kartenTitel(dir).filter((t) => t.startsWith("[Idee]")).length, 0);
+    assert.equal(kartenTitel(dir).filter((t) => t.startsWith("[Idea]")).length, 0);
     // Der Rueckweg selbst ist unberuehrt: die dritte Zeile steht in der Hauptkopie.
     const zeilen = readFileSync(join(dir, ".claude", "befunde.tsv"), "utf-8").split("\n").filter(Boolean);
     assert.equal(zeilen.length, 3);
@@ -129,12 +129,12 @@ test("[night-70] jede zurueckgegebene Art bekommt ihren eigenen Aufruf", () => {
       review: `${REVIEW_MARKER}; ${buchungen}`,
       pakete: PAKETE_ANLEGEN,
     } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const titel = kartenTitel(dir);
     for (const art of ["form", "konvention"]) {
-      assert.ok(titel.includes(`[Idee] Maschinelle Pruefung fuer Mangel-Art ${art}?`),
+      assert.ok(titel.includes(`[Idea] Maschinelle Pruefung fuer Mangel-Art ${art}?`),
         `die Idee zu '${art}' fehlt:\n${titel.join("\n")}`);
     }
     assert.deepEqual(Object.keys(vorschlaege(dir)).sort(), ["form", "konvention"]);
@@ -143,12 +143,12 @@ test("[night-70] jede zurueckgegebene Art bekommt ihren eigenen Aufruf", () => {
 });
 
 test("[night-70] board.mjs ist nicht der einzige Kit-Nachbar, den die Kette braucht", () => {
-  // Gegenprobe zur Fixture-Aenderung: Liegt befunde.mjs nicht neben board.mjs, findet
+  // Gegenprobe zur Fixture-Aenderung: Liegt findings.mjs nicht neben board.mjs, findet
   // der Runner das Kommando nicht — der Test oben waere dann gruen aus dem falschen
   // Grund (Fehlschlag haelt nichts auf) und der Vorschlag nie geprueft.
   // Der Aufruf steht seit Issue #1226 im Teil kitstand, mit dem Rueckweg der Befunde.
   const quelle = readFileSync(new URL("../kit/night/kitstand.mjs", import.meta.url), "utf-8");
-  assert.match(quelle, /BEFUNDE_PATH, "vorschlag", "--art"/,
+  assert.match(quelle, /BEFUNDE_PATH, "suggest", "--kind"/,
     "der Aufruf muss im Teil kitstand stehen");
   // Dass BEFUNDE_PATH demselben KIT_ROOT-Weg folgt wie Board, Aufwand und Wirksamkeit,
   // belegt seit Issue #1224 night-grundlagen-pfade an den Konstanten selbst.
@@ -160,7 +160,7 @@ test("[night-70] board bleibt unberuehrt: die Fixture-Karten sind weiter lesbar"
   mitProjekt((dir) => {
     zweiInDerHauptkopie(dir);
     const F = fachplan(dir);
-    const res = run(dir, ["--kette"], kettenUmgebung(dir));
+    const res = run(dir, ["--chain"], kettenUmgebung(dir));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     const geholt = board(dir, "issue", "get", F);
     assert.equal(geholt.title, "[Fachlich] Ein Anliegen");

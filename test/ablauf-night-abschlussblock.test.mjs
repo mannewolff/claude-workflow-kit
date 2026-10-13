@@ -21,7 +21,7 @@
 // Wie in den uebrigen night-Tests laeuft alles lokal: issueTracker "local" in einem
 // Temp-Repo, Session-Fake via NIGHT_CLAUDE_CMD, und das ECHTE kit/night.mjs aus dem
 // Repo (cwd + KIT_ROOT zeigen ins Fixture). Die Auswertung selbst ist ein Stellvertreter
-// unter `.claude/kit/aufwand.mjs`: Gemessen wird, was der Runner mit ihrem Ergebnis
+// unter `.claude/kit/effort.mjs`: Gemessen wird, was der Runner mit ihrem Ergebnis
 // macht, nicht wie es entsteht — das steht in den aufwand-*-Tests.
 
 import { test } from "node:test";
@@ -85,7 +85,7 @@ function stubMitErgebnis(ergebnis) {
   return `${CAPTURE_KOPF}process.stdout.write(${JSON.stringify(JSON.stringify(ergebnis, null, 2))});\n`;
 }
 
-// Der Fehlerfall des echten Werkzeugs: JSON auf stdout, Exit 1 (kit/aufwand.mjs, main()).
+// Der Fehlerfall des echten Werkzeugs: JSON auf stdout, Exit 1 (kit/effort.mjs, main()).
 const STUB_EXIT_UNGLEICH_NULL = `${CAPTURE_KOPF}`
   + `process.stdout.write(${JSON.stringify(JSON.stringify({ ok: false, fehler: "Probefehler beim Auswerten" }))});\n`
   + "process.exit(1);\n";
@@ -104,11 +104,12 @@ function setupProjekt(praefix, { aufwandStub = stubMitErgebnis(ERGEBNIS_MIT_BEFU
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   // Die Salvage-Vorpruefung faehrt seit Issue #919 `checks.mjs run` im Zielprojekt,
   // damit sie denselben Nachweis hinterlaesst, den das Commit-Gate liest. Ohne die
   // Datei im Fixture gaebe es keine Pflicht-Pruefung und damit keinen Rettungsversuch.
   copyFileSync(join(repoRoot, "kit", "checks.mjs"), join(dir, ".claude", "kit", "checks.mjs"));
-  if (aufwandStub !== null) writeFileSync(join(dir, ".claude", "kit", "aufwand.mjs"), aufwandStub);
+  if (aufwandStub !== null) writeFileSync(join(dir, ".claude", "kit", "effort.mjs"), aufwandStub);
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks,
     local: { issuesDir: "issues" },
@@ -184,7 +185,7 @@ test("[night-47] die Auswertung sieht den eigenen Lauf abgeschlossen: abschluss 
 
     const gerufen = aufrufe(capture);
     assert.equal(gerufen.length, 1, `genau ein Aufruf der Auswertung erwartet: ${JSON.stringify(gerufen)}`);
-    assert.deepEqual(gerufen[0].argv, ["auswerten"], "die Auswertung wird mit 'auswerten' gerufen");
+    assert.deepEqual(gerufen[0].argv, ["evaluate"], "die Auswertung wird mit 'evaluate' gerufen");
     assert.equal(gerufen[0].gesehen.length, 1, `genau ein Ergebnisstand zum Zeitpunkt des Aufrufs: ${JSON.stringify(gerufen[0].gesehen)}`);
     assert.equal(gerufen[0].gesehen[0].abschluss, "regulaer",
       "die Auswertung las den eigenen Lauf ohne Abschlussart — dann ginge der frischeste Lauf als unvollstaendig ein");
@@ -224,7 +225,7 @@ test("[night-47] ohne Befund steht nichts im Protokoll — keine Ueberschrift, k
     assert.deepEqual(s.aufwand.befund, [], "der Lauf-Kopf traegt den leeren Befund — er ist gemessen, nicht ausgelassen");
 
     // Ohne die Fehlschlagzeilen der beiden anderen Auswertungen: In diesem Fixture liegen
-    // wirksamkeit.mjs und befunde.mjs nicht, und die Zeile „Befunde-Auswertung
+    // effectiveness.mjs und findings.mjs nicht, und die Zeile „Befunde-Auswertung
     // fehlgeschlagen" traegt das Wort, nach dem hier gesucht wird. Sie ist kein
     // beruhigender Satz, sondern das Gegenteil — der gemeldete Fehlschlag (Issue #806).
     const log = protokoll(dir).split("\n").filter((z) => !/-Auswertung fehlgeschlagen/.test(z)).join("\n");
@@ -268,7 +269,7 @@ test("[night-47] eine unlesbare Ausgabe ist eine Protokollzeile und kein Abbruch
   });
 });
 
-test("[night-47] fehlt aufwand.mjs ganz, endet der Lauf mit unveraendertem Exit-Code und einer Zeile", () => {
+test("[night-47] fehlt effort.mjs ganz, endet der Lauf mit unveraendertem Exit-Code und einer Zeile", () => {
   mitProjekt("night-abschluss-fehlt-", { aufwandStub: null }, (dir) => {
     readyIssue(dir, "Erstes Issue");
     const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: FAKE_ERFOLG });

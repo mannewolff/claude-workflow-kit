@@ -36,7 +36,7 @@ test("[night-34] Variante B: die Stufe umsetzung laeuft hinter abdeckung und bri
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe),
@@ -69,7 +69,7 @@ test("[night-34] die Stufe umsetzung baut den Worktree vor dem ersten Paket ab u
   mitProjekt((dir) => {
     fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const hauptkopie = realpathSync(dir);
@@ -98,7 +98,7 @@ test("[night-34] eine unsaubere Hauptkopie vor dem ersten Paket: kein Paket wird
     // Worktree, der Rest entsteht dort also ueber den ausdruecklichen Pfad dorthin.
     const schmutz = `echo rest > ${JSON.stringify(dir)}/rest.md`;
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, abdeckung: schmutz, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);
@@ -129,7 +129,7 @@ test("[night-34] ein nicht selbst gezogenes Paket bleibt unangetastet in Ready",
     board(dir, "issue", "move", fremd, "ready");
 
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const karte = board(dir, "issue", "get", fremd);
@@ -150,7 +150,7 @@ test("[night-34] ein Paket mit unerfuellter Abhaengigkeit wird nicht gezogen und
       pakete: PAKETE_MIT_ABHAENGIGKEIT,
       umsetzung: jePaket({ "0003": UMSETZUNG_HALT }, UMSETZUNG_ERFOLG),
     };
-    const res = run(dir, ["--kette"], umgebung(dir, { stufen }));
+    const res = run(dir, ["--chain"], umgebung(dir, { stufen }));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);
@@ -176,7 +176,7 @@ test("[night-34] ein angehaltenes Paket laesst die Kette angehalten enden, ohne 
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const stufen = { ...ERZEUGEN, umsetzung: jePaket({ "0003": UMSETZUNG_HALT }, UMSETZUNG_ERFOLG) };
-    const res = run(dir, ["--kette"], umgebung(dir, { stufen }));
+    const res = run(dir, ["--chain"], umgebung(dir, { stufen }));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);
@@ -205,7 +205,7 @@ test("[#1104] ein Paket mit (wartet auf Push) bleibt in Backlog, eines mit gewoe
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const stufen = { ...ERZEUGEN, pakete: PAKETE_WARTEN_AUF_PUSH, umsetzung: UMSETZUNG_ERFOLG };
-    const res = run(dir, ["--kette"], umgebung(dir, { stufen }));
+    const res = run(dir, ["--chain"], umgebung(dir, { stufen }));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);
@@ -260,7 +260,7 @@ function fachplanMitZiel(dir, ziel) {
 test("[#1290] Ziel umsetzung: mit dem letzten Paket wandern Plan und Anforderung, der Nachtbericht nennt sie als gewandert", () => {
   mitProjekt((dir) => {
     const F = fachplanMitZiel(dir, "umsetzung");
-    const res = run(dir, ["--kette"], umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } }));
+    const res = run(dir, ["--chain"], umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } }));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);
@@ -284,7 +284,7 @@ test("[#1290] ein Paket zurueck im Backlog: die Dokumente bleiben, der Bericht n
     // Ein Fehlstart ohne Ereignis: zweiter Versuch, dann der harte Stopp; das gezogene Paket
     // geht zurueck nach Backlog (wie night-34 in der Rueckstellungs-Datei).
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: "exit 3" } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);
@@ -320,7 +320,7 @@ test("[#1290] eine vorgefundene Umsetzung haelt den Stand der Ursprungsdokumente
     board(dir, "issue", "comment", P, "--text", `## Laufstand\n\nzuletzt abgeschlossen: abdeckung fertig für #${P} um 2026-09-28T03:05:00.000Z`);
 
     const env = umgebung(dir, { stufen: { umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.deepEqual(sessions(env.logPfad), [], "es lief eine Session, obwohl alles vorlag");
 
@@ -340,7 +340,7 @@ test("[#1290] Ziel push-vorbereitet mit roter Vorbereitung: die Dokumente bleibe
   mitProjekt((dir) => {
     const F = fachplanMitZiel(dir, "push-vorbereitet");
     // Die Session der Vorbereitung tut nichts: keine Datei, also nicht vorbereitet.
-    const res = run(dir, ["--kette"], umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } }));
+    const res = run(dir, ["--chain"], umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } }));
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.match(res.stdout, /Vorbereitung: nicht-vorbereitet/);
 

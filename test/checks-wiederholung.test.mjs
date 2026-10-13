@@ -1,7 +1,7 @@
 // Eine rote Pruefung wird einmal auf demselben Stand wiederholt (Issue #1396, Plan #1395,
 // E2–E8, E12, E17; fachliche Quelle #1345).
 //
-// Wiederholt wird nur, wenn der Lauf mit `--abschluss` oder `--wiederholen` faehrt. Rot und
+// Wiederholt wird nur, wenn der Lauf mit `--finish` oder `--retry` faehrt. Rot und
 // Gruen ergibt ein gruenes Ergebnis mit dem Feld `gewackelt`, Rot und Rot ein rotes mit
 // `wiederholt: true`. Beide Laeufe stehen im Ausfuehrungsprotokoll, die Bremse zaehlt das
 // Paar als einen Versuch.
@@ -85,7 +85,7 @@ async function mitAufbau(fn, config = CONFIG) {
   });
 }
 
-for (const schalter of [["--abschluss", "7"], ["--wiederholen"]]) {
+for (const schalter of [["--finish", "7"], ["--retry"]]) {
   test(`${schalter[0]}: eine rote Pruefung laeuft genau zweimal, eine gruene genau einmal`, async () => {
     await mitAufbau(async (dir) => {
       rotFuer(dir, "a", 1);
@@ -104,7 +104,7 @@ test("Rot und Gruen: Ergebnis gruen, Feld gewackelt, Ablage -erstlauf und Zeile 
   await mitAufbau(async (dir) => {
     rotFuer(dir, "a", 1);
 
-    const res = await run(dir, "--abschluss", "7");
+    const res = await run(dir, "--finish", "7");
 
     assert.equal(res.status, 0, res.stdout);
     const z = zusammenfassung(dir);
@@ -132,7 +132,7 @@ test("Rot und Rot: Ergebnis rot, wiederholt: true, Exit 1, Rest nicht gestartet"
   await mitAufbau(async (dir) => {
     rotFuer(dir, "a", IMMER);
 
-    const res = await run(dir, "--abschluss", "7");
+    const res = await run(dir, "--finish", "7");
 
     assert.equal(res.status, 1, res.stdout);
     assert.deepEqual(gefahren(dir), ["a", "a"]);
@@ -151,8 +151,8 @@ test("Rot und Rot: Ergebnis rot, wiederholt: true, Exit 1, Rest nicht gestartet"
   });
 });
 
-test("ohne --abschluss und --wiederholen: genau ein Lauf, keine Wiederholungszeile — Paketstufe und --stufe push", async () => {
-  for (const schalter of [[], ["--stufe", "push"]]) {
+test("ohne --finish und --retry: genau ein Lauf, keine Wiederholungszeile — Paketstufe und --stage push", async () => {
+  for (const schalter of [[], ["--stage", "push"]]) {
     await mitAufbau(async (dir) => {
       rotFuer(dir, "a", 1);
 
@@ -169,11 +169,11 @@ test("ohne --abschluss und --wiederholen: genau ein Lauf, keine Wiederholungszei
   }
 });
 
-test("--stufe push mit --wiederholen wiederholt", async () => {
+test("--stage push mit --retry wiederholt", async () => {
   await mitAufbau(async (dir) => {
     rotFuer(dir, "a", 1);
 
-    const res = await run(dir, "--stufe", "push", "--wiederholen");
+    const res = await run(dir, "--stage", "push", "--retry");
 
     assert.equal(res.status, 0, res.stdout);
     assert.deepEqual(gefahren(dir), ["a", "a", "b"]);
@@ -184,7 +184,7 @@ test("Ausfuehrungsprotokoll: erstlauf und wiederholung in Spalte 12, sonst leer"
   await mitAufbau(async (dir) => {
     rotFuer(dir, "a", 1);
 
-    await run(dir, "--abschluss", "7");
+    await run(dir, "--finish", "7");
 
     const zeilen = ausfuehrungen(dir).map((z) => z.split("\t"));
     assert.deepEqual(zeilen.map((s) => s.length), [12, 12, 12]);
@@ -209,7 +209,7 @@ test("gleichzeitige Phase: zwei rote Pruefungen je einmal wiederholt, Ausgabe in
     rotFuer(dir, "a", 1);
     rotFuer(dir, "c", 1);
 
-    const res = await checksMit(dir, { env: { KIT_CHECKS_GLEICHZEITIG: "2" } }, "run", "--abschluss", "7");
+    const res = await checksMit(dir, { env: { KIT_CHECKS_GLEICHZEITIG: "2" } }, "run", "--finish", "7");
 
     assert.equal(res.status, 0, res.stdout);
     const lauf = gefahren(dir);
@@ -240,7 +240,7 @@ test("gleichzeitige Phase: Rot und Rot bleibt rot, die nachfolgende Phase starte
   await mitAufbau(async (dir) => {
     rotFuer(dir, "a", IMMER);
 
-    const res = await run(dir, "--abschluss", "7");
+    const res = await run(dir, "--finish", "7");
 
     assert.equal(res.status, 1, res.stdout);
     assert.deepEqual(gefahren(dir), ["a", "a"]);
@@ -253,14 +253,14 @@ test("gleichzeitige Phase: Rot und Rot bleibt rot, die nachfolgende Phase starte
 test("Teillauf wackelt, voller Lauf gruen: eine Zeile Gewackelt:, zwei Protokollzeilen mit Spalte 12 und eine ohne", async () => {
   await mitAufbau(async (dir) => {
     rotFuer(dir, "a", IMMER);
-    const erster = await run(dir, "--abschluss", "7");
+    const erster = await run(dir, "--finish", "7");
     assert.equal(erster.status, 1, erster.stdout);
     gefahren(dir);
     const vorher = ausfuehrungen(dir).length;
 
     rotFuer(dir, "a", 1);
     datei(dir, "src/a.txt", "korrigiert\n");
-    const zweiter = await run(dir, "--abschluss", "7");
+    const zweiter = await run(dir, "--finish", "7");
 
     assert.equal(zweiter.status, 0, zweiter.stdout);
     assert.match(zweiter.stdout, /Teillauf: nur die zuletzt roten Pruefungen/);
@@ -277,12 +277,12 @@ test("Teillauf wackelt, voller Lauf gruen: eine Zeile Gewackelt:, zwei Protokoll
   });
 });
 
-test("--wiederholen bei plan angenommen und ohne Wirkung, mit --abschluss erlaubt", async () => {
+test("--retry bei plan angenommen und ohne Wirkung, mit --finish erlaubt", async () => {
   await mitAufbau(async (dir) => {
-    assert.deepEqual(plan(dir, "--wiederholen"), plan(dir));
-    assert.deepEqual(plan(dir, "--abschluss", "--wiederholen"), plan(dir, "--abschluss"));
+    assert.deepEqual(plan(dir, "--retry"), plan(dir));
+    assert.deepEqual(plan(dir, "--finish", "--retry"), plan(dir, "--finish"));
     rotFuer(dir, "a", 1);
-    const res = await run(dir, "--abschluss", "7", "--wiederholen");
+    const res = await run(dir, "--finish", "7", "--retry");
     assert.equal(res.status, 0, res.stdout);
     assert.deepEqual(gefahren(dir), ["a", "a", "b"], "einmal wiederholt, nicht zweimal");
   });
@@ -292,7 +292,7 @@ test("die Bremse zaehlt das Paar Rot und Rot als einen Versuch, mit dem Abdruck 
   await mitAufbau(async (dir) => {
     rotFuer(dir, "a", IMMER);
 
-    await run(dir, "--abschluss", "7");
+    await run(dir, "--finish", "7");
 
     const folge = zusammenfassung(dir).festgefahren.folgen[A];
     assert.equal(folge.versuche, 1);
@@ -308,7 +308,7 @@ test("die Bremse zaehlt das Paar Rot und Rot als einen Versuch, mit dem Abdruck 
 test("gewackeltKarte: fortgeschrieben ueber zwei Abschlusslaeufe derselben Karte, frueherer Fall im Bericht", async () => {
   await mitAufbau(async (dir) => {
     rotFuer(dir, "a", 1);
-    const erster = await run(dir, "--abschluss", "7");
+    const erster = await run(dir, "--finish", "7");
     assert.equal(erster.status, 0, erster.stdout);
     const z1 = zusammenfassung(dir);
     assert.deepEqual(z1.gewackeltKarte, [{ cmd: A, zeitpunkt: z1.zeitpunkt, karte: z1.wartezeitKarte.karte }]);
@@ -317,7 +317,7 @@ test("gewackeltKarte: fortgeschrieben ueber zwei Abschlusslaeufe derselben Karte
 
     rotFuer(dir, "b", 1);
     datei(dir, "src/a.txt", "weiter\n");
-    const zweiter = await run(dir, "--abschluss", "7");
+    const zweiter = await run(dir, "--finish", "7");
 
     assert.equal(zweiter.status, 0, zweiter.stdout);
     const z2 = zusammenfassung(dir);
@@ -338,11 +338,11 @@ test("gewackeltKarte: fortgeschrieben ueber zwei Abschlusslaeufe derselben Karte
 test("gewackeltKarte: Neubeginn bei anderer Karte", async () => {
   await mitAufbau(async (dir) => {
     rotFuer(dir, "a", 1);
-    await run(dir, "--abschluss", "7");
+    await run(dir, "--finish", "7");
     assert.equal(zusammenfassung(dir).gewackeltKarte.length, 1);
 
     datei(dir, "src/a.txt", "andere Karte\n");
-    const res = await run(dir, "--abschluss", "8");
+    const res = await run(dir, "--finish", "8");
 
     assert.equal(res.status, 0, res.stdout);
     assert.deepEqual(zusammenfassung(dir).gewackeltKarte, []);
@@ -353,13 +353,13 @@ test("gewackeltKarte: Neubeginn bei anderer Karte", async () => {
 test("gewackeltKarte: Uebernahme reicht das Feld unveraendert weiter, ohne neue Protokollzeile", async () => {
   await mitAufbau(async (dir) => {
     rotFuer(dir, "a", 1);
-    await run(dir, "--abschluss", "7");
+    await run(dir, "--finish", "7");
     const vorher = zusammenfassung(dir).gewackeltKarte;
     assert.equal(vorher.length, 1);
     const zeilenVorher = ausfuehrungen(dir).length;
     gefahren(dir);
 
-    const res = await run(dir, "--abschluss", "7");
+    const res = await run(dir, "--finish", "7");
 
     assert.equal(res.status, 0, res.stdout);
     assert.match(res.stdout, /Ergebnis uebernommen/);
@@ -372,14 +372,14 @@ test("gewackeltKarte: Uebernahme reicht das Feld unveraendert weiter, ohne neue 
   });
 });
 
-test("gewackeltKarte: --stufe push --wiederholen nach einer Karte erbt nichts", async () => {
+test("gewackeltKarte: --stage push --retry nach einer Karte erbt nichts", async () => {
   await mitAufbau(async (dir) => {
     rotFuer(dir, "a", 1);
-    await run(dir, "--abschluss", "7");
+    await run(dir, "--finish", "7");
     assert.ok(zusammenfassung(dir).gewackeltKarte);
 
     datei(dir, "src/a.txt", "vor dem push\n");
-    const res = await run(dir, "--stufe", "push", "--wiederholen");
+    const res = await run(dir, "--stage", "push", "--retry");
 
     assert.equal(res.status, 0, res.stdout);
     assert.equal(zusammenfassung(dir).gewackeltKarte, undefined);

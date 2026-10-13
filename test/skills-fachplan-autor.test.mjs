@@ -17,7 +17,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SKILL = join(repoRoot, "skills", "fachplan", "SKILL.md");
+const SKILL = join(repoRoot, "skills", "requirement", "SKILL.md");
 
 function text() {
   return readFileSync(SKILL, "utf-8");

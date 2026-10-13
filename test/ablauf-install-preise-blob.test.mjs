@@ -33,12 +33,12 @@ import { starteServer } from "./helpers/board-fixture.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const INSTALLER = join(repoRoot, "install.mjs");
 // Alle Nachbardateien in einem Lauf: Ein zweiter Installer-Lauf kostete Sekunden und
-// belegte dasselbe. aufwand.mjs kam mit Issue #750 dazu, wirksamkeit.mjs mit #787,
-// befunde.mjs mit #799, worktree.mjs mit #929.
-const AUSGELIEFERT = ["preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs", "worktree.mjs"];
+// belegte dasselbe. effort.mjs kam mit Issue #750 dazu, effectiveness.mjs mit #787,
+// findings.mjs mit #799, worktree.mjs mit #929.
+const AUSGELIEFERT = ["preise.mjs", "effort.mjs", "effectiveness.mjs", "findings.mjs", "worktree.mjs"];
 
 // Der kuerzeste Weg durch die Fragen: projektlokal, GitHub, alle Defaults.
-const PROJEKT_GITHUB = ["projekt", "github", "j", "n", "github", "", "", "", "", "", ""];
+const PROJEKT_GITHUB = ["de", "projekt", "github", "j", "n", "github", "", "", "", "", "", ""];
 
 function installiere(dir) {
   return spawnSync(process.execPath, [INSTALLER], {
@@ -58,8 +58,8 @@ function installiertesProjekt(praefix) {
   return { dir, ausgabe: res.stdout };
 }
 
-// `[installer-11]` gilt aufwand.mjs (Issue #750), `[installer-13]` wirksamkeit.mjs
-// (Issue #787), `[installer-14]` befunde.mjs (Issue #799). preise.mjs steht ohne eigene
+// `[installer-11]` gilt effort.mjs (Issue #750), `[installer-13]` effectiveness.mjs
+// (Issue #787), `[installer-14]` findings.mjs (Issue #799). preise.mjs steht ohne eigene
 // ID daneben: Ihre Auslieferung war bestehendes Verhalten, als sie dazukam — der Beleg
 // gehoert trotzdem hierher, sonst faellt sie beim naechsten Werkzeug aus dem Blick.
 test("[installer-11] [installer-13] [installer-14] der Installer schreibt die Nachbardateien byteweise identisch zur Quelle", () => {
@@ -99,7 +99,7 @@ test("[board-11] [board-15] der Melder laeuft im installierten Projekt und rechn
     }) + "\n", "utf-8");
 
     const res = await new Promise((fertig) => {
-      const kind = execFile(process.execPath, [join(dir, ".claude", "kit", "board.mjs"), "sitzung", "melden", "--protokoll", protokoll, "--complete"], {
+      const kind = execFile(process.execPath, [join(dir, ".claude", "kit", "board.mjs"), "session", "report", "--transcript", protokoll, "--complete"], {
         cwd: dir,
         // TBX_CONFIG_DIR zeigt ins Wegwerf-Verzeichnis: Ohne das koennte der globale
         // tbx-Login der Entwicklermaschine einspringen und der Test bewiese nichts.

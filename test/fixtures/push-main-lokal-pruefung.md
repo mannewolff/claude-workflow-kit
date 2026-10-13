@@ -8,12 +8,12 @@ Worktree**, und dort misst der Lauf sie. Genau diesen Stand misst **ein** Lauf:
 Der Lauf misst mit `--in` im Worktree (Issue #1372):
 
 ```bash
-node .claude/kit/checks.mjs run --in <pfad> --stufe push --wiederholen --since "$(git -C <pfad> merge-base HEAD origin/<mainBranch>)"
+node .claude/kit/checks.mjs run --in <pfad> --stage push --retry --since "$(git -C <pfad> merge-base HEAD origin/<mainBranch>)"
 ```
 
 `<mainBranch>` ist der Wert aus der Config (Default: `main`).
 
-**`--wiederholen`: eine rote Prüfung einmal auf demselben Stand** (Plan #1395, E2). Ist sie
+**`--retry`: eine rote Prüfung einmal auf demselben Stand** (Plan #1395, E2). Ist sie
 bei der Wiederholung grün, gilt sie als bestanden und hat gewackelt; der Berichtsblock
 trägt unter ihrer Zeile `gelaufen:` die Zeile `Gewackelt: <cmd> → erst rot, dann gruen`.
 Bleibt sie rot, ist sie rot wie bisher.
@@ -68,7 +68,7 @@ vorige Zusammenfassung. Dann, in dieser Reihenfolge:
 2. Die Reparaturkandidaten holen und nennen (Plan #1395, E15):
 
    ```bash
-   node .claude/kit/wirksamkeit.mjs kandidaten
+   node .claude/kit/effectiveness.mjs candidates
    ```
 
    Es liest `.claude/wirksamkeit.json` der Hauptkopie und gibt je Kandidat eine Zeile
@@ -79,8 +79,8 @@ vorige Zusammenfassung. Dann, in dieser Reihenfolge:
    der Worktree wird abgebaut.
 
 `checks.mjs run` endet in diesem Fall mit Exitcode 0 — die Prüfung ist bestanden, die
-Entscheidung liegt beim Menschen. **Ohne Wackler** ruft der Skill `wirksamkeit.mjs
-kandidaten` ebenfalls, an derselben Stelle: Reparaturkandidaten ohne Wackler werden genannt,
+Entscheidung liegt beim Menschen. **Ohne Wackler** ruft der Skill `effectiveness.mjs
+candidates` ebenfalls, an derselben Stelle: Reparaturkandidaten ohne Wackler werden genannt,
 halten aber nicht an.
 
 Warum überhaupt noch ein Lauf, wenn `/implement-ready` und `/local-check` je Issue schon
@@ -89,14 +89,14 @@ früherer Lauf gesehen. Ohne Nachweis für genau diesen Stand weist das Commit-G
 Commit ab.
 
 **Befunde buchen, wenn Code-Review-Befunde eingearbeitet wurden.** Sind vor diesem Push
-Funde aus einem `/review` eingearbeitet worden, hält die Session das in einem
+Funde aus einem `/kit-review` eingearbeitet worden, hält die Session das in einem
 Einarbeitungs-Kommentar am Issue fest — übernommen / abgelehnt mit Grund je Fund, im Muster
 von `/issue-review` —, ergänzt den Befunde-Text je Fundblock um die Zeile
 `Uebernahme: uebernommen` beziehungsweise `Uebernahme: abgelehnt` und schreibt ihn nach der
 Transportregel als eigene Datei außerhalb des Projektverzeichnisses:
 
 ```bash
-node .claude/kit/worktree.mjs im <pfad> -- node .claude/kit/befunde.mjs buchen --datei <tmpdir>/<id>-buchung.md --stufe code --karte <id>
+node .claude/kit/worktree.mjs in <pfad> -- node .claude/kit/findings.mjs record --file <tmpdir>/<id>-buchung.md --stage code --card <id>
 ```
 
 **Gebucht wird im Worktree**, weil der Vergleichsstand die Zusammenfassung des Prüflaufs

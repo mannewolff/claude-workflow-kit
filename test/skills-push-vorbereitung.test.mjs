@@ -1,7 +1,7 @@
-// Der Modus `vorbereiten` von `/push-main` und die Übernahme am Morgen (Issue #1253,
+// Der Modus `prepare` von `/push-main` und die Übernahme am Morgen (Issue #1253,
 // Plan #1243 A5, E9, E10, E14, E15, E17).
 //
-// Nachts fährt der Nacht-Runner `/push-main vorbereiten`: Schritte 1 bis 6 in einem eigenen
+// Nachts fährt der Nacht-Runner `/push-main prepare`: Schritte 1 bis 6 in einem eigenen
 // Worktree, kein Push. Morgens übernimmt `/push-main` einen unveränderten Stand, ohne
 // erneut zu prüfen oder zu bumpen. Die Kommandos dazu baut #1246 in kit/worktree.mjs.
 //
@@ -35,69 +35,70 @@ function abschnitt(text, ueberschrift) {
 /** Text ohne Zeilenumbrüche und Mehrfach-Leerzeichen, damit Sätze über Zeilen hinweg passen. */
 const flach = (text) => text.replaceAll(/\s+/g, " ");
 
-const MODUS = abschnitt(PUSH, "## Modus `vorbereiten` (unbeaufsichtigt)");
+const MODUS = abschnitt(PUSH, "## Modus `prepare` (unbeaufsichtigt)");
 const SCHRITT3 = abschnitt(PUSH, "### 3. Worktree anlegen und mit `origin` zusammenführen");
 const NICHT = abschnitt(PUSH, "## Was dieser Skill nicht tut");
 const TRIGGER = abschnitt(PUSH, "## Trigger-Phrase");
 const KOPF = PUSH.slice(0, PUSH.indexOf("\n---", 4));
 
-test("der Modus vorbereiten hat einen eigenen Abschnitt", () => {
-  assert.ok(MODUS, "Abschnitt „## Modus `vorbereiten` (unbeaufsichtigt)“ fehlt");
+test("der Modus prepare hat einen eigenen Abschnitt", () => {
+  assert.ok(MODUS, "Abschnitt „## Modus `prepare` (unbeaufsichtigt)“ fehlt");
 });
 
-test("der Modus vorbereiten pusht nicht, auch nicht auf den Prüfzweig oder einen Vorab-Zweig", () => {
+test("der Modus prepare pusht nicht, auch nicht auf den Prüfzweig oder einen Vorab-Zweig", () => {
   const m = flach(MODUS);
   assert.match(m, /Kein Push/, "der Modus sagt nicht ausdrücklich „Kein Push“");
   assert.match(m, /kein Prüfzweig|auch nicht auf den Prüfzweig/, "der Modus schließt den Prüfzweig nicht aus");
   assert.match(m, /kein Vorab-Zweig/, "der Modus schließt den Vorab-Zweig nicht aus");
   const n = flach(NICHT);
-  assert.match(n, /Kein Push im Modus `vorbereiten`, auch nicht auf den Prüfzweig/,
-    "„Was dieser Skill nicht tut“ nennt den Modus vorbereiten nicht");
+  assert.match(n, /Kein Push im Modus `prepare`, auch nicht auf den Prüfzweig/,
+    "„Was dieser Skill nicht tut“ nennt den Modus prepare nicht");
 });
 
-test("der Modus vorbereiten ist die einzige Ausnahme von der Trigger-Phrase", () => {
+test("der Modus prepare ist die einzige Ausnahme von der Trigger-Phrase", () => {
   for (const [name, text] of [["description", KOPF], ["Trigger-Phrase", TRIGGER]]) {
     const t = flach(text);
-    assert.match(t, /vorbereiten/, `${name} nennt den Modus vorbereiten nicht`);
-    assert.match(t, /pusht nicht/, `${name} begründet die Ausnahme nicht damit, dass er nicht pusht`);
-    assert.match(t, /Nacht-Runner/, `${name} nennt nicht, wer den Modus ohne Phrase startet`);
+    assert.match(t, /prepare/, `${name} nennt den Modus prepare nicht`);
+    // Die description ist englisch (Issue #1567, Plan #1548 E12), der Abschnitt deutsch.
+    assert.match(t, /pusht nicht|does not push/, `${name} begründet die Ausnahme nicht damit, dass er nicht pusht`);
+    assert.match(t, /Nacht-Runner|night runner/, `${name} nennt nicht, wer den Modus ohne Phrase startet`);
   }
   assert.match(flach(TRIGGER), /einzige Ausnahme/i, "die Trigger-Phrase nennt den Modus nicht als einzige Ausnahme");
 });
 
-test("Schritt 3: Fetch, dann vorbereitung-pruefen, dann anlegen", () => {
+test("Schritt 3: Fetch, dann check-preparation, dann anlegen", () => {
   assert.ok(SCHRITT3, "Schritt 3 fehlt");
   const fetch = SCHRITT3.indexOf("git fetch origin <mainBranch>");
-  const pruefen = SCHRITT3.indexOf("node .claude/kit/worktree.mjs vorbereitung-pruefen");
-  const anlegen = SCHRITT3.indexOf("node .claude/kit/worktree.mjs anlegen");
+  const pruefen = SCHRITT3.indexOf("node .claude/kit/worktree.mjs check-preparation");
+  const anlegen = SCHRITT3.indexOf("node .claude/kit/worktree.mjs create");
   assert.ok(fetch >= 0, "Schritt 3 holt origin nicht");
-  assert.ok(pruefen >= 0, "Schritt 3 ruft vorbereitung-pruefen nicht");
+  assert.ok(pruefen >= 0, "Schritt 3 ruft check-preparation nicht");
   assert.ok(anlegen >= 0, "Schritt 3 legt keinen Worktree an");
-  assert.ok(fetch < pruefen && pruefen < anlegen, "die Reihenfolge ist nicht Fetch → vorbereitung-pruefen → anlegen");
-  assert.match(SCHRITT3, /anlegen --praefix release --ref refs\/kit\/push-vorbereitet/,
+  assert.ok(fetch < pruefen && pruefen < anlegen, "die Reihenfolge ist nicht Fetch → check-preparation → anlegen");
+  assert.match(SCHRITT3, /create --prefix release --ref refs\/kit\/push-vorbereitet/,
     "bei Übernahme entsteht der Worktree nicht auf der vorbereiteten Referenz");
-  assert.match(SCHRITT3, /anlegen --praefix release --ref <mainBranch>/, "ohne Übernahme fehlt der heutige Weg");
+  assert.match(SCHRITT3, /create --prefix release --ref <mainBranch>/, "ohne Übernahme fehlt der heutige Weg");
   assert.match(SCHRITT3, /git -C <pfad> rebase origin\/<mainBranch>/, "das Rebase im Worktree fehlt");
 });
 
-test("im Modus vorbereiten wird erst unter gehaltener Umsetzungssperre geholt, ein Fehlschlag hält nicht an", () => {
+test("im Modus prepare wird erst unter gehaltener Umsetzungssperre geholt, ein Fehlschlag hält nicht an", () => {
   const m = flach(MODUS);
-  assert.match(m, /--praefix vorbereitung/, "der Modus legt den Worktree nicht mit dem Präfix vorbereitung an");
+  assert.match(m, /--prefix vorbereitung/, "der Modus legt den Worktree nicht mit dem Präfix vorbereitung an");
   assert.match(m, /git fetch origin <mainBranch>/, "der Modus holt origin nicht");
   assert.match(m, /Umsetzungssperre/, "der Modus begründet den Fetch nicht mit der gehaltenen Umsetzungssperre");
   assert.match(m, /vorhandene Referenz `origin\/<mainBranch>`/, "der Modus rebased nach gescheitertem Fetch nicht auf die vorhandene Referenz");
-  assert.match(m, /--fetch fehlgeschlagen/, "der Modus übergibt den gescheiterten Fetch nicht");
-  assert.match(m, /node \.claude\/kit\/worktree\.mjs vorbereitung-festhalten <pfad> --ergebnis/,
+  assert.match(m, /--fetch failed/, "der Modus übergibt den gescheiterten Fetch nicht");
+  assert.match(m, /node \.claude\/kit\/worktree\.mjs record-preparation <pfad> --result/,
     "der Modus hält die Vorbereitung nicht fest");
-  assert.match(m, /--offen "<Text>"/, "der Modus übergibt offene Prüfungen nicht");
+  assert.match(m, /--open "<Text>"/, "der Modus übergibt offene Prüfungen nicht");
   assert.match(m, /RELEASING\.md/, "der Modus nennt den Fall ohne RELEASING.md nicht");
 });
 
-test("im Modus vorbereiten ist auf dem Weg über den Build-Dienst Schritt 5 der Nachweislauf der Paketstufe", () => {
+test("im Modus prepare ist auf dem Weg über den Build-Dienst Schritt 5 der Nachweislauf der Paketstufe", () => {
   const m = flach(MODUS);
   assert.match(m, /Weg über den Build-Dienst/, "der Modus nennt den Weg über den Build-Dienst nicht");
   assert.match(m, /Nachweislauf der Paketstufe/, "der Modus nennt den Nachweislauf der Paketstufe nicht");
-  assert.match(m, /checks\.mjs run --in <pfad> --since HEAD --wiederholen/, "der Modus nennt das Kommando des Nachweislaufs mit --wiederholen nicht");
+  assert.match(m, /checks\.mjs run --in <pfad> --since HEAD --retry/, "der Modus nennt das Kommando des Nachweislaufs mit --retry nicht");
   assert.match(m, /Build-Dienst-Punkt setzt das Kommando selbst/, "der Modus lässt die Session den Build-Dienst-Punkt setzen");
 });
 
@@ -117,7 +118,7 @@ test("morgens fährt Schritt 7 auf dem Weg über den Build-Dienst den Prüfzweig
 });
 
 test("nach dem Push und bei jedem Nicht-Übernehmen wird verworfen", () => {
-  assert.match(PUSH, /node \.claude\/kit\/worktree\.mjs vorbereitung-pruefen --verwerfen/, "--verwerfen fehlt");
+  assert.match(PUSH, /node \.claude\/kit\/worktree\.mjs check-preparation --discard/, "--discard fehlt");
   const s = flach(PUSH);
   assert.match(s, /Nach dem Push und bei jedem Nicht-Übernehmen/, "der Skill sagt nicht, wann verworfen wird");
 });
@@ -129,6 +130,6 @@ test("[1401] ein offener Wackler aus der Nacht wird vor dem Push in Schritt 7 mi
     "der Wackler-Punkt wird nicht in Schritt 7 mit der Frage aus Schritt 5 erfragt");
 });
 
-test("[1401] im Modus vorbereiten hält ein Wackler nicht an, er wird zum offenen Punkt", () => {
+test("[1401] im Modus prepare hält ein Wackler nicht an, er wird zum offenen Punkt", () => {
   assert.match(flach(MODUS), /Wackler[^.]*offenen Punkt/, "der Modus sagt nicht, was aus einem Wackler wird");
 });

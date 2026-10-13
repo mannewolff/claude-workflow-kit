@@ -14,6 +14,9 @@ import {
 } from "../../kit/night/laufstand.mjs";
 import { ZUSTAND, LETZTES_PROTOKOLL, grundlagenAnbinden } from "../../kit/night/grundlagen.mjs";
 
+// Die englischen Werte von `issue run-state --state` auf die internen Zustaende (Issue #1556).
+const ZUSTAND_INTERN = Object.freeze({ running: "laeuft", aborted: "abgebrochen", waiting: "wartet", done: "fertig" });
+
 /** Das Ende des Prozesses als Ausnahme mit Exit-Code — so bleibt der Test im Prozess. */
 export class Ende extends Error {
   constructor(code) {
@@ -36,10 +39,10 @@ export function boardAttrappe(antwort = () => undefined) {
     aufrufe.push(aufruf);
     return antwort(aufruf) ?? { status: 0, json: {}, text: "" };
   };
-  /** Die `issue stand`-Aufrufe als `{ karte, zustand, text, budgetMs }`. */
+  /** Die `issue run-state`-Aufrufe als `{ karte, zustand, text, budgetMs }`, der Zustand als interner Schluessel. */
   const staende = () => aufrufe
-    .filter((a) => a.args[0] === "issue" && a.args[1] === "stand")
-    .map((a) => ({ karte: a.args[2], zustand: a.args[4], text: a.text, budgetMs: a.opts.budgetMs }));
+    .filter((a) => a.args[0] === "issue" && a.args[1] === "run-state")
+    .map((a) => ({ karte: a.args[2], zustand: ZUSTAND_INTERN[a.args[4]] ?? a.args[4], text: a.text, budgetMs: a.opts.budgetMs }));
   return { board, aufrufe, staende };
 }
 

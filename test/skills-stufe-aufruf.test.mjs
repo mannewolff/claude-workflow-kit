@@ -51,13 +51,13 @@ function aufrufzeilen(text) {
 // dem Vorhaben seinen Nutzen.
 const PAKETSTUFE = ["local-check", "implement-next", "implement-ready", "implement-done"];
 
-test("[skills-31] /push-main ruft die Pruefungen mit --stufe push und dem Batch-Anker auf", () => {
+test("[skills-31] /push-main ruft die Pruefungen mit --stage push und dem Batch-Anker auf", () => {
   // Ohne den Weg ueber den Build-Dienst (Issue #1216): Dessen Aufrufe belegt
   // test/skills-push-main.test.mjs.
   const zeilen = aufrufzeilen(skill("push-main").replace(/\n## Weg über den Build-Dienst[\s\S]*?(?=\n## )/, "\n"));
-  const passend = zeilen.filter((z) => z.includes("--stufe push") && /git (-C <pfad> )?merge-base/.test(z));
+  const passend = zeilen.filter((z) => z.includes("--stage push") && /git (-C <pfad> )?merge-base/.test(z));
   assert.equal(passend.length, zeilen.length,
-    `nicht jeder Aufruf traegt --stufe push und den merge-base-Anker: ${zeilen.join(" | ")}`);
+    `nicht jeder Aufruf traegt --stage push und den merge-base-Anker: ${zeilen.join(" | ")}`);
 });
 
 test("[skills-31] /push-main nennt die vorab angekuendigten Pruefungen und die laengere Dauer", () => {
@@ -68,11 +68,11 @@ test("[skills-31] /push-main nennt die vorab angekuendigten Pruefungen und die l
     "der Hinweis auf die laengere Laufzeit fehlt");
 });
 
-test("[skills-31] /merge-production ruft die Pruefungen mit --stufe merge auf", () => {
+test("[skills-31] /merge-production ruft die Pruefungen mit --stage merge auf", () => {
   const zeilen = aufrufzeilen(skill("merge-production"));
-  const passend = zeilen.filter((z) => z.includes("--stufe merge"));
+  const passend = zeilen.filter((z) => z.includes("--stage merge"));
   assert.equal(passend.length, zeilen.length,
-    `nicht jeder Aufruf traegt --stufe merge: ${zeilen.join(" | ")}`);
+    `nicht jeder Aufruf traegt --stage merge: ${zeilen.join(" | ")}`);
 });
 
 // Seit Issue #1000 prueft die Freigabe nur, was `push main` nicht geprueft hat.
@@ -100,9 +100,9 @@ test("[skills-31] /merge-production haelt vor dem Worktree an, wenn main Unveroe
 });
 
 for (const name of PAKETSTUFE) {
-  test(`[skills-31] ${name} bleibt ohne --stufe-Argument bei der Paketstufe`, () => {
+  test(`[skills-31] ${name} bleibt ohne --stage-Argument bei der Paketstufe`, () => {
     for (const zeile of aufrufzeilen(skill(name))) {
-      assert.doesNotMatch(zeile, /--stufe/,
+      assert.doesNotMatch(zeile, /--stage/,
         `der Aufruf traegt eine Stufe: ${zeile}`);
     }
   });

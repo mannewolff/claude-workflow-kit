@@ -19,8 +19,17 @@ import { readFileSync, existsSync, accessSync, constants } from "node:fs";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { normalisiereConfig } from "./config-namen.mjs";
+import { text } from "./namen.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Die Texte an den Menschen liegen unter kit/texte/board-grundlagen.mjs (Issue #1526).
+import { TEXTE } from "../texte/board-grundlagen.mjs";
+
+export { TEXTE };
+
+const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
 
 export const VALID_STATUSES = ["backlog", "ready", "in_progress", "in_review", "done"];
 
@@ -69,12 +78,10 @@ export function exec(datei, args = [], { spawn = spawnSync, env = process.env, i
   const res = spawn(datei, args, input === undefined ? { encoding: "utf-8", env } : { encoding: "utf-8", env, input });
   if (res.error) {
     // Haeufigster Fall: das CLI ist nicht installiert (ENOENT).
-    throw new Error(res.error.code === "ENOENT"
-      ? `${datei} nicht gefunden — ist es installiert und im PATH?`
-      : res.error.message);
+    throw new Error(res.error.code === "ENOENT" ? t("nichtGefunden", { datei }) : res.error.message);
   }
   if (res.status !== 0) {
-    throw new Error((res.stderr || res.stdout || "").trim() || `${datei} endete mit Exit ${res.status}`);
+    throw new Error((res.stderr || res.stdout || "").trim() || t("exitCode", { datei, status: res.status }));
   }
   return (res.stdout || "").trim();
 }
@@ -160,7 +167,7 @@ export class BoardError extends Error {
 }
 
 export function fail(msg) {
-  process.stderr.write(`Fehler: ${msg}\n`);
+  process.stderr.write(`${t("fehler", { meldung: msg })}\n`);
   process.exit(1);
 }
 
@@ -196,7 +203,7 @@ function configRoot() {
 // Punkt-Pfade greifen am Blatt, nicht am Elternobjekt: `toolbox.tokenFile` darf nicht das
 // ganze toolbox-Objekt ersetzen. Genau dieser Fehler hat in Issue #188 den Mock-Host mit
 // weggeraeumt und zwanzig Tests still ohne Token laufen lassen.
-// SYNC: dieselbe Liste und Logik steckt in kit/night/grundlagen.mjs und kit/einstellungen.mjs — Aenderungen dort nachziehen.
+// SYNC: dieselbe Liste und Logik steckt in kit/night/grundlagen.mjs und kit/settings.mjs — Aenderungen dort nachziehen.
 const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewLesegrenze", "reviewScope", "triggers", "toolbox.tokenFile"];
 
 // Das Reviewer-Paar (Issue #432): genau eines von reviewModel und reviewCommand gilt.
@@ -206,7 +213,7 @@ const LOCAL_OVERRIDE_ALLOWLIST = ["reviewModel", "reviewCommand", "reviewLesegre
 // reviewLesegrenze}. Eine Lesegrenze ohne Kommando ist bedeutungslos — wer persoenlich auf
 // Claude wechselt, nimmt die des Team-Kommandos nicht mit. Eine Lesegrenze allein verdraengt
 // reviewModel dagegen nicht: Sie waehlt keinen Reviewer, sie schraenkt einen ein.
-// SYNC: dieselbe Zuordnung steckt in kit/night/grundlagen.mjs und kit/einstellungen.mjs.
+// SYNC: dieselbe Zuordnung steckt in kit/night/grundlagen.mjs und kit/settings.mjs.
 const REVIEWER_PAAR = { reviewModel: ["reviewCommand", "reviewLesegrenze"], reviewCommand: ["reviewModel"] };
 
 /**
@@ -258,10 +265,18 @@ function setzePersoenlichesFeld(config, feld, wert, local) {
   }
 }
 
-export function mergeWorkflowConfig(shared, local) {
+/**
+ * Beide Dateien werden vor dem Mischen auf die deutschen Namen gebracht (Issue #1435, Plan
+ * #1420 E10): Erst dann ueberschreibt ein englischer Name der persoenlichen Datei den
+ * deutschen der geteilten. `hinweise` nennt jede Doppelung beider Namen in einer Datei.
+ */
+export function mergeWorkflowConfig(sharedRoh, localRoh) {
+  const { config: shared, hinweise } = normalisiereConfig(sharedRoh);
   const config = { ...shared };
   const ignored = [];
-  if (!local) return { config, ignored };
+  if (!localRoh) return { config, ignored, hinweise };
+  const { config: local, hinweise: lokaleHinweise } = normalisiereConfig(localRoh, { sprache: shared.language ?? shared.sprache });
+  hinweise.push(...lokaleHinweise);
 
   const { erlaubteFelder, erlaubteBlaetter } = zerlegeAllowlist(LOCAL_OVERRIDE_ALLOWLIST);
 
@@ -280,7 +295,7 @@ export function mergeWorkflowConfig(shared, local) {
       ignored.push(feld);
     }
   }
-  return { config, ignored };
+  return { config, ignored, hinweise };
 }
 
 // Die persoenliche Config neben der geteilten. Fehlt sie, aendert sich nichts; ist sie
@@ -293,7 +308,7 @@ function readLocalOverrides(sharedPfad) {
   try {
     return JSON.parse(readFileSync(pfad, "utf-8"));
   } catch {
-    process.stderr.write(`Hinweis: ${pfad} ist kein gueltiges JSON und wird ignoriert.\n`);
+    process.stderr.write(`${t("hinweis", { hinweis: t("lokalKaputt", { pfad }) })}\n`);
     return null;
   }
 }
@@ -314,14 +329,13 @@ export function ladeConfigDatei(p) {
   // Rueckwaertskompatibilitaet: provider -> codeHost/issueTracker
   if (raw.provider && !raw.codeHost) raw.codeHost = raw.provider;
   if (raw.provider && !raw.issueTracker) raw.issueTracker = raw.provider;
-  const { config, ignored } = mergeWorkflowConfig(raw, readLocalOverrides(p));
+  const { config, ignored, hinweise } = mergeWorkflowConfig(raw, readLocalOverrides(p));
   // Hinweis auf stderr, nicht auf stdout: stdout bleibt maschinenlesbar, die Skills
   // parsen ihn als JSON. Kein Abbruch — die Wirkung bleibt ohnehin aus, und ein
   // harter Fehler waere bei jedem board.mjs-Aufruf laut.
+  for (const hinweis of hinweise) process.stderr.write(`${t("hinweis", { hinweis })}\n`);
   for (const feld of ignored) {
-    process.stderr.write(
-      `Hinweis: '${feld}' aus workflow.config.local.json wird ignoriert — das Feld gilt teamweit.\n`
-    );
+    process.stderr.write(`${t("hinweis", { hinweis: t("feldIgnoriert", { feld }) })}\n`);
   }
   return config;
 }
@@ -347,7 +361,7 @@ export function readWorkflowConfig() {
     try {
       return ladeConfigDatei(p);
     } catch {
-      fail(`workflow.config.json konnte nicht gelesen werden: ${p}`);
+      fail(t("configUnlesbar", { pfad: p }));
     }
   }
   return null;
@@ -356,7 +370,7 @@ export function readWorkflowConfig() {
 export function loadConfig() {
   const config = readWorkflowConfig();
   if (!config) {
-    fail("Keine .claude/workflow.config.json gefunden. Bitte zuerst den Installer ausfuehren.");
+    fail(t("keineConfig"));
   }
   return config;
 }

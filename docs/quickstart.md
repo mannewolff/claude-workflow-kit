@@ -1,6 +1,6 @@
 # 5-Minuten-Guide
 
-Du hast einen Prozess für die KI-gestützte Entwicklung, und du willst ihn in Claude Code ausführbar machen, ohne deine Stop-Punkte aufzugeben. Das Kit gibt dir sechzehn Skills, eine Config und einen Installer. In fünf Minuten läuft es.
+Du hast einen Prozess für die KI-gestützte Entwicklung, und du willst ihn in Claude Code ausführbar machen, ohne deine Stop-Punkte aufzugeben. Das Kit gibt dir siebzehn Skills, eine Config und einen Installer. In fünf Minuten läuft es.
 
 ## Voraussetzungen
 
@@ -26,7 +26,9 @@ Oder in einem Schritt:
 node <(curl -s https://docs.mwolff.org/install.mjs)
 ```
 
-Der Installer fragt sieben Dinge:
+Ein neues Projekt fragt der Installer zuerst nach der Sprache des Kits: `de` (Deutsch, Vorgabe) oder `en` (Englisch). Ein bestehendes Projekt behält seine Sprache; umgestellt wird es mit `node install.mjs --language en` (siehe [Sprache](/dokumentation#sprache)). Labels und Titel-Präfixe der Karten sind in jedem Projekt englisch, etwa `[Requirement]` oder `kit:clarify`; die Tabelle steht unter [Labels und Titel-Präfixe](/dokumentation#labels-und-titel-prafixe).
+
+Danach fragt der Installer sieben Dinge:
 
 1. Global oder nur für dieses Projekt
 2. Code-Host: `github`, `gitlab` oder `local`
@@ -36,16 +38,17 @@ Der Installer fragt sieben Dinge:
 6. Review-Umfang: `diff` oder `full`
 7. Review-Modell
 
-Bei globaler Installation folgt eine achte Frage nach dem Vault-Pfad für `/kontext` und `/document` (leer lassen überspringt sie).
+Bei globaler Installation folgt eine achte Frage nach dem Vault-Pfad für `/session-start` und `/document` (leer lassen überspringt sie).
 
-Danach liegen die sechzehn Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten sowie der Board-Adapter (`.claude/kit/board.mjs`) stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
+Danach liegen die siebzehn Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten sowie der Board-Adapter (`.claude/kit/board.mjs`) stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
 
-## Die sechzehn Skills
+## Die siebzehn Skills
 
 | Befehl | Wofür |
 |--------|-------|
-| `/kontext` | Kontext laden, Lageüberblick zu Session-Start |
-| `/fachplan` | Optional: Anforderung als fachliches Issue für die PO-Schleife (siehe [Dokumentation](./dokumentation.md#po-schleife-fachliche-und-technische-issues)) |
+| `/session-start` | Kontext laden, Lageüberblick zu Session-Start |
+| `/requirement` | Optional: Anforderung als fachliches Issue für die PO-Schleife (siehe [Dokumentation](./dokumentation.md#po-schleife-fachliche-und-technische-issues)) |
+| `/groom` | Offene Fragen eines geprüften Fachplans einzeln mit dem PO entscheiden |
 | `/techplan` | Plan aus der Anforderung, implementiert nichts |
 | `/issues` | Plan in kleinteilige Issues (GitHub, GitLab oder lokal) |
 | `/task` | Anforderung ohne Abwägungsbedarf als einzelnes Arbeitspaket `[Task]`, erst nach deiner Bestätigung |
@@ -55,7 +58,7 @@ Danach liegen die sechzehn Skills in `.claude/skills/` (oder global in `~/.claud
 | `/implement-done` | Granularer Einstieg: gegen die roten Tests implementieren (grün) |
 | `/implement-next` | Genau ein Ready-Issue (`#N` verbindlich, sonst das oberste), dann Ende — Baustein des Nachtbetriebs |
 | `/local-check` | Pflicht-Checks plus UI-Verifikation |
-| `/review` | Review durch Opus in frischer Session |
+| `/kit-review` | Review durch Opus in frischer Session |
 | `/retro` | KI-Retrospektive, Memory konsolidieren |
 | `/push-main` | Push auf main, nur du |
 | `/merge-production` | PR nach production, nur du |
@@ -78,7 +81,7 @@ Du ziehst die Issues am Board nach Ready. Das ist dein GO. Dann:
 ```
 /implement-ready
 /local-check
-/review
+/kit-review
 ```
 
 Du prüfst das Review. Erst dann:

@@ -27,21 +27,21 @@ function absatzMit(text, zeichenkette) {
   return text.split("\n\n").find((a) => a.includes(zeichenkette));
 }
 
-test("[skills-36] /issue-review bucht nach dem Einarbeitungs-Kommentar und vor `review:fertig`", () => {
+test("[skills-36] /issue-review bucht nach dem Einarbeitungs-Kommentar und vor `review:done`", () => {
   const kommentar = ISSUE_REVIEW.indexOf("## Einarbeitung, Runde 1");
-  const buchen = ISSUE_REVIEW.indexOf("befunde.mjs buchen");
-  const label = ISSUE_REVIEW.indexOf("issue label add <id> review:fertig");
+  const buchen = ISSUE_REVIEW.indexOf("findings.mjs record");
+  const label = ISSUE_REVIEW.indexOf("issue label add <id> review:done");
 
   assert.notEqual(kommentar, -1, "der Kommentar '## Einarbeitung, Runde 1' fehlt");
-  assert.notEqual(buchen, -1, "der Skill ruft 'befunde.mjs buchen' nicht");
-  assert.notEqual(label, -1, "das Setzen von 'review:fertig' fehlt");
+  assert.notEqual(buchen, -1, "der Skill ruft 'findings.mjs record' nicht");
+  assert.notEqual(label, -1, "das Setzen von 'review:done' fehlt");
   assert.ok(kommentar < buchen, "gebucht wird vor dem Einarbeitungs-Kommentar");
-  assert.ok(buchen < label, "gebucht wird erst nach 'review:fertig'");
+  assert.ok(buchen < label, "gebucht wird erst nach 'review:done'");
 });
 
 test("[skills-36] der Aufruf traegt Datei, Stufe des Laufs und Karte", () => {
   assert.match(ISSUE_REVIEW,
-    /befunde\.mjs buchen --datei <tmpdir>\/<id>-buchung\.md --stufe <fachlich\|plan\|issue> --karte <id>/,
+    /findings\.mjs record --file <tmpdir>\/<id>-buchung\.md --stage <requirement\|plan\|issue> --card <id>/,
     "der buchen-Aufruf nennt nicht Datei, Stufe und Karte");
 });
 
@@ -54,16 +54,16 @@ test("[skills-36] der Befunde-Text bekommt je Fundblock einen Uebernahmevermerk"
 });
 
 test("[skills-36] /issue-review schlaegt je erreichter Art einen Vorschlag vor", () => {
-  assert.match(ISSUE_REVIEW, /befunde\.mjs vorschlag --art/,
-    "der Skill ruft 'befunde.mjs vorschlag --art' nicht");
-  const absatz = absatzMit(ISSUE_REVIEW, "befunde.mjs vorschlag --art");
+  assert.match(ISSUE_REVIEW, /findings\.mjs suggest --kind/,
+    "der Skill ruft 'findings.mjs suggest --kind' nicht");
+  const absatz = absatzMit(ISSUE_REVIEW, "findings.mjs suggest --kind");
   assert.match(absatz, /erreicht/,
     "der Skill sagt nicht, dass der Vorschlag je gemeldeter erreichter Art laeuft");
 });
 
-test("[skills-36] bei `kit:klaeren` wird nicht gebucht", () => {
-  const absatz = ISSUE_REVIEW.split("\n\n").find((a) => a.includes("kit:klaeren") && a.includes("bucht"));
-  assert.ok(absatz, "der Skill sagt nicht, dass bei 'kit:klaeren' nicht gebucht wird");
+test("[skills-36] bei `kit:clarify` wird nicht gebucht", () => {
+  const absatz = ISSUE_REVIEW.split("\n\n").find((a) => a.includes("kit:clarify") && a.includes("bucht"));
+  assert.ok(absatz, "der Skill sagt nicht, dass bei 'kit:clarify' nicht gebucht wird");
   assert.match(absatz, /nicht gebucht|bucht (die Session )?nicht/,
     "der Absatz verneint die Buchung nicht ausdruecklich");
 });
@@ -77,18 +77,18 @@ test("[skills-36] der Abschluss von /issue-review nennt gebuchte Funde und Vorsc
 test("[skills-36] /push-main bucht mit der Stufe `code` nach dem Prueflauf und vor dem Commit", () => {
   const prueflauf = PUSH_MAIN.indexOf("### 5. Der eine Prüflauf");
   const commit = PUSH_MAIN.indexOf("### 6. Der eine Commit");
-  const aufruf = PUSH_MAIN.split("\n").find((z) => z.includes("befunde.mjs buchen") && z.includes("--stufe code"));
-  const buchen = PUSH_MAIN.indexOf("befunde.mjs buchen");
+  const aufruf = PUSH_MAIN.split("\n").find((z) => z.includes("findings.mjs record") && z.includes("--stage code"));
+  const buchen = PUSH_MAIN.indexOf("findings.mjs record");
 
   assert.notEqual(prueflauf, -1, "der Abschnitt des Prueflaufs fehlt");
   assert.notEqual(commit, -1, "der Abschnitt des Commits fehlt");
-  assert.ok(aufruf, "der Skill ruft 'befunde.mjs buchen' nicht mit '--stufe code'");
-  assert.match(aufruf, /--datei <tmpdir>\/<id>-buchung\.md/, "der Aufruf nennt die Buchungsdatei nicht");
-  assert.match(aufruf, /--karte <id>/, "der Aufruf nennt die Karte nicht");
+  assert.ok(aufruf, "der Skill ruft 'findings.mjs record' nicht mit '--stage code'");
+  assert.match(aufruf, /--file <tmpdir>\/<id>-buchung\.md/, "der Aufruf nennt die Buchungsdatei nicht");
+  assert.match(aufruf, /--card <id>/, "der Aufruf nennt die Karte nicht");
   assert.ok(prueflauf < buchen, "gebucht wird vor dem Prueflauf — dann deckt die Zusammenfassung den Stand nicht");
   assert.ok(buchen < commit, "gebucht wird erst nach dem Commit");
-  assert.match(PUSH_MAIN, /befunde\.mjs vorschlag --art/,
-    "/push-main ruft 'befunde.mjs vorschlag --art' nicht");
+  assert.match(PUSH_MAIN, /findings\.mjs suggest --kind/,
+    "/push-main ruft 'findings.mjs suggest --kind' nicht");
 });
 
 test("[skills-36] der Buchungsblock von /push-main traegt keine eigene Nummer", () => {

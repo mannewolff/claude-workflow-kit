@@ -46,11 +46,11 @@ test("der lokale Push (Schritt 7) steht Wort für Wort wie vor dem Build-Dienst-
   assert.ok(PUSH.includes(vorher), "der Push in Schritt 7 weicht vom Wortlaut in test/fixtures/push-main-lokal-push.md ab");
 });
 
-test("der Skill liest pushPruefung aus checks.mjs plan --stufe push und nennt lokal als Vorgabe", () => {
+test("der Skill liest pushPruefung aus checks.mjs plan --stage push und nennt lokal als Vorgabe", () => {
   const config = abschnitt(PUSH, "### 1. Config lesen");
   assert.ok(config, "Abschnitt „### 1. Config lesen“ fehlt");
   assert.match(config, /pushPruefung/, "Schritt 1 nennt pushPruefung nicht");
-  assert.match(config, /checks\.mjs plan --stufe push/, "Schritt 1 sagt nicht, woher der Wert kommt");
+  assert.match(config, /checks\.mjs plan --stage push/, "Schritt 1 sagt nicht, woher der Wert kommt");
   assert.match(config, /`"lokal"`[^\n]*Vorgabe|Vorgabe[^\n]*`"lokal"`/, "Schritt 1 nennt lokal nicht als Vorgabe");
 });
 
@@ -61,14 +61,17 @@ test("der Build-Dienst-Weg hat einen eigenen Abschnitt", () => {
 test("auf dem Build-Dienst-Weg fährt der Build-Dienst die Stufe push, der Skill nur den Nachweis für die Release-Dateien", () => {
   const laeufe = BUILDDIENST.split("\n").filter((z) => z.startsWith("node ") && z.includes("checks.mjs run"));
   assert.deepEqual(laeufe, [
-    'node .claude/kit/checks.mjs run --stufe push --since "$(git merge-base HEAD origin/<mainBranch>)"',
-    "node .claude/kit/checks.mjs run --in <pfad> --since HEAD --wiederholen",
+    'node .claude/kit/checks.mjs run --stage push --since "$(git merge-base HEAD origin/<mainBranch>)"',
+    "node .claude/kit/checks.mjs run --in <pfad> --since HEAD --retry",
   ]);
   assert.match(BUILDDIENST, /Commit-Gate/, "der Grund für den Nachweis-Lauf fehlt");
 });
 
 test("der Build-Dienst-Weg pusht erst den Prüfzweig, wartet über code ci-status --commit und pusht mainBranch nur bei Grün", () => {
-  const pruefzweig = BUILDDIENST.search(/git -C <pfad> push origin HEAD:<zweig>/);
+  // Voller Referenzname: Der Worktree steht auf einem losgelösten HEAD, und der Prüfzweig
+  // existiert vor dem Push nicht (Issue #1518).
+  const pruefzweig = BUILDDIENST.search(/git -C <pfad> push origin HEAD:refs\/heads\/<zweig>/);
+  assert.doesNotMatch(BUILDDIENST, /push origin HEAD:<zweig>/, "der Prüfzweig-Push ohne vollen Referenznamen steht noch da");
   const warten = BUILDDIENST.search(/board\.mjs code ci-status --commit/);
   const haupt = BUILDDIENST.search(/git -C <pfad> push origin HEAD:<mainBranch>/);
   assert.notEqual(pruefzweig, -1, "der Push auf den Prüfzweig fehlt");
@@ -107,15 +110,15 @@ test("[1372] push-main und merge-production verlangen kein cd in den Worktree", 
 const SCHRITT5 = abschnitt(PUSH, "### 5. Der eine Prüflauf");
 const SCHRITT9 = abschnitt(PUSH, "### 9. Bestätigung");
 
-test("[1401] Schritt 5 wiederholt eine rote Prüfung: --wiederholen neben --stufe push", () => {
-  assert.match(SCHRITT5, /^node \.claude\/kit\/checks\.mjs run --in <pfad> --stufe push --wiederholen --since /m,
-    "der Prüflauf in Schritt 5 trägt --wiederholen nicht neben --stufe push");
+test("[1401] Schritt 5 wiederholt eine rote Prüfung: --retry neben --stage push", () => {
+  assert.match(SCHRITT5, /^node \.claude\/kit\/checks\.mjs run --in <pfad> --stage push --retry --since /m,
+    "der Prüflauf in Schritt 5 trägt --retry nicht neben --stage push");
 });
 
 test("[1401] nach einem Wackler fragt Schritt 5 vor dem Commit und nennt die Reparaturkandidaten", () => {
   const s = SCHRITT5.replaceAll(/\s+/g, " ");
   assert.match(s, /Trotzdem fortfahren\? \(ja\/nein\)/, "die Rückfrage fehlt in Schritt 5");
-  assert.match(s, /node \.claude\/kit\/wirksamkeit\.mjs kandidaten/, "Schritt 5 ruft wirksamkeit.mjs kandidaten nicht");
+  assert.match(s, /node \.claude\/kit\/effectiveness\.mjs candidates/, "Schritt 5 ruft effectiveness.mjs candidates nicht");
   assert.match(s, /`Gewackelt:`/, "Schritt 5 nennt die Gewackelt-Zeile nicht als Auslöser");
   assert.match(s, /gewackeltKarte/, "Schritt 5 grenzt gewackeltKarte nicht aus");
   assert.match(s, /Nur `ja` fährt fort/, "Schritt 5 sagt nicht, dass nur ja fortfährt");
@@ -124,10 +127,10 @@ test("[1401] nach einem Wackler fragt Schritt 5 vor dem Commit und nennt die Rep
     "die Rückfrage steht nicht vor dem Commit");
 });
 
-test("[1401] der Job des Build-Dienstes bleibt ohne --wiederholen", () => {
-  const job = BUILDDIENST.split("\n").find((z) => z.includes("checks.mjs run --stufe push"));
+test("[1401] der Job des Build-Dienstes bleibt ohne --retry", () => {
+  const job = BUILDDIENST.split("\n").find((z) => z.includes("checks.mjs run --stage push"));
   assert.ok(job, "der Job des Build-Dienstes fehlt");
-  assert.doesNotMatch(job, /--wiederholen/, "der Job des Build-Dienstes trägt --wiederholen");
+  assert.doesNotMatch(job, /--retry/, "der Job des Build-Dienstes trägt --retry");
 });
 
 test("[1401] Schritt 9 nennt Gewackelt und Reparaturkandidaten", () => {
@@ -137,11 +140,11 @@ test("[1401] Schritt 9 nennt Gewackelt und Reparaturkandidaten", () => {
 
 // --- Notfallweg bei Ausfall des Build-Dienstes (Issue #1410, Plan #1405 A6, E8, E10) ---
 
-const NOTFALL = abschnitt(PUSH, "## Notfallweg (`notfall`)");
+const NOTFALL = abschnitt(PUSH, "## Notfallweg (`emergency`)");
 
 test("[1410] der Notfallweg hat einen eigenen Abschnitt, und die Trigger-Phrase nennt ihn", () => {
-  assert.ok(NOTFALL, "Abschnitt „## Notfallweg (`notfall`)“ fehlt");
-  assert.match(abschnitt(PUSH, "## Trigger-Phrase"), /`\/push-main notfall`/, "die Trigger-Phrase nennt `/push-main notfall` nicht");
+  assert.ok(NOTFALL, "Abschnitt „## Notfallweg (`emergency`)“ fehlt");
+  assert.match(abschnitt(PUSH, "## Trigger-Phrase"), /`\/push-main emergency`/, "die Trigger-Phrase nennt `/push-main emergency` nicht");
 });
 
 test("[1410] der Notfallweg setzt den Schutz vor dem Push aus und stellt ihn danach wieder her", () => {
@@ -149,14 +152,14 @@ test("[1410] der Notfallweg setzt den Schutz vor dem Push aus und stellt ihn dan
   // braeche „ein Lauf“ in test/skills-releaseweg.test.mjs.
   const voll = NOTFALL.search(/Schritt 5/);
   assert.match(NOTFALL, /Stufe `push`/, "der Notfallweg nennt die Stufe push nicht");
-  assert.match(NOTFALL, /`--wiederholen`/, "der Notfallweg nennt --wiederholen nicht");
-  const aus = NOTFALL.search(/board\.mjs code schutz aussetzen --in <pfad>/);
+  assert.match(NOTFALL, /`--retry`/, "der Notfallweg nennt --retry nicht");
+  const aus = NOTFALL.search(/board\.mjs code protection suspend --in <pfad>/);
   const push = NOTFALL.search(/git -C <pfad> push origin HEAD:<mainBranch>/);
-  const wieder = NOTFALL.search(/board\.mjs code schutz wiederherstellen/);
+  const wieder = NOTFALL.search(/board\.mjs code protection restore/);
   assert.notEqual(voll, -1, "der volle lokale Lauf (Schritt 5) fehlt");
-  assert.notEqual(aus, -1, "`code schutz aussetzen --in <pfad>` fehlt");
+  assert.notEqual(aus, -1, "`code protection suspend --in <pfad>` fehlt");
   assert.notEqual(push, -1, "der Push auf mainBranch fehlt");
-  assert.notEqual(wieder, -1, "`code schutz wiederherstellen` fehlt");
+  assert.notEqual(wieder, -1, "`code protection restore` fehlt");
   assert.ok(voll < aus && aus < push && push < wieder, "die Reihenfolge Lauf → aussetzen → Push → wiederherstellen stimmt nicht");
   assert.match(NOTFALL, /auch nach[^.]*abgewiesenem Push/, "es steht nicht, dass auch nach abgewiesenem Push wiederhergestellt wird");
 });
@@ -169,9 +172,9 @@ test("[1410] der Notfallweg hält bei gesetztem KIT_AGENT_MODEL an und fragt nic
 
 test("[1410] der Notfallweg meldet ein gescheitertes Wiederherstellen mit Kommando und nennt den Schutzstand", () => {
   const s = NOTFALL.replaceAll(/\s+/g, " ");
-  assert.match(s, /scheitert `wiederherstellen`[^.]*Fehlschlag/i, "ein gescheitertes Wiederherstellen ist kein Fehlschlag");
-  assert.match(NOTFALL, /board\.mjs code schutz status/, "`code schutz status` fehlt in der Abschlussmeldung");
-  assert.match(s, /`ungeprueft`[\s\S]{0,300}code schutz nachpruefen/, "der Hinweis auf `code schutz nachpruefen` bei `ungeprueft` fehlt");
+  assert.match(s, /scheitert `restore`[^.]*Fehlschlag/i, "ein gescheitertes Wiederherstellen ist kein Fehlschlag");
+  assert.match(NOTFALL, /board\.mjs code protection status/, "`code protection status` fehlt in der Abschlussmeldung");
+  assert.match(s, /`ungeprueft`[\s\S]{0,300}code protection verify/, "der Hinweis auf `code protection verify` bei `ungeprueft` fehlt");
 });
 
 test("[1410] der Notfallweg nennt ci-status nicht, der Build-Dienst-Weg nennt den Notfallweg", () => {

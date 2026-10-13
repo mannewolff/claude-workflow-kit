@@ -1,6 +1,6 @@
-// Ablauf-Pruefung: Exit-Code, Nacht-Sperre und Hilfe von `code schutz` zeigt nur der gestartete Einstieg kit/board.mjs (codeSchutz bricht ueber fail() mit process.exit ab und ist nicht exportiert); im selben Prozess gibt es dafuer keine Funktion eines Teils.
+// Ablauf-Pruefung: Exit-Code, Nacht-Sperre und Hilfe von `code protection` zeigt nur der gestartete Einstieg kit/board.mjs (codeSchutz bricht ueber fail() mit process.exit ab und ist nicht exportiert); im selben Prozess gibt es dafuer keine Funktion eines Teils.
 //
-// Die CLI `code schutz status|einrichten|aussetzen|wiederherstellen|nachpruefen`
+// Die CLI `code protection status|setup|suspend|restore|verify`
 // (Issue #1408, Plan #1405, A10). Die Logik dahinter pruefen `board-schutz.test.mjs` mit
 // gefaelschtem Host und `board-adapter-schutz-github.test.mjs` mit gefaelschtem `gh`. Hier
 // laeuft der Einstieg mit derselben `gh`-Faelschung wie in
@@ -57,13 +57,13 @@ function ghRegeln({ runList = null, rulesets = [] } = {}) {
   ];
 }
 
-/** Startet `code schutz <args>` im Fixture und liefert Ergebnis samt Mitschrift. */
+/** Startet `code protection <args>` im Fixture und liefert Ergebnis samt Mitschrift. */
 function schutz(args, { git = gitRegeln(), gh = ghRegeln(), env = OHNE_NACHT } = {}) {
   const dir = setupProjekt(CONFIG, "board-schutz-cli-");
   fakeCli(dir, "git", git);
   fakeCli(dir, "gh", gh);
   try {
-    const res = runBoard(dir, ["code", "schutz", ...args], env);
+    const res = runBoard(dir, ["code", "protection", ...args], env);
     return { res, git: aufrufZeilen(dir, "git"), gh: aufrufZeilen(dir, "gh"), ghEingaben: aufrufEingaben(dir, "gh"), dir };
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -71,7 +71,7 @@ function schutz(args, { git = gitRegeln(), gh = ghRegeln(), env = OHNE_NACHT } =
 }
 
 test("[schutz-cli] einrichten: scharf, Probe nur mit den Jobs des Pruefzweigs, Zweig danach geloescht", () => {
-  const { res, git, gh, ghEingaben } = schutz(["einrichten"]);
+  const { res, git, gh, ghEingaben } = schutz(["setup"]);
   assert.equal(res.status, 0, res.stderr);
   const daten = JSON.parse(res.stdout);
   assert.equal(daten.ergebnis, "scharf");
@@ -88,8 +88,8 @@ test("[schutz-cli] einrichten: scharf, Probe nur mit den Jobs des Pruefzweigs, Z
     [`push origin ${SHA}:refs/heads/kit-pruefung`, "push origin --delete kit-pruefung"]);
 });
 
-test("[schutz-cli] einrichten --zweig nimmt den genannten Pruefzweig", () => {
-  const { res, git } = schutz(["einrichten", "--zweig", "probe-x"], {
+test("[schutz-cli] einrichten --branch nimmt den genannten Pruefzweig", () => {
+  const { res, git } = schutz(["setup", "--branch", "probe-x"], {
     gh: ghRegeln({ runList: { match: "^run list", stdout: [
       { databaseId: 1, workflowName: "CI", headBranch: "probe-x", conclusion: "success", status: "completed" },
     ] } }),
@@ -99,7 +99,7 @@ test("[schutz-cli] einrichten --zweig nimmt den genannten Pruefzweig", () => {
 });
 
 test("[schutz-cli] einrichten: ein schon vorhandener Pruefzweig bricht ohne Push ab", () => {
-  const { res, git, gh } = schutz(["einrichten"], { git: gitRegeln({ belegt: true }) });
+  const { res, git, gh } = schutz(["setup"], { git: gitRegeln({ belegt: true }) });
   assert.notEqual(res.status, 0);
   assert.match(res.stderr, /kit-pruefung.*schon vorhanden/);
   assert.equal(git.some((z) => z.startsWith("push ")), false);
@@ -107,7 +107,7 @@ test("[schutz-cli] einrichten: ein schon vorhandener Pruefzweig bricht ohne Push
 });
 
 test("[schutz-cli] einrichten: der Pruefzweig wird auch bei einem Fehlschlag der Probe geloescht", () => {
-  const { res, git, gh } = schutz(["einrichten"], {
+  const { res, git, gh } = schutz(["setup"], {
     gh: ghRegeln({ runList: { match: "^run list", exit: 1, stderr: "gh: HTTP 502\n" } }),
   });
   assert.equal(res.status, 0, res.stderr);
@@ -121,7 +121,7 @@ test("[schutz-cli] einrichten: der Pruefzweig wird auch bei einem Fehlschlag der
 test("[schutz-cli] aussetzen ohne gruene Zusammenfassung der Stufe push aendert kein Ruleset, Exit ungleich 0", () => {
   const dir = setupProjekt(CONFIG, "board-schutz-leer-");
   try {
-    const { res, gh } = schutz(["aussetzen", "--in", dir]);
+    const { res, gh } = schutz(["suspend", "--in", dir]);
     assert.notEqual(res.status, 0);
     assert.match(res.stderr, /push/);
     assert.equal(gh.some((z) => z.includes("--method")), false);
@@ -131,22 +131,22 @@ test("[schutz-cli] aussetzen ohne gruene Zusammenfassung der Stufe push aendert 
 });
 
 test("[schutz-cli] wiederherstellen: scheitert es, Exit ungleich 0 mit dem Kommando zum Wiederholen", () => {
-  const { res } = schutz(["wiederherstellen"], { gh: ghRegeln({ rulesets: [] }) });
+  const { res } = schutz(["restore"], { gh: ghRegeln({ rulesets: [] }) });
   assert.notEqual(res.status, 0);
-  assert.match(res.stderr, /code schutz wiederherstellen/);
+  assert.match(res.stderr, /code protection restore/);
 });
 
 test("[schutz-cli] wiederherstellen setzt das Ruleset des Hauptzweigs auf active", () => {
-  const { res, ghEingaben } = schutz(["wiederherstellen"], {
+  const { res, ghEingaben } = schutz(["restore"], {
     gh: ghRegeln({ rulesets: [{ id: 3, name: "claude-workflow-kit: main" }] }),
   });
   assert.equal(res.status, 0, res.stderr);
   assert.deepEqual(ghEingaben.filter(Boolean).map((e) => JSON.parse(e)), [{ enforcement: "active" }]);
 });
 
-for (const aktion of ["einrichten", "aussetzen", "nachpruefen"]) {
+for (const aktion of ["setup", "suspend", "verify"]) {
   test(`[schutz-cli] ${aktion} bricht mit gesetztem KIT_AGENT_MODEL ab, ohne git und gh`, () => {
-    const args = aktion === "aussetzen" ? [aktion, "--in", "."] : [aktion];
+    const args = aktion === "suspend" ? [aktion, "--in", "."] : [aktion];
     const { res, git, gh } = schutz(args, { env: { KIT_AGENT_MODEL: "claude-sonnet-5-5" } });
     assert.notEqual(res.status, 0);
     assert.match(res.stderr, /ohne Aufsicht gesperrt/);
@@ -165,7 +165,7 @@ test("[schutz-cli] status laeuft auch mit gesetztem KIT_AGENT_MODEL und endet be
 });
 
 test("[schutz-cli] nachpruefen pusht den Kopf erneut und loescht den Pruefzweig", () => {
-  const { res, git } = schutz(["nachpruefen"]);
+  const { res, git } = schutz(["verify"]);
   assert.equal(res.status, 0, res.stderr);
   const daten = JSON.parse(res.stdout);
   assert.equal(daten.commit, SHA);
@@ -177,17 +177,17 @@ test("[schutz-cli] nachpruefen pusht den Kopf erneut und loescht den Pruefzweig"
 test("[schutz-cli] eine unbekannte Aktion endet mit Exit 1 und nennt die fuenf Aktionen", () => {
   const { res } = schutz(["loeschen"]);
   assert.equal(res.status, 1);
-  assert.match(res.stderr, /status \| einrichten \| aussetzen \| wiederherstellen \| nachpruefen/);
+  assert.match(res.stderr, /status \| setup \| suspend \| restore \| verify/);
 });
 
-test("[schutz-cli] der HELP-Text nennt code schutz mit allen fuenf Aktionen", () => {
+test("[schutz-cli] der HELP-Text nennt code protection mit allen fuenf Aktionen", () => {
   const dir = setupProjekt(CONFIG, "board-schutz-help-");
   try {
     const res = runBoard(dir, ["--help"]);
     assert.equal(res.status, 0);
-    assert.match(res.stdout, /code schutz/);
-    for (const aktion of ["status", "einrichten --zweig", "aussetzen --in", "wiederherstellen", "nachpruefen"]) {
-      assert.match(res.stdout, new RegExp(`code schutz ${aktion}`));
+    assert.match(res.stdout, /code protection/);
+    for (const aktion of ["status", "setup --branch", "suspend --in", "restore", "verify"]) {
+      assert.match(res.stdout, new RegExp(`code protection ${aktion}`));
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });

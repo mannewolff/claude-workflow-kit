@@ -1,9 +1,9 @@
 // Der Rueckweg der Befunde im Prueflauf am Tag (Issue #1028, #1234).
 //
 // Der Prueflauf baut seinen Worktree ab wie die Kette und holt vorher die dort gebuchten Funde
-// in die Hauptkopie; je Art an der Schwelle ruft er `befunde.mjs vorschlag`. Gefahren im selben
+// in die Hauptkopie; je Art an der Schwelle ruft er `findings.mjs suggest`. Gefahren im selben
 // Prozess (Plan #1199, E6): Der Aufruf des Vorschlags geht an eine Attrappe; was
-// `befunde.mjs vorschlag` selbst am Board anlegt, belegen dessen eigene Tests.
+// `findings.mjs suggest` selbst am Board anlegt, belegen dessen eigene Tests.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -24,11 +24,11 @@ function bucheImWorktree(s) {
   writeFileSync(join(s.cwd, ".claude", "befunde.tsv"), `${zeile("konvention")}\n`, "utf-8");
 }
 
-/** Das `spawnSync` des Teils kitstand: merkt sich `befunde.mjs vorschlag` und antwortet wie das Werkzeug. */
+/** Das `spawnSync` des Teils kitstand: merkt sich `findings.mjs suggest` und antwortet wie das Werkzeug. */
 function vorschlagAttrappe() {
   const vorschlaege = [];
   const spawnSync = (befehl, argumente, optionen) => {
-    if (argumente?.[1] !== "vorschlag") return psLeer(befehl, argumente, optionen);
+    if (argumente?.[1] !== "suggest") return psLeer(befehl, argumente, optionen);
     const art = argumente[3];
     vorschlaege.push({ art, cwd: realpathSync(optionen.cwd), protokoll: protokoll(optionen.cwd) });
     return { status: 0, stdout: JSON.stringify({ ok: true, angelegt: true, karte: "9", titel: `[Idee] Maschinelle Pruefung fuer Mangel-Art ${art}?` }), stderr: "" };

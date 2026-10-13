@@ -40,12 +40,19 @@ function setupFixture({
   writeFileSync(join(dir, "templates", "CLAUDE-Fachplan.md"), "# Fachplan-Gates\n");
   writeFileSync(join(dir, "templates", "CLAUDE-Plan.md"), "# Plan-Gates\n");
   writeFileSync(join(dir, "templates", "workflow.config.json"), `${JSON.stringify({ codeHost: "github" })}\n`);
-  for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs", "worktree.mjs"]) {
+  for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "effort.mjs", "effectiveness.mjs", "findings.mjs", "worktree.mjs"]) {
     writeFileSync(join(dir, "kit", datei), `const KIT_VERSION = "1.0.0";\nconsole.log("${datei}");\n`);
   }
   // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
   writeFileSync(join(dir, "templates", "workflow.config.schema.json"), "{}\n");
-  writeFileSync(join(dir, "kit", "einstellungen.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\n`);
+  writeFileSync(join(dir, "kit", "settings.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
+  // Seit Issue #1437: die Namenstabelle, die sync-blobs ebenfalls einbettet.
+  mkdirSync(join(dir, "kit", "board"), { recursive: true });
+  writeFileSync(join(dir, "kit", "board", "config-namen.mjs"), "export {};\n");
+  writeFileSync(join(dir, "kit", "board", "namen.mjs"), "export {};\n");
+  // Seit Issue #1441: die englische Referenz, die sync-blobs ebenfalls einbettet.
+  mkdirSync(join(dir, "tools"), { recursive: true });
+  writeFileSync(join(dir, "tools", "config-referenz.en.json"), "{}\n");
   // Hook und Gate liegen ausserhalb von kit/ und tragen keinen Versions-Stempel
   // (Issue #473): gate.mjs steht bewusst nicht in STAMPED.
   writeFileSync(join(dir, ".githooks", "gate.mjs"), 'console.log("gate");\n');
@@ -60,17 +67,21 @@ function setupFixture({
     'const NIGHT_MJS_B64 = "";',
     'const CHECKS_MJS_B64 = "";',
     'const PREISE_MJS_B64 = "";',
-    'const AUFWAND_MJS_B64 = "";',
-    'const WIRKSAMKEIT_MJS_B64 = "";',
-    'const BEFUNDE_MJS_B64 = "";',
     'const WORKTREE_MJS_B64 = "";',
+    'const FINDINGS_MJS_B64 = "";',
+    'const EFFORT_MJS_B64 = "";',
+    'const EFFECTIVENESS_MJS_B64 = "";',
     'const KIT_NIGHT_B64 = "";',
     'const KIT_BOARD_B64 = "";',
     'const KIT_ROLLEN_B64 = "";',
+    'const KIT_TEXTE_B64 = "";',
     'const GATE_MJS_B64 = "";',
     'const PRE_COMMIT_B64 = "";',
     'const SKILLS_B64 = "";',
     'const AGENTS_B64 = "";',
+    'const TEMPLATES_EN_B64 = "";',
+    'const AGENTS_EN_B64 = "";',
+    'const KIT_ROLLEN_EN_B64 = "";',
     "",
   ].join("\n"));
 
@@ -355,4 +366,44 @@ test("[kitstand-5] eine lebende Markierung laesst auch die Agenten-Kopie stehen"
     assert.equal(res.status, 0, res.stderr);
     assert.equal(readFileSync(join(dir, ".claude", "agents", "kit-pruefer.md"), "utf-8"), "alt\n");
   }, { kopien: { beispiel: "alt\n" }, agentKopien: { "kit-pruefer.md": "alt\n" } });
+});
+
+// --- Alte Skill-Ordner (Issue #1566, Plan #1548 E9) ---
+//
+// Seit es jeden Skill nur in einer Fassung mit englischem Namen gibt, liegen in der Kopie des
+// Kit-Repos noch die fuenf alten Ordner. sync-blobs raeumt sie, aber nur, wenn ihre SKILL.md den
+// gleichnamigen `name:` traegt — ein eigener Skill, der zufaellig so heisst, bleibt stehen.
+
+const altSkill = (name) => `---\nname: ${name}\ndescription: alt\n---\n`;
+const ALTE = ["fachplan", "kontext", "context", "review", "plan"];
+
+test("[1566-1] sync-blobs entfernt die fuenf alten Skill-Ordner aus der Kopie und nennt jeden", () => {
+  mitFixture((dir) => {
+    const res = syncBlobs(dir);
+    assert.equal(res.status, 0, res.stderr);
+    for (const name of ALTE) {
+      assert.equal(existsSync(join(dir, ".claude", "skills", name)), false, `${name} liegt noch da`);
+      assert.match(res.stdout, new RegExp(`\\.claude/skills/${name}/`), `${name} wird nicht genannt`);
+    }
+    assert.equal(readFileSync(join(dir, ".claude", "skills", "beispiel", "SKILL.md"), "utf-8"), "# Beispiel-Skill\n");
+  }, { kopien: { beispiel: "# Beispiel-Skill\n", ...Object.fromEntries(ALTE.map((n) => [n, altSkill(n)])) } });
+});
+
+test("[1566-2] ein Ordner mit altem Namen, aber anderem name:, bleibt stehen", () => {
+  mitFixture((dir) => {
+    const res = syncBlobs(dir);
+    assert.equal(res.status, 0, res.stderr);
+    assert.equal(readFileSync(join(dir, ".claude", "skills", "review", "SKILL.md"), "utf-8"), altSkill("mein-review"));
+    assert.ok(existsSync(join(dir, ".claude", "skills", "plan")), "ein Ordner ohne SKILL.md wurde entfernt");
+    assert.equal(syncBlobs(dir, "--check").status, 0);
+  }, { kopien: { beispiel: "# Beispiel-Skill\n", review: altSkill("mein-review"), plan: null } });
+});
+
+test("[1566-3] --check meldet einen alten Skill-Ordner als veraltete Kopie, ohne ihn zu entfernen", () => {
+  mitFixture((dir) => {
+    const res = syncBlobs(dir, "--check");
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /Lokale Kopie veraltet: .*\.claude\/skills\/kontext\//);
+    assert.ok(existsSync(join(dir, ".claude", "skills", "kontext", "SKILL.md")));
+  }, { kopien: { beispiel: "# Beispiel-Skill\n", kontext: altSkill("kontext") } });
 });

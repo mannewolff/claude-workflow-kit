@@ -22,8 +22,16 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { BoardError, fail, loadConfig, readWorkflowConfig } from "./grundlagen.mjs";
 import { ToolboxIssueTracker, resolveToolboxToken, agentModelHeader } from "./adapter.mjs";
 import { WEGMARKEN_SPALTEN, WEGMARKEN_DATEI } from "./dokumente.mjs";
+import { text } from "./namen.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Die Texte an den Menschen liegen unter kit/texte/board-melder.mjs (Issue #1526).
+import { TEXTE } from "../texte/board-melder.mjs";
+
+export { TEXTE };
+
+const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
 
 // ============================================================
 // Nachtlauf einliefern (Issue #669)
@@ -90,28 +98,38 @@ const NACHTLAUF_FEST = {
   fertig: ["GREEN", null],
 };
 
-/** Die Farbe eines zurueckgestellten Pakets — erster Treffer gewinnt (ZURUECKGESTELLT dort). */
-function farbeZurueckgestellt(grund) {
-  if (grund.includes("Abhaengigkeit")) return ["GREY", "DEPENDENCY_UNMET"];
-  if (grund.includes("kit:klaeren")) return ["RED", "AWAITING_DECISION"];
-  if (grund.startsWith("Session ohne In-review-Ergebnis")) return ["RED", "UNEXPECTED_STATE"];
+/**
+ * Die Art des Grundes einer Einheit (Issue #1426, Plan #1420, E14): eines der Woerter
+ * `abhaengigkeit|klaeren|ohneInReview|zeitbudget|sonst`. Der Freitext `grund` wird
+ * uebersetzt und taugt deshalb nicht zur Einordnung; ein alter Lauf ohne das Feld gilt
+ * als `sonst`.
+ */
+function grundArtVon(einheit) {
+  return typeof einheit.grundArt === "string" ? einheit.grundArt : "sonst";
+}
+
+/** Die Farbe eines zurueckgestellten Pakets (ZURUECKGESTELLT dort). */
+function farbeZurueckgestellt(grundArt) {
+  if (grundArt === "abhaengigkeit") return ["GREY", "DEPENDENCY_UNMET"];
+  if (grundArt === "klaeren") return ["RED", "AWAITING_DECISION"];
+  if (grundArt === "ohneInReview") return ["RED", "UNEXPECTED_STATE"];
   return ["GREY", null];
 }
 
 /** Die Farbe eines abgebrochenen Ketten-Vorgangs (deuteKettenAusgang dort). */
-function farbeAbgebrochen(einheit, grund) {
-  if (!grund.startsWith("Zeitbudget ")) return ["RED", "HARD_ABORT"];
+function farbeAbgebrochen(einheit, grundArt) {
+  if (grundArt !== "zeitbudget") return ["RED", "HARD_ABORT"];
   const s = einheit.stufen;
   const dokument = typeof s?.plan?.id === "string" || (Array.isArray(s?.pakete?.ids) && s.pakete.ids.length > 0);
   return [dokument ? "YELLOW" : "RED", "TIME_BUDGET_EXCEEDED"];
 }
 
 function nachtlaufFarbe(einheit) {
-  const grund = typeof einheit.grund === "string" ? einheit.grund : "";
+  const grundArt = grundArtVon(einheit);
   const ausgang = einheit.ausgang;
   if (NACHTLAUF_FEST[ausgang]) return NACHTLAUF_FEST[ausgang];
-  if (ausgang === "zurueckgestellt") return farbeZurueckgestellt(grund);
-  if (ausgang === "abgebrochen") return farbeAbgebrochen(einheit, grund);
+  if (ausgang === "zurueckgestellt") return farbeZurueckgestellt(grundArt);
+  if (ausgang === "abgebrochen") return farbeAbgebrochen(einheit, grundArt);
   if (ausgang === "erfolg" || ausgang === "fehlschlag") {
     const zeile = NACHTLAUF_NACH_PRUEFUNG[einheit.pruefung?.zustand ?? "ungeprueft"];
     return zeile?.[ausgang] ?? ["RED", "UNEXPECTED_STATE"];
@@ -125,8 +143,8 @@ function nachtlaufAuszug(e) {
   const grund = gefuellt(e.grund) ? e.grund : null;
   const f = e.ausgang === "festgefahren" ? e.festgefahren : null;
   const teile = [grund];
-  if (f && gefuellt(f.pruefung)) teile.push(`Pruefung: ${f.pruefung}`);
-  if (f && gefuellt(f.fehler)) teile.push(`Fehler: ${f.fehler}`);
+  if (f && gefuellt(f.pruefung)) teile.push(t("auszugPruefung", { pruefung: f.pruefung }));
+  if (f && gefuellt(f.fehler)) teile.push(t("auszugFehler", { fehler: f.fehler }));
   const text = teile.filter((t) => t !== null).join("\n");
   return text === "" ? null : text.slice(0, NACHTLAUF_AUSZUG_MAX);
 }
@@ -239,12 +257,12 @@ function nachtlaufBudget(stand) {
 // Die Abschluesse, die eine Stoerung sind, mit dem Grund, der bleibt, wenn der Stand keinen
 // nennt. `verstummt` setzt der Waechter, `abgebrochen` die Abbruch-Handler (Issue #1085,
 // E18): Beide schliessen den Lauf ab, und ohne Grund stuende er am Leitstand wie ein
-// regulaer beendeter.
-const NACHTLAUF_ABBRUCH = { harterStopp: "Harter Stopp", verstummt: "Verstummt", abgebrochen: "Abgebrochen" };
+// regulaer beendeter. Die Schluessel sind Vertrag (E14), die Werte Schluessel der Texttabelle.
+const NACHTLAUF_ABBRUCH = { harterStopp: "abbruchHarterStopp", verstummt: "abbruchVerstummt", abgebrochen: "abbruchAbgebrochen" };
 
 export function nachtlaufAbbruchGrund(stand) {
-  const ersatz = NACHTLAUF_ABBRUCH[stand?.abschluss];
-  if (ersatz === undefined) return null;
+  if (!Object.hasOwn(NACHTLAUF_ABBRUCH, stand?.abschluss ?? "")) return null;
+  const ersatz = t(NACHTLAUF_ABBRUCH[stand.abschluss]);
   const gefuellt = (text) => typeof text === "string" && text !== "";
   if (gefuellt(stand.fehlerText)) return stand.fehlerText.slice(0, NACHTLAUF_AUSZUG_MAX);
   const einheiten = Array.isArray(stand.einheiten) ? stand.einheiten : [];
@@ -252,7 +270,7 @@ export function nachtlaufAbbruchGrund(stand) {
     ? null
     : einheiten.find((e) => String(e?.id) === String(stand.fehlerEinheit));
   if (betroffen && gefuellt(betroffen.grund)) return betroffen.grund.slice(0, NACHTLAUF_AUSZUG_MAX);
-  return gefuellt(stand.fehlerklasse) ? `${ersatz} (${stand.fehlerklasse})` : ersatz;
+  return gefuellt(stand.fehlerklasse) ? t("abbruchMitKlasse", { grund: ersatz, fehlerklasse: stand.fehlerklasse }) : ersatz;
 }
 
 function nachtlaufDauer(einheit) {
@@ -291,7 +309,7 @@ function nachtlaufOhneAusgang(einheit) {
  */
 export function nachtlaufMeldung(stand, jetzt = new Date()) {
   const mode = NACHTLAUF_MODUS[stand?.art];
-  if (!mode) throw new BoardError(`Lauf-Art '${stand?.art}' hat keine Nachtlauf-Schnittstelle (erwartet: ${Object.keys(NACHTLAUF_MODUS).join(" | ")})`);
+  if (!mode) throw new BoardError(t("keineSchnittstelle", { art: stand?.art, erwartet: Object.keys(NACHTLAUF_MODUS).join(" | ") }));
   const laeuft = stand.abschluss === null || stand.abschluss === undefined;
   const items = (Array.isArray(stand.einheiten) ? stand.einheiten : [])
     .filter((e) => /^\d+$/.test(String(e?.id)))
@@ -416,14 +434,14 @@ export async function nightrunMelden(args, {
   melde = (zeile) => process.stderr.write(`${zeile}\n`),
 } = {}) {
   if (config.issueTracker !== "toolbox") {
-    throw new BoardError(`Einlieferung nur mit issueTracker toolbox moeglich, konfiguriert ist '${config.issueTracker}'.`);
+    throw new BoardError(t("nurToolbox", { tracker: config.issueTracker }));
   }
-  if (!args.datei) throw new BoardError("nightrun melden braucht --datei <ergebnisstand.json>");
+  if (!args.file) throw new BoardError(t("dateiFehlt"));
   let stand;
   try {
-    stand = JSON.parse(lesen(args.datei));
+    stand = JSON.parse(lesen(args.file));
   } catch (e) {
-    throw new BoardError(`Ergebnisstand ${args.datei} nicht lesbar: ${e.message}`);
+    throw new BoardError(t("nichtLesbar", { datei: args.file, grund: e.message }));
   }
   const meldung = nachtlaufMeldung(stand, jetzt());
   try {
@@ -435,16 +453,16 @@ export async function nightrunMelden(args, {
     // verloren gehen: genau ein Nachversuch ohne das Feld. Jeder andere Fehler bleibt.
     if (!(e instanceof BoardError) || e.status !== 400 || !("releasePreparation" in meldung)) throw e;
     const { releasePreparation, ...ohneFeld } = meldung;
-    melde(`Hinweis: Laufmeldung mit releasePreparation abgewiesen (HTTP 400), Nachversuch ohne das Feld: ${e.message.split("\n")[0]}`);
+    melde(t("nachversuch", { grund: e.message.split("\n")[0] }));
     const antwort = await senden(config, ohneFeld);
-    return { ok: true, outcome: antwort?.outcome ?? null, rueckfall: "ohne releasePreparation nachgemeldet nach HTTP 400" };
+    return { ok: true, outcome: antwort?.outcome ?? null, rueckfall: t("rueckfall") };
   }
 }
 
 export async function dispatchNightrun(command, args, hilfe) {
-  if (command === "melden") return ausgeben(await nightrunMelden(args));
+  if (command === "report") return ausgeben(await nightrunMelden(args));
   process.stdout.write(hilfe);
-  fail(`Unbekannter nightrun-Befehl: '${command}'`);
+  fail(t("unbekanntNightrun", { befehl: command }));
 }
 
 /** Eine Antwort der Melder: eine Zeile JSON, wie die Hook-Aufrufer sie lesen. */
@@ -717,9 +735,9 @@ export function sitzungMeldung({ start, zuege, unlesbar = 0, abschnitte = [], co
   };
 }
 
-/** Der Pfad des Protokolls: `--protokoll`, sonst `transcript_path` aus dem Hook-Rumpf. */
+/** Der Pfad des Protokolls: `--transcript`, sonst `transcript_path` aus dem Hook-Rumpf. */
 function sitzungProtokollPfad(args, stdinLesen) {
-  if (typeof args.protokoll === "string") return args.protokoll;
+  if (typeof args.transcript === "string") return args.transcript;
   // Ein Claude-Code-Hook reicht seinen Rumpf ueber stdin herein. Ist keine da oder
   // steht nichts Brauchbares drin, meldet der Melder nichts — er soll nie raten,
   // welches der Protokolle im Benutzerverzeichnis die laufende Sitzung ist.
@@ -770,12 +788,12 @@ function sitzungVerbuchen(start, complete, jetzt, { ablage, melde }) {
       writeFileSync(stand, JSON.stringify({ sitzung: start, zuletzt: jetzt.toISOString() }) + "\n", "utf-8");
     }
   } catch (e) {
-    melde(`Hinweis: Sitzungs-Stand nicht geschrieben (${stand}): ${e.message}`);
+    melde(t("standNichtGeschrieben", { pfad: stand, grund: e.message }));
   }
 }
 
 /**
- * `sitzung melden` — der Verbrauch der laufenden Sitzung ans Board (Issue #734).
+ * `session report` — der Verbrauch der laufenden Sitzung ans Board (Issue #734).
  *
  * Jeder Grund zu schweigen endet mit Exit 0 und ohne HTTP-Aufruf. Der Melder laeuft
  * an einem Hook und darf eine Sitzung niemals stoeren: Er ist Buchhaltung, keine
@@ -845,7 +863,7 @@ export async function sitzungMelden(args, {
   } catch (e) {
     // Nicht eingeliefert heisst nicht verbucht: Weder wird gedrosselt noch werden die
     // Wegmarken geleert — der naechste Versuch soll denselben Abschnitt noch sehen.
-    melde(`Hinweis: Sitzungs-Meldung nicht eingeliefert: ${e.message}`);
+    melde(t("nichtEingeliefert", { grund: e.message }));
     return sitzungSchweigt("nicht-eingeliefert");
   }
   sitzungVerbuchen(protokoll.start, complete, zeitpunkt, { ablage, melde });
@@ -853,7 +871,7 @@ export async function sitzungMelden(args, {
 }
 
 export async function dispatchSitzung(command, args, hilfe) {
-  if (command === "melden") return ausgeben(await sitzungMelden(args));
+  if (command === "report") return ausgeben(await sitzungMelden(args));
   process.stdout.write(hilfe);
-  fail(`Unbekannter sitzung-Befehl: '${command}'`);
+  fail(t("unbekanntSitzung", { befehl: command }));
 }

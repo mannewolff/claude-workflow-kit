@@ -1,7 +1,7 @@
 /**
  * board/hook.mjs — Hook gegen Pipe und Umleitung hinter ausgenommenen Kommandos im
  * Board-Werkzeug (Issue #1223, Plan #1199, E17): die Pruefungen `pruefeBashZeile` und
- * `pruefeHintergrund` und der Befehl `hook bash-pruefen`.
+ * `pruefeHintergrund` und der Befehl `hook bash-check`.
  *
  * Ein Teil von kit/board.mjs. Der Einstieg laedt ihn erst nach der Auskunft ueber
  * --version und --help und exportiert seine Namen unveraendert weiter. Dieser Teil
@@ -19,6 +19,15 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { fail } from "./grundlagen.mjs";
+import { text } from "./namen.mjs";
+
+// Die Texte an den Menschen liegen unter kit/texte/board-hook.mjs (Issue #1526).
+import { TEXTE } from "../texte/board-hook.mjs";
+
+export { TEXTE };
+
+/** Ein Text dieses Teils in der Projektsprache (Issue #1481, E13). */
+const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
 
 // ============================================================
 // Hook gegen Pipe und Umleitung hinter ausgenommenen Kommandos (Issue #995)
@@ -185,11 +194,7 @@ export function pruefeBashZeile(zeile, muster) {
 
   return {
     abweisen: true,
-    grund: `Abgewiesen: "${erstes}" steht in sandbox.excludedCommands, aber eine Pipe, eine Umleitung `
-      + "oder ein weiterer Befehl in derselben Zeile hebt diese Ausnahme auf (seit Claude Code 2.1.277) — "
-      + "der Aufruf liefe in der Sandbox, ohne Netz. Richtige Form: das Kommando allein aufrufen, ohne Pipe, "
-      + "Umleitung und Folgebefehl (2>&1 ist erlaubt). Eine grosse Ausgabe legt Claude Code selbst in einer "
-      + "Datei ab; die filtert ein zweiter Aufruf.",
+    grund: t("pipeAbgewiesen", { muster: erstes }),
   };
 }
 
@@ -206,11 +211,7 @@ export function pruefeHintergrund(toolInput, env = process.env) {
   if (!unbeaufsichtigt || toolInput?.run_in_background !== true) return { abweisen: false, grund: null };
   return {
     abweisen: true,
-    grund: "Abgewiesen: run_in_background ist ohne Aufsicht gesperrt (KIT_AGENT_MODEL gesetzt). Eine "
-      + "unbeaufsichtigte Session hat keinen Folge-Zug — beendet sie ihren Zug, waehrend der Befehl "
-      + "noch laeuft, ist die Sitzung zu Ende und sein Ergebnis verloren. Richtige Form: denselben "
-      + "Befehl im Vordergrund aufrufen und auf ihn warten; das Bash-Zeitlimit der Session reicht "
-      + "bis knapp unter das Rundenlimit (Issue #668).",
+    grund: t("hintergrundAbgewiesen"),
   };
 }
 
@@ -223,7 +224,7 @@ function bashMusterAus(pfad) {
 }
 
 /**
- * `hook bash-pruefen` — PreToolUse-Hook von Claude Code. Exit 2 mit Begruendung auf
+ * `hook bash-check` — PreToolUse-Hook von Claude Code. Exit 2 mit Begruendung auf
  * stderr weist den Aufruf ab; bei eigenem Fehler laesst der Hook durch (Exit 0, eine
  * Zeile auf stderr): Ein kaputter Hook darf nicht jede Bash-Zeile einer Session sperren.
  *
@@ -232,13 +233,13 @@ function bashMusterAus(pfad) {
  * laeuft.
  */
 export function hookBashPruefen({ eingabeLesen = () => readFileSync(0, "utf-8"), env = process.env, cwd = process.cwd() } = {}) {
-  const durchlassen = (warum) => ({ exitCode: 0, stderr: `board.mjs hook bash-pruefen: ${warum} — Aufruf durchgelassen\n` });
+  const durchlassen = (warum) => ({ exitCode: 0, stderr: `${t("durchgelassen", { warum })}\n` });
   const ohneBefund = { exitCode: 0, stderr: "" };
   let eingabe;
   try {
     eingabe = JSON.parse(eingabeLesen());
   } catch (e) {
-    return durchlassen(`Eingabe nicht lesbar (${e.message})`);
+    return durchlassen(t("eingabeUnlesbar", { grund: e.message }));
   }
   if (eingabe?.tool_name !== "Bash" || typeof eingabe?.tool_input?.command !== "string") return ohneBefund;
   const hintergrund = pruefeHintergrund(eingabe.tool_input, env);
@@ -251,7 +252,7 @@ export function hookBashPruefen({ eingabeLesen = () => readFileSync(0, "utf-8"),
     try {
       muster.push(...bashMusterAus(pfad));
     } catch (e) {
-      return durchlassen(`${pfad} nicht lesbar (${e.message})`);
+      return durchlassen(t("dateiUnlesbar", { pfad, grund: e.message }));
     }
   }
   const ergebnis = pruefeBashZeile(eingabe.tool_input.command, [...new Set(muster)]);
@@ -259,12 +260,12 @@ export function hookBashPruefen({ eingabeLesen = () => readFileSync(0, "utf-8"),
 }
 
 export async function dispatchHook(command, hilfe) {
-  if (command === "bash-pruefen") {
+  if (command === "bash-check") {
     const { exitCode, stderr } = hookBashPruefen();
     if (stderr) process.stderr.write(stderr);
     process.exitCode = exitCode;
     return;
   }
   process.stdout.write(hilfe);
-  fail(`Unbekannter hook-Befehl: '${command}'`);
+  fail(t("hookUnbekannt", { befehl: command }));
 }

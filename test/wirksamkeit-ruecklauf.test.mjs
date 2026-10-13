@@ -230,7 +230,7 @@ test("[wirksamkeit-6] ein scheiternder issue-activity-Aufruf ist ein Vermerk, ke
     bewegungen: [bewegung({ tage: 5, id: "12" })],
     board: { exit: 1, stderr: "activity wird von diesem Tracker nicht unterstuetzt" },
   }, (dir) => {
-    const res = wirksamkeit(dir, "auswerten");
+    const res = wirksamkeit(dir, "evaluate");
     assert.equal(res.status, 0, "ein Board-Fehlschlag darf die Auswertung nicht abbrechen");
     const e = JSON.parse(res.stdout);
     assert.equal(e.ruecklauf.status, "entfallen");

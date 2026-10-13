@@ -1,4 +1,4 @@
-// Prüfung einer Konfiguration in kit/einstellungen.mjs (Issue #676, Plan #674 E4, E5, E18).
+// Prüfung einer Konfiguration in kit/settings.mjs (Issue #676, Plan #674 E4, E5, E18).
 //
 // Der Validator kennt genau die Schlüsselwörter, die das Schema benutzt. Ein neues
 // Schlüsselwort im Schema, das er nicht kennt, soll hier auffallen — nicht erst, wenn
@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { pruefeSchema, pruefe, zusatzregeln, vorgabeAus, aenderungAnwenden, THEMEN, SCHEMA, SCHLUESSELWOERTER } from "../kit/einstellungen.mjs";
+import { pruefeSchema, pruefe, zusatzregeln, vorgabeAus, aenderungAnwenden, THEMEN, SCHEMA, SCHLUESSELWOERTER } from "../kit/settings.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VORLAGE = JSON.parse(readFileSync(join(repoRoot, "templates", "workflow.config.schema.json"), "utf-8"));

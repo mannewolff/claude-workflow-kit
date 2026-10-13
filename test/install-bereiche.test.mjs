@@ -29,7 +29,10 @@ const AREAS_HINWEIS = /wirken erst, wenn die Prüfkommandos in workflow\.config\
 // Scope, codeHost, issueTracker, mainBranch, productionBranch, reviewScope,
 // reviewModel, reviewCommand. Ohne Git-Repo entfaellt die Hook-Frage, die
 // naechste Zeile beantwortet also die Bereichsfrage.
-const VORSPANN = ["projekt", "github", "j", "n", "github", "", "", "", "", ""];
+// Ein neues Projekt beantwortet zuerst die Sprachfrage (Issue #1430), "" heisst Deutsch;
+// ein Lauf auf einer Bestandsconfig wird nicht nach ihr gefragt.
+const VORSPANN_BESTAND = ["projekt", "github", "j", "n", "github", "", "", "", "", ""];
+const VORSPANN = ["de", ...VORSPANN_BESTAND];
 
 function fixture(praefix) {
   const dir = mkdtempSync(join(tmpdir(), praefix));
@@ -112,7 +115,7 @@ test("Die Bereichsfrage ist die letzte Frage der projektlokalen Installation", (
 
 test("Globale Installation stellt keine Bereichsfrage", () => {
   mitFixture("install-bereiche-global-", (dir) => {
-    const res = installiere(dir, ["global", "github", "github", "", "", "", "", "", ""]);
+    const res = installiere(dir, ["de", "global", "github", "github", "", "", "", "", "", ""]);
     const ausgabe = res.stdout + res.stderr;
     assert.equal(res.status, 0, ausgabe);
     assert.ok(!ausgabe.includes(BEREICH_FRAGE), ausgabe);
@@ -122,7 +125,7 @@ test("Globale Installation stellt keine Bereichsfrage", () => {
 test("Ueberspringen laesst checkAreas und buildChecks unveraendert und sagt es", () => {
   mitFixture("install-bereiche-skip-", (dir) => {
     bestand(dir, { buildChecks: ["npm test", { cmd: "npx eslint .", always: true }] });
-    const res = installiere(dir, [...VORSPANN, ""]);
+    const res = installiere(dir, [...VORSPANN_BESTAND, ""]);
     const ausgabe = res.stdout + res.stderr;
     assert.equal(res.status, 0, ausgabe);
 
@@ -138,7 +141,7 @@ test("Antwort mit Bereichen ordnet jede vorhandene Pruefung zu", () => {
   mitFixture("install-bereiche-zuordnung-", (dir) => {
     bestand(dir, { buildChecks: ["npm test", { cmd: "npx eslint .", stufe: "push" }, { cmd: "npm run e2e", always: true }] });
     const res = installiere(dir, [
-      ...VORSPANN,
+      ...VORSPANN_BESTAND,
       "backend: src/**", "frontend: web/**", "",
       "backend, frontend", // npm test
       "frontend",          // npx eslint .
@@ -160,7 +163,7 @@ test("Antwort mit Bereichen ordnet jede vorhandene Pruefung zu", () => {
 test("Ein bei einer Pruefung genannter, nicht definierter Bereich wird abgewiesen und erneut gefragt", () => {
   mitFixture("install-bereiche-unbekannt-", (dir) => {
     bestand(dir, { buildChecks: ["npm test"] });
-    const res = installiere(dir, [...VORSPANN, "backend: src/**", "", "frontend", "backend"]);
+    const res = installiere(dir, [...VORSPANN_BESTAND, "backend: src/**", "", "frontend", "backend"]);
     const ausgabe = res.stdout + res.stderr;
     assert.equal(res.status, 0, ausgabe);
 
@@ -187,7 +190,7 @@ test("Update-Modus: vorhandene Bereiche stehen als Vorgabe da, leer behaelt sie"
       buildChecks: [{ cmd: "npm test", areas: ["backend"] }, "npx eslint ."],
     };
     bestand(dir, vorher);
-    const res = installiere(dir, [...VORSPANN, ""]);
+    const res = installiere(dir, [...VORSPANN_BESTAND, ""]);
     const ausgabe = res.stdout + res.stderr;
     assert.equal(res.status, 0, ausgabe);
 
@@ -206,7 +209,7 @@ test("Update-Modus: neue Bereiche kommen hinzu, leere Zuordnung behaelt die vorh
       checkAreas: { backend: ["src/**"] },
       buildChecks: [{ cmd: "npm test", areas: ["backend"] }, "npx eslint ."],
     });
-    const res = installiere(dir, [...VORSPANN, "docs: docs/**", "", "", "docs"]);
+    const res = installiere(dir, [...VORSPANN_BESTAND, "docs: docs/**", "", "", "docs"]);
     const ausgabe = res.stdout + res.stderr;
     assert.equal(res.status, 0, ausgabe);
 

@@ -11,7 +11,7 @@ const srcExclude = sprachen.englischAktiv ? [] : ["en/**", "glossar.md"];
 const DOWNLOAD = {
   installer: "https://docs.mwolff.org/install.mjs",
   boardUi: "https://docs.mwolff.org/board-ui.mjs",
-  einstellungen: "https://docs.mwolff.org/einstellungen.mjs",
+  einstellungen: "https://docs.mwolff.org/settings.mjs",
 };
 
 // Bedientexte je Sprache (Plan #1348, E13). Die deutsche Wurzel zeigte bis dahin die
@@ -40,7 +40,7 @@ const themeDe: DefaultTheme.Config = {
         { text: "Konzept & Voraussetzungen", link: "/dokumentation" },
         { text: "Installation & Config", link: "/dokumentation#die-config-datei" },
         { text: "Issue-Tracker & Code-Host", link: "/dokumentation#issue-tracker-und-code-host" },
-        { text: "Die sechzehn Skills", link: "/dokumentation#die-sechzehn-skills-und-der-9-schritt-kernprozess" },
+        { text: "Die siebzehn Skills", link: "/dokumentation#die-siebzehn-skills-und-der-9-schritt-kernprozess" },
         { text: "Vollständiger Durchlauf", link: "/dokumentation#ein-vollstandiger-durchlauf" },
         { text: "Drei Bahnen", link: "/dokumentation#drei-bahnen" },
         { text: "Menschliche Stop-Punkte", link: "/dokumentation#die-drei-menschlichen-stop-punkte" },
@@ -89,7 +89,7 @@ const themeEn: DefaultTheme.Config = {
         { text: "Concept & prerequisites", link: "/en/dokumentation" },
         { text: "Installation & config", link: "/en/dokumentation#the-config-file" },
         { text: "Issue tracker & code host", link: "/en/dokumentation#issue-tracker-and-code-host" },
-        { text: "The sixteen skills", link: "/en/dokumentation#the-sixteen-skills-and-the-9-step-core-process" },
+        { text: "The seventeen skills", link: "/en/dokumentation#the-seventeen-skills-and-the-9-step-core-process" },
         { text: "A complete pass", link: "/en/dokumentation#a-complete-pass" },
         { text: "Three lanes", link: "/en/dokumentation#three-lanes" },
         { text: "Human stop points", link: "/en/dokumentation#the-three-human-stop-points" },
@@ -131,7 +131,7 @@ export default defineConfig({
   // Ohne Angabe setzt VitePress "en-US"; die Fußzeile liest lang (Issue #1369).
   lang: "de",
   description:
-    "Sechzehn Skills für KI-gestützte Entwicklung mit Claude Code: GitHub, GitLab oder lokal, mit drei bewussten menschlichen Stop-Punkten.",
+    "Siebzehn Skills für KI-gestützte Entwicklung mit Claude Code: GitHub, GitLab oder lokal, mit drei bewussten menschlichen Stop-Punkten.",
   appearance: false,
   srcDir: "../docs",
   srcExclude,
@@ -148,7 +148,7 @@ export default defineConfig({
         lang: "en",
         link: "/en/",
         description:
-          "Sixteen skills for AI-assisted development with Claude Code: GitHub, GitLab or local, with three deliberate human stop points.",
+          "Seventeen skills for AI-assisted development with Claude Code: GitHub, GitLab or local, with three deliberate human stop points.",
         themeConfig: themeEn,
       },
     },

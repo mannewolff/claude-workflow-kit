@@ -1,6 +1,6 @@
 ---
 name: merge-production
-description: Schritt 9 des 9-Schritt-Prozesses — erstellt einen PR von main nach production. Nur auf explizite Trigger-Phrase des Menschen. Nutze diesen Skill NUR wenn der Nutzer explizit "merge production" tippt.
+description: Step 9 of the 9-step process: creates a PR from main to production. Only on the explicit trigger phrase of the human. Use this skill ONLY when the user explicitly types "merge production".
 user-invocable: true
 disable-model-invocation: true
 ---
@@ -109,7 +109,7 @@ hart. Dazu kommt, dass fremde, halbfertige Dateien im Haupt-Tree — etwa ein no
 TDD-Test — den Release-Prüflauf verfälschen würden.
 
 ```bash
-node .claude/kit/worktree.mjs anlegen --praefix release --ref origin/<mainBranch>
+node .claude/kit/worktree.mjs create --prefix release --ref origin/<mainBranch>
 ```
 
 **Der Ref ist `origin/<mainBranch>`, nicht das lokale `HEAD`:** Veröffentlicht wird, was
@@ -127,14 +127,14 @@ und ein zusammengesetzter Aufruf mit vorangestelltem `cd` fällt nicht mehr unte
 `sandbox.excludedCommands` — der Prüflauf liefe in der Sandbox (Issue #1372). Darum nennt
 jeder Aufruf den Worktree selbst und steht allein: git als `git -C <pfad> …`, der Prüflauf
 als `checks.mjs run --in <pfad> …`, jedes andere Kommando, etwa aus
-`RELEASING.md`, als `node .claude/kit/worktree.mjs im <pfad> -- <kommando> [argumente]`.
+`RELEASING.md`, als `node .claude/kit/worktree.mjs in <pfad> -- <kommando> [argumente]`.
 Ein Commit im falschen Baum ist genau der Fehler, den dieser Schritt beseitigt; mit `-C`
 und `--in` steht der Baum in jedem Aufruf.
 
 **Abhängigkeiten im frischen Worktree.** Er trägt nur, was versioniert ist, plus das
 gespiegelte `.claude/`. Braucht ein Pflichtcheck Abhängigkeiten **im Projektverzeichnis**
 (`node_modules`, `.venv`, `vendor/`), fehlen sie dort. Ist `installCommand` in der Config
-gesetzt, stellt `worktree.mjs anlegen` sie bereits selbst her — das Feld nennt das
+gesetzt, stellt `worktree.mjs create` sie bereits selbst her — das Feld nennt das
 Installationskommando des Projekts (`npm ci`, `uv sync`, …), und ein roter Lauf baut den
 Worktree wieder ab. Ohne gesetztes Feld bleibt es am Aufrufer: Dann werden sie vor dem
 Prüflauf von Hand angelegt. **Nicht** aus der
@@ -153,7 +153,7 @@ Prüfe, ob im Repo-Root eine `RELEASING.md` liegt.
 - **Ja:** Führe die dort unter dem Merge-Trigger (`merge production`) beschriebenen
   Schritte aus — **bis zum ersten festschreibenden Schritt**, also typischerweise Bump,
   Stempel und Changelog. Nicht committen: Das kommt aus Schritt 7. Jeder Schritt läuft im
-  Worktree über `node .claude/kit/worktree.mjs im <pfad> -- <kommando>`.
+  Worktree über `node .claude/kit/worktree.mjs in <pfad> -- <kommando>`.
 - **Nein:** Nichts weiter tun — direkt weiter zu Schritt 6.
 
 **Fremde `RELEASING.md`.** Die Grenze ist der erste Schritt, der festschreibt oder
@@ -179,7 +179,7 @@ Commit und darum einen Lauf.
 Der Lauf misst mit `--in` im Worktree (Issue #1372):
 
 ```bash
-node .claude/kit/checks.mjs run --in <pfad> --stufe merge --wiederholen --since "$(git -C <pfad> merge-base HEAD origin/<mainBranch>)"
+node .claude/kit/checks.mjs run --in <pfad> --stage merge --retry --since "$(git -C <pfad> merge-base HEAD origin/<mainBranch>)"
 ```
 
 **Dieser Skill fährt die Freigabestufe, und sie prüft nur, was `push main` nicht geprüft
@@ -204,7 +204,7 @@ Ein roter Lauf hält an: kein Commit, kein Push, kein PR. Der Bump aus Schritt 5
 Worktree stehen, und der Worktree wird trotzdem **abgebaut** (Schritt 8) — der Bump ist seit
 Issue #656 idempotent, ein neuer Anlauf erzeugt ihn wieder.
 
-**`--wiederholen`: eine rote Prüfung einmal auf demselben Stand** (Plan #1395, E2). Ist sie
+**`--retry`: eine rote Prüfung einmal auf demselben Stand** (Plan #1395, E2). Ist sie
 bei der Wiederholung grün, gilt sie als bestanden und hat gewackelt; der Berichtsblock
 trägt unter ihrer Zeile `gelaufen:` die Zeile `Gewackelt: <cmd> → erst rot, dann gruen`.
 
@@ -220,7 +220,7 @@ vorige Zusammenfassung. Dann, in dieser Reihenfolge:
 2. Die Reparaturkandidaten holen und nennen (Plan #1395, E15):
 
    ```bash
-   node .claude/kit/wirksamkeit.mjs kandidaten
+   node .claude/kit/effectiveness.mjs candidates
    ```
 
    Es liest `.claude/wirksamkeit.json` der Hauptkopie und gibt je Kandidat eine Zeile
@@ -231,7 +231,7 @@ vorige Zusammenfassung. Dann, in dieser Reihenfolge:
    Schritt 8, der Worktree wird abgebaut.
 
 `checks.mjs run` endet in diesem Fall mit Exitcode 0. **Ohne Wackler** ruft der Skill
-`wirksamkeit.mjs kandidaten` ebenfalls, an derselben Stelle: Reparaturkandidaten ohne
+`effectiveness.mjs candidates` ebenfalls, an derselben Stelle: Reparaturkandidaten ohne
 Wackler werden genannt, halten aber nicht an.
 
 ### 7. Der eine Commit
@@ -277,7 +277,7 @@ endet der Lauf ohne PR mit dieser Meldung, und der Mensch entscheidet.
 (Plan #1405, A11). Hat das Projekt den Schutz eingerichtet, weist der Code-Host einen
 Commit ab, der die Pflichtprüfungen nicht trägt — und der Release-Commit trägt sie noch
 nicht. Den Wert liest der Skill wie /push-main aus dem Feld `pushPruefung` von
-`node .claude/kit/checks.mjs plan --stufe push`. Meldet es ein Objekt mit
+`node .claude/kit/checks.mjs plan --stage push`. Meldet es ein Objekt mit
 `"ort": "buildDienst"`, pusht der Skill `HEAD` über den Prüfzweig-Ablauf aus /push-main,
 Abschnitt „Weg über den Build-Dienst“, Schritt 7 auf diesem Weg: erst auf den Prüfzweig
 `<zweig>`, warten auf den Build-Dienst, `<mainBranch>` nur bei Grün. Der Ablauf steht nur
@@ -302,16 +302,16 @@ git -C <pfad> push origin --delete <zweig>
 Scheitert das Löschen, steht es in einer Zeile im Bericht und hält den Abbau nicht auf.
 
 ```bash
-node .claude/kit/worktree.mjs rueckweg <pfad>
-node .claude/kit/worktree.mjs nachziehen-pruefen
-node .claude/kit/worktree.mjs entfernen <pfad>
+node .claude/kit/worktree.mjs return <pfad>
+node .claude/kit/worktree.mjs catch-up-check
+node .claude/kit/worktree.mjs remove <pfad>
 ```
 
-`rueckweg` ersetzt `.claude/checks-summary.json` der Hauptkopie durch die des Worktrees (sie
+`return` ersetzt `.claude/checks-summary.json` der Hauptkopie durch die des Worktrees (sie
 bezeugt den frisch gemessenen Stand) und hängt Ausführungsprotokoll
 (`.claude/ausfuehrungen.tsv`) und Befunde (`.claude/befunde.tsv`) an.
 
-`nachziehen-pruefen` entscheidet über das lokale `<mainBranch>`, das nach dem Push aus dem
+`catch-up-check` entscheidet über das lokale `<mainBranch>`, das nach dem Push aus dem
 Worktree hinter `origin` zurückliegt:
 
 - **`nachziehen: true`** — in der Hauptkopie `git fetch origin <mainBranch>` und
@@ -399,7 +399,7 @@ und den Tag setzt er ebenfalls selbst.
 
 Davor nennt die Rückmeldung jede `Gewackelt:`-Zeile des Prüflaufs unverändert samt der
 Antwort des Menschen auf die Rückfrage und jede Zeile `Reparaturkandidat:` aus
-`wirksamkeit.mjs kandidaten` (Schritt 6). Ohne beides entfällt der Absatz.
+`effectiveness.mjs candidates` (Schritt 6). Ohne beides entfällt der Absatz.
 
 > "PR/MR erstellt: <URL>. Der Merge nach production liegt bei dir.
 > Nach dem Merge der Tag:"

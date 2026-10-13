@@ -42,9 +42,9 @@ function mitKontext({ global = null, local = null, config = LOKAL } = {}, fn) {
   }
 }
 
-/** Ruft `kontext paths` auf, erwartet Exit 0 und liefert die geparste Ausgabe. */
+/** Ruft `context paths` auf, erwartet Exit 0 und liefert die geparste Ausgabe. */
 function paths(dir, env, ...cliArgs) {
-  const res = runBoard(dir, ["kontext", "paths", ...cliArgs], env);
+  const res = runBoard(dir, ["context", "paths", ...cliArgs], env);
   assert.equal(res.status, 0, res.stderr);
   return JSON.parse(res.stdout);
 }
@@ -52,7 +52,7 @@ function paths(dir, env, ...cliArgs) {
 // --- mergeKontextConfig ---
 // --- CLI: Akzeptanzkriterium ---
 
-test("kontext paths gibt JSON mit allen Feldern aus", () => {
+test("context paths gibt JSON mit allen Feldern aus", () => {
   mitKontext({ global: { vault: VAULT, always: ["Index.md"] } }, (dir, env) => {
     const ergebnis = paths(dir, env, "--project", "demo", "--date", "2026-08-06");
     assert.deepEqual(ergebnis, {
@@ -69,7 +69,7 @@ test("kontext paths gibt JSON mit allen Feldern aus", () => {
   });
 });
 
-test("kontext paths mergt globale und lokale Config", () => {
+test("context paths mergt globale und lokale Config", () => {
   mitKontext(
     {
       global: { vault: VAULT, always: ["Index.md"], logPath: "Log/{date}.md" },
@@ -84,14 +84,14 @@ test("kontext paths mergt globale und lokale Config", () => {
   );
 });
 
-test("kontext paths ohne --date nimmt den heutigen Tag", () => {
+test("context paths ohne --date nimmt den heutigen Tag", () => {
   mitKontext({ global: { vault: VAULT } }, (dir, env) => {
     const ergebnis = paths(dir, env, "--project", "demo");
     assert.match(ergebnis.log, /\d{4}-\d{2}-\d{2}\.md$/);
   });
 });
 
-test("kontext paths ohne jede Config laeuft im Degraded Mode", () => {
+test("context paths ohne jede Config laeuft im Degraded Mode", () => {
   mitKontext({}, (dir, env) => {
     const ergebnis = paths(dir, env, "--project", "demo", "--date", "2026-08-06");
     assert.equal(ergebnis.mode, "degraded");
@@ -101,13 +101,13 @@ test("kontext paths ohne jede Config laeuft im Degraded Mode", () => {
 
 // --- CLI: Projektname-Praezedenz ---
 
-test("kontext paths: --project schlaegt cfg.project", () => {
+test("context paths: --project schlaegt cfg.project", () => {
   mitKontext({ global: { vault: VAULT, project: "aus-config" } }, (dir, env) => {
     assert.equal(paths(dir, env, "--project", "vom-flag").project, "vom-flag");
   });
 });
 
-test("kontext paths: cfg.project schlaegt den Repo-Namen", () => {
+test("context paths: cfg.project schlaegt den Repo-Namen", () => {
   mitKontext({ global: { vault: VAULT, project: "EBDC" } }, (dir, env) => {
     // Kein Fake-git noetig: Steht der Name in der Config, wird der Code-Host gar
     // nicht erst gefragt — genau das prueft dieser Test.
@@ -115,7 +115,7 @@ test("kontext paths: cfg.project schlaegt den Repo-Namen", () => {
   });
 });
 
-test("kontext paths: ohne cfg.project gilt der Repo-Name des Code-Hosts", () => {
+test("context paths: ohne cfg.project gilt der Repo-Name des Code-Hosts", () => {
   mitKontext({ global: { vault: VAULT } }, (dir, env) => {
     fakeCli(dir, "git", [{ match: "remote get-url origin", stdout: "https://example.com/team/auth-service.git\n" }]);
     assert.equal(paths(dir, env).project, "auth-service");
@@ -125,7 +125,7 @@ test("kontext paths: ohne cfg.project gilt der Repo-Name des Code-Hosts", () => 
 // Akzeptanzkriterium: board.mjs ist als kopierbares Single-File-Tool auch in einem
 // Projekt ohne workflow.config.json lauffaehig — dort gibt es keinen Code-Host, und
 // der Verzeichnisname ist die beste verfuegbare Auskunft.
-test("kontext paths: ohne workflow.config.json greift der Verzeichnisname", () => {
+test("context paths: ohne workflow.config.json greift der Verzeichnisname", () => {
   mitKontext({ config: null, global: { vault: VAULT } }, (dir, env) => {
     const ergebnis = paths(dir, env, "--date", "2026-08-06");
     assert.equal(ergebnis.project, basename(dir));
@@ -133,7 +133,7 @@ test("kontext paths: ohne workflow.config.json greift der Verzeichnisname", () =
   });
 });
 
-test("kontext paths: unbekannter codeHost faellt auf den Verzeichnisnamen zurueck", () => {
+test("context paths: unbekannter codeHost faellt auf den Verzeichnisnamen zurueck", () => {
   mitKontext({ config: { codeHost: "svn", issueTracker: "local" }, global: { vault: VAULT } }, (dir, env) => {
     assert.equal(paths(dir, env, "--date", "2026-08-06").project, basename(dir));
   });
@@ -145,34 +145,34 @@ test("Die Hilfe nennt die kontext-Achse", () => {
   mitKontext({}, (dir, env) => {
     const res = runBoard(dir, ["--help"], env);
     assert.equal(res.status, 0);
-    assert.match(res.stdout, /kontext paths/);
+    assert.match(res.stdout, /context paths/);
   });
 });
 
-test("Unbekannte Achse nennt issue | code | kontext", () => {
+test("Unbekannte Achse nennt issue | code | context", () => {
   mitKontext({}, (dir, env) => {
     const res = runBoard(dir, ["quatsch"], env);
     assert.equal(res.status, 1);
-    assert.match(res.stderr, /Erwartet: issue \| code \| kontext/);
+    assert.match(res.stderr, /Erwartet: issue \| code \| context/);
   });
 });
 
-test("Unbekannter kontext-Befehl: Hilfe plus Fehlermeldung", () => {
+test("Unbekannter context-Befehl: Hilfe plus Fehlermeldung", () => {
   mitKontext({}, (dir, env) => {
-    const res = runBoard(dir, ["kontext", "fliegen"], env);
+    const res = runBoard(dir, ["context", "fliegen"], env);
     assert.equal(res.status, 1);
-    assert.match(res.stdout, /Board-Adapter/);
-    assert.match(res.stderr, /Unbekannter kontext-Befehl: 'fliegen'/);
+    assert.match(res.stdout, /board adapter/);
+    assert.match(res.stderr, /Unbekannter context-Befehl: 'fliegen'/);
   });
 });
 
 test("--project und --date ohne Wert brechen mit Meldung ab", () => {
   mitKontext({ global: { vault: VAULT } }, (dir, env) => {
-    const ohneProjekt = runBoard(dir, ["kontext", "paths", "--project"], env);
+    const ohneProjekt = runBoard(dir, ["context", "paths", "--project"], env);
     assert.equal(ohneProjekt.status, 1);
     assert.match(ohneProjekt.stderr, /--project braucht einen Wert/);
 
-    const ohneDatum = runBoard(dir, ["kontext", "paths", "--date"], env);
+    const ohneDatum = runBoard(dir, ["context", "paths", "--date"], env);
     assert.equal(ohneDatum.status, 1);
     assert.match(ohneDatum.stderr, /--date braucht einen Wert/);
   });
@@ -184,7 +184,7 @@ test("--project und --date ohne Wert brechen mit Meldung ab", () => {
 // gezogen wurde.
 test("Kaputte kontext.config.json: Meldung nennt den Pfad, Exit 1", () => {
   mitKontext({ local: "{ das ist kein JSON" }, (dir, env) => {
-    const res = runBoard(dir, ["kontext", "paths"], env);
+    const res = runBoard(dir, ["context", "paths"], env);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /kontext\.config\.json konnte nicht gelesen werden/);
   });
@@ -198,7 +198,7 @@ function mitVault(dir, dateien) {
   return vault;
 }
 
-test("kontext last-log liefert Pfad und Datum des juengsten Eintrags", () => {
+test("context last-log liefert Pfad und Datum des juengsten Eintrags", () => {
   const dir = setupProjekt(LOKAL, "board-lastlog-");
   const home = join(dir, "home");
   mkdirSync(join(home, ".claude"), { recursive: true });
@@ -208,7 +208,7 @@ test("kontext last-log liefert Pfad und Datum des juengsten Eintrags", () => {
     JSON.stringify({ vault, logPath: "Log/{date}-{project}.md" })
   );
   try {
-    const res = runBoard(dir, ["kontext", "last-log", "--project", "auth"], { HOME: home, USERPROFILE: home });
+    const res = runBoard(dir, ["context", "last-log", "--project", "auth"], { HOME: home, USERPROFILE: home });
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(JSON.parse(res.stdout), {
       path: join(vault, "Log", "2026-08-04-auth.md"),
@@ -219,14 +219,14 @@ test("kontext last-log liefert Pfad und Datum des juengsten Eintrags", () => {
   }
 });
 
-test("kontext last-log ohne Vorgaenger liefert path null", () => {
+test("context last-log ohne Vorgaenger liefert path null", () => {
   const dir = setupProjekt(LOKAL, "board-lastlog-");
   const home = join(dir, "home");
   mkdirSync(join(home, ".claude"), { recursive: true });
   const vault = mitVault(dir, []);
   writeFileSync(join(home, ".claude", "kontext.config.json"), JSON.stringify({ vault }));
   try {
-    const res = runBoard(dir, ["kontext", "last-log", "--project", "auth"], { HOME: home, USERPROFILE: home });
+    const res = runBoard(dir, ["context", "last-log", "--project", "auth"], { HOME: home, USERPROFILE: home });
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(JSON.parse(res.stdout), { path: null });
   } finally {
@@ -234,15 +234,15 @@ test("kontext last-log ohne Vorgaenger liefert path null", () => {
   }
 });
 
-test("kontext last-log ohne Vault liefert path null statt eines Fehlers", () => {
+test("context last-log ohne Vault liefert path null statt eines Fehlers", () => {
   mitKontext({}, (dir, env) => {
-    const res = runBoard(dir, ["kontext", "last-log", "--project", "auth"], env);
+    const res = runBoard(dir, ["context", "last-log", "--project", "auth"], env);
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(JSON.parse(res.stdout), { path: null });
   });
 });
 
-test("kontext last-log: fehlendes Log-Verzeichnis ist kein Fehler", () => {
+test("context last-log: fehlendes Log-Verzeichnis ist kein Fehler", () => {
   const dir = setupProjekt(LOKAL, "board-lastlog-");
   const home = join(dir, "home");
   mkdirSync(join(home, ".claude"), { recursive: true });
@@ -250,7 +250,7 @@ test("kontext last-log: fehlendes Log-Verzeichnis ist kein Fehler", () => {
   mkdirSync(vault, { recursive: true });
   writeFileSync(join(home, ".claude", "kontext.config.json"), JSON.stringify({ vault }));
   try {
-    const res = runBoard(dir, ["kontext", "last-log", "--project", "auth"], { HOME: home, USERPROFILE: home });
+    const res = runBoard(dir, ["context", "last-log", "--project", "auth"], { HOME: home, USERPROFILE: home });
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(JSON.parse(res.stdout), { path: null });
   } finally {

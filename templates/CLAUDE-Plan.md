@@ -4,7 +4,7 @@
 
 Gate-Register fuer die Stufe `plan`. Aufbau und Zweck wie in `CLAUDE-Fachplan.md`: Was
 hier steht, ist eine Regel, gegen die ein Plan verstossen kann — und ein Verstoss setzt
-`kit:klaeren`, statt automatisch angewendet zu werden (Plan #368, A9; klassifiziert wird
+`kit:clarify`, statt automatisch angewendet zu werden (Plan #368, A9; klassifiziert wird
 ab Etappe 5 aus #368, heute noch nicht).
 
 **Wann ein Fund `gate` ist** — beide Richtungen, Dokument-Verstoss und Verstoss durch den
@@ -54,11 +54,12 @@ dazwischen ab.
 
 ## P4 — `Fachliche Quelle: Issue #N` steht genau dann, wenn der Plan daraus entstand `[maschinell + Urteil]`
 
-Entstand der Plan aus `/techplan #N` gegen ein `[Fachlich]`-Issue: Zeile steht. Sonst: Zeile
+Entstand der Plan aus `/techplan #N` gegen ein `[Requirement]`-Issue: Zeile steht. Sonst: Zeile
 fehlt, auch kein Platzhalter.
 
 **`[maschinell]` ist davon nur die vorhandene Zeile:** #N muss existieren oder
-nachweislich existiert haben und `[Fachlich]` tragen. **Eine spaeter geloeschte Quelle
+nachweislich existiert haben und `[Requirement]` tragen (eine aeltere Karte auch den deutschen
+Vorgaenger). **Eine spaeter geloeschte Quelle
 ist kein Verstoss** — die Body-Zeile ist gerade die ueberlebende Spur, wenn die Karte
 weg ist (Idee #367; #300 verweist auf das geloeschte #285).
 
@@ -135,6 +136,22 @@ Der Marker dieser Stufe heisst `Plan-Review:`.
 nach `trimStart()` geprueft). Traegt ein Plandokument diesen Marker, haelt
 der Nacht-Runner es fuer ein freigabereifes Arbeitspaket und zieht es in die
 Implementierung.
+
+## P13 — Neue Namen und kopierte Strukturen sind auf ihre Folgen geprueft `[Urteil]`
+
+Fuehrt der Plan Namen ein, die ein Mensch tippt — Skills, Kommandos, Optionen, Labels,
+Titel-Praefixe —, nennt er, dass sie mit keinem eingebauten Kommando von Claude Code
+kollidieren. Erzeugt er gleich gebaute Kopien in mehreren Dateien, etwa eine Texttabelle
+je Modul, nennt er ihre Wirkung auf die Duplikatsmessung des Projekts (bei SonarCloud
+`sonar.cpd.exclusions`) und wie er sie auffaengt.
+
+*Warum Gate:* Beide Folgen liegen im Plan offen, und am Code faellt keine davon einem
+einzelnen Paket-Review auf. Der Umbau auf Englisch (Plan #1420) nannte den Skill der
+Stufe 4 wie das eingebaute Kommando `context` von Claude Code. Seine
+zweisprachigen Texttabellen (Stufe 3) legten strukturgleiche Kopien in rund 25 Module, und
+das Quality Gate von SonarCloud fiel ab v4.2.2 an duplizierten Zeilen (6,1 % statt
+hoechstens 3 %); repariert erst in #1524 bis #1526. Weder das Plan-Review noch die
+Paket-Reviews hatten es gefunden.
 
 ---
 

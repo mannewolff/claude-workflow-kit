@@ -1,7 +1,7 @@
 # 5-minute guide
-<!-- de: 0a296c3cd2dc -->
+<!-- de: 65e520054be1 -->
 
-You have a process for AI-assisted development, and you want to make it executable in Claude Code without giving up your stop points (Stop-Punkte). The kit gives you sixteen skills, a config and an installer. In five minutes it is running.
+You have a process for AI-assisted development, and you want to make it executable in Claude Code without giving up your stop points (Stop-Punkte). The kit gives you seventeen skills, a config and an installer. In five minutes it is running.
 
 ## Prerequisites
 <!-- de: dd6489dcf11f -->
@@ -14,7 +14,7 @@ You have a process for AI-assisted development, and you want to make it executab
 - On Windows: WSL2, see [Windows via WSL2](/en/wsl2)
 
 ## Installing
-<!-- de: 82a0e58ef195 -->
+<!-- de: 15834a57fd71 -->
 
 Download the installer and start it in the project folder:
 
@@ -29,7 +29,9 @@ Or in one step:
 node <(curl -s https://docs.mwolff.org/install.mjs)
 ```
 
-The installer asks seven things:
+For a new project, the installer first asks for the language of the kit: `de` (German, the default) or `en` (English). An existing project keeps its language; you switch it with `node install.mjs --language en` (see [Language of the kit](/en/dokumentation#language-of-the-kit)). Labels and the title prefixes of cards are English in every project, for example `[Requirement]` or `kit:clarify`; the table is under [Labels and title prefixes](/en/dokumentation#labels-and-title-prefixes).
+
+Then the installer asks seven things:
 
 1. Global or only for this project
 2. Code host: `github`, `gitlab` or `local`
@@ -39,17 +41,18 @@ The installer asks seven things:
 6. Review scope: `diff` or `full`
 7. Review model
 
-With a global installation, an eighth question follows about the vault path for `/kontext` and `/document` (leaving it empty skips it).
+With a global installation, an eighth question follows about the vault path for `/session-start` and `/document` (leaving it empty skips it).
 
-Afterwards the sixteen skills are in `.claude/skills/` (or globally in `~/.claude/skills/`), and a `.claude/workflow.config.json` with your answers as well as the board adapter (Board-Adapter) (`.claude/kit/board.mjs`) are in the repo. Restart Claude Code, and the skills show up in `/help`.
+Afterwards the seventeen skills are in `.claude/skills/` (or globally in `~/.claude/skills/`), and a `.claude/workflow.config.json` with your answers as well as the board adapter (Board-Adapter) (`.claude/kit/board.mjs`) are in the repo. Restart Claude Code, and the skills show up in `/help`.
 
-## The sixteen skills
-<!-- de: 2c527f9cea82 -->
+## The seventeen skills
+<!-- de: af5b54763a9f -->
 
 | Command | What for |
 |--------|-------|
-| `/kontext` | Load context, overview of the situation at session start |
-| `/fachplan` | Optional: requirement as a business issue for the PO loop (PO-Schleife) (see [documentation](./dokumentation.md#po-loop-business-and-technical-issues)) |
+| `/session-start` | Load context, overview of the situation at session start |
+| `/requirement` | Optional: requirement as a business issue for the PO loop (PO-Schleife) (see [documentation](./dokumentation.md#po-loop-business-and-technical-issues)) |
+| `/groom` | Decide the open questions of a reviewed business plan (Fachplan) one by one with the PO |
 | `/techplan` | Plan from the requirement, implements nothing |
 | `/issues` | Plan into small issues (GitHub, GitLab or local) |
 | `/task` | Requirement without trade-offs as a single work package (Arbeitspaket) `[Task]`, only after your confirmation |
@@ -59,14 +62,14 @@ Afterwards the sixteen skills are in `.claude/skills/` (or globally in `~/.claud
 | `/implement-done` | Granular entry: implement against the red tests (green) |
 | `/implement-next` | Exactly one Ready issue (`#N` binding, otherwise the top one), then stop — building block of night mode (Nachtbetrieb) |
 | `/local-check` | Mandatory checks plus UI verification |
-| `/review` | Review by Opus in a fresh session |
+| `/kit-review` | Review by Opus in a fresh session |
 | `/retro` | AI retrospective, consolidate memory |
 | `/push-main` | Push to main, only you |
 | `/merge-production` | PR to production, only you |
 | `/document` | Document the session, update the project note |
 
 ## A first run
-<!-- de: c6f1e3ad36b9 -->
+<!-- de: 043e7c5bd093 -->
 
 ```
 /techplan build a login form with email and password
@@ -83,7 +86,7 @@ You move the issues to Ready on the board. That is your GO. Then:
 ```
 /implement-ready
 /local-check
-/review
+/kit-review
 ```
 
 You check the review. Only then:

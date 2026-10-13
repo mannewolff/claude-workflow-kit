@@ -17,7 +17,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Script } from "node:vm";
 
-import { aenderungsliste, bereichsFolgen, checkSetzen, GRUPPEN_AUSNAHMEN, gruppenZeilen, gruppeSetzen, LAUFARTEN, paarungsFolgen, persoenlichErlaubt, ROLLEN_KATALOG, SCHEMA, schluesselUmbenennen, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE, THEMEN, vorgabeAus } from "../kit/einstellungen.mjs";
+import { aenderungsliste, bereichsFolgen, checkSetzen, GRUPPEN_AUSNAHMEN, gruppenZeilen, gruppeSetzen, LAUFARTEN, paarungsFolgen, persoenlichErlaubt, ROLLEN_KATALOG, SCHEMA, schluesselUmbenennen, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE, TEXTE, THEMEN, vorgabeAus } from "../kit/settings.mjs";
 import { mitServer, projekt } from "./helpers/einstellungen-fixture.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -91,8 +91,8 @@ test("[einstellungen-7] die Antwort traegt eine Content-Security-Policy ohne fre
   assert.doesNotMatch(csp, /https?:|\*/);
 });
 
-test("[einstellungen-7] kit/einstellungen.mjs bleibt unter 1.500.000 Byte", () => {
-  assert.ok(statSync(join(repoRoot, "kit", "einstellungen.mjs")).size < 1_500_000);
+test("[einstellungen-7] kit/settings.mjs bleibt unter 1.500.000 Byte", () => {
+  assert.ok(statSync(join(repoRoot, "kit", "settings.mjs")).size < 1_500_000);
 });
 
 // ------------------------------------------------------------
@@ -188,8 +188,10 @@ test("[einstellungen-3] die Dreier-Anzeige entsteht nur, wo eine persoenliche Ab
   // Issue #731, als die drei Spalten einer Gruppenzeile. Mehr duerfen es nicht werden, und
   // jeder von ihnen haengt an `persoenlichErlaubt` — ein Ort, der das nicht taete, waere ein
   // zweiter Weg, der die Regel umginge.
+  // Die Aufschrift steht seit Issue #1456 in TEXTE; der Redaktor nennt ihren Schluessel.
+  assert.equal(TEXTE.de["ebene.persoenlich"], "Persönlich");
   const zeichner = Object.entries(SEITEN_BAUSTEINE)
-    .filter(([, stueck]) => /Persönlich"/.test(stueck))
+    .filter(([, stueck]) => /tx\("ebene\.persoenlich"\)/.test(stueck))
     .map(([name]) => name);
   assert.deepEqual(zeichner, ["elemente", "redaktorGruppe"]);
   for (const name of zeichner) assert.match(SEITEN_BAUSTEINE[name], /persoenlichErlaubt/, `${name} haengt nicht an persoenlichErlaubt`);
@@ -415,7 +417,8 @@ test("[einstellungen-2] M4 nennt bei einer Zeile ohne Bereich, dass das Kommando
   const stueck = SEITEN_BAUSTEINE.redaktorPruefkommandos;
   // Das Schema sperrt ein leeres `areas` schon (Plan E7) — es meldet aber nur "passt auf keine
   // der erlaubten Formen". Der Grundtext kommt vom Redaktor (Kriterium 19).
-  assert.match(stueck, /nie/, "der Satz zum Kommando, das nie liefe, fehlt");
+  assert.match(TEXTE.de["bereich.mindestens"], /nie/, "der Satz zum Kommando, das nie liefe, fehlt");
+  assert.match(stueck, /tx\("bereich\.mindestens"\)/, "der Redaktor nennt den Satz nicht");
   assert.match(stueck, /befund/, "der Satz steht nicht als Befund an der Zeile");
   // Nur bekannte Bereiche stehen zur Wahl (Kriterium 19), ein unbekannter als Geist-Chip
   // mit genau zwei Wegen (Kriterium 4a).
@@ -487,7 +490,7 @@ test("M6 zeigt bei einem leeren Feld den Vorgabewert blass, aus dem eingebettete
   assert.match(stueck, /function ketteVorgabe\(feld\)/, "der Vorgabewert je Feld fehlt");
   assert.match(stueck, /vorgabe: ketteVorgabe\(feld\)/, "feldMitVorgabe bekommt den Vorgabewert nicht mitgeteilt");
   assert.match(stueck, /ketteFeldWert\(teil, "korrekturrunden"\)/, "Korrekturrunden bekommt keinen Vorgabewert");
-  const felder = new Set([...stueck.matchAll(/\["(\w+)", "/g)].map((m) => m[1]));
+  const felder = new Set([...stueck.matchAll(/\[?"(\w+)"[,\]]/g)].map((m) => m[1]));
   for (const feld of ["label", "varianteBLabel", "planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "vorbereitungMin", "kostenUsd", "kostenUsdB"]) {
     assert.ok(felder.has(feld), `${feld} steht in keiner Feldliste`);
   }
@@ -561,7 +564,7 @@ test("M6 bietet night.stand mit den Vorgaben aus dem Schema an", () => {
     fristMin: vorgabeAus("night.stand.fristMin"),
     pauseMin: vorgabeAus("night.stand.pauseMin"),
   };
-  assert.deepEqual(Object.values(erwartet), ["lauf:laeuft", "lauf:abgebrochen", "lauf:wartet", 10, 5]);
+  assert.deepEqual(Object.values(erwartet), ["run:running", "run:aborted", "run:waiting", 10, 5]);
   assert.ok(stueck.includes(`const STAND_VORGABEN_BROWSER = ${JSON.stringify(erwartet)};`), "die Vorgaben des Laufstands weichen vom Schema ab");
   assert.match(stueck, /setzeWert\(teil, "night\.stand"/, "der Laufstand landet nicht in der Arbeitskopie");
   for (const feld of ["labels.laeuft", "labels.abgebrochen", "labels.wartet", "fristMin", "pauseMin"]) {
@@ -598,9 +601,12 @@ test("[einstellungen-3] die Dreier-Anzeige entsteht bei triggers und nicht bei c
   // „zuruecksetzen" (Kriterium 28); sonst steht der Team-Wert unmittelbar in der Eingabe (4b).
   assert.match(stueck, /eintrag\.persoenlichErlaubt/, "die Spalten haengen nicht an persoenlichErlaubt");
   assert.match(stueck, /trig-grid/, "die Tabelle nutzt nicht das Gitter des Entwurfs");
-  assert.match(stueck, /"Team", "Persönlich", "Gilt"/, "der Tabellenkopf nennt die drei Ebenen nicht");
-  assert.match(stueck, /"zurücksetzen"/, "eine Abweichung laesst sich nicht je Zeile zuruecksetzen");
-  assert.match(stueck, /wie Team/, "die persoenliche Spalte nennt nicht, was ohne Eintrag gilt");
+  assert.match(stueck, /tx\("ebene\.team"\), tx\("ebene\.persoenlich"\), tx\("ebene\.gilt"\)/, "der Tabellenkopf nennt die drei Ebenen nicht");
+  assert.deepEqual([TEXTE.de["ebene.team"], TEXTE.de["ebene.persoenlich"], TEXTE.de["ebene.gilt"]], ["Team", "Persönlich", "Gilt"]);
+  assert.match(stueck, /tx\("gruppe\.zuruecksetzen"\)/, "eine Abweichung laesst sich nicht je Zeile zuruecksetzen");
+  assert.equal(TEXTE.de["gruppe.zuruecksetzen"], "zurücksetzen");
+  assert.match(stueck, /tx\("gruppe\.wieTeam"\)/, "die persoenliche Spalte nennt nicht, was ohne Eintrag gilt");
+  assert.equal(TEXTE.de["gruppe.wieTeam"], "wie Team");
 });
 
 test("[einstellungen-9] die Zeilen- und Setzrechnung von M7 ist die Fassung des Moduls, keine zweite", () => {
@@ -685,18 +691,22 @@ test("M6 bietet die fuenf Uebergaenge als eigene Zeilen mit den Vorgaben aus dem
     umsetzungVorbereitung: vorgabeAus("night.kette.uebergaenge.umsetzungVorbereitung"),
   };
   assert.deepEqual(Object.values(erwartet), [true, true, true, undefined, true]);
-  assert.ok(stueck.includes("Umsetzung → Vorbereitung des Push folgt automatisch"), "die Zeile zur Vorbereitung fehlt");
+  assert.equal(TEXTE.de["uebergang.umsetzungVorbereitung"], "Umsetzung → Vorbereitung des Push folgt automatisch", "die Zeile zur Vorbereitung fehlt");
   assert.ok(stueck.includes(`const UEBERGAENGE_VORGABEN_BROWSER = ${JSON.stringify(erwartet)};`), "die Vorgaben der Uebergaenge weichen vom Schema ab");
   assert.match(stueck, /ketteAendern\(teil, \{ uebergaenge: Object\.assign\(\{\}, uebergaengeVon\(teil\)/, "die Uebergaenge werden nicht formtreu gesetzt");
   assert.match(stueck, /ketteFeldZeile\("night\.kette\.uebergaenge\." \+ feld/, "die Uebergaenge haben keine eigene Zeile");
-  for (const feld of Object.keys(erwartet)) assert.ok(stueck.includes(`["${feld}", `), `${feld} hat keine Zeile`);
+  for (const feld of Object.keys(erwartet)) {
+    assert.ok(stueck.includes(`"${feld}"`), `${feld} hat keine Zeile`);
+    assert.ok(TEXTE.de[`uebergang.${feld}`], `${feld} hat keine Aufschrift`);
+  }
 });
 
 // Issue #1105: abdeckungUmsetzung hat keine Vorgabe — ohne Eintrag gilt das Verhalten von vor
 // #1087. Die Zeile zeigt das als eigenen Zustand und schreibt nichts, solange niemand waehlt.
 test("M6 zeigt abdeckungUmsetzung ohne Eintrag als Vorgabe-Zustand einer Auswahl, nicht als Kaestchen", () => {
   const stueck = SEITEN_BAUSTEINE.redaktorNachtKette;
-  assert.ok(stueck.includes('"Vorgabe: wie vor der Einstellung (Variante B setzt um)"'), "der Zustand ohne Eintrag ist nicht benannt");
+  assert.equal(TEXTE.de["uebergang.abdeckungUmsetzungOhne"], "Vorgabe: wie vor der Einstellung (Variante B setzt um)", "der Zustand ohne Eintrag ist nicht benannt");
+  assert.ok(stueck.includes('tx("uebergang." + feld + "Ohne")'), "die Auswahl nennt den Zustand ohne Eintrag nicht");
   assert.match(stueck, /if \(UEBERGAENGE_VORGABEN_BROWSER\[feld\] === undefined\) return uebergangAuswahlZeile\(/, "ein Schalter ohne Vorgabe bekommt keine Auswahl");
   const rumpf = stueck.slice(stueck.indexOf("function uebergangAuswahlZeile("));
   assert.match(rumpf, /wahl\.value = typeof wert === "boolean" \? String\(wert\) : "";/, "ohne Eintrag steht die Auswahl nicht auf der Vorgabe");

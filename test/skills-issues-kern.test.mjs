@@ -68,3 +68,21 @@ test("[skills-27] /issues liest die Einarbeitung des Plans gegen die Pakete und 
   assert.match(schritt, /Unbeaufsichtigt/);
   assert.match(schritt, /Kommentar am Plan/);
 });
+
+// Szenario im Paket (Issue #1595, Plan #1588, A9/E11): Das Szenario aus dem Fachplan steht
+// woertlich im Akzeptanzkriterium, neben dem pruefbaren Kriterium, das den Test mit seinem
+// Titel nennt. Ohne die ausdrueckliche Ausnahme widerspraeche es der Kriterien-Konvention.
+test("[skills-28] /issues traegt das Szenario woertlich ins Paket, mit Test nach Titel und Regel fuer mehrere Pakete", () => {
+  const a = SKILL.indexOf("Konvention „Szenario im Paket“:");
+  assert.ok(a > 0, "die Konvention „Szenario im Paket“ fehlt");
+  const regel = SKILL.slice(a, SKILL.indexOf("\n\n", a));
+  assert.match(regel, /`Szenario: <Titel>`/);
+  assert.match(regel, /woertlich/);
+  assert.match(regel, /test\("Szenario: <Titel>", …\)/);
+  assert.match(regel, /keine Kennung/);
+  assert.match(regel, /mehrere Pakete/);
+  assert.match(regel, /vollendende/);
+  const kriterien = SKILL.slice(SKILL.indexOf("Kriterien-Konvention:"));
+  assert.match(kriterien.slice(0, 900), /Ausnahme: das Szenario/,
+    "die Kriterien-Konvention nennt die Ausnahme fuer das Szenario nicht");
+});

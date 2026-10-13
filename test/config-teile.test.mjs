@@ -85,17 +85,30 @@ test("jeder Testaufruf ist mindestens einem Teil zugeordnet", () => {
   }
 });
 
-test("genau die Testaufrufe tragen gleichzeitig: true", () => {
+test("genau die Testaufrufe ohne vorab tragen gleichzeitig: true", () => {
   // Issue #1074 (Plan #1066, A1, E3): Die Testgruppen laufen nebeneinander, alles andere
   // danach allein — Lint, Drift-Pruefung und der frische Checkout messen den Stand, den die
   // Tests hinterlassen, und teilen sich keine Last mit ihnen. Dieselbe Erkennung wie
-  // `testEintraege`: am Kommando, nicht an der Position.
+  // `testEintraege`: am Kommando, nicht an der Position. Ein schneller Testaufruf mit
+  // `vorab` laeuft davor allein (Issue #1519) und traegt das Kennzeichen darum nicht.
   const eintraege = (config.buildChecks ?? [])
     .map((eintrag) => (typeof eintrag === "string" ? { cmd: eintrag } : eintrag));
   const falsch = eintraege
-    .filter((eintrag) => (eintrag.gleichzeitig === true) !== eintrag.cmd.startsWith("node --test"))
+    .filter((eintrag) => (eintrag.gleichzeitig === true) !== (eintrag.cmd.startsWith("node --test") && eintrag.vorab !== true))
     .map((eintrag) => `${eintrag.cmd}: gleichzeitig=${eintrag.gleichzeitig === true}`);
   assert.deepEqual(falsch, [], "Eintraege, deren Kennzeichen gleichzeitig nicht zu ihrem Kommando passt");
+});
+
+test("genau sync-blobs --check, eslint und checks-leichtigkeit tragen vorab: true und stehen vorn", () => {
+  // Issue #1519: Ihr Rot ist nach Sekunden bekannt statt erst nach den gleichzeitigen.
+  const eintraege = (config.buildChecks ?? [])
+    .map((eintrag) => (typeof eintrag === "string" ? { cmd: eintrag } : eintrag));
+  // Am Kennwort erkannt, nicht am vollen Kommando: Ein Programmpfad im Testtext liest die
+  // Leichtigkeitspruefung als Prozessstart.
+  const kennwoerter = ["sync-blobs.mjs --check", "npx eslint ", "checks-leichtigkeit.test.mjs"];
+  const kennwort = (eintrag) => kennwoerter.find((wort) => eintrag.cmd.includes(wort)) ?? eintrag.cmd;
+  assert.deepEqual(eintraege.filter((eintrag) => eintrag.vorab === true).map(kennwort), kennwoerter);
+  assert.deepEqual(eintraege.slice(0, kennwoerter.length).map(kennwort), kennwoerter);
 });
 
 test("jede versionierte Testdatei wird von einem der Aufrufe erfasst", () => {
@@ -307,7 +320,7 @@ test("jeder Eintrag von nurGeruest traegt ein Muster und einen Grund", () => {
 // hier: Dieselbe Regel zweimal beschrieben wiche ab der ersten Aenderung voneinander ab.
 
 /**
- * Der Anteil je Bereich, den `checks.mjs bereiche` meldet, fuer die Config dieses Repos —
+ * Der Anteil je Bereich, den `checks.mjs areas` meldet, fuer die Config dieses Repos —
  * im selben Prozess ueber `anteilJeBereich`, dieselbe Funktion, die das Kommando ruft
  * (Issue #1235, Plan #1199, E6).
  */
@@ -400,7 +413,7 @@ test("jeder Eintrag in gekoppelteBereiche ist in jeder Gruppe, die ihn nennt, ge
 
 // --- Kriterien 4 und 7 an der echten Config (Issue #1236, Plan #1199, E3, E5) ----------
 //
-// Die Auswahl selbst, nicht ein Nachbau: `checks.mjs plan --abschluss` im selben Prozess
+// Die Auswahl selbst, nicht ein Nachbau: `checks.mjs plan --finish` im selben Prozess
 // (E6) gegen die versionierte Config und den Importgraphen dieses Repos. Nur git wird
 // ersetzt, und nur in der Frage, was sich geaendert hat — so misst die Probe eine Aenderung
 // an genau einer Datei, gleich was gerade im Arbeitsbaum liegt.
@@ -408,10 +421,13 @@ test("jeder Eintrag in gekoppelteBereiche ist in jeder Gruppe, die ihn nennt, ge
 /**
  * Die Quelldatei eines Teils, wie `checkAreas` sie dem Bereich zuordnet — genau eine
  * unter `kit/`. Die Probe nennt den Teil ueber seinen Bereich und nicht ueber einen
- * Pfad: So haengt sie an der Teilzuordnung der Config, die sie belegen soll.
+ * Pfad: So haengt sie an der Teilzuordnung der Config, die sie belegen soll. Die Texttabelle
+ * des Teils unter `kit/texte/` zaehlt nicht mit: Sie steht neben ihrem Modul im Bereich
+ * (Issue #1526), ist aber keine eigene Quelle des Teils.
  */
 function teilDatei(bereich) {
-  const quellen = (config.checkAreas?.[bereich] ?? []).filter((muster) => muster.startsWith("kit/"));
+  const quellen = (config.checkAreas?.[bereich] ?? [])
+    .filter((muster) => muster.startsWith("kit/") && !muster.startsWith("kit/texte/"));
   assert.equal(quellen.length, 1, `Bereich ${bereich} ordnet nicht genau eine Quelldatei unter kit/ zu: ${quellen.join(", ")}`);
   return quellen[0];
 }
@@ -423,7 +439,7 @@ function auswahlFuer(pfad) {
     if (args[0] === "status") return { status: 0, stdout: "", stderr: "" };
     return spawnSync("git", args, optionen);
   };
-  const res = aufrufen(["plan", "--abschluss"], { cwd: repoRoot, git });
+  const res = aufrufen(["plan", "--finish"], { cwd: repoRoot, git });
   assert.equal(res.status, 0, `checks.mjs plan schlug fehl: ${res.stderr}`);
   return JSON.parse(res.stdout);
 }

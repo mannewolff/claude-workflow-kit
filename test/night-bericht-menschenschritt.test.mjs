@@ -35,7 +35,8 @@ function bericht(nichtBegonnen, pakete) {
     id: F, ausgang: "fertig", variante: "B", ziel: "push-vorbereitet",
     stufen: { plan: { id: P }, pakete: { ids: pakete.map((k) => k.id) }, umsetzung: { umgesetzt: [], angehalten: [], zurueckgestellt: [], nichtBegonnen } },
   };
-  return berichtBauen(einheit, { plan: { id: P, title: "[Plan] X", body: "" }, pakete, stempel: "s" });
+  return berichtBauen(einheit, { plan: { id: P, title: "[Plan] X", body: "" }, pakete, stempel: "s",
+    start: "2026-09-28T03:00:00.000Z", jetzt: Date.parse("2026-09-28T03:05:00.000Z") });
 }
 
 const karte = (id, title = `Paket ${id}`) => ({ id, title, body: "" });

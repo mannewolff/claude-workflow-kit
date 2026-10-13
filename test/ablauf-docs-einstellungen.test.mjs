@@ -11,7 +11,7 @@ import { mkdtempSync, mkdirSync, copyFileSync, readFileSync, writeFileSync, rmSy
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { TEILE } from "../kit/einstellungen.mjs";
+import { TEILE } from "../kit/settings.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TOOL = join(repoRoot, "tools", "config-referenz.mjs");
@@ -137,7 +137,7 @@ test("der Oberflaechen-Abschnitt nennt jeden benannten Teil der Oberflaeche", ()
 
 test("[einstellungen-8] der Textblock-Absatz nennt jeden Pfad des Text-Teils in Dateischreibweise", () => {
   // `night.stufen` und `night.stufenRegel` stehen seit Issue #708 neben `night.modelle`
-  // im Text-Teil (kit/einstellungen.mjs, TEILE). Nannte die Doku nur die Modellliste,
+  // im Text-Teil (kit/settings.mjs, TEILE). Nannte die Doku nur die Modellliste,
   // suchte wer die beiden pflegen will vergeblich nach einer eigenen Eingabe.
   const abschnitt = oberflaechenAbschnitt();
   const start = abschnitt.indexOf("**Textblock in Dateischreibweise.**");
@@ -247,9 +247,9 @@ test("[1356] die englische Ausgabe traegt englischen Rahmentext, kein 'gültig' 
     assert.match(abschnitt, /\(valid: `github`, `gitlab`, `local`\)/);
     assert.doesNotMatch(abschnitt, /gültig/);
     assert.doesNotMatch(abschnitt, /Dieser Abschnitt entsteht/);
-    // Die Einstellungsnamen bleiben unuebersetzt.
+    // Englischer Name, dahinter der deutsche Altname, wo er abweicht (Issue #1439).
     assert.match(abschnitt, /^### `mainBranch`$/m);
-    assert.match(abschnitt, /^- `night\.kette\.planMin` — /m);
+    assert.match(abschnitt, /^- `night\.chain\.planMin` \(German: `night\.kette\.planMin`\) — /m);
   });
 });
 

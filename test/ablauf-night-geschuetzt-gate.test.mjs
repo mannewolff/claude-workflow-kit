@@ -21,11 +21,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, existsSync, rmSync, cpSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, cpSync } from "node:fs";
+import { join, dirname, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
+import { hatLabel } from "./helpers/labels.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const NIGHT = join(repoRoot, "kit", "night.mjs");
@@ -43,8 +44,8 @@ import { fileURLToPath } from "node:url";
 const hier = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
 if (process.env.NIGHT_TEST_AUFRUFE) appendFileSync(process.env.NIGHT_TEST_AUFRUFE, JSON.stringify(args) + "\\n");
-if (process.env.NIGHT_TEST_LABEL_SCHEITERT && args[0] === "issue" && args[1] === "label" && args[2] === "add" && args[4] === "kit:geschuetzt") {
-  process.stderr.write("Label kit:geschuetzt ist am Board nicht angelegt\\n");
+if (process.env.NIGHT_TEST_LABEL_SCHEITERT && args[0] === "issue" && args[1] === "label" && args[2] === "add" && args[4] === "kit:protected") {
+  process.stderr.write("Label kit:protected ist am Board nicht angelegt\\n");
   process.exit(1);
 }
 const res = spawnSync(process.execPath, [join(hier, "board-echt.mjs"), ...args], { stdio: "inherit" });
@@ -66,6 +67,7 @@ function setupProjekt() {
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board-echt.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   writeFileSync(join(dir, ".claude", "kit", "board.mjs"), WRAPPER);
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"], local: { issuesDir: "issues" },
@@ -137,15 +139,15 @@ test("Treffer: das Paket wird nach Backlog geschoben, gezeichnet und genau einma
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
 
     assert.equal(spalte(dir, geschuetzt), "backlog");
-    assert.ok(labels(dir, geschuetzt).includes("kit:geschuetzt"), "kit:geschuetzt fehlt am Paket");
-    assert.deepEqual(schreibende(aufrufe, geschuetzt), ["move backlog", "label add kit:geschuetzt", "comment"],
+    assert.ok(hatLabel(labels(dir, geschuetzt), "kit:geschuetzt"), "kit:geschuetzt fehlt am Paket");
+    assert.deepEqual(schreibende(aufrufe, geschuetzt), ["move backlog", "label add kit:protected", "comment"],
       "Reihenfolge nach E11: Move, label add, dann Kommentar");
 
     const ks = kommentare(issueText(dir, geschuetzt));
     assert.equal(ks.length, 1, `genau ein Kommentar erwartet, gefunden: ${JSON.stringify(ks)}`);
     const zeile = `In \`${PFAD}\` den Eintrag ergaenzen.`;
     const treffer = boardModul.geschuetzteTreffer(paketBody(PFAD), "Paket mit geschuetzter Datei", dir);
-    assert.equal(ks[0], `${boardModul.geschuetztKommentar(treffer)}\n\nLabel kit:geschuetzt gesetzt`);
+    assert.equal(ks[0], `${boardModul.geschuetztKommentar(treffer)}\n\nLabel kit:protected gesetzt`);
     assert.match(ks[0], /^## Geschuetzte Datei$/m);
     assert.ok(ks[0].includes(`- \`${PFAD}\``), "Backtick-Liste fehlt");
 
@@ -172,8 +174,8 @@ test("Gegenprobe: ein Paket ohne geschuetzten Pfad bekommt seine Session", () =>
     const { res, aufrufe } = nacht(dir);
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
     assert.equal(spalte(dir, normal), "in_review");
-    assert.ok(!aufrufe.some((a) => a[1] === "label" && a[4] === "kit:geschuetzt"), "ohne Treffer kein Label");
-    assert.ok(!labels(dir, normal).includes("kit:geschuetzt"));
+    assert.ok(!aufrufe.some((a) => a[1] === "label" && a[4] === "kit:protected"), "ohne Treffer kein Label");
+    assert.ok(!hatLabel(labels(dir, normal), "kit:geschuetzt"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -204,7 +206,7 @@ test("Kennzeichnung: ein nur genannter geschuetzter Pfad haelt nicht an, das Pak
     const { res, aufrufe } = nacht(dir);
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
     assert.equal(spalte(dir, id), "in_review");
-    assert.ok(!aufrufe.some((a) => a[1] === "label" && a[4] === "kit:geschuetzt"), "ohne Treffer kein Label");
+    assert.ok(!aufrufe.some((a) => a[1] === "label" && a[4] === "kit:protected"), "ohne Treffer kein Label");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -234,12 +236,12 @@ test("Board ohne Label: Move und Kommentar stehen trotzdem, der Lauf geht weiter
     const { res, aufrufe } = nacht(dir, { NIGHT_TEST_LABEL_SCHEITERT: "1" });
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
     assert.equal(spalte(dir, geschuetzt), "backlog");
-    assert.ok(!labels(dir, geschuetzt).includes("kit:geschuetzt"));
-    assert.deepEqual(schreibende(aufrufe, geschuetzt), ["move backlog", "label add kit:geschuetzt", "comment"]);
+    assert.ok(!hatLabel(labels(dir, geschuetzt), "kit:geschuetzt"));
+    assert.deepEqual(schreibende(aufrufe, geschuetzt), ["move backlog", "label add kit:protected", "comment"]);
     const ks = kommentare(issueText(dir, geschuetzt));
     assert.equal(ks.length, 1);
-    assert.ok(ks[0].endsWith("\n\nLabel kit:geschuetzt nicht gesetzt"), ks[0]);
-    assert.match(res.stdout, /Label kit:geschuetzt nicht gesetzt.*am Board nicht angelegt/);
+    assert.ok(ks[0].endsWith("\n\nLabel kit:protected nicht gesetzt"), ks[0]);
+    assert.match(res.stdout, /Label kit:protected nicht gesetzt.*am Board nicht angelegt/);
     assert.equal(spalte(dir, normal), "in_review", "der Lauf lief nicht weiter");
 
     // Ohne Handlung eines Menschen: wieder nach Ready, und es haelt erneut an.
@@ -247,7 +249,7 @@ test("Board ohne Label: Move und Kommentar stehen trotzdem, der Lauf geht weiter
     const zweiter = nacht(dir);
     assert.equal(zweiter.res.status, 0, `zweiter Lauf schlug fehl: ${zweiter.res.stderr}`);
     assert.equal(spalte(dir, geschuetzt), "backlog");
-    assert.deepEqual(schreibende(zweiter.aufrufe, geschuetzt), ["move backlog", "label add kit:geschuetzt", "comment"]);
+    assert.deepEqual(schreibende(zweiter.aufrufe, geschuetzt), ["move backlog", "label add kit:protected", "comment"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -257,7 +259,7 @@ test("Board ohne Label: Move und Kommentar stehen trotzdem, der Lauf geht weiter
 
 /** Der Halt-Kommentar, wie ihn der Runner bei gesetztem Label schreibt. */
 const haltKommentar = (dir, body, titel) =>
-  `${boardModul.geschuetztKommentar(boardModul.geschuetzteTreffer(body, titel, dir))}\n\nLabel kit:geschuetzt gesetzt`;
+  `${boardModul.geschuetztKommentar(boardModul.geschuetzteTreffer(body, titel, dir))}\n\nLabel kit:protected gesetzt`;
 
 test("Wiederaufnahme: Halt-Kommentar mit gesetztem Label, Label abgenommen — das Paket laeuft durch", () => {
   const dir = setupProjekt();
@@ -283,9 +285,9 @@ test("Wiederaufnahme: eine Karte mit kit:geschuetzt wird uebersprungen, das Labe
     const { res, aufrufe } = nacht(dir);
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
     assert.equal(spalte(dir, id), "backlog");
-    assert.ok(labels(dir, id).includes("kit:geschuetzt"), "der Lauf hat kit:geschuetzt entfernt");
+    assert.ok(hatLabel(labels(dir, id), "kit:geschuetzt"), "der Lauf hat kit:geschuetzt entfernt");
     assert.ok(!aufrufe.some((a) => a[1] === "label" && a[2] === "remove"), "label remove kommt im Runner nicht vor");
-    assert.match(res.stdout, new RegExp(`#${id} uebersprungen: traegt kit:geschuetzt`));
+    assert.match(res.stdout, new RegExp(`#${id} uebersprungen: traegt kit:protected`));
     const ks = kommentare(issueText(dir, id));
     assert.equal(ks.at(-1), nightModul.GESCHUETZT_LABEL_GATE_TEXT);
   } finally {
@@ -302,8 +304,8 @@ test("Wiederaufnahme: ein weiterer, im Kommentar nicht genannter Pfad haelt erne
     const { res, aufrufe } = nacht(dir);
     assert.equal(res.status, 0, `night.mjs schlug fehl: ${res.stderr}\n${res.stdout}`);
     assert.equal(spalte(dir, id), "backlog");
-    assert.ok(labels(dir, id).includes("kit:geschuetzt"));
-    assert.deepEqual(schreibende(aufrufe, id), ["move backlog", "label add kit:geschuetzt", "comment"]);
+    assert.ok(hatLabel(labels(dir, id), "kit:geschuetzt"));
+    assert.deepEqual(schreibende(aufrufe, id), ["move backlog", "label add kit:protected", "comment"]);
     assert.ok(kommentare(issueText(dir, id)).at(-1).includes(`- \`${ZWEITER_PFAD}\``));
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -320,7 +322,7 @@ function konstantenAbweichungen(nacht, brett) {
 
 test("Gleichlauf: GESCHUETZT_LABEL und GESCHUETZT_ANKER in night.mjs gleichen denen in board.mjs", () => {
   assert.deepEqual(konstantenAbweichungen(nightModul, boardModul), []);
-  assert.equal(nightModul.GESCHUETZT_LABEL, "kit:geschuetzt");
+  assert.equal(nightModul.GESCHUETZT_LABEL, "kit:protected");
   assert.equal(nightModul.GESCHUETZT_ANKER, "## Geschuetzte Datei");
 });
 
@@ -337,10 +339,44 @@ test("hatGeschuetztLabel erkennt das Label und nur es", () => {
   assert.equal(nightModul.hatGeschuetztLabel({}), false);
 });
 
-test("Der Runner nimmt kit:geschuetzt nie ab", () => {
-  const quelle = readFileSync(NIGHT, "utf-8");
-  assert.doesNotMatch(quelle, /"label",\s*"remove",[^)]*GESCHUETZT_LABEL/);
-  assert.doesNotMatch(quelle, /label remove[^\n]*kit:geschuetzt/);
+// Alle Dateien unter kit/, nicht nur night.mjs (Issue #1424, Plan #1420 E8): Seit den Teilen
+// unter kit/night/ und kit/board/ steht der Runner nicht mehr in einer Datei, und seit dem
+// Register traegt jedes Label zwei Namen.
+function kitQuellen(verzeichnis = join(repoRoot, "kit")) {
+  return readdirSync(verzeichnis, { withFileTypes: true }).flatMap((e) => {
+    const pfad = join(verzeichnis, e.name);
+    if (e.isDirectory()) return kitQuellen(pfad);
+    return [{ datei: relative(repoRoot, pfad).split(sep).join("/"), quelle: readFileSync(pfad, "utf-8") }];
+  });
+}
+
+test("Kein Code unter kit/ nimmt kit:geschuetzt oder kit:protected ab", () => {
+  const quellen = kitQuellen();
+  assert.ok(quellen.some((q) => q.datei === "kit/night.mjs"), "der Scan liest kit/night.mjs");
+  assert.ok(quellen.some((q) => q.datei === "kit/night/wartend.mjs"), "der Scan liest die Teile unter kit/night/");
+  const muster = [
+    /"label",\s*"remove",[^)]*(GESCHUETZT_LABEL|kit:geschuetzt|kit:protected|"geschuetzt")/,
+    /label remove[^\n]*(kit:geschuetzt|kit:protected)/,
+  ];
+  const funde = quellen.flatMap(({ datei, quelle }) => muster.filter((m) => m.test(quelle)).map((m) => `${datei}: ${m}`));
+  assert.deepEqual(funde, []);
+});
+
+// Eine Konstante mit dem Wert eines der beiden Labels, in einer der beiden Sprachen.
+const KONSTANTE = /\b(?:const|let|var)\s+[\w$]+\s*=\s*(["'`])kit:(?:geschuetzt|klaeren|protected|clarify)\1/;
+
+test("Ausser im Register definiert kein Modul unter kit/ eine Konstante kit:geschuetzt oder kit:klaeren", () => {
+  const funde = kitQuellen()
+    .filter(({ datei }) => datei !== "kit/board/namen.mjs")
+    .filter(({ quelle }) => KONSTANTE.test(quelle))
+    .map(({ datei, quelle }) => `${datei}: ${KONSTANTE.exec(quelle)[0]}`);
+  assert.deepEqual(funde, []);
+});
+
+test("Der Konstanten-Scan schlaegt bei einer Doppeldefinition an", () => {
+  assert.match('export const GESCHUETZT_LABEL = "kit:geschuetzt";', KONSTANTE);
+  assert.match("const AUFTRAG_KLAEREN = 'kit:klaeren';", KONSTANTE);
+  assert.doesNotMatch('const X = labelName("geschuetzt", "de");', KONSTANTE);
 });
 
 // --- Vorschau (Issue #1047, Plan #987, E19) ---
@@ -373,7 +409,7 @@ test("Vorschau: eine Karte mit kit:geschuetzt ohne Pfad im Body wuerde ins Backl
     const id = readyPaket(dir, "Paket aus dem Rueckfall-Halt", paketBody("src/frei.mjs"));
     board(dir, "issue", "label", "add", id, "kit:geschuetzt");
     const zeile = vorschauZeile(dir, id);
-    assert.ok(zeile.includes("wuerde ins Backlog (kit:geschuetzt, menschliche Handlung wartet)"), zeile);
+    assert.ok(zeile.includes("wuerde ins Backlog (kit:protected, menschliche Handlung wartet)"), zeile);
     assert.doesNotMatch(zeile, /Session/);
   } finally {
     rmSync(dir, { recursive: true, force: true });

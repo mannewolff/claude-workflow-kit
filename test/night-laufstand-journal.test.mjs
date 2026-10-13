@@ -44,7 +44,7 @@ test("standSetzen schreibt erst die Journalzeile, dann den Laufstand, und quitti
     const ergebnis = standSetzen("7", "laeuft", "Zuletzt begonnen: Umsetzung um 01:00", { lauf: LAUF, repoRoot: dir });
     assert.equal(ergebnis, "geschrieben");
     assert.deepEqual(journalBeimAufruf.map((z) => [z.art, z.karte, z.zustand]), [["stand", "7", "laeuft"]], "die Journalzeile stand vor dem Board-Aufruf");
-    assert.deepEqual(aufrufe[0].args.slice(0, 5), ["issue", "stand", "7", "--zustand", "laeuft"]);
+    assert.deepEqual(aufrufe[0].args.slice(0, 5), ["issue", "run-state", "7", "--state", "running"]);
     assert.equal(aufrufe[0].opts.cwd, dir);
     assert.match(staende()[0].text, /^Zuletzt begonnen: Umsetzung um 01:00\n/);
     const journal = journalLesen(journalPfad(dir));

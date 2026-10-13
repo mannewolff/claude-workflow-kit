@@ -1,4 +1,4 @@
-// Die feste Liste der Mangel-Arten und die Aufrufkanten von kit/befunde.mjs
+// Die feste Liste der Mangel-Arten und die Aufrufkanten von kit/findings.mjs
 // (Issue #799, Plan #797, Fachliche Quelle #768).
 //
 // Die Liste hat genau einen Wortlaut im Kit (Plan E4): dieses Kommando. Der Regeltext
@@ -10,14 +10,14 @@
 // Die zweite Zusage dieser Datei ist die Ausgabeform: JEDES Kommando gibt JSON auf
 // stdout aus, auch im Leerfall und auch bei einem abgewiesenen Aufruf. Ein
 // Fliesstext-Fehler mittendrin machte aus jedem Fehlerfall einen Parse-Fehler beim
-// Aufrufer — dieselbe Zusage wie in kit/aufwand.mjs und kit/wirksamkeit.mjs.
+// Aufrufer — dieselbe Zusage wie in kit/effort.mjs und kit/effectiveness.mjs.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { aufrufen } from "../kit/befunde.mjs";
+import { aufrufen } from "../kit/findings.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -44,7 +44,7 @@ function befunde(...args) {
 }
 
 test("arten gibt genau die zwoelf Arten mit je einem erklaerenden Satz aus", () => {
-  const res = befunde("arten");
+  const res = befunde("kinds");
 
   assert.equal(res.status, 0, `arten schlug fehl: ${res.stderr}`);
   const json = JSON.parse(res.stdout);
@@ -60,13 +60,13 @@ test("arten gibt genau die zwoelf Arten mit je einem erklaerenden Satz aus", () 
 test("arten fuehrt die Auffang-Art 'sonstiges'", () => {
   // Ohne Auffang-Art muesste ein Reviewer bei einem unpassenden Fund raten oder eine
   // eigene Art erfinden — und genau das soll die feste Liste verhindern.
-  const json = JSON.parse(befunde("arten").stdout);
+  const json = JSON.parse(befunde("kinds").stdout);
   const sonstiges = json.arten.find((a) => a.name === "sonstiges");
   assert.ok(sonstiges, "die Auffang-Art fehlt");
 });
 
 test("arten nimmt keine Argumente an und weist den Aufruf als JSON ab", () => {
-  const res = befunde("arten", "--alles");
+  const res = befunde("kinds", "--alles");
 
   assert.notEqual(res.status, 0, "ein abgewiesener Aufruf endet ungleich 0");
   const json = JSON.parse(res.stdout);
@@ -84,21 +84,21 @@ test("ohne Kommando steht JSON auf stdout und der Exit-Code ist ungleich 0", () 
 });
 
 test("ein unbekanntes Kommando steht als JSON auf stdout und endet ungleich 0", () => {
-  const res = befunde("buchen");
+  const res = befunde("record");
 
   assert.notEqual(res.status, 0);
   const json = JSON.parse(res.stdout);
   assert.equal(json.ok, false);
-  assert.match(json.fehler, /buchen/);
+  assert.match(json.fehler, /record/);
 });
 
 test("--help und --version bleiben Textausgaben mit Exit 0", () => {
   // Die Ausnahme von der JSON-Regel, und die einzige: Beide richten sich an einen
-  // Menschen am Terminal, nicht an einen Aufrufer — wie in kit/wirksamkeit.mjs.
+  // Menschen am Terminal, nicht an einen Aufrufer — wie in kit/effectiveness.mjs.
   const hilfe = befunde("--help");
   assert.equal(hilfe.status, 0, hilfe.stderr);
-  assert.match(hilfe.stdout, /befunde\.mjs/);
-  assert.match(hilfe.stdout, /pruefen/);
+  assert.match(hilfe.stdout, /findings\.mjs/);
+  assert.match(hilfe.stdout, /check/);
 
   const version = befunde("--version");
   assert.equal(version.status, 0, version.stderr);

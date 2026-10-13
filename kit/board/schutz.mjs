@@ -2,7 +2,7 @@
  * board/schutz.mjs — der Schutz von Haupt- und Veroeffentlichungszweig ohne Host-Details
  * (Issue #1407, Plan #1405): Zustand ableiten, Ruleset-Soll, Anleitung, Notfall-Gate und
  * Nacht-Sperre; dazu die Probe auf dem Pruefzweig, `einrichten` und `nachpruefen`
- * (Issue #1408), die `code schutz` im Einstieg ruft.
+ * (Issue #1408), die `code protection` im Einstieg ruft.
  *
  * Ein Teil von kit/board.mjs. Der Einstieg laedt ihn erst nach der Auskunft ueber
  * --version und --help und exportiert seine Namen unveraendert weiter. Dieser Teil
@@ -29,13 +29,23 @@ import { spawnSync } from "node:child_process";
 
 import { BoardError } from "./grundlagen.mjs";
 import { rulesetName } from "./adapter.mjs";
+import { text } from "./namen.mjs";
 
-// Der Satz aus Plan #1405, E10: Bis das Ruleset wieder steht, sagt `status`, was fehlt.
-export const SCHUTZ_AUSGESETZT = "Schutz des Hauptzweigs ausgesetzt";
+// Die Texte an den Menschen liegen unter kit/texte/board-schutz.mjs (Issue #1526).
+import { TEXTE } from "../texte/board-schutz.mjs";
+
+export { TEXTE };
+
+/** Ein Text dieses Teils in der Projektsprache (Issue #1482, E13). */
+const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
+
+// Der Satz aus Plan #1405, E10: Bis das Ruleset wieder steht, sagt `status`, was fehlt. Die
+// Konstante bleibt der deutsche Wortlaut; `status` meldet ihn in der Projektsprache.
+export const SCHUTZ_AUSGESETZT = TEXTE.de.schutzAusgesetzt;
 // A7: Ein Stand auf dem Hauptzweig ohne Nachweis des Build-Dienstes wird hiermit nachgeprueft.
-export const NACHPRUEFEN_KOMMANDO = "node .claude/kit/board.mjs code schutz nachpruefen";
+export const NACHPRUEFEN_KOMMANDO = "node .claude/kit/board.mjs code protection verify";
 // E8: Diese Aktionen pushen oder aendern den Code-Host — die Nacht pusht nie.
-export const NACHT_GESPERRT = Object.freeze(["einrichten", "aussetzen", "nachpruefen"]);
+export const NACHT_GESPERRT = Object.freeze(["setup", "suspend", "verify"]);
 
 const ARTEN = Object.freeze(["haupt", "veroeffentlichung"]);
 
@@ -46,7 +56,7 @@ const ARTEN = Object.freeze(["haupt", "veroeffentlichung"]);
  * Umgehungen gibt es keine (A6): `bypass_actors` ist leer.
  */
 export function rulesetSoll(zweig, jobs, art) {
-  if (!ARTEN.includes(art)) throw new BoardError(`Ruleset-Art '${art}' unbekannt. Erwartet: ${ARTEN.join(" | ")}`);
+  if (!ARTEN.includes(art)) throw new BoardError(t("artUnbekannt", { art, arten: ARTEN.join(" | ") }));
   const regeln = [
     {
       type: "required_status_checks",
@@ -83,18 +93,18 @@ function abweichungen(stehend, soll) {
   const befund = [];
   const typen = new Set((stehend.regeln || []).map((r) => r.type));
   for (const regel of soll.regeln) {
-    if (!typen.has(regel.type)) befund.push(`Regel ${regel.type} fehlt`);
+    if (!typen.has(regel.type)) befund.push(t("regelFehlt", { typ: regel.type }));
   }
   const sollJobs = soll.regeln.find((r) => r.type === "required_status_checks")
     .parameters.required_status_checks.map((c) => c.context);
   if (sollJobs.length === 0 || !gleicheMenge(stehend.requiredStatusChecks || [], sollJobs)) {
-    befund.push(`Pflichtjobs ${liste(stehend.requiredStatusChecks)} statt ${liste(sollJobs)}`);
+    befund.push(t("pflichtjobs", { ist: liste(stehend.requiredStatusChecks), soll: liste(sollJobs) }));
   }
-  if ((stehend.bypassActors || []).length > 0) befund.push("Bypass-Liste nicht leer");
+  if ((stehend.bypassActors || []).length > 0) befund.push(t("bypassNichtLeer"));
   if (soll.art === "veroeffentlichung") {
     const pr = (stehend.regeln || []).find((r) => r.type === "pull_request");
     const freigaben = pr?.parameters?.required_approving_review_count;
-    if (pr && freigaben !== 0) befund.push(`pull_request verlangt ${freigaben} Freigabe(n) statt 0`);
+    if (pr && freigaben !== 0) befund.push(t("freigaben", { anzahl: freigaben }));
   }
   return befund;
 }
@@ -104,7 +114,7 @@ function gleicheMenge(a, b) {
 }
 
 function liste(werte) {
-  return Array.isArray(werte) && werte.length > 0 ? werte.join(", ") : "(keine)";
+  return Array.isArray(werte) && werte.length > 0 ? werte.join(", ") : t("keine");
 }
 
 /** Der Kopf von `origin/<zweig>` im lokalen Repository, oder `null`. */
@@ -132,14 +142,14 @@ function kopfAusGit(zweig) {
 export async function schutzZustand(host, config, { kopfVon = kopfAusGit } = {}) {
   const unterstuetzt = typeof host.schutzUnterstuetzt === "function"
     ? host.schutzUnterstuetzt()
-    : { ja: false, grund: "Der Code-Host kennt keinen Schutz." };
+    : { ja: false, grund: t("keinSchutz") };
   if (!unterstuetzt.ja) return { geschuetzt: false, fehlt: [unterstuetzt.grund], ungeprueft: null };
 
   const mainBranch = config?.mainBranch || "main";
   const productionBranch = config?.productionBranch || "production";
   const fehlt = [];
   if (config?.pushPruefung?.ort !== "buildDienst") {
-    fehlt.push("Pruefung vor dem Push nicht im Build-Dienst (pushPruefung)");
+    fehlt.push(t("pushPruefung"));
   }
 
   const rulesets = await host.getRulesets();
@@ -162,14 +172,14 @@ function rulesetBefunde(rulesets, jobs, zweige) {
   for (const [zweig, art] of zweige) {
     const stehend = rulesets.find((r) => r.zweig === zweig);
     if (!stehend) {
-      fehlt.push(`Ruleset '${rulesetName(zweig)}' fehlt`);
+      fehlt.push(t("rulesetFehlt", { name: rulesetName(zweig) }));
       continue;
     }
     if (stehend.enforcement !== "active") {
-      fehlt.push(art === "haupt" ? SCHUTZ_AUSGESETZT : `Ruleset '${rulesetName(zweig)}' ausgesetzt`);
+      fehlt.push(art === "haupt" ? t("schutzAusgesetzt") : t("rulesetAusgesetzt", { name: rulesetName(zweig) }));
     }
     const befund = abweichungen(stehend, rulesetSoll(zweig, jobs, art));
-    if (befund.length > 0) fehlt.push(`Ruleset '${rulesetName(zweig)}' weicht ab: ${befund.join("; ")}`);
+    if (befund.length > 0) fehlt.push(t("rulesetAbweichung", { name: rulesetName(zweig), befund: befund.join("; ") }));
   }
   return fehlt;
 }
@@ -201,11 +211,11 @@ export function anleitung(soll) {
       `Ruleset '${s.name}':`,
       "1. Settings → Rules → Rulesets → New branch ruleset",
       `2. Ruleset Name: ${s.name}, Enforcement status: Active`,
-      `3. Target branches → Add target → Include by pattern: ${s.zweig} (Zielzweig: ${s.zweig})`,
-      "4. Bypass list: leer lassen, keine Rolle und kein Nutzer",
-      "5. Regeln einschalten:",
+      t("anleitungZiel", { zweig: s.zweig }),
+      t("anleitungBypass"),
+      t("anleitungRegeln"),
       ...s.regeln.map((r) => `   - ${REGEL_TEXT[r.type] || r.type}`),
-      `6. Bei Require status checks to pass diese Jobs als Pflichtpruefung eintragen: ${jobs.join(", ")}`,
+      t("anleitungJobs", { jobs: jobs.join(", ") }),
       "7. Create",
     ];
     return zeilen.join("\n");
@@ -229,11 +239,11 @@ export async function notfallGate(pfad) {
 
   const bezeugt = zusammenfassungBezeugt(pfad, []);
   if (bezeugt.ergebnis !== "gruen") {
-    const warum = bezeugt.rot?.hinweis || (bezeugt.rot?.pruefung ? `rot: ${bezeugt.rot.pruefung}` : "kein gruener Lauf");
-    return { ok: false, grund: `Kein gruener voller Lauf der Stufe push im Worktree (${warum}). Erst: node .claude/kit/checks.mjs run --stufe push --wiederholen` };
+    const warum = bezeugt.rot?.hinweis || (bezeugt.rot?.pruefung ? t("rotPruefung", { pruefung: bezeugt.rot.pruefung }) : t("keinGruenerLauf"));
+    return { ok: false, grund: t("keinVollerLauf", { warum }) };
   }
   if (bezeugt.stufe !== "push") {
-    return { ok: false, grund: `Der letzte gruene Lauf hatte die Stufe ${bezeugt.stufe ?? "(unbekannt)"}, verlangt ist push.` };
+    return { ok: false, grund: t("falscheStufe", { stufe: bezeugt.stufe ?? t("stufeUnbekannt") }) };
   }
   let hashes = null;
   try {
@@ -242,29 +252,28 @@ export async function notfallGate(pfad) {
     // oben schon als gruen gelesen; faellt hier nur bei einem Wettlauf weg — unten abgelehnt
   }
   if (hashes === null || typeof hashes !== "object") {
-    return { ok: false, grund: "Die Zusammenfassung nennt keine Blob-Hashes; der gepruefte Stand ist nicht belegt." };
+    return { ok: false, grund: t("keineHashes") };
   }
   let jetzt;
   try {
     jetzt = blobHashes(Object.keys(hashes), pfad);
   } catch (e) {
-    return { ok: false, grund: `Der Stand der geprueften Dateien liess sich nicht lesen: ${e.message}` };
+    return { ok: false, grund: t("standUnlesbar", { fehler: e.message }) };
   }
   if (!hashesGleich(hashes, jetzt)) {
     const geaendert = Object.keys(hashes).filter((d) => hashes[d] !== jetzt[d]);
-    return { ok: false, grund: `Seit dem Lauf geaendert: ${geaendert.join(", ")} — der Stand ist nicht mehr der gepruefte.` };
+    return { ok: false, grund: t("seitLaufGeaendert", { dateien: geaendert.join(", ") }) };
   }
   return { ok: true };
 }
 
 /**
- * Die Sperre der Nacht (E8): Mit gesetztem `KIT_AGENT_MODEL` brechen `einrichten`,
- * `aussetzen` und `nachpruefen` ab; `status` bleibt erlaubt.
+ * Die Sperre der Nacht (E8): Mit gesetztem `KIT_AGENT_MODEL` brechen `setup`, `suspend` und
+ * `verify` von `code protection` ab; `status` bleibt erlaubt.
  */
 export function nachtSperre(aktion, env = process.env) {
   if (env.KIT_AGENT_MODEL && NACHT_GESPERRT.includes(aktion)) {
-    throw new BoardError(`code schutz ${aktion} ist ohne Aufsicht gesperrt (KIT_AGENT_MODEL gesetzt): `
-      + "Die Aktion pusht oder aendert den Code-Host, und die Nacht pusht nie. Nur status ist erlaubt.");
+    throw new BoardError(t("nachtGesperrt", { aktion }));
   }
 }
 
@@ -324,10 +333,9 @@ export async function probe(host, config, zweig, optionen = {}) {
   const o = vorgaben(optionen);
   const mainBranch = config?.mainBranch || "main";
   const commit = o.kopfVon(mainBranch);
-  if (!commit) throw new BoardError(`origin/${mainBranch} fehlt im lokalen Repository — erst git fetch origin ${mainBranch}.`);
+  if (!commit) throw new BoardError(t("originFehltLokal", { zweig: mainBranch }));
   if (o.zweigBelegt(zweig)) {
-    const fehler = new BoardError(`Der Pruefzweig '${zweig}' ist auf origin schon vorhanden — vielleicht laeuft dort ein push main. `
-      + "Die Probe ueberschreibt ihn nicht; erst wenn er weg ist, erneut aufrufen.");
+    const fehler = new BoardError(t("pruefzweigBelegt", { zweig }));
     fehler.pruefzweigBelegt = true;
     throw fehler;
   }
@@ -361,15 +369,15 @@ async function warteAufLauf(host, commit, zweig, o) {
     const jetzt = Math.floor((o.jetzt() - start) / MINUTE_MS);
     if (jetzt > minuten) {
       minuten = jetzt;
-      o.melde(`Probe auf ${zweig}: ${minuten} min gewartet, ${gefunden ? "Lauf laeuft" : "noch kein Lauf"}`);
+      o.melde(t(gefunden ? "probeLaeuft" : "probeOhneLauf", { zweig, minuten }));
     }
   }
 }
 
 /** Der Schritt, der offen bleibt, wenn der Build-Dienst auf dem Pruefzweig nicht laeuft (A4). */
 function offenerSchritt(mainBranch, zweig) {
-  return `Der Build-Dienst muss bei einem Push auf den Pruefzweig '${zweig}' den Lauf der Stufe push fahren: `
-    + `node .claude/kit/checks.mjs run --stufe push --since "$(git merge-base HEAD origin/${mainBranch})"`;
+  const kommando = `node .claude/kit/checks.mjs run --stage push --since "$(git merge-base HEAD origin/${mainBranch})"`;
+  return t("offenerSchritt", { zweig, kommando });
 }
 
 /**
@@ -385,13 +393,13 @@ function offenerSchritt(mainBranch, zweig) {
 export async function einrichten(host, config, zweig, optionen = {}) {
   const unterstuetzt = typeof host.schutzUnterstuetzt === "function"
     ? host.schutzUnterstuetzt()
-    : { ja: false, grund: "Der Code-Host kennt keinen Schutz." };
+    : { ja: false, grund: t("keinSchutz") };
   if (!unterstuetzt.ja) return { ergebnis: "nicht moeglich", grund: unterstuetzt.grund };
 
   const o = vorgaben(optionen);
   const mainBranch = config?.mainBranch || "main";
   if (!o.kopfVon(mainBranch)) {
-    return { ergebnis: "nicht moeglich", grund: `origin/${mainBranch} fehlt — ohne Remote-Stand gibt es nichts zu pruefen.` };
+    return { ergebnis: "nicht moeglich", grund: t("originFehlt", { zweig: mainBranch }) };
   }
 
   let admin;
@@ -404,8 +412,8 @@ export async function einrichten(host, config, zweig, optionen = {}) {
     return { ergebnis: "nicht moeglich", grund: e.message };
   }
   if (!ergebnis.abgeschlossen) {
-    const wie = ergebnis.gefunden ? "lief nicht binnen 60 Minuten zu Ende" : "fuhr binnen 5 Minuten keinen Lauf";
-    return { ergebnis: "offen", grund: `Der Build-Dienst ${wie} auf '${zweig}'.`, schritt: offenerSchritt(mainBranch, zweig) };
+    const grund = t(ergebnis.gefunden ? "nichtZuEnde" : "keinLauf", { zweig });
+    return { ergebnis: "offen", grund, schritt: offenerSchritt(mainBranch, zweig) };
   }
 
   return scharfSchalten(host, config, ergebnis.jobs, admin);
@@ -420,13 +428,13 @@ async function scharfSchalten(host, config, jobs, admin) {
   const soll = [rulesetSoll(config?.mainBranch || "main", jobs, "haupt")];
   if (config?.productionBranch) soll.push(rulesetSoll(config.productionBranch, jobs, "veroeffentlichung"));
   const zurAnleitung = (grund) => ({ ergebnis: "anleitung", grund, jobs, anleitung: anleitung(soll) });
-  if (!admin) return zurAnleitung("Ohne Admin-Recht am Repository richtet das Kit nichts ein.");
+  if (!admin) return zurAnleitung(t("ohneAdmin"));
   const rulesets = [];
   for (const s of soll) {
     try {
       rulesets.push(await host.upsertRuleset(s));
     } catch (e) {
-      if (e.httpStatus === 403) return zurAnleitung(`Der Code-Host wies das Einrichten ab (403): ${e.message}`);
+      if (e.httpStatus === 403) return zurAnleitung(t("abgewiesen403", { fehler: e.message }));
       throw e;
     }
   }

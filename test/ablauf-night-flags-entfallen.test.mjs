@@ -40,6 +40,7 @@ function setupProjekt(config = {}) {
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   writeFileSync(join(dir, ".claude", "workflow.config.json"), JSON.stringify({
     codeHost: "local", issueTracker: "local", buildChecks: ["true"],
     local: { issuesDir: "issues" }, ...config,
@@ -71,12 +72,12 @@ const ENTFALLEN = [
 ];
 
 for (const flags of ENTFALLEN) {
-  test(`[night-15] ${flags[0]} endet mit Exit 1, nennt --kette und hinterlaesst keinen Ergebnisstand`, () => {
+  test(`[night-15] ${flags[0]} endet mit Exit 1, nennt --chain und hinterlaesst keinen Ergebnisstand`, () => {
     mitProjekt((dir) => {
       const res = run(dir, flags);
       assert.equal(res.status, 1, `${flags[0]} haette abgewiesen werden muessen: ${res.stdout}`);
       assert.match(res.stderr, new RegExp(`${flags[0]} gibt es seit Stufe 2 nicht mehr`));
-      assert.match(res.stderr, /--kette/, "die Meldung nennt den Nachfolger nicht");
+      assert.match(res.stderr, /--chain/, "die Meldung nennt den Nachfolger nicht");
       assert.doesNotMatch(res.stderr, /Unbekanntes Argument/, "ein entfallenes Flag ist kein unbekanntes");
       const dateien = readdirSync(join(dir, ".claude")).filter((n) => n.startsWith("night-run-"));
       assert.deepEqual(dateien, [], "vor dem Vorflug darf kein Ergebnisstand und keine Logdatei entstehen");
@@ -106,6 +107,29 @@ test("[night-15] --help nennt keines der fuenf entfallenen Flags", () => {
     assert.ok(!res.stdout.includes(flag), `--help nennt ${flag} noch`);
   }
   assert.match(res.stdout, /--label <name>/, "die bleibenden Flags stehen weiter in der Hilfe");
+});
+
+// Seit Issue #1565 (Plan #1548 E8): Die deutschen Namen der Betriebsarten gibt es nicht mehr.
+// Sie enden wie ein entfallenes Flag vor jedem Board-Zugriff, mit dem englischen Namen.
+for (const [flags, englisch] of [[["--kette", "--dry-run"], "--chain"], [["--pruefen"], "--check"], [["--waechter", "lauf"], "--watcher"]]) {
+  test(`${flags.join(" ")} endet mit Exit 1 und nennt ${englisch}`, () => {
+    mitProjekt((dir) => {
+      const res = run(dir, flags);
+      assert.equal(res.status, 1, `${flags[0]} haette abgewiesen werden muessen: ${res.stdout}`);
+      assert.ok(res.stderr.includes(`unbekannt: '${flags[0]}' — englischer Name: '${englisch}'`), res.stderr);
+      const dateien = readdirSync(join(dir, ".claude")).filter((n) => n.startsWith("night-run-"));
+      assert.deepEqual(dateien, [], "vor dem Vorflug darf kein Ergebnisstand und keine Logdatei entstehen");
+    });
+  });
+}
+
+test("--help ist englisch und nennt keinen deutschen Namen der Betriebsarten", () => {
+  const res = spawnSync(process.execPath, [NIGHT, "--help"], { encoding: "utf-8" });
+  assert.equal(res.status, 0);
+  assert.match(res.stdout, /^Night runner:/);
+  for (const flag of ["--kette", "--pruefen", "--waechter"]) {
+    assert.ok(!res.stdout.includes(flag), `--help nennt ${flag} noch`);
+  }
 });
 
 // --- Das Gate nach A17: marker oder ungeprueft, sonst nichts ---

@@ -29,7 +29,7 @@ function text(pfad) {
 
 test("[skills-984] jede Stelle nennt das Praefix `[Mensch]`", () => {
   for (const pfad of STELLEN) {
-    assert.match(text(pfad), /\[Mensch\]/, `${pfad}: das Praefix [Mensch] fehlt`);
+    assert.match(text(pfad), /\[(Mensch|Human)\]/, `${pfad}: das Praefix [Mensch] bzw. [Human] fehlt`);
   }
 });
 
@@ -48,7 +48,8 @@ test("[skills-984] die Praefix-Tabelle der Vorlage fuehrt vier Praefixe, und `[T
   const kopf = /^### Vier Titel-Praefixe, vier Sonderfaelle$/m;
   assert.match(vorlage, kopf, "die Ueberschrift nennt nicht vier Praefixe");
   const abschnitt = vorlage.slice(vorlage.search(kopf)).split(/\n---\n/)[0];
-  for (const praefix of ["[Fachlich]", "[Plan]", "[Idee]", "[Mensch]"]) {
+  // Seit Issue #1571 nennt die Vorlage die englischen Praefixe.
+  for (const praefix of ["[Requirement]", "[Plan]", "[Idea]", "[Human]"]) {
     assert.match(abschnitt, new RegExp(`^\\|[^\n]*\`\\${praefix.slice(0, -1)}\\]\``, "m"),
       `die Tabelle fuehrt ${praefix} nicht als Zeile`);
   }
@@ -60,7 +61,7 @@ test("[skills-984] die Praefix-Tabelle der Vorlage fuehrt vier Praefixe, und `[T
 test("[skills-984] die erzeugenden Skills sagen, wann ein Paket `[Mensch]` traegt", () => {
   for (const pfad of ["skills/issues/SKILL.md", "skills/task/SKILL.md"]) {
     const absaetze = text(pfad).split(/\n\s*\n/);
-    const treffer = absaetze.filter((a) => /\[Mensch\]/.test(a) && /ausserhalb des Repositor/i.test(a));
+    const treffer = absaetze.filter((a) => /\[(Mensch|Human)\]/.test(a) && /ausserhalb des Repositor/i.test(a));
     assert.ok(treffer.length >= 1, `${pfad}: kein Absatz sagt, dass [Mensch] fuer Aufgaben ausserhalb des Repositories gilt`);
     assert.match(treffer.join("\n"), /Einstellung|Konto|Zugang|Freigabe/i,
       `${pfad}: die Beispiele (Einstellung, Konto, Zugang, Freigabe) fehlen`);
@@ -71,7 +72,7 @@ test("[skills-984] die Doku fuehrt das vierte Gate in der Liste der uebersprunge
   const doku = text("docs/dokumentation.md");
   const absaetze = doku.split(/\n\s*\n/);
   const treffer = absaetze.filter(
-    (a) => /\[Fachlich\]/.test(a) && /\[Idee\]/.test(a) && /\[Plan\]/.test(a) && /\[Mensch\]/.test(a),
+    (a) => /\[Requirement\]/.test(a) && /\[Idea\]/.test(a) && /\[Plan\]/.test(a) && /\[Human\]/.test(a),
   );
   assert.ok(treffer.length >= 1, "kein Absatz der Doku fuehrt alle vier uebersprungenen Sorten zusammen");
   assert.doesNotMatch(treffer.join("\n"), /Drei Sorten Issue/, "die Doku spricht weiter von drei Sorten");

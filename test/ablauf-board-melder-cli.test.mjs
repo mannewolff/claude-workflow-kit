@@ -34,11 +34,11 @@ async function mitServer(fn) {
   }
 }
 
-test("[night-31] nightrun melden schickt die Meldung mit Token an /api/kanban/night-runs", async () => {
+test("[night-31] nightrun report schickt die Meldung mit Token an /api/kanban/night-runs", async () => {
   await mitServer(async ({ dir, requests }) => {
     const datei = join(dir, "stand.json");
     writeFileSync(datei, JSON.stringify(STAND));
-    const res = await runBoardAsync(dir, ["nightrun", "melden", "--datei", datei], { TBX_TOKEN: "test-token" });
+    const res = await runBoardAsync(dir, ["nightrun", "report", "--file", datei], { TBX_TOKEN: "test-token" });
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(JSON.parse(res.stdout), { ok: true, outcome: "REPLACED" });
     assert.equal(requests.length, 1);
@@ -48,10 +48,10 @@ test("[night-31] nightrun melden schickt die Meldung mit Token an /api/kanban/ni
   });
 });
 
-test("[night-31] nightrun melden bricht mit Exit 1 und Grund ab", async () => {
+test("[night-31] nightrun report bricht mit Exit 1 und Grund ab", async () => {
   const dir = setupProjekt({ codeHost: "local", issueTracker: "local" }, "board-melder-cli-");
   try {
-    const res = await runBoardAsync(dir, ["nightrun", "melden", "--datei", join(dir, "x.json")], {});
+    const res = await runBoardAsync(dir, ["nightrun", "report", "--file", join(dir, "x.json")], {});
     assert.equal(res.status, 1);
     assert.match(res.stderr, /^Fehler: Einlieferung nur mit issueTracker toolbox/);
   } finally {
@@ -59,11 +59,11 @@ test("[night-31] nightrun melden bricht mit Exit 1 und Grund ab", async () => {
   }
 });
 
-test("[board-11] sitzung melden liest den Pfad aus dem Hook-Rumpf auf stdin und meldet mit Token", async () => {
+test("[board-11] session report liest den Pfad aus dem Hook-Rumpf auf stdin und meldet mit Token", async () => {
   await mitServer(async ({ dir, requests }) => {
     const pfad = join(dir, "protokoll.jsonl");
     writeFileSync(pfad, PROTOKOLL, "utf-8");
-    const res = await runBoardAsync(dir, ["sitzung", "melden", "--complete"], { TBX_TOKEN: "test-token", KIT_AGENT_MODEL: "" }, JSON.stringify({ transcript_path: pfad }));
+    const res = await runBoardAsync(dir, ["session", "report", "--complete"], { TBX_TOKEN: "test-token", KIT_AGENT_MODEL: "" }, JSON.stringify({ transcript_path: pfad }));
     assert.equal(res.status, 0, res.stderr);
     assert.deepEqual(JSON.parse(res.stdout), { ok: true, gemeldet: true, complete: true, karten: 0, outcome: "REPLACED" });
     assert.equal(requests.length, 1);
@@ -75,10 +75,10 @@ test("[board-11] sitzung melden liest den Pfad aus dem Hook-Rumpf auf stdin und 
 test("unbekannte Befehle der beiden Achsen zeigen die Hilfe und brechen ab", async () => {
   const dir = setupProjekt({ codeHost: "local", issueTracker: "local" }, "board-melder-cli-");
   try {
-    for (const achse of ["nightrun", "sitzung"]) {
+    for (const achse of ["nightrun", "session"]) {
       const res = await runBoardAsync(dir, [achse, "gibtsnicht"], {});
       assert.equal(res.status, 1, achse);
-      assert.match(res.stdout, /node board\.mjs nightrun melden/, `${achse}: die Hilfe fehlt`);
+      assert.match(res.stdout, /node board\.mjs nightrun report/, `${achse}: die Hilfe fehlt`);
       assert.match(res.stderr, new RegExp(`Unbekannter ${achse}-Befehl: 'gibtsnicht'`));
     }
   } finally {

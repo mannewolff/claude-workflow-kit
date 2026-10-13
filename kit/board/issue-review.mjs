@@ -1,7 +1,7 @@
 /**
  * board/issue-review.mjs — Issue-Review-Achse des Board-Werkzeugs (Issue #1221, Plan #1199, E17):
  * Reviewer-Auswahl, Pruefstufen, Verfuegbarkeit mit Probelauf und die Befehle
- * `issue-review reviewers | roles | matrix | check | pruefauftrag | start`.
+ * `issue-review reviewers | roles | matrix | check | review-brief | start`.
  *
  * Ein Teil von kit/board.mjs. Der Einstieg laedt ihn erst nach der Auskunft ueber
  * --version und --help und exportiert seine Namen unveraendert weiter. Dieser Teil
@@ -23,6 +23,16 @@ import { fileURLToPath } from "node:url";
 import { BoardError, fail, out, loadConfig, findeImPath, umgebungsWert, configWurzel } from "./grundlagen.mjs";
 import { istFachlich, istPlan, herkunftNummern, normalisiereZeilenenden } from "./dokumente.mjs";
 import { resolveTracker } from "./adapter.mjs";
+import { EINGABEWERTE, internerWert, leseMarker, text, ueberschriftZeile } from "./namen.mjs";
+import { vorgeschichteAktiv, vorgeschichteSuchen } from "./vorgeschichte.mjs";
+
+// Die Texte an den Menschen liegen unter kit/texte/board-issue-review.mjs (Issue #1526).
+import { TEXTE } from "../texte/board-issue-review.mjs";
+
+export { TEXTE };
+
+/** Ein Text dieses Teils in der Projektsprache (Issue #1481, E13). */
+const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
 
 // ============================================================
 // Issue-Review-Achse (Issue #220)
@@ -49,7 +59,7 @@ const REVIEW_STUFEN = ["fachlich", "plan", "issue"];
 // ein Reviewer je Rolle (Plan #1375, E5). Jede Rolle braucht ihren Wortlaut unter
 // kit/rollen/ — eine Vorgaberolle ohne Datei liesse jeden Pruefer eines Projekts ohne
 // `reviewStufen` ausfallen. Die Stufe issue hat nur eine Rolle und darum einen Pruefer.
-// SYNC: STUFEN_VORGABE in kit/einstellungen.mjs
+// SYNC: STUFEN_VORGABE in kit/settings.mjs
 const REVIEW_STUFEN_DEFAULT = {
   fachlich: { reviewer: 2, rollen: ["form-beobachtbarkeit", "abgrenzung"] },
   plan: { reviewer: 2, rollen: ["architektur-bestand", "schnitt-abhaengigkeiten"] },
@@ -57,9 +67,9 @@ const REVIEW_STUFEN_DEFAULT = {
 };
 
 // Die Rollen der Stufe plan, aus denen eine vom Lauf erhoehte Pruefzahl aufgefuellt wird
-// (Issue #1245). Abgeschrieben statt importiert: kit/einstellungen.mjs ist ein Download
+// (Issue #1245). Abgeschrieben statt importiert: kit/settings.mjs ist ein Download
 // und wird nicht nach .claude/kit/ gespiegelt (Plan #1243, Review-Fund 1).
-// SYNC: ROLLEN_KATALOG.plan in kit/einstellungen.mjs
+// SYNC: ROLLEN_KATALOG.plan in kit/settings.mjs
 const PLAN_ROLLEN = ["architektur-bestand", "schnitt-abhaengigkeiten"];
 
 /**
@@ -101,7 +111,7 @@ function aufloesenAutor(alle, autor) {
  * erkannten Autor — ein Aufrufer ohne Menschen davor soll das sehen koennen.
 
  */
-// SYNC: dieselbe Wahl bildet kit/einstellungen.mjs (waehleReviewer) fuer die Oberflaeche nach.
+// SYNC: dieselbe Wahl bildet kit/settings.mjs (waehleReviewer) fuer die Oberflaeche nach.
 export function pickReviewers(alle, autor, anzahl = 2, pairs = {}) {
   const aufgeloest = aufloesenAutor(alle, autor);
   const schluessel = aufgeloest ?? autor;
@@ -130,15 +140,15 @@ export function pickReviewers(alle, autor, anzahl = 2, pairs = {}) {
 // Ein stiller Skip verwandelt einen Tippfehler in einen unsichtbaren Ein-Reviewer-Lauf.
 // Und ein Autor, der sich selbst nennt, hebelt den Zweck des Verfahrens aus — das
 // gehoert beim Schreiben der Config bemerkt, nicht beim Lesen des Review-Berichts.
-// SYNC: dieselbe Regel prueft kit/einstellungen.mjs (regelPaare) vor dem Speichern.
+// SYNC: dieselbe Regel prueft kit/settings.mjs (regelPaare) vor dem Speichern.
 function validatePairs(pairs, reviewers) {
   const bekannt = new Set(reviewers.map((r) => r.name));
   for (const [autor, genannt] of Object.entries(pairs || {})) {
     const wo = `issueReview.pairs['${autor}']`;
-    if (!Array.isArray(genannt)) fail(`${wo}: muss eine Liste von Reviewer-Namen sein.`);
+    if (!Array.isArray(genannt)) fail(t("pairsKeineListe", { wo }));
     for (const name of genannt) {
-      if (name === autor) fail(`${wo}: nennt '${autor}' sich selbst — der Autor darf nicht sein eigener Reviewer sein.`);
-      if (!bekannt.has(name)) fail(`${wo}: '${name}' steht nicht in issueReview.reviewers.`);
+      if (name === autor) fail(t("pairsSelbst", { wo, autor }));
+      if (!bekannt.has(name)) fail(t("pairsUnbekannt", { wo, name }));
     }
   }
   return pairs || {};
@@ -150,14 +160,14 @@ function validatePairs(pairs, reviewers) {
 function validateReviewers(reviewers) {
   reviewers.forEach((r, i) => {
     const wo = `issueReview.reviewers[${i}]`;
-    if (!r || typeof r.name !== "string" || !r.name) fail(`${wo}: 'name' fehlt oder ist leer.`);
+    if (!r || typeof r.name !== "string" || !r.name) fail(t("reviewerOhneName", { wo }));
     if (!REVIEWER_KINDS.includes(r.kind)) {
-      fail(`${wo} ('${r.name}'): 'kind' muss ${REVIEWER_KINDS.join(" oder ")} sein, ist '${r.kind}'.`);
+      fail(t("reviewerKind", { wo, name: r.name, erlaubt: REVIEWER_KINDS.join(t("oder")), kind: r.kind }));
     }
-    if (r.kind === "claude" && !r.model) fail(`${wo} ('${r.name}'): 'model' fehlt.`);
-    if (r.kind === "command" && !r.command) fail(`${wo} ('${r.name}'): 'command' fehlt.`);
-    if (r.lesegrenze !== undefined && r.kind !== "command") fail(`${wo} ('${r.name}'): 'lesegrenze' gilt nur bei kind 'command'.`);
-    if (r.lesegrenze !== undefined && typeof r.lesegrenze !== "string") fail(`${wo} ('${r.name}'): 'lesegrenze' muss ein Text sein.`);
+    if (r.kind === "claude" && !r.model) fail(t("reviewerFeldFehlt", { wo, name: r.name, feld: "model" }));
+    if (r.kind === "command" && !r.command) fail(t("reviewerFeldFehlt", { wo, name: r.name, feld: "command" }));
+    if (r.lesegrenze !== undefined && r.kind !== "command") fail(t("lesegrenzeNurCommand", { wo, name: r.name }));
+    if (r.lesegrenze !== undefined && typeof r.lesegrenze !== "string") fail(t("lesegrenzeKeinText", { wo, name: r.name }));
   });
   return reviewers;
 }
@@ -173,32 +183,32 @@ function validateReviewers(reviewers) {
  * vergessene Stufe auch still ergaenzt, liesse sie sich von einer bewussten
  * Rueckfallebene nicht unterscheiden.
  */
-// SYNC: die Regel rollen.length === reviewer prueft kit/einstellungen.mjs (regelRollenzahl) vor dem Speichern.
+// SYNC: die Regel rollen.length === reviewer prueft kit/settings.mjs (regelRollenzahl) vor dem Speichern.
 function validateReviewStufen(block) {
   if (block === undefined || block === null) {
     return { stufen: Object.fromEntries(REVIEW_STUFEN.map((s) => [s, REVIEW_STUFEN_DEFAULT[s]])), stufenQuelle: "default" };
   }
   if (typeof block !== "object" || Array.isArray(block)) {
-    fail(`reviewStufen: muss ein Objekt mit den Stufen ${REVIEW_STUFEN.join(", ")} sein.`);
+    fail(t("stufenKeinObjekt", { stufen: REVIEW_STUFEN.join(", ") }));
   }
   const stufen = {};
   for (const stufe of REVIEW_STUFEN) {
     const wo = `reviewStufen.${stufe}`;
     const eintrag = block[stufe];
     if (!eintrag || typeof eintrag !== "object" || Array.isArray(eintrag)) {
-      fail(`${wo}: fehlt oder ist kein Objekt mit 'reviewer' und 'rollen'.`);
+      fail(t("stufeFehlt", { wo }));
     }
     const { reviewer, rollen } = eintrag;
     if (!Number.isInteger(reviewer) || reviewer < 1) {
-      fail(`${wo}.reviewer: muss eine positive Ganzzahl sein, ist '${reviewer}'.`);
+      fail(t("stufeReviewer", { wo, wert: reviewer }));
     }
-    if (!Array.isArray(rollen)) fail(`${wo}.rollen: muss eine Liste von Rollennamen sein.`);
+    if (!Array.isArray(rollen)) fail(t("stufeRollenListe", { wo }));
     rollen.forEach((name, i) => {
-      if (typeof name !== "string" || !name) fail(`${wo}.rollen[${i}]: muss ein nicht leerer Rollenname sein.`);
+      if (typeof name !== "string" || !name) fail(t("stufeRolleLeer", { wo, i }));
     });
-    if (new Set(rollen).size !== rollen.length) fail(`${wo}.rollen: nennt einen Rollennamen doppelt.`);
+    if (new Set(rollen).size !== rollen.length) fail(t("stufeRolleDoppelt", { wo }));
     if (rollen.length !== reviewer) {
-      fail(`${wo}: rollen.length (${rollen.length}) stimmt nicht mit reviewer (${reviewer}) ueberein.`);
+      fail(t("stufeRollenzahl", { wo, rollen: rollen.length, reviewer }));
     }
     stufen[stufe] = { reviewer, rollen };
   }
@@ -221,11 +231,11 @@ export function planReviewerAusLauf({ env = process.env, eintrag, verfuegbar }) 
   const wert = env.KIT_PLAN_REVIEWER;
   if (wert === undefined || wert === "") return null;
   if (wert !== "1" && wert !== "2") {
-    throw new BoardError(`KIT_PLAN_REVIEWER '${wert}' ist ungueltig — erlaubt sind 1 oder 2.`);
+    throw new BoardError(t("planReviewerUngueltig", { wert }));
   }
   const reviewer = Number(wert);
   if (reviewer > verfuegbar) {
-    throw new BoardError("planreview:2 verlangt zwei Reviewer, verfügbar ist einer");
+    throw new BoardError(t("planReviewerZuWenige"));
   }
   const rollen = eintrag.rollen.slice(0, reviewer);
   for (const rolle of PLAN_ROLLEN) {
@@ -306,10 +316,10 @@ function aufhebenderSchalter(argumente) {
  */
 function startArgumente(command, lesegrenze) {
   const grenze = lesegrenzeVon({ command, lesegrenze });
-  if (grenze === null) return { fehler: "keine-lesegrenze", grund: "keine Lesegrenze" };
+  if (grenze === null) return { fehler: "keine-lesegrenze", grund: t("keineLesegrenze") };
   const argumente = [...woerter(command).slice(1), ...grenze];
   const schalter = aufhebenderSchalter(argumente);
-  if (schalter !== null) return { fehler: "lesegrenze-aufgehoben", schalter, grund: `'${schalter}' hebt die Lesegrenze auf` };
+  if (schalter !== null) return { fehler: "lesegrenze-aufgehoben", schalter, grund: t("lesegrenzeAufgehoben", { schalter }) };
   return { argumente, lesegrenze: grenze.join(" ") };
 }
 
@@ -359,7 +369,7 @@ export function probelauf(kommandozeile, pfad, { spawn = spawnSync, prompt = PRO
   const argumente = kommandozeile.trim().split(/\s+/).slice(1);
   const res = spawn(pfad, argumente, { input: prompt, encoding: "utf-8", timeout: timeoutMs, env });
   if (res.error?.code === "ETIMEDOUT" || res.signal === "SIGTERM") {
-    return { ok: false, grund: `Zeitlimit von ${timeoutMs} ms ueberschritten` };
+    return { ok: false, grund: t("zeitlimit", { ms: timeoutMs }) };
   }
   // Der Exit-Status schlaegt den Fehler (Issue #393). Endet das Kommando, bevor der
   // Prompt in seine stdin geschrieben ist, meldet spawnSync EPIPE — zusaetzlich zum
@@ -377,13 +387,13 @@ export function probelauf(kommandozeile, pfad, { spawn = spawnSync, prompt = PRO
   // Kein Status und kein Fehler heisst: durch ein Signal gestorben (SIGSEGV, SIGKILL).
   // Ohne diesen Zweig fiele der Fall auf `ok: true` durch, und ein abgestuerzter
   // Reviewer gaelte als verfuegbar.
-  return { ok: false, grund: `Durch Signal ${res.signal} beendet` };
+  return { ok: false, grund: t("signal", { signal: res.signal }) };
 }
 
 // Die Befehle unten liefern ihre Antwort zurueck, statt sie auszugeben; `dispatchIssueReview`
 // gibt sie aus. So prueft ein Test die Antwort im selben Prozess (Plan #1199, E6).
 export function issueReviewReviewers(args, config = loadConfig()) {
-  const autor = args.author === true ? fail("--author braucht einen Wert") : args.author;
+  const autor = args.author === true ? fail(t("optionOhneWert", { name: "author" })) : args.author;
   const { reviewers, pairs } = issueReviewConfig(config);
   return { autor: autor || null, ...pickReviewers(reviewers, autor, 2, pairs) };
 }
@@ -400,25 +410,29 @@ export function issueReviewReviewers(args, config = loadConfig()) {
  * STUFENBESETZUNG ("stufen" | "default", bei der Stufe plan auch "lauf" aus
  * KIT_PLAN_REVIEWER, Issue #1245).
  *
- * `--issue`, `--rolle` und `--ausschluss` sind mit der Pruefvorgabe und der
+ * `--issue`, `--role` und `--ausschluss` sind mit der Pruefvorgabe und der
  * Synthese-Pruefung entfallen. Sie werden abgewiesen statt still uebergangen: Ein
  * stilles Flag waere eine zweite Wahrheit ueber das, was das Kommando tut.
  */
-const ROLES_ENTFALLEN = ["issue", "rolle", "ausschluss"];
+const ROLES_ENTFALLEN = ["issue", "role", "ausschluss"];
 
 export function issueReviewRoles(args, config = loadConfig(), env = process.env) {
   for (const option of ROLES_ENTFALLEN) {
     if (args[option] !== undefined) {
-      fail(`--${option} gibt es seit Stufe 2 des Prozess-Umbaus nicht mehr — roles kennt nur --stufe und --author.`);
+      fail(t("rolesEntfallen", { option }));
     }
   }
-  const stufe = args.stufe === true ? fail("--stufe braucht einen Wert") : args.stufe;
-  if (!stufe) fail(`--stufe fehlt. Erwartet: ${REVIEW_STUFEN.join(" | ")}`);
+  // `--stage requirement` traegt ab hier den internen Schluessel `fachlich`, den auch
+  // `reviewStufen` nennt (Issue #1555, Plan #1548 E5); getippt wird nur der englische Wert.
+  const stufen = REVIEW_STUFEN.map((s) => EINGABEWERTE.stage[s]).join(" | ");
+  if (args.stage === true) fail(t("optionOhneWert", { name: "stage" }));
+  if (!args.stage) fail(t("stufeOptionFehlt", { stufen }));
+  const stufe = internerWert("stage", args.stage);
   if (!REVIEW_STUFEN.includes(stufe)) {
-    fail(`--stufe '${stufe}' ist keine bekannte Stufe. Erwartet: ${REVIEW_STUFEN.join(" | ")}`);
+    fail(t("stufeUnbekannt", { stufe: args.stage, stufen }));
   }
-  const autor = args.author === true ? fail("--author braucht einen Wert") : args.author;
-  if (!autor) fail("--author fehlt — ohne Autor greifen weder pairs noch der Selbstausschluss.");
+  const autor = args.author === true ? fail(t("optionOhneWert", { name: "author" })) : args.author;
+  if (!autor) fail(t("autorFehlt"));
 
   const { reviewers, pairs, reviewStufen } = issueReviewConfig(config);
   // Bei der Stufe plan schlaegt die Pruefzahl des Laufs die Config (Issue #1245).
@@ -473,7 +487,7 @@ export function issueReviewCheck(args = {}, { config = loadConfig(), verfuegbar 
   // `--nur-pfad` faellt auf das Verhalten vor Issue #262 zurueck, fuer den Fall, dass
   // ein Probelauf zu teuer oder unerwuenscht ist. Das Feld `geprueft` macht in beiden
   // Faellen sichtbar, worauf sich die Aussage stuetzt.
-  const nurPfad = args["nur-pfad"] === true;
+  const nurPfad = args["path-only"] === true;
   const { reviewers, reviewStufen } = issueReviewConfig(config);
   // Fehlende Rollendateien aller Stufen (Issue #1381): Ein Pruefer ohne Rolle faellt im
   // Review aus — hier steht es vorher, auch wenn kein Reviewer konfiguriert ist.
@@ -490,7 +504,7 @@ export function issueReviewCheck(args = {}, { config = loadConfig(), verfuegbar 
     }
     Object.assign(basis, { lesegrenze: start.lesegrenze });
     const { datei, ok, pfad } = verfuegbar(r.command);
-    if (!ok) return { ...basis, verfuegbar: false, geprueft: "pfad", grund: `${datei} nicht im PATH` };
+    if (!ok) return { ...basis, verfuegbar: false, geprueft: "pfad", grund: t("nichtImPath", { datei }) };
     if (nurPfad) return { ...basis, verfuegbar: true, geprueft: "pfad" };
     const lauf = probe(r.command, pfad);
     return lauf.ok
@@ -504,7 +518,7 @@ export function issueReviewCheck(args = {}, { config = loadConfig(), verfuegbar 
   // Dieselbe Fehlerklasse wie beim [Idee]-Gate (Issue #192): eine vorhersehbare Lage
   // gehoert ins Gate, nicht in einen Prompt.
   return reviewers.length === 0
-    ? { reviewers: [], alleVerfuegbar: false, grund: "issueReview.reviewers ist leer oder fehlt — Block aus .claude/workflow.config.example.json uebernehmen", rollen }
+    ? { reviewers: [], alleVerfuegbar: false, grund: t("keineReviewer"), rollen }
     : { reviewers: ergebnis, alleVerfuegbar: ergebnis.every((r) => r.verfuegbar), rollen };
 }
 
@@ -580,11 +594,58 @@ function block(text, name, behalten) {
   return ergebnis;
 }
 
-/** Holt Dokument, fachliche Quelle und Vorlage vom Board; `null` heisst: entfaellt. */
-async function dokumentWerte(tracker, id) {
+/**
+ * Die Werte der Markerzeile `feld` (`suchbegriffe`, `dateien`, unter beiden Namen, Issue #1568)
+ * `<a>; <b>; …` im Abschnitt zur Vorgeschichte, Backticks entfernt;
+ * `null` ohne den Abschnitt oder ohne die Zeile. Der Abschnitt steht beim Fachplan unter `##`,
+ * beim Plan unter `###` und reicht bis zur naechsten Ueberschrift derselben oder hoeheren Ebene.
+ */
+function vorgeschichteZeile(body, ebene, feld) {
+  const kopf = ueberschriftZeile("vorgeschichte", ebene);
+  const ende = new RegExp(`^ {0,3}#{1,${ebene}}(?!#)\\s`);
+  let drin = false;
+  for (const zeile of normalisiereZeilenenden(body).split("\n")) {
+    if (kopf.test(zeile)) {
+      drin = true;
+      continue;
+    }
+    if (!drin) continue;
+    if (ende.test(zeile)) break;
+    const m = leseMarker(zeile.trim());
+    if (m?.sache !== feld) continue;
+    return m.rest.split(";").map((w) => w.replaceAll("`", "").trim()).filter(Boolean);
+  }
+  return null;
+}
+
+/**
+ * Die frueheren Fachplaene fuer den Anhang VORGESCHICHTE (Issue #1540, Plan #1534 A3, A9):
+ * je Treffer Kopfzeile und ungekuerzter Body, ohne Kommentare (E2). Dasselbe `vorgeschichteSuchen`
+ * wie `issue vorgeschichte`, ohne Kindprozess. Das Dokument selbst und seine Fachliche Quelle
+ * sind keine Vorgeschichte (E3). `null` ohne Schalter, ohne `Suchbegriffe:`-Zeile, ohne Archiv
+ * oder ohne Treffer — dann entfaellt der Block, und der Auftrag gleicht dem ohne Vorgeschichte.
+ */
+async function vorgeschichteBody(tracker, config, { id, titel, body, quelleNr }) {
+  if (!vorgeschichteAktiv(config)) return null;
+  const plan = istPlan(titel);
+  const begriffe = vorgeschichteZeile(body, plan ? 3 : 2, "suchbegriffe");
+  if (begriffe === null) return null;
+  const dateien = plan ? vorgeschichteZeile(body, 3, "dateien") ?? [] : [];
+  const ohne = [id, quelleNr].filter((nr) => nr !== null).map((nr) => Number(String(nr).replace("#", "")));
+  const ergebnis = await vorgeschichteSuchen(tracker, config, { begriffe, dateien, ohne, bodies: true });
+  if (!ergebnis.ok || ergebnis.treffer.length === 0) return null;
+  return ergebnis.treffer.map((treffer) => {
+    const archiviert = t(treffer.archiviert ? "ja" : "nein");
+    return `${t("vorgeschichteKopf", { nummer: treffer.nummer, titel: treffer.titel, archiviert })}\n${mitZeilenende(treffer.body ?? "")}`;
+  }).join("\n");
+}
+
+/** Holt Dokument, fachliche Quelle, Vorlage und Vorgeschichte vom Board; `null` heisst: entfaellt. */
+async function dokumentWerte(tracker, config, id) {
   const lesen = async (nr) => {
     try {
-      return { body: (await tracker.getIssue(String(nr))).body ?? "" };
+      const karte = await tracker.getIssue(String(nr));
+      return { titel: karte.title ?? "", body: karte.body ?? "" };
     } catch (e) {
       return { fehler: { ok: false, fehler: "dokument-nicht-lesbar", id: String(nr), grund: e.message } };
     }
@@ -599,6 +660,7 @@ async function dokumentWerte(tracker, id) {
       ISSUE_BODY: dokument.body,
       QUELLE_BODY: quelle?.body ?? null,
       VORLAGE_PFAD: vorlagePfad(dokument.body, quelle?.body ?? null),
+      VORGESCHICHTE_BODY: await vorgeschichteBody(tracker, config, { id, titel: dokument.titel, body: dokument.body, quelleNr }),
     },
   };
 }
@@ -606,16 +668,16 @@ async function dokumentWerte(tracker, id) {
 // Ein Aufruffehler wirft, statt den Prozess zu beenden: Der Test laeuft im selben Prozess,
 // und `dispatchIssueReview` macht daraus wie bei `roles` ein `fail`.
 function fehlerArg(meldung) {
-  throw new BoardError(`issue-review pruefauftrag: ${meldung}`);
+  throw new BoardError(t("pruefauftragFehler", { meldung }));
 }
 
 function pruefauftragArgumente(args) {
-  const wert = (name) => (args[name] === true ? fehlerArg(`--${name} braucht einen Wert`) : args[name]);
-  const eingang = { rolle: wert("rolle"), datei: wert("datei"), id: wert("id"), material: wert("material-datei") };
-  if (!eingang.rolle) fehlerArg("--rolle fehlt");
-  if (!ROLLEN_NAME.test(eingang.rolle)) fehlerArg(`--rolle '${eingang.rolle}' ist kein Rollenname (Kleinbuchstaben, Ziffern, Bindestrich)`);
-  if (!eingang.datei) fehlerArg("--datei fehlt");
-  if (Boolean(eingang.id) === Boolean(eingang.material)) fehlerArg("entweder --id <N> oder --material-datei <pfad> angeben");
+  const wert = (name) => (args[name] === true ? fehlerArg(t("optionOhneWert", { name })) : args[name]);
+  const eingang = { rolle: wert("role"), datei: wert("file"), id: wert("id"), material: wert("material-file") };
+  if (!eingang.rolle) fehlerArg(t("optionFehlt", { name: "role" }));
+  if (!ROLLEN_NAME.test(eingang.rolle)) fehlerArg(t("keinRollenname", { rolle: eingang.rolle }));
+  if (!eingang.datei) fehlerArg(t("optionFehlt", { name: "file" }));
+  if (Boolean(eingang.id) === Boolean(eingang.material)) fehlerArg(t("idOderMaterial"));
   return eingang;
 }
 
@@ -627,16 +689,17 @@ function pruefauftragArgumente(args) {
 function montiere(rahmen, werte) {
   let text = block(normalisiereZeilenenden(rahmen), "VORLAGE", werte.VORLAGE_PFAD != null);
   text = block(text, "QUELLE", werte.QUELLE_BODY != null);
+  text = block(text, "VORGESCHICHTE", werte.VORGESCHICHTE_BODY != null);
   const offen = [...new Set([...text.matchAll(PLATZHALTER)].map((m) => m[1]))].filter((name) => werte[name] == null);
   if (offen.length > 0) return { offen };
   return { text: text.replaceAll(PLATZHALTER, (_, name) => werte[name]) };
 }
 
 /**
- * Montiert den Pruefauftrag einer Rolle in die Datei `--datei` (A3).
+ * Montiert den Pruefauftrag einer Rolle in die Datei `--file` (A3).
  *
  * Eingang entweder `--id <N>` (Dokument vom Board, `Fachliche Quelle:` und `Vorlage:`
- * aufgeloest) oder `--material-datei <pfad>` (Code-Pruefung). Fehlt die Rollendatei,
+ * aufgeloest) oder `--material-file <pfad>` (Code-Pruefung). Fehlt die Rollendatei,
  * antwortet der Befehl `rolle-fehlt` mit Pfad — der Skill bucht das als Ausfall dieses
  * Pruefers. Bleibt ein Platzhalter ausserhalb der Bloecke offen, entsteht keine Datei:
  * Ein halb gefuellter Auftrag saehe am Board aus wie ein vollstaendiger (E3).
@@ -649,7 +712,7 @@ export async function issueReviewPruefauftrag(args, { config = loadConfig(), boa
 
   let werte;
   if (id) {
-    const ergebnis = await dokumentWerte(board ?? resolveTracker(config), id);
+    const ergebnis = await dokumentWerte(board ?? resolveTracker(config), config, id);
     if (ergebnis.fehler) return ergebnis.fehler;
     werte = ergebnis.werte;
   } else {
@@ -657,7 +720,7 @@ export async function issueReviewPruefauftrag(args, { config = loadConfig(), boa
     if (inhalt === null) return { ok: false, fehler: "material-fehlt", pfad: material };
     werte = { REVIEW_MATERIAL: inhalt };
   }
-  const { arten } = await import("../befunde.mjs");
+  const { arten } = await import("../findings.mjs");
   werte.ARTEN = arten().arten.map((a) => `${a.name} — ${a.erklaerung}`).join("\n");
 
   const { text, offen } = montiere(rahmen, werte);
@@ -681,45 +744,45 @@ const START_PUFFER = 64 * 1024 * 1024;
 const STDERR_AUSSCHNITT = 1000;
 
 function fehlerStart(meldung) {
-  throw new BoardError(`issue-review start: ${meldung}`);
+  throw new BoardError(t("startFehler", { meldung }));
 }
 
-const pflichtwert = (args, name) => (args[name] === true || !args[name] ? fehlerStart(`--${name} fehlt`) : args[name]);
+const pflichtwert = (args, name) => (args[name] === true || !args[name] ? fehlerStart(t("optionFehlt", { name })) : args[name]);
 
 /** Wer startet: ein `kind: command`-Reviewer oder das persoenliche reviewCommand. */
 function startPruefer(args, config) {
-  const wert = (name) => (args[name] === true ? fehlerStart(`--${name} braucht einen Wert`) : args[name]);
+  const wert = (name) => (args[name] === true ? fehlerStart(t("optionOhneWert", { name })) : args[name]);
   const codeReview = args["code-review"] === true;
   const name = args.reviewer === undefined ? undefined : wert("reviewer");
-  if (codeReview === Boolean(name)) fehlerStart("entweder --reviewer <name> oder --code-review angeben");
+  if (codeReview === Boolean(name)) fehlerStart(t("reviewerOderCodeReview"));
   if (codeReview) {
-    if (!config.reviewCommand) fehlerStart("--code-review braucht reviewCommand in der Config");
+    if (!config.reviewCommand) fehlerStart(t("codeReviewOhneKommando"));
     return { name: "reviewCommand", command: config.reviewCommand, lesegrenze: config.reviewLesegrenze };
   }
   const { reviewers } = issueReviewConfig(config);
   const reviewer = reviewers.find((r) => r.name === name);
-  if (!reviewer) fehlerStart(`'${name}' steht nicht in issueReview.reviewers`);
-  if (reviewer.kind !== "command") fehlerStart(`'${name}' hat kind '${reviewer.kind}' — Claude-Pruefer laufen ueber den Agenten kit-pruefer`);
+  if (!reviewer) fehlerStart(t("reviewerUnbekannt", { name }));
+  if (reviewer.kind !== "command") fehlerStart(t("reviewerClaude", { name, kind: reviewer.kind }));
   return reviewer;
 }
 
 /** Das Ende von stderr, bei einem Lauf ohne Exit-Status der Startfehler oder das Signal. */
 function ausfallGrund(res) {
   if (res.status !== null) return res.stderr || "";
-  return res.error ? res.error.message : `Durch Signal ${res.signal} beendet`;
+  return res.error ? res.error.message : t("signal", { signal: res.signal });
 }
 
 /**
  * Startet einen fremden Pruefer mit Lesegrenze (A4): Auftrag ueber stdin, Antwort aus stdout
- * in `--ausgabe`. Gestartet wird ohne Shell wie im Probelauf — die Kommandozeile wird am
+ * in `--output`. Gestartet wird ohne Shell wie im Probelauf — die Kommandozeile wird am
  * Leerraum zerlegt, Quotes und Pipes traegt sie nicht. Ohne bekannte Lesegrenze oder mit einem
  * Schalter, der sie aufhebt, startet nichts (A6). Exit ungleich 0 ist ein Ausfall mit dem Ende
  * von stderr; die Ausgabedatei entsteht dann nicht, damit kein halber Befund als ganzer gilt.
  */
 export function issueReviewStart(args, { config = loadConfig(), spawn = spawnSync, verfuegbar = kommandoVerfuegbar, env = process.env } = {}) {
   const pruefer = startPruefer(args, config);
-  const auftrag = pflichtwert(args, "auftrag");
-  const ausgabe = pflichtwert(args, "ausgabe");
+  const auftrag = pflichtwert(args, "brief");
+  const ausgabe = pflichtwert(args, "output");
   const reviewer = pruefer.name;
 
   const start = startArgumente(pruefer.command, pruefer.lesegrenze);
@@ -727,7 +790,7 @@ export function issueReviewStart(args, { config = loadConfig(), spawn = spawnSyn
   const prompt = liesDatei(auftrag);
   if (prompt === null) return { ok: false, reviewer, fehler: "auftrag-fehlt", pfad: auftrag };
   const { datei, ok, pfad } = verfuegbar(pruefer.command);
-  if (!ok) return { ok: false, reviewer, fehler: "nicht-im-path", grund: `${datei} nicht im PATH` };
+  if (!ok) return { ok: false, reviewer, fehler: "nicht-im-path", grund: t("nichtImPath", { datei }) };
 
   const res = spawn(pfad, start.argumente, { input: prompt, encoding: "utf-8", env, maxBuffer: START_PUFFER });
   if (res.status !== 0) {
@@ -767,7 +830,7 @@ async function antwortMitExit(befehl) {
 // Die Hilfe kommt vom Einstieg herein: Sie steht dort, und ein Import von dort waere ein Zyklus.
 export async function dispatchIssueReview(command, args, hilfe) {
   switch (command) {
-    case "pruefauftrag": return antwortMitExit(() => issueReviewPruefauftrag(args));
+    case "review-brief": return antwortMitExit(() => issueReviewPruefauftrag(args));
     case "start": return antwortMitExit(() => issueReviewStart(args));
     case "reviewers": return out(issueReviewReviewers(args));
     case "check": return out(issueReviewCheck(args));
@@ -782,6 +845,6 @@ export async function dispatchIssueReview(command, args, hilfe) {
       }
     default:
       process.stdout.write(hilfe);
-      fail(`Unbekannter issue-review-Befehl: '${command}'`);
+      fail(t("befehlUnbekannt", { befehl: command }));
   }
 }

@@ -182,7 +182,7 @@ test("einheitErgaenzen schreibt und meldet ausserhalb von toolbox genau einmal, 
   assert.equal(zeilen.length, 1, "dieselbe Meldezeile steht nur einmal im Protokoll");
 });
 
-test("laufMelden liefert bei toolbox ueber board.mjs nightrun melden ein (Issue #669)", () => {
+test("laufMelden liefert bei toolbox ueber board.mjs nightrun report ein (Issue #669)", () => {
   const datei = laufMitDatei(projekt(), { abschluss: "regulaer" });
   ZUSTAND.config = { issueTracker: "toolbox" };
   const aufrufe = [];
@@ -191,7 +191,7 @@ test("laufMelden liefert bei toolbox ueber board.mjs nightrun melden ein (Issue 
     return { status: 0, stdout: JSON.stringify({ outcome: "created" }), stderr: "" };
   };
   laufMelden({ spawn, budgetMs: 1000 });
-  assert.deepEqual(aufrufe, [["nightrun", "melden", "--datei", datei]]);
+  assert.deepEqual(aufrufe, [["nightrun", "report", "--file", datei]]);
   assert.match(ausgabe.join(""), /Nachtlauf eingeliefert \(created\)\./);
 });
 

@@ -35,8 +35,23 @@ import { ZUSTAND, NACHBAR_CHECKS, log, boardRoh, vergleicheText } from "./grundl
 import { VORBEREITUNG_DATEI, pidAusInhalt, prozessLaeuft, kitStandZeile } from "./kitstand.mjs";
 import { abschnittLesen, leseKarte } from "./abhaengigkeiten.mjs";
 import { COLUMN_DEFAULTS } from "../board/grundlagen.mjs";
+// Die Marker in Body und Kommentaren gelten unter beiden Namen (Issue #1443, Plan #1420 E15).
+import { leseMarker, erkenneMarker, ueberschriftZeile, markerName, prozessSprache, text } from "../board/namen.mjs";
 import { endlicheZahl, lesePruefung, paketstufenChecks, runBuildChecksSync,
   LOKALER_KOMMENTARKOPF } from "./session.mjs";
+
+// Die Texte an den Menschen liegen unter kit/texte/night-bericht.mjs (Issue #1525).
+import { TEXTE } from "../texte/night-bericht.mjs";
+
+export { TEXTE };
+
+const t = (schluessel, werte = {}) => text(TEXTE, schluessel, werte);
+
+/** Ein Wert des Ergebnisstands als Anzeige (`ausgang_fertig` …); ein unbekannter erscheint, wie er ist. */
+function anzeige(art, wert) {
+  const schluessel = `${art}_${wert}`;
+  return Object.hasOwn(TEXTE.de, schluessel) ? t(schluessel) : String(wert);
+}
 
 // Der Ort der Pruef-Zusammenfassung kommt aus checks.mjs und wird NICHT nachgerechnet (Issue
 // #428). Bedingt und mit werfendem Ersatz wie im Einstieg: Fehlt der Nachbar, wirft der Stub
@@ -46,7 +61,7 @@ const { zusammenfassungPfad } = existsSync(NACHBAR_CHECKS)
   ? await import(pathToFileURL(NACHBAR_CHECKS).href)
   : {
       zusammenfassungPfad: () => {
-        throw new Error(`checks.mjs liegt nicht neben night.mjs (${NACHBAR_CHECKS}) — der Ort der Pruef-Zusammenfassung ist unbekannt.`);
+        throw new Error(t("checksFehlt", { pfad: NACHBAR_CHECKS }));
       },
     };
 
@@ -68,7 +83,7 @@ export function berichtAbhaengigkeiten(neu) {
     return;
   }
   for (const [name, fn] of Object.entries(neu)) {
-    if (!Object.hasOwn(VORGABEN, name)) throw new Error(`berichtAbhaengigkeiten kennt keine Abhaengigkeit '${name}'`);
+    if (!Object.hasOwn(VORGABEN, name)) throw new Error(t("abhaengigkeitUnbekannt", { name }));
     abh[name] = fn;
   }
 }
@@ -89,22 +104,24 @@ export function berichtAbhaengigkeiten(neu) {
 export const PLAN_REVIEW_ZEILE = /^Plan-Review:[^\S\n]*(\S(?:[^\n]*\S)?)[^\S\n]*$/;
 
 /**
- * Der Wert eines Marker-Ausdrucks im Body — sonst `null`.
+ * Der Wert der ersten Zeile mit dem Marker `sache` und nicht leerem Wert — sonst `null`.
  *
- * `trimStart()` statt `[^\S\n]*` im Ausdruck, aus demselben Grund wie bei
- * `hasReviewMarker`: Es raeumt dieselben Zeichen ab, `\r` aus CRLF eingeschlossen.
+ * Der Marker gilt unter beiden Namen (Issue #1443); der Wert hat die Form von
+ * PLAN_REVIEW_ZEILE, vom ersten bis zum letzten Nicht-Leerzeichen, `\r` aus CRLF nicht
+ * eingeschlossen. Die exportierten Ausdruecke bleiben die Form der deutschen Zeile.
  */
-function markerWert(body, ausdruck) {
+function markerWert(body, sache) {
   for (const zeile of String(body ?? "").split("\n")) {
-    const treffer = ausdruck.exec(zeile.trimStart());
-    if (treffer !== null) return treffer[1];
+    const m = leseMarker(zeile);
+    const wert = m?.sache === sache ? m.rest.trim() : "";
+    if (wert !== "") return wert;
   }
   return null;
 }
 
 /** Der Pruefer aus der Zeile 'Plan-Review: <pruefer>' eines Plan-Bodys — sonst `null`. */
 export function planReviewWert(body) {
-  return markerWert(body, PLAN_REVIEW_ZEILE);
+  return markerWert(body, "planReview");
 }
 
 /** Ob der Body eines Plans den Plan-Review-Marker mit einem Wert traegt. */
@@ -120,7 +137,7 @@ export const FACHPLAN_REVIEW_ZEILE = /^Fachplan-Review:[^\S\n]*(\S(?:[^\n]*\S)?)
 
 /** Der Pruefer aus der Zeile 'Fachplan-Review: <pruefer>' — sonst `null`. */
 export function fachplanReviewWert(body) {
-  return markerWert(body, FACHPLAN_REVIEW_ZEILE);
+  return markerWert(body, "fachplanReview");
 }
 
 /** Ob der Body einer fachlichen Anforderung den Fachplan-Review-Marker mit Wert traegt. */
@@ -155,7 +172,7 @@ export function verwerfeZusammenfassung() {
   } catch (err) {
     // Nicht loeschbar ist ein Grund, der Datei danach nicht zu glauben — aber kein
     // Grund, einen Nachtlauf zu beenden. Die Runde laeuft, der Vermerk steht im Log.
-    log(`  Hinweis: die vorherige Pruef-Zusammenfassung liess sich nicht loeschen (${err.message}).`);
+    log(t("zusammenfassungNichtGeloescht", { fehler: err.message }));
   }
 }
 
@@ -176,8 +193,6 @@ export function verwerfeZusammenfassung() {
 // — der Board-Move nach In progress aendert beim lokalen Tracker issues/<id>.md, und
 // die Session committet die Datei nicht. Gegen diese Beifaenge zu pruefen, hiesse den
 // Nachweis in jedem Lauf dieses Repos als fremd zu verwerfen.
-
-const NACHPRUEF_GRUND = "Nachpruefung des Commits (Nachweis war fremd)";
 
 /** Die Pfade samt Status, die ein Commit aendert. `null`, wenn git nicht antwortet. */
 function commitEintraege(commit) {
@@ -212,16 +227,16 @@ export function nachweisPasstZuCommit(daten, commit) {
   if (!daten || daten.hashes === null || typeof daten.hashes !== "object") return { passt: true, grund: null };
   // `abgeschlossen: false` heisst: Diese Fassung hat ein Abbruch hinterlassen (Issue
   // #857). Sie kann nie der Nachweis eines Commits sein, unabhaengig von den Blobs.
-  if (daten.abgeschlossen === false) return { passt: false, grund: "die Pruefung wurde abgebrochen" };
+  if (daten.abgeschlossen === false) return { passt: false, grund: t("nachweisAbgebrochen") };
   const eintraege = commitEintraege(commit);
   if (eintraege === null) return { passt: true, grund: null };
   for (const { status, pfad } of eintraege) {
-    if (!(pfad in daten.hashes)) return { passt: false, grund: `${pfad} ist darin nicht geprueft` };
+    if (!(pfad in daten.hashes)) return { passt: false, grund: t("nachweisOhnePfad", { pfad }) };
     // Bei einer Loeschung genuegt, dass der Pfad geprueft wurde — einen Blob gibt es
     // im Commit nicht mehr, und die Zusammenfassung fuehrt ihn mit `null`.
     if (status.startsWith("D")) continue;
     if (daten.hashes[pfad] !== blobImCommit(commit, pfad)) {
-      return { passt: false, grund: `${pfad} wurde in einer anderen Fassung geprueft` };
+      return { passt: false, grund: t("nachweisAndereFassung", { pfad }) };
     }
   }
   return { passt: true, grund: null };
@@ -237,7 +252,7 @@ function nachpruefLaufen(cfg, nach) {
   for (const eintrag of paketstufenChecks(cfg)) {
     const cmd = typeof eintrag === "string" ? eintrag : eintrag.cmd;
     const rot = !nach.ok && cmd === nach.rotesKommando;
-    laufen.push({ cmd, grund: NACHPRUEF_GRUND, ergebnis: rot ? "rot" : "gruen" });
+    laufen.push({ cmd, grund: t("nachpruefGrund"), ergebnis: rot ? "rot" : "gruen" });
     if (rot) break;
   }
   return laufen;
@@ -259,10 +274,9 @@ export function bewertePruefung(issueId, commit, cfg) {
   const abgleich = nachweisPasstZuCommit(roh, commit);
   if (abgleich.passt) return pruefung;
 
-  log(`  Der Pruefnachweis gehoert nicht zum Commit ${commit} (${abgleich.grund}) — die Pflicht-Checks werden nachgefahren.`);
+  log(t("nachweisFremdLog", { commit, grund: abgleich.grund }));
   const nach = runBuildChecksSync(cfg);
-  const ausgang = nach.ok ? "gruen" : `rot — ${nach.rotesKommando}`;
-  log(`  Nachpruefung ${ausgang}.`);
+  log(nach.ok ? t("nachpruefungGruenLog") : t("nachpruefungRotLog", { kommando: nach.rotesKommando }));
   return {
     ...pruefung,
     zustand: nach.ok ? "nachgeprueft" : "rot",
@@ -283,8 +297,8 @@ export function bewertePruefung(issueId, commit, cfg) {
   };
 }
 
-function pruefListe(eintraege, leerText) {
-  return eintraege.length === 0 ? leerText : eintraege.map((e) => `${e.cmd} (${e.grund})`).join("; ");
+function pruefListe(eintraege) {
+  return eintraege.length === 0 ? t("listeLeer") : eintraege.map((e) => `${e.cmd} (${e.grund})`).join("; ");
 }
 
 /** Eine Zeile je Session — auch die ohne Pruefung, sonst saehe sie aus wie keine. */
@@ -292,15 +306,15 @@ function pruefZeile(p) {
   // Der fremde Nachweis zuerst (Issue #865): Was hier zaehlt, ist nicht das Ergebnis der
   // Session, sondern das der Nachpruefung — und der Grund, aus dem sie noetig war.
   if (p.nachweisFremd) {
-    const ergebnis = p.zustand === "rot" ? `Nachpruefung rot — ${p.rotesKommando} endete rot` : "Nachpruefung gruen";
-    return `  Issue #${p.id}: ${p.zustand} — Nachweis gehoerte nicht zum Commit (${p.nachweisGrund}), ${ergebnis}.`;
+    const schluessel = p.zustand === "rot" ? "pruefFremdRot" : "pruefFremdGruen";
+    return t(schluessel, { id: p.id, grund: p.nachweisGrund, kommando: p.rotesKommando });
   }
-  if (p.zustand === "ungeprueft") return `  Issue #${p.id}: ungeprueft — die Session hat keine Pruefung gefahren.`;
-  if (p.zustand === "unlesbar") return `  Issue #${p.id}: ungeprueft — Zusammenfassung nicht lesbar (${p.fehler}).`;
-  if (p.zustand === "leeresPaket") return `  Issue #${p.id}: leeres Paket — keine Pruefung, weil nichts veraendert wurde.`;
-  if (p.zustand === "rot") return `  Issue #${p.id}: rot — ${p.rotesKommando} endete ${p.rotesErgebnis}.`;
-  const gelaufen = p.laufen.map((e) => `${e.cmd} -> ${e.ergebnis} (${e.grund})`).join("; ") || "keine";
-  return `  Issue #${p.id}: gelaufen: ${gelaufen} | ausgelassen: ${pruefListe(p.ausgelassen, "keine")}`;
+  if (p.zustand === "ungeprueft") return t("pruefUngeprueft", { id: p.id });
+  if (p.zustand === "unlesbar") return t("pruefUnlesbar", { id: p.id, fehler: p.fehler });
+  if (p.zustand === "leeresPaket") return t("pruefLeer", { id: p.id });
+  if (p.zustand === "rot") return t("pruefRot", { id: p.id, kommando: p.rotesKommando, ergebnis: p.rotesErgebnis });
+  const gelaufen = p.laufen.map((e) => `${e.cmd} -> ${e.ergebnis} (${e.grund})`).join("; ") || t("listeLeer");
+  return t("pruefGelaufen", { id: p.id, gelaufen, ausgelassen: pruefListe(p.ausgelassen) });
 }
 
 /**
@@ -314,9 +328,9 @@ function pruefZeile(p) {
  */
 function pruefGueteZeile(p) {
   const g = p.guete;
-  const anteil = typeof g.anteil === "number" ? `${g.anteil} % erreicht` : `kein Anteil erhoben (${g.grund})`;
+  const anteil = typeof g.anteil === "number" ? t("gueteAnteil", { anteil: g.anteil }) : t("gueteKeinAnteil", { grund: g.grund });
   const bewertung = typeof g.anteil === "number" ? ` — ${g.grund}` : "";
-  return `  Issue #${p.id}: Guete: ${anteil}, Marke ${g.marke} %${bewertung}`;
+  return t("gueteZeile", { id: p.id, anteil, marke: g.marke, bewertung });
 }
 
 /** Die Zeilen einer Session: die Pruefzeile, und darunter die Guete-Zeile, wenn gemessen wurde. */
@@ -334,11 +348,11 @@ function pruefSummenzeile(pruefungen) {
   const summe = (feld, filter = () => true) =>
     mitLaeufen.reduce((n, p) => n + p[feld].filter(filter).length, 0);
   const rot = summe("laufen", (e) => e.ergebnis === "rot");
-  return `  Summe: ${pruefungen.length} Session(s) — ${geprueft.length} mit Pruefung, `
-    + `${zaehle("nachgeprueft")} nachgeprueft, `
-    + `${zaehle("leeresPaket")} ohne Aenderung, ${zaehle("ungeprueft") + zaehle("unlesbar")} ungeprueft, `
-    + `${zaehle("rot")} rot; `
-    + `${summe("laufen")} Pruefung(en) gelaufen (davon ${rot} rot), ${summe("ausgelassen")} ausgelassen.`;
+  return t("pruefSumme", {
+    sessions: pruefungen.length, geprueft: geprueft.length, nachgeprueft: zaehle("nachgeprueft"), leer: zaehle("leeresPaket"),
+    ungeprueft: zaehle("ungeprueft") + zaehle("unlesbar"), rot: zaehle("rot"), gelaufen: summe("laufen"), gelaufenRot: rot,
+    ausgelassen: summe("ausgelassen"),
+  });
 }
 
 /**
@@ -348,8 +362,8 @@ function pruefSummenzeile(pruefungen) {
  */
 export function pruefBericht(pruefungen, einheiten = [], zielMin = undefined) {
   const zahlen = prueflaufZeilen(einheiten, zielMin);
-  if (pruefungen.length === 0) return ["Pruefungen: keine Implementierungs-Runde gelaufen.", ...zahlen];
-  return ["Pruefungen der Sessions:", ...pruefungen.flatMap(pruefZeilen), pruefSummenzeile(pruefungen), ...zahlen];
+  if (pruefungen.length === 0) return [t("pruefKeineRunde"), ...zahlen];
+  return [t("pruefKopf"), ...pruefungen.flatMap(pruefZeilen), pruefSummenzeile(pruefungen), ...zahlen];
 }
 
 // --- Prueflaeufe und Zielmarke im Bericht (Issue #926, Plan #917, E6-E9) ---
@@ -361,7 +375,7 @@ export function pruefBericht(pruefungen, einheiten = [], zielMin = undefined) {
  * Schemas. Eine Marke, die sich wegkonfigurieren laesst, waere eine Messung, die genau
  * dort verschwindet, wo sie unangenehm wird.
  */
-// SYNC: dieselbe Vorgabe steht im Schema von kit/einstellungen.mjs (night.zielUmsetzungMin).
+// SYNC: dieselbe Vorgabe steht im Schema von kit/settings.mjs (night.zielUmsetzungMin).
 const ZIEL_UMSETZUNG_VORGABE_MIN = 10;
 
 export function zielUmsetzungMin(wert) {
@@ -382,19 +396,21 @@ function prueflaufPaketZeile(einheit) {
 }
 
 function prueflaufZahlenZeile(einheit) {
-  const kopf = `- Issue #${einheit.id}: Dauer ${minutenText(einheit.dauerMs)} min`;
+  const kopf = t("prueflaufKopfZeile", { id: einheit.id, minuten: minutenText(einheit.dauerMs) });
   const arbeit = einheit.prueflaeufe?.arbeit;
   // "nicht gemessen" und keine Null (E9): Eine 0 hiesse, die Session habe nichts geprueft —
   // hier ist nur niemand dabei gewesen (Stufe ohne Strom).
-  if (!arbeit) return `${kopf}, Prueflaeufe nicht gemessen`;
+  if (!arbeit) return t("prueflaufNichtGemessen", { kopf });
   const abschluss = einheit.prueflaeufe?.abschluss;
-  const abschlussText = abschluss ? `, Abschlussversuche ${abschluss.anzahl ?? 0}` : "";
+  const abschlussText = abschluss ? t("prueflaufAbschluss", { anzahl: abschluss.anzahl ?? 0 }) : "";
   const letzter = endlicheZahl(einheit.pruefung?.wartezeitMs);
   const summe = (abschluss?.anzahl ?? 0) > 0 ? endlicheZahl(abschluss.dauerMs) : null;
-  const letzterText = letzter === null ? "" : `, letzter Abschluss ${(letzter / 1000).toFixed(1)} s`;
-  const summeText = summe === null ? "" : `, Abschluss-Wartezeit zusammen ${minutenText(summe)} min`;
-  return `${kopf}, Prueflaeufe ${arbeit.anzahl ?? 0} (volle ${arbeit.volle ?? 0}, `
-    + `Gruppenlaeufe ${arbeit.volleNoetig ?? 0})${abschlussText}${letzterText}${summeText}`;
+  const letzterText = letzter === null ? "" : t("prueflaufLetzter", { sekunden: (letzter / 1000).toFixed(1) });
+  const summeText = summe === null ? "" : t("prueflaufSumme", { minuten: minutenText(summe) });
+  return t("prueflaufZahlen", {
+    kopf, anzahl: arbeit.anzahl ?? 0, volle: arbeit.volle ?? 0, gruppen: arbeit.volleNoetig ?? 0,
+    abschluss: abschlussText, letzter: letzterText, summe: summeText,
+  });
 }
 
 /**
@@ -408,9 +424,10 @@ function festgefahrenZeile(einheit) {
   if (einheit.ausgang !== "festgefahren" || !f) return [];
   const dauer = endlicheZahl(einheit.dauerMs) ?? 0;
   const grenze = endlicheZahl(f.zeitgrenzeMs) ?? 0;
-  return [`- Issue #${einheit.id}: festgefahren an ${f.pruefung} (${f.versuche ?? 0} Versuche), `
-    + `Laufzeit ${minutenText(dauer)} min, Zeitgrenze ${minutenText(grenze)} min, `
-    + `gesparte Zeit (Schaetzung) ${minutenText(Math.max(0, grenze - dauer))} min`];
+  return [t("festgefahrenZeile", {
+    id: einheit.id, pruefung: f.pruefung, versuche: f.versuche ?? 0, dauer: minutenText(dauer), grenze: minutenText(grenze),
+    gespart: minutenText(Math.max(0, grenze - dauer)),
+  })];
 }
 
 /**
@@ -430,7 +447,7 @@ function gewackeltZeilen(pakete) {
     }
   }
   return [...jePruefung].map(([cmd, { faelle, karten }]) =>
-    `- Gewackelt: ${cmd} — ${faelle} Fälle (Issue #${karten.join(", #")})`);
+    t("gewackelt", { cmd, faelle, karten: karten.join(", #") }));
 }
 
 /**
@@ -446,30 +463,30 @@ function gewackeltZeilen(pakete) {
  * draussen: Sie haben keine Umsetzung, deren Dauer sich an einer Marke messen liesse.
  *
  * Gerechnet wird mit `einheit.dauerMs`, der Rundendauer einschliesslich aller Pruefungen
- * und Korrekturen (Konvention aus `kit/aufwand.mjs`) — nicht mit `zeiten.dauerMs`.
+ * und Korrekturen (Konvention aus `kit/effort.mjs`) — nicht mit `zeiten.dauerMs`.
  * Gerechnet wird hier und nicht in der Datei (E7): Zwei Rechnungen ueber dieselbe Messung
  * driften auseinander.
  */
 export function prueflaufZeilen(einheiten, ziel = undefined) {
   const marke = zielUmsetzungMin(ziel);
   const pakete = (Array.isArray(einheiten) ? einheiten : []).filter((e) => e?.pruefung);
-  if (pakete.length === 0) return ["Prueflaeufe und Zielmarke: keine Umsetzung gemessen."];
-  const zeilen = ["Prueflaeufe und Zielmarke:"];
+  if (pakete.length === 0) return [t("prueflaufKeine")];
+  const zeilen = [t("prueflaufKopf")];
   for (const e of pakete) {
     zeilen.push(...prueflaufPaketZeile(e));
     // Jede Datei mit Namen (E8): Eine Zahl sagte nicht, wo das Loch ist. Der Abschluss
     // bleibt davon unberuehrt — die Luecke ist ein Befund, kein rotes Ergebnis.
     const ohne = e.pruefung?.ohneZuordnung ?? [];
-    if (ohne.length > 0) zeilen.push(`- Issue #${e.id}: ohne Zuordnung: ${ohne.join(", ")}`);
+    if (ohne.length > 0) zeilen.push(t("ohneZuordnung", { id: e.id, dateien: ohne.join(", ") }));
     // Je Hinweis eine Zeile, Datei und Grund stehen im Text des Werkzeugs (Issue #1156,
     // E12): gemeldet, nicht gewertet — die Einheit bleibt erfolgreich.
     for (const h of e.pruefung?.hinweise ?? []) {
-      for (const zeile of h?.zeilen ?? []) zeilen.push(`- Issue #${e.id}: hinweis: ${zeile}`);
+      for (const zeile of h?.zeilen ?? []) zeilen.push(t("prueflaufHinweis", { id: e.id, zeile }));
     }
   }
   zeilen.push(...gewackeltZeilen(pakete));
   const erreicht = pakete.filter((e) => (endlicheZahl(e.dauerMs) ?? Infinity) <= marke * 60000).length;
-  zeilen.push(`- ${erreicht} von ${pakete.length} Paketen unter ${marke} Minuten.`);
+  zeilen.push(t("unterMarke", { erreicht, gesamt: pakete.length, marke }));
   return zeilen;
 }
 
@@ -480,13 +497,24 @@ export function prueflaufZeilen(einheiten, ziel = undefined) {
 // erst als Satz im Fachplan. Kann der Tracker ihn nicht annehmen, wartet er als Datei in
 // der Hauptkopie und geht beim naechsten Start jeder Betriebsart nach.
 
-export const BERICHT_ANKER = "## Nachtbericht, Kette";
-export const BERICHT_SCHLUSS = "Dieser Bericht ist Verlauf. Verbindlich fuer die naechste Kette wird eine Entscheidung erst als Satz im Fachplan.";
+// Die deutschen Fassungen, wie Einstieg und Tests sie kennen; geschrieben wird der Anker aus dem
+// Register (`nachtbericht`) und der Schluss aus TEXTE, beide in der Projektsprache.
+export const BERICHT_ANKER = markerName("nachtbericht", "de");
+export const BERICHT_SCHLUSS = TEXTE.de.berichtSchluss;
+const berichtAnker = () => markerName("nachtbericht", prozessSprache());
 const BERICHT_DATEI_PRAEFIX = "night-bericht-";
-const ENTSCHEIDUNGEN_UEBERSCHRIFT = /^ {0,3}##\s*Architektonische\s+Entscheidungen\s*$/i;
-const KONTEXT_UEBERSCHRIFT = /^ {0,3}##\s*Kontext\s*$/i;
-const ENTSCHEIDUNGEN_KOMMENTAR_UEBERSCHRIFT = /^ {0,3}###\s*Entscheidungen\s*$/i;
-const EINARBEITUNG_KOPF = /^## Einarbeitung, Runde \d+/;
+// Plan und Abschlussbericht unter beiden Namen (Issue #1460).
+const ENTSCHEIDUNGEN_UEBERSCHRIFT = ueberschriftZeile("architektonischeEntscheidungen");
+// Die Kontextueberschrift unter beiden Namen (Issue #1443): `## Kontext` allein auf der Zeile.
+// Ein Objekt mit `test`, weil `abschnittLesen` eine Ueberschrift so prueft.
+const KONTEXT_UEBERSCHRIFT = {
+  test: (zeile) => /^ {0,3}##/.test(zeile) && ((m) => m?.sache === "kontext" && m.rest.trim() === "")(leseMarker(zeile)),
+};
+const ENTSCHEIDUNGEN_KOMMENTAR_UEBERSCHRIFT = ueberschriftZeile("entscheidungen", 3);
+// `### Vorgeschichte` bzw. `### History` im Plan (Issue #1541, Plan #1534).
+const VORGESCHICHTE_UEBERSCHRIFT = ueberschriftZeile("vorgeschichte", 3);
+// `## Einarbeitung, Runde N` unter beiden Namen (Issue #1443).
+const istEinarbeitung = (kommentar) => ((m) => m?.sache === "einarbeitungRunde" && /^ \d/.test(m.rest))(leseMarker(kommentar));
 
 function minutenText(ms) {
   return ((ms ?? 0) / 60000).toFixed(1);
@@ -504,7 +532,7 @@ export function kommentareVon(issue) {
 
 /** Der Kommentar `## Einarbeitung, Runde N` am Plan — bei mehreren der letzte; null ohne. */
 export function einarbeitungVon(plan) {
-  const treffer = kommentareVon(plan).filter((k) => EINARBEITUNG_KOPF.test(k));
+  const treffer = kommentareVon(plan).filter(istEinarbeitung);
   return treffer.length > 0 ? treffer.at(-1) : null;
 }
 
@@ -518,11 +546,27 @@ function punkteErsterEbene(body, ueberschrift) {
     .filter((z) => !/^keine\.?$/i.test(z));
 }
 
+/**
+ * Die `- Widerspruch:`-Zeilen aus `### Vorgeschichte` des Plans, woertlich (Issue #1541).
+ * `/techplan` uebernimmt sie aus der Fachlichen Quelle; gelesen wird darum nur der Plan.
+ * Der Unterabschnitt endet an der naechsten `##`- oder `###`-Zeile — `abschnittLesen`
+ * endet nur an `##` und liefe ueber eine folgende `###`-Ueberschrift hinaus.
+ */
+function widerspruchsZeilen(body) {
+  const abschnitt = abschnittLesen(body, VORGESCHICHTE_UEBERSCHRIFT);
+  if (!abschnitt) return [];
+  const ende = abschnitt.zeilen.findIndex((z, i) => abschnitt.ausserhalb[i] && /^ {0,3}###\s/.test(z));
+  const bis = ende < 0 ? abschnitt.zeilen.length : ende;
+  return abschnitt.zeilen.slice(0, bis)
+    .filter((z, i) => abschnitt.ausserhalb[i] && /^- Widerspruch:/.test(z))
+    .map((z) => z.trimEnd());
+}
+
 /** Die `Entscheidung:`-Zeilen aus `## Kontext` eines Pakets. */
 function entscheidungsZeilen(body) {
   const abschnitt = abschnittLesen(body, KONTEXT_UEBERSCHRIFT);
   if (!abschnitt) return [];
-  return abschnitt.zeilen.filter((z, i) => abschnitt.ausserhalb[i] && /^\s*Entscheidung:/.test(z)).map((z) => z.trim());
+  return abschnitt.zeilen.filter((z, i) => abschnitt.ausserhalb[i] && erkenneMarker(z) === "entscheidung").map((z) => z.trim());
 }
 
 /**
@@ -536,8 +580,6 @@ function entscheidungenAusKommentaren(paket) {
   return eintraege;
 }
 
-const SITZUNGSUMFANG_KOPF = "Sitzungsumfang:";
-
 /**
  * Der Wert der Zeile `Sitzungsumfang: passt | reisst — <ein Satz>` aus dem `## Kontext`
  * eines Pakets (Konvention aus Issue #979): `"reisst"`, `"passt"` oder `null`, wenn die
@@ -550,9 +592,9 @@ function sitzungsumfangVon(body) {
   if (!abschnitt) return null;
   for (let i = 0; i < abschnitt.zeilen.length; i++) {
     if (!abschnitt.ausserhalb[i]) continue;
-    const zeile = abschnitt.zeilen[i].trim();
-    if (!zeile.toLowerCase().startsWith(SITZUNGSUMFANG_KOPF.toLowerCase())) continue;
-    const wert = zeile.slice(SITZUNGSUMFANG_KOPF.length).trim();
+    const m = leseMarker(abschnitt.zeilen[i]);
+    if (m?.sache !== "sitzungsumfang") continue;
+    const wert = m.rest.trim();
     if (/^rei(?:ss|ß)t\b/i.test(wert)) return "reisst";
     if (/^passt\b/i.test(wert)) return "passt";
   }
@@ -573,9 +615,9 @@ function berichtSitzungsumfangZeile(ids, pakete) {
   for (const id of ids) {
     const wert = sitzungsumfangVon(pakete.find((k) => String(k.id) === String(id))?.body);
     if (wert === "reisst") teile.push(`#${id}`);
-    else if (wert === null) teile.push(`#${id} nicht eingeschätzt`);
+    else if (wert === null) teile.push(t("nichtEingeschaetzt", { id }));
   }
-  return `- Voraussichtlich über der Sitzungszeitgrenze: ${teile.length > 0 ? teile.join(", ") : "keine"}`;
+  return t("sitzungsumfangZeile", { liste: teile.length > 0 ? teile.join(", ") : t("listeLeer") });
 }
 
 /** `#<id> <Titel>` fuer den Bericht — nur `#<id>`, wenn die Karte ihren Titel nicht mitbringt. */
@@ -609,21 +651,23 @@ function berichtUmsetzungMitGrund(pakete, id, grund) {
  */
 function berichtUmsetzungStufe(eintrag) {
   const stufe = eintrag && typeof eintrag === "object" ? eintrag.stufe : null;
-  if (!stufe) return "ohne Stufe";
+  if (!stufe) return t("ohneStufe");
   const { stufeVerwendet, modell, effort } = eintrag;
   const stufeText = stufeVerwendet && stufeVerwendet !== stufe
-    ? `Aufgabenstufe ${stufe}, ueber Stufe ${stufeVerwendet}`
-    : `Aufgabenstufe ${stufe}`;
+    ? t("stufeUeber", { stufe, verwendet: stufeVerwendet })
+    : t("stufe", { stufe });
   // Die Gruendlichkeit hinten und nur, wenn gesetzt (Issue #846) — dieselbe Regel wie in
   // `rundenHinweis` und im Dry-Run; ein Eintrag aus einem aelteren Ergebnisstand kennt
   // das Feld nicht und erscheint darum wie bisher.
-  const effortText = effort ? `, Gruendlichkeit ${effort}` : "";
-  return modell ? `${stufeText}, Modell ${modell}${effortText}` : `${stufeText}${effortText}`;
+  const effortText = effort ? t("gruendlichkeit", { effort }) : "";
+  return modell ? t("stufeModell", { stufe: stufeText, modell, effort: effortText }) : `${stufeText}${effortText}`;
 }
 
 /** `#<id> <Titel> (<Pruefung>, <n> Versuche: <Fehler>)` — ein festgefahrenes Paket im Bericht. */
 function berichtFestgefahrenEintrag(pakete, eintrag) {
-  return `${paketBezeichnung(pakete, eintrag.id)} (${eintrag.pruefung}, ${eintrag.versuche ?? 0} Versuche: ${eintrag.fehler})`;
+  return t("festgefahrenEintrag", {
+    bezeichnung: paketBezeichnung(pakete, eintrag.id), pruefung: eintrag.pruefung, versuche: eintrag.versuche ?? 0, fehler: eintrag.fehler,
+  });
 }
 
 function berichtUmsetzungEintrag(pakete, eintrag) {
@@ -633,30 +677,30 @@ function berichtUmsetzungEintrag(pakete, eintrag) {
 
 function berichtUmsetzung(einheit, pakete, einheiten, ziel) {
   const stand = einheit.stufen?.umsetzung ?? {};
-  const liste = (ids) => (ids.length > 0 ? `${ids.map((id) => paketBezeichnung(pakete, id)).join(", ")}.` : "keine");
+  const liste = (ids) => (ids.length > 0 ? `${ids.map((id) => paketBezeichnung(pakete, id)).join(", ")}.` : t("listeLeer"));
   const umgesetzt = stand.umgesetzt ?? [];
   const umgesetztText = umgesetzt.length > 0
     ? `${umgesetzt.map((e) => berichtUmsetzungEintrag(pakete, e)).join(", ")}.`
-    : "keine";
+    : t("listeLeer");
   const festgefahren = stand.festgefahren ?? [];
   const festgefahrenText = festgefahren.length > 0
     ? `${festgefahren.map((e) => berichtFestgefahrenEintrag(pakete, e)).join(", ")}.`
-    : "keine";
+    : t("listeLeer");
   const nichtBegonnen = [...(stand.nichtBegonnen ?? []), ...(stand.zurueckgestellt ?? [])];
   const nichtBegonnenText = nichtBegonnen.length > 0
     ? `${nichtBegonnen.map((e) => berichtUmsetzungMitGrund(pakete, e.id, e.grund)).join(", ")}.`
-    : "keine";
+    : t("listeLeer");
   return [
-    "### Umsetzung", "",
+    t("umsetzungKopf"), "",
     // Die Auslassung zuerst und als eigene Zeile (Issue #862): Sie sagt, dass die
     // bestellte Umsetzung gar nicht erst anlief, was sie verhindert hat und wo die Pakete
     // danach liegen. Aus den drei Listen darunter waere das nur zu erschliessen — und wer
     // erschliessen muss, sieht nicht nach.
-    ...(stand.ausgelassen ? [`- ausgelassen: ${stand.ausgelassen} — die Pakete bleiben in Backlog.`] : []),
-    `- umgesetzt: ${umgesetztText}`,
-    `- angehalten: ${liste(stand.angehalten ?? [])}`,
-    `- festgefahren: ${festgefahrenText}`,
-    `- nicht begonnen: ${nichtBegonnenText}`,
+    ...(stand.ausgelassen ? [t("umsetzungAusgelassen", { grund: stand.ausgelassen })] : []),
+    t("umsetzungUmgesetzt", { liste: umgesetztText }),
+    t("umsetzungAngehalten", { liste: liste(stand.angehalten ?? []) }),
+    t("umsetzungFestgefahren", { liste: festgefahrenText }),
+    t("umsetzungNichtBegonnen", { liste: nichtBegonnenText }),
     // Die Prueflaeufe und die Zielmarke (Issue #926, E6) — derselbe Block, den die
     // Umsetzungsnacht ins Protokoll schreibt. Beide Berichtsorte nennen dieselben Zahlen,
     // damit keiner von beiden der Ort ist, an dem eine Messung fehlt.
@@ -667,20 +711,21 @@ function berichtUmsetzung(einheit, pakete, einheiten, ziel) {
 
 const URSPRUNG_ERLEDIGT = new Set(["in_review", "done"]);
 const spaltenText = (spalte) => COLUMN_DEFAULTS[spalte] ?? spalte;
-const ursprungName = (d) => (d.art === "fachlich" ? `fachliche Anforderung #${d.id}` : `Plan #${d.id}`);
+const ursprungName = (d) => t(d.art === "fachlich" ? "ursprungFachlich" : "ursprungPlan", { id: d.id });
 
 /** Die Zeile eines Ursprungsdokuments: gewandert, lag bereits, bleibt oder nicht bewegt. */
 function ursprungDokumentZeile(d, vorher, fehler) {
   const davor = vorher[d.id] ?? null;
-  if (davor && URSPRUNG_ERLEDIGT.has(davor)) return `- ${ursprungName(d)}: lag bereits in ${spaltenText(davor)}.`;
-  if (davor && d.spalte === "in_review") return `- ${ursprungName(d)}: nach In review gewandert.`;
-  if (d.aktion === "bleibt") return `- ${ursprungName(d)}: bleibt in ${spaltenText(davor ?? d.spalte ?? "unbekannter Spalte")} — ${d.grund}.`;
+  const name = ursprungName(d);
+  if (davor && URSPRUNG_ERLEDIGT.has(davor)) return t("ursprungLagBereits", { name, spalte: spaltenText(davor) });
+  if (davor && d.spalte === "in_review") return t("ursprungGewandert", { name });
+  if (d.aktion === "bleibt") return t("ursprungBleibt", { name, spalte: spaltenText(davor ?? d.spalte ?? t("unbekannteSpalte")), grund: d.grund });
   if (d.aktion === "wandert") {
     const f = (fehler ?? []).find((x) => String(x.id) === String(d.id));
     const warum = f ? " (" + f.grund + ")" : "";
-    return `- ${ursprungName(d)}: nicht nach In review bewegt${warum} — nachziehen: \`node .claude/kit/board.mjs issue move ${d.id} in_review\`.`;
+    return t("ursprungNichtBewegt", { name, warum, id: d.id });
   }
-  return `- ${ursprungName(d)}: ${d.aktion}.`;
+  return t("ursprungAktion", { name, aktion: d.aktion });
 }
 
 const ohneNullen = (id) => String(id).replace(/^0+(?=\d)/, "");
@@ -692,15 +737,16 @@ const ohneNullen = (id) => String(id).replace(/^0+(?=\d)/, "");
  */
 function fehlendGrund(umsetzung, id) {
   const gleich = (e) => ohneNullen(e && typeof e === "object" ? e.id : e) === ohneNullen(id);
-  if (umsetzung.ausgelassen) return `nicht begonnen (Umsetzung ausgelassen: ${umsetzung.ausgelassen})`;
+  if (umsetzung.ausgelassen) return t("fehlendAusgelassen", { grund: umsetzung.ausgelassen });
   const zurueck = (umsetzung.zurueckgestellt ?? []).find(gleich);
-  if (zurueck) return `gescheitert und zurück im Backlog (${zurueck.grund})`;
-  if ((umsetzung.angehalten ?? []).some(gleich)) return "an einer Stopp-Frage angehalten";
+  if (zurueck) return t("fehlendZurueck", { grund: zurueck.grund });
+  if ((umsetzung.angehalten ?? []).some(gleich)) return t("fehlendAngehalten");
   const fest = (umsetzung.festgefahren ?? []).find(gleich);
-  if (fest) return `an einer Pruefung festgefahren und zurück im Backlog (${fest.pruefung})`;
+  if (fest) return t("fehlendFestgefahren", { pruefung: fest.pruefung });
   const offen = (umsetzung.nichtBegonnen ?? []).find(gleich);
-  if (offen) return /^wartet auf einen Push/.test(offen.grund ?? "") ? `wartet auf Push (${offen.grund})` : `nicht begonnen (${offen.grund})`;
-  return "von der Umsetzung dieser Kette nicht erfasst";
+  // Der Grund des Wartens auf einen Push kommt aus der Kette, in beiden Sprachen erkannt.
+  if (offen) return /^(?:wartet auf einen Push|waits for a push)/.test(offen.grund ?? "") ? t("fehlendPush", { grund: offen.grund }) : t("fehlendNichtBegonnen", { grund: offen.grund });
+  return t("fehlendNichtErfasst");
 }
 
 /** Die Zeilen fuer eine Kette, deren Umsetzung nicht begonnen hat: Dokumente bleiben, Pakete mit Spalte. */
@@ -708,16 +754,18 @@ function ursprungOhneUmsetzung(einheit, plan, pakete) {
   const stufen = einheit.stufen ?? {};
   const planId = stufen.plan?.id ?? (einheit.auftrag === "plan" ? einheit.id : null);
   const anforderung = einheit.auftrag === "plan" ? einheit.fachplan : einheit.id;
-  const namen = [...(planId ? [`Plan #${planId}`] : []), ...(anforderung ? [`fachliche Anforderung #${anforderung}`] : [])];
-  const planSpalte = plan?.status ? ` (Plan #${planId} in ${spaltenText(plan.status)})` : "";
+  const namen = [...(planId ? [t("ursprungPlan", { id: planId })] : []), ...(anforderung ? [t("ursprungFachlich", { id: anforderung })] : [])];
+  const planSpalte = plan?.status ? t("planSpalte", { id: planId, spalte: spaltenText(plan.status) }) : "";
   const ids = stufen.pakete?.ids ?? [];
   const paketText = (id) => {
     const status = pakete.find((k) => String(k.id) === String(id))?.status;
-    return status ? `${paketBezeichnung(pakete, id)} in ${spaltenText(status)}` : paketBezeichnung(pakete, id);
+    return status ? t("paketInSpalte", { bezeichnung: paketBezeichnung(pakete, id), spalte: spaltenText(status) }) : paketBezeichnung(pakete, id);
   };
   return [
-    `- ${namen.join(", ") || "die Ursprungsdokumente"}: bleiben in ihrer Spalte${planSpalte} — Kette ${einheit.ausgang} in Stufe ${einheit.stufe}, die Umsetzung hat nicht begonnen.`,
-    `- Pakete: ${ids.length > 0 ? ids.map(paketText).join(", ") : "noch nicht geschnitten"}.`,
+    t("ursprungBleibenSpalte", {
+      namen: namen.join(", ") || t("dieUrsprungsdokumente"), planSpalte, ausgang: anzeige("ausgang", einheit.ausgang), stufe: einheit.stufe,
+    }),
+    t("paketeListe", { liste: ids.length > 0 ? ids.map(paketText).join(", ") : t("nochNichtGeschnitten") }),
   ];
 }
 
@@ -733,23 +781,23 @@ function ursprungOhneUmsetzung(einheit, plan, pakete) {
 function berichtUrsprung(einheit, plan, pakete) {
   const umsetzung = einheit.stufen?.umsetzung;
   const ursprung = umsetzung?.ursprung;
-  const z = ["### Ursprungsdokumente", ""];
+  const z = [t("ursprungKopf"), ""];
   if (!ursprung) {
-    if (umsetzung && !einheit.stufe) z.push("- nicht feststellbar: die Kette hat den Stand der Ursprungsdokumente nicht festgehalten.");
+    if (umsetzung && !einheit.stufe) z.push(t("ursprungNichtFestgehalten"));
     else z.push(...ursprungOhneUmsetzung(einheit, plan, pakete));
     return [...z, ""];
   }
-  if (ursprung.fehler) return [...z, `- nicht feststellbar: ${ursprung.fehler}.`, ""];
+  if (ursprung.fehler) return [...z, t("ursprungNichtFeststellbar", { fehler: ursprung.fehler }), ""];
   const a = ursprung.auswertung ?? {};
   const dokumente = a.dokumente ?? [];
-  if (dokumente.length === 0) z.push(`- Plan #${a.plan}: ${a.grund ?? "keine Ursprungsdokumente festgestellt"}.`);
+  if (dokumente.length === 0) z.push(t("ursprungPlanGrund", { plan: a.plan, grund: a.grund ?? t("keineUrsprungsdokumente") }));
   for (const d of dokumente) z.push(ursprungDokumentZeile(d, ursprung.vorher ?? {}, a.fehler));
   if ((a.fehlend ?? []).length > 0) {
-    z.push("- fehlende Pakete:");
+    z.push(t("fehlendePakete"));
     for (const k of a.fehlend) {
       const titel = k.titel ?? pakete.find((p) => String(p.id) === String(k.id))?.title;
       const bezeichnung = titel ? `#${k.id} ${titel}` : `#${k.id}`;
-      z.push(`  - ${bezeichnung} in ${spaltenText(k.spalte)}: ${fehlendGrund(umsetzung, k.id)}`);
+      z.push(t("fehlendZeile", { bezeichnung, spalte: spaltenText(k.spalte), grund: fehlendGrund(umsetzung, k.id) }));
     }
   }
   return [...z, ""];
@@ -764,8 +812,8 @@ function berichtUrsprung(einheit, plan, pakete) {
  * Anforderung — dieselbe Zahl an derselben Stelle, zwei verschiedene Gesten.
  */
 function berichtAuftragZeile(einheit) {
-  if (einheit.auftrag === "plan") return `- Auftrag: Plan #${einheit.stufen?.plan?.id} (fachliche Quelle #${einheit.fachplan})`;
-  return einheit.id ? `- Auftrag: fachliche Anforderung #${einheit.id}` : null;
+  if (einheit.auftrag === "plan") return t("auftragPlan", { plan: einheit.stufen?.plan?.id, fachplan: einheit.fachplan });
+  return einheit.id ? t("auftragFachlich", { id: einheit.id }) : null;
 }
 
 /**
@@ -776,28 +824,30 @@ function berichtAuftragZeile(einheit) {
  */
 function berichtPlanZeile(stufen, plan) {
   const p = stufen.plan;
-  const pruefer = planReviewWert(plan?.body) ?? "keiner";
+  const pruefer = planReviewWert(plan?.body) ?? t("prueferKeiner");
   const titel = plan?.title ? ` (${plan.title})` : "";
-  if (p.uebernommen) return `- Plan #${p.id}${titel}: als Auftrag uebernommen, nicht neu geschrieben, Pruefer ${pruefer}.`;
+  if (p.uebernommen) return t("planUebernommen", { id: p.id, titel, pruefer });
   const kosten = p.kennzahlen?.kostenUsd;
-  const kostenText = typeof kosten === "number" ? `${kosten.toFixed(2)} $` : "unbekannt";
-  return `- Plan #${p.id}${titel}: Dauer ${minutenText(p.dauerMs)} min, Kosten der letzten Session ${kostenText}, `
-    + `Korrekturrunden ${p.korrekturrunden ?? 0}, Pruefer ${pruefer}, Marker ${stufen.review?.marker ? "gesetzt" : "fehlt"}.`;
+  const kostenText = typeof kosten === "number" ? `${kosten.toFixed(2)} $` : t("kostenUnbekanntWert");
+  return t("planZeile", {
+    id: p.id, titel, minuten: minutenText(p.dauerMs), kosten: kostenText, runden: p.korrekturrunden ?? 0, pruefer,
+    marker: t(stufen.review?.marker ? "markerGesetzt" : "markerFehlt"),
+  });
 }
 
 function berichtStufen(einheit, plan, pakete) {
   const stufen = einheit.stufen ?? {};
   const auftrag = berichtAuftragZeile(einheit);
-  const zeilen = [...(auftrag ? [auftrag] : []), `- Variante: ${einheit.variante === "B" ? "B" : "A"}`];
+  const zeilen = [...(auftrag ? [auftrag] : []), t("variante", { variante: einheit.variante === "B" ? "B" : "A" })];
   // Unmittelbar nach der Variante (Plan #1243, E5): Die Endzeilen des Blocks bleiben fest.
-  if (einheit.ziel) zeilen.push(`- Ziel: ${einheit.ziel}`);
-  zeilen.push(stufen.plan?.id ? berichtPlanZeile(stufen, plan) : "- Plan: keiner entstanden.");
+  if (einheit.ziel) zeilen.push(t("ziel", { ziel: einheit.ziel }));
+  zeilen.push(stufen.plan?.id ? berichtPlanZeile(stufen, plan) : t("keinPlan"));
   const ids = stufen.pakete?.ids ?? [];
   zeilen.push(ids.length > 0
-    ? `- Pakete (${ids.length}, Korrekturrunden ${stufen.pakete?.korrekturrunden ?? 0}): ${ids.map((id) => paketBezeichnung(pakete, id)).join(", ")}.`
-    : "- Pakete: keine.");
+    ? t("pakete", { anzahl: ids.length, runden: stufen.pakete?.korrekturrunden ?? 0, liste: ids.map((id) => paketBezeichnung(pakete, id)).join(", ") })
+    : t("keinePakete"));
   const fremd = stufen.pakete?.nichtZuordenbar ?? [];
-  if (fremd.length > 0) zeilen.push(`- Nicht zuordenbar (ohne 'Plan: Issue #${stufen.plan?.id}'): ${fremd.map((id) => "#" + id).join(", ")}.`);
+  if (fremd.length > 0) zeilen.push(t("nichtZuordenbar", { plan: stufen.plan?.id, liste: fremd.map((id) => "#" + id).join(", ") }));
   // Als letzte Zeile des Blocks (Issue #980): `test/night-bericht-kette.test.mjs` fixiert
   // die Folge bis einschliesslich `- Pakete: …`, und hinten angehaengt bleibt sie gueltig.
   zeilen.push(berichtSitzungsumfangZeile(ids, pakete));
@@ -805,9 +855,10 @@ function berichtStufen(einheit, plan, pakete) {
 }
 
 function berichtAbgelehnt(einarbeitung) {
-  if (einarbeitung === null) return ["- keine Einarbeitung gefunden"];
-  const abgelehnt = einarbeitung.split(/\r\n|\r|\n/).map((z) => z.trim()).filter((z) => /abgelehnt/i.test(z));
-  if (abgelehnt.length === 0) return ["- keine abgelehnten Befunde"];
+  if (einarbeitung === null) return [t("keineEinarbeitung")];
+  // Die Einarbeitung schreibt eine Session in der Projektsprache; erkannt werden beide Woerter.
+  const abgelehnt = einarbeitung.split(/\r\n|\r|\n/).map((z) => z.trim()).filter((z) => /abgelehnt|rejected/i.test(z));
+  if (abgelehnt.length === 0) return [t("keineAbgelehnten")];
   return abgelehnt.map((z) => (/^[-*+]\s/.test(z) ? z : `- ${z}`));
 }
 
@@ -822,10 +873,10 @@ function berichtAbgelehnt(einarbeitung) {
  */
 /** Alle Entscheidungen der Nacht, woertlich, mit dem Ort in Klammern — siehe `berichtBauen`. */
 function berichtEntscheidungen(stufen, plan, pakete) {
-  const entscheidungen = punkteErsterEbene(plan?.body, ENTSCHEIDUNGEN_UEBERSCHRIFT).map((e) => `${e} (Plan #${stufen.plan?.id})`);
+  const entscheidungen = punkteErsterEbene(plan?.body, ENTSCHEIDUNGEN_UEBERSCHRIFT).map((eintrag) => t("ortPlan", { eintrag, id: stufen.plan?.id }));
   for (const k of pakete) {
-    for (const e of entscheidungsZeilen(k.body)) entscheidungen.push(`${e} (Paket #${k.id})`);
-    for (const e of entscheidungenAusKommentaren(k)) entscheidungen.push(`${e} (Paket #${k.id})`);
+    for (const eintrag of entscheidungsZeilen(k.body)) entscheidungen.push(t("ortPaket", { eintrag, id: k.id }));
+    for (const eintrag of entscheidungenAusKommentaren(k)) entscheidungen.push(t("ortPaket", { eintrag, id: k.id }));
   }
   return entscheidungen;
 }
@@ -876,13 +927,19 @@ export function wartendeMenschenschritte(stand) {
  * Zeile (Issue #1281) — dort, wo der Mensch zuerst liest, nicht nur unter `nicht begonnen`.
  */
 function berichtAusgang(einheit, pakete) {
-  const zeilen = [einheit.grund ? `${einheit.ausgang} — ${einheit.grund}` : String(einheit.ausgang)];
-  if (einheit.ziel && einheit.projektgrenze) zeilen.push(`an der Projektgrenze stehen geblieben, nicht am Ziel ${einheit.ziel}`);
+  const ausgang = anzeige("ausgang", einheit.ausgang);
+  const zeilen = [einheit.grund ? t("ausgangGrund", { ausgang, grund: einheit.grund }) : ausgang];
+  if (einheit.ziel && einheit.projektgrenze) zeilen.push(t("projektgrenze", { ziel: einheit.ziel }));
   for (const { id, haengen } of wartendeMenschenschritte(einheit.stufen?.umsetzung)) {
-    const daran = haengen.length > 0 ? `daran hängen ${haengen.map((n) => "#" + n).join(", ")}` : "daran hängt kein weiteres Paket";
-    zeilen.push(`wartet auf Menschenschritt ${paketBezeichnung(pakete, id)} — ${daran}`);
+    const daran = haengen.length > 0 ? t("daranHaengen", { liste: haengen.map((n) => "#" + n).join(", ") }) : t("daranHaengtNichts");
+    zeilen.push(t("wartetAufMensch", { bezeichnung: paketBezeichnung(pakete, id), daran }));
   }
   return zeilen;
+}
+
+/** Der Abschnitt Hinweise: heute nur der fehlende Stichtag `szenarienAb` (Issue #1593, E14); ohne ihn entfaellt er. */
+function berichtHinweise(stichtagFehlt) {
+  return stichtagFehlt ? [t("hinweiseKopf"), "", t("stichtagFehlt", { hinweis: stichtagFehlt }), ""] : [];
 }
 
 export function berichtBauen(einheit, {
@@ -893,59 +950,62 @@ export function berichtBauen(einheit, {
   // Der feste Kit-Stand des Laufs (Issue #1103). Er steht im Text selbst: Ein wartender
   // Bericht, den ein spaeterer Lauf nachtraegt, nennt so den Stand des Laufs, der ihn schrieb.
   kitStand = ZUSTAND.LAUF?.kitStand ?? null,
+  // Der Hinweis auf den fehlenden Stichtag `szenarienAb` (Issue #1593, Plan #1588 E14) oder `null`.
+  stichtagFehlt = null,
 } = {}) {
   const stufen = einheit.stufen ?? {};
-  const z = [`${BERICHT_ANKER} ${stempel ?? ZUSTAND.LAUF_STEMPEL ?? "ohne Stempel"}`, ""];
+  const z = [`${berichtAnker()} ${stempel ?? ZUSTAND.LAUF_STEMPEL ?? t("ohneStempel")}`, ""];
   z.push(
-    "### Ausgang", "", ...berichtAusgang(einheit, pakete), "",
-    "### Stufen", "", ...berichtStufen(einheit, plan, pakete), "",
+    t("ausgangKopf"), "", ...berichtAusgang(einheit, pakete), "",
+    t("stufenKopf"), "", ...berichtStufen(einheit, plan, pakete), "",
   );
   if (einheit.variante === "B") z.push(...berichtUmsetzung(einheit, pakete, einheiten, ziel), ...berichtUrsprung(einheit, plan, pakete));
 
   const entscheidungen = berichtEntscheidungen(stufen, plan, pakete);
-  z.push("### Entscheidungen der Nacht", "");
-  if (entscheidungen.length === 0) z.push("- Keine.");
+  z.push(t("entscheidungenKopf"), "");
+  if (entscheidungen.length === 0) z.push(t("keineEntscheidungen"));
   entscheidungen.forEach((e, i) => z.push(`${i + 1}. ${e}`));
+  // Ohne Widerspruch entfaellt der Kopf (Issue #1541): Die Zeilenfolge jeder anderen Kette bleibt.
+  const widersprueche = widerspruchsZeilen(plan?.body);
+  if (widersprueche.length > 0) z.push("", t("widerspruecheKopf"), "", ...widersprueche);
 
   z.push(
     "",
-    "### Abgelehnte Befunde", "", ...berichtAbgelehnt(einarbeitung), "",
-    "### Abdeckung gegen den Fachplan", "",
+    t("abgelehntKopf"), "", ...berichtAbgelehnt(einarbeitung), "",
+    t("abdeckungKopf"), "",
   );
   if (abdeckung?.text) z.push(abdeckung.text);
-  else z.push(`Keine Abdeckung: ${abdeckung?.grund ?? "die Kette hat die Stufe abdeckung nicht erreicht"}.`);
-  if (einheit.abdeckungSchrieb) z.push("", "Hinweis: die Abdeckungs-Session hat am Board geschrieben, obwohl sie nur lesen sollte.");
+  else z.push(t("keineAbdeckung", { grund: abdeckung?.grund ?? t("abdeckungNichtErreicht") }));
+  if (einheit.abdeckungSchrieb) z.push("", t("abdeckungSchrieb"));
   z.push("");
 
   const halt = berichtHaltArten(einheit);
   const startZeit = start instanceof Date ? start : new Date(start ?? jetzt);
   const paketeErreicht = (stufen.pakete?.ids ?? []).length > 0;
-  z.push("### Kennzahlen", "",
-    `- Pakete erreicht: ${paketeErreicht ? "ja" : "nein"}`,
-    `- Dauer der Kette: ${minutenText(jetzt - startZeit.getTime())} min ab ${startZeit.toISOString()}`,
-    `- Entscheidungen: ${entscheidungen.length}`,
-    `- Stopp-Fragen: ${halt.stoppFrage ? 1 : 0}`,
-    ...(halt.geschuetzt > 0 ? [`- Geschuetzte Dateien: ${halt.geschuetzt}`] : []),
-    `- Kosten: ${Number(einheit.kostenUsd ?? 0).toFixed(2)} $ von ${budget.kostenUsd ?? "?"} $`,
-    `- kostenUnbekannt: ${einheit.kostenUnbekannt ?? 0}`,
+  z.push(t("kennzahlenKopf"), "",
+    t("paketeErreicht", { wert: t(paketeErreicht ? "ja" : "nein") }),
+    t("dauerKette", { minuten: minutenText(jetzt - startZeit.getTime()), start: startZeit.toISOString() }),
+    t("anzahlEntscheidungen", { anzahl: entscheidungen.length }),
+    t("stoppFragen", { anzahl: halt.stoppFrage ? 1 : 0 }),
+    ...(halt.geschuetzt > 0 ? [t("geschuetzteDateien", { anzahl: halt.geschuetzt })] : []),
+    t("kosten", { kosten: Number(einheit.kostenUsd ?? 0).toFixed(2), budget: budget.kostenUsd ?? "?" }),
+    t("kostenUnbekannt", { anzahl: einheit.kostenUnbekannt ?? 0 }),
     "");
-  if (halt.stoppFrage) z.push("### Offene Stopp-Frage", "", frage ?? einheit.grund ?? "siehe den Halt-Kommentar an der gekennzeichneten Karte", "");
-  if (halt.geschuetzt > 0) z.push("### Wartende Handlung an geschuetzter Datei", "", einheit.grund ?? "siehe den Halt-Kommentar am Paket", "");
-  if ((einheit.ueberholt ?? []).length > 0) z.push("### Ueberholt", "", ...einheit.ueberholt.map((id) => `- Plan #${id}`), "");
+  if (halt.stoppFrage) z.push(t("stoppFrageKopf"), "", frage ?? einheit.grund ?? t("siehHaltKarte"), "");
+  if (halt.geschuetzt > 0) z.push(t("geschuetztKopf"), "", einheit.grund ?? t("siehHaltPaket"), "");
+  if ((einheit.ueberholt ?? []).length > 0) z.push(t("ueberholtKopf"), "", ...einheit.ueberholt.map((id) => t("ueberholtZeile", { id })), "");
   if ((einheit.ueberholtUnbestaetigt ?? []).length > 0) {
-    z.push("### Ueberholt, nicht bestaetigt", "", ...einheit.ueberholtUnbestaetigt.map((e) => `- Plan #${e.id} — ${e.grund}`), "");
+    z.push(t("unbestaetigtKopf"), "", ...einheit.ueberholtUnbestaetigt.map((e) => t("unbestaetigtZeile", { id: e.id, grund: e.grund })), "");
   }
+  z.push(...berichtHinweise(stichtagFehlt));
   if (kitStand) z.push(kitStandZeile(kitStand), "");
-  z.push(BERICHT_SCHLUSS, "");
+  z.push(t("berichtSchluss"), "");
   return z.join("\n");
 }
 
-// Die Ergebnisse der Vorbereitung im Wortlaut des Fachplans (#1192, Kriterium 16).
-const VORBEREITUNG_ERGEBNIS_TEXT = Object.freeze({
-  gruen: "grün", "gruen-offen": "grün, Prüfung offen", rot: "rot", "nicht-vorbereitet": "nicht vorbereitet",
-});
-
-const kartenListe = (ids) => ((ids ?? []).length > 0 ? ids.map((id) => `#${id}`).join(", ") : "keine");
+// Die Ergebnisse der Vorbereitung im Wortlaut des Fachplans (#1192, Kriterium 16) stehen als
+// `ergebnis_<wert>` in TEXTE.
+const kartenListe = (ids) => ((ids ?? []).length > 0 ? ids.map((id) => `#${id}`).join(", ") : t("listeLeer"));
 
 /**
  * Der eigene Nachtbericht der Vorbereitung an einer ausloesenden Karte (Plan #1243, E12;
@@ -957,29 +1017,30 @@ const kartenListe = (ids) => ((ids ?? []).length > 0 ? ids.map((id) => `#${id}`)
  */
 export function vorbereitungsBericht(_karte, vorbereitung, { stempel = ZUSTAND.LAUF_STEMPEL } = {}) {
   const v = vorbereitung ?? {};
-  const ergebnis = VORBEREITUNG_ERGEBNIS_TEXT[v.ergebnis] ?? String(v.ergebnis);
-  const z = [`${BERICHT_ANKER} ${stempel ?? "ohne Stempel"} — Vorbereitung`, ""];
-  const releaseText = v.releaseDateien ? `bereit (v${v.version})` : "nicht erzeugt";
-  z.push("### Ergebnis", "", v.grund ? `${ergebnis} — ${v.grund}` : ergebnis, "");
+  const ergebnis = anzeige("ergebnis", v.ergebnis);
+  const unbekannt = t("unbekannt");
+  const z = [t("vorbereitungAnker", { anker: berichtAnker(), stempel: stempel ?? t("ohneStempel") }), ""];
+  const releaseText = v.releaseDateien ? t("releaseBereit", { version: v.version }) : t("releaseNicht");
+  z.push(t("ergebnisKopf"), "", v.grund ? `${ergebnis} — ${v.grund}` : ergebnis, "");
   if (v.ergebnis !== "nicht-vorbereitet") {
-    z.push("### Geprüfter Stand", "",
-      `- Commit: ${v.commit ?? "unbekannt"} (Basis ${v.basis ?? "unbekannt"}, origin/main-Stand ${v.origin ?? "unbekannt"})`,
-      `- Versionsvermerk und Änderungsnotiz: ${releaseText}`,
-      `- Abgleich mit origin: ${v.fetch === "fehlgeschlagen" ? "fehlgeschlagen, geprüft gegen den vorhandenen Stand" : "ok"}`,
-      `- Zeitpunkt: ${v.zeitpunkt ?? "unbekannt"}`,
-      ...(v.abweichung ? [`- Abweichung: ${v.abweichung}`] : []),
+    z.push(t("standKopf"), "",
+      t("standCommit", { commit: v.commit ?? unbekannt, basis: v.basis ?? unbekannt, origin: v.origin ?? unbekannt }),
+      t("standRelease", { release: releaseText }),
+      t(v.fetch === "fehlgeschlagen" ? "standFetchFehl" : "standFetchOk"),
+      t("standZeitpunkt", { zeitpunkt: v.zeitpunkt ?? unbekannt }),
+      ...(v.abweichung ? [t("standAbweichung", { abweichung: v.abweichung })] : []),
       "",
-      "### Pakete im Stand", "", kartenListe(v.pakete), "",
-      "### Offene Prüfungen", "", ...((v.offen ?? []).length > 0 ? v.offen.map((o) => `- ${o}`) : ["- keine"]), "");
+      t("paketeImStandKopf"), "", kartenListe(v.pakete), "",
+      t("offenKopf"), "", ...((v.offen ?? []).length > 0 ? v.offen.map((o) => `- ${o}`) : [t("offenKeine")]), "");
     if (v.rot) {
-      z.push("### Rote Prüfung", "",
-        `- Prüfung: ${v.rot.pruefung ?? "unbekannt"}`,
-        `- Verursacher: ${kartenListe(v.rot.karten)}`,
-        ...(v.rot.hinweis ? [`- Hinweis: ${v.rot.hinweis}`] : []),
+      z.push(t("rotKopf"), "",
+        t("rotPruefung", { pruefung: v.rot.pruefung ?? unbekannt }),
+        t("rotVerursacher", { karten: kartenListe(v.rot.karten) }),
+        ...(v.rot.hinweis ? [t("rotHinweis", { hinweis: v.rot.hinweis })] : []),
         "");
     }
   }
-  z.push(`Die Meldung gilt dem ganzen Stand und steht auch in ${VORBEREITUNG_DATEI}. Gepusht wurde nichts.`, "");
+  z.push(t("vorbereitungSchluss", { datei: VORBEREITUNG_DATEI }), "");
   return z.join("\n");
 }
 
@@ -1004,13 +1065,13 @@ export function berichtSchreiben(zielId, text, { stempel = ZUSTAND.LAUF_STEMPEL,
   try {
     const res = abh.boardRoh("issue", "comment", String(zielId), "--text-file", pfad);
     if (res.status === 0) {
-      log(`  Nachtbericht als Kommentar an #${zielId} veroeffentlicht.`);
+      log(t("berichtVeroeffentlicht", { id: zielId }));
       return "veroeffentlicht";
     }
     const wartend = join(".claude", name);
     mkdirSync(join(repoRoot, ".claude"), { recursive: true });
     writeFileSync(join(repoRoot, wartend), text, "utf-8");
-    log(`  Nachtbericht konnte nicht an #${zielId} geschrieben werden (${res.text.slice(0, 200)}) — liegt wartend unter ${wartend} und wird beim naechsten Start nachgetragen.`);
+    log(t("berichtWartet", { id: zielId, antwort: res.text.slice(0, 200), pfad: wartend }));
     return wartend;
   } finally {
     rmSync(pfad, { force: true });
@@ -1048,17 +1109,17 @@ export function berichteNachtragen(repoRoot = process.cwd(), {
     try {
       renameSync(pfad, sendet);
     } catch {
-      log(`Wartenden Nachtbericht uebersprungen: .claude/${name} — ein anderer Runner traegt ihn nach.`);
+      log(t("nachtragenUebersprungen", { name }));
       continue;
     }
     const res = posten(F, sendet);
     if (res.status === 0) {
       rmSync(sendet, { force: true });
       nachgetragen.push(name);
-      log(`Wartenden Nachtbericht nachgetragen: .claude/${name} -> Kommentar an #${F}.`);
+      log(t("nachgetragen", { name, id: F }));
     } else {
       renameSync(sendet, pfad);
-      log(`Wartender Nachtbericht bleibt liegen: .claude/${name} — ${res.text.slice(0, 200)}`);
+      log(t("bleibtLiegen", { name, antwort: res.text.slice(0, 200) }));
     }
   }
   return nachgetragen;
@@ -1082,7 +1143,7 @@ function verwaisteSendungenZurueck(ordner) {
     const name = n.slice(0, stelle);
     try {
       renameSync(join(ordner, n), join(ordner, name));
-      log(`Verwaisten Nachtbericht zurueckbenannt: .claude/${n} -> .claude/${name} (Prozess ${halter ?? "unbekannt"} lebt nicht mehr).`);
+      log(t("zurueckbenannt", { von: n, nach: name, pid: halter ?? t("unbekannt") }));
     } catch {
       // Ein anderer Start benannte ihn im selben Augenblick zurueck — dann liegt er schon da.
     }
@@ -1120,5 +1181,6 @@ export function berichtFuerKette(kette, einheit, ergebnis) {
     // eines Laufs stuenden sonst fremde Pakete im Kommentar dieser Karte, und die Zeile
     // "N von M" zaehlte sie mit.
     einheiten: ketteEinheiten(kette), zielUmsetzungMin: ZUSTAND.config?.night?.zielUmsetzungMin,
+    stichtagFehlt: kette.stichtagFehlt ?? null,
   });
 }

@@ -33,7 +33,7 @@ function setupFixture(installInhalt, boardUiInhalt) {
   writeFileSync(join(dir, "install.mjs"), installInhalt);
   writeFileSync(join(dir, "kit", "board-ui.mjs"), boardUiInhalt);
   // Seit Issue #679 die dritte Download-Datei.
-  writeFileSync(join(dir, "kit", "einstellungen.mjs"), "// einstellungen\nconst KIT_VERSION = \"9.9.9\";\n");
+  writeFileSync(join(dir, "kit", "settings.mjs"), "// einstellungen\nconst KIT_VERSION = \"9.9.9\";\n");
   return dir;
 }
 
@@ -88,8 +88,8 @@ test("Kopien: die Einstellungs-Oberflaeche landet byte-gleich unter docs/public/
   try {
     const res = copyDownloads(dir);
     assert.equal(res.status, 0, `Script schlug fehl: ${res.stderr}${res.stdout}`);
-    assert.ok(gleicheBytes(dir, ["kit", "einstellungen.mjs"], ["docs", "public", "einstellungen.mjs"]),
-      "docs/public/einstellungen.mjs fehlt oder weicht von der Quelle ab");
+    assert.ok(gleicheBytes(dir, ["kit", "settings.mjs"], ["docs", "public", "settings.mjs"]),
+      "docs/public/settings.mjs fehlt oder weicht von der Quelle ab");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

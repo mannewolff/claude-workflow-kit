@@ -24,16 +24,12 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...teile) => readFileSync(join(repoRoot, ...teile), "utf-8");
 
-// Der Wegweiser `/plan` erstellt keinen Plan, er nennt nur den neuen Namen `/techplan`.
-// Er steht bewusst in keiner Skill-Tabelle und zaehlt deshalb nicht mit.
-const WEGWEISER = new Set(["plan"]);
-
-// Die englische Fassung zaehlt mit "sixteen" (Issue #1370); die Konfiguration traegt beide
+// Die englische Fassung zaehlt mit "seventeen" (Issue #1370, seit #1514 mit /groom); die Konfiguration traegt beide
 // Beschreibungen und steht deshalb in beiden Listen.
 const SPRACHEN = [
   {
-    zaehlwort: "sechzehn",
-    alteZaehlung: /vierzehn Skills|zw(ö|oe)lf Skills|f(ü|ue)nfzehn Skills/i,
+    zaehlwort: "siebzehn",
+    alteZaehlung: /vierzehn Skills|zw(ö|oe)lf Skills|f(ü|ue)nfzehn Skills|sechzehn Skills/i,
     dateien: [
       ["docs", "dokumentation.md"],
       ["docs", "quickstart.md"],
@@ -43,8 +39,8 @@ const SPRACHEN = [
     ],
   },
   {
-    zaehlwort: "sixteen",
-    alteZaehlung: /fourteen skills|twelve skills|fifteen skills/i,
+    zaehlwort: "seventeen",
+    alteZaehlung: /fourteen skills|twelve skills|fifteen skills|sixteen skills/i,
     dateien: [
       ["docs", "en", "dokumentation.md"],
       ["docs", "en", "quickstart.md"],
@@ -78,7 +74,7 @@ for (const { zaehlwort, alteZaehlung, dateien } of SPRACHEN) {
 
 test("die Skill-Tabelle der Kurzanleitung fuehrt jeden Skill genau einmal", () => {
   const vorhanden = readdirSync(join(repoRoot, "skills"), { withFileTypes: true })
-    .filter((e) => e.isDirectory() && !WEGWEISER.has(e.name))
+    .filter((e) => e.isDirectory())
     .map((e) => e.name)
     .sort();
 

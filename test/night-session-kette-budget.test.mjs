@@ -11,7 +11,7 @@ import { ladeKetteBudget, ketteBudgetDefaults, kostenAddieren, KETTE_BUDGET_DEFA
 
 test("[night-18] ohne Block gelten die Startwerte aus Fachplan #635", () => {
   assert.deepEqual(ladeKetteBudget({}), {
-    label: "kit:night", varianteBLabel: "kit:durchziehen", planMin: 20, paketeMin: 15, reviewMin: 15,
+    label: "kit:night", varianteBLabel: "kit:carry-through", planMin: 20, paketeMin: 15, reviewMin: 15,
     abdeckungMin: 10, umsetzungMin: 120, vorbereitungMin: 120, kostenUsd: 50, kostenUsdB: 150, korrekturrunden: 2,
   });
   assert.deepEqual(ladeKetteBudget(undefined), { ...KETTE_BUDGET_DEFAULTS });

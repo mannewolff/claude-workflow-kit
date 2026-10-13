@@ -61,7 +61,7 @@ test("[skills-2] der Abschnitt `## Im Nachtbetrieb` regelt die Betriebsart", () 
     "die Regel fehlt woertlich — ohne sie improvisiert jede Session neu");
   assert.match(nacht, /KIT_AGENT_MODEL/,
     "das Erkennungsmerkmal der Betriebsart fehlt");
-  assert.match(nacht, /night\.mjs --kette/,
+  assert.match(nacht, /night\.mjs --chain/,
     "wer den Skill nachts startet, steht nicht da");
   assert.match(nacht, /jeden unbeaufsichtigten Lauf/,
     "die Regel haengt sonst an diesem einen Runner");
@@ -95,16 +95,16 @@ test("[skills-2] Schritt 0 bietet interaktiv Bahn 3 mit /task an und plant dann 
     "dass der Skill dann nicht plant, steht nicht da");
 });
 
-test("[skills-2] das Bahn-3-Angebot nimmt [Fachlich] und [Plan] als Quelle aus", () => {
+test("[skills-2] das Bahn-3-Angebot nimmt [Requirement] und [Plan] als Quelle aus", () => {
   const schritt0 = abschnitt("### 0. Bahn bestimmen", "### 1. Anforderung verstehen");
-  assert.match(schritt0, /\[Fachlich\]/, "die Ausnahme fuer [Fachlich] als Quelle fehlt");
+  assert.match(schritt0, /\[Requirement\]/, "die Ausnahme fuer [Requirement] als Quelle fehlt");
   assert.match(schritt0, /\[Plan\]/, "die Ausnahme fuer [Plan] als Quelle fehlt");
   // Die Idee ist ausdruecklich KEINE Ausnahme — `/task #N` nimmt sie an. Ohne diesen
   // Satz liest eine Sitzung die Ausnahme als "jede Nummer" und verweist nie auf /task.
-  assert.match(schritt0, /\[Idee\]/,
-    "dass eine [Idee] dem Angebot nicht entgegensteht, ist nicht benannt");
+  assert.match(schritt0, /\[Idea\]/,
+    "dass eine [Idea] dem Angebot nicht entgegensteht, ist nicht benannt");
   assert.match(schritt0, /lehnt diese Quelle|lehnt .{0,40}ab/,
-    "dass /task die Quelle [Fachlich] ausdruecklich ablehnt, fehlt");
+    "dass /task die Quelle [Requirement] ausdruecklich ablehnt, fehlt");
 });
 
 test("[skills-2] unbeaufsichtigt wird ein Bahn-3-Urteil woertlich festgehalten", () => {
@@ -147,4 +147,12 @@ test("[skills-2] die Ueberschrift von Schritt 5 setzt nicht mehr allein die Frei
     "die Ueberschrift nennt die Freigabe als einzige Voraussetzung — eine Nacht-Session trifft dann auf eine Bedingung, die es nicht gibt");
   assert.match(zeile, /unbeaufsichtigt/i,
     "die zweite Betriebsart fehlt in der Ueberschrift von Schritt 5");
+});
+
+// E6 aus Plan #1588 (Issue #1594): Unbeaufsichtigt erreicht der Grund den Morgen als
+// Kommentar am Fachplan, nicht nur in der Ausgabe der Session.
+test("[1594-3] unbeaufsichtigt geht der F12-Grund als Kommentar an den Fachplan", () => {
+  const eingang = abschnitt("## Eingang `/techplan #N`", "## Ablauf");
+  assert.match(eingang, /Unbeaufsichtigt \(gesetztes `KIT_AGENT_MODEL`\) gehen Grund und Weg als Kommentar an den Fachplan/);
+  assert.match(eingang, /`<tmpdir>\/<N>-szenarien\.md` mit `issue comment <N> --text-file`/);
 });

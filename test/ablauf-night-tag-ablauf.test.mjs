@@ -1,4 +1,4 @@
-// Der Prueflauf am Tag: `node .claude/kit/night.mjs --pruefen` (Fachplan #899, Plan #904;
+// Der Prueflauf am Tag: `node .claude/kit/night.mjs --check` (Fachplan #899, Plan #904;
 // Issue #909).
 //
 // Ablauf-Pruefung: Was hier steht, sieht nur der echte Runner — der echte Worktree unter dem
@@ -15,6 +15,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { hatLabel } from "./helpers/labels.mjs";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readdirSync, rmSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -29,7 +30,7 @@ import {
   pruefUmgebung, FACHPLAN_MARKER, PRUEFUNG_GEPRUEFT, PRUEFUNG_HALT, PRUEFUNG_BEFUNDE, PRUEFUNG_FRAGE,
 } from "./helpers/kette-ablauf.mjs";
 
-const PRUEF_LABEL = "kit:pruefen";
+const PRUEF_LABEL = "kit:check";
 const BUDGET = { label: PRUEF_LABEL, pruefungMin: 25, kostenUsd: 25 };
 
 /** Ein Repo mit dem Wurzelblock `pruefLauf` — er steht nicht unter `night` (Plan #904, E12). */
@@ -87,29 +88,29 @@ test("[night-909] ein Prueflauf ohne --max prueft alle gekennzeichneten Karten u
     const vorher = arbeitsstand(dir);
 
     const env = pruefUmgebung(dir, { jeKarte: jeKarte(k) });
-    const res = run(dir, ["--pruefen"], env);
+    const res = run(dir, ["--check"], env);
     try {
       assert.equal(res.status, 0, `der Prueflauf haette durchlaufen muessen:\n${res.stdout}\n${res.stderr}`);
 
       // --- Die Karten am Board ---
       for (const id of [k.geprueft, k.halt, k.ohneSpur, k.vorlauf, k.nurBefunde]) {
-        assert.ok(!board(dir, "issue", "get", id).labels.includes(PRUEF_LABEL),
+        assert.ok(!hatLabel(board(dir, "issue", "get", id).labels, PRUEF_LABEL),
           `#${id}: das Kennzeichen muss mit dem Start verbraucht sein`);
       }
-      assert.ok(board(dir, "issue", "get", k.plan).labels.includes(PRUEF_LABEL),
+      assert.ok(hatLabel(board(dir, "issue", "get", k.plan).labels, PRUEF_LABEL),
         "die uebersprungene Karte behaelt ihr Kennzeichen");
 
       const fertig = board(dir, "issue", "get", k.geprueft);
-      assert.ok(fertig.labels.includes(REVIEW_FERTIG_LABEL), "die gepruefte Karte traegt review:fertig");
+      assert.ok(hatLabel(fertig.labels, REVIEW_FERTIG_LABEL), "die gepruefte Karte traegt review:fertig");
       assert.ok(fertig.body.split("\n").includes(FACHPLAN_MARKER),
         "der Fachplan-Review-Marker steht als eigene Zeile im Kopf");
 
-      assert.ok(board(dir, "issue", "get", k.halt).labels.includes(KLAEREN_LABEL),
+      assert.ok(hatLabel(board(dir, "issue", "get", k.halt).labels, KLAEREN_LABEL),
         "die angehaltene Karte traegt kit:klaeren");
 
       // E16: die Karte aus dem Vorlauf hat ihr `review:fertig` verloren und keins bekommen —
       // ihre Session hat nichts hinterlassen.
-      assert.ok(!board(dir, "issue", "get", k.vorlauf).labels.includes(REVIEW_FERTIG_LABEL),
+      assert.ok(!hatLabel(board(dir, "issue", "get", k.vorlauf).labels, REVIEW_FERTIG_LABEL),
         "der Lauf nimmt review:fertig vor der Session ab und die Session setzt es nicht neu");
 
       // --- Der Vermerk-Kommentar ---
@@ -173,7 +174,7 @@ test("[night-909] der Prueflauf liefert seinen Ergebnisstand nicht ein und hinte
   mitPruefProjekt((dir) => {
     const k = karten(dir);
     const env = { ...pruefUmgebung(dir, { jeKarte: jeKarte(k) }), NIGHT_MELDEN_ERZWINGEN: "1" };
-    const res = run(dir, ["--pruefen"], env);
+    const res = run(dir, ["--check"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     assert.doesNotMatch(res.stdout, /Einlieferung fehlgeschlagen/,
       "die Art 'pruefung' kennt kit/board.mjs nicht — sie darf nicht gemeldet werden (E15)");
@@ -184,31 +185,31 @@ test("[night-909] der Prueflauf liefert seinen Ergebnisstand nicht ein und hinte
 
 // --- Aufruf (Akzeptanzkriterien 4 bis 7) ---
 
-test("[night-909] --help nennt --pruefen", () => {
+test("[night-909] --help nennt --check", () => {
   const res = spawnSync(process.execPath, [NIGHT, "--help"], { encoding: "utf-8" });
   assert.equal(res.status, 0);
-  assert.match(res.stdout, /--pruefen\s+Prueflauf/);
+  assert.match(res.stdout, /^[ \t]+--check\s+Check run/m);
 });
 
-test("[night-909] --kette --pruefen wird abgewiesen und nennt den Grund", () => {
+test("[night-909] --chain --check wird abgewiesen und nennt den Grund", () => {
   mitPruefProjekt((dir) => {
-    const res = run(dir, ["--kette", "--pruefen"]);
+    const res = run(dir, ["--chain", "--check"]);
     assert.equal(res.status, 1);
-    assert.match(res.stderr, /--kette und --pruefen sind zwei Laeufe/);
+    assert.match(res.stderr, /--chain und --check sind zwei Laeufe/);
   });
 });
 
-test("[night-909] --pruefen --dry-run wird abgewiesen und verweist auf /issue-review --dry-run", () => {
+test("[night-909] --check --dry-run wird abgewiesen und verweist auf /issue-review --dry-run", () => {
   mitPruefProjekt((dir) => {
-    const res = run(dir, ["--pruefen", "--dry-run"]);
+    const res = run(dir, ["--check", "--dry-run"]);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /\/issue-review --dry-run/);
   });
 });
 
-test("[night-909] --pruefen --label wird abgewiesen: das Kennzeichen steht in der Config", () => {
+test("[night-909] --check --label wird abgewiesen: das Kennzeichen steht in der Config", () => {
   mitPruefProjekt((dir) => {
-    const res = run(dir, ["--pruefen", "--label", "kit:x"]);
+    const res = run(dir, ["--check", "--label", "kit:x"]);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /pruefLauf\.label/);
   });
@@ -216,7 +217,7 @@ test("[night-909] --pruefen --label wird abgewiesen: das Kennzeichen steht in de
 
 test("[night-909] ein kaputtes Budget bricht vor dem Ergebnisstand mit dem Feldnamen ab", () => {
   mitPruefProjekt((dir) => {
-    const res = run(dir, ["--pruefen"]);
+    const res = run(dir, ["--check"]);
     assert.equal(res.status, 1);
     assert.match(res.stderr, /pruefLauf\.pruefungMin muss eine Zahl groesser 0 sein/);
     assert.deepEqual(readdirSync(join(dir, ".claude")).filter((n) => n.startsWith("night-run-")), []);

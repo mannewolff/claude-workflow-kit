@@ -26,7 +26,7 @@ const TEXTE = [
 /** Die Sperre ist genannt: das Feld, die Bedingung und dass interaktiv erlaubt bleibt. */
 function nenntSperre(text) {
   return /run_in_background/.test(text) && /KIT_AGENT_MODEL/.test(text) && /interaktiv/i.test(text)
-    && /hook bash-pruefen|Hook `bash-pruefen`|Hook bash-pruefen/.test(text);
+    && /hook bash-(check|pruefen)|Hook `bash-(check|pruefen)`|Hook bash-(check|pruefen)/.test(text);
 }
 
 for (const pfad of TEXTE) {

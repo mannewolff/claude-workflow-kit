@@ -1,7 +1,7 @@
 // Die Vorpruefung des Salvage (Issue #167, #168, #169, #919).
 //
 // Endet eine Runde ohne Board-Ergebnis, aber mit Arbeit im Baum, faehrt der Runner die
-// Pflicht-Pruefungen selbst — ueber `checks.mjs run --abschluss <karte> --frisch`, damit
+// Pflicht-Pruefungen selbst — ueber `checks.mjs run --finish <karte> --fresh`, damit
 // derselbe Nachweis entsteht, den das Commit-Gate liest (Issue #919). Sind sie rot und ist
 // ein `formatFixCommand` gesetzt, laeuft er genau einmal, und die Pruefungen laufen genau
 // einmal nach (Issue #169). Die Umgebung bekommt den env-Block aus `.claude/settings.json`
@@ -93,7 +93,7 @@ test("settingsEnv: kaputtes JSON und ein fehlender env-Block lassen nur ihre Que
 
 // --- verifyChecksForSalvage (Issue #919) ---------------------------------------------
 
-test("Vorpruefung: faehrt checks.mjs run --abschluss <karte> --frisch, mit dem env-Block aus den settings", async () => {
+test("Vorpruefung: faehrt checks.mjs run --finish <karte> --fresh, mit dem env-Block aus den settings", async () => {
   await imProjekt({ "settings.json": json({ env: { NIGHT_TEST_ENV_VAR: "hello-from-settings" } }) }, () => {
     const { spawnSync, aufrufe } = aufrufAttrappe([0]);
     const ergebnis = verifyChecksForSalvage({}, 7, { spawnSync });
@@ -102,10 +102,10 @@ test("Vorpruefung: faehrt checks.mjs run --abschluss <karte> --frisch, mit dem e
     assert.equal(ergebnis.formatFixCmd, null);
     assert.equal(aufrufe.length, 1);
     assert.equal(aufrufe[0].befehl, process.execPath);
-    assert.deepEqual(aufrufe[0].args, [CHECKS_PATH, "run", "--abschluss", "7", "--frisch"]);
+    assert.deepEqual(aufrufe[0].args, [CHECKS_PATH, "run", "--finish", "7", "--fresh"]);
     assert.equal(aufrufe[0].env.NIGHT_TEST_ENV_VAR, "hello-from-settings",
       "die Vorpruefung erbt nicht nur process.env, sie mergt den env-Block (kanban-kit #445)");
-    assert.ok(ergebnis.output.startsWith(`$ node ${CHECKS_PATH} run --abschluss 7 --frisch\nalles gruen`), ergebnis.output);
+    assert.ok(ergebnis.output.startsWith(`$ node ${CHECKS_PATH} run --finish 7 --fresh\nalles gruen`), ergebnis.output);
   });
 });
 
@@ -185,7 +185,7 @@ test("[ursprung] der Salvage-Prompt verlangt nach dem Board-Zug die Zeilen aus `
 test("der Salvage-Prompt zitiert die letzten Zeilen der Vorpruefung und nennt einen angewendeten Format-Fix", () => {
   const ausgabe = Array.from({ length: 20 }, (_, i) => `zeile ${i + 1}`).join("\n");
   const prompt = salvagePrompt("7", ausgabe, "npm run format");
-  assert.match(prompt, /checks\.mjs run --abschluss 7 --frisch/);
+  assert.match(prompt, /checks\.mjs run --finish 7 --fresh/);
   assert.match(prompt, /zeile 6\nzeile 7/, "die letzten 15 Zeilen stehen im Prompt");
   assert.doesNotMatch(prompt, /zeile 5\n/, "aeltere Zeilen fallen weg");
   assert.match(prompt, /"npm run format"/, "die Formatierungsaenderungen gehoeren mit in den Commit");

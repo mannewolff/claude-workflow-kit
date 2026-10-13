@@ -17,6 +17,7 @@ import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import { setupProjekt, runBoard, board, runBoardAsync, starteServer } from "./helpers/board-fixture.mjs";
+import { mitSzenarien } from "./helpers/szenarien-fixture.mjs";
 
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
 const MIT_TOKEN = { TBX_TOKEN: "test-token" };
@@ -55,7 +56,7 @@ function mitLokal(fn) {
   const dir = setupProjekt(LOKAL, "board-abh-hinweise-");
   try {
     board(dir, "issue", "create", "--title", "[Plan] Ein Plan", "--body", "Plan-Modell: x");
-    board(dir, "issue", "create", "--title", "[Fachlich] Eine Anforderung", "--body", "Autor-Modell: x");
+    board(dir, "issue", "create", "--title", "[Fachlich] Eine Anforderung", "--body", mitSzenarien("Autor-Modell: x"));
     board(dir, "issue", "create", "--title", "[Idee] Eine Idee", "--body", "Autor-Modell: x");
     board(dir, "issue", "create", "--title", "Ein Paket", "--body", paket("Keine."));
     return fn(dir);

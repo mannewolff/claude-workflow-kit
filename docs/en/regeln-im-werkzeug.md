@@ -14,7 +14,7 @@ The **degree of transfer** (Überführungsgrad) says what has actually happened:
 A row with the kind *operating instruction* and the degree *not* is no contradiction: The kind says nothing about transferability. It only says that there would still be something to gain here if someone took on the spot.
 
 ## The rules of `/local-check`
-<!-- de: 526f667ea8d0 -->
+<!-- de: 89e12a71b8e0 -->
 
 | Rule | Location | Kind | Degree | New place or reason for staying |
 | --- | --- | --- | --- | --- |
@@ -28,12 +28,12 @@ A row with the kind *operating instruction* and the degree *not* is no contradic
 | Failure analysis on a red check | Section 1, "Bei Fehler" (on failure) | Judgement rule | not | Stays in the text: Show the output, analyse the cause, propose a fix — that is the work itself, not a handle on the tool. |
 | Manual UI verification | Section 3 | Judgement rule | not | Stays in the text: A human clicks through the golden path and the edge cases. A tool can take nothing over here, it can only remind. |
 | Check anchor from `git merge-base` | Section 1, "Warum dieser Anker" (why this anchor) | Operating instruction | not | Stays in the text: The right anchor depends on the caller's point in time — `/local-check` checks after the commit against the last push, the `implement-*` skills before it against the default `HEAD`. The tool does not know its caller. |
-| Run the package stage, pass no `--stufe` | Section 1, "Gefahren wird die Paketstufe" (the package stage is run) | Operating instruction | not | Stays in the text as a justification: `kit/checks.mjs` already carries the default (without `--stufe` the package stage (Paketstufe) runs); the text only says why the skill passes nothing. |
+| Run the package stage, pass no `--stage` | Section 1, "Gefahren wird die Paketstufe" (the package stage is run) | Operating instruction | not | Stays in the text as a justification: `kit/checks.mjs` already carries the default (without `--stage` the package stage (Paketstufe) runs); the text only says why the skill passes nothing. |
 | Run the format fix exactly once more | Section 1b | Operating instruction | not | Stays in the text: `formatFixCommand` is called today by the night runner (Nacht-Runner) and by the reader of this instruction, not by `checks.mjs run`. The limit "no loop, no second round" therefore depends on both callers. |
 | Duty to report after the fix | Section 1b, "Berichtspflicht" (duty to report) | Judgement rule | not | Stays in the text: That the working tree is changed after the fix belongs in the message to the human. What they make of it — commit or inspect — is their decision. |
 | Report format of the checklist | Section "Ergebnis" (result) | Operating instruction | not | Stays in the text: `checks.mjs run` delivers the checks that ran and those that were skipped, each with its reason; the form of the message to the human (the checklist with its symbols) remains the instruction's business. |
 | A red check stops the process | Section "Ergebnis" (result) | Operating instruction | not | Stays in the text: `checks.mjs run` ends not green and says why. Whether the process then stops is decided by the surrounding flow — in night mode (Nachtbetrieb) the runner, interactively the human. |
-| Stop point before `/review` and before the push | Section "Stop-Punkt" (stop point) | Judgement rule | not | Stays in the text: The push waits for the trigger phrase `push main`. That is a process rule about responsibilities, not a handle that a check tool could carry out. |
+| Stop point before `/kit-review` and before the push | Section "Stop-Punkt" (stop point) | Judgement rule | not | Stays in the text: The push waits for the trigger phrase `push main`. That is a process rule about responsibilities, not a handle that a check tool could carry out. |
 | Mutation test runs unfiltered | Section 2 | Operating instruction | not | Stays in the text: `mutationCommand` is not in `buildChecks` and is therefore not part of the area-based selection. Anyone who wants it binding enters their command as a `buildChecks` entry with a `guete` block — then the tool checks. |
 | Run the check command in the foreground | Section 1, last paragraph | Judgement rule | not | Stays in the text: A tool does not determine how its caller starts it. The guardrail (Leitplanke) on background runs covers the rest. |
 | Report missing or empty `buildChecks` | Precondition and section "Ergebnis" (result) | Operating instruction | not | Stays in the text: The note is addressed to the human who puts the config into the repository. The hard part sits elsewhere — the night runner does not start at all if there is no check on the package stage. |

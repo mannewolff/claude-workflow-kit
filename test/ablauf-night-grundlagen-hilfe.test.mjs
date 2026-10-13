@@ -36,10 +36,10 @@ test("--help zeigt die Usage und endet mit Exit 0, auch ohne Projekt-Root", () =
   assert.match(res.stdout, /caffeinate/, "Usage zeigt das caffeinate-Beispiel nicht");
   // Die Aufrufe, die docs-nachtkette und docs-pruefen in der Doku belegen, nennt die Usage
   // als eigene Option (Issue #1235: der Prozessstart steht nur noch hier).
-  for (const flag of ["--kette", "--pruefen"]) {
+  for (const flag of ["--chain", "--check"]) {
     assert.match(res.stdout, new RegExp(`^[ \\t]+${flag}\\s`, "m"), `Usage nennt ${flag} nicht als Option`);
   }  // Ziel-Labels, Prueferzahl und die Stufe vorbereitung der Kette (Plan #1243; Issue #1254).
-  for (const wort of ["ziel:plan", "ziel:pakete", "ziel:umsetzung", "ziel:push-vorbereitet", "planreview:2", "Stufe vorbereitung"]) {
+  for (const wort of ["goal:plan", "goal:packages", "goal:implementation", "goal:push-prepared", "planreview:2", "stage preparation"]) {
     assert.ok(res.stdout.includes(wort), `Usage nennt ${wort} nicht`);
   }
 });
@@ -59,7 +59,7 @@ test("[night-6] --version und --help antworten auch als einzeln kopierte Datei o
     assert.match(version.stdout, /^night\.mjs \(claude-workflow-kit v\d+\.\d+\.\d+\)\n$/);
     const hilfe = spawnSync(process.execPath, [join(dir, "night.mjs"), "--help"], { cwd: dir, encoding: "utf-8" });
     assert.equal(hilfe.status, 0, hilfe.stderr);
-    assert.match(hilfe.stdout, /^Nacht-Runner:/);
+    assert.match(hilfe.stdout, /^Night runner:/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

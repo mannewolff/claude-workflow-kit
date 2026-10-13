@@ -60,6 +60,7 @@ function setupProjekt(praefix, buildChecks) {
   mkdirSync(join(dir, ".claude", "kit"), { recursive: true });
   copyFileSync(join(repoRoot, "kit", "board.mjs"), join(dir, ".claude", "kit", "board.mjs"));
   cpSync(join(repoRoot, "kit", "board"), join(dir, ".claude", "kit", "board"), { recursive: true });
+  cpSync(join(repoRoot, "kit", "texte"), join(dir, ".claude", "kit", "texte"), { recursive: true });
   // Die Salvage-Vorpruefung faehrt seit Issue #919 `checks.mjs run` im Zielprojekt,
   // damit sie denselben Nachweis hinterlaesst, den das Commit-Gate liest. Ohne die
   // Datei im Fixture gaebe es keine Pflicht-Pruefung und damit keinen Rettungsversuch.
@@ -351,6 +352,7 @@ test("[night-55] eine wartende Sitzung bei sauberem Baum bekommt eigenen Grund, 
     assert.equal(karte(dir, erstes).status, "backlog", "die Karte gehoert weiterhin ins Backlog");
     const e = einheit(dir, erstes);
     assert.equal(e.ausgang, "zurueckgestellt", "der Ausgang bleibt die Rueckstellung");
+    assert.equal(e.grundArt, "ohneInReview", "der Melder liest die Art, nicht den Text (Issue #1426)");
     assert.equal(e.wartendBeendet, true, "das Feld der wartenden Sitzung fehlt an der Einheit");
     // Das neue Feld haengt hinten an — die Feldreihenfolge ist der Vertrag mit den
     // Auswertungen, und die sieben alten Namen behalten ihre Plaetze.
@@ -622,7 +624,7 @@ test("[night-57] eine wartende Stufen-Session endet abgebrochen, mit Grund, Verm
     // Ohne Plan: Ein entstandener Plan ist das Ergebnis der Stufe und hat Vorrang vor dem
     // Schlusstext (Issue #1207).
     const env = kette.umgebung(dir, { stufen: { plan: ":" } });
-    const res = kette.run(dir, ["--kette"], { ...env, KETTE_RESULT_TEXT: KETTE_WARTE_TEXT });
+    const res = kette.run(dir, ["--chain"], { ...env, KETTE_RESULT_TEXT: KETTE_WARTE_TEXT });
     assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
 
     const e = kettenEinheit(dir, F);
@@ -652,7 +654,7 @@ test("[night-57] der Vermerk einer wartenden Review-Stufe haengt am Plan, nicht 
     const env = kette.umgebung(dir, {
       stufen: { plan: kette.PLAN_ANLEGEN, review: `KETTE_RESULT_TEXT="${KETTE_WARTE_TEXT}"` },
     });
-    const res = kette.run(dir, ["--kette"], env);
+    const res = kette.run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
 
     const e = kettenEinheit(dir, F);
@@ -679,7 +681,7 @@ test("[night-57] dieselbe Stufen-Session ohne wartenden Schlusstext endet fertig
     const env = kette.umgebung(dir, {
       stufen: { plan: kette.PLAN_ANLEGEN, review: kette.REVIEW_MARKER, pakete: kette.PAKETE_ANLEGEN },
     });
-    const res = kette.run(dir, ["--kette"], { ...env, KETTE_RESULT_TEXT: KETTE_FERTIG_TEXT });
+    const res = kette.run(dir, ["--chain"], { ...env, KETTE_RESULT_TEXT: KETTE_FERTIG_TEXT });
     assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
 
     const e = kettenEinheit(dir, F);
@@ -708,7 +710,7 @@ test("[night-57] die Abdeckungs-Stufe bleibt fertig und behaelt ihren Befund, au
         abdeckung: `KETTE_RESULT_TEXT="${befund}"`,
       },
     });
-    const res = kette.run(dir, ["--kette"], env);
+    const res = kette.run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `der Lauf haette regulaer enden muessen:\n${res.stdout}\n${res.stderr}`);
 
     const e = kettenEinheit(dir, F);
@@ -734,7 +736,7 @@ test("[night-58] der Zusatz der Stufen-Sessions nennt die Regel, der Prompt der 
     const env = kette.umgebung(dir, {
       stufen: { plan: String.raw`printf "%s" "$NIGHT_PROMPT" > "$KETTE_LOG.prompt"` },
     });
-    assert.equal(kette.run(dir, ["--kette"], env).status, 0);
+    assert.equal(kette.run(dir, ["--chain"], env).status, 0);
     const prompt = readFileSync(`${env.logPfad}.prompt`, "utf-8");
     assert.match(prompt, /^\/techplan #0001/, `der Auftrag fehlt im Prompt:\n${prompt}`);
     assert.ok(prompt.includes(KETTE_ZUSATZ), `der Zusatz fehlt am Prompt der Stufe:\n${prompt}`);

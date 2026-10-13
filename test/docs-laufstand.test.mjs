@@ -15,6 +15,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { englisch } from "./helpers/labels.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
@@ -36,9 +37,9 @@ function abschnitt(text, ueberschrift) {
 // Die beiden `wartet`-Formen stehen woertlich: Das Werkzeug schreibt sie spaeter genau so
 // an die Karte, und der Regeltext ist ihre Quelle.
 const ANGABEN = [
-  ["das Label lauf:laeuft (E1)", /`lauf:laeuft`/],
-  ["das Label lauf:abgebrochen (E1)", /`lauf:abgebrochen`/],
-  ["das Label lauf:wartet (E1)", /`lauf:wartet`/],
+  ["das Label run:running (E1)", /`run:running`/],
+  ["das Label run:aborted (E1)", /`run:aborted`/],
+  ["das Label run:waiting (E1)", /`run:waiting`/],
   ["genau einen Kommentar `## Laufstand`, der ersetzt wird (E1)", /genau ein(?:en)? Kommentar `## Laufstand`[^.]*ersetzt/],
   ["Tafel, nicht Verlauf (E1)", /Tafel, nicht Verlauf/],
   ["dass der Nachtbericht Verlauf bleibt (E1)", /Nachtbericht bleibt Verlauf/],
@@ -50,11 +51,11 @@ const ANGABEN = [
     "die wartet-Form des inhaltlichen Halts woertlich (E1)",
     /Halt: Frage wartet auf den Menschen — siehe `## Kette angehalten`/,
   ],
-  ["die wartet-Form ohne kit:durchziehen (E12)", /wartet: Karte ohne Freigabe zur Umsetzung/],
+  ["die wartet-Form ohne kit:carry-through (E12)", /wartet: Karte ohne Freigabe zur Umsetzung/],
   ["den Start bei der ersten Stufe ohne Ergebnis (E11)", /`kit:night`[^.]*ersten Stufe ohne Ergebnis/],
   ["den frischen Plan erst nach Done des alten (E9)", /frische[nr]? Plan[^.]*erst[^.]*Done/],
   ["die Uebergaenge im Projekt (E12)", /`night\.kette\.uebergaenge`/],
-  ["abdeckungUmsetzung nur mit kit:durchziehen (E12)", /`abdeckungUmsetzung`[^.]*nur[^.]*`kit:durchziehen`/],
+  ["abdeckungUmsetzung nur mit kit:carry-through (E12)", /`abdeckungUmsetzung`[^.]*nur[^.]*`kit:carry-through`/],
   [
     "den einen Versuch nur bei Umgebungsfehlern des lebenden Laufs (E13)",
     /(?:einen|ein) automatische[nr]? Versuch[^.]*nur bei Umgebungsfehlern[^.]*solange der Lauf lebt/i,
@@ -62,6 +63,8 @@ const ANGABEN = [
   ["den Vermerk 2. Versuch (E13)", /„2\. Versuch“/],
   ["dass ein gestorbener Lauf nicht wiederholt wird (E7, E13)", /gestorbene[rn]? Lauf wird nicht wiederholt/],
 ];
+// Der Regeltext nennt die Labels seit Issue #1571 englisch, die Doku bis zu ihrer Umstellung deutsch.
+const ANGABEN_VORLAGE = ANGABEN.map(([name, muster]) => [name, englisch(muster)]);
 
 // Das Geruest des Doku-Unterabschnitts: die Ueberschriften, unter die die folgenden Pakete
 // des Plans ihren Inhalt schreiben.
@@ -81,7 +84,7 @@ const LAUFSTAND_DOKU = abschnitt(abschnitt(DOKU, "## Nachtbetrieb"), "### Der La
 
 test("[docs-laufstand-1] der Nachtbetrieb-Abschnitt der Vorlage beschreibt den Laufstand", () => {
   assert.ok(NACHT_VORLAGE, "der Abschnitt '## Nachtbetrieb (optional)' fehlt in der Vorlage");
-  assert.deepEqual(fehlend(NACHT_VORLAGE, ANGABEN), [], "der Nachtbetrieb-Abschnitt der Vorlage nennt nicht alles");
+  assert.deepEqual(fehlend(NACHT_VORLAGE, ANGABEN_VORLAGE), [], "der Nachtbetrieb-Abschnitt der Vorlage nennt nicht alles");
 });
 
 test("[docs-laufstand-2] das Nachtbetrieb-Kapitel der Doku hat den Unterabschnitt 'Der Laufstand' samt Geruest", () => {
@@ -95,7 +98,7 @@ test("[docs-laufstand-2] das Nachtbetrieb-Kapitel der Doku hat den Unterabschnit
 
 test("[docs-laufstand-3] eine Kopie ohne eine Angabe wird als unvollstaendig erkannt", () => {
   for (const [ort, text, angaben] of [
-    ["Vorlage", NACHT_VORLAGE, ANGABEN],
+    ["Vorlage", NACHT_VORLAGE, ANGABEN_VORLAGE],
     ["Doku", LAUFSTAND_DOKU, [...ANGABEN, ...GERUEST]],
   ]) {
     for (const [name, muster] of angaben) {
@@ -112,10 +115,10 @@ test("[docs-laufstand-3] eine Kopie ohne eine Angabe wird als unvollstaendig erk
 // eine Tabellenzeile mit dem Kartenstand danach und dem Weg nach vorn. Ein Muster greift nur
 // innerhalb einer Zeile (`[^\n]`), damit Fall, Stand und Geste in derselben Zeile stehen.
 const BELEGFAELLE = [
-  ["Fall 1 spurloser Lauf: nicht beendet, weiter mit kit:night", /^\| Spurlos[^\n]*`lauf:abgebrochen`[^\n]*nicht beendet[^\n]*`kit:night`[^\n]*\|$/m],
-  ["Fall 2 Abbruch obwohl fertig: vorgefunden, weiter mit kit:night", /^\| Abgebrochen, obwohl fertig[^\n]*`lauf:abgebrochen`[^\n]*`kit:night`[^\n]*vorgefunden[^\n]*\|$/m],
+  ["Fall 1 spurloser Lauf: nicht beendet, weiter mit kit:night", /^\| Spurlos[^\n]*`run:aborted`[^\n]*nicht beendet[^\n]*`kit:night`[^\n]*\|$/m],
+  ["Fall 2 Abbruch obwohl fertig: vorgefunden, weiter mit kit:night", /^\| Abgebrochen, obwohl fertig[^\n]*`run:aborted`[^\n]*`kit:night`[^\n]*vorgefunden[^\n]*\|$/m],
   ["Fall 3 Ausgang unbekannt: 2. Versuch, sonst nicht begonnen", /^\| Ausgang unbekannt[^\n]*„2\. Versuch“[^\n]*nicht begonnen[^\n]*`kit:night`[^\n]*\|$/m],
-  ["Fall 4 ein Paket haelt die Nacht an: nur das Paket, Stash", /^\| Ein Paket hält die Nacht an[^\n]*`lauf:abgebrochen`[^\n]*hängt an #N[^\n]*`nachtrest #<id> <lauf>`[^\n]*\|$/m],
+  ["Fall 4 ein Paket haelt die Nacht an: nur das Paket, Stash", /^\| Ein Paket hält die Nacht an[^\n]*`run:aborted`[^\n]*hängt an #N[^\n]*`nachtrest #<id> <lauf>`[^\n]*\|$/m],
   ["Fall 5 verschraenkte Protokolle: Zeile Protokoll", /^\| Verschränkte Protokolle[^\n]*`Protokoll:`[^\n]*`\.claude\/protokolle\/<lauf>\/<karte>-<stufe>\.log`[^\n]*\|$/m],
 ];
 

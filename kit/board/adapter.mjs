@@ -26,12 +26,32 @@ import { randomUUID } from "node:crypto";
 import { VALID_STATUSES, columnLabels, isStateColumn, execJSON, exec, gitRemoteUrl, normalizeRepoName,
   RUECKMELDUNG, BoardError, fail, sleep, labelNamesFrom, labelMapFrom, withLabels, normalizeComments,
   labelToStatus, createdFrom } from "./grundlagen.mjs";
-import { toolboxBudgetMs, toolboxVersuchMs, proxyGesetzt, PROXY_HINWEIS, netzfehlerArt, darfWiederholen,
+import { toolboxBudgetMs, toolboxVersuchMs, proxyGesetzt, proxyHinweis, netzfehlerArt, darfWiederholen,
   rueckmeldungFuer, wartezeitMs, VERLAUF_GLEICHZEITIG, hoechstensGleichzeitig, wiederholKommando } from "./wiederholung.mjs";
+import { text } from "./namen.mjs";
 
 // Das Budget der Board-Aufrufe im Nachtbetrieb steht im Teil wiederholung. Der Nacht-Runner
 // holt es von hier (Issue #1217): Fuer ihn ist dieser Teil die Adresse der Adapter.
 export { TOOLBOX_BUDGET_NACHT_MS } from "./wiederholung.mjs";
+
+// Die Texte an den Menschen liegen unter kit/texte/board-adapter.mjs (Issue #1526).
+import { TEXTE } from "../texte/board-adapter.mjs";
+
+export { TEXTE };
+
+/** Ein Text dieses Teils in der Projektsprache (Issue #1480, E13). */
+const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
+
+// ============================================================
+// Fehlende Labels (Issue #1428, Plan #1420 E6; ohne Rueckfall seit Issue #1552, Plan #1548 E2)
+// ============================================================
+
+/**
+ * Ein Label fehlt als Definition am Board — der Tracker hat nichts gesetzt. GitHub und das
+ * Toolbox-Board melden das so; GitLab legt ein unbekanntes Label beim Setzen selbst an, der
+ * lokale Tracker kennt keine Definitionen. Die Meldung bleibt die des Trackers.
+ */
+export class LabelFehltError extends BoardError {}
 
 // ============================================================
 // GitHub-Adapter
@@ -83,26 +103,16 @@ export class GitHubIssueTracker {
     const projects = execJSON("gh", ["project", "list", "--owner", owner, "--format", "json"]).projects || [];
     if (projects.length === 1) {
       const num = projects[0].number;
-      process.stderr.write(
-        `Hinweis: github.projectNumber fehlt in workflow.config.json, verwende automatisch ` +
-        `erkanntes einziges GitHub Project #${num} ('${projects[0].title}') fuer Owner '${owner}'. ` +
-        `Zur dauerhaften Fixierung ergaenzen: '"github": { "projectNumber": ${num} }'\n`
-      );
+      process.stderr.write(`${t("projektAutomatisch", { num, titel: projects[0].title, owner })}\n`);
       this._writeAutoProjectNumberCache(owner, num);
       this._projectNumberCache = num;
       return num;
     }
     if (projects.length === 0) {
-      throw new BoardError(
-        `github.projectNumber fehlt in workflow.config.json, und Owner '${owner}' hat kein GitHub Project. ` +
-        `Bitte erganzen: '"github": { "projectNumber": <N> }'`
-      );
+      throw new BoardError(t("projektKeines", { owner }));
     }
     const list = projects.map((p) => `#${p.number} (${p.title})`).join(", ");
-    throw new BoardError(
-      `github.projectNumber fehlt in workflow.config.json, Owner '${owner}' hat mehrere Projects: ${list}. ` +
-      `Bitte erganzen: '"github": { "projectNumber": <N> }'`
-    );
+    throw new BoardError(t("projektMehrere", { owner, liste: list }));
   }
 
   _autoCacheKey(owner) {
@@ -209,13 +219,13 @@ export class GitHubIssueTracker {
     // Project-ID
     const projectList = execJSON("gh", ["project", "list", "--owner", owner, "--format", "json"]);
     const project = (projectList.projects || []).find((p) => p.number === num);
-    if (!project) throw new BoardError(`GitHub Project #${num} nicht gefunden fuer Owner '${owner}'`);
+    if (!project) throw new BoardError(t("projektNichtGefunden", { num, owner }));
     this._projectId = project.id;
 
     // Status-Field und Optionen
     const fields = execJSON("gh", ["project", "field-list", String(num), "--owner", owner, "--format", "json"]);
     const statusField = (fields.fields || []).find((f) => f.name === "Status");
-    if (!statusField) throw new BoardError(`Kein 'Status'-Feld in GitHub Project #${num} gefunden`);
+    if (!statusField) throw new BoardError(t("statusFeldFehlt", { num }));
 
     const optionMap = {};
     for (const opt of statusField.options || []) {
@@ -226,12 +236,7 @@ export class GitHubIssueTracker {
       );
       if (key) {
         if (labels[key] !== opt.name) {
-          process.stderr.write(
-            `Hinweis: workflow.config.json konfiguriert fuer Status '${key}' das Label '${labels[key]}', ` +
-            `das GitHub Project verwendet tatsaechlich '${opt.name}' (Gross-/Kleinschreibung weicht ab). ` +
-            `Aktuell noch per Fallback erkannt — zur Vermeidung stiller Folgefehler bitte in ` +
-            `workflow.config.json anpassen: '"columns": { "${key}": "${opt.name}" }'\n`
-          );
+          process.stderr.write(`${t("spalteSchreibweise", { status: key, label: labels[key], option: opt.name })}\n`);
         }
         optionMap[key] = opt.id;
       }
@@ -273,13 +278,13 @@ export class GitHubIssueTracker {
     ]);
 
     const issue = data?.data?.repository?.issue;
-    if (!issue) throw new BoardError(`Issue #${issueNumber} nicht in Repo '${this._repo()}' gefunden`);
+    if (!issue) throw new BoardError(t("issueNichtImRepo", { id: issueNumber, repo: this._repo() }));
 
     const nodes = issue.projectItems?.nodes || [];
     const item = nodes.find(
       (n) => n.project?.number === num && n.project?.owner?.login === owner
     );
-    if (!item) throw new BoardError(`Issue #${issueNumber} nicht im Project Board #${num} gefunden`);
+    if (!item) throw new BoardError(t("issueNichtImBoard", { id: issueNumber, num }));
     return item.id;
   }
 
@@ -288,7 +293,7 @@ export class GitHubIssueTracker {
     const output = exec("gh", ["issue", "create", "--repo", repo, "--title", title, "--body", body || ""]);
     // gh gibt ggf. Hinweiszeilen vor der URL aus — URL und ID per Regex extrahieren
     const match = output.match(/(https?:\/\/\S+\/issues\/(\d+))/);
-    if (!match) throw new BoardError(`Konnte Issue-URL aus gh-Ausgabe nicht lesen: ${output}`);
+    if (!match) throw new BoardError(t("ghUrlUnlesbar", { ausgabe: output }));
     const url = match[1];
     const id = match[2];
 
@@ -313,7 +318,7 @@ export class GitHubIssueTracker {
       }
       if (lastErr) throw lastErr;
     } catch (e) {
-      process.stderr.write(`Hinweis: Board-Zuordnung fehlgeschlagen: ${e.message}\n`);
+      process.stderr.write(`${t("boardZuordnungFehlgeschlagen", { grund: e.message })}\n`);
     }
     return { id, url };
   }
@@ -351,9 +356,7 @@ export class GitHubIssueTracker {
     try {
       num = this._projectNumber();
     } catch {
-      process.stderr.write(
-        "Hinweis: Kein eindeutiges GitHub Project bestimmbar, kein Board-Status-Filter moeglich. Liste alle offenen Issues.\n"
-      );
+      process.stderr.write(`${t("keinStatusFilter")}\n`);
       return this.listIssues(undefined);
     }
 
@@ -362,7 +365,7 @@ export class GitHubIssueTracker {
     const items = execJSON("gh", ["project", "item-list", String(num), "--owner", owner, "--format", "json", "--limit", "1000"]);
 
     const optionId = this._statusField.options[status];
-    if (!optionId) throw new BoardError(`Status '${status}' hat keine Entsprechung im GitHub Project`);
+    if (!optionId) throw new BoardError(t("statusOhneOption", { status }));
 
     const wantedStatus = githubStatusName(status, this._cfg).toLowerCase();
     // Kein ID-Re-Sort: gh project item-list liefert die manuelle Projekt-Reihenfolge,
@@ -399,9 +402,7 @@ export class GitHubIssueTracker {
       const raw = execJSON("gh", ["issue", "list", "--repo", repo, "--state", "all", "--json", "number,labels", "--limit", "1000"]);
       return withLabels(items, labelMapFrom(raw));
     } catch (e) {
-      process.stderr.write(
-        `Hinweis: Labels konnten nicht nachgeschlagen werden (${e.message}). Liste ohne Labels.\n`
-      );
+      process.stderr.write(`${t("labelsNichtNachgeschlagen", { grund: e.message })}\n`);
       return items;
     }
   }
@@ -421,17 +422,14 @@ export class GitHubIssueTracker {
       try {
         this._editItemStatus(itemId, to);
       } catch (retryErr) {
-        throw new BoardError(
-          `Status-Update fehlgeschlagen (auch nach Cache-Refresh): ${retryErr.message} ` +
-          `(urspruenglicher Fehler: ${firstErr.message})`
-        );
+        throw new BoardError(t("statusUpdateFehlgeschlagen", { grund: retryErr.message, erster: firstErr.message }));
       }
     }
   }
 
   _optionIdFor(status) {
     const optionId = this._statusField.options[status];
-    if (!optionId) throw new BoardError(`Status '${status}' hat keine Entsprechung im GitHub Project`);
+    if (!optionId) throw new BoardError(t("statusOhneOption", { status }));
     return optionId;
   }
 
@@ -450,7 +448,7 @@ export class GitHubIssueTracker {
     exec("gh", ["issue", "comment", String(id), "--repo", repo, "--body", text]);
   }
 
-  // Strenges Lesen fuer `issue melden` (Issue #1021): Ein Fehler von gh wirft. Hier
+  // Strenges Lesen fuer `issue report` (Issue #1021): Ein Fehler von gh wirft. Hier
   // war schon `getIssue` streng — die eigene Methode gibt es, damit alle vier
   // Adapter dieselbe Schnittstelle haben.
   async kommentareStreng(id) {
@@ -476,10 +474,16 @@ export class GitHubIssueTracker {
   // Issues bleiben unberuehrt, und beide Richtungen sind von sich aus idempotent.
   // Eine unbekannte Labeldefinition meldet gh mit Exit != 0 — das schlaegt bewusst
   // durch, damit eine nie gesetzte Zeichnung nicht als gesetzt gilt.
+  // Das fehlende Label meldet gh als `'<name>' not found` (Issue #1428).
   async labelIssue(id, name, aktion) {
     const repo = this._repo();
     const flag = aktion === "add" ? "--add-label" : "--remove-label";
-    exec("gh", ["issue", "edit", String(id), "--repo", repo, flag, name]);
+    try {
+      exec("gh", ["issue", "edit", String(id), "--repo", repo, flag, name]);
+    } catch (e) {
+      if (aktion === "add" && e.message.includes(`'${name}' not found`)) throw new LabelFehltError(e.message);
+      throw e;
+    }
   }
 }
 
@@ -551,7 +555,7 @@ function ciJSON(datei, args) {
   try {
     return JSON.parse(roh);
   } catch {
-    throw new BoardError(`${datei} ${args.join(" ")} lieferte kein gueltiges JSON: ${roh.slice(0, 200)}`);
+    throw new BoardError(t("keinJson", { aufruf: `${datei} ${args.join(" ")}`, auszug: roh.slice(0, 200) }));
   }
 }
 
@@ -684,14 +688,14 @@ class GitHubCodeHost {
   /** Setzt ein Ruleset des Kits auf `active` oder `disabled` (A6). */
   async setRulesetEnforcement(name, wert) {
     if (wert !== "active" && wert !== "disabled") {
-      throw new BoardError(`enforcement '${wert}' unbekannt. Erwartet: active | disabled`);
+      throw new BoardError(t("enforcementUnbekannt", { wert }));
     }
     if (!istKitRuleset(name)) {
-      throw new BoardError(`Ruleset '${name}' gehoert nicht dem Kit (Name ohne '${RULESET_PRAEFIX}') — es wird nicht angefasst.`);
+      throw new BoardError(t("rulesetFremd", { name, praefix: RULESET_PRAEFIX }));
     }
     const repo = this._repo();
     const vorhanden = this._eigenesRuleset(repo, name);
-    if (!vorhanden) throw new BoardError(`Ruleset '${name}' in '${repo}' nicht gefunden.`);
+    if (!vorhanden) throw new BoardError(t("rulesetFehlt", { name, repo }));
     ghApi(`repos/${repo}/rulesets/${vorhanden.id}`, { methode: "PUT", koerper: { enforcement: wert } });
     return { id: vorhanden.id, name, enforcement: wert };
   }
@@ -750,7 +754,7 @@ function ghApi(endpunkt, { methode, koerper } = {}) {
   try {
     return JSON.parse(roh);
   } catch {
-    throw new BoardError(`gh ${args.join(" ")} lieferte kein gueltiges JSON: ${roh.slice(0, 200)}`);
+    throw new BoardError(t("keinJson", { aufruf: `gh ${args.join(" ")}`, auszug: roh.slice(0, 200) }));
   }
 }
 
@@ -774,7 +778,7 @@ class GitLabIssueTracker {
     const output = exec("glab", ["issue", "create", "--title", title, "--description", body || ""]);
     // glab gibt die Issue-URL aus, z.B. https://gitlab.com/owner/repo/-/issues/42
     const match = output.match(/\/issues\/(\d+)/);
-    if (!match) throw new BoardError(`Konnte Issue-ID aus glab-Ausgabe nicht lesen: ${output}`);
+    if (!match) throw new BoardError(t("glabIdUnlesbar", { ausgabe: output }));
     const id = match[1];
     // Backlog-Label nur setzen, wenn backlog per Config ueberhaupt ein Label ist
     // (nicht der native Open-Zustand) — sonst bleibt das neue Issue einfach offen.
@@ -783,7 +787,7 @@ class GitLabIssueTracker {
       try {
         exec("glab", ["issue", "update", String(id), "--label", label]);
       } catch (e) {
-        process.stderr.write(`Hinweis: Backlog-Label konnte nicht gesetzt werden: ${e.message}\n`);
+        process.stderr.write(`${t("backlogLabelFehlgeschlagen", { grund: e.message })}\n`);
       }
     }
     return { id, url: output.trim() };
@@ -811,7 +815,7 @@ class GitLabIssueTracker {
     try {
       return this._notesStreng(id);
     } catch (e) {
-      process.stderr.write(`Hinweis: Kommentare nicht abrufbar: ${e.message}\n`);
+      process.stderr.write(`${t("kommentareNichtAbrufbar", { grund: e.message })}\n`);
       return [];
     }
   }
@@ -832,7 +836,7 @@ class GitLabIssueTracker {
     args.push("--order", "relative_position", "--sort", "asc");
     if (!isStateColumn(status, this._cfg)) {
       const label = columnLabels(this._cfg)[status];
-      if (!label) throw new BoardError(`Status '${status}' hat kein GitLab-Label-Mapping`);
+      if (!label) throw new BoardError(t("gitlabOhneLabel", { status }));
       args.push("--label", label);
       return args;
     }
@@ -880,7 +884,7 @@ class GitLabIssueTracker {
     }
 
     const label = labels[to];
-    if (!label) throw new BoardError(`Status '${to}' hat kein GitLab-Label-Mapping`);
+    if (!label) throw new BoardError(t("gitlabOhneLabel", { status: to }));
     // Alle anderen Status-Labels entfernen, Ziel-Label setzen (Ziel-Label
     // NICHT im selben Aufruf unlabeln, sonst verrechnet glab beides gegeneinander).
     const unlabelArgs = statusLabels
@@ -901,7 +905,7 @@ class GitLabIssueTracker {
     return normalizeComments(execJSON("glab", ["api", `projects/:id/issues/${id}/notes`]));
   }
 
-  // Strenges Lesen fuer `issue melden` (Issue #1021): Anders als `_notes` wirft ein
+  // Strenges Lesen fuer `issue report` (Issue #1021): Anders als `_notes` wirft ein
   // Fehler — ein leer gelesener Stand liesse `melden` einen zweiten Bericht anlegen.
   async kommentareStreng(id) {
     return this._notesStreng(id);
@@ -926,13 +930,9 @@ class GitLabIssueTracker {
 }
 
 // Der Satz aus Plan #1405, A5: Wo das Kit keinen Schutz einrichtet, sagt es, was offen bleibt.
-const SCHUTZ_GITLAB = "Bei GitLab richtet das Kit keinen Schutz ein: Haupt- und Veroeffentlichungszweig "
-  + "bleiben ungeschuetzt und nehmen auch einen ungeprueften Push an push main vorbei an.";
-const SCHUTZ_LOCAL = "Bei codeHost local gibt es keinen Code-Host, der einen Push abweisen koennte: "
-  + "Haupt- und Veroeffentlichungszweig bleiben ungeschuetzt.";
 
 class GitLabCodeHost {
-  schutzUnterstuetzt() { return { ja: false, grund: SCHUTZ_GITLAB }; }
+  schutzUnterstuetzt() { return { ja: false, grund: t("schutzGitlab") }; }
 
   async getRepoName() {
     // Ohne Remote (kein Repo, kein origin) bleibt der Verzeichnisname — frueher ueber
@@ -1072,7 +1072,7 @@ class LocalIssueTracker {
 
   _read(id) {
     const p = this._filePath(id);
-    if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
+    if (!existsSync(p)) throw new BoardError(t("issueDateiFehlt", { id, pfad: p }));
     const raw = readFileSync(p, "utf-8");
     const { meta, body } = parseFrontmatter(raw);
     const type = meta.type || "task";
@@ -1130,7 +1130,7 @@ class LocalIssueTracker {
    *
    * Der lokale Tracker fuehrt keinen Verlauf — er hat nur das Frontmatter. Daraus
    * entsteht **ein** Eintrag vom Typ CREATED, damit Auswertungen (etwa
-   * `wirksamkeit.mjs` ueber `issue activity`) hier dieselbe Quelle lesen koennen
+   * `effectiveness.mjs` ueber `issue activity`) hier dieselbe Quelle lesen koennen
    * wie beim Board.
    *
    * Fehlt `created:`, ist der Verlauf leer. Das ist ehrlicher als ein erfundenes
@@ -1192,7 +1192,7 @@ class LocalIssueTracker {
 
   async moveIssue(id, to) {
     const p = this._filePath(id);
-    if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
+    if (!existsSync(p)) throw new BoardError(t("issueDateiFehlt", { id, pfad: p }));
     const raw = readFileSync(p, "utf-8");
     const { meta, body } = parseFrontmatter(raw);
     meta.status = to;
@@ -1201,7 +1201,7 @@ class LocalIssueTracker {
 
   async commentIssue(id, text) {
     const p = this._filePath(id);
-    if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
+    if (!existsSync(p)) throw new BoardError(t("issueDateiFehlt", { id, pfad: p }));
     const raw = readFileSync(p, "utf-8");
     const timestamp = new Date().toISOString().replace("T", " ").slice(0, 16);
     const comment = `\n\n---\n**Kommentar** (${timestamp})\n\n${text}`;
@@ -1229,7 +1229,7 @@ class LocalIssueTracker {
 
   async kommentareStreng(id) {
     const p = this._filePath(id);
-    if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
+    if (!existsSync(p)) throw new BoardError(t("issueDateiFehlt", { id, pfad: p }));
     const raw = readFileSync(p, "utf-8");
     return this._kommentarBloecke(raw).map((b) => ({
       author: "", body: raw.slice(b.start, b.ende), createdAt: b.createdAt, id: b.id,
@@ -1241,20 +1241,20 @@ class LocalIssueTracker {
   // dieselbe tragen — sonst waere es der Bericht eines anderen Laufs.
   async ersetzeKommentar(id, kommentarId, text) {
     const p = this._filePath(id);
-    if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
+    if (!existsSync(p)) throw new BoardError(t("issueDateiFehlt", { id, pfad: p }));
     const raw = readFileSync(p, "utf-8");
     const block = this._kommentarBloecke(raw).find((b) => b.id === String(kommentarId));
-    if (!block) throw new BoardError(`Kommentar ${kommentarId} an Issue ${id} nicht gefunden.`);
+    if (!block) throw new BoardError(t("kommentarFehlt", { kommentar: kommentarId, id }));
     const lauf = text.match(/^Bericht-Lauf:.*$/m)?.[0];
     if (lauf && !raw.slice(block.start, block.ende).split(/\r?\n/).includes(lauf)) {
-      throw new BoardError(`Kommentar ${kommentarId} an Issue ${id} traegt nicht die Zeile '${lauf}' — kein Ersetzen.`);
+      throw new BoardError(t("kommentarOhneLaufzeile", { kommentar: kommentarId, id, zeile: lauf }));
     }
     writeFileSync(p, raw.slice(0, block.start) + text + raw.slice(block.ende), "utf-8");
   }
 
   async updateIssue(id, { body }) {
     const p = this._filePath(id);
-    if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
+    if (!existsSync(p)) throw new BoardError(t("issueDateiFehlt", { id, pfad: p }));
     const { meta } = parseFrontmatter(readFileSync(p, "utf-8"));
     // Nur der Body wird ersetzt; Status, Titel und Labels gehoeren anderen Kommandos.
     writeFileSync(p, serializeFrontmatter(meta, body), "utf-8");
@@ -1266,7 +1266,7 @@ class LocalIssueTracker {
   // ein leeres Array, aber eine Zeile, die etwas zu behaupten scheint.
   async labelIssue(id, name, aktion) {
     const p = this._filePath(id);
-    if (!existsSync(p)) throw new BoardError(`Issue ${id} nicht gefunden: ${p}`);
+    if (!existsSync(p)) throw new BoardError(t("issueDateiFehlt", { id, pfad: p }));
     const { meta, body } = parseFrontmatter(readFileSync(p, "utf-8"));
     const vorhanden = labelsAusFrontmatter(meta);
     const ergaenzt = vorhanden.includes(name) ? vorhanden : [...vorhanden, name];
@@ -1278,7 +1278,7 @@ class LocalIssueTracker {
 }
 
 class LocalCodeHost {
-  schutzUnterstuetzt() { return { ja: false, grund: SCHUTZ_LOCAL }; }
+  schutzUnterstuetzt() { return { ja: false, grund: t("schutzLocal") }; }
 
   async getRepoName() {
     // Frueher mit 2>/dev/null — die Umleitung gibt es unter cmd.exe nicht (#196);
@@ -1330,9 +1330,7 @@ const TOOLBOX_COLUMN_TO_STATUS = Object.fromEntries(
  */
 export function resolveToolboxToken({ cfg, env, readFile }) {
   if (cfg?.toolbox?.token) {
-    throw new BoardError(
-      "kein Klartext-Token in workflow.config.json — nutze TBX_TOKEN oder toolbox.tokenFile."
-    );
+    throw new BoardError(t("klartextToken"));
   }
 
   const envToken = (env?.TBX_TOKEN || "").trim();
@@ -1344,10 +1342,10 @@ export function resolveToolboxToken({ cfg, env, readFile }) {
     try {
       content = readFile(resolve(tokenFile));
     } catch (e) {
-      throw new BoardError(`toolbox.tokenFile '${tokenFile}' nicht lesbar: ${e.message}`);
+      throw new BoardError(t("tokenDateiUnlesbar", { datei: tokenFile, grund: e.message }));
     }
     const fileToken = (content || "").trim();
-    if (!fileToken) throw new BoardError(`toolbox.tokenFile '${tokenFile}' ist leer.`);
+    if (!fileToken) throw new BoardError(t("tokenDateiLeer", { datei: tokenFile }));
     return fileToken;
   }
 
@@ -1359,11 +1357,7 @@ export function resolveToolboxToken({ cfg, env, readFile }) {
   } catch { /* kein oder kaputter tbx-Login — faellt in die Fehlermeldung unten */ }
   if (storedToken) return storedToken;
 
-  throw new BoardError(
-    "Kein Toolbox-Token gefunden. Drei Wege: TBX_TOKEN als Umgebungsvariable setzen, " +
-    "toolbox.tokenFile in workflow.config.json auf eine Token-Datei zeigen lassen, " +
-    "oder Token in der Web-UI erzeugen und 'tbx auth login' ausfuehren."
-  );
+  throw new BoardError(t("keinToken"));
 }
 
 /**
@@ -1378,9 +1372,7 @@ export function resolveToolboxToken({ cfg, env, readFile }) {
 export function interpretToolboxCreateResponse(created) {
   if (created?.number != null) return { id: String(created.number) };
   if (created?.id != null) return { id: null, ideaId: String(created.id), pending: true };
-  throw new BoardError(
-    `Unerwartete Create-Response der Kanban-API (weder 'number' noch 'id'): ${JSON.stringify(created)}`
-  );
+  throw new BoardError(t("createAntwortUnerwartet", { antwort: JSON.stringify(created) }));
 }
 
 /**
@@ -1445,9 +1437,7 @@ export class ToolboxIssueTracker {
     const stored = this._readJson(join(dir, "config.json"));
     const host = this._cfg.toolbox?.host || stored?.host;
     if (!host) {
-      throw new BoardError(
-        "Kein Toolbox-Host gefunden. toolbox.host in workflow.config.json setzen oder 'tbx auth login' ausfuehren."
-      );
+      throw new BoardError(t("keinHost"));
     }
     const token = resolveToolboxToken({
       cfg: this._cfg,
@@ -1495,7 +1485,7 @@ export class ToolboxIssueTracker {
       // Ein widerrufener Token wird durch Warten nicht gueltig, und die Meldung
       // nennt den einzigen Ausweg.
       if (res?.status === 401) {
-        throw new BoardError("Token ungueltig oder widerrufen. Bitte 'tbx auth login' erneut ausfuehren.");
+        throw new BoardError(t("tokenUngueltig"));
       }
 
       const status = res?.status ?? null;
@@ -1509,10 +1499,7 @@ export class ToolboxIssueTracker {
       // Eine Zeile je Wiederholung, nicht je Aufruf: Wer einem Nachtlauf zusieht,
       // soll Warten von Haengen unterscheiden koennen. Eine Zeile auch im
       // Erfolgsfall ertraenkte genau dieses Signal.
-      this._melde(
-        `board: ${method} ${path} — Versuch ${versuch} endete mit ${grund}, erneut in ${warte} ms `
-        + `(Frist ${Math.round(budget / 1000)} s)`
-      );
+      this._melde(t("wiederholZeile", { methode: method, pfad: path, versuch, grund, warte, frist: Math.round(budget / 1000) }));
       await this._schlaf(warte);  // NOSONAR S9382: ein Versuch wartet per Definition auf den vorigen
     }
   }
@@ -1520,7 +1507,7 @@ export class ToolboxIssueTracker {
   /** Namensaufloesung oder Verbindung scheiterte hinter einem Proxy: die Abhilfe nennen (Issue #998). */
   _proxyZusatz(netz) {
     if (netz === "zeitablauf" || !netz || !proxyGesetzt(process.env)) return "";
-    return `\n${PROXY_HINWEIS}`;
+    return `\n${proxyHinweis()}`;
   }
 
   /**
@@ -1531,8 +1518,8 @@ export class ToolboxIssueTracker {
   _fehler({ status, netz, wurf, grund, method, path, idempotencyKey, host }) {
     const rueckmeldung = rueckmeldungFuer({ status, netz, method });
     const basis = wurf
-      ? `Toolbox-API nicht erreichbar (${host}): ${wurf.message}${this._proxyZusatz(netz)}`
-      : `Toolbox-API-Fehler: ${grund}`;
+      ? t("apiNichtErreichbar", { host, grund: wurf.message }) + this._proxyZusatz(netz)
+      : t("apiFehler", { grund });
     const text = rueckmeldung === RUECKMELDUNG.AUSGANG_UNKLAR
       ? `${basis}\n${this._unklarHinweis(method, path, idempotencyKey)}`
       : basis;
@@ -1551,7 +1538,7 @@ export class ToolboxIssueTracker {
    * die Diagnose — "Route gibt es nicht" gegen "Route ist kaputt".
    */
   async _fehlerlage(res, wurf) {
-    if (!res) return { grund: `Netzfehler (${wurf.name}: ${wurf.message})`, typ: null, retryAfter: null };
+    if (!res) return { grund: t("netzfehler", { name: wurf.name, meldung: wurf.message }), typ: null, retryAfter: null };
     let grund = `HTTP ${res.status}`;
     let typ = null;
     try {
@@ -1566,19 +1553,14 @@ export class ToolboxIssueTracker {
 
   /** Der Zusatz zur Meldung "Ausgang unklar": was passiert sein kann und wie es weitergeht. */
   _unklarHinweis(method, path, schluessel) {
-    const kopf = `Ausgang unklar: ${method} ${path} ging hinaus, blieb aber ohne verwertbare Antwort — `
-      + "die Wirkung kann eingetreten sein.";
-    if (!schluessel) {
-      return `${kopf} Der Aufruf lief ohne Idempotenz-Schluessel; eine blinde Wiederholung `
-        + "kann ihn ein zweites Mal ausfuehren. Erst am Board nachsehen.";
-    }
-    return `${kopf} Schluessel: ${schluessel}. Mit genau diesem Schluessel wiederholen — derselbe `
-      + `Schluessel fuehrt die Wirkung hoechstens einmal aus:\n  ${wiederholKommando(schluessel)}`;
+    const kopf = t("unklarKopf", { methode: method, pfad: path });
+    if (!schluessel) return `${kopf} ${t("unklarOhneSchluessel")}`;
+    return `${kopf} ${t("unklarMitSchluessel", { schluessel })}\n  ${wiederholKommando(schluessel)}`;
   }
 
   _toColumn(status) {
     const column = TOOLBOX_STATUS_TO_COLUMN[status];
-    if (!column) throw new BoardError(`Ungueltiger Status '${status}'. Gueltig: ${VALID_STATUSES.join(", ")}`);
+    if (!column) throw new BoardError(t("statusUngueltig", { status, gueltig: VALID_STATUSES.join(", ") }));
     return column;
   }
 
@@ -1601,7 +1583,7 @@ export class ToolboxIssueTracker {
 
   _resolveByNumber(items, number) {
     const item = this._findByNumber(items, number);
-    if (!item) throw new BoardError(`Issue ${number} nicht gefunden`);
+    if (!item) throw new BoardError(t("issueFehlt", { id: number }));
     return item;
   }
 
@@ -1655,17 +1637,13 @@ export class ToolboxIssueTracker {
     // `pending` samt Pool-Hinweis: Der Aufruf saehe erfolgreich aus, die Karte haette
     // keine Nummer, und niemand bemerkt es.
     if (direkt && result.pending) {
-      throw new BoardError(
-        "Direktes Anlegen lieferte keine Board-Nummer — die Instanz kennt 'direct' offenbar nicht. "
-        + "Direkt ins Backlog ist die Vorgabe; wer bewusst in den Ideen-Pool anlegen will, "
-        + "setzt 'toolbox.ideaStored: true' in .claude/workflow.config.json."
-      );
+      throw new BoardError(t("direktOhneNummer"));
     }
     if (result.pending) {
       return {
         ...result,
         url: `${host}/kanban`,
-        hinweis: "Als Idee im Projekt-Ideen-Pool angelegt; die Board-Nummer entsteht beim Einplanen.",
+        hinweis: t("alsIdeeAngelegt"),
       };
     }
     return { ...result, url: `${host}/kanban` };
@@ -1704,7 +1682,7 @@ export class ToolboxIssueTracker {
     try {
       return await this._kommentareLesen(itemId);
     } catch (e) {
-      process.stderr.write(`Hinweis: Kommentare nicht abrufbar: ${e.message}\n`);
+      process.stderr.write(`${t("kommentareNichtAbrufbar", { grund: e.message })}\n`);
       return [];
     }
   }
@@ -1754,7 +1732,7 @@ export class ToolboxIssueTracker {
     const items = await this._boardItems();
     const eintraege = await hoechstensGleichzeitig(VERLAUF_GLEICHZEITIG, numbers, async (number) => {
       const item = this._findByNumber(items, Number(number));
-      if (!item) return { fehler: `Issue ${number} nicht gefunden` };
+      if (!item) return { fehler: t("issueFehlt", { id: number }) };
       const res = await this._fetch(`/api/kanban/items/${item.id}/activity`);
       return await res.json();
     });
@@ -1835,7 +1813,7 @@ export class ToolboxIssueTracker {
     return normalizeComments(await res.json());
   }
 
-  // Strenges Lesen fuer `issue melden` (Issue #1021): Anders als `_comments` wirft
+  // Strenges Lesen fuer `issue report` (Issue #1021): Anders als `_comments` wirft
   // ein Fehler — ein leer gelesener Stand liesse `melden` einen zweiten Bericht
   // anlegen.
   async kommentareStreng(number) {
@@ -1858,9 +1836,7 @@ export class ToolboxIssueTracker {
     } catch (e) {
       const status = e.message.match(/HTTP (40[45])\b/)?.[1];
       if (!status) throw e;
-      throw new BoardError(
-        `Die Toolbox-Instanz kennt die Route PATCH ${pfad} nicht (HTTP ${status}) — Kommentare lassen sich dort nicht ersetzen.`
-      );
+      throw new BoardError(t("routeUnbekannt", { pfad, status }));
     }
   }
 
@@ -1901,9 +1877,7 @@ export class ToolboxIssueTracker {
         return await fn();
       } catch (e) {
         if (e instanceof BoardError && /HTTP 404|nicht gefunden/i.test(e.message)) {
-          throw new BoardError(
-            `Label '${name}' ist am Board nicht definiert. Die Definition muss einmal je Board angelegt werden (POST /api/boards/{boardId}/labels), danach setzt und entfernt die Automatik sie.`
-          );
+          throw new LabelFehltError(t("labelNichtDefiniert", { name, route: "POST /api/boards/{boardId}/labels" }));
         }
         throw e;
       }
@@ -1920,6 +1894,67 @@ export class ToolboxIssueTracker {
       method: "DELETE",
     }));
   }
+
+  // Die drei lesenden Archiv-Aufrufe fuer `issue vorgeschichte` (Issue #1538, Plan #1534).
+  // Sie erreichen auch archivierte Karten des gebundenen Boards (kanban-kit, Anforderung
+  // 1571). Ein Fehlschlag wirft wie jeder andere Aufruf; erst das Kommando bildet ihn auf
+  // `archiv-nicht-erreichbar` ab, damit die Regel „Ende beim ersten Fehlschlag“ an einer
+  // Stelle sitzt.
+
+  /**
+   * Suche ueber Titel, Text und Kommentare, archivierte Karten eingeschlossen. Ohne
+   * `kind`-Parameter (E8): Was ein Fachplan ist, entscheidet das Kommando. Gelesen wird
+   * ueber `nextCursor` in Teilen, bis keiner mehr kommt oder `limit` Treffer da sind;
+   * `mehr` sagt, ob hinter dem Schnitt noch Treffer lagen.
+   */
+  async sucheFachplaene(begriff, { limit }) {
+    const treffer = [];
+    let cursor = null;
+    for (;;) {
+      const query = new URLSearchParams({ q: begriff });
+      if (cursor) query.set("cursor", cursor);
+      const res = await this._fetch(`/api/kanban/search?${query}`);  // NOSONAR S9382: der naechste Teil braucht den Cursor des vorigen
+      const teil = await res.json();
+      for (const hit of teil.hits || []) {
+        if (treffer.length === limit) return { treffer, mehr: true };
+        treffer.push({ nummer: hit.number, titel: hit.title, archiviert: Boolean(hit.archived) });
+      }
+      cursor = teil.nextCursor || null;
+      if (!cursor) return { treffer, mehr: false };
+      if (treffer.length === limit) return { treffer, mehr: true };
+    }
+  }
+
+  /** Eine Karte nach Nummer, auch archiviert; `null`, wenn der Server sie mit 404 nicht kennt. */
+  async karteNachNummer(n) {
+    let res;
+    try {
+      res = await this._fetch(`/api/kanban/items/by-number/${Number(n)}`);
+    } catch (e) {
+      // Papierkorb, fremdes Board und eine Instanz ohne die Route sehen hier gleich aus
+      // (E7): Fuer das Kommando fehlt die Karte, das Archiv selbst ist erreichbar.
+      if (e instanceof BoardError && e.status === 404) return null;
+      throw e;
+    }
+    const detail = await res.json();
+    return { nummer: detail.item?.number, titel: detail.item?.title, body: detail.item?.body ?? "", archiviert: Boolean(detail.archived) };
+  }
+
+  /**
+   * Die Herkunft einer Karte: ihre Vorfahren in der Reihenfolge des Servers, von der
+   * Karte aufwaerts. Ein Glied, das fehlt oder im Papierkorb liegt, bleibt als `gap: true`
+   * stehen — die Kette soll zeigen, dass dort etwas war.
+   */
+  async herkunftskette(n) {
+    const res = await this._fetch(`/api/kanban/items/by-number/${Number(n)}/lineage`);
+    const kette = await res.json();
+    return (kette.ancestors || []).map((g) => ({
+      nummer: g.number,
+      titel: g.title ?? null,
+      archiviert: Boolean(g.archived),
+      gap: Boolean(g.gap),
+    }));
+  }
 }
 
 
@@ -1933,7 +1968,7 @@ export function resolveTracker(config) {
     case "gitlab": return new GitLabIssueTracker(config);
     case "local":  return new LocalIssueTracker(config);
     case "toolbox": return new ToolboxIssueTracker(config);
-    default: fail(`Unbekannter issueTracker: '${config.issueTracker}'. Erwartet: github | gitlab | local | toolbox`);
+    default: fail(t("trackerUnbekannt", { name: config.issueTracker }));
   }
 }
 
@@ -1942,6 +1977,6 @@ export function resolveCodeHost(config) {
     case "github": return new GitHubCodeHost(config);
     case "gitlab": return new GitLabCodeHost();
     case "local":  return new LocalCodeHost();
-    default: fail(`Unbekannter codeHost: '${config.codeHost}'. Erwartet: github | gitlab | local`);
+    default: fail(t("codeHostUnbekannt", { name: config.codeHost }));
   }
 }

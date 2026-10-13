@@ -12,7 +12,7 @@
 //
 // Der zweite Punkt ist der eine Wortlaut der Artenliste. Nennt der Regeltext
 // die Arten selbst, gibt es zwei Orte — und der Regeltext driftet gegen
-// `befunde.mjs arten`, sobald eine Art hinzukommt. Die Gegenprobe dazu ist
+// `findings.mjs kinds`, sobald eine Art hinzukommt. Die Gegenprobe dazu ist
 // hart: Kein Artname steht im Abschnitt.
 
 import { test } from "node:test";
@@ -94,8 +94,8 @@ test("der Abschnitt sagt, dass ein widerlegter Fund nicht gemeldet wird", () => 
 
 test("der Abschnitt verweist fuer die Arten auf das Kommando", () => {
   const text = abschnitt(BEFUNDE);
-  assert.match(text, /befunde\.mjs arten/,
-    "der Verweis auf `node .claude/kit/befunde.mjs arten` fehlt im Abschnitt");
+  assert.match(text, /findings\.mjs kinds/,
+    "der Verweis auf `node .claude/kit/findings.mjs kinds` fehlt im Abschnitt");
 });
 
 test("der Abschnitt nennt keine einzelne Mangel-Art im eigenen Wortlaut", () => {

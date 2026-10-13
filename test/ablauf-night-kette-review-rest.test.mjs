@@ -35,7 +35,7 @@ test("[night-19] bricht die Review-Stufe nach geschriebenen Befunden ohne Marker
     // 2026-09-14 im Lauf 2026-09-14-113433 am Zeitbudget endete.
     const env = umgebung(dir, { stufen: { plan: PLAN_ANLEGEN, review: BEFUNDE + "; sleep 60" } }); // # haengt — das Zeitbudget der Stufe review beendet die Session, der Test wartet die 60 s nicht ab
     // Das Limit gilt nur dem Review (Issue #1080), die Planstufe davor behaelt ihres.
-    const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "6000", NIGHT_TIMEOUT_STUFE: "review" });
+    const res = run(dir, ["--chain"], { ...env, NIGHT_TIMEOUT_MS: "6000", NIGHT_TIMEOUT_STUFE: "review" });
     assert.equal(res.status, 0, res.stderr);
 
     const { einheit, id, text } = plan(dir, F);

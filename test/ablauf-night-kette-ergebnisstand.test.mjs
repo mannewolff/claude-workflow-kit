@@ -31,7 +31,7 @@ test("[board-20] der echte Kettenlauf meldet Budget samt Herkunft, die vier Stuf
       NIGHT_MELDEN_ERZWINGEN: "1",
       KETTE_MELDE_CAPTURE: capture,
     };
-    const res = kette.run(dir, ["--kette"], env);
+    const res = kette.run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const alle = readFileSync(capture, "utf-8").trim().split("\n").filter(Boolean).map((z) => JSON.parse(z));

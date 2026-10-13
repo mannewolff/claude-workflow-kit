@@ -1,13 +1,14 @@
-// Ablauf-Pruefung: Ob checks.mjs neben befunde.mjs liegt, entscheidet das Modul beim Laden, der Board-Adapter startet ohne Attrappe als Kindprozess, und Exit-Code und Fehlerzeile setzt nur die Kommandozeile.
+// Ablauf-Pruefung: Ob checks.mjs neben findings.mjs liegt, entscheidet das Modul beim Laden, der Board-Adapter startet ohne Attrappe als Kindprozess, und Exit-Code und Fehlerzeile setzt nur die Kommandozeile.
 //
-// Die uebrigen Tests von kit/befunde.mjs rufen das Werkzeug im selben Prozess ueber
+// Die uebrigen Tests von kit/findings.mjs rufen das Werkzeug im selben Prozess ueber
 // `aufrufen` und geben den Board-Adapter als Attrappe (Issue #1213, Plan #1199 E6). Was
 // dabei ungeprueft bliebe, belegt diese Datei an echten Prozessen:
 //
 //   - Portabilitaet: Allein in einem leeren Verzeichnis laufen `arten`, `pruefen` und
 //     `buchen` unterhalb der Code-Stufe; erst `buchen --stufe code` meldet den fehlenden
 //     Nachbarn checks.mjs. Das Kit liefert seine Werkzeuge als eigenstaendige
-//     Einzeldateien aus — ein Import auf eine Datei des Kit-Repos fiele hier auf.
+//     Einzeldateien aus, jede mit ihrer Texttabelle unter texte/ (Issue #1524) — ein Import
+//     auf eine andere Datei des Kit-Repos fiele hier auf.
 //   - Ohne Attrappe startet `vorschlag` den Board-Adapter unter KIT_ROOT als Kindprozess.
 //   - Die Kommandozeile setzt den Exit-Code.
 
@@ -19,7 +20,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 
-const BEFUNDE = join(dirname(fileURLToPath(import.meta.url)), "..", "kit", "befunde.mjs");
+const BEFUNDE = join(dirname(fileURLToPath(import.meta.url)), "..", "kit", "findings.mjs");
 
 const FUND = [
   "#### WICHTIG",
@@ -34,12 +35,14 @@ function cli(programm, dir, cliArgs, env = process.env) {
   return spawnSync(process.execPath, [programm, ...cliArgs], { cwd: dir, encoding: "utf-8", env });
 }
 
-/** Ein leeres Verzeichnis mit einer Kopie von befunde.mjs ohne Nachbarn und dem Fundtext. */
+/** Ein leeres Verzeichnis mit einer Kopie von findings.mjs samt Texttabelle, ohne Nachbarn, und dem Fundtext. */
 function mitKopieAllein(fn) {
   const dir = mkdtempSync(join(tmpdir(), "befunde-allein-"));
   try {
-    const allein = join(dir, "befunde.mjs");
+    const allein = join(dir, "findings.mjs");
     copyFileSync(BEFUNDE, allein);
+    mkdirSync(join(dir, "texte"));
+    copyFileSync(join(dirname(BEFUNDE), "texte", "findings.mjs"), join(dir, "texte", "findings.mjs"));
     writeFileSync(join(dir, "text.md"), FUND, "utf-8");
     fn(dir, allein);
   } finally {
@@ -47,17 +50,17 @@ function mitKopieAllein(fn) {
   }
 }
 
-test("portabel: befunde.mjs allein in einem leeren Verzeichnis — arten und pruefen laufen, buchen --stufe code meldet den fehlenden Nachbarn", () => {
+test("portabel: findings.mjs allein in einem leeren Verzeichnis — arten und pruefen laufen, buchen --stufe code meldet den fehlenden Nachbarn", () => {
   mitKopieAllein((dir, allein) => {
-    const arten = cli(allein, dir, ["arten"]);
+    const arten = cli(allein, dir, ["kinds"]);
     assert.equal(arten.status, 0, `arten lief nicht ohne Repo-Kontext: ${arten.stderr}`);
     assert.equal(JSON.parse(arten.stdout).anzahl, 12);
 
-    const pruefen = cli(allein, dir, ["pruefen", "--datei", "text.md"]);
+    const pruefen = cli(allein, dir, ["check", "--file", "text.md"]);
     assert.equal(pruefen.status, 0, `pruefen lief nicht ohne Repo-Kontext: ${pruefen.stderr}`);
     assert.equal(JSON.parse(pruefen.stdout).funde.length, 1);
 
-    const buchen = cli(allein, dir, ["buchen", "--datei", "text.md", "--stufe", "code", "--karte", "1"]);
+    const buchen = cli(allein, dir, ["record", "--file", "text.md", "--stage", "code", "--card", "1"]);
     assert.equal(buchen.status, 1, "der fehlende Nachbar ist ein Fehler, kein stiller Lauf");
     const json = JSON.parse(buchen.stdout);
     assert.equal(json.ok, false);
@@ -67,7 +70,7 @@ test("portabel: befunde.mjs allein in einem leeren Verzeichnis — arten und pru
 
 test("portabel: buchen ohne Nachbarn laeuft fuer die Stufen ohne Vergleichsstand weiter", () => {
   mitKopieAllein((dir, allein) => {
-    const res = cli(allein, dir, ["buchen", "--datei", "text.md", "--stufe", "plan", "--karte", "1"]);
+    const res = cli(allein, dir, ["record", "--file", "text.md", "--stage", "plan", "--card", "1"]);
     assert.equal(res.status, 0, res.stderr);
     assert.equal(JSON.parse(res.stdout).geschrieben, 1);
   });
@@ -86,7 +89,7 @@ test("[befunde-1213] ohne Attrappe startet vorschlag den Board-Adapter unter KIT
     ].join("\n"), "utf-8");
     const log = join(dir, "board.log");
 
-    const res = cli(BEFUNDE, dir, ["vorschlag", "--art", "form"], { ...process.env, KIT_ROOT: dir, STUB_LOG: log });
+    const res = cli(BEFUNDE, dir, ["suggest", "--kind", "form"], { ...process.env, KIT_ROOT: dir, STUB_LOG: log });
 
     assert.equal(res.status, 0, res.stderr);
     assert.equal(JSON.parse(res.stdout).karte, "812");
@@ -98,13 +101,13 @@ test("[befunde-1213] ohne Attrappe startet vorschlag den Board-Adapter unter KIT
 
 test("[befunde-1213] die Kommandozeile setzt bei einem abgewiesenen Aufruf Exit 1, und befund schreibt den Fehler nach stderr", () => {
   mitKopieAllein((dir) => {
-    const json = cli(BEFUNDE, dir, ["arten", "--alles"]);
+    const json = cli(BEFUNDE, dir, ["kinds", "--alles"]);
     assert.equal(json.status, 1);
     assert.equal(JSON.parse(json.stdout).ok, false);
 
-    const text = cli(BEFUNDE, dir, ["befund", "--zuviel"]);
+    const text = cli(BEFUNDE, dir, ["finding", "--zuviel"]);
     assert.equal(text.status, 1);
     assert.equal(text.stdout, "");
-    assert.match(text.stderr, /^Fehler: 'befund' nimmt keine Argumente/);
+    assert.match(text.stderr, /^Fehler: 'finding' nimmt keine Argumente/);
   });
 });

@@ -1,19 +1,19 @@
 # `kontext.config.json` — Reference
-<!-- de: 299b278fe96e -->
+<!-- de: 04b3b160115d -->
 
-Configures the `/kontext` skill (session start) and the `/document` skill (session end). Both read the same file.
+Configures the `/session-start` skill (session start) and the `/document` skill (session end). Both read the same file.
 
 ---
 
 ## Storage locations
-<!-- de: e7cad1d39c61 -->
+<!-- de: 31aa6cea5b0a -->
 
 | Path | Purpose |
 |------|-------|
-| `~/.claude/kontext.config.json` | Global — applies to all projects |
-| `.claude/kontext.config.json` | Project-local — overrides individual fields of the global config |
+| `~/.claude/session-start.config.json` | Global — applies to all projects |
+| `.claude/session-start.config.json` | Project-local — overrides individual fields of the global config |
 
-The local config is **merged field by field** with the global one, **local fields win**. Missing fields are inherited from the global one. If no config is found, `/kontext` and `/document` continue in degraded mode (initiatives (Vorhaben) via the board adapter (Board-Adapter), log into the project directory).
+The local config is **merged field by field** with the global one, **local fields win**. Missing fields are inherited from the global one. If no config is found, `/session-start` and `/document` continue in degraded mode (initiatives (Vorhaben) via the board adapter (Board-Adapter), log into the project directory).
 
 The merge is not a detail but the precondition for the multi-repo setup further below: There the local config sets only `parentProject` and `project` and inherits the vault path from the global one. With "first one found wins", the vault would be lost.
 
@@ -48,12 +48,12 @@ Patterns without matches are skipped silently.
 ---
 
 ## Checking paths without starting a skill
-<!-- de: 035dc68d55a3 -->
+<!-- de: feb6a022c33d -->
 
 The target paths are computed by the board adapter, not by the skill prompt:
 
 ```bash
-node .claude/kit/board.mjs kontext paths
+node .claude/kit/board.mjs context paths
 ```
 
 ```json
@@ -79,7 +79,7 @@ Without `vault`, the command returns `"mode": "degraded"` and all vault paths as
 In addition:
 
 ```bash
-node .claude/kit/board.mjs kontext last-log
+node .claude/kit/board.mjs context last-log
 ```
 
 It returns the most recent existing log entry **of the same project** (`{"path": …, "date": …}`) or `{"path": null}` if there is none. `/document` uses it to pick up from the previous entry instead of starting from scratch. Today's entry is excluded so that a second session on the same day does not read itself.
@@ -87,7 +87,7 @@ It returns the most recent existing log entry **of the same project** (`{"path":
 ---
 
 ## Multi-repo projects (microservices)
-<!-- de: c60b6477f3a0 -->
+<!-- de: 520eabf2ecaf -->
 
 Several repos, one system: They are meant to share one vault so that the knowledge across the service boundaries lives in one place. Without further configuration, however, all sessions of a day then write into the same log file — in a synchronised vault that produces conflict copies, with parallel sessions an overwritten section.
 
@@ -130,7 +130,7 @@ ClaudeMemory/
         └── order-service.md
 ```
 
-In the multi-repo case `/kontext` loads **both** notes: first the umbrella note as the frame, then the note of the service you are currently working in.
+In the multi-repo case `/session-start` loads **both** notes: first the umbrella note as the frame, then the note of the service you are currently working in.
 
 ### Why the service identifier belongs in the file name
 <!-- de: 55100301b1fb -->
@@ -147,17 +147,17 @@ Without this rule, the conflict surface would merely have moved from the log int
 ---
 
 ## Installer
-<!-- de: f0c0c20130e5 -->
+<!-- de: c4eb59ad5f7c -->
 
 The installer (`install.mjs`) creates the global config automatically if a vault path is given during installation:
 
 ```
-Pfad zum Memory-Vault für /kontext (leer = überspringen): /Users/mustermann/Nextcloud/ClaudeMemory
+Pfad zum Memory-Vault für /session-start (leer = überspringen): /Users/mustermann/Nextcloud/ClaudeMemory
 ```
 
-The prompt asks for the path to the memory vault for `/kontext`; leaving it empty skips the step.
+The prompt asks for the path to the memory vault for `/session-start`; leaving it empty skips the step.
 
-Result in `~/.claude/kontext.config.json`:
+Result in `~/.claude/session-start.config.json`:
 
 ```json
 {
@@ -167,7 +167,7 @@ Result in `~/.claude/kontext.config.json`:
 }
 ```
 
-The local `.claude/kontext.config.json` has to be created manually (only if needed).
+The local `.claude/session-start.config.json` has to be created manually (only if needed).
 
 ---
 

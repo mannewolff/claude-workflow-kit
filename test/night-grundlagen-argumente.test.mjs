@@ -60,15 +60,15 @@ test("--verbose nimmt nur no und yes und verschluckt kein folgendes Flag (Issue 
 });
 
 test("die Kette zaehlt Ketten und braucht keine Pruefung der Paketstufe (Issue #517)", () => {
-  const args = lies("--kette");
+  const args = lies("--chain");
   assert.equal(args.max, DEFAULT_MAX_KETTEN);
   assert.equal(args.noChecksOk, true);
-  assert.equal(lies("--kette", "--max", "1").max, 1);
+  assert.equal(lies("--chain", "--max", "1").max, 1);
 });
 
 test("der Prueflauf faehrt ohne Zahlendeckel, prueft aber ein gesetztes --max", () => {
-  assert.equal(lies("--pruefen").max, null);
-  assert.throws(() => lies("--pruefen", "--max", "0"), /--max braucht eine Zahl >= 1/);
+  assert.equal(lies("--check").max, null);
+  assert.throws(() => lies("--check", "--max", "0"), /--max braucht eine Zahl >= 1/);
 });
 
 test("loeseModusDefaults laesst einen gesetzten Wert stehen, auch einen unbrauchbaren", () => {
@@ -78,10 +78,10 @@ test("loeseModusDefaults laesst einen gesetzten Wert stehen, auch einen unbrauch
 });
 
 for (const [argv, meldung] of [
-  [["--kette", "--pruefen"], /--kette und --pruefen sind zwei Laeufe/],
-  [["--pruefen", "--dry-run"], /Der Prueflauf hat keine Vorschau/],
-  [["--kette", "--label", "x"], /--kette kennt kein --label/],
-  [["--pruefen", "--label", "x"], /--pruefen kennt kein --label/],
+  [["--chain", "--check"], /--chain und --check sind zwei Laeufe/],
+  [["--check", "--dry-run"], /Der Prueflauf hat keine Vorschau/],
+  [["--chain", "--label", "x"], /--chain kennt kein --label/],
+  [["--check", "--label", "x"], /--check kennt kein --label/],
   [["--max", "abc"], /--max braucht eine Zahl >= 1/],
   [["--timeout-min", "0"], /--timeout-min braucht eine Zahl >= 1/],
   [["--gibtsnicht"], /Unbekanntes Argument: --gibtsnicht — siehe --help/],
@@ -92,9 +92,22 @@ for (const [argv, meldung] of [
 }
 
 for (const flags of [["--review"], ["--erzeuge"], ["--stufe", "plan"], ["--review-label", "x"], ["--erzeuge-label", "x"]]) {
-  test(`[night-15] ${flags[0]} nennt --kette statt eines unbekannten Arguments`, () => {
+  test(`[night-15] ${flags[0]} nennt --chain statt eines unbekannten Arguments`, () => {
     assert.throws(() => lies(...flags), (err) => {
-      assert.match(err.message, new RegExp(`${flags[0]} gibt es seit Stufe 2 nicht mehr; die Nacht-Kette ist --kette`));
+      assert.match(err.message, new RegExp(`${flags[0]} gibt es seit Stufe 2 nicht mehr; die Nacht-Kette ist --chain`));
+      assert.doesNotMatch(err.message, /Unbekanntes Argument/);
+      return true;
+    });
+  });
+}
+
+// Seit Issue #1565 (Plan #1548 E8) gelten nur die englischen Namen; ein deutsches Flag endet
+// mit dem Hinweis auf seinen englischen Namen, nicht als unbekanntes Argument.
+for (const [deutsch, englisch] of [["--kette", "--chain"], ["--pruefen", "--check"], ["--waechter", "--watcher"]]) {
+  test(`${deutsch} wird abgewiesen und nennt ${englisch}`, () => {
+    assert.throws(() => lies("--max", "2", deutsch), (err) => {
+      assert.ok(err instanceof Abbruch);
+      assert.ok(err.message.includes(`unbekannt: '${deutsch}' — englischer Name: '${englisch}'`), err.message);
       assert.doesNotMatch(err.message, /Unbekanntes Argument/);
       return true;
     });
@@ -105,6 +118,6 @@ test("die Hilfe des Einstiegs nennt dieselben Vorgaben wie die Grundlagen (SYNC)
   // Der Einstieg beantwortet --help vor dem Laden der Teile und fuehrt die Vorgaben darum als
   // Text. Gelesen wird die Quelle, nicht ein Start: Der Wortlaut genuegt fuer den Gleichlauf.
   const einstieg = readFileSync(join(repoRoot, "kit", "night.mjs"), "utf-8");
-  assert.ok(einstieg.includes(`sonst night.modell, sonst ${DEFAULT_MODEL})`), "die Hilfe nennt ein anderes Vorgabemodell");
-  assert.ok(einstieg.includes(`(Default ${DEFAULT_LABEL}); --label none`), "die Hilfe nennt ein anderes Vorgabelabel");
+  assert.ok(einstieg.includes(`otherwise night.modell, otherwise ${DEFAULT_MODEL})`), "die Hilfe nennt ein anderes Vorgabemodell");
+  assert.ok(einstieg.includes(`(default ${DEFAULT_LABEL}); --label none`), "die Hilfe nennt ein anderes Vorgabelabel");
 });

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * sync-blobs.mjs — haelt die Base64-Blobs in install.mjs synchron mit templates/, kit/, skills/ und agents/
+ * sync-blobs.mjs — haelt die Base64-Blobs in install.mjs synchron mit templates/, kit/, skills/, agents/ und en/
  * und stempelt die Kit-Version in die Kit-Dateien (Issue #171).
  *
  * Nutzung:
@@ -17,7 +17,7 @@
  * RELEASING.md braucht keine zusaetzliche Reihenfolge-Regel.
  */
 
-import { readFileSync, writeFileSync, readdirSync, statSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, statSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -42,17 +42,23 @@ function vergleicheText(a, b) {
   return a > b ? 1 : 0;
 }
 
+// Eine versteckte Datei gehoert in keinen Blob: weder das .gitkeep, das den leeren Spiegel en/
+// im Repo haelt (Issue #1464), noch ein .DS_Store, den der Finder ablegt.
+const versteckt = (datei) => datei.startsWith(".");
+
 // Liest einen Ordner mit einer Unterordner-Ebene (z.B. skills/<name>/<datei>)
 // zu { name: { datei: inhalt } } ein — Grundlage fuer einen gemeinsamen Blob.
+// Ein fehlender Ordner ergibt {} wie bei buildFileJson.
 function buildDirJson(dir) {
   const result = {};
+  if (!existsSync(dir)) return result;
   for (const entry of readdirSync(dir).sort(vergleicheText)) {
     const entryDir = join(dir, entry);
     if (!statSync(entryDir).isDirectory()) continue;
     const files = {};
     for (const file of readdirSync(entryDir).sort(vergleicheText)) {
       const filePath = join(entryDir, file);
-      if (statSync(filePath).isFile()) files[file] = readFileSync(filePath, "utf-8");
+      if (!versteckt(file) && statSync(filePath).isFile()) files[file] = readFileSync(filePath, "utf-8");
     }
     result[entry] = files;
   }
@@ -68,7 +74,7 @@ function buildFileJson(dir) {
   if (!existsSync(dir)) return result;
   for (const file of readdirSync(dir).sort(vergleicheText)) {
     const filePath = join(dir, file);
-    if (statSync(filePath).isFile()) result[file] = readFileSync(filePath, "utf-8");
+    if (!versteckt(file) && statSync(filePath).isFile()) result[file] = readFileSync(filePath, "utf-8");
   }
   return result;
 }
@@ -93,17 +99,20 @@ const BLOBS = [
   { constName: "PREISE_MJS_B64", source: join(root, "kit", "preise.mjs") },
   // Aufwands-Auswertung (Issue #750). Eigene Datei statt Anbau an night.mjs: /push-main
   // muss den Befund lesen koennen, ohne den Nacht-Runner zu starten. Wie board.mjs laedt
-  // sie preise.mjs als Nachbardatei und kommt ohne sie aus.
-  { constName: "AUFWAND_MJS_B64", source: join(root, "kit", "aufwand.mjs") },
+  // sie preise.mjs als Nachbardatei und kommt ohne sie aus. Seit Issue #1560 traegt die
+  // englische Datei den Code (Plan #1548 E6).
+  { constName: "EFFORT_MJS_B64", source: join(root, "kit", "effort.mjs") },
   // Wirksamkeits-Auswertung (Issue #787). Eigenes Werkzeug nach dem Muster von
-  // aufwand.mjs: eine reine Leseoperation ueber das Ausfuehrungsprotokoll von
-  // checks.mjs (#785), an Fixtures vollstaendig pruefbar.
-  { constName: "WIRKSAMKEIT_MJS_B64", source: join(root, "kit", "wirksamkeit.mjs") },
+  // effort.mjs: eine reine Leseoperation ueber das Ausfuehrungsprotokoll von
+  // checks.mjs (#785), an Fixtures vollstaendig pruefbar. Seit Issue #1560 unter dem
+  // englischen Namen.
+  { constName: "EFFECTIVENESS_MJS_B64", source: join(root, "kit", "effectiveness.mjs") },
   // Form und Arten der Funde (Issue #799). Eigenes Werkzeug nach demselben Muster:
-  // Der Regeltext verweist fuer die Artenliste auf `befunde arten`, und die
+  // Der Regeltext verweist fuer die Artenliste auf `findings kinds`, und die
   // Pruef-Skills setzen sie ueber dieses Kommando in ihre Prompts ein — ohne
-  // Auslieferung ginge beides in jedem Projekt ins Leere.
-  { constName: "BEFUNDE_MJS_B64", source: join(root, "kit", "befunde.mjs") },
+  // Auslieferung ginge beides in jedem Projekt ins Leere. Seit Issue #1559 traegt die
+  // englische Datei den Code (Plan #1548 E6).
+  { constName: "FINDINGS_MJS_B64", source: join(root, "kit", "findings.mjs") },
   // Der Worktree der Release-Skills (Issue #929). Anders als die Werkzeuge darueber ist es
   // KEINE portable Einzeldatei: Es ruft die Worktree-Vorbereitung aus night.mjs als
   // Nachbardatei, damit es genau einen Weg gibt, einen Worktree anzulegen. Ohne
@@ -120,31 +129,47 @@ const BLOBS = [
   { constName: "KIT_BOARD_B64", sourceFiles: join(root, "kit", "board") },
   // Die Pruefrollen (Issue #1377, Plan #1375 A1): ein Teil wie night/ und board/.
   { constName: "KIT_ROLLEN_B64", sourceFiles: join(root, "kit", "rollen") },
+  // Die Texttabellen der Module (Issue #1524): ein Teil wie night/ und board/.
+  { constName: "KIT_TEXTE_B64", sourceFiles: join(root, "kit", "texte") },
   { constName: "SKILLS_B64", sourceDir: join(root, "skills") },
   // Der Leser-Agent der Pruefer (Issue #1377, Plan #1375 A2): eine flache Quelle neben skills/.
   { constName: "AGENTS_B64", sourceFiles: join(root, "agents") },
+  // Der Spiegel en/ (Issue #1464, Plan #1420 E17): je Quelle ein englischer Blob neben dem
+  // deutschen. Der Installer waehlt je Projektsprache und faellt fuer eine fehlende englische
+  // Fassung auf die deutsche zurueck. Skills gibt es seit Issue #1566 nur in einer Fassung.
+  { constName: "TEMPLATES_EN_B64", sourceFiles: join(root, "en", "templates") },
+  { constName: "AGENTS_EN_B64", sourceFiles: join(root, "en", "agents") },
+  { constName: "KIT_ROLLEN_EN_B64", sourceFiles: join(root, "en", "kit", "rollen") },
 ];
 
 // Dateien, die den Kit-Stand als KIT_VERSION tragen (Issue #170/#171).
 // Die Liste steuert zugleich die Dogfooding-Kopie unter .claude/kit/ (weiter unten):
 // Ein Werkzeug, das hier fehlt, entstuende dort nie — und die Skills dieses Repos
 // riefen ein Kommando auf, das im eigenen Klon nicht liegt (Issue #425).
-const STAMPED = ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "aufwand.mjs", "wirksamkeit.mjs", "befunde.mjs", "worktree.mjs"];
+const STAMPED = ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "effort.mjs", "effectiveness.mjs", "findings.mjs", "worktree.mjs"];
 
 // Download-Dateien (Issue #676, Plan #674 E1): gestempelt wie die Kit-Werkzeuge, aber ohne
 // Kopie nach .claude/kit/ — sie arbeiten ueber mehrere Projekte und gehoeren in keines.
-const STAMPED_DOWNLOADS = ["einstellungen.mjs"];
+const STAMPED_DOWNLOADS = ["settings.mjs"];
 
 // Teilverzeichnisse unter kit/ (Issue #1209, Plan #1199 E19): kopiert nach .claude/kit/<teil>/
 // wie die Werkzeuge, aber ungestempelt — KIT_VERSION steht nur im Einstieg. In STAMPED
 // brachen sie den Lauf ab, weil ein Teil keine Konstante traegt.
-const TEILE = ["night", "board", "rollen"];
+const TEILE = ["night", "board", "rollen", "texte"];
 
-// Das Schema, das die Einstellungs-Oberflaeche eingebettet traegt (Plan #674 E2). Eine
-// eigene Datei mitzuliefern widerspraeche dem Download als einzelne Datei.
-const SCHEMA_QUELLE = join(root, "templates", "workflow.config.schema.json");
-const SCHEMA_ZIEL = "einstellungen.mjs";
-const SCHEMA_RE = /(const SCHEMA_B64 = ")([A-Za-z0-9+/=]*)(";)/;
+// Was die Einstellungs-Oberflaeche eingebettet traegt: das Schema (Plan #674 E2) und die
+// Namenstabelle der Einstellungen (Issue #1437, Plan #1420 E10), dazu die englischen
+// Beschreibungen fuer ein englisches Projekt (Issue #1441) und der Texthelfer, ueber den
+// die Oberflaeche ihre Meldungen in der Projektsprache waehlt (Issue #1456, Plan #1420
+// E13). Eine eigene Datei mitzuliefern widerspraeche dem Download als einzelne Datei, und
+// eine Kopie von Hand liefe der Quelle davon.
+const EINBETTUNG_ZIEL = "settings.mjs";
+const EINBETTUNGEN = [
+  { konstante: "SCHEMA_B64", quelle: "templates/workflow.config.schema.json", meldung: "Schema eingebettet" },
+  { konstante: "CONFIG_NAMEN_B64", quelle: "kit/board/config-namen.mjs", meldung: "Namenstabelle eingebettet" },
+  { konstante: "CONFIG_REFERENZ_EN_B64", quelle: "tools/config-referenz.en.json", meldung: "Englische Referenz eingebettet" },
+  { konstante: "NAMEN_B64", quelle: "kit/board/namen.mjs", meldung: "Texthelfer eingebettet" },
+];
 const KIT_VERSION_RE = /(const KIT_VERSION = ")(\d+\.\d+\.\d+)(";)/;
 const INSTALL_VERSION_RE = /const VERSION = "(\d+\.\d+\.\d+)";/;
 
@@ -180,23 +205,26 @@ for (const datei of [...STAMPED, ...STAMPED_DOWNLOADS]) {
   }
 }
 
-// --- Eingebettetes Schema (Issue #676) ---
+// --- Eingebettete Dateien (Issue #676, #1437, #1441) ---
 // Nach dem Stempel gelesen, damit beide Schritte auf demselben Dateistand arbeiten.
-const schemaDrift = [];
+const einbettungDrift = [];
 {
-  const pfad = join(root, "kit", SCHEMA_ZIEL);
-  const src = readFileSync(pfad, "utf-8");
-  const erwartet = Buffer.from(readFileSync(SCHEMA_QUELLE, "utf-8"), "utf-8").toString("base64");
-  const m = src.match(SCHEMA_RE);
-  if (!m) {
-    process.stderr.write(`Fehler: SCHEMA_B64-Konstante nicht in kit/${SCHEMA_ZIEL} gefunden\n`);
-    process.exit(1);
-  }
-  if (m[2] !== erwartet) {
-    schemaDrift.push(`kit/${SCHEMA_ZIEL}`);
+  const pfad = join(root, "kit", EINBETTUNG_ZIEL);
+  let src = readFileSync(pfad, "utf-8");
+  for (const { konstante, quelle, meldung } of EINBETTUNGEN) {
+    const re = new RegExp(`(const ${konstante} = ")([A-Za-z0-9+/=]*)(";)`);
+    const erwartet = Buffer.from(readFileSync(join(root, quelle), "utf-8"), "utf-8").toString("base64");
+    const m = src.match(re);
+    if (!m) {
+      process.stderr.write(`Fehler: ${konstante}-Konstante nicht in kit/${EINBETTUNG_ZIEL} gefunden\n`);
+      process.exit(1);
+    }
+    if (m[2] === erwartet) continue;
+    einbettungDrift.push({ quelle, meldung });
     // Base64 enthaelt kein '$' — Ersetzung ohne Escaping sicher.
-    if (!checkOnly) writeFileSync(pfad, src.replace(SCHEMA_RE, `$1${erwartet}$3`), "utf-8");
+    src = src.replace(re, `$1${erwartet}$3`);
   }
+  if (einbettungDrift.length > 0 && !checkOnly) writeFileSync(pfad, src, "utf-8");
 }
 
 let installSrc = readFileSync(INSTALL, "utf-8");
@@ -328,6 +356,27 @@ function kopieSchreiben(ziel, soll, ordner) {
   }
 }
 
+// Die Ordner der Skill-Namen, die es seit Issue #1566 nicht mehr gibt (Plan #1548 E9). Geraeumt
+// wird ein Ordner nur, wenn seine SKILL.md den gleichnamigen `name:` traegt: Dann ist er die
+// Kopie des alten Kit-Skills und kein eigener Skill, der zufaellig so heisst. Er zaehlt als
+// veraltete Kopie, damit `--check` ihn meldet.
+const ALTE_SKILLS = ["fachplan", "kontext", "context", "review", "plan"];
+
+function alterKitSkill(name) {
+  const datei = join(LOCAL_SKILLS, name, "SKILL.md");
+  if (!existsSync(datei)) return false;
+  const kopf = /^---\r?\n([\s\S]*?)\r?\n---/.exec(readFileSync(datei, "utf-8"));
+  return Boolean(kopf) && new RegExp(`^name:\\s*${name}\\s*$`, "m").test(kopf[1]);
+}
+
+if (existsSync(LOCAL_SKILLS) && !laufStand) {
+  for (const name of ALTE_SKILLS) {
+    if (!alterKitSkill(name)) continue;
+    copyDrift.push(`.claude/skills/${name}/ (entfernt)`);
+    if (!checkOnly) rmSync(join(LOCAL_SKILLS, name), { recursive: true, force: true });
+  }
+}
+
 if (existsSync(LOCAL_SKILLS) && existsSync(SKILLS_SRC) && !laufStand) {
   for (const name of readdirSync(SKILLS_SRC, { withFileTypes: true })) {
     if (!name.isDirectory()) continue;
@@ -370,20 +419,20 @@ if (checkOnly) {
   if (stampDrift.length > 0) probleme.push(`Versions-Stempel: ${stampDrift.join("; ")}.`);
   if (drift.length > 0) probleme.push(`Blob-Drift in install.mjs: ${drift.join(", ")} weicht von kit/ ab.`);
   if (copyDrift.length > 0) probleme.push(`Lokale Kopie veraltet: ${copyDrift.join(", ")}.`);
-  if (schemaDrift.length > 0) probleme.push(`Eingebettetes Schema veraltet: ${schemaDrift.join(", ")} weicht von templates/workflow.config.schema.json ab.`);
+  for (const { quelle } of einbettungDrift) probleme.push(`Eingebettete Datei veraltet: kit/${EINBETTUNG_ZIEL} weicht von ${quelle} ab.`);
   if (probleme.length > 0) {
     process.stderr.write(`${probleme.join("\n")}\nBeheben mit: node tools/sync-blobs.mjs\n`);
     process.exit(1);
   }
   process.stdout.write("Blobs und Versions-Stempel synchron mit kit/.\n");
-} else if (stampDrift.length > 0 || drift.length > 0 || copyDrift.length > 0 || schemaDrift.length > 0) {
+} else if (stampDrift.length > 0 || drift.length > 0 || copyDrift.length > 0 || einbettungDrift.length > 0) {
   if (drift.length > 0) writeFileSync(INSTALL, installSrc, "utf-8");
   const teile = [];
   const gestempelt = [...STAMPED, ...STAMPED_DOWNLOADS].map((d) => `kit/${d}`).join(", ");
   if (stampDrift.length > 0) teile.push(`Gestempelt auf v${version}: ${gestempelt}`);
   if (drift.length > 0) teile.push(`Aktualisiert: ${drift.join(", ")}`);
   if (copyDrift.length > 0) teile.push(`Lokale Kopie aufgefrischt: ${copyDrift.join(", ")}`);
-  if (schemaDrift.length > 0) teile.push(`Schema eingebettet: ${schemaDrift.join(", ")}`);
+  for (const { meldung } of einbettungDrift) teile.push(`${meldung}: kit/${EINBETTUNG_ZIEL}`);
   process.stdout.write(`${teile.join("\n")}\n`);
 } else {
   process.stdout.write("Blobs bereits synchron.\n");

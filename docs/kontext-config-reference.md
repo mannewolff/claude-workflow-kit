@@ -1,6 +1,6 @@
 # `kontext.config.json` — Referenz
 
-Konfiguriert den `/kontext`-Skill (Session-Start) und den `/document`-Skill (Session-Ende). Beide lesen dieselbe Datei.
+Konfiguriert den `/session-start`-Skill (Session-Start) und den `/document`-Skill (Session-Ende). Beide lesen dieselbe Datei.
 
 ---
 
@@ -8,10 +8,10 @@ Konfiguriert den `/kontext`-Skill (Session-Start) und den `/document`-Skill (Ses
 
 | Pfad | Zweck |
 |------|-------|
-| `~/.claude/kontext.config.json` | Global — gilt für alle Projekte |
-| `.claude/kontext.config.json` | Projektlokal — überschreibt einzelne Felder der globalen Config |
+| `~/.claude/session-start.config.json` | Global — gilt für alle Projekte |
+| `.claude/session-start.config.json` | Projektlokal — überschreibt einzelne Felder der globalen Config |
 
-Die lokale Config wird mit der globalen **feldweise gemergt, lokale Felder gewinnen**. Fehlende Felder erbt sie von global. Wenn keine Config gefunden wird, laufen `/kontext` und `/document` im Degraded Mode weiter (Vorhaben über den Board-Adapter, Log ins Projektverzeichnis).
+Die lokale Config wird mit der globalen **feldweise gemergt, lokale Felder gewinnen**. Fehlende Felder erbt sie von global. Wenn keine Config gefunden wird, laufen `/session-start` und `/document` im Degraded Mode weiter (Vorhaben über den Board-Adapter, Log ins Projektverzeichnis).
 
 Der Merge ist kein Detail, sondern die Voraussetzung für das Multi-Repo-Setup weiter unten: Die lokale Config setzt dort nur `parentProject` und `project` und erbt den Vault-Pfad von global. Bei „erstes gefundenes gewinnt" wäre der Vault verloren.
 
@@ -48,7 +48,7 @@ Muster ohne Treffer werden leise übersprungen.
 Die Zielpfade berechnet der Board-Adapter, nicht der Skill-Prompt:
 
 ```bash
-node .claude/kit/board.mjs kontext paths
+node .claude/kit/board.mjs context paths
 ```
 
 ```json
@@ -74,7 +74,7 @@ Ohne `vault` liefert das Kommando `"mode": "degraded"` und alle Vault-Pfade als 
 Dazu kommt:
 
 ```bash
-node .claude/kit/board.mjs kontext last-log
+node .claude/kit/board.mjs context last-log
 ```
 
 Es liefert den jüngsten vorhandenen Log-Eintrag **desselben Projekts** (`{"path": …, "date": …}`) oder `{"path": null}`, wenn es keinen gibt. `/document` nutzt es, um an den vorherigen Eintrag anzuknüpfen statt bei null anzufangen. Der heutige Eintrag ist ausgeschlossen, damit eine zweite Session am selben Tag nicht sich selbst liest.
@@ -124,7 +124,7 @@ ClaudeMemory/
         └── order-service.md
 ```
 
-`/kontext` lädt im Multi-Repo-Fall **beide** Notizen: erst die Dach-Notiz als Rahmen, dann die des Service, in dem du gerade sitzt.
+`/session-start` lädt im Multi-Repo-Fall **beide** Notizen: erst die Dach-Notiz als Rahmen, dann die des Service, in dem du gerade sitzt.
 
 ### Warum die Service-Kennung in den Dateinamen gehört
 
@@ -143,10 +143,10 @@ Ohne diese Regel wäre die Konfliktfläche nur vom Log in die Notiz verschoben.
 Der Installer (`install.mjs`) legt die globale Config automatisch an, wenn bei der Installation ein Vault-Pfad angegeben wird:
 
 ```
-Pfad zum Memory-Vault für /kontext (leer = überspringen): /Users/mustermann/Nextcloud/ClaudeMemory
+Pfad zum Memory-Vault für /session-start (leer = überspringen): /Users/mustermann/Nextcloud/ClaudeMemory
 ```
 
-Ergebnis in `~/.claude/kontext.config.json`:
+Ergebnis in `~/.claude/session-start.config.json`:
 
 ```json
 {
@@ -156,7 +156,7 @@ Ergebnis in `~/.claude/kontext.config.json`:
 }
 ```
 
-Die lokale `.claude/kontext.config.json` muss manuell angelegt werden (nur bei Bedarf).
+Die lokale `.claude/session-start.config.json` muss manuell angelegt werden (nur bei Bedarf).
 
 ---
 

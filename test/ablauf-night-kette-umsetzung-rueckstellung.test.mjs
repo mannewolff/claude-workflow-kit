@@ -26,7 +26,7 @@ test("[night-34] Rueckstellpflicht nach Zeitablauf: das gezogene Paket steht am 
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: "sleep 5" } }); // # haengt — das Zeitlimit beendet die Paket-Session, der Test wartet nicht auf sie
     // Das kurze Limit gilt nur der Umsetzung (Issue #1080): Die vier erzeugenden Sessions
     // rissen es unter Last.
-    const res = run(dir, ["--kette"], { ...env, NIGHT_TIMEOUT_MS: "1500", NIGHT_TIMEOUT_STUFE: "umsetzung" });
+    const res = run(dir, ["--chain"], { ...env, NIGHT_TIMEOUT_MS: "1500", NIGHT_TIMEOUT_STUFE: "umsetzung" });
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit } = umsetzung(dir, F);
@@ -42,7 +42,7 @@ test("[night-34] Rueckstellpflicht nach einem technischen Fehler: harter Stopp, 
     // Ein Fehlstart ohne Ereignis der Session: seit Issue #1088 (E13) mit einem zweiten
     // Versuch nach der Pause, danach der harte Stopp.
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: "exit 3" } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);
@@ -62,7 +62,7 @@ test("[night-34] Rueckstellpflicht nach einem Wurf aus der Stufe heraus: das gez
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
     // Der Test-Hook wirft zwischen `issue move ready` und der Session des ersten Pakets —
     // die Stelle, an der ein Wurf das Paket in Ready zuruecklassen wuerde.
-    const res = run(dir, ["--kette"], { ...env, NIGHT_KETTE_WURF: "0003" });
+    const res = run(dir, ["--chain"], { ...env, NIGHT_KETTE_WURF: "0003" });
     assert.notEqual(res.status, 0, "ein Wurf aus der Stufe heraus endet nicht regulaer");
 
     // Der Wurf reisst die Kette mitten aus der Stufe; die Einheit traegt deshalb keinen
@@ -77,7 +77,7 @@ test("[night-34] erschoepftes Zeitbudget der Stufe: die Kette bleibt fertig, die
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);
@@ -97,7 +97,7 @@ test("[night-34] erschoepftes Kostenbudget: kostenUsdB tritt an die Stelle von k
     // Kette laengst abgebrochen; unter `kostenUsdB` (1.1 $) laeuft das erste Paket und
     // treibt die Summe auf 1.25 $ — das zweite beginnt nicht mehr.
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG }, kosten: 0.25 });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);
@@ -115,7 +115,7 @@ test("[night-34] mit issueReview.requiredBeforeReady faellt die Kette auf Varian
   mitProjekt((dir) => {
     const F = fachplanB(dir);
     const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--kette"], env);
+    const res = run(dir, ["--chain"], env);
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
     const { einheit, stufe } = umsetzung(dir, F);

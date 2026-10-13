@@ -1,0 +1,532 @@
+// Meldungen zweisprachig, Gruppe kit/checks.mjs (Plan #1420 E13/E14).
+//
+// Das Pruefkommando traegt seine Texte an den Menschen in einer Tabelle TEXTE { de, en } und
+// gibt sie ueber den Texthelfer aus kit/board/namen.mjs aus:
+//   - Paritaet: dieselben Schluessel und Platzhalter in beiden Sprachen.
+//   - Englische Stichproben: ein englisches Projekt sieht die englische Form.
+//   - Die deutschen Wortlaut-Tests (test/checks-*.test.mjs, test/ablauf-checks-*.test.mjs)
+//     bleiben, wie sie sind, und laufen mit der Vorgabe Deutsch.
+// Vertrag bleibt (E14): die JSON-Felder von plan und der Zusammenfassung, die Ergebniswerte,
+// die Stufen- und Achsenwerte der Config und die Marke `Pruefung festgefahren:`.
+//
+// Das Paket #1451 ist in drei Teile geschnitten. Der erste (#1494) deckt kit/checks.mjs vom
+// Dateianfang bis vor `verteilen`; die Teile #1495 und #1496 ergaenzen diese Datei.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
+import { TEXTE as CHECKS_TEXTE, FESTGEFAHREN_MARKE, aufrufen } from "../kit/checks.mjs";
+import { pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
+import { mitRepo, plan, run, checks, checksMit, datei, git, eintrag, zusammenfassung } from "./helpers/checks-repo.mjs";
+import { deutschAmHelferVorbei, deutschImEnglischen } from "./helpers/quelltext-texte.mjs";
+
+/** Fuehrt `fn` mit der Prozesssprache `sprache` aus und vergisst sie danach wieder. */
+async function inSprache(sprache, fn) {
+  spracheFestlegen(sprache);
+  try {
+    return await fn();
+  } finally {
+    spracheFestlegen(null);
+  }
+}
+
+/** Der Fehlertext eines gescheiterten Aufrufs ohne den Zeilenumbruch. */
+function fehler(res) {
+  assert.equal(res.status, 1, `erwartet Exit 1, war ${res.status}: ${res.stdout}`);
+  return res.stderr.trim();
+}
+
+const GRUEN = (name) => `node -e "process.exit(0)" # ${name}`;
+
+// --- kit/checks.mjs, Teil 1: bis vor verteilen (Issue #1494) --------------------------
+
+test("[1494] die Texttabelle des Pruefkommandos hat in beiden Sprachen dieselben Schluessel und Platzhalter", () => {
+  assert.deepEqual(pruefeParitaet(CHECKS_TEXTE), []);
+  assert.ok(Object.keys(CHECKS_TEXTE.de).length >= 25, "die Tabelle traegt die Meldungen des ersten Teils");
+});
+
+test("[1494] die englische Haelfte der Tabelle traegt keine deutschen Woerter", () => {
+  assert.deepEqual(deutschImEnglischen(CHECKS_TEXTE), []);
+});
+
+test("[1494] bis vor verteilen geht jeder deutsche Text ueber den Texthelfer", () => {
+  assert.deepEqual(deutschAmHelferVorbei("kit/checks.mjs", CHECKS_TEXTE, [FESTGEFAHREN_MARKE, "nicht gestartet", "bereiche | ohne-bereich | ohne-zuordnung | veroeffentlichung | anker"],
+    { bis: "function verteilen(" }), []);
+});
+
+test("[1494] englisch: die Nutzungshilfe nennt die englischen Befehls- und Optionsnamen", async () => {
+  const leer = mkdtempSync(join(tmpdir(), "checks-hilfe-"));
+  try {
+    const res = await inSprache("en", () => aufrufen(["--help"], { cwd: leer }));
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /^checks\.mjs \(claude-workflow-kit v[\d.]+\) — due checks\n/);
+    for (const name of ["node checks.mjs areas", "--stage <s>", "--area <n>", "--finish [n]", "--retry", "--fresh", "--in <path>"]) {
+      assert.ok(res.stdout.includes(name), `die Hilfe nennt ${name}`);
+    }
+    assert.ok(res.stdout.includes("notAtCompletion: interplay | fullTestSet"), "die Achse mit ihren englischen Werten");
+    assert.ok(res.stdout.includes("'kind': hint"), "die Art mit ihrem englischen Wert");
+    assert.ok(res.stdout.includes(`'${FESTGEFAHREN_MARKE} <command> — <error>'`), "die Marke bleibt Vertrag");
+    assert.doesNotMatch(res.stdout, /faellige Pruefungen|Gelesen wird/);
+  } finally {
+    rmSync(leer, { recursive: true, force: true });
+  }
+});
+
+test("[1494] englisch: die fehlende und die kaputte Config", async () => {
+  const leer = mkdtempSync(join(tmpdir(), "checks-ohne-config-"));
+  try {
+    await inSprache("en", () => {
+      assert.equal(fehler(aufrufen(["plan"], { cwd: leer })),
+        `Error: No .claude/workflow.config.json under ${leer} — please start in the project root.`);
+      mkdirSync(join(leer, ".claude"));
+      writeFileSync(join(leer, ".claude", "workflow.config.json"), "{ kaputt");
+      assert.match(fehler(aufrufen(["plan"], { cwd: leer })), /^Error: \.claude\/workflow\.config\.json is not valid JSON: /);
+    });
+  } finally {
+    rmSync(leer, { recursive: true, force: true });
+  }
+});
+
+test("[1494] englisch: unbekannte Werte in buildChecks", async () => {
+  const faelle = [
+    [{ buildChecks: [{ cmd: "a", nichtBeimAbschluss: "nie" }] },
+      "Error: Unknown value 'nie' for notAtCompletion on check 'a'. Expected: interplay, fullTestSet."],
+    [{ buildChecks: [{ cmd: "a", art: 3 }] }, "Error: Unknown value 3 for kind on check 'a'. Expected: hint."],
+    [{ buildChecks: [{ cmd: "a", areas: ["x"] }], checkAreas: {} },
+      "Error: Unknown area 'x' on check 'a'. Known from checkAreas: none."],
+    [{ buildChecks: [{ cmd: "a", areas: ["x"] }], checkAreas: { y: ["y/**"] } },
+      "Error: Unknown area 'x' on check 'a'. Known from checkAreas: y."],
+  ];
+  for (const [config, erwartet] of faelle) {
+    await mitRepo({ config }, (dir) => inSprache("en", () => assert.equal(fehler(checks(dir, "plan")), erwartet)));
+  }
+});
+
+test("[1494] englisch: die Grenzen der Guetemessung und der Abschluss-Achse", async () => {
+  const guete = { muster: "x", marke: "y" };
+  const faelle = [
+    [{ buildChecks: [{ cmd: "a", guete }, { cmd: "b", guete }] }, [],
+      "Error: More than one quality measurement: 'a', 'b' all carry 'quality' — at most one entry may measure."],
+    [{ buildChecks: [{ cmd: "a", guete, stufe: "merge" }, "b"] }, [],
+      "Error: The quality measurement 'a' carries stage 'merge' — a measurement only before the release would come too late. "
+      + "Allowed: package, push."],
+    [{ buildChecks: [{ cmd: "a", stufe: "push", nichtBeimAbschluss: "zusammenspiel" }, "b"] }, [],
+      "Error: The check 'a' carries notAtCompletion and stage 'push' — there it does not run at completion anyway. "
+      + "The axis applies to the stage 'package'."],
+    [{ buildChecks: [{ cmd: "a", nichtBeimAbschluss: "zusammenspiel" }] }, ["--finish"],
+      "Error: No entry of the stage 'package' runs at completion: each carries notAtCompletion or a quality block. "
+      + "So the completion of a work package has no gate."],
+  ];
+  for (const [config, schalter, erwartet] of faelle) {
+    await mitRepo({ config }, (dir) => inSprache("en", () => assert.equal(fehler(checks(dir, "plan", ...schalter)), erwartet)));
+  }
+});
+
+test("[1494] englisch: zwei Aufrufe zugleich gehen nicht", async () => {
+  await mitRepo({ config: { buildChecks: [GRUEN("a")] } }, async (dir) => {
+    await inSprache("en", async () => {
+      const laufend = run(dir);
+      assert.throws(() => aufrufen(["plan"], { cwd: dir }),
+        { message: "checks.mjs: aufrufen is already running — two calls at the same time are not possible" });
+      await laufend;
+    });
+  });
+});
+
+test("[1494] englisch: die Gruende der Auswahl nach Bereichen", async () => {
+  const config = {
+    buildChecks: [
+      { cmd: GRUEN("immer"), always: true },
+      GRUEN("frei"),
+      { cmd: GRUEN("a"), areas: ["a"] },
+      { cmd: GRUEN("ab"), areas: ["a", "b"] },
+      { cmd: GRUEN("b"), areas: ["b"] },
+      { cmd: GRUEN("bc"), areas: ["b", "c"] },
+    ],
+    checkAreas: { a: ["src/a.mjs"], b: ["src/b.mjs"], c: ["src/c.mjs"] },
+  };
+  await mitRepo({ config }, (dir) => inSprache("en", () => {
+    datei(dir, "src/a.mjs", "export const a = 1;\n");
+    const ergebnis = plan(dir);
+    assert.equal(eintrag(ergebnis.laufen, GRUEN("immer")).grund, "set to always run");
+    assert.equal(eintrag(ergebnis.laufen, GRUEN("frei")).grund, "not assigned");
+    assert.equal(eintrag(ergebnis.laufen, GRUEN("a")).grund, "area a touched");
+    assert.equal(eintrag(ergebnis.laufen, GRUEN("ab")).grund, "area a touched");
+    assert.equal(eintrag(ergebnis.ausgelassen, GRUEN("b")).grund, "area b untouched");
+    assert.equal(eintrag(ergebnis.ausgelassen, GRUEN("bc")).grund, "areas b, c untouched");
+  }));
+});
+
+test("[1494] englisch: der volle Umfang wegen Dateien ohne Muster", async () => {
+  const config = { buildChecks: [{ cmd: GRUEN("a"), areas: ["a"] }], checkAreas: { a: ["src/a.mjs"] } };
+  await mitRepo({ config }, (dir) => inSprache("en", () => {
+    datei(dir, "notiz.txt");
+    assert.equal(plan(dir).laufen[0].grund, "full scope: 'notiz.txt' matches no pattern");
+    for (let i = 0; i < 11; i += 1) datei(dir, `n${String(i).padStart(2, "0")}.txt`);
+    assert.match(plan(dir).laufen[0].grund, /^full scope: 'n00\.txt', .+ and 2 more match no pattern$/);
+  }));
+});
+
+test("[1494] englisch: die Ableitung aus den Importen", async () => {
+  const config = {
+    buildChecks: [{ cmd: GRUEN("a"), areas: ["a"] }, { cmd: GRUEN("b"), areas: ["b"] }],
+    checkAreas: { a: ["src/a.mjs"], b: ["src/b.mjs"] },
+  };
+  await mitRepo({ config }, async (dir) => {
+    datei(dir, "src/a.mjs", "export const a = 1;\n");
+    datei(dir, "src/b.mjs", 'import { a } from "./a.mjs";\nexport const b = a;\n');
+    datei(dir, "src/helfer.mjs", "export const h = 1;\n");
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "stand");
+    datei(dir, "src/a.mjs", "export const a = 2;\n");
+    datei(dir, "src/neu.mjs", "export const n = 1;\n");
+    await inSprache("en", async () => {
+      const ergebnis = plan(dir);
+      assert.deepEqual(ergebnis.ohnePruefung, [{ pfad: "src/neu.mjs", grund: "not imported by any file" }]);
+      const res = await run(dir);
+      assert.ok(res.stdout.includes("area b touched via import of src/a.mjs"), res.stdout);
+      assert.ok(res.stdout.includes("no check: src/neu.mjs — not imported by any file"), res.stdout);
+    });
+  });
+});
+
+test("[1494] ohne Spracheinstellung bleiben die Meldungen deutsch", async () => {
+  const leer = mkdtempSync(join(tmpdir(), "checks-deutsch-"));
+  try {
+    // Die Hilfe ist seit Issue #1564 (Plan #1548 E7) in jedem Projekt englisch.
+    assert.match(aufrufen(["--help"], { cwd: leer }).stdout, /— due checks\n/);
+    assert.equal(fehler(aufrufen(["plan"], { cwd: leer })),
+      `Fehler: Keine .claude/workflow.config.json unter ${leer} — bitte im Projekt-Root starten.`);
+  } finally {
+    rmSync(leer, { recursive: true, force: true });
+  }
+  const config = { buildChecks: [{ cmd: GRUEN("a"), areas: ["a"] }], checkAreas: { a: ["src/a.mjs"] } };
+  await mitRepo({ config }, (dir) => {
+    datei(dir, "notiz.txt");
+    assert.equal(plan(dir).laufen[0].grund, "voller Umfang: 'notiz.txt' trifft kein Muster");
+  });
+});
+
+// --- kit/checks.mjs, Teil 2: ab verteilen bis vor berichtszeilen (Issue #1495) --------
+
+const ROT = (name) => `node -e "process.exit(1)" # ${name}`;
+
+test("[1495] die Texttabelle traegt die Meldungen des zweiten Teils in beiden Sprachen", () => {
+  assert.deepEqual(pruefeParitaet(CHECKS_TEXTE), []);
+  assert.deepEqual(deutschImEnglischen(CHECKS_TEXTE), []);
+  for (const schluessel of ["grundStufeSpaeter", "grundLeeresPaket", "pushPruefungUngueltig", "zuschnittHinweis",
+    "bremseVersuche", "letzterVersuch", "festgefahrenHinweis", "gueteErgebnis", "dauerNichtGemessen", "haengend"]) {
+    assert.ok(Object.hasOwn(CHECKS_TEXTE.de, schluessel), `die Tabelle traegt ${schluessel}`);
+  }
+});
+
+test("[1495] bis vor berichtszeilen geht jeder deutsche Text ueber den Texthelfer", () => {
+  // gueteAuswerten bleibt die Wertung, die kit/night/session.mjs als Kopie fuehrt (SYNC).
+  assert.deepEqual(deutschAmHelferVorbei("kit/checks.mjs", CHECKS_TEXTE,
+    [FESTGEFAHREN_MARKE, "nicht gestartet", "bereiche | ohne-bereich | ohne-zuordnung | veroeffentlichung | anker",
+      "ohne-bereich", "ohne-zuordnung"],
+    { bis: "function berichtszeilen(", ohne: [{ von: "export function gueteAuswerten(", bis: "function gueteErgebnis(" }] }), []);
+});
+
+test("[1495] englisch: die Gruende nach Stufe und Abschluss", async () => {
+  const guete = { muster: String.raw`(\d+)`, marke: 1 };
+  const config = {
+    buildChecks: [
+      GRUEN("paket"),
+      { cmd: GRUEN("spaeter"), stufe: "push" },
+      { cmd: GRUEN("zusammen"), nichtBeimAbschluss: "zusammenspiel" },
+      { cmd: GRUEN("guete"), guete },
+      { cmd: GRUEN("frei"), stufe: "merge" },
+    ],
+  };
+  await mitRepo({ config }, (dir) => inSprache("en", () => {
+    const abschluss = plan(dir, "--finish");
+    assert.equal(eintrag(abschluss.ausgelassen, GRUEN("spaeter")).grund, "stage push, running paket");
+    assert.equal(eintrag(abschluss.ausgelassen, GRUEN("zusammen")).grund, "completion run: interplay, runs at release");
+    assert.equal(eintrag(abschluss.ausgelassen, GRUEN("guete")).grund, "completion run: the quality measurement needs the full test set");
+    assert.match(eintrag(abschluss.ausgelassen, GRUEN("paket")).grund, /^empty package: no change since [0-9a-f]+$/);
+
+    const push = plan(dir, "--stage", "push");
+    assert.equal(eintrag(push.laufen, GRUEN("paket")).grund, "release stage: full scope");
+    assert.equal(eintrag(push.laufen, GRUEN("guete")).grund, "quality measurement: always runs before the release");
+
+    const merge = plan(dir, "--stage", "merge");
+    assert.equal(eintrag(merge.laufen, GRUEN("frei")).grund, "approval stage: runs before every approval");
+    assert.equal(eintrag(merge.ausgelassen, GRUEN("spaeter")).grund, "stage push, checked at push main");
+
+    assert.equal(plan(dir, "--since", "gibtsnicht").laufen[0].grund, "full scope: anchor 'gibtsnicht' cannot be resolved");
+  }));
+});
+
+test("[1495] englisch: Bereichslauf, unbekannter Bereich und breite Kommandos", async () => {
+  const config = {
+    buildChecks: [
+      { cmd: GRUEN("a"), areas: ["a"] },
+      { cmd: GRUEN("ab1"), areas: ["a", "b"] },
+      { cmd: GRUEN("ab2"), areas: ["a", "b"] },
+    ],
+    checkAreas: { a: ["src/a.mjs"], b: ["src/b.mjs"] },
+  };
+  await mitRepo({ config }, (dir) => inSprache("en", () => {
+    const ergebnis = plan(dir, "--area", "a");
+    assert.equal(eintrag(ergebnis.laufen, GRUEN("a")).grund, "area run a: area a touched");
+    assert.deepEqual(ergebnis.zuschnitt, [
+      `${GRUEN("a")} is assigned to every area and runs on every change — check the cut (checks.mjs areas)`,
+      `${GRUEN("ab1")} is assigned to every area and runs on every change — check the cut (checks.mjs areas)`,
+      `${GRUEN("ab2")} is assigned to every area and runs on every change — check the cut (checks.mjs areas)`,
+    ]);
+    assert.equal(fehler(checks(dir, "plan", "--area", "x")), "Error: Unknown area 'x'. Configured in checkAreas: a, b.");
+  }));
+  await mitRepo({ config: { buildChecks: [GRUEN("a")] } }, (dir) => inSprache("en", () => {
+    assert.equal(fehler(checks(dir, "plan", "--area", "x")), "Error: Unknown area 'x'. Configured in checkAreas: none.");
+  }));
+});
+
+test("[1495] englisch: ungueltige pushPruefung", async () => {
+  const faelle = [
+    [{ pushPruefung: "irgendwo" },
+      'Error: Invalid value "irgendwo" for pushCheck. Expected: "local" or { "location": "buildService", "branch": "<name>" }.'],
+    [{ pushPruefung: { ort: "buildDienst", zweig: "main" } },
+      "Error: pushCheck: the check branch 'main' is mainBranch. The check branch must be a branch of its own."],
+  ];
+  for (const [teil, erwartet] of faelle) {
+    await mitRepo({ config: { buildChecks: [GRUEN("a")], ...teil } },
+      (dir) => inSprache("en", () => assert.equal(fehler(checks(dir, "plan", "--stage", "push")), erwartet)));
+  }
+});
+
+test("[1495] englisch: Dauer, Obergrenze und Haenger", async () => {
+  const { dauerText, obergrenzeZusatz, haengendText } = await import("../kit/checks.mjs");
+  await inSprache("en", () => {
+    assert.equal(dauerText(null), "duration not measured");
+    assert.equal(dauerText(1234), "1.2 s");
+    assert.equal(obergrenzeZusatz(31_000, 30_000), " — limit 30 s exceeded by 1 s");
+    assert.equal(haengendText(180_000), "hanging: aborted after the 180 s limit");
+  });
+});
+
+test("[1495] englisch: die Guete-Zeile und das Guete-Feld ohne Lauf", async () => {
+  const messung = 'node -e "console.log(42)" # guete';
+  const config = { buildChecks: [GRUEN("bau"), { cmd: messung, guete: { muster: String.raw`(\d+)`, marke: 1 } }] };
+  await mitRepo({ config }, async (dir) => {
+    datei(dir, "neu.txt");
+    await inSprache("en", async () => {
+      await run(dir, "--finish");
+      assert.equal(zusammenfassung(dir).guete.grund,
+        "skipped: completion run: the quality measurement needs the full test set");
+      // Der Grund hinter dem Gedankenstrich kommt aus gueteAuswerten, der SYNC-Kopie von kit/night/session.mjs.
+      const res = await run(dir, "--stage", "push");
+      assert.ok(res.stdout.includes("Quality: 42 % reached, threshold 1 % — "), res.stdout);
+    });
+  });
+});
+
+test("[1495] englisch: die Bremse und der Hinweis einer festgefahrenen Pruefung", async () => {
+  const cmd = ROT("a");
+  const folgen = (versuche) => JSON.stringify({ festgefahren: { folgen: { [cmd]: { fehler: "", versuche } } } });
+  await mitRepo({ config: { buildChecks: [cmd] } }, async (dir) => {
+    datei(dir, "neu.txt");
+    await inSprache("en", async () => {
+      writeFileSync(join(dir, ".claude", "checks-summary.json"), folgen(2));
+      const hinweis = await checksMit(dir, { env: { KIT_AGENT_MODEL: "" } }, "run");
+      assert.ok(hinweis.stderr.includes(`Note: stuck at ${cmd} — failed the same way 3 times ()`), hinweis.stderr);
+
+      writeFileSync(join(dir, ".claude", "checks-summary.json"), folgen(2));
+      const letzter = await checksMit(dir, { env: { KIT_AGENT_MODEL: "claude-sonnet-5-5" } }, "run");
+      assert.ok(letzter.stderr.includes(`Last allowed attempt: ${cmd} failed the same way 3 times () — the next call runs nothing and ends with exit 3.`),
+        letzter.stderr);
+
+      const bremse = await checksMit(dir, { env: { KIT_AGENT_MODEL: "claude-sonnet-5-5" } }, "run");
+      assert.equal(bremse.status, 3, bremse.stdout + bremse.stderr);
+      assert.ok(bremse.stdout.includes(`${FESTGEFAHREN_MARKE} ${cmd} — \n`), bremse.stdout);
+      // Die Zeile danach beginnt mit der Zahl und `-mal gleich gescheitert`: Das liest der Nacht-Runner (Vertrag).
+      assert.match(bremse.stdout, /\n3-mal gleich gescheitert: failed the same way 3 times; no check runs any more \(exit 3\)\.\n/);
+    });
+  });
+});
+
+test("[1495] ohne Spracheinstellung bleiben die Gruende und die Bremse deutsch", async () => {
+  const config = { buildChecks: [GRUEN("paket"), { cmd: GRUEN("spaeter"), stufe: "push" }] };
+  await mitRepo({ config }, (dir) => {
+    assert.equal(eintrag(plan(dir).ausgelassen, GRUEN("spaeter")).grund, "Stufe push, gefahren wird paket");
+    assert.equal(eintrag(plan(dir, "--stage", "push").laufen, GRUEN("paket")).grund, "Veroeffentlichungsstufe: voller Umfang");
+  });
+});
+
+// --- kit/checks.mjs, Teil 3: ab berichtszeilen bis zum Dateiende (Issue #1496) --------
+
+import { UEBERNAHME_MARKE } from "../kit/checks.mjs";
+import { DEUTSCHE_WOERTER } from "./helpers/quelltext-texte.mjs";
+
+// Vertragswerte (E14), die auch ein englisches Projekt deutsch sieht: die Ergebniswerte, die
+// Marke einer Uebernahme (kit/night/session.mjs liest sie aus der Ausgabe) und die Bremse.
+const VERTRAG_IN_AUSGABE = ["bereiche | ohne-bereich | ohne-zuordnung | veroeffentlichung | anker", "nicht gestartet", UEBERNAHME_MARKE, FESTGEFAHREN_MARKE];
+
+/** Die Zeilen des Berichtsblocks bis zur ersten Leerzeile, ab der Ueberschrift `kopf`. */
+function block(stdout, kopf) {
+  const zeilen = stdout.split("\n");
+  const i = zeilen.indexOf(kopf);
+  assert.ok(i >= 0, `kein Block '${kopf}' in: ${stdout}`);
+  const ende = zeilen.indexOf("", i);
+  return zeilen.slice(i + 1, ende < 0 ? undefined : ende);
+}
+
+/** Ein Kommando als Teil eines regulaeren Ausdrucks. */
+const esc = (text) => text.replaceAll(/[.()]/g, String.raw`\$&`);
+
+/** Ein Kommando, das beim ersten Aufruf rot und danach gruen endet. */
+const WACKELT = String.raw`node -e "const fs=require('fs');const f='.claude/flaky';if(!fs.existsSync(f)){fs.writeFileSync(f,'1');process.exit(1)}" # flaky`;
+
+test("[1496] die Texttabelle traegt die Meldungen des dritten Teils in beiden Sprachen", () => {
+  assert.deepEqual(pruefeParitaet(CHECKS_TEXTE), []);
+  assert.deepEqual(deutschImEnglischen(CHECKS_TEXTE), []);
+  for (const schluessel of ["berichtKopf", "berichtGelaufen", "berichtAusgelassen", "berichtHinweis", "gewackelt",
+    "wartezeit", "wartezeitKarte", "teillauf", "standUnveraendert", "merkmalRot", "hinweisGescheitert",
+    "verursacherZeile", "keineKartennummer", "unbekannterBefehl", "keinVerzeichnis", "nebenMarke"]) {
+    assert.ok(Object.hasOwn(CHECKS_TEXTE.de, schluessel), `die Tabelle traegt ${schluessel}`);
+  }
+});
+
+test("[1496] in der ganzen Datei geht jeder deutsche Text ueber den Texthelfer", () => {
+  // gueteAuswerten bleibt die Wertung, die kit/night/session.mjs als Kopie fuehrt (SYNC).
+  assert.deepEqual(deutschAmHelferVorbei("kit/checks.mjs", CHECKS_TEXTE,
+    [FESTGEFAHREN_MARKE, "nicht gestartet", "bereiche | ohne-bereich | ohne-zuordnung | veroeffentlichung | anker",
+      "ohne-bereich", "ohne-zuordnung"],
+    { ohne: [{ von: "export function gueteAuswerten(", bis: "function gueteErgebnis(" }] }), []);
+});
+
+test("[1496] englisch: der Block fuer den Abschlussbericht eines gruenen Laufs mit Kartennummer", async () => {
+  const config = { buildChecks: [GRUEN("a"), { cmd: GRUEN("later"), stufe: "push" }] };
+  await mitRepo({ config }, async (dir) => {
+    datei(dir, "neu.txt");
+    await inSprache("en", async () => {
+      const res = await run(dir, "--finish", "7");
+      assert.equal(res.status, 0, res.stdout + res.stderr);
+      assert.ok(res.stdout.includes(`skipped: ${GRUEN("later")} — stage push, running paket\n`), res.stdout);
+      const zeilen = block(res.stdout, "For the completion report:");
+      assert.match(zeilen[0], /^Wait time: [\d.]+ s, together [\d.]+ s in 1 runs for card #7$/);
+      assert.match(zeilen[1], new RegExp(`^ran: ${esc(GRUEN("a"))} → gruen, [\\d.]+ s — full scope: 'neu\\.txt' matches no pattern$`));
+      assert.equal(zeilen[2], `skipped: ${GRUEN("later")} → stage push, running paket`);
+      assert.match(res.stdout, /\nSummary: .+checks-summary\.json\n$/);
+
+      const nochmal = await run(dir, "--finish", "7");
+      assert.match(nochmal.stdout, new RegExp(`State unchanged since \\S+: ${UEBERNAHME_MARKE} \\(gruen\\)\\. Check again with --fresh\\.`));
+      assert.match(block(nochmal.stdout, "For the completion report:")[1], new RegExp(`\\(${UEBERNAHME_MARKE}\\) — full scope: 'neu\\.txt' matches no pattern$`));
+    });
+  });
+});
+
+test("[1496] englisch: Wiederholung, Wackler, Ablage und Teillauf", async () => {
+  await mitRepo({ config: { buildChecks: [WACKELT, ROT("b")] } }, async (dir) => {
+    datei(dir, "neu.txt");
+    await inSprache("en", async () => {
+      const res = await run(dir, "--finish", "8");
+      assert.equal(res.status, 1);
+      assert.ok(res.stdout.includes(`Retry: ${WACKELT} was red — repeated once on the same state\n`), res.stdout);
+      assert.ok(res.stdout.includes("-> flaky (red first, then green)\n"), res.stdout);
+      assert.ok(res.stdout.includes("-> rot, also on the retry\n"), res.stdout);
+      assert.match(res.stdout, /Output of the first run stored: \.claude\/checks-protokolle\/01-.+-erstlauf\.log\n/);
+      assert.match(res.stdout, /\nOutput stored: \.claude\/checks-protokolle\/02-.+\.log\n/);
+      const zeilen = block(res.stdout, "For the completion report:");
+      assert.match(zeilen[2], /^Flaky: .+ → red first, then green — output of the first run: \.claude\/checks-protokolle\/01-.+-erstlauf\.log$/);
+      assert.match(zeilen[3], new RegExp(`^ran: ${esc(ROT("b"))} → rot, also on the retry, [\\d.]+ s — full scope: 'neu\\.txt' matches no pattern — output: \\.claude/`));
+
+      datei(dir, "noch.txt");
+      const teil = await run(dir, "--finish", "8");
+      assert.ok(teil.stdout.includes(`\nPartial run: only the checks red last time: ${ROT("b")}\n`), teil.stdout);
+      assert.equal(block(teil.stdout, "For the completion report:")[1], "Partial run: only the checks red last time");
+      assert.ok(block(teil.stdout, "For the completion report:").some((z) => /^Flaky: .+ → red first, then green \(earlier run of \S+\)$/.test(z)), teil.stdout);
+    });
+  });
+});
+
+test("[1496] englisch: leeres Paket, Fehlermerkmal und gescheiterte Hinweis-Pruefung", async () => {
+  const merkmal = 'node -e "console.log(\'[ERROR] x\')" # marker';
+  const hinweis = 'node -e "process.exit(5)" # hint';
+  await mitRepo({ config: { buildChecks: [{ cmd: hinweis, art: "hinweis" }, merkmal] } }, async (dir) => {
+    await inSprache("en", async () => {
+      const leer = await run(dir);
+      assert.equal(block(leer.stdout, "For the completion report:")[1], "no check, because nothing was changed");
+      datei(dir, "neu.txt");
+      const res = await run(dir);
+      assert.ok(res.stdout.includes(`Hint check failed: ${hinweis} (Exit 5)\n`), res.stdout);
+      assert.ok(res.stdout.includes("Error marker in the output: '[ERROR]' — the run counts as red\n"), res.stdout);
+      assert.ok(block(res.stdout, "For the completion report:").includes(`note: Hint check failed: ${hinweis} (Exit 5)`));
+    });
+  });
+});
+
+test("[1496] englisch: Stufe push mit Ankuendigung und Verursachern", async () => {
+  const config = { buildChecks: [GRUEN("a"), { cmd: ROT("p"), stufe: "push" }] };
+  await mitRepo({ config }, async (dir) => {
+    await inSprache("en", async () => {
+      const ohneAnker = await run(dir, "--stage", "push", "--since", "gibtsnicht");
+      assert.ok(ohneAnker.stdout.includes(`Stage push: in addition to the package stage runs ${ROT("p")}\n`), ohneAnker.stdout);
+      assert.ok(ohneAnker.stdout.includes(
+        `Causers (${ROT("p")}): causers cannot be determined: anchor 'gibtsnicht' cannot be resolved\n`), ohneAnker.stdout);
+      const ohneKarte = await run(dir, "--stage", "push", "--since", "HEAD", "--fresh");
+      assert.match(ohneKarte.stdout, new RegExp(`Causers \\(.+\\): No completed card since \\S+ touches this check\\.\n`));
+    });
+  });
+});
+
+test("[1496] englisch: Fehler der Kommandozeile", async () => {
+  await mitRepo({ config: { buildChecks: [GRUEN("a")] } }, (dir) => inSprache("en", () => {
+    assert.equal(fehler(checks(dir, "plan", "--finish", "x7")),
+      "Error: 'x7' is no card number for --finish. Expected: a number or nothing.");
+    assert.equal(fehler(checks(dir, "plan", "--finish", "--stage", "push")),
+      "Error: --finish and --stage 'push' together: the completion of a card runs the stage 'package'. "
+      + "Before publishing the full scope runs without --finish.");
+    assert.equal(fehler(checks(dir, "plan", "--finish", "--area", "a")),
+      "Error: --finish and --area together: two restrictions in one run. The area run belongs in the work, --finish at its end.");
+    assert.equal(fehler(checks(dir, "plan", "--stage", "bald")), "Error: Unknown stage 'bald'. Expected: package, push, merge.");
+    assert.equal(fehler(checks(dir, "plan", "--gibts")), "Error: Unknown argument: '--gibts'");
+    assert.equal(fehler(checks(dir, "areas", "x")), "Error: Unknown argument: 'x'");
+    assert.equal(fehler(checks(dir, "plan", "--in", "fehlt")), "Error: --in 'fehlt' is not a directory.");
+    const befehl = checks(dir, "tanzen");
+    assert.equal(fehler(befehl), "Error: Unknown command: 'tanzen'. Expected: plan, run or areas");
+  }));
+});
+
+test("[1496] englisch: in keiner Ausgabe des Pruefkommandos steht ein deutsches Wort", async () => {
+  const ausgaben = [];
+  const merke = (res) => ausgaben.push(res.stdout, res.stderr);
+  const config = {
+    buildChecks: [GRUEN("a"), WACKELT, { cmd: ROT("p"), stufe: "push" }, { cmd: 'node -e "process.exit(5)" # hint', art: "hinweis" }],
+  };
+  await mitRepo({ config }, async (dir) => {
+    await inSprache("en", async () => {
+      merke(aufrufen(["--help"], { cwd: dir }));
+      merke(await run(dir));
+      datei(dir, "neu.txt");
+      merke(await run(dir, "--finish", "9"));
+      merke(await run(dir, "--finish", "9"));
+      merke(await run(dir, "--stage", "push", "--since", "gibtsnicht"));
+      merke(await run(dir, "--stage", "push", "--fresh"));
+      for (const args of [["plan", "--finish", "x"], ["plan", "--stage", "bald"], ["tanzen"], ["plan", "--in", "missing"]]) {
+        merke(checks(dir, ...args));
+      }
+    });
+  });
+  for (const text of ausgaben) {
+    let rest = text;
+    for (const wert of VERTRAG_IN_AUSGABE) rest = rest.replaceAll(wert, "");
+    const zeilen = rest.split("\n").filter((z) => DEUTSCHE_WOERTER.test(z));
+    assert.deepEqual(zeilen, []);
+  }
+});
+
+test("[1496] ohne Spracheinstellung bleibt der Block fuer den Abschlussbericht deutsch", async () => {
+  await mitRepo({ config: { buildChecks: [GRUEN("a")] } }, async (dir) => {
+    datei(dir, "neu.txt");
+    const res = await run(dir, "--finish", "7");
+    const zeilen = block(res.stdout, "Fuer den Abschlussbericht:");
+    assert.match(zeilen[0], /^Wartezeit: [\d.]+ s, zusammen [\d.]+ s in 1 Laeufen fuer Karte #7$/);
+    assert.match(zeilen[1], /^gelaufen: .+ → gruen, [\d.]+ s — voller Umfang: 'neu\.txt' trifft kein Muster$/);
+    assert.match(res.stdout, /\nZusammenfassung: /);
+    assert.equal(fehler(checks(dir, "tanzen")), "Fehler: Unbekannter Befehl: 'tanzen'. Erwartet: plan, run oder areas");
+  });
+});

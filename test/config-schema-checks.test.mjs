@@ -33,6 +33,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { pruefe, istObjekt } from "./helpers/mini-validator.mjs";
+import { normalisiereConfig } from "../kit/board/config-namen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -262,10 +263,10 @@ test("nichtBeimAbschluss: das enum steht am Feld im Schema", () => {
   assert.equal(feld.type, "string", "das Feld ist kein String");
 });
 
-test("nichtBeimAbschluss: die Beschreibung nennt --abschluss, das fehlende Feld und die Teamweit-Formel", () => {
+test("nichtBeimAbschluss: die Beschreibung nennt --finish, das fehlende Feld und die Teamweit-Formel", () => {
   const text = eintragSchema.oneOf.find((z) => z.type === "object").properties.nichtBeimAbschluss.description;
   assert.ok(text, "das Feld hat keine description");
-  assert.match(text, /--abschluss/, "der Schalter steht nicht in der Beschreibung");
+  assert.match(text, /--finish/, "der Schalter steht nicht in der Beschreibung");
   assert.match(text, /fehlendes Feld/i, "was ein fehlendes Feld bedeutet, steht nicht in der Beschreibung");
   assert.ok(
     text.endsWith("Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."),
@@ -302,9 +303,11 @@ test("guete: die Beschreibung des Musters nennt genau eine Gruppe", () => {
 
 // --- Bestand ---
 
-const beispielConfig = JSON.parse(
+// Seit Version 5 traegt die Vorlage englische Namen (Issue #1474); das Schema kennt die
+// internen Namen. Gelesen wird darum wie im Kit: erst normalisieren, dann pruefen.
+const beispielConfig = normalisiereConfig(JSON.parse(
   readFileSync(join(repoRoot, "templates", "workflow.config.json"), "utf-8")
-);
+)).config;
 
 test("eine Bestandsconfig mit reiner String-Liste bleibt gueltig", () => {
   // Die Bestandsform ist buildChecks als flache Liste von Kommandozeilen. Sie muss
@@ -636,7 +639,7 @@ test("validationRules fuehrt fuer issueTracker dieselben Werte wie das enum", ()
 // --- Die Anteilsschwellen der Aufwands-Auswertung (Issue #824) ----------------
 //
 // Sie sind Anteile zwischen 0 und 1. Ohne Grenzen am Feld bestand `pruefungAnteil: 80`
-// das Schema, und nur eine Zusatzregel in kit/einstellungen.mjs wies den Wert ab — wer
+// das Schema, und nur eine Zusatzregel in kit/settings.mjs wies den Wert ab — wer
 // die Config von Hand gegen das Schema prueft, bekam ihn durch.
 
 const ANTEIL_FELDER = ["pruefungAnteil", "werkzeugAnteil", "schreibkostenAnteil"];
@@ -679,7 +682,7 @@ test("pruefLauf: der Block steht in der Wurzel und ist geschlossen", () => {
 test("pruefLauf: die drei Vorgabewerte stehen am Feld", () => {
   const felder = schema.properties.pruefLauf.properties;
   assert.equal(felder.label.type, "string", "label ist keine Zeichenkette");
-  assert.equal(felder.label.default, "kit:pruefen", "die Vorgabe 'kit:pruefen' fehlt am Label");
+  assert.equal(felder.label.default, "kit:check", "die Vorgabe 'kit:check' fehlt am Label");
   assert.equal(felder.pruefungMin.type, "number", "pruefungMin ist keine Zahl");
   assert.equal(felder.pruefungMin.default, 25, "die Vorgabe 25 fehlt an pruefungMin");
   assert.equal(felder.pruefungMin.exclusiveMinimum, 0, "die Untergrenze fehlt an pruefungMin");
@@ -728,7 +731,7 @@ test("pruefLauf: die ausgelieferte Vorlage traegt den Block mit den Vorgabewerte
 
 test("wirksamkeit.quoteSchwelle: die Beschreibung nennt die Zaehlweise je Karte", () => {
   // Gezaehlt werden Ruecklaufbewegungen je Karte mit Eintritt nach In review, nicht
-  // der Anteil der Arbeitspakete (kit/wirksamkeit.mjs, "Zaehlweise der Quote"). Die
+  // der Anteil der Arbeitspakete (kit/effectiveness.mjs, "Zaehlweise der Quote"). Die
   // Beschreibung war falsch, nicht der Code.
   const text = schema.properties.wirksamkeit.properties.quoteSchwelle.description;
   assert.match(text, /Rücklaufbewegungen je Karte/, "die Zaehlweise je Karte steht nicht in der Beschreibung");
@@ -737,7 +740,7 @@ test("wirksamkeit.quoteSchwelle: die Beschreibung nennt die Zaehlweise je Karte"
 
 // --- installCommand: die Abhaengigkeiten des frischen Worktrees (Issue #964) ---
 //
-// `worktree.mjs anlegen` stellt sie seither selbst her. Das Feld ist eine Kommandozeile
+// `worktree.mjs create` stellt sie seither selbst her. Das Feld ist eine Kommandozeile
 // wie formatFixCommand und gilt wie dieses teamweit; ein Nicht-String waere eine
 // Einstellung, an der das Anlegen jedes Worktrees stillschweigend scheiterte.
 

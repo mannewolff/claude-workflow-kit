@@ -161,7 +161,7 @@ test("zwei Notizen, die sich nur in der Schreibweise unterscheiden, werden gemel
     writeFileSync(join(dir, ".claude", "kontext.config.json"),
       JSON.stringify({ vault, project: "meinprojekt" }), "utf-8");
 
-    const res = runBoard(dir, ["kontext", "paths"]);
+    const res = runBoard(dir, ["context", "paths"]);
 
     assert.notEqual(res.status, 0, "eine mehrdeutige Notiz haette den Aufruf scheitern lassen muessen");
     assert.match(res.stderr, /Mehrdeutige Notiz/, "die Mehrdeutigkeit wird nicht benannt");
