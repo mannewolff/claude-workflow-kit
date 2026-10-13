@@ -25,6 +25,7 @@ import { istFachlich, istPlan, herkunftNummern, normalisiereZeilenenden } from "
 import { resolveTracker } from "./adapter.mjs";
 import { EINGABEWERTE, internerWert, leseMarker, text, ueberschriftZeile } from "./namen.mjs";
 import { vorgeschichteAktiv, vorgeschichteSuchen } from "./vorgeschichte.mjs";
+import { repoNamen } from "./vertraege.mjs";
 
 // Die Texte an den Menschen liegen unter kit/texte/board-issue-review.mjs (Issue #1526).
 import { TEXTE } from "../texte/board-issue-review.mjs";
@@ -690,6 +691,7 @@ function montiere(rahmen, werte) {
   let text = block(normalisiereZeilenenden(rahmen), "VORLAGE", werte.VORLAGE_PFAD != null);
   text = block(text, "QUELLE", werte.QUELLE_BODY != null);
   text = block(text, "VORGESCHICHTE", werte.VORGESCHICHTE_BODY != null);
+  text = block(text, "VERTRAEGE", werte.VERTRAGSREPOS != null);
   const offen = [...new Set([...text.matchAll(PLATZHALTER)].map((m) => m[1]))].filter((name) => werte[name] == null);
   if (offen.length > 0) return { offen };
   return { text: text.replaceAll(PLATZHALTER, (_, name) => werte[name]) };
@@ -721,6 +723,9 @@ export async function issueReviewPruefauftrag(args, { config = loadConfig(), boa
     werte = { REVIEW_MATERIAL: inhalt };
   }
   const { arten } = await import("../findings.mjs");
+  // Die Partnerrepos fuer den Pruefsatz zu Vertraegen; ohne `vertragsRepos` entfaellt er (Issue #1617).
+  const repos = repoNamen(config.vertragsRepos);
+  werte.VERTRAGSREPOS = repos.length > 0 ? repos.join(t("und")) : null;
   werte.ARTEN = arten().arten.map((a) => `${a.name} — ${a.erklaerung}`).join("\n");
 
   const { text, offen } = montiere(rahmen, werte);

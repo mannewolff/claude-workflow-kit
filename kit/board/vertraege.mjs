@@ -119,7 +119,7 @@ export function vertraegeLesen(abschnitte, sprache = prozessSprache()) {
 }
 
 /** Die Namen der Partnerrepos aus `vertragsRepos`: Eintraege `{ name }`, auch blosse Namen. */
-function repoNamen(vertragsRepos) {
+export function repoNamen(vertragsRepos) {
   if (!Array.isArray(vertragsRepos)) return [];
   return vertragsRepos.map((r) => (typeof r === "string" ? r : r?.name)).filter((n) => typeof n === "string" && n !== "");
 }
