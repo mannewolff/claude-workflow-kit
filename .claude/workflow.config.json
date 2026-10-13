@@ -176,6 +176,16 @@
       ]
     },
     {
+      "cmd": "node --test --test-concurrency=2 \"test/board-triage-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-dokumente",
+        "board-grooming",
+        "board-grundlagen",
+        "board-triage"
+      ]
+    },
+    {
       "cmd": "node --test --test-concurrency=2 \"test/board-issue-review-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
@@ -334,6 +344,7 @@
         "board-issue-review",
         "board-melder",
         "board-testhinweise",
+        "board-triage",
         "board-wiederholung",
         "nacht-einstieg",
         "pruefungen"
@@ -492,6 +503,7 @@
         "board-issue-review",
         "board-melder",
         "board-testhinweise",
+        "board-triage",
         "board-wiederholung",
         "einstellungen",
         "installer",
@@ -778,6 +790,11 @@
       "kit/board/grooming.mjs",
       "kit/texte/board-grooming.mjs",
       "test/board-grooming-*.test.mjs"
+    ],
+    "board-triage": [
+      "kit/board/triage.mjs",
+      "kit/texte/board-triage.mjs",
+      "test/board-triage-*.test.mjs"
     ],
     "board-szenarien": [
       "kit/board/szenarien.mjs",

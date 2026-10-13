@@ -196,6 +196,14 @@ Usage:
       verstoesse }), exit 1 on violations. --compare lists the changed criteria and
       non-goals between the file and the card's body (aenderungen).
       Read-only: changes neither body nor labels.
+  node board.mjs issue triage <id> [--body-file <path>]
+      State of an idea for /triage (Issue #1628, Plan #1623): einstieg ({ start, grund,
+      meldung }; grund keine-idee or unbeaufsichtigt), ablage ({ pfad, vorhanden, dateien:
+      [{ name, gelesen, vorlageZiel }] } for .claude/ideas/<id>/, never created) and stand
+      ({ punkte, offen, bahn, vorlage, ergebnis } from '## Clarified state', ergebnis from
+      the 'Result:' line or a comment 'Fortsetzung: ...'). --body-file checks a new body
+      against the card's (pruefung: { ok, verstoesse }), exit 1 if the text of the idea
+      changed or a confirmed point lost its answer line. Read-only.
   node board.mjs issue label add <id> <name>
   node board.mjs issue label remove <id> <name>
       Marks an issue (e.g. kit:clarify). Status labels are changed by \`issue move\`.
@@ -588,6 +596,29 @@ async function issueFragen(tracker, config, args) {
 }
 
 /**
+ * `issue triage <id> [--body-file <pfad>]` (Issue #1628, Plan #1623 A2, A3, A11, E5): Einstieg,
+ * Ablage und geklaerter Stand einer Idee fuer `/triage`. Rein lesend — geschrieben wird ueber
+ * `issue update --body-file`, die Ablage legt der Aufruf nie an. Exit 1 allein, wenn
+ * `--body-file` gegen den Body der Karte verstoesst.
+ */
+async function issueTriage(tracker, args) {
+  const id = args._[0];
+  if (id === undefined) abbruch(t("triageOhneId"));
+  const { triageEinstieg, ablageLesen, standLesen, triageKoerperPruefen } = await import("./board/triage.mjs");
+  const neu = optionDatei(args, "body-file");
+  const issue = await tracker.getIssue(String(id));
+  const body = issue.body || "";
+  const ausgabe = {
+    einstieg: triageEinstieg({ ...issue, id: String(id) }, process.env),
+    ablage: ablageLesen(configWurzel(), String(id)),
+    stand: standLesen(body, await kartenKommentare(tracker, String(id), issue)),
+  };
+  if (neu !== null) ausgabe.pruefung = triageKoerperPruefen(body, neu);
+  out(ausgabe);
+  if (ausgabe.pruefung && !ausgabe.pruefung.ok) process.exit(1);
+}
+
+/**
  * Der Stand der Szenarien fuer `issue questions`: `{ pflicht, vorhanden, vollstaendig }`,
  * `pflicht` wie `szenarienPflicht`; fehlt der Stichtag, dazu `hinweis` (A6).
  */
@@ -637,6 +668,7 @@ async function dispatchIssue(command, args) {
     case "brief":   return issueAuftrag(tracker, args, AUFTRAG_GESCHUETZT);
     case "origin":  return issueUrsprung(tracker, args);
     case "questions": return issueFragen(tracker, config, args);
+    case "triage":  return issueTriage(tracker, args);
     case "label":   return issueLabel(tracker, config, args, HELP);
     case "check-form": return issueCheckForm(tracker, config, args);
     case "check-protected": return issueCheckGeschuetzt(tracker, args);
