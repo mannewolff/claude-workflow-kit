@@ -11,9 +11,17 @@
  * Config `vertragsRepos` setzt (E2). Was in einem Codeblock steht, existiert fuer die Pruefung
  * nicht — dieselbe Fence-Auslegung wie `zerlegeAbschnitte`.
  *
+ * Dazu `vertragsRepoHolen` (Issue #1615, Plan #1611 E7): holt den gebauten Stand des
+ * Partnerrepos fuer `board.mjs code contract-repo <name>`.
+ *
  * QUELLE DER WAHRHEIT: Diese Datei wird im Kit-Repo (claude-workflow-kit) gepflegt.
  * Aenderungen ausschliesslich hier vornehmen, danach `node tools/sync-blobs.mjs`.
  */
+
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 import { abschnittsTitel } from "./dokumente.mjs";
 import { prozessSprache, text, ueberschriftName, ueberschriftZeile, vertragWort } from "./namen.mjs";
@@ -195,4 +203,118 @@ export function pruefeVertraege(abschnitte, { vertragsRepos, sprache = prozessSp
   const offen = offenVerstoss(eintraege, abschnitte, sprache);
   if (offen) meldungen.push(offen);
   return meldungen.map(p14);
+}
+
+// --- Der gebaute Stand des Partnerrepos (Issue #1615, Plan #1611 E7, E8) ---
+
+// Die Form eines Namens in `vertragsRepos`, wie im Schema (E8): Er wird Pfadsegment im
+// Zwischenspeicher, ein `/` oder `..` verliesse ihn.
+const REPO_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const CACHE_ORDNER = "kit-contract-repos";
+const COMMIT = /^[0-9a-f]{40}$/;
+
+const GIT_VORGABEN = Object.freeze({
+  // PATH-Aufloesung bewusst wie in kit/night/kitstand.mjs; ohne Terminal fragt git nie nach
+  // Zugangsdaten, sonst hinge der Abruf.
+  git: (cwd, gitArgs) => spawnSync("git", gitArgs, {
+    encoding: "utf-8", cwd, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+  }),
+  tmpdir: () => tmpdir(),
+});
+
+/** Der Grund eines gescheiterten git-Aufrufs: stderr, sonst der Startfehler, sonst der Exitcode. */
+function gitGrund(befehl, ergebnis) {
+  const grund = ergebnis.error?.message ?? ((ergebnis.stderr ?? "").trim() || `exit ${ergebnis.status}`);
+  return t("gitGescheitert", { befehl, grund });
+}
+
+/**
+ * Der Eintrag `name` aus `config.vertragsRepos`. Wirft bei fehlendem Namen, einem Namen ausser
+ * der Form `REPO_NAME` — geprueft vor jedem Pfad, auch wenn er an der Schema-Pruefung vorbei in
+ * die Config kam — und einem Namen ohne Eintrag; die Meldung nennt die bekannten Namen.
+ */
+function repoEintrag(config, name) {
+  const repos = (Array.isArray(config?.vertragsRepos) ? config.vertragsRepos : []).filter((r) => typeof r?.name === "string");
+  const namen = repos.map((r) => r.name).join(", ");
+  if (name === undefined || name === "") throw new Error(t("nameUnbekannt", { name: "", namen }));
+  if (typeof name !== "string" || !REPO_NAME.test(name)) {
+    throw new Error(t("nameUngueltig", { name: String(name), muster: REPO_NAME.source }));
+  }
+  const eintrag = repos.find((r) => r.name === name);
+  if (!eintrag) throw new Error(t("nameUnbekannt", { name, namen }));
+  return eintrag;
+}
+
+const gescheitert = (ergebnis) => Boolean(ergebnis.error) || ergebnis.status !== 0;
+
+/** Der Commit von `branch` laut `git ls-remote` als `{ commit }`, sonst `{ reason }`. */
+function remoteCommit(git, cwd, url, branch) {
+  const remote = git(cwd, ["ls-remote", url, branch]);
+  if (gescheitert(remote)) return { reason: gitGrund("ls-remote", remote) };
+  const ref = `refs/heads/${branch}`;
+  const commit = (remote.stdout ?? "").split("\n").map((z) => z.split("\t")).find(([sha, r]) => r === ref && COMMIT.test(sha))?.[0];
+  return commit ? { commit } : { reason: t("zweigFehlt", { zweig: branch, url }) };
+}
+
+/**
+ * Flacher Klon von `branch` in ein temporaeres Verzeichnis in `cache`, dann Umbenennen auf
+ * `path`. Der Grund, wenn git scheitert, sonst `null`; das temporaere Verzeichnis bleibt nie liegen.
+ */
+function klonAnlegen(git, cache, { url, branch, ordner, path }) {
+  mkdirSync(cache, { recursive: true });
+  // Der Punkt vorn haelt das temporaere Verzeichnis aus dem Aufraeumen anderer Laeufe heraus.
+  const zwischen = mkdtempSync(join(cache, `.${ordner}-`));
+  try {
+    const klon = join(zwischen, "klon");
+    const ergebnis = git(cache, ["clone", "--depth", "1", "--branch", branch, url, klon]);
+    if (gescheitert(ergebnis)) return gitGrund("clone", ergebnis);
+    try {
+      renameSync(klon, path);
+    } catch (e) {
+      // Ein gleichzeitiger Lauf hat denselben Stand schon angelegt; sein Klon gilt.
+      if (!existsSync(path)) throw e;
+    }
+    return null;
+  } finally {
+    rmSync(zwischen, { recursive: true, force: true });
+  }
+}
+
+/** Loescht in `cache` die Staende `<name>-<commit12>` ausser `ordner`. */
+function aeltereRaeumen(cache, name, ordner) {
+  const stand = new RegExp(`^${name}-[0-9a-f]{12}$`);
+  for (const eintrag of readdirSync(cache)) {
+    if (eintrag !== ordner && stand.test(eintrag)) rmSync(join(cache, eintrag), { recursive: true, force: true });
+  }
+}
+
+/**
+ * Holt den gebauten Stand des Partnerrepos `name` aus `config.vertragsRepos` (E7): `git
+ * ls-remote` auf den Zweig (Vorgabe `main`), fehlt `<tmpdir>/kit-contract-repos/<name>-<commit12>`,
+ * ein flacher Klon in ein temporaeres Verzeichnis daneben und Umbenennen auf das Ziel; danach
+ * fallen aeltere Staende desselben Namens weg. Ergebnis `{ ok: true, name, url, branch, commit,
+ * date, path }`, scheitert git `{ ok: false, name, reason }`. Ein ungueltiger oder unbekannter
+ * Name wirft (`repoEintrag`). `abh` setzt `git(cwd, args)` und `tmpdir` ein (Tests).
+ */
+export function vertragsRepoHolen(config, name, abh = {}) {
+  const { git, tmpdir: temp } = { ...GIT_VORGABEN, ...abh };
+  const eintrag = repoEintrag(config, name);
+  const url = eintrag.url;
+  if (typeof url !== "string" || url === "") return { ok: false, name, reason: t("urlFehlt", { name }) };
+  const branch = typeof eintrag.zweig === "string" && eintrag.zweig !== "" ? eintrag.zweig : "main";
+  const wurzel = typeof temp === "function" ? temp() : temp;
+
+  const { commit, reason } = remoteCommit(git, wurzel, url, branch);
+  if (!commit) return { ok: false, name, reason };
+  const cache = join(wurzel, CACHE_ORDNER);
+  const ordner = `${name}-${commit.slice(0, 12)}`;
+  const path = join(cache, ordner);
+  if (!existsSync(path)) {
+    const grund = klonAnlegen(git, cache, { url, branch, ordner, path });
+    if (grund) return { ok: false, name, reason: grund };
+  }
+  aeltereRaeumen(cache, name, ordner);
+  const log = git(path, ["log", "-1", "--format=%cI"]);
+  const date = gescheitert(log) ? null : (log.stdout ?? "").trim();
+  return { ok: true, name, url, branch, commit, date, path };
 }

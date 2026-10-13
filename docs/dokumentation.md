@@ -2332,7 +2332,9 @@ Wenn Nummer und Kommentare nicht zählen, geht es auch ohne das Werkzeug: `gh is
 Alle Board-Operationen laufen über `.claude/kit/board.mjs`. Der Adapter hat zwei Hauptbereiche:
 
 - **Issue-Tracker-Interface:** `issue create`, `issue list`, `issue get`, `issue activity`, `issue move`, `issue comment`, `issue report`, `issue brief`, `issue origin`, `issue epics`
-- **Code-Host-Interface:** `code repo-name`, `code pr`, `code protection`
+- **Code-Host-Interface:** `code repo-name`, `code pr`, `code protection`, `code contract-repo`
+
+**`code contract-repo <name>` holt den gebauten Stand des Partnerrepos aus `vertragsRepos`.** Es fragt mit `git ls-remote` den Commit des Zweigs ab (Vorgabe `main`), klont flach nach `<tmpdir>/kit-contract-repos/<name>-<commit12>` und gibt `{ ok: true, name, url, branch, commit, date, path }` aus, bei einem Fehler `{ ok: false, name, reason }`, beides mit Exit 0; je Commit wird nur einmal geklont, ältere Stände desselben Namens räumt der Abruf weg.
 
 **`code protection` richtet den Schutz von Haupt- und Veröffentlichungszweig ein und gibt Auskunft darüber.** Fünf Aktionen, jede mit JSON auf stdout:
 

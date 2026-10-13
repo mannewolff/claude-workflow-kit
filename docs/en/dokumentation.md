@@ -2417,12 +2417,14 @@ If number and comments do not matter, it also works without the tool: read `gh i
 | `local` | none | none |
 
 ### Board adapter
-<!-- de: 02921dd5bdf7 -->
+<!-- de: 524a2c00f9b9 -->
 
 All board operations run through `.claude/kit/board.mjs`. The adapter has two main areas:
 
 - **Issue tracker interface:** `issue create`, `issue list`, `issue get`, `issue activity`, `issue move`, `issue comment`, `issue report`, `issue brief`, `issue origin`, `issue epics`
-- **Code host interface:** `code repo-name`, `code pr`, `code protection`
+- **Code host interface:** `code repo-name`, `code pr`, `code protection`, `code contract-repo`
+
+**`code contract-repo <name>` fetches the built state of the partner repo from `vertragsRepos`.** It asks `git ls-remote` for the commit of the branch (default `main`), clones shallowly to `<tmpdir>/kit-contract-repos/<name>-<commit12>` and prints `{ ok: true, name, url, branch, commit, date, path }`, on failure `{ ok: false, name, reason }`, both with exit 0; each commit is cloned only once, and the fetch removes older states of the same name.
 
 **`code protection` sets up protection of the main and release branches and reports on it.** Five actions, each with JSON on stdout:
 

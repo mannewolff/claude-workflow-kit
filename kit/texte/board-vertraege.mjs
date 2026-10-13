@@ -23,6 +23,11 @@ export const TEXTE = Object.freeze({
     wertUnbekannt: "Vertrag V{nummer}: `{zeile}` hat den unbekannten Wert „{wert}“ (bekannt: {werte}).",
     vorgelegtStand: "Vertrag V{nummer} ist „{vorgelegt}“, aber `{stand}` beginnt nicht mit „{standFehlt}“ — vorlegen darf das Projekt nur, was im anderen Repo nachweislich fehlt.",
     vorgelegtZeilen: "Vertrag V{nummer} ist „{vorgelegt}“ und braucht die Zeilen `{wortlaut}` und `{zitat}`.",
+    nameUngueltig: "Der Name „{name}“ eines Partnerrepos hat nicht die Form {muster} — er wird Teil eines Pfads, ein `/` oder `..` verließe den Zwischenspeicher.",
+    nameUnbekannt: "`vertragsRepos` nennt kein Partnerrepo „{name}“ (bekannt: {namen}).",
+    urlFehlt: "Das Partnerrepo „{name}“ in `vertragsRepos` trägt keine `url`.",
+    gitGescheitert: "git {befehl} scheiterte: {grund}",
+    zweigFehlt: "Der Zweig „{zweig}“ fehlt in {url}.",
     offen: "Offene Verträge ohne Zeile `{entschieden}`: {nummern}. Unter „## {fragen}“ steht eine Frage an den Menschen, die {nummern} aufzählt; die erste Zeile dort ist nicht `- Keine.`. Dabei wird `{abgleich}` nicht geändert und keine Zeile `{entschieden}` eingetragen — die schreibt nur, wer die Antwort des Menschen hat.",
   }),
   en: Object.freeze({
@@ -34,6 +39,11 @@ export const TEXTE = Object.freeze({
     wertUnbekannt: "Contract V{nummer}: `{zeile}` has the unknown value \"{wert}\" (known: {werte}).",
     vorgelegtStand: "Contract V{nummer} is \"{vorgelegt}\", but `{stand}` does not start with \"{standFehlt}\" — the project may only propose what is shown to be missing in the other repo.",
     vorgelegtZeilen: "Contract V{nummer} is \"{vorgelegt}\" and needs the lines `{wortlaut}` and `{zitat}`.",
+    nameUngueltig: "The name \"{name}\" of a partner repo does not have the form {muster} — it becomes part of a path, a `/` or `..` would leave the cache.",
+    nameUnbekannt: "`vertragsRepos` names no partner repo \"{name}\" (known: {namen}).",
+    urlFehlt: "The partner repo \"{name}\" in `vertragsRepos` has no `url`.",
+    gitGescheitert: "git {befehl} failed: {grund}",
+    zweigFehlt: "The branch \"{zweig}\" is missing in {url}.",
     offen: "Open contracts without a line `{entschieden}`: {nummern}. Under \"## {fragen}\" there is a question to the human that lists {nummern}; the first line there is not `- Keine.`. `{abgleich}` is not changed for this, and no line `{entschieden}` is added — only someone who has the human's answer writes it.",
   }),
 });

@@ -65,6 +65,9 @@
  *   node board.mjs code ci-status --commit <sha>
  *       Zustand der CI fuer genau diesen Commit (Issue #316). Dispatcht ueber
  *       resolveCodeHost — die Achse haengt am codeHost, nicht am issueTracker.
+ *   node board.mjs code contract-repo <name>
+ *       Gebauter Stand des Partnerrepos aus vertragsRepos (Issue #1615, Plan #1611 E7),
+ *       flach geklont nach <tmpdir>/kit-contract-repos/<name>-<commit12>.
  *   node board.mjs code protection status | setup [--branch <z>] | suspend --in <pfad>
  *                              | restore | verify [--branch <z>]
  *       Schutz von Haupt- und Veroeffentlichungszweig (Issue #1408, Plan #1405). status
@@ -238,6 +241,13 @@ Usage:
       Precedence rot over laeuft over gruen; 'keine' only with codeHost local, a run
       not yet visible at the host is 'laeuft'. 'gestartet' is the start time of the
       job (ISO) or null as long as it has not started (Issue #1151).
+  node board.mjs code contract-repo <name>
+      Built state of the partner repo <name> from vertragsRepos (Issue #1615):
+      git ls-remote on its branch (default main), then a shallow clone to
+      <tmpdir>/kit-contract-repos/<name>-<commit12>, cached per commit; older states
+      of the same name are removed. Output: { ok: true, name, url, branch, commit,
+      date, path }, on failure { ok: false, name, reason }, exit 0 in both cases.
+      An unknown name aborts with the known names.
   node board.mjs code protection status
   node board.mjs code protection setup --branch <b>
   node board.mjs code protection suspend --in <path>
@@ -391,6 +401,8 @@ export const { SCHUTZ_AUSGESETZT, NACHPRUEFEN_KOMMANDO, NACHT_GESPERRT, rulesetS
 const { rulesetName } = await import("./board/adapter.mjs");
 // `issue vorgeschichte` (Issue #1539); exportiert war es nie.
 const { issueVorgeschichte } = await import("./board/vorgeschichte.mjs");
+// `code contract-repo` (Issue #1615); exportiert war es nie.
+const { vertragsRepoHolen } = await import("./board/vertraege.mjs");
 // Englisch benannte Config auf die deutschen Namen (Issue #1436, Plan #1420 E10).
 const { normalisiereConfig } = await import("./board/config-namen.mjs");
 // Die Meldung zu einem frueheren deutschen Namen (Issue #1557, Plan #1548).
@@ -710,8 +722,23 @@ async function codeSchutz(host, config, args) {
   }
 }
 
+/**
+ * `code contract-repo <name>` (Issue #1615, Plan #1611 E7): der gebaute Stand des Partnerrepos
+ * im Zwischenspeicher. Exit 0 auch bei `ok: false` wie `issue history`; ein unbekannter oder
+ * ungueltiger Name bricht mit den bekannten Namen ab.
+ */
+function codeVertragsRepo(config, args) {
+  try {
+    return out(vertragsRepoHolen(config, args._[0]));
+  } catch (e) {
+    abbruch(e.message);
+  }
+}
+
 async function dispatchCode(command, args) {
   const config = loadConfig();
+  // Braucht keinen Code-Host: Der Abruf geht ueber git an die URL aus der Config.
+  if (command === "contract-repo") return codeVertragsRepo(config, args);
   const host = resolveCodeHost(config);
   switch (command) {
     case "repo-name": return codeRepoName(host);
