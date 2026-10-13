@@ -435,6 +435,34 @@ test("testAblagen: kein default, die Beschreibung nennt Platzhalter, Vorgaben un
   assert.match(text, /Mehrmodul/);
 });
 
+// --- vertragsRepos (Issue #1614, Plan #1611 E8) ---
+//
+// Je Partnerrepo ein Objekt `{ name, url, zweig }`. `name` wird im Kommando
+// `code contract-repo` zum Pfadsegment des Caches — ein `/` oder `..` verliesse das
+// Cache-Verzeichnis, darum traegt es dasselbe Muster wie ROLLEN_NAME.
+
+test("vertragsRepos: name und url, zweig wahlweise, sind gueltig", () => {
+  const feld = schema.properties.vertragsRepos;
+  assert.ok(feld, "vertragsRepos ist im Schema definiert");
+  assert.deepEqual(pruefe(feld, [{ name: "kanban-kit", url: "https://github.com/mannewolff/kanban-kit.git" }]), []);
+  assert.deepEqual(pruefe(feld, [{ name: "kit2", url: "u", zweig: "release" }]), []);
+  assert.deepEqual(pruefe(feld, []), []);
+  assert.equal(feld.items.properties.zweig.default, "main");
+});
+
+test("vertragsRepos: ein name mit / oder .., ohne url oder mit fremdem Schluessel wird abgewiesen", () => {
+  const feld = schema.properties.vertragsRepos;
+  assert.notDeepEqual(pruefe(schema, { reviewModel: "claude-opus-5-5", vertragsRepos: [{ name: "../x", url: "u" }] }), [],
+    "eine Config mit name ../x passiert das Schema");
+  for (const name of ["../x", "a/b", "..", "Gross", "a--b", "-a", ""]) {
+    assert.notDeepEqual(pruefe(feld, [{ name, url: "u" }]), [], `name ${JSON.stringify(name)} passiert das Schema`);
+  }
+  assert.notDeepEqual(pruefe(feld, [{ name: "kanban-kit" }]), [], "ein Eintrag ohne url");
+  assert.notDeepEqual(pruefe(feld, [{ url: "u" }]), [], "ein Eintrag ohne name");
+  assert.notDeepEqual(pruefe(feld, [{ name: "kanban-kit", url: "u", pfad: "x" }]), [], "ein fremder Schluessel");
+  assert.equal(feld.items.properties.url.minLength, 1);
+});
+
 // --- spec: nach dem Rueckbau von Spec-Driven Development (Plan #825, Issue #830) ---
 
 test("spec: das Schema kennt den Block nicht mehr, die Wurzel bleibt geschlossen", () => {

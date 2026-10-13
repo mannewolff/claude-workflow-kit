@@ -91,6 +91,10 @@ test("Tabelle: die Namen aus E11 und einige Schluessel", () => {
   assert.equal(SCHLUESSEL["night.kette"], "chain");
   assert.equal(SCHLUESSEL.codeHost, "codeHost");
   assert.equal(SCHLUESSEL.language, "language");
+  assert.equal(SCHLUESSEL.vertragsRepos, "contractRepos");
+  assert.equal(SCHLUESSEL["vertragsRepos[].name"], "name");
+  assert.equal(SCHLUESSEL["vertragsRepos[].url"], "url");
+  assert.equal(SCHLUESSEL["vertragsRepos[].zweig"], "branch");
 });
 
 // Eine deutsche Config, die moeglichst viele Formen beruehrt.

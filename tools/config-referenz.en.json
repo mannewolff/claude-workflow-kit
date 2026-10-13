@@ -598,5 +598,21 @@
   "szenarienAb": {
     "de": "6900f340db6b",
     "text": "Cut-off of the scenario duty: the card number from which a requirement on the board must carry a Scenarios section with at least one complete scenario. Requirements with a lower number are legacy and are never flagged for the missing section. When a file is checked or a requirement is created through the kit, the duty always applies. On update the installer sets the field, if it is missing, to the highest card number on the board plus one; to catch up by hand, use `node .claude/kit/board.mjs scenarios baseline`. If the field is missing, the duty applies to no card on the board, and the checks name the missing cut-off as a note. Applies team-wide; a different value in workflow.config.local.json is ignored."
+  },
+  "vertragsRepos": {
+    "de": "3969003eae10",
+    "text": "The partner repos of this project: repos that read or write something this project also defines — a name, a marker, a format. If the field names a partner repo, gate P14 requires every plan to carry the subsection Contracts at the end of “Architectural decisions”, and every contract there names one of these repos by name. Each entry names name, url and optionally zweig. A missing field or [] = no partner repo, P14 checks nothing. Applies team-wide; a different value in workflow.config.local.json is ignored."
+  },
+  "vertragsRepos[].name": {
+    "de": "569715abd1a6",
+    "text": "Short name of the partner repo, for example kanban-kit: lowercase letters and digits, words separated by single hyphens. A contract names the repo by this name. The name also serves as a directory name, so neither / nor .. may appear in it."
+  },
+  "vertragsRepos[].url": {
+    "de": "90dfebb03d7b",
+    "text": "Address from which the partner repo can be cloned, for example https://github.com/mannewolff/kanban-kit.git."
+  },
+  "vertragsRepos[].zweig": {
+    "de": "e82d38faa008",
+    "text": "Main branch of the partner repo: a contract is checked against the built state on this branch."
   }
 }

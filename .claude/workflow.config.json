@@ -1108,5 +1108,11 @@
     "ort": "buildDienst",
     "zweig": "kit-pruefung"
   },
-  "vorgeschichte": true
+  "vorgeschichte": true,
+  "vertragsRepos": [
+    {
+      "name": "kanban-kit",
+      "url": "https://github.com/mannewolff/kanban-kit.git"
+    }
+  ]
 }

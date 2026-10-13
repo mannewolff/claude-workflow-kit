@@ -764,7 +764,7 @@ The update rewrites the calls it created itself, such as the hook in `.claude/se
 | `ziel:push-vorbereitet` | `goal:push-prepared` |
 
 ## Settings through the interface
-<!-- de: dc9cd974a581 -->
+<!-- de: c93c6d02d371 -->
 
 Instead of editing the config files by hand, the process settings can be maintained through a local interface. It is **not installed** but downloaded as a single file: [settings.mjs](https://docs.mwolff.org/settings.mjs). It works across all projects under one folder and therefore belongs in none of them.
 
@@ -778,7 +778,7 @@ node settings.mjs ~/ki-projects
 
 **Ten parts.** The interface divides the settings into ten parts: reviewers, pairings, check stages, findings, check commands and areas, night chain, effort, effectiveness, task levels and simple groups. Within a part, changes collect in a working copy until they are saved or discarded; the footer of the part says how many changes are pending and which ones. A single value without a part of its own — such as `mainBranch` — gets a field of its own.
 
-**Text block in file notation.** Only four cases remain as a text block in the notation of the file: the two night fields without an input of their own — the model list (`night.modelle`) and the deviating stage rule (`night.stufenRegel`) —, the test locations (`testAblagen`), whose entries come in two forms and therefore fit no fixed table, the place of the full run before `push main` (`pushPruefung`), which is either a fixed value or an object, and settings the kit does not know. None of them has a part of its own among the ten.
+**Text block in file notation.** Only five cases remain as a text block in the notation of the file: the two night fields without an input of their own — the model list (`night.modelle`) and the deviating stage rule (`night.stufenRegel`) —, the test locations (`testAblagen`), whose entries come in two forms and therefore fit no fixed table, the place of the full run before `push main` (`pushPruefung`), which is either a fixed value or an object, the partner repos (`vertragsRepos`), a list of objects like the test locations, and settings the kit does not know. None of them has a part of its own among the ten.
 
 **Task levels.** The part *task levels* maintains `night.stufen` without JSON input: for each level — schwer, mittel, leicht (hard, medium, light) — a choice between *Keine*, *Modell* and *Kommando* (none, model, command). The model comes with the thoroughness that the night run passes to the Claude CLI as `--effort`; "Voreinstellung" (default) leaves it to the CLI and writes no field. Setting a level to *Keine* removes its entry — the night run then falls back to the next stronger level. Next to a foreign `kommando` there is no thoroughness, and switching to it takes `modell` and `effort` away.
 
@@ -1070,6 +1070,14 @@ Before a requirement or plan is written, searches earlier requirements on the pr
 ### `scenariosFrom` (German: `szenarienAb`)
 
 Cut-off of the scenario duty: the card number from which a requirement on the board must carry a Scenarios section with at least one complete scenario. Requirements with a lower number are legacy and are never flagged for the missing section. When a file is checked or a requirement is created through the kit, the duty always applies. On update the installer sets the field, if it is missing, to the highest card number on the board plus one; to catch up by hand, use `node .claude/kit/board.mjs scenarios baseline`. If the field is missing, the duty applies to no card on the board, and the checks name the missing cut-off as a note. Applies team-wide; a different value in workflow.config.local.json is ignored.
+
+### `contractRepos` (German: `vertragsRepos`)
+
+The partner repos of this project: repos that read or write something this project also defines — a name, a marker, a format. If the field names a partner repo, gate P14 requires every plan to carry the subsection Contracts at the end of “Architectural decisions”, and every contract there names one of these repos by name. Each entry names name, url and optionally zweig. A missing field or [] = no partner repo, P14 checks nothing. Applies team-wide; a different value in workflow.config.local.json is ignored.
+
+- `contractRepos[].name` (German: `vertragsRepos[].name`) — Short name of the partner repo, for example kanban-kit: lowercase letters and digits, words separated by single hyphens. A contract names the repo by this name. The name also serves as a directory name, so neither / nor .. may appear in it.
+- `contractRepos[].url` (German: `vertragsRepos[].url`) — Address from which the partner repo can be cloned, for example https://github.com/mannewolff/kanban-kit.git.
+- `contractRepos[].branch` (German: `vertragsRepos[].zweig`) — Main branch of the partner repo: a contract is checked against the built state on this branch.
 <!-- einstellungen:ende -->
 
 ## The seventeen skills and the 9-step core process

@@ -749,7 +749,7 @@ node settings.mjs ~/ki-projects
 
 **Zehn Teile.** Die Oberfläche gliedert die Einstellungen in zehn Teile: Reviewer, Paarungen, Prüfstufen, Befunde, Prüfkommandos und Bereiche, Nacht-Kette, Aufwand, Wirksamkeit, Aufgabenstufen und einfache Gruppen. Änderungen sammeln sich innerhalb eines Teils in einer Arbeitskopie, bis sie gespeichert oder verworfen werden; der Fuß des Teils nennt, wie viele Änderungen offen sind und welche. Ein einzelner Wert ohne eigenen Teil — etwa `mainBranch` — bekommt ein Feld für sich.
 
-**Textblock in Dateischreibweise.** Als Textblock in der Schreibweise der Datei bleiben nur vier Fälle stehen: die beiden Nacht-Felder ohne eigene Eingabe — die Modellliste (`night.modelle`) und die abweichende Stufenregel (`night.stufenRegel`) —, die Test-Ablagen (`testAblagen`), deren Einträge zwei Formen kennen und darum in keine feste Tabelle passen, der Ort des vollen Laufs vor `push main` (`pushPruefung`), der ein fester Wert oder ein Objekt ist, und Einstellungen, die das Kit nicht kennt. Für sie alle gibt es keinen eigenen der zehn Teile.
+**Textblock in Dateischreibweise.** Als Textblock in der Schreibweise der Datei bleiben nur fünf Fälle stehen: die beiden Nacht-Felder ohne eigene Eingabe — die Modellliste (`night.modelle`) und die abweichende Stufenregel (`night.stufenRegel`) —, die Test-Ablagen (`testAblagen`), deren Einträge zwei Formen kennen und darum in keine feste Tabelle passen, der Ort des vollen Laufs vor `push main` (`pushPruefung`), der ein fester Wert oder ein Objekt ist, die Partnerrepos (`vertragsRepos`), eine Liste von Objekten wie die Test-Ablagen, und Einstellungen, die das Kit nicht kennt. Für sie alle gibt es keinen eigenen der zehn Teile.
 
 **Aufgabenstufen.** Der Teil *Aufgabenstufen* pflegt `night.stufen` ohne JSON-Eingabe: je Stufe — schwer, mittel, leicht — eine Wahl zwischen *Keine*, *Modell* und *Kommando*. Zum Modell gehört die Gründlichkeit, die der Nachtlauf als `--effort` an die Claude-CLI gibt; „Voreinstellung“ überlässt sie ihr und schreibt kein Feld. Eine Stufe auf *Keine* zu stellen entfernt ihren Eintrag — der Nachtlauf weicht dann zur nächststärkeren Stufe aus. Neben einem fremden `kommando` gibt es keine Gründlichkeit, und der Wechsel dorthin nimmt `modell` und `effort` mit.
 
@@ -1040,6 +1040,14 @@ Sucht vor dem Schreiben eines Fachplans oder Plans frühere Fachpläne des eigen
 ### `szenarienAb`
 
 Stichtag der Szenarien-Pflicht: die Kartennummer, ab der ein Fachplan am Board einen Abschnitt Szenarien mit mindestens einem vollständigen Szenario tragen muss. Fachpläne mit kleinerer Nummer sind Altbestand und werden nie wegen des fehlenden Abschnitts beanstandet. Beim Prüfen einer Datei und beim Anlegen über das Kit gilt die Pflicht immer. Der Installer setzt das Feld beim Update, wenn es fehlt, auf die höchste Kartennummer am Board plus eins; von Hand nachholen mit `node .claude/kit/board.mjs scenarios baseline`. Fehlt das Feld, gilt die Pflicht für keine Karte am Board, und die Prüfungen nennen den fehlenden Stichtag als Hinweis. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+### `vertragsRepos`
+
+Die Partnerrepos dieses Projekts: Repos, die etwas lesen oder schreiben, das auch dieses Projekt festlegt — einen Namen, ein Kennzeichen, ein Format. Nennt das Feld ein Partnerrepo, verlangt Gate P14 von jedem Plan am Ende von „Architektonische Entscheidungen“ den Unterabschnitt Verträge, und jeder Vertrag dort nennt eines dieser Repos beim Namen. Jeder Eintrag nennt name, url und wahlweise zweig. Fehlendes Feld oder [] = kein Partnerrepo, P14 prüft nichts. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.
+
+- `vertragsRepos[].name` — Kurzname des Partnerrepos, etwa kanban-kit: Kleinbuchstaben und Ziffern, Wörter durch einzelne Bindestriche getrennt. Unter diesem Namen nennt ein Vertrag das Repo. Der Name dient zugleich als Verzeichnisname und kann darum weder / noch .. enthalten.
+- `vertragsRepos[].url` — Adresse, von der sich das Partnerrepo klonen lässt, etwa https://github.com/mannewolff/kanban-kit.git.
+- `vertragsRepos[].zweig` — Hauptzweig des Partnerrepos: Gegen den gebauten Stand auf diesem Zweig wird ein Vertrag abgeglichen.
 <!-- einstellungen:ende -->
 
 ## Die siebzehn Skills und der 9-Schritt-Kernprozess
