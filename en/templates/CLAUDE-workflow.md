@@ -23,7 +23,7 @@ Binding process for AI-assisted software development in this project. Based on t
 ---
 
 ## Tools beside the process
-<!-- de: 0f961bfce4d6 -->
+<!-- de: 994e1f122469 -->
 
 The nine steps above are the process from the white paper. What stands here is a tool of the kit: helpful, often used — but **the process runs without these skills as well**. They therefore carry no number; a number would claim an order and an obligation that do not exist.
 
@@ -32,6 +32,7 @@ The nine steps above are the process from the white paper. What stands here is a
 | Skill | What for |
 |-------|----------|
 | `/session-start` | Session start: load the memory vault, fetch the state of the project |
+| `/triage` | talk an idea through with the human and bring it onto the chosen lane |
 | `/requirement` | Requirement as a business issue for grooming with the PO |
 | `/issue-review` | have a requirement, a plan document **or** a work package checked — one command, three stages |
 | `/groom` | decide the open questions of a reviewed business plan one by one with the PO |
@@ -360,7 +361,7 @@ Dependency convention: exactly "Keine." or explicit references of the form `Issu
 Derivation convention: `issue create --derived-from <number>` additionally carries the card number of the nearest ancestor to the board as a field — `/requirement` never (root), `/task` never (no ancestor), `/techplan` to the business issue, `/issues` to the plan document. The body lines `Plan:` and `Requirement:` (in a German project `Fachliche Quelle:`) stay alongside: a project change deletes the field, the text survives it. Only effective at creation, there is no adding later.
 
 ### Four title prefixes, four special cases
-<!-- de: 48acc2e83654 -->
+<!-- de: 026935c5530d -->
 
 An issue without a prefix is a work package in the four-section format above. Four prefixes mark cards that **no session implements**; implement skills and night runner mechanically put them back into the backlog with a comment, without starting a session. The first three are documents and never go to Ready; `[Human]` is a work package only a human can do. **The kit writes English, recognises both.** New cards carry only the English prefixes, and the kit sets only English labels, also in a German project; `issue create --art requirement|plan|idea|human|task` sets the English prefix. Cards with the earlier German names keep working: the kit recognises them when reading, treats them the same, also with regard to release rights, and removes a German label where it would remove the English one. `[Plan]`, `[Task]`, `kit:night`, `kit:nightrun` and `planreview:1|2` are the same in both languages. The complete name table stands in the section "Labels and title prefixes" of the kit documentation, with the earlier names.
 
@@ -368,7 +369,7 @@ An issue without a prefix is a work package in the four-section format above. Fo
 |--------|------------|-------------|
 | `[Requirement]` | requirement from `/requirement`, story format | groom with the PO, then `/techplan #N` |
 | `[Plan]` | plan document from `/techplan`, binding plan format | `/issues #N` breaks it down into work packages |
-| `[Idea]` | raw idea, not yet a document | weighing needed: `/requirement #N` — otherwise `/task #N` |
+| `[Idea]` | raw idea, not yet a document | `/triage #N` — directly: weighing needed `/requirement #N`, otherwise `/task #N` |
 | `[Human]` | work package whose task lies outside the repository | the human acts and moves the card on themselves |
 
 **Plan documents** (`[Plan]`) record the released state instead of implementing it. A plan describes a way, it is no task: it is **never implemented**, **never goes to Ready** and is first broken down into work packages with `/issues #N`. Its format is binding — exactly these six headings in this order:
@@ -384,7 +385,7 @@ An issue without a prefix is a work package in the four-section format above. Fo
 
 **Done is set by the human** — here too. The kit moves plan document and requirement to **In review** as soon as the plan is through: at least one of its work packages lies verifiably in In review or Done, none in Backlog, Ready or In progress. It moves the requirement only when every one of its plans not noted as superseded is through. What already lies in In review or Done stays there. That applies no matter which way built the last package — night chain, implementation night or session by day. In review means for origin documents exclusively: everything built, review is due.
 
-**Ideas** (`[Idea]`) are a raw requirement, not an implementable issue — they have exactly two ways forward, and which applies depends on one question: if the idea demands a weighing, `/requirement #N` is the way and turns it into a requirement; if there is nothing to weigh or the human has already decided, it becomes exactly one work package via `/task #N`. The human decides the case with the call — a skill that answers it for itself would make the decision it is supposed to hand over. The way directly into a technical plan does not count — it would skip the place where the goal is decided. Without the gate a session would correctly reject an idea in Ready, but the runner cannot tell this rejection apart from a failure — the session is burnt and the comment on the board misleading.
+**Ideas** (`[Idea]`) are a raw requirement, not an implementable issue. Their regular way is `/triage #N`: the skill talks the idea through with the human, proposes a lane with its reason, and the human chooses one of four exits — `1` implements the trifle at once and closes the idea with a reference to the commit, `2, fachlich` leads via `/requirement #N` into a requirement, `2, technisch` via `/techplan #N` directly into a technical plan, `3` via `/task #N` into exactly one work package. Whoever already knows what the idea wants calls two of these ways without `/triage`: if the idea demands a weighing, `/requirement #N` is the way and turns it into a requirement; if there is nothing to weigh or the human has already decided, it becomes exactly one work package via `/task #N`. The human chooses the way, in `/triage` or with the call — a skill that answers it for itself would make the decision it is supposed to hand over. An idea goes directly to the technical plan only after `/triage` with the chosen lane `2, technisch`: there the goal is decided, and the human chooses the lane; without this place the way would skip it. Such a plan has no business source and is therefore no input for the night chain — it runs by day via `/issues #N` with the number of the plan. Without the gate a session would correctly reject an idea in Ready, but the runner cannot tell this rejection apart from a failure — the session is burnt and the comment on the board misleading.
 
 **Human steps** (`[Human]`) are work packages in the four-section format, but their task lies outside the repository: a setting in a web interface, an account, an access, a release. No move of a session does them, therefore none starts. In the form check they fall into the stage `issue` like every other package. The return comment says explicitly that the card **waits** and has not failed — in the backlog it otherwise looks like a failed package, and whoever reads the columns in the morning no longer finds it where they put it. Without the gate the runner would start a session that recognises the case correctly and does nothing; it cannot tell this correct inaction apart from a failure.
 

@@ -13,7 +13,9 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
 
 // Die Grenze wandert nur mit einer beschlossenen Regel mit, nicht mit Zuwachs nebenbei:
-// Wer sie anhebt, fasst diesen Test an und begruendet es. Zuletzt +25 fuer den Abschnitt
+// Wer sie anhebt, fasst diesen Test an und begruendet es. Zuletzt +1 fuer die Zeile `/triage`
+// in der Tabelle der Werkzeuge (Issue #1632, Fachplan #1620: der Prozesstext nennt den Weg einer
+// Idee; der Absatz "Ideen" bleibt ein Absatz und waechst nicht in Zeilen). Davor +25 fuer den Abschnitt
 // "Vorgeschichte" (Issue #1543, Plan #1534/E6: die Regel steht einmal ausfuehrlich hier,
 // `/requirement` und `/techplan` verweisen darauf). Davor +1 fuer die Zeile `/groom` in
 // der Tabelle der Werkzeuge (Issue #1515, Plan #1510/E11: Werkzeug ohne Nummer, keine Regel
@@ -43,9 +45,25 @@ const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), 
 // die Artenliste, dann die Skills). Davor +9 fuer den Abschnitt "Wirksamkeit der
 // Pruefungen" (Issue #783, Plan #782/E11: der Regeltext steht vor dem Werkzeug) und +5
 // fuer die Regel zur wartenden Sitzung (Issue #774).
-test("die Vorlage bleibt unter 438 Zeilen", () => {
+test("die Vorlage bleibt unter 439 Zeilen", () => {
   const zeilen = VORLAGE.split("\n").length;
-  assert.ok(zeilen <= 438, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 438`);
+  assert.ok(zeilen <= 439, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 439`);
+});
+
+// Der Weg einer Idee fuehrt ueber `/triage` (Issue #1632, Fachplan #1620). Direkt zum Plan
+// darf eine Idee nur mit der dort gewaehlten Bahn `2, technisch`; ein solcher Plan traegt
+// keine fachliche Quelle und laeuft darum nicht durch die Nacht-Kette, sondern am Tag ueber
+// `/issues #N`. Alles steht im einen Absatz "Ideen", damit der Weg zusammen gelesen wird.
+test("der Absatz Ideen nennt /triage, den Weg zum Plan nur nach Bahn 2, technisch, und dessen Folge", () => {
+  const absatz = VORLAGE.split(/\n\s*\n/).find((a) => a.startsWith("**Ideen**"));
+  assert.ok(absatz, "der Absatz Ideen fehlt");
+  assert.match(absatz, /\/triage #N/, "der Absatz nennt /triage #N nicht");
+  assert.match(absatz, /`2, technisch`/, "der Absatz nennt die Bahn `2, technisch` nicht");
+  assert.match(absatz, /\/techplan #N/, "der Absatz nennt den Weg zum Plan nicht");
+  assert.match(absatz, /Nacht-Kette/, "der Absatz nennt die Folge fuer die Nacht-Kette nicht");
+  assert.match(absatz, /\/issues #N/, "der Absatz nennt /issues #N am Tag nicht");
+  assert.ok(!VORLAGE.includes("Der Weg direkt in einen technischen Plan gilt nicht"), "der alte Ausschluss steht noch da");
+  assert.match(VORLAGE, /^\| `\/triage` \|/m, "die Zeile /triage in der Tabelle der Werkzeuge fehlt");
 });
 
 test("die gestrichenen Abschnitte sind weg", () => {
