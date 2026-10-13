@@ -393,7 +393,7 @@ An issue without a prefix is a work package in the four-section format above. Fo
 ---
 
 ## Completion report format
-<!-- de: 7ab64e4f2da3 -->
+<!-- de: 7f0775acc4a7 -->
 
 ```
 ### Changes
@@ -409,7 +409,7 @@ An issue without a prefix is a work package in the four-section format above. Fo
 - E1: <question>. Chosen: … Rejected: … Reason: … Rollback: …
 ```
 
-`### Decisions` is dropped if there was nothing to decide; otherwise the block carries the entries in the format from "Decide instead of asking". The last line `Report-Run: <stamp>` is set by the kit (`issue report`), not by the session: it marks the report of a run, so that a repetition replaces it instead of creating a second one.
+`### Decisions` is dropped if there was nothing to decide; otherwise the block carries the entries in the format from "Decide instead of asking". The last line `Report-Run: <stamp>` is set by the kit (`issue report`), not by the session: it marks the report of a run, so that a repetition replaces it instead of creating a second one. `issue report` only moves the card if a commit of this run names `Issue #N`; otherwise it rejects and leaves card, report and pieces untouched. `[Human]` cards are exempt, and `--without-commit '<reason>'` exists only for work without a change in the repo — the reason then stands in the report.
 
 ---
 

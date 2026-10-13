@@ -516,7 +516,7 @@ export const ALTNAMEN = Object.freeze({
   optionen: Object.freeze({ teil: "part", zustand: "state", spalte: "column", pfad: "path", zweig: "branch",
     "nur-pfad": "path-only", stufe: "stage", rolle: "role", datei: "file", "material-datei": "material-file",
     auftrag: "brief", ausgabe: "output", protokoll: "transcript", begriffe: "terms", dateien: "files",
-    ohne: "without", vergleich: "compare" }),
+    ohne: "without", vergleich: "compare", "ohne-commit": "without-commit" }),
   werte: Object.freeze(Object.fromEntries(Object.entries(EINGABEWERTE).map(([option, ebene]) => [option, nurAbweichende(ebene)]))),
 });
 

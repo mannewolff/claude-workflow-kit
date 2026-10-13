@@ -30,13 +30,16 @@
  *       des Projektverzeichnisses (Issue #584).
  *       '--idempotency-key <wert>' wiederholt 'issue create' und 'issue comment'
  *       gefahrlos, wenn der Ausgang unklar blieb (Issue #834).
- *   node board.mjs issue report <id> --text '<bericht>' | --text-file <pfad>
+ *   node board.mjs issue report <id> --text '<bericht>' | --text-file <pfad> [--without-commit '<begruendung>']
  *   node board.mjs issue report <id> --part <n> --text '<stueck>'
- *   node board.mjs issue report <id>
+ *   node board.mjs issue report <id> [--without-commit '<begruendung>']
  *       Legt den Abschlussbericht ab und zieht nach In review, je Lauf idempotent
  *       (Issue #1022): gleicher Bericht desselben Laufs -> nichts, geaenderter ->
  *       ersetzt. --part schreibt Stueck n nach .claude/berichte/, der Aufruf ohne
- *       --text setzt die Stuecke zusammen und schliesst ab.
+ *       --text setzt die Stuecke zusammen und schliesst ab. Gezogen wird nur, wenn ein
+ *       Commit seit dem Zug nach In progress "Issue #<N>" nennt (Issue #1584); ausgenommen
+ *       sind [Mensch]-Karten, und --without-commit '<begruendung>' meldet ohne Commit,
+ *       die Begruendung steht als Zeile im Bericht.
  *   node board.mjs issue run-state <id> --state running|aborted|waiting|done --text-file <pfad>
  *       Label und Kommentar '## Laufstand' einer Karte in einem Zug, wiederholbar
  *       (Issue #1083). Labelnamen aus night.stand.labels.
@@ -127,9 +130,9 @@ Usage:
                              [--idempotency-key <value>]
       '-' reads from stdin, good for short texts; for long ones '--text-file' (Issue #584).
       --idempotency-key as with 'issue create' (Issue #834).
-  node board.mjs issue report <id> --text '<report>' | --text-file <path>
+  node board.mjs issue report <id> --text '<report>' | --text-file <path> [--without-commit '<reason>']
   node board.mjs issue report <id> --part <n> --text '<piece>'
-  node board.mjs issue report <id>
+  node board.mjs issue report <id> [--without-commit '<reason>']
       Files the completion report and then moves the card to In review (Issue #1022).
       The report gets a run stamp line as its last line (the card's latest move to
       in_progress from .claude/bewegungen.tsv). Idempotent per run: same content ->
@@ -138,7 +141,11 @@ Usage:
       --part <n> only writes piece n to .claude/berichte/<id>.<n>.md (no board); the
       call without --text joins the pieces in numeric order, completes and only then
       clears them. If it fails, the retry is the same call.
-      Output: { ok, id, bericht: angelegt|ersetzt|unveraendert, status: in_review }.
+      It only moves the card if a commit since the move to in_progress names
+      "Issue #<N>" (Issue #1584); [Human] cards are exempt. --without-commit '<reason>'
+      reports without a commit, the reason stands as a line in the report.
+      Output: { ok, id, bericht: angelegt|ersetzt|unveraendert, status: in_review,
+               commit: <short hash>|ohne|mensch }.
   node board.mjs issue run-state <id> --state running|aborted|waiting|done --text-file <path>
       Run status of a card in one go (Issue #1083): sets the label of the state and
       removes the other two (done: all three), plus exactly one run status

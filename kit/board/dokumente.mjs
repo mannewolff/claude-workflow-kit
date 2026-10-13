@@ -1003,6 +1003,23 @@ function laufkennung(id) {
   return stempel;
 }
 
+/**
+ * Der kurze Hash des juengsten Commits seit `seit`, dessen Nachricht `Issue #<N>` nennt,
+ * mit Wortgrenze nach der Nummer (`Issue #50` belegt nicht Karte 5), oder null — auch,
+ * wenn git scheitert (Issue #1584). Der Start ist injizierbar wie bei `exec`.
+ */
+export function commitBeleg(id, seit, { spawn = spawnSync, baum = process.cwd() } = {}) {
+  const res = spawn("git", ["log", `--since=${seit}`, "--format=%h%x1f%B%x1e"], { cwd: baum, encoding: "utf-8" });
+  if (res.error || res.status !== 0) return null;
+  const nummer = kartenSchluessel(id).replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+  const muster = new RegExp(`Issue #0*${nummer}\\b`);
+  for (const satz of String(res.stdout ?? "").split("\x1e")) {
+    const [hash, nachricht = ""] = satz.trimStart().split("\x1f");
+    if (hash && muster.test(nachricht)) return hash;
+  }
+  return null;
+}
+
 // Die Stuecke einer Karte in Nummernfolge (numerisch, nicht lexikalisch: 10 nach 2).
 function berichtStuecke(id) {
   const ordner = resolve(".claude", BERICHTE_ORDNER);
@@ -1139,8 +1156,12 @@ async function berichtAblegen(tracker, id, text, laufZeile) {
  * sonst ersetzt, nie ein zweiter angelegt. Deshalb werden die Kommentare STRENG gelesen:
  * Ein leer gelesener Stand wuerde den Bericht doppeln. Die Reihenfolge Ablage vor Zug
  * haelt eine Karte ohne Bericht aus In review heraus.
+ *
+ * Gezogen wird nur mit Beleg (Issue #1584): ein Commit dieses Laufs, der `Issue #<N>`
+ * nennt, eine `[Mensch]`-Karte oder `--without-commit '<Begruendung>'`, die als Zeile im
+ * Bericht steht. Ohne Beleg bleiben Board und Stuecke unberuehrt.
  */
-export async function issueMelden(tracker, args) {
+export async function issueMelden(tracker, args, { spawn = spawnSync } = {}) {
   const id = args._[0];
   if (!id) fail(t("idErforderlich", { aufruf: t("meldenAufruf") }));
   const hatText = args.text !== undefined || args["text-file"] !== undefined;
@@ -1163,7 +1184,11 @@ export async function issueMelden(tracker, args) {
   if (!stempel) {
     fail(t("meldenKeinZug", { id, datei: BEWEGUNGEN_DATEI }));
   }
-  const bericht = await berichtAblegen(tracker, id, text, `${BERICHT_LAUF} ${stempel}`);
+  const commit = await meldenCommit(tracker, id, args, stempel, spawn);
+  const zuMelden = commit === "ohne"
+    ? `${text.trimEnd()}\n\n${t("meldenOhneCommitZeile", { grund: einzeilig(args["without-commit"]) })}`
+    : text;
+  const bericht = await berichtAblegen(tracker, id, zuMelden, `${BERICHT_LAUF} ${stempel}`);
 
   // Wie `issue move`: Buchungen erst nach dem geglueckten Zug.
   await tracker.moveIssue(id, "in_review");
@@ -1175,7 +1200,33 @@ export async function issueMelden(tracker, args) {
     try { rmdirSync(resolve(".claude", BERICHTE_ORDNER)); } catch { /* nicht leer — Stuecke anderer Karten */ }
   }
   const ursprung = await ursprungMelden(tracker, id, `${BERICHT_LAUF} ${stempel}`);
-  out({ ok: true, id, bericht, status: "in_review", ...(ursprung ? { ursprung } : {}) });
+  out({ ok: true, id, bericht, status: "in_review", commit, ...(ursprung ? { ursprung } : {}) });
+}
+
+/**
+ * Der Beleg, dass dieser Lauf etwas festgeschrieben hat (Issue #1584): der kurze Hash eines
+ * Commits seit dem Zug nach In progress, der `Issue #<N>` nennt, `"ohne"` mit
+ * `--without-commit '<Begruendung>'` oder `"mensch"` bei einer `[Mensch]`-Karte ohne solchen
+ * Commit. Fehlt er,
+ * endet der Aufruf mit Exit 1, bevor Board oder Stuecke beruehrt sind.
+ */
+async function meldenCommit(tracker, id, args, stempel, spawn) {
+  const grund = args["without-commit"];
+  if (grund !== undefined) {
+    if (typeof grund !== "string" || grund.trim() === "") fail(t("meldenOhneCommitLeer"));
+    return "ohne";
+  }
+  const hash = commitBeleg(id, stempel, { spawn });
+  if (hash) return hash;
+  // Die Karte erst ohne Commit lesen: Der uebliche Weg kostet so keinen Board-Aufruf mehr.
+  let karte;
+  try {
+    karte = await tracker.getIssue(id);
+  } catch (e) {
+    fail(t("meldenKarteUnlesbar", { id, grund: e.message }));
+  }
+  if (istMensch(karte?.title ?? "")) return "mensch";
+  fail(t("meldenKeinCommit", { id, nummer: kartenSchluessel(id), seit: stempel }));
 }
 
 // Ein Grund kann mehrzeilig sein (Adapter-Meldungen); im Listenpunkt steht er auf einer Zeile.

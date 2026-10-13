@@ -23,7 +23,7 @@ import { posixShell } from "./helpers/checks-repo.mjs";
 
 import {
   setupProjekt, runBoard, runBoardAsync, fakeCli, aufrufe, starteServer, toolboxMitKommentaren,
-  BOARD, TEST_TOOLBOX_BUDGET_MS,
+  BOARD, TEST_TOOLBOX_BUDGET_MS, commitFuer,
 } from "./helpers/board-fixture.mjs";
 import { GITHUB, basisRegeln as ghBasis } from "./helpers/board-github-fixture.mjs";
 import { GITLAB, basisRegeln as glabBasis } from "./helpers/board-gitlab-fixture.mjs";
@@ -47,8 +47,10 @@ function bewegungenText(id) {
   ].join("\n");
 }
 
+// Mit dem Zug liegt auch der Commit dieses Laufs vor, der die Karte nennt (Issue #1584).
 function schreibeBewegungen(dir, id) {
   writeFileSync(join(dir, ".claude", "bewegungen.tsv"), bewegungenText(id), "utf-8");
+  if (!existsSync(join(dir, ".git"))) commitFuer(dir, id);
 }
 
 function bewegungen(dir) {
@@ -58,9 +60,13 @@ function bewegungen(dir) {
 
 const bericht = (text) => `${text}\n\n${LAUF}`;
 
+// Der Beleg `commit` (Issue #1584) ist hier stets ein Hash; seine Faelle prueft
+// ablauf-board-melden-commit.test.mjs. Abgetrennt, damit die Vergleiche den Rest pruefen.
 function ausgabe(res) {
   assert.equal(res.status, 0, `Exit ${res.status}: ${res.stderr}`);
-  return JSON.parse(res.stdout);
+  const { commit, ...rest } = JSON.parse(res.stdout);
+  if (rest.status === "in_review") assert.match(commit, /^[0-9a-f]{4,}$/);
+  return rest;
 }
 
 // --- local ---
@@ -580,6 +586,7 @@ function mitVorhaben(fn, { zweitesPaket = false } = {}) {
     nimm("issue", "create", "--title", "Paket", "--body", "## Kontext\nPlan: Issue #0002\nPlan-Entscheidungen: E1\n\n## Aufgabe\na");
     if (zweitesPaket) nimm("issue", "create", "--title", "Paket zwei", "--body", "## Kontext\nPlan: Issue #0002\n\n## Aufgabe\nb");
     nimm("issue", "move", "0003", "in_progress");
+    commitFuer(dir, "3");
     const karte = (nr) => join(dir, "issues", `${nr}.md`);
     return fn({ dir, nimm, karte });
   } finally {

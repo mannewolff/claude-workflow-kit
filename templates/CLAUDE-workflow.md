@@ -387,7 +387,7 @@ Ein Issue ohne Praefix ist ein Arbeitspaket im Vier-Abschnitt-Format oben. Vier 
 - E1: <Frage>. Gewählt: … Verworfen: … Grund: … Rückbau: …
 ```
 
-`### Entscheidungen` entfaellt, wenn es nichts zu entscheiden gab; sonst traegt der Block die Eintraege im Format aus „Entscheiden statt fragen". Die letzte Zeile `Bericht-Lauf: <stempel>` setzt das Kit (`issue report`), nicht die Session: Sie kennzeichnet den Bericht eines Laufs, damit eine Wiederholung ihn ersetzt statt einen zweiten anzulegen.
+`### Entscheidungen` entfaellt, wenn es nichts zu entscheiden gab; sonst traegt der Block die Eintraege im Format aus „Entscheiden statt fragen". Die letzte Zeile `Bericht-Lauf: <stempel>` setzt das Kit (`issue report`), nicht die Session: Sie kennzeichnet den Bericht eines Laufs, damit eine Wiederholung ihn ersetzt statt einen zweiten anzulegen. `issue report` zieht nur, wenn ein Commit dieses Laufs `Issue #N` nennt, sonst weist es ab und laesst Karte, Bericht und Stuecke unberuehrt; ausgenommen sind `[Human]`-Karten, und `--without-commit '<Begruendung>'` ist allein fuer Arbeit ohne Aenderung im Repo da — die Begruendung steht dann im Bericht.
 
 ---
 

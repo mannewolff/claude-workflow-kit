@@ -62,6 +62,12 @@ export const TEXTE = Object.freeze({
       + "entweder --text oder den Abschluss ohne --text aufrufen, nicht beides.",
     meldenKeinBericht: "Kein Bericht fuer Issue {id}: weder --text noch Stuecke unter .claude/{ordner}/.",
     meldenKeinZug: "Kein Zug von Issue {id} nach in_progress in .claude/{datei} — ohne Laufkennung kein Bericht. Nichts geschrieben.",
+    meldenKeinCommit: "Issue {id} nicht gemeldet: Seit dem Zug nach In progress ({seit}) nennt kein Commit \"Issue #{nummer}\". "
+      + "Entweder committen und den Aufruf wiederholen, oder --without-commit '<Begruendung>' fuer Arbeit ohne Aenderung im Repo. "
+      + "Karte, Bericht und Stuecke bleiben unberuehrt.",
+    meldenOhneCommitLeer: "--without-commit braucht eine Begruendung: --without-commit '<Begruendung>'. Nichts geschrieben.",
+    meldenOhneCommitZeile: "Ohne Commit: {grund}",
+    meldenKarteUnlesbar: "Issue {id} nicht lesbar — kein Bericht geschrieben, Karte bleibt: {grund}",
     berichtKommentareUnlesbar: "Kommentare von Issue {id} nicht lesbar — kein Bericht geschrieben, Karte bleibt: {grund}",
     berichtOhneKommentarId: "der Bericht dieses Laufs traegt keine Kommentar-ID.",
     berichtNichtAbgelegt: "Bericht fuer Issue {id} nicht abgelegt, Karte bleibt in In progress: {grund}",
@@ -215,6 +221,12 @@ export const TEXTE = Object.freeze({
       + "call either --text or the completion without --text, not both.",
     meldenKeinBericht: "No report for issue {id}: neither --text nor pieces under .claude/{ordner}/.",
     meldenKeinZug: "No move of issue {id} to in_progress in .claude/{datei} — no report without a run stamp. Nothing written.",
+    meldenKeinCommit: "Issue {id} not reported: since the move to In progress ({seit}) no commit names \"Issue #{nummer}\". "
+      + "Either commit and repeat the call, or use --without-commit '<reason>' for work without a change in the repo. "
+      + "Card, report and pieces stay untouched.",
+    meldenOhneCommitLeer: "--without-commit needs a reason: --without-commit '<reason>'. Nothing written.",
+    meldenOhneCommitZeile: "Without commit: {grund}",
+    meldenKarteUnlesbar: "Issue {id} not readable — no report written, the card stays: {grund}",
     berichtKommentareUnlesbar: "Comments of issue {id} not readable — no report written, the card stays: {grund}",
     berichtOhneKommentarId: "the report of this run carries no comment ID.",
     berichtNichtAbgelegt: "Report for issue {id} not filed, the card stays in In progress: {grund}",

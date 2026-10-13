@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { TEXTE } from "../kit/board.mjs";
 import { TEXTE as DOKUMENTE_TEXTE, labelAbbilden, titelMitArt } from "../kit/board/dokumente.mjs";
 import { MARKER, pruefeParitaet, spracheFestlegen } from "../kit/board/namen.mjs";
-import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
+import { setupProjekt, runBoard, commitFuer } from "./helpers/board-fixture.mjs";
 import { mitSzenarien } from "./helpers/szenarien-fixture.mjs";
 
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
@@ -371,6 +371,7 @@ test("[1479] Hinweise zu den Abhaengigkeiten und der Abschnitt Ursprungsdokument
     assert.equal(paket.hinweise[3].meldung, "#88 is not on the board (archived or missing?) — it counts as met");
 
     nimm("issue", "move", "0002", "in_progress");
+    commitFuer(dir, "2");
     const e = nimm("issue", "report", "0002", "--text", "All green.");
     assert.equal(e.bericht, "angelegt");
     assert.equal(e.ursprung.dokumente[0].aktion, "wandert");
