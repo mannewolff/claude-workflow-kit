@@ -31,6 +31,17 @@ function karte(number, spalte, extra = {}) {
   return { id: number * 100, number, title: `Karte ${number}`, body: `Body ${number}`, column: spalte, position: 0, createdAt: "2026-08-14T09:12:33Z", ...extra };
 }
 
+/**
+ * Der Einzelabruf `GET /api/kanban/items/by-number/{n}` (Issue #1650): die Karte als
+ * `item` samt Kommentaren. Das obere `createdAt` der Detailantwort fehlt hier bewusst —
+ * `created` kommt nur aus dem Item (Plan #1638, E8).
+ */
+function einzelabruf(req, karten, comments = []) {
+  const treffer = req.url.match(/^\/api\/kanban\/items\/by-number\/(\d+)$/);
+  const k = treffer && karten.find((x) => String(x.number) === treffer[1]);
+  return k ? { status: 200, json: { item: k, archived: false, comments } } : null;
+}
+
 // Antwortet auf die Board-Abfrage mit dem gruppierten Format der Kanban-API.
 function gruppiert(karten) {
   const gruppen = {};
@@ -108,24 +119,13 @@ async function wirftBoardError(versprechen, muster) {
   });
 }
 
-/** Faengt, was waehrend `fn` auf stderr geht — der Hinweisweg des Adapters. */
-async function mitStderr(fn) {
-  const teile = [];
-  const alt = process.stderr.write;
-  process.stderr.write = (teil) => { teile.push(String(teil)); return true; };
-  try {
-    const ergebnis = await fn();
-    return { ergebnis, stderr: teile.join("") };
-  } finally {
-    process.stderr.write = alt;
-  }
-}
 
 const KARTEN = [karte(7, "READY"), karte(9, "READY", { position: 1 }), karte(3, "BACKLOG"), karte(5, "DONE")];
 
 // Standard-Mock: liefert das Board und quittiert Schreibzugriffe.
 function standardAntwort(req) {
   if (req.url === "/api/kanban/items" && req.method === "GET") return { status: 200, json: gruppiert(KARTEN) };
+  if (req.url.startsWith("/api/kanban/items/by-number/")) return einzelabruf(req, KARTEN);
   if (req.url === "/api/kanban/items" && req.method === "POST") return { status: 200, json: { id: 700, number: 7 } };
   if (/^\/api\/kanban\/items\/\d+\/move$/.test(req.url)) return { status: 200, json: { ok: true } };
   if (/^\/api\/kanban\/items\/\d+\/comments$/.test(req.url)) return { status: 200, json: [] };
@@ -196,9 +196,7 @@ test("list liefert type, auch bei einer Karte ohne type-Feld", async () => {
 test("get auf ein Vorhaben liefert status null und type epic", async () => {
   await mitBoard(
     (req) => {
-      if (req.url === "/api/kanban/items") return { status: 200, json: gruppiert([karte(8, "BACKLOG", { type: "epic" })]) };
-      if (/^\/api\/kanban\/items\/\d+\/comments$/.test(req.url)) return { status: 200, json: [] };
-      return null;
+      return einzelabruf(req, [karte(8, "BACKLOG", { type: "epic" })]);
     },
     async (dir) => {
       const karte8 = await amBoard(dir, (t) => t.getIssue("8"));
@@ -222,11 +220,7 @@ test("list bildet eine unbekannte Spalte auf status null ab", async () => {
 test("get liefert die Karte samt Kommentaren", async () => {
   await mitBoard(
     (req) => {
-      if (req.url === "/api/kanban/items" && req.method === "GET") return { status: 200, json: gruppiert(KARTEN) };
-      if (req.url === "/api/kanban/items/700/comments") {
-        return { status: 200, json: [{ author: "manne", body: "Ein Kommentar", createdAt: "2026-07-28T09:00:00Z" }] };
-      }
-      return null;
+      return einzelabruf(req, KARTEN, [{ author: "manne", body: "Ein Kommentar", createdAt: "2026-07-28T09:00:00Z" }]);
     },
     async (dir) => {
       // JSON-Rundreise wie die Ausgabe des Dispatch: Ein Feld mit `undefined` faellt
@@ -237,19 +231,6 @@ test("get liefert die Karte samt Kommentaren", async () => {
         comments: [{ author: "manne", body: "Ein Kommentar", createdAt: "2026-07-28T09:00:00Z", id: null }],
         created: "2026-08-14", // Anlagedatum aus createdAt (Issue #457)
       });
-    }
-  );
-});
-
-// Der Kommentar-Endpunkt ist juenger als der Rest der API: eine aeltere Instanz
-// antwortet mit 404. Titel und Status sind die Hauptsache — get darf nicht kippen.
-test("get ueberlebt einen fehlenden Kommentar-Endpunkt", async () => {
-  await mitBoard(
-    (req) => (req.url === "/api/kanban/items" ? { status: 200, json: gruppiert(KARTEN) } : { status: 404, json: { message: "Not Found" } }),
-    async (dir) => {
-      const { ergebnis, stderr } = await mitStderr(() => amBoardMitUhr(dir, (t) => t.getIssue("7")));
-      assert.deepEqual(ergebnis.comments, []);
-      assert.match(stderr, /Kommentare nicht abrufbar/);
     }
   );
 });
@@ -614,7 +595,7 @@ test("get liefert die Labels als Namen-Array", async () => {
   await mitBoard(
     (req) => (req.url === "/api/kanban/items"
       ? { status: 200, json: gruppiert([karte(7, "READY", { labels: ["kit:nightrun", "fix"] })]) }
-      : { status: 200, json: [] }),
+      : einzelabruf(req, [karte(7, "READY", { labels: ["kit:nightrun", "fix"] })])),
     async (dir) => {
       const karte7 = await amBoard(dir, (t) => t.getIssue("7"));
       assert.deepEqual(karte7.labels, ["kit:nightrun", "fix"]);
@@ -626,7 +607,7 @@ test("get ohne Label-Feld in der Antwort liefert ein leeres Array, nie undefined
   await mitBoard(
     (req) => (req.url === "/api/kanban/items"
       ? { status: 200, json: gruppiert([karte(7, "READY")]) }
-      : { status: 200, json: [] }),
+      : einzelabruf(req, [karte(7, "READY")])),
     async (dir) => {
       const karte7 = await amBoard(dir, (t) => t.getIssue("7"));
       assert.deepEqual(karte7.labels, []);
@@ -638,7 +619,7 @@ test("get und list liefern fuer dieselbe Karte dieselben Labels", async () => {
   await mitBoard(
     (req) => (req.url === "/api/kanban/items"
       ? { status: 200, json: gruppiert([karte(7, "READY", { labels: [{ name: "kit:nightrun" }] })]) }
-      : { status: 200, json: [] }),
+      : einzelabruf(req, [karte(7, "READY", { labels: [{ name: "kit:nightrun" }] })])),
     async (dir) => {
       const geholt = await amBoard(dir, (t) => t.getIssue("7"));
       const gelistet = await amBoard(dir, (t) => t.listIssues(undefined));
@@ -659,7 +640,7 @@ test("get liefert das Anlagedatum als Kalendertag", async () => {
   await mitBoard(
     (req) => (req.url === "/api/kanban/items"
       ? { status: 200, json: gruppiert([karte(7, "READY")]) }
-      : { status: 200, json: [] }),
+      : einzelabruf(req, [karte(7, "READY")])),
     async (dir) => {
       const karte7 = await amBoard(dir, (t) => t.getIssue("7"));
       assert.match(karte7.created, /^\d{4}-\d{2}-\d{2}$/);
@@ -672,7 +653,7 @@ test("get nimmt auch created_at und created als Anlagefeld", async () => {
     await mitBoard(
       (req) => (req.url === "/api/kanban/items"
         ? { status: 200, json: gruppiert([karte(7, "READY", { createdAt: undefined, [feld]: "2026-08-14T23:30:00+02:00" })]) }
-        : { status: 200, json: [] }),
+        : einzelabruf(req, [karte(7, "READY", { createdAt: undefined, [feld]: "2026-08-14T23:30:00+02:00" })])),
       async (dir) => {
         const karte7 = await amBoard(dir, (t) => t.getIssue("7"));
         assert.equal(karte7.created, "2026-08-14", `Feld ${feld}`);
@@ -687,7 +668,7 @@ test("get ohne Anlagefeld in der Antwort laesst created weg", async () => {
   await mitBoard(
     (req) => (req.url === "/api/kanban/items"
       ? { status: 200, json: gruppiert([karte(7, "READY", { createdAt: undefined })]) }
-      : { status: 200, json: [] }),
+      : einzelabruf(req, [karte(7, "READY", { createdAt: undefined })])),
     async (dir) => {
       // Ueber die JSON-Rundreise wie in der Ausgabe des Dispatch: Ein `created:
       // undefined` gaelte dort ebenfalls als weggelassen.

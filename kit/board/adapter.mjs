@@ -1426,6 +1426,9 @@ export class ToolboxIssueTracker {
    */
   constructor(config, uhr = {}) {
     this._cfg = config;
+    // Nummer -> { id, title } je Instanz (Plan #1638, E2, E3): Interne ID und Titel
+    // aendert das Kit innerhalb eines Aufrufs nie; alles andere wird frisch gelesen.
+    this._zuordnung = new Map();
     this._jetzt = uhr.jetzt ?? Date.now;
     this._schlaf = uhr.schlaf ?? sleep;
     this._zufall = uhr.zufall ?? Math.random;
@@ -1587,6 +1590,34 @@ export class ToolboxIssueTracker {
     return item;
   }
 
+  /**
+   * Eine Karte per Einzelabruf statt ueber die ganze Kartenliste (Issue #1650, Plan #1638,
+   * E1). 404 und eine archivierte Karte melden `issueFehlt` wie eine Nummer, die in der
+   * Liste fehlt (E5, E6); jeder andere Fehler aus `_fetch` geht unveraendert durch. Die
+   * Kommentare kommen aus derselben Antwort (E7).
+   */
+  async _karte(n) {
+    const num = Number(n);
+    let res;
+    try {
+      res = await this._fetch(`/api/kanban/items/by-number/${num}`);
+    } catch (e) {
+      if (e instanceof BoardError && e.status === 404) throw new BoardError(t("issueFehlt", { id: num }));
+      throw e;
+    }
+    const detail = await res.json();
+    if (detail.archived) throw new BoardError(t("issueFehlt", { id: num }));
+    const item = { ...detail.item, status: this._toStatus(detail.item.column) };
+    this._zuordnung.set(num, { id: item.id, title: item.title });
+    return { item, comments: normalizeComments(detail.comments ?? []) };
+  }
+
+  /** Interne ID und Titel: aus der Zuordnung, sonst per `_karte` (E2). Ein Eintrag gilt als nicht archiviert (E5). */
+  async _kartenRef(n) {
+    const num = Number(n);
+    return this._zuordnung.get(num) ?? (await this._karte(num)).item;
+  }
+
   async createIssue({ title, body, derivedFrom, idempotencyKey }) {
     const { host } = this._auth();
     // Neu angelegte Issues gehen DIREKT ins Backlog und tragen sofort ihre
@@ -1650,8 +1681,7 @@ export class ToolboxIssueTracker {
   }
 
   async getIssue(number) {
-    const num = Number(number);
-    const item = this._resolveByNumber(await this._boardItems(), num);
+    const { item, comments } = await this._karte(number);
     const type = item.type || "task";
     return {
       id: String(item.number),
@@ -1663,7 +1693,8 @@ export class ToolboxIssueTracker {
       status: type === "epic" ? null : item.status,
       labels: labelNamesFrom(item.labels),
       type,
-      comments: await this._comments(item.id),
+      comments,
+      // Das obere `createdAt` der Detailantwort bleibt ungelesen (Plan #1638, E8).
       // Der Feldname der Karten-API ist nicht gegen die Live-Instanz belegt (#457,
       // manueller Pruefpunkt). Darum drei Kandidaten statt eines geratenen Namens:
       // createdAt fuehrt der Kommentar-Endpunkt derselben API bereits, created_at
@@ -1673,39 +1704,22 @@ export class ToolboxIssueTracker {
     };
   }
 
-  // Kommentare ueber den Lesepfad aus kanban-kit#448 (kanban-kit#449). Der Endpunkt
-  // ist juenger als der Rest der API: Eine Instanz, die ihn noch nicht kennt,
-  // antwortet mit 404/405 und wuerde `issue get` sonst komplett scheitern lassen.
-  // Der Verlauf ist Zusatzinformation — Titel/Body/Status sind die Hauptsache.
-  // Deshalb leeres Array statt Abbruch, mit Hinweis auf stderr.
-  async _comments(itemId) {
-    try {
-      return await this._kommentareLesen(itemId);
-    } catch (e) {
-      process.stderr.write(`${t("kommentareNichtAbrufbar", { grund: e.message })}\n`);
-      return [];
-    }
-  }
-
   /**
    * Aktivitaetsverlauf einer Karte (Issue #460).
    *
    * Die Route ist `/api/kanban/items/{id}/activity` (Issue #670) und adressiert die
    * **interne** ID — dieselbe Falle wie bei move, comments und labels (Befund vom
-   * 2026-08-29). Daher `_resolveByNumber`. Sie gibt es seit kanban-kit v1.43.0: Dort
+   * 2026-08-29). Daher `_kartenRef`. Sie gibt es seit kanban-kit v1.43.0: Dort
    * bleibt ein board-gebundenes Token auf `/api/kanban/**` beschraenkt (kanban-kit
    * #877), und der Verlauf ist innerhalb dieser Grenze lesbar (#876). Die fruehere
    * Karten-Route ausserhalb der Grenze beantwortet ein solches Token mit 403.
    *
-   * Ein Unterschied zu `_comments` bleibt, und er ist beabsichtigt: **Ein Fehler wird
-   * nicht geschluckt.** `_comments` faengt 404/405 aelterer Instanzen ab und liefert
-   * `[]`; hier waere das falsch. Der Verlauf ist die Quelle des Anlagedatums — eine
+   * **Ein Fehler wird nicht geschluckt**; eine leere Liste waere hier falsch. Der Verlauf ist die Quelle des Anlagedatums — eine
    * leere Liste hiesse „Karte ohne Geschichte" und liesse das Gate ein altes Paket fuer
    * neu halten. Der Aufrufer soll den Fehler sehen, samt HTTP-Status.
    */
   async listActivity(number) {
-    const num = Number(number);
-    const item = this._resolveByNumber(await this._boardItems(), num);
+    const item = await this._kartenRef(number);
     const res = await this._fetch(`/api/kanban/items/${item.id}/activity`);
     return await res.json();
   }
@@ -1808,17 +1822,11 @@ export class ToolboxIssueTracker {
     });
   }
 
-  async _kommentareLesen(itemId) {
-    const res = await this._fetch(`/api/kanban/items/${itemId}/comments`);
-    return normalizeComments(await res.json());
-  }
-
-  // Strenges Lesen fuer `issue report` (Issue #1021): Anders als `_comments` wirft
-  // ein Fehler — ein leer gelesener Stand liesse `melden` einen zweiten Bericht
-  // anlegen.
+  // Strenges Lesen fuer `issue report` (Issue #1021): Ein Fehler wirft — ein leer
+  // gelesener Stand liesse `melden` einen zweiten Bericht anlegen. Immer frisch ueber
+  // `_karte`, weil sich die Kommentare im selben Aufruf aendern (Plan #1638, E7).
   async kommentareStreng(number) {
-    const item = this._resolveByNumber(await this._boardItems(), Number(number));
-    return this._kommentareLesen(item.id);
+    return (await this._karte(number)).comments;
   }
 
   // Die Route ist juenger als der Lesepfad. Eine Instanz ohne sie antwortet mit
