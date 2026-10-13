@@ -137,6 +137,22 @@ nach `trimStart()` geprueft). Traegt ein Plandokument diesen Marker, haelt
 der Nacht-Runner es fuer ein freigabereifes Arbeitspaket und zieht es in die
 Implementierung.
 
+## P13 — Neue Namen und kopierte Strukturen sind auf ihre Folgen geprueft `[Urteil]`
+
+Fuehrt der Plan Namen ein, die ein Mensch tippt — Skills, Kommandos, Optionen, Labels,
+Titel-Praefixe —, nennt er, dass sie mit keinem eingebauten Kommando von Claude Code
+kollidieren. Erzeugt er gleich gebaute Kopien in mehreren Dateien, etwa eine Texttabelle
+je Modul, nennt er ihre Wirkung auf die Duplikatsmessung des Projekts (bei SonarCloud
+`sonar.cpd.exclusions`) und wie er sie auffaengt.
+
+*Warum Gate:* Beide Folgen liegen im Plan offen, und am Code faellt keine davon einem
+einzelnen Paket-Review auf. Der Umbau auf Englisch (Plan #1420) nannte den Skill der
+Stufe 4 wie das eingebaute Kommando `context` von Claude Code. Seine
+zweisprachigen Texttabellen (Stufe 3) legten strukturgleiche Kopien in rund 25 Module, und
+das Quality Gate von SonarCloud fiel ab v4.2.2 an duplizierten Zeilen (6,1 % statt
+hoechstens 3 %); repariert erst in #1524 bis #1526. Weder das Plan-Review noch die
+Paket-Reviews hatten es gefunden.
+
 ---
 
 ## Ausdruecklich kein Gate

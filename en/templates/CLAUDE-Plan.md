@@ -143,7 +143,7 @@ Named files, functions, commands and config fields exist and are called that.
 adapter at all — it would have wandered into thirteen packages.
 
 ## P12 — The document carries no `Issue-Review:` line `[maschinell]`
-<!-- de: 5765413d5751 -->
+<!-- de: 931fc26dc4f8 -->
 
 The marker of this stage is called `Plan-Review:`.
 
@@ -152,6 +152,23 @@ The marker of this stage is called `Plan-Review:`.
 `hasReviewMarker` after `trimStart()`). If a plan document carries this marker, the night
 runner takes it for a work package ready for release and pulls it into the
 implementation.
+
+## P13 — New names and copied structures are checked for their consequences `[Urteil]`
+<!-- de: 2ea74e707de4 -->
+
+If the plan introduces names a human types — skills, commands, options, labels, title
+prefixes —, it states that they collide with no built-in command of Claude Code. If it
+creates identically built copies in several files, such as a text table per module, it
+states their effect on the project's duplication measurement (with SonarCloud
+`sonar.cpd.exclusions`) and how it absorbs it.
+
+*Why gate:* Both consequences lie open in the plan, and on the code neither shows up in a
+single package review. The switch to English (plan #1420) named the skill of stage 4
+like the built-in command `context` of Claude Code. Its bilingual text tables
+(stage 3) put structurally identical copies into about 25 modules, and the SonarCloud
+quality gate failed from v4.2.2 on at duplicated lines (6.1 % instead of at most 3 %);
+repaired only in #1524 to #1526. Neither the plan review nor the package reviews had found
+it.
 
 ---
 
