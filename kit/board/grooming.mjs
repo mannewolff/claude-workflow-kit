@@ -22,7 +22,7 @@ import { erkenneLabel, erkenneMarker, erkenneUeberschrift, kanonischeUeberschrif
 
 // Die Texte an den Menschen liegen unter kit/texte/board-grooming.mjs.
 import { TEXTE } from "../texte/board-grooming.mjs";
-import { szenarienLesen, szenarienPflicht } from "./szenarien.mjs";
+import { szenarienLesen, szenarienPflicht, szenarienVerstoss } from "./szenarien.mjs";
 
 export { TEXTE };
 
@@ -250,7 +250,8 @@ const frageName = (f) => f.text.split("\n")[0];
 /**
  * Prueft einen neuen Fachplan-Body gegen den alten nach E8: `{ ok, verstoesse: [{ regel,
  * meldung }] }`. Die Regeln in dieser Reihenfolge: `kennzeichnung` (a), `antwort` (b),
- * `fragenzahl` (c), `vermerk` (d), `pflichtabschnitt` (e). Eine entschiedene Frage findet sich
+ * `fragenzahl` (c), `vermerk` (d), `pflichtabschnitt` (e), `szenarien` (f, Issue #1626: traegt
+ * der neue Body den Abschnitt Szenarien, muss er `szenarienVerstoss` genuegen). Eine entschiedene Frage findet sich
  * im neuen Body ueber ihren Text, sonst ueber ihre Nummer — eine vorangestellte Stopp-Frage
  * verschiebt die Nummern. Pflichtabschnitte zaehlen, wenn der alte Body sie trug.
  */
@@ -260,6 +261,7 @@ export function koerperPruefen(alt, neu) {
     ...fragenVerstoesse(fragenLesen(alt), fragenLesen(neu)),
     ...vermerkVerstoesse(neu),
     ...abschnittVerstoesse(alt, neu),
+    ...szenarienVerstoesse(neu),
   ];
   return { ok: verstoesse.length === 0, verstoesse };
 }
@@ -310,6 +312,12 @@ function vermerkVerstoesse(body) {
     verstoesse.push(verstoss("vermerk", "vermerkZahl", { genannt: genannt ?? "-", zahl }));
   }
   return verstoesse;
+}
+
+function szenarienVerstoesse(body) {
+  if (!szenarienLesen(body).vorhanden) return [];
+  const meldung = szenarienVerstoss(body);
+  return meldung === null ? [] : [{ regel: "szenarien", meldung }];
 }
 
 function abschnittVerstoesse(alt, neu) {

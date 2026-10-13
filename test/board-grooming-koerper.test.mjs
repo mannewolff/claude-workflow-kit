@@ -239,3 +239,22 @@ test("zwei Szenarien mit gleichem Titel werden beide verglichen", () => {
 test("ohne Kartennummer nennt der Vorschlag den Platzhalter", () => {
   assert.equal(kriterienVergleich(fachplan(), fachplan({ szenarien: SZ_A })).vorschlag, "/issue-review #?");
 });
+
+// --- Regel szenarien (Issue #1626) --------------------------------------------
+
+const SZENARIO = "### Szenario: Ein Fall\n- Angenommen, eine Lage\n- Wenn etwas geschieht\n- Dann ein Ergebnis";
+
+test("(f) neuer Body mit unvollstaendigem Abschnitt Szenarien ist ein Verstoss", () => {
+  const alt = fachplan();
+  const neu = fachplan({ szenarien: SZENARIO.split("\n").filter((z) => !z.startsWith("- Dann")).join("\n") });
+  const r = koerperPruefen(alt, neu);
+  assert.equal(r.ok, false);
+  assert.deepEqual(regeln(r), ["szenarien"]);
+  assert.match(r.verstoesse[0].meldung, /Szenarien/);
+});
+
+test("(f) neuer Body mit vollstaendigem oder ohne Abschnitt Szenarien ist ok", () => {
+  const alt = fachplan();
+  assert.deepEqual(koerperPruefen(alt, fachplan({ szenarien: SZENARIO })), { ok: true, verstoesse: [] });
+  assert.deepEqual(koerperPruefen(alt, alt), { ok: true, verstoesse: [] });
+});

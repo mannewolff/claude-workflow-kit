@@ -35,8 +35,9 @@ const [SZENARIEN, KRITERIEN, NICHT_ZIELE] = abschnittsTitel("szenarien", "fachli
 
 // Die Kopfzeile eines Szenarios: `###` und der Rest; die Ueberschrift prueft `szenarioTitel`.
 const SZENARIO_KOPF = /^ {0,3}###(?!#)(.*)$/;
-// Eine Listenzeile und ihr erstes Wort.
-const LISTENZEILE = /^ {0,3}[-*+][ \t]+(\S+)/;
+// Eine Listenzeile und ihr erstes Wort, ohne ein einzelnes Komma oder einen Doppelpunkt
+// direkt dahinter: „- Angenommen, die …" ist die natuerliche Schreibweise (Issue #1626).
+const LISTENZEILE = /^ {0,3}[-*+][ \t]+(\S+?)[,:]?(?:[ \t]|$)/;
 
 /**
  * Der Titel hinter `Szenario:` oder `Scenario:`, gleich in welcher Sprache (E2); `null`, wenn
