@@ -286,7 +286,7 @@ The notes, `Suchbegriffe:`, `Dateien:` and `- Widerspruch:` are fixed beginnings
 ---
 
 ## Git workflow (strictly binding)
-<!-- de: 8dbd72cc9323 -->
+<!-- de: 5f8ab19e559d -->
 
 1. Claude commits locally, does NOT push automatically. Every commit — also lane 1, also by hand, also from a GUI client — requires a green `node .claude/kit/checks.mjs run` on the state to be committed; a tool without `node` in the PATH is rejected, not let through.
 2. The human tests locally (start the dev server, click through the golden path).
@@ -297,10 +297,10 @@ The notes, `Suchbegriffe:`, `Dateien:` and `- Widerspruch:` are fixed beginnings
 
 Absolutely binding:
 - No force push to `mainBranch` or `productionBranch` without an explicit individual instruction.
-- Hooks (pre-commit / pre-push) are not bypassed with `--no-verify`.
+- Hooks (pre-commit / pre-push) are not bypassed with `--no-verify` without an explicit individual instruction; unattended there is no individual instruction.
 - `productionBranch` is never pushed directly.
 
-**What the commit gate does not achieve.** `--no-verify` bypasses it (the line above forbids that, mechanically nothing prevents it), and a fresh clone only has it after an installer run or `git config core.hooksPath .githooks` — the files travel along, the activation is local git config. In both cases **at night** the assessment of the night runner applies, which turns missing or red evidence into a failure — **interactively nobody steps in**. There the line above remains the only rule.
+**What the commit gate does not achieve.** `--no-verify` bypasses it (the line above forbids that without an explicit individual instruction, mechanically nothing prevents it), and a fresh clone only has it after an installer run or `git config core.hooksPath .githooks` — the files travel along, the activation is local git config. In both cases **at night** the assessment of the night runner applies, which turns missing or red evidence into a failure — **interactively nobody steps in**. There the line above remains the only rule.
 
 **Steps 8 and 9 run in a worktree of their own.** `/push-main` and `/merge-production` create their release files, run their check run and commit not in the main working tree but in a fresh worktree outside the repo (`node .claude/kit/worktree.mjs create --prefix release`, the same way as for the worktree of the night chain); afterwards they push from there and remove it again, also after a red run. The reason is simultaneity: in the main tree the implementation stage of the night runner can be building under variant B, and two runs in one tree mix their files — the release check run would see foreign, half-finished work, and the runner found the release files as uncommitted leftovers and stopped hard. `/merge-production` builds on `origin/<mainBranch>`, because what is published is what has been pushed; `/push-main` on the local `<mainBranch>`, rebased onto `origin/<mainBranch>` in the worktree. The skill afterwards only moves the local `<mainBranch>` along if no lock of the runner is held and the main tree is clean — otherwise it outputs the command.
 
@@ -438,9 +438,9 @@ Four rules that apply independently of the review stage and carry the frame of t
 GO (move an issue to Ready), push (`push main`), merge (`merge production`). A trigger phrase quoted within a message is no typed trigger. Exception, exclusively in the implementation stage of the night chain under variant B: there the night runner itself moves the work packages of the marked card to Ready and starts their implementation without a release per package. The human gave the GO on the marked card — on the requirement or on the plan document — when marking it for variant B. Outside this stage the sentence before applies without restriction — also for packages of a card that ran under variant B earlier. The GO on the marked card is given by `kit:carry-through` or by a goal from `implementation` on; the push stays with the human also with the goal `push-prepared`. Places: "The three stop points (never automated)", "Messages from the human", "Night mode (optional)".
 
 ### W2 — The Git workflow is strictly binding `[Urteil]`
-<!-- de: 5743afcac33b -->
+<!-- de: 79a5a0139341 -->
 
-No force push to `mainBranch` or `productionBranch` without an explicit individual instruction; hooks are not bypassed with `--no-verify`; `productionBranch` is never pushed directly. Place: "Git workflow (strictly binding)".
+No force push to `mainBranch` or `productionBranch` without an explicit individual instruction; hooks are not bypassed with `--no-verify` without an explicit individual instruction; `productionBranch` is never pushed directly. Place: "Git workflow (strictly binding)".
 
 ### W3 — Red mandatory checks block the push mechanically `[Urteil]`
 <!-- de: 49f0fc6e008f -->

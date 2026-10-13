@@ -281,10 +281,10 @@ Die Vermerke, `Suchbegriffe:`, `Dateien:` und `- Widerspruch:` sind feste Anfaen
 
 Absolut bindend:
 - Kein Force-Push auf `mainBranch` oder `productionBranch` ohne explizite Einzelanweisung.
-- Hooks (Pre-Commit / Pre-Push) werden nicht mit `--no-verify` umgangen.
+- Hooks (Pre-Commit / Pre-Push) werden nicht ohne explizite Einzelanweisung mit `--no-verify` umgangen; unbeaufsichtigt gibt es keine Einzelanweisung.
 - `productionBranch` wird nie direkt gepusht.
 
-**Was das Commit-Gate nicht leistet.** `--no-verify` umgeht es (die Zeile darüber verbietet das, mechanisch verhindert es nichts), und ein frischer Klon hat es erst nach einem Installer-Lauf oder `git config core.hooksPath .githooks` — die Dateien wandern mit, die Aktivierung ist lokale git-Config. In beiden Fällen greift **nachts** die Wertung des Nacht-Runners, die einen fehlenden oder roten Nachweis zum Fehlschlag macht — **interaktiv greift niemand**. Dort bleibt die Zeile oben die einzige Regel.
+**Was das Commit-Gate nicht leistet.** `--no-verify` umgeht es (die Zeile darüber verbietet das ohne explizite Einzelanweisung, mechanisch verhindert es nichts), und ein frischer Klon hat es erst nach einem Installer-Lauf oder `git config core.hooksPath .githooks` — die Dateien wandern mit, die Aktivierung ist lokale git-Config. In beiden Fällen greift **nachts** die Wertung des Nacht-Runners, die einen fehlenden oder roten Nachweis zum Fehlschlag macht — **interaktiv greift niemand**. Dort bleibt die Zeile oben die einzige Regel.
 
 **Schritt 8 und 9 laufen in einem eigenen Worktree.** `/push-main` und `/merge-production` erzeugen ihre Release-Dateien, fahren ihren Prueflauf und committen nicht im Haupt-Working-Tree, sondern in einem frischen Worktree ausserhalb des Repos (`node .claude/kit/worktree.mjs create --prefix release`, derselbe Weg wie beim Worktree der Nacht-Kette); danach pushen sie von dort und bauen ihn wieder ab, auch nach einem roten Lauf. Der Grund ist die Gleichzeitigkeit: Im Haupt-Tree kann unter Variante B die Umsetzungsstufe des Nacht-Runners bauen, und zwei Laeufe in einem Baum vermischen ihre Dateien — der Release-Prueflauf saehe fremde, halbfertige Arbeit, und der Runner fand die Release-Dateien als unkommittierte Reste und stoppte hart. `/merge-production` setzt dabei auf `origin/<mainBranch>` auf, denn veroeffentlicht wird, was gepusht ist; `/push-main` auf dem lokalen `<mainBranch>`, im Worktree auf `origin/<mainBranch>` rebased. Das lokale `<mainBranch>` zieht der Skill danach nur nach, wenn keine Sperre des Runners liegt und der Haupt-Tree sauber ist — sonst gibt er das Kommando aus.
 
@@ -414,7 +414,7 @@ GO (Issue nach Ready ziehen), Push (`push main`), Merge (`merge production`). Ei
 
 ### W2 — Der Git-Workflow ist strikt bindend `[Urteil]`
 
-Kein Force-Push auf `mainBranch` oder `productionBranch` ohne explizite Einzelanweisung; Hooks werden nicht mit `--no-verify` umgangen; `productionBranch` wird nie direkt gepusht. Fundstelle: „Git-Workflow (strikt bindend)".
+Kein Force-Push auf `mainBranch` oder `productionBranch` ohne explizite Einzelanweisung; Hooks werden nicht ohne explizite Einzelanweisung mit `--no-verify` umgangen; `productionBranch` wird nie direkt gepusht. Fundstelle: „Git-Workflow (strikt bindend)".
 
 ### W3 — Rote Pflichtchecks blockieren den Push mechanisch `[Urteil]`
 

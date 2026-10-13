@@ -113,7 +113,7 @@ The first line must read `.claude/*`, not `.claude`: Inside an excluded director
 `workflow.config.json` is the justified exception. The installer **does not overwrite it, it merges**: The base is the default values, above that the existing file, on top the answers asked for. Fields not asked for, such as `buildChecks` or `issueReview`, are kept. It is a team setting, not generated output — and therefore belongs under version control.
 
 ### The commit gate
-<!-- de: 45e2c9f3e33c -->
+<!-- de: bb660630f07c -->
 
 With a project-local installation, the installer asks whether the **commit gate** should be hooked in. It rejects every commit that was not preceded by a green `node .claude/kit/checks.mjs run` on the same state.
 
@@ -140,7 +140,7 @@ They live there and not under `.claude/kit/` because the `.gitignore` block abov
 
 **What it does not achieve** — four limits, and they are stated here because a rule that keeps quiet about its gaps creates false trust:
 
-1. `--no-verify` bypasses the hook. The git workflow forbids it, nothing prevents it mechanically.
+1. `--no-verify` bypasses the hook. The git workflow forbids it without an explicit individual instruction, nothing prevents it mechanically.
 2. A fresh clone has the gate only after an installer run or `git config core.hooksPath .githooks`.
 3. With an occupied `core.hooksPath`, a project with its own hook manager hooks in the call itself.
 4. The assurance applies **per committed file**, not to the state as a whole: Whoever commits `A` and leaves the corresponding `B` unstaged creates a state that nobody has ever checked in that form. That is the price for the skills being allowed to stage selectively.

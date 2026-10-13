@@ -134,7 +134,7 @@ Sie liegen dort und nicht unter `.claude/kit/`, weil der `.gitignore`-Block oben
 
 **Was es nicht leistet** — vier Grenzen, und sie stehen hier, weil eine Regel, die ihre Lücken verschweigt, falsches Vertrauen erzeugt:
 
-1. `--no-verify` umgeht den Hook. Der Git-Workflow verbietet das, mechanisch verhindert es nichts.
+1. `--no-verify` umgeht den Hook. Der Git-Workflow verbietet das ohne explizite Einzelanweisung, mechanisch verhindert es nichts.
 2. Ein frischer Klon hat das Gate erst nach einem Installer-Lauf oder `git config core.hooksPath .githooks`.
 3. Bei belegtem `core.hooksPath` hängt ein Projekt mit eigenem Hook-Manager den Aufruf selbst ein.
 4. Die Zusicherung gilt **je committeter Datei**, nicht für den Stand als Ganzes: Wer `A` committet und das dazugehörige `B` ungestagt liegen lässt, erzeugt einen Stand, den so nie jemand geprüft hat. Das ist der Preis dafür, dass die Skills selektiv stagen dürfen.
