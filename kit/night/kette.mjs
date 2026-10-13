@@ -613,26 +613,68 @@ export const ISSUES_HALT_KOPF = "Kein Eingang für /issues";
  * aendert nichts und gibt als letzte Nachricht die Zuordnung zurueck. Ihr Text landet im
  * Ergebnisstand und im Bericht — kein eigener Kommentar, kein Tor (Kriterium 5).
  */
-export const ABDECKUNG_PROMPT = [
-  "Aendere dabei NICHTS: kein Kommentar, keine Karte, kein Label, keine Datei.",
-  "",
-  "Traegt der Fachplan einen Abschnitt Szenarien, halte auch sie gegen die Pakete: Jedes Szenario des Fachplans steht woertlich in mindestens einem Arbeitspaket; ein Szenario, das in keinem Paket steht, nennst du unter \"Ohne Paket\" mit seinem Titel. Nach Tests fragt diese Pruefung nicht.",
-  "",
-  "Gib als letzte Nachricht genau diese drei Abschnitte aus, in Markdown:",
+export const ABDECKUNG_PROMPT = abdeckungRumpf({
+  gegenstand: "Fachplan",
+  einheit: {
+    je: "fachlichem Akzeptanzkriterium des Fachplans",
+    eintrag: "das Kriterium (Nummer und Anfang des Wortlauts)",
+    pronomen: "es",
+    ohne: "Jedes Kriterium, das in keinem Paket abgebildet ist, mit seinem Wortlaut.",
+    alle: "Alle Kriterien sind abgebildet.",
+  },
+  szenarien: "Traegt der Fachplan einen Abschnitt Szenarien, halte auch sie gegen die Pakete: Jedes Szenario des Fachplans steht woertlich in mindestens einem Arbeitspaket; ein Szenario, das in keinem Paket steht, nennst du unter \"Ohne Paket\" mit seinem Titel. Nach Tests fragt diese Pruefung nicht.",
+});
+
+/**
+ * Der Rumpf eines Abdeckungs-Prompts fuer einen Gegenstand (Plan #1645, E5): Schreibverbot,
+ * Szenarien-Absatz und die drei Abschnitte. `gegenstand` ist das Dokument, gegen das gehalten
+ * wird, `einheit` sagt, was darin je Zeile zugeordnet wird und was ohne Paket bleibt,
+ * `szenarien` ist der Absatz dazu oder `null` — ein Plan hat keine Szenarien. Als Deklaration
+ * gehoben: `ABDECKUNG_PROMPT` darueber nutzt sie schon.
+ */
+function abdeckungRumpf({ gegenstand, einheit, szenarien }) {
+  return [
+    "Aendere dabei NICHTS: kein Kommentar, keine Karte, kein Label, keine Datei.",
+    "",
+    ...(szenarien ? [szenarien, ""] : []),
+    "Gib als letzte Nachricht genau diese drei Abschnitte aus, in Markdown:",
     "",
     "### Zuordnung",
-    "Je fachlichem Akzeptanzkriterium des Fachplans eine Zeile: das Kriterium (Nummer und Anfang des Wortlauts) und das Paket oder die Pakete, in denen es abgebildet ist, oder \"kein Paket\".",
+    `Je ${einheit.je} eine Zeile: ${einheit.eintrag} und das Paket oder die Pakete, in denen ${einheit.pronomen} abgebildet ist, oder "kein Paket".`,
     "",
     "### Ohne Paket",
-    "Jedes Kriterium, das in keinem Paket abgebildet ist, mit seinem Wortlaut. Sonst der Satz: Alle Kriterien sind abgebildet.",
+    `${einheit.ohne} Sonst der Satz: ${einheit.alle}`,
     "",
-  "### Zuwachs",
-  "Was in den Paketen steht, ohne im Fachplan zu stehen — je Punkt das Paket und ein Satz. Sonst der Satz: Nichts Zusaetzliches.",
-].join("\n");
+    "### Zuwachs",
+    `Was in den Paketen steht, ohne im ${gegenstand} zu stehen — je Punkt das Paket und ein Satz. Sonst der Satz: Nichts Zusaetzliches.`,
+  ].join("\n");
+}
+
+const paketListe = (paketIds) => paketIds.map((id) => `#${id}`).join(", ");
 
 export function abdeckungPrompt(fachplanId, planId, paketIds) {
-  const pakete = paketIds.map((id) => `#${id}`).join(", ");
-  return `Du haeltst die Arbeitspakete gegen die fachliche Anforderung. Lies mit \`node .claude/kit/board.mjs issue get <nummer>\` den Fachplan #${fachplanId}, den Plan #${planId} und die Pakete ${pakete}.\n${ABDECKUNG_PROMPT}`;
+  return `Du haeltst die Arbeitspakete gegen die fachliche Anforderung. Lies mit \`node .claude/kit/board.mjs issue get <nummer>\` den Fachplan #${fachplanId}, den Plan #${planId} und die Pakete ${paketListe(paketIds)}.\n${ABDECKUNG_PROMPT}`;
+}
+
+/**
+ * Der Prompt der Abdeckungs-Session beim Plan ohne fachliche Anforderung (Plan #1645, E4, E5):
+ * gehalten wird gegen die geplanten Aenderungen und Pruefungen des Plans, ohne Szenarien.
+ */
+export function abdeckungPlanPrompt(planId, paketIds) {
+  const aenderungen = nameDerSprache("ueberschriftName", "geplanteAenderungen", "Geplante Aenderungen");
+  const verifizierung = nameDerSprache("ueberschriftName", "verifizierung", "Verifizierung");
+  const rumpf = abdeckungRumpf({
+    gegenstand: "Plan",
+    einheit: {
+      je: `geplanter Aenderung aus "## ${aenderungen}" und je geplanter Pruefung aus "## ${verifizierung}" des Plans`,
+      eintrag: "die Aenderung oder Pruefung (Anfang des Wortlauts)",
+      pronomen: "sie",
+      ohne: "Jede geplante Aenderung und Pruefung, die in keinem Paket abgebildet ist, mit ihrem Wortlaut.",
+      alle: "Alle geplanten Aenderungen und Pruefungen sind abgebildet.",
+    },
+    szenarien: null,
+  });
+  return `Du haeltst die Arbeitspakete gegen den Plan; eine fachliche Anforderung gibt es nicht. Lies mit \`node .claude/kit/board.mjs issue get <nummer>\` den Plan #${planId} und die Pakete ${paketListe(paketIds)}.\n${rumpf}`;
 }
 
 /**
@@ -1328,7 +1370,8 @@ async function stufePakete(kette, planId) {
 }
 
 /**
- * Stufe Abdeckung: eine lesende Session haelt die Pakete gegen den Fachplan (Plan #638, A9).
+ * Stufe Abdeckung: eine lesende Session haelt die Pakete gegen den Fachplan (Plan #638, A9),
+ * beim Plan ohne fachliche Anforderung gegen den Plan (Plan #1645, E4).
  *
  * Ihr Text kommt aus dem `result`-Ereignis. Zeitbudget, Fehlstart oder fehlender Text
  * lassen die Kette trotzdem `fertig` enden — die Abdeckung ist eine Auskunft, kein Tor
@@ -1339,9 +1382,15 @@ async function stufeAbdeckung(kette, fachplanId, planId, paketIds) {
   const stand = { dauerMs: 0, kennzahlen: null, text: null };
   kette.stufen.abdeckung = stand;
   const vorherKarten = abh.board("issue", "list").length;
+  // Die Schreibprobe liest die Wurzel: beim Plan ohne Anforderung den Plan selbst.
   const vorherFachplan = abh.board("issue", "get", fachplanId);
-  log(t("abdeckungStart", { id: fachplanId, minuten: budget.abdeckungMin }));
-  const s = await ketteSession(kette, "abdeckung", abdeckungPrompt(fachplanId, planId, paketIds), abh.jetzt().getTime(), budget.abdeckungMin * 60 * 1000);
+  // Beim Plan ohne Anforderung haelt die Abdeckung gegen den Plan (Plan #1645, E4).
+  const ohne = kette.ohneAnforderung === true;
+  log(ohne
+    ? t("abdeckungStartPlan", { id: planId, minuten: budget.abdeckungMin })
+    : t("abdeckungStart", { id: fachplanId, minuten: budget.abdeckungMin }));
+  const prompt = ohne ? abdeckungPlanPrompt(planId, paketIds) : abdeckungPrompt(fachplanId, planId, paketIds);
+  const s = await ketteSession(kette, "abdeckung", prompt, abh.jetzt().getTime(), budget.abdeckungMin * 60 * 1000);
   stand.dauerMs = s.dauerMs;
   stand.kennzahlen = s.kennzahlen;
   if (s.ausgang !== "fertig") {

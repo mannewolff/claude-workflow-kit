@@ -1,5 +1,5 @@
 // Ein Plan ohne fachliche Anforderung als eigene Wurzel der Nacht-Kette (Fachplan #1644,
-// Plan #1645, E1, E2, E3, E6, E11; Issue #1647).
+// Plan #1645, E1, E2, E3, E4, E6, E11; Issues #1647, #1648).
 //
 // Ein `[Plan]` ohne Zeile `Fachliche Quelle:` laeuft wie ein Plan mit Anforderung: Seine
 // Wurzel `F` ist die Nummer des Plans, Sperre, Kollision und Sitzungsname greifen ohne
@@ -7,7 +7,10 @@
 // hat, ist ein Verweis ins Leere und haelt an. Alle uebrigen Gruende halten ihn mit
 // demselben Wortlaut an wie einen Plan mit Anforderung.
 //
-// Abgleich und Bericht gegen den Plan traegt das Folgepaket (#1648).
+// Die Abdeckung haelt die Pakete gegen `## Geplante Aenderungen` und `## Verifizierung` des
+// Plans, und der Nachtbericht sagt das (E4, E6; Issue #1648). Das Szenario „Am Ende liegt der
+// Plan in In review“ braucht die Stufe umsetzung und steht in
+// `ablauf-night-kette-plan-ohne-anforderung.test.mjs`.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -53,6 +56,46 @@ test("Szenario: Ein Plan ohne Anforderung mit offener Klärung bleibt liegen", a
   assert.deepEqual(r.sitzungen, [], "keine Session darf gelaufen sein");
   assert.ok(r.karte("2").labels.includes(KLAEREN_LABEL), "das Label kit:clarify muss stehen bleiben");
   assert.ok(r.karte("2").labels.includes(KETTE_LABEL), "das Kennzeichen muss stehen bleiben");
+});
+
+test("Szenario: Ein Plan aus einer Idee läuft nachts bis zu den Paketen", async () => {
+  const idee = { id: "1", title: "[Idea] Ein Gedanke", body: "## Idee\n\nEin technischer Gedanke.\n", status: "backlog", labels: [] };
+  const vorher = structuredClone(idee);
+  const abdeckungText = "### Zuordnung\n- Aenderung 1 -> #3\n\n### Ohne Paket\nAlle geplanten Aenderungen und Pruefungen sind abgebildet.\n\n### Zuwachs\nNichts Zusaetzliches.";
+  const r = await ketteImProzess({
+    karten: [idee, planOhne("2", { labels: [...GEPRUEFT, "ziel:pakete"] })],
+    sitzung: jeStufe({ pakete: paketeAnlegen, abdeckung: () => ({ ergebnis: abdeckungText }) }),
+  });
+  assert.equal(r.code, 0, r.ausgabe);
+  assert.deepEqual(stufenVon(r), ["pakete", "abdeckung"]);
+  const einheit = einheitVon(r, "2");
+  assert.equal(einheit.ausgang, "fertig", einheit.grund);
+
+  // Die Abdeckungs-Session bekommt den Plan-Prompt, nicht den gegen einen Fachplan.
+  const prompt = r.sitzungen.find((s) => s.stufe === "abdeckung").prompt;
+  assert.match(prompt, /den Plan #2 und die Pakete #3, #4/);
+  assert.match(prompt, /Je geplanter Aenderung aus "## Geplante Aenderungen"/);
+  assert.doesNotMatch(prompt, /Fachplan/);
+  assert.match(r.ausgabe, /Stufe abdeckung: Pakete gegen Plan #2/);
+
+  // Morgens liegen die geschnittenen Pakete zum Plan im Backlog.
+  assert.deepEqual(einheit.stufen.pakete.ids, ["3", "4"]);
+  for (const id of einheit.stufen.pakete.ids) {
+    assert.equal(r.karte(id).status, "backlog", `Paket #${id}`);
+    assert.match(r.karte(id).body, /^Plan: Issue #2$/m);
+  }
+
+  // Der Nachtbericht am Plan zeigt den Abgleich gegen den Plan.
+  const bericht = r.karte("2").comments.map((c) => c.body).join("\n");
+  assert.match(bericht, /### Stufen\n\n- Auftrag: Plan #2, ohne fachliche Anforderung\n/);
+  assert.ok(bericht.includes(`### Abdeckung gegen den Plan\n\nAbgeglichen gegen Plan #2`), bericht);
+  assert.ok(bericht.includes(abdeckungText), bericht);
+  assert.doesNotMatch(bericht, /Abdeckung gegen den Fachplan/);
+
+  // Die Idee fasst die Nacht nicht an.
+  const { id, title, body, status, labels } = r.karte("1");
+  assert.deepEqual({ id, title, body, status, labels }, vorher);
+  assert.deepEqual(r.karte("1").comments ?? [], []);
 });
 
 // --- quelleLage ---
