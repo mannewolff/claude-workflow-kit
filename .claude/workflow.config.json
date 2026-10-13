@@ -429,7 +429,53 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/install-*.test.mjs\" \"test/tools-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/derived-*.test.mjs\" \"test/copy-*.test.mjs\" \"test/sync-*.test.mjs\" \"test/kit-*.test.mjs\" \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/install-*.test.mjs\" \"test/changelog*.test.mjs\" \"test/copy-*.test.mjs\" \"test/sync-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-grundlagen",
+        "einstellungen",
+        "installer",
+        "konfiguration",
+        "sync"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/tools-*.test.mjs\" \"test/derived-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-dokumente",
+        "board-grundlagen",
+        "einstellungen",
+        "herkunft",
+        "installer",
+        "pruefungen",
+        "skills-doku",
+        "sync"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/einstellungen-*.test.mjs\" \"test/config-*.test.mjs\"",
+      "gleichzeitig": true,
+      "areas": [
+        "board-einstieg",
+        "board-grundlagen",
+        "board-issue-review",
+        "einstellungen",
+        "installer",
+        "konfiguration",
+        "nacht-einstieg",
+        "nacht-grundlagen",
+        "nacht-kitstand",
+        "nacht-session",
+        "pruefungen",
+        "skills-doku",
+        "sync",
+        "wirksamkeit",
+        "workflow-vorlage"
+      ]
+    },
+    {
+      "cmd": "node --test --test-concurrency=2 \"test/kit-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "aufwand",
@@ -446,13 +492,10 @@
         "board-testhinweise",
         "board-wiederholung",
         "einstellungen",
-        "frischer-checkout",
-        "herkunft",
         "installer",
         "konfiguration",
         "nacht-abhaengigkeiten",
         "nacht-bericht",
-        "nacht-einstieg",
         "nacht-grundlagen",
         "nacht-kette",
         "nacht-kitstand",
@@ -460,12 +503,10 @@
         "nacht-session",
         "nacht-tag",
         "nacht-wartend",
-        "preise",
         "pruefungen",
         "skills-doku",
         "sync",
         "wirksamkeit",
-        "workflow-vorlage",
         "worktree"
       ]
     },
@@ -476,22 +517,17 @@
         "aufwand",
         "befunde",
         "board-einstieg",
-        "board-grundlagen",
-        "board-issue-review",
         "einstellungen",
         "frischer-checkout",
         "herkunft",
         "installer",
         "konfiguration",
         "nacht-einstieg",
-        "nacht-laufstand",
-        "nacht-session",
         "preise",
         "pruefungen",
         "skills-doku",
         "sync",
         "wirksamkeit",
-        "workflow-vorlage",
         "worktree"
       ]
     },

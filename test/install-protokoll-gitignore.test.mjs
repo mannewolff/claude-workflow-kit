@@ -1,8 +1,8 @@
 // Die Protokolle der Wirksamkeits-Auswertung im `.gitignore`-Block des Installers
 // (Plan #782; Issue #784).
 //
-// `.claude/ausfuehrungen.tsv` (aus kit/checks.mjs) und `.claude/bewegungen.tsv` (aus
-// kit/board.mjs) entstehen in jedem Lauf. Ohne Eintrag im Block laegen sie in jedem
+// `.claude/ausfuehrungen.tsv` (aus dem Pruefwerkzeug) und `.claude/bewegungen.tsv` (aus
+// dem Board-Werkzeug) entstehen in jedem Lauf. Ohne Eintrag im Block laegen sie in jedem
 // frisch installierten Projekt als Reste im Arbeitsbaum — genau wie `.claude/wegmarken.tsv`,
 // neben dem sie darum stehen.
 //
