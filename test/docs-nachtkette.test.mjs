@@ -134,7 +134,9 @@ test("der Abschnitt fuehrt den Plan als zweite Auftragsart mit Geste, Bedingunge
   const erwartet = [
     ["die Geste am Plan", "`[Plan]`"],
     ["die Spalte der Kandidaten", "Backlog"],
-    ["die erkennbare fachliche Herkunft", "Fachliche Quelle: Issue #"],
+    ["die Zeile mit Karte als eine der drei Lagen", "Fachliche Quelle: Issue #"],
+    ["die Lage ohne Zeile als eigene Wurzel", "eigene Wurzel"],
+    ["den Verweis ins Leere", "ins Leere"],
     ["die wartende Entscheidung als Ausschluss", "`kit:clarify`"],
     ["die Pruefung als Bedingung", `\`${REVIEW_FERTIG_LABEL}\``],
     ["die entfallende Stufe plan", "`plan`"],

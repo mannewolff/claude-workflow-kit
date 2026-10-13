@@ -96,8 +96,11 @@ test("Szenario: Eine rein technische Idee wird direkt zum technischen Plan", () 
   assert.match(eingang, /`### Geklärter Stand` unter `## Ziel`/, "der geklaerte Stand steht nicht im Ziel");
   assert.match(eingang, /weder `Fachliche Quelle:` noch `--derived-from`/, "Quelle und --derived-from sind nicht ausgeschlossen");
   assert.match(eingang, /issue comment <N> --text "Fortsetzung: Issue #M"/, "der Spur-Kommentar an die Idee fehlt");
-  assert.match(eingang, /kein Eingang für die Nacht-Kette/);
-  assert.match(eingang, /`\/issues #M` am Tag/);
+  // Plan #1645 (Issue #1646): Ein Plan ohne fachliche Anforderung kann nachts laufen.
+  assert.ok(!SKILL.includes("kein Eingang für die Nacht-Kette"), "der alte Satz zur Nacht-Kette steht noch da");
+  assert.match(eingang, /kann nachts laufen \(`kit:night` am geprüften Plan\) oder am Tag mit `\/issues #M` geschnitten werden/,
+    "der Satz zu Nacht und Tag fehlt");
+  assert.match(eingang, /erst nach dem Einplanen adressierbar/, "die pending-Idee ist nicht als erst spaeter adressierbar genannt");
 
   const schritt0 = SKILL.slice(SKILL.indexOf("### 0. Bahn bestimmen"), SKILL.indexOf("### 1. Anforderung verstehen"));
   assert.ok(!SKILL.includes("Eine **`[Idea]`** als Quelle steht dem Angebot dagegen **nicht** entgegen"),

@@ -54,7 +54,7 @@ Eine `[Idea]` nimmt der Skill **nur**, wenn ihr Abschnitt `## Geklärter Stand` 
 node .claude/kit/board.mjs issue comment <N> --text "Fortsetzung: Issue #M"
 ```
 
-Liefert `issue create` nur eine `ideaId` mit `pending: true`, lautet der Kommentar `Fortsetzung: Idee <ideaId> (noch nicht eingeplant)`. Folge: Ein solcher Plan ist kein Eingang für die Nacht-Kette, die einen Plan mit `Fachliche Quelle:` verlangt; sein Weg ist `/issues #M` am Tag. Form, Vorgeschichte, Formprüfung und Freigabe bleiben wie bei jedem Plan.
+Liefert `issue create` nur eine `ideaId` mit `pending: true`, lautet der Kommentar `Fortsetzung: Idee <ideaId> (noch nicht eingeplant)`. Folge: Ein solcher Plan kann nachts laufen (`kit:night` am geprüften Plan) oder am Tag mit `/issues #M` geschnitten werden; die `pending`-Idee bleibt ohne Nummer erst nach dem Einplanen adressierbar. Form, Vorgeschichte, Formprüfung und Freigabe bleiben wie bei jedem Plan.
 
 **Feste Zeilen.** Überschriften, Marker, Review- und Einarbeitungs-Köpfe und Fundblock-Zeilen, die dieser Skill in Dokumente, Kommentare oder Markerzeilen schreibt, stehen hier deutsch. Vor dem ersten Schreiben `node .claude/kit/board.mjs names` aufrufen: Das Feld `lines` nennt je deutscher Zeile die Fassung der Projektsprache, und der Skill schreibt die ausgegebene Fassung. Eine Zeile mit veränderlichem Rest (`## Einarbeitung, Runde 2`) steht dort mit ihrem festen Anfang, eine Überschrift mit `## ` davor gilt auf jeder Ebene, und was `names` nicht nennt, bleibt, wie es hier steht.
 

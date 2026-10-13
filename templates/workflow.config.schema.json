@@ -703,7 +703,7 @@
               "type": "number",
               "exclusiveMinimum": 0,
               "default": 10,
-              "description": "Zeitbudget der Abdeckungs-Session in Minuten, die die Pakete gegen den Fachplan hält."
+              "description": "Zeitbudget der Abdeckungs-Session in Minuten, die die Pakete gegen den Fachplan hält, oder gegen den Plan."
             },
             "umsetzungMin": {
               "type": "number",
@@ -752,7 +752,7 @@
                 "paketeAbdeckung": {
                   "type": "boolean",
                   "default": true,
-                  "description": "Nach den Arbeitspaketen folgt die Abdeckung gegen die fachliche Anforderung automatisch."
+                  "description": "Nach den Arbeitspaketen folgt die Abdeckung gegen die fachliche Anforderung oder gegen den Plan automatisch."
                 },
                 "abdeckungUmsetzung": {
                   "type": "boolean",

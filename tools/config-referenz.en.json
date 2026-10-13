@@ -356,8 +356,8 @@
     "text": "Time budget of the reviewer session on the plan in minutes."
   },
   "night.kette.abdeckungMin": {
-    "de": "5078283a8a2f",
-    "text": "Time budget in minutes of the coverage session that holds the packages against the functional plan."
+    "de": "0c0729f9d0fa",
+    "text": "Time budget in minutes of the coverage session that holds the packages against the functional plan, or against the plan."
   },
   "night.kette.umsetzungMin": {
     "de": "da9abe118063",
@@ -392,8 +392,8 @@
     "text": "After the review of the plan, the work packages follow automatically."
   },
   "night.kette.uebergaenge.paketeAbdeckung": {
-    "de": "5d75c5b0bbf1",
-    "text": "After the work packages, the coverage against the functional requirement follows automatically."
+    "de": "ea4d6e0632c3",
+    "text": "After the work packages, the coverage against the functional requirement or against the plan follows automatically."
   },
   "night.kette.uebergaenge.abdeckungUmsetzung": {
     "de": "cab3bb6be888",

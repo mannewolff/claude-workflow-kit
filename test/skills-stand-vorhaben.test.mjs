@@ -39,6 +39,14 @@ for (const skill of ["implement-ready", "implement-next"]) {
     assert.match(s, /`Vorlage:`/);
     assert.match(s, /Unbeaufsichtigt steht derselbe Abschnitt am Anfang des Abschlussberichts/);
   });
+
+  // Plan #1645 (Issue #1646): Ein Plan ohne fachliche Anforderung ist sein eigener Bezugspunkt.
+  test(`[skills-26] ${skill}: ohne Zeile Fachliche Quelle wird gegen den Plan abgeglichen`, () => {
+    const s = abschnitt(lies(skill));
+    assert.match(s, /keine Zeile `Fachliche Quelle:`/);
+    assert.match(s, /`## Ziel` und `## Geplante Aenderungen` des Plans selbst/);
+    assert.match(s, /gegen den Plan abgeglichen wurde/);
+  });
 }
 
 test("[skills-26] beide Skills tragen den Abschnitt wortgleich", () => {
