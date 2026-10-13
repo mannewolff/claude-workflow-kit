@@ -69,7 +69,7 @@ The label remains a trace of the check and does not release the content; the nig
 ---
 
 ## Decide instead of asking
-<!-- de: b36d2dd294e9 -->
+<!-- de: ffb807fe07d6 -->
 
 A session that writes a document or runs unattended decides every ambiguity outside the stop class itself and records the decision. Interactively it may ask; what the human decides is recorded in the same format.
 
@@ -90,12 +90,12 @@ A session that writes a document or runs unattended decides every ambiguity outs
 
 1. Data loss or a migration without a way back.
 2. Security: permissions, authentication, secrets, network access.
-3. Contracts to the outside: an interface someone else uses.
+3. Contracts to the outside: an interface someone else uses, for instance a name, a marker or a format that the kit and kanban-kit both read or write (form in `CLAUDE-Plan.md`, P14).
 4. A contradiction in the requirement itself, for instance two acceptance criteria that exclude each other.
 5. A change to gates, stop points or the process (W1 to W4).
 6. A deviation from the business occasion: a plan or an implementation deviates from a submitted template or from the goal of the requirement, or answers itself a question the requirement left open about appearance, the place of a view or a business boundary.
 
-Only a question from this class halts, and every halt carries exactly one question. Everything else — explicitly also edge cases, naming questions, error paths, orders and the question which test is meant — is decided. The arbiter is the order from "Priorities in conflicts of goals"; when in doubt the smallest reversible intervention wins. **A protected file is not a question but an action.** If a package has to change a file only a human may write (the settings under `.claude/`), it halts with the label `kit:protected` instead of `kit:clarify`: with `kit:clarify` a decision is waiting, with `kit:protected` an action. Like the trace label of the check, the label has to be created once per board; only the human may remove it, after making the change themselves. The halt comment begins with `## Protected file` (in a German project `## Geschuetzte Datei`), names every file with the quoted line and notes as its last line `Label kit:protected gesetzt` or, if the label is missing on the board, `Label kit:protected nicht gesetzt` — the card is only released after a halt with the label set, which the human answers by removing the label. The case is recognised before the start (gate in the runner, `issue brief`, `issue check-form` I8) and, if only the writing fails, in the fallback of the session or in the catch of the runner.
+Only a question from this class halts, and every halt carries exactly one question. Everything else — explicitly also edge cases, naming questions (except names that such a contract fixes), error paths, orders and the question which test is meant — is decided. The arbiter is the order from "Priorities in conflicts of goals"; when in doubt the smallest reversible intervention wins. **A protected file is not a question but an action.** If a package has to change a file only a human may write (the settings under `.claude/`), it halts with the label `kit:protected` instead of `kit:clarify`: with `kit:clarify` a decision is waiting, with `kit:protected` an action. Like the trace label of the check, the label has to be created once per board; only the human may remove it, after making the change themselves. The halt comment begins with `## Protected file` (in a German project `## Geschuetzte Datei`), names every file with the quoted line and notes as its last line `Label kit:protected gesetzt` or, if the label is missing on the board, `Label kit:protected nicht gesetzt` — the card is only released after a halt with the label set, which the human answers by removing the label. The case is recognised before the start (gate in the runner, `issue brief`, `issue check-form` I8) and, if only the writing fails, in the fallback of the session or in the catch of the runner.
 
 **Reviews are contributions.** A model review of a requirement, plan or work package delivers findings to the author of the stage; every finding comes with the three additional details from "Findings of the model reviews" — counter-check, its status and the kind of defect —, and the author reads them along before taking it over or rejecting it with one sentence. Whether a stage is finished is said by a command or a human, never by a model marker.
 

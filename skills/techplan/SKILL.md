@@ -14,6 +14,8 @@ Gestartet wird der Skill nachts vom Nacht-Runner mit `node .claude/kit/night.mjs
 
 **Nachts wird nicht gefragt — in keiner Lage.** Das gilt für die Bahn (Schritt 0), für jede Unklarheit in der Anforderung (Schritt 1) und für die Diskussion des Plans (Schritt 4). Eine Session, die auf eine Antwort wartet, ist vom Runner nicht von einem Fehlschlag zu unterscheiden. Diese Regel gilt für **jeden unbeaufsichtigten Lauf**, nicht nur für diesen Runner — auch dann, wenn ein anderer Runner den Skill startet.
 
+**Offene Verträge nachts.** Trägt der Plan einen offenen Vertrag (Schritt 3), steht die Vertragsfrage über alle offenen Verträge als erste Zeile unter `## Offene Fragen` — daran hält die Kette die Planstufe an, bevor `/issues` Pakete schneidet. Eine andere Stopp-Frage folgt als weiterer Eintrag im selben Abschnitt und wird beim nächsten Halt gestellt: Jeder Halt trägt genau eine Frage. `Entschieden:` schreibt nur, wer die Antwort des Menschen hat — nachts nie die Sitzung.
+
 Ein Widerspruch zur Vorgeschichte ist kein E-Eintrag und keine Stopp-Frage: Er steht als `- Widerspruch:`-Zeile in `### Vorgeschichte`, hält nichts an, und der Nachtbericht nennt ihn.
 
 Unverändert nachts: kein Code, kein Commit, keine technischen Issues, keine Ready-Bewegung — der Stop-Punkt am Ende gilt auch unbeaufsichtigt. Das Plan-Dokument aus Schritt 5 entsteht unbeaufsichtigt **unmittelbar nach Schritt 3**; die Freigabe erfolgt dann am Board.
@@ -80,6 +82,13 @@ Lies die betroffenen Dateien und vorhandene Muster. Nutze einen Explore-Agenten,
 node .claude/kit/board.mjs issue history --terms <begriff> --files <pfad> --without <N>
 ```
 
+**Verträge mit dem anderen Repo** (nur wenn `vertragsRepos` in der Config ein Partnerrepo nennt, Gate P14 in `CLAUDE-Plan.md`): Legt der Plan etwas fest, das das andere Repo liest oder schreibt — einen Namen, ein Kennzeichen, ein Format —, holt der Skill je Festlegung den gebauten Stand und sucht die Fundstelle im Klon unter `path` mit Grep und Read:
+```bash
+node .claude/kit/board.mjs code contract-repo <name>
+```
+
+Maßgeblich ist dieser Stand auf dem Hauptzweig, nicht der Plan des anderen Repos und nicht die installierte Kit-Fassung. Meldet das Kommando `ok: false`, lautet `Gebauter Stand:` `nicht prüfbar: <reason>` und der Abgleich `nicht prüfbar`.
+
 ### 3. Plan erstellen
 Der Plan hat ein **verbindliches Format** — wie das Vier-Abschnitt-Format der Arbeitspakete in `/issues`, nicht als Anregung. Jeder Plan enthält die folgenden sechs `##`-Überschriften **genau einmal und in dieser Reihenfolge**. Dazwischen dürfen Unterüberschriften ab Ebene `###` stehen, aber keine weiteren Überschriften der Ebene `##`:
 ```markdown
@@ -107,12 +116,16 @@ Die Überschriften sind der Anker, an dem die Plan-Prüfung und `/issues` arbeit
 
 **Neue Namen und kopierte Strukturen (Gate P13 in `CLAUDE-Plan.md`).** Führt der Plan Namen ein, die ein Mensch tippt — Skills, Kommandos, Optionen, Labels, Titel-Präfixe —, nennt er unter `## Architektonische Entscheidungen`, dass sie mit keinem eingebauten Kommando von Claude Code kollidieren. Erzeugt er gleich gebaute Kopien in mehreren Dateien, nennt er ihre Wirkung auf die Duplikatsmessung des Projekts und wie er sie auffängt.
 
+**Verträge (Gate P14 in `CLAUDE-Plan.md`).** Nennt `vertragsRepos` ein Partnerrepo, steht am Ende von `## Architektonische Entscheidungen` der Unterabschnitt `### Verträge`: je Festlegung zum anderen Repo ein Eintrag `- V<n>:` mit `Gebauter Stand:` und `Abgleich:` aus Schritt 2, ohne Festlegung die Leerform. Die festen Wörter — Zeilenanfänge, Abgleich-Werte, Richtungen, Leerform — schreibt der Skill in der Fassung aus `names` (Feld `contract`, Tabelle `VERTRAG`). Ein offener Vertrag (`weicht ab`, `fehlt`, `nicht prüfbar` ohne `Entschieden:`) braucht die Vertragsfrage unter `## Offene Fragen` (Schritt 4).
+
 **Leere Pflichtabschnitte gibt es nicht.** Alle sechs bleiben erhalten, auch wenn es für einen nichts zu sagen gibt; in `## Architektonische Entscheidungen` und `## Offene Fragen` steht dann `- Keine.` **Die Metadaten zählen nicht mit.** Die Kopfzeilen `Plan-Modell: …` und, falls anwendbar, `Fachliche Quelle: Issue #N` stehen **vor** `## Ziel`. Sie sind keine Überschrift und damit kein siebter Abschnitt des Formats.
 
 ### 4. Plan zur Diskussion stellen
 **Unbeaufsichtigt** (gesetztes `KIT_AGENT_MODEL`): Die Diskussion **entfällt**, Schritt 5 folgt unmittelbar. Ohne diese Ausnahme entsteht nachts überhaupt kein Artefakt: Der Skill wartete auf ein Feedback, das niemand gibt, und der Runner sähe einen Fehlschlag. Die Freigabe ist damit nicht übergangen, sondern verschoben — sie erfolgt am Board.
 
 **Interaktiv:** Präsentiere den Plan und warte auf Feedback. Implementiere **nicht**, bevor der Plan freigegeben wurde. Plan-Akzeptanz ist kein GO — das GO kommt separat (Schritt 4).
+
+**Offene Verträge (interaktiv):** Trägt der Entwurf einen offenen Vertrag, stellt der Skill vor dem Anlegen in Schritt 5 eine ausdrückliche Frage, die alle offenen Verträge mit V-Nummer aufzählt — eine Frage, nicht eine je Vertrag. Die Antwort des Menschen steht als `Entschieden:` im V-Eintrag (`Plan angepasst`, `anderes Repo zieht nach` oder `Abweichung angenommen`); bleibt sie aus, steht die Frage unter `## Offene Fragen`, und der Plan ist kein Eingang für `/issues`.
 
 **Testhinweise vor dem Präsentieren (Bahn 2, interaktiv):** Den Planentwurf mit Kopfzeilen in `<tmpdir>/plandokument.md` schreiben (wie in Schritt 5) und `issue check-form --art plan --body-file <tmpdir>/plandokument.md --title "<Titel>"` fahren. Meldet das Ergebnis `hinweise` — eigene Tests geführter Bausteine, die der Plan nicht nennt —, stehen sie in **derselben Antwort** wie der Plan, Baustein und Test beim Namen. Der Autor nimmt den Test in `## Geplante Änderungen` auf, als geändert oder als „bleibt grün", immer mit Namen, oder lässt den Hinweis bewusst stehen. Ein Hinweis ist kein Verstoß und hält die Diskussion nicht auf.
 
