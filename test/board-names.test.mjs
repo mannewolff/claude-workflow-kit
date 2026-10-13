@@ -9,7 +9,7 @@ import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
-import { MARKER, UEBERSCHRIFTEN } from "../kit/board/namen.mjs";
+import { MARKER, UEBERSCHRIFTEN, VERTRAG } from "../kit/board/namen.mjs";
 
 const LOKAL = { codeHost: "local", issueTracker: "local", local: { issuesDir: "issues" } };
 
@@ -33,7 +33,7 @@ test("MARKER kennt die Fundblock-Zeilen mit englischer Fassung (E19)", () => {
 
 test("names im deutschen Projekt: jede Zeile bleibt deutsch", () => {
   const aus = names(LOKAL);
-  assert.deepEqual(Object.keys(aus), ["language", "lines"]);
+  assert.deepEqual(Object.keys(aus), ["language", "lines", "contract"]);
   assert.equal(aus.language, "de");
   assert.equal(aus.lines["## Ziel"], "## Ziel");
   for (const [de, fassung] of Object.entries(aus.lines)) assert.equal(fassung, de);
@@ -76,4 +76,20 @@ test("MARKER und UEBERSCHRIFTEN kennen die festen Zeilen der Skills (Issue #1568
   assert.deepEqual({ ...UEBERSCHRIFTEN.einstieg }, { de: "Einstieg", en: "Start" });
   assert.deepEqual({ ...UEBERSCHRIFTEN.offenePunkte }, { de: "Offene Punkte", en: "Open points" });
   assert.deepEqual({ ...UEBERSCHRIFTEN.zuletztAktualisiert }, { de: "Zuletzt aktualisiert", en: "Last updated" });
+});
+
+// Die festen Woerter eines Vertrags im Plan (Issue #1612, Plan #1611 E3): `names` gibt die
+// Tabelle VERTRAG in der Projektsprache aus, damit /techplan und /issue-review in einem
+// englischen Projekt die englische Form schreiben.
+test("names gibt die Tabelle VERTRAG in der Projektsprache aus", () => {
+  const de = names(LOKAL).contract;
+  const en = names({ ...LOKAL, language: "en" }).contract;
+  for (const [sache, eintrag] of Object.entries(VERTRAG)) {
+    assert.equal(de[sache], eintrag.de, sache);
+    assert.equal(en[sache], eintrag.en, sache);
+  }
+  assert.equal(de.abgleich, "Abgleich:");
+  assert.equal(en.abgleich, "Match:");
+  assert.equal(en.keinVertrag, "- No contract.");
+  assert.equal(names({ ...LOKAL, language: "en" }).lines["## Verträge"], "## Contracts");
 });

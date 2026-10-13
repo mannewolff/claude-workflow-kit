@@ -312,8 +312,10 @@ Usage:
   node board.mjs names
       The fixed lines of the skills in the project language (Issue #1558, Plan #1548):
       headings, markers, review and incorporation heads. Output: { language, lines:
-      { "<German line>": "<line in the project language>" } } from the registers
-      MARKER and UEBERSCHRIFTEN; a heading is listed with '## ' in front. Read-only.
+      { "<German line>": "<line in the project language>" }, contract: { "<key>":
+      "<word>" } } from the registers MARKER and UEBERSCHRIFTEN; a heading is listed
+      with '## ' in front. 'contract' holds the fixed words of a contract entry in a
+      plan from the table VERTRAG (Issue #1612). Read-only.
 
   node board.mjs --version
 
@@ -392,7 +394,7 @@ const { issueVorgeschichte } = await import("./board/vorgeschichte.mjs");
 // Englisch benannte Config auf die deutschen Namen (Issue #1436, Plan #1420 E10).
 const { normalisiereConfig } = await import("./board/config-namen.mjs");
 // Die Meldung zu einem frueheren deutschen Namen (Issue #1557, Plan #1548).
-const { altnameHinweis, EINGABEWERTE, text, projektSprache, festeZeilen } = await import("./board/namen.mjs");
+const { altnameHinweis, EINGABEWERTE, text, projektSprache, festeZeilen, vertragWoerter } = await import("./board/namen.mjs");
 // Die Texte des Einstiegs an den Menschen (Issue #1524: im Teil texte/).
 export const { TEXTE } = await import("./texte/board.mjs");
 
@@ -922,7 +924,7 @@ async function main() {
   } else if (axis === "names") {
     // Achse ohne Unterbefehl (Issue #1558): die festen Zeilen in der Projektsprache.
     const language = projektSprache(readWorkflowConfig());
-    out({ language, lines: festeZeilen(language) });
+    out({ language, lines: festeZeilen(language), contract: vertragWoerter(language) });
   } else {
     process.stdout.write(HELP);
     abbruch(t("unbekannteAchse", { achse: axis, erwartet: ACHSEN.join(" | ") }));

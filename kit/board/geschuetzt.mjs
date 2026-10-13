@@ -24,6 +24,7 @@ import { istMensch, zerlegeAbschnitte, abschnittsTitel, CHECK_FORM_ABSCHNITTE } 
 import { SPRACHEN, erkenneLabel, labelName, erkenneMarker, leseMarker, markerName, ueberschriftZeile, UEBERSCHRIFTEN,
   normUeberschrift, ueberschriftName, prozessSprache, text } from "./namen.mjs";
 import { szenarienVerstossIn } from "./szenarien.mjs";
+import { pruefeVertraege } from "./vertraege.mjs";
 
 // Die Texte an den Menschen liegen unter kit/texte/board-geschuetzt.mjs (Issue #1526).
 import { TEXTE } from "../texte/board-geschuetzt.mjs";
@@ -446,7 +447,12 @@ function pruefeP6(name, zeilen) {
   return nurKeine ? null : t("p6KeineErste", { name: abschnittName(name) });
 }
 
-export function pruefePlan(kopf, abschnitte, alleZeilen) {
+/**
+ * Die Gates des Plans. P14 (Issue #1612, Plan #1611 E4, E14) prueft nur, wenn `vertragsRepos`
+ * ein Partnerrepo nennt: Verträge mit dem anderen Repo stehen in fester Form und sind abgeglichen
+ * oder unter `## Offene Fragen` gefragt.
+ */
+export function pruefePlan(kopf, abschnitte, alleZeilen, { vertragsRepos } = {}) {
   const erwartet = CHECK_FORM_ABSCHNITTE.plan;
   const verstoesse = pruefeReihenfolge(abschnitte, erwartet).map((meldung) => ({ gate: "P1", meldung }));
   for (const a of abschnitte) {
@@ -461,7 +467,7 @@ export function pruefePlan(kopf, abschnitte, alleZeilen) {
     const meldung = pruefeP6(a.titel, a.zeilen);
     if (meldung) verstoesse.push({ gate: "P6", meldung });
   }
-  return [...verstoesse, ...markerVerstoesse(alleZeilen, "P12", "planReview")];
+  return [...verstoesse, ...markerVerstoesse(alleZeilen, "P12", "planReview"), ...pruefeVertraege(abschnitte, { vertragsRepos })];
 }
 
 /** I1 ueber die Reihenfolge hinaus: Abhaengigkeiten zuletzt. */

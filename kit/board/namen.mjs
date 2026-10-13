@@ -276,6 +276,8 @@ export const UEBERSCHRIFTEN = Object.freeze({
   poFragen: eintrag("Offene Fragen an den PO", "Open questions for the PO"),
   // Fachplan und Plan (Issue #1537, Plan #1534 E1).
   vorgeschichte: eintrag("Vorgeschichte", "History"),
+  // Plan, `###` am Ende der Architektonischen Entscheidungen (Issue #1612, Plan #1611 E1).
+  vertraege: eintrag("Verträge", "Contracts"),
   // Abschlussbericht.
   aenderungen: eintrag("Änderungen", "Changes"),
   testsUndChecks: eintrag("Tests und Checks", "Tests and checks"),
@@ -305,6 +307,50 @@ export const GHERKIN = Object.freeze({
 /** Ein Schluesselwort eines Szenarios in der Sprache; eine unbekannte Sprache gilt als `de`. */
 export function gherkinWort(sache, sprache) {
   return nameIn(GHERKIN, "Schluesselwort", sache, sprache);
+}
+
+/**
+ * Die festen Woerter eines Vertrags im Plan (Issue #1612, Plan #1611 E2, E3): die
+ * Zeilenanfaenge, die Abgleich-Werte, die Formen des gebauten Stands, die Richtungen, die drei
+ * Entscheidungen hinter `Entschieden:` und die Leerform, je Sprache. Die Pruefung nimmt sie nur
+ * in der Projektsprache an; der Leser steht in kit/board/vertraege.mjs.
+ */
+export const VERTRAG = Object.freeze({
+  // Zeilenanfaenge unter einem Eintrag `- V<n>:`.
+  gebauterStand: eintrag("Gebauter Stand:", "Built state:"),
+  abgleich: eintrag("Abgleich:", "Match:"),
+  wortlaut: eintrag("Wortlaut:", "Wording:"),
+  vorgelegtLaut: eintrag("Vorgelegt laut Fachplan:", "Proposed per requirement:"),
+  installiert: eintrag("Installiert:", "Installed:"),
+  entschieden: eintrag("Entschieden:", "Decided:"),
+  // Werte hinter `Abgleich:`.
+  stimmt: eintrag("stimmt", "matches"),
+  weichtAb: eintrag("weicht ab", "differs"),
+  fehlt: eintrag("fehlt", "missing"),
+  nichtPruefbar: eintrag("nicht prüfbar", "not checkable"),
+  vorgelegt: eintrag("vom Projekt vorgelegt", "proposed by the project"),
+  // Formen hinter `Gebauter Stand:` ausser der Fundstelle.
+  standFehlt: eintrag("fehlt, geprüft", "missing, checked"),
+  standNichtPruefbar: eintrag("nicht prüfbar:", "not checkable:"),
+  // Richtungen im Kopf des Eintrags.
+  liest: eintrag("liest", "reads"),
+  schreibt: eintrag("schreibt", "writes"),
+  // Entscheidungen hinter `Entschieden:`.
+  planAngepasst: eintrag("Plan angepasst", "plan adjusted"),
+  repoZiehtNach: eintrag("anderes Repo zieht nach", "other repo follows"),
+  abweichungAngenommen: eintrag("Abweichung angenommen", "deviation accepted"),
+  // Leerform des Unterabschnitts.
+  keinVertrag: eintrag("- Kein Vertrag.", "- No contract."),
+});
+
+/** Ein festes Wort eines Vertrags in der Sprache; eine unbekannte Sprache gilt als `de`. */
+export function vertragWort(sache, sprache) {
+  return nameIn(VERTRAG, "Vertragswort", sache, sprache);
+}
+
+/** Die Tabelle VERTRAG in der Sprache, je Sache das Wort — die Ausgabe von `board.mjs names`. */
+export function vertragWoerter(sprache) {
+  return Object.fromEntries(Object.keys(VERTRAG).map((sache) => [sache, vertragWort(sache, sprache)]));
 }
 
 /** Ueberschriften vergleichbar machen: klein, Umlaute in beiden Schreibweisen, Leerraum einfach. */

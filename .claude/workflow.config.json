@@ -124,13 +124,16 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/board-dokumente-*.test.mjs\" \"test/board-vorgeschichte-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=2 \"test/board-dokumente-*.test.mjs\" \"test/board-vorgeschichte-*.test.mjs\" \"test/board-vertraege-*.test.mjs\"",
       "gleichzeitig": true,
       "areas": [
         "board-adapter",
         "board-dokumente",
+        "board-geschuetzt",
         "board-grundlagen",
         "board-issue-review",
+        "board-testhinweise",
+        "board-vertraege",
         "board-wiederholung",
         "nacht-abhaengigkeiten"
       ]
@@ -780,6 +783,11 @@
       "kit/board/szenarien.mjs",
       "kit/texte/board-szenarien.mjs",
       "test/board-szenarien.test.mjs"
+    ],
+    "board-vertraege": [
+      "kit/board/vertraege.mjs",
+      "kit/texte/board-vertraege.mjs",
+      "test/board-vertraege-*.test.mjs"
     ],
     "board-issue-review": [
       "kit/board/issue-review.mjs",
