@@ -877,6 +877,8 @@ export function korrekturPrompt(dokId, verstoesse) {
     "schreibe den vollstaendigen korrigierten Body stueckweise in eine Datei ausserhalb des Projektverzeichnisses",
     `und uebertrage ihn mit \`node .claude/kit/board.mjs issue update ${dokId} --body-file <pfad>\`.`,
     "Aendere sonst nichts: keinen Inhalt, keine anderen Karten, keine Dateien im Projekt.",
+    // Eine Frage ist Inhalt, P14 verlangt sie aber; `stoppFragenGrund` haelt danach an (Plan #1611, E5).
+    "Verlangt eine Formmeldung eine Frage unter `## Offene Fragen`, schreibst du sie dorthin; eine Zeile `Entschieden:` schreibst du nie.",
     "",
     ketteZusatz(),
   ].join("\n");
