@@ -494,8 +494,10 @@ async function issueCheckForm(tracker, config, args) {
   if (fehler) checkFormAbweisen(t("checkFormArt", { fehler, wege: checkFormWege() }));
   const dateien = stufeAusTitel(title) === "plan" ? versionierteDateien() : [];
   // F12: eine Datei ist ein neuer Fachplan, eine Karte erst ab dem Stichtag (Issue #1590, A4, A6).
-  const szenarien = hatDatei ? true : szenarienPflicht(id, config);
-  const ergebnis = pruefeForm(body, title, config, dateien, configWurzel(), { szenarien });
+  // Die Pflicht hat drei Werte; an pruefeForm gehen zwei Booleans (Issue #1606).
+  const pflicht = hatDatei ? true : szenarienPflicht(id, config);
+  const ergebnis = pruefeForm(body, title, config, dateien, configWurzel(),
+    { szenarien: pflicht === true, stichtagHinweis: pflicht === "ohne-stichtag" });
   if (ergebnis.stufe === "issue") {
     const hinweise = await abhaengigkeitsHinweise(body, tracker);
     if (hinweise.length > 0) ergebnis.hinweise = hinweise;

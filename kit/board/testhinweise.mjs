@@ -26,7 +26,7 @@ import { zerlegeAbschnitte, abschnittsTitel, normalisiereZeilenenden } from "./d
 import { stufeAusTitel } from "./issue-review.mjs";
 import { text, ueberschriftZeile } from "./namen.mjs";
 import { vorgeschichteAktiv } from "./vorgeschichte.mjs";
-import { stichtagHinweis } from "./szenarien.mjs";
+import { stichtagHinweis as stichtagText } from "./szenarien.mjs";
 
 // Die Texte an den Menschen liegen unter kit/texte/board-testhinweise.mjs (Issue #1526).
 import { TEXTE } from "../texte/board-testhinweise.mjs";
@@ -245,11 +245,12 @@ export function versionierteDateien() {
  * Plan #1534 A11) — kein Gate, und ohne `baustein` und `test`, damit der Nacht-Runner ihn
  * nicht vermerkt.
  *
- * `szenarien` ist die Pflicht fuer Gate F12 beim Fachplan (Issue #1590, Plan #1588 A4, A6):
- * `true` prueft, `false` nicht, `"ohne-stichtag"` prueft nicht und meldet den Hinweis
- * `{ art: "szenarien-stichtag", meldung }` — ebenfalls ohne `baustein` und `test`.
+ * Zwei Schalter fuer die Szenarien beim Fachplan (Issue #1590, Plan #1588 A4, A6; getrennt seit
+ * Issue #1606): `szenarien` sagt, ob Gate F12 prueft; `stichtagHinweis` meldet den Hinweis
+ * `{ art: "szenarien-stichtag", meldung }` — ebenfalls ohne `baustein` und `test`. Beide sind
+ * Booleans; den dritten Wert der Pflicht (ohne Stichtag) loest der Aufrufer in `issue check-form` auf.
  */
-export function pruefeForm(body, title, config = {}, dateien = [], wurzel = ".", { szenarien = false } = {}) {
+export function pruefeForm(body, title, config = {}, dateien = [], wurzel = ".", { szenarien = false, stichtagHinweis = false } = {}) {
   const stufe = stufeAusTitel(title);
   const { kopf, abschnitte } = zerlegeAbschnitte(body);
   const alleZeilen = [...kopf, ...abschnitte.flatMap((a) => a.zeilen)];
@@ -261,7 +262,7 @@ export function pruefeForm(body, title, config = {}, dateien = [], wurzel = ".",
   const hinweise = stufe === "plan" ? pruefeTestNennung(abschnitte, normalisiereZeilenenden(body), dateien, config) : [];
   const vorgeschichte = vorgeschichteHinweis(body, stufe, config);
   if (vorgeschichte) hinweise.push(vorgeschichte);
-  if (stufe === "fachlich" && szenarien === "ohne-stichtag") hinweise.push({ art: "szenarien-stichtag", meldung: stichtagHinweis() });
+  if (stufe === "fachlich" && stichtagHinweis) hinweise.push({ art: "szenarien-stichtag", meldung: stichtagText() });
   if (hinweise.length > 0) ergebnis.hinweise = hinweise;
   return ergebnis;
 }
