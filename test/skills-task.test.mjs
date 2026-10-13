@@ -370,3 +370,17 @@ test("[skills-7] /task steht nicht in der Tabelle 'Ergaenzen den Prozess'", () =
     assert.doesNotMatch(tabelle, /`\/task`/, `${name}: \`/task\` steht in 'Ergaenzen den Prozess'`);
   }
 });
+
+// --- Eingang aus /triage (Plan #1623, A7, Issue #1631) -----------------------------
+
+test("[1631-1] /task #N nimmt eine `[Idea]` mit `Bahn: 3` als Eingang aus /triage", () => {
+  const schritt0 = SKILL.slice(SKILL.indexOf("### 0. Die Bahn benennen"), SKILL.indexOf("### 1. "));
+  const unbeaufsichtigt = schritt0.slice(0, schritt0.indexOf("**Interaktiv:**"));
+  const interaktiv = schritt0.slice(schritt0.indexOf("**Interaktiv:**"));
+  assert.match(interaktiv, /`\[Idea\]` .{0,80}`Bahn: 3`.{0,80}`\/triage`/s, "die Idee mit Bahn: 3 aus /triage ist nicht als Eingang erkannt");
+  assert.match(interaktiv, /Bahn-Zeile ersetzt diese Best(?:ae|ä)tigung/, "die Bahn-Zeile ersetzt die Bestaetigung nicht");
+  assert.match(unbeaufsichtigt, /auch bei einer Idee aus `\/triage`/, "unbeaufsichtigt bleibt es nicht ausdruecklich beim Abbruch");
+
+  const schritt1 = SKILL.slice(SKILL.indexOf("### 1. "), SKILL.indexOf("### 2. "));
+  assert.match(schritt1, /geklärte Stand .{0,60}`## Kontext` als `### Geklärter Stand`/s, "der geklaerte Stand steht nicht im Kontext");
+});

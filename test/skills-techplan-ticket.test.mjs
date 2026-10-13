@@ -39,7 +39,7 @@ test("der Skill legt das Plan-Dokument mit dem Titel-Praefix [Plan] an", () => {
 });
 
 test("die Titelherkunft ist festgelegt: Quell-Issue ohne [Requirement], sonst aus dem Ziel", () => {
-  assert.match(SKILL, /ohne dessen `\[Requirement\]`-Präfix/,
+  assert.match(SKILL, /ohne dessen `\[Requirement\]`- bzw\. `\[Idea\]`-Präfix/,
     "die Titelherkunft bei /techplan #N fehlt — das Praefix wuerde sonst mitgeschleppt");
   assert.match(SKILL, /`## Ziel`-Abschnitts/,
     "die Titelherkunft ohne Quell-Issue fehlt");
@@ -59,7 +59,7 @@ test("Plan-Modell steht immer im Kopf, Fachliche Quelle nur bei /techplan #N", (
     "die Unbedingtheit von `Plan-Modell:` ist nicht ausgesprochen");
   assert.match(abschnitt, /`Fachliche Quelle: Issue #N` — \*\*nur\*\*/,
     "die Bedingtheit von `Fachliche Quelle:` ist nicht ausgesprochen");
-  assert.match(abschnitt, /Bei einem Plan aus dem Chat fehlt diese Zeile/,
+  assert.match(abschnitt, /Bei einem Plan aus dem Chat oder aus einer `\[Idea\]` fehlt diese Zeile/,
     "der Gegenfall fehlt — sonst schreibt der Skill die Zeile auch ohne Quelle");
 });
 

@@ -48,6 +48,14 @@ Nennt `verstoesse` das Gate `F12`, fehlen dem pflichtigen Fachplan die Szenarien
 3. Das fachliche Issue im Plan ausdrücklich referenzieren („Fachliche Quelle: Issue #N"), damit `/issues` den Rückverweis in die technischen Issues übernimmt.
 4. **Vorlage-Konvention.** Bringt der Mensch eine Vorlage mit — einen Gestaltungsentwurf, ein Mockup, eine Skizze —, trägt jedes Dokument der Kette die Zeile `Vorlage: <Pfad> — verbindlich | Anregung`: `/requirement` im Abschnitt `## Ziel`, `/techplan` im Kopf des Plans, `/issues` im `## Kontext` jedes Pakets, das Aussehen oder Aufbau einer Ansicht berührt. Bei „verbindlich“ entscheidet `/techplan` keine offene Gestaltungsfrage gegen die Vorlage — ein Widerspruch ist eine Stopp-Frage, nachts `kit:clarify` —, und jedes solche Paket nennt die Stelle der Vorlage und trägt als Akzeptanzkriterium die Abnahme per Bildschirmfoto neben der Vorlage; `issue check-form` weist ein Paket mit verbindlicher Vorlage ohne Bildschirmfoto im Akzeptanzkriterium ab (I5).
 
+## Eingang `/techplan #N`: eine Idee aus `/triage`
+Eine `[Idea]` nimmt der Skill **nur**, wenn ihr Abschnitt `## Geklärter Stand` die Bahn-Zeile `Bahn: 2, technisch` trägt — der Mensch hat beim Durchsprechen über das Ziel entschieden und den direkten Weg zum Plan gewählt. Ohne diese Bahn-Zeile, auch mit einer anderen Bahn, weist er ab und nennt `/triage #N`, und es entsteht nichts. Bei einer angenommenen Idee ist der geklärte Stand der Eingang, neben Body und Kommentaren der Idee; er steht im Plan als `### Geklärter Stand` unter `## Ziel`, eine `Vorlage:`-Zeile daraus wörtlich im Kopf des Plans. Der Plan trägt weder `Fachliche Quelle:` noch `--derived-from`: Die Idee ist Anlass, nicht Vorfahr. Nach dem Anlegen (Schritt 5) hängt der Skill die Spur an die Idee:
+```bash
+node .claude/kit/board.mjs issue comment <N> --text "Fortsetzung: Issue #M"
+```
+
+Liefert `issue create` nur eine `ideaId` mit `pending: true`, lautet der Kommentar `Fortsetzung: Idee <ideaId> (noch nicht eingeplant)`. Folge: Ein solcher Plan ist kein Eingang für die Nacht-Kette, die einen Plan mit `Fachliche Quelle:` verlangt; sein Weg ist `/issues #M` am Tag. Form, Vorgeschichte, Formprüfung und Freigabe bleiben wie bei jedem Plan.
+
 **Feste Zeilen.** Überschriften, Marker, Review- und Einarbeitungs-Köpfe und Fundblock-Zeilen, die dieser Skill in Dokumente, Kommentare oder Markerzeilen schreibt, stehen hier deutsch. Vor dem ersten Schreiben `node .claude/kit/board.mjs names` aufrufen: Das Feld `lines` nennt je deutscher Zeile die Fassung der Projektsprache, und der Skill schreibt die ausgegebene Fassung. Eine Zeile mit veränderlichem Rest (`## Einarbeitung, Runde 2`) steht dort mit ihrem festen Anfang, eine Überschrift mit `## ` davor gilt auf jeder Ebene, und was `names` nicht nennt, bleibt, wie es hier steht.
 
 ## Ablauf
@@ -65,7 +73,7 @@ Für Bahn 3 kommt ein eigener Grund dazu: Ein `[Task]` entsteht nur nach ausdrü
 - **Bahn 1** (kleine Änderung nach der Definition in CLAUDE-workflow.md): sag das und biete an, sie **direkt** umzusetzen — kein Plan-Overhead.
 - **Bahn 3**: Gibt es **nichts abzuwägen** — stehen also nicht mehrere vertretbare Wege offen —, sag das, biete `/task` an und **plane nicht**. Der Vorgang wird dann ein einzelnes Arbeitspaket mit dem Titel-Präfix `[Task]`, ohne Fachkonzept und ohne Plan.
 
-**Das Bahn-3-Angebot gilt nur, solange kein `[Requirement]`- und kein `[Plan]`-Dokument als Quelle vorliegt.** Bei `/techplan #N` gegen ein `[Requirement]`-Issue bleibt der begonnene volle Weg erhalten: `/task` lehnt diese Quelle ausdrücklich ab, und auf einen Skill zu verweisen, der die Nummer zurückweist, wäre eine Sackgasse. Eine **`[Idea]`** als Quelle steht dem Angebot dagegen **nicht** entgegen — sie ist eine rohe Anforderung, kein begonnener Weg, und `/task #N` nimmt sie an.
+**Das Bahn-3-Angebot gilt nur, solange kein `[Requirement]`- und kein `[Plan]`-Dokument als Quelle vorliegt.** Bei `/techplan #N` gegen ein `[Requirement]`-Issue bleibt der begonnene volle Weg erhalten: `/task` lehnt diese Quelle ausdrücklich ab, und auf einen Skill zu verweisen, der die Nummer zurückweist, wäre eine Sackgasse. Bei einer **`[Idea]`** aus `/triage` entfällt die Bahnbestimmung: Die Bahn ist mit `Bahn: 2, technisch` entschieden, der Skill bietet weder Bahn 1 noch Bahn 3 an und plant.
 
 ### 1. Anforderung verstehen
 Kläre zuerst: Was soll gebaut werden, welche Bereiche des Codes sind betroffen, gibt es Abhängigkeiten zu anderen Issues oder laufenden Arbeiten?
@@ -134,12 +142,12 @@ Steht der Plan — interaktiv also nach der Freigabe, unbeaufsichtigt nach Schri
 
 **Bei Bahn 1 entsteht kein Plan-Dokument.** Dort gibt es keinen Plan; ein leeres `[Plan]`-Ticket je Kleinigkeit wäre Lärm.
 
-**Titel:** `<Titel des Vorhabens>` ohne Präfix — `--art plan` an `issue check-form` und `issue create` stellt das Präfix der Projektsprache voran (`[Plan]` im deutschen Projekt). Das Präfix ist die verbindliche Konvention, an der die übrigen Skills und der Nacht-Runner Plan-Dokumente erkennen und von Arbeitspaketen unterscheiden — dieselbe Mechanik wie `[Requirement]` und `[Idea]`. Bei `/techplan #N` entsteht der Titel aus dem Titel des Quell-Issues **ohne dessen `[Requirement]`-Präfix**; sonst aus einer knappen Bezeichnung des `## Ziel`-Abschnitts.
+**Titel:** `<Titel des Vorhabens>` ohne Präfix — `--art plan` an `issue check-form` und `issue create` stellt das Präfix der Projektsprache voran (`[Plan]` im deutschen Projekt). Das Präfix ist die verbindliche Konvention, an der die übrigen Skills und der Nacht-Runner Plan-Dokumente erkennen und von Arbeitspaketen unterscheiden — dieselbe Mechanik wie `[Requirement]` und `[Idea]`. Bei `/techplan #N` entsteht der Titel aus dem Titel des Quell-Issues **ohne dessen `[Requirement]`- bzw. `[Idea]`-Präfix**; sonst aus einer knappen Bezeichnung des `## Ziel`-Abschnitts.
 
 **Body:** der freigegebene Plan im verbindlichen Format aus Schritt 3 — alle sechs Abschnitte, unverändert übernommen. Darüber, vor `## Ziel`, die Kopfzeilen:
 
 - `Plan-Modell: <wert>` — **immer**.
-- `Fachliche Quelle: Issue #N` — **nur**, wenn der Plan aus `/techplan #N` gegen ein `[Requirement]`-Issue entstand. Bei einem Plan aus dem Chat fehlt diese Zeile; sie zu erfinden behauptete eine Quelle, die es nicht gibt.
+- `Fachliche Quelle: Issue #N` — **nur**, wenn der Plan aus `/techplan #N` gegen ein `[Requirement]`-Issue entstand. Bei einem Plan aus dem Chat oder aus einer `[Idea]` fehlt diese Zeile; sie zu erfinden behauptete eine Quelle, die es nicht gibt.
 
 Vor dem Anlegen prüft ein Kommando die Form; erst bei `ok: true` folgt `issue create`, Verstöße werden in der Datei behoben und erneut geprüft:
 ```bash
@@ -181,7 +189,7 @@ cat >> <tmpdir>/plandokument.md <<'TEIL2'
 TEIL2
 ```
 
-**`--derived-from <N>` genau dann, wenn der Plan aus `/techplan #N` gegen ein `[Requirement]`-Issue entstand**. Die Option trägt die Kartennummer des nächsten Vorfahren als Feld ans Board, damit es die Kette Fachplan → Plan → Arbeitspaket als Daten kennt und nicht nur als Zeichen im Beschreibungstext. Bei einem Plan aus dem Chat **entfällt sie** — genauso, wie dort die `Fachliche Quelle`-Zeile entfällt; eine Nummer zu erfinden behauptete eine Quelle, die es nicht gibt.
+**`--derived-from <N>` genau dann, wenn der Plan aus `/techplan #N` gegen ein `[Requirement]`-Issue entstand**. Die Option trägt die Kartennummer des nächsten Vorfahren als Feld ans Board, damit es die Kette Fachplan → Plan → Arbeitspaket als Daten kennt und nicht nur als Zeichen im Beschreibungstext. Bei einem Plan aus dem Chat oder aus einer `[Idea]` **entfällt sie** — genauso, wie dort die `Fachliche Quelle`-Zeile entfällt; eine Nummer zu erfinden behauptete eine Quelle, die es nicht gibt.
 
 **`--author-model` ist Pflicht.** Der Adapter lehnt jeden Body ohne `Autor-Modell:`-Zeile ab, sofern weder das Flag noch `KIT_AGENT_MODEL` gesetzt ist (`kit/board.mjs`). Ein Plan-Body trägt aber `Plan-Modell:`, nicht `Autor-Modell:` — ohne das Flag scheitert das Anlegen bei jedem interaktiven Durchlauf zur Laufzeit, während jeder Texttest grün bleibt.
 

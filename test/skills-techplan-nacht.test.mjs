@@ -99,10 +99,10 @@ test("[skills-2] das Bahn-3-Angebot nimmt [Requirement] und [Plan] als Quelle au
   const schritt0 = abschnitt("### 0. Bahn bestimmen", "### 1. Anforderung verstehen");
   assert.match(schritt0, /\[Requirement\]/, "die Ausnahme fuer [Requirement] als Quelle fehlt");
   assert.match(schritt0, /\[Plan\]/, "die Ausnahme fuer [Plan] als Quelle fehlt");
-  // Die Idee ist ausdruecklich KEINE Ausnahme — `/task #N` nimmt sie an. Ohne diesen
-  // Satz liest eine Sitzung die Ausnahme als "jede Nummer" und verweist nie auf /task.
+  // Eine Idee erreicht /techplan nur noch aus `/triage` mit entschiedener Bahn (Plan #1623,
+  // A8): Schritt 0 muss sagen, dass die Bahnbestimmung dann entfaellt.
   assert.match(schritt0, /\[Idea\]/,
-    "dass eine [Idea] dem Angebot nicht entgegensteht, ist nicht benannt");
+    "der Fall einer [Idea] aus /triage ist in Schritt 0 nicht benannt");
   assert.match(schritt0, /lehnt diese Quelle|lehnt .{0,40}ab/,
     "dass /task die Quelle [Requirement] ausdruecklich ablehnt, fehlt");
 });

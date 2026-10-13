@@ -59,11 +59,14 @@ test("[skills-962] beide Wege stehen in einem Atemzug, nicht in getrennten Absch
   }
 });
 
-test("[skills-962] keine Stelle schickt eine `[Idea]` mehr nach /techplan", () => {
+// Seit Plan #1623 (A8, A14) fuehrt ein direkter Weg von der Idee zum Plan — aber nur nach
+// `/triage`, mit der dort gewaehlten Bahn `2, technisch`. Eine Zeile, die `[Idea]` und
+// `/techplan` nennt, ist darum nur erlaubt, wenn sie auch `/triage` nennt (Issue #1631).
+test("[skills-962] keine Stelle schickt eine `[Idea]` ohne /triage nach /techplan", () => {
   const funde = [];
   for (const pfad of STELLEN) {
     zeilen(pfad).forEach((zeile, i) => {
-      if (zeile.includes("[Idea]") && zeile.includes("/techplan")) {
+      if (zeile.includes("[Idea]") && zeile.includes("/techplan") && !zeile.includes("/triage")) {
         funde.push(`${pfad}:${i + 1}: ${zeile.trim().slice(0, 160)}`);
       }
     });
