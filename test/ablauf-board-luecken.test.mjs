@@ -44,6 +44,12 @@ async function mitToolbox(labelAntwort, fn) {
       }
       return { status: 200, json: g };
     }
+    // Einzelabruf `by-number` (Issue #1651): Die Karte wird so aufgeloest, nicht ueber die Liste.
+    const einzeln = req.url.match(/^\/api\/kanban\/items\/by-number\/(\d+)$/);
+    if (einzeln) {
+      const k = karten.find((x) => x.number === Number(einzeln[1]));
+      return k ? { status: 200, json: { item: k, archived: false, comments: [] } } : null;
+    }
     if (/^\/api\/kanban\/items\/\d+\/labels/.test(req.url)) return labelAntwort;
     return null;
   });

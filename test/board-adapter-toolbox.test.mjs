@@ -380,8 +380,9 @@ test("move schiebt die Karte ans Ende der Zielspalte", async () => {
   await mitBoard(standardAntwort, async (dir, requests) => {
     await amBoard(dir, (t) => t.moveIssue("7", "in_review"));
     const move = requests.find((r) => r.url === "/api/kanban/items/700/move");
-    // IN_REVIEW ist leer -> Position 0.
-    assert.deepEqual(JSON.parse(move.body), { column: "IN_REVIEW", position: 0 });
+    // Ohne Kartenliste kennt der Adapter die Spaltenlaenge nicht: Der groesste Java-`int`
+    // geht mit, den kanban-kit ans Ende der Zielspalte klemmt (Plan #1638, E4).
+    assert.deepEqual(JSON.parse(move.body), { column: "IN_REVIEW", position: 2147483647 });
   });
 });
 
@@ -389,8 +390,8 @@ test("move in eine belegte Spalte haengt hinten an", async () => {
   await mitBoard(standardAntwort, async (dir, requests) => {
     await amBoard(dir, (t) => t.moveIssue("3", "ready"));
     const move = requests.find((r) => r.url === "/api/kanban/items/300/move");
-    // READY ist mit zwei Karten belegt -> Position 2.
-    assert.deepEqual(JSON.parse(move.body), { column: "READY", position: 2 });
+    // Auch in eine belegte Spalte: Das Klemmen ans Ende uebernimmt kanban-kit (E4).
+    assert.deepEqual(JSON.parse(move.body), { column: "READY", position: 2147483647 });
   });
 });
 

@@ -1584,12 +1584,6 @@ export class ToolboxIssueTracker {
     return items.find((i) => i.number === number) || null;
   }
 
-  _resolveByNumber(items, number) {
-    const item = this._findByNumber(items, number);
-    if (!item) throw new BoardError(t("issueFehlt", { id: number }));
-    return item;
-  }
-
   /**
    * Eine Karte per Einzelabruf statt ueber die ganze Kartenliste (Issue #1650, Plan #1638,
    * E1). 404 und eine archivierte Karte melden `issueFehlt` wie eine Nummer, die in der
@@ -1795,13 +1789,12 @@ export class ToolboxIssueTracker {
   }
 
   async moveIssue(number, to) {
-    const num = Number(number);
     const column = this._toColumn(to);
-    const items = await this._boardItems();
-    const item = this._resolveByNumber(items, num);
-    // Zielposition = Ende der Zielspalte (bei gleichbleibender Spalte: aktuelle Position halten).
-    const targetPosition =
-      item.column === column ? item.position : items.filter((i) => i.column === column).length;
+    // Immer frisch: Spalte und Position stehen nie in der Zuordnung (E2).
+    const { item } = await this._karte(number);
+    // Gleiche Spalte: aktuelle Position halten. Sonst der groesste Java-`int`, den
+    // kanban-kit ans Ende der Zielspalte klemmt (E4) — ohne Kartenliste fuer die Laenge.
+    const targetPosition = item.column === column ? item.position : 2147483647;
     await this._fetch(`/api/kanban/items/${item.id}/move`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -1810,8 +1803,7 @@ export class ToolboxIssueTracker {
   }
 
   async commentIssue(number, text, idempotencyKey) {
-    const num = Number(number);
-    const item = this._resolveByNumber(await this._boardItems(), num);
+    const item = await this._kartenRef(number);
     // Der zweite Endpunkt mit Idempotenz-Schluessel (Issue #834) — und der, bei dem
     // eine Doppelung am meisten weh tut: ein zweimal angelegter Abschlussbericht.
     await this._fetch(`/api/kanban/items/${item.id}/comments`, {
@@ -1833,7 +1825,7 @@ export class ToolboxIssueTracker {
   // 404/405; die Meldung nennt dann die Route, damit klar ist, dass die Instanz und
   // nicht der Kommentar fehlt.
   async ersetzeKommentar(number, kommentarId, text) {
-    const item = this._resolveByNumber(await this._boardItems(), Number(number));
+    const item = await this._kartenRef(number);
     const pfad = `/api/kanban/items/${item.id}/comments/${kommentarId}`;
     try {
       await this._fetch(pfad, {
@@ -1849,8 +1841,7 @@ export class ToolboxIssueTracker {
   }
 
   async updateIssue(number, { body }) {
-    const num = Number(number);
-    const item = this._resolveByNumber(await this._boardItems(), num);
+    const item = await this._kartenRef(number);
     await this._fetch(`/api/kanban/items/${item.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -1868,14 +1859,14 @@ export class ToolboxIssueTracker {
   //
   // Zwei Eigenheiten der Routen zaehlen hier:
   //  - Adressiert wird die INTERNE Karten-ID, nicht die Kartennummer — wie bei
-  //    /move und /comments. Daher der Umweg ueber _resolveByNumber.
+  //    /move und /comments. Daher der Umweg ueber _kartenRef — ausserhalb von
+  //    `uebersetze`, damit eine fehlende Karte nicht als fehlendes Label gilt.
   //  - Beim Entfernen steht der Name im QUERY, nicht im Pfad. Der Server trimmt ihn
   //    nur und lehnt allein Leerstrings ab; jedes andere Zeichen ist gueltig, auch
   //    `/`. Ein Pfadsegment truege das nicht, weil Tomcat kodierte Slashes per
   //    Default ablehnt — deshalb encodeURIComponent statt Interpolation.
   async labelIssue(number, name, aktion) {
-    const num = Number(number);
-    const item = this._resolveByNumber(await this._boardItems(), num);
+    const item = await this._kartenRef(number);
     // Der Server antwortet mit 404, wenn das Board keine Definition dieses Namens
     // fuehrt (LabelNotFoundException) — absichtlich hart, damit ein Tippfehler im
     // Nachtlauf keinen Label-Muell erzeugt. Roh durchgereicht ist dieser 404 aber

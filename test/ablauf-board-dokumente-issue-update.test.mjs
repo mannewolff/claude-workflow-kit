@@ -177,6 +177,7 @@ test("issue update: Toolbox schickt den Body an das Item", async () => {
     if (req.url === "/api/kanban/items" && req.method === "GET") {
       return { status: 200, json: { BACKLOG: [KARTE] } };
     }
+    if (req.url === "/api/kanban/items/by-number/9") return { status: 200, json: { item: KARTE, archived: false, comments: [] } };
     return { status: 200, json: { ok: true } };
   });
   const dir = setupProjekt(

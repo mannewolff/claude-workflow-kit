@@ -180,9 +180,9 @@ test("[1480] englisch: Toolbox-Fehler, Wiederholzeile und Ausgang unklar; die Ru
 
 test("[1480] englisch: ein am Board fehlendes Label nennt Namen und Ausweg", async () => {
   spracheFestlegen("en");
-  const items = [{ id: 7, number: 5, title: "x", status: "BACKLOG", labels: [] }];
   const t = toolbox(() => ({ status: 404, json: { message: "Label not found" } }));
-  t.tracker._boardItems = async () => items;
+  // Die Karte loest `_kartenRef` auf (Issue #1651); der 404 trifft so nur die Label-Route.
+  t.tracker._kartenRef = async () => ({ id: 7, title: "x" });
   try {
     const e = await wurfVon(() => t.tracker.labelIssue("5", "kit:clarify", "add"));
     assert.ok(e instanceof LabelFehltError);
