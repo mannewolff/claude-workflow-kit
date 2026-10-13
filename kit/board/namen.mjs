@@ -187,6 +187,9 @@ export const MARKER = Object.freeze({
   reviewer: eintrag("### Reviewer"),
   suchbegriffe: eintrag("Suchbegriffe:", "Search terms:"),
   dateien: eintrag("Dateien:", "Files:"),
+  // Geklaerter Stand einer Idee aus /triage (Issue #1627, Plan #1623 A6, E1).
+  bahn: eintrag("Bahn:", "Lane:"),
+  ergebnis: eintrag("Ergebnis:", "Result:"),
 });
 
 /**
@@ -289,6 +292,8 @@ export const UEBERSCHRIFTEN = Object.freeze({
   einstieg: eintrag("Einstieg", "Start"),
   offenePunkte: eintrag("Offene Punkte", "Open points"),
   zuletztAktualisiert: eintrag("Zuletzt aktualisiert", "Last updated"),
+  // Idee, geschrieben von /triage (Issue #1627, Plan #1623 A6).
+  geklaerterStand: eintrag("Geklärter Stand", "Clarified state"),
 });
 
 /**

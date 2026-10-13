@@ -72,6 +72,8 @@ const MARKER_PAARE = [
   ["### Reviewer", "### Reviewer"],
   ["Suchbegriffe:", "Search terms:"],
   ["Dateien:", "Files:"],
+  ["Bahn:", "Lane:"],
+  ["Ergebnis:", "Result:"],
 ];
 
 test("das Register traegt genau die Marker mit beiden Namen", () => {

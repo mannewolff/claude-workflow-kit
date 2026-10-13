@@ -93,3 +93,15 @@ test("names gibt die Tabelle VERTRAG in der Projektsprache aus", () => {
   assert.equal(en.keinVertrag, "- No contract.");
   assert.equal(names({ ...LOKAL, language: "en" }).lines["## Verträge"], "## Contracts");
 });
+
+// Die festen Zeilen des geklaerten Stands einer Idee aus /triage (Issue #1627, Plan #1623 A6).
+test("names nennt ## Geklärter Stand, Bahn: und Ergebnis:, deutsch und englisch", () => {
+  const de = names(LOKAL).lines;
+  const en = names({ ...LOKAL, language: "en" }).lines;
+  assert.equal(de["## Geklärter Stand"], "## Geklärter Stand");
+  assert.equal(de["Bahn:"], "Bahn:");
+  assert.equal(de["Ergebnis:"], "Ergebnis:");
+  assert.equal(en["## Geklärter Stand"], "## Clarified state");
+  assert.equal(en["Bahn:"], "Lane:");
+  assert.equal(en["Ergebnis:"], "Result:");
+});

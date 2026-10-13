@@ -167,3 +167,21 @@ test("Gleichlauf: offeneFragenGrund liest den Vermerk aus vermerkZeile als erled
   }
   assert.notEqual(offeneFragenGrund(fachplan("1. Frage?")), null, "Gegenprobe: ohne Vermerk offen");
 });
+
+// Der geklaerte Stand einer Idee aus /triage hat dieselbe Form wie die offenen Fragen
+// (Issue #1627, Plan #1623 A5): derselbe Leser, nur der Name der Ueberschrift ist ein anderer.
+test("fragenLesen liest den Abschnitt ## Geklärter Stand, deutsch und englisch", () => {
+  const punkte = `- Erster Punkt?\n${ANTWORT}\n- Zweiter Punkt?\n- Dritter Punkt?\n   Antwort (Manne, 2026-10-13): Nein.`;
+  for (const ueberschrift of ["## Geklärter Stand", "## Clarified state"]) {
+    const r = fragenLesen(`## Idee\ni\n\n${ueberschrift}\n${punkte}\n\n## Anhang\n- kein Punkt\n`, "geklaerterStand");
+    assert.deepEqual(r.fragen.map((f) => f.text), ["Erster Punkt?", "Zweiter Punkt?", "Dritter Punkt?"], ueberschrift);
+    assert.deepEqual(r.fragen.map((f) => f.entschieden), [true, false, true], ueberschrift);
+    assert.equal(r.offen, 1, ueberschrift);
+  }
+});
+
+test("ohne Name der Ueberschrift liest fragenLesen weiter nur die offenen Fragen an den PO", () => {
+  const body = `## Geklärter Stand\n- Punkt?\n\n## Offene Fragen an den PO\n- Frage?\n${ANTWORT}\n`;
+  assert.deepEqual(fragenLesen(body).fragen.map((f) => f.text), ["Frage?"]);
+  assert.deepEqual(fragenLesen(body, "geklaerterStand").fragen.map((f) => f.text), ["Punkt?"]);
+});
