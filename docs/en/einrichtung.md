@@ -4,7 +4,7 @@
 Each part of this page says what you do and what you see afterwards. Every single setting (Einstellung) is listed with its effect and default under [Settings](/en/einstellungen).
 
 ## Installation
-<!-- de: 97c925af0166 -->
+<!-- de: 7042556a6004 -->
 
 **What you do.** Change into your project folder and start the installer:
 
@@ -36,7 +36,7 @@ With `github` and a project-local installation, three questions on **protecting 
 
 An existing project switches protection on later with `node install.mjs --protection`; the call changes only `pushPruefung`. `node .claude/kit/board.mjs code protection status` names the state at any time.
 
-**What you see afterwards.** Restart Claude Code. The eighteen skills appear under `/help`, and `/session-start` reports the state of the project.
+**What you see afterwards.** Restart Claude Code. The seventeen skills appear under `/help`, and `/session-start` reports the state of the project.
 
 ### What the installer writes
 <!-- de: 5860da125e14 -->

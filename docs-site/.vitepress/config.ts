@@ -68,7 +68,7 @@ const themeDe: DefaultTheme.Config = {
       text: "Der Prozess",
       items: [
         { text: "Die neun Schritte", link: "/prozess" },
-        { text: "Die achtzehn Skills", link: "/prozess#die-skills" },
+        { text: "Die siebzehn Skills", link: "/prozess#die-skills" },
         { text: "Vollständiger Durchlauf", link: "/prozess#ein-vollstandiger-durchlauf" },
         { text: "PO-Schleife", link: "/prozess#po-schleife-fachliche-und-technische-issues" },
         { text: "Der Prüflauf", link: "/prozess#der-pruflauf" },
@@ -163,7 +163,7 @@ const themeEn: DefaultTheme.Config = {
       text: "The process",
       items: [
         { text: "The nine steps", link: "/en/prozess" },
-        { text: "The eighteen skills", link: "/en/prozess#the-skills" },
+        { text: "The seventeen skills", link: "/en/prozess#the-skills" },
         { text: "A complete pass", link: "/en/prozess#a-complete-pass" },
         { text: "PO loop", link: "/en/prozess#po-loop-business-and-technical-issues" },
         { text: "The check run", link: "/en/prozess#the-check-run" },
@@ -223,7 +223,7 @@ export default defineConfig({
   // Ohne Angabe setzt VitePress "en-US"; die Fußzeile liest lang (Issue #1369).
   lang: "de",
   description:
-    "Achtzehn Skills für KI-gestützte Entwicklung mit Claude Code: GitHub, GitLab oder lokal, mit drei bewussten menschlichen Stop-Punkten.",
+    "Siebzehn Skills für KI-gestützte Entwicklung mit Claude Code: GitHub, GitLab oder lokal, mit drei bewussten menschlichen Stop-Punkten.",
   appearance: false,
   srcDir: "../docs",
   srcExclude,
@@ -240,7 +240,7 @@ export default defineConfig({
         lang: "en",
         link: "/en/",
         description:
-          "Eighteen skills for AI-assisted development with Claude Code: GitHub, GitLab or local, with three deliberate human stop points.",
+          "Seventeen skills for AI-assisted development with Claude Code: GitHub, GitLab or local, with three deliberate human stop points.",
         themeConfig: themeEn,
       },
     },

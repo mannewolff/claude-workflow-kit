@@ -276,12 +276,10 @@ test("Szenario: Ein neuer Leser findet den Skill für offene Fragen", () => {
 
 test("Kriterium 1: jeder Skill hat in beiden Fassungen von prozess.md eine eigene Überschrift", () => {
   const skills = readdirSync(join(repoRoot, "skills")).filter((n) => existsSync(join(repoRoot, "skills", n, "SKILL.md")));
-  assert.equal(skills.length, 18);
+  assert.equal(skills.length, 17);
   for (const [pfad] of PROZESS) {
     const text = readFileSync(join(repoRoot, pfad), "utf-8");
-    // Issue #1677: /local-check ist kein Prozessschritt mehr und hat keinen Abschnitt;
-    // den Skill selbst entfernt erst Issue #1679.
-    for (const name of skills.filter((n) => n !== "local-check")) {
+    for (const name of skills) {
       assert.match(text, new RegExp(String.raw`^#{2,4} \/${maskiert(name)}$`, "m"), `${pfad}: keine Überschrift für /${name}`);
     }
   }

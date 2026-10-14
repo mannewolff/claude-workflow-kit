@@ -23,7 +23,6 @@ const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), 
 import { fehlermerkmal } from "../kit/checks.mjs";
 
 const skillText = (name) => readFileSync(join(repoRoot, "skills", name, "SKILL.md"), "utf-8");
-const LOCAL_CHECK = skillText("local-check");
 const CHECKS_MJS = readFileSync(join(repoRoot, "kit", "checks.mjs"), "utf-8");
 
 /** Jede mitgelieferte Anweisung unter `skills/` mit ihrem Namen. */
@@ -133,19 +132,11 @@ test("der echte Rueckgabewert steht im Werkzeug, nicht mehr im Text", () => {
     "kit/checks.mjs liest den Rueckgabewert des Kommandos nicht mehr",
   );
 
-  // Text-Haelfte: die Bedienanleitung dazu ist aus dem Skill verschwunden.
-  assert.ok(
-    !/EXIT=/.test(LOCAL_CHECK),
-    "skills/local-check/SKILL.md laesst den Exit-Code noch selbst in eine Datei schreiben (`EXIT=`)",
-  );
-  assert.ok(
-    !/\^EXIT=/.test(LOCAL_CHECK),
-    "skills/local-check/SKILL.md wertet den Exit-Code noch per `grep \"^EXIT=\"` aus",
-  );
-  assert.ok(
-    /R(ü|ue)ckgabewert/.test(LOCAL_CHECK) && /checks\.mjs run/.test(LOCAL_CHECK),
-    "der Ersatzsatz fehlt: `checks.mjs run` liest den Rueckgabewert des Pruefkommandos selbst",
-  );
+  // Text-Haelfte: die Bedienanleitung dazu steht in keinem Skill (seit Issue #1679 ohne
+  // /local-check, der sie zuletzt trug).
+  for (const { name, text } of alleSkills()) {
+    assert.ok(!/EXIT=/.test(text), `skills/${name}/SKILL.md laesst den Exit-Code noch selbst in eine Datei schreiben (\`EXIT=\`)`);
+  }
 });
 
 test("die allgemeinen Fehlermerkmale stehen im Werkzeug, nicht mehr im Text", () => {
@@ -173,10 +164,6 @@ test("die allgemeinen Fehlermerkmale stehen im Werkzeug, nicht mehr im Text", ()
       `skills/${name}/SKILL.md fordert die Merkmal-Pruefung noch selbst an ([ERROR])`,
     );
   }
-  assert.ok(
-    /Fehlermerkmal/i.test(LOCAL_CHECK) && /rot/.test(LOCAL_CHECK),
-    "der Ersatzsatz fehlt: `run` uebernimmt die Pruefung, ein Treffer faerbt den Lauf rot",
-  );
 });
 
 test("der Abbruch an der Uhr steht im Werkzeug, die Bitte um Zeit im Text", () => {
@@ -304,13 +291,6 @@ test("kit/board/dokumente.mjs verweist auf die Leitplanken der Vorlage", () => {
   const text = readFileSync(join(repoRoot, "kit", "board", "dokumente.mjs"), "utf-8");
   assert.ok(!/local-check/.test(text), "kit/board/dokumente.mjs nennt noch /local-check");
   assert.ok(/`CLAUDE-workflow\.md`, Abschnitt „Leitplanken der Pruefungen“/.test(text), "der Verweis auf die Leitplanken fehlt");
-});
-
-test("skills/local-check/SKILL.md verweist auf den Massstab", () => {
-  assert.ok(
-    /Regel im Text oder Regel im Werkzeug/.test(LOCAL_CHECK),
-    "der Verweis auf den Massstab in CLAUDE-workflow.md fehlt",
-  );
 });
 
 // Teil Aufstellung (Issue #861, Plan #810/E6; Fachplan #769/AK 7).

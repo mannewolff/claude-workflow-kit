@@ -49,7 +49,7 @@ Die Werkzeuge tragen keine Nummer, weil eine Nummer eine Reihenfolge und eine Pf
 
 ## Die Skills
 
-Die achtzehn Skills in der Reihenfolge des Ablaufs, je mit Zweck, Aufrufzeitpunkt und nächstem Schritt.
+Die siebzehn Skills in der Reihenfolge des Ablaufs, je mit Zweck, Aufrufzeitpunkt und nächstem Schritt.
 
 ### /session-start
 

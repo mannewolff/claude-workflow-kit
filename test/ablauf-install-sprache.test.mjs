@@ -264,7 +264,7 @@ function assertSkills(dir) {
   for (const name of ["requirement", "techplan", "session-start", "kit-review"]) {
     assert.equal(installiert(dir, "skills", name, "SKILL.md"), deutscheQuelle("skills", name, "SKILL.md"), name);
   }
-  for (const alt of ["fachplan", "kontext", "context", "review", "plan"]) {
+  for (const alt of ["fachplan", "kontext", "context", "review", "plan", "local-check"]) {
     assert.equal(existsSync(join(dir, ".claude", "skills", alt)), false, `${alt} wurde installiert`);
   }
 }

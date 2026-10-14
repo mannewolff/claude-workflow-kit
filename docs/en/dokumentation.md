@@ -4,9 +4,9 @@
 The kit turns Claude Code into a workshop with a fixed sequence: a requirement passes through eight steps all the way to production. The AI plans, cuts work packages (Arbeitspakete), implements, checks and has its work reviewed. Three decisions stay with you. This page gives the overview and shows where the details are.
 
 ## Concept
-<!-- de: 1390e22be3e6 -->
+<!-- de: 73d478119b9d -->
 
-The kit consists of three parts: eighteen skills, a config in the project and an installer. It is neither a platform nor an agent.
+The kit consists of three parts: seventeen skills, a config in the project and an installer. It is neither a platform nor an agent.
 
 The skills know no particular project. Build commands, branch names, checks and review model are in `.claude/workflow.config.json`. When a skill improves, that applies after the next installer run in every project that uses the kit.
 

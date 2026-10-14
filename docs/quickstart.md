@@ -1,6 +1,6 @@
 # 5-Minuten-Guide
 
-Das Kit macht einen Prozess für KI-gestützte Entwicklung in Claude Code ausführbar, ohne dass du deine Stop-Punkte aufgibst: achtzehn Skills, eine Config und ein Installer.
+Das Kit macht einen Prozess für KI-gestützte Entwicklung in Claude Code ausführbar, ohne dass du deine Stop-Punkte aufgibst: siebzehn Skills, eine Config und ein Installer.
 
 ## Voraussetzungen
 
@@ -22,7 +22,7 @@ Der Installer fragt in einem neuen Projekt zuerst nach der Sprache (`de` oder `e
 
 Danach liegen Skills, Config und Werkzeuge unter `.claude/`. Starte Claude Code neu; die Skills erscheinen in `/help`.
 
-## Die achtzehn Skills
+## Die siebzehn Skills
 
 | Befehl | Wofür |
 |--------|-------|
@@ -38,7 +38,6 @@ Danach liegen Skills, Config und Werkzeuge unter `.claude/`. Starte Claude Code 
 | `/implement-next` | Genau eine Ready-Karte umsetzen |
 | `/implement-test` | Nur die roten Tests zur nächsten Ready-Karte |
 | `/implement-done` | Gegen die roten Tests umsetzen |
-| `/local-check` | Pflichtprüfungen laufen lassen |
 | `/kit-review` | Review durch ein zweites Modell in frischer Sitzung |
 | `/push-main` | Push auf den Hauptzweig, nur auf dein Wort |
 | `/merge-production` | Veröffentlichen nach production, nur auf dein Wort |
@@ -55,7 +54,6 @@ Passt der Plan, zerlegt `/issues` ihn in Arbeitspakete. Du ziehst sie am Board n
 
 ```
 /implement-ready
-/local-check
 /kit-review
 ```
 

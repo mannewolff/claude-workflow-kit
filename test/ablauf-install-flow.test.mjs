@@ -1026,7 +1026,7 @@ test("[installer-1569] das Update loescht die alten Skill-Ordner und nennt jeden
     assert.doesNotMatch(res.stdout, /review-eigen/);
     const installiert = readdirSync(join(dir, ".claude", "skills"), { withFileTypes: true })
       .filter((e) => e.isDirectory() && e.name !== "review-eigen").map((e) => e.name);
-    assert.equal(installiert.length, 18, "die Skillmenge ist 18");
+    assert.equal(installiert.length, 17, "die Skillmenge ist 17");
     assert.deepEqual(JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf-8")).hooks, {
       SessionEnd: [{ hooks: BEFEHL("session report --complete") }],
       Stop: [{ hooks: BEFEHL("session report") }],
@@ -1048,6 +1048,58 @@ test("[installer-1569] ein alter Ordnername mit fremdem name: bleibt und wird ni
     assert.ok(existsSync(join(dir, ".claude", "skills", "plan", "SKILL.md")));
     assert.ok(existsSync(join(dir, ".claude", "skills", "kontext", "notiz.md")));
     assert.doesNotMatch(res.stdout, /entfernt/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Der entfallene Skill local-check (Issue #1679, Plan #1671 E12) ---
+//
+// Mit Issue #1609 entfaellt der Schritt "Lokale Pruefung". Das Update raeumt die Kit-Kopie wie
+// die frueheren Skill-Namen und sagt danach, wo seine Teile jetzt stehen. Wer ihn nie hatte oder
+// einen eigenen gleichnamigen Ordner traegt, bekommt keine Meldung.
+
+const LOCAL_CHECK_MELDUNG = /Der Schritt \/local-check ist entfallen/;
+
+test("[installer-1679] das Update entfernt local-check, nennt die neuen Orte und laesst einen fremden Ordner stehen", () => {
+  const dir = fixture("install-local-check-");
+  try {
+    legeSkillAn(dir, "local-check", "local-check");
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.equal(existsSync(join(dir, ".claude", "skills", "local-check")), false, "local-check liegt noch");
+    assert.match(res.stdout, LOCAL_CHECK_MELDUNG);
+    const meldung = res.stdout.substring(res.stdout.search(LOCAL_CHECK_MELDUNG));
+    for (const ort of ["checks.mjs run", "push", "push main", "node .claude/kit/checks.mjs run"]) {
+      assert.ok(meldung.includes(ort), `die Meldung nennt ${ort} nicht`);
+    }
+    assert.ok(res.stdout.search(LOCAL_CHECK_MELDUNG) < res.stdout.indexOf("=== Fertig ==="), "die Meldung steht vor Fertig");
+    const installiert = readdirSync(join(dir, ".claude", "skills"), { withFileTypes: true }).filter((e) => e.isDirectory());
+    assert.equal(installiert.length, 17, "es gibt 17 Skills");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[installer-1679] ein eigener Ordner local-check mit fremdem name: bleibt, ohne Meldung", () => {
+  const dir = fixture("install-local-check-fremd-");
+  try {
+    legeSkillAn(dir, "local-check", "mein-check");
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.ok(existsSync(join(dir, ".claude", "skills", "local-check", "SKILL.md")), "der eigene Ordner bleibt");
+    assert.doesNotMatch(res.stdout, LOCAL_CHECK_MELDUNG);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[installer-1679] ohne local-check gibt es keine Meldung", () => {
+  const dir = fixture("install-local-check-ohne-");
+  try {
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.doesNotMatch(res.stdout, LOCAL_CHECK_MELDUNG);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

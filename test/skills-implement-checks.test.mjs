@@ -145,20 +145,6 @@ for (const name of ["implement-next", "implement-ready", "implement-done"]) {
   });
 }
 
-test("local-check: der Pruefaufruf setzt kein --finish", () => {
-  const text = skillText("local-check");
-  const zeilen = text
-    .split("\n")
-    .filter((z) => z.includes("checks.mjs run") && z.trimStart().startsWith("node "));
-  assert.ok(zeilen.length > 0, "der Aufruf `checks.mjs run` fehlt ganz");
-  for (const zeile of zeilen) {
-    assert.doesNotMatch(zeile, /--finish/,
-      "`/local-check` misst mehrere Pakete gegen den Merge-Base — das ist kein Kartenabschluss");
-  }
-  assert.match(text, /kein `--finish`/,
-    "es fehlt der Satz, warum hier kein `--finish` gesetzt wird — sonst liest ihn die naechste Session als Versehen");
-});
-
 test("push-main: der rote Zweig nennt die Verursacher-Karten und die neue Karte", () => {
   const text = skillText("push-main");
   assert.match(text, /Verursacher/,

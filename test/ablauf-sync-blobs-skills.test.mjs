@@ -375,9 +375,10 @@ test("[kitstand-5] eine lebende Markierung laesst auch die Agenten-Kopie stehen"
 // gleichnamigen `name:` traegt — ein eigener Skill, der zufaellig so heisst, bleibt stehen.
 
 const altSkill = (name) => `---\nname: ${name}\ndescription: alt\n---\n`;
-const ALTE = ["fachplan", "kontext", "context", "review", "plan"];
+// Seit Issue #1679 gehoert local-check dazu.
+const ALTE = ["fachplan", "kontext", "context", "review", "plan", "local-check"];
 
-test("[1566-1] sync-blobs entfernt die fuenf alten Skill-Ordner aus der Kopie und nennt jeden", () => {
+test("[1566-1] sync-blobs entfernt die alten Skill-Ordner aus der Kopie und nennt jeden", () => {
   mitFixture((dir) => {
     const res = syncBlobs(dir);
     assert.equal(res.status, 0, res.stderr);

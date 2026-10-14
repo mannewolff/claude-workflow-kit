@@ -4,7 +4,7 @@ Das Kit macht aus Claude Code eine Werkstatt mit festem Ablauf: Eine Anforderung
 
 ## Konzept
 
-Das Kit besteht aus drei Teilen: achtzehn Skills, einer Config im Projekt und einem Installer. Es ist weder Plattform noch Agent.
+Das Kit besteht aus drei Teilen: siebzehn Skills, einer Config im Projekt und einem Installer. Es ist weder Plattform noch Agent.
 
 Die Skills kennen kein bestimmtes Projekt. Build-Kommandos, Branch-Namen, Prüfungen und Review-Modell stehen in `.claude/workflow.config.json`. Verbessert sich ein Skill, gilt das nach dem nächsten Installer-Lauf in jedem Projekt, das das Kit nutzt.
 

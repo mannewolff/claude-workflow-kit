@@ -359,8 +359,8 @@ function kopieSchreiben(ziel, soll, ordner) {
 // Die Ordner der Skill-Namen, die es seit Issue #1566 nicht mehr gibt (Plan #1548 E9). Geraeumt
 // wird ein Ordner nur, wenn seine SKILL.md den gleichnamigen `name:` traegt: Dann ist er die
 // Kopie des alten Kit-Skills und kein eigener Skill, der zufaellig so heisst. Er zaehlt als
-// veraltete Kopie, damit `--check` ihn meldet.
-const ALTE_SKILLS = ["fachplan", "kontext", "context", "review", "plan"];
+// veraltete Kopie, damit `--check` ihn meldet. `local-check` entfaellt mit Issue #1609 (Issue #1679).
+const ALTE_SKILLS = ["fachplan", "kontext", "context", "review", "plan", "local-check"];
 
 function alterKitSkill(name) {
   const datei = join(LOCAL_SKILLS, name, "SKILL.md");

@@ -1,7 +1,7 @@
 # 5-minute guide
-<!-- de: 701bb0ab557b -->
+<!-- de: efc4d61738d5 -->
 
-The kit makes a process for AI-assisted development executable in Claude Code without you giving up your stop points (Stop-Punkte): eighteen skills, a config and an installer.
+The kit makes a process for AI-assisted development executable in Claude Code without you giving up your stop points (Stop-Punkte): seventeen skills, a config and an installer.
 
 ## Prerequisites
 <!-- de: 7c01c764f7d5 -->
@@ -25,8 +25,8 @@ In a new project, the installer first asks for the language (`de` or `en`), then
 
 Afterwards skills, config and tools are under `.claude/`. Restart Claude Code; the skills appear in `/help`.
 
-## The eighteen skills
-<!-- de: 9e0a710bd05e -->
+## The seventeen skills
+<!-- de: 9c436bf7c728 -->
 
 | Command | What for |
 |--------|-------|
@@ -42,7 +42,6 @@ Afterwards skills, config and tools are under `.claude/`. Restart Claude Code; t
 | `/implement-next` | Implement exactly one Ready card |
 | `/implement-test` | Only the red tests for the next Ready card |
 | `/implement-done` | Implement against the red tests |
-| `/local-check` | Run the mandatory checks (Prüfungen) |
 | `/kit-review` | Review by a second model in a fresh session |
 | `/push-main` | Push to the main branch, only on your word |
 | `/merge-production` | Release to production, only on your word |
@@ -50,7 +49,7 @@ Afterwards skills, config and tools are under `.claude/`. Restart Claude Code; t
 | `/document` | Document the session in the vault |
 
 ## A first run
-<!-- de: 99a69da1c23f -->
+<!-- de: 41ea72b7e187 -->
 
 ```
 /techplan baue ein Login-Formular mit E-Mail und Passwort
@@ -60,7 +59,6 @@ If the plan fits, `/issues` breaks it down into work packages. You move them to 
 
 ```
 /implement-ready
-/local-check
 /kit-review
 ```
 

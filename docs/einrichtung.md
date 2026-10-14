@@ -34,7 +34,7 @@ Bei `github` und projektlokaler Installation folgen auf die Code-Host-Frage drei
 
 Ein bestehendes Projekt schaltet den Schutz mit `node install.mjs --protection` nachträglich ein; der Aufruf ändert nur `pushPruefung`. Den Zustand nennt jederzeit `node .claude/kit/board.mjs code protection status`.
 
-**Was du danach siehst.** Starte Claude Code neu. Die achtzehn Skills erscheinen unter `/help`, und `/session-start` meldet den Stand des Projekts.
+**Was du danach siehst.** Starte Claude Code neu. Die siebzehn Skills erscheinen unter `/help`, und `/session-start` meldet den Stand des Projekts.
 
 ### Was der Installer schreibt
 

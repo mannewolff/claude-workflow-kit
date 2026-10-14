@@ -15,7 +15,6 @@ const wurzel = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (pfad) => readFileSync(join(wurzel, pfad), "utf-8");
 
 const TEXTE = [
-  "skills/local-check/SKILL.md",
   "skills/implement-next/SKILL.md",
   "skills/implement-ready/SKILL.md",
   "skills/implement-done/SKILL.md",

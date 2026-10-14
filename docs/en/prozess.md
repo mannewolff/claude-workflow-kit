@@ -51,9 +51,9 @@ The tools carry no number, because a number would claim an order and an obligati
 | `/implement-done` | implementation against the prepared red tests |
 
 ## The skills
-<!-- de: 2587afd1e05e -->
+<!-- de: fde55327faae -->
 
-The eighteen skills in the order of the flow, each with purpose, when to call it and the next step.
+The seventeen skills in the order of the flow, each with purpose, when to call it and the next step.
 
 ### /session-start
 <!-- de: 46aeaf57fd41 -->

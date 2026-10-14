@@ -29,11 +29,7 @@ function fliesstext(text) {
   return text.replaceAll(/\s+/g, " ");
 }
 
-// Alle Zeilen, die das Pruefkommando aufrufen. `/local-check` ruft es zweimal
-// (einmal regulaer, einmal nach dem Format-Fix) — beide muessen dieselbe Stufe
-// fahren, sonst maesse der zweite Lauf etwas anderes als der erste.
-//
-// Gemeint sind die Kommandozeilen aus den Bash-Bloecken, nicht jede Erwaehnung:
+// Alle Zeilen, die das Pruefkommando aufrufen. Gemeint sind die Kommandozeilen aus den Bash-Bloecken, nicht jede Erwaehnung:
 // Seit Issue #835 nennt die Regel zum Testumfang `checks.mjs run` auch im
 // Fliesstext. Eine Prosa-Zeile traegt nie eine Stufe und liesse den Test
 // gruen, waehrend der echte Aufruf daneben liegen koennte.
@@ -45,11 +41,9 @@ function aufrufzeilen(text) {
   return zeilen;
 }
 
-// Die vier Skills, die beim Default bleiben. `/local-check` ist bewusst dabei:
-// Der mechanische Halt vor dem Push sitzt seit skills-20 in `/push-main` selbst,
-// und die lokale Pruefung vor der menschlichen Testrunde teuer zu machen naehme
-// dem Vorhaben seinen Nutzen.
-const PAKETSTUFE = ["local-check", "implement-next", "implement-ready", "implement-done"];
+// Die drei Skills, die beim Default bleiben. Der mechanische Halt vor dem Push sitzt
+// seit skills-20 in `/push-main` selbst.
+const PAKETSTUFE = ["implement-next", "implement-ready", "implement-done"];
 
 test("[skills-31] /push-main ruft die Pruefungen mit --stage push und dem Batch-Anker auf", () => {
   // Ohne den Weg ueber den Build-Dienst (Issue #1216): Dessen Aufrufe belegt
