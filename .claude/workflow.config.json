@@ -909,6 +909,7 @@
       "tools/changelog.mjs",
       "tools/copy-downloads-for-docs.mjs",
       "tools/lastbeleg.mjs",
+      "tools/testfaelle.mjs",
       ".githooks/pre-commit",
       "test/install-*.test.mjs",
       "test/tools-*.test.mjs",
