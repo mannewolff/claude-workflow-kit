@@ -95,7 +95,7 @@ Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt f
 
 Gelesen werden:
 - `mainBranch`: Ziel-Branch (Default: `main`)
-- `buildChecks`: Liste der Pflicht-Checks (dieselben, die `/local-check` ausführt)
+- `buildChecks`: Liste der Pflicht-Checks
 - `pushPruefung`: wo der volle Lauf stattfindet — `"lokal"` ist die Vorgabe, ein Objekt
   `{ "ort": "buildDienst", "zweig": "<name>" }` verlegt ihn in den Build-Dienst. Der Skill
   liest den Wert nicht selbst aus der Config, sondern aus dem Feld `pushPruefung` von:
@@ -113,10 +113,34 @@ Gelesen werden:
 
 ```bash
 git status
-git log origin/main..HEAD --oneline
+git log origin/<mainBranch>..HEAD --oneline
 ```
 
 Zeige welche Commits gepusht werden. Der Mensch soll wissen, was fährt.
+
+**Oberflächenänderungen erfragen — vor dem Worktree** (Plan #1671, E6–E8). Die Session
+liest die Dateien des Stands, der hinausgeht:
+
+```bash
+git log --name-only origin/<mainBranch>..HEAD
+```
+
+Sie ordnet jede Datei einer Oberfläche zu oder nicht und gruppiert nach Paket: Das Paket
+steht als `(Issue #N)` im Betreff des Commits, seinen Titel holt
+`node .claude/kit/board.mjs issue get <N>`. Das Merkmal ist ein Urteil der Session, kein
+Muster aus der Config: Dateien der Oberfläche sind Templates, Views, Stylesheets und
+Client-Code. Ein Block `### Manuelle Pruefung` in einem Paket zählt nicht als
+Oberflächenänderung — er ist der allgemeine Ort jedes menschlichen Nachweises.
+
+Gibt es eine Oberflächenänderung, fragt der Skill wörtlich, mit den Dateien je Paket an
+der Stelle der Auslassung:
+
+> Diese Oberflächenänderungen gehen mit diesem Push hinaus: … Hast du sie von Hand geprüft? (ja/nein)
+
+Nur `ja` geht weiter. Alles andere endet hier, ohne Worktree, Bump und Push — vor dem
+Worktree kostet ein Nein nichts. Das Ja wird nirgends gespeichert: Es gilt nur für diesen
+Push, der nächste fragt nach seinen eigenen Oberflächenänderungen. Ohne
+Oberflächenänderung gibt es keine Frage.
 
 ### 3. Worktree anlegen und mit `origin` zusammenführen
 
@@ -206,9 +230,11 @@ Statt der drei Schritte steht eine Zeile mit `zeitpunkt` und `commit` aus der Au
 Schritt 7 fährt dann, was nachts offen blieb (das Feld `offen`): den Vor-Push-Schritt aus
 `RELEASING.md` wie beschrieben. Auf dem Weg über den Build-Dienst ist das der Push auf den
 Prüfzweig, das Warten auf den Build-Dienst und der Push auf `<mainBranch>` nur bei Grün,
-wie im Abschnitt „Weg über den Build-Dienst" (Plan #1243, E17). Eine offene UI-Prüfung
-wird vor dem Push als Frage an den Menschen gestellt; pusht wird nur nach seinem `ja`.
-Ein offener Punkt `Gewackelt: <cmd> — Entscheidung beim push main` (ein Wackler im Lauf
+wie im Abschnitt „Weg über den Build-Dienst" (Plan #1243, E17). Eine eigene Frage nach
+Oberflächenänderungen gibt es bei der Übernahme nicht: Die Frage aus Schritt 2 gilt auch
+hier, denn Schritt 2 entfällt nicht (Plan #1671, E7). Den Mutationstest hat der nächtliche
+Lauf über genau diesen Stand gefahren; sein Ergebnis nennt der Bericht in Schritt 9 aus dem
+Feld `mutation` von `check-preparation` (Plan #1671, E4). Ein offener Punkt `Gewackelt: <cmd> — Entscheidung beim push main` (ein Wackler im Lauf
 der Nacht, Plan #1395, E14) wird wie jeder offene Punkt vor dem Push in Schritt 7 erfragt,
 mit der Frage aus Schritt 5: Der Skill nennt die Prüfung und die Reparaturkandidaten aus
 `effectiveness.mjs candidates` und fragt „Trotzdem fortfahren? (ja/nein)“; nur `ja` pusht.
@@ -282,6 +308,13 @@ zusaetzlich zur Paketstufe laeuft …`) — er wird darum spürbar **länger dau
 Lauf je Arbeitspaket in `/implement-next`. Das ist der vorgesehene Zeitpunkt und kein
 Grund, ihn abzukürzen.
 
+**Der Mutationstest verlängert den Vordergrundlauf.** Hat das Projekt `mutationCommand`
+eingerichtet, fährt der Lauf ihn nach allen `buildChecks` genau einmal, auch mit `--retry`
+kein zweites Mal; dieselbe Zeile `Stufe push:` kündigt ihn an. Er dauert oft länger als alle
+übrigen Prüfungen zusammen, und der Lauf bleibt dabei im Vordergrund. Ein roter
+Mutationstest hält nichts an: Der Berichtsblock trägt ihn als Zeile `Mutationstest: …` —
+nur berichtet, ohne Einfluss auf Exitcode und Ergebnis. Ist eine Prüfung rot, entfällt er.
+
 **Der Anker ist der Batch, nicht `HEAD`.** Er entscheidet nicht mehr, **was** läuft — an
 dieser Stufe läuft ohnehin alles —, sondern welchen Stand die Zusammenfassung **bezeugt**:
 `basis`, `geaendert` und die Blob-Hashes, gegen die das Commit-Gate den Index prüft. Ohne
@@ -337,9 +370,9 @@ Entscheidung liegt beim Menschen. **Ohne Wackler** ruft der Skill `effectiveness
 candidates` ebenfalls, an derselben Stelle: Reparaturkandidaten ohne Wackler werden genannt,
 halten aber nicht an.
 
-Warum überhaupt noch ein Lauf, wenn `/implement-ready` und `/local-check` je Issue schon
-prüften: Der Nachweis gehört zum **Commit**, und die Dateien aus Schritt 4 hat kein
-früherer Lauf gesehen. Ohne Nachweis für genau diesen Stand weist das Commit-Gate den
+Warum überhaupt noch ein Lauf, wenn `/implement-ready` je Issue schon prüfte: Der
+Nachweis gehört zum **Commit**, und die Dateien aus Schritt 4 hat kein früherer Lauf
+gesehen. Ohne Nachweis für genau diesen Stand weist das Commit-Gate den
 Commit ab.
 
 **Befunde buchen, wenn Code-Review-Befunde eingearbeitet wurden.** Sind vor diesem Push
@@ -497,6 +530,13 @@ den Bericht — ein Lauf ohne Commit sieht sonst aus wie ein Lauf mit Commit.
 Prüflaufs unverändert samt der Antwort des Menschen auf die Rückfrage und jede Zeile
 `Reparaturkandidat:` aus `effectiveness.mjs candidates` (Schritt 5). Ohne beides entfällt
 der Absatz.
+
+**Mutationstest.** Der Bericht nennt das Ergebnis des Mutationstests: die Zeile
+`Mutationstest: …` aus dem Berichtsblock des Prüflaufs in Schritt 5 unverändert, bei
+Übernahme einer Nacht-Vorbereitung das Feld `mutation` von `check-preparation` (Kommando,
+Ergebnis, Exit, Dauer). Auf dem Weg über den Build-Dienst steht dort
+`Mutationstest: im Build-Dienst gelaufen, Ergebnis im Build-Log` (Plan #1671, E5). Ohne
+eingerichteten Mutationstest entfällt der Absatz.
 
 **In den Bericht gehören außerdem:** der Pfad des Worktrees und sein Abbau, ob das lokale
 `<mainBranch>` nachgezogen wurde oder mit welchem Grund nicht, und dass der
@@ -677,6 +717,9 @@ Morgens übernimmt `push main` den Stand, wenn er sich nicht geändert hat (Schr
 
 **Schritte 1 bis 6** wie oben, mit diesen Abweichungen:
 
+- **Schritt 2:** Der Modus fragt nicht nach Oberflächenänderungen, und er übergibt dazu
+  auch keine UI-Prüfung als offenen Punkt: Nachts antwortet niemand, und morgens fragt
+  Schritt 2 jedes `push main`, auch bei Übernahme (Plan #1671, E7).
 - **Schritt 3:** Der Fetch in der Hauptkopie (`git fetch origin <mainBranch>`) ist erlaubt,
   weil der Runner die Umsetzungssperre hält — kein Bau verliert dabei den Boden.
   `check-preparation` entfällt. Der Worktree entsteht mit eigenem Präfix:
@@ -706,10 +749,9 @@ node .claude/kit/worktree.mjs record-preparation <pfad> --result <green|green-op
 ```
 
 - Nach einem gescheiterten Fetch zusätzlich `--fetch failed`.
-- Der Vor-Push-Schritt aus `RELEASING.md` und eine UI-Prüfung, die nach `/local-check`,
-  Schritt 3, nötig ist, gehen je als `--open "<Text>"` mit. **Gestartet werden sie nicht**
-  (E9): Ob ein Vor-Push-Schritt pusht, ist nachts nicht prüfbar. Mit einem offenen Punkt
-  heißt das Ergebnis `green-open`.
+- Der Vor-Push-Schritt aus `RELEASING.md` geht als `--open "<Text>"` mit. **Gestartet
+  wird er nicht** (E9): Ob ein Vor-Push-Schritt pusht, ist nachts nicht prüfbar. Mit einem
+  offenen Punkt heißt das Ergebnis `green-open`.
 - Den Build-Dienst-Punkt setzt das Kommando selbst — die Session übergibt ihn nicht.
 
 **Danach Schritt 8 ohne Nachziehen:** `return` und `remove` wie oben,
