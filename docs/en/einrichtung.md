@@ -120,7 +120,7 @@ You create `Projekte/` and `Log/` once by hand.
 **What you see afterwards.** `/session-start` names at the beginning what it loaded from the vault, and `/document` writes the daily log and the project note.
 
 ## The config file
-<!-- de: 3ac5a081d7c6 -->
+<!-- de: 1fdacccb9946 -->
 
 `.claude/workflow.config.json` holds everything project-specific. The skills read only from it:
 
@@ -139,12 +139,12 @@ You create `Projekte/` and `Log/` once by hand.
 }
 ```
 
-`buildChecks` contains the check commands that `node .claude/kit/checks.mjs run` executes before every commit and `/local-check` before the push: the affected ones, selected by the areas the package touches. Every one executed must be green. `mutationCommand` runs after them in `/local-check`; empty switches it off. `triggers` holds the phrases of the three stop points (Stop-Punkte). `columns` renames the board's columns.
+`buildChecks` contains the check commands that `node .claude/kit/checks.mjs run` executes before every commit and `/push-main` before the push: the affected ones, selected by the areas the package touches. Every one executed must be green. `mutationCommand` runs once in `checks.mjs run --stage push`, after the `buildChecks`; its result is only reported and stops nothing. Empty switches it off. `triggers` holds the phrases of the three stop points (Stop-Punkte). `columns` renames the board's columns.
 
 Instead of editing the file by hand, you can use the [settings interface](/en/einstellungen) (Einstellungs-Oberfläche). It checks before saving.
 
 ### Area-based checks: `checkAreas`
-<!-- de: 01192d6f6846 -->
+<!-- de: 1fcc84ea6ee0 -->
 
 An entry in `buildChecks` can say which areas (Bereiche) it is responsible for:
 
@@ -170,7 +170,7 @@ String form and `always` behave the same and say different things: the string ma
 
 `checkAreas` assigns path patterns to every area. `*` applies within a path segment, `**` across segment boundaries; `/` is the separator every path is normalised to. The kit brings the evaluation along, without a runtime dependency.
 
-The implement skills check before the commit against `HEAD`: the diff is exactly this work package. `/local-check` checks before the push against `git merge-base HEAD origin/<mainBranch>` and measures everything since the last push.
+The implement skills check before the commit against `HEAD`: the diff is exactly this work package. `/push-main` checks before the push against `git merge-base HEAD origin/<mainBranch>` and measures everything since the last push.
 
 Swapped, both would go wrong. `merge-base` before the commit would collect foreign packages, and a red result would hit the wrong issue.
 
@@ -184,12 +184,12 @@ Files with nothing to check go into `ohnePruefung`, each with a pattern and a ma
 
 Without `checkAreas` all checks run unchanged; nobody silently loses a check.
 
-`mutationCommand` is not part of the selection and always runs.
+`mutationCommand` is not part of the selection and always runs at the `push` stage.
 
 `node .claude/kit/checks.mjs plan` shows the selection without executing anything.
 
 ### Staged checks: `stufe`
-<!-- de: 84a6fb71622d -->
+<!-- de: f9c884f6bc32 -->
 
 An entry can say when its turn comes (stage, Stufe):
 
@@ -199,11 +199,13 @@ An entry can say when its turn comes (stage, Stufe):
 
 | Stage | Point in time | Skill |
 | --- | --- | --- |
-| `paket` | before the local commit | `/implement-next`, `/implement-ready`, `/implement-done`, `/local-check` |
+| `paket` | before the local commit | `/implement-next`, `/implement-ready`, `/implement-done` |
 | `push` | before publishing to main | `/push-main` |
 | `merge` | before the release to production | `/merge-production` |
 
 The stages are cumulative, and every check runs once before the release: `push main` runs the package and push stages in full, `merge production` only what `push main` did not check. No check is dropped; a later one appears before as an omission with its stage as the reason, at `merge production` for example as `Stufe push, geprueft beim push main`. If the field is missing, `paket` applies, and existing configurations stay unchanged.
+
+If a run of the package stage is red and `formatFixCommand` is set, `checks.mjs run` runs the fix once and a second pass; that is not a repetition in the sense of `--retry`.
 
 **Short release.** Put long checks on the stage `push` instead of `merge`; the price: every `push main` takes longer by them.
 

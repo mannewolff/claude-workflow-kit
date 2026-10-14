@@ -47,7 +47,7 @@ const themeDe: DefaultTheme.Config = {
       text: "Überblick",
       items: [
         { text: "Konzept & Voraussetzungen", link: "/dokumentation" },
-        { text: "Die neun Schritte", link: "/dokumentation#die-neun-schritte" },
+        { text: "Die acht Schritte", link: "/dokumentation#die-acht-schritte" },
         { text: "Drei Bahnen", link: "/dokumentation#drei-bahnen" },
         { text: "Menschliche Stop-Punkte", link: "/dokumentation#die-drei-menschlichen-stop-punkte" },
         { text: "Was nicht im Kit ist", link: "/dokumentation#was-bewusst-nicht-im-kit-ist" },
@@ -142,7 +142,7 @@ const themeEn: DefaultTheme.Config = {
       text: "Overview",
       items: [
         { text: "Concept & prerequisites", link: "/en/dokumentation" },
-        { text: "The nine steps", link: "/en/dokumentation#the-nine-steps" },
+        { text: "The eight steps", link: "/en/dokumentation#the-eight-steps" },
         { text: "Three lanes", link: "/en/dokumentation#three-lanes" },
         { text: "Human stop points", link: "/en/dokumentation#the-three-human-stop-points" },
         { text: "What is not in the kit", link: "/en/dokumentation#what-is-deliberately-not-in-the-kit" },

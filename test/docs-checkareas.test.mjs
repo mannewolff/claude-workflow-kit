@@ -102,8 +102,8 @@ test("die Doku ordnet jedem Anker seinen Ort zu", () => {
   assert.ok(vorCommit, "kein Absatz bindet HEAD an die implement-Skills vor dem Commit");
   assert.match(vorCommit, /Arbeitspaket/i, "es steht nicht, dass HEAD genau das eine Arbeitspaket misst");
 
-  const vorPush = absatzMit(abschnitt, /merge-base/, /local-check/, /Push/);
-  assert.ok(vorPush, "kein Absatz bindet merge-base an /local-check vor dem Push");
+  const vorPush = absatzMit(abschnitt, /merge-base/, /\/push-main/, /Push/);
+  assert.ok(vorPush, "kein Absatz bindet merge-base an /push-main vor dem Push");
   assert.match(vorPush, /seit dem letzten Push/i,
     "es steht nicht, dass merge-base alles seit dem letzten Push misst");
 });
@@ -181,7 +181,7 @@ test("die Doku weist mutationCommand als ausserhalb der Auswahl aus", () => {
 
 test("das Konfigurationskapitel behauptet nicht mehr den vollen Lauf", () => {
   const kapitel = EINRICHTUNG.slice(EINRICHTUNG.indexOf("## Die Config-Datei")).split(/\n## /)[0];
-  const absatz = absatzMit(kapitel, /`buildChecks`/, /local-check/);
+  const absatz = absatzMit(kapitel, /`buildChecks`/, /\/push-main/);
   assert.ok(absatz, "kein buildChecks-Absatz im Konfigurationskapitel");
   assert.doesNotMatch(absatz, /Alle müssen grün sein/,
     "der buildChecks-Absatz behauptet weiterhin, dass alle Kommandos gruen sein muessen");
@@ -298,4 +298,14 @@ test("das README nennt checkAreas und verweist im selben Absatz auf die Doku", (
   assert.ok(absatz, "das README nennt checkAreas nicht");
   assert.match(absatz, /docs\/einrichtung\.md|docs\.mwolff\.org/,
     "der Verweis auf das Doku-Kapitel fehlt im selben Absatz");
+});
+
+// Issue #1678: Ueberblick und Einrichtung nennen weder den Schritt /local-check noch
+// den Prozess in neun Schritten.
+test("Ueberblick und Einrichtung nennen weder /local-check noch neun Schritte", () => {
+  for (const seite of [["docs", "dokumentation.md"], ["docs", "en", "dokumentation.md"], ["docs", "einrichtung.md"], ["docs", "en", "einrichtung.md"]]) {
+    const text = lies(...seite);
+    assert.doesNotMatch(text, /local-check/, `${seite.join("/")} nennt noch /local-check`);
+    assert.doesNotMatch(text, /9-Schritt|neun Schritt|9-step|nine steps/i, `${seite.join("/")} zaehlt noch neun Schritte`);
+  }
 });

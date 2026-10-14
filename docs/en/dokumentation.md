@@ -1,10 +1,10 @@
 # Documentation: claude-workflow-kit
-<!-- de: c20c48cb489c -->
+<!-- de: 96272fea15f5 -->
 
-The kit turns Claude Code into a workshop with a fixed sequence: a requirement passes through nine steps all the way to production. The AI plans, cuts work packages (Arbeitspakete), implements, checks and has its work reviewed. Three decisions stay with you. This page gives the overview and shows where the details are.
+The kit turns Claude Code into a workshop with a fixed sequence: a requirement passes through eight steps all the way to production. The AI plans, cuts work packages (Arbeitspakete), implements, checks and has its work reviewed. Three decisions stay with you. This page gives the overview and shows where the details are.
 
 ## Concept
-<!-- de: 70a6abf24551 -->
+<!-- de: 1390e22be3e6 -->
 
 The kit consists of three parts: eighteen skills, a config in the project and an installer. It is neither a platform nor an agent.
 
@@ -15,7 +15,7 @@ All access to issues and board goes through the board adapter (Board-Adapter) `.
 Where to find what:
 
 - [Setup](/en/einrichtung): installation, config, issue tracker, updating.
-- [The process](/en/prozess): the nine steps, every skill with purpose and next step, a complete pass.
+- [The process](/en/prozess): the eight steps, every skill with purpose and next step, a complete pass.
 - [Night mode](/en/nachtbetrieb): have work packages implemented unattended.
 - [Settings](/en/einstellungen): every setting with effect and default.
 
@@ -31,8 +31,8 @@ Where to find what:
 
 A vault for notes across sessions is optional; `/session-start` and `/document` also run without it. The file for it is described under [kontext.config.json](/en/einstellungen#kontext-config-json).
 
-## The nine steps
-<!-- de: 533bb4d090b5 -->
+## The eight steps
+<!-- de: a310e71fe95e -->
 
 | Step | What | Who | Skill |
 |---------|-----|-----|-------|
@@ -41,17 +41,16 @@ A vault for notes across sessions is optional; `/session-start` and `/document` 
 | 3 | Create work packages | AI | [/issues](/en/prozess#issues) |
 | 4 | GO: pull packages to Ready | Human | – |
 | 5 | Implement | AI | [/implement-ready](/en/prozess#implement-ready) |
-| 6 | Check locally | AI | [/local-check](/en/prozess#check-run-by-hand) |
-| 7 | Review by a second model | AI | [/kit-review](/en/prozess#kit-review) |
-| 8 | Push to main | Human | [/push-main](/en/prozess#push-main) |
-| 9 | Merge to production | Human | [/merge-production](/en/prozess#merge-production) |
+| 6 | Review by a second model | AI | [/kit-review](/en/prozess#kit-review) |
+| 7 | Push to main | Human | [/push-main](/en/prozess#push-main) |
+| 8 | Merge to production | Human | [/merge-production](/en/prozess#merge-production) |
 
-Between step 8 and 9 you check the test server. Alongside the nine steps stand skills that prepare the sequence or split it more finely: `/triage` brings an idea onto its lane, `/requirement`, `/issue-review` and `/groom` clarify a business requirement (fachliche Anforderung) before planning, and `/implement-next`, `/implement-test` and `/implement-done` implement a single package. All of them are under [The skills](/en/prozess#the-skills).
+Between step 7 and 8 you check the test server. Alongside the eight steps stand skills that prepare the sequence or split it more finely: `/triage` brings an idea onto its lane, `/requirement`, `/issue-review` and `/groom` clarify a business requirement (fachliche Anforderung) before planning, and `/implement-next`, `/implement-test` and `/implement-done` implement a single package. All of them are under [The skills](/en/prozess#the-skills).
 
 ## Three lanes
-<!-- de: a5ad04278751 -->
+<!-- de: 92aca10d7787 -->
 
-Not every task needs all nine steps. The kit knows three lanes (Bahnen).
+Not every task needs all eight steps. The kit knows three lanes (Bahnen).
 
 **Lane 1 — Small change.** One file, one asset or one config value, without migration, endpoint, data model or security-relevant logic and at most one module. The AI implements directly and commits; plan, work package and GO are left out. Here too the commit gate (Commit-Gate) requires a green `node .claude/kit/checks.mjs run`.
 
@@ -68,13 +67,13 @@ The choice follows three rules, in this order:
 So the number of files does not decide: twelve files with nothing to weigh up are lane 3, a single file with two defensible cuts is lane 2. Before every task the AI names its lane.
 
 ## The three human stop points
-<!-- de: 1ce95acff47e -->
+<!-- de: 8c9815ba465c -->
 
 **The GO (step 4).** You pull the work packages to Ready and thereby decide what gets built next, in which order and how much at once. For night mode you can give the GO in advance: if you mark a business requirement or a plan with the label from `night.chain.variantBLabel`, the [night chain](/en/nachtbetrieb#the-night-chain) (Nacht-Kette) pulls the packages cut from it to Ready itself and implements them.
 
-**The push (step 8).** Only `push main` brings the commits to the test server. Every push needs your own approval; before it you can still change or discard the scope, including the decisions a night has made.
+**The push (step 7).** Only `push main` brings the commits to the test server. Every push needs your own approval; before it you can still change or discard the scope, including the decisions a night has made.
 
-**The merge (step 9).** After your check on the test server, `merge production` brings the state to production.
+**The merge (step 8).** After your check on the test server, `merge production` brings the state to production.
 
 The kit deliberately does not automate these three steps. The AI does the work, you decide.
 

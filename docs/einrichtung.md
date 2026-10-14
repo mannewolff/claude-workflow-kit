@@ -131,7 +131,7 @@ Der Vault ist ein persönlicher Memory-Speicher außerhalb des Repos: Profil, Ar
 }
 ```
 
-`buildChecks` enthält die Prüfkommandos, die `node .claude/kit/checks.mjs run` vor jedem Commit und `/local-check` vor dem Push ausführt: die betroffenen, ausgewählt nach den Bereichen, die das Paket berührt. Jede ausgeführte muss grün sein. `mutationCommand` läuft in `/local-check` danach; leer schaltet es ab. `triggers` hält die Phrasen der drei Stop-Punkte. `columns` benennt die Spalten des Boards um.
+`buildChecks` enthält die Prüfkommandos, die `node .claude/kit/checks.mjs run` vor jedem Commit und `/push-main` vor dem Push ausführt: die betroffenen, ausgewählt nach den Bereichen, die das Paket berührt. Jede ausgeführte muss grün sein. `mutationCommand` läuft einmal in `checks.mjs run --stage push`, nach den `buildChecks`; sein Ergebnis wird nur berichtet und hält nicht an. Leer schaltet es ab. `triggers` hält die Phrasen der drei Stop-Punkte. `columns` benennt die Spalten des Boards um.
 
 Statt die Datei von Hand zu bearbeiten, kannst du die [Einstellungs-Oberfläche](/einstellungen) nutzen. Sie prüft vor dem Speichern.
 
@@ -161,7 +161,7 @@ String-Form und `always` verhalten sich gleich und sagen Verschiedenes: Der Stri
 
 `checkAreas` ordnet jedem Bereich Pfadmuster zu. `*` gilt innerhalb eines Pfadsegments, `**` über Segmentgrenzen hinweg; `/` ist der Trenner, auf den jeder Pfad normalisiert wird. Die Auswertung bringt das Kit mit, ohne Laufzeitabhängigkeit.
 
-Die implement-Skills prüfen vor dem Commit gegen `HEAD`: Der Diff ist genau dieses Arbeitspaket. `/local-check` prüft vor dem Push gegen `git merge-base HEAD origin/<mainBranch>` und misst alles seit dem letzten Push.
+Die implement-Skills prüfen vor dem Commit gegen `HEAD`: Der Diff ist genau dieses Arbeitspaket. `/push-main` prüft vor dem Push gegen `git merge-base HEAD origin/<mainBranch>` und misst alles seit dem letzten Push.
 
 Vertauscht ginge beides schief. `merge-base` vor dem Commit sammelte fremde Pakete ein, und ein Rot träfe das falsche Issue.
 
@@ -175,7 +175,7 @@ Dateien, zu denen es nichts zu prüfen gibt, stehen in `ohnePruefung`, je mit Mu
 
 Ohne `checkAreas` laufen alle Prüfungen unverändert; niemandem wird still Prüfung weggenommen.
 
-`mutationCommand` ist nicht Teil der Auswahl und läuft immer.
+`mutationCommand` ist nicht Teil der Auswahl und läuft an der Stufe `push` immer.
 
 `node .claude/kit/checks.mjs plan` zeigt die Auswahl, ohne etwas auszuführen.
 
@@ -189,11 +189,13 @@ Ein Eintrag kann sagen, wann er an der Reihe ist:
 
 | Stufe | Zeitpunkt | Skill |
 | --- | --- | --- |
-| `paket` | vor dem lokalen Commit | `/implement-next`, `/implement-ready`, `/implement-done`, `/local-check` |
+| `paket` | vor dem lokalen Commit | `/implement-next`, `/implement-ready`, `/implement-done` |
 | `push` | vor dem Veröffentlichen auf main | `/push-main` |
 | `merge` | vor der Freigabe nach production | `/merge-production` |
 
 Die Stufen sind kumulativ, und jede Prüfung läuft einmal vor der Freigabe: `push main` fährt Paket- und Push-Stufe vollständig, `merge production` nur, was `push main` nicht geprüft hat. Keine Prüfung entfällt; eine spätere erscheint vorher als Auslassung mit ihrer Stufe als Grund, beim `merge production` etwa als `Stufe push, geprueft beim push main`. Fehlt das Feld, gilt `paket`, und der Bestand bleibt unverändert.
+
+Ist ein Lauf der Paketstufe rot und `formatFixCommand` gesetzt, fährt `checks.mjs run` den Fix einmal und einen zweiten Durchgang; das ist keine Wiederholung im Sinn von `--retry`.
 
 **Kurze Freigabe.** Lange Prüfungen auf die Stufe `push` statt `merge` stellen; der Preis: Jedes `push main` dauert um sie länger.
 

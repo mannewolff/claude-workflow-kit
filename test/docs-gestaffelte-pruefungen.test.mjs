@@ -51,11 +51,32 @@ test("der Abschnitt ordnet jeder Stufe ihren Zeitpunkt und ihren Skill zu", () =
     assert.match(kopf, spalte, `die Kopfzeile nennt die Spalte ${spalte} nicht`);
   }
 
-  for (const [stufe, skill] of [["paket", "/local-check"], ["push", "/push-main"], ["merge", "/merge-production"]]) {
+  for (const [stufe, skill] of [["paket", "/implement-next"], ["push", "/push-main"], ["merge", "/merge-production"]]) {
     const zeile = zeilen.find((z) => new RegExp("`" + stufe + "`").test(z));
     assert.ok(zeile, `die Tabelle fuehrt die Stufe '${stufe}' nicht`);
     assert.match(zeile, new RegExp(skill), `die Zeile der Stufe '${stufe}' nennt '${skill}' nicht`);
+    assert.ok(!zeile.includes("/local-check"), `die Zeile der Stufe '${stufe}' nennt noch /local-check`);
   }
+});
+
+// Issue #1678: Das Nachformatieren laeuft in `checks.mjs run` an der Paketstufe. Der
+// zweite Durchgang ist keine Wiederholung im Sinn von `--retry`; ohne den Satz liest
+// jemand ihn als zweiten Versuch und sucht die `Gewackelt:`-Zeile.
+test("der Abschnitt nennt den Format-Fix-Durchgang an der Paketstufe", () => {
+  const abschnitt = staffelAbschnitt();
+  assert.ok(abschnitt.includes("Ist ein Lauf der Paketstufe rot und `formatFixCommand` gesetzt, fährt `checks.mjs run` den Fix einmal und einen zweiten Durchgang; das ist keine Wiederholung im Sinn von `--retry`."),
+    "der Satz zum Format-Fix-Durchgang fehlt");
+});
+
+// Issue #1678: Der Mutationstest laeuft einmal an der Stufe `push`, nach den
+// `buildChecks`, und haelt nichts an.
+test("die Doku nennt die Stufe push fuer mutationCommand", () => {
+  const absatz = DOKU.split(/\n\n/).find((a) => /`buildChecks`/.test(a) && /`mutationCommand`/.test(a));
+  assert.ok(absatz, "kein Absatz nennt buildChecks und mutationCommand zusammen");
+  assert.match(absatz, /`mutationCommand` läuft einmal in `checks\.mjs run --stage push`, nach den `buildChecks`/,
+    "die Stelle zu mutationCommand nennt die Stufe push nicht");
+  assert.match(absatz, /hält nicht an/, "es steht nicht, dass der Mutationstest nichts anhaelt");
+  assert.doesNotMatch(absatz, /local-check/, "die Stelle nennt noch /local-check");
 });
 
 // Ohne diesen Satz liest jeder eine spaeter laufende Pruefung als weggenommene.
