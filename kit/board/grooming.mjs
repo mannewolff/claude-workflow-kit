@@ -236,7 +236,7 @@ export function vermerkZeile(zahl, datum) {
 // --- Body-Pruefung und Vergleich (Issue #1512) ------------------------------------------
 
 // Die Kennzeichnungszeilen, die ein neuer Body behalten muss (E8 a).
-const KENNZEICHNUNGEN = ["autorModell", "fachplanReview", "vorlage"];
+const KENNZEICHNUNGEN = ["autorModell", "fachplanReview", "vorlage", "ereignis"];
 
 // Ein Vermerk „Keine“ an anderer Stelle als der ersten Zeile, als Absatz oder Listenelement.
 const VERMERK_ANFANG = /^Keine\b/;

@@ -258,3 +258,13 @@ test("(f) neuer Body mit vollstaendigem oder ohne Abschnitt Szenarien ist ok", (
   assert.deepEqual(koerperPruefen(alt, fachplan({ szenarien: SZENARIO })), { ok: true, verstoesse: [] });
   assert.deepEqual(koerperPruefen(alt, alt), { ok: true, verstoesse: [] });
 });
+
+test("(a) verschwundene oder geaenderte Wartezeile ist ein Verstoss (Issue #1661)", () => {
+  const alt = fachplan({ kopf: "Autor-Modell: claude-opus-5-5\nWartet auf Ereignis: Tarif X waehlbar" });
+  assert.deepEqual(regeln(koerperPruefen(alt, alt)), []);
+  for (const kopf of ["Autor-Modell: claude-opus-5-5", "Autor-Modell: claude-opus-5-5\nWartet auf Ereignis: Tarif Y waehlbar"]) {
+    const r = koerperPruefen(alt, fachplan({ kopf }));
+    assert.deepEqual(regeln(r), ["kennzeichnung"], kopf);
+    assert.match(r.verstoesse[0].meldung, /Wartet auf Ereignis: Tarif X waehlbar/);
+  }
+});

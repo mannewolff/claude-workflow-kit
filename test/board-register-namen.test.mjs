@@ -33,7 +33,7 @@ const LABEL_PAARE = [
   ["ziel:umsetzung", "goal:implementation"],
   ["ziel:push-vorbereitet", "goal:push-prepared"],
 ];
-const GLEICHE_LABELS = ["kit:night", "kit:nightrun", "planreview:1", "planreview:2"];
+const GLEICHE_LABELS = ["kit:night", "kit:nightrun", "kit:on-hold", "planreview:1", "planreview:2"];
 
 const PRAEFIX_PAARE = [
   ["[Fachlich]", "[Requirement]"],
@@ -190,4 +190,9 @@ test("internerWert nimmt nur den englischen Wert an", () => {
   assert.equal(internerWert("art", true), true);
   assert.equal(internerWert("art", undefined), undefined);
   assert.equal(internerWert("unbekannt", "requirement"), "requirement");
+});
+
+test("Sache ereignis: Label kit:on-hold ohne deutschen Altnamen, Wartezeile in beiden Sprachen (Issue #1661)", () => {
+  assert.deepEqual({ ...LABELS.ereignis }, { de: "kit:on-hold", en: "kit:on-hold" });
+  assert.deepEqual({ ...register.MARKER.ereignis }, { de: "Wartet auf Ereignis:", en: "Waiting for event:" });
 });

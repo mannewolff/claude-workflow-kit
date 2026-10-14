@@ -43,6 +43,7 @@ const MARKER_PAARE = [
   ["Vorlage:", "Template:"],
   ["Plan-Review:", "Plan-Review:"],
   ["Fachplan-Review:", "Requirement-Review:"],
+  ["Wartet auf Ereignis:", "Waiting for event:"],
   ["Issue-Review:", "Issue-Review:"],
   // Fundblock-Zeilen (Issue #1558, Plan #1548 E19).
   ["Gegenprobe:", "Counter-check:"],
