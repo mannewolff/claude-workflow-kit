@@ -2,7 +2,7 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
-## [5.1.3] - 2026-10-14
+## [5.2.0] - 2026-10-14
 - Sonar auf kit-pruefung läuft nur mit und blockiert push main nicht (#1683)
 - Sonar-Analyse auf kit-pruefung bekommt den Zweignamen (#1682)
 - Triage lädt die Anhänge einer kanban-kit-Karte in die Ideen-Ablage (#1681)
