@@ -1,13 +1,13 @@
 ---
 name: push-main
-description: Step 8 of the 9-step process: pushes the current batch of commits to main. Only on the explicit trigger phrase of the human. Use this skill ONLY when the user explicitly types "push main". The only exception is the mode `prepare`: it does not push, so the night runner may start it without the phrase.
+description: Step 7 of the 8-step process: pushes the current batch of commits to main. Only on the explicit trigger phrase of the human. Use this skill ONLY when the user explicitly types "push main". The only exception is the mode `prepare`: it does not push, so the night runner may start it without the phrase.
 user-invocable: true
 disable-model-invocation: true
 ---
 
 # Push Main
 
-Schritt 8 des 9-Schritt-Prozesses: Den aktuellen Commit-Batch auf `origin/main` pushen.
+Schritt 7 des 8-Schritt-Prozesses: Den aktuellen Commit-Batch auf `origin/main` pushen.
 
 **Dieser Skill darf von Claude nicht autonom gezogen werden.** Er läuft nur auf die explizite Trigger-Phrase des Menschen — ausgenommen der Modus `prepare`, siehe den Abschnitt „Trigger-Phrase".
 

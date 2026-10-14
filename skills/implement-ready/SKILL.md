@@ -1,12 +1,12 @@
 ---
 name: implement-ready
-description: Step 5 of the 9-step process: works off all issues in the Ready column one after another in board order, commits locally, does not push. Use this skill when the user invokes /implement-ready, wants to implement Ready issues, or gives the GO for implementation.
+description: Step 5 of the 8-step process: works off all issues in the Ready column one after another in board order, commits locally, does not push. Use this skill when the user invokes /implement-ready, wants to implement Ready issues, or gives the GO for implementation.
 user-invocable: true
 ---
 
 # Implement Ready
 
-Schritt 5 des 9-Schritt-Prozesses: Die KI arbeitet die Ready-Issues sequenziell ab. Jedes Issue wird vollständig umgesetzt, lokal committet und nach In review verschoben, bevor das nächste beginnt.
+Schritt 5 des 8-Schritt-Prozesses: Die KI arbeitet die Ready-Issues sequenziell ab. Jedes Issue wird vollständig umgesetzt, lokal committet und nach In review verschoben, bevor das nächste beginnt.
 
 ## Vorbedingung
 

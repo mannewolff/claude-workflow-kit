@@ -187,7 +187,7 @@ export const MARKER = Object.freeze({
   // Tests, Code-Review- und Reviewer-Kopf, die Zeilen der Vorgeschichte.
   abschlussbericht: eintrag("## Abschlussbericht Issue #", "## Completion report issue #"),
   testsGeschrieben: eintrag("### Tests geschrieben (rot) — Issue #", "### Tests written (red) — issue #"),
-  codeReview: eintrag("## Code-Review (Schritt 7)", "## Code review (step 7)"),
+  codeReview: eintrag("## Code-Review (Schritt 6)", "## Code review (step 6)"),
   reviewer: eintrag("### Reviewer"),
   suchbegriffe: eintrag("Suchbegriffe:", "Search terms:"),
   dateien: eintrag("Dateien:", "Files:"),
@@ -202,6 +202,8 @@ export const MARKER = Object.freeze({
  */
 const MARKER_ALTNAMEN = Object.freeze({
   haltFolgesatz: Object.freeze(["Daraus soll per /fachplan eine fachliche Anforderung entstehen."]),
+  // Der Prozess hatte neun Schritte, der Code-Review war Schritt 7 (Issue #1676, Plan #1671 E11).
+  codeReview: Object.freeze(["## Code-Review (Schritt 7)", "## Code review (step 7)"]),
 });
 
 // Laengster Name zuerst: `Plan-Review:` darf nicht als `Plan:` gelten, und ein Name, der

@@ -64,7 +64,7 @@ test("MARKER und UEBERSCHRIFTEN kennen die festen Zeilen der Skills (Issue #1568
   const erwartet = {
     abschlussbericht: ["## Abschlussbericht Issue #", "## Completion report issue #"],
     testsGeschrieben: ["### Tests geschrieben (rot) — Issue #", "### Tests written (red) — issue #"],
-    codeReview: ["## Code-Review (Schritt 7)", "## Code review (step 7)"],
+    codeReview: ["## Code-Review (Schritt 6)", "## Code review (step 6)"],
     reviewer: ["### Reviewer", "### Reviewer"],
     suchbegriffe: ["Suchbegriffe:", "Search terms:"],
     dateien: ["Dateien:", "Files:"],

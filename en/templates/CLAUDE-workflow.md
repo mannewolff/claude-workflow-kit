@@ -1,12 +1,12 @@
 # CLAUDE-workflow.md — claude-workflow-kit process
-<!-- de: 5d2e54ccf02e -->
+<!-- de: 82353c334d94 -->
 
-Binding process for AI-assisted software development in this project. Based on the 9-step process (white paper "Ein Prozess zur KI-gestuetzten Softwareentwicklung", Manne Wolff, 2026).
+Binding process for AI-assisted software development in this project. Based on the 8-step process (white paper "Ein Prozess zur KI-gestuetzten Softwareentwicklung", Manne Wolff, 2026).
 
 ---
 
-## The nine steps
-<!-- de: 712b276a52bf -->
+## The eight steps
+<!-- de: a655deb8ecb0 -->
 
 | Step | Actor | What happens | Skill |
 |------|-------|--------------|-------|
@@ -15,17 +15,16 @@ Binding process for AI-assisted software development in this project. Based on t
 | 3. Plan to issues | AI | Transfers the plan into issues (four-section format) | `/issues` |
 | 4. GO | Human | Moves issues to Ready — that is the GO | — |
 | 5. Implementation | AI | Works through Ready issues sequentially, commits locally | `/implement-ready` |
-| 6. Local check | AI + human | Mandatory checks + manual UI verification | `/local-check` |
-| 7. Code review | AI | Starts a foreign model from `reviewCommand` or `reviewModel` in a fresh session | `/kit-review` |
-| 8. Push | Human | Types `push main` — Claude pushes the batch | `/push-main` |
-| 9. Merge | Human | Types `merge production` — Claude creates the PR | `/merge-production` |
+| 6. Code review | AI | Starts a foreign model from `reviewCommand` or `reviewModel` in a fresh session | `/kit-review` |
+| 7. Push | Human | Types `push main` — Claude pushes the batch | `/push-main` |
+| 8. Merge | Human | Types `merge production` — Claude creates the PR | `/merge-production` |
 
 ---
 
 ## Tools beside the process
-<!-- de: 994e1f122469 -->
+<!-- de: 6510c0a25633 -->
 
-The nine steps above are the process from the white paper. What stands here is a tool of the kit: helpful, often used — but **the process runs without these skills as well**. They therefore carry no number; a number would claim an order and an obligation that do not exist.
+The eight steps above are the process from the white paper. What stands here is a tool of the kit: helpful, often used — but **the process runs without these skills as well**. They therefore carry no number; a number would claim an order and an obligation that do not exist.
 
 **Supplement the process**
 
@@ -56,11 +55,11 @@ The nine steps above are the process from the white paper. What stands here is a
 ---
 
 ## The three stop points (never automated)
-<!-- de: 9d5727667736 -->
+<!-- de: ebca8bcd3862 -->
 
-1. **GO (step 4):** move the issue to Ready. Claude waits. Exception, exclusively in the implementation stage of the night chain under variant B: there the night runner itself moves the work packages of the marked card to Ready and starts their implementation without a release per package. The human gave the GO on the marked card — on the requirement or on the plan document — when marking it for variant B. Outside this stage the sentence before applies without restriction — also for packages of a card that ran under variant B earlier. The GO on the marked card is given by `kit:carry-through` or by a goal from `implementation` on (`goal:implementation`, `goal:push-prepared`); both only take effect together with `kit:night`. The push in the morning (step 8) takes the decisions of the night along.
-2. **Push (step 8):** trigger phrase `push main`. Claude does not push autonomously.
-3. **Merge (step 9):** trigger phrase `merge production`. Claude does not merge.
+1. **GO (step 4):** move the issue to Ready. Claude waits. Exception, exclusively in the implementation stage of the night chain under variant B: there the night runner itself moves the work packages of the marked card to Ready and starts their implementation without a release per package. The human gave the GO on the marked card — on the requirement or on the plan document — when marking it for variant B. Outside this stage the sentence before applies without restriction — also for packages of a card that ran under variant B earlier. The GO on the marked card is given by `kit:carry-through` or by a goal from `implementation` on (`goal:implementation`, `goal:push-prepared`); both only take effect together with `kit:night`. The push in the morning (step 7) takes the decisions of the night along.
+2. **Push (step 7):** trigger phrase `push main`. Claude does not push autonomously.
+3. **Merge (step 8):** trigger phrase `merge production`. Claude does not merge.
 
 What gets checked are the requirement and the plan document: `/issue-review` has them read by models that did not write them; how many, `reviewStages` says. A work package is not checked by default — whoever wants it calls `/issue-review #N`. The switch `issueReview.requiredBeforeReady` remains for projects that want the gate; switched off is the rule. With `issueReview.requiredBeforeReady` set, the night runner puts unchecked Ready issues back.
 
@@ -103,7 +102,7 @@ Only a question from this class halts, and every halt carries exactly one questi
 ---
 
 ## Rule in the text or rule in the tool
-<!-- de: 3b20eaaf8dcc -->
+<!-- de: 490cb1b15f28 -->
 
 Every rule of a supplied instruction is of one of two kinds. The kind decides where it belongs.
 
@@ -111,7 +110,7 @@ Every rule of a supplied instruction is of one of two kinds. The kind decides wh
 
 **Judgement rule.** It demands a decision or an attitude in the individual case. Example: if the coverage report lies below the agreed target, show that as a signal instead of silently waving it through. A judgement rule stays in the text — a tool could only guess it.
 
-**Mixed rules are taken apart, not rounded.** The time-frame rule of the local check carries both: "an abort at the clock appears as a failure" is an operating instruction and enforceable — the tool then leaves behind an unfinished, non-green summary. "Set a generous time frame" is a judgement rule and stays in the text, because a tool cannot give itself more time than its caller grants.
+**Mixed rules are taken apart, not rounded.** The time-frame rule for long check commands carries both: "an abort at the clock appears as a failure" is an operating instruction and enforceable — the tool then leaves behind an unfinished, non-green summary. "Set a generous time frame" is a judgement rule and stays in the text, because a tool cannot give itself more time than its caller grants.
 
 **The kind says nothing about transferability.** An operating instruction does not become a judgement rule just because a tool can only partly ensure it. The transferable part moves, the rest stays named in the text — and remains an operating instruction.
 
@@ -216,11 +215,11 @@ Two measurement limits belong to the picture here as well: findings written befo
 ---
 
 ## Three lanes
-<!-- de: 98c810c5a81f -->
+<!-- de: 08a3b87fc6c6 -->
 
 **Lane 1 — Small change** (direct; no plan/issue/GO): exactly one file / one asset / one config; no Flyway migration; no new/changed endpoint; no data model; ≤ 1 module; no security-relevant logic → implement directly, one commit, no push without trigger. **This commit, too, requires a green `node .claude/kit/checks.mjs run` on the state to be committed** — the commit gate is mechanical and knows no lane. The same applies to every commit by hand. What the gate does not achieve — `--no-verify` and the fresh clone without an installer run — stands under "Git workflow (strictly binding)".
 
-**Lane 2 — Feature** (full 9 steps): outside lane 1, as soon as there is something to weigh — or it is unclear whether there is something to weigh → `/techplan` → `/issues` → GO → `/implement-ready`. Typical: a data model with several defensible cuts, an endpoint whose contract is still open, a migration with a way-back question.
+**Lane 2 — Feature** (full 8 steps): outside lane 1, as soon as there is something to weigh — or it is unclear whether there is something to weigh → `/techplan` → `/issues` → GO → `/implement-ready`. Typical: a data model with several defensible cuts, an endpoint whose contract is still open, a migration with a way-back question.
 
 **Lane 3 — `[Task]`** (replaces steps 2 and 3): above the trifle, but without need for weighing. No `[Requirement]`, no `[Plan]`, no decomposition — one work package with the title prefix `[Task]`, created with `/task` after the human has confirmed the way, then released like every work package. Typical: a renaming across several files, a rejected tool finding, a mechanical follow-up job.
 
@@ -287,7 +286,7 @@ The notes, `Suchbegriffe:`, `Dateien:` and `- Widerspruch:` are fixed beginnings
 ---
 
 ## Git workflow (strictly binding)
-<!-- de: 5f8ab19e559d -->
+<!-- de: ea7ddb077f03 -->
 
 1. Claude commits locally, does NOT push automatically. Every commit — also lane 1, also by hand, also from a GUI client — requires a green `node .claude/kit/checks.mjs run` on the state to be committed; a tool without `node` in the PATH is rejected, not let through.
 2. The human tests locally (start the dev server, click through the golden path).
@@ -303,7 +302,7 @@ Absolutely binding:
 
 **What the commit gate does not achieve.** `--no-verify` bypasses it (the line above forbids that without an explicit individual instruction, mechanically nothing prevents it), and a fresh clone only has it after an installer run or `git config core.hooksPath .githooks` — the files travel along, the activation is local git config. In both cases **at night** the assessment of the night runner applies, which turns missing or red evidence into a failure — **interactively nobody steps in**. There the line above remains the only rule.
 
-**Steps 8 and 9 run in a worktree of their own.** `/push-main` and `/merge-production` create their release files, run their check run and commit not in the main working tree but in a fresh worktree outside the repo (`node .claude/kit/worktree.mjs create --prefix release`, the same way as for the worktree of the night chain); afterwards they push from there and remove it again, also after a red run. The reason is simultaneity: in the main tree the implementation stage of the night runner can be building under variant B, and two runs in one tree mix their files — the release check run would see foreign, half-finished work, and the runner found the release files as uncommitted leftovers and stopped hard. `/merge-production` builds on `origin/<mainBranch>`, because what is published is what has been pushed; `/push-main` on the local `<mainBranch>`, rebased onto `origin/<mainBranch>` in the worktree. The skill afterwards only moves the local `<mainBranch>` along if no lock of the runner is held and the main tree is clean — otherwise it outputs the command.
+**Steps 7 and 8 run in a worktree of their own.** `/push-main` and `/merge-production` create their release files, run their check run and commit not in the main working tree but in a fresh worktree outside the repo (`node .claude/kit/worktree.mjs create --prefix release`, the same way as for the worktree of the night chain); afterwards they push from there and remove it again, also after a red run. The reason is simultaneity: in the main tree the implementation stage of the night runner can be building under variant B, and two runs in one tree mix their files — the release check run would see foreign, half-finished work, and the runner found the release files as uncommitted leftovers and stopped hard. `/merge-production` builds on `origin/<mainBranch>`, because what is published is what has been pushed; `/push-main` on the local `<mainBranch>`, rebased onto `origin/<mainBranch>` in the worktree. The skill afterwards only moves the local `<mainBranch>` along if no lock of the runner is held and the main tree is clean — otherwise it outputs the command.
 
 ---
 
@@ -314,13 +313,13 @@ The file is the only project-local place the skills read from. Fields: `codeHost
 
 ---
 
-## Mandatory checks before push (step 6)
-<!-- de: dddc559c874d -->
+## Mandatory checks before push
+<!-- de: 8f40224311f5 -->
 
 All **affected** `buildChecks` from the config run green; untouched areas are left out with evidence. Red checks still block the push mechanically. For UI changes: start the dev server, check the golden path and at least one edge case manually. If a check cannot be run locally: note it in the completion report, do not conceal it. **The checks run staggered:** each carries a stage — `package` at the completion of a work package, `push` before publishing, `merge` before the release; without a value `package` applies. A later stage does **not run along** with the earlier one (a check of the stage `push` stays out at the completion of a work package), and `push` runs the **preceding stage** along (`push` executes `package` and `push`). `merge` only checks what `push main` did not check, because there is never a `merge production` without a preceding `push main`: the stage `merge` always, the package stage by areas over the release files, the stage `push` not. **No mandatory check drops out of the overall process with this**; it only runs at the point in time at which its result counts, and not twice for the same state. Which check belongs in which stage is decided by the project. The stage of a mandatory check (`stage`) is something different from the review stages (`reviewStages`) and from the stages of the night chain: it says *when* a check runs, not how thoroughly is read and not which section of an unattended run is due. **One** of its checks a project may also name as a **quality measurement** (`quality` with `pattern` and `marker`): it measures how many deliberately inserted faults the tests notice. If the measured share lies below the mark, that is **the same halt as a red mandatory check** — no new stop point, no exception, no personal mark (the mark applies team-wide, a deviation in `workflow.config.local.json` stays ineffective). The halt costs no work: it is a red run **before commit and push**, the already finished packages stay committed locally, and the version bump of `/push-main` stays in place idempotently — after the rework the same batch continues. **Without naming there is neither measurement nor mark nor halt.**
 
-**The completion of a work package does not have to carry every check.** Besides assignment (`areas`/`always`), point in time (`stage`) and quality measurement (`quality`), `notAtCompletion` stands as a fourth axis on an entry: it says **why** a check does not have to carry the completion of a single card — `interplay`, because it checks the interplay of several parts, or `fullTestSet`, because it only gains its finding from the complete test set. It only takes effect **in the run with `--finish <card number>`**, which the implement skills run at the completion of exactly one card, and only at the stage `package`; if the entry names in `completionAreas` an area the package touches directly, it runs at completion as well. **Postponed, not waived:** every check left out in this way runs **before publishing** in `/push-main` — there the run unchanged covers the full scope, and in the report of the completion run it stands as an omission with its reason. **Without `--finish` every run covers today's scope** — `/local-check`, the commit gate, the post-check of the night runner; whoever does not set the axis notices nothing of it either. If the run before publishing halts, it names on its own the cards whose change the red check touches; the repair is a **new card** — the named card does not wander back out of "In review".
-**The full run before `push main` takes place locally, unless the project moves it to its build service with `pushCheck`** — then `/push-main` first pushes to a check branch and to `mainBranch` only when the build service reports green; the obligation is the same in both places. If the project has set up the protection, the code host rejects unchecked states on `mainBranch`; only the owner gets past the protection via `/push-main notfall` (emergency), after a green full local run. **The push stage runs at `push main` or in the preparation of the night for exactly the commit `push main` takes over unchanged; if the project runs it in the build service, it always runs at `push main` on the check branch.** No commit without green evidence, no takeover of a red or changed state: `push main` only takes over a preparation of the night (`.claude/push-vorbereitung.json`) with the result green or green with an open check, and only as long as `mainBranch`, `origin/<mainBranch>` and the prepared commit stand unchanged; otherwise it checks completely as without a preparation. What stayed open at night, `push main` catches up on. **A red check is repeated once — only where its result decides:** if the run runs with `--finish <card number>` (completion of a work package) or with `--retry` (check before `push main` and `merge production`), `checks.mjs` repeats every red check exactly once on the same state, only this one and not the whole run; green afterwards stands as a `Flaky:` line in the report. During the implementation, in `/local-check`, in the commit gate and in the build service there is never a repetition.
+**The completion of a work package does not have to carry every check.** Besides assignment (`areas`/`always`), point in time (`stage`) and quality measurement (`quality`), `notAtCompletion` stands as a fourth axis on an entry: it says **why** a check does not have to carry the completion of a single card — `interplay`, because it checks the interplay of several parts, or `fullTestSet`, because it only gains its finding from the complete test set. It only takes effect **in the run with `--finish <card number>`**, which the implement skills run at the completion of exactly one card, and only at the stage `package`; if the entry names in `completionAreas` an area the package touches directly, it runs at completion as well. **Postponed, not waived:** every check left out in this way runs **before publishing** in `/push-main` — there the run unchanged covers the full scope, and in the report of the completion run it stands as an omission with its reason. **Without `--finish` every run covers today's scope** — a check run by hand, the commit gate, the post-check of the night runner; whoever does not set the axis notices nothing of it either. If the run before publishing halts, it names on its own the cards whose change the red check touches; the repair is a **new card** — the named card does not wander back out of "In review".
+**The full run before `push main` takes place locally, unless the project moves it to its build service with `pushCheck`** — then `/push-main` first pushes to a check branch and to `mainBranch` only when the build service reports green; the obligation is the same in both places. If the project has set up the protection, the code host rejects unchecked states on `mainBranch`; only the owner gets past the protection via `/push-main notfall` (emergency), after a green full local run. **The push stage runs at `push main` or in the preparation of the night for exactly the commit `push main` takes over unchanged; if the project runs it in the build service, it always runs at `push main` on the check branch.** No commit without green evidence, no takeover of a red or changed state: `push main` only takes over a preparation of the night (`.claude/push-vorbereitung.json`) with the result green or green with an open check, and only as long as `mainBranch`, `origin/<mainBranch>` and the prepared commit stand unchanged; otherwise it checks completely as without a preparation. What stayed open at night, `push main` catches up on. **A red check is repeated once — only where its result decides:** if the run runs with `--finish <card number>` (completion of a work package) or with `--retry` (check before `push main` and `merge production`), `checks.mjs` repeats every red check exactly once on the same state, only this one and not the whole run; green afterwards stands as a `Flaky:` line in the report. During the implementation, in a check run by hand, in the commit gate and in the build service there is never a repetition. If a run of the package stage is red and `formatFixCommand` is set, `checks.mjs run` runs the fix once and a second pass; that is not a repetition in the sense of `--retry`.
 
 ---
 
@@ -459,9 +458,9 @@ GO (move an issue to Ready), push (`push main`), merge (`merge production`). A t
 No force push to `mainBranch` or `productionBranch` without an explicit individual instruction; hooks are not bypassed with `--no-verify` without an explicit individual instruction; `productionBranch` is never pushed directly. Place: "Git workflow (strictly binding)".
 
 ### W3 — Red mandatory checks block the push mechanically `[Urteil]`
-<!-- de: 49f0fc6e008f -->
+<!-- de: 830d6366e412 -->
 
-All **affected** `buildChecks` of the **due stage** run green before pushing; untouched areas are left out with evidence, and a check that cannot be run locally is noted in the completion report, not concealed. The mechanics stay unchanged and hard, only their scope depends on the point in time: **No mandatory check drops out of the overall process**: every check of every stage runs **once** before the release — package and push stage at `push main` or in the preparation of the night for exactly the commit `push main` takes over unchanged; if the project runs them in the build service, they always run at `push main` on the check branch; the merge stage runs at `merge production`. No commit without green evidence, no takeover of a red or changed state. A check that was first red and then green in the single repetition has passed; red and red blocks. A proposal that turns a check into a recommendation or lowers a threshold lifts the mechanics. **A quality measurement below its mark is a case of exactly these mechanics**: a red mandatory check that blocks like every other — **no fourth stop point**, no decision place of its own, and lowering the mark is the lowering of a threshold from the sentence before. Place: "Mandatory checks before push (step 6)".
+All **affected** `buildChecks` of the **due stage** run green before pushing; untouched areas are left out with evidence, and a check that cannot be run locally is noted in the completion report, not concealed. The mechanics stay unchanged and hard, only their scope depends on the point in time: **No mandatory check drops out of the overall process**: every check of every stage runs **once** before the release — package and push stage at `push main` or in the preparation of the night for exactly the commit `push main` takes over unchanged; if the project runs them in the build service, they always run at `push main` on the check branch; the merge stage runs at `merge production`. No commit without green evidence, no takeover of a red or changed state. A check that was first red and then green in the single repetition has passed; red and red blocks. A proposal that turns a check into a recommendation or lowers a threshold lifts the mechanics. **A quality measurement below its mark is a case of exactly these mechanics**: a red mandatory check that blocks like every other — **no fourth stop point**, no decision place of its own, and lowering the mark is the lowering of a threshold from the sentence before. Place: "Mandatory checks before push".
 
 ### W4 — The order of priorities in conflicts of goals `[Urteil]`
 <!-- de: d768008dde2b -->

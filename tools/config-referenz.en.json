@@ -144,12 +144,12 @@
     "text": "Command that sets up the project's dependencies in the project directory (e.g. 'npm ci', 'uv sync', 'mvn -q dependency:go-offline'). 'worktree.mjs create' runs it in the fresh worktree after creating it — the worktree carries only what is versioned and has no node_modules, .venv or vendor/, and a mandatory check that fails because of this silently delivers a wrong measurement. If it ends with an error, the worktree is torn down again. Empty string or missing field = no installation; the caller is then responsible for it. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "mainBranch": {
-    "de": "bf39b60c7515",
-    "text": "Branch for local commits and push (step 8). Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "d11c28453eb8",
+    "text": "Branch for local commits and push (step 7). Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "productionBranch": {
-    "de": "a9d932173d83",
-    "text": "Target branch for the PR in step 9 (merge production). Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "de252f16b490",
+    "text": "Target branch for the PR in step 8 (merge production). Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "pushPruefung": {
     "de": "d3a632f42a32",
@@ -188,12 +188,12 @@
     "text": "Phrase for the GO to implement."
   },
   "triggers.push": {
-    "de": "7ab41adcb01e",
-    "text": "Phrase for the push to mainBranch (step 8)."
+    "de": "1e756c4dd93a",
+    "text": "Phrase for the push to mainBranch (step 7)."
   },
   "triggers.merge": {
-    "de": "c27b24848c68",
-    "text": "Phrase for the PR to productionBranch (step 9)."
+    "de": "491b36a4a97c",
+    "text": "Phrase for the PR to productionBranch (step 8)."
   },
   "local": {
     "de": "b23f55cd132f",

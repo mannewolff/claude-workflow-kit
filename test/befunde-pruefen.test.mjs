@@ -328,7 +328,7 @@ test("[befunde-1182] nur der Fund vor dem ersten gueltigen Kopf ist ohne Reviewe
 });
 
 test("[befunde-1182] ein Code-Review ohne Reviewer-Kopf wird nicht beanstandet", () => {
-  const text = ["## Code-Review (Schritt 7)", "", VOLLSTAENDIG].join("\n");
+  const text = ["## Code-Review (Schritt 6)", "", VOLLSTAENDIG].join("\n");
   pruefe(text, (res, json) => {
     assert.deepEqual(json.eintraege, []);
   });
@@ -365,9 +365,13 @@ test("[befunde-1382] mit mindestens einem Reviewer-Kopf fehlt keine-pruefer", ()
 });
 
 test("[befunde-1382] ein Code-Review meldet nie keine-pruefer", () => {
-  pruefe(["## Code-Review (Schritt 7)", "", VOLLSTAENDIG].join("\n"), (res, json) => {
+  pruefe(["## Code-Review (Schritt 6)", "", VOLLSTAENDIG].join("\n"), (res, json) => {
     assert.deepEqual(json.meldungen, []);
   });
+  pruefe("## Code-Review (Schritt 6)\n\nKeine Funde.\n", (res, json) => {
+    assert.deepEqual(json.meldungen, []);
+  });
+  // Der alte Kopf aus der Zeit mit neun Schritten (Issue #1676).
   pruefe("## Code-Review (Schritt 7)\n\nKeine Funde.\n", (res, json) => {
     assert.deepEqual(json.meldungen, []);
   });

@@ -1,11 +1,11 @@
 ---
 name: issues
-description: Step 3 of the 9-step process: turns an approved plan into small GitHub issues in the four-section format. Use this skill when the user invokes /issues, wants to create issues from a plan, or starts step 3 of the process.
+description: Step 3 of the 8-step process: turns an approved plan into small GitHub issues in the four-section format. Use this skill when the user invokes /issues, wants to create issues from a plan, or starts step 3 of the process.
 user-invocable: true
 ---
 
 # Issues
-Schritt 3 des 9-Schritt-Prozesses: Der freigegebene Plan wird in ein oder mehrere Issues überführt. Das Issue ist ab jetzt die Quelle der Wahrheit, nicht der Chat.
+Schritt 3 des 8-Schritt-Prozesses: Der freigegebene Plan wird in ein oder mehrere Issues überführt. Das Issue ist ab jetzt die Quelle der Wahrheit, nicht der Chat.
 
 **Feste Zeilen.** Überschriften, Marker, Review- und Einarbeitungs-Köpfe und Fundblock-Zeilen, die dieser Skill in Dokumente, Kommentare oder Markerzeilen schreibt, stehen hier deutsch. Vor dem ersten Schreiben `node .claude/kit/board.mjs names` aufrufen: Das Feld `lines` nennt je deutscher Zeile die Fassung der Projektsprache, und der Skill schreibt die ausgegebene Fassung. Eine Zeile mit veränderlichem Rest (`## Einarbeitung, Runde 2`) steht dort mit ihrem festen Anfang, eine Überschrift mit `## ` davor gilt auf jeder Ebene, und was `names` nicht nennt, bleibt, wie es hier steht.
 

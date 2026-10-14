@@ -1,11 +1,11 @@
 ---
 name: techplan
-description: Step 2 of the 9-step process: creates an implementation plan, puts it up for discussion, and implements nothing. Use this skill when the user invokes /techplan, wants to create a plan, or starts step 2 of the process.
+description: Step 2 of the 8-step process: creates an implementation plan, puts it up for discussion, and implements nothing. Use this skill when the user invokes /techplan, wants to create a plan, or starts step 2 of the process.
 user-invocable: true
 ---
 
 # Plan
-Schritt 2 des 9-Schritt-Prozesses: Die KI erstellt einen Plan. Der Plan wird zur Diskussion gestellt, nicht zur Implementierung.
+Schritt 2 des 8-Schritt-Prozesses: Die KI erstellt einen Plan. Der Plan wird zur Diskussion gestellt, nicht zur Implementierung.
 
 ## Im Nachtbetrieb
 Erkennungsmerkmal ist **gesetztes `KIT_AGENT_MODEL`** und ausdrücklich kein zweites Signal — dieselbe Bedingung wie im Abschnitt „Im Nachtbetrieb" von `/issue-review`. Der Nacht-Runner stellt dem Auftrag zwar einen Satz voran, der die Betriebsart benennt. **Maßgeblich bleibt allein `KIT_AGENT_MODEL`; der Hinweis im Prompt wiederholt es nur** — sein Fehlen ist keine Entwarnung.

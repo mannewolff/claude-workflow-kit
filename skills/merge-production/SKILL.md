@@ -1,13 +1,13 @@
 ---
 name: merge-production
-description: Step 9 of the 9-step process: creates a PR from main to production. Only on the explicit trigger phrase of the human. Use this skill ONLY when the user explicitly types "merge production".
+description: Step 8 of the 8-step process: creates a PR from main to production. Only on the explicit trigger phrase of the human. Use this skill ONLY when the user explicitly types "merge production".
 user-invocable: true
 disable-model-invocation: true
 ---
 
 # Merge Production
 
-Schritt 9 des 9-Schritt-Prozesses: Einen Pull Request von `mainBranch` nach `productionBranch` erstellen. Der Merge selbst ist Mannes Aufgabe.
+Schritt 8 des 8-Schritt-Prozesses: Einen Pull Request von `mainBranch` nach `productionBranch` erstellen. Der Merge selbst ist Mannes Aufgabe.
 
 **Dieser Skill darf von Claude nicht autonom gezogen werden.** Er läuft nur auf die explizite Trigger-Phrase des Menschen.
 

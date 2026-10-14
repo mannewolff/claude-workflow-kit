@@ -69,7 +69,7 @@ const MARKER_PAARE = [
   ["Angaben: unvollstaendig", "Details: incomplete"],
   ["## Abschlussbericht Issue #", "## Completion report issue #"],
   ["### Tests geschrieben (rot) — Issue #", "### Tests written (red) — issue #"],
-  ["## Code-Review (Schritt 7)", "## Code review (step 7)"],
+  ["## Code-Review (Schritt 6)", "## Code review (step 6)"],
   ["### Reviewer", "### Reviewer"],
   ["Suchbegriffe:", "Search terms:"],
   ["Dateien:", "Files:"],
@@ -243,4 +243,11 @@ test("pruefeParitaet meldet eine fehlende Sprache und Werte, die kein Text sind"
 test("haltFolgesatz: der alte Wortlaut mit /fachplan wird weiter erkannt (Issue #1552, E15)", () => {
   assert.equal(erkenneMarker("Daraus soll per /fachplan eine fachliche Anforderung entstehen."), "haltFolgesatz");
   assert.equal(markerName("haltFolgesatz", "de"), "Daraus soll per /requirement eine fachliche Anforderung entstehen.");
+});
+
+test("codeReview: der alte Kopf mit Schritt 7 wird weiter erkannt (Issue #1676, Plan #1671 E11)", () => {
+  assert.equal(erkenneMarker("## Code-Review (Schritt 7)"), "codeReview");
+  assert.equal(erkenneMarker("## Code review (step 7)"), "codeReview");
+  assert.equal(markerName("codeReview", "de"), "## Code-Review (Schritt 6)");
+  assert.equal(markerName("codeReview", "en"), "## Code review (step 6)");
 });

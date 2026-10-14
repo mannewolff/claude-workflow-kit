@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
+const VORLAGE_EN = readFileSync(join(repoRoot, "en", "templates", "CLAUDE-workflow.md"), "utf-8");
 
 // Die Grenze wandert nur mit einer beschlossenen Regel mit, nicht mit Zuwachs nebenbei:
 // Wer sie anhebt, fasst diesen Test an und begruendet es. Zuletzt +14 fuer den Abschnitt
@@ -114,11 +115,25 @@ test("die bleibenden Abschnitte stehen je einmal", () => {
   }
 });
 
-test("Schritt 7 nennt reviewCommand statt eines festen Modells", () => {
-  const zeile = VORLAGE.split("\n").find((z) => z.startsWith("| 7. Code-Review"));
-  assert.ok(zeile, "die Zeile zu Schritt 7 fehlt");
+test("Schritt 6 nennt reviewCommand statt eines festen Modells", () => {
+  const zeile = VORLAGE.split("\n").find((z) => z.startsWith("| 6. Code-Review"));
+  assert.ok(zeile, "die Zeile zu Schritt 6 fehlt");
   assert.match(zeile, /reviewCommand/);
 });
+
+// Ohne die lokale Pruefung hat der Prozess acht fortlaufende Schritte (Issue #1676, Plan #1671 E11).
+for (const [sprache, text, kopf, alt] of [
+  ["de", VORLAGE, "## Die acht Schritte", /Lokale Pruefung|local-check/],
+  ["en", VORLAGE_EN, "## The eight steps", /Local check|local-check/],
+]) {
+  test(`die Schritt-Tabelle (${sprache}) zaehlt 1 bis 8 ohne lokale Pruefung`, () => {
+    const a = text.indexOf(`\n${kopf}\n`);
+    assert.ok(a >= 0, `${kopf} fehlt`);
+    const zeilen = text.slice(a + 1).split(/\n## /)[0].split("\n").filter((z) => /^\| \d+\. /.test(z));
+    assert.deepEqual(zeilen.map((z) => Number(z.match(/^\| (\d+)\./)[1])), [1, 2, 3, 4, 5, 6, 7, 8]);
+    for (const z of zeilen) assert.doesNotMatch(z, alt, z);
+  });
+}
 
 test("der Transport-Abschnitt traegt seine Belege und keinen Logdatei-Verweis", () => {
   const a = VORLAGE.indexOf("## Lange Texte ans Board");

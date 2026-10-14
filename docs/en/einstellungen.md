@@ -67,9 +67,9 @@ _This section is generated from `templates/workflow.config.schema.json` by `node
 
 - `installCommand` — Command that sets up the project's dependencies in the project directory (e.g. 'npm ci', 'uv sync', 'mvn -q dependency:go-offline'). Default: empty.
 
-- `mainBranch` — Branch for local commits and push (step 8). Default: `main`.
+- `mainBranch` — Branch for local commits and push (step 7). Default: `main`.
 
-- `productionBranch` — Target branch for the PR in step 9 (merge production). Default: `production`.
+- `productionBranch` — Target branch for the PR in step 8 (merge production). Default: `production`.
 
 - `pushCheck` — Where the full check run before 'push main' takes place. Valid: `lokal`. Default: `lokal`.
 - `pushCheck.location` — The place of the full run: the project's build service. Valid: `buildDienst`. No default.
@@ -85,8 +85,8 @@ _This section is generated from `templates/workflow.config.schema.json` by `node
 
 - `triggers` — Trigger phrases for the three human stop points. Default: the values of the fields below.
 - `triggers.go` — Phrase for the GO to implement. Default: `GO`.
-- `triggers.push` — Phrase for the push to mainBranch (step 8). Default: `push main`.
-- `triggers.merge` — Phrase for the PR to productionBranch (step 9). Default: `merge production`.
+- `triggers.push` — Phrase for the push to mainBranch (step 7). Default: `push main`.
+- `triggers.merge` — Phrase for the PR to productionBranch (step 8). Default: `merge production`.
 
 - `local` — Settings for the local issue tracker (issueTracker: 'local'). Default: the values of the fields below.
 - `local.issuesDir` — Directory of the issue Markdown files, relative to the project root. Default: `issues`.

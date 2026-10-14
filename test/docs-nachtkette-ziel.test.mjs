@@ -75,7 +75,7 @@ const NACHT_ANGABEN = [
   ["die feste Stelle .claude/push-vorbereitung.json", /`\.claude\/push-vorbereitung\.json`/],
 ].map(([name, muster]) => [name, englisch(muster)]);
 
-const PFLICHT_VORLAGE = abschnitt(VORLAGE, "## Pflichtchecks vor Push (Schritt 6)");
+const PFLICHT_VORLAGE = abschnitt(VORLAGE, "## Pflichtchecks vor Push");
 const W3_VORLAGE = abschnitt(VORLAGE, "### W3 — Rote Pflichtchecks blockieren den Push mechanisch `[Urteil]`");
 const W1_VORLAGE = abschnitt(VORLAGE, "### W1 — Die drei Stop-Punkte bleiben menschlich `[Urteil]`");
 const STOP_VORLAGE = abschnitt(VORLAGE, "## Die drei Stop-Punkte (nie automatisiert)");

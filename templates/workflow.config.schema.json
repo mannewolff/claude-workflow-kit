@@ -315,13 +315,13 @@
     "mainBranch": {
       "type": "string",
       "minLength": 1,
-      "description": "Branch für lokale Commits und Push (Schritt 8). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Branch für lokale Commits und Push (Schritt 7). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": "main"
     },
     "productionBranch": {
       "type": "string",
       "minLength": 1,
-      "description": "Ziel-Branch für den PR in Schritt 9 (merge production). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Ziel-Branch für den PR in Schritt 8 (merge production). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": "production"
     },
     "pushPruefung": {
@@ -396,13 +396,13 @@
         "push": {
           "type": "string",
           "minLength": 1,
-          "description": "Phrase für Push auf mainBranch (Schritt 8).",
+          "description": "Phrase für Push auf mainBranch (Schritt 7).",
           "default": "push main"
         },
         "merge": {
           "type": "string",
           "minLength": 1,
-          "description": "Phrase für PR nach productionBranch (Schritt 9).",
+          "description": "Phrase für PR nach productionBranch (Schritt 8).",
           "default": "merge production"
         }
       },

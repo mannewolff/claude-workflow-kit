@@ -138,7 +138,7 @@ test("jede Zeile traegt Vorgabe oder 'Keine Vorgabe' und nur den ersten Satz", (
   const zeilen = erzeugt(doku).split("\n").filter((z) => z.startsWith("- `"));
   assert.ok(zeilen.length >= 154, `nur ${zeilen.length} Zeilen`);
   for (const zeile of zeilen) assert.match(zeile, /(Vorgabe: \S.*|Keine Vorgabe)\.$/, zeile);
-  assert.equal(zeileVon(doku, "mainBranch"), "- `mainBranch` — Branch für lokale Commits und Push (Schritt 8). Vorgabe: `main`.");
+  assert.equal(zeileVon(doku, "mainBranch"), "- `mainBranch` — Branch für lokale Commits und Push (Schritt 7). Vorgabe: `main`.");
   assert.equal(zeileVon(doku, "codeHost"), "- `codeHost` — Wo der Code liegt (Push, Pull Requests). Gültig: `github`, `gitlab`, `local`. Vorgabe: `github`.");
 });
 
@@ -338,7 +338,7 @@ test("[1356] die englische Ausgabe traegt englischen Rahmentext, kein 'gültig' 
     assert.doesNotMatch(abschnitt, /gültig/);
     assert.doesNotMatch(abschnitt, /Dieser Abschnitt entsteht/);
     // Nur der englische Pfad, in beiden Fassungen (Plan #1652, E13).
-    assert.match(abschnitt, /^- `mainBranch` — Branch for local commits and push \(step 8\)\. Default: `main`\.$/m);
+    assert.match(abschnitt, /^- `mainBranch` — Branch for local commits and push \(step 7\)\. Default: `main`\.$/m);
     assert.match(abschnitt, /^- `night\.chain\.planMin` — /m);
     assert.doesNotMatch(abschnitt, /German:/);
   });
@@ -351,7 +351,7 @@ test("[1356] geschrieben wird nur zwischen den Markern der englischen Datei, die
     const text = readFileSync(join(dir, "docs", "en", SEITE), "utf-8");
     assert.ok(text.startsWith("# Settings\n\n## All settings\n\n<!-- einstellungen:start -->\n"));
     assert.ok(text.endsWith("<!-- einstellungen:ende -->\n\nTail.\n"));
-    assert.match(englischerAbschnitt(dir), /Branch for local commits and push \(step 8\)\./);
+    assert.match(englischerAbschnitt(dir), /Branch for local commits and push \(step 7\)\./);
     assert.equal(readFileSync(join(dir, "docs", SEITE), "utf-8"), de);
     const erst = text;
     assert.equal(lauf([], dir).status, 0);

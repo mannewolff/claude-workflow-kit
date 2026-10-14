@@ -65,9 +65,9 @@ _Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node
 
 - `installCommand` — Kommando, das die Abhängigkeiten des Projekts im Projektverzeichnis herstellt (z.B. 'npm ci', 'uv sync', 'mvn -q dependency:go-offline'). Vorgabe: leer.
 
-- `mainBranch` — Branch für lokale Commits und Push (Schritt 8). Vorgabe: `main`.
+- `mainBranch` — Branch für lokale Commits und Push (Schritt 7). Vorgabe: `main`.
 
-- `productionBranch` — Ziel-Branch für den PR in Schritt 9 (merge production). Vorgabe: `production`.
+- `productionBranch` — Ziel-Branch für den PR in Schritt 8 (merge production). Vorgabe: `production`.
 
 - `pushCheck` — Wo der volle Prüflauf vor 'push main' stattfindet. Gültig: `lokal`. Vorgabe: `lokal`.
 - `pushCheck.location` — Der Ort des vollen Laufs: der Build-Dienst des Projekts. Gültig: `buildDienst`. Keine Vorgabe.
@@ -83,8 +83,8 @@ _Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node
 
 - `triggers` — Trigger-Phrasen für die drei menschlichen Stop-Punkte. Vorgabe: die Werte der Felder darunter.
 - `triggers.go` — Phrase für das GO zur Implementierung. Vorgabe: `GO`.
-- `triggers.push` — Phrase für Push auf mainBranch (Schritt 8). Vorgabe: `push main`.
-- `triggers.merge` — Phrase für PR nach productionBranch (Schritt 9). Vorgabe: `merge production`.
+- `triggers.push` — Phrase für Push auf mainBranch (Schritt 7). Vorgabe: `push main`.
+- `triggers.merge` — Phrase für PR nach productionBranch (Schritt 8). Vorgabe: `merge production`.
 
 - `local` — Einstellungen für den lokalen Issue-Tracker (issueTracker: 'local'). Vorgabe: die Werte der Felder darunter.
 - `local.issuesDir` — Verzeichnis der Issue-Markdown-Dateien, relativ zum Projekt-Root. Vorgabe: `issues`.
