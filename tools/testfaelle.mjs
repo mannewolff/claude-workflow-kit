@@ -3,7 +3,7 @@
  * testfaelle.mjs — haelt die Testfaelle einer Pruefgruppe fest und vergleicht zwei Staende
  * (Issue #1690, Plan #1685, E5; Kriterium 2 des Fachplans #1603: es wird nicht weniger geprueft).
  *
- *   node tools/testfaelle.mjs list <glob…>
+ *   node tools/testfaelle.mjs list [--timeout-s <n>] <glob…>
  *   node tools/testfaelle.mjs compare <vorher.json> <nachher.json>
  *
  * LIST: Jede Datei, die ein Muster trifft, faehrt einzeln mit `node --test
@@ -15,7 +15,9 @@
  * gezaehlt — ein grober Zeiger, denn TAP kennt keine Zusicherungen; die Pruefbedingungen
  * selbst liest das Code-Review. Exit 1, wenn ein Muster nichts trifft, eine Datei keinen Test
  * nennt oder ein Test rot ist: Eine solche Liste taugt nicht als Vergleichsstand. Sie wird
- * trotzdem geschrieben.
+ * trotzdem geschrieben. Je Datei steht auf stderr eine Fortschrittszeile mit Zaehler, danach
+ * ihre Laufzeit (Issue #1709). Eine Datei, die ihre Zeitgrenze (Vorgabe 300 s) ueberschreitet,
+ * wird beendet und steht als Problem in der Ausgabe; der Lauf geht mit der naechsten weiter.
  *
  * COMPARE: Nennt jede Abweichung — ein fehlender oder neuer Test, ein neu uebersprungener,
  * neu offener oder roter, eine Datei mit weniger `assert.`-Aufrufstellen — und endet bei
@@ -36,9 +38,11 @@ import { vergleicheText } from "../kit/night/grundlagen.mjs";
 export const HILFE = `testfaelle.mjs — Testfaelle einer Pruefgruppe festhalten und vergleichen (Issue #1690)
 
 Aufruf:
-  node tools/testfaelle.mjs list <glob…>
+  node tools/testfaelle.mjs list [--timeout-s <n>] <glob…>
       Faehrt jede getroffene Datei mit --test-reporter=tap und schreibt die Liste nach
-      <tmpdir>/testfaelle-<stempel>.json; nennt den Pfad.
+      <tmpdir>/testfaelle-<stempel>.json; nennt den Pfad. Fortschritt je Datei auf stderr.
+      --timeout-s <n>  Zeitgrenze je Datei in Sekunden (Vorgabe 300); eine Datei darueber
+                       wird beendet, steht als Problem in der Ausgabe und ergibt Exit 1.
   node tools/testfaelle.mjs compare <vorher.json> <nachher.json>
       Nennt jede Abweichung; Exit 1 bei einer, Exit 0 bei gleichen Listen.`;
 
@@ -110,9 +114,12 @@ function stempelVon(ms) {
   return `${new Date(ms).toISOString().replaceAll(/\D/g, "").slice(0, 14)}-${process.pid}`;
 }
 
+export const ZEITGRENZE_MS = 300_000;
+
 /**
  * Faehrt `list`. `abh`: `{ wurzel, ablage, jetzt, dateienZu(muster), starter({ datei, cmd, cwd,
- * env }), ausgabe }`. Liefert `{ exitCode, pfad? }`.
+ * env, zeitgrenzeMs }), ausgabe, fortschritt?, zeitgrenzeMs? }`. Der Starter meldet eine
+ * ueberschrittene Zeitgrenze mit `zeitUeberschritten: true`. Liefert `{ exitCode, pfad? }`.
  */
 export async function liste(muster, abh) {
   const dateien = [...new Set(abh.dateienZu(muster))].sort(vergleicheText);
@@ -125,15 +132,23 @@ export async function liste(muster, abh) {
   const probleme = [];
   const tests = [];
   const proDatei = [];
-  for (const datei of dateien) {
-    const { ausgabe } = await abh.starter({
+  const fortschritt = abh.fortschritt ?? (() => {});
+  const zeitgrenzeMs = abh.zeitgrenzeMs ?? ZEITGRENZE_MS;
+  for (const [i, datei] of dateien.entries()) {
+    const zaehler = `testfaelle: [${i + 1}/${dateien.length}] ${datei}`;
+    fortschritt(zaehler);
+    const beginn = abh.jetzt();
+    const { ausgabe, zeitUeberschritten } = await abh.starter({
       datei,
       cmd: `node --test --test-reporter=tap ${JSON.stringify(datei)}`,
       cwd: abh.wurzel,
       env,
+      zeitgrenzeMs,
     });
+    fortschritt(`${zaehler} — ${((abh.jetzt() - beginn) / 1000).toFixed(1)} s`);
     const gelesen = tapLesen(ausgabe ?? "");
-    if (gelesen.tests.length === 0) probleme.push(`${datei}: nennt keinen Test`);
+    if (zeitUeberschritten) probleme.push(`${datei}: Zeitgrenze überschritten`);
+    else if (gelesen.tests.length === 0) probleme.push(`${datei}: nennt keinen Test`);
     for (const t of gelesen.tests) {
       if (t.ergebnis === "fehler") probleme.push(`${datei}: rot — ${t.name}`);
       tests.push({ datei, ...t });
@@ -232,19 +247,44 @@ export function vergleichen(vorherPfad, nachherPfad, { ausgabe }) {
 
 // --- Echte Abhaengigkeiten ----------------------------------------------------
 
-/** Ein Kommando ueber die Shell, ohne Zeitgrenze; nur stdout, dort steht das TAP. */
-function starter({ cwd, cmd, env }) {
+/**
+ * Ein Kommando ueber die Shell; nur stdout, dort steht das TAP. An der Zeitgrenze endet die
+ * ganze Prozessgruppe, sonst liefe der Node-Prozess hinter der Shell weiter.
+ */
+function starter({ cwd, cmd, env, zeitgrenzeMs }) {
   return new Promise((aufloesen) => {
-    const kind = spawn(cmd, { cwd, env, shell: true, stdio: ["ignore", "pipe", "inherit"] });
+    const kind = spawn(cmd, { cwd, env, shell: true, detached: true, stdio: ["ignore", "pipe", "inherit"] });
     const teile = [];
+    let zeitUeberschritten = false;
+    const wecker = setTimeout(() => {
+      zeitUeberschritten = true;
+      try {
+        process.kill(-kind.pid, "SIGKILL");
+      } catch {
+        kind.kill("SIGKILL");
+      }
+    }, zeitgrenzeMs);
     kind.stdout.on("data", (d) => teile.push(d));
     kind.on("error", (e) => teile.push(Buffer.from(String(e))));
-    kind.on("close", (code) => aufloesen({ code, ausgabe: Buffer.concat(teile).toString("utf-8") }));
+    kind.on("close", (code) => {
+      clearTimeout(wecker);
+      aufloesen({ code, ausgabe: Buffer.concat(teile).toString("utf-8"), zeitUeberschritten });
+    });
   });
 }
 
 async function main(argv) {
   const [befehl, ...rest] = argv;
+  let zeitgrenzeMs = ZEITGRENZE_MS;
+  if (befehl === "list" && rest[0] === "--timeout-s") {
+    const sekunden = Number(rest[1]);
+    if (!Number.isFinite(sekunden) || sekunden <= 0) {
+      console.error(`testfaelle: --timeout-s braucht eine Zahl über 0\n\n${HILFE}`);
+      return 2;
+    }
+    zeitgrenzeMs = sekunden * 1000;
+    rest.splice(0, 2);
+  }
   if (befehl === "list" && rest.length > 0) {
     const wurzel = process.cwd();
     const { exitCode } = await liste(rest, {
@@ -254,6 +294,8 @@ async function main(argv) {
       dateienZu: (muster) => muster.flatMap((m) => globSync(m, { cwd: wurzel })),
       starter,
       ausgabe: (z) => console.log(z),
+      fortschritt: (z) => console.error(z),
+      zeitgrenzeMs,
     });
     return exitCode;
   }

@@ -11,7 +11,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { assertStellen, liste, tapLesen, vergleich, vergleichen } from "../tools/testfaelle.mjs";
+import { assertStellen, HILFE, liste, tapLesen, vergleich, vergleichen } from "../tools/testfaelle.mjs";
 
 function tapDatei(zeilen, dauerMs) {
   return ["TAP version 13", ...zeilen, `# duration_ms ${dauerMs}`, ""].join("\n");
@@ -240,4 +240,59 @@ test("vergleich zaehlt gleichnamige Tests einer Datei einzeln", () => {
   const nachher = structuredClone(vorher);
   nachher.tests.pop();
   assert.equal(vergleich(vorher, nachher).length, 1);
+});
+
+test("list meldet vor jeder Datei eine Fortschrittszeile und danach ihre Laufzeit", async () => {
+  const a = aufbau({ "test/a.test.mjs": "", "test/b.test.mjs": "" });
+  const fortschritt = [];
+  a.abh.fortschritt = (z) => fortschritt.push(z);
+  try {
+    const { exitCode } = await liste(["test/*.test.mjs"], a.abh);
+    assert.equal(exitCode, 0);
+    assert.equal(fortschritt.length, 4);
+    assert.equal(fortschritt[0], "testfaelle: [1/2] test/a.test.mjs");
+    assert.match(fortschritt[1], /^testfaelle: \[1\/2\] test\/a\.test\.mjs — \d+(\.\d)? s$/);
+    assert.equal(fortschritt[2], "testfaelle: [2/2] test/b.test.mjs");
+    assert.ok(a.zeilen.every((z) => !z.includes("[1/2]")), "stdout bleibt unverändert");
+  } finally {
+    a.aufraeumen();
+  }
+});
+
+test("list bricht eine Datei an der Zeitgrenze ab, läuft weiter und endet mit Exit 1", async () => {
+  const a = aufbau({ "test/a.test.mjs": "assert.ok(1);\n", "test/b.test.mjs": "" });
+  a.abh.zeitgrenzeMs = 5000;
+  a.abh.fortschritt = () => {};
+  a.abh.starter = async (aufruf) => {
+    a.aufrufe.push(aufruf);
+    return aufruf.datei === "test/a.test.mjs"
+      ? { code: null, ausgabe: "TAP version 13\n", zeitUeberschritten: true }
+      : { code: 0, ausgabe: TAP_B };
+  };
+  try {
+    const { exitCode, pfad } = await liste(["test/*.test.mjs"], a.abh);
+    assert.equal(exitCode, 1);
+    assert.deepEqual(a.aufrufe.map((x) => [x.datei, x.zeitgrenzeMs]), [["test/a.test.mjs", 5000], ["test/b.test.mjs", 5000]]);
+    assert.ok(a.zeilen.includes("testfaelle: test/a.test.mjs: Zeitgrenze überschritten"));
+    assert.ok(!a.zeilen.some((z) => z.includes("keinen Test")));
+    const daten = JSON.parse(readFileSync(pfad, "utf-8"));
+    assert.deepEqual(daten.dateien.map((d) => Object.keys(d)), [["datei", "laufzeitMs", "assertStellen"], ["datei", "laufzeitMs", "assertStellen"]]);
+    assert.deepEqual(daten.tests.map((t) => t.name), ["allein"]);
+  } finally {
+    a.aufraeumen();
+  }
+});
+
+test("list setzt ohne Angabe eine Zeitgrenze von 300 s", async () => {
+  const a = aufbau({ "test/a.test.mjs": "", "test/b.test.mjs": "" });
+  try {
+    await liste(["test/*.test.mjs"], a.abh);
+    assert.ok(a.aufrufe.every((x) => x.zeitgrenzeMs === 300_000));
+  } finally {
+    a.aufraeumen();
+  }
+});
+
+test("die Hilfe nennt die Option --timeout-s", () => {
+  assert.match(HILFE, /--timeout-s <n>/);
 });
