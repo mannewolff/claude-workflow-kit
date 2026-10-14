@@ -104,7 +104,7 @@ test("[ziel-3] der Nachtbetrieb-Abschnitt der Vorlage beschreibt Ziel, Grenze un
 const KETTE_DOKU = abschnitt(DOKU, "### Zweiter Modus: die Nacht-Kette");
 const ZIEL_DOKU = abschnitt(KETTE_DOKU, "#### Wie weit eine Kette läuft: das Ziel");
 const LAUFSTAND_DOKU = abschnitt(DOKU, "### Der Laufstand");
-const PUSH_DOKU = abschnitt(DOKU, "### /push-main");
+const PUSH_DOKU = abschnitt(lies("docs", "prozess.md"), "### /push-main");
 
 // Die Saetze `Als Nächstes` stehen im Werkzeug (E5); die Tabelle nennt je Ziel einen davon.
 const ALS_NAECHSTES = {

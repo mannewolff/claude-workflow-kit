@@ -24,6 +24,7 @@ const TEXTE = {
   task: lies("skills", "task", "SKILL.md"),
   vorlage: lies("templates", "CLAUDE-workflow.md"),
   doku: lies("docs", "dokumentation.md"),
+  prozess: lies("docs", "prozess.md"),
 };
 
 /** Der Absatz, der die `hinweise` beim Schreiben behandelt — genau einer je Skill. */
@@ -47,7 +48,7 @@ function skillFehlt(text) {
   return SKILL_ANGABEN.filter(([, re]) => !re.test(absaetze[0])).map(([name]) => name);
 }
 
-// Vorlage und Dokumentation: die Konvention samt allem, was die Pakete sichtbar machen.
+// Vorlage und Prozessseite: die Konvention samt allem, was die Pakete sichtbar machen.
 const UE = "(?:ä|ae)";
 const KONVENTION_ANGABEN = [
   ["jede lokale #N zaehlt", new RegExp(`[Jj]ede lokale \`#N\` im Abschnitt z${UE}hlt`)],
@@ -101,7 +102,7 @@ for (const name of ["issues", "task"]) {
   });
 }
 
-for (const name of ["vorlage", "doku"]) {
+for (const name of ["vorlage", "prozess"]) {
   test(`${name} nennt die Konvention, Verweiszeile, Kreis-Befund und Dokument-Hinweis`, () => {
     assert.deepEqual(konventionFehlt(TEXTE[name]), []);
   });

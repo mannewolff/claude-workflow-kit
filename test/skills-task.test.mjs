@@ -27,6 +27,7 @@ const lies = (...teile) => readFileSync(join(repoRoot, ...teile), "utf-8");
 const SKILL = lies("skills", "task", "SKILL.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
 const DOKU = lies("docs", "dokumentation.md");
+const PROZESS = lies("docs", "prozess.md");
 const ISSUE_REVIEW = lies("skills", "issue-review", "SKILL.md");
 
 /** Der Inhalt aller Codebloecke — dort stehen Aufrufe und der vorgeschriebene Body. */
@@ -340,7 +341,7 @@ test("[skills-7] die Praefix-Tabelle in /issue-review Schritt 1b kennt [Task]", 
 });
 
 test("[skills-7] beide Skill-Tabellen fuehren /task unter 'Ersetzt Schritt 2 und 3'", () => {
-  for (const [name, text] of [["templates/CLAUDE-workflow.md", VORLAGE], ["docs/dokumentation.md", DOKU]]) {
+  for (const [name, text] of [["templates/CLAUDE-workflow.md", VORLAGE], ["docs/prozess.md", PROZESS]]) {
     assert.match(
       text,
       /Ersetzt Schritt 2 und 3/,
@@ -361,7 +362,7 @@ test("[skills-7] /task steht nicht in der Tabelle 'Ergaenzen den Prozess'", () =
   // laese sich der `[Task]`-Weg als zusaetzlicher Schritt neben dem vollen.
   for (const [name, text, anker] of [
     ["templates/CLAUDE-workflow.md", VORLAGE, "**Ergaenzen den Prozess**"],
-    ["docs/dokumentation.md", DOKU, "**Ergänzen den Prozess**"],
+    ["docs/prozess.md", PROZESS, "**Ergänzen den Prozess**"],
   ]) {
     const i = text.indexOf(anker);
     assert.ok(i > 0, `${name}: der Anker '${anker}' fehlt`);

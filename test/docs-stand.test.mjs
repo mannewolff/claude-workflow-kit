@@ -16,7 +16,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DOCS = join(repoRoot, "docs");
 
 /** Die neu geschriebenen Seiten, je mit ihrem Wortbudget (A2). */
-const SEITEN = { einstellungen: 3600, quickstart: 500, lokal: 400, wsl2: 650, pruefbereiche: 600, glossar: 400, index: 100 };
+const SEITEN = { einstellungen: 3600, quickstart: 500, lokal: 400, wsl2: 650, pruefbereiche: 600, glossar: 400, index: 100, prozess: 5000 };
 
 /** Eingebaute Claude-Code-Kommandos, die die Doku nennt (E7). */
 const EINGEBAUT = new Set(["help"]);
@@ -159,4 +159,55 @@ test("Kriterium 7: jede Einstellung steht mit englischem Pfad und Vorgabe in doc
     const woerter = readFileSync(join(DOCS, `${seite}.md`), "utf-8").split(/\s+/).filter(Boolean).length;
     t.diagnostic(`${seite}: ${woerter} Wörter, Budget ${budget}`);
   }
+});
+
+/** Ein Abschnitt ab seiner Ueberschrift bis zur naechsten Ueberschrift derselben oder hoeheren Ebene, Codebloecke ausgenommen. */
+function abschnitt(text, ueberschrift) {
+  const ebene = ueberschrift.match(/^#+/)[0].length;
+  const zeilen = text.split("\n");
+  const start = zeilen.indexOf(ueberschrift);
+  if (start === -1) return null;
+  let imCode = false;
+  for (let i = start + 1; i < zeilen.length; i++) {
+    if (/^\s*(```|~~~)/.test(zeilen[i])) imCode = !imCode;
+    const kopf = /^(#{1,6}) /.exec(zeilen[i]);
+    if (!imCode && kopf && kopf[1].length <= ebene) return zeilen.slice(start + 1, i).join("\n");
+  }
+  return zeilen.slice(start + 1).join("\n");
+}
+
+const PROZESS = [
+  ["docs/prozess.md", /offenen Fragen/, /nach `\/issue-review`[^.]*vor `\/techplan`/],
+  ["docs/en/prozess.md", /open questions/, /after `\/issue-review`[^.]*before `\/techplan`/],
+];
+
+test("Szenario: Ein neuer Leser findet den Skill für offene Fragen", () => {
+  for (const [pfad, zweck, stelle] of PROZESS) {
+    const groom = abschnitt(readFileSync(join(repoRoot, pfad), "utf-8"), "### /groom");
+    assert.ok(groom, `${pfad}: die Überschrift /groom fehlt`);
+    assert.match(groom, zweck, `${pfad}: der Zweck von /groom fehlt`);
+    assert.match(groom, stelle, `${pfad}: die Stelle zwischen /issue-review und /techplan fehlt`);
+  }
+});
+
+test("Kriterium 1: jeder Skill hat in beiden Fassungen von prozess.md eine eigene Überschrift", () => {
+  const skills = readdirSync(join(repoRoot, "skills")).filter((n) => existsSync(join(repoRoot, "skills", n, "SKILL.md")));
+  assert.equal(skills.length, 18);
+  for (const [pfad] of PROZESS) {
+    const text = readFileSync(join(repoRoot, pfad), "utf-8");
+    for (const name of skills) {
+      assert.match(text, new RegExp(String.raw`^#{2,4} \/${maskiert(name)}$`, "m"), `${pfad}: keine Überschrift für /${name}`);
+    }
+  }
+});
+
+test("Kriterium 3: prozess.md beschreibt Szenarien mit Beispiel und den Vermerk „Keine“ unter /groom", () => {
+  const text = readFileSync(join(DOCS, "prozess.md"), "utf-8");
+  const szenarien = abschnitt(text, "### Szenarien im Fachplan");
+  assert.ok(szenarien, "der Abschnitt zu Szenarien fehlt");
+  for (const wort of ["Angenommen", "Wenn", "Dann", "Und"]) {
+    assert.match(szenarien, new RegExp(`\`${wort}\``), `das Schlüsselwort ${wort} fehlt`);
+  }
+  assert.match(szenarien, /```markdown\n## Szenarien\n\n### Szenario: [^\n]+\n- Angenommen [^\n]+\n(- [^\n]+\n)*- Wenn [^\n]+\n(- [^\n]+\n)*- Dann /, "das Beispiel fehlt");
+  assert.match(abschnitt(text, "### /groom"), /Vermerk „Keine“/, "der Vermerk „Keine“ fehlt unter /groom");
 });

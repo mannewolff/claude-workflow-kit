@@ -21,6 +21,7 @@ const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
 const DOKU = lies("docs", "dokumentation.md");
+const PROZESS = lies("docs", "prozess.md");
 
 /** Die Auslieferungsvorlage. Die Kopie unter .claude/ ist Installer-Ausgabe und
  *  nicht versioniert — in CI existiert sie nicht. */
@@ -94,7 +95,7 @@ test("alle drei Dokumente nennen den einen Einstieg fuer drei Stufen", () => {
 });
 
 test("die Skill-Tabellen weisen /issue-review als Drei-Stufen-Kommando aus", () => {
-  for (const [name, text] of [...beide, ["docs/dokumentation.md", DOKU]]) {
+  for (const [name, text] of [...beide, ["docs/prozess.md", PROZESS]]) {
     const zeile = text.split("\n").find((z) => /^\|\s*`\/issue-review`/.test(z));
     assert.ok(zeile, `${name}: keine Skill-Tabellenzeile fuer /issue-review`);
     assert.match(zeile, /drei Stufen/i, `${name}: die Tabellenzeile nennt die drei Stufen nicht`);

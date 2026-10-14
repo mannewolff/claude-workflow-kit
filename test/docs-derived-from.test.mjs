@@ -1,4 +1,4 @@
-// Doku zu `--derived-from` und die benannte Luecke (Issue #358).
+// Doku zu `--derived-from` und die benannte Luecke.
 //
 // Geprueft wird bewusst NICHT per Wortfund ueber die ganze Datei: `docs/dokumentation.md`
 // hat weit ueber tausend Zeilen, ein `assert.match(DOKU, /derived-from/)` waere schon
@@ -119,7 +119,7 @@ test("die Prozessdatei-Vorlage traegt eine Herkunfts-Konvention", () => {
     "die Vorlage sagt nicht, worauf der Verweis zeigt");
 });
 
-// --- Der Trockenlauf: derived-from-report (Issue #366) ---
+// --- Der Trockenlauf: derived-from-report ---
 
 const AUSWERTEN = () => abschnitt(DOKU, "\n#### Herkunft auswerten: derived-from-report\n");
 
@@ -136,7 +136,6 @@ test("die Doku sagt, dass nichts geschrieben wird, und warum", () => {
   assert.match(a, /schreibt nichts|nichts geschrieben|schreibt weder/i,
     "das Nicht-Schreiben ist nicht benannt");
   assert.match(a, /Schreibpfad/, "der fehlende Schreibpfad als Grund fehlt");
-  assert.match(a, /#355/, "der Verweis auf Idee #355 fehlt");
 });
 
 test("die Doku nennt beide Fundorte", () => {

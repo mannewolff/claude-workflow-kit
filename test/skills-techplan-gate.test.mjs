@@ -47,11 +47,11 @@ for (const [name, text] of SKILLS) {
   });
 }
 
-// Seit Issue #984 zaehlt das Gate vier Sorten: [Human] kam als Arbeitspaket hinzu, das
-// nur ein Mensch erledigen kann. Die Zaehlung bleibt gepruefte Zusicherung — eine Doku, die
-// drei nennt und vier aufzaehlt, laesst den Leser die fehlende selbst suchen.
-test("dokumentation: das Gate kennt vier Sorten, [Plan] und [Human] eingeschlossen", () => {
-  const doku = lies("docs", "dokumentation.md");
+// Das Gate zaehlt vier Sorten, [Human] ist ein Arbeitspaket, das nur ein Mensch erledigen
+// kann. Die Zaehlung ist gepruefte Zusicherung — eine Doku, die drei nennt und vier
+// aufzaehlt, laesst den Leser die fehlende selbst suchen.
+test("prozess: das Gate kennt vier Sorten, [Plan] und [Human] eingeschlossen", () => {
+  const doku = lies("docs", "prozess.md");
   for (const veraltet of [/Zwei Sorten/, /Drei Sorten/]) {
     assert.doesNotMatch(doku, veraltet, "die Zaehlung stimmt nicht mehr — es sind vier Sorten");
   }

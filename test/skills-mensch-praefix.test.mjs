@@ -20,7 +20,7 @@ const STELLEN = [
   "templates/CLAUDE-workflow.md",
   "skills/issues/SKILL.md",
   "skills/task/SKILL.md",
-  "docs/dokumentation.md",
+  "docs/prozess.md",
 ];
 
 function text(pfad) {
@@ -69,7 +69,7 @@ test("[skills-984] die erzeugenden Skills sagen, wann ein Paket `[Mensch]` traeg
 });
 
 test("[skills-984] die Doku fuehrt das vierte Gate in der Liste der uebersprungenen Karten", () => {
-  const doku = text("docs/dokumentation.md");
+  const doku = text("docs/prozess.md");
   const absaetze = doku.split(/\n\s*\n/);
   const treffer = absaetze.filter(
     (a) => /\[Requirement\]/.test(a) && /\[Idea\]/.test(a) && /\[Plan\]/.test(a) && /\[Human\]/.test(a),

@@ -22,7 +22,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
 const SKILL = lies("skills", "issues", "SKILL.md");
-const DOKU = lies("docs", "dokumentation.md");
+const DOKU = lies("docs", "prozess.md");
 
 /** Der gemeinsame Rueckverweis-Absatz — ab der Ueberschrift bis zur naechsten Leerzeile-Gruppe. */
 function rueckverweisAbschnitt() {

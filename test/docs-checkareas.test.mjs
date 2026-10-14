@@ -23,14 +23,15 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
 const DOKU = lies("docs", "dokumentation.md");
+const PROZESS = lies("docs", "prozess.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
 const README = lies("README.md");
 
-/** Ein `###`-Abschnitt der Doku, bis zur naechsten Ueberschrift gleicher oder hoeherer Ebene. */
-function dokuAbschnitt(ueberschrift) {
-  const idx = DOKU.indexOf(`### ${ueberschrift}`);
-  assert.ok(idx >= 0, `Abschnitt '### ${ueberschrift}' fehlt in docs/dokumentation.md`);
-  return DOKU.slice(idx).split(/\n#{2,3} /)[0];
+/** Ein `###`-Abschnitt eines Skills auf der Prozessseite, bis zur naechsten Ueberschrift gleicher oder hoeherer Ebene. */
+function skillAbschnitt(ueberschrift) {
+  const idx = PROZESS.indexOf(`### ${ueberschrift}\n`);
+  assert.ok(idx >= 0, `Abschnitt '### ${ueberschrift}' fehlt in docs/prozess.md`);
+  return PROZESS.slice(idx).split(/\n#{2,3} /)[0];
 }
 
 /** Der Doku-Abschnitt zu den bereichsbezogenen Pruefungen — ueber seine Ueberschrift gefunden. */
@@ -187,7 +188,7 @@ test("das Konfigurationskapitel behauptet nicht mehr den vollen Lauf", () => {
 });
 
 test("der /local-check-Abschnitt beschreibt die Auswahl statt des vollen Laufs", () => {
-  const abschnitt = dokuAbschnitt("/local-check");
+  const abschnitt = skillAbschnitt("/local-check");
   assert.doesNotMatch(abschnitt, /führt alle Kommandos aus `buildChecks` sequenziell aus/,
     "der Abschnitt behauptet weiterhin den vollen sequenziellen Lauf");
   assert.match(abschnitt, /checks\.mjs/, "der Abschnitt nennt das Kommando checks.mjs nicht");
@@ -195,8 +196,8 @@ test("der /local-check-Abschnitt beschreibt die Auswahl statt des vollen Laufs",
 });
 
 test("die implement-Abschnitte erwaehnen die Pruefung vor dem Commit", () => {
-  for (const ueberschrift of ["/implement-ready", "/implement-next", "/implement-test und /implement-done"]) {
-    const abschnitt = dokuAbschnitt(ueberschrift);
+  for (const ueberschrift of ["/implement-ready", "/implement-next", "/implement-done"]) {
+    const abschnitt = skillAbschnitt(ueberschrift);
     assert.match(abschnitt, /(Prüfung|Prüfungen|Checks)[\s\S]{0,120}vor dem Commit|vor dem Commit[\s\S]{0,120}(Prüfung|Prüfungen|Checks)/i,
       `'${ueberschrift}': die Pruefung vor dem Commit ist nicht erwaehnt`);
   }
