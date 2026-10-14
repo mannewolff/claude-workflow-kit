@@ -3,8 +3,16 @@ name: SonarQube Cloud
 # Statische Analyse (Bugs, Code Smells, Duplication, Security Hotspots) und
 # Coverage-Auswertung fuer die Node-Scripts des Kits (kit/, install.mjs, tools/). Den
 # Report erzeugt der Schritt "Coverage erzeugen" unten; zugeordnet wird er ueber
-# sonar.javascript.lcov.reportPaths in sonar-project.properties. Nur main als
-# Trigger: production hat zum Merge-Zeitpunkt denselben Inhalt wie main (Release-Flow ist
+# sonar.javascript.lcov.reportPaths in sonar-project.properties.
+#
+# Trigger sind main und der Pruefzweig kit-pruefung (Idee #1546, Issue #1578). Auf
+# kit-pruefung laeuft die Analyse parallel zum check-Job von blob-sync-check.yml, damit ein
+# rotes Quality Gate schon beim push main auffaellt und nicht erst beim merge production.
+# SonarCloud fuehrt kit-pruefung als kurzlebigen Zweig mit Ziel main: Der Name passt nicht
+# auf das Muster fuer langlebige Zweige ((branch|release)-.*), und "neuer Code" ist dort,
+# was gegenueber der letzten Analyse von main hinzukommt. Darum bleibt auch main Trigger:
+# Ohne dessen Analyse veraltete die Bezugslinie des kurzlebigen Zweigs. production ist kein
+# Trigger: Es hat zum Merge-Zeitpunkt denselben Inhalt wie main (Release-Flow ist
 # main -> production per PR-Merge, siehe RELEASING.md), ein zusaetzlicher Scan dort waere
 # nur eine redundante Zweitanalyse desselben Commits.
 #
@@ -15,7 +23,7 @@ name: SonarQube Cloud
 # Haken stand daneben und verstellte den Blick.
 on:
   push:
-    branches: [main]
+    branches: [main, kit-pruefung]
   workflow_dispatch:
 
 jobs:
@@ -52,14 +60,16 @@ jobs:
 
       # Auf Commit-SHA gepinnt statt beweglichem Tag (Supply-Chain-Haertung), derselbe Pin
       # wie im Vorbild kanban-kit (.github/workflows/sonarqube.yml, entspricht v8.2.0).
-      # sonar.branch.name=main explizit gesetzt statt dem Auto-Erkennen des Scanners
-      # ueberlassen: robust auch bei workflow_dispatch (kann von jedem Branch/Ref manuell
-      # gestartet werden). Die kostenlose SonarCloud-Stufe kennt ohnehin nur den main-Branch.
+      # Den Zweig erkennt der Scanner in GitHub Actions selbst (integrierte CI, siehe
+      # SonarCloud-Doku "Branch analysis setup"); ein workflow_dispatch analysiert darum den
+      # Zweig, von dem er gestartet wurde. Fuer kit-pruefung steht das Ziel main zusaetzlich
+      # ausdruecklich da, damit der kurzlebige Zweig sicher gegen main misst und nicht von
+      # der Erkennung abhaengt (Issue #1578); auf main bleibt der Parameter leer.
       - name: SonarQube-Scan
         uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
         with:
           args: >
-            -Dsonar.branch.name=main
+            ${{ github.ref_name == 'kit-pruefung' && '-Dsonar.branch.target=main' || '' }}
             -Dsonar.qualitygate.wait=true
             -Dsonar.qualitygate.timeout=300
         env:

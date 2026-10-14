@@ -1,4 +1,4 @@
-// Tests fuer die Trigger der CI-Workflows (Issue #891, #1274, #1411, #1414).
+// Tests fuer die Trigger der CI-Workflows (Issue #891, #1274, #1411, #1414, #1578).
 //
 // Der Guard blob-sync-check lief dreimal auf demselben Inhalt: Push auf main, PR
 // main -> production und Push auf production. Geblieben sind der Push auf main und
@@ -67,8 +67,14 @@ test("[ci-trigger] blob-sync-check nennt weder Windows noch eine Matrix (Issue #
   assert.match(text, /runs-on: ubuntu-latest/, "der Job laeuft nicht fest auf ubuntu-latest");
 });
 
-test("[ci-trigger] sonarqube triggert unveraendert nur auf main", () => {
+// Seit #1578 (Idee #1546) laeuft Sonar auch auf kit-pruefung, als kurzlebiger Zweig
+// gegen main; den Zweig erkennt der Scanner selbst, sonar.branch.name=main faellt weg.
+test("[ci-trigger] sonarqube triggert bei Push genau auf main und kit-pruefung", () => {
   const block = onBlock(lies("sonarqube.yml"));
-  assert.match(block, /push:[ \t]*\n[ \t]*branches: \[main\]/);
+  assert.match(block, /push:[ \t]*\n[ \t]*branches: \[main, kit-pruefung\]/);
   assert.ok(!block.includes("production"), `production steht im on-Block:\n${block}`);
+});
+
+test("[ci-trigger] sonarqube setzt sonar.branch.name=main nicht mehr", () => {
+  assert.doesNotMatch(lies("sonarqube.yml"), /sonar\.branch\.name=main/);
 });
