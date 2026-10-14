@@ -2,6 +2,26 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [5.1.3] - 2026-10-14
+- Sonar auf kit-pruefung läuft nur mit und blockiert push main nicht (#1683)
+- Sonar-Analyse auf kit-pruefung bekommt den Zweignamen (#1682)
+- Triage lädt die Anhänge einer kanban-kit-Karte in die Ideen-Ablage (#1681)
+- Historische Seite regeln-im-werkzeug: Kopfzeile mit Stand (#1670)
+- Einstellungs-Referenz: Wertebereiche, Bedingung der reviewStages-Vorgaben, Namensprüfung im Fließtext (#1669)
+- Toolbox-Adapter: kein alter Titel im PUT, fehlende Karte fällt aus der Zuordnung (#1668)
+- Test: Zuordnung je Adapter-Instanz über zwei Methoden (#1667)
+- Sonar auch auf kit-pruefung, kurzlebiger Zweig gegen main (#1578)
+- Einstiegsseite neu, Sidebar auf die neuen Seiten, Wortsumme scharf (#1660)
+- Seite Nachtbetrieb mit Nachtlauf, Nacht-Kette, Laufstand und Aufwand (#1659)
+- Einrichtungsseite mit Installation, Config, Tracker und Aktualisieren (#1658)
+- Prozessseite um Vorgeschichte, Prüflauf, Issue-Review und Plan-Format ergänzen (#1657)
+- Prozessseite mit allen Skills, Durchlauf und PO-Schleife (#1656)
+- Nebenseiten der Doku im Wortbudget und ohne Geschichte neu schreiben (#1655)
+- Historische Seiten aus der aktuellen Doku in eine eigene Sidebar-Gruppe verschieben (#1654)
+- Nachschlagewerk der Einstellungen auf eigener Seite mit einem Satz je Einstellung (#1653)
+- Toolbox-Adapter schreibt und verschiebt Einzelkarten ohne Kartenliste (#1651)
+- Toolbox-Adapter liest Einzelkarten per by-number statt Kartenliste (#1650)
+
 ## [5.1.2] - 2026-10-13
 - Nacht-Kette gleicht einen Plan ohne fachliche Anforderung gegen den Plan ab und berichtet das (#1648)
 - Nacht-Kette nimmt einen Plan ohne fachliche Anforderung als eigene Wurzel auf (#1647)
