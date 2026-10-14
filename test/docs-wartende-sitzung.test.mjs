@@ -126,11 +126,12 @@ test("[skills-34] beide Implementierungs-Skills melden einen Vermerk der wartend
 });
 
 // Der zweite Teil derselben Leitplanke (Issue #983): Wer wartet, prueft nicht nur, ob das
-// Ergebnis da ist, sondern auch, ob es den Lauf noch gibt. `local-check` ist die Quelle des
-// Absatzes, die beiden implement-Skills tragen ihn als Listenpunkt — der Anlass trat
-// unbeaufsichtigt auf, und dort liest die Sitzung implement-next, nicht local-check.
+// Ergebnis da ist, sondern auch, ob es den Lauf noch gibt. Die Vorlage ist die Quelle des
+// Absatzes (Abschnitt "Nachtbetrieb", seit Issue #1675 statt `local-check`), die beiden
+// implement-Skills tragen ihn als Listenpunkt — der Anlass trat unbeaufsichtigt auf, und
+// dort liest die Sitzung implement-next.
 const LEITPLANKE_STELLEN = [
-  ["local-check", lies("skills", "local-check", "SKILL.md")],
+  ["templates/CLAUDE-workflow.md", abschnitt(VORLAGE, "## Nachtbetrieb (optional)")],
   ...SKILLS,
 ];
 

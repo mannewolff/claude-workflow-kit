@@ -256,7 +256,8 @@ export function heute() {
 // niemand (belegt am 2026-08-08: Issue #247 kostete so einen Nacht-Slot).
 //
 // Bis hierher war die Zeile eine Bitte im /issues-Skill. Eine Bitte wird unter Druck
-// uebersprungen; dieselbe Lehre wie beim Leitplanken-Prinzip in /local-check.
+// uebersprungen; dieselbe Lehre wie beim Leitplanken-Prinzip in
+// `CLAUDE-workflow.md`, Abschnitt „Leitplanken der Pruefungen“.
 //
 // `(\S(?:[^\n]*\S)?)` statt `(\S[^\n]*?)` mit nachfolgendem `[^\S\n]*$`
 // (S8786, Issue #406): Die fruehere Fassung liess die Aufteilung offen — das

@@ -85,13 +85,15 @@ for (const { name, text } of SKILLS) {
 }
 
 // Die Leitplanken-Verweise betreffen das WIE der Ausfuehrung (Timeout,
-// Hintergrund-Check, Modell-Fehler), nicht die Auswahl. Sie bleiben.
+// Hintergrund-Check, Modell-Fehler), nicht die Auswahl. Sie bleiben; seit Issue #1675
+// zeigen sie auf die Vorlage statt auf `/local-check`.
 for (const name of ["implement-next", "implement-ready"]) {
-  test(`${name}: die local-check-Leitplanken bleiben erhalten`, () => {
+  test(`${name}: die Leitplanken-Verweise bleiben erhalten`, () => {
     const text = SKILLS.find((s) => s.name === name).text;
-    assert.match(text, /Timeout-Leitplanke im `local-check`-Skill/);
-    assert.match(text, /Hintergrund-Check im `local-check`-Skill/);
-    assert.match(text, /Leitplanken-Prinzip im `local-check`-Skill/);
+    const ort = "in `CLAUDE-workflow.md`, Abschnitt „Leitplanken der Pruefungen“";
+    assert.ok(text.includes(`Timeout-Leitplanke ${ort}`));
+    assert.ok(text.includes(`Hintergrund-Check ${ort}`));
+    assert.ok(text.includes(`Leitplanken-Prinzip ${ort}`));
   });
 }
 
