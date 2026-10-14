@@ -82,7 +82,7 @@ export const TEXTE = {
     // Bericht: Pruefungen und Umfang
     pruefTitel: "## Pruefungen",
     keinPruefstand: "Kein Pruefstand in den einbezogenen Staenden.",
-    pruefKopf: "| Kommando | Ausfuehrungen | Dauer | Dauer gemessen in |",
+    pruefKopf: "| Kommando | Ausfuehrungen | Dauer | Dauer gemessen in | Median je vollstaendiger Ausfuehrung | vollstaendige Ausfuehrungen | davon gleichzeitig gemessen |",
     pruefSumme: "Summe der gemessenen Pruefzeit: {wert}.",
     umfangTitel: "## Umfang der Pruefungen",
     umfang: "Von {staende} Pruefstaenden ({laeufe}) liefen {voll} im vollen Umfang, {eingegrenzt} eingegrenzt und {unbekannt} ohne Angabe dazu. Ein Stand ohne Angabe zaehlt als unbekannt, nie als eingegrenzt.",
@@ -231,7 +231,7 @@ export const TEXTE = {
     nebenlaeufig: "For {anzahl} units ({laeufe}) the sum of thinking and tool work exceeds the total duration: both ran concurrently there. These units contribute no rest — a negative time would not be a number that means anything.",
     pruefTitel: "## Checks",
     keinPruefstand: "No check state in the included states.",
-    pruefKopf: "| Command | Executions | Duration | Duration measured in |",
+    pruefKopf: "| Command | Executions | Duration | Duration measured in | Median per complete execution | Complete executions | Of these measured concurrently |",
     pruefSumme: "Sum of the measured check time: {wert}.",
     umfangTitel: "## Scope of the checks",
     umfang: "Of {staende} check states ({laeufe}), {voll} ran in full scope, {eingegrenzt} narrowed and {unbekannt} without information on it. A state without information counts as unknown, never as narrowed.",

@@ -406,3 +406,67 @@ test("[aufwand-1] ein unlesbarer Ergebnisstand kostet keine Auswertung, sondern 
     assert.match(e.laeufe.unlesbar[0].datei, /night-run-2026-09-02-100000\.json$/);
   });
 });
+
+// --- Median je vollstaendiger Ausfuehrung (Issue #1689, Plan #1685) ---------------------
+//
+// Fachplan-AK 1 vergleicht den Median der verstrichenen Zeit je vollstaendiger Ausfuehrung
+// einer Pruefgruppe. Gezaehlt wird nur eine Ausfuehrung, deren `dauerMs` genau einen Lauf
+// misst: nicht "nicht gestartet", nicht `haengend`, nicht `gewackelt`/`wiederholt` (Summe
+// zweier Laeufe), nicht aus einem uebernommenen Lauf (Dauer des Ursprungslaufs) und nicht
+// aus einem Teillauf. `gleichzeitig` zaehlt mit und wird eigens gezaehlt.
+
+const CMD = "node --test";
+
+/** Eine Einheit mit genau den gegebenen `laufen` und Feldern des Pruefstands. */
+function mitLaufen(id, laufen, felder = {}) {
+  return einheit(id, { pruefung: pruefstand({ laufen, ...felder }) });
+}
+
+function gruen(dauerMs, felder = {}) {
+  return { cmd: CMD, grund: "voller Umfang", ergebnis: "gruen", dauerMs, ...felder };
+}
+
+/** Wertet einen Stand aus und gibt den Block `vollstaendig` des Kommandos zurueck. */
+function vollstaendig(einheiten) {
+  return mitProjekt({ laeufe: [lauf("2026-10-14-100000", { einheiten })] }, (dir) =>
+    auswerten(dir).pruefungen.kommandos.find((k) => k.cmd === CMD).vollstaendig);
+}
+
+test("[aufwand-1689] der Median je vollstaendiger Ausfuehrung kommt aus `laufen`", () => {
+  const v = vollstaendig([
+    mitLaufen(1, [gruen(300_000)]),
+    mitLaufen(2, [gruen(100_000)]),
+    mitLaufen(3, [gruen(200_000)]),
+  ]);
+  assert.deepEqual(v, { medianMs: 200_000, anzahl: 3, gleichzeitig: 0, laeufe: 1 });
+});
+
+for (const [fall, eintrag, felder] of [
+  ["fehlende `dauerMs`", { cmd: CMD, grund: "voller Umfang", ergebnis: "gruen" }, {}],
+  ["nicht gestartet", { cmd: CMD, grund: "voller Umfang", ergebnis: "nicht gestartet", dauerMs: 5 }, {}],
+  ["`haengend`", gruen(5, { ergebnis: "rot", haengend: { grenzeMs: 900_000 } }), {}],
+  ["`gewackelt`", gruen(5, { gewackelt: { erstDauerMs: 2, protokoll: null } }), {}],
+  ["`wiederholt`", gruen(5, { ergebnis: "rot", wiederholt: true }), {}],
+  ["`uebernommen`", gruen(5), { uebernommen: "2026-10-14T09:00:00.000Z" }],
+  ["`teillauf`", gruen(5), { teillauf: true }],
+]) {
+  test(`[aufwand-1689] eine Ausfuehrung mit ${fall} zaehlt nicht als vollstaendig`, () => {
+    const v = vollstaendig([
+      mitLaufen(1, [gruen(100_000)]),
+      mitLaufen(2, [eintrag], felder),
+    ]);
+    assert.equal(v.anzahl, 1, `${fall} darf nicht mitzaehlen`);
+    assert.equal(v.medianMs, 100_000);
+  });
+}
+
+test("[aufwand-1689] eine gleichzeitig gemessene Ausfuehrung zaehlt mit und wird eigens gezaehlt", () => {
+  const v = vollstaendig([
+    mitLaufen(1, [gruen(100_000)]),
+    mitLaufen(2, [gruen(300_000, { gleichzeitig: true })]),
+    mitLaufen(3, [gruen(200_000, { gleichzeitig: true })]),
+  ]);
+  assert.equal(v.anzahl, 3);
+  assert.equal(v.gleichzeitig, 2);
+  assert.equal(v.medianMs, 200_000);
+});

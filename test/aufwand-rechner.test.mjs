@@ -9,7 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { RECHNER } from "../kit/effort.mjs";
-import { mitProjekt, lauf, einheit, auswerten, bericht } from "./helpers/aufwand-fixture.mjs";
+import { mitProjekt, lauf, einheit, pruefstand, auswerten, bericht } from "./helpers/aufwand-fixture.mjs";
 
 const ANDERER = `${RECHNER}-zwei`;
 
@@ -175,5 +175,37 @@ test("Szenario: Ein mittleres Paket ist früher fertig", () => {
     assert.match(text, /Pakete mit Werkzeugzeit: 10, davon Stufe mittel: 10/);
     assert.match(text, /4 min 0 s je Paket, 37,2 Prozent der Paketzeit \(10 Pakete\)/);
     assert.match(text, /\| mittel \| 10 \(ueber 10 Laeufe\) \| 10 min 40 s/, "der Median der Stufe mittel steht in der Verteilung");
+  });
+});
+
+test("Szenario: Die Prüfgruppe der Nacht-Runner-Tests läuft schneller", () => {
+  // Angenommen auf zwei Rechnern liegen Staende mit Ausfuehrungen der Pruefgruppe vor — dazu
+  // ein Teillauf, eine nicht gestartete und eine ungemessene Ausfuehrung, die nicht zaehlen.
+  const gruppe = "node --test test/night-*.test.mjs";
+  const ausfuehrung = (id, dauerMs, felder = {}) => einheit(id, {
+    pruefung: pruefstand({ laufen: [{ cmd: gruppe, grund: "voller Umfang", ergebnis: "gruen", dauerMs }], ...felder }),
+  });
+  const laeufe = [
+    lauf("2026-10-14-050000", { einheiten: [ausfuehrung(5, 150_000), ausfuehrung(6, 170_000)] }),
+    lauf("2026-10-14-040000", { einheiten: [ausfuehrung(4, 160_000), ausfuehrung(7, 20_000, { teillauf: true })] }),
+    lauf("2026-10-14-030000", { einheiten: [
+      ausfuehrung(3, 180_000, { laufen: [{ cmd: gruppe, grund: "voller Umfang", ergebnis: "gruen" }] }),
+      ausfuehrung(8, 140_000, { laufen: [{ cmd: gruppe, grund: "voller Umfang", ergebnis: "nicht gestartet", dauerMs: 1 }] }),
+    ] }),
+    lauf("2026-10-14-020000", { rechner: ANDERER, einheiten: [ausfuehrung(1, 360_000), ausfuehrung(2, 380_000), ausfuehrung(9, 340_000)] }),
+  ];
+  mitProjekt({ laeufe }, (dir) => {
+    // Wenn der Median ihrer verstrichenen Laufzeit je Rechner gelesen wird
+    const eigen = auswerten(dir).pruefungen.kommandos.find((k) => k.cmd === gruppe);
+    const textEigen = bericht(dir);
+    const fremd = auswerten(dir, "--machine", ANDERER).pruefungen.kommandos.find((k) => k.cmd === gruppe);
+    const textFremd = bericht(dir);
+    // Dann nennt der Bericht ihn fuer jeden Rechner getrennt, nur aus vollstaendigen Ausfuehrungen
+    assert.deepEqual(eigen.vollstaendig, { medianMs: 160_000, anzahl: 3, gleichzeitig: 0, laeufe: 2 });
+    assert.deepEqual(fremd.vollstaendig, { medianMs: 360_000, anzahl: 3, gleichzeitig: 0, laeufe: 1 });
+    assert.match(textEigen, /\| `node --test test\/night-\*\.test\.mjs` \| 5 \| .* \| 2 min 40 s \| 3 \| 0 \|/);
+    assert.match(textFremd, /\| `node --test test\/night-\*\.test\.mjs` \| 3 \| .* \| 6 min 0 s \| 3 \| 0 \|/);
+    // Und der Median nachher ist hoechstens halb so lang wie vorher — die Abnahme belegt das von Hand
+    assert.ok(eigen.vollstaendig.medianMs <= fremd.vollstaendig.medianMs / 2);
   });
 });

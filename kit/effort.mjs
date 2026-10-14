@@ -745,13 +745,7 @@ function pruefungErfassen(s, einheit, stempel) {
     // "nicht gestartet" ist keine Ausfuehrung: Dort war ein frueheres Kommando rot, und
     // dieses hier lief nie. Dieselbe Begruendung, aus der `ausfuehrungSchreiben` in
     // checks.mjs ihm keine Zeile im Protokoll gibt.
-    if (eintrag?.ergebnis === "nicht gestartet") continue;
-    const cmd = typeof eintrag?.cmd === "string" ? eintrag.cmd : t("ohneNamen");
-    const k = s.kommandos.get(cmd) ?? { cmd, anzahl: 0, dauer: reihe() };
-    k.anzahl += 1;
-    messen(k.dauer, eintrag?.dauerMs, stempel);
-    messen(s.pruefGesamt, eintrag?.dauerMs, stempel);
-    s.kommandos.set(cmd, k);
+    if (eintrag?.ergebnis !== "nicht gestartet") ausfuehrungErfassen(s, p, eintrag, stempel);
   }
   if (!p) return false;
   s.umfang.laeufe.add(stempel);
@@ -762,6 +756,34 @@ function pruefungErfassen(s, einheit, stempel) {
   const ausgelassen = Array.isArray(p.ausgelassen) ? p.ausgelassen : [];
   if (ausgelassen.some((e) => BEREICH_UNBERUEHRT.test(e?.grund ?? ""))) s.eingrenzung.faelle += 1;
   return true;
+}
+
+/** Ein `laufen`-Eintrag: Anzahl und Dauer seines Kommandos, dazu eine vollstaendige Ausfuehrung. */
+function ausfuehrungErfassen(s, pruefung, eintrag, stempel) {
+  const cmd = typeof eintrag?.cmd === "string" ? eintrag.cmd : t("ohneNamen");
+  const k = s.kommandos.get(cmd) ?? { cmd, anzahl: 0, dauer: reihe(), vollstaendig: werteReihe(), gleichzeitig: 0 };
+  k.anzahl += 1;
+  messen(k.dauer, eintrag?.dauerMs, stempel);
+  messen(s.pruefGesamt, eintrag?.dauerMs, stempel);
+  if (vollstaendigeAusfuehrung(pruefung, eintrag)) {
+    wertMerken(k.vollstaendig, eintrag.dauerMs, stempel);
+    if (eintrag.gleichzeitig === true) k.gleichzeitig += 1;
+  }
+  s.kommandos.set(cmd, k);
+}
+
+/**
+ * Ob die Dauer eines `laufen`-Eintrags genau eine vollstaendige Ausfuehrung misst (Issue
+ * #1689, Plan #1685, Fachplan-AK 1). Nicht dazu zaehlen: eine ungemessene Dauer (etwa die
+ * Nachpruefung des Runners), ein `haengend` abgebrochener Lauf, `gewackelt` und `wiederholt`
+ * (ihre `dauerMs` ist die Summe zweier Laeufe), ein uebernommener Pruefstand (er wiederholt
+ * die Dauern des Ursprungslaufs) und ein Teillauf. "nicht gestartet" filtert der Aufrufer.
+ * `gleichzeitig` zaehlt mit und wird eigens ausgewiesen.
+ */
+function vollstaendigeAusfuehrung(pruefung, eintrag) {
+  if (zahl(eintrag?.dauerMs) === null) return false;
+  if (eintrag.haengend || eintrag.gewackelt || eintrag.wiederholt === true) return false;
+  return pruefung?.teillauf !== true && typeof pruefung?.uebernommen !== "string";
 }
 
 /**
@@ -1220,7 +1242,7 @@ function aggregieren(staende) {
       // Absteigend nach Dauer: Die teuerste Pruefung ist die, um die es geht. Gleiche
       // Dauer entscheidet der Name, damit die Reihenfolge ueberall dieselbe ist.
       kommandos: [...s.kommandos.values()]
-        .map((k) => ({ cmd: k.cmd, anzahl: k.anzahl, ...fertigDauer(k.dauer) }))
+        .map((k) => ({ cmd: k.cmd, anzahl: k.anzahl, ...fertigDauer(k.dauer), vollstaendig: vollstaendigFertig(k) }))
         .sort((a, b) => (b.dauerMs ?? -1) - (a.dauerMs ?? -1) || vergleicheText(a.cmd, b.cmd)),
       gesamtMs: fertig(s.pruefGesamt),
     },
@@ -1240,6 +1262,15 @@ function aggregieren(staende) {
 function fertigDauer(r) {
   const f = fertig(r);
   return { dauerMs: f.wert, laeufe: f.laeufe };
+}
+
+/**
+ * Der Median je vollstaendiger Ausfuehrung eines Pruefkommandos (Issue #1689) nach
+ * Nearest-Rank wie die Verteilung: ohne vollstaendige Ausfuehrung `null`, nie 0.
+ */
+function vollstaendigFertig(k) {
+  const v = verteilungFertig(k.vollstaendig);
+  return { medianMs: v.median, anzahl: v.anzahl, gleichzeitig: k.gleichzeitig, laeufe: v.laeufe };
 }
 
 // --- Schwellen ---------------------------------------------------------------
@@ -1550,8 +1581,9 @@ function berichtPruefungen(e) {
   // Issue #747. Eine gemeinsame Spalte liesse offen, worauf sich welche Zahl stuetzt.
   return [
     t("pruefTitel"), "",
-    t("pruefKopf"), "| --- | --- | --- | --- |",
-    ...e.pruefungen.kommandos.map((k) => `| \`${k.cmd}\` | ${k.anzahl} | ${dauer(k.dauerMs)} | ${laufText(k.laeufe)} |`),
+    t("pruefKopf"), "| --- | --- | --- | --- | --- | --- | --- |",
+    ...e.pruefungen.kommandos.map((k) => `| \`${k.cmd}\` | ${k.anzahl} | ${dauer(k.dauerMs)} | ${laufText(k.laeufe)} | `
+      + `${dauer(k.vollstaendig.medianMs)} | ${k.vollstaendig.anzahl} | ${k.vollstaendig.gleichzeitig} |`),
     "", t("pruefSumme", { wert: kennzahl(e.pruefungen.gesamtMs, dauer) }), "",
   ];
 }
