@@ -114,7 +114,9 @@
  * "## Kette angehalten" und kit:klaeren am Fachplan) oder abgebrochen (Zeitbudget der
  * Stufe, Kostenbudget der Kette, technischer Fehler, kein Plan entstanden). Kandidaten
  * ausserhalb von Backlog oder mit kit:klaeren werden uebersprungen, ihr Label bleibt.
- * Der Ergebnisstand traegt die Art "kette".
+ * Ebenso ein Fachplan, der im Ziel die Zeile "Wartet auf Ereignis:" traegt, und ein Plan,
+ * dessen Fachplan sie traegt; der Grund nennt den Wartegrund und `issue hold <N> --lift`
+ * (Plan #1624, Issue #1663). Der Ergebnisstand traegt die Art "kette".
  *
  * Test-Hooks (nur fuer Tests gedacht):
  *   NIGHT_CLAUDE_CMD  ersetzt den claude-Aufruf durch ein Shell-Kommando

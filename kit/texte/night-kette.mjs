@@ -41,6 +41,7 @@ export const TEXTE = Object.freeze({
     poFrageOffen: "offene Frage an den PO: {frage}",
     unbekannt: "unbekannt",
     nichtInBacklog: "steht in {status}, nicht in Backlog",
+    ketteEreignis: "wartet auf ein Ereignis: {grund} — aufheben mit `node .claude/kit/board.mjs issue hold {id} --lift`",
     ketteKlaeren: "traegt {label} — die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen, dann das Label abnehmen",
     poFragen: "{frage}; die Fragen im Body beantworten und '## {name}' auf 'Keine' setzen",
     szenarienFehlen: "Fachplan #{id} hat keinen Abschnitt Szenarien; er entsteht beim Groomen (`/groom #{id}`)",
@@ -48,6 +49,7 @@ export const TEXTE = Object.freeze({
     quelleInsLeere: "die Zeile '{zeile}' verweist ins Leere — sie nennt keine Karte dieses Boards in der Form 'Issue #N' "
       + "(die Nummer wird zeichengleich verglichen, fuehrende Nullen zaehlen mit); die Zeile berichtigen, oder sie "
       + "entfernen, wenn der Plan keine fachliche Anforderung hat",
+    planEreignis: "Fachplan #{F} wartet auf ein Ereignis: {grund} — aufheben mit `node .claude/kit/board.mjs issue hold {F} --lift`",
     planKlaeren: "traegt {label} — die Entscheidung gehoert in den Plan, danach nimmt ein Mensch das Label ab",
     planEntscheidung: "eine Entscheidung wartet: {frage}; sie gehoert als Eintrag unter '## {entscheidungen}' des Plans, "
       + "danach traegt '## {offen}' wieder '{keine}' — ein Satz in der fachlichen Anforderung genuegt nicht",
@@ -277,6 +279,7 @@ export const TEXTE = Object.freeze({
     poFrageOffen: "open question to the PO: {frage}",
     unbekannt: "unknown",
     nichtInBacklog: "is in {status}, not in Backlog",
+    ketteEreignis: "waits for an event: {grund} — lift with `node .claude/kit/board.mjs issue hold {id} --lift`",
     ketteKlaeren: "carries {label} — the answer to the stop question must first be on the requirement, then remove the label",
     poFragen: "{frage}; answer the questions in the body and set '## {name}' to 'Keine'",
     szenarienFehlen: "requirement #{id} has no scenarios section; it is added during grooming (`/groom #{id}`)",
@@ -284,6 +287,7 @@ export const TEXTE = Object.freeze({
     quelleInsLeere: "the line '{zeile}' points nowhere — it names no card of this board in the form 'Issue #N' "
       + "(the number is compared character by character, leading zeros count); correct the line, or remove it if "
       + "the plan has no requirement",
+    planEreignis: "requirement #{F} waits for an event: {grund} — lift with `node .claude/kit/board.mjs issue hold {F} --lift`",
     planKlaeren: "carries {label} — the decision belongs in the plan, afterwards a human removes the label",
     planEntscheidung: "a decision is waiting: {frage}; it belongs as an entry under '## {entscheidungen}' of the plan, "
       + "afterwards '## {offen}' carries '{keine}' again — a sentence in the requirement is not enough",

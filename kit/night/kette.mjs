@@ -61,6 +61,9 @@ const namen = await import(pathToFileURL(join(NACHBAR_DIR, "board", "namen.mjs")
 // Der Leser fuer den Abschnitt Szenarien, ebenso abgefangen (Plan #1588 A7, Issue #1593): Fehlt
 // board/szenarien.mjs, prueft die Kette keine Szenarien und nennt keinen Stichtag.
 const szenarien = await import(pathToFileURL(join(NACHBAR_DIR, "board", "szenarien.mjs")).href).catch(() => null);
+// Der Leser der Wartezeile `Wartet auf Ereignis:`, ebenso abgefangen (Plan #1624 E5, E6, Issue
+// #1663): Fehlt board/ereignis.mjs, haelt das Warten keine Kette an.
+const ereignis = await import(pathToFileURL(join(NACHBAR_DIR, "board", "ereignis.mjs")).href).catch(() => null);
 
 function t(schluessel, werte = {}) {
   if (namen) return namen.text(TEXTE, schluessel, werte);
@@ -682,7 +685,8 @@ export function abdeckungPlanPrompt(planId, paketIds) {
  * wenn sie laeuft.
  *
  * Die Reihenfolge ist die Antwort: Erst die Spalte (E4: ausserhalb von Backlog ist ein
- * Versehen), dann `kit:klaeren` (A2: die Antwort auf die Stopp-Frage muss vorher am
+ * Versehen), dann das Warten auf ein Ereignis (Plan #1624, E5: der Wartegrund zuerst, und
+ * weil er kein Grund „Pruefung fehlt" ist, unterbleibt deren Kommentar), dann `kit:klaeren` (A2: die Antwort auf die Stopp-Frage muss vorher am
  * Fachplan stehen), dann die fehlende Pruefung (Fachplan #702), zuletzt die offenen
  * Fragen an den PO (Issue #916). Die Pruefung steht hinter `kit:klaeren`, damit ein
  * Fachplan mit offener Frage den spezifischeren Grund behaelt: Wer die Frage beantwortet,
@@ -695,6 +699,8 @@ export function abdeckungPlanPrompt(planId, paketIds) {
  */
 function kettenAusschluss(issue, kettenLabel, config) {
   if (issue.status !== "backlog") return t("nichtInBacklog", { status: issue.status ?? t("unbekannt") });
+  const wartet = ereignisGrundVon(issue);
+  if (wartet !== null) return t("ketteEreignis", { grund: wartet, id: issue.id });
   if (hatKlaerenLabel(issue)) return t("ketteKlaeren", { label: klaerenLabelName() });
   if (!hatReviewFertigLabel(issue)) return pruefungFehltGrund(issue.id, kettenLabel).text;
   // Zuletzt die offenen Fragen an den PO (Issue #916): Wer die Pruefung noch gar nicht
@@ -709,6 +715,11 @@ function kettenAusschluss(issue, kettenLabel, config) {
   // ohne vollstaendiges Szenario laeuft in keinen Plan; Altbestand und ein fehlender
   // Stichtag schliessen nicht aus (Kriterium 5, A6).
   return szenarienGrund(issue, config);
+}
+
+/** Der Grund aus der Wartezeile im Ziel einer Fachplan-Karte — `null`, wenn sie nicht wartet. */
+function ereignisGrundVon(karte) {
+  return ereignis ? ereignis.ereignisGrund(karte?.body || "") : null;
 }
 
 /** Der Grund, wenn ein pflichtiger Fachplan kein vollstaendiges Szenario traegt — sonst `null`. */
@@ -742,7 +753,8 @@ function stichtagNennen() {
  * spezifischere Grund gewinnt, damit die Karte morgens den Satz traegt, der den
  * naechsten Schritt nennt. Erst die Spalte (ausserhalb von Backlog ist ein Versehen),
  * dann die Herkunft (eine Zeile `Fachliche Quelle:`, die ins Leere verweist, haelt an),
- * dann `kit:klaeren` (die Entscheidung gehoert in den Plan), dann die offene Frage im Plan,
+ * dann das Warten des Fachplans (Plan #1624, E6: die Wartezeile der Fachplan-Karte aus
+ * `karten`, kein weiterer Abruf), dann `kit:klaeren` (die Entscheidung gehoert in den Plan), dann die offene Frage im Plan,
  * zuletzt die fehlende Pruefung. Die beiden letzten stehen in dieser Folge, weil wer die
  * Frage beantwortet weiterkommt, wer nur pruefen laesst nicht.
  *
@@ -756,6 +768,11 @@ export function planAusschluss(issue, kettenLabel, karten) {
   if (issue?.status !== "backlog") return t("nichtInBacklog", { status: issue?.status ?? t("unbekannt") });
   const quelle = quelleLage(issue?.body || "", karten);
   if (quelle.lage === "insLeere") return t("quelleInsLeere", { zeile: quelle.zeile });
+  if (quelle.lage === "karte") {
+    const fachplan = (karten || []).find((k) => String(k?.id) === quelle.nummer);
+    const wartet = ereignisGrundVon(fachplan);
+    if (wartet !== null) return t("planEreignis", { F: quelle.nummer, grund: wartet });
+  }
   if (hatKlaerenLabel(issue)) return t("planKlaeren", { label: klaerenLabelName() });
   const frage = stoppFragenGrund(issue?.body || "");
   if (frage !== null) {
