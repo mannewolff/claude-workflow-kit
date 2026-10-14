@@ -1928,6 +1928,18 @@ export async function runSession(issueId, args, opts = {}, abh = {}) {
 }
 
 /**
+ * Teillauf und Uebernahme (Issue #1687, Plan #1685): Erst mit beiden ist entscheidbar, ob
+ * eine Dauer eine vollstaendige Ausfuehrung war. `uebernommen` ist der Zeitpunkt des
+ * uebernommenen Laufs. Ein Stand ohne die Felder ist `null`, nie eine geratene Angabe.
+ */
+function ausfuehrungsFelder(daten) {
+  return {
+    teillauf: typeof daten.teillauf === "boolean" ? daten.teillauf : null,
+    uebernommen: typeof daten.uebernommen === "string" ? daten.uebernommen : null,
+  };
+}
+
+/**
  * Liest, was die soeben beendete Session hinterlassen hat. Fehlt die Datei, ist das
  * KEIN harter Stopp: Die Session hat dann keine Pruefung gefahren, und der Bericht
  * sagt genau das. Faehrt eine Session `run` mehrfach (rot, Fix, erneut), steht hier
@@ -1968,6 +1980,7 @@ export function lesePruefung(issueId) {
       // je Fall ein Eintrag, auch aus frueheren Abschlusslaeufen derselben Karte. Ohne das
       // Feld (Lauf ohne Kartennummer, Stand vor Issue #1397) `null` und nicht `[]`.
       gewackelt: Array.isArray(daten.gewackeltKarte) ? daten.gewackeltKarte : null,
+      ...ausfuehrungsFelder(daten),
     };
     // Die Guetemessung (Issue #764): Das Feld steht nur da, wenn das Projekt eine Messung
     // benannt hat — dann aber in jedem Zustand, auch beim leeren Paket und beim roten Lauf

@@ -467,7 +467,7 @@ export const { nightStandLaden, journalLesen, laufendeKarten, standSetzen, abgeb
   hatSitzungsereignis, verwaisteLaeufeAbschliessen, waechterStartOptionen } = await import("./night/laufstand.mjs");
 const { anhaltenLaeuft, nightStandPruefen, pulsSchreiben, laufstandStarten, laufAbbrechen, abbruchHandlerSetzen,
   zweiterVersuch, vermerkAnDieKarte, laufAnhalten, waechterLaufen, waechterStarten,
-  waechterBeenden } = await import("./night/laufstand.mjs");
+  waechterBeenden, RECHNER } = await import("./night/laufstand.mjs");
 export const { umsetzungLockNehmen, UMSETZUNG_WARTEN_MS, aufUmsetzungWarten, RUNNER_SPERREN, nachziehenPruefen,
   worktreeAnlegen, worktreeEntfernen, befundeZurueck, worktreesAufraeumen, kitStandErmitteln, kitStandBereitstellen,
   kitStandEinsetzen, kitStandFreigeben, istStandKind, kitStandZeile } = await import("./night/kitstand.mjs");
@@ -942,6 +942,9 @@ function ergebnisstandAnlegen(args, aktivesLabel, jetztVorher) {
     // Der feste Kit-Stand dieses Laufs (Issue #1102, A7) — hinten angehaengt, die Fassung
     // bleibt 1 (E9). `null` heisst: Der Lauf arbeitete mit der Kopie der Hauptkopie.
     kitStand: kitStandFeld(),
+    // Der Rechner dieses Laufs (Issue #1687, Plan #1685) — hinten angehaengt, die Fassung
+    // bleibt 1. Ein Bericht ueber kopierte Staende liest ihn aus dem Stand, nicht aus dem Pfad.
+    rechner: RECHNER,
   };
 }
 

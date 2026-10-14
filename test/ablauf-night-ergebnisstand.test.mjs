@@ -25,7 +25,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, chmodSync, rmSync } from "node:fs";
 import { delimiter, join } from "node:path";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 
 import {
   NIGHT, run, board, setupProjekt, readyIssue, staende, stand, einheit, textprotokollDa,
@@ -162,6 +162,27 @@ test("[night-2] ohne festen Kit-Stand traegt der Lauf-Kopf kitStand null, hinter
     assert.equal(schluessel.indexOf("kitStand"), schluessel.indexOf("zielUmsetzungMin") + 1,
       `kitStand gehoert direkt hinter die Zielmarke: ${schluessel.join(", ")}`);
     assert.doesNotMatch(res.stdout, /Kit-Stand:/, "ohne Stand keine Stand-Zeile");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Der Rechner des Laufs (Issue #1687, Plan #1685): Ein Bericht ueber kopierte Staende liest
+// ihn aus dem Stand selbst, nicht aus dem Dateipfad. Hinten angehaengt, die Fassung bleibt 1.
+test("[night-2] der Lauf-Kopf traegt den Rechner, hinter der Zielmarke", () => {
+  const dir = setupProjekt("night-stand-rechner-");
+  try {
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+
+    const stand = JSON.parse(readFileSync(join(dir, ".claude", staende(dir)[0]), "utf-8"));
+    assert.equal(stand.schemaFassung, 1, "das neue Feld aendert die Fassung nicht");
+    assert.equal(stand.rechner, hostname().split(".")[0], "der Wert von RECHNER");
+    const schluessel = Object.keys(stand);
+    assert.ok(schluessel.indexOf("rechner") > schluessel.indexOf("zielUmsetzungMin"),
+      `rechner steht nicht hinter der Zielmarke: ${schluessel.join(", ")}`);
+    assert.equal(schluessel.indexOf("rechner"), schluessel.indexOf("kitStand") + 1,
+      `rechner gehoert hinten an den Lauf-Kopf: ${schluessel.join(", ")}`);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
