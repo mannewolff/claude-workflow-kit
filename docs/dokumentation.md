@@ -183,6 +183,8 @@ Das Kit setzt die englischen, erkennt die deutschen an offenen Karten und räumt
 | `ziel:umsetzung` | `goal:implementation` |
 | `ziel:push-vorbereitet` | `goal:push-prepared` |
 
+`kit:on-hold` ist neu und hat keinen deutschen Altnamen. Es zeigt am Board, dass eine fachliche Anforderung auf ein äußeres Ereignis wartet; maßgeblich ist die Zeile `Wartet auf Ereignis: <Grund>` im Abschnitt `## Ziel`. Beides setzt `node .claude/kit/board.mjs issue hold <N> --reason "<Grund>"`, beides hebt `issue hold <N> --lift` auf, siehe [Warten auf ein Ereignis](/nachtbetrieb#warten-auf-ein-ereignis).
+
 ## Lizenz
 
 MIT: Du darfst das Kit frei nutzen, ändern und weitergeben.

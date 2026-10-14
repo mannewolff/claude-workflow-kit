@@ -94,7 +94,7 @@ If the same check fails again and again in the same way, the session ends before
 The runner ends the session, saves leftovers in the stash `nachtrest #<id> <lauf>`, sets `run:aborted` with `Grund: Session an einer Pruefung festgefahren` and moves the package to the backlog. The note `## Nachtlauf: an einer Pruefung festgefahren` names check, error, attempts and running time. How to go on: read the error, get the leftovers back with `git stash apply stash@{<n>}`, rework, pull to Ready again.
 
 ## The night chain
-<!-- de: 47aee8930796 -->
+<!-- de: bf5ca30523e8 -->
 
 In the evening a business requirement goes in; in the morning a reviewed plan, work packages and a report lie on it. Under **variant A** the packages stay in the backlog. Under **variant B** the chain pulls them to Ready itself and implements them; your GO then lies in marking the card.
 
@@ -111,7 +111,7 @@ node .claude/kit/night.mjs --chain             # real run
 
 `--max` counts chains here (default 3).
 
-**Conditions.** A candidate has the title `[Requirement]` or `[Plan]`, is in the backlog and carries no `kit:clarify`. Before the first chain every candidate is set to `run:running` with "Lauf angenommen um …, Vorabprüfung läuft"; then a preflight session checks reviewers and tracker. If it fails, the run status (Laufstand) shows `run:aborted` with `Kette nicht gestartet um <Zeit>: <Grund>`, and the labels stay. The chain works in its own worktree and needs neither a clean working tree nor an empty In progress column.
+**Conditions.** A candidate has the title `[Requirement]` or `[Plan]`, is in the backlog, carries no `kit:clarify` and waits for no event. Before the first chain every candidate is set to `run:running` with "Lauf angenommen um …, Vorabprüfung läuft"; then a preflight session checks reviewers and tracker. If it fails, the run status (Laufstand) shows `run:aborted` with `Kette nicht gestartet um <Zeit>: <Grund>`, and the labels stay. The chain works in its own worktree and needs neither a clean working tree nor an empty In progress column.
 
 | Stage | Session | when the chain ends here |
 |---|---|---|
@@ -173,15 +173,36 @@ A card is refused with the comment `## Kette nicht gestartet: unpassende Einstel
 The project remains the upper limit: if `night.kette.uebergaenge` blocks a transition, the chain ends there at the project limit. With the goal `push-vorbereitet`, the stage `vorbereitung` follows once after all chains; it runs `/push-main prepare` without pushing; details under [/push-main](/en/prozess#push-main).
 
 ### A finished plan as an order
-<!-- de: d2eda0996b0a -->
+<!-- de: 570611a9b182 -->
 
-`kit:night` on a `[Plan]` issue in the backlog starts a plan order (Plan-Auftrag). The plan carries `review:done`, no `kit:clarify`, `## Offene Fragen` says `- Keine.`, and its origin is valid. Without a line `Fachliche Quelle:` it runs as its own root; if `Fachliche Quelle: Issue #N` hits a card, coverage holds the packages against it; if the line points nowhere, the plan stays where it is.
+`kit:night` on a `[Plan]` issue in the backlog starts a plan order (Plan-Auftrag). The plan carries `review:done`, no `kit:clarify`, `## Offene Fragen` says `- Keine.`, its origin is valid, and its requirement waits for no event. Without a line `Fachliche Quelle:` it runs as its own root; if `Fachliche Quelle: Issue #N` hits a card, coverage holds the packages against it; if the line points nowhere, the plan stays where it is.
 
 The stages `plan` and `review` are dropped, the run starts at `pakete`. `kit:carry-through` only counts on the plan itself; then variant B runs.
 
 The business requirement gives way to the plan: if both carry the chain label, the plan runs.
 
 Of two marked plans of the same root, the younger one runs.
+
+### Waiting for an event
+<!-- de: 0357f217d36f -->
+
+Sometimes a requirement is finished but not yet due: it waits for something outside the project, say until a tariff can be chosen. You mark that with
+
+```bash
+node .claude/kit/board.mjs issue hold <N> --reason "wartet, bis Tarif X wählbar ist"
+```
+
+The command writes the line `Waiting for event: <reason>` into the section `## Goal` and sets the label `kit:on-hold`. The line is what counts; the label is a help on the board, so you see the waiting without opening the card.
+
+As long as the line stands, no chain starts for the requirement, and no packages come out of a plan for it. Report and `--dry-run` list both among the skipped ones with the reason for waiting, ahead of any other reason; the note about a missing review is then left out. `kit:night` stays on the card, the check run keeps running.
+
+Waiting is not an open question: no answer is missing, an event is. `kit:clarify` and `## Open questions for the PO` stay separate from it; a requirement can wait for both at once. Once the event has happened, you lift the waiting:
+
+```bash
+node .claude/kit/board.mjs issue hold <N> --lift
+```
+
+That removes line and label, nothing else. The next night takes the requirement up again, without a new review and without a new `kit:night`. Only the human lifts it, the kit never does. Whoever makes a plan from a waiting requirement during the day with `/techplan #N` learns that at the start and can carry on anyway.
 
 ### Allowlist for third-party reviewers
 <!-- de: 0eeab036304e -->

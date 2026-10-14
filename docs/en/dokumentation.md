@@ -180,7 +180,7 @@ New cards carry the English ones, the kit still recognises the German ones on op
 | `[Mensch]` | `[Human]` |
 
 ### Labels
-<!-- de: 13976ac139f7 -->
+<!-- de: 132dc65edbac -->
 
 The kit sets the English ones, recognises the German ones on open cards and removes them wherever it would remove the English one.
 
@@ -198,6 +198,8 @@ The kit sets the English ones, recognises the German ones on open cards and remo
 | `ziel:pakete` | `goal:packages` |
 | `ziel:umsetzung` | `goal:implementation` |
 | `ziel:push-vorbereitet` | `goal:push-prepared` |
+
+`kit:on-hold` is new and has no old German name. It shows on the board that a business requirement waits for an external event; what counts is the line `Waiting for event: <reason>` in the section `## Goal`. `node .claude/kit/board.mjs issue hold <N> --reason "<reason>"` sets both, `issue hold <N> --lift` removes both, see [Waiting for an event](/en/nachtbetrieb#waiting-for-an-event).
 
 ## License
 <!-- de: 2b0491623e20 -->

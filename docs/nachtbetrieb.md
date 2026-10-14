@@ -103,7 +103,7 @@ node .claude/kit/night.mjs --chain             # echter Lauf
 
 `--max` zählt hier Ketten (Vorgabe 3).
 
-**Bedingungen.** Ein Kandidat hat den Titel `[Requirement]` oder `[Plan]`, steht im Backlog und trägt kein `kit:clarify`. Vor der ersten Kette steht jeder Kandidat auf `run:running` mit „Lauf angenommen um …, Vorabprüfung läuft“; dann prüft eine Vorflug-Session Reviewer und Tracker. Scheitert sie, steht `run:aborted` mit `Kette nicht gestartet um <Zeit>: <Grund>` im Laufstand, und die Labels bleiben. Die Kette arbeitet in einem eigenen Worktree und braucht weder sauberen Arbeitsbaum noch leere In-progress-Spalte.
+**Bedingungen.** Ein Kandidat hat den Titel `[Requirement]` oder `[Plan]`, steht im Backlog, trägt kein `kit:clarify` und wartet auf kein Ereignis. Vor der ersten Kette steht jeder Kandidat auf `run:running` mit „Lauf angenommen um …, Vorabprüfung läuft“; dann prüft eine Vorflug-Session Reviewer und Tracker. Scheitert sie, steht `run:aborted` mit `Kette nicht gestartet um <Zeit>: <Grund>` im Laufstand, und die Labels bleiben. Die Kette arbeitet in einem eigenen Worktree und braucht weder sauberen Arbeitsbaum noch leere In-progress-Spalte.
 
 | Stufe | Session | wann die Kette hier endet |
 |---|---|---|
@@ -165,13 +165,33 @@ Das Projekt bleibt Obergrenze: Sperrt `night.kette.uebergaenge` einen Übergang,
 
 ### Ein fertiger Plan als Auftrag
 
-`kit:night` an einem `[Plan]`-Issue im Backlog startet einen Plan-Auftrag. Der Plan trägt `review:done`, kein `kit:clarify`, unter `## Offene Fragen` steht `- Keine.`, und seine Herkunft ist gültig. Ohne Zeile `Fachliche Quelle:` läuft er als eigene Wurzel; trifft `Fachliche Quelle: Issue #N` eine Karte, hält die Abdeckung die Pakete gegen sie; zeigt die Zeile ins Leere, bleibt er liegen.
+`kit:night` an einem `[Plan]`-Issue im Backlog startet einen Plan-Auftrag. Der Plan trägt `review:done`, kein `kit:clarify`, unter `## Offene Fragen` steht `- Keine.`, seine Herkunft ist gültig, und sein Fachplan wartet auf kein Ereignis. Ohne Zeile `Fachliche Quelle:` läuft er als eigene Wurzel; trifft `Fachliche Quelle: Issue #N` eine Karte, hält die Abdeckung die Pakete gegen sie; zeigt die Zeile ins Leere, bleibt er liegen.
 
 Die Stufen `plan` und `review` entfallen, der Lauf beginnt bei `pakete`. `kit:carry-through` gilt nur am Plan selbst; dann läuft Variante B.
 
 Die fachliche Anforderung weicht dem Plan: Tragen beide das Kettenlabel, läuft der Plan.
 
 Von zwei gekennzeichneten Plänen derselben Wurzel läuft der jüngere.
+
+### Warten auf ein Ereignis
+
+Manchmal ist ein Fachplan fertig, aber noch nicht dran: Er wartet auf etwas außerhalb des Projekts, etwa bis ein Tarif wählbar ist. Das kennzeichnest du mit
+
+```bash
+node .claude/kit/board.mjs issue hold <N> --reason "wartet, bis Tarif X wählbar ist"
+```
+
+Das Kommando schreibt die Zeile `Wartet auf Ereignis: <Grund>` in den Abschnitt `## Ziel` und setzt das Label `kit:on-hold`. Maßgeblich ist die Zeile; das Label ist eine Hilfe am Board, damit du das Warten siehst, ohne die Karte zu öffnen.
+
+Solange die Zeile steht, startet für den Fachplan keine Kette, und aus einem Plan zu ihm entstehen keine Pakete. Bericht und `--dry-run` nennen beide unter den Übersprüngen mit dem Wartegrund, vor jedem anderen Grund; den Hinweis auf eine fehlende Prüfung gibt es dann nicht. `kit:night` bleibt an der Karte, der Prüflauf läuft weiter.
+
+Das Warten ist keine offene Frage: Es fehlt keine Antwort, sondern ein Ereignis. `kit:clarify` und `## Offene Fragen an den PO` bleiben davon getrennt; ein Fachplan kann auf beides zugleich warten. Ist das Ereignis eingetreten, hebst du das Warten auf:
+
+```bash
+node .claude/kit/board.mjs issue hold <N> --lift
+```
+
+Das nimmt Zeile und Label ab, nichts sonst. Die nächste Nacht nimmt den Fachplan wieder auf, ohne neue Prüfung und ohne neues `kit:night`. Aufheben tut nur der Mensch, das Kit nie. Wer tagsüber mit `/techplan #N` einen Plan aus einem wartenden Fachplan macht, erfährt das zu Beginn und kann trotzdem weitermachen.
 
 ### Allowlist für fremde Reviewer
 

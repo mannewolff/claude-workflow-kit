@@ -270,7 +270,7 @@ The installer backs up the config as `.claude/workflow.config.json.vor-umstellun
 Messages, reports, comments on the cards and the interfaces are in the project language from the next call on. What is already on the board stays. Lines the kit reads back later, such as `## Laufstand` or `Autor-Modell:`, it recognises in both languages; `node .claude/kit/board.mjs names` outputs which version it writes. JSON field names, file names under `.claude/` and the form words of findings stay the same in both languages.
 
 ### Labels and title prefixes
-<!-- de: ca947269fbb0 -->
+<!-- de: bd18195764e8 -->
 
 Labels and title prefixes carry the English name in every project.
 
@@ -283,6 +283,7 @@ Labels and title prefixes carry the English name in every project.
 | run is running, aborted, waiting | `run:running`, `run:aborted`, `run:waiting` |
 | trace of the review | `review:done` |
 | questions to the PO settled | `kit:clarified` |
+| requirement waits for an event | `kit:on-hold` |
 | goal of the chain | `goal:plan`, `goal:packages`, `goal:implementation`, `goal:push-prepared` |
 | prefixes | `[Requirement]`, `[Idea]`, `[Plan]`, `[Human]`, `[Task]` |
 

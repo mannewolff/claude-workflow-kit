@@ -267,6 +267,7 @@ Labels und Titel-Präfixe haben in jedem Projekt den englischen Namen.
 | Lauf läuft, abgebrochen, wartet | `run:running`, `run:aborted`, `run:waiting` |
 | Spur der Prüfung | `review:done` |
 | Fragen an den PO geklärt | `kit:clarified` |
+| Fachplan wartet auf ein Ereignis | `kit:on-hold` |
 | Ziel der Kette | `goal:plan`, `goal:packages`, `goal:implementation`, `goal:push-prepared` |
 | Präfixe | `[Requirement]`, `[Idea]`, `[Plan]`, `[Human]`, `[Task]` |
 
