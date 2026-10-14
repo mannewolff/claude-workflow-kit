@@ -172,3 +172,103 @@ test("[night-50] der Durchsatz reicht fuer einen echten Session-Strom (5.000 Zei
   assert.equal(erg.schuebe, 1250, "der Strom wurde nicht vollstaendig ausgewertet");
   assert.ok(dauerMs < 1000, `5.000 Zeilen brauchten ${dauerMs.toFixed(1)} ms — zu langsam fuer den stdout-Handler`);
 });
+
+// --- Die echte Form des Stroms (Issue #1686, Plan #1685, E1/E2) ---
+//
+// Im echten Strom kommen parallele Aufrufe als getrennte `assistant`-Ereignisse mit
+// derselben `message.id`, und Ereignisse eines Subagenten tragen `parent_tool_use_id`
+// und laufen ein, waehrend der Agent-Aufruf der Hauptsession offen ist.
+
+/** Ein `assistant`-Ereignis mit `message.id` und optional `parent_tool_use_id`. */
+function toolUseIn(messageId, ids, parent = null) {
+  return JSON.stringify({
+    type: "assistant",
+    message: {
+      id: messageId,
+      content: ids.map((id) => ({ type: "tool_use", id, name: "Bash", input: { command: "true" } })),
+    },
+    parent_tool_use_id: parent,
+  });
+}
+
+/** Ein `user`-Ereignis mit einem `tool_result` und optional `parent_tool_use_id`. */
+function toolResultIn(id, parent = null) {
+  return JSON.stringify({
+    type: "user",
+    message: { content: [{ type: "tool_result", tool_use_id: id, content: "ok" }] },
+    parent_tool_use_id: parent,
+  });
+}
+
+test("[night-50] getrennte Ereignisse mit derselben message.id ergeben einen Schub", () => {
+  const erg = beobachte([
+    [toolUseIn("m1", ["a"]), 1000],
+    [toolUseIn("m1", ["b"]), 1010],
+    [toolUseIn("m1", ["c"]), 1020],
+    [toolResultIn("a"), 1100],
+    [toolResultIn("b"), 1400],
+    [toolResultIn("c"), 1900],
+  ]);
+  assert.equal(erg.schuebe, 1);
+  assert.equal(erg.nebenlaeufigeSchuebe, 1);
+  assert.equal(erg.offeneSchuebe, 0);
+  assert.equal(erg.werkzeugMs, 900);
+  assert.equal(erg.aufrufe, 3, "aufrufe zaehlt jeden Aufruf des Schubs");
+});
+
+test("[night-50] Subagenten-Ereignisse im offenen Agent-Aufruf eroeffnen und schliessen keinen Schub", () => {
+  const erg = beobachte([
+    [toolUseIn("m1", ["agent1"]), 1000],
+    [toolUseIn("s1", ["sub-a"], "agent1"), 1100],
+    [toolResultIn("sub-a", "agent1"), 1200],
+    [toolUseIn("s2", ["sub-b", "sub-c"], "agent1"), 1300],
+    [toolResultIn("sub-b", "agent1"), 1400],
+    [toolResultIn("sub-c", "agent1"), 1500],
+    [toolResultIn("agent1"), 2000],
+  ]);
+  assert.equal(erg.offeneSchuebe, 0, "kein Verwaister");
+  assert.equal(erg.schuebe, 1);
+  assert.equal(erg.werkzeugMs, 1000, "die Werkzeugzeit ist die Spanne des Agent-Aufrufs");
+  assert.equal(erg.aufrufe, 1);
+});
+
+test("[night-50] eine neue message.id bei offenem Schub laesst den offenen als verwaist zaehlen (#737)", () => {
+  const erg = beobachte([
+    [toolUseIn("m1", ["a"]), 1000],
+    [toolUseIn("m2", ["b"]), 1100],
+    [toolResultIn("b"), 1300],
+  ]);
+  assert.equal(erg.offeneSchuebe, 1);
+  assert.equal(erg.schuebe, 1);
+  assert.equal(erg.werkzeugMs, 200);
+});
+
+test("[night-50] ein Strom in der Form des echten Protokolls ergibt keine offenen Schuebe und eine Werkzeugzeit", () => {
+  const erg = beobachte([
+    [JSON.stringify({ type: "system", subtype: "init" }), 0],
+    [JSON.stringify({ type: "assistant", message: { id: "m0", content: [{ type: "text", text: "los" }] }, parent_tool_use_id: null }), 10],
+    // zwei parallele Aufrufe als getrennte Ereignisse derselben Nachricht
+    [toolUseIn("m1", ["r1"]), 100],
+    [toolUseIn("m1", ["r2"]), 105],
+    [toolResultIn("r1"), 150],
+    [toolResultIn("r2"), 300],
+    // ein Agent-Aufruf, in dem der Subagent selbst parallel arbeitet
+    [toolUseIn("m2", ["ag"]), 1000],
+    [toolUseIn("s1", ["x1"], "ag"), 1100],
+    [toolUseIn("s1", ["x2"], "ag"), 1101],
+    [toolResultIn("x1", "ag"), 1200],
+    [toolResultIn("x2", "ag"), 1250],
+    [toolUseIn("s2", ["x3"], "ag"), 1300],
+    [toolResultIn("x3", "ag"), 1400],
+    [toolResultIn("ag"), 1600],
+    // danach ein einzelner Aufruf
+    [toolUseIn("m3", ["b1"]), 2000],
+    [toolResultIn("b1"), 2050],
+    [JSON.stringify({ type: "result", total_cost_usd: 0.5 }), 2100],
+  ]);
+  assert.equal(erg.offeneSchuebe, 0);
+  assert.equal(erg.schuebe, 3);
+  assert.equal(erg.nebenlaeufigeSchuebe, 1);
+  assert.equal(erg.werkzeugMs, 200 + 600 + 50);
+  assert.equal(erg.aufrufe, 4);
+});

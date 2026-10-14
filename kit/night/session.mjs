@@ -131,6 +131,15 @@ function emitVerbose(issueId, line) {
  * dreimal. Dass es mehr als einer war, steht darum in `nebenlaeufigeSchuebe` und nicht
  * in der Zeit.
  *
+ * Die echte Form des Stroms (Issue #1686, Plan #1685, E1/E2): Parallele Aufrufe kommen
+ * nicht als EIN Ereignis mit mehreren `tool_use`-Bloecken, sondern als getrennte
+ * `assistant`-Ereignisse mit derselben `message.id`, je eines pro Aufruf. Ein Ereignis,
+ * dessen `message.id` gleich der des offenen Schubs ist, erweitert darum diesen Schub,
+ * statt einen neuen zu eroeffnen. Ereignisse eines Subagenten tragen `parent_tool_use_id`
+ * und laufen ein, waehrend der Agent-Aufruf der Hauptsession offen ist; sie werden fuer
+ * Schuebe nicht gewertet — ihre Zeit steckt in der Spanne des Agent-Aufrufs, und die
+ * Session hat einmal gewartet, nicht zweimal.
+ *
  * Ein Schub, dessen `tool_result` nie ankommt (abgeschnittener Strom, Zeitlimit), zaehlt
  * als `offeneSchuebe` und geht NICHT in `werkzeugMs` ein: Ein fehlender Messwert darf
  * nicht als Null erscheinen, und die Spanne bis zum letzten gesehenen Ereignis waere eine
@@ -142,7 +151,8 @@ function emitVerbose(issueId, line) {
  * das haelt den Beobachter an Fixtures prueffbar, und deshalb ist er exportiert.
  *
  * `zeile(roh, ts)` nimmt eine Rohzeile oder ein bereits geparstes Objekt, `ergebnis()`
- * liefert jederzeit `{ werkzeugMs, schuebe, nebenlaeufigeSchuebe, offeneSchuebe }`.
+ * liefert jederzeit `{ werkzeugMs, schuebe, nebenlaeufigeSchuebe, offeneSchuebe, aufrufe }`;
+ * `aufrufe` zaehlt jeden Aufruf der Hauptsession, auch den eines offenen Schubs.
  * Unlesbare Zeilen werden tolerant uebersprungen, wie in `leseKennzahlen()` — eine
  * Kennzahl darf einen laufenden Nachtlauf nicht zu Fall bringen.
  */
@@ -181,44 +191,58 @@ export function werkzeugZeitBeobachter() {
   let schuebe = 0;
   let nebenlaeufigeSchuebe = 0;
   let verwaiste = 0;
-  // Der Schub, der gerade laeuft: Startzeit, noch offene tool_use-Ids und die Zahl der
-  // Aufrufe, mit der er begonnen hat.
+  let aufrufe = 0;
+  // Der Schub, der gerade laeuft: Startzeit, `message.id`, noch offene tool_use-Ids und
+  // die Zahl seiner Aufrufe.
   let offen = null;
+
+  function aufrufeSehen(message, ts) {
+    // Ohne Id liesse sich einem Aufruf kein Ergebnis zuordnen; er eroeffnet darum
+    // keinen Schub, statt einen zu eroeffnen, der nie schliesst.
+    const ids = message.content
+      .filter((b) => b?.type === "tool_use" && typeof b.id === "string" && b.id)
+      .map((b) => b.id);
+    if (!ids.length) return;
+    aufrufe += ids.length;
+    const messageId = typeof message.id === "string" && message.id ? message.id : null;
+    // Derselbe Schub, als eigenes Ereignis geliefert (E1).
+    if (offen && messageId && offen.messageId === messageId) {
+      for (const id of ids) offen.ids.add(id);
+      offen.aufrufe += ids.length;
+      return;
+    }
+    // Ein neuer Schub, waehrend der alte noch offen ist: Der alte bekommt kein
+    // Ergebnis mehr und zaehlt als offen.
+    if (offen) verwaiste += 1;
+    offen = { start: ts, messageId, ids: new Set(ids), aufrufe: ids.length };
+  }
+
+  function ergebnisseSehen(message, ts) {
+    if (!offen) return;
+    for (const block of message.content) {
+      if (block?.type === "tool_result") offen.ids.delete(block.tool_use_id);
+    }
+    if (offen.ids.size === 0) {
+      werkzeugMs += ts - offen.start;
+      schuebe += 1;
+      if (offen.aufrufe > 1) nebenlaeufigeSchuebe += 1;
+      offen = null;
+    }
+  }
 
   return {
     zeile(roh, ts) {
       const obj = leseStromereignis(roh);
       if (!obj || !Array.isArray(obj.message?.content)) return;
-
-      if (obj.type === "assistant") {
-        // Ohne Id liesse sich einem Aufruf kein Ergebnis zuordnen; er eroeffnet darum
-        // keinen Schub, statt einen zu eroeffnen, der nie schliesst.
-        const ids = obj.message.content
-          .filter((b) => b?.type === "tool_use" && typeof b.id === "string" && b.id)
-          .map((b) => b.id);
-        if (!ids.length) return;
-        // Ein neuer Schub, waehrend der alte noch offen ist: Der alte bekommt kein
-        // Ergebnis mehr und zaehlt als offen.
-        if (offen) verwaiste += 1;
-        offen = { start: ts, ids: new Set(ids), aufrufe: ids.length };
-        return;
-      }
-
-      if (!offen) return;
-      for (const block of obj.message.content) {
-        if (block?.type === "tool_result") offen.ids.delete(block.tool_use_id);
-      }
-      if (offen.ids.size === 0) {
-        werkzeugMs += ts - offen.start;
-        schuebe += 1;
-        if (offen.aufrufe > 1) nebenlaeufigeSchuebe += 1;
-        offen = null;
-      }
+      // Ein Subagent arbeitet innerhalb des offenen Agent-Aufrufs (E2).
+      if (obj.parent_tool_use_id) return;
+      if (obj.type === "assistant") aufrufeSehen(obj.message, ts);
+      else ergebnisseSehen(obj.message, ts);
     },
     ergebnis() {
       // Der noch laufende Schub wird hier dazugezaehlt statt beim Eintreffen abgeschlossen:
       // ergebnis() darf mehrfach abgerufen werden, ohne den Zustand zu veraendern.
-      return { werkzeugMs, schuebe, nebenlaeufigeSchuebe, offeneSchuebe: verwaiste + (offen ? 1 : 0) };
+      return { werkzeugMs, schuebe, nebenlaeufigeSchuebe, offeneSchuebe: verwaiste + (offen ? 1 : 0), aufrufe };
     },
   };
 }
