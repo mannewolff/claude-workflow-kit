@@ -2780,6 +2780,10 @@ export const kennzeichenZurueckGrund = () => t("kennzeichenZurueck");
  * ist die Einstellung jetzt unpassend (E3), hat er das GO fuer diesen Stand zurueckgezogen.
  * Scheitert das Lesen, gilt der Stand vom Laufbeginn — ein Board-Fehler verhindert keine
  * Kette, die sonst liefe.
+ *
+ * Nach dem Kennzeichen das Warten auf ein Ereignis (Plan #1624, E7): Wartet die Karte oder —
+ * beim Plan-Auftrag — sein Fachplan inzwischen, ist die Rueckgabe `{ grund, nurUebersprung:
+ * true }`. Das GO steht dann noch; die Kette verbucht nur den Uebersprung (E8).
  */
 function karteBeimStart(auftrag) {
   const alt = auftrag.karte;
@@ -2797,8 +2801,40 @@ function karteBeimStart(auftrag) {
     return { karte: alt };
   }
   if (!kennzeichenName(karte?.labels, KETTE_BUDGET.label, "night")) return { grund: kennzeichenZurueckGrund() };
+  const wartet = wartegrundBeimStart(auftrag, karte);
+  if (wartet) return { grund: wartet, nurUebersprung: true };
   const grund = zielAusschluss(karte, auftrag.art, plan);
   return grund ? { grund } : { karte: { ...alt, ...karte } };
+}
+
+/**
+ * Der Wartegrund beim Kettenstart (Plan #1624, E7) — `null`, wenn nichts wartet. Beim
+ * Fachplan-Auftrag die Wartezeile der frisch gelesenen Karte, beim Plan-Auftrag die seines
+ * Fachplans aus einem zusaetzlichen `issue get`. Scheitert dieses Lesen, gilt der Stand vom
+ * Laufbeginn: Da wartete der Fachplan nicht, sonst stuende der Plan nicht unter den Ketten.
+ */
+function wartegrundBeimStart(auftrag, karte) {
+  if (auftrag.art !== "plan") {
+    const wartet = ereignisGrundVon(karte);
+    return wartet === null ? null : t("ketteEreignis", { grund: wartet, id: karte.id });
+  }
+  if (auftrag.ohneAnforderung) return null;
+  let fachplan;
+  try {
+    fachplan = abh.board("issue", "get", String(auftrag.F));
+  } catch (e) {
+    log(t("nichtFrischLesbar", { id: auftrag.F, text: e.message }));
+    return null;
+  }
+  const wartet = ereignisGrundVon(fachplan);
+  return wartet === null ? null : t("planEreignis", { F: auftrag.F, grund: wartet });
+}
+
+/** Die `zuletzt`-Zeilen des Laufstands vor diesem Lauf — an ihnen findet der naechste Lauf vorhandene Ergebnisse. */
+function zuletztZeilen(auftrag) {
+  // In beiden Sprachen: Der vorige Lauf kann in der anderen geschrieben haben.
+  const istZuletzt = (z) => Object.keys(TEXTE).some((sprache) => z.startsWith(textIn(sprache, "zuletztPraefix")));
+  return String((auftrag.laufstandVorher ?? []).at(-1) ?? "").split("\n").filter(istZuletzt).join("\n");
 }
 
 /**
@@ -2812,11 +2848,24 @@ function ketteNichtMehrFreigegeben(auftrag, nummer, args, grund) {
   const { id, title } = auftrag.karte;
   log(t("nichtMehrFreigegeben", { nummer, max: args.max, id }));
   uebersprungeneVerbuchen([{ id: String(id), title: title ?? "", grund }], [], KETTE_BUDGET.label, false);
-  // Die `zuletzt`-Zeilen in beiden Sprachen: Der vorige Lauf kann in der anderen geschrieben haben.
-  const istZuletzt = (z) => Object.keys(TEXTE).some((sprache) => z.startsWith(textIn(sprache, "zuletztPraefix")));
-  const zuletzt = String((auftrag.laufstandVorher ?? []).at(-1) ?? "").split("\n").filter(istZuletzt);
-  const text = [t("nichtGestartetStand", { zeit: abh.jetzt().toISOString(), grund }), zuletzt.join("\n")].filter(Boolean).join("\n\n");
+  const text = [t("nichtGestartetStand", { zeit: abh.jetzt().toISOString(), grund }), zuletztZeilen(auftrag)].filter(Boolean).join("\n\n");
   standSetzen(id, "abgebrochen", text, { budgetMs: ABBRUCH_BUDGET_MS });
+  return { ausgang: "uebersprungen", vorbereitung: false, kette: null };
+}
+
+/**
+ * Eine Kette, deren Karte oder Fachplan beim Start auf ein Ereignis wartet (Plan #1624, E7):
+ * nur der Uebersprung wie bei der Auswahl (E8), kein Laufstand `abgebrochen`. Den Vorab-Stand
+ * `laeuft` aus dem Beanspruchen loest der Stand `wartet` mit dem Wartegrund ab — bliebe er
+ * stehen, truege die Karte weiter das Label `laeuft`, und ein spaeterer Abbruch des Laufs
+ * schriebe an ihr doch `abgebrochen`. Die `zuletzt`-Zeilen bleiben wie beim Kennzeichen.
+ */
+function ketteWartetBeimStart(auftrag, nummer, args, grund) {
+  const { id, title } = auftrag.karte;
+  log(t("wartetBeimStart", { nummer, max: args.max, id }));
+  uebersprungeneVerbuchen([{ id: String(id), title: title ?? "", grund }], [], KETTE_BUDGET.label, false);
+  const text = [t("nichtGestartetStand", { zeit: abh.jetzt().toISOString(), grund }), zuletztZeilen(auftrag)].filter(Boolean).join("\n\n");
+  standSetzen(id, "wartet", text, { budgetMs: ABBRUCH_BUDGET_MS });
   return { ausgang: "uebersprungen", vorbereitung: false, kette: null };
 }
 
@@ -2835,6 +2884,7 @@ function ketteNichtMehrFreigegeben(auftrag, nummer, args, grund) {
  */
 async function laufeEineKette(auftrag, nummer, args) {
   const start = karteBeimStart(auftrag);
+  if (start.nurUebersprung) return ketteWartetBeimStart(auftrag, nummer, args, start.grund);
   if (start.grund) return ketteNichtMehrFreigegeben(auftrag, nummer, args, start.grund);
   return ketteMitKarte({ ...auftrag, karte: start.karte }, nummer, args);
 }

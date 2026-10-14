@@ -225,6 +225,7 @@ export const TEXTE = Object.freeze({
     kennzeichenZurueck: "Startkennzeichen nach Laufbeginn zurückgenommen",
     nichtFrischLesbar: "  #{id} nicht frisch lesbar ({text}) — die Kette faehrt mit dem Stand vom Laufbeginn.",
     nichtMehrFreigegeben: "Kette {nummer}/{max}: #{id} beim Start nicht mehr freigegeben.",
+    wartetBeimStart: "Kette {nummer}/{max}: #{id} wartet beim Start auf ein Ereignis.",
     worktreeFehler: "technischer Fehler: {meldung}",
     ketteEnde: "  Kette zu Issue #{id}: {ausgang}{zusatz} ({kosten} $).",
     alteLabels: "Hinweis: #{id} traegt das Label '{alt}', das es seit Stufe 2 nicht mehr gibt — es hat keine Wirkung. "
@@ -463,6 +464,7 @@ export const TEXTE = Object.freeze({
     kennzeichenZurueck: "start marker withdrawn after the run began",
     nichtFrischLesbar: "  #{id} not freshly readable ({text}) — the chain runs with the state from the start of the run.",
     nichtMehrFreigegeben: "Chain {nummer}/{max}: #{id} no longer released at start.",
+    wartetBeimStart: "Chain {nummer}/{max}: #{id} is waiting for an event at start.",
     worktreeFehler: "technical error: {meldung}",
     ketteEnde: "  Chain for issue #{id}: {ausgang}{zusatz} ({kosten} $).",
     alteLabels: "Note: #{id} carries the label '{alt}', which no longer exists since stage 2 — it has no effect. The "
