@@ -26,7 +26,6 @@ const lies = (...teile) => readFileSync(join(repoRoot, ...teile), "utf-8");
 
 const SKILL = lies("skills", "task", "SKILL.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
-const DOKU = lies("docs", "dokumentation.md");
 const PROZESS = lies("docs", "prozess.md");
 const ISSUE_REVIEW = lies("skills", "issue-review", "SKILL.md");
 
@@ -306,8 +305,8 @@ test("[skills-7] der Stop-Punkt verbietet Code, Commit, Ready und das Anlegen oh
 // eine vierte Pruefstufe oder haelt den Task fuer ein Dokument, das nie implementiert
 // wird — das Gegenteil dessen, wofuer der Weg gebaut wurde.
 
-// Die Pruefstufen-Tabelle steht seit Issue #633 nur noch in der Doku.
-for (const [name, text] of [["docs/dokumentation.md", DOKU]]) {
+// Die Pruefstufen-Tabelle steht auf der Prozessseite der Doku.
+for (const [name, text] of [["docs/prozess.md", PROZESS]]) {
   test(`[skills-7] ${name}: die Pruefstufen-Tabelle zaehlt [Task] zur Stufe \`issue\``, () => {
     const zeile = text.split("\n").find((z) => /^\|/.test(z) && /\[Task\]/.test(z) && /`issue`/.test(z));
     assert.ok(zeile, `${name}: keine Tabellenzeile ordnet [Task] der Stufe \`issue\` zu`);

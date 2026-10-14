@@ -80,7 +80,7 @@ Weißt du schon, was die Idee will, rufst du zwei dieser Wege direkt auf: Verlan
 
 ### /issue-review
 
-**Wofür:** Modelle, die das Dokument nicht geschrieben haben, lesen einen Fachplan, ein Plandokument oder auf Wunsch ein Arbeitspaket und liefern Befunde als Kommentar. Die aufrufende Session arbeitet jeden Befund ein oder lehnt ihn mit einem Satz ab. Am Ende setzt sie das Label `review:done` als Spur am Board; ein Befund der Stopp-Klasse setzt stattdessen `kit:clarify`. Die Stufe liest der Skill am Titel-Präfix ab, welche Rollen prüfen, sagt `reviewStufen`. Einzelheiten stehen unter [Issue-Review über mehrere Modelle](/dokumentation#issue-review-uber-mehrere-modelle).
+**Wofür:** Modelle, die das Dokument nicht geschrieben haben, lesen einen Fachplan, ein Plandokument oder auf Wunsch ein Arbeitspaket und liefern Befunde als Kommentar. Die aufrufende Session arbeitet jeden Befund ein oder lehnt ihn mit einem Satz ab. Am Ende setzt sie das Label `review:done` als Spur am Board; ein Befund der Stopp-Klasse setzt stattdessen `kit:clarify`. Die Stufe liest der Skill am Titel-Präfix ab, welche Rollen prüfen, sagt `reviewStages`. Einzelheiten stehen unter [Issue-Review über mehrere Modelle](#issue-review-uber-mehrere-modelle).
 
 **Wann:** nach `/requirement` am Fachplan und nach `/techplan` am Plandokument. Arbeitspakete prüft der Skill nur auf ausdrücklichen Aufruf.
 
@@ -279,6 +279,134 @@ Vollständig ist ein Szenario mit Titel und je mindestens einer Zeile `Angenomme
 ```
 
 `issue check-form` und `issue create` weisen einen Fachplan ab, dem der Abschnitt fehlt, dessen Abschnitt leer ist oder kein vollständiges Szenario trägt; die Meldung zeigt die Form eines Szenarios. Für Karten am Board gilt die Pflicht ab dem Stichtag [`szenarienAb`](/einstellungen); `node .claude/kit/board.mjs scenarios baseline` nennt den passenden Wert. Ohne Szenarien entsteht kein technischer Plan; `/groom` ergänzt sie.
+
+## Vorgeschichte
+
+Bevor `/requirement` einen Fachplan oder `/techplan` einen Plan schreibt, sucht das Kit frühere Fachpläne zum selben Gegenstand, archivierte eingeschlossen. So wird eine frühere Entscheidung nicht still überfahren. Die Suche sperrt nichts, sie macht nur sichtbar.
+
+**Einschalten.** Der Schalter [`history`](/einstellungen) steht in der Vorgabe auf aus; dann entsteht jedes Dokument ohne Abschnitt und ohne Vermerk. Die Suche braucht einen Tracker, der archivierte Karten durchsucht; das kann der Toolbox-Tracker (kanban-kit). Bei GitHub, GitLab und dem lokalen Datei-Tracker trägt das Dokument den Vermerk, dass keine Vorgeschichte gelesen wurde.
+
+**Suchen.** Beide Skills rufen selbst auf:
+
+```bash
+node .claude/kit/board.mjs issue history --terms <begriff> [--files <pfad>]... [--without <N>]...
+```
+
+Die Suchbegriffe kommen aus Titel und Ziel der neuen Anforderung. Der Plan gibt zusätzlich die Dateien aus `## Betroffene Bereiche` mit und findet so auch die Fachpläne, aus denen diese Teile entstanden sind. Das Dokument nennt in der Zeile `Suchbegriffe:`, wonach gesucht wurde, und `/issue-review` legt den Prüfern die gefundenen Fachpläne vollständig bei.
+
+**Was du danach siehst.** Im Fachplan steht der Abschnitt `## Vorgeschichte` zwischen den Nicht-Zielen und den offenen Fragen an den PO, im Plan der Unterabschnitt `### Vorgeschichte` am Ende von `## Betroffene Bereiche`. Er nennt höchstens fünf Fundstellen, je mit Nummer, Titel und dem Satz, der für die neue Anforderung zählt, und wo es zutrifft einen dieser Vermerke:
+
+- `Nichts Einschlägiges gefunden.` — gesucht, kein Treffer zählt.
+- `Keine Vorgeschichte gelesen: <Grund>` — das Archiv war nicht erreichbar; das Dokument entsteht trotzdem.
+- `Weitere Treffer: <Zahl>` — es gab mehr Treffer, als das Dokument nennt.
+
+**Ein Widerspruch hält nichts an.** Widerspricht die neue Anforderung einer früheren PO-Antwort oder einem früheren Nicht-Ziel, steht der Widerspruch mit Zitat und Fundstelle im Abschnitt zur Vorgeschichte, nicht unter den offenen Fragen. Auch nachts läuft die Nacht-Kette weiter; der Nachtbericht nennt den Widerspruch.
+
+## Issue-Review über mehrere Modelle
+
+Ein Dokument ist die Quelle der Wahrheit für den nächsten Schritt. Ein Fehler darin pflanzt sich fort, und sein Autor sieht ihn nicht, weil er den Kontext im Kopf hat. `/issue-review` lässt Modelle lesen, die das Dokument **nicht** geschrieben haben. Sie liefern Befunde; die aufrufende Session arbeitet jeden ein oder lehnt ihn mit einem Satz ab. Befunde sind Zuarbeit, kein Gate.
+
+### Drei Prüfstufen
+
+Welche Stufe greift, entscheidet das Titel-Präfix:
+
+| Stufe | Prüft | Nachweis |
+|---|---|---|
+| `fachlich` | einen Fachplan `[Requirement]` aus [/requirement](#requirement) | `Fachplan-Review: …` |
+| `plan` | ein Plandokument `[Plan]` aus [/techplan](#techplan) | `Plan-Review: …` |
+| `issue` | ein Arbeitspaket aus [/issues](#issues) oder einen `[Task]` aus [/task](#task); `[Task]` ist kein Dokument-Präfix | `Issue-Review: …` |
+
+**Der Aufruf ist immer `/issue-review #N`.** Es gibt bewusst kein eigenes Kommando je Stufe; der Skill liest sie am Titel-Präfix ab. Das gilt interaktiv genauso wie im Nachtbetrieb, nur fragt die Session interaktiv vor dem Schreiben. Ohne Nummer nimmt der Skill alle Fachpläne und Plandokumente aus dem Backlog, die noch keinen Nachweis ihrer Stufe tragen. Arbeitspakete prüft er nur mit Nummer; was ein Paket falsch macht, fangen die Prüfungen vor dem Commit und der Code-Review. Eine `[Idea]` prüft er nie.
+
+**Wo der Nachweis steht:** beim Arbeitspaket im Abschnitt `## Kontext`, bei der fachlichen Anforderung im Abschnitt `## Ziel` neben `Autor-Modell:`, beim Plandokument vor `## Ziel` neben `Plan-Modell:`. Er ist eine Spur, keine Freigabe.
+
+**Warum die Prüfung oben ansetzt.** Die Reichweite eines Fehlers wächst nach unten: Ein Fehler im Fachplan geht in den Plan, von dort in jedes Arbeitspaket und in den Code. Je früher er gefunden wird, desto billiger ist er.
+
+**Wer prüft.** Der Fachplan bekommt die Rollen `form-beobachtbarkeit` und `abgrenzung`, der Plan `architektur-bestand` und `schnitt-abhaengigkeiten`, das Arbeitspaket `pruefbarkeit`. Scope, Abhängigkeiten und Folgen im Bestand prüft die Plan-Stufe, weil dort der ganze Zuschnitt vorliegt. Jede Rolle fragt auch „Was kann raus?“. Der Prüfer des Plans liest zusätzlich die Karte aus `Fachliche Quelle:` und prüft, ob der Plan jedes Ziel und jedes Kriterium dieser Quelle herstellt.
+
+Wie viele Reviewer welche Rollen tragen, sagt [`reviewStages`](/einstellungen). Ohne diesen Block prüft je Stufe ein Reviewer je Rolle: fachlich `form-beobachtbarkeit` und `abgrenzung`, Plan `architektur-bestand` und `schnitt-abhaengigkeiten`, Arbeitspaket `pruefbarkeit`. Welche Modelle als Reviewer bereitstehen, steht in [`issueReview`](/einstellungen); `issue-review matrix` zeigt die Zuordnung.
+
+**Form vor Inhalt.** Der Maßstab jeder Stufe ist ihr Format: die Abschnitte des Fachplans, die sechs Überschriften des Plans, die vier Abschnitte des Arbeitspakets. Die Form prüft kein Modell, sondern `issue check-form`; die Session behebt Verstöße, bevor ein Reviewer startet.
+
+### Was du danach siehst
+
+Am Dokument steht ein Kommentar `## <Stufe>-Review, Runde 1` mit den Befunden und ein Kommentar `## Einarbeitung, Runde 1` mit der Liste übernommen oder abgelehnt samt Grund. Der neue Text steht im Body, mit der Nachweiszeile der Stufe, dazu das Label `review:done`. Hat ein Befund eine Frage der Stopp-Klasse, trägt das Dokument stattdessen `kit:clarify` und die Frage als Kommentar. Ist kein einziger Reviewer gelaufen, setzt der Skill `review:done` nicht. Eine zweite Runde gibt es nicht.
+
+Ein Claude-Reviewer läuft als Agent `kit-pruefer` und darf nur lesen. Ein fremder Reviewer wie Codex läuft über sein Kommando mit dem Nur-Lese-Schalter seines Werkzeugs; ohne bekannten Schalter startet er nicht.
+
+## Das Plan-Format
+
+Ein Plandokument trägt genau diese sechs Abschnitte, jeden genau einmal und in dieser Reihenfolge:
+
+```markdown
+## Ziel
+## Betroffene Bereiche
+## Architektonische Entscheidungen
+## Geplante Änderungen
+## Offene Fragen
+## Verifizierung
+```
+
+Dazu gelten diese Regeln:
+
+- **Kopf.** Vor `## Ziel` steht `Plan-Modell:` mit dem Modell, das den Plan entworfen hat. Entstand der Plan aus einem Fachplan, steht dort auch `Fachliche Quelle: Issue #N`, sonst fehlt die Zeile. Eine Zeile `Issue-Review:` trägt ein Plandokument nie; sein Nachweis heißt `Plan-Review:`.
+- **Keine weitere `##`-Überschrift** zwischen den sechs Abschnitten. Unterabschnitte ab `###` sind erlaubt, etwa `### Vorgeschichte`.
+- **Kein leerer Abschnitt.** Nur unter `## Architektonische Entscheidungen` und `## Offene Fragen` darf `- Keine.` stehen, als erste Zeile.
+- **Jede Entscheidung trägt eine Begründung.** Entscheidungen, die der Plan selbst trifft, stehen als `E`-Einträge mit Frage, Wahl, Verworfenem, Grund und Rückbau.
+- **Unter `## Offene Fragen` stehen nur Fragen der Stopp-Klasse.** Alles andere entscheidet der Plan.
+- **`## Verifizierung` nennt Prüfungen, nicht ihr Ergebnis:** „`node --test` läuft“, nicht „alle Tests sind grün“.
+- **Jede Angabe über den Bestand stimmt:** Genannte Dateien, Funktionen, Kommandos und Einstellungen gibt es unter diesem Namen.
+- **Neue Namen sind geprüft.** Führt der Plan einen Namen ein, den ein Mensch tippt, sagt er, dass er mit keinem eingebauten Kommando von Claude Code kollidiert.
+
+## Prüfungen vor dem Commit
+
+Jede Umsetzung endet mit `node .claude/kit/checks.mjs run`, bevor sie committet. Die Skills rufen es selbst auf; du siehst sein Ergebnis im Abschlussbericht unter „Tests und Checks“: welche Prüfungen gelaufen sind, mit Ergebnis und Dauer, und welche ausgelassen wurden, jeweils mit Grund.
+
+**Bereiche.** Eine Prüfung aus `buildChecks` kann Bereiche aus `checkAreas` nennen; sie läuft dann nur, wenn das Paket einen davon berührt. Eine Datei ohne Bereich lässt alle Prüfungen laufen. `node .claude/kit/checks.mjs plan` zeigt die Auswahl, ohne etwas auszuführen.
+
+**Stufen.** Jede Prüfung hat einen Zeitpunkt:
+
+| Stufe | Zeitpunkt | Skill |
+| --- | --- | --- |
+| `paket` | vor dem lokalen Commit eines Arbeitspakets | `/implement-ready`, `/implement-next`, `/implement-done`, `/local-check` |
+| `push` | vor dem Veröffentlichen auf main | `/push-main` |
+| `merge` | vor der Freigabe nach production | `/merge-production` |
+
+Die Stufen bauen aufeinander auf: `push main` fährt Paket- und Push-Stufe vollständig, `merge production` fährt nur, was `push main` nicht geprüft hat. Eine Prüfung einer späteren Stufe erscheint vorher als Auslassung mit ihrer Stufe als Grund. Das ist kein Mangel, sondern ihr Zeitpunkt.
+
+**Das Commit-Gate.** Ist es eingehängt, weist es jeden Commit ab, dem kein grüner Prüflauf auf demselben Stand vorausging. Es vergleicht die geprüften Dateien mit dem, was wirklich committet wird; eine Datei, die nach der Prüfung geändert wurde, lässt es nicht durch. Ein roter Lauf heißt: korrigieren und denselben Aufruf wiederholen. Er fährt zuerst die zuletzt roten Prüfungen und danach einmal den vollen Lauf.
+
+Wie man Bereiche, Stufen und das Gate einrichtet, steht unter [Die Config-Datei](/dokumentation#die-config-datei) und in den [Einstellungen](/einstellungen).
+
+## Der Prüflauf
+
+Der Prüflauf lässt am Tag mehrere fachliche Anforderungen nacheinander prüfen, ohne dass jemand danebensitzt. Je Karte läuft eine Session `/issue-review #N`. Danach steht an jeder Karte, woran du bist: geprüft, oder es wartet eine Entscheidung. Alles außerhalb der Stopp-Klasse hat die Prüfung entschieden und im Dokument festgehalten.
+
+**Was du tust.** Du setzt das Label `kit:check` an jede fachliche Anforderung, die geprüft werden soll; der Name kommt aus [`checkRun`](/einstellungen). Dann startest du:
+
+```bash
+node .claude/kit/night.mjs --check
+```
+
+Eine Vorschau hat der Lauf nicht; `/issue-review --dry-run` zeigt Dokumente und Reviewer. Kandidaten sind alle Karten mit dem Label und dem Titel-Präfix `[Requirement]`, gleich in welcher Spalte. Ein Plandokument, ein Arbeitspaket oder eine Karte mit `kit:clarify` steht als übersprungen in der Liste und behält ihr Label. Scheitert vor der ersten Prüfung der Vorflug der Reviewer, bekommt jede Karte den Kommentar `Pruefung nicht gestartet` mit Grund. Der Lauf arbeitet in einem eigenen Worktree je Lauf und hinterlässt im Projekt keine Änderung.
+
+**Das Label ist mit dem Start verbraucht.** Der Lauf nimmt es unmittelbar vor der Session der Karte ab, samt einem `review:done` aus einer früheren Prüfung. Jedes Setzen erlaubt genau eine Prüfung; nach einem Abbruch setzt du es neu.
+
+`kit:clarify` nimmt der Lauf nie ab. Das darf nur ein Mensch, sonst gäbe sich ein Lauf seine eigene Freigabe.
+
+**Was du danach siehst.** Auf der Konsole und im Protokoll steht je Karte eine Zeile mit Nummer, Titel, Ergebnis und der geprüften Fassung, einem Fingerabdruck des Kartentexts. Ändert jemand den Text während der Prüfung, zeigt der Fingerabdruck, welche Fassung geprüft wurde.
+
+| Ergebnis | Spur an der Karte | als Nächstes |
+|---|---|---|
+| geprüft | `Fachplan-Review:` im Body, Label `review:done`, Befunde und Einarbeitung als Kommentare | nichts; die Karte kann in die Nacht-Kette |
+| wartende Entscheidung | `kit:clarify` und die Frage als Kommentar; der Text bleibt unverändert | die Frage beantworten und `kit:clarify` abnehmen |
+| unvollständig | Kommentar `## Pruefung unvollstaendig` mit Grund, erreichtem Schritt und Weg nach vorn | `/issue-review #N` von Hand fahren |
+
+**Budgets.** Zeit je Prüfer-Session und Kosten je Lauf stehen in [`checkRun`](/einstellungen). Ist das Kostenbudget erschöpft, bleiben die übrigen Karten liegen und behalten ihr Label.
+
+**Was der Lauf nicht tut.** Er bewegt keine Karte zwischen Spalten, zieht nichts nach Ready und setzt kein Kettenlabel. Das Kettenlabel für die Nacht-Kette setzt weiter ein Mensch.
+
+Beim Tracker `local` liegt das Board im Repo, und die Sessions schreiben in `issues/` der Hauptkopie. Diese Änderungen an den Karten sind das Ergebnis und kein Rest.
 
 ## Mitteilungen: glauben statt nachsehen
 

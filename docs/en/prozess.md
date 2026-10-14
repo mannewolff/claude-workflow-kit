@@ -86,9 +86,9 @@ If you already know what the idea wants, you call two of these routes directly: 
 **Next:** `/issue-review #N` on the business plan, then `/groom #N`. Without a PO you start directly with `/techplan`. What a business plan looks like is described under [PO loop](#po-loop-business-and-technical-issues).
 
 ### /issue-review
-<!-- de: 62ef9c398bc1 -->
+<!-- de: 250678412893 -->
 
-**What for:** Models that did not write the document read a business plan, a plan document (Plandokument) or, on request, a work package and deliver findings as a comment. The calling session incorporates every finding or rejects it with one sentence. At the end it sets the label `review:done` as a trace on the board; a finding of the stop class (Stopp-Klasse) sets `kit:clarify` instead. The skill reads the stage from the title prefix; which roles review is said by `reviewStufen`. Details under [Issue review across multiple models](/en/dokumentation#issue-review-across-multiple-models).
+**What for:** Models that did not write the document read a business plan, a plan document (Plandokument) or, on request, a work package and deliver findings as a comment. The calling session incorporates every finding or rejects it with one sentence. At the end it sets the label `review:done` as a trace on the board; a finding of the stop class (Stopp-Klasse) sets `kit:clarify` instead. The skill reads the stage from the title prefix; which roles review is said by `reviewStages`. Details under [Issue review across multiple models](#issue-review-across-multiple-models).
 
 **When:** after `/requirement` on the business plan and after `/techplan` on the plan document. Work packages are reviewed only on explicit request.
 
@@ -304,6 +304,141 @@ A scenario is complete with a title and at least one line each of `Angenommen`, 
 ```
 
 `issue check-form` and `issue create` reject a business plan that lacks the section, whose section is empty or carries no complete scenario; the message shows the form of a scenario. For cards on the board the obligation applies from the cut-off date [`szenarienAb`](/en/einstellungen); `node .claude/kit/board.mjs scenarios baseline` names the matching value. Without scenarios no technical plan is created; `/groom` adds them.
+
+## History
+<!-- de: fc62a6e4f464 -->
+
+Before `/requirement` writes a business plan or `/techplan` a plan, the kit searches for earlier business plans on the same subject, archived ones included. That way an earlier decision is not silently overridden. The search (Vorgeschichte) locks nothing, it only makes things visible.
+
+**Switching it on.** The switch [`history`](/en/einstellungen) is off by default; then every document arises without a section and without a note. The search needs a tracker that searches archived cards; the Toolbox tracker (kanban-kit) can do that. With GitHub, GitLab and the local file tracker the document carries the note that no history was read.
+
+**Searching.** Both skills call it themselves:
+
+```bash
+node .claude/kit/board.mjs issue history --terms <begriff> [--files <pfad>]... [--without <N>]...
+```
+
+The search terms come from the title and goal of the new requirement. The plan additionally passes the files from `## Betroffene Bereiche` and so also finds the business plans from which these parts arose. The document names what was searched for in the line `Suchbegriffe:` (search terms), and `/issue-review` hands the reviewers the business plans found in full.
+
+**What you see afterwards.** In the business plan the section `## Vorgeschichte` stands between the non-goals and the open questions to the PO, in the plan the subsection `### Vorgeschichte` at the end of `## Betroffene Bereiche`. It names at most five references, each with number, title and the sentence that counts for the new requirement, and where it applies one of these notes:
+
+- `Nichts Einschlägiges gefunden.` (nothing relevant found) — searched, no hit counts.
+- `Keine Vorgeschichte gelesen: <Grund>` (no history read) — the archive was not reachable; the document arises anyway.
+- `Weitere Treffer: <Zahl>` (further hits) — there were more hits than the document names.
+
+**A contradiction stops nothing.** If the new requirement contradicts an earlier PO answer or an earlier non-goal, the contradiction stands with quote and reference in the history section, not under the open questions. At night, too, the night chain (Nacht-Kette) keeps running; the night report names the contradiction.
+
+## Issue review across multiple models
+<!-- de: fe75dcb46178 -->
+
+A document is the source of truth for the next step. An error in it propagates, and its author does not see it, because they have the context in their head. `/issue-review` has models read it that did **not** write the document. They deliver findings; the calling session incorporates each one or rejects it with one sentence. Findings are support, not a gate.
+
+### Three review stages
+<!-- de: 7481454964ea -->
+
+Which stage applies is decided by the title prefix:
+
+| Stage | Reviews | Proof |
+|---|---|---|
+| `fachlich` | a business plan `[Requirement]` from [/requirement](#requirement) | `Fachplan-Review: …` |
+| `plan` | a plan document `[Plan]` from [/techplan](#techplan) | `Plan-Review: …` |
+| `issue` | a work package from [/issues](#issues) or a `[Task]` from [/task](#task); `[Task]` is not a document prefix | `Issue-Review: …` |
+
+**The call is always `/issue-review #N`.** There is deliberately no command of its own per stage; the skill reads it from the title prefix. That applies interactively just as in night mode, only interactively the session asks before writing. Without a number the skill takes all business plans and plan documents from the backlog that do not yet carry a proof of their stage. It reviews work packages only with a number; what a package does wrong is caught by the checks before the commit and by the code review. It never reviews an `[Idea]`.
+
+**Where the proof is:** for the work package in the section `## Kontext`, for the business requirement in the section `## Ziel` next to `Autor-Modell:`, for the plan document before `## Ziel` next to `Plan-Modell:`. It is a trace, not a release.
+
+**Why the review starts at the top.** The reach of an error grows downwards: an error in the business plan goes into the plan, from there into every work package and into the code. The earlier it is found, the cheaper it is.
+
+**Who reviews.** The business plan gets the roles `form-beobachtbarkeit` and `abgrenzung`, the plan `architektur-bestand` and `schnitt-abhaengigkeiten`, the work package `pruefbarkeit`. Scope, dependencies and consequences in the existing code are reviewed at the plan stage, because the whole cut is there. Every role also asks “What can go?”. The plan's reviewer additionally reads the card from `Fachliche Quelle:` (business source) and checks whether the plan delivers every goal and every criterion of that source.
+
+How many reviewers carry which roles is said by [`reviewStages`](/en/einstellungen). Without this block each stage is reviewed by one reviewer per role: business `form-beobachtbarkeit` and `abgrenzung`, plan `architektur-bestand` and `schnitt-abhaengigkeiten`, work package `pruefbarkeit`. Which models are available as reviewers is in [`issueReview`](/en/einstellungen); `issue-review matrix` shows the assignment.
+
+**Form before content.** The yardstick of every stage is its format: the sections of the business plan, the six headings of the plan, the four sections of the work package. The form is not checked by a model but by `issue check-form`; the session fixes violations before a reviewer starts.
+
+### What you see afterwards
+<!-- de: d8ed874e5600 -->
+
+On the document there is a comment `## <Stufe>-Review, Runde 1` (review, round 1) with the findings and a comment `## Einarbeitung, Runde 1` (incorporation, round 1) with the list adopted or rejected including the reason. The new text is in the body, with the proof line of the stage, plus the label `review:done`. If a finding raises a question of the stop class (Stopp-Klasse), the document carries `kit:clarify` instead and the question as a comment. If not a single reviewer ran, the skill does not set `review:done`. There is no second round.
+
+A Claude reviewer runs as the agent `kit-pruefer` and may only read. A third-party reviewer such as Codex runs via its command with its tool's read-only switch; without a known switch it does not start.
+
+## The plan format
+<!-- de: a354435ad54c -->
+
+A plan document carries exactly these six sections, each exactly once and in this order:
+
+```markdown
+## Ziel
+## Betroffene Bereiche
+## Architektonische Entscheidungen
+## Geplante Änderungen
+## Offene Fragen
+## Verifizierung
+```
+
+These rules apply as well:
+
+- **Head.** Before `## Ziel` stands `Plan-Modell:` (plan model) with the model that drafted the plan. If the plan arose from a business plan, `Fachliche Quelle: Issue #N` stands there too, otherwise the line is missing. A plan document never carries an `Issue-Review:` line; its proof is called `Plan-Review:`.
+- **No further `##` heading** between the six sections. Subsections from `###` on are allowed, for instance `### Vorgeschichte`.
+- **No empty section.** Only under `## Architektonische Entscheidungen` and `## Offene Fragen` may `- Keine.` (none) stand, as the first line.
+- **Every decision carries a reason.** Decisions the plan makes itself stand as `E` entries with question, choice, what was rejected, reason and rollback.
+- **Under `## Offene Fragen` stand only questions of the stop class.** Everything else the plan decides.
+- **`## Verifizierung` names checks, not their result:** “`node --test` runs”, not “all tests are green”.
+- **Every statement about the existing code is true:** named files, functions, commands and settings exist under this name.
+- **New names are checked.** If the plan introduces a name a human types, it says that it collides with no built-in command of Claude Code.
+
+## Checks before the commit
+<!-- de: 0c423f7ce163 -->
+
+Every implementation ends with `node .claude/kit/checks.mjs run` before it commits. The skills call it themselves; you see its result in the completion report under “Tests und Checks”: which checks ran, with result and duration, and which were skipped, each with its reason.
+
+**Areas.** A check from `buildChecks` can name areas from `checkAreas`; it then runs only if the package touches one of them. A file without an area makes all checks run. `node .claude/kit/checks.mjs plan` shows the selection without running anything.
+
+**Stages.** Every check has a point in time:
+
+| Stage | Point in time | Skill |
+| --- | --- | --- |
+| `paket` | before the local commit of a work package | `/implement-ready`, `/implement-next`, `/implement-done`, `/local-check` |
+| `push` | before publishing on main | `/push-main` |
+| `merge` | before the release to production | `/merge-production` |
+
+The stages build on each other: `push main` runs the package and push stages in full, `merge production` runs only what `push main` did not check. A check of a later stage appears beforehand as a skip with its stage as the reason. That is not a defect but its point in time.
+
+**The commit gate.** If it is hooked in, it rejects every commit that was not preceded by a green check run on the same state. It compares the checked files with what is really committed; a file changed after the check does not get through. A red run means: correct and repeat the same call. It first runs the checks that were last red and then the full run once.
+
+How to set up areas, stages and the gate is described under [The config file](/en/dokumentation#the-config-file) and in the [settings](/en/einstellungen).
+
+## The check run
+<!-- de: 527e753dba37 -->
+
+The check run (Prüflauf) has several business requirements reviewed one after another during the day, without anyone sitting next to it. For each card a session `/issue-review #N` runs. Afterwards every card shows where you stand: reviewed, or a decision is waiting. Everything outside the stop class was decided by the review and recorded in the document.
+
+**What you do.** You set the label `kit:check` on every business requirement that is to be reviewed; the name comes from [`checkRun`](/en/einstellungen). Then you start:
+
+```bash
+node .claude/kit/night.mjs --check
+```
+
+The run has no preview; `/issue-review --dry-run` shows documents and reviewers. Candidates are all cards with the label and the title prefix `[Requirement]`, whatever their column. A plan document, a work package or a card with `kit:clarify` appears as skipped in the list and keeps its label. If the reviewers' pre-flight fails before the first review, every card gets the comment `Pruefung nicht gestartet` (review not started) with a reason. The run works in a worktree of its own per run and leaves no change in the project.
+
+**The label is consumed with the start.** The run removes it immediately before the card's session, together with a `review:done` from an earlier review. Every setting allows exactly one review; after an abort you set it again.
+
+The run never removes `kit:clarify`. Only a human may do that, otherwise a run would give itself its own approval.
+
+**What you see afterwards.** On the console and in the log there is one line per card with number, title, result and the version reviewed, a fingerprint of the card text. If someone changes the text during the review, the fingerprint shows which version was reviewed.
+
+| Result | Trace on the card | next |
+|---|---|---|
+| reviewed | `Fachplan-Review:` in the body, label `review:done`, findings and incorporation as comments | nothing; the card can go into the night chain |
+| pending decision | `kit:clarify` and the question as a comment; the text stays unchanged | answer the question and remove `kit:clarify` |
+| incomplete | comment `## Pruefung unvollstaendig` (review incomplete) with reason, step reached and route forward | run `/issue-review #N` by hand |
+
+**Budgets.** Time per reviewer session and cost per run are in [`checkRun`](/en/einstellungen). Once the cost budget is exhausted, the remaining cards stay and keep their label.
+
+**What the run does not do.** It moves no card between columns, pulls nothing to Ready and sets no chain label. The chain label for the night chain is still set by a human.
+
+With the tracker `local` the board lies in the repo, and the sessions write to `issues/` of the main copy. These changes to the cards are the result and not a leftover.
 
 ## Statements: believe instead of checking
 <!-- de: ea25f7012643 -->

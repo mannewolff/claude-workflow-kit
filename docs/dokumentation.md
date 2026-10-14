@@ -325,7 +325,7 @@ Nicht jede Pflichtprüfung gehört an jeden Zeitpunkt. Ein Integrationstest, der
 
 **Mindestens eine Prüfung gehört auf die Paketstufe.** Tragen alle Einträge `push` oder `merge`, läuft vor dem Commit nichts: Die Umsetzung eines Arbeitspakets hat dann kein Gate. Nachts ist das kein stiller Zustand — der Nacht-Runner prüft es beim Start und startet gar nicht erst (Override: `--no-checks-ok`). Die [Einstellungs-Oberfläche](#einstellungen-über-die-oberfläche) meldet diesen Zustand als Warnung; speichern lässt sich eine solche Konfiguration trotzdem, denn gültig ist sie.
 
-**Nicht zu verwechseln.** Der Begriff *Stufe* ist im Kit dreifach besetzt: `reviewStufen` sind die [Prüfstufen des Reviews](#drei-prüfstufen--die-prüfung-wandert-nach-oben), die Aufgabenstufe eines Arbeitspakets (`schwer`/`mittel`/`leicht`) steuert das Modell der [Nacht-Kette](#zweiter-modus-die-nacht-kette), und `stufe` ist der Zeitpunkt einer Pflichtprüfung. Die drei haben nichts miteinander zu tun.
+**Nicht zu verwechseln.** Der Begriff *Stufe* ist im Kit dreifach besetzt: `reviewStufen` sind die [Prüfstufen des Reviews](/prozess#drei-prufstufen), die Aufgabenstufe eines Arbeitspakets (`schwer`/`mittel`/`leicht`) steuert das Modell der [Nacht-Kette](#zweiter-modus-die-nacht-kette), und `stufe` ist der Zeitpunkt einer Pflichtprüfung. Die drei haben nichts miteinander zu tun.
 
 ### Abschluss und Veröffentlichen: `nichtBeimAbschluss`
 
@@ -767,87 +767,9 @@ Im Zweifel gilt Bahn 2; das deckt auch den unklaren Abwägungsbedarf. Vor jeder 
 
 **Ein Sonderfall, der es wert ist, genannt zu werden: die Ablehnung als gültiges Ergebnis.** Ein Werkzeug meldet einen Befund, der Befund ist vertretbar abgelehnt — auch das ist Arbeit, und es ist typische Bahn-3-Arbeit. Damit die Ablehnung hält, ist das Akzeptanzkriterium eines solchen `[Task]` die **versionierte Unterdrückungsregel**, die das Werkzeug selbst auswertet, mit der Begründung unmittelbar daneben: Das Werkzeug liest die Regel, die Begründung richtet sich an Menschen und spätere Sitzungen. Im Kit steht das Muster in `sonar-project.properties` — der Ausschluss der Regel `javascript:S4036` als versionierte Zeile, darüber ausgeschrieben, warum er vertretbar ist. Eine im Web-UI von Hand als „accepted" markierte Ablehnung hält dagegen nicht: Der nächste gleichartige Fund entsteht außerhalb. Verifiziert wird ein solcher Task durch einen erneuten Lauf desselben Werkzeugs — der abgelehnte Befund bleibt aus, **und ein unabhängiger Kontrollbefund wird weiterhin gemeldet**; ohne ihn ist ein stummes Werkzeug von einem wirksamen Ausschluss nicht zu unterscheiden. Fehlt einem Werkzeug ein versionierbarer Weg, gehört dessen Entwicklung in ein eigenes Vorhaben, und ein werkzeugübergreifendes Register entsteht nicht — es wäre eine zweite Liste neben den Regeldateien, die keines der Werkzeuge liest.
 
-## Vorgeschichte
-
-Ein neuer Fachplan oder Plan kennt sonst nur, was gerade im Gespräch oder im Bestand steht. Frühere Fachpläne zum selben Gegenstand verschwinden mit dem Archiv aus dem Blick, und mit ihnen die Gründe für frühere Entscheidungen. Die Vorgeschichte holt sie vor dem Schreiben zurück, damit eine frühere Entscheidung nicht still überfahren wird. Sie sperrt nichts, sie macht nur sichtbar.
-
-**Einschalten.** Der Schalter [`vorgeschichte`](/einstellungen) in `.claude/workflow.config.json` steht in der Vorgabe auf aus; dann entsteht jedes Dokument wie bisher, ohne Abschnitt und ohne Vermerk. Im Kit selbst ist er an. Die Suche braucht ein Board, das auch archivierte Karten durchsucht, und das kann bisher nur der Toolbox-Tracker (kanban-kit). Bei GitHub, GitLab und dem lokalen Datei-Tracker trägt das Dokument stattdessen den Vermerk, dass keine Vorgeschichte gelesen wurde.
-
-**Suchen.** Nicht der Autor durchsucht das Board, sondern ein Kommando:
-
-```bash
-node .claude/kit/board.mjs issue history --terms <begriff> [--files <pfad>]... [--without <N>]...
-```
-
-`/requirement` und `/techplan` rufen es selbst auf. Die Suchbegriffe kommen aus Titel und Ziel der neuen Anforderung; der Plan gibt zusätzlich die Dateien aus `## Betroffene Bereiche` mit und findet so auch die Fachpläne, aus denen diese Teile des Projekts entstanden sind. Das Dokument nennt, wonach gesucht wurde, und `/issue-review` legt den Prüfern die gefundenen Fachpläne vollständig bei.
-
-**Ort.** Im Fachplan steht der Abschnitt `## Vorgeschichte` zwischen den Nicht-Zielen und den offenen Fragen an den PO, im Plan der Unterabschnitt `### Vorgeschichte` am Ende von `## Betroffene Bereiche`. Er nennt höchstens fünf Fundstellen, jede mit Nummer, Titel und dem Satz, der für die neue Anforderung zählt, und genau einen der drei festen Vermerke, wo er zutrifft:
-
-- `Nichts Einschlägiges gefunden.` — gesucht, aber kein Treffer zählt.
-- `Keine Vorgeschichte gelesen: <Grund>` — das Archiv war nicht erreichbar, etwa ohne Netz oder mit einem Tracker ohne Suche; das Dokument entsteht trotzdem.
-- `Weitere Treffer: <Zahl>` — es gab mehr Treffer, als das Dokument nennt.
-
-**Widersprüche halten nichts an.** Widerspricht die neue Anforderung einer früheren PO-Antwort oder einem früheren Nicht-Ziel, steht der Widerspruch mit Zitat und Fundstelle im Abschnitt zur Vorgeschichte, nicht unter den offenen Fragen, und zählt nicht in die fünf. Kein Halt, auch nachts nicht: Die Nacht-Kette läuft weiter, und der Nachtbericht nennt den Widerspruch, damit der Mensch ihn am Morgen sieht. Die genaue Regel steht in `.claude/CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“.
-
-## Der Prüflauf
-
-**Ein Lauf am Tag, der mehrere gekennzeichnete fachliche Anforderungen nacheinander prüfen lässt.** Die Prüfung tagsüber ist ein Gespräch: Jeder Fund will besprochen, jede Frage der Stopp-Klasse beantwortet werden. Der Prüflauf nimmt genau das ab — Anforderungen kennzeichnen, Lauf starten, später nachsehen. Je Karte läuft eine Session `/issue-review #N`, ohne dass zwischendurch jemand antwortet; danach steht an jeder Karte, woran man ist: geprüft und bereit, oder es wartet eine Entscheidung. Alles, was außerhalb der Stopp-Klasse liegt, hat die Prüfung entschieden und im Dokument festgehalten. **Diese Sortierung ist der Gewinn.**
-
-Der Lauf gehört dem **Tag** und steht darum in einem eigenen Kapitel, nicht unter [Nachtbetrieb](#nachtbetrieb): Er läuft neben dem arbeitenden Menschen und neben einer Nacht-Kette, und er fällt weder auf einen unsauberen Arbeitsbaum noch auf ein Paket in In progress herein. Zur Nacht-Kette steht er in genau einem Verhältnis: Er **stellt deren Voraussetzung her** — eine geprüft hinterlassene Karte trägt das `review:done`, das die Kette verlangt. Das **Kettenlabel** bleibt die Geste des Menschen; der Prüflauf setzt es nie.
-
-**Die Geste:** das Label `kit:check` an der fachlichen Anforderung (Labelname aus `pruefLauf.label`, siehe [Alle Einstellungen](/einstellungen); am Board einmal anzulegen). Der Lauf **verbraucht es** unmittelbar vor der Session dieser Karte — jedes Setzen autorisiert genau eine Prüfung; ein Abbruch führt zu einem Vermerk mit Grund und einer neuen Geste, nicht zur stillen Wiederholung. Mit dem Kennzeichen nimmt er auch ein `review:done` aus einem Vorlauf ab: Nur so beantwortet der Stand nach der Session die Frage nach **dieser** Prüfung und nicht die nach einer früheren. `kit:clarify` nimmt er **nie** ab — das darf nur ein Mensch, sonst gäbe sich ein Lauf seine eigene Freigabe.
-
-**Fester Kit-Stand.** Der Prüflauf arbeitet wie jeder unbeaufsichtigte Lauf mit einem festen Stand des Kits: Er bindet sich beim Start an den Commit, auf den `origin/<mainBranch>` zeigt — den letzten Push, gelesen ohne `git fetch`. Fest sind damit die Werkzeuge einschließlich der Prüfung vor jedem Commit, die Skills und die Regeltexte; was ein Paket derselben Nacht daran ändert, wirkt erst nach `push main`. Prüfgegenstand bleiben die Konfiguration des Projekts und seine Tests, sie kommen aus dem Stand des jeweiligen Pakets. Der Stand steht als Zeile `Kit-Stand: <commit> (origin/<mainBranch> vom <Zeit>)` im Laufbericht (`kitStand` in `.claude/night-run-*.json`), im Nachtbericht und an jedem Kommentar des Laufs. Nach einem Lauf in der Hauptkopie bleibt deren installierte Kopie auf dem Stand, bis `node tools/sync-blobs.mjs` sie auf die Arbeitskopie bringt; `sync-blobs --check` nennt sie bis dahin als veraltet. Im Kit-Repo holt `push main` das selbst nach: Nach dem Nachziehen der Hauptkopie fährt es den Nach-Push-Schritt aus `RELEASING.md`, `node tools/sync-blobs.mjs`, und die installierte Kopie steht auf dem eben veröffentlichten Stand (Issue #1523). Ein Rechner, der den Stand nur per `git pull` holt, ruft `sync-blobs` weiter von Hand.
-
-**Start:**
-
-```bash
-node .claude/kit/night.mjs --check
-```
-
-Eine **Vorschau hat der Lauf nicht** — `--check --dry-run` wird abgewiesen, und `/issue-review --dry-run` zeigt ohnehin Dokumente und Reviewer. Was laufen wird, steht in der Kandidatenliste, die der Lauf vor der ersten Session protokolliert. `--label` gilt hier nicht (das Kennzeichen kommt aus der Config), `--chain` und `--check` zusammen ebenso wenig: Das sind zwei Läufe mit eigenen Budgets, Labels und Worktrees. `--max N` ist erlaubt, aber **nicht nötig** — begrenzt wird der Lauf über seine Budgets, nicht über eine Zahl; ohne `--max` gibt es keinen Zahlendeckel.
-
-**Die Kandidaten:** jede Karte, die das Kennzeichen trägt und den Titel `[Requirement]` hat. **Ohne Spaltenbedingung**, anders als bei der Nacht-Kette: Ein fachliches Dokument geht nie nach Ready, und die Geste gilt der Karte, nicht ihrem Ort. Was das Kennzeichen trägt, aber nicht geprüft wird, steht mit Grund als `uebersprungen` in der Liste und **behält sein Kennzeichen**: ein `[Plan]`-Dokument oder ein Arbeitspaket (der Prüflauf gilt allein fachlichen Anforderungen) und eine Karte mit `kit:clarify` (dort wartet eine Frage auf einen Menschen, und eine zweite Prüfung beantwortet sie nicht). Karten über einem gesetzten `--max` gelten als `liegengeblieben` — das ist kein Ausschluss. Trägt keine einzige Karte das Kennzeichen, sagt der Lauf das und nennt die vorhandenen Labels. Vor der ersten Prüfung läuft der **Reviewer-Vorflug** wie bei der Kette: Scheitert er, bekommt jeder Kandidat den Kommentar `Pruefung nicht gestartet` mit Grund und behält sein Kennzeichen — es lief nichts.
-
-**Der Worktree:** einer je **Lauf**, nicht je Karte (`pruefung-…` unter dem Temp-Verzeichnis, eigener Präfix neben dem der Kette). Die Sessions lesen und schreiben am Board, nicht im Arbeitsbaum; ein Worktree je Karte kostete Zeit für eine Trennung ohne Gegenstand. Nach dem Lauf wird er entfernt, einen liegengebliebenen räumt der nächste Start — nur einen mit **seinem** Präfix und nur, wenn sein Runner nicht mehr lebt, damit ein gleichzeitig laufender Prüflauf oder eine Nacht-Kette ihren behält. Wie die Kette beansprucht der Prüflauf jede Wurzel mit dem Laufstand `läuft` samt Lauf-ID und lässt eine von einem lebenden Runner beanspruchte aus (siehe „Ein Runner je Wurzel“ im Kapitel Nachtbetrieb).
-
-**Je Karte:** Der Lauf bildet unmittelbar vor der Session den Fingerabdruck der gelesenen **Fassung** (zwölf Hexstellen aus dem Kartentext) und nennt ihn in Kandidatenliste, Protokoll und Ergebnis. Damit steht hinterher fest, *was* geprüft wurde: Wer den Text während der Prüfung ändert, sieht am Fingerabdruck, dass die Prüfung eine andere Fassung gelesen hat. Das Ergebnis liest der Lauf am **Unterschied** der Board-Spuren vor und nach der Session, nie am Stand danach allein — eine erneut geprüfte Karte trägt Marker und Befunde schon aus dem Vorlauf. Ein Abbruch beendet nur diese Karte; die nächste kommt dran.
-
-**Drei Ergebnisse, jedes mit seiner Spur am Board:**
-
-| Ergebnis | Spur an der Karte | was als Nächstes dran ist |
-|---|---|---|
-| geprüft | Fachplan-Review-Marker im Body und das Label `review:done`, Befunde und Einarbeitung als Kommentare | nichts — die Karte erfüllt die Aufnahmevoraussetzung der Nacht-Kette |
-| wartende Entscheidung | `kit:clarify` und die Frage als Kommentar; der Text der Anforderung bleibt **unverändert** | die Frage beantworten und `kit:clarify` abnehmen — beides von Hand |
-| unvollständig | der Kommentar `## Pruefung unvollstaendig` mit Grund, erreichtem Schritt (`gestartet`, `befunde`, `eingearbeitet`) und dem Weg nach vorn | `/issue-review #N` von Hand fahren |
-
-Der dritte Ausgang ist eigens ausgewiesen und keines der beiden ersten: Die Prüfung ist dann bezahlt, ihre Befunde stehen am Board, aber der Body trägt keinen Marker — ohne den Vermerk sähe die Karte später wie eine unberührte aus. Eine Session, die eine lange Arbeit angestoßen hat und darauf wartend endete, bekommt stattdessen nur den Vermerk `## Nachtlauf: wartende Sitzung`; zwei Kommentare für einen Abbruch sagen nichts, was einer nicht sagt.
-
-**Budgets** stehen im Wurzelblock `pruefLauf` der `.claude/workflow.config.json` — nicht unter `night`, denn der Lauf gehört dem Tag. Fehlt der Block oder ein Feld darin, gelten diese Startwerte:
-
-```json
-{
-  "pruefLauf": {
-    "label": "kit:check",
-    "pruefungMin": 25,
-    "kostenUsd": 25
-  }
-}
-```
-
-`pruefungMin` ist das Zeitbudget **je Prüfer-Session**; es liegt über dem der Plan-Stufe der Kette, weil die fachliche Stufe zwei Reviewer fährt. `kostenUsd` ist das Kostenbudget **je Lauf**, summiert über alle Sessions und geprüft **nach** jeder Session, nie mittendrin — eine halb gelesene Prüfung wäre der teurere Fehler. Ist es erschöpft, gelten die restlichen Karten als übersprungen und behalten ihr Kennzeichen.
-
-**Die Ergebnisliste steht auf der Konsole** (und im Protokoll `.claude/night-run-<datum>.log`), weil der Lauf dem Tag gehört: Wer ihn startet, sieht sein Ergebnis. Je Karte eine Zeile mit Nummer, Titel, Ergebnis und Fassung — bei einer wartenden Entscheidung dazu die Frage, bei einem Abbruch der erreichte Schritt —, darunter eine Summenzeile über die fünf Ausgänge. Der [Ergebnisstand als JSON](#nachtbetrieb) entsteht wie bei jedem unbeaufsichtigten Lauf, mit einer Einheit je Karte samt Ausgang, Fassung, Dauer und Kennzahlen.
-
-**Was der Lauf nicht tut.** Er bewegt **keine Karte** zwischen Spalten, zieht nichts nach Ready, setzt kein Kettenlabel und nimmt kein `kit:clarify` ab. Er ändert auch nichts an der Prüfung selbst: Wer prüft, in welcher Rolle und mit welchen Fragen, bleibt, wie es ist — es ist dieselbe Prüfung wie von Hand, nur ohne das Gespräch. Und er beantwortet keine Frage, die einem Menschen gehört; er sortiert.
-
-**Die Grenze der Unberührtheit.** Der Lauf hinterlässt im Projekt keine Änderung — der Stand des Arbeitsverzeichnisses ist vor und nach dem Lauf derselbe, auch wenn jemand währenddessen darin arbeitet. Eine Ausnahme gehört dazu, und sie ist keine: Beim Tracker `local` liegt das Board **im Repo**, und die Config im Worktree zeigt auf `issues/` der Hauptkopie, damit die Sessions dort schreiben. Diese Karten ändern sich also — das ist das **Ergebnis und kein Rest**. Unberührt bleibt alles außerhalb des Boards.
-
-**Danach:** Eine geprüft hinterlassene Karte erfüllt die Aufnahmevoraussetzung der Nacht-Kette — das **GO bleibt deins**: Das Kettenlabel setzt weiterhin ein Mensch. Liegt das Ergebnis vor der nächtlichen Auswahl vor, läuft die Kette am selben Abend, sonst beim nächsten Mal.
-
 ## Nachtbetrieb
 
-Der Nachtbetrieb kennt **zwei Betriebsarten**: die **Umsetzungsnacht**, die dieser Abschnitt beschreibt, und die **Nacht-Kette** (siehe [Zweiter Modus](#zweiter-modus-die-nacht-kette)), die aus einem Fachplan den geprüften Plan und die Arbeitspakete macht, ohne zu bauen. Beides ist die Nacht; der [Prüflauf](#der-prüflauf), der fachliche Anforderungen prüfen lässt, gehört dem Tag und steht in seinem eigenen Kapitel. Die Umsetzungsnacht arbeitet die Ready-Spalte unbeaufsichtigt ab — mit einer **frischen Session pro Issue**, damit über viele Issues kein Kontext akkumuliert und die Qualität nicht schleichend sinkt. Der Nacht-Runner (`.claude/kit/night.mjs`, kommt mit dem Installer) startet pro Issue eine Headless-Session mit `/implement-next #N` — das Issue wird der Session **verbindlich übergeben**, sie wählt es nicht selbst — wartet auf ihr Ende und prüft den Erfolg ausschließlich am Board: Issue in In review = Erfolg. Gepusht wird nachts **nie** — die drei Stop-Punkte bleiben unverändert menschlich.
+Der Nachtbetrieb kennt **zwei Betriebsarten**: die **Umsetzungsnacht**, die dieser Abschnitt beschreibt, und die **Nacht-Kette** (siehe [Zweiter Modus](#zweiter-modus-die-nacht-kette)), die aus einem Fachplan den geprüften Plan und die Arbeitspakete macht, ohne zu bauen. Beides ist die Nacht; der [Prüflauf](/prozess#der-pruflauf), der fachliche Anforderungen prüfen lässt, gehört dem Tag und steht auf der Prozessseite. Die Umsetzungsnacht arbeitet die Ready-Spalte unbeaufsichtigt ab — mit einer **frischen Session pro Issue**, damit über viele Issues kein Kontext akkumuliert und die Qualität nicht schleichend sinkt. Der Nacht-Runner (`.claude/kit/night.mjs`, kommt mit dem Installer) startet pro Issue eine Headless-Session mit `/implement-next #N` — das Issue wird der Session **verbindlich übergeben**, sie wählt es nicht selbst — wartet auf ihr Ende und prüft den Erfolg ausschließlich am Board: Issue in In review = Erfolg. Gepusht wird nachts **nie** — die drei Stop-Punkte bleiben unverändert menschlich.
 
 **Abend-Ritual (das GO):** Issues nach Ready ziehen und per Drag&Drop in die gewünschte Reihenfolge bringen — der Runner arbeitet die Spalte von oben nach unten ab. Abhängigkeiten müssen als `Issue #N` im Abhängigkeiten-Abschnitt stehen (siehe Issue-Format): Der Runner stellt Issues mit unerfüllten `#N`-Referenzen automatisch zurück. Vier Sorten Karte überspringt er mechanisch — kommentiert zurück ins Backlog, ohne eine Session zu starten: fachliche Issues (`[Requirement]`-Titel, [PO-Schleife](/prozess#po-schleife-fachliche-und-technische-issues)), **Ideen** (`[Idea]`-Titel), **Plandokumente** (`[Plan]`-Titel) und **Menschenschritte** (`[Human]`-Titel). Eine rohe Idee ist kein implementierbares Issue — sie geht mit Abwägung über `/requirement #N`, ohne Abwägung über `/task #N`; ein Plandokument beschreibt einen Weg und wird erst per `/issues` in Arbeitspakete zerlegt. Ohne das Gate würde eine Session sie zwar korrekt ablehnen, aber der Runner kann diese Ablehnung nicht von einem Fehlschlag unterscheiden — die Session ist verbrannt und der Kommentar am Board irreführend. Beim Plandokument wäre es schlimmer: Es trüge keinen Ablehnungsgrund in sich und würde umgesetzt, und das sähe am Board wie ein Erfolg aus. Ein **Menschenschritt** ist dagegen ein Arbeitspaket, aber seine Aufgabe liegt außerhalb des Repositories — eine Einstellung in einer Weboberfläche, ein Konto, ein Zugang, eine Freigabe —, und kein Zug einer Sitzung erledigt sie. Sein Kommentar sagt ausdrücklich, dass die Karte **wartet** und nicht gescheitert ist: Ohne das Gate wertete der Runner die richtige Untätigkeit der Session als Fehlschlag, und die Karte sähe im Backlog aus wie ein gescheitertes Paket (belegter Fall: kanban-kit #1256). Nach seiner Handlung zieht der Mensch sie selbst weiter. Zurückgestellt wird außerdem jede Karte, deren Aufgabe oder Akzeptanzkriterium eine **geschützte Datei** nennt und die der Mensch nicht freigegeben hat, ebenso eine Karte mit dem Label `kit:protected` — mehr dazu unter [Der Halt an einer geschützten Datei](#der-halt-an-einer-geschützten-datei).
 
@@ -1054,8 +976,6 @@ Ein Halt ist **kein Fehlschlag**: Die Session hat richtig gehandelt, indem sie n
 **Im Bericht** steht der Halt mit der Art `geschuetzt`, getrennt von den Stopp-Fragen: als eigene Kennzahl „Geschuetzte Dateien“ und unter „Wartende Handlung an geschuetzter Datei“, nicht unter „Offene Stopp-Frage“.
 
 **Der Weg zurück:** die Änderung an der Datei selbst vornehmen, das Label `kit:protected` abnehmen, die Karte nach Ready ziehen. Beim nächsten Anlauf gilt das Paket als freigegeben und läuft normal durch.
-
-**Eine alte Vorhaben-Notiz ist kein Rest.** Bis zum Rückbau von Spec-Driven Development legte `/techplan` wartende Notizen als `.claude/vorhaben-wartend-<k>.md` ab. Heute entsteht keine mehr; wo noch eine liegt, wertet der Rest-Guard sie nicht als Rest — auch in einem Projekt, dessen `.gitignore` `.claude/` nicht deckt. Die Datei kann gelöscht werden.
 
 **Salvage — wenn die Arbeit fertig ist, das Board es aber nicht weiß.** Eine Headless-Session hat keinen Folge-Turn. Startet sie einen langen Check im Hintergrund und beendet ihren Turn, bevor das Ergebnis da ist, ist es verloren — das Board zeigt einen Fehlschlag, obwohl die Arbeit vollständig war. Bevor der Runner bei „nicht in In review UND dirty" hart stoppt, prüft er deshalb selbst nach — mit **`node .claude/kit/checks.mjs run --finish <id> --fresh`** im Projekt, also genau dem Lauf, den auch der Abschluss einer Karte fährt. Der Weg über `checks.mjs` ist der Kern der Sache: Dieser Lauf hinterlässt die Zusammenfassung `.claude/checks-summary.json`, und **genau sie liest das Commit-Gate**. Fuhr der Runner die `buildChecks` früher selbst, maß er grün an einer Stelle, die das Gate nicht kennt — in der Zusammenfassung stand weiter das rote Ergebnis der Session, und die Salvage-Session konnte nicht committen: Die Rettung konnte in dieser Lage nie gelingen. Jetzt gibt es eine Wahrheit über „grün" statt zweier. `--fresh` gehört dazu, sonst übernähme das Kommando bei unverändertem Stand genau das rote Ergebnis, das der Runner anzweifelt; `--finish <id>` hält den Umfang des Kartenabschlusses (Paketstufe, ohne Zusammenspiel-Prüfungen und ohne Gütemessung) und ordnet den Lauf der Karte zu. Mit dem Weg kommt dessen **bereichsbezogene Auswahl**: Es laufen die Prüfungen der berührten Bereiche — eine eigene, weitere Auswahl wäre wieder die zweite Wahrheit, die der Vorfall gekostet hat. Prüfungen mit `stufe` `push` oder `merge` bleiben wie bisher außen vor, sie sind erst beim Veröffentlichen fällig. Sind die Checks grün, bekommt **genau eine** Salvage-Session pro Issue die Chance, den Zwischenstand gegen das Issue zu prüfen, zu committen und das Board zu bewegen (Zeitlimit 10 Minuten; sie führt keine Builds mehr aus). Rote Checks oder ein gescheiterter Versuch haben je eine eigene Log-Zeile. Ohne Commit gehen die Reste in den Stash, und der Lauf geht weiter (siehe „Wenn etwas schiefgeht“). Die Vorprüfung merged dabei den `env`-Block aus `.claude/settings.json` und `.claude/settings.local.json` in ihre Umgebung — sonst fehlen ihr projektspezifische Variablen (etwa für Testcontainers), die sonst nur Claude Codes eigene Bash-Aufrufe bekommen, und sie meldet ein falsches Rot.
 
@@ -1451,80 +1371,6 @@ Für solche wiederkehrenden, klassenweiten Fehler gilt dasselbe Prinzip wie beim
 **Der Maßstab dahinter: „Regel im Text oder Regel im Werkzeug".** Er steht in `CLAUDE-workflow.md` und gilt für jede mitgelieferte Anweisung: Eine **Bedienvorgabe** — ihre Befolgung ist an Ausgabe oder Ergebnis ablesbar, ein Werkzeug könnte sie an der Stelle des Lesers ausführen — gehört ins Werkzeug; eine **Urteilsregel**, die eine Entscheidung im Einzelfall verlangt, bleibt im Text. Gemischte Regeln werden zerlegt, nicht gerundet. Welche Regel von `/local-check` nach diesem Maßstab wohin gewandert ist, führt die Aufstellung [Regeln im Werkzeug](regeln-im-werkzeug.md) — Zeile für Zeile, mit Art, Überführungsgrad und neuem Ort.
 
 **Der Grenzfall: wenn keine Leitplanke zu haben ist.** Manches lässt sich nicht messen — ob ein Modell eine Aussage geglaubt hat, statt sie nachzuschlagen, etwa. Dort tritt die ausgewiesene Selbstauskunft an die Stelle des Gates: Die feste Antwortform „Mitteilung übernommen, ungeprüft — …" aus [Mitteilungen: glauben statt nachsehen](/prozess#mitteilungen-glauben-statt-nachsehen) zwingt nichts, macht aber jeden Verstoß zum sichtbaren Widerspruch. Sichtbarer Widerspruch statt Gate — dasselbe Prinzip, nur mit dem schwächeren Mittel, weil das stärkere hier nicht existiert.
-
-## Issue-Review über mehrere Modelle
-
-Ein Dokument ist die Quelle der Wahrheit für den nächsten Schritt. Ein Fehler darin pflanzt sich fort, und der Autor sieht ihn nicht, weil er den Kontext im Kopf hat, aus dem das Dokument entstanden ist. `/issue-review` lässt Modelle lesen, die es **nicht** geschrieben haben: Sie liefern Befunde, und die Session, die den Skill aufgerufen hat, arbeitet sie ein oder lehnt sie mit einem Satz ab. Befunde sind Zuarbeit, kein Gate — ob eine Stufe fertig ist, sagt ein Kommando oder ein Mensch, nie ein Modell-Marker.
-
-### Drei Prüfstufen — die Prüfung wandert nach oben
-
-Welche Stufe greift, entscheidet das Titel-Präfix, und jede Stufe hinterlässt ihre eigene Spur:
-
-| Stufe | Prüft | Nachweis |
-|---|---|---|
-| `fachlich` | ein `[Requirement]`-Issue — die fachliche Anforderung aus [/requirement](/prozess#requirement) | `Fachplan-Review: …` |
-| `plan` | ein `[Plan]`-Issue — das Plandokument aus [/techplan](/prozess#techplan) | `Plan-Review: …` |
-| `issue` | ein technisches Arbeitspaket aus [/issues](/prozess#issues) | `Issue-Review: …` |
-| `issue` | ein `[Task]`-Arbeitspaket aus [/task](/prozess#task) — `[Task]` ist **kein Dokument-Präfix** | `Issue-Review: …` |
-
-**Wo der Nachweis steht:** beim Arbeitspaket im Abschnitt `## Kontext`, bei der fachlichen Anforderung im Abschnitt `## Ziel` neben `Autor-Modell:`, beim Plandokument vor `## Ziel` neben `Plan-Modell:`. Der Marker ist eine Spur, keine Freigabe: Kein Skill liest ihn als Bedingung für den nächsten Schritt.
-
-**Der Aufruf ist immer derselbe: `/issue-review #N`.** Es gibt bewusst kein eigenes Kommando je Stufe — welche greift, liest der Skill am Titel-Präfix ab. Das gilt interaktiv genauso wie im Nachtbetrieb; der Unterschied liegt nur darin, ob vor dem Schreiben gefragt wird. Ohne Nummer nimmt der Skill alle `[Requirement]`- und `[Plan]`-Dokumente aus dem Backlog, die noch keinen Marker ihrer Stufe tragen. Arbeitspakete prüft er nur mit expliziter Nummer: Der Regelfall ist Ready ohne Paket-Review, was ein Paket falsch macht, fangen die Build-Gates und der Code-Review. `[Idea]` ist immer ausgeschlossen.
-
-**Warum nach oben.** Die Reichweite eines Fehlers wächst nach unten: Ein Fehler in der fachlichen Anforderung pflanzt sich in den Plan fort, von dort in jedes Arbeitspaket und in allen Code. Früher gefundene Fehler sind billiger zu beheben und verhindern am meisten.
-
-**Warum das Arbeitspaket keinen eigenen Prüfer mehr braucht.** Scope, Abhängigkeiten und Kollateralschäden im Bestand entscheiden sich im Plan, nicht im einzelnen Paket; die frühere Scope-Rolle ist deshalb als `schnitt-abhaengigkeiten` auf die Plan-Stufe gewandert, wo sie den ganzen Zuschnitt vor sich hat.
-
-**Form vor Inhalt.** Der Maßstab jeder Stufe ist ihr Format: die vier Story-Abschnitte, die sechs Plan-Überschriften, die vier Abschnitte des Arbeitspakets. Die Form prüft kein Modell, sondern `issue check-form` (siehe [Board-Adapter](#board-adapter)); Verstöße behebt die Session, bevor ein Reviewer startet. Das Plandokument trägt genau diese Überschriften in dieser Reihenfolge:
-
-```markdown
-## Ziel
-## Betroffene Bereiche
-## Architektonische Entscheidungen
-## Geplante Änderungen
-## Offene Fragen
-## Verifizierung
-```
-
-### Ablauf
-
-Vorflug mit `issue-review check`, dann `issue check-form <id>`, dann `issue-review roles --stage <stufe> --author <modell>` für Rollen und Besetzung. Jeder Reviewer bekommt denselben Body und seine Rolle: `form-beobachtbarkeit` und `abgrenzung` für die fachliche Anforderung, `architektur-bestand` (der Senior, der den Bestand kennt) und `schnitt-abhaengigkeiten` für den Plan, `pruefbarkeit` für das Arbeitspaket; jede Rolle trägt die Streich-Frage „Was kann raus?". Der Plan-Reviewer bekommt zusätzlich den Body der in `Fachliche Quelle:` genannten Karte — vom Board, nie aus dem Gespräch — und den Pfad einer `Vorlage:`-Zeile; er prüft damit auch, ob der Plan jedes Ziel, jedes Akzeptanzkriterium und jede beantwortete Frage der Quelle herstellt. Ohne Quelle entfällt dieser Eingang.
-
-**Der Prüfauftrag entsteht im Kit, nicht in der Session.** `node .claude/kit/board.mjs issue-review review-brief --role <rolle> --id <id> --file <pfad>` montiert ihn aus der Rollendatei, der Liste der Fund-Arten und dem unveränderten Body, beim Plan samt Quelle und Vorlage, und schreibt ihn in eine Datei außerhalb des Projekts. Die Session schreibt keinen Rollentext ab und füllt nichts selbst ein. Ein Claude-Reviewer startet als Agent `kit-pruefer` mit dem Modell aus `reviewers[].model`; sein Auftrag lautet nur `Lies <pfad>`. Ein fremder Reviewer startet über `node .claude/kit/board.mjs issue-review start --reviewer <name> --brief <pfad> --output <pfad>`: Das Kit reicht den Auftrag über stdin, hängt die Lesegrenze an die Kommandozeile und schreibt die Antwort in die Ausgabedatei. Scheitert einer der beiden Aufrufe — etwa mit `rolle-fehlt` oder `keine-lesegrenze` —, fällt dieser Reviewer aus, der Ausfall steht in Zeile 2 des Befunde-Kommentars, und die Prüfung läuft ohne ihn weiter. Einen Ersatzweg mit selbst geschriebenem Prompt gibt es nicht.
-
-Die Befunde gehen als Kommentar `## <Stufe>-Review, Runde 1` ans Dokument. Ist kein einziger Reviewer gelaufen, meldet `findings.mjs check` den Eintrag `keine-pruefer`, und `review:done` wird nicht gesetzt: Die Stufe gilt dann als nicht geprüft. Danach arbeitet die aufrufende Session jeden Fund ein oder lehnt ihn mit einem Satz ab, nach der Regel „Entscheiden statt fragen" aus `CLAUDE-workflow.md`: interaktiv nach einem Wort der Zustimmung, unbeaufsichtigt direkt; nur ein Fund der Stopp-Klasse hält an und zeichnet das Dokument mit `kit:clarify`. Der neue Body geht über `issue update`, dazu die Marker-Zeile der Stufe — unbeaufsichtigt mit dem Zusatz `, Nachtlauf` — und ein Kommentar `## Einarbeitung, Runde 1` mit der Liste übernommen / abgelehnt und Grund. Eine Runde, keine zweite: Weitere Runden finden erfahrungsgemäß Geschmacksfragen.
-
-### Konfiguration
-
-Der Installer legt `.claude/workflow.config.example.json` neben die echte Config; daraus den `issueReview`-Block übernehmen. **Der Installer schreibt ihn nicht selbst** — `reviewers` hängt davon ab, welche CLIs auf der Maschine liegen, und `pairs` ist eine Entscheidung. Ein Reviewer ist ein Adapter: `kind: claude` läuft als Leser-Agent `kit-pruefer` mit dem konfigurierten `model`, `kind: command` als beliebiges CLI mit dem Prompt über stdin und der Antwort auf stdout — Codex, Gemini, ein eigenes Skript. Wer wen prüft, steht in `pairs`; sonst greift die Regel „die vordersten Reviewer, die nicht der Autor sind". Die Zuordnung zeigt `issue-review matrix`.
-
-**Rollen als Dateien.** Jede Rolle hat ihren Wortlaut an genau einer Stelle: `kit/rollen/<rolle>.md` — `form-beobachtbarkeit`, `abgrenzung`, `architektur-bestand`, `schnitt-abhaengigkeiten`, `pruefbarkeit` und `code-review` für `/kit-review`. Installer und Update legen die Dateien unter `.claude/kit/rollen/` ab. Wer den Wortlaut einer Rolle ändert, ändert ihn für jeden Reviewer dieser Rolle, gleich welches Modell. Fehlt eine Rollendatei, fällt nur dieser Reviewer aus. `issue-review roles` und `issue-review check` nennen die Rollendateien mit.
-
-**Nur lesen, für jeden Reviewer.** Ein Claude-Reviewer läuft als Agent `kit-pruefer`, dessen Werkzeuge auf `Read, Grep, Glob` beschränkt sind: Er kann lesen und suchen, aber keine Datei schreiben und keinen Befehl ausführen, auch wenn sein Auftrag es verlangt. Ein fremder Reviewer bekommt dieselbe Grenze über den Nur-Lese-Schalter seines Werkzeugs, die **Lesegrenze**:
-
-- Für `codex` kennt das Kit den Schalter selbst (`--sandbox read-only`), aus einer eingebauten Tabelle.
-- Für jedes andere Werkzeug steht er im Feld `lesegrenze` des Reviewers in `issueReview.reviewers`, für den Code-Review mit `reviewCommand` im Feld `reviewLesegrenze`. Ein gesetztes Feld schlägt die Tabelle.
-- Kommando und Lesegrenze werden ohne Shell am Leerraum zerlegt: Anführungszeichen, Pipes und Variablen wirken nicht. Die Lesegrenze steht als letztes an der Kommandozeile.
-- Trägt das Kommando einen Schalter, der die Grenze aufheben oder überschreiben kann (`--full-auto`, `--dangerously-bypass-approvals-and-sandbox`, ein `--sandbox` mit anderem Wert als `read-only`, ein `--config sandbox…`, ein `--profile`), startet nichts: `lesegrenze-aufgehoben`.
-- Ohne bekannte Lesegrenze startet der Reviewer nicht (`keine-lesegrenze`); `issue-review check` meldet ihn dann als nicht verfügbar.
-
-`issue-review start` setzt auf `node .claude/kit/board.mjs*` in `sandbox.excludedCommands` auf — das fremde Werkzeug erbt die Umgebung von `board.mjs` und braucht Netz (siehe [Allowlist für fremde Reviewer](#allowlist-für-fremde-reviewer)).
-
-```json
-"reviewStufen": {
-  "fachlich": { "reviewer": 2, "rollen": ["form-beobachtbarkeit", "abgrenzung"] },
-  "plan":     { "reviewer": 1, "rollen": ["architektur-bestand"] },
-  "issue":    { "reviewer": 1, "rollen": ["pruefbarkeit"] }
-}
-```
-
-Bestehende Installationen **ohne** `reviewStufen`-Block prüfen je Stufe mit den Rollen des Rollenkatalogs, ein Reviewer je Rolle: fachlich `form-beobachtbarkeit` und `abgrenzung`, Plan `architektur-bestand` und `schnitt-abhaengigkeiten`, Arbeitspaket `pruefbarkeit`. Jede dieser Rollen hat ihren Wortlaut unter `kit/rollen/`, darum fällt ohne Block kein Prüfer aus. Wer eine andere Besetzung will, schreibt den Block ausdrücklich.
-
-## Spec-Driven Development
-
-Spec-Driven Development ist seit Kit-Version **v3.0.0** entfallen (Plan #825). Das Kit führt keine Spezifikation unter `specs/` mehr: keine `## Spec-Wirkung` an Arbeitspaketen, keine Aussage-IDs in Testnamen, keine Fortschreibung und kein Gate beim Push, keine Vorhaben-Notizen. `/push-main` hat dadurch sieben Schritte statt neun.
-
-**Ein Projekt, das noch einen `spec`-Block führt, läuft unverändert weiter.** Kein Werkzeug wertet den Block mehr aus. Der Installer übernimmt ihn bei einem Update und sagt einmal, dass er entfernt werden kann; die Einstellungs-Oberfläche meldet ihn als unbekanntes Feld und lässt das Speichern zu. Block, Verzeichnis `specs/` und eine liegengebliebene `.claude/vorhaben-wartend-*.md` können gelöscht werden. `[ID]`-Präfixe in Testnamen stören nicht und dürfen stehen bleiben.
 
 ## Team-Config und persönliche Abweichungen
 

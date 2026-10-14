@@ -301,7 +301,7 @@ What was skipped remains visible: in the checklist of `/local-check` and in the 
 **`stufe` is on an axis of its own.** `areas` and `always` say **whether** a check is affected; **when** it is due is said by [Staged checks](#staged-checks-stufe).
 
 ### Staged checks: `stufe`
-<!-- de: 36e57fdb2e75 -->
+<!-- de: 2efc59c80752 -->
 
 Not every mandatory check belongs at every point in time. Running an integration test that takes twenty minutes after every work package makes the check before the commit so expensive that nobody waits for it any more — leaving it out makes the check worthless. A `buildChecks` entry can therefore say **when** it is due:
 
@@ -335,7 +335,7 @@ Not every mandatory check belongs at every point in time. Running an integration
 
 **At least one check belongs on the package stage.** If all entries carry `push` or `merge`, nothing runs before the commit: Implementing a work package then has no gate. At night this is no silent state — the night runner checks it at start and does not start at all (override: `--no-checks-ok`). The [settings interface](/en/einstellungen) (Einstellungs-Oberfläche) reports this state as a warning; such a configuration can still be saved, because it is valid.
 
-**Not to be confused.** The term *stage* (*Stufe*) has three meanings in the kit: `reviewStufen` are the [check stages of the review](/en/dokumentation#three-check-stages-the-check-moves-up), the task level (Aufgabenstufe) of a work package (`schwer`/`mittel`/`leicht`) controls the model of the [night chain](/en/dokumentation#second-mode-the-night-chain) (Nacht-Kette), and `stufe` is the point in time of a mandatory check. The three have nothing to do with each other.
+**Not to be confused.** The term *stage* (*Stufe*) has three meanings in the kit: `reviewStufen` are the [check stages of the review](/en/prozess#three-review-stages), the task level (Aufgabenstufe) of a work package (`schwer`/`mittel`/`leicht`) controls the model of the [night chain](/en/dokumentation#second-mode-the-night-chain) (Nacht-Kette), and `stufe` is the point in time of a mandatory check. The three have nothing to do with each other.
 
 ### Completion and publishing: `nichtBeimAbschluss`
 <!-- de: 4fac63385f88 -->
@@ -797,90 +797,10 @@ When in doubt, lane 2 applies; that also covers an unclear need to weigh up. Bef
 
 **A special case worth naming: rejection as a valid result.** A tool reports a finding, and the finding is defensibly rejected — that, too, is work, and it is typical lane-3 work. So that the rejection holds, the acceptance criterion of such a `[Task]` is the **versioned suppression rule** that the tool itself evaluates, with the justification right next to it: The tool reads the rule, the justification addresses humans and later sessions. In the kit the pattern lives in `sonar-project.properties` — the exclusion of the rule `javascript:S4036` as a versioned line, with a written-out explanation above it of why it is defensible. A rejection marked as "accepted" by hand in the web UI, in contrast, does not hold: The next finding of the same kind arises outside of it. Such a task is verified by running the same tool again — the rejected finding stays away, **and an independent control finding is still reported**; without it, a silent tool cannot be told apart from an effective exclusion. If a tool lacks a versionable route, developing one belongs in an initiative (Vorhaben) of its own, and no cross-tool register is created — it would be a second list next to the rule files that none of the tools reads.
 
-## History
-<!-- de: 090c4eba1657 -->
-
-Otherwise a new business plan (Fachplan) or plan only knows what is currently in the conversation or in the stock. Earlier business plans on the same subject disappear from view with the archive, and with them the reasons for earlier decisions. The history (Vorgeschichte) brings them back before writing, so that an earlier decision is not silently overridden. It locks nothing, it only makes things visible.
-
-**Switching it on.** The switch [`history`](/en/einstellungen) in `.claude/workflow.config.json` is off by default; then every document arises as before, without a section and without a note. In the kit itself it is on. The search needs a board that also searches archived cards, and so far only the Toolbox tracker (kanban-kit) can do that. With GitHub, GitLab and the local file tracker the document carries the note instead that no history was read.
-
-**Searching.** Not the author searches the board, but a command:
-
-```bash
-node .claude/kit/board.mjs issue history --terms <begriff> [--files <pfad>]... [--without <N>]...
-```
-
-`/requirement` and `/techplan` call it themselves. The search terms come from the title and goal of the new requirement; the plan additionally passes the files from `## Betroffene Bereiche` and so also finds the business plans from which these parts of the project arose. The document names what was searched for, and `/issue-review` hands the reviewers the business plans found in full.
-
-**Location.** In the business plan the section `## Vorgeschichte` stands between the non-goals and the open questions to the PO, in the plan the subsection `### Vorgeschichte` at the end of `## Betroffene Bereiche`. It names at most five references, each with number, title and the sentence that counts for the new requirement, and exactly one of the three fixed notes where it applies:
-
-- `Nichts Einschlägiges gefunden.` — searched, but no hit counts.
-- `Keine Vorgeschichte gelesen: <Grund>` — the archive was not reachable, for instance without network or with a tracker without search; the document arises anyway.
-- `Weitere Treffer: <Zahl>` — there were more hits than the document names.
-
-**Contradictions stop nothing.** If the new requirement contradicts an earlier PO answer or an earlier non-goal, the contradiction stands with quote and reference in the history section, not under the open questions, and does not count toward the five. No stop, not even at night: the night chain (Nacht-Kette) keeps running, and the night report names the contradiction so that the human sees it in the morning. The exact rule is in `.claude/CLAUDE-workflow.md`, section "History".
-
-## The check run
-<!-- de: 30d57c1dae3c -->
-
-**A run during the day that has several marked business requirements reviewed one after another.** Reviewing during the day is a conversation: Every finding wants to be discussed, every question of the stop class (Stopp-Klasse) answered. The check run (Prüflauf) takes exactly that off your hands — mark requirements, start the run, look later. For each card a session `/issue-review #N` runs without anyone answering in between; afterwards every card shows where things stand: reviewed and ready, or a decision is waiting. Everything outside the stop class was decided by the review and recorded in the document. **This sorting is the gain.**
-
-The run belongs to the **day** and therefore has a chapter of its own, not under [Night mode](/en/dokumentation#night-mode): It runs alongside the working human and alongside a night chain, and it is not tripped up by an unclean working tree or by a package in In progress. It has exactly one relation to the night chain: It **establishes the chain's prerequisite** — a card left reviewed carries the `review:done` that the chain requires. The **chain label** remains the human's gesture; the check run never sets it.
-
-**The gesture:** the label `kit:check` on the business requirement (label name from `pruefLauf.label`, see [All settings](/en/einstellungen); to be created on the board once). The run **consumes it** immediately before the session for this card — every setting of it authorises exactly one review; an abort leads to a note with the reason and a new gesture, not to a silent repetition. Together with the marker it also removes a `review:done` from a previous run: Only this way does the state after the session answer the question about **this** review and not about an earlier one. It **never** removes `kit:clarify` — only a human may do that, otherwise a run would give itself its own approval.
-
-**Fixed kit state.** Like every unattended run, the check run works with a fixed state of the kit: At the start it binds itself to the commit that `origin/<mainBranch>` points to — the last push, read without `git fetch`. Fixed are thus the tools including the check before every commit, the skills and the rule texts; whatever a package of the same night changes in them only takes effect after `push main`. The object of the check remains the project's configuration and its tests; they come from the state of the respective package. The state appears as the line `Kit-Stand: <commit> (origin/<mainBranch> vom <Zeit>)` (kit state: commit, origin/mainBranch as of time) in the run report (`kitStand` in `.claude/night-run-*.json`), in the night report and on every comment of the run. After a run in the main copy, its installed copy stays at its state until `node tools/sync-blobs.mjs` brings it to the working copy; until then `sync-blobs --check` names it as outdated. In the kit repo, `push main` catches this up itself: after catching up the main copy it runs the post-push step from `RELEASING.md`, `node tools/sync-blobs.mjs`, and the installed copy stands on the state just published (issue #1523). A machine that fetches the state only via `git pull` keeps calling `sync-blobs` by hand.
-
-**Start:**
-
-```bash
-node .claude/kit/night.mjs --check
-```
-
-The run **has no preview** — `--check --dry-run` is rejected, and `/issue-review --dry-run` shows documents and reviewers anyway. What will run is in the candidate list that the run logs before the first session. `--label` does not apply here (the marker comes from the config), and neither do `--chain` and `--check` together: Those are two runs with budgets, labels and worktrees of their own. `--max N` is allowed, but **not needed** — the run is limited by its budgets, not by a number; without `--max` there is no numeric cap.
-
-**The candidates:** every card that carries the marker and has the title `[Requirement]`. **Without a column condition**, unlike the night chain: A business document never goes to Ready, and the gesture applies to the card, not to its location. Whatever carries the marker but is not reviewed appears in the list as `uebersprungen` (skipped) with a reason and **keeps its marker**: a `[Plan]` document or a work package (the check run applies to business requirements only) and a card with `kit:clarify` (a question is waiting there for a human, and a second review does not answer it). Cards above a set `--max` count as `liegengeblieben` (left over) — that is not an exclusion. If not a single card carries the marker, the run says so and names the existing labels. Before the first review the **reviewer pre-flight** runs as with the chain: If it fails, every candidate gets the comment `Pruefung nicht gestartet` (review not started) with a reason and keeps its marker — nothing ran.
-
-**The worktree:** one per **run**, not per card (`pruefung-…` under the temp directory, a prefix of its own next to that of the chain). The sessions read and write on the board, not in the working tree; a worktree per card would cost time for a separation without a subject. After the run it is removed; a left-over one is cleared by the next start — only one with **its** prefix and only if its runner is no longer alive, so that a concurrently running check run or night chain keeps its own. Like the chain, the check run claims every root with the run status (Laufstand) `läuft` (running) together with the run ID and leaves out one claimed by a live runner (see "One runner per root" in the chapter Night mode).
-
-**Per card:** Immediately before the session the run forms the fingerprint of the **version** read (twelve hex digits from the card text) and names it in the candidate list, the log and the result. That way it is clear afterwards *what* was reviewed: Whoever changes the text during the review sees from the fingerprint that the review read a different version. The run reads the result from the **difference** between the board traces before and after the session, never from the state afterwards alone — a card reviewed again already carries markers and findings from the previous run. An abort only ends this card; the next one is up.
-
-**Three results, each with its trace on the board:**
-
-| Result | Trace on the card | what is next |
-|---|---|---|
-| reviewed | business plan review marker in the body and the label `review:done`, findings and their incorporation as comments | nothing — the card meets the admission prerequisite of the night chain |
-| pending decision | `kit:clarify` and the question as a comment; the text of the requirement stays **unchanged** | answer the question and remove `kit:clarify` — both by hand |
-| incomplete | the comment `## Pruefung unvollstaendig` (review incomplete) with reason, step reached (`gestartet`, `befunde`, `eingearbeitet` — started, findings, incorporated) and the route forward | run `/issue-review #N` by hand |
-
-The third outcome is shown separately and is neither of the first two: The review has then been paid for, its findings are on the board, but the body carries no marker — without the note the card would later look untouched. A session that started a long piece of work and ended while waiting for it instead only gets the note `## Nachtlauf: wartende Sitzung` (night run: waiting session); two comments for one abort say nothing that one does not say.
-
-**Budgets** are in the root block `pruefLauf` of `.claude/workflow.config.json` — not under `night`, because the run belongs to the day. If the block or a field in it is missing, these starting values apply:
-
-```json
-{
-  "pruefLauf": {
-    "label": "kit:check",
-    "pruefungMin": 25,
-    "kostenUsd": 25
-  }
-}
-```
-
-`pruefungMin` is the time budget **per reviewer session**; it is above that of the plan stage of the chain because the business stage runs two reviewers. `kostenUsd` is the cost budget **per run**, summed over all sessions and checked **after** every session, never in the middle — a half-read review would be the more expensive mistake. Once it is exhausted, the remaining cards count as skipped and keep their marker.
-
-**The result list is on the console** (and in the log `.claude/night-run-<datum>.log`), because the run belongs to the day: Whoever starts it sees its result. One line per card with number, title, result and version — for a pending decision also the question, for an abort the step reached —, below it a sum line over the five outcomes. The [result state as JSON](/en/dokumentation#night-mode) arises as with every unattended run, with one unit per card including outcome, version, duration and key figures.
-
-**What the run does not do.** It moves **no card** between columns, pulls nothing to Ready, sets no chain label and removes no `kit:clarify`. Nor does it change anything about the review itself: Who reviews, in which role and with which questions stays as it is — it is the same review as by hand, only without the conversation. And it answers no question that belongs to a human; it sorts.
-
-**The limit of being untouched.** The run leaves no change in the project — the state of the working directory is the same before and after the run, even if someone works in it in the meantime. One exception belongs to this, and it is none: With the tracker `local` the board lies **in the repo**, and the config in the worktree points to `issues/` of the main copy so that the sessions write there. These cards therefore change — that is the **result and not a leftover**. Everything outside the board stays untouched.
-
-**Afterwards:** A card left reviewed meets the admission prerequisite of the night chain — the **GO remains yours**: The chain label is still set by a human. If the result is available before the nightly selection, the chain runs the same evening, otherwise next time.
-
 ## Night mode
-<!-- de: 5ad9653f71b3 -->
+<!-- de: 95c4ddc1b3b9 -->
 
-Night mode (Nachtbetrieb) knows **two operating modes**: the **implementation night** (Umsetzungsnacht), which this section describes, and the **night chain** (see [Second mode](/en/dokumentation#second-mode-the-night-chain)), which turns a business plan into the reviewed plan and the work packages without building anything. Both are the night; the [check run](#the-check-run), which has business requirements reviewed, belongs to the day and has its own chapter. The implementation night works through the Ready column unattended — with a **fresh session per issue**, so that no context accumulates over many issues and quality does not degrade creepingly. The night runner (`.claude/kit/night.mjs`, comes with the installer) starts one headless session per issue with `/implement-next #N` — the issue is **handed to the session bindingly**, it does not choose it itself — waits for it to end and checks success exclusively on the board: issue in In review = success. Nothing is **ever** pushed at night — the three stop points remain human, unchanged.
+Night mode (Nachtbetrieb) knows **two operating modes**: the **implementation night** (Umsetzungsnacht), which this section describes, and the **night chain** (see [Second mode](/en/dokumentation#second-mode-the-night-chain)), which turns a business plan into the reviewed plan and the work packages without building anything. Both are the night; the [check run](/en/prozess#the-check-run), which has business requirements reviewed, belongs to the day and is described on the process page. The implementation night works through the Ready column unattended — with a **fresh session per issue**, so that no context accumulates over many issues and quality does not degrade creepingly. The night runner (`.claude/kit/night.mjs`, comes with the installer) starts one headless session per issue with `/implement-next #N` — the issue is **handed to the session bindingly**, it does not choose it itself — waits for it to end and checks success exclusively on the board: issue in In review = success. Nothing is **ever** pushed at night — the three stop points remain human, unchanged.
 
 **Evening ritual (the GO):** Pull issues to Ready and bring them into the desired order by drag & drop — the runner works through the column from top to bottom. Dependencies must be written as `Issue #N` in the dependencies section (see issue format): The runner automatically defers issues with unfulfilled `#N` references. Four kinds of card it skips mechanically — commented back to the backlog, without starting a session: business issues (`[Requirement]` title, [PO loop](/en/prozess#po-loop-business-and-technical-issues)), **ideas** (`[Idea]` title), **plan documents** (`[Plan]` title) and **human steps** (Menschenschritte, `[Human]` title). A raw idea is not an implementable issue — with trade-offs it goes through `/requirement #N`, without trade-offs through `/task #N`; a plan document describes a route and is only cut into work packages by `/issues`. Without the gate a session would reject them correctly, but the runner cannot tell this rejection from a failure — the session is burned and the comment on the board misleading. With a plan document it would be worse: It would carry no reason for rejection in itself and would be implemented, and that would look like a success on the board. A **human step**, by contrast, is a work package, but its task lies outside the repository — a setting in a web interface, an account, an access, an approval —, and no move of a session gets it done. Its comment says explicitly that the card is **waiting** and has not failed: Without the gate the runner would count the session's correct inaction as a failure, and the card would look like a failed package in the backlog (documented case: kanban-kit #1256). After acting, the human moves it on themselves. Also deferred is every card whose task or acceptance criterion names a **protected file** and that the human has not released, as well as a card with the label `kit:protected` — more on this under [The halt at a protected file](/en/dokumentation#the-halt-at-a-protected-file).
 
@@ -1077,7 +997,7 @@ This outcome must be distinguished from the two neighbouring ones, and that is e
 A halt is **not a failure**: The session acted correctly by not guessing. That is why it appears in the result state as a counter of its own next to `erfolg`, `zurueckgestellt` and `fehlschlag` — whoever had to look for the waiting decisions in the deferral count in the morning would not find them. The way forward leads via `/requirement #T`: The skill takes the halted task together with the decision comment as input and turns it into a business requirement. The same number form has a second input — an `[Idea]` that calls for a trade-off; if there is nothing to weigh up about it, `/task #N` is the way instead. Only the human removes `kit:clarify` in the process.
 
 #### The halt at a protected file
-<!-- de: 094585c5855e -->
+<!-- de: 74b14bdb3bb6 -->
 
 **A protected file (geschützte Datei) is not a question but an action.** Some files may only be written by a human — in the kit, the settings under `.claude/` (`settings.json`, `settings.local.json`, `.claude/hooks/`). If a package has to change one of them, it halts, and it does so with the label `kit:protected` instead of `kit:clarify`: With `kit:clarify` a decision is waiting, with `kit:protected` an action. Like `review:done`, the label has to be created once per board; the machine sets it, only the human may remove it. The halt comment begins with `## Geschuetzte Datei` (protected file), names every file with the quoted line from the package and records as its last line `Label kit:protected gesetzt` (label set) or, if the label is missing on the board, `Label kit:protected nicht gesetzt` (label not set). The run does not abort because of the missing label; the card is only released, however, after a halt with the label set.
 
@@ -1088,8 +1008,6 @@ A halt is **not a failure**: The session acted correctly by not guessing. That i
 **In the report** the halt appears with the kind `geschuetzt`, separate from the stop questions: as a key figure of its own „Geschuetzte Dateien“ (protected files) and under „Wartende Handlung an geschuetzter Datei“ (pending action at a protected file), not under „Offene Stopp-Frage“ (open stop question).
 
 **The way back:** make the change to the file yourself, remove the label `kit:protected`, move the card to Ready. On the next attempt the package counts as released and runs through normally.
-
-**An old initiative note is not a leftover.** Until Spec-Driven Development was dismantled, `/techplan` stored waiting notes as `.claude/vorhaben-wartend-<k>.md`. Today none are created any more; where one still lies around, the leftover guard does not count it as a leftover — also in a project whose `.gitignore` does not cover `.claude/`. The file can be deleted.
 
 **Salvage — when the work is finished but the board does not know it.** A headless session has no follow-up turn. If it starts a long check in the background and ends its turn before the result is there, the result is lost — the board shows a failure although the work was complete. Before the runner stops hard on "not in In review AND dirty", it therefore checks for itself — with **`node .claude/kit/checks.mjs run --finish <id> --fresh`** in the project, that is exactly the run that the completion of a card also performs. The route via `checks.mjs` is the core of the matter: This run leaves the summary `.claude/checks-summary.json`, and **it is exactly what the commit gate reads**. When the runner used to run the `buildChecks` itself, it measured green at a place the gate does not know — the summary still held the session's red result, and the salvage session could not commit: In this situation the rescue could never succeed. Now there is one truth about "green" instead of two. `--fresh` belongs to it, otherwise the command would, on an unchanged state, adopt exactly the red result the runner doubts; `--finish <id>` keeps the scope of a card completion (package stage, without integration checks (Zusammenspiel-Prüfungen) and without quality measurement) and assigns the run to the card. With the route comes its **area-based selection**: The checks of the touched areas run — a separate, further selection would again be the second truth that the incident cost. Checks with `stufe` `push` or `merge` stay out as before, they are only due at publishing. If the checks are green, **exactly one** salvage session per issue gets the chance to check the intermediate state against the issue, commit it and move the board (time limit 10 minutes; it no longer runs any builds). Red checks and a failed attempt each have a log line of their own. Without a commit the leftovers go into the stash and the run continues (see "When something goes wrong"). The pre-check merges the `env` block from `.claude/settings.json` and `.claude/settings.local.json` into its environment — otherwise it lacks project-specific variables (for Testcontainers, for example) that otherwise only Claude Code's own Bash calls get, and it reports a false red.
 
@@ -1499,85 +1417,6 @@ For such recurring, class-wide errors the same principle applies as with the cov
 **The yardstick behind it: "rule in the text or rule in the tool".** It is in `CLAUDE-workflow.md` and applies to every instruction supplied: An **operating instruction** (Bedienvorgabe) — whether it is followed can be read from output or result, a tool could carry it out in the reader's place — belongs in the tool; a **judgement rule** (Urteilsregel), which demands a decision in the individual case, stays in the text. Mixed rules are taken apart, not rounded. Which rule of `/local-check` has moved where according to this yardstick is listed in [Rules in the tool](/en/regeln-im-werkzeug) — line by line, with kind, degree of transfer (Überführungsgrad) and new place.
 
 **The borderline case: when no guardrail can be had.** Some things cannot be measured — whether a model believed a statement instead of looking it up, for instance. There the declared self-report takes the place of the gate: The fixed answer form „Mitteilung übernommen, ungeprüft — …“ (statement adopted, unchecked) from [Statements: believe instead of checking](/en/prozess#statements-believe-instead-of-checking) forces nothing, but makes every violation a visible contradiction. Visible contradiction instead of a gate — the same principle, only with the weaker means, because the stronger one does not exist here.
-
-## Issue review across multiple models
-<!-- de: fe45e30104da -->
-
-A document is the source of truth for the next step. An error in it propagates, and the author does not see it, because they have in their head the context from which the document arose. `/issue-review` has models read it that did **not** write it: They deliver findings, and the session that called the skill works them in or rejects them with one sentence. Findings are support, not a gate — whether a stage is finished is said by a command or a human, never by a model marker.
-
-### Three check stages — the check moves up
-<!-- de: 3785c72bd35d -->
-
-Which stage applies is decided by the title prefix, and every stage leaves its own trace:
-
-| Stage | Checks | Proof |
-|---|---|---|
-| `fachlich` | a `[Requirement]` issue — the business requirement from [/requirement](/en/prozess#requirement) | `Fachplan-Review: …` |
-| `plan` | a `[Plan]` issue — the plan document from [/techplan](/en/prozess#techplan) | `Plan-Review: …` |
-| `issue` | a technical work package from [/issues](/en/prozess#issues) | `Issue-Review: …` |
-| `issue` | a `[Task]` work package from [/task](/en/prozess#task) — `[Task]` is **not a document prefix** | `Issue-Review: …` |
-
-**Where the proof is:** for the work package in the section `## Kontext`, for the business requirement in the section `## Ziel` next to `Autor-Modell:`, for the plan document before `## Ziel` next to `Plan-Modell:`. The marker is a trace, not a release: No skill reads it as a condition for the next step.
-
-**The call is always the same: `/issue-review #N`.** There is deliberately no command of its own per stage — which one applies, the skill reads from the title prefix. That applies interactively just as in night mode; the difference is only whether it asks before writing. Without a number the skill takes all `[Requirement]` and `[Plan]` documents from the backlog that do not yet carry a marker of their stage. It only checks work packages with an explicit number: The normal case is Ready without a package review, and what a package does wrong is caught by the build gates and the code review. `[Idea]` is always excluded.
-
-**Why upwards.** The reach of an error grows downwards: An error in the business requirement propagates into the plan, from there into every work package and into all code. Errors found earlier are cheaper to fix and prevent the most.
-
-**Why the work package no longer needs a reviewer of its own.** Scope, dependencies and collateral damage in the existing code are decided in the plan, not in the individual package; the former scope role has therefore moved as `schnitt-abhaengigkeiten` to the plan stage, where it has the whole cut in front of it.
-
-**Form before content.** The yardstick of every stage is its format: the four story sections, the six plan headings, the four sections of the work package. The form is not checked by a model but by `issue check-form` (see [Board adapter](/en/dokumentation#board-adapter)); the session fixes violations before a reviewer starts. The plan document carries exactly these headings in this order:
-
-```markdown
-## Ziel
-## Betroffene Bereiche
-## Architektonische Entscheidungen
-## Geplante Änderungen
-## Offene Fragen
-## Verifizierung
-```
-
-### Procedure
-<!-- de: 8c0a56865013 -->
-
-Pre-flight with `issue-review check`, then `issue check-form <id>`, then `issue-review roles --stage <stufe> --author <modell>` for roles and staffing. Every reviewer gets the same body and its role: `form-beobachtbarkeit` and `abgrenzung` for the business requirement, `architektur-bestand` (the senior who knows the existing code) and `schnitt-abhaengigkeiten` for the plan, `pruefbarkeit` for the work package; every role carries the cut question "What can go?". The plan reviewer additionally gets the body of the card named in `Fachliche Quelle:` — from the board, never from the conversation — and the path of a `Vorlage:` line; with it, it also checks whether the plan delivers every goal, every acceptance criterion and every answered question of the source. Without a source this input is dropped.
-
-**The review brief is created in the kit, not in the session.** `node .claude/kit/board.mjs issue-review review-brief --role <rolle> --id <id> --file <pfad>` assembles it from the role file, the list of finding types and the unchanged body, for the plan together with source and template, and writes it to a file outside the project. The session copies no role text and fills in nothing itself. A Claude reviewer starts as the agent `kit-pruefer` with the model from `reviewers[].model`; its brief reads only `Lies <pfad>`. A third-party reviewer starts via `node .claude/kit/board.mjs issue-review start --reviewer <name> --brief <pfad> --output <pfad>`: the kit passes the brief via stdin, appends the read boundary to the command line and writes the answer to the output file. If either call fails — for instance with `rolle-fehlt` or `keine-lesegrenze` —, this reviewer drops out, the failure appears in line 2 of the findings comment, and the review continues without it. There is no fallback with a self-written prompt.
-
-The findings go as a comment `## <Stufe>-Review, Runde 1` (review, round 1) to the document. If not a single reviewer ran, `findings.mjs check` reports the entry `keine-pruefer`, and `review:done` is not set: the stage then counts as not reviewed. Then the calling session works in every finding or rejects it with one sentence, according to the rule "decide instead of asking" (Entscheiden statt fragen) from `CLAUDE-workflow.md`: interactively after a word of approval, unattended directly; only a finding of the stop class halts and marks the document with `kit:clarify`. The new body goes via `issue update`, together with the marker line of the stage — unattended with the addition `, Nachtlauf` (night run) — and a comment `## Einarbeitung, Runde 1` (incorporation, round 1) with the list adopted / rejected and reason. One round, no second: Further rounds, in our experience, find matters of taste.
-
-### Configuration
-<!-- de: 4f9bbc37aa30 -->
-
-The installer puts `.claude/workflow.config.example.json` next to the real config; take the `issueReview` block from it. **The installer does not write it itself** — `reviewers` depends on which CLIs are on the machine, and `pairs` is a decision. A reviewer is an adapter: `kind: claude` runs as the reader agent `kit-pruefer` with the configured `model`, `kind: command` as any CLI with the prompt via stdin and the answer on stdout — Codex, Gemini, a script of your own. Who reviews whom is in `pairs`; otherwise the rule "the foremost reviewers that are not the author" applies. The assignment is shown by `issue-review matrix`.
-
-**Roles as files.** Every role has its wording in exactly one place: `kit/rollen/<rolle>.md` — `form-beobachtbarkeit`, `abgrenzung`, `architektur-bestand`, `schnitt-abhaengigkeiten`, `pruefbarkeit` and `code-review` for `/kit-review`. Installer and update place the files under `.claude/kit/rollen/`. Whoever changes the wording of a role changes it for every reviewer of that role, whatever the model. If a role file is missing, only that reviewer drops out. `issue-review roles` and `issue-review check` also name the role files.
-
-**Read only, for every reviewer.** A Claude reviewer runs as the agent `kit-pruefer`, whose tools are restricted to `Read, Grep, Glob`: it can read and search, but cannot write a file or run a command, even if its brief asks for it. A third-party reviewer gets the same boundary through its tool's read-only switch, the **read boundary** (Lesegrenze):
-
-- For `codex` the kit knows the switch itself (`--sandbox read-only`), from a built-in table.
-- For every other tool it is in the reviewer's field `lesegrenze` in `issueReview.reviewers`, for the code review with `reviewCommand` in the field `reviewLesegrenze`. A set field beats the table.
-- Command and read boundary are split at whitespace without a shell: quotes, pipes and variables have no effect. The read boundary comes last on the command line.
-- If the command carries a switch that can lift or override the boundary (`--full-auto`, `--dangerously-bypass-approvals-and-sandbox`, a `--sandbox` with a value other than `read-only`, a `--config sandbox…`, a `--profile`), nothing starts: `lesegrenze-aufgehoben`.
-- Without a known read boundary the reviewer does not start (`keine-lesegrenze`); `issue-review check` then reports it as unavailable.
-
-`issue-review start` relies on `node .claude/kit/board.mjs*` in `sandbox.excludedCommands` — the third-party tool inherits the environment of `board.mjs` and needs network (see [Allowlist for third-party reviewers](/en/dokumentation#allowlist-for-third-party-reviewers)).
-
-```json
-"reviewStufen": {
-  "fachlich": { "reviewer": 2, "rollen": ["form-beobachtbarkeit", "abgrenzung"] },
-  "plan":     { "reviewer": 1, "rollen": ["architektur-bestand"] },
-  "issue":    { "reviewer": 1, "rollen": ["pruefbarkeit"] }
-}
-```
-
-Existing installations **without** a `reviewStufen` block review each stage with the roles of the role catalogue, one reviewer per role: functional `form-beobachtbarkeit` and `abgrenzung`, plan `architektur-bestand` and `schnitt-abhaengigkeiten`, work package `pruefbarkeit`. Each of these roles has its wording under `kit/rollen/`, so no reviewer drops out without the block. Anyone who wants a different staffing writes the block explicitly.
-
-## Spec-Driven Development
-<!-- de: 17654a71f796 -->
-
-Spec-Driven Development has been dropped since kit version **v3.0.0** (plan #825). The kit no longer keeps a specification under `specs/`: no `## Spec-Wirkung` (spec effect) on work packages, no statement IDs in test names, no updating and no gate at the push, no initiative notes. `/push-main` therefore has seven steps instead of nine.
-
-**A project that still carries a `spec` block keeps running unchanged.** No tool evaluates the block any more. The installer takes it over during an update and says once that it can be removed; the settings interface reports it as an unknown field and allows saving. Block, directory `specs/` and a leftover `.claude/vorhaben-wartend-*.md` can be deleted. `[ID]` prefixes in test names do no harm and may stay.
 
 ## Team config and personal deviations
 <!-- de: bea5460f06a3 -->

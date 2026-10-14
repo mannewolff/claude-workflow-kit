@@ -72,10 +72,6 @@ Ein `buildChecks`-Eintrag kann sagen, fuer welche Bereiche des Projekts er zusta
 
 Ein projektlokal installiertes Kit kann einen `pre-commit`-Hook einhaengen, der jeden Commit abweist, dem kein gruener `node .claude/kit/checks.mjs run` auf demselben Stand vorausging — geprueft wird Datei fuer Datei gegen den Index. Hook und Logik liegen versioniert unter `.githooks/` und wandern mit dem Klon; die Aktivierung ist lokale git-Config und wandert nicht. Zwei Grenzen gehoeren dazu: `--no-verify` umgeht das Gate, und ein frischer Klon hat es erst nach einem Installer-Lauf. Prueflogik, Geltungsbereich und die uebrigen Grenzen stehen im Kapitel „Das Commit-Gate" in [`docs/dokumentation.md`](docs/dokumentation.md) — hier bewusst kein zweiter vollstaendiger Text.
 
-## Spec-Driven Development
-
-Ist entfallen (Plan #825). Ein Projekt, das noch einen `spec`-Block fuehrt, laeuft unveraendert weiter; Block und `specs/` koennen entfernt werden. Einzelheiten im Kapitel „Spec-Driven Development" in [`docs/dokumentation.md`](docs/dokumentation.md).
-
 ## Dokumentation
 
 Ausfuehrliche Anleitung, Konfigurationsreferenz und den vollstaendigen 9-Schritt-Prozess findest du hier:
