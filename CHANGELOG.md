@@ -2,6 +2,28 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [5.2.1] - 2026-10-14
+- Doku zum Aufwandsbericht nennt Rechner und Median je Pruefkommando (#1691)
+- Werkzeug haelt die Testfaelle einer Pruefgruppe fest und vergleicht zwei Staende (#1690)
+- Aufwandsbericht nennt je Pruefkommando den Median einer vollstaendigen Ausfuehrung (#1689)
+- Aufwandsbericht weist jeden Rechner getrennt aus und zeigt die Werkzeugbasis je Stufe (#1688)
+- Ergebnisstand nennt Rechner, Teillauf und Uebernahme (#1687)
+- Werkzeugzeit-Beobachter folgt der echten Form des Session-Stroms (#1686)
+- Skill local-check entfernt: Update räumt die Kopie, Skill-Zahl siebzehn, Abschlusstest (#1679)
+- Ausführliche Doku ohne lokale Prüfung, mit Format-Fix und Mutationstest am neuen Ort (#1678)
+- Prozessseite und WSL2-Anleitung ohne lokale Prüfung, mit Prüflauf von Hand (#1677)
+- Prozess auf acht Schritte umnummeriert: Vorlage, Skills, Board-Marker, Schema (#1676)
+- Leitplanken der Prüfungen in die Vorlage, Aufstellung der Regeln mit neuem Ort (#1675)
+- push-main fragt vor jedem Veröffentlichen nach den Oberflächenänderungen des Stands (#1674)
+- Mutationstest einmal nachgelagert in checks.mjs run --stage push, Ergebnis in der Nacht-Vorbereitung (#1673)
+- Nachformatieren in checks.mjs run an der Paketstufe, ohne eigenen Fix im Nacht-Runner (#1672)
+- Regeltext, Fachplan-Regeln und Doku nennen das Warten auf ein Ereignis (#1666)
+- /techplan nennt das Warten, /groom und /issue-review erhalten die Wartezeile (#1665)
+- Nacht-Kette prüft das Warten beim Kettenstart erneut (#1664)
+- Nacht-Kette überspringt wartenden Fachplan und den Plan zu ihm (#1663)
+- Kommando issue hold setzt und hebt das Warten, check-form meldet es (#1662)
+- Wartezeile im Fachplan: Register, Leser und Schreiber, Schutz in /groom (#1661)
+
 ## [5.2.0] - 2026-10-14
 - Sonar auf kit-pruefung läuft nur mit und blockiert push main nicht (#1683)
 - Sonar-Analyse auf kit-pruefung bekommt den Zweignamen (#1682)
