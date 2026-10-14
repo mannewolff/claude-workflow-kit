@@ -33,6 +33,13 @@ function karte(number, spalte = "BACKLOG") {
   return { id: number * 100, number, title: `Karte ${number}`, body: `Body ${number}`, column: spalte, position: 0 };
 }
 
+/** Einzelabruf `by-number` (Issue #1650): die Karte als `item`, sonst nichts. */
+function einzelabruf(req, karten) {
+  const treffer = req.url.match(/^\/api\/kanban\/items\/by-number\/(\d+)$/);
+  const k = treffer && karten.find((x) => String(x.number) === treffer[1]);
+  return k ? { status: 200, json: { item: k, archived: false, comments: [] } } : null;
+}
+
 function gruppiert(karten) {
   const g = {};
   for (const k of karten) {
@@ -58,6 +65,7 @@ test("[board-1] activity adressiert die interne cardId, nicht die Kartennummer",
   const VERLAUF = [{ id: 1, type: "CREATED", createdAt: "2026-08-14T09:12:33Z", detail: "Karte angelegt" }];
   await mitBoard((req) => {
     if (req.url === "/api/kanban/items") return { status: 200, json: gruppiert([karte(12)]) };
+    if (req.url.startsWith("/api/kanban/items/by-number/")) return einzelabruf(req, [karte(12)]);
     // Nur die interne ID wird bedient. Kommt die Nummer, faellt der Test auf 404.
     if (req.url === "/api/kanban/items/1200/activity") return { status: 200, json: VERLAUF };
     return null;
@@ -89,6 +97,7 @@ test("[board-1] activity gibt den Verlauf unveraendert als JSON aus", async () =
   ];
   await mitBoard((req) => {
     if (req.url === "/api/kanban/items") return { status: 200, json: gruppiert([karte(7)]) };
+    if (req.url.startsWith("/api/kanban/items/by-number/")) return einzelabruf(req, [karte(7)]);
     if (req.url === "/api/kanban/items/700/activity") return { status: 200, json: VERLAUF };
     return null;
   }, async (dir) => {
@@ -102,6 +111,7 @@ test("[board-1] activity gibt den Verlauf unveraendert als JSON aus", async () =
 test("[board-1] activity schwaecht einen 404 nicht zur leeren Liste ab", async () => {
   await mitBoard((req) => {
     if (req.url === "/api/kanban/items") return { status: 200, json: gruppiert([karte(7)]) };
+    if (req.url.startsWith("/api/kanban/items/by-number/")) return einzelabruf(req, [karte(7)]);
     if (req.url === "/api/kanban/items/700/activity") return { status: 404, json: { message: "Not Found" } };
     return null;
   }, async (dir) => {
@@ -115,6 +125,7 @@ test("[board-1] activity schwaecht einen 404 nicht zur leeren Liste ab", async (
 test("[board-1] activity meldet eine unbekannte Kartennummer", async () => {
   await mitBoard((req) => {
     if (req.url === "/api/kanban/items") return { status: 200, json: gruppiert([karte(7)]) };
+    if (req.url.startsWith("/api/kanban/items/by-number/")) return einzelabruf(req, [karte(7)]);
     return null;
   }, async (dir) => {
     const res = await runBoardAsync(dir, ["issue", "activity", "99"], MIT_TOKEN);
@@ -205,6 +216,7 @@ test("[board-18] eine unbekannte Nummer erscheint mit Fehlergrund, ohne den Aufr
   const VERLAUF = [{ id: 1, type: "CREATED", createdAt: "2026-08-14T09:12:33Z", detail: "Karte angelegt" }];
   await mitBoard((req) => {
     if (req.url === "/api/kanban/items") return { status: 200, json: gruppiert([karte(7)]) };
+    if (req.url.startsWith("/api/kanban/items/by-number/")) return einzelabruf(req, [karte(7)]);
     if (req.url === "/api/kanban/items/700/activity") return { status: 200, json: VERLAUF };
     return null;
   }, async (dir) => {

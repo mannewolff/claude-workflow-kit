@@ -1,7 +1,8 @@
-// Das CI-Gate in der Doku (Issue #316), nach dem Muster von test/docs-commit-gate.test.mjs.
+// Das CI-Gate in der Doku, nach dem Muster von test/docs-commit-gate.test.mjs.
 //
 // Ein Gate, das nur im Skill steht, ist fuer den Leser der Doku unsichtbar — und genau
 // dieser Leser ist es, der sich beim naechsten Release fragt, warum kein PR entstand.
+// Der Abschnitt steht auf der Prozessseite.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,7 +11,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const DOKU = readFileSync(join(repoRoot, "docs", "dokumentation.md"), "utf-8");
+const DOKU = readFileSync(join(repoRoot, "docs", "prozess.md"), "utf-8");
 
 /** Der Abschnitt `### /merge-production` bis zur naechsten Ueberschrift derselben Ebene. */
 function abschnitt() {

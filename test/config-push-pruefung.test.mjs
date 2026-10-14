@@ -64,10 +64,11 @@ test("pushPruefung: die Vorlage trägt die Vorgabe lokal", () => {
 test("pushPruefung: die Einstellungs-Referenz kennt den Schlüssel, seine Werte und seine Unterfelder", () => {
   // Die Referenz entsteht mit tools/config-referenz.mjs aus dem Schema; dass die Doku
   // dem Werkzeug entspricht, hält test/ablauf-docs-einstellungen.test.mjs fest.
-  const doku = readFileSync(join(repoRoot, "docs", "dokumentation.md"), "utf-8");
-  assert.match(doku, /### `pushPruefung`\n\n[^\n]*\(gültig: `lokal`\)/, "Abschnitt oder Wert lokal fehlt");
-  assert.match(doku, /- `pushPruefung\.ort` — [^\n]*\(gültig: `buildDienst`\)/, "Unterfeld ort fehlt");
-  assert.match(doku, /- `pushPruefung\.zweig` — /, "Unterfeld zweig fehlt");
+  // Je Einstellung eine Zeile mit englischem Pfad (Plan #1652, E3, E13).
+  const doku = readFileSync(join(repoRoot, "docs", "einstellungen.md"), "utf-8");
+  assert.match(doku, /^- `pushCheck` — [^\n]*Gültig: `lokal`\. Vorgabe: `lokal`\.$/m, "Zeile oder Wert lokal fehlt");
+  assert.match(doku, /^- `pushCheck\.location` — [^\n]*Gültig: `buildDienst`\./m, "Unterfeld ort fehlt");
+  assert.match(doku, /^- `pushCheck\.branch` — /m, "Unterfeld zweig fehlt");
 });
 
 // --- checks.mjs plan ---

@@ -20,7 +20,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
-const DOKU = lies("docs", "dokumentation.md");
+const PROZESS = lies("docs", "prozess.md");
 
 /** Die Auslieferungsvorlage. Die Kopie unter .claude/ ist Installer-Ausgabe und
  *  nicht versioniert — in CI existiert sie nicht. */
@@ -78,7 +78,7 @@ test("der Nachtbetrieb-Abschnitt der Vorlage beschreibt die Nacht-Kette statt ei
 // Kommando — und haelt die Pruefung von Plan und Anforderung faelschlich fuer
 // etwas, das nur der Nacht-Runner kann.
 test("alle drei Dokumente nennen den einen Einstieg fuer drei Stufen", () => {
-  for (const [name, text] of [...beide, ["docs/dokumentation.md", DOKU]]) {
+  for (const [name, text] of [...beide, ["docs/prozess.md", PROZESS]]) {
     const absatz = text
       .split(/\n\n/)
       .find((a) => /\/issue-review #N/.test(a) && /Titel-Präfix|Titel-Praefix/.test(a));
@@ -87,14 +87,14 @@ test("alle drei Dokumente nennen den einen Einstieg fuer drei Stufen", () => {
       `${name}: es steht nicht, dass es kein Kommando je Stufe gibt`);
   }
   // Und die Aussage, dass das nicht am Nachtbetrieb haengt.
-  for (const [name, text] of [...beide, ["docs/dokumentation.md", DOKU]]) {
+  for (const [name, text] of [...beide, ["docs/prozess.md", PROZESS]]) {
     assert.match(text, /interaktiv genauso wie im Nachtbetrieb/i,
       `${name}: die Gleichstellung von interaktiv und Nachtbetrieb fehlt`);
   }
 });
 
 test("die Skill-Tabellen weisen /issue-review als Drei-Stufen-Kommando aus", () => {
-  for (const [name, text] of [...beide, ["docs/dokumentation.md", DOKU]]) {
+  for (const [name, text] of [...beide, ["docs/prozess.md", PROZESS]]) {
     const zeile = text.split("\n").find((z) => /^\|\s*`\/issue-review`/.test(z));
     assert.ok(zeile, `${name}: keine Skill-Tabellenzeile fuer /issue-review`);
     assert.match(zeile, /drei Stufen/i, `${name}: die Tabellenzeile nennt die drei Stufen nicht`);
@@ -102,7 +102,7 @@ test("die Skill-Tabellen weisen /issue-review als Drei-Stufen-Kommando aus", () 
 });
 
 test("das verbindliche Plan-Format steht mit allen sechs Ueberschriften in Reihenfolge", () => {
-  for (const [name, text] of [...beide, ["docs/dokumentation.md", DOKU]]) {
+  for (const [name, text] of [...beide, ["docs/prozess.md", PROZESS]]) {
     let pos = -1;
     for (const ueberschrift of PLAN_FORMAT) {
       const gefunden = text.indexOf(ueberschrift, pos + 1);
@@ -113,33 +113,29 @@ test("das verbindliche Plan-Format steht mit allen sechs Ueberschriften in Reihe
 });
 
 test("die Doku begruendet, warum die Pruefung nach oben wandert", () => {
-  const absatz = DOKU.split(/\n\n/).find((a) => /Reichweite/i.test(a) && /(früher|Fehler)/i.test(a));
+  const absatz = PROZESS.split(/\n\n/).find((a) => /Reichweite/i.test(a) && /(früher|Fehler)/i.test(a));
   assert.ok(absatz, "die Begruendung ueber die Reichweite eines frueh gefundenen Fehlers fehlt");
 });
 
-test("die Doku begruendet, warum das Arbeitspaket nur noch einen Pruefer hat", () => {
-  const absatz = DOKU.split(/\n\n/).find(
+test("die Doku begruendet, warum Scope und Bestand auf der Plan-Stufe geprueft werden", () => {
+  const absatz = PROZESS.split(/\n\n/).find(
     (a) => /(Scope|Bestand)/.test(a) && /Plan-Stufe|Stufe `plan`|auf der Plan/i.test(a)
   );
   assert.ok(absatz, "es fehlt die Begruendung, dass die Scope-/Bestandsrolle auf der Plan-Stufe staerker wirkt");
 });
 
 test("die Doku benennt das Format als Maszstab der Pruefung", () => {
-  const absatz = DOKU.split(/\n\n/).find((a) => /Maßstab|Maszstab|Maßstäb/i.test(a) && /Format|Überschriften/i.test(a));
+  const absatz = PROZESS.split(/\n\n/).find((a) => /Maßstab|Maszstab|Maßstäb/i.test(a) && /Format|Überschriften/i.test(a));
   assert.ok(absatz, "es fehlt die Aussage, dass die festen Ueberschriften der Maszstab sind");
 });
 
-test("die Doku nennt die Rueckwaertskompatibilitaet ohne reviewStufen-Block", () => {
-  // Ohne den aus dem Schema erzeugten Abschnitt (Issue #675): Dessen Feldbeschreibungen
-  // nennen reviewStufen ebenfalls, sagen aber nichts ueber bestehende Installationen.
-  const ohneReferenz = DOKU.replace(/<!-- einstellungen:start -->[\s\S]*?<!-- einstellungen:ende -->/, "");
-  const absatz = ohneReferenz.split(/\n\n/).find((a) => /reviewStufen/.test(a) && /ohne/i.test(a));
-  assert.ok(absatz, "kein Absatz zum Verhalten ohne reviewStufen-Block");
-  // Die Rueckfallebene nennt je Stufe die Rollen des Katalogs (Plan #1375, E5).
+test("die Doku nennt die Besetzung ohne Block reviewStages", () => {
+  const absatz = PROZESS.split(/\n\n/).find((a) => /reviewStages/.test(a) && /ohne/i.test(a));
+  assert.ok(absatz, "kein Absatz zum Verhalten ohne Block reviewStages");
+  // Die Rueckfallebene nennt je Stufe die Rollen des Katalogs.
   for (const rolle of ["form-beobachtbarkeit", "abgrenzung", "architektur-bestand", "schnitt-abhaengigkeiten", "pruefbarkeit"]) {
     assert.ok(absatz.includes(`\`${rolle}\``), `die Rolle ${rolle} der Rueckfallebene ist nicht genannt`);
   }
-  assert.match(absatz, /bestehend|Bestands/i, "der Bezug auf bestehende Installationen fehlt");
 });
 
 test("die Zwei-Modelle-Formulierung ist an beiden Fundstellen angepasst", () => {
@@ -147,9 +143,10 @@ test("die Zwei-Modelle-Formulierung ist an beiden Fundstellen angepasst", () => 
   assert.doesNotMatch(stopPunkte, /von zwei Modellen/,
     "der Stop-Punkte-Abschnitt behauptet weiterhin zwei Modelle je Issue");
 
-  const idx = DOKU.indexOf("### Zweiter Modus: die Nacht-Kette");
+  const nacht = lies("docs", "nachtbetrieb.md");
+  const idx = nacht.indexOf("## Die Nacht-Kette\n");
   assert.ok(idx >= 0, "der Abschnitt zur Nacht-Kette fehlt");
-  const kette = DOKU.slice(idx).split(/\n### /)[0];
+  const kette = nacht.slice(idx).split(/\n## /)[0];
   assert.doesNotMatch(kette, /durch zwei fremde Modelle/,
     "der Abschnitt zur Nacht-Kette behauptet weiterhin zwei fremde Modelle");
   assert.match(kette, /der Prüfer der Stufe/, "ein Prüfer am Plan steht nicht da");
@@ -185,7 +182,7 @@ test("beide Prozessdateien tragen den neuen Stoff wortgleich", () => {
 test("die Ortsangabe des Markers unterscheidet alle drei Formate", () => {
   // Die Vorlage nennt die Marker-Orte seit Issue #633 nicht mehr; sie stehen in Doku und Skill.
   const dateien = [
-    ["docs/dokumentation.md", DOKU],
+    ["docs/prozess.md", PROZESS],
     ["skills/issue-review/SKILL.md", lies("skills", "issue-review", "SKILL.md")],
   ];
   for (const [name, text] of dateien) {

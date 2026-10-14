@@ -22,7 +22,7 @@ import { erkenneLabel, erkenneMarker, erkenneUeberschrift, kanonischeUeberschrif
 
 // Die Texte an den Menschen liegen unter kit/texte/board-grooming.mjs.
 import { TEXTE } from "../texte/board-grooming.mjs";
-import { szenarienLesen, szenarienPflicht } from "./szenarien.mjs";
+import { szenarienLesen, szenarienPflicht, szenarienVerstoss } from "./szenarien.mjs";
 
 export { TEXTE };
 
@@ -47,12 +47,12 @@ const ANTWORT = /^\s*(?:\*\*)?Antwort \(\s*[^,()\s][^,()]*,\s*\d{4}-\d{2}-\d{2}\
 const DATUM = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * Die Zeilen des Abschnitts `## Offene Fragen an den PO` (beide Sprachen) mit ihrer Lage zum
+ * Die Zeilen des Abschnitts mit der Ueberschrift `sache` (beide Sprachen) mit ihrer Lage zum
  * Code-Fence, oder null ohne Abschnitt. Dieselbe Fence-Auslegung wie `zerlegeAbschnitte`;
  * anders als dort bleiben Codezeilen erhalten, weil sie zum Text einer Frage gehoeren koennen.
  */
-function abschnittZeilen(body) {
-  const kopf = ueberschriftZeile("poFragen");
+function abschnittZeilen(body, sache) {
+  const kopf = ueberschriftZeile(sache);
   const imFence = fenceLauf();
   let zeilen = null;
   for (const zeile of normalisiereZeilenenden(body).split("\n")) {
@@ -76,9 +76,13 @@ function abschnittZeilen(body) {
  * Zeilen und Codezeilen gehoeren zur Frage davor, `text` traegt sie bis zur Antwortzeile.
  * `nr` zaehlt die Fragen ab 1. Nicht eingerueckter Text ohne Listenform steht absatzweise in
  * `ungegliedert`. `offen` zaehlt die Fragen ohne Antwortzeile.
+ *
+ * `sache` ist der Name der Ueberschrift im Register; ohne ihn die offenen Fragen an den PO.
+ * Den geklaerten Stand einer Idee aus /triage liest derselbe Leser mit `geklaerterStand`
+ * (Issue #1627, Plan #1623 A5).
  */
-export function fragenLesen(body) {
-  const zeilen = abschnittZeilen(body);
+export function fragenLesen(body, sache = "poFragen") {
+  const zeilen = abschnittZeilen(body, sache);
   if (zeilen === null) return { vermerk: null, fragen: [], ungegliedert: [], offen: 0 };
 
   const leser = new AbschnittLeser();
@@ -246,7 +250,8 @@ const frageName = (f) => f.text.split("\n")[0];
 /**
  * Prueft einen neuen Fachplan-Body gegen den alten nach E8: `{ ok, verstoesse: [{ regel,
  * meldung }] }`. Die Regeln in dieser Reihenfolge: `kennzeichnung` (a), `antwort` (b),
- * `fragenzahl` (c), `vermerk` (d), `pflichtabschnitt` (e). Eine entschiedene Frage findet sich
+ * `fragenzahl` (c), `vermerk` (d), `pflichtabschnitt` (e), `szenarien` (f, Issue #1626: traegt
+ * der neue Body den Abschnitt Szenarien, muss er `szenarienVerstoss` genuegen). Eine entschiedene Frage findet sich
  * im neuen Body ueber ihren Text, sonst ueber ihre Nummer — eine vorangestellte Stopp-Frage
  * verschiebt die Nummern. Pflichtabschnitte zaehlen, wenn der alte Body sie trug.
  */
@@ -256,6 +261,7 @@ export function koerperPruefen(alt, neu) {
     ...fragenVerstoesse(fragenLesen(alt), fragenLesen(neu)),
     ...vermerkVerstoesse(neu),
     ...abschnittVerstoesse(alt, neu),
+    ...szenarienVerstoesse(neu),
   ];
   return { ok: verstoesse.length === 0, verstoesse };
 }
@@ -306,6 +312,12 @@ function vermerkVerstoesse(body) {
     verstoesse.push(verstoss("vermerk", "vermerkZahl", { genannt: genannt ?? "-", zahl }));
   }
   return verstoesse;
+}
+
+function szenarienVerstoesse(body) {
+  if (!szenarienLesen(body).vorhanden) return [];
+  const meldung = szenarienVerstoss(body);
+  return meldung === null ? [] : [{ regel: "szenarien", meldung }];
 }
 
 function abschnittVerstoesse(alt, neu) {

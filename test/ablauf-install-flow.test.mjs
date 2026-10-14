@@ -1026,7 +1026,7 @@ test("[installer-1569] das Update loescht die alten Skill-Ordner und nennt jeden
     assert.doesNotMatch(res.stdout, /review-eigen/);
     const installiert = readdirSync(join(dir, ".claude", "skills"), { withFileTypes: true })
       .filter((e) => e.isDirectory() && e.name !== "review-eigen").map((e) => e.name);
-    assert.equal(installiert.length, 17, "die Skillmenge ist 17");
+    assert.equal(installiert.length, 18, "die Skillmenge ist 18");
     assert.deepEqual(JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf-8")).hooks, {
       SessionEnd: [{ hooks: BEFEHL("session report --complete") }],
       Stop: [{ hooks: BEFEHL("session report") }],

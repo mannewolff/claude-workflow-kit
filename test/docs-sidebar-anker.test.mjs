@@ -14,7 +14,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -122,4 +122,62 @@ test("Gegenprobe: ein erfundener Anker wird als tot erkannt", () => {
 test("Gegenprobe: der alte Anker der Skills waere tot", () => {
   const config = `{ text: "Die zwölf Skills", link: "/dokumentation#die-zwolf-skills-und-der-9-schritt-kernprozess" },`;
   assert.equal(toteAnker(config, echteSeite).length, 1);
+});
+
+// Die Verweise im Text der aktuellen Seiten zeigen ebenso nur auf Anker, die es gibt
+// (Plan #1652, A10): Mit der neuen Einstiegsseite sind Anker entfallen, und fuer sie gibt es
+// keine Weiterleitung (E8).
+
+/** Die aktuellen Seiten in beiden Sprachen, ohne die der Liste `historisch`. */
+function aktuelleSeiten() {
+  const { historisch } = JSON.parse(readFileSync(join(repoRoot, "docs-site", "sprachen.json"), "utf-8"));
+  const namen = readdirSync(DOCS).filter((n) => n.endsWith(".md")).map((n) => n.slice(0, -3)).filter((n) => !historisch.includes(n));
+  return namen.flatMap((n) => [n, `en/${n}`]).filter((s) => existsSync(join(DOCS, `${s}.md`)));
+}
+
+/** Die Seite, auf die ein Link-Ziel von `seite` aus zeigt: absolut, relativ oder dieselbe. */
+function zielSeite(seite, ziel) {
+  const name = ziel.replace(/^\.\//, "").replace(/\.md$/, "");
+  if (name.startsWith("/")) return name.slice(1);
+  if (name === "") return seite;
+  return (seite.startsWith("en/") ? "en/" : "") + name;
+}
+
+/** Die Ziele `seite#anker` der Markdown-Links einer Seite, Codebloecke ausgenommen. */
+function textLinks(seite, markdown) {
+  const ziele = [];
+  let imCode = false;
+  for (const zeile of markdown.split("\n")) {
+    if (/^\s*(```|~~~)/.test(zeile)) imCode = !imCode;
+    if (imCode) continue;
+    for (const [, ziel, anker] of zeile.matchAll(/\]\(([^)#\s]*)#([^)\s]+)\)/g)) {
+      if (!/^[a-z]+:/.test(ziel)) ziele.push({ seite: zielSeite(seite, ziel), anker });
+    }
+  }
+  return ziele;
+}
+
+function toteTextAnker(seiten, seiteLesen) {
+  const tot = [];
+  for (const seite of seiten) {
+    for (const { seite: ziel, anker } of textLinks(seite, seiteLesen(seite))) {
+      const markdown = seiteLesen(ziel);
+      if (markdown === null) tot.push(`docs/${seite}.md → ${ziel}#${anker}: Seite fehlt`);
+      else if (!ankerDerSeite(markdown).has(anker)) tot.push(`docs/${seite}.md → ${ziel}#${anker}: kein solcher Anker`);
+    }
+  }
+  return tot;
+}
+
+test("jeder Anker-Verweis im Text der aktuellen Seiten zeigt auf eine Ueberschrift", () => {
+  assert.ok(aktuelleSeiten().includes("en/dokumentation"));
+  assert.deepEqual(toteTextAnker(aktuelleSeiten(), echteSeite), []);
+});
+
+test("Gegenprobe: ein relativer Verweis auf einen entfallenen Anker wird als tot erkannt", () => {
+  const seiten = { quickstart: "[Bahnen](./dokumentation.md#leitplanken-gibt-es-nicht)", "en/quickstart": "[lanes](./dokumentation.md#three-lanes)" };
+  const lesen = (s) => seiten[s] ?? echteSeite(s);
+  assert.deepEqual(toteTextAnker(Object.keys(seiten), lesen), [
+    "docs/quickstart.md → dokumentation#leitplanken-gibt-es-nicht: kein solcher Anker",
+  ]);
 });

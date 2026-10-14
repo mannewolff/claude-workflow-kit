@@ -3,7 +3,7 @@
 //
 // Nach E20 des Plans kommt die bindende Quelle zuerst: Die Prozessvorlage beschreibt den
 // Laufstand, bevor das Werkzeug ihn baut. Geprueft werden `templates/CLAUDE-workflow.md`
-// und `docs/dokumentation.md` — die Vorlage und nicht die Kopie unter `.claude/`: Die ist
+// und `docs/nachtbetrieb.md` — die Vorlage und nicht die Kopie unter `.claude/`: Die ist
 // Installer-Ausgabe und in CI nicht vorhanden (siehe docs-wartende-sitzung.test.mjs).
 //
 // Der dritte Test prueft den Test selbst: Fehlt in einer Kopie genau eine Angabe, muss die
@@ -20,7 +20,7 @@ import { englisch } from "./helpers/labels.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
-const DOKU = lies("docs", "dokumentation.md");
+const DOKU = lies("docs", "nachtbetrieb.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
 
 /** Der Text eines Abschnitts bis zur naechsten Ueberschrift derselben Ebene. */
@@ -66,12 +66,12 @@ const ANGABEN = [
 // Der Regeltext nennt die Labels seit Issue #1571 englisch, die Doku bis zu ihrer Umstellung deutsch.
 const ANGABEN_VORLAGE = ANGABEN.map(([name, muster]) => [name, englisch(muster)]);
 
-// Das Geruest des Doku-Unterabschnitts: die Ueberschriften, unter die die folgenden Pakete
+// Das Geruest des Doku-Abschnitts: die Ueberschriften, unter die die folgenden Pakete
 // des Plans ihren Inhalt schreiben.
 const GERUEST = [
-  ["die Ueberschrift des Waechters", /^#### Der Wächter$/m],
-  ["die Ueberschrift des Journals", /^#### Das Journal$/m],
-  ["die Ueberschrift der Belegfaelle", /^#### Die Belegfälle$/m],
+  ["die Ueberschrift des Waechters", /^### Der Wächter$/m],
+  ["die Ueberschrift des Journals", /^### Das Journal$/m],
+  ["die Ueberschrift der Belegfaelle", /^### Die Belegfälle$/m],
 ];
 
 /** Die Namen der Angaben, die im Text fehlen. */
@@ -80,15 +80,15 @@ function fehlend(text, angaben) {
 }
 
 const NACHT_VORLAGE = abschnitt(VORLAGE, "## Nachtbetrieb (optional)");
-const LAUFSTAND_DOKU = abschnitt(abschnitt(DOKU, "## Nachtbetrieb"), "### Der Laufstand");
+const LAUFSTAND_DOKU = abschnitt(DOKU, "## Der Laufstand");
 
 test("[docs-laufstand-1] der Nachtbetrieb-Abschnitt der Vorlage beschreibt den Laufstand", () => {
   assert.ok(NACHT_VORLAGE, "der Abschnitt '## Nachtbetrieb (optional)' fehlt in der Vorlage");
   assert.deepEqual(fehlend(NACHT_VORLAGE, ANGABEN_VORLAGE), [], "der Nachtbetrieb-Abschnitt der Vorlage nennt nicht alles");
 });
 
-test("[docs-laufstand-2] das Nachtbetrieb-Kapitel der Doku hat den Unterabschnitt 'Der Laufstand' samt Geruest", () => {
-  assert.ok(LAUFSTAND_DOKU, "der Unterabschnitt '### Der Laufstand' fehlt im Kapitel '## Nachtbetrieb'");
+test("[docs-laufstand-2] die Seite Nachtbetrieb hat den Abschnitt 'Der Laufstand' samt Geruest", () => {
+  assert.ok(LAUFSTAND_DOKU, "der Abschnitt '## Der Laufstand' fehlt in docs/nachtbetrieb.md");
   assert.deepEqual(
     fehlend(LAUFSTAND_DOKU, [...ANGABEN, ...GERUEST]),
     [],
@@ -132,11 +132,11 @@ const ZUSAETZE = [
   ["das Zurueckholen des Stashs", /`git stash apply stash@\{<n>\}`/],
 ];
 
-const BELEGE_DOKU = abschnitt(LAUFSTAND_DOKU, "#### Die Belegfälle");
-const WACHE_JOURNAL_DOKU = LAUFSTAND_DOKU.slice(LAUFSTAND_DOKU.indexOf("#### Der Wächter"));
+const BELEGE_DOKU = abschnitt(LAUFSTAND_DOKU, "### Die Belegfälle");
+const WACHE_JOURNAL_DOKU = LAUFSTAND_DOKU.slice(LAUFSTAND_DOKU.indexOf("### Der Wächter"));
 
 test("[docs-laufstand-4] die Belegfaelle zeigen je Fall Kartenstand und Weg nach vorn", () => {
-  assert.ok(BELEGE_DOKU, "der Unterabschnitt '#### Die Belegfälle' fehlt");
+  assert.ok(BELEGE_DOKU, "der Unterabschnitt '### Die Belegfälle' fehlt");
   assert.deepEqual(fehlend(BELEGE_DOKU, BELEGFAELLE), [], "nicht jeder Belegfall steht in der Tabelle");
 });
 

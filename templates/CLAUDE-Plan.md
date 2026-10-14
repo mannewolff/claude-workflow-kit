@@ -153,6 +153,49 @@ das Quality Gate von SonarCloud fiel ab v4.2.2 an duplizierten Zeilen (6,1 % sta
 hoechstens 3 %); repariert erst in #1524 bis #1526. Weder das Plan-Review noch die
 Paket-Reviews hatten es gefunden.
 
+## P14 — Ein Vertrag mit dem anderen Repo ist abgeglichen oder gefragt `[maschinell]`
+
+Nennt die Config in `vertragsRepos` ein Partnerrepo, steht am Ende von
+`## Architektonische Entscheidungen` der Unterabschnitt `### Verträge`. Je Festlegung, die
+das andere Repo liest oder schreibt — ein Name, ein Kennzeichen, ein Format —, traegt er
+einen Eintrag; legt der Plan keine fest, die Zeile `- Kein Vertrag.`:
+
+```markdown
+### Verträge
+- V1: Die Laufkennung heißt `Run-ID:` — kanban-kit, liest
+  Gebauter Stand: kanban-kit@0123456789ab, src/lauf.ts:12
+  Abgleich: weicht ab
+```
+
+- Der Kopf endet auf `— <Repo>, liest` oder `— <Repo>, schreibt`; das Repo steht in
+  `vertragsRepos`.
+- `Gebauter Stand:` nennt die Fundstelle auf dem Hauptzweig des anderen Repos, oder
+  `fehlt, geprüft …` beziehungsweise `nicht prüfbar: …`. Maßgeblich ist der gebaute Stand,
+  nicht der Plan des anderen Repos und nicht die im Projekt installierte Kit-Fassung; weicht
+  diese ab, nennt eine Zeile `Installiert:` das als Hinweis.
+- `Abgleich:` ist `stimmt`, `weicht ab`, `fehlt`, `nicht prüfbar` oder
+  `vom Projekt vorgelegt`. Den letzten Wert traegt ein Vertrag nur mit
+  `Gebauter Stand: fehlt, geprüft …` und den Zeilen `Wortlaut:` (was das andere Repo
+  übernehmen muss) und `Vorgelegt laut Fachplan:` (die Stelle im Fachplan).
+- Ein offener Vertrag — `weicht ab`, `fehlt` oder `nicht prüfbar` ohne Zeile
+  `Entschieden:` — steht in einer Frage unter `## Offene Fragen`, die alle offenen
+  V-Nummern aufzählt; die erste Zeile dort ist dann nicht `- Keine.`. Damit haelt die
+  Nacht-Kette die Planstufe an, bevor `/issues` Pakete schneidet. `Entschieden:` mit
+  `Plan angepasst`, `anderes Repo zieht nach` oder `Abweichung angenommen` schreibt nur,
+  wer die Antwort des Menschen hat — nie die Sitzung, die den Verstoss behebt.
+
+`issue check-form` prueft die Form. Ob die Fundstelle stimmt und ob ein Mensch entschieden
+hat, ist Urteil (P10). Ohne `vertragsRepos` prueft P14 nichts.
+
+*Warum Gate:* Eine Festlegung, die beide Repos verstehen muessen, sieht im Plan aus wie eine
+interne Namenswahl. In kanban-kit waehlte Plan #1423 einen Namen fuer die Laufkennung,
+waehrend das Kit laengst einen anderen gebaut hatte. Die Nacht-Kette sah das nicht, legte
+einen Menschenschritt vor alle Pakete, und die Umsetzung stand still, bis der Mensch den
+Abgleich entschied; vier Pakete mussten umgeschrieben werden. Wo der Vertrag offen benannt
+war (kanban-kit Plan #1447), hielt die Kette richtig an. Steht der Vertrag in fester Form
+im Plan, wird der Abgleich gegen den gebauten Stand zur Pflicht und die Frage an den
+Menschen zum Halt vor den Paketen.
+
 ---
 
 ## Ausdruecklich kein Gate

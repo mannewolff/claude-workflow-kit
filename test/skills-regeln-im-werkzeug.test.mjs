@@ -332,26 +332,36 @@ test("die Aufstellung nennt den Massstab, aus dem sie entstanden ist", () => {
   );
 });
 
-test("die Aufstellung steht in der Sidebar unter 'Dokumentation'", () => {
-  const dokumentation = VITEPRESS.indexOf('text: "Dokumentation"');
-  assert.ok(dokumentation >= 0, "die Sidebar-Gruppe 'Dokumentation' fehlt");
-  const eintrag = VITEPRESS.indexOf('link: "/regeln-im-werkzeug"');
-  assert.ok(eintrag >= 0, "der Sidebar-Eintrag '/regeln-im-werkzeug' fehlt");
-  assert.ok(eintrag > dokumentation, "der Sidebar-Eintrag steht nicht in der Gruppe 'Dokumentation'");
-  assert.ok(
-    /text: "Regeln im Werkzeug"/.test(VITEPRESS),
-    "der Sidebar-Eintrag traegt nicht den Text 'Regeln im Werkzeug'",
-  );
-});
+// Die Aufstellung beschreibt eine Umstellung, nicht den heutigen Stand: Sie steht
+// mit der zweiten historischen Seite in einer eigenen Sidebar-Gruppe (Plan #1652/E11).
+const HISTORISCH_SEITEN = ["/regeln-im-werkzeug", "/werkzeug-das-es-nicht-gibt"];
 
-test("die Nutzerdoku verweist auf den Massstab und auf die Aufstellung", () => {
+/** Die Links der Sidebar-Gruppe mit dem Text `titel`, bis zur naechsten Gruppe. */
+function gruppenLinks(titel) {
+  const start = VITEPRESS.indexOf(`text: "${titel}",\n      items: [`);
+  assert.ok(start >= 0, `die Sidebar-Gruppe '${titel}' fehlt`);
+  const rest = VITEPRESS.slice(start);
+  const block = rest.slice(0, rest.indexOf("\n      ],"));
+  return [...block.matchAll(/link: "([^"]+)"/g)].map((m) => m[1]);
+}
+
+for (const [titel, praefix, aktuell] of [
+  ["Historisch", "", "Dokumentation"],
+  ["Historical", "/en", "Documentation"],
+]) {
+  test(`die Sidebar fuehrt die beiden historischen Seiten in der Gruppe '${titel}'`, () => {
+    const erwartet = HISTORISCH_SEITEN.map((s) => praefix + s);
+    assert.deepEqual(gruppenLinks(titel), erwartet);
+    for (const link of erwartet) {
+      assert.ok(!gruppenLinks(aktuell).includes(link), `'${link}' steht noch unter '${aktuell}'`);
+    }
+  });
+}
+
+test("die Nutzerdoku verweist auf den Massstab", () => {
   assert.ok(
     /Regel im Text oder Regel im Werkzeug/.test(DOKUMENTATION),
     "docs/dokumentation.md nennt den Massstab nicht",
-  );
-  assert.ok(
-    /\(regeln-im-werkzeug\.md\)/.test(DOKUMENTATION),
-    "docs/dokumentation.md verweist nicht auf die Aufstellung",
   );
 });
 

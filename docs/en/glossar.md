@@ -1,9 +1,9 @@
 # Glossary
-<!-- de: 6115af26729d -->
+<!-- de: f6a397ec3df1 -->
 
-The documentation is available in German and in English. This table maps the kit's concept terms between the two: The English version uses the terms from the left column and gives the German term in parentheses at its first occurrence on a page.
+The documentation is available in German and in English. The English version uses the terms from the left column and gives the German term in parentheses at its first occurrence on a page.
 
-Left unchanged in both languages are commands and verbatim quoted messages of the tools. Labels and the title prefixes of cards are English in both languages, for example `kit:clarify` or `[Human]`. The complete table of names is under [Labels and title prefixes](/en/dokumentation#labels-and-title-prefixes). Setting names are listed under [All settings](/en/dokumentation#all-settings). Skills, commands and entry files also carry only English names, for example `/requirement`, `/session-start` or `issue report`; they are listed under [Skills, commands and entry files](/en/dokumentation#skills-commands-and-entry-files). That is why none of them appear in this table.
+Commands and verbatim quoted messages stay unchanged in both languages. Skills, labels, title prefixes and settings carry English names in both languages and are therefore not listed here but under [Names for those moving up from version 4](/en/dokumentation#names-for-those-moving-up-from-version-4), [Labels and title prefixes](/en/einrichtung#labels-and-title-prefixes) and [All settings](/en/einstellungen).
 
 | English | German |
 |---------|--------|

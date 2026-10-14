@@ -18,7 +18,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...pfad) => readFileSync(join(repoRoot, ...pfad), "utf-8");
 
 const SKILL = lies("skills", "techplan", "SKILL.md");
-const DOKU = lies("docs", "dokumentation.md");
+const DOKU = lies("docs", "prozess.md");
 
 // Der Block, der das Issue anlegt — der einzige ```bash-Block mit `issue create`.
 function anlegeKommando(text) {
@@ -39,7 +39,7 @@ test("der Skill legt das Plan-Dokument mit dem Titel-Praefix [Plan] an", () => {
 });
 
 test("die Titelherkunft ist festgelegt: Quell-Issue ohne [Requirement], sonst aus dem Ziel", () => {
-  assert.match(SKILL, /ohne dessen `\[Requirement\]`-Präfix/,
+  assert.match(SKILL, /ohne dessen `\[Requirement\]`- bzw\. `\[Idea\]`-Präfix/,
     "die Titelherkunft bei /techplan #N fehlt — das Praefix wuerde sonst mitgeschleppt");
   assert.match(SKILL, /`## Ziel`-Abschnitts/,
     "die Titelherkunft ohne Quell-Issue fehlt");
@@ -59,7 +59,7 @@ test("Plan-Modell steht immer im Kopf, Fachliche Quelle nur bei /techplan #N", (
     "die Unbedingtheit von `Plan-Modell:` ist nicht ausgesprochen");
   assert.match(abschnitt, /`Fachliche Quelle: Issue #N` — \*\*nur\*\*/,
     "die Bedingtheit von `Fachliche Quelle:` ist nicht ausgesprochen");
-  assert.match(abschnitt, /Bei einem Plan aus dem Chat fehlt diese Zeile/,
+  assert.match(abschnitt, /Bei einem Plan aus dem Chat oder aus einer `\[Idea\]` fehlt diese Zeile/,
     "der Gegenfall fehlt — sonst schreibt der Skill die Zeile auch ohne Quelle");
 });
 
@@ -121,13 +121,13 @@ test("der alte, widerspruechliche Stop-Punkt-Wortlaut ist weg", () => {
     "der alte Wortlaut schliesst genau das aus, was Schritt 5 verlangt");
 });
 
-test("dokumentation: der /plan-Abschnitt widerspricht dem Anlegen nicht mehr", () => {
+test("prozess: der /techplan-Abschnitt widerspricht dem Anlegen nicht", () => {
   const von = DOKU.indexOf("### /techplan");
-  assert.ok(von > -1, "der Abschnitt '### /techplan' fehlt in docs/dokumentation.md");
+  assert.ok(von > -1, "der Abschnitt '### /techplan' fehlt in docs/prozess.md");
   const abschnitt = DOKU.slice(von, DOKU.indexOf("### /issues", von));
 
   assert.doesNotMatch(abschnitt, /Er stellt keine Issues an/,
-    "der Satz ist seit Issue #275 unwahr — bei Bahn 2 legt der Skill das [Plan]-Dokument an");
+    "der Satz ist unwahr — bei Bahn 2 legt der Skill das [Plan]-Dokument an");
   assert.match(abschnitt, /\[Plan\]/,
     "das Plan-Dokument wird im /plan-Abschnitt nicht erwaehnt");
   assert.match(abschnitt, /technische Issues/i,

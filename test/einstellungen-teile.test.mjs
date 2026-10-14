@@ -94,7 +94,7 @@ test("[einstellungen-9] die benannten Teile des Entwurfs tragen Titel und Thema,
   for (const kennung of ["m7", "wert", "text"]) assert.equal(teilNach(kennung).thema, null, kennung);
 });
 
-test("[einstellungen-9] im Text-Teil stehen nur die Nacht-Felder ohne eigene Eingabe, testAblagen, pushPruefung und die unbekannten", () => {
+test("[einstellungen-9] im Text-Teil stehen nur die Nacht-Felder ohne eigene Eingabe, testAblagen, pushPruefung, vertragsRepos und die unbekannten", () => {
   assert.equal(teilFuer("night.modelle").kennung, "text");
   // testAblagen ist bekannt und trotzdem im Rueckfall (Issue #1032, A13): zwei Eintragsformen,
   // keine feste Tabelle — eine eigene Eingabe braeuchte zwei Zeilenarten.
@@ -103,11 +103,14 @@ test("[einstellungen-9] im Text-Teil stehen nur die Nacht-Felder ohne eigene Ein
   // pushPruefung ebenso (Issue #1216): ein fester Wert oder ein Objekt — zwei Formen.
   assert.equal(teilFuer("pushPruefung").kennung, "text");
   assert.equal(THEMEN.pushPruefung, "Release");
+  // vertragsRepos ebenso (Issue #1614): eine Objektliste, in Dateischreibweise wie testAblagen.
+  assert.equal(teilFuer("vertragsRepos").kennung, "text");
+  assert.equal(THEMEN.vertragsRepos, "Review");
   assert.equal(teilFuer("erfundenesFeld").kennung, "text", "ein unbekanntes Feld faellt auf den Text-Teil zurueck");
   const { zustand, raeumAuf } = wegwerfProjekt();
   try {
     const imText = instanzen(zustand).filter((i) => i.kennung === "text").flatMap((i) => i.eintraege.map((e) => e.pfad));
-    assert.deepEqual(imText.sort(), ["erfundenesFeld", "night.modelle", "night.stufenRegel", "pushPruefung", "testAblagen"]);
+    assert.deepEqual(imText.sort(), ["erfundenesFeld", "night.modelle", "night.stufenRegel", "pushPruefung", "testAblagen", "vertragsRepos"]);
     for (const pfad of ["buildChecks", "checkAreas", "reviewStufen", "night.kette", "night.stufen", "issueReview.reviewers", "issueReview.pairs", "triggers", "columns"]) {
       assert.notEqual(teilFuer(pfad).kennung, "text", `${pfad} braucht eine eigene Eingabe`);
     }

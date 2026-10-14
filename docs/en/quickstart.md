@@ -1,87 +1,62 @@
 # 5-minute guide
-<!-- de: 65e520054be1 -->
+<!-- de: 701bb0ab557b -->
 
-You have a process for AI-assisted development, and you want to make it executable in Claude Code without giving up your stop points (Stop-Punkte). The kit gives you seventeen skills, a config and an installer. In five minutes it is running.
+The kit makes a process for AI-assisted development executable in Claude Code without you giving up your stop points (Stop-Punkte): eighteen skills, a config and an installer.
 
 ## Prerequisites
-<!-- de: dd6489dcf11f -->
+<!-- de: 7c01c764f7d5 -->
 
-- macOS, Linux or Windows via WSL2
-- Node.js version 18 or later
-- git
-- Claude Code installed
-- Depending on the issue tracker: `gh` (GitHub CLI) or `glab` (GitLab CLI), authenticated — or nothing at all if you choose local mode
-- On Windows: WSL2, see [Windows via WSL2](/en/wsl2)
+- macOS, Linux or Windows via WSL2, set up following [Windows via WSL2](/en/wsl2)
+- Node.js version 18 or later and git
+- Claude Code
+- Depending on the issue tracker `gh` or `glab`, logged in; in local mode neither
 
 ## Installing
-<!-- de: 15834a57fd71 -->
+<!-- de: 9f3eb8798900 -->
 
-Download the installer and start it in the project folder:
+In the project folder:
 
 ```bash
 curl -O https://docs.mwolff.org/install.mjs
 node install.mjs
 ```
 
-Or in one step:
+In a new project, the installer first asks for the language (`de` or `en`), then whether it installs globally or only for this project, for code host and issue tracker (`github`, `gitlab` or `local`), for main and production branch, review scope and reviewer. Installed per project, the commit gate and the check areas (Prüfbereiche) follow; installed globally, the vault path for `/session-start` and `/document`.
 
-```bash
-node <(curl -s https://docs.mwolff.org/install.mjs)
-```
+Afterwards skills, config and tools are under `.claude/`. Restart Claude Code; the skills appear in `/help`.
 
-For a new project, the installer first asks for the language of the kit: `de` (German, the default) or `en` (English). An existing project keeps its language; you switch it with `node install.mjs --language en` (see [Language of the kit](/en/dokumentation#language-of-the-kit)). Labels and the title prefixes of cards are English in every project, for example `[Requirement]` or `kit:clarify`; the table is under [Labels and title prefixes](/en/dokumentation#labels-and-title-prefixes).
-
-Then the installer asks seven things:
-
-1. Global or only for this project
-2. Code host: `github`, `gitlab` or `local`
-3. Issue tracker: `github`, `gitlab` or `local` (default = code host)
-4. Name of the main branch
-5. Name of the production branch
-6. Review scope: `diff` or `full`
-7. Review model
-
-With a global installation, an eighth question follows about the vault path for `/session-start` and `/document` (leaving it empty skips it).
-
-Afterwards the seventeen skills are in `.claude/skills/` (or globally in `~/.claude/skills/`), and a `.claude/workflow.config.json` with your answers as well as the board adapter (Board-Adapter) (`.claude/kit/board.mjs`) are in the repo. Restart Claude Code, and the skills show up in `/help`.
-
-## The seventeen skills
-<!-- de: af5b54763a9f -->
+## The eighteen skills
+<!-- de: 9e0a710bd05e -->
 
 | Command | What for |
 |--------|-------|
-| `/session-start` | Load context, overview of the situation at session start |
-| `/requirement` | Optional: requirement as a business issue for the PO loop (PO-Schleife) (see [documentation](./dokumentation.md#po-loop-business-and-technical-issues)) |
-| `/groom` | Decide the open questions of a reviewed business plan (Fachplan) one by one with the PO |
-| `/techplan` | Plan from the requirement, implements nothing |
-| `/issues` | Plan into small issues (GitHub, GitLab or local) |
-| `/task` | Requirement without trade-offs as a single work package (Arbeitspaket) `[Task]`, only after your confirmation |
-| `/issue-review` | Have a document checked by other models before the GO |
-| `/implement-ready` | Work through the Ready issues, commit locally |
-| `/implement-test` | Granular entry: only the tests for a Ready issue (red) |
-| `/implement-done` | Granular entry: implement against the red tests (green) |
-| `/implement-next` | Exactly one Ready issue (`#N` binding, otherwise the top one), then stop — building block of night mode (Nachtbetrieb) |
-| `/local-check` | Mandatory checks plus UI verification |
-| `/kit-review` | Review by Opus in a fresh session |
-| `/retro` | AI retrospective, consolidate memory |
-| `/push-main` | Push to main, only you |
-| `/merge-production` | PR to production, only you |
-| `/document` | Document the session, update the project note |
+| `/session-start` | Overview of the situation at the start of a session |
+| `/triage` | Talk an idea through and bring it onto its lane (Bahn) |
+| `/requirement` | Business concept (Fachkonzept) without technology for the PO loop (PO-Schleife) |
+| `/groom` | Decide the open questions of a reviewed business concept one by one |
+| `/techplan` | Plan from the requirement, without implementation |
+| `/issues` | Break the plan down into small work packages (Arbeitspakete) |
+| `/task` | Requirement with nothing to weigh up as one work package `[Task]` |
+| `/issue-review` | Have a document reviewed by foreign models |
+| `/implement-ready` | Implement all Ready cards (Karten), commit locally |
+| `/implement-next` | Implement exactly one Ready card |
+| `/implement-test` | Only the red tests for the next Ready card |
+| `/implement-done` | Implement against the red tests |
+| `/local-check` | Run the mandatory checks (Prüfungen) |
+| `/kit-review` | Review by a second model in a fresh session |
+| `/push-main` | Push to the main branch, only on your word |
+| `/merge-production` | Release to production, only on your word |
+| `/retro` | AI retrospective with key figures |
+| `/document` | Document the session in the vault |
 
 ## A first run
-<!-- de: 043e7c5bd093 -->
+<!-- de: 99a69da1c23f -->
 
 ```
-/techplan build a login form with email and password
+/techplan baue ein Login-Formular mit E-Mail und Passwort
 ```
 
-You read the plan. If it fits, you approve it:
-
-```
-/issues
-```
-
-You move the issues to Ready on the board. That is your GO. Then:
+If the plan fits, `/issues` breaks it down into work packages. You move them to Ready on the board; that is your GO. Then:
 
 ```
 /implement-ready
@@ -89,39 +64,19 @@ You move the issues to Ready on the board. That is your GO. Then:
 /kit-review
 ```
 
-You check the review. Only then:
-
-```
-/push-main
-```
-
-On the test server you check the result. If it is right:
-
-```
-/merge-production
-```
+After your review you push with `push main`, after your test on the test server you release with `merge production`. Then you move the cards to Done.
 
 ## The smaller path
-<!-- de: 98d0ca4e7097 -->
+<!-- de: b77a86cb387a -->
 
-Not every requirement needs a plan. If it is more than a trifle but there is nothing to weigh up, it becomes a single work package instead of a business concept (Fachkonzept), plan and breakdown:
+If a requirement is more than a trifle but there is nothing to weigh up, `/task` creates a single work package instead of business concept, plan and breakdown. The skill names the lane and creates nothing until you confirm. Which path applies when is described under [Three lanes](./dokumentation.md#three-lanes).
 
-```
-/task rename the configuration keys uniformly in all skill files
-```
+## The three steps you do yourself
+<!-- de: 3919c151a4e0 -->
 
-The skill names the lane (Bahn) in one sentence and waits for your word. Without your answer it creates nothing. After that the usual path continues: You can have the `[Task]` checked with `/issue-review` like any other work package, and you move it to Ready yourself.
-
-Which path applies when is set out in the [selection rule of the three lanes](./dokumentation.md#three-lanes).
-
-## The three steps you take yourself
-<!-- de: 2bdf1d654ffd -->
-
-Moving to Ready, the push, the merge. These three the kit deliberately does not automate. They are the point at which you carry the responsibility. The AI takes everything else off your hands.
+Moving to Ready, the push, the merge. The kit does not automate these three.
 
 ## Letting it work at night
-<!-- de: b9ea665f3dc5 -->
+<!-- de: 7c19cc61f05d -->
 
-In the evening, move issues to Ready and sort them, then `node .claude/kit/night.mjs` — the night runner (Nacht-Runner) works through the column (Spalte) with a fresh session per issue, commits only locally and never pushes. Details in the section "Night mode" of the [documentation](./dokumentation.md#night-mode).
-
-More details in the full documentation.
+In the evening you sort cards in Ready and start `node .claude/kit/night.mjs`. The night runner (Nacht-Runner) implements each card in a fresh session, commits locally and never pushes. More under [Night mode](./nachtbetrieb.md).

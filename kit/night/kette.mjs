@@ -266,7 +266,8 @@ function laufstandKopf(text) {
  * Haelt ein lebender Runner die fachliche Wurzel `F` (Plan #1113, E5, E6)? Rein bis auf die
  * Prozess-Probe auf demselben Rechner.
  *
- * Gewertet werden F selbst und jeder Plan (`isPlan`) mit `Fachliche Quelle:` F; Arbeitspakete
+ * Gewertet werden F selbst und jeder Plan (`isPlan`) mit `Fachliche Quelle:` F; ein Plan ohne
+ * Anforderung ist seine eigene Wurzel F und belegt sie als F selbst (Plan #1645, E1). Arbeitspakete
  * tragen dieselbe Zeile, ihre Konkurrenz regelt aber die Umsetzungssperre. `staende` ordnet
  * Kartennummern ihren Laufstand `{ zustand, text }` zu (Map oder Objekt). Nur `laeuft` mit
  * Lauf-ID belegt; lebend heisst auf demselben Rechner (`host` wie in der Lauf-ID) ein
@@ -462,10 +463,14 @@ export const HERKUNFT_FELD = { plan: "Fachliche Quelle", issue: "Plan" };
  * unter beiden Namen des Markers (Issue #1443).
  */
 function herkunftZeilen(body, feld) {
-  // `[^\S\n]` statt `\s`: Das Zeilenende hinter der Nummer bleibt hart.
-  return markerWerte(String(body ?? ""), erkenneMarker(`${feld}:`))
-    .map((rest) => /^[^\S\n]*Issue[^\S\n]*#(\d+)[^\S\n]*$/.exec(rest)?.[1]).filter(Boolean);
+  return markerWerte(String(body ?? ""), erkenneMarker(`${feld}:`)).map(herkunftNummer).filter(Boolean);
 }
+
+/**
+ * Die Nummer im Rest einer Herkunftszeile der Form `Issue #N` — sonst `undefined`.
+ * `[^\S\n]` statt `\s`: Das Zeilenende hinter der Nummer bleibt hart.
+ */
+const herkunftNummer = (rest) => /^[^\S\n]*Issue[^\S\n]*#(\d+)[^\S\n]*$/.exec(rest)?.[1];
 
 /**
  * Traegt dieses Dokument die Zielstufe des Laufs (Issue #520)?
@@ -523,6 +528,31 @@ export function stammtAusErzeugung(issue, quelleId, stufe) {
  */
 export function fachlicheQuelleVon(body) {
   return herkunftZeilen(body, HERKUNFT_FELD.plan)[0] ?? null;
+}
+
+/**
+ * Wie steht der Plan zu seiner fachlichen Anforderung (Plan #1645, E1, E2)?
+ *
+ * `{ lage: "keine" }` ohne Zeile `Fachliche Quelle:` — der Plan ist seine eigene Wurzel.
+ * `{ lage: "karte", nummer }`, wenn jede solche Zeile die Form `Issue #N` hat und eine Karte
+ * aus `karten` zeichengleich trifft; `nummer` ist die erste, wie `fachlicheQuelleVon` sie
+ * liefert. Sonst `{ lage: "insLeere", zeile }` mit der ersten Zeile, die nichts trifft: Ein
+ * Verweis ins Leere ist kein Plan ohne Anforderung, im Zweifel bleibt der Plan liegen.
+ *
+ * Gelesen wird wie in `herkunftZeilen` ueber das Marker-Register, also unter beiden Namen
+ * des Markers (`Fachliche Quelle:` und `Requirement:`), unabhaengig von der Projektsprache.
+ */
+export function quelleLage(body, karten) {
+  const sache = erkenneMarker(`${HERKUNFT_FELD.plan}:`);
+  const zeilen = String(body ?? "").split(/\r\n|\r|\n/).filter((z) => markerWerte(z, sache).length > 0);
+  if (zeilen.length === 0) return { lage: "keine" };
+  const ids = new Set((karten || []).map((k) => String(k?.id)));
+  const leer = zeilen.find((z) => {
+    const nummer = herkunftNummer(markerWerte(z, sache)[0]);
+    return !nummer || !ids.has(nummer);
+  });
+  if (leer !== undefined) return { lage: "insLeere", zeile: leer.trim() };
+  return { lage: "karte", nummer: fachlicheQuelleVon(body) };
 }
 
 
@@ -583,26 +613,68 @@ export const ISSUES_HALT_KOPF = "Kein Eingang für /issues";
  * aendert nichts und gibt als letzte Nachricht die Zuordnung zurueck. Ihr Text landet im
  * Ergebnisstand und im Bericht — kein eigener Kommentar, kein Tor (Kriterium 5).
  */
-export const ABDECKUNG_PROMPT = [
-  "Aendere dabei NICHTS: kein Kommentar, keine Karte, kein Label, keine Datei.",
-  "",
-  "Traegt der Fachplan einen Abschnitt Szenarien, halte auch sie gegen die Pakete: Jedes Szenario des Fachplans steht woertlich in mindestens einem Arbeitspaket; ein Szenario, das in keinem Paket steht, nennst du unter \"Ohne Paket\" mit seinem Titel. Nach Tests fragt diese Pruefung nicht.",
-  "",
-  "Gib als letzte Nachricht genau diese drei Abschnitte aus, in Markdown:",
+export const ABDECKUNG_PROMPT = abdeckungRumpf({
+  gegenstand: "Fachplan",
+  einheit: {
+    je: "fachlichem Akzeptanzkriterium des Fachplans",
+    eintrag: "das Kriterium (Nummer und Anfang des Wortlauts)",
+    pronomen: "es",
+    ohne: "Jedes Kriterium, das in keinem Paket abgebildet ist, mit seinem Wortlaut.",
+    alle: "Alle Kriterien sind abgebildet.",
+  },
+  szenarien: "Traegt der Fachplan einen Abschnitt Szenarien, halte auch sie gegen die Pakete: Jedes Szenario des Fachplans steht woertlich in mindestens einem Arbeitspaket; ein Szenario, das in keinem Paket steht, nennst du unter \"Ohne Paket\" mit seinem Titel. Nach Tests fragt diese Pruefung nicht.",
+});
+
+/**
+ * Der Rumpf eines Abdeckungs-Prompts fuer einen Gegenstand (Plan #1645, E5): Schreibverbot,
+ * Szenarien-Absatz und die drei Abschnitte. `gegenstand` ist das Dokument, gegen das gehalten
+ * wird, `einheit` sagt, was darin je Zeile zugeordnet wird und was ohne Paket bleibt,
+ * `szenarien` ist der Absatz dazu oder `null` — ein Plan hat keine Szenarien. Als Deklaration
+ * gehoben: `ABDECKUNG_PROMPT` darueber nutzt sie schon.
+ */
+function abdeckungRumpf({ gegenstand, einheit, szenarien }) {
+  return [
+    "Aendere dabei NICHTS: kein Kommentar, keine Karte, kein Label, keine Datei.",
+    "",
+    ...(szenarien ? [szenarien, ""] : []),
+    "Gib als letzte Nachricht genau diese drei Abschnitte aus, in Markdown:",
     "",
     "### Zuordnung",
-    "Je fachlichem Akzeptanzkriterium des Fachplans eine Zeile: das Kriterium (Nummer und Anfang des Wortlauts) und das Paket oder die Pakete, in denen es abgebildet ist, oder \"kein Paket\".",
+    `Je ${einheit.je} eine Zeile: ${einheit.eintrag} und das Paket oder die Pakete, in denen ${einheit.pronomen} abgebildet ist, oder "kein Paket".`,
     "",
     "### Ohne Paket",
-    "Jedes Kriterium, das in keinem Paket abgebildet ist, mit seinem Wortlaut. Sonst der Satz: Alle Kriterien sind abgebildet.",
+    `${einheit.ohne} Sonst der Satz: ${einheit.alle}`,
     "",
-  "### Zuwachs",
-  "Was in den Paketen steht, ohne im Fachplan zu stehen — je Punkt das Paket und ein Satz. Sonst der Satz: Nichts Zusaetzliches.",
-].join("\n");
+    "### Zuwachs",
+    `Was in den Paketen steht, ohne im ${gegenstand} zu stehen — je Punkt das Paket und ein Satz. Sonst der Satz: Nichts Zusaetzliches.`,
+  ].join("\n");
+}
+
+const paketListe = (paketIds) => paketIds.map((id) => `#${id}`).join(", ");
 
 export function abdeckungPrompt(fachplanId, planId, paketIds) {
-  const pakete = paketIds.map((id) => `#${id}`).join(", ");
-  return `Du haeltst die Arbeitspakete gegen die fachliche Anforderung. Lies mit \`node .claude/kit/board.mjs issue get <nummer>\` den Fachplan #${fachplanId}, den Plan #${planId} und die Pakete ${pakete}.\n${ABDECKUNG_PROMPT}`;
+  return `Du haeltst die Arbeitspakete gegen die fachliche Anforderung. Lies mit \`node .claude/kit/board.mjs issue get <nummer>\` den Fachplan #${fachplanId}, den Plan #${planId} und die Pakete ${paketListe(paketIds)}.\n${ABDECKUNG_PROMPT}`;
+}
+
+/**
+ * Der Prompt der Abdeckungs-Session beim Plan ohne fachliche Anforderung (Plan #1645, E4, E5):
+ * gehalten wird gegen die geplanten Aenderungen und Pruefungen des Plans, ohne Szenarien.
+ */
+export function abdeckungPlanPrompt(planId, paketIds) {
+  const aenderungen = nameDerSprache("ueberschriftName", "geplanteAenderungen", "Geplante Aenderungen");
+  const verifizierung = nameDerSprache("ueberschriftName", "verifizierung", "Verifizierung");
+  const rumpf = abdeckungRumpf({
+    gegenstand: "Plan",
+    einheit: {
+      je: `geplanter Aenderung aus "## ${aenderungen}" und je geplanter Pruefung aus "## ${verifizierung}" des Plans`,
+      eintrag: "die Aenderung oder Pruefung (Anfang des Wortlauts)",
+      pronomen: "sie",
+      ohne: "Jede geplante Aenderung und Pruefung, die in keinem Paket abgebildet ist, mit ihrem Wortlaut.",
+      alle: "Alle geplanten Aenderungen und Pruefungen sind abgebildet.",
+    },
+    szenarien: null,
+  });
+  return `Du haeltst die Arbeitspakete gegen den Plan; eine fachliche Anforderung gibt es nicht. Lies mit \`node .claude/kit/board.mjs issue get <nummer>\` den Plan #${planId} und die Pakete ${paketListe(paketIds)}.\n${rumpf}`;
 }
 
 /**
@@ -669,21 +741,21 @@ function stichtagNennen() {
  * Die Reihenfolge folgt derselben Regel wie die von `kettenAusschluss`: Der
  * spezifischere Grund gewinnt, damit die Karte morgens den Satz traegt, der den
  * naechsten Schritt nennt. Erst die Spalte (ausserhalb von Backlog ist ein Versehen),
- * dann die fachliche Herkunft (ohne sie hat die Kette nichts, wogegen sie die Pakete
- * halten koennte), dann `kit:klaeren` (die Entscheidung gehoert in den Plan), dann die
- * offene Frage im Plan, zuletzt die fehlende Pruefung. Die beiden letzten stehen in
- * dieser Folge, weil wer die Frage beantwortet weiterkommt, wer nur pruefen laesst
- * nicht.
+ * dann die Herkunft (eine Zeile `Fachliche Quelle:`, die ins Leere verweist, haelt an),
+ * dann `kit:klaeren` (die Entscheidung gehoert in den Plan), dann die offene Frage im Plan,
+ * zuletzt die fehlende Pruefung. Die beiden letzten stehen in dieser Folge, weil wer die
+ * Frage beantwortet weiterkommt, wer nur pruefen laesst nicht.
+ *
+ * Ein Plan ohne Zeile `Fachliche Quelle:` hat keine fachliche Anforderung und ist seine
+ * eigene Wurzel (Plan #1645, E1): Fuer ihn gelten die uebrigen Gruende unveraendert.
  *
  * `karten` ist die Liste aus `issue list`: Die Herkunftsnummer muss eine Karte DIESES
- * Boards treffen, zeichengleich — siehe `fachlicheQuelleVon`.
+ * Boards treffen, zeichengleich — siehe `quelleLage`.
  */
 export function planAusschluss(issue, kettenLabel, karten) {
   if (issue?.status !== "backlog") return t("nichtInBacklog", { status: issue?.status ?? t("unbekannt") });
-  const quelle = fachlicheQuelleVon(issue?.body || "");
-  if (quelle === null || !(karten || []).some((k) => String(k?.id) === quelle)) {
-    return t("herkunftFehlt", { feld: nameDerSprache("markerName", "fachlicheQuelle", `${HERKUNFT_FELD.plan}:`) });
-  }
+  const quelle = quelleLage(issue?.body || "", karten);
+  if (quelle.lage === "insLeere") return t("quelleInsLeere", { zeile: quelle.zeile });
   if (hatKlaerenLabel(issue)) return t("planKlaeren", { label: klaerenLabelName() });
   const frage = stoppFragenGrund(issue?.body || "");
   if (frage !== null) {
@@ -744,14 +816,21 @@ function auftragsartVon(titel) {
  * Der Auftrag zu einer Karte: Wurzel und Plannummer stehen je Art woanders.
  *
  * Beim Fachplan-Auftrag ist die Karte selbst die Wurzel und es gibt keinen Plan; beim
- * Plan-Auftrag kommt die Wurzel aus der Herkunftszeile — dass sie dort steht und eine
- * Karte des Boards trifft, hat `planAusschluss` schon geprueft.
+ * Plan-Auftrag kommt die Wurzel aus der Herkunftszeile — dass sie, wenn sie steht, eine
+ * Karte des Boards trifft, hat `planAusschluss` schon geprueft. Ohne Herkunftszeile ist
+ * der Plan seine eigene Wurzel und traegt `ohneAnforderung` (Plan #1645, E1).
  */
 function auftragAus(issue, art) {
-  return art === "plan"
-    ? { karte: issue, art, F: fachlicheQuelleVon(issue.body || ""), planId: String(issue.id) }
-    : { karte: issue, art, F: String(issue.id), planId: null };
+  if (art !== "plan") return { karte: issue, art, F: String(issue.id), planId: null };
+  const quelle = fachlicheQuelleVon(issue.body || "");
+  return {
+    karte: issue, art, F: quelle ?? String(issue.id), planId: String(issue.id),
+    ...(quelle === null ? { ohneAnforderung: true } : {}),
+  };
 }
+
+/** Die Wurzel eines Plans: seine fachliche Anforderung, ohne sie der Plan selbst (Plan #1645, E1). */
+const planWurzel = (plan) => fachlicheQuelleVon(plan?.body || "") ?? String(plan.id);
 
 /**
  * Der Grund, aus dem ein Auftrag einer anderen Karte weicht — `null`, wenn er bleibt
@@ -799,7 +878,8 @@ function ausschlussGrund(issue, art, label, issues, config) {
  *
  * Ein Kandidat ist seit #895 kein rohes Issue mehr, sondern ein Auftrag
  * `{ karte, art, F, planId }`: `art` kommt aus dem Titel-Praefix, `F` ist immer die
- * fachliche Wurzel (beim Plan-Auftrag aus `fachlicheQuelleVon`, sonst die Karte selbst),
+ * fachliche Wurzel (beim Plan-Auftrag aus `fachlicheQuelleVon`, beim Plan ohne Anforderung
+ * der Plan selbst, sonst die Karte selbst),
  * `planId` nur beim Plan-Auftrag. Die Kette braucht beide Nummern — die gekennzeichnete
  * Karte fuer Label und Einheit, die Wurzel fuer Abdeckung und Bericht.
  *
@@ -820,11 +900,11 @@ export function waehleKettenKandidaten(issues, label, max, { belegt = () => null
   const gruende = new Map();
   const auftraege = [];
 
-  // Jeder gekennzeichnete Plan mit erkennbarer Wurzel, unabhaengig von seinem Ausschluss.
+  // Jeder gekennzeichnete Plan mit seiner Wurzel, unabhaengig von seinem Ausschluss. Ein
+  // Plan ohne Anforderung ist seine eigene Wurzel, wie in `auftragAus` (Plan #1645, E1).
   const gekennzeichnetePlaene = alle
     .filter((i) => isPlan(i?.title ?? ""))
-    .map((i) => ({ id: String(i.id), F: fachlicheQuelleVon(i?.body || "") }))
-    .filter((p) => p.F !== null);
+    .map((i) => ({ id: String(i.id), F: planWurzel(i) }));
   /** Der juengste gekennzeichnete Plan zu einer Wurzel — `null`, wenn es keinen gibt. */
   const juengsterPlanZu = (F) => gekennzeichnetePlaene
     .filter((p) => p.F === F)
@@ -877,6 +957,8 @@ export function korrekturPrompt(dokId, verstoesse) {
     "schreibe den vollstaendigen korrigierten Body stueckweise in eine Datei ausserhalb des Projektverzeichnisses",
     `und uebertrage ihn mit \`node .claude/kit/board.mjs issue update ${dokId} --body-file <pfad>\`.`,
     "Aendere sonst nichts: keinen Inhalt, keine anderen Karten, keine Dateien im Projekt.",
+    // Eine Frage ist Inhalt, P14 verlangt sie aber; `stoppFragenGrund` haelt danach an (Plan #1611, E5).
+    "Verlangt eine Formmeldung eine Frage unter `## Offene Fragen`, schreibst du sie dorthin; eine Zeile `Entschieden:` schreibst du nie.",
     "",
     ketteZusatz(),
   ].join("\n");
@@ -1288,7 +1370,8 @@ async function stufePakete(kette, planId) {
 }
 
 /**
- * Stufe Abdeckung: eine lesende Session haelt die Pakete gegen den Fachplan (Plan #638, A9).
+ * Stufe Abdeckung: eine lesende Session haelt die Pakete gegen den Fachplan (Plan #638, A9),
+ * beim Plan ohne fachliche Anforderung gegen den Plan (Plan #1645, E4).
  *
  * Ihr Text kommt aus dem `result`-Ereignis. Zeitbudget, Fehlstart oder fehlender Text
  * lassen die Kette trotzdem `fertig` enden — die Abdeckung ist eine Auskunft, kein Tor
@@ -1299,9 +1382,15 @@ async function stufeAbdeckung(kette, fachplanId, planId, paketIds) {
   const stand = { dauerMs: 0, kennzahlen: null, text: null };
   kette.stufen.abdeckung = stand;
   const vorherKarten = abh.board("issue", "list").length;
+  // Die Schreibprobe liest die Wurzel: beim Plan ohne Anforderung den Plan selbst.
   const vorherFachplan = abh.board("issue", "get", fachplanId);
-  log(t("abdeckungStart", { id: fachplanId, minuten: budget.abdeckungMin }));
-  const s = await ketteSession(kette, "abdeckung", abdeckungPrompt(fachplanId, planId, paketIds), abh.jetzt().getTime(), budget.abdeckungMin * 60 * 1000);
+  // Beim Plan ohne Anforderung haelt die Abdeckung gegen den Plan (Plan #1645, E4).
+  const ohne = kette.ohneAnforderung === true;
+  log(ohne
+    ? t("abdeckungStartPlan", { id: planId, minuten: budget.abdeckungMin })
+    : t("abdeckungStart", { id: fachplanId, minuten: budget.abdeckungMin }));
+  const prompt = ohne ? abdeckungPlanPrompt(planId, paketIds) : abdeckungPrompt(fachplanId, planId, paketIds);
+  const s = await ketteSession(kette, "abdeckung", prompt, abh.jetzt().getTime(), budget.abdeckungMin * 60 * 1000);
   stand.dauerMs = s.dauerMs;
   stand.kennzahlen = s.kennzahlen;
   if (s.ausgang !== "fertig") {
@@ -1740,12 +1829,16 @@ function haltWegNachVorn(kette, planId) {
     t("wegOffen", { offen: nameDerSprache("ueberschriftName", "offeneFragen", OFFENE_FRAGEN_NAME), plan, keine: KEINE_STOPP_FRAGEN }),
   ];
   if (kette.art !== "plan") schritte.push(t("wegReview", { id: planId }));
+  // Beim Plan ohne Anforderung (Plan #1645) gibt es keine Anforderung, an der etwas haengt.
+  const ohne = kette.ohneAnforderung === true;
   schritte.push(
-    t("wegKlaeren", { n: schritte.length + 1, label: klaerenLabelName(), plan, fachplan: kette.F }),
+    ohne
+      ? t("wegKlaerenOhne", { n: schritte.length + 1, label: klaerenLabelName(), plan })
+      : t("wegKlaeren", { n: schritte.length + 1, label: klaerenLabelName(), plan, fachplan: kette.F }),
     t("wegLabel", { n: schritte.length + 2, label: kette.budget.label, plan }),
   );
   return [
-    t("wegKopf", { plan, fachplan: kette.F }),
+    ohne ? t("wegKopfOhne", { plan }) : t("wegKopf", { plan, fachplan: kette.F }),
     "",
     ...schritte,
     "",
@@ -2617,9 +2710,10 @@ function ursprungFesthalten(kette, planId, vorher) {
  */
 function ketteBeginnen(kette, auftrag, nummer, args) {
   const karte = auftrag.karte;
-  log(auftrag.art === "plan"
-    ? t("ketteStartPlan", { nummer, max: args.max, plan: auftrag.planId, quelle: kette.F, titel: karte.title })
-    : t("ketteStartIssue", { nummer, max: args.max, id: kette.F, titel: karte.title }));
+  const start = auftrag.ohneAnforderung
+    ? t("ketteStartPlanOhne", { nummer, max: args.max, plan: auftrag.planId, titel: karte.title })
+    : t("ketteStartPlan", { nummer, max: args.max, plan: auftrag.planId, quelle: kette.F, titel: karte.title });
+  log(auftrag.art === "plan" ? start : t("ketteStartIssue", { nummer, max: args.max, id: kette.F, titel: karte.title }));
   // Das Kennzeichen ist mit dem Start verbraucht (A2): Ein Abbruch fuehrt zu einem
   // Bericht mit Grund und einer neuen Geste, nicht zur stillen Wiederholung.
   // Abgenommen wird der Name, den die Karte traegt, jeder, wenn sie mehrere traegt (Issue #1425).
@@ -2728,6 +2822,16 @@ async function laufeEineKette(auftrag, nummer, args) {
   return ketteMitKarte({ ...auftrag, karte: start.karte }, nummer, args);
 }
 
+/**
+ * Die Auftragsart und — nur beim Plan-Auftrag mit Anforderung — die fachliche Wurzel fuer die
+ * Einheit (Issue #895): Die Einheit traegt die Nummer der gekennzeichneten Karte, und ohne
+ * `fachplan` waere von aussen nicht zu sehen, wogegen die Abdeckung gehalten hat. Beim Plan
+ * ohne Anforderung fehlt das Feld (Plan #1645, E6): erkennbar an `auftrag: "plan"`.
+ */
+function auftragFelder(kette) {
+  return { auftrag: kette.art, ...(kette.art === "plan" && !kette.ohneAnforderung ? { fachplan: kette.F } : {}) };
+}
+
 /** Der Rumpf von `laufeEineKette`, mit der Karte vom Kettenstart. */
 async function ketteMitKarte(auftrag, nummer, args) {
   const karte = auftrag.karte;
@@ -2735,6 +2839,8 @@ async function ketteMitKarte(auftrag, nummer, args) {
   const einheit = einheitAnlegen(String(karte.id), karte.title);
   const kette = {
     F, art: auftrag.art, karte, args, budget: KETTE_BUDGET, repoRoot: process.cwd(), wt: null, start: abh.jetzt(),
+    // Der Plan ohne Anforderung ist seine eigene Wurzel (Plan #1645, E1).
+    ohneAnforderung: auftrag.ohneAnforderung === true,
     kosten: { kostenSumme: 0, kostenUnbekannt: 0 }, kostenGrund: null, stufen: {},
     // Die Variante steht an der gekennzeichneten Karte, nicht an der Wurzel: Wer den
     // Plan durchziehen lassen will, zeichnet den Plan (Issue #895).
@@ -2784,11 +2890,7 @@ async function ketteMitKarte(auftrag, nummer, args) {
       // Die Art des Grundes liest der Melder statt des Textes (Issue #1426): Sie traegt nur
       // das Ergebnis einer Stufe, deren Grund eingeordnet ist — sonst `sonst`.
       ...(ergebnis.grund ? { grund: ergebnis.grund, grundArt: ergebnis.grundArt ?? "sonst" } : {}),
-      // Die Auftragsart und — nur beim Plan-Auftrag — die fachliche Wurzel (Issue #895):
-      // Die Einheit traegt die Nummer der gekennzeichneten Karte, und ohne `fachplan`
-      // waere von aussen nicht zu sehen, wogegen die Abdeckung gehalten hat.
-      auftrag: kette.art,
-      ...(kette.art === "plan" ? { fachplan: kette.F } : {}),
+      ...auftragFelder(kette),
       variante: kette.variante,
       ...zielFelder(kette, ergebnis),
       stufen: kette.stufen,
@@ -2940,7 +3042,8 @@ export function beanspruchen(auftraege, {
 /**
  * Wer haelt welche Wurzel (Issue #1188)? Gelesen werden nur Karten mit dem Label `laeuft`,
  * die eine Wurzel tragen koennen: eine gekennzeichnete Karte, ihre fachliche Quelle und
- * die Plaene zu ihr. Rueckgabe ist `belegt(F)` fuer `waehleKettenKandidaten` und
+ * die Plaene zu ihr. Ein Plan ohne Anforderung ist seine eigene Wurzel (Plan #1645, E1):
+ * Er steht als gekennzeichnete Karte schon in der Menge. Rueckgabe ist `belegt(F)` fuer `waehleKettenKandidaten` und
  * `waehlePruefLaufKandidaten`.
  */
 export function belegteWurzeln(alle, label, sache) {
@@ -3069,7 +3172,8 @@ async function ketteFahren(args) {
       kosten: budget.kostenUsd, runden: budget.korrekturrunden,
     }));
     auftraege.forEach((a, i) => {
-      const art = a.art === "plan" ? t("dryPlanAuftrag", { quelle: a.F }) : "";
+      const plan = a.ohneAnforderung ? t("dryPlanAuftragOhne") : t("dryPlanAuftrag", { quelle: a.F });
+      const art = a.art === "plan" ? plan : "";
       log(t("dryKette", { id: a.karte.id, titel: a.karte.title, nummer: i + 1, art, variante: varianteVon(a.karte, budget) }));
     });
     log(t("dryEnde", { anzahl: auftraege.length }));

@@ -11,7 +11,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { abdeckungPrompt, ABDECKUNG_PROMPT, ABDECKUNG_ZUSATZ, KETTE_ZUSATZ } from "../kit/night/kette.mjs";
+import { abdeckungPrompt, abdeckungPlanPrompt, ABDECKUNG_PROMPT, ABDECKUNG_ZUSATZ, KETTE_ZUSATZ } from "../kit/night/kette.mjs";
 import { leseErgebnisText } from "../kit/night/session.mjs";
 import {
   ketteImProzess, fachplanKarte, jeStufe, planAnlegen, reviewMarker, paketeAnlegen, abdeckungSchreibt,
@@ -67,6 +67,28 @@ test("[night-20] abdeckungPrompt nennt Fachplan, Plan und Pakete, verbietet Schr
   assert.ok(p.includes(ABDECKUNG_PROMPT));
   for (const teil of ["Aendere dabei NICHTS", "### Zuordnung", "### Ohne Paket", "### Zuwachs"]) {
     assert.ok(p.includes(teil), `${teil} fehlt im Prompt`);
+  }
+});
+
+test("[night-1648] abdeckungPlanPrompt haelt Plan und Pakete gegen geplante Aenderungen und Pruefungen, ohne Fachplan und ohne Szenarien", () => {
+  const p = abdeckungPlanPrompt("0002", ["0003", "0004"]);
+  assert.match(p, /den Plan #0002 und die Pakete #0003, #0004/);
+  for (const teil of ["Aendere dabei NICHTS", "### Zuordnung", "### Ohne Paket", "### Zuwachs",
+    "Je geplanter Aenderung aus \"## Geplante Aenderungen\"", "je geplanter Pruefung aus \"## Verifizierung\"",
+    "Jede geplante Aenderung und Pruefung", "ohne im Plan zu stehen"]) {
+    assert.ok(p.includes(teil), `${teil} fehlt im Prompt:\n${p}`);
+  }
+  assert.doesNotMatch(p, /Fachplan/);
+  assert.doesNotMatch(p, /Szenari/);
+  assert.doesNotMatch(p, /Akzeptanzkriteri/);
+});
+
+test("[night-1648] beide Abdeckungs-Prompts teilen Schreibverbot und Ausgabeform", () => {
+  const plan = abdeckungPlanPrompt("2", ["3"]);
+  const fach = abdeckungPrompt("1", "2", ["3"]);
+  for (const zeile of ABDECKUNG_PROMPT.split("\n").filter((z) => /^(?:Aendere|Gib|### )/.test(z))) {
+    assert.ok(plan.includes(zeile), `${zeile} fehlt im Plan-Prompt`);
+    assert.ok(fach.includes(zeile), `${zeile} fehlt im Fachplan-Prompt`);
   }
 });
 

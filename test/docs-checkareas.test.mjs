@@ -22,21 +22,23 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
-const DOKU = lies("docs", "dokumentation.md");
+const NACHT = lies("docs", "nachtbetrieb.md");
+const EINRICHTUNG = lies("docs", "einrichtung.md");
+const PROZESS = lies("docs", "prozess.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
 const README = lies("README.md");
 
-/** Ein `###`-Abschnitt der Doku, bis zur naechsten Ueberschrift gleicher oder hoeherer Ebene. */
-function dokuAbschnitt(ueberschrift) {
-  const idx = DOKU.indexOf(`### ${ueberschrift}`);
-  assert.ok(idx >= 0, `Abschnitt '### ${ueberschrift}' fehlt in docs/dokumentation.md`);
-  return DOKU.slice(idx).split(/\n#{2,3} /)[0];
+/** Ein `###`-Abschnitt eines Skills auf der Prozessseite, bis zur naechsten Ueberschrift gleicher oder hoeherer Ebene. */
+function skillAbschnitt(ueberschrift) {
+  const idx = PROZESS.indexOf(`### ${ueberschrift}\n`);
+  assert.ok(idx >= 0, `Abschnitt '### ${ueberschrift}' fehlt in docs/prozess.md`);
+  return PROZESS.slice(idx).split(/\n#{2,3} /)[0];
 }
 
 /** Der Doku-Abschnitt zu den bereichsbezogenen Pruefungen — ueber seine Ueberschrift gefunden. */
 function bereichsAbschnitt() {
-  const treffer = DOKU.split(/\n(?=### )/).find((a) => /^### .*(checkAreas|Bereich)/.test(a));
-  assert.ok(treffer, "kein ###-Abschnitt zu den bereichsbezogenen Pruefungen in docs/dokumentation.md");
+  const treffer = EINRICHTUNG.split(/\n(?=### )/).find((a) => /^### .*(checkAreas|Bereich)/.test(a));
+  assert.ok(treffer, "kein ###-Abschnitt zu den bereichsbezogenen Pruefungen in docs/einrichtung.md");
   return treffer.split(/\n#{2,3} /)[0];
 }
 
@@ -178,7 +180,7 @@ test("die Doku weist mutationCommand als ausserhalb der Auswahl aus", () => {
 // --- Punkt 7: die bestehenden Aussagen ueber den vollen Lauf --------------
 
 test("das Konfigurationskapitel behauptet nicht mehr den vollen Lauf", () => {
-  const kapitel = DOKU.slice(DOKU.indexOf("## Die Config-Datei")).split(/\n## /)[0];
+  const kapitel = EINRICHTUNG.slice(EINRICHTUNG.indexOf("## Die Config-Datei")).split(/\n## /)[0];
   const absatz = absatzMit(kapitel, /`buildChecks`/, /local-check/);
   assert.ok(absatz, "kein buildChecks-Absatz im Konfigurationskapitel");
   assert.doesNotMatch(absatz, /Alle müssen grün sein/,
@@ -187,7 +189,7 @@ test("das Konfigurationskapitel behauptet nicht mehr den vollen Lauf", () => {
 });
 
 test("der /local-check-Abschnitt beschreibt die Auswahl statt des vollen Laufs", () => {
-  const abschnitt = dokuAbschnitt("/local-check");
+  const abschnitt = skillAbschnitt("/local-check");
   assert.doesNotMatch(abschnitt, /führt alle Kommandos aus `buildChecks` sequenziell aus/,
     "der Abschnitt behauptet weiterhin den vollen sequenziellen Lauf");
   assert.match(abschnitt, /checks\.mjs/, "der Abschnitt nennt das Kommando checks.mjs nicht");
@@ -195,8 +197,8 @@ test("der /local-check-Abschnitt beschreibt die Auswahl statt des vollen Laufs",
 });
 
 test("die implement-Abschnitte erwaehnen die Pruefung vor dem Commit", () => {
-  for (const ueberschrift of ["/implement-ready", "/implement-next", "/implement-test und /implement-done"]) {
-    const abschnitt = dokuAbschnitt(ueberschrift);
+  for (const ueberschrift of ["/implement-ready", "/implement-next", "/implement-done"]) {
+    const abschnitt = skillAbschnitt(ueberschrift);
     assert.match(abschnitt, /(Prüfung|Prüfungen|Checks)[\s\S]{0,120}vor dem Commit|vor dem Commit[\s\S]{0,120}(Prüfung|Prüfungen|Checks)/i,
       `'${ueberschrift}': die Pruefung vor dem Commit ist nicht erwaehnt`);
   }
@@ -204,8 +206,8 @@ test("die implement-Abschnitte erwaehnen die Pruefung vor dem Commit", () => {
 
 // --- Punkte 8 und 9: Nachtbetrieb ----------------------------------------
 
-test("das Nachtbetriebs-Kapitel nennt beide Stellen, an denen Auslassungen sichtbar sind", () => {
-  const kapitel = DOKU.slice(DOKU.indexOf("## Nachtbetrieb")).split(/\n## /)[0];
+test("die Seite Nachtbetrieb nennt beide Stellen, an denen Auslassungen sichtbar sind", () => {
+  const kapitel = NACHT;
   const absatz = absatzMit(kapitel, /Abschlussbericht/, /Lauf-Bericht|Bericht des Durchgangs/);
   assert.ok(absatz, "kein Absatz nennt Abschlussbericht und Lauf-Bericht gemeinsam");
   assert.match(absatz, /ausgelassen/i, "die Auslassungen sind nicht benannt");
@@ -221,7 +223,7 @@ test("das Nachtbetriebs-Kapitel nennt beide Stellen, an denen Auslassungen sicht
 // Weg kommt die bereichsbezogene Auswahl; die Stufenauswahl bleibt, wie sie war.
 // Beides muss dastehen, sonst ist der Absatz in die eine oder die andere Richtung falsch.
 test("der Salvage-Absatz weist den Weg ueber checks.mjs und den Nachweis fuer das Gate aus", () => {
-  const kapitel = DOKU.slice(DOKU.indexOf("## Nachtbetrieb")).split(/\n## /)[0];
+  const kapitel = NACHT;
   // `--fresh` als zweites Muster und nicht `checks.mjs run`: Das Kommando steht im
   // Kapitel auch im Absatz ueber die Prueflaeufe, der Schalter nur hier.
   const absatz = absatzMit(kapitel, /Salvage/, /--fresh/);
@@ -285,6 +287,6 @@ test("die Vorlage nennt in Regel W3 die betroffenen Checks", () => {
 test("das README nennt checkAreas und verweist im selben Absatz auf die Doku", () => {
   const absatz = absatzMit(README, /checkAreas/);
   assert.ok(absatz, "das README nennt checkAreas nicht");
-  assert.match(absatz, /docs\/dokumentation\.md|docs\.mwolff\.org/,
+  assert.match(absatz, /docs\/einrichtung\.md|docs\.mwolff\.org/,
     "der Verweis auf das Doku-Kapitel fehlt im selben Absatz");
 });

@@ -65,6 +65,9 @@
  *   node board.mjs code ci-status --commit <sha>
  *       Zustand der CI fuer genau diesen Commit (Issue #316). Dispatcht ueber
  *       resolveCodeHost — die Achse haengt am codeHost, nicht am issueTracker.
+ *   node board.mjs code contract-repo <name>
+ *       Gebauter Stand des Partnerrepos aus vertragsRepos (Issue #1615, Plan #1611 E7),
+ *       flach geklont nach <tmpdir>/kit-contract-repos/<name>-<commit12>.
  *   node board.mjs code protection status | setup [--branch <z>] | suspend --in <pfad>
  *                              | restore | verify [--branch <z>]
  *       Schutz von Haupt- und Veroeffentlichungszweig (Issue #1408, Plan #1405). status
@@ -92,7 +95,7 @@ import { spawnSync } from "node:child_process";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "5.1.0";
+const KIT_VERSION = "5.2.0";
 
 // Die Hilfe gibt es je Kommando genau einmal, englisch, in jedem Projekt (Issue #1557, Plan
 // #1548 E7). Sie antwortet, bevor ein Teil geladen ist (Plan #1199, E2).
@@ -193,6 +196,25 @@ Usage:
       verstoesse }), exit 1 on violations. --compare lists the changed criteria and
       non-goals between the file and the card's body (aenderungen).
       Read-only: changes neither body nor labels.
+  node board.mjs issue triage <id> [--body-file <path>]
+      State of an idea for /triage (Issue #1628, Plan #1623): einstieg ({ start, grund,
+      meldung }; grund keine-idee or unbeaufsichtigt), ablage ({ pfad, vorhanden, dateien:
+      [{ name, gelesen, vorlageZiel, herkunft }] } for .claude/ideas/<id>/) and stand
+      ({ punkte, offen, bahn, vorlage, ergebnis } from '## Clarified state', ergebnis from
+      the 'Result:' line or a comment 'Fortsetzung: ...'). --body-file checks a new body
+      against the card's (pruefung: { ok, verstoesse }), exit 1 if the text of the idea
+      changed or a confirmed point lost its answer line. Never changes the card. On a
+      kanban-kit card without --body-file and --finish, and only with start: true, it first
+      loads the card's attachments into .claude/ideas/<id>/ (Issue #1681): a file already
+      there stays unchanged; ablage.anhaenge ({ geladen, vorhanden, fehlgeschlagen: [{ name,
+      grund, meldung }], fehler }) reports it, herkunft is karte or ablage. Other trackers
+      never create the folder, and ablage.anhaenge is missing.
+  node board.mjs issue triage <id> --finish [--template <file>]
+      Closes the attachments folder of an idea once the chosen path has begun (Issue #1629,
+      Plan #1623 A13, E2): --template first moves that file from .claude/ideas/<id>/ to
+      design/ideas/<id>/<file>, then the folder is deleted. abschluss: { ok, pfad,
+      geloescht, vorlage, meldung }. Exit 1 if einstieg says start: false or the template
+      is not a file in the folder; then nothing is moved or deleted. Never touches the card.
   node board.mjs issue label add <id> <name>
   node board.mjs issue label remove <id> <name>
       Marks an issue (e.g. kit:clarify). Status labels are changed by \`issue move\`.
@@ -238,6 +260,13 @@ Usage:
       Precedence rot over laeuft over gruen; 'keine' only with codeHost local, a run
       not yet visible at the host is 'laeuft'. 'gestartet' is the start time of the
       job (ISO) or null as long as it has not started (Issue #1151).
+  node board.mjs code contract-repo <name>
+      Built state of the partner repo <name> from vertragsRepos (Issue #1615):
+      git ls-remote on its branch (default main), then a shallow clone to
+      <tmpdir>/kit-contract-repos/<name>-<commit12>, cached per commit; older states
+      of the same name are removed. Output: { ok: true, name, url, branch, commit,
+      date, path }, on failure { ok: false, name, reason }, exit 0 in both cases.
+      An unknown name aborts with the known names.
   node board.mjs code protection status
   node board.mjs code protection setup --branch <b>
   node board.mjs code protection suspend --in <path>
@@ -312,8 +341,10 @@ Usage:
   node board.mjs names
       The fixed lines of the skills in the project language (Issue #1558, Plan #1548):
       headings, markers, review and incorporation heads. Output: { language, lines:
-      { "<German line>": "<line in the project language>" } } from the registers
-      MARKER and UEBERSCHRIFTEN; a heading is listed with '## ' in front. Read-only.
+      { "<German line>": "<line in the project language>" }, contract: { "<key>":
+      "<word>" } } from the registers MARKER and UEBERSCHRIFTEN; a heading is listed
+      with '## ' in front. 'contract' holds the fixed words of a contract entry in a
+      plan from the table VERTRAG (Issue #1612). Read-only.
 
   node board.mjs --version
 
@@ -389,10 +420,12 @@ export const { SCHUTZ_AUSGESETZT, NACHPRUEFEN_KOMMANDO, NACHT_GESPERRT, rulesetS
 const { rulesetName } = await import("./board/adapter.mjs");
 // `issue vorgeschichte` (Issue #1539); exportiert war es nie.
 const { issueVorgeschichte } = await import("./board/vorgeschichte.mjs");
+// `code contract-repo` (Issue #1615); exportiert war es nie.
+const { vertragsRepoHolen } = await import("./board/vertraege.mjs");
 // Englisch benannte Config auf die deutschen Namen (Issue #1436, Plan #1420 E10).
 const { normalisiereConfig } = await import("./board/config-namen.mjs");
 // Die Meldung zu einem frueheren deutschen Namen (Issue #1557, Plan #1548).
-const { altnameHinweis, EINGABEWERTE, text, projektSprache, festeZeilen } = await import("./board/namen.mjs");
+const { altnameHinweis, EINGABEWERTE, text, projektSprache, festeZeilen, vertragWoerter } = await import("./board/namen.mjs");
 // Die Texte des Einstiegs an den Menschen (Issue #1524: im Teil texte/).
 export const { TEXTE } = await import("./texte/board.mjs");
 
@@ -574,6 +607,47 @@ async function issueFragen(tracker, config, args) {
 }
 
 /**
+ * `issue triage <id> [--body-file <pfad>] [--finish [--template <datei>]]` (Issue #1628, #1629,
+ * Plan #1623 A2, A3, A11, A13, E2, E5): Einstieg, Ablage und geklaerter Stand einer Idee fuer
+ * `/triage`. Die Karte aendert der Aufruf nie — geschrieben wird ueber `issue update --body-file`.
+ * Die Ablage legt er nur an, wenn er beim Einstieg die Anhaenge einer kanban-kit-Karte laedt
+ * (Issue #1681, `anhaengeLaden`); dann steht `ablage.anhaenge` in der Ausgabe, sonst fehlt das
+ * Feld. `--finish` schliesst die Ablage ab, nur wenn der Einstieg
+ * `start: true` meldet (A3); die Karte beruehrt es nie. Exit 1, wenn `--body-file` gegen den Body
+ * der Karte verstoesst oder der Abschluss nicht stattfand.
+ */
+async function issueTriage(tracker, args) {
+  const id = args._[0];
+  if (id === undefined) abbruch(t("triageOhneId"));
+  if (args.template !== undefined && args.finish === undefined) abbruch(t("triageVorlageOhneFinish"));
+  if (args.template === true) abbruch(t("optionOhneWert", { option: "template" }));
+  const { triageEinstieg, ablageLesen, ablageAbschliessen, standLesen, triageKoerperPruefen, anhaengeLaden, anhaengeHolen } =
+    await import("./board/triage.mjs");
+  const neu = optionDatei(args, "body-file");
+  const issue = await tracker.getIssue(String(id));
+  const body = issue.body || "";
+  const einstieg = triageEinstieg({ ...issue, id: String(id) }, process.env);
+  const anhaenge = anhaengeLaden({ einstieg, bodyFile: neu, finish: args.finish, tracker })
+    ? await anhaengeHolen(configWurzel(), String(id), tracker)
+    : null;
+  const ablage = ablageLesen(configWurzel(), String(id), new Set(anhaenge?.geladen ?? []));
+  if (anhaenge !== null) ablage.anhaenge = anhaenge;
+  const ausgabe = {
+    einstieg,
+    ablage,
+    stand: standLesen(body, await kartenKommentare(tracker, String(id), issue)),
+  };
+  if (neu !== null) ausgabe.pruefung = triageKoerperPruefen(body, neu);
+  if (args.finish !== undefined) {
+    ausgabe.abschluss = einstieg.start
+      ? ablageAbschliessen(configWurzel(), String(id), args.template ?? null)
+      : { ok: false, pfad: ausgabe.ablage.pfad, geloescht: false, vorlage: null, meldung: einstieg.meldung };
+  }
+  out(ausgabe);
+  if ((ausgabe.pruefung && !ausgabe.pruefung.ok) || (ausgabe.abschluss && !ausgabe.abschluss.ok)) process.exit(1);
+}
+
+/**
  * Der Stand der Szenarien fuer `issue questions`: `{ pflicht, vorhanden, vollstaendig }`,
  * `pflicht` wie `szenarienPflicht`; fehlt der Stichtag, dazu `hinweis` (A6).
  */
@@ -623,6 +697,7 @@ async function dispatchIssue(command, args) {
     case "brief":   return issueAuftrag(tracker, args, AUFTRAG_GESCHUETZT);
     case "origin":  return issueUrsprung(tracker, args);
     case "questions": return issueFragen(tracker, config, args);
+    case "triage":  return issueTriage(tracker, args);
     case "label":   return issueLabel(tracker, config, args, HELP);
     case "check-form": return issueCheckForm(tracker, config, args);
     case "check-protected": return issueCheckGeschuetzt(tracker, args);
@@ -708,8 +783,23 @@ async function codeSchutz(host, config, args) {
   }
 }
 
+/**
+ * `code contract-repo <name>` (Issue #1615, Plan #1611 E7): der gebaute Stand des Partnerrepos
+ * im Zwischenspeicher. Exit 0 auch bei `ok: false` wie `issue history`; ein unbekannter oder
+ * ungueltiger Name bricht mit den bekannten Namen ab.
+ */
+function codeVertragsRepo(config, args) {
+  try {
+    return out(vertragsRepoHolen(config, args._[0]));
+  } catch (e) {
+    abbruch(e.message);
+  }
+}
+
 async function dispatchCode(command, args) {
   const config = loadConfig();
+  // Braucht keinen Code-Host: Der Abruf geht ueber git an die URL aus der Config.
+  if (command === "contract-repo") return codeVertragsRepo(config, args);
   const host = resolveCodeHost(config);
   switch (command) {
     case "repo-name": return codeRepoName(host);
@@ -922,7 +1012,7 @@ async function main() {
   } else if (axis === "names") {
     // Achse ohne Unterbefehl (Issue #1558): die festen Zeilen in der Projektsprache.
     const language = projektSprache(readWorkflowConfig());
-    out({ language, lines: festeZeilen(language) });
+    out({ language, lines: festeZeilen(language), contract: vertragWoerter(language) });
   } else {
     process.stdout.write(HELP);
     abbruch(t("unbekannteAchse", { achse: axis, erwartet: ACHSEN.join(" | ") }));

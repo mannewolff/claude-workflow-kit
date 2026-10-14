@@ -19,19 +19,20 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const DOKU = readFileSync(join(repoRoot, "docs", "dokumentation.md"), "utf-8");
+const DOKU = readFileSync(join(repoRoot, "docs", "einrichtung.md"), "utf-8");
+const PROZESS = readFileSync(join(repoRoot, "docs", "prozess.md"), "utf-8");
 
-/** Ein `###`-Abschnitt der Doku, bis zur naechsten Ueberschrift gleicher oder hoeherer Ebene. */
-function dokuAbschnitt(ueberschrift) {
-  const idx = DOKU.indexOf(`### ${ueberschrift}`);
-  assert.ok(idx >= 0, `Abschnitt '### ${ueberschrift}' fehlt in docs/dokumentation.md`);
-  return DOKU.slice(idx).split(/\n#{2,3} /)[0];
+/** Der `###`-Abschnitt eines Skills auf der Prozessseite, bis zur naechsten Ueberschrift gleicher oder hoeherer Ebene. */
+function skillAbschnitt(ueberschrift) {
+  const idx = PROZESS.indexOf(`### ${ueberschrift}\n`);
+  assert.ok(idx >= 0, `Abschnitt '### ${ueberschrift}' fehlt in docs/prozess.md`);
+  return PROZESS.slice(idx).split(/\n#{2,3} /)[0];
 }
 
 /** Der Abschnitt zur Staffelung — ueber seine Ueberschrift gefunden. */
 function staffelAbschnitt() {
   const treffer = DOKU.split(/\n(?=### )/).find((a) => /^### .*Gestaffelte Prüfungen/.test(a));
-  assert.ok(treffer, "kein ###-Abschnitt 'Gestaffelte Prüfungen' in docs/dokumentation.md");
+  assert.ok(treffer, "kein ###-Abschnitt 'Gestaffelte Prüfungen' in docs/einrichtung.md");
   return treffer.split(/\n#{2,3} /)[0];
 }
 
@@ -91,7 +92,7 @@ test("die Skill-Abschnitte nennen ihre Stufe", () => {
     ["/push-main", /--stufe push|Stufe `?push`?/],
     ["/merge-production", /--stufe merge|Stufe `?merge`?|Freigabestufe/],
   ]) {
-    const abschnitt = dokuAbschnitt(ueberschrift);
+    const abschnitt = skillAbschnitt(ueberschrift);
     assert.match(abschnitt, muster, `'${ueberschrift}' nennt seine Stufe nicht`);
   }
 });

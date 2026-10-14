@@ -254,3 +254,21 @@ test("issue brief nennt die Szenarien eines Fachplans nicht unter Fachlicher Anl
   assert.ok(glied.includes("1. Kriterium."), glied);
   for (const zeile of SZENARIO_DE.split("\n")) assert.ok(!glied.includes(zeile), `${zeile} steht im Anlass`);
 });
+
+// --- Satzzeichen nach dem Schluesselwort (Issue #1626) ------------------------
+
+test("Komma oder Doppelpunkt direkt nach dem Schluesselwort zaehlt, in beiden Sprachen", () => {
+  const de = { titel: "Komma", zeilen: ["- Angenommen, eine Lage", "- Wenn: etwas geschieht", "- Dann, ein Ergebnis"] };
+  assert.equal(szenarioVollstaendig(de, "de"), true);
+  const en = { titel: "Comma", zeilen: ["- Given, a state", "- When: something happens", "- Then, a result"] };
+  assert.equal(szenarioVollstaendig(en, "en"), true);
+  const body = fachplan("## Szenarien\n\n### Szenario: Komma\n- Angenommen, die Lage\n- Wenn der Mensch handelt\n- Dann folgt etwas");
+  assert.equal(szenarienVerstoss(body, "de"), null);
+});
+
+test("ein anderes Satzzeichen nach dem Schluesselwort zaehlt weiter nicht", () => {
+  for (const zeichen of [".", "?", ";", ",,"]) {
+    const s = { titel: "Zeichen", zeilen: [`- Angenommen${zeichen} eine Lage`, "- Wenn etwas geschieht", "- Dann ein Ergebnis"] };
+    assert.equal(szenarioVollstaendig(s, "de"), false, zeichen);
+  }
+});

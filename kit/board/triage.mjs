@@ -1,0 +1,292 @@
+/**
+ * board/triage.mjs — das Mechanische von /triage (Issue #1628, Plan #1623 A2–A6, A10–A12, E1,
+ * E5): ob `/triage` an einer Karte beginnen darf, was in der Ablage `.claude/ideas/<N>/` einer
+ * Idee liegt, wie weit der geklaerte Stand im Body der Idee ist und ob ein neuer Body den Text
+ * der Idee und die bestaetigten Punkte behaelt.
+ *
+ * Ohne eigenen Board-Zugriff; den Zugriff traegt der Einstieg in kit/board.mjs, `issue triage`,
+ * und reicht ihn fuer die Anhaenge als Tracker herein. Gespraechsfuehrung, Empfehlung und Bahnvorschlag sind Urteil
+ * der Session und stehen im Skill, nicht hier (A2). `ablageAbschliessen` raeumt die Ablage,
+ * sobald der gewaehlte Weg begonnen hat (`--finish`, Issue #1629, A13, E2). `ablageFuellen`
+ * und `anhaengeHolen` laden die Anhaenge einer kanban-kit-Karte in die Ablage (Issue #1681);
+ * den Abruf reicht der Einstieg als Tracker bzw. Funktion herein.
+ *
+ * QUELLE DER WAHRHEIT: Diese Datei wird im Kit-Repo (claude-workflow-kit) gepflegt.
+ * Aenderungen ausschliesslich hier vornehmen, danach `node tools/sync-blobs.mjs`.
+ */
+
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { basename, extname, join } from "node:path";
+
+import { BoardError } from "./grundlagen.mjs";
+import { fenceLauf, istIdee, normalisiereZeilenenden, zerlegeAbschnitte } from "./dokumente.mjs";
+import { fragenLesen } from "./grooming.mjs";
+import { kanonischeUeberschrift, leseMarker, praefix, prozessSprache, text, ueberschriftName,
+  ueberschriftZeile } from "./namen.mjs";
+
+// Die Texte an den Menschen liegen unter kit/texte/board-triage.mjs.
+import { TEXTE } from "../texte/board-triage.mjs";
+
+export { TEXTE };
+
+const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
+
+// Die Ablage je Idee relativ zur Projektwurzel (A11) und der dauerhafte Ort einer Vorlage (E2).
+export const ABLAGE = ".claude/ideas";
+export const VORLAGE_ORT = "design/ideas";
+
+// Die Endungen, die die Session liest (A12); gross/klein gleichgueltig.
+const GELESEN = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".md"]);
+
+const nummer = (id) => String(id ?? "").trim().replace(/^#/, "");
+
+/**
+ * Darf `/triage` an dieser Karte beginnen? `{ start, grund, meldung }`. Die Gruende in dieser
+ * Reihenfolge (A3): `keine-idee` (Titel ohne `[Idea]`, auch ohne den frueheren deutschen
+ * Namen `[Idee]`), `unbeaufsichtigt` (gesetztes, nicht leeres `KIT_AGENT_MODEL`). `env` ist
+ * die Umgebung des Aufrufs, in der Regel `process.env`.
+ */
+export function triageEinstieg(issue, env = {}) {
+  const id = issue?.id ?? "?";
+  if (!istIdee(issue?.title ?? "")) {
+    return { start: false, grund: "keine-idee", meldung: t("keineIdee", { id, praefix: praefix("idee", prozessSprache()) }) };
+  }
+  if (String(env?.KIT_AGENT_MODEL ?? "").trim() !== "") {
+    return { start: false, grund: "unbeaufsichtigt", meldung: t("unbeaufsichtigt") };
+  }
+  return { start: true, grund: null, meldung: null };
+}
+
+/**
+ * Die Ablage `.claude/ideas/<id>/` unter `wurzel` (A11, A12): `{ pfad, vorhanden, dateien:
+ * [{ name, gelesen, vorlageZiel, herkunft }] }`, nach Namen geordnet. `pfad` ist relativ zur Wurzel.
+ * Gelesen sind Dateien der Endungen aus A12 direkt in der Ablage; jede andere Datei und jedes
+ * Unterverzeichnis ist `gelesen: false`. `vorlageZiel` ist der dauerhafte Ort einer Datei als
+ * Vorlage (`design/ideas/<id>/<datei>`), bei einem Unterverzeichnis null. `herkunft` ist
+ * `karte` fuer einen Namen aus `vonKarte` (gerade von der Karte geladen, Issue #1681), sonst
+ * `ablage`. Liest nur; anlegen kann allein `ablageFuellen`.
+ */
+export function ablageLesen(wurzel, id, vonKarte = new Set()) {
+  const n = nummer(id);
+  const pfad = `${ABLAGE}/${n}`;
+  const verzeichnis = join(wurzel, ABLAGE, n);
+  if (!existsSync(verzeichnis)) return { pfad, vorhanden: false, dateien: [] };
+  const herkunft = (name) => (vonKarte.has(name) ? "karte" : "ablage");
+  const dateien = readdirSync(verzeichnis, { withFileTypes: true })
+    .map((e) => (e.isDirectory()
+      ? { name: e.name, gelesen: false, vorlageZiel: null, herkunft: herkunft(e.name) }
+      : { name: e.name, gelesen: GELESEN.has(extname(e.name).toLowerCase()), vorlageZiel: `${VORLAGE_ORT}/${n}/${e.name}`, herkunft: herkunft(e.name) }))
+    .sort((a, b) => (a.name < b.name ? -1 : Number(a.name > b.name)));
+  return { pfad, vorhanden: true, dateien };
+}
+
+/**
+ * Laedt `issue triage` die Anhaenge der Karte (Issue #1681)? Nur beim Einstieg mit `start`, ohne
+ * `--body-file` (der Skill ruft es nach jeder Bestaetigung) und ohne `--finish` (das loescht die
+ * Ablage), und nur an einem Tracker mit `listAttachments` — die anderen kennen keine Anhaenge.
+ */
+export function anhaengeLaden({ einstieg, bodyFile, finish, tracker }) {
+  return einstieg?.start === true && (bodyFile === null || bodyFile === undefined)
+    && finish === undefined && typeof tracker?.listAttachments === "function";
+}
+
+/**
+ * Der Grund eines gescheiterten Abrufs aus seinem `BoardError` (Issue #1681): 404 `anhangFehlt`,
+ * 429 `gedrosselt`, ohne Status `netz`, jeder andere Status `abgewiesen`.
+ */
+export function anhangGrund(fehler) {
+  const status = fehler?.status ?? null;
+  if (status === 404) return "anhangFehlt";
+  if (status === 429) return "gedrosselt";
+  if (status === null) return "netz";
+  return "abgewiesen";
+}
+
+/** Der Name eines Anhangs in der Ablage: der letzte Teil von `filename`, null wenn ungueltig. */
+function anhangName(filename) {
+  const name = basename(String(filename ?? ""));
+  return name === "" || name === "." || name === ".." || name.includes("\0") ? null : name;
+}
+
+/**
+ * Schreibt die Anhaenge einer Karte in die Ablage `.claude/ideas/<id>/` unter `wurzel` (Issue
+ * #1681): `{ geladen, vorhanden, fehlgeschlagen: [{ name, grund, meldung }] }`. `laden(anhang)`
+ * liefert die Bytes eines Anhangs `{ id, filename }`. Ein Name, der in der Ablage schon liegt —
+ * auch durch einen frueheren Anhang derselben Karte —, bleibt unveraendert und wird nicht
+ * abgerufen (`vorhanden`); Gross und Klein entscheidet das Dateisystem. Das Verzeichnis entsteht
+ * erst vor dem ersten Schreiben, ohne Anhaenge also nie.
+ */
+export async function ablageFuellen(wurzel, id, anhaenge, laden) {
+  const verzeichnis = join(wurzel, ABLAGE, nummer(id));
+  const ergebnis = { geladen: [], vorhanden: [], fehlgeschlagen: [] };
+  const fehlschlag = (name, grund) => ergebnis.fehlgeschlagen.push({ name, grund, meldung: t(grund, { name }) });
+  for (const anhang of anhaenge ?? []) {
+    const name = anhangName(anhang?.filename);
+    if (name === null) {
+      fehlschlag(String(anhang?.filename ?? ""), "nameUngueltig");
+      continue;
+    }
+    if (existsSync(join(verzeichnis, name))) {
+      ergebnis.vorhanden.push(name);
+      continue;
+    }
+    let bytes;
+    try {
+      bytes = await laden(anhang);  // NOSONAR S9382: ein Anhang nach dem anderen, die API drosselt
+    } catch (e) {
+      if (!(e instanceof BoardError)) throw e;
+      fehlschlag(name, anhangGrund(e));
+      continue;
+    }
+    mkdirSync(verzeichnis, { recursive: true });
+    writeFileSync(join(verzeichnis, name), bytes, { flag: "wx" });
+    ergebnis.geladen.push(name);
+  }
+  return ergebnis;
+}
+
+/**
+ * Holt die Anhaenge der Karte `id` ueber `tracker` in die Ablage (Issue #1681): das Ergebnis von
+ * `ablageFuellen` und dazu `fehler` — der Grund, wenn schon die Liste nicht abrufbar war (dann
+ * sind die drei Listen leer), sonst null.
+ */
+export async function anhaengeHolen(wurzel, id, tracker) {
+  let liste;
+  try {
+    liste = await tracker.listAttachments(nummer(id));
+  } catch (e) {
+    if (!(e instanceof BoardError)) throw e;
+    return { geladen: [], vorhanden: [], fehlgeschlagen: [], fehler: anhangGrund(e) };
+  }
+  const ergebnis = await ablageFuellen(wurzel, id, Array.isArray(liste) ? liste : [],
+    (anhang) => tracker.downloadAttachment(nummer(id), anhang.id));
+  return { ...ergebnis, fehler: null };
+}
+
+/**
+ * Schliesst die Ablage `.claude/ideas/<id>/` unter `wurzel` ab (A13, E2): Mit `vorlage` wandert
+ * genau diese Datei zuerst nach `design/ideas/<id>/<datei>`, danach wird die Ablage vollstaendig
+ * geloescht. `{ ok, pfad, geloescht, vorlage, meldung }`, `pfad` und `vorlage` relativ zur
+ * Wurzel. Liegt die genannte Vorlage nicht als Datei direkt in der Ablage, bleibt alles stehen
+ * (`ok: false` mit Meldung). Eine fehlende Ablage ohne Vorlage ist kein Fehler.
+ */
+export function ablageAbschliessen(wurzel, id, vorlage = null) {
+  const n = nummer(id);
+  const pfad = `${ABLAGE}/${n}`;
+  const verzeichnis = join(wurzel, ABLAGE, n);
+  const ergebnis = { ok: true, pfad, geloescht: false, vorlage: null, meldung: null };
+  if (vorlage !== null && vorlage !== undefined) {
+    const name = String(vorlage);
+    const quelle = join(verzeichnis, name);
+    const direkt = name !== "" && basename(name) === name && name !== "." && name !== "..";
+    if (!direkt || !existsSync(quelle) || !statSync(quelle).isFile()) {
+      return { ...ergebnis, ok: false, meldung: t("vorlageFehlt", { datei: name, pfad }) };
+    }
+    mkdirSync(join(wurzel, VORLAGE_ORT, n), { recursive: true });
+    renameSync(quelle, join(wurzel, VORLAGE_ORT, n, name));
+    ergebnis.vorlage = `${VORLAGE_ORT}/${n}/${name}`;
+  }
+  if (!existsSync(verzeichnis)) return ergebnis;
+  rmSync(verzeichnis, { recursive: true, force: true });
+  return { ...ergebnis, geloescht: true };
+}
+
+/** Die Zeilen des Abschnitts `## Geklärter Stand` (beide Sprachen) ohne Codezeilen. */
+function standZeilen(body) {
+  const titel = kanonischeUeberschrift(ueberschriftName("geklaerterStand", "de"));
+  return zerlegeAbschnitte(body ?? "").abschnitte.find((a) => a.titel === titel)?.zeilen ?? [];
+}
+
+/** Die Werte des Markers `sache` im Abschnitt, in der Reihenfolge des Body. */
+const werteIm = (zeilen, sache) => zeilen.map(leseMarker).filter((m) => m?.sache === sache).map((m) => m.rest.trim());
+
+// Der gewaehlte Wert der Bahn-Zeile (A6, E1) steht vor dem Gedankenstrich; der vorgeschlagene dahinter.
+const BAHN = /^(?:([13])|2\s*,\s*(fachlich|business|technisch|technical))(?:\s+[—–-]\s|\s*$)/i;
+const BAHN_ZWEI = { fachlich: "2, fachlich", business: "2, fachlich", technisch: "2, technisch", technical: "2, technisch" };
+
+/** Die gewaehlte Bahn kanonisch (`1`, `2, fachlich`, `2, technisch`, `3`), sonst null. */
+function bahnWert(rest) {
+  const m = BAHN.exec(rest);
+  if (!m) return null;
+  return m[1] ?? BAHN_ZWEI[m[2].toLowerCase()];
+}
+
+// Der Wert der Ergebnis-Zeile (A10): `Issue #M`, `Idee <ideaId>` bzw. `Idea <ideaId>`, `Commit <sha>`.
+const ERGEBNIS = /^(?:Issue\s+#(\d+)|(?:Idee|Idea)\s+(\S+)|Commit\s+([0-9a-f]{7,40}))(?:\s|$)/i;
+// Der Spur-Kommentar der Zielskills als erste nichtleere Zeile: `Fortsetzung: Issue #M` bzw. `Fortsetzung: Idee <ideaId> …`.
+const FORTSETZUNG = /^Fortsetzung:\s*(?:Issue\s+#(\d+)|Idee\s+(\S+))(?:\s|$)/;
+
+function ergebnisAus(m, quelle) {
+  if (!m) return null;
+  if (m[1] !== undefined) return { art: "issue", wert: m[1], quelle };
+  if (m[2] !== undefined) return { art: "idee", wert: m[2], quelle };
+  return { art: "commit", wert: m[3], quelle };
+}
+
+/** Das Ergebnis aus dem juengsten Spur-Kommentar; die Kommentare kommen juengster zuletzt. */
+function ergebnisAusKommentaren(comments) {
+  for (const k of [...(comments ?? [])].reverse()) {
+    const body = typeof k === "string" ? k : k?.body;
+    const erste = String(body ?? "").split(/\r\n|\r|\n/).find((z) => z.trim() !== "") ?? "";
+    const ergebnis = ergebnisAus(FORTSETZUNG.exec(erste.trim()), "kommentar");
+    if (ergebnis) return ergebnis;
+  }
+  return null;
+}
+
+/**
+ * Der geklaerte Stand einer Idee (A4, A6, A10): `{ punkte, offen, bahn, vorlage, ergebnis }`.
+ * `punkte` liest der Leser von /groom unter `## Geklärter Stand` (A5), je Punkt `{ nr, text,
+ * entschieden, antwortZeile }`; `offen` zaehlt die ohne Antwortzeile. `bahn` ist der gewaehlte
+ * Wert der letzten Bahn-Zeile im Abschnitt, kanonisch deutsch, sonst null. `vorlage` ist der
+ * Wert der letzten Vorlage-Zeile im Abschnitt. `ergebnis` ist `{ art, wert, quelle }` mit `art`
+ * `issue`, `idee` oder `commit`: aus der Ergebnis-Zeile (`quelle: "zeile"`), fehlt sie oder ist
+ * sie unlesbar, aus dem juengsten Kommentar `Fortsetzung: …` (`quelle: "kommentar"`), sonst null.
+ */
+export function standLesen(body, comments) {
+  const r = fragenLesen(body ?? "", "geklaerterStand");
+  const zeilen = standZeilen(body);
+  const bahn = werteIm(zeilen, "bahn").at(-1);
+  const ergebnisZeile = werteIm(zeilen, "ergebnis").at(-1);
+  return {
+    punkte: r.fragen,
+    offen: r.offen,
+    bahn: bahn === undefined ? null : bahnWert(bahn),
+    vorlage: werteIm(zeilen, "vorlage").at(-1) ?? null,
+    ergebnis: ergebnisAus(ERGEBNIS.exec(ergebnisZeile ?? ""), "zeile") ?? ergebnisAusKommentaren(comments),
+  };
+}
+
+/** Der Text der Idee oberhalb von `## Geklärter Stand`, ohne Leerraum am Ende. */
+function ideentext(body) {
+  const kopf = ueberschriftZeile("geklaerterStand");
+  const imFence = fenceLauf();
+  const zeilen = [];
+  for (const zeile of normalisiereZeilenenden(body ?? "").split("\n")) {
+    if (!imFence(zeile) && kopf.test(zeile)) break;
+    zeilen.push(zeile);
+  }
+  return zeilen.join("\n").trimEnd();
+}
+
+/**
+ * Prueft einen neuen Idee-Body gegen den alten nach E5: `{ ok, verstoesse: [{ regel, meldung
+ * }] }`. Regeln: `ideentext` (der Text oberhalb von `## Geklärter Stand` hat sich geaendert)
+ * und `antwort` (ein bestaetigter Punkt hat seine Antwortzeile verloren oder traegt eine
+ * andere). Ein bestaetigter Punkt findet sich im neuen Body ueber seinen Text, sonst ueber
+ * seine Nummer. Angehaengte Punkte und neue Antwortzeilen sind erlaubt.
+ */
+export function triageKoerperPruefen(alt, neu) {
+  const verstoesse = [];
+  if (ideentext(alt) !== ideentext(neu)) {
+    const ueberschrift = `## ${ueberschriftName("geklaerterStand", prozessSprache())}`;
+    verstoesse.push({ regel: "ideentext", meldung: t("ideentext", { ueberschrift }) });
+  }
+  const nachher = fragenLesen(neu ?? "", "geklaerterStand").fragen;
+  for (const punkt of fragenLesen(alt ?? "", "geklaerterStand").fragen.filter((p) => p.entschieden)) {
+    const gegenstueck = nachher.find((p) => p.text === punkt.text) ?? nachher.find((p) => p.nr === punkt.nr);
+    if (gegenstueck?.antwortZeile === punkt.antwortZeile) continue;
+    verstoesse.push({ regel: "antwort", meldung: t("antwortVerloren", { punkt: punkt.text.split("\n")[0], antwort: punkt.antwortZeile }) });
+  }
+  return { ok: verstoesse.length === 0, verstoesse };
+}

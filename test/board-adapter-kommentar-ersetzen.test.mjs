@@ -251,12 +251,12 @@ test("toolbox ohne PATCH-Route: ersetzeKommentar wirft und nennt die Route", asy
   });
 });
 
-// `issue get` ruft im Dispatch nur `getIssue` des Trackers; der nachsichtige Lesepfad
-// laesst sich darum im selben Prozess belegen wie bei GitLab oben.
-test("toolbox: kommentareStreng wirft bei scheiternder Lese-Route, issue get laeuft weiter mit []", async () => {
+// Seit Issue #1650 (Plan #1638, E7) kommen die Kommentare aus dem Einzelabruf der Karte:
+// Scheitert er, scheitert auch `issue get` — die Nachsicht von `_comments` gibt es im
+// Toolbox-Adapter nicht mehr.
+test("toolbox: kommentareStreng wirft bei scheiternder Lese-Route, issue get ebenso", async () => {
   await mitToolbox({ leseRoute: false }, async (tracker) => {
     await assert.rejects(() => tracker.kommentareStreng("7"), /HTTP 500/);
-    const geholt = await tracker.getIssue("7");
-    assert.deepEqual(geholt.comments, []);
+    await assert.rejects(() => tracker.getIssue("7"), /HTTP 500/);
   });
 });

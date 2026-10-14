@@ -154,7 +154,7 @@ runner takes it for a work package ready for release and pulls it into the
 implementation.
 
 ## P13 — New names and copied structures are checked for their consequences `[Urteil]`
-<!-- de: 2ea74e707de4 -->
+<!-- de: dbf013e8f03e -->
 
 If the plan introduces names a human types — skills, commands, options, labels, title
 prefixes —, it states that they collide with no built-in command of Claude Code. If it
@@ -169,6 +169,50 @@ like the built-in command `context` of Claude Code. Its bilingual text tables
 quality gate failed from v4.2.2 on at duplicated lines (6.1 % instead of at most 3 %);
 repaired only in #1524 to #1526. Neither the plan review nor the package reviews had found
 it.
+
+## P14 — A contract with the other repo is matched or asked `[maschinell]`
+<!-- de: 1327260a35bd -->
+
+If the config names a partner repo in `vertragsRepos`, the subsection `### Contracts` stands
+at the end of `## Architectural decisions`. It holds one entry per definition the other repo
+reads or writes — a name, a marker, a format —; if the plan defines none, the line
+`- No contract.`:
+
+```markdown
+### Contracts
+- V1: The run ID is called `Run-ID:` — kanban-kit, reads
+  Built state: kanban-kit@0123456789ab, src/lauf.ts:12
+  Match: differs
+```
+
+- The head ends in `— <repo>, reads` or `— <repo>, writes`; the repo stands in
+  `vertragsRepos`.
+- `Built state:` names the location on the main branch of the other repo, or
+  `missing, checked …` or `not checkable: …`. What counts is the built state, not the other
+  repo's plan and not the kit version installed in the project; if that one differs, a line
+  `Installed:` names it as a note.
+- `Match:` is `matches`, `differs`, `missing`, `not checkable` or
+  `proposed by the project`. A contract carries the last value only with
+  `Built state: missing, checked …` and the lines `Wording:` (what the other repo has to
+  adopt) and `Proposed per requirement:` (the place in the requirement).
+- An open contract — `differs`, `missing` or `not checkable` without a line `Decided:` —
+  stands in a question under `## Open questions` that lists all open V numbers; the first
+  line there is then not `- Keine.`. This makes the night chain stop the plan stage before
+  `/issues` cuts packages. `Decided:` with `plan adjusted`, `other repo follows` or
+  `deviation accepted` is written only by someone who has the human's answer — never by the
+  session that fixes the violation.
+
+`issue check-form` checks the form. Whether the location is right and whether a human
+decided is judgement (P10). Without `vertragsRepos`, P14 checks nothing.
+
+*Why gate:* A definition both repos have to understand looks like an internal choice of
+name in the plan. In kanban-kit, plan #1423 chose a name for the run ID while the kit had
+long built a different one. The night chain could not see that, put a human step in front
+of all packages, and the implementation stood still until the human decided the match;
+four packages had to be rewritten. Where the contract was named openly (kanban-kit plan
+#1447), the chain stopped correctly. With the contract in fixed form in the plan, the match
+against the built state becomes mandatory and the question to the human becomes a stop
+before the packages.
 
 ---
 

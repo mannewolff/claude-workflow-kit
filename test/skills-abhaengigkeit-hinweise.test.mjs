@@ -23,7 +23,8 @@ const TEXTE = {
   issues: lies("skills", "issues", "SKILL.md"),
   task: lies("skills", "task", "SKILL.md"),
   vorlage: lies("templates", "CLAUDE-workflow.md"),
-  doku: lies("docs", "dokumentation.md"),
+  doku: lies("docs", "nachtbetrieb.md"),
+  prozess: lies("docs", "prozess.md"),
 };
 
 /** Der Absatz, der die `hinweise` beim Schreiben behandelt — genau einer je Skill. */
@@ -47,7 +48,7 @@ function skillFehlt(text) {
   return SKILL_ANGABEN.filter(([, re]) => !re.test(absaetze[0])).map(([name]) => name);
 }
 
-// Vorlage und Dokumentation: die Konvention samt allem, was die Pakete sichtbar machen.
+// Vorlage und Prozessseite: die Konvention samt allem, was die Pakete sichtbar machen.
 const UE = "(?:ä|ae)";
 const KONVENTION_ANGABEN = [
   ["jede lokale #N zaehlt", new RegExp(`[Jj]ede lokale \`#N\` im Abschnitt z${UE}hlt`)],
@@ -61,7 +62,7 @@ const KONVENTION_ANGABEN = [
   ["Dokument-Hinweis", /kein Arbeitspaket/],
 ];
 
-// Nur die Dokumentation: das Kapitel Nachtbetrieb nennt Block und eingerueckte Zeilen.
+// Nur die Dokumentation: die Seite Nachtbetrieb nennt Block und eingerueckte Zeilen.
 const NACHT_ANGABEN = [
   ["Block unter dem Rueckstell-Kommentar", /`Abhaengigkeiten, wie der Nachtlauf sie liest:`/],
   ["eingerueckte Zeilen im Probelauf", /eingerückt unter der Zeile jedes Pakets/],
@@ -71,10 +72,10 @@ function konventionFehlt(text) {
   return KONVENTION_ANGABEN.filter(([, re]) => !re.test(text)).map(([name]) => name);
 }
 
-/** Das Kapitel `## Nachtbetrieb` bis zur naechsten `## `-Ueberschrift. */
+/** Der Abschnitt `## Der Nachtlauf` der Seite Nachtbetrieb bis zur naechsten `## `-Ueberschrift. */
 function nachtKapitel(text) {
-  const start = text.indexOf("\n## Nachtbetrieb\n");
-  assert.ok(start >= 0, "Kapitel Nachtbetrieb fehlt");
+  const start = text.indexOf("\n## Der Nachtlauf\n");
+  assert.ok(start >= 0, "Abschnitt Der Nachtlauf fehlt");
   const ende = text.indexOf("\n## ", start + 5);
   return text.slice(start, ende < 0 ? undefined : ende);
 }
@@ -101,7 +102,7 @@ for (const name of ["issues", "task"]) {
   });
 }
 
-for (const name of ["vorlage", "doku"]) {
+for (const name of ["vorlage", "prozess"]) {
   test(`${name} nennt die Konvention, Verweiszeile, Kreis-Befund und Dokument-Hinweis`, () => {
     assert.deepEqual(konventionFehlt(TEXTE[name]), []);
   });

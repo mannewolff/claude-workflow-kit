@@ -79,7 +79,8 @@ test("[skills-1383] Schritt 4 montiert je Reviewer den Auftrag und startet ueber
 });
 
 test("[skills-13] gestrichene Regeln kommen im Skill nicht mehr vor", () => {
-  for (const wort of ["Synthese", "Abgleich", "Rundengrenze", "label-sync", "Pruefung:"]) {
+  // Gestrichen ist der Beleg-Abgleich; die Zeile `Abgleich:` eines Vertrags (Gate P14) bleibt erlaubt.
+  for (const wort of ["Synthese", "Beleg-Abgleich", "Rundengrenze", "label-sync", "Pruefung:"]) {
     assert.ok(!SKILL.includes(wort), `'${wort}' steht noch im Skill`);
   }
   // Die Fundklasse ist weg; die Stopp-Klasse aus CLAUDE-workflow.md bleibt genannt.

@@ -128,9 +128,10 @@ test("[1491] englisch: die Gruende der Auswahl", async () => {
     assert.equal(grund["4"], "open question to the PO: - Wie viele?; answer the questions in the body and set "
       + "'## Open questions for the PO' to 'Keine'");
 
-    const plan = { id: "9", title: "[Plan] P", status: "backlog", labels: ["kit:night"], body: "" };
+    // Seit Plan #1645 (E3) haelt nur eine Zeile an, die ins Leere verweist.
+    const plan = { id: "9", title: "[Plan] P", status: "backlog", labels: ["kit:night"], body: "Requirement: Issue #99\n" };
     assert.match(planAusschluss(plan, "kit:night", []),
-      /^the requirement origin is not recognizable — the line 'Requirement: Issue #N' is missing in the plan/);
+      /^the line 'Requirement: Issue #99' points nowhere — it names no card of this board in the form 'Issue #N'/);
   }));
 });
 
@@ -182,10 +183,14 @@ const KETTE_OHNE = [
   { von: "export function korrekturPrompt", bis: "/** Der Text eines Abschnitts" },
 ];
 
+// Vertragswerte im ersten Teil: die Lage `keine` aus `quelleLage` (Plan #1645, Issue #1647) ist
+// ein interner Wert, den nur der Code liest, keine Meldung an den Menschen.
+const LAGE_WERTE = ["keine"];
+
 // Die Tabelle liegt seit Issue #1525 in kit/texte/; gescannt wird das Modul ohne sie.
 test("[1491] der erste Teil der Kette gibt in einem englischen Projekt keine deutsche Meldung aus", () => {
   const bereich = { bis: "async function formSicherstellen", ohne: KETTE_OHNE };
-  assert.deepEqual(deutschAmHelferVorbei("kit/night/kette.mjs", null, [], bereich), [],
+  assert.deepEqual(deutschAmHelferVorbei("kit/night/kette.mjs", null, LAGE_WERTE, bereich), [],
     "kit/night/kette.mjs: deutsche Texte am Texthelfer vorbei");
   assert.deepEqual(deutschImEnglischen(KETTE_TEXTE), [], "kit/night/kette.mjs: deutsche Woerter in der englischen Tabelle");
 });
@@ -255,7 +260,7 @@ test("[1492] englisch: der Zeitbudget-Grund der Umsetzung beginnt in der Form de
 
 // Vertragswerte (E14) im zweiten Teil: der Anker der Testhinweise, den Skill und Vorlage
 // woertlich nennen, und das Ergebnis `nicht-vorbereitet` der Vorbereitung.
-const KETTE_VERTRAG = ["## Testhinweise der Formpruefung", "nicht-vorbereitet"];
+const KETTE_VERTRAG = ["## Testhinweise der Formpruefung", "nicht-vorbereitet", ...LAGE_WERTE];
 
 test("[1492] der zweite Teil der Kette gibt in einem englischen Projekt keine deutsche Meldung aus", () => {
   const bereich = { bis: "async function mitMeldung", ohne: KETTE_OHNE };

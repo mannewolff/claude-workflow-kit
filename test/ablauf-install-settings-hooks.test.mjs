@@ -323,7 +323,7 @@ test("[installer-9] der hinterlegte Aufruf ist der Melder aus #734 und liefert i
 // --- Was die Doku sagen muss ----------------------------------------------
 
 test("[installer-10] die Kit-Dokumentation nennt den Hook, das Abschalten und die Worktree-Luecke", () => {
-  const doku = readFileSync(join(repoRoot, "docs", "dokumentation.md"), "utf-8");
+  const doku = readFileSync(join(repoRoot, "docs", "einrichtung.md"), "utf-8");
   // Beide Ereignisse beim Namen — wer den Hook sucht, sucht danach. In Backticks,
   // damit die Zusage nicht schon durch die "menschlichen Stop-Punkte" weiter oben
   // erfuellt waere: Die Aussage ist der Hook, nicht das Wort.

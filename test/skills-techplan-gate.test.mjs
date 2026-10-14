@@ -7,7 +7,7 @@
 // wieder Plandokumente — und niemand merkt es, weil kein Code kaputtgeht.
 //
 // Absichtlich NICHT geprueft: implement-test und implement-done. Sie tragen heute
-// keinerlei [Requirement]/[Idea]-Erwaehnung, und docs/dokumentation.md nennt ausdruecklich
+// keinerlei [Requirement]/[Idea]-Erwaehnung, und docs/nachtbetrieb.md nennt ausdruecklich
 // nur /implement-ready, /implement-next und den Nacht-Runner als Traeger der
 // mechanischen Leitplanke. Die Auslassung ist Konvention, kein Versehen.
 
@@ -47,11 +47,11 @@ for (const [name, text] of SKILLS) {
   });
 }
 
-// Seit Issue #984 zaehlt das Gate vier Sorten: [Human] kam als Arbeitspaket hinzu, das
-// nur ein Mensch erledigen kann. Die Zaehlung bleibt gepruefte Zusicherung — eine Doku, die
-// drei nennt und vier aufzaehlt, laesst den Leser die fehlende selbst suchen.
-test("dokumentation: das Gate kennt vier Sorten, [Plan] und [Human] eingeschlossen", () => {
-  const doku = lies("docs", "dokumentation.md");
+// Das Gate zaehlt vier Sorten, [Human] ist ein Arbeitspaket, das nur ein Mensch erledigen
+// kann. Die Zaehlung ist gepruefte Zusicherung — eine Doku, die drei nennt und vier
+// aufzaehlt, laesst den Leser die fehlende selbst suchen.
+test("prozess: das Gate kennt vier Sorten, [Plan] und [Human] eingeschlossen", () => {
+  const doku = lies("docs", "prozess.md");
   for (const veraltet of [/Zwei Sorten/, /Drei Sorten/]) {
     assert.doesNotMatch(doku, veraltet, "die Zaehlung stimmt nicht mehr — es sind vier Sorten");
   }
@@ -65,10 +65,10 @@ test("dokumentation: das Gate kennt vier Sorten, [Plan] und [Human] eingeschloss
 // sind damit keine Kandidaten, ohne dass ein eigener Ausschluss noetig waere. Die Doku
 // muss den Eingang nennen und keinen der entfallenen Stufen-Schalter mehr.
 test("dokumentation: der Abschnitt zur Nacht-Kette nennt [Requirement] als einzigen Eingang", () => {
-  const doku = lies("docs", "dokumentation.md");
-  const idx = doku.indexOf("### Zweiter Modus: die Nacht-Kette");
+  const doku = lies("docs", "nachtbetrieb.md");
+  const idx = doku.indexOf("## Die Nacht-Kette\n");
   assert.ok(idx >= 0, "der Abschnitt zur Nacht-Kette fehlt");
-  const kette = doku.slice(idx).split(/\n### /)[0];
+  const kette = doku.slice(idx).split(/\n## /)[0];
   // Die Doku nennt den Eingang bis zu ihrer Umstellung (Plan #1548, Issue #1573) unter dem deutschen Praefix.
   assert.match(kette, /hat den Titel `\[(?:Requirement|Fachlich)\]`/, "der Eingang [Requirement] fehlt");
   assert.doesNotMatch(doku, /--stufe <fachlich\|plan\|issue>/, "der entfallene Stufen-Schalter steht noch in der Doku");

@@ -21,6 +21,7 @@ const KARTE = { id: 700, number: 7, title: "Karte 7", body: "Body", column: "BAC
 async function mitBoard(fn) {
   const { server, requests, host } = await starteServer((req) => {
     if (req.url === "/api/kanban/items" && req.method === "GET") return { status: 200, json: { BACKLOG: [KARTE] } };
+    if (req.url === "/api/kanban/items/by-number/7") return { status: 200, json: { item: KARTE, archived: false, comments: [] } };
     if (req.url === "/api/kanban/items" && req.method === "POST") return { status: 200, json: { id: 700, number: 7 } };
     if (/^\/api\/kanban\/items\/\d+\/comments$/.test(req.url)) return { status: 200, json: [] };
     if (/^\/api\/kanban\/items\/\d+\/move$/.test(req.url)) return { status: 200, json: { ok: true } };

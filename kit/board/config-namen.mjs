@@ -172,6 +172,10 @@ export const SCHLUESSEL = Object.freeze({
   "befunde.schwelle": "threshold",
   vorgeschichte: "history",
   szenarienAb: "scenariosFrom",
+  vertragsRepos: "contractRepos",
+  "vertragsRepos[].name": "name",
+  "vertragsRepos[].url": "url",
+  "vertragsRepos[].zweig": "branch",
 });
 
 const gleich = (...werte) => Object.fromEntries(werte.map((w) => [w, w]));

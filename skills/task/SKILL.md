@@ -14,13 +14,13 @@ Bahn 3: oberhalb der Kleinigkeit, aber ohne Abwaegungsbedarf. Dieser Skill **ers
 
 ### 0. Die Bahn benennen
 
-**Unbeaufsichtigt** (gesetztes `KIT_AGENT_MODEL`): Der Skill endet mit der Meldung, dass der `[Task]`-Weg eine menschliche Bestaetigung braucht, und legt **nichts** an. Kein Rueckfall „unbeaufsichtigt gilt der Weg als bestaetigt": Nachts antwortet niemand.
+**Unbeaufsichtigt** (gesetztes `KIT_AGENT_MODEL`): Der Skill endet mit der Meldung, dass der `[Task]`-Weg eine menschliche Bestaetigung braucht, und legt **nichts** an, auch bei einer Idee aus `/triage`. Kein Rueckfall „unbeaufsichtigt gilt der Weg als bestaetigt": Nachts antwortet niemand.
 
-**Interaktiv:** Ein Satz — „Das ist Bahn 3: <Grund in einem Halbsatz>" — dann wartet der Skill auf ein Wort der Bestaetigung. Erst danach entsteht etwas. Bleibt sie aus, endet der Skill, ohne etwas anzulegen.
+**Interaktiv:** Ein Satz — „Das ist Bahn 3: <Grund in einem Halbsatz>" — dann wartet der Skill auf ein Wort der Bestaetigung. Erst danach entsteht etwas. Bleibt sie aus, endet der Skill, ohne etwas anzulegen. Traegt eine `[Idea]` unter `## Geklärter Stand` die Bahn-Zeile `Bahn: 3`, kommt sie aus `/triage`: Der Mensch hat die Bahn dort gewaehlt, und die Bahn-Zeile ersetzt diese Bestaetigung.
 
 ### 1. Anforderung aufnehmen
 
-Zwei Eingaenge, und nur zwei: der Chat (`/task <Anforderung>`) oder eine `[Idea]` (`/task #N`; Body **und** Kommentare lesen). `/task` ist die Bahn ohne Abwaegungsbedarf, und die Idee hat zwei Wege: Verlangt sie eine Abwaegung, ist `/requirement #N` der Weg; ist nichts abzuwaegen oder hat der Mensch bereits entschieden, `/task #N`. Welcher Fall vorliegt, entscheidet der Mensch mit dem Aufruf — der Skill weist eine Idee mit Abwaegung **nicht** ab, weil er das nicht entscheiden kann; die Abgrenzung steht hier, damit sie beim Aufruf bekannt ist.
+Zwei Eingaenge, und nur zwei: der Chat (`/task <Anforderung>`) oder eine `[Idea]` (`/task #N`; Body **und** Kommentare lesen). `/task` ist die Bahn ohne Abwaegungsbedarf, und die Idee hat zwei Wege: Verlangt sie eine Abwaegung, ist `/requirement #N` der Weg; ist nichts abzuwaegen oder hat der Mensch bereits entschieden, `/task #N`. Welcher Fall vorliegt, entscheidet der Mensch mit dem Aufruf — der Skill weist eine Idee mit Abwaegung **nicht** ab, weil er das nicht entscheiden kann; die Abgrenzung steht hier, damit sie beim Aufruf bekannt ist. Bei einer Idee aus `/triage` ist der geklärte Stand der Eingang und steht im `## Kontext` als `### Geklärter Stand`, eine `Vorlage:`-Zeile daraus woertlich daneben.
 Jede andere Nummer lehnt der Skill mit einer Meldung ab und legt nichts an; die Meldung nennt das Praefix. Traegt `#N` `[Requirement]` oder `[Plan]`, ist dort der volle Weg bereits begonnen — der Weg nach vorn ist `/techplan #N` bzw. `/issues #N`.
 
 ### 2. Bestand lesen

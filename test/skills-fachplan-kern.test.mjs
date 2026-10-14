@@ -54,3 +54,16 @@ test("[1594-1] das Story-Format traegt Szenarien zwischen Kriterien und Nicht-Zi
   assert.match(SKILL, /`## Scenarios`, `### Scenario: <title>`, `Given`, `When`, `Then`, `And`/);
   assert.match(SKILL, /weist `issue check-form` den Body mit F12 ab/);
 });
+
+// Plan #1623, A7 (Issue #1631): Nach `/triage` mit gewaehlter Bahn `2, fachlich` ist der
+// geklaerte Stand der Eingang, und die gewaehlte Bahn ersetzt die eigene Bahnbestaetigung.
+test("[1631-2] /requirement #N nimmt eine `[Idea]` mit `Bahn: 2, fachlich` als Eingang aus /triage", () => {
+  const eingang = SKILL.slice(SKILL.indexOf("## Eingang `/requirement #T`"), SKILL.indexOf("## Ablauf"));
+  const absatz = eingang.split(/\n\s*\n/).find((a) => /`\/triage`/.test(a));
+  assert.ok(absatz, "kein Absatz des Eingangs nennt /triage");
+  assert.match(absatz, /`\[Idea\]`/);
+  assert.match(absatz, /`Bahn: 2, fachlich`/, "die Bahn 2, fachlich fehlt");
+  assert.match(absatz, /ersetzt die eigene Bahnbest(?:ae|ä)tigung/, "die gewaehlte Bahn ersetzt die Bestaetigung nicht");
+  assert.match(absatz, /unter `## Ziel` als `### Geklärter Stand`/, "der geklaerte Stand steht nicht im Ziel");
+  assert.match(absatz, /`Vorlage:`-Zeile .{0,60}wörtlich/s, "die Vorlage-Zeile wird nicht woertlich uebernommen");
+});

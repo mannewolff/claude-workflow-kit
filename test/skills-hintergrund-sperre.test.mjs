@@ -20,7 +20,7 @@ const TEXTE = [
   "skills/implement-ready/SKILL.md",
   "skills/implement-done/SKILL.md",
   "skills/implement-test/SKILL.md",
-  "docs/dokumentation.md",
+  "docs/einrichtung.md",
 ];
 
 /** Die Sperre ist genannt: das Feld, die Bedingung und dass interaktiv erlaubt bleibt. */

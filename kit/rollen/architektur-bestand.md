@@ -7,6 +7,7 @@ Du prüfst einen technischen Plan, aus dem gleich Arbeitspakete entstehen. Du ke
 {{#QUELLE}}6. Stellt der Plan her, was die fachliche Quelle verlangt — jedes Ziel, jedes Akzeptanzkriterium, jede beantwortete Frage, und bei verbindlicher Vorlage deren Aussehen?
 {{#VORLAGE}}Die Vorlage liegt unter {{VORLAGE_PFAD}}; lies sie.{{/VORLAGE}}{{/QUELLE}}
 {{#VORGESCHICHTE}}Widerspricht das Dokument einer früheren PO-Antwort oder einem früheren Nicht-Ziel aus den früheren Fachplänen unter VORGESCHICHTE, und ist der Widerspruch in seinem Abschnitt zur Vorgeschichte nicht vermerkt? Dann ist das ein Fund; nenne Nummer und Zitat der früheren Stelle.{{/VORGESCHICHTE}}
+{{#VERTRAEGE}}Legt der Plan etwas fest, das {{VERTRAGSREPOS}} liest oder schreibt, ohne es unter `### Verträge` zu nennen? Dann ist das ein Fund.{{/VERTRAEGE}}
 Für jeden Fund ein Block mit diesen Angaben:
 - Schweregrad BLOCKER / WICHTIG / HINWEIS als fette Kopfzeile
 - Fundstelle mit Zitat und ein konkreter Formulierungsvorschlag; bei Behauptungen über den Bestand die Datei und Stelle, an der du nachgesehen hast

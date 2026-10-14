@@ -249,6 +249,8 @@ export function versionierteDateien() {
  * Issue #1606): `szenarien` sagt, ob Gate F12 prueft; `stichtagHinweis` meldet den Hinweis
  * `{ art: "szenarien-stichtag", meldung }` — ebenfalls ohne `baustein` und `test`. Beide sind
  * Booleans; den dritten Wert der Pflicht (ohne Stichtag) loest der Aufrufer in `issue check-form` auf.
+ *
+ * Beim Plan reicht `config.vertragsRepos` an Gate P14 durch (Issue #1612, Plan #1611 E14).
  */
 export function pruefeForm(body, title, config = {}, dateien = [], wurzel = ".", { szenarien = false, stichtagHinweis = false } = {}) {
   const stufe = stufeAusTitel(title);
@@ -256,7 +258,7 @@ export function pruefeForm(body, title, config = {}, dateien = [], wurzel = ".",
   const alleZeilen = [...kopf, ...abschnitte.flatMap((a) => a.zeilen)];
   let verstoesse;
   if (stufe === "fachlich") verstoesse = pruefeFachlich(abschnitte, alleZeilen, { szenarien });
-  else if (stufe === "plan") verstoesse = pruefePlan(kopf, abschnitte, alleZeilen);
+  else if (stufe === "plan") verstoesse = pruefePlan(kopf, abschnitte, alleZeilen, { vertragsRepos: config?.vertragsRepos });
   else verstoesse = pruefeIssue(abschnitte, config, title, wurzel);
   const ergebnis = { ok: verstoesse.length === 0, stufe, verstoesse };
   const hinweise = stufe === "plan" ? pruefeTestNennung(abschnitte, normalisiereZeilenenden(body), dateien, config) : [];

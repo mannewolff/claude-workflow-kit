@@ -35,7 +35,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
 
 /** Die Nutzer-Dokumentation (Issue #765). */
-const DOKU = readFileSync(join(repoRoot, "docs", "dokumentation.md"), "utf-8");
+const DOKU = readFileSync(join(repoRoot, "docs", "einrichtung.md"), "utf-8");
 
 /** Ein `##`-Abschnitt der Vorlage, bis zur naechsten Trennlinie. */
 function abschnitt(ueberschrift) {
@@ -126,7 +126,7 @@ test("W3 schliesst eine vierte Entscheidungsstelle aus", () => {
  *  hoeherer Ebene. */
 function dokuAbschnitt(muster) {
   const treffer = DOKU.match(muster);
-  assert.ok(treffer, `kein Abschnitt zu ${muster} in docs/dokumentation.md`);
+  assert.ok(treffer, `kein Abschnitt zu ${muster} in docs/einrichtung.md`);
   const idx = DOKU.indexOf(treffer[0]);
   return DOKU.slice(idx + treffer[0].length).split(/\n##+ /)[0];
 }

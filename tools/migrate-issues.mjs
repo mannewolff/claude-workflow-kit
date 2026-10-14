@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * EINMALWERKZEUG fuer den Tracker-Wechsel, kein Bestandteil des laufenden
- * Workflows. Siehe docs/dokumentation.md, Abschnitt "Tracker-Wechsel dieses
- * Repositories". Nach abgeschlossener Migration wird es nicht mehr aufgerufen.
+ * Workflows. Siehe docs/einrichtung.md, Abschnitt "Tracker wechseln". Nach
+ * abgeschlossener Migration wird es nicht mehr aufgerufen.
  *
  * migrate-issues.mjs — Migrationswerkzeug fuer den Tracker-Wechsel GitHub -> kanban-kit.
  *

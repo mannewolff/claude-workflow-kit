@@ -1426,6 +1426,9 @@ export class ToolboxIssueTracker {
    */
   constructor(config, uhr = {}) {
     this._cfg = config;
+    // Nummer -> { id, title } je Instanz (Plan #1638, E2, E3): Interne ID und Titel
+    // aendert das Kit innerhalb eines Aufrufs nie; alles andere wird frisch gelesen.
+    this._zuordnung = new Map();
     this._jetzt = uhr.jetzt ?? Date.now;
     this._schlaf = uhr.schlaf ?? sleep;
     this._zufall = uhr.zufall ?? Math.random;
@@ -1461,10 +1464,13 @@ export class ToolboxIssueTracker {
    * serverseitig auswerten. Er entsteht je Auftrag und bleibt ueber ALLE Versuche
    * gleich — sonst waere jede Wiederholung ein neuer Auftrag, und genau das soll der
    * Schluessel verhindern.
+   *
+   * `options.hoechstensVersuche` begrenzt die Zahl der Versuche zusaetzlich zum Budget
+   * (Issue #1681); ohne die Option wird bis zum Budget wiederholt.
    */
   async _fetch(path, options = {}) {
     const { host, token } = this._auth();
-    const { idempotencyKey, ...rest } = options;
+    const { idempotencyKey, hoechstensVersuche, ...rest } = options;
     const method = (rest.method || "GET").toUpperCase();
     const headers = { ...rest.headers, "X-Kanban-Token": token, ...agentModelHeader(), ...nightRunHeader() };
     if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
@@ -1493,7 +1499,8 @@ export class ToolboxIssueTracker {
       const { grund, typ, retryAfter } = await this._fehlerlage(res, wurf);  // NOSONAR S9382: ein Versuch wartet per Definition auf den vorigen
       const warte = wartezeitMs(versuch, retryAfter, this._zufall);
       const nochmal = darfWiederholen({ method, status, typ, hatSchluessel: Boolean(idempotencyKey), netz })
-        && this._jetzt() + warte <= frist;
+        && this._jetzt() + warte <= frist
+        && (hoechstensVersuche === undefined || versuch < hoechstensVersuche);
       if (!nochmal) throw this._fehler({ status, netz, wurf, grund, method, path, idempotencyKey, host });
 
       // Eine Zeile je Wiederholung, nicht je Aufruf: Wer einem Nachtlauf zusieht,
@@ -1581,10 +1588,37 @@ export class ToolboxIssueTracker {
     return items.find((i) => i.number === number) || null;
   }
 
-  _resolveByNumber(items, number) {
-    const item = this._findByNumber(items, number);
-    if (!item) throw new BoardError(t("issueFehlt", { id: number }));
-    return item;
+  /**
+   * Eine Karte per Einzelabruf statt ueber die ganze Kartenliste (Issue #1650, Plan #1638,
+   * E1). 404 und eine archivierte Karte melden `issueFehlt` wie eine Nummer, die in der
+   * Liste fehlt (E5, E6) und nehmen den Eintrag der Zuordnung mit (Issue #1668); jeder
+   * andere Fehler aus `_fetch` geht unveraendert durch. Die Kommentare kommen aus derselben
+   * Antwort (E7).
+   */
+  async _karte(n) {
+    const num = Number(n);
+    const fehlt = () => {
+      this._zuordnung.delete(num);
+      return new BoardError(t("issueFehlt", { id: num }));
+    };
+    let res;
+    try {
+      res = await this._fetch(`/api/kanban/items/by-number/${num}`);
+    } catch (e) {
+      if (e instanceof BoardError && e.status === 404) throw fehlt();
+      throw e;
+    }
+    const detail = await res.json();
+    if (detail.archived) throw fehlt();
+    const item = { ...detail.item, status: this._toStatus(detail.item.column) };
+    this._zuordnung.set(num, { id: item.id, title: item.title });
+    return { item, comments: normalizeComments(detail.comments ?? []) };
+  }
+
+  /** Interne ID und Titel: aus der Zuordnung, sonst per `_karte` (E2). Ein Eintrag gilt als nicht archiviert (E5). */
+  async _kartenRef(n) {
+    const num = Number(n);
+    return this._zuordnung.get(num) ?? (await this._karte(num)).item;
   }
 
   async createIssue({ title, body, derivedFrom, idempotencyKey }) {
@@ -1650,8 +1684,7 @@ export class ToolboxIssueTracker {
   }
 
   async getIssue(number) {
-    const num = Number(number);
-    const item = this._resolveByNumber(await this._boardItems(), num);
+    const { item, comments } = await this._karte(number);
     const type = item.type || "task";
     return {
       id: String(item.number),
@@ -1663,7 +1696,8 @@ export class ToolboxIssueTracker {
       status: type === "epic" ? null : item.status,
       labels: labelNamesFrom(item.labels),
       type,
-      comments: await this._comments(item.id),
+      comments,
+      // Das obere `createdAt` der Detailantwort bleibt ungelesen (Plan #1638, E8).
       // Der Feldname der Karten-API ist nicht gegen die Live-Instanz belegt (#457,
       // manueller Pruefpunkt). Darum drei Kandidaten statt eines geratenen Namens:
       // createdAt fuehrt der Kommentar-Endpunkt derselben API bereits, created_at
@@ -1673,41 +1707,42 @@ export class ToolboxIssueTracker {
     };
   }
 
-  // Kommentare ueber den Lesepfad aus kanban-kit#448 (kanban-kit#449). Der Endpunkt
-  // ist juenger als der Rest der API: Eine Instanz, die ihn noch nicht kennt,
-  // antwortet mit 404/405 und wuerde `issue get` sonst komplett scheitern lassen.
-  // Der Verlauf ist Zusatzinformation — Titel/Body/Status sind die Hauptsache.
-  // Deshalb leeres Array statt Abbruch, mit Hinweis auf stderr.
-  async _comments(itemId) {
-    try {
-      return await this._kommentareLesen(itemId);
-    } catch (e) {
-      process.stderr.write(`${t("kommentareNichtAbrufbar", { grund: e.message })}\n`);
-      return [];
-    }
-  }
-
   /**
    * Aktivitaetsverlauf einer Karte (Issue #460).
    *
    * Die Route ist `/api/kanban/items/{id}/activity` (Issue #670) und adressiert die
    * **interne** ID — dieselbe Falle wie bei move, comments und labels (Befund vom
-   * 2026-08-29). Daher `_resolveByNumber`. Sie gibt es seit kanban-kit v1.43.0: Dort
+   * 2026-08-29). Daher `_kartenRef`. Sie gibt es seit kanban-kit v1.43.0: Dort
    * bleibt ein board-gebundenes Token auf `/api/kanban/**` beschraenkt (kanban-kit
    * #877), und der Verlauf ist innerhalb dieser Grenze lesbar (#876). Die fruehere
    * Karten-Route ausserhalb der Grenze beantwortet ein solches Token mit 403.
    *
-   * Ein Unterschied zu `_comments` bleibt, und er ist beabsichtigt: **Ein Fehler wird
-   * nicht geschluckt.** `_comments` faengt 404/405 aelterer Instanzen ab und liefert
-   * `[]`; hier waere das falsch. Der Verlauf ist die Quelle des Anlagedatums — eine
+   * **Ein Fehler wird nicht geschluckt**; eine leere Liste waere hier falsch. Der Verlauf ist die Quelle des Anlagedatums — eine
    * leere Liste hiesse „Karte ohne Geschichte" und liesse das Gate ein altes Paket fuer
    * neu halten. Der Aufrufer soll den Fehler sehen, samt HTTP-Status.
    */
   async listActivity(number) {
-    const num = Number(number);
-    const item = this._resolveByNumber(await this._boardItems(), num);
+    const item = await this._kartenRef(number);
     const res = await this._fetch(`/api/kanban/items/${item.id}/activity`);
     return await res.json();
+  }
+
+  /**
+   * Die Anhaenge einer Karte (Issue #1681): `GET /api/kanban/items/{id}/attachments` mit der
+   * internen ID, ein nacktes Array je `{ id, cardId, filename, contentType, size, createdAt }`.
+   * Rein lesend; bei einer Drosselung genau ein zweiter Versuch.
+   */
+  async listAttachments(number) {
+    const item = await this._kartenRef(number);
+    const res = await this._fetch(`/api/kanban/items/${item.id}/attachments`, { hoechstensVersuche: 2 });
+    return await res.json();
+  }
+
+  /** Der Inhalt eines Anhangs als Bytes (Issue #1681); ein fehlender Anhang ergibt 404. */
+  async downloadAttachment(number, attachmentId) {
+    const item = await this._kartenRef(number);
+    const res = await this._fetch(`/api/kanban/items/${item.id}/attachments/${encodeURIComponent(attachmentId)}`, { hoechstensVersuche: 2 });
+    return Buffer.from(await res.arrayBuffer());
   }
 
   /**
@@ -1781,13 +1816,12 @@ export class ToolboxIssueTracker {
   }
 
   async moveIssue(number, to) {
-    const num = Number(number);
     const column = this._toColumn(to);
-    const items = await this._boardItems();
-    const item = this._resolveByNumber(items, num);
-    // Zielposition = Ende der Zielspalte (bei gleichbleibender Spalte: aktuelle Position halten).
-    const targetPosition =
-      item.column === column ? item.position : items.filter((i) => i.column === column).length;
+    // Immer frisch: Spalte und Position stehen nie in der Zuordnung (E2).
+    const { item } = await this._karte(number);
+    // Gleiche Spalte: aktuelle Position halten. Sonst der groesste Java-`int`, den
+    // kanban-kit ans Ende der Zielspalte klemmt (E4) — ohne Kartenliste fuer die Laenge.
+    const targetPosition = item.column === column ? item.position : 2147483647;
     await this._fetch(`/api/kanban/items/${item.id}/move`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -1796,8 +1830,7 @@ export class ToolboxIssueTracker {
   }
 
   async commentIssue(number, text, idempotencyKey) {
-    const num = Number(number);
-    const item = this._resolveByNumber(await this._boardItems(), num);
+    const item = await this._kartenRef(number);
     // Der zweite Endpunkt mit Idempotenz-Schluessel (Issue #834) — und der, bei dem
     // eine Doppelung am meisten weh tut: ein zweimal angelegter Abschlussbericht.
     await this._fetch(`/api/kanban/items/${item.id}/comments`, {
@@ -1808,24 +1841,18 @@ export class ToolboxIssueTracker {
     });
   }
 
-  async _kommentareLesen(itemId) {
-    const res = await this._fetch(`/api/kanban/items/${itemId}/comments`);
-    return normalizeComments(await res.json());
-  }
-
-  // Strenges Lesen fuer `issue report` (Issue #1021): Anders als `_comments` wirft
-  // ein Fehler — ein leer gelesener Stand liesse `melden` einen zweiten Bericht
-  // anlegen.
+  // Strenges Lesen fuer `issue report` (Issue #1021): Ein Fehler wirft — ein leer
+  // gelesener Stand liesse `melden` einen zweiten Bericht anlegen. Immer frisch ueber
+  // `_karte`, weil sich die Kommentare im selben Aufruf aendern (Plan #1638, E7).
   async kommentareStreng(number) {
-    const item = this._resolveByNumber(await this._boardItems(), Number(number));
-    return this._kommentareLesen(item.id);
+    return (await this._karte(number)).comments;
   }
 
   // Die Route ist juenger als der Lesepfad. Eine Instanz ohne sie antwortet mit
   // 404/405; die Meldung nennt dann die Route, damit klar ist, dass die Instanz und
   // nicht der Kommentar fehlt.
   async ersetzeKommentar(number, kommentarId, text) {
-    const item = this._resolveByNumber(await this._boardItems(), Number(number));
+    const item = await this._kartenRef(number);
     const pfad = `/api/kanban/items/${item.id}/comments/${kommentarId}`;
     try {
       await this._fetch(pfad, {
@@ -1841,8 +1868,9 @@ export class ToolboxIssueTracker {
   }
 
   async updateIssue(number, { body }) {
-    const num = Number(number);
-    const item = this._resolveByNumber(await this._boardItems(), num);
+    // Frisch gelesen, nicht aus der Zuordnung: Deren Titel kann seit dem ersten Zugriff
+    // veraltet sein, und das PUT schriebe ihn zurueck (Issue #1668).
+    const { item } = await this._karte(number);
     await this._fetch(`/api/kanban/items/${item.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -1860,14 +1888,15 @@ export class ToolboxIssueTracker {
   //
   // Zwei Eigenheiten der Routen zaehlen hier:
   //  - Adressiert wird die INTERNE Karten-ID, nicht die Kartennummer — wie bei
-  //    /move und /comments. Daher der Umweg ueber _resolveByNumber.
+  //    /move und /comments. Daher der Umweg ueber _kartenRef — ausserhalb von
+  //    `uebersetze`, damit eine fehlende Karte nicht als fehlendes Label gilt.
   //  - Beim Entfernen steht der Name im QUERY, nicht im Pfad. Der Server trimmt ihn
   //    nur und lehnt allein Leerstrings ab; jedes andere Zeichen ist gueltig, auch
   //    `/`. Ein Pfadsegment truege das nicht, weil Tomcat kodierte Slashes per
   //    Default ablehnt — deshalb encodeURIComponent statt Interpolation.
   async labelIssue(number, name, aktion) {
-    const num = Number(number);
-    const item = this._resolveByNumber(await this._boardItems(), num);
+    const ausZuordnung = this._zuordnung.has(Number(number));
+    const item = await this._kartenRef(number);
     // Der Server antwortet mit 404, wenn das Board keine Definition dieses Namens
     // fuehrt (LabelNotFoundException) — absichtlich hart, damit ein Tippfehler im
     // Nachtlauf keinen Label-Muell erzeugt. Roh durchgereicht ist dieser 404 aber
@@ -1882,17 +1911,24 @@ export class ToolboxIssueTracker {
         throw e;
       }
     };
-    if (aktion === "add") {
-      await uebersetze(() => this._fetch(`/api/kanban/items/${item.id}/labels`, {
+    const aufruf = aktion === "add"
+      ? () => this._fetch(`/api/kanban/items/${item.id}/labels`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
-      }));
-      return;
+      })
+      : () => this._fetch(`/api/kanban/items/${item.id}/labels?name=${encodeURIComponent(name)}`, {
+        method: "DELETE",
+      });
+    try {
+      await uebersetze(aufruf);
+    } catch (e) {
+      // Ein Eintrag der Zuordnung ist ungeprueft: Fehlt die Karte inzwischen, antwortet
+      // die Label-Route ebenfalls 404. `_karte` klaert das und wirft dann `issueFehlt`
+      // (Issue #1668); nur der Fehlerfall kostet den zweiten Aufruf.
+      if (e instanceof LabelFehltError && ausZuordnung) await this._karte(number);
+      throw e;
     }
-    await uebersetze(() => this._fetch(`/api/kanban/items/${item.id}/labels?name=${encodeURIComponent(name)}`, {
-      method: "DELETE",
-    }));
   }
 
   // Die drei lesenden Archiv-Aufrufe fuer `issue vorgeschichte` (Issue #1538, Plan #1534).

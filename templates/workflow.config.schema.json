@@ -703,7 +703,7 @@
               "type": "number",
               "exclusiveMinimum": 0,
               "default": 10,
-              "description": "Zeitbudget der Abdeckungs-Session in Minuten, die die Pakete gegen den Fachplan hält."
+              "description": "Zeitbudget der Abdeckungs-Session in Minuten, die die Pakete gegen den Fachplan hält, oder gegen den Plan."
             },
             "umsetzungMin": {
               "type": "number",
@@ -752,7 +752,7 @@
                 "paketeAbdeckung": {
                   "type": "boolean",
                   "default": true,
-                  "description": "Nach den Arbeitspaketen folgt die Abdeckung gegen die fachliche Anforderung automatisch."
+                  "description": "Nach den Arbeitspaketen folgt die Abdeckung gegen die fachliche Anforderung oder gegen den Plan automatisch."
                 },
                 "abdeckungUmsetzung": {
                   "type": "boolean",
@@ -1163,6 +1163,37 @@
       "type": "integer",
       "minimum": 1,
       "description": "Stichtag der Szenarien-Pflicht: die Kartennummer, ab der ein Fachplan am Board einen Abschnitt Szenarien mit mindestens einem vollständigen Szenario tragen muss. Fachpläne mit kleinerer Nummer sind Altbestand und werden nie wegen des fehlenden Abschnitts beanstandet. Beim Prüfen einer Datei und beim Anlegen über das Kit gilt die Pflicht immer. Der Installer setzt das Feld beim Update, wenn es fehlt, auf die höchste Kartennummer am Board plus eins; von Hand nachholen mit `node .claude/kit/board.mjs scenarios baseline`. Fehlt das Feld, gilt die Pflicht für keine Karte am Board, und die Prüfungen nennen den fehlenden Stichtag als Hinweis. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
+    },
+    "vertragsRepos": {
+      "type": "array",
+      "description": "Die Partnerrepos dieses Projekts: Repos, die etwas lesen oder schreiben, das auch dieses Projekt festlegt — einen Namen, ein Kennzeichen, ein Format. Nennt das Feld ein Partnerrepo, verlangt Gate P14 von jedem Plan am Ende von „Architektonische Entscheidungen“ den Unterabschnitt Verträge, und jeder Vertrag dort nennt eines dieser Repos beim Namen. Jeder Eintrag nennt name, url und wahlweise zweig. Fehlendes Feld oder [] = kein Partnerrepo, P14 prüft nichts. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "description": "Kurzname des Partnerrepos, etwa kanban-kit: Kleinbuchstaben und Ziffern, Wörter durch einzelne Bindestriche getrennt. Unter diesem Namen nennt ein Vertrag das Repo. Der Name dient zugleich als Verzeichnisname und kann darum weder / noch .. enthalten."
+          },
+          "url": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Adresse, von der sich das Partnerrepo klonen lässt, etwa https://github.com/mannewolff/kanban-kit.git."
+          },
+          "zweig": {
+            "type": "string",
+            "minLength": 1,
+            "default": "main",
+            "description": "Hauptzweig des Partnerrepos: Gegen den gebauten Stand auf diesem Zweig wird ein Vertrag abgeglichen."
+          }
+        },
+        "required": [
+          "name",
+          "url"
+        ],
+        "additionalProperties": false
+      }
     }
   },
   "required": [],

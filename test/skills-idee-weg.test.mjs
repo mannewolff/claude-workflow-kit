@@ -1,11 +1,6 @@
-// Eine Idee hat genau zwei Wege, und sie stehen ueberall gleich (Issue #962).
-//
-// Die Wegwahl fuer eine `[Idea]` stand in fuenf Regeltexten, und sie sagten
-// Verschiedenes: dreimal `/task`, zweimal „erst /techplan, dann /issues". Gearbeitet
-// wurde nach einer sechsten, ungeschriebenen Regel — Abwaegung noetig geht ueber
-// `/requirement`, sonst ueber `/task`. Solange sich die Texte widersprechen, entscheidet
-// jede Sitzung anders; die Widerspruchsfreiheit ist darum das Ergebnis dieses Pakets
-// und wird geprueft, nicht nur hergestellt.
+// Eine Idee hat genau zwei direkte Wege, und sie stehen ueberall gleich: Abwaegung noetig
+// geht ueber `/requirement`, sonst ueber `/task`. Widersprechen sich die Regeltexte,
+// entscheidet jede Sitzung anders; die Widerspruchsfreiheit wird darum geprueft.
 //
 // Geprueft wird Regel-TEXT, nicht Code: Diese Dateien sind Anweisungen an Sitzungen,
 // und was dort nicht steht, passiert nicht.
@@ -23,12 +18,10 @@ const STELLEN = [
   "skills/requirement/SKILL.md",
   "skills/task/SKILL.md",
   "templates/CLAUDE-workflow.md",
-  "docs/dokumentation.md",
+  "docs/prozess.md",
 ];
 
-// Der Weg zur Anforderung: in Skills und Regeltext `/requirement`; die Doku nennt bis zu ihrer
-// Umstellung (Plan #1548, Issue #1573) noch den alten Namen.
-const anforderung = (pfad) => (pfad.startsWith("docs/") ? /\/(?:requirement|fachplan)/ : /\/requirement/);
+const ANFORDERUNG = /\/requirement/;
 
 function zeilen(pfad) {
   return readFileSync(join(repoRoot, pfad), "utf-8").split("\n");
@@ -38,7 +31,7 @@ test("[skills-962] jede Stelle nennt beide Wege einer Idee: Abwaegung -> /requir
   for (const pfad of STELLEN) {
     const text = zeilen(pfad).join("\n");
     assert.match(text, /Abw(?:ae|ä)gung/, `${pfad}: die Unterscheidung nach Abwaegung fehlt`);
-    assert.match(text, anforderung(pfad), `${pfad}: der Weg /requirement fehlt`);
+    assert.match(text, ANFORDERUNG, `${pfad}: der Weg /requirement fehlt`);
     assert.match(text, /\/task/, `${pfad}: der Weg /task fehlt`);
   }
 });
@@ -50,7 +43,7 @@ test("[skills-962] beide Wege stehen in einem Atemzug, nicht in getrennten Absch
   for (const pfad of STELLEN) {
     const absaetze = readFileSync(join(repoRoot, pfad), "utf-8").split(/\n\s*\n/);
     const treffer = absaetze.filter(
-      (a) => /Abw(?:ae|ä)gung/.test(a) && anforderung(pfad).test(a) && /\/task/.test(a),
+      (a) => /Abw(?:ae|ä)gung/.test(a) && ANFORDERUNG.test(a) && /\/task/.test(a),
     );
     assert.ok(
       treffer.length >= 1,
@@ -59,11 +52,14 @@ test("[skills-962] beide Wege stehen in einem Atemzug, nicht in getrennten Absch
   }
 });
 
-test("[skills-962] keine Stelle schickt eine `[Idea]` mehr nach /techplan", () => {
+// Seit Plan #1623 (A8, A14) fuehrt ein direkter Weg von der Idee zum Plan — aber nur nach
+// `/triage`, mit der dort gewaehlten Bahn `2, technisch`. Eine Zeile, die `[Idea]` und
+// `/techplan` nennt, ist darum nur erlaubt, wenn sie auch `/triage` nennt (Issue #1631).
+test("[skills-962] keine Stelle schickt eine `[Idea]` ohne /triage nach /techplan", () => {
   const funde = [];
   for (const pfad of STELLEN) {
     zeilen(pfad).forEach((zeile, i) => {
-      if (zeile.includes("[Idea]") && zeile.includes("/techplan")) {
+      if (zeile.includes("[Idea]") && zeile.includes("/techplan") && !zeile.includes("/triage")) {
         funde.push(`${pfad}:${i + 1}: ${zeile.trim().slice(0, 160)}`);
       }
     });

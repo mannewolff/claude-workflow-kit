@@ -803,6 +803,9 @@ function berichtUrsprung(einheit, plan, pakete) {
   return [...z, ""];
 }
 
+/** Ein Plan-Auftrag ohne fachliche Anforderung: `auftrag: "plan"` ohne `fachplan` (Plan #1645, E6). */
+const planOhneAnforderung = (einheit) => einheit.auftrag === "plan" && !einheit.fachplan;
+
 /**
  * Die erste Zeile der Stufen: welcher Auftrag diese Kette war (Issue #896) — `null`, wenn
  * die Einheit keine der beiden Arten ausweist.
@@ -812,6 +815,7 @@ function berichtUrsprung(einheit, plan, pakete) {
  * Anforderung — dieselbe Zahl an derselben Stelle, zwei verschiedene Gesten.
  */
 function berichtAuftragZeile(einheit) {
+  if (planOhneAnforderung(einheit)) return t("auftragPlanOhne", { plan: einheit.stufen?.plan?.id ?? einheit.id });
   if (einheit.auftrag === "plan") return t("auftragPlan", { plan: einheit.stufen?.plan?.id, fachplan: einheit.fachplan });
   return einheit.id ? t("auftragFachlich", { id: einheit.id }) : null;
 }
@@ -852,6 +856,15 @@ function berichtStufen(einheit, plan, pakete) {
   // die Folge bis einschliesslich `- Pakete: …`, und hinten angehaengt bleibt sie gueltig.
   zeilen.push(berichtSitzungsumfangZeile(ids, pakete));
   return zeilen;
+}
+
+/**
+ * Kopf des Abschnitts Abdeckung: beim Plan ohne fachliche Anforderung „gegen den Plan“ samt
+ * dem Satz, wogegen abgeglichen wurde (Plan #1645, E6), sonst „gegen den Fachplan“.
+ */
+function berichtAbdeckungKopf(einheit) {
+  if (!planOhneAnforderung(einheit)) return [t("abdeckungKopf"), ""];
+  return [t("abdeckungKopfPlan"), "", t("abgeglichenGegenPlan", { plan: einheit.stufen?.plan?.id ?? einheit.id }), ""];
 }
 
 function berichtAbgelehnt(einarbeitung) {
@@ -972,7 +985,7 @@ export function berichtBauen(einheit, {
   z.push(
     "",
     t("abgelehntKopf"), "", ...berichtAbgelehnt(einarbeitung), "",
-    t("abdeckungKopf"), "",
+    ...berichtAbdeckungKopf(einheit),
   );
   if (abdeckung?.text) z.push(abdeckung.text);
   else z.push(t("keineAbdeckung", { grund: abdeckung?.grund ?? t("abdeckungNichtErreicht") }));

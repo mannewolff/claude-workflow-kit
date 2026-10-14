@@ -119,3 +119,13 @@ test("die Obergrenze kommt aus den uebergebenen Budgets", () => {
   const frisch = new Map([["10", laufstand("laeuft", { host: FREMD, stand: vor(35) })]]);
   assert.equal(wurzelBelegt("10", ISSUES, frisch, JETZT, HOST, { budgets })?.karte, "10");
 });
+
+test("[night-1647] ein Plan ohne Anforderung mit lebendem Laufstand belegt seine eigene Wurzel", () => {
+  const ohne = { id: "40", title: "[Plan] Ohne Anforderung", body: "## Ziel\n\nx\n" };
+  const staende = new Map([["40", laufstand("laeuft")]]);
+  assert.equal(wurzelBelegt("40", [...ISSUES, ohne], staende, JETZT, HOST)?.karte, "40");
+  // Er belegt keine fremde Wurzel, und ein toter Halter belegt auch ihn nicht.
+  assert.equal(wurzelBelegt("10", [...ISSUES, ohne], staende, JETZT, HOST), null);
+  const tot = new Map([["40", laufstand("laeuft", { pid: totePid() })]]);
+  assert.equal(wurzelBelegt("40", [...ISSUES, ohne], tot, JETZT, HOST), null);
+});

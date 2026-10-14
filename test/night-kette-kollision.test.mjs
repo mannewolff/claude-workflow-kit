@@ -105,3 +105,13 @@ test("[night-895] ein Fachplan-Auftrag und ein Plan-Auftrag zu einer anderen Wur
   assert.equal(planAuftrag.fachplan, "2");
   assert.match(r.ausgabe, /Nacht-Kette beendet: 2 fertig/);
 });
+
+test("[night-1647] zwei gekennzeichnete Plaene ohne Anforderung weichen einander nicht", () => {
+  const ohne = (id) => ({
+    id, title: `[Plan] Ohne Anforderung ${id}`, status: "backlog", labels: GEPRUEFT, body: "## Offene Fragen\n\n- Keine.\n",
+  });
+  const r = waehleKettenKandidaten([ohne("2"), ohne("3")], "kit:night", 5);
+  assert.deepEqual(r.uebersprungen, []);
+  assert.deepEqual(r.kandidaten.map((a) => [a.karte.id, a.F, a.planId, a.ohneAnforderung]),
+    [["2", "2", "2", true], ["3", "3", "3", true]], "jeder Plan ohne Anforderung ist seine eigene Wurzel");
+});

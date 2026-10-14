@@ -327,6 +327,8 @@ export function toolboxMitKommentaren({ karten, kommentare, patchRoute = true, l
       }
       return { status: 200, json: gruppen };
     }
+    const einzeln = req.url.match(/^\/api\/kanban\/items\/by-number\/(\d+)$/);
+    if (einzeln && req.method === "GET") return einzelabruf(einzeln[1]);
     const zug = req.url.match(/^\/api\/kanban\/items\/(\d+)\/move$/);
     if (zug && req.method === "PUT") {
       if (zustand.moveRoute === false) return { status: 500, json: { message: "Zug kaputt" } };
@@ -343,6 +345,16 @@ export function toolboxMitKommentaren({ karten, kommentare, patchRoute = true, l
     kommentare[itemId] ||= [];
     return kommentarRoute(req, koerper, kommentare[itemId], kommentarId);
   };
+
+  // Einzelabruf (Issue #1650): Karte samt Kommentaren, `archived` je Karte. Bei
+  // `leseRoute: false` scheitert er wie die Kommentar-Route, weil er die Kommentare traegt.
+  function einzelabruf(nummer) {
+    const karte = karten.find((k) => String(k.number) === nummer);
+    if (!karte) return { status: 404, json: { message: "Karte nicht gefunden" } };
+    if (!leseRoute) return { status: 500, json: { message: "Kommentare kaputt" } };
+    const { archived = false, ...item } = karte;
+    return { status: 200, json: { item, archived, comments: kommentare[String(karte.id)] || [] } };
+  }
 
   function kommentarRoute(req, koerper, liste, kommentarId) {
     if (!kommentarId && req.method === "GET") {

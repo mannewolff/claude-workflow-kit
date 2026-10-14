@@ -26,7 +26,7 @@ const lies = (...teile) => readFileSync(join(repoRoot, ...teile), "utf-8");
 
 const SKILL = lies("skills", "task", "SKILL.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
-const DOKU = lies("docs", "dokumentation.md");
+const PROZESS = lies("docs", "prozess.md");
 const ISSUE_REVIEW = lies("skills", "issue-review", "SKILL.md");
 
 /** Der Inhalt aller Codebloecke — dort stehen Aufrufe und der vorgeschriebene Body. */
@@ -305,8 +305,8 @@ test("[skills-7] der Stop-Punkt verbietet Code, Commit, Ready und das Anlegen oh
 // eine vierte Pruefstufe oder haelt den Task fuer ein Dokument, das nie implementiert
 // wird — das Gegenteil dessen, wofuer der Weg gebaut wurde.
 
-// Die Pruefstufen-Tabelle steht seit Issue #633 nur noch in der Doku.
-for (const [name, text] of [["docs/dokumentation.md", DOKU]]) {
+// Die Pruefstufen-Tabelle steht auf der Prozessseite der Doku.
+for (const [name, text] of [["docs/prozess.md", PROZESS]]) {
   test(`[skills-7] ${name}: die Pruefstufen-Tabelle zaehlt [Task] zur Stufe \`issue\``, () => {
     const zeile = text.split("\n").find((z) => /^\|/.test(z) && /\[Task\]/.test(z) && /`issue`/.test(z));
     assert.ok(zeile, `${name}: keine Tabellenzeile ordnet [Task] der Stufe \`issue\` zu`);
@@ -340,7 +340,7 @@ test("[skills-7] die Praefix-Tabelle in /issue-review Schritt 1b kennt [Task]", 
 });
 
 test("[skills-7] beide Skill-Tabellen fuehren /task unter 'Ersetzt Schritt 2 und 3'", () => {
-  for (const [name, text] of [["templates/CLAUDE-workflow.md", VORLAGE], ["docs/dokumentation.md", DOKU]]) {
+  for (const [name, text] of [["templates/CLAUDE-workflow.md", VORLAGE], ["docs/prozess.md", PROZESS]]) {
     assert.match(
       text,
       /Ersetzt Schritt 2 und 3/,
@@ -361,7 +361,7 @@ test("[skills-7] /task steht nicht in der Tabelle 'Ergaenzen den Prozess'", () =
   // laese sich der `[Task]`-Weg als zusaetzlicher Schritt neben dem vollen.
   for (const [name, text, anker] of [
     ["templates/CLAUDE-workflow.md", VORLAGE, "**Ergaenzen den Prozess**"],
-    ["docs/dokumentation.md", DOKU, "**Ergänzen den Prozess**"],
+    ["docs/prozess.md", PROZESS, "**Ergänzen den Prozess**"],
   ]) {
     const i = text.indexOf(anker);
     assert.ok(i > 0, `${name}: der Anker '${anker}' fehlt`);
@@ -369,4 +369,18 @@ test("[skills-7] /task steht nicht in der Tabelle 'Ergaenzen den Prozess'", () =
     const tabelle = rest.slice(0, rest.indexOf("\n\n", rest.indexOf("|")));
     assert.doesNotMatch(tabelle, /`\/task`/, `${name}: \`/task\` steht in 'Ergaenzen den Prozess'`);
   }
+});
+
+// --- Eingang aus /triage (Plan #1623, A7, Issue #1631) -----------------------------
+
+test("[1631-1] /task #N nimmt eine `[Idea]` mit `Bahn: 3` als Eingang aus /triage", () => {
+  const schritt0 = SKILL.slice(SKILL.indexOf("### 0. Die Bahn benennen"), SKILL.indexOf("### 1. "));
+  const unbeaufsichtigt = schritt0.slice(0, schritt0.indexOf("**Interaktiv:**"));
+  const interaktiv = schritt0.slice(schritt0.indexOf("**Interaktiv:**"));
+  assert.match(interaktiv, /`\[Idea\]` .{0,80}`Bahn: 3`.{0,80}`\/triage`/s, "die Idee mit Bahn: 3 aus /triage ist nicht als Eingang erkannt");
+  assert.match(interaktiv, /Bahn-Zeile ersetzt diese Best(?:ae|ä)tigung/, "die Bahn-Zeile ersetzt die Bestaetigung nicht");
+  assert.match(unbeaufsichtigt, /auch bei einer Idee aus `\/triage`/, "unbeaufsichtigt bleibt es nicht ausdruecklich beim Abbruch");
+
+  const schritt1 = SKILL.slice(SKILL.indexOf("### 1. "), SKILL.indexOf("### 2. "));
+  assert.match(schritt1, /geklärte Stand .{0,60}`## Kontext` als `### Geklärter Stand`/s, "der geklaerte Stand steht nicht im Kontext");
 });

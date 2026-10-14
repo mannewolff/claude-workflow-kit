@@ -1,14 +1,9 @@
-// Lebenszyklus der Dokument-Tickets in der Doku (Issue #299).
-//
-// Beschrieben war nur, wie ein fachliches Issue endet. Fuer Plandokumente stand
-// nirgends etwas — eine Ticketsorte, deren Entstehung dokumentiert ist und deren
-// Ende niemand beschreibt.
+// Lebenszyklus der Dokument-Tickets in der Doku: wie fachliche Issues und Plandokumente
+// enden. Der Eintrag steht auf der Prozessseite unter der PO-Schleife.
 //
 // Die Tests greifen GEZIELT den einen Lebenszyklus-Eintrag heraus und pruefen die
-// Aussagen darin. Ein Wortfund ueber die ganze Datei genuegt hier nicht: Die
-// Backlog-Beschraenkung des Nacht-Reviews steht bereits an anderer Stelle in
-// derselben Datei, ein globaler Test waere also schon vor der Aenderung gruen
-// gewesen und haette nichts belegt.
+// Aussagen darin. Ein Wortfund ueber die ganze Datei genuegt hier nicht: Ein
+// beilaeufiger Satz an anderer Stelle erfuellte ihn, ohne dass der Eintrag stimmt.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -19,7 +14,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
-const DOKU = lies("docs", "dokumentation.md");
+const DOKU = lies("docs", "prozess.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
 
 /**
@@ -48,8 +43,8 @@ test("der Lebenszyklus-Eintrag nennt beide Dokumentarten", () => {
   assert.match(eintrag, /Plandokument/, "die Plandokumente fehlen");
 });
 
-// Plan #1283 (Issue #1284): Done bleibt Geste des Menschen, nach In review zieht das
-// Kit die Ursprungsdokumente, sobald der Plan durch ist. Die Klammer entfaellt.
+// Done bleibt Geste des Menschen, nach In review zieht das Kit die Ursprungsdokumente,
+// sobald der Plan durch ist.
 test("der Lebenszyklus-Eintrag nennt Done als Geste des Menschen und In review als Zug des Kits", () => {
   const eintrag = lebenszyklusEintrag(DOKU);
   assert.match(eintrag, /Mensch/, "wer die Karte bewegt, steht nicht da");
@@ -63,8 +58,7 @@ test("der Lebenszyklus-Eintrag nennt Done als Geste des Menschen und In review a
 
 // Die Falle des Verfahrens: Die Nacht-Kette (`night.mjs --chain`) liest ausschliesslich
 // die Backlog-Spalte und legt ihre Pakete dort ab. Wer ein Dokument VOR seiner Kette
-// als Klammer nach In review zieht, nimmt es dem Nachtlauf weg — ohne dass irgendetwas
-// fehlschlaegt (Plan #638, Issue #646).
+// aus dem Backlog zieht, nimmt es dem Nachtlauf weg — ohne dass irgendetwas fehlschlaegt.
 test("der Lebenszyklus-Eintrag nennt die Backlog-Beschraenkung der Kette samt Folge", () => {
   const eintrag = lebenszyklusEintrag(DOKU);
   assert.match(eintrag, /night\.mjs --chain/, "die Nacht-Kette wird nicht benannt");
@@ -76,7 +70,7 @@ test("der Lebenszyklus-Eintrag nennt die Backlog-Beschraenkung der Kette samt Fo
 test("der Lebenszyklus-Eintrag nennt den interaktiven Ausweg mit seiner Eigenschaft", () => {
   const eintrag = lebenszyklusEintrag(DOKU);
   assert.match(eintrag, /\/issue-review #N/, "der interaktive Ausweg fehlt");
-  // Umlaut ODER ASCII-Umschrift: docs/dokumentation.md schreibt deutsch mit
+  // Umlaut ODER ASCII-Umschrift: docs/prozess.md schreibt deutsch mit
   // Umlauten, die Prozessdateien umlautfrei. Der Test darf nicht an dieser
   // Schreibkonvention haengen.
   assert.match(eintrag, /unabh(ä|ae)ngig von Spalte und (vorhandenem )?Marker/i,

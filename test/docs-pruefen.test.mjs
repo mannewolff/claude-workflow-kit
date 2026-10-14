@@ -7,16 +7,15 @@
 // entsprechen. Eine Doku, die Werte nennt, die das Programm nicht kennt, ist schlimmer als
 // keine.
 //
-// Der Ort ist eigens geprueft (Plan #904, E19): ein eigenes `##`-Kapitel VOR
-// `## Nachtbetrieb`. Ein `###`-Abschnitt darunter stuende neben dem Satz, dass der
-// Nachtbetrieb zwei Betriebsarten kennt — und der Prueflauf gehoert dem Tag (E12).
+// Das Kapitel steht auf der Prozessseite (Plan #1652, A1): Der Prueflauf gehoert dem Tag.
+// Die Startwerte der Budgets nennt docs/einstellungen.md; das Kapitel verweist auf den
+// Block `checkRun`, statt sie ein zweites Mal zu erklaeren.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PRUEFLAUF_BUDGET_DEFAULTS as PRUEFLAUF_VORGABEN } from "../kit/night/session.mjs";
 import { PRUEFLAUF_REST_ANKER } from "../kit/night/tag.mjs";
 import { LABELS } from "../kit/board/namen.mjs";
 import { englisch } from "./helpers/labels.mjs";
@@ -24,32 +23,26 @@ import { englisch } from "./helpers/labels.mjs";
 // Skills und Doku nennen das Label bis zu ihrer Umstellung (Plan #1548, eigene Pakete) unter dem
 // deutschen Namen; das Kit schreibt seit Issue #1552 den englischen.
 const KLAEREN_LABEL = LABELS.klaeren.en;
-// Ebenso die Vorgabe des Prueflauf-Kennzeichens: Das Kit setzt seit Issue #1553 `kit:check`, die Doku
-// nennt bis zu ihrer Umstellung den deutschen Namen, die Vorlage seit Issue #1571 den englischen.
-const PRUEFLAUF_BUDGET_DEFAULTS = { ...PRUEFLAUF_VORGABEN, label: LABELS.pruefen.en };
+const PRUEFLAUF_LABEL = LABELS.pruefen.en;
 const REVIEW_FERTIG_LABEL = LABELS.reviewFertig.en;
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
-const DOKU = lies("docs", "dokumentation.md");
+const PROZESS = lies("docs", "prozess.md");
 
 const KAPITEL = "Der Prüflauf";
 
-/** Das `##`-Kapitel aus der Doku, bis zur naechsten Ueberschrift gleicher Ebene. */
+/** Das `##`-Kapitel aus der Prozessseite, bis zur naechsten Ueberschrift gleicher Ebene. */
 function dokuKapitel(ueberschrift) {
-  const idx = DOKU.indexOf(`\n## ${ueberschrift}\n`);
-  assert.ok(idx >= 0, `Kapitel '## ${ueberschrift}' fehlt in docs/dokumentation.md`);
-  return DOKU.slice(idx + 1).split(/\n## /)[0];
+  const idx = PROZESS.indexOf(`\n## ${ueberschrift}\n`);
+  assert.ok(idx >= 0, `Kapitel '## ${ueberschrift}' fehlt in docs/prozess.md`);
+  return PROZESS.slice(idx + 1).split(/\n## /)[0];
 }
 
-test("die Doku fuehrt genau ein Kapitel zum Prueflauf, und es steht vor dem Kapitel Nachtbetrieb", () => {
-  assert.equal(DOKU.split(`\n## ${KAPITEL}\n`).length - 1, 1);
-  const pruef = DOKU.indexOf(`\n## ${KAPITEL}\n`);
-  const nacht = DOKU.indexOf("\n## Nachtbetrieb\n");
-  assert.ok(nacht >= 0, "kein Kapitel '## Nachtbetrieb' in docs/dokumentation.md");
-  assert.ok(pruef < nacht, "das Kapitel zum Prueflauf steht nicht vor dem Kapitel Nachtbetrieb");
+test("die Prozessseite fuehrt genau ein Kapitel zum Prueflauf", () => {
+  assert.equal(PROZESS.split(`\n## ${KAPITEL}\n`).length - 1, 1);
 });
 
 // Die Anker sind die Namen, nach denen jemand sucht, der ein Label, einen Kommentar oder
@@ -57,9 +50,9 @@ test("die Doku fuehrt genau ein Kapitel zum Prueflauf, und es steht vor dem Kapi
 test("das Kapitel nennt Geste, Aufruf, Bedingungen, Ausgaenge und Vermerke beim Namen", () => {
   const kapitel = dokuKapitel(KAPITEL);
   const erwartet = [
-    ["die Geste", `\`${PRUEFLAUF_BUDGET_DEFAULTS.label}\``],
+    ["die Geste", `\`${PRUEFLAUF_LABEL}\``],
     ["den Aufruf", "node .claude/kit/night.mjs --check"],
-    ["den Config-Block", "`pruefLauf`"],
+    ["den Config-Block", "[`checkRun`](/einstellungen)"],
     ["die Art der Kandidaten", "`[Requirement]`"],
     ["den Ausschluss durch eine offene Entscheidung", `\`${KLAEREN_LABEL}\``],
     ["den Ausgang geprueft", "geprüft"],
@@ -76,19 +69,6 @@ test("das Kapitel nennt Geste, Aufruf, Bedingungen, Ausgaenge und Vermerke beim 
   for (const [was, anker] of erwartet) {
     assert.ok(kapitel.includes(anker), `das Kapitel nennt ${was} ('${anker}') nicht`);
   }
-  for (const feld of Object.keys(PRUEFLAUF_BUDGET_DEFAULTS)) {
-    assert.ok(kapitel.includes(`"${feld}"`), `das Budget-Feld ${feld} fehlt im Config-Beispiel`);
-  }
-});
-
-// Der dokumentierte Startwert muss der sein, den der Lauf ohne Config nimmt.
-test("die dokumentierten Startwerte der Budgets sind die des Programms", () => {
-  const kapitel = dokuKapitel(KAPITEL);
-  const start = kapitel.indexOf("```json");
-  assert.ok(start >= 0, "kein JSON-Beispiel im Kapitel");
-  const block = kapitel.slice(start, kapitel.indexOf("```", start + 7));
-  const json = JSON.parse(block.replace(/^```json\n/, ""));
-  assert.deepEqual(json.pruefLauf, PRUEFLAUF_BUDGET_DEFAULTS);
 });
 
 // Die eine Regel, die man nicht raten kann: Das Kennzeichen ist mit dem Start verbraucht,
@@ -103,9 +83,8 @@ test("ein Absatz erklaert den Verbrauch des Kennzeichens und das Label, das nur 
   assert.ok(klaeren, `kein Absatz sagt, dass ${KLAEREN_LABEL} nur ein Mensch abnimmt`);
 });
 
-// Die Grenze des Kriteriums 7 der fachlichen Anforderung #899 ("der Lauf hinterlaesst im
-// Projekt keine Aenderung"): Beim Tracker `local` liegt das Board im Repo, und die Karten
-// aendern sich — das ist das Ergebnis und kein Rest.
+// Beim Tracker `local` liegt das Board im Repo, und die Karten aendern sich — das ist das
+// Ergebnis und kein Rest.
 test("ein Absatz nennt die Grenze der Unberuehrtheit beim Tracker local", () => {
   const kapitel = dokuKapitel(KAPITEL);
   const absatz = kapitel.split(/\n\n/).find((a) => /`local`/.test(a) && /`issues\//.test(a));
@@ -121,7 +100,7 @@ test("der Prueflauf-Block der Vorlage nennt Geste, Aufruf, Ausgaenge und das Ver
   assert.ok(idx >= 0, "kein Prueflauf-Abschnitt in der Vorlage");
   const abschnitt = VORLAGE.slice(idx).split(/\n## /)[0];
   for (const anker of [
-    `\`${PRUEFLAUF_BUDGET_DEFAULTS.label}\``,
+    `\`${PRUEFLAUF_LABEL}\``,
     "node .claude/kit/night.mjs --check",
     "`pruefLauf`",
     `\`${REVIEW_FERTIG_LABEL}\``,
@@ -136,10 +115,10 @@ test("der Prueflauf-Block der Vorlage nennt Geste, Aufruf, Ausgaenge und das Ver
   assert.ok(idx < VORLAGE.indexOf("## Nachtbetrieb"), "der Prueflauf-Block steht nicht vor dem Nachtbetrieb-Block");
 });
 
-// Die Einleitung des Nachtbetrieb-Kapitels bleibt bei zwei Betriebsarten (das prueft
-// docs-nachtkette.test.mjs) — hier geprueft wird nur der Verweis auf das neue Kapitel.
-test("die Einleitung des Nachtbetrieb-Kapitels verweist auf das Kapitel zum Prueflauf", () => {
-  const kapitel = DOKU.slice(DOKU.indexOf("\n## Nachtbetrieb\n") + 1).split(/\n## /)[0];
-  assert.match(kapitel.split(/\n\n/)[1], /zwei Betriebsarten/, "die Einleitung nennt die zwei Betriebsarten nicht");
-  assert.ok(kapitel.includes("#der-prüflauf"), "die Einleitung verlinkt das Kapitel zum Prueflauf nicht");
+// Die Einleitung der Seite Nachtbetrieb bleibt bei zwei Betriebsarten (das prueft
+// docs-nachtkette.test.mjs) — hier geprueft wird nur der Verweis auf das Kapitel der Prozessseite.
+test("die Einleitung der Seite Nachtbetrieb verweist auf das Kapitel zum Prueflauf", () => {
+  const einleitung = lies("docs", "nachtbetrieb.md").split(/\n\n/)[1];
+  assert.match(einleitung, /zwei Betriebsarten/, "die Einleitung nennt die zwei Betriebsarten nicht");
+  assert.ok(einleitung.includes("/prozess#der-pruflauf"), "die Einleitung verlinkt das Kapitel zum Prueflauf nicht");
 });

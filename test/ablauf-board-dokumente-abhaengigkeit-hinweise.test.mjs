@@ -215,6 +215,12 @@ async function mitToolbox(fn, { boardKaputt = false } = {}) {
     if (req.url === "/api/kanban/items" && req.method === "GET") {
       return boardKaputt ? { status: 500, json: { message: "kaputt" } } : { status: 200, json: gruppiert(karten) };
     }
+    const einzeln = req.url.match(/^\/api\/kanban\/items\/by-number\/(\d+)$/);
+    if (einzeln && req.method === "GET") {
+      if (boardKaputt) return { status: 500, json: { message: "kaputt" } };
+      const karte = karten.find((k) => String(k.number) === einzeln[1]);
+      return karte ? { status: 200, json: { item: karte, archived: false, comments: [] } } : null;
+    }
     if (req.url === "/api/kanban/items" && req.method === "POST") return { status: 200, json: { id: 1400, number: 14 } };
     if (/^\/api\/kanban\/items\/\d+$/.test(req.url) && req.method === "PUT") return { status: 200, json: { ok: true } };
     if (/^\/api\/kanban\/items\/\d+\/comments$/.test(req.url)) return { status: 200, json: [] };

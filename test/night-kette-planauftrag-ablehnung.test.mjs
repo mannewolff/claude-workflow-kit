@@ -62,22 +62,23 @@ test("[night-893] ein Plan ausserhalb von Backlog nennt seine Spalte", () => {
   assert.equal(planAusschluss(plan({ status: "ready" }), "kit:night", KARTEN), "steht in ready, nicht in Backlog");
 });
 
-test("[night-893] ohne Herkunftszeile ist die fachliche Wurzel nicht erkennbar", () => {
-  const grund = planAusschluss(plan({ body: "## Offene Fragen\n\n- Keine.\n" }), "kit:night", KARTEN);
-  assert.match(grund, /^die fachliche Herkunft ist nicht erkennbar/);
-  assert.match(grund, /'Fachliche Quelle: Issue #N'/);
+// Seit Plan #1645 (E1) ist ein Plan ohne Herkunftszeile seine eigene Wurzel und laeuft;
+// nur eine Zeile, die ins Leere verweist, haelt an (E2).
+test("[night-1647] ohne Herkunftszeile laeuft der Plan als seine eigene Wurzel", () => {
+  assert.equal(planAusschluss(plan({ body: "## Offene Fragen\n\n- Keine.\n" }), "kit:night", KARTEN), null);
 });
 
-test("[night-893] eine Herkunftszeile auf eine Nummer ausserhalb des Boards zaehlt nicht", () => {
+test("[night-893] eine Herkunftszeile auf eine Nummer ausserhalb des Boards verweist ins Leere", () => {
   const grund = planAusschluss(plan({ body: "Fachliche Quelle: Issue #999\n\n## Offene Fragen\n\n- Keine.\n" }), "kit:night", KARTEN);
-  assert.match(grund, /^die fachliche Herkunft ist nicht erkennbar/);
+  assert.match(grund, /^die Zeile 'Fachliche Quelle: Issue #999' verweist ins Leere/);
+  assert.match(grund, /in der Form 'Issue #N'/);
 });
 
 test("[night-893] die Nummer wird zeichengleich verglichen — #1 trifft die Karte 0001 nicht", () => {
   const karten = [{ id: "0001", title: "[Fachlich] Lokaler Tracker", status: "backlog" }];
   const p = plan({ body: "Fachliche Quelle: Issue #1\n\n## Offene Fragen\n\n- Keine.\n" });
   const grund = planAusschluss(p, "kit:night", karten);
-  assert.match(grund, /^die fachliche Herkunft ist nicht erkennbar/);
+  assert.match(grund, /^die Zeile 'Fachliche Quelle: Issue #1' verweist ins Leere/);
   assert.match(grund, /fuehrende Nullen zaehlen mit/);
   const passend = plan({ body: "Fachliche Quelle: Issue #0001\n\n## Offene Fragen\n\n- Keine.\n" });
   assert.equal(planAusschluss(passend, "kit:night", karten), null, "zeichengleich geschrieben traegt dieselbe Karte");
@@ -121,10 +122,14 @@ test("[night-893] der Pruefungsgrund nennt das Kettenlabel aus der Config", () =
 // --- planAusschluss: die Reihenfolge ---
 
 test("[night-893] treffen mehrere Gruende zu, gewinnt der spezifischere", () => {
-  // Alle vier hinteren Gruende zugleich: fehlende Herkunft schlaegt kit:klaeren,
+  // Alle vier hinteren Gruende zugleich: der Verweis ins Leere schlaegt kit:klaeren,
   // kit:klaeren schlaegt die offene Frage, die offene Frage schlaegt die Pruefung.
-  const ohneAlles = plan({ labels: [KLAEREN_LABEL], body: "## Offene Fragen\n\n- Was denn?\n" });
-  assert.match(planAusschluss(ohneAlles, "kit:night", KARTEN), /^die fachliche Herkunft ist nicht erkennbar/);
+  const insLeere = plan({ labels: [KLAEREN_LABEL], body: "Fachliche Quelle: Issue #999\n\n## Offene Fragen\n\n- Was denn?\n" });
+  assert.match(planAusschluss(insLeere, "kit:night", KARTEN), /^die Zeile 'Fachliche Quelle: Issue #999' verweist ins Leere/);
+
+  // Ohne Herkunftszeile faellt dieser Grund weg, die uebrigen folgen in derselben Reihenfolge.
+  const ohneZeile = plan({ labels: [KLAEREN_LABEL], body: "## Offene Fragen\n\n- Was denn?\n" });
+  assert.match(planAusschluss(ohneZeile, "kit:night", KARTEN), /^traegt kit:(?:klaeren|clarify)/);
 
   const mitHerkunft = plan({ labels: [KLAEREN_LABEL], body: "Fachliche Quelle: Issue #883\n\n## Offene Fragen\n\n- Was denn?\n" });
   assert.match(planAusschluss(mitHerkunft, "kit:night", KARTEN), /^traegt kit:(?:klaeren|clarify)/);
@@ -132,7 +137,7 @@ test("[night-893] treffen mehrere Gruende zu, gewinnt der spezifischere", () => 
   const ohneKlaeren = plan({ labels: [], body: "Fachliche Quelle: Issue #883\n\n## Offene Fragen\n\n- Was denn?\n" });
   assert.match(planAusschluss(ohneKlaeren, "kit:night", KARTEN), /^eine Entscheidung wartet: /);
 
-  const ausserhalb = plan({ status: "in_review", labels: [KLAEREN_LABEL], body: "## Offene Fragen\n\n- Was denn?\n" });
+  const ausserhalb = plan({ status: "in_review", labels: [KLAEREN_LABEL], body: "Fachliche Quelle: Issue #999\n\n## Offene Fragen\n\n- Was denn?\n" });
   assert.equal(planAusschluss(ausserhalb, "kit:night", KARTEN), "steht in in_review, nicht in Backlog");
 });
 

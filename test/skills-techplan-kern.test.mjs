@@ -84,3 +84,26 @@ test("[1594-2] /techplan #N prueft am Eingang mit check-form und endet bei F12 m
   assert.match(eingang, /es entsteht kein Plan/);
   assert.match(eingang, /Die Szenarien ergänzt der Skill nie selbst/);
 });
+
+// Plan #1623, A8 (Issue #1631): Nach `/triage` mit gewaehlter Bahn `2, technisch` nimmt
+// `/techplan` eine `[Idea]` an — nur dann. Der Plan bekommt keinen Vorfahren, die Idee eine Spur.
+test("Szenario: Eine rein technische Idee wird direkt zum technischen Plan", () => {
+  const eingang = SKILL.slice(SKILL.indexOf("## Eingang `/techplan #N`: eine Idee aus `/triage`"), SKILL.indexOf("## Ablauf"));
+  assert.ok(eingang.length > 0, "der Eingang fuer eine Idee aus /triage fehlt");
+  assert.match(eingang, /`\[Idea\]`/);
+  assert.match(eingang, /\*\*nur\*\*, wenn .{0,80}`Bahn: 2, technisch`/s, "die Bedingung Bahn: 2, technisch fehlt");
+  assert.match(eingang, /weist .{0,60}ab und nennt `\/triage #N`/s, "die Abweisung mit /triage #N fehlt");
+  assert.match(eingang, /`### Geklärter Stand` unter `## Ziel`/, "der geklaerte Stand steht nicht im Ziel");
+  assert.match(eingang, /weder `Fachliche Quelle:` noch `--derived-from`/, "Quelle und --derived-from sind nicht ausgeschlossen");
+  assert.match(eingang, /issue comment <N> --text "Fortsetzung: Issue #M"/, "der Spur-Kommentar an die Idee fehlt");
+  // Plan #1645 (Issue #1646): Ein Plan ohne fachliche Anforderung kann nachts laufen.
+  assert.ok(!SKILL.includes("kein Eingang für die Nacht-Kette"), "der alte Satz zur Nacht-Kette steht noch da");
+  assert.match(eingang, /kann nachts laufen \(`kit:night` am geprüften Plan\) oder am Tag mit `\/issues #M` geschnitten werden/,
+    "der Satz zu Nacht und Tag fehlt");
+  assert.match(eingang, /erst nach dem Einplanen adressierbar/, "die pending-Idee ist nicht als erst spaeter adressierbar genannt");
+
+  const schritt0 = SKILL.slice(SKILL.indexOf("### 0. Bahn bestimmen"), SKILL.indexOf("### 1. Anforderung verstehen"));
+  assert.ok(!SKILL.includes("Eine **`[Idea]`** als Quelle steht dem Angebot dagegen **nicht** entgegen"),
+    "der alte Satz zur [Idea] als Quelle steht noch da");
+  assert.match(schritt0, /entfällt die Bahnbestimmung/, "Schritt 0 sagt nicht, dass die Bahn bei einer Idee aus /triage entschieden ist");
+});

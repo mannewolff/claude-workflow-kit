@@ -19,8 +19,10 @@ name: "Checks: Tests + install.mjs-Blobs synchron"
 # grünen Pflichtprüfungen möglich ist. Ein Push auf production löst nichts aus:
 # production nimmt nur Merges über Pull Requests an.
 #
-# SonarQube läuft unverändert nach dem Push auf main (sonarqube.yml) und ist keine
-# Pflichtprüfung.
+# SonarQube (sonarqube.yml) läuft parallel zu diesem Job auf kit-pruefung, als
+# kurzlebiger Zweig gegen main, und weiter nach dem Push auf main. Auf kit-pruefung läuft
+# es nur mit, ohne Quality Gate und ohne den Job rot zu färben: Ob push main grün wird,
+# entscheidet allein dieser Job (Issue #1578, Issue #1683).
 
 on:
   push:

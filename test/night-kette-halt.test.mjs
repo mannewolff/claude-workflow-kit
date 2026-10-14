@@ -82,9 +82,9 @@ test("[night-19] ein Fachplan mit kit:klaeren und einer in Ready werden ueberspr
   assert.equal(r.lauf.einheiten.find((e) => e.id === "1").ausgang, "uebersprungen");
   assert.match(grund("1"), /traegt kit:clarify/);
   assert.match(grund("2"), /steht in ready, nicht in Backlog/);
-  // Der Plan traegt keine Herkunftszeile: Seit Issue #895 lehnt ihn `planAusschluss`
-  // als Plan-Auftrag ab, nicht mehr die Praefix-Probe des Fachplan-Auftrags.
-  assert.match(grund("3"), /die fachliche Herkunft ist nicht erkennbar/);
+  // Der Plan traegt keine Herkunftszeile: Seit Issue #895 prueft ihn `planAusschluss` als
+  // Plan-Auftrag, und seit Plan #1645 ist er seine eigene Wurzel — ihn haelt die fehlende Pruefung.
+  assert.match(grund("3"), /^ungeprueft: Label 'review:(?:fertig|done)' fehlt/);
   assert.match(r.ausgabe, /Keine Kette zu fahren/);
   assert.equal(r.karten.filter((i) => /^\[Plan\] Ein Weg/.test(i.title)).length, 0, "keine Session darf gelaufen sein");
   assert.deepEqual(r.sitzungen, [], "keine Session darf gelaufen sein");

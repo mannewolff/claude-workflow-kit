@@ -2,6 +2,47 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [5.2.0] - 2026-10-14
+- Sonar auf kit-pruefung läuft nur mit und blockiert push main nicht (#1683)
+- Sonar-Analyse auf kit-pruefung bekommt den Zweignamen (#1682)
+- Triage lädt die Anhänge einer kanban-kit-Karte in die Ideen-Ablage (#1681)
+- Historische Seite regeln-im-werkzeug: Kopfzeile mit Stand (#1670)
+- Einstellungs-Referenz: Wertebereiche, Bedingung der reviewStages-Vorgaben, Namensprüfung im Fließtext (#1669)
+- Toolbox-Adapter: kein alter Titel im PUT, fehlende Karte fällt aus der Zuordnung (#1668)
+- Test: Zuordnung je Adapter-Instanz über zwei Methoden (#1667)
+- Sonar auch auf kit-pruefung, kurzlebiger Zweig gegen main (#1578)
+- Einstiegsseite neu, Sidebar auf die neuen Seiten, Wortsumme scharf (#1660)
+- Seite Nachtbetrieb mit Nachtlauf, Nacht-Kette, Laufstand und Aufwand (#1659)
+- Einrichtungsseite mit Installation, Config, Tracker und Aktualisieren (#1658)
+- Prozessseite um Vorgeschichte, Prüflauf, Issue-Review und Plan-Format ergänzen (#1657)
+- Prozessseite mit allen Skills, Durchlauf und PO-Schleife (#1656)
+- Nebenseiten der Doku im Wortbudget und ohne Geschichte neu schreiben (#1655)
+- Historische Seiten aus der aktuellen Doku in eine eigene Sidebar-Gruppe verschieben (#1654)
+- Nachschlagewerk der Einstellungen auf eigener Seite mit einem Satz je Einstellung (#1653)
+- Toolbox-Adapter schreibt und verschiebt Einzelkarten ohne Kartenliste (#1651)
+- Toolbox-Adapter liest Einzelkarten per by-number statt Kartenliste (#1650)
+
+## [5.1.2] - 2026-10-13
+- Nacht-Kette gleicht einen Plan ohne fachliche Anforderung gegen den Plan ab und berichtet das (#1648)
+- Nacht-Kette nimmt einen Plan ohne fachliche Anforderung als eigene Wurzel auf (#1647)
+- Regeltexte und Doku: ein Plan ohne fachliche Anforderung kann nachts laufen (#1646)
+- Szenario-Zeilen mit Komma zählen, und die Grooming-Prüfung weist ungültige Szenarien ab (#1626)
+
+## [5.1.1] - 2026-10-13
+- Prozesstext und Doku nennen den Weg einer Idee über /triage (#1632)
+- /techplan, /requirement und /task nehmen eine Idee aus /triage an (#1631)
+- Skill /triage spricht eine Idee durch und bringt sie auf ihre Bahn (#1630)
+- issue triage --finish verschiebt die Vorlage und löscht die Ablage einer Idee (#1629)
+- Kommando issue triage liest Einstieg, Ablage und geklärten Stand einer Idee (#1628)
+- Leser des geklärten Stands und neue feste Zeilen für /triage (#1627)
+- Fester Zeitpunkt im Testhelfer berichtMitPlanBody (#1610)
+- Prüfrolle architektur-bestand meldet einen nicht erklärten Vertrag (#1617)
+- Stopp-Klasse nennt Verträge, /techplan, /issues und /issue-review führen sie (#1616)
+- Kommando code contract-repo holt den gebauten Stand des Partnerrepos (#1615)
+- Config-Feld vertragsRepos nennt das Partnerrepo eines Projekts (#1614)
+- P14 im Plan-Register und in der Doku, Korrekturauftrag darf die Vertragsfrage schreiben (#1613)
+- Plan-Gate P14: Verträge mit dem anderen Repo in fester Form (#1612)
+
 ## [5.1.0] - 2026-10-13
 - Retro zählt Pakete, die die Nacht-Kette selbst nach Ready zieht, als vierte Gruppe (#1607)
 - check-form trennt Szenarien-Prüfung und Stichtag-Hinweis in zwei Schalter (#1606)

@@ -129,7 +129,7 @@ test("[kitstand-zeile] der Nachtbericht traegt die Kit-Stand-Zeile des Laufs, oh
 // der Bericht liest nur den Plan. Der Abschnitt endet an `##` oder `###`.
 function berichtMitPlanBody(body) {
   const einheit = { id: "7", ausgang: "fertig", stufen: { plan: { id: "12" } } };
-  return berichtBauen(einheit, { plan: { id: "12", title: "[Plan] X", body }, stempel: "s" });
+  return berichtBauen(einheit, { plan: { id: "12", title: "[Plan] X", body }, stempel: "s", start: 0, jetzt: 0 });
 }
 
 const WIDERSPRUCH_1 = "- Widerspruch: #900 sagte „kein Export“ (PO-Antwort F2), die neue Anforderung verlangt ihn.";

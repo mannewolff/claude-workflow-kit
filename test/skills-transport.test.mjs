@@ -42,6 +42,8 @@ export const STELLEN = [
   { datei: "skills/kit-review/SKILL.md", befehl: "Review-Ergebnis" },
   // #1514 bringt mit `/groom` die Body-Schreibung nach jeder Zustimmung (Plan #1510, Review-Fund 8).
   { datei: "skills/groom/SKILL.md", befehl: "issue update --body-file" },
+  // #1630 bringt mit `/triage` die Body-Schreibung des geklaerten Stands (Plan #1623, A4).
+  { datei: "skills/triage/SKILL.md", befehl: "issue update --body-file" },
 ];
 
 // Die Dateien, in denen die Stellen mit Dateiweg liegen.

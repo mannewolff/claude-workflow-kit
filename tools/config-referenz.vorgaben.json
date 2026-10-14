@@ -1,0 +1,244 @@
+{
+  "provider": {
+    "satz": {
+      "de": "Wird beim Laden auf `codeHost` und `issueTracker` übertragen; neu nicht setzen.",
+      "en": "Is carried over to `codeHost` and `issueTracker` on loading; do not set it in a new config."
+    }
+  },
+  "buildChecks[]": {
+    "satz": {
+      "de": "Ein Prüfkommando, als Kommandostring oder als Objekt mit `cmd` und den Feldern darunter.",
+      "en": "A check command, as a command string or as an object with `cmd` and the fields below."
+    }
+  },
+  "buildChecks[].areas": {
+    "satz": {
+      "de": "Bereichsnamen aus `checkAreas`; die Prüfung läuft, wenn einer davon berührt ist.",
+      "en": "Area names from `checkAreas`; the check runs when one of them is touched."
+    }
+  },
+  "buildChecks[].nichtBeimAbschluss": {
+    "vorgabe": {
+      "de": "nicht gesetzt, die Prüfung läuft auch beim Abschluss",
+      "en": "not set, the check also runs at completion"
+    }
+  },
+  "buildChecks[].abschlussBereiche": {
+    "vorgabe": {
+      "de": "nicht gesetzt, die Prüfung entfällt beim Abschluss",
+      "en": "not set, the check is skipped at completion"
+    }
+  },
+  "buildChecks[].art": {
+    "satz": {
+      "de": "Mit `hinweis` meldet die Prüfung nur und hält nie an.",
+      "en": "With `hinweis` the check only reports and never stops."
+    },
+    "vorgabe": {
+      "de": "eine gewöhnliche Prüfung, deren Rot den Lauf anhält",
+      "en": "an ordinary check whose red result stops the run"
+    }
+  },
+  "testAblagen": {
+    "vorgabe": {
+      "de": "die Ablagen des Kits für TypeScript und Java",
+      "en": "the kit's locations for TypeScript and Java"
+    }
+  },
+  "columns.backlog": {
+    "satz": {
+      "de": "Name der Spalte bzw. des Labels für Backlog; auf GitLab macht `Open` daraus den offenen Zustand ohne Label.",
+      "en": "Name of the column or label for Backlog; on GitLab, `Open` turns it into the open state without a label."
+    }
+  },
+  "columns.done": {
+    "satz": {
+      "de": "Name der Spalte für Done auf GitHub und lokal; GitLab nimmt immer den geschlossenen Zustand.",
+      "en": "Name of the Done column on GitHub and locally; GitLab always uses the closed state."
+    }
+  },
+  "reviewCommand": {
+    "vorgabe": {
+      "de": "nicht gesetzt, es prüft `reviewModel`",
+      "en": "not set, `reviewModel` reviews"
+    }
+  },
+  "reviewLesegrenze": {
+    "vorgabe": {
+      "de": "für codex der eingebaute Schalter",
+      "en": "the built-in switch for codex"
+    }
+  },
+  "issueReview.pairs": {
+    "vorgabe": {
+      "de": "keine Zuordnung, es gilt die Reihenfolge in `reviewers`",
+      "en": "no assignment, the order in `reviewers` applies"
+    }
+  },
+  "reviewStufen": {
+    "vorgabe": {
+      "de": "je Stufe die Rollen des Rollenkatalogs, ein Reviewer je Rolle",
+      "en": "per tier the roles of the role catalogue, one reviewer per role"
+    },
+    "bedingung": {
+      "de": "nur, wenn der ganze Block fehlt; fehlt in einem vorhandenen Block eine Stufe oder ein Feld, bricht die Prüfung der Config ab",
+      "en": "only if the whole block is missing; if a tier or a field is missing in a block that is present, the config check aborts"
+    }
+  },
+  "reviewStufen.fachlich.reviewer": {
+    "bedingung": {
+      "de": "nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld",
+      "en": "only if the whole `reviewStages` block is missing; a block that is present needs the field"
+    }
+  },
+  "reviewStufen.plan.reviewer": {
+    "bedingung": {
+      "de": "nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld",
+      "en": "only if the whole `reviewStages` block is missing; a block that is present needs the field"
+    }
+  },
+  "reviewStufen.issue.reviewer": {
+    "bedingung": {
+      "de": "nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld",
+      "en": "only if the whole `reviewStages` block is missing; a block that is present needs the field"
+    }
+  },
+  "reviewStufen.fachlich.rollen": {
+    "vorgabe": {
+      "de": "`form-beobachtbarkeit`, `abgrenzung`",
+      "en": "`form-beobachtbarkeit`, `abgrenzung`"
+    },
+    "bedingung": {
+      "de": "nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld",
+      "en": "only if the whole `reviewStages` block is missing; a block that is present needs the field"
+    }
+  },
+  "reviewStufen.plan.rollen": {
+    "vorgabe": {
+      "de": "`architektur-bestand`, `schnitt-abhaengigkeiten`",
+      "en": "`architektur-bestand`, `schnitt-abhaengigkeiten`"
+    },
+    "bedingung": {
+      "de": "nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld",
+      "en": "only if the whole `reviewStages` block is missing; a block that is present needs the field"
+    }
+  },
+  "reviewStufen.issue.rollen": {
+    "vorgabe": {
+      "de": "`pruefbarkeit`",
+      "en": "`pruefbarkeit`"
+    },
+    "bedingung": {
+      "de": "nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld",
+      "en": "only if the whole `reviewStages` block is missing; a block that is present needs the field"
+    }
+  },
+  "night.kette.uebergaenge": {
+    "vorgabe": {
+      "de": "jeder Übergang folgt, die Umsetzung nur an einer Karte mit dem Variante-B-Label",
+      "en": "every transition follows, implementation only for a card with the variant B label"
+    }
+  },
+  "night.kette.uebergaenge.abdeckungUmsetzung": {
+    "vorgabe": {
+      "de": "nur eine Karte mit dem Variante-B-Label wird umgesetzt",
+      "en": "only a card with the variant B label is implemented"
+    }
+  },
+  "night.stand": {
+    "vorgabe": {
+      "de": "die Werte der Felder darunter",
+      "en": "the values of the fields below"
+    }
+  },
+  "night.stand.labels": {
+    "vorgabe": {
+      "de": "die Werte der Felder darunter",
+      "en": "the values of the fields below"
+    }
+  },
+  "night.modell": {
+    "vorgabe": {
+      "de": "das Modell, das der Nacht-Runner mitbringt",
+      "en": "the model built into the night runner"
+    }
+  },
+  "night.modelle": {
+    "vorgabe": {
+      "de": "leer, jede Session startet mit dem Modell des Laufs",
+      "en": "empty, every session starts with the model of the run"
+    }
+  },
+  "night.stufen": {
+    "vorgabe": {
+      "de": "keine Stufe, jedes Paket läuft mit dem Modell des Laufs",
+      "en": "no tier, every package runs with the model of the run"
+    }
+  },
+  "night.stufen.schwer.effort": {
+    "vorgabe": {
+      "de": "die Voreinstellung der Claude-CLI",
+      "en": "the Claude CLI's own setting"
+    }
+  },
+  "night.stufen.mittel.effort": {
+    "vorgabe": {
+      "de": "die Voreinstellung der Claude-CLI",
+      "en": "the Claude CLI's own setting"
+    }
+  },
+  "night.stufen.leicht.effort": {
+    "vorgabe": {
+      "de": "die Voreinstellung der Claude-CLI",
+      "en": "the Claude CLI's own setting"
+    }
+  },
+  "night.stufenRegel": {
+    "vorgabe": {
+      "de": "die Regel des Kits",
+      "en": "the kit's rule"
+    }
+  },
+  "pruefLauf": {
+    "vorgabe": {
+      "de": "die Werte der Felder darunter",
+      "en": "the values of the fields below"
+    }
+  },
+  "aufwand": {
+    "vorgabe": {
+      "de": "die Werte der Felder darunter",
+      "en": "the values of the fields below"
+    }
+  },
+  "aufwand.schwellen": {
+    "vorgabe": {
+      "de": "die Werte der Felder darunter",
+      "en": "the values of the fields below"
+    }
+  },
+  "wirksamkeit": {
+    "vorgabe": {
+      "de": "die Werte der Felder darunter",
+      "en": "the values of the fields below"
+    }
+  },
+  "befunde": {
+    "vorgabe": {
+      "de": "die Werte der Felder darunter",
+      "en": "the values of the fields below"
+    }
+  },
+  "szenarienAb": {
+    "vorgabe": {
+      "de": "nicht gesetzt, die Pflicht gilt für keine Karte am Board; der Installer setzt das Feld beim Update",
+      "en": "not set, the obligation applies to no card on the board; the installer sets the field on update"
+    }
+  },
+  "vertragsRepos": {
+    "vorgabe": {
+      "de": "`[]`, kein Partnerrepo",
+      "en": "`[]`, no partner repo"
+    }
+  }
+}

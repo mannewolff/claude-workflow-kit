@@ -1,8 +1,9 @@
 // Ablauf-Pruefung: tools/config-referenz.mjs --check ist der Pruefweg der Doku; sein Exitcode und seine Meldung gegen eine Kopie mit KIT_ROOT zeigt nur der Start als Programm.
 //
 // Die Einstellungs-Referenz der Dokumentation entsteht aus dem Schema (Issue #675,
-// Plan #674 E3). Wortgleich bleibt nur, was aus einer Quelle erzeugt wird — dieser Test
-// haelt `docs/dokumentation.md` gegen `templates/workflow.config.schema.json`.
+// Plan #674 E3). Seit Plan #1652 (E3, E4) steht sie auf einer eigenen Seite mit einer Zeile
+// je Einstellung: englischer Pfad, erster Satz der Beschreibung, gueltige Werte, Vorgabe.
+// Dieser Test haelt `docs/einstellungen.md` gegen `templates/workflow.config.schema.json`.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -12,9 +13,12 @@ import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { TEILE } from "../kit/settings.mjs";
+import { SCHLUESSEL } from "../kit/board/config-namen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TOOL = join(repoRoot, "tools", "config-referenz.mjs");
+const VORGABEN = join(repoRoot, "tools", "config-referenz.vorgaben.json");
+const SEITE = "einstellungen.md";
 
 function lauf(args, root) {
   return spawnSync(process.execPath, [TOOL, ...args], { encoding: "utf-8", env: { ...process.env, ...(root ? { KIT_ROOT: root } : {}) } });
@@ -25,8 +29,10 @@ function mitKopie(fn) {
   try {
     mkdirSync(join(dir, "templates"));
     mkdirSync(join(dir, "docs"));
+    mkdirSync(join(dir, "tools"));
     copyFileSync(join(repoRoot, "templates", "workflow.config.schema.json"), join(dir, "templates", "workflow.config.schema.json"));
-    copyFileSync(join(repoRoot, "docs", "dokumentation.md"), join(dir, "docs", "dokumentation.md"));
+    copyFileSync(join(repoRoot, "docs", "einstellungen.md"), join(dir, "docs", "einstellungen.md"));
+    copyFileSync(VORGABEN, join(dir, "tools", "config-referenz.vorgaben.json"));
     return fn(dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -57,7 +63,7 @@ test("ohne --check schreibt das Werkzeug den Abschnitt, ein zweiter Lauf aendert
     schema.properties.mainBranch.description = "Eine neue Beschreibung.";
     writeFileSync(pfad, JSON.stringify(schema, null, 2));
     assert.equal(lauf([], dir).status, 0);
-    const doku = join(dir, "docs", "dokumentation.md");
+    const doku = join(dir, "docs", SEITE);
     const erst = readFileSync(doku, "utf-8");
     assert.match(erst, /Eine neue Beschreibung\./);
     assert.equal(lauf([], dir).status, 0);
@@ -77,7 +83,7 @@ test("ein Platzhalter der Form <X> erscheint in der Ausgabe als Inline-Code", ()
     schema.properties.mainBranch.description = "Muster mit dem Platzhalter <X>, gefolgt von Text.";
     writeFileSync(pfad, JSON.stringify(schema, null, 2));
     assert.equal(lauf([], dir).status, 0);
-    const doku = readFileSync(join(dir, "docs", "dokumentation.md"), "utf-8");
+    const doku = readFileSync(join(dir, "docs", SEITE), "utf-8");
     assert.match(doku, /Muster mit dem Platzhalter `<X>`, gefolgt von Text\./);
     assert.doesNotMatch(doku, /Platzhalter <X>/);
   });
@@ -90,7 +96,7 @@ test("ein Platzhalter in einem Unterfeld und ein schon gesetzter Backtick bleibe
     schema.properties.aufwand.properties.laeufe.description = "Ausdruck mit `<ID>` und dazu <Bereich>.";
     writeFileSync(pfad, JSON.stringify(schema, null, 2));
     assert.equal(lauf([], dir).status, 0);
-    const doku = readFileSync(join(dir, "docs", "dokumentation.md"), "utf-8");
+    const doku = readFileSync(join(dir, "docs", SEITE), "utf-8");
     // Der schon gesetzte Backtick wird nicht verdoppelt, der nackte bekommt seinen.
     assert.match(doku, /Ausdruck mit `<ID>` und dazu `<Bereich>`\./);
   });
@@ -98,7 +104,7 @@ test("ein Platzhalter in einem Unterfeld und ein schon gesetzter Backtick bleibe
 
 test("fehlen die Marker, endet das Werkzeug mit Exit 1 und benennt sie", () => {
   mitKopie((dir) => {
-    const doku = join(dir, "docs", "dokumentation.md");
+    const doku = join(dir, "docs", SEITE);
     writeFileSync(doku, readFileSync(doku, "utf-8").replace("<!-- einstellungen:start -->", ""));
     const res = lauf(["--check"], dir);
     assert.equal(res.status, 1);
@@ -106,90 +112,172 @@ test("fehlen die Marker, endet das Werkzeug mit Exit 1 und benennt sie", () => {
   });
 });
 
-test("der Abschnitt fuehrt je Wurzelfeld ausser version eine Ueberschrift", () => {
-  const schema = JSON.parse(readFileSync(join(repoRoot, "templates", "workflow.config.schema.json"), "utf-8"));
-  const doku = readFileSync(join(repoRoot, "docs", "dokumentation.md"), "utf-8");
-  const abschnitt = doku.slice(doku.indexOf("<!-- einstellungen:start -->"), doku.indexOf("<!-- einstellungen:ende -->"));
-  for (const feld of Object.keys(schema.properties).filter((f) => f !== "version")) {
-    assert.match(abschnitt, new RegExp(`^### \`${feld}\`$`, "m"), `Ueberschrift fuer ${feld} fehlt`);
-  }
-  assert.doesNotMatch(abschnitt, /^### `version`$/m);
-});
-
-function oberflaechenAbschnitt() {
-  const doku = readFileSync(join(repoRoot, "docs", "dokumentation.md"), "utf-8");
-  const start = doku.indexOf("## Einstellungen über die Oberfläche");
-  const ende = doku.indexOf("## Alle Einstellungen");
-  assert.ok(start !== -1 && ende !== -1 && start < ende, "Abschnitt 'Einstellungen über die Oberfläche' nicht gefunden");
-  return doku.slice(start, ende);
+/** Der erzeugte Teil einer Seite zwischen den Markern. */
+function erzeugt(text) {
+  return text.slice(text.indexOf("<!-- einstellungen:start -->"), text.indexOf("<!-- einstellungen:ende -->"));
 }
 
-test("der Oberflaechen-Abschnitt nennt jeden benannten Teil der Oberflaeche", () => {
+/** Die Zeile einer Einstellung im erzeugten Teil, `undefined` ohne sie. */
+function zeileVon(text, pfad) {
+  return erzeugt(text).split("\n").find((z) => z.startsWith(`- \`${pfad}\` — `));
+}
+
+test("der Abschnitt fuehrt je Wurzelfeld ausser version eine Zeile, keine Ueberschrift", () => {
+  const schema = JSON.parse(readFileSync(join(repoRoot, "templates", "workflow.config.schema.json"), "utf-8"));
+  const doku = readFileSync(join(repoRoot, "docs", SEITE), "utf-8");
+  for (const feld of Object.keys(schema.properties).filter((f) => f !== "version")) {
+    const englisch = SCHLUESSEL[feld] ?? feld;
+    assert.ok(zeileVon(doku, englisch), `Zeile fuer ${englisch} fehlt`);
+  }
+  assert.equal(zeileVon(doku, "version"), undefined);
+  assert.doesNotMatch(doku, /^### `/m);
+});
+
+test("jede Zeile traegt Vorgabe oder 'Keine Vorgabe' und nur den ersten Satz", () => {
+  const doku = readFileSync(join(repoRoot, "docs", SEITE), "utf-8");
+  const zeilen = erzeugt(doku).split("\n").filter((z) => z.startsWith("- `"));
+  assert.ok(zeilen.length >= 154, `nur ${zeilen.length} Zeilen`);
+  for (const zeile of zeilen) assert.match(zeile, /(Vorgabe: \S.*|Keine Vorgabe)\.$/, zeile);
+  assert.equal(zeileVon(doku, "mainBranch"), "- `mainBranch` — Branch für lokale Commits und Push (Schritt 8). Vorgabe: `main`.");
+  assert.equal(zeileVon(doku, "codeHost"), "- `codeHost` — Wo der Code liegt (Push, Pull Requests). Gültig: `github`, `gitlab`, `local`. Vorgabe: `github`.");
+});
+
+test("Vorgabetabelle: provider, tierRule, scenariosFrom und reviewCommand tragen ihren Satz und ihre Vorgabe", () => {
+  const doku = readFileSync(join(repoRoot, "docs", SEITE), "utf-8");
+  const provider = zeileVon(doku, "provider");
+  assert.ok(provider.includes("Wird beim Laden auf `codeHost` und `issueTracker` übertragen; neu nicht setzen."), provider);
+  assert.doesNotMatch(provider, /Veraltet/);
+  for (const pfad of ["night.tierRule", "scenariosFrom", "reviewCommand"]) {
+    const zeile = zeileVon(doku, pfad);
+    assert.ok(zeile, `${pfad} fehlt`);
+    assert.doesNotMatch(zeile, /keine Vorgabe/i, zeile);
+    assert.match(zeile, /Vorgabe: \S/, zeile);
+  }
+});
+
+/** Schreibt das Schema der Kopie mit einer Aenderung zurueck. */
+function schemaAendern(dir, aendern) {
+  const pfad = join(dir, "templates", "workflow.config.schema.json");
+  const schema = JSON.parse(readFileSync(pfad, "utf-8"));
+  aendern(schema);
+  writeFileSync(pfad, JSON.stringify(schema, null, 2));
+}
+
+test("Satzschnitt: Abkuerzungen und Punkte in Klammern beenden den ersten Satz nicht", () => {
+  mitKopie((dir) => {
+    schemaAendern(dir, (s) => {
+      s.properties.mainBranch.description = "Zweig für Commits (etwa main. Oder trunk. Auch dev) mit z.B. Tags bzw. Notizen, ggf. leer. Zweiter Satz. Dritter.";
+    });
+    assert.equal(lauf([], dir).status, 0);
+    const zeile = zeileVon(readFileSync(join(dir, "docs", SEITE), "utf-8"), "mainBranch");
+    assert.equal(zeile, "- `mainBranch` — Zweig für Commits (etwa main. Oder trunk. Auch dev) mit z.B. Tags bzw. Notizen, ggf. leer. Vorgabe: `main`.");
+  });
+});
+
+test("Satzschnitt: ein Punkt ohne folgenden Leerraum beendet den Satz nicht, ohne Punkt gilt der ganze Text", () => {
+  mitKopie((dir) => {
+    schemaAendern(dir, (s) => {
+      s.properties.mainBranch.description = "Datei config.json im Projekt. Rest.";
+      s.properties.productionBranch.description = "Ziel ohne Punkt";
+    });
+    assert.equal(lauf([], dir).status, 0);
+    const doku = readFileSync(join(dir, "docs", SEITE), "utf-8");
+    assert.match(zeileVon(doku, "mainBranch"), /— Datei config\.json im Projekt\. Vorgabe/);
+    assert.match(zeileVon(doku, "productionBranch"), /— Ziel ohne Punkt Vorgabe: `production`\.$/);
+  });
+});
+
+test("Vorgabetabelle: default vor Tabelle, Tabelle vor 'Keine Vorgabe', Ersatzsatz statt erstem Satz", () => {
+  mitKopie((dir) => {
+    writeFileSync(join(dir, "tools", "config-referenz.vorgaben.json"), JSON.stringify({
+      "night.stufenRegel": { vorgabe: { de: "die Regel des Kits", en: "the kit's rule" } },
+      provider: { satz: { de: "Ersatz für den ersten Satz.", en: "Replacement." } },
+    }));
+    assert.equal(lauf([], dir).status, 0);
+    const doku = readFileSync(join(dir, "docs", SEITE), "utf-8");
+    assert.match(zeileVon(doku, "night.tierRule"), /Vorgabe: die Regel des Kits\.$/);
+    assert.match(zeileVon(doku, "provider"), /^- `provider` — Ersatz für den ersten Satz\. Gültig: `github`, `gitlab`, `local`\. Keine Vorgabe\.$/);
+    assert.match(zeileVon(doku, "language"), /Vorgabe: `de`\.$/);
+    assert.match(zeileVon(doku, "scenariosFrom"), /Keine Vorgabe\.$/);
+    // Ein Objekt als Vorgabe steht nicht als JSON da, sondern verweist auf die Felder darunter.
+    assert.match(zeileVon(doku, "triggers"), /Vorgabe: die Werte der Felder darunter\.$/);
+    assert.match(zeileVon(doku, "mutationCommand"), /Vorgabe: leer\.$/);
+  });
+});
+
+test("Vorgabetabelle: ein unbekannter Pfad oder eine Vorgabe neben default macht --check rot", () => {
+  mitKopie((dir) => {
+    const tabelle = join(dir, "tools", "config-referenz.vorgaben.json");
+    writeFileSync(tabelle, JSON.stringify({ "gibt.esNicht": { vorgabe: { de: "x", en: "x" } } }));
+    let res = lauf(["--check"], dir);
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /gibt\.esNicht/);
+    writeFileSync(tabelle, JSON.stringify({ mainBranch: { vorgabe: { de: "x", en: "x" } } }));
+    res = lauf(["--check"], dir);
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /mainBranch.*default/);
+    writeFileSync(tabelle, JSON.stringify({ provider: { satz: { de: "Nur deutsch." } } }));
+    res = lauf(["--check"], dir);
+    assert.equal(res.status, 1);
+    assert.match(res.stderr, /provider/);
+  });
+});
+
+/** Die Einleitung der Seite vor `## Alle Einstellungen`. */
+function einleitung() {
+  const doku = readFileSync(join(repoRoot, "docs", SEITE), "utf-8");
+  const ende = doku.indexOf("## Alle Einstellungen");
+  assert.ok(ende > 0, "Abschnitt 'Alle Einstellungen' nicht gefunden");
+  return doku.slice(0, ende);
+}
+
+test("die Einleitung nennt jeden benannten Teil der Oberflaeche", () => {
   // Die Titel kommen aus TEILE und stehen nicht zweimal: Kam ein Teil hinzu (Aufwand,
   // Wirksamkeit), zaehlte der Absatz ihn sonst weiter nicht mit und behauptete eine
   // Gliederung, die es nicht mehr gibt.
-  const abschnitt = oberflaechenAbschnitt();
+  const text = einleitung();
   for (const teil of TEILE.filter((t) => t.titel !== null)) {
-    assert.ok(abschnitt.includes(teil.titel), `Teil '${teil.titel}' fehlt im Abschnitt`);
-  }
-  assert.ok(abschnitt.includes("einfache Gruppen"), "der generische Gruppen-Teil fehlt im Abschnitt");
-});
-
-test("[einstellungen-8] der Textblock-Absatz nennt jeden Pfad des Text-Teils in Dateischreibweise", () => {
-  // `night.stufen` und `night.stufenRegel` stehen seit Issue #708 neben `night.modelle`
-  // im Text-Teil (kit/settings.mjs, TEILE). Nannte die Doku nur die Modellliste,
-  // suchte wer die beiden pflegen will vergeblich nach einer eigenen Eingabe.
-  const abschnitt = oberflaechenAbschnitt();
-  const start = abschnitt.indexOf("**Textblock in Dateischreibweise.**");
-  assert.ok(start !== -1, "Absatz 'Textblock in Dateischreibweise' fehlt");
-  const ende = abschnitt.indexOf("**", start + 40);
-  const absatz = abschnitt.slice(start, ende === -1 ? undefined : ende);
-  const textTeil = TEILE.find((t) => t.kennung === "text");
-  for (const pfad of textTeil.pfade) {
-    const maskiert = pfad.replaceAll(".", String.raw`\.`);
-    assert.match(absatz, new RegExp(`\`${maskiert}\``), `der Pfad '${pfad}' fehlt im Textblock-Absatz`);
+    assert.ok(text.includes(teil.titel), `Teil '${teil.titel}' fehlt in der Einleitung`);
   }
 });
 
-test("der Absatz 'Team und persoenlich' gilt nicht mehr fuer jede Einstellung", () => {
-  const abschnitt = oberflaechenAbschnitt();
-  const start = abschnitt.indexOf("**Team und persönlich.**");
-  const ende = abschnitt.indexOf("**", start + 25);
-  assert.ok(start !== -1, "Absatz 'Team und persoenlich' fehlt");
-  const absatz = abschnitt.slice(start, ende === -1 ? undefined : ende);
-  assert.doesNotMatch(absatz, /zu jeder Einstellung/i);
-  assert.match(absatz, /persönliche Abweichung erlaubt ist/);
+test("die Einleitung nennt Ort der Dateien, persoenliche Abweichung und den Start der Oberflaeche", () => {
+  const text = einleitung();
+  assert.match(text, /`\.claude\/workflow\.config\.json`/);
+  assert.match(text, /`\.claude\/workflow\.config\.local\.json`/);
+  assert.match(text, /persönlich/);
+  assert.match(text, /node settings\.mjs/);
+  assert.match(text, /https:\/\/docs\.mwolff\.org\/settings\.mjs/);
 });
 
-test("die Beschreibung des Textblocks in Dateischreibweise nennt Modellliste und unbekannte Felder", () => {
-  const abschnitt = oberflaechenAbschnitt();
-  const start = abschnitt.indexOf("**Textblock in Dateischreibweise.**");
-  assert.ok(start !== -1, "Absatz 'Textblock in Dateischreibweise' fehlt");
-  const ende = abschnitt.indexOf("**", start + 40);
-  const absatz = abschnitt.slice(start, ende === -1 ? undefined : ende);
-  assert.match(absatz, /night\.modelle/);
-  assert.match(absatz, /nicht kennt/);
+test("kontext.config.json steht unter den Einstellungen mit beiden Orten, ohne session-start.config.json", () => {
+  const doku = readFileSync(join(repoRoot, "docs", SEITE), "utf-8");
+  const teil = doku.slice(doku.indexOf("<!-- einstellungen:ende -->"));
+  assert.match(teil, /`~\/\.claude\/kontext\.config\.json`/);
+  assert.match(teil, /`\.claude\/kontext\.config\.json`/);
+  assert.match(teil, /feldweise/);
+  assert.doesNotMatch(doku, /session-start\.config\.json/);
 });
 
 // Die englische Einstellungs-Referenz (Issue #1356, Plan #1348 E8): Die Uebersetzung
 // liegt in tools/config-referenz.en.json, je Einstellung mit dem Hash der deutschen
-// Beschreibung. Sie gilt erst, wenn docs/en/dokumentation.md beide Marker traegt.
+// Beschreibung. Sie gilt erst, wenn docs/en/einstellungen.md beide Marker traegt. Die
+// englische Zeile schneidet ihren ersten Satz aus dieser Uebersetzung.
 
 const UEBERSETZUNG = join(repoRoot, "tools", "config-referenz.en.json");
-const EN_KOPF = "# Documentation\n\n## All settings\n\n<!-- einstellungen:start -->\n<!-- einstellungen:ende -->\n\nTail.\n";
+const EN_KOPF = "# Settings\n\n## All settings\n\n<!-- einstellungen:start -->\n<!-- einstellungen:ende -->\n\nTail.\n";
 
 function mitEnglisch(fn) {
   return mitKopie((dir) => {
-    mkdirSync(join(dir, "tools"));
     mkdirSync(join(dir, "docs", "en"));
     copyFileSync(UEBERSETZUNG, join(dir, "tools", "config-referenz.en.json"));
-    writeFileSync(join(dir, "docs", "en", "dokumentation.md"), EN_KOPF);
+    writeFileSync(join(dir, "docs", "en", SEITE), EN_KOPF);
     return fn(dir);
   });
 }
 
 function englischerAbschnitt(dir) {
-  const text = readFileSync(join(dir, "docs", "en", "dokumentation.md"), "utf-8");
+  const text = readFileSync(join(dir, "docs", "en", SEITE), "utf-8");
   return text.slice(text.indexOf("<!-- einstellungen:start -->"), text.indexOf("<!-- einstellungen:ende -->"));
 }
 
@@ -244,33 +332,36 @@ test("[1356] die englische Ausgabe traegt englischen Rahmentext, kein 'gültig' 
     assert.equal(lauf([], dir).status, 0);
     const abschnitt = englischerAbschnitt(dir);
     assert.match(abschnitt, /_This section is generated from `templates\/workflow\.config\.schema\.json`/);
-    assert.match(abschnitt, /\(valid: `github`, `gitlab`, `local`\)/);
+    assert.match(abschnitt, /Valid: `github`, `gitlab`, `local`\. Default: `github`\./);
+    assert.match(abschnitt, /No default\./);
+    assert.doesNotMatch(abschnitt, /Vorgabe/);
     assert.doesNotMatch(abschnitt, /gültig/);
     assert.doesNotMatch(abschnitt, /Dieser Abschnitt entsteht/);
-    // Englischer Name, dahinter der deutsche Altname, wo er abweicht (Issue #1439).
-    assert.match(abschnitt, /^### `mainBranch`$/m);
-    assert.match(abschnitt, /^- `night\.chain\.planMin` \(German: `night\.kette\.planMin`\) — /m);
+    // Nur der englische Pfad, in beiden Fassungen (Plan #1652, E13).
+    assert.match(abschnitt, /^- `mainBranch` — Branch for local commits and push \(step 8\)\. Default: `main`\.$/m);
+    assert.match(abschnitt, /^- `night\.chain\.planMin` — /m);
+    assert.doesNotMatch(abschnitt, /German:/);
   });
 });
 
 test("[1356] geschrieben wird nur zwischen den Markern der englischen Datei, die deutsche bleibt unberuehrt", () => {
   mitEnglisch((dir) => {
-    const de = readFileSync(join(dir, "docs", "dokumentation.md"), "utf-8");
+    const de = readFileSync(join(dir, "docs", SEITE), "utf-8");
     assert.equal(lauf([], dir).status, 0);
-    const text = readFileSync(join(dir, "docs", "en", "dokumentation.md"), "utf-8");
-    assert.ok(text.startsWith("# Documentation\n\n## All settings\n\n<!-- einstellungen:start -->\n"));
+    const text = readFileSync(join(dir, "docs", "en", SEITE), "utf-8");
+    assert.ok(text.startsWith("# Settings\n\n## All settings\n\n<!-- einstellungen:start -->\n"));
     assert.ok(text.endsWith("<!-- einstellungen:ende -->\n\nTail.\n"));
     assert.match(englischerAbschnitt(dir), /Branch for local commits and push \(step 8\)\./);
-    assert.equal(readFileSync(join(dir, "docs", "dokumentation.md"), "utf-8"), de);
+    assert.equal(readFileSync(join(dir, "docs", SEITE), "utf-8"), de);
     const erst = text;
     assert.equal(lauf([], dir).status, 0);
-    assert.equal(readFileSync(join(dir, "docs", "en", "dokumentation.md"), "utf-8"), erst);
+    assert.equal(readFileSync(join(dir, "docs", "en", SEITE), "utf-8"), erst);
   });
 });
 
 test("[1356] ohne Marker in der englischen Datei bleibt sie unberuehrt und --check prueft keine Uebersetzung", () => {
   mitEnglisch((dir) => {
-    const en = join(dir, "docs", "en", "dokumentation.md");
+    const en = join(dir, "docs", "en", SEITE);
     writeFileSync(en, "# Documentation\n\nNo markers yet.\n");
     writeFileSync(join(dir, "tools", "config-referenz.en.json"), "{}");
     assert.equal(lauf(["--check"], dir).status, 0);

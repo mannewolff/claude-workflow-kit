@@ -33,23 +33,23 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
-const DOKU = lies("docs", "dokumentation.md");
+const DOKU = lies("docs", "nachtbetrieb.md");
+const HAUPTSEITE = lies("docs", "dokumentation.md");
 const SKILL = lies("skills", "techplan", "SKILL.md");
 
-const ABSCHNITT = "Zweiter Modus: die Nacht-Kette";
+const ABSCHNITT = "Die Nacht-Kette";
 
-/** Ein `###`-Abschnitt aus der Doku, bis zur naechsten Ueberschrift gleicher
- *  Ebene. Gleiche Bauart wie `dokuAbschnitt` in docs-pruefstufen.test.mjs. */
+/** Ein `##`-Abschnitt aus der Seite Nachtbetrieb samt Unterabschnitten, bis zur naechsten
+ *  Ueberschrift gleicher Ebene. */
 function dokuAbschnitt(ueberschrift) {
-  const idx = DOKU.indexOf(`### ${ueberschrift}`);
-  assert.ok(idx >= 0, `Abschnitt '### ${ueberschrift}' fehlt in docs/dokumentation.md`);
-  return DOKU.slice(idx).split(/\n### /)[0];
+  const idx = DOKU.indexOf(`## ${ueberschrift}\n`);
+  assert.ok(idx >= 0, `Abschnitt '## ${ueberschrift}' fehlt in docs/nachtbetrieb.md`);
+  return DOKU.slice(idx).split(/\n## /)[0];
 }
 
 test("die Doku fuehrt genau einen Abschnitt zur Nacht-Kette und die Einleitung nennt zwei Betriebsarten", () => {
-  assert.equal(DOKU.split(`### ${ABSCHNITT}`).length - 1, 1);
-  const kapitel = DOKU.slice(DOKU.indexOf("## Nachtbetrieb")).split(/\n## /)[0];
-  assert.match(kapitel.split(/\n\n/)[1], /zwei Betriebsarten/, "die Einleitung des Kapitels nennt die zwei Betriebsarten nicht");
+  assert.equal(DOKU.split(`\n## ${ABSCHNITT}\n`).length - 1, 1);
+  assert.match(DOKU.split(/\n\n/)[1], /zwei Betriebsarten/, "die Einleitung der Seite nennt die zwei Betriebsarten nicht");
 });
 
 // Die Anker sind die Namen, nach denen morgens jemand sucht: Wer ein Label, einen
@@ -129,12 +129,14 @@ const PLAN_AUFTRAG = "Ein fertiger Plan als Auftrag";
 
 test("der Abschnitt fuehrt den Plan als zweite Auftragsart mit Geste, Bedingungen und entfallenden Stufen", () => {
   const abschnitt = dokuAbschnitt(ABSCHNITT);
-  assert.ok(abschnitt.includes(`#### ${PLAN_AUFTRAG}`), `der Unterabschnitt '${PLAN_AUFTRAG}' fehlt`);
-  const unter = abschnitt.slice(abschnitt.indexOf(`#### ${PLAN_AUFTRAG}`)).split(/\n#### /)[0];
+  assert.ok(abschnitt.includes(`### ${PLAN_AUFTRAG}`), `der Unterabschnitt '${PLAN_AUFTRAG}' fehlt`);
+  const unter = abschnitt.slice(abschnitt.indexOf(`### ${PLAN_AUFTRAG}`)).split(/\n### /)[0];
   const erwartet = [
     ["die Geste am Plan", "`[Plan]`"],
     ["die Spalte der Kandidaten", "Backlog"],
-    ["die erkennbare fachliche Herkunft", "Fachliche Quelle: Issue #"],
+    ["die Zeile mit Karte als eine der drei Lagen", "Fachliche Quelle: Issue #"],
+    ["die Lage ohne Zeile als eigene Wurzel", "eigene Wurzel"],
+    ["den Verweis ins Leere", "ins Leere"],
     ["die wartende Entscheidung als Ausschluss", "`kit:clarify`"],
     ["die Pruefung als Bedingung", `\`${REVIEW_FERTIG_LABEL}\``],
     ["die entfallende Stufe plan", "`plan`"],
@@ -157,7 +159,7 @@ test("die Pruefung als Voraussetzung gilt beiden Auftragsarten", () => {
 
 test("der Unterabschnitt nennt beide Kollisionsregeln", () => {
   const abschnitt = dokuAbschnitt(ABSCHNITT);
-  const unter = abschnitt.slice(abschnitt.indexOf(`#### ${PLAN_AUFTRAG}`)).split(/\n#### /)[0];
+  const unter = abschnitt.slice(abschnitt.indexOf(`### ${PLAN_AUFTRAG}`)).split(/\n### /)[0];
   const absaetze = unter.split(/\n\n/);
   const weicht = absaetze.find((a) => /weicht/.test(a) && /Anforderung/.test(a) && /Plan/.test(a));
   assert.ok(weicht, "keine Regel sagt, dass die fachliche Anforderung dem gekennzeichneten Plan weicht");
@@ -195,7 +197,7 @@ test("der zitierte Satz ohne Arbeit entspricht dem Satz aus grundOhneArbeit", ()
 
 test("die Allowlist fuer fremde Reviewer steht unter dem Abschnitt zur Kette", () => {
   const abschnitt = dokuAbschnitt(ABSCHNITT);
-  assert.ok(abschnitt.includes("#### Allowlist für fremde Reviewer"));
+  assert.ok(abschnitt.includes("### Allowlist für fremde Reviewer"));
 });
 
 // Dass night.mjs --help die Option --chain nennt, prueft ablauf-night-grundlagen-hilfe am
@@ -209,7 +211,7 @@ test("der dokumentierte Aufruf steht in der Doku: node .claude/kit/night.mjs --c
 // die einen Schalter nennt, den der Runner abweist, schickt den Leser in die Irre.
 test("kein Dokument nennt die entfallenen Modi, Flags oder Routing-Labels", () => {
   const alt = /Nacht-Review|Erzeugungsnacht|--erzeuge|--review-label|kit:nightreview|kit:nightplan|kit:nightissues/;
-  for (const [name, text] of [["docs/dokumentation.md", DOKU], ["templates/CLAUDE-workflow.md", VORLAGE], ["skills/techplan/SKILL.md", SKILL]]) {
+  for (const [name, text] of [["docs/nachtbetrieb.md", DOKU], ["docs/dokumentation.md", HAUPTSEITE], ["templates/CLAUDE-workflow.md", VORLAGE], ["skills/techplan/SKILL.md", SKILL]]) {
     assert.doesNotMatch(text, alt, `${name} nennt einen entfallenen Modus`);
   }
 });
