@@ -259,6 +259,12 @@ Die Variable vor dem Kommando gilt nur für diesen Lauf, ein eigenes Routing-Lab
 
 **Zeitabbrüche stehen getrennt.** Ihre Fertigstellungsdauer ist unbekannt, deshalb gehen sie in keinen Mittelwert ein.
 
+**Jeder Rechner steht für sich.** Jeder Ergebnisstand nennt den Rechner, auf dem sein Lauf stattfand. Ohne Option wertet der Bericht die Läufe des Rechners aus, auf dem `effort.mjs` gerade läuft; `--machine <name>` wählt einen anderen. Die Läufe der übrigen Rechner stehen mit ihrer Zahl in einer eigenen Zeile und gehen in keine Kennzahl ein, auch nicht zusammengelegt. Ein Stand ohne Rechnerangabe, also jeder ältere, steht als „unbekannt“ und zählt für keinen Rechner. Ein Name, zu dem es keinen Stand gibt, beendet den Aufruf mit Exit 1 und nennt die bekannten Rechner.
+
+**Median je Prüfkommando.** Die Tabelle der Prüfungen nennt je Kommando neben der Summe den Median einer vollständigen Ausführung, die Zahl dieser Ausführungen und wie viele davon gleichzeitig mit anderen Prüfungen gemessen wurden. Nicht vollständig und damit nicht im Median sind eine Ausführung ohne gemessene Dauer, eine hängende, eine gewackelte oder wiederholte (ihre Dauer ist die Summe zweier Läufe) und jede Ausführung aus einem Teillauf oder einem übernommenen Prüfstand. Ohne vollständige Ausführung steht „nicht gemessen“, nie null.
+
+**Werkzeugbasis je Stufe.** Der Bericht zählt die Pakete, die Session-Dauer und Werkzeugzeit beide tragen, und davon die der Stufe mittel. Die Tabelle nach Aufgabenstufe nennt je Stufe die Werkzeugzeit je Paket und ihren Anteil an der Paketzeit.
+
 Laufzahl und Schwellen: Block `aufwand` (siehe [Einstellungen](/einstellungen)).
 
 ## Verbrauch interaktiver Sitzungen

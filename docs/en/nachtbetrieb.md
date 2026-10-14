@@ -269,13 +269,19 @@ ANTHROPIC_BASE_URL=http://localhost:4000 \
 The variable in front of the command only applies to this run, a routing label of its own separates the simple cards. Small models fail at tool calls rather than at code.
 
 ## Effort of the process
-<!-- de: 4c6de71fbe12 -->
+<!-- de: 999ec744425a -->
 
 `node .claude/kit/effort.mjs evaluate` reads the latest result states and writes `.claude/aufwand.md` and `.claude/aufwand.json`. The finding appears at the end of the run log and in `/push-main`. It only says what stands out and is not a gate.
 
 **The implementation target** (Zielmarke der Umsetzung) shows how many implementations exceed the target, by how much on average and at most. The average is taken over the overruns. The target comes from the run header of the state. The same block is in `.claude/aufwand.json` as `zielmarke`.
 
 **Time-limit aborts stand apart.** Their completion time is unknown, so they enter no average.
+
+**Each machine stands on its own.** Every result state names the machine its run took place on. Without an option the report evaluates the runs of the machine `effort.mjs` is currently running on; `--machine <name>` chooses another. The runs of the other machines appear with their count in a line of their own and enter no figure, not even combined. A state without a machine, that is every older one, stands as "unknown" and counts for no machine. A name without any state ends the call with exit 1 and lists the known machines.
+
+**Median per check command.** Next to the sum, the table of checks gives per command the median of a complete execution, the number of these executions and how many of them were measured concurrently with other checks. Not complete and therefore not in the median are an execution without a measured duration, a hanging one, a flaky or repeated one (its duration is the sum of two runs) and every execution from a partial run or an adopted check state. Without a complete execution it says "not measured", never zero.
+
+**Tool basis per tier.** The report counts the packages that carry both session duration and tool time, and of these the ones of tier mittel. The table by task tier gives per tier the tool time per package and its share of the package time.
 
 Number of runs and thresholds: block `aufwand` (see [Settings](/en/einstellungen)).
 
