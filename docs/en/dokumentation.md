@@ -13,7 +13,7 @@ The skills are written independently of any project. Everything project-specific
 The core process has nine steps. Step 1 is your requirement; the AI takes over steps 2, 3, 5, 6 and 7. The three human stop points (Stop-Punkte) are step 4 (GO), step 8 (push) and step 9 (merge); between push and merge you check the test server. Eleven further skills stand outside the numbering and structure the working rhythm: /session-start, /triage, /requirement, /groom, /issue-review, /task, /implement-test and /implement-done, /implement-next, /retro and /document.
 
 ## Prerequisites
-<!-- de: ef742ae30117 -->
+<!-- de: f996d869a5ee -->
 
 **Node.js 18 or later.** The installer is written in Node and therefore runs on macOS, Linux and Windows via WSL2 without depending on a particular shell ecosystem.
 
@@ -33,7 +33,7 @@ The core process has nine steps. Step 1 is your requirement; the AI takes over s
 
 **A project board, if you use GitHub or GitLab as issue tracker.** The board needs these five columns (Spalten): Backlog, Ready, In progress, In review, Done. On GitHub these are project board columns (GitHub Projects), on GitLab they are represented by labels. In local mode there is no board — the adapter writes and reads YAML frontmatter files directly.
 
-**`kontext.config.json` for /session-start and /document (optional).** Both skills also run without this file, in degraded mode. If you want persistent cross-project memory: With a global installation the installer asks for the vault path and creates the file automatically; with a project-local installation you create it manually. Details in the section [kontext.config.json](/en/dokumentation#kontext-config-json-reference).
+**`kontext.config.json` for /session-start and /document (optional).** Both skills also run without this file, in degraded mode. If you want persistent cross-project memory: With a global installation the installer asks for the vault path and creates the file automatically; with a project-local installation you create it manually. Details in the section [kontext.config.json](/en/einstellungen#kontext-config-json).
 
 ## Installation
 <!-- de: 5b2454a69a2c -->
@@ -166,11 +166,11 @@ Compare this with the current kit version (`node install.mjs --version`, or the 
 The version number is deliberately the same as that of the kit, not a separate count per file: A copy with `v1.22.0` is exactly the state that kit 1.22.0 shipped. If the two files drift apart — for instance because only one of them was replaced —, the night runner warns at start and keeps running anyway.
 
 ## What is the vault?
-<!-- de: b245a5dbb995 -->
+<!-- de: 968ca2903f02 -->
 
 The vault is a personal memory store outside the repo. It holds cross-project knowledge: your profile, working rules, decision history and daily logs. /session-start loads it at the start of a session, /document writes into it at the end of a session.
 
-The vault is optional. Without a vault, both skills run in degraded mode (details in the section [What happens without a vault?](/en/dokumentation#what-happens-without-a-vault)).
+The vault is optional. Without a vault, both skills run in degraded mode (details in the section [What happens without a vault?](/en/einstellungen#kontext-config-json)).
 
 If you want to set up a vault, create a directory and enter the path in `~/.claude/kontext.config.json`. The expected structure:
 
@@ -333,7 +333,7 @@ Not every mandatory check belongs at every point in time. Running an integration
 
 **What runs later appears as an omission** — in the checklist and in the completion report, with its stage as the reason. That is **not a shortcoming but its point in time**: `Stufe push, gefahren wird paket` ("stage push, running stage paket") means that this check is due in `/push-main`. Above the package stage, the command additionally names what is added compared with it (`Stufe push: zusätzlich zur Paketstufe läuft …`, "stage push: in addition to the package stage, … runs") — such a run takes noticeably longer than the one before the commit.
 
-**At least one check belongs on the package stage.** If all entries carry `push` or `merge`, nothing runs before the commit: Implementing a work package then has no gate. At night this is no silent state — the night runner checks it at start and does not start at all (override: `--no-checks-ok`). The [settings interface](/en/dokumentation#settings-through-the-interface) (Einstellungs-Oberfläche) reports this state as a warning; such a configuration can still be saved, because it is valid.
+**At least one check belongs on the package stage.** If all entries carry `push` or `merge`, nothing runs before the commit: Implementing a work package then has no gate. At night this is no silent state — the night runner checks it at start and does not start at all (override: `--no-checks-ok`). The [settings interface](/en/einstellungen) (Einstellungs-Oberfläche) reports this state as a warning; such a configuration can still be saved, because it is valid.
 
 **Not to be confused.** The term *stage* (*Stufe*) has three meanings in the kit: `reviewStufen` are the [check stages of the review](/en/dokumentation#three-check-stages-the-check-moves-up), the task level (Aufgabenstufe) of a work package (`schwer`/`mittel`/`leicht`) controls the model of the [night chain](/en/dokumentation#second-mode-the-night-chain) (Nacht-Kette), and `stufe` is the point in time of a mandatory check. The three have nothing to do with each other.
 
@@ -457,7 +457,7 @@ Stand unveraendert seit 2026-09-22T17:18:04.921Z: Ergebnis uebernommen (gruen). 
 **Why this is in the tool.** The night runs showed sessions that started the same green `run` three to nine times per work package — mostly without a change in between, often only to filter the output differently. The rule "write the output to a file once and read from there" has been in the skill text for a long time and did not work. By the yardstick "rule in the text or rule in the tool", it therefore belongs here.
 
 ### Flaky checks: repeated once
-<!-- de: 96658cff0212 -->
+<!-- de: 5e93e1dc5691 -->
 
 Some checks are green one time and red the next on the same state, such as a test that depends on the time of day, the load on the machine or the order of execution. So that such a check does not fail a package unjustly and still gets noticed, `checks.mjs run` repeats every red check **exactly once** on the same state wherever a result decides about a package or a release.
 
@@ -465,7 +465,7 @@ Some checks are green one time and red the next on the same state, such as a tes
 
 **What comes out of it.** Red and then green means: the check **flaked**. It counts as passed, the output names it, and the report block carries, below its `gelaufen:` line, the line `Gewackelt: <Kommando> → erst rot, dann gruen` ("flaked: `<command>` → first red, then green"), with the path of the first run's output (suffix `-erstlauf`). Red and red again stays red, as without a repetition.
 
-**How it is counted.** Both runs go into the execution log `.claude/ausfuehrungen.tsv`, marked as `erstlauf` and `wiederholung`, and both count as an execution with their duration. The [effectiveness evaluation](/en/dokumentation#wirksamkeit) treats them as a pair: red and green is a **flake** and not a finding, red and red is a finding, red without a repetition counts as a finding as before. A carried-over result produces no case. The night report names every check that flaked during the night, with the number of cases.
+**How it is counted.** Both runs go into the execution log `.claude/ausfuehrungen.tsv`, marked as `erstlauf` and `wiederholung`, and both count as an execution with their duration. The [effectiveness evaluation](/en/einstellungen) treats them as a pair: red and green is a **flake** and not a finding, red and red is a finding, red without a repetition counts as a finding as before. A carried-over result produces no case. The night report names every check that flaked during the night, with the number of cases.
 
 **Stop before publishing.** If a check flaked in the check run before `push main` or `merge production`, the skill stops after the green run and before the commit, names the check and asks „Trotzdem fortfahren? (ja/nein)“ (continue anyway? (yes/no)). Only `ja` continues. At night nobody asks: the preparation turns green into `gruen-offen` and records `Gewackelt: <Kommando> — Entscheidung beim push main` (flaked: `<command>` — decision at push main) as an open item, which `push main` asks about in the morning before the push.
 
@@ -498,7 +498,7 @@ The wall-clock time itself appears as `duration_ms` at the end of an ordinary `n
 The numbers apply to the machine on which they were measured and become outdated with every new test. Whoever needs the list collects it anew instead of extending an older one.
 
 ### The narrowing in the kit itself
-<!-- de: 2da82e04d34d -->
+<!-- de: 000835a5d520 -->
 
 The kit has brought the area-based selection along for a long time, but for a long time did not use it in its own repo: Without `checkAreas` and with `node --test` as the only entry, every check status reported full scope. How the narrowing looks in a grown project can therefore be read here — with all the concessions it costs.
 
@@ -506,14 +506,14 @@ The kit has brought the area-based selection along for a long time, but for a lo
 
 **Six test calls, not one per part.** The test suite does not fall apart into independent pieces, because the kit tools load each other: `kit/night.mjs` pulls in `board.mjs`, `checks.mjs`, `effort.mjs`, `effectiveness.mjs` and `findings.mjs`, `.githooks/gate.mjs` loads `checks.mjs`, and almost fifty night tests name `board.mjs`. On top of that, `checks.mjs run` runs the entries without the axis `gleichzeitig` **one after another**: Every additional such entry lengthens the full scope by the start-up cost of another run that no longer parallelises its files with the others. Only marked entries run side by side in the first phase (see [No lock between check runs](#no-lock-between-check-runs)). The split therefore narrows more coarsely than the parts would allow — it remains a trade-off between the gain in the narrowed case and the surcharge in the full scope.
 
-**What remains without a part is a statement too.** Since issue #935 every versioned source file is assigned — including `eslint.config.mjs`, `package.json`, `.claude/workflow.config.json` (a part of its own, `konfiguration`) and every helper under `test/helpers/**`, which is in the parts whose tests load it. What remains are the files for which there really is nothing to check: They are listed with a reason of their own in [`ohnePruefung`](/en/dokumentation#ohnepruefung) — `CHANGELOG.md`, `LICENSE`, the licence texts of the fonts, the note documents in the root. Whoever puts a file neither in a part nor in the exemption gets the full scope with every change to it; that is the safe direction and no punishment.
+**What remains without a part is a statement too.** Since issue #935 every versioned source file is assigned — including `eslint.config.mjs`, `package.json`, `.claude/workflow.config.json` (a part of its own, `konfiguration`) and every helper under `test/helpers/**`, which is in the parts whose tests load it. What remains are the files for which there really is nothing to check: They are listed with a reason of their own in [`ohnePruefung`](/en/einstellungen) — `CHANGELOG.md`, `LICENSE`, the licence texts of the fonts, the note documents in the root. Whoever puts a file neither in a part nor in the exemption gets the full scope with every change to it; that is the safe direction and no punishment.
 
 **A guard test against the gap.** The split calls bring a new kind of error, and it is silent: A test file with a prefix that none of the calls names runs **nowhere** — not before the commit, not in the commit gate, not in CI. Green would then mean "not checked". `test/config-teile.test.mjs` therefore checks the real config against `git ls-files`: every versioned test file covered by at least one call, every versioned source file in at least one part **or** in `ohnePruefung`, and no file in both at once — an exemption that a part overrides promises something in the report that does not apply. The test takes the glob resolution from `kit/checks.mjs` instead of rebuilding it — from the first divergence, a second version would attest a coverage that the executing command does not see.
 
 Whoever introduces the narrowing in their own project needs the same guard test as soon as they spread the test suite across several entries. One part too few costs computing time; a test that is not covered costs the check.
 
 ### Quality measurement and mark: `guete`
-<!-- de: b0b39cb49fb0 -->
+<!-- de: f1d2df7e4f25 -->
 
 Green tests say that the tests pass — not that they would notice anything. A project may therefore name **one** check of the list as its **quality measurement**: It measures how many deliberately planted faults the tests notice, and a value below the agreed mark holds up publishing. The naming is carried by a `guete` block with `muster` and `marke`:
 
@@ -530,7 +530,7 @@ Green tests say that the tests pass — not that they would notice anything. A p
 }
 ```
 
-**At most one entry carries the block.** Two measurements would need a precedence rule about which mark triggers the stop, and nobody would read it. If an entry carries `guete`, its `stufe` must not be `merge` — a measurement only before the release would come too late to change anything. `checks.mjs` rejects both at start instead of choosing silently; the [settings interface](/en/dokumentation#settings-through-the-interface) checks the same rules before saving.
+**At most one entry carries the block.** Two measurements would need a precedence rule about which mark triggers the stop, and nobody would read it. If an entry carries `guete`, its `stufe` must not be `merge` — a measurement only before the release would come too late to change anything. `checks.mjs` rejects both at start instead of choosing silently; the [settings interface](/en/einstellungen) checks the same rules before saving.
 
 **The `muster` is mandatory because the tools report different things.** It is a regular expression with **exactly one group**; the group picks the measured percentage from the command's output:
 
@@ -545,18 +545,18 @@ The captured number counts as a percentage, like the `marke` — one unit, not t
 
 **The stop costs no work.** It is a red run **before commit and push**: The packages already finished stay committed locally, the version bump of `/push-main` stays in place idempotently, and after the rework the same batch continues.
 
-**Not to be confused with `mutationCommand`.** The field [`mutationCommand`](/en/dokumentation#mutationcommand) remains what it was: a command downstream of the build that `/local-check` runs and whose result ends up in the report. It is **no quality measurement** — it carries no mark, its value is not evaluated, and it triggers **no stop**. Whoever wants it binding runs their mutation test command as a `buildChecks` entry with a `guete` block, as above. Setting both at once results in two runs of the same tool, only one of which counts.
+**Not to be confused with `mutationCommand`.** The field [`mutationCommand`](/en/einstellungen) remains what it was: a command downstream of the build that `/local-check` runs and whose result ends up in the report. It is **no quality measurement** — it carries no mark, its value is not evaluated, and it triggers **no stop**. Whoever wants it binding runs their mutation test command as a `buildChecks` entry with a `guete` block, as above. Setting both at once results in two runs of the same tool, only one of which counts.
 
 **Without the naming a project stays unaffected:** no measurement, no mark, no stop. Whoever writes nothing notices nothing of the quality measurement — not even with `mutationCommand` set.
 
 **The measurement belongs to its stage, not into an acceptance criterion.** A work package that writes the mutation run into the card as a criterion runs it once per package instead of once per publication — and thereby costs the round time the package lacks; such a full run drove a night round exactly into the round time limit, including a lost final message. `issue check-form` therefore rejects a package whose `## Akzeptanzkriterium` names `mutationCommand` or the command of the `guete` entry (gate I6); the right place is a `buildChecks` entry with `stufe: push`.
 
 ## Language of the kit
-<!-- de: f2cc7129f8d2 -->
+<!-- de: e9f430e205dc -->
 
-The kit can be set to German or English per project. The setting is called [`language`](#language), with the values `de` and `en`; if it is missing, German applies. A new project chooses its language with the installer's first question, `Sprache / Language [de/en] (de)`. An existing project stays German after every update until you switch it.
+The kit can be set to German or English per project. The setting is called [`language`](/en/einstellungen), with the values `de` and `en`; if it is missing, German applies. A new project chooses its language with the installer's first question, `Sprache / Language [de/en] (de)`. An existing project stays German after every update until you switch it.
 
-**Both names of every setting are valid.** Every setting has an English name and a German legacy name, for example `language` and `sprache`. The kit reads both, in `workflow.config.json` as well as in `workflow.config.local.json`; if both are present, the name in the project language applies. When the kit writes a config, it uses the names of the project language. Which names exist is listed under [All settings](#all-settings). The German legacy names remain valid throughout versions 4 and 5. In English projects they can be dropped at the earliest with version 6, and only after an announcement.
+**Both names of every setting are valid.** Every setting has an English name and a German legacy name, for example `language` and `sprache`. The kit reads both, in `workflow.config.json` as well as in `workflow.config.local.json`; if both are present, the name in the project language applies. When the kit writes a config, it uses the names of the project language. Which names exist is listed under [All settings](/en/einstellungen). The German legacy names remain valid throughout versions 4 and 5. In English projects they can be dropped at the earliest with version 6, and only after an announcement.
 
 **Switching.** You switch an existing project in the project folder:
 
@@ -763,323 +763,6 @@ The update rewrites the calls it created itself, such as the hook in `.claude/se
 | `ziel:umsetzung` | `goal:implementation` |
 | `ziel:push-vorbereitet` | `goal:push-prepared` |
 
-## Settings through the interface
-<!-- de: c93c6d02d371 -->
-
-Instead of editing the config files by hand, the process settings can be maintained through a local interface. It is **not installed** but downloaded as a single file: [settings.mjs](https://docs.mwolff.org/settings.mjs). It works across all projects under one folder and therefore belongs in none of them.
-
-```bash
-node settings.mjs ~/ki-projects
-```
-
-**Which projects appear.** The given folder itself and every direct subdirectory, provided it contains `.claude/workflow.config.json`. Without an argument, the working directory applies. No deeper search takes place.
-
-**The address carries the access token.** At start, the interface names an address of the form `http://127.0.0.1:<port>/#token=…`. It is reachable only from this machine, and without the token it accepts no request — not even from another page in the same browser. The token is valid until the interface is stopped with Ctrl+C.
-
-**Ten parts.** The interface divides the settings into ten parts: reviewers, pairings, check stages, findings, check commands and areas, night chain, effort, effectiveness, task levels and simple groups. Within a part, changes collect in a working copy until they are saved or discarded; the footer of the part says how many changes are pending and which ones. A single value without a part of its own — such as `mainBranch` — gets a field of its own.
-
-**Text block in file notation.** Only five cases remain as a text block in the notation of the file: the two night fields without an input of their own — the model list (`night.modelle`) and the deviating stage rule (`night.stufenRegel`) —, the test locations (`testAblagen`), whose entries come in two forms and therefore fit no fixed table, the place of the full run before `push main` (`pushPruefung`), which is either a fixed value or an object, the partner repos (`vertragsRepos`), a list of objects like the test locations, and settings the kit does not know. None of them has a part of its own among the ten.
-
-**Task levels.** The part *task levels* maintains `night.stufen` without JSON input: for each level — schwer, mittel, leicht (hard, medium, light) — a choice between *Keine*, *Modell* and *Kommando* (none, model, command). The model comes with the thoroughness that the night run passes to the Claude CLI as `--effort`; "Voreinstellung" (default) leaves it to the CLI and writes no field. Setting a level to *Keine* removes its entry — the night run then falls back to the next stronger level. Next to a foreign `kommando` there is no thoroughness, and switching to it takes `modell` and `effort` away.
-
-**Follow-up questions for consequences.** Some changes reach beyond their own part. Renaming or removing a reviewer affects the pairings; renaming or removing an area affects the check commands that use it. A follow-up question names the affected places beforehand; the consequence is part of the same change as the triggering part and is saved or discarded together with it. An independent change to the affected other part stays untouched by this.
-
-**Team and personal.** Where a personal deviation is allowed, the interface shows the value from `workflow.config.json` (team), the deviation from `workflow.config.local.json` (personal) and the value that applies. Only what the kit lets deviate personally can be saved personally (see "Team config and personal deviations"); a deviation can be removed again. Only the changed value is saved — `git diff` shows no reformatted file.
-
-**Checking before saving.** The interface rejects invalid values with a reason, including those that only become invalid in combination with another setting. A setting it does not know is shown as a warning and left in place on saving. Whoever empties the mandatory checks or switches off the review duty before Ready has to confirm this explicitly. If the file has changed since loading, the interface does not save and asks whether the own change should be discarded or applied anew.
-
-**Kit version.** A project with a newer kit version than the downloaded interface — or without a recognisable version — is read-only; a current `settings.mjs` helps then.
-
-**What it does not do.** It shows no Claude Code settings (permissions, sandbox, environment values), creates no config in a project without one, and does not check whether configured commands actually run or models are reachable. The text files remain the source; whoever prefers to work there can continue to do so.
-
-## All settings
-<!-- de: 07edcf55594f -->
-
-<!-- einstellungen:start -->
-_This section is generated from `templates/workflow.config.schema.json` by `node tools/config-referenz.mjs`; changes belong in the schema, not here._
-
-### `language`
-
-Language of the kit in this project: de (German) or en (English). The German legacy name sprache is read as well; if both are present, language wins. If the field is missing or holds another value, de applies. Applies team-wide; a different value in workflow.config.local.json is ignored. (valid: `de`, `en`)
-
-### `codeHost`
-
-Where the code lives (push, pull requests). Applies team-wide; a different value in workflow.config.local.json is ignored. (valid: `github`, `gitlab`, `local`)
-
-### `issueTracker`
-
-Where the issues are managed. May differ from codeHost. 'toolbox' is a private setup (the author's own Kanban tool), not part of the installer dialog and usable only by editing the config by hand. Applies team-wide; a different value in workflow.config.local.json is ignored. (valid: `github`, `gitlab`, `local`, `toolbox`)
-
-### `provider`
-
-Deprecated (v1). Migrated to codeHost/issueTracker on load. Applies team-wide; a different value in workflow.config.local.json is ignored. (valid: `github`, `gitlab`, `local`)
-
-### `buildChecks`
-
-Commands that /local-check runs via checks.mjs run (build, tests): first those marked "vorab" one after another, then those marked "gleichzeitig" in parallel, then the rest one after another in config order. Empty array = no automated checks. An entry is either a command string or an object with an area assignment (see items and checkAreas). Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-- `buildChecks[]` — An entry takes one of four forms. (1) The bare command string "npx eslint .": unassigned, package stage, always runs. (2) { "cmd": "...", "areas": ["backend"] }: runs when one of the named areas is touched; the area names are defined in checkAreas. (3) { "cmd": "...", "always": true }: always runs, by decision. (4) { "cmd": "...", "stufe": "push" }: runs only at the named point in time — a missing "stufe" field means "paket" and thus unchanged behaviour. Forms 1 and 3 behave the same but mean different things — forgotten versus decided. An object with only "cmd" means the same as the string form. "areas" and "always" exclude each other (nobody would read a precedence rule), and "areas" needs at least one entry (an empty array would never run). "stufe" sits on an axis of its own and combines with both: areas and always say whether a check is affected, stufe says when it is due. On a third axis sits "guete": at most one entry in the list may carry the block, and it says what is measured — not whether and not when. On a fourth axis sits "nichtBeimAbschluss": it says WHY a check need not carry the completion of a single work package — it only takes effect in a run with "--finish", and a missing field means unchanged behaviour.
-- `buildChecks[].cmd` — The command line as it would appear in the string form.
-- `buildChecks[].areas` — Area names from checkAreas. The check runs when at least one of the areas is touched. Not together with "always".
-- `buildChecks[].always` — true = always runs, by decision, regardless of the touched areas. Not together with "areas".
-- `buildChecks[].stage` (German: `buildChecks[].stufe`) — When the check is due: "paket" at the completion of a work package, "push" before publishing, "merge" before the release. Missing field = "paket" = unchanged behaviour. The stages are cumulative — push also runs paket, merge runs both; no mandatory check drops out of the overall process, it only runs at the point where its result counts. Not to be confused with reviewStufen (the review's levels) and the stages of the night chain. (valid: `paket`, `push`, `merge`)
-- `buildChecks[].notAtCompletion` (German: `buildChecks[].nichtBeimAbschluss`) — Why this check need not carry the completion of a single work package: "zusammenspiel" = it checks how several parts work together, "volleTestmenge" = it draws its finding from the complete test set. The fourth axis next to "areas"/"always" (whether a check is affected), "stufe" (when it is due) and "guete" (what it measures) — this field says none of those, but why it may be left out at completion. It only takes effect when the call carries "--finish": only the implement skills set it, when completing exactly one card. Every other run includes the check, and at the latest before publishing it runs in any case. Only meaningful on an entry of stage "paket" — at "push" or "merge" the check does not run at completion anyway, and the check run aborts there. If every entry of the package stage carries this field or a guete block, completion has no gate left; that aborts too. Missing field = the check also runs at completion = unchanged behaviour. Applies team-wide; a different value in workflow.config.local.json is ignored. (valid: `zusammenspiel`, `volleTestmenge`)
-- `buildChecks[].completionAreas` (German: `buildChecks[].abschlussBereiche`) — Area names from checkAreas whose direct touch makes a check with "nichtBeimAbschluss" run at the completion of a work package too. An area is touched directly when a changed file matches one of its patterns or carries it via the derivation from its importers — not via the dependent areas and not via files whose every changed line is a blob or a stamp. Only together with "nichtBeimAbschluss"; every name must be in checkAreas and, if the entry carries "areas", there too. Any other form aborts the check run at start. Missing field = the check is left out at completion as before. Applies team-wide; a different value in workflow.config.local.json is ignored.
-- `buildChecks[].quality` (German: `buildChecks[].guete`) — Marks this check as a quality measurement: it measures how many deliberately planted faults the tests notice, and a value below the threshold stops publishing. At most one entry in the list carries the block; if it does, its "stufe" must not be "merge" — a measurement only before the release would come too late to change anything. Without the block there is no measurement, no threshold and no stop; "mutationCommand" is something else and triggers no stop. Applies team-wide; a different value in workflow.config.local.json is ignored.
-- `buildChecks[].quality.pattern` (German: `buildChecks[].guete.muster`) — Regular expression with exactly one group; it picks the measured percentage from the command's output. Required, because the tools report different things — PIT writes "Killed 42 (84%)", Stryker "Mutation score: 84.21". The captured number counts as a percentage, like the threshold.
-- `buildChecks[].quality.marker` (German: `buildChecks[].guete.marke`) — The percentage from which the measurement suffices. If the measured share is below it, the run is red — the same stop as for any red mandatory check, not a stop point of its own. Allowed values are 0 to 100; a higher threshold could never be reached.
-- `buildChecks[].concurrent` (German: `buildChecks[].gleichzeitig`) — Whether this check may run alongside others in "checks.mjs run". Marked entries run in parallel in a first phase (at most two, overridable via the environment variable KIT_CHECKS_GLEICHZEITIG), the rest afterwards one after another in config order. The parallel phase runs to the end so that all red checks are known; the following phase stops at the first red and does not start after a red in the first phase. The output appears per check as a closed block in config order, and the report notes for a duration measured in parallel that it was measured alongside others. Only for checks that do not interfere with each other (own files, own ports). Missing field = false = the check runs sequentially as before. Applies team-wide; a different value in workflow.config.local.json is ignored.
-- `buildChecks[].upfront` (German: `buildChecks[].vorab`) — Whether this check runs in "checks.mjs run" before all others. Marked entries run in an upfront phase one after another in config order, even before those marked "gleichzeitig"; a red there starts no further check. Meant for fast checks (lint, short tests) whose red should be known after seconds instead of only after the long concurrent ones. An entry with "vorab" and "gleichzeitig" at once is an error. Missing field = false = the check runs in its previous phase. Applies team-wide; a different value in workflow.config.local.json is ignored.
-- `buildChecks[].kind` (German: `buildChecks[].art`) — The kind of entry. "hinweis" = the check only reports and never stops: in "checks.mjs run" it always ends green — with a finding, without one and even when the tool crashes; return value, failure markers and quality measurement are not evaluated for it. Every output line of the form "Hinweis: `<text>`" appears in "hinweise" of the summary and as "hinweis: `<text>`" in the block for the completion report; if the tool exits with 2 or more, exactly one line "Hinweis-Pruefung gescheitert" (advisory check failed) with the command appears there. The effectiveness evaluation does not count such an entry as a mandatory check. Missing field = an ordinary check whose red stops the run. Applies team-wide; a different value in workflow.config.local.json is ignored. (valid: `hinweis`)
-
-### `checkAreas`
-
-Named areas of the project: the key is the area name, the value a list of path patterns. "areas" in the object form of a buildChecks entry points to these names. How the three forms interact: a bare command string always runs (unassigned), { "cmd", "areas" } runs only when one of the patterns stored here is touched, { "cmd", "always": true } always runs, by decision — string and always:true behave the same but mean different things (forgotten versus decided). An area without patterns covers nothing. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-### `noCheck` (German: `ohnePruefung`)
-
-Files for which there is explicitly nothing to check — the third answer next to "touches an area" and "matches no pattern, so full scope". Each entry names a path pattern (the same notation as in checkAreas) and the reason why no check reads its content; no reason, no entry, because an exception to the rule "when in doubt, everything runs" is only bearable if it justifies itself. checkAreas takes precedence: if a file matches both kinds of pattern, it counts as touched and triggers its area checks — the selection may only err towards more checking. The file stays in the evidence of the summary — in the list of changed files and under their blob hashes — and therefore passes the commit gate unchanged. Missing field = no exception = unchanged behaviour. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-- `noCheck[].pattern` (German: `ohnePruefung[].muster`) — Path pattern as in checkAreas: "*" within a segment, "**" across segment boundaries, "/" as separator.
-- `noCheck[].reason` (German: `ohnePruefung[].grund`) — Why no check reads the content of this file. Appears in the report on every run and is required — an area name could not carry it.
-
-### `coupledAreas` (German: `gekoppelteBereiche`)
-
-Areas that a measured coupling forces into almost every check command — for example a file that almost every test group loads. Such an area stays highlighted in the evaluation and carries the note "durch Kopplung erzwungen: `<Grund>`" (forced by coupling: reason). Each entry names the area name (as in checkAreas) and the reason; no reason, no entry. Without an entry the highlighting rule applies without exception. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-- `coupledAreas[].area` (German: `gekoppelteBereiche[].bereich`) — Name of the area as it appears in checkAreas.
-- `coupledAreas[].reason` (German: `gekoppelteBereiche[].grund`) — Which measured coupling forces the area into almost every check command. Appears as a note on the highlighting and is required.
-
-### `testLocations` (German: `testAblagen`)
-
-Where a component's own tests live — from this, issue check-form reports test hints for a plan: for each own test of a listed component that the plan does not name, one hint that affects neither ok nor the exit code. Each entry is a pair of quelle and test. Placeholders: {pfad} stands for zero or more directories ({pfad}/ may be empty), {name} for the file name without extension, * in the test pattern for any characters within one path segment. Without the field the kit's defaults apply: TypeScript {pfad}/{name}.ts and .tsx with {name}.test and {name}.spec next to them, Java src/main/java/{pfad}/{name}.java with src/test/java/{pfad}/{name}Test.java. An array replaces the defaults; the entry { "vorgaben": true } inserts them at its position instead of copying them; [] switches the test hints off. Multi-module projects add one location per module with a fixed prefix, for example backend/src/main/java/{pfad}/{name}.java → backend/src/test/java/{pfad}/{name}Test.java. Deliberately without a default value: if the field is missing, the defaults apply, and that is something other than [].
-
-- `testLocations[].source` (German: `testAblagen[].quelle`) — Pattern of the source file, for example src/{pfad}/{name}.ts.
-- `testLocations[].test` (German: `testAblagen[].test`) — Pattern of its own test, with the same placeholders and * within a segment, for example src/{pfad}/{name}*.test.ts.
-- `testLocations[].defaults` (German: `testAblagen[].vorgaben`) — Inserts the kit's defaults at this position.
-
-### `scaffoldOnly` (German: `nurGeruest`)
-
-Paths that test files only create as scaffolding — mentioning them in a test file proves no coupling. The coupling survey (tools/verflechtung.mjs) counts every mention of a source path in the text of a test file as coupling; for the coverage check that errs on the safe side, for the selection of check commands it no longer does: a test that writes its own .gitignore or package.json into a throwaway repository is not thereby coupled to the file of the same name in this project. Each entry names a path pattern (the same notation as in checkAreas) and the reason why no check reads this path; no reason, no entry. The pattern applies against the source path and thus to all test files at once: anything that even a single test file really checks does not belong here — entering it would make the coverage check blind at this point, and silently so. Missing field = no exception = unchanged behaviour. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-- `scaffoldOnly[].pattern` (German: `nurGeruest[].muster`) — Path pattern as in checkAreas: "*" within a segment, "**" across segment boundaries, "/" as separator.
-- `scaffoldOnly[].reason` (German: `nurGeruest[].grund`) — Why no test file checks this path but at most creates it as scaffolding. Required, and proven rather than claimed: the place where it was looked up belongs with it.
-
-### `mutationCommand`
-
-Command for mutation tests (optional). Empty string or missing field = no mutation test. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-### `qualityCommands` (German: `guetekommandos`)
-
-Further commands or command prefixes that start a quality measurement (optional). Gate I6 of "issue check-form" rejects a work package whose acceptance criterion names one of them — in addition to "mutationCommand" and the command of a buildChecks entry with a "guete" block. The route for a measurement driver the project has yet to build: it cannot be a check yet, but its prefix is already listed here, and a full run therefore does not slip into a package's acceptance criterion. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-### `formatFixCommand`
-
-Command that fixes formatting violations mechanically (e.g. 'mvn spotless:apply' or 'npx prettier --write .'). Only the night runner uses it: if the buildChecks are red in the salvage pre-check, it runs exactly once and the checks are repeated exactly once, so that a pure formatting violation does not end a whole run. Empty string or missing field = no format fix. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-### `installCommand`
-
-Command that sets up the project's dependencies in the project directory (e.g. 'npm ci', 'uv sync', 'mvn -q dependency:go-offline'). 'worktree.mjs create' runs it in the fresh worktree after creating it — the worktree carries only what is versioned and has no node_modules, .venv or vendor/, and a mandatory check that fails because of this silently delivers a wrong measurement. If it ends with an error, the worktree is torn down again. Empty string or missing field = no installation; the caller is then responsible for it. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-### `mainBranch`
-
-Branch for local commits and push (step 8). Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-### `productionBranch`
-
-Target branch for the PR in step 9 (merge production). Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-### `pushCheck` (German: `pushPruefung`)
-
-Where the full check run before 'push main' takes place. 'lokal' (default): /push-main runs it with 'checks.mjs run --stage push' on your own machine. An object with ort 'buildDienst' moves it to the project's build service: /push-main pushes the state to the check branch, waits for the result via 'board.mjs code ci-status --commit' and pushes mainBranch only on green. The obligation is the same in both places — green before the push; productionBranch stays untouched. On the check branch the build service must run the same mandatory checks as the local run of stage push. Protection of the main and release branches is set up by 'board.mjs code protection setup'; the installer writes 'pushPruefung' only after its probe on the check branch has passed. Applies team-wide; a different value in workflow.config.local.json is ignored. (valid: `lokal`)
-
-- `pushCheck.location` (German: `pushPruefung.ort`) — The place of the full run: the project's build service. (valid: `buildDienst`)
-- `pushCheck.branch` (German: `pushPruefung.zweig`) — The check branch to which /push-main pushes the state before the push and which it deletes again afterwards. Not mainBranch and not productionBranch.
-
-### `reviewScope`
-
-Scope of the review material: 'diff' = git diff since the last push; 'full' = the entire source code. May be overridden personally in workflow.config.local.json. (valid: `diff`, `full`)
-
-### `reviewModel`
-
-The Claude variant of the reviewer pair reviewModel/reviewCommand: model ID for the reviewer subagent (Opus pin). Must be a valid Claude model identifier. Exactly one of the two fields is set — a foreign CLI belongs in reviewCommand. May be overridden personally in workflow.config.local.json.
-
-### `reviewCommand`
-
-The foreign variant of the reviewer pair reviewModel/reviewCommand: command line of a foreign CLI (e.g. 'codex exec --model gpt-5') that receives the review prompt via stdin and writes its answer to stdout. It is split at whitespace without a shell: quotes, pipes and variables have no effect. Exactly one of the two fields is set; 'set' means the key is present — an empty string is invalid, not 'not set'. May be overridden personally in workflow.config.local.json.
-
-### `reviewReadLimit` (German: `reviewLesegrenze`)
-
-Belongs to reviewCommand: the read-only switch of the foreign CLI that the kit appends to the command line (e.g. '--sandbox read-only'), split at whitespace like reviewCommand. For codex the kit knows the switch itself; for any other tool it goes here. May be overridden personally in workflow.config.local.json; if the personal file sets reviewModel, reviewLesegrenze gives way together with reviewCommand.
-
-### `triggers`
-
-Trigger phrases for the three human stop points. May be overridden personally in workflow.config.local.json.
-
-- `triggers.go` — Phrase for the GO to implement.
-- `triggers.push` — Phrase for the push to mainBranch (step 8).
-- `triggers.merge` — Phrase for the PR to productionBranch (step 9).
-
-### `local`
-
-Settings for the local issue tracker (issueTracker: 'local'). Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-- `local.issuesDir` — Directory of the issue Markdown files, relative to the project root.
-
-### `columns`
-
-Mapping of the internal statuses to board column or label names. Only relevant for the GitLab adapter: there 'done' is always the native state Closed (regardless of the name entered here). 'backlog' is the native state Open if exactly "Open" is entered here — otherwise an ordinary label. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-- `columns.backlog` — GitLab special value "Open": backlog is treated as the native Open state instead of a label.
-- `columns.ready` — Name of the column or label for Ready — released, the human's GO.
-- `columns.in_progress` — Name of the column or label for In progress — the work package currently being worked on.
-- `columns.in_review` — Name of the column or label for In review — done locally, not yet pushed.
-- `columns.done` — Display name only for GitHub/local. GitLab always treats done as the native Closed state.
-
-### `github`
-
-GitHub-specific settings. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-- `github.projectNumber` — Number of the GitHub Project board (gh project list). Required for board status operations.
-
-### `toolbox`
-
-Settings for the Toolbox issue tracker (issueTracker: 'toolbox'). The author's private setup (own Kanban tool), not part of the installer dialog. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-- `toolbox.host` — Base URL of the Toolbox instance.
-- `toolbox.tokenFile` — Path (relative to the project directory) to a file holding the project- or board-bound token. Precedence: TBX_TOKEN environment variable > tokenFile > global tbx login (~/.config/toolbox-cli/tokens.json). No plain-text token in this config — board.mjs aborts in that case. May be overridden personally in workflow.config.local.json.
-- `toolbox.ideaStored` — Routes new issues into the board's idea store instead of straight into the backlog. true sends no 'direct' and creates a board-less idea in the pool; false or a missing value sends 'direct: true' and creates the issue at once with a board number — that is the default. The wire field 'ideaStored' sent in the past is no longer sent in any mode — the server ignores it. Backends without 'direct' keep their previous behaviour.
-
-### `issueReview`
-
-Issue review across several models. Reviewers who did not write the document read it; how many per level is set by reviewStufen. Applies team-wide; a different value in workflow.config.local.json is ignored. The former fields rounds and statusLabels were dropped with stage 2 of the process rework and are ignored without error in an existing config.
-
-- `issueReview.requiredBeforeReady` — If true, the night runner moves Ready issues without a review marker back to the backlog with a comment. Default false, so that a kit update does not stop the runner of any existing project overnight.
-- `issueReview.reviewers` — The order is the control: the frontmost entries that are not the author are taken; how many is set by reviewStufen.
-- `issueReview.reviewers[].name` — Short name, compared with the issue's author model.
-- `issueReview.reviewers[].kind` — 'claude' runs as a subagent via the Agent tool, 'command' as any foreign CLI (prompt via stdin). (valid: `claude`, `command`)
-- `issueReview.reviewers[].model` — Only for kind 'claude': model identifier.
-- `issueReview.reviewers[].command` — Only for kind 'command': command line, e.g. 'codex exec --model gpt-5'. It is split at whitespace without a shell: quotes, pipes and variables have no effect.
-- `issueReview.reviewers[].readLimit` (German: `issueReview.reviewers[].lesegrenze`) — Only for kind 'command': the read-only switch of the foreign tool that the kit appends to the command line (e.g. '--sandbox read-only'), split at whitespace like command. For codex the kit knows the switch itself; for any other tool it goes here. For kind 'claude' the field is an error.
-- `issueReview.pairs` — Explicit mapping author -> reviewer. If the author is listed here, their entry wins over the order rule. Without pairs the rule always picks the frontmost entries — a foreign model further back would never get its turn. A name that does not exist in reviewers and an author who names themselves are hard errors.
-
-### `reviewStages` (German: `reviewStufen`)
-
-Staffing and perspective of the three review levels: the functional concern, the plan to get there, the single work package. While issueReview describes WHO reviews at all, this states how many review per level and in which roles. 'rollen' must contain exactly 'reviewer' distinct, non-empty names — otherwise a hard error. If the whole block is missing, each level uses the roles of the role catalogue with one reviewer per role: fachlich 'form-beobachtbarkeit' and 'abgrenzung', plan 'architektur-bestand' and 'schnitt-abhaengigkeiten', issue 'pruefbarkeit'; if only one level is missing in an existing block, that is an error. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-- `reviewStages.requirement` (German: `reviewStufen.fachlich`) — Review of the functional concern ([Requirement] issue) before a plan is made from it.
-- `reviewStages.requirement.reviewer` (German: `reviewStufen.fachlich.reviewer`) — How many reviewers review this level.
-- `reviewStages.requirement.roles` (German: `reviewStufen.fachlich.rollen`) — One role name per reviewer, in the order of assignment.
-- `reviewStages.plan` (German: `reviewStufen.plan`) — Review of the plan document ([Plan] issue) before it is split into work packages.
-- `reviewStages.plan.reviewer` (German: `reviewStufen.plan.reviewer`) — How many reviewers review this level.
-- `reviewStages.plan.roles` (German: `reviewStufen.plan.rollen`) — One role name per reviewer, in the order of assignment.
-- `reviewStages.issue` (German: `reviewStufen.issue`) — Review of the single work package before the GO. Only one reviewer: form and cut have already been reviewed on the two levels before.
-- `reviewStages.issue.reviewer` (German: `reviewStufen.issue.reviewer`) — How many reviewers review this level.
-- `reviewStages.issue.roles` (German: `reviewStufen.issue.rollen`) — One role name per reviewer, in the order of assignment.
-
-### `night`
-
-Night mode. The night chain under kette, the list of allowed model names under modelle. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-- `night.chain` (German: `night.kette`) — Budgets and markers of the night chain (night.mjs --chain). A functional requirement or a plan document carrying the label goes in in the evening; every number is a reason to stop with the reason in the report, not a failure of the process.
-- `night.chain.label` (German: `night.kette.label`) — The marker on the functional requirement or the plan document that starts the chain. Each time it is set it authorises exactly one chain; the start consumes it.
-- `night.chain.variantBLabel` (German: `night.kette.varianteBLabel`) — The marker that flags the marked card for the chain's implementation stage (variant B).
-- `night.chain.planMin` (German: `night.kette.planMin`) — Time budget of the plan stage in minutes, including correction rounds.
-- `night.chain.packagesMin` (German: `night.kette.paketeMin`) — Time budget of the packages stage in minutes, including correction rounds.
-- `night.chain.reviewMin` (German: `night.kette.reviewMin`) — Time budget of the reviewer session on the plan in minutes.
-- `night.chain.coverageMin` (German: `night.kette.abdeckungMin`) — Time budget in minutes of the coverage session that holds the packages against the functional plan, or against the plan.
-- `night.chain.implementationMin` (German: `night.kette.umsetzungMin`) — Time budget of the implementation stage (variant B) in minutes, across all implementation sessions of the chain.
-- `night.chain.preparationMin` (German: `night.kette.vorbereitungMin`) — Deadline for preparing the push in minutes, waiting and check run included: this is the longest it waits until nothing is building any more in the night. If the deadline expires, the result is nicht-vorbereitet (not prepared).
-- `night.chain.costUsd` (German: `night.kette.kostenUsd`) — Cost budget per chain in US dollars, summed over all sessions of the chain; checked after every session.
-- `night.chain.costUsdB` (German: `night.kette.kostenUsdB`) — Cost budget per chain in US dollars for the implementation stage (variant B), summed over all sessions of the chain; checked after every session.
-- `night.chain.correctionRounds` (German: `night.kette.korrekturrunden`) — Maximum number of correction sessions per document after a red form check.
-- `night.chain.transitions` (German: `night.kette.uebergaenge`) — Which transitions of the chain may follow automatically. A blocked transition ends with run:waiting and 'wartet: Übergang `<x>` im Projekt nicht freigegeben — weiter mit kit:night' (waiting: transition not released in the project); a new kit:night resumes at the waiting stage. If the block or a field in it is missing, the behaviour from before the setting applies: the first three transitions follow, and a card with the variant B label is implemented after the coverage.
-- `night.chain.transitions.planReview` (German: `night.kette.uebergaenge.planReview`) — After the plan, the review of the plan follows automatically.
-- `night.chain.transitions.reviewPackages` (German: `night.kette.uebergaenge.reviewPakete`) — After the review of the plan, the work packages follow automatically.
-- `night.chain.transitions.packagesCoverage` (German: `night.kette.uebergaenge.paketeAbdeckung`) — After the work packages, the coverage against the functional requirement or against the plan follows automatically.
-- `night.chain.transitions.coverageImplementation` (German: `night.kette.uebergaenge.abdeckungUmsetzung`) — After the coverage, the implementation follows automatically. Only takes effect together with the variant B label on the card: the GO can never be given project-wide. Without an entry the behaviour from before the setting applies: a card with the variant B label is implemented, one without it ends after the coverage. With true a card without the label waits with 'wartet: Karte ohne Freigabe zur Umsetzung' (waiting: card not released for implementation), with false a card with the label waits with 'wartet: Übergang abdeckungUmsetzung im Projekt nicht freigegeben — weiter mit kit:night' (waiting: transition not released in the project).
-- `night.chain.transitions.implementationPreparation` (German: `night.kette.uebergaenge.umsetzungVorbereitung`) — After the implementation, the preparation of the push follows automatically if the card's goal reaches that far. A project that says nothing allows the transition; only an explicit false stops the chain before it. An implementation found already done in this run does not block. The preparation does not push; the GO to push stays with the human.
-- `night.status` (German: `night.stand`) — The run status: how a card of a chain or an implementation night shows its status on the board (board.mjs issue run-state). At most one of the three labels is attached, plus exactly one comment '## Laufstand'. If the block or a field in it is missing, the defaults apply.
-- `night.status.labels` (German: `night.stand.labels`) — The names of the three run status labels. They must exist on the board; the adapter reports a missing label as an error.
-- `night.status.labels.running` (German: `night.stand.labels.laeuft`) — Label of a card a run is currently working on.
-- `night.status.labels.aborted` (German: `night.stand.labels.abgebrochen`) — Label of a card aborted for technical reasons: repeating is enough.
-- `night.status.labels.waiting` (German: `night.stand.labels.wartet`) — Label of a waiting card; what it is waiting for is stated verbatim in the run status.
-- `night.status.deadlineMin` (German: `night.stand.fristMin`) — Detection deadline in minutes from a run's last sign of life; after that its card shows the last status with the addition 'nicht beendet' (not finished).
-- `night.status.pauseMin` (German: `night.stand.pauseMin`) — Pause in minutes before the one automatic attempt after an environment error of the live run.
-- `night.model` (German: `night.modell`) — The model of the night run: it starts every session that has no model of its own — the plan, review and coverage stages of the chain, the correction rounds and every package without a task level. Precedence: --model on the call, then this field, then the runner's default. Must also be listed in night.modelle, otherwise the runner stops before starting. Only applies from the shared configuration; a value in the personal file is ignored.
-- `night.models` (German: `night.modelle`) — The model names the night runner may start — ordered, descending by strength: the first entry is the strongest, the last the fastest model. The order is not cosmetic: /issues derives from it which model it recommends for a work package, and at night nobody asks. The pattern ^claude- is also the safeguard — without the list a value from an issue body would go into argv unchecked, and a package with '--dangerously-skip-permissions' would be an attack via a card. If the field is missing or the list is empty, every session starts with the run's model.
-- `night.tiers` (German: `night.stufen`) — Model or command per difficulty level of a work package, ordered schwer/mittel/leicht (hard/medium/easy). If a level is missing, the night run falls back to the next stronger one, if need be up to the run's own model. Only takes effect in the night run — during the day the human chooses their model themselves. A modell must also be listed in night.modelle (otherwise an error in the configuration check).
-- `night.tiers.hard` (German: `night.stufen.schwer`) — Model or command for a hard task. Exactly one of the two fields is set.
-- `night.tiers.hard.model` (German: `night.stufen.schwer.modell`) — Model ID for this level. Must also be listed in night.modelle.
-- `night.tiers.hard.effort` (German: `night.stufen.schwer.effort`) — Thinking effort for this level, passed to the Claude CLI as --effort. Without the field the CLI's default applies. Only allowed next to modell — the kit cannot set an effort for a foreign program next to kommando. (valid: `low`, `medium`, `high`, `xhigh`, `max`)
-- `night.tiers.hard.command` (German: `night.stufen.schwer.kommando`) — Command line of a foreign program for this level — a project artefact with the same level of trust as reviewCommand; the pattern ^claude- does not apply here.
-- `night.tiers.hard.name` (German: `night.stufen.schwer.name`) — The program's self-description next to kommando.
-- `night.tiers.medium` (German: `night.stufen.mittel`) — Model or command for a medium task. Exactly one of the two fields is set.
-- `night.tiers.medium.model` (German: `night.stufen.mittel.modell`) — Model ID for this level. Must also be listed in night.modelle.
-- `night.tiers.medium.effort` (German: `night.stufen.mittel.effort`) — Thinking effort for this level, passed to the Claude CLI as --effort. Without the field the CLI's default applies. Only allowed next to modell — the kit cannot set an effort for a foreign program next to kommando. (valid: `low`, `medium`, `high`, `xhigh`, `max`)
-- `night.tiers.medium.command` (German: `night.stufen.mittel.kommando`) — Command line of a foreign program for this level — a project artefact with the same level of trust as reviewCommand; the pattern ^claude- does not apply here.
-- `night.tiers.medium.name` (German: `night.stufen.mittel.name`) — The program's self-description next to kommando.
-- `night.tiers.easy` (German: `night.stufen.leicht`) — Model or command for an easy task. Exactly one of the two fields is set.
-- `night.tiers.easy.model` (German: `night.stufen.leicht.modell`) — Model ID for this level. Must also be listed in night.modelle.
-- `night.tiers.easy.effort` (German: `night.stufen.leicht.effort`) — Thinking effort for this level, passed to the Claude CLI as --effort. Without the field the CLI's default applies. Only allowed next to modell — the kit cannot set an effort for a foreign program next to kommando. (valid: `low`, `medium`, `high`, `xhigh`, `max`)
-- `night.tiers.easy.command` (German: `night.stufen.leicht.kommando`) — Command line of a foreign program for this level — a project artefact with the same level of trust as reviewCommand; the pattern ^claude- does not apply here.
-- `night.tiers.easy.name` (German: `night.stufen.leicht.name`) — The program's self-description next to kommando.
-- `night.tierRule` (German: `night.stufenRegel`) — Replaces the built-in rule by which /issues and /task determine the level of a work package. If the field is missing or the text is empty, the kit's rule applies.
-- `night.stuckAfter` (German: `night.festgefahrenNach`) — Number of identically failed runs of the same check after which an unattended session is stopped at the next check call; interactively the same number only produces a hint. Switching it off is not intended — if the field is missing, the default applies.
-- `night.goalImplementationMin` (German: `night.zielUmsetzungMin`) — Target for the duration of an implementation in minutes; the report shows how many packages stayed below it. The target applies to the chain's implementation stage and to the implementation night, which is why it sits next to night.kette and not inside it. Switching it off is not intended — if the field is missing, the default applies.
-
-### `checkRun` (German: `pruefLauf`)
-
-The review run: a run during the day that has several marked functional requirements reviewed one after another without anyone watching. It sits in a block of its own and not under night because it belongs to the day; under night the name would claim the opposite. Optional — if the block or a field in it is missing, the built-in defaults apply. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-- `checkRun.label` (German: `pruefLauf.label`) — The marker on the functional requirement that the run has reviewed. Each time it is set it authorises exactly one review; the run removes it immediately before the session for this card.
-- `checkRun.checkMin` (German: `pruefLauf.pruefungMin`) — Time budget of the reviewer session per card in minutes. It is above that of the plan stage because the functional level runs two reviewers.
-- `checkRun.costUsd` (German: `pruefLauf.kostenUsd`) — Cost budget per run in US dollars, summed over all sessions of the run; checked after every session, never in the middle of one. Once it is used up, the remaining cards count as skipped and keep their marker.
-
-### `workload` (German: `aufwand`)
-
-The effort of the process (unattended runs): how many result records the evaluation considers and from which thresholds it reports a finding. The finding is not a gate; it holds up no run and no publishing. Optional — if the block or a field in it is missing, the built-in defaults apply, so that an existing project gets the evaluation without further setup. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-- `workload.runs` (German: `aufwand.laeufe`) — The maximum number of the most recent completed result records the evaluation includes, most recent first.
-- `workload.thresholds` (German: `aufwand.schwellen`) — From which share the evaluation reports a finding.
-- `workload.thresholds.checkShare` (German: `aufwand.schwellen.pruefungAnteil`) — Share of the total check time that the largest single mandatory check may take before a finding appears. A value between 0 and 1.
-- `workload.thresholds.narrowingWithoutEffect` (German: `aufwand.schwellen.eingrenzungOhneWirkung`) — Whether a finding appears when narrowing the checks by area was measured but never took effect.
-- `workload.thresholds.toolShare` (German: `aufwand.schwellen.werkzeugAnteil`) — Share of the total running time that pure tool work may take before a finding appears. A value between 0 and 1.
-- `workload.thresholds.writeCostShare` (German: `aufwand.schwellen.schreibkostenAnteil`) — Share of the total costs that the costs of the third item (writing) may take before a finding appears. A value between 0 and 1.
-
-### `effectiveness` (German: `wirksamkeit`)
-
-The effectiveness of the checks: over which time window the evaluation counts executions and objections, and from which counts and thresholds it reports a finding. The finding is not a gate; it holds up no run and no publishing. Optional — if the block or a field in it is missing, the built-in defaults apply, so that an existing project gets the evaluation without further setup. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-- `effectiveness.windowDays` (German: `wirksamkeit.fensterTage`) — How many days back the evaluation counts. The window is cut off at the start of data collection so that it never reaches further back than data exist.
-- `effectiveness.neverFlaggedFromRuns` (German: `wirksamkeit.nieBeanstandetAbAusfuehrungen`) — From how many executions in the window a check that has never objected becomes a finding. Below that, 'nothing found' is no statement but too little experience.
-- `effectiveness.rateThreshold` (German: `wirksamkeit.quoteSchwelle`) — From which return rate a finding appears. Counted are return movements per card that entered In review; a card that went back several times counts several times, so the rate can exceed 1. The threshold itself is a value between 0 and 1.
-- `effectiveness.rateFromPackages` (German: `wirksamkeit.quoteAbPaketen`) — From how many evaluated work packages in the window the return rate may trigger a finding. Below that, the rate is read from too few cards.
-- `effectiveness.candidatesMax` (German: `wirksamkeit.kandidatenMax`) — The maximum number of cards the return rate evaluates, most recent entries into In review first. The cap keeps the evaluation affordable on a large movement log.
-
-### `findings` (German: `befunde`)
-
-Recurring findings of the model reviews: from how many occurrences a proposal arises from them. Applies to all reviews that record findings — the issue review as well as the code review, which does not sit under issueReview; hence a block of its own. Optional — if the block or the field in it is missing, the built-in default applies. Applies team-wide; a different value in workflow.config.local.json is ignored, because two people with different thresholds in the same project would produce different proposals from the same findings. A proposal card that can no longer be found counts as done: counting then starts from its state, and a new proposal carries only the findings after it.
-
-- `findings.threshold` (German: `befunde.schwelle`) — From how many occurrences of the same finding a proposal arises. Below that, a finding is a single case and not a rule.
-
-### `history` (German: `vorgeschichte`)
-
-Before a requirement or plan is written, searches earlier requirements on the project's own board on the same subject, archived ones included, and names the relevant ones in the new document. A missing field or false = off, the document is written as before; that is the default. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-### `scenariosFrom` (German: `szenarienAb`)
-
-Cut-off of the scenario duty: the card number from which a requirement on the board must carry a Scenarios section with at least one complete scenario. Requirements with a lower number are legacy and are never flagged for the missing section. When a file is checked or a requirement is created through the kit, the duty always applies. On update the installer sets the field, if it is missing, to the highest card number on the board plus one; to catch up by hand, use `node .claude/kit/board.mjs scenarios baseline`. If the field is missing, the duty applies to no card on the board, and the checks name the missing cut-off as a note. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-### `contractRepos` (German: `vertragsRepos`)
-
-The partner repos of this project: repos that read or write something this project also defines — a name, a marker, a format. If the field names a partner repo, gate P14 requires every plan to carry the subsection Contracts at the end of “Architectural decisions”, and every contract there names one of these repos by name. Each entry names name, url and optionally zweig. A missing field or [] = no partner repo, P14 checks nothing. Applies team-wide; a different value in workflow.config.local.json is ignored.
-
-- `contractRepos[].name` (German: `vertragsRepos[].name`) — Short name of the partner repo, for example kanban-kit: lowercase letters and digits, words separated by single hyphens. A contract names the repo by this name. The name also serves as a directory name, so neither / nor .. may appear in it.
-- `contractRepos[].url` (German: `vertragsRepos[].url`) — Address from which the partner repo can be cloned, for example https://github.com/mannewolff/kanban-kit.git.
-- `contractRepos[].branch` (German: `vertragsRepos[].zweig`) — Main branch of the partner repo: a contract is checked against the built state on this branch.
-<!-- einstellungen:ende -->
-
 ## The eighteen skills and the 9-step core process
 <!-- de: 2ab1368300ef -->
 
@@ -1145,7 +828,7 @@ The skill loads the context you need to be ready to work immediately, without ha
 If a vault is configured, it loads the `always` files from it (profile, working rules), recognises the project note automatically from the repo name and reads additional `projectDocs`. Without a vault, it fetches the initiatives through the board adapter and reads `projectDocs` from the repo. The output is a short situation overview: running initiatives, recent decisions — of these only the most recent day documented in the project note — and what comes next. The individual work packages are on the board; the session start does not repeat them.
 
 ### /requirement
-<!-- de: c649080d8f43 -->
+<!-- de: a727aadefeac -->
 
 **Tool alongside the process, before step 2 — only for projects with a product owner ([PO loop (PO-Schleife)](/en/dokumentation#po-loop-business-and-technical-issues)).**
 
@@ -1166,7 +849,7 @@ Before creating it, `issue check-form` checks the form of the business issue. Th
 - Und die Meldung sagt in einem Satz, was fehlt, und zeigt die Form eines Szenarios
 ```
 
-`issue check-form` and `issue create` check this as gate F12: If the section is missing, empty, carries no complete scenario or stands in the wrong place, the requirement is rejected, and the message shows the form of a scenario in the project language. When a file is checked or a requirement is created through the kit, the duty always applies; for cards on the board it applies from the cut-off [`scenariosFrom`](/en/dokumentation#scenariosfrom-german-szenarienab). Requirements with a lower number are legacy and are flagged for the missing section neither in grooming, nor in the check, nor in the night chain. The installer sets the cut-off on update if the field is missing; it can be caught up with `node .claude/kit/board.mjs scenarios baseline`, which prints the highest card number on the board plus one. If the cut-off is missing, the duty applies to no card on the board, and the checks name this as a note. `/groom` adds the scenarios to a requirement without them; without them no technical plan is created.
+`issue check-form` and `issue create` check this as gate F12: If the section is missing, empty, carries no complete scenario or stands in the wrong place, the requirement is rejected, and the message shows the form of a scenario in the project language. When a file is checked or a requirement is created through the kit, the duty always applies; for cards on the board it applies from the cut-off [`scenariosFrom`](/en/einstellungen). Requirements with a lower number are legacy and are flagged for the missing section neither in grooming, nor in the check, nor in the night chain. The installer sets the cut-off on update if the field is missing; it can be caught up with `node .claude/kit/board.mjs scenarios baseline`, which prints the highest card number on the board plus one. If the cut-off is missing, the duty applies to no card on the board, and the checks name this as a note. `/groom` adds the scenarios to a requirement without them; without them no technical plan is created.
 
 ### /groom
 <!-- de: 1b5e5e25f75d -->
@@ -1517,11 +1200,11 @@ After the review by the models (`/issue-review #N`), grooming runs with [/groom]
 Without a PO the loop is invisible: calling `/techplan` directly remains the normal route.
 
 ## History
-<!-- de: 338db9dc721a -->
+<!-- de: 090c4eba1657 -->
 
 Otherwise a new business plan (Fachplan) or plan only knows what is currently in the conversation or in the stock. Earlier business plans on the same subject disappear from view with the archive, and with them the reasons for earlier decisions. The history (Vorgeschichte) brings them back before writing, so that an earlier decision is not silently overridden. It locks nothing, it only makes things visible.
 
-**Switching it on.** The switch [`history`](#history-german-vorgeschichte) in `.claude/workflow.config.json` is off by default; then every document arises as before, without a section and without a note. In the kit itself it is on. The search needs a board that also searches archived cards, and so far only the Toolbox tracker (kanban-kit) can do that. With GitHub, GitLab and the local file tracker the document carries the note instead that no history was read.
+**Switching it on.** The switch [`history`](/en/einstellungen) in `.claude/workflow.config.json` is off by default; then every document arises as before, without a section and without a note. In the kit itself it is on. The search needs a board that also searches archived cards, and so far only the Toolbox tracker (kanban-kit) can do that. With GitHub, GitLab and the local file tracker the document carries the note instead that no history was read.
 
 **Searching.** Not the author searches the board, but a command:
 
@@ -1540,13 +1223,13 @@ node .claude/kit/board.mjs issue history --terms <begriff> [--files <pfad>]... [
 **Contradictions stop nothing.** If the new requirement contradicts an earlier PO answer or an earlier non-goal, the contradiction stands with quote and reference in the history section, not under the open questions, and does not count toward the five. No stop, not even at night: the night chain (Nacht-Kette) keeps running, and the night report names the contradiction so that the human sees it in the morning. The exact rule is in `.claude/CLAUDE-workflow.md`, section "History".
 
 ## The check run
-<!-- de: 3e01db3c5c45 -->
+<!-- de: 30d57c1dae3c -->
 
 **A run during the day that has several marked business requirements reviewed one after another.** Reviewing during the day is a conversation: Every finding wants to be discussed, every question of the stop class (Stopp-Klasse) answered. The check run (Prüflauf) takes exactly that off your hands — mark requirements, start the run, look later. For each card a session `/issue-review #N` runs without anyone answering in between; afterwards every card shows where things stand: reviewed and ready, or a decision is waiting. Everything outside the stop class was decided by the review and recorded in the document. **This sorting is the gain.**
 
 The run belongs to the **day** and therefore has a chapter of its own, not under [Night mode](/en/dokumentation#night-mode): It runs alongside the working human and alongside a night chain, and it is not tripped up by an unclean working tree or by a package in In progress. It has exactly one relation to the night chain: It **establishes the chain's prerequisite** — a card left reviewed carries the `review:done` that the chain requires. The **chain label** remains the human's gesture; the check run never sets it.
 
-**The gesture:** the label `kit:check` on the business requirement (label name from `pruefLauf.label`, see [All settings](/en/dokumentation#prueflauf); to be created on the board once). The run **consumes it** immediately before the session for this card — every setting of it authorises exactly one review; an abort leads to a note with the reason and a new gesture, not to a silent repetition. Together with the marker it also removes a `review:done` from a previous run: Only this way does the state after the session answer the question about **this** review and not about an earlier one. It **never** removes `kit:clarify` — only a human may do that, otherwise a run would give itself its own approval.
+**The gesture:** the label `kit:check` on the business requirement (label name from `pruefLauf.label`, see [All settings](/en/einstellungen); to be created on the board once). The run **consumes it** immediately before the session for this card — every setting of it authorises exactly one review; an abort leads to a note with the reason and a new gesture, not to a silent repetition. Together with the marker it also removes a `review:done` from a previous run: Only this way does the state after the session answer the question about **this** review and not about an earlier one. It **never** removes `kit:clarify` — only a human may do that, otherwise a run would give itself its own approval.
 
 **Fixed kit state.** Like every unattended run, the check run works with a fixed state of the kit: At the start it binds itself to the commit that `origin/<mainBranch>` points to — the last push, read without `git fetch`. Fixed are thus the tools including the check before every commit, the skills and the rule texts; whatever a package of the same night changes in them only takes effect after `push main`. The object of the check remains the project's configuration and its tests; they come from the state of the respective package. The state appears as the line `Kit-Stand: <commit> (origin/<mainBranch> vom <Zeit>)` (kit state: commit, origin/mainBranch as of time) in the run report (`kitStand` in `.claude/night-run-*.json`), in the night report and on every comment of the run. After a run in the main copy, its installed copy stays at its state until `node tools/sync-blobs.mjs` brings it to the working copy; until then `sync-blobs --check` names it as outdated. In the kit repo, `push main` catches this up itself: after catching up the main copy it runs the post-push step from `RELEASING.md`, `node tools/sync-blobs.mjs`, and the installed copy stands on the state just published (issue #1523). A machine that fetches the state only via `git pull` keeps calling `sync-blobs` by hand.
 
@@ -2150,7 +1833,7 @@ The progress log shows you every tool call of the session without further ado. F
 **Morning ritual:** Read the log (`.claude/night-run-<datum>.log`: issue, duration, result, commit per round) — the same state is additionally available for evaluation as `.claude/night-run-<datum>-<uhrzeit>.json` next to it —, then as always `/kit-review` → your own test → `push main`. Deferred issues are in the backlog with a comment.
 
 ## Effort of the process
-<!-- de: ae84c8654306 -->
+<!-- de: 0536099b68ee -->
 
 Since issue #748/#749 every result state of a night session (`.claude/night-run-<datum>-<uhrzeit>.json`) already carries duration, cost, quantity, model and check status. `node .claude/kit/effort.mjs evaluate` reads the most recent of them, aggregates time, checks, scope, cost and the effort per task level and writes from this `.claude/aufwand.md` (for humans) and `.claude/aufwand.json` (for the two output places below). The tool only says what stands out — never what to do, and it stays silent when nothing stands out.
 
@@ -2172,7 +1855,7 @@ Since issue #748/#749 every result state of a night session (`.claude/night-run-
 
 **No gate.** The finding holds up neither a run nor `/push-main`. A failure of the evaluation is a log line, not an abort.
 
-**Changing the number of runs and the thresholds.** Both are in the optional block `aufwand` of the `.claude/workflow.config.json` (see [All settings](/en/dokumentation#all-settings)) — if the block or a field in it is missing, the built-in defaults apply, so an existing project gets the evaluation without further setup. `aufwand.laeufe` determines how many of the most recent result states are included; `aufwand.schwellen` carries the four limit values (`pruefungAnteil`, `eingrenzungOhneWirkung`, `werkzeugAnteil`, `schreibkostenAnteil`) from which a finding appears. In the settings interface the block is under the topic "Nachtbetrieb" (night mode).
+**Changing the number of runs and the thresholds.** Both are in the optional block `aufwand` of the `.claude/workflow.config.json` (see [All settings](/en/einstellungen)) — if the block or a field in it is missing, the built-in defaults apply, so an existing project gets the evaluation without further setup. `aufwand.laeufe` determines how many of the most recent result states are included; `aufwand.schwellen` carries the four limit values (`pruefungAnteil`, `eingrenzungOhneWirkung`, `werkzeugAnteil`, `schreibkostenAnteil`) from which a finding appears. In the settings interface the block is under the topic "Nachtbetrieb" (night mode).
 
 ## Consumption of interactive sessions
 <!-- de: 2f6c9a20dd00 -->
@@ -2343,7 +2026,7 @@ The first line must read `.claude/*`, **not** `.claude/`. Git does not evaluate 
 **Existing projects:** The next `install.mjs` run automatically replaces an existing `.claude/` line with the block; your own `.claude` rules stay untouched and the installer only outputs a recommendation. After that a human must commit `.claude/workflow.config.json` once — the installer cannot do that for you.
 
 ## One file, one writer
-<!-- de: 8398ae580471 -->
+<!-- de: e9b0eb79e681 -->
 
 The same principle, applied to memory instead of code: **Every file in the memory vault that a skill writes to automatically belongs to exactly one repo.** What is shared is read — or only written after explicit consent.
 
@@ -2351,7 +2034,7 @@ The occasion is a setup with several repos on a shared vault, say five microserv
 
 Two consequences run through the kit from this:
 
-- **The daily log becomes project-specific.** The field `logPath` makes the file name configurable (`Log/{date}-{project}.md`), so that every repo gets its own file. That applies not only to microservices: **As soon as any two projects use the same vault, `logPath` should be set** — the default `Log/{date}.md` is one file per day, not per project. Details in the [`kontext.config.json` reference](/en/kontext-config-reference).
+- **The daily log becomes project-specific.** The field `logPath` makes the file name configurable (`Log/{date}-{project}.md`), so that every repo gets its own file. That applies not only to microservices: **As soon as any two projects use the same vault, `logPath` should be set** — the default `Log/{date}.md` is one file per day, not per project. Details in the [`kontext.config.json` reference](/en/einstellungen#kontext-config-json).
 - **`/document` never writes the shared umbrella note by itself.** It is the only shared place of writing and therefore deliberately not automated: Only in the case of a cross-service effect does the skill ask once, with the concrete entry text, and only writes after consent. Otherwise the conflict surface would only be moved from the log into the note.
 
 The difference from the guardrail principle above is the kind of stop: There a gate fails mechanically, here a skill asks a human. The reason is the same — the decision whether a system-wide insight belongs in the shared note cannot be made by a rule.
@@ -2759,103 +2442,6 @@ The skill is locked against autonomous invocation. You have to type the exact tr
 
 **`/session-start` or `/document` reports an error.**
 Check whether `kontext.config.json` exists (globally in `~/.claude/` or locally in `.claude/`). Both skills also run without a vault in degraded mode. If you use `codeHost: github` or `issueTracker: github`, `gh` must be authenticated. If you use `gitlab`, `glab` needs `auth login`. In local mode there is no external CLI dependency.
-
-## kontext.config.json: reference
-<!-- de: 1781f0f6e841 -->
-
-Configures the `/session-start` skill (session start) and the `/document` skill (session end). Both read the same file, so you specify the vault path and always files only once.
-
-### Why two config files?
-<!-- de: dff531742346 -->
-
-`workflow.config.json` is repo-specific: build commands, branch names, review model. It belongs in the repo and is shared with the team. Everyone who clones the repo has the same process basis.
-
-`kontext.config.json` is personal: your memory vault, your always files. It points to your local infrastructure and does not belong in the repo. Two developers in the same repo have different vaults and different profile files.
-
-### Storage locations
-<!-- de: 1f5f1feb8493 -->
-
-| Path | Purpose |
-|------|-------|
-| `~/.claude/kontext.config.json` | Global, applies to all projects on this machine |
-| `.claude/kontext.config.json` | Project-local, overrides individual fields of the global config |
-
-The files are **merged field by field, local fields win**. Fields not in the local config are inherited from the global one. If no config is found, `/session-start` and `/document` run in degraded mode.
-
-### Fields
-<!-- de: 3e7a8e755ff9 -->
-
-| Field | Type | Required | Description |
-|------|-----|---------|--------------|
-| `vault` | `string` | optional | Absolute path to the memory vault. Without this field the skill runs in degraded mode. |
-| `always` | `string[]` | optional | Files relative to the `vault` root that are always read (e.g. profile, working rules) |
-| `projectDocs` | `string[]` | optional | Files or glob patterns relative to the project directory. Fallback: `["CLAUDE-*", ".claude/CLAUDE-*"]` |
-| `project` | `string` | optional | Override for the vault project name, only needed if the repo name and the vault folder name differ |
-| `logPath` | `string` | optional | Template for the daily log file, relative to the `vault` root. Placeholders `{date}` and `{project}`. Default: `"Log/{date}.md"` |
-| `parentProject` | `string` | optional | Umbrella project over several service repos (multi-repo setup) |
-
-**You need `logPath` as soon as more than one project uses the same vault** — regardless of whether the projects have anything to do with each other. The default `Log/{date}.md` is one file per **day**, not per project: Without `{project}` in the template, all sessions of a day end up in the same file, and `kontext last-log` may return the entry of a foreign project as the predecessor at the next `/document`. Two independent repos on one vault are already enough for that.
-
-`parentProject` is independent of this and only meant for **multi-repo systems** in which several service repos belong to one whole (see below). Whoever runs a dozen independent projects on one vault sets `logPath` and leaves out `parentProject`.
-
-The complete setup with vault structure and example config is in the [`kontext.config.json` reference](/en/kontext-config-reference); the principle behind it under [One file, one writer](#one-file-one-writer).
-
-### What happens without a vault?
-<!-- de: 1466735de85a -->
-
-If `vault` is not set or no config file is found, both skills continue in degraded mode:
-
-`/session-start` loads the initiatives via the board adapter and reads `projectDocs` from the repo. At the end a hint appears: "Kein Vault konfiguriert, arbeite ohne persistentes Memory." (no vault configured, working without persistent memory).
-
-`/document` writes the daily log to `docs/session-log/YYYY-MM-DD.md` in the project directory. At the end: "Kein Vault konfiguriert. Log ins Projektverzeichnis geschrieben." (no vault configured, log written to the project directory).
-
-Degraded mode is the right entry point if you want to try out the kit without first setting up a vault infrastructure. For lasting cross-project memory you enter the `vault` path in `~/.claude/kontext.config.json`.
-
-### Glob patterns in projectDocs
-<!-- de: 31f8a80c6229 -->
-
-`projectDocs` supports glob patterns. The skill expands them via `find` in the project directory:
-
-```bash
-find . -maxdepth 1 -name "CLAUDE-*" -type f
-find .claude -maxdepth 1 -name "CLAUDE-*" -type f
-```
-
-Patterns without hits are silently skipped (no error, no abort).
-
-### Checking paths without starting a skill
-<!-- de: 14f28430438c -->
-
-The target paths are computed by the board adapter, not by the skill prompt:
-
-```bash
-node .claude/kit/board.mjs context paths
-```
-
-The output names the daily log, the project note and — in a multi-repo setup — the umbrella note, each as an absolute path. If they are correct here, they are correct in the skill as well. The project name is determined in the order `--project` → `project` from the config → repo name → directory name; if the repo name differs from the vault folder name, you enter the correct name as the `project` field in the local config.
-
-`node .claude/kit/board.mjs context last-log` additionally returns the most recent existing log entry of the same project — `/document` thereby picks up from the previous entry instead of starting from zero.
-
-### Examples
-<!-- de: bbc9c7de8965 -->
-
-Global config (create once, applies to all projects on this machine):
-
-```json
-{
-  "vault": "/path/to/your/memory-vault",
-  "always": ["Index.md", "Profil.md"],
-  "projectDocs": ["CLAUDE-*", ".claude/CLAUDE-*"]
-}
-```
-
-Local config (only create if the repo name and the vault project name differ):
-
-```json
-{
-  "project": "MyProject"
-}
-```
 
 ## License
 <!-- de: 574befe785b2 -->

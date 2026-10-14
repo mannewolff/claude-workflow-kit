@@ -1,8 +1,7 @@
 // Ablauf-Pruefung: Die Referenz entsteht nur beim Start von tools/config-referenz.mjs als Programm gegen eine Kopie mit KIT_ROOT.
 //
-// Englische Einstellungs-Referenz nennt den englischen Namen und dahinter den deutschen
-// Altnamen (Issue #1439, Plan #1420 E20, Kriterium 10 der fachlichen Quelle #1416). Die
-// deutsche Referenz bleibt unveraendert.
+// Die Einstellungs-Referenz nennt in beiden Fassungen den englischen Pfad nach
+// kit/board/config-namen.mjs und keinen deutschen Namen dahinter (Plan #1652, E13).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -20,14 +19,14 @@ function erzeugt() {
   const dir = mkdtempSync(join(tmpdir(), "config-referenz-altname-"));
   try {
     for (const d of ["templates", "docs", join("docs", "en"), "tools"]) mkdirSync(join(dir, d), { recursive: true });
-    for (const f of ["templates/workflow.config.schema.json", "docs/dokumentation.md", "docs/en/dokumentation.md", "tools/config-referenz.en.json"]) {
+    for (const f of ["templates/workflow.config.schema.json", "docs/einstellungen.md", "docs/en/einstellungen.md", "tools/config-referenz.en.json", "tools/config-referenz.vorgaben.json"]) {
       copyFileSync(join(repoRoot, f), join(dir, f));
     }
     const res = spawnSync(process.execPath, [TOOL], { encoding: "utf-8", env: { ...process.env, KIT_ROOT: dir } });
     assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
     return {
-      de: readFileSync(join(dir, "docs", "dokumentation.md"), "utf-8"),
-      en: readFileSync(join(dir, "docs", "en", "dokumentation.md"), "utf-8"),
+      de: readFileSync(join(dir, "docs", "einstellungen.md"), "utf-8"),
+      en: readFileSync(join(dir, "docs", "en", "einstellungen.md"), "utf-8"),
     };
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -46,26 +45,29 @@ function englisch(pfad) {
   }).join(".");
 }
 
-test("die englische Referenz nennt je umbenannter Einstellung beide Namen", () => {
-  const { de, en: text } = erzeugt();
-  const en = abschnitt(text);
-  // Nur Pfade, die die Referenz ausgibt: Ein Feld ohne Beschreibung steht in keiner Fassung.
-  const umbenannt = Object.keys(SCHLUESSEL).filter((p) => englisch(p) !== p && abschnitt(de).includes("`" + p + "`"));
+/** Die Pfade am Zeilenanfang des erzeugten Teils. */
+const pfade = (text) => [...abschnitt(text).matchAll(/^- `([^`]+)` — /gm)].map((m) => m[1]);
+
+test("beide Fassungen nennen je umbenannter Einstellung den englischen Pfad", () => {
+  const { de, en } = erzeugt();
+  const umbenannt = Object.keys(SCHLUESSEL).filter((p) => englisch(p) !== p && pfade(de).includes(englisch(p)));
   assert.ok(umbenannt.length > 10);
-  for (const pfad of umbenannt) {
-    assert.ok(en.includes(`\`${englisch(pfad)}\` (German: \`${pfad}\`)`), `${pfad} fehlt mit beiden Namen`);
+  for (const fassung of [de, en]) {
+    for (const pfad of umbenannt) assert.ok(pfade(fassung).includes(englisch(pfad)), `${englisch(pfad)} fehlt`);
+    assert.ok(pfade(fassung).includes("qualityCommands"));
+    assert.ok(!pfade(fassung).includes("guetekommandos"));
   }
-  assert.match(en, /### `qualityCommands` \(German: `guetekommandos`\)/);
 });
 
-test("eine Einstellung mit gleichem Namen in beiden Sprachen steht nur einmal", () => {
-  const en = abschnitt(erzeugt().en);
-  assert.match(en, /### `mainBranch`\n/);
-  assert.doesNotMatch(en, /`mainBranch` \(German:/);
+test("beide Fassungen nennen dieselben Pfade in derselben Reihenfolge", () => {
+  const { de, en } = erzeugt();
+  assert.deepEqual(pfade(en), pfade(de));
 });
 
-test("die deutsche Referenz bleibt unveraendert", () => {
-  const { de } = erzeugt();
-  assert.equal(abschnitt(de), abschnitt(readFileSync(join(repoRoot, "docs", "dokumentation.md"), "utf-8")));
-  assert.doesNotMatch(abschnitt(de), /German:/);
+test("keine Fassung traegt 'German:' oder einen deutschen Namen in Klammern", () => {
+  const { de, en } = erzeugt();
+  for (const fassung of [de, en]) {
+    assert.doesNotMatch(fassung, /German:/);
+    assert.doesNotMatch(abschnitt(fassung), /\(Deutsch: /);
+  }
 });

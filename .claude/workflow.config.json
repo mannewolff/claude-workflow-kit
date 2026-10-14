@@ -865,6 +865,7 @@
       "kit/settings.mjs",
       "tools/config-referenz.mjs",
       "tools/config-referenz.en.json",
+      "tools/config-referenz.vorgaben.json",
       "templates/workflow.config.json",
       "templates/workflow.config.schema.json",
       "test/einstellungen-*.test.mjs",

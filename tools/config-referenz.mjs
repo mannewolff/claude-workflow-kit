@@ -1,21 +1,23 @@
 #!/usr/bin/env node
 /**
  * config-referenz.mjs — erzeugt den Abschnitt „Alle Einstellungen" in
- * docs/dokumentation.md aus templates/workflow.config.schema.json (Issue #675,
- * Plan #674 E3).
+ * docs/einstellungen.md aus templates/workflow.config.schema.json (Issue #675,
+ * Plan #674 E3; eigene Seite seit Plan #1652 E4).
  *
- * Die Einstellungs-Oberfläche erklärt jede Einstellung wortgleich mit der
- * Dokumentation. Wortgleich bleibt nur, was aus einer Quelle erzeugt wird: Das Schema
- * ist die Quelle, dieser Abschnitt ist ihr Abbild. Geschrieben wird ausschließlich
- * zwischen den beiden Markern; der übrige Text der Doku bleibt unberührt.
+ * Das Schema ist die Quelle, dieser Abschnitt ist ihr Abbild. Je Einstellung steht eine
+ * Zeile (Plan #1652 E3): englischer Pfad, erster Satz der Beschreibung, gültige Werte und
+ * Vorgabe. Die Vorgabe kommt aus `default`, sonst aus tools/config-referenz.vorgaben.json,
+ * sonst steht „Keine Vorgabe“. Dieselbe Datei ersetzt je Pfad den ersten Satz, wo er keine
+ * Wirkung nennt. Geschrieben wird ausschließlich zwischen den beiden Markern; der übrige
+ * Text der Seite bleibt unberührt.
  *
- * Zwei Sprachen (Issue #1356, Plan #1348 E8): Die deutsche Fassung ist wortgleich mit der
- * Oberfläche, die englische in docs/en/dokumentation.md eine geprüfte Übersetzung. Sie
+ * Zwei Sprachen (Issue #1356, Plan #1348 E8): Die deutsche Fassung schneidet ihren Satz aus
+ * dem Schema, die englische in docs/en/einstellungen.md aus einer geprüften Übersetzung. Sie
  * steht in tools/config-referenz.en.json — je Einstellung der englische Text und der Hash
  * der deutschen Beschreibung — und nicht im Schema, das in jedes Projekt installiert wird.
  * Ändert sich eine deutsche Beschreibung, passt ihr Hash nicht mehr, und --check nennt die
  * Einstellung. Geschrieben und geprüft wird die englische Fassung erst, wenn
- * docs/en/dokumentation.md beide Marker trägt.
+ * docs/en/einstellungen.md beide Marker trägt.
  *
  * Nutzung:
  *   node tools/config-referenz.mjs           Abschnitt neu schreiben
@@ -33,9 +35,10 @@ const root = process.env.KIT_ROOT
   ? resolve(process.env.KIT_ROOT)
   : resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SCHEMA = join(root, "templates", "workflow.config.schema.json");
-const DOKU = join(root, "docs", "dokumentation.md");
-const DOKU_EN = join(root, "docs", "en", "dokumentation.md");
+const DOKU = join(root, "docs", "einstellungen.md");
+const DOKU_EN = join(root, "docs", "en", "einstellungen.md");
 const UEBERSETZUNG = join(root, "tools", "config-referenz.en.json");
+const VORGABEN = join(root, "tools", "config-referenz.vorgaben.json");
 const START = "<!-- einstellungen:start -->";
 const ENDE = "<!-- einstellungen:ende -->";
 
@@ -82,13 +85,13 @@ function eintraege(schema) {
   function unterfelder(knoten, pfad) {
     if (!knoten || typeof knoten !== "object") return;
     if (knoten.items && typeof knoten.items === "object") {
-      if (typeof knoten.items.description === "string") liste.push({ pfad: `${pfad}[]`, text: knoten.items.description });
+      if (typeof knoten.items.description === "string") liste.push({ pfad: `${pfad}[]`, text: knoten.items.description, knoten: knoten.items });
       unterfelder(knoten.items, `${pfad}[]`);
     }
     for (const variante of knoten.oneOf ?? []) unterfelder(variante, pfad);
     for (const [name, kind] of Object.entries(knoten.properties ?? {})) {
       const p = `${pfad}.${name}`;
-      if (typeof kind.description === "string") liste.push({ pfad: p, text: kind.description, werte: werteListe(kind) });
+      if (typeof kind.description === "string") liste.push({ pfad: p, text: kind.description, werte: werteListe(kind), knoten: kind });
       unterfelder(kind, p);
     }
     const zusatz = knoten.additionalProperties;
@@ -96,7 +99,7 @@ function eintraege(schema) {
   }
   for (const [feld, knoten] of Object.entries(schema.properties ?? {})) {
     if (feld === "version") continue;
-    liste.push({ pfad: feld, text: knoten.description ?? "", werte: werteListe(knoten), wurzel: true });
+    liste.push({ pfad: feld, text: knoten.description ?? "", werte: werteListe(knoten), wurzel: true, knoten });
     unterfelder(knoten, feld);
   }
   return liste;
@@ -123,43 +126,95 @@ function englischerPfad(pfad) {
     .join(".");
 }
 
+/** Abkürzungen, deren Punkt den ersten Satz nicht beendet. */
+const ABKUERZUNGEN = ["z.B.", "bzw.", "ggf.", "d.h.", "u.a.", "e.g.", "i.e."];
+
+/**
+ * Der erste Satz einer Beschreibung (Plan #1652 E3): Er endet am ersten Punkt mit folgendem
+ * Leerraum außerhalb von Klammern; eine Abkürzung beendet ihn nicht. Ohne solchen Punkt
+ * ist der ganze Text der Satz.
+ */
+function ersterSatz(text) {
+  let tiefe = 0;
+  for (let i = 0; i < text.length; i++) {
+    const zeichen = text[i];
+    if (zeichen === "(") tiefe++;
+    else if (zeichen === ")") tiefe = Math.max(0, tiefe - 1);
+    else if (zeichen === "." && tiefe === 0 && /\s/.test(text[i + 1] ?? "")) {
+      const bisHier = text.slice(0, i + 1);
+      if (!ABKUERZUNGEN.some((abk) => bisHier.endsWith(abk))) return bisHier;
+    }
+  }
+  return text.trimEnd();
+}
+
 /** Der Rahmentext, der nicht aus dem Schema stammt, je Sprache (Plan-Review #1348, Fund 7). */
 const RAHMEN = {
   de: {
     hinweis: "_Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node tools/config-referenz.mjs`; Änderungen gehören ins Schema, nicht hierher._",
-    gueltig: "gültig",
-    name: (pfad) => `\`${pfad}\``,
+    gueltig: "Gültig",
+    vorgabe: "Vorgabe",
+    keine: "Keine Vorgabe.",
+    leer: "leer",
+    objekt: "die Werte der Felder darunter",
   },
   en: {
     hinweis: "_This section is generated from `templates/workflow.config.schema.json` by `node tools/config-referenz.mjs`; changes belong in the schema, not here._",
-    gueltig: "valid",
-    // Englischer Name, dahinter der deutsche Altname, wenn er abweicht (Kriterium 10, #1416).
-    name: (pfad) => {
-      const englisch = englischerPfad(pfad);
-      return englisch === pfad ? `\`${pfad}\`` : `\`${englisch}\` (German: \`${pfad}\`)`;
-    },
+    gueltig: "Valid",
+    vorgabe: "Default",
+    keine: "No default.",
+    leer: "empty",
+    objekt: "the values of the fields below",
   },
 };
 
-/** Der Abschnitt zwischen den Markern, ohne die Marker selbst; `texte` liefert die Beschreibung je Eintrag. */
-function referenz(liste, sprache, texte) {
+/** Die Vorgabe als Satzende: aus `default`, sonst aus der Tabelle, sonst „Keine Vorgabe“. */
+function vorgabeSatz(e, sprache, tabelle) {
   const rahmen = RAHMEN[sprache];
-  const werte = (w) => (w ? ` (${rahmen.gueltig}: ${w.map((x) => "`" + x + "`").join(", ")})` : "");
-  const teile = ["", rahmen.hinweis, ""];
-  let offen = false;
+  if (e.knoten && "default" in e.knoten) {
+    const wert = e.knoten.default;
+    let text;
+    if (wert === "") text = rahmen.leer;
+    else if (wert !== null && typeof wert === "object" && !Array.isArray(wert)) text = rahmen.objekt;
+    else text = "`" + (typeof wert === "string" ? wert : JSON.stringify(wert)) + "`";
+    return `${rahmen.vorgabe}: ${text}.`;
+  }
+  const eintrag = tabelle[e.pfad]?.vorgabe;
+  return eintrag ? `${rahmen.vorgabe}: ${eintrag[sprache]}.` : rahmen.keine;
+}
+
+/** Der Abschnitt zwischen den Markern, ohne die Marker selbst; `texte` liefert die Beschreibung je Eintrag. */
+function referenz(liste, sprache, texte, tabelle) {
+  const rahmen = RAHMEN[sprache];
+  const werte = (w) => (w ? ` ${rahmen.gueltig}: ${w.map((x) => "`" + x + "`").join(", ")}.` : "");
+  const teile = ["", rahmen.hinweis];
   for (const e of liste) {
-    const text = entschaerft(texte(e));
-    if (e.wurzel) {
-      if (offen) teile.push("");
-      teile.push(`### ${rahmen.name(e.pfad)}`, "", `${text}${werte(e.werte)}`, "");
-      offen = false;
-    } else {
-      teile.push(`- ${rahmen.name(e.pfad)} — ${text}${werte(e.werte)}`);
-      offen = true;
+    if (e.wurzel) teile.push("");
+    const satz = tabelle[e.pfad]?.satz?.[sprache] ?? ersterSatz(texte(e));
+    teile.push(`- \`${englischerPfad(e.pfad)}\` — ${entschaerft(satz)}${werte(e.werte)} ${vorgabeSatz(e, sprache, tabelle)}`);
+  }
+  teile.push("");
+  return teile.join("\n");
+}
+
+/** Die Fehler der Vorgabetabelle: unbekannte Pfade, Vorgabe neben `default`, fehlende Sprache. */
+function tabellenFehler(tabelle, liste) {
+  const nachPfad = new Map(liste.map((e) => [e.pfad, e]));
+  const fehlerListe = [];
+  for (const [pfad, eintrag] of Object.entries(tabelle)) {
+    const e = nachPfad.get(pfad);
+    if (!e) {
+      fehlerListe.push(`${pfad}: keine Einstellung des Schemas`);
+      continue;
+    }
+    if (eintrag.vorgabe && e.knoten && "default" in e.knoten) fehlerListe.push(`${pfad}: trägt im Schema schon default, die Vorgabe der Tabelle griffe nie`);
+    for (const art of ["vorgabe", "satz"]) {
+      if (eintrag[art] && (typeof eintrag[art].de !== "string" || typeof eintrag[art].en !== "string")) {
+        fehlerListe.push(`${pfad}: ${art} braucht de und en`);
+      }
     }
   }
-  if (offen) teile.push("");
-  return teile.join("\n");
+  return fehlerListe;
 }
 
 /** Liest eine Doku-Datei und gibt die Lage der Marker zurück; `null`, wenn ein Marker fehlt. */
@@ -176,14 +231,19 @@ function ersetzt(text, { a, b }, abschnitt) {
 const nurPruefen = process.argv.includes("--check");
 const schema = JSON.parse(readFileSync(SCHEMA, "utf-8"));
 const liste = eintraege(schema);
+const tabelle = existsSync(VORGABEN) ? JSON.parse(readFileSync(VORGABEN, "utf-8")) : {};
+const tabellenLuecken = tabellenFehler(tabelle, liste);
+if (tabellenLuecken.length) {
+  const aufzaehlung = tabellenLuecken.map((l) => "  - " + l).join("\n");
+  fehler(`tools/config-referenz.vorgaben.json passt nicht zum Schema:\n${aufzaehlung}`);
+}
 const doku = readFileSync(DOKU, "utf-8");
 const lage = marker(doku);
-if (doku.indexOf(START) < 0) fehler(`Marker ${START} fehlt in docs/dokumentation.md`);
-if (!lage) fehler(`Marker ${ENDE} fehlt in docs/dokumentation.md oder steht vor ${START}`);
-const neu = ersetzt(doku, lage, referenz(liste, "de", (e) => e.text));
+if (doku.indexOf(START) < 0) fehler(`Marker ${START} fehlt in docs/einstellungen.md`);
+if (!lage) fehler(`Marker ${ENDE} fehlt in docs/einstellungen.md oder steht vor ${START}`);
+const neu = ersetzt(doku, lage, referenz(liste, "de", (e) => e.text, tabelle));
 
-// Die englische Fassung gilt erst, wenn docs/en/dokumentation.md beide Marker trägt; bis
-// dahin bleibt alles wie vor Issue #1356.
+// Die englische Fassung gilt erst, wenn docs/en/einstellungen.md beide Marker trägt.
 const dokuEn = existsSync(DOKU_EN) ? readFileSync(DOKU_EN, "utf-8") : null;
 const lageEn = dokuEn === null ? null : marker(dokuEn);
 let neuEn = null;
@@ -195,13 +255,13 @@ if (lageEn) {
     if (!eintrag || typeof eintrag.text !== "string") luecken.push(`${e.pfad}: englischer Eintrag fehlt`);
     else if (eintrag.de !== stempelVon(e.text)) luecken.push(`${e.pfad}: Hash veraltet, erwartet ${stempelVon(e.text)} — die deutsche Beschreibung hat sich geändert`);
   }
-  if (!luecken.length) neuEn = ersetzt(dokuEn, lageEn, referenz(liste, "en", (e) => uebersetzung[e.pfad].text));
+  if (!luecken.length) neuEn = ersetzt(dokuEn, lageEn, referenz(liste, "en", (e) => uebersetzung[e.pfad].text, tabelle));
 }
 
 const lueckenListe = luecken.map((l) => `  - ${l}`).join("\n");
 const abweichend = [];
-if (neu !== doku) abweichend.push("docs/dokumentation.md");
-if (neuEn !== null && neuEn !== dokuEn) abweichend.push("docs/en/dokumentation.md");
+if (neu !== doku) abweichend.push("docs/einstellungen.md");
+if (neuEn !== null && neuEn !== dokuEn) abweichend.push("docs/en/einstellungen.md");
 
 if (nurPruefen) {
   if (luecken.length) {
