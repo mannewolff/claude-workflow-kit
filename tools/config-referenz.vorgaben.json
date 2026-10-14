@@ -79,24 +79,58 @@
     "vorgabe": {
       "de": "je Stufe die Rollen des Rollenkatalogs, ein Reviewer je Rolle",
       "en": "per tier the roles of the role catalogue, one reviewer per role"
+    },
+    "bedingung": {
+      "de": "nur, wenn der ganze Block fehlt; fehlt in einem vorhandenen Block eine Stufe oder ein Feld, bricht die Prüfung der Config ab",
+      "en": "only if the whole block is missing; if a tier or a field is missing in a block that is present, the config check aborts"
+    }
+  },
+  "reviewStufen.fachlich.reviewer": {
+    "bedingung": {
+      "de": "nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld",
+      "en": "only if the whole `reviewStages` block is missing; a block that is present needs the field"
+    }
+  },
+  "reviewStufen.plan.reviewer": {
+    "bedingung": {
+      "de": "nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld",
+      "en": "only if the whole `reviewStages` block is missing; a block that is present needs the field"
+    }
+  },
+  "reviewStufen.issue.reviewer": {
+    "bedingung": {
+      "de": "nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld",
+      "en": "only if the whole `reviewStages` block is missing; a block that is present needs the field"
     }
   },
   "reviewStufen.fachlich.rollen": {
     "vorgabe": {
       "de": "`form-beobachtbarkeit`, `abgrenzung`",
       "en": "`form-beobachtbarkeit`, `abgrenzung`"
+    },
+    "bedingung": {
+      "de": "nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld",
+      "en": "only if the whole `reviewStages` block is missing; a block that is present needs the field"
     }
   },
   "reviewStufen.plan.rollen": {
     "vorgabe": {
       "de": "`architektur-bestand`, `schnitt-abhaengigkeiten`",
       "en": "`architektur-bestand`, `schnitt-abhaengigkeiten`"
+    },
+    "bedingung": {
+      "de": "nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld",
+      "en": "only if the whole `reviewStages` block is missing; a block that is present needs the field"
     }
   },
   "reviewStufen.issue.rollen": {
     "vorgabe": {
       "de": "`pruefbarkeit`",
       "en": "`pruefbarkeit`"
+    },
+    "bedingung": {
+      "de": "nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld",
+      "en": "only if the whole `reviewStages` block is missing; a block that is present needs the field"
     }
   },
   "night.kette.uebergaenge": {

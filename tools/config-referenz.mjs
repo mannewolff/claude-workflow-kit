@@ -6,7 +6,7 @@
  *
  * Das Schema ist die Quelle, dieser Abschnitt ist ihr Abbild. Je Einstellung steht eine
  * Zeile (Plan #1652 E3): englischer Pfad, erster Satz der Beschreibung, gültige Werte und
- * Vorgabe. Die Vorgabe kommt aus `default`, sonst aus tools/config-referenz.vorgaben.json,
+ * Vorgabe, dazu der Wertebereich aus `minimum`, `maximum` und `const`. Die Vorgabe kommt aus `default`, sonst aus tools/config-referenz.vorgaben.json,
  * sonst steht „Keine Vorgabe“. Dieselbe Datei ersetzt je Pfad den ersten Satz, wo er keine
  * Wirkung nennt. Geschrieben wird ausschließlich zwischen den beiden Markern; der übrige
  * Text der Seite bleibt unberührt.
@@ -71,6 +71,21 @@ function werteListe(knoten) {
   const ausVarianten = (knoten?.oneOf ?? []).flatMap((v) => (Array.isArray(v?.enum) ? v.enum : []));
   const liste = knoten?.enum ?? knoten?.items?.enum ?? (ausVarianten.length ? ausVarianten : undefined);
   return Array.isArray(liste) ? liste : undefined;
+}
+
+/**
+ * Der Wertebereich eines Feldes aus `const`, `minimum` und `maximum` als Satz, leer ohne
+ * diese Angaben (Issue #1669): Der erste Satz der Beschreibung trägt ihn nicht immer.
+ */
+function bereichSatz(knoten, sprache) {
+  const rahmen = RAHMEN[sprache];
+  if (knoten && "const" in knoten) return ` ${rahmen.wert}: \`${JSON.stringify(knoten.const)}\`.`;
+  const min = typeof knoten?.minimum === "number" ? knoten.minimum : undefined;
+  const max = typeof knoten?.maximum === "number" ? knoten.maximum : undefined;
+  if (min !== undefined && max !== undefined) return ` ${rahmen.werte}: ${min} ${rahmen.bis} ${max}.`;
+  if (min !== undefined) return ` ${rahmen.werte}: ${rahmen.ab} ${min}.`;
+  if (max !== undefined) return ` ${rahmen.werte}: ${rahmen.hoechstens} ${max}.`;
+  return "";
 }
 
 /**
@@ -157,6 +172,11 @@ const RAHMEN = {
     keine: "Keine Vorgabe.",
     leer: "leer",
     objekt: "die Werte der Felder darunter",
+    wert: "Wert",
+    werte: "Werte",
+    bis: "bis",
+    ab: "ab",
+    hoechstens: "bis",
   },
   en: {
     hinweis: "_This section is generated from `templates/workflow.config.schema.json` by `node tools/config-referenz.mjs`; changes belong in the schema, not here._",
@@ -165,22 +185,34 @@ const RAHMEN = {
     keine: "No default.",
     leer: "empty",
     objekt: "the values of the fields below",
+    wert: "Value",
+    werte: "Values",
+    bis: "to",
+    ab: "from",
+    hoechstens: "up to",
   },
 };
 
-/** Die Vorgabe als Satzende: aus `default`, sonst aus der Tabelle, sonst „Keine Vorgabe“. */
+/**
+ * Die Vorgabe als Satzende: aus `default`, sonst aus der Tabelle, sonst „Keine Vorgabe“.
+ * Eine `bedingung` der Tabelle steht hinter der Vorgabe, wenn sie nicht immer gilt — etwa
+ * nur, wenn der ganze Block fehlt (Issue #1669).
+ */
 function vorgabeSatz(e, sprache, tabelle) {
   const rahmen = RAHMEN[sprache];
+  const bedingung = tabelle[e.pfad]?.bedingung;
+  const zusatz = bedingung ? ", " + bedingung[sprache] : "";
+  const mitBedingung = (text) => `${rahmen.vorgabe}: ${text}${zusatz}.`;
   if (e.knoten && "default" in e.knoten) {
     const wert = e.knoten.default;
     let text;
     if (wert === "") text = rahmen.leer;
     else if (wert !== null && typeof wert === "object" && !Array.isArray(wert)) text = rahmen.objekt;
     else text = "`" + (typeof wert === "string" ? wert : JSON.stringify(wert)) + "`";
-    return `${rahmen.vorgabe}: ${text}.`;
+    return mitBedingung(text);
   }
   const eintrag = tabelle[e.pfad]?.vorgabe;
-  return eintrag ? `${rahmen.vorgabe}: ${eintrag[sprache]}.` : rahmen.keine;
+  return eintrag ? mitBedingung(eintrag[sprache]) : rahmen.keine;
 }
 
 /** Der Abschnitt zwischen den Markern, ohne die Marker selbst; `texte` liefert die Beschreibung je Eintrag. */
@@ -191,7 +223,7 @@ function referenz(liste, sprache, texte, tabelle) {
   for (const e of liste) {
     if (e.wurzel) teile.push("");
     const satz = tabelle[e.pfad]?.satz?.[sprache] ?? ersterSatz(texte(e));
-    teile.push(`- \`${englischerPfad(e.pfad)}\` — ${entschaerft(satz)}${werte(e.werte)} ${vorgabeSatz(e, sprache, tabelle)}`);
+    teile.push(`- \`${englischerPfad(e.pfad)}\` — ${entschaerft(satz)}${werte(e.werte)}${bereichSatz(e.knoten, sprache)} ${vorgabeSatz(e, sprache, tabelle)}`);
   }
   teile.push("");
   return teile.join("\n");
@@ -208,7 +240,7 @@ function tabellenFehler(tabelle, liste) {
       continue;
     }
     if (eintrag.vorgabe && e.knoten && "default" in e.knoten) fehlerListe.push(`${pfad}: trägt im Schema schon default, die Vorgabe der Tabelle griffe nie`);
-    for (const art of ["vorgabe", "satz"]) {
+    for (const art of ["vorgabe", "satz", "bedingung"]) {
       if (eintrag[art] && (typeof eintrag[art].de !== "string" || typeof eintrag[art].en !== "string")) {
         fehlerListe.push(`${pfad}: ${art} braucht de und en`);
       }

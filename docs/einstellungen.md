@@ -33,7 +33,7 @@ _Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node
 - `buildChecks[].completionAreas` — Bereichsnamen aus checkAreas, bei deren direkter Berührung eine Prüfung mit "nichtBeimAbschluss" auch beim Abschluss eines Arbeitspakets läuft. Vorgabe: nicht gesetzt, die Prüfung entfällt beim Abschluss.
 - `buildChecks[].quality` — Benennt diese Prüfung als Gütemessung: Sie misst, wie viele absichtlich eingebauten Fehler die Tests bemerken, und ein Wert unter der Marke hält das Veröffentlichen an. Keine Vorgabe.
 - `buildChecks[].quality.pattern` — Regulärer Ausdruck mit genau einer Gruppe; sie greift den gemessenen Prozentwert aus der Ausgabe des Kommandos. Keine Vorgabe.
-- `buildChecks[].quality.marker` — Der Prozentwert, ab dem die Messung genügt. Keine Vorgabe.
+- `buildChecks[].quality.marker` — Der Prozentwert, ab dem die Messung genügt. Werte: 0 bis 100. Keine Vorgabe.
 - `buildChecks[].concurrent` — Ob diese Prüfung in "checks.mjs run" neben anderen laufen darf. Vorgabe: `false`.
 - `buildChecks[].upfront` — Ob diese Prüfung in "checks.mjs run" vor allen anderen läuft. Vorgabe: `false`.
 - `buildChecks[].kind` — Mit `hinweis` meldet die Prüfung nur und hält nie an. Gültig: `hinweis`. Vorgabe: eine gewöhnliche Prüfung, deren Rot den Lauf anhält.
@@ -51,7 +51,7 @@ _Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node
 - `testLocations` — Wo die eigenen Tests eines Bausteins liegen — daraus meldet issue check-form bei einem Plan Testhinweise: je eigener Test eines geführten Bausteins, den der Plan nicht nennt, ein Hinweis, der weder ok noch den Exit-Code berührt. Vorgabe: die Ablagen des Kits für TypeScript und Java.
 - `testLocations[].source` — Muster der Quelldatei, etwa src/{pfad}/{name}.ts. Keine Vorgabe.
 - `testLocations[].test` — Muster ihres eigenen Tests, mit denselben Platzhaltern und * innerhalb eines Segments, etwa src/{pfad}/{name}*.test.ts. Keine Vorgabe.
-- `testLocations[].defaults` — Fügt die Vorgaben des Kits an dieser Stelle ein. Keine Vorgabe.
+- `testLocations[].defaults` — Fügt die Vorgaben des Kits an dieser Stelle ein. Wert: `true`. Keine Vorgabe.
 
 - `scaffoldOnly` — Pfade, die Testdateien nur als Gerüst anlegen — ihre Erwähnung in einer Testdatei belegt keine Kopplung. Vorgabe: `[]`.
 - `scaffoldOnly[].pattern` — Pfadmuster wie in checkAreas: "*" innerhalb eines Segments, "**" über Segmentgrenzen hinweg, "/" als Trenner. Keine Vorgabe.
@@ -97,7 +97,7 @@ _Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node
 - `columns.done` — Name der Spalte für Done auf GitHub und lokal; GitLab nimmt immer den geschlossenen Zustand. Vorgabe: `Done`.
 
 - `github` — GitHub-spezifische Einstellungen. Keine Vorgabe.
-- `github.projectNumber` — Nummer des GitHub Project Boards (gh project list). Keine Vorgabe.
+- `github.projectNumber` — Nummer des GitHub Project Boards (gh project list). Werte: ab 1. Keine Vorgabe.
 
 - `toolbox` — Einstellungen für den Toolbox-Issue-Tracker (issueTracker: 'toolbox'). Keine Vorgabe.
 - `toolbox.host` — Basis-URL der Toolbox-Instanz. Keine Vorgabe.
@@ -114,16 +114,16 @@ _Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node
 - `issueReview.reviewers[].readLimit` — Nur bei kind 'command': der Nur-Lese-Schalter des fremden Werkzeugs, den das Kit an die Kommandozeile hängt (z.B. '--sandbox read-only'), am Leerraum zerlegt wie command. Keine Vorgabe.
 - `issueReview.pairs` — Explizite Zuordnung Autor -> Reviewer. Vorgabe: keine Zuordnung, es gilt die Reihenfolge in `reviewers`.
 
-- `reviewStages` — Besetzung und Blickwinkel der drei Prüfstufen: das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Vorgabe: je Stufe die Rollen des Rollenkatalogs, ein Reviewer je Rolle.
+- `reviewStages` — Besetzung und Blickwinkel der drei Prüfstufen: das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Vorgabe: je Stufe die Rollen des Rollenkatalogs, ein Reviewer je Rolle, nur, wenn der ganze Block fehlt; fehlt in einem vorhandenen Block eine Stufe oder ein Feld, bricht die Prüfung der Config ab.
 - `reviewStages.requirement` — Prüfung des fachlichen Anliegens ([Requirement]-Issue), bevor daraus ein Plan wird. Keine Vorgabe.
-- `reviewStages.requirement.reviewer` — Wie viele Reviewer diese Stufe prüfen. Vorgabe: `2`.
-- `reviewStages.requirement.roles` — Ein Rollenname je Reviewer, in der Reihenfolge der Zuteilung. Vorgabe: `form-beobachtbarkeit`, `abgrenzung`.
+- `reviewStages.requirement.reviewer` — Wie viele Reviewer diese Stufe prüfen. Werte: ab 1. Vorgabe: `2`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
+- `reviewStages.requirement.roles` — Ein Rollenname je Reviewer, in der Reihenfolge der Zuteilung. Vorgabe: `form-beobachtbarkeit`, `abgrenzung`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
 - `reviewStages.plan` — Prüfung des Plandokuments ([Plan]-Issue), bevor es in Arbeitspakete zerfällt. Keine Vorgabe.
-- `reviewStages.plan.reviewer` — Wie viele Reviewer diese Stufe prüfen. Vorgabe: `2`.
-- `reviewStages.plan.roles` — Ein Rollenname je Reviewer, in der Reihenfolge der Zuteilung. Vorgabe: `architektur-bestand`, `schnitt-abhaengigkeiten`.
+- `reviewStages.plan.reviewer` — Wie viele Reviewer diese Stufe prüfen. Werte: ab 1. Vorgabe: `2`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
+- `reviewStages.plan.roles` — Ein Rollenname je Reviewer, in der Reihenfolge der Zuteilung. Vorgabe: `architektur-bestand`, `schnitt-abhaengigkeiten`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
 - `reviewStages.issue` — Prüfung des einzelnen Arbeitspakets vor dem GO. Keine Vorgabe.
-- `reviewStages.issue.reviewer` — Wie viele Reviewer diese Stufe prüfen. Vorgabe: `1`.
-- `reviewStages.issue.roles` — Ein Rollenname je Reviewer, in der Reihenfolge der Zuteilung. Vorgabe: `pruefbarkeit`.
+- `reviewStages.issue.reviewer` — Wie viele Reviewer diese Stufe prüfen. Werte: ab 1. Vorgabe: `1`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
+- `reviewStages.issue.roles` — Ein Rollenname je Reviewer, in der Reihenfolge der Zuteilung. Vorgabe: `pruefbarkeit`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
 
 - `night` — Der Nachtbetrieb. Keine Vorgabe.
 - `night.chain` — Budgets und Kennzeichen der Nacht-Kette (night.mjs --chain). Keine Vorgabe.
@@ -137,7 +137,7 @@ _Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node
 - `night.chain.preparationMin` — Frist der Vorbereitung des Push in Minuten, Warten und Prüflauf eingeschlossen: So lange wartet sie höchstens, bis in der Nacht nichts mehr baut. Vorgabe: `120`.
 - `night.chain.costUsd` — Kostenbudget je Kette in US-Dollar, summiert über alle Sessions der Kette; geprüft nach jeder Session. Vorgabe: `50`.
 - `night.chain.costUsdB` — Kostenbudget je Kette in US-Dollar für die Umsetzungsstufe (Variante B), summiert über alle Sessions der Kette; geprüft nach jeder Session. Vorgabe: `150`.
-- `night.chain.correctionRounds` — Höchstzahl der Korrektursessions je Dokument nach einer roten Formprüfung. Vorgabe: `2`.
+- `night.chain.correctionRounds` — Höchstzahl der Korrektursessions je Dokument nach einer roten Formprüfung. Werte: ab 1. Vorgabe: `2`.
 - `night.chain.transitions` — Welche Übergänge der Kette automatisch folgen dürfen. Vorgabe: jeder Übergang folgt, die Umsetzung nur an einer Karte mit dem Variante-B-Label.
 - `night.chain.transitions.planReview` — Nach dem Plan folgt die Prüfung des Plans automatisch. Vorgabe: `true`.
 - `night.chain.transitions.reviewPackages` — Nach der Prüfung des Plans folgen die Arbeitspakete automatisch. Vorgabe: `true`.
@@ -170,7 +170,7 @@ _Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node
 - `night.tiers.easy.command` — Kommandozeile eines fremden Programms für diese Stufe — ein Projekt-Artefakt derselben Vertrauensstufe wie reviewCommand, das pattern ^claude- gilt hier nicht. Keine Vorgabe.
 - `night.tiers.easy.name` — Selbstauskunft des Programms neben kommando. Keine Vorgabe.
 - `night.tierRule` — Ersetzt die mitgelieferte Regel, nach der /issues und /task die Stufe eines Arbeitspakets bestimmen. Vorgabe: die Regel des Kits.
-- `night.stuckAfter` — Zahl gleich gescheiterter Läufe derselben Prüfung, nach der eine unbeaufsichtigte Sitzung beim nächsten Prüfaufruf gebremst wird; interaktiv gibt dieselbe Zahl nur einen Hinweis. Vorgabe: `3`.
+- `night.stuckAfter` — Zahl gleich gescheiterter Läufe derselben Prüfung, nach der eine unbeaufsichtigte Sitzung beim nächsten Prüfaufruf gebremst wird; interaktiv gibt dieselbe Zahl nur einen Hinweis. Werte: ab 2. Vorgabe: `3`.
 - `night.goalImplementationMin` — Zielmarke für die Dauer einer Umsetzung in Minuten; der Bericht weist aus, wie viele Pakete darunter blieben. Vorgabe: `10`.
 
 - `checkRun` — Der Prüflauf: ein Lauf am Tag, der mehrere gekennzeichnete fachliche Anforderungen nacheinander prüfen lässt, ohne dass jemand zusieht. Vorgabe: die Werte der Felder darunter.
@@ -181,15 +181,15 @@ _Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node
 - `workload` — Der Aufwand des Prozesses (unbeaufsichtigte Läufe): wie viele Ergebnisstände die Auswertung betrachtet und ab welchen Schwellen sie einen Befund meldet. Vorgabe: die Werte der Felder darunter.
 - `workload.runs` — Wie viele der jüngsten abgeschlossenen Ergebnisstände die Auswertung höchstens einbezieht, die jüngsten zuerst. Vorgabe: `10`.
 - `workload.thresholds` — Ab welchem Anteil die Auswertung einen Befund meldet. Vorgabe: die Werte der Felder darunter.
-- `workload.thresholds.checkShare` — Anteil, den die größte einzelne Pflichtprüfung an der gesamten Prüfzeit einnehmen darf, bevor ein Befund erscheint. Vorgabe: `0.5`.
+- `workload.thresholds.checkShare` — Anteil, den die größte einzelne Pflichtprüfung an der gesamten Prüfzeit einnehmen darf, bevor ein Befund erscheint. Werte: 0 bis 1. Vorgabe: `0.5`.
 - `workload.thresholds.narrowingWithoutEffect` — Ob ein Befund erscheint, wenn die Eingrenzung der Prüfungen über Bereiche gemessen, aber nie gegriffen hat. Vorgabe: `true`.
-- `workload.thresholds.toolShare` — Anteil, den reine Werkzeugarbeit an der gesamten Laufzeit einnehmen darf, bevor ein Befund erscheint. Vorgabe: `0.5`.
-- `workload.thresholds.writeCostShare` — Anteil, den die Kosten des dritten Postens (Schreiben) an den Gesamtkosten einnehmen dürfen, bevor ein Befund erscheint. Vorgabe: `0.75`.
+- `workload.thresholds.toolShare` — Anteil, den reine Werkzeugarbeit an der gesamten Laufzeit einnehmen darf, bevor ein Befund erscheint. Werte: 0 bis 1. Vorgabe: `0.5`.
+- `workload.thresholds.writeCostShare` — Anteil, den die Kosten des dritten Postens (Schreiben) an den Gesamtkosten einnehmen dürfen, bevor ein Befund erscheint. Werte: 0 bis 1. Vorgabe: `0.75`.
 
 - `effectiveness` — Die Wirksamkeit der Prüfungen: über welches Zeitfenster die Auswertung Ausführungen und Beanstandungen zählt und ab welchen Mengen und Schwellen sie einen Befund meldet. Vorgabe: die Werte der Felder darunter.
 - `effectiveness.windowDays` — Wie viele Tage zurück die Auswertung zählt. Vorgabe: `30`.
 - `effectiveness.neverFlaggedFromRuns` — Ab wie vielen Ausführungen im Fenster eine Prüfung, die nie beanstandet hat, zum Befund wird. Vorgabe: `10`.
-- `effectiveness.rateThreshold` — Ab welcher Rückläuferquote ein Befund erscheint. Vorgabe: `0.2`.
+- `effectiveness.rateThreshold` — Ab welcher Rückläuferquote ein Befund erscheint. Werte: 0 bis 1. Vorgabe: `0.2`.
 - `effectiveness.rateFromPackages` — Ab wie vielen gewerteten Arbeitspaketen im Fenster die Rückläuferquote einen Befund auslösen darf. Vorgabe: `10`.
 - `effectiveness.candidatesMax` — Wie viele Karten die Rückläuferquote höchstens wertet, die jüngsten Eintritte in In review zuerst. Vorgabe: `200`.
 
@@ -198,7 +198,7 @@ _Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node
 
 - `history` — Sucht vor dem Schreiben eines Fachplans oder Plans frühere Fachpläne des eigenen Boards zum selben Gegenstand, archivierte eingeschlossen, und nennt die einschlägigen im neuen Dokument. Vorgabe: `false`.
 
-- `scenariosFrom` — Stichtag der Szenarien-Pflicht: die Kartennummer, ab der ein Fachplan am Board einen Abschnitt Szenarien mit mindestens einem vollständigen Szenario tragen muss. Vorgabe: nicht gesetzt, die Pflicht gilt für keine Karte am Board; der Installer setzt das Feld beim Update.
+- `scenariosFrom` — Stichtag der Szenarien-Pflicht: die Kartennummer, ab der ein Fachplan am Board einen Abschnitt Szenarien mit mindestens einem vollständigen Szenario tragen muss. Werte: ab 1. Vorgabe: nicht gesetzt, die Pflicht gilt für keine Karte am Board; der Installer setzt das Feld beim Update.
 
 - `contractRepos` — Die Partnerrepos dieses Projekts: Repos, die etwas lesen oder schreiben, das auch dieses Projekt festlegt — einen Namen, ein Kennzeichen, ein Format. Vorgabe: `[]`, kein Partnerrepo.
 - `contractRepos[].name` — Kurzname des Partnerrepos, etwa kanban-kit: Kleinbuchstaben und Ziffern, Wörter durch einzelne Bindestriche getrennt. Keine Vorgabe.

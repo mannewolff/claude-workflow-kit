@@ -133,13 +133,32 @@ function englisch(pfad) {
 
 const maskiert = (s) => s.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 
+/**
+ * Die Slash-Kommandos, die ein Text nennt: in Backticks wie bisher und im Fließtext ohne
+ * Backticks (Issue #1669). Im Fließtext zählt `/name` nur mit Leerraum, Zeilenanfang oder
+ * Satzzeichen davor und ohne `/`, `#`, Wortzeichen oder Dateiendung dahinter — so bleiben Pfade,
+ * URLs und Linkziele wie `](/einstellungen)` draußen. Frontmatter, Codeblöcke und
+ * Code-Spannen prüft nur die Backtick-Form.
+ */
+function genannteNamen(text) {
+  const namen = [...text.matchAll(/`\/([a-z][a-z0-9-]*)(?:\s[^`]*)?`/g)].map((m) => m[1]);
+  const fliesstext = text.replace(/^---\n[\s\S]*?\n---\n/, "").replaceAll(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, "").replaceAll(/`[^`\n]*`/g, "");
+  for (const [, name] of fliesstext.matchAll(/(?<=^|[\s„“"'«(*_])(?<!\]\()\/([a-z][a-z0-9-]*)(?![\w/#-]|\.[\w/])/gm)) namen.push(name);
+  return namen;
+}
+
 test("Szenario: Jeder genannte Name funktioniert", () => {
   const skills = new Set(readdirSync(join(repoRoot, "skills")).filter((n) => existsSync(join(repoRoot, "skills", n, "SKILL.md"))));
   for (const { name, text } of seiten()) {
-    for (const [, aufruf] of ohneAusnahmen(text).matchAll(/`\/([a-z][a-z0-9-]*)(?:\s[^`]*)?`/g)) {
+    for (const aufruf of genannteNamen(ohneAusnahmen(text))) {
       assert.ok(skills.has(aufruf) || EINGEBAUT.has(aufruf), `${name}: /${aufruf} gibt es weder unter skills/ noch als eingebautes Kommando`);
     }
   }
+});
+
+test("Gegenprobe: ein erfundener Name ohne Backticks fällt auf, Pfade und Links nicht", () => {
+  const text = "---\nlink: /quickstart\n---\nDanach /does-not-exist aufrufen, dann `/local-check`.\n\nSiehe [Seite](/einstellungen#x), /en/glossar, https://docs.mwolff.org/prozess und /local-check.\n\n```bash\ncd /tmp\n```\n";
+  assert.deepEqual(genannteNamen(text).sort(), ["does-not-exist", "local-check", "local-check"]);
 });
 
 test("Szenario: Die Doku beschreibt den Stand, nicht die Geschichte", () => {

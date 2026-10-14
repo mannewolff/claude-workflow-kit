@@ -35,7 +35,7 @@ _This section is generated from `templates/workflow.config.schema.json` by `node
 - `buildChecks[].completionAreas` — Area names from checkAreas whose direct touch makes a check with "nichtBeimAbschluss" run at the completion of a work package too. Default: not set, the check is skipped at completion.
 - `buildChecks[].quality` — Marks this check as a quality measurement: it measures how many deliberately planted faults the tests notice, and a value below the threshold stops publishing. No default.
 - `buildChecks[].quality.pattern` — Regular expression with exactly one group; it picks the measured percentage from the command's output. No default.
-- `buildChecks[].quality.marker` — The percentage from which the measurement suffices. No default.
+- `buildChecks[].quality.marker` — The percentage from which the measurement suffices. Values: 0 to 100. No default.
 - `buildChecks[].concurrent` — Whether this check may run alongside others in "checks.mjs run". Default: `false`.
 - `buildChecks[].upfront` — Whether this check runs in "checks.mjs run" before all others. Default: `false`.
 - `buildChecks[].kind` — With `hinweis` the check only reports and never stops. Valid: `hinweis`. Default: an ordinary check whose red result stops the run.
@@ -53,7 +53,7 @@ _This section is generated from `templates/workflow.config.schema.json` by `node
 - `testLocations` — Where a component's own tests live — from this, issue check-form reports test hints for a plan: for each own test of a listed component that the plan does not name, one hint that affects neither ok nor the exit code. Default: the kit's locations for TypeScript and Java.
 - `testLocations[].source` — Pattern of the source file, for example src/{pfad}/{name}.ts. No default.
 - `testLocations[].test` — Pattern of its own test, with the same placeholders and * within a segment, for example src/{pfad}/{name}*.test.ts. No default.
-- `testLocations[].defaults` — Inserts the kit's defaults at this position. No default.
+- `testLocations[].defaults` — Inserts the kit's defaults at this position. Value: `true`. No default.
 
 - `scaffoldOnly` — Paths that test files only create as scaffolding — mentioning them in a test file proves no coupling. Default: `[]`.
 - `scaffoldOnly[].pattern` — Path pattern as in checkAreas: "*" within a segment, "**" across segment boundaries, "/" as separator. No default.
@@ -99,7 +99,7 @@ _This section is generated from `templates/workflow.config.schema.json` by `node
 - `columns.done` — Name of the Done column on GitHub and locally; GitLab always uses the closed state. Default: `Done`.
 
 - `github` — GitHub-specific settings. No default.
-- `github.projectNumber` — Number of the GitHub Project board (gh project list). No default.
+- `github.projectNumber` — Number of the GitHub Project board (gh project list). Values: from 1. No default.
 
 - `toolbox` — Settings for the Toolbox issue tracker (issueTracker: 'toolbox'). No default.
 - `toolbox.host` — Base URL of the Toolbox instance. No default.
@@ -116,16 +116,16 @@ _This section is generated from `templates/workflow.config.schema.json` by `node
 - `issueReview.reviewers[].readLimit` — Only for kind 'command': the read-only switch of the foreign tool that the kit appends to the command line (e.g. '--sandbox read-only'), split at whitespace like command. No default.
 - `issueReview.pairs` — Explicit mapping author -> reviewer. Default: no assignment, the order in `reviewers` applies.
 
-- `reviewStages` — Staffing and perspective of the three review levels: the functional concern, the plan to get there, the single work package. Default: per tier the roles of the role catalogue, one reviewer per role.
+- `reviewStages` — Staffing and perspective of the three review levels: the functional concern, the plan to get there, the single work package. Default: per tier the roles of the role catalogue, one reviewer per role, only if the whole block is missing; if a tier or a field is missing in a block that is present, the config check aborts.
 - `reviewStages.requirement` — Review of the functional concern ([Requirement] issue) before a plan is made from it. No default.
-- `reviewStages.requirement.reviewer` — How many reviewers review this level. Default: `2`.
-- `reviewStages.requirement.roles` — One role name per reviewer, in the order of assignment. Default: `form-beobachtbarkeit`, `abgrenzung`.
+- `reviewStages.requirement.reviewer` — How many reviewers review this level. Values: from 1. Default: `2`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
+- `reviewStages.requirement.roles` — One role name per reviewer, in the order of assignment. Default: `form-beobachtbarkeit`, `abgrenzung`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
 - `reviewStages.plan` — Review of the plan document ([Plan] issue) before it is split into work packages. No default.
-- `reviewStages.plan.reviewer` — How many reviewers review this level. Default: `2`.
-- `reviewStages.plan.roles` — One role name per reviewer, in the order of assignment. Default: `architektur-bestand`, `schnitt-abhaengigkeiten`.
+- `reviewStages.plan.reviewer` — How many reviewers review this level. Values: from 1. Default: `2`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
+- `reviewStages.plan.roles` — One role name per reviewer, in the order of assignment. Default: `architektur-bestand`, `schnitt-abhaengigkeiten`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
 - `reviewStages.issue` — Review of the single work package before the GO. No default.
-- `reviewStages.issue.reviewer` — How many reviewers review this level. Default: `1`.
-- `reviewStages.issue.roles` — One role name per reviewer, in the order of assignment. Default: `pruefbarkeit`.
+- `reviewStages.issue.reviewer` — How many reviewers review this level. Values: from 1. Default: `1`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
+- `reviewStages.issue.roles` — One role name per reviewer, in the order of assignment. Default: `pruefbarkeit`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
 
 - `night` — Night mode. No default.
 - `night.chain` — Budgets and markers of the night chain (night.mjs --chain). No default.
@@ -139,7 +139,7 @@ _This section is generated from `templates/workflow.config.schema.json` by `node
 - `night.chain.preparationMin` — Deadline for preparing the push in minutes, waiting and check run included: this is the longest it waits until nothing is building any more in the night. Default: `120`.
 - `night.chain.costUsd` — Cost budget per chain in US dollars, summed over all sessions of the chain; checked after every session. Default: `50`.
 - `night.chain.costUsdB` — Cost budget per chain in US dollars for the implementation stage (variant B), summed over all sessions of the chain; checked after every session. Default: `150`.
-- `night.chain.correctionRounds` — Maximum number of correction sessions per document after a red form check. Default: `2`.
+- `night.chain.correctionRounds` — Maximum number of correction sessions per document after a red form check. Values: from 1. Default: `2`.
 - `night.chain.transitions` — Which transitions of the chain may follow automatically. Default: every transition follows, implementation only for a card with the variant B label.
 - `night.chain.transitions.planReview` — After the plan, the review of the plan follows automatically. Default: `true`.
 - `night.chain.transitions.reviewPackages` — After the review of the plan, the work packages follow automatically. Default: `true`.
@@ -172,7 +172,7 @@ _This section is generated from `templates/workflow.config.schema.json` by `node
 - `night.tiers.easy.command` — Command line of a foreign program for this level — a project artefact with the same level of trust as reviewCommand; the pattern ^claude- does not apply here. No default.
 - `night.tiers.easy.name` — The program's self-description next to kommando. No default.
 - `night.tierRule` — Replaces the built-in rule by which /issues and /task determine the level of a work package. Default: the kit's rule.
-- `night.stuckAfter` — Number of identically failed runs of the same check after which an unattended session is stopped at the next check call; interactively the same number only produces a hint. Default: `3`.
+- `night.stuckAfter` — Number of identically failed runs of the same check after which an unattended session is stopped at the next check call; interactively the same number only produces a hint. Values: from 2. Default: `3`.
 - `night.goalImplementationMin` — Target for the duration of an implementation in minutes; the report shows how many packages stayed below it. Default: `10`.
 
 - `checkRun` — The review run: a run during the day that has several marked functional requirements reviewed one after another without anyone watching. Default: the values of the fields below.
@@ -183,15 +183,15 @@ _This section is generated from `templates/workflow.config.schema.json` by `node
 - `workload` — The effort of the process (unattended runs): how many result records the evaluation considers and from which thresholds it reports a finding. Default: the values of the fields below.
 - `workload.runs` — The maximum number of the most recent completed result records the evaluation includes, most recent first. Default: `10`.
 - `workload.thresholds` — From which share the evaluation reports a finding. Default: the values of the fields below.
-- `workload.thresholds.checkShare` — Share of the total check time that the largest single mandatory check may take before a finding appears. Default: `0.5`.
+- `workload.thresholds.checkShare` — Share of the total check time that the largest single mandatory check may take before a finding appears. Values: 0 to 1. Default: `0.5`.
 - `workload.thresholds.narrowingWithoutEffect` — Whether a finding appears when narrowing the checks by area was measured but never took effect. Default: `true`.
-- `workload.thresholds.toolShare` — Share of the total running time that pure tool work may take before a finding appears. Default: `0.5`.
-- `workload.thresholds.writeCostShare` — Share of the total costs that the costs of the third item (writing) may take before a finding appears. Default: `0.75`.
+- `workload.thresholds.toolShare` — Share of the total running time that pure tool work may take before a finding appears. Values: 0 to 1. Default: `0.5`.
+- `workload.thresholds.writeCostShare` — Share of the total costs that the costs of the third item (writing) may take before a finding appears. Values: 0 to 1. Default: `0.75`.
 
 - `effectiveness` — The effectiveness of the checks: over which time window the evaluation counts executions and objections, and from which counts and thresholds it reports a finding. Default: the values of the fields below.
 - `effectiveness.windowDays` — How many days back the evaluation counts. Default: `30`.
 - `effectiveness.neverFlaggedFromRuns` — From how many executions in the window a check that has never objected becomes a finding. Default: `10`.
-- `effectiveness.rateThreshold` — From which return rate a finding appears. Default: `0.2`.
+- `effectiveness.rateThreshold` — From which return rate a finding appears. Values: 0 to 1. Default: `0.2`.
 - `effectiveness.rateFromPackages` — From how many evaluated work packages in the window the return rate may trigger a finding. Default: `10`.
 - `effectiveness.candidatesMax` — The maximum number of cards the return rate evaluates, most recent entries into In review first. Default: `200`.
 
@@ -200,7 +200,7 @@ _This section is generated from `templates/workflow.config.schema.json` by `node
 
 - `history` — Before a requirement or plan is written, searches earlier requirements on the project's own board on the same subject, archived ones included, and names the relevant ones in the new document. Default: `false`.
 
-- `scenariosFrom` — Cut-off of the scenario duty: the card number from which a requirement on the board must carry a Scenarios section with at least one complete scenario. Default: not set, the obligation applies to no card on the board; the installer sets the field on update.
+- `scenariosFrom` — Cut-off of the scenario duty: the card number from which a requirement on the board must carry a Scenarios section with at least one complete scenario. Values: from 1. Default: not set, the obligation applies to no card on the board; the installer sets the field on update.
 
 - `contractRepos` — The partner repos of this project: repos that read or write something this project also defines — a name, a marker, a format. Default: `[]`, no partner repo.
 - `contractRepos[].name` — Short name of the partner repo, for example kanban-kit: lowercase letters and digits, words separated by single hyphens. No default.
