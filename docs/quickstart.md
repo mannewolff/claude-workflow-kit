@@ -71,4 +71,4 @@ Das Ziehen nach Ready, der Push, der Merge. Diese drei automatisiert das Kit nic
 
 ## Nachts arbeiten lassen
 
-Abends sortierst du Karten in Ready und startest `node .claude/kit/night.mjs`. Der Nacht-Runner setzt jede Karte in einer frischen Sitzung um, committet lokal und pusht nie. Mehr unter [Nachtbetrieb](./dokumentation.md#nachtbetrieb).
+Abends sortierst du Karten in Ready und startest `node .claude/kit/night.mjs`. Der Nacht-Runner setzt jede Karte in einer frischen Sitzung um, committet lokal und pusht nie. Mehr unter [Nachtbetrieb](./nachtbetrieb.md).

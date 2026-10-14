@@ -20,7 +20,6 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
-const DOKU = lies("docs", "dokumentation.md");
 const PROZESS = lies("docs", "prozess.md");
 
 /** Die Auslieferungsvorlage. Die Kopie unter .claude/ ist Installer-Ausgabe und
@@ -144,9 +143,10 @@ test("die Zwei-Modelle-Formulierung ist an beiden Fundstellen angepasst", () => 
   assert.doesNotMatch(stopPunkte, /von zwei Modellen/,
     "der Stop-Punkte-Abschnitt behauptet weiterhin zwei Modelle je Issue");
 
-  const idx = DOKU.indexOf("### Zweiter Modus: die Nacht-Kette");
+  const nacht = lies("docs", "nachtbetrieb.md");
+  const idx = nacht.indexOf("## Die Nacht-Kette\n");
   assert.ok(idx >= 0, "der Abschnitt zur Nacht-Kette fehlt");
-  const kette = DOKU.slice(idx).split(/\n### /)[0];
+  const kette = nacht.slice(idx).split(/\n## /)[0];
   assert.doesNotMatch(kette, /durch zwei fremde Modelle/,
     "der Abschnitt zur Nacht-Kette behauptet weiterhin zwei fremde Modelle");
   assert.match(kette, /der Prüfer der Stufe/, "ein Prüfer am Plan steht nicht da");

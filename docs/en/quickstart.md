@@ -77,6 +77,6 @@ If a requirement is more than a trifle but there is nothing to weigh up, `/task`
 Moving to Ready, the push, the merge. The kit does not automate these three.
 
 ## Letting it work at night
-<!-- de: 2db2b61a0835 -->
+<!-- de: 7c19cc61f05d -->
 
-In the evening you sort cards in Ready and start `node .claude/kit/night.mjs`. The night runner (Nacht-Runner) implements each card in a fresh session, commits locally and never pushes. More under [Night mode](./dokumentation.md#night-mode).
+In the evening you sort cards in Ready and start `node .claude/kit/night.mjs`. The night runner (Nacht-Runner) implements each card in a fresh session, commits locally and never pushes. More under [Night mode](./nachtbetrieb.md).

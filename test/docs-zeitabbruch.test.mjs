@@ -1,7 +1,7 @@
 // Der gekennzeichnete Zeitabbruch in Doku und Prozessvorlage (Issue #982, Plan #974,
 // fachliche Quelle #963).
 //
-// Geprueft werden `docs/dokumentation.md` und `templates/CLAUDE-workflow.md` — die
+// Geprueft werden `docs/nachtbetrieb.md` und `templates/CLAUDE-workflow.md` — die
 // Vorlage und nicht die Kopie unter `.claude/`: Die ist Installer-Ausgabe und in CI nicht
 // vorhanden (siehe docs-wartende-sitzung.test.mjs).
 //
@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
-const DOKU = lies("docs", "dokumentation.md");
+const DOKU = lies("docs", "nachtbetrieb.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
 const NIGHT = lies("kit", "night.mjs");
 
@@ -33,9 +33,8 @@ function abschnitt(text, ueberschrift) {
   return naechste === -1 ? rest : rest.slice(0, naechste);
 }
 
-test("[docs-zeitabbruch-1] das Nachtbetrieb-Kapitel beschreibt Vermerk, Felder und Berichtszeile", () => {
-  const text = abschnitt(DOKU, "## Nachtbetrieb");
-  assert.ok(text, "das Kapitel '## Nachtbetrieb' fehlt in der Dokumentation");
+test("[docs-zeitabbruch-1] die Seite Nachtbetrieb beschreibt Vermerk, Felder und Berichtszeile", () => {
+  const text = DOKU;
 
   for (const [was, muster] of [
     ["den Anker des Vermerks", /`## Nachtlauf: Zeitgrenze erreicht`/],
@@ -111,7 +110,7 @@ const URSACHENBEHAUPTUNGEN = [
 
 test("[docs-zeitabbruch-4] keine der drei Stellen behauptet die Ursache eines Zeitabbruchs", () => {
   for (const [name, datei, text] of [
-    ["Dokumentation", "docs/dokumentation.md", DOKU],
+    ["Dokumentation", "docs/nachtbetrieb.md", DOKU],
     ["Runner", "kit/night.mjs", NIGHT],
   ]) {
     for (const [stelle, muster] of URSACHENBEHAUPTUNGEN) {

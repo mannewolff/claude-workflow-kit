@@ -30,7 +30,6 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
-const DOKU = lies("docs", "dokumentation.md");
 const PROZESS = lies("docs", "prozess.md");
 
 const KAPITEL = "Der Prüflauf";
@@ -116,10 +115,10 @@ test("der Prueflauf-Block der Vorlage nennt Geste, Aufruf, Ausgaenge und das Ver
   assert.ok(idx < VORLAGE.indexOf("## Nachtbetrieb"), "der Prueflauf-Block steht nicht vor dem Nachtbetrieb-Block");
 });
 
-// Die Einleitung des Nachtbetrieb-Kapitels bleibt bei zwei Betriebsarten (das prueft
+// Die Einleitung der Seite Nachtbetrieb bleibt bei zwei Betriebsarten (das prueft
 // docs-nachtkette.test.mjs) — hier geprueft wird nur der Verweis auf das Kapitel der Prozessseite.
-test("die Einleitung des Nachtbetrieb-Kapitels verweist auf das Kapitel zum Prueflauf", () => {
-  const kapitel = DOKU.slice(DOKU.indexOf("\n## Nachtbetrieb\n") + 1).split(/\n## /)[0];
-  assert.match(kapitel.split(/\n\n/)[1], /zwei Betriebsarten/, "die Einleitung nennt die zwei Betriebsarten nicht");
-  assert.ok(kapitel.includes("/prozess#der-pruflauf"), "die Einleitung verlinkt das Kapitel zum Prueflauf nicht");
+test("die Einleitung der Seite Nachtbetrieb verweist auf das Kapitel zum Prueflauf", () => {
+  const einleitung = lies("docs", "nachtbetrieb.md").split(/\n\n/)[1];
+  assert.match(einleitung, /zwei Betriebsarten/, "die Einleitung nennt die zwei Betriebsarten nicht");
+  assert.ok(einleitung.includes("/prozess#der-pruflauf"), "die Einleitung verlinkt das Kapitel zum Prueflauf nicht");
 });

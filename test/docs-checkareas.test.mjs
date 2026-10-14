@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
-const DOKU = lies("docs", "dokumentation.md");
+const NACHT = lies("docs", "nachtbetrieb.md");
 const EINRICHTUNG = lies("docs", "einrichtung.md");
 const PROZESS = lies("docs", "prozess.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
@@ -206,8 +206,8 @@ test("die implement-Abschnitte erwaehnen die Pruefung vor dem Commit", () => {
 
 // --- Punkte 8 und 9: Nachtbetrieb ----------------------------------------
 
-test("das Nachtbetriebs-Kapitel nennt beide Stellen, an denen Auslassungen sichtbar sind", () => {
-  const kapitel = DOKU.slice(DOKU.indexOf("## Nachtbetrieb")).split(/\n## /)[0];
+test("die Seite Nachtbetrieb nennt beide Stellen, an denen Auslassungen sichtbar sind", () => {
+  const kapitel = NACHT;
   const absatz = absatzMit(kapitel, /Abschlussbericht/, /Lauf-Bericht|Bericht des Durchgangs/);
   assert.ok(absatz, "kein Absatz nennt Abschlussbericht und Lauf-Bericht gemeinsam");
   assert.match(absatz, /ausgelassen/i, "die Auslassungen sind nicht benannt");
@@ -223,7 +223,7 @@ test("das Nachtbetriebs-Kapitel nennt beide Stellen, an denen Auslassungen sicht
 // Weg kommt die bereichsbezogene Auswahl; die Stufenauswahl bleibt, wie sie war.
 // Beides muss dastehen, sonst ist der Absatz in die eine oder die andere Richtung falsch.
 test("der Salvage-Absatz weist den Weg ueber checks.mjs und den Nachweis fuer das Gate aus", () => {
-  const kapitel = DOKU.slice(DOKU.indexOf("## Nachtbetrieb")).split(/\n## /)[0];
+  const kapitel = NACHT;
   // `--fresh` als zweites Muster und nicht `checks.mjs run`: Das Kommando steht im
   // Kapitel auch im Absatz ueber die Prueflaeufe, der Schalter nur hier.
   const absatz = absatzMit(kapitel, /Salvage/, /--fresh/);

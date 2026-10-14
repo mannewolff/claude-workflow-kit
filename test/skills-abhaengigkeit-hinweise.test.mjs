@@ -23,7 +23,7 @@ const TEXTE = {
   issues: lies("skills", "issues", "SKILL.md"),
   task: lies("skills", "task", "SKILL.md"),
   vorlage: lies("templates", "CLAUDE-workflow.md"),
-  doku: lies("docs", "dokumentation.md"),
+  doku: lies("docs", "nachtbetrieb.md"),
   prozess: lies("docs", "prozess.md"),
 };
 
@@ -62,7 +62,7 @@ const KONVENTION_ANGABEN = [
   ["Dokument-Hinweis", /kein Arbeitspaket/],
 ];
 
-// Nur die Dokumentation: das Kapitel Nachtbetrieb nennt Block und eingerueckte Zeilen.
+// Nur die Dokumentation: die Seite Nachtbetrieb nennt Block und eingerueckte Zeilen.
 const NACHT_ANGABEN = [
   ["Block unter dem Rueckstell-Kommentar", /`Abhaengigkeiten, wie der Nachtlauf sie liest:`/],
   ["eingerueckte Zeilen im Probelauf", /eingerückt unter der Zeile jedes Pakets/],
@@ -72,10 +72,10 @@ function konventionFehlt(text) {
   return KONVENTION_ANGABEN.filter(([, re]) => !re.test(text)).map(([name]) => name);
 }
 
-/** Das Kapitel `## Nachtbetrieb` bis zur naechsten `## `-Ueberschrift. */
+/** Der Abschnitt `## Der Nachtlauf` der Seite Nachtbetrieb bis zur naechsten `## `-Ueberschrift. */
 function nachtKapitel(text) {
-  const start = text.indexOf("\n## Nachtbetrieb\n");
-  assert.ok(start >= 0, "Kapitel Nachtbetrieb fehlt");
+  const start = text.indexOf("\n## Der Nachtlauf\n");
+  assert.ok(start >= 0, "Abschnitt Der Nachtlauf fehlt");
   const ende = text.indexOf("\n## ", start + 5);
   return text.slice(start, ende < 0 ? undefined : ende);
 }
