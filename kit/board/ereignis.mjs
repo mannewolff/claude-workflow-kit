@@ -12,12 +12,24 @@
  * unter `## Vorgeschichte` zaehlt nicht — dieselbe Fence-Auslegung wie `zerlegeAbschnitte`.
  * Schreiben aendert nur die Wartezeile selbst; jedes andere Zeichen des Bodys bleibt stehen.
  *
+ * `issueHold` ist das Kommando `issue hold` (Issue #1662, E2 bis E4): Es setzt oder hebt das
+ * Warten eines Fachplans in einem Zug, Zeile und Label gleich. Das Kit ruft `--lift` nie selbst.
+ *
  * QUELLE DER WAHRHEIT: Diese Datei wird im Kit-Repo (claude-workflow-kit) gepflegt.
  * Aenderungen ausschliesslich hier vornehmen, danach `node tools/sync-blobs.mjs`.
  */
 
-import { ABSCHNITT_ZEILE, abschnittsTitel, fenceLauf, zerlegeAbschnitte } from "./dokumente.mjs";
-import { kanonischeUeberschrift, leseMarker, markerName, prozessSprache } from "./namen.mjs";
+import { LabelFehltError } from "./adapter.mjs";
+import { BoardError } from "./grundlagen.mjs";
+import { ABSCHNITT_ZEILE, abschnittsTitel, fenceLauf, istFachlich, zerlegeAbschnitte } from "./dokumente.mjs";
+import { kanonischeUeberschrift, labelName, leseMarker, markerName, praefix, prozessSprache, text,
+  ueberschriftName } from "./namen.mjs";
+// Die Texte an den Menschen liegen unter kit/texte/board-ereignis.mjs (Issue #1662).
+import { TEXTE } from "../texte/board-ereignis.mjs";
+
+export { TEXTE };
+
+const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
 
 const [ZIEL] = abschnittsTitel("ziel");
 
@@ -105,4 +117,49 @@ export function mitEreignis(body, grund, sprache = prozessSprache()) {
   const ende = zeile.ende || "\n";
   const eingefuegt = { text: neu, ende: zeile.ende };
   return zusammen([...zeilen.slice(0, anker), { ...zeile, ende }, eingefuegt, ...zeilen.slice(anker + 1)]);
+}
+
+/**
+ * `issue hold <id> --reason "<Grund>" | --lift` (Issue #1662, Plan #1624 E2 bis E4, E11).
+ * `--reason` schreibt oder ersetzt die Wartezeile im Ziel und setzt `kit:on-hold`, `--lift`
+ * entfernt jede Wartezeile im Ziel und nimmt das Label ab. Nur fuer Fachplaene (E4); weder
+ * `kit:clarify` noch die Fragen an den PO werden beruehrt (E11). Der Body geht vor dem Label:
+ * Nach der Zeile richtet sich die Nacht, das Label ist nur Hilfe am Board. Fehlt es dort,
+ * steht die Zeile trotzdem, `label` ist `null` und `labelFehler` traegt die Meldung des
+ * Adapters (E3). Ein Bedienfehler wirft BoardError, bevor die Karte beruehrt ist.
+ *
+ * Liefert `{ ok, id, wartet, label, labelFehler }`; die Ausgabe macht der Einstieg.
+ */
+export async function issueHold(tracker, config, args) {
+  const { id, setzen, grund } = holdAuftrag(args);
+  const issue = await tracker.getIssue(id);
+  if (!istFachlich(issue.title || "")) throw new BoardError(t("keinFachplan", { id, praefix: praefix("fachlich") }));
+  const body = issue.body || "";
+  const neu = setzen ? mitEreignis(body, grund) : ohneEreignis(body);
+  if (neu === null) throw new BoardError(t("ohneZiel", { id, ziel: ueberschriftName("ziel") }));
+  if (neu !== body) await tracker.updateIssue(id, { body: neu });
+  return { ok: true, id, wartet: setzen ? grund : null, ...await holdLabel(tracker, id, setzen) };
+}
+
+/** Kartennummer, Richtung und Grund aus den Optionen; ein Bedienfehler wirft BoardError. */
+function holdAuftrag(args) {
+  const id = args._[0];
+  if (id === undefined) throw new BoardError(t("ohneId"));
+  const setzen = args.reason !== undefined;
+  if (setzen && args.lift !== undefined) throw new BoardError(t("beides"));
+  if (!setzen && args.lift === undefined) throw new BoardError(t("ohneOption", { id }));
+  const grund = typeof args.reason === "string" ? args.reason.trim() : "";
+  if (setzen && grund === "") throw new BoardError(t("grundLeer"));
+  return { id: String(id), setzen, grund };
+}
+
+/** Setzt oder nimmt `kit:on-hold`; fehlt das Label am Board, `label: null` mit der Meldung (E3). */
+async function holdLabel(tracker, id, setzen) {
+  try {
+    await tracker.labelIssue(id, labelName("ereignis"), setzen ? "add" : "remove");
+    return { label: setzen ? "gesetzt" : "abgenommen", labelFehler: null };
+  } catch (e) {
+    if (!(e instanceof LabelFehltError)) throw e;
+    return { label: null, labelFehler: e.message };
+  }
 }

@@ -808,6 +808,7 @@
     ],
     "board-ereignis": [
       "kit/board/ereignis.mjs",
+      "kit/texte/board-ereignis.mjs",
       "test/board-ereignis-*.test.mjs"
     ],
     "board-vertraege": [
