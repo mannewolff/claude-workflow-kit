@@ -16,8 +16,8 @@
     "text": "Deprecated (v1). Migrated to codeHost/issueTracker on load. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "buildChecks": {
-    "de": "f151820f76e9",
-    "text": "Commands that /local-check runs via checks.mjs run (build, tests): first those marked \"vorab\" one after another, then those marked \"gleichzeitig\" in parallel, then the rest one after another in config order. Empty array = no automated checks. An entry is either a command string or an object with an area assignment (see items and checkAreas). Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "7d842c514610",
+    "text": "Commands that checks.mjs run executes at the completion check of a package and at push main (build, tests): first those marked \"vorab\" one after another, then those marked \"gleichzeitig\" in parallel, then the rest one after another in config order. Empty array = no automated checks. An entry is either a command string or an object with an area assignment (see items and checkAreas). Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "buildChecks[]": {
     "de": "9827d9e9d099",
@@ -128,8 +128,8 @@
     "text": "Why no test file checks this path but at most creates it as scaffolding. Required, and proven rather than claimed: the place where it was looked up belongs with it."
   },
   "mutationCommand": {
-    "de": "ddcc5ce01bfc",
-    "text": "Command for mutation tests (optional). Empty string or missing field = no mutation test. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "08f679a08476",
+    "text": "Command for mutation tests (optional). Runs at the stage push, i.e. once before every push main, after all buildChecks via checks.mjs run --stage push, not at the completion of a package and not at the stage merge. Its result is only reported and stops nothing; if the check is red, it is skipped. Empty string or missing field = no mutation test. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "guetekommandos": {
     "de": "e9a1ce4ca19b",

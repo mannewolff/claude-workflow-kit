@@ -510,6 +510,10 @@ export const TEXTE = Object.freeze({
     formatFixAusgefuehrt: "Format-Fix: {cmd} → ausgefuehrt",
     formatFixNichtGereicht: "Format-Fix lief und hat nicht gereicht",
     formatFixArbeitsbaum: "Der Arbeitsbaum ist veraendert — die vom Format-Fix geaenderten Dateien (git status) gehoeren in den Commit",
+    mutationAngekuendigt: "danach einmal der Mutationstest {cmd}, nur berichtet",
+    mutationStart: "Mutationstest — laeuft einmal, nur berichtet, haelt nicht an",
+    mutationZeile: "Mutationstest: {cmd} → {ergebnis} ({wie}), {dauer} — nur berichtet, haelt nicht an",
+    mutationAusgelassen: "Mutationstest: ausgelassen, die Pruefung ist rot",
     keineKartennummer: "'{wert}' ist keine Kartennummer fuer --finish. Erwartet: eine Nummer oder nichts.",
     abschlussMitStufe: "--finish und --stage '{stufe}' zusammen: Der Abschluss einer Karte faehrt die Stufe '{paket}'. Vor dem Veroeffentlichen laeuft der volle Umfang ohne --finish.",
     abschlussMitBereich: "--finish und --area zusammen: zwei Eingrenzungen in einem Lauf. Der Bereichslauf gehoert in die Arbeit, --finish an ihr Ende.",
@@ -633,6 +637,10 @@ export const TEXTE = Object.freeze({
     formatFixAusgefuehrt: "Format fix: {cmd} → executed",
     formatFixNichtGereicht: "Format fix ran and was not enough",
     formatFixArbeitsbaum: "The working tree has changed — the files changed by the format fix (git status) belong in the commit",
+    mutationAngekuendigt: "then once the mutation test {cmd}, reported only",
+    mutationStart: "mutation test — runs once, reported only, does not stop",
+    mutationZeile: "Mutation test: {cmd} → {ergebnis} ({wie}), {dauer} — reported only, does not stop",
+    mutationAusgelassen: "Mutation test: skipped, the check is red",
     keineKartennummer: "'{wert}' is no card number for --finish. Expected: a number or nothing.",
     abschlussMitStufe: "--finish and --stage '{stufe}' together: the completion of a card runs the stage '{paket}'. Before publishing the full scope runs without --finish.",
     abschlussMitBereich: "--finish and --area together: two restrictions in one run. The area run belongs in the work, --finish at its end.",
@@ -3266,6 +3274,8 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
   // faehrt nichts. Die Faelle des uebernommenen Laufs stehen schon an seinen Eintraegen.
   const gewackeltKarte = gewackeltKarteVorher(vorige, karte);
   const formatFix = frueher.formatFix && typeof frueher.formatFix === "object" ? frueher.formatFix : null;
+  // Der Mutationstest gehoert zum gemessenen Stand (Issue #1673): uebernommen, nicht neu gefahren.
+  const mutation = mutationFeld(frueher);
   const zeilen = [
     ...(frueher.teillauf === true ? [t("teillauf")] : []),
     ...formatFixZeilen(formatFix),
@@ -3273,6 +3283,7 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
       uebernommen: true, grenzeMs: pruefdauerObergrenzeMs(),
       frueher: (gewackeltKarte ?? []).filter((w) => w.zeitpunkt !== original),
     }),
+    ...mutationZeilen(mutation, mutationEntfaellt(auswahl, ungruen !== null)),
   ];
   // Ein uebernommener Lauf zaehlt als Lauf ohne Zeit (Issue #1069): Seine Wanduhr steht
   // in `wartezeitMs`, in die Summe der Karte geht sie nicht ein.
@@ -3297,6 +3308,8 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
     // Das Nachformatieren gehoert zum uebernommenen Lauf (Issue #1672): Seine Aenderungen
     // liegen noch im Baum und gehoeren weiter in den Commit.
     ...(formatFix ? { formatFix } : {}),
+    // `undefined` faellt beim Schreiben weg: ohne Mutationstest kein Feld.
+    mutation,
     uebernommen: original,
     hinweise: hinweiseVon(frueher.laufen),
     berichtszeilen: zeilen,
@@ -3625,7 +3638,10 @@ async function ausfuehren(args) {
   if (auswahl.stufe !== STUFEN[0]) {
     const hinzu = auswahl.laufen.filter((e) => e.stufe !== STUFEN[0]).map((e) => e.cmd);
     const liste = hinzu.length > 0 ? hinzu.join(", ") : t("keineWeitere");
-    aufStdout(`${t("stufeZusaetzlich", { stufe: auswahl.stufe, liste })}\n`);
+    // Der Mutationstest an `push` (Issue #1673) gehoert in dieselbe Zeile: Er kommt dazu.
+    const mutationCmd = mutationFaellig(auswahl);
+    const danach = mutationCmd === null ? "" : `, ${t("mutationAngekuendigt", { cmd: mutationCmd })}`;
+    aufStdout(`${t("stufeZusaetzlich", { stufe: auswahl.stufe, liste })}${danach}\n`);
   }
 
   // VOR den Auslassungen (Issue #934): Eine Datei, zu der ausdruecklich nichts
@@ -3734,12 +3750,18 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   // Das Nachformatieren dieses Aufrufs (Issue #1672, Plan #1671, E1): `{ cmd, gereicht }`,
   // solange keiner lief `null`.
   let formatFix = null;
+  // Der Mutationstest dieses Aufrufs (Issue #1673, Plan #1671, E3): `{ cmd, ergebnis, exit,
+  // dauerMs }`, solange keiner lief `undefined` — das Feld faellt dann beim Schreiben weg.
+  // `mutationEntfallen` haelt fest, dass er wegen des roten Laufs nicht lief.
+  let mutation;
+  let mutationEntfallen = false;
   // Nur der erste Durchgang wiederholt; der nach dem Fix laeuft genau einmal (E1).
   let wiederholen = auswahl.wiederholen === true;
   const zeilenVon = (stand) => [
     ...(stand.teillauf ? [t("teillauf")] : []),
     ...formatFixZeilen(formatFix),
     ...berichtszeilen(auswahl, stand.laufen, { grenzeMs, frueher: gewackeltVorher ?? [] }),
+    ...mutationZeilen(mutation, mutationEntfallen),
   ];
   const schreibeStand = (stand, abgeschlossen) => schreibeZusammenfassung({
     ...auswahl, laufen: stand.laufen, zeitpunkt, hashes, configHash, abgeschlossen,
@@ -3747,6 +3769,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
     ...(stand.verursacher ? { verursacher: stand.verursacher } : {}),
     ...(stand.teillauf ? { teillauf: true } : {}),
     ...(formatFix ? { formatFix } : {}),
+    mutation,
     hinweise: hinweiseVon(stand.laufen),
     berichtszeilen: zeilenVon(stand),
     ...wartezeit,
@@ -3963,6 +3986,16 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
     aufStdout(`${t("verursacherZeile", { cmd: e.cmd, text: verursacherText(e) })}\n`);
   }
 
+  // Der Mutationstest (Issue #1673, Plan #1671, E3): an `push` nach allen `buildChecks`
+  // genau einmal — auch mit `--retry` nie ein zweites Mal —, mit der Obergrenze als
+  // Abbruchgrenze. Er ist kein `buildChecks`-Eintrag: keine Zeile im Ausfuehrungsprotokoll,
+  // kein Einfluss auf Exit-Code und Ergebnis. Nach einem roten Lauf entfaellt er.
+  mutationEntfallen = mutationEntfaellt(auswahl, stand.rot);
+  if (!stand.rot && mutationFaellig(auswahl) !== null) {
+    schreibeStand(stand, false);
+    mutation = await mutationFahren(mutationFaellig(auswahl), env, grenzeMs);
+  }
+
   // Die letzte Fassung, und die einzige mit `abgeschlossen: true`: Hier ist der Lauf
   // zu Ende gefahren. Auch bei rotem Abbruch geschrieben — und beim leeren Paket
   // ebenso: "keine Pruefung, weil nichts veraendert wurde" ist ein Ergebnis und kein
@@ -3986,8 +4019,54 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
 
 /** `formatFixCommand` aus der Config, getrimmt, oder `null`, wenn keines gesetzt ist. */
 function formatFixKommando() {
-  const wert = ladeConfig().formatFixCommand;
+  return configKommando("formatFixCommand");
+}
+
+/** Ein Kommando-Feld der Config, getrimmt, oder `null`, wenn keines gesetzt ist. */
+function configKommando(feld) {
+  const wert = ladeConfig()[feld];
   return typeof wert === "string" && wert.trim() !== "" ? wert.trim() : null;
+}
+
+/**
+ * `mutationCommand`, wenn der Lauf ihn faehrt (Issue #1673, Plan #1671, E3): allein an der
+ * Stufe `push`, nie an der Paketstufe und nie an `merge`. Sonst `null`.
+ */
+function mutationFaellig(auswahl) {
+  return auswahl.stufe === "push" ? configKommando("mutationCommand") : null;
+}
+
+/** Ob der Mutationstest wegen eines roten Laufs entfaellt (Issue #1673): nur, wo er faellig waere. */
+function mutationEntfaellt(auswahl, rot) {
+  return rot && mutationFaellig(auswahl) !== null;
+}
+
+/**
+ * Faehrt den Mutationstest einmal (Issue #1673, E3) — die Obergrenze ist seine Abbruchgrenze —
+ * und gibt `{ cmd, ergebnis, exit, dauerMs }` zurueck. Abgebrochen ist er rot, `exit` dann `null`.
+ */
+async function mutationFahren(cmd, env, grenzeMs) {
+  aufStdout(`\n$ ${cmd} — ${t("mutationStart")}\n`);
+  const start = process.hrtime.bigint();
+  const lauf = await kommandoAusfuehren(cmd, env, { grenzeMs, fristMs: haengenFristMs(env) });
+  const dauerMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6);
+  aufStdout(lauf.haengend ? `${lauf.ausgabe}${haengendText(grenzeMs)}\n` : lauf.ausgabe);
+  const mutation = { cmd, ergebnis: lauf.gruen ? "gruen" : "rot", exit: lauf.code, dauerMs };
+  aufStdout(`-> ${mutation.ergebnis}\n`);
+  return mutation;
+}
+
+/** Das Feld `mutation` einer frueheren Zusammenfassung, sonst `undefined`. */
+function mutationFeld(daten) {
+  return daten.mutation && typeof daten.mutation === "object" ? daten.mutation : undefined;
+}
+
+/** Die Berichtszeile des Mutationstests (Issue #1673): sein Ergebnis oder sein Wegfall. */
+function mutationZeilen(mutation, entfallen) {
+  if (entfallen) return [t("mutationAusgelassen")];
+  if (!mutation) return [];
+  const wie = mutation.exit === null ? t("ohneRueckgabewert") : `Exit ${mutation.exit}`;
+  return [t("mutationZeile", { cmd: mutation.cmd, ergebnis: mutation.ergebnis, wie, dauer: dauerText(mutation.dauerMs) })];
 }
 
 /**

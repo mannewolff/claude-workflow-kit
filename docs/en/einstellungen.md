@@ -25,7 +25,7 @@ _This section is generated from `templates/workflow.config.schema.json` by `node
 
 - `provider` — Is carried over to `codeHost` and `issueTracker` on loading; do not set it in a new config. Valid: `github`, `gitlab`, `local`. No default.
 
-- `buildChecks` — Commands that /local-check runs via checks.mjs run (build, tests): first those marked "vorab" one after another, then those marked "gleichzeitig" in parallel, then the rest one after another in config order. Default: `[]`.
+- `buildChecks` — Commands that checks.mjs run executes at the completion check of a package and at push main (build, tests): first those marked "vorab" one after another, then those marked "gleichzeitig" in parallel, then the rest one after another in config order. Default: `[]`.
 - `buildChecks[]` — A check command, as a command string or as an object with `cmd` and the fields below. No default.
 - `buildChecks[].cmd` — The command line as it would appear in the string form. No default.
 - `buildChecks[].areas` — Area names from `checkAreas`; the check runs when one of them is touched. No default.

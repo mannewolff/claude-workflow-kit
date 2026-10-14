@@ -23,7 +23,7 @@ _Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node
 
 - `provider` — Wird beim Laden auf `codeHost` und `issueTracker` übertragen; neu nicht setzen. Gültig: `github`, `gitlab`, `local`. Keine Vorgabe.
 
-- `buildChecks` — Kommandos, die /local-check über checks.mjs run ausführt (Build, Tests): zuerst die mit "vorab" gekennzeichneten nacheinander, dann die mit "gleichzeitig" gekennzeichneten gleichzeitig, danach die übrigen nacheinander in Config-Reihenfolge. Vorgabe: `[]`.
+- `buildChecks` — Kommandos, die checks.mjs run bei der Abschlussprüfung eines Pakets und bei push main ausführt (Build, Tests): zuerst die mit "vorab" gekennzeichneten nacheinander, dann die mit "gleichzeitig" gekennzeichneten gleichzeitig, danach die übrigen nacheinander in Config-Reihenfolge. Vorgabe: `[]`.
 - `buildChecks[]` — Ein Prüfkommando, als Kommandostring oder als Objekt mit `cmd` und den Feldern darunter. Keine Vorgabe.
 - `buildChecks[].cmd` — Die Kommandozeile, wie sie in der String-Form stünde. Keine Vorgabe.
 - `buildChecks[].areas` — Bereichsnamen aus `checkAreas`; die Prüfung läuft, wenn einer davon berührt ist. Keine Vorgabe.

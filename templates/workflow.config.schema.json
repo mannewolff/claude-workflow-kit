@@ -158,7 +158,7 @@
           }
         ]
       },
-      "description": "Kommandos, die /local-check über checks.mjs run ausführt (Build, Tests): zuerst die mit \"vorab\" gekennzeichneten nacheinander, dann die mit \"gleichzeitig\" gekennzeichneten gleichzeitig, danach die übrigen nacheinander in Config-Reihenfolge. Leer-Array = keine automatisierten Checks. Ein Eintrag ist entweder ein Kommandostring oder ein Objekt mit Bereichszuordnung (siehe items und checkAreas). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Kommandos, die checks.mjs run bei der Abschlussprüfung eines Pakets und bei push main ausführt (Build, Tests): zuerst die mit \"vorab\" gekennzeichneten nacheinander, dann die mit \"gleichzeitig\" gekennzeichneten gleichzeitig, danach die übrigen nacheinander in Config-Reihenfolge. Leer-Array = keine automatisierten Checks. Ein Eintrag ist entweder ein Kommandostring oder ein Objekt mit Bereichszuordnung (siehe items und checkAreas). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": []
     },
     "checkAreas": {
@@ -290,7 +290,7 @@
     },
     "mutationCommand": {
       "type": "string",
-      "description": "Kommando für Mutations-Tests (optional). Leer-String oder fehlendes Feld = kein Mutations-Test. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Kommando für Mutations-Tests (optional). Läuft an der Stufe push, also einmal vor jedem push main, nach allen buildChecks über checks.mjs run --stage push, nicht beim Abschluss eines Pakets und nicht an der Stufe merge. Sein Ergebnis wird nur berichtet und hält nichts an; ist die Prüfung rot, entfällt er. Leer-String oder fehlendes Feld = kein Mutations-Test. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": ""
     },
     "guetekommandos": {
