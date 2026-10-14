@@ -3,7 +3,7 @@ layout: home
 hero:
   name: claude-workflow-kit
   text: KI-gestützte Entwicklung mit Struktur
-  tagline: Achtzehn Skills für Claude Code — mit drei bewussten menschlichen Stop-Punkten.
+  tagline: Achtzehn Skills für Claude Code, mit drei bewussten menschlichen Stop-Punkten.
   actions:
     - theme: brand
       text: 5-Minuten-Guide
@@ -13,11 +13,11 @@ hero:
       link: /dokumentation
 features:
   - title: Ein Installer
-    details: Node-Script, läuft auf macOS, Linux und Windows über WSL2. Neun Fragen, fertig.
+    details: Node-Script für macOS, Linux und Windows über WSL2.
   - title: Achtzehn Skills
-    details: Planung, Issues, Implementierung, Review, Dokumentation — alles abgedeckt.
+    details: Planung, Arbeitspakete, Umsetzung, Review, Veröffentlichen.
   - title: GitHub, GitLab oder lokal
-    details: Der Board-Adapter board.mjs schirmt alle Skills von der Plattform ab. Wechsel per Config-Zeile.
+    details: Der Board-Adapter schirmt die Skills von der Plattform ab.
   - title: Drei Stop-Punkte
-    details: Das GO, der Push, der Merge. Diese drei automatisiert das Kit bewusst nicht.
+    details: Das GO, der Push, der Merge bleiben beim Menschen.
 ---

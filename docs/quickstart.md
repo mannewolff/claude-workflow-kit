@@ -1,69 +1,49 @@
 # 5-Minuten-Guide
 
-Du hast einen Prozess für die KI-gestützte Entwicklung, und du willst ihn in Claude Code ausführbar machen, ohne deine Stop-Punkte aufzugeben. Das Kit gibt dir achtzehn Skills, eine Config und einen Installer. In fünf Minuten läuft es.
+Das Kit macht einen Prozess für KI-gestützte Entwicklung in Claude Code ausführbar, ohne dass du deine Stop-Punkte aufgibst: achtzehn Skills, eine Config und ein Installer.
 
 ## Voraussetzungen
 
-- macOS, Linux oder Windows über WSL2
-- Node.js ab Version 18
-- git
-- Claude Code installiert
-- Je nach Issue-Tracker: `gh` (GitHub CLI) oder `glab` (GitLab CLI), authentifiziert — oder gar nichts, wenn du den lokalen Modus wählst
-- Unter Windows: WSL2, siehe [Windows über WSL2](/wsl2)
+- macOS, Linux oder Windows über WSL2, eingerichtet nach [Windows über WSL2](/wsl2)
+- Node.js ab Version 18 und git
+- Claude Code
+- Je nach Issue-Tracker `gh` oder `glab`, angemeldet; im lokalen Modus keins von beiden
 
 ## Installieren
 
-Lade den Installer herunter und starte ihn im Projektordner:
+Im Projektordner:
 
 ```bash
 curl -O https://docs.mwolff.org/install.mjs
 node install.mjs
 ```
 
-Oder in einem Schritt:
+Der Installer fragt in einem neuen Projekt zuerst nach der Sprache (`de` oder `en`), dann, ob er global oder nur für dieses Projekt installiert, nach Code-Host und Issue-Tracker (`github`, `gitlab` oder `local`), nach Haupt- und Production-Branch, Review-Umfang und Reviewer. Projektlokal folgen das Commit-Gate und die Prüfbereiche, global der Vault-Pfad für `/session-start` und `/document`.
 
-```bash
-node <(curl -s https://docs.mwolff.org/install.mjs)
-```
-
-Ein neues Projekt fragt der Installer zuerst nach der Sprache des Kits: `de` (Deutsch, Vorgabe) oder `en` (Englisch). Ein bestehendes Projekt behält seine Sprache; umgestellt wird es mit `node install.mjs --language en` (siehe [Sprache](/dokumentation#sprache)). Labels und Titel-Präfixe der Karten sind in jedem Projekt englisch, etwa `[Requirement]` oder `kit:clarify`; die Tabelle steht unter [Labels und Titel-Präfixe](/dokumentation#labels-und-titel-prafixe).
-
-Danach fragt der Installer sieben Dinge:
-
-1. Global oder nur für dieses Projekt
-2. Code-Host: `github`, `gitlab` oder `local`
-3. Issue-Tracker: `github`, `gitlab` oder `local` (Standard = Code-Host)
-4. Name des main-Branch
-5. Name des production-Branch
-6. Review-Umfang: `diff` oder `full`
-7. Review-Modell
-
-Bei globaler Installation folgt eine achte Frage nach dem Vault-Pfad für `/session-start` und `/document` (leer lassen überspringt sie).
-
-Danach liegen die achtzehn Skills in `.claude/skills/` (oder global in `~/.claude/skills/`), eine `.claude/workflow.config.json` mit deinen Antworten sowie der Board-Adapter (`.claude/kit/board.mjs`) stehen im Repo. Starte Claude Code neu, dann tauchen die Skills in `/help` auf.
+Danach liegen Skills, Config und Werkzeuge unter `.claude/`. Starte Claude Code neu; die Skills erscheinen in `/help`.
 
 ## Die achtzehn Skills
 
 | Befehl | Wofür |
 |--------|-------|
-| `/session-start` | Kontext laden, Lageüberblick zu Session-Start |
-| `/triage` | Eine Idee mit Anhängen durchsprechen, Bahn vorschlagen und nach deiner Wahl den Weg beginnen |
-| `/requirement` | Optional: Anforderung als fachliches Issue für die PO-Schleife (siehe [Dokumentation](./dokumentation.md#po-schleife-fachliche-und-technische-issues)) |
-| `/groom` | Offene Fragen eines geprüften Fachplans einzeln mit dem PO entscheiden |
-| `/techplan` | Plan aus der Anforderung, implementiert nichts |
-| `/issues` | Plan in kleinteilige Issues (GitHub, GitLab oder lokal) |
-| `/task` | Anforderung ohne Abwägungsbedarf als einzelnes Arbeitspaket `[Task]`, erst nach deiner Bestätigung |
-| `/issue-review` | Dokument vor dem GO von fremden Modellen prüfen lassen |
-| `/implement-ready` | Ready-Issues abarbeiten, lokal committen |
-| `/implement-test` | Granularer Einstieg: nur die Tests zu einem Ready-Issue (rot) |
-| `/implement-done` | Granularer Einstieg: gegen die roten Tests implementieren (grün) |
-| `/implement-next` | Genau ein Ready-Issue (`#N` verbindlich, sonst das oberste), dann Ende — Baustein des Nachtbetriebs |
-| `/local-check` | Pflicht-Checks plus UI-Verifikation |
-| `/kit-review` | Review durch Opus in frischer Session |
-| `/retro` | KI-Retrospektive, Memory konsolidieren |
-| `/push-main` | Push auf main, nur du |
-| `/merge-production` | PR nach production, nur du |
-| `/document` | Session dokumentieren, Projektnotiz aktualisieren |
+| `/session-start` | Lageüberblick zu Beginn einer Sitzung |
+| `/triage` | Eine Idee durchsprechen und auf ihre Bahn bringen |
+| `/requirement` | Fachplan ohne Technik für die PO-Schleife |
+| `/groom` | Offene Fragen eines geprüften Fachplans einzeln entscheiden |
+| `/techplan` | Plan aus der Anforderung, ohne Umsetzung |
+| `/issues` | Plan in kleine Arbeitspakete zerlegen |
+| `/task` | Anforderung ohne Abwägung als ein Arbeitspaket `[Task]` |
+| `/issue-review` | Dokument von fremden Modellen prüfen lassen |
+| `/implement-ready` | Alle Ready-Karten umsetzen, lokal committen |
+| `/implement-next` | Genau eine Ready-Karte umsetzen |
+| `/implement-test` | Nur die roten Tests zur nächsten Ready-Karte |
+| `/implement-done` | Gegen die roten Tests umsetzen |
+| `/local-check` | Pflichtprüfungen laufen lassen |
+| `/kit-review` | Review durch ein zweites Modell in frischer Sitzung |
+| `/push-main` | Push auf den Hauptzweig, nur auf dein Wort |
+| `/merge-production` | Veröffentlichen nach production, nur auf dein Wort |
+| `/retro` | KI-Retrospektive mit Kennzahlen |
+| `/document` | Sitzung im Vault dokumentieren |
 
 ## Ein erster Durchlauf
 
@@ -71,13 +51,7 @@ Danach liegen die achtzehn Skills in `.claude/skills/` (oder global in `~/.claud
 /techplan baue ein Login-Formular mit E-Mail und Passwort
 ```
 
-Du liest den Plan. Passt er, gibst du frei:
-
-```
-/issues
-```
-
-Du ziehst die Issues am Board nach Ready. Das ist dein GO. Dann:
+Passt der Plan, zerlegt `/issues` ihn in Arbeitspakete. Du ziehst sie am Board nach Ready; das ist dein GO. Dann:
 
 ```
 /implement-ready
@@ -85,36 +59,16 @@ Du ziehst die Issues am Board nach Ready. Das ist dein GO. Dann:
 /kit-review
 ```
 
-Du prüfst das Review. Erst dann:
-
-```
-/push-main
-```
-
-Auf dem Test-Server kontrollierst du das Ergebnis. Stimmt es:
-
-```
-/merge-production
-```
+Nach deiner Durchsicht pushst du mit `push main`, nach deinem Test auf dem Test-Server veröffentlichst du mit `merge production`. Danach ziehst du die Karten nach Done.
 
 ## Der kleinere Weg
 
-Nicht jede Anforderung braucht einen Plan. Ist sie mehr als eine Kleinigkeit, gibt es aber nichts abzuwägen, entsteht daraus ein einzelnes Arbeitspaket statt Fachkonzept, Plan und Zerlegung:
-
-```
-/task benenne die Konfigurationsschlüssel in allen Skill-Dateien einheitlich um
-```
-
-Der Skill benennt die Bahn in einem Satz und wartet auf dein Wort. Ohne deine Antwort legt er nichts an. Danach läuft der gewohnte Weg weiter: Du kannst das `[Task]` wie jedes andere Arbeitspaket mit `/issue-review` prüfen lassen, und nach Ready ziehst du es selbst.
-
-Wann welcher Weg gilt, steht in der [Auswahlregel der drei Bahnen](./dokumentation.md#drei-bahnen).
+Ist eine Anforderung mehr als eine Kleinigkeit, gibt es aber nichts abzuwägen, entsteht mit `/task` ein einzelnes Arbeitspaket statt Fachplan, Plan und Zerlegung. Der Skill nennt die Bahn und legt erst nach deiner Bestätigung an. Wann welcher Weg gilt, steht unter [Drei Bahnen](./dokumentation.md#drei-bahnen).
 
 ## Die drei Stellen, die du selbst machst
 
-Das Ziehen nach Ready, der Push, der Merge. Diese drei automatisiert das Kit bewusst nicht. Sie sind der Punkt, an dem du die Verantwortung trägst. Alles andere nimmt dir die KI ab.
+Das Ziehen nach Ready, der Push, der Merge. Diese drei automatisiert das Kit nicht.
 
 ## Nachts arbeiten lassen
 
-Abends Issues nach Ready ziehen und sortieren, dann `node .claude/kit/night.mjs` — der Nacht-Runner arbeitet die Spalte mit einer frischen Session pro Issue ab, committet nur lokal und pusht nie. Details im Abschnitt „Nachtbetrieb" der [Dokumentation](./dokumentation.md#nachtbetrieb).
-
-Mehr Details in der ausführlichen Dokumentation.
+Abends sortierst du Karten in Ready und startest `node .claude/kit/night.mjs`. Der Nacht-Runner setzt jede Karte in einer frischen Sitzung um, committet lokal und pusht nie. Mehr unter [Nachtbetrieb](./dokumentation.md#nachtbetrieb).

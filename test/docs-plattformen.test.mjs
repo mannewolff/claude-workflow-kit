@@ -54,7 +54,10 @@ test('docs/wsl2.md existiert mit Projektort und Windows-Werkzeugen', () => {
     assert.ok(text.includes(`\n## ${ueberschrift}\n`), ueberschrift);
   }
   assert.ok((text.match(/Gelungen, wenn/g) ?? []).length >= 6);
-  assert.ok(text.includes('Natives Windows und Git Bash werden ab 4.0.0 nicht mehr unterstützt.'));
+  const umzug = abschnitt(text, 'Umzug von nativem Windows');
+  assert.ok(umzug.includes('Natives Windows und Git Bash werden ab 4.0.0 nicht mehr unterstützt.'));
+  // Außerhalb des Update-Hinweises nennt die Seite nur macOS, Linux und WSL2 (Plan #1652, E12).
+  assert.doesNotMatch(text.replace(umzug, ''), /Git Bash|[Nn]atives Windows|4\.0\.0/);
 });
 
 test('README, Quickstart und Handbuch verweisen auf die WSL2-Anleitung', () => {
