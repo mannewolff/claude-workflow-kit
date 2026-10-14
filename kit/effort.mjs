@@ -42,7 +42,12 @@
  * die deutsche Datei entfaellt. Befehle und Optionen sind englisch; ein frueherer
  * deutscher Name endet mit Exit 1 und nennt den englischen. Die Hilfe ist englisch.
  *
- * Aufruf im Projekt-Root:  node .claude/kit/effort.mjs evaluate [--runs <n>]
+ * EIN RECHNER JE BERICHT (Issue #1688, Plan #1685, E3/E4): Die Kennzahlen gelten fuer genau
+ * einen Rechner — ohne Option den, auf dem der Bericht laeuft, mit `--machine` den genannten.
+ * Die Laeufe der uebrigen stehen mit ihrer Zahl in einer eigenen Zeile und zaehlen nicht; ein
+ * Stand ohne `rechner` steht als "unbekannt" und zaehlt fuer keinen.
+ *
+ * Aufruf im Projekt-Root:  node .claude/kit/effort.mjs evaluate [--runs <n>] [--machine <name>]
  *                          node .claude/kit/effort.mjs finding
  *                          node .claude/kit/effort.mjs info <transkript…>
  *
@@ -52,6 +57,7 @@
 
 import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, realpathSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
+import { hostname } from "node:os";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { TEXTE } from "./texte/effort.mjs";
 
@@ -83,6 +89,17 @@ const CONFIG_DATEI = "workflow.config.json";
 // `YYYY-MM-DD-HHMMSS` ist lexikografisch dieselbe Reihenfolge wie chronologisch, also
 // braucht es kein Datums-Parsen (und keine Zeitzone, die dabei danebenginge).
 const STAND_MUSTER = /^night-run-(\d{4}-\d{2}-\d{2}-\d{6})\.json$/;
+
+/**
+ * Der Rechner, auf dem dieser Bericht laeuft (Issue #1688, E4) — derselbe Name, den der
+ * Nacht-Runner als `rechner` in den Ergebnisstand schreibt.
+ *
+ * SYNC: dieselbe Ableitung steht als `RECHNER` in kit/night/laufstand.mjs (#440).
+ */
+export const RECHNER = hostname().split(".")[0];
+
+/** Die Aufgabenstufe, deren Pakete die Werkzeugbasis eigens zaehlt (Issue #1688, Fachplan #1603). */
+const STUFE_MITTEL = "mittel";
 
 /**
  * Die eingebauten Vorgaben (Kriterium 5). Sie gelten, solange die Config schweigt —
@@ -119,7 +136,7 @@ function t(schluessel, werte) {
 function hilfe() {
   return `effort.mjs (claude-workflow-kit v${KIT_VERSION}) — Process effort
 
-  node effort.mjs evaluate [--runs <n>]
+  node effort.mjs evaluate [--runs <n>] [--machine <name>]
   node effort.mjs finding
   node effort.mjs info <transcript…>
 
@@ -142,6 +159,9 @@ info       Measures Claude Code transcripts (*.jsonl) by the same rule as the
 
   --runs <n>      How many states are included at most, the latest first
                   (default ${VORGABE_LAEUFE}). Overrides the config block.
+  --machine <name>  Evaluates the states of this machine (default: the machine the
+                  report runs on). The other machines are listed with their number
+                  of runs and do not count; a state without a machine counts for none.
   --version       Kit revision of this file.
   --help, -h      This overview.
 
@@ -246,21 +266,32 @@ function ladeEinstellungen(root) {
 
 // --- Ergebnisstaende lesen ---------------------------------------------------
 
+/** Der Rechner eines Stands; ohne Angabe `null`, im Bericht "unbekannt" (E3). */
+function rechnerDesStands(daten) {
+  return typeof daten?.rechner === "string" && daten.rechner !== "" ? daten.rechner : null;
+}
+
 /**
- * Die Staende, die in die Auswertung gehen: die juengsten `grenze` Stueck, absteigend
- * nach dem Stempel im Dateinamen.
+ * Die Staende, die in die Auswertung gehen: die juengsten `grenze` Stueck des Rechners
+ * `rechner`, absteigend nach dem Stempel im Dateinamen (Issue #1688). Die Grenze zaehlt die
+ * Laeufe dieses Rechners — sonst verdraengten die Laeufe eines zweiten Rechners seine eigenen.
+ *
+ * Welchem Rechner ein Stand gehoert, steht nur in ihm: Gelesen werden darum alle Staende.
+ * `gefunden` zaehlt die des Rechners, `uebrige` die der anderen. Ein Stand ohne `rechner`
+ * zaehlt dort als `null` und fuer keinen (E3).
  *
  * Eine unlesbare Datei ist ein Vermerk und kein Abbruch: Sie entsteht regelmaessig,
  * wenn ein Lauf gerade schreibt, und eine halbe Datei darf keine Auswertung kosten.
- * Sie zaehlt aber nicht als "gefunden", denn sie traegt nichts bei.
+ * Sie zaehlt aber nicht als "gefunden", denn sie traegt nichts bei. Vermerkt wird sie nur,
+ * solange die Grenze nicht erreicht ist — eine aeltere hat zur Auswertung nichts beigetragen.
  */
-function ladeStaende(root, grenze) {
+function ladeStaende(root, grenze, rechner) {
   const dir = join(root, CLAUDE_DIR);
   let eintraege = [];
   try {
     eintraege = readdirSync(dir);
   } catch {
-    return { staende: [], gefunden: 0, unlesbar: [] };
+    return { staende: [], gefunden: 0, unlesbar: [], uebrige: new Map() };
   }
   const kandidaten = [];
   for (const name of eintraege) {
@@ -272,15 +303,42 @@ function ladeStaende(root, grenze) {
 
   const staende = [];
   const unlesbar = [];
+  const uebrige = new Map();
+  let gefunden = 0;
   for (const kandidat of kandidaten) {
-    if (staende.length >= grenze) break;
+    let daten;
     try {
-      staende.push({ ...kandidat, daten: JSON.parse(readFileSync(kandidat.datei, "utf-8")) });
+      daten = JSON.parse(readFileSync(kandidat.datei, "utf-8"));
     } catch (err) {
-      unlesbar.push({ datei: kandidat.datei, fehler: err.message });
+      if (staende.length < grenze) unlesbar.push({ datei: kandidat.datei, fehler: err.message });
+      continue;
     }
+    const name = rechnerDesStands(daten);
+    if (name !== rechner) {
+      uebrige.set(name, (uebrige.get(name) ?? 0) + 1);
+      continue;
+    }
+    gefunden += 1;
+    if (staende.length < grenze) staende.push({ ...kandidat, daten });
   }
-  return { staende, gefunden: kandidaten.length - unlesbar.length, unlesbar };
+  return { staende, gefunden, unlesbar, uebrige };
+}
+
+/**
+ * Der Rechnerblock des Ergebnisses: der ausgewertete, wie er gewaehlt wurde, und die
+ * uebrigen mit ihrer Zahl an Laeufen — nach Namen, "unbekannt" am Ende.
+ */
+function rechnerErgebnis(name, gewaehlt, uebrige) {
+  return {
+    name,
+    gewaehlt,
+    uebrige: [...uebrige.entries()]
+      .sort(([a], [b]) => {
+        if ((a === null) !== (b === null)) return a === null ? 1 : -1;
+        return vergleicheText(a ?? "", b ?? "");
+      })
+      .map(([n, laeufe]) => ({ name: n, laeufe })),
+  };
 }
 
 // --- Kosten je Einheit -------------------------------------------------------
@@ -464,7 +522,11 @@ function sammlerAnlegen() {
     // Die Grundlage des Werkzeuganteils: NUR die Einheiten, die Gesamtdauer und
     // Werkzeugzeit beide tragen (Issue #821). Zaehler und Nenner aus zwei verschiedenen
     // Mengen zu bilden ergaebe einen Anteil, den keine Einheit belegt.
-    werkzeugBasis: { gesamt: reihe(), werkzeug: reihe(), ohneBeide: { einheiten: 0, laeufe: new Set() } },
+    // `pakete` zaehlt sie, `paketeMittel` davon die der Stufe mittel (Issue #1688).
+    werkzeugBasis: {
+      gesamt: reihe(), werkzeug: reihe(), ohneBeide: { einheiten: 0, laeufe: new Set() },
+      pakete: { anzahl: 0, laeufe: new Set() }, paketeMittel: { anzahl: 0, laeufe: new Set() },
+    },
     nebenlaeufig: { einheiten: 0, laeufe: new Set() },
     wartendBeendet: { einheiten: 0, laeufe: new Set() },
     kommandos: new Map(),
@@ -520,7 +582,7 @@ function zeitErfassen(s, einheit, stempel) {
   messen(s.zeit.gesamt, gesamt, stempel);
   messen(s.zeit.nachdenken, nachdenken, stempel);
   messen(s.zeit.werkzeug, werkzeug, stempel);
-  werkzeugbasisErfassen(s, gesamt, werkzeug, stempel);
+  werkzeugbasisErfassen(s, gesamt, werkzeug, stempel, einheit.stufeVerwendet === STUFE_MITTEL);
   if (gesamt === null || nachdenken === null || werkzeug === null) return true;
   const rest = gesamt - nachdenken - werkzeug;
   if (rest >= 0) {
@@ -543,14 +605,22 @@ function zeitErfassen(s, einheit, stempel) {
  * Die uebrigen zaehlt `ohneBeide` — damit im Bericht steht, worauf der Anteil NICHT
  * beruht. Das Schweigen darueber liesse den Anteil vollstaendiger aussehen, als er ist.
  */
-function werkzeugbasisErfassen(s, gesamt, werkzeug, stempel) {
+function werkzeugbasisErfassen(s, gesamt, werkzeug, stempel, mittel = false) {
   if (gesamt !== null && werkzeug !== null) {
     messen(s.werkzeugBasis.gesamt, gesamt, stempel);
     messen(s.werkzeugBasis.werkzeug, werkzeug, stempel);
+    zaehlen(s.werkzeugBasis.pakete, stempel);
+    if (mittel) zaehlen(s.werkzeugBasis.paketeMittel, stempel);
     return;
   }
   s.werkzeugBasis.ohneBeide.einheiten += 1;
   s.werkzeugBasis.ohneBeide.laeufe.add(stempel);
+}
+
+/** Ein gezaehlter Fall mit dem Lauf, der ihn traegt. */
+function zaehlen(z, stempel) {
+  z.anzahl += 1;
+  z.laeufe.add(stempel);
 }
 
 /**
@@ -818,6 +888,9 @@ function stufenSammler(stufe, effort) {
     kosten: reihe(),
     rot: { anzahl: 0, laeufe: new Set() },
     nacharbeit: { anzahl: 0, laeufe: new Set() },
+    // Die Werkzeugbasis der Stufe (Issue #1688): nur Pakete, die Session-Dauer und
+    // Werkzeugzeit beide tragen — dieselbe Regel wie `werkzeugbasisErfassen`.
+    werkzeug: { pakete: 0, gesamt: reihe(), werkzeug: reihe() },
   };
 }
 
@@ -851,6 +924,13 @@ function stufeErfassen(s, einheit, stempel) {
     g.nacharbeit.anzahl += 1;
     g.nacharbeit.laeufe.add(stempel);
   }
+  const paketzeit = zahl(einheit.zeiten?.dauerMs);
+  const werkzeug = zahl(einheit.zeiten?.werkzeugMs);
+  if (paketzeit !== null && werkzeug !== null) {
+    g.werkzeug.pakete += 1;
+    messen(g.werkzeug.gesamt, paketzeit, stempel);
+    messen(g.werkzeug.werkzeug, werkzeug, stempel);
+  }
   s.jeStufe.set(schluessel, g);
 }
 
@@ -876,7 +956,23 @@ function stufenErgebnis(s) {
       kostenUsd: fertig(g.kosten, { geld: true }),
       rotePruefstaende: { wert: g.rot.anzahl, laeufe: g.rot.laeufe.size },
       nacharbeit: { wert: g.nacharbeit.anzahl, laeufe: g.nacharbeit.laeufe.size },
+      werkzeug: werkzeugJePaket(g.werkzeug),
     }));
+}
+
+/**
+ * Die Werkzeugzeit je Paket einer Stufe (Issue #1688): das Mittel ueber die Pakete mit
+ * beiden Zeiten und ihr Anteil an deren Paketzeit. Ohne ein solches Paket `null` — nie 0.
+ */
+function werkzeugJePaket(w) {
+  if (w.pakete === 0) return { pakete: 0, jePaketMs: null, anteil: null, laeufe: 0 };
+  const gesamt = w.gesamt.summe;
+  return {
+    pakete: w.pakete,
+    jePaketMs: Math.round(w.werkzeug.summe / w.pakete),
+    anteil: gesamt > 0 ? w.werkzeug.summe / gesamt : null,
+    laeufe: w.werkzeug.laeufe.size,
+  };
 }
 
 // --- Verteilung je Laufart und Aufgabenstufe (Issue #1339) ---------------------
@@ -1116,6 +1212,8 @@ function aggregieren(staende) {
           einheiten: s.werkzeugBasis.ohneBeide.einheiten,
           laeufe: s.werkzeugBasis.ohneBeide.laeufe.size,
         },
+        pakete: { wert: s.werkzeugBasis.pakete.anzahl, laeufe: s.werkzeugBasis.pakete.laeufe.size },
+        paketeMittel: { wert: s.werkzeugBasis.paketeMittel.anzahl, laeufe: s.werkzeugBasis.paketeMittel.laeufe.size },
       },
     },
     pruefungen: {
@@ -1344,6 +1442,7 @@ export function berichtText(e) {
       t("berichtTitel"), "",
       t("auswertungVom", { zeit: e.erzeugtAm }), "",
       t("keinStand"), "",
+      ...rechnerZeilen(e),
       ...(e.laeufe.unlesbar.length > 0 ? [unlesbarAbsatz(e), ""] : []),
       dauerzeile(e), "",
     ].join("\n");
@@ -1377,7 +1476,25 @@ function berichtKopf(e) {
   if (e.laeufe.einbezogen === 1) {
     zeilen.push("", t("einzigerLauf"));
   }
-  zeilen.push("", wartendZeile(e), "");
+  zeilen.push("", ...rechnerZeilen(e), wartendZeile(e), "");
+  return zeilen;
+}
+
+/**
+ * Fuer welchen Rechner die Zahlen gelten, und in einer eigenen Zeile die uebrigen mit ihrer
+ * Zahl an Laeufen (Issue #1688, E4): getrennt ausgewiesen, nie zusammengelegt.
+ */
+function rechnerZeilen(e) {
+  const r = e.rechner;
+  // Ein Stand aus einer Fassung vor Issue #1688 kennt keinen Rechner.
+  if (!r) return [];
+  const zeilen = [t(r.gewaehlt === "option" ? "rechnerGewaehlt" : "rechnerEigener", { rechner: r.name }), ""];
+  if (r.uebrige.length > 0) {
+    const liste = r.uebrige.map((u) => t(u.laeufe === 1 ? "rechnerEintragEiner" : "rechnerEintragMehrere", {
+      rechner: u.name ?? t("rechnerUnbekannt"), anzahl: u.laeufe,
+    })).join(", ");
+    zeilen.push(t("rechnerUebrige", { liste }), "");
+  }
   return zeilen;
 }
 
@@ -1414,6 +1531,8 @@ function berichtZeit(e) {
     + (basis.ohneBeideZeiten.einheiten > 0
       ? t("werkzeugOhneBeide", { anzahl: basis.ohneBeideZeiten.einheiten, laeufe: laufText(basis.ohneBeideZeiten.laeufe) })
       : ""),
+    "",
+    t("werkzeugPakete", { pakete: basis.pakete.wert, mittel: basis.paketeMittel.wert, laeufe: laufText(basis.pakete.laeufe) }),
     ""
   );
   if (e.zeit.nebenlaeufig.einheiten > 0) {
@@ -1499,7 +1618,7 @@ function berichtStufen(e) {
   const zeilen = [
     t("stufenTitel"), "",
     t("stufenKopf"),
-    "| --- | --- | --- | --- | --- | --- | --- |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ...e.jeStufe.map((z) => "| " + [
       z.stufe ?? t("ohneStufe"),
       z.effort ?? t("voreinstellung"),
@@ -1508,6 +1627,7 @@ function berichtStufen(e) {
       messzelle(z.kostenUsd, geld),
       zaehlzelle(z.rotePruefstaende),
       zaehlzelle(z.nacharbeit),
+      werkzeugZelle(z.werkzeug),
     ].join(" | ") + " |"),
     "",
   ];
@@ -1519,6 +1639,14 @@ function berichtStufen(e) {
     zeilen.push(t("stufenOhne"), "");
   }
   return zeilen;
+}
+
+/** Die Werkzeugzeit je Paket mit ihrem Anteil an der Paketzeit (Issue #1688). */
+function werkzeugZelle(w) {
+  if (w.jePaketMs === null) return nichtGemessen();
+  return t(w.pakete === 1 ? "werkzeugJePaketEines" : "werkzeugJePaket", {
+    dauer: dauer(w.jePaketMs), anteil: w.anteil === null ? nichtGemessen() : prozent(w.anteil), pakete: w.pakete,
+  });
 }
 
 /** Wogegen gemessen wurde — mehrere Marken bleiben mehrere (E7). */
@@ -1766,14 +1894,21 @@ function schreibeDatei(pfad, inhalt) {
  * Die Auswertung. Rueckgabe ist der vollstaendige Stand — dieselbe Struktur, die nach
  * `.claude/aufwand.json` geht und auf stdout steht: eine Form, nicht zwei.
  */
-export function auswerten(root, { laeufe: grenzeArg, jetzt = () => new Date() } = {}) {
+export function auswerten(root, { laeufe: grenzeArg, rechner: rechnerArg, jetzt = () => new Date() } = {}) {
   // Kriterium 13 gibt der Auswertung ein Zeitbudget. Sie misst sich deshalb selbst,
   // statt das einem `time` davor zu ueberlassen: So steht der Wert in jedem Lauf und
   // nicht nur dort, wo jemand daran gedacht hat.
   const gestartet = process.hrtime.bigint();
   const einstellungen = ladeEinstellungen(root);
   const grenze = grenzeArg ?? einstellungen.laeufe;
-  const { staende, gefunden, unlesbar } = ladeStaende(root, grenze);
+  const rechner = rechnerArg ?? RECHNER;
+  const { staende, gefunden, unlesbar, uebrige } = ladeStaende(root, grenze, rechner);
+  // Ein ausdruecklich genannter Rechner ohne einen einzigen Stand ist ein Tippfehler oder ein
+  // fremdes Projekt — ein leerer Bericht saehe aus wie ein Rechner ohne Laeufe.
+  if (rechnerArg !== undefined && gefunden === 0) {
+    const bekannt = [...uebrige.keys()].filter((n) => n !== null).sort(vergleicheText);
+    fail(t("rechnerUnbekannterName", { name: rechnerArg, bekannt: bekannt.length > 0 ? bekannt.join(", ") : t("rechnerKeiner") }));
+  }
   const a = aggregieren(staende);
   const { befund, nichtBestimmbar } = schwellenPruefen(a, einstellungen.schwellen);
 
@@ -1806,6 +1941,8 @@ export function auswerten(root, { laeufe: grenzeArg, jetzt = () => new Date() } 
     auskuenfte: a.auskuenfte,
     // Ebenso hinten angehaengt (Issue #1339).
     verteilung: a.verteilung,
+    // Ebenso hinten angehaengt (Issue #1688): fuer welchen Rechner die Zahlen gelten.
+    rechner: rechnerErgebnis(rechner, rechnerArg === undefined ? "eigener" : "option", uebrige),
     schwellen: einstellungen.schwellen,
     nichtBestimmbar,
     // Immer gesetzt, auch leer: Eine neuere Auswertung ohne Befund loescht damit den
@@ -1903,6 +2040,13 @@ function parseAuswertenArgs(rest) {
   let i = 0;
   while (i < rest.length) {
     altnameAbweisen(ALTE_OPTIONEN, rest[i]);
+    if (rest[i] === "--machine") {
+      const name = rest[i + 1];
+      if (typeof name !== "string" || name === "" || name.startsWith("--")) fail(t("rechnerErwartet"));
+      args.rechner = name;
+      i += 2;  // Option und ihr Wert
+      continue;
+    }
     if (rest[i] !== "--runs") fail(t("unbekanntesArgument", { arg: rest[i] }));
     const wert = Number(rest[i + 1]);
     if (!Number.isInteger(wert) || wert <= 0) {

@@ -59,3 +59,29 @@ test("[aufwand-1213] die Kommandozeile gibt JSON aus und setzt bei einem Fehler 
     assert.match(schlecht.stderr, /^Fehler: 'finding' nimmt keine Argumente/);
   });
 });
+
+test("[aufwand-1688] `evaluate --machine <name>` waehlt den Rechner ausdruecklich, ein unbekannter Name wird gemeldet", () => {
+  const laeufe = [
+    lauf("2026-10-14-020000", { rechner: "zweiter-rechner", einheiten: [einheit(2)] }),
+    lauf("2026-10-14-010000", { einheiten: [einheit(1)] }),
+  ];
+  mitProjekt({ laeufe }, (dir) => {
+    const gewaehlt = cli(AUFWAND, dir, "evaluate", "--machine", "zweiter-rechner");
+    assert.equal(gewaehlt.status, 0, gewaehlt.stderr);
+    const e = JSON.parse(gewaehlt.stdout);
+    assert.equal(e.rechner.name, "zweiter-rechner");
+    assert.equal(e.rechner.gewaehlt, "option");
+    assert.deepEqual(e.laeufe.stempel, ["2026-10-14-020000"]);
+
+    const unbekannt = cli(AUFWAND, dir, "evaluate", "--machine", "gibt-es-nicht");
+    assert.equal(unbekannt.status, 1);
+    const fehler = JSON.parse(unbekannt.stdout);
+    assert.equal(fehler.ok, false);
+    assert.match(fehler.fehler, /Rechner 'gibt-es-nicht'/);
+    assert.match(fehler.fehler, /zweiter-rechner/, "die Meldung nennt die bekannten Rechner");
+
+    const ohneWert = cli(AUFWAND, dir, "evaluate", "--machine");
+    assert.equal(ohneWert.status, 1);
+    assert.match(JSON.parse(ohneWert.stdout).fehler, /--machine/);
+  });
+});

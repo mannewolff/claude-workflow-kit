@@ -13,12 +13,15 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, existsSync
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { aufrufen } from "../../kit/effort.mjs";
+import { aufrufen, RECHNER } from "../../kit/effort.mjs";
 
 /**
  * Ein Ergebnisstand mit den Feldern, die night.mjs schreibt. Alles ist ueberschreibbar,
  * damit ein Test genau den einen Messwert wegnehmen kann, um den es ihm geht — die
  * uebrigen bleiben plausibel, statt dass jeder Test seinen eigenen Stand von Hand baut.
+ *
+ * Der Rechner ist der, auf dem der Test laeuft (Issue #1688): Ohne Option wertet der
+ * Bericht nur dessen Staende aus. `rechner: undefined` ergibt einen Stand ohne das Feld.
  */
 export function lauf(stempel, felder = {}) {
   return {
@@ -37,6 +40,7 @@ export function lauf(stempel, felder = {}) {
       complete: true,
       verbrauch: { kostenUsd: null, eingabeTokens: null, ausgabeTokens: null, cacheErzeugtTokens: null, cacheGelesenTokens: null },
       verbrauchOhneEinheit: { kostenUsd: 0, eingabeTokens: 0, ausgabeTokens: 0, cacheErzeugtTokens: 0, cacheGelesenTokens: 0 },
+      rechner: RECHNER,
       ...felder,
     },
   };
