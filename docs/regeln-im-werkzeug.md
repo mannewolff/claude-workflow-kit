@@ -1,5 +1,7 @@
 # Regeln im Werkzeug
 
+Aufstellung vom 12.10.2026, Stand vor Kit 5.1.2. Sie wird nicht mehr gepflegt; was heute gilt, steht in der Dokumentation.
+
 Diese Seite ist die Aufstellung zur Umstellung von `/local-check`: Sie führt **jede** Regel der Anweisung `skills/local-check/SKILL.md` und sagt je Regel, welcher Art sie ist, wie weit sie ins Werkzeug überführt wurde und wo sie heute steht.
 
 Der Maßstab dahinter heißt „Regel im Text oder Regel im Werkzeug" und steht in `CLAUDE-workflow.md`, also in der Prozessvorlage, die jedes Projekt mitbekommt. Kurz gefasst:
