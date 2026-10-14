@@ -67,7 +67,7 @@ const themeDe: DefaultTheme.Config = {
     {
       text: "Der Prozess",
       items: [
-        { text: "Die neun Schritte", link: "/prozess" },
+        { text: "Die acht Schritte", link: "/prozess" },
         { text: "Die siebzehn Skills", link: "/prozess#die-skills" },
         { text: "Vollständiger Durchlauf", link: "/prozess#ein-vollstandiger-durchlauf" },
         { text: "PO-Schleife", link: "/prozess#po-schleife-fachliche-und-technische-issues" },
@@ -162,7 +162,7 @@ const themeEn: DefaultTheme.Config = {
     {
       text: "The process",
       items: [
-        { text: "The nine steps", link: "/en/prozess" },
+        { text: "The eight steps", link: "/en/prozess" },
         { text: "The seventeen skills", link: "/en/prozess#the-skills" },
         { text: "A complete pass", link: "/en/prozess#a-complete-pass" },
         { text: "PO loop", link: "/en/prozess#po-loop-business-and-technical-issues" },

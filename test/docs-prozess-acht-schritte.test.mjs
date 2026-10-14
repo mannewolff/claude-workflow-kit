@@ -67,3 +67,10 @@ test("[1609] Prozess ohne lokale Prüfung — die Schritte 1 bis 8 sind fortlauf
 
   assert.equal(existsSync(join(repoRoot, "skills", "local-check")), false, "skills/local-check/ existiert noch");
 });
+
+test("Seitenleiste der Doku nennt den Prozess in acht Schritten (Issue #1708)", () => {
+  const config = lies("docs-site", ".vitepress", "config.ts");
+  assert.doesNotMatch(config, /neun Schritte|nine steps/i, "config.ts nennt noch neun Schritte");
+  assert.match(config, /\{ text: "Die acht Schritte", link: "\/prozess" \}/, "deutscher Eintrag fehlt");
+  assert.match(config, /\{ text: "The eight steps", link: "\/en\/prozess" \}/, "englischer Eintrag fehlt");
+});
