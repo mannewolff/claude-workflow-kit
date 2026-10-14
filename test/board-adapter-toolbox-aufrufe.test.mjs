@@ -116,6 +116,25 @@ test("Zweite Methode auf derselben Karte nutzt die Zuordnung", async () => {
   });
 });
 
+test("Zweite Methode auf derselben Karte nutzt die Zuordnung, eine zweite Instanz nicht", async () => {
+  await mitBoard(einzelabruf(), async (dir, requests) => {
+    await amBoard(dir, async (t) => {
+      await t.getIssue(42);
+      await t.listActivity(42);
+    });
+    assert.deepEqual(zeilen(requests), [
+      "GET /api/kanban/items/by-number/42",
+      "GET /api/kanban/items/4200/activity",
+    ]);
+    // Die Zuordnung gilt je Instanz: Ein frischer Adapter holt die Karte selbst.
+    await amBoard(dir, (t) => t.listActivity(42));
+    assert.deepEqual(zeilen(requests).slice(2), [
+      "GET /api/kanban/items/by-number/42",
+      "GET /api/kanban/items/4200/activity",
+    ]);
+  });
+});
+
 test("getIssue nach einer Änderung liest frisch", async () => {
   let stand = "Alt";
   const antwort = einzelabruf({ body: () => stand });
