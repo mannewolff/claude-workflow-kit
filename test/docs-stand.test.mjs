@@ -279,7 +279,9 @@ test("Kriterium 1: jeder Skill hat in beiden Fassungen von prozess.md eine eigen
   assert.equal(skills.length, 18);
   for (const [pfad] of PROZESS) {
     const text = readFileSync(join(repoRoot, pfad), "utf-8");
-    for (const name of skills) {
+    // Issue #1677: /local-check ist kein Prozessschritt mehr und hat keinen Abschnitt;
+    // den Skill selbst entfernt erst Issue #1679.
+    for (const name of skills.filter((n) => n !== "local-check")) {
       assert.match(text, new RegExp(String.raw`^#{2,4} \/${maskiert(name)}$`, "m"), `${pfad}: keine Überschrift für /${name}`);
     }
   }

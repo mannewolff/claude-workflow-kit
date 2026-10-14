@@ -104,8 +104,8 @@ Anker entscheidet zwar nicht mehr, WAS laeuft, wohl aber, welchen Stand die
 Zusammenfassung **bezeugt** — `basis`, `geaendert` und die Blob-Hashes, gegen die das
 Commit-Gate den Index prueft. Ohne `--since` nimmt `planen` in `kit/checks.mjs` `HEAD` als
 Basis, und der Nachweis spraeche dann ueber das letzte Stueck statt ueber den Batch. Der
-Anker ist derselbe wie in `/local-check`: der letzte gepushte Stand, also genau der Batch,
-der gleich hinausgeht.
+Anker ist derselbe wie in `/push-main` Schritt 5 und in `docs/prozess.md`, „Prüflauf von
+Hand": der letzte gepushte Stand, also genau der Batch, der gleich hinausgeht.
 
 `tools/sync-blobs.mjs` stempelt zusaetzlich die Kit-Version in die
 `KIT_VERSION`-Konstante von `kit/board.mjs`, `kit/night.mjs`, `kit/checks.mjs`

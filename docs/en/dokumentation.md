@@ -32,7 +32,7 @@ Where to find what:
 A vault for notes across sessions is optional; `/session-start` and `/document` also run without it. The file for it is described under [kontext.config.json](/en/einstellungen#kontext-config-json).
 
 ## The nine steps
-<!-- de: 98869d303f93 -->
+<!-- de: 533bb4d090b5 -->
 
 | Step | What | Who | Skill |
 |---------|-----|-----|-------|
@@ -41,7 +41,7 @@ A vault for notes across sessions is optional; `/session-start` and `/document` 
 | 3 | Create work packages | AI | [/issues](/en/prozess#issues) |
 | 4 | GO: pull packages to Ready | Human | – |
 | 5 | Implement | AI | [/implement-ready](/en/prozess#implement-ready) |
-| 6 | Check locally | AI | [/local-check](/en/prozess#local-check) |
+| 6 | Check locally | AI | [/local-check](/en/prozess#check-run-by-hand) |
 | 7 | Review by a second model | AI | [/kit-review](/en/prozess#kit-review) |
 | 8 | Push to main | Human | [/push-main](/en/prozess#push-main) |
 | 9 | Merge to production | Human | [/merge-production](/en/prozess#merge-production) |

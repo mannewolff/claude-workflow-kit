@@ -1,6 +1,6 @@
 # Windows über WSL2
 
-Unter Windows läuft das Kit in WSL2, dem Linux, das Windows mitbringt, und arbeitet dort wie unter macOS und Linux. Diese Anleitung führt vom frischen Windows-Rechner bis zum ersten `/session-start` und zum ersten grünen `/local-check`.
+Unter Windows läuft das Kit in WSL2, dem Linux, das Windows mitbringt, und arbeitet dort wie unter macOS und Linux. Diese Anleitung führt vom frischen Windows-Rechner bis zum ersten `/session-start` und zum ersten grünen Prüflauf mit `node .claude/kit/checks.mjs run`.
 
 ## Voraussetzungen
 
@@ -69,10 +69,11 @@ Unter Windows läuft das Kit in WSL2, dem Linux, das Windows mitbringt, und arbe
 
    ```
    /session-start
-   /local-check
    ```
 
-   Gelungen, wenn `/session-start` den Projektstand ausgibt und `/local-check` mit einer grünen Checkliste endet. In der Desktop-App lässt du zusätzlich `uname -s` ausführen; die Antwort lautet `Linux`.
+   Danach lässt du in der Sitzung `node .claude/kit/checks.mjs run` ausführen.
+
+   Gelungen, wenn `/session-start` den Projektstand ausgibt und `node .claude/kit/checks.mjs run` grün endet. In der Desktop-App lässt du zusätzlich `uname -s` ausführen; die Antwort lautet `Linux`.
 
 ## Wo das Projekt liegt
 

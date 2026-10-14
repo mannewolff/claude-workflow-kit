@@ -37,7 +37,7 @@ Optional ist ein Vault für Notizen über Sitzungen hinweg; `/session-start` und
 | 3 | Arbeitspakete anlegen | KI | [/issues](/prozess#issues) |
 | 4 | GO: Pakete nach Ready ziehen | Mensch | – |
 | 5 | Umsetzen | KI | [/implement-ready](/prozess#implement-ready) |
-| 6 | Lokal prüfen | KI | [/local-check](/prozess#local-check) |
+| 6 | Lokal prüfen | KI | [/local-check](/prozess#pruflauf-von-hand) |
 | 7 | Review durch ein zweites Modell | KI | [/kit-review](/prozess#kit-review) |
 | 8 | Push auf main | Mensch | [/push-main](/prozess#push-main) |
 | 9 | Merge nach production | Mensch | [/merge-production](/prozess#merge-production) |

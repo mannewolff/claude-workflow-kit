@@ -1,8 +1,8 @@
 # Der Prozess
 
-Das Kit führt eine Anforderung in neun Schritten bis in die Produktion. Drei gehören dem Menschen: das GO, der Push und der Merge. Daneben gibt es Werkzeuge, die den Prozess ergänzen oder einen Schritt feiner gliedern.
+Das Kit führt eine Anforderung in acht Schritten bis in die Produktion. Drei gehören dem Menschen: das GO, der Push und der Merge. Daneben gibt es Werkzeuge, die den Prozess ergänzen oder einen Schritt feiner gliedern.
 
-## Die neun Schritte
+## Die acht Schritte
 
 | Schritt | Was | Wer | Skill |
 |---------|-----|-----|-------|
@@ -11,12 +11,11 @@ Das Kit führt eine Anforderung in neun Schritten bis in die Produktion. Drei ge
 | 3 | Issues anlegen | KI | /issues |
 | **4** | **GO: Issues nach Ready ziehen** | **Mensch** | (kein Skill) |
 | 5 | Ready-Issues implementieren | KI | /implement-ready |
-| 6 | Lokale Checks ausführen | KI | /local-check |
-| 7 | Review durchführen | KI | /kit-review |
-| **8** | **Push auf main** | **Mensch** | /push-main |
-| **9** | **Merge nach production** | **Mensch** | /merge-production |
+| 6 | Review durchführen | KI | /kit-review |
+| **7** | **Push auf main** | **Mensch** | /push-main |
+| **8** | **Merge nach production** | **Mensch** | /merge-production |
 
-Zwischen Schritt 8 und 9 prüfst du den Test-Server im Browser; dafür gibt es keinen Skill.
+Zwischen Schritt 7 und 8 prüfst du den Test-Server im Browser; dafür gibt es keinen Skill.
 
 ## Werkzeuge neben dem Prozess
 
@@ -128,7 +127,7 @@ Der Abschnitt `## Abhängigkeiten` enthält `Keine.` oder Verweise `Issue #N`. J
 
 **Wann:** nach dem GO.
 
-**Danach:** `/local-check`.
+**Danach:** `/kit-review`.
 
 ### /implement-next
 
@@ -136,7 +135,7 @@ Der Abschnitt `## Abhängigkeiten` enthält `Keine.` oder Verweise `Issue #N`. J
 
 **Wann:** wenn du genau ein Paket umsetzen willst. Im Nachtbetrieb startet der Runner je Paket eine frische Session mit diesem Skill.
 
-**Danach:** das nächste Paket oder `/local-check`.
+**Danach:** das nächste Paket oder `/kit-review`.
 
 ### /implement-test
 
@@ -152,27 +151,19 @@ Der Abschnitt `## Abhängigkeiten` enthält `Keine.` oder Verweise `Issue #N`. J
 
 **Wann:** nach `/implement-test`.
 
-**Danach:** `/local-check`.
-
-### /local-check
-
-**Wofür:** Schritt 6. Der Skill ruft `node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranch>)"` auf. Das Kommando wählt die betroffenen `buildChecks` aus und misst alles seit dem letzten Push. Danach läuft `mutationCommand`, sofern gesetzt. Gefahren wird die Paketstufe; Prüfungen der Stufe `push` oder `merge` stehen als Auslassung mit Grund in der Checkliste. Bei Frontend-Änderungen erinnert der Skill an die Prüfung im Browser. Ein roter Check hält den Prozess an.
-
-**Wann:** nach der Umsetzung, vor dem Review.
-
 **Danach:** `/kit-review`.
 
 ### /kit-review
 
-**Wofür:** Schritt 7. Ein Reviewer ohne den Kontext der Umsetzung liest den Code als Fremder. Je nach `reviewScope` liest er den Diff oder das ganze Repo, als Agent `kit-pruefer` im Modell aus `reviewModel` oder als CLI aus `reviewCommand`. Die Befunde landen als Kommentar am Issue. Scheitert der Aufruf, bricht der Skill sichtbar ab.
+**Wofür:** Schritt 6. Ein Reviewer ohne den Kontext der Umsetzung liest den Code als Fremder. Je nach `reviewScope` liest er den Diff oder das ganze Repo, als Agent `kit-pruefer` im Modell aus `reviewModel` oder als CLI aus `reviewCommand`. Die Befunde landen als Kommentar am Issue. Scheitert der Aufruf, bricht der Skill sichtbar ab.
 
-**Wann:** nach `/local-check`.
+**Wann:** nach der Umsetzung.
 
 **Danach:** Befunde einarbeiten (zurück zu Schritt 5) oder `push main`.
 
 ### /push-main
 
-**Wofür:** Schritt 8. Der Skill pusht den Commit-Batch auf main. Er reagiert nur auf die getippte Trigger-Phrase `push main`, und jeder Batch braucht eine eigene Freigabe. Er fährt `checks.mjs run --stage push` mit `--retry`, also jede Prüfung bis zur Stufe `push` ohne Auswahl nach Bereichen; wackelt eine, fragt er vor dem Commit nach. Erzeugungsschritte aus der `RELEASING.md` des Projekts, etwa Versionsbump und Changelog, fährt er vor dem Prüflauf; Vor- und Nach-Push-Schritte daraus um den Push herum.
+**Wofür:** Schritt 7. Der Skill pusht den Commit-Batch auf main. Er reagiert nur auf die getippte Trigger-Phrase `push main`, und jeder Batch braucht eine eigene Freigabe. Er fährt `checks.mjs run --stage push` mit `--retry`, also jede Prüfung bis zur Stufe `push` ohne Auswahl nach Bereichen; wackelt eine, fragt er vor dem Commit nach. Erzeugungsschritte aus der `RELEASING.md` des Projekts, etwa Versionsbump und Changelog, fährt er vor dem Prüflauf; Vor- und Nach-Push-Schritte daraus um den Push herum.
 
 **Vorbereitet in der Nacht.** Eine Nacht-Kette mit dem Ziel `goal:push-prepared` startet `/push-main prepare`. Diese Session pusht nicht: Sie fährt in einem eigenen Worktree die Erzeugungsschritte, den vollen Prüflauf der Stufe `push` und den Commit. Das Ergebnis `gruen`, `gruen-offen` oder `rot` liegt in `.claude/push-vorbereitung.json`. Tippst du morgens `push main` und hat sich seither nichts geändert, übernimmt der Skill den Stand mit der Zeile `Übernimmt den Stand der Nacht vom <zeitpunkt> (<commit>)` und prüft nicht erneut. Fährt das Projekt den vollen Lauf im Build-Dienst, bleibt in der Nacht der offene Punkt `voller Lauf im Build-Dienst (Prüfzweig <zweig>)`; morgens pusht der Skill den Commit auf den Prüfzweig, wartet auf den Build-Dienst und pusht main nur bei Grün.
 
@@ -184,7 +175,7 @@ Der Abschnitt `## Abhängigkeiten` enthält `Keine.` oder Verweise `Issue #N`. J
 
 ### /merge-production
 
-**Wofür:** Schritt 9. Der Skill erstellt einen Pull Request (GitHub) oder Merge Request (GitLab) von main nach production; mergen tust du selbst. Er reagiert nur auf die Trigger-Phrase `merge production` und hält an, wenn dein lokales main Commits trägt, die noch nicht gepusht sind.
+**Wofür:** Schritt 8. Der Skill erstellt einen Pull Request (GitHub) oder Merge Request (GitLab) von main nach production; mergen tust du selbst. Er reagiert nur auf die Trigger-Phrase `merge production` und hält an, wenn dein lokales main Commits trägt, die noch nicht gepusht sind.
 
 Vor dem PR steht ein CI-Gate: `node .claude/kit/board.mjs code ci-status --commit <sha>` fragt den Zustand der CI für den Stand auf `origin/main` ab, vor Versionsbump und Release-Commit. Ist sie rot, entsteht kein PR, und der Skill nennt die roten Jobs. Läuft sie noch, fragt er einmal nach. Der Grund: Die lokalen `buildChecks` messen nicht, was die CI misst, etwa eine andere Laufzeitumgebung oder einen frischen Checkout. Danach fährt der Skill mit `checks.mjs run --stage merge` die Freigabestufe, also nur, was beim Push noch nicht geprüft wurde.
 
@@ -225,7 +216,6 @@ git tag -a vX.Y.Z <hash> -m "Release vX.Y.Z" && git push origin vX.Y.Z
 | Pakete | `/issue-review #N` am Plan, dann `/issues #N` | Arbeitspakete im Backlog, je mit Rückverweisen |
 | GO | Pakete am Board nach Ready ziehen | die Pakete in Ready, in deiner Reihenfolge |
 | Umsetzung | `/implement-ready` | lokale Commits, Pakete in In review, je ein Abschlussbericht |
-| Lokale Prüfung | `/local-check` | eine Checkliste, alles grün |
 | Code-Review | `/kit-review` | Befunde des Reviewers als Kommentar |
 | `push main` | die Trigger-Phrase tippen | main auf dem Remote aktuell, Test-Server zieht nach |
 | Test-Server | Golden Path und Randfälle im Browser | das Ergebnis läuft, oder du gehst zurück zu Schritt 5 |
@@ -368,7 +358,7 @@ Jede Umsetzung endet mit `node .claude/kit/checks.mjs run`, bevor sie committet.
 
 | Stufe | Zeitpunkt | Skill |
 | --- | --- | --- |
-| `paket` | vor dem lokalen Commit eines Arbeitspakets | `/implement-ready`, `/implement-next`, `/implement-done`, `/local-check` |
+| `paket` | vor dem lokalen Commit eines Arbeitspakets | `/implement-ready`, `/implement-next`, `/implement-done` |
 | `push` | vor dem Veröffentlichen auf main | `/push-main` |
 | `merge` | vor der Freigabe nach production | `/merge-production` |
 
@@ -377,6 +367,18 @@ Die Stufen bauen aufeinander auf: `push main` fährt Paket- und Push-Stufe volls
 **Das Commit-Gate.** Ist es eingehängt, weist es jeden Commit ab, dem kein grüner Prüflauf auf demselben Stand vorausging. Es vergleicht die geprüften Dateien mit dem, was wirklich committet wird; eine Datei, die nach der Prüfung geändert wurde, lässt es nicht durch. Ein roter Lauf heißt: korrigieren und denselben Aufruf wiederholen. Er fährt zuerst die zuletzt roten Prüfungen und danach einmal den vollen Lauf.
 
 Wie man Bereiche, Stufen und das Gate einrichtet, steht unter [Die Config-Datei](/einrichtung#die-config-datei) und in den [Einstellungen](/einstellungen).
+
+### Prüflauf von Hand
+
+Willst du ohne Karte prüfen, etwa nach einer Änderung von Hand oder vor dem `push main`, rufst du das Kommando selbst auf:
+
+```bash
+node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranch>)"
+```
+
+`<mainBranch>` ist der Wert aus `.claude/workflow.config.json`. Der Anker ist der letzte gepushte Stand: Der Lauf misst alles seit dem letzten Push, also den Batch, der als Nächstes hinausgeht. Ohne `--since` misst das Kommando gegen `HEAD` und sähe auf committetem Stand nichts. Gefahren wird die Paketstufe; Prüfungen der Stufe `push` oder `merge` stehen als Auslassung mit Grund in der Ausgabe.
+
+**Leerer Anker.** Schlägt `git merge-base` fehl, etwa ohne `origin` oder ohne gemeinsamen Vorfahren, wird der Aufruf zu `--since ""`. Das Kommando behandelt einen leeren Anker wie einen nicht auflösbaren und fährt den vollen Umfang, nie gar keine Prüfung.
 
 ## Der Prüflauf
 

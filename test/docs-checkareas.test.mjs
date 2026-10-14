@@ -188,12 +188,21 @@ test("das Konfigurationskapitel behauptet nicht mehr den vollen Lauf", () => {
   assert.match(absatz, /betroffen/i, "der buildChecks-Absatz nennt die Betroffenheit nicht");
 });
 
-test("der /local-check-Abschnitt beschreibt die Auswahl statt des vollen Laufs", () => {
-  const abschnitt = skillAbschnitt("/local-check");
-  assert.doesNotMatch(abschnitt, /führt alle Kommandos aus `buildChecks` sequenziell aus/,
-    "der Abschnitt behauptet weiterhin den vollen sequenziellen Lauf");
-  assert.match(abschnitt, /checks\.mjs/, "der Abschnitt nennt das Kommando checks.mjs nicht");
-  assert.match(abschnitt, /betroffen/i, "der Abschnitt nennt die betroffenen Pruefungen nicht");
+// Issue #1677: Den Schritt /local-check gibt es nicht mehr; der Pruefweg ohne Karte
+// steht als "Prueflauf von Hand" unter den Pruefungen vor dem Commit und traegt den
+// Batch-Anker, den frueher der Skill trug.
+test("der Prueflauf von Hand nennt den Batch-Anker und den leeren Anker", () => {
+  const abschnitt = skillAbschnitt("Prüflauf von Hand");
+  assert.match(abschnitt, /node \.claude\/kit\/checks\.mjs run --since "\$\(git merge-base HEAD origin\/<mainBranch>\)"/,
+    "der Abschnitt nennt den Aufruf mit merge-base nicht");
+  assert.match(abschnitt, /seit dem letzten Push/i, "es steht nicht, dass der Anker alles seit dem letzten Push misst");
+  assert.match(abschnitt, /leer/i, "der Randfall des leeren Ankers fehlt");
+  assert.match(abschnitt, /vollen Umfang|voller Umfang/i, "es steht nicht, dass ein leerer Anker den vollen Umfang faehrt");
+  assert.doesNotMatch(abschnitt, /local-check/, "der Abschnitt verweist noch auf /local-check");
+});
+
+test("die Prozessseite fuehrt keinen Abschnitt /local-check mehr", () => {
+  assert.ok(!PROZESS.includes("### /local-check\n"), "der Abschnitt '### /local-check' steht noch in docs/prozess.md");
 });
 
 test("die implement-Abschnitte erwaehnen die Pruefung vor dem Commit", () => {

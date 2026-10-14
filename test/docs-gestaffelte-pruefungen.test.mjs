@@ -88,12 +88,28 @@ test("der Abschnitt verlangt mindestens eine Pruefung auf der Paketstufe", () =>
 
 test("die Skill-Abschnitte nennen ihre Stufe", () => {
   for (const [ueberschrift, muster] of [
-    ["/local-check", /Paketstufe/],
+    ["Prüflauf von Hand", /Paketstufe/],
     ["/push-main", /--stufe push|Stufe `?push`?/],
     ["/merge-production", /--stufe merge|Stufe `?merge`?|Freigabestufe/],
   ]) {
     const abschnitt = skillAbschnitt(ueberschrift);
     assert.match(abschnitt, muster, `'${ueberschrift}' nennt seine Stufe nicht`);
+  }
+});
+
+// Issue #1677: Die Stufentabelle der Prozessseite nennt fuer die Paketstufe nur die
+// Umsetzungs-Skills; einen Schritt /local-check gibt es nicht mehr.
+test("die Stufentabelle der Prozessseite ordnet jeder Stufe ihre Skills zu", () => {
+  const zeilen = PROZESS.split("\n").filter((z) => /^\| `(paket|push|merge)` \|/.test(z));
+  for (const [stufe, skills] of [
+    ["paket", ["/implement-ready", "/implement-next", "/implement-done"]],
+    ["push", ["/push-main"]],
+    ["merge", ["/merge-production"]],
+  ]) {
+    const zeile = zeilen.find((z) => z.startsWith("| `" + stufe + "`"));
+    assert.ok(zeile, `die Stufentabelle der Prozessseite fuehrt die Stufe '${stufe}' nicht`);
+    for (const skill of skills) assert.ok(zeile.includes(skill), `die Zeile '${stufe}' nennt '${skill}' nicht`);
+    assert.ok(!zeile.includes("/local-check"), `die Zeile '${stufe}' nennt noch /local-check`);
   }
 });
 

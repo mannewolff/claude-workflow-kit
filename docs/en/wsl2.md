@@ -1,7 +1,7 @@
 # Windows via WSL2
-<!-- de: 8a7e1543f89a -->
+<!-- de: 734d343bb8e9 -->
 
-On Windows, the kit runs in WSL2, the Linux that Windows ships with, and works there as on macOS and Linux. This guide takes you from a fresh Windows machine to the first `/session-start` and the first green `/local-check`.
+On Windows, the kit runs in WSL2, the Linux that Windows ships with, and works there as on macOS and Linux. This guide takes you from a fresh Windows machine to the first `/session-start` and the first green check run with `node .claude/kit/checks.mjs run`.
 
 ## Prerequisites
 <!-- de: 7857e23a7c8e -->
@@ -11,7 +11,7 @@ On Windows, the kit runs in WSL2, the Linux that Windows ships with, and works t
 - **Administrator rights** for the setup. Afterwards you work as a normal user.
 
 ## Steps
-<!-- de: d9ae308347ed -->
+<!-- de: 7e42cea72554 -->
 
 1. **Enable WSL2.** In PowerShell as administrator (right-click on Start → "Terminal (Admin)"):
 
@@ -72,10 +72,11 @@ On Windows, the kit runs in WSL2, the Linux that Windows ships with, and works t
 
    ```
    /session-start
-   /local-check
    ```
 
-   Done when `/session-start` prints the project status and `/local-check` ends with a green checklist. In the desktop app you also have `uname -s` run; the answer is `Linux`.
+   Then you have `node .claude/kit/checks.mjs run` run in the session.
+
+   Done when `/session-start` prints the project status and `node .claude/kit/checks.mjs run` ends green. In the desktop app you also have `uname -s` run; the answer is `Linux`.
 
 ## Where the project lives
 <!-- de: 7f58b01befe4 -->
