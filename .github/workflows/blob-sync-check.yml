@@ -20,9 +20,9 @@ name: "Checks: Tests + install.mjs-Blobs synchron"
 # production nimmt nur Merges über Pull Requests an.
 #
 # SonarQube (sonarqube.yml) läuft parallel zu diesem Job auf kit-pruefung, als
-# kurzlebiger Zweig gegen main, und weiter nach dem Push auf main. Nach dem Eintrag
-# seines Jobs im Ruleset von main wird es Pflichtprüfung beim push main (Idee #1546,
-# Issue #1578).
+# kurzlebiger Zweig gegen main, und weiter nach dem Push auf main. Auf kit-pruefung läuft
+# es nur mit, ohne Quality Gate und ohne den Job rot zu färben: Ob push main grün wird,
+# entscheidet allein dieser Job (Issue #1578, Issue #1683).
 
 on:
   push:

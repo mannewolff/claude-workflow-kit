@@ -6,8 +6,11 @@ name: SonarQube Cloud
 # sonar.javascript.lcov.reportPaths in sonar-project.properties.
 #
 # Trigger sind main und der Pruefzweig kit-pruefung (Idee #1546, Issue #1578). Auf
-# kit-pruefung laeuft die Analyse parallel zum check-Job von blob-sync-check.yml, damit ein
-# rotes Quality Gate schon beim push main auffaellt und nicht erst beim merge production.
+# kit-pruefung laeuft die Analyse parallel zum check-Job von blob-sync-check.yml, aber nur
+# mit: ohne Quality Gate und ohne den Job rot zu faerben (Issue #1683). Die SonarCloud-
+# Organisation darf keine Nicht-Hauptzweige auswerten ("Organization is not allowed to access
+# data from non main branches"). Ob push main gruen wird, entscheidet allein der check-Job;
+# ein rotes Gate zeigt erst die Analyse von main nach dem Push.
 # SonarCloud fuehrt kit-pruefung als kurzlebigen Zweig mit Ziel main: Der Name passt nicht
 # auf das Muster fuer langlebige Zweige ((branch|release)-.*), und "neuer Code" ist dort,
 # was gegenueber der letzten Analyse von main hinzukommt. Darum bleibt auch main Trigger:
@@ -16,7 +19,7 @@ name: SonarQube Cloud
 # main -> production per PR-Merge, siehe RELEASING.md), ein zusaetzlicher Scan dort waere
 # nur eine redundante Zweitanalyse desselben Commits.
 #
-# Der Lauf wartet auf das Quality Gate und FEHLSCHLAEGT, wenn es rot ist (Issue #395).
+# Auf main wartet der Lauf auf das Quality Gate und FEHLSCHLAEGT, wenn es rot ist (Issue #395).
 # Vorher endete er, sobald die Analyse uebermittelt war — der gruene Haken bedeutete
 # also "hochgeladen", nicht "Schwellen eingehalten". Genau dieser Unterschied hat
 # v1.40.0 mit zwei roten Checks nach production gehen lassen: Ein gruener SonarCloud-
@@ -68,12 +71,16 @@ jobs:
       # den Zweignamen ausdruecklich und bricht sonst vor der Analyse ab ("is mandatory for
       # a branch analysis", Lauf vom 2026-10-14, Issue #1682). Darum tragen Name und Ziel dieselbe
       # Zeile; auf main bleibt sie leer.
+      # Auf kit-pruefung laeuft der Scan nur mit (Issue #1683): Die Organisation darf keine
+      # Nicht-Hauptzweige auswerten ("Organization is not allowed to access data from non main
+      # branches"). Darum wartet nur main auf das Gate, und continue-on-error laesst den Job
+      # auf kit-pruefung als success enden, auch wenn Upload oder Analyse dort scheitern.
       - name: SonarQube-Scan
         uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
+        continue-on-error: ${{ github.ref_name == 'kit-pruefung' }}
         with:
           args: >
             ${{ github.ref_name == 'kit-pruefung' && format('-Dsonar.branch.name={0} -Dsonar.branch.target=main', github.ref_name) || '' }}
-            -Dsonar.qualitygate.wait=true
-            -Dsonar.qualitygate.timeout=300
+            ${{ github.ref_name != 'kit-pruefung' && '-Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300' || '' }}
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

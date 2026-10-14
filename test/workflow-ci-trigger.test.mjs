@@ -89,3 +89,22 @@ test("[ci-trigger] sonarqube setzt auf kit-pruefung Zweigname und Ziel in dersel
   assert.match(zeilen[0], /format\('-Dsonar\.branch\.name=\{0\} [^']*', github\.ref_name\)/);
   assert.match(zeilen[0], /-Dsonar\.branch\.target=main/);
 });
+
+// Die SonarCloud-Organisation darf keine Nicht-Hauptzweige auswerten ("Organization is not
+// allowed to access data from non main branches", Issue #1683): Auf kit-pruefung laeuft der
+// Scan nur mit, ohne Gate, und faerbt den Job nicht rot. Auf main wartet er weiter (Issue #395).
+test("[ci-trigger] sonarqube wartet nur ausserhalb von kit-pruefung auf das Quality Gate", () => {
+  const zeilen = lies("sonarqube.yml").split("\n").filter((z) => z.includes("sonar.qualitygate.wait"));
+  assert.equal(zeilen.length, 1, `sonar.qualitygate.wait steht nicht in genau einer Zeile:\n${zeilen.join("\n")}`);
+  assert.match(zeilen[0], /\$\{\{ github\.ref_name != 'kit-pruefung' && '[^']*-Dsonar\.qualitygate\.wait=true[^']*' \|\| '' \}\}/);
+  assert.match(zeilen[0], /-Dsonar\.qualitygate\.timeout=300/);
+});
+
+test("[ci-trigger] sonarqube-Scan laeuft auf kit-pruefung mit continue-on-error", () => {
+  const text = lies("sonarqube.yml");
+  const schritt = text.slice(text.indexOf("- name: SonarQube-Scan")).split("\n").map((z) => z.trim());
+  assert.ok(
+    schritt.includes("continue-on-error: ${{ github.ref_name == 'kit-pruefung' }}"),
+    "Der Scan-Schritt traegt kein continue-on-error fuer kit-pruefung",
+  );
+});
