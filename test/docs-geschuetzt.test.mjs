@@ -25,10 +25,10 @@ const lies = (pfad) => readFileSync(join(repoRoot, pfad), "utf-8");
 
 const TEXTE = {
   "templates/CLAUDE-workflow.md": lies("templates/CLAUDE-workflow.md"),
-  "docs/dokumentation.md": lies("docs/dokumentation.md"),
+  "docs/einrichtung.md": lies("docs/einrichtung.md"),
 };
 // Je Text die Sprache, in der er die Labels nennt.
-const SPRACHE = { "templates/CLAUDE-workflow.md": "en", "docs/dokumentation.md": "en" };
+const SPRACHE = { "templates/CLAUDE-workflow.md": "en", "docs/einrichtung.md": "en" };
 
 for (const [name, text] of Object.entries(TEXTE)) {
   const label = LABELS.geschuetzt[SPRACHE[name]];
@@ -48,7 +48,7 @@ for (const [name, text] of Object.entries(TEXTE)) {
 }
 
 test("[docs-1055] die Dokumentation nennt I7, I8, I9, issue check-protected samt --path und die Halt-Art geschuetzt", () => {
-  const doku = TEXTE["docs/dokumentation.md"];
+  const doku = TEXTE["docs/einrichtung.md"];
   for (const gate of ["I7", "I8", "I9"]) assert.match(doku, new RegExp(`\\b${gate}\\b`), `das Formgate ${gate} fehlt`);
   assert.match(doku, /`issue check-protected <id>`/, "das Kommando issue check-protected fehlt");
   assert.match(doku, /--path/, "der Schalter --path fehlt");
@@ -56,7 +56,7 @@ test("[docs-1055] die Dokumentation nennt I7, I8, I9, issue check-protected samt
 });
 
 test("[docs-1055] die Pruefung wird rot, wenn ein Text das Label oder den Satz nicht nennt", () => {
-  const ohneLabel = TEXTE["docs/dokumentation.md"].replaceAll(GESCHUETZT_LABEL, "kit:anders");
+  const ohneLabel = TEXTE["docs/einrichtung.md"].replaceAll(GESCHUETZT_LABEL, "kit:anders");
   assert.ok(!ohneLabel.includes(`\`${GESCHUETZT_LABEL}\``));
   const ohneSatz = TEXTE["templates/CLAUDE-workflow.md"].replaceAll("je Board einmal anzulegen", "irgendwo anzulegen");
   assert.doesNotMatch(ohneSatz, /je Board einmal anzulegen/);

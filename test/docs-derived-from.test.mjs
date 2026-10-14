@@ -1,8 +1,8 @@
 // Doku zu `--derived-from` und die benannte Luecke.
 //
-// Geprueft wird bewusst NICHT per Wortfund ueber die ganze Datei: `docs/dokumentation.md`
-// hat weit ueber tausend Zeilen, ein `assert.match(DOKU, /derived-from/)` waere schon
-// durch eine beilaeufige Erwaehnung irgendwo erfuellt. Dieselbe Hausregel steht im Kopf
+// Geprueft wird bewusst NICHT per Wortfund ueber die ganze Datei: Ein
+// `assert.match(DOKU, /derived-from/)` waere schon durch eine beilaeufige Erwaehnung
+// irgendwo erfuellt. Dieselbe Hausregel steht im Kopf
 // von docs-lebenszyklus.test.mjs. Deshalb schneidet jeder Test hier zuerst den Abschnitt
 // heraus, um den es geht, und prueft nur darin.
 //
@@ -20,10 +20,11 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
-const DOKU = lies("docs", "dokumentation.md");
+// Die Einrichtungsseite traegt Option, Luecke und Body-Zeilen in einem Abschnitt (Plan
+// #1652, A8). Das Analysewerkzeug `tools/derived-from-report.mjs` gehoert zum Repo, nicht
+// zum installierten Kit; seine Beschreibung steht in seinem `--help`.
+const DOKU = lies("docs", "einrichtung.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
-
-import { ZUSTAENDE } from "../tools/derived-from-report.mjs";
 
 /**
  * Schneidet den Abschnitt ab einer Ueberschrift bis zur naechsten Ueberschrift
@@ -39,7 +40,7 @@ function abschnitt(text, ueberschrift) {
   return ende >= 0 ? rest.slice(0, ende) : rest;
 }
 
-const HERKUNFT = () => abschnitt(DOKU, "\n#### Herkunft am Board: `--derived-from`\n");
+const HERKUNFT = () => abschnitt(DOKU, "\n### Herkunft am Board: `--derived-from`\n");
 
 test("die Doku beschreibt, was --derived-from sendet", () => {
   const a = HERKUNFT();
@@ -83,7 +84,7 @@ test("[skills-7] die Prozessdatei-Vorlage fuehrt /task ebenfalls als Nie-Setzer"
 
 // Der eigentliche Zweck dieses Issues.
 test("die Luecke ist als Luecke benannt, mit Exit 0 und fehlender Herkunft", () => {
-  const a = abschnitt(DOKU, "\n#### Die Luecke: ein Tracker ohne das Feld schweigt\n");
+  const a = HERKUNFT();
   assert.match(a, /Exit 0/, "dass der Aufruf mit Exit 0 endet, fehlt");
   assert.match(a, /still|stillschweigend/i, "das stille Schlucken ist nicht als solches benannt");
   assert.match(a, /Herkunft fehlt|ohne Herkunft|keine Herkunft/i,
@@ -91,7 +92,7 @@ test("die Luecke ist als Luecke benannt, mit Exit 0 und fehlender Herkunft", () 
 });
 
 test("die Luecke nennt die Begruendung, warum nicht abgesichert wird", () => {
-  const a = abschnitt(DOKU, "\n#### Die Luecke: ein Tracker ohne das Feld schweigt\n");
+  const a = HERKUNFT();
   assert.match(a, /Rücklesen|Ruecklesen|Echo/i, "die verworfene Absicherung ist nicht benannt");
   assert.match(a, /Pool-Idee/, "der Pool-Fall als Grund fehlt");
   assert.match(a, /nicht lesbar|unerreichbar/i,
@@ -99,7 +100,7 @@ test("die Luecke nennt die Begruendung, warum nicht abgesichert wird", () => {
 });
 
 test("die Doku erklaert die Vergaenglichkeit beim Projektwechsel", () => {
-  const a = abschnitt(DOKU, "\n#### Warum die Body-Zeilen daneben stehen bleiben\n");
+  const a = HERKUNFT();
   assert.match(a, /Projektwechsel/, "der Projektwechsel fehlt");
   assert.match(a, /löscht|loescht/i, "dass er die Herkunft loescht, fehlt");
   // Nicht nur die verschobene Karte — auch die, die auf sie zeigen. Das ist der
@@ -117,45 +118,6 @@ test("die Prozessdatei-Vorlage traegt eine Herkunfts-Konvention", () => {
   assert.match(a, /--derived-from/, "die Vorlage nennt die Option nicht");
   assert.match(a, /nächsten Vorfahren|naechsten Vorfahren/i,
     "die Vorlage sagt nicht, worauf der Verweis zeigt");
-});
-
-// --- Der Trockenlauf: derived-from-report ---
-
-const AUSWERTEN = () => abschnitt(DOKU, "\n#### Herkunft auswerten: derived-from-report\n");
-
-test("die Doku beschreibt den Aufruf des Trockenlaufs", () => {
-  const a = AUSWERTEN();
-  assert.match(a, /issue list \| node tools\/derived-from-report\.mjs/,
-    "der Pipe-Aufruf fehlt");
-  assert.match(a, /--json/, "das Flag --json fehlt");
-  assert.match(a, /--help/, "das Flag --help fehlt");
-});
-
-test("die Doku sagt, dass nichts geschrieben wird, und warum", () => {
-  const a = AUSWERTEN();
-  assert.match(a, /schreibt nichts|nichts geschrieben|schreibt weder/i,
-    "das Nicht-Schreiben ist nicht benannt");
-  assert.match(a, /Schreibpfad/, "der fehlende Schreibpfad als Grund fehlt");
-});
-
-test("die Doku nennt beide Fundorte", () => {
-  const a = AUSWERTEN();
-  assert.match(a, /## Kontext/, "der Fundort des Arbeitspakets fehlt");
-  assert.match(a, /\[Plan\]/, "das Plandokument ist nicht als eigener Fall benannt");
-  assert.match(a, /Kopfbereich|vor `## Ziel`/,
-    "der Kopfbereich als zweiter Fundort fehlt — ohne ihn wirkt fehlplatziert willkuerlich");
-});
-
-// Die Namen kommen aus dem Werkzeug, nicht aus einer Liste im Test. Waeren sie hier
-// fest verdrahtet, bliebe der Test bei einem siebten Zustand gruen und die Doku still
-// zurueck — genau der Fall, den dieses Kriterium verhindern soll.
-test("jeder Zustand, den das Werkzeug kennt, steht in der Doku", () => {
-  const a = AUSWERTEN();
-  for (const zustand of ZUSTAENDE) {
-    assert.match(a, new RegExp(`\\b${zustand}\\b`), `der Zustand ${zustand} fehlt in der Doku`);
-  }
-  // Heutiger Erwartungswert, damit ein versehentliches Leeren von ZUSTAENDE auffaellt.
-  assert.equal(ZUSTAENDE.length, 6);
 });
 
 // Die Prozessdatei beschreibt den taeglichen Prozess, nicht die einmaligen

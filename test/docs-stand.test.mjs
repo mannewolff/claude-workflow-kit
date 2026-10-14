@@ -16,7 +16,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DOCS = join(repoRoot, "docs");
 
 /** Die neu geschriebenen Seiten, je mit ihrem Wortbudget (A2). */
-const SEITEN = { einstellungen: 3600, quickstart: 500, lokal: 400, wsl2: 650, pruefbereiche: 600, glossar: 400, index: 100, prozess: 5000 };
+const SEITEN = { einstellungen: 3600, quickstart: 500, lokal: 400, wsl2: 650, pruefbereiche: 600, glossar: 400, index: 100, prozess: 5000, einrichtung: 3800 };
 
 /** Eingebaute Claude-Code-Kommandos, die die Doku nennt (E7). */
 const EINGEBAUT = new Set(["help"]);

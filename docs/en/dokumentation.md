@@ -35,734 +35,6 @@ The core process has nine steps. Step 1 is your requirement; the AI takes over s
 
 **`kontext.config.json` for /session-start and /document (optional).** Both skills also run without this file, in degraded mode. If you want persistent cross-project memory: With a global installation the installer asks for the vault path and creates the file automatically; with a project-local installation you create it manually. Details in the section [kontext.config.json](/en/einstellungen#kontext-config-json).
 
-## Installation
-<!-- de: 5b2454a69a2c -->
-
-Change into your project folder and run:
-
-```bash
-npx claude-workflow-kit
-```
-
-Alternatively, you can download the installer and start it directly:
-
-```bash
-curl -O https://docs.mwolff.org/install.mjs
-node install.mjs
-```
-
-Or in one step without a local file:
-
-```bash
-node <(curl -s https://docs.mwolff.org/install.mjs)
-```
-
-The installer asks nine questions — with a global installation a tenth follows:
-
-**1. Global or project-local.** Global puts the skills into `~/.claude/skills/`. They are then available in all your projects. Project-local puts them into `./.claude/skills/`. They belong to the repo. For processes binding on a team choose project-local, for personal use global. With project-local, the installer automatically adds `.claude/` to `.gitignore`.
-
-**2. Code host.** Where do pull requests and the repo live? `github`, `gitlab` or `local` (no remote, no PR).
-
-**3. Issue tracker.** Where are issues managed? The default is the value of the code host. An independent choice is possible, e.g. `issueTracker: local` with `codeHost: github`.
-
-**4. Name of the main branch.** In most repos `main`, sometimes `develop` or `master`. This branch is the target of /push-main.
-
-**5. Name of the production branch.** Often `production` or `release`. /merge-production creates a PR or MR from main to this branch.
-
-**6. Review scope (`diff` or `full`).** With `diff` the review skill only sees the changed lines. With `full` all files in the repo. For small changes `diff` is enough. For larger refactorings `full` is more meaningful, but in very large repos it can overload the context window.
-
-**7. Review model** and **8. Review command.** Who runs the code review in step 7 — **exactly one of the two**. A model (default `claude-opus-4-8`) runs as a subagent; a command starts an external tool and receives the prompt via stdin. Setting both is rejected, setting neither as well: Otherwise step 7 would run into nothing. This applies to the **answers**. If, on the other hand, both fields are already **in the file**, the installer does not reject but resolves the contradiction: It proposes the existing command and says beforehand that the model is dropped. The other way round works by clearing the command with `-` and entering a model.
-
-**9. Commit gate (project-local only).** Whether the installer hooks in the commit gate, i.e. sets `git config core.hooksPath .githooks` — see [The commit gate](#the-commit-gate). The question only appears if neither another `core.hooksPath` is in effect nor an active file lies in the hooks directory; the default is no.
-
-**10. Vault path (global installation only).** Path to the memory vault for /session-start and /document. Leaving it empty skips the step; with a path the installer writes the global `~/.claude/kontext.config.json`.
-
-**Protecting the main branch (after the code host question).** With `github` and a project-local installation, the installer asks three more questions: whether the project has a build service (GitHub Actions), whether it should move the check before the push there and protect the main and release branches, and which check branch to use (default `kit-pruefung`). Both yes/no questions are preselected with yes. A no leaves everything as before, and the installer says in one sentence that a push bypassing `push main` gets through unchecked. In the other cases it does not ask but states one sentence: with `gitlab` the protection is not set up yet, with `local` the check stays on your own machine, and with a global installation it points to `node install.mjs --protection` in the project, because protection applies per repository.
-
-With yes, the installer calls `node .claude/kit/board.mjs code protection setup --branch <zweig>`. The command first pushes the state of `origin/<mainBranch>` to the check branch as a probe and waits to see whether the build service runs the mandatory checks there; this can take a few minutes. Its result is one of four:
-
-| Result | Meaning | `pushPruefung` |
-|---|---|---|
-| `scharf` | Probe passed, the rulesets for the main and release branches are set. | is written |
-| `anleitung` | Probe passed, but the rulesets could not be set, for example without admin rights. The output names every step with its place on GitHub. | is written |
-| `offen` | The build service ran nothing on the check branch or did not finish. The output describes what has to run there. | stays unchanged |
-| `nicht moeglich` | The code host knows no protection, or `origin/<mainBranch>` is missing. | stays unchanged |
-
-**Later: `node install.mjs --protection`.** An existing project switches protection on without reinstalling the kit. The call asks only the protection questions, calls `code protection setup` and changes nothing in `.claude/workflow.config.json` but `pushPruefung`; all other settings and kit files stay untouched. It requires an installed `board.mjs` that already knows `code protection`. Whether a project is protected is then reported at any time by `node .claude/kit/board.mjs code protection status` (see [Board adapter](#board-adapter)).
-
-The installer copies the eighteen skills, writes a `.claude/workflow.config.json` with your answers, places a `CLAUDE-workflow.md` with the process description as well as the two gate registers `CLAUDE-Fachplan.md` and `CLAUDE-Plan.md`, and writes the board adapter to `.claude/kit/board.mjs`. The parts of the tools sit in subdirectories next to it: `night/` and `board/` for the night runner and the board adapter, `rollen/` for the review roles and `texte/` for the text tables of the tools in both languages. With GitLab it additionally asks whether it should create the five labels automatically. No background process, no service, no registry entries.
-
-The former local Kanban GUI (`board-ui.mjs`) has been discontinued.
-
-After the installation you restart Claude Code. The skills then appear under `/help`.
-
-### What the installer writes — and why it does not belong in the repo
-<!-- de: e94cb1d5045b -->
-
-Everything the installer places under `.claude/` is **generated output**: the skills, `CLAUDE-workflow.md` and the two gate registers. On the next run it writes them anew. Versioning one of these files in the repo would mean keeping a second state that drifts until the next install — and it would take from everyone the decision **whether** to reinstall at all.
-
-This repo therefore handles it this way itself, and for your project it is the recommended split:
-
-```gitignore
-.claude/*
-!.claude/workflow.config.json
-```
-
-The first line must read `.claude/*`, not `.claude`: Inside an excluded directory git no longer evaluates any `!` pattern — the exception would silently drop out too.
-
-`workflow.config.json` is the justified exception. The installer **does not overwrite it, it merges**: The base is the default values, above that the existing file, on top the answers asked for. Fields not asked for, such as `buildChecks` or `issueReview`, are kept. It is a team setting, not generated output — and therefore belongs under version control.
-
-### The commit gate
-<!-- de: bb660630f07c -->
-
-With a project-local installation, the installer asks whether the **commit gate** should be hooked in. It rejects every commit that was not preceded by a green `node .claude/kit/checks.mjs run` on the same state.
-
-Two files carry it, both under `.githooks/` and thus **versioned**:
-
-| File | Role |
-|---|---|
-| `.githooks/pre-commit` | POSIX sh, a few lines, delegates to the gate |
-| `.githooks/gate.mjs` | the check itself |
-
-They live there and not under `.claude/kit/` because the `.gitignore` block above excludes `.claude/*`: A fresh clone would otherwise have the hook without the program it calls.
-
-**What travels along and what does not.** The files travel with the clone, the **activation does not** — `core.hooksPath` is local git config. Whoever clones has the gate only once they run the installer or set `git config core.hooksPath .githooks` themselves.
-
-**An occupied `core.hooksPath` is not overwritten.** If the project runs Husky or its own hook framework, the installer reports the value it found and changes nothing — otherwise the project would lose all existing hooks with one write command. To hook it in, add `node .githooks/gate.mjs pre-commit` to your own hook. The same applies to an already existing `.githooks/pre-commit` that does not come from this kit: It stays untouched.
-
-**Outside a git repo** — and when `git` is not in the PATH — the question is dropped; the installer writes the files and says why the gate is not active. With a global install it is dropped as well.
-
-**The summary accompanies the run.** It is created **before** the first command, overwritten **before** each further one and written one last time at the end. Only this last version carries `abgeschlossen: true` (completed: true); in every other one the command currently running still stands at `nicht gestartet` (not started). From this follows what an abort leaves behind — if the run dies by the clock, by a signal or with its session, a version is left that is **never fully green**. Previously the file was missing entirely in this case, and a missing file means "unchecked", i.e. unmeasured instead of objected to. The gate and the night runner (Nacht-Runner) evaluate `ergebnis` and not `abgeschlossen`: The moment of writing is the actual rule, the field only says whether the run reached its end.
-
-**What the gate checks.** `checks.mjs run` leaves a summary under `.claude/checks-summary.json`. Besides selection and result, it carries a **blob hash** for each changed file, formed **before** the first command — so it attests the content that went into the check (Prüfung), and not one that a formatter wrote afterwards. On commit the gate compares these hashes against the **index**, i.e. against what is actually committed. Green only if the summary is readable, no run was non-green and every staged file is in it with a matching hash. A staged **deletion** is covered by a `null` entry; if the check found nothing to do (`leeresPaket`, empty package), it covers nothing either.
-
-**Whom it applies to.** Every commit in the repo: the implementation skills, **lane 1** (Bahn 1), the commit by hand, the one from a GUI client. A tool without `node` in the PATH is **rejected**, not let through — a gate that cannot run does not let anything through.
-
-**What it does not achieve** — four limits, and they are stated here because a rule that keeps quiet about its gaps creates false trust:
-
-1. `--no-verify` bypasses the hook. The git workflow forbids it without an explicit individual instruction, nothing prevents it mechanically.
-2. A fresh clone has the gate only after an installer run or `git config core.hooksPath .githooks`.
-3. With an occupied `core.hooksPath`, a project with its own hook manager hooks in the call itself.
-4. The assurance applies **per committed file**, not to the state as a whole: Whoever commits `A` and leaves the corresponding `B` unstaged creates a state that nobody has ever checked in that form. That is the price for the skills being allowed to stage selectively.
-
-**What takes effect in the gaps.** If the night runner is running, it evaluates the evidence afterwards: If it is missing or red, the round counts as a failure, with its own board comment. **Interactively nobody steps in** — there the rule in the git workflow remains the only safeguard.
-
-### Which version is my installation?
-<!-- de: 95428666b541 -->
-
-The board adapter and the night runner are copies — after the installation they live in your project and age there while the kit is developed further. Both tell you on request which kit version they come from:
-
-```bash
-node .claude/kit/board.mjs --version
-node .claude/kit/night.mjs --version
-```
-
-```
-board.mjs (claude-workflow-kit v1.22.0)
-```
-
-Compare this with the current kit version (`node install.mjs --version`, or the version shown on the download page). If your copy is behind, simply run the installer again — it overwrites the kit files and leaves your `workflow.config.json` untouched except for the fields it asks for.
-
-The version number is deliberately the same as that of the kit, not a separate count per file: A copy with `v1.22.0` is exactly the state that kit 1.22.0 shipped. If the two files drift apart — for instance because only one of them was replaced —, the night runner warns at start and keeps running anyway.
-
-## What is the vault?
-<!-- de: 968ca2903f02 -->
-
-The vault is a personal memory store outside the repo. It holds cross-project knowledge: your profile, working rules, decision history and daily logs. /session-start loads it at the start of a session, /document writes into it at the end of a session.
-
-The vault is optional. Without a vault, both skills run in degraded mode (details in the section [What happens without a vault?](/en/einstellungen#kontext-config-json)).
-
-If you want to set up a vault, create a directory and enter the path in `~/.claude/kontext.config.json`. The expected structure:
-
-```
-/path/to/your/memory-vault/
-  Index.md                          (overview of what is in the vault)
-  Profil.md                         (or comparable always files)
-  Projekte/
-    {repo-name}/
-      {repo-name}.md                (project note, updated by /document)
-  Log/
-    YYYY-MM-DD.md                   (daily logs, written by /document)
-```
-
-You configure the file names of the always files (Index.md, Profil.md) yourself in `kontext.config.json`. The directory structure under `Projekte/` and `Log/` is expected by the skills and must be created manually once.
-
-## The config file
-<!-- de: 71deb697086a -->
-
-`.claude/workflow.config.json` is the only project-local place. All skills read exclusively from this file (project parameters are hard-coded nowhere else).
-
-```json
-{
-  "codeHost": "github",
-  "issueTracker": "github",
-  "buildChecks": ["<your build command>", "<your test command>"],
-  "mutationCommand": "",
-  "mainBranch": "main",
-  "productionBranch": "production",
-  "reviewScope": "diff",
-  "reviewModel": "claude-opus-4-8",
-  "triggers": { "go": "GO", "push": "push main", "merge": "merge production" },
-  "local": { "issuesDir": "issues" },
-  "github": { "projectNumber": 11 }
-}
-```
-
-`codeHost` controls which platform is used for the repository and pull requests (`github`, `gitlab` or `local`). `issueTracker` controls where issues are created and moved — selectable independently of `codeHost`. The board adapter `.claude/kit/board.mjs` reads both fields and routes all board operations accordingly.
-
-`local.issuesDir` names the directory in which local issues live as Markdown files (`issues/0001.md`, `issues/0002.md`, …). `github.projectNumber` is the project number of the GitHub Projects board — only relevant for `issueTracker: github`. If it is missing, the adapter tries to detect the owner's only existing GitHub Project automatically (with a notice on stderr, no automatic write to the config); if there is no project or there are several, it aborts with an error message asking you to add the field.
-
-With `issueTracker: github`, the adapter creates a cache file `.claude/board-meta-cache.json` with the project metadata (project ID, status field and option IDs) on first access. It saves every further `board.mjs` call two GraphQL queries and so spares the GitHub quota. The file is local to the machine and does not belong in the repository — the installer ignores `.claude/` completely anyway; if you commit `.claude/` yourself, add `.claude/board-meta-cache.json` to your `.gitignore`. If you delete it, it is rebuilt on the next call; the adapter heals outdated IDs automatically.
-
-`columns` controls the column names on the board. The five keys (`backlog`, `ready`, `in_progress`, `in_review`, `done`) are fixed — they appear in the frontmatter of the issue files and are the internal status values. The values are the displayed names and can be chosen freely. On GitHub the values correspond to the column names in the project board, on GitLab to the label names. Without `columns` in the config, the defaults apply: Backlog, Ready, In progress, In review, Done.
-
-`buildChecks` holds the commands that `/local-check` runs — the **affected** ones, selected by the areas (Bereiche) the work package (Arbeitspaket) has touched (see [Area-based checks](#area-based-checks-checkareas)); all commands that run must be green before the skill reports completion. Without `checkAreas`, all of them run as before. `mutationCommand` is kept out of `buildChecks` because mutation testing runs considerably longer (an empty string disables it). `reviewScope` controls the scope for `/kit-review`. `reviewModel` pins the model across session boundaries. `triggers` holds the natural-language phrases in case you prefer typing to slash commands.
-
-**Backward compatibility:** Repos that still have `"provider": "github"` or `"provider": "gitlab"` in their config keep working. The adapter migrates the field to `codeHost` and `issueTracker` automatically when reading it.
-
-Examples for different stacks:
-
-| Stack | buildChecks | mutationCommand |
-|-------|-------------|-----------------|
-| Java / Maven | `["mvn verify"]` | `"mvn org.pitest:pitest-maven:mutationCoverage"` |
-| Node / npm | `["npm test", "npm run build"]` | `""` |
-| Python | `["pytest", "python -m build"]` | `""` |
-| Go | `["go test ./...", "go build ./..."]` | `""` |
-
-You can edit the config file manually at any time. When run again, the installer only overwrites it if you explicitly confirm that.
-
-### Area-based checks: `checkAreas`
-<!-- de: 67f0bbc3929a -->
-
-A work package rarely touches the whole project. A `buildChecks` entry can therefore say which areas it is responsible for — then it only runs if one of them was touched. Selection and execution are done by the bundled command `.claude/kit/checks.mjs`; the skills call it themselves. You only need it if you want to take a look: `node .claude/kit/checks.mjs plan` shows the selection as JSON without running anything.
-
-**The three forms of a `buildChecks` entry:**
-
-```json
-{
-  "buildChecks": [
-    "npx eslint .",
-    { "cmd": "npm --prefix frontend run build", "areas": ["frontend"] },
-    { "cmd": "mvn verify", "always": true }
-  ],
-  "checkAreas": {
-    "frontend": ["frontend/**"],
-    "backend": ["src/main/**", "pom.xml"]
-  }
-}
-```
-
-1. **The bare command string** — not assigned, always runs. An object with only `cmd` means the same.
-2. **`{ "cmd", "areas" }`** — runs if at least one of the named areas is touched. The names are defined in `checkAreas`.
-3. **`{ "cmd", "always": true }`** — decidedly always runs.
-
-Form 1 and form 3 behave the same and still mean different things: **forgotten** versus **decided**. Whoever leaves an entry as a string may simply not have made the assignment; whoever writes `always: true` has made it and made it visible. The difference costs nothing and carries the intent to the next reader.
-
-`areas` and `always` **are mutually exclusive** — a precedence rule for the case that both are present would be read by no one. `areas` must not be empty either: An empty array would never run, and a check that never runs belongs deleted rather than shelved.
-
-**`checkAreas`: area name → path patterns.** The patterns know `*` within one path segment (`src/*.ts` does not cover subdirectories) and `**` across segment boundaries; `/` is the separator to which paths are normalised beforehand. A directory with its contents is covered as `frontend/**`. The kit brings the evaluation itself: **no external runtime dependency**, as with all shipped tools.
-
-**Two anchors — and they differ.** Which files count as "touched" is decided by an anchor: the Git state that is compared against. The `implement-*` skills check **before the commit** against the default `HEAD`; the diff against `HEAD` is then exactly this one work package, and a red check belongs to the package that triggered it — even if a session commits several times. `/local-check` checks **before the push** against `git merge-base HEAD origin/<mainBranch>` and so measures everything added since the last push, that is, exactly what is about to go out.
-
-Both mix-ups go wrong, and both would look correct in the report. A `merge-base` anchor **before the commit** would collect other work packages: A red check would then speak about changes the running package has nothing to do with — at night the failure would be attributed to the wrong issue.
-
-Conversely, a `HEAD` anchor **before the push** would speak about the wrong piece: What runs there is no longer decided by the anchor — the [push stage runs the full scope](#staged-checks-stufe) —, but which state the summary attests is. `basis`, `geaendert` and the blob hashes would then describe the last work package instead of the batch that is about to go out, and the commit gate checks the index against exactly these hashes. That is why every skill contains exactly one anchor, and it is justified there.
-
-**When in doubt, everything runs. Cannot be switched off.** Three paths lead to the full scope: a changed file that **cannot be assigned to any area**; an **unassigned check**, which runs anyway; and an **empty or unresolvable anchor**. An empty anchor counts like an unresolvable one, never like a missing one — a missing one would yield the default `HEAD` and, on a committed state, no check at all. There is no switch that turns the rule off: A selection that turns out wrong takes checking away, and this error goes in the direction in which nobody notices it.
-
-If changes frequently end up in the doubtful case, that is a finding about the **assignment**, not about the rule: Then an area is missing, or a pattern is too narrow. The assignment needs improving then, not the rule softening — the time a softened rule saves is paid back by the first bug nobody looked for.
-
-**The one exception: `ohnePruefung`.** For some files there really is nothing to check — a release log, say, whose content no test reads. They would match no pattern and thus pull in the full scope, although nobody needs it. For them there is a third answer, and it must justify itself:
-
-```json
-{
-  "ohnePruefung": [
-    { "muster": "CHANGELOG.md", "grund": "release log; no check reads its content" }
-  ]
-}
-```
-
-A file that matches such a pattern counts neither as touched nor as unassigned: It triggers no check and no full scope. In return it appears in the report of every run — `ohne Pruefung: CHANGELOG.md — Release-Protokoll; …` ("no check: … — reason"), **before** the omissions. The reason is mandatory: An exception to "when in doubt, everything runs" is only bearable if the next reader sees why it applies. An area name could not carry that.
-
-**`checkAreas` takes precedence.** If a file matches both kinds of pattern, it counts as touched and triggers its area checks; the exemption has no effect for it. The selection may only err in one direction, namely towards more checking — the other way round, a pattern in `ohnePruefung` that turned out too broad would silently switch off a whole area, and an area that no longer runs is noticed by nothing except the time.
-
-**A JavaScript file without a pattern inherits the areas of its importers.** A new test helper usually matches no pattern, and which check it needs is already in the code: It is the files that load it. If a changed `.mjs`, `.js` or `.cjs` file matches no pattern and no exemption, `checks.mjs` searches the versioned files (`git ls-files`) for those that import it statically and relatively — `import … from`, `export … from`, `import "…"`, `import(…)` and `require(…)` —, also across further files without a pattern; a cycle ends at the file already visited. The file touches the areas of those importers that match a pattern, and the block `Fuer den Abschlussbericht:` ("for the completion report") names the derivation: `abgeleitet: test/helpers/x.mjs ueber test/night-y.test.mjs → nachtrunner` ("derived: … via … → area"). If nobody with a pattern imports it, it triggers no check and appears in the report like an exemption with a reason — `ohne Pruefung: test/helpers/x.mjs — von keiner Datei importiert` ("no check: … — imported by no file"; or `von keiner Datei mit Muster importiert`, "imported by no file with a pattern", if the chain ends without a pattern): A helper that no test loads cannot break a test. Other file types and a search that fails (`git ls-files` fails, a file cannot be read) pull in the full scope as before. Only imports are recognised: If a test starts a file as a child process without importing it, the derivation does not see that — such files need a pattern in `checkAreas`.
-
-**Blob-only lines in `install.mjs` touch nothing.** `install.mjs` carries skills, templates and kit files as blob constants (`const …_B64 = "…"`, one line each), and `node tools/sync-blobs.mjs` changes these lines along with every change to a source. If every changed line of the file — added or removed — is such a constant, `install.mjs` does not count as changed for the area assignment: The source itself is in the diff and selects the checks it needs, and the mirrored line carries no statement of its own. A pure text package on a template therefore no longer runs the checks of the area that contains `install.mjs`. The same applies to the version stamps that `sync-blobs` sets on a release (issue #1521): `const KIT_VERSION = "…";` in every stamped kit file and `const VERSION = "…";` in `install.mjs`. A file whose every changed line is a blob or a stamp does not touch its areas and does not pull in the areas that import it either; whether stamps and blobs match is checked by `node tools/sync-blobs.mjs --check` on every run. A release therefore no longer runs almost every area just because every kit file carries a new version line. The omission says so in its reason: `ausgelassen: <Kommando> → Bereich installer unberuehrt (install.mjs: nur Blobs und Stempel)` ("skipped: `<command>` → area installer untouched, `install.mjs` carries blobs and stamps only"). A single other changed line, a newly created file or a diff that cannot be read touch the area as before. As with `ohnePruefung`, the file stays in the evidence.
-
-**Nothing changes in the evidence.** The file stays in `geaendert` and among the blob hashes of the summary. That is no minor matter: The [commit gate](#the-commit-gate) checks the index against exactly these hashes, and an index entry without a hash counts as unchecked to it. If the exempted file dropped out of the evidence, the gate would no longer let through any commit that brings it along. `ohnePruefung` changes the assignment, not the evidence.
-
-**Without `checkAreas`, nothing changes.** A project without this block gets the previous behaviour, unchanged: Every entry is the string form, therefore unassigned, therefore all checks run as before. The switch takes no checking away from anyone silently — whoever wants the selection configures it.
-
-**`mutationCommand` stays out.** It is not in `buildChecks` and therefore **not part of the selection**: It always runs, unchanged and directly, regardless of which areas the anchor finds.
-
-What was skipped remains visible: in the checklist of `/local-check` and in the completion report (Abschlussbericht) on the work package, each omission with its reason — and at night additionally in the [run report of the pass](/en/dokumentation#night-mode).
-
-**`stufe` is on an axis of its own.** `areas` and `always` say **whether** a check is affected; **when** it is due is said by [Staged checks](#staged-checks-stufe).
-
-### Staged checks: `stufe`
-<!-- de: 2efc59c80752 -->
-
-Not every mandatory check belongs at every point in time. Running an integration test that takes twenty minutes after every work package makes the check before the commit so expensive that nobody waits for it any more — leaving it out makes the check worthless. A `buildChecks` entry can therefore say **when** it is due:
-
-```json
-{
-  "buildChecks": [
-    "node --test",
-    { "cmd": "mvn verify -Pintegration", "stufe": "push" },
-    { "cmd": "npm run e2e", "areas": ["frontend"], "stufe": "merge" }
-  ]
-}
-```
-
-| Stage | Point in time | Skill |
-| --- | --- | --- |
-| `paket` | completion of a work package, before the local commit | `/implement-next`, `/implement-ready`, `/implement-done`, `/local-check` |
-| `push` | before publishing to `main` | `/push-main` |
-| `merge` | before the release to `production` | `/merge-production` |
-
-**The stages (Stufen) are cumulative, and every check runs once before the release.** `push` runs the package stage (Paketstufe) along with it. `merge` runs what `push main` has not checked — because there is never a `merge production` without a preceding `push main`: The package and push stages run at `push main`, the merge stage at `merge production`. No check drops out of the process this way; it only runs at the point in time at which its result counts, and not twice for the same state.
-
-**The push stage runs the full scope.** `push` runs **every due** check — even for untouched areas and even for an empty package. There the state that goes out is measured, and it consists of more than the last work package; an omission would point to the wrong comparison. Narrowing by areas belongs to the package stage, where it speaks about one work package. Cumulation is unaffected by this: What is due later stays out here too.
-
-**The release stage only checks what `push main` has not checked.** `merge` always runs the checks with `stufe: "merge"`, those of the package stage **by areas over the files since the anchor** — as at the completion of a card (Karte), so a file without an area runs every check of the package stage — and those of stage `push` not at all: They appear as an omission with the reason `Stufe push, geprueft beim push main` ("stage push, checked at push main"). The anchor is the most recently published state of `main`; the files since then are the release files of the merge path (bump, stamp, changelog). That a `push main` really came before is checked by `/merge-production` up front on the Git state: If the local `main` carries commits that are not on `origin/main`, the skill stops.
-
-**Short release.** Whoever wants a short release puts their long checks — full mutation runs, for instance — on stage `push` instead of `merge`. They then run once at `push main`, and `merge production` only runs what is on `merge` plus the package checks of the release files. The price: Every `push main` takes longer by these checks, including one that is not followed by a release. The kit does not fix the stage; every project decides in its config at which point in time it wants to wait.
-
-**A missing field means `paket`.** The bare string form and an object without `stufe` carry the package stage, and so every existing configuration keeps its behaviour unchanged. Whoever does not want the staging writes nothing.
-
-**What runs later appears as an omission** — in the checklist and in the completion report, with its stage as the reason. That is **not a shortcoming but its point in time**: `Stufe push, gefahren wird paket` ("stage push, running stage paket") means that this check is due in `/push-main`. Above the package stage, the command additionally names what is added compared with it (`Stufe push: zusätzlich zur Paketstufe läuft …`, "stage push: in addition to the package stage, … runs") — such a run takes noticeably longer than the one before the commit.
-
-**At least one check belongs on the package stage.** If all entries carry `push` or `merge`, nothing runs before the commit: Implementing a work package then has no gate. At night this is no silent state — the night runner checks it at start and does not start at all (override: `--no-checks-ok`). The [settings interface](/en/einstellungen) (Einstellungs-Oberfläche) reports this state as a warning; such a configuration can still be saved, because it is valid.
-
-**Not to be confused.** The term *stage* (*Stufe*) has three meanings in the kit: `reviewStufen` are the [check stages of the review](/en/prozess#three-review-stages), the task level (Aufgabenstufe) of a work package (`schwer`/`mittel`/`leicht`) controls the model of the [night chain](/en/dokumentation#second-mode-the-night-chain) (Nacht-Kette), and `stufe` is the point in time of a mandatory check. The three have nothing to do with each other.
-
-### Completion and publishing: `nichtBeimAbschluss`
-<!-- de: 4fac63385f88 -->
-
-The staging above moves a **whole check** to a later point in time. Sometimes, though, the check is right at its point in time and only its *scope* is too large: The unit tests of a work package say whether this package holds — the integration tests say whether the parts fit together, and that is not yet a question at the completion of a single card. A `buildChecks` entry of the package stage can therefore say **why** it does not have to carry the completion of a single card:
-
-```json
-{
-  "buildChecks": [
-    { "cmd": "mvn -q test", "areas": ["backend"] },
-    {
-      "cmd": "mvn -q verify -DskipUnitTests",
-      "areas": ["backend"],
-      "nichtBeimAbschluss": "zusammenspiel"
-    },
-    {
-      "cmd": "mvn -q verify jacoco:check",
-      "areas": ["backend"],
-      "nichtBeimAbschluss": "volleTestmenge"
-    }
-  ]
-}
-```
-
-The unit tests (surefire) run at the completion of every card. The integration tests (failsafe) and the coverage threshold (jacoco) only run when publishing — the former because they check how several parts work together, the latter because a coverage figure over half a state says nothing.
-
-| Value | Meaning |
-| --- | --- |
-| `zusammenspiel` | The check checks how several parts work together. |
-| `volleTestmenge` | The check only gains its finding from the complete set of tests. |
-
-**Only the completion run skips.** The axis only takes effect if the call carries `--finish <kartennummer>` — the implement skills set it at the completion of exactly one card, and only they do. `/local-check`, the commit gate, the night runner's re-check and every manual run include the check. The card number is mandatory because the [average check time per card](#what-the-reduction-brings-the-average-check-time-per-card) needs it.
-
-**Postponed, not waived.** Every check skipped this way runs **before publishing** in `/push-main`, there in full scope. In the report of the completion run it appears as an omission with its reason — not a shortcoming but its point in time.
-
-**Only meaningful on stage `paket`.** On `push` or `merge` the check does not run at completion anyway; `checks.mjs` rejects the combination at start instead of silently choosing one over the other. Likewise rejected is a configuration in which **every** entry of the package stage carries the axis or a `guete` block: Then completing a card would no longer have a gate.
-
-**Exception on direct touch: `abschlussBereiche`.** Sometimes a long check should only be skipped at completion if the package does not change its territory itself. For this, an entry with `nichtBeimAbschluss` additionally names the areas whose direct touch makes it run at completion as well:
-
-```json
-{
-  "cmd": "node --test --test-concurrency=2 \"test/ablauf-night-*.test.mjs\"",
-  "areas": ["board-dokumente", "nacht-einstieg", "nacht-kette"],
-  "nichtBeimAbschluss": "zusammenspiel",
-  "abschlussBereiche": ["nacht-einstieg", "nacht-kette"]
-}
-```
-
-An area is touched directly if a changed file matches one of its patterns or carries it via the [derivation from its importers](#area-based-checks-checkareas). The dependent areas do not count, nor do files in which every changed line is a blob or a stamp. If one of the named areas is touched directly, the normal area selection decides from there; otherwise the entry appears among the omissions, with the reason `keiner der Bereiche aus abschlussBereiche (…) direkt beruehrt, laeuft beim Veroeffentlichen` ("none of the areas from abschlussBereiche (…) touched directly, runs when publishing"). In the example, the group runs at the completion of a package that changes the night run, and is skipped for one that only touches `board-dokumente`. If the anchor cannot be resolved, "not touched directly" cannot be established, and the entry runs; an empty package names its own reason. The field only applies together with `nichtBeimAbschluss`, every name must be in `checkAreas` and in the entry's `areas`, and any other form aborts the check run at start.
-
-**A helper in a catch-all area must be entered.** The derivation only applies to a file without a pattern. A new helper under `test/helpers/`, however, matches the pattern of a catch-all area such as `testdateien` (`test/helpers/**`) and therefore does not carry the area of the tests that load it. If a test whose area is listed in `abschlussBereiche` loads it, the helper itself belongs in that area's patterns — in this project, for instance, a new helper of the night flow tests belongs in `nacht-einstieg`. Otherwise the check is skipped at the completion of a package that only changes the helper.
-
-**A missing field means unchanged behaviour.** Whoever writes nothing notices nothing of the axis — and whoever cannot call their tests separately by kind keeps getting the previous scope. The axis applies team-wide; a deviating value in `workflow.config.local.json` has no effect.
-
-### Who was it? The culprit search
-<!-- de: cf81ecf058e0 -->
-
-Because completing a card checks less, a postponed check only fails before the push — that is, at a point in time at which several finished cards lie on top of each other. So that nobody has to search for the cause by hand, a **red run with `--stage push`** names on its own the cards whose change touches the failing check:
-
-```
-Verursacher (mvn -q verify -DskipUnitTests): Issue #902 (a1b2c3d), Issue #901 (e4f5a6b)
-```
-
-(`Verursacher` means "culprits": the cards whose commits touch the failing check, each with its commit.)
-
-The search covers the window `<anchor>..HEAD` — the anchor is the `--since` value that `/push-main` passes as `git merge-base HEAD origin/<mainBranch>`. The run reads the card number from the **commit message**: `(Issue #<n>)` in the subject, as the implement skills write it, additionally `Refs #<n>` in the body; the subject wins. A look at the board deliberately does not happen — `checks.mjs` runs in the commit gate and in every session and works without network. The price is the commit without a recognisable number: It appears as `Commit ohne Karte <sha>` ("commit without card") and does not disappear.
-
-Touched is determined generously, in the same direction as the selection of the check run (Prüflauf) itself: A check without `areas` counts as touched by every card, and a card with a file without an area pattern as a suspect for every check. In case of ambiguity, **all** candidates are listed. If no card is found or the anchor cannot be resolved, a **sentence** stands there instead of a list — "none found" and "not determinable" are different things. The release stage (`--stage merge`) does not search: There the base is `HEAD` itself, and the window would be empty.
-
-**The repair is a new card.** The named card does not move back out of *In review* — it is finished and checked; what was found concerns how the parts work together. The culprit list is a lead, not a verdict.
-
-### What the reduction brings: the average check time per card
-<!-- de: 52bbffbf6cf8 -->
-
-Whether the smaller completion scope brings anything is told by the effectiveness (Wirksamkeit) evaluation (`node .claude/kit/effectiveness.mjs evaluate`). Its report `.claude/wirksamkeit.md` carries a block of its own for this, **"Mittlere Prüfzeit je Karte"** ("average check time per card"): the measured time per card, computed over all **completion runs** of that card, next to it the comparison value that the same runs would have cost without the omissions, and per skipped check one line on what it cost on average when publishing.
-
-The reference unit is the **card**, not the run — a card that completes three times counts once with the sum of its runs. And **only completion runs** count: Check times during the work and when publishing stay out. If the basis is missing — no completion line with a card number in the window, or a skipped check that never ran when publishing —, the block says "nicht gemessen" ("not measured") and not 0.
-
-Like the rest of the report, the block is information: It holds nothing up and is **not a gate**.
-
-### Error markers in the output
-<!-- de: 9ef32c38519c -->
-
-`checks.mjs run` reads not only the **return value** of a check command but also its **output**. If it carries one of the markers `[ERROR]` or `BUILD FAILURE`, the check counts as **red** — even if the command ended with 0. The run aborts as with every red check, the output names the marker that matched, and the summary carries it on the entry as the field `fehlermerkmal`.
-
-The case really occurs: A Maven chain whose last link swallows the return value reports `BUILD FAILURE` in the output and ends with 0. Until now, the rule "additionally check the output for general error markers" stood in the text of `/local-check` — that is, at a place that is skipped under pressure. Now the tool carries it — by the yardstick "rule in the text or rule in the tool" from `CLAUDE-workflow.md`.
-
-**The list is fixed, and there is no config field for it.** A field would be an invitation to empty the check in the very project in which it happened to be in the way — that is, exactly where it is needed. It only errs in one direction: more checking. A false red costs a query, a false green carries a failed package to *In review*.
-
-**And if the green output legitimately contains `[ERROR]`?** Then that belongs to the command, not to the check. Two ways: make the tool quieter (log level, a `--quiet`, a different reporter), or let `cmd` point to a project script of your own that filters out the known harmless line and passes the **return value on unchanged**. Both stay visible in the project and affect only the one command concerned.
-
-### Unchanged state: the result is carried over
-<!-- de: a284b3f89cab -->
-
-`checks.mjs run` only runs its commands if there is something new to measure. If the state has **not changed** since the last run, none runs — the command carries over that run's result and reports:
-
-```
-Stand unveraendert seit 2026-09-22T17:18:04.921Z: Ergebnis uebernommen (gruen). Neu pruefen mit --fresh.
-```
-
-(State unchanged since that point in time: the result is carried over, green; `--fresh` checks anew.)
-
-**Unchanged means:** the same anchor (`basis`), the same stage, the same list of changed files with the same blob hashes and the same check configuration (`buildChecks` and `checkAreas`, as `configHash` in the summary). In addition, the previous summary must be **complete**. If even one of these details differs, or the file is missing or unreadable, everything runs as before. There is deliberately no time window: What makes a result valid is its content, not the clock.
-
-**A red result is carried over too**, including the exit code; the message then names the red command (`Ergebnis uebernommen (rot: mvn verify)`, "result carried over (red: …)"). The same state yields the same red — a second run would cost the same minutes for the same answer. Whoever suspects a flaky test forces the real run with `--fresh`.
-
-**After a fix, the most recently red checks run first.** If the previous run was red and since then only the state has changed, not the selection — the same anchor, the same stage, the same check configuration, the same selected commands in the same order, but different files or blob hashes —, the same call first runs a **partial run** with only the commands that were last `rot`, along the same axes as the full run (marked ones concurrently, then). If they turn green, the full run follows exactly once in the same call as evidence; the summary at the end is its summary. If they stay red, the call ends red: The others are set to `nicht gestartet` ("not started"), the summary carries `teillauf: true`, and the report block names, after the line `Wartezeit:`, the line `Teillauf: nur die zuletzt roten Pruefungen` ("partial run: only the most recently red checks"). A partial run therefore never appears green in the file. If the fix changes the selection, if the previous run was green or if `--fresh` is given, everything runs at once. After a fix, the same call as before is therefore enough; targeted single tests during the fix remain allowed. The waiting time of the call covers the partial run and the full run.
-
-**The output of a red check is kept as a file.** Every command that is not green stores its complete output under `.claude/checks-protokolle/<nn>-<kurzname>.log`, numbered in config order. The report line ends with `— Ausgabe: <pfad>` ("output: `<path>`"), and the entry in the summary carries the field `protokoll`. That way a red can be examined without running the same run a second time, even if a session's tool output cuts out the middle (#1196). Every real run empties the folder, a carried-over one leaves it in place together with the path. If storing fails, a notice on stderr is all; the outcome of the run does not change. The night runner's leftover guard does not count the folder as abandoned work.
-
-**A hanging check is aborted.** Every check has an abort limit: **five times the median** of its last green runs from `.claude/ausfuehrungen.tsv`, **at least 3 minutes**, **15 minutes** without a green history. If it exceeds the limit, `run` ends its whole process group, first with SIGTERM, after 5 seconds with SIGKILL. That way the abort also hits a grandchild such as `node --test` → `board.mjs`. The check is then **red** with the note `haengend: nach <s> s Grenze abgebrochen` ("hanging: aborted after `<s>` s limit"), in its report line, in the output and in the summary (field `haengend` with `grenzeMs`). The log records it as `rot` so that it does not shift the median of the green runs. If `checks.mjs` itself is ended (SIGTERM, SIGINT, SIGHUP), it also ends the groups of its running checks; a SIGKILL to `checks.mjs` cannot be caught. The occasion was a test that hung for half an hour in the night of 30.09.2026 until the session's tool gave up (#1077). The upper limit per check of 30 seconds (`PRUEFDAUER_OBERGRENZE_MS`, field `ueberObergrenzeMs`) remains what it is alongside: a note, never an abort.
-
-**The check named is the one that is actually red.** The carry-over message, the [commit gate](#the-commit-gate) and the night runner's check status (`rotesKommando`) name the first command with result `rot`, and only if there is none, the first one that is not green — after a red partial run, not-started ones stand before the red group.
-
-**The waiting time is at the top of the report block.** The block `Fuer den Abschlussbericht:` begins with the line `Wartezeit: <s> s, zusammen <s> s in <n> Laeufen fuer Karte #<n>` ("waiting time: `<s>` s, together `<s>` s in `<n>` runs for card `#<n>`"), without a card number after `--finish` only with `Wartezeit: <s> s`. The first number is the wall-clock time of this run from the call to the result (field `wartezeitMs`; `dauerGesamtMs` remains the sum of the individual durations). The second adds up all runs of the same card (field `wartezeitKarte`): If the previous summary carries the same card, it is added, otherwise started anew. A carried-over run counts as a run without time. At night the sum starts anew with every session, because the runner discards the summary before every round; the sum across sessions is provided by the night report.
-
-**The evidence stays fresh.** A carried-over run rewrites the summary, with a new `zeitpunkt` and the field `uebernommen` (the point in time of the last real run). The [commit gate](#the-commit-gate) thus gets valid evidence for exactly this state. The execution log `.claude/ausfuehrungen.tsv` gets **no** line: A carried-over result is not an execution and costs no time.
-
-**Why this is in the tool.** The night runs showed sessions that started the same green `run` three to nine times per work package — mostly without a change in between, often only to filter the output differently. The rule "write the output to a file once and read from there" has been in the skill text for a long time and did not work. By the yardstick "rule in the text or rule in the tool", it therefore belongs here.
-
-### Flaky checks: repeated once
-<!-- de: 5e93e1dc5691 -->
-
-Some checks are green one time and red the next on the same state, such as a test that depends on the time of day, the load on the machine or the order of execution. So that such a check does not fail a package unjustly and still gets noticed, `checks.mjs run` repeats every red check **exactly once** on the same state wherever a result decides about a package or a release.
-
-**Where a check is repeated.** In the closing check of a package (`--finish`), in the check run before `push main` and before `merge production` (both with `--retry`) and in the evidence run that the night's preparation runs on the path through the build service. Only the red check is repeated, not the whole run, and immediately, before the rest of the run continues. The partial run and the full run each repeat at most once; advisory checks are never repeated.
-
-**What comes out of it.** Red and then green means: the check **flaked**. It counts as passed, the output names it, and the report block carries, below its `gelaufen:` line, the line `Gewackelt: <Kommando> → erst rot, dann gruen` ("flaked: `<command>` → first red, then green"), with the path of the first run's output (suffix `-erstlauf`). Red and red again stays red, as without a repetition.
-
-**How it is counted.** Both runs go into the execution log `.claude/ausfuehrungen.tsv`, marked as `erstlauf` and `wiederholung`, and both count as an execution with their duration. The [effectiveness evaluation](/en/einstellungen) treats them as a pair: red and green is a **flake** and not a finding, red and red is a finding, red without a repetition counts as a finding as before. A carried-over result produces no case. The night report names every check that flaked during the night, with the number of cases.
-
-**Stop before publishing.** If a check flaked in the check run before `push main` or `merge production`, the skill stops after the green run and before the commit, names the check and asks „Trotzdem fortfahren? (ja/nein)“ (continue anyway? (yes/no)). Only `ja` continues. At night nobody asks: the preparation turns green into `gruen-offen` and records `Gewackelt: <Kommando> — Entscheidung beim push main` (flaked: `<command>` — decision at push main) as an open item, which `push main` asks about in the morning before the push.
-
-**The repair candidate.** From **three flakes** within the time window, a check is marked in the effectiveness evaluation as a candidate for repair. `node .claude/kit/effectiveness.mjs candidates` prints one line `Reparaturkandidat: <cmd> — <n> Wackler im Zeitfenster` (repair candidate: `<cmd>` — `<n>` flakes in the time window) per such check. Before `push main` and `merge production` they are named but do not stop the run. The threshold is fixed and not configurable.
-
-**The limits.** During implementation, that is in every `checks.mjs run` without `--finish` and without `--retry`, in `/local-check` and at the commit gate, every check runs exactly once as before. The job in the build service runs `--stage push` without the switch and does not repeat, nor does the night runner's re-check. A flake therefore only shows where a repetition is deliberate; on an unchanged state the kit carries over the result instead of checking anew.
-
-### No lock between check runs
-<!-- de: 187b196aea32 -->
-
-Several check runs on the same machine run **side by side**, also from different projects. Until #1241, `checks.mjs run` took a machine-wide lock in the temp directory before its first command, and a second run waited for the first (#958, #1177). It came about because the checks were so heavy back then that two simultaneous runs overloaded the machine. Since the tools have been split into parts, the checks have become lighter and are limited to two simultaneous test files per command (initiative (Vorhaben) #1198), it is no longer needed: The load test with three simultaneous completion runs was green, each in about seven minutes (#1239). The tool no longer reads the environment variables `KIT_CHECKS_LOCK`, `KIT_CHECKS_LOCK_TIMEOUT_MS` and `KIT_CHECKS_LOCK_FOREIGN_TIMEOUT_MS`; a value that is set has no effect.
-
-**Two phases within a run.** A run first runs the `buildChecks` entries with `"gleichzeitig": true` **concurrently**, at most two at a time (environment variable **`KIT_CHECKS_GLEICHZEITIG`**, `1` runs them one after another; anything that is not a positive integer counts as the default). The default 2 is measured (idea #1119, issue #1178): The large test groups in turn run their files in parallel, and four at once made each of them five to six times slower. On the same machine the full run took between 737 and 751 s with 4 and was red twice, 929 s with 1, 684 s with 2 — the fastest and the only value that was stably green. This phase runs to the end so that all red checks are known at once. After that, the remaining entries run one after another in config order and abort at the first red; after a red in the first phase they do not start at all. The output stands per check as a closed block in config order, even if a later one finishes first, and the report line of a check that ran concurrently carries `(neben anderen gemessen)` ("measured alongside others") after the duration — its duration is not the one it would need on its own. Without marked entries the sequence is the previous one. The settings interface does not show the axis, but leaves it in place when saving.
-
-**Before that, an upfront phase.** Entries with `"vorab": true` run even before the concurrent phase, one after another in config order (issue #1519). A red there starts no further check, and the run ends red. The axis is meant for fast checks such as lint or a short test: their red is known after seconds and not only after the long test groups of the concurrent phase. An entry with `vorab` and `gleichzeitig` at once is an error, as is any value other than `true` and `false`; the message names the check. In English the field is called `upfront`. This repository marks `node tools/sync-blobs.mjs --check`, `npx eslint kit tools test install.mjs .githooks` and `node --test test/checks-leichtigkeit.test.mjs` this way; they stand at the front of `buildChecks`.
-
-### Finding the slowest test files
-<!-- de: 5a15c66b6751 -->
-
-The test suite runs in every work package, in every `checks.mjs run`, in the commit gate and in CI — every second saved therefore takes effect everywhere. Node's test runner runs the **files in parallel**, the tests **within** a file one after another: From below, the slowest file therefore bounds the wall-clock time of the whole suite, and a file well above the rest should be split by topic (issue #836).
-
-Which files those are is told by a run with the JUnit reporter. It carries the attributes `file` and `time` on every `<testcase>`; **summed per `file`**, that yields the time of the file:
-
-```bash
-node --test --test-reporter=junit > /tmp/testzeiten.xml
-```
-
-The wall-clock time itself appears as `duration_ms` at the end of an ordinary `node --test`. Because it varies from run to run, a comparison before and after a change only becomes reliable with **three runs per side and the median**.
-
-The numbers apply to the machine on which they were measured and become outdated with every new test. Whoever needs the list collects it anew instead of extending an older one.
-
-### The narrowing in the kit itself
-<!-- de: 000835a5d520 -->
-
-The kit has brought the area-based selection along for a long time, but for a long time did not use it in its own repo: Without `checkAreas` and with `node --test` as the only entry, every check status reported full scope. How the narrowing looks in a grown project can therefore be read here — with all the concessions it costs.
-
-**Nine parts.** `nachtrunner`, `board`, `pruefungen`, `einstellungen`, `worktree`, `installer`, `skills-doku`, `konfiguration` and `preise`. They overlap on purpose, but more sparingly than before: Since issue #933, **no** part (Teil) claims the whole tool directory any more — the pattern `kit/**` once stood both in `installer` and in `skills-doku` and so pulled in the same doc, CLI, sync and installer tests with every change to any kit file. Instead, every source file under `kit/` carries the part of its measured entanglement, and since issue #936 `kit/preise.mjs` is a part of its own instead of being in three parts at once. A part is not ownership of a file but the answer to the question "which check must run if this changes?" — and more than one part may answer yes to that.
-
-**Six test calls, not one per part.** The test suite does not fall apart into independent pieces, because the kit tools load each other: `kit/night.mjs` pulls in `board.mjs`, `checks.mjs`, `effort.mjs`, `effectiveness.mjs` and `findings.mjs`, `.githooks/gate.mjs` loads `checks.mjs`, and almost fifty night tests name `board.mjs`. On top of that, `checks.mjs run` runs the entries without the axis `gleichzeitig` **one after another**: Every additional such entry lengthens the full scope by the start-up cost of another run that no longer parallelises its files with the others. Only marked entries run side by side in the first phase (see [No lock between check runs](#no-lock-between-check-runs)). The split therefore narrows more coarsely than the parts would allow — it remains a trade-off between the gain in the narrowed case and the surcharge in the full scope.
-
-**What remains without a part is a statement too.** Since issue #935 every versioned source file is assigned — including `eslint.config.mjs`, `package.json`, `.claude/workflow.config.json` (a part of its own, `konfiguration`) and every helper under `test/helpers/**`, which is in the parts whose tests load it. What remains are the files for which there really is nothing to check: They are listed with a reason of their own in [`ohnePruefung`](/en/einstellungen) — `CHANGELOG.md`, `LICENSE`, the licence texts of the fonts, the note documents in the root. Whoever puts a file neither in a part nor in the exemption gets the full scope with every change to it; that is the safe direction and no punishment.
-
-**A guard test against the gap.** The split calls bring a new kind of error, and it is silent: A test file with a prefix that none of the calls names runs **nowhere** — not before the commit, not in the commit gate, not in CI. Green would then mean "not checked". `test/config-teile.test.mjs` therefore checks the real config against `git ls-files`: every versioned test file covered by at least one call, every versioned source file in at least one part **or** in `ohnePruefung`, and no file in both at once — an exemption that a part overrides promises something in the report that does not apply. The test takes the glob resolution from `kit/checks.mjs` instead of rebuilding it — from the first divergence, a second version would attest a coverage that the executing command does not see.
-
-Whoever introduces the narrowing in their own project needs the same guard test as soon as they spread the test suite across several entries. One part too few costs computing time; a test that is not covered costs the check.
-
-### Quality measurement and mark: `guete`
-<!-- de: f1d2df7e4f25 -->
-
-Green tests say that the tests pass — not that they would notice anything. A project may therefore name **one** check of the list as its **quality measurement**: It measures how many deliberately planted faults the tests notice, and a value below the agreed mark holds up publishing. The naming is carried by a `guete` block with `muster` and `marke`:
-
-```json
-{
-  "buildChecks": [
-    "node --test",
-    {
-      "cmd": "mvn -q org.pitest:pitest-maven:mutationCoverage",
-      "stufe": "push",
-      "guete": { "muster": "Killed \\d+ \\((\\d+)%\\)", "marke": 80 }
-    }
-  ]
-}
-```
-
-**At most one entry carries the block.** Two measurements would need a precedence rule about which mark triggers the stop, and nobody would read it. If an entry carries `guete`, its `stufe` must not be `merge` — a measurement only before the release would come too late to change anything. `checks.mjs` rejects both at start instead of choosing silently; the [settings interface](/en/einstellungen) checks the same rules before saving.
-
-**The `muster` is mandatory because the tools report different things.** It is a regular expression with **exactly one group**; the group picks the measured percentage from the command's output:
-
-| Tool | Line in the output | Pattern |
-| --- | --- | --- |
-| PIT (Java) | `Killed 42 (84%)` | `Killed \\d+ \\((\\d+)%\\)` |
-| Stryker (JS/TS) | `Mutation score: 84.21` | `Mutation score: ([\\d.]+)` |
-
-The captured number counts as a percentage, like the `marke` — one unit, not two. Allowed values for the mark are 0 to 100; a higher one could never be reached. If the measured share lies **on** the mark, it is sufficient.
-
-**A value below the mark is the same stop as a red mandatory check** — no stop point of its own, no exception, no personal mark: The mark applies team-wide, a deviation in `workflow.config.local.json` has no effect. Every path without a number is treated the same way: a pattern that does not match the output, a red command, a measurement that did not even start because of an earlier red command. **A missing result never counts as a passed check.** Measured share, mark and reason appear in the output of the check run and in the completion report, at night additionally as a log line of their own.
-
-**The stop costs no work.** It is a red run **before commit and push**: The packages already finished stay committed locally, the version bump of `/push-main` stays in place idempotently, and after the rework the same batch continues.
-
-**Not to be confused with `mutationCommand`.** The field [`mutationCommand`](/en/einstellungen) remains what it was: a command downstream of the build that `/local-check` runs and whose result ends up in the report. It is **no quality measurement** — it carries no mark, its value is not evaluated, and it triggers **no stop**. Whoever wants it binding runs their mutation test command as a `buildChecks` entry with a `guete` block, as above. Setting both at once results in two runs of the same tool, only one of which counts.
-
-**Without the naming a project stays unaffected:** no measurement, no mark, no stop. Whoever writes nothing notices nothing of the quality measurement — not even with `mutationCommand` set.
-
-**The measurement belongs to its stage, not into an acceptance criterion.** A work package that writes the mutation run into the card as a criterion runs it once per package instead of once per publication — and thereby costs the round time the package lacks; such a full run drove a night round exactly into the round time limit, including a lost final message. `issue check-form` therefore rejects a package whose `## Akzeptanzkriterium` names `mutationCommand` or the command of the `guete` entry (gate I6); the right place is a `buildChecks` entry with `stufe: push`.
-
-## Language of the kit
-<!-- de: e9f430e205dc -->
-
-The kit can be set to German or English per project. The setting is called [`language`](/en/einstellungen), with the values `de` and `en`; if it is missing, German applies. A new project chooses its language with the installer's first question, `Sprache / Language [de/en] (de)`. An existing project stays German after every update until you switch it.
-
-**Both names of every setting are valid.** Every setting has an English name and a German legacy name, for example `language` and `sprache`. The kit reads both, in `workflow.config.json` as well as in `workflow.config.local.json`; if both are present, the name in the project language applies. When the kit writes a config, it uses the names of the project language. Which names exist is listed under [All settings](/en/einstellungen). The German legacy names remain valid throughout versions 4 and 5. In English projects they can be dropped at the earliest with version 6, and only after an announcement.
-
-**Switching.** You switch an existing project in the project folder:
-
-```bash
-node install.mjs --language en
-```
-
-The installer first creates a backup of the config, `.claude/workflow.config.json.vor-umstellung`, holding the state before the switch. Then it sets the language setting and renames the settings in `workflow.config.json` and `workflow.config.local.json` to the names of the new language. Fixed values that the kit itself defines also get their name in the new language; values you chose yourself, such as your own label names, stay as they are. The switch does not touch labels and title prefixes on the board; the kit understands both names there. Without a switch, everything keeps running as before.
-
-**The report.** At the end the installer lists under `Umbenannt` (renamed) every renamed setting with its old and new name. Under `Offen` (open) it names what the switch does not take care of: config fields holding a kit label of the other language, cards with a title prefix of the other language, kit labels of the new language that are on no card and may still be missing on the board, and that skills and rule texts stay German until the kit ships them in English. If the board cannot be reached, the report says so, and the switch applies anyway.
-
-**Going back.** The last line of the report names the way back:
-
-```bash
-node install.mjs --language de
-```
-
-It renames the settings back to the German names. If you need exactly the state before the switch, copy the backup back to `.claude/workflow.config.json`.
-
-### Labels and title prefixes
-<!-- de: f1a29a559675 -->
-
-Every label and every title prefix of the kit has one name, the English one, in every project, including a German one. When the kit sets a label or creates a card, it uses this name.
-
-| Thing | Name |
-|-------|------|
-| question waits for the human | `kit:clarify` |
-| protected file waits for the human | `kit:protected` |
-| variant B of the night chain | `kit:carry-through` |
-| check run | `kit:check` |
-| run is running | `run:running` |
-| run aborted | `run:aborted` |
-| run is waiting | `run:waiting` |
-| trace of the review | `review:done` |
-| questions to the PO clarified | `kit:clarified` |
-| goal of the chain: plan | `goal:plan` |
-| goal of the chain: packages | `goal:packages` |
-| goal of the chain: implementation | `goal:implementation` |
-| goal of the chain: push prepared | `goal:push-prepared` |
-| prefix of the business requirement | `[Requirement]` |
-| prefix of the idea | `[Idea]` |
-| prefix of the human step | `[Human]` |
-
-Added to these are `kit:night`, `kit:nightrun`, `planreview:1`, `planreview:2`, `[Plan]` and `[Task]`.
-
-`kit:clarified` shows on the board that no question to the PO is open on a business requirement any more. `/issue-review` and `/groom` set it as soon as the first line under `## Offene Fragen an den PO` begins with „Keine“. It is a help for the human, not a criterion: the night chain keeps checking the note „Keine“, not the label. The kit never removes it; only the human removes it.
-
-**Cards with the former German names keep working.** Open cards still carry the former German prefixes and labels. The kit recognises the former German names when reading and treats them like the English ones, but writes only the English ones. A German label the kit would remove, it removes just the same; uninvolved labels stay unchanged. The release rights apply under both names as well: a label that only a human may remove may also only be removed by a human under its German name. Which German name belongs to which English one is given in the [table old → new](/en/dokumentation#skills-commands-and-entry-files).
-
-**The kind instead of the prefix.** `issue create` and `issue check-form` accept the kind of a card with `--art requirement|plan|idea|human|task`. The kit then puts the matching prefix in front of the title, for example `[Requirement]`. A title that already carries a prefix stays valid; `--art` alongside it is an error. Without `--art` the title stays as it is.
-
-### Messages, reports and markers
-<!-- de: a145a2a3f050 -->
-
-What the kit outputs and writes to the cards is in the project language: the messages of the tools, the block `Fuer den Abschlussbericht:` of `checks.mjs`, night and run reports, notes and comments on the cards, the installer, the settings interface and the local board interface. A change of language takes effect from the next call; what is already on the board stays as it is.
-
-**Markers.** Some lines the kit later reads back from comments and body, such as the run status or the header lines of a work package. It writes these markers in the name of the project language and recognises them under both names, even mixed on the same card. A marker with a variable rest, such as `## Einarbeitung, Runde 2`, is listed here with its fixed beginning.
-
-| Thing | German | English |
-|-------|---------|----------|
-| run status comment | `## Laufstand` | `## Run status` |
-| identifier of the run | `Lauf-ID:` | `Run-ID:` |
-| time of the status | `Stand:` | `Updated:` |
-| log file | `Protokoll:` | `Log:` |
-| goal of the chain | `Ziel:` | `Goal:` |
-| reviewers | `Prüfer:` | `Reviewers:` |
-| limit | `Grenze:` | `Limit:` |
-| protected file | `## Geschuetzte Datei` | `## Protected file` |
-| waiting session | `## Nachtlauf: wartende Sitzung` | `## Night run: waiting session` |
-| time limit reached | `## Nachtlauf: Zeitgrenze erreicht` | `## Night run: time limit reached` |
-| stuck on a check | `## Nachtlauf: an einer Pruefung festgefahren` | `## Night run: stuck on a check` |
-| missing evidence | `Nachtlauf: Nachweis` | `Night run: evidence` |
-| chain without check | `## Kette nicht gestartet: Pruefung fehlt` | `## Chain not started: check missing` |
-| chain with unsuitable setting | `## Kette nicht gestartet: unpassende Einstellung` | `## Chain not started: unsuitable setting` |
-| no input for `/issues` | `Kein Eingang für /issues` | `No input for /issues` |
-| follow-up sentence of a halt | `Daraus soll per /requirement eine fachliche Anforderung entstehen.` | `A requirement is to be created from this via /requirement.` |
-| superseded package | `Ueberholt durch Plan #` | `Superseded by plan #` |
-| identifier of the report | `Bericht-Lauf:` | `Report-Run:` |
-| revision of the kit | `Kit-Stand:` | `Kit-Revision:` |
-| night report | `## Nachtbericht, Kette` | `## Night report, chain` |
-| round of the plan review | `## Plan-Review, Runde` | `## Plan-Review, Round` |
-| round of the requirement review | `## Fachplan-Review, Runde` | `## Requirement-Review, Round` |
-| round of the issue review | `## Issue-Review, Runde` | `## Issue-Review, Round` |
-| round of incorporation | `## Einarbeitung, Runde` | `## Incorporation, Round` |
-| context of a document | `## Kontext` | `## Context` |
-| model of the author | `Autor-Modell:` | `Author-Model:` |
-| model of the plan | `Plan-Modell:` | `Plan-Model:` |
-| business source | `Fachliche Quelle:` | `Requirement:` |
-| decisions of the plan | `Plan-Entscheidungen:` | `Plan-Decisions:` |
-| decision | `Entscheidung:` | `Decision:` |
-| task tier | `Aufgabenstufe:` | `Task-Tier:` |
-| recommended model | `Empfohlenes Modell:` | `Recommended model:` |
-| session scope | `Sitzungsumfang:` | `Session scope:` |
-| template | `Vorlage:` | `Template:` |
-| trace of the requirement review | `Fachplan-Review:` | `Requirement-Review:` |
-
-`Position:`, `Plan:`, `Plan-Review:` and `Issue-Review:` have the same name in both languages.
-
-**What stays untranslated.** Some values are interfaces to skills, evaluations and the AI control room in kanban-kit, not names you encounter. They stay the same in both languages:
-
-- the JSON field names of the tool outputs, such as `ok`, `fehler` and `hinweise`,
-- the vocabulary of the result state and the journal,
-- the enumerations of the message to the control room, `stages`, `errorClass` and `state`, and the field `grundArt` with the values `abhaengigkeit`, `klaeren`, `ohneInReview`, `zeitbudget` and `sonst`,
-- the file names under `.claude/`,
-- the form words of the findings that `kit/findings.mjs` reads: the marks `KRITISCH`, `BLOCKER`, `WICHTIG` and `HINWEIS`, `Fundstelle:`, `Vorschlag:`, `Gegenprobe:` with `— geprueft, bestaetigt` and `— nicht geprueft`, `Art:` and the kind names.
-
-Translated are the free texts of the message to the control room, `title`, `excerpt`, `abortReason` and `noWorkReason`, and all displays.
-
-### Skills, commands and entry files
-<!-- de: 4ea05ba2f545 -->
-
-Since version 5 every skill, command file, command, option and choice value of the kit has exactly one name, the English one, in every project. A former German name is rejected: the command ends with exit code 1 and names the English name, for example `unbekannt: 'melden' — englischer Name: 'report'`. There is no transition period. The German skills no longer exist; the update deletes their folders. Title prefixes and labels are different: the kit still recognises the German names on open cards, but writes only the English ones (see [Labels and title prefixes](/en/dokumentation#labels-and-title-prefixes)).
-
-The update rewrites the calls it created itself, such as the hook in `.claude/settings.json`. Every other place that calls the kit under an old name it lists at the end with the old and the new name: found in `.claude/settings.json`, `.claude/settings.local.json`, the scripts of `package.json` and `crontab -l`. Schedules and your own scripts in other places, such as LaunchAgents, you check yourself against the table below.
-
-**Table old → new.** Whatever is not listed here already had an English name before, such as `issue create` or `--title`.
-
-**Skills.**
-
-| Old | New |
-|-----|-----|
-| `/kontext`, `/context` | `/session-start` |
-| `/fachplan` | `/requirement` |
-| `/review` | `/kit-review` |
-| `/plan` (signpost) | dropped, the planning step is `/techplan` |
-
-**Command files.**
-
-| Old | New |
-|-----|-----|
-| `kit/befunde.mjs` | `kit/findings.mjs` |
-| `kit/aufwand.mjs` | `kit/effort.mjs` |
-| `kit/wirksamkeit.mjs` | `kit/effectiveness.mjs` |
-| `einstellungen.mjs` | `settings.mjs` |
-
-**Commands.**
-
-| Command | Old | New |
-|----------|-----|-----|
-| `kit/board.mjs` | `kontext`, `sitzung` | `context`, `session` |
-| `kit/board.mjs` | `issue melden`, `nightrun melden`, `sitzung melden` | `issue report`, `nightrun report`, `session report` |
-| `kit/board.mjs` | `issue stand`, `issue auftrag`, `issue ursprung` | `issue run-state`, `issue brief`, `issue origin` |
-| `kit/board.mjs` | `issue check-geschuetzt`, `issue vorgeschichte`, `issue fragen` | `issue check-protected`, `issue history`, `issue questions` |
-| `kit/board.mjs` | `issue-review pruefauftrag` | `issue-review review-brief` |
-| `kit/board.mjs` | `hook bash-pruefen` | `hook bash-check` |
-| `kit/board.mjs` | `code schutz` with `einrichten`, `aussetzen`, `wiederherstellen`, `nachpruefen` | `code protection` with `setup`, `suspend`, `restore`, `verify` |
-| `kit/checks.mjs` | `bereiche` | `areas` |
-| `kit/findings.mjs` | `arten`, `pruefen`, `buchen`, `vorschlag`, `auswerten`, `befund` | `kinds`, `check`, `record`, `suggest`, `evaluate`, `finding` |
-| `kit/effort.mjs` | `auswerten`, `befund`, `auskunft` | `evaluate`, `finding`, `info` |
-| `kit/effectiveness.mjs` | `auswerten`, `befund`, `kandidaten` | `evaluate`, `finding`, `candidates` |
-| `kit/worktree.mjs` | `anlegen`, `entfernen`, `im`, `nachziehen-pruefen`, `rueckweg` | `create`, `remove`, `in`, `catch-up-check`, `return` |
-| `kit/worktree.mjs` | `vorbereitung-festhalten`, `vorbereitung-pruefen` | `record-preparation`, `check-preparation` |
-
-**Options.**
-
-| Command | Old | New |
-|----------|-----|-----|
-| `kit/board.mjs` | `--teil`, `--zustand`, `--spalte`, `--pfad`, `--zweig`, `--nur-pfad` | `--part`, `--state`, `--column`, `--path`, `--branch`, `--path-only` |
-| `kit/board.mjs` | `--stufe`, `--rolle`, `--datei`, `--material-datei`, `--auftrag`, `--ausgabe`, `--protokoll` | `--stage`, `--role`, `--file`, `--material-file`, `--brief`, `--output`, `--transcript` |
-| `kit/board.mjs` | `--begriffe`, `--dateien`, `--ohne`, `--vergleich` | `--terms`, `--files`, `--without`, `--compare` |
-| `kit/checks.mjs` | `--stufe`, `--bereich`, `--abschluss`, `--frisch`, `--wiederholen` | `--stage`, `--area`, `--finish`, `--fresh`, `--retry` |
-| `kit/night.mjs` | `--kette`, `--pruefen`, `--waechter` | `--chain`, `--check`, `--watcher` |
-| `kit/findings.mjs` | `--datei`, `--stufe`, `--karte`, `--art`, `--abgelehnt` | `--file`, `--stage`, `--card`, `--kind`, `--rejected` |
-| `kit/effort.mjs` | `--laeufe` | `--runs` |
-| `kit/effectiveness.mjs` | `--fenster` | `--window` |
-| `kit/worktree.mjs` | `--praefix`, `--ergebnis`, `--offen`, `--verwerfen` | `--prefix`, `--result`, `--open`, `--discard` |
-| `install.mjs` | `--sprache`, `--schutz` | `--language`, `--protection` |
-
-**Choice values.**
-
-| Place | Old | New |
-|--------|-----|-----|
-| `kit/board.mjs --art` | `fachlich`, `idee`, `mensch` | `requirement`, `idea`, `human` |
-| `kit/board.mjs --state` | `laeuft`, `abgebrochen`, `wartet`, `fertig` | `running`, `aborted`, `waiting`, `done` |
-| `kit/board.mjs --stage` | `fachlich` | `requirement` |
-| `kit/checks.mjs --stage` | `paket` | `package` |
-| `kit/findings.mjs --stage` | `fachlich` | `requirement` |
-| `kit/worktree.mjs --result` | `gruen`, `gruen-offen`, `rot` | `green`, `green-open`, `red` |
-| `kit/worktree.mjs --fetch` | `fehlgeschlagen` | `failed` |
-| `/push-main` | `vorbereiten`, `notfall` | `prepare`, `emergency` |
-
-**Title prefixes.** New cards carry only the English ones; the kit still recognises the German ones on open cards.
-
-| Old | New |
-|-----|-----|
-| `[Fachlich]` | `[Requirement]` |
-| `[Idee]` | `[Idea]` |
-| `[Mensch]` | `[Human]` |
-
-**Labels.** The kit sets only the English ones; it still recognises the German ones on open cards and removes them wherever it would remove the English one.
-
-| Old | New |
-|-----|-----|
-| `kit:klaeren` | `kit:clarify` |
-| `kit:geschuetzt` | `kit:protected` |
-| `kit:durchziehen` | `kit:carry-through` |
-| `kit:pruefen` | `kit:check` |
-| `lauf:laeuft` | `run:running` |
-| `lauf:abgebrochen` | `run:aborted` |
-| `lauf:wartet` | `run:waiting` |
-| `review:fertig` | `review:done` |
-| `ziel:plan` | `goal:plan` |
-| `ziel:pakete` | `goal:packages` |
-| `ziel:umsetzung` | `goal:implementation` |
-| `ziel:push-vorbereitet` | `goal:push-prepared` |
-
 ## The three human stop points
 <!-- de: 5a39b1f9c656 -->
 
@@ -798,7 +70,7 @@ When in doubt, lane 2 applies; that also covers an unclear need to weigh up. Bef
 **A special case worth naming: rejection as a valid result.** A tool reports a finding, and the finding is defensibly rejected — that, too, is work, and it is typical lane-3 work. So that the rejection holds, the acceptance criterion of such a `[Task]` is the **versioned suppression rule** that the tool itself evaluates, with the justification right next to it: The tool reads the rule, the justification addresses humans and later sessions. In the kit the pattern lives in `sonar-project.properties` — the exclusion of the rule `javascript:S4036` as a versioned line, with a written-out explanation above it of why it is defensible. A rejection marked as "accepted" by hand in the web UI, in contrast, does not hold: The next finding of the same kind arises outside of it. Such a task is verified by running the same tool again — the rejected finding stays away, **and an independent control finding is still reported**; without it, a silent tool cannot be told apart from an effective exclusion. If a tool lacks a versionable route, developing one belongs in an initiative (Vorhaben) of its own, and no cross-tool register is created — it would be a second list next to the rule files that none of the tools reads.
 
 ## Night mode
-<!-- de: 95c4ddc1b3b9 -->
+<!-- de: 39ead8bf56a6 -->
 
 Night mode (Nachtbetrieb) knows **two operating modes**: the **implementation night** (Umsetzungsnacht), which this section describes, and the **night chain** (see [Second mode](/en/dokumentation#second-mode-the-night-chain)), which turns a business plan into the reviewed plan and the work packages without building anything. Both are the night; the [check run](/en/prozess#the-check-run), which has business requirements reviewed, belongs to the day and is described on the process page. The implementation night works through the Ready column unattended — with a **fresh session per issue**, so that no context accumulates over many issues and quality does not degrade creepingly. The night runner (`.claude/kit/night.mjs`, comes with the installer) starts one headless session per issue with `/implement-next #N` — the issue is **handed to the session bindingly**, it does not choose it itself — waits for it to end and checks success exclusively on the board: issue in In review = success. Nothing is **ever** pushed at night — the three stop points remain human, unchanged.
 
@@ -847,9 +119,9 @@ The final completion message still lands in the log as well; the streaming compl
 
 The **text log** — that is, the `.log` file from above — stays alongside unchanged and remains the way for whoever wants the details; the result state does not replace it, it complements it with an evaluable form. Two version details are in the file: `schemaFassung` as the first field names the version of the format — needed by whoever evaluates the file — and `erzeugtVon` the kit state that wrote it, for whoever wants to know when looking which runner was at work. Kept separate because a kit release does not change the `schemaFassung` and a format change does not wait for a release. The runner does not count the file as an unclean working tree — it does not have to be committed; whoever's `.gitignore` does not list `.claude/*` will still see it in `git status` in the morning.
 
-**What was checked — and what was not.** The sessions check by area (see [Area-based checks](#area-based-checks-checkareas)), and the omissions are visible in **two** places: in the **completion report on the work package**, where the session lists checks run and omitted, each with its reason, and in the **run report of the pass** — there one line per session and below it a sum line over the whole run. A session without a check appears explicitly as "unchecked", a package without changes as "empty package"; none of it hides behind an empty list. A session that dies **during** the check run appears as **red** and no longer as "unchecked": Since the [summary accompanies the run](#the-commit-gate), an unfinished version with `nicht gestartet` (not started) is left behind in this case. The shift is intended — a dead checker is an objection, not a failed measurement. The runner does not read this from the completion report but from the summary that `checks.mjs` leaves in `.claude/checks-summary.json`: What the machine evaluates passes nowhere here through text formulated by a model.
+**What was checked — and what was not.** The sessions check by area (see [Area-based checks](/en/einrichtung#area-based-checks-checkareas)), and the omissions are visible in **two** places: in the **completion report on the work package**, where the session lists checks run and omitted, each with its reason, and in the **run report of the pass** — there one line per session and below it a sum line over the whole run. A session without a check appears explicitly as "unchecked", a package without changes as "empty package"; none of it hides behind an empty list. A session that dies **during** the check run appears as **red** and no longer as "unchecked": Since the [summary accompanies the run](/en/einrichtung#the-commit-gate), an unfinished version with `nicht gestartet` (not started) is left behind in this case. The shift is intended — a dead checker is an objection, not a failed measurement. The runner does not read this from the completion report but from the summary that `checks.mjs` leaves in `.claude/checks-summary.json`: What the machine evaluates passes nowhere here through text formulated by a model.
 
-**The proof only counts for the package's commit.** The summary always contains only the **last** check run of a session — whoever starts `checks.mjs run` once more after the commit, say as a manual test, and aborts it, leaves a version that did not measure the delivered state at all. The runner therefore holds the file against the session's commit: Every file the commit changes must have been checked in it with exactly the blob that landed in the commit — the same question the [commit gate](#the-commit-gate) asks against the index before the commit. An aborted run (`abgeschlossen: false`) never counts as proof. If it does not match, **the runner re-checks itself**: It runs the package stage of the `buildChecks` and reports the session as **`nachgeprueft`** (re-checked, green) or **red**, in both cases with the reason in the line („Nachweis gehörte nicht zum Commit …“ — proof did not belong to the commit). `nachgeprueft` is a success like `geprueft` and is coloured green on the control panel just the same. If the session left no commit, there is nothing to compare — then everything stays as the summary says.
+**The proof only counts for the package's commit.** The summary always contains only the **last** check run of a session — whoever starts `checks.mjs run` once more after the commit, say as a manual test, and aborts it, leaves a version that did not measure the delivered state at all. The runner therefore holds the file against the session's commit: Every file the commit changes must have been checked in it with exactly the blob that landed in the commit — the same question the [commit gate](/en/einrichtung#the-commit-gate) asks against the index before the commit. An aborted run (`abgeschlossen: false`) never counts as proof. If it does not match, **the runner re-checks itself**: It runs the package stage of the `buildChecks` and reports the session as **`nachgeprueft`** (re-checked, green) or **red**, in both cases with the reason in the line („Nachweis gehörte nicht zum Commit …“ — proof did not belong to the commit). `nachgeprueft` is a success like `geprueft` and is coloured green on the control panel just the same. If the session left no commit, there is nothing to compare — then everything stays as the summary says.
 
 **Night run against a different board (Toolbox/kanban-kit).** If your project runs against a kanban-kit tracker, you can switch the whole night run to a night board of its own: create a token in the admin UI and bind it to the night board, store it as a second gitignored file next to the normal `tokenFile` (e.g. `.claude/tbx-night.token`) and start the runner with `TBX_TOKEN` per call:
 
@@ -857,7 +129,7 @@ The **text log** — that is, the `.log` file from above — stays alongside unc
 TBX_TOKEN="$(cat .claude/tbx-night.token)" caffeinate -i node .claude/kit/night.mjs
 ```
 
-This works because `TBX_TOKEN` is the highest level of the [token precedence](/en/dokumentation#toolbox-private-setup) and the environment variable is inherited across the whole process chain: from the runner to its own `board.mjs` calls **and** to every headless session, whose `board.mjs` calls inherit it in turn. The entire run thus changes board — Ready source and all feedback (move, comment). A split ("pull issues from board B, report to board A") is deliberately not possible: The board is the runner's only coordination signal. Important: set `TBX_TOKEN` only like this, per call — never export it permanently (say in `.zshrc`), otherwise it wins against the `tokenFile` in **every** project. All of this applies only to the Toolbox/kanban-kit tracker; with GitHub and GitLab the board is separated per repo via the config (`github.projectNumber` or status labels), and there is no switching per call there.
+This works because `TBX_TOKEN` is the highest level of the [token precedence](/en/einrichtung#toolbox) and the environment variable is inherited across the whole process chain: from the runner to its own `board.mjs` calls **and** to every headless session, whose `board.mjs` calls inherit it in turn. The entire run thus changes board — Ready source and all feedback (move, comment). A split ("pull issues from board B, report to board A") is deliberately not possible: The board is the runner's only coordination signal. Important: set `TBX_TOKEN` only like this, per call — never export it permanently (say in `.zshrc`), otherwise it wins against the `tokenFile` in **every** project. All of this applies only to the Toolbox/kanban-kit tracker; with GitHub and GitLab the board is separated per repo via the config (`github.projectNumber` or status labels), and there is no switching per call there.
 
 **Model information in the activity history (kanban-kit).** The runner sets `KIT_AGENT_MODEL` for every session to the model it actually starts with — since v1.54 that is no longer necessarily the value of `--model` but the model of the respective card (see below). The variable is inherited via the same process chain as `TBX_TOKEN` — down to the session's `board.mjs` calls — and the adapter attaches it as the header `X-Agent-Model` to every board request. The activity history then shows, next to the origin, which model was used at night. This is explicitly a **self-report of the client, not proof**: The server verifies session and token, not the model — the board page marks the value accordingly ("lt. Angabe", as stated). Interactive sessions do not set the variable and therefore make no statement; no statement is more honest than a guessed one. Only kanban-kit evaluates the header on the server side; other trackers ignore it.
 
@@ -1418,64 +690,6 @@ For such recurring, class-wide errors the same principle applies as with the cov
 
 **The borderline case: when no guardrail can be had.** Some things cannot be measured — whether a model believed a statement instead of looking it up, for instance. There the declared self-report takes the place of the gate: The fixed answer form „Mitteilung übernommen, ungeprüft — …“ (statement adopted, unchecked) from [Statements: believe instead of checking](/en/prozess#statements-believe-instead-of-checking) forces nothing, but makes every violation a visible contradiction. Visible contradiction instead of a gate — the same principle, only with the weaker means, because the stronger one does not exist here.
 
-## Team config and personal deviations
-<!-- de: bea5460f06a3 -->
-
-The same question as above, one level deeper: What belongs in the repository, and what may everyone have differently for themselves?
-
-`.claude/workflow.config.json` used to lie outside the repository — the installer entered `.claude/` into the `.gitignore`. That gave every team member their own version of the fields that must be the same for everyone. `buildChecks` decides what counts as green; `columns` decides where issues land. And a deviating `columns` version does not lead to an error but to an empty issue list — that is the unpleasant part.
-
-The config therefore consists of two files:
-
-| File | Place | Content |
-|---|---|---|
-| `.claude/workflow.config.json` | **in the repository** | everything that applies to the team |
-| `.claude/workflow.config.local.json` | local, gitignored | personal deviations |
-
-From the local file only these fields win:
-
-| Field | Why personal |
-|---|---|
-| `reviewModel` | the choice of model for the review is a matter of taste and budget |
-| `reviewCommand` | the alternative to `reviewModel`: whoever reviews with a foreign CLI has installed it locally |
-| `reviewLesegrenze` | belongs to `reviewCommand`: the read-only switch of the locally installed CLI |
-| `reviewScope` | some prefer to read the full source text |
-| `triggers` | typing habit for the three stop phrases |
-| `toolbox.tokenFile` | points to a token in one's own file system |
-
-Everything else is ignored and reported on stderr.
-
-**The reviewer pair deviates as a pair.** `reviewModel` and `reviewCommand` are an either-or decision — exactly one of them applies. If the personal file sets one of the two, the other disappears from the result, even if it comes from the shared config. Without this exception to field-by-field merging the normal case — the team runs the Claude default, one person reviews with `codex` — would have a config with both fields and would violate the rule that the schema enforces. `reviewLesegrenze` sits on the side of `reviewCommand`: if the personal file sets `reviewModel`, both give way, because a read limit without a command is meaningless. A personal `reviewLesegrenze` on its own does not displace `reviewModel`.
-
-**Why the strictness?** If `buildChecks` could be overridden locally, everyone could configure their gate away, and the separation would be cosmetics instead of a guardrail. The obvious objection — you can still edit the shared file locally — is true, but misses the point: Then it shows up in `git status`. A visible deviation is something different from one that is invisible by design.
-
-The `.gitignore` block the installer writes:
-
-```
-.claude/*
-!.claude/workflow.config.json
-.claude/workflow.config.local.json
-.claude/board-meta-cache.json
-```
-
-The first line must read `.claude/*`, **not** `.claude/`. Git does not evaluate a `!` negation pattern if the directory itself is excluded — it does not even enter it. With `.claude/` the exception would remain ineffective, and the error feels like "forgot to commit". Whoever writes the block by hand builds it wrong exactly once and searches for a long time.
-
-**Existing projects:** The next `install.mjs` run automatically replaces an existing `.claude/` line with the block; your own `.claude` rules stay untouched and the installer only outputs a recommendation. After that a human must commit `.claude/workflow.config.json` once — the installer cannot do that for you.
-
-## One file, one writer
-<!-- de: e9b0eb79e681 -->
-
-The same principle, applied to memory instead of code: **Every file in the memory vault that a skill writes to automatically belongs to exactly one repo.** What is shared is read — or only written after explicit consent.
-
-The occasion is a setup with several repos on a shared vault, say five microservices. The knowledge is to be shared, not the authority to write. As long as all sessions of a day write into the same log file, conflict copies arise in a synchronised vault, and with parallel sessions the second overwrites the section of the first. Both are noticed late, because nobody reads their daily log again.
-
-Two consequences run through the kit from this:
-
-- **The daily log becomes project-specific.** The field `logPath` makes the file name configurable (`Log/{date}-{project}.md`), so that every repo gets its own file. That applies not only to microservices: **As soon as any two projects use the same vault, `logPath` should be set** — the default `Log/{date}.md` is one file per day, not per project. Details in the [`kontext.config.json` reference](/en/einstellungen#kontext-config-json).
-- **`/document` never writes the shared umbrella note by itself.** It is the only shared place of writing and therefore deliberately not automated: Only in the case of a cross-service effect does the skill ask once, with the concrete entry text, and only writes after consent. Otherwise the conflict surface would only be moved from the log into the note.
-
-The difference from the guardrail principle above is the kind of stop: There a gate fails mechanically, here a skill asks a human. The reason is the same — the decision whether a system-wide insight belongs in the shared note cannot be made by a rule.
-
 ## What is deliberately not in the kit
 <!-- de: aca615ac0b04 -->
 
@@ -1483,402 +697,97 @@ The difference from the guardrail principle above is the kind of stop: There a g
 
 **No multi-tool adapter.** The concept is transferable, the format is not. Codex reads `AGENTS.md`, Cursor `.cursor/rules`. If you want to use several engines, you need the skill library in several formats in parallel in the repo. That is feasible, but not part of this kit.
 
-## Issue tracker and code host
-<!-- de: 45d9d940f602 -->
-
-The kit supports GitHub, GitLab and a fully local mode. The choice is made along two independent axes: `codeHost` (for pull requests and repo detection) and `issueTracker` (for issues and board movements). Both can point to different platforms.
-
-### Tracker switch of this repository: kanban-kit and GitHub archive
-<!-- de: f9fd3da7ca47 -->
-
-Since 11 August 2026 this repository keeps its issues in **kanban-kit**, no longer in GitHub. The adapter and config value for it is `issueTracker: "toolbox"`; `kanban-kit` is the product name and not a valid value. The code host remains `codeHost: "github"`.
-
-**GitHub Issues remain enabled.** They are no longer used for new work, but they are the archive: The 218 issues already closed at the time of the move stayed there, and existing commit messages with `#N` thereby keep a reachable historical target. Whoever switches off the issue system there takes away the commit history's point of reference.
-
-**Gaps in the kanban-kit numbering are intended.** Only the issues open on the cut-off date were migrated, with their original numbers. The gaps in between have two causes: closed issues that did not move along, and pull request numbers that share the same number space with the issues. Between `#164` and `#247`, for instance, lie 70 closed issues and 12 PRs, but not a single open issue.
-
-**Migrated cards are recognisable.** They carry `externalKey: github#N` and in the body a two-line origin header naming the source and the original column:
-
-```
-> Quelle: https://github.com/<owner>/<repo>/issues/<N>
-> Ursprüngliche Spalte: <Spaltenname oder keine>
-```
-
-The header is written by the migration tool exactly like this: `Quelle` is the source, `Ursprüngliche Spalte` the original column (column name or none). It names the column even if kanban-kit does not know it. The GitHub board had a sixth column `Zurückgestellt` (deferred), which was mapped to `BACKLOG`; without the header these cards would look like normal work in the backlog.
-
-**The number counter starts above the old number space.** At the time of the move the highest GitHub number ever assigned was 296, and `next_card_number` was set to 298. The counter must never be reset below this start value: Otherwise a new card would get a number already taken on GitHub, and `#150` would denote two different things.
-
-**`tools/migrate-issues.mjs`** was the tool of the move and remains useful for stragglers. It has three runs: `export` (reads GitHub), `import` (writes kanban-kit, idempotent via `externalKey`) and `verify` (compares both sides as a gate). It is not part of the ongoing workflow — for new work, `/issues` creates directly in kanban-kit.
-
-### Transferring a single GitHub issue afterwards
-<!-- de: 31d107666717 -->
-
-The normal case after a move: Someone from outside reports a bug on GitHub, because the repository is public there. The issue is to go into kanban-kit without losing the reporter.
-
-```bash
-node tools/migrate-issues.mjs export
-```
-
-```bash
-node tools/migrate-issues.mjs import --file <exportdatei> --from 302 --to 302 --yes
-```
-
-`--from N --to N` with the same number fetches exactly one issue. What is preserved in the process, which copy-paste does not achieve:
-
-- The **source reference** is in the body as a header (`> Quelle: …`), so the GitHub discussion remains reachable.
-- The **comments** move along, each with author and date. For an outside report, that is exactly the value — the reporter's wording remains readable.
-- The import is **idempotent** via `externalKey`: A second run creates nothing twice.
-- The **original number** stays. References from commit messages still point to the same ticket.
-
-Two restrictions. `export` reads **all** open issues, not just the desired one — there is no filter on the export side. And before the very first `--yes` run of a project, the tool demands a complete `--dry-run`; in a repo that has the move behind it, this condition is met.
-
-If number and comments do not matter, it also works without the tool: read `gh issue view <N> --json title,body` and create the body via `board.mjs issue create --body -`. Then, however, the source reference is missing, and whoever later wants to know who reported it will no longer find out — for an outside report that is the wrong way.
-
-### Prerequisites per configuration
-<!-- de: 6bcc83f06a70 -->
-
-| Value | CLI | Authentication |
-|------|-----|-------------------|
-| `github` | `gh` (GitHub CLI) | `gh auth login` |
-| `gitlab` | `glab` (GitLab CLI) | `glab auth login` |
-| `local` | none | none |
-
-### Board adapter
-<!-- de: e65a5318f210 -->
-
-All board operations run through `.claude/kit/board.mjs`. The adapter has two main areas:
-
-- **Issue tracker interface:** `issue create`, `issue list`, `issue get`, `issue activity`, `issue move`, `issue comment`, `issue report`, `issue brief`, `issue origin`, `issue epics`
-- **Code host interface:** `code repo-name`, `code pr`, `code protection`, `code contract-repo`
-
-**`code contract-repo <name>` fetches the built state of the partner repo from `vertragsRepos`.** It asks `git ls-remote` for the commit of the branch (default `main`), clones shallowly to `<tmpdir>/kit-contract-repos/<name>-<commit12>` and prints `{ ok: true, name, url, branch, commit, date, path }`, on failure `{ ok: false, name, reason }`, both with exit 0; each commit is cloned only once, and the fetch removes older states of the same name.
-
-**`code protection` sets up protection of the main and release branches and reports on it.** Five actions, each with JSON on stdout:
-
-- `node .claude/kit/board.mjs code protection status` — the state as `{ geschuetzt, fehlt, ungeprueft }`. `fehlt` names every missing part, for example a ruleset that is not set or is suspended. `ungeprueft` is `null` or `{ commit, kommando }`: the state on the main branch that lacks green evidence from the build service, together with the command that catches up on it. Exit 0 even with `geschuetzt: false`, as with `code ci-status`.
-- `code protection setup [--branch <z>]` — probe on the check branch, then the rulesets; result `scharf`, `anleitung`, `offen` or `nicht moeglich` (see [Installation](#installation)). Without `--branch`, `pushPruefung.zweig` applies, otherwise `kit-pruefung`.
-- `code protection suspend --in <pfad>` — suspends the ruleset of the main branch, only with a green run of stage `push` in the worktree `<pfad>`; part of the emergency path of [/push-main](/en/prozess#push-main).
-- `code protection restore` — switches the ruleset back on. If it fails, protection stays suspended, and the message names the command to repeat.
-- `code protection verify [--branch <z>]` — has the build service check the current state of the main branch afterwards via the check branch, for example after the emergency path.
-
-`setup`, `suspend` and `verify` push or change the code host. With `KIT_AGENT_MODEL` set, i.e. unattended, they therefore abort; `status` stays allowed. The night never pushes, and the lock sits in the tool rather than only in the skill text.
-
-**`issue list` returns work packages, `issue epics` returns initiatives.** The separation is strict: Initiatives never appear in `issue list`, not even without a status filter. They are brackets over several cards, not work — whoever counts them in a list of open issues takes them for work packages with a thin description. `issue epics` returns them with their short code and progress (`#360 [HER] … 8/8`), that is with the information an initiative actually carries.
-
-**An initiative has no status.** `issue get` returns `status: null` for it, not `backlog`. The reason lies in the server: It does not let an initiative be positioned on the board via `move` at all („Epics werden nicht auf dem Board positioniert“ — epics are not positioned on the board). A status that no `move` can ever change would be a claim about something that does not exist; `null` means "has none".
-
-**Comments carry their ID.** Every entry in `comments` of `issue get` has the fields `author`, `body`, `createdAt` and `id`. `id` is the identifier under which the comment can be replaced on the platform: for GitHub the numeric REST ID from the anchor `#issuecomment-<n>` (not the GraphQL node ID `IC_…`), for GitLab the note ID, for toolbox the comment ID of the API, for the local tracker the running number of the appended `**Kommentar**` block. If the platform provides none, it says `id: null`. `issue get` remains lenient here: If the comment route is not reachable, the card comes with `comments: []` and a hint on stderr.
-
-**`issue report` files the completion report and moves to In review — in one call.** `node .claude/kit/board.mjs issue report <id> --text '<bericht>'` replaces the sequence of `issue move … in_review`, intermediate file and `issue comment --text-file`. The output is `{ "ok": true, "id", "bericht": "angelegt" | "ersetzt" | "unveraendert", "status": "in_review", "commit": "<short hash>" | "ohne" | "mensch" }` (created, replaced, unchanged; for `commit`: without commit, human card). A `'` in the report is written in the shell as `'\''`; the command files the text unchanged. `--text-file <pfad>` remains for manual calls.
-
-- **Idempotent per run.** The filed report carries as its last line `Bericht-Lauf: <stempel>`. The stamp is the time of the card's most recent move to `in_progress` from `.claude/bewegungen.tsv` — not from `.claude/wegmarken.tsv`, which `session report --complete` empties. If the command already finds one with the same line among the comments, it writes nothing if the content is the same (`unveraendert`) and replaces it otherwise (`ersetzt`); otherwise it creates one (`angelegt`). Reports with a different `Bericht-Lauf` line, that is from earlier runs, remain untouched. If there is no `in_progress` move of the card at all, the call ends with exit 1 without writing anything.
-- **First the filing, then the move.** The comments are read strictly: If that is not possible, the call ends with exit 1, writes no report and leaves the card where it is — a state read as empty would otherwise lead to a duplicate report. If the filing fails, the card stays in In progress. Only after the filing does the command move to In review and record the move like `issue move` in `.claude/wegmarken.tsv` and `.claude/bewegungen.tsv`.
-- **Only with a commit.** Before filing, the command looks for a commit since the move to `in_progress` whose message names `Issue #<N>` (the convention `Short title (Issue #N)` of the implement skills); `Issue #50` does not count for card 5. If there is none, the call ends with exit 1, names the time of the move and both ways — commit and repeat, or `--without-commit '<reason>'` —, and card, report and pieces stay untouched. `[Human]` cards are exempt. `--without-commit '<reason>'` is for work without a change in the repo, such as pure board work or documentation in another repo: The command then reports and appends the line `Ohne Commit: <reason>` (in an English project `Without commit: <reason>`) to the report, before `Kit-Stand:` and `Bericht-Lauf:`; it rejects an empty reason. The field `commit` of the output names the evidence. The same rule applies interactively and at night. Background: Twice a card lay in In review or Done without its change being committed.
-- **Splitting.** For reports over 6,000 characters, `issue report <id> --part <n> --text '…'` writes only piece `n` to `.claude/berichte/<id>.<n>.md`, without board access; a repetition overwrites the piece. `issue report <id>` without `--text` assembles the pieces in numerical order, each on a new line, files, moves and only then clears the pieces. If the completion fails, they stay in place, and the repetition is the same completion call. The command rejects `--text` alongside existing pieces of the same card. `.claude/berichte/` is in the installer's `.gitignore` block and is exempt from the night runner's leftover guard.
-- **toolbox without PATCH route.** An older Toolbox instance does not know `PATCH /api/kanban/items/<item>/comments/<kommentar>`. If a changed report has to be replaced there, the call ends with exit 1, the message names the missing route, and no second report is created. The card stays in In progress. An unchanged report does not need the route.
-
-**`issue origin` evaluates whether a plan is through.** `node .claude/kit/board.mjs issue origin <plan-nr>` returns as JSON whether the plan is through, which packages are missing and where the plan document and business requirement belong. The command is purely reading: It moves no card and writes no comment.
-
-**`issue brief` returns what an implementation needs before the start — in one call.** `node .claude/kit/board.mjs issue brief <id>` replaces the follow-up queries about column, prefix, label, protected files and dependencies. The command is purely reading: It moves no card and writes no comment.
-
-- **Verdict and consequence.** The check runs in this order: If the card is not in Ready, the verdict is „darf nicht beginnen“ (must not begin) with consequence `bleibt` and the reason „liegt nicht (mehr) in Ready“ (is not (or no longer) in Ready). If the title carries `[Requirement]`, `[Idea]`, `[Plan]` or `[Human]` or the card the label `kit:clarify`, the consequence is `backlog`, and the output contains verbatim the comment the session attaches to the card before moving it to the backlog. The same text is in the night runner with the prefix `Nachtlauf: `. Next come the protected files, in the same order as in the night runner. If the card carries the label `kit:protected`, the consequence is `backlog` with a comment of its own: A human action is waiting, and the label stays, because only the human may remove it. If the package names a protected file in its task or acceptance criterion and the human has not released it, the consequence is `geschuetzt`. The comment is then verbatim the halt text that `issue check-protected` returns as `kommentar`, still without the label line. The reason names the steps: card to backlog, `issue label add <id> kit:protected`, in case of a failure report it and carry on, then the comment with the last line `Label kit:protected gesetzt` or `Label kit:protected nicht gesetzt` (label set, label not set). A released card goes on to the prerequisites. If a prerequisite is unfulfilled or cannot be determined, the consequence is `bleibt` again. Otherwise the verdict is „darf beginnen“ (may begin) with consequence `beginnen`.
-- **`--column in_progress`** expects the card in In progress instead of Ready — for `/implement-done` and the continuation after `/implement-test`.
-- **Task.** Title, complete body, labels, column and the card's comments. A returned card thus shows its review findings.
-- **Plan decisions.** The command finds the plan via the whole line `Plan: Issue #M` in the package. The context line `Plan-Entscheidungen: E1, E3` selects. Output is the wording of each named entry from `## Architektonische Entscheidungen` of the plan: the line `- E<n>:` together with its indented continuation lines. `Plan-Entscheidungen: Keine.` means the package invokes no decision. If the line is missing (legacy stock), all E entries of the plan come with the explicit sentence that the package names no selection. Only this one line is searched, not the free text of the package.
-- **Business occasion.** The source is the line `Fachliche Quelle: Issue #N` in the package, otherwise the same line in the plan. Output are `## Ziel` and `## Fachliche Akzeptanzkriterien` of the source verbatim (code blocks in them remain content) and the sentence „Voller Text: `node .claude/kit/board.mjs issue get <N>`“ (full text: …). An implementation does not have to read the rest of the text.
-- **Siblings.** All other cards with the whole line `Plan: Issue #M` of the same plan, across all five columns, each with number, title and column. The line rule is the night runner's: A mention in running text does not count, and `#30` is not `#300`. The column comes from the board's column lists. For GitHub these provide no body; the command therefore reads the bodies via `gh issue list --state all`. Without a plan it says „kein Vorhaben“ (no initiative).
-- **Prerequisites.** Every `#N` in the section `## Abhängigkeiten`, read as in the night runner, with number, title, column and finding: `unerfuellt` (unfulfilled) in Backlog, Ready or In progress, otherwise `erfuellt` (fulfilled) — also in In review and Done, archived or no longer on the board at all. A number the tracker does not know appears with `Spalte: keine` as fulfilled; a typo is therefore only noticed when writing, as the hint `unbekannt` from `issue check-form`. `nicht feststellbar` (cannot be determined) means: The board does not answer — fetching the card or its column fails for another reason. Then the card stays where it is. For GitHub the command looks for the column in the same column lists as for the siblings; a card that is in no column counts as fulfilled.
-- **Gaps.** Every piece of information that cannot be determined appears explicitly under gaps. That concerns a package without a plan („kein Vorhaben“), an unreadable plan and a named `E<n>` that is missing in the plan. Likewise a missing business source, a missing section `## Ziel` or `## Fachliche Akzeptanzkriterien`, and a sibling that is in no column (column „nicht feststellbar“). Added to that are a column of the package that cannot be determined and every prerequisite that cannot be determined. A gap is never silent; without a gap it says „Keine.“ (none).
-- **Output.** The default is Markdown with seven `##` parts in fixed order: Urteil, Aufgabe, Plan-Entscheidungen, Fachlicher Anlass, Geschwister, Voraussetzungen, Lücken (verdict, task, plan decisions, business occasion, siblings, prerequisites, gaps). Body, comments, goal and criteria are fenced in code blocks. `--json` returns the same parts as fields (`urteil`, `aufgabe`, `planEntscheidungen` with `plan`, `auswahl`, `hinweis`, `eintraege`; `fachlicherAnlass` with `quelle`, `herkunft`, `ziel`, `kriterien`, `vollerText`; `geschwister` with `plan`, `hinweis`, `karten`; `voraussetzungen`, `luecken`). This is the only exception to "output: JSON on stdout".
-- **Exit code.** 0 also for „darf nicht beginnen“, because that is information and not an error. 1 only if the package itself cannot be read.
-
-Only the trackers **local** and **toolbox** know initiatives. With **github** and **gitlab**, `issue epics` rejects with a message naming both capable trackers — there the failure is the normal case, and callers like `/session-start` skip it silently.
-
-**Form check: `issue check-form`.** The mechanical gates from the registers `CLAUDE-Fachplan.md` and `CLAUDE-Plan.md` are checked by a command, not a model: `node .claude/kit/board.mjs issue check-form <id>` against a card, or `issue check-form --body-file <pfad> --title "<titel>"` against a file before it is created. The stage comes from the title prefix. Checked are, for `[Requirement]`, F1, F2, F6, F7, F9, F11 and F12 (scenarios, see [/requirement](/en/prozess#requirement); `issue create` checks the same gate before creating), for `[Plan]` P1, P2, P3, P6, P12 and P14 (contracts with the other repo; only if the config names a partner repo in `vertragsRepos`), for the work package (with or without `[Task]`, likewise for `[Human]`) I1 to I5: the four sections in order with `## Abhängigkeiten` last, `Autor-Modell:` in the context, dependencies as `Keine.` or `#N`, no origin line in the dependencies section, and, with a line `Vorlage: <Pfad> — verbindlich` in the context, an acceptance via screenshot in the acceptance criterion. Added to these are I7 to I9: `## Aufgabe` names at least one file as a backtick path (I7), no named file is protected (I8, against the locks from the settings of the project root; a path immediately followed by `(nur genannt)` (only mentioned) is a mere mention and counts in this line neither for I8 nor for I7 — for instance ``die Liste `AUSNAHMEN` um `.claude/settings.json` (nur genannt) ergänzen``; the same exception applies in the night runner's gate and in `issue brief`), and `## Aufgabe` does not name the installed copy under `.claude/kit/` instead of the source (I9). A `[Human]` package passes all three — its task lies outside the repository. In the form stage of the chain, I8 is not a correction case: The violation is logged, and the card runs into the gate for protected files in the implementation stage; I7 and I9 are corrected by the chain. Which protected files a package names, whether it is released and what the halt comment says is returned by `issue check-protected <id>`; `--path <pfad>` (also several times) adds a path that was rejected when writing. Reading is done without code blocks and with umlauts in both spellings. The output is always JSON with `ok`, `stufe` and `verstoesse`; in case of violations the command ends with exit 1, a rejected call carries `fehler`. The `[Urteil]` gates remain the reviewer's business, and the command never writes to the board. For `[Plan]` the test hints are added: If the plan lists in `## Betroffene Bereiche` or `## Geplante Änderungen` a building block that has a test of its own, and it names this test nowhere, there is one entry `{ baustein, test, meldung }` under `hinweise` per unnamed test. Which tests belong to a building block is said by the locations of the setting `testAblagen` (without it the defaults for TypeScript and Java, `[]` switches off); the stock is the versioned files (`git ls-files`). For the work package, `hinweise` holds the dependency hints `{ art, nummer, stelle, meldung }` with `art` `schreibweise` or `dokument`; `issue create` and `issue update` return them after writing as well (see [/issues](/en/prozess#issues)). The `hinweise` are not part of `ok` and never lead to exit 1, and without a hit the key is missing entirely.
-
-**Templates through the chain.** If the human brings a design draft, a mockup or a sketch, `/requirement`, `/techplan` and `/issues` carry it on as the line `Vorlage: <Pfad> — verbindlich | Anregung` (template: binding | suggestion): in the goal of the business plan, in the head of the plan, in the context of every package that touches a view. "Binding" means: The plan decides no design question against the template, every affected package names the place in the template and is accepted via a screenshot next to it, and `/requirement` asks whether the project's design source should be switched over first. Without this trace a template evaporates between the stages — all checks green, and the view looks as before.
-
-The skills call only the adapter — they know nothing about `gh` or `glab`. You can change `issueTracker` and `codeHost` in the config at any time; all skills adapt on their next call.
-
-**Processing order = board order.** `issue list --status <spalte>` returns the issues in the order of the board column (top first), not numerically — so you control the processing of `/implement-ready` by drag and drop in the Ready column. Implemented per tracker: GitHub via the manual project order of `gh project item-list` (applies to the standard board view; a view with its own sorting displays differently from what the API returns), GitLab via `--order relative_position`, the own Kanban via the column position of the API. Two deliberate exceptions: the local file tracker knows no positions and stays numerical, and `issue list` without a status filter stays stably numerical everywhere (there is no board order across columns). Consequence: The processing order depends on the board state and is no longer deterministically numerical — that is intended.
-
-#### Origin on the board: `--derived-from`
-<!-- de: 523d3b5f6f1d -->
-
-`issue create` optionally accepts `--derived-from <nummer>` and sends the **project-wide card number** of the **nearest ancestor** along as the field `derivedFrom`. That way the board knows the chain business plan → plan → work package as data and does not have to piece it together from description texts.
-
-Only **one** reference is ever set, the one to the next higher stage — the rest follows from walking along the chain. Who sets it:
-
-| Skill | Reference |
-|---|---|
-| `/requirement` | **never** — the business requirement is the root and has no ancestor |
-| `/task` | **never** — a `[Task]` has no ancestor; it stands in no chain at all, not even as a root |
-| `/techplan` | to the `[Requirement]` issue if the plan came from `/techplan #N`; for a plan from the chat none at all |
-| `/issues` | to the `[Plan]` issue, failing that to the business issue, otherwise none at all |
-
-The adapter checks the form before every network call: Whatever is not a positive integer ends with exit 1 — explicitly also the **bare flag** without a value, which would otherwise pass as `1`. Whether the number exists, points to the card itself or closes a cycle is checked by the server; the upper limit is its business as well and is deliberately not rebuilt here.
-
-**Only `kanbancompat` evaluates the field.** GitHub, GitLab and local accept the option without an error and do not transmit it — no abort, no changed output. A skill can therefore set it regardless of the configured tracker.
-
-**The option only takes effect on creation.** There is no adding it later: A board-less pool idea is unreachable for the adapter (no `get`, no `comment`, no `update`), and a repeated ingest onto the same card discards the value.
-
-#### The gap: a tracker without the field stays silent
-<!-- de: 81168c70b3b4 -->
-
-If the call runs against an instance that does not yet know `derivedFrom`, the unknown key is **silently** ignored: The call ends with **exit 0**, the card is created, and the origin is missing — without an error, without a warning, without a difference in the output.
-
-**This is known and deliberately not safeguarded.** The obvious safeguard would be an echo: read back after creation and check whether the value arrived. Exactly that fails in the most important case — a board-less **pool idea** is not readable, its response carries no echo. A safeguard that does not take effect there would be worse than a named gap: It would create trust that does not hold in the decisive case.
-
-In practice this means: **A successful `issue create` is no proof that the origin was set.** Whoever wants to know for sure reads the card on the board — provided it has a number.
-
-#### Why the body lines stay alongside
-<!-- de: 2eac7f7521a4 -->
-
-The origin is there twice: as a field on the board and as a line in the body (`Plan: Issue #M`, `Fachliche Quelle: Issue #N`, both in the context section). That is no duplication, but two forms with different durability.
-
-The field is the **queryable** form — the board groups by it without taking bodies apart. The lines are the **lasting** one: A **project change deletes the origin** on the board, and in both directions — that of the moved card and that of all cards **pointing to it**. The reason is the uniqueness of the numbers: They are assigned project-wide, a carried-over reference would point to a foreign card after the move. The body lines survive that, because they are text.
-
-On top of that, `github`, `gitlab` and `local` do not know such a field at all. Whoever later deletes the lines as redundant loses the origin at the first move — and in three of four trackers immediately.
-
-#### Evaluating the origin: derived-from-report
-<!-- de: 4ef1488b860d -->
-
-`tools/derived-from-report.mjs` reads the body lines back and shows for every card which reference it would get — as preparation for a possible backfill of the stock. The cards come via stdin, the tool does not fetch them itself:
-
-```bash
-node .claude/kit/board.mjs issue list | node tools/derived-from-report.mjs
-node .claude/kit/board.mjs issue list | node tools/derived-from-report.mjs --json
-node tools/derived-from-report.mjs --help
-```
-
-Without a flag, a readable summary is produced with a counter per state and a list of the cards that need attention. `--json` outputs the same data raw so that a later migration can process it. That the cards are handed over instead of fetched has three reasons: It is testable without a mock server, it works for **every** tracker instead of only for kanbancompat, and the same snapshot can be evaluated twice.
-
-**The tool writes nothing** — neither to the board nor to the file system. It is a dry run and remains one as long as there is no **write path** for `derivedFrom`: The field is set on creation and never changed afterwards. Whether and how the stock is backfilled depends on a decision in the kanban-kit project and is filed as idea **#355**.
-
-**Where to look depends on the document type** — otherwise the state `fehlplatziert` seems arbitrary:
-
-| Document | Valid location |
-|---|---|
-| Work package | section `## Kontext` |
-| `[Plan]` document | head area before `## Ziel`, i.e. before the first `##` heading |
-
-Plan documents have no context section at all; a reader who only knows that one would overlook every intermediate stage of the chain. In both cases only lines **outside code fences** count — an issue that shows the convention as an example must not invent a reference.
-
-Exactly one state results per card:
-
-| State | Meaning |
-|---|---|
-| `vorfahr` | exactly one unambiguous reference, the target card exists |
-| `keiner` | no reference line — the card would stay empty. **No error**, but the normal case for everything created before the convention |
-| `unbekannt` | the reference names a number that does not exist in the handed-over set of cards |
-| `selbstverweis` | the reference points to the card itself |
-| `mehrdeutig` | several lines of the same type with different numbers — no guessing here |
-| `fehlplatziert` | a reference line is outside the valid location while there is none there |
-
-With `unbekannt` and `selbstverweis` the result additionally carries the field `gelesen` with the number that was pointed to.
-
-**What this is good for was shown by the first run:** Of 47 cards with a reference, zero were misplaced and zero ambiguous — but **14 pointed to two ancestors that no longer existed on the board**. A migration would have failed on this, because the server rejects unknown numbers on creation. That is exactly what the dry run is for.
-
-### Local mode
-<!-- de: 83c4bcb53de7 -->
-
-With `issueTracker: local` the adapter creates issues as Markdown files in `issues/`:
-
-```
-issues/
-  0001.md
-  0002.md
-```
-
-Every file has YAML frontmatter:
-
-```markdown
----
-id: 1
-status: backlog
-title: Example issue
-created: 2026-07-01
----
-
-## Kontext
-…
-
-## Aufgabe
-…
-
-## Akzeptanzkriterium
-…
-
-## Abhängigkeiten
-Keine.
-```
-
-The section headings in the body are those of the four-section format and stay German, because the tools read them. The status (`backlog | ready | in_progress | in_review | done`) is in the frontmatter. No board API, no label setup.
-
-### What differs with GitLab
-<!-- de: 7f952698b9fa -->
-
-**Pull request is called merge request.** `/merge-production` creates a merge request instead of a pull request on GitLab.
-
-**Board status via label.** GitLab maps the five columns via labels: `~Backlog`, `~Ready`, `~In progress`, `~In review`, `~Done`. The installer creates the labels automatically if you confirm with "j" during setup. You have to create the board view itself (Issues → Boards → "Add list") once manually in the GitLab UI.
-
-### Setting the configuration
-<!-- de: 92c13380938a -->
-
-```json
-{
-  "codeHost": "github",
-  "issueTracker": "local",
-  ...
-  "local": { "issuesDir": "issues" },
-  "github": { "projectNumber": 11 }
-}
-```
-
-You can change both fields manually at any time. All skills read them on their next call.
-
-### Toolbox (private setup)
-<!-- de: ac419091bb37 -->
-
-Not a publicly promoted kit feature: Toolbox is a personal Kanban tool of the author (own backend, own frontend), used by the author as an issue tracker. The installer does not ask about it, and this section serves primarily for the author's own reference — not as a general recommendation.
-
-`codeHost` stays independent of it (usually `github` or `gitlab`): Toolbox is only an issue tracker, not a code host; pull requests still run via the platform configured there.
-
-```json
-{
-  "codeHost": "github",
-  "issueTracker": "toolbox",
-  "toolbox": { "host": "https://toolbox.mwolff.org" }
-}
-```
-
-**Authentication** runs via a personal Kanban access token (PAT), not via the Keycloak login of the Toolbox web interface. Every call carries the token in the header `X-Kanban-Token`; it acts exclusively on `/api/kanban/**`. Setting up the `tbx` CLI and token management are part of the Toolbox project itself, not of this kit.
-
-`board.mjs` resolves the token in three ways — the first hit wins:
-
-1. **`TBX_TOKEN`** (environment variable): highest priority. Handy for passing a token per terminal session or per call without writing anything into the project — that way you switch, for example, an entire night run to a night board of its own (see [Night mode](#night-mode)).
-2. **`toolbox.tokenFile`** in `workflow.config.json`: path (relative to the project directory) to a file that contains only the token. That way every app gets its own project/board-bound token. The token file belongs in `.gitignore` — only the path is checked in, never the secret.
-3. **Global `tbx` login** (fallback, previous behaviour): create a token in the Toolbox web UI, run `tbx auth login`. The token is then under `~/.config/toolbox-cli/tokens.json` (can be overridden via `TBX_CONFIG_DIR`) and applies to all projects on the machine that use neither of the other two ways.
-
-**No plain-text token in `workflow.config.json`.** The config is checked in and shared. If a `toolbox.token` is in it in plain text, `board.mjs` aborts with a clear message instead of silently using the secret — use `TBX_TOKEN` or `toolbox.tokenFile`.
-
-**Behind a proxy** — for instance in the Claude Code sandbox, which routes network traffic via `HTTPS_PROXY` — Node's built-in `fetch` only uses the proxy if `NODE_USE_ENV_PROXY=1` is set at start; otherwise every board call ends with "fetch failed" (Node's message when the request could not be sent). If `HTTPS_PROXY` (or `https_proxy`) is set and the switch is not, `board.mjs` therefore restarts itself once with `NODE_USE_ENV_PROXY=1` (help and `--version` excepted), and the night runner sets the variable for every session. Your own Node calls with network access need the variable just the same. If a call behind a proxy still fails at name resolution or connection, the error message names this remedy — the way is the variable, not leaving the sandbox (Issue #998).
-
-**Example: a second app with its own token on the same kanban-kit.** The server supports project/board-bound tokens: create a second token in the admin UI and bind it to project 2/board 2. In the second project, then either set `TBX_TOKEN` or point in the config to a gitignored token file:
-
-```json
-{
-  "codeHost": "github",
-  "issueTracker": "toolbox",
-  "toolbox": {
-    "host": "https://toolbox.mwolff.org",
-    "tokenFile": ".claude/tbx.token"
-  }
-}
-```
-
-```bash
-echo "<token-from-the-admin-ui>" > .claude/tbx.token
-echo ".claude/tbx.token" >> .gitignore
-```
-
-The global `tbx` login of app 1 stays untouched — app 1 keeps falling back to `tokens.json`, app 2 uses its own token from the file. Host resolution is independent of this (`toolbox.host` in the config, otherwise the host from the `tbx` login).
-
-**Column names are fixed.** Unlike GitHub and GitLab, the five statuses (`backlog`, `ready`, `in_progress`, `in_review`, `done`) cannot be renamed here via `columns` in the config — internally they are mapped 1:1 to Toolbox's Kanban columns `BACKLOG`, `READY`, `IN_PROGRESS`, `IN_REVIEW`, `DONE`.
-
-**New issues land directly in the backlog.** Against a kanban-kit ≥ 1.5, `issue create` creates the card immediately with its board number — it is right away in the Backlog column and addressable via `#N` from then on. That is the default; a project does not have to configure anything for it.
-
-**`ideaStored: true` steers into the project idea pool instead.** Then a board-less idea is created: It appears in no column, and the board number only exists once you schedule it. The adapter reports this back honestly (`ideaId` + `pending: true` instead of a number, with a hint text); a response without a usable identifier aborts hard. Scheduling is deliberately reserved for you — it is the same human review as the former pulling up from the idea store.
-
-The switch is called `ideaStored` in the config, but the field on the wire is `direct`: A missing `ideaStored` or one set to `false` sends `direct: true`, an `ideaStored: true` sends nothing at all. The formerly sent wire field `ideaStored` goes over the wire in **no** case any more — the server ignores it anyway.
-
-Four cases, so that it is clear what happens when:
-
-| Config | Sent | Result |
-|---|---|---|
-| not set | `direct: true` | card in the backlog, with number |
-| `ideaStored: false` | `direct: true` | card in the backlog, with number |
-| `ideaStored: true` | no `direct` | idea in the pool, `ideaId` + `pending` |
-| legacy backend without `direct` | irrelevant | as before: number returned |
-
-If creation is direct — that is, in the regular case — but only an `ideaId` comes back, `issue create` **aborts** instead of reporting `pending`: Otherwise the call would look successful while the card has no number. The message names `ideaStored: true` as the way into pool mode. Older backends (original Toolbox, kanban-kit before 1.5) behave unchanged; GitHub and GitLab trackers are not affected by any of this.
-
-#### Retries, idempotency keys and the three outcomes
-<!-- de: 7f7b14ee2668 -->
-
-A night run sends hundreds of board commands in a row. Since kanban-kit 2.5 the board limits them per person and rejects with `429`, `Retry-After` (seconds) and the problem detail `type: urn:manban:overload`. Without a counterpart in the adapter, the run aborts at some point and leaves a half-processed chain behind.
-
-That is why every Toolbox call has a **time limit per attempt** (10 seconds), a **retry loop** with growing waiting time and jitter, and an **overall budget**: 30 seconds interactively, 120 seconds with `KIT_AGENT_MODEL` set — the same signal as for the header `X-Agent-Model`. At night nobody sits next to it who would be bothered by two minutes; interactively, half a minute is the limit of what is bearable. `Retry-After` beats the own schedule: The server knows better when its window is open again.
-
-**`KIT_TOOLBOX_BUDGET_MS`** sets the overall budget explicitly in milliseconds and beats both regular values; only a positive integer value counts, everything else falls back to the rule. The variable is meant for tests that start `board.mjs` as a process of its own against a server answering persistently with errors — there the waiting is real, and without a short budget every call costs the full two minutes. It deliberately takes effect everywhere and not only under test: An unnamed back door that changes behaviour would be worse than a documented adjusting screw.
-
-**Retries happen only where it is safe:**
-
-| Case | Retry | Why |
-|---|---|---|
-| `429` with `type: urn:manban:overload` | yes, for every method | A rejection has executed nothing |
-| `429` without this `type` | no | Says nothing about the outcome |
-| `5xx` for `GET`, `PUT`, `DELETE` | yes | Without consequence, or the same result on repetition |
-| `5xx` for `POST` **with** `Idempotency-Key` | yes | The same key executes the effect at most once |
-| `5xx` for `POST` **without** key | no | Otherwise a night-run message would be duplicated after a `502` of the proxy |
-| timeout, connection drop | yes | The likely failure mode under full load |
-| connection refused (`ECONNREFUSED`, `ENOTFOUND`) | no | Demonstrably no call went out |
-| `401` | never | A revoked token does not become valid by waiting |
-| any other status (`403`, `404`, `409` …) | no | Reported immediately |
-
-Every retry attempt writes a line to stderr (`board: POST /api/kanban/items — Versuch 2 endete mit HTTP 503, erneut in 1000 ms (Frist 120 s)` — attempt 2 ended with HTTP 503, again in 1000 ms, deadline 120 s). Whoever watches a night run can thus tell waiting from hanging. The successful call reports nothing — one line per board command would drown exactly this signal.
-
-**The three outcomes.** Every aborted call says what became of its effect:
-
-- **ausgeführt** (executed) — the server answered with `2xx`.
-- **nicht ausgeführt** (not executed) — an answered rejection (`4xx`) or demonstrably no call that went out. Repeating is safe.
-- **Ausgang unklar** (outcome unclear) — a writing call went out and got no usable answer (timeout, connection drop or `5xx`), and the budget is exhausted. The effect may have occurred.
-
-The third value is deliberately not a special case of the second: A timeout reported as „nicht ausgeführt“ invites exactly the repetition that attaches a completion report to the board a second time.
-
-**The key comes back from outside.** `POST /api/kanban/items` and `POST /api/kanban/items/{id}/comments` — the two endpoints that evaluate it on the server side — carry an `Idempotency-Key`. It is created per job and stays the same across all attempts. The message for „Ausgang unklar“ names it together with the complete command for the repetition:
-
-```
-Toolbox-API-Fehler: HTTP 502
-Ausgang unklar: POST /api/kanban/items/700/comments ging hinaus, blieb aber ohne
-verwertbare Antwort — die Wirkung kann eingetreten sein. Schluessel: 5f2c-…-91ab.
-Mit genau diesem Schluessel wiederholen — derselbe Schluessel fuehrt die Wirkung
-hoechstens einmal aus:
-  node .claude/kit/board.mjs issue comment 7 --text-file /tmp/7-bericht.md --idempotency-key 5f2c-…-91ab
-```
-
-The message says: Toolbox API error; outcome unclear — the call went out but got no usable answer, the effect may have occurred; repeat with exactly this key, because the same key executes the effect at most once.
-
-A key internal to the process only would turn every manual repetition into a new job. That is why `issue create` and `issue comment` accept it again via **`--idempotency-key <wert>`**. Without the switch the behaviour stays unchanged. A call without a key — `/labels`, `/night-runs` — says so explicitly in the message and refers to checking on the board.
-
-**Other backends.** For servers without the overload `type`, nothing changes: `429` without `urn:manban:overload` is not retried, and the header `Idempotency-Key` is ignored there. With the trackers `github`, `gitlab` and `local`, the call accepts `--idempotency-key` without consequence.
-
-## Updating and multiple projects
-<!-- de: be26643cf235 -->
-
-Because the skills are project-independent and only the config is project-local, you update the kit by running the installer again. Your config is preserved (the installer asks you before overwriting it).
-
-In a new project you only need to run the installer or copy `workflow.config.json` from an existing project and adjust the branch names. All skills are ready to use immediately.
-
-If several projects work against the same Toolbox/kanban-kit tracker, each project gets its own project/board-bound token: via the `TBX_TOKEN` environment variable or via `toolbox.tokenFile` in the config (gitignored file, no plain-text token in the shared `workflow.config.json`). Precedence and an example are in the section [Toolbox (private setup)](#toolbox-private-setup).
-
-## Troubleshooting
-<!-- de: 5e2f919f616e -->
-
-**The skills do not show up in `/help`.**
-Did you restart Claude Code after the installation? The skills are loaded at start. Also check whether the files are in the right directory: `~/.claude/skills/` for a global installation, `.claude/skills/` for a project-local one.
-
-**`/implement-ready` does nothing or reports "Ready ist leer".**
-("Ready is empty".) At least one issue must be in the Ready column (GitHub) or marked with the label `~Ready` (GitLab). The skill processes only Ready, it does not pull any issues forward from the backlog.
-
-**`/kit-review` produces thin or overly general findings.**
-Check `reviewScope` in the config. With `diff` the reviewer sees only the changed lines. For larger refactorings, switch to `full`. In very large repos `full` can overload the context window; then better use `diff` and add manually selected file paths in the review prompt.
-
-**`/push-main` does not happen, or the AI does not ask for it.**
-The skill is locked against autonomous invocation. You have to type the exact trigger phrase (by default `push main`). An earlier approval in the same session does not apply to new commits.
-
-**`/session-start` or `/document` reports an error.**
-Check whether `kontext.config.json` exists (globally in `~/.claude/` or locally in `.claude/`). Both skills also run without a vault in degraded mode. If you use `codeHost: github` or `issueTracker: github`, `gh` must be authenticated. If you use `gitlab`, `glab` needs `auth login`. In local mode there is no external CLI dependency.
+## Names for those moving up from version 4
+<!-- de: 1d4adf73a086 -->
+
+**Skills.** An old name is rejected, and the message names the new one.
+
+| Old | New |
+|-----|-----|
+| `/kontext`, `/context` | `/session-start` |
+| `/fachplan` | `/requirement` |
+| `/review` | `/kit-review` |
+| `/plan` (signpost) | dropped, the planning step is `/techplan` |
+
+**Command files.**
+
+| Old | New |
+|-----|-----|
+| `kit/befunde.mjs` | `kit/findings.mjs` |
+| `kit/aufwand.mjs` | `kit/effort.mjs` |
+| `kit/wirksamkeit.mjs` | `kit/effectiveness.mjs` |
+| `einstellungen.mjs` | `settings.mjs` |
+
+**Commands.**
+
+| Command | Old | New |
+|----------|-----|-----|
+| `kit/board.mjs` | `kontext`, `sitzung` | `context`, `session` |
+| `kit/board.mjs` | `issue melden`, `nightrun melden`, `sitzung melden` | `issue report`, `nightrun report`, `session report` |
+| `kit/board.mjs` | `issue stand`, `issue auftrag`, `issue ursprung` | `issue run-state`, `issue brief`, `issue origin` |
+| `kit/board.mjs` | `issue check-geschuetzt`, `issue vorgeschichte`, `issue fragen` | `issue check-protected`, `issue history`, `issue questions` |
+| `kit/board.mjs` | `issue-review pruefauftrag` | `issue-review review-brief` |
+| `kit/board.mjs` | `hook bash-pruefen` | `hook bash-check` |
+| `kit/board.mjs` | `code schutz` with `einrichten`, `aussetzen`, `wiederherstellen`, `nachpruefen` | `code protection` with `setup`, `suspend`, `restore`, `verify` |
+| `kit/checks.mjs` | `bereiche` | `areas` |
+| `kit/findings.mjs` | `arten`, `pruefen`, `buchen`, `vorschlag`, `auswerten`, `befund` | `kinds`, `check`, `record`, `suggest`, `evaluate`, `finding` |
+| `kit/effort.mjs` | `auswerten`, `befund`, `auskunft` | `evaluate`, `finding`, `info` |
+| `kit/effectiveness.mjs` | `auswerten`, `befund`, `kandidaten` | `evaluate`, `finding`, `candidates` |
+| `kit/worktree.mjs` | `anlegen`, `entfernen`, `im`, `nachziehen-pruefen`, `rueckweg` | `create`, `remove`, `in`, `catch-up-check`, `return` |
+| `kit/worktree.mjs` | `vorbereitung-festhalten`, `vorbereitung-pruefen` | `record-preparation`, `check-preparation` |
+
+**Options.**
+
+| Command | Old | New |
+|----------|-----|-----|
+| `kit/board.mjs` | `--teil`, `--zustand`, `--spalte`, `--pfad`, `--zweig`, `--nur-pfad` | `--part`, `--state`, `--column`, `--path`, `--branch`, `--path-only` |
+| `kit/board.mjs` | `--stufe`, `--rolle`, `--datei`, `--material-datei`, `--auftrag`, `--ausgabe`, `--protokoll` | `--stage`, `--role`, `--file`, `--material-file`, `--brief`, `--output`, `--transcript` |
+| `kit/board.mjs` | `--begriffe`, `--dateien`, `--ohne`, `--vergleich` | `--terms`, `--files`, `--without`, `--compare` |
+| `kit/checks.mjs` | `--stufe`, `--bereich`, `--abschluss`, `--frisch`, `--wiederholen` | `--stage`, `--area`, `--finish`, `--fresh`, `--retry` |
+| `kit/night.mjs` | `--kette`, `--pruefen`, `--waechter` | `--chain`, `--check`, `--watcher` |
+| `kit/findings.mjs` | `--datei`, `--stufe`, `--karte`, `--art`, `--abgelehnt` | `--file`, `--stage`, `--card`, `--kind`, `--rejected` |
+| `kit/effort.mjs` | `--laeufe` | `--runs` |
+| `kit/effectiveness.mjs` | `--fenster` | `--window` |
+| `kit/worktree.mjs` | `--praefix`, `--ergebnis`, `--offen`, `--verwerfen` | `--prefix`, `--result`, `--open`, `--discard` |
+| `install.mjs` | `--sprache`, `--schutz` | `--language`, `--protection` |
+
+**Choice values.**
+
+| Place | Old | New |
+|--------|-----|-----|
+| `kit/board.mjs --art` | `fachlich`, `idee`, `mensch` | `requirement`, `idea`, `human` |
+| `kit/board.mjs --state` | `laeuft`, `abgebrochen`, `wartet`, `fertig` | `running`, `aborted`, `waiting`, `done` |
+| `kit/board.mjs --stage` | `fachlich` | `requirement` |
+| `kit/checks.mjs --stage` | `paket` | `package` |
+| `kit/findings.mjs --stage` | `fachlich` | `requirement` |
+| `kit/worktree.mjs --result` | `gruen`, `gruen-offen`, `rot` | `green`, `green-open`, `red` |
+| `kit/worktree.mjs --fetch` | `fehlgeschlagen` | `failed` |
+| `/push-main` | `vorbereiten`, `notfall` | `prepare`, `emergency` |
+
+**Title prefixes.** New cards carry only the English ones; the kit still recognises the German ones on open cards.
+
+| Old | New |
+|-----|-----|
+| `[Fachlich]` | `[Requirement]` |
+| `[Idee]` | `[Idea]` |
+| `[Mensch]` | `[Human]` |
+
+**Labels.** The kit sets only the English ones; it still recognises the German ones on open cards and removes them wherever it would remove the English one.
+
+| Old | New |
+|-----|-----|
+| `kit:klaeren` | `kit:clarify` |
+| `kit:geschuetzt` | `kit:protected` |
+| `kit:durchziehen` | `kit:carry-through` |
+| `kit:pruefen` | `kit:check` |
+| `lauf:laeuft` | `run:running` |
+| `lauf:abgebrochen` | `run:aborted` |
+| `lauf:wartet` | `run:waiting` |
+| `review:fertig` | `review:done` |
+| `ziel:plan` | `goal:plan` |
+| `ziel:pakete` | `goal:packages` |
+| `ziel:umsetzung` | `goal:implementation` |
+| `ziel:push-vorbereitet` | `goal:push-prepared` |
 
 ## License
 <!-- de: 574befe785b2 -->

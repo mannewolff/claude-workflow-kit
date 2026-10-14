@@ -389,7 +389,7 @@ These rules apply as well:
 - **New names are checked.** If the plan introduces a name a human types, it says that it collides with no built-in command of Claude Code.
 
 ## Checks before the commit
-<!-- de: 0c423f7ce163 -->
+<!-- de: ced916045baa -->
 
 Every implementation ends with `node .claude/kit/checks.mjs run` before it commits. The skills call it themselves; you see its result in the completion report under “Tests und Checks”: which checks ran, with result and duration, and which were skipped, each with its reason.
 
@@ -407,7 +407,7 @@ The stages build on each other: `push main` runs the package and push stages in 
 
 **The commit gate.** If it is hooked in, it rejects every commit that was not preceded by a green check run on the same state. It compares the checked files with what is really committed; a file changed after the check does not get through. A red run means: correct and repeat the same call. It first runs the checks that were last red and then the full run once.
 
-How to set up areas, stages and the gate is described under [The config file](/en/dokumentation#the-config-file) and in the [settings](/en/einstellungen).
+How to set up areas, stages and the gate is described under [The config file](/en/einrichtung#the-config-file) and in the [settings](/en/einstellungen).
 
 ## The check run
 <!-- de: 527e753dba37 -->

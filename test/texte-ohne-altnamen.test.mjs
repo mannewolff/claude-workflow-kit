@@ -66,8 +66,25 @@ const ALTE = [
 // Eine Tabellenzeile alt → neu, die den neuen Namen traegt, darf den alten nennen.
 const tabelleAltNeu = (zeile, neu) => /^\s*\|/.test(zeile) && zeile.includes(neu);
 
+// Der Abschnitt der Namenstabelle fuer Umsteiger von Version 4 in `docs/dokumentation.md`
+// und seiner englischen Fassung ist ausgenommen (Plan #1652, E5).
+const AUSNAHMEN = new Set(["Namen für Umsteiger von Version 4", "Names for those moving up from version 4"]);
+
+/** Die Zeilen eines Texts mit Nummer, ohne die der Ausnahme-Abschnitte. */
+function gepruefteZeilen(inhalt) {
+  const aus = [];
+  let ausnahme = 0;
+  inhalt.split("\n").forEach((zeile, i) => {
+    const ebene = /^#{1,6} /.test(zeile) ? zeile.indexOf(" ") : 0;
+    if (ebene && ausnahme && ebene <= ausnahme) ausnahme = 0;
+    if (ebene && !ausnahme && AUSNAHMEN.has(zeile.slice(ebene + 1).trim())) ausnahme = ebene;
+    if (!ausnahme) aus.push([zeile, i]);
+  });
+  return aus;
+}
+
 function funde(inhalt) {
-  return inhalt.split("\n").flatMap((zeile, i) => ALTE
+  return gepruefteZeilen(inhalt).flatMap(([zeile, i]) => ALTE
     .filter(([, muster, neu]) => muster.test(zeile) && !tabelleAltNeu(zeile, neu))
     .map(([was]) => `${i + 1}: ${was} — ${zeile.trim().slice(0, 140)}`));
 }
@@ -95,6 +112,8 @@ test("Pruefung: ein alter Name ausserhalb einer Tabelle faellt auf, in der Tabel
   assert.equal(funde("| `/fachplan` | `/requirement` |").length, 0);
   assert.equal(funde("| `/fachplan` | `/techplan` |").length, 1, "die Tabellenzeile muss den neuen Namen tragen");
   assert.equal(funde("siehe `docs/plan.md`").length, 0);
+  assert.equal(funde("## Namen für Umsteiger von Version 4\n\nRufe `/fachplan` auf.\n").length, 0, "die Namenstabelle ist ausgenommen");
+  assert.equal(funde("## Namen für Umsteiger von Version 4\n\n## Weiter\n\nRufe `/fachplan` auf.\n").length, 1, "die Ausnahme endet an der naechsten Ueberschrift");
 });
 
 test("Abschnitt Titel-Praefixe: schreibt englisch, erkennt beide", () => {

@@ -38,8 +38,8 @@ const themeDe: DefaultTheme.Config = {
       text: "Dokumentation",
       items: [
         { text: "Konzept & Voraussetzungen", link: "/dokumentation" },
-        { text: "Installation & Config", link: "/dokumentation#die-config-datei" },
-        { text: "Issue-Tracker & Code-Host", link: "/dokumentation#issue-tracker-und-code-host" },
+        { text: "Installation & Config", link: "/einrichtung" },
+        { text: "Issue-Tracker & Code-Host", link: "/einrichtung#issue-tracker-und-code-host" },
         { text: "Die achtzehn Skills", link: "/prozess#die-skills" },
         { text: "Vollständiger Durchlauf", link: "/prozess#ein-vollstandiger-durchlauf" },
         { text: "PO-Schleife", link: "/prozess#po-schleife-fachliche-und-technische-issues" },
@@ -94,8 +94,8 @@ const themeEn: DefaultTheme.Config = {
       text: "Documentation",
       items: [
         { text: "Concept & prerequisites", link: "/en/dokumentation" },
-        { text: "Installation & config", link: "/en/dokumentation#the-config-file" },
-        { text: "Issue tracker & code host", link: "/en/dokumentation#issue-tracker-and-code-host" },
+        { text: "Installation & config", link: "/en/einrichtung" },
+        { text: "Issue tracker & code host", link: "/en/einrichtung#issue-tracker-and-code-host" },
         { text: "The eighteen skills", link: "/en/prozess#the-skills" },
         { text: "A complete pass", link: "/en/prozess#a-complete-pass" },
         { text: "PO loop", link: "/en/prozess#po-loop-business-and-technical-issues" },

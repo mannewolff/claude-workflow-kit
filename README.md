@@ -66,11 +66,11 @@ Zwei Dateien unter `.claude/` liegen trotzdem im Repo, beide aus einem eigenen G
 
 ## Bereichsbezogene Pruefungen
 
-Ein `buildChecks`-Eintrag kann sagen, fuer welche Bereiche des Projekts er zustaendig ist (`areas`), und der Block `checkAreas` ordnet diesen Bereichen Pfadmuster zu. Dann laeuft eine Pruefung nur, wenn ihr Bereich beruehrt wurde; im Zweifel laeuft alles, und ohne `checkAreas` aendert sich nichts. Die Formen, die beiden Pruef-Anker und die Zweifelsregel stehen im Kapitel „Bereichsbezogene Pruefungen" in [`docs/dokumentation.md`](docs/dokumentation.md) — hier bewusst kein zweiter vollstaendiger Text, zwei Orte fuer dieselbe Aussage driften auseinander.
+Ein `buildChecks`-Eintrag kann sagen, fuer welche Bereiche des Projekts er zustaendig ist (`areas`), und der Block `checkAreas` ordnet diesen Bereichen Pfadmuster zu. Dann laeuft eine Pruefung nur, wenn ihr Bereich beruehrt wurde; im Zweifel laeuft alles, und ohne `checkAreas` aendert sich nichts. Die Formen, die beiden Pruef-Anker und die Zweifelsregel stehen im Kapitel „Bereichsbezogene Pruefungen" in [`docs/einrichtung.md`](docs/einrichtung.md) — hier bewusst kein zweiter vollstaendiger Text, zwei Orte fuer dieselbe Aussage driften auseinander.
 
 ## Commit-Gate
 
-Ein projektlokal installiertes Kit kann einen `pre-commit`-Hook einhaengen, der jeden Commit abweist, dem kein gruener `node .claude/kit/checks.mjs run` auf demselben Stand vorausging — geprueft wird Datei fuer Datei gegen den Index. Hook und Logik liegen versioniert unter `.githooks/` und wandern mit dem Klon; die Aktivierung ist lokale git-Config und wandert nicht. Zwei Grenzen gehoeren dazu: `--no-verify` umgeht das Gate, und ein frischer Klon hat es erst nach einem Installer-Lauf. Prueflogik, Geltungsbereich und die uebrigen Grenzen stehen im Kapitel „Das Commit-Gate" in [`docs/dokumentation.md`](docs/dokumentation.md) — hier bewusst kein zweiter vollstaendiger Text.
+Ein projektlokal installiertes Kit kann einen `pre-commit`-Hook einhaengen, der jeden Commit abweist, dem kein gruener `node .claude/kit/checks.mjs run` auf demselben Stand vorausging — geprueft wird Datei fuer Datei gegen den Index. Hook und Logik liegen versioniert unter `.githooks/` und wandern mit dem Klon; die Aktivierung ist lokale git-Config und wandert nicht. Zwei Grenzen gehoeren dazu: `--no-verify` umgeht das Gate, und ein frischer Klon hat es erst nach einem Installer-Lauf. Prueflogik, Geltungsbereich und die uebrigen Grenzen stehen im Kapitel „Das Commit-Gate" in [`docs/einrichtung.md`](docs/einrichtung.md) — hier bewusst kein zweiter vollstaendiger Text.
 
 ## Dokumentation
 

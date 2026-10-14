@@ -1,9 +1,9 @@
 # Glossary
-<!-- de: 3a254ea17ea5 -->
+<!-- de: f6a397ec3df1 -->
 
 The documentation is available in German and in English. The English version uses the terms from the left column and gives the German term in parentheses at its first occurrence on a page.
 
-Commands and verbatim quoted messages stay unchanged in both languages. Skills, labels, title prefixes and settings carry English names in both languages and are therefore not listed here but under [Skills, commands and entry files](/en/dokumentation#skills-commands-and-entry-files), [Labels and title prefixes](/en/dokumentation#labels-and-title-prefixes) and [All settings](/en/einstellungen).
+Commands and verbatim quoted messages stay unchanged in both languages. Skills, labels, title prefixes and settings carry English names in both languages and are therefore not listed here but under [Names for those moving up from version 4](/en/dokumentation#names-for-those-moving-up-from-version-4), [Labels and title prefixes](/en/einrichtung#labels-and-title-prefixes) and [All settings](/en/einstellungen).
 
 | English | German |
 |---------|--------|

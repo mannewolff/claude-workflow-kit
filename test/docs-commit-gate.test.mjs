@@ -67,7 +67,7 @@ test("[docs] der Bahn-1-Absatz der Doku traegt denselben Satz", () => {
 });
 
 test("[docs] der Doku-Abschnitt beschreibt Prueflogik und alle vier Grenzen", () => {
-  const text = lies("docs", "dokumentation.md");
+  const text = lies("docs", "einrichtung.md");
   const start = text.indexOf("### Das Commit-Gate");
   assert.notEqual(start, -1, "der Abschnitt fehlt");
   const abschnitt = text.slice(start, text.indexOf("\n## ", start));
@@ -81,7 +81,7 @@ test("[docs] der Doku-Abschnitt beschreibt Prueflogik und alle vier Grenzen", ()
 });
 
 test("[docs] die Doku sagt, dass interaktiv kein Netz greift", () => {
-  const text = lies("docs", "dokumentation.md");
+  const text = lies("docs", "einrichtung.md");
   const start = text.indexOf("### Das Commit-Gate");
   const abschnitt = text.slice(start, text.indexOf("\n## ", start));
   assert.match(abschnitt, beide("interaktiv"), "der interaktive Fall fehlt");
@@ -94,7 +94,7 @@ test("[docs] das README nennt das Gate in einem Absatz und verweist auf die Doku
   assert.ok(absatz, "das README nennt das Gate nicht");
   assert.match(absatz, /--no-verify/, "die erste Grenze fehlt");
   assert.match(absatz, beide("Klon|Clone|Installer"), "die zweite Grenze fehlt");
-  assert.match(absatz, /docs\/dokumentation\.md|dokumentation/, "der Verweis auf die Doku fehlt");
+  assert.match(absatz, /docs\/einrichtung\.md/, "der Verweis auf die Doku fehlt");
   // Kein zweiter vollstaendiger Text: Zwei Orte fuer dieselbe Aussage driften
   // auseinander — dasselbe Muster wie bei checkAreas.
   const traeger = text.split(/\n\s*\n/).filter((a) => !a.trimStart().startsWith("#") && /Commit-Gate/.test(a));

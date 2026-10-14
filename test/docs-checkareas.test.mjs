@@ -23,6 +23,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
 const DOKU = lies("docs", "dokumentation.md");
+const EINRICHTUNG = lies("docs", "einrichtung.md");
 const PROZESS = lies("docs", "prozess.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
 const README = lies("README.md");
@@ -36,8 +37,8 @@ function skillAbschnitt(ueberschrift) {
 
 /** Der Doku-Abschnitt zu den bereichsbezogenen Pruefungen — ueber seine Ueberschrift gefunden. */
 function bereichsAbschnitt() {
-  const treffer = DOKU.split(/\n(?=### )/).find((a) => /^### .*(checkAreas|Bereich)/.test(a));
-  assert.ok(treffer, "kein ###-Abschnitt zu den bereichsbezogenen Pruefungen in docs/dokumentation.md");
+  const treffer = EINRICHTUNG.split(/\n(?=### )/).find((a) => /^### .*(checkAreas|Bereich)/.test(a));
+  assert.ok(treffer, "kein ###-Abschnitt zu den bereichsbezogenen Pruefungen in docs/einrichtung.md");
   return treffer.split(/\n#{2,3} /)[0];
 }
 
@@ -179,7 +180,7 @@ test("die Doku weist mutationCommand als ausserhalb der Auswahl aus", () => {
 // --- Punkt 7: die bestehenden Aussagen ueber den vollen Lauf --------------
 
 test("das Konfigurationskapitel behauptet nicht mehr den vollen Lauf", () => {
-  const kapitel = DOKU.slice(DOKU.indexOf("## Die Config-Datei")).split(/\n## /)[0];
+  const kapitel = EINRICHTUNG.slice(EINRICHTUNG.indexOf("## Die Config-Datei")).split(/\n## /)[0];
   const absatz = absatzMit(kapitel, /`buildChecks`/, /local-check/);
   assert.ok(absatz, "kein buildChecks-Absatz im Konfigurationskapitel");
   assert.doesNotMatch(absatz, /Alle müssen grün sein/,
@@ -286,6 +287,6 @@ test("die Vorlage nennt in Regel W3 die betroffenen Checks", () => {
 test("das README nennt checkAreas und verweist im selben Absatz auf die Doku", () => {
   const absatz = absatzMit(README, /checkAreas/);
   assert.ok(absatz, "das README nennt checkAreas nicht");
-  assert.match(absatz, /docs\/dokumentation\.md|docs\.mwolff\.org/,
+  assert.match(absatz, /docs\/einrichtung\.md|docs\.mwolff\.org/,
     "der Verweis auf das Doku-Kapitel fehlt im selben Absatz");
 });

@@ -376,7 +376,7 @@ Die Stufen bauen aufeinander auf: `push main` fährt Paket- und Push-Stufe volls
 
 **Das Commit-Gate.** Ist es eingehängt, weist es jeden Commit ab, dem kein grüner Prüflauf auf demselben Stand vorausging. Es vergleicht die geprüften Dateien mit dem, was wirklich committet wird; eine Datei, die nach der Prüfung geändert wurde, lässt es nicht durch. Ein roter Lauf heißt: korrigieren und denselben Aufruf wiederholen. Er fährt zuerst die zuletzt roten Prüfungen und danach einmal den vollen Lauf.
 
-Wie man Bereiche, Stufen und das Gate einrichtet, steht unter [Die Config-Datei](/dokumentation#die-config-datei) und in den [Einstellungen](/einstellungen).
+Wie man Bereiche, Stufen und das Gate einrichtet, steht unter [Die Config-Datei](/einrichtung#die-config-datei) und in den [Einstellungen](/einstellungen).
 
 ## Der Prüflauf
 

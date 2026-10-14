@@ -2,7 +2,7 @@
 
 Die Doku erscheint auf Deutsch und auf Englisch. Die englische Fassung verwendet die Begriffe der rechten Spalte und nennt beim ersten Vorkommen auf einer Seite den deutschen Begriff in Klammern.
 
-Befehle und wörtlich zitierte Meldungen bleiben in beiden Sprachen unverändert. Skills, Labels, Titel-Präfixe und Einstellungen tragen in beiden Sprachen englische Namen und stehen darum nicht hier, sondern unter [Skills, Befehle und Einstiegsdateien](/dokumentation#skills-befehle-und-einstiegsdateien), [Labels und Titel-Präfixe](/dokumentation#labels-und-titel-prafixe) und [Alle Einstellungen](/einstellungen).
+Befehle und wörtlich zitierte Meldungen bleiben in beiden Sprachen unverändert. Skills, Labels, Titel-Präfixe und Einstellungen tragen in beiden Sprachen englische Namen und stehen darum nicht hier, sondern unter [Namen für Umsteiger von Version 4](/dokumentation#namen-fur-umsteiger-von-version-4), [Labels und Titel-Präfixe](/einrichtung#labels-und-titel-prafixe) und [Alle Einstellungen](/einstellungen).
 
 | Deutsch | Englisch |
 |---------|----------|

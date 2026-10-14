@@ -25,7 +25,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** Die Auslieferungsvorlage; die Kopie unter .claude/ ist Installer-Ausgabe. */
 const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
-const DOKU = readFileSync(join(repoRoot, "docs", "dokumentation.md"), "utf-8");
+const DOKU = readFileSync(join(repoRoot, "docs", "einrichtung.md"), "utf-8");
 
 /** Ein `##`-Abschnitt der Vorlage, bis zur naechsten Trennlinie. */
 function abschnitt(ueberschrift) {
@@ -37,7 +37,7 @@ function abschnitt(ueberschrift) {
 /** Ein Abschnitt der Doku, bis zur naechsten Ueberschrift gleicher oder hoeherer Ebene. */
 function dokuAbschnitt(muster) {
   const treffer = DOKU.match(muster);
-  assert.ok(treffer, `kein Abschnitt zu ${muster} in docs/dokumentation.md`);
+  assert.ok(treffer, `kein Abschnitt zu ${muster} in docs/einrichtung.md`);
   const idx = DOKU.indexOf(treffer[0]);
   return DOKU.slice(idx + treffer[0].length).split(/\n##+ /)[0];
 }
