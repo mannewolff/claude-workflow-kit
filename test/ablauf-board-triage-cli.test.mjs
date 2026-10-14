@@ -52,7 +52,7 @@ test("ohne Schalter: einstieg, ablage und stand", () => imProjekt((dir) => {
   assert.deepEqual(ausgabe.einstieg, { start: true, grund: null, meldung: null });
   assert.deepEqual(ausgabe.ablage, {
     pfad: ".claude/ideas/1", vorhanden: true,
-    dateien: [{ name: "skizze.png", gelesen: true, vorlageZiel: "design/ideas/1/skizze.png" }],
+    dateien: [{ name: "skizze.png", gelesen: true, vorlageZiel: "design/ideas/1/skizze.png", herkunft: "ablage" }],
   });
   assert.equal(ausgabe.stand.offen, 1);
   assert.equal(ausgabe.stand.punkte.length, 2);

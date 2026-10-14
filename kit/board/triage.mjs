@@ -4,18 +4,21 @@
  * Idee liegt, wie weit der geklaerte Stand im Body der Idee ist und ob ein neuer Body den Text
  * der Idee und die bestaetigten Punkte behaelt.
  *
- * Reine Funktionen ohne Board-Zugriff; den Zugriff traegt allein der Einstieg in
- * kit/board.mjs, `issue triage`. Gespraechsfuehrung, Empfehlung und Bahnvorschlag sind Urteil
+ * Ohne eigenen Board-Zugriff; den Zugriff traegt der Einstieg in kit/board.mjs, `issue triage`,
+ * und reicht ihn fuer die Anhaenge als Tracker herein. Gespraechsfuehrung, Empfehlung und Bahnvorschlag sind Urteil
  * der Session und stehen im Skill, nicht hier (A2). `ablageAbschliessen` raeumt die Ablage,
- * sobald der gewaehlte Weg begonnen hat (`--finish`, Issue #1629, A13, E2).
+ * sobald der gewaehlte Weg begonnen hat (`--finish`, Issue #1629, A13, E2). `ablageFuellen`
+ * und `anhaengeHolen` laden die Anhaenge einer kanban-kit-Karte in die Ablage (Issue #1681);
+ * den Abruf reicht der Einstieg als Tracker bzw. Funktion herein.
  *
  * QUELLE DER WAHRHEIT: Diese Datei wird im Kit-Repo (claude-workflow-kit) gepflegt.
  * Aenderungen ausschliesslich hier vornehmen, danach `node tools/sync-blobs.mjs`.
  */
 
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 
+import { BoardError } from "./grundlagen.mjs";
 import { fenceLauf, istIdee, normalisiereZeilenenden, zerlegeAbschnitte } from "./dokumente.mjs";
 import { fragenLesen } from "./grooming.mjs";
 import { kanonischeUeberschrift, leseMarker, praefix, prozessSprache, text, ueberschriftName,
@@ -56,22 +59,108 @@ export function triageEinstieg(issue, env = {}) {
 
 /**
  * Die Ablage `.claude/ideas/<id>/` unter `wurzel` (A11, A12): `{ pfad, vorhanden, dateien:
- * [{ name, gelesen, vorlageZiel }] }`, nach Namen geordnet. `pfad` ist relativ zur Wurzel.
+ * [{ name, gelesen, vorlageZiel, herkunft }] }`, nach Namen geordnet. `pfad` ist relativ zur Wurzel.
  * Gelesen sind Dateien der Endungen aus A12 direkt in der Ablage; jede andere Datei und jedes
  * Unterverzeichnis ist `gelesen: false`. `vorlageZiel` ist der dauerhafte Ort einer Datei als
- * Vorlage (`design/ideas/<id>/<datei>`), bei einem Unterverzeichnis null. Legt nie etwas an.
+ * Vorlage (`design/ideas/<id>/<datei>`), bei einem Unterverzeichnis null. `herkunft` ist
+ * `karte` fuer einen Namen aus `vonKarte` (gerade von der Karte geladen, Issue #1681), sonst
+ * `ablage`. Liest nur; anlegen kann allein `ablageFuellen`.
  */
-export function ablageLesen(wurzel, id) {
+export function ablageLesen(wurzel, id, vonKarte = new Set()) {
   const n = nummer(id);
   const pfad = `${ABLAGE}/${n}`;
   const verzeichnis = join(wurzel, ABLAGE, n);
   if (!existsSync(verzeichnis)) return { pfad, vorhanden: false, dateien: [] };
+  const herkunft = (name) => (vonKarte.has(name) ? "karte" : "ablage");
   const dateien = readdirSync(verzeichnis, { withFileTypes: true })
     .map((e) => (e.isDirectory()
-      ? { name: e.name, gelesen: false, vorlageZiel: null }
-      : { name: e.name, gelesen: GELESEN.has(extname(e.name).toLowerCase()), vorlageZiel: `${VORLAGE_ORT}/${n}/${e.name}` }))
+      ? { name: e.name, gelesen: false, vorlageZiel: null, herkunft: herkunft(e.name) }
+      : { name: e.name, gelesen: GELESEN.has(extname(e.name).toLowerCase()), vorlageZiel: `${VORLAGE_ORT}/${n}/${e.name}`, herkunft: herkunft(e.name) }))
     .sort((a, b) => (a.name < b.name ? -1 : Number(a.name > b.name)));
   return { pfad, vorhanden: true, dateien };
+}
+
+/**
+ * Laedt `issue triage` die Anhaenge der Karte (Issue #1681)? Nur beim Einstieg mit `start`, ohne
+ * `--body-file` (der Skill ruft es nach jeder Bestaetigung) und ohne `--finish` (das loescht die
+ * Ablage), und nur an einem Tracker mit `listAttachments` — die anderen kennen keine Anhaenge.
+ */
+export function anhaengeLaden({ einstieg, bodyFile, finish, tracker }) {
+  return einstieg?.start === true && (bodyFile === null || bodyFile === undefined)
+    && finish === undefined && typeof tracker?.listAttachments === "function";
+}
+
+/**
+ * Der Grund eines gescheiterten Abrufs aus seinem `BoardError` (Issue #1681): 404 `anhangFehlt`,
+ * 429 `gedrosselt`, ohne Status `netz`, jeder andere Status `abgewiesen`.
+ */
+export function anhangGrund(fehler) {
+  const status = fehler?.status ?? null;
+  if (status === 404) return "anhangFehlt";
+  if (status === 429) return "gedrosselt";
+  if (status === null) return "netz";
+  return "abgewiesen";
+}
+
+/** Der Name eines Anhangs in der Ablage: der letzte Teil von `filename`, null wenn ungueltig. */
+function anhangName(filename) {
+  const name = basename(String(filename ?? ""));
+  return name === "" || name === "." || name === ".." || name.includes("\0") ? null : name;
+}
+
+/**
+ * Schreibt die Anhaenge einer Karte in die Ablage `.claude/ideas/<id>/` unter `wurzel` (Issue
+ * #1681): `{ geladen, vorhanden, fehlgeschlagen: [{ name, grund, meldung }] }`. `laden(anhang)`
+ * liefert die Bytes eines Anhangs `{ id, filename }`. Ein Name, der in der Ablage schon liegt —
+ * auch durch einen frueheren Anhang derselben Karte —, bleibt unveraendert und wird nicht
+ * abgerufen (`vorhanden`); Gross und Klein entscheidet das Dateisystem. Das Verzeichnis entsteht
+ * erst vor dem ersten Schreiben, ohne Anhaenge also nie.
+ */
+export async function ablageFuellen(wurzel, id, anhaenge, laden) {
+  const verzeichnis = join(wurzel, ABLAGE, nummer(id));
+  const ergebnis = { geladen: [], vorhanden: [], fehlgeschlagen: [] };
+  const fehlschlag = (name, grund) => ergebnis.fehlgeschlagen.push({ name, grund, meldung: t(grund, { name }) });
+  for (const anhang of anhaenge ?? []) {
+    const name = anhangName(anhang?.filename);
+    if (name === null) {
+      fehlschlag(String(anhang?.filename ?? ""), "nameUngueltig");
+      continue;
+    }
+    if (existsSync(join(verzeichnis, name))) {
+      ergebnis.vorhanden.push(name);
+      continue;
+    }
+    let bytes;
+    try {
+      bytes = await laden(anhang);  // NOSONAR S9382: ein Anhang nach dem anderen, die API drosselt
+    } catch (e) {
+      if (!(e instanceof BoardError)) throw e;
+      fehlschlag(name, anhangGrund(e));
+      continue;
+    }
+    mkdirSync(verzeichnis, { recursive: true });
+    writeFileSync(join(verzeichnis, name), bytes, { flag: "wx" });
+    ergebnis.geladen.push(name);
+  }
+  return ergebnis;
+}
+
+/**
+ * Holt die Anhaenge der Karte `id` ueber `tracker` in die Ablage (Issue #1681): das Ergebnis von
+ * `ablageFuellen` und dazu `fehler` — der Grund, wenn schon die Liste nicht abrufbar war (dann
+ * sind die drei Listen leer), sonst null.
+ */
+export async function anhaengeHolen(wurzel, id, tracker) {
+  let liste;
+  try {
+    liste = await tracker.listAttachments(nummer(id));
+  } catch (e) {
+    if (!(e instanceof BoardError)) throw e;
+    return { geladen: [], vorhanden: [], fehlgeschlagen: [], fehler: anhangGrund(e) };
+  }
+  const ergebnis = await ablageFuellen(wurzel, id, Array.isArray(liste) ? liste : [],
+    (anhang) => tracker.downloadAttachment(nummer(id), anhang.id));
+  return { ...ergebnis, fehler: null };
 }
 
 /**

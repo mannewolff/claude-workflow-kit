@@ -26,7 +26,7 @@ Erster Schritt, vor allem anderen: **Unbeaufsichtigt** (gesetztes, nicht leeres 
 node .claude/kit/board.mjs issue triage <N>
 ```
 
-Die Ausgabe trägt `einstieg` (`start`, `grund`, `meldung`), `ablage` (`pfad`, `vorhanden`, `dateien` je `{ name, gelesen, vorlageZiel }`) und `stand` (`punkte`, `offen`, `bahn`, `vorlage`, `ergebnis`). Bei `start: false` meldet der Skill die `meldung` und endet ohne Änderung — eine Karte ohne `[Idea]` (`keine-idee`) oder ein unbeaufsichtigter Lauf (`unbeaufsichtigt`).
+Die Ausgabe trägt `einstieg` (`start`, `grund`, `meldung`), `ablage` (`pfad`, `vorhanden`, `dateien` je `{ name, gelesen, vorlageZiel, herkunft }`, dazu `anhaenge`, wenn der Aufruf die Anhänge der Karte geladen hat) und `stand` (`punkte`, `offen`, `bahn`, `vorlage`, `ergebnis`). Bei `start: false` meldet der Skill die `meldung` und endet ohne Änderung — eine Karte ohne `[Idea]` (`keine-idee`) oder ein unbeaufsichtigter Lauf (`unbeaufsichtigt`).
 
 Danach liest er die Idee mit ihren Kommentaren:
 
@@ -36,9 +36,11 @@ node .claude/kit/board.mjs issue get <N>
 
 ### 2. Anhänge lesen
 
-Jede Idee hat ihre Ablage für Anhänge unter `.claude/ideas/<N>/`. Der Skill liest jede Datei mit `gelesen: true` — Bilder, PDFs und Markdown-Dateien — mit seinem Lese-Werkzeug. Eine Datei mit `gelesen: false` liest er nicht, ohne sie umzuwandeln. Zu Beginn nennt er, welche Anhänge er gelesen hat und welche nicht gelesen sind, jede mit Namen.
+Jede Idee hat ihre Ablage für Anhänge unter `.claude/ideas/<N>/`. An einer kanban-kit-Karte lädt `issue triage` die Anhänge der Karte selbst dorthin, bevor es die Ablage meldet; die Datei trägt dann `herkunft: "karte"`, eine vom Menschen abgelegte `herkunft: "ablage"`. Liegt schon eine Datei mit demselben Namen in der Ablage, bleibt sie unverändert, und der Anhang wird nicht geladen (`ablage.anhaenge.vorhanden`). Ein Anhang, der sich nicht laden ließ, steht unter `ablage.anhaenge.fehlgeschlagen` mit Namen, Grund und `meldung`; war schon die Liste der Anhänge nicht abrufbar, nennt `ablage.anhaenge.fehler` den Grund. Der Skill führt jeden nicht geladenen Anhang unter „nicht gelesen“ auf, mit seiner `meldung`, und fragt, ob es ohne ihn weitergeht.
 
-Fehlt die Ablage oder ist sie leer (`vorhanden: false` oder keine `dateien`), nennt der Skill den Ort `.claude/ideas/<N>/`, an dem Anhänge zu dieser Idee liegen müssen, und fragt, ob es ohne Anhänge weitergeht. Er legt die Ablage nicht an; legt der Mensch Dateien hinein, beginnt der Skill mit Schritt 1 neu.
+Der Skill liest jede Datei mit `gelesen: true` — Bilder, PDFs und Markdown-Dateien — mit seinem Lese-Werkzeug. Eine Datei mit `gelesen: false` liest er nicht, ohne sie umzuwandeln. Zu Beginn nennt er, welche Anhänge er gelesen hat und welche nicht gelesen sind, jede mit Namen.
+
+Fehlt die Ablage oder ist sie leer (`vorhanden: false` oder keine `dateien`), nennt der Skill den Ort `.claude/ideas/<N>/`, an dem Anhänge zu dieser Idee liegen müssen, und fragt, ob es ohne Anhänge weitergeht. An einem Tracker ohne Anhänge (GitHub, GitLab, lokal) gilt: Der Skill legt die Ablage nicht an; legt der Mensch Dateien hinein, beginnt der Skill mit Schritt 1 neu.
 
 ### 3. Vorhandener Stand
 

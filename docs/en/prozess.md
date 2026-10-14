@@ -66,9 +66,9 @@ The eighteen skills in the order of the flow, each with purpose, when to call it
 **Next:** the step the overview names.
 
 ### /triage
-<!-- de: a2cb8dd79059 -->
+<!-- de: bc637046a83d -->
 
-**What for:** An `[Idea]` is a raw idea, not yet a requirement. `/triage #N` reads it with its attachments, presents every unclear point on its own with a recommendation and writes the clarified state into the idea right after each confirmation. Finally the skill proposes a lane with its reason; you choose one of four outcomes.
+**What for:** An `[Idea]` is a raw idea, not yet a requirement. `/triage #N` reads it with its attachments, presents every unclear point on its own with a recommendation and writes the clarified state into the idea right after each confirmation. Attachments of a kanban-kit card land in the folder `.claude/ideas/<N>/` on their own; with other trackers you put them there. Finally the skill proposes a lane with its reason; you choose one of four outcomes.
 
 **When:** as soon as an idea is on the board and you want to tackle it. The skill runs only interactively.
 

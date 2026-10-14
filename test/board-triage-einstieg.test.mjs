@@ -83,12 +83,12 @@ test("gefuellte Ablage: gelesene Endungen nach A12, alles andere nicht gelesen, 
   assert.equal(a.vorhanden, true);
   const nachName = Object.fromEntries(a.dateien.map((d) => [d.name, d]));
   for (const datei of gelesen) {
-    assert.deepEqual(nachName[datei], { name: datei, gelesen: true, vorlageZiel: `design/ideas/7/${datei}` }, datei);
+    assert.deepEqual(nachName[datei], { name: datei, gelesen: true, vorlageZiel: `design/ideas/7/${datei}`, herkunft: "ablage" }, datei);
   }
   for (const datei of nicht) {
-    assert.deepEqual(nachName[datei], { name: datei, gelesen: false, vorlageZiel: `design/ideas/7/${datei}` }, datei);
+    assert.deepEqual(nachName[datei], { name: datei, gelesen: false, vorlageZiel: `design/ideas/7/${datei}`, herkunft: "ablage" }, datei);
   }
-  assert.deepEqual(nachName.unterordner, { name: "unterordner", gelesen: false, vorlageZiel: null });
+  assert.deepEqual(nachName.unterordner, { name: "unterordner", gelesen: false, vorlageZiel: null, herkunft: "ablage" });
   assert.deepEqual(a.dateien.map((d) => d.name), [...a.dateien.map((d) => d.name)].sort(), "nach Namen geordnet");
 }));
 

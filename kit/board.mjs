@@ -199,11 +199,16 @@ Usage:
   node board.mjs issue triage <id> [--body-file <path>]
       State of an idea for /triage (Issue #1628, Plan #1623): einstieg ({ start, grund,
       meldung }; grund keine-idee or unbeaufsichtigt), ablage ({ pfad, vorhanden, dateien:
-      [{ name, gelesen, vorlageZiel }] } for .claude/ideas/<id>/, never created) and stand
+      [{ name, gelesen, vorlageZiel, herkunft }] } for .claude/ideas/<id>/) and stand
       ({ punkte, offen, bahn, vorlage, ergebnis } from '## Clarified state', ergebnis from
       the 'Result:' line or a comment 'Fortsetzung: ...'). --body-file checks a new body
       against the card's (pruefung: { ok, verstoesse }), exit 1 if the text of the idea
-      changed or a confirmed point lost its answer line. Read-only without --finish.
+      changed or a confirmed point lost its answer line. Never changes the card. On a
+      kanban-kit card without --body-file and --finish, and only with start: true, it first
+      loads the card's attachments into .claude/ideas/<id>/ (Issue #1681): a file already
+      there stays unchanged; ablage.anhaenge ({ geladen, vorhanden, fehlgeschlagen: [{ name,
+      grund, meldung }], fehler }) reports it, herkunft is karte or ablage. Other trackers
+      never create the folder, and ablage.anhaenge is missing.
   node board.mjs issue triage <id> --finish [--template <file>]
       Closes the attachments folder of an idea once the chosen path has begun (Issue #1629,
       Plan #1623 A13, E2): --template first moves that file from .claude/ideas/<id>/ to
@@ -604,8 +609,10 @@ async function issueFragen(tracker, config, args) {
 /**
  * `issue triage <id> [--body-file <pfad>] [--finish [--template <datei>]]` (Issue #1628, #1629,
  * Plan #1623 A2, A3, A11, A13, E2, E5): Einstieg, Ablage und geklaerter Stand einer Idee fuer
- * `/triage`. Ohne `--finish` rein lesend — geschrieben wird ueber `issue update --body-file`, die
- * Ablage legt der Aufruf nie an. `--finish` schliesst die Ablage ab, nur wenn der Einstieg
+ * `/triage`. Die Karte aendert der Aufruf nie — geschrieben wird ueber `issue update --body-file`.
+ * Die Ablage legt er nur an, wenn er beim Einstieg die Anhaenge einer kanban-kit-Karte laedt
+ * (Issue #1681, `anhaengeLaden`); dann steht `ablage.anhaenge` in der Ausgabe, sonst fehlt das
+ * Feld. `--finish` schliesst die Ablage ab, nur wenn der Einstieg
  * `start: true` meldet (A3); die Karte beruehrt es nie. Exit 1, wenn `--body-file` gegen den Body
  * der Karte verstoesst oder der Abschluss nicht stattfand.
  */
@@ -614,14 +621,20 @@ async function issueTriage(tracker, args) {
   if (id === undefined) abbruch(t("triageOhneId"));
   if (args.template !== undefined && args.finish === undefined) abbruch(t("triageVorlageOhneFinish"));
   if (args.template === true) abbruch(t("optionOhneWert", { option: "template" }));
-  const { triageEinstieg, ablageLesen, ablageAbschliessen, standLesen, triageKoerperPruefen } = await import("./board/triage.mjs");
+  const { triageEinstieg, ablageLesen, ablageAbschliessen, standLesen, triageKoerperPruefen, anhaengeLaden, anhaengeHolen } =
+    await import("./board/triage.mjs");
   const neu = optionDatei(args, "body-file");
   const issue = await tracker.getIssue(String(id));
   const body = issue.body || "";
   const einstieg = triageEinstieg({ ...issue, id: String(id) }, process.env);
+  const anhaenge = anhaengeLaden({ einstieg, bodyFile: neu, finish: args.finish, tracker })
+    ? await anhaengeHolen(configWurzel(), String(id), tracker)
+    : null;
+  const ablage = ablageLesen(configWurzel(), String(id), new Set(anhaenge?.geladen ?? []));
+  if (anhaenge !== null) ablage.anhaenge = anhaenge;
   const ausgabe = {
     einstieg,
-    ablage: ablageLesen(configWurzel(), String(id)),
+    ablage,
     stand: standLesen(body, await kartenKommentare(tracker, String(id), issue)),
   };
   if (neu !== null) ausgabe.pruefung = triageKoerperPruefen(body, neu);

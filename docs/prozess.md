@@ -62,7 +62,7 @@ Die achtzehn Skills in der Reihenfolge des Ablaufs, je mit Zweck, Aufrufzeitpunk
 
 ### /triage
 
-**Wofür:** Eine `[Idea]` ist eine rohe Idee, noch keine Anforderung. `/triage #N` liest sie samt Anhängen, legt jeden unklaren Punkt einzeln mit Empfehlung vor und schreibt den geklärten Stand nach jeder Bestätigung sofort in die Idee. Zum Schluss schlägt der Skill eine Bahn mit Begründung vor; du wählst einen von vier Ausgängen.
+**Wofür:** Eine `[Idea]` ist eine rohe Idee, noch keine Anforderung. `/triage #N` liest sie samt Anhängen, legt jeden unklaren Punkt einzeln mit Empfehlung vor und schreibt den geklärten Stand nach jeder Bestätigung sofort in die Idee. Anhänge einer kanban-kit-Karte kommen von selbst in die Ablage `.claude/ideas/<N>/`; an anderen Trackern legst du sie dort ab. Zum Schluss schlägt der Skill eine Bahn mit Begründung vor; du wählst einen von vier Ausgängen.
 
 **Wann:** sobald eine Idee am Board liegt und du sie angehen willst. Der Skill läuft nur interaktiv.
 

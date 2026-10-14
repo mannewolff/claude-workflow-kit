@@ -1464,10 +1464,13 @@ export class ToolboxIssueTracker {
    * serverseitig auswerten. Er entsteht je Auftrag und bleibt ueber ALLE Versuche
    * gleich — sonst waere jede Wiederholung ein neuer Auftrag, und genau das soll der
    * Schluessel verhindern.
+   *
+   * `options.hoechstensVersuche` begrenzt die Zahl der Versuche zusaetzlich zum Budget
+   * (Issue #1681); ohne die Option wird bis zum Budget wiederholt.
    */
   async _fetch(path, options = {}) {
     const { host, token } = this._auth();
-    const { idempotencyKey, ...rest } = options;
+    const { idempotencyKey, hoechstensVersuche, ...rest } = options;
     const method = (rest.method || "GET").toUpperCase();
     const headers = { ...rest.headers, "X-Kanban-Token": token, ...agentModelHeader(), ...nightRunHeader() };
     if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
@@ -1496,7 +1499,8 @@ export class ToolboxIssueTracker {
       const { grund, typ, retryAfter } = await this._fehlerlage(res, wurf);  // NOSONAR S9382: ein Versuch wartet per Definition auf den vorigen
       const warte = wartezeitMs(versuch, retryAfter, this._zufall);
       const nochmal = darfWiederholen({ method, status, typ, hatSchluessel: Boolean(idempotencyKey), netz })
-        && this._jetzt() + warte <= frist;
+        && this._jetzt() + warte <= frist
+        && (hoechstensVersuche === undefined || versuch < hoechstensVersuche);
       if (!nochmal) throw this._fehler({ status, netz, wurf, grund, method, path, idempotencyKey, host });
 
       // Eine Zeile je Wiederholung, nicht je Aufruf: Wer einem Nachtlauf zusieht,
@@ -1721,6 +1725,24 @@ export class ToolboxIssueTracker {
     const item = await this._kartenRef(number);
     const res = await this._fetch(`/api/kanban/items/${item.id}/activity`);
     return await res.json();
+  }
+
+  /**
+   * Die Anhaenge einer Karte (Issue #1681): `GET /api/kanban/items/{id}/attachments` mit der
+   * internen ID, ein nacktes Array je `{ id, cardId, filename, contentType, size, createdAt }`.
+   * Rein lesend; bei einer Drosselung genau ein zweiter Versuch.
+   */
+  async listAttachments(number) {
+    const item = await this._kartenRef(number);
+    const res = await this._fetch(`/api/kanban/items/${item.id}/attachments`, { hoechstensVersuche: 2 });
+    return await res.json();
+  }
+
+  /** Der Inhalt eines Anhangs als Bytes (Issue #1681); ein fehlender Anhang ergibt 404. */
+  async downloadAttachment(number, attachmentId) {
+    const item = await this._kartenRef(number);
+    const res = await this._fetch(`/api/kanban/items/${item.id}/attachments/${encodeURIComponent(attachmentId)}`, { hoechstensVersuche: 2 });
+    return Buffer.from(await res.arrayBuffer());
   }
 
   /**
