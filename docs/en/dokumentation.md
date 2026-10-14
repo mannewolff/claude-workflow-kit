@@ -1,100 +1,106 @@
 # Documentation: claude-workflow-kit
-<!-- de: 43a011243c37 -->
+<!-- de: c20c48cb489c -->
 
-A thin tool layer that makes a 9-step core process for AI-assisted development executable in Claude Code. The kit automates the AI steps and deliberately leaves the three human responsibility thresholds in place.
+The kit turns Claude Code into a workshop with a fixed sequence: a requirement passes through nine steps all the way to production. The AI plans, cuts work packages (Arbeitspakete), implements, checks and has its work reviewed. Three decisions stay with you. This page gives the overview and shows where the details are.
 
 ## Concept
-<!-- de: ae70dd2d21bd -->
+<!-- de: 70a6abf24551 -->
 
-The kit is not a platform and not an agent. It is a library of eighteen skills, a project-local config and an installer.
+The kit consists of three parts: eighteen skills, a config in the project and an installer. It is neither a platform nor an agent.
 
-The skills are written independently of any project. Everything project-specific (build commands, branch names, review model) comes from the config file. An update to a skill therefore applies in every project in which you use the kit. You do not have to adjust anything in each repo when the process evolves.
+The skills know no particular project. Build commands, branch names, checks and review model are in `.claude/workflow.config.json`. When a skill improves, that applies after the next installer run in every project that uses the kit.
 
-The core process has nine steps. Step 1 is your requirement; the AI takes over steps 2, 3, 5, 6 and 7. The three human stop points (Stop-Punkte) are step 4 (GO), step 8 (push) and step 9 (merge); between push and merge you check the test server. Eleven further skills stand outside the numbering and structure the working rhythm: /session-start, /triage, /requirement, /groom, /issue-review, /task, /implement-test and /implement-done, /implement-next, /retro and /document.
+All access to issues and board goes through the board adapter (Board-Adapter) `.claude/kit/board.mjs`. It talks to GitHub, GitLab or a local folder `issues/`, and the skills notice none of it.
+
+Where to find what:
+
+- [Setup](/en/einrichtung): installation, config, issue tracker, updating.
+- [The process](/en/prozess): the nine steps, every skill with purpose and next step, a complete pass.
+- [Night mode](/en/nachtbetrieb): have work packages implemented unattended.
+- [Settings](/en/einstellungen): every setting with effect and default.
 
 ## Prerequisites
-<!-- de: f996d869a5ee -->
+<!-- de: 63de301597ca -->
 
-**Node.js 18 or later.** The installer is written in Node and therefore runs on macOS, Linux and Windows via WSL2 without depending on a particular shell ecosystem.
+- **Operating system:** macOS, Linux or Windows via WSL2. On Windows the kit works entirely in WSL2; the guide [Windows via WSL2](/en/wsl2) describes the setup.
+- **Node.js 18 or later** for installer and commands.
+- **git**: every skill works in a git repository.
+- **Claude Code** in a current version with skills.
+- **Your tracker's CLI:** `gh` for GitHub, `glab` for GitLab, each logged in once. With the local tracker you need none.
+- **A board** with the columns (Spalten) Backlog, Ready, In progress, In review and Done, if you use GitHub or GitLab. GitLab represents the columns through labels.
 
-**Windows: WSL2.** The kit runs on macOS, Linux and Windows via WSL2 to the same extent. On Windows it works in WSL2; how to set it up is described in the guide [Windows via WSL2](/en/wsl2).
+A vault for notes across sessions is optional; `/session-start` and `/document` also run without it. The file for it is described under [kontext.config.json](/en/einstellungen#kontext-config-json).
 
-**git.** Claude Code and the whole process require git. Without a git repository, no skill works.
+## The nine steps
+<!-- de: 98869d303f93 -->
 
-**Claude Code in a current version.** The skills use the skills system of Claude Code. Older versions may not know this system.
+| Step | What | Who | Skill |
+|---------|-----|-----|-------|
+| 1 | Formulate the requirement | Human | – |
+| 2 | Plan | AI | [/techplan](/en/prozess#techplan) |
+| 3 | Create work packages | AI | [/issues](/en/prozess#issues) |
+| 4 | GO: pull packages to Ready | Human | – |
+| 5 | Implement | AI | [/implement-ready](/en/prozess#implement-ready) |
+| 6 | Check locally | AI | [/local-check](/en/prozess#local-check) |
+| 7 | Review by a second model | AI | [/kit-review](/en/prozess#kit-review) |
+| 8 | Push to main | Human | [/push-main](/en/prozess#push-main) |
+| 9 | Merge to production | Human | [/merge-production](/en/prozess#merge-production) |
 
-**A board adapter (Board-Adapter) — and the matching CLI.** All issue and board operations run through `.claude/kit/board.mjs`, the board adapter. The adapter shields the skills from the concrete platform. What you need depends on the chosen issue tracker:
-
-| Issue tracker | Prerequisite |
-|---------------|---------------|
-| `github` | `gh` (GitHub CLI), once `gh auth login` |
-| `gitlab` | `glab` (GitLab CLI), once `glab auth login` |
-| `local` | Nothing — issues live as files in `issues/` |
-
-**A project board, if you use GitHub or GitLab as issue tracker.** The board needs these five columns (Spalten): Backlog, Ready, In progress, In review, Done. On GitHub these are project board columns (GitHub Projects), on GitLab they are represented by labels. In local mode there is no board — the adapter writes and reads YAML frontmatter files directly.
-
-**`kontext.config.json` for /session-start and /document (optional).** Both skills also run without this file, in degraded mode. If you want persistent cross-project memory: With a global installation the installer asks for the vault path and creates the file automatically; with a project-local installation you create it manually. Details in the section [kontext.config.json](/en/einstellungen#kontext-config-json).
-
-## The three human stop points
-<!-- de: 258614bb895b -->
-
-**Step 4: the GO.** You decide which issues go into this batch. That is where the planning lies: how much work at once, which priority, which dependencies. The GO has two granularities: under **variant A** you pull each work package to Ready individually. Under **variant B** you instead mark in advance the card that starts the chain — the business requirement or the plan document — with the label from `night.kette.varianteBLabel` (see [Second mode](/en/nachtbetrieb#the-night-chain)) — the GO then applies in advance to all work packages that the night chain cuts from it; the chain pulls them to Ready itself and implements them in the same night.
-
-**Step 8: the push.** You change the test server. Every batch needs an approval of its own, because between commit and push lies the last chance to reconsider the scope. Under variant B, the push is at the same time the moment in which you accept or discard the night's work together with its decisions: the night report on the business plan lists what the chain decided, and until the push none of these decisions is binding.
-
-**Step 9: the merge.** You bring code to production. You checked on the test server, you carry the responsibility, you merge.
-
-The kit does not automate these three. That is not a missing feature. It is the point of the kit: AI does the work, humans make the decisions.
+Between step 8 and 9 you check the test server. Alongside the nine steps stand skills that prepare the sequence or split it more finely: `/triage` brings an idea onto its lane, `/requirement`, `/issue-review` and `/groom` clarify a business requirement (fachliche Anforderung) before planning, and `/implement-next`, `/implement-test` and `/implement-done` implement a single package. All of them are under [The skills](/en/prozess#the-skills).
 
 ## Three lanes
-<!-- de: 7ca6129d141b -->
+<!-- de: a5ad04278751 -->
 
-Not every task needs the full 9-step process. The kit distinguishes three lanes (Bahnen):
+Not every task needs all nine steps. The kit knows three lanes (Bahnen).
 
-**Lane 1 — small change.** Exactly one file, one asset or one config value; no database migration; no new or changed endpoint; no data model; at most one module affected; no security-relevant logic. Implement directly, one commit, no push without a trigger phrase — no plan, no issue, no GO. This commit, too, requires a green `node .claude/kit/checks.mjs run` on the state to be committed: The commit gate is mechanical and knows no lane.
+**Lane 1 — Small change.** One file, one asset or one config value, without migration, endpoint, data model or security-relevant logic and at most one module. The AI implements directly and commits; plan, work package and GO are left out. Here too the commit gate (Commit-Gate) requires a green `node .claude/kit/checks.mjs run`.
 
-**Lane 2 — feature.** Outside lane 1, as soon as there is something to weigh up — or it is unclear whether there is something to weigh up. Full process: `/techplan` → `/issues` → GO → `/implement-ready`. Typical: a data model with several defensible cuts, an endpoint whose contract is still open, a migration with a question about the way back.
+**Lane 2 — Feature.** The full sequence: `/techplan`, `/issues`, GO, `/implement-ready`. Typical are a data model with several defensible cuts or an endpoint whose contract is open.
 
-**Lane 3 — `[Task]`.** Above the trivial, but without anything to weigh up. No business concept (Fachkonzept), no plan, no breakdown: a single work package (Arbeitspaket) with the title prefix `[Task]`, created with [/task](/en/prozess#task) after you confirm the route — then reviewed and released like any other package. Typical: a renaming across several files, a rejected tool finding, a mechanical follow-up job.
+**Lane 3 — `[Task]`.** More than a trifle, but nothing to weigh up. [/task](/en/prozess#task) creates exactly one work package with the prefix `[Task]` after your confirmation, without business plan, plan and breakdown. Typical are a rename across many files or mechanical follow-up work.
 
-**The selection rule, in this order:**
+The choice follows three rules, in this order:
 
-1. If the counting lane-1 rule applies **and there is nothing to weigh up**, lane 1 applies.
-2. Otherwise the need to weigh up decides: There is something to weigh up when **several defensible routes** are open. A finding with exactly one correct outcome is not a trade-off. With something to weigh up, lane 2 applies, without it lane 3.
-3. If it is **unclear** whether there is something to weigh up, lane 2 applies.
+1. If the task fits lane 1 and there is nothing to weigh up, lane 1 applies.
+2. Otherwise it depends on whether several defensible paths are open: then lane 2 applies, otherwise lane 3.
+3. If that is unclear, lane 2 applies.
 
-Size alone therefore no longer decides, and that is the actual change compared with earlier: A change to twelve files without a trade-off is lane 3; an architectural change to a single file where several cuts are defensible is lane 2. The old version of lane 2, in contrast, counted features — data model, endpoint, migration, security, more than one module — and thus sent even the unambiguous through the full process.
+So the number of files does not decide: twelve files with nothing to weigh up are lane 3, a single file with two defensible cuts is lane 2. Before every task the AI names its lane.
 
-When in doubt, lane 2 applies; that also covers an unclear need to weigh up. Before every new task the AI names the lane out loud ("Das ist Bahn 1/2/3, ich …" — "This is lane 1/2/3, I …") — examples: swapping an icon or favicon, a text correction or a config default are lane 1; a renaming across several files without a trade-off is lane 3; a new table, a new endpoint or a new UI feature are lane 2.
+## The three human stop points
+<!-- de: 1ce95acff47e -->
 
-**A special case worth naming: rejection as a valid result.** A tool reports a finding, and the finding is defensibly rejected — that, too, is work, and it is typical lane-3 work. So that the rejection holds, the acceptance criterion of such a `[Task]` is the **versioned suppression rule** that the tool itself evaluates, with the justification right next to it: The tool reads the rule, the justification addresses humans and later sessions. In the kit the pattern lives in `sonar-project.properties` — the exclusion of the rule `javascript:S4036` as a versioned line, with a written-out explanation above it of why it is defensible. A rejection marked as "accepted" by hand in the web UI, in contrast, does not hold: The next finding of the same kind arises outside of it. Such a task is verified by running the same tool again — the rejected finding stays away, **and an independent control finding is still reported**; without it, a silent tool cannot be told apart from an effective exclusion. If a tool lacks a versionable route, developing one belongs in an initiative (Vorhaben) of its own, and no cross-tool register is created — it would be a second list next to the rule files that none of the tools reads.
+**The GO (step 4).** You pull the work packages to Ready and thereby decide what gets built next, in which order and how much at once. For night mode you can give the GO in advance: if you mark a business requirement or a plan with the label from `night.chain.variantBLabel`, the [night chain](/en/nachtbetrieb#the-night-chain) (Nacht-Kette) pulls the packages cut from it to Ready itself and implements them.
+
+**The push (step 8).** Only `push main` brings the commits to the test server. Every push needs your own approval; before it you can still change or discard the scope, including the decisions a night has made.
+
+**The merge (step 9).** After your check on the test server, `merge production` brings the state to production.
+
+The kit deliberately does not automate these three steps. The AI does the work, you decide.
 
 ## Guardrails instead of prompts
-<!-- de: b24d15be7ea4 -->
+<!-- de: 69c3956abba3 -->
 
-A language model reproduces the most frequent pattern of its training corpus, not the most current one. An API deprecated months ago still stands in millions of lines of old code as the normal way; the deprecation notice is an edge case against this mass. The result is an error in thinking, materialised many times over: the same outdated or deprecated idiom, rolled out across all call sites — and often only visible late in an external analysis.
+A model writes what occurs most often in its training data, which is often a deprecated API or an outdated idiom. A request in the prompt does little against that. The kit relies on guardrails (Leitplanken) that fail in the mandatory gate: a lint or compiler rule in the `buildChecks` that derives from existing annotations, for example `@typescript-eslint/no-deprecated` or Java with `-Xlint:deprecation` and `-Werror`. Which rules apply is set by each project in its config.
 
-For such recurring, class-wide errors the same principle applies as with the coverage gate: a **hard guardrail that fails in the mandatory gate**, instead of a prompt or a document that asks. A prompt to discipline is skipped under time pressure; a lint or compiler rule in the `buildChecks`, which agent and CI run through anyway, cannot commit green in the first place. Concretely:
-
-- **The guardrail derives from existing annotations** instead of keeping a hand-maintained blacklist that itself goes out of date: `@typescript-eslint/no-deprecated` reads JSDoc `@deprecated`, Java reports every deprecated API as a build error with `-Xlint:deprecation` and `-Werror`. The analyzer scales with the ecosystem, the list only with the discipline of its upkeep.
-- **The gate is the main catch, SonarQube or similar the safety net.** The round trip via main catches reliably, but late — the error is then already on main. The check belongs at the front, in `/local-check` and `/implement-ready`, where the agent runs it before completion.
-- **The concrete rule catalogue lives in the respective project** (`buildChecks` in the config, lint setup in the repo), not in the kit. The kit only anchors the transferable principle.
-
-**The yardstick behind it: "rule in the text or rule in the tool".** It is in `CLAUDE-workflow.md` and applies to every instruction supplied: An **operating instruction** (Bedienvorgabe) — whether it is followed can be read from output or result, a tool could carry it out in the reader's place — belongs in the tool; a **judgement rule** (Urteilsregel), which demands a decision in the individual case, stays in the text. Mixed rules are taken apart, not rounded. Which rule of `/local-check` has moved where according to this yardstick is listed in [Rules in the tool](/en/regeln-im-werkzeug) — line by line, with kind, degree of transfer (Überführungsgrad) and new place.
-
-**The borderline case: when no guardrail can be had.** Some things cannot be measured — whether a model believed a statement instead of looking it up, for instance. There the declared self-report takes the place of the gate: The fixed answer form „Mitteilung übernommen, ungeprüft — …“ (statement adopted, unchecked) from [Statements: believe instead of checking](/en/prozess#statements-believe-instead-of-checking) forces nothing, but makes every violation a visible contradiction. Visible contradiction instead of a gate — the same principle, only with the weaker means, because the stronger one does not exist here.
+The same principle applies to the kit's instructions, with the yardstick "rule in the text or rule in the tool" (Regel im Text oder Regel im Werkzeug): what can be checked from output or result is checked by a command; the text keeps only what needs a judgement in the individual case. Where nothing can be measured, the kit demands a fixed form of answer that makes a violation visible, see [Statements: believe instead of checking](/en/prozess#statements-believe-instead-of-checking).
 
 ## What is deliberately not in the kit
-<!-- de: aca615ac0b04 -->
+<!-- de: 0ac965120554 -->
 
-**Security gates belong in the CI, not in a skill.** gitleaks finds secrets, Semgrep or SpotBugs find SQL concatenation and missing input validation. A deterministic tool shares no blind spot with any language model. A red build blocks the push mechanically, more reliably than any model. The review skill complements these tools, it does not replace them.
+**Security gates.** Secrets, SQL concatenation and missing input validation are found more reliably in CI by tools such as gitleaks, Semgrep or SpotBugs than by a model. The kit's review complements them.
 
-**No multi-tool adapter.** The concept is transferable, the format is not. Codex reads `AGENTS.md`, Cursor `.cursor/rules`. If you want to use several engines, you need the skill library in several formats in parallel in the repo. That is feasible, but not part of this kit.
+**Other AI tools.** The skills are written for Claude Code. Codex reads `AGENTS.md`, Cursor `.cursor/rules`; if you use several tools, you maintain the instructions in their formats yourself.
 
 ## Names for those moving up from version 4
-<!-- de: 1d4adf73a086 -->
+<!-- de: b1b22bf7277d -->
 
-**Skills.** An old name is rejected, and the message names the new one.
+Version 5 gives skills, commands, options, values, prefixes and labels English names.
+
+### Skills
+<!-- de: 9682f2c2455b -->
+
+An old name is rejected, and the message names the new one.
 
 | Old | New |
 |-----|-----|
@@ -103,7 +109,8 @@ For such recurring, class-wide errors the same principle applies as with the cov
 | `/review` | `/kit-review` |
 | `/plan` (signpost) | dropped, the planning step is `/techplan` |
 
-**Command files.**
+### Command files
+<!-- de: d09a212fa282 -->
 
 | Old | New |
 |-----|-----|
@@ -112,7 +119,8 @@ For such recurring, class-wide errors the same principle applies as with the cov
 | `kit/wirksamkeit.mjs` | `kit/effectiveness.mjs` |
 | `einstellungen.mjs` | `settings.mjs` |
 
-**Commands.**
+### Commands
+<!-- de: 2b0afb5ad9b5 -->
 
 | Command | Old | New |
 |----------|-----|-----|
@@ -130,7 +138,8 @@ For such recurring, class-wide errors the same principle applies as with the cov
 | `kit/worktree.mjs` | `anlegen`, `entfernen`, `im`, `nachziehen-pruefen`, `rueckweg` | `create`, `remove`, `in`, `catch-up-check`, `return` |
 | `kit/worktree.mjs` | `vorbereitung-festhalten`, `vorbereitung-pruefen` | `record-preparation`, `check-preparation` |
 
-**Options.**
+### Options
+<!-- de: 55fdc0006a01 -->
 
 | Command | Old | New |
 |----------|-----|-----|
@@ -145,7 +154,8 @@ For such recurring, class-wide errors the same principle applies as with the cov
 | `kit/worktree.mjs` | `--praefix`, `--ergebnis`, `--offen`, `--verwerfen` | `--prefix`, `--result`, `--open`, `--discard` |
 | `install.mjs` | `--sprache`, `--schutz` | `--language`, `--protection` |
 
-**Choice values.**
+### Choice values
+<!-- de: 0955e13fcb52 -->
 
 | Place | Old | New |
 |--------|-----|-----|
@@ -158,7 +168,10 @@ For such recurring, class-wide errors the same principle applies as with the cov
 | `kit/worktree.mjs --fetch` | `fehlgeschlagen` | `failed` |
 | `/push-main` | `vorbereiten`, `notfall` | `prepare`, `emergency` |
 
-**Title prefixes.** New cards carry only the English ones; the kit still recognises the German ones on open cards.
+### Title prefixes
+<!-- de: 9f2044ba1843 -->
+
+New cards carry the English ones, the kit still recognises the German ones on open cards.
 
 | Old | New |
 |-----|-----|
@@ -166,7 +179,10 @@ For such recurring, class-wide errors the same principle applies as with the cov
 | `[Idee]` | `[Idea]` |
 | `[Mensch]` | `[Human]` |
 
-**Labels.** The kit sets only the English ones; it still recognises the German ones on open cards and removes them wherever it would remove the English one.
+### Labels
+<!-- de: 13976ac139f7 -->
+
+The kit sets the English ones, recognises the German ones on open cards and removes them wherever it would remove the English one.
 
 | Old | New |
 |-----|-----|
@@ -184,6 +200,6 @@ For such recurring, class-wide errors the same principle applies as with the cov
 | `ziel:push-vorbereitet` | `goal:push-prepared` |
 
 ## License
-<!-- de: 574befe785b2 -->
+<!-- de: 2b0491623e20 -->
 
-MIT. The kit is free to use, modify and redistribute.
+MIT: you may freely use, modify and redistribute the kit.

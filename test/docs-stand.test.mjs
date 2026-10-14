@@ -1,9 +1,8 @@
 // Die Doku beschreibt das Kit, wie es ist (Plan #1652, A7).
 //
-// Die Pruefungen gelten fuer die Seiten der Liste SEITEN: Jedes Paket des Plans nimmt
-// seine neu geschriebene Seite auf (E10), das letzte ersetzt die Liste durch alle
-// aktuellen Seiten und schaltet die Wortsumme scharf. Bis dahin steht das Budget der
-// eigenen Seite nur als Hinweis in der Ausgabe.
+// Die Pruefungen gelten fuer alle aktuellen Seiten, also `docs/*.md` ohne die Liste
+// `historisch` in `docs-site/sprachen.json` (E10), und ihre Wortsumme ist hoechstens 20.700
+// (Kriterium 5). Das Budget je Seite (A2) steht nur als Hinweis in der Ausgabe.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -15,14 +14,31 @@ import { SCHLUESSEL } from "../kit/board/config-namen.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DOCS = join(repoRoot, "docs");
 
-/** Die neu geschriebenen Seiten, je mit ihrem Wortbudget (A2). */
-const SEITEN = { einstellungen: 3600, quickstart: 500, lokal: 400, wsl2: 650, pruefbereiche: 600, glossar: 400, index: 100, prozess: 5000, einrichtung: 3800, nachtbetrieb: 3300 };
+/** Das Wortbudget je Seite (A2), nur als Hinweis. */
+const BUDGET = { dokumentation: 1800, einstellungen: 3600, quickstart: 500, lokal: 400, wsl2: 650, pruefbereiche: 600, glossar: 400, index: 100, prozess: 5000, einrichtung: 3800, nachtbetrieb: 3300 };
+
+/** Hoechstens ein Drittel von 62.029 Woertern (Kriterium 5). */
+const WORTSUMME = 20700;
+
+/** Die aktuellen Seiten: `docs/*.md` ohne die der Liste `historisch`. */
+function aktuelleSeiten() {
+  const { historisch } = JSON.parse(readFileSync(join(repoRoot, "docs-site", "sprachen.json"), "utf-8"));
+  return readdirSync(DOCS).filter((n) => n.endsWith(".md")).map((n) => n.slice(0, -3)).filter((n) => !historisch.includes(n)).sort();
+}
+
+/** Woerter wie `wc -w`: jede Folge ohne Leerraum. */
+const woerter = (text) => text.split(/\s+/).filter(Boolean).length;
 
 /** Eingebaute Claude-Code-Kommandos, die die Doku nennt (E7). */
 const EINGEBAUT = new Set(["help"]);
 
 /** Ueberschriften der Update-Hinweise; ihr Abschnitt ist von (b) ausgenommen (E5). */
-const AUSNAHMEN = new Set(["Umzug von nativem Windows"]);
+const AUSNAHMEN = new Set([
+  "Umzug von nativem Windows",
+  "Moving from native Windows",
+  "Namen für Umsteiger von Version 4",
+  "Names for those moving up from version 4",
+]);
 
 /** Wendungen, die von einer frueheren Fassung erzaehlen. */
 const WENDUNGEN = ["früher galt", "früher hieß", "seit Issue", "wurde entfernt", "ehemals", "Altname"];
@@ -32,7 +48,7 @@ const ENDE = "<!-- einstellungen:ende -->";
 
 function seiten() {
   const liste = [];
-  for (const name of Object.keys(SEITEN)) {
+  for (const name of aktuelleSeiten()) {
     for (const pfad of [join(DOCS, `${name}.md`), join(DOCS, "en", `${name}.md`)]) {
       liste.push({ name: pfad.slice(repoRoot.length + 1), text: readFileSync(pfad, "utf-8") });
     }
@@ -120,7 +136,7 @@ const maskiert = (s) => s.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 test("Szenario: Jeder genannte Name funktioniert", () => {
   const skills = new Set(readdirSync(join(repoRoot, "skills")).filter((n) => existsSync(join(repoRoot, "skills", n, "SKILL.md"))));
   for (const { name, text } of seiten()) {
-    for (const [, aufruf] of text.matchAll(/`\/([a-z][a-z0-9-]*)(?:\s[^`]*)?`/g)) {
+    for (const [, aufruf] of ohneAusnahmen(text).matchAll(/`\/([a-z][a-z0-9-]*)(?:\s[^`]*)?`/g)) {
       assert.ok(skills.has(aufruf) || EINGEBAUT.has(aufruf), `${name}: /${aufruf} gibt es weder unter skills/ noch als eingebautes Kommando`);
     }
   }
@@ -147,7 +163,7 @@ test("Gegenprobe: die Pruefung auf Geschichte erkennt Nummer, Wendung und Ausnah
   assert.match(ohnePlatzhalterBloecke("```\ngit log #12\n```\n"), /#12/);
 });
 
-test("Kriterium 7: jede Einstellung steht mit englischem Pfad und Vorgabe in docs/einstellungen.md", (t) => {
+test("Kriterium 7: jede Einstellung steht mit englischem Pfad und Vorgabe in docs/einstellungen.md", () => {
   const text = readFileSync(join(DOCS, "einstellungen.md"), "utf-8");
   const pfade = einstellungen();
   assert.ok(pfade.length >= 154, `nur ${pfade.length} Einstellungen gefunden`);
@@ -155,10 +171,59 @@ test("Kriterium 7: jede Einstellung steht mit englischem Pfad und Vorgabe in doc
     const zeile = new RegExp(String.raw`^- \`${maskiert(pfad)}\` — .*(Vorgabe: \S|Keine Vorgabe\.)`, "m");
     assert.match(text, zeile, `${pfad} fehlt mit Vorgabe oder „Keine Vorgabe“`);
   }
-  for (const [seite, budget] of Object.entries(SEITEN)) {
-    const woerter = readFileSync(join(DOCS, `${seite}.md`), "utf-8").split(/\s+/).filter(Boolean).length;
-    t.diagnostic(`${seite}: ${woerter} Wörter, Budget ${budget}`);
+});
+
+test("Kriterium 5: die aktuellen deutschen Seiten haben zusammen höchstens 20.700 Wörter", (t) => {
+  let summe = 0;
+  for (const seite of aktuelleSeiten()) {
+    const anzahl = woerter(readFileSync(join(DOCS, `${seite}.md`), "utf-8"));
+    summe += anzahl;
+    t.diagnostic(`${seite}: ${anzahl} Wörter, Budget ${BUDGET[seite] ?? "keines"}`);
   }
+  t.diagnostic(`Summe: ${summe} Wörter`);
+  assert.ok(aktuelleSeiten().includes("dokumentation"), "die Einstiegsseite fehlt in der Zählung");
+  assert.ok(!aktuelleSeiten().includes("regeln-im-werkzeug"), "eine historische Seite zählt mit");
+  assert.ok(summe <= WORTSUMME, `${summe} Wörter, erlaubt sind ${WORTSUMME}`);
+});
+
+test("Gegenprobe: die Wortzählung zählt wie wc -w", () => {
+  assert.equal(woerter("  ## Drei Bahnen\n\n| `a` | b |\n"), 8);
+});
+
+/** Ob vor jeder Tabelle eines Abschnitts hoechstens ein Satz Einleitung steht. */
+function einleitungenZuLang(text) {
+  const zulang = [];
+  let einleitung = [];
+  for (const zeile of text.split("\n")) {
+    if (/^#{1,6} /.test(zeile)) einleitung = [];
+    else if (zeile.startsWith("|")) {
+      const saetze = einleitung.join(" ").replaceAll(/`[^`]*`/g, "x").match(/[.!?:](\s|$)/g) ?? [];
+      if (einleitung.length && saetze.length > 1) zulang.push(einleitung.join(" "));
+      einleitung = [];
+    } else if (zeile.trim() && !zeile.startsWith("<!--")) einleitung.push(zeile.trim());
+  }
+  return zulang;
+}
+
+const UPDATE_HINWEISE = [
+  ["docs/dokumentation.md", "## Namen für Umsteiger von Version 4", "docs/wsl2.md", "## Umzug von nativem Windows"],
+  ["docs/en/dokumentation.md", "## Names for those moving up from version 4", "docs/en/wsl2.md", "## Moving from native Windows"],
+];
+
+test("Kriterium 8: genau die zwei Update-Hinweise, Verweis aus CHANGELOG.md, Tabellen mit höchstens einem Satz Einleitung", () => {
+  assert.match(readFileSync(join(repoRoot, "CHANGELOG.md"), "utf-8"), /docs\.mwolff\.org\/wsl2#umzug-von-nativem-windows/);
+  for (const [namenSeite, namen, windowsSeite, windows] of UPDATE_HINWEISE) {
+    assert.ok(abschnitt(readFileSync(join(repoRoot, windowsSeite), "utf-8"), windows), `${windowsSeite}: ${windows} fehlt`);
+    const tabelle = abschnitt(readFileSync(join(repoRoot, namenSeite), "utf-8"), namen);
+    assert.ok(tabelle, `${namenSeite}: ${namen} fehlt`);
+    assert.ok((tabelle.match(/^\|---/gm) ?? []).length >= 6, `${namenSeite}: die Tabellen fehlen`);
+    assert.deepEqual(einleitungenZuLang(tabelle), [], `${namenSeite}: mehr als ein Satz Einleitung vor einer Tabelle`);
+  }
+});
+
+test("Gegenprobe: zwei Sätze vor einer Tabelle sind zu viel, ein Satz und eine Überschrift nicht", () => {
+  assert.deepEqual(einleitungenZuLang("### Skills\n<!-- de: 0123456789ab -->\n\nEin Satz mit `a.b`.\n\n| a |\n"), []);
+  assert.equal(einleitungenZuLang("Ein Satz. Noch einer.\n\n| a |\n").length, 1);
 });
 
 /** Ein Abschnitt ab seiner Ueberschrift bis zur naechsten Ueberschrift derselben oder hoeheren Ebene, Codebloecke ausgenommen. */

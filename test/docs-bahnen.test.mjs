@@ -44,3 +44,24 @@ for (const teile of DATEIEN) {
     );
   });
 }
+
+// Die Einstiegsseite beschreibt die drei Bahnen in beiden Sprachen mit der Auswahlregel und
+// verweist fuer `[Task]` auf /task (Plan #1652, A1). Der Abschnitt nennt den Stand: was eine
+// Bahn heute verlangt, nicht wie die Regel frueher zaehlte.
+const EINSTIEG = [
+  ["docs/dokumentation.md", "## Drei Bahnen", [/Bahn 1/, /Bahn 2/, /Bahn 3/, /abzuwägen/, /\(\/prozess#task\)/]],
+  ["docs/en/dokumentation.md", "## Three lanes", [/[Ll]ane 1/, /[Ll]ane 2/, /[Ll]ane 3/, /weigh up/, /\(\/en\/prozess#task\)/]],
+];
+
+for (const [pfad, ueberschrift, muster] of EINSTIEG) {
+  test(`${pfad} beschreibt unter '${ueberschrift}' alle drei Bahnen mit Auswahlregel, ohne alte Fassung`, () => {
+    const text = lies(pfad);
+    const start = text.split("\n").indexOf(ueberschrift);
+    assert.ok(start > -1, `${pfad}: keine Zeile lautet genau '${ueberschrift}'`);
+    const rest = text.split("\n").slice(start + 1);
+    const ende = rest.findIndex((z) => z.startsWith("## "));
+    const abschnitt = rest.slice(0, ende === -1 ? undefined : ende).join("\n");
+    for (const m of muster) assert.match(abschnitt, m, `${pfad}: ${m} fehlt im Abschnitt`);
+    assert.doesNotMatch(abschnitt, /früher|alte Fassung|used to|old version/i, `${pfad}: der Abschnitt erzählt von einer früheren Fassung`);
+  });
+}

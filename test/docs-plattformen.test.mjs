@@ -41,6 +41,13 @@ test('docs/dokumentation.md nennt in den Voraussetzungen weder Git Bash noch cyg
   assert.match(teil, /\(\/wsl2\)/);
 });
 
+test('docs/en/dokumentation.md nennt in den Voraussetzungen die WSL2-Anleitung und kein Git Bash (Plan #1652, A1)', () => {
+  const teil = abschnitt(lies('docs/en/dokumentation.md'), 'Prerequisites');
+  assert.doesNotMatch(teil, /Git Bash|cygpath/);
+  assert.match(teil, /\(\/en\/wsl2\)/);
+  assert.match(teil, /\bmacOS\b[^.]*\bLinux\b[^.]*\bWSL2\b/);
+});
+
 test('docs/wsl2.md existiert mit Projektort und Windows-Werkzeugen', () => {
   assert.ok(existsSync(join(ROOT, 'docs/wsl2.md')));
   const text = lies('docs/wsl2.md');
