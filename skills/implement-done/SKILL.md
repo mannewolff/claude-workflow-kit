@@ -159,7 +159,7 @@ Refs #N
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 ```
 
-Nur explizit veränderte Dateien stagen — kein `git add -A` oder `git add .`.
+Nur explizit veränderte Dateien stagen — kein `git add -A` oder `git add .`. Nennt der Bericht `Format-Fix: … → ausgefuehrt`, gehören alle vom Fix geänderten Dateien (`git status`) in denselben Commit und in den Abschlussbericht.
 
 **Kein `Closes`/`Fixes`/`Resolves #N` im Commit.** Diese Keywords schließen das Issue automatisch beim Push/Merge, und die Board-Automation zieht es dann sofort nach Done — noch bevor der Mensch getestet hat. `Refs #N` verlinkt, ohne zu schließen. Das Schließen macht ausschließlich der Mensch.
 

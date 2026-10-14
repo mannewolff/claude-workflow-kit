@@ -2,9 +2,9 @@
 //
 // Endet eine Runde ohne Board-Ergebnis, aber mit Arbeit im Baum, faehrt der Runner die
 // Pflicht-Pruefungen selbst — ueber `checks.mjs run --finish <karte> --fresh`, damit
-// derselbe Nachweis entsteht, den das Commit-Gate liest (Issue #919). Sind sie rot und ist
-// ein `formatFixCommand` gesetzt, laeuft er genau einmal, und die Pruefungen laufen genau
-// einmal nach (Issue #169). Die Umgebung bekommt den env-Block aus `.claude/settings.json`
+// derselbe Nachweis entsteht, den das Commit-Gate liest (Issue #919). Den einmaligen
+// Format-Fix (Issue #169) faehrt seit Issue #1672 `checks.mjs run` selbst; die Vorpruefung
+// ruft es genau einmal und liest das Feld `formatFix` der Zusammenfassung. Die Umgebung bekommt den env-Block aus `.claude/settings.json`
 // und `.claude/settings.local.json` dazu, wie Claude Code ihn seinen Bash-Aufrufen gibt
 // (Issue #168).
 //
@@ -40,15 +40,19 @@ async function imProjekt(dateien, fn) {
 
 /**
  * Ein `spawnSync`, das jeden Aufruf mitschreibt. `checks` liefert der Reihe nach die
- * Exitcodes von `checks.mjs run`; ein Aufruf ueber die Shell (der Format-Fix) endet mit 0.
+ * Exitcodes von `checks.mjs run`; ein Aufruf ueber die Shell endet mit 0. `formatFix`
+ * steht danach in der Zusammenfassung, wie checks.mjs sie nach einem Nachformatieren schreibt.
  */
-function aufrufAttrappe(checks) {
+function aufrufAttrappe(checks, formatFix = null) {
   const aufrufe = [];
   const spawnSync = (befehl, args, optionen) => {
     const checksLauf = args[0] === CHECKS_PATH;
     aufrufe.push({ art: checksLauf ? "checks" : "shell", befehl, args, env: optionen.env });
     if (!checksLauf) return { status: 0, stdout: "", stderr: "" };
     const status = checks.shift();
+    if (formatFix) {
+      writeFileSync(join(".claude", "checks-summary.json"), json({ laufen: [{ cmd: "mvn verify", ergebnis: status === 0 ? "gruen" : "rot" }], formatFix }));
+    }
     return { status, stdout: status === 0 ? "alles gruen\n" : "rot: mvn verify\n", stderr: "" };
   };
   return { spawnSync, aufrufe };
@@ -129,31 +133,30 @@ test("Vorpruefung: rote Pruefungen ohne formatFixCommand — kein Fix, das rote 
 // Arbeit vollstaendig war. Ein Formatverstoss ist mechanisch und deterministisch
 // behebbar und sagt nichts ueber die fachliche Qualitaet.
 
-test("Format-Fix: erst rote, nach dem Format-Kommando gruene Pruefungen — die Rettung darf beginnen", async () => {
+test("[1672] Format-Fix: checks.mjs hat nachformatiert und ist gruen — ein Aufruf, kein eigener Fix, der Prompt nennt ihn", async () => {
   await imProjekt({}, async () => {
-    const { spawnSync, aufrufe } = aufrufAttrappe([1, 0]);
+    const { spawnSync, aufrufe } = aufrufAttrappe([0], { cmd: "npm run format", gereicht: true });
     const { ergebnis, text } = await stdoutFangen(() =>
-      verifyChecksForSalvage({ formatFixCommand: "  touch fixed.marker " }, 7, { spawnSync }));
+      verifyChecksForSalvage({ formatFixCommand: "npm run format" }, 7, { spawnSync }));
 
     assert.equal(ergebnis.ok, true);
-    assert.equal(ergebnis.formatFixCmd, "touch fixed.marker", "der Salvage-Prompt nennt das Format-Kommando");
-    assert.deepEqual(aufrufe.map((a) => a.art), ["checks", "shell", "checks"]);
-    assert.ok(aufrufe[1].args.includes("touch fixed.marker"), `der Fix laeuft ueber die Shell: ${aufrufe[1].args.join(" ")}`);
-    assert.match(text, /buildChecks rot — einmaliger Format-Fix wird angewendet: touch fixed\.marker/);
+    assert.equal(ergebnis.formatFixCmd, "npm run format", "der Salvage-Prompt nennt das Format-Kommando");
+    assert.deepEqual(aufrufe.map((a) => a.art), ["checks"], "der Fix laeuft nur in checks.mjs, nie ein zweites Mal hier");
     assert.match(text, /FORMAT-FIX angewendet, buildChecks jetzt gruen/, "der angewendete Format-Fix muss im Protokoll sichtbar sein");
-    assert.match(ergebnis.output, /alles gruen/, "die Ausgabe ist die des zweiten Durchgangs");
+    assert.match(salvagePrompt("7", ergebnis.output, ergebnis.formatFixCmd), /"npm run format"/);
   });
 });
 
-test("Format-Fix: hilft er nicht, bleibt die Vorpruefung rot — und er lief genau einmal", async () => {
+test("[1672] Format-Fix: hat er nicht gereicht, bleibt die Vorpruefung rot — ein Aufruf, kein zweiter Fix", async () => {
   await imProjekt({}, async () => {
-    const { spawnSync, aufrufe } = aufrufAttrappe([1, 1]);
+    const { spawnSync, aufrufe } = aufrufAttrappe([1], { cmd: "npm run format", gereicht: false });
     const { ergebnis, text } = await stdoutFangen(() =>
-      verifyChecksForSalvage({ formatFixCommand: "echo lauf >> fixcount.log" }, 7, { spawnSync }));
+      verifyChecksForSalvage({ formatFixCommand: "npm run format" }, 7, { spawnSync }));
 
     assert.equal(ergebnis.ok, false);
     assert.equal(ergebnis.formatFixCmd, null);
-    assert.deepEqual(aufrufe.map((a) => a.art), ["checks", "shell", "checks"], "keine Schleife, genau ein Versuch");
+    assert.equal(ergebnis.rotesKommando, "mvn verify");
+    assert.deepEqual(aufrufe.map((a) => a.art), ["checks"], "keine Schleife, genau ein Aufruf");
     assert.doesNotMatch(text, /FORMAT-FIX angewendet/, "der Fix hat nicht geholfen, darf also nicht als erfolgreich gemeldet werden");
   });
 });

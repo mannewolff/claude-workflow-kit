@@ -318,3 +318,17 @@ test("templates/CLAUDE-workflow.md: das Abschlussbericht-Format nennt je Szenari
   assert.notEqual(start, -1, "der Abschnitt '### Tests and checks' fehlt");
   assert.match(en.slice(start, en.indexOf("### Notes", start)), /- Scenario "<title>" → test <test name>/);
 });
+
+// Issue #1672 (Plan #1671, E1): `checks.mjs run` formatiert an der Paketstufe selbst nach.
+// Die Dateien, die der Fix aendert, gehoeren in den Commit des Pakets — das sagt jeder
+// Umsetzungs-Skill, der committet, an seinem Commit.
+const FORMAT_FIX_SATZ = "Nennt der Bericht `Format-Fix: … → ausgefuehrt`, gehören alle vom Fix geänderten Dateien (`git status`) in denselben Commit und in den Abschlussbericht.";
+
+for (const { name, text } of SKILLS) {
+  test(`[1672] ${name}: der Commit-Abschnitt nennt die Dateien des Format-Fix`, () => {
+    const commit = text.search(/### \d+\. Lokal committen/);
+    assert.notEqual(commit, -1, "der Commit-Abschnitt wurde nicht gefunden");
+    const satz = text.indexOf(FORMAT_FIX_SATZ);
+    assert.ok(satz > commit, "der Satz zum Format-Fix fehlt im Commit-Abschnitt");
+  });
+}

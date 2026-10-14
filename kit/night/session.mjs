@@ -1753,8 +1753,8 @@ export function sessionStart({ testCmd, kommando, prompt, modell, args, opts }) 
   // weil eine headless -p-Session keinen Folge-Turn hat. Ohne das Werkzeug bleibt ihr
   // der Vordergrund-Aufruf, dessen Ergebnis sie noch verwerten kann.
   //
-  // Die Sperre ersetzt eine Anweisung, die es laengst gibt: local-check verlangt seit
-  // Issue #167 woertlich, einen Hintergrund-Check aktiv abzuwarten statt mit einer
+  // Die Sperre ersetzt eine Anweisung, die es laengst gibt: Die Umsetzungs-Skills verlangen
+  // seit Issue #167 woertlich, einen Hintergrund-Check aktiv abzuwarten statt mit einer
   // Ankuendigung zu enden. Sie stand im Kontext der Sessions, die trotzdem so endeten
   // (kanban-kit #891, #899, #900). Das ist das #122-Prinzip am lebenden Objekt: Was ein
   // Modell klassenweise falsch macht, gehoert ins Gate und nicht in den Prompt.
@@ -2020,7 +2020,7 @@ export function settingsEnv(wurzel = process.cwd()) {
 // Check ab. mutationCommand bleibt bewusst aussen vor: ein nachgelagerter Check,
 // kein Blocker fuer die Salvage-Entscheidung. Die Kindprozess-Umgebung bekommt
 // zusaetzlich den env-Block aus .claude/settings.json gemergt (siehe settingsEnv).
-// Umgebung fuer die eigenen Kindprozesse (Vorpruefung und Format-Fix): process.env
+// Umgebung fuer die eigenen Kindprozesse (die Vorpruefung): process.env
 // plus der gemergte settings-env-Block, ohne die Variablen eines Laufs (Issue #1282).
 function checkEnv() {
   return { ...ohneLaufVariablen(process.env), ...settingsEnv() };
@@ -2282,40 +2282,39 @@ function runChecksCliSync(karte, abfragen) {
   return { ok: false, output, rotesKommando: nachweis.rotesKommando ?? null };
 }
 
-// Vorpruefung fuer den Salvage inklusive einmaligem Format-Fix (Issue #169).
+// Vorpruefung fuer den Salvage (Issue #169, #919).
 //
 // Ein reiner Formatverstoss ist mechanisch und deterministisch behebbar und sagt
 // nichts ueber die fachliche Qualitaet der Arbeit — er darf keinen Lauf beenden,
 // in dem noch zwanzig Issues warten (beobachtet bei kanban-kit#463: ein einzelner
-// Javadoc-Zeilenumbruch). Ist formatFixCommand gesetzt und sind die Checks rot,
-// laeuft das Kommando genau einmal und die Checks werden genau einmal wiederholt.
-// Bleiben sie rot, war das Format nicht die Ursache -> harter Stopp wie bisher.
-// Ohne formatFixCommand ist das Verhalten exakt wie vor #169.
+// Javadoc-Zeilenumbruch). Das Nachformatieren faehrt seit Issue #1672 (Plan #1671, E2)
+// `checks.mjs run` selbst: Ist der Lauf rot und `formatFixCommand` gesetzt, laeuft das
+// Kommando dort genau einmal, und der Nachweis, der liegenbleibt, bezeugt den Stand NACH
+// dem Fix. Ein eigener Fix hier liefe den in checks.mjs ein zweites Mal — gegen die Grenze
+// „genau einmal" aus #169. Darum genau ein Aufruf; ob ein Fix lief und gereicht hat, sagt
+// das Feld `formatFix` der Zusammenfassung, und damit nennt der Salvage-Prompt ihn.
 //
-// Beide Durchgaenge gehen ueber `checks.mjs run --fresh` (Issue #919): Der zweite ist
-// der, dessen Nachweis am Ende liegenbleibt — er muss den Stand NACH dem Format-Fix
-// bezeugen, sonst wiese das Gate die Rettung wegen der geaenderten Blobs ab.
-//
-// `abh.spawnSync` startet beide Durchgaenge und den Format-Fix (Issue #1229, Plan #1199,
-// E6); ohne Angabe der echte.
-export function verifyChecksForSalvage(cfg, karte, abh = {}) {
+// `abh.spawnSync` startet den Aufruf (Issue #1229, Plan #1199, E6); ohne Angabe der echte.
+export function verifyChecksForSalvage(_cfg, karte, abh = {}) {
   const { spawnSync: abfragen } = { ...SESSION_ABHAENGIGKEITEN, ...abh };
-  const first = runChecksCliSync(karte, abfragen);
-  if (first.ok) return { ok: true, output: first.output, formatFixCmd: null, rotesKommando: null };
+  const lauf = runChecksCliSync(karte, abfragen);
+  if (!lauf.ok) return { ok: false, output: lauf.output, formatFixCmd: null, rotesKommando: lauf.rotesKommando };
+  const formatFixCmd = formatFixAusNachweis();
+  if (formatFixCmd !== null) log(t("formatFixGruen"));
+  return { ok: true, output: lauf.output, formatFixCmd, rotesKommando: null };
+}
 
-  const fixCmd = (cfg.formatFixCommand || "").trim();
-  if (!fixCmd) return { ok: false, output: first.output, formatFixCmd: null, rotesKommando: first.rotesKommando };
-
-  log(t("formatFixStart", { cmd: fixCmd }));
-  // fixCmd kommt aus der Config und braucht deshalb eine Shell (Issue #199). Startet sie
-  // nicht, steht das im Log, und der zweite Durchgang bleibt rot.
-  const fix = konfigKommandoSync(fixCmd, checkEnv(), abfragen);
-  if (fix.status === null && fix.stderr) log(t("formatFixNichtGestartet", { fehler: fix.stderr.trim() }));
-
-  const second = runChecksCliSync(karte, abfragen);
-  if (!second.ok) return { ok: false, output: second.output, formatFixCmd: null, rotesKommando: second.rotesKommando };
-  log(t("formatFixGruen"));
-  return { ok: true, output: second.output, formatFixCmd: fixCmd, rotesKommando: null };
+/**
+ * Das Kommando des Nachformatierens, wenn `checks.mjs run` es gefahren hat und es gereicht
+ * hat (Issue #1672) — aus dem Feld `formatFix` der Zusammenfassung, sonst `null`.
+ */
+function formatFixAusNachweis() {
+  try {
+    const { formatFix } = JSON.parse(readFileSync(zusammenfassungPfad(process.cwd()), "utf-8"));
+    return formatFix?.gereicht === true && typeof formatFix.cmd === "string" ? formatFix.cmd : null;
+  } catch {
+    return null;
+  }
 }
 
 // Baut den Prompt der Salvage-Session. Kernpunkt: die Checks sind bereits extern

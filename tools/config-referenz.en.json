@@ -136,8 +136,8 @@
     "text": "Further commands or command prefixes that start a quality measurement (optional). Gate I6 of \"issue check-form\" rejects a work package whose acceptance criterion names one of them — in addition to \"mutationCommand\" and the command of a buildChecks entry with a \"guete\" block. The route for a measurement driver the project has yet to build: it cannot be a check yet, but its prefix is already listed here, and a full run therefore does not slip into a package's acceptance criterion. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "formatFixCommand": {
-    "de": "6a67b1053161",
-    "text": "Command that fixes formatting violations mechanically (e.g. 'mvn spotless:apply' or 'npx prettier --write .'). Only the night runner uses it: if the buildChecks are red in the salvage pre-check, it runs exactly once and the checks are repeated exactly once, so that a pure formatting violation does not end a whole run. Empty string or missing field = no format fix. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "c0ddab43ba3b",
+    "text": "Command that fixes formatting violations mechanically (e.g. 'mvn spotless:apply' or 'npx prettier --write .'). It applies to all runs at the package stage, not only at night: if `checks.mjs run` without `--stage push` or `--stage merge` is red, it runs exactly once and the checks run exactly once more, so that a pure formatting violation does not end a completion or a run; at `push` and `merge` it does not run. Empty string or missing field = no format fix. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "installCommand": {
     "de": "496773bcade8",

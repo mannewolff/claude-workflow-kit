@@ -163,6 +163,36 @@ test("Salvage: gruene buildChecks + erfolgreiche Salvage-Session setzen den Lauf
   }
 });
 
+// Issue #1672 (Plan #1671, E2): Das Nachformatieren faehrt checks.mjs selbst, die
+// Vorpruefung keinen eigenen Fix mehr. Nachts laeuft er damit genau einmal.
+test("[1672] Salvage: der Format-Fix laeuft nachts genau einmal, in checks.mjs, und die Rettung beginnt", () => {
+  // Rot, solange die Arbeit der Session unformatiert ist; der Fix formatiert und zaehlt sich.
+  const dir = setupProjekt(["! grep -q arbeit work-*.txt"], {
+    formatFixCommand: "echo lauf >> fixcount.log && for f in work-*.txt; do echo formatiert > \"$f\"; done",
+  });
+  try {
+    const erstes = board(dir, "issue", "create", "--title", "Erstes Issue", "--body", "## Abhaengigkeiten\nKeine.");
+    board(dir, "issue", "move", String(erstes.id), "ready");
+
+    const sessionLog = join(dir, "sessions.log");
+    const fake = fakeSession(sessionLog,
+      `git add -A && git commit -q -m "salvage (Issue #$NIGHT_ISSUE_ID)"`
+      + ` && node .claude/kit/board.mjs issue move "$NIGHT_ISSUE_ID" in_review > /dev/null`);
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: fake });
+
+    assert.equal(res.status, 0, `night.mjs haette sauber enden muessen: ${res.stderr}\n${res.stdout}`);
+    assert.equal(readFileSync(join(dir, "fixcount.log"), "utf-8"), "lauf\n", "der Format-Fix lief nicht genau einmal");
+    assert.match(res.stdout, /FORMAT-FIX angewendet, buildChecks jetzt gruen/);
+    assert.match(res.stdout, /SALVAGE-VERSUCH gestartet \(Checks extern verifiziert gruen\)/);
+    const summary = JSON.parse(readFileSync(join(dir, ".claude", "checks-summary.json"), "utf-8"));
+    assert.equal(summary.formatFix?.gereicht, true, JSON.stringify(summary.formatFix));
+    const inReview = board(dir, "issue", "list", "--status", "in_review").map((i) => String(i.id));
+    assert.ok(inReview.includes(String(erstes.id)), "Issue haette in In review landen muessen");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("Salvage: env-Block aus .claude/settings.json wird beim Vorpruefen der buildChecks gemergt", () => {
   // buildChecks besteht nur, wenn die Variable ankommt — belegt, dass
   // runBuildChecksSync sie aus settings.json mergt statt nur process.env zu

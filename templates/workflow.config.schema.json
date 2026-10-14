@@ -304,7 +304,7 @@
     },
     "formatFixCommand": {
       "type": "string",
-      "description": "Kommando, das Formatierungsverstöße mechanisch behebt (z.B. 'mvn spotless:apply' oder 'npx prettier --write .'). Nur der Nacht-Runner nutzt es: sind die buildChecks in der Salvage-Vorprüfung rot, läuft es genau einmal und die Checks werden genau einmal wiederholt, damit ein reiner Formatverstoss keinen ganzen Lauf beendet. Leer-String oder fehlendes Feld = kein Format-Fix. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Kommando, das Formatierungsverstöße mechanisch behebt (z.B. 'mvn spotless:apply' oder 'npx prettier --write .'). Es gilt für alle Läufe der Paketstufe, nicht nur nachts: Ist `checks.mjs run` ohne `--stage push` oder `--stage merge` rot, läuft es genau einmal und die Prüfungen laufen genau einmal neu, damit ein reiner Formatverstoss keinen Abschluss und keinen Lauf beendet; an `push` und `merge` läuft es nicht. Leer-String oder fehlendes Feld = kein Format-Fix. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": ""
     },
     "installCommand": {

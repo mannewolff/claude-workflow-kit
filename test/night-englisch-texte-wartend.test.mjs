@@ -271,7 +271,7 @@ test("[1488] ohne Spracheinstellung bleiben die Gruende von session deutsch", ()
 
 test("[1489] die Texttabelle von session traegt auch die Meldungen des zweiten Teils", () => {
   assert.deepEqual(pruefeParitaet(SESSION_TEXTE), []);
-  for (const schluessel of ["claudeFehlt", "formatFixStart", "formatFixGruen", "zahlGroesserNull", "vorflugOhneBlock"]) {
+  for (const schluessel of ["claudeFehlt", "formatFixGruen", "zahlGroesserNull", "vorflugOhneBlock"]) {
     assert.ok(Object.hasOwn(SESSION_TEXTE.de, schluessel), `"${schluessel}" fehlt in der Tabelle`);
   }
 });
@@ -312,14 +312,17 @@ async function imLeerenProjekt(fn) {
   }
 }
 
-test("[1489] englisch: die Zeilen des Format-Fix stehen in der Form der Vorlage", async () => {
-  const exitcodes = [1, 0];
-  const spawnSync = (_befehl, args) => (args[0] === CHECKS_PATH
-    ? { status: exitcodes.shift(), stdout: "", stderr: "" }
-    : { status: 0, stdout: "", stderr: "" });
+test("[1489] englisch: die Zeile des Format-Fix steht in der Form der Vorlage", async () => {
+  // Den Fix faehrt checks.mjs (Issue #1672); die Vorpruefung liest ihn aus der Zusammenfassung.
+  const spawnSync = (_befehl, args) => {
+    if (args[0] === CHECKS_PATH) {
+      writeFileSync(join(".claude", "checks-summary.json"), JSON.stringify({ laufen: [], formatFix: { cmd: "npm run format", gereicht: true } }));
+    }
+    return { status: 0, stdout: "", stderr: "" };
+  };
   const text = await imLeerenProjekt(() => inSprache("en", () => mitProtokoll(() =>
     verifyChecksForSalvage({ formatFixCommand: "npm run format" }, 7, { spawnSync }))));
-  assert.match(text, / {2}buildChecks red — one-time format fix being applied: npm run format/);
+  assert.doesNotMatch(text, /one-time format fix being applied/);
   assert.match(text, / {2}FORMAT FIX applied, buildChecks now green — the run continues\./);
 });
 

@@ -27,7 +27,8 @@
  *     alles laeuft. Nicht abschaltbar.
  *   - Ein Anker, der sich nicht aufloesen laesst -> ebenso voller Umfang. Ein
  *     LEERER `--since`-Wert zaehlt dabei wie ein nicht aufloesbarer, nie wie ein
- *     fehlender: Er entsteht, wenn im /local-check-Skill die
+ *     fehlender: Er entsteht, wenn bei einem Aufruf von Hand oder aus einem Skill
+ *     (`/push-main`, ein Prueflauf vor dem Veroeffentlichen) die
  *     merge-base-Substitution fehlschlaegt. Als "nicht angegeben" gelesen griffe
  *     der Default HEAD, und auf sauberem Tree liefe keine einzige Pruefung.
  *   - Eine fehlende Config -> Abbruch mit Exit ungleich 0. Ein Kommando, das
@@ -108,7 +109,7 @@
  * und jeder Lauf waehrend der Umsetzung laeuft wie bisher genau einmal.
  *
  * Auch hier ist die Richtung einseitig: Wer `--finish` VERGISST, prueft mehr. Darum
- * bleibt jeder Commit von Hand und jeder Aufruf aus `/local-check` unveraendert, und
+ * bleibt jeder Commit von Hand und jeder Prueflauf von Hand ohne Karte unveraendert, und
  * darum haengt das Gate des Abschlusses (mindestens ein Paketstufen-Eintrag, der weder
  * `nichtBeimAbschluss` noch `guete` traegt) am Schalter statt an jedem Aufruf.
  *
@@ -505,6 +506,10 @@ export const TEXTE = Object.freeze({
     erstlaufAbgelegt: "Ausgabe des ersten Laufs abgelegt: {pfad}",
     wiederholung: "Wiederholung: {cmd} war rot — einmal auf demselben Stand wiederholt",
     teillaufGruen: "Teillauf gruen — es folgt der volle Lauf als Nachweis",
+    formatFixStart: "Format-Fix: Lauf rot — {cmd} laeuft einmal, danach ein neuer Durchgang",
+    formatFixAusgefuehrt: "Format-Fix: {cmd} → ausgefuehrt",
+    formatFixNichtGereicht: "Format-Fix lief und hat nicht gereicht",
+    formatFixArbeitsbaum: "Der Arbeitsbaum ist veraendert — die vom Format-Fix geaenderten Dateien (git status) gehoeren in den Commit",
     keineKartennummer: "'{wert}' ist keine Kartennummer fuer --finish. Erwartet: eine Nummer oder nichts.",
     abschlussMitStufe: "--finish und --stage '{stufe}' zusammen: Der Abschluss einer Karte faehrt die Stufe '{paket}'. Vor dem Veroeffentlichen laeuft der volle Umfang ohne --finish.",
     abschlussMitBereich: "--finish und --area zusammen: zwei Eingrenzungen in einem Lauf. Der Bereichslauf gehoert in die Arbeit, --finish an ihr Ende.",
@@ -624,6 +629,10 @@ export const TEXTE = Object.freeze({
     erstlaufAbgelegt: "Output of the first run stored: {pfad}",
     wiederholung: "Retry: {cmd} was red — repeated once on the same state",
     teillaufGruen: "Partial run green — the full run follows as evidence",
+    formatFixStart: "Format fix: run red — {cmd} runs once, then a new pass",
+    formatFixAusgefuehrt: "Format fix: {cmd} → executed",
+    formatFixNichtGereicht: "Format fix ran and was not enough",
+    formatFixArbeitsbaum: "The working tree has changed — the files changed by the format fix (git status) belong in the commit",
     keineKartennummer: "'{wert}' is no card number for --finish. Expected: a number or nothing.",
     abschlussMitStufe: "--finish and --stage '{stufe}' together: the completion of a card runs the stage '{paket}'. Before publishing the full scope runs without --finish.",
     abschlussMitBereich: "--finish and --area together: two restrictions in one run. The area run belongs in the work, --finish at its end.",
@@ -1109,8 +1118,8 @@ function pruefeAbschlussBereich(check, name, bekannt) {
  *
  * Geprueft wird NUR im Abschlusslauf, nicht bei jedem Aufruf. Dieselbe Config bleibt fuer
  * jeden anderen Lauf gueltig, und sie ist es auch: Ohne den Schalter laufen beide
- * Pruefungen. Ein unbedingter Abbruch naehme dagegen einem `/local-check` oder einem Commit
- * von Hand die Pruefung weg, obwohl dort nie etwas ausgelassen wurde — und genau das
+ * Pruefungen. Ein unbedingter Abbruch naehme dagegen einem Prueflauf von Hand ohne Karte,
+ * einem Lauf aus `/push-main` oder einem Commit von Hand die Pruefung weg, obwohl dort nie etwas ausgelassen wurde — und genau das
  * schliesst die einseitige Richtung des Plans aus: Wer den Schalter nicht setzt, prueft mehr.
  *
  * Eine Config OHNE Paketstufen-Eintrag faellt hier nicht durch: Sie hatte nie ein Gate,
@@ -3256,8 +3265,10 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
   // Die Wackler der Karte gehen unveraendert weiter (Issue #1397, E11): Eine Uebernahme
   // faehrt nichts. Die Faelle des uebernommenen Laufs stehen schon an seinen Eintraegen.
   const gewackeltKarte = gewackeltKarteVorher(vorige, karte);
+  const formatFix = frueher.formatFix && typeof frueher.formatFix === "object" ? frueher.formatFix : null;
   const zeilen = [
     ...(frueher.teillauf === true ? [t("teillauf")] : []),
+    ...formatFixZeilen(formatFix),
     ...berichtszeilen(auswahl, frueher.laufen, {
       uebernommen: true, grenzeMs: pruefdauerObergrenzeMs(),
       frueher: (gewackeltKarte ?? []).filter((w) => w.zeitpunkt !== original),
@@ -3283,6 +3294,9 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
     // Ein uebernommener roter Teillauf bleibt ein Teillauf (Issue #1072): Die nicht
     // gestarteten Eintraege darin sind nie gemessen worden.
     ...(frueher.teillauf === true ? { teillauf: true } : {}),
+    // Das Nachformatieren gehoert zum uebernommenen Lauf (Issue #1672): Seine Aenderungen
+    // liegen noch im Baum und gehoeren weiter in den Commit.
+    ...(formatFix ? { formatFix } : {}),
     uebernommen: original,
     hinweise: hinweiseVon(frueher.laufen),
     berichtszeilen: zeilen,
@@ -3717,8 +3731,14 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   // in den Fassungen, bevor der volle Lauf sie an seine Eintraege uebernommen hat.
   const gewackeltVorher = gewackeltKarteVorher(vorige, args.karte);
   let wacklerTeillauf = [];
+  // Das Nachformatieren dieses Aufrufs (Issue #1672, Plan #1671, E1): `{ cmd, gereicht }`,
+  // solange keiner lief `null`.
+  let formatFix = null;
+  // Nur der erste Durchgang wiederholt; der nach dem Fix laeuft genau einmal (E1).
+  let wiederholen = auswahl.wiederholen === true;
   const zeilenVon = (stand) => [
     ...(stand.teillauf ? [t("teillauf")] : []),
+    ...formatFixZeilen(formatFix),
     ...berichtszeilen(auswahl, stand.laufen, { grenzeMs, frueher: gewackeltVorher ?? [] }),
   ];
   const schreibeStand = (stand, abgeschlossen) => schreibeZusammenfassung({
@@ -3726,6 +3746,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
     dauerGesamtMs: dauerGesamt(stand.laufen), ...(stand.guete ? { guete: stand.guete } : {}),
     ...(stand.verursacher ? { verursacher: stand.verursacher } : {}),
     ...(stand.teillauf ? { teillauf: true } : {}),
+    ...(formatFix ? { formatFix } : {}),
     hinweise: hinweiseVon(stand.laufen),
     berichtszeilen: zeilenVon(stand),
     ...wartezeit,
@@ -3801,7 +3822,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
       const erster = await fahren(eintrag, schreibe);
       let lauf = erster;
       let erstlauf = null;
-      if (!erster.bestanden && auswahl.wiederholen === true) {
+      if (!erster.bestanden && wiederholen) {
         // Die rote Ausgabe bleibt liegen (E17): Wer die Pruefung spaeter repariert, braucht sie.
         erstlauf = protokollAblegen(nummer, eintrag.cmd, erster.abgelegt, "-erstlauf");
         if (erstlauf) schreibe(`${t("erstlaufAbgelegt", { pfad: erstlauf })}\n`);
@@ -3907,6 +3928,32 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
     wacklerUebernehmen(stand.laufen, wacklerTeillauf);
   }
 
+  // Das Nachformatieren (Issue #1672, Plan #1671, E1): An der Paketstufe laeuft nach einem
+  // roten Durchgang — mit `--finish` also erst nach der Wiederholung — `formatFixCommand`
+  // genau einmal, danach ein zweiter Durchgang ueber alles, nie ein dritter. So geschieht
+  // es tagsueber wie nachts, ohne dass jemand einen eigenen Schritt aufruft. An `push` und
+  // `merge` nicht: Dort wird der Stand gemessen, der hinausgeht, und ein Fix aenderte ihn
+  // ungesehen.
+  //
+  // Der zweite Durchgang bezeugt den Stand NACH dem Fix: neue Blob-Hashes, neuer
+  // `zeitpunkt` — sonst wiese das Gate den Commit wegen der geaenderten Blobs ab. Die
+  // Laufkennung (`herkunft.lauf`) bleibt die des Aufrufs: Im Ausfuehrungsprotokoll und in
+  // der Wartezeit ist es ein Lauf. Der Fix selbst ist keine Pruefung und bekommt keine Zeile.
+  const fixCmd = formatFixKommando();
+  if (stand.rot && auswahl.stufe === STUFEN[0] && fixCmd !== null) {
+    aufStdout(`\n${t("formatFixStart", { cmd: fixCmd })}\n\n$ ${fixCmd}\n`);
+    const fix = await kommandoAusfuehren(fixCmd, env);
+    aufStdout(fix.ausgabe);
+    zeitpunkt = new Date().toISOString();
+    hashes = blobHashes(auswahl.geaendert);
+    // Die Bremse zaehlt den Aufruf als einen Versuch: Die Basis rueckt nicht weiter.
+    wacklerTeillauf = [...wacklerTeillauf, ...stand.laufen.filter((e) => e.gewackelt)];
+    wiederholen = false;
+    stand = await durchgang(null);
+    wacklerUebernehmen(stand.laufen, wacklerTeillauf);
+    formatFix = { cmd: fixCmd, gereicht: !stand.rot };
+  }
+
   // Nach dem roten Befund und vor der letzten Fassung (Issue #947): Die Suche erklaert
   // einen Befund, der schon gefallen ist, und aendert am Ausgang des Laufs nichts — auch
   // dann nicht, wenn ein git-Aufruf dabei scheitert. Dieselbe Haltung wie beim
@@ -3935,6 +3982,25 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   berichtsblockSchreiben(zeilenVon(stand), wartezeitZeile(wartezeitMs, wartezeitKarte));
   aufStdout(`\n${t("zusammenfassung", { pfad })}\n`);
   return stand.rot ? 1 : 0;
+}
+
+/** `formatFixCommand` aus der Config, getrimmt, oder `null`, wenn keines gesetzt ist. */
+function formatFixKommando() {
+  const wert = ladeConfig().formatFixCommand;
+  return typeof wert === "string" && wert.trim() !== "" ? wert.trim() : null;
+}
+
+/**
+ * Die Berichtszeilen des Nachformatierens (Issue #1672): dass es lief, ob es nicht gereicht
+ * hat, und dass seine Aenderungen in den Commit gehoeren. Ohne Fix keine.
+ */
+function formatFixZeilen(formatFix) {
+  if (!formatFix) return [];
+  return [
+    t("formatFixAusgefuehrt", { cmd: formatFix.cmd }),
+    ...(formatFix.gereicht ? [] : [t("formatFixNichtGereicht")]),
+    t("berichtHinweis", { text: t("formatFixArbeitsbaum") }),
+  ];
 }
 
 /**
