@@ -88,7 +88,7 @@ node .claude/kit/board.mjs issue label add <id> kit:clarify
 
 **Fund „nicht erklärter Vertrag“** (Gate P14 in `CLAUDE-Plan.md`): Die Session holt den gebauten Stand des anderen Repos mit `node .claude/kit/board.mjs code contract-repo <name>` und sucht die Fundstelle im Klon. Lautet der Abgleich `stimmt`, trägt sie den V-Eintrag unter `### Verträge` in den Body und übernimmt den Fund ohne Halt. Sonst gilt die Stopp-Klasse wie oben: `kit:clarify`, kein Body, und der Einarbeitungs-Kommentar trägt den vollständigen V-Eintrag (Festlegung, `Gebauter Stand:`, `Abgleich:`) zum Übernehmen und eine Frage über alle offenen Verträge.
 
-Interaktiv zeigt sie die Liste (übernommen / abgelehnt mit Grund) und wartet auf ein Wort, bevor sie schreibt; unbeaufsichtigt schreibt sie direkt. Geschrieben wird der vollständige neue Body — vorhandene Kennzeichnungszeilen (`Autor-Modell:`, `Plan-Modell:`, `Fachliche Quelle:`, `Plan:`) bleiben erhalten — über `<tmpdir>/<id>-body.md`:
+Interaktiv zeigt sie die Liste (übernommen / abgelehnt mit Grund) und wartet auf ein Wort, bevor sie schreibt; unbeaufsichtigt schreibt sie direkt. Geschrieben wird der vollständige neue Body — vorhandene Kennzeichnungszeilen (`Autor-Modell:`, `Plan-Modell:`, `Fachliche Quelle:`, `Plan:`, `Wartet auf Ereignis:`) bleiben erhalten — über `<tmpdir>/<id>-body.md`:
 ```bash
 node .claude/kit/board.mjs issue update <id> --body-file <tmpdir>/<id>-body.md
 ```

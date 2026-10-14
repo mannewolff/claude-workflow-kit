@@ -41,6 +41,8 @@ Wird der Skill mit einer Issue-Nummer aufgerufen und trägt dieses Issue das Tit
 node .claude/kit/board.mjs issue check-form <N>
 ```
 
+Trägt die Ausgabe das Feld `wartet`, wartet der Fachplan auf ein Ereignis. Dann nennt der Skill vor allem anderen „Fachplan #N wartet auf ein Ereignis: <Grund>. Der Plan entsteht trotzdem; das Warten bleibt.“ mit dem Grund aus dem Feld und macht weiter, auch unbeaufsichtigt. Das ist ein Hinweis, keine Sperre: Der Skill liest das Warten aus dem Feld, nicht aus dem Body, und ruft `issue hold` nicht auf.
+
 Nennt `verstoesse` das Gate `F12`, fehlen dem pflichtigen Fachplan die Szenarien, und es entsteht kein Plan: Der Skill nennt die `meldung` als Grund und den Weg `/groom #N`, der die Szenarien mit dem PO ergänzt, und endet. Unbeaufsichtigt (gesetztes `KIT_AGENT_MODEL`) gehen Grund und Weg als Kommentar an den Fachplan, nach der Transportregel aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board“, als `<tmpdir>/<N>-szenarien.md` mit `issue comment <N> --text-file`. Die Szenarien ergänzt der Skill nie selbst — das gehört ins Grooming zum PO. Andere Verstöße halten hier nicht an, und ein Fachplan von vor dem Stichtag meldet kein F12.
 
 1. Das fachliche Issue vollständig lesen — **den kompletten Body**, denn dort steckt die Groom-Historie mit den PO-Entscheidungen. Die Verhandlung findet im Body statt, nicht in Kommentaren: Der Body ist der verhandelte Stand, Kommentare sind Verlauf. `board.mjs issue get` liefert zusätzlich ein `comments`-Array (Verlauf, Abschlussberichte, Review-Befunde) — das ergänzt den Body, ersetzt ihn aber nicht als Quelle der Anforderung.
