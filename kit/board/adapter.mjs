@@ -1587,20 +1587,25 @@ export class ToolboxIssueTracker {
   /**
    * Eine Karte per Einzelabruf statt ueber die ganze Kartenliste (Issue #1650, Plan #1638,
    * E1). 404 und eine archivierte Karte melden `issueFehlt` wie eine Nummer, die in der
-   * Liste fehlt (E5, E6); jeder andere Fehler aus `_fetch` geht unveraendert durch. Die
-   * Kommentare kommen aus derselben Antwort (E7).
+   * Liste fehlt (E5, E6) und nehmen den Eintrag der Zuordnung mit (Issue #1668); jeder
+   * andere Fehler aus `_fetch` geht unveraendert durch. Die Kommentare kommen aus derselben
+   * Antwort (E7).
    */
   async _karte(n) {
     const num = Number(n);
+    const fehlt = () => {
+      this._zuordnung.delete(num);
+      return new BoardError(t("issueFehlt", { id: num }));
+    };
     let res;
     try {
       res = await this._fetch(`/api/kanban/items/by-number/${num}`);
     } catch (e) {
-      if (e instanceof BoardError && e.status === 404) throw new BoardError(t("issueFehlt", { id: num }));
+      if (e instanceof BoardError && e.status === 404) throw fehlt();
       throw e;
     }
     const detail = await res.json();
-    if (detail.archived) throw new BoardError(t("issueFehlt", { id: num }));
+    if (detail.archived) throw fehlt();
     const item = { ...detail.item, status: this._toStatus(detail.item.column) };
     this._zuordnung.set(num, { id: item.id, title: item.title });
     return { item, comments: normalizeComments(detail.comments ?? []) };
@@ -1841,7 +1846,9 @@ export class ToolboxIssueTracker {
   }
 
   async updateIssue(number, { body }) {
-    const item = await this._kartenRef(number);
+    // Frisch gelesen, nicht aus der Zuordnung: Deren Titel kann seit dem ersten Zugriff
+    // veraltet sein, und das PUT schriebe ihn zurueck (Issue #1668).
+    const { item } = await this._karte(number);
     await this._fetch(`/api/kanban/items/${item.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -1866,6 +1873,7 @@ export class ToolboxIssueTracker {
   //    `/`. Ein Pfadsegment truege das nicht, weil Tomcat kodierte Slashes per
   //    Default ablehnt — deshalb encodeURIComponent statt Interpolation.
   async labelIssue(number, name, aktion) {
+    const ausZuordnung = this._zuordnung.has(Number(number));
     const item = await this._kartenRef(number);
     // Der Server antwortet mit 404, wenn das Board keine Definition dieses Namens
     // fuehrt (LabelNotFoundException) — absichtlich hart, damit ein Tippfehler im
@@ -1881,17 +1889,24 @@ export class ToolboxIssueTracker {
         throw e;
       }
     };
-    if (aktion === "add") {
-      await uebersetze(() => this._fetch(`/api/kanban/items/${item.id}/labels`, {
+    const aufruf = aktion === "add"
+      ? () => this._fetch(`/api/kanban/items/${item.id}/labels`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
-      }));
-      return;
+      })
+      : () => this._fetch(`/api/kanban/items/${item.id}/labels?name=${encodeURIComponent(name)}`, {
+        method: "DELETE",
+      });
+    try {
+      await uebersetze(aufruf);
+    } catch (e) {
+      // Ein Eintrag der Zuordnung ist ungeprueft: Fehlt die Karte inzwischen, antwortet
+      // die Label-Route ebenfalls 404. `_karte` klaert das und wirft dann `issueFehlt`
+      // (Issue #1668); nur der Fehlerfall kostet den zweiten Aufruf.
+      if (e instanceof LabelFehltError && ausZuordnung) await this._karte(number);
+      throw e;
     }
-    await uebersetze(() => this._fetch(`/api/kanban/items/${item.id}/labels?name=${encodeURIComponent(name)}`, {
-      method: "DELETE",
-    }));
   }
 
   // Die drei lesenden Archiv-Aufrufe fuer `issue vorgeschichte` (Issue #1538, Plan #1534).

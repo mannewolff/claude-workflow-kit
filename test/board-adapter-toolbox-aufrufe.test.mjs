@@ -11,7 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { rmSync } from "node:fs";
 
-import { resolveTracker } from "../kit/board/adapter.mjs";
+import { LabelFehltError, resolveTracker } from "../kit/board/adapter.mjs";
 import { BoardError, loadConfig } from "../kit/board/grundlagen.mjs";
 import { setupProjekt, starteServer, imProjekt } from "./helpers/adapter-fixture.mjs";
 
@@ -52,6 +52,28 @@ function einzelabruf({ archived = false, body = () => "Text" } = {}) {
       } };
     }
     if (req.method === "GET" && req.url === "/api/kanban/items/4200/activity") return { status: 200, json: [] };
+    if (req.method !== "GET" && req.url.startsWith("/api/kanban/items/4200")) return { status: 200, json: {} };
+    return null;
+  };
+}
+
+/**
+ * Karte 42 mit veraenderlichem Stand (Issue #1668): `zustand.title` benennt um,
+ * `zustand.vorhanden = false` entfernt sie; die Label-Route kennt nur `zustand.labels`
+ * und antwortet sonst wie das Backend mit 404 — auch fuer eine fehlende Karte.
+ */
+function veraenderlich(zustand) {
+  return (req, koerper) => {
+    if (!zustand.vorhanden) return null;
+    if (req.method === "GET" && req.url === "/api/kanban/items/by-number/42") {
+      return { status: 200, json: {
+        item: { id: 4200, number: 42, title: zustand.title, body: "Text", column: "READY", position: 3, labels: [], type: "task" },
+        archived: false, comments: [],
+      } };
+    }
+    if (req.method === "POST" && req.url === "/api/kanban/items/4200/labels") {
+      return zustand.labels.includes(JSON.parse(koerper).name) ? { status: 200, json: {} } : null;
+    }
     if (req.method !== "GET" && req.url.startsWith("/api/kanban/items/4200")) return { status: 200, json: {} };
     return null;
   };
@@ -106,13 +128,15 @@ test("Zweite Methode auf derselben Karte nutzt die Zuordnung", async () => {
       await t.labelIssue(42, "kit:clarify", "add");
       await t.updateIssue(42, { body: "Neu" });
     });
+    // updateIssue liest frisch, damit es keinen alten Titel zurueckschreibt (Issue #1668).
     assert.deepEqual(zeilen(requests), [
       "GET /api/kanban/items/by-number/42",
       "POST /api/kanban/items/4200/comments",
       "POST /api/kanban/items/4200/labels",
+      "GET /api/kanban/items/by-number/42",
       "PUT /api/kanban/items/4200",
     ]);
-    assert.equal(JSON.parse(requests[3].body).title, "Karte");
+    assert.equal(JSON.parse(requests[4].body).title, "Karte");
   });
 });
 
@@ -149,6 +173,7 @@ test("getIssue nach einer Änderung liest frisch", async () => {
     });
     assert.equal(karte.body, "Neu");
     assert.deepEqual(zeilen(requests), [
+      "GET /api/kanban/items/by-number/42",
       "GET /api/kanban/items/by-number/42",
       "PUT /api/kanban/items/4200",
       "GET /api/kanban/items/by-number/42",
@@ -192,4 +217,66 @@ test("404 vom Einzelabruf meldet die fehlende Karte", async () => {
       assert.deepEqual(requests.map((r) => `${r.method} ${r.url}`), ["GET /api/kanban/items/by-number/42"], name);
     });
   }
+});
+
+test("updateIssue schreibt einen zwischendurch geänderten Titel nicht zurück", async () => {
+  const zustand = { vorhanden: true, title: "Alt", labels: [] };
+  await mitBoard(veraenderlich(zustand), async (dir, requests) => {
+    await amBoard(dir, async (t) => {
+      await t.getIssue(42);
+      zustand.title = "Neu";
+      await t.updateIssue(42, { body: "Text 2" });
+    });
+    const put = requests.find((r) => r.method === "PUT" && r.url === "/api/kanban/items/4200");
+    assert.deepEqual(JSON.parse(put.body), { title: "Neu", body: "Text 2" });
+  });
+});
+
+test("Eine fehlende Karte fällt aus der Zuordnung", async () => {
+  const zustand = { vorhanden: true, title: "Karte", labels: ["kit:clarify"] };
+  await mitBoard(veraenderlich(zustand), async (dir, requests) => {
+    await amBoard(dir, async (t) => {
+      await t.getIssue(42);
+      zustand.vorhanden = false;
+      await wirftIssueFehlt(t.getIssue(42), 42);
+      await wirftIssueFehlt(t.labelIssue(42, "kit:clarify", "add"), 42);
+    });
+    // Der Eintrag ist weg: labelIssue holt die Karte selbst, statt die Label-Route zu fragen.
+    assert.deepEqual(zeilen(requests), [
+      "GET /api/kanban/items/by-number/42",
+      "GET /api/kanban/items/by-number/42",
+      "GET /api/kanban/items/by-number/42",
+    ]);
+  });
+});
+
+test("Label-404 einer Karte aus der Zuordnung, die inzwischen fehlt, meldet die fehlende Karte", async () => {
+  const zustand = { vorhanden: true, title: "Karte", labels: ["kit:clarify"] };
+  await mitBoard(veraenderlich(zustand), async (dir, requests) => {
+    await amBoard(dir, async (t) => {
+      await t.getIssue(42);
+      zustand.vorhanden = false;
+      await wirftIssueFehlt(t.labelIssue(42, "kit:clarify", "add"), 42);
+    });
+    assert.deepEqual(zeilen(requests), [
+      "GET /api/kanban/items/by-number/42",
+      "POST /api/kanban/items/4200/labels",
+      "GET /api/kanban/items/by-number/42",
+    ]);
+  });
+});
+
+test("Label-404 bei vorhandener Karte bleibt fehlendes Label", async () => {
+  const zustand = { vorhanden: true, title: "Karte", labels: [] };
+  await mitBoard(veraenderlich(zustand), async (dir, requests) => {
+    await amBoard(dir, async (t) => {
+      await t.getIssue(42);
+      await assert.rejects(t.labelIssue(42, "kit:unbekannt", "add"), LabelFehltError);
+    });
+    assert.deepEqual(zeilen(requests), [
+      "GET /api/kanban/items/by-number/42",
+      "POST /api/kanban/items/4200/labels",
+      "GET /api/kanban/items/by-number/42",
+    ]);
+  });
 });
