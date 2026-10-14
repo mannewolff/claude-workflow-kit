@@ -78,3 +78,14 @@ test("[ci-trigger] sonarqube triggert bei Push genau auf main und kit-pruefung",
 test("[ci-trigger] sonarqube setzt sonar.branch.name=main nicht mehr", () => {
   assert.doesNotMatch(lies("sonarqube.yml"), /sonar\.branch\.name=main/);
 });
+
+// Mit gesetztem Ziel verlangt der Scanner den Namen ausdruecklich (Lauf vom 2026-10-14,
+// Issue #1682): Name und Ziel stehen gemeinsam in der Zeile, die nur auf kit-pruefung greift.
+test("[ci-trigger] sonarqube setzt auf kit-pruefung Zweigname und Ziel in derselben Zeile", () => {
+  const zeilen = lies("sonarqube.yml").split("\n").filter((z) => z.includes("sonar.branch.name"));
+  assert.equal(zeilen.length, 1, `sonar.branch.name steht nicht in genau einer Zeile:\n${zeilen.join("\n")}`);
+  assert.match(zeilen[0], /github\.ref_name == 'kit-pruefung'/);
+  // Im ${{ }}-Ausdruck setzt format() den Zweignamen ein; geschachteltes ${{ }} geht dort nicht.
+  assert.match(zeilen[0], /format\('-Dsonar\.branch\.name=\{0\} [^']*', github\.ref_name\)/);
+  assert.match(zeilen[0], /-Dsonar\.branch\.target=main/);
+});

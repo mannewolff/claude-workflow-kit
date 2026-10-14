@@ -63,13 +63,16 @@ jobs:
       # Den Zweig erkennt der Scanner in GitHub Actions selbst (integrierte CI, siehe
       # SonarCloud-Doku "Branch analysis setup"); ein workflow_dispatch analysiert darum den
       # Zweig, von dem er gestartet wurde. Fuer kit-pruefung steht das Ziel main zusaetzlich
-      # ausdruecklich da, damit der kurzlebige Zweig sicher gegen main misst und nicht von
-      # der Erkennung abhaengt (Issue #1578); auf main bleibt der Parameter leer.
+      # ausdruecklich da, damit der kurzlebige Zweig sicher gegen main misst (Issue #1578).
+      # Mit gesetztem Ziel genuegt die Erkennung nicht mehr: Der Scanner verlangt dann auch
+      # den Zweignamen ausdruecklich und bricht sonst vor der Analyse ab ("is mandatory for
+      # a branch analysis", Lauf vom 2026-10-14, Issue #1682). Darum tragen Name und Ziel dieselbe
+      # Zeile; auf main bleibt sie leer.
       - name: SonarQube-Scan
         uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
         with:
           args: >
-            ${{ github.ref_name == 'kit-pruefung' && '-Dsonar.branch.target=main' || '' }}
+            ${{ github.ref_name == 'kit-pruefung' && format('-Dsonar.branch.name={0} -Dsonar.branch.target=main', github.ref_name) || '' }}
             -Dsonar.qualitygate.wait=true
             -Dsonar.qualitygate.timeout=300
         env:
