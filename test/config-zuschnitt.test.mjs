@@ -82,8 +82,12 @@ test("die kitweiten Tests laufen in einer eigenen Gruppe, getrennt von Installer
 });
 
 test("jede Gruppe der bisherigen Testdateien nennt nur Bereiche, die eine ihrer Testdateien laedt", () => {
-  const geruest = (config.nurGeruest ?? []).map((eintrag) => eintrag.muster);
-  const tabelle = kopplungVon(verflechtungErheben({ repoRoot, nurGeruest: geruest }));
+  // Ohne die Geruest-Liste gemessen (Issue #1722): Ein Geruest-Pfad erzwingt keinen Bereich
+  // (untere Grenze, config-teile), aber dass ein Test ihn nennt, traegt einen Bereich (obere
+  // Grenze; ein Bereich darf vorsichtiger sein, #914). Seit Plan #1713, E9 stehen
+  // `.claude/workflow.config.json` und `README.md` in der Liste, obwohl die Config-Tests sie
+  // wirklich lesen — mit ihr gemessen fielen `konfiguration` und `skills-doku` aus deren Gruppen.
+  const tabelle = kopplungVon(verflechtungErheben({ repoRoot }));
   const bereiche = bereicheVorbereiten(config.checkAreas ?? {});
   const bereicheVon = (pfad) => bereiche.filter((b) => b.regexe.some((r) => r.test(pfad))).map((b) => b.name);
   const dateien = testdateien();

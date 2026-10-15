@@ -1024,6 +1024,26 @@
     {
       "muster": "CLAUDE.md",
       "grund": "Einzige Fundstelle ist ein Kommentar in test/docs-nachtkette.test.mjs ueber das, was ein Nachtlauf nicht schreiben darf. Keine Testdatei liest die CLAUDE.md dieses Repositories; templates/CLAUDE-workflow.md dagegen wird von vielen Tests geprueft und traegt darum ein eigenes Muster nicht."
+    },
+    {
+      "muster": ".gitignore",
+      "grund": "Wurzeldatei der Wegwerf-Repos: rund 170 Testdateien legen sie dort an oder nennen sie, keine laedt sie (Messung an Issue #1722). Ohne den Eintrag meldete areas compare, das ohne Pfadbeschraenkung laeuft, jede davon als Luecke im Bereich ihrer Pruefung (Plan #1713, E9)."
+    },
+    {
+      "muster": "README.md",
+      "grund": "Wurzeldatei der Wegwerf-Repos: rund 100 Testdateien nennen sie, keine laedt sie (Messung an Issue #1722). Einzelne Tests pruefen die README dieses Repositories wirklich (Messung an Issue #943); die Erhebung sieht das mit dem Eintrag nicht mehr. Plan #1713, E9 nimmt das in Kauf, weil breitere Bereiche 80 s je Doku-Aenderung kosteten (#937)."
+    },
+    {
+      "muster": ".claude/workflow.config.json",
+      "grund": "Die Config, die die Wegwerf-Repos der Tests tragen: rund 130 Testdateien nennen sie, keine laedt sie (Messung an Issue #1722). Einzelne Tests pruefen die Config dieses Repositories wirklich (Messung an Issue #943), darunter test/config-teile.test.mjs; die Erhebung sieht das mit dem Eintrag nicht mehr (Plan #1713, E9)."
+    },
+    {
+      "muster": ".gitattributes",
+      "grund": "Geruest-Kandidat nach Plan #1713, A9: rund 160 Testdateien legen sie in ihren Wegwerf-Repos an (lfAttribute), keine laedt sie (Messung an Issue #1722, areas suggest)."
+    },
+    {
+      "muster": "RELEASING.md",
+      "grund": "Wurzeldatei der Wegwerf-Repos in test/night-kitstand-vorbereitung.test.mjs und test/ablauf-kit-worktree-vorbereitung.test.mjs, keine Testdatei laedt sie (Messung an Issue #1722, Plan #1713, E14). Die Tests, die die RELEASING.md dieses Repositories lesen (skills-releaseweg, push-main-*), laufen im Bereich skills-doku, in dem die Datei liegt."
     }
   ],
   "reviewCommand": "codex exec --model gpt-6-astra -c model_reasoning_effort=\"high\"",
