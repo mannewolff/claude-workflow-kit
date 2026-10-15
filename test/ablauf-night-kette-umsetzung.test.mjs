@@ -23,7 +23,7 @@ import { spawnSync } from "node:child_process";
 import { KETTE_HALT_ANKER, pushVermerk } from "../kit/night/kette.mjs";
 import { KLAEREN_LABEL } from "../kit/night/wartend.mjs";
 import {
-  run, board, mitProjekt, umgebung, sessions, stand, fachplan, planauftrag, durchziehen,
+  run, board, mitProjekt, einmalLaufen, umgebung, sessions, stand, fachplan, planauftrag, durchziehen,
   PAKETE_MIT_ABHAENGIGKEIT, UMSETZUNG_ERFOLG, UMSETZUNG_HALT, jePaket,
 } from "./helpers/kette-ablauf.mjs";
 import {
@@ -32,63 +32,62 @@ import {
 import { planBody } from "./helpers/kette-texte.mjs";
 
 
+/** Der glatte Lauf unter Variante B, den die ersten beiden night-34-Tests lesen (Issue #1693). */
+const glatterLauf = () => einmalLaufen("variante-b-glatt", (dir) => {
+  const F = fachplanB(dir);
+  const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
+  return { F, env, res: run(dir, ["--chain"], env) };
+});
+
 test("[night-34] Variante B: die Stufe umsetzung laeuft hinter abdeckung und bringt die Pakete nach In review", () => {
-  mitProjekt((dir) => {
-    const F = fachplanB(dir);
-    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--chain"], env);
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+  const { dir, F, env, res } = glatterLauf();
+  assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
-    assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe),
-      ["plan", "review", "pakete", "abdeckung", "umsetzung", "umsetzung"],
-      "die Stufenfolge unter Variante B");
+  assert.deepEqual(sessions(env.logPfad).map((s) => s.stufe),
+    ["plan", "review", "pakete", "abdeckung", "umsetzung", "umsetzung"],
+    "die Stufenfolge unter Variante B");
 
-    const { einheit, stufe } = umsetzung(dir, F);
-    assert.equal(einheit.ausgang, "fertig", einheit.grund);
-    assert.deepEqual(stufe.umgesetzt.map((e) => e.id), einheit.stufen.pakete.ids, "beide Pakete gelten als umgesetzt");
-    assert.deepEqual(stufe.angehalten, []);
-    assert.deepEqual(stufe.nichtBegonnen, []);
-    assert.deepEqual(stufe.zurueckgestellt, []);
+  const { einheit, stufe } = umsetzung(dir, F);
+  assert.equal(einheit.ausgang, "fertig", einheit.grund);
+  assert.deepEqual(stufe.umgesetzt.map((e) => e.id), einheit.stufen.pakete.ids, "beide Pakete gelten als umgesetzt");
+  assert.deepEqual(stufe.angehalten, []);
+  assert.deepEqual(stufe.nichtBegonnen, []);
+  assert.deepEqual(stufe.zurueckgestellt, []);
 
-    // Mit dem letzten Paket wandern Anforderung und Plan mit (Issue #1287, Kriterium 1).
-    assert.deepEqual(inSpalte(dir, "in_review"), [F, einheit.stufen.plan.id, ...einheit.stufen.pakete.ids].sort(),
-      "die Pakete und ihre Ursprungsdokumente stehen in In review");
-    keinRestInArbeit(dir);
+  // Mit dem letzten Paket wandern Anforderung und Plan mit (Issue #1287, Kriterium 1).
+  assert.deepEqual(inSpalte(dir, "in_review"), [F, einheit.stufen.plan.id, ...einheit.stufen.pakete.ids].sort(),
+    "die Pakete und ihre Ursprungsdokumente stehen in In review");
+  keinRestInArbeit(dir);
 
-    // Je Paket eine eigene Einheit — die, die `laufeRunde` ohnehin anlegt (night-4).
-    for (const id of einheit.stufen.pakete.ids) {
-      const e = stand(dir).einheiten.find((x) => x.id === id);
-      assert.ok(e, `keine Einheit fuer Paket #${id}`);
-      assert.equal(e.ausgang, "erfolg", `Paket #${id}: ${e.grund}`);
-      assert.ok(e.commit, `Paket #${id} traegt keinen Commit`);
-    }
-  });
+  // Je Paket eine eigene Einheit — die, die `laufeRunde` ohnehin anlegt (night-4).
+  for (const id of einheit.stufen.pakete.ids) {
+    const e = stand(dir).einheiten.find((x) => x.id === id);
+    assert.ok(e, `keine Einheit fuer Paket #${id}`);
+    assert.equal(e.ausgang, "erfolg", `Paket #${id}: ${e.grund}`);
+    assert.ok(e.commit, `Paket #${id} traegt keinen Commit`);
+  }
 });
 
 test("[night-34] die Stufe umsetzung baut den Worktree vor dem ersten Paket ab und arbeitet in der Hauptkopie", () => {
-  mitProjekt((dir) => {
-    fachplanB(dir);
-    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--chain"], env);
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+  const { dir, env, res } = glatterLauf();
+  assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
-    const hauptkopie = realpathSync(dir);
-    const gelaufen = sessions(env.logPfad);
-    for (const s of gelaufen.filter((x) => x.stufe !== "umsetzung")) {
-      assert.notEqual(s.cwd, hauptkopie, `die Stufe ${s.stufe} lief in der Hauptkopie statt im Worktree`);
-      assert.equal(existsSync(s.cwd), false, `der Worktree der Stufe ${s.stufe} liegt noch: ${s.cwd}`);
-    }
-    for (const s of gelaufen.filter((x) => x.stufe === "umsetzung")) {
-      assert.equal(s.cwd, hauptkopie, "eine Umsetzungs-Session lief ausserhalb der Hauptkopie");
-    }
-    assert.match(res.stdout, /Worktree abgebaut/);
+  const hauptkopie = realpathSync(dir);
+  const gelaufen = sessions(env.logPfad);
+  for (const s of gelaufen.filter((x) => x.stufe !== "umsetzung")) {
+    assert.notEqual(s.cwd, hauptkopie, `die Stufe ${s.stufe} lief in der Hauptkopie statt im Worktree`);
+    assert.equal(existsSync(s.cwd), false, `der Worktree der Stufe ${s.stufe} liegt noch: ${s.cwd}`);
+  }
+  for (const s of gelaufen.filter((x) => x.stufe === "umsetzung")) {
+    assert.equal(s.cwd, hauptkopie, "eine Umsetzungs-Session lief ausserhalb der Hauptkopie");
+  }
+  assert.match(res.stdout, /Worktree abgebaut/);
 
-    // Die Commits der Nacht liegen in der Hauptkopie — genau das, wofuer Variante B da ist.
-    const log = spawnSync("git", ["log", "--oneline"], { cwd: dir, encoding: "utf-8" });
-    assert.equal((log.stdout.match(/\(Fake\)/g) || []).length, 2, `die Commits fehlen: ${log.stdout}`);
-    const worktrees = spawnSync("git", ["worktree", "list"], { cwd: dir, encoding: "utf-8" });
-    assert.equal(worktrees.stdout.trim().split("\n").length, 1, `es blieb ein Worktree stehen: ${worktrees.stdout}`);
-  });
+  // Die Commits der Nacht liegen in der Hauptkopie — genau das, wofuer Variante B da ist.
+  const log = spawnSync("git", ["log", "--oneline"], { cwd: dir, encoding: "utf-8" });
+  assert.equal((log.stdout.match(/\(Fake\)/g) || []).length, 2, `die Commits fehlen: ${log.stdout}`);
+  const worktrees = spawnSync("git", ["worktree", "list"], { cwd: dir, encoding: "utf-8" });
+  assert.equal(worktrees.stdout.trim().split("\n").length, 1, `es blieb ein Worktree stehen: ${worktrees.stdout}`);
 });
 
 test("[night-34] eine unsaubere Hauptkopie vor dem ersten Paket: kein Paket wird gezogen, die Stufe faellt regulaer aus", () => {

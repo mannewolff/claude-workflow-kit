@@ -20,7 +20,7 @@ import { join, dirname } from "node:path";
 import { UMSETZUNG_AUSGELASSEN_PRAEFIX } from "../kit/night/kette.mjs";
 import { UMSETZUNG_LOCK } from "../kit/night/grundlagen.mjs";
 import {
-  run, board, mitProjekt, fachplan, umgebung, sessions, stand,
+  run, board, mitProjekt, einmalLaufen, fachplan, umgebung, sessions, stand,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN, UMSETZUNG_ERFOLG,
 } from "./helpers/kette-ablauf.mjs";
 import { ERZEUGEN, fachplanB, umsetzung, stehenInBacklog, keinRestInArbeit } from "./helpers/kette-umsetzung-fixture.mjs";
@@ -45,50 +45,48 @@ const WARTEN_KURZ = { umsetzungMin: 0.001 };
 
 const fachplanText = (dir, F) => readFileSync(join(dir, "issues", `${F}.md`), "utf-8");
 
+/** Der Lauf mit belegtem Lock, den drei Tests lesen (Issue #1693). */
+const lockLauf = () => einmalLaufen("lock-belegt", (dir) => {
+  const F = fachplanB(dir);
+  const pid = lockBelegen(dir);
+  const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
+  return { F, pid, env, res: run(dir, ["--chain"], env) };
+}, { kette: WARTEN_KURZ });
+
 test("[night-862] ein belegter Lock laesst die Kette unvollstaendig enden, nicht fertig", () => {
-  mitProjekt((dir) => {
-    const F = fachplanB(dir);
-    const pid = lockBelegen(dir);
-    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--chain"], env);
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+  const { dir, F, pid, env, res } = lockLauf();
+  assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
-    const { einheit, stufe } = umsetzung(dir, F);
-    assert.equal(einheit.ausgang, "unvollstaendig", `die Kette gilt weiter als gelungen: ${einheit.grund}`);
-    assert.ok(einheit.grund.startsWith(UMSETZUNG_AUSGELASSEN_PRAEFIX),
-      `der Grund nennt die ausgelassene Umsetzung nicht: ${einheit.grund}`);
-    assert.match(einheit.grund, new RegExp(`Prozess ${pid}`), "der Grund nennt die haltende Sperre nicht");
+  const { einheit, stufe } = umsetzung(dir, F);
+  assert.equal(einheit.ausgang, "unvollstaendig", `die Kette gilt weiter als gelungen: ${einheit.grund}`);
+  assert.ok(einheit.grund.startsWith(UMSETZUNG_AUSGELASSEN_PRAEFIX),
+    `der Grund nennt die ausgelassene Umsetzung nicht: ${einheit.grund}`);
+  assert.match(einheit.grund, new RegExp(`Prozess ${pid}`), "der Grund nennt die haltende Sperre nicht");
 
-    // Die Stufe fuehrt die Auslassung als eigenen Befund — der Bericht liest sie von dort.
-    assert.match(stufe.ausgelassen, new RegExp(`Prozess ${pid}`));
-    assert.deepEqual(stufe.nichtBegonnen.map((p) => p.id), einheit.stufen.pakete.ids);
-    assert.deepEqual(stufe.umgesetzt, []);
-    assert.equal(sessions(env.logPfad).filter((s) => s.stufe === "umsetzung").length, 0,
-      "es lief eine Umsetzungs-Session, obwohl der Lock belegt war");
+  // Die Stufe fuehrt die Auslassung als eigenen Befund — der Bericht liest sie von dort.
+  assert.match(stufe.ausgelassen, new RegExp(`Prozess ${pid}`));
+  assert.deepEqual(stufe.nichtBegonnen.map((p) => p.id), einheit.stufen.pakete.ids);
+  assert.deepEqual(stufe.umgesetzt, []);
+  assert.equal(sessions(env.logPfad).filter((s) => s.stufe === "umsetzung").length, 0,
+    "es lief eine Umsetzungs-Session, obwohl der Lock belegt war");
 
-    stehenInBacklog(dir, einheit.stufen.pakete.ids);
-    keinRestInArbeit(dir);
-    assert.match(res.stdout, /Nacht-Kette beendet: 0 fertig, 1 unvollstaendig/);
-  }, WARTEN_KURZ);
+  stehenInBacklog(dir, einheit.stufen.pakete.ids);
+  keinRestInArbeit(dir);
+  assert.match(res.stdout, /Nacht-Kette beendet: 0 fertig, 1 unvollstaendig/);
 });
 
 test("[night-862] der Nachtbericht nennt Auslassung, Sperre und den Stand der Pakete", () => {
-  mitProjekt((dir) => {
-    const F = fachplanB(dir);
-    const pid = lockBelegen(dir);
-    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--chain"], env);
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+  const { dir, F, pid, res } = lockLauf();
+  assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
-    const text = fachplanText(dir, F);
-    // Der Ausgang steht ganz oben: Wer nur die ersten Zeilen liest, sieht schon hier,
-    // dass die Bestellung nicht ausgefuehrt wurde.
-    assert.match(text, new RegExp(`### Ausgang\\n\\nunvollstaendig — ${UMSETZUNG_AUSGELASSEN_PRAEFIX}`));
-    const abschnitt = text.split("### Umsetzung")[1] ?? "";
-    assert.match(abschnitt, /- ausgelassen: /, "der Abschnitt Umsetzung nennt die Auslassung nicht");
-    assert.match(abschnitt, new RegExp(`Prozess ${pid}`), "der Abschnitt Umsetzung nennt die Sperre nicht");
-    assert.match(abschnitt, /die Pakete bleiben in Backlog/, "der Bericht sagt nicht, wo die Pakete liegen");
-  }, WARTEN_KURZ);
+  const text = fachplanText(dir, F);
+  // Der Ausgang steht ganz oben: Wer nur die ersten Zeilen liest, sieht schon hier,
+  // dass die Bestellung nicht ausgefuehrt wurde.
+  assert.match(text, new RegExp(`### Ausgang\\n\\nunvollstaendig — ${UMSETZUNG_AUSGELASSEN_PRAEFIX}`));
+  const abschnitt = text.split("### Umsetzung")[1] ?? "";
+  assert.match(abschnitt, /- ausgelassen: /, "der Abschnitt Umsetzung nennt die Auslassung nicht");
+  assert.match(abschnitt, new RegExp(`Prozess ${pid}`), "der Abschnitt Umsetzung nennt die Sperre nicht");
+  assert.match(abschnitt, /die Pakete bleiben in Backlog/, "der Bericht sagt nicht, wo die Pakete liegen");
 });
 
 test("[night-862] eine unsaubere Hauptkopie endet ebenso unvollstaendig", () => {
@@ -143,21 +141,16 @@ test("[night-862] eine Kette ohne bestellte Umsetzung bleibt vom belegten Lock u
 });
 
 test("[#1290] eine ausgelassene Umsetzung nennt im Abschnitt Ursprungsdokumente den Grund an jedem Paket", () => {
-  mitProjekt((dir) => {
-    const F = fachplanB(dir);
-    lockBelegen(dir);
-    const env = umgebung(dir, { stufen: { ...ERZEUGEN, umsetzung: UMSETZUNG_ERFOLG } });
-    const res = run(dir, ["--chain"], env);
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+  const { dir, F, res } = lockLauf();
+  assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
-    const { einheit, stufe } = umsetzung(dir, F);
-    assert.ok(stufe.ursprung, "die ausgelassene Umsetzung haelt keinen Stand der Ursprungsdokumente fest");
-    assert.equal(stufe.ursprung.auswertung.durch, false);
-    const abschnitt = fachplanText(dir, F).split("### Ursprungsdokumente").at(-1).split(/\n### /)[0];
-    assert.match(abschnitt, /: bleibt in /, "die Dokumente stehen nicht als bleibend im Abschnitt");
-    for (const id of einheit.stufen.pakete.ids) {
-      assert.match(abschnitt, new RegExp(`#${Number(id)} Paket \\d in Backlog: nicht begonnen \\(Umsetzung ausgelassen: `),
-        `Paket #${id} ohne den Grund der Auslassung:\n${abschnitt}`);
-    }
-  }, WARTEN_KURZ);
+  const { einheit, stufe } = umsetzung(dir, F);
+  assert.ok(stufe.ursprung, "die ausgelassene Umsetzung haelt keinen Stand der Ursprungsdokumente fest");
+  assert.equal(stufe.ursprung.auswertung.durch, false);
+  const abschnitt = fachplanText(dir, F).split("### Ursprungsdokumente").at(-1).split(/\n### /)[0];
+  assert.match(abschnitt, /: bleibt in /, "die Dokumente stehen nicht als bleibend im Abschnitt");
+  for (const id of einheit.stufen.pakete.ids) {
+    assert.match(abschnitt, new RegExp(`#${Number(id)} Paket \\d in Backlog: nicht begonnen \\(Umsetzung ausgelassen: `),
+      `Paket #${id} ohne den Grund der Auslassung:\n${abschnitt}`);
+  }
 });
