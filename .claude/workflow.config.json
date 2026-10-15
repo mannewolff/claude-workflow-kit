@@ -629,6 +629,7 @@
   "checkAreas": {
     "nacht-einstieg": [
       "kit/night.mjs",
+      "kit/night/aufraeumen.mjs",
       "test/night-abs*.test.mjs",
       "test/night-ag*.test.mjs",
       "test/night-an*.test.mjs",
@@ -835,7 +836,8 @@
     "pruefungen": [
       "kit/checks.mjs",
       ".githooks/gate.mjs",
-      "tools/verflechtung.mjs",
+      "kit/checks/**",
+      "kit/texte/checks-*.mjs",
       "test/checks-*.test.mjs",
       "test/ablauf-checks-*.test.mjs",
       "test/gate*.test.mjs",

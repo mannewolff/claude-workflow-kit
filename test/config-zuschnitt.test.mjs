@@ -7,7 +7,8 @@
 //
 // Die Gruppen sind seither getrennt, und jede nennt nur die Bereiche, die ihre Tests
 // tatsaechlich laden. Gemessen wird das mit derselben Verflechtung wie in
-// test/config-teile.test.mjs (`tools/verflechtung.mjs`) und derselben Glob-Aufloesung wie
+// test/config-teile.test.mjs (`kit/checks/verflechtung.mjs`, „laedt" und „nennt"
+// zusammen) und derselben Glob-Aufloesung wie
 // die Auswahl (`kit/checks.mjs`). config-teile prueft die untere Grenze — kein Bereich fehlt,
 // den eine Testdatei laedt —, diese Datei die obere: kein Bereich steht da, den keine laedt.
 
@@ -19,7 +20,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 import { globZuRegex, bereicheVorbereiten, aufrufen } from "../kit/checks.mjs";
-import { verflechtungErheben } from "../tools/verflechtung.mjs";
+import { verflechtungErheben, kopplungVon } from "../kit/checks/verflechtung.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -82,7 +83,7 @@ test("die kitweiten Tests laufen in einer eigenen Gruppe, getrennt von Installer
 
 test("jede Gruppe der bisherigen Testdateien nennt nur Bereiche, die eine ihrer Testdateien laedt", () => {
   const geruest = (config.nurGeruest ?? []).map((eintrag) => eintrag.muster);
-  const tabelle = verflechtungErheben({ repoRoot, nurGeruest: geruest });
+  const tabelle = kopplungVon(verflechtungErheben({ repoRoot, nurGeruest: geruest }));
   const bereiche = bereicheVorbereiten(config.checkAreas ?? {});
   const bereicheVon = (pfad) => bereiche.filter((b) => b.regexe.some((r) => r.test(pfad))).map((b) => b.name);
   const dateien = testdateien();

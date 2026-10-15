@@ -22,7 +22,8 @@
 // und nicht ein Beispiel: Ein Beispiel bewiese die Regel, nicht den Zustand.
 //
 // Die Glob-Aufloesung kommt aus `kit/checks.mjs`, die Verflechtung aus
-// `tools/verflechtung.mjs`. Eine zweite Fassung hier beantwortete die Fragen
+// `kit/checks/verflechtung.mjs` (ihre Kopplung: „laedt" und „nennt" zusammen).
+// Eine zweite Fassung hier beantwortete die Fragen
 // „trifft dieses Muster diese Datei?" und „laedt dieser Test jene Quelle?" ein
 // zweites Mal — und ab der ersten Abweichung bescheinigte der Test eine
 // Abdeckung, die das ausfuehrende Kommando nicht sieht.
@@ -35,7 +36,7 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 import { globZuRegex, bereicheVorbereiten, anteilJeBereich, aufrufen } from "../kit/checks.mjs";
-import { verflechtungErheben } from "../tools/verflechtung.mjs";
+import { verflechtungErheben, kopplungVon } from "../kit/checks/verflechtung.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -240,7 +241,7 @@ test("jede gemessene Kopplung unter kit/ und tools/ hat ein Kommando, das sie au
   // Invariante dort blind. Die Luecke ausserhalb der beiden Verzeichnisse bleibt
   // deshalb offen; sie war es vor Issue #936 auch, und sie kostet nichts, waehrend die
   // Ausweitung 80 Sekunden je Doku-Aenderung kostete.
-  const tabelle = verflechtungErheben({ repoRoot, nurGeruest: geruestMuster });
+  const tabelle = kopplungVon(verflechtungErheben({ repoRoot, nurGeruest: geruestMuster }));
   assert.ok(tabelle.size > 0, "die Verflechtungserhebung lieferte keine Zeile");
 
   const bereiche = bereicheVorbereiten(config.checkAreas ?? {});
@@ -279,7 +280,7 @@ test("jede gemessene Kopplung unter kit/ und tools/ hat ein Kommando, das sie au
 test("die Erhebung der Invariante kennt die Geruest-Liste der Config", () => {
   assert.ok(geruestMuster.length > 0, ".claude/workflow.config.json traegt kein nurGeruest");
 
-  const mitListe = verflechtungErheben({ repoRoot, nurGeruest: geruestMuster });
+  const mitListe = kopplungVon(verflechtungErheben({ repoRoot, nurGeruest: geruestMuster }));
   const uebrig = [];
   for (const [testdatei, quellen] of mitListe) {
     for (const quelle of quellen.filter((q) => geruestRegexe.some((r) => r.test(q)))) {
@@ -291,7 +292,7 @@ test("die Erhebung der Invariante kennt die Geruest-Liste der Config", () => {
   // Und die Gegenrichtung: Ohne die Liste steht mindestens ein Eintrag noch in der
   // Tabelle. Ein Muster, das nie etwas trifft, waere kein Schutz, sondern Zierat — und
   // niemand merkte, wenn es beim naechsten Umbau seine Wirkung verloere.
-  const roh = verflechtungErheben({ repoRoot });
+  const roh = kopplungVon(verflechtungErheben({ repoRoot }));
   assert.ok(
     [...roh.values()].some((quellen) => quellen.some((q) => geruestRegexe.some((r) => r.test(q)))),
     `kein Muster aus nurGeruest kommt in der rohen Erhebung vor: ${geruestMuster.join(", ")}`,
@@ -391,7 +392,7 @@ test("jeder Eintrag in gekoppelteBereiche ist in jeder Gruppe, die ihn nennt, ge
     assert.ok(eintrag.grund?.length > 0, `${eintrag.bereich} nennt keinen Grund`);
   }
 
-  const tabelle = verflechtungErheben({ repoRoot, nurGeruest: geruestMuster });
+  const tabelle = kopplungVon(verflechtungErheben({ repoRoot, nurGeruest: geruestMuster }));
   assert.deepEqual(
     eintraegeOhneKopplung(config, tabelle),
     [],

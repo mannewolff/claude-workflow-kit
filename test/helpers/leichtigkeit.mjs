@@ -10,7 +10,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, posix } from "node:path";
 
-import { importZiele } from "../../tools/verflechtung.mjs";
+import { importZiele } from "../../kit/checks/verflechtung.mjs";
 import { vergleicheText } from "../../kit/checks.mjs";
 
 export const REGELN = ["ablauf-kennzeichnen", "keine-pausen", "haenger-kennzeichnen", "import-aus-teil"];

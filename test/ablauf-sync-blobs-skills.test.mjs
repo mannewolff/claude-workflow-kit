@@ -75,6 +75,7 @@ function setupFixture({
     'const KIT_BOARD_B64 = "";',
     'const KIT_ROLLEN_B64 = "";',
     'const KIT_TEXTE_B64 = "";',
+    'const KIT_CHECKS_B64 = "";',
     'const GATE_MJS_B64 = "";',
     'const PRE_COMMIT_B64 = "";',
     'const SKILLS_B64 = "";',
