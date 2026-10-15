@@ -2,6 +2,32 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [5.2.2] - 2026-10-15
+- Die Pruefgruppe der Nacht-Runner-Tests laeuft mit vier Tests gleichzeitig (#1694)
+- Langsame Nacht-Runner-Tests teilen sich einen gleichen Lauf je Datei, Teil 3 (#1739)
+- Langsame Nacht-Runner-Tests teilen sich einen gleichen Lauf je Datei, Teil 2 (#1738)
+- Langsame Nacht-Runner-Tests teilen sich einen gleichen Lauf je Datei, Teil 1 (#1693)
+- Die Doku beschreibt, wie man Pruefbereiche einrichtet und pflegt (#1724)
+- Das Kit-Repo gleicht seine Pruefbereiche mit areas compare ab und pflegt seine Geruest-Pfade (#1722)
+- Der Installer bietet beim ersten Einrichten den Bereichsvorschlag an und nennt ihn beim Update (#1721)
+- Der Nachtbericht sammelt die Luecken der Pruefbereiche aller Pakete der Nacht (#1720)
+- Der Prueflauf eines Pakets mit geaenderter Testdatei meldet Luecken der Pruefbereiche als Hinweis (#1719)
+- Neue Kommandos areas suggest und areas compare schlagen Pruefbereiche vor und gleichen sie ab (#1718)
+- Das Kit leitet Pruefbereiche aus der Messung ab und gleicht eine eingerichtete Zuordnung ab (#1717)
+- Das Kit liest aus einem Pruefkommando, welche Testdateien es faehrt, oder nennt es nicht beurteilbar (#1716)
+- Die Messung der Verflechtung liest TypeScript und Java, auch gemischt (#1715)
+- Die Messung der Verflechtung wird der mitgelieferte Teil kit/checks/ und trennt laedt und nennt (#1714)
+- Der Nacht-Runner loescht seine Protokolle nach einer Frist (#1696)
+- Regeltext, Plan-Regeln und Doku nennen den Halt nach der Pruefung und den Neustart am Plan (#1704)
+- Stopp-Frage am Plan unbeaufsichtigt in den Plan, /techplan nennt den Halt nach der Pruefung (#1703)
+- Halt-Kommentar ohne Pruefung von Hand, vorgefundene Review-Stufe haelt an der offenen Frage (#1702)
+- Neustart am Plan: die Kette prueft einen durch die Antwort geaenderten Plan vor dem Schnitt erneut (#1701)
+- Die Nacht-Kette haelt an einer offenen Frage im Plan erst nach der Pruefung an (#1700)
+- Pruefstand am Plan: schreiben, lesen und erkennen, ob die Antwort den Plan geaendert hat (#1699)
+- Ein Helfer schreibt die Vermerke der Nacht-Kette und wirft nie (#1698)
+- testfaelle.mjs list zeigt Fortschritt je Datei und bricht eine haengende Datei ab (#1709)
+- Seitenleiste der Doku nennt den Prozess in acht Schritten (#1708)
+
 ## [5.2.1] - 2026-10-14
 - Doku zum Aufwandsbericht nennt Rechner und Median je Pruefkommando (#1691)
 - Werkzeug haelt die Testfaelle einer Pruefgruppe fest und vergleicht zwei Staende (#1690)
