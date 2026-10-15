@@ -17,7 +17,7 @@ import assert from "node:assert/strict";
 import { writeFileSync, readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import {
-  run, board, mitProjekt, fachplan, umgebung,
+  run, board, mitProjekt, fachplan, umgebung, einmalLaufen,
   PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-ablauf.mjs";
 
@@ -59,24 +59,30 @@ function kettenUmgebung(dir) {
   } });
 }
 
+/**
+ * Die Kette mit zwei Vorkommen in der Hauptkopie und dem dritten im Worktree, die zwei
+ * Tests lesen (Issue #1739).
+ */
+const dritterTreffer = () => einmalLaufen("dritter-treffer", (dir) => {
+  zweiInDerHauptkopie(dir);
+  const F = fachplan(dir);
+  return { F, res: run(dir, ["--chain"], kettenUmgebung(dir)) };
+});
+
 test("[night-70] das dritte Vorkommen im Worktree laesst die Idee am Board entstehen", () => {
-  mitProjekt((dir) => {
-    zweiInDerHauptkopie(dir);
-    const F = fachplan(dir);
-    const res = run(dir, ["--chain"], kettenUmgebung(dir));
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+  const { dir, F, res } = dritterTreffer();
+  assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
 
-    const titel = kartenTitel(dir);
-    assert.ok(titel.includes("[Idea] Maschinelle Pruefung fuer Mangel-Art form?"),
-      `die Idee fehlt am Board:\n${titel.join("\n")}`);
-    assert.match(res.stdout, /Vorschlag fuer 'form' angelegt/,
-      "der Runner protokolliert den Vorschlag");
+  const titel = kartenTitel(dir);
+  assert.ok(titel.includes("[Idea] Maschinelle Pruefung fuer Mangel-Art form?"),
+    `die Idee fehlt am Board:\n${titel.join("\n")}`);
+  assert.match(res.stdout, /Vorschlag fuer 'form' angelegt/,
+    "der Runner protokolliert den Vorschlag");
 
-    const vermerk = vorschlaege(dir);
-    assert.equal(vermerk.form.stand, "offen");
-    assert.equal(vermerk.form.zaehlerstand, 3);
-    assert.ok(String(F), "Fachplan angelegt");
-  });
+  const vermerk = vorschlaege(dir);
+  assert.equal(vermerk.form.stand, "offen");
+  assert.equal(vermerk.form.zaehlerstand, 3);
+  assert.ok(String(F), "Fachplan angelegt");
 });
 
 test("[night-70] ohne Schwellentreffer entsteht keine Idee", () => {
@@ -157,12 +163,8 @@ test("[night-70] board.mjs ist nicht der einzige Kit-Nachbar, den die Kette brau
 test("[night-70] board bleibt unberuehrt: die Fixture-Karten sind weiter lesbar", () => {
   // Der Vorschlag legt eine Karte im selben Tracker an; die Nummernvergabe des lokalen
   // Trackers darf dabei nicht mit den Karten der Kette kollidieren.
-  mitProjekt((dir) => {
-    zweiInDerHauptkopie(dir);
-    const F = fachplan(dir);
-    const res = run(dir, ["--chain"], kettenUmgebung(dir));
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-    const geholt = board(dir, "issue", "get", F);
-    assert.equal(geholt.title, "[Fachlich] Ein Anliegen");
-  });
+  const { dir, F, res } = dritterTreffer();
+  assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+  const geholt = board(dir, "issue", "get", F);
+  assert.equal(geholt.title, "[Fachlich] Ein Anliegen");
 });
