@@ -77,25 +77,6 @@ test("create ohne die Option schickt den Schluessel gar nicht mit", async () => 
   });
 });
 
-// Der Fall, auf den es ankommt: Eine board-lose Pool-Idee ist fuer den Adapter
-// spaeter unerreichbar (kein get, kein comment, kein update), und der idempotente
-// Wiederholungs-Ingest verwirft ein nachgereichtes derivedFrom. Geht der Verweis
-// hier nicht mit, geht er nie mehr mit.
-test("create schickt derivedFrom auch an eine board-lose Pool-Idee", async () => {
-  await mitBoard(
-    (req) => (req.method === "POST" ? { status: 200, json: { id: 80 } } : standardAntwort(req)),
-    async (dir, requests) => {
-      const res = await runBoardAsync(dir, ["issue", "create", "--title", "Idee", "--derived-from", "17"], MIT_TOKEN);
-      assert.equal(res.status, 0, res.stderr);
-      assert.equal(JSON.parse(res.stdout).pending, true);
-      assert.equal(postRumpf(requests).derivedFrom, 17);
-    },
-    // Ohne ideaStored: true griffe der direct-Waechter und der Lauf endete mit
-    // Exit 1 — der Test pruefte dann einen Fehlerpfad statt des Pool-Falls.
-    { config: { toolbox: { ideaStored: true } } }
-  );
-});
-
 // --- toolbox: die Formfehler ---
 
 const FORMFEHLER = [

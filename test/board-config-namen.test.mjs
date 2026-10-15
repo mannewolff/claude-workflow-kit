@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { SCHLUESSEL, WERTE, normalisiereConfig, benenneUm, benenneWieVorlage, mitEnglischenNamen } from "../kit/board/config-namen.mjs";
+import { ENTFALLEN, SCHLUESSEL, WERTE, normalisiereConfig, benenneUm, benenneWieVorlage, mitEnglischenNamen } from "../kit/board/config-namen.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const schema = JSON.parse(readFileSync(join(root, "templates", "workflow.config.schema.json"), "utf8"));
@@ -177,6 +177,27 @@ test("normalisiereConfig: Werte nur dort, wo die Aufzaehlung steht", () => {
 test("normalisiereConfig: unbekannte Schluessel bleiben, wie sie sind", () => {
   const roh = { unbekannt: { chain: 1 }, night: { fremd: true } };
   assert.deepEqual(normalisiereConfig(roh).config, roh);
+});
+
+// Ein entfallener Schalter wird ohne Fehler gelesen und wirkt nicht mehr (Issue #1726, Plan #1710 A11).
+test("ENTFALLEN: toolbox.ideaStored ist entfallen und steht nicht mehr in der Tabelle", () => {
+  assert.deepEqual([...ENTFALLEN], ["toolbox.ideaStored"]);
+  assert.ok(Object.isFrozen(ENTFALLEN));
+  assert.equal(SCHLUESSEL["toolbox.ideaStored"], undefined);
+});
+
+test("normalisiereConfig: ein entfallener Pfad wird beim Lesen gestrichen", () => {
+  const roh = { toolbox: { ideaStored: true, host: "h" } };
+  const { config, hinweise } = normalisiereConfig(roh);
+  assert.deepEqual(config, { toolbox: { host: "h" } });
+  assert.deepEqual(hinweise, []);
+  assert.deepEqual(roh, { toolbox: { ideaStored: true, host: "h" } }, "die Eingabe bleibt unberuehrt");
+});
+
+test("normalisiereConfig: ohne den Elternteil oder mit fremdem Wert dort gibt es nichts zu streichen", () => {
+  assert.deepEqual(normalisiereConfig({ mainBranch: "main" }).config, { mainBranch: "main" });
+  assert.deepEqual(normalisiereConfig({ toolbox: "kaputt" }).config, { toolbox: "kaputt" });
+  assert.deepEqual(normalisiereConfig({ toolbox: { ideaStored: false } }).config, { toolbox: {} });
 });
 
 test("normalisiereConfig: beide Namen in der Datei — es gilt der englische, gleich in welcher Sprache (A13, E5)", () => {

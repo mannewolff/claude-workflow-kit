@@ -102,7 +102,6 @@ _Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node
 - `toolbox` — Einstellungen für den Toolbox-Issue-Tracker (issueTracker: 'toolbox'). Keine Vorgabe.
 - `toolbox.host` — Basis-URL der Toolbox-Instanz. Keine Vorgabe.
 - `toolbox.tokenFile` — Pfad (relativ zum Projektverzeichnis) zu einer Datei mit dem projekt-/board-gebundenen Token. Keine Vorgabe.
-- `toolbox.ideaStored` — Lenkt neue Issues in den Ideen-Speicher des Boards statt direkt ins Backlog. Vorgabe: `false`.
 
 - `issueReview` — Issue-Review über mehrere Modelle. Keine Vorgabe.
 - `issueReview.requiredBeforeReady` — Ist es true, stellt der Nacht-Runner Ready-Issues ohne Review-Marker kommentiert ins Backlog zurück. Vorgabe: `false`.

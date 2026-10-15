@@ -650,7 +650,7 @@ test("[einstellungen-9] M7 bearbeitet die einfachen Gruppen und laesst Unterfeld
   // Abweichung ein zweites Mal da.
   assert.deepEqual(GRUPPEN_AUSNAHMEN, { triggers: [], columns: [], github: [], toolbox: ["tokenFile"], local: [], pruefLauf: [] });
   const felder = gruppenZeilen("toolbox", SCHEMA.properties.toolbox, { team: { host: "https://x", tokenFile: ".t" } }, GRUPPEN_AUSNAHMEN.toolbox);
-  assert.deepEqual(felder.map((z) => z.feld), ["host", "ideaStored"]);
+  assert.deepEqual(felder.map((z) => z.feld), ["host"]);
 });
 
 // ------------------------------------------------------------

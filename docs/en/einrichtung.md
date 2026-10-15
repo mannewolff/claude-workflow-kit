@@ -387,7 +387,7 @@ title: Beispiel-Issue
 ```
 
 ### Toolbox
-<!-- de: 287f16c10676 -->
+<!-- de: 147b1f650d88 -->
 
 A personal Kanban board with its own server; the installer does not ask for it.
 
@@ -405,7 +405,7 @@ echo "<token>" > .claude/tbx.token
 echo ".claude/tbx.token" >> .gitignore
 ```
 
-The column names are fixed. New cards land with a number in the backlog; with `ideaStored: true` they land in the idea pool instead. If a call behind a proxy ends with „fetch failed“, `NODE_USE_ENV_PROXY=1` is missing; `board.mjs` sets it itself, your own Node calls need it too.
+The column names are fixed. New cards land with a number in the backlog. If a call behind a proxy ends with „fetch failed“, `NODE_USE_ENV_PROXY=1` is missing; `board.mjs` sets it itself, your own Node calls need it too.
 
 ### Switching trackers
 <!-- de: 10799b515a09 -->

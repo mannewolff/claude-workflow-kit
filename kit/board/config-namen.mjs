@@ -89,7 +89,6 @@ export const SCHLUESSEL = Object.freeze({
   toolbox: "toolbox",
   "toolbox.host": "host",
   "toolbox.tokenFile": "tokenFile",
-  "toolbox.ideaStored": "ideaStored",
   issueReview: "issueReview",
   "issueReview.requiredBeforeReady": "requiredBeforeReady",
   "issueReview.reviewers": "reviewers",
@@ -183,6 +182,13 @@ export const SCHLUESSEL = Object.freeze({
   "vertragsRepos[].url": "url",
   "vertragsRepos[].zweig": "branch",
 });
+
+/**
+ * Pfade entfallener Einstellungen (Issue #1726, Plan #1710 A11). `normalisiereConfig` streicht
+ * sie beim Lesen: Eine Datei, die sie noch traegt, wird ohne Fehler gelesen, der Eintrag wirkt
+ * nicht. Aus bestehenden Dateien nimmt sie erst das Update.
+ */
+export const ENTFALLEN = Object.freeze(["toolbox.ideaStored"]);
 
 const gleich = (...werte) => Object.fromEntries(werte.map((w) => [w, w]));
 const AUFWAND_STUFEN = gleich("low", "medium", "high", "xhigh", "max");
@@ -294,15 +300,22 @@ function bildeObjekt(wert, pfad, anzeige, kinder, lauf) {
 /**
  * Bildet eine eingelesene Config auf die deutschen Schluessel und Werte ab (E9). Stehen beide
  * Namen derselben Einstellung darin, gilt der englische (A13), und `hinweise` nennt die
- * Doppelung. Unbekannte Schluessel und frei gewaehlte Werte bleiben unveraendert; die Eingabe
- * wird nicht veraendert. Die Projektsprache spielt dafuer keine Rolle mehr; ein zweites
+ * Doppelung. Entfallene Pfade (ENTFALLEN) fehlen im Ergebnis. Unbekannte Schluessel und frei
+ * gewaehlte Werte bleiben unveraendert; die Eingabe wird nicht veraendert. Die Projektsprache spielt dafuer keine Rolle mehr; ein zweites
  * Argument (`{ sprache }`, Issue #1435) wird angenommen und nicht gebraucht.
  */
 export function normalisiereConfig(roh) {
   const hinweise = [];
   if (!istObjekt(roh)) return { config: roh, hinweise };
   const config = bilde(roh, "", "", { ziel: "de", hinweise, umbenannt: [] });
+  for (const pfad of ENTFALLEN) streiche(config, pfad.split("."));
   return { config, hinweise };
+}
+
+function streiche(wert, [name, ...rest]) {
+  if (!istObjekt(wert)) return;
+  if (rest.length === 0) delete wert[name];
+  else streiche(wert[name], rest);
 }
 
 /**

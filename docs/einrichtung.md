@@ -381,7 +381,7 @@ echo "<token>" > .claude/tbx.token
 echo ".claude/tbx.token" >> .gitignore
 ```
 
-Die Spaltennamen sind fest. Neue Karten landen mit Nummer im Backlog; mit `ideaStored: true` landen sie stattdessen im Ideen-Pool. Endet ein Aufruf hinter einem Proxy mit „fetch failed“, fehlt `NODE_USE_ENV_PROXY=1`; `board.mjs` setzt es selbst, eigene Node-Aufrufe brauchen es auch.
+Die Spaltennamen sind fest. Neue Karten landen mit Nummer im Backlog. Endet ein Aufruf hinter einem Proxy mit „fetch failed“, fehlt `NODE_USE_ENV_PROXY=1`; `board.mjs` setzt es selbst, eigene Node-Aufrufe brauchen es auch.
 
 ### Tracker wechseln
 

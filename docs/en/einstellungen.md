@@ -104,7 +104,6 @@ _This section is generated from `templates/workflow.config.schema.json` by `node
 - `toolbox` — Settings for the Toolbox issue tracker (issueTracker: 'toolbox'). No default.
 - `toolbox.host` — Base URL of the Toolbox instance. No default.
 - `toolbox.tokenFile` — Path (relative to the project directory) to a file holding the project- or board-bound token. No default.
-- `toolbox.ideaStored` — Routes new issues into the board's idea store instead of straight into the backlog. Default: `false`.
 
 - `issueReview` — Issue review across several models. No default.
 - `issueReview.requiredBeforeReady` — If true, the night runner moves Ready issues without a review marker back to the backlog with a comment. Default: `false`.

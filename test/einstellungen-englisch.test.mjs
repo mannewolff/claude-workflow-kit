@@ -68,6 +68,19 @@ test("[1441-1] ein englisches Projekt traegt die englischen Namen und Beschreibu
   });
 });
 
+// Den Ideen-Speicher gibt es nicht mehr (Issue #1726, Plan #1710 A11): Die Oberflaeche kennt
+// seinen Schalter nicht, und eine Datei, die ihn noch traegt, zeigt ihn nicht als unbekanntes Feld.
+test("[1726-1] die Oberflaeche kennt toolbox.ideaStored nicht mehr", () => {
+  assert.equal(SCHEMA.properties.toolbox.properties.ideaStored, undefined);
+  assert.equal(SCHLUESSEL["toolbox.ideaStored"], undefined);
+  assert.equal(TEXTE["toolbox.ideaStored"], undefined);
+  mitProjekt({ ...ENGLISCH, issueTracker: "toolbox", toolbox: { host: "https://h", ideaStored: true } }, ({ projekt: p, optionen }) => {
+    const zustand = projektZustand(p, optionen);
+    assert.deepEqual(eintrag(zustand, "toolbox").team, { host: "https://h" });
+    assert.doesNotMatch(JSON.stringify(zustand), /ideaStored/);
+  });
+});
+
 test("[1441-2] anzeigePfad zeigt einen Pfad unter den Namen der Projektsprache", () => {
   assert.equal(anzeigePfad("ohnePruefung[0].muster", SCHLUESSEL), "noCheck[0].pattern");
   assert.equal(anzeigePfad("buildChecks[2].stufe", SCHLUESSEL), "buildChecks[2].stage");
