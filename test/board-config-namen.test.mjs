@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { SCHLUESSEL, WERTE, normalisiereConfig, benenneUm } from "../kit/board/config-namen.mjs";
+import { SCHLUESSEL, WERTE, normalisiereConfig, benenneUm, benenneWieVorlage, mitEnglischenNamen } from "../kit/board/config-namen.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const schema = JSON.parse(readFileSync(join(root, "templates", "workflow.config.schema.json"), "utf8"));
@@ -179,26 +179,32 @@ test("normalisiereConfig: unbekannte Schluessel bleiben, wie sie sind", () => {
   assert.deepEqual(normalisiereConfig(roh).config, roh);
 });
 
-test("normalisiereConfig: beide Namen in der Datei — es gilt der Name der Projektsprache", () => {
-  const de = normalisiereConfig({ night: { kette: { planMin: 1 }, chain: { planMin: 2 } } });
-  assert.deepEqual(de.config, { night: { kette: { planMin: 1 } } });
-  assert.equal(de.hinweise.length, 1);
+test("normalisiereConfig: beide Namen in der Datei — es gilt der englische, gleich in welcher Sprache (A13, E5)", () => {
+  const { config, hinweise } = normalisiereConfig({ vorgeschichte: false, history: true });
+  assert.deepEqual(config, { vorgeschichte: true });
+  assert.equal(hinweise.length, 1);
+  assert.match(hinweise[0], /Doppelung/);
+  assert.match(hinweise[0], /"vorgeschichte"/);
+  assert.match(hinweise[0], /es gilt "history", der englische Name/);
+
+  const de = normalisiereConfig({ language: "de", night: { kette: { planMin: 1 }, chain: { planMin: 2 } } });
+  assert.deepEqual(de.config, { language: "de", night: { kette: { planMin: 2 } } });
   assert.match(de.hinweise[0], /night\.kette/);
   assert.match(de.hinweise[0], /night\.chain/);
 
-  const en = normalisiereConfig({ language: "en", night: { kette: { planMin: 1 }, chain: { planMin: 2 } } });
+  const en = normalisiereConfig({ language: "en", night: { chain: { planMin: 2 }, kette: { planMin: 1 } } });
   assert.deepEqual(en.config, { language: "en", night: { kette: { planMin: 2 } } });
   assert.equal(en.hinweise.length, 1);
 });
 
-test("normalisiereConfig: der Altname sprache bestimmt die Projektsprache wie language", () => {
-  const { config } = normalisiereConfig({ sprache: "en", mainBranch: "main", night: { kette: { planMin: 1 }, chain: { planMin: 2 } } });
-  assert.deepEqual(config, { sprache: "en", mainBranch: "main", night: { kette: { planMin: 2 } } });
+test("normalisiereConfig: die Projektsprache aus dem Aufruf aendert den Vorrang nicht", () => {
+  const { config } = normalisiereConfig({ reviewLesegrenze: 1, reviewReadLimit: 2 }, { sprache: "de" });
+  assert.deepEqual(config, { reviewLesegrenze: 2 });
 });
 
 test("normalisiereConfig: Doppelung in einem Listeneintrag nennt die Position", () => {
   const { config, hinweise } = normalisiereConfig({ buildChecks: [{ cmd: "a", stufe: "push", stage: "merge" }] });
-  assert.deepEqual(config, { buildChecks: [{ cmd: "a", stufe: "push" }] });
+  assert.deepEqual(config, { buildChecks: [{ cmd: "a", stufe: "merge" }] });
   assert.match(hinweise[0], /buildChecks\[0\]\.stufe/);
 });
 
@@ -206,4 +212,57 @@ test("normalisiereConfig: Leeres und Fremdes", () => {
   assert.deepEqual(normalisiereConfig({}), { config: {}, hinweise: [] });
   assert.deepEqual(normalisiereConfig(undefined), { config: undefined, hinweise: [] });
   assert.deepEqual(normalisiereConfig(null), { config: null, hinweise: [] });
+});
+
+// --- Englische Schluessel, Werte wie in der Datei (Issue #1725, Plan #1710 A2, A3, E1) ---
+
+test("benenneUm mit werte: wie-vorlage benennt nur Schluessel um, \"paket\" bleibt", () => {
+  const { config, umbenannt } = benenneUm({ buildChecks: [{ cmd: "a", stufe: "paket" }], pushPruefung: "lokal" }, "en", { werte: "wie-vorlage" });
+  assert.deepEqual(config, { buildChecks: [{ cmd: "a", stage: "paket" }], pushCheck: "lokal" });
+  assert.ok(umbenannt.every((u) => u.art === "schluessel"));
+  assert.deepEqual(benenneUm(DEUTSCH, "en", { werte: "wie-vorlage" }).config.night.tiers, { hard: { model: "claude-opus-5-5", effort: "high" } });
+  assert.equal(benenneUm(DEUTSCH, "en", { werte: "wie-vorlage" }).config.pushCheck.location, "buildDienst");
+});
+
+test("benenneUm: ohne Option bleiben Werte uebersetzt wie bisher", () => {
+  assert.deepEqual(benenneUm({ buildChecks: [{ stufe: "paket" }] }, "en").config, { buildChecks: [{ stage: "package" }] });
+});
+
+test("mitEnglischenNamen: alle bekannten Schluessel englisch, Werte unveraendert, sprache wird language (A3)", () => {
+  const roh = { sprache: "de", vorgeschichte: true, buildChecks: [{ stufe: "paket" }] };
+  const vorher = structuredClone(roh);
+  assert.deepEqual(mitEnglischenNamen(roh), { language: "de", history: true, buildChecks: [{ stage: "paket" }] });
+  assert.deepEqual(roh, vorher, "die Eingabe bleibt unberuehrt");
+});
+
+test("mitEnglischenNamen: englische Datei bleibt, frei gewaehlte Namen bleiben, language schlaegt sprache", () => {
+  const englisch = benenneUm(DEUTSCH, "en", { werte: "wie-vorlage" }).config;
+  assert.deepEqual(mitEnglischenNamen(englisch), englisch);
+  assert.deepEqual(mitEnglischenNamen(DEUTSCH).checkAreas, DEUTSCH.checkAreas);
+  assert.deepEqual(mitEnglischenNamen({ language: "en", sprache: "de" }), { language: "en" });
+  assert.equal(mitEnglischenNamen(undefined), undefined);
+});
+
+test("benenneWieVorlage: schreibt englische Schluessel auch in einem deutschen Projekt", () => {
+  const vorlage = { language: "de", vorgeschichte: true, night: { kette: { label: "k" } }, buildChecks: [{ cmd: "t", stufe: "paket" }] };
+  const config = normalisiereConfig(vorlage).config;
+  config.vertragsRepos = [];
+  config.buildChecks.push({ cmd: "u", stufe: "push" });
+  assert.deepEqual(benenneWieVorlage(config, vorlage, "de"), {
+    language: "de",
+    history: true,
+    night: { chain: { label: "k" } },
+    buildChecks: [{ cmd: "t", stage: "paket" }, { cmd: "u", stage: "push" }],
+    contractRepos: [],
+  });
+});
+
+test("benenneWieVorlage mit werte: wie-vorlage — Werte der Datei bleiben, neue werden englisch", () => {
+  const vorlage = { buildChecks: [{ cmd: "t", stufe: "paket" }], pushPruefung: { ort: "buildDienst" } };
+  const config = normalisiereConfig(vorlage).config;
+  config.buildChecks.push({ cmd: "u", stufe: "paket" });
+  assert.deepEqual(benenneWieVorlage(config, vorlage, "de", { werte: "wie-vorlage" }), {
+    buildChecks: [{ cmd: "t", stage: "paket" }, { cmd: "u", stage: "package" }],
+    pushCheck: { location: "buildDienst" },
+  });
 });

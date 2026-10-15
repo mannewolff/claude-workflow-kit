@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { pruefe, ROLLEN_KATALOG } from "../kit/settings.mjs";
 import { mitServer, projekt, TEAM } from "./helpers/einstellungen-fixture.mjs";
 import { oberflaecheStarten } from "./helpers/oberflaeche-vm.mjs";
+import { normalisiereConfig } from "../kit/board/config-namen.mjs";
 
 /** Ein vollstaendiger, gueltiger Block: jede Stufe mit ihren Katalogrollen. */
 const KATALOG_BLOCK = Object.fromEntries(
@@ -40,8 +41,9 @@ function stufen(seite) {
   return { m3, plaetze: seite.alle(m3, (e) => e.klassen().includes("stufe")) };
 }
 
+// Gelesen wie im Kit: Die Oberflaeche schreibt englische Schluessel (Issue #1725).
 function konfig(s, name = "alpha") {
-  return JSON.parse(readFileSync(join(s.wurzel, name, ".claude", "workflow.config.json"), "utf-8"));
+  return normalisiereConfig(JSON.parse(readFileSync(join(s.wurzel, name, ".claude", "workflow.config.json"), "utf-8"))).config;
 }
 
 test("[einstellungen-20] eine Stufe ohne rollen bricht das Thema Review nicht ab", async () => {

@@ -14,14 +14,16 @@ import { join } from "node:path";
 import { pruefe, TEILE } from "../kit/settings.mjs";
 import { mitServer, projekt, TEAM } from "./helpers/einstellungen-fixture.mjs";
 import { oberflaecheStarten } from "./helpers/oberflaeche-vm.mjs";
+import { normalisiereConfig } from "../kit/board/config-namen.mjs";
 
 const MODELLE = ["claude-opus-5", "claude-sonnet-5"];
 
 /** Die Team-Config dieses Tests: die Modellliste und optional ein Stufenblock. */
 const teamMit = (stufen) => ({ ...TEAM, night: { modelle: [...MODELLE], ...(stufen ? { stufen } : {}) } });
 
+// Gelesen wie im Kit: Die Oberflaeche schreibt englische Schluessel (Issue #1725).
 function konfig(s, name = "alpha") {
-  return JSON.parse(readFileSync(join(s.wurzel, name, ".claude", "workflow.config.json"), "utf-8"));
+  return normalisiereConfig(JSON.parse(readFileSync(join(s.wurzel, name, ".claude", "workflow.config.json"), "utf-8"))).config;
 }
 
 /** Oeffnet das Projekt und stellt auf das Thema Nachtbetrieb — dort steht M11. */

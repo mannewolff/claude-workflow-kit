@@ -14,6 +14,7 @@ import { join } from "node:path";
 
 import { mitServer, projekt, TEAM } from "./helpers/einstellungen-fixture.mjs";
 import { oberflaecheStarten } from "./helpers/oberflaeche-vm.mjs";
+import { normalisiereConfig } from "../kit/board/config-namen.mjs";
 
 // buildChecks und ein Bereich, damit M4 ein Kommandofeld, ein Neu-Feld und eine
 // Musterliste zeigt; der Kit-Stand entspricht der Oberflaeche, damit das Projekt
@@ -42,7 +43,7 @@ test("[einstellungen-19] das Speichern eines Teils laesst den Entwurf des andere
     seite.klick(seite.knopf(m6, "Speichern"));
     await seite.ruhe();
 
-    const datei = JSON.parse(readFileSync(join(s.wurzel, "alpha", ".claude", "workflow.config.json"), "utf-8"));
+    const datei = normalisiereConfig(JSON.parse(readFileSync(join(s.wurzel, "alpha", ".claude", "workflow.config.json"), "utf-8"))).config;
     assert.equal(datei.night?.kette?.planMin, 25, "M6 wurde nicht gespeichert");
     assert.equal(datei.aufwand, undefined, "der Entwurf von M8 wurde mitgespeichert");
 

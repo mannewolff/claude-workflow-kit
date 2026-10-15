@@ -3,9 +3,9 @@
 // Intern arbeitet die Oberflaeche mit den deutschen Namen (E9). Gezeigt werden in einem
 // englischen Projekt die englischen Namen und die Beschreibungen aus
 // tools/config-referenz.en.json, die tools/sync-blobs.mjs einbettet wie das Schema und die
-// Namenstabelle (E10). Beim Schreiben bekommt ein neuer Schluessel den Namen der
-// Projektsprache; ein vorhandener behaelt seinen Namen, auch einen deutschen, den der Mensch
-// selbst geschrieben hat. Ein deutsches Projekt sieht aus wie vorher.
+// Namenstabelle (E10). Beim Schreiben bekommt jeder Schluessel seinen englischen Namen, auch
+// ein vorhandener deutscher (Issue #1725, Plan #1710 A2); ein vorhandener Aufzaehlungswert
+// behaelt seine Schreibweise. Ein deutsches Projekt sieht aus wie vorher.
 // Ablauf-Pruefung: Einbettung und Drift zeigt nur sync-blobs als Programm in einem Wegwerf-Repo.
 
 import { test } from "node:test";
@@ -99,7 +99,7 @@ test("[1441-3] ein neu gesetzter Schluessel landet unter dem englischen Namen, e
   });
 });
 
-test("[1441-4] ein vorhandener deutscher Name in einem englischen Projekt bleibt deutsch", () => {
+test("[1441-4] ein vorhandener deutscher Name in einem englischen Projekt wird englisch geschrieben (#1725)", () => {
   const gemischt = { ...ENGLISCH, noCheck: undefined, ohnePruefung: [{ muster: "docs/**", grund: "Doku" }], reviewLesegrenze: "--alt" };
   mitProjekt(gemischt, ({ projekt: p, optionen, pfad }) => {
     const r = speichere(p, {
@@ -112,15 +112,15 @@ test("[1441-4] ein vorhandener deutscher Name in einem englischen Projekt bleibt
     }, optionen);
     assert.equal(r.status, 200, JSON.stringify(r.body));
     const neu = datei(pfad);
-    assert.equal(neu.reviewLesegrenze, "--nur-lesen");
-    assert.equal(neu.reviewReadLimit, undefined);
-    assert.deepEqual(neu.ohnePruefung[0], { muster: "docs/**", grund: "Doku" }, "der vorhandene Eintrag behaelt seine Namen");
-    assert.equal(neu.noCheck, undefined);
+    assert.equal(neu.reviewReadLimit, "--nur-lesen");
+    assert.equal(neu.reviewLesegrenze, undefined);
+    assert.deepEqual(neu.noCheck[0], { pattern: "docs/**", reason: "Doku" }, "der vorhandene Eintrag bekommt englische Namen");
+    assert.equal(neu.ohnePruefung, undefined);
     assert.deepEqual(neu.buildChecks, ENGLISCH.buildChecks, "was nicht geaendert wurde, bleibt, wie es war");
   });
 });
 
-test("[1441-5] ein deutsches Projekt sieht unveraendert aus und schreibt deutsch", () => {
+test("[1441-5] ein deutsches Projekt sieht unveraendert aus und schreibt englische Schluessel (#1725)", () => {
   const deutsch = { codeHost: "local", issueTracker: "local", buildChecks: ["node --test"], mainBranch: "main" };
   mitProjekt(deutsch, ({ projekt: p, optionen, pfad }) => {
     const zustand = projektZustand(p, optionen);
@@ -135,8 +135,8 @@ test("[1441-5] ein deutsches Projekt sieht unveraendert aus und schreibt deutsch
     }, optionen);
     assert.equal(r.status, 200, JSON.stringify(r.body));
     const neu = datei(pfad);
-    assert.equal(neu.reviewLesegrenze, "--ro");
-    assert.deepEqual(neu.ohnePruefung, [{ muster: "*.md", grund: "Text" }]);
+    assert.equal(neu.reviewReadLimit, "--ro");
+    assert.deepEqual(neu.noCheck, [{ pattern: "*.md", reason: "Text" }]);
   });
 });
 
@@ -150,7 +150,7 @@ test("[1441-8] der Fuss eines Teils nennt den Pfad in der Projektsprache", () =>
   });
 });
 
-test("[1441-9] benenneWieVorlage: Neues in der Projektsprache, Vorhandenes unter seinem Namen, Doppelung bleibt stehen", () => {
+test("[1441-9] benenneWieVorlage: Schluessel englisch, vorhandene Werte unter ihrem Namen, Doppelung bleibt stehen", () => {
   const roh = { language: "en", noCheck: [{ pattern: "a", reason: "b" }], ohnePruefung: [{ muster: "x", grund: "y" }], buildChecks: [{ cmd: "t", stufe: "paket" }] };
   const de = normalisiereConfig(roh).config;
   de.buildChecks.push({ cmd: "u", stufe: "push" });
@@ -159,7 +159,7 @@ test("[1441-9] benenneWieVorlage: Neues in der Projektsprache, Vorhandenes unter
     language: "en",
     noCheck: [{ pattern: "a", reason: "b" }],
     ohnePruefung: [{ muster: "x", grund: "y" }],
-    buildChecks: [{ cmd: "t", stufe: "paket" }, { cmd: "u", stage: "push" }],
+    buildChecks: [{ cmd: "t", stage: "paket" }, { cmd: "u", stage: "push" }],
     mainBranch: "main",
   });
   delete de.ohnePruefung;
