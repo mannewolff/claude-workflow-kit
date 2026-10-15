@@ -1,8 +1,8 @@
 // Ein offener Vertrag im Plan und die Korrekturrunde der Nacht-Kette (Issue #1613, Plan #1611 E5).
 //
 // Gate P14 verlangt fuer jeden offenen Vertrag eine Frage unter `## Offene Fragen`. Vergisst die
-// Planungssitzung sie, meldet `formSicherstellen` P14, die Korrekturrunde schreibt die Frage, und
-// `stoppFragenGrund` haelt die Planstufe an — kein neuer Haltepunkt. Damit die Korrektursitzung
+// Planungssitzung sie, meldet `formSicherstellen` P14, die Korrekturrunde schreibt die Frage, die
+// Review-Stufe prueft den Plan, und `stoppFragenGrund` haelt die Kette danach an (Plan #1697, E1). Damit die Korrektursitzung
 // das darf, nennt ihr Auftrag die Frage ausdruecklich als erlaubten Inhalt und verbietet eine
 // Zeile `Entschieden:`, die den Verstoss durch eine erfundene Entscheidung tilgte.
 //
@@ -42,7 +42,7 @@ function formMitP14(karte) {
   return { ok: false, verstoesse: [{ gate: "P14", meldung }], hinweise: [] };
 }
 
-test("[1613] ein offener Vertrag ohne Frage: die Korrekturrunde schreibt sie, die Planstufe haelt an, /issues startet nicht", async () => {
+test("[1613] ein offener Vertrag ohne Frage: die Korrekturrunde schreibt sie, die Kette haelt nach der Pruefung an, /issues startet nicht", async () => {
   const auftraege = [];
   const reparieren = formReparieren(planMitVertrag(VERTRAGSFRAGE));
   const r = await ketteImProzess({
@@ -63,13 +63,14 @@ test("[1613] ein offener Vertrag ohne Frage: die Korrekturrunde schreibt sie, di
 
   const einheit = r.lauf.einheiten.find((e) => e.id === "1");
   assert.equal(einheit.ausgang, "angehalten", einheit.grund);
-  assert.match(einheit.grund, /Stopp-Frage im Plan #2\b/);
+  assert.match(einheit.grund, /Stopp-Frage im geprüften Plan #2\b/);
   assert.equal(einheit.stufen.plan.korrekturrunden, 1);
-  assert.deepEqual(r.sitzungen.map((s) => s.stufe), ["plan", "form"], "weder Review noch /issues nach dem Halt");
+  assert.deepEqual(r.sitzungen.map((s) => s.stufe), ["plan", "form", "review"], "erst die Pruefung, dann der Halt");
   assert.ok(!r.sitzungen.some((s) => /^\/issues #/.test(s.prompt)), "/issues startet nicht");
 
   const kommentare = r.karte("1").comments.map((c) => c.body).join("\n");
   assert.match(kommentare, /## Kette angehalten/);
+  assert.match(kommentare, /Stufe review, Dokument #2\b/, "der Halt steht nach der Pruefung");
   assert.ok(kommentare.includes("V1: Die Laufkennung heißt im gebauten kanban-kit anders"), "der Halt traegt die Vertragsfrage");
   assert.doesNotMatch(r.karte("2").body, /^ {2}Entschieden:/m, "keine erfundene Entscheidung im Plan");
 });

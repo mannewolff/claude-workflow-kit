@@ -78,7 +78,7 @@ export const TEXTE = Object.freeze({
     keinPlan: "kein Plan entstanden — die Session hat kein {plan}-Dokument mit der Herkunftszeile angelegt",
     planWeitere: " (weitere: {ids})",
     planEntstanden: "  Plan #{plan} entstanden aus Issue #{id}{weitere}.",
-    stoppFrageImPlan: "Stopp-Frage im Plan #{plan}",
+    planFrageWeiter: "  Plan #{plan} traegt eine offene Frage — die Kette prueft ihn trotzdem und haelt erst danach an.",
     // Teil 2: formSicherstellen bis vor mitMeldung (#1492).
     formKeinJson: "technischer Fehler: check-form #{id} lieferte kein JSON ({text})",
     formGeschuetzt: "  Formpruefung #{id}: {meldungen} — kein Korrekturfall, das Paket haelt in der Umsetzungsstufe an.",
@@ -99,6 +99,7 @@ export const TEXTE = Object.freeze({
     pruefstandVeraltetLog: "  Plan #{id}: Die Antwort hat den Plan über das Eintragen hinaus geändert — der Prüfstand ist veraltet.",
     reviewStart: "  Stufe review: /issue-review #{id} (Budget {minuten} min).",
     reviewStoppFrage: "Stopp-Frage aus dem Review von #{id}",
+    stoppFrageGeprueft: "Stopp-Frage im geprüften Plan #{plan}",
     letzterKommentar: "siehe den letzten Kommentar an #{id}",
     reviewDurch: "  Review #{id} durch{marker}.",
     reviewMarker: ", Marker gesetzt",
@@ -321,7 +322,7 @@ export const TEXTE = Object.freeze({
     keinPlan: "no plan created — the session created no {plan} document with the origin line",
     planWeitere: " (more: {ids})",
     planEntstanden: "  Plan #{plan} created from issue #{id}{weitere}.",
-    stoppFrageImPlan: "Stop question in plan #{plan}",
+    planFrageWeiter: "  Plan #{plan} carries an open question — the chain reviews it anyway and stops only afterwards.",
     // Part 2: formSicherstellen up to mitMeldung (#1492).
     formKeinJson: "technical error: check-form #{id} returned no JSON ({text})",
     formGeschuetzt: "  Form check #{id}: {meldungen} — not a correction case, the package stops in the implementation stage.",
@@ -342,6 +343,7 @@ export const TEXTE = Object.freeze({
     pruefstandVeraltetLog: "  Plan #{id}: the answer changed the plan beyond entering it — the review state is outdated.",
     reviewStart: "  Stage review: /issue-review #{id} (budget {minuten} min).",
     reviewStoppFrage: "Stop question from the review of #{id}",
+    stoppFrageGeprueft: "Stop question in the reviewed plan #{plan}",
     letzterKommentar: "see the last comment on #{id}",
     reviewDurch: "  Review #{id} done{marker}.",
     reviewMarker: ", marker set",

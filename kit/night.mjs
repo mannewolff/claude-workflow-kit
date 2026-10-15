@@ -111,7 +111,8 @@
  * gefuehrter Bausteine, die der Plan nicht nennt) halten nichts an; was davon nach der
  * Planungssitzung stehen bleibt, schreibt der Runner als Kommentar "## Testhinweise der
  * Formpruefung" an den Plan (Issue #1033). Jede Stufe endet fertig, angehalten (genau eine Stopp-Frage: Kommentar
- * "## Kette angehalten" und kit:klaeren am Fachplan) oder abgebrochen (Zeitbudget der
+ * "## Kette angehalten" und kit:klaeren am Fachplan; eine offene Frage im Plan haelt erst nach
+ * der Stufe review an, vor dem Schnitt in Pakete, Plan #1697) oder abgebrochen (Zeitbudget der
  * Stufe, Kostenbudget der Kette, technischer Fehler, kein Plan entstanden). Kandidaten
  * ausserhalb von Backlog oder mit kit:klaeren werden uebersprungen, ihr Label bleibt.
  * Ebenso ein Fachplan, der im Ziel die Zeile "Wartet auf Ereignis:" traegt, und ein Plan,

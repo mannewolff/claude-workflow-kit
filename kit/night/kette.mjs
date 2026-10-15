@@ -975,7 +975,7 @@ export function korrekturPrompt(dokId, verstoesse) {
     "schreibe den vollstaendigen korrigierten Body stueckweise in eine Datei ausserhalb des Projektverzeichnisses",
     `und uebertrage ihn mit \`node .claude/kit/board.mjs issue update ${dokId} --body-file <pfad>\`.`,
     "Aendere sonst nichts: keinen Inhalt, keine anderen Karten, keine Dateien im Projekt.",
-    // Eine Frage ist Inhalt, P14 verlangt sie aber; `stoppFragenGrund` haelt danach an (Plan #1611, E5).
+    // Eine Frage ist Inhalt, P14 verlangt sie aber; `stoppFragenGrund` haelt nach der Pruefung an (Plan #1611, E5; Plan #1697, E1).
     "Verlangt eine Formmeldung eine Frage unter `## Offene Fragen`, schreibst du sie dorthin; eine Zeile `Entschieden:` schreibst du nie.",
     "",
     ketteZusatz(),
@@ -1144,7 +1144,9 @@ function kostenErschoepft(kette) {
 }
 
 /**
- * Stufe Plan: /techplan, Formpruefung mit Korrekturrunden, Stopp-Frage (Plan #638, A7, A8, E2).
+ * Stufe Plan: /techplan und Formpruefung mit Korrekturrunden (Plan #638, A7, E2). Eine offene
+ * Frage im Plan haelt hier nicht an: Erst die Stufe review prueft den Plan und haelt danach
+ * an (Plan #1697, E1).
  */
 async function stufePlan(kette) {
   const { F, budget } = kette;
@@ -1177,12 +1179,8 @@ async function stufePlan(kette) {
   const form = await formSicherstellen(kette, stand, stufeStart, budgetMs, summe);
   if (form !== null) return form;
 
-  // Die Stopp-Frage steht im Plan (A8): `## Offene Fragen` ohne `- Keine.`.
-  const body = abh.board("issue", "get", stand.id).body;
-  const grund = stoppFragenGrund(body);
-  if (grund !== null) {
-    return { ausgang: "angehalten", grund: t("stoppFrageImPlan", { plan: stand.id }), dokId: stand.id, frage: abschnittText(body, OFFENE_FRAGEN_UEBERSCHRIFT) || grund };
-  }
+  // Eine offene Frage im Plan haelt erst nach der Pruefung an (Plan #1697, E1).
+  if (stoppFragenGrund(abh.board("issue", "get", stand.id).body) !== null) log(t("planFrageWeiter", { plan: stand.id }));
   return { ausgang: "fertig", id: stand.id };
 }
 
@@ -1426,9 +1424,14 @@ export function pruefstandVeraltet(plan) {
 }
 
 /**
- * Stufe Review: /issue-review am Plan, Halt an kit:klaeren (Plan #638, A8, A16).
+ * Stufe Review: /issue-review am Plan, danach der Halt vor dem Schnitt (Plan #638, A8, A16;
+ * Plan #1697, E1, E5, E9).
+ *
+ * Nach der fertigen Sitzung zuerst die offene Frage im Body — ob sie schon im Plan stand oder
+ * erst die Pruefung sie eintrug —, mit dem Pruefstand am Plan; danach `kit:klaeren` wie bisher.
+ * `planReviewer` ersetzt `kette.planReviewer` fuer `KIT_PLAN_REVIEWER` (genutzt vom Neustart).
  */
-async function stufeReview(kette, planId) {
+async function stufeReview(kette, planId, { planReviewer = kette.planReviewer } = {}) {
   const { budget } = kette;
   const stand = { dauerMs: 0, kennzahlen: null, marker: false };
   kette.stufen.review = stand;
@@ -1442,7 +1445,7 @@ async function stufeReview(kette, planId) {
     return wert !== null && wert !== planReviewWert(vorher.body);
   };
   const s = await ketteSession(kette, "review", `/issue-review #${planId}`, abh.jetzt().getTime(), budget.reviewMin * 60 * 1000, {
-    dokId: planId, ergebnisDa: markerNeu, extraEnv: kette.planReviewer ? { KIT_PLAN_REVIEWER: String(kette.planReviewer) } : undefined,
+    dokId: planId, ergebnisDa: markerNeu, extraEnv: planReviewer ? { KIT_PLAN_REVIEWER: String(planReviewer) } : undefined,
   });
   stand.dauerMs = s.dauerMs;
   stand.kennzahlen = s.kennzahlen;
@@ -1460,6 +1463,12 @@ async function stufeReview(kette, planId) {
   if (kostenErschoepft(kette)) return kostenErschoepft(kette);
   const nachher = abh.board("issue", "get", planId);
   stand.marker = hatPlanReviewMarker(nachher.body);
+  const grund = stoppFragenGrund(nachher.body);
+  if (grund !== null) {
+    // Scheitert der Vermerk, bleibt der Halt; das Protokoll nennt es.
+    pruefstandVermerken(kette, planId, nachher.body);
+    return { ausgang: "angehalten", grund: t("stoppFrageGeprueft", { plan: planId }), dokId: planId, frage: abschnittText(nachher.body, OFFENE_FRAGEN_UEBERSCHRIFT) || grund };
+  }
   if (hatKlaerenLabel(nachher)) {
     const neue = neueKommentare(vorher, nachher);
     return { ausgang: "angehalten", grund: t("reviewStoppFrage", { id: planId }), dokId: planId, frage: neue.at(-1) ?? t("letzterKommentar", { id: planId }) };
