@@ -14,7 +14,7 @@ Gestartet wird der Skill nachts vom Nacht-Runner mit `node .claude/kit/night.mjs
 
 **Nachts wird nicht gefragt — in keiner Lage.** Das gilt für die Bahn (Schritt 0), für jede Unklarheit in der Anforderung (Schritt 1) und für die Diskussion des Plans (Schritt 4). Eine Session, die auf eine Antwort wartet, ist vom Runner nicht von einem Fehlschlag zu unterscheiden. Diese Regel gilt für **jeden unbeaufsichtigten Lauf**, nicht nur für diesen Runner — auch dann, wenn ein anderer Runner den Skill startet.
 
-**Offene Verträge nachts.** Trägt der Plan einen offenen Vertrag (Schritt 3), steht die Vertragsfrage über alle offenen Verträge als erste Zeile unter `## Offene Fragen` — daran hält die Kette die Planstufe an, bevor `/issues` Pakete schneidet. Eine andere Stopp-Frage folgt als weiterer Eintrag im selben Abschnitt und wird beim nächsten Halt gestellt: Jeder Halt trägt genau eine Frage. `Entschieden:` schreibt nur, wer die Antwort des Menschen hat — nachts nie die Sitzung.
+**Offene Verträge nachts.** Trägt der Plan einen offenen Vertrag (Schritt 3), steht die Vertragsfrage über alle offenen Verträge als erste Zeile unter `## Offene Fragen` — daran hält die Kette nach der Prüfung des Plans an, bevor `/issues` Pakete schneidet. Eine andere Stopp-Frage folgt als weiterer Eintrag im selben Abschnitt und wird beim nächsten Halt gestellt: Jeder Halt trägt genau eine Frage. `Entschieden:` schreibt nur, wer die Antwort des Menschen hat — nachts nie die Sitzung.
 
 Ein Widerspruch zur Vorgeschichte ist kein E-Eintrag und keine Stopp-Frage: Er steht als `- Widerspruch:`-Zeile in `### Vorgeschichte`, hält nichts an, und der Nachtbericht nennt ihn.
 

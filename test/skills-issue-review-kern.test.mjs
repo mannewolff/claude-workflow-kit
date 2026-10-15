@@ -180,7 +180,7 @@ test("[skills-13] review:done ist eine sichtbare Spur am Board, abgenommen vor d
     "das Setzen steht nicht nach dem Einarbeitungs-Kommentar");
   assert.equal(SKILL.split("issue label add <id> review:done").length, 2, "das Setzen steht nicht genau einmal");
   assert.equal(SKILL.split("issue label remove <id> review:done").length, 2, "das Abnehmen steht nicht genau einmal");
-  assert.match(SKILL, /Trifft ein Fund die Stopp-Klasse und wird `kit:clarify` gesetzt, entfaellt `review:done`\./);
+  assert.match(SKILL, /Trifft ein Fund bei der fachlichen Anforderung oder beim Arbeitspaket die Stopp-Klasse und wird `kit:clarify` gesetzt, entfaellt `review:done`/);
   assert.match(SKILL, /Endet der Lauf danach vorzeitig, bleibt das Label ab/);
   assert.match(SKILL, /am Board nicht definiert/);
   assert.match(SKILL, /Kein Marker gibt einen Schritt frei; er ist eine Spur\. Auch `review:done` ist Spur, keine Freigabe\./);
@@ -224,4 +224,44 @@ test("[1594-4] Form vor Inhalt nimmt F12 aus: kein eigener Fix, kein Halt, /groo
   assert.match(form, /\*\*Ausnahme F12:\*\*/);
   assert.match(form, /der einzige Formverstoß, den die Session nicht selbst behebt/);
   assert.match(form, /Die Prüfung läuft weiter, und die Zusammenfassung nennt `\/groom #N`/);
+});
+
+// Plan #1697, E4 (Issue #1703): Am Plandokument parkt die Stopp-Klasse unbeaufsichtigt nicht
+// mehr. Die Frage wandert unter `## Offene Fragen`, damit die Kette nach der Pruefung daran
+// anhaelt; ohne `review:done` liesse `planAusschluss` den Plan beim Neustart nicht zu.
+const SCHRITT6 = SKILL.slice(SKILL.indexOf("### 6. Einarbeiten"), SKILL.indexOf("\n### 7.", SKILL.indexOf("### 6. Einarbeiten")));
+const absatzMit = (text, stueck) => text.split("\n\n").find((a) => a.includes(stueck)) ?? "";
+
+test("[1703-1] Fachplan und Arbeitspaket parken unbeaufsichtigt weiter mit kit:clarify", () => {
+  const absatz = absatzMit(SCHRITT6, "Trifft ein Fund die Stopp-Klasse");
+  assert.match(absatz, /wird interaktiv gefragt/);
+  assert.match(absatz, /fachlichen Anforderung und beim Arbeitspaket[^\n]*unbeaufsichtigt zeichnet die Session das Dokument, schreibt keinen Body/);
+  assert.match(SCHRITT6, /issue label add <id> kit:clarify/);
+});
+
+test("[1703-2] am Plandokument traegt die Session die Stopp-Frage unbeaufsichtigt in den Plan ein", () => {
+  const absatz = absatzMit(SCHRITT6, "**Plandokument unbeaufsichtigt:**");
+  assert.ok(absatz, "der Absatz zum Plandokument fehlt");
+  assert.match(absatz, /als Eintrag unter `## Offene Fragen`/);
+  assert.match(absatz, /ersetzt `- Keine\.`/);
+  assert.match(absatz, /nach den bestehenden Einträgen/);
+  assert.match(absatz, /Vertragsfrage bleibt erste Zeile/);
+  assert.match(absatz, /Body, Marker, Einarbeitungs-Kommentar, Buchung und `review:done`/);
+  assert.match(absatz, /`Uebernahme: uebernommen`/);
+  assert.match(absatz, /„als Frage unter `## Offene Fragen`“/);
+  assert.match(absatz, /`kit:clarify` setzt die Session am Plan nicht/);
+});
+
+test("[1703-3] der offene Vertrag am Plan: V-Eintrag im Body, Vertragsfrage unter ## Offene Fragen", () => {
+  const absatz = absatzMit(SCHRITT6, "nicht erklärter Vertrag");
+  assert.match(absatz, /Am Plandokument steht unbeaufsichtigt der V-Eintrag[^\n]*unter `### Verträge` im Body/);
+  assert.match(absatz, /Frage über alle offenen Verträge als erste Zeile unter `## Offene Fragen`/);
+  assert.match(absatz, /Bei der fachlichen Anforderung und beim Arbeitspaket: `kit:clarify`, kein Body/);
+});
+
+test("[1703-4] Parken ohne Buchung und ohne review:done gilt nur fuer Fachplan und Arbeitspaket", () => {
+  assert.match(SCHRITT6, /Wird der Lauf bei der fachlichen Anforderung oder beim Arbeitspaket mit `kit:clarify` geparkt, \*\*wird nicht gebucht\*\*/);
+  assert.doesNotMatch(SCHRITT6, /Wird der Lauf mit `kit:clarify` geparkt/);
+  assert.match(SCHRITT6, /Trifft ein Fund bei der fachlichen Anforderung oder beim Arbeitspaket die Stopp-Klasse und wird `kit:clarify` gesetzt, entfaellt `review:done`/);
+  assert.doesNotMatch(SCHRITT6, /Trifft ein Fund die Stopp-Klasse und wird `kit:clarify` gesetzt/);
 });

@@ -107,3 +107,12 @@ test("Szenario: Eine rein technische Idee wird direkt zum technischen Plan", () 
     "der alte Satz zur [Idea] als Quelle steht noch da");
   assert.match(schritt0, /entfällt die Bahnbestimmung/, "Schritt 0 sagt nicht, dass die Bahn bei einer Idee aus /triage entschieden ist");
 });
+
+// Plan #1697 (Issue #1703): Eine offene Frage im Plan haelt die Kette erst nach der
+// Pruefung des Plans an, vor dem Schnitt in Pakete — kein Halt der Planstufe mehr.
+test("[1703-5] Im Nachtbetrieb haelt die Kette nach der Pruefung des Plans an", () => {
+  const i = SKILL.indexOf("## Im Nachtbetrieb");
+  const nacht = SKILL.slice(i, SKILL.indexOf("\n## ", i + 1));
+  assert.match(nacht, /hält die Kette nach der Prüfung des Plans an, bevor `\/issues` Pakete schneidet/);
+  assert.doesNotMatch(nacht, /Planstufe/);
+});

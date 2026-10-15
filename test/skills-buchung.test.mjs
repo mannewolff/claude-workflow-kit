@@ -46,7 +46,8 @@ test("[skills-36] der Aufruf traegt Datei, Stufe des Laufs und Karte", () => {
 });
 
 test("[skills-36] der Befunde-Text bekommt je Fundblock einen Uebernahmevermerk", () => {
-  const absatz = absatzMit(ISSUE_REVIEW, "Uebernahme: uebernommen");
+  // Seit Issue #1703 nennt auch der Absatz zum Plandokument die Zeile; gemeint ist der Buchungsabsatz.
+  const absatz = ISSUE_REVIEW.split("\n\n").find((a) => a.includes("Uebernahme: uebernommen") && a.includes("-buchung.md"));
   assert.ok(absatz, "der Skill nennt die Zeile 'Uebernahme: uebernommen' nicht");
   assert.match(absatz, /Uebernahme: abgelehnt/, "derselbe Absatz nennt den abgelehnten Stand nicht");
   assert.match(absatz, /<tmpdir>\/<id>-buchung\.md/,
