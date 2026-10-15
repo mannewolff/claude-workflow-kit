@@ -1979,8 +1979,9 @@ function aeltereUeberholen(kette, aeltere, neuerPlan) {
  * Fragen` und liesse den Plan allein bei `- Keine.` durch. Der Antworttext selbst waere
  * am naechsten Abend der Ausschlussgrund gewesen.
  *
- * `/issue-review` entfaellt beim Plan-Auftrag: Dort traegt der Plan sein
- * `review:fertig` schon, sonst haette `planAusschluss` ihn nie als Auftrag durchgelassen.
+ * Eine Pruefung von Hand nennt der Weg nicht (Plan #1697, E10): Jeder inhaltliche Halt liegt
+ * hinter der Pruefung, und hat die Antwort den Plan ueber sich hinaus geaendert, prueft die
+ * naechste Kette ihn vor dem Schnitt selbst erneut (`pruefstandVeraltet`).
  */
 function haltWegNachVorn(kette, planId) {
   const plan = t("planName", { id: planId });
@@ -1988,7 +1989,6 @@ function haltWegNachVorn(kette, planId) {
     t("wegAntwort", { entscheidungen: nameDerSprache("ueberschriftName", "architektonischeEntscheidungen", ENTSCHEIDUNGEN_NAME), plan }),
     t("wegOffen", { offen: nameDerSprache("ueberschriftName", "offeneFragen", OFFENE_FRAGEN_NAME), plan, keine: KEINE_STOPP_FRAGEN }),
   ];
-  if (kette.art !== "plan") schritte.push(t("wegReview", { id: planId }));
   // Beim Plan ohne Anforderung (Plan #1645) gibt es keine Anforderung, an der etwas haengt.
   const ohne = kette.ohneAnforderung === true;
   schritte.push(
@@ -2724,9 +2724,20 @@ function nachDemReview(kette, review) {
   return uebergangGesperrt(kette, "reviewPakete", review) ? anDerGrenze(kette, "pakete", "reviewPakete") : null;
 }
 
-/** Der vorgefundene Marker als Ergebnis der Stufe review, fuer beide Wege in sie. */
-const reviewVorfinden = (kette) => (v, vorher) => {
+/**
+ * Der vorgefundene Marker als Ergebnis der Stufe review, fuer beide Wege in sie (Fachplan-Kette
+ * und erneute Pruefung beim Plan-Auftrag). Wie `stufeReview` zuerst die offene Frage im Body
+ * (Plan #1697, E15): Nach einem Sitzungsabbruch kann die Einarbeitung Marker und Frage schon
+ * geschrieben haben — ohne diesen Halt liefe die Kette ohne Pruefstand bis `pakete`.
+ */
+const reviewVorfinden = (kette, planId) => (v, vorher) => {
   kette.stufen.review = { dauerMs: 0, kennzahlen: null, ...vorher, marker: true, vorgefunden: true };
+  const body = leseKarte(planId)?.body || "";
+  const grund = stoppFragenGrund(body);
+  if (grund !== null) {
+    pruefstandVermerken(kette, planId, body);
+    return { ausgang: "angehalten", grund: t("stoppFrageGeprueft", { plan: planId }), dokId: planId, frage: abschnittText(body, OFFENE_FRAGEN_UEBERSCHRIFT) || grund };
+  }
   return { ausgang: "fertig", vorgefunden: true };
 };
 
@@ -2754,7 +2765,7 @@ async function bisZuDenPaketen(kette, auftrag) {
     const review = await mitMeldung(() => stufeMitErgebnis(kette, "review", planId, {
       auftrag: { ...auftrag, planId },
       laufen: () => stufeReview(kette, planId, { planReviewer }),
-      vorfinden: reviewVorfinden(kette),
+      vorfinden: reviewVorfinden(kette, planId),
     }));
     return review.ausgang === "fertig" ? { planId } : { ende: { ...review, stufe: "review" } };
   }
@@ -2772,7 +2783,7 @@ async function bisZuDenPaketen(kette, auftrag) {
   const review = await mitMeldung(() => stufeMitErgebnis(kette, "review", planId, {
     auftrag: { ...auftrag, planId },
     laufen: () => stufeReview(kette, planId),
-    vorfinden: reviewVorfinden(kette),
+    vorfinden: reviewVorfinden(kette, planId),
   }));
   if (review.ausgang !== "fertig") return { ende: { ...review, stufe: "review" } };
   const ende = nachDemReview(kette, review);

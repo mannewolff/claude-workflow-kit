@@ -149,14 +149,15 @@ export const TEXTE = Object.freeze({
     wegAntwort: "1. Die Antwort als Eintrag unter '## {entscheidungen}' von {plan} schreiben.",
     wegOffen: "2. '## {offen}' von {plan} wieder auf '{keine}' setzen (ein Zusatz dahinter ist erlaubt). Die Antwort gehoert "
       + "NICHT in diesen Abschnitt: Dort liest die naechste Kette sie als weitere offene Frage und ueberspringt den Plan.",
-    wegReview: "3. /issue-review #{id} laufen lassen.",
     wegKlaeren: "{n}. {label} an {plan} abnehmen — und an der fachlichen Anforderung #{fachplan}, wenn es dort noch haengt.",
     wegKlaerenOhne: "{n}. {label} an {plan} abnehmen.",
     wegLabel: "{n}. Zuletzt das Label {label} an {plan} setzen.",
     wegKopf: "Die Entscheidung gehoert in {plan}, nicht in die fachliche Anforderung #{fachplan}: Die naechste Kette nimmt den "
-      + "Plan als Auftrag und faehrt von der Stufe pakete an weiter. Der Weg nach vorn:",
+      + "Plan als Auftrag und faehrt von der Stufe pakete an weiter; hat die Antwort den Plan ueber sich hinaus geaendert, "
+      + "prueft sie ihn vorher selbst erneut. Der Weg nach vorn:",
     wegKopfOhne: "Die Entscheidung gehoert in {plan}: Die naechste Kette nimmt den Plan als Auftrag und faehrt von der "
-      + "Stufe pakete an weiter. Der Weg nach vorn:",
+      + "Stufe pakete an weiter; hat die Antwort den Plan ueber sich hinaus geaendert, prueft sie ihn vorher selbst erneut. "
+      + "Der Weg nach vorn:",
     wegEntwurf: "Bis dahin geschnittene Pakete bleiben als Entwurf stehen.",
     haltKopf: "Kette {stempel}, Stufe {stufe}, Dokument #{dok}: {grund}.",
     bauendProzess: "{lauf} (Prozess {pid})",
@@ -393,14 +394,14 @@ export const TEXTE = Object.freeze({
     wegAntwort: "1. Write the answer as an entry under '## {entscheidungen}' of {plan}.",
     wegOffen: "2. Set '## {offen}' of {plan} back to '{keine}' (an addition after it is allowed). The answer does NOT "
       + "belong in this section: there the next chain reads it as a further open question and skips the plan.",
-    wegReview: "3. Run /issue-review #{id}.",
     wegKlaeren: "{n}. Remove {label} from {plan} — and from the requirement #{fachplan}, if it still hangs there.",
     wegKlaerenOhne: "{n}. Remove {label} from {plan}.",
     wegLabel: "{n}. Finally set the label {label} on {plan}.",
     wegKopf: "The decision belongs in {plan}, not in the requirement #{fachplan}: the next chain takes the plan as its "
-      + "order and continues from the stage pakete. The way forward:",
+      + "order and continues from the stage pakete; if the answer changed the plan beyond itself, the chain checks it "
+      + "again first. The way forward:",
     wegKopfOhne: "The decision belongs in {plan}: the next chain takes the plan as its order and continues from the "
-      + "stage pakete. The way forward:",
+      + "stage pakete; if the answer changed the plan beyond itself, the chain checks it again first. The way forward:",
     wegEntwurf: "Packages cut up to then remain as drafts.",
     haltKopf: "Chain {stempel}, stage {stufe}, document #{dok}: {grund}.",
     bauendProzess: "{lauf} (process {pid})",
