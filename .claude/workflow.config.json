@@ -356,7 +356,7 @@
       ]
     },
     {
-      "cmd": "node --test --test-concurrency=2 \"test/ablauf-night-*.test.mjs\"",
+      "cmd": "node --test --test-concurrency=4 \"test/ablauf-night-*.test.mjs\"",
       "gleichzeitig": true,
       "nichtBeimAbschluss": "zusammenspiel",
       "abschlussBereiche": [
