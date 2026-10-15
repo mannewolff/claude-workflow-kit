@@ -451,6 +451,17 @@ function gewackeltZeilen(pakete) {
 }
 
 /**
+ * Die Luecken der Pruefbereiche aller Pakete der Nacht unter einer eigenen Zeile (Issue #1720,
+ * Plan #1713, Kriterium 11): je Luecke Paket, Test, Datei und Pruefkommando. Gemeldet, nicht
+ * gewertet — der Abgleich haelt nie an. Ohne Luecke in der Nacht keine Zeile.
+ */
+function bereichsabgleichZeilen(pakete) {
+  const luecken = pakete.flatMap((e) => (e.pruefung?.bereichsabgleich?.luecken ?? []).map((l) => ({ ...l, id: e.id })));
+  if (luecken.length === 0) return [];
+  return [t("bereichsabgleichKopf"), ...luecken.map((l) => t("bereichsabgleichLuecke", l))];
+}
+
+/**
  * Die Prueflaeufe je Paket und die Summe gegen die Zielmarke — derselbe Block in BEIDEN
  * Berichten (E6): im `pruefBericht` der Umsetzungsnacht und unter `### Umsetzung` des
  * Kettenberichts. Der Anlassfall — ein Paket von 43 Minuten — lief in einer
@@ -485,6 +496,7 @@ export function prueflaufZeilen(einheiten, ziel = undefined) {
     }
   }
   zeilen.push(...gewackeltZeilen(pakete));
+  zeilen.push(...bereichsabgleichZeilen(pakete));
   const erreicht = pakete.filter((e) => (endlicheZahl(e.dauerMs) ?? Infinity) <= marke * 60000).length;
   zeilen.push(t("unterMarke", { erreicht, gesamt: pakete.length, marke }));
   return zeilen;

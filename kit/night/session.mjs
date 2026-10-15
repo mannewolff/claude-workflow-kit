@@ -1940,6 +1940,15 @@ function ausfuehrungsFelder(daten) {
 }
 
 /**
+ * Der Abgleich der Pruefbereiche, `{ luecken, nichtBeurteilbar, fehler }` (Issue #1720, Plan
+ * #1713, Kriterium 11): durchgereicht wie `hinweise`, nie gewertet — er haelt nie an. Ohne das
+ * Feld (kein Abgleich in diesem Lauf, Stand vor Issue #1719) `null`.
+ */
+function bereichsabgleichFeld(daten) {
+  return daten.bereichsabgleich && typeof daten.bereichsabgleich === "object" ? daten.bereichsabgleich : null;
+}
+
+/**
  * Liest, was die soeben beendete Session hinterlassen hat. Fehlt die Datei, ist das
  * KEIN harter Stopp: Die Session hat dann keine Pruefung gefahren, und der Bericht
  * sagt genau das. Faehrt eine Session `run` mehrfach (rot, Fix, erneut), steht hier
@@ -1980,6 +1989,7 @@ export function lesePruefung(issueId) {
       // je Fall ein Eintrag, auch aus frueheren Abschlusslaeufen derselben Karte. Ohne das
       // Feld (Lauf ohne Kartennummer, Stand vor Issue #1397) `null` und nicht `[]`.
       gewackelt: Array.isArray(daten.gewackeltKarte) ? daten.gewackeltKarte : null,
+      bereichsabgleich: bereichsabgleichFeld(daten),
       ...ausfuehrungsFelder(daten),
     };
     // Die Guetemessung (Issue #764): Das Feld steht nur da, wenn das Projekt eine Messung
