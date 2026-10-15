@@ -519,6 +519,7 @@ export const TEXTE = Object.freeze({
     abschlussMitBereich: "--finish und --area zusammen: zwei Eingrenzungen in einem Lauf. Der Bereichslauf gehoert in die Arbeit, --finish an ihr Ende.",
     unbekannteStufe: "Unbekannte Stufe '{wert}'. Erwartet: {liste}.",
     unbekanntesArgument: "Unbekanntes Argument: '{arg}'",
+    messungAbgebrochen: "Messung abgebrochen: {grund}",
     keinVerzeichnis: "--in '{pfad}' ist kein Verzeichnis.",
     unbekannterBefehl: "Unbekannter Befehl: '{befehl}'. Erwartet: plan, run oder areas",
     altname: "unbekannt: '{name}' — englischer Name: '{englisch}'",
@@ -646,6 +647,7 @@ export const TEXTE = Object.freeze({
     abschlussMitBereich: "--finish and --area together: two restrictions in one run. The area run belongs in the work, --finish at its end.",
     unbekannteStufe: "Unknown stage '{wert}'. Expected: {liste}.",
     unbekanntesArgument: "Unknown argument: '{arg}'",
+    messungAbgebrochen: "measurement aborted: {grund}",
     keinVerzeichnis: "--in '{pfad}' is not a directory.",
     unbekannterBefehl: "Unknown command: '{befehl}'. Expected: plan, run or areas",
     altname: "unknown: '{name}' — English name: '{englisch}'",
@@ -670,6 +672,8 @@ const HILFE = `checks.mjs (claude-workflow-kit v{version}) — due checks
   node checks.mjs plan [--since <ref>] [--stage <stage>] [--area <name>] [--finish [n]] [--in <path>]
   node checks.mjs run  [--since <ref>] [--stage <stage>] [--area <name>] [--finish [n]] [--retry] [--fresh] [--in <path>]
   node checks.mjs areas
+  node checks.mjs areas suggest [--json]
+  node checks.mjs areas compare [--json]
 
 plan  Prints as JSON which buildChecks must run after the current work package
       and which may be skipped — every decision with its reason. Nothing is
@@ -791,6 +795,21 @@ areas
       Plus the inventory: all files versioned by git without a checkAreas
       match, split into exempted (noCheck, with reason) and without any
       assignment.
+areas suggest
+      Suggests check areas, measured from which files every test loads or
+      mentions (JavaScript, TypeScript, Java): per area its patterns and the
+      tests and files behind it, per command the areas it should trigger,
+      splits and merges of existing areas, commands that could be split (no
+      command line) and candidates for scaffoldOnly. A command running tests
+      of another language cannot be assessed and keeps its areas, with the
+      reason. Works without .claude/workflow.config.json (empty config, the
+      groups are then the folders of the test files).
+areas compare
+      Compares the configured areas with the measurement: a gap is a test
+      that loads a file whose area its command does not trigger (risk); an
+      area none of its command's tests loads is a note. Needs the config.
+      Both never change the config and always end with exit code 0; --json
+      prints the same data as JSON.
 
   --since <ref>   Anchor against which the changes are determined (default HEAD).
                   If the anchor cannot be resolved — an empty value too —,
@@ -962,9 +981,15 @@ function git(...args) {
 
 // --- Config ----------------------------------------------------------------
 
-function ladeConfig() {
+/**
+ * Die Config des Projekts. Fehlt die Datei, bricht der Aufruf ab — ausser mit `ohneDateiLeer`:
+ * Dann gilt die leere Config. Das nutzt allein `areas suggest`, damit der Installer den
+ * Vorschlag beim ersten Einrichten holen kann, bevor es eine Config gibt (Plan #1713 A13).
+ */
+function ladeConfig({ ohneDateiLeer = false } = {}) {
   const pfad = join(wurzel(), ".claude", "workflow.config.json");
   if (!existsSync(pfad)) {
+    if (ohneDateiLeer) return normalisiereConfig({}).config;
     fail(t("keineConfig", { wurzel: wurzel() }));
   }
   try {
@@ -4243,9 +4268,91 @@ function arbeitsverzeichnisSetzen(args) {
   return args;
 }
 
+// --- areas suggest und areas compare (Issue #1718, Plan #1713 A1, A10, A13, E11) ------------
+
+const BEREICHE_UNTERBEFEHLE = new Set(["suggest", "compare"]);
+
+// Die Laeufer, deren Vorgabesuche die Testdateien liefert, wenn kein Kommando beurteilbar ist:
+// Jest fuer JavaScript und TypeScript (`__tests__/`, `*.test.*`, `*.spec.*`), Maven fuer Java.
+// Gelesen von derselben Testauswahl wie jedes Kommando der Config, keine zweite Suche.
+const VORGABE_LAEUFER = ["jest", "mvn verify"];
+
 /**
- * Rueckgabe: der Exitcode — fuer `run` als Promise (Issue #1070), fuer `plan` und
- * `bereiche` wie bisher als Zahl.
+ * Ein Eintrag ohne `areas` und ohne `always` — die Stringform und `{ cmd }` — laeuft heute
+ * immer, weil ihm noch niemand Bereiche gegeben hat. Genau dafuer ist der Vorschlag da: Er misst
+ * ihn, als bekaeme er Bereiche. `always: true` und die spaeteren Stufen bleiben, wie sie sind.
+ */
+function alsKandidat(eintrag) {
+  const objekt = typeof eintrag === "string" ? { cmd: eintrag } : eintrag;
+  if (objekt.always === true || objekt.areas?.length > 0) return objekt;
+  return { ...objekt, areas: ["(vorschlag)"] };
+}
+
+/** Die vereinigten, sortierten Tests der beurteilbaren Urteile. */
+function testsDerUrteile(urteile, beurteilbar) {
+  return [...new Set(urteile.filter((u) => u.urteil === beurteilbar).flatMap((u) => u.tests))].sort(vergleicheText);
+}
+
+/**
+ * Die Messung fuer Vorschlag und Abgleich: die Dateien des Arbeitsstands, je Test die geladenen
+ * und genannten Dateien und je Eintrag von `buildChecks` das Urteil der Testauswahl. Gemessen
+ * werden die Tests der beurteilbaren Kommandos; gibt es keines, die der Vorgabe-Laeufer, deren
+ * Ordner dann die Gruppen sind (A7). Bricht die Messung ab, wird jedes beurteilbare Kommando
+ * „nicht beurteilbar" mit dem Grund — ein Abbruch ist nie eine Entwarnung (Kriterium 8).
+ */
+function bereichsmessung(config, { verflechtung, testauswahl }, { vorschlag }) {
+  const repoRoot = wurzel();
+  const { URTEIL } = testauswahl;
+  const eintraege = config.buildChecks ?? [];
+  let dateien;
+  try {
+    dateien = verflechtung.imArbeitsstand(repoRoot);
+  } catch (fehler) {
+    const grund = t("messungAbgebrochen", { grund: fehler.message });
+    return { dateien: [], tabelle: new Map(), kommandos: eintraege.map(() => ({ urteil: URTEIL.nichtBeurteilbar, grund, tests: [] })) };
+  }
+  const urteilVon = (eintrag) => testauswahl.testsVon(eintrag, { repoRoot, dateien });
+  const kommandos = eintraege.map((eintrag) => urteilVon(vorschlag ? alsKandidat(eintrag) : eintrag));
+  let testdateien = testsDerUrteile(kommandos, URTEIL.beurteilbar);
+  if (testdateien.length === 0 && vorschlag) {
+    testdateien = testsDerUrteile(VORGABE_LAEUFER.map((cmd) => urteilVon(alsKandidat(cmd))), URTEIL.beurteilbar);
+  }
+  const nurGeruest = (config.nurGeruest ?? []).map((eintrag) => (typeof eintrag === "string" ? eintrag : eintrag.muster));
+  try {
+    return { dateien, tabelle: verflechtung.verflechtungErheben({ repoRoot, nurGeruest, testdateien }), kommandos };
+  } catch (fehler) {
+    const grund = t("messungAbgebrochen", { grund: fehler.message });
+    const ohneMessung = (k) => (k.urteil === URTEIL.beurteilbar ? { ...k, urteil: URTEIL.nichtBeurteilbar, grund, tests: [] } : k);
+    return { dateien, tabelle: new Map(), kommandos: kommandos.map(ohneMessung) };
+  }
+}
+
+/**
+ * `areas suggest [--json]` und `areas compare [--json]`: Vorschlag oder Abgleich der
+ * Pruefbereiche, als Text in der Projektsprache oder mit `--json` dieselben Daten. Beide aendern
+ * nichts und enden immer mit Exit 0 (A10). Die Teile unter `checks/` laedt erst dieser Aufruf,
+ * dynamisch (A1): Ein `checks.mjs`, das allein in einem Projekt liegt, laeuft fuer `plan`, `run`
+ * und `areas` weiter.
+ */
+async function bereicheRechnen(unterbefehl, rest) {
+  for (const arg of rest) if (arg !== "--json") fail(t("unbekanntesArgument", { arg }));
+  const vorschlag = unterbefehl === "suggest";
+  const config = ladeConfig({ ohneDateiLeer: vorschlag });
+  const [bereiche, verflechtung, testauswahl] = await Promise.all([
+    import("./checks/bereiche.mjs"),
+    import("./checks/verflechtung.mjs"),
+    import("./checks/testauswahl.mjs"),
+  ]);
+  const messung = bereichsmessung(config, { verflechtung, testauswahl }, { vorschlag });
+  const ergebnis = vorschlag ? bereiche.vorschlagErheben(config, messung) : bereiche.abgleichErheben(config, messung);
+  if (rest.includes("--json")) aufStdout(bereiche.alsJson(ergebnis));
+  else aufStdout(vorschlag ? bereiche.vorschlagText(ergebnis) : bereiche.abgleichText(ergebnis));
+  return 0;
+}
+
+/**
+ * Rueckgabe: der Exitcode — fuer `run`, `areas suggest` und `areas compare` als Promise
+ * (Issue #1070, #1718), fuer `plan` und `areas` wie bisher als Zahl.
  */
 function main(argv = process.argv.slice(2)) {
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
@@ -4263,8 +4370,9 @@ function main(argv = process.argv.slice(2)) {
   }
   if (command === "run") return ausfuehren(arbeitsverzeichnisSetzen(parseArgs(rest)));
   if (command === "areas") {
+    if (BEREICHE_UNTERBEFEHLE.has(rest[0])) return bereicheRechnen(rest[0], rest.slice(1));
     // Kein Argument: Anteil und Inventar gelten fuer die Config und den versionierten
-    // Stand, nicht fuer einen Anker. Ein uebergebenes Argument ist ein Irrtum.
+    // Stand, nicht fuer einen Anker. Jedes andere Argument ist ein Irrtum (E11).
     if (rest.length > 0) fail(t("unbekanntesArgument", { arg: rest[0] }));
     aufStdout(JSON.stringify(bereicheAuswerten(), null, 2) + "\n");
     return 0;
@@ -4284,11 +4392,16 @@ if (process.argv[1]) {
   } catch { /* argv[1] nicht aufloesbar -> kein CLI-Start */ }
 }
 if (runAsCli) {
-  try {
-    // exitCode statt process.exit: `run` faerbt den Lauf rot, ohne ihn abzuschneiden.
-    process.exitCode = await main();
-  } catch (err) {
-    fehlerMelden(err);
-    process.exit(1);
-  }
+  // Ohne await auf oberster Ebene (Issue #1718): Die Teile unter checks/ importieren
+  // checks.mjs zurueck. Wartete dieses Modul auf `main`, wartete deren dynamischer Import auf
+  // das Ende dieses Moduls — beide warteten fuer immer.
+  // exitCode statt process.exit: `run` faerbt den Lauf rot, ohne ihn abzuschneiden.
+  Promise.resolve()
+    .then(() => main())
+    .then((code) => {
+      process.exitCode = code;
+    }, (err) => {
+      fehlerMelden(err);
+      process.exit(1);
+    });
 }
