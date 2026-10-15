@@ -2,6 +2,15 @@
 
 Ein Arbeitspaket prüft, was es berührt, nicht die ganze Suite. Diese Seite zeigt, wie ein Projekt seine Prüfungen dafür zuordnet; die Grundlagen stehen in der [Dokumentation](/dokumentation).
 
+## Bereiche einrichten und pflegen
+
+1. **Vorschlag holen:** `node .claude/kit/checks.mjs areas suggest` misst, welche Dateien jeder Test lädt oder nennt, in JavaScript, TypeScript und Java. Er nennt je Bereich die Muster samt den Tests und Dateien dahinter und je Prüfkommando die Bereiche, die es auslösen soll. Ohne Config bilden die Ordner der Testdateien die Gruppen.
+2. **Lesen:** Jeden Bereich an den genannten Tests nachvollziehen. Zusammenlegen und Teilen begründet der Vorschlag ebenso; ein Kommando, dessen Tests getrennte Bereiche laden, nennt er mit den Testdateien je Teil, ohne Kommandozeile.
+3. **Übernehmen:** Der Vorschlag ändert die Config nie. Was passt, trägt der Mensch in `checkAreas` und in die `areas` der `buildChecks` ein, ganz, teilweise oder gar nicht.
+4. **Gerüst-Pfade:** Erwähnen viele Tests einen Pfad nur, ohne ihn zu laden, nennt der Vorschlag ihn als Kandidaten für `nurGeruest`. Ein Eintrag trägt Muster und Grund; die Messung zählt den Pfad dann nicht als geladen.
+5. **Abgleichen:** `node .claude/kit/checks.mjs areas compare` vergleicht die Config mit der Messung. Lädt ein Test eine Datei, deren Bereich sein Kommando nicht auslöst, ist das eine Lücke und ein Risiko; ein Bereich, den keiner der Tests lädt, ist nur ein Hinweis. Derselbe Abgleich läuft als `hinweis:` im Prüflauf jedes Pakets, das eine Testdatei anlegt oder ändert, und nachts sammelt ihn der Nachtbericht. Er hält nie an und ändert nichts.
+6. **Nicht beurteilbar:** Lässt sich nicht ermitteln, welche Tests ein Kommando fährt, etwa bei einer anderen Sprache, behält es seine Bereiche und steht mit Grund als „nicht beurteilbar“ da. Linter und Kommandos mit `always` gelten als „nicht aus der Auswertung abgeleitet“. Eine fehlende Messung ist nie eine Entwarnung.
+
 ## Teile und Bereiche
 
 Ein **Bereich** ist ein Name in `checkAreas` mit einer Liste von Dateimustern. Ein Prüfkommando in `buildChecks` nennt in `areas` seine Bereiche, und `checks.mjs run` startet nur die Kommandos, deren Bereiche eine Änderung berührt.
@@ -24,7 +33,7 @@ Was fast jeder Teil braucht, steht in einem eigenen Teil; eine Änderung daran l
 
 ### Grenze: nur JavaScript-Quellen
 
-Der Graph entsteht aus Dateien mit der Endung `.mjs`, `.cjs` oder `.js`, die einander importieren. Projekte in anderen Sprachen ordnen allein über die Muster in `checkAreas` zu.
+Der Graph entsteht aus Dateien mit der Endung `.mjs`, `.cjs` oder `.js`, die einander importieren. Projekte in anderen Sprachen ordnen allein über die Muster in `checkAreas` zu. Die Messung für `areas suggest` und `areas compare` läuft für TypeScript und Java dagegen von Quelle zu Quelle weiter.
 
 ### Nicht literale Importe sind unsichtbar
 
@@ -55,13 +64,13 @@ Ein Projekt kann das Muster übernehmen.
 
 ## Zuordnungshilfe: breit zugeordnete Kommandos
 
-Ein Kommando der Paketstufe gilt als **breit**, wenn seine `areas` alle oder alle bis auf einen Bereich nennen und es mindestens drei bereichsgebundene Kommandos gibt. `checks.mjs plan` und `checks.mjs run` melden es im Block `Fuer den Abschlussbericht:`:
+Nennen die `areas` eines Kommandos alle Bereiche oder alle bis auf einen, bei mindestens drei bereichsgebundenen Kommandos, melden `plan` und `run`:
 
 ```
 hinweis: <cmd> ist jedem Bereich zugeordnet und laeuft bei jeder Aenderung — Zuschnitt pruefen (checks.mjs areas)
 ```
 
-Der Hinweis hält nichts an; `node .claude/kit/checks.mjs areas` zeigt die Auswertung je Bereich und Kommando.
+`node .claude/kit/checks.mjs areas` zeigt die Auswertung je Bereich.
 
 ### `coupledAreas`
 

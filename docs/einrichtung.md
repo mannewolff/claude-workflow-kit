@@ -27,7 +27,7 @@ Der Installer fragt der Reihe nach:
 6. **Review-Umfang**: `diff` zeigt dem Reviewer nur die geänderten Zeilen, `full` alle Dateien.
 7. **Review-Modell oder Review-Kommando**, genau eines von beiden. Ein Modell läuft als Subagent; ein Kommando startet ein fremdes Werkzeug, das den Prompt über stdin bekommt.
 8. **Commit-Gate** einhängen, nur projektlokal und nur, wenn kein anderer `core.hooksPath` gesetzt ist.
-9. **Bereiche** und je vorhandener Prüfung ihre Zuordnung, nur projektlokal (siehe [Bereiche](#bereichsbezogene-prufungen-checkareas)). Eine leere Eingabe lässt alles, wie es ist.
+9. **Bereiche** und je vorhandener Prüfung ihre Zuordnung, nur projektlokal (siehe [Bereiche](#bereichsbezogene-prufungen-checkareas)); beim ersten Einrichten bietet der Installer dafür den Vorschlag aus `areas suggest` an. Eine leere Eingabe lässt alles, wie es ist.
 10. **Vault-Pfad**, nur global. Mit Pfad schreibt der Installer `~/.claude/kontext.config.json`.
 
 Bei `github` und projektlokaler Installation folgen auf die Code-Host-Frage drei Fragen zum **Schutz des Hauptzweigs**: ob das Projekt GitHub Actions hat, ob die Prüfung vor dem Push dorthin wandern und Haupt- und Veröffentlichungszweig geschützt werden sollen, und welcher Prüfzweig gilt (Vorgabe `kit-pruefung`). Mit Ja pusht der Installer zur Probe auf den Prüfzweig, wartet auf den Build-Dienst und meldet `scharf` (Rulesets gesetzt), `anleitung` (Probe bestanden, die Ausgabe nennt die Schritte bei GitHub), `offen` (kein Lauf des Build-Dienstes) oder `nicht moeglich`.
