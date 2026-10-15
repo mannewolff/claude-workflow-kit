@@ -109,13 +109,18 @@ test("[night-61] auch eine abgebrochene erste Stufe meldet, bevor die Kette ende
 // ohne Meldung, gleich welchen Ausgang eine Stufe nimmt.
 test("[night-61] kein Weg durch stufenDerKette fuehrt ueber zwei Stufen ohne Meldung", () => {
   const quelle = readFileSync(join(repoRoot, "kit", "night", "kette.mjs"), "utf-8");
-  const beginn = quelle.indexOf("async function stufenDerKette(");
-  assert.notEqual(beginn, -1, "stufenDerKette nicht gefunden");
-  const rumpf = quelle.slice(beginn, quelle.indexOf("\n}\n", beginn));
+  // Die Stufen vor pakete stehen seit Issue #1701 in `bisZuDenPaketen`; beide Ruempfe zaehlen.
+  const rumpf = ["stufenDerKette", "bisZuDenPaketen"].map((name) => {
+    const beginn = quelle.indexOf(`async function ${name}(`);
+    assert.notEqual(beginn, -1, `${name} nicht gefunden`);
+    return quelle.slice(beginn, quelle.indexOf("\n}\n", beginn));
+  }).join("\n");
   // Seit Issue #1086 laeuft jede Stufe durch `stufeMitErgebnis`, das sie nur startet, wenn
-  // ihr Ergebnis nicht schon vorliegt — gemeldet wird um diesen Aufruf herum.
+  // ihr Ergebnis nicht schon vorliegt — gemeldet wird um diesen Aufruf herum. Die Stufe
+  // review steht zweimal darin: in der Fachplan-Kette und, bei geaendertem Plan, im
+  // Plan-Auftrag.
   const zeilen = rumpf.split("\n").filter((z) => /\bstufeMitErgebnis\(kette, "(plan|review|pakete|abdeckung)"/.test(z));
-  assert.equal(zeilen.length, 4, `vier Stufenaufrufe erwartet, gefunden:\n${zeilen.join("\n")}`);
+  assert.equal(zeilen.length, 5, `fuenf Stufenaufrufe erwartet, gefunden:\n${zeilen.join("\n")}`);
   for (const z of zeilen) {
     assert.match(z.trim(), /mitMeldung\(\(\) => stufeMitErgebnis\(kette, "(plan|review|pakete|abdeckung)"/, `Stufe ohne Meldung: ${z.trim()}`);
   }

@@ -18,7 +18,8 @@ import { paketUmgesetzt } from "../kit/night/kette.mjs";
 import {
   ketteImProzess, fachplanKarte, planKarte, planBody, paketBody, GLATT, KETTE_LABEL,
 } from "./helpers/kette-fixture.mjs";
-import { REVIEW_FERTIG_LABEL } from "../kit/night/kette.mjs";
+import { PRUEFSTAND_ANKER, REVIEW_FERTIG_LABEL, ergebnisVorhanden, pruefstandVon } from "../kit/night/kette.mjs";
+import { abhaengigkeitenAbhaengigkeiten } from "../kit/night/abhaengigkeiten.mjs";
 
 const MARKER = "Plan-Review: opus (2026-09-28, Nachtlauf)";
 const F = "1";
@@ -73,6 +74,34 @@ test("[night-ergebnis] Plan mit Pruefvermerk: plan und review vorgefunden, keine
   assert.equal(einheit.stufen.review.vorgefunden, true);
   assert.equal(einheit.stufen.review.marker, true);
   assert.equal(einheit.stufen.plan.id, P);
+});
+
+test("[night-ergebnis] Neustart am Fachplan mit vorgefundenem, geändertem Plan: review laeuft erneut (Issue #1701, Plan #1697 E8)", async () => {
+  // Der Pruefstand stammt vom Halt ueber den Plan mit Marker; danach hat jemand eine Zeile
+  // unter `## Geplante Änderungen` geaendert — der Pruefstand ist veraltet.
+  const halt = planVorhanden(P, { marker: true });
+  const stand = pruefstandVon(halt.body);
+  const kommentar = [PRUEFSTAND_ANKER, "", MARKER, "Prüfer: ", `Rest: ${stand.rest}`, `Entscheidungen: ${stand.entscheidungen.join(" ")}`, ""].join("\n");
+  const plan = { ...halt, body: halt.body.replace("- src/plan.mjs: eine Funktion.", "- src/plan.mjs: zwei Funktionen."), comments: [{ body: kommentar }] };
+
+  const regel = (karte) => {
+    abhaengigkeitenAbhaengigkeiten({ boardRoh: () => ({ status: 0, json: structuredClone(karte) }) });
+    try {
+      return ergebnisVorhanden("review", { planId: P });
+    } finally {
+      abhaengigkeitenAbhaengigkeiten();
+    }
+  };
+  assert.equal(regel(plan), null, "die Ergebnisregel review liefert null");
+  assert.deepEqual(regel({ ...halt, comments: [{ body: kommentar }] }), {}, "ohne Aenderung bleibt der Marker das Ergebnis");
+
+  const r = await ketteImProzess({ karten: [fachplanKarte(F), plan], sitzung: GLATT });
+  assert.equal(r.code, 0, r.ausgabe);
+  assert.deepEqual(r.sitzungen.map((s) => s.stufe), ["review", "pakete", "abdeckung"], "die Review-Sitzung laeuft erneut");
+  const einheit = einheitVon(r, F);
+  assert.equal(einheit.ausgang, "fertig", einheit.grund);
+  assert.equal(einheit.stufen.plan.vorgefunden, true);
+  assert.equal("vorgefunden" in einheit.stufen.review, false, "die Stufe review lief selbst");
 });
 
 test("[night-ergebnis] Laufstand 'pakete fertig fuer #M': pakete vorgefunden, nur die Abdeckung laeuft", async () => {

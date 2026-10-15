@@ -1412,14 +1412,15 @@ export function pruefstandLesen(plan) {
  *
  * Gilt nur der juengste Pruefstand und nur, wenn sein Marker dem im Body gleicht; ohne ihn
  * gilt der Plan als unveraendert — ein Plan aus einem frueheren Lauf oder einer von Hand
- * neu geprueften bekaeme sonst eine Pruefung, die niemand bestellt hat.
+ * neu geprueften bekaeme sonst eine Pruefung, die niemand bestellt hat. `melden: false`
+ * laesst die Protokollzeile weg, fuer eine Vorfrage, nach der die Ergebnisregel sie schreibt.
  */
-export function pruefstandVeraltet(plan) {
+export function pruefstandVeraltet(plan, { melden = true } = {}) {
   const stand = pruefstandLesen(plan);
   const marker = planReviewWert(plan?.body);
   if (!stand || marker === null || stand.planReview !== marker) return false;
   if (pruefstandUnveraendert(stand, pruefstandVon(plan?.body))) return false;
-  log(t("pruefstandVeraltetLog", { id: plan?.id }));
+  if (melden) log(t("pruefstandVeraltetLog", { id: plan?.id }));
   return true;
 }
 
@@ -2456,7 +2457,11 @@ const ERGEBNIS_REGELN = {
       .sort((a, b) => Number(b.id) - Number(a.id))[0];
     return plan ? { id: String(plan.id) } : null;
   },
-  review: (auftrag) => (hatPlanReviewMarker(leseKarte(auftrag.planId)?.body) ? {} : null),
+  // Der Marker zaehlt nur, solange kein gueltiger Pruefstand eine Aenderung meldet (Plan #1697 E8).
+  review: (auftrag) => {
+    const plan = leseKarte(auftrag.planId);
+    return hatPlanReviewMarker(plan?.body) && !pruefstandVeraltet(plan) ? {} : null;
+  },
   pakete: (auftrag) => {
     const texte = laufstandTexte(auftrag);
     const fertig = eintragDa(texte, "pakete", "fertig", auftrag.planId) || eintragDa(texte, "abdeckung", "fertig", auftrag.planId);
@@ -2719,6 +2724,61 @@ function nachDemReview(kette, review) {
   return uebergangGesperrt(kette, "reviewPakete", review) ? anDerGrenze(kette, "pakete", "reviewPakete") : null;
 }
 
+/** Der vorgefundene Marker als Ergebnis der Stufe review, fuer beide Wege in sie. */
+const reviewVorfinden = (kette) => (v, vorher) => {
+  kette.stufen.review = { dauerMs: 0, kennzahlen: null, ...vorher, marker: true, vorgefunden: true };
+  return { ausgang: "fertig", vorgefunden: true };
+};
+
+/**
+ * Die Stufen vor pakete: `{ planId }`, wenn es mit pakete weitergeht, sonst `{ ende }` mit
+ * dem Ausgang der Kette.
+ */
+async function bisZuDenPaketen(kette, auftrag) {
+  if (kette.art === "plan") {
+    // Der Plan ist der Auftrag: Er steht schon da, geprueft und ohne offene Frage. Hat die
+    // Antwort auf eine Frage aus dem Halt nach der Pruefung ihn darueber hinaus geaendert
+    // (`pruefstandVeraltet`), prueft die Stufe review ihn vor dem Schnitt erneut, mit den
+    // Pruefern aus dem Pruefstand (Plan #1697 E8, E9) — danach folgt pakete ohne
+    // `nachDemReview`: `reviewPakete` und das Ziel gelten am Plan-Auftrag nicht (`grenzeVorZiel`).
+    // Traegt er aus einem frueheren Lauf bereits Arbeitspakete OHNE Laufstand-Eintrag,
+    // laeuft die Stufe trotzdem unveraendert und zaehlt nur die neu entstandenen Karten —
+    // ein hingenommener Fall (Issue #895): Die aelteren Pakete bleiben in Backlog stehen,
+    // und ein weiteres Tor davor sperrte den haeufigen Fall aus, um den seltenen zu
+    // verhindern. Mit Eintrag gelten sie als vorgefunden oder als Teilschnitt (#1086).
+    const planId = kette.stufen.plan.id;
+    const plan = leseKarte(planId);
+    if (!pruefstandVeraltet(plan, { melden: false })) return { planId };
+    // Die Protokollzeile schreibt die Ergebnisregel review; leere Pruefer: Vorgabe des Projekts.
+    const planReviewer = pruefstandLesen(plan).pruefer || null;
+    const review = await mitMeldung(() => stufeMitErgebnis(kette, "review", planId, {
+      auftrag: { ...auftrag, planId },
+      laufen: () => stufeReview(kette, planId, { planReviewer }),
+      vorfinden: reviewVorfinden(kette),
+    }));
+    return review.ausgang === "fertig" ? { planId } : { ende: { ...review, stufe: "review" } };
+  }
+  const plan = await mitMeldung(() => stufeMitErgebnis(kette, "plan", kette.F, {
+    auftrag,
+    laufen: () => stufePlan(kette),
+    vorfinden: (v, vorher) => {
+      kette.stufen.plan = { dauerMs: 0, kennzahlen: null, korrekturrunden: 0, weitere: [], ...vorher, id: v.id, vorgefunden: true };
+      return { ausgang: "fertig", id: v.id, vorgefunden: true };
+    },
+  }));
+  if (plan.ausgang !== "fertig") return { ende: { ...plan, stufe: "plan" } };
+  const planId = plan.id;
+  if (uebergangGesperrt(kette, "planReview", plan)) return { ende: anDerGrenze(kette, "review", "planReview") };
+  const review = await mitMeldung(() => stufeMitErgebnis(kette, "review", planId, {
+    auftrag: { ...auftrag, planId },
+    laufen: () => stufeReview(kette, planId),
+    vorfinden: reviewVorfinden(kette),
+  }));
+  if (review.ausgang !== "fertig") return { ende: { ...review, stufe: "review" } };
+  const ende = nachDemReview(kette, review);
+  return ende ? { ende } : { planId };
+}
+
 /**
  * Die Stufen einer Kette in Reihenfolge; die erste, die nicht fertig wird, ist der
  * Ausgang der Kette (mit ihrem Namen fuer den Halt-Kommentar). Unter Variante B kommt
@@ -2734,39 +2794,9 @@ async function stufenDerKette(kette) {
   // Der Laufstand, den die Kette vorfand — VOR ihrem ersten eigenen, der ihn ersetzt.
   const auftrag = { F: kette.F, karte: kette.karte, repoRoot: kette.repoRoot, laufstandVorher: kette.laufstandVorher ?? laufstandAmBoard(kette.karte.id) };
   kette.laufstand ??= { begonnen: null, abgeschlossen: null };
-  let planId;
-  if (kette.art === "plan") {
-    // Der Plan ist der Auftrag: Er steht schon da, geprueft und ohne offene Frage.
-    // Traegt er aus einem frueheren Lauf bereits Arbeitspakete OHNE Laufstand-Eintrag,
-    // laeuft die Stufe trotzdem unveraendert und zaehlt nur die neu entstandenen Karten —
-    // ein hingenommener Fall (Issue #895): Die aelteren Pakete bleiben in Backlog stehen,
-    // und ein weiteres Tor davor sperrte den haeufigen Fall aus, um den seltenen zu
-    // verhindern. Mit Eintrag gelten sie als vorgefunden oder als Teilschnitt (#1086).
-    planId = kette.stufen.plan.id;
-  } else {
-    const plan = await mitMeldung(() => stufeMitErgebnis(kette, "plan", kette.F, {
-      auftrag,
-      laufen: () => stufePlan(kette),
-      vorfinden: (v, vorher) => {
-        kette.stufen.plan = { dauerMs: 0, kennzahlen: null, korrekturrunden: 0, weitere: [], ...vorher, id: v.id, vorgefunden: true };
-        return { ausgang: "fertig", id: v.id, vorgefunden: true };
-      },
-    }));
-    if (plan.ausgang !== "fertig") return { ...plan, stufe: "plan" };
-    planId = plan.id;
-    if (uebergangGesperrt(kette, "planReview", plan)) return anDerGrenze(kette, "review", "planReview");
-    const review = await mitMeldung(() => stufeMitErgebnis(kette, "review", planId, {
-      auftrag: { ...auftrag, planId },
-      laufen: () => stufeReview(kette, planId),
-      vorfinden: (v, vorher) => {
-        kette.stufen.review = { dauerMs: 0, kennzahlen: null, ...vorher, marker: true, vorgefunden: true };
-        return { ausgang: "fertig", vorgefunden: true };
-      },
-    }));
-    if (review.ausgang !== "fertig") return { ...review, stufe: "review" };
-    const endeNachReview = nachDemReview(kette, review);
-    if (endeNachReview) return endeNachReview;
-  }
+  const vorDenPaketen = await bisZuDenPaketen(kette, auftrag);
+  if (vorDenPaketen.ende) return vorDenPaketen.ende;
+  const { planId } = vorDenPaketen;
   const pakete = await mitMeldung(() => stufeMitErgebnis(kette, "pakete", planId, {
     auftrag: { ...auftrag, planId },
     laufen: () => stufePakete(kette, planId),
