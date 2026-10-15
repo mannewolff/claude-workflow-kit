@@ -546,9 +546,21 @@ test("M6 bietet night.festgefahrenNach mit der Vorgabe aus dem Schema an", () =>
   assert.match(stueck, /zeilenGruppe\("night\.festgefahrenNach"/, "die Bremse hat keine eigene Zeile");
 });
 
+// Die Protokollfrist (Issue #1696) steht wie die Bremse neben night.kette.
+test("M6 bietet night.protokollFristTage mit der Vorgabe aus dem Schema an", () => {
+  const stueck = SEITEN_BAUSTEINE.redaktorNachtKette;
+  assert.ok(
+    stueck.includes(`const PROTOKOLL_FRIST_VORGABE = ${JSON.stringify(vorgabeAus("night.protokollFristTage"))};`),
+    "die Vorgabe der Protokollfrist im Browser-Skript weicht vom Schema ab oder fehlt",
+  );
+  assert.match(stueck, /setzeWert\(teil, "night\.protokollFristTage"/, "die Protokollfrist landet nicht in der Arbeitskopie");
+  assert.match(stueck, /wertVon\(teil, "night\.protokollFristTage"\)/, "die Protokollfrist wird nicht aus der Arbeitskopie gelesen");
+  assert.match(stueck, /zeilenGruppe\("night\.protokollFristTage"/, "die Protokollfrist hat keine eigene Zeile");
+});
+
 test("M6 bearbeitet night.kette samt Zielmarke und Laufstand und braucht keinen Folgepfad; night.modelle bleibt in Dateischreibweise", () => {
   const m6 = TEILE.find((t) => t.kennung === "m6");
-  assert.deepEqual(m6.pfade, ["night.kette", "night.zielUmsetzungMin", "night.festgefahrenNach", "night.stand"]);
+  assert.deepEqual(m6.pfade, ["night.kette", "night.zielUmsetzungMin", "night.festgefahrenNach", "night.protokollFristTage", "night.stand"]);
   assert.equal(m6.folgen, undefined);
   assert.equal(TEILE.find((t) => t.pfade.includes("night.modelle")).redaktor, "text");
 });

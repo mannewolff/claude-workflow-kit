@@ -172,9 +172,9 @@ The second mode is the night chain (`node .claude/kit/night.mjs --chain`). The g
 ---
 
 ## Effort of the process
-<!-- de: ca3719cae0ff -->
+<!-- de: f752273093f6 -->
 
-Every unattended run writes its evaluation to `.claude/aufwand.md`; it lies there completely, even if nothing stands out. A finding appears unasked at exactly two places: in the closing block of the run log `.claude/night-run-<date>.log` and at the start of `/push-main`. The finding holds nothing up anywhere and is no gate.
+Every unattended run writes its evaluation to `.claude/aufwand.md`; it lies there completely, even if nothing stands out. A finding appears unasked at exactly two places: in the closing block of the run log `.claude/night-run-<date>.log` and at the start of `/push-main`. The finding holds nothing up anywhere and is no gate. At the start of every run the runner deletes the daily logs `.claude/night-run-<date>.log` and the run folders under `.claude/protokolle/` that are older than `night.protokollFristTage` days (default 14); `night-run-*.json` and the `.tsv` files with the key figures remain.
 
 Three terms carry the evaluation: **thinking** is the time in which the model works; **tool work** is the time in which something else works for the run; a **check** is an entry from `buildChecks`, multiple executions of the same entry are summed up. Time that cannot be assigned to either side is a third item of its own.
 

@@ -90,7 +90,7 @@ test("[einstellungen-9] die benannten Teile des Entwurfs tragen Titel und Thema,
   assert.deepEqual(teilNach("m4").pfade, ["buildChecks", "checkAreas", "ohnePruefung", "nurGeruest", "gekoppelteBereiche"]);
   // m5 (Spezifikation) entfiel mit Spec-Driven Development (Plan #825, Issue #830).
   assert.equal(teilNach("m5"), undefined);
-  assert.deepEqual(teilNach("m6").pfade, ["night.kette", "night.zielUmsetzungMin", "night.festgefahrenNach", "night.stand"]);
+  assert.deepEqual(teilNach("m6").pfade, ["night.kette", "night.zielUmsetzungMin", "night.festgefahrenNach", "night.protokollFristTage", "night.stand"]);
   for (const kennung of ["m7", "wert", "text"]) assert.equal(teilNach(kennung).thema, null, kennung);
 });
 
@@ -194,6 +194,16 @@ test("[einstellungen-9] night.festgefahrenNach gehoert zu m6 und traegt die Vorg
   assert.equal(knoten.type, "integer");
   assert.equal(knoten.minimum, 2);
   assert.equal(vorgabeAus("night.festgefahrenNach"), 3);
+});
+
+// Die Protokollfrist (Issue #1696): Tage, nach denen der Runner seine Protokolle loescht,
+// bearbeitet im Nacht-Teil m6 neben der Bremse.
+test("[einstellungen-9] night.protokollFristTage gehoert zu m6 und traegt die Vorgabe 14", () => {
+  assert.equal(teilFuer("night.protokollFristTage").kennung, "m6");
+  const knoten = SCHEMA.properties.night.properties.protokollFristTage;
+  assert.equal(knoten.type, "integer");
+  assert.equal(knoten.minimum, 1);
+  assert.equal(vorgabeAus("night.protokollFristTage"), 14);
 });
 
 // Der Prueflauf-Block (Issue #905, Plan #904 E5): drei einfache Felder, deshalb kein

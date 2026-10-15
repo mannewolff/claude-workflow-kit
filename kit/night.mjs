@@ -511,6 +511,7 @@ export const { pruefLaufAusschluss, waehlePruefLaufKandidaten, pruefLaufFassung,
   PRUEFLAUF_BEFUNDE_ANKER, PRUEFLAUF_EINARBEITUNG_ANKER, pruefLaufErgebnis, PRUEFLAUF_REST_ANKER,
   pruefLaufRestVermerken, laufePrueflauf } = await import("./night/tag.mjs");
 const { tagAnbinden, pruefLaufBudgetSetzen, pruefLaufBudgetStand } = await import("./night/tag.mjs");
+export const { protokollFrist, protokolleAufraeumen, aufraeumZeilen } = await import("./night/aufraeumen.mjs");
 
 /**
  * Die Fence-Regel wird geteilt, nicht kopiert (Issue #308): board.mjs fuehrt sie als
@@ -1077,6 +1078,13 @@ function zustandsVorflug() {
  * arbeiten. Bricht bei verletzten Vorbedingungen selbst ab (`fail`) — das ist die
  * Stelle, an der ein Lauf gar nicht erst beginnen darf.
  */
+/** Loescht die Protokolle jenseits der Frist und schreibt das Ergebnis ins Nacht-Log (Issue #1696). */
+function protokolleAufraeumenMelden(args) {
+  const ergebnis = protokolleAufraeumen(process.cwd(),
+    { fristTage: protokollFrist(ZUSTAND.config), dryRun: args.dryRun === true });
+  for (const zeile of aufraeumZeilen(ergebnis)) log(zeile);
+}
+
 export function vorbereiten(args) {
   if (!existsSync(BOARD_PATH)) fail(t("boardFehlt", { pfad: BOARD_PATH }));
   const configPath = join(process.cwd(), ".claude", "workflow.config.json");
@@ -1137,6 +1145,9 @@ export function vorbereiten(args) {
   if (args.yolo && !args.dryRun) {
     log(t("yoloWarnung"));
   }
+  // Die Protokollfrist (Issue #1696): vor den Vorfluegen, damit sie fuer Implementierung,
+  // Kette und Prueflauf gleichermassen gilt. Ein gescheitertes Loeschen haelt nicht an.
+  protokolleAufraeumenMelden(args);
 
   // Vorflug-Checks
   warnBeiVersionsDrift();

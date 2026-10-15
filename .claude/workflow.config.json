@@ -89,6 +89,7 @@
       "areas": [
         "board-adapter",
         "board-dokumente",
+        "board-grundlagen",
         "board-melder",
         "board-wiederholung",
         "installer",

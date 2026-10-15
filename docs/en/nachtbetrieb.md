@@ -36,7 +36,7 @@ Flags: `--max <N>` (sessions per night, default 10), `--model <id>`, `--timeout-
 The hook `bash-check` refuses lines in which a pipe or redirection cancels the exception, and, unattended, every Bash call in the background: a headless session has no follow-up turn.
 
 ### What is on the board in the morning
-<!-- de: 85f63adec3f0 -->
+<!-- de: f83a0a989ec0 -->
 
 Every card has one outcome:
 
@@ -51,7 +51,7 @@ After a halt, the way on is `/requirement #N`; only the human removes `kit:clari
 
 **What was checked and what was not.** Skipped checks show in two places: in the completion report on the work package, where the session lists the checks it ran and skipped with their reason, and in the run report of the pass, with one line per session and a sum line over the run. The runner reads this from `.claude/checks-summary.json`, not from the session's text, and holds it against the commit: if the evidence does not match the commit, it checks again itself and reports `nachgeprueft` or red.
 
-**The result state.** Next to the daily log `.claude/night-run-<datum>.log`, every run writes `.claude/night-run-<datum>-<uhrzeit>.json`: per package outcome, duration, commit, model, cost, tokens and check runs, plus the end of the run including the reason of a hard stop. The block `Prueflaeufe und Zielmarke:` in the report says how many packages stayed below `night.zielUmsetzungMin`.
+**The result state.** Next to the daily log `.claude/night-run-<datum>.log`, every run writes `.claude/night-run-<datum>-<uhrzeit>.json`: per package outcome, duration, commit, model, cost, tokens and check runs, plus the end of the run including the reason of a hard stop. The block `Prueflaeufe und Zielmarke:` in the report says how many packages stayed below `night.zielUmsetzungMin`. The runner does not keep its logs forever: at the start of every run it deletes the daily logs `.claude/night-run-<datum>.log` and the run folders under `.claude/protokolle/` whose last modification lies further back than `night.protokollFristTage` days (default 14), and states the number and the space freed in one line of the daily log. The JSON files and the `.tsv` files with the key figures remain.
 
 **A run without work names its reason.** If a night ends without a package, the run header carries `noWorkReason` with the sentence from the log. In the night run: `Ready ist leer — nichts zu tun.`, `Keine der <N> Karten in Ready traegt das Label '<name>' — nichts zu tun.`, `Alle <N> Karten in Ready wurden am Gate zurueckgestellt — …` or `Die Umsetzung ist belegt: <grund> — der Lauf endet ohne Paket.` With `--chain`: `Keine Kette zu fahren: keine Karte traegt das Label '<name>'.` or `Keine Kette zu fahren: alle <N> gekennzeichneten Karten mit dem Label '<name>' wurden uebersprungen, …`. Each sentence carries label and number. The set-back sentence takes precedence over `Ready ist leer`. If no case applies, it says `Kein Grund ermittelbar — … bitte melden.` A held lock is a quiet run with a reason; a lock that cannot be written is a hard stop of error class `umgebung` with `fehlerText`, without `noWorkReason`. A run with work does not carry the field.
 

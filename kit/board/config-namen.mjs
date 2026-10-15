@@ -151,6 +151,7 @@ export const SCHLUESSEL = Object.freeze({
   "night.stufenRegel": "tierRule",
   "night.festgefahrenNach": "stuckAfter",
   "night.zielUmsetzungMin": "goalImplementationMin",
+  "night.protokollFristTage": "logRetentionDays",
   pruefLauf: "checkRun",
   "pruefLauf.label": "label",
   "pruefLauf.pruefungMin": "checkMin",

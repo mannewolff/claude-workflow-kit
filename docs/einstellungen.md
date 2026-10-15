@@ -172,6 +172,7 @@ _Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node
 - `night.tierRule` — Ersetzt die mitgelieferte Regel, nach der /issues und /task die Stufe eines Arbeitspakets bestimmen. Vorgabe: die Regel des Kits.
 - `night.stuckAfter` — Zahl gleich gescheiterter Läufe derselben Prüfung, nach der eine unbeaufsichtigte Sitzung beim nächsten Prüfaufruf gebremst wird; interaktiv gibt dieselbe Zahl nur einen Hinweis. Werte: ab 2. Vorgabe: `3`.
 - `night.goalImplementationMin` — Zielmarke für die Dauer einer Umsetzung in Minuten; der Bericht weist aus, wie viele Pakete darunter blieben. Vorgabe: `10`.
+- `night.logRetentionDays` — Frist in Tagen, nach der der Nacht-Runner seine Protokolle löscht, einmal zu Beginn jedes Laufs: die Tagesprotokolle .claude/night-run-`<datum>`.log und die Laufordner unter .claude/protokolle/, gemessen an ihrer letzten Änderung. Werte: ab 1. Vorgabe: `14`.
 
 - `checkRun` — Der Prüflauf: ein Lauf am Tag, der mehrere gekennzeichnete fachliche Anforderungen nacheinander prüfen lässt, ohne dass jemand zusieht. Vorgabe: die Werte der Felder darunter.
 - `checkRun.label` — Das Kennzeichen an der fachlichen Anforderung, die der Lauf prüfen lässt. Vorgabe: `kit:check`.

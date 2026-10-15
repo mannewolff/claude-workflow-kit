@@ -174,6 +174,7 @@ _This section is generated from `templates/workflow.config.schema.json` by `node
 - `night.tierRule` — Replaces the built-in rule by which /issues and /task determine the level of a work package. Default: the kit's rule.
 - `night.stuckAfter` — Number of identically failed runs of the same check after which an unattended session is stopped at the next check call; interactively the same number only produces a hint. Values: from 2. Default: `3`.
 - `night.goalImplementationMin` — Target for the duration of an implementation in minutes; the report shows how many packages stayed below it. Default: `10`.
+- `night.logRetentionDays` — Period in days after which the night runner deletes its logs, once at the start of every run: the daily logs .claude/night-run-`<datum>`.log and the run folders under .claude/protokolle/, measured by their last modification. Values: from 1. Default: `14`.
 
 - `checkRun` — The review run: a run during the day that has several marked functional requirements reviewed one after another without anyone watching. Default: the values of the fields below.
 - `checkRun.label` — The marker on the functional requirement that the run has reviewed. Default: `kit:check`.
