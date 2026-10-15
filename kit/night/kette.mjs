@@ -31,6 +31,7 @@ import { existsSync, readFileSync, writeFileSync, rmSync, readdirSync } from "no
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
 
 import { ZUSTAND, NACHBAR_DIR, log, board, boardRoh, einheitAnlegen, einheitErgaenzen, gitClean, gitReste,
   laufMelden, resteText, schreibeErgebnisstand, schrittBeginnen, schrittEnden, vergleicheText,
@@ -39,12 +40,12 @@ import { ABBRUCH_BUDGET_MS, LAUF_KONTEXT, LAUF_ORDNER, RECHNER, abgeben, exitTex
   laufLebt, laufPositionSetzen, pulsZustandSetzen, standSetzen } from "./laufstand.mjs";
 import { UMSETZUNG_WARTEN_MS, VORBEREITUNG_DATEI, aufUmsetzungWarten, befundeZurueckUndVorschlagen, kitStandAbgeben, kitStandInBaum, prozessLaeuft,
   umsetzungLockNehmen, worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen } from "./kitstand.mjs";
-import { ENTSCHEIDUNGEN_NAME, OFFENE_FRAGEN_NAME, OFFENE_FRAGEN_UEBERSCHRIFT, PO_FRAGEN_NAME, PO_FRAGEN_UEBERSCHRIFT,
-  abschnittLesen, leseKarte, wartetAufPush } from "./abhaengigkeiten.mjs";
+import { ABSCHNITTS_ENDE, ENTSCHEIDUNGEN_NAME, ENTSCHEIDUNGEN_UEBERSCHRIFT, OFFENE_FRAGEN_NAME, OFFENE_FRAGEN_UEBERSCHRIFT,
+  PO_FRAGEN_NAME, PO_FRAGEN_UEBERSCHRIFT, abschnittLesen, fenceLauf, leseKarte, wartetAufPush } from "./abhaengigkeiten.mjs";
 import { flatten, kennzahlenAddieren, ketteBudgetDefaults, kostenAddieren, KETTE_BUDGET_DEFAULTS, ladeKetteBudget,
   ladeKetteUebergaenge, ladePruefLaufBudget, leseErgebnisText, leseKennzahlen, neueKommentare, runSession,
   KETTE_ZIELE, PLANREVIEW_LABELS, pruefreihenVon, SESSION_ABHAENGIGKEITEN, varianteVon, zielVon, zielLabelName,
-  istZielLabel, kennzeichenName, kennzeichenNamen, kitLabel } from "./session.mjs";
+  istZielLabel, kennzeichenName, kennzeichenNamen, kitLabel, LOKALER_KOMMENTARKOPF } from "./session.mjs";
 import { berichtFuerKette, berichtSchreiben, hatPlanReviewMarker, kommentareVon, planReviewWert,
   pruefBericht, vorbereitungsBericht, wartendeMenschenschritte } from "./bericht.mjs";
 import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, geschuetztAmBoardVermerken, hatKlaerenLabel, laufeRunde,
@@ -1299,6 +1300,129 @@ function reviewRestVermerken(kette, planId, grund) {
   ]);
   if (res.ok) log(t("reviewRestVermerkt", { id: planId, anker: REVIEW_REST_ANKER }));
   else log(t("reviewRestNicht", { id: planId, anker: REVIEW_REST_ANKER, text: res.text.slice(0, 200) }));
+}
+
+/** Der Anker des Pruefstands, den die Kette beim Halt nach der Pruefung an den Plan schreibt (Plan #1697 E12). */
+export const PRUEFSTAND_ANKER = "## Pruefstand der Kette";
+
+/** Die ersten `n` Hex-Zeichen von SHA-256 ueber `text`. */
+const hashVon = (text, n) => createHash("sha256").update(text, "utf-8").digest("hex").slice(0, n);
+
+/**
+ * Der Pruefstand eines Plan-Bodys: `rest` und `entscheidungen` (Issue #1699, Plan #1697 E6).
+ *
+ * Normiert vor jedem Hash — `\r\n` und `\r` zu `\n`, jede Zeile am Ende getrimmt, Leerzeilen
+ * am Ende weg —, weil ein Board Zeilenenden und Leerraum aendern kann, ohne dass jemand den
+ * Plan geaendert hat (`kit/night/bericht.mjs` kennt Bodys mit `\r`). Beim lokalen Tracker
+ * stehen die Kommentare im Body; sie gehoeren nicht zum Plan. `rest` laesst die Inhalte von
+ * `## Offene Fragen` und `## Architektonische Entscheidungen` und die Markerzeile aus, denn
+ * dort schreibt der Mensch seine Antwort und die Pruefung ihren Marker. `entscheidungen`
+ * traegt je nichtleere Zeile des Entscheidungsabschnitts einen Hash, damit ein Vergleich
+ * Ergaenzungen von Aenderungen trennen kann.
+ */
+export function pruefstandVon(body) {
+  const zeilen = String(body ?? "").split(LOKALER_KOMMENTARKOPF)[0].split(/\r\n|\r|\n/).map((z) => z.trimEnd());
+  while (zeilen.length > 0 && zeilen.at(-1) === "") zeilen.pop();
+  const rest = [];
+  const entscheidungen = [];
+  zeilenNachAbschnitt(zeilen, (zeile, abschnitt) => {
+    if (abschnitt === "entscheidungen") {
+      if (zeile !== "") entscheidungen.push(hashVon(zeile, 8));
+    } else if (abschnitt === null && planReviewWert(zeile) === null) {
+      rest.push(zeile);
+    }
+  });
+  return { rest: hashVon(rest.join("\n"), 12), entscheidungen };
+}
+
+/** Der Abschnitt, den eine Kopfzeile `## …` beginnt: `fragen`, `entscheidungen` oder `null` fuer jeden anderen. */
+function pruefstandAbschnitt(kopf) {
+  if (OFFENE_FRAGEN_UEBERSCHRIFT.test(kopf)) return "fragen";
+  if (ENTSCHEIDUNGEN_UEBERSCHRIFT.test(kopf)) return "entscheidungen";
+  return null;
+}
+
+/**
+ * Ruft `jeZeile(zeile, abschnitt)` fuer jede Zeile mit dem Abschnitt, in dem sie steht; eine
+ * Kopfzeile `## …` ausserhalb eines Codeblocks gehoert keinem (`null`), sie zaehlt im Rest mit.
+ */
+function zeilenNachAbschnitt(zeilen, jeZeile) {
+  const imFence = fenceLauf();
+  let abschnitt = null;
+  for (const zeile of zeilen) {
+    if (!imFence(zeile) && ABSCHNITTS_ENDE.test(zeile)) {
+      abschnitt = pruefstandAbschnitt(zeile);
+      jeZeile(zeile, null);
+    } else {
+      jeZeile(zeile, abschnitt);
+    }
+  }
+}
+
+/**
+ * Ob der Plan seit dem Pruefstand `alt` nur die Antwort traegt (Plan #1697 E6): `rest` gleich,
+ * und die alten Entscheidungszeilen stehen in ihrer Reihenfolge als Teilfolge in den neuen.
+ */
+export function pruefstandUnveraendert(alt, neu) {
+  if (alt.rest !== neu.rest) return false;
+  let i = 0;
+  for (const h of neu.entscheidungen) if (i < alt.entscheidungen.length && h === alt.entscheidungen[i]) i++;
+  return i === alt.entscheidungen.length;
+}
+
+/**
+ * Der Pruefstand als Kommentar am Plan (Plan #1697 E6, E9, E12): Marker, Pruefer der Kette
+ * (leer bei Vorgabe des Projekts), `rest` und die Entscheidungs-Hashes. Wirft nie — der
+ * Pruefstand darf den Halt nicht verhindern; ob er steht, sagt die Rueckgabe.
+ */
+export function pruefstandVermerken(kette, planId, body) {
+  const stand = pruefstandVon(body);
+  const res = kommentarVermerken(planId, "pruefstand", [
+    PRUEFSTAND_ANKER,
+    "",
+    `Plan-Review: ${planReviewWert(body) ?? ""}`,
+    `Prüfer: ${kette?.planReviewer ?? ""}`,
+    `Rest: ${stand.rest}`,
+    `Entscheidungen: ${stand.entscheidungen.join(" ")}`,
+    "",
+  ].map((z) => z.trimEnd()));
+  if (res.ok) log(t("pruefstandVermerkt", { id: planId, anker: PRUEFSTAND_ANKER }));
+  else log(t("pruefstandNicht", { id: planId, anker: PRUEFSTAND_ANKER, text: res.text.slice(0, 200) }));
+  return res.ok;
+}
+
+/** Der Wert der Zeile `name:` eines Kommentars, am Ende getrimmt — `null` ohne die Zeile. */
+function zeilenWert(kommentar, name) {
+  const zeile = kommentar.split(/\r\n|\r|\n/).find((z) => z.startsWith(`${name}:`));
+  return zeile === undefined ? null : zeile.slice(name.length + 1).trim();
+}
+
+/** Der juengste Pruefstand am Plan — `null` ohne Kommentar mit dem Anker (Plan #1697 E7). */
+export function pruefstandLesen(plan) {
+  const kommentar = kommentareVon(plan).findLast((k) => k.trimStart().startsWith(PRUEFSTAND_ANKER));
+  if (kommentar === undefined) return null;
+  return {
+    planReview: zeilenWert(kommentar, "Plan-Review") ?? "",
+    pruefer: zeilenWert(kommentar, "Prüfer") ?? "",
+    rest: zeilenWert(kommentar, "Rest") ?? "",
+    entscheidungen: (zeilenWert(kommentar, "Entscheidungen") ?? "").split(/\s+/).filter(Boolean),
+  };
+}
+
+/**
+ * Ob die Antwort den Plan ueber das Eintragen hinaus geaendert hat (Plan #1697 E6, E7).
+ *
+ * Gilt nur der juengste Pruefstand und nur, wenn sein Marker dem im Body gleicht; ohne ihn
+ * gilt der Plan als unveraendert — ein Plan aus einem frueheren Lauf oder einer von Hand
+ * neu geprueften bekaeme sonst eine Pruefung, die niemand bestellt hat.
+ */
+export function pruefstandVeraltet(plan) {
+  const stand = pruefstandLesen(plan);
+  const marker = planReviewWert(plan?.body);
+  if (!stand || marker === null || stand.planReview !== marker) return false;
+  if (pruefstandUnveraendert(stand, pruefstandVon(plan?.body))) return false;
+  log(t("pruefstandVeraltetLog", { id: plan?.id }));
+  return true;
 }
 
 /**
