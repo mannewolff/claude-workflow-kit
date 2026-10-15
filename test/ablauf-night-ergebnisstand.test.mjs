@@ -31,6 +31,7 @@ import {
   NIGHT, run, board, setupProjekt, readyIssue, staende, stand, einheit, textprotokollDa,
   NACH_IN_REVIEW, ARBEIT_UND_COMMIT, SUMMARY_GRUEN,
 } from "./helpers/ergebnisstand-fixture.mjs";
+import { einmalLaufen } from "./helpers/kette-ablauf.mjs";
 import { nachtlaufMeldung } from "../kit/board.mjs";
 import { UMSETZUNG_LOCK, verbrauchLeer } from "../kit/night.mjs";
 
@@ -56,6 +57,14 @@ function grundWortgleich(dir, satz) {
   assert.ok(text.includes(satz), `der Satz fehlt wortgleich im Textprotokoll:\n${text}`);
   return s;
 }
+
+/**
+ * Der Lauf ohne Ready-Karte, ohne --verbose, mit der Vorgabe-Config, den fuenf Tests lesen
+ * (Issue #1738). Das Fixture baut helpers/ergebnisstand-fixture.mjs, nicht das der Kette.
+ */
+const leererLauf = () => einmalLaufen("leeres-ready", (dir) => ({
+  res: run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" }),
+}), { aufbau: () => setupProjekt("night-stand-leer-") });
 
 
 test("[night-2] --verbose legt den Ergebnisstand an: schemaFassung 1 als erstes Feld, dazu erzeugtVon", () => {
@@ -90,31 +99,26 @@ test("[night-2] --verbose legt den Ergebnisstand an: schemaFassung 1 als erstes 
 // keinen Gegenstand mehr und entfaellt in JEDEM Lauf. Das Feld bedingt stehenzulassen
 // waere schlimmer als es zu streichen: Es behauptete fehlende Kennzahlen, die es gibt.
 test("[night-2] ohne --verbose entsteht der Ergebnisstand ohne kennzahlenHinweis — der Strom wird immer angefordert", () => {
-  const dir = setupProjekt("night-stand-still-");
-  try {
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
-    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+  const { dir, res } = leererLauf();
+  assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
-    const dateien = staende(dir);
-    assert.equal(dateien.length, 1, `genau eine Ergebnisstand-Datei erwartet, gefunden: ${dateien.join(", ")}`);
+  const dateien = staende(dir);
+  assert.equal(dateien.length, 1, `genau eine Ergebnisstand-Datei erwartet, gefunden: ${dateien.join(", ")}`);
 
-    const stand = JSON.parse(readFileSync(join(dir, ".claude", dateien[0]), "utf-8"));
-    assert.equal(stand.schemaFassung, 1, "die Schemafassung bleibt dieselbe");
-    assert.ok(
-      !("kennzahlenHinweis" in stand),
-      `ohne --verbose darf kein kennzahlenHinweis mehr entstehen, gefunden: ${JSON.stringify(stand.kennzahlenHinweis)}`,
-    );
-    // Die Feldreihenfolge ist der Vertrag mit den Auswertungen: Faellt das bedingte Feld
-    // weg, folgt einheiten unmittelbar auf stufe — und zwar in beiden Betriebsarten.
-    const schluessel = Object.keys(stand);
-    assert.equal(
-      schluessel[schluessel.indexOf("stufe") + 1],
-      "einheiten",
-      `nach stufe folgt einheiten, gefunden: ${schluessel.join(", ")}`,
-    );
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const stand = JSON.parse(readFileSync(join(dir, ".claude", dateien[0]), "utf-8"));
+  assert.equal(stand.schemaFassung, 1, "die Schemafassung bleibt dieselbe");
+  assert.ok(
+    !("kennzahlenHinweis" in stand),
+    `ohne --verbose darf kein kennzahlenHinweis mehr entstehen, gefunden: ${JSON.stringify(stand.kennzahlenHinweis)}`,
+  );
+  // Die Feldreihenfolge ist der Vertrag mit den Auswertungen: Faellt das bedingte Feld
+  // weg, folgt einheiten unmittelbar auf stufe — und zwar in beiden Betriebsarten.
+  const schluessel = Object.keys(stand);
+  assert.equal(
+    schluessel[schluessel.indexOf("stufe") + 1],
+    "einheiten",
+    `nach stufe folgt einheiten, gefunden: ${schluessel.join(", ")}`,
+  );
 });
 
 // Die Marke, mit der DIESER Lauf gerechnet hat, gehoert an seinen Kopf (Issue #978): Sie
@@ -149,71 +153,56 @@ test("[night-2] der Lauf-Kopf traegt die Zielmarke dieses Laufs aus der Config",
 // ohne origin — steht dort `null`, damit der Morgen den Lauf mit der Kopie der Hauptkopie
 // von einem mit festem Stand unterscheidet.
 test("[night-2] ohne festen Kit-Stand traegt der Lauf-Kopf kitStand null, hinter der Zielmarke", () => {
-  const dir = setupProjekt("night-stand-kitstand-");
-  try {
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
-    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+  const { dir, res } = leererLauf();
+  assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
-    const stand = JSON.parse(readFileSync(join(dir, ".claude", staende(dir)[0]), "utf-8"));
-    assert.equal(stand.schemaFassung, 1, "das neue Feld aendert die Fassung nicht");
-    assert.ok("kitStand" in stand, "das Feld fehlt");
-    assert.equal(stand.kitStand, null);
-    const schluessel = Object.keys(stand);
-    assert.equal(schluessel.indexOf("kitStand"), schluessel.indexOf("zielUmsetzungMin") + 1,
-      `kitStand gehoert direkt hinter die Zielmarke: ${schluessel.join(", ")}`);
-    assert.doesNotMatch(res.stdout, /Kit-Stand:/, "ohne Stand keine Stand-Zeile");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const stand = JSON.parse(readFileSync(join(dir, ".claude", staende(dir)[0]), "utf-8"));
+  assert.equal(stand.schemaFassung, 1, "das neue Feld aendert die Fassung nicht");
+  assert.ok("kitStand" in stand, "das Feld fehlt");
+  assert.equal(stand.kitStand, null);
+  const schluessel = Object.keys(stand);
+  assert.equal(schluessel.indexOf("kitStand"), schluessel.indexOf("zielUmsetzungMin") + 1,
+    `kitStand gehoert direkt hinter die Zielmarke: ${schluessel.join(", ")}`);
+  assert.doesNotMatch(res.stdout, /Kit-Stand:/, "ohne Stand keine Stand-Zeile");
 });
 
 // Der Rechner des Laufs (Issue #1687, Plan #1685): Ein Bericht ueber kopierte Staende liest
 // ihn aus dem Stand selbst, nicht aus dem Dateipfad. Hinten angehaengt, die Fassung bleibt 1.
 test("[night-2] der Lauf-Kopf traegt den Rechner, hinter der Zielmarke", () => {
-  const dir = setupProjekt("night-stand-rechner-");
-  try {
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
-    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+  const { dir, res } = leererLauf();
+  assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
-    const stand = JSON.parse(readFileSync(join(dir, ".claude", staende(dir)[0]), "utf-8"));
-    assert.equal(stand.schemaFassung, 1, "das neue Feld aendert die Fassung nicht");
-    assert.equal(stand.rechner, hostname().split(".")[0], "der Wert von RECHNER");
-    const schluessel = Object.keys(stand);
-    assert.ok(schluessel.indexOf("rechner") > schluessel.indexOf("zielUmsetzungMin"),
-      `rechner steht nicht hinter der Zielmarke: ${schluessel.join(", ")}`);
-    assert.equal(schluessel.indexOf("rechner"), schluessel.indexOf("kitStand") + 1,
-      `rechner gehoert hinten an den Lauf-Kopf: ${schluessel.join(", ")}`);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const stand = JSON.parse(readFileSync(join(dir, ".claude", staende(dir)[0]), "utf-8"));
+  assert.equal(stand.schemaFassung, 1, "das neue Feld aendert die Fassung nicht");
+  assert.equal(stand.rechner, hostname().split(".")[0], "der Wert von RECHNER");
+  const schluessel = Object.keys(stand);
+  assert.ok(schluessel.indexOf("rechner") > schluessel.indexOf("zielUmsetzungMin"),
+    `rechner steht nicht hinter der Zielmarke: ${schluessel.join(", ")}`);
+  assert.equal(schluessel.indexOf("rechner"), schluessel.indexOf("kitStand") + 1,
+    `rechner gehoert hinten an den Lauf-Kopf: ${schluessel.join(", ")}`);
 });
 
 // Der Lauf-Kopf vermerkt den Grund, statt ihn nur zu protokollieren (Issue #744): Bricht
 // der Implementierungslauf schon in der ersten Runde am leeren Ready ab, steht "Ready
 // ist leer" wortgleich am Lauf-Kopf, hinter den Feldern der Schemafassung 1.
 test("ein Implementierungslauf ohne Ready-Issues vermerkt 'Ready ist leer' als noWorkReason am Lauf-Kopf", () => {
-  const dir = setupProjekt("night-stand-ohnearbeit-");
-  try {
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
-    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+  const { dir, res } = leererLauf();
+  assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
-    const dateien = staende(dir);
-    assert.equal(dateien.length, 1, `genau eine Ergebnisstand-Datei erwartet, gefunden: ${dateien.join(", ")}`);
-    const stand = JSON.parse(readFileSync(join(dir, ".claude", dateien[0]), "utf-8"));
-    assert.equal(stand.noWorkReason, "Ready ist leer — nichts zu tun.");
-    // Ans Ende des Lauf-Kopfes: hinter alle Felder, die beim Start entstehen. Seit
-    // Issue #752 folgt `aufwand` noch darauf, seit Issue #790 `wirksamkeit` und seit
-    // Issue #806 `befunde` — alle drei entstehen erst beim Abschluss, und die Reihenfolge
-    // der Schemafassung 1 haengt neue Felder hinten an.
-    const AUSWERTUNGEN = ["aufwand", "wirksamkeit", "befunde"];
-    const schluessel = Object.keys(stand).filter((k) => !AUSWERTUNGEN.includes(k));
-    assert.equal(schluessel.at(-1), "noWorkReason", "das Feld gehoert ans Ende des Lauf-Kopfes");
-    for (const feld of AUSWERTUNGEN) {
-      assert.ok(Object.keys(stand).indexOf(feld) > Object.keys(stand).indexOf("noWorkReason"),
-        `die Auswertung '${feld}' gehoert hinter die Felder des Lauf-Kopfes`);
-    }
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
+  const dateien = staende(dir);
+  assert.equal(dateien.length, 1, `genau eine Ergebnisstand-Datei erwartet, gefunden: ${dateien.join(", ")}`);
+  const stand = JSON.parse(readFileSync(join(dir, ".claude", dateien[0]), "utf-8"));
+  assert.equal(stand.noWorkReason, "Ready ist leer — nichts zu tun.");
+  // Ans Ende des Lauf-Kopfes: hinter alle Felder, die beim Start entstehen. Seit
+  // Issue #752 folgt `aufwand` noch darauf, seit Issue #790 `wirksamkeit` und seit
+  // Issue #806 `befunde` — alle drei entstehen erst beim Abschluss, und die Reihenfolge
+  // der Schemafassung 1 haengt neue Felder hinten an.
+  const AUSWERTUNGEN = ["aufwand", "wirksamkeit", "befunde"];
+  const schluessel = Object.keys(stand).filter((k) => !AUSWERTUNGEN.includes(k));
+  assert.equal(schluessel.at(-1), "noWorkReason", "das Feld gehoert ans Ende des Lauf-Kopfes");
+  for (const feld of AUSWERTUNGEN) {
+    assert.ok(Object.keys(stand).indexOf(feld) > Object.keys(stand).indexOf("noWorkReason"),
+      `die Auswertung '${feld}' gehoert hinter die Felder des Lauf-Kopfes`);
   }
 });
 
@@ -499,15 +488,10 @@ test("ein nicht beschreibbarer Umsetzungs-Lock ist eine Stoerung der Umgebung: h
 });
 
 test("ein Lauf mit leerem Ready und ohne jede Rueckstellung behaelt seinen Satz wortgleich", () => {
-  const dir = setupProjekt("night-stand-leerohne-");
-  try {
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none"], { NIGHT_CLAUDE_CMD: "true" });
-    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+  const { dir, res } = leererLauf();
+  assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
-    grundWortgleich(dir, "Ready ist leer — nichts zu tun.");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  grundWortgleich(dir, "Ready ist leer — nichts zu tun.");
 });
 
 // Der Vertrag des Ergebnisstands bleibt, wie er ist (Issue #808): Modellzeit und Zuege

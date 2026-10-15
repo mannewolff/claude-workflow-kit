@@ -9,8 +9,9 @@
 
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { einmalLaufen } from "./helpers/kette-ablauf.mjs";
 
 // Jedes Verzeichnis, das ein Test hier sah. Das `after()` dieser Datei steht hinter dem des
@@ -68,6 +69,24 @@ test("scheitert der Lauf, scheitert jeder Leser mit derselben Meldung", () => {
   assert.throws(lauf, { message: "der Lauf ist gescheitert" });
   assert.throws(lauf, { message: "der Lauf ist gescheitert" });
   assert.equal(laeufe, 1, "der gescheiterte Lauf startete ein zweites Mal");
+});
+
+// Issue #1738: Dateien mit eigenem Fixture (etwa helpers/ergebnisstand-fixture.mjs) reichen
+// ihren Aufbau herein; das Verzeichnis gehoert danach ebenso allein dem Helfer.
+test("ein eigener Aufbau ersetzt das Ketten-Fixture, abgeraeumt wird weiter im after() der Datei", () => {
+  let aufgebaut = null;
+  const ergebnis = einmalLaufen("eigener-aufbau", (dir) => ({ gesehen: dir }), {
+    aufbau: () => {
+      aufgebaut = mkdtempSync(join(tmpdir(), "einmal-aufbau-"));
+      writeFileSync(join(aufgebaut, "eigen.txt"), "eigen\n");
+      return aufgebaut;
+    },
+  });
+  gesehen.add(ergebnis.dir);
+  assert.equal(ergebnis.dir, aufgebaut, "der Helfer legte sein eigenes Verzeichnis an");
+  assert.equal(ergebnis.gesehen, aufgebaut, "der Lauf bekam nicht das Verzeichnis des Aufbaus");
+  assert.equal(existsSync(join(ergebnis.dir, ".claude", "workflow.config.json")), false,
+    "das Ketten-Fixture wurde trotz eigenem Aufbau angelegt");
 });
 
 test("das Verzeichnis liegt nach dem ersten Leser noch — abgeraeumt wird erst im after() der Datei", () => {

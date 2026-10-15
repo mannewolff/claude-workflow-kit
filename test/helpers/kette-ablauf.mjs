@@ -163,15 +163,17 @@ function einfrieren(wert) {
 /**
  * Faehrt `fn(dir)` in einem frischen Fixture hoechstens einmal je `schluessel` und gibt
  * `{ dir, ...ergebnis }` eingefroren zurueck. `projekt` reicht `kette`, `praefix` und
- * `configZusatz` an `setupProjekt` weiter. Scheitert der Lauf, wirft jeder Aufruf mit
- * diesem Schluessel denselben Fehler.
+ * `configZusatz` an `setupProjekt` weiter. `aufbau` ersetzt dieses Fixture durch ein
+ * eigenes: eine Funktion, die das Verzeichnis anlegt und zurueckgibt; abgeraeumt wird es
+ * ebenso vom Helfer (Issue #1738). Scheitert der Lauf, wirft jeder Aufruf mit diesem
+ * Schluessel denselben Fehler.
  */
-export function einmalLaufen(schluessel, fn, { kette, praefix, configZusatz } = {}) {
+export function einmalLaufen(schluessel, fn, { kette, praefix, configZusatz, aufbau } = {}) {
   if (!LAEUFE.has(schluessel)) {
     const lauf = {};
     LAEUFE.set(schluessel, lauf);
     try {
-      lauf.dir = setupProjekt(kette ?? {}, praefix, configZusatz);
+      lauf.dir = aufbau ? aufbau() : setupProjekt(kette ?? {}, praefix, configZusatz);
       lauf.ergebnis = einfrieren(structuredClone({ ...fn(lauf.dir), dir: lauf.dir }));
     } catch (fehler) {
       lauf.fehler = fehler;
