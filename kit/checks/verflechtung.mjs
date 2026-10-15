@@ -105,8 +105,11 @@ function lsFiles(repoRoot, args) {
  * bei einem Aufruf ausserhalb des Repos — und die Erhebung meldete dann eine
  * Verflechtung von null, die wie „keine Kopplung" aussieht. Eine leere zweite
  * Liste allein ist dagegen der Normalfall: ein sauberer Arbeitsbaum.
+ *
+ * Exportiert fuer `testauswahl.mjs` (Issue #1716): Die Testmenge eines Kommandos sucht in
+ * derselben Dateimenge, in der die Messung misst.
  */
-function imArbeitsstand(repoRoot) {
+export function imArbeitsstand(repoRoot) {
   const dateien = [...new Set([
     ...lsFiles(repoRoot, []),
     ...lsFiles(repoRoot, ["--others", "--exclude-standard"]),
