@@ -18,11 +18,11 @@
  */
 
 import { createInterface } from "node:readline";
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, statSync, chmodSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync, readFileSync, readdirSync, statSync, chmodSync, realpathSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { resolve, join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 
 // Kein __dirname mehr: Seit Issue #499 liest der Installer keine Datei neben sich
 // — alles Ausgelieferte steht als Base64-Konstante in dieser Datei.
@@ -772,6 +772,11 @@ export const TEXTE = Object.freeze({
     bereicheBehalten: "  Bereiche beibehalten.",
     ohneBereiche: "  Ohne Bereiche fährt jede Karte alle Prüfungen.",
     bereicheWirkenErst: "  Die Bereiche wirken erst, wenn die Prüfkommandos in workflow.config.json sie in 'areas' nennen.",
+    vorschlagKopf: "\n  Vorschlag, gemessen daran, welche Dateien die Tests laden:",
+    vorschlagFrage: "Vorschlag übernehmen? (j = übernehmen, a = anpassen, leer = überspringen): ",
+    vorschlagFalsch: "Bitte 'j', 'a' oder nichts eingeben.",
+    vorschlagUebernommen: "  Vorschlag übernommen.",
+    vorschlagBereit: "Für die Prüfbereiche liegt ein Vorschlag bereit: node .claude/kit/checks.mjs areas suggest",
     grundGlobal: "globaler Install",
     grundKeinGit: "kein Git-Repo oder git nicht gefunden",
     aktiveHookDatei: "eine aktive Datei im Hooks-Verzeichnis",
@@ -934,6 +939,11 @@ export const TEXTE = Object.freeze({
     bereicheBehalten: "  Areas kept.",
     ohneBereiche: "  Without areas every card runs all checks.",
     bereicheWirkenErst: "  The areas take effect only once the check commands in workflow.config.json name them in 'areas'.",
+    vorschlagKopf: "\n  Proposal, measured from the files the tests load:",
+    vorschlagFrage: "Accept the proposal? (y = accept, a = adjust, empty = skip): ",
+    vorschlagFalsch: "Please enter 'y', 'a' or nothing.",
+    vorschlagUebernommen: "  Proposal accepted.",
+    vorschlagBereit: "A proposal for the check areas is ready: node .claude/kit/checks.mjs areas suggest",
     grundGlobal: "global install",
     grundKeinGit: "no Git repository or git not found",
     aktiveHookDatei: "an active file in the hooks directory",
@@ -1249,14 +1259,87 @@ async function frageZuordnung(rl, check, bereiche) {
   }
 }
 
+// --- Der Bereichsvorschlag (Issue #1721, Plan #1713 A13, E3, E4) ------------
+//
+// Beim ersten Einrichten gibt es `.claude/kit/` noch nicht: Die eingebetteten Dateien fuer
+// `areas suggest` gehen in ein Wegwerf-Verzeichnis, das Kommando laeuft dort als Kindprozess
+// ohne Config. Das Update faehrt dagegen die eben geschriebene Kopie unter `.claude/kit/` und
+// nennt nur den Befehl — es fragt nichts und aendert die Config nicht.
+
+// Die Messung liest jede Datei des Arbeitsstands; ein grosses Projekt darf dauern.
+const VORSCHLAG_TIMEOUT_MS = 120_000;
+
+/** Der Vorschlag aus dem Lauf von `areas suggest --json`, oder null ohne abgeleiteten Bereich. */
+function vorschlagAusLauf(res) {
+  if (res.status !== 0) return null;
+  const vorschlag = JSON.parse(res.stdout);
+  return vorschlag.bereiche?.length > 0 ? vorschlag : null;
+}
+
+/** Faehrt `areas suggest` aus einer Wegwerf-Kopie fuer das Projekt in `projektDir`; jeder Fehler heisst „kein Vorschlag". */
+function bereichsvorschlagHolen(projektDir) {
+  let kopie = null;
+  try {
+    kopie = mkdtempSync(join(tmpdir(), "kit-bereichsvorschlag-"));
+    writeFileSync(join(kopie, "checks.mjs"), Buffer.from(CHECKS_MJS_B64, "base64").toString("utf-8"), "utf-8");
+    for (const [teil, blob] of [["checks", KIT_CHECKS_B64], ["texte", KIT_TEXTE_B64]]) {
+      mkdirSync(join(kopie, teil), { recursive: true });
+      for (const [datei, inhalt] of Object.entries(blobJson(blob))) writeFileSync(join(kopie, teil, datei), inhalt, "utf-8");
+    }
+    // Arbeitsverzeichnis statt `--in`: `areas suggest` misst das Verzeichnis, in dem es laeuft.
+    return vorschlagAusLauf(spawnSync(process.execPath, [join(kopie, "checks.mjs"), "areas", "suggest", "--json"], {
+      cwd: projektDir, encoding: "utf-8", timeout: VORSCHLAG_TIMEOUT_MS,
+    }));
+  } catch {
+    return null;
+  } finally {
+    if (kopie) rmSync(kopie, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Bietet den Vorschlag an: `j` uebernimmt ihn, `a` faehrt die Bereichsfrage mit ihm als
+ * vorhandenen Bereichen, leer ueberspringt. Liefert die Bereiche oder null.
+ */
+async function frageVorschlag(rl, vorschlag) {
+  const vorgeschlagen = vorschlag.ausschnitt.checkAreas;
+  console.log(t("vorschlagKopf"));
+  for (const [name, muster] of Object.entries(vorgeschlagen)) console.log(`    ${name}: ${muster.join(", ")}`);
+  while (true) {
+    const antwort = (await ask(rl, t("vorschlagFrage"))).trim().toLowerCase();
+    if (antwort === "") return null;
+    if (JA.has(antwort)) {
+      console.log(t("vorschlagUebernommen"));
+      return vorgeschlagen;
+    }
+    if (antwort === "a") return (await frageBereichsliste(rl, vorgeschlagen)) ?? vorgeschlagen;
+    console.error(t("fehlerZeile", { fehler: t("vorschlagFalsch") }));
+  }
+}
+
+/** Nach dem Update eines Projekts ohne Bereiche: eine Zeile mit dem Befehl, wenn ein Vorschlag bereitliegt. */
+function meldeBereichsvorschlag(kitDir, scope, ersteinrichtung, config) {
+  if (scope !== "projekt" || ersteinrichtung || Object.keys(config.checkAreas ?? {}).length > 0) return;
+  try {
+    const res = spawnSync(process.execPath, [join(kitDir, "checks.mjs"), "areas", "suggest", "--json"], {
+      encoding: "utf-8", timeout: VORSCHLAG_TIMEOUT_MS,
+    });
+    if (vorschlagAusLauf(res)) console.log(`\n${t("vorschlagBereit")}`);
+  } catch { /* kein Vorschlag, keine Zeile */ }
+}
+
 /**
  * Die Bereichsfrage — nur projektlokal. Liefert die Felder, die in die Config gehen,
- * oder null, wenn nichts zu aendern ist.
+ * oder null, wenn nichts zu aendern ist. Beim ersten Einrichten bietet sie zuerst den
+ * gemessenen Vorschlag an, wenn es einen gibt (Issue #1721).
  */
-async function frageBereiche(rl, scope, existingConfig) {
+async function frageBereiche(rl, scope, existingConfig, ersteinrichtung) {
   if (scope !== "projekt") return null;
   const vorhanden = existingConfig.checkAreas ?? {};
-  const checkAreas = await frageBereichsliste(rl, vorhanden);
+  const vorschlag = ersteinrichtung ? bereichsvorschlagHolen(process.cwd()) : null;
+  const checkAreas = vorschlag
+    ? await frageVorschlag(rl, vorschlag)
+    : await frageBereichsliste(rl, vorhanden);
   if (!checkAreas) {
     console.log(Object.keys(vorhanden).length > 0
       ? t("bereicheBehalten")
@@ -2021,6 +2104,7 @@ async function main() {
     ? join(homedir(), ".claude", "workflow.config.json")
     : resolve(".claude", "workflow.config.json");
   const sprachfeld = sprachfeldNeu(sprache, existingConfigPath);
+  const ersteinrichtung = !existsSync(existingConfigPath);
   const existingConfig = loadExistingConfig(existingConfigPath);
   spracheDesLaufs(sprache, existingConfig);
   const D = { ...DEFAULTS, ...existingConfig };
@@ -2067,7 +2151,7 @@ async function main() {
 
   // Frage 10 (nur projektlokal, die letzte der projektlokalen Folge): die Bereiche
   // und je vorhandener Pruefung ihre Zuordnung (Issue #1009).
-  const bereiche = await frageBereiche(rl, scope, existingConfig);
+  const bereiche = await frageBereiche(rl, scope, existingConfig, ersteinrichtung);
 
   // Frage 9 (nur bei globalem Install): Vault-Pfad für kontext.config.json
   let vaultPath = "";
@@ -2227,6 +2311,7 @@ async function main() {
   rueckfall.push(...schreibeTeile(kitDir, projektSpracheLauf), ...copyAgents(join(targetBase, "agents"), projektSpracheLauf));
   richteSchutzEin(kitDir, configTarget, schutzZweig);
   setzeSzenarienAb(kitDir, configTarget, scope);
+  meldeBereichsvorschlag(kitDir, scope, ersteinrichtung, config);
 
   schreibeCommitGate(scope, hooks);
 
