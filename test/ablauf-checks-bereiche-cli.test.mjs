@@ -1,4 +1,4 @@
-// Ablauf-Pruefung: zwei Faelle starten checks.mjs als Prozess, weil nur dort der dynamische Import der Teile hinter dem Einstieg und der Exitcode der Kommandozeile zu sehen sind.
+// Ablauf-Pruefung: drei Faelle starten checks.mjs als Prozess, weil nur dort der dynamische Import der Teile hinter dem Einstieg und der Exitcode der Kommandozeile zu sehen sind.
 //
 // Die Kommandozeile von `areas suggest` und `areas compare` (Issue #1718, Plan #1713 A1, A10,
 // A13, E11).
@@ -10,9 +10,13 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
-import { mitRepo, checks, datei } from "./helpers/checks-repo.mjs";
-import { checksProzess } from "./helpers/checks-ablauf.mjs";
+import { UEBERNAHME_MARKE } from "../kit/checks.mjs";
+import { mitRepo, checks, datei, run, zusammenfassung } from "./helpers/checks-repo.mjs";
+import { CHECKS, checksProzess } from "./helpers/checks-ablauf.mjs";
 
 /** Ein Projekt, dessen Test eine Datei aus einem Bereich laedt, den sein Kommando nicht nennt. */
 const MIT_LUECKE = {
@@ -108,5 +112,67 @@ test("[1718] areas mit einem unbekannten Argument wird abgewiesen", async () => 
       assert.equal(res.status, 1, argv.join(" "));
       assert.match(res.stderr, new RegExp(`Unbekanntes Argument: '${arg}'`), argv.join(" "));
     }
+  });
+});
+
+// --- Der Abgleich im Prueflauf (Issue #1719, Plan #1713 A1, A11, E1, E2, E7) ---
+//
+// Der Abgleich laeuft als Hinweis nur an der Paketstufe und steht im eigenen Feld
+// `bereichsabgleich`, nie in `laufen` (Vertrag V1): Das Gate von kanban-kit sperrt bei jedem
+// nicht gruenen Eintrag dort.
+
+test("[1719] an --stage push und --stage merge laeuft kein Abgleich", async () => {
+  await mitRepo({ config: MIT_LUECKE }, async (dir) => {
+    lueckeAnlegen(dir);
+
+    for (const stufe of ["push", "merge"]) {
+      const res = await run(dir, "--stage", stufe, "--fresh");
+      assert.equal(res.status, 0, `${stufe}: ${res.stdout}${res.stderr}`);
+      const stand = zusammenfassung(dir);
+      assert.equal(Object.hasOwn(stand, "bereichsabgleich"), false, `${stufe}: ${JSON.stringify(stand.bereichsabgleich)}`);
+      assert.doesNotMatch(res.stdout, /Abgleich der Pruefbereiche/, stufe);
+    }
+  });
+});
+
+test("[1719] ein Ladefehler der Teile steht als fehler im Feld, der Lauf bleibt gruen mit Exit 0", async () => {
+  await mitRepo({ config: MIT_LUECKE }, (dir) => {
+    lueckeAnlegen(dir);
+    // checks.mjs allein, ohne die Teile unter checks/: So liegt es in einem Projekt, das nur
+    // den Einstieg kopiert hat, und der dynamische Import scheitert.
+    const ziel = join(dir, ".claude", "kit", "checks.mjs");
+    mkdirSync(dirname(ziel), { recursive: true });
+    copyFileSync(CHECKS, ziel);
+
+    const res = spawnSync(process.execPath, [ziel, "run"], { cwd: dir, encoding: "utf-8" });
+
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    const stand = zusammenfassung(dir);
+    assert.deepEqual(stand.laufen.map((e) => e.ergebnis), ["gruen"]);
+    assert.deepEqual(stand.bereichsabgleich.luecken, []);
+    assert.match(stand.bereichsabgleich.fehler, /bereiche\.mjs|checks\//, JSON.stringify(stand.bereichsabgleich));
+    assert.match(res.stdout, /Abgleich der Pruefbereiche nicht moeglich: /);
+  });
+});
+
+test("[1719] ein uebernommener Lauf traegt bereichsabgleich des uebernommenen Ergebnisses weiter", async () => {
+  await mitRepo({ config: MIT_LUECKE }, async (dir) => {
+    lueckeAnlegen(dir);
+    const erster = await run(dir);
+    assert.equal(erster.status, 0, erster.stdout + erster.stderr);
+    assert.equal(zusammenfassung(dir).bereichsabgleich.luecken.length, 1);
+
+    // Ein Merkmal, das nur der fruehere Lauf traegt: Rechnete die Uebernahme neu, fehlte es.
+    const pfad = join(dir, ".claude", "checks-summary.json");
+    const frueher = JSON.parse(readFileSync(pfad, "utf-8"));
+    frueher.bereichsabgleich.luecken[0].kommando = "aus dem frueheren Lauf";
+    writeFileSync(pfad, `${JSON.stringify(frueher, null, 2)}\n`, "utf-8");
+
+    const zweiter = await run(dir);
+
+    assert.equal(zweiter.status, 0, zweiter.stdout + zweiter.stderr);
+    assert.match(zweiter.stdout, new RegExp(UEBERNAHME_MARKE));
+    assert.deepEqual(zusammenfassung(dir).bereichsabgleich, frueher.bereichsabgleich);
+    assert.match(zweiter.stdout, /aus dem frueheren Lauf/);
   });
 });

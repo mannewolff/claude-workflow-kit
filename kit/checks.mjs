@@ -520,6 +520,9 @@ export const TEXTE = Object.freeze({
     unbekannteStufe: "Unbekannte Stufe '{wert}'. Erwartet: {liste}.",
     unbekanntesArgument: "Unbekanntes Argument: '{arg}'",
     messungAbgebrochen: "Messung abgebrochen: {grund}",
+    bereichsabgleichKopf: "Abgleich der Pruefbereiche (Hinweis, haelt nicht an):",
+    bereichsabgleichLuecke: "- {test} laedt {datei} aus Bereich {bereich}, den {kommando} nicht ausloest",
+    bereichsabgleichFehler: "Abgleich der Pruefbereiche nicht moeglich: {grund}",
     keinVerzeichnis: "--in '{pfad}' ist kein Verzeichnis.",
     unbekannterBefehl: "Unbekannter Befehl: '{befehl}'. Erwartet: plan, run oder areas",
     altname: "unbekannt: '{name}' — englischer Name: '{englisch}'",
@@ -648,6 +651,9 @@ export const TEXTE = Object.freeze({
     unbekannteStufe: "Unknown stage '{wert}'. Expected: {liste}.",
     unbekanntesArgument: "Unknown argument: '{arg}'",
     messungAbgebrochen: "measurement aborted: {grund}",
+    bereichsabgleichKopf: "Comparison of the check areas (hint, never stops):",
+    bereichsabgleichLuecke: "- {test} loads {datei} from area {bereich}, which {kommando} does not trigger",
+    bereichsabgleichFehler: "Comparison of the check areas not possible: {grund}",
     keinVerzeichnis: "--in '{pfad}' is not a directory.",
     unbekannterBefehl: "Unknown command: '{befehl}'. Expected: plan, run or areas",
     altname: "unknown: '{name}' — English name: '{englisch}'",
@@ -3343,9 +3349,12 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
     // Eine Uebernahme faehrt nichts und zaehlt darum nicht (Issue #1388, E3): unveraendert weiter.
     ...(vorige?.festgefahren ? { festgefahren: vorige.festgefahren } : {}),
     ...(gewackeltKarte ? { gewackeltKarte } : {}),
+    // Der Abgleich gehoert zum gemessenen Stand (Issue #1719): weitergetragen, nicht neu erhoben.
+    ...(frueher.bereichsabgleich ? { bereichsabgleich: frueher.bereichsabgleich } : {}),
   });
   const befund = ungruen === null ? "gruen" : `rot: ${ungruen.cmd}`;
   aufStdout(`${t("standUnveraendert", { zeitpunkt: original, marke: UEBERNAHME_MARKE, befund })}\n`);
+  bereichsabgleichMelden(frueher.bereichsabgleich);
   berichtsblockSchreiben(zeilen, wartezeitZeile(wartezeitMs, wartezeitKarte));
   aufStdout(`\n${t("zusammenfassung", { pfad })}\n`);
   return ungruen === null ? 0 : 1;
@@ -3692,10 +3701,13 @@ async function ausfuehren(args) {
   }
   // Nach einer Korrektur zuerst die zuletzt roten (Issue #1072); `--fresh` faehrt sofort alles.
   const rote = args.frisch ? null : zuletztRote(vorige, auswahl, hashes, configHash);
+  // Vor dem ersten Kommando, damit er denselben Stand misst wie die Hashes (Issue #1719). Ein
+  // eigenes Feld und nie ein Eintrag in `laufen` (Vertrag V1): Er haelt nie an.
+  const bereichsabgleich = await bereichsabgleichErheben(auswahl);
 
   // Ab hier laufen Kommandos. Eine rechnerweite Sperre davor gibt es seit Issue #1241 nicht
   // mehr: Die Pruefungen sind leicht genug, dass mehrere Projekte gleichzeitig pruefen.
-  return kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, startNs, vorige, rote });
+  return kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, startNs, vorige, rote, bereichsabgleich });
 }
 
 /**
@@ -3705,7 +3717,7 @@ async function ausfuehren(args) {
  * Eigene Funktion, damit `ausfuehren` zeigt, wo die Kommandos beginnen: Ein
  * uebernommenes Ergebnis endet vorher und faehrt keines.
  */
-async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, startNs, vorige, rote = null }) {
+async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, startNs, vorige, rote = null, bereichsabgleich = null }) {
   const grenzeMs = pruefdauerObergrenzeMs();
   // Einmal je Lauf gelesen (Issue #1077): Die Abbruchgrenze jedes Kommandos folgt
   // seiner Historie, und die Zeilen dieses Laufs sollen sie nicht mehr verschieben.
@@ -3802,6 +3814,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
     ...(gewackeltVorher
       ? { gewackeltKarte: gewackeltKarteNach(gewackeltVorher, args.karte, [...stand.laufen, ...wacklerTeillauf], zeitpunkt) }
       : {}),
+    ...(bereichsabgleich ? { bereichsabgleich } : {}),
   });
 
   // Ein Durchgang ueber die ausgewaehlten Kommandos — alle oder, beim Teillauf, nur die
@@ -4037,6 +4050,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   wartezeit = { wartezeitMs, ...(wartezeitKarte ? { wartezeitKarte } : {}) };
   const pfad = schreibeStand(stand, true);
   festgefahrenMelden(stand.laufen, festgefahrenNach(festgefahrenBasis, stand.laufen));
+  bereichsabgleichMelden(bereichsabgleich);
   berichtsblockSchreiben(zeilenVon(stand), wartezeitZeile(wartezeitMs, wartezeitKarte));
   aufStdout(`\n${t("zusammenfassung", { pfad })}\n`);
   return stand.rot ? 1 : 0;
@@ -4348,6 +4362,87 @@ async function bereicheRechnen(unterbefehl, rest) {
   if (rest.includes("--json")) aufStdout(bereiche.alsJson(ergebnis));
   else aufStdout(vorschlag ? bereiche.vorschlagText(ergebnis) : bereiche.abgleichText(ergebnis));
   return 0;
+}
+
+/**
+ * Die Testhilfe-Ordner aus Plan #1713 A4 auf jeder Ebene, damit auch `**\/src/test/` (E7) —
+ * dieselbe Regel wie die Durchgangsstationen in `checks/verflechtung.mjs`.
+ */
+const TESTORDNER = /(?:^|\/)(?:test|tests|__tests__)\//;
+
+/**
+ * Die gemessenen Tests, die eine geaenderte Testhilfe ueber Importe erreichen (E1): rueckwaerts
+ * durch die Importeure, bis zu jedem Test der Tabelle. Die Suche liest JavaScript-Importe wie die
+ * Ableitung aus Importen; scheitert sie, erreicht die Hilfe keinen Test.
+ */
+function testsUeberHilfen(hilfen, tests) {
+  if (hilfen.length === 0) return [];
+  const importeure = importeureErheben() ?? new Map();
+  const erreicht = new Set();
+  const besucht = new Set(hilfen);
+  const offen = [...hilfen];
+  while (offen.length > 0) {
+    for (const importeur of importeure.get(offen.shift()) ?? []) {
+      if (besucht.has(importeur)) continue;
+      besucht.add(importeur);
+      if (tests.has(importeur)) erreicht.add(importeur);
+      offen.push(importeur);
+    }
+  }
+  return [...erreicht];
+}
+
+/**
+ * Der Abgleich der Pruefbereiche im Prueflauf eines Pakets (Issue #1719, Plan #1713 A11, E1,
+ * E2, E7). Liefert das Feld `bereichsabgleich` oder `null`, wenn kein Abgleich laeuft: an `push`
+ * und `merge` nie, an der Paketstufe nur, wenn das Paket eine Testdatei angelegt oder geaendert
+ * hat — eine, die ein Kommando faehrt, oder eine unter den Testhilfe-Ordnern (E7).
+ *
+ * Abgeglichen werden nur die geaenderten Tests und die, die eine geaenderte Testhilfe erreichen
+ * (E1); „zu viel" meldet der Prueflauf nicht (E2). Der Abgleich haelt nie an: Jeder Fehler,
+ * auch ein Ladefehler der Teile unter `checks/`, wird zu `fehler` und aendert weder Farbe noch
+ * Exit-Code. Ohne die Teile laesst sich ein Test nur am Ordner erkennen; ein Ladefehler zaehlt
+ * darum nur, wenn ein geaenderter Pfad dort liegt — sonst stuende er in jedem Paket.
+ */
+async function bereichsabgleichErheben(auswahl) {
+  if (auswahl.stufe !== STUFEN[0]) return null;
+  const imOrdner = auswahl.geaendert.filter((p) => TESTORDNER.test(p));
+  const mitFehler = (fehler) => ({ luecken: [], nichtBeurteilbar: [], fehler: fehler.message });
+  let teile;
+  try {
+    teile = await Promise.all([
+      import("./checks/bereiche.mjs"),
+      import("./checks/verflechtung.mjs"),
+      import("./checks/testauswahl.mjs"),
+    ]);
+  } catch (fehler) {
+    return imOrdner.length > 0 ? mitFehler(fehler) : null;
+  }
+  const [bereiche, verflechtung, testauswahl] = teile;
+  try {
+    const config = ladeConfig();
+    const messung = bereichsmessung(config, { verflechtung, testauswahl }, { vorschlag: false });
+    const gefahren = new Set(messung.kommandos.flatMap((k) => k.tests ?? []));
+    const testdateien = auswahl.geaendert.filter((p) => TESTORDNER.test(p) || gefahren.has(p));
+    if (testdateien.length === 0) return null;
+    const gemessen = new Set(messung.tabelle.keys());
+    const hilfen = testdateien.filter((p) => !gemessen.has(p));
+    const nurTests = [...testdateien.filter((p) => gemessen.has(p)), ...testsUeberHilfen(hilfen, gemessen)];
+    const { luecken, nichtBeurteilbar } = bereiche.abgleichErheben(config, messung, { nurTests });
+    return { luecken, nichtBeurteilbar, fehler: null };
+  } catch (fehler) {
+    return mitFehler(fehler);
+  }
+}
+
+/** Der Block des Abgleichs auf der Konsole: je Luecke eine Zeile, dazu ein Fehler; sonst nichts. */
+function bereichsabgleichMelden(bereichsabgleich) {
+  if (!bereichsabgleich) return;
+  const zeilen = [
+    ...(bereichsabgleich.fehler ? [t("bereichsabgleichFehler", { grund: bereichsabgleich.fehler })] : []),
+    ...(bereichsabgleich.luecken ?? []).map((l) => t("bereichsabgleichLuecke", l)),
+  ];
+  if (zeilen.length > 0) aufStdout(`\n${t("bereichsabgleichKopf")}\n${zeilen.join("\n")}\n`);
 }
 
 /**

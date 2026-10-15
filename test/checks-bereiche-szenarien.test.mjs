@@ -1,4 +1,5 @@
-// Die Szenarien zu `areas suggest` (Issue #1718, Plan #1713, fachliche Quelle #1706).
+// Die Szenarien zu `areas suggest` (Issue #1718, Plan #1713, fachliche Quelle #1706) und zum
+// Abgleich im Prueflauf eines Pakets (Issue #1719).
 //
 // Je Szenario ein Test mit dem Titel im Namen. Jeder laeuft an einem Wegwerf-Projekt und ruft
 // `checks.mjs areas suggest` im selben Prozess, wie es der Anwender auf der Kommandozeile tut:
@@ -10,7 +11,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { mitRepo, checks, datei } from "./helpers/checks-repo.mjs";
+import { mitRepo, checks, datei, git, zusammenfassung } from "./helpers/checks-repo.mjs";
 
 const CONFIG = join(".claude", "workflow.config.json");
 
@@ -141,5 +142,106 @@ test("Szenario: Eine nur erwähnte Datei koppelt alle Bereiche", async () => {
     assert.deepEqual(vorschlag.geruestKandidaten, [{ pfad: "vorlagen/projekt.json", tests }]);
     assert.ok(text.includes(`- vorlagen/projekt.json, genannt von 4 Tests: ${tests.join(", ")}`), text);
     assert.deepEqual(configBytes(dir), vorher, "die Config ist nach dem Vorschlag unveraendert");
+  });
+});
+
+// --- Der Abgleich im Prueflauf eines Pakets (Issue #1719, Kriterium 11) ---
+
+/** Ein Projekt mit eingerichteten Bereichen; der Test unter `test/` laedt nur `src/a/`. */
+const MIT_BEREICHEN = {
+  buildChecks: [{ cmd: "node --test test/a.test.mjs", areas: ["a"] }],
+  checkAreas: { a: ["src/a/**", "test/a.test.mjs"], b: ["src/b/**"] },
+};
+
+function quellenAnlegen(dir) {
+  datei(dir, "src/a/eins.mjs", "export const eins = 1;\n");
+  datei(dir, "src/b/zwei.mjs", "export const zwei = 2;\n");
+}
+
+/** `laufen` ohne die gemessenen Dauern: Sie unterscheiden zwei Laeufe auch ohne Befund. */
+const ohneDauer = (laufen) => laufen.map(({ dauerMs, ueberObergrenzeMs, ...rest }) => rest);
+
+test("Szenario: Neuer Test lädt eine Datei, die seine Prüfung nicht abdeckt", async () => {
+  // Zum Vergleich derselbe Lauf ohne Luecke: Der Test laedt nur, was sein Kommando abdeckt.
+  const ohneLuecke = await mitRepo({ config: MIT_BEREICHEN }, async (dir) => {
+    quellenAnlegen(dir);
+    datei(dir, "test/a.test.mjs", 'import { eins } from "../src/a/eins.mjs";\nconsole.log(eins);\n');
+    const res = await checks(dir, "run");
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.deepEqual(zusammenfassung(dir).bereichsabgleich.luecken, []);
+    return zusammenfassung(dir).laufen;
+  });
+
+  await mitRepo({ config: MIT_BEREICHEN }, async (dir) => {
+    quellenAnlegen(dir);
+    datei(dir, "test/a.test.mjs", [
+      'import { eins } from "../src/a/eins.mjs";',
+      'import { zwei } from "../src/b/zwei.mjs";',
+      "console.log(eins, zwei);",
+      "",
+    ].join("\n"));
+    const luecke = { test: "test/a.test.mjs", datei: "src/b/zwei.mjs", bereich: "b", kommando: "node --test test/a.test.mjs" };
+
+    const abgleich = await checks(dir, "areas", "compare");
+    assert.equal(abgleich.status, 0, abgleich.stderr);
+    assert.ok(abgleich.stdout.includes("- test/a.test.mjs laedt src/b/zwei.mjs aus Bereich b, den node --test test/a.test.mjs nicht ausloest"), abgleich.stdout);
+
+    const res = await checks(dir, "run");
+
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    const stand = zusammenfassung(dir);
+    assert.deepEqual(stand.bereichsabgleich.luecken, [luecke]);
+    assert.equal(stand.bereichsabgleich.fehler, null);
+    assert.ok(res.stdout.includes("Abgleich der Pruefbereiche (Hinweis, haelt nicht an):"), res.stdout);
+    assert.ok(res.stdout.includes("- test/a.test.mjs laedt src/b/zwei.mjs aus Bereich b, den node --test test/a.test.mjs nicht ausloest"), res.stdout);
+    // Der Abgleich steht nie in `laufen` (Vertrag V1): dieselben Eintraege wie ohne Luecke.
+    assert.deepEqual(ohneDauer(stand.laufen), ohneDauer(ohneLuecke));
+  });
+});
+
+test("Szenario: Paket ohne Teständerung", async () => {
+  await mitRepo({ config: MIT_BEREICHEN }, async (dir) => {
+    quellenAnlegen(dir);
+    datei(dir, "test/a.test.mjs", [
+      'import { eins } from "../src/a/eins.mjs";',
+      'import { zwei } from "../src/b/zwei.mjs";',
+      "console.log(eins, zwei);",
+      "",
+    ].join("\n"));
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "Test und Quellen");
+    // Das Paket aendert nur eine Quelldatei; die Luecke des Tests bleibt bestehen.
+    datei(dir, "src/b/zwei.mjs", "export const zwei = 22;\n");
+
+    const res = await checks(dir, "run");
+
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.equal(Object.hasOwn(zusammenfassung(dir), "bereichsabgleich"), false);
+    assert.doesNotMatch(res.stdout, /Abgleich der Pruefbereiche/);
+    assert.doesNotMatch(res.stdout, /laedt src\/b\/zwei\.mjs aus Bereich/);
+  });
+});
+
+test("[1719] eine geaenderte Testhilfe gleicht die Tests ab, die sie erreichen, und nur sie", async () => {
+  const config = {
+    buildChecks: [{ cmd: "node --test test/a.test.mjs test/c.test.mjs", areas: ["a"] }],
+    checkAreas: { a: ["src/a/**", "test/**"], b: ["src/b/**"] },
+  };
+  await mitRepo({ config }, async (dir) => {
+    quellenAnlegen(dir);
+    datei(dir, "test/helpers/hilfe.mjs", 'export { eins } from "../../src/a/eins.mjs";\n');
+    datei(dir, "test/a.test.mjs", 'import { eins } from "./helpers/hilfe.mjs";\nconsole.log(eins);\n');
+    // Ein alter Test mit Luecke, der die Hilfe nicht laedt: Er gehoert nicht zum Paket (E1).
+    datei(dir, "test/c.test.mjs", 'import { zwei } from "../src/b/zwei.mjs";\nconsole.log(zwei);\n');
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "Tests und Hilfe");
+    datei(dir, "test/helpers/hilfe.mjs", 'export { eins } from "../../src/a/eins.mjs";\nexport { zwei } from "../../src/b/zwei.mjs";\n');
+
+    const res = await checks(dir, "run");
+
+    assert.equal(res.status, 0, res.stdout + res.stderr);
+    assert.deepEqual(zusammenfassung(dir).bereichsabgleich.luecken, [
+      { test: "test/a.test.mjs", datei: "src/b/zwei.mjs", bereich: "b", kommando: "node --test test/a.test.mjs test/c.test.mjs" },
+    ]);
   });
 });
