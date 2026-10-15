@@ -94,7 +94,7 @@ If the same check fails again and again in the same way, the session ends before
 The runner ends the session, saves leftovers in the stash `nachtrest #<id> <lauf>`, sets `run:aborted` with `Grund: Session an einer Pruefung festgefahren` and moves the package to the backlog. The note `## Nachtlauf: an einer Pruefung festgefahren` names check, error, attempts and running time. How to go on: read the error, get the leftovers back with `git stash apply stash@{<n>}`, rework, pull to Ready again.
 
 ## The night chain
-<!-- de: bf5ca30523e8 -->
+<!-- de: 2b771f2d20f9 -->
 
 In the evening a business requirement goes in; in the morning a reviewed plan, work packages and a report lie on it. Under **variant A** the packages stay in the backlog. Under **variant B** the chain pulls them to Ready itself and implements them; your GO then lies in marking the card.
 
@@ -115,9 +115,9 @@ node .claude/kit/night.mjs --chain             # real run
 
 | Stage | Session | when the chain ends here |
 |---|---|---|
-| plan | `/techplan #F` writes the plan | no plan: `abgebrochen`; stop question: `angehalten` |
+| plan | `/techplan #F` writes the plan | no plan: `abgebrochen` |
 | form check | `issue check-form`, on red a correction session | still red after `korrekturrunden`: `abgebrochen` |
-| review | `/issue-review #M`, the reviewer of the `plan` stage | `kit:clarify` on the plan: `angehalten` |
+| review | `/issue-review #M`, the reviewer of the `plan` stage | open question in the reviewed plan: `angehalten` |
 | pakete | `/issues #M` | no package: `abgebrochen` or `angehalten` |
 | abdeckung | a read-only session holds the packages against the requirement | never, it is information |
 | umsetzung (variant B) | `/implement-next #P` per package | lock held or main copy not clean: `unvollstaendig` |
@@ -150,7 +150,7 @@ The minutes apply per stage, `kostenUsd` per chain, `kostenUsdB` to the implemen
 
 **The report.** On every outcome the chain attaches a comment `## Nachtbericht, Kette <stempel>` to the marked card: outcome, stages, packages, all decisions of the night, the coverage, key figures. It ends with `Dieser Bericht ist Verlauf. Verbindlich fuer die naechste Kette wird eine Entscheidung erst als Satz im Fachplan.` If the tracker does not accept it, it waits as `.claude/night-bericht-<F>-<stempel>.md` and is added at the next start.
 
-**The way back after `angehalten`.** The chain writes the question as `## Kette angehalten` on the marked card and sets `kit:clarify`. The way leads via the plan: the answer as an entry under `## Architektonische Entscheidungen`, `## Offene Fragen` back to `- Keine.`, `/issue-review #M`, remove `kit:clarify`, finally `kit:night` on the plan. The next chain takes it as a plan order. If a new plan comes about instead, older ones get the comment `Ueberholt durch Plan #M2`.
+**The way back after `angehalten`.** An open question in the plan stops the chain only after the review, before the cut into packages: the findings are worked in, the question still stands under `## Offene Fragen`, even if only the review wrote it there. The chain writes the question as `## Kette angehalten` on the marked card and sets `kit:clarify`. The way leads via the plan: the answer as an entry under `## Architektonische Entscheidungen`, `## Offene Fragen` back to `- Keine.`, remove `kit:clarify`, finally `kit:night` on the plan. The next chain takes it as a plan order and starts at `pakete`. If your answer changed more in the plan than the entry itself, the chain reviews it again itself beforehand; you never need a review by hand. If a new plan comes about instead, older ones get the comment `Ueberholt durch Plan #M2`.
 
 **Chain and implementation side by side.** A run is exactly one mode, but chain and night run may run at the same time: the chain in the worktree, the night run in the main copy. Under variant B the chain also builds in the main copy; both take the lock `.claude/night-umsetzung.lock` for that. The chain waits for it at most until `night.kette.umsetzungMin` and otherwise ends `unvollstaendig`. Only one runner ever works on a business root; it recognises others by their run status with run ID.
 
@@ -173,11 +173,11 @@ A card is refused with the comment `## Kette nicht gestartet: unpassende Einstel
 The project remains the upper limit: if `night.kette.uebergaenge` blocks a transition, the chain ends there at the project limit. With the goal `push-vorbereitet`, the stage `vorbereitung` follows once after all chains; it runs `/push-main prepare` without pushing; details under [/push-main](/en/prozess#push-main).
 
 ### A finished plan as an order
-<!-- de: 570611a9b182 -->
+<!-- de: b7be0d33202b -->
 
 `kit:night` on a `[Plan]` issue in the backlog starts a plan order (Plan-Auftrag). The plan carries `review:done`, no `kit:clarify`, `## Offene Fragen` says `- Keine.`, its origin is valid, and its requirement waits for no event. Without a line `Fachliche Quelle:` it runs as its own root; if `Fachliche Quelle: Issue #N` hits a card, coverage holds the packages against it; if the line points nowhere, the plan stays where it is.
 
-The stages `plan` and `review` are dropped, the run starts at `pakete`. `kit:carry-through` only counts on the plan itself; then variant B runs.
+The stage `plan` is dropped, the run starts at `pakete`. The stage `review` runs before it only if the review state on the plan reports that the plan has changed since its review beyond the entered answer. `kit:carry-through` only counts on the plan itself; then variant B runs.
 
 The business requirement gives way to the plan: if both carry the chain label, the plan runs.
 

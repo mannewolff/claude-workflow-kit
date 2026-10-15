@@ -107,9 +107,9 @@ node .claude/kit/night.mjs --chain             # echter Lauf
 
 | Stufe | Session | wann die Kette hier endet |
 |---|---|---|
-| plan | `/techplan #F` schreibt den Plan | kein Plan: `abgebrochen`; Stopp-Frage: `angehalten` |
+| plan | `/techplan #F` schreibt den Plan | kein Plan: `abgebrochen` |
 | Formprüfung | `issue check-form`, bei Rot eine Korrektursession | nach `korrekturrunden` weiter rot: `abgebrochen` |
-| review | `/issue-review #M`, der Prüfer der Stufe `plan` | `kit:clarify` am Plan: `angehalten` |
+| review | `/issue-review #M`, der Prüfer der Stufe `plan` | offene Frage im geprüften Plan: `angehalten` |
 | pakete | `/issues #M` | kein Paket: `abgebrochen` oder `angehalten` |
 | abdeckung | eine lesende Session hält die Pakete gegen die Anforderung | nie, sie ist eine Auskunft |
 | umsetzung (Variante B) | `/implement-next #P` je Paket | Lock belegt oder Hauptkopie unsauber: `unvollstaendig` |
@@ -142,7 +142,7 @@ Die Minuten gelten je Stufe, `kostenUsd` je Kette, `kostenUsdB` für die Umsetzu
 
 **Der Bericht.** Bei jedem Ausgang hängt die Kette einen Kommentar `## Nachtbericht, Kette <stempel>` an die gekennzeichnete Karte: Ausgang, Stufen, Pakete, alle Entscheidungen der Nacht, die Abdeckung, Kennzahlen. Er endet mit `Dieser Bericht ist Verlauf. Verbindlich fuer die naechste Kette wird eine Entscheidung erst als Satz im Fachplan.` Nimmt der Tracker ihn nicht an, liegt er als `.claude/night-bericht-<F>-<stempel>.md` bereit und wird beim nächsten Start nachgetragen.
 
-**Der Rückweg nach `angehalten`.** Die Kette schreibt die Frage als `## Kette angehalten` an die gekennzeichnete Karte und setzt `kit:clarify`. Der Weg führt über den Plan: die Antwort als Eintrag unter `## Architektonische Entscheidungen`, `## Offene Fragen` wieder auf `- Keine.`, `/issue-review #M`, `kit:clarify` abnehmen, zuletzt `kit:night` an den Plan. Die nächste Kette nimmt ihn als Plan-Auftrag. Entsteht stattdessen ein neuer Plan, bekommen ältere den Kommentar `Ueberholt durch Plan #M2`.
+**Der Rückweg nach `angehalten`.** Eine offene Frage im Plan hält die Kette erst nach der Prüfung, vor dem Schnitt in Pakete: Die Befunde sind eingearbeitet, die Frage steht weiter unter `## Offene Fragen`, auch wenn erst die Prüfung sie dorthin geschrieben hat. Die Kette schreibt die Frage als `## Kette angehalten` an die gekennzeichnete Karte und setzt `kit:clarify`. Der Weg führt über den Plan: die Antwort als Eintrag unter `## Architektonische Entscheidungen`, `## Offene Fragen` wieder auf `- Keine.`, `kit:clarify` abnehmen, zuletzt `kit:night` an den Plan. Die nächste Kette nimmt ihn als Plan-Auftrag und beginnt bei `pakete`. Hast du mit der Antwort mehr am Plan geändert als den Eintrag selbst, prüft ihn die Kette vorher selbst erneut; eine Prüfung von Hand brauchst du in keinem Fall. Entsteht stattdessen ein neuer Plan, bekommen ältere den Kommentar `Ueberholt durch Plan #M2`.
 
 **Kette und Umsetzung nebeneinander.** Ein Lauf ist genau eine Betriebsart, aber Kette und Nachtlauf dürfen gleichzeitig fahren: die Kette im Worktree, der Nachtlauf in der Hauptkopie. Unter Variante B baut auch die Kette in der Hauptkopie; beide nehmen dafür den Lock `.claude/night-umsetzung.lock`. Die Kette wartet höchstens bis `night.kette.umsetzungMin` darauf und endet sonst `unvollstaendig`. Eine fachliche Wurzel bearbeitet immer nur ein Runner; er erkennt fremde an ihrem Laufstand mit Lauf-ID.
 
@@ -167,7 +167,7 @@ Das Projekt bleibt Obergrenze: Sperrt `night.kette.uebergaenge` einen Übergang,
 
 `kit:night` an einem `[Plan]`-Issue im Backlog startet einen Plan-Auftrag. Der Plan trägt `review:done`, kein `kit:clarify`, unter `## Offene Fragen` steht `- Keine.`, seine Herkunft ist gültig, und sein Fachplan wartet auf kein Ereignis. Ohne Zeile `Fachliche Quelle:` läuft er als eigene Wurzel; trifft `Fachliche Quelle: Issue #N` eine Karte, hält die Abdeckung die Pakete gegen sie; zeigt die Zeile ins Leere, bleibt er liegen.
 
-Die Stufen `plan` und `review` entfallen, der Lauf beginnt bei `pakete`. `kit:carry-through` gilt nur am Plan selbst; dann läuft Variante B.
+Die Stufe `plan` entfällt, der Lauf beginnt bei `pakete`. Die Stufe `review` läuft davor nur, wenn der Prüfstand am Plan meldet, dass er sich seit seiner Prüfung über die eingetragene Antwort hinaus geändert hat. `kit:carry-through` gilt nur am Plan selbst; dann läuft Variante B.
 
 Die fachliche Anforderung weicht dem Plan: Tragen beide das Kettenlabel, läuft der Plan.
 

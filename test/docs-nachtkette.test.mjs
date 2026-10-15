@@ -176,13 +176,18 @@ test("der Rueckweg aus dem Halt nennt seine Schritte und muendet im Plan-Auftrag
   for (const [was, anker] of [
     ["die Entscheidung im Plan", "## Architektonische Entscheidungen"],
     ["den Sollwert der offenen Fragen", "`- Keine.`"],
-    ["die erneute Pruefung", "/issue-review"],
     ["das Abnehmen des Labels", "`kit:clarify`"],
     ["das Kettenlabel am Plan", "an den Plan"],
     ["die Auftragsart der naechsten Kette", "Plan-Auftrag"],
+    // Plan #1697, E1/E8/E10: Der Halt liegt hinter der Pruefung, und einen durch die Antwort
+    // geaenderten Plan prueft die naechste Kette selbst erneut.
+    ["den Halt nach der Pruefung", "nach der Prüfung"],
+    ["die erneute Pruefung durch die Kette", "prüft ihn die Kette vorher selbst erneut"],
   ]) {
     assert.ok(absatz.includes(anker), `der Rueckweg nennt ${was} ('${anker}') nicht`);
   }
+  // K6: Eine Pruefung von Hand ist nicht mehr der Weg nach vorn.
+  assert.ok(!absatz.includes("/issue-review"), "der Rueckweg nennt noch die Pruefung von Hand (/issue-review)");
 });
 
 // Ein Satz, den die Doku woertlich zitiert, muss der Satz des Programms sein — sonst

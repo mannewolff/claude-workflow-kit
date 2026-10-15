@@ -346,9 +346,9 @@ How many reviewers carry which roles is said by [`reviewStages`](/en/einstellung
 **Form before content.** The yardstick of every stage is its format: the sections of the business plan, the six headings of the plan, the four sections of the work package. The form is not checked by a model but by `issue check-form`; the session fixes violations before a reviewer starts.
 
 ### What you see afterwards
-<!-- de: d8ed874e5600 -->
+<!-- de: 3379ed610e07 -->
 
-On the document there is a comment `## <Stufe>-Review, Runde 1` (review, round 1) with the findings and a comment `## Einarbeitung, Runde 1` (incorporation, round 1) with the list adopted or rejected including the reason. The new text is in the body, with the proof line of the stage, plus the label `review:done`. If a finding raises a question of the stop class (Stopp-Klasse), the document carries `kit:clarify` instead and the question as a comment. If not a single reviewer ran, the skill does not set `review:done`. There is no second round.
+On the document there is a comment `## <Stufe>-Review, Runde 1` (review, round 1) with the findings and a comment `## Einarbeitung, Runde 1` (incorporation, round 1) with the list adopted or rejected including the reason. The new text is in the body, with the proof line of the stage, plus the label `review:done`. If a finding raises a question of the stop class (Stopp-Klasse), a business plan or a work package carries `kit:clarify` instead and the question as a comment. On the plan document the question stands, when unattended, for instance in the night chain, as an entry under `## Offene Fragen` of the plan; the other findings are worked in, and `review:done` is set. If not a single reviewer ran, the skill does not set `review:done`. There is no second round.
 
 A Claude reviewer runs as the agent `kit-pruefer` and may only read. A third-party reviewer such as Codex runs via its command with its tool's read-only switch; without a known switch it does not start.
 

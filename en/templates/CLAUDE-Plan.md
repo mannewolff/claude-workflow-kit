@@ -171,7 +171,7 @@ repaired only in #1524 to #1526. Neither the plan review nor the package reviews
 it.
 
 ## P14 — A contract with the other repo is matched or asked `[maschinell]`
-<!-- de: 1327260a35bd -->
+<!-- de: aaa4e101a5fc -->
 
 If the config names a partner repo in `vertragsRepos`, the subsection `### Contracts` stands
 at the end of `## Architectural decisions`. It holds one entry per definition the other repo
@@ -197,8 +197,8 @@ reads or writes — a name, a marker, a format —; if the plan defines none, th
   adopt) and `Proposed per requirement:` (the place in the requirement).
 - An open contract — `differs`, `missing` or `not checkable` without a line `Decided:` —
   stands in a question under `## Open questions` that lists all open V numbers; the first
-  line there is then not `- Keine.`. This makes the night chain stop the plan stage before
-  `/issues` cuts packages. `Decided:` with `plan adjusted`, `other repo follows` or
+  line there is then not `- Keine.`. This makes the night chain stop after the review of the
+  plan, before `/issues` cuts packages. `Decided:` with `plan adjusted`, `other repo follows` or
   `deviation accepted` is written only by someone who has the human's answer — never by the
   session that fixes the violation.
 

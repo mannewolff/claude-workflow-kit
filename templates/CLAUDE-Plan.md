@@ -180,7 +180,7 @@ einen Eintrag; legt der Plan keine fest, die Zeile `- Kein Vertrag.`:
 - Ein offener Vertrag — `weicht ab`, `fehlt` oder `nicht prüfbar` ohne Zeile
   `Entschieden:` — steht in einer Frage unter `## Offene Fragen`, die alle offenen
   V-Nummern aufzählt; die erste Zeile dort ist dann nicht `- Keine.`. Damit haelt die
-  Nacht-Kette die Planstufe an, bevor `/issues` Pakete schneidet. `Entschieden:` mit
+  Nacht-Kette nach der Pruefung des Plans an, bevor `/issues` Pakete schneidet. `Entschieden:` mit
   `Plan angepasst`, `anderes Repo zieht nach` oder `Abweichung angenommen` schreibt nur,
   wer die Antwort des Menschen hat — nie die Sitzung, die den Verstoss behebt.
 

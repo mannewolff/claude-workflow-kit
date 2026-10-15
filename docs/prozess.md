@@ -320,7 +320,7 @@ Wie viele Reviewer welche Rollen tragen, sagt [`reviewStages`](/einstellungen). 
 
 ### Was du danach siehst
 
-Am Dokument steht ein Kommentar `## <Stufe>-Review, Runde 1` mit den Befunden und ein Kommentar `## Einarbeitung, Runde 1` mit der Liste übernommen oder abgelehnt samt Grund. Der neue Text steht im Body, mit der Nachweiszeile der Stufe, dazu das Label `review:done`. Hat ein Befund eine Frage der Stopp-Klasse, trägt das Dokument stattdessen `kit:clarify` und die Frage als Kommentar. Ist kein einziger Reviewer gelaufen, setzt der Skill `review:done` nicht. Eine zweite Runde gibt es nicht.
+Am Dokument steht ein Kommentar `## <Stufe>-Review, Runde 1` mit den Befunden und ein Kommentar `## Einarbeitung, Runde 1` mit der Liste übernommen oder abgelehnt samt Grund. Der neue Text steht im Body, mit der Nachweiszeile der Stufe, dazu das Label `review:done`. Hat ein Befund eine Frage der Stopp-Klasse, trägt ein Fachplan oder ein Arbeitspaket stattdessen `kit:clarify` und die Frage als Kommentar. Am Plandokument steht die Frage unbeaufsichtigt, etwa in der Nacht-Kette, als Eintrag unter `## Offene Fragen` des Plans; die übrigen Befunde sind eingearbeitet, und `review:done` ist gesetzt. Ist kein einziger Reviewer gelaufen, setzt der Skill `review:done` nicht. Eine zweite Runde gibt es nicht.
 
 Ein Claude-Reviewer läuft als Agent `kit-pruefer` und darf nur lesen. Ein fremder Reviewer wie Codex läuft über sein Kommando mit dem Nur-Lese-Schalter seines Werkzeugs; ohne bekannten Schalter startet er nicht.
 
