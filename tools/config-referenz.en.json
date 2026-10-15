@@ -592,8 +592,8 @@
     "text": "From how many occurrences of the same finding a proposal arises. Below that, a finding is a single case and not a rule."
   },
   "vorgeschichte": {
-    "de": "40912027bde6",
-    "text": "Before a requirement or plan is written, searches earlier requirements on the project's own board on the same subject, archived ones included, and names the relevant ones in the new document. A missing field or false = off, the document is written as before; that is the default. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "dccc1a0bd44c",
+    "text": "Before a requirement or plan is written, searches earlier requirements on the project's own board on the same subject, archived ones included, and names the relevant ones in the new document. A missing field = on, that is the default; off only with false, then the document is written without section and without note. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "szenarienAb": {
     "de": "6900f340db6b",

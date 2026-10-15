@@ -274,7 +274,7 @@ Vollständig ist ein Szenario mit Titel und je mindestens einer Zeile `Angenomme
 
 Bevor `/requirement` einen Fachplan oder `/techplan` einen Plan schreibt, sucht das Kit frühere Fachpläne zum selben Gegenstand, archivierte eingeschlossen. So wird eine frühere Entscheidung nicht still überfahren. Die Suche sperrt nichts, sie macht nur sichtbar.
 
-**Einschalten.** Der Schalter [`history`](/einstellungen) steht in der Vorgabe auf aus; dann entsteht jedes Dokument ohne Abschnitt und ohne Vermerk. Die Suche braucht einen Tracker, der archivierte Karten durchsucht; das kann der Toolbox-Tracker (kanban-kit). Bei GitHub, GitLab und dem lokalen Datei-Tracker trägt das Dokument den Vermerk, dass keine Vorgeschichte gelesen wurde.
+**Ausschalten.** Der Schalter [`history`](/einstellungen) steht in der Vorgabe auf an; nur mit `false` ist er aus, dann entsteht jedes Dokument ohne Abschnitt und ohne Vermerk. Die Suche braucht einen Tracker, der archivierte Karten durchsucht; das kann der Toolbox-Tracker (kanban-kit). Bei GitHub, GitLab und dem lokalen Datei-Tracker trägt das Dokument den Vermerk, dass keine Vorgeschichte gelesen wurde.
 
 **Suchen.** Beide Skills rufen selbst auf:
 

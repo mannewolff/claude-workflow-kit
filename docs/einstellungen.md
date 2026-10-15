@@ -196,7 +196,7 @@ _Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node
 - `findings` — Wiederkehrende Funde der Modell-Prüfungen: ab wie vielen Vorkommen aus ihnen ein Vorschlag entsteht. Vorgabe: die Werte der Felder darunter.
 - `findings.threshold` — Ab wie vielen Vorkommen desselben Fundes ein Vorschlag entsteht. Vorgabe: `3`.
 
-- `history` — Sucht vor dem Schreiben eines Fachplans oder Plans frühere Fachpläne des eigenen Boards zum selben Gegenstand, archivierte eingeschlossen, und nennt die einschlägigen im neuen Dokument. Vorgabe: `false`.
+- `history` — Sucht vor dem Schreiben eines Fachplans oder Plans frühere Fachpläne des eigenen Boards zum selben Gegenstand, archivierte eingeschlossen, und nennt die einschlägigen im neuen Dokument. Vorgabe: `true`.
 
 - `scenariosFrom` — Stichtag der Szenarien-Pflicht: die Kartennummer, ab der ein Fachplan am Board einen Abschnitt Szenarien mit mindestens einem vollständigen Szenario tragen muss. Werte: ab 1. Vorgabe: nicht gesetzt, die Pflicht gilt für keine Karte am Board; der Installer setzt das Feld beim Update.
 

@@ -20,7 +20,9 @@ import { join } from "node:path";
 
 import { setupProjekt, runBoard, board } from "./helpers/board-fixture.mjs";
 
-const CONFIG = { codeHost: "local", issueTracker: "local" };
+// Die Vorgeschichte ist ohne Eintrag an (Issue #1727); die Fixtures schalten sie aus, damit die
+// Ausgabe der übrigen Tests ohne ihren Hinweis bleibt.
+const CONFIG = { codeHost: "local", issueTracker: "local", vorgeschichte: false };
 
 const PLAN = `Plan-Modell: fixture-modell
 Fachliche Quelle: Issue #12
@@ -591,6 +593,14 @@ test("[board-5] Vorgeschichte: Schalter aus → kein Hinweis, Ausgabe wie bisher
   mitProjekt((dir) => {
     assert.deepEqual(dateiWeg(dir, FACHLICH, "[Fachlich] x").json, { ok: true, stufe: "fachlich", verstoesse: [] });
     assert.deepEqual(dateiWeg(dir, PLAN, "[Plan] x").json, { ok: true, stufe: "plan", verstoesse: [] });
+  });
+});
+
+test("[board-5] Vorgeschichte: Eintrag fehlt → an, Hinweis wie mit Schalter (Issue #1727)", () => {
+  const { vorgeschichte, ...ohneEintrag } = CONFIG;
+  mitProjektConfig(ohneEintrag, (dir) => {
+    assert.equal(vorgeschichteHinweise(dateiWeg(dir, FACHLICH, "[Fachlich] x").json).length, 1);
+    assert.equal(vorgeschichteHinweise(dateiWeg(dir, PLAN, "[Plan] x").json).length, 1);
   });
 });
 

@@ -35,7 +35,7 @@ const REGEL = {
     orte: [/`## Vorgeschichte` zwischen `## Nicht-Ziele` und `## Offene Fragen an den PO`/, /`### Vorgeschichte` am Ende von `## Betroffene Bereiche`/],
     rechenregel: /\(Treffer des Kommandos − im Dokument genannte Fundstellen\) \+ `weitere`/,
     keinHalt: /[Kk]ein Halt/,
-    schalter: "`vorgeschichte`",
+    schalter: "außer `.claude/workflow.config.json` setzt `history` auf `false`",
   },
   en: {
     text: abschnitt(lies("en", "templates", "CLAUDE-workflow.md"), "## History"),
@@ -44,7 +44,7 @@ const REGEL = {
     orte: [/`## History` stands between `## Non-goals` and `## Open questions for the PO`/, /`### History` stands at the end of `## Affected areas`/],
     rechenregel: /\(hits of the command − places named in the document\) \+ `weitere`/,
     keinHalt: /[Nn]o halt/,
-    schalter: "`history`",
+    schalter: "unless `.claude/workflow.config.json` sets `history` to `false`",
   },
 };
 
@@ -76,6 +76,14 @@ test("/requirement verweist auf den Abschnitt Vorgeschichte", () => {
   assert.match(lies("skills", "requirement", "SKILL.md"), /`CLAUDE-workflow\.md`, Abschnitt „Vorgeschichte“/);
 });
 
+test("Regeltext und Skills knuepfen die Vorgeschichte an `history` ungleich `false` (Issue #1727)", () => {
+  for (const datei of [["templates", "CLAUDE-workflow.md"], ["skills", "requirement", "SKILL.md"], ["skills", "techplan", "SKILL.md"], ["skills", "issue-review", "SKILL.md"]]) {
+    assert.ok(!lies(...datei).includes("gesetztem Schalter"), `${datei.join("/")} nennt noch den gesetzten Schalter`);
+  }
+  assert.ok(!REGEL.de.text.includes("wie bisher"), "der Satz „ohne ihn entsteht jedes Dokument wie bisher“ steht noch da");
+  assert.ok(!REGEL.en.text.includes("as before"), "der Satz „without it every document comes about as before“ steht noch da");
+});
+
 test("/techplan ruft das Kommando in Schritt 2 und nennt `### Vorgeschichte` samt woertlicher Uebernahme", () => {
   const skill = lies("skills", "techplan", "SKILL.md");
   const schritt2 = skill.slice(skill.indexOf("### 2. "), skill.indexOf("### 3. "));
@@ -88,5 +96,5 @@ test("/techplan ruft das Kommando in Schritt 2 und nennt `### Vorgeschichte` sam
 });
 
 test("/issue-review nennt die Vorgeschichte im Pruefauftrag", () => {
-  assert.match(lies("skills", "issue-review", "SKILL.md"), /Schalter `vorgeschichte`.*gefundenen Fachpläne vollständig/);
+  assert.match(lies("skills", "issue-review", "SKILL.md"), /außer `history` ist `false`.*gefundenen Fachpläne vollständig/);
 });

@@ -235,7 +235,7 @@ Der Umfang allein entscheidet also nicht mehr: Eine Aenderung an zwoelf Dateien 
 
 ## Vorgeschichte
 
-Gilt nur, wenn `.claude/workflow.config.json` den Schalter `vorgeschichte` auf `true` setzt; ohne ihn entsteht jedes Dokument wie bisher, ohne Abschnitt und ohne Vermerk. Mit ihm liest der Autor eines Fachplans (`/requirement`) und eines Plans (`/techplan`) vor dem Schreiben die frueheren Fachplaene zum selben Gegenstand, archivierte eingeschlossen. Eine fruehere Entscheidung sperrt dabei nichts, sie wird nur sichtbar.
+Gilt, außer `.claude/workflow.config.json` setzt `history` auf `false`; dann entsteht das Dokument ohne Abschnitt und ohne Vermerk. Sonst liest der Autor eines Fachplans (`/requirement`) und eines Plans (`/techplan`) vor dem Schreiben die frueheren Fachplaene zum selben Gegenstand, archivierte eingeschlossen. Eine fruehere Entscheidung sperrt dabei nichts, sie wird nur sichtbar.
 
 **Suchen.** Ein Kommando sucht, nicht der Autor:
 ```bash
@@ -254,7 +254,7 @@ Die Suchbegriffe waehlt der Autor aus Titel und Ziel der neuen Anforderung, je B
 
 Die Vermerke, `Suchbegriffe:`, `Dateien:` und `- Widerspruch:` sind feste Anfaenge, an denen Nachtbericht und Pruefer sie lesen; sie bleiben in jeder Projektsprache deutsch.
 
-**Ein Widerspruch haelt nichts an.** Kein Halt, auch nachts nicht, keine Frage an den PO aus einem Widerspruch und kein Eintrag unter `## Offene Fragen an den PO` oder `## Offene Fragen` — der Widerspruch steht im Abschnitt zur Vorgeschichte, der Nachtbericht nennt ihn, und der Mensch sieht ihn am Morgen. Der Plan uebernimmt die `- Widerspruch:`-Zeilen aus `## Vorgeschichte` seiner Fachlichen Quelle woertlich in `### Vorgeschichte`; nur so erreicht ein im Fachplan vermerkter Widerspruch den Nachtbericht. Fehlt der Abschnitt bei gesetztem Schalter, meldet `issue check-form` das als Hinweis, nicht als Verstoss.
+**Ein Widerspruch haelt nichts an.** Kein Halt, auch nachts nicht, keine Frage an den PO aus einem Widerspruch und kein Eintrag unter `## Offene Fragen an den PO` oder `## Offene Fragen` — der Widerspruch steht im Abschnitt zur Vorgeschichte, der Nachtbericht nennt ihn, und der Mensch sieht ihn am Morgen. Der Plan uebernimmt die `- Widerspruch:`-Zeilen aus `## Vorgeschichte` seiner Fachlichen Quelle woertlich in `### Vorgeschichte`; nur so erreicht ein im Fachplan vermerkter Widerspruch den Nachtbericht. Fehlt der Abschnitt, obwohl `history` nicht `false` ist, meldet `issue check-form` das als Hinweis, nicht als Verstoss.
 
 ---
 

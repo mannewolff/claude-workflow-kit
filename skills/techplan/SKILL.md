@@ -87,7 +87,7 @@ Kläre zuerst: Was soll gebaut werden, welche Bereiche des Codes sind betroffen,
 ### 2. Relevante Dateien lesen
 Lies die betroffenen Dateien und vorhandene Muster. Nutze einen Explore-Agenten, wenn der Scope unklar ist. Suche aktiv nach wiederverwendbaren Funktionen und Mustern — vermeide neuen Code, wenn eine passende Implementierung bereits existiert.
 
-**Vorgeschichte** (nur bei gesetztem Schalter `vorgeschichte`, Regel in `CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“): Steht fest, welche Dateien betroffen sind, ruft der Skill das Kommando mit Begriffen aus Titel und Ziel, je Datei aus `## Betroffene Bereiche` ein `--files` und mit `--without` für die Fachliche Quelle:
+**Vorgeschichte** (außer `history` ist `false`, Regel in `CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“): Steht fest, welche Dateien betroffen sind, ruft der Skill das Kommando mit Begriffen aus Titel und Ziel, je Datei aus `## Betroffene Bereiche` ein `--files` und mit `--without` für die Fachliche Quelle:
 ```bash
 node .claude/kit/board.mjs issue history --terms <begriff> --files <pfad> --without <N>
 ```
@@ -113,7 +113,7 @@ Der Plan hat ein **verbindliches Format** — wie das Vier-Abschnitt-Format der 
 Die Überschriften sind der Anker, an dem die Plan-Prüfung und `/issues` arbeiten — **sinngemäß umformuliert wirken sie nicht**. Sie werden wörtlich übernommen: nicht umbenannt, nicht zusammengefasst, nicht umsortiert. **Die Reihenfolge ist begründet:** `## Offene Fragen` steht **vor** `## Verifizierung`. Offene Fragen sollen nicht am Ende vergraben werden — als letzter Abschnitt des Dokuments wären sie genau das. Was in die Abschnitte gehört:
 
 - `## Ziel` — was gebaut wird und welche Wirkung es für den Nutzer hat.
-- `## Betroffene Bereiche` — Dateien, Module, Schichten. Bei gesetztem Schalter `vorgeschichte` endet der Abschnitt mit dem Unterabschnitt `### Vorgeschichte`: die Zeilen `Suchbegriffe:` und `Dateien:`, die Fundstellen und Vermerke nach `CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“, und die `- Widerspruch:`-Zeilen aus `## Vorgeschichte` der Fachlichen Quelle wörtlich übernommen, neben den eigenen.
+- `## Betroffene Bereiche` — Dateien, Module, Schichten. Außer `history` ist `false`, endet der Abschnitt mit dem Unterabschnitt `### Vorgeschichte`: die Zeilen `Suchbegriffe:` und `Dateien:`, die Fundstellen und Vermerke nach `CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“, und die `- Widerspruch:`-Zeilen aus `## Vorgeschichte` der Fachlichen Quelle wörtlich übernommen, neben den eigenen.
 - `## Architektonische Entscheidungen` — die getroffenen Entscheidungen, jede mit Begründung:
 
   > Jede architektonische Entscheidung muss eine Begründung tragen, damit ihre Annahmen und Abwägungen im Review geprüft und angegriffen werden können.

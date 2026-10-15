@@ -247,9 +247,9 @@ Scope alone therefore no longer decides: a change to twelve files without weighi
 ---
 
 ## History
-<!-- de: 9f10afc3f8fd -->
+<!-- de: 98d1ac2aee35 -->
 
-Applies only when `.claude/workflow.config.json` sets the switch `history` to `true`; without it every document comes about as before, without section and without note. With it, the author of a requirement (`/requirement`) and of a plan (`/techplan`) reads, before writing, the earlier requirements on the same subject, archived ones included. An earlier decision blocks nothing; it only becomes visible.
+Applies unless `.claude/workflow.config.json` sets `history` to `false`; then the document comes about without section and without note. Otherwise the author of a requirement (`/requirement`) and of a plan (`/techplan`) reads, before writing, the earlier requirements on the same subject, archived ones included. An earlier decision blocks nothing; it only becomes visible.
 
 **Searching.** A command searches, not the author:
 ```bash
@@ -268,7 +268,7 @@ The author chooses the search terms from title and goal of the new requirement, 
 
 The notes, `Suchbegriffe:`, `Dateien:` and `- Widerspruch:` are fixed beginnings by which the night report and the reviewers read them; they stay German in every project language.
 
-**A contradiction holds nothing up.** No halt, not at night either, no question to the PO from a contradiction and no entry under `## Open questions for the PO` or `## Open questions` — the contradiction stands in the history section, the night report names it, and the human sees it in the morning. The plan takes the `- Widerspruch:` lines from `## History` of its business source verbatim into `### History`; only so does a contradiction noted in the requirement reach the night report. If the section is missing while the switch is set, `issue check-form` reports that as a hint, not as a violation.
+**A contradiction holds nothing up.** No halt, not at night either, no question to the PO from a contradiction and no entry under `## Open questions for the PO` or `## Open questions` — the contradiction stands in the history section, the night report names it, and the human sees it in the morning. The plan takes the `- Widerspruch:` lines from `## History` of its business source verbatim into `### History`; only so does a contradiction noted in the requirement reach the night report. If the section is missing while `history` is not `false`, `issue check-form` reports that as a hint, not as a violation.
 
 ---
 

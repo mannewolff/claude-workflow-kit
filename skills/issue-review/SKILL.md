@@ -55,7 +55,7 @@ Die Prüferzahl der Stufe `plan` kann ein Lauf über `KIT_PLAN_REVIEWER` setzen;
 ### 4. Reviewer starten
 Unmittelbar vor dem Start nimmt die Session ein vorhandenes Label ab: `node .claude/kit/board.mjs issue label remove <id> review:done`. Hängt es nicht an der Karte, ist das kein Fehler. Endet der Lauf danach vorzeitig, bleibt das Label ab — der Marker im Body sagt weiter, was geprüft wurde; die Zusammenfassung nennt das Label als abgenommen und nicht wieder gesetzt.
 
-Jeder Reviewer `<n>` aus `gewaehlt` bekommt seinen Prüfauftrag als Datei. Das Kit montiert ihn aus der Rolle unter `kit/rollen/<rolle>.md`, der Artenliste und dem unveränderten Body, beim Plan samt `Fachliche Quelle:` und `Vorlage:`; bei gesetztem Schalter `vorgeschichte` enthält er die gefundenen Fachpläne vollständig, wie sie die Zeilen `Suchbegriffe:` und `Dateien:` des Dokuments finden; die Session schreibt keinen Rollentext ab und füllt nichts selbst ein:
+Jeder Reviewer `<n>` aus `gewaehlt` bekommt seinen Prüfauftrag als Datei. Das Kit montiert ihn aus der Rolle unter `kit/rollen/<rolle>.md`, der Artenliste und dem unveränderten Body, beim Plan samt `Fachliche Quelle:` und `Vorlage:`; außer `history` ist `false`, enthält er die gefundenen Fachpläne vollständig, wie sie die Zeilen `Suchbegriffe:` und `Dateien:` des Dokuments finden; die Session schreibt keinen Rollentext ab und füllt nichts selbst ein:
 ```bash
 node .claude/kit/board.mjs issue-review review-brief --role <rolle> --id <id> --file <tmpdir>/<id>-auftrag-<n>.md
 ```

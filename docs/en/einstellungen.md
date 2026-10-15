@@ -198,7 +198,7 @@ _This section is generated from `templates/workflow.config.schema.json` by `node
 - `findings` — Recurring findings of the model reviews: from how many occurrences a proposal arises from them. Default: the values of the fields below.
 - `findings.threshold` — From how many occurrences of the same finding a proposal arises. Default: `3`.
 
-- `history` — Before a requirement or plan is written, searches earlier requirements on the project's own board on the same subject, archived ones included, and names the relevant ones in the new document. Default: `false`.
+- `history` — Before a requirement or plan is written, searches earlier requirements on the project's own board on the same subject, archived ones included, and names the relevant ones in the new document. Default: `true`.
 
 - `scenariosFrom` — Cut-off of the scenario duty: the card number from which a requirement on the board must carry a Scenarios section with at least one complete scenario. Values: from 1. Default: not set, the obligation applies to no card on the board; the installer sets the field on update.
 

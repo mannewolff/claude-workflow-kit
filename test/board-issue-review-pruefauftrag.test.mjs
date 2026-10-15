@@ -306,10 +306,10 @@ test("mit Treffern bleibt in keiner Dokument-Rolle ein Platzhalter offen", async
   }
 });
 
-test("ohne Schalter, ohne Suchbegriffe-Zeile und ohne Archiv entfaellt der Block wie heute", async () => {
+test("Schalter aus, ohne Suchbegriffe-Zeile und ohne Archiv entfaellt der Block wie heute", async () => {
   const ohneZeile = PLAN_MIT_VORGESCHICHTE.replace("Suchbegriffe: Export; Archiv\n", "");
   const faelle = [
-    ["ohne Schalter", boardMitArchiv(PLAN_KARTEN, { suche: SUCHE }), {}],
+    ["Schalter aus", boardMitArchiv(PLAN_KARTEN, { suche: SUCHE }), { vorgeschichte: false }],
     ["ohne Suchbegriffe-Zeile", boardMitArchiv({ ...PLAN_KARTEN, 10: { title: "[Plan] P", body: ohneZeile } }, { suche: SUCHE }), MIT_VORGESCHICHTE],
     ["archiv-nicht-erreichbar", boardMitArchiv(PLAN_KARTEN, { suche: SUCHE, fehler: true }), MIT_VORGESCHICHTE],
   ];

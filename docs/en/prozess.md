@@ -295,11 +295,11 @@ A scenario is complete with a title and at least one line each of `Angenommen`, 
 `issue check-form` and `issue create` reject a business plan that lacks the section, whose section is empty or carries no complete scenario; the message shows the form of a scenario. For cards on the board the obligation applies from the cut-off date [`szenarienAb`](/en/einstellungen); `node .claude/kit/board.mjs scenarios baseline` names the matching value. Without scenarios no technical plan is created; `/groom` adds them.
 
 ## History
-<!-- de: fc62a6e4f464 -->
+<!-- de: 58a216d1a368 -->
 
 Before `/requirement` writes a business plan or `/techplan` a plan, the kit searches for earlier business plans on the same subject, archived ones included. That way an earlier decision is not silently overridden. The search (Vorgeschichte) locks nothing, it only makes things visible.
 
-**Switching it on.** The switch [`history`](/en/einstellungen) is off by default; then every document arises without a section and without a note. The search needs a tracker that searches archived cards; the Toolbox tracker (kanban-kit) can do that. With GitHub, GitLab and the local file tracker the document carries the note that no history was read.
+**Switching it off.** The switch [`history`](/en/einstellungen) is on by default; only with `false` is it off, then every document arises without a section and without a note. The search needs a tracker that searches archived cards; the Toolbox tracker (kanban-kit) can do that. With GitHub, GitLab and the local file tracker the document carries the note that no history was read.
 
 **Searching.** Both skills call it themselves:
 

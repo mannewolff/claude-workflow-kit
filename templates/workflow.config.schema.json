@@ -1157,8 +1157,8 @@
     },
     "vorgeschichte": {
       "type": "boolean",
-      "default": false,
-      "description": "Sucht vor dem Schreiben eines Fachplans oder Plans frühere Fachpläne des eigenen Boards zum selben Gegenstand, archivierte eingeschlossen, und nennt die einschlägigen im neuen Dokument. Fehlendes Feld oder false = aus, das Dokument entsteht wie bisher; das ist die Vorgabe. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
+      "default": true,
+      "description": "Sucht vor dem Schreiben eines Fachplans oder Plans frühere Fachpläne des eigenen Boards zum selben Gegenstand, archivierte eingeschlossen, und nennt die einschlägigen im neuen Dokument. Fehlendes Feld = an, das ist die Vorgabe; aus nur mit false, dann entsteht das Dokument ohne Abschnitt und ohne Vermerk. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
     },
     "szenarienAb": {
       "type": "integer",
