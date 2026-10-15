@@ -1227,6 +1227,28 @@ async function formSicherstellen(kette, stand, stufeStart, budgetMs, summe) {
   }
 }
 
+/**
+ * Ein Vermerk der Kette als Kommentar an `dokId` (Issue #1698, Plan #1697 E12).
+ *
+ * Ueber eine Datei unter `tmpdir()`, weil der Text fremde Meldungen traegt und nicht als
+ * Argument an eine Kommandozeile geht; der Name aus `art`, Prozess, Dokument und Laufstempel.
+ * `boardRoh` statt `board`: Ein Vermerk ist Hinweis, kein Zustand, und ein totes Board darf
+ * die Kette nicht anhalten. Der Helfer wirft nie und protokolliert nicht selbst — das tut der
+ * Aufrufer mit dem Ergebnis `{ ok, text }`.
+ */
+function kommentarVermerken(dokId, art, zeilen) {
+  const pfad = join(tmpdir(), `night-${art}-${process.pid}-${dokId}-${ZUSTAND.LAUF_STEMPEL ?? abh.jetzt().getTime()}.md`);
+  try {
+    writeFileSync(pfad, zeilen.join("\n"), "utf-8");
+    const res = abh.boardRoh("issue", "comment", String(dokId), "--text-file", pfad);
+    return { ok: res.status === 0, text: String(res.text ?? "") };
+  } catch (e) {
+    return { ok: false, text: e.message };
+  } finally {
+    rmSync(pfad, { force: true });
+  }
+}
+
 /** Der Anker des Kommentars mit den Testhinweisen, die nach der Planungssitzung stehen bleiben. */
 export const TESTHINWEIS_ANKER = "## Testhinweise der Formpruefung";
 
@@ -1242,16 +1264,9 @@ export const TESTHINWEIS_ANKER = "## Testhinweise der Formpruefung";
  */
 function testhinweiseVermerken(dokId, hinweise) {
   if (!Array.isArray(hinweise) || hinweise.length === 0) return;
-  const pfad = join(tmpdir(), `night-testhinweise-${process.pid}-${dokId}-${ZUSTAND.LAUF_STEMPEL ?? abh.jetzt().getTime()}.md`);
-  const text = [TESTHINWEIS_ANKER, "", ...hinweise.map((h) => `- ${h.meldung}`), ""].join("\n");
-  writeFileSync(pfad, text, "utf-8");
-  try {
-    const res = abh.boardRoh("issue", "comment", dokId, "--text-file", pfad);
-    if (res.status === 0) log(t("testhinweiseGeschrieben", { anzahl: hinweise.length, anker: TESTHINWEIS_ANKER, id: dokId }));
-    else log(t("testhinweiseNicht", { id: dokId, text: res.text.slice(0, 200) }));
-  } finally {
-    rmSync(pfad, { force: true });
-  }
+  const res = kommentarVermerken(dokId, "testhinweise", [TESTHINWEIS_ANKER, "", ...hinweise.map((h) => `- ${h.meldung}`), ""]);
+  if (res.ok) log(t("testhinweiseGeschrieben", { anzahl: hinweise.length, anker: TESTHINWEIS_ANKER, id: dokId }));
+  else log(t("testhinweiseNicht", { id: dokId, text: res.text.slice(0, 200) }));
 }
 
 /** Der Anker des Vermerks, den ein Abbruch der Review-Stufe am Plandokument hinterlaesst. */
@@ -1272,8 +1287,7 @@ export const REVIEW_REST_ANKER = "## Review unvollstaendig";
  * seinem Grund, die Spur ist Hinweis, kein Zustand.
  */
 function reviewRestVermerken(kette, planId, grund) {
-  const pfad = join(tmpdir(), `night-review-rest-${process.pid}-${planId}-${ZUSTAND.LAUF_STEMPEL ?? abh.jetzt().getTime()}.md`);
-  const text = [
+  const res = kommentarVermerken(planId, "review-rest", [
     REVIEW_REST_ANKER,
     "",
     t("reviewRestGelaufen", { stempel: ZUSTAND.LAUF_STEMPEL ?? t("ohneStempel") }),
@@ -1282,14 +1296,9 @@ function reviewRestVermerken(kette, planId, grund) {
     "",
     t("reviewRestWeg", { id: planId }),
     "",
-  ].join("\n");
-  writeFileSync(pfad, text, "utf-8");
-  try {
-    abh.board("issue", "comment", planId, "--text-file", pfad);
-    log(t("reviewRestVermerkt", { id: planId, anker: REVIEW_REST_ANKER }));
-  } finally {
-    rmSync(pfad, { force: true });
-  }
+  ]);
+  if (res.ok) log(t("reviewRestVermerkt", { id: planId, anker: REVIEW_REST_ANKER }));
+  else log(t("reviewRestNicht", { id: planId, anker: REVIEW_REST_ANKER, text: res.text.slice(0, 200) }));
 }
 
 /**

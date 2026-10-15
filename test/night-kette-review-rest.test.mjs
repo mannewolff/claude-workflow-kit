@@ -12,10 +12,12 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import {
-  ketteImProzess, fachplanKarte, jeStufe, planAnlegen, reviewMarker, paketeAnlegen,
+  ketteImProzess, fachplanKarte, formNachAbschnitten, jeStufe, planAnlegen, reviewMarker, paketeAnlegen, GLATT,
 } from "./helpers/kette-fixture.mjs";
-import { REVIEW_REST_ANKER } from "../kit/night/kette.mjs";
+import { REVIEW_REST_ANKER, TESTHINWEIS_ANKER } from "../kit/night/kette.mjs";
 import { WARTEND_ANKER } from "../kit/night/wartend.mjs";
 
 /** Ein Ereignis im Strom der Session: Sie kam zustande, ein Exit ungleich 0 danach ist kein Fehlstart (Issue #1088, E13). */
@@ -123,4 +125,80 @@ test("[night-57] eine Review-Session ohne neuen Marker bricht mit wartendem Schl
   assert.equal(einheit.wartendBeendet, true);
   assert.ok(!r.sitzungen.map((s) => s.stufe).includes("pakete"), "die Kette lief trotz wartender Sitzung weiter");
   assert.ok(text.includes(WARTEND_ANKER), `der Vermerk fehlt am Plan:\n${text}`);
+});
+
+// Ein Helfer schreibt die Vermerke der Kette und wirft nie (Issue #1698, Plan #1697 E12).
+//
+// `testhinweiseVermerken` und `reviewRestVermerken` gehen ueber `kommentarVermerken`: Datei
+// unter `tmpdir()`, `issue comment --text-file`, Datei weg. Scheitert das Board, wirft der
+// Helfer nicht; der Aufrufer protokolliert. Fuer den Review-Rest ist das neu — vorher warf
+// `abh.board`, obwohl die Spur nur Hinweis ist.
+
+/** Die Dateien des Helfers, die dieser Prozess unter `tmpdir()` liegen gelassen hat. */
+const reste = (art) => readdirSync(tmpdir()).filter((n) => n.startsWith(`night-${art}-${process.pid}-`));
+
+/** Ob der Board-Aufruf ein Kommentar ueber eine Datei ist, deren Text `anker` traegt. */
+const dateiKommentarMit = (anker) => (args) =>
+  args[0] === "issue" && args[1] === "comment" && args[3] === "--text-file" && readFileSync(args[4], "utf-8").includes(anker);
+
+test("[night-19] scheiterndes Board beim Review-Rest wirft nicht und protokolliert reviewRestNicht", async () => {
+  const r = await ketteImProzess({
+    karten: [fachplanKarte("1")],
+    sitzung: jeStufe({ plan: planAnlegen(), review: (s) => { befunde(s); return EXIT_3; } }),
+    ablehnen: dateiKommentarMit(REVIEW_REST_ANKER),
+  });
+  assert.equal(r.code, 0, r.ausgabe);
+
+  const { einheit, id, text } = plan(r);
+  assert.equal(einheit.ausgang, "abgebrochen");
+  assert.match(einheit.grund, /technischer Fehler: die Session der Stufe review endete mit Exit 3/);
+  assert.equal(anker(text), 0, "das Board hat den Vermerk abgewiesen");
+  assert.ok(r.aufrufe.some((a) => a[1] === "comment" && a[3] === "--text-file"), "der Vermerk wurde versucht");
+  assert.match(r.ausgabe, new RegExp(`Vermerk '${REVIEW_REST_ANKER}' an Plan #${id} nicht geschrieben`));
+  assert.doesNotMatch(r.ausgabe, new RegExp(`Vermerk '${REVIEW_REST_ANKER}' an Plan #${id} geschrieben`));
+  assert.deepEqual(reste("review-rest"), [], "die Datei unter tmpdir() ist weg");
+});
+
+test("[night-19] gelingt der Vermerk des Review-Rests, steht er am Plan und im Protokoll", async () => {
+  const r = await ketteImProzess({
+    karten: [fachplanKarte("1")],
+    sitzung: jeStufe({ plan: planAnlegen(), review: (s) => { befunde(s); return EXIT_3; } }),
+  });
+  assert.equal(r.code, 0, r.ausgabe);
+
+  const { einheit, id, text } = plan(r);
+  assert.equal(einheit.ausgang, "abgebrochen");
+  assert.equal(anker(text), 1, `der Vermerk fehlt am Plan:\n${text}`);
+  assert.match(text, new RegExp(`^${REVIEW_REST_ANKER}$`, "m"));
+  assert.match(r.ausgabe, new RegExp(`Review #${id} abgebrochen, Befunde ohne Einarbeitung — Vermerk '${REVIEW_REST_ANKER}' an Plan #${id} geschrieben`));
+  assert.deepEqual(reste("review-rest"), [], "die Datei unter tmpdir() ist weg");
+});
+
+/** Ein Testhinweis, den die Formpruefung am Plan stehen laesst. */
+const TESTHINWEIS = { baustein: "src/nav.ts", test: "src/nav.spec.ts", meldung: "src/nav.spec.ts gehört zu src/nav.ts." };
+const MIT_TESTHINWEIS = formNachAbschnitten({ hinweise: (karte) => (/^\[Plan\]/.test(karte.title) ? [TESTHINWEIS] : []) });
+
+test("[night-19] die Testhinweise protokollieren ihren Erfolg wie bisher und raeumen die Datei", async () => {
+  const r = await ketteImProzess({ karten: [fachplanKarte("1")], sitzung: GLATT, formPruefung: MIT_TESTHINWEIS });
+  assert.equal(r.code, 0, r.ausgabe);
+
+  const { einheit, id, text } = plan(r);
+  assert.equal(einheit.ausgang, "fertig", einheit.grund);
+  assert.ok(text.includes(TESTHINWEIS_ANKER), "der Kommentar steht am Plan");
+  assert.match(r.ausgabe, new RegExp(`1 Testhinweis\\(e\\) als Kommentar '${TESTHINWEIS_ANKER}' an Plan #${id} geschrieben`));
+  assert.deepEqual(reste("testhinweise"), [], "die Datei unter tmpdir() ist weg");
+});
+
+test("[night-19] scheitern die Testhinweise am Board, protokolliert die Kette und laeuft weiter", async () => {
+  const r = await ketteImProzess({
+    karten: [fachplanKarte("1")], sitzung: GLATT, formPruefung: MIT_TESTHINWEIS,
+    ablehnen: dateiKommentarMit(TESTHINWEIS_ANKER),
+  });
+  assert.equal(r.code, 0, r.ausgabe);
+
+  const { einheit, id, text } = plan(r);
+  assert.equal(einheit.ausgang, "fertig", einheit.grund);
+  assert.ok(!text.includes(TESTHINWEIS_ANKER), "das Board hat den Kommentar abgewiesen");
+  assert.match(r.ausgabe, new RegExp(`Testhinweise an Plan #${id} nicht geschrieben \\(Board-Attrappe: issue comment ${id} abgewiesen\\) — die Kette laeuft weiter`));
+  assert.deepEqual(reste("testhinweise"), [], "die Datei unter tmpdir() ist weg");
 });
