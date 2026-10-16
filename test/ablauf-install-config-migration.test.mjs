@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, realpathSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
@@ -146,6 +146,73 @@ test("[1728] --language de laesst die Schluessel englisch und stellt nur Aufzaeh
     assert.deepEqual(c.noCheck, [{ pattern: "docs/**", reason: "only text" }]);
     assert.match(res.stdout, /buildChecks\[0\]\.stufe: package → paket/);
     assert.doesNotMatch(res.stdout, /noCheck → ohnePruefung/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Die persoenliche Datei (Issue #1729, Plan #1710 A3, A11, A12, E2) ---
+
+const LOKAL = join(".claude", "workflow.config.local.json");
+const ENGLISCH = { language: "en", codeHost: "github", issueTracker: "github" };
+
+function mitLokal(praefix, lokalText) {
+  const dir = projekt(praefix, ENGLISCH);
+  writeFileSync(join(dir, LOKAL), lokalText);
+  return dir;
+}
+
+test("[1729] die persoenliche Datei traegt nach dem Update englische Namen, ohne provider und ideaStored, die Sicherung den alten Inhalt", () => {
+  const alt = JSON.stringify({
+    reviewModel: "opus",
+    provider: "github",
+    vorgeschichte: true,
+    toolbox: { ideaStored: true, host: "http://localhost:1" },
+    buildChecks: [{ cmd: "npm test", stufe: "paket" }],
+  }, null, 2) + "\n";
+  const dir = mitLokal("install-migration-lokal-", alt);
+  try {
+    const res = installiere(dir);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    const c = JSON.parse(readFileSync(join(dir, LOKAL), "utf-8"));
+    assert.equal(c.history, true);
+    assert.equal("vorgeschichte" in c, false);
+    assert.equal("provider" in c, false);
+    assert.deepEqual(c.toolbox, { host: "http://localhost:1" });
+    assert.equal(c.reviewModel, "opus");
+    assert.deepEqual(c.buildChecks, [{ cmd: "npm test", stage: "paket" }], "der Aufzaehlungswert paket bleibt");
+    assert.equal(readFileSync(join(dir, `${LOKAL}.vor-update`), "utf-8"), alt);
+    // Die geteilte Datei ist schon englisch; gezaehlt sind vorgeschichte und buildChecks[0].stufe.
+    const zeilen = res.stdout.split("\n").filter((z) => /English: \d+/.test(z));
+    assert.equal(zeilen.length, 1, res.stdout);
+    assert.match(zeilen[0], /: 2$/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[1729] eine schon englische persoenliche Datei bleibt byte-gleich und bekommt keine Sicherung", () => {
+  const alt = '{"reviewModel":"opus","history":true,\n  "buildChecks":[{"cmd":"npm test","stage":"paket"}]}\n';
+  const dir = mitLokal("install-migration-lokal-englisch-", alt);
+  try {
+    const res = installiere(dir);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.equal(readFileSync(join(dir, LOKAL), "utf-8"), alt);
+    assert.equal(existsSync(join(dir, `${LOKAL}.vor-update`)), false);
+    assert.match(res.stdout, /switched to English: 0/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[1729] eine unlesbare persoenliche Datei bleibt unberuehrt, das Update laeuft durch", () => {
+  const alt = "{ kaputt\n";
+  const dir = mitLokal("install-migration-lokal-kaputt-", alt);
+  try {
+    const res = installiere(dir);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.equal(readFileSync(join(dir, LOKAL), "utf-8"), alt);
+    assert.equal(existsSync(join(dir, `${LOKAL}.vor-update`)), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

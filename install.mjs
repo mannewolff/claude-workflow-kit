@@ -680,7 +680,7 @@ function spracheDesLaufs(sprache, existingConfig) {
 // Installer laedt sie daraus, statt eine zweite Kopie zu tragen.
 const BOARD_TEILE = JSON.parse(Buffer.from(KIT_BOARD_B64, "base64").toString("utf-8"));
 const ladeTeil = (datei) => import(`data:text/javascript;base64,${Buffer.from(BOARD_TEILE[datei], "utf-8").toString("base64")}`);
-const { normalisiereConfig, benenneUm, benenneWieVorlage, mitEnglischenNamen } = await ladeTeil("config-namen.mjs");
+const { normalisiereConfig, benenneUm, benenneWieVorlage, mitEnglischenNamen, ENTFALLEN } = await ladeTeil("config-namen.mjs");
 const { projektSprache, LABELS, PRAEFIXE, erkenneLabel, erkennePraefix, prozessSprache, spracheFestlegen, text, ALTNAMEN } = await ladeTeil("namen.mjs");
 
 // --- Texte an den Menschen (Issue #1455, Plan #1420 E13, E14, E22) ---
@@ -1057,15 +1057,58 @@ function leseRoh(configPfad) {
   }
 }
 
-/**
- * Das Update nennt in einer Zeile, wie viele Eintraege der Datei `roh` das Schreiben auf ihren
- * englischen Namen umbenannt hat; eine Ersteinrichtung hat nichts umzubenennen.
- */
-function meldeUmbenannt(ersteinrichtung, roh) {
-  if (ersteinrichtung) return;
+/** Wie viele Eintraege der Datei `roh` das Schreiben auf ihren englischen Namen umbenennt. */
+function zaehleUmbenannt(roh) {
   const { umbenannt } = benenneUm(roh, "en", { werte: "wie-vorlage" });
   const sprache = Object.hasOwn(roh, "sprache") && !Object.hasOwn(roh, "language") ? 1 : 0;
-  console.log(t("namenUmgestellt", { anzahl: umbenannt.length + sprache }));
+  return umbenannt.length + sprache;
+}
+
+/**
+ * Das Update nennt in einer Zeile, wie viele Eintraege der Datei `roh` das Schreiben auf ihren
+ * englischen Namen umbenannt hat, `lokal` zaehlt die der persoenlichen Datei dazu (Issue #1729);
+ * eine Ersteinrichtung hat nichts umzubenennen.
+ */
+function meldeUmbenannt(ersteinrichtung, roh, lokal) {
+  if (ersteinrichtung) return;
+  console.log(t("namenUmgestellt", { anzahl: zaehleUmbenannt(roh) + lokal }));
+}
+
+function streichePfad(wert, [name, ...rest]) {
+  if (wert === null || typeof wert !== "object" || Array.isArray(wert)) return;
+  if (rest.length === 0) delete wert[name];
+  else streichePfad(wert[name], rest);
+}
+
+/**
+ * Das Update migriert auch die persoenliche Datei `workflow.config.local.json` (Issue #1729, Plan
+ * #1710 A3, A11, A12, E2): Schluessel englisch, jeder Wert unveraendert, `provider` und die
+ * entfallenen Pfade fort. Die Datei ist nicht versioniert, Git ist fuer sie kein Rueckweg; darum
+ * sichert der Schritt sie vor dem Schreiben nach `.vor-update`. Aendert sich nichts, bleibt sie
+ * byte-gleich und ohne Sicherung, ebenso eine unlesbare Datei. `provider` wird nicht auf
+ * codeHost/issueTracker uebertragen: Die geteilte Datei traegt beide nach dem Update immer, ein
+ * uebertragener Wert in der persoenlichen Datei wuerde sie ueberstimmen. Gibt die Zahl der
+ * umbenannten Eintraege zurueck.
+ */
+function migriereLokaleConfig(targetBase) {
+  const lokalPfad = join(targetBase, "workflow.config.local.json");
+  if (!existsSync(lokalPfad)) return 0;
+  const original = readFileSync(lokalPfad, "utf-8");
+  let roh;
+  try {
+    roh = JSON.parse(original);
+  } catch {
+    return 0;
+  }
+  if (roh === null || typeof roh !== "object" || Array.isArray(roh)) return 0;
+  const neu = mitEnglischenNamen(roh);
+  // Die entfallenen Pfade tragen die deutschen Namen; ihre Eltern heissen in beiden Sprachen gleich.
+  for (const pfad of ENTFALLEN) streichePfad(neu, pfad.split("."));
+  delete neu.provider;
+  if (JSON.stringify(neu) === JSON.stringify(roh)) return 0;
+  writeFileSync(`${lokalPfad}.vor-update`, original, "utf-8");
+  writeFileSync(lokalPfad, JSON.stringify(neu, null, 2) + "\n", "utf-8");
+  return zaehleUmbenannt(roh);
 }
 
 // Die Config-Felder, die Labelnamen tragen (E7). Ein gesetzter Wert bleibt, wie er ist; die
@@ -2252,7 +2295,7 @@ async function main() {
   mkdirSync(targetBase, { recursive: true });
   writeFileSync(configTarget, JSON.stringify(zumSchreiben(config, roh), null, 2) + "\n", "utf-8");
   console.log(t("configGeschrieben", { pfad: configTarget }));
-  meldeUmbenannt(ersteinrichtung, roh);
+  meldeUmbenannt(ersteinrichtung, roh, migriereLokaleConfig(targetBase));
   // Der spec-Block ist eine Altlast aus Spec-Driven Development (entfallen mit
   // Idee #813, Plan #825). Ein vorhandener Block kommt ueber den
   // existingConfig-Spread unveraendert mit — kein Werkzeug liest ihn mehr, und der
