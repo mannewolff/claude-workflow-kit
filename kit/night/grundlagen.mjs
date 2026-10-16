@@ -24,7 +24,7 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, appendFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join, dirname, resolve } from "node:path";
+import { basename, join, dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 // Das Kit-Verzeichnis, in dem night.mjs liegt — dieser Teil liegt eine Ebene tiefer.
@@ -800,6 +800,20 @@ export function laufMelden({ budgetMs, datei = ZUSTAND.ERGEBNIS_FILE, stand = ZU
     return;
   }
   if (stand.abschluss !== null) meldezeile(t("eingeliefert", { outcome: res.json?.outcome ?? t("ohneRueckmeldung") }));
+}
+
+/**
+ * Wessen Board ein Lauf gelesen hat (Issue #1744): das Repo, in dem der Runner laeuft, und der
+ * Tracker-Host aus der Config. Steht unter der Warnung, dass keine Karte das Label traegt — ein
+ * Start im falschen Repo faellt so sofort auf. Bewusst ohne Abfrage beim Board: Eine Warnung
+ * bekommt keinen eigenen Fehlerweg. Ohne `toolbox.host` steht der Name des Trackers.
+ */
+export function boardHerkunft(cfg = ZUSTAND.config, cwd = process.cwd()) {
+  const tracker = cfg?.issueTracker;
+  const host = tracker === "toolbox" && cfg.toolbox?.host
+    ? cfg.toolbox.host.replace(/^[a-z]+:\/\//i, "").split("/")[0]
+    : tracker;
+  return { repo: basename(cwd), host };
 }
 
 /** Die erste Zeile eines Fremdtextes, gekuerzt — damit eine Meldung eine Zeile bleibt. */

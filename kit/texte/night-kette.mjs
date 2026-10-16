@@ -245,6 +245,7 @@ export const TEXTE = Object.freeze({
     laufeKetteUnbekannt: "laufeKette kennt keine Abhaengigkeit '{name}'",
     worktreeEntfernt: "Liegengebliebenen Worktree entfernt: {pfad}",
     keinLabelWarnung: "WARNUNG: keine Karte traegt das Label '{label}' — es wird nichts verarbeitet.",
+    boardVon: "  Board von: {repo} ({host})",
     vorhandeneLabels: "  Vorhandene Labels: {labels}",
     keineLabels: "keine",
     dryBudget: "Budget: Plan {plan} min, Pakete {pakete} min, Review {review} min, Abdeckung {abdeckung} min, {kosten} "
@@ -489,6 +490,7 @@ export const TEXTE = Object.freeze({
     laufeKetteUnbekannt: "laufeKette knows no dependency '{name}'",
     worktreeEntfernt: "Removed leftover worktree: {pfad}",
     keinLabelWarnung: "WARNING: no card carries the label '{label}' — nothing is processed.",
+    boardVon: "  Board of: {repo} ({host})",
     vorhandeneLabels: "  Labels present: {labels}",
     keineLabels: "none",
     dryBudget: "Budget: plan {plan} min, packages {pakete} min, review {review} min, coverage {abdeckung} min, "

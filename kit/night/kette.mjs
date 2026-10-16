@@ -33,7 +33,7 @@ import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 
-import { ZUSTAND, NACHBAR_DIR, log, board, boardRoh, einheitAnlegen, einheitErgaenzen, gitClean, gitReste,
+import { ZUSTAND, NACHBAR_DIR, log, board, boardHerkunft, boardRoh, einheitAnlegen, einheitErgaenzen, gitClean, gitReste,
   laufMelden, resteText, schreibeErgebnisstand, schrittBeginnen, schrittEnden, vergleicheText,
   normalisiereConfig, vermerkeOhneArbeit } from "./grundlagen.mjs";
 import { ABBRUCH_BUDGET_MS, LAUF_KONTEXT, LAUF_ORDNER, RECHNER, abgeben, exitText, journalLesen, laufAnhalten,
@@ -3399,6 +3399,7 @@ async function ketteFahren(args) {
   if (kandidaten.length === 0 && uebersprungen.length === 0 && !alle.some((i) => kennzeichenName(i.labels, budget.label, "night"))) {
     const vorhanden = [...new Set(alle.flatMap((i) => i.labels || []))];
     log(t("keinLabelWarnung", { label: budget.label }));
+    log(t("boardVon", boardHerkunft()));
     log(t("vorhandeneLabels", { labels: vorhanden.length ? vorhanden.join(", ") : t("keineLabels") }));
   }
 

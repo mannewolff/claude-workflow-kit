@@ -143,7 +143,9 @@ test("[night-909] ohne gekennzeichnete Karte endet der Lauf regulaer und sagt, w
   assert.equal(r.code, 0, r.ausgabe);
   assert.deepEqual(r.abschluss, ["regulaer"]);
   assert.equal(r.sitzungen.length, 0);
-  assert.match(r.ausgabe, /keine Karte traegt das Label 'kit:pruefen'/);
+  assert.match(r.ausgabe, /\] WARNUNG: keine Karte traegt das Label 'kit:pruefen' — es wird nichts geprueft\.\n/);
+  assert.match(r.ausgabe, /keine Karte traegt das Label 'kit:pruefen'[^\n]*\n[^\n]*\] {3}Board von: night-tag-prozess-\w+ \(local\)\n/,
+    "unter der Warnung steht das Repo, dessen Board gelesen wurde (Issue #1744)");
   assert.match(r.ausgabe, /Vorhandene Labels: kit:anderes/);
 });
 

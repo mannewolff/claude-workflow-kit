@@ -4,7 +4,7 @@
 Night mode (Nachtbetrieb) has two modes of operation: the **night run** (Nachtlauf), which works off the Ready column unattended, and the **night chain** (Nacht-Kette), which turns a business requirement (fachliche Anforderung) or a finished plan into the reviewed plan and the work packages (Arbeitspakete). The [check run](/en/prozess#the-check-run) (Prüflauf), which has business requirements reviewed, belongs to the day and is described on the process page. Nothing is ever pushed at night; the three stop points stay with the human.
 
 ## The night run
-<!-- de: baccdbd73699 -->
+<!-- de: a65644306f7f -->
 
 The night runner (Nacht-Runner) `.claude/kit/night.mjs` starts a fresh headless session with `/implement-next #N` for each Ready card, so that no context piles up. It measures success on the board alone: card in In review means success.
 
@@ -15,7 +15,7 @@ node .claude/kit/night.mjs             # real run
 
 Flags: `--max <N>` (sessions per night, default 10), `--model <id>`, `--timeout-min <N>` (time limit per round, default 60), `--label <name>`, `--verbose no` (without the live progress log), `--no-checks-ok`, `--yolo` (all permission checks off) and `--help`.
 
-**The evening ritual is the GO.** You pull cards to Ready and put them in order; the runner works from top to bottom. It only takes cards with the routing label (Routing-Label) `kit:nightrun`; the others stay untouched. `--label none` switches the filter off. Cards with the title prefixes `[Requirement]`, `[Idea]`, `[Plan]` and `[Human]` go back to the backlog with a comment and without a session; for a human step the comment says that the card is waiting and has not failed.
+**The evening ritual is the GO.** You pull cards to Ready and put them in order; the runner works from top to bottom. It only takes cards with the routing label (Routing-Label) `kit:nightrun`; the others stay untouched. `--label none` switches the filter off. If no card carries the label, the warning names below it the repo and tracker host of the board read: `Board of: <repo> (<host>)`. A start in the wrong repo thus shows at once. Cards with the title prefixes `[Requirement]`, `[Idea]`, `[Plan]` and `[Human]` go back to the backlog with a comment and without a session; for a human step the comment says that the card is waiting and has not failed.
 
 **Dependencies.** A card whose dependency still lies in Backlog, Ready or In progress is set back by the runner with one sentence. Below it stands the block `Abhaengigkeiten, wie der Nachtlauf sie liest:` with one line per dependency: number, title, met or not, origin with the text passage, plus any cycles found as `Kreis: #A -> #B -> #A`. The dry run shows the same lines indented under the line of each package. The convention is described under [/issues](/en/prozess#issues).
 
