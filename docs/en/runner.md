@@ -1,12 +1,12 @@
 # Runner
-<!-- de: 4f42594027b6 -->
+<!-- de: e5bde7cd5431 -->
 
-The runner runs on its own, at any time of day, and has two modes of operation: the **run** (Lauf), which works off the Ready column, and the **chain** (Kette), which turns a business requirement (fachliche Anforderung) or a finished plan into the reviewed plan and the work packages (Arbeitspakete). The [check run](/en/prozess#the-check-run) (Prüflauf), which has business requirements reviewed, is described on the process page. The runner never pushes; the three stop points stay with the human.
+The runner runs on its own and has two modes of operation: the **run** (Lauf), which works off the Ready column, and the **chain** (Kette), which turns a business requirement (fachliche Anforderung) or a finished plan into the reviewed plan and the work packages (Arbeitspakete). The [check run](/en/prozess#the-check-run) (Prüflauf) is described on the process page. The runner never pushes.
 
 ## The run
-<!-- de: 1c75f177bd4d -->
+<!-- de: 62c1fc128efe -->
 
-The runner `.claude/kit/night.mjs` starts a fresh headless session with `/implement-next #N` for each Ready card, so that no context piles up. It measures success on the board alone: card in In review means success.
+The runner `.claude/kit/night.mjs` starts a fresh headless session with `/implement-next #N` for each Ready card. Success means: card in In review.
 
 ```bash
 node .claude/kit/night.mjs --dry-run   # shows what would run, starts nothing
@@ -15,15 +15,15 @@ node .claude/kit/night.mjs             # real run
 
 Flags: `--max <N>` (sessions per run, default 10), `--model <id>`, `--timeout-min <N>` (time limit per round, default 60), `--label <name>`, `--verbose no` (without the live progress log), `--no-checks-ok`, `--yolo` (all permission checks off) and `--help`.
 
-**Sorting is the GO.** You pull cards to Ready and put them in order; the runner works from top to bottom. It only takes cards with the routing label (Routing-Label) `kit:nightrun`; the others stay untouched. `--label none` switches the filter off. If no card carries the label, the warning names below it the repo and tracker host of the board read: `Board of: <repo> (<host>)`. A start in the wrong repo thus shows at once. Cards with the title prefixes `[Requirement]`, `[Idea]`, `[Plan]` and `[Human]` go back to the backlog with a comment and without a session; for a human step the comment says that the card is waiting and has not failed.
+**Sorting is the GO.** The runner works off Ready from top to bottom, but only cards with the routing label (Routing-Label) `kit:nightrun`; `--label none` switches the filter off. If no card carries the label, the warning names the board read: `Board of: <repo> (<host>)`. Cards with the title prefixes `[Requirement]`, `[Idea]`, `[Plan]` and `[Human]` go back to the backlog with a comment and without a session.
 
-**Dependencies.** A card whose dependency still lies in Backlog, Ready or In progress is set back by the runner with one sentence. Below it stands the block `Abhaengigkeiten, wie der Nachtlauf sie liest:` with one line per dependency: number, title, met or not, origin with the text passage, plus any cycles found as `Kreis: #A -> #B -> #A`. The dry run shows the same lines indented under the line of each package. The convention is described under [/issues](/en/prozess#issues).
+**Dependencies.** The runner sets back a card with an open dependency; below it stands the block `Abhaengigkeiten, wie der Nachtlauf sie liest:` with one line per dependency and any cycles found. The dry run shows the same lines indented under the line of each package. The convention is described under [/issues](/en/prozess#issues).
 
 **Fixed kit state.** Every unattended run binds tools, skills and rule texts at start to the commit of `origin/<mainBranch>`; whatever a package changes in them takes effect only after `push main`.
 
-**The model of a session.** First, the card's `Empfohlenes Modell: <name>` applies if the name is in `night.models`; this list is a safety gate for values from cards. Then, with `night.tiers` populated, the `Aufgabenstufe:` applies, and the runner only falls back upwards. Otherwise the model of the run from `--model` or `night.model` applies. Every session gets `KIT_AGENT_MODEL` with its model.
+**The model of a session.** First the card's `Empfohlenes Modell:` applies if `night.models` lists the name, then the `Aufgabenstufe:` according to `night.tiers`, otherwise `--model` or `night.model`; the fields are described under [Settings](/en/einstellungen#fine-tuning). Every session gets `KIT_AGENT_MODEL` with its model.
 
-**Permissions, sandbox, environment.** The sessions run with `--permission-mode auto --permission-prompts none`: whatever the allowlist in `.claude/settings.json` does not allow is refused. Allow tools rather than single commands, for example `Bash(mvn:*)`. Commands that need a socket or the board belong in `sandbox.excludedCommands`, variables in the `env` block:
+**Permissions, sandbox, environment.** The sessions run with `--permission-mode auto --permission-prompts none`: whatever the allowlist in `.claude/settings.json` does not allow is refused. Commands that need a socket or the board belong in `sandbox.excludedCommands`, variables in the `env` block:
 
 ```json
 {
@@ -36,7 +36,7 @@ Flags: `--max <N>` (sessions per run, default 10), `--model <id>`, `--timeout-mi
 The hook `bash-check` refuses lines in which a pipe or redirection cancels the exception, and, unattended, every Bash call in the background: a headless session has no follow-up turn.
 
 ### What is on the board afterwards
-<!-- de: bfaa51e9449e -->
+<!-- de: cc05ff1047b6 -->
 
 Every card has one outcome:
 
@@ -49,60 +49,60 @@ Every card has one outcome:
 
 After a halt, the way on is `/requirement #N`; only the human removes `kit:clarify`.
 
-**What was checked and what was not.** Skipped checks show in two places: in the completion report on the work package, where the session lists the checks it ran and skipped with their reason, and in the run report of the pass, with one line per session and a sum line over the run. The runner reads this from `.claude/checks-summary.json`, not from the session's text, and holds it against the commit: if the evidence does not match the commit, it checks again itself and reports `nachgeprueft` or red.
+**What was checked and what was not.** Skipped checks show in two places: in the completion report on the work package, where the session lists the checks it ran and skipped with their reason, and in the run report of the pass, with one line per session and a sum line over the run. The runner reads this from `.claude/checks-summary.json` and checks again itself if the evidence does not match the commit (`nachgeprueft` or red).
 
-**The result state.** Next to the daily log `.claude/night-run-<datum>.log`, every run writes `.claude/night-run-<datum>-<uhrzeit>.json`: per package outcome, duration, commit, model, cost, tokens and check runs, plus the end of the run including the reason of a hard stop. The block `Prueflaeufe und Zielmarke:` in the report says how many packages stayed below `night.goalImplementationMin`. The runner does not keep its logs forever: at the start of every run it deletes the daily logs `.claude/night-run-<datum>.log` and the run folders under `.claude/protokolle/` whose last modification lies further back than `night.logRetentionDays` days (default 14), and states the number and the space freed in one line of the daily log. The JSON files and the `.tsv` files with the key figures remain.
+**The result state.** Next to the daily log `.claude/night-run-<datum>.log`, every run writes `.claude/night-run-<datum>-<uhrzeit>.json`: per package outcome, duration, commit, model, cost and check runs. The block `Prueflaeufe und Zielmarke:` in the report says how many packages stayed below `night.goalImplementationMin`. The runner deletes daily logs and run folders under `.claude/protokolle/` after the period `night.logRetentionDays`; JSON and `.tsv` files remain.
 
 **A run without work names its reason.** If a run ends without a package, the run header carries `noWorkReason` with the sentence from the log. Without `--chain`: `Ready ist leer — nichts zu tun.`, `Keine der <N> Karten in Ready traegt das Label '<name>' — nichts zu tun.`, `Alle <N> Karten in Ready wurden am Gate zurueckgestellt — …` or `Die Umsetzung ist belegt: <grund> — der Lauf endet ohne Paket.` With `--chain`: `Keine Kette zu fahren: keine Karte traegt das Label '<name>'.` or `Keine Kette zu fahren: alle <N> gekennzeichneten Karten mit dem Label '<name>' wurden uebersprungen, …`. Each sentence carries label and number. The set-back sentence takes precedence over `Ready ist leer`. If no case applies, it says `Kein Grund ermittelbar — … bitte melden.` A held lock is a quiet run with a reason; a lock that cannot be written is a hard stop of error class `umgebung` with `fehlerText`, without `noWorkReason`. A run with work does not carry the field.
 
-**Delivery to the board.** With `issueTracker: toolbox` the runner delivers the result state to kanban-kit as it goes, the first report before the first package. A hard stop arrives as a completed run with `abortReason`. If delivery fails, the file remains the fallback.
+**Delivery to the board.** With `issueTracker: toolbox` the runner delivers the result state to kanban-kit as it goes, a hard stop with `abortReason`. If delivery fails, the file remains.
 
 **Afterwards:** read the log, look through the backlog, `/kit-review`, your own test, `push main`.
 
 ### When something goes wrong
-<!-- de: ef52dfa7950d -->
+<!-- de: db4e4a9dd671 -->
 
-If the session ends with a CLI error, the runner stops hard and the card stays in Ready. If it ends cleanly or at the time limit but without In review, the card goes back to the backlog with a comment. If leftovers remain in the working tree, the runner first tries the rescue.
+If the session ends with a CLI error, the runner stops hard and the card stays in Ready. If it ends without In review, the card goes back to the backlog with a comment; the runner first tries to rescue leftovers in the working tree.
 
-**Salvage.** Before the runner gives up the leftovers, it runs `node .claude/kit/checks.mjs run --finish <id> --fresh`. Going through `checks.mjs run` is deliberate: this run leaves `.claude/checks-summary.json`, and that very evidence is what the commit gate reads. `--fresh` prevents the session's red result from being taken over. The area-based selection of the package stage applies; checks of the stages `push` and `merge` stay out. A configured `formatFixCommand` runs exactly once on red, then the checks once more. If they are green, exactly one salvage session gets ten minutes to commit and move the card. If that fails, the runner saves the leftovers with `git stash push --include-untracked -m "nachtrest #<id> <lauf>"`, the card goes to the backlog, and the run goes on. A hard stop happens only where a commit may be incomplete.
+**Salvage.** Before the runner gives up the leftovers, it runs `node .claude/kit/checks.mjs run --finish <id> --fresh`. Going through `checks.mjs run` is deliberate: it leaves `.claude/checks-summary.json`, the evidence the commit gate reads. The area-based selection of the package stage applies; checks of the stages `push` and `merge` stay out; `formatFixCommand` works as described under [Settings](/en/einstellungen#worth-setting). If they are green, a salvage session gets ten minutes to commit and move the card. Otherwise the runner saves the leftovers in the stash `nachtrest #<id> <lauf>`, the card goes to the backlog, and the run goes on. A hard stop happens only where a commit may be incomplete.
 
 **The waiting session.** No session ends with its own work still running. If the final text says it is still waiting for its own work, the runner attaches the note `## Nachtlauf: wartende Sitzung` with the last state to the card; the next session names it. Waiting for a human does not count.
 
 Log, comment and result state carry the same line `Grund: …`, for example `Grund: Session am Zeitlimit beendet`.
 
 ### The halt at a protected file
-<!-- de: 992ba7e47bd8 -->
+<!-- de: 02b4cd37c150 -->
 
-Some files only a human may write, in the kit the settings under `.claude/`. If a package names one of them and is not released, the runner sets it back before the start: Backlog, label `kit:protected`, comment `## Geschuetzte Datei` with the quoted line. If only the write fails, the session halts the same way itself. The way back: make the change yourself, remove `kit:protected`, pull the card to Ready.
+If a package names a file only a human may write and is not released, the runner sets it back: Backlog, label `kit:protected`, comment `## Geschuetzte Datei`. The way back: make the change yourself, remove `kit:protected`, pull to Ready.
 
 ## The time-limit abort
-<!-- de: 76ca25a4a60d -->
+<!-- de: 56eec18c8c80 -->
 
-If a session ends at the time limit, the runner attaches the note `## Nachtlauf: Zeitgrenze erreicht` to the card. It names the limit of the round, the state according to the session's own account, that is its lines `FORTSCHRITT: AK<n> — …`, a recommendation to split the package that is explicitly no requirement, and the leftovers in the working directory. If the session reported nothing, it says "keine Auskunft"; if it ran without a stream, "nicht beobachtet".
+If a session ends at the time limit, the runner attaches the note `## Nachtlauf: Zeitgrenze erreicht` to the card. It names the limit of the round, the state according to the session's own account, that is its lines `FORTSCHRITT: AK<n> — …`, a recommendation to split the package that is explicitly no requirement, and the leftovers in the working directory.
 
-No statement about its cause follows from the abort: it does not say whether the package was too big or the session lost its way. The unit in the result state carries `zeitlimitBeendet: true`, the run header `zielUmsetzungMin`, the target this run calculated with.
+No statement about its cause follows from the abort. The unit in the result state carries `zeitlimitBeendet: true`, the run header `zielUmsetzungMin`, the target this run calculated with.
 
-Visible even earlier is the estimate on the package: `/issues` writes `Sitzungsumfang: passt | reisst — <ein Satz>` into the context, and the run report of the chain ends with `- Voraussichtlich über der Sitzungszeitgrenze: #N, #M`.
+Visible earlier: `/issues` writes `Sitzungsumfang: passt | reisst` into the package, and the run report of the chain ends with `- Voraussichtlich über der Sitzungszeitgrenze: #N, #M`.
 
 The yardstick is the time limit of one session, `--timeout-min`, default 60 minutes. What is not meant is `night.chain.implementationMin`, the budget of the implementation stage, nor the target `night.goalImplementationMin`.
 
 ## The stuck package
-<!-- de: e552f2c37072 -->
+<!-- de: 05c3936814e6 -->
 
-If the same check fails again and again in the same way, the session ends before its time limit. `checks.mjs run` remembers a failure fingerprint per red command: the names of the failed tests, otherwise the first error message. Once the sequence of identical failures reaches `night.stuckAfter` (default 3), the next call runs nothing more when unattended: it reports `Pruefung festgefahren: <Kommando> — <Fehler>` and ends with exit code 3. Interactively only a hint appears.
+If the same check fails again and again in the same way, the session ends before its time limit. `checks.mjs run` remembers a failure fingerprint per red command: the names of the failed tests, otherwise the first error message. Once the sequence of identical failures reaches `night.stuckAfter`, the next call runs nothing more when unattended: it reports `Pruefung festgefahren: <Kommando> — <Fehler>` and ends with exit code 3. Interactively only a hint appears.
 
-The runner ends the session, saves leftovers in the stash `nachtrest #<id> <lauf>`, sets `run:aborted` with `Grund: Session an einer Pruefung festgefahren` and moves the package to the backlog. The note `## Nachtlauf: an einer Pruefung festgefahren` names check, error, attempts and running time. How to go on: read the error, get the leftovers back with `git stash apply stash@{<n>}`, rework, pull to Ready again.
+The runner ends the session, saves leftovers in the stash, sets `run:aborted` with `Grund: Session an einer Pruefung festgefahren` and moves the package to the backlog. The note `## Nachtlauf: an einer Pruefung festgefahren` names check, error, attempts and running time. Next: read the error, get the leftovers back, rework, back to Ready.
 
 ## The chain
-<!-- de: 607ad093ef96 -->
+<!-- de: 7ac5c68298a8 -->
 
 A business requirement goes in; at the end a reviewed plan, work packages and a report lie on it. Under **variant A** the packages stay in the backlog. Under **variant B** the chain pulls them to Ready itself and implements them; your GO then lies in marking the card.
 
-**The gesture** is the label `kit:night` on a groomed card in the backlog. The runner consumes the label at start: every setting allows exactly one chain, an abort needs a new gesture. Create the label once per board, like all kit labels.
+**The gesture** is the label `kit:night` on a groomed card in the backlog. The runner consumes the label at start: every setting allows exactly one chain, an abort needs a new gesture.
 
-**The review as a precondition.** At start the marked card must also carry `review:done`, the business requirement as well as the plan document (Plandokument) of a plan order. If it is missing, the chain label stays and the card gets the comment `## Kette nicht gestartet: Pruefung fehlt` once, with the way via `/issue-review`.
+**The review as a precondition.** At start the marked card must also carry `review:done`, the business requirement as well as the plan document (Plandokument) of a plan order. If it is missing, the chain label stays, and the card gets the comment `## Kette nicht gestartet: Pruefung fehlt` once, with the way via `/issue-review`.
 
-**The variant** is set by the label `kit:carry-through` on the same card. It is not consumed. Without it, variant A applies.
+**The variant** is set by the label `kit:carry-through` on the same card; it is not consumed.
 
 ```bash
 node .claude/kit/night.mjs --chain --dry-run   # candidates, reviewer state, budgets
@@ -111,7 +111,7 @@ node .claude/kit/night.mjs --chain             # real run
 
 `--max` counts chains here (default 3).
 
-**Conditions.** A candidate has the title `[Requirement]` or `[Plan]`, is in the backlog, carries no `kit:clarify` and waits for no event. Before the first chain every candidate is set to `run:running` with "Lauf angenommen um …, Vorabprüfung läuft"; then a preflight session checks reviewers and tracker. If it fails, the run status (Laufstand) shows `run:aborted` with `Kette nicht gestartet um <Zeit>: <Grund>`, and the labels stay. The chain works in its own worktree and needs neither a clean working tree nor an empty In progress column.
+**Conditions.** A candidate has the title `[Requirement]` or `[Plan]`, is in the backlog, carries no `kit:clarify` and waits for no event. Before the first chain every candidate is set to `run:running` with "Lauf angenommen um …, Vorabprüfung läuft"; then a preflight session checks reviewers and tracker. If it fails, the run status (Laufstand) shows `run:aborted` with `Kette nicht gestartet um <Zeit>: <Grund>`, and the labels stay. The chain works in its own worktree.
 
 | Stage | Session | when the chain ends here |
 |---|---|---|
@@ -146,16 +146,16 @@ node .claude/kit/night.mjs --chain             # real run
 }
 ```
 
-The minutes apply per stage, `costUsd` per chain, `costUsdB` to the implementation stage; the runner checks costs after each session, never in the middle.
+What each field limits is described under [Settings](/en/einstellungen#fine-tuning).
 
-**The report.** On every outcome the chain attaches a comment `## Nachtbericht, Kette <stempel>` to the marked card: outcome, stages, packages, all decisions of the run, the coverage, key figures. It ends with `Dieser Bericht ist Verlauf. Verbindlich fuer die naechste Kette wird eine Entscheidung erst als Satz im Fachplan.` If the tracker does not accept it, it waits as `.claude/night-bericht-<F>-<stempel>.md` and is added at the next start.
+**The report.** On every outcome the chain attaches a comment `## Nachtbericht, Kette <stempel>` to the marked card: outcome, stages, packages, decisions, coverage, key figures. It ends with `Dieser Bericht ist Verlauf. Verbindlich fuer die naechste Kette wird eine Entscheidung erst als Satz im Fachplan.` If the tracker does not accept it, it waits as `.claude/night-bericht-<F>-<stempel>.md` and is added later.
 
-**The way back after `angehalten`.** An open question in the plan stops the chain only after the review, before the cut into packages: the findings are worked in, the question still stands under `## Offene Fragen`, even if only the review wrote it there. The chain writes the question as `## Kette angehalten` on the marked card and sets `kit:clarify`. The way leads via the plan: the answer as an entry under `## Architektonische Entscheidungen`, `## Offene Fragen` back to `- Keine.`, remove `kit:clarify`, finally `kit:night` on the plan. The next chain takes it as a plan order and starts at `pakete`. If your answer changed more in the plan than the entry itself, the chain reviews it again itself beforehand; you never need a review by hand. If a new plan comes about instead, older ones get the comment `Ueberholt durch Plan #M2`.
+**The way back after `angehalten`.** An open question in the plan stops the chain only after the review, before the cut into packages. The chain writes the question as `## Kette angehalten` on the marked card and sets `kit:clarify`. The way leads via the plan: the answer as an entry under `## Architektonische Entscheidungen`, `## Offene Fragen` back to `- Keine.`, remove `kit:clarify`, finally `kit:night` on the plan. The next chain takes it as a plan order and starts at `pakete`. If your answer changed more in the plan than the entry itself, the chain reviews it again itself beforehand. If a new plan comes about instead, older ones get the comment `Ueberholt durch Plan #M2`.
 
-**Chain and implementation side by side.** A call is exactly one mode, but chain and run may run at the same time: the chain in the worktree, the run in the main copy. Under variant B the chain also builds in the main copy; both take the lock `.claude/night-umsetzung.lock` for that. The chain waits for it at most until `night.chain.implementationMin` and otherwise ends `unvollstaendig`. Only one runner ever works on a business root; it recognises others by their run status with run ID.
+**Chain and implementation side by side.** Chain and run may run at the same time: the chain in the worktree, the run in the main copy. Under variant B the chain also builds in the main copy; both take the lock `.claude/night-umsetzung.lock` for that, which the chain waits for at most `night.chain.implementationMin`. Only one runner ever works on a business root.
 
 ### How far a chain runs: the goal
-<!-- de: 9d3a777f8224 -->
+<!-- de: eac0823acb7a -->
 
 A goal label on the same card as `kit:night` sets where the chain ends this time. The stages keep their order.
 
@@ -170,44 +170,42 @@ A goal from `umsetzung` on is at the same time the GO for the packages, like `ki
 
 A card is refused with the comment `## Kette nicht gestartet: unpassende Einstellung` if it carries more than one `goal:*` or both `planreview:*`, `goal:plan` on a plan document, `planreview:*` on a plan document, or `planreview:*` when its plan already carries `Plan-Review:`.
 
-The project remains the upper limit: if `night.chain.transitions` blocks a transition, the chain ends there at the project limit. With the goal `push-vorbereitet`, the stage `vorbereitung` follows once after all chains; it runs `/push-main prepare` without pushing; details under [/push-main](/en/prozess#push-main).
+The project remains the upper limit: if `night.chain.transitions` blocks a transition, the chain ends there at the project limit. The stage `vorbereitung` runs `/push-main prepare` without pushing ([/push-main](/en/prozess#push-main)).
 
 ### A finished plan as an order
-<!-- de: b7be0d33202b -->
+<!-- de: d133993c06ee -->
 
 `kit:night` on a `[Plan]` issue in the backlog starts a plan order (Plan-Auftrag). The plan carries `review:done`, no `kit:clarify`, `## Offene Fragen` says `- Keine.`, its origin is valid, and its requirement waits for no event. Without a line `Fachliche Quelle:` it runs as its own root; if `Fachliche Quelle: Issue #N` hits a card, coverage holds the packages against it; if the line points nowhere, the plan stays where it is.
 
-The stage `plan` is dropped, the run starts at `pakete`. The stage `review` runs before it only if the review state on the plan reports that the plan has changed since its review beyond the entered answer. `kit:carry-through` only counts on the plan itself; then variant B runs.
+The stage `plan` is dropped, the run starts at `pakete`. `review` runs before it only if the plan has changed since its review beyond the entered answer. `kit:carry-through` only counts on the plan itself; then variant B runs.
 
 The business requirement gives way to the plan: if both carry the chain label, the plan runs.
 
 Of two marked plans of the same root, the younger one runs.
 
 ### Waiting for an event
-<!-- de: 934a25822692 -->
+<!-- de: 7ec323a13d09 -->
 
-Sometimes a requirement is finished but not yet due: it waits for something outside the project, say until a tariff can be chosen. You mark that with
+If a finished requirement waits for something outside the project, say a tariff that can be chosen, you mark that with
 
 ```bash
 node .claude/kit/board.mjs issue hold <N> --reason "wartet, bis Tarif X wählbar ist"
 ```
 
-The command writes the line `Waiting for event: <reason>` into the section `## Goal` and sets the label `kit:on-hold`. The line is what counts; the label is a help on the board, so you see the waiting without opening the card.
+The command writes the line `Waiting for event: <reason>` into the section `## Goal` and sets the label `kit:on-hold`. The line is what counts; the label makes the waiting visible on the board.
 
-As long as the line stands, no chain starts for the requirement, and no packages come out of a plan for it. Report and `--dry-run` list both among the skipped ones with the reason for waiting, ahead of any other reason; the note about a missing review is then left out. `kit:night` stays on the card, the check run keeps running.
-
-Waiting is not an open question: no answer is missing, an event is. `kit:clarify` and `## Open questions for the PO` stay separate from it; a requirement can wait for both at once. Once the event has happened, you lift the waiting:
+As long as the line stands, no chain starts for the requirement, and no packages come out of a plan for it. Report and `--dry-run` list it among the skipped ones with the reason for waiting. `kit:night` stays on the card. Waiting is not an open question and is separate from `kit:clarify`. Once the event has happened, you lift the waiting:
 
 ```bash
 node .claude/kit/board.mjs issue hold <N> --lift
 ```
 
-That removes line and label, nothing else. The next chain takes the requirement up again, without a new review and without a new `kit:night`. Only the human lifts it, the kit never does. Whoever makes a plan from a waiting requirement interactively with `/techplan #N` learns that at the start and can carry on anyway.
+That removes line and label. The next chain takes the requirement up again, without a new review and without a new `kit:night`. Only the human lifts it.
 
 ### Allowlist for third-party reviewers
-<!-- de: 0eeab036304e -->
+<!-- de: b8483b7b986c -->
 
-A reviewer with `kind: "command"` is started by the kit in the review and only needs the entry for `board.mjs`. The runner's preflight, however, starts the third-party tool directly; without an entry such as `Bash(codex:*)` the session hangs until the time limit.
+The runner's preflight starts a third-party tool directly; without an entry such as `Bash(codex:*)` the session hangs until the time limit.
 
 ## The run status
 <!-- de: 4138392d8aae -->
@@ -229,9 +227,9 @@ If the card carried a goal, `Ziel: <plan|pakete|umsetzung|push-vorbereitet>`, `P
 **One retry.** There is an automatic retry only for environment errors while the run is alive; the run status notes "2. Versuch". A dead run is not repeated.
 
 ### The watchdog
-<!-- de: 7b49294da49c -->
+<!-- de: 54b5010e88a6 -->
 
-A detached watchdog checks every minute. A run counts as silent only once its pulse is older than `night.status.deadlineMin` (default 10 minutes) and its process no longer exists; a run that is alive never counts as silent. Then the watchdog sets every running card to `run:aborted` with `nicht beendet, letztes Lebenszeichen <zeit>, Frist <n> min`.
+A detached watchdog checks every minute. A run counts as silent only once its pulse is older than `night.status.deadlineMin` and its process no longer exists; a run that is alive never counts as silent. Then the watchdog sets every running card to `run:aborted` with `nicht beendet, letztes Lebenszeichen <zeit>, Frist <n> min`.
 
 ### The journal
 <!-- de: e381eeca979b -->
@@ -255,44 +253,37 @@ You get the leftovers of a failed package back with `git stash apply stash@{<n>}
 | Interleaved logs: chain and check run at the same time | the line `Protokoll:` names `.claude/protokolle/<lauf>/<karte>-<stufe>.log` | open the named file |
 
 ## Running with a local model
-<!-- de: f0ded6d9d8f8 -->
+<!-- de: 6f7b4c5d2d4d -->
 
 > **Untested.** The way follows from the runner's architecture but has not been tried in practice.
 
-A stage in `night.tiers` can use `command` to start a program of its own that delivers what a session delivers: commit, card in In review, report. Or Claude Code talks to a local model through a proxy such as [LiteLLM](https://docs.litellm.ai/):
+A stage in `night.tiers` can use `command` to start a program of its own, or Claude Code talks to a local model through a proxy such as [LiteLLM](https://docs.litellm.ai/):
 
 ```bash
 ANTHROPIC_BASE_URL=http://localhost:4000 \
   node .claude/kit/night.mjs --model lokal-qwen --label kit:lokal --max 1
 ```
 
-The variable in front of the command only applies to this run, a routing label of its own separates the simple cards. Small models fail at tool calls rather than at code.
+A routing label of its own separates the simple cards.
 
 ## Effort of the process
-<!-- de: ed86783bdea6 -->
+<!-- de: 628fd161e0fa -->
 
-`node .claude/kit/effort.mjs evaluate` reads the latest result states and writes `.claude/aufwand.md` and `.claude/aufwand.json`. The finding appears at the end of the run log and in `/push-main`. It only says what stands out and is not a gate.
+`node .claude/kit/effort.mjs evaluate` reads the latest result states and writes `.claude/aufwand.md` and `.claude/aufwand.json`. The finding appears at the end of the run log and in `/push-main` and is not a gate.
 
 **The implementation target** (Zielmarke der Umsetzung) shows how many implementations exceed the target, by how much on average and at most. The average is taken over the overruns. The target comes from the run header of the state. The same block is in `.claude/aufwand.json` as `zielmarke`.
 
 **Time-limit aborts stand apart.** Their completion time is unknown, so they enter no average.
 
-**Each machine stands on its own.** Every result state names the machine its run took place on. Without an option the report evaluates the runs of the machine `effort.mjs` is currently running on; `--machine <name>` chooses another. The runs of the other machines appear with their count in a line of their own and enter no figure, not even combined. A state without a machine, that is every older one, stands as "unknown" and counts for no machine. A name without any state ends the call with exit 1 and lists the known machines.
+**Each machine stands on its own.** Without an option the report evaluates the runs of the machine `effort.mjs` runs on; `--machine <name>` chooses another. Runs of other machines and older ones without a machine enter no figure.
 
-**Median per check command.** Next to the sum, the table of checks gives per command the median of a complete execution, the number of these executions and how many of them were measured concurrently with other checks. Not complete and therefore not in the median are an execution without a measured duration, a hanging one, a flaky or repeated one (its duration is the sum of two runs) and every execution from a partial run or an adopted check state. Without a complete execution it says "not measured", never zero.
+**Median per check command.** Next to the sum, the table of checks gives per command the median of a complete execution; flaky, repeated and adopted ones do not count. Without a complete execution it says "not measured", never zero.
 
-**Tool basis per tier.** The report counts the packages that carry both session duration and tool time, and of these the ones of tier mittel. The table by task tier gives per tier the tool time per package and its share of the package time.
+**Tool basis per tier.** The table by task tier gives per tier the tool time per package and its share of the package time.
 
-Number of runs and thresholds: block `workload` (see [Settings](/en/einstellungen)).
+Number of runs and thresholds: block `workload` under [Settings](/en/einstellungen#fine-tuning).
 
 ## Consumption of interactive sessions
-<!-- de: e5b4cd25c793 -->
+<!-- de: e0127a5b7e04 -->
 
-`board.mjs session report` reads Claude Code's session log, adds up the tokens and delivers them to kanban-kit. For this the installer enters two hooks in `.claude/settings.json`:
-
-| Event | Call | Effect |
-|---|---|---|
-| `Stop` | `node .claude/kit/board.mjs session report` | ongoing, at most every five minutes |
-| `SessionEnd` | `node .claude/kit/board.mjs session report --complete` | final |
-
-Using the waypoints from `issue move` in `.claude/wegmarken.tsv`, the reporter splits the sum among the cards. With `KIT_AGENT_MODEL` set, without a project-bound token and in a `git worktree` it stays silent. It calculates amounts with `kit/preise.mjs`; if a model is missing there, it reports no amount, never a 0.
+`board.mjs session report` adds up the tokens of an interactive session and delivers them to kanban-kit; the installer enters the hooks for it ([What the installer writes](/en/einrichtung#what-the-installer-writes)). Using the waypoints from `issue move` in `.claude/wegmarken.tsv`, the reporter splits the sum among the cards. If a model is missing in `kit/preise.mjs`, it reports no amount, never a 0.
