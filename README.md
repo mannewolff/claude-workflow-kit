@@ -10,15 +10,14 @@ Voraussetzungen: macOS, Linux oder Windows über WSL2, [Claude Code](https://cla
 
 > **Unter Windows: WSL2.** Wie du es einrichtest, steht in der Anleitung [Windows über WSL2](docs/wsl2.md).
 
+Im Projektordner:
+
 ```bash
+curl -O https://docs.mwolff.org/install.mjs
 node install.mjs
 ```
 
-Oder direkt aus GitHub:
-
-```bash
-npx github:mannewolff/claude-workflow-kit
-```
+Schritt für Schritt bis zur ersten umgesetzten Karte führt [Die erste Stunde](https://docs.mwolff.org/quickstart).
 
 ## An diesem Repo mitarbeiten
 

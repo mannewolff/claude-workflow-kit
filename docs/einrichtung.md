@@ -4,25 +4,21 @@ Jeder Teil dieser Seite sagt, was du tust und was du danach siehst. Jede einzeln
 
 ## Installation
 
-**Was du tust.** Wechsle in deinen Projektordner und starte den Installer:
-
-```bash
-npx claude-workflow-kit
-```
-
-Ohne npm geht es auch so:
+**Was du tust.** Wechsle in deinen Projektordner, lade den Installer und starte ihn:
 
 ```bash
 curl -O https://docs.mwolff.org/install.mjs
 node install.mjs
 ```
 
+Was der Rechner dafür braucht, nennt der [Einstieg](/quickstart).
+
 Der Installer fragt der Reihe nach:
 
 1. **Sprache** des Kits, `de` oder `en`.
 2. **Global oder projektlokal.** Global: `~/.claude/skills/`, gilt in allen Projekten. Projektlokal: `./.claude/skills/`, der Weg für ein Team.
 3. **Code-Host**: `github`, `gitlab` oder `local`.
-4. **Issue-Tracker**: Vorgabe ist der Code-Host.
+4. **Issue-Tracker**: `github`, `gitlab` oder `local`; Vorgabe `github`.
 5. **Main-Branch** (Ziel von `/push-main`) und **Production-Branch** (Ziel von `/merge-production`).
 6. **Review-Umfang**: `diff` zeigt dem Reviewer nur die geänderten Zeilen, `full` alle Dateien.
 7. **Review-Modell oder Review-Kommando**, genau eines von beiden. Ein Modell läuft als Subagent; ein Kommando startet ein fremdes Werkzeug, das den Prompt über stdin bekommt.

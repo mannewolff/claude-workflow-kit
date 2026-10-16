@@ -20,14 +20,9 @@ Where to find what:
 - [Settings](/en/einstellungen): every setting with effect and default.
 
 ## Prerequisites
-<!-- de: 63de301597ca -->
+<!-- de: 90e7ccb7d77c -->
 
-- **Operating system:** macOS, Linux or Windows via WSL2. On Windows the kit works entirely in WSL2; the guide [Windows via WSL2](/en/wsl2) describes the setup.
-- **Node.js 18 or later** for installer and commands.
-- **git**: every skill works in a git repository.
-- **Claude Code** in a current version with skills.
-- **Your tracker's CLI:** `gh` for GitHub, `glab` for GitLab, each logged in once. With the local tracker you need none.
-- **A board** with the columns (Spalten) Backlog, Ready, In progress, In review and Done, if you use GitHub or GitLab. GitLab represents the columns through labels.
+The kit runs on macOS, Linux or Windows via WSL2; the guide [Windows via WSL2](/en/wsl2) describes the setup on Windows. The tools and accounts you need are listed in the [getting started guide](/en/quickstart); board columns (Spalten) and tracker CLI for GitHub or GitLab are covered under [Issue tracker and code host](/en/einrichtung#issue-tracker-and-code-host).
 
 A vault for notes across sessions is optional; `/session-start` and `/document` also run without it. The file for it is described under [kontext.config.json](/en/einstellungen#kontext-config-json).
 

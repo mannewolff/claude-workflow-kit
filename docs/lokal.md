@@ -11,7 +11,7 @@ Im lokalen Modus brauchst du nur git und Node.js: kein Remote-Repo, kein Board, 
 
 ## Installation
 
-Im Installer wählst du für Code-Host und Issue-Tracker `local`. Die Config enthält danach:
+Den Aufruf des Installers zeigt der [Einstieg](/quickstart); dort wählst du für Code-Host und Issue-Tracker `local`. Die Config enthält danach:
 
 ```json
 {

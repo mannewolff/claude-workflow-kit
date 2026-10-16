@@ -19,12 +19,7 @@ Wo was steht:
 
 ## Voraussetzungen
 
-- **Betriebssystem:** macOS, Linux oder Windows über WSL2. Unter Windows arbeitet das Kit vollständig in WSL2; die Einrichtung beschreibt die Anleitung [Windows über WSL2](/wsl2).
-- **Node.js 18 oder neuer** für Installer und Kommandos.
-- **git**: Jeder Skill arbeitet in einem git-Repository.
-- **Claude Code** in einer aktuellen Version mit Skills.
-- **Die CLI deines Trackers:** `gh` für GitHub, `glab` für GitLab, jeweils einmal angemeldet. Mit dem lokalen Tracker brauchst du keine.
-- **Ein Board** mit den Spalten Backlog, Ready, In progress, In review und Done, wenn du GitHub oder GitLab nutzt. GitLab bildet die Spalten über Labels ab.
+Das Kit läuft unter macOS, Linux oder Windows über WSL2; die Einrichtung unter Windows beschreibt die Anleitung [Windows über WSL2](/wsl2). Welche Werkzeuge und Zugänge du brauchst, nennt der [Einstieg](/quickstart); Board-Spalten und Tracker-CLI für GitHub oder GitLab stehen unter [Issue-Tracker und Code-Host](/einrichtung#issue-tracker-und-code-host).
 
 Optional ist ein Vault für Notizen über Sitzungen hinweg; `/session-start` und `/document` laufen auch ohne ihn. Die Datei dazu beschreibt [kontext.config.json](/einstellungen#kontext-config-json).
 

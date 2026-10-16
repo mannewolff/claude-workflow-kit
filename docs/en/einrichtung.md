@@ -4,27 +4,23 @@
 Each part of this page says what you do and what you see afterwards. Every single setting (Einstellung) is listed with its effect and default under [Settings](/en/einstellungen).
 
 ## Installation
-<!-- de: 9bc2fca777cc -->
+<!-- de: 477c2810c77f -->
 
-**What you do.** Change into your project folder and start the installer:
-
-```bash
-npx claude-workflow-kit
-```
-
-Without npm it works like this:
+**What you do.** Change into your project folder, download the installer and start it:
 
 ```bash
 curl -O https://docs.mwolff.org/install.mjs
 node install.mjs
 ```
 
+What your computer needs for this is listed in the [getting started guide](/en/quickstart).
+
 The installer asks in this order:
 
 1. **Language** of the kit, `de` or `en`.
 2. **Global or project-local.** Global: `~/.claude/skills/`, applies in all projects. Project-local: `./.claude/skills/`, the way for a team.
 3. **Code host**: `github`, `gitlab` or `local`.
-4. **Issue tracker**: the default is the code host.
+4. **Issue tracker**: `github`, `gitlab` or `local`; default `github`.
 5. **Main branch** (target of `/push-main`) and **production branch** (target of `/merge-production`).
 6. **Review scope**: `diff` shows the reviewer only the changed lines, `full` all files.
 7. **Review model or review command**, exactly one of the two. A model runs as a subagent; a command starts a foreign tool that receives the prompt via stdin.
