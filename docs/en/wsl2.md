@@ -11,7 +11,7 @@ On Windows, the kit runs in WSL2, the Linux that Windows ships with, and works t
 - **Administrator rights** for the setup. Afterwards you work as a normal user.
 
 ## Steps
-<!-- de: 7e42cea72554 -->
+<!-- de: 7a7a95b51e10 -->
 
 1. **Enable WSL2.** In PowerShell as administrator (right-click on Start → "Terminal (Admin)"):
 
@@ -59,7 +59,7 @@ On Windows, the kit runs in WSL2, the Linux that Windows ships with, and works t
    node install.mjs
    ```
 
-   The installer's questions are explained in the [5-minute guide](/en/quickstart#installing).
+   The answers for the installer are listed in [The first hour](/en/quickstart#_5-install-the-kit).
 
    Done when `ls .claude/kit` shows `board.mjs` and `.claude/workflow.config.json` exists.
 

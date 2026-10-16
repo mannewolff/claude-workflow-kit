@@ -15,7 +15,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DOCS = join(repoRoot, "docs");
 
 /** Das Wortbudget je Seite (A2), nur als Hinweis. */
-const BUDGET = { dokumentation: 1800, einstellungen: 3600, quickstart: 500, lokal: 400, wsl2: 650, pruefbereiche: 600, glossar: 400, index: 100, prozess: 5000, einrichtung: 3800, runner: 3300 };
+const BUDGET = { dokumentation: 1800, einstellungen: 3600, quickstart: 1300, lokal: 400, wsl2: 650, pruefbereiche: 600, glossar: 400, index: 100, prozess: 5000, einrichtung: 3800, runner: 3300 };
 
 /** Hoechstens ein Drittel von 62.029 Woertern (Kriterium 5). */
 const WORTSUMME = 20700;

@@ -6,7 +6,7 @@ hero:
   tagline: Seventeen skills for Claude Code, with three deliberate human stop points (Stop-Punkte).
   actions:
     - theme: brand
-      text: 5-minute guide
+      text: The first hour
       link: /en/quickstart
     - theme: alt
       text: Documentation
@@ -21,4 +21,4 @@ features:
   - title: Three stop points
     details: The GO, the push and the merge stay with the human.
 ---
-<!-- de: a33db6cb0349 -->
+<!-- de: 5e1939055d2b -->

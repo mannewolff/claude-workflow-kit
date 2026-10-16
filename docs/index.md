@@ -6,7 +6,7 @@ hero:
   tagline: Siebzehn Skills für Claude Code, mit drei bewussten menschlichen Stop-Punkten.
   actions:
     - theme: brand
-      text: 5-Minuten-Guide
+      text: Die erste Stunde
       link: /quickstart
     - theme: alt
       text: Dokumentation

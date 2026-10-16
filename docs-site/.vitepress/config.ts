@@ -18,7 +18,7 @@ const DOWNLOAD = {
 // englischen Standardtexte von VitePress. Bewusst kein Text für lastUpdated.
 const themeDe: DefaultTheme.Config = {
   nav: [
-    { text: "5-Minuten-Guide", link: "/quickstart" },
+    { text: "Die erste Stunde", link: "/quickstart" },
     {
       text: "Dokumentation",
       items: [
@@ -38,7 +38,7 @@ const themeDe: DefaultTheme.Config = {
     {
       text: "Einstieg",
       items: [
-        { text: "5-Minuten-Guide", link: "/quickstart" },
+        { text: "Die erste Stunde", link: "/quickstart" },
         { text: "Windows über WSL2", link: "/wsl2" },
         { text: "Lokal arbeiten (kein Remote, kein Board)", link: "/lokal" },
       ],
@@ -113,7 +113,7 @@ const themeDe: DefaultTheme.Config = {
 
 const themeEn: DefaultTheme.Config = {
   nav: [
-    { text: "5-minute guide", link: "/en/quickstart" },
+    { text: "The first hour", link: "/en/quickstart" },
     {
       text: "Documentation",
       items: [
@@ -133,7 +133,7 @@ const themeEn: DefaultTheme.Config = {
     {
       text: "Getting started",
       items: [
-        { text: "5-minute guide", link: "/en/quickstart" },
+        { text: "The first hour", link: "/en/quickstart" },
         { text: "Windows via WSL2", link: "/en/wsl2" },
         { text: "Working locally (no remote, no board)", link: "/en/lokal" },
       ],

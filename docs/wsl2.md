@@ -56,7 +56,7 @@ Unter Windows läuft das Kit in WSL2, dem Linux, das Windows mitbringt, und arbe
    node install.mjs
    ```
 
-   Die Fragen des Installers erklärt der [5-Minuten-Guide](/quickstart#installieren).
+   Die Antworten für den Installer nennt [Die erste Stunde](/quickstart#_5-kit-installieren).
 
    Gelungen, wenn `ls .claude/kit` `board.mjs` zeigt und `.claude/workflow.config.json` existiert.
 

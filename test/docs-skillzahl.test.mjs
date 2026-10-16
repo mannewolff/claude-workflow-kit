@@ -10,14 +10,13 @@
 // waere schlimmer als gar keine Aenderung, weil dann beide Zahlen im selben Dokument
 // stehen. Zweitens, dass alle drei Dateien dieselbe neue Zahl tragen.
 //
-// Drittens — und das ist der Test, der ueber dieses Issue hinaus traegt — dass die
-// Tabelle der Kurzanleitung so viele Zeilen hat, wie es Skills gibt. Ein Stringliteral
-// allein verfaellt still: Kommt ein Skill dazu, bleibt "sechzehn Skills" grammatisch
-// heil und wird trotzdem falsch. Der Abgleich gegen `skills/` bricht an dieser Stelle.
+// Drittens, dass der Einstieg fuer die Liste der Skills auf `/prozess#die-skills` verweist,
+// statt eine eigene Tabelle zu fuehren (Issue #1757, Plan #1753, E12): Die Liste steht an
+// einer Stelle, und `test/docs-stand.test.mjs` prueft dort je Skill eine Ueberschrift.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -72,24 +71,11 @@ for (const { zaehlwort, alteZaehlung, dateien } of SPRACHEN) {
   }
 }
 
-test("die Skill-Tabelle der Kurzanleitung fuehrt jeden Skill genau einmal", () => {
-  const vorhanden = readdirSync(join(repoRoot, "skills"), { withFileTypes: true })
-    .filter((e) => e.isDirectory())
-    .map((e) => e.name)
-    .sort();
-
-  const gelistet = lies("docs", "quickstart.md")
-    .split("\n")
-    .map((zeile) => /^\|\s*`\/([a-z-]+)`/.exec(zeile))
-    .filter(Boolean)
-    .map((treffer) => treffer[1])
-    .sort();
-
-  assert.deepEqual(
-    gelistet,
-    vorhanden,
-    "docs/quickstart.md: die Skill-Tabelle deckt sich nicht mit den Ordnern in skills/",
-  );
+test("der Einstieg verweist fuer die Skills auf prozess#die-skills und fuehrt keine eigene Tabelle", () => {
+  const text = lies("docs", "quickstart.md");
+  assert.match(text, /\]\(\/prozess#die-skills\)/, "docs/quickstart.md: der Verweis auf /prozess#die-skills fehlt");
+  const zeilen = text.split("\n").filter((zeile) => /^\|\s*`\/[a-z-]+`/.test(zeile));
+  assert.deepEqual(zeilen, [], "docs/quickstart.md: eine Skill-Tabelle steht noch im Einstieg");
 });
 
 test("die Kurzanleitung verweist auf die Auswahlregel statt sie zu wiederholen", () => {
