@@ -43,6 +43,10 @@
     "vorgabe": {
       "de": "die Ablagen des Kits für TypeScript und Java",
       "en": "the kit's locations for TypeScript and Java"
+    },
+    "wann": {
+      "de": "Sagt dem Kit, wo die Tests eines Bausteins liegen, damit ein Plan Hinweise auf betroffene Tests bekommt; setzen, wenn die Ablage nicht dem TypeScript- oder Java-Muster folgt.",
+      "en": "Tells the kit where a component's tests live, so that a plan gets hints about affected tests; set it when the layout does not follow the TypeScript or Java pattern."
     }
   },
   "columns.backlog": {
@@ -61,6 +65,10 @@
     "vorgabe": {
       "de": "nicht gesetzt, es prüft `reviewModel`",
       "en": "not set, `reviewModel` reviews"
+    },
+    "wann": {
+      "de": "Lässt eine fremde CLI statt Claude den Code prüfen; setzen, wenn ein Modell eines anderen Anbieters prüfen soll.",
+      "en": "Lets a third-party CLI review the code instead of Claude; set it when a model from another provider is to review."
     }
   },
   "reviewLesegrenze": {
@@ -83,6 +91,10 @@
     "bedingung": {
       "de": "nur, wenn der ganze Block fehlt; fehlt in einem vorhandenen Block eine Stufe oder ein Feld, bricht die Prüfung der Config ab",
       "en": "only if the whole block is missing; if a tier or a field is missing in a block that is present, the config check aborts"
+    },
+    "wann": {
+      "de": "Bestimmt, wie viele Reviewer mit welchen Rollen je Stufe prüfen; setzen, wenn eine Stufe gründlicher oder sparsamer geprüft werden soll.",
+      "en": "Decides how many reviewers with which roles review at each stage; set it when a stage is to be reviewed more thoroughly or more sparingly."
     }
   },
   "reviewStufen.fachlich.reviewer": {
@@ -149,6 +161,10 @@
     "vorgabe": {
       "de": "die Werte der Felder darunter",
       "en": "the values of the fields below"
+    },
+    "gruppe": {
+      "de": "Wie eine Karte ihren Laufstand am Board zeigt: Labels, Frist und Pause.",
+      "en": "How a card shows its run status on the board: labels, deadline and pause."
     }
   },
   "night.stand.labels": {
@@ -173,6 +189,10 @@
     "vorgabe": {
       "de": "keine Stufe, jedes Paket läuft mit dem Modell des Laufs",
       "en": "no tier, every package runs with the model of the run"
+    },
+    "gruppe": {
+      "de": "Welches Modell der Nachtlauf je Schwierigkeitsstufe eines Pakets startet.",
+      "en": "Which model the night run starts for each difficulty tier of a package."
     }
   },
   "night.stufen.schwer.effort": {
@@ -203,12 +223,20 @@
     "vorgabe": {
       "de": "die Werte der Felder darunter",
       "en": "the values of the fields below"
+    },
+    "gruppe": {
+      "de": "Der tägliche Prüflauf: sein Label, seine Zeit und seine Kosten.",
+      "en": "The daily check run: its label, its time and its cost."
     }
   },
   "aufwand": {
     "vorgabe": {
       "de": "die Werte der Felder darunter",
       "en": "the values of the fields below"
+    },
+    "gruppe": {
+      "de": "Die Schwellen, ab denen die Aufwandsauswertung einen Befund meldet.",
+      "en": "The thresholds from which the workload evaluation reports a finding."
     }
   },
   "aufwand.schwellen": {
@@ -221,12 +249,20 @@
     "vorgabe": {
       "de": "die Werte der Felder darunter",
       "en": "the values of the fields below"
+    },
+    "gruppe": {
+      "de": "Zeitfenster und Schwellen, nach denen die Wirksamkeitsauswertung eine Prüfung als wirkungslos meldet.",
+      "en": "Time window and thresholds by which the effectiveness evaluation reports a check as ineffective."
     }
   },
   "befunde": {
     "vorgabe": {
       "de": "die Werte der Felder darunter",
       "en": "the values of the fields below"
+    },
+    "gruppe": {
+      "de": "Ab wie vielen wiederkehrenden Funden der Modell-Prüfungen ein Vorschlag entsteht.",
+      "en": "From how many recurring findings of the model reviews a proposal arises."
     }
   },
   "szenarienAb": {
@@ -239,6 +275,160 @@
     "vorgabe": {
       "de": "`[]`, kein Partnerrepo",
       "en": "`[]`, no partner repo"
+    },
+    "wann": {
+      "de": "Verlangt von jedem Plan einen Abschnitt Verträge zu den Partnerrepos; eintragen, sobald ein anderes Repo einen Namen, ein Format oder ein Kennzeichen dieses Projekts liest oder schreibt.",
+      "en": "Requires every plan to have a contracts section on the partner repos; add an entry as soon as another repo reads or writes a name, a format or a marker of this project."
+    }
+  },
+  "language": {
+    "wann": {
+      "de": "Stellt Texte, Board-Namen und Kommentare des Kits auf Englisch um; `en` setzen, wenn das Team englisch arbeitet.",
+      "en": "Switches the kit's texts, board names and comments to English; set `en` when the team works in English."
+    }
+  },
+  "codeHost": {
+    "wann": {
+      "de": "Legt fest, wohin gepusht wird und wo Pull Requests entstehen; beim Einrichten setzen, wenn der Code nicht auf GitHub liegt.",
+      "en": "Decides where pushes go and where pull requests are opened; set it at setup when the code is not on GitHub."
+    }
+  },
+  "issueTracker": {
+    "wann": {
+      "de": "Legt fest, wo das Board liegt; beim Einrichten setzen, wenn die Issues nicht auf GitHub liegen, etwa `local` für Dateien im Repo.",
+      "en": "Decides where the board lives; set it at setup when the issues are not on GitHub, for example `local` for files in the repo."
+    }
+  },
+  "buildChecks": {
+    "wann": {
+      "de": "Bestimmt, was vor jedem Commit und vor `push main` geprüft wird; beim Einrichten die Build- und Testkommandos des Projekts eintragen.",
+      "en": "Decides what is checked before each commit and before `push main`; enter the project's build and test commands at setup."
+    }
+  },
+  "mainBranch": {
+    "wann": {
+      "de": "Der Zweig für lokale Commits und `push main`; nur setzen, wenn er nicht `main` heißt.",
+      "en": "The branch for local commits and `push main`; set it only when it is not called `main`."
+    }
+  },
+  "productionBranch": {
+    "wann": {
+      "de": "Der Zweig, in den `merge production` den Pull Request stellt; nur setzen, wenn er nicht `production` heißt.",
+      "en": "The branch `merge production` opens the pull request against; set it only when it is not called `production`."
+    }
+  },
+  "local": {
+    "wann": {
+      "de": "Der Ordner, in dem der lokale Tracker seine Issues ablegt; nur mit `issueTracker` `local` und einem anderen Ordner als `issues` setzen.",
+      "en": "The folder where the local tracker keeps its issues; set it only with `issueTracker` `local` and a folder other than `issues`."
+    }
+  },
+  "github": {
+    "wann": {
+      "de": "Das GitHub-Projekt, dessen Spalten das Board sind; beim Einrichten mit einem Board auf GitHub nötig, der Installer trägt es ein.",
+      "en": "The GitHub project whose columns are the board; needed at setup with a board on GitHub, the installer enters it."
+    }
+  },
+  "toolbox": {
+    "wann": {
+      "de": "Der Zugang zum Toolbox-Tracker des Autors; nur mit `issueTracker` `toolbox` setzen.",
+      "en": "Access to the author's Toolbox tracker; set it only with `issueTracker` `toolbox`."
+    }
+  },
+  "issueReview": {
+    "wann": {
+      "de": "Legt fest, welche Modelle Fachplan, Plan und Pakete prüfen; beim Einrichten setzen, denn ohne Reviewer hält die Nacht-Kette vor dem Start an.",
+      "en": "Decides which models review requirement, plan and packages; set it at setup, because without reviewers the night chain stops before it starts."
+    }
+  },
+  "checkAreas": {
+    "wann": {
+      "de": "Ordnet Pfade benannten Bereichen zu, damit eine Prüfung nur läuft, wenn ihr Bereich berührt ist; setzen, sobald der volle Prüflauf zu lange dauert.",
+      "en": "Maps paths to named areas so that a check runs only when its area is touched; set it as soon as the full check run takes too long."
+    }
+  },
+  "ohnePruefung": {
+    "wann": {
+      "de": "Nimmt Dateien, die keine Prüfung liest, aus dem vollen Prüflauf heraus; setzen, wenn etwa eine reine Textänderung alle Prüfungen auslöst.",
+      "en": "Takes files that no check reads out of the full check run; set it when, for example, a plain text change triggers every check."
+    }
+  },
+  "gekoppelteBereiche": {
+    "wann": {
+      "de": "Vermerkt mit Grund, dass ein Bereich wegen einer gemessenen Kopplung fast alle Prüfungen auslöst; setzen, wenn die Auswertung einen solchen Bereich meldet und die Kopplung gewollt ist.",
+      "en": "Records with a reason that an area triggers almost every check because of a measured coupling; set it when the evaluation reports such an area and the coupling is intended."
+    }
+  },
+  "mutationCommand": {
+    "wann": {
+      "de": "Lässt vor jedem `push main` Mutationstests laufen, die nur berichten; setzen, wenn das Projekt ein Werkzeug wie PIT oder Stryker hat.",
+      "en": "Runs mutation tests before each `push main` that only report; set it when the project has a tool such as PIT or Stryker."
+    }
+  },
+  "guetekommandos": {
+    "wann": {
+      "de": "Hält weitere Gütemessungen aus den Akzeptanzkriterien der Pakete heraus; setzen, wenn das Projekt eine teure Messung hat, die keine Prüfung ist.",
+      "en": "Keeps further quality measurements out of the packages' acceptance criteria; set it when the project has an expensive measurement that is not a check."
+    }
+  },
+  "formatFixCommand": {
+    "wann": {
+      "de": "Behebt Formatverstöße selbst und prüft einmal neu, statt den Lauf rot enden zu lassen; setzen, wenn das Projekt einen Formatierer hat.",
+      "en": "Fixes formatting violations itself and checks once more instead of ending the run red; set it when the project has a formatter."
+    }
+  },
+  "installCommand": {
+    "wann": {
+      "de": "Stellt in einem frischen Worktree die Abhängigkeiten her; setzen, wenn das Projekt Worktrees nutzt und Pakete installieren muss, etwa mit `npm ci`.",
+      "en": "Installs the dependencies in a fresh worktree; set it when the project uses worktrees and has to install packages, for example with `npm ci`."
+    }
+  },
+  "pushPruefung": {
+    "wann": {
+      "de": "Verlegt den vollen Prüflauf vor `push main` in den Build-Dienst; setzen, wenn er lokal zu lange dauert oder die CI ohnehin dasselbe prüft.",
+      "en": "Moves the full check run before `push main` to the build service; set it when it takes too long locally or the CI checks the same anyway."
+    }
+  },
+  "reviewScope": {
+    "wann": {
+      "de": "Bestimmt, ob das Code-Review nur den Diff seit dem letzten Push oder den ganzen Quelltext liest; `full` setzen für ein Review des ganzen Projekts.",
+      "en": "Decides whether the code review reads only the diff since the last push or the whole source; set `full` for a review of the whole project."
+    }
+  },
+  "reviewModel": {
+    "wann": {
+      "de": "Das Claude-Modell, das den Code prüft; setzen, wenn ein anderes Modell als die Vorgabe prüfen soll.",
+      "en": "The Claude model that reviews the code; set it when a model other than the default is to review."
+    }
+  },
+  "vorgeschichte": {
+    "wann": {
+      "de": "Lässt Fachplan und Plan frühere Fachpläne zum selben Gegenstand nennen; nur mit `false` ausschalten, wenn die Vorgeschichte des Boards nicht zählt.",
+      "en": "Lets requirement and plan name earlier requirements on the same subject; switch it off with `false` only when the board's history does not matter."
+    }
+  },
+  "triggers": {
+    "gruppe": {
+      "de": "Die Phrasen, mit denen der Mensch an den drei Stop-Punkten freigibt.",
+      "en": "The phrases the human uses to release the three stop points."
+    }
+  },
+  "columns": {
+    "gruppe": {
+      "de": "Die Namen der Spalten und Labels, wenn das Board sie anders nennt als das Kit.",
+      "en": "The names of the columns and labels, when the board calls them differently from the kit."
+    }
+  },
+  "night": {
+    "gruppe": {
+      "de": "Der Nachtbetrieb: welche Modelle laufen dürfen, wie lange eine Umsetzung dauern soll und wann ein Lauf als festgefahren gilt.",
+      "en": "Night mode: which models may run, how long an implementation should take and when a run counts as stuck."
+    }
+  },
+  "night.kette": {
+    "gruppe": {
+      "de": "Die Budgets der Nacht-Kette: Zeit, Kosten und Korrekturrunden je Schritt, bevor die Kette abbricht.",
+      "en": "The budgets of the night chain: time, cost and correction rounds per step before the chain stops."
     }
   }
 }

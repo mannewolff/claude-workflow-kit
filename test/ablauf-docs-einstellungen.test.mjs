@@ -24,6 +24,16 @@ function lauf(args, root) {
   return spawnSync(process.execPath, [TOOL, ...args], { encoding: "utf-8", env: { ...process.env, ...(root ? { KIT_ROOT: root } : {}) } });
 }
 
+/** Nur die Sätze `wann` und `gruppe` der Repo-Tabelle, ohne die die Tabelle nie gilt (Issue #1733). */
+function nurPflichtSaetze() {
+  const tabelle = JSON.parse(readFileSync(VORGABEN, "utf-8"));
+  const aus = {};
+  for (const [pfad, { wann, gruppe }] of Object.entries(tabelle)) {
+    if (wann || gruppe) aus[pfad] = { ...(wann && { wann }), ...(gruppe && { gruppe }) };
+  }
+  return aus;
+}
+
 function mitKopie(fn) {
   const dir = mkdtempSync(join(tmpdir(), "config-referenz-"));
   try {
@@ -195,6 +205,7 @@ test("Satzschnitt: ein Punkt ohne folgenden Leerraum beendet den Satz nicht, ohn
 test("Vorgabetabelle: default vor Tabelle, Tabelle vor 'Keine Vorgabe', Ersatzsatz statt erstem Satz", () => {
   mitKopie((dir) => {
     writeFileSync(join(dir, "tools", "config-referenz.vorgaben.json"), JSON.stringify({
+      ...nurPflichtSaetze(),
       "night.stufenRegel": { vorgabe: { de: "die Regel des Kits", en: "the kit's rule" } },
       provider: { satz: { de: "Ersatz für den ersten Satz.", en: "Replacement." } },
     }));

@@ -4,7 +4,9 @@
 // und die Vorgaben von reviewStages sagen, dass sie nur gelten, wenn der ganze Block fehlt
 // (Issue #1669, Code-Review zu #1653). Gleich gebaute Geschwister, deren Zeilen bis auf das
 // unterscheidende Pfadglied wörtlich gleich sind, stehen in einer Zeile mit `{a,b,c}` im Pfad
-// (Issue #1732).
+// (Issue #1732). Jedes Wurzelfeld der Teile „Beim Einrichten nötig“ und „Lohnt sich“ trägt in
+// der Vorgabetabelle einen `wann`-Satz, jede Gruppe der Feinabstimmung einen `gruppe`-Satz;
+// fehlt einer, ist das ein Fehler der Tabelle (Issue #1733).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -125,4 +127,49 @@ test("weicht nur die englische Fassung ab, bleiben die Zeilen in beiden Fassunge
   assert.ok(zeile(de, "night.tiers.hard.model").startsWith("- `night.tiers.hard.model` — Modell-ID"), zeile(de, "night.tiers.hard.model"));
   assert.ok(zeile(en, "night.tiers.hard.model").startsWith("- `night.tiers.hard.model` — Own model"));
   for (const text of [de, en]) assert.ok(zeile(text, "night.tiers.medium.model").startsWith("- `night.tiers.{medium,easy}.model` — "));
+});
+
+test("die Vorgabetabelle des Repos ist ohne Fehler", () => {
+  const { res } = erzeugt();
+  assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+  assert.doesNotMatch(res.stderr, /passt nicht zum Schema/);
+});
+
+test("ein fehlendes wann eines Wurzelfelds der ersten beiden Teile ist ein Fehler", () => {
+  const { res } = erzeugt((t) => {
+    const { wann, ...rest } = t.vertragsRepos;
+    return { ...t, vertragsRepos: rest };
+  });
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /vertragsRepos \(contractRepos\): wann fehlt/);
+});
+
+test("eine fehlende gruppe einer Gruppe der Feinabstimmung ist ein Fehler", () => {
+  const { res } = erzeugt((t) => {
+    const { gruppe, ...rest } = t["night.kette"];
+    return { ...t, "night.kette": rest };
+  });
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /night\.kette \(night\.chain\): gruppe fehlt/);
+});
+
+test("wann außerhalb der ersten beiden Teile ist ein Fehler", () => {
+  const wann = { de: "Setzt man nie.", en: "Never set." };
+  const { res } = erzeugt((t) => ({ ...t, befunde: { ...t.befunde, wann }, "vertragsRepos[].name": { wann } }));
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /befunde \(findings\): wann steht nur an einem Wurzelfeld der Teile/);
+  assert.match(res.stderr, /vertragsRepos\[\]\.name \(contractRepos\[\]\.name\): wann steht nur an einem Wurzelfeld der Teile/);
+});
+
+test("gruppe außerhalb der Gruppen der Feinabstimmung ist ein Fehler", () => {
+  const gruppe = { de: "Keine Gruppe.", en: "No group." };
+  const { res } = erzeugt((t) => ({ ...t, "night.modell": { ...t["night.modell"], gruppe } }));
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /night\.modell \(night\.model\): gruppe steht nur an einer Gruppe der Feinabstimmung/);
+});
+
+test("ein wann ohne englische Fassung ist ein Fehler der Tabelle", () => {
+  const { res } = erzeugt((t) => ({ ...t, vertragsRepos: { ...t.vertragsRepos, wann: { de: "nur so" } } }));
+  assert.equal(res.status, 1);
+  assert.match(res.stderr, /vertragsRepos: wann braucht de und en/);
 });

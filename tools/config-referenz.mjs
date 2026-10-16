@@ -30,6 +30,7 @@ import { createHash } from "node:crypto";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SCHLUESSEL } from "../kit/board/config-namen.mjs";
+import { teilVon } from "../kit/board/config-teile.mjs";
 
 // KIT_ROOT ist ein Test-Hook wie in tools/copy-downloads-for-docs.mjs (Issue #186).
 const root = process.env.KIT_ROOT
@@ -278,23 +279,58 @@ function referenz(liste, sprache, texte, tabelle, andere = null) {
   return teile.join("\n");
 }
 
-/** Die Fehler der Vorgabetabelle: unbekannte Pfade, Vorgabe neben `default`, fehlende Sprache. */
-function tabellenFehler(tabelle, liste) {
-  const nachPfad = new Map(liste.map((e) => [e.pfad, e]));
+/**
+ * Die Pfade, die einen Satz der Tabelle brauchen (Issue #1733, Plan #1710 A8): `wann` je Wurzelfeld
+ * der Teile „Beim Einrichten nötig“ und „Lohnt sich“, `gruppe` je Gruppe der Feinabstimmung — ein
+ * Wurzelfeld mit Unterfeldern, bei `night` dazu jedes Objekt der zweiten Ebene.
+ */
+function pflichtSaetze(liste) {
+  const wann = new Set();
+  const gruppe = new Set();
+  for (const e of liste) {
+    const teil = teilVon(e.pfad);
+    if (e.wurzel && (teil === "einrichten" || teil === "lohnt")) wann.add(e.pfad);
+    if (teil !== "fein") continue;
+    const unterfeld = liste.some((u) => u.pfad.startsWith(`${e.pfad}.`) || u.pfad.startsWith(`${e.pfad}[]`));
+    if (e.wurzel && unterfeld) gruppe.add(e.pfad);
+    if (/^night\.[^.[]+$/.test(e.pfad) && e.knoten?.properties) gruppe.add(e.pfad);
+  }
+  return { wann, gruppe };
+}
+
+/** Ein Tabellenpfad mit seinem englischen Namen, wenn der abweicht. */
+function benannt(pfad) {
+  const englisch = englischerPfad(pfad);
+  return englisch === pfad ? pfad : `${pfad} (${englisch})`;
+}
+
+/** Die Fehler eines Tabelleneintrags zu einer Einstellung des Schemas. */
+function eintragFehler(pfad, eintrag, e, pflicht) {
   const fehlerListe = [];
-  for (const [pfad, eintrag] of Object.entries(tabelle)) {
-    const e = nachPfad.get(pfad);
-    if (!e) {
-      fehlerListe.push(`${pfad}: keine Einstellung des Schemas`);
-      continue;
-    }
-    if (eintrag.vorgabe && e.knoten && "default" in e.knoten) fehlerListe.push(`${pfad}: trägt im Schema schon default, die Vorgabe der Tabelle griffe nie`);
-    for (const art of ["vorgabe", "satz", "bedingung"]) {
-      if (eintrag[art] && (typeof eintrag[art].de !== "string" || typeof eintrag[art].en !== "string")) {
-        fehlerListe.push(`${pfad}: ${art} braucht de und en`);
-      }
+  if (eintrag.vorgabe && e.knoten && "default" in e.knoten) fehlerListe.push(`${pfad}: trägt im Schema schon default, die Vorgabe der Tabelle griffe nie`);
+  for (const art of ["vorgabe", "satz", "bedingung", "wann", "gruppe"]) {
+    if (eintrag[art] && (typeof eintrag[art].de !== "string" || typeof eintrag[art].en !== "string")) {
+      fehlerListe.push(`${pfad}: ${art} braucht de und en`);
     }
   }
+  if (eintrag.wann && !pflicht.wann.has(pfad)) fehlerListe.push(`${benannt(pfad)}: wann steht nur an einem Wurzelfeld der Teile „Beim Einrichten nötig“ und „Lohnt sich“`);
+  if (eintrag.gruppe && !pflicht.gruppe.has(pfad)) fehlerListe.push(`${benannt(pfad)}: gruppe steht nur an einer Gruppe der Feinabstimmung`);
+  return fehlerListe;
+}
+
+/**
+ * Die Fehler der Vorgabetabelle: unbekannte Pfade, Vorgabe neben `default`, fehlende Sprache,
+ * fehlende und fehl platzierte `wann`- und `gruppe`-Sätze.
+ */
+function tabellenFehler(tabelle, liste) {
+  const nachPfad = new Map(liste.map((e) => [e.pfad, e]));
+  const pflicht = pflichtSaetze(liste);
+  const fehlerListe = Object.entries(tabelle).flatMap(([pfad, eintrag]) => {
+    const e = nachPfad.get(pfad);
+    return e ? eintragFehler(pfad, eintrag, e, pflicht) : [`${pfad}: keine Einstellung des Schemas`];
+  });
+  for (const pfad of pflicht.wann) if (!tabelle[pfad]?.wann) fehlerListe.push(`${benannt(pfad)}: wann fehlt — ein Satz, was sich ändert und wann man es setzt`);
+  for (const pfad of pflicht.gruppe) if (!tabelle[pfad]?.gruppe) fehlerListe.push(`${benannt(pfad)}: gruppe fehlt — ein Satz, wofür die Gruppe da ist`);
   return fehlerListe;
 }
 
