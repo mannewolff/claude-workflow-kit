@@ -85,7 +85,7 @@ test("[1491] englisch: die Protokollzeile zu den Budgets aus den Defaults", asyn
     const felder = Object.keys(KETTE_BUDGET_DEFAULTS);
     assert.equal(budgetDefaultsZeile({ planMin: 30 }, ["planMin"]), "Budget of the chain from the defaults: planMin=30");
     assert.match(budgetDefaultsZeile(KETTE_BUDGET_DEFAULTS, felder),
-      /^Budget of the chain from the defaults: .+ — night\.kette in \.claude\/workflow\.config\.json is missing or sets no field\.$/);
+      /^Budget of the chain from the defaults: .+ — the kit's defaults apply to night\.kette\.$/);
   });
 });
 

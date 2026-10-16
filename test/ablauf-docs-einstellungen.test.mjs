@@ -25,6 +25,11 @@ function lauf(args, root) {
 }
 
 /** Nur die Sätze `wann` und `gruppe` der Repo-Tabelle, ohne die die Tabelle nie gilt (Issue #1733). */
+/** Der wann-Satz eines Wurzelfelds aus der Repo-Tabelle, mit führendem Leerzeichen, wie er die Zeile beschließt (Issue #1734). */
+function wann(pfad, sprache = "de") {
+  return " " + JSON.parse(readFileSync(VORGABEN, "utf-8"))[pfad].wann[sprache];
+}
+
 function nurPflichtSaetze() {
   const tabelle = JSON.parse(readFileSync(VORGABEN, "utf-8"));
   const aus = {};
@@ -132,36 +137,54 @@ function zeileVon(text, pfad) {
   return erzeugt(text).split("\n").find((z) => z.startsWith(`- \`${pfad}\` — `));
 }
 
-test("der Abschnitt fuehrt je Wurzelfeld ausser version eine Zeile, keine Ueberschrift", () => {
+test("der Abschnitt fuehrt je Wurzelfeld eine Zeile, auch fuer version", () => {
   const schema = JSON.parse(readFileSync(join(repoRoot, "templates", "workflow.config.schema.json"), "utf-8"));
   const doku = readFileSync(join(repoRoot, "docs", SEITE), "utf-8");
-  for (const feld of Object.keys(schema.properties).filter((f) => f !== "version")) {
+  for (const feld of Object.keys(schema.properties)) {
     const englisch = SCHLUESSEL[feld] ?? feld;
     assert.ok(zeileVon(doku, englisch), `Zeile fuer ${englisch} fehlt`);
   }
-  assert.equal(zeileVon(doku, "version"), undefined);
   assert.doesNotMatch(doku, /^### `/m);
+});
+
+test("die Teile stehen in der Reihenfolge Einrichten, Lohnt sich, Vom Kit verwaltet, Feinabstimmung; die Feinabstimmung ist der letzte Teil der Seite", () => {
+  const doku = readFileSync(join(repoRoot, "docs", SEITE), "utf-8");
+  const koepfe = erzeugt(doku).split("\n").filter((z) => z.startsWith("#"));
+  assert.deepEqual(koepfe, ["### Beim Einrichten nötig", "### Lohnt sich", "### Vom Kit verwaltet", "### Feinabstimmung"]);
+  // Nach dem Block folgt nur noch die Nachbardatei kontext.config.json, kein Teil der Einstellungsdatei.
+  const danach = doku.slice(doku.indexOf("<!-- einstellungen:ende -->")).split("\n").filter((z) => z.startsWith("#"));
+  assert.deepEqual(danach, ["## kontext.config.json"]);
+  const en = readFileSync(join(repoRoot, "docs", "en", SEITE), "utf-8");
+  assert.deepEqual(erzeugt(en).split("\n").filter((z) => z.startsWith("#")), ["### Needed at setup", "### Worth setting", "### Managed by the kit", "### Fine-tuning"]);
 });
 
 test("jede Zeile traegt Vorgabe oder 'Keine Vorgabe' und nur den ersten Satz", () => {
   const doku = readFileSync(join(repoRoot, "docs", SEITE), "utf-8");
+  const tabelle = JSON.parse(readFileSync(VORGABEN, "utf-8"));
   const zeilen = erzeugt(doku).split("\n").filter((z) => z.startsWith("- `"));
   // Eine zusammengezogene Zeile mit `{a,b,c}` steht für jeden ihrer Pfade (Issue #1732).
   const pfade = zeilen.reduce((n, z) => {
     const pfad = z.slice(3, z.indexOf("` — "));
     return n + (pfad.includes("{") ? pfad.slice(pfad.indexOf("{") + 1, pfad.indexOf("}")).split(",").length : 1);
   }, 0);
-  assert.ok(pfade >= 154, `nur ${pfade} Pfade`);
-  for (const zeile of zeilen) assert.match(zeile, /(Vorgabe: \S.*|Keine Vorgabe)\.$/, zeile);
-  assert.equal(zeileVon(doku, "mainBranch"), "- `mainBranch` — Branch für lokale Commits und Push (Schritt 7). Vorgabe: `main`.");
-  assert.equal(zeileVon(doku, "codeHost"), "- `codeHost` — Wo der Code liegt (Push, Pull Requests). Gültig: `github`, `gitlab`, `local`. Vorgabe: `github`.");
+  assert.ok(pfade >= 155, `nur ${pfade} Pfade`);
+  // Hinter der Vorgabe steht höchstens der wann-Satz des Wurzelfelds (Issue #1734).
+  const wann = Object.values(tabelle).filter((e) => e.wann).map((e) => " " + e.wann.de);
+  for (const zeile of zeilen) {
+    const ohneWann = wann.find((w) => zeile.endsWith(w)) ? zeile.slice(0, zeile.length - wann.find((w) => zeile.endsWith(w)).length) : zeile;
+    assert.match(ohneWann, /(Vorgabe: \S.*|Keine Vorgabe)\.$/, zeile);
+  }
+  assert.equal(zeileVon(doku, "mainBranch"), "- `mainBranch` — Branch für lokale Commits und Push (Schritt 7). Vorgabe: `main`. " + tabelle.mainBranch.wann.de);
+  assert.equal(zeileVon(doku, "codeHost"), "- `codeHost` — Wo der Code liegt (Push, Pull Requests). Gültig: `github`, `gitlab`, `local`. Vorgabe: `github`. " + tabelle.codeHost.wann.de);
 });
 
 test("Vorgabetabelle: provider, tierRule, scenariosFrom und reviewCommand tragen ihren Satz und ihre Vorgabe", () => {
   const doku = readFileSync(join(repoRoot, "docs", SEITE), "utf-8");
   const provider = zeileVon(doku, "provider");
   assert.ok(provider.includes("Wird beim Laden auf `codeHost` und `issueTracker` übertragen; neu nicht setzen."), provider);
-  assert.doesNotMatch(provider, /Veraltet/);
+  // Das Kennzeichen steht genau einmal, vor dem Satz (Issue #1734).
+  assert.ok(provider.startsWith("- `provider` — _Veraltet._ Wird beim Laden"), provider);
+  assert.equal(provider.split(/Veraltet/i).length, 2, provider);
   for (const pfad of ["night.tierRule", "scenariosFrom", "reviewCommand"]) {
     const zeile = zeileVon(doku, pfad);
     assert.ok(zeile, `${pfad} fehlt`);
@@ -185,7 +208,7 @@ test("Satzschnitt: Abkuerzungen und Punkte in Klammern beenden den ersten Satz n
     });
     assert.equal(lauf([], dir).status, 0);
     const zeile = zeileVon(readFileSync(join(dir, "docs", SEITE), "utf-8"), "mainBranch");
-    assert.equal(zeile, "- `mainBranch` — Zweig für Commits (etwa main. Oder trunk. Auch dev) mit z.B. Tags bzw. Notizen, ggf. leer. Vorgabe: `main`.");
+    assert.equal(zeile, "- `mainBranch` — Zweig für Commits (etwa main. Oder trunk. Auch dev) mit z.B. Tags bzw. Notizen, ggf. leer. Vorgabe: `main`." + wann("mainBranch"));
   });
 });
 
@@ -198,7 +221,7 @@ test("Satzschnitt: ein Punkt ohne folgenden Leerraum beendet den Satz nicht, ohn
     assert.equal(lauf([], dir).status, 0);
     const doku = readFileSync(join(dir, "docs", SEITE), "utf-8");
     assert.match(zeileVon(doku, "mainBranch"), /— Datei config\.json im Projekt\. Vorgabe/);
-    assert.match(zeileVon(doku, "productionBranch"), /— Ziel ohne Punkt Vorgabe: `production`\.$/);
+    assert.ok(zeileVon(doku, "productionBranch").endsWith("— Ziel ohne Punkt Vorgabe: `production`." + wann("productionBranch")), zeileVon(doku, "productionBranch"));
   });
 });
 
@@ -212,12 +235,12 @@ test("Vorgabetabelle: default vor Tabelle, Tabelle vor 'Keine Vorgabe', Ersatzsa
     assert.equal(lauf([], dir).status, 0);
     const doku = readFileSync(join(dir, "docs", SEITE), "utf-8");
     assert.match(zeileVon(doku, "night.tierRule"), /Vorgabe: die Regel des Kits\.$/);
-    assert.match(zeileVon(doku, "provider"), /^- `provider` — Ersatz für den ersten Satz\. Gültig: `github`, `gitlab`, `local`\. Keine Vorgabe\.$/);
-    assert.match(zeileVon(doku, "language"), /Vorgabe: `de`\.$/);
+    assert.match(zeileVon(doku, "provider"), /^- `provider` — _Veraltet\._ Ersatz für den ersten Satz\. Gültig: `github`, `gitlab`, `local`\. Keine Vorgabe\.$/);
+    assert.ok(zeileVon(doku, "language").endsWith("Vorgabe: `de`." + wann("language")), zeileVon(doku, "language"));
     assert.match(zeileVon(doku, "scenariosFrom"), /Keine Vorgabe\.$/);
     // Ein Objekt als Vorgabe steht nicht als JSON da, sondern verweist auf die Felder darunter.
     assert.match(zeileVon(doku, "triggers"), /Vorgabe: die Werte der Felder darunter\.$/);
-    assert.match(zeileVon(doku, "mutationCommand"), /Vorgabe: leer\.$/);
+    assert.ok(zeileVon(doku, "mutationCommand").endsWith("Vorgabe: leer." + wann("mutationCommand")), zeileVon(doku, "mutationCommand"));
   });
 });
 
@@ -354,7 +377,7 @@ test("[1356] die englische Ausgabe traegt englischen Rahmentext, kein 'gültig' 
     assert.doesNotMatch(abschnitt, /gültig/);
     assert.doesNotMatch(abschnitt, /Dieser Abschnitt entsteht/);
     // Nur der englische Pfad, in beiden Fassungen (Plan #1652, E13).
-    assert.match(abschnitt, /^- `mainBranch` — Branch for local commits and push \(step 7\)\. Default: `main`\.$/m);
+    assert.ok(abschnitt.includes("\n- `mainBranch` — Branch for local commits and push (step 7). Default: `main`." + wann("mainBranch", "en") + "\n"), "mainBranch-Zeile");
     assert.match(abschnitt, /^- `night\.chain\.planMin` — /m);
     assert.doesNotMatch(abschnitt, /German:/);
   });

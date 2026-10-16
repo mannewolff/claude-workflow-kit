@@ -12,6 +12,11 @@
  * mit `{a,b,c}` im Pfad (Issue #1732). Geschrieben wird ausschließlich zwischen den beiden Markern; der übrige
  * Text der Seite bleibt unberührt.
  *
+ * Gegliedert nach Zweck (Issue #1734, Plan #1710 A7, A8): je Teil aus kit/board/config-teile.mjs
+ * eine `### `-Überschrift in der Reihenfolge der Seite. Die Zeile eines Wurzelfelds der ersten
+ * beiden Teile endet mit seinem `wann`-Satz, jede Gruppe der Feinabstimmung leitet ihr
+ * `gruppe`-Satz ein, und im Teil „Vom Kit verwaltet“ steht vor dem Satz das Kennzeichen.
+ *
  * Zwei Sprachen (Issue #1356, Plan #1348 E8): Die deutsche Fassung schneidet ihren Satz aus
  * dem Schema, die englische in docs/en/einstellungen.md aus einer geprüften Übersetzung. Sie
  * steht in tools/config-referenz.en.json — je Einstellung der englische Text und der Hash
@@ -30,7 +35,7 @@ import { createHash } from "node:crypto";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SCHLUESSEL } from "../kit/board/config-namen.mjs";
-import { teilVon } from "../kit/board/config-teile.mjs";
+import { TEILE, teilVon, kennzeichenVon } from "../kit/board/config-teile.mjs";
 
 // KIT_ROOT ist ein Test-Hook wie in tools/copy-downloads-for-docs.mjs (Issue #186).
 const root = process.env.KIT_ROOT
@@ -115,7 +120,6 @@ function eintraege(schema) {
     if (zusatz && typeof zusatz === "object") unterfelder(zusatz, `${pfad}.*`);
   }
   for (const [feld, knoten] of Object.entries(schema.properties ?? {})) {
-    if (feld === "version") continue;
     liste.push({ pfad: feld, text: knoten.description ?? "", werte: werteListe(knoten), wurzel: true, knoten });
     unterfelder(knoten, feld);
   }
@@ -179,6 +183,8 @@ const RAHMEN = {
     bis: "bis",
     ab: "ab",
     hoechstens: "bis",
+    teile: { einrichten: "Beim Einrichten nötig", lohnt: "Lohnt sich", verwaltet: "Vom Kit verwaltet", fein: "Feinabstimmung" },
+    kennzeichen: { veraltet: "Veraltet.", installer: "Vom Installer gesetzt.", intern: "Intern." },
   },
   en: {
     hinweis: "_This section is generated from `templates/workflow.config.schema.json` by `node tools/config-referenz.mjs`; changes belong in the schema, not here._",
@@ -192,6 +198,8 @@ const RAHMEN = {
     bis: "to",
     ab: "from",
     hoechstens: "up to",
+    teile: { einrichten: "Needed at setup", lohnt: "Worth setting", verwaltet: "Managed by the kit", fein: "Fine-tuning" },
+    kennzeichen: { veraltet: "Deprecated.", installer: "Set by the installer.", intern: "Internal." },
   },
 };
 
@@ -265,18 +273,27 @@ function zeilenRest(e, sprache, texte, tabelle) {
  * was auch dort wörtlich gleich ist.
  */
 function referenz(liste, sprache, texte, tabelle, andere = null) {
+  const rahmen = RAHMEN[sprache];
   const zeilen = liste.map((e) => {
     const rest = zeilenRest(e, sprache, texte, tabelle);
     const gleich = andere ? `${rest}\n${zeilenRest(e, andere.sprache, andere.texte, tabelle)}` : rest;
-    return { pfad: englischerPfad(e.pfad), wurzel: e.wurzel, rest, gleich };
+    return { pfad: englischerPfad(e.pfad), quelle: e.pfad, teil: teilVon(e.pfad), wurzel: e.wurzel, rest, gleich };
   });
-  const teile = ["", RAHMEN[sprache].hinweis];
-  for (const z of zusammengezogen(zeilen)) {
-    if (z.wurzel) teile.push("");
-    teile.push(`- \`${z.pfad}\` — ${z.rest}`);
+  const aus = ["", rahmen.hinweis];
+  for (const teil of TEILE) {
+    aus.push("", `### ${rahmen.teile[teil]}`);
+    for (const z of zusammengezogen(zeilen.filter((x) => x.teil === teil))) {
+      const eintrag = tabelle[z.quelle] ?? {};
+      if (eintrag.gruppe) aus.push("", eintrag.gruppe[sprache], "");
+      else if (z.wurzel) aus.push("");
+      const kennzeichen = z.wurzel && kennzeichenVon(z.quelle);
+      const vorn = kennzeichen ? `_${rahmen.kennzeichen[kennzeichen]}_ ` : "";
+      const wann = z.wurzel && eintrag.wann ? ` ${eintrag.wann[sprache]}` : "";
+      aus.push(`- \`${z.pfad}\` — ${vorn}${z.rest}${wann}`);
+    }
   }
-  teile.push("");
-  return teile.join("\n");
+  aus.push("");
+  return aus.join("\n");
 }
 
 /**

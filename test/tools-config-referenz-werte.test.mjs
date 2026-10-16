@@ -173,3 +173,100 @@ test("ein wann ohne englische Fassung ist ein Fehler der Tabelle", () => {
   assert.equal(res.status, 1);
   assert.match(res.stderr, /vertragsRepos: wann braucht de und en/);
 });
+
+// Die Gliederung nach Zweck (Issue #1734, Plan #1710 A7, A8, E4, E6): `### <Teil>` je Teil in der
+// Reihenfolge der Seite, der `wann`-Satz am Ende der Zeile jedes Wurzelfelds der ersten beiden
+// Teile, der `gruppe`-Satz vor jeder Gruppe der Feinabstimmung, das Kennzeichen im Teil „Vom Kit
+// verwaltet“ und eine Zeile für `version`.
+
+const TEIL_KOEPFE = {
+  de: ["### Beim Einrichten nötig", "### Lohnt sich", "### Vom Kit verwaltet", "### Feinabstimmung"],
+  en: ["### Needed at setup", "### Worth setting", "### Managed by the kit", "### Fine-tuning"],
+};
+
+/** Der erzeugte Teil zwischen den Markern als Zeilen. */
+const blockZeilen = (text) => text.slice(text.indexOf("<!-- einstellungen:start -->"), text.indexOf("<!-- einstellungen:ende -->")).split("\n");
+
+/** Je Teilüberschrift die Zeilen darunter bis zur nächsten. */
+function nachTeil(text) {
+  const teile = new Map();
+  let aktuell = null;
+  for (const z of blockZeilen(text)) {
+    if (z.startsWith("### ")) {
+      aktuell = z;
+      teile.set(aktuell, []);
+    } else if (aktuell) teile.get(aktuell).push(z);
+  }
+  return teile;
+}
+
+const TABELLE = JSON.parse(readFileSync(join(repoRoot, "tools", "config-referenz.vorgaben.json"), "utf-8"));
+
+test("die Teile stehen als ###-Überschriften ohne Backtick in der Reihenfolge der Seite", () => {
+  const { res, de, en } = erzeugt();
+  assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+  for (const [sprache, text] of [["de", de], ["en", en]]) {
+    const koepfe = blockZeilen(text).filter((z) => z.startsWith("#"));
+    assert.deepEqual(koepfe, TEIL_KOEPFE[sprache]);
+  }
+});
+
+test("jede Einstellung steht unter der Überschrift ihres Teils", async () => {
+  const { teilVon } = await import("../kit/board/config-teile.mjs");
+  const { de } = erzeugt();
+  const kopfJeTeil = Object.fromEntries(["einrichten", "lohnt", "verwaltet", "fein"].map((t, i) => [t, TEIL_KOEPFE.de[i]]));
+  for (const [kopf, zeilen] of nachTeil(de)) {
+    for (const z of zeilen.filter((x) => x.startsWith("- `"))) {
+      const pfad = z.slice(3, z.indexOf("` — "));
+      assert.equal(kopfJeTeil[teilVon(pfad)], kopf, pfad);
+    }
+  }
+});
+
+test("jedes Wurzelfeld der ersten beiden Teile trägt seinen wann-Satz am Ende seiner Zeile", async () => {
+  const { SCHLUESSEL } = await import("../kit/board/config-namen.mjs");
+  const { de, en } = erzeugt();
+  const mitWann = Object.entries(TABELLE).filter(([, e]) => e.wann);
+  assert.ok(mitWann.length >= 20, `nur ${mitWann.length} wann-Sätze`);
+  for (const [pfad, { wann }] of mitWann) {
+    const englisch = SCHLUESSEL[pfad] ?? pfad;
+    assert.ok(zeile(de, englisch).endsWith(` ${wann.de}`), zeile(de, englisch));
+    assert.ok(zeile(en, englisch).endsWith(` ${wann.en}`), zeile(en, englisch));
+  }
+  // Ein Unterfeld trägt keinen wann-Satz, auch nicht den seines Wurzelfelds.
+  assert.ok(!zeile(de, "contractRepos[].name").includes(TABELLE.vertragsRepos.wann.de));
+});
+
+test("jede Gruppe der Feinabstimmung leitet ihr gruppe-Satz ein", () => {
+  const { de, en } = erzeugt();
+  const englisch = { "night.kette": "night.chain", "night.stufen": "night.tiers", "night.stand": "night.status", pruefLauf: "checkRun", aufwand: "workload", wirksamkeit: "effectiveness", befunde: "findings" };
+  const mitGruppe = Object.entries(TABELLE).filter(([, e]) => e.gruppe);
+  assert.ok(mitGruppe.length >= 8, `nur ${mitGruppe.length} gruppe-Sätze`);
+  for (const [sprache, text] of [["de", de], ["en", en]]) {
+    const zeilen = nachTeil(text).get(TEIL_KOEPFE[sprache][3]);
+    for (const [pfad, { gruppe }] of mitGruppe) {
+      const p = englisch[pfad] ?? pfad;
+      const i = zeilen.findIndex((z) => z.startsWith(`- \`${p}\` — `));
+      assert.ok(i > 0, `${p} fehlt in der Feinabstimmung`);
+      const davor = zeilen.slice(0, i).findLast((z) => z.trim());
+      assert.equal(davor, gruppe[sprache], `${sprache}: ${p}`);
+    }
+  }
+});
+
+test("der Teil „Vom Kit verwaltet“ trägt das Kennzeichen, version hat eine Zeile", () => {
+  const { de, en } = erzeugt();
+  const erwartet = {
+    provider: ["_Veraltet._", "_Deprecated._"],
+    scenariosFrom: ["_Vom Installer gesetzt._", "_Set by the installer._"],
+    version: ["_Vom Installer gesetzt._", "_Set by the installer._"],
+    scaffoldOnly: ["_Intern._", "_Internal._"],
+  };
+  for (const [pfad, [kd, ke]] of Object.entries(erwartet)) {
+    assert.ok(zeile(de, pfad).startsWith(`- \`${pfad}\` — ${kd} `), zeile(de, pfad));
+    assert.ok(zeile(en, pfad).startsWith(`- \`${pfad}\` — ${ke} `), zeile(en, pfad));
+    assert.ok(nachTeil(de).get(TEIL_KOEPFE.de[2]).includes(zeile(de, pfad)), pfad);
+  }
+  // Das Kennzeichen steht nur an der Zeile des Wurzelfelds.
+  assert.doesNotMatch(zeile(de, "scaffoldOnly[].pattern"), /_Intern\._/);
+});

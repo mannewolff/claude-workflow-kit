@@ -113,7 +113,6 @@ function einstellungen() {
     if (knoten.additionalProperties && typeof knoten.additionalProperties === "object") unterfelder(knoten.additionalProperties, `${pfad}.*`);
   }
   for (const [feld, knoten] of Object.entries(schema.properties)) {
-    if (feld === "version") continue;
     liste.push(feld);
     unterfelder(knoten, feld);
   }
@@ -185,11 +184,39 @@ test("Gegenprobe: die Pruefung auf Geschichte erkennt Nummer, Wendung und Ausnah
 test("Kriterium 7: jede Einstellung steht mit englischem Pfad und Vorgabe in docs/einstellungen.md", () => {
   const text = readFileSync(join(DOCS, "einstellungen.md"), "utf-8");
   const pfade = einstellungen();
-  assert.ok(pfade.length >= 154, `nur ${pfade.length} Einstellungen gefunden`);
+  assert.ok(pfade.length >= 155, `nur ${pfade.length} Einstellungen gefunden`);
+  assert.ok(pfade.includes("version"), "version fehlt unter den Einstellungen");
   const genannt = genanntePfade(text);
   for (const pfad of [...pfade.map(englisch), "vault", "always", "projectDocs", "project", "logPath", "parentProject"]) {
     assert.ok(genannt.has(pfad), `${pfad} fehlt mit Vorgabe oder „Keine Vorgabe“`);
   }
+  // Je Pfad des Schemas genau eine Zeile im erzeugten Block (Issue #1734).
+  const block = text.slice(text.indexOf(START), text.indexOf(ENDE));
+  const zaehlung = zeilenJePfad(block);
+  for (const pfad of pfade.map(englisch)) assert.equal(zaehlung.get(pfad), 1, `${pfad}: ${zaehlung.get(pfad) ?? 0} Zeilen`);
+});
+
+/** Wie oft jeder Pfad im Text eine Zeile hat; eine Zeile mit `{a,b,c}` zählt für jeden genannten Pfad. */
+function zeilenJePfad(text) {
+  const zaehlung = new Map();
+  for (const z of text.split("\n")) {
+    const ende = z.indexOf("` — ");
+    if (!z.startsWith("- `") || ende < 0) continue;
+    for (const p of ausgeklappt(z.slice(3, ende))) zaehlung.set(p, (zaehlung.get(p) ?? 0) + 1);
+  }
+  return zaehlung;
+}
+
+/** Die Pfade, für die ein Pfad mit `{a,b,c}` steht. */
+function ausgeklappt(pfad) {
+  const a = pfad.indexOf("{");
+  const b = pfad.indexOf("}", a);
+  return a < 0 || b < 0 ? [pfad] : pfad.slice(a + 1, b).split(",").flatMap((g) => ausgeklappt(pfad.slice(0, a) + g + pfad.slice(b + 1)));
+}
+
+test("Gegenprobe: eine doppelte Zeile fällt auf, eine zusammengezogene zählt je Pfad einmal", () => {
+  const zaehlung = zeilenJePfad("- `a` — x. Keine Vorgabe.\n- `a` — y. Keine Vorgabe.\n- `b.{c,d}.e` — z. Keine Vorgabe.\n");
+  assert.deepEqual([...zaehlung].sort(), [["a", 2], ["b.c.e", 1], ["b.d.e", 1]]);
 });
 
 /**
@@ -198,11 +225,6 @@ test("Kriterium 7: jede Einstellung steht mit englischem Pfad und Vorgabe in doc
  */
 function genanntePfade(text) {
   const genannt = new Set();
-  const ausgeklappt = (pfad) => {
-    const a = pfad.indexOf("{");
-    const b = pfad.indexOf("}", a);
-    return a < 0 || b < 0 ? [pfad] : pfad.slice(a + 1, b).split(",").flatMap((g) => ausgeklappt(pfad.slice(0, a) + g + pfad.slice(b + 1)));
-  };
   for (const zeile of text.split("\n")) {
     const ende = zeile.indexOf("` — ");
     if (!zeile.startsWith("- `") || ende < 0) continue;

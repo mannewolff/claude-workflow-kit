@@ -18,12 +18,20 @@
     }
   },
   "buildChecks[].nichtBeimAbschluss": {
+    "satz": {
+      "de": "Warum die Prüfung beim Abschluss eines einzelnen Pakets entfallen darf.",
+      "en": "Why the check may be skipped at the completion of a single package."
+    },
     "vorgabe": {
       "de": "nicht gesetzt, die Prüfung läuft auch beim Abschluss",
       "en": "not set, the check also runs at completion"
     }
   },
   "buildChecks[].abschlussBereiche": {
+    "satz": {
+      "de": "Bereiche, deren Berührung die Prüfung auch beim Abschluss laufen lässt.",
+      "en": "Areas whose touch makes the check run at completion too."
+    },
     "vorgabe": {
       "de": "nicht gesetzt, die Prüfung entfällt beim Abschluss",
       "en": "not set, the check is skipped at completion"
@@ -40,6 +48,10 @@
     }
   },
   "testAblagen": {
+    "satz": {
+      "de": "Wo die eigenen Tests eines Bausteins liegen.",
+      "en": "Where a component's own tests live."
+    },
     "vorgabe": {
       "de": "die Ablagen des Kits für TypeScript und Java",
       "en": "the kit's locations for TypeScript and Java"
@@ -62,6 +74,10 @@
     }
   },
   "reviewCommand": {
+    "satz": {
+      "de": "Eine fremde CLI als Code-Reviewer, Gegenstück zu reviewModel.",
+      "en": "A third-party CLI as code reviewer, counterpart of reviewModel."
+    },
     "vorgabe": {
       "de": "nicht gesetzt, es prüft `reviewModel`",
       "en": "not set, `reviewModel` reviews"
@@ -72,6 +88,10 @@
     }
   },
   "reviewLesegrenze": {
+    "satz": {
+      "de": "Der Nur-Lese-Schalter der fremden CLI aus reviewCommand.",
+      "en": "The read-only switch of the third-party CLI from reviewCommand."
+    },
     "vorgabe": {
       "de": "für codex der eingebaute Schalter",
       "en": "the built-in switch for codex"
@@ -158,6 +178,10 @@
     }
   },
   "night.stand": {
+    "satz": {
+      "de": "Der Laufstand einer Karte am Board.",
+      "en": "A card's run status on the board."
+    },
     "vorgabe": {
       "de": "die Werte der Felder darunter",
       "en": "the values of the fields below"
@@ -174,12 +198,20 @@
     }
   },
   "night.modell": {
+    "satz": {
+      "de": "Das Modell jeder Session des Nachtlaufs, die kein eigenes Modell hat.",
+      "en": "The model of every night-run session that has no model of its own."
+    },
     "vorgabe": {
       "de": "das Modell, das der Nacht-Runner mitbringt",
       "en": "the model built into the night runner"
     }
   },
   "night.modelle": {
+    "satz": {
+      "de": "Die Modellnamen, die der Nacht-Runner starten darf, das stärkste zuerst.",
+      "en": "The model names the night runner may start, strongest first."
+    },
     "vorgabe": {
       "de": "leer, jede Session startet mit dem Modell des Laufs",
       "en": "empty, every session starts with the model of the run"
@@ -220,6 +252,10 @@
     }
   },
   "pruefLauf": {
+    "satz": {
+      "de": "Der tägliche Prüflauf.",
+      "en": "The daily check run."
+    },
     "vorgabe": {
       "de": "die Werte der Felder darunter",
       "en": "the values of the fields below"
@@ -230,6 +266,10 @@
     }
   },
   "aufwand": {
+    "satz": {
+      "de": "Umfang und Schwellen der Aufwandsauswertung.",
+      "en": "Scope and thresholds of the workload evaluation."
+    },
     "vorgabe": {
       "de": "die Werte der Felder darunter",
       "en": "the values of the fields below"
@@ -246,6 +286,10 @@
     }
   },
   "wirksamkeit": {
+    "satz": {
+      "de": "Zeitfenster und Schwellen der Wirksamkeitsauswertung.",
+      "en": "Time window and thresholds of the effectiveness evaluation."
+    },
     "vorgabe": {
       "de": "die Werte der Felder darunter",
       "en": "the values of the fields below"
@@ -266,12 +310,20 @@
     }
   },
   "szenarienAb": {
+    "satz": {
+      "de": "Stichtag der Szenarien-Pflicht als Kartennummer.",
+      "en": "Cut-off of the scenario requirement, as a card number."
+    },
     "vorgabe": {
       "de": "nicht gesetzt, die Pflicht gilt für keine Karte am Board; der Installer setzt das Feld beim Update",
       "en": "not set, the obligation applies to no card on the board; the installer sets the field on update"
     }
   },
   "vertragsRepos": {
+    "satz": {
+      "de": "Die Partnerrepos dieses Projekts.",
+      "en": "The partner repos of this project."
+    },
     "vorgabe": {
       "de": "`[]`, kein Partnerrepo",
       "en": "`[]`, no partner repo"
@@ -300,6 +352,10 @@
     }
   },
   "buildChecks": {
+    "satz": {
+      "de": "Die Prüfkommandos des Projekts (Build, Tests).",
+      "en": "The project's check commands (build, tests)."
+    },
     "wann": {
       "de": "Bestimmt, was vor jedem Commit und vor `push main` geprüft wird; beim Einrichten die Build- und Testkommandos des Projekts eintragen.",
       "en": "Decides what is checked before each commit and before `push main`; enter the project's build and test commands at setup."
@@ -342,18 +398,30 @@
     }
   },
   "checkAreas": {
+    "satz": {
+      "de": "Benannte Bereiche des Projekts.",
+      "en": "Named areas of the project."
+    },
     "wann": {
       "de": "Ordnet Pfade benannten Bereichen zu, damit eine Prüfung nur läuft, wenn ihr Bereich berührt ist; setzen, sobald der volle Prüflauf zu lange dauert.",
       "en": "Maps paths to named areas so that a check runs only when its area is touched; set it as soon as the full check run takes too long."
     }
   },
   "ohnePruefung": {
+    "satz": {
+      "de": "Dateien, die keine Prüfung liest.",
+      "en": "Files that no check reads."
+    },
     "wann": {
       "de": "Nimmt Dateien, die keine Prüfung liest, aus dem vollen Prüflauf heraus; setzen, wenn etwa eine reine Textänderung alle Prüfungen auslöst.",
       "en": "Takes files that no check reads out of the full check run; set it when, for example, a plain text change triggers every check."
     }
   },
   "gekoppelteBereiche": {
+    "satz": {
+      "de": "Bereiche mit gemessener Kopplung.",
+      "en": "Areas with a measured coupling."
+    },
     "wann": {
       "de": "Vermerkt mit Grund, dass ein Bereich wegen einer gemessenen Kopplung fast alle Prüfungen auslöst; setzen, wenn die Auswertung einen solchen Bereich meldet und die Kopplung gewollt ist.",
       "en": "Records with a reason that an area triggers almost every check because of a measured coupling; set it when the evaluation reports such an area and the coupling is intended."
@@ -372,12 +440,20 @@
     }
   },
   "formatFixCommand": {
+    "satz": {
+      "de": "Kommando, das Formatierungsverstöße behebt.",
+      "en": "Command that fixes formatting violations."
+    },
     "wann": {
       "de": "Behebt Formatverstöße selbst und prüft einmal neu, statt den Lauf rot enden zu lassen; setzen, wenn das Projekt einen Formatierer hat.",
       "en": "Fixes formatting violations itself and checks once more instead of ending the run red; set it when the project has a formatter."
     }
   },
   "installCommand": {
+    "satz": {
+      "de": "Kommando, das die Abhängigkeiten herstellt.",
+      "en": "Command that installs the dependencies."
+    },
     "wann": {
       "de": "Stellt in einem frischen Worktree die Abhängigkeiten her; setzen, wenn das Projekt Worktrees nutzt und Pakete installieren muss, etwa mit `npm ci`.",
       "en": "Installs the dependencies in a fresh worktree; set it when the project uses worktrees and has to install packages, for example with `npm ci`."
@@ -390,18 +466,30 @@
     }
   },
   "reviewScope": {
+    "satz": {
+      "de": "Umfang des Review-Materials.",
+      "en": "Scope of the review material."
+    },
     "wann": {
       "de": "Bestimmt, ob das Code-Review nur den Diff seit dem letzten Push oder den ganzen Quelltext liest; `full` setzen für ein Review des ganzen Projekts.",
       "en": "Decides whether the code review reads only the diff since the last push or the whole source; set `full` for a review of the whole project."
     }
   },
   "reviewModel": {
+    "satz": {
+      "de": "Das Claude-Modell des Code-Reviews.",
+      "en": "The Claude model of the code review."
+    },
     "wann": {
       "de": "Das Claude-Modell, das den Code prüft; setzen, wenn ein anderes Modell als die Vorgabe prüfen soll.",
       "en": "The Claude model that reviews the code; set it when a model other than the default is to review."
     }
   },
   "vorgeschichte": {
+    "satz": {
+      "de": "Frühere Fachpläne zum selben Gegenstand.",
+      "en": "Earlier requirements on the same subject."
+    },
     "wann": {
       "de": "Lässt Fachplan und Plan frühere Fachpläne zum selben Gegenstand nennen; nur mit `false` ausschalten, wenn die Vorgeschichte des Boards nicht zählt.",
       "en": "Lets requirement and plan name earlier requirements on the same subject; switch it off with `false` only when the board's history does not matter."
@@ -429,6 +517,114 @@
     "gruppe": {
       "de": "Die Budgets der Nacht-Kette: Zeit, Kosten und Korrekturrunden je Schritt, bevor die Kette abbricht.",
       "en": "The budgets of the night chain: time, cost and correction rounds per step before the chain stops."
+    }
+  },
+  "buildChecks[].guete": {
+    "satz": {
+      "de": "Benennt diese Prüfung als Gütemessung, deren Wert unter der Marke das Veröffentlichen anhält.",
+      "en": "Marks this check as a quality measurement whose value below the threshold stops publishing."
+    }
+  },
+  "issueReview.reviewers[].lesegrenze": {
+    "satz": {
+      "de": "Nur bei kind 'command': der Nur-Lese-Schalter des fremden Werkzeugs.",
+      "en": "Only for kind 'command': the read-only switch of the third-party tool."
+    }
+  },
+  "night.protokollFristTage": {
+    "satz": {
+      "de": "Frist in Tagen, nach der der Nacht-Runner seine Protokolle löscht.",
+      "en": "Period in days after which the night runner deletes its logs."
+    }
+  },
+  "night.festgefahrenNach": {
+    "satz": {
+      "de": "Zahl gleich gescheiterter Läufe derselben Prüfung, nach der eine unbeaufsichtigte Sitzung gebremst wird.",
+      "en": "Number of identically failed runs of the same check after which an unattended session is stopped."
+    }
+  },
+  "night.kette.vorbereitungMin": {
+    "satz": {
+      "de": "Frist der Vorbereitung des Push in Minuten, Warten und Prüflauf eingeschlossen.",
+      "en": "Time limit of the push preparation in minutes, waiting and check run included."
+    }
+  },
+  "night.kette.kostenUsdB": {
+    "satz": {
+      "de": "Kostenbudget je Kette in US-Dollar für die Umsetzungsstufe (Variante B).",
+      "en": "Cost budget per chain in US dollars for the implementation stage (variant B)."
+    }
+  },
+  "night.stand.fristMin": {
+    "satz": {
+      "de": "Erkennungsfrist in Minuten ab dem letzten Lebenszeichen eines Laufs.",
+      "en": "Detection period in minutes after a run's last sign of life."
+    }
+  },
+  "night.stufen.schwer.kommando": {
+    "satz": {
+      "de": "Kommandozeile eines fremden Programms für diese Stufe.",
+      "en": "Command line of a third-party program for this tier."
+    }
+  },
+  "night.stufen.mittel.kommando": {
+    "satz": {
+      "de": "Kommandozeile eines fremden Programms für diese Stufe.",
+      "en": "Command line of a third-party program for this tier."
+    }
+  },
+  "night.stufen.leicht.kommando": {
+    "satz": {
+      "de": "Kommandozeile eines fremden Programms für diese Stufe.",
+      "en": "Command line of a third-party program for this tier."
+    }
+  },
+  "issueReview.reviewers": {
+    "satz": {
+      "de": "Die Reviewer in der Reihenfolge, in der sie genommen werden; der Autor nie.",
+      "en": "The reviewers in the order in which they are taken; never the author."
+    }
+  },
+  "night.zielUmsetzungMin": {
+    "satz": {
+      "de": "Zielmarke für die Dauer einer Umsetzung in Minuten.",
+      "en": "Target for the duration of an implementation in minutes."
+    }
+  },
+  "pruefLauf.kostenUsd": {
+    "satz": {
+      "de": "Kostenbudget je Lauf in US-Dollar, geprüft nach jeder Session.",
+      "en": "Cost budget per run in US dollars, checked after every session."
+    }
+  },
+  "night.kette.uebergaenge.umsetzungVorbereitung": {
+    "satz": {
+      "de": "Ob nach der Umsetzung die Vorbereitung des Push folgt.",
+      "en": "Whether the push preparation follows the implementation."
+    }
+  },
+  "aufwand.schwellen.schreibkostenAnteil": {
+    "satz": {
+      "de": "Höchster Anteil der Schreibkosten an den Gesamtkosten ohne Befund.",
+      "en": "Highest share of the writing costs in the total costs without a finding."
+    }
+  },
+  "aufwand.schwellen.pruefungAnteil": {
+    "satz": {
+      "de": "Höchster Anteil der größten Pflichtprüfung an der Prüfzeit ohne Befund.",
+      "en": "Highest share of the largest mandatory check in the check time without a finding."
+    }
+  },
+  "night.kette.abdeckungMin": {
+    "satz": {
+      "de": "Zeitbudget der Abdeckungs-Session in Minuten.",
+      "en": "Time budget of the coverage session in minutes."
+    }
+  },
+  "pushPruefung.zweig": {
+    "satz": {
+      "de": "Der Prüfzweig, den /push-main vor dem Push pusht und danach löscht.",
+      "en": "The check branch that /push-main pushes before the push and deletes afterwards."
     }
   }
 }
