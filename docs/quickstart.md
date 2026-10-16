@@ -243,5 +243,5 @@ Sonst: Ziehe nicht nach Done. Schreibe den Mangel mit `issue comment <id> --text
 - Das Kit im eigenen Projekt: [Installation](/einrichtung#installation), ohne Remote [Lokal arbeiten](/lokal).
 - Vorhaben mit Abwägung auf Bahn 2: [Drei Bahnen](./dokumentation.md#drei-bahnen).
 - Der Runner mit Kette, mehreren Karten und ohne Aufsicht: [Die Kette](/runner#die-kette).
-- Der Runner unter Windows: [Windows über WSL2](/wsl2).
+- Der Runner unter Windows: [Windows über WSL2](/wsl2#der-runner-unter-windows).
 - Alle siebzehn Skills: [Die Skills](/prozess#die-skills).

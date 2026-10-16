@@ -252,7 +252,7 @@ Done when `git show --stat HEAD` names `gruss.mjs` and a file under `test/`, `no
 Otherwise: Do not move to Done. Write the defect to the card with `issue comment <id> --text "…"`, move it to `ready` and start step 12 again.
 
 ## What comes next
-<!-- de: 1c1b467d233d -->
+<!-- de: 8728f1478e4d -->
 
 - Switch to GitHub or GitLab: [Issue tracker and code host](/en/einrichtung#issue-tracker-and-code-host).
 - Publish with `push main` and `merge production`: [Push](/en/prozess#push-main) and [Merge](/en/prozess#merge-production).
@@ -261,5 +261,5 @@ Otherwise: Do not move to Done. Write the defect to the card with `issue comment
 - The kit in your own project: [Installation](/en/einrichtung#installation), without a remote [Working locally](/en/lokal).
 - Undertakings with something to weigh up on lane 2: [Three lanes](./dokumentation.md#three-lanes).
 - The runner with chain, several cards and without supervision: [The chain](/en/runner#the-chain).
-- The runner on Windows: [Windows via WSL2](/en/wsl2).
+- The runner on Windows: [Windows via WSL2](/en/wsl2#the-runner-on-windows).
 - All seventeen skills: [The skills](/en/prozess#the-skills).

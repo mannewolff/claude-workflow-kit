@@ -90,7 +90,7 @@ const WEITER = [
   "/lokal)",
   "dokumentation.md#drei-bahnen",
   "/runner#die-kette",
-  "/wsl2)",
+  "/wsl2#der-runner-unter-windows)",
   "/prozess#die-skills",
 ];
 
@@ -101,4 +101,50 @@ test("„Wie es weitergeht“ verweist auf jede Fortsetzung", () => {
   const teil = text.slice(start);
   for (const ziel of WEITER) assert.ok(teil.includes(ziel), `der Verweis ${ziel} fehlt`);
   assert.match(teil, /siebzehn Skills/);
+});
+
+/** Ein Abschnitt `## <ueberschrift>` bis zur naechsten Ueberschrift der Ebene 2. */
+function abschnitt(text, ueberschrift) {
+  const start = text.indexOf(`\n## ${ueberschrift}\n`);
+  assert.ok(start > -1, `der Abschnitt „${ueberschrift}“ fehlt`);
+  const ende = text.indexOf("\n## ", start + 1);
+  return text.slice(start, ende === -1 ? undefined : ende);
+}
+
+test("Szenario: Der Firmenrechner sperrt WSL2", () => {
+  const schritt = abschnitt(lies("docs", "wsl2.md"), "Schritte").split(/\n2\. /)[0];
+  assert.ok(schritt.includes("**WSL2 einschalten.**"), "Schritt 1 ist nicht „WSL2 einschalten“");
+  for (const wort of ["Virtualisierung", "Task-Manager", "Administrator oder IT"]) {
+    assert.ok(schritt.includes(wort), `Schritt 1 nennt ${wort} nicht`);
+  }
+  assert.ok(schritt.includes("Sonst:"), "Schritt 1 nennt keinen Fehlfall");
+});
+
+test("Szenario: Ein Neuling unter Windows kommt in einer Stunde durch", () => {
+  const start = lies("docs", "index.md");
+  const hero = start.slice(0, start.indexOf("\nfeatures:"));
+  assert.match(hero, /actions:[\s\S]*link: \/quickstart\n/, "die Hero-Aktion verlinkt /quickstart nicht");
+
+  const einstieg = lies("docs", "quickstart.md");
+  const ersterSchritt = einstieg.indexOf("\n### 1. ");
+  assert.ok(ersterSchritt > -1, "kein erster Schritt");
+  assert.ok(einstieg.slice(0, ersterSchritt).includes("(/wsl2)"), "vor dem ersten Schritt kein Verweis auf /wsl2");
+  assert.ok(lies("docs", "wsl2.md").includes("(/quickstart#"), "die WSL2-Anleitung verweist nicht zurück auf /quickstart");
+
+  const liste = schritte(einstieg);
+  const folge = [
+    /issue create --art idea/,
+    /\/triage/,
+    /issue move <id> ready/,
+    /issue label add <id> kit:nightrun/,
+    /night\.mjs/,
+    /\/kit-review/,
+    /issue move <id> done/,
+  ];
+  let ab = 0;
+  for (const muster of folge) {
+    const fund = liste.findIndex((s, i) => i >= ab && muster.test(s.text));
+    assert.ok(fund > -1, `kein Schritt ab ${ab + 1} mit ${muster}`);
+    ab = fund;
+  }
 });
