@@ -344,6 +344,11 @@ Usage:
       stdin and rejects with exit 2 when a pipe, redirection or a further command
       takes the exception away from a command in sandbox.excludedCommands. Patterns
       from .claude/settings.json and .claude/settings.local.json.
+  node board.mjs hook write-check
+      PreToolUse hook for Edit, Write and NotebookEdit (Issue #1740): rejects with
+      exit 2 when file_path (or notebook_path) matches an Edit(...)/Write(...) rule
+      under permissions.deny in .claude/settings.json or .claude/settings.local.json,
+      absolute or relative to the project root, regardless of the permission mode.
 
   node board.mjs scenarios baseline
       The cut-off for the scenario duty (Issue #1591, Plan #1588 E3): lists every
@@ -406,7 +411,7 @@ const { KONTEXT_DEFAULTS, loadKontextConfig, kontextRepoName, heute, issueCreate
   issueGet, issueList, issueEpics, issueActivity, issueMove, issueLabel,
   issueComment, issueMelden, issueStand, issueAuftrag, issueUrsprung, issueUpdate, checkFormWege,
   titelMitArt } = await import("./board/dokumente.mjs");
-export const { GESCHUETZTE_PFADE, KOPIE_PFADE, geschuetztePfade, trifftGeschuetzt, pfadTokens, tokenFormen,
+export const { GESCHUETZTE_PFADE, KOPIE_PFADE, geschuetztePfade, schreibSperrenPfade, trifftGeschuetzt, pfadTokens, tokenFormen,
   geschuetzteTreffer, GESCHUETZT_ANKER, GESCHUETZT_LABEL, GESCHUETZT_LABEL_GESETZT, GESCHUETZT_LABEL_NICHT_GESETZT,
   GESCHUETZT_ABGEWIESEN, abgewieseneTreffer, geschuetztKommentar, geschuetztFreigabe } = await import("./board/geschuetzt.mjs");
 // Erkennt ein Label unter jedem seiner Namen (Issue #1424); exportiert war es nie.
@@ -424,7 +429,7 @@ export const { nachtlaufAbbruchGrund, nachtlaufMeldung, sitzungProtokoll, wegmar
   sitzungMeldung } = await import("./board/melder.mjs");
 // Die Befehlsverteiler der beiden Melder braucht nur Dispatch; exportiert waren sie nie.
 const { dispatchNightrun, dispatchSitzung } = await import("./board/melder.mjs");
-export const { pruefeBashZeile, pruefeHintergrund } = await import("./board/hook.mjs");
+export const { pruefeBashZeile, pruefeHintergrund, hookSchreibenPruefen } = await import("./board/hook.mjs");
 // Den Befehlsverteiler des Hooks braucht nur Dispatch; exportiert war er nie.
 const { dispatchHook } = await import("./board/hook.mjs");
 export const { SCHUTZ_AUSGESETZT, NACHPRUEFEN_KOMMANDO, NACHT_GESPERRT, rulesetSoll, schutzZustand, anleitung,

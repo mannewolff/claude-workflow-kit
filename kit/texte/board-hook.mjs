@@ -11,7 +11,8 @@
 
 /**
  * Die Meldungen des Hooks je Sprache. Vertragswerte bleiben ausserhalb (E14): Exitcodes,
- * die Feldnamen `abweisen` und `grund` und der Befehlsname `bash-check`.
+ * die Feldnamen `abweisen` und `grund`, die Befehlsnamen `bash-check` und `write-check` und der
+ * Anker `## Geschuetzte Datei`, den das Kit in jeder Sprache so liest.
  */
 export const TEXTE = Object.freeze({
   de: Object.freeze({
@@ -29,6 +30,12 @@ export const TEXTE = Object.freeze({
     eingabeUnlesbar: "Eingabe nicht lesbar ({grund})",
     dateiUnlesbar: "{pfad} nicht lesbar ({grund})",
     hookUnbekannt: "Unbekannter hook-Befehl: '{befehl}'",
+    schreibenAbgewiesen: "Abgewiesen: {werkzeug} auf {pfad} — der Pfad trifft die Schreibsperre \"{sperre}\" aus "
+      + "permissions.deny. Diese Datei schreibt nur ein Mensch; der Schutz wird nicht umgangen, auch nicht ueber "
+      + "die Shell. Das Paket haelt an, wie es die implement-Skills beschreiben: eigene Aenderungen namentlich "
+      + "zuruecknehmen, die Karte nach Backlog, das Label kit:protected, dann den Kommentar aus "
+      + "`node .claude/kit/board.mjs issue check-protected <id> --path {pfad}` (Anker ## Geschuetzte Datei) ans Issue.",
+    schreibenDurchgelassen: "board.mjs hook write-check: {warum} — Aufruf durchgelassen",
   }),
   en: Object.freeze({
     pipeAbgewiesen: "Rejected: \"{muster}\" is listed in sandbox.excludedCommands, but a pipe, a redirection "
@@ -45,5 +52,11 @@ export const TEXTE = Object.freeze({
     eingabeUnlesbar: "input not readable ({grund})",
     dateiUnlesbar: "{pfad} not readable ({grund})",
     hookUnbekannt: "Unknown hook command: '{befehl}'",
+    schreibenAbgewiesen: "Rejected: {werkzeug} on {pfad} — the path matches the write lock \"{sperre}\" from "
+      + "permissions.deny. Only a human writes this file; the protection is not bypassed, not via the shell "
+      + "either. The package stops as the implement skills describe: revert your own changes by name, move the "
+      + "card to Backlog, add the label kit:protected, then post the comment from "
+      + "`node .claude/kit/board.mjs issue check-protected <id> --path {pfad}` (anchor ## Geschuetzte Datei) to the issue.",
+    schreibenDurchgelassen: "board.mjs hook write-check: {warum} — call let through",
   }),
 });

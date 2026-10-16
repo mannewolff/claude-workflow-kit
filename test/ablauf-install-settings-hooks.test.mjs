@@ -154,8 +154,11 @@ test("[installer-1569] die deutschen Eintraege eines bestehenden Projekts werden
         { type: "command", command: "node .husky/zaehle-zuege.mjs" },
         { type: "command", command: "node .claude/kit/board.mjs session report" },
       ] }],
-      PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook bash-check" }] }],
-    }, "nur der Befehl wird ersetzt, sonst bleibt der Eintrag, wie er ist");
+      PreToolUse: [
+        { matcher: "Bash", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook bash-check" }] },
+        { matcher: "Edit|Write|NotebookEdit", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook write-check" }] },
+      ],
+    }, "nur der Befehl wird ersetzt, sonst bleibt der Eintrag, wie er ist; der Schreib-Hook kommt dazu");
     assert.deepEqual(settings.env, { A: "1" });
     assert.match(res.stdout, /SessionEnd, Stop, PreToolUse/, "die Ausgabe nennt die umgeschriebenen Ereignisse");
 
@@ -178,8 +181,10 @@ test("[installer-1569] stehen deutscher und englischer Eintrag nebeneinander, bl
   mitFixture("install-hooks-beide-", beide, (dir) => {
     const res = installiere(dir);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
-    assert.deepEqual(liesSettings(dir).hooks.PreToolUse,
-      [{ matcher: "Bash", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook bash-check" }] }]);
+    assert.deepEqual(liesSettings(dir).hooks.PreToolUse, [
+      { matcher: "Bash", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook bash-check" }] },
+      { matcher: "Edit|Write|NotebookEdit", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook write-check" }] },
+    ]);
     assert.equal(kommandos(liesSettings(dir), "Stop").length, 1);
   });
 });
@@ -261,6 +266,53 @@ test("[installer-995] die Rueckfallmeldung nennt den Bash-Pruef-Hook mit", () =>
     const res = installiere(dir);
     assert.equal(res.status, 0);
     assert.match(res.stdout, /PreToolUse \(Bash\): node \.claude\/kit\/board\.mjs hook bash-check/);
+  });
+});
+
+// --- Der Schreib-Pruef-Hook (Issue #1740) ------------------------------------
+
+const WRITE_CHECK = "node .claude/kit/board.mjs hook write-check";
+
+/** Die PreToolUse-Gruppen mit Matcher der Schreibwerkzeuge, die unseren Schreib-Hook tragen. */
+function schreibPruefGruppen(settings) {
+  return (settings.hooks?.PreToolUse ?? []).filter((g) => g.matcher === "Edit|Write|NotebookEdit"
+    && (g.hooks ?? []).some((h) => h.command?.includes("board.mjs hook write-check")));
+}
+
+test("[installer-1740] Einrichten und zwei Updates tragen den Schreib-Hook genau einmal, neben dem Bash-Hook", () => {
+  mitFixture("install-hooks-write-", undefined, (dir) => {
+    assert.equal(installiere(dir).status, 0);
+    for (const lauf of ["erstes Update", "zweites Update"]) {
+      const res = installiere(dir, PROJEKT_BESTAND);
+      assert.equal(res.status, 0, `${lauf}: ${res.stderr}\n${res.stdout}`);
+      const settings = liesSettings(dir);
+      const gruppen = schreibPruefGruppen(settings);
+      assert.equal(gruppen.length, 1, `${lauf}: genau ein Eintrag erwartet`);
+      assert.deepEqual(gruppen[0].hooks, [{ type: "command", command: WRITE_CHECK }]);
+      assert.equal(kommandos(settings, "PreToolUse").filter((c) => c.includes("hook write-check")).length, 1);
+      assert.equal(bashPruefGruppen(settings).length, 1, `${lauf}: der Bash-Hook bleibt`);
+    }
+  });
+});
+
+test("[installer-1740] das Update eines Projekts mit nur dem Bash-Hook ergaenzt den Schreib-Hook einmal", () => {
+  const alt = { hooks: { PreToolUse: [{ matcher: "Bash", hooks: [{ type: "command", command: "node .claude/kit/board.mjs hook bash-check" }] }] } };
+  mitFixture("install-hooks-write-update-", alt, (dir) => {
+    const res = installiere(dir);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.match(res.stdout, /PreToolUse/);
+    const nachErstem = readFileSync(settingsPfad(dir), "utf-8");
+    assert.equal(installiere(dir, PROJEKT_BESTAND).status, 0);
+    assert.equal(readFileSync(settingsPfad(dir), "utf-8"), nachErstem, "das zweite Update hat die Datei veraendert");
+    assert.equal(schreibPruefGruppen(liesSettings(dir)).length, 1);
+  });
+});
+
+test("[installer-1740] die Rueckfallmeldung nennt den Schreib-Hook mit", () => {
+  mitFixture("install-hooks-write-kaputt-", "{ kaputt\n", (dir) => {
+    const res = installiere(dir);
+    assert.equal(res.status, 0);
+    assert.match(res.stdout, /PreToolUse \(Edit\|Write\|NotebookEdit\): node \.claude\/kit\/board\.mjs hook write-check/);
   });
 });
 

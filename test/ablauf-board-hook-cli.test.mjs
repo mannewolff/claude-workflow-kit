@@ -41,6 +41,20 @@ test("[hook-cli] ohne Befund endet der Hook mit Exit 0 und ohne Ausgabe", () => 
   });
 });
 
+test("[hook-cli] write-check weist Edit an einer Sperre aus permissions.deny mit Exit 2 ab", () => {
+  mitProjekt((dir) => {
+    writeFileSync(join(dir, ".claude", "settings.json"),
+      JSON.stringify({ permissions: { deny: ["Edit(.claude/workflow.config.json)"] } }), "utf-8");
+    const ereignis = (file_path) => JSON.stringify({ tool_name: "Edit", tool_input: { file_path } });
+    const res = runBoard(dir, ["hook", "write-check"], { CLAUDE_PROJECT_DIR: "" }, { input: ereignis(".claude/workflow.config.json") });
+    assert.equal(res.status, 2, res.stderr);
+    assert.match(res.stderr, /\.claude\/workflow\.config\.json/);
+    const frei = runBoard(dir, ["hook", "write-check"], { CLAUDE_PROJECT_DIR: "" }, { input: ereignis("README.md") });
+    assert.equal(frei.status, 0, frei.stderr);
+    assert.equal(frei.stderr, "");
+  });
+});
+
 test("[hook-cli] ein unbekannter hook-Befehl endet mit Exit 1", () => {
   mitProjekt((dir) => {
     const res = runBoard(dir, ["hook", "unbekannt"], { CLAUDE_PROJECT_DIR: "" }, { input: "" });

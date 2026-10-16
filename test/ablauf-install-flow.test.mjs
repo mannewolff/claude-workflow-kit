@@ -1030,7 +1030,8 @@ test("[installer-1569] das Update loescht die alten Skill-Ordner und nennt jeden
     assert.deepEqual(JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf-8")).hooks, {
       SessionEnd: [{ hooks: BEFEHL("session report --complete") }],
       Stop: [{ hooks: BEFEHL("session report") }],
-      PreToolUse: [{ matcher: "Bash", hooks: BEFEHL("hook bash-check") }],
+      PreToolUse: [{ matcher: "Bash", hooks: BEFEHL("hook bash-check") },
+        { matcher: "Edit|Write|NotebookEdit", hooks: BEFEHL("hook write-check") }],
     }, "genau die englischen Hooks, ohne Doppel");
   } finally {
     rmSync(dir, { recursive: true, force: true });

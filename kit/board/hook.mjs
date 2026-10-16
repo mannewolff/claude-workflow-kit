@@ -1,7 +1,8 @@
 /**
  * board/hook.mjs — Hook gegen Pipe und Umleitung hinter ausgenommenen Kommandos im
  * Board-Werkzeug (Issue #1223, Plan #1199, E17): die Pruefungen `pruefeBashZeile` und
- * `pruefeHintergrund` und der Befehl `hook bash-check`.
+ * `pruefeHintergrund` und der Befehl `hook bash-check`; dazu der Befehl `hook write-check`
+ * gegen Schreibwerkzeuge an geschuetzten Dateien (Issue #1740).
  *
  * Ein Teil von kit/board.mjs. Der Einstieg laedt ihn erst nach der Auskunft ueber
  * --version und --help und exportiert seine Namen unveraendert weiter. Dieser Teil
@@ -19,6 +20,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 import { fail } from "./grundlagen.mjs";
+import { schreibSperrenPfade, tokenFormen, trifftGeschuetzt } from "./geschuetzt.mjs";
 import { text } from "./namen.mjs";
 
 // Die Texte an den Menschen liegen unter kit/texte/board-hook.mjs (Issue #1526).
@@ -259,9 +261,47 @@ export function hookBashPruefen({ eingabeLesen = () => readFileSync(0, "utf-8"),
   return ergebnis.abweisen ? { exitCode: 2, stderr: ergebnis.grund + "\n" } : ohneBefund;
 }
 
+// ============================================================
+// Hook gegen Schreibwerkzeuge an geschuetzten Dateien (Issue #1740)
+// ============================================================
+//
+// Am 2026-10-15 hat eine Runner-Session im Modus auto `.claude/workflow.config.json` viermal
+// mit `Edit` geaendert, obwohl `Edit(.claude/workflow.config.json)` unter `permissions.deny`
+// stand. Der Hook prueft die Schreibwerkzeuge selbst gegen die Schreibsperren des Projekts,
+// unabhaengig davon, wie Claude Code die Regel im jeweiligen Modus auswertet. Abgewiesen wird
+// nur, was das Projekt selbst sperrt: Die Vorgabeliste (`.claude/settings.json`, Hooks) fragt
+// Claude Code beim Menschen nach, und diese Rueckfrage nimmt der Hook ihm nicht weg.
+
+const SCHREIB_WERKZEUGE = new Set(["Edit", "Write", "NotebookEdit"]);
+
+/**
+ * `hook write-check` — PreToolUse-Hook fuer `Edit`, `Write` und `NotebookEdit`. Trifft der
+ * Pfad (`file_path`, bei `NotebookEdit` auch `notebook_path`) eine Schreibsperre aus
+ * `permissions.deny`, absolut wie relativ zur Projektwurzel, endet er mit Exit 2 und nennt
+ * Pfad, Sperre und den Halt. Bei eigenem Fehler laesst er durch wie `hook bash-check`.
+ */
+export function hookSchreibenPruefen({ eingabeLesen = () => readFileSync(0, "utf-8"), env = process.env, cwd = process.cwd() } = {}) {
+  const ohneBefund = { exitCode: 0, stderr: "" };
+  let eingabe;
+  try {
+    eingabe = JSON.parse(eingabeLesen());
+  } catch (e) {
+    return { exitCode: 0, stderr: `${t("schreibenDurchgelassen", { warum: t("eingabeUnlesbar", { grund: e.message }) })}\n` };
+  }
+  const pfad = eingabe?.tool_input?.file_path ?? eingabe?.tool_input?.notebook_path;
+  if (!SCHREIB_WERKZEUGE.has(eingabe?.tool_name) || typeof pfad !== "string" || pfad === "") return ohneBefund;
+
+  const wurzel = env.CLAUDE_PROJECT_DIR || cwd;
+  const formen = tokenFormen(pfad, wurzel);
+  const sperre = schreibSperrenPfade(wurzel).find((eintrag) => formen.some((f) => trifftGeschuetzt(f, eintrag)));
+  if (!sperre) return ohneBefund;
+  return { exitCode: 2, stderr: `${t("schreibenAbgewiesen", { werkzeug: eingabe.tool_name, pfad, sperre })}\n` };
+}
+
 export async function dispatchHook(command, hilfe) {
-  if (command === "bash-check") {
-    const { exitCode, stderr } = hookBashPruefen();
+  const pruefung = { "bash-check": hookBashPruefen, "write-check": hookSchreibenPruefen }[command];
+  if (pruefung) {
+    const { exitCode, stderr } = pruefung();
     if (stderr) process.stderr.write(stderr);
     process.exitCode = exitCode;
     return;
