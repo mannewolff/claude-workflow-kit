@@ -1158,8 +1158,7 @@
     }
   },
   "toolbox": {
-    "host": "https://kanban.mwolff.org",
-    "ideaStored": false
+    "host": "https://kanban.mwolff.org"
   },
   "pushCheck": {
     "location": "buildDienst",
