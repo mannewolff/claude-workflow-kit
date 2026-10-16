@@ -213,15 +213,16 @@
   // _Veraltet._ Wird beim Laden auf `codeHost` und `issueTracker` übertragen; neu nicht setzen. Gültig: `github`, `gitlab`, `local`. Keine Vorgabe.
   // "provider": "",
 
-  // _Intern._ Pfade, die Testdateien nur als Gerüst anlegen — ihre Erwähnung in einer Testdatei belegt keine Kopplung. Vorgabe: `[]`.
-  // `scaffoldOnly[].pattern` — Pfadmuster wie in checkAreas: "*" innerhalb eines Segments, "**" über Segmentgrenzen hinweg, "/" als Trenner. Keine Vorgabe.
-  // `scaffoldOnly[].reason` — Warum keine Testdatei diesen Pfad prüft, sondern ihn höchstens als Gerüst anlegt. Keine Vorgabe.
-  // "scaffoldOnly": [],
-
   // _Vom Installer gesetzt._ Stichtag der Szenarien-Pflicht als Kartennummer. Werte: ab 1. Vorgabe: nicht gesetzt, die Pflicht gilt für keine Karte am Board; der Installer setzt das Feld beim Update.
   // "scenariosFrom": 0,
 
   // === Feinabstimmung ===
+
+  // Ausnahmen für den Abgleich der Prüfbereiche; setzen, wenn areas suggest einen Pfad als Kandidaten für diese Liste nennt.
+  // Pfade, die Testdateien nur als Gerüst anlegen — ihre Erwähnung in einer Testdatei belegt keine Kopplung. Vorgabe: `[]`.
+  // `scaffoldOnly[].pattern` — Pfadmuster wie in checkAreas: "*" innerhalb eines Segments, "**" über Segmentgrenzen hinweg, "/" als Trenner. Keine Vorgabe.
+  // `scaffoldOnly[].reason` — Warum keine Testdatei diesen Pfad prüft, sondern ihn höchstens als Gerüst anlegt. Keine Vorgabe.
+  // "scaffoldOnly": [],
 
   // Der Nur-Lese-Schalter der fremden CLI aus reviewCommand. Vorgabe: für codex der eingebaute Schalter.
   // "reviewReadLimit": "",

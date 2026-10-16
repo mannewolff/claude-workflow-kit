@@ -29,10 +29,10 @@ export const ZUORDNUNG = Object.freeze({
     "qualityCommands", "mutationCommand", "formatFixCommand", "installCommand", "pushCheck",
     "reviewStages", "reviewModel", "reviewCommand", "reviewScope",
   ]),
-  ...teil("verwaltet", ["provider", "scenariosFrom", "version", "scaffoldOnly"]),
+  ...teil("verwaltet", ["provider", "scenariosFrom", "version"]),
   ...teil("fein", [
     "triggers", "columns", "reviewReadLimit", "night", "checkRun", "workload",
-    "effectiveness", "findings",
+    "effectiveness", "findings", "scaffoldOnly",
   ]),
 });
 
@@ -41,7 +41,6 @@ const KENNZEICHEN = Object.freeze({
   provider: "veraltet",
   scenariosFrom: "installer",
   version: "installer",
-  scaffoldOnly: "intern",
 });
 
 function wurzel(pfad) {

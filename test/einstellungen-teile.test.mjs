@@ -298,7 +298,7 @@ test("[1736-2] die Platte m4 steht unter Beim Einrichten nötig, und checkAreas 
       buildChecks: [],
       checkAreas: ["Lohnt sich"],
       ohnePruefung: ["Lohnt sich"],
-      nurGeruest: ["Vom Kit verwaltet", "intern"],
+      nurGeruest: ["Feinabstimmung"],
       gekoppelteBereiche: ["Lohnt sich"],
     });
   });
@@ -338,6 +338,6 @@ test("[1736-4] gekennzeichnete Eintraege tragen ihr Kennzeichen als Text, in der
     assert.deepEqual(kennzeichen("provider"), ["deprecated"]);
     assert.deepEqual(kennzeichen("szenarienAb"), ["set by the installer"]);
     assert.deepEqual(kennzeichen("checkAreas"), ["Worth setting"]);
-    assert.deepEqual(kennzeichen("nurGeruest"), ["Managed by the kit", "internal"]);
+    assert.deepEqual(kennzeichen("nurGeruest"), ["Fine-tuning"]);
   });
 });

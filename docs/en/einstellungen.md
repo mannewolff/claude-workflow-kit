@@ -124,13 +124,15 @@ _This section is generated from `templates/workflow.config.schema.json` by `node
 
 - `provider` — _Deprecated._ Is carried over to `codeHost` and `issueTracker` on loading; do not set it in a new config. Valid: `github`, `gitlab`, `local`. No default.
 
-- `scaffoldOnly` — _Internal._ Paths that test files only create as scaffolding — mentioning them in a test file proves no coupling. Default: `[]`.
-- `scaffoldOnly[].pattern` — Path pattern as in checkAreas: "*" within a segment, "**" across segment boundaries, "/" as separator. No default.
-- `scaffoldOnly[].reason` — Why no test file checks this path but at most creates it as scaffolding. No default.
-
 - `scenariosFrom` — _Set by the installer._ Cut-off of the scenario requirement, as a card number. Values: from 1. Default: not set, the obligation applies to no card on the board; the installer sets the field on update.
 
 ### Fine-tuning
+
+Exceptions for the check-area comparison; set it when areas suggest names a path as a candidate for this list.
+
+- `scaffoldOnly` — Paths that test files only create as scaffolding — mentioning them in a test file proves no coupling. Default: `[]`.
+- `scaffoldOnly[].pattern` — Path pattern as in checkAreas: "*" within a segment, "**" across segment boundaries, "/" as separator. No default.
+- `scaffoldOnly[].reason` — Why no test file checks this path but at most creates it as scaffolding. No default.
 
 - `reviewReadLimit` — The read-only switch of the third-party CLI from reviewCommand. Default: the built-in switch for codex.
 

@@ -755,7 +755,7 @@ test("[1736-10] unter Beim Einrichten nötig steht m4 mit englischen Namen und d
     assert.ok(text.includes("Prüfkommandos und Bereiche"), "m4 steht nicht unter dem ersten Reiter");
     assert.ok(text.includes("checkAreas (Lohnt sich)"), text.slice(0, 400));
     assert.ok(text.includes("noCheck (Lohnt sich)"), "der englische Name fehlt");
-    assert.ok(text.includes("scaffoldOnly (Vom Kit verwaltet, intern)"));
+    assert.ok(text.includes("scaffoldOnly (Feinabstimmung)"));
     assert.ok(!text.includes("ohnePruefung"), "ein deutscher Pfad erscheint");
   });
 });

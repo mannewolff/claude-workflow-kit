@@ -40,6 +40,7 @@ test("kennzeichenVon", () => {
   assert.equal(kennzeichenVon("provider"), "veraltet");
   assert.equal(kennzeichenVon("version"), "installer");
   assert.equal(kennzeichenVon("szenarienAb"), "installer");
-  assert.equal(kennzeichenVon("nurGeruest[].muster"), "intern");
+  assert.equal(teilVon("nurGeruest[].muster"), "fein");
+  assert.equal(kennzeichenVon("nurGeruest[].muster"), null);
   assert.equal(kennzeichenVon("history"), null);
 });

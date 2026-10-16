@@ -249,7 +249,7 @@ test("jedes Wurzelfeld der ersten beiden Teile trägt seinen wann-Satz am Ende s
 
 test("jede Gruppe der Feinabstimmung leitet ihr gruppe-Satz ein", () => {
   const { de, en } = erzeugt();
-  const englisch = { "night.kette": "night.chain", "night.stufen": "night.tiers", "night.stand": "night.status", pruefLauf: "checkRun", aufwand: "workload", wirksamkeit: "effectiveness", befunde: "findings" };
+  const englisch = { "night.kette": "night.chain", "night.stufen": "night.tiers", "night.stand": "night.status", pruefLauf: "checkRun", aufwand: "workload", wirksamkeit: "effectiveness", befunde: "findings", nurGeruest: "scaffoldOnly" };
   const mitGruppe = Object.entries(TABELLE).filter(([, e]) => e.gruppe);
   assert.ok(mitGruppe.length >= 8, `nur ${mitGruppe.length} gruppe-Sätze`);
   for (const [sprache, text] of [["de", de], ["en", en]]) {
@@ -270,15 +270,15 @@ test("der Teil „Vom Kit verwaltet“ trägt das Kennzeichen, version hat eine 
     provider: ["_Veraltet._", "_Deprecated._"],
     scenariosFrom: ["_Vom Installer gesetzt._", "_Set by the installer._"],
     version: ["_Vom Installer gesetzt._", "_Set by the installer._"],
-    scaffoldOnly: ["_Intern._", "_Internal._"],
   };
   for (const [pfad, [kd, ke]] of Object.entries(erwartet)) {
     assert.ok(zeile(de, pfad).startsWith(`- \`${pfad}\` — ${kd} `), zeile(de, pfad));
     assert.ok(zeile(en, pfad).startsWith(`- \`${pfad}\` — ${ke} `), zeile(en, pfad));
     assert.ok(nachTeil(de).get(TEIL_KOEPFE.de[2]).includes(zeile(de, pfad)), pfad);
   }
-  // Das Kennzeichen steht nur an der Zeile des Wurzelfelds.
-  assert.doesNotMatch(zeile(de, "scaffoldOnly[].pattern"), /_Intern\._/);
+  // scaffoldOnly ist seit Issue #1723 eine Anwender-Einstellung der Feinabstimmung, ohne Kennzeichen.
+  assert.ok(nachTeil(de).get(TEIL_KOEPFE.de[3]).includes(zeile(de, "scaffoldOnly")), "scaffoldOnly fehlt in der Feinabstimmung");
+  assert.doesNotMatch(zeile(de, "scaffoldOnly"), /_Intern\._/);
 });
 
 // --- Die kommentierte Beispieldatei (Issue #1735, Plan #1710 A9, E3) ---

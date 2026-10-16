@@ -309,6 +309,12 @@
       "en": "From how many recurring findings of the model reviews a proposal arises."
     }
   },
+  "nurGeruest": {
+    "gruppe": {
+      "de": "Ausnahmen für den Abgleich der Prüfbereiche; setzen, wenn areas suggest einen Pfad als Kandidaten für diese Liste nennt.",
+      "en": "Exceptions for the check-area comparison; set it when areas suggest names a path as a candidate for this list."
+    }
+  },
   "szenarienAb": {
     "satz": {
       "de": "Stichtag der Szenarien-Pflicht als Kartennummer.",
