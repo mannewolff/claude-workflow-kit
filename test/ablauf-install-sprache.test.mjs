@@ -1,8 +1,9 @@
 // Ablauf-Pruefung: die freiwillige Umstellung eines Projekts mit `node install.mjs --language en|de` (Issue #1438, Plan #1420 E7, E12) — sichtbar nur am echten Installer an einer Kopie eines Projekts.
 //
-// Die Umstellung setzt die Spracheinstellung, benennt die Schluessel in workflow.config.json und
-// der lokalen Override-Datei um, legt vorher workflow.config.json.vor-umstellung an und listet,
-// was umbenannt wurde und was offen bleibt. Gesetzte Labelwerte aendert sie nicht (E7). Den
+// Die Umstellung setzt die Spracheinstellung `language`, stellt die Aufzaehlungswerte in
+// workflow.config.json und der lokalen Override-Datei um, legt vorher
+// workflow.config.json.vor-umstellung an und listet, was umbenannt wurde und was offen bleibt.
+// Schluessel stellt sie nicht um, geschrieben stehen sie englisch (Issue #1728, Plan #1710 A4). Gesetzte Labelwerte aendert sie nicht (E7). Den
 // Board-Teil liefert `node .claude/kit/board.mjs issue list`; hier steht statt seiner eine
 // Attrappe ueber den Test-Hook INSTALL_BOARD_FAKE (wie INSTALL_SCHUTZ_FAKE) — kein Netz.
 //
@@ -78,7 +79,7 @@ function installiere(dir, argv, extraEnv = {}, antworten = [], installer = INSTA
 
 const lies = (dir, name) => JSON.parse(readFileSync(join(dir, ".claude", name), "utf-8"));
 
-test("--language en legt die Sicherung an, benennt Config und Override-Datei um und laesst Werte und Labels stehen", () => {
+test("--language en legt die Sicherung an, stellt Aufzaehlungswerte um und laesst frei gewaehlte Werte und Labels stehen", () => {
   const dir = deutschesProjekt("install-umstellung-en-");
   try {
     const original = readFileSync(join(dir, ".claude", "workflow.config.json"), "utf-8");
@@ -103,12 +104,12 @@ test("--language en legt die Sicherung an, benennt Config und Override-Datei um 
     });
     assert.deepEqual(c.checkRun, { label: "kit:pruefen" });
 
-    assert.deepEqual(lies(dir, "workflow.config.local.json"), { reviewModel: "claude-opus-5-5", reviewReadLimit: 100 });
+    assert.deepEqual(lies(dir, "workflow.config.local.json"), LOKAL, "ohne Aufzaehlungswert bleibt die Override-Datei unberuehrt");
 
-    // Der Bericht: umbenannt, offen, Board, Skills.
-    assert.match(res.stdout, /ohnePruefung → noCheck/);
+    // Der Bericht: umgestellte Werte, offen, Board, Skills. Schluessel stehen nicht darin.
+    assert.doesNotMatch(res.stdout, /ohnePruefung → noCheck/);
     assert.match(res.stdout, /buildChecks\[0\]\.stufe: paket → package/);
-    assert.match(res.stdout, /workflow\.config\.local\.json: reviewLesegrenze → reviewReadLimit/);
+    assert.doesNotMatch(res.stdout, /reviewLesegrenze → reviewReadLimit/);
     assert.match(res.stdout, /night\.kette\.label: kit:durchziehen .*kit:carry-through/);
     assert.match(res.stdout, /night\.stand\.labels\.laeuft: lauf:laeuft .*run:running/);
     assert.match(res.stdout, /pruefLauf\.label: kit:pruefen .*kit:check/);
@@ -142,7 +143,7 @@ test("[1569] --sprache endet mit Exit 1 und nennt --language, die Config bleibt"
   }
 });
 
-test("--language de fuehrt zurueck: gleich dem Original bis auf das Sprachfeld", () => {
+test("--language de fuehrt die Werte zurueck, die Schluessel bleiben englisch", () => {
   const dir = deutschesProjekt("install-umstellung-zurueck-");
   try {
     const hin = installiere(dir, ["--language", "en"], boardFake(dir, KARTEN));
@@ -152,13 +153,18 @@ test("--language de fuehrt zurueck: gleich dem Original bis auf das Sprachfeld",
     const zurueck = installiere(dir, ["--language", "de"], boardFake(dir, KARTEN));
     assert.equal(zurueck.status, 0, `${zurueck.stderr}\n${zurueck.stdout}`);
 
-    const { sprache, ...rest } = lies(dir, "workflow.config.json");
-    assert.equal(sprache, "de");
-    assert.deepEqual(rest, DEUTSCH);
+    const c = lies(dir, "workflow.config.json");
+    assert.equal(c.language, "de");
+    assert.equal("sprache" in c, false);
+    assert.deepEqual(c.buildChecks, DEUTSCH.buildChecks.map(({ stufe, art, ...rest }) => ({
+      ...rest, ...(stufe ? { stage: stufe } : {}), ...(art ? { kind: art } : {}),
+    })), "die Werte stehen wieder deutsch, die Schluessel englisch");
+    assert.deepEqual(c.pushCheck, { location: "buildDienst", branch: "kit-pruefung" });
     assert.deepEqual(lies(dir, "workflow.config.local.json"), LOKAL);
     assert.equal(readFileSync(join(dir, ".claude", "workflow.config.json.vor-umstellung"), "utf-8"), englisch,
       "die Sicherung haelt den Stand vor dieser Umstellung");
-    assert.match(zurueck.stdout, /noCheck → ohnePruefung/);
+    assert.match(zurueck.stdout, /buildChecks\[0\]\.stufe: package → paket/);
+    assert.doesNotMatch(zurueck.stdout, /noCheck → ohnePruefung/);
     assert.match(zurueck.stdout, /#8 \[Requirement\] Neue Anforderung/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -264,7 +270,7 @@ function assertSkills(dir) {
   for (const name of ["requirement", "techplan", "session-start", "kit-review"]) {
     assert.equal(installiert(dir, "skills", name, "SKILL.md"), deutscheQuelle("skills", name, "SKILL.md"), name);
   }
-  for (const alt of ["fachplan", "kontext", "context", "review", "plan"]) {
+  for (const alt of ["fachplan", "kontext", "context", "review", "plan", "local-check"]) {
     assert.equal(existsSync(join(dir, ".claude", "skills", alt)), false, `${alt} wurde installiert`);
   }
 }

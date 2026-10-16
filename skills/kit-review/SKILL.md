@@ -1,12 +1,12 @@
 ---
 name: kit-review
-description: Starts a review by an Opus subagent in a fresh session without implementation context. Use this skill when the user invokes /kit-review or starts step 7 of the process (code review by a second model).
+description: Starts a review by an Opus subagent in a fresh session without implementation context. Use this skill when the user invokes /kit-review or starts step 6 of the process (code review by a second model).
 user-invocable: true
 ---
 
 # Review
 
-Startet Schritt 7 des 9-Schritt-Prozesses: Code-Review durch ein zweites Modell in frischer Session, ohne Kenntnis der Implementierungs-Session.
+Startet Schritt 6 des 8-Schritt-Prozesses: Code-Review durch ein zweites Modell in frischer Session, ohne Kenntnis der Implementierungs-Session.
 
 ## Vorbedingung
 
@@ -65,7 +65,7 @@ Welcher der beiden Wege gilt, entscheidet das gesetzte Feld aus der Vorbedingung
 
 **Bei gesetztem `reviewModel` — Subagent über das Agent-Tool** mit `subagent_type: kit-pruefer` und dem Modell aus `reviewModel` (Opus-Pin), in frischer Session ohne Implementierungs-Kontext. Der Auftrag lautet nur `Lies <tmpdir>/review-auftrag.md`, mit wörtlichem Pfad. Der Agent darf nur lesen, seine Abschlussnachricht ist der Befund.
 
-**Bei gesetztem `reviewCommand` — das Kit startet das konfigurierte Kommando** an seiner Lesegrenze (`reviewLesegrenze`), den Auftrag über stdin, die Antwort von stdout in die Ausgabedatei:
+**Bei gesetztem `reviewCommand` — das Kit startet das konfigurierte Kommando** an seiner Lesegrenze (`reviewReadLimit`), den Auftrag über stdin, die Antwort von stdout in die Ausgabedatei:
 
 ```bash
 node .claude/kit/board.mjs issue-review start --code-review --brief <tmpdir>/review-auftrag.md --output <tmpdir>/review-antwort.md
@@ -73,7 +73,7 @@ node .claude/kit/board.mjs issue-review start --code-review --brief <tmpdir>/rev
 
 Das Agent-Tool kommt hier nicht zum Einsatz: Es kennt nur Claude-Modelle, und ein `reviewCommand` durch dieses Werkzeug zu reichen wäre ein stiller Ausfall.
 
-**Ausfallpfad: Endet `review-brief` oder `start` mit Exit ungleich 0, bricht `/kit-review` ab** — mit sichtbarer Fehlermeldung einschließlich des Fehlers aus der Ausgabe, bei `start` samt stderr-Ausschnitt. Das Issue wechselt dabei **nicht** nach In review, und es entsteht **kein Board-Kommentar**. Ein Review, der nicht lief, darf keine Spur hinterlassen, die wie eine Prüfung aussieht: Ein Kommentar unter „Code-Review (Schritt 7)" ohne Befunde liest sich wie ein sauberer Durchlauf, und ein Issue in *In review* behauptet, die Prüfung sei erledigt. Beides wäre schlechter als der sichtbare Abbruch.
+**Ausfallpfad: Endet `review-brief` oder `start` mit Exit ungleich 0, bricht `/kit-review` ab** — mit sichtbarer Fehlermeldung einschließlich des Fehlers aus der Ausgabe, bei `start` samt stderr-Ausschnitt. Das Issue wechselt dabei **nicht** nach In review, und es entsteht **kein Board-Kommentar**. Ein Review, der nicht lief, darf keine Spur hinterlassen, die wie eine Prüfung aussieht: Ein Kommentar unter „Code-Review (Schritt 6)" ohne Befunde liest sich wie ein sauberer Durchlauf, und ein Issue in *In review* behauptet, die Prüfung sei erledigt. Beides wäre schlechter als der sichtbare Abbruch.
 
 ### 3. Ergebnis dokumentieren
 
@@ -81,7 +81,7 @@ Schreibe die Befunde als Kommentar ans aktuelle Issue:
 
 ```bash
 cat  > <tmpdir>/id-review.md <<'TEIL1'
-## Code-Review (Schritt 7)
+## Code-Review (Schritt 6)
 
 <BEFUNDE>
 TEIL1
@@ -109,4 +109,4 @@ Falls kein Issue ermittelbar: Gib die Befunde direkt aus.
 
 ## Stop-Punkt
 
-Nach dem Review wartet der Prozess auf den Menschen. Claude setzt das Issue auf **In review** — der Commit-Push (Schritt 8) erfolgt nur auf explizite Trigger-Phrase `push main`.
+Nach dem Review wartet der Prozess auf den Menschen. Claude setzt das Issue auf **In review** — der Commit-Push (Schritt 7) erfolgt nur auf explizite Trigger-Phrase `push main`.

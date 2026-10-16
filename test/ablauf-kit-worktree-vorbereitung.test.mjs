@@ -31,6 +31,9 @@ function werkzeug(cwd, env, ...cliArgs) {
   return { status: res.status, stand: JSON.parse(zeilen.at(-1)) };
 }
 
+/** Das Ergebnis des Mutationstests im naechtlichen Push-Lauf (Issue #1673, E4). */
+const MUTATION = { cmd: "npm run mutation", ergebnis: "gruen", exit: 0, dauerMs: 1234 };
+
 /** Ein Repo mit `origin/main` hinter `main` und ein Worktree mit dem Release-Commit. */
 function setup() {
   const repo = mkdtempSync(join(tmpdir(), "vorbereitung-cli-"));
@@ -56,7 +59,7 @@ function setup() {
   git(pfad, "commit", "-q", "-m", "chore: v2.0.0");
   mkdirSync(join(pfad, ".claude"), { recursive: true });
   writeFileSync(join(pfad, ".claude", "checks-summary.json"), JSON.stringify({
-    stufe: "push", abgeschlossen: true, laufen: [{ cmd: "npm test", ergebnis: "gruen" }],
+    stufe: "push", abgeschlossen: true, laufen: [{ cmd: "npm test", ergebnis: "gruen" }], mutation: MUTATION,
   }));
   return { repo, pfad, commit: git(pfad, "rev-parse", "HEAD") };
 }
@@ -76,12 +79,14 @@ test("record-preparation, check-preparation und --discard als Prozess", () => {
   assert.equal(fest.stand.fetch, "fehlgeschlagen");
   assert.equal(fest.stand.laufId, "2026-10-07T01:00:00.000Z");
   assert.equal(fest.stand.kitStand, "abc123");
+  assert.deepEqual(fest.stand.mutation, MUTATION);
   assert.ok(existsSync(join(s.repo, ".claude", "push-vorbereitung.json")));
 
   const urteil = werkzeug(s.repo, {}, "check-preparation");
   assert.equal(urteil.status, 0);
   assert.deepEqual(urteil.stand, {
     ok: true, uebernehmen: true, grund: null, commit: s.commit, offen: ["Sichtpruefung der Oberflaeche"], zeitpunkt: fest.stand.zeitpunkt,
+    mutation: MUTATION,
   });
 
   const weg = werkzeug(s.repo, {}, "check-preparation", "--discard");

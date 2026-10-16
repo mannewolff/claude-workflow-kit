@@ -31,7 +31,9 @@ test("[night-19] alte Routing-Labels loesen eine Hinweiszeile aus, ohne Wirkung"
   const r = await ketteImProzess({ karten: [alt], argv: ["--dry-run"] });
   assert.equal(r.code, 0, r.ausgabe);
   assert.match(r.ausgabe, /Hinweis: #1 traegt das Label 'kit:nightplan', das es seit Stufe 2 nicht mehr gibt/);
-  assert.match(r.ausgabe, /WARNUNG: keine Karte traegt das Label 'kit:night'/);
+  assert.match(r.ausgabe, /\] WARNUNG: keine Karte traegt das Label 'kit:night' — es wird nichts verarbeitet\.\n/);
+  assert.match(r.ausgabe, /WARNUNG: keine Karte traegt das Label 'kit:night'[^\n]*\n[^\n]*\] {3}Board von: night-kette-prozess-\w+ \(local\)\n/,
+    "unter der Warnung steht das Repo, dessen Board gelesen wurde (Issue #1744)");
   assert.match(r.ausgabe, /Keine Kette zu fahren/);
 });
 

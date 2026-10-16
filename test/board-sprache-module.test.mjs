@@ -40,6 +40,7 @@ import { zerlegeAbschnitte } from "../kit/board/dokumente.mjs";
 import { TEXTE as SCHUTZ_TEXTE, SCHUTZ_AUSGESETZT, rulesetSoll, schutzZustand, anleitung, nachtSperre, probe,
   einrichten } from "../kit/board/schutz.mjs";
 import { TEXTE as SZENARIEN_TEXTE } from "../kit/board/szenarien.mjs";
+import { TEXTE as EREIGNIS_TEXTE } from "../kit/board/ereignis.mjs";
 import { setupProjekt, runBoard } from "./helpers/board-fixture.mjs";
 
 const ADAPTER_URL = new URL("../kit/board/adapter.mjs", import.meta.url).href;
@@ -248,7 +249,7 @@ test("[1481] englisch: Pruefzahl des Laufs und Probelauf", () => {
 test("[1481] englisch: check nennt fehlende Reviewer und Werkzeuge; die Vertragswerte bleiben", () => {
   spracheFestlegen("en");
   const leer = issueReviewCheck({}, { config: {} });
-  assert.match(leer.grund, /^issueReview\.reviewers is empty or missing — copy the block from \.claude\/workflow\.config\.example\.json$/);
+  assert.match(leer.grund, /^issueReview\.reviewers is empty or missing — copy the block from \.claude\/workflow\.config\.example\.jsonc$/);
   const config = { issueReview: { reviewers: [
     { name: "fremd", kind: "command", command: "fremdwerkzeug" },
     { name: "astra", kind: "command", command: "codex exec" },
@@ -595,6 +596,8 @@ test("[1483] in einem englischen Projekt erscheint aus keinem Modul der Gruppe e
     "kit/board/wiederholung.mjs": WIEDERHOLUNG_TEXTE,
     // Issue #1589: der Abschnitt Szenarien im Fachplan.
     "kit/board/szenarien.mjs": SZENARIEN_TEXTE,
+    // Issue #1662: `issue hold`, das Warten eines Fachplans auf ein Ereignis.
+    "kit/board/ereignis.mjs": EREIGNIS_TEXTE,
   };
   const funde = [];
   for (const [datei, tabelle] of Object.entries(gruppe)) {

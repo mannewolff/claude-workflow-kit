@@ -237,3 +237,41 @@ test("[night-1399] gewackeltKarte der Zusammenfassung steht als gewackelt im PrÃ
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// Teillauf und Uebernahme (Issue #1687, Plan #1685): Erst mit beiden Feldern ist entscheidbar,
+// ob eine Dauer eine vollstaendige Ausfuehrung war. Hinten angehaengt, `null` statt fehlend.
+test("[night-46] der PrÃ¼fstand traegt teillauf und uebernommen, hinten angehaengt, null ohne die Felder", () => {
+  const dir = setupProjekt("night-pruefstand-teillauf-");
+  try {
+    const mit = readyIssue(dir, "Teillauf und Uebernahme");
+    const zusammenfassung = {
+      laufen: [{ cmd: "true", ergebnis: "gruen", grund: "beruehrt" }], ausgelassen: [],
+      teillauf: true, uebernommen: "2026-10-14T10:00:00.000Z",
+    };
+    const fake = [summary(zusammenfassung), ARBEIT_UND_COMMIT, NACH_IN_REVIEW].join("\n");
+    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: fake });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    const p = einheit(dir, mit).pruefung;
+    assert.equal(p.teillauf, true);
+    assert.equal(p.uebernommen, "2026-10-14T10:00:00.000Z");
+    const schluessel = Object.keys(p);
+    assert.deepEqual(schluessel.slice(-2), ["teillauf", "uebernommen"], `hinten angehaengt: ${schluessel.join(", ")}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  const dir2 = setupProjekt("night-pruefstand-ohne-teillauf-");
+  try {
+    const ohne = readyIssue(dir2, "Ohne Teillauf");
+    const zusammenfassung = { laufen: [{ cmd: "true", ergebnis: "gruen", grund: "beruehrt" }], ausgelassen: [] };
+    const fake = [summary(zusammenfassung), ARBEIT_UND_COMMIT, NACH_IN_REVIEW].join("\n");
+    const res = run(dir2, process.execPath, [NIGHT, "--label", "none", "--verbose"], { NIGHT_CLAUDE_CMD: fake });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    const p = einheit(dir2, ohne).pruefung;
+    assert.ok("teillauf" in p && "uebernommen" in p, "die Felder fehlen");
+    assert.equal(p.teillauf, null);
+    assert.equal(p.uebernommen, null);
+  } finally {
+    rmSync(dir2, { recursive: true, force: true });
+  }
+});

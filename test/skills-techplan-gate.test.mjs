@@ -7,7 +7,7 @@
 // wieder Plandokumente — und niemand merkt es, weil kein Code kaputtgeht.
 //
 // Absichtlich NICHT geprueft: implement-test und implement-done. Sie tragen heute
-// keinerlei [Requirement]/[Idea]-Erwaehnung, und docs/nachtbetrieb.md nennt ausdruecklich
+// keinerlei [Requirement]/[Idea]-Erwaehnung, und docs/runner.md nennt ausdruecklich
 // nur /implement-ready, /implement-next und den Nacht-Runner als Traeger der
 // mechanischen Leitplanke. Die Auslassung ist Konvention, kein Versehen.
 
@@ -64,10 +64,10 @@ test("prozess: das Gate kennt vier Sorten, [Plan] und [Human] eingeschlossen", (
 // mehr: Die Nacht-Kette nimmt genau [Requirement]-Issues als Eingang; [Idea] und [Plan]
 // sind damit keine Kandidaten, ohne dass ein eigener Ausschluss noetig waere. Die Doku
 // muss den Eingang nennen und keinen der entfallenen Stufen-Schalter mehr.
-test("dokumentation: der Abschnitt zur Nacht-Kette nennt [Requirement] als einzigen Eingang", () => {
-  const doku = lies("docs", "nachtbetrieb.md");
-  const idx = doku.indexOf("## Die Nacht-Kette\n");
-  assert.ok(idx >= 0, "der Abschnitt zur Nacht-Kette fehlt");
+test("dokumentation: der Abschnitt zur Kette nennt [Requirement] als einzigen Eingang", () => {
+  const doku = lies("docs", "runner.md");
+  const idx = doku.indexOf("## Die Kette\n");
+  assert.ok(idx >= 0, "der Abschnitt zur Kette fehlt");
   const kette = doku.slice(idx).split(/\n## /)[0];
   // Die Doku nennt den Eingang bis zu ihrer Umstellung (Plan #1548, Issue #1573) unter dem deutschen Praefix.
   assert.match(kette, /hat den Titel `\[(?:Requirement|Fachlich)\]`/, "der Eingang [Requirement] fehlt");

@@ -4,7 +4,7 @@
  *
  * `vorgeschichteAktiv` ist die eine Stelle, über die Formprüfung, Kommando und Prüfauftrag
  * lesen, ob ein Projekt die Vorgeschichte sucht. Die Typprüfung übernimmt das Schema; beim
- * Lesen gilt alles außer `true` als aus, ohne Abbruch.
+ * Lesen gilt alles außer `false` als an, ohne Abbruch (Issue #1727, Plan #1710).
  *
  * `issue history` (Issue #1539) sucht die früheren Fachpläne auf zwei Wegen: je Begriff
  * über die Suche des Boards (archivierte Karten eingeschlossen), je Datei über die
@@ -31,9 +31,9 @@ export { TEXTE };
 
 const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
 
-/** Sucht das Projekt vor einem Fachplan oder Plan die Vorgeschichte? Nur bei `true`. */
+/** Sucht das Projekt vor einem Fachplan oder Plan die Vorgeschichte? Immer, außer bei `false`. */
 export function vorgeschichteAktiv(config) {
-  return config?.vorgeschichte === true;
+  return config?.vorgeschichte !== false;
 }
 
 /** Höchstzahl der Treffer im Ergebnis; die Zahl darüber steht in `weitere` (A2). */

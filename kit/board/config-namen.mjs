@@ -4,6 +4,11 @@
  * englischer Name, dazu der Normalisierer, der eine Config beim Einlesen auf die deutschen
  * Namen abbildet, und die Umbenennung in eine Sprache.
  *
+ * Geschrieben wird mit englischen Schluesseln, gleich in welcher Sprache das Projekt arbeitet;
+ * Werte fester Aufzaehlungen bleiben auf Wunsch, wie sie in der Datei stehen (Issue #1725,
+ * Plan #1710 A2, A3). Stehen beide Namen einer Einstellung in einer Datei, gilt der englische
+ * (A13).
+ *
  * Intern bleiben die deutschen Schluessel massgeblich (E9): `normalisiereConfig` liefert eine
  * Config, wie der Bestand sie liest, gleich in welcher Sprache die Datei geschrieben ist. Die
  * Tabelle nennt jeden Pfad des Schemas, auch die schon englischen Namen (E10); das haelt
@@ -84,7 +89,6 @@ export const SCHLUESSEL = Object.freeze({
   toolbox: "toolbox",
   "toolbox.host": "host",
   "toolbox.tokenFile": "tokenFile",
-  "toolbox.ideaStored": "ideaStored",
   issueReview: "issueReview",
   "issueReview.requiredBeforeReady": "requiredBeforeReady",
   "issueReview.reviewers": "reviewers",
@@ -151,6 +155,7 @@ export const SCHLUESSEL = Object.freeze({
   "night.stufenRegel": "tierRule",
   "night.festgefahrenNach": "stuckAfter",
   "night.zielUmsetzungMin": "goalImplementationMin",
+  "night.protokollFristTage": "logRetentionDays",
   pruefLauf: "checkRun",
   "pruefLauf.label": "label",
   "pruefLauf.pruefungMin": "checkMin",
@@ -177,6 +182,13 @@ export const SCHLUESSEL = Object.freeze({
   "vertragsRepos[].url": "url",
   "vertragsRepos[].zweig": "branch",
 });
+
+/**
+ * Pfade entfallener Einstellungen (Issue #1726, Plan #1710 A11). `normalisiereConfig` streicht
+ * sie beim Lesen: Eine Datei, die sie noch traegt, wird ohne Fehler gelesen, der Eintrag wirkt
+ * nicht. Aus bestehenden Dateien nimmt sie erst das Update.
+ */
+export const ENTFALLEN = Object.freeze(["toolbox.ideaStored"]);
 
 const gleich = (...werte) => Object.fromEntries(werte.map((w) => [w, w]));
 const AUFWAND_STUFEN = gleich("low", "medium", "high", "xhigh", "max");
@@ -219,20 +231,13 @@ const AUFZAEHLUNG = new Map(
   ])
 );
 
-// SYNC: wie projektSprache in kit/board/namen.mjs — dieses Modul importiert nur
-// Node-Bordmittel und liest die Sprache darum selbst: `language`, sonst `sprache`, sonst `de`.
-function spracheDer(roh) {
-  const wert = roh?.language ?? roh?.sprache;
-  return wert === "en" ? "en" : "de";
-}
-
 const istObjekt = (w) => w !== null && typeof w === "object" && !Array.isArray(w);
 
 /**
  * Bildet `wert` am Tabellenpfad `pfad` in die Zielsprache ab. `anzeige` ist derselbe Pfad mit
  * Listenposition (`buildChecks[0].stufe`) fuer Hinweise und Umbenennungen. Der Lauf `lauf`
- * traegt Zielsprache `ziel`, die Sprache `vorrang`, deren Name bei einer Doppelung gilt, und
- * die Listen `hinweise` und `umbenannt`.
+ * traegt Zielsprache `ziel`, die Listen `hinweise` und `umbenannt` und mit `werte:
+ * "wie-vorlage"` den Wunsch, Aufzaehlungswerte stehen zu lassen.
  */
 function bilde(wert, pfad, anzeige, lauf) {
   if (Array.isArray(wert)) return wert.map((e, i) => bilde(e, `${pfad}[]`, `${anzeige}[${i}]`, lauf));
@@ -243,7 +248,8 @@ function bilde(wert, pfad, anzeige, lauf) {
   return kinder ? bildeObjekt(wert, pfad, anzeige, kinder, lauf) : structuredClone(wert);
 }
 
-function bildeWert(wert, pfad, anzeige, { ziel, umbenannt }) {
+function bildeWert(wert, pfad, anzeige, { ziel, umbenannt, werte }) {
+  if (werte === "wie-vorlage") return wert;
   const paar = AUFZAEHLUNG.get(pfad)?.get(wert);
   if (!paar || paar[ziel] === wert) return wert;
   umbenannt.push({ art: "wert", pfad: anzeige, von: wert, nach: paar[ziel] });
@@ -252,19 +258,23 @@ function bildeWert(wert, pfad, anzeige, { ziel, umbenannt }) {
 
 const pfadUnter = (eltern, name) => (eltern ? `${eltern}.${name}` : name);
 
-/** Je Einstellung des Objekts der geltende Name; jede Doppelung landet in `hinweise`. */
-function geltendeNamen(wert, anzeige, kinder, { vorrang, hinweise }) {
+/**
+ * Je Einstellung des Objekts der geltende Name; jede Doppelung landet in `hinweise`. Bei einer
+ * Doppelung gilt der englische Name (A13): Das Kit schreibt nur englische Namen, ein deutscher
+ * daneben stammt aus einem aelteren Stand.
+ */
+function geltendeNamen(wert, anzeige, kinder, { hinweise }) {
   const gilt = new Map();
   for (const name of Object.keys(wert)) {
     const paar = kinder.get(name);
     if (!paar) continue;
     const vorher = gilt.get(paar.de);
-    const gewinner = vorher === undefined || paar[vorrang] === name ? name : vorher;
+    const gewinner = vorher === undefined || paar.en === name ? name : vorher;
     gilt.set(paar.de, gewinner);
     if (vorher === undefined) continue;
     hinweise.push(
       `Doppelung: "${pfadUnter(anzeige, vorher)}" und "${pfadUnter(anzeige, name)}" nennen dieselbe ` +
-        `Einstellung; es gilt "${pfadUnter(anzeige, gewinner)}", der Name der Projektsprache (${vorrang}).`
+        `Einstellung; es gilt "${pfadUnter(anzeige, gewinner)}", der englische Name.`
     );
   }
   return gilt;
@@ -289,19 +299,23 @@ function bildeObjekt(wert, pfad, anzeige, kinder, lauf) {
 
 /**
  * Bildet eine eingelesene Config auf die deutschen Schluessel und Werte ab (E9). Stehen beide
- * Namen derselben Einstellung darin, gilt der Name der Projektsprache, und `hinweise` nennt die
- * Doppelung. Unbekannte Schluessel und frei gewaehlte Werte bleiben unveraendert; die Eingabe
- * wird nicht veraendert.
- *
- * `sprache` nennt die Projektsprache, wenn sie nicht in `roh` selbst steht — bei der
- * persoenlichen Override-Datei, die sie aus der geteilten Config erbt (Issue #1435).
+ * Namen derselben Einstellung darin, gilt der englische (A13), und `hinweise` nennt die
+ * Doppelung. Entfallene Pfade (ENTFALLEN) fehlen im Ergebnis. Unbekannte Schluessel und frei
+ * gewaehlte Werte bleiben unveraendert; die Eingabe wird nicht veraendert. Die Projektsprache spielt dafuer keine Rolle mehr; ein zweites
+ * Argument (`{ sprache }`, Issue #1435) wird angenommen und nicht gebraucht.
  */
-export function normalisiereConfig(roh, { sprache } = {}) {
+export function normalisiereConfig(roh) {
   const hinweise = [];
   if (!istObjekt(roh)) return { config: roh, hinweise };
-  const vorrang = sprache === "en" || sprache === "de" ? sprache : spracheDer(roh);
-  const config = bilde(roh, "", "", { ziel: "de", vorrang, hinweise, umbenannt: [] });
+  const config = bilde(roh, "", "", { ziel: "de", hinweise, umbenannt: [] });
+  for (const pfad of ENTFALLEN) streiche(config, pfad.split("."));
   return { config, hinweise };
+}
+
+function streiche(wert, [name, ...rest]) {
+  if (!istObjekt(wert)) return;
+  if (rest.length === 0) delete wert[name];
+  else streiche(wert[name], rest);
 }
 
 /**
@@ -309,45 +323,62 @@ export function normalisiereConfig(roh, { sprache } = {}) {
  * Aufzaehlungen, gleich in welcher Sprache sie stehen. `umbenannt` nennt je Umbenennung Art
  * (`schluessel` oder `wert`), Pfad in der deutschen Schreibweise, alten und neuen Namen; ein
  * Name, der in beiden Sprachen gleich heisst, ist keine Umbenennung. Andere Werte bleiben gleich.
+ * Mit `{ werte: "wie-vorlage" }` werden nur Schluessel umbenannt, Aufzaehlungswerte bleiben,
+ * wie sie stehen (A2, E1).
  */
-export function benenneUm(config, sprache) {
+export function benenneUm(config, sprache, { werte } = {}) {
   if (sprache !== "de" && sprache !== "en") throw new Error(`config-namen: unbekannte Sprache "${sprache}"`);
   const umbenannt = [];
   if (!istObjekt(config)) return { config, umbenannt };
-  const ergebnis = bilde(config, "", "", { ziel: sprache, vorrang: spracheDer(config), hinweise: [], umbenannt });
+  const ergebnis = bilde(config, "", "", { ziel: sprache, hinweise: [], umbenannt, werte });
   return { config: ergebnis, umbenannt };
 }
 
-// Je Einstellung der Vorlage der Name, unter dem sie dort gilt — bei einer Doppelung der Name
-// der Sprache `sprache`, wie in normalisiereConfig.
-function namenDerVorlage(vorlage, kinder, sprache) {
+/**
+ * Die Config mit englischen Schluesseln, jeder Wert unveraendert (A3): auch der Altname
+ * `sprache` wird `language`, der nicht in SCHLUESSEL steht und sonst als einziger deutscher
+ * Name bliebe. Steht `language` schon daneben, gilt es, und `sprache` entfaellt.
+ */
+export function mitEnglischenNamen(config) {
+  if (!istObjekt(config)) return config;
+  const { config: englisch } = benenneUm(config, "en", { werte: "wie-vorlage" });
+  if (!("sprache" in englisch)) return englisch;
+  const { sprache, ...rest } = englisch;
+  if ("language" in rest) return rest;
+  return Object.fromEntries(Object.entries(englisch).map(([k, v]) => (k === "sprache" ? ["language", v] : [k, v])));
+}
+
+// Je Einstellung der Vorlage der Name, unter dem sie dort steht — bei einer Doppelung der
+// englische, wie in normalisiereConfig.
+function namenDerVorlage(vorlage, kinder) {
   const namen = new Map();
   for (const name of Object.keys(vorlage)) {
     const paar = kinder.get(name);
-    if (paar && (!namen.has(paar.de) || paar[sprache] === name)) namen.set(paar.de, name);
+    if (paar && (!namen.has(paar.de) || paar.en === name)) namen.set(paar.de, name);
   }
   return namen;
 }
 
-function wieVorlage(wert, vorlage, pfad, sprache) {
+function wieVorlage(wert, vorlage, pfad, lauf) {
   if (Array.isArray(wert)) {
-    return wert.map((e, i) => wieVorlage(e, Array.isArray(vorlage) ? vorlage[i] : undefined, `${pfad}[]`, sprache));
+    return wert.map((e, i) => wieVorlage(e, Array.isArray(vorlage) ? vorlage[i] : undefined, `${pfad}[]`, lauf));
   }
-  if (typeof wert === "string") return wertWieVorlage(wert, vorlage, pfad, sprache);
+  if (typeof wert === "string") return wertWieVorlage(wert, vorlage, pfad, lauf);
   if (!istObjekt(wert)) return wert;
   const kinder = KINDER.get(pfad);
   if (!kinder) return structuredClone(wert);
-  return objektWieVorlage(wert, istObjekt(vorlage) ? vorlage : {}, pfad, kinder, sprache);
+  return objektWieVorlage(wert, istObjekt(vorlage) ? vorlage : {}, pfad, kinder, lauf);
 }
 
-function wertWieVorlage(wert, vorlage, pfad, sprache) {
+function wertWieVorlage(wert, vorlage, pfad, { sprache, werte }) {
   const paar = AUFZAEHLUNG.get(pfad)?.get(wert);
   if (!paar) return wert;
-  return typeof vorlage === "string" && AUFZAEHLUNG.get(pfad).get(vorlage) === paar ? vorlage : paar[sprache];
+  if (typeof vorlage === "string" && AUFZAEHLUNG.get(pfad).get(vorlage) === paar) return vorlage;
+  return werte === "wie-vorlage" ? paar.en : paar[sprache];
 }
 
-function objektWieVorlage(wert, vorlage, pfad, kinder, sprache) {
-  const vorhanden = namenDerVorlage(vorlage, kinder, sprache);
+function objektWieVorlage(wert, vorlage, pfad, kinder, lauf) {
+  const vorhanden = namenDerVorlage(vorlage, kinder);
   const ergebnis = {};
   for (const [name, inhalt] of Object.entries(wert)) {
     const paar = kinder.get(name);
@@ -355,25 +386,28 @@ function objektWieVorlage(wert, vorlage, pfad, kinder, sprache) {
       ergebnis[name] = structuredClone(inhalt);
       continue;
     }
-    const ziel = vorhanden.get(paar.de) ?? paar[sprache];
-    ergebnis[ziel] = wieVorlage(inhalt, vorlage[ziel], pfadUnter(pfad, paar.de), sprache);
+    const inVorlage = vorhanden.get(paar.de);
+    ergebnis[paar.en] = wieVorlage(inhalt, inVorlage === undefined ? undefined : vorlage[inVorlage], pfadUnter(pfad, paar.de), lauf);
   }
   // Der unterlegene Name einer Doppelung bleibt in der Datei stehen, solange die Einstellung
   // bleibt: Ihn zu streichen, waere eine Aenderung, die niemand verlangt hat.
   for (const [name, inhalt] of Object.entries(vorlage)) {
     const paar = kinder.get(name);
-    if (paar && !(name in ergebnis) && vorhanden.get(paar.de) in ergebnis) ergebnis[name] = structuredClone(inhalt);
+    if (paar && !(name in ergebnis) && vorhanden.get(paar.de) !== name && paar.en in ergebnis) {
+      ergebnis[name] = structuredClone(inhalt);
+    }
   }
   return ergebnis;
 }
 
 /**
- * Bringt eine Config mit deutschen Namen in die Schreibweise der Datei `vorlage` zurueck
- * (Issue #1441): Eine Einstellung oder ein Aufzaehlungswert, der dort schon steht, behaelt
- * seinen Namen, auch einen, den der Mensch in der anderen Sprache geschrieben hat; was neu
- * dazukommt, bekommt den Namen der Sprache `sprache`. Frei gewaehlte Namen bleiben.
+ * Bringt eine Config mit deutschen Namen in die Datei `vorlage` zurueck (Issue #1441, #1725):
+ * Jede bekannte Einstellung bekommt ihren englischen Namen, gleich in welcher Sprache das
+ * Projekt arbeitet und unter welchem Namen sie in der Vorlage stand (A2). Ein Aufzaehlungswert,
+ * der dort schon steht, behaelt seine Schreibweise; ein neuer bekommt den Wert der Sprache
+ * `sprache`, mit `{ werte: "wie-vorlage" }` den englischen. Frei gewaehlte Namen bleiben.
  */
-export function benenneWieVorlage(config, vorlage, sprache) {
+export function benenneWieVorlage(config, vorlage, sprache, { werte } = {}) {
   if (sprache !== "de" && sprache !== "en") throw new Error(`config-namen: unbekannte Sprache "${sprache}"`);
-  return wieVorlage(config, vorlage, "", sprache);
+  return wieVorlage(config, vorlage, "", { sprache, werte });
 }

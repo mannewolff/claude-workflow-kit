@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import {
-  run, mitProjekt, fachplan, umgebung, stand, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
+  run, mitProjekt, einmalLaufen, fachplan, umgebung, stand, PLAN_ANLEGEN, REVIEW_MARKER, PAKETE_ANLEGEN,
 } from "./helpers/kette-ablauf.mjs";
 import { TESTHINWEIS_ANKER } from "../kit/night/kette.mjs";
 
@@ -44,18 +44,18 @@ const VOLLER_BLOCK = {
   abdeckungMin: 10, umsetzungMin: 120, vorbereitungMin: 120, kostenUsd: 50, kostenUsdB: 150, korrekturrunden: 2,
 };
 
+/** Der Lauf ohne Auftrag mit den Default-Budgets, den night-28 und night-31 lesen (Issue #1693). */
+const leererLauf = () => einmalLaufen("ohne-auftrag", (dir) => ({ res: run(dir, ["--chain"], umgebung(dir)) }));
+
 test("[night-28] ohne gesetzte Budget-Felder traegt der Lauf-Kopf budgetAusDefault und das Protokoll die Hinweiszeile", () => {
-  mitProjekt((dir) => {
-    const env = umgebung(dir);
-    const res = run(dir, ["--chain"], env);
-    assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
-    const lauf = stand(dir);
-    assert.deepEqual(lauf.budgetAusDefault,
-      ["label", "varianteBLabel", "planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "vorbereitungMin", "kostenUsd", "kostenUsdB", "korrekturrunden"]);
-    assert.deepEqual(Object.keys(lauf).slice(Object.keys(lauf).indexOf("budget"), Object.keys(lauf).indexOf("budget") + 2), ["budget", "budgetAusDefault"],
-      "budgetAusDefault steht unmittelbar hinter budget");
-    assert.match(res.stdout, /aus den Defaults: .*reviewMin=15.*night\.kette/);
-  });
+  const { dir, res } = leererLauf();
+  assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+  const lauf = stand(dir);
+  assert.deepEqual(lauf.budgetAusDefault,
+    ["label", "varianteBLabel", "planMin", "paketeMin", "reviewMin", "abdeckungMin", "umsetzungMin", "vorbereitungMin", "kostenUsd", "kostenUsdB", "korrekturrunden"]);
+  assert.deepEqual(Object.keys(lauf).slice(Object.keys(lauf).indexOf("budget"), Object.keys(lauf).indexOf("budget") + 2), ["budget", "budgetAusDefault"],
+    "budgetAusDefault steht unmittelbar hinter budget");
+  assert.match(res.stdout, /aus den Defaults: .*reviewMin=15.*night\.kette/);
 });
 
 test("[night-28] mit vollstaendigem Block fehlen budgetAusDefault und die Hinweiszeile", () => {
@@ -97,11 +97,9 @@ test("[night-29] [night-30] die Kette traegt Verbrauch je Einheit und Lauf, den 
 // Die Zeile zur Einlieferung schreibt der Lauf einmal je Prozess (`meldezeile`): Nur ein
 // eigener Prozess je Lauf zeigt sie verlaesslich.
 test("[night-31] mit lokalem Tracker entfaellt die Einlieferung und das Protokoll sagt es", () => {
-  mitProjekt((dir) => {
-    const res = run(dir, ["--chain"], umgebung(dir));
-    assert.equal(res.status, 0, res.stderr);
-    assert.match(res.stdout, /Einlieferung entfaellt: issueTracker 'local'/);
-  });
+  const { res } = leererLauf();
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /Einlieferung entfaellt: issueTracker 'local'/);
 });
 
 test("[night-31] eine gescheiterte Einlieferung beendet den Lauf nicht als Fehlschlag, das Protokoll nennt den Grund", () => {

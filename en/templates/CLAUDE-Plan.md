@@ -171,9 +171,9 @@ repaired only in #1524 to #1526. Neither the plan review nor the package reviews
 it.
 
 ## P14 — A contract with the other repo is matched or asked `[maschinell]`
-<!-- de: 1327260a35bd -->
+<!-- de: 5e9340de050d -->
 
-If the config names a partner repo in `vertragsRepos`, the subsection `### Contracts` stands
+If the config names a partner repo in `contractRepos`, the subsection `### Contracts` stands
 at the end of `## Architectural decisions`. It holds one entry per definition the other repo
 reads or writes — a name, a marker, a format —; if the plan defines none, the line
 `- No contract.`:
@@ -186,7 +186,7 @@ reads or writes — a name, a marker, a format —; if the plan defines none, th
 ```
 
 - The head ends in `— <repo>, reads` or `— <repo>, writes`; the repo stands in
-  `vertragsRepos`.
+  `contractRepos`.
 - `Built state:` names the location on the main branch of the other repo, or
   `missing, checked …` or `not checkable: …`. What counts is the built state, not the other
   repo's plan and not the kit version installed in the project; if that one differs, a line
@@ -197,13 +197,13 @@ reads or writes — a name, a marker, a format —; if the plan defines none, th
   adopt) and `Proposed per requirement:` (the place in the requirement).
 - An open contract — `differs`, `missing` or `not checkable` without a line `Decided:` —
   stands in a question under `## Open questions` that lists all open V numbers; the first
-  line there is then not `- Keine.`. This makes the night chain stop the plan stage before
-  `/issues` cuts packages. `Decided:` with `plan adjusted`, `other repo follows` or
+  line there is then not `- Keine.`. This makes the night chain stop after the review of the
+  plan, before `/issues` cuts packages. `Decided:` with `plan adjusted`, `other repo follows` or
   `deviation accepted` is written only by someone who has the human's answer — never by the
   session that fixes the violation.
 
 `issue check-form` checks the form. Whether the location is right and whether a human
-decided is judgement (P10). Without `vertragsRepos`, P14 checks nothing.
+decided is judgement (P10). Without `contractRepos`, P14 checks nothing.
 
 *Why gate:* A definition both repos have to understand looks like an internal choice of
 name in the plan. In kanban-kit, plan #1423 chose a name for the run ID while the kit had
@@ -217,7 +217,7 @@ before the packages.
 ---
 
 ## Expressly no gate
-<!-- de: 894249843745 -->
+<!-- de: c4e478fa9967 -->
 
 - **How many decisions a plan has.** Three can suffice.
 - **How finely `## Planned changes` is structured.**

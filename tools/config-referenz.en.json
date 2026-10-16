@@ -1,4 +1,8 @@
 {
+  "version": {
+    "de": "b5250f1f2207",
+    "text": "Version identifier x.y.z. push main increments z, merge production increments y, x only explicitly. Shown on the board. Applies team-wide; a different value in workflow.config.local.json is ignored."
+  },
   "language": {
     "de": "09246d2cc370",
     "text": "Language of the kit in this project: de (German) or en (English). The German legacy name sprache is read as well; if both are present, language wins. If the field is missing or holds another value, de applies. Applies team-wide; a different value in workflow.config.local.json is ignored."
@@ -16,12 +20,12 @@
     "text": "Deprecated (v1). Migrated to codeHost/issueTracker on load. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "buildChecks": {
-    "de": "f151820f76e9",
-    "text": "Commands that /local-check runs via checks.mjs run (build, tests): first those marked \"vorab\" one after another, then those marked \"gleichzeitig\" in parallel, then the rest one after another in config order. Empty array = no automated checks. An entry is either a command string or an object with an area assignment (see items and checkAreas). Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "bcf27572bf28",
+    "text": "Commands that checks.mjs run executes at the completion check of a package and at push main (build, tests): first those marked \"upfront\" one after another, then those marked \"concurrent\" in parallel, then the rest one after another in config order. Empty array = no automated checks. An entry is either a command string or an object with an area assignment (see items and checkAreas). Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "buildChecks[]": {
-    "de": "9827d9e9d099",
-    "text": "An entry takes one of four forms. (1) The bare command string \"npx eslint .\": unassigned, package stage, always runs. (2) { \"cmd\": \"...\", \"areas\": [\"backend\"] }: runs when one of the named areas is touched; the area names are defined in checkAreas. (3) { \"cmd\": \"...\", \"always\": true }: always runs, by decision. (4) { \"cmd\": \"...\", \"stufe\": \"push\" }: runs only at the named point in time — a missing \"stufe\" field means \"paket\" and thus unchanged behaviour. Forms 1 and 3 behave the same but mean different things — forgotten versus decided. An object with only \"cmd\" means the same as the string form. \"areas\" and \"always\" exclude each other (nobody would read a precedence rule), and \"areas\" needs at least one entry (an empty array would never run). \"stufe\" sits on an axis of its own and combines with both: areas and always say whether a check is affected, stufe says when it is due. On a third axis sits \"guete\": at most one entry in the list may carry the block, and it says what is measured — not whether and not when. On a fourth axis sits \"nichtBeimAbschluss\": it says WHY a check need not carry the completion of a single work package — it only takes effect in a run with \"--finish\", and a missing field means unchanged behaviour."
+    "de": "bffefc54092f",
+    "text": "An entry takes one of four forms. (1) The bare command string \"npx eslint .\": unassigned, package stage, always runs. (2) { \"cmd\": \"...\", \"areas\": [\"backend\"] }: runs when one of the named areas is touched; the area names are defined in checkAreas. (3) { \"cmd\": \"...\", \"always\": true }: always runs, by decision. (4) { \"cmd\": \"...\", \"stage\": \"push\" }: runs only at the named point in time — a missing \"stage\" field means \"paket\" and thus unchanged behaviour. Forms 1 and 3 behave the same but mean different things — forgotten versus decided. An object with only \"cmd\" means the same as the string form. \"areas\" and \"always\" exclude each other (nobody would read a precedence rule), and \"areas\" needs at least one entry (an empty array would never run). \"stage\" sits on an axis of its own and combines with both: areas and always say whether a check is affected, stage says when it is due. On a third axis sits \"quality\": at most one entry in the list may carry the block, and it says what is measured — not whether and not when. On a fourth axis sits \"notAtCompletion\": it says WHY a check need not carry the completion of a single work package — it only takes effect in a run with \"--finish\", and a missing field means unchanged behaviour."
   },
   "buildChecks[].cmd": {
     "de": "9a65e5bd5adf",
@@ -36,20 +40,20 @@
     "text": "true = always runs, by decision, regardless of the touched areas. Not together with \"areas\"."
   },
   "buildChecks[].stufe": {
-    "de": "5ccbf6179640",
-    "text": "When the check is due: \"paket\" at the completion of a work package, \"push\" before publishing, \"merge\" before the release. Missing field = \"paket\" = unchanged behaviour. The stages are cumulative — push also runs paket, merge runs both; no mandatory check drops out of the overall process, it only runs at the point where its result counts. Not to be confused with reviewStufen (the review's levels) and the stages of the night chain."
+    "de": "8c5cc2958e78",
+    "text": "When the check is due: \"paket\" at the completion of a work package, \"push\" before publishing, \"merge\" before the release. Missing field = \"paket\" = unchanged behaviour. The stages are cumulative — push also runs paket, merge runs both; no mandatory check drops out of the overall process, it only runs at the point where its result counts. Not to be confused with reviewStages (the review's levels) and the stages of the night chain."
   },
   "buildChecks[].nichtBeimAbschluss": {
-    "de": "d567e76dd496",
-    "text": "Why this check need not carry the completion of a single work package: \"zusammenspiel\" = it checks how several parts work together, \"volleTestmenge\" = it draws its finding from the complete test set. The fourth axis next to \"areas\"/\"always\" (whether a check is affected), \"stufe\" (when it is due) and \"guete\" (what it measures) — this field says none of those, but why it may be left out at completion. It only takes effect when the call carries \"--finish\": only the implement skills set it, when completing exactly one card. Every other run includes the check, and at the latest before publishing it runs in any case. Only meaningful on an entry of stage \"paket\" — at \"push\" or \"merge\" the check does not run at completion anyway, and the check run aborts there. If every entry of the package stage carries this field or a guete block, completion has no gate left; that aborts too. Missing field = the check also runs at completion = unchanged behaviour. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "113d03b0f6a9",
+    "text": "Why this check need not carry the completion of a single work package: \"zusammenspiel\" = it checks how several parts work together, \"volleTestmenge\" = it draws its finding from the complete test set. The fourth axis next to \"areas\"/\"always\" (whether a check is affected), \"stage\" (when it is due) and \"quality\" (what it measures) — this field says none of those, but why it may be left out at completion. It only takes effect when the call carries \"--finish\": only the implement skills set it, when completing exactly one card. Every other run includes the check, and at the latest before publishing it runs in any case. Only meaningful on an entry of stage \"paket\" — at \"push\" or \"merge\" the check does not run at completion anyway, and the check run aborts there. If every entry of the package stage carries this field or a quality block, completion has no gate left; that aborts too. Missing field = the check also runs at completion = unchanged behaviour. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "buildChecks[].abschlussBereiche": {
-    "de": "eb5c57e47c93",
-    "text": "Area names from checkAreas whose direct touch makes a check with \"nichtBeimAbschluss\" run at the completion of a work package too. An area is touched directly when a changed file matches one of its patterns or carries it via the derivation from its importers — not via the dependent areas and not via files whose every changed line is a blob or a stamp. Only together with \"nichtBeimAbschluss\"; every name must be in checkAreas and, if the entry carries \"areas\", there too. Any other form aborts the check run at start. Missing field = the check is left out at completion as before. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "a24e82f7122e",
+    "text": "Area names from checkAreas whose direct touch makes a check with \"notAtCompletion\" run at the completion of a work package too. An area is touched directly when a changed file matches one of its patterns or carries it via the derivation from its importers — not via the dependent areas and not via files whose every changed line is a blob or a stamp. Only together with \"notAtCompletion\"; every name must be in checkAreas and, if the entry carries \"areas\", there too. Any other form aborts the check run at start. Missing field = the check is left out at completion as before. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "buildChecks[].guete": {
-    "de": "993ef6d48b86",
-    "text": "Marks this check as a quality measurement: it measures how many deliberately planted faults the tests notice, and a value below the threshold stops publishing. At most one entry in the list carries the block; if it does, its \"stufe\" must not be \"merge\" — a measurement only before the release would come too late to change anything. Without the block there is no measurement, no threshold and no stop; \"mutationCommand\" is something else and triggers no stop. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "2f99de46fe8c",
+    "text": "Marks this check as a quality measurement: it measures how many deliberately planted faults the tests notice, and a value below the threshold stops publishing. At most one entry in the list carries the block; if it does, its \"stage\" must not be \"merge\" — a measurement only before the release would come too late to change anything. Without the block there is no measurement, no threshold and no stop; \"mutationCommand\" is something else and triggers no stop. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "buildChecks[].guete.muster": {
     "de": "72017a9ffe1f",
@@ -64,8 +68,8 @@
     "text": "Whether this check may run alongside others in \"checks.mjs run\". Marked entries run in parallel in a first phase (at most two, overridable via the environment variable KIT_CHECKS_GLEICHZEITIG), the rest afterwards one after another in config order. The parallel phase runs to the end so that all red checks are known; the following phase stops at the first red and does not start after a red in the first phase. The output appears per check as a closed block in config order, and the report notes for a duration measured in parallel that it was measured alongside others. Only for checks that do not interfere with each other (own files, own ports). Missing field = false = the check runs sequentially as before. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "buildChecks[].vorab": {
-    "de": "48435427941b",
-    "text": "Whether this check runs in \"checks.mjs run\" before all others. Marked entries run in an upfront phase one after another in config order, even before those marked \"gleichzeitig\"; a red there starts no further check. Meant for fast checks (lint, short tests) whose red should be known after seconds instead of only after the long concurrent ones. An entry with \"vorab\" and \"gleichzeitig\" at once is an error. Missing field = false = the check runs in its previous phase. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "6824374e8ab4",
+    "text": "Whether this check runs in \"checks.mjs run\" before all others. Marked entries run in an upfront phase one after another in config order, even before those marked \"concurrent\"; a red there starts no further check. Meant for fast checks (lint, short tests) whose red should be known after seconds instead of only after the long concurrent ones. An entry with \"upfront\" and \"concurrent\" at once is an error. Missing field = false = the check runs in its previous phase. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "buildChecks[].art": {
     "de": "749f9ca68bca",
@@ -100,8 +104,8 @@
     "text": "Which measured coupling forces the area into almost every check command. Appears as a note on the highlighting and is required."
   },
   "testAblagen": {
-    "de": "a769488323bd",
-    "text": "Where a component's own tests live — from this, issue check-form reports test hints for a plan: for each own test of a listed component that the plan does not name, one hint that affects neither ok nor the exit code. Each entry is a pair of quelle and test. Placeholders: {pfad} stands for zero or more directories ({pfad}/ may be empty), {name} for the file name without extension, * in the test pattern for any characters within one path segment. Without the field the kit's defaults apply: TypeScript {pfad}/{name}.ts and .tsx with {name}.test and {name}.spec next to them, Java src/main/java/{pfad}/{name}.java with src/test/java/{pfad}/{name}Test.java. An array replaces the defaults; the entry { \"vorgaben\": true } inserts them at its position instead of copying them; [] switches the test hints off. Multi-module projects add one location per module with a fixed prefix, for example backend/src/main/java/{pfad}/{name}.java → backend/src/test/java/{pfad}/{name}Test.java. Deliberately without a default value: if the field is missing, the defaults apply, and that is something other than []."
+    "de": "fe9025371002",
+    "text": "Where a component's own tests live — from this, issue check-form reports test hints for a plan: for each own test of a listed component that the plan does not name, one hint that affects neither ok nor the exit code. Each entry is a pair of source and test. Placeholders: {pfad} stands for zero or more directories ({pfad}/ may be empty), {name} for the file name without extension, * in the test pattern for any characters within one path segment. Without the field the kit's defaults apply: TypeScript {pfad}/{name}.ts and .tsx with {name}.test and {name}.spec next to them, Java src/main/java/{pfad}/{name}.java with src/test/java/{pfad}/{name}Test.java. An array replaces the defaults; the entry { \"defaults\": true } inserts them at its position instead of copying them; [] switches the test hints off. Multi-module projects add one location per module with a fixed prefix, for example backend/src/main/java/{pfad}/{name}.java → backend/src/test/java/{pfad}/{name}Test.java. Deliberately without a default value: if the field is missing, the defaults apply, and that is something other than []."
   },
   "testAblagen[].quelle": {
     "de": "216e47981a59",
@@ -116,8 +120,8 @@
     "text": "Inserts the kit's defaults at this position."
   },
   "nurGeruest": {
-    "de": "4432d305eb04",
-    "text": "Paths that test files only create as scaffolding — mentioning them in a test file proves no coupling. The coupling survey (tools/verflechtung.mjs) counts every mention of a source path in the text of a test file as coupling; for the coverage check that errs on the safe side, for the selection of check commands it no longer does: a test that writes its own .gitignore or package.json into a throwaway repository is not thereby coupled to the file of the same name in this project. Each entry names a path pattern (the same notation as in checkAreas) and the reason why no check reads this path; no reason, no entry. The pattern applies against the source path and thus to all test files at once: anything that even a single test file really checks does not belong here — entering it would make the coverage check blind at this point, and silently so. Missing field = no exception = unchanged behaviour. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "13bb06e3f383",
+    "text": "Paths that test files only create as scaffolding — mentioning them in a test file proves no coupling. The list is read by the suggestion and the comparison of the check areas (areas suggest and areas compare in kit/checks.mjs, the comparison also as a hint in the check run): both count every mention of a path in the text of a test file as coupling, just like loading it. A test that writes its own .gitignore or package.json into a throwaway repository is thus not coupled to the file of the same name in this project. The suggestion names candidates: paths that at least a quarter of all tests and at least three mention, but none loads; they are only adopted by hand. Each entry names a path pattern (the same notation as in checkAreas) and the reason; no reason, no entry. The pattern applies against the source path and thus to all test files at once: whatever a test file really checks, suggestion and comparison no longer see there either once it is entered, and silently so. Missing field = no exception = unchanged behaviour. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "nurGeruest[].muster": {
     "de": "84c548972ae3",
@@ -128,32 +132,32 @@
     "text": "Why no test file checks this path but at most creates it as scaffolding. Required, and proven rather than claimed: the place where it was looked up belongs with it."
   },
   "mutationCommand": {
-    "de": "ddcc5ce01bfc",
-    "text": "Command for mutation tests (optional). Empty string or missing field = no mutation test. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "08f679a08476",
+    "text": "Command for mutation tests (optional). Runs at the stage push, i.e. once before every push main, after all buildChecks via checks.mjs run --stage push, not at the completion of a package and not at the stage merge. Its result is only reported and stops nothing; if the check is red, it is skipped. Empty string or missing field = no mutation test. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "guetekommandos": {
-    "de": "e9a1ce4ca19b",
-    "text": "Further commands or command prefixes that start a quality measurement (optional). Gate I6 of \"issue check-form\" rejects a work package whose acceptance criterion names one of them — in addition to \"mutationCommand\" and the command of a buildChecks entry with a \"guete\" block. The route for a measurement driver the project has yet to build: it cannot be a check yet, but its prefix is already listed here, and a full run therefore does not slip into a package's acceptance criterion. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "31e076e2e84d",
+    "text": "Further commands or command prefixes that start a quality measurement (optional). Gate I6 of \"issue check-form\" rejects a work package whose acceptance criterion names one of them — in addition to \"mutationCommand\" and the command of a buildChecks entry with a \"quality\" block. The route for a measurement driver the project has yet to build: it cannot be a check yet, but its prefix is already listed here, and a full run therefore does not slip into a package's acceptance criterion. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "formatFixCommand": {
-    "de": "6a67b1053161",
-    "text": "Command that fixes formatting violations mechanically (e.g. 'mvn spotless:apply' or 'npx prettier --write .'). Only the night runner uses it: if the buildChecks are red in the salvage pre-check, it runs exactly once and the checks are repeated exactly once, so that a pure formatting violation does not end a whole run. Empty string or missing field = no format fix. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "c0ddab43ba3b",
+    "text": "Command that fixes formatting violations mechanically (e.g. 'mvn spotless:apply' or 'npx prettier --write .'). It applies to all runs at the package stage, not only at night: if `checks.mjs run` without `--stage push` or `--stage merge` is red, it runs exactly once and the checks run exactly once more, so that a pure formatting violation does not end a completion or a run; at `push` and `merge` it does not run. Empty string or missing field = no format fix. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "installCommand": {
     "de": "496773bcade8",
     "text": "Command that sets up the project's dependencies in the project directory (e.g. 'npm ci', 'uv sync', 'mvn -q dependency:go-offline'). 'worktree.mjs create' runs it in the fresh worktree after creating it — the worktree carries only what is versioned and has no node_modules, .venv or vendor/, and a mandatory check that fails because of this silently delivers a wrong measurement. If it ends with an error, the worktree is torn down again. Empty string or missing field = no installation; the caller is then responsible for it. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "mainBranch": {
-    "de": "bf39b60c7515",
-    "text": "Branch for local commits and push (step 8). Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "d11c28453eb8",
+    "text": "Branch for local commits and push (step 7). Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "productionBranch": {
-    "de": "a9d932173d83",
-    "text": "Target branch for the PR in step 9 (merge production). Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "de252f16b490",
+    "text": "Target branch for the PR in step 8 (merge production). Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "pushPruefung": {
-    "de": "d3a632f42a32",
-    "text": "Where the full check run before 'push main' takes place. 'lokal' (default): /push-main runs it with 'checks.mjs run --stage push' on your own machine. An object with ort 'buildDienst' moves it to the project's build service: /push-main pushes the state to the check branch, waits for the result via 'board.mjs code ci-status --commit' and pushes mainBranch only on green. The obligation is the same in both places — green before the push; productionBranch stays untouched. On the check branch the build service must run the same mandatory checks as the local run of stage push. Protection of the main and release branches is set up by 'board.mjs code protection setup'; the installer writes 'pushPruefung' only after its probe on the check branch has passed. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "cf5fb5d4f58e",
+    "text": "Where the full check run before 'push main' takes place. 'lokal' (default): /push-main runs it with 'checks.mjs run --stage push' on your own machine. An object with location 'buildDienst' moves it to the project's build service: /push-main pushes the state to the check branch, waits for the result via 'board.mjs code ci-status --commit' and pushes mainBranch only on green. The obligation is the same in both places — green before the push; productionBranch stays untouched. On the check branch the build service must run the same mandatory checks as the local run of stage push. Protection of the main and release branches is set up by 'board.mjs code protection setup'; the installer writes 'pushCheck' only after its probe on the check branch has passed. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "pushPruefung.ort": {
     "de": "a35216b866c3",
@@ -176,8 +180,8 @@
     "text": "The foreign variant of the reviewer pair reviewModel/reviewCommand: command line of a foreign CLI (e.g. 'codex exec --model gpt-5') that receives the review prompt via stdin and writes its answer to stdout. It is split at whitespace without a shell: quotes, pipes and variables have no effect. Exactly one of the two fields is set; 'set' means the key is present — an empty string is invalid, not 'not set'. May be overridden personally in workflow.config.local.json."
   },
   "reviewLesegrenze": {
-    "de": "b427f19042bc",
-    "text": "Belongs to reviewCommand: the read-only switch of the foreign CLI that the kit appends to the command line (e.g. '--sandbox read-only'), split at whitespace like reviewCommand. For codex the kit knows the switch itself; for any other tool it goes here. May be overridden personally in workflow.config.local.json; if the personal file sets reviewModel, reviewLesegrenze gives way together with reviewCommand."
+    "de": "bda1d97b7f6a",
+    "text": "Belongs to reviewCommand: the read-only switch of the foreign CLI that the kit appends to the command line (e.g. '--sandbox read-only'), split at whitespace like reviewCommand. For codex the kit knows the switch itself; for any other tool it goes here. May be overridden personally in workflow.config.local.json; if the personal file sets reviewModel, reviewReadLimit gives way together with reviewCommand."
   },
   "triggers": {
     "de": "87c3e16bc4ef",
@@ -188,12 +192,12 @@
     "text": "Phrase for the GO to implement."
   },
   "triggers.push": {
-    "de": "7ab41adcb01e",
-    "text": "Phrase for the push to mainBranch (step 8)."
+    "de": "1e756c4dd93a",
+    "text": "Phrase for the push to mainBranch (step 7)."
   },
   "triggers.merge": {
-    "de": "c27b24848c68",
-    "text": "Phrase for the PR to productionBranch (step 9)."
+    "de": "491b36a4a97c",
+    "text": "Phrase for the PR to productionBranch (step 8)."
   },
   "local": {
     "de": "b23f55cd132f",
@@ -247,21 +251,17 @@
     "de": "c1c7bc733886",
     "text": "Path (relative to the project directory) to a file holding the project- or board-bound token. Precedence: TBX_TOKEN environment variable > tokenFile > global tbx login (~/.config/toolbox-cli/tokens.json). No plain-text token in this config — board.mjs aborts in that case. May be overridden personally in workflow.config.local.json."
   },
-  "toolbox.ideaStored": {
-    "de": "f71725fed2a9",
-    "text": "Routes new issues into the board's idea store instead of straight into the backlog. true sends no 'direct' and creates a board-less idea in the pool; false or a missing value sends 'direct: true' and creates the issue at once with a board number — that is the default. The wire field 'ideaStored' sent in the past is no longer sent in any mode — the server ignores it. Backends without 'direct' keep their previous behaviour."
-  },
   "issueReview": {
-    "de": "4f835e386e65",
-    "text": "Issue review across several models. Reviewers who did not write the document read it; how many per level is set by reviewStufen. Applies team-wide; a different value in workflow.config.local.json is ignored. The former fields rounds and statusLabels were dropped with stage 2 of the process rework and are ignored without error in an existing config."
+    "de": "f0e72426722e",
+    "text": "Issue review across several models. Reviewers who did not write the document read it; how many per level is set by reviewStages. Applies team-wide; a different value in workflow.config.local.json is ignored. The former fields rounds and statusLabels were dropped with stage 2 of the process rework and are ignored without error in an existing config."
   },
   "issueReview.requiredBeforeReady": {
     "de": "b30f9dc27c97",
     "text": "If true, the night runner moves Ready issues without a review marker back to the backlog with a comment. Default false, so that a kit update does not stop the runner of any existing project overnight."
   },
   "issueReview.reviewers": {
-    "de": "8af0cc816d86",
-    "text": "The order is the control: the frontmost entries that are not the author are taken; how many is set by reviewStufen."
+    "de": "f972907110ff",
+    "text": "The order is the control: the frontmost entries that are not the author are taken; how many is set by reviewStages."
   },
   "issueReview.reviewers[].name": {
     "de": "f53f1a480f26",
@@ -288,8 +288,8 @@
     "text": "Explicit mapping author -> reviewer. If the author is listed here, their entry wins over the order rule. Without pairs the rule always picks the frontmost entries — a foreign model further back would never get its turn. A name that does not exist in reviewers and an author who names themselves are hard errors."
   },
   "reviewStufen": {
-    "de": "12c81da555c8",
-    "text": "Staffing and perspective of the three review levels: the functional concern, the plan to get there, the single work package. While issueReview describes WHO reviews at all, this states how many review per level and in which roles. 'rollen' must contain exactly 'reviewer' distinct, non-empty names — otherwise a hard error. If the whole block is missing, each level uses the roles of the role catalogue with one reviewer per role: fachlich 'form-beobachtbarkeit' and 'abgrenzung', plan 'architektur-bestand' and 'schnitt-abhaengigkeiten', issue 'pruefbarkeit'; if only one level is missing in an existing block, that is an error. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "9abf17640787",
+    "text": "Staffing and perspective of the three review levels: the functional concern, the plan to get there, the single work package. While issueReview describes WHO reviews at all, this states how many review per level and in which roles. 'roles' must contain exactly 'reviewer' distinct, non-empty names — otherwise a hard error. If the whole block is missing, each level uses the roles of the role catalogue with one reviewer per role: requirement 'form-beobachtbarkeit' and 'abgrenzung', plan 'architektur-bestand' and 'schnitt-abhaengigkeiten', issue 'pruefbarkeit'; if only one level is missing in an existing block, that is an error. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "reviewStufen.fachlich": {
     "de": "120e5e9d6b17",
@@ -328,8 +328,8 @@
     "text": "One role name per reviewer, in the order of assignment."
   },
   "night": {
-    "de": "565184ee3247",
-    "text": "Night mode. The night chain under kette, the list of allowed model names under modelle. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "07bf512ceb99",
+    "text": "Night mode. The night chain under chain, the list of allowed model names under models. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "night.kette": {
     "de": "68bf89a60c7e",
@@ -432,76 +432,76 @@
     "text": "Pause in minutes before the one automatic attempt after an environment error of the live run."
   },
   "night.modell": {
-    "de": "4daaf40e19fc",
-    "text": "The model of the night run: it starts every session that has no model of its own — the plan, review and coverage stages of the chain, the correction rounds and every package without a task level. Precedence: --model on the call, then this field, then the runner's default. Must also be listed in night.modelle, otherwise the runner stops before starting. Only applies from the shared configuration; a value in the personal file is ignored."
+    "de": "40c138237255",
+    "text": "The model of the night run: it starts every session that has no model of its own — the plan, review and coverage stages of the chain, the correction rounds and every package without a task level. Precedence: --model on the call, then this field, then the runner's default. Must also be listed in night.models, otherwise the runner stops before starting. Only applies from the shared configuration; a value in the personal file is ignored."
   },
   "night.modelle": {
     "de": "1372246ea5be",
     "text": "The model names the night runner may start — ordered, descending by strength: the first entry is the strongest, the last the fastest model. The order is not cosmetic: /issues derives from it which model it recommends for a work package, and at night nobody asks. The pattern ^claude- is also the safeguard — without the list a value from an issue body would go into argv unchecked, and a package with '--dangerously-skip-permissions' would be an attack via a card. If the field is missing or the list is empty, every session starts with the run's model."
   },
   "night.stufen": {
-    "de": "8c2ba723f705",
-    "text": "Model or command per difficulty level of a work package, ordered schwer/mittel/leicht (hard/medium/easy). If a level is missing, the night run falls back to the next stronger one, if need be up to the run's own model. Only takes effect in the night run — during the day the human chooses their model themselves. A modell must also be listed in night.modelle (otherwise an error in the configuration check)."
+    "de": "96af656ed7da",
+    "text": "Model or command per difficulty level of a work package, ordered hard/medium/easy. If a level is missing, the night run falls back to the next stronger one, if need be up to the run's own model. Only takes effect in the night run — during the day the human chooses their model themselves. A model must also be listed in night.models (otherwise an error in the configuration check)."
   },
   "night.stufen.schwer": {
     "de": "24aed024a4f4",
     "text": "Model or command for a hard task. Exactly one of the two fields is set."
   },
   "night.stufen.schwer.modell": {
-    "de": "f11783c8627c",
-    "text": "Model ID for this level. Must also be listed in night.modelle."
+    "de": "7aededfffb27",
+    "text": "Model ID for this level. Must also be listed in night.models."
   },
   "night.stufen.schwer.effort": {
-    "de": "2a09586ff372",
-    "text": "Thinking effort for this level, passed to the Claude CLI as --effort. Without the field the CLI's default applies. Only allowed next to modell — the kit cannot set an effort for a foreign program next to kommando."
+    "de": "b04820bc7dd4",
+    "text": "Thinking effort for this level, passed to the Claude CLI as --effort. Without the field the CLI's default applies. Only allowed next to model — the kit cannot set an effort for a foreign program next to command."
   },
   "night.stufen.schwer.kommando": {
     "de": "bc8081fa88c0",
     "text": "Command line of a foreign program for this level — a project artefact with the same level of trust as reviewCommand; the pattern ^claude- does not apply here."
   },
   "night.stufen.schwer.name": {
-    "de": "130d3cef6462",
-    "text": "The program's self-description next to kommando."
+    "de": "93e184a66ca0",
+    "text": "The program's self-description next to command."
   },
   "night.stufen.mittel": {
     "de": "d2351919d182",
     "text": "Model or command for a medium task. Exactly one of the two fields is set."
   },
   "night.stufen.mittel.modell": {
-    "de": "f11783c8627c",
-    "text": "Model ID for this level. Must also be listed in night.modelle."
+    "de": "7aededfffb27",
+    "text": "Model ID for this level. Must also be listed in night.models."
   },
   "night.stufen.mittel.effort": {
-    "de": "2a09586ff372",
-    "text": "Thinking effort for this level, passed to the Claude CLI as --effort. Without the field the CLI's default applies. Only allowed next to modell — the kit cannot set an effort for a foreign program next to kommando."
+    "de": "b04820bc7dd4",
+    "text": "Thinking effort for this level, passed to the Claude CLI as --effort. Without the field the CLI's default applies. Only allowed next to model — the kit cannot set an effort for a foreign program next to command."
   },
   "night.stufen.mittel.kommando": {
     "de": "bc8081fa88c0",
     "text": "Command line of a foreign program for this level — a project artefact with the same level of trust as reviewCommand; the pattern ^claude- does not apply here."
   },
   "night.stufen.mittel.name": {
-    "de": "130d3cef6462",
-    "text": "The program's self-description next to kommando."
+    "de": "93e184a66ca0",
+    "text": "The program's self-description next to command."
   },
   "night.stufen.leicht": {
     "de": "9c2ed5d41679",
     "text": "Model or command for an easy task. Exactly one of the two fields is set."
   },
   "night.stufen.leicht.modell": {
-    "de": "f11783c8627c",
-    "text": "Model ID for this level. Must also be listed in night.modelle."
+    "de": "7aededfffb27",
+    "text": "Model ID for this level. Must also be listed in night.models."
   },
   "night.stufen.leicht.effort": {
-    "de": "2a09586ff372",
-    "text": "Thinking effort for this level, passed to the Claude CLI as --effort. Without the field the CLI's default applies. Only allowed next to modell — the kit cannot set an effort for a foreign program next to kommando."
+    "de": "b04820bc7dd4",
+    "text": "Thinking effort for this level, passed to the Claude CLI as --effort. Without the field the CLI's default applies. Only allowed next to model — the kit cannot set an effort for a foreign program next to command."
   },
   "night.stufen.leicht.kommando": {
     "de": "bc8081fa88c0",
     "text": "Command line of a foreign program for this level — a project artefact with the same level of trust as reviewCommand; the pattern ^claude- does not apply here."
   },
   "night.stufen.leicht.name": {
-    "de": "130d3cef6462",
-    "text": "The program's self-description next to kommando."
+    "de": "93e184a66ca0",
+    "text": "The program's self-description next to command."
   },
   "night.stufenRegel": {
     "de": "ede9fc502320",
@@ -512,8 +512,12 @@
     "text": "Number of identically failed runs of the same check after which an unattended session is stopped at the next check call; interactively the same number only produces a hint. Switching it off is not intended — if the field is missing, the default applies."
   },
   "night.zielUmsetzungMin": {
-    "de": "8c908a466929",
-    "text": "Target for the duration of an implementation in minutes; the report shows how many packages stayed below it. The target applies to the chain's implementation stage and to the implementation night, which is why it sits next to night.kette and not inside it. Switching it off is not intended — if the field is missing, the default applies."
+    "de": "2dbc37c1dbbf",
+    "text": "Target for the duration of an implementation in minutes; the report shows how many packages stayed below it. The target applies to the chain's implementation stage and to the implementation night, which is why it sits next to night.chain and not inside it. Switching it off is not intended — if the field is missing, the default applies."
+  },
+  "night.protokollFristTage": {
+    "de": "c6a02ce176b6",
+    "text": "Period in days after which the night runner deletes its logs, once at the start of every run: the daily logs .claude/night-run-<datum>.log and the run folders under .claude/protokolle/, measured by their last modification. The files with key figures — night-run-*.json and the .tsv files — remain. Switching it off is not intended; anyone who wants to keep logs longer sets a larger number — if the field is missing, the default applies."
   },
   "pruefLauf": {
     "de": "5dcde7a6b989",
@@ -592,16 +596,16 @@
     "text": "From how many occurrences of the same finding a proposal arises. Below that, a finding is a single case and not a rule."
   },
   "vorgeschichte": {
-    "de": "40912027bde6",
-    "text": "Before a requirement or plan is written, searches earlier requirements on the project's own board on the same subject, archived ones included, and names the relevant ones in the new document. A missing field or false = off, the document is written as before; that is the default. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "dccc1a0bd44c",
+    "text": "Before a requirement or plan is written, searches earlier requirements on the project's own board on the same subject, archived ones included, and names the relevant ones in the new document. A missing field = on, that is the default; off only with false, then the document is written without section and without note. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "szenarienAb": {
     "de": "6900f340db6b",
     "text": "Cut-off of the scenario duty: the card number from which a requirement on the board must carry a Scenarios section with at least one complete scenario. Requirements with a lower number are legacy and are never flagged for the missing section. When a file is checked or a requirement is created through the kit, the duty always applies. On update the installer sets the field, if it is missing, to the highest card number on the board plus one; to catch up by hand, use `node .claude/kit/board.mjs scenarios baseline`. If the field is missing, the duty applies to no card on the board, and the checks name the missing cut-off as a note. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "vertragsRepos": {
-    "de": "3969003eae10",
-    "text": "The partner repos of this project: repos that read or write something this project also defines — a name, a marker, a format. If the field names a partner repo, gate P14 requires every plan to carry the subsection Contracts at the end of “Architectural decisions”, and every contract there names one of these repos by name. Each entry names name, url and optionally zweig. A missing field or [] = no partner repo, P14 checks nothing. Applies team-wide; a different value in workflow.config.local.json is ignored."
+    "de": "0b2b07476474",
+    "text": "The partner repos of this project: repos that read or write something this project also defines — a name, a marker, a format. If the field names a partner repo, gate P14 requires every plan to carry the subsection Contracts at the end of “Architectural decisions”, and every contract there names one of these repos by name. Each entry names name, url and optionally branch. A missing field or [] = no partner repo, P14 checks nothing. Applies team-wide; a different value in workflow.config.local.json is ignored."
   },
   "vertragsRepos[].name": {
     "de": "569715abd1a6",

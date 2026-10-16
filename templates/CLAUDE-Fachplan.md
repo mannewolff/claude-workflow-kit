@@ -194,7 +194,7 @@ englischen Projekt `### Scenario: <title>` mit `Given`, `When`, `Then`, `And`.
 **Geltung:** Beim Pruefen einer Datei (`issue check-form --body-file`) und beim Anlegen
 (`issue create` mit `--art requirement` oder dem Fachplan-Praefix im Titel) immer — ein
 Verstoss legt nichts an und endet mit Exit 1. Beim Pruefen einer Karte am Board
-(`issue check-form <id>`) nur, wenn ihre Nummer mindestens `szenarienAb` aus der
+(`issue check-form <id>`) nur, wenn ihre Nummer mindestens `scenariosFrom` aus der
 `workflow.config.json` ist. Fehlt das Feld, gilt F12 fuer keine Karte am Board, und die
 Pruefung nennt den fehlenden Stichtag als Hinweis. F1 bleibt bei vier Abschnitten.
 
@@ -222,6 +222,10 @@ Damit der Reviewer nicht alles zum Gate erklaert:
   ein Fund der Pruefung, kein Formverstoss.
 - **Die Zahl der Szenarien ueber eins.** Nicht jedes fachliche Akzeptanzkriterium braucht
   ein Szenario.
+- **Die Zeile `Wartet auf Ereignis: <Grund>` im Abschnitt `## Ziel`.** Sie ist eine
+  optionale Kennzeichnung, gesetzt und aufgehoben mit `node .claude/kit/board.mjs issue
+  hold <N> --reason "<Grund>"` bzw. `--lift`. Die Nacht-Kette richtet sich nach ihr, die
+  Form verlangt sie nicht und verbietet sie nicht; sie ist keine offene Frage an den PO.
 
 Ein Fund zu diesen Punkten ist trotzdem ein Fund — er wird angewendet oder verworfen. Ob
 er einen Menschen ruft, entscheidet Ausloeser 2 aus A9, nicht dieses Register.

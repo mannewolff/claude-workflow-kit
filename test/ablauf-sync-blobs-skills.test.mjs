@@ -39,16 +39,17 @@ function setupFixture({
   writeFileSync(join(dir, "templates", "CLAUDE-workflow.md"), "# Vorlage\n");
   writeFileSync(join(dir, "templates", "CLAUDE-Fachplan.md"), "# Fachplan-Gates\n");
   writeFileSync(join(dir, "templates", "CLAUDE-Plan.md"), "# Plan-Gates\n");
-  writeFileSync(join(dir, "templates", "workflow.config.json"), `${JSON.stringify({ codeHost: "github" })}\n`);
+  for (const sprache of ["de", "en"]) writeFileSync(join(dir, "templates", `workflow.config.example.${sprache}.jsonc`), `${JSON.stringify({ codeHost: "github" })}\n`);
   for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "effort.mjs", "effectiveness.mjs", "findings.mjs", "worktree.mjs"]) {
     writeFileSync(join(dir, "kit", datei), `const KIT_VERSION = "1.0.0";\nconsole.log("${datei}");\n`);
   }
   // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
   writeFileSync(join(dir, "templates", "workflow.config.schema.json"), "{}\n");
-  writeFileSync(join(dir, "kit", "settings.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
+  writeFileSync(join(dir, "kit", "settings.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_TEILE_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
   // Seit Issue #1437: die Namenstabelle, die sync-blobs ebenfalls einbettet.
   mkdirSync(join(dir, "kit", "board"), { recursive: true });
   writeFileSync(join(dir, "kit", "board", "config-namen.mjs"), "export {};\n");
+  writeFileSync(join(dir, "kit", "board", "config-teile.mjs"), "export {};\n");
   writeFileSync(join(dir, "kit", "board", "namen.mjs"), "export {};\n");
   // Seit Issue #1441: die englische Referenz, die sync-blobs ebenfalls einbettet.
   mkdirSync(join(dir, "tools"), { recursive: true });
@@ -59,7 +60,8 @@ function setupFixture({
   writeFileSync(join(dir, ".githooks", "pre-commit"), "#!/bin/sh\nexit 0\n");
   writeFileSync(join(dir, "install.mjs"), [
     'const VERSION = "1.0.0";',
-    'const CONFIG_EXAMPLE_B64 = "";',
+    'const CONFIG_EXAMPLE_DE_B64 = "";',
+    'const CONFIG_EXAMPLE_EN_B64 = "";',
     'const CLAUDE_WORKFLOW_MD_B64 = "";',
     'const CLAUDE_FACHPLAN_MD_B64 = "";',
     'const CLAUDE_PLAN_MD_B64 = "";',
@@ -75,6 +77,7 @@ function setupFixture({
     'const KIT_BOARD_B64 = "";',
     'const KIT_ROLLEN_B64 = "";',
     'const KIT_TEXTE_B64 = "";',
+    'const KIT_CHECKS_B64 = "";',
     'const GATE_MJS_B64 = "";',
     'const PRE_COMMIT_B64 = "";',
     'const SKILLS_B64 = "";',
@@ -375,9 +378,10 @@ test("[kitstand-5] eine lebende Markierung laesst auch die Agenten-Kopie stehen"
 // gleichnamigen `name:` traegt — ein eigener Skill, der zufaellig so heisst, bleibt stehen.
 
 const altSkill = (name) => `---\nname: ${name}\ndescription: alt\n---\n`;
-const ALTE = ["fachplan", "kontext", "context", "review", "plan"];
+// Seit Issue #1679 gehoert local-check dazu.
+const ALTE = ["fachplan", "kontext", "context", "review", "plan", "local-check"];
 
-test("[1566-1] sync-blobs entfernt die fuenf alten Skill-Ordner aus der Kopie und nennt jeden", () => {
+test("[1566-1] sync-blobs entfernt die alten Skill-Ordner aus der Kopie und nennt jeden", () => {
   mitFixture((dir) => {
     const res = syncBlobs(dir);
     assert.equal(res.status, 0, res.stderr);

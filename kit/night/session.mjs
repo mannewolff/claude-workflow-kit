@@ -131,6 +131,15 @@ function emitVerbose(issueId, line) {
  * dreimal. Dass es mehr als einer war, steht darum in `nebenlaeufigeSchuebe` und nicht
  * in der Zeit.
  *
+ * Die echte Form des Stroms (Issue #1686, Plan #1685, E1/E2): Parallele Aufrufe kommen
+ * nicht als EIN Ereignis mit mehreren `tool_use`-Bloecken, sondern als getrennte
+ * `assistant`-Ereignisse mit derselben `message.id`, je eines pro Aufruf. Ein Ereignis,
+ * dessen `message.id` gleich der des offenen Schubs ist, erweitert darum diesen Schub,
+ * statt einen neuen zu eroeffnen. Ereignisse eines Subagenten tragen `parent_tool_use_id`
+ * und laufen ein, waehrend der Agent-Aufruf der Hauptsession offen ist; sie werden fuer
+ * Schuebe nicht gewertet — ihre Zeit steckt in der Spanne des Agent-Aufrufs, und die
+ * Session hat einmal gewartet, nicht zweimal.
+ *
  * Ein Schub, dessen `tool_result` nie ankommt (abgeschnittener Strom, Zeitlimit), zaehlt
  * als `offeneSchuebe` und geht NICHT in `werkzeugMs` ein: Ein fehlender Messwert darf
  * nicht als Null erscheinen, und die Spanne bis zum letzten gesehenen Ereignis waere eine
@@ -142,7 +151,8 @@ function emitVerbose(issueId, line) {
  * das haelt den Beobachter an Fixtures prueffbar, und deshalb ist er exportiert.
  *
  * `zeile(roh, ts)` nimmt eine Rohzeile oder ein bereits geparstes Objekt, `ergebnis()`
- * liefert jederzeit `{ werkzeugMs, schuebe, nebenlaeufigeSchuebe, offeneSchuebe }`.
+ * liefert jederzeit `{ werkzeugMs, schuebe, nebenlaeufigeSchuebe, offeneSchuebe, aufrufe }`;
+ * `aufrufe` zaehlt jeden Aufruf der Hauptsession, auch den eines offenen Schubs.
  * Unlesbare Zeilen werden tolerant uebersprungen, wie in `leseKennzahlen()` — eine
  * Kennzahl darf einen laufenden Nachtlauf nicht zu Fall bringen.
  */
@@ -181,44 +191,58 @@ export function werkzeugZeitBeobachter() {
   let schuebe = 0;
   let nebenlaeufigeSchuebe = 0;
   let verwaiste = 0;
-  // Der Schub, der gerade laeuft: Startzeit, noch offene tool_use-Ids und die Zahl der
-  // Aufrufe, mit der er begonnen hat.
+  let aufrufe = 0;
+  // Der Schub, der gerade laeuft: Startzeit, `message.id`, noch offene tool_use-Ids und
+  // die Zahl seiner Aufrufe.
   let offen = null;
+
+  function aufrufeSehen(message, ts) {
+    // Ohne Id liesse sich einem Aufruf kein Ergebnis zuordnen; er eroeffnet darum
+    // keinen Schub, statt einen zu eroeffnen, der nie schliesst.
+    const ids = message.content
+      .filter((b) => b?.type === "tool_use" && typeof b.id === "string" && b.id)
+      .map((b) => b.id);
+    if (!ids.length) return;
+    aufrufe += ids.length;
+    const messageId = typeof message.id === "string" && message.id ? message.id : null;
+    // Derselbe Schub, als eigenes Ereignis geliefert (E1).
+    if (offen && messageId && offen.messageId === messageId) {
+      for (const id of ids) offen.ids.add(id);
+      offen.aufrufe += ids.length;
+      return;
+    }
+    // Ein neuer Schub, waehrend der alte noch offen ist: Der alte bekommt kein
+    // Ergebnis mehr und zaehlt als offen.
+    if (offen) verwaiste += 1;
+    offen = { start: ts, messageId, ids: new Set(ids), aufrufe: ids.length };
+  }
+
+  function ergebnisseSehen(message, ts) {
+    if (!offen) return;
+    for (const block of message.content) {
+      if (block?.type === "tool_result") offen.ids.delete(block.tool_use_id);
+    }
+    if (offen.ids.size === 0) {
+      werkzeugMs += ts - offen.start;
+      schuebe += 1;
+      if (offen.aufrufe > 1) nebenlaeufigeSchuebe += 1;
+      offen = null;
+    }
+  }
 
   return {
     zeile(roh, ts) {
       const obj = leseStromereignis(roh);
       if (!obj || !Array.isArray(obj.message?.content)) return;
-
-      if (obj.type === "assistant") {
-        // Ohne Id liesse sich einem Aufruf kein Ergebnis zuordnen; er eroeffnet darum
-        // keinen Schub, statt einen zu eroeffnen, der nie schliesst.
-        const ids = obj.message.content
-          .filter((b) => b?.type === "tool_use" && typeof b.id === "string" && b.id)
-          .map((b) => b.id);
-        if (!ids.length) return;
-        // Ein neuer Schub, waehrend der alte noch offen ist: Der alte bekommt kein
-        // Ergebnis mehr und zaehlt als offen.
-        if (offen) verwaiste += 1;
-        offen = { start: ts, ids: new Set(ids), aufrufe: ids.length };
-        return;
-      }
-
-      if (!offen) return;
-      for (const block of obj.message.content) {
-        if (block?.type === "tool_result") offen.ids.delete(block.tool_use_id);
-      }
-      if (offen.ids.size === 0) {
-        werkzeugMs += ts - offen.start;
-        schuebe += 1;
-        if (offen.aufrufe > 1) nebenlaeufigeSchuebe += 1;
-        offen = null;
-      }
+      // Ein Subagent arbeitet innerhalb des offenen Agent-Aufrufs (E2).
+      if (obj.parent_tool_use_id) return;
+      if (obj.type === "assistant") aufrufeSehen(obj.message, ts);
+      else ergebnisseSehen(obj.message, ts);
     },
     ergebnis() {
       // Der noch laufende Schub wird hier dazugezaehlt statt beim Eintreffen abgeschlossen:
       // ergebnis() darf mehrfach abgerufen werden, ohne den Zustand zu veraendern.
-      return { werkzeugMs, schuebe, nebenlaeufigeSchuebe, offeneSchuebe: verwaiste + (offen ? 1 : 0) };
+      return { werkzeugMs, schuebe, nebenlaeufigeSchuebe, offeneSchuebe: verwaiste + (offen ? 1 : 0), aufrufe };
     },
   };
 }
@@ -1753,8 +1777,8 @@ export function sessionStart({ testCmd, kommando, prompt, modell, args, opts }) 
   // weil eine headless -p-Session keinen Folge-Turn hat. Ohne das Werkzeug bleibt ihr
   // der Vordergrund-Aufruf, dessen Ergebnis sie noch verwerten kann.
   //
-  // Die Sperre ersetzt eine Anweisung, die es laengst gibt: local-check verlangt seit
-  // Issue #167 woertlich, einen Hintergrund-Check aktiv abzuwarten statt mit einer
+  // Die Sperre ersetzt eine Anweisung, die es laengst gibt: Die Umsetzungs-Skills verlangen
+  // seit Issue #167 woertlich, einen Hintergrund-Check aktiv abzuwarten statt mit einer
   // Ankuendigung zu enden. Sie stand im Kontext der Sessions, die trotzdem so endeten
   // (kanban-kit #891, #899, #900). Das ist das #122-Prinzip am lebenden Objekt: Was ein
   // Modell klassenweise falsch macht, gehoert ins Gate und nicht in den Prompt.
@@ -1904,6 +1928,27 @@ export async function runSession(issueId, args, opts = {}, abh = {}) {
 }
 
 /**
+ * Teillauf und Uebernahme (Issue #1687, Plan #1685): Erst mit beiden ist entscheidbar, ob
+ * eine Dauer eine vollstaendige Ausfuehrung war. `uebernommen` ist der Zeitpunkt des
+ * uebernommenen Laufs. Ein Stand ohne die Felder ist `null`, nie eine geratene Angabe.
+ */
+function ausfuehrungsFelder(daten) {
+  return {
+    teillauf: typeof daten.teillauf === "boolean" ? daten.teillauf : null,
+    uebernommen: typeof daten.uebernommen === "string" ? daten.uebernommen : null,
+  };
+}
+
+/**
+ * Der Abgleich der Pruefbereiche, `{ luecken, nichtBeurteilbar, fehler }` (Issue #1720, Plan
+ * #1713, Kriterium 11): durchgereicht wie `hinweise`, nie gewertet — er haelt nie an. Ohne das
+ * Feld (kein Abgleich in diesem Lauf, Stand vor Issue #1719) `null`.
+ */
+function bereichsabgleichFeld(daten) {
+  return daten.bereichsabgleich && typeof daten.bereichsabgleich === "object" ? daten.bereichsabgleich : null;
+}
+
+/**
  * Liest, was die soeben beendete Session hinterlassen hat. Fehlt die Datei, ist das
  * KEIN harter Stopp: Die Session hat dann keine Pruefung gefahren, und der Bericht
  * sagt genau das. Faehrt eine Session `run` mehrfach (rot, Fix, erneut), steht hier
@@ -1944,6 +1989,8 @@ export function lesePruefung(issueId) {
       // je Fall ein Eintrag, auch aus frueheren Abschlusslaeufen derselben Karte. Ohne das
       // Feld (Lauf ohne Kartennummer, Stand vor Issue #1397) `null` und nicht `[]`.
       gewackelt: Array.isArray(daten.gewackeltKarte) ? daten.gewackeltKarte : null,
+      bereichsabgleich: bereichsabgleichFeld(daten),
+      ...ausfuehrungsFelder(daten),
     };
     // Die Guetemessung (Issue #764): Das Feld steht nur da, wenn das Projekt eine Messung
     // benannt hat — dann aber in jedem Zustand, auch beim leeren Paket und beim roten Lauf
@@ -2020,7 +2067,7 @@ export function settingsEnv(wurzel = process.cwd()) {
 // Check ab. mutationCommand bleibt bewusst aussen vor: ein nachgelagerter Check,
 // kein Blocker fuer die Salvage-Entscheidung. Die Kindprozess-Umgebung bekommt
 // zusaetzlich den env-Block aus .claude/settings.json gemergt (siehe settingsEnv).
-// Umgebung fuer die eigenen Kindprozesse (Vorpruefung und Format-Fix): process.env
+// Umgebung fuer die eigenen Kindprozesse (die Vorpruefung): process.env
 // plus der gemergte settings-env-Block, ohne die Variablen eines Laufs (Issue #1282).
 function checkEnv() {
   return { ...ohneLaufVariablen(process.env), ...settingsEnv() };
@@ -2282,40 +2329,39 @@ function runChecksCliSync(karte, abfragen) {
   return { ok: false, output, rotesKommando: nachweis.rotesKommando ?? null };
 }
 
-// Vorpruefung fuer den Salvage inklusive einmaligem Format-Fix (Issue #169).
+// Vorpruefung fuer den Salvage (Issue #169, #919).
 //
 // Ein reiner Formatverstoss ist mechanisch und deterministisch behebbar und sagt
 // nichts ueber die fachliche Qualitaet der Arbeit — er darf keinen Lauf beenden,
 // in dem noch zwanzig Issues warten (beobachtet bei kanban-kit#463: ein einzelner
-// Javadoc-Zeilenumbruch). Ist formatFixCommand gesetzt und sind die Checks rot,
-// laeuft das Kommando genau einmal und die Checks werden genau einmal wiederholt.
-// Bleiben sie rot, war das Format nicht die Ursache -> harter Stopp wie bisher.
-// Ohne formatFixCommand ist das Verhalten exakt wie vor #169.
+// Javadoc-Zeilenumbruch). Das Nachformatieren faehrt seit Issue #1672 (Plan #1671, E2)
+// `checks.mjs run` selbst: Ist der Lauf rot und `formatFixCommand` gesetzt, laeuft das
+// Kommando dort genau einmal, und der Nachweis, der liegenbleibt, bezeugt den Stand NACH
+// dem Fix. Ein eigener Fix hier liefe den in checks.mjs ein zweites Mal — gegen die Grenze
+// „genau einmal" aus #169. Darum genau ein Aufruf; ob ein Fix lief und gereicht hat, sagt
+// das Feld `formatFix` der Zusammenfassung, und damit nennt der Salvage-Prompt ihn.
 //
-// Beide Durchgaenge gehen ueber `checks.mjs run --fresh` (Issue #919): Der zweite ist
-// der, dessen Nachweis am Ende liegenbleibt — er muss den Stand NACH dem Format-Fix
-// bezeugen, sonst wiese das Gate die Rettung wegen der geaenderten Blobs ab.
-//
-// `abh.spawnSync` startet beide Durchgaenge und den Format-Fix (Issue #1229, Plan #1199,
-// E6); ohne Angabe der echte.
-export function verifyChecksForSalvage(cfg, karte, abh = {}) {
+// `abh.spawnSync` startet den Aufruf (Issue #1229, Plan #1199, E6); ohne Angabe der echte.
+export function verifyChecksForSalvage(_cfg, karte, abh = {}) {
   const { spawnSync: abfragen } = { ...SESSION_ABHAENGIGKEITEN, ...abh };
-  const first = runChecksCliSync(karte, abfragen);
-  if (first.ok) return { ok: true, output: first.output, formatFixCmd: null, rotesKommando: null };
+  const lauf = runChecksCliSync(karte, abfragen);
+  if (!lauf.ok) return { ok: false, output: lauf.output, formatFixCmd: null, rotesKommando: lauf.rotesKommando };
+  const formatFixCmd = formatFixAusNachweis();
+  if (formatFixCmd !== null) log(t("formatFixGruen"));
+  return { ok: true, output: lauf.output, formatFixCmd, rotesKommando: null };
+}
 
-  const fixCmd = (cfg.formatFixCommand || "").trim();
-  if (!fixCmd) return { ok: false, output: first.output, formatFixCmd: null, rotesKommando: first.rotesKommando };
-
-  log(t("formatFixStart", { cmd: fixCmd }));
-  // fixCmd kommt aus der Config und braucht deshalb eine Shell (Issue #199). Startet sie
-  // nicht, steht das im Log, und der zweite Durchgang bleibt rot.
-  const fix = konfigKommandoSync(fixCmd, checkEnv(), abfragen);
-  if (fix.status === null && fix.stderr) log(t("formatFixNichtGestartet", { fehler: fix.stderr.trim() }));
-
-  const second = runChecksCliSync(karte, abfragen);
-  if (!second.ok) return { ok: false, output: second.output, formatFixCmd: null, rotesKommando: second.rotesKommando };
-  log(t("formatFixGruen"));
-  return { ok: true, output: second.output, formatFixCmd: fixCmd, rotesKommando: null };
+/**
+ * Das Kommando des Nachformatierens, wenn `checks.mjs run` es gefahren hat und es gereicht
+ * hat (Issue #1672) — aus dem Feld `formatFix` der Zusammenfassung, sonst `null`.
+ */
+function formatFixAusNachweis() {
+  try {
+    const { formatFix } = JSON.parse(readFileSync(zusammenfassungPfad(process.cwd()), "utf-8"));
+    return formatFix?.gereicht === true && typeof formatFix.cmd === "string" ? formatFix.cmd : null;
+  } catch {
+    return null;
+  }
 }
 
 // Baut den Prompt der Salvage-Session. Kernpunkt: die Checks sind bereits extern

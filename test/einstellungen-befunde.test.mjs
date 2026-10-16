@@ -16,8 +16,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
-  aenderungAnwenden, pruefe, pruefeSchema, teilFuer, THEMEN, vorgabeAus,
+  aenderungAnwenden, pruefe, pruefeSchema, teilFuer, vorgabeAus,
 } from "../kit/settings.mjs";
+import { teilVon } from "../kit/board/config-teile.mjs";
 
 const fehler = (befunde) => befunde.filter((b) => b.art === "fehler");
 
@@ -62,11 +63,11 @@ test("[einstellungen-18] ein unbekanntes Feld in befunde wird mit Pfad abgewiese
   assert.ok(befunde.some((b) => b.art === "unbekannt" && b.pfad === "befunde.erfunden"));
 });
 
-test("[einstellungen-18] befunde ist ein eigener Teil im Thema Review hinter den Pruefstufen", () => {
-  assert.equal(THEMEN.befunde, "Review");
+test("[einstellungen-18] befunde ist ein eigener Teil der Feinabstimmung hinter den Pruefstufen", () => {
+  // Der Reiter folgt dem Zweck (Issue #1736): befunde (`findings`) gehoert zur Feinabstimmung.
+  assert.equal(teilVon("befunde"), "fein");
   const teil = teilFuer("befunde");
   assert.notEqual(teil.redaktor, "text", "befunde zeigt noch die Dateischreibweise");
-  assert.equal(teil.thema, "Review");
   assert.ok(teil.titel, "der Teil hat keinen Titel");
   assert.ok(
     teil.reihenfolge > teilFuer("reviewStufen").reihenfolge,

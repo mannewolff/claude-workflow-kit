@@ -90,7 +90,9 @@ test("[1196] ein zweiter echter Lauf, der gruen ist, leert den Ordner", async ()
   });
 });
 
-test("[1196] ein uebernommener Lauf laesst Ordner und Feld stehen und nennt den Pfad erneut", async () => {
+// Ein rotes Ergebnis wird seit Issue #1742 nie uebernommen: Derselbe Stand faehrt neu und legt
+// die Ausgabe erneut ab.
+test("[1196] ein zweiter roter Lauf auf demselben Stand faehrt neu und nennt den Pfad erneut", async () => {
   await mitRepo({ config: CONFIG }, async (dir) => {
     vorbereiten(dir, { rot: true });
     await run(dir);
@@ -98,8 +100,8 @@ test("[1196] ein uebernommener Lauf laesst Ordner und Feld stehen und nennt den 
 
     const zweiter = await run(dir);
 
-    assert.match(zweiter.stdout, /Ergebnis uebernommen \(rot/);
-    assert.equal(protokolle(dir).length, 1, "der Ordner bleibt stehen");
+    assert.doesNotMatch(zweiter.stdout, /uebernommen/);
+    assert.equal(protokolle(dir).length, 1, "der Ordner traegt wieder genau die Datei des roten Kommandos");
     assert.equal(eintragVon(dir, "node .claude/schalter.mjs").protokoll, rel);
     assert.match(zweiter.stdout, new RegExp("Ausgabe: " + maskiert(rel)));
   });

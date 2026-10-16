@@ -73,9 +73,7 @@ export const TEXTE = Object.freeze({
     statusUngueltig: "Ungueltiger Status '{status}'. Gueltig: {gueltig}",
     issueFehlt: "Issue {id} nicht gefunden",
     direktOhneNummer: "Direktes Anlegen lieferte keine Board-Nummer — die Instanz kennt 'direct' offenbar nicht. "
-      + "Direkt ins Backlog ist die Vorgabe; wer bewusst in den Ideen-Pool anlegen will, "
-      + "setzt 'toolbox.ideaStored: true' in .claude/workflow.config.json.",
-    alsIdeeAngelegt: "Als Idee im Projekt-Ideen-Pool angelegt; die Board-Nummer entsteht beim Einplanen.",
+      + "Die Toolbox-Instanz aktualisieren; dann legt sie direkt ins Backlog an.",
     routeUnbekannt: "Die Toolbox-Instanz kennt die Route PATCH {pfad} nicht (HTTP {status}) — Kommentare lassen sich dort nicht ersetzen.",
     labelNichtDefiniert: "Label '{name}' ist am Board nicht definiert. Die Definition muss einmal je Board angelegt werden "
       + "({route}), danach setzt und entfernt die Automatik sie.",
@@ -141,9 +139,7 @@ export const TEXTE = Object.freeze({
     statusUngueltig: "Invalid status '{status}'. Valid: {gueltig}",
     issueFehlt: "Issue {id} not found",
     direktOhneNummer: "Direct creation returned no board number — the instance apparently does not know 'direct'. "
-      + "Directly into the backlog is the default; to create into the idea pool on purpose, "
-      + "set 'toolbox.ideaStored: true' in .claude/workflow.config.json.",
-    alsIdeeAngelegt: "Created as an idea in the project idea pool; the board number is assigned when it is planned.",
+      + "Update the Toolbox instance; it then creates straight into the backlog.",
     routeUnbekannt: "The Toolbox instance does not know the route PATCH {pfad} (HTTP {status}) — comments cannot be replaced there.",
     labelNichtDefiniert: "Label '{name}' is not defined on the board. The definition must be created once per board "
       + "({route}); after that the automation sets and removes it.",

@@ -19,6 +19,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { KETTE_BUDGET_DEFAULTS as KETTE_VORGABEN } from "../kit/night/session.mjs";
 import { LABELS } from "../kit/board/namen.mjs";
+import { SCHLUESSEL, normalisiereConfig } from "../kit/board/config-namen.mjs";
 import { englisch } from "./helpers/labels.mjs";
 import { BERICHT_ANKER } from "../kit/night/bericht.mjs";
 import { KETTE_HALT_ANKER, KETTE_UNGEPRUEFT_ANKER } from "../kit/night/kette.mjs";
@@ -33,21 +34,21 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
-const DOKU = lies("docs", "nachtbetrieb.md");
+const DOKU = lies("docs", "runner.md");
 const HAUPTSEITE = lies("docs", "dokumentation.md");
 const SKILL = lies("skills", "techplan", "SKILL.md");
 
-const ABSCHNITT = "Die Nacht-Kette";
+const ABSCHNITT = "Die Kette";
 
-/** Ein `##`-Abschnitt aus der Seite Nachtbetrieb samt Unterabschnitten, bis zur naechsten
+/** Ein `##`-Abschnitt aus der Seite Runner samt Unterabschnitten, bis zur naechsten
  *  Ueberschrift gleicher Ebene. */
 function dokuAbschnitt(ueberschrift) {
   const idx = DOKU.indexOf(`## ${ueberschrift}\n`);
-  assert.ok(idx >= 0, `Abschnitt '## ${ueberschrift}' fehlt in docs/nachtbetrieb.md`);
+  assert.ok(idx >= 0, `Abschnitt '## ${ueberschrift}' fehlt in docs/runner.md`);
   return DOKU.slice(idx).split(/\n## /)[0];
 }
 
-test("die Doku fuehrt genau einen Abschnitt zur Nacht-Kette und die Einleitung nennt zwei Betriebsarten", () => {
+test("die Doku fuehrt genau einen Abschnitt zur Kette und die Einleitung nennt zwei Betriebsarten", () => {
   assert.equal(DOKU.split(`\n## ${ABSCHNITT}\n`).length - 1, 1);
   assert.match(DOKU.split(/\n\n/)[1], /zwei Betriebsarten/, "die Einleitung der Seite nennt die zwei Betriebsarten nicht");
 });
@@ -70,7 +71,7 @@ test("der Abschnitt nennt Geste, Bedingung, Ausgaenge, Rueckweg, Budget-Felder u
     ["das Flag des Modus", "--chain"],
     ["den Halt-Kommentar", `\`${KETTE_HALT_ANKER}\``],
     ["den Anker des Berichts", `\`${BERICHT_ANKER} <stempel>\``],
-    ["den Config-Block", "`night.kette`"],
+    ["den Config-Block", "`night.chain`"],
     // Der Rueckweg fuehrt seit Issue #896 ueber den Plan, nicht mehr 'von vorn' ueber
     // einen neuen: Die naechste Kette uebernimmt das angehaltene Dokument als Auftrag.
     ["den Rueckweg", "Plan-Auftrag"],
@@ -90,17 +91,18 @@ test("der Abschnitt nennt Geste, Bedingung, Ausgaenge, Rueckweg, Budget-Felder u
   for (const [was, anker] of erwartet) {
     assert.ok(abschnitt.includes(anker), `der Abschnitt nennt ${was} ('${anker}') nicht`);
   }
-  for (const feld of Object.keys(KETTE_BUDGET_DEFAULTS)) {
+  for (const feld of Object.keys(KETTE_BUDGET_DEFAULTS).map((n) => SCHLUESSEL[`night.kette.${n}`])) {
     assert.ok(abschnitt.includes(`"${feld}"`), `das Budget-Feld ${feld} fehlt im Config-Beispiel`);
   }
 });
 
-// Der dokumentierte Startwert muss der sein, den der Runner ohne Config nimmt.
+// Der dokumentierte Startwert muss der sein, den der Runner ohne Config nimmt. Die Doku nennt
+// die Felder englisch (Issue #1737); eingelesen wird wie eine Config, auf die internen Namen.
 test("die dokumentierten Startwerte der Budgets sind die des Programms", () => {
   const abschnitt = dokuAbschnitt(ABSCHNITT);
   const block = abschnitt.slice(abschnitt.indexOf("```json"), abschnitt.indexOf("```", abschnitt.indexOf("```json") + 7));
   const json = JSON.parse(block.replace(/^```json\n/, ""));
-  assert.deepEqual(json.night.kette, KETTE_BUDGET_DEFAULTS);
+  assert.deepEqual(normalisiereConfig(json).config.night.kette, KETTE_BUDGET_DEFAULTS);
 });
 
 // Der Label-Verbrauch ist die eine Regel, die man nicht raten kann: Das Label ist
@@ -176,13 +178,18 @@ test("der Rueckweg aus dem Halt nennt seine Schritte und muendet im Plan-Auftrag
   for (const [was, anker] of [
     ["die Entscheidung im Plan", "## Architektonische Entscheidungen"],
     ["den Sollwert der offenen Fragen", "`- Keine.`"],
-    ["die erneute Pruefung", "/issue-review"],
     ["das Abnehmen des Labels", "`kit:clarify`"],
     ["das Kettenlabel am Plan", "an den Plan"],
     ["die Auftragsart der naechsten Kette", "Plan-Auftrag"],
+    // Plan #1697, E1/E8/E10: Der Halt liegt hinter der Pruefung, und einen durch die Antwort
+    // geaenderten Plan prueft die naechste Kette selbst erneut.
+    ["den Halt nach der Pruefung", "nach der Prüfung"],
+    ["die erneute Pruefung durch die Kette", "prüft ihn die Kette vorher selbst erneut"],
   ]) {
     assert.ok(absatz.includes(anker), `der Rueckweg nennt ${was} ('${anker}') nicht`);
   }
+  // K6: Eine Pruefung von Hand ist nicht mehr der Weg nach vorn.
+  assert.ok(!absatz.includes("/issue-review"), "der Rueckweg nennt noch die Pruefung von Hand (/issue-review)");
 });
 
 // Ein Satz, den die Doku woertlich zitiert, muss der Satz des Programms sein — sonst
@@ -211,7 +218,7 @@ test("der dokumentierte Aufruf steht in der Doku: node .claude/kit/night.mjs --c
 // die einen Schalter nennt, den der Runner abweist, schickt den Leser in die Irre.
 test("kein Dokument nennt die entfallenen Modi, Flags oder Routing-Labels", () => {
   const alt = /Nacht-Review|Erzeugungsnacht|--erzeuge|--review-label|kit:nightreview|kit:nightplan|kit:nightissues/;
-  for (const [name, text] of [["docs/nachtbetrieb.md", DOKU], ["docs/dokumentation.md", HAUPTSEITE], ["templates/CLAUDE-workflow.md", VORLAGE], ["skills/techplan/SKILL.md", SKILL]]) {
+  for (const [name, text] of [["docs/runner.md", DOKU], ["docs/dokumentation.md", HAUPTSEITE], ["templates/CLAUDE-workflow.md", VORLAGE], ["skills/techplan/SKILL.md", SKILL]]) {
     assert.doesNotMatch(text, alt, `${name} nennt einen entfallenen Modus`);
   }
 });
@@ -220,7 +227,7 @@ test("der Nachtbetrieb-Block der Vorlage nennt beide Routing-Labels und den Beri
   const idx = VORLAGE.indexOf("## Nachtbetrieb");
   assert.ok(idx >= 0, "kein Nachtbetrieb-Abschnitt in der Vorlage");
   const abschnitt = VORLAGE.slice(idx).split(/\n## /)[0];
-  for (const anker of ["`kit:night`", "`kit:nightrun`", "`kit:carry-through`", "--chain", "Nachtbericht", "`night.kette`", "nebeneinander",
+  for (const anker of ["`kit:night`", "`kit:nightrun`", "`kit:carry-through`", "--chain", "Nachtbericht", "`night.chain`", "nebeneinander",
     // Seit Issue #898 nennt der Block auch die zweite Auftragsart.
     "`[Plan]`", "Plan-Auftrag"]) {
     // Der Regeltext nennt die Labels seit Issue #1571 englisch.

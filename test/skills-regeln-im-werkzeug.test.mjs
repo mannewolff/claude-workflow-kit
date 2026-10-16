@@ -23,7 +23,6 @@ const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), 
 import { fehlermerkmal } from "../kit/checks.mjs";
 
 const skillText = (name) => readFileSync(join(repoRoot, "skills", name, "SKILL.md"), "utf-8");
-const LOCAL_CHECK = skillText("local-check");
 const CHECKS_MJS = readFileSync(join(repoRoot, "kit", "checks.mjs"), "utf-8");
 
 /** Jede mitgelieferte Anweisung unter `skills/` mit ihrem Namen. */
@@ -133,19 +132,11 @@ test("der echte Rueckgabewert steht im Werkzeug, nicht mehr im Text", () => {
     "kit/checks.mjs liest den Rueckgabewert des Kommandos nicht mehr",
   );
 
-  // Text-Haelfte: die Bedienanleitung dazu ist aus dem Skill verschwunden.
-  assert.ok(
-    !/EXIT=/.test(LOCAL_CHECK),
-    "skills/local-check/SKILL.md laesst den Exit-Code noch selbst in eine Datei schreiben (`EXIT=`)",
-  );
-  assert.ok(
-    !/\^EXIT=/.test(LOCAL_CHECK),
-    "skills/local-check/SKILL.md wertet den Exit-Code noch per `grep \"^EXIT=\"` aus",
-  );
-  assert.ok(
-    /R(ü|ue)ckgabewert/.test(LOCAL_CHECK) && /checks\.mjs run/.test(LOCAL_CHECK),
-    "der Ersatzsatz fehlt: `checks.mjs run` liest den Rueckgabewert des Pruefkommandos selbst",
-  );
+  // Text-Haelfte: die Bedienanleitung dazu steht in keinem Skill (seit Issue #1679 ohne
+  // /local-check, der sie zuletzt trug).
+  for (const { name, text } of alleSkills()) {
+    assert.ok(!/EXIT=/.test(text), `skills/${name}/SKILL.md laesst den Exit-Code noch selbst in eine Datei schreiben (\`EXIT=\`)`);
+  }
 });
 
 test("die allgemeinen Fehlermerkmale stehen im Werkzeug, nicht mehr im Text", () => {
@@ -173,10 +164,6 @@ test("die allgemeinen Fehlermerkmale stehen im Werkzeug, nicht mehr im Text", ()
       `skills/${name}/SKILL.md fordert die Merkmal-Pruefung noch selbst an ([ERROR])`,
     );
   }
-  assert.ok(
-    /Fehlermerkmal/i.test(LOCAL_CHECK) && /rot/.test(LOCAL_CHECK),
-    "der Ersatzsatz fehlt: `run` uebernimmt die Pruefung, ein Treffer faerbt den Lauf rot",
-  );
 });
 
 test("der Abbruch an der Uhr steht im Werkzeug, die Bitte um Zeit im Text", () => {
@@ -186,34 +173,40 @@ test("der Abbruch an der Uhr steht im Werkzeug, die Bitte um Zeit im Text", () =
     "kit/checks.mjs kennt das Feld `abgeschlossen` nicht — ein Abbruch an der Uhr bliebe unsichtbar",
   );
 
-  // Text-Haelfte: die drei Saetze, die bleiben (AK 6).
+  // Text-Haelfte: die drei Saetze, die bleiben (AK 6) — seit Issue #1675 in der
+  // Vorlage, Abschnitt "Leitplanken der Pruefungen", nicht mehr in /local-check.
+  const text = leitplankenAbschnitt();
   assert.ok(
-    /gro(ß|ss)z(ü|ue)gig/i.test(LOCAL_CHECK),
+    /gro(ß|ss)z(ü|ue)gig/i.test(text),
     "die Bitte um einen grosszuegigen Zeitrahmen fehlt",
   );
   assert.ok(
-    /nicht mehr Zeit geben kann, als sein Aufrufer/.test(LOCAL_CHECK),
+    /nicht mehr Zeit geben kann, als sein Aufrufer/.test(text),
     "der Grund fehlt: ein Werkzeug kann sich nicht mehr Zeit geben, als sein Aufrufer einraeumt",
   );
   assert.ok(
-    /stillschweigend mit demselben Wert/.test(LOCAL_CHECK),
+    /stillschweigend mit demselben Wert/.test(text),
     "die Urteilsregel zum Neustart nach Timeout fehlt",
   );
   assert.ok(
-    /unabgeschlossen/.test(LOCAL_CHECK),
+    /unabgeschlossen/.test(text),
     "der Satz fehlt, dass die Zusammenfassung nach einem Abbruch an der Uhr unabgeschlossen und ungruen bleibt",
   );
 });
 
 test("die Haltung zum Hintergrundlauf bleibt, gleichlautend mit dem #754-Satz", () => {
+  // Der #754-Satz steht in der Vorlage genau einmal, im Abschnitt "Nachtbetrieb";
+  // der Abschnitt "Leitplanken der Pruefungen" verweist nur dorthin (Plan #1671/E9).
+  const vorkommen = VORLAGE.split("\n").filter((z) => /Keine Session endet mit laufender eigener Arbeit/.test(z));
+  assert.equal(vorkommen.length, 1, "der #754-Satz steht nicht genau einmal in der Vorlage");
   assert.ok(
-    /Keine Session endet mit laufender eigener Arbeit/.test(LOCAL_CHECK),
-    "der #754-Satz fehlt in skills/local-check/SKILL.md",
+    /Nachtbetrieb/.test(leitplankenAbschnitt()),
+    "der Abschnitt 'Leitplanken der Pruefungen' verweist nicht auf den Absatz im Nachtbetrieb",
   );
   // Der erzwingbare Teil ist weg: kein Auftrag mehr, einen Exit-Code einzulesen.
   assert.ok(
-    !/Exit-Code einlesen/.test(LOCAL_CHECK),
-    "skills/local-check/SKILL.md beauftragt noch das Einlesen eines Exit-Codes",
+    !/Exit-Code einlesen/.test(VORLAGE),
+    "die Vorlage beauftragt das Einlesen eines Exit-Codes",
   );
 });
 
@@ -226,7 +219,7 @@ for (const name of ["implement-next", "implement-ready"]) {
     );
     // Verweis und #754-Satz bleiben — ohne sie waere die Regel ganz weg.
     assert.ok(
-      /Hintergrund-Check im `local-check`-Skill/.test(text),
+      /Hintergrund-Check in `CLAUDE-workflow\.md`, Abschnitt „Leitplanken der Pruefungen“/.test(text),
       `skills/${name}/SKILL.md verweist nicht mehr auf die Leitplanke`,
     );
     assert.ok(
@@ -236,11 +229,68 @@ for (const name of ["implement-next", "implement-ready"]) {
   });
 }
 
-test("skills/local-check/SKILL.md verweist auf den Massstab", () => {
-  assert.ok(
-    /Regel im Text oder Regel im Werkzeug/.test(LOCAL_CHECK),
-    "der Verweis auf den Massstab in CLAUDE-workflow.md fehlt",
-  );
+// Teil Leitplanken (Issue #1675, Plan #1671/E9; Fachliche Quelle #1609/AK 5).
+//
+// Mit /local-check entfaellt der Ort, auf den die Umsetzungs-Skills verwiesen. Die
+// Leitplanken stehen deshalb in der Vorlage, die jede Sitzung liest, und die Verweise
+// zeigen dorthin — keiner zeigt ins Leere.
+
+const LEITPLANKEN = "## Leitplanken der Pruefungen";
+
+/** Der Abschnitt "Leitplanken der Pruefungen" bis zur naechsten `##`-Ueberschrift. */
+function leitplankenAbschnitt() {
+  const start = VORLAGE.indexOf(`${LEITPLANKEN}\n`);
+  assert.ok(start >= 0, `'${LEITPLANKEN}' fehlt in templates/CLAUDE-workflow.md`);
+  const rest = VORLAGE.slice(start + LEITPLANKEN.length);
+  const ende = rest.indexOf("\n## ");
+  return rest.slice(0, ende >= 0 ? ende : rest.length);
+}
+
+/** Die Titel der `**Leitplanke: …**`-Absaetze der Vorlage. */
+const leitplankenTitel = () => [...leitplankenAbschnitt().matchAll(/^\*\*Leitplanke: (.+?)\*\*/gm)].map((m) => m[1]);
+
+test("die Leitplanken stehen unmittelbar nach den Pflichtchecks vor Push", () => {
+  const ueberschriften = VORLAGE.split("\n").filter((z) => z.startsWith("## ")).map((z) => z.trim());
+  const vorher = ueberschriften.findIndex((z) => z.startsWith("## Pflichtchecks vor Push"));
+  assert.ok(vorher >= 0, "'## Pflichtchecks vor Push' fehlt in der Vorlage");
+  assert.equal(ueberschriften[vorher + 1], LEITPLANKEN, "die Leitplanken folgen nicht unmittelbar auf die Pflichtchecks");
+  assert.equal(ueberschriften.filter((z) => z === LEITPLANKEN).length, 1, "der Abschnitt steht mehr als einmal");
+});
+
+test("die Vorlage traegt die drei Leitplanken woertlich", () => {
+  const titel = leitplankenTitel();
+  assert.deepEqual(titel, [
+    "Ein Coverage-/Qualitäts-Gate ist ein Floor, kein Beweis voller Abdeckung.",
+    "Wiederkehrende, klassenweite Modell-Fehler gehören ins Gate, nicht in Prompts.",
+    "Lang laufende Checks brauchen einen großzügigen Zeitrahmen.",
+  ]);
+  const text = leitplankenAbschnitt();
+  assert.ok(/kein Beweis voller Abdeckung/.test(text) && /Signal/.test(text), "der Coverage-Floor ist unvollstaendig");
+  assert.ok(/`buildChecks`/.test(text) && /no-deprecated/.test(text), "die Leitplanke zu klassenweiten Fehlern ist unvollstaendig");
+});
+
+test("der Nachtbetrieb-Absatz traegt die Teile aus #983 und #1081", () => {
+  const absatz = VORLAGE.split(/\n\n/).find((a) => /Keine Session endet mit laufender eigener Arbeit/.test(a));
+  assert.ok(absatz, "der Absatz 'Keine Session endet mit laufender eigener Arbeit' fehlt");
+  assert.match(absatz, /noch existiert/, "die Warteschleife prueft nicht, ob der Lauf noch existiert (#983)");
+  assert.match(absatz, /`bash-check`/, "der Hook `bash-check` fehlt (#1081)");
+  assert.match(absatz, /`run_in_background`/, "`run_in_background` fehlt (#1081)");
+  assert.match(absatz, /`KIT_AGENT_MODEL`/, "die Grenze 'ohne Aufsicht' fehlt (#1081)");
+});
+
+for (const name of ["implement-next", "implement-ready"]) {
+  test(`${name}: die drei Leitplanken-Verweise zeigen auf die Vorlage`, () => {
+    const text = skillText(name);
+    assert.ok(!/local-check/.test(text), `skills/${name}/SKILL.md nennt noch local-check`);
+    const verweise = text.match(/`CLAUDE-workflow\.md`, Abschnitt „Leitplanken der Pruefungen“/g) ?? [];
+    assert.equal(verweise.length, 3, `skills/${name}/SKILL.md traegt ${verweise.length} statt 3 Verweise auf die Leitplanken`);
+  });
+}
+
+test("kit/board/dokumente.mjs verweist auf die Leitplanken der Vorlage", () => {
+  const text = readFileSync(join(repoRoot, "kit", "board", "dokumente.mjs"), "utf-8");
+  assert.ok(!/local-check/.test(text), "kit/board/dokumente.mjs nennt noch /local-check");
+  assert.ok(/`CLAUDE-workflow\.md`, Abschnitt „Leitplanken der Pruefungen“/.test(text), "der Verweis auf die Leitplanken fehlt");
 });
 
 // Teil Aufstellung (Issue #861, Plan #810/E6; Fachplan #769/AK 7).
@@ -308,19 +358,60 @@ test("die Aufstellung ordnet die vier belegten Regeln so ein wie die Umstellung"
   const hintergrund = zeile("Hintergrundlauf");
   assert.deepEqual([hintergrund[2], hintergrund[3]], ["gemischt", "teilweise"]);
 
-  for (const suche of ["Coverage", "klassenweite", "UI-Verifikation", "Prüf-Anker", "Paketstufe", "Format-Fix", "Stop-Punkt"]) {
+  for (const suche of ["Coverage", "klassenweite", "UI-Verifikation", "Prüf-Anker", "Paketstufe", "Stop-Punkt"]) {
     assert.equal(zeile(suche)[3], "nicht", `'${suche}' ist nicht als nicht ueberfuehrt gefuehrt`);
+  }
+
+  // Mit Issue #1609 tragen `checks.mjs run` Format-Fix, Bericht dazu und Mutationstest.
+  for (const suche of ["Format-Fix", "Berichtspflicht", "Mutations-Test"]) {
+    assert.equal(zeile(suche)[3], "vollständig", `'${suche}' ist nicht als vollstaendig ueberfuehrt gefuehrt`);
+    assert.ok(zeile(suche)[4].startsWith("`kit/checks.mjs`"), `'${suche}' nennt nicht \`kit/checks.mjs\` als Ort`);
   }
 });
 
-test("jede Leitplanke aus local-check steht in der Aufstellung", () => {
-  const leitplanken = [...LOCAL_CHECK.matchAll(/^\*\*Leitplanke: (.+?)\*\*/gm)].map((m) => m[1]);
-  assert.ok(leitplanken.length >= 4, `im Skill stehen nur ${leitplanken.length} Leitplanken — erwartet sind mindestens 4`);
-  const fundstellen = tabellenzeilen().map((z) => z[1]).join("\n");
-  for (const titel of leitplanken) {
+// Teil neuer Ort (Issue #1675, Plan #1671/E10; Fachliche Quelle #1609/AK 5): Mit dem
+// Wegfall von /local-check nennt Spalte 5 je Regel den heutigen Ort oder vermerkt,
+// dass sie nicht mehr gilt — keine Regel verschwindet still.
+
+const ENTFALLEN = "gilt nicht mehr (#1609): der Schritt ist entfallen";
+
+test("jede Regel nennt in Spalte 5 einen Ort oder 'gilt nicht mehr'", () => {
+  for (const zellen of tabellenzeilen()) {
     assert.ok(
-      fundstellen.includes(titel),
-      `die Leitplanke '${titel}' fehlt in der Aufstellung (sie gehoert woertlich in die Spalte 'Fundstelle')`,
+      zellen[4].startsWith("`") || zellen[4].startsWith("gilt nicht mehr (#1609)"),
+      `die Zeile '${zellen[0]}' nennt in Spalte 5 weder einen Ort noch 'gilt nicht mehr (#1609)': '${zellen[4].slice(0, 60)}'`,
+    );
+  }
+});
+
+test("die drei entfallenen Regeln tragen den Grad 'nicht' und den Vermerk", () => {
+  const zeilen = tabellenzeilen();
+  const entfallen = zeilen.filter((z) => z[4].startsWith("gilt nicht mehr (#1609)"));
+  assert.deepEqual(
+    entfallen.map((z) => z[0]).sort(),
+    ["Berichtsformat der Checklist", "Paketstufe fahren, kein `--stage` übergeben", "Stop-Punkt vor `/kit-review` und vor dem Push"].sort(),
+  );
+  for (const z of entfallen) {
+    assert.equal(z[3], "nicht", `'${z[0]}' traegt nicht den Grad 'nicht'`);
+    assert.ok(z[4].startsWith(ENTFALLEN), `'${z[0]}' beginnt nicht mit '${ENTFALLEN}'`);
+  }
+});
+
+test("die Aufstellung sagt am Anfang, dass /local-check entfallen ist", () => {
+  const anfang = AUFSTELLUNG.slice(0, AUFSTELLUNG.indexOf("\n## "));
+  assert.ok(/`\/local-check`[^.]*Issue #1609[^.]*entfallen/.test(anfang), "der Satz zum Wegfall von /local-check fehlt am Anfang");
+  assert.ok(/letzte Spalte/.test(anfang), "der Satz sagt nicht, dass die letzte Spalte den heutigen Ort nennt");
+});
+
+test("jede Leitplanke der Vorlage steht in der Aufstellung, mit der Vorlage als Ort", () => {
+  const leitplanken = leitplankenTitel();
+  assert.equal(leitplanken.length, 3, `in der Vorlage stehen ${leitplanken.length} Leitplanken — erwartet sind 3`);
+  for (const titel of leitplanken) {
+    const zeile = tabellenzeilen().find((z) => z[1].includes(titel));
+    assert.ok(zeile, `die Leitplanke '${titel}' fehlt in der Aufstellung (sie gehoert woertlich in die Spalte 'Fundstelle')`);
+    assert.ok(
+      zeile[4].startsWith("`CLAUDE-workflow.md`, „Leitplanken der Pruefungen“"),
+      `die Zeile zur Leitplanke '${titel}' nennt nicht die Vorlage als Ort`,
     );
   }
 });

@@ -170,7 +170,7 @@ test("issue-review check: ohne konfigurierte Reviewer ist alleVerfuegbar false",
   const leer = issueReviewCheck({}, { config: mitReview({}) });
   assert.deepEqual(leer.reviewers, []);
   assert.equal(leer.alleVerfuegbar, false);
-  assert.match(leer.grund, /workflow\.config\.example\.json/);
+  assert.match(leer.grund, /workflow\.config\.example\.jsonc/);
   // Auch wenn der Block ganz fehlt, nicht nur wenn er leer ist.
   assert.equal(issueReviewCheck({}, { config: {} }).alleVerfuegbar, false);
 });

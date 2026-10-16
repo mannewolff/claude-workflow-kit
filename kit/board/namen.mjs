@@ -59,6 +59,8 @@ export const LABELS = Object.freeze({
   zielPushVorbereitet: eintrag("ziel:push-vorbereitet", "goal:push-prepared"),
   night: eintrag("kit:night"),
   nightrun: eintrag("kit:nightrun"),
+  // Kein deutscher Altname: Nie trug eine Karte ein deutsches Warte-Label (Plan #1624 E3).
+  ereignis: eintrag("kit:on-hold"),
   planreview1: eintrag("planreview:1"),
   planreview2: eintrag("planreview:2"),
 });
@@ -170,6 +172,8 @@ export const MARKER = Object.freeze({
   vorlage: eintrag("Vorlage:", "Template:"),
   planReview: eintrag("Plan-Review:"),
   fachplanReview: eintrag("Fachplan-Review:", "Requirement-Review:"),
+  // Der Fachplan wartet auf ein aeusseres Ereignis (Issue #1661, Plan #1624 E1).
+  ereignis: eintrag("Wartet auf Ereignis:", "Waiting for event:"),
   issueReview: eintrag("Issue-Review:"),
   // Fundblock-Zeilen (Issue #1558, Plan #1548 E19); die Werte hinter `Art:` bleiben deutsch (E5).
   gegenprobe: eintrag("Gegenprobe:", "Counter-check:"),
@@ -183,7 +187,7 @@ export const MARKER = Object.freeze({
   // Tests, Code-Review- und Reviewer-Kopf, die Zeilen der Vorgeschichte.
   abschlussbericht: eintrag("## Abschlussbericht Issue #", "## Completion report issue #"),
   testsGeschrieben: eintrag("### Tests geschrieben (rot) — Issue #", "### Tests written (red) — issue #"),
-  codeReview: eintrag("## Code-Review (Schritt 7)", "## Code review (step 7)"),
+  codeReview: eintrag("## Code-Review (Schritt 6)", "## Code review (step 6)"),
   reviewer: eintrag("### Reviewer"),
   suchbegriffe: eintrag("Suchbegriffe:", "Search terms:"),
   dateien: eintrag("Dateien:", "Files:"),
@@ -198,6 +202,8 @@ export const MARKER = Object.freeze({
  */
 const MARKER_ALTNAMEN = Object.freeze({
   haltFolgesatz: Object.freeze(["Daraus soll per /fachplan eine fachliche Anforderung entstehen."]),
+  // Der Prozess hatte neun Schritte, der Code-Review war Schritt 7 (Issue #1676, Plan #1671 E11).
+  codeReview: Object.freeze(["## Code-Review (Schritt 7)", "## Code review (step 7)"]),
 });
 
 // Laengster Name zuerst: `Plan-Review:` darf nicht als `Plan:` gelten, und ein Name, der

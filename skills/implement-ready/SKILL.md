@@ -1,12 +1,12 @@
 ---
 name: implement-ready
-description: Step 5 of the 9-step process: works off all issues in the Ready column one after another in board order, commits locally, does not push. Use this skill when the user invokes /implement-ready, wants to implement Ready issues, or gives the GO for implementation.
+description: Step 5 of the 8-step process: works off all issues in the Ready column one after another in board order, commits locally, does not push. Use this skill when the user invokes /implement-ready, wants to implement Ready issues, or gives the GO for implementation.
 user-invocable: true
 ---
 
 # Implement Ready
 
-Schritt 5 des 9-Schritt-Prozesses: Die KI arbeitet die Ready-Issues sequenziell ab. Jedes Issue wird vollständig umgesetzt, lokal committet und nach In review verschoben, bevor das nächste beginnt.
+Schritt 5 des 8-Schritt-Prozesses: Die KI arbeitet die Ready-Issues sequenziell ab. Jedes Issue wird vollständig umgesetzt, lokal committet und nach In review verschoben, bevor das nächste beginnt.
 
 ## Vorbedingung
 
@@ -94,9 +94,9 @@ Gelesen wird der Auftrag aus Schritt 0. Er trägt Aufgabe, Kommentare und Zusamm
 - Kein Feature, keine Refactoring, keine Abstraktion die das Issue nicht verlangt
 - Bei UI-Änderungen: Dev-Server starten, Golden Path und Edge Cases durchklicken
 - Bei neuer oder geänderter Logik: abgedeckt oder begründet ausgeschlossen gemäß der Coverage-/Qualitäts-Policy des Projekts (siehe Projekt-Guide bzw. `workflow.config.json`). Untestete Logik nie stillschweigend ausschließen, Schwellen nie senken, nur damit ein Gate grün wird.
-- Wiederkehrende, klassenweite Modell-Fehler (veraltete Idiome, abgekündigte APIs) nicht nur an den Fundstellen fixen: als harte Lint-/Compiler-Leitplanke für die `buildChecks` vorschlagen, aus vorhandenen Annotationen abgeleitet (z. B. `@typescript-eslint/no-deprecated`, Java `-Xlint:deprecation` mit `-Werror`) statt als handgepflegte Verbotsliste oder Bitte in einer CLAUDE-`*`.md — siehe das Leitplanken-Prinzip im `local-check`-Skill.
-- Lang laufende Build-, Test- und Mutationstest-Kommandos (`mvn verify`, PIT, Testcontainers-ITs) mit explizit gesetztem, großzügigem Timeout aufrufen statt mit dem generischen Default — siehe die Timeout-Leitplanke im `local-check`-Skill.
-- Einen im Hintergrund gestarteten Pflichtcheck vor Abschluss des Berichts immer aktiv abwarten — nie mit einer bloßen Ankündigung wie "ich melde mich, sobald der Lauf durch ist" enden, siehe die Leitplanke zum Hintergrund-Check im `local-check`-Skill.
+- Wiederkehrende, klassenweite Modell-Fehler (veraltete Idiome, abgekündigte APIs) nicht nur an den Fundstellen fixen: als harte Lint-/Compiler-Leitplanke für die `buildChecks` vorschlagen, aus vorhandenen Annotationen abgeleitet (z. B. `@typescript-eslint/no-deprecated`, Java `-Xlint:deprecation` mit `-Werror`) statt als handgepflegte Verbotsliste oder Bitte in einer CLAUDE-`*`.md — siehe das Leitplanken-Prinzip in `CLAUDE-workflow.md`, Abschnitt „Leitplanken der Pruefungen“.
+- Lang laufende Build-, Test- und Mutationstest-Kommandos (`mvn verify`, PIT, Testcontainers-ITs) mit explizit gesetztem, großzügigem Timeout aufrufen statt mit dem generischen Default — siehe die Timeout-Leitplanke in `CLAUDE-workflow.md`, Abschnitt „Leitplanken der Pruefungen“.
+- Einen im Hintergrund gestarteten Pflichtcheck vor Abschluss des Berichts immer aktiv abwarten — nie mit einer bloßen Ankündigung wie "ich melde mich, sobald der Lauf durch ist" enden, siehe die Leitplanke zum Hintergrund-Check in `CLAUDE-workflow.md`, Abschnitt „Leitplanken der Pruefungen“.
 - Allgemeiner, und darum die Regel hinter der Zeile davor: **Keine Session endet mit laufender eigener Arbeit** — gleich welcher, nicht nur bei einem Pflichtcheck. Wer einen langen Lauf angestossen hat, wartet auf sein Ergebnis oder bricht ihn ab und meldet den Abbruch als Fehlschlag; eine Schlussmeldung, die nur sagt, dass noch gewartet wird, ist kein Abschluss, sondern der Fehlschlag selbst (Issue #754). Wer wartet, prueft dabei zweierlei: ob das Ergebnis da ist und ob der Lauf **noch existiert** — eine Warteschleife ohne die zweite Pruefung wartet im Fehlerfall ihre volle Laenge ab, und ein Lauf, den es nicht mehr gibt, ist ein Fehlschlag und wird als solcher gemeldet, nicht als Zeitablauf (Issue #983).
 - Ohne Aufsicht (gesetztes `KIT_AGENT_MODEL`) gibt es keine Hintergrundarbeit: Der Hook `bash-check` weist einen Bash-Aufruf mit `run_in_background` ab (Issue #1081) — den Befehl im Vordergrund aufrufen und auf ihn warten. Interaktiv bleibt Hintergrundarbeit erlaubt.
 - Meldet `checks.mjs run` `Pruefung festgefahren:` (Exitcode 3), endet die Sitzung ohne weitere Änderung: kein Fix, kein weiterer Lauf, kein Commit, kein Bericht. Die Bremse greift nur unbeaufsichtigt; den Rest — Stash, Vermerk `## Nachtlauf: an einer Pruefung festgefahren`, Backlog — übernimmt der Nacht-Runner. Interaktiv meldet derselbe Lauf nur `Hinweis: festgefahren an …`, und der Mensch entscheidet.
@@ -105,7 +105,7 @@ Gelesen wird der Auftrag aus Schritt 0. Er trägt Aufgabe, Kommentare und Zusamm
 
 1. Während der Arbeit laufen nur die Tests, die das Paket berührt — gezielt per Datei oder Filter des Test-Runners, zum Beispiel `node --test test/<datei>.test.mjs`. Dazu gehören auch die Tests dessen, was von der geänderten Datei abhängt — nicht nur die der Datei selbst. Gibt es die dafür nur als vollständige Gruppe, fährt die Session sie über `node .claude/kit/checks.mjs run --area <name>`; das ist dann kein Verstoß gegen die Zehn-Minuten-Marke, sondern der vorgesehene Weg.
 2. Die volle Suite startet die Session nicht selbst. Der eine volle Lauf ist `node .claude/kit/checks.mjs run --finish <kartennummer>` vor dem Commit. Sein Block `Fuer den Abschlussbericht:` beginnt mit der Zeile `Wartezeit:`, die wie der Rest wortgetreu in den Bericht geht. Die Abschlussprüfung wiederholt eine rote Prüfung selbst einmal auf demselben Stand — die Session wiederholt sie nicht zusätzlich; eine `Gewackelt:`-Zeile geht wortgetreu in den Bericht, und das Paket geht wie gewohnt nach In review.
-3. Ein zweiter `checks.mjs run` auf **unverändertem Stand** fährt kein Kommando mehr: Das Kommando übernimmt das Ergebnis des vorigen Laufs — auch ein rotes — samt Exitcode und meldet das. `--fresh` erzwingt den echten Lauf.
+3. Ein zweiter `checks.mjs run` auf **unverändertem Stand** fährt kein Kommando mehr: Das Kommando übernimmt das Ergebnis des vorigen Laufs samt Exitcode und meldet das — nur ein grünes; ein rotes misst es neu, weil seine Ursache außerhalb der versionierten Dateien liegen kann. `--fresh` erzwingt den echten Lauf.
 4. Hinweis dazu: Wer die Ausgabe eines langen Laufs mehrfach auswerten will, schreibt sie am einfachsten einmal in eine Datei außerhalb des Projektverzeichnisses (`<tmpdir>/…`, den Pfad wörtlich wie in der Transportregel) und liest sie daraus.
 5. Ist `checks.mjs run` rot, genügt nach der Korrektur derselbe Aufruf `checks.mjs run --finish <kartennummer>`: Er fährt selbst zuerst die zuletzt roten Prüfungen und erst, wenn sie grün sind, im selben Aufruf einmal den vollen Lauf. Gezielte Einzeltests während der Korrektur bleiben erlaubt.
 
@@ -159,7 +159,7 @@ Sie laeuft in `/push-main` beziehungsweise `/merge-production`. Im Bericht steht
 jede andere Auslassung.
 
 **`--finish <kartennummer>` — dies ist der Abschluss genau einer Karte.** Nur ein
-solcher Lauf darf die Pruefungen auslassen, die mit `nichtBeimAbschluss` als
+solcher Lauf darf die Pruefungen auslassen, die mit `notAtCompletion` als
 Zusammenspiel-Pruefung gekennzeichnet sind: Sie messen, was mehrere Pakete gemeinsam
 ergeben, und laufen vollstaendig vor dem Veroeffentlichen in `/push-main`. Die
 **Kartennummer** ist die des Issues, das dieser Lauf abschliesst — ohne sie koennte die
@@ -184,7 +184,7 @@ veraendert wurde" im Bericht, nicht als leere Liste.
 
 **Wer eine Datei anlegt, ordnet sie zu.** Nennt der Block `Fuer den Abschlussbericht:`
 `voller Umfang` wegen einer Datei, die dieses Paket angelegt hat, ergaenzt das Paket
-`checkAreas` um ein passendes Muster (oder begruendet einen Eintrag in `ohnePruefung`)
+`checkAreas` um ein passendes Muster (oder begruendet einen Eintrag in `noCheck`)
 und faehrt den Lauf erneut. Weist Claude Code den Schreibzugriff auf die Config ab
 (Nachtlauf, geschuetzte Datei), steht die Datei unter `### Hinweise` im Bericht — kein
 Anhalten, kein Umweg ueber die Shell.
@@ -202,7 +202,7 @@ Refs #N
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 ```
 
-Nur explizit veränderte Dateien stagen — kein `git add -A` oder `git add .`.
+Nur explizit veränderte Dateien stagen — kein `git add -A` oder `git add .`. Nennt der Bericht `Format-Fix: … → ausgefuehrt`, gehören alle vom Fix geänderten Dateien (`git status`) in denselben Commit und in den Abschlussbericht.
 
 **Kein `Closes`/`Fixes`/`Resolves #N` im Commit.** Diese Keywords schließen das Issue automatisch, sobald der Commit auf den Default-Branch gelangt (`push`/Merge), und die Board-Automation zieht geschlossene Issues sofort nach *Done* — noch bevor der Mensch testen konnte. `Refs #N` verlinkt das Issue, ohne es zu schließen. Das Schließen (→ Done) macht ausschließlich der Mensch nach seinem Test.
 

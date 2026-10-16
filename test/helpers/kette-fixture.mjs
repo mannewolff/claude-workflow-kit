@@ -353,6 +353,20 @@ export function reviewMarker(s) {
   s.board("issue", "comment", id, "--text", EINARBEITUNG_KOMMENTAR);
 }
 
+/** Die Frage, die `reviewMitFrage` unter `## Offene Fragen` eintraegt. */
+export const REVIEW_FRAGE = "- Ist der neue Endpunkt ein Vertrag mit dem Partnerrepo?";
+
+/**
+ * Stufe review: wie `reviewMarker`, und die Einarbeitung traegt eine Frage an den Menschen
+ * unter `## Offene Fragen` ein (Plan #1697, K7) — sie ersetzt `- Keine.`.
+ */
+export function reviewMitFrage(s) {
+  reviewMarker(s);
+  const id = reviewZiel(s);
+  const body = s.board("issue", "get", id).body;
+  s.board("issue", "update", id, "--body", body.replace("## Offene Fragen\n\n- Keine.", `## Offene Fragen\n\n${REVIEW_FRAGE}`));
+}
+
 /** Stufe review: zeichnet den Plan mit kit:klaeren und einer Frage. */
 export function reviewHalt(s) {
   const id = reviewZiel(s);

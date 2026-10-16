@@ -51,15 +51,16 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
   writeFileSync(join(dir, "templates", "CLAUDE-workflow.md"), "# Vorlage\n");
   writeFileSync(join(dir, "templates", "CLAUDE-Fachplan.md"), "# Fachplan-Gates\n");
   writeFileSync(join(dir, "templates", "CLAUDE-Plan.md"), "# Plan-Gates\n");
-  writeFileSync(join(dir, "templates", "workflow.config.json"), JSON.stringify({ codeHost: "github" }) + "\n");
+  for (const sprache of ["de", "en"]) writeFileSync(join(dir, "templates", `workflow.config.example.${sprache}.jsonc`), JSON.stringify({ codeHost: "github" }) + "\n");
   writeFileSync(join(dir, "skills", "beispiel", "SKILL.md"), "# Beispiel-Skill\n");
   // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
   writeFileSync(join(dir, "templates", "workflow.config.schema.json"), JSON.stringify({ properties: { codeHost: { type: "string" } } }) + "\n");
   writeFileSync(join(dir, "kit", "settings.mjs"),
-    `const KIT_VERSION = "${kitVersion}";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\nconsole.log("einstellungen");\n`);
+    `const KIT_VERSION = "${kitVersion}";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_TEILE_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\nconsole.log("einstellungen");\n`);
   // Seit Issue #1437: die Namenstabelle, die sync-blobs ebenfalls einbettet.
   mkdirSync(join(dir, "kit", "board"), { recursive: true });
   writeFileSync(join(dir, "kit", "board", "config-namen.mjs"), "export {};\n");
+  writeFileSync(join(dir, "kit", "board", "config-teile.mjs"), "export {};\n");
   writeFileSync(join(dir, "kit", "board", "namen.mjs"), "export {};\n");
   // Seit Issue #1441: die englische Referenz, die sync-blobs ebenfalls einbettet.
   mkdirSync(join(dir, "tools"), { recursive: true });
@@ -70,7 +71,8 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
   }
   writeFileSync(join(dir, "install.mjs"), [
     `const VERSION = "${installVersion}";`,
-    `const CONFIG_EXAMPLE_B64 = "";`,
+    `const CONFIG_EXAMPLE_DE_B64 = "";`,
+    `const CONFIG_EXAMPLE_EN_B64 = "";`,
     `const CLAUDE_WORKFLOW_MD_B64 = "";`,
     `const CLAUDE_FACHPLAN_MD_B64 = "";`,
     `const CLAUDE_PLAN_MD_B64 = "";`,
@@ -86,6 +88,7 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
     `const KIT_BOARD_B64 = "";`,
     `const KIT_ROLLEN_B64 = "";`,
     `const KIT_TEXTE_B64 = "";`,
+    `const KIT_CHECKS_B64 = "";`,
     `const GATE_MJS_B64 = "";\nconst PRE_COMMIT_B64 = "";\nconst SKILLS_B64 = "";`,
     `const AGENTS_B64 = "";`,
     `const TEMPLATES_EN_B64 = "";`,

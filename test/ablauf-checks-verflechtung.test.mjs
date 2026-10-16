@@ -1,4 +1,4 @@
-// Ablauf-Pruefung: zwei Faelle pruefen die Kommandozeile von tools/verflechtung.mjs mit Ausgabe und Exitcode.
+// Ablauf-Pruefung: zwei Faelle pruefen die Kommandozeile von kit/checks/verflechtung.mjs mit Ausgabe und Exitcode.
 //
 // Schutztest der Verflechtungserhebung (Issue #931, Plan #930, E5).
 //
@@ -19,12 +19,14 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { verflechtungErheben } from "../tools/verflechtung.mjs";
+import { verflechtungErheben, kopplungVon, TEXTE } from "../kit/checks/verflechtung.mjs";
 import { mitRepo, datei, git } from "./helpers/checks-repo.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-const tabelle = verflechtungErheben({ repoRoot });
+// Die Faelle aus dem Bestand fragen nach der Kopplung insgesamt — „laedt" und „nennt"
+// zusammen, wie vor der Trennung (Issue #1714, Plan #1713 A2).
+const tabelle = kopplungVon(verflechtungErheben({ repoRoot }));
 
 test("[931] die Erhebung liefert eine nicht leere Tabelle ueber die Testdateien des Arbeitsstands", () => {
   assert.ok(tabelle.size > 0, "die Verflechtungstabelle ist leer");
@@ -44,7 +46,9 @@ test("[931] einstellungen-teile laedt die echte Projektkonfiguration", () => {
     quellen.includes(".claude/workflow.config.json"),
     `erwartet: .claude/workflow.config.json — erhoben: ${quellen.join(", ")}`,
   );
-  assert.ok(quellen.includes("kit/settings.mjs"), "der direkte Import fehlt");
+  // Zusammengesetzt wie der Teil kitstand weiter unten: Als Zeichenkette genannt, koppelte die
+  // Erhebung diesen Test an die Einstellungs-Oberflaeche, die er nie laedt (Issue #1714).
+  assert.ok(quellen.includes(["kit", "settings.mjs"].join("/")), "der direkte Import fehlt");
 });
 
 test("[931] die board-Tests laden kit/board.mjs oder einen seiner Teile", () => {
@@ -59,8 +63,8 @@ test("[931] die board-Tests laden kit/board.mjs oder einen seiner Teile", () => 
 });
 
 test("[931] night-kitstand-worktree laedt den Teil kitstand des Nacht-Runners", () => {
-  // Das Akzeptanzkriterium des Pakets nennt hier `kit/worktree.mjs`; der
-  // Bestand sagt das Gegenteil (kit/worktree.mjs importiert die Worktree-Funktionen,
+  // Das Akzeptanzkriterium des Pakets nennt hier den Einstieg worktree.mjs; der
+  // Bestand sagt das Gegenteil (der Einstieg importiert die Worktree-Funktionen,
   // nicht umgekehrt). Seit Issue #1226 liegen sie im Teil kitstand unter kit/night/, und
   // der Test importiert ihn statt des Einstiegs (Plan #1199, E18). Geprueft wird die
   // belegte Kopplung — eine erfundene bescheinigte dem Schnitt eine Absicherung, die
@@ -114,7 +118,7 @@ test("[931] eine Quelldatei erscheint nie als eigene Quelle und nie doppelt", ()
 });
 
 test("[931] der direkte Aufruf gibt die Tabelle aus", () => {
-  const res = spawnSync(process.execPath, [join(repoRoot, "tools", "verflechtung.mjs")], {
+  const res = spawnSync(process.execPath, [join(repoRoot, "kit", "checks", "verflechtung.mjs")], {
     cwd: repoRoot,
     encoding: "utf-8",
   });
@@ -155,7 +159,7 @@ test("[943] ohne Musterliste bleibt die Tabelle die von heute", () => {
   ]);
   assert.equal(tabelle.size, imArbeitsstand.size, "die Erhebung deckt nicht jede Testdatei des Arbeitsstands");
 
-  const leereListe = verflechtungErheben({ repoRoot, nurGeruest: [] });
+  const leereListe = kopplungVon(verflechtungErheben({ repoRoot, nurGeruest: [] }));
   assert.equal(leereListe.size, tabelle.size);
   for (const [testdatei, quellen] of tabelle) {
     assert.deepEqual(leereListe.get(testdatei), quellen, testdatei);
@@ -176,7 +180,7 @@ test("[943] ein Muster nimmt seinen Quellpfad aus jeder Zeile und laesst jede an
   // die allermeisten, weil sie sich eine eigene in einem Wegwerf-Repo anlegen. Hier steht
   // er als Probe, nicht als Eintrag der Config — welche Muster das Projekt wirklich
   // fuehrt, entscheidet die Messung in `.claude/workflow.config.json`.
-  const ohne = verflechtungErheben({ repoRoot, nurGeruest: [".gitignore"] });
+  const ohne = kopplungVon(verflechtungErheben({ repoRoot, nurGeruest: [".gitignore"] }));
   assert.equal(ohne.size, tabelle.size, "die Zahl der Zeilen darf sich nicht aendern");
 
   let betroffen = 0;
@@ -192,7 +196,7 @@ test("[943] die Muster lesen sich wie die der Bereiche", () => {
   // Dieselbe Glob-Aufloesung wie `checkAreas` und `ohnePruefung`, aus `kit/checks.mjs`
   // geholt und nicht nachgebaut: Zwei Fassungen derselben Frage weichen ab dem ersten
   // Sonderfall voneinander ab, und die Erhebung saehe dann etwas anderes als die Auswahl.
-  const ohneSkills = verflechtungErheben({ repoRoot, nurGeruest: ["skills/**"] });
+  const ohneSkills = kopplungVon(verflechtungErheben({ repoRoot, nurGeruest: ["skills/**"] }));
   const vorher = [...tabelle.values()].flat().filter((q) => q.startsWith("skills/"));
   assert.ok(vorher.length > 0, "der Bestand kennt keine Kopplung an skills/ — die Probe belegt nichts");
   assert.deepEqual(
@@ -251,7 +255,7 @@ test("[957] die Erhebung traegt die committete und die uncommittete Testdatei", 
 
     datei(dir, "test/uncommittet.test.mjs", 'import { eins } from "../kit/quelle.mjs";\nconsole.log(eins);\n');
 
-    const tabelleDort = verflechtungErheben({ repoRoot: dir });
+    const tabelleDort = kopplungVon(verflechtungErheben({ repoRoot: dir }));
     assert.deepEqual(
       tabelleDort.get("test/committet.test.mjs"),
       ["kit/quelle.mjs"],
@@ -278,7 +282,7 @@ test("[957] eine ignorierte Neuanlage bleibt draussen", () => {
     datei(dir, "test/ignoriert.test.mjs", 'import "../kit/quelle.mjs";\n');
     datei(dir, "test/gesehen.test.mjs", 'import "../kit/quelle.mjs";\n');
 
-    const tabelleDort = verflechtungErheben({ repoRoot: dir });
+    const tabelleDort = kopplungVon(verflechtungErheben({ repoRoot: dir }));
     assert.ok(tabelleDort.has("test/gesehen.test.mjs"), "die nicht ignorierte Neuanlage fehlt");
     assert.ok(
       !tabelleDort.has("test/ignoriert.test.mjs"),
@@ -301,7 +305,7 @@ test("[957] ausserhalb eines Repositories wirft die Erhebung weiterhin", () => {
 
 // --- Teile und Einstiege (Issue #1208, Plan #1199, E18) ---
 //
-// Zerfallen `kit/night.mjs` und `kit/board.mjs` in Teile unter `kit/night/` und
+// Zerfallen die Einstiege night.mjs und board.mjs in Teile unter `kit/night/` und
 // `kit/board/`, ist jeder Teil eine eigene Quelle. Ein Test, der den Teil laedt,
 // koppelt nur an ihn; einer, der den Einstieg laedt, koppelt an den Einstieg und
 // nicht an die Teile dahinter — die Kette laeuft nicht von Quelle zu Quelle, die
@@ -316,10 +320,97 @@ test("[1208] Teile unter kit/night/ und kit/board/ sind eigene Quellen, der Eins
       datei(dir, `test/${werkzeug}-einstieg.test.mjs`, `import { g } from "../kit/${werkzeug}.mjs";\nconsole.log(g);\n`);
     }
 
-    const tabelleDort = verflechtungErheben({ repoRoot: dir });
+    const tabelleDort = kopplungVon(verflechtungErheben({ repoRoot: dir }));
     for (const werkzeug of ["night", "board"]) {
       assert.deepEqual(tabelleDort.get(`test/${werkzeug}-teil.test.mjs`), [`kit/${werkzeug}/grundlagen.mjs`]);
       assert.deepEqual(tabelleDort.get(`test/${werkzeug}-einstieg.test.mjs`), [`kit/${werkzeug}.mjs`]);
     }
   });
+});
+
+// --- „laedt" und „nennt" getrennt (Issue #1714, Plan #1713 A2) ---
+//
+// Der Vorschlag und der Abgleich der Pruefbereiche fragen verschieden: Eine Luecke ist eine
+// Datei, die ein Test LAEDT; ein Geruest-Kandidat ist eine, die viele Tests nur NENNEN. Die
+// Messung liefert darum je Test zwei Listen. Eine Datei, die der Test laedt, steht nur unter
+// „laedt", auch wenn ihr Pfad im Importtext steht: „nennt" sind die Pfade, die der Test als
+// Zeichenkette fuehrt, ohne sie zu laden. Gekoppelt bleibt beides, wie vor der Trennung.
+
+test("[1714] je Test getrennte Listen: laedt ueber die Importkette, nennt als Zeichenkette", () => {
+  mitRepo({}, (dir) => {
+    datei(dir, "kit/geladen.mjs", "export const g = 1;\n");
+    datei(dir, "kit/ueber-helfer.mjs", "export const h = 1;\n");
+    datei(dir, "kit/alt.cjs", "module.exports = { a: 1 };\n");
+    datei(dir, "kit/rolle.md", "Rolle\n");
+    datei(dir, "kit/gestartet.mjs", "console.log(1);\n");
+    datei(dir, "test/helpers/helfer.mjs", 'export { h } from "../../kit/ueber-helfer.mjs";\nexport const rolle = "kit/rolle.md";\n');
+    datei(dir, "test/beides.test.mjs", [
+      'import { g } from "../kit/geladen.mjs";',
+      'import { h } from "./helpers/helfer.mjs";',
+      'const { a } = require("../kit/alt.cjs");',
+      'const start = "kit/gestartet.mjs";',
+      "console.log(g, h, a, start);",
+      "",
+    ].join("\n"));
+
+    const messung = verflechtungErheben({ repoRoot: dir });
+    assert.deepEqual(messung.get("test/beides.test.mjs"), {
+      laedt: ["kit/alt.cjs", "kit/geladen.mjs", "kit/ueber-helfer.mjs"],
+      nennt: ["kit/gestartet.mjs", "kit/rolle.md"],
+    });
+    assert.deepEqual(
+      kopplungVon(messung).get("test/beides.test.mjs"),
+      ["kit/alt.cjs", "kit/geladen.mjs", "kit/gestartet.mjs", "kit/rolle.md", "kit/ueber-helfer.mjs"],
+      "die Kopplung ist die Vereinigung beider Listen",
+    );
+  });
+});
+
+test("[1714] nurGeruest nimmt einen Pfad aus laedt und aus nennt", () => {
+  mitRepo({}, (dir) => {
+    datei(dir, "geruest/geladen.mjs", "export const g = 1;\n");
+    datei(dir, "geruest/genannt.md", "Text\n");
+    datei(dir, "kit/bleibt.mjs", "export const b = 1;\n");
+    datei(dir, "test/a.test.mjs", [
+      'import { g } from "../geruest/geladen.mjs";',
+      'import { b } from "../kit/bleibt.mjs";',
+      'const pfad = "geruest/genannt.md";',
+      "console.log(g, b, pfad);",
+      "",
+    ].join("\n"));
+
+    const ohne = verflechtungErheben({ repoRoot: dir }).get("test/a.test.mjs");
+    assert.deepEqual(ohne, { laedt: ["geruest/geladen.mjs", "kit/bleibt.mjs"], nennt: ["geruest/genannt.md"] });
+
+    const mit = verflechtungErheben({ repoRoot: dir, nurGeruest: ["geruest/**"] }).get("test/a.test.mjs");
+    assert.deepEqual(mit, { laedt: ["kit/bleibt.mjs"], nennt: [] });
+  });
+});
+
+test("[1714] testdateien beschraenkt die Messung auf die genannten Tests", () => {
+  mitRepo({}, (dir) => {
+    datei(dir, "kit/q.mjs", "export const q = 1;\n");
+    datei(dir, "test/eins.test.mjs", 'import "../kit/q.mjs";\n');
+    datei(dir, "test/zwei.test.mjs", 'import "../kit/q.mjs";\n');
+
+    const messung = verflechtungErheben({ repoRoot: dir, testdateien: ["test/zwei.test.mjs"] });
+    assert.deepEqual([...messung.keys()], ["test/zwei.test.mjs"]);
+    assert.deepEqual(messung.get("test/zwei.test.mjs").laedt, ["kit/q.mjs"]);
+  });
+});
+
+test("[1714] eine Datei ohne Lesart wird nicht nach Importen gelesen, ihre Nennungen zaehlen", () => {
+  // Die Lesarten stehen als Tabelle (P13); die erste ist JavaScript. Eine Durchgangsstation
+  // in einer anderen Endung (hier JSON unter test/) traegt keine Importe, aber Pfade.
+  mitRepo({}, (dir) => {
+    datei(dir, "kit/q.mjs", "export const q = 1;\n");
+    datei(dir, "test/fixtures/daten.json", '{ "a": "import x from \\"../../kit/q.mjs\\"", "b": "kit/q.mjs" }\n');
+    datei(dir, "test/j.test.mjs", 'import daten from "./fixtures/daten.json" with { type: "json" };\nconsole.log(daten);\n');
+
+    assert.deepEqual(verflechtungErheben({ repoRoot: dir }).get("test/j.test.mjs"), { laedt: [], nennt: ["kit/q.mjs"] });
+  });
+});
+
+test("[1714] die Texttabelle hat in beiden Sprachen dieselben Schluessel", () => {
+  assert.deepEqual(Object.keys(TEXTE.en).sort(), Object.keys(TEXTE.de).sort());
 });

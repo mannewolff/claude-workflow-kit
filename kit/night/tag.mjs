@@ -32,7 +32,7 @@ import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 
-import { ZUSTAND, NACHBAR_DIR, log, board, boardRoh, einheitAnlegen, einheitErgaenzen, ersteZeile,
+import { ZUSTAND, NACHBAR_DIR, log, board, boardHerkunft, boardRoh, einheitAnlegen, einheitErgaenzen, ersteZeile,
   schrittBeginnen, schrittEnden, vermerkeOhneArbeit } from "./grundlagen.mjs";
 import { standSetzen } from "./laufstand.mjs";
 import { befundeZurueckUndVorschlagen, kitStandInBaum, worktreeAnlegen, worktreeEntfernen,
@@ -566,6 +566,7 @@ function pruefLaufAuswahlMelden(args, budget, alle, auswahl, ergebnisse) {
   if (kandidaten.length === 0 && uebersprungen.length === 0 && liegengeblieben.length === 0) {
     const vorhanden = [...new Set(alle.flatMap((i) => i.labels || []))];
     log(t("keinLabelWarnung", { label: budget.label }));
+    log(t("boardVon", boardHerkunft()));
     log(t("vorhandeneLabels", { labels: vorhanden.length ? vorhanden.join(", ") : t("keineLabels") }));
   }
   kandidaten.forEach((k, i) => {

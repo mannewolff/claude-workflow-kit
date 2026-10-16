@@ -1,6 +1,6 @@
 # claude-workflow-kit
 
-Eine Bibliothek aus Claude-Code-Skills, die den 9-Schritt-Prozess zur KI-gestuetzten Softwareentwicklung ausfuehrbar macht. Claude plant, schreibt Issues, implementiert und bereitet das Review vor — drei Schritte bleiben bewusst menschlich: das GO, der Push und der Merge.
+Eine Bibliothek aus Claude-Code-Skills, die den 8-Schritt-Prozess zur KI-gestuetzten Softwareentwicklung ausfuehrbar macht. Claude plant, schreibt Issues, implementiert und bereitet das Review vor — drei Schritte bleiben bewusst menschlich: das GO, der Push und der Merge.
 
 GitHub, GitLab und ein vollstaendig lokaler Modus werden unterstuetzt — lokal liegen die Issues als Markdown-Dateien im Repo.
 
@@ -10,15 +10,14 @@ Voraussetzungen: macOS, Linux oder Windows über WSL2, [Claude Code](https://cla
 
 > **Unter Windows: WSL2.** Wie du es einrichtest, steht in der Anleitung [Windows über WSL2](docs/wsl2.md).
 
+Im Projektordner:
+
 ```bash
+curl -O https://docs.mwolff.org/install.mjs
 node install.mjs
 ```
 
-Oder direkt aus GitHub:
-
-```bash
-npx github:mannewolff/claude-workflow-kit
-```
+Schritt für Schritt bis zur ersten umgesetzten Karte führt [Die erste Stunde](https://docs.mwolff.org/quickstart).
 
 ## An diesem Repo mitarbeiten
 
@@ -74,6 +73,6 @@ Ein projektlokal installiertes Kit kann einen `pre-commit`-Hook einhaengen, der 
 
 ## Dokumentation
 
-Ausfuehrliche Anleitung, Konfigurationsreferenz und den vollstaendigen 9-Schritt-Prozess findest du hier:
+Ausfuehrliche Anleitung, Konfigurationsreferenz und den vollstaendigen 8-Schritt-Prozess findest du hier:
 
 **[docs.mwolff.org](https://docs.mwolff.org)**

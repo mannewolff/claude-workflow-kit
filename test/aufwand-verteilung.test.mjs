@@ -201,3 +201,37 @@ test("[aufwand-1339] die Verteilung steht in aufwand.json unter verteilung, die 
     }
   });
 });
+
+// --- Median je vollstaendiger Ausfuehrung eines Pruefkommandos (Issue #1689) ------------
+
+function kommando(dauern) {
+  const einheiten = dauern.map((d, i) => einheit(i + 1, {
+    pruefung: { id: "1", zustand: "geprueft", vollerUmfang: true,
+      laufen: [d === null
+        ? { cmd: "node --test", grund: "voller Umfang", ergebnis: "gruen" }
+        : { cmd: "node --test", grund: "voller Umfang", ergebnis: "gruen", dauerMs: d }] },
+  }));
+  return mitProjekt({ laeufe: [lauf("2026-10-14-100000", { einheiten })] }, (dir) => ({
+    k: auswerten(dir).pruefungen.kommandos.find((x) => x.cmd === "node --test"),
+    text: bericht(dir),
+  }));
+}
+
+test("[aufwand-1689] Median je vollstaendiger Ausfuehrung bei ungerader Zahl: der mittlere Wert", () => {
+  const { k } = kommando([500_000, 100_000, 300_000, 200_000, 400_000]);
+  assert.equal(k.vollstaendig.medianMs, 300_000);
+  assert.equal(k.vollstaendig.anzahl, 5);
+});
+
+test("[aufwand-1689] Median je vollstaendiger Ausfuehrung bei gerader Zahl: der untere mittlere, ein gemessener Wert", () => {
+  const { k } = kommando([400_000, 100_000, 300_000, 200_000]);
+  assert.equal(k.vollstaendig.medianMs, 200_000, "Nearest-Rank wie die uebrige Verteilung, kein Interpolieren");
+  assert.equal(k.vollstaendig.anzahl, 4);
+});
+
+test("[aufwand-1689] ohne vollstaendige Ausfuehrung steht \"nicht gemessen\" statt Null", () => {
+  const { k, text } = kommando([null]);
+  assert.equal(k.vollstaendig.medianMs, null);
+  assert.equal(k.vollstaendig.anzahl, 0);
+  assert.match(text, /\| `node --test` \| 1 \| nicht gemessen \| ohne einen einzigen Lauf \| nicht gemessen \| 0 \| 0 \|/);
+});

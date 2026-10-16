@@ -133,9 +133,9 @@ function dokuAbschnitt(muster) {
 
 test("die Dokumentation fuehrt den Abschnitt zur Guetemessung und ihrer Marke", () => {
   const text = dokuAbschnitt(/^### G(ü|ue)temessung und Marke.*$/m);
-  assert.match(text, /`guete`/, "der Abschnitt nennt den Block `guete` nicht");
-  assert.match(text, /`muster`/, "der Abschnitt nennt das Feld `muster` nicht");
-  assert.match(text, /`marke`/, "der Abschnitt nennt das Feld `marke` nicht");
+  assert.match(text, /`quality`/, "der Abschnitt nennt den Block `quality` nicht");
+  assert.match(text, /`pattern`/, "der Abschnitt nennt das Feld `pattern` nicht");
+  assert.match(text, /`marker`/, "der Abschnitt nennt das Feld `marker` nicht");
   // Die Benennung ist die Einschaltstelle: hoechstens ein Eintrag der Liste.
   assert.match(text, /\*\*eine\*\*|h(ö|oe)chstens ein/i,
     "dass hoechstens ein Eintrag die Messung traegt, steht nicht im Abschnitt");

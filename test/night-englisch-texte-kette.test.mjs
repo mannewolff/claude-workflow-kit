@@ -85,7 +85,7 @@ test("[1491] englisch: die Protokollzeile zu den Budgets aus den Defaults", asyn
     const felder = Object.keys(KETTE_BUDGET_DEFAULTS);
     assert.equal(budgetDefaultsZeile({ planMin: 30 }, ["planMin"]), "Budget of the chain from the defaults: planMin=30");
     assert.match(budgetDefaultsZeile(KETTE_BUDGET_DEFAULTS, felder),
-      /^Budget of the chain from the defaults: .+ — night\.kette in \.claude\/workflow\.config\.json is missing or sets no field\.$/);
+      /^Budget of the chain from the defaults: .+ — the kit's defaults apply to night\.kette\.$/);
   });
 });
 
@@ -260,7 +260,7 @@ test("[1492] englisch: der Zeitbudget-Grund der Umsetzung beginnt in der Form de
 
 // Vertragswerte (E14) im zweiten Teil: der Anker der Testhinweise, den Skill und Vorlage
 // woertlich nennen, und das Ergebnis `nicht-vorbereitet` der Vorbereitung.
-const KETTE_VERTRAG = ["## Testhinweise der Formpruefung", "nicht-vorbereitet", ...LAGE_WERTE];
+const KETTE_VERTRAG = ["## Testhinweise der Formpruefung", "## Pruefstand der Kette", "nicht-vorbereitet", ...LAGE_WERTE];
 
 test("[1492] der zweite Teil der Kette gibt in einem englischen Projekt keine deutsche Meldung aus", () => {
   const bereich = { bis: "async function mitMeldung", ohne: KETTE_OHNE };

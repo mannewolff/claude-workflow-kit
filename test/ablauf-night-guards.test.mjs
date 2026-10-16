@@ -21,6 +21,7 @@ import { tmpdir } from "node:os";
 import { konfigKommandoStart } from "../kit/night.mjs";
 
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
+import { einmalLaufen } from "./helpers/kette-ablauf.mjs";
 
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -231,29 +232,27 @@ test("Versions-Drift: unlesbare board.mjs warnt mit 'unbekannt'", () => {
 
 // --- Dry-Run ---
 
+/**
+ * Der Dry-Run auf leerem Ready mit der Vorgabe-Config, den zwei Tests lesen (Issue #1739).
+ * Das Fixture baut diese Datei selbst, nicht das der Kette.
+ */
+const dryRunLeer = () => einmalLaufen("dry-run-leer", (dir) => ({
+  res: run(dir, process.execPath, [NIGHT, "--label", "none", "--dry-run"]),
+}), { aufbau: () => setupProjekt("night-guard-dryempty-") });
+
 test("Dry-Run: leeres Ready meldet 'nichts zu tun' und startet nichts", () => {
-  const dir = setupProjekt("night-guard-dryempty-");
-  try {
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--dry-run"]);
-    assert.equal(res.status, 0, res.stderr);
-    assert.match(res.stdout, /Ready ist leer — nichts zu tun/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const { res } = dryRunLeer();
+  assert.equal(res.status, 0, res.stderr);
+  assert.match(res.stdout, /Ready ist leer — nichts zu tun/);
 });
 
 // Der Dry-Run legt nie einen Ergebnisstand an (Issue #486) — auch nicht seit Issue #744
 // den Grund vermerkt, ihn dort trotzdem am Lauf-Kopf zu vermerken: Es gibt fuer den
 // Dry-Run keinen Lauf-Kopf, der ihn tragen koennte.
 test("[night-44] Dry-Run: leeres Ready legt weiterhin keinen Ergebnisstand an", () => {
-  const dir = setupProjekt("night-guard-dryempty-stand-");
-  try {
-    const res = run(dir, process.execPath, [NIGHT, "--label", "none", "--dry-run"]);
-    assert.equal(res.status, 0, res.stderr);
-    assert.deepEqual(readdirSync(join(dir, ".claude")).filter((n) => /^night-run-.*\.json$/.test(n)), []);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const { dir, res } = dryRunLeer();
+  assert.equal(res.status, 0, res.stderr);
+  assert.deepEqual(readdirSync(join(dir, ".claude")).filter((n) => /^night-run-.*\.json$/.test(n)), []);
 });
 
 test("Dry-Run: unerfuellte Abhaengigkeit und --max-Grenze werden ausgewiesen", () => {

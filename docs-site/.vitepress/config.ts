@@ -18,14 +18,14 @@ const DOWNLOAD = {
 // englischen Standardtexte von VitePress. Bewusst kein Text für lastUpdated.
 const themeDe: DefaultTheme.Config = {
   nav: [
-    { text: "5-Minuten-Guide", link: "/quickstart" },
+    { text: "Die erste Stunde", link: "/quickstart" },
     {
       text: "Dokumentation",
       items: [
         { text: "Überblick", link: "/dokumentation" },
         { text: "Einrichtung", link: "/einrichtung" },
         { text: "Der Prozess", link: "/prozess" },
-        { text: "Nachtbetrieb", link: "/nachtbetrieb" },
+        { text: "Runner", link: "/runner" },
         { text: "Einstellungen", link: "/einstellungen" },
       ],
     },
@@ -38,7 +38,7 @@ const themeDe: DefaultTheme.Config = {
     {
       text: "Einstieg",
       items: [
-        { text: "5-Minuten-Guide", link: "/quickstart" },
+        { text: "Die erste Stunde", link: "/quickstart" },
         { text: "Windows über WSL2", link: "/wsl2" },
         { text: "Lokal arbeiten (kein Remote, kein Board)", link: "/lokal" },
       ],
@@ -47,7 +47,7 @@ const themeDe: DefaultTheme.Config = {
       text: "Überblick",
       items: [
         { text: "Konzept & Voraussetzungen", link: "/dokumentation" },
-        { text: "Die neun Schritte", link: "/dokumentation#die-neun-schritte" },
+        { text: "Die acht Schritte", link: "/dokumentation#die-acht-schritte" },
         { text: "Drei Bahnen", link: "/dokumentation#drei-bahnen" },
         { text: "Menschliche Stop-Punkte", link: "/dokumentation#die-drei-menschlichen-stop-punkte" },
         { text: "Was nicht im Kit ist", link: "/dokumentation#was-bewusst-nicht-im-kit-ist" },
@@ -67,20 +67,20 @@ const themeDe: DefaultTheme.Config = {
     {
       text: "Der Prozess",
       items: [
-        { text: "Die neun Schritte", link: "/prozess" },
-        { text: "Die achtzehn Skills", link: "/prozess#die-skills" },
+        { text: "Die acht Schritte", link: "/prozess" },
+        { text: "Die siebzehn Skills", link: "/prozess#die-skills" },
         { text: "Vollständiger Durchlauf", link: "/prozess#ein-vollstandiger-durchlauf" },
         { text: "PO-Schleife", link: "/prozess#po-schleife-fachliche-und-technische-issues" },
         { text: "Der Prüflauf", link: "/prozess#der-pruflauf" },
       ],
     },
     {
-      text: "Nachtbetrieb",
+      text: "Runner",
       items: [
-        { text: "Der Nachtlauf", link: "/nachtbetrieb" },
-        { text: "Die Nacht-Kette", link: "/nachtbetrieb#die-nacht-kette" },
-        { text: "Der Laufstand", link: "/nachtbetrieb#der-laufstand" },
-        { text: "Aufwand des Prozesses", link: "/nachtbetrieb#aufwand-des-prozesses" },
+        { text: "Der Lauf", link: "/runner" },
+        { text: "Die Kette", link: "/runner#die-kette" },
+        { text: "Der Laufstand", link: "/runner#der-laufstand" },
+        { text: "Aufwand des Prozesses", link: "/runner#aufwand-des-prozesses" },
       ],
     },
     {
@@ -113,14 +113,14 @@ const themeDe: DefaultTheme.Config = {
 
 const themeEn: DefaultTheme.Config = {
   nav: [
-    { text: "5-minute guide", link: "/en/quickstart" },
+    { text: "The first hour", link: "/en/quickstart" },
     {
       text: "Documentation",
       items: [
         { text: "Overview", link: "/en/dokumentation" },
         { text: "Setup", link: "/en/einrichtung" },
         { text: "The process", link: "/en/prozess" },
-        { text: "Night mode", link: "/en/nachtbetrieb" },
+        { text: "Runner", link: "/en/runner" },
         { text: "Settings", link: "/en/einstellungen" },
       ],
     },
@@ -133,7 +133,7 @@ const themeEn: DefaultTheme.Config = {
     {
       text: "Getting started",
       items: [
-        { text: "5-minute guide", link: "/en/quickstart" },
+        { text: "The first hour", link: "/en/quickstart" },
         { text: "Windows via WSL2", link: "/en/wsl2" },
         { text: "Working locally (no remote, no board)", link: "/en/lokal" },
       ],
@@ -142,7 +142,7 @@ const themeEn: DefaultTheme.Config = {
       text: "Overview",
       items: [
         { text: "Concept & prerequisites", link: "/en/dokumentation" },
-        { text: "The nine steps", link: "/en/dokumentation#the-nine-steps" },
+        { text: "The eight steps", link: "/en/dokumentation#the-eight-steps" },
         { text: "Three lanes", link: "/en/dokumentation#three-lanes" },
         { text: "Human stop points", link: "/en/dokumentation#the-three-human-stop-points" },
         { text: "What is not in the kit", link: "/en/dokumentation#what-is-deliberately-not-in-the-kit" },
@@ -162,20 +162,20 @@ const themeEn: DefaultTheme.Config = {
     {
       text: "The process",
       items: [
-        { text: "The nine steps", link: "/en/prozess" },
-        { text: "The eighteen skills", link: "/en/prozess#the-skills" },
+        { text: "The eight steps", link: "/en/prozess" },
+        { text: "The seventeen skills", link: "/en/prozess#the-skills" },
         { text: "A complete pass", link: "/en/prozess#a-complete-pass" },
         { text: "PO loop", link: "/en/prozess#po-loop-business-and-technical-issues" },
         { text: "The check run", link: "/en/prozess#the-check-run" },
       ],
     },
     {
-      text: "Night mode",
+      text: "Runner",
       items: [
-        { text: "The night run", link: "/en/nachtbetrieb" },
-        { text: "The night chain", link: "/en/nachtbetrieb#the-night-chain" },
-        { text: "The run status", link: "/en/nachtbetrieb#the-run-status" },
-        { text: "Effort of the process", link: "/en/nachtbetrieb#effort-of-the-process" },
+        { text: "The run", link: "/en/runner" },
+        { text: "The chain", link: "/en/runner#the-chain" },
+        { text: "The run status", link: "/en/runner#the-run-status" },
+        { text: "Effort of the process", link: "/en/runner#effort-of-the-process" },
       ],
     },
     {
@@ -223,7 +223,7 @@ export default defineConfig({
   // Ohne Angabe setzt VitePress "en-US"; die Fußzeile liest lang (Issue #1369).
   lang: "de",
   description:
-    "Achtzehn Skills für KI-gestützte Entwicklung mit Claude Code: GitHub, GitLab oder lokal, mit drei bewussten menschlichen Stop-Punkten.",
+    "Siebzehn Skills für KI-gestützte Entwicklung mit Claude Code: GitHub, GitLab oder lokal, mit drei bewussten menschlichen Stop-Punkten.",
   appearance: false,
   srcDir: "../docs",
   srcExclude,
@@ -240,7 +240,7 @@ export default defineConfig({
         lang: "en",
         link: "/en/",
         description:
-          "Eighteen skills for AI-assisted development with Claude Code: GitHub, GitLab or local, with three deliberate human stop points.",
+          "Seventeen skills for AI-assisted development with Claude Code: GitHub, GitLab or local, with three deliberate human stop points.",
         themeConfig: themeEn,
       },
     },

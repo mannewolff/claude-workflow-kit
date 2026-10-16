@@ -102,7 +102,7 @@ test("der Prueflauf-Block der Vorlage nennt Geste, Aufruf, Ausgaenge und das Ver
   for (const anker of [
     `\`${PRUEFLAUF_LABEL}\``,
     "node .claude/kit/night.mjs --check",
-    "`pruefLauf`",
+    "`checkRun`",
     `\`${REVIEW_FERTIG_LABEL}\``,
     `\`${KLAEREN_LABEL}\``,
     PRUEFLAUF_REST_ANKER,
@@ -115,10 +115,10 @@ test("der Prueflauf-Block der Vorlage nennt Geste, Aufruf, Ausgaenge und das Ver
   assert.ok(idx < VORLAGE.indexOf("## Nachtbetrieb"), "der Prueflauf-Block steht nicht vor dem Nachtbetrieb-Block");
 });
 
-// Die Einleitung der Seite Nachtbetrieb bleibt bei zwei Betriebsarten (das prueft
+// Die Einleitung der Seite Runner bleibt bei zwei Betriebsarten (das prueft
 // docs-nachtkette.test.mjs) — hier geprueft wird nur der Verweis auf das Kapitel der Prozessseite.
-test("die Einleitung der Seite Nachtbetrieb verweist auf das Kapitel zum Prueflauf", () => {
-  const einleitung = lies("docs", "nachtbetrieb.md").split(/\n\n/)[1];
+test("die Einleitung der Seite Runner verweist auf das Kapitel zum Prueflauf", () => {
+  const einleitung = lies("docs", "runner.md").split(/\n\n/)[1];
   assert.match(einleitung, /zwei Betriebsarten/, "die Einleitung nennt die zwei Betriebsarten nicht");
   assert.ok(einleitung.includes("/prozess#der-pruflauf"), "die Einleitung verlinkt das Kapitel zum Prueflauf nicht");
 });

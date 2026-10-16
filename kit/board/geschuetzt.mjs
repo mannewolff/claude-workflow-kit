@@ -103,16 +103,22 @@ function schreibSperren(datei) {
 }
 
 /**
+ * Die Schreibsperren aus `permissions.deny` der Team- und lokalen Einstellungen unter `wurzel`,
+ * ohne die Vorgabeliste und ohne Doppel. Der Hook `write-check` (Issue #1740) weist nur ab, was
+ * das Projekt selbst sperrt: Die Vorgabeliste fragt Claude Code beim Menschen nach, statt sie
+ * abzuweisen.
+ */
+export function schreibSperrenPfade(wurzel) {
+  return [...new Set(EINSTELLUNGS_DATEIEN.flatMap((datei) => schreibSperren(join(wurzel, datei))))];
+}
+
+/**
  * Die geschuetzten Pfade unter `wurzel`: die Vorgabeliste, dahinter die Schreibsperren aus
  * Team- und lokalen Einstellungen, ohne Doppel. Eine fehlende oder unlesbare Datei liefert
  * nur die Vorgabeliste und haelt nichts auf.
  */
 export function geschuetztePfade(wurzel) {
-  const pfade = new Set(GESCHUETZTE_PFADE);
-  for (const datei of EINSTELLUNGS_DATEIEN) {
-    for (const muster of schreibSperren(join(wurzel, datei))) pfade.add(muster);
-  }
-  return [...pfade];
+  return [...new Set([...GESCHUETZTE_PFADE, ...schreibSperrenPfade(wurzel)])];
 }
 
 const GLOB_ZEICHEN = /[*?]/;

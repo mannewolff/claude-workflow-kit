@@ -121,7 +121,7 @@ test("[skills-37] /review bucht nicht und behaelt seinen Stop-Punkt", () => {
   assert.equal(stopp.trim(), [
     "## Stop-Punkt",
     "",
-    "Nach dem Review wartet der Prozess auf den Menschen. Claude setzt das Issue auf **In review** — der Commit-Push (Schritt 8) erfolgt nur auf explizite Trigger-Phrase `push main`.",
+    "Nach dem Review wartet der Prozess auf den Menschen. Claude setzt das Issue auf **In review** — der Commit-Push (Schritt 7) erfolgt nur auf explizite Trigger-Phrase `push main`.",
   ].join("\n"), "der Abschnitt '## Stop-Punkt' ist nicht mehr der alte");
   assert.match(REVIEW, /Ein Review, der nicht lief, darf keine Spur hinterlassen/,
     "der Ausfallpfad ist nicht mehr der alte");

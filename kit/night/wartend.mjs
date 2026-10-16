@@ -35,7 +35,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { join, dirname, resolve, basename, relative, isAbsolute } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { ZUSTAND, NACHBAR_DIR, log, board, boardRoh, einheitAnlegen, einheitErgaenzen, ersteZeile, gitClean,
+import { ZUSTAND, NACHBAR_DIR, log, board, boardHerkunft, boardRoh, einheitAnlegen, einheitErgaenzen, ersteZeile, gitClean,
   gitReste, gitResteAusnahmen, gitRestePathspec, hefteStoppGrund, hefteStoppGrundAnLauf, lastCommitHash,
   merkeHartenStopp, resteText, schrittBeginnen, schrittEnden, vermerkeOhneArbeit } from "./grundlagen.mjs";
 import { LAUF_KONTEXT, anhaltenLaeuft, anhaltenVermerken, exitText, hatSitzungsereignis,
@@ -381,6 +381,7 @@ export function warnWennLabelNirgendsVorkommt(ctx, ready) {
   ctx.labelWarnungGezeigt = true;
   const vorhanden = [...new Set(ready.flatMap((i) => i.labels || []))];
   log(t("labelWarnung", { label: ctx.labelFilter }));
+  log(t("boardVon", boardHerkunft()));
   log(t("labelVorhanden", { labels: vorhanden.length ? vorhanden.join(", ") : t("keineLabels") }));
   log(t("labelTippfehler"));
 }

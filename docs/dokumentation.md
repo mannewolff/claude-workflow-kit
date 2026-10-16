@@ -1,10 +1,10 @@
 # Dokumentation: claude-workflow-kit
 
-Das Kit macht aus Claude Code eine Werkstatt mit festem Ablauf: Eine Anforderung geht in neun Schritten bis in die Produktion. Die KI plant, schneidet Arbeitspakete, setzt um, prüft und lässt prüfen. Drei Entscheidungen bleiben bei dir. Diese Seite gibt den Überblick und zeigt, wo die Einzelheiten stehen.
+Das Kit macht aus Claude Code eine Werkstatt mit festem Ablauf: Eine Anforderung geht in acht Schritten bis in die Produktion. Die KI plant, schneidet Arbeitspakete, setzt um, prüft und lässt prüfen. Drei Entscheidungen bleiben bei dir. Diese Seite gibt den Überblick und zeigt, wo die Einzelheiten stehen.
 
 ## Konzept
 
-Das Kit besteht aus drei Teilen: achtzehn Skills, einer Config im Projekt und einem Installer. Es ist weder Plattform noch Agent.
+Das Kit besteht aus drei Teilen: siebzehn Skills, einer Config im Projekt und einem Installer. Es ist weder Plattform noch Agent.
 
 Die Skills kennen kein bestimmtes Projekt. Build-Kommandos, Branch-Namen, Prüfungen und Review-Modell stehen in `.claude/workflow.config.json`. Verbessert sich ein Skill, gilt das nach dem nächsten Installer-Lauf in jedem Projekt, das das Kit nutzt.
 
@@ -13,22 +13,17 @@ Alle Zugriffe auf Issues und Board laufen über den Board-Adapter `.claude/kit/b
 Wo was steht:
 
 - [Einrichtung](/einrichtung): Installation, Config, Issue-Tracker, Aktualisieren.
-- [Der Prozess](/prozess): die neun Schritte, jeder Skill mit Zweck und Folgeschritt, ein ganzer Durchlauf.
-- [Nachtbetrieb](/nachtbetrieb): Arbeitspakete ohne Aufsicht umsetzen lassen.
+- [Der Prozess](/prozess): die acht Schritte, jeder Skill mit Zweck und Folgeschritt, ein ganzer Durchlauf.
+- [Runner](/runner): Arbeitspakete ohne Aufsicht umsetzen lassen.
 - [Einstellungen](/einstellungen): jede Einstellung mit Wirkung und Vorgabe.
 
 ## Voraussetzungen
 
-- **Betriebssystem:** macOS, Linux oder Windows über WSL2. Unter Windows arbeitet das Kit vollständig in WSL2; die Einrichtung beschreibt die Anleitung [Windows über WSL2](/wsl2).
-- **Node.js 18 oder neuer** für Installer und Kommandos.
-- **git**: Jeder Skill arbeitet in einem git-Repository.
-- **Claude Code** in einer aktuellen Version mit Skills.
-- **Die CLI deines Trackers:** `gh` für GitHub, `glab` für GitLab, jeweils einmal angemeldet. Mit dem lokalen Tracker brauchst du keine.
-- **Ein Board** mit den Spalten Backlog, Ready, In progress, In review und Done, wenn du GitHub oder GitLab nutzt. GitLab bildet die Spalten über Labels ab.
+Das Kit läuft unter macOS, Linux oder Windows über WSL2; die Einrichtung unter Windows beschreibt die Anleitung [Windows über WSL2](/wsl2). Welche Werkzeuge und Zugänge du brauchst, nennt der [Einstieg](/quickstart); Board-Spalten und Tracker-CLI für GitHub oder GitLab stehen unter [Issue-Tracker und Code-Host](/einrichtung#issue-tracker-und-code-host).
 
 Optional ist ein Vault für Notizen über Sitzungen hinweg; `/session-start` und `/document` laufen auch ohne ihn. Die Datei dazu beschreibt [kontext.config.json](/einstellungen#kontext-config-json).
 
-## Die neun Schritte
+## Die acht Schritte
 
 | Schritt | Was | Wer | Skill |
 |---------|-----|-----|-------|
@@ -37,16 +32,15 @@ Optional ist ein Vault für Notizen über Sitzungen hinweg; `/session-start` und
 | 3 | Arbeitspakete anlegen | KI | [/issues](/prozess#issues) |
 | 4 | GO: Pakete nach Ready ziehen | Mensch | – |
 | 5 | Umsetzen | KI | [/implement-ready](/prozess#implement-ready) |
-| 6 | Lokal prüfen | KI | [/local-check](/prozess#local-check) |
-| 7 | Review durch ein zweites Modell | KI | [/kit-review](/prozess#kit-review) |
-| 8 | Push auf main | Mensch | [/push-main](/prozess#push-main) |
-| 9 | Merge nach production | Mensch | [/merge-production](/prozess#merge-production) |
+| 6 | Review durch ein zweites Modell | KI | [/kit-review](/prozess#kit-review) |
+| 7 | Push auf main | Mensch | [/push-main](/prozess#push-main) |
+| 8 | Merge nach production | Mensch | [/merge-production](/prozess#merge-production) |
 
-Zwischen Schritt 8 und 9 prüfst du den Test-Server. Neben den neun Schritten stehen Skills, die den Ablauf vorbereiten oder feiner gliedern: `/triage` bringt eine Idee auf ihre Bahn, `/requirement`, `/issue-review` und `/groom` klären eine fachliche Anforderung, bevor geplant wird, und `/implement-next`, `/implement-test` und `/implement-done` setzen ein einzelnes Paket um. Alle stehen unter [Die Skills](/prozess#die-skills).
+Zwischen Schritt 7 und 8 prüfst du den Test-Server. Neben den acht Schritten stehen Skills, die den Ablauf vorbereiten oder feiner gliedern: `/triage` bringt eine Idee auf ihre Bahn, `/requirement`, `/issue-review` und `/groom` klären eine fachliche Anforderung, bevor geplant wird, und `/implement-next`, `/implement-test` und `/implement-done` setzen ein einzelnes Paket um. Alle stehen unter [Die Skills](/prozess#die-skills).
 
 ## Drei Bahnen
 
-Nicht jede Aufgabe braucht alle neun Schritte. Das Kit kennt drei Bahnen.
+Nicht jede Aufgabe braucht alle acht Schritte. Das Kit kennt drei Bahnen.
 
 **Bahn 1 — Kleine Änderung.** Eine Datei, ein Asset oder ein Config-Wert, ohne Migration, Endpoint, Datenmodell oder sicherheitsrelevante Logik und höchstens ein Modul. Die KI setzt direkt um und committet; Plan, Arbeitspaket und GO entfallen. Auch hier verlangt das Commit-Gate einen grünen `node .claude/kit/checks.mjs run`.
 
@@ -64,11 +58,11 @@ Die Zahl der Dateien entscheidet also nicht: Zwölf Dateien ohne Abwägung sind 
 
 ## Die drei menschlichen Stop-Punkte
 
-**Das GO (Schritt 4).** Du ziehst die Arbeitspakete nach Ready und legst damit fest, was als Nächstes gebaut wird, in welcher Reihenfolge und wie viel auf einmal. Für den Nachtbetrieb kannst du das GO vorab geben: Kennzeichnest du eine fachliche Anforderung oder einen Plan mit dem Label aus `night.chain.variantBLabel`, zieht die [Nacht-Kette](/nachtbetrieb#die-nacht-kette) die daraus geschnittenen Pakete selbst nach Ready und setzt sie um.
+**Das GO (Schritt 4).** Du ziehst die Arbeitspakete nach Ready und legst damit fest, was als Nächstes gebaut wird, in welcher Reihenfolge und wie viel auf einmal. Für den Runner kannst du das GO vorab geben: Kennzeichnest du eine fachliche Anforderung oder einen Plan mit dem Label aus `night.chain.variantBLabel`, zieht die [Kette](/runner#die-kette) die daraus geschnittenen Pakete selbst nach Ready und setzt sie um.
 
-**Der Push (Schritt 8).** Erst `push main` bringt die Commits auf den Test-Server. Jeder Push braucht deine eigene Freigabe; davor kannst du den Umfang noch ändern oder verwerfen, auch die Entscheidungen, die eine Nacht getroffen hat.
+**Der Push (Schritt 7).** Erst `push main` bringt die Commits auf den Test-Server. Jeder Push braucht deine eigene Freigabe; davor kannst du den Umfang noch ändern oder verwerfen, auch die Entscheidungen, die ein Lauf getroffen hat.
 
-**Der Merge (Schritt 9).** Nach deiner Prüfung auf dem Test-Server bringt `merge production` den Stand in die Produktion.
+**Der Merge (Schritt 8).** Nach deiner Prüfung auf dem Test-Server bringt `merge production` den Stand in die Produktion.
 
 Diese drei Schritte automatisiert das Kit absichtlich nicht. Die KI erledigt die Arbeit, entscheiden tust du.
 
@@ -182,6 +176,8 @@ Das Kit setzt die englischen, erkennt die deutschen an offenen Karten und räumt
 | `ziel:pakete` | `goal:packages` |
 | `ziel:umsetzung` | `goal:implementation` |
 | `ziel:push-vorbereitet` | `goal:push-prepared` |
+
+`kit:on-hold` ist neu und hat keinen deutschen Altnamen. Es zeigt am Board, dass eine fachliche Anforderung auf ein äußeres Ereignis wartet; maßgeblich ist die Zeile `Wartet auf Ereignis: <Grund>` im Abschnitt `## Ziel`. Beides setzt `node .claude/kit/board.mjs issue hold <N> --reason "<Grund>"`, beides hebt `issue hold <N> --lift` auf, siehe [Warten auf ein Ereignis](/runner#warten-auf-ein-ereignis).
 
 ## Lizenz
 

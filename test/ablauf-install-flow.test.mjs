@@ -378,9 +378,9 @@ test("Globaler Install ohne Vault-Pfad legt keine kontext.config.json an", () =>
 // --- Die Sprache eines neuen Projekts (Issue #1430, Plan #1420 E2, E22) ---
 //
 // Die Frage steht zuerst und zweisprachig, weil gerade ein Mensch ohne Deutschkenntnisse sie
-// lesen muss. Die Antwort steht unter dem Namen ihrer Sprache in der Config.
+// lesen muss. Die Antwort steht in jeder Sprache unter `language` (Issue #1728, Plan #1710 A2).
 
-test("Die Sprachfrage steht bei einem neuen Projekt zuerst, die Antwort de schreibt sprache: de", () => {
+test("Die Sprachfrage steht bei einem neuen Projekt zuerst, die Antwort de schreibt language: de", () => {
   const dir = fixture("install-sprache-de-");
   try {
     const res = installiere(dir, PROJEKT_GITHUB);
@@ -388,8 +388,8 @@ test("Die Sprachfrage steht bei einem neuen Projekt zuerst, die Antwort de schre
     const sprachfrage = res.stdout.indexOf("Sprache / Language [de/en] (en): ");
     assert.ok(sprachfrage >= 0, "die Sprachfrage fehlt");
     assert.ok(sprachfrage < res.stdout.indexOf("[global/projekt]"), "die Sprachfrage muss vor der Scope-Frage stehen");
-    assert.equal(config(dir).sprache, "de");
-    assert.equal("language" in config(dir), false, "ein deutsches Projekt traegt den deutschen Namen");
+    assert.equal(config(dir).language, "de");
+    assert.equal("sprache" in config(dir), false, "auch ein deutsches Projekt traegt den englischen Namen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -735,9 +735,9 @@ test("[installer-1591] fehlt szenarienAb, setzt der Installer den Wert aus scena
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.deepEqual(JSON.parse(readFileSync(fake.log, "utf-8").trim()),
       [join(realpathSync(dir), ".claude", "kit", "board.mjs"), "scenarios", "baseline"]);
-    assert.equal(config(dir).szenarienAb, 42);
+    assert.equal(config(dir).scenariosFrom, 42);
     assert.equal(config(dir).codeHost, "github", "der Rest der Config bleibt");
-    assert.match(res.stdout, /szenarienAb eingetragen: 42/);
+    assert.match(res.stdout, /scenariosFrom eingetragen: 42/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -748,11 +748,11 @@ test("[installer-1591] steht szenarienAb, bleibt der Wert und das Board wird nic
   try {
     installiere(dir, PROJEKT_GITHUB);
     writeFileSync(join(dir, ".claude", "workflow.config.json"),
-      JSON.stringify({ ...config(dir), szenarienAb: 7 }, null, 2), "utf-8");
+      JSON.stringify({ ...config(dir), scenariosFrom: 7 }, null, 2), "utf-8");
     const fake = szenarienFake(dir, { ab: 42 }, "stichtag");
     const res = installiere(dir, PROJEKT_GITHUB_BESTAND, fake.env);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
-    assert.equal(config(dir).szenarienAb, 7);
+    assert.equal(config(dir).scenariosFrom, 7);
     assert.equal(existsSync(fake.log), false, "scenarios baseline darf nicht laufen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -765,7 +765,7 @@ test("[installer-1591] antwortet das Board nicht, fehlt szenarienAb, die Meldung
     const fake = szenarienFake(dir, null, "stichtag");
     const res = installiere(dir, PROJEKT_GITHUB, fake.env);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
-    assert.equal(Object.hasOwn(config(dir), "szenarienAb"), false);
+    assert.equal(Object.hasOwn(config(dir), "scenariosFrom"), false);
     assert.match(res.stdout, /node \.claude\/kit\/board\.mjs scenarios baseline/);
     assert.match(res.stdout, /Fertig|fertig/, "das Update laeuft weiter");
   } finally {
@@ -874,26 +874,35 @@ test("GitLab-Install ohne Label-Anlage zeigt die manuelle Anleitung", () => {
   }
 });
 
-// --- Beispiel-Config (Ad-hoc-Fix nach Issue #237/#233) ---
+// --- Beispieldatei (Ad-hoc-Fix nach Issue #237/#233, kommentiert seit Issue #1735) ---
 //
 // Der Installer fragt den issueReview-Block nicht ab: `reviewers` haengt davon ab,
 // welche CLIs auf der Maschine liegen, `pairs` ist eine Entscheidung. Stattdessen legt
 // er eine Datei zum Abschreiben daneben. Sie ist der einzige Ort, an dem ein Nutzer den
-// Block zu sehen bekommt, ohne die Doku zu lesen.
+// Block zu sehen bekommt, ohne die Doku zu lesen. Seit Issue #1735 traegt sie jede
+// Einstellung mit ihrem Satz als Kommentar; aktiv stehen nur die des ersten Teils.
 
-test("Installer legt eine gueltige workflow.config.example.json ab", () => {
+/** Die aktiven Zeilen einer Beispieldatei als Objekt: ganze Kommentarzeilen fallen weg. */
+function aktiverTeil(text) {
+  return JSON.parse(text.split("\n").filter((z) => !z.trimStart().startsWith("//")).join("\n"));
+}
+
+test("Installer legt eine gueltige workflow.config.example.jsonc ab", () => {
   const dir = fixture("install-example-");
   try {
     const res = installiere(dir, PROJEKT_GITHUB);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
-    const pfad = join(dir, ".claude", "workflow.config.example.json");
-    assert.ok(existsSync(pfad), "Beispiel-Config fehlt");
-    const bsp = JSON.parse(readFileSync(pfad, "utf-8"));
+    const pfad = join(dir, ".claude", "workflow.config.example.jsonc");
+    assert.ok(existsSync(pfad), "Beispieldatei fehlt");
+    const text = readFileSync(pfad, "utf-8");
+    // Die Fassung der Projektsprache: deutsche Teilueberschrift, deutscher Satz.
+    assert.match(text, /\/\/ === Beim Einrichten nötig ===/);
+    const bsp = aktiverTeil(text);
 
-    // Der Grund, aus dem die Datei existiert.
-    assert.ok(Array.isArray(bsp.issueReview?.reviewers) && bsp.issueReview.reviewers.length > 0,
-      "issueReview.reviewers fehlt oder ist leer");
+    // Der Grund, aus dem die Datei existiert: der Block steht aktiv, nicht auskommentiert.
+    assert.ok(Array.isArray(bsp.issueReview?.reviewers) && bsp.issueReview.reviewers.length === 3,
+      "issueReview.reviewers steht nicht aktiv mit drei Reviewern");
     assert.ok(bsp.issueReview?.pairs && Object.keys(bsp.issueReview.pairs).length > 0,
       "issueReview.pairs fehlt oder ist leer");
 
@@ -913,32 +922,63 @@ test("Installer legt eine gueltige workflow.config.example.json ab", () => {
     assert.ok(bsp.issueReview.reviewers.every((r) => r.kind === "claude"),
       "die Vorlage darf keinen kind:command-Reviewer enthalten");
 
-    // Abgeschafftes Feld (RELEASING.md: install.mjs ist alleinige Versionsquelle).
-    assert.ok(!("version" in bsp), "die Vorlage traegt noch ein version-Feld");
+    // Aktiv stehen nur die Einstellungen des ersten Teils; die Installer-Felder wie
+    // version stehen auskommentiert (RELEASING.md: install.mjs ist alleinige Versionsquelle).
+    assert.ok(!("version" in bsp), "die Vorlage traegt version aktiv");
+    assert.ok(!("history" in bsp), "die Vorlage traegt history aktiv");
+    assert.ok(text.split("\n").some((z) => z.trim() === '// "history": true,'), "history steht nicht auskommentiert mit ihrer Vorgabe");
 
     // Die echte Config bleibt davon unberuehrt — sie bekommt den Block NICHT.
     assert.equal("issueReview" in config(dir), false,
       "der Installer darf issueReview nicht in die echte Config schreiben");
 
-    assert.match(res.stdout, /workflow\.config\.example\.json/);
+    assert.match(res.stdout, /workflow\.config\.example\.jsonc/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("Beispiel-Config wird beim Re-Install aufgefrischt", () => {
+test("ein englisches Projekt bekommt die englische Beispieldatei", () => {
+  const dir = fixture("install-example-en-");
+  try {
+    const res = installiere(dir, ["en", ...PROJEKT_GITHUB_BESTAND]);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    const text = readFileSync(join(dir, ".claude", "workflow.config.example.jsonc"), "utf-8");
+    assert.match(text, /\/\/ === Needed at setup ===/);
+    assert.equal(aktiverTeil(text).language, "en");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Beispieldatei wird beim Re-Install aufgefrischt", () => {
   // Sie enthaelt keine Nutzerdaten; eine veraltete Vorlage zeigt Felder, die es nicht
   // mehr gibt. Das ist der Unterschied zur echten Config, die erhalten bleiben muss (#125).
   const dir = fixture("install-example-reinstall-");
   try {
     assert.equal(installiere(dir, PROJEKT_GITHUB).status, 0);
-    const pfad = join(dir, ".claude", "workflow.config.example.json");
+    const pfad = join(dir, ".claude", "workflow.config.example.jsonc");
     const original = readFileSync(pfad, "utf-8");
 
     writeFileSync(pfad, '{"veraltet": true}\n', "utf-8");
     assert.equal(installiere(dir, PROJEKT_GITHUB_BESTAND).status, 0);
 
-    assert.equal(readFileSync(pfad, "utf-8"), original, "Beispiel-Config wurde nicht aufgefrischt");
+    assert.equal(readFileSync(pfad, "utf-8"), original, "Beispieldatei wurde nicht aufgefrischt");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("das Update ersetzt die alte workflow.config.example.json durch die .jsonc", () => {
+  const dir = fixture("install-example-alt-");
+  try {
+    assert.equal(installiere(dir, PROJEKT_GITHUB).status, 0);
+    const alt = join(dir, ".claude", "workflow.config.example.json");
+    writeFileSync(alt, '{"codeHost": "github"}\n', "utf-8");
+    assert.equal(installiere(dir, PROJEKT_GITHUB_BESTAND).status, 0);
+
+    const beispiele = readdirSync(join(dir, ".claude")).filter((d) => d.startsWith("workflow.config.example"));
+    assert.deepEqual(beispiele, ["workflow.config.example.jsonc"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -1026,11 +1066,12 @@ test("[installer-1569] das Update loescht die alten Skill-Ordner und nennt jeden
     assert.doesNotMatch(res.stdout, /review-eigen/);
     const installiert = readdirSync(join(dir, ".claude", "skills"), { withFileTypes: true })
       .filter((e) => e.isDirectory() && e.name !== "review-eigen").map((e) => e.name);
-    assert.equal(installiert.length, 18, "die Skillmenge ist 18");
+    assert.equal(installiert.length, 17, "die Skillmenge ist 17");
     assert.deepEqual(JSON.parse(readFileSync(join(dir, ".claude", "settings.json"), "utf-8")).hooks, {
       SessionEnd: [{ hooks: BEFEHL("session report --complete") }],
       Stop: [{ hooks: BEFEHL("session report") }],
-      PreToolUse: [{ matcher: "Bash", hooks: BEFEHL("hook bash-check") }],
+      PreToolUse: [{ matcher: "Bash", hooks: BEFEHL("hook bash-check") },
+        { matcher: "Edit|Write|NotebookEdit", hooks: BEFEHL("hook write-check") }],
     }, "genau die englischen Hooks, ohne Doppel");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -1048,6 +1089,58 @@ test("[installer-1569] ein alter Ordnername mit fremdem name: bleibt und wird ni
     assert.ok(existsSync(join(dir, ".claude", "skills", "plan", "SKILL.md")));
     assert.ok(existsSync(join(dir, ".claude", "skills", "kontext", "notiz.md")));
     assert.doesNotMatch(res.stdout, /entfernt/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- Der entfallene Skill local-check (Issue #1679, Plan #1671 E12) ---
+//
+// Mit Issue #1609 entfaellt der Schritt "Lokale Pruefung". Das Update raeumt die Kit-Kopie wie
+// die frueheren Skill-Namen und sagt danach, wo seine Teile jetzt stehen. Wer ihn nie hatte oder
+// einen eigenen gleichnamigen Ordner traegt, bekommt keine Meldung.
+
+const LOCAL_CHECK_MELDUNG = /Der Schritt \/local-check ist entfallen/;
+
+test("[installer-1679] das Update entfernt local-check, nennt die neuen Orte und laesst einen fremden Ordner stehen", () => {
+  const dir = fixture("install-local-check-");
+  try {
+    legeSkillAn(dir, "local-check", "local-check");
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.equal(existsSync(join(dir, ".claude", "skills", "local-check")), false, "local-check liegt noch");
+    assert.match(res.stdout, LOCAL_CHECK_MELDUNG);
+    const meldung = res.stdout.substring(res.stdout.search(LOCAL_CHECK_MELDUNG));
+    for (const ort of ["checks.mjs run", "push", "push main", "node .claude/kit/checks.mjs run"]) {
+      assert.ok(meldung.includes(ort), `die Meldung nennt ${ort} nicht`);
+    }
+    assert.ok(res.stdout.search(LOCAL_CHECK_MELDUNG) < res.stdout.indexOf("=== Fertig ==="), "die Meldung steht vor Fertig");
+    const installiert = readdirSync(join(dir, ".claude", "skills"), { withFileTypes: true }).filter((e) => e.isDirectory());
+    assert.equal(installiert.length, 17, "es gibt 17 Skills");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[installer-1679] ein eigener Ordner local-check mit fremdem name: bleibt, ohne Meldung", () => {
+  const dir = fixture("install-local-check-fremd-");
+  try {
+    legeSkillAn(dir, "local-check", "mein-check");
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.ok(existsSync(join(dir, ".claude", "skills", "local-check", "SKILL.md")), "der eigene Ordner bleibt");
+    assert.doesNotMatch(res.stdout, LOCAL_CHECK_MELDUNG);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("[installer-1679] ohne local-check gibt es keine Meldung", () => {
+  const dir = fixture("install-local-check-ohne-");
+  try {
+    const res = installiere(dir, PROJEKT_GITHUB);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    assert.doesNotMatch(res.stdout, LOCAL_CHECK_MELDUNG);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

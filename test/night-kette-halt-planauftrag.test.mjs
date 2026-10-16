@@ -15,7 +15,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { KETTE_HALT_ANKER, REVIEW_FERTIG_LABEL, planAusschluss, stoppFragenGrund } from "../kit/night/kette.mjs";
+import { KETTE_HALT_ANKER, REVIEW_FERTIG_LABEL, TEXTE, planAusschluss, stoppFragenGrund } from "../kit/night/kette.mjs";
 import { KLAEREN_LABEL } from "../kit/night/wartend.mjs";
 import {
   ketteImProzess, fachplanKarte, planKarte, jeStufe, planAnlegen, planBody, reviewMarker, paketeHalt,
@@ -33,12 +33,33 @@ function haltKommentar(r, id) {
   return text.slice(i);
 }
 
-/** Eine Fachplan-Kette, deren Plan mit einer Stopp-Frage entsteht. */
+/**
+ * Die Schritte des Wegs nach vorn sind lueckenlos von 1 an nummeriert und nennen keine
+ * Pruefung von Hand (Issue #1702, Plan #1697 E10): Jeder inhaltliche Halt liegt hinter der Pruefung.
+ */
+function wegOhnePruefungVonHand(kommentar) {
+  assert.doesNotMatch(kommentar, /\/issue-review/, "der Weg nach vorn nennt keine Pruefung von Hand");
+  // Nur die Schritte hinter dem Kopf: Die Frage davor kann selbst nummeriert sein.
+  const weg = kommentar.slice(kommentar.indexOf("Der Weg nach vorn:"), kommentar.indexOf("Bis dahin geschnittene Pakete"));
+  const nummern = [...weg.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]));
+  assert.ok(nummern.length > 0, "der Weg nach vorn nennt keine Schritte");
+  assert.deepEqual(nummern, nummern.map((_, i) => i + 1), `die Schritte sind nicht lueckenlos nummeriert: ${nummern.join(", ")}`);
+  assert.match(kommentar, /Stufe pakete an weiter/, "der Kopf nennt den Weiterlauf bei pakete");
+  assert.match(kommentar, /prueft sie ihn vorher selbst erneut/, "der Kopf nennt die erneute Pruefung bei geaendertem Plan");
+}
+
+/** Die Pruefung wie `/issue-review`: Marker, Einarbeitung und `review:fertig` am Plan. */
+function reviewFertig(s) {
+  reviewMarker(s);
+  s.board("issue", "label", "add", /^\/issue-review #(\d+)/.exec(s.prompt)[1], REVIEW_FERTIG_LABEL);
+}
+
+/** Eine Fachplan-Kette, deren Plan mit einer Stopp-Frage entsteht; sie haelt nach der Pruefung. */
 const mitStoppFrage = () => ketteImProzess({
   karten: [fachplanKarte("1")],
   sitzung: jeStufe({
     plan: planAnlegen(planBody({ offeneFragen: "- Ist der neue Endpunkt eine Schnittstelle nach aussen?" })),
-    review: reviewMarker,
+    review: reviewFertig,
   }),
 });
 
@@ -53,6 +74,7 @@ test("[night-896] eine Fachplan-Kette haelt an der gekennzeichneten Karte an —
   assert.match(kommentar, /Plan #2\b/);
   assert.ok(!karteText(r, "2").includes(KETTE_HALT_ANKER), "der Halt gehoert an die gekennzeichnete Karte, nicht an den Plan");
   assert.equal(r.lauf.einheiten.find((e) => e.id === "1").ausgang, "angehalten");
+  wegOhnePruefungVonHand(kommentar);
 });
 
 test("[night-896] eine Plan-Kette haelt am Plan an, die fachliche Anforderung bleibt unberuehrt", async () => {
@@ -75,6 +97,17 @@ test("[night-896] eine Plan-Kette haelt am Plan an, die fachliche Anforderung bl
   // Ein Plan, der seine Pruefung schon hinter sich hat, wird nicht erneut geschickt.
   assert.doesNotMatch(kommentar, /\/issue-review/, "der Plan-Auftrag braucht den Pruefschritt nicht");
   assert.equal(r.lauf.einheiten.find((e) => e.id === "2").ausgang, "angehalten");
+  wegOhnePruefungVonHand(kommentar);
+});
+
+test("[night-1702] beide Koepfe des Wegs nennen den Weiterlauf bei pakete und die erneute Pruefung, in beiden Sprachen", () => {
+  for (const schluessel of ["wegKopf", "wegKopfOhne"]) {
+    assert.match(TEXTE.de[schluessel], /Stufe pakete an weiter/, `de.${schluessel}`);
+    assert.match(TEXTE.de[schluessel], /prueft sie ihn vorher selbst erneut/, `de.${schluessel}`);
+    assert.match(TEXTE.en[schluessel], /stage pakete/, `en.${schluessel}`);
+    assert.match(TEXTE.en[schluessel], /checks it again first/, `en.${schluessel}`);
+  }
+  for (const sprache of ["de", "en"]) assert.equal("wegReview" in TEXTE[sprache], false, `${sprache}.wegReview entfaellt`);
 });
 
 // --- Der Hinweis gegen die Probe (Issue #896, Punkt 5) ---
@@ -103,7 +136,8 @@ function abschnittSetzen(body, ueberschrift, inhalt) {
 
 /**
  * Was der Hinweis verlangt, aus seinem eigenen Text gelesen: die beiden Abschnitte, der
- * Sollwert des zweiten, die Nummer des Plans und ob eine Pruefung dazugehoert.
+ * Sollwert des zweiten und die Nummer des Plans. Eine Pruefung von Hand gehoert nicht mehr dazu
+ * (Issue #1702).
  *
  * Aus dem Text und nicht aus einer zweiten Vorlage im Test: Eine von Hand gepflegte
  * Abschrift liefe bei der ersten Umformulierung des Hinweises am Hinweis vorbei — und
@@ -116,7 +150,8 @@ function anweisungAus(kommentar) {
   assert.ok(sollwert, "der Hinweis nennt den Sollwert des Fragen-Abschnitts nicht");
   const planId = kommentar.match(/Plan #(\d+)/)?.[1];
   assert.ok(planId, "der Hinweis nennt den Plan nicht");
-  return { entscheidungen: abschnitte[0], fragen: abschnitte[1], sollwert, planId, pruefen: kommentar.includes("/issue-review") };
+  assert.doesNotMatch(kommentar, /\/issue-review/, "der Hinweis nennt keine Pruefung von Hand");
+  return { entscheidungen: abschnitte[0], fragen: abschnitte[1], sollwert, planId };
 }
 
 test("[night-896] wer dem Hinweis wortgetreu folgt, hinterlaesst einen Plan, den planAusschluss annimmt", async () => {
@@ -135,7 +170,6 @@ test("[night-896] wer dem Hinweis wortgetreu folgt, hinterlaesst einen Plan, den
   body = abschnittErgaenzen(body, anweisung.entscheidungen, "- A2 — Der Endpunkt bleibt intern, weil ihn niemand sonst ruft.");
   body = abschnittSetzen(body, anweisung.fragen, anweisung.sollwert);
   plan.body = body;
-  if (anweisung.pruefen) plan.labels.push(REVIEW_FERTIG_LABEL);
   plan.labels = plan.labels.filter((l) => l !== KLAEREN_LABEL);
   fach.labels = fach.labels.filter((l) => l !== KLAEREN_LABEL);
   plan.labels.push(KETTEN_LABEL);

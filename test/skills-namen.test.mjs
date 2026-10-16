@@ -50,8 +50,8 @@ test("Fixture: Fassung, Stand und Liste der eingebauten Kommandos", () => {
   for (const k of ["context", "review", "plan", "init", "code-review"]) assert.ok(f.kommandos.includes(k), `${k} fehlt`);
 });
 
-test("es gibt die 18 Skills", () => {
-  assert.equal(SKILLS.length, 18, SKILLS.join(", "));
+test("es gibt die 17 Skills", () => {
+  assert.equal(SKILLS.length, 17, SKILLS.join(", "));
 });
 
 for (const name of SKILLS) {
@@ -84,7 +84,7 @@ const ALT_AUFRUFE = [
 ];
 
 // Ein alter Skill-Name als Aufruf; Pfade wie `docs/plan.md` zaehlen nicht.
-const ALTE_SKILLS = /(?<![\w/.-])\/(?:fachplan|kontext|context|review|plan)(?![\w-]|\.\w)/;
+const ALTE_SKILLS = /(?<![\w/.-])\/(?:fachplan|kontext|context|review|plan|local-check)(?![\w-]|\.\w)/;
 
 for (const name of SKILLS) {
   test(`${name}: ruft keinen frueheren Namen auf`, () => {

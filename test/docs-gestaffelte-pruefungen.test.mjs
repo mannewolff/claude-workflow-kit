@@ -38,7 +38,7 @@ function staffelAbschnitt() {
 
 test("die Doku fuehrt einen Abschnitt zu den gestaffelten Pruefungen und nennt das Feld", () => {
   const abschnitt = staffelAbschnitt();
-  assert.match(abschnitt, /`stufe`/, "der Abschnitt nennt das Feld `stufe` nicht");
+  assert.match(abschnitt, /`stage`/, "der Abschnitt nennt das Feld `stage` nicht");
 });
 
 test("der Abschnitt ordnet jeder Stufe ihren Zeitpunkt und ihren Skill zu", () => {
@@ -51,11 +51,32 @@ test("der Abschnitt ordnet jeder Stufe ihren Zeitpunkt und ihren Skill zu", () =
     assert.match(kopf, spalte, `die Kopfzeile nennt die Spalte ${spalte} nicht`);
   }
 
-  for (const [stufe, skill] of [["paket", "/local-check"], ["push", "/push-main"], ["merge", "/merge-production"]]) {
+  for (const [stufe, skill] of [["paket", "/implement-next"], ["push", "/push-main"], ["merge", "/merge-production"]]) {
     const zeile = zeilen.find((z) => new RegExp("`" + stufe + "`").test(z));
     assert.ok(zeile, `die Tabelle fuehrt die Stufe '${stufe}' nicht`);
     assert.match(zeile, new RegExp(skill), `die Zeile der Stufe '${stufe}' nennt '${skill}' nicht`);
+    assert.ok(!zeile.includes("/local-check"), `die Zeile der Stufe '${stufe}' nennt noch /local-check`);
   }
+});
+
+// Issue #1678: Das Nachformatieren laeuft in `checks.mjs run` an der Paketstufe. Der
+// zweite Durchgang ist keine Wiederholung im Sinn von `--retry`; ohne den Satz liest
+// jemand ihn als zweiten Versuch und sucht die `Gewackelt:`-Zeile.
+test("der Abschnitt nennt den Format-Fix-Durchgang an der Paketstufe", () => {
+  const abschnitt = staffelAbschnitt();
+  assert.ok(abschnitt.includes("Ist ein Lauf der Paketstufe rot und `formatFixCommand` gesetzt, fährt `checks.mjs run` den Fix einmal und einen zweiten Durchgang; das ist keine Wiederholung im Sinn von `--retry`."),
+    "der Satz zum Format-Fix-Durchgang fehlt");
+});
+
+// Issue #1678: Der Mutationstest laeuft einmal an der Stufe `push`, nach den
+// `buildChecks`, und haelt nichts an.
+test("die Doku nennt die Stufe push fuer mutationCommand", () => {
+  const absatz = DOKU.split(/\n\n/).find((a) => /`buildChecks`/.test(a) && /`mutationCommand`/.test(a));
+  assert.ok(absatz, "kein Absatz nennt buildChecks und mutationCommand zusammen");
+  assert.match(absatz, /`mutationCommand` läuft einmal in `checks\.mjs run --stage push`, nach den `buildChecks`/,
+    "die Stelle zu mutationCommand nennt die Stufe push nicht");
+  assert.match(absatz, /hält nicht an/, "es steht nicht, dass der Mutationstest nichts anhaelt");
+  assert.doesNotMatch(absatz, /local-check/, "die Stelle nennt noch /local-check");
 });
 
 // Ohne diesen Satz liest jeder eine spaeter laufende Pruefung als weggenommene.
@@ -78,17 +99,17 @@ test("der Abschnitt sagt, dass ein fehlendes Feld die Paketstufe bedeutet", () =
 });
 
 // Eine Config, in der keine Pruefung die Paketstufe traegt, ist gueltig — und
-// nachts trotzdem ein Start ohne Gate. Wer das erst am abgewiesenen Nachtlauf
+// fuer den Runner trotzdem ein Start ohne Gate. Wer das erst am abgewiesenen Lauf
 // merkt, sucht den Grund in der falschen Datei.
 test("der Abschnitt verlangt mindestens eine Pruefung auf der Paketstufe", () => {
   const abschnitt = staffelAbschnitt();
-  assert.match(abschnitt, /Nacht|nächtlich/i, "der Nachtbetrieb als Grund fehlt");
+  assert.match(abschnitt, /Runner/, "der Runner als Grund fehlt");
   assert.match(abschnitt, /Gate|Prüfung vor dem Commit/i, "es steht nicht, dass die Umsetzung sonst kein Gate hat");
 });
 
 test("die Skill-Abschnitte nennen ihre Stufe", () => {
   for (const [ueberschrift, muster] of [
-    ["/local-check", /Paketstufe/],
+    ["Prüflauf von Hand", /Paketstufe/],
     ["/push-main", /--stufe push|Stufe `?push`?/],
     ["/merge-production", /--stufe merge|Stufe `?merge`?|Freigabestufe/],
   ]) {
@@ -97,12 +118,28 @@ test("die Skill-Abschnitte nennen ihre Stufe", () => {
   }
 });
 
+// Issue #1677: Die Stufentabelle der Prozessseite nennt fuer die Paketstufe nur die
+// Umsetzungs-Skills; einen Schritt /local-check gibt es nicht mehr.
+test("die Stufentabelle der Prozessseite ordnet jeder Stufe ihre Skills zu", () => {
+  const zeilen = PROZESS.split("\n").filter((z) => /^\| `(paket|push|merge)` \|/.test(z));
+  for (const [stufe, skills] of [
+    ["paket", ["/implement-ready", "/implement-next", "/implement-done"]],
+    ["push", ["/push-main"]],
+    ["merge", ["/merge-production"]],
+  ]) {
+    const zeile = zeilen.find((z) => z.startsWith("| `" + stufe + "`"));
+    assert.ok(zeile, `die Stufentabelle der Prozessseite fuehrt die Stufe '${stufe}' nicht`);
+    for (const skill of skills) assert.ok(zeile.includes(skill), `die Zeile '${stufe}' nennt '${skill}' nicht`);
+    assert.ok(!zeile.includes("/local-check"), `die Zeile '${stufe}' nennt noch /local-check`);
+  }
+});
+
 // Die Stufen der Pflichtpruefungen sind nicht die Pruefstufen des Reviews und
-// nicht die Stufen der Nacht-Kette. Der Begriff ist im Kit dreifach besetzt.
+// nicht die Stufen der Kette. Der Begriff ist im Kit dreifach besetzt.
 test("der Abschnitt grenzt die Stufe gegen die anderen Stufenbegriffe ab", () => {
   const abschnitt = staffelAbschnitt();
-  assert.match(abschnitt, /`reviewStufen`/, "die Abgrenzung gegen reviewStufen fehlt");
-  assert.match(abschnitt, /Nacht-Kette|Aufgabenstufe/, "die Abgrenzung gegen die Stufen der Nacht-Kette fehlt");
+  assert.match(abschnitt, /`reviewStages`/, "die Abgrenzung gegen reviewStages fehlt");
+  assert.match(abschnitt, /Kette|Aufgabenstufe/, "die Abgrenzung gegen die Stufen der Kette fehlt");
 });
 
 // Issue #1000: Die Freigabe prueft nur, was `push main` nicht geprueft hat — und wer

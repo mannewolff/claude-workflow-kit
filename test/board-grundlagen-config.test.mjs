@@ -87,13 +87,12 @@ test("mergeWorkflowConfig: toolbox.tokenFile gewinnt, die uebrigen toolbox-Felde
   // Regression zu Issue #188: Dort hat ein nachgestelltes ...config das ganze
   // toolbox-Objekt samt Mock-Host ersetzt und zwanzig Tests still ohne Token laufen
   // lassen. Der Merge muss am Blatt greifen, nicht am Elternobjekt.
-  const geteilt = { ...GETEILT, toolbox: { host: "https://board.example", ideaStored: true } };
+  const geteilt = { ...GETEILT, toolbox: { host: "https://board.example" } };
   const { config, ignored } = mergeWorkflowConfig(geteilt, {
     toolbox: { tokenFile: "~/.config/tbx-token" },
   });
   assert.deepEqual(config.toolbox, {
     host: "https://board.example",
-    ideaStored: true,
     tokenFile: "~/.config/tbx-token",
   });
   assert.deepEqual(ignored, []);

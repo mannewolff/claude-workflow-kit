@@ -66,7 +66,8 @@ test("pushPruefung: die Einstellungs-Referenz kennt den Schlüssel, seine Werte 
   // dem Werkzeug entspricht, hält test/ablauf-docs-einstellungen.test.mjs fest.
   // Je Einstellung eine Zeile mit englischem Pfad (Plan #1652, E3, E13).
   const doku = readFileSync(join(repoRoot, "docs", "einstellungen.md"), "utf-8");
-  assert.match(doku, /^- `pushCheck` — [^\n]*Gültig: `lokal`\. Vorgabe: `lokal`\.$/m, "Zeile oder Wert lokal fehlt");
+  // Hinter der Vorgabe steht der Satz, wann man den Schlüssel setzt (Issue #1734).
+  assert.match(doku, /^- `pushCheck` — [^\n]*Gültig: `lokal`\. Vorgabe: `lokal`\.( [^\n]*)?$/m, "Zeile oder Wert lokal fehlt");
   assert.match(doku, /^- `pushCheck\.location` — [^\n]*Gültig: `buildDienst`\./m, "Unterfeld ort fehlt");
   assert.match(doku, /^- `pushCheck\.branch` — /m, "Unterfeld zweig fehlt");
 });

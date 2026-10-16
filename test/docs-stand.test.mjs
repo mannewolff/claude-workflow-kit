@@ -15,7 +15,7 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DOCS = join(repoRoot, "docs");
 
 /** Das Wortbudget je Seite (A2), nur als Hinweis. */
-const BUDGET = { dokumentation: 1800, einstellungen: 3600, quickstart: 500, lokal: 400, wsl2: 650, pruefbereiche: 600, glossar: 400, index: 100, prozess: 5000, einrichtung: 3800, nachtbetrieb: 3300 };
+const BUDGET = { dokumentation: 1800, einstellungen: 3600, quickstart: 1300, lokal: 400, wsl2: 600, pruefbereiche: 600, glossar: 400, index: 100, prozess: 5000, einrichtung: 3800, runner: 3300 };
 
 /** Hoechstens ein Drittel von 62.029 Woertern (Kriterium 5). */
 const WORTSUMME = 20700;
@@ -113,7 +113,6 @@ function einstellungen() {
     if (knoten.additionalProperties && typeof knoten.additionalProperties === "object") unterfelder(knoten.additionalProperties, `${pfad}.*`);
   }
   for (const [feld, knoten] of Object.entries(schema.properties)) {
-    if (feld === "version") continue;
     liste.push(feld);
     unterfelder(knoten, feld);
   }
@@ -185,11 +184,60 @@ test("Gegenprobe: die Pruefung auf Geschichte erkennt Nummer, Wendung und Ausnah
 test("Kriterium 7: jede Einstellung steht mit englischem Pfad und Vorgabe in docs/einstellungen.md", () => {
   const text = readFileSync(join(DOCS, "einstellungen.md"), "utf-8");
   const pfade = einstellungen();
-  assert.ok(pfade.length >= 154, `nur ${pfade.length} Einstellungen gefunden`);
+  assert.ok(pfade.length >= 155, `nur ${pfade.length} Einstellungen gefunden`);
+  assert.ok(pfade.includes("version"), "version fehlt unter den Einstellungen");
+  const genannt = genanntePfade(text);
   for (const pfad of [...pfade.map(englisch), "vault", "always", "projectDocs", "project", "logPath", "parentProject"]) {
-    const zeile = new RegExp(String.raw`^- \`${maskiert(pfad)}\` — .*(Vorgabe: \S|Keine Vorgabe\.)`, "m");
-    assert.match(text, zeile, `${pfad} fehlt mit Vorgabe oder „Keine Vorgabe“`);
+    assert.ok(genannt.has(pfad), `${pfad} fehlt mit Vorgabe oder „Keine Vorgabe“`);
   }
+  // Je Pfad des Schemas genau eine Zeile im erzeugten Block (Issue #1734).
+  const block = text.slice(text.indexOf(START), text.indexOf(ENDE));
+  const zaehlung = zeilenJePfad(block);
+  for (const pfad of pfade.map(englisch)) assert.equal(zaehlung.get(pfad), 1, `${pfad}: ${zaehlung.get(pfad) ?? 0} Zeilen`);
+});
+
+/** Wie oft jeder Pfad im Text eine Zeile hat; eine Zeile mit `{a,b,c}` zählt für jeden genannten Pfad. */
+function zeilenJePfad(text) {
+  const zaehlung = new Map();
+  for (const z of text.split("\n")) {
+    const ende = z.indexOf("` — ");
+    if (!z.startsWith("- `") || ende < 0) continue;
+    for (const p of ausgeklappt(z.slice(3, ende))) zaehlung.set(p, (zaehlung.get(p) ?? 0) + 1);
+  }
+  return zaehlung;
+}
+
+/** Die Pfade, für die ein Pfad mit `{a,b,c}` steht. */
+function ausgeklappt(pfad) {
+  const a = pfad.indexOf("{");
+  const b = pfad.indexOf("}", a);
+  return a < 0 || b < 0 ? [pfad] : pfad.slice(a + 1, b).split(",").flatMap((g) => ausgeklappt(pfad.slice(0, a) + g + pfad.slice(b + 1)));
+}
+
+test("Gegenprobe: eine doppelte Zeile fällt auf, eine zusammengezogene zählt je Pfad einmal", () => {
+  const zaehlung = zeilenJePfad("- `a` — x. Keine Vorgabe.\n- `a` — y. Keine Vorgabe.\n- `b.{c,d}.e` — z. Keine Vorgabe.\n");
+  assert.deepEqual([...zaehlung].sort(), [["a", 2], ["b.c.e", 1], ["b.d.e", 1]]);
+});
+
+/**
+ * Die Pfade, die eine Seite mit Vorgabe oder „Keine Vorgabe“ nennt. Eine zusammengezogene Zeile
+ * mit `{a,b,c}` im Pfad zählt als Zeile jedes genannten Pfads (Issue #1732).
+ */
+function genanntePfade(text) {
+  const genannt = new Set();
+  for (const zeile of text.split("\n")) {
+    const ende = zeile.indexOf("` — ");
+    if (!zeile.startsWith("- `") || ende < 0) continue;
+    const rest = zeile.slice(ende);
+    if (!/Vorgabe: \S/.test(rest) && !rest.includes("Keine Vorgabe.")) continue;
+    for (const p of ausgeklappt(zeile.slice(3, ende))) genannt.add(p);
+  }
+  return genannt;
+}
+
+test("eine zusammengezogene Zeile zählt als Zeile jedes genannten Pfads", () => {
+  const genannt = genanntePfade("- `night.tiers.{hard,medium}.model` — Modell. Keine Vorgabe.\n- `ohne` — Text ohne Vorgabe\n");
+  assert.deepEqual([...genannt].sort(), ["night.tiers.hard.model", "night.tiers.medium.model"]);
 });
 
 test("Kriterium 5: die aktuellen deutschen Seiten haben zusammen höchstens 20.700 Wörter", (t) => {
@@ -276,7 +324,7 @@ test("Szenario: Ein neuer Leser findet den Skill für offene Fragen", () => {
 
 test("Kriterium 1: jeder Skill hat in beiden Fassungen von prozess.md eine eigene Überschrift", () => {
   const skills = readdirSync(join(repoRoot, "skills")).filter((n) => existsSync(join(repoRoot, "skills", n, "SKILL.md")));
-  assert.equal(skills.length, 18);
+  assert.equal(skills.length, 17);
   for (const [pfad] of PROZESS) {
     const text = readFileSync(join(repoRoot, pfad), "utf-8");
     for (const name of skills) {

@@ -27,7 +27,8 @@
  *     alles laeuft. Nicht abschaltbar.
  *   - Ein Anker, der sich nicht aufloesen laesst -> ebenso voller Umfang. Ein
  *     LEERER `--since`-Wert zaehlt dabei wie ein nicht aufloesbarer, nie wie ein
- *     fehlender: Er entsteht, wenn im /local-check-Skill die
+ *     fehlender: Er entsteht, wenn bei einem Aufruf von Hand oder aus einem Skill
+ *     (`/push-main`, ein Prueflauf vor dem Veroeffentlichen) die
  *     merge-base-Substitution fehlschlaegt. Als "nicht angegeben" gelesen griffe
  *     der Default HEAD, und auf sauberem Tree liefe keine einzige Pruefung.
  *   - Eine fehlende Config -> Abbruch mit Exit ungleich 0. Ein Kommando, das
@@ -108,7 +109,7 @@
  * und jeder Lauf waehrend der Umsetzung laeuft wie bisher genau einmal.
  *
  * Auch hier ist die Richtung einseitig: Wer `--finish` VERGISST, prueft mehr. Darum
- * bleibt jeder Commit von Hand und jeder Aufruf aus `/local-check` unveraendert, und
+ * bleibt jeder Commit von Hand und jeder Prueflauf von Hand ohne Karte unveraendert, und
  * darum haengt das Gate des Abschlusses (mindestens ein Paketstufen-Eintrag, der weder
  * `nichtBeimAbschluss` noch `guete` traegt) am Schalter statt an jedem Aufruf.
  *
@@ -159,7 +160,7 @@ const spracheJetzt = () => (namen ? namen.prozessSprache() : "de");
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "5.2.0";
+const KIT_VERSION = "5.3.0";
 
 // Die Variablen, die der Nacht-Runner seinen Sessions setzt (Issue #1282), aus dem Blatt-Modul
 // neben session.mjs. Fehlt der Nachbar, bleibt die Umgebung, wie sie ist.
@@ -505,11 +506,23 @@ export const TEXTE = Object.freeze({
     erstlaufAbgelegt: "Ausgabe des ersten Laufs abgelegt: {pfad}",
     wiederholung: "Wiederholung: {cmd} war rot — einmal auf demselben Stand wiederholt",
     teillaufGruen: "Teillauf gruen — es folgt der volle Lauf als Nachweis",
+    formatFixStart: "Format-Fix: Lauf rot — {cmd} laeuft einmal, danach ein neuer Durchgang",
+    formatFixAusgefuehrt: "Format-Fix: {cmd} → ausgefuehrt",
+    formatFixNichtGereicht: "Format-Fix lief und hat nicht gereicht",
+    formatFixArbeitsbaum: "Der Arbeitsbaum ist veraendert — die vom Format-Fix geaenderten Dateien (git status) gehoeren in den Commit",
+    mutationAngekuendigt: "danach einmal der Mutationstest {cmd}, nur berichtet",
+    mutationStart: "Mutationstest — laeuft einmal, nur berichtet, haelt nicht an",
+    mutationZeile: "Mutationstest: {cmd} → {ergebnis} ({wie}), {dauer} — nur berichtet, haelt nicht an",
+    mutationAusgelassen: "Mutationstest: ausgelassen, die Pruefung ist rot",
     keineKartennummer: "'{wert}' ist keine Kartennummer fuer --finish. Erwartet: eine Nummer oder nichts.",
     abschlussMitStufe: "--finish und --stage '{stufe}' zusammen: Der Abschluss einer Karte faehrt die Stufe '{paket}'. Vor dem Veroeffentlichen laeuft der volle Umfang ohne --finish.",
     abschlussMitBereich: "--finish und --area zusammen: zwei Eingrenzungen in einem Lauf. Der Bereichslauf gehoert in die Arbeit, --finish an ihr Ende.",
     unbekannteStufe: "Unbekannte Stufe '{wert}'. Erwartet: {liste}.",
     unbekanntesArgument: "Unbekanntes Argument: '{arg}'",
+    messungAbgebrochen: "Messung abgebrochen: {grund}",
+    bereichsabgleichKopf: "Abgleich der Pruefbereiche (Hinweis, haelt nicht an):",
+    bereichsabgleichLuecke: "- {test} laedt {datei} aus Bereich {bereich}, den {kommando} nicht ausloest",
+    bereichsabgleichFehler: "Abgleich der Pruefbereiche nicht moeglich: {grund}",
     keinVerzeichnis: "--in '{pfad}' ist kein Verzeichnis.",
     unbekannterBefehl: "Unbekannter Befehl: '{befehl}'. Erwartet: plan, run oder areas",
     altname: "unbekannt: '{name}' — englischer Name: '{englisch}'",
@@ -624,11 +637,23 @@ export const TEXTE = Object.freeze({
     erstlaufAbgelegt: "Output of the first run stored: {pfad}",
     wiederholung: "Retry: {cmd} was red — repeated once on the same state",
     teillaufGruen: "Partial run green — the full run follows as evidence",
+    formatFixStart: "Format fix: run red — {cmd} runs once, then a new pass",
+    formatFixAusgefuehrt: "Format fix: {cmd} → executed",
+    formatFixNichtGereicht: "Format fix ran and was not enough",
+    formatFixArbeitsbaum: "The working tree has changed — the files changed by the format fix (git status) belong in the commit",
+    mutationAngekuendigt: "then once the mutation test {cmd}, reported only",
+    mutationStart: "mutation test — runs once, reported only, does not stop",
+    mutationZeile: "Mutation test: {cmd} → {ergebnis} ({wie}), {dauer} — reported only, does not stop",
+    mutationAusgelassen: "Mutation test: skipped, the check is red",
     keineKartennummer: "'{wert}' is no card number for --finish. Expected: a number or nothing.",
     abschlussMitStufe: "--finish and --stage '{stufe}' together: the completion of a card runs the stage '{paket}'. Before publishing the full scope runs without --finish.",
     abschlussMitBereich: "--finish and --area together: two restrictions in one run. The area run belongs in the work, --finish at its end.",
     unbekannteStufe: "Unknown stage '{wert}'. Expected: {liste}.",
     unbekanntesArgument: "Unknown argument: '{arg}'",
+    messungAbgebrochen: "measurement aborted: {grund}",
+    bereichsabgleichKopf: "Comparison of the check areas (hint, never stops):",
+    bereichsabgleichLuecke: "- {test} loads {datei} from area {bereich}, which {kommando} does not trigger",
+    bereichsabgleichFehler: "Comparison of the check areas not possible: {grund}",
     keinVerzeichnis: "--in '{pfad}' is not a directory.",
     unbekannterBefehl: "Unknown command: '{befehl}'. Expected: plan, run or areas",
     altname: "unknown: '{name}' — English name: '{englisch}'",
@@ -653,6 +678,8 @@ const HILFE = `checks.mjs (claude-workflow-kit v{version}) — due checks
   node checks.mjs plan [--since <ref>] [--stage <stage>] [--area <name>] [--finish [n]] [--in <path>]
   node checks.mjs run  [--since <ref>] [--stage <stage>] [--area <name>] [--finish [n]] [--retry] [--fresh] [--in <path>]
   node checks.mjs areas
+  node checks.mjs areas suggest [--json]
+  node checks.mjs areas compare [--json]
 
 plan  Prints as JSON which buildChecks must run after the current work package
       and which may be skipped — every decision with its reason. Nothing is
@@ -774,6 +801,21 @@ areas
       Plus the inventory: all files versioned by git without a checkAreas
       match, split into exempted (noCheck, with reason) and without any
       assignment.
+areas suggest
+      Suggests check areas, measured from which files every test loads or
+      mentions (JavaScript, TypeScript, Java): per area its patterns and the
+      tests and files behind it, per command the areas it should trigger,
+      splits and merges of existing areas, commands that could be split (no
+      command line) and candidates for scaffoldOnly. A command running tests
+      of another language cannot be assessed and keeps its areas, with the
+      reason. Works without .claude/workflow.config.json (empty config, the
+      groups are then the folders of the test files).
+areas compare
+      Compares the configured areas with the measurement: a gap is a test
+      that loads a file whose area its command does not trigger (risk); an
+      area none of its command's tests loads is a note. Needs the config.
+      Both never change the config and always end with exit code 0; --json
+      prints the same data as JSON.
 
   --since <ref>   Anchor against which the changes are determined (default HEAD).
                   If the anchor cannot be resolved — an empty value too —,
@@ -945,9 +987,15 @@ function git(...args) {
 
 // --- Config ----------------------------------------------------------------
 
-function ladeConfig() {
+/**
+ * Die Config des Projekts. Fehlt die Datei, bricht der Aufruf ab — ausser mit `ohneDateiLeer`:
+ * Dann gilt die leere Config. Das nutzt allein `areas suggest`, damit der Installer den
+ * Vorschlag beim ersten Einrichten holen kann, bevor es eine Config gibt (Plan #1713 A13).
+ */
+function ladeConfig({ ohneDateiLeer = false } = {}) {
   const pfad = join(wurzel(), ".claude", "workflow.config.json");
   if (!existsSync(pfad)) {
+    if (ohneDateiLeer) return normalisiereConfig({}).config;
     fail(t("keineConfig", { wurzel: wurzel() }));
   }
   try {
@@ -1109,8 +1157,8 @@ function pruefeAbschlussBereich(check, name, bekannt) {
  *
  * Geprueft wird NUR im Abschlusslauf, nicht bei jedem Aufruf. Dieselbe Config bleibt fuer
  * jeden anderen Lauf gueltig, und sie ist es auch: Ohne den Schalter laufen beide
- * Pruefungen. Ein unbedingter Abbruch naehme dagegen einem `/local-check` oder einem Commit
- * von Hand die Pruefung weg, obwohl dort nie etwas ausgelassen wurde — und genau das
+ * Pruefungen. Ein unbedingter Abbruch naehme dagegen einem Prueflauf von Hand ohne Karte,
+ * einem Lauf aus `/push-main` oder einem Commit von Hand die Pruefung weg, obwohl dort nie etwas ausgelassen wurde — und genau das
  * schliesst die einseitige Richtung des Plans aus: Wer den Schalter nicht setzt, prueft mehr.
  *
  * Eine Config OHNE Paketstufen-Eintrag faellt hier nicht durch: Sie hatte nie ein Gate,
@@ -3147,6 +3195,13 @@ export function hashesGleich(a, b) {
  * Zusammenfassung — die eines abgebrochenen Laufs bezeugt keinen fertigen Stand,
  * sie ist gerade der Nachweis, dass eine Pruefung ihr Ende nicht erreicht hat.
  *
+ * Und bewusst nur ein GRUENES Ergebnis (Issue #1742): Jeder Eintrag in `laufen` muss
+ * `gruen` sein — Ausgelassenes steht nicht in `laufen`, ein `nicht gestartet` zaehlt
+ * nicht als gruen. Die Uebernahme sieht nur versionierte Dateien und die Config; ein
+ * Rot, dessen Ursache ausserhalb liegt (installierte Kopie, Abhaengigkeiten,
+ * Umgebung), bliebe sonst stehen, bis jemand `--fresh` kennt. Ein Rot zu uebernehmen
+ * spart ohnehin nichts: Nach einer Korrektur will man gerade neu messen.
+ *
  * Jeder Zweifel faellt auf `null` zurueck und damit in den vollen Weg: fehlende
  * Datei, kaputtes JSON, fehlendes Feld, ein Stand aus einer aelteren Fassung ohne
  * `configHash`. Das ist dieselbe Richtung, in die dieses Kommando ueberall irrt —
@@ -3154,6 +3209,7 @@ export function hashesGleich(a, b) {
  */
 function frueheresErgebnis(alt, auswahl, hashes, configHash) {
   if (!gleicheAuswahlBasis(alt, auswahl, configHash)) return null;
+  if (!alt.laufen.every((e) => e?.ergebnis === "gruen")) return null;
   if (!listenGleich(alt.geaendert, auswahl.geaendert)) return null;
   if (!hashesGleich(alt.hashes, hashes)) return null;
   return alt;
@@ -3256,12 +3312,17 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
   // Die Wackler der Karte gehen unveraendert weiter (Issue #1397, E11): Eine Uebernahme
   // faehrt nichts. Die Faelle des uebernommenen Laufs stehen schon an seinen Eintraegen.
   const gewackeltKarte = gewackeltKarteVorher(vorige, karte);
+  const formatFix = frueher.formatFix && typeof frueher.formatFix === "object" ? frueher.formatFix : null;
+  // Der Mutationstest gehoert zum gemessenen Stand (Issue #1673): uebernommen, nicht neu gefahren.
+  const mutation = mutationFeld(frueher);
   const zeilen = [
     ...(frueher.teillauf === true ? [t("teillauf")] : []),
+    ...formatFixZeilen(formatFix),
     ...berichtszeilen(auswahl, frueher.laufen, {
       uebernommen: true, grenzeMs: pruefdauerObergrenzeMs(),
       frueher: (gewackeltKarte ?? []).filter((w) => w.zeitpunkt !== original),
     }),
+    ...mutationZeilen(mutation, mutationEntfaellt(auswahl, ungruen !== null)),
   ];
   // Ein uebernommener Lauf zaehlt als Lauf ohne Zeit (Issue #1069): Seine Wanduhr steht
   // in `wartezeitMs`, in die Summe der Karte geht sie nicht ein.
@@ -3283,6 +3344,11 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
     // Ein uebernommener roter Teillauf bleibt ein Teillauf (Issue #1072): Die nicht
     // gestarteten Eintraege darin sind nie gemessen worden.
     ...(frueher.teillauf === true ? { teillauf: true } : {}),
+    // Das Nachformatieren gehoert zum uebernommenen Lauf (Issue #1672): Seine Aenderungen
+    // liegen noch im Baum und gehoeren weiter in den Commit.
+    ...(formatFix ? { formatFix } : {}),
+    // `undefined` faellt beim Schreiben weg: ohne Mutationstest kein Feld.
+    mutation,
     uebernommen: original,
     hinweise: hinweiseVon(frueher.laufen),
     berichtszeilen: zeilen,
@@ -3291,9 +3357,12 @@ function uebernehmen(auswahl, frueher, { zeitpunkt, hashes, configHash, startNs,
     // Eine Uebernahme faehrt nichts und zaehlt darum nicht (Issue #1388, E3): unveraendert weiter.
     ...(vorige?.festgefahren ? { festgefahren: vorige.festgefahren } : {}),
     ...(gewackeltKarte ? { gewackeltKarte } : {}),
+    // Der Abgleich gehoert zum gemessenen Stand (Issue #1719): weitergetragen, nicht neu erhoben.
+    ...(frueher.bereichsabgleich ? { bereichsabgleich: frueher.bereichsabgleich } : {}),
   });
   const befund = ungruen === null ? "gruen" : `rot: ${ungruen.cmd}`;
   aufStdout(`${t("standUnveraendert", { zeitpunkt: original, marke: UEBERNAHME_MARKE, befund })}\n`);
+  bereichsabgleichMelden(frueher.bereichsabgleich);
   berichtsblockSchreiben(zeilen, wartezeitZeile(wartezeitMs, wartezeitKarte));
   aufStdout(`\n${t("zusammenfassung", { pfad })}\n`);
   return ungruen === null ? 0 : 1;
@@ -3611,7 +3680,10 @@ async function ausfuehren(args) {
   if (auswahl.stufe !== STUFEN[0]) {
     const hinzu = auswahl.laufen.filter((e) => e.stufe !== STUFEN[0]).map((e) => e.cmd);
     const liste = hinzu.length > 0 ? hinzu.join(", ") : t("keineWeitere");
-    aufStdout(`${t("stufeZusaetzlich", { stufe: auswahl.stufe, liste })}\n`);
+    // Der Mutationstest an `push` (Issue #1673) gehoert in dieselbe Zeile: Er kommt dazu.
+    const mutationCmd = mutationFaellig(auswahl);
+    const danach = mutationCmd === null ? "" : `, ${t("mutationAngekuendigt", { cmd: mutationCmd })}`;
+    aufStdout(`${t("stufeZusaetzlich", { stufe: auswahl.stufe, liste })}${danach}\n`);
   }
 
   // VOR den Auslassungen (Issue #934): Eine Datei, zu der ausdruecklich nichts
@@ -3637,10 +3709,13 @@ async function ausfuehren(args) {
   }
   // Nach einer Korrektur zuerst die zuletzt roten (Issue #1072); `--fresh` faehrt sofort alles.
   const rote = args.frisch ? null : zuletztRote(vorige, auswahl, hashes, configHash);
+  // Vor dem ersten Kommando, damit er denselben Stand misst wie die Hashes (Issue #1719). Ein
+  // eigenes Feld und nie ein Eintrag in `laufen` (Vertrag V1): Er haelt nie an.
+  const bereichsabgleich = await bereichsabgleichErheben(auswahl);
 
   // Ab hier laufen Kommandos. Eine rechnerweite Sperre davor gibt es seit Issue #1241 nicht
   // mehr: Die Pruefungen sind leicht genug, dass mehrere Projekte gleichzeitig pruefen.
-  return kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, startNs, vorige, rote });
+  return kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, startNs, vorige, rote, bereichsabgleich });
 }
 
 /**
@@ -3650,7 +3725,7 @@ async function ausfuehren(args) {
  * Eigene Funktion, damit `ausfuehren` zeigt, wo die Kommandos beginnen: Ein
  * uebernommenes Ergebnis endet vorher und faehrt keines.
  */
-async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, startNs, vorige, rote = null }) {
+async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHash, startNs, vorige, rote = null, bereichsabgleich = null }) {
   const grenzeMs = pruefdauerObergrenzeMs();
   // Einmal je Lauf gelesen (Issue #1077): Die Abbruchgrenze jedes Kommandos folgt
   // seiner Historie, und die Zeilen dieses Laufs sollen sie nicht mehr verschieben.
@@ -3717,15 +3792,29 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   // in den Fassungen, bevor der volle Lauf sie an seine Eintraege uebernommen hat.
   const gewackeltVorher = gewackeltKarteVorher(vorige, args.karte);
   let wacklerTeillauf = [];
+  // Das Nachformatieren dieses Aufrufs (Issue #1672, Plan #1671, E1): `{ cmd, gereicht }`,
+  // solange keiner lief `null`.
+  let formatFix = null;
+  // Der Mutationstest dieses Aufrufs (Issue #1673, Plan #1671, E3): `{ cmd, ergebnis, exit,
+  // dauerMs }`, solange keiner lief `undefined` — das Feld faellt dann beim Schreiben weg.
+  // `mutationEntfallen` haelt fest, dass er wegen des roten Laufs nicht lief.
+  let mutation;
+  let mutationEntfallen = false;
+  // Nur der erste Durchgang wiederholt; der nach dem Fix laeuft genau einmal (E1).
+  let wiederholen = auswahl.wiederholen === true;
   const zeilenVon = (stand) => [
     ...(stand.teillauf ? [t("teillauf")] : []),
+    ...formatFixZeilen(formatFix),
     ...berichtszeilen(auswahl, stand.laufen, { grenzeMs, frueher: gewackeltVorher ?? [] }),
+    ...mutationZeilen(mutation, mutationEntfallen),
   ];
   const schreibeStand = (stand, abgeschlossen) => schreibeZusammenfassung({
     ...auswahl, laufen: stand.laufen, zeitpunkt, hashes, configHash, abgeschlossen,
     dauerGesamtMs: dauerGesamt(stand.laufen), ...(stand.guete ? { guete: stand.guete } : {}),
     ...(stand.verursacher ? { verursacher: stand.verursacher } : {}),
     ...(stand.teillauf ? { teillauf: true } : {}),
+    ...(formatFix ? { formatFix } : {}),
+    mutation,
     hinweise: hinweiseVon(stand.laufen),
     berichtszeilen: zeilenVon(stand),
     ...wartezeit,
@@ -3733,6 +3822,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
     ...(gewackeltVorher
       ? { gewackeltKarte: gewackeltKarteNach(gewackeltVorher, args.karte, [...stand.laufen, ...wacklerTeillauf], zeitpunkt) }
       : {}),
+    ...(bereichsabgleich ? { bereichsabgleich } : {}),
   });
 
   // Ein Durchgang ueber die ausgewaehlten Kommandos — alle oder, beim Teillauf, nur die
@@ -3801,7 +3891,7 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
       const erster = await fahren(eintrag, schreibe);
       let lauf = erster;
       let erstlauf = null;
-      if (!erster.bestanden && auswahl.wiederholen === true) {
+      if (!erster.bestanden && wiederholen) {
         // Die rote Ausgabe bleibt liegen (E17): Wer die Pruefung spaeter repariert, braucht sie.
         erstlauf = protokollAblegen(nummer, eintrag.cmd, erster.abgelegt, "-erstlauf");
         if (erstlauf) schreibe(`${t("erstlaufAbgelegt", { pfad: erstlauf })}\n`);
@@ -3907,6 +3997,32 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
     wacklerUebernehmen(stand.laufen, wacklerTeillauf);
   }
 
+  // Das Nachformatieren (Issue #1672, Plan #1671, E1): An der Paketstufe laeuft nach einem
+  // roten Durchgang — mit `--finish` also erst nach der Wiederholung — `formatFixCommand`
+  // genau einmal, danach ein zweiter Durchgang ueber alles, nie ein dritter. So geschieht
+  // es tagsueber wie nachts, ohne dass jemand einen eigenen Schritt aufruft. An `push` und
+  // `merge` nicht: Dort wird der Stand gemessen, der hinausgeht, und ein Fix aenderte ihn
+  // ungesehen.
+  //
+  // Der zweite Durchgang bezeugt den Stand NACH dem Fix: neue Blob-Hashes, neuer
+  // `zeitpunkt` — sonst wiese das Gate den Commit wegen der geaenderten Blobs ab. Die
+  // Laufkennung (`herkunft.lauf`) bleibt die des Aufrufs: Im Ausfuehrungsprotokoll und in
+  // der Wartezeit ist es ein Lauf. Der Fix selbst ist keine Pruefung und bekommt keine Zeile.
+  const fixCmd = formatFixKommando();
+  if (stand.rot && auswahl.stufe === STUFEN[0] && fixCmd !== null) {
+    aufStdout(`\n${t("formatFixStart", { cmd: fixCmd })}\n\n$ ${fixCmd}\n`);
+    const fix = await kommandoAusfuehren(fixCmd, env);
+    aufStdout(fix.ausgabe);
+    zeitpunkt = new Date().toISOString();
+    hashes = blobHashes(auswahl.geaendert);
+    // Die Bremse zaehlt den Aufruf als einen Versuch: Die Basis rueckt nicht weiter.
+    wacklerTeillauf = [...wacklerTeillauf, ...stand.laufen.filter((e) => e.gewackelt)];
+    wiederholen = false;
+    stand = await durchgang(null);
+    wacklerUebernehmen(stand.laufen, wacklerTeillauf);
+    formatFix = { cmd: fixCmd, gereicht: !stand.rot };
+  }
+
   // Nach dem roten Befund und vor der letzten Fassung (Issue #947): Die Suche erklaert
   // einen Befund, der schon gefallen ist, und aendert am Ausgang des Laufs nichts — auch
   // dann nicht, wenn ein git-Aufruf dabei scheitert. Dieselbe Haltung wie beim
@@ -3914,6 +4030,16 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   stand.verursacher = verursacherKarten(auswahl, stand.laufen.filter((e) => e.ergebnis === "rot"));
   for (const e of stand.verursacher ?? []) {
     aufStdout(`${t("verursacherZeile", { cmd: e.cmd, text: verursacherText(e) })}\n`);
+  }
+
+  // Der Mutationstest (Issue #1673, Plan #1671, E3): an `push` nach allen `buildChecks`
+  // genau einmal — auch mit `--retry` nie ein zweites Mal —, mit der Obergrenze als
+  // Abbruchgrenze. Er ist kein `buildChecks`-Eintrag: keine Zeile im Ausfuehrungsprotokoll,
+  // kein Einfluss auf Exit-Code und Ergebnis. Nach einem roten Lauf entfaellt er.
+  mutationEntfallen = mutationEntfaellt(auswahl, stand.rot);
+  if (!stand.rot && mutationFaellig(auswahl) !== null) {
+    schreibeStand(stand, false);
+    mutation = await mutationFahren(mutationFaellig(auswahl), env, grenzeMs);
   }
 
   // Die letzte Fassung, und die einzige mit `abgeschlossen: true`: Hier ist der Lauf
@@ -3932,9 +4058,75 @@ async function kommandosFahren({ auswahl, args, env, zeitpunkt, hashes, configHa
   wartezeit = { wartezeitMs, ...(wartezeitKarte ? { wartezeitKarte } : {}) };
   const pfad = schreibeStand(stand, true);
   festgefahrenMelden(stand.laufen, festgefahrenNach(festgefahrenBasis, stand.laufen));
+  bereichsabgleichMelden(bereichsabgleich);
   berichtsblockSchreiben(zeilenVon(stand), wartezeitZeile(wartezeitMs, wartezeitKarte));
   aufStdout(`\n${t("zusammenfassung", { pfad })}\n`);
   return stand.rot ? 1 : 0;
+}
+
+/** `formatFixCommand` aus der Config, getrimmt, oder `null`, wenn keines gesetzt ist. */
+function formatFixKommando() {
+  return configKommando("formatFixCommand");
+}
+
+/** Ein Kommando-Feld der Config, getrimmt, oder `null`, wenn keines gesetzt ist. */
+function configKommando(feld) {
+  const wert = ladeConfig()[feld];
+  return typeof wert === "string" && wert.trim() !== "" ? wert.trim() : null;
+}
+
+/**
+ * `mutationCommand`, wenn der Lauf ihn faehrt (Issue #1673, Plan #1671, E3): allein an der
+ * Stufe `push`, nie an der Paketstufe und nie an `merge`. Sonst `null`.
+ */
+function mutationFaellig(auswahl) {
+  return auswahl.stufe === "push" ? configKommando("mutationCommand") : null;
+}
+
+/** Ob der Mutationstest wegen eines roten Laufs entfaellt (Issue #1673): nur, wo er faellig waere. */
+function mutationEntfaellt(auswahl, rot) {
+  return rot && mutationFaellig(auswahl) !== null;
+}
+
+/**
+ * Faehrt den Mutationstest einmal (Issue #1673, E3) — die Obergrenze ist seine Abbruchgrenze —
+ * und gibt `{ cmd, ergebnis, exit, dauerMs }` zurueck. Abgebrochen ist er rot, `exit` dann `null`.
+ */
+async function mutationFahren(cmd, env, grenzeMs) {
+  aufStdout(`\n$ ${cmd} — ${t("mutationStart")}\n`);
+  const start = process.hrtime.bigint();
+  const lauf = await kommandoAusfuehren(cmd, env, { grenzeMs, fristMs: haengenFristMs(env) });
+  const dauerMs = Math.round(Number(process.hrtime.bigint() - start) / 1e6);
+  aufStdout(lauf.haengend ? `${lauf.ausgabe}${haengendText(grenzeMs)}\n` : lauf.ausgabe);
+  const mutation = { cmd, ergebnis: lauf.gruen ? "gruen" : "rot", exit: lauf.code, dauerMs };
+  aufStdout(`-> ${mutation.ergebnis}\n`);
+  return mutation;
+}
+
+/** Das Feld `mutation` einer frueheren Zusammenfassung, sonst `undefined`. */
+function mutationFeld(daten) {
+  return daten.mutation && typeof daten.mutation === "object" ? daten.mutation : undefined;
+}
+
+/** Die Berichtszeile des Mutationstests (Issue #1673): sein Ergebnis oder sein Wegfall. */
+function mutationZeilen(mutation, entfallen) {
+  if (entfallen) return [t("mutationAusgelassen")];
+  if (!mutation) return [];
+  const wie = mutation.exit === null ? t("ohneRueckgabewert") : `Exit ${mutation.exit}`;
+  return [t("mutationZeile", { cmd: mutation.cmd, ergebnis: mutation.ergebnis, wie, dauer: dauerText(mutation.dauerMs) })];
+}
+
+/**
+ * Die Berichtszeilen des Nachformatierens (Issue #1672): dass es lief, ob es nicht gereicht
+ * hat, und dass seine Aenderungen in den Commit gehoeren. Ohne Fix keine.
+ */
+function formatFixZeilen(formatFix) {
+  if (!formatFix) return [];
+  return [
+    t("formatFixAusgefuehrt", { cmd: formatFix.cmd }),
+    ...(formatFix.gereicht ? [] : [t("formatFixNichtGereicht")]),
+    t("berichtHinweis", { text: t("formatFixArbeitsbaum") }),
+  ];
 }
 
 /**
@@ -4098,9 +4290,172 @@ function arbeitsverzeichnisSetzen(args) {
   return args;
 }
 
+// --- areas suggest und areas compare (Issue #1718, Plan #1713 A1, A10, A13, E11) ------------
+
+const BEREICHE_UNTERBEFEHLE = new Set(["suggest", "compare"]);
+
+// Die Laeufer, deren Vorgabesuche die Testdateien liefert, wenn kein Kommando beurteilbar ist:
+// Jest fuer JavaScript und TypeScript (`__tests__/`, `*.test.*`, `*.spec.*`), Maven fuer Java.
+// Gelesen von derselben Testauswahl wie jedes Kommando der Config, keine zweite Suche.
+const VORGABE_LAEUFER = ["jest", "mvn verify"];
+
 /**
- * Rueckgabe: der Exitcode — fuer `run` als Promise (Issue #1070), fuer `plan` und
- * `bereiche` wie bisher als Zahl.
+ * Ein Eintrag ohne `areas` und ohne `always` — die Stringform und `{ cmd }` — laeuft heute
+ * immer, weil ihm noch niemand Bereiche gegeben hat. Genau dafuer ist der Vorschlag da: Er misst
+ * ihn, als bekaeme er Bereiche. `always: true` und die spaeteren Stufen bleiben, wie sie sind.
+ */
+function alsKandidat(eintrag) {
+  const objekt = typeof eintrag === "string" ? { cmd: eintrag } : eintrag;
+  if (objekt.always === true || objekt.areas?.length > 0) return objekt;
+  return { ...objekt, areas: ["(vorschlag)"] };
+}
+
+/** Die vereinigten, sortierten Tests der beurteilbaren Urteile. */
+function testsDerUrteile(urteile, beurteilbar) {
+  return [...new Set(urteile.filter((u) => u.urteil === beurteilbar).flatMap((u) => u.tests))].sort(vergleicheText);
+}
+
+/**
+ * Die Messung fuer Vorschlag und Abgleich: die Dateien des Arbeitsstands, je Test die geladenen
+ * und genannten Dateien und je Eintrag von `buildChecks` das Urteil der Testauswahl. Gemessen
+ * werden die Tests der beurteilbaren Kommandos; gibt es keines, die der Vorgabe-Laeufer, deren
+ * Ordner dann die Gruppen sind (A7). Bricht die Messung ab, wird jedes beurteilbare Kommando
+ * „nicht beurteilbar" mit dem Grund — ein Abbruch ist nie eine Entwarnung (Kriterium 8).
+ */
+function bereichsmessung(config, { verflechtung, testauswahl }, { vorschlag }) {
+  const repoRoot = wurzel();
+  const { URTEIL } = testauswahl;
+  const eintraege = config.buildChecks ?? [];
+  let dateien;
+  try {
+    dateien = verflechtung.imArbeitsstand(repoRoot);
+  } catch (fehler) {
+    const grund = t("messungAbgebrochen", { grund: fehler.message });
+    return { dateien: [], tabelle: new Map(), kommandos: eintraege.map(() => ({ urteil: URTEIL.nichtBeurteilbar, grund, tests: [] })) };
+  }
+  const urteilVon = (eintrag) => testauswahl.testsVon(eintrag, { repoRoot, dateien });
+  const kommandos = eintraege.map((eintrag) => urteilVon(vorschlag ? alsKandidat(eintrag) : eintrag));
+  let testdateien = testsDerUrteile(kommandos, URTEIL.beurteilbar);
+  if (testdateien.length === 0 && vorschlag) {
+    testdateien = testsDerUrteile(VORGABE_LAEUFER.map((cmd) => urteilVon(alsKandidat(cmd))), URTEIL.beurteilbar);
+  }
+  const nurGeruest = (config.nurGeruest ?? []).map((eintrag) => (typeof eintrag === "string" ? eintrag : eintrag.muster));
+  try {
+    return { dateien, tabelle: verflechtung.verflechtungErheben({ repoRoot, nurGeruest, testdateien }), kommandos };
+  } catch (fehler) {
+    const grund = t("messungAbgebrochen", { grund: fehler.message });
+    const ohneMessung = (k) => (k.urteil === URTEIL.beurteilbar ? { ...k, urteil: URTEIL.nichtBeurteilbar, grund, tests: [] } : k);
+    return { dateien, tabelle: new Map(), kommandos: kommandos.map(ohneMessung) };
+  }
+}
+
+/**
+ * `areas suggest [--json]` und `areas compare [--json]`: Vorschlag oder Abgleich der
+ * Pruefbereiche, als Text in der Projektsprache oder mit `--json` dieselben Daten. Beide aendern
+ * nichts und enden immer mit Exit 0 (A10). Die Teile unter `checks/` laedt erst dieser Aufruf,
+ * dynamisch (A1): Ein `checks.mjs`, das allein in einem Projekt liegt, laeuft fuer `plan`, `run`
+ * und `areas` weiter.
+ */
+async function bereicheRechnen(unterbefehl, rest) {
+  for (const arg of rest) if (arg !== "--json") fail(t("unbekanntesArgument", { arg }));
+  const vorschlag = unterbefehl === "suggest";
+  const config = ladeConfig({ ohneDateiLeer: vorschlag });
+  const [bereiche, verflechtung, testauswahl] = await Promise.all([
+    import("./checks/bereiche.mjs"),
+    import("./checks/verflechtung.mjs"),
+    import("./checks/testauswahl.mjs"),
+  ]);
+  const messung = bereichsmessung(config, { verflechtung, testauswahl }, { vorschlag });
+  const ergebnis = vorschlag ? bereiche.vorschlagErheben(config, messung) : bereiche.abgleichErheben(config, messung);
+  if (rest.includes("--json")) aufStdout(bereiche.alsJson(ergebnis));
+  else aufStdout(vorschlag ? bereiche.vorschlagText(ergebnis) : bereiche.abgleichText(ergebnis));
+  return 0;
+}
+
+/**
+ * Die Testhilfe-Ordner aus Plan #1713 A4 auf jeder Ebene, damit auch `**\/src/test/` (E7) —
+ * dieselbe Regel wie die Durchgangsstationen in `checks/verflechtung.mjs`.
+ */
+const TESTORDNER = /(?:^|\/)(?:test|tests|__tests__)\//;
+
+/**
+ * Die gemessenen Tests, die eine geaenderte Testhilfe ueber Importe erreichen (E1): rueckwaerts
+ * durch die Importeure, bis zu jedem Test der Tabelle. Die Suche liest JavaScript-Importe wie die
+ * Ableitung aus Importen; scheitert sie, erreicht die Hilfe keinen Test.
+ */
+function testsUeberHilfen(hilfen, tests) {
+  if (hilfen.length === 0) return [];
+  const importeure = importeureErheben() ?? new Map();
+  const erreicht = new Set();
+  const besucht = new Set(hilfen);
+  const offen = [...hilfen];
+  while (offen.length > 0) {
+    for (const importeur of importeure.get(offen.shift()) ?? []) {
+      if (besucht.has(importeur)) continue;
+      besucht.add(importeur);
+      if (tests.has(importeur)) erreicht.add(importeur);
+      offen.push(importeur);
+    }
+  }
+  return [...erreicht];
+}
+
+/**
+ * Der Abgleich der Pruefbereiche im Prueflauf eines Pakets (Issue #1719, Plan #1713 A11, E1,
+ * E2, E7). Liefert das Feld `bereichsabgleich` oder `null`, wenn kein Abgleich laeuft: an `push`
+ * und `merge` nie, an der Paketstufe nur, wenn das Paket eine Testdatei angelegt oder geaendert
+ * hat — eine, die ein Kommando faehrt, oder eine unter den Testhilfe-Ordnern (E7).
+ *
+ * Abgeglichen werden nur die geaenderten Tests und die, die eine geaenderte Testhilfe erreichen
+ * (E1); „zu viel" meldet der Prueflauf nicht (E2). Der Abgleich haelt nie an: Jeder Fehler,
+ * auch ein Ladefehler der Teile unter `checks/`, wird zu `fehler` und aendert weder Farbe noch
+ * Exit-Code. Ohne die Teile laesst sich ein Test nur am Ordner erkennen; ein Ladefehler zaehlt
+ * darum nur, wenn ein geaenderter Pfad dort liegt — sonst stuende er in jedem Paket.
+ */
+async function bereichsabgleichErheben(auswahl) {
+  if (auswahl.stufe !== STUFEN[0]) return null;
+  const imOrdner = auswahl.geaendert.filter((p) => TESTORDNER.test(p));
+  const mitFehler = (fehler) => ({ luecken: [], nichtBeurteilbar: [], fehler: fehler.message });
+  let teile;
+  try {
+    teile = await Promise.all([
+      import("./checks/bereiche.mjs"),
+      import("./checks/verflechtung.mjs"),
+      import("./checks/testauswahl.mjs"),
+    ]);
+  } catch (fehler) {
+    return imOrdner.length > 0 ? mitFehler(fehler) : null;
+  }
+  const [bereiche, verflechtung, testauswahl] = teile;
+  try {
+    const config = ladeConfig();
+    const messung = bereichsmessung(config, { verflechtung, testauswahl }, { vorschlag: false });
+    const gefahren = new Set(messung.kommandos.flatMap((k) => k.tests ?? []));
+    const testdateien = auswahl.geaendert.filter((p) => TESTORDNER.test(p) || gefahren.has(p));
+    if (testdateien.length === 0) return null;
+    const gemessen = new Set(messung.tabelle.keys());
+    const hilfen = testdateien.filter((p) => !gemessen.has(p));
+    const nurTests = [...testdateien.filter((p) => gemessen.has(p)), ...testsUeberHilfen(hilfen, gemessen)];
+    const { luecken, nichtBeurteilbar } = bereiche.abgleichErheben(config, messung, { nurTests });
+    return { luecken, nichtBeurteilbar, fehler: null };
+  } catch (fehler) {
+    return mitFehler(fehler);
+  }
+}
+
+/** Der Block des Abgleichs auf der Konsole: je Luecke eine Zeile, dazu ein Fehler; sonst nichts. */
+function bereichsabgleichMelden(bereichsabgleich) {
+  if (!bereichsabgleich) return;
+  const zeilen = [
+    ...(bereichsabgleich.fehler ? [t("bereichsabgleichFehler", { grund: bereichsabgleich.fehler })] : []),
+    ...(bereichsabgleich.luecken ?? []).map((l) => t("bereichsabgleichLuecke", l)),
+  ];
+  if (zeilen.length > 0) aufStdout(`\n${t("bereichsabgleichKopf")}\n${zeilen.join("\n")}\n`);
+}
+
+/**
+ * Rueckgabe: der Exitcode — fuer `run`, `areas suggest` und `areas compare` als Promise
+ * (Issue #1070, #1718), fuer `plan` und `areas` wie bisher als Zahl.
  */
 function main(argv = process.argv.slice(2)) {
   if (argv.length === 0 || argv[0] === "--help" || argv[0] === "-h") {
@@ -4118,8 +4473,9 @@ function main(argv = process.argv.slice(2)) {
   }
   if (command === "run") return ausfuehren(arbeitsverzeichnisSetzen(parseArgs(rest)));
   if (command === "areas") {
+    if (BEREICHE_UNTERBEFEHLE.has(rest[0])) return bereicheRechnen(rest[0], rest.slice(1));
     // Kein Argument: Anteil und Inventar gelten fuer die Config und den versionierten
-    // Stand, nicht fuer einen Anker. Ein uebergebenes Argument ist ein Irrtum.
+    // Stand, nicht fuer einen Anker. Jedes andere Argument ist ein Irrtum (E11).
     if (rest.length > 0) fail(t("unbekanntesArgument", { arg: rest[0] }));
     aufStdout(JSON.stringify(bereicheAuswerten(), null, 2) + "\n");
     return 0;
@@ -4139,11 +4495,16 @@ if (process.argv[1]) {
   } catch { /* argv[1] nicht aufloesbar -> kein CLI-Start */ }
 }
 if (runAsCli) {
-  try {
-    // exitCode statt process.exit: `run` faerbt den Lauf rot, ohne ihn abzuschneiden.
-    process.exitCode = await main();
-  } catch (err) {
-    fehlerMelden(err);
-    process.exit(1);
-  }
+  // Ohne await auf oberster Ebene (Issue #1718): Die Teile unter checks/ importieren
+  // checks.mjs zurueck. Wartete dieses Modul auf `main`, wartete deren dynamischer Import auf
+  // das Ende dieses Moduls — beide warteten fuer immer.
+  // exitCode statt process.exit: `run` faerbt den Lauf rot, ohne ihn abzuschneiden.
+  Promise.resolve()
+    .then(() => main())
+    .then((code) => {
+      process.exitCode = code;
+    }, (err) => {
+      fehlerMelden(err);
+      process.exit(1);
+    });
 }

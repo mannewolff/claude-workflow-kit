@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { ladeConfigMitOverrides } from "../kit/night/grundlagen.mjs";
+import { boardHerkunft, ladeConfigMitOverrides } from "../kit/night/grundlagen.mjs";
 
 /** Legt workflow.config.json und, wenn gegeben, workflow.config.local.json an; liefert den Pfad der geteilten. */
 function configs(geteilt, lokal) {
@@ -85,4 +85,12 @@ test("eine persoenliche Datei mit Tippfehler kippt den Lauf nicht", () => {
   const { config, hinweise } = laden(configs({ reviewModel: "a" }, "{ kein json"));
   assert.deepEqual(config, { reviewModel: "a" });
   assert.match(hinweise.join(""), /workflow\.config\.local\.json ist kein gueltiges JSON und wird ignoriert\./);
+});
+
+test("[1744] boardHerkunft nennt das Repo des Arbeitsverzeichnisses und den Tracker-Host ohne Schema", () => {
+  assert.deepEqual(boardHerkunft({ issueTracker: "toolbox", toolbox: { host: "https://kanban.mwolff.org/" } }, "/x/claude-workflow-kit"),
+    { repo: "claude-workflow-kit", host: "kanban.mwolff.org" });
+  assert.deepEqual(boardHerkunft({ issueTracker: "toolbox" }, "/x/kanban-kit"), { repo: "kanban-kit", host: "toolbox" },
+    "ohne toolbox.host steht der Tracker selbst");
+  assert.deepEqual(boardHerkunft({ issueTracker: "local" }, "/x/projekt"), { repo: "projekt", host: "local" });
 });

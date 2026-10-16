@@ -58,6 +58,9 @@ const {
   istIdee: dokumenteFehlt("wasPraefix", { praefix: "[Idea]" }),
   abhaengigkeitenMitHerkunft: dokumenteFehlt("wasHerkunft"),
 }));
+// Die Fence-Regel auch fuer den Pruefstand der Kette (Issue #1699): ein dritter Leser
+// derselben Regel, und sie ist zu fein, um sie zweimal richtig zu treffen.
+export { fenceLauf };
 
 // --- Abhaengigkeiten nach aussen (Plan #1199, E6) ---
 
@@ -92,7 +95,7 @@ export function leseKarte(id) {
 // Die Ueberschriften kommen aus dem Register, unter beiden Namen (Issue #1460): ein Objekt mit
 // `test` je Kopfzeile, wie `abschnittLesen` es prueft.
 const DEPS_UEBERSCHRIFT = ueberschriftZeile("abhaengigkeiten");
-const ABSCHNITTS_ENDE = /^ {0,3}##\s/;
+export const ABSCHNITTS_ENDE = /^ {0,3}##\s/;
 const LOKALE_REFERENZ = /(?<![\w`/#])#(\d+)/g;
 // Der Pflichtabschnitt eines Plandokuments (Regel P6), gelesen von der Stopp-Fragen-
 // Pruefung des Erzeugungsmodus. Name und Ausdruck gehoeren zusammen: Der Name steht in
@@ -103,6 +106,7 @@ export const OFFENE_FRAGEN_UEBERSCHRIFT = ueberschriftZeile("offeneFragen");
 // Gruenden von `planAusschluss` und im Weg nach vorn des Halt-Kommentars (Issue #896) —
 // zwei Schreibweisen desselben Abschnitts liessen den Menschen den falschen suchen.
 export const ENTSCHEIDUNGEN_NAME = ueberschriftName("architektonischeEntscheidungen", "de");
+export const ENTSCHEIDUNGEN_UEBERSCHRIFT = ueberschriftZeile("architektonischeEntscheidungen");
 // Der Pflichtabschnitt einer fachlichen Anforderung (Gate F7), gelesen von
 // `offeneFragenGrund`. Eigene Konstante neben `OFFENE_FRAGEN_NAME`: Die Ueberschrift
 // lautet anders, und die beiden Regeln koennen getrennt wandern.

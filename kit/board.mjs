@@ -60,6 +60,9 @@
  *   node board.mjs issue label remove <id> <name>
  *       Zeichnet ein Issue (z. B. kit:klaeren). Nicht fuer Status-Labels — die
  *       aendert `issue move` (Issue #249).
+ *   node board.mjs issue hold <id> --reason "<grund>" | --lift
+ *       Warten eines Fachplans auf ein Ereignis setzen oder heben, Zeile und Label in
+ *       einem Zug (Issue #1662).
  *   node board.mjs code repo-name
  *   node board.mjs code pr --from <branch> --to <branch>
  *   node board.mjs code ci-status --commit <sha>
@@ -95,7 +98,7 @@ import { spawnSync } from "node:child_process";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "5.2.0";
+const KIT_VERSION = "5.3.0";
 
 // Die Hilfe gibt es je Kommando genau einmal, englisch, in jedem Projekt (Issue #1557, Plan
 // #1548 E7). Sie antwortet, bevor ein Teil geladen ist (Plan #1199, E2).
@@ -218,6 +221,16 @@ Usage:
   node board.mjs issue label add <id> <name>
   node board.mjs issue label remove <id> <name>
       Marks an issue (e.g. kit:clarify). Status labels are changed by \`issue move\`.
+  node board.mjs issue hold <id> --reason "<reason>"
+  node board.mjs issue hold <id> --lift
+      Wait of a requirement for an external event (Issue #1662, Plan #1624 E2 to E4):
+      --reason writes or replaces the line 'Waiting for event: <reason>' in '## Goal' and
+      sets kit:on-hold, --lift removes every such line there and takes the label off. Only
+      for requirements; a plan or a work package is rejected with exit 1. Never touches
+      kit:clarify or the open questions to the PO. If the label is missing on the board,
+      the line is written anyway: label null, labelFehler with the adapter's message,
+      exit 0. Output { ok, id, wartet: <reason> | null, label: "gesetzt" | "abgenommen" |
+      null, labelFehler }. The kit never calls --lift itself.
   node board.mjs issue check-form <id> [--art requirement|plan|idea|human|task]
   node board.mjs issue check-form --body-file <path> --title "<titel>" [--art ...]
       Form check against the machine gates of the stage (Issue #628): requirement
@@ -331,6 +344,11 @@ Usage:
       stdin and rejects with exit 2 when a pipe, redirection or a further command
       takes the exception away from a command in sandbox.excludedCommands. Patterns
       from .claude/settings.json and .claude/settings.local.json.
+  node board.mjs hook write-check
+      PreToolUse hook for Edit, Write and NotebookEdit (Issue #1740): rejects with
+      exit 2 when file_path (or notebook_path) matches an Edit(...)/Write(...) rule
+      under permissions.deny in .claude/settings.json or .claude/settings.local.json,
+      absolute or relative to the project root, regardless of the permission mode.
 
   node board.mjs scenarios baseline
       The cut-off for the scenario duty (Issue #1591, Plan #1588 E3): lists every
@@ -393,7 +411,7 @@ const { KONTEXT_DEFAULTS, loadKontextConfig, kontextRepoName, heute, issueCreate
   issueGet, issueList, issueEpics, issueActivity, issueMove, issueLabel,
   issueComment, issueMelden, issueStand, issueAuftrag, issueUrsprung, issueUpdate, checkFormWege,
   titelMitArt } = await import("./board/dokumente.mjs");
-export const { GESCHUETZTE_PFADE, KOPIE_PFADE, geschuetztePfade, trifftGeschuetzt, pfadTokens, tokenFormen,
+export const { GESCHUETZTE_PFADE, KOPIE_PFADE, geschuetztePfade, schreibSperrenPfade, trifftGeschuetzt, pfadTokens, tokenFormen,
   geschuetzteTreffer, GESCHUETZT_ANKER, GESCHUETZT_LABEL, GESCHUETZT_LABEL_GESETZT, GESCHUETZT_LABEL_NICHT_GESETZT,
   GESCHUETZT_ABGEWIESEN, abgewieseneTreffer, geschuetztKommentar, geschuetztFreigabe } = await import("./board/geschuetzt.mjs");
 // Erkennt ein Label unter jedem seiner Namen (Issue #1424); exportiert war es nie.
@@ -411,13 +429,15 @@ export const { nachtlaufAbbruchGrund, nachtlaufMeldung, sitzungProtokoll, wegmar
   sitzungMeldung } = await import("./board/melder.mjs");
 // Die Befehlsverteiler der beiden Melder braucht nur Dispatch; exportiert waren sie nie.
 const { dispatchNightrun, dispatchSitzung } = await import("./board/melder.mjs");
-export const { pruefeBashZeile, pruefeHintergrund } = await import("./board/hook.mjs");
+export const { pruefeBashZeile, pruefeHintergrund, hookSchreibenPruefen } = await import("./board/hook.mjs");
 // Den Befehlsverteiler des Hooks braucht nur Dispatch; exportiert war er nie.
 const { dispatchHook } = await import("./board/hook.mjs");
 export const { SCHUTZ_AUSGESETZT, NACHPRUEFEN_KOMMANDO, NACHT_GESPERRT, rulesetSoll, schutzZustand, anleitung,
   notfallGate, nachtSperre, probe, einrichten, nachpruefen } = await import("./board/schutz.mjs");
 // Den Namen eines Rulesets braucht nur `code schutz aussetzen|wiederherstellen`; exportiert war er nie.
 const { rulesetName } = await import("./board/adapter.mjs");
+// `issue hold` und das Feld `wartet` von `issue check-form` (Issue #1662); exportiert war es nie.
+const { issueHold, ereignisGrund } = await import("./board/ereignis.mjs");
 // `issue vorgeschichte` (Issue #1539); exportiert war es nie.
 const { issueVorgeschichte } = await import("./board/vorgeschichte.mjs");
 // `code contract-repo` (Issue #1615); exportiert war es nie.
@@ -531,6 +551,11 @@ async function issueCheckForm(tracker, config, args) {
   const pflicht = hatDatei ? true : szenarienPflicht(id, config);
   const ergebnis = pruefeForm(body, title, config, dateien, configWurzel(),
     { szenarien: pflicht === true, stichtagHinweis: pflicht === "ohne-stichtag" });
+  // E9 (Issue #1662): das Warten als Feld neben ok, ohne Verstoss und ohne Einfluss auf den Exit.
+  if (ergebnis.stufe === "fachlich") {
+    const wartet = ereignisGrund(body);
+    if (wartet !== null) ergebnis.wartet = wartet;
+  }
   if (ergebnis.stufe === "issue") {
     const hinweise = await abhaengigkeitsHinweise(body, tracker);
     if (hinweise.length > 0) ergebnis.hinweise = hinweise;
@@ -701,6 +726,7 @@ async function dispatchIssue(command, args) {
     case "label":   return issueLabel(tracker, config, args, HELP);
     case "check-form": return issueCheckForm(tracker, config, args);
     case "check-protected": return issueCheckGeschuetzt(tracker, args);
+    case "hold":    return out(await issueHold(tracker, config, args));
     case "history": return issueVorgeschichte(tracker, config, args, HELP);
     default:
       unbekannterBefehl("issue", command);

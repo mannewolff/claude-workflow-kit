@@ -29,7 +29,7 @@ export const TEXTE = Object.freeze({
     hakenUnbekannt: "ketteAnbinden kennt keinen Haken '{name}'",
     abhaengigkeitUnbekannt: "ketteAbhaengigkeiten kennt keine Abhaengigkeit '{name}'",
     budgetName: "der Kette",
-    budgetBlockLeer: " — {block} in .claude/workflow.config.json fehlt oder setzt kein Feld.",
+    budgetBlockLeer: " — für {block} gelten die Vorgaben des Kits.",
     budgetDefaults: "Budget {name} aus den Defaults: {werte}{ganz}",
     ungeprueftPraefix: "ungeprueft: Label '{label}' fehlt",
     pruefungFehltSchritt: "mit /issue-review #{id} pruefen lassen, das setzt {label}; das Label {kettenLabel} bleibt dran",
@@ -41,6 +41,7 @@ export const TEXTE = Object.freeze({
     poFrageOffen: "offene Frage an den PO: {frage}",
     unbekannt: "unbekannt",
     nichtInBacklog: "steht in {status}, nicht in Backlog",
+    ketteEreignis: "wartet auf ein Ereignis: {grund} — aufheben mit `node .claude/kit/board.mjs issue hold {id} --lift`",
     ketteKlaeren: "traegt {label} — die Antwort auf die Stopp-Frage muss vorher am Fachplan stehen, dann das Label abnehmen",
     poFragen: "{frage}; die Fragen im Body beantworten und '## {name}' auf 'Keine' setzen",
     szenarienFehlen: "Fachplan #{id} hat keinen Abschnitt Szenarien; er entsteht beim Groomen (`/groom #{id}`)",
@@ -48,6 +49,7 @@ export const TEXTE = Object.freeze({
     quelleInsLeere: "die Zeile '{zeile}' verweist ins Leere — sie nennt keine Karte dieses Boards in der Form 'Issue #N' "
       + "(die Nummer wird zeichengleich verglichen, fuehrende Nullen zaehlen mit); die Zeile berichtigen, oder sie "
       + "entfernen, wenn der Plan keine fachliche Anforderung hat",
+    planEreignis: "Fachplan #{F} wartet auf ein Ereignis: {grund} — aufheben mit `node .claude/kit/board.mjs issue hold {F} --lift`",
     planKlaeren: "traegt {label} — die Entscheidung gehoert in den Plan, danach nimmt ein Mensch das Label ab",
     planEntscheidung: "eine Entscheidung wartet: {frage}; sie gehoert als Eintrag unter '## {entscheidungen}' des Plans, "
       + "danach traegt '## {offen}' wieder '{keine}' — ein Satz in der fachlichen Anforderung genuegt nicht",
@@ -76,7 +78,7 @@ export const TEXTE = Object.freeze({
     keinPlan: "kein Plan entstanden — die Session hat kein {plan}-Dokument mit der Herkunftszeile angelegt",
     planWeitere: " (weitere: {ids})",
     planEntstanden: "  Plan #{plan} entstanden aus Issue #{id}{weitere}.",
-    stoppFrageImPlan: "Stopp-Frage im Plan #{plan}",
+    planFrageWeiter: "  Plan #{plan} traegt eine offene Frage — die Kette prueft ihn trotzdem und haelt erst danach an.",
     // Teil 2: formSicherstellen bis vor mitMeldung (#1492).
     formKeinJson: "technischer Fehler: check-form #{id} lieferte kein JSON ({text})",
     formGeschuetzt: "  Formpruefung #{id}: {meldungen} — kein Korrekturfall, das Paket haelt in der Umsetzungsstufe an.",
@@ -91,8 +93,13 @@ export const TEXTE = Object.freeze({
       + "keinen Plan-Review-Marker, obwohl geprueft wurde.",
     reviewRestWeg: "Weg nach vorn: /issue-review #{id} von Hand fahren.",
     reviewRestVermerkt: "  Review #{id} abgebrochen, Befunde ohne Einarbeitung — Vermerk '{anker}' an Plan #{id} geschrieben.",
+    reviewRestNicht: "  Review #{id} abgebrochen, Befunde ohne Einarbeitung — Vermerk '{anker}' an Plan #{id} nicht geschrieben ({text}).",
+    pruefstandVermerkt: "  Vermerk '{anker}' an Plan #{id} geschrieben.",
+    pruefstandNicht: "  Vermerk '{anker}' an Plan #{id} nicht geschrieben ({text}) — der Halt bleibt.",
+    pruefstandVeraltetLog: "  Plan #{id}: Die Antwort hat den Plan über das Eintragen hinaus geändert — der Prüfstand ist veraltet.",
     reviewStart: "  Stufe review: /issue-review #{id} (Budget {minuten} min).",
     reviewStoppFrage: "Stopp-Frage aus dem Review von #{id}",
+    stoppFrageGeprueft: "Stopp-Frage im geprüften Plan #{plan}",
     letzterKommentar: "siehe den letzten Kommentar an #{id}",
     reviewDurch: "  Review #{id} durch{marker}.",
     reviewMarker: ", Marker gesetzt",
@@ -142,14 +149,15 @@ export const TEXTE = Object.freeze({
     wegAntwort: "1. Die Antwort als Eintrag unter '## {entscheidungen}' von {plan} schreiben.",
     wegOffen: "2. '## {offen}' von {plan} wieder auf '{keine}' setzen (ein Zusatz dahinter ist erlaubt). Die Antwort gehoert "
       + "NICHT in diesen Abschnitt: Dort liest die naechste Kette sie als weitere offene Frage und ueberspringt den Plan.",
-    wegReview: "3. /issue-review #{id} laufen lassen.",
     wegKlaeren: "{n}. {label} an {plan} abnehmen — und an der fachlichen Anforderung #{fachplan}, wenn es dort noch haengt.",
     wegKlaerenOhne: "{n}. {label} an {plan} abnehmen.",
     wegLabel: "{n}. Zuletzt das Label {label} an {plan} setzen.",
     wegKopf: "Die Entscheidung gehoert in {plan}, nicht in die fachliche Anforderung #{fachplan}: Die naechste Kette nimmt den "
-      + "Plan als Auftrag und faehrt von der Stufe pakete an weiter. Der Weg nach vorn:",
+      + "Plan als Auftrag und faehrt von der Stufe pakete an weiter; hat die Antwort den Plan ueber sich hinaus geaendert, "
+      + "prueft sie ihn vorher selbst erneut. Der Weg nach vorn:",
     wegKopfOhne: "Die Entscheidung gehoert in {plan}: Die naechste Kette nimmt den Plan als Auftrag und faehrt von der "
-      + "Stufe pakete an weiter. Der Weg nach vorn:",
+      + "Stufe pakete an weiter; hat die Antwort den Plan ueber sich hinaus geaendert, prueft sie ihn vorher selbst erneut. "
+      + "Der Weg nach vorn:",
     wegEntwurf: "Bis dahin geschnittene Pakete bleiben als Entwurf stehen.",
     haltKopf: "Kette {stempel}, Stufe {stufe}, Dokument #{dok}: {grund}.",
     bauendProzess: "{lauf} (Prozess {pid})",
@@ -219,10 +227,11 @@ export const TEXTE = Object.freeze({
     zielLabelsEntfernt: "  Label {namen} entfernt — Ziel {ziel}, Pruefer {pruefer} festgehalten.",
     zielKeins: "keins",
     prueferNachProjekt: "nach Projekt",
-    planUebernommen: "  Plan #{id} uebernommen — die Stufen plan und review entfallen.",
+    planUebernommen: "  Plan #{id} uebernommen — die Stufe plan entfaellt, review laeuft nur, wenn die Antwort auf eine offene Frage den Plan geaendert hat.",
     kennzeichenZurueck: "Startkennzeichen nach Laufbeginn zurückgenommen",
     nichtFrischLesbar: "  #{id} nicht frisch lesbar ({text}) — die Kette faehrt mit dem Stand vom Laufbeginn.",
     nichtMehrFreigegeben: "Kette {nummer}/{max}: #{id} beim Start nicht mehr freigegeben.",
+    wartetBeimStart: "Kette {nummer}/{max}: #{id} wartet beim Start auf ein Ereignis.",
     worktreeFehler: "technischer Fehler: {meldung}",
     ketteEnde: "  Kette zu Issue #{id}: {ausgang}{zusatz} ({kosten} $).",
     alteLabels: "Hinweis: #{id} traegt das Label '{alt}', das es seit Stufe 2 nicht mehr gibt — es hat keine Wirkung. "
@@ -236,6 +245,7 @@ export const TEXTE = Object.freeze({
     laufeKetteUnbekannt: "laufeKette kennt keine Abhaengigkeit '{name}'",
     worktreeEntfernt: "Liegengebliebenen Worktree entfernt: {pfad}",
     keinLabelWarnung: "WARNUNG: keine Karte traegt das Label '{label}' — es wird nichts verarbeitet.",
+    boardVon: "  Board von: {repo} ({host})",
     vorhandeneLabels: "  Vorhandene Labels: {labels}",
     keineLabels: "keine",
     dryBudget: "Budget: Plan {plan} min, Pakete {pakete} min, Review {review} min, Abdeckung {abdeckung} min, {kosten} "
@@ -265,7 +275,7 @@ export const TEXTE = Object.freeze({
     hakenUnbekannt: "ketteAnbinden knows no hook '{name}'",
     abhaengigkeitUnbekannt: "ketteAbhaengigkeiten knows no dependency '{name}'",
     budgetName: "of the chain",
-    budgetBlockLeer: " — {block} in .claude/workflow.config.json is missing or sets no field.",
+    budgetBlockLeer: " — the kit's defaults apply to {block}.",
     budgetDefaults: "Budget {name} from the defaults: {werte}{ganz}",
     ungeprueftPraefix: "unchecked: label '{label}' missing",
     pruefungFehltSchritt: "have it checked with /issue-review #{id}, which sets {label}; the label {kettenLabel} stays on",
@@ -277,6 +287,7 @@ export const TEXTE = Object.freeze({
     poFrageOffen: "open question to the PO: {frage}",
     unbekannt: "unknown",
     nichtInBacklog: "is in {status}, not in Backlog",
+    ketteEreignis: "waits for an event: {grund} — lift with `node .claude/kit/board.mjs issue hold {id} --lift`",
     ketteKlaeren: "carries {label} — the answer to the stop question must first be on the requirement, then remove the label",
     poFragen: "{frage}; answer the questions in the body and set '## {name}' to 'Keine'",
     szenarienFehlen: "requirement #{id} has no scenarios section; it is added during grooming (`/groom #{id}`)",
@@ -284,6 +295,7 @@ export const TEXTE = Object.freeze({
     quelleInsLeere: "the line '{zeile}' points nowhere — it names no card of this board in the form 'Issue #N' "
       + "(the number is compared character by character, leading zeros count); correct the line, or remove it if "
       + "the plan has no requirement",
+    planEreignis: "requirement #{F} waits for an event: {grund} — lift with `node .claude/kit/board.mjs issue hold {F} --lift`",
     planKlaeren: "carries {label} — the decision belongs in the plan, afterwards a human removes the label",
     planEntscheidung: "a decision is waiting: {frage}; it belongs as an entry under '## {entscheidungen}' of the plan, "
       + "afterwards '## {offen}' carries '{keine}' again — a sentence in the requirement is not enough",
@@ -312,7 +324,7 @@ export const TEXTE = Object.freeze({
     keinPlan: "no plan created — the session created no {plan} document with the origin line",
     planWeitere: " (more: {ids})",
     planEntstanden: "  Plan #{plan} created from issue #{id}{weitere}.",
-    stoppFrageImPlan: "Stop question in plan #{plan}",
+    planFrageWeiter: "  Plan #{plan} carries an open question — the chain reviews it anyway and stops only afterwards.",
     // Part 2: formSicherstellen up to mitMeldung (#1492).
     formKeinJson: "technical error: check-form #{id} returned no JSON ({text})",
     formGeschuetzt: "  Form check #{id}: {meldungen} — not a correction case, the package stops in the implementation stage.",
@@ -327,8 +339,13 @@ export const TEXTE = Object.freeze({
       + "no Plan-Review marker, although it was checked.",
     reviewRestWeg: "Way forward: run /issue-review #{id} by hand.",
     reviewRestVermerkt: "  Review #{id} aborted, findings without incorporation — note '{anker}' written on plan #{id}.",
+    reviewRestNicht: "  Review #{id} aborted, findings without incorporation — note '{anker}' not written on plan #{id} ({text}).",
+    pruefstandVermerkt: "  Note '{anker}' written on plan #{id}.",
+    pruefstandNicht: "  Note '{anker}' not written on plan #{id} ({text}) — the stop stands.",
+    pruefstandVeraltetLog: "  Plan #{id}: the answer changed the plan beyond entering it — the review state is outdated.",
     reviewStart: "  Stage review: /issue-review #{id} (budget {minuten} min).",
     reviewStoppFrage: "Stop question from the review of #{id}",
+    stoppFrageGeprueft: "Stop question in the reviewed plan #{plan}",
     letzterKommentar: "see the last comment on #{id}",
     reviewDurch: "  Review #{id} done{marker}.",
     reviewMarker: ", marker set",
@@ -378,14 +395,14 @@ export const TEXTE = Object.freeze({
     wegAntwort: "1. Write the answer as an entry under '## {entscheidungen}' of {plan}.",
     wegOffen: "2. Set '## {offen}' of {plan} back to '{keine}' (an addition after it is allowed). The answer does NOT "
       + "belong in this section: there the next chain reads it as a further open question and skips the plan.",
-    wegReview: "3. Run /issue-review #{id}.",
     wegKlaeren: "{n}. Remove {label} from {plan} — and from the requirement #{fachplan}, if it still hangs there.",
     wegKlaerenOhne: "{n}. Remove {label} from {plan}.",
     wegLabel: "{n}. Finally set the label {label} on {plan}.",
     wegKopf: "The decision belongs in {plan}, not in the requirement #{fachplan}: the next chain takes the plan as its "
-      + "order and continues from the stage pakete. The way forward:",
+      + "order and continues from the stage pakete; if the answer changed the plan beyond itself, the chain checks it "
+      + "again first. The way forward:",
     wegKopfOhne: "The decision belongs in {plan}: the next chain takes the plan as its order and continues from the "
-      + "stage pakete. The way forward:",
+      + "stage pakete; if the answer changed the plan beyond itself, the chain checks it again first. The way forward:",
     wegEntwurf: "Packages cut up to then remain as drafts.",
     haltKopf: "Chain {stempel}, stage {stufe}, document #{dok}: {grund}.",
     bauendProzess: "{lauf} (process {pid})",
@@ -455,10 +472,11 @@ export const TEXTE = Object.freeze({
     zielLabelsEntfernt: "  Label {namen} removed — goal {ziel}, reviewers {pruefer} recorded.",
     zielKeins: "none",
     prueferNachProjekt: "per project",
-    planUebernommen: "  Plan #{id} taken over — the stages plan and review are skipped.",
+    planUebernommen: "  Plan #{id} taken over — the stage plan is skipped, review runs only if the answer to an open question changed the plan.",
     kennzeichenZurueck: "start marker withdrawn after the run began",
     nichtFrischLesbar: "  #{id} not freshly readable ({text}) — the chain runs with the state from the start of the run.",
     nichtMehrFreigegeben: "Chain {nummer}/{max}: #{id} no longer released at start.",
+    wartetBeimStart: "Chain {nummer}/{max}: #{id} is waiting for an event at start.",
     worktreeFehler: "technical error: {meldung}",
     ketteEnde: "  Chain for issue #{id}: {ausgang}{zusatz} ({kosten} $).",
     alteLabels: "Note: #{id} carries the label '{alt}', which no longer exists since stage 2 — it has no effect. The "
@@ -472,6 +490,7 @@ export const TEXTE = Object.freeze({
     laufeKetteUnbekannt: "laufeKette knows no dependency '{name}'",
     worktreeEntfernt: "Removed leftover worktree: {pfad}",
     keinLabelWarnung: "WARNING: no card carries the label '{label}' — nothing is processed.",
+    boardVon: "  Board of: {repo} ({host})",
     vorhandeneLabels: "  Labels present: {labels}",
     keineLabels: "none",
     dryBudget: "Budget: plan {plan} min, packages {pakete} min, review {review} min, coverage {abdeckung} min, "

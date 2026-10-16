@@ -1623,25 +1623,12 @@ export class ToolboxIssueTracker {
 
   async createIssue({ title, body, derivedFrom, idempotencyKey }) {
     const { host } = this._auth();
-    // Neu angelegte Issues gehen DIREKT ins Backlog und tragen sofort ihre
-    // Board-Nummer. Das ist die Vorgabe (Issue #313); der Ideen-Speicher
-    // (kanban-kit #245) ist die bewusste Abwahl per `ideaStored: true`.
-    //
-    // Deshalb `!== true` und nicht `=== false`: Frueher lenkte ein FEHLENDES Feld
-    // die Karte in den Pool — ohne Nummer, in keiner Spalte, sichtbar erst nach dem
-    // manuellen Einplanen. Aufgefallen ist das niemandem, weil dieses Repo den Wert
-    // explizit setzt und das Dogfooding damit am Default vorbeilief.
-    //
-    // Das Wire-Feld heisst seit kanban-kit 2026-08 `direct` (Issue #295) — der
-    // frueher gesendete Schluessel `ideaStored` wird serverseitig ignoriert und geht
-    // deshalb in KEINEM Modus mehr mit. Der Config-Schluessel behaelt bewusst seinen
-    // Namen: Er beschreibt die Absicht des Nutzers, nicht die API-Form, und eine
-    // Umbenennung waere fuer jedes Bestandsprojekt ein stiller Bruch.
-    //
-    // Backends ohne `direct` ignorieren das Feld und legen wie bisher an.
-    const direkt = this._cfg.toolbox?.ideaStored !== true;
-    const payload = { title, body: body || "", column: "BACKLOG" };
-    if (direkt) payload.direct = true;
+    // Neu angelegte Issues gehen immer DIREKT ins Backlog und tragen sofort ihre
+    // Board-Nummer (Issue #313). Den Ideen-Speicher gibt es nicht mehr, sein Schalter
+    // `toolbox.ideaStored` ist entfallen und wirkt nicht (Issue #1726, Plan #1710 A11).
+    // Das Wire-Feld heisst `direct` (Issue #295); Backends ohne `direct` ignorieren es
+    // und legen wie bisher an.
+    const payload = { title, body: body || "", column: "BACKLOG", direct: true };
     // Die Herkunft geht nur beim Anlegen mit (Issue #356). Ein Nachtragen gibt es
     // nicht: Eine board-lose Pool-Idee ist fuer den Adapter unerreichbar, und der
     // idempotente Wiederholungs-Ingest verwirft ein spaeter mitgeschicktes Feld.
@@ -1668,17 +1655,10 @@ export class ToolboxIssueTracker {
     // interpretToolboxCreateResponse wertet nur die Antwort aus und kennt den
     // gesendeten Modus nicht — deshalb sitzt die Pruefung hier. Ohne sie meldete ein
     // direkt angefordertes Anlegen, das nur eine ideaId zurueckbringt, faelschlich
-    // `pending` samt Pool-Hinweis: Der Aufruf saehe erfolgreich aus, die Karte haette
+    // eine Idee ohne Nummer: Der Aufruf saehe erfolgreich aus, die Karte haette
     // keine Nummer, und niemand bemerkt es.
-    if (direkt && result.pending) {
-      throw new BoardError(t("direktOhneNummer"));
-    }
     if (result.pending) {
-      return {
-        ...result,
-        url: `${host}/kanban`,
-        hinweis: t("alsIdeeAngelegt"),
-      };
+      throw new BoardError(t("direktOhneNummer"));
     }
     return { ...result, url: `${host}/kanban` };
   }

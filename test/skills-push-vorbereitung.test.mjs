@@ -114,7 +114,8 @@ test("morgens fährt Schritt 7 auf dem Weg über den Build-Dienst den Prüfzweig
   assert.match(s, /Warten auf den Build-Dienst/, "die Übernahme wartet nicht auf den Build-Dienst");
   assert.match(s, /„Weg über den Build-Dienst"/, "die Übernahme verweist nicht auf den Abschnitt mit ci-status");
   assert.match(s, /nur bei Grün/, "die Übernahme pusht <mainBranch> nicht nur bei Grün");
-  assert.match(s, /UI-Prüfung[^.]*Frage an den Menschen/, "eine offene UI-Prüfung wird nicht als Frage gestellt");
+  // Die Frage nach Oberflächenänderungen stellt Schritt 2, auch bei Übernahme (Plan #1671, E7).
+  assert.match(s, /Frage aus Schritt 2 gilt auch hier/, "die Übernahme verweist nicht auf die Frage aus Schritt 2");
 });
 
 test("nach dem Push und bei jedem Nicht-Übernehmen wird verworfen", () => {

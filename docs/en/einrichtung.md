@@ -4,47 +4,43 @@
 Each part of this page says what you do and what you see afterwards. Every single setting (Einstellung) is listed with its effect and default under [Settings](/en/einstellungen).
 
 ## Installation
-<!-- de: 97c925af0166 -->
+<!-- de: 477c2810c77f -->
 
-**What you do.** Change into your project folder and start the installer:
-
-```bash
-npx claude-workflow-kit
-```
-
-Without npm it works like this:
+**What you do.** Change into your project folder, download the installer and start it:
 
 ```bash
 curl -O https://docs.mwolff.org/install.mjs
 node install.mjs
 ```
 
+What your computer needs for this is listed in the [getting started guide](/en/quickstart).
+
 The installer asks in this order:
 
 1. **Language** of the kit, `de` or `en`.
-2. **Global or project-local.** Globally the skills land in `~/.claude/skills/` and apply in all projects. Project-locally they land in `./.claude/skills/`; that is the way for a team.
+2. **Global or project-local.** Global: `~/.claude/skills/`, applies in all projects. Project-local: `./.claude/skills/`, the way for a team.
 3. **Code host**: `github`, `gitlab` or `local`.
-4. **Issue tracker**: the default is the code host, any other choice is possible.
+4. **Issue tracker**: `github`, `gitlab` or `local`; default `github`.
 5. **Main branch** (target of `/push-main`) and **production branch** (target of `/merge-production`).
 6. **Review scope**: `diff` shows the reviewer only the changed lines, `full` all files.
 7. **Review model or review command**, exactly one of the two. A model runs as a subagent; a command starts a foreign tool that receives the prompt via stdin.
 8. **Hook in the commit gate**, project-local only and only if no other `core.hooksPath` is set.
-9. **Areas** and, for each existing check, its assignment, project-local only (see [Areas](#area-based-checks-checkareas)). An empty input leaves everything as it is.
+9. **Areas** and, for each existing check, its assignment, project-local only (see [Areas](#area-based-checks-checkareas)); on first setup with the suggestion from `areas suggest`; empty leaves everything as it is.
 10. **Vault path**, global only. With a path the installer writes `~/.claude/kontext.config.json`.
 
 With `github` and a project-local installation, three questions on **protecting the main branch** follow the code host question: whether the project has GitHub Actions, whether the check before the push should move there and the main and release branches be protected, and which check branch applies (default `kit-pruefung`). With yes the installer pushes to the check branch as a probe, waits for the build service and reports `scharf` (rulesets set), `anleitung` (probe passed, the output names the steps at GitHub), `offen` (no run of the build service) or `nicht moeglich`.
 
-An existing project switches protection on later with `node install.mjs --protection`; the call changes only `pushPruefung`. `node .claude/kit/board.mjs code protection status` names the state at any time.
+An existing project switches protection on later with `node install.mjs --protection`; the call changes only `pushCheck`. `node .claude/kit/board.mjs code protection status` names the state at any time.
 
-**What you see afterwards.** Restart Claude Code. The eighteen skills appear under `/help`, and `/session-start` reports the state of the project.
+**What you see afterwards.** Restart Claude Code. The seventeen skills appear under `/help`, and `/session-start` reports the state of the project. The installer reports uncommitted files last with `WARNING`; commit or discard them before the runner, otherwise it stops.
 
 ### What the installer writes
-<!-- de: 5860da125e14 -->
+<!-- de: 810c9c44b3d4 -->
 
 - the skills under `.claude/skills/`,
 - `.claude/workflow.config.json` with your answers,
 - `CLAUDE-workflow.md` with the process description and the gate registers `CLAUDE-Fachplan.md` and `CLAUDE-Plan.md`,
-- the tools under `.claude/kit/`: board adapter (Board-Adapter) `board.mjs`, check run (Prüflauf) `checks.mjs`, night runner (Nacht-Runner) `night.mjs` and their parts,
+- the tools under `.claude/kit/`: board adapter (Board-Adapter) `board.mjs`, check run (Prüflauf) `checks.mjs`, runner (Runner) `night.mjs` and their parts,
 - with a project-local installation, the block in `.gitignore`, the hooks in `.claude/settings.json` and the commit gate under `.githooks/`.
 
 Everything under `.claude/` except the config is generated: the next installer run writes it anew. It therefore does not belong in the repo. The block in `.gitignore` begins like this:
@@ -61,19 +57,19 @@ The first line must read `.claude/*`, not `.claude/`: git does not descend into 
 
 **Switching off.** Delete the entry from the `hooks` block. The file is not under version control, so the decision applies to your machine. The next installer run enters it again; you silence the reporter permanently by taking away its token.
 
-**The known gap: worktrees.** A freshly created `git worktree` carries only versioned files, so neither `settings.json` nor `.claude/kit/`. A session in it reports nothing and has no hook. Remedy: copy both over from the main working tree. The night chain's worktrees are reported by the runner itself.
+**The known gap: worktrees.** A freshly created `git worktree` carries only versioned files, so neither `settings.json` nor `.claude/kit/`. A session in it reports nothing and has no hook. Remedy: copy both over from the main working tree. The worktrees of the chain (Kette) are reported by the runner itself.
 
 ### Protected files
-<!-- de: 66bd03f73a0c -->
+<!-- de: 46247ea1a23d -->
 
 `.claude/settings.json`, `.claude/settings.local.json` and `.claude/hooks/` may only be written by a human; Claude Code rejects every write access to them. A work package (Arbeitspaket) that has to change one of them stops. The label `kit:protected`, like `review:done`, has to be created once per board; unlike `kit:clarify` it shows not an open question but a waiting action, and only the human may remove it. The halt comment begins with `## Geschuetzte Datei` and names every file together with the line from the package.
 
-Already when a package is written, `issue check-form` checks the form gates I7 to I9: the task names at least one file (I7), none of them is protected (I8), and it names the source instead of the installed copy under `.claude/kit/` (I9). Which protected files a package names and what the halt comment says is supplied by `issue check-protected <id>`; with `--path <pfad>` a path rejected while writing is added. In the night report such a halt appears with the kind `geschuetzt`, separate from the open questions.
+Already when a package is written, `issue check-form` checks the form gates I7 to I9: the task names at least one file (I7), none of them is protected (I8), and it names the source instead of the installed copy under `.claude/kit/` (I9). Which protected files a package names and what the halt comment says is supplied by `issue check-protected <id>`; with `--path <pfad>` a path rejected while writing is added. In the run report (Laufbericht) such a halt appears with the kind `geschuetzt`, separate from the open questions.
 
 **What you do then.** Make the change to the file yourself and remove `kit:protected`. At the next attempt the package counts as released.
 
 ### The commit gate
-<!-- de: db34961bfabb -->
+<!-- de: 41ff43506ad9 -->
 
 The commit gate rejects every commit that was not preceded by a green `node .claude/kit/checks.mjs run` on the same state. It applies to every commit in the repo: from the skills, by hand, from a GUI client. A tool without `node` in the PATH is rejected.
 
@@ -88,17 +84,17 @@ Two versioned files carry it: `.githooks/pre-commit` calls `.githooks/gate.mjs`.
 3. With its own hook manager the project hooks in the call itself.
 4. The assurance applies per committed file, not to the state as a whole. Whoever commits `A` and leaves the matching `B` lying around creates a state nobody has checked.
 
-At night the night runner additionally evaluates the evidence after every round; if it is missing or red, the round counts as a failure. Interactively nobody steps in; there the gate remains the safeguard.
+Unattended, the runner additionally evaluates the evidence after every round; if it is missing or red, the round counts as a failure. Interactively nobody steps in; there the gate remains the safeguard.
 
 ### Which version is my installation?
-<!-- de: 7b0f456c6fc5 -->
+<!-- de: 78154ab831df -->
 
 ```bash
 node .claude/kit/board.mjs --version
 node .claude/kit/night.mjs --version
 ```
 
-Both name their kit version; `node install.mjs --version` names the current one. If your copy lags behind, you run the installer again. If the two files drift apart, the night runner warns at start.
+Both name their kit version; `node install.mjs --version` names the current one. If your copy lags behind, you run the installer again. If the two files drift apart, the runner warns at start.
 
 ## What is the vault?
 <!-- de: f6ec8611314a -->
@@ -120,7 +116,7 @@ You create `Projekte/` and `Log/` once by hand.
 **What you see afterwards.** `/session-start` names at the beginning what it loaded from the vault, and `/document` writes the daily log and the project note.
 
 ## The config file
-<!-- de: 3ac5a081d7c6 -->
+<!-- de: 1fdacccb9946 -->
 
 `.claude/workflow.config.json` holds everything project-specific. The skills read only from it:
 
@@ -139,12 +135,12 @@ You create `Projekte/` and `Log/` once by hand.
 }
 ```
 
-`buildChecks` contains the check commands that `node .claude/kit/checks.mjs run` executes before every commit and `/local-check` before the push: the affected ones, selected by the areas the package touches. Every one executed must be green. `mutationCommand` runs after them in `/local-check`; empty switches it off. `triggers` holds the phrases of the three stop points (Stop-Punkte). `columns` renames the board's columns.
+`buildChecks` contains the check commands that `node .claude/kit/checks.mjs run` executes before every commit and `/push-main` before the push: the affected ones, selected by the areas the package touches. Every one executed must be green. `mutationCommand` runs once in `checks.mjs run --stage push`, after the `buildChecks`; its result is only reported and stops nothing. Empty switches it off. `triggers` holds the phrases of the three stop points (Stop-Punkte). `columns` renames the board's columns.
 
 Instead of editing the file by hand, you can use the [settings interface](/en/einstellungen) (Einstellungs-Oberfläche). It checks before saving.
 
 ### Area-based checks: `checkAreas`
-<!-- de: 01192d6f6846 -->
+<!-- de: b31188404278 -->
 
 An entry in `buildChecks` can say which areas (Bereiche) it is responsible for:
 
@@ -170,7 +166,7 @@ String form and `always` behave the same and say different things: the string ma
 
 `checkAreas` assigns path patterns to every area. `*` applies within a path segment, `**` across segment boundaries; `/` is the separator every path is normalised to. The kit brings the evaluation along, without a runtime dependency.
 
-The implement skills check before the commit against `HEAD`: the diff is exactly this work package. `/local-check` checks before the push against `git merge-base HEAD origin/<mainBranch>` and measures everything since the last push.
+The implement skills check before the commit against `HEAD`: the diff is exactly this work package. `/push-main` checks before the push against `git merge-base HEAD origin/<mainBranch>` and measures everything since the last push.
 
 Swapped, both would go wrong. `merge-base` before the commit would collect foreign packages, and a red result would hit the wrong issue.
 
@@ -180,37 +176,39 @@ Swapped, both would go wrong. `merge-base` before the commit would collect forei
 
 If changes often end up in the full scope, the assignment should be improved, not the rule softened.
 
-Files with nothing to check go into `ohnePruefung`, each with a pattern and a mandatory reason. They trigger no check and appear in the report with their reason. If a file also matches a pattern from `checkAreas`, the area wins. A JavaScript file without a pattern inherits the areas of the files that import it.
+Files with nothing to check go into `noCheck`, each with a pattern and a mandatory reason. They trigger no check and appear in the report with their reason. If a file also matches a pattern from `checkAreas`, the area wins. A JavaScript file without a pattern inherits the areas of the files that import it.
 
 Without `checkAreas` all checks run unchanged; nobody silently loses a check.
 
-`mutationCommand` is not part of the selection and always runs.
+`mutationCommand` is not part of the selection and always runs at the `push` stage.
 
 `node .claude/kit/checks.mjs plan` shows the selection without executing anything.
 
-### Staged checks: `stufe`
-<!-- de: 84a6fb71622d -->
+### Staged checks: `stage`
+<!-- de: fe0c9241ae76 -->
 
 An entry can say when its turn comes (stage, Stufe):
 
 ```json
-{ "cmd": "mvn verify -Pintegration", "stufe": "push" }
+{ "cmd": "mvn verify -Pintegration", "stage": "push" }
 ```
 
 | Stage | Point in time | Skill |
 | --- | --- | --- |
-| `paket` | before the local commit | `/implement-next`, `/implement-ready`, `/implement-done`, `/local-check` |
+| `paket` | before the local commit | `/implement-next`, `/implement-ready`, `/implement-done` |
 | `push` | before publishing to main | `/push-main` |
 | `merge` | before the release to production | `/merge-production` |
 
 The stages are cumulative, and every check runs once before the release: `push main` runs the package and push stages in full, `merge production` only what `push main` did not check. No check is dropped; a later one appears before as an omission with its stage as the reason, at `merge production` for example as `Stufe push, geprueft beim push main`. If the field is missing, `paket` applies, and existing configurations stay unchanged.
 
+If a run of the package stage is red and `formatFixCommand` is set, `checks.mjs run` runs the fix once and a second pass; that is not a repetition in the sense of `--retry`.
+
 **Short release.** Put long checks on the stage `push` instead of `merge`; the price: every `push main` takes longer by them.
 
-At least one check belongs on the package stage (Paketstufe), otherwise a work package has no gate, and night mode (Nachtbetrieb) does not start. `stufe` is neither one of the `reviewStufen` nor the task level (Aufgabenstufe) of the night chain.
+At least one check belongs on the package stage (Paketstufe), otherwise a work package has no gate, and the runner does not start. `stage` is neither one of the `reviewStages` nor the task level (Aufgabenstufe) of the chain.
 
-### Completion and publishing: `nichtBeimAbschluss`
-<!-- de: d57da8fbaf36 -->
+### Completion and publishing: `notAtCompletion`
+<!-- de: 3cffcf2694c0 -->
 
 A check of stage `paket` can be left out when a single card (Karte) is completed and run only before publishing:
 
@@ -218,13 +216,13 @@ A check of stage `paket` can be left out when a single card (Karte) is completed
 {
   "buildChecks": [
     { "cmd": "mvn -q test", "areas": ["backend"] },
-    { "cmd": "mvn -q verify -DskipUnitTests", "areas": ["backend"], "nichtBeimAbschluss": "zusammenspiel" },
-    { "cmd": "mvn -q verify jacoco:check", "areas": ["backend"], "nichtBeimAbschluss": "volleTestmenge" }
+    { "cmd": "mvn -q verify -DskipUnitTests", "areas": ["backend"], "notAtCompletion": "zusammenspiel" },
+    { "cmd": "mvn -q verify jacoco:check", "areas": ["backend"], "notAtCompletion": "volleTestmenge" }
   ]
 }
 ```
 
-The unit tests (surefire) run for every card. The integration tests (failsafe) check the interplay, the coverage (jacoco) needs the full set of tests; both run before publishing in `/push-main`. Only the completion run with `--finish <kartennummer>` may leave them out. With `abschlussBereiche` the check runs anyway when the package touches one of these areas directly. A missing field leaves everything as it is.
+The unit tests (surefire) run for every card. The integration tests (failsafe) check the interplay, the coverage (jacoco) needs the full set of tests; both run before publishing in `/push-main`. Only the completion run with `--finish <kartennummer>` may leave them out. With `completionAreas` the check runs anyway when the package touches one of these areas directly. A missing field leaves everything as it is.
 
 ### Who was it? The culprit search
 <!-- de: 9f9dc8266644 -->
@@ -236,13 +234,13 @@ If a run with `--stage push` turns red, it names the cards whose changes touch t
 
 `node .claude/kit/effectiveness.mjs evaluate` writes `.claude/wirksamkeit.md`. One block names the average check time per card across its completion runs, next to the comparison value without omissions. It is information and not a gate.
 
-### Quality measurement and mark: `guete`
-<!-- de: 72eb0e0d9301 -->
+### Quality measurement and mark: `quality`
+<!-- de: 257fe0f69a97 -->
 
-At most one entry may be a quality measurement: it measures how many deliberately inserted faults the tests notice. The block `guete` carries a `muster`, a regular expression with exactly one group for the percentage, and a `marke` from 0 to 100:
+At most one entry may be a quality measurement: it measures how many deliberately inserted faults the tests notice. The block `quality` carries a `pattern`, a regular expression with exactly one group for the percentage, and a `marker` from 0 to 100:
 
 ```json
-{ "cmd": "mvn -q org.pitest:pitest-maven:mutationCoverage", "stufe": "push", "guete": { "muster": "Killed \\d+ \\((\\d+)%\\)", "marke": 80 } }
+{ "cmd": "mvn -q org.pitest:pitest-maven:mutationCoverage", "stage": "push", "quality": { "pattern": "Killed \\d+ \\((\\d+)%\\)", "marker": 80 } }
 ```
 
 | Tool | Output | Pattern |
@@ -253,7 +251,7 @@ At most one entry may be a quality measurement: it measures how many deliberatel
 A value below the mark stops publishing like a red mandatory check, not a stop point of its own; so does a missing value. Without the designation there is neither measurement nor mark nor stop. `mutationCommand` is not a quality measurement: it carries no mark and stops nothing.
 
 ## Language of the kit
-<!-- de: cd14d510f5f7 -->
+<!-- de: 53d0a6943cbd -->
 
 The kit speaks German or English per project. The setting is called `language`, values `de` and `en`, default German. A new project chooses with the installer's first question.
 
@@ -263,14 +261,14 @@ The kit speaks German or English per project. The setting is called `language`, 
 node install.mjs --language en
 ```
 
-The installer backs up the config as `.claude/workflow.config.json.vor-umstellung`, sets the language and renames the settings in both config files to the names of the new language. Values you chose yourself, such as your own label names, stay. The kit reads every setting under its German and its English name; if both are there, the one of the project language applies.
+The installer backs up the config as `.claude/workflow.config.json.vor-umstellung`, sets the language and switches the values of fixed enumerations in both config files to the new language, for example `stage` from `paket` to `package`. The settings themselves carry their English name in every language; the switch does not rename them. Values you chose yourself, such as your own label names, stay. The kit also reads every setting under its old German name; if both are there, the English one applies.
 
-**What you see afterwards.** Under `Umbenannt` every renamed setting with both names. Under `Offen` what the switch does not take care of, for example cards with a title prefix of the other language or labels still missing on the board. The last line names the way back, `node install.mjs --language de`.
+**What you see afterwards.** Under `Umbenannt` every switched value with both spellings. Under `Offen` what the switch does not take care of, for example cards with a title prefix of the other language or labels still missing on the board. The last line names the way back, `node install.mjs --language de`.
 
 Messages, reports, comments on the cards and the interfaces are in the project language from the next call on. What is already on the board stays. Lines the kit reads back later, such as `## Laufstand` or `Autor-Modell:`, it recognises in both languages; `node .claude/kit/board.mjs names` outputs which version it writes. JSON field names, file names under `.claude/` and the form words of findings stay the same in both languages.
 
 ### Labels and title prefixes
-<!-- de: ca947269fbb0 -->
+<!-- de: 986beddb886a -->
 
 Labels and title prefixes carry the English name in every project.
 
@@ -278,18 +276,19 @@ Labels and title prefixes carry the English name in every project.
 |-------|------|
 | question waits for the human | `kit:clarify` |
 | protected file waits for the human | `kit:protected` |
-| variant B of the night chain | `kit:carry-through` |
+| variant B of the chain | `kit:carry-through` |
 | check run | `kit:check` |
 | run is running, aborted, waiting | `run:running`, `run:aborted`, `run:waiting` |
 | trace of the review | `review:done` |
 | questions to the PO settled | `kit:clarified` |
+| requirement waits for an event | `kit:on-hold` |
 | goal of the chain | `goal:plan`, `goal:packages`, `goal:implementation`, `goal:push-prepared` |
 | prefixes | `[Requirement]`, `[Idea]`, `[Plan]`, `[Human]`, `[Task]` |
 
 In addition there are `kit:night`, `kit:nightrun`, `planreview:1` and `planreview:2`. The kit also recognises the German names on open cards; the mapping is under [Names for those moving up from version 4](/en/dokumentation#names-for-those-moving-up-from-version-4). `issue create --art requirement|plan|idea|human|task` sets the matching prefix itself.
 
 ## Team config and personal deviations
-<!-- de: 9e81507c8080 -->
+<!-- de: 73cbad4f7ad3 -->
 
 The config consists of two files:
 
@@ -304,14 +303,14 @@ From the local file only these fields apply:
 |---|---|
 | `reviewModel` | choice of model is taste and budget |
 | `reviewCommand` | the foreign CLI is installed locally |
-| `reviewLesegrenze` | the read-only switch of this CLI |
+| `reviewReadLimit` | the read-only switch of this CLI |
 | `reviewScope` | some prefer reading the full source |
 | `triggers` | typing habit for the stop phrases |
 | `toolbox.tokenFile` | points to a token in your own file system |
 
 The kit ignores everything else and reports it on stderr. The whole team must see `buildChecks` and `columns` the same: whoever could configure their gate away locally would have none, and deviating columns produce an empty issue list instead of an error.
 
-`reviewModel` and `reviewCommand` give way as a pair. If the local file sets one of them, the other drops out of the shared one, and `reviewLesegrenze` goes with `reviewCommand`.
+`reviewModel` and `reviewCommand` give way as a pair. If the local file sets one of them, the other drops out of the shared one, and `reviewReadLimit` goes with `reviewCommand`.
 
 **What you do.** Write personal values into `.claude/workflow.config.local.json`. **What you see.** `git status` stays clean; a change to the shared file, by contrast, shows up there.
 
@@ -324,13 +323,13 @@ Every file in the vault that a skill writes to by itself belongs to exactly one 
 - **The shared umbrella note** is never written by `/document` by itself. With an effect beyond one project, the skill proposes an entry and writes only after your consent.
 
 ## Issue tracker and code host
-<!-- de: 9f56567c3436 -->
+<!-- de: 2ffb8d8656d9 -->
 
 Two independent settings: `codeHost` for repo and pull requests, `issueTracker` for issues and board. All skills talk only to the board adapter `.claude/kit/board.mjs`; when the values change, they follow at the next call.
 
 The board needs five columns (Spalten): Backlog, Ready, In progress, In review, Done. `issue list --status ready` returns the cards in the column's order, top first; with drag and drop you decide what gets implemented next. Only the tracker `local` sorts by number.
 
-You create the kit's labels once per board, at least `kit:clarify`, `kit:protected` and `review:done`, and for the night chain (Nacht-Kette) its labels from the table above as well.
+You create the kit's labels once per board, at least `kit:clarify`, `kit:protected` and `review:done`, and for the chain its labels from the table above as well.
 
 ### Origin on the board: `--derived-from`
 <!-- de: 0c4d11d93653 -->
@@ -384,7 +383,7 @@ title: Beispiel-Issue
 ```
 
 ### Toolbox
-<!-- de: 287f16c10676 -->
+<!-- de: 147b1f650d88 -->
 
 A personal Kanban board with its own server; the installer does not ask for it.
 
@@ -402,7 +401,7 @@ echo "<token>" > .claude/tbx.token
 echo ".claude/tbx.token" >> .gitignore
 ```
 
-The column names are fixed. New cards land with a number in the backlog; with `ideaStored: true` they land in the idea pool instead. If a call behind a proxy ends with „fetch failed“, `NODE_USE_ENV_PROXY=1` is missing; `board.mjs` sets it itself, your own Node calls need it too.
+The column names are fixed. New cards land with a number in the backlog. If a call behind a proxy ends with „fetch failed“, `NODE_USE_ENV_PROXY=1` is missing; `board.mjs` sets it itself, your own Node calls need it too.
 
 ### Switching trackers
 <!-- de: 10799b515a09 -->

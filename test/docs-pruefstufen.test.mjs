@@ -68,7 +68,7 @@ test("der Nachtbetrieb-Abschnitt der Vorlage beschreibt die Nacht-Kette statt ei
     assert.ok(idx >= 0, `${name}: kein Nachtbetrieb-Abschnitt`);
     const abschnitt = text.slice(idx).split(/\n## /)[0];
     assert.match(abschnitt, /--chain/, `${name}: --chain fehlt im Nachtbetrieb-Abschnitt`);
-    assert.match(abschnitt, /night\.kette/, `${name}: der Config-Block night.kette fehlt`);
+    assert.match(abschnitt, /night\.chain/, `${name}: der Config-Block night.chain fehlt`);
     assert.doesNotMatch(abschnitt, /--stufe|--review|--erzeuge/, `${name}: ein entfallener Schalter steht noch da`);
   }
 });
@@ -86,11 +86,13 @@ test("alle drei Dokumente nennen den einen Einstieg fuer drei Stufen", () => {
     assert.match(absatz, /kein\s+eigenes\s+Kommando|bewusst\s+kein/i,
       `${name}: es steht nicht, dass es kein Kommando je Stufe gibt`);
   }
-  // Und die Aussage, dass das nicht am Nachtbetrieb haengt.
-  for (const [name, text] of [...beide, ["docs/prozess.md", PROZESS]]) {
+  // Und die Aussage, dass das nicht am Nachtbetrieb haengt. Die Doku nennt ihn Runner (Issue #1748).
+  for (const [name, text] of beide) {
     assert.match(text, /interaktiv genauso wie im Nachtbetrieb/i,
       `${name}: die Gleichstellung von interaktiv und Nachtbetrieb fehlt`);
   }
+  assert.match(PROZESS, /interaktiv genauso wie im Runner/i,
+    "docs/prozess.md: die Gleichstellung von interaktiv und Runner fehlt");
 });
 
 test("die Skill-Tabellen weisen /issue-review als Drei-Stufen-Kommando aus", () => {
@@ -143,12 +145,12 @@ test("die Zwei-Modelle-Formulierung ist an beiden Fundstellen angepasst", () => 
   assert.doesNotMatch(stopPunkte, /von zwei Modellen/,
     "der Stop-Punkte-Abschnitt behauptet weiterhin zwei Modelle je Issue");
 
-  const nacht = lies("docs", "nachtbetrieb.md");
-  const idx = nacht.indexOf("## Die Nacht-Kette\n");
-  assert.ok(idx >= 0, "der Abschnitt zur Nacht-Kette fehlt");
+  const nacht = lies("docs", "runner.md");
+  const idx = nacht.indexOf("## Die Kette\n");
+  assert.ok(idx >= 0, "der Abschnitt zur Kette fehlt");
   const kette = nacht.slice(idx).split(/\n## /)[0];
   assert.doesNotMatch(kette, /durch zwei fremde Modelle/,
-    "der Abschnitt zur Nacht-Kette behauptet weiterhin zwei fremde Modelle");
+    "der Abschnitt zur Kette behauptet weiterhin zwei fremde Modelle");
   assert.match(kette, /der Prüfer der Stufe/, "ein Prüfer am Plan steht nicht da");
 });
 

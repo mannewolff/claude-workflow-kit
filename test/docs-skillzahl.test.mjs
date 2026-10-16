@@ -10,26 +10,25 @@
 // waere schlimmer als gar keine Aenderung, weil dann beide Zahlen im selben Dokument
 // stehen. Zweitens, dass alle drei Dateien dieselbe neue Zahl tragen.
 //
-// Drittens — und das ist der Test, der ueber dieses Issue hinaus traegt — dass die
-// Tabelle der Kurzanleitung so viele Zeilen hat, wie es Skills gibt. Ein Stringliteral
-// allein verfaellt still: Kommt ein Skill dazu, bleibt "sechzehn Skills" grammatisch
-// heil und wird trotzdem falsch. Der Abgleich gegen `skills/` bricht an dieser Stelle.
+// Drittens, dass der Einstieg fuer die Liste der Skills auf `/prozess#die-skills` verweist,
+// statt eine eigene Tabelle zu fuehren (Issue #1757, Plan #1753, E12): Die Liste steht an
+// einer Stelle, und `test/docs-stand.test.mjs` prueft dort je Skill eine Ueberschrift.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...teile) => readFileSync(join(repoRoot, ...teile), "utf-8");
 
-// Die englische Fassung zaehlt mit "eighteen" (Issue #1370, seit #1514 mit /groom, seit #1630 mit /triage); die Konfiguration traegt beide
+// Die englische Fassung zaehlt mit "seventeen" (Issue #1370, seit #1514 mit /groom, seit #1630 mit /triage, seit #1679 ohne /local-check); die Konfiguration traegt beide
 // Beschreibungen und steht deshalb in beiden Listen.
 const SPRACHEN = [
   {
-    zaehlwort: "achtzehn",
-    alteZaehlung: /vierzehn Skills|zw(ö|oe)lf Skills|f(ü|ue)nfzehn Skills|sechzehn Skills|siebzehn Skills/i,
+    zaehlwort: "siebzehn",
+    alteZaehlung: /vierzehn Skills|zw(ö|oe)lf Skills|f(ü|ue)nfzehn Skills|sechzehn Skills|achtzehn Skills/i,
     dateien: [
       ["docs", "dokumentation.md"],
       ["docs", "quickstart.md"],
@@ -39,8 +38,8 @@ const SPRACHEN = [
     ],
   },
   {
-    zaehlwort: "eighteen",
-    alteZaehlung: /fourteen skills|twelve skills|fifteen skills|sixteen skills|seventeen skills/i,
+    zaehlwort: "seventeen",
+    alteZaehlung: /fourteen skills|twelve skills|fifteen skills|sixteen skills|eighteen skills/i,
     dateien: [
       ["docs", "en", "dokumentation.md"],
       ["docs", "en", "quickstart.md"],
@@ -72,24 +71,11 @@ for (const { zaehlwort, alteZaehlung, dateien } of SPRACHEN) {
   }
 }
 
-test("die Skill-Tabelle der Kurzanleitung fuehrt jeden Skill genau einmal", () => {
-  const vorhanden = readdirSync(join(repoRoot, "skills"), { withFileTypes: true })
-    .filter((e) => e.isDirectory())
-    .map((e) => e.name)
-    .sort();
-
-  const gelistet = lies("docs", "quickstart.md")
-    .split("\n")
-    .map((zeile) => /^\|\s*`\/([a-z-]+)`/.exec(zeile))
-    .filter(Boolean)
-    .map((treffer) => treffer[1])
-    .sort();
-
-  assert.deepEqual(
-    gelistet,
-    vorhanden,
-    "docs/quickstart.md: die Skill-Tabelle deckt sich nicht mit den Ordnern in skills/",
-  );
+test("der Einstieg verweist fuer die Skills auf prozess#die-skills und fuehrt keine eigene Tabelle", () => {
+  const text = lies("docs", "quickstart.md");
+  assert.match(text, /\]\(\/prozess#die-skills\)/, "docs/quickstart.md: der Verweis auf /prozess#die-skills fehlt");
+  const zeilen = text.split("\n").filter((zeile) => /^\|\s*`\/[a-z-]+`/.test(zeile));
+  assert.deepEqual(zeilen, [], "docs/quickstart.md: eine Skill-Tabelle steht noch im Einstieg");
 });
 
 test("die Kurzanleitung verweist auf die Auswahlregel statt sie zu wiederholen", () => {

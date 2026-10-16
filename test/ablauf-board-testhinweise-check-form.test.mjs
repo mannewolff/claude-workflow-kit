@@ -42,6 +42,9 @@ ${verifizierung}
 `;
 }
 
+// Die Vorgeschichte ist ohne Eintrag an (Issue #1727); hier geht es nur um die Testhinweise.
+const OHNE_VORGESCHICHTE = { vorgeschichte: false };
+
 const NAV = "src/app/nav/side-nav.ts";
 const NAV_SPEC = "src/app/nav/side-nav.spec.ts";
 
@@ -50,11 +53,11 @@ function hinweisPaare(ergebnis) {
 }
 
 test("Hinweise sind kein Gate: ok bleibt wahr, verstoesse leer; ohne Treffer fehlt der Schluessel", () => {
-  const mit = pruefeForm(plan({ aenderungen: `- ${NAV}: neu` }), PLAN_TITEL, {}, [NAV, NAV_SPEC]);
+  const mit = pruefeForm(plan({ aenderungen: `- ${NAV}: neu` }), PLAN_TITEL, OHNE_VORGESCHICHTE, [NAV, NAV_SPEC]);
   assert.equal(mit.ok, true);
   assert.deepEqual(mit.verstoesse, []);
   assert.equal(mit.hinweise.length, 1);
-  const ohne = pruefeForm(plan({ aenderungen: `- ${NAV}: neu` }), PLAN_TITEL, {}, [NAV]);
+  const ohne = pruefeForm(plan({ aenderungen: `- ${NAV}: neu` }), PLAN_TITEL, OHNE_VORGESCHICHTE, [NAV]);
   assert.equal(ohne.ok, true);
   assert.equal(Object.hasOwn(ohne, "hinweise"), false);
 });
@@ -81,7 +84,7 @@ Keine.
 
 /** Ein Fixture-Projekt fuer die Dauer eines Tests, danach restlos weg. */
 function mitProjekt(fn) {
-  const dir = setupProjekt({ codeHost: "local", issueTracker: "local" }, "board-check-form-hinweise-");
+  const dir = setupProjekt({ codeHost: "local", issueTracker: "local", ...OHNE_VORGESCHICHTE }, "board-check-form-hinweise-");
   try {
     return fn(dir);
   } finally {

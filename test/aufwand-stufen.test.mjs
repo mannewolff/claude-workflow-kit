@@ -210,7 +210,7 @@ test("[aufwand-848] der Bericht nennt den Abschnitt samt Definition der Nacharbe
     const zeilen = tabellenzeilen(text);
     assert.equal(zeilen.length, 1);
     assert.match(zeilen[0], /^\| mittel \| high \| 1 \(aus einem einzigen Lauf\) \| 10 min 0 s \(aus einem einzigen Lauf\) \|/);
-    assert.match(zeilen[0], /\| 0 \| 1 \(aus einem einzigen Lauf\) \|$/);
+    assert.match(zeilen[0], /\| 0 \| 1 \(aus einem einzigen Lauf\) \| 3 min 20 s je Paket, 33,3 Prozent der Paketzeit \(1 Paket\) \|$/);
   });
 });
 

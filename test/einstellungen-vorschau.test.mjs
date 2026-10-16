@@ -21,8 +21,11 @@ import { tmpdir } from "node:os";
 
 import { abgeleitet, aenderungsliste, projektZustand, ROLLEN_KATALOG, speichere, vorgabeAus, vorschau, waehleReviewer } from "../kit/settings.mjs";
 import { projekt } from "./helpers/einstellungen-fixture.mjs";
+import { SCHLUESSEL, normalisiereConfig } from "../kit/board/config-namen.mjs";
 
-const ECHT = JSON.parse(readFileSync(new URL("../.claude/workflow.config.json", import.meta.url), "utf-8"));
+// Ueber normalisiereConfig gelesen: vor und nach der Umstellung auf englische Schluessel
+// greifen die Tests mit den deutschen Namen auf die Felder zu (Issue #1743).
+const { config: ECHT } = normalisiereConfig(JSON.parse(readFileSync(new URL("../.claude/workflow.config.json", import.meta.url), "utf-8")));
 
 /** Eine Konfiguration mit allen Lagen, die die abgeleiteten Anzeigen kennen muessen. */
 const BEISPIEL = {
@@ -433,10 +436,12 @@ test("M6: ein geleertes Budget-Feld entfernt den Schluessel aus der Datei, statt
     assert.equal(res.status, 200, JSON.stringify(res.body));
     const nachher = readFileSync(p.dateien.team, "utf-8");
     assert.doesNotMatch(nachher, /"planMin"/, "planMin steht noch in der Datei, statt entfernt zu sein");
+    // Geschrieben wird mit englischen Schluesseln (Issue #1725).
     for (const [feld, wert] of Object.entries(ohnePlanMin)) {
-      if (typeof wert === "number") assert.match(nachher, new RegExp(`"${feld}": ${wert}`), `${feld} wurde mitveraendert`);
+      const name = SCHLUESSEL[`night.kette.${feld}`];
+      if (typeof wert === "number") assert.match(nachher, new RegExp(`"${name}": ${wert}`), `${feld} wurde mitveraendert`);
     }
-    assert.equal(JSON.parse(nachher).night.kette.planMin, undefined);
+    assert.equal(JSON.parse(nachher).night.chain.planMin, undefined);
   });
 });
 

@@ -1,9 +1,11 @@
 # Glossary
-<!-- de: f6a397ec3df1 -->
+<!-- de: 63ce9b4b41e4 -->
 
 The documentation is available in German and in English. The English version uses the terms from the left column and gives the German term in parentheses at its first occurrence on a page.
 
 Commands and verbatim quoted messages stay unchanged in both languages. Skills, labels, title prefixes and settings carry English names in both languages and are therefore not listed here but under [Names for those moving up from version 4](/en/dokumentation#names-for-those-moving-up-from-version-4), [Labels and title prefixes](/en/einrichtung#labels-and-title-prefixes) and [All settings](/en/einstellungen).
+
+The **runner** (Runner, `night.mjs`) runs on its own, at any time of day.
 
 | English | German |
 |---------|--------|
@@ -25,14 +27,14 @@ Commands and verbatim quoted messages stay unchanged in both languages. Skills, 
 | protected file | geschützte Datei |
 | advisory check | Hinweis-Prüfung |
 | card | Karte |
+| chain | Kette |
+| run | Lauf (des Runners) |
+| run report | Laufbericht |
 | run status | Laufstand |
 | guardrail | Leitplanke |
 | control centre | Leitstand |
 | human step | Menschenschritt |
 | statement | Mitteilung |
-| night mode | Nachtbetrieb |
-| night chain | Nacht-Kette |
-| night runner | Nacht-Runner |
 | package stage | Paketstufe |
 | plan order | Plan-Auftrag |
 | plan document | Plandokument |
@@ -40,6 +42,7 @@ Commands and verbatim quoted messages stay unchanged in both languages. Skills, 
 | check area | Prüfbereich |
 | check run | Prüflauf |
 | check | Prüfung |
+| runner | Runner |
 | session reporter | Sitzungs-Melder |
 | column | Spalte |
 | stop point | Stop-Punkt |
@@ -47,7 +50,7 @@ Commands and verbatim quoted messages stay unchanged in both languages. Skills, 
 | stage (of a check) | Stufe (einer Prüfung) |
 | part | Teil |
 | degree of transfer | Überführungsgrad |
-| implementation night | Umsetzungsnacht |
+| implementation run | Umsetzungslauf |
 | origin document | Ursprungsdokument |
 | judgement rule | Urteilsregel |
 | variant (of a chain) | Variante (einer Kette) |

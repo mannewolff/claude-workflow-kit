@@ -3,6 +3,16 @@
 
 A work package (Arbeitspaket) checks what it touches, not the whole suite. This page shows how a project assigns its checks (Prüfungen) for that; the basics are in the [documentation](/en/dokumentation).
 
+## Setting up and maintaining areas
+<!-- de: c1129abd0ed1 -->
+
+1. **Get the suggestion:** `node .claude/kit/checks.mjs areas suggest` measures which files every test loads or mentions, in JavaScript, TypeScript and Java. It names per area the patterns together with the tests and files behind them, and per check command the areas that should trigger it. Without a config, the folders of the test files form the groups.
+2. **Read:** Trace every area through the tests named. The suggestion gives reasons for merging and splitting as well; a command whose tests load separate areas is named with the test files per part, without a command line.
+3. **Adopt:** The suggestion never changes the config. What fits, the human enters into `checkAreas` and into the `areas` of the `buildChecks`, fully, partly or not at all.
+4. **Scaffold paths:** If many tests only mention a path without loading it, the suggestion names it as a candidate for `nurGeruest`. An entry carries a pattern and a reason; the measurement then does not count the path as loaded.
+5. **Compare:** `node .claude/kit/checks.mjs areas compare` compares the config with the measurement. If a test loads a file whose area its command does not trigger, that is a gap and a risk; an area none of the tests loads is only a notice. The same comparison runs as `hinweis:` in the check run of every package that creates or changes a test file, and in the runner the run report (Laufbericht) collects it. It never stops and changes nothing.
+6. **Cannot be assessed:** If it cannot be determined which tests a command runs, for example with another language, it keeps its areas and is shown with a reason as "nicht beurteilbar" (cannot be assessed). Linters and commands with `always` count as "nicht aus der Auswertung abgeleitet" (not derived from the evaluation). A missing measurement is never an all-clear.
+
 ## Parts and areas
 <!-- de: 456dd5e5433e -->
 
@@ -27,9 +37,9 @@ The derivation errs in one direction only: when in doubt it checks more, never l
 What almost every part needs is in a part of its own; a change to it triggers the dependent parts through the graph. Test helpers are in the patterns of all areas that use them. A file without a pattern triggers the full scope.
 
 ### Limit: JavaScript sources only
-<!-- de: 4325d628614c -->
+<!-- de: 3267fbe67d52 -->
 
-The graph is built from files ending in `.mjs`, `.cjs` or `.js` that import one another. Projects in other languages assign solely through the patterns in `checkAreas`.
+The graph is built from files ending in `.mjs`, `.cjs` or `.js` that import one another. Projects in other languages assign solely through the patterns in `checkAreas`. The measurement for `areas suggest` and `areas compare`, by contrast, continues from source to source for TypeScript and Java.
 
 ### Non-literal imports are invisible
 <!-- de: 9bc8f0920bbb -->
@@ -62,15 +72,15 @@ In the kit, a watchdog (Wächter) test checks every test file on every change un
 A project can adopt the pattern.
 
 ## Assignment aid: broadly assigned commands
-<!-- de: a0b93a15d9f0 -->
+<!-- de: 8861f237d7d0 -->
 
-A command of the package stage (Paketstufe) counts as **broad** if its `areas` name all areas or all but one and there are at least three area-bound commands. `checks.mjs plan` and `checks.mjs run` report it in the block `Fuer den Abschlussbericht:`:
+If a command's `areas` name all areas or all but one, with at least three area-bound commands, `plan` and `run` report:
 
 ```
 hinweis: <cmd> ist jedem Bereich zugeordnet und laeuft bei jeder Aenderung — Zuschnitt pruefen (checks.mjs areas)
 ```
 
-The notice stops nothing; `node .claude/kit/checks.mjs areas` shows the evaluation per area and command.
+`node .claude/kit/checks.mjs areas` shows the evaluation per area.
 
 ### `coupledAreas`
 <!-- de: 79a260edcd8a -->

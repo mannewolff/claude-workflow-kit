@@ -111,10 +111,13 @@
  * gefuehrter Bausteine, die der Plan nicht nennt) halten nichts an; was davon nach der
  * Planungssitzung stehen bleibt, schreibt der Runner als Kommentar "## Testhinweise der
  * Formpruefung" an den Plan (Issue #1033). Jede Stufe endet fertig, angehalten (genau eine Stopp-Frage: Kommentar
- * "## Kette angehalten" und kit:klaeren am Fachplan) oder abgebrochen (Zeitbudget der
+ * "## Kette angehalten" und kit:klaeren am Fachplan; eine offene Frage im Plan haelt erst nach
+ * der Stufe review an, vor dem Schnitt in Pakete, Plan #1697) oder abgebrochen (Zeitbudget der
  * Stufe, Kostenbudget der Kette, technischer Fehler, kein Plan entstanden). Kandidaten
  * ausserhalb von Backlog oder mit kit:klaeren werden uebersprungen, ihr Label bleibt.
- * Der Ergebnisstand traegt die Art "kette".
+ * Ebenso ein Fachplan, der im Ziel die Zeile "Wartet auf Ereignis:" traegt, und ein Plan,
+ * dessen Fachplan sie traegt; der Grund nennt den Wartegrund und `issue hold <N> --lift`
+ * (Plan #1624, Issue #1663). Der Ergebnisstand traegt die Art "kette".
  *
  * Test-Hooks (nur fuer Tests gedacht):
  *   NIGHT_CLAUDE_CMD  ersetzt den claude-Aufruf durch ein Shell-Kommando
@@ -162,7 +165,7 @@ import { homedir } from "node:os";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "5.2.0";
+const KIT_VERSION = "5.3.0";
 
 // ============================================================
 // Texte an den Menschen (Issue #1484, Plan #1420 E13/E14)
@@ -296,7 +299,7 @@ export const TEXTE = Object.freeze({
     reviewerVerfuegbar: "verfuegbar",
     reviewerNichtVerfuegbar: "NICHT verfuegbar — {grund}",
     reviewerZeile: "Reviewer {name} ({art}) in {umgebung}: {stand}",
-    keinReviewerGrund: "issueReview.reviewers ist leer oder fehlt — Block aus .claude/workflow.config.example.json uebernehmen",
+    keinReviewerGrund: "issueReview.reviewers ist leer oder fehlt — Block aus .claude/workflow.config.example.jsonc uebernehmen",
     keinReviewer: "Kein Reviewer konfiguriert: {grund}",
     getUebersprungen: " — issue get uebersprungen: {grund}",
     trackerErreichbar: "erreichbar{vermerk}",
@@ -379,7 +382,7 @@ export const TEXTE = Object.freeze({
     reviewerVerfuegbar: "available",
     reviewerNichtVerfuegbar: "NOT available — {grund}",
     reviewerZeile: "Reviewer {name} ({art}) in {umgebung}: {stand}",
-    keinReviewerGrund: "issueReview.reviewers is empty or missing — take over the block from .claude/workflow.config.example.json",
+    keinReviewerGrund: "issueReview.reviewers is empty or missing — take over the block from .claude/workflow.config.example.jsonc",
     keinReviewer: "No reviewer configured: {grund}",
     getUebersprungen: " — issue get skipped: {grund}",
     trackerErreichbar: "reachable{vermerk}",
@@ -465,7 +468,7 @@ export const { nightStandLaden, journalLesen, laufendeKarten, standSetzen, abgeb
   hatSitzungsereignis, verwaisteLaeufeAbschliessen, waechterStartOptionen } = await import("./night/laufstand.mjs");
 const { anhaltenLaeuft, nightStandPruefen, pulsSchreiben, laufstandStarten, laufAbbrechen, abbruchHandlerSetzen,
   zweiterVersuch, vermerkAnDieKarte, laufAnhalten, waechterLaufen, waechterStarten,
-  waechterBeenden } = await import("./night/laufstand.mjs");
+  waechterBeenden, RECHNER } = await import("./night/laufstand.mjs");
 export const { umsetzungLockNehmen, UMSETZUNG_WARTEN_MS, aufUmsetzungWarten, RUNNER_SPERREN, nachziehenPruefen,
   worktreeAnlegen, worktreeEntfernen, befundeZurueck, worktreesAufraeumen, kitStandErmitteln, kitStandBereitstellen,
   kitStandEinsetzen, kitStandFreigeben, istStandKind, kitStandZeile } = await import("./night/kitstand.mjs");
@@ -508,6 +511,7 @@ export const { pruefLaufAusschluss, waehlePruefLaufKandidaten, pruefLaufFassung,
   PRUEFLAUF_BEFUNDE_ANKER, PRUEFLAUF_EINARBEITUNG_ANKER, pruefLaufErgebnis, PRUEFLAUF_REST_ANKER,
   pruefLaufRestVermerken, laufePrueflauf } = await import("./night/tag.mjs");
 const { tagAnbinden, pruefLaufBudgetSetzen, pruefLaufBudgetStand } = await import("./night/tag.mjs");
+export const { protokollFrist, protokolleAufraeumen, aufraeumZeilen } = await import("./night/aufraeumen.mjs");
 
 /**
  * Die Fence-Regel wird geteilt, nicht kopiert (Issue #308): board.mjs fuehrt sie als
@@ -940,6 +944,9 @@ function ergebnisstandAnlegen(args, aktivesLabel, jetztVorher) {
     // Der feste Kit-Stand dieses Laufs (Issue #1102, A7) — hinten angehaengt, die Fassung
     // bleibt 1 (E9). `null` heisst: Der Lauf arbeitete mit der Kopie der Hauptkopie.
     kitStand: kitStandFeld(),
+    // Der Rechner dieses Laufs (Issue #1687, Plan #1685) — hinten angehaengt, die Fassung
+    // bleibt 1. Ein Bericht ueber kopierte Staende liest ihn aus dem Stand, nicht aus dem Pfad.
+    rechner: RECHNER,
   };
 }
 
@@ -1071,6 +1078,13 @@ function zustandsVorflug() {
  * arbeiten. Bricht bei verletzten Vorbedingungen selbst ab (`fail`) — das ist die
  * Stelle, an der ein Lauf gar nicht erst beginnen darf.
  */
+/** Loescht die Protokolle jenseits der Frist und schreibt das Ergebnis ins Nacht-Log (Issue #1696). */
+function protokolleAufraeumenMelden(args) {
+  const ergebnis = protokolleAufraeumen(process.cwd(),
+    { fristTage: protokollFrist(ZUSTAND.config), dryRun: args.dryRun === true });
+  for (const zeile of aufraeumZeilen(ergebnis)) log(zeile);
+}
+
 export function vorbereiten(args) {
   if (!existsSync(BOARD_PATH)) fail(t("boardFehlt", { pfad: BOARD_PATH }));
   const configPath = join(process.cwd(), ".claude", "workflow.config.json");
@@ -1131,6 +1145,9 @@ export function vorbereiten(args) {
   if (args.yolo && !args.dryRun) {
     log(t("yoloWarnung"));
   }
+  // Die Protokollfrist (Issue #1696): vor den Vorfluegen, damit sie fuer Implementierung,
+  // Kette und Prueflauf gleichermassen gilt. Ein gescheitertes Loeschen haelt nicht an.
+  protokolleAufraeumenMelden(args);
 
   // Vorflug-Checks
   warnBeiVersionsDrift();

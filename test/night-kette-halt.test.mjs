@@ -1,7 +1,7 @@
 // Der Halt der Nacht-Kette und die Karten, die sie ueberspringt (Plan #638, A2, A8, E4; Issue #643).
 //
-// Eine Stopp-Frage im Plan oder kit:klaeren nach dem Review beenden die Kette mit
-// `angehalten`: die Frage als Kommentar `## Kette angehalten` am Fachplan, kit:klaeren
+// Eine Stopp-Frage im geprueften Plan oder kit:klaeren nach dem Review beenden die Kette nach
+// der Pruefung mit `angehalten` (Plan #1697, E1): die Frage als Kommentar `## Kette angehalten` am Fachplan, kit:klaeren
 // dort, der Plan bleibt im Backlog. Eine gekennzeichnete Karte mit kit:klaeren oder
 // ausserhalb von Backlog laeuft nicht und behaelt ihr Label.
 //
@@ -19,7 +19,7 @@ import {
 /** Die Kommentare einer Karte nach dem Lauf, als ein Text. */
 const kommentare = (r, id) => r.karte(id).comments.map((c) => c.body).join("\n");
 
-test("[night-19] eine Stopp-Frage im Plan haelt die Kette an: Kommentar und kit:klaeren am Fachplan, Plan bleibt", async () => {
+test("[night-19] eine Stopp-Frage im Plan haelt die Kette nach der Pruefung an: Kommentar und kit:klaeren am Fachplan, Plan bleibt", async () => {
   const r = await ketteImProzess({
     karten: [fachplanKarte("1")],
     sitzung: jeStufe({
@@ -35,7 +35,7 @@ test("[night-19] eine Stopp-Frage im Plan haelt die Kette an: Kommentar und kit:
   const text = kommentare(r, "1");
   assert.match(text, /## Kette angehalten/);
   assert.match(text, /Ist der neue Endpunkt eine Schnittstelle/);
-  assert.match(text, /Stufe plan, Dokument #2\b/);
+  assert.match(text, /Stufe review, Dokument #2\b/);
   // Der Weg nach vorn fuehrt ueber den Plan, nicht ueber den Fachplan (Issue #896);
   // der Wortlaut selbst steht in night-kette-halt-planauftrag.test.mjs auf der Probe.
   assert.match(text, /kit:clarify an Plan #2 abnehmen/);
@@ -43,12 +43,12 @@ test("[night-19] eine Stopp-Frage im Plan haelt die Kette an: Kommentar und kit:
 
   const plan = r.karte("2");
   assert.equal(plan.status, "backlog", "der Plan bleibt als Entwurf stehen");
-  assert.doesNotMatch(plan.body, /Plan-Review:/, "die Review-Stufe darf nicht mehr laufen");
+  assert.match(plan.body, /^Plan-Review: /m, "die Review-Stufe hat den Plan geprueft");
 
   const einheit = r.lauf.einheiten.find((e) => e.id === "1");
   assert.equal(einheit.ausgang, "angehalten");
-  assert.match(einheit.grund, /Stopp-Frage im Plan #2\b/);
-  assert.equal("review" in einheit.stufen, false);
+  assert.match(einheit.grund, /Stopp-Frage im geprüften Plan #2\b/);
+  assert.equal(einheit.stufen.review.marker, true);
   assert.match(r.ausgabe, /1 angehalten/);
 });
 

@@ -1,82 +1,265 @@
-# 5-minute guide
-<!-- de: 701bb0ab557b -->
+# The first hour
+<!-- de: 795baf7748fa -->
 
-The kit makes a process for AI-assisted development executable in Claude Code without you giving up your stop points (Stop-Punkte): eighteen skills, a config and an installer.
+At the end of this hour a card (Karte) is in Done: made from an idea, released by you, implemented on its own by the runner (Runner), reviewed by a second Claude model in a fresh session and looked through by you. The hour counts from a computer with macOS, Linux or WSL2 ready to use. On Windows you first set up WSL2 following [Windows via WSL2](/en/wsl2); including the restart this takes about 30 minutes.
 
 ## Prerequisites
-<!-- de: 7c01c764f7d5 -->
+<!-- de: e8c8839510ea -->
 
-- macOS, Linux or Windows via WSL2, set up following [Windows via WSL2](/en/wsl2)
-- Node.js version 18 or later and git
+- macOS, Linux or Windows with WSL2
+- git, Node.js version 18 or later and curl
 - Claude Code
-- Depending on the issue tracker `gh` or `glab`, logged in; in local mode neither
+- a Claude account you log in with
+- your git identity
 
-## Installing
-<!-- de: 9f3eb8798900 -->
+The local board needs no further account.
 
-In the project folder:
+## The steps
+<!-- de: 69159a2a4fdd -->
+
+### 1. Check the tools
+<!-- de: ac15f2b32bd2 -->
+
+Time: about 5 minutes.
+
+```bash
+git --version
+node --version
+claude --version
+```
+
+Done when every command prints a version number, `node` at least `v18`.
+
+Otherwise: If Node.js is missing or older, install it via [nvm](https://github.com/nvm-sh/nvm) with `nvm install --lts`. If Claude Code is missing, install it with `npm install -g @anthropic-ai/claude-code`. git comes from your system's package manager.
+
+### 2. Log in to Claude
+<!-- de: 958dc2797053 -->
+
+Time: about 3 minutes.
+
+Run `claude`, log in and end the session again. Then:
+
+```bash
+claude -p "Reply only with OK"
+```
+
+Done when the output is `OK`; this is also how the runner starts its sessions.
+
+Otherwise: Run `claude` once more and complete the login.
+
+### 3. Set your git identity
+<!-- de: 71e16b850840 -->
+
+Time: about 1 minute.
+
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "you@example.org"
+```
+
+Done when `git config user.email` prints your address.
+
+Otherwise: If the command prints nothing, repeat the second line.
+
+### 4. Create the project
+<!-- de: 7b7e39084f2c -->
+
+Time: about 1 minute.
+
+```bash
+mkdir ~/first-hour && cd ~/first-hour && git init -b main
+```
+
+Done when `git status` names the branch `main`.
+
+Otherwise: If git does not know the option `-b`, it is older than 2.28. Update git and run `git init -b main` in the folder.
+
+### 5. Install the kit
+<!-- de: c79b0cf79269 -->
+
+Time: about 3 minutes.
 
 ```bash
 curl -O https://docs.mwolff.org/install.mjs
 node install.mjs
 ```
 
-In a new project, the installer first asks for the language (`de` or `en`), then whether it installs globally or only for this project, for code host and issue tracker (`github`, `gitlab` or `local`), for main and production branch, review scope and reviewer. Installed per project, the commit gate and the check areas (Prüfbereiche) follow; installed globally, the vault path for `/session-start` and `/document`.
+The installer asks one question after another; for the first hour you answer like this:
 
-Afterwards skills, config and tools are under `.claude/`. Restart Claude Code; the skills appear in `/help`.
+| Question | Answer |
+|---|---|
+| Language | `en` |
+| Skills globally or for this project only | `project` |
+| Code host | `local` |
+| Issue tracker | `local` |
+| all others, including the commit gate | Enter |
 
-## The eighteen skills
-<!-- de: 9e0a710bd05e -->
+What each question means is described under [Installation](/en/einrichtung#installation). At the end the installer reports `WARNING: There are uncommitted files in the workspace`; step 8 cleans that up.
 
-| Command | What for |
-|--------|-------|
-| `/session-start` | Overview of the situation at the start of a session |
-| `/triage` | Talk an idea through and bring it onto its lane (Bahn) |
-| `/requirement` | Business concept (Fachkonzept) without technology for the PO loop (PO-Schleife) |
-| `/groom` | Decide the open questions of a reviewed business concept one by one |
-| `/techplan` | Plan from the requirement, without implementation |
-| `/issues` | Break the plan down into small work packages (Arbeitspakete) |
-| `/task` | Requirement with nothing to weigh up as one work package `[Task]` |
-| `/issue-review` | Have a document reviewed by foreign models |
-| `/implement-ready` | Implement all Ready cards (Karten), commit locally |
-| `/implement-next` | Implement exactly one Ready card |
-| `/implement-test` | Only the red tests for the next Ready card |
-| `/implement-done` | Implement against the red tests |
-| `/local-check` | Run the mandatory checks (Prüfungen) |
-| `/kit-review` | Review by a second model in a fresh session |
-| `/push-main` | Push to the main branch, only on your word |
-| `/merge-production` | Release to production, only on your word |
-| `/retro` | AI retrospective with key figures |
-| `/document` | Document the session in the vault |
+Done when `ls .claude/kit` shows `board.mjs` among others.
 
-## A first run
-<!-- de: 99a69da1c23f -->
+Otherwise: Check the network connection and repeat the step.
 
-```
-/techplan baue ein Login-Formular mit E-Mail und Passwort
+### 6. Check the board
+<!-- de: 73d285c526ea -->
+
+Time: about 1 minute.
+
+The answer `local` for the issue tracker creates the local board with five columns (Spalten) from Backlog to Done; you create neither columns nor labels. Each card is a file under `issues/`.
+
+```bash
+node .claude/kit/board.mjs issue list
 ```
 
-If the plan fits, `/issues` breaks it down into work packages. You move them to Ready on the board; that is your GO. Then:
+Done when the output is `[]`, an empty board.
+
+Otherwise: If `.claude/workflow.config.json` does not contain `"issueTracker": "local"`, repeat step 5 and answer `local` for the issue tracker.
+
+### 7. Enter the check command
+<!-- de: 410792052611 -->
+
+Time: about 2 minutes.
+
+The runner implements a card only if it can check it afterwards. In `.claude/workflow.config.json` replace the line `"buildChecks": [],` with:
+
+```json
+"buildChecks": ["node --test"],
+```
+
+Then:
+
+```bash
+node .claude/kit/checks.mjs run --stage push
+```
+
+Done when the output contains the line `ran: node --test → gruen`.
+
+Otherwise: If the command reports an error in the config, compare the line character by character with the one above. Without this entry the runner would stop in step 12 with `Error: buildChecks in workflow.config.json has no check`.
+
+### 8. Clean the workspace
+<!-- de: d4b3f1de0394 -->
+
+Time: about 1 minute.
+
+```bash
+git add -A
+git commit -m "Kit set up"
+git status --short
+```
+
+Done when `git status --short` prints nothing.
+
+Otherwise: If git rejects the commit because name or email are missing, repeat step 3 and then this step.
+
+### 9. Create the idea
+<!-- de: 6dacf725a6a6 -->
+
+Time: about 1 minute.
+
+```bash
+node .claude/kit/board.mjs issue create --kind idea --author-model human --title "Greeting as a function" --body 'A file gruss.mjs with export function begruesse(name) that returns Hallo, <name>!, plus a test with node:test under test/.'
+```
+
+Done when the output names an `id`, a four-digit number; it stands for `<id>` in the following commands.
+
+Otherwise: If the command reports `No author model given`, `--author-model human` is missing, the note that a human wrote the idea.
+
+### 10. Talk the idea through
+<!-- de: ce2da62169ad -->
+
+Time: about 10 minutes.
+
+Start `claude` in the project and run in the session:
 
 ```
-/implement-ready
-/local-check
-/kit-review
+/triage <id>
 ```
 
-After your review you push with `push main`, after your test on the test server you release with `merge production`. Then you move the cards to Done.
+`/triage` clarifies open points with you and proposes lane (Bahn) 3, a single work package (Arbeitspaket). Confirm; `/task` creates the package after your confirmation. End the session.
 
-## The smaller path
-<!-- de: b77a86cb387a -->
+Done when `node .claude/kit/board.mjs issue list` shows a card with `[Task]` in the title and `"status": "backlog"`. From here on `<id>` stands for its number.
 
-If a requirement is more than a trifle but there is nothing to weigh up, `/task` creates a single work package instead of business concept, plan and breakdown. The skill names the lane and creates nothing until you confirm. Which path applies when is described under [Three lanes](./dokumentation.md#three-lanes).
+Otherwise: If `/triage` proposes another lane, answer that there is nothing to weigh up and choose lane 3. If the card is still missing, run `/task <id>` with the number of the idea.
 
-## The three steps you do yourself
-<!-- de: 3919c151a4e0 -->
+### 11. Release the card
+<!-- de: 1b81ea4139cd -->
 
-Moving to Ready, the push, the merge. The kit does not automate these three.
+Time: about 1 minute.
 
-## Letting it work at night
-<!-- de: 7c19cc61f05d -->
+```bash
+node .claude/kit/board.mjs issue move <id> ready
+node .claude/kit/board.mjs issue label add <id> kit:nightrun
+```
 
-In the evening you sort cards in Ready and start `node .claude/kit/night.mjs`. The night runner (Nacht-Runner) implements each card in a fresh session, commits locally and never pushes. More under [Night mode](./nachtbetrieb.md).
+Moving to Ready is your GO; the label tells the runner that it may take the card.
+
+Done when `issue list` shows the card with `"status": "ready"` and the label `kit:nightrun`.
+
+Otherwise: If the card does not exist, you took the number of the idea; take that of the `[Task]` card.
+
+### 12. Start the runner
+<!-- de: 37ee52a3a0da -->
+
+Time: about 15 minutes, most of it waiting.
+
+```bash
+git status --short
+node .claude/kit/night.mjs --dry-run
+node .claude/kit/night.mjs
+```
+
+`git status --short` is empty or shows only `issues/`; cards do not count as a change for the runner. If the dry run reports `-> session 1`, start the runner: it implements the card in a fresh session, checks with `node --test` and commits locally.
+
+Done when `issue list` shows the card with `"status": "in_review"` and `git log --oneline` has a new commit on top.
+
+Otherwise:
+- `Working tree is not clean`: commit as in step 8 and start again.
+- `buildChecks in workflow.config.json has no check`: back to step 7.
+- `skipped (no label 'kit:nightrun')`: second command from step 11.
+
+### 13. Have the result reviewed
+<!-- de: eafcc0beeb2d -->
+
+Time: about 5 minutes.
+
+Start a fresh session with `claude` and write in one message:
+
+```
+/kit-review card <id>
+```
+
+A second Claude model reads the change without knowing the implementation and writes its findings to the card. In a team, a reviewer from another model family takes this place.
+
+Done when `node .claude/kit/board.mjs issue get <id>` shows a comment with `## Code review (step 6)`.
+
+Otherwise: If the findings are only in the chat, name the card number once more in the same session.
+
+### 14. Look through and move to Done
+<!-- de: e9769e402ca7 -->
+
+Time: about 5 minutes.
+
+```bash
+git show --stat HEAD
+node --test
+node .claude/kit/board.mjs issue move <id> done
+```
+
+Read the findings and look at the commit. Moving to Done is your acceptance.
+
+Done when `git show --stat HEAD` names `gruss.mjs` and a file under `test/`, `node --test` ends with `fail 0` and `issue list` shows the card with `"status": "done"`.
+
+Otherwise: Do not move to Done. Write the defect to the card with `issue comment <id> --text "…"`, move it to `ready` and start step 12 again.
+
+## What comes next
+<!-- de: 8728f1478e4d -->
+
+- Switch to GitHub or GitLab: [Issue tracker and code host](/en/einrichtung#issue-tracker-and-code-host).
+- Publish with `push main` and `merge production`: [Push](/en/prozess#push-main) and [Merge](/en/prozess#merge-production).
+- Reviewer from another model family, team settings: [Team config](/en/einrichtung#team-config-and-personal-deviations), [Settings](/en/einstellungen).
+- Bind every commit to a green check run: [The commit gate](/en/einrichtung#the-commit-gate).
+- The kit in your own project: [Installation](/en/einrichtung#installation), without a remote [Working locally](/en/lokal).
+- Undertakings with something to weigh up on lane 2: [Three lanes](./dokumentation.md#three-lanes).
+- The runner with chain, several cards and without supervision: [The chain](/en/runner#the-chain).
+- The runner on Windows: [Windows via WSL2](/en/wsl2#the-runner-on-windows).
+- All seventeen skills: [The skills](/en/prozess#the-skills).

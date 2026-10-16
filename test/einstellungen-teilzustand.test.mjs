@@ -14,6 +14,7 @@ import { join } from "node:path";
 
 import { mitServer, projekt, TEAM } from "./helpers/einstellungen-fixture.mjs";
 import { oberflaecheStarten } from "./helpers/oberflaeche-vm.mjs";
+import { normalisiereConfig } from "../kit/board/config-namen.mjs";
 
 // buildChecks und ein Bereich, damit M4 ein Kommandofeld, ein Neu-Feld und eine
 // Musterliste zeigt; der Kit-Stand entspricht der Oberflaeche, damit das Projekt
@@ -30,7 +31,7 @@ async function offenesProjekt(s, name) {
 test("[einstellungen-19] das Speichern eines Teils laesst den Entwurf des anderen stehen", async () => {
   await mitServer((w) => projekt(w, "alpha", { team: KONFIG, stand: "5.0.0" }), async (s) => {
     const seite = await offenesProjekt(s, "alpha");
-    seite.klick(seite.knopf(seite.ids.themen, "Nachtbetrieb"));
+    seite.klick(seite.knopf(seite.ids.themen, "Feinabstimmung"));
     await seite.ruhe();
     const zahlen = (platte) => seite.alle(platte, (e) => e.tagName === "INPUT" && e.type === "number");
     const [m6, m8] = seite.platten();
@@ -42,7 +43,7 @@ test("[einstellungen-19] das Speichern eines Teils laesst den Entwurf des andere
     seite.klick(seite.knopf(m6, "Speichern"));
     await seite.ruhe();
 
-    const datei = JSON.parse(readFileSync(join(s.wurzel, "alpha", ".claude", "workflow.config.json"), "utf-8"));
+    const datei = normalisiereConfig(JSON.parse(readFileSync(join(s.wurzel, "alpha", ".claude", "workflow.config.json"), "utf-8"))).config;
     assert.equal(datei.night?.kette?.planMin, 25, "M6 wurde nicht gespeichert");
     assert.equal(datei.aufwand, undefined, "der Entwurf von M8 wurde mitgespeichert");
 
@@ -55,11 +56,11 @@ test("[einstellungen-19] das Speichern eines Teils laesst den Entwurf des andere
 test("[einstellungen-19] jede angeforderte Vorschau eines Teils wird geholt", async () => {
   await mitServer((w) => projekt(w, "alpha", { team: KONFIG, stand: "5.0.0" }), async (s) => {
     const seite = await offenesProjekt(s, "alpha");
-    // Die Anforderungen des Startthemas abraeumen, damit nur Review misst.
+    // Die Anforderungen des Startreiters abraeumen, damit nur die Feinabstimmung misst.
     seite.feuere();
     await seite.ruhe();
 
-    seite.klick(seite.knopf(seite.ids.themen, "Review"));
+    seite.klick(seite.knopf(seite.ids.themen, "Feinabstimmung"));
     const davor = seite.anfragen.length;
     seite.feuere();
     await seite.ruhe();
@@ -69,7 +70,7 @@ test("[einstellungen-19] jede angeforderte Vorschau eines Teils wird geholt", as
       .filter((a) => a.pfad.endsWith("/vorschau"))
       .map((a) => a.body.teil)
       .sort();
-    assert.deepEqual(teile, ["m10", "m2", "m3"], "die Anforderung eines Teils verdraengte die eines anderen");
+    assert.deepEqual(teile, ["m10", "m11", "m6", "m8", "m9"], "die Anforderung eines Teils verdraengte die eines anderen");
   });
 });
 
@@ -80,7 +81,7 @@ test("[einstellungen-19] ein Projektwechsel raeumt die Timer des alten Projekts 
   };
   await mitServer(aufbau, async (s) => {
     const seite = await offenesProjekt(s, "alpha");
-    assert.ok(seite.wartend() > 0, "das Startthema muesste Vorschauen angefordert haben");
+    assert.ok(seite.wartend() > 0, "der Startreiter muesste Vorschauen angefordert haben");
 
     const davor = seite.anfragen.length;
     seite.klick(seite.projektKnopf("beta"));

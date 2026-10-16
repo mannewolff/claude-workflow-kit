@@ -2,7 +2,7 @@
 //
 // Die Salvage-Session fordert den Strom auch bei `--verbose no` an (Issue #871).
 //
-// `docs/nachtbetrieb.md` sagt zu, dass weder die Verlaufsdatei noch die Kennzahlen an
+// `docs/runner.md` sagt zu, dass weder die Verlaufsdatei noch die Kennzahlen an
 // einem Flag haengen. Der Salvage-Aufruf von `runSession` uebergab aber kein
 // `stream: true`; `sessionStart` haengt `--output-format stream-json` nur bei
 // `args.verbose || opts.stream` an, und `runProcess` wertet den Strom unter derselben

@@ -249,7 +249,7 @@ for (const [name, holeLeser] of LESER) {
     try {
       const { ergebnis, stderr } = mitStderr(() => lies(pfad));
       assert.equal(ergebnis.reviewLesegrenze, 2000);
-      assert.match(stderr, /Doppelung.*reviewReadLimit.*\(en\)/);
+      assert.match(stderr, /Doppelung.*es gilt "reviewReadLimit", der englische Name/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

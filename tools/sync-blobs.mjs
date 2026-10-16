@@ -83,13 +83,14 @@ const BLOBS = [
   { constName: "CLAUDE_WORKFLOW_MD_B64", source: join(root, "templates", "CLAUDE-workflow.md") },
   { constName: "CLAUDE_FACHPLAN_MD_B64", source: join(root, "templates", "CLAUDE-Fachplan.md") },
   { constName: "CLAUDE_PLAN_MD_B64", source: join(root, "templates", "CLAUDE-Plan.md") },
-  // Beispiel-Config, die der Installer als .claude/workflow.config.example.json ablegt.
-  // Sie ist der einzige Ort, an dem ein Nutzer den issueReview-Block zu sehen bekommt,
-  // ohne die Doku zu lesen — der Installer fragt ihn nicht ab (reviewers ist
-  // maschinenabhaengig, pairs eine Denkentscheidung). Nebeneffekt: Die Vorlage stand
-  // vorher in keiner Blob-Liste, wurde von niemandem gelesen und driftete unbemerkt;
-  // jetzt bewacht sie `sync-blobs --check`, also ein buildCheck.
-  { constName: "CONFIG_EXAMPLE_B64", source: join(root, "templates", "workflow.config.json") },
+  // Die kommentierte Beispieldatei, die der Installer in der Projektsprache als
+  // .claude/workflow.config.example.jsonc ablegt (Issue #1735, Plan #1710 E3); beide Fassungen
+  // erzeugt tools/config-referenz.mjs. Sie sind der einzige Ort, an dem ein Nutzer den
+  // issueReview-Block zu sehen bekommt, ohne die Doku zu lesen — der Installer fragt ihn nicht
+  // ab (reviewers ist maschinenabhaengig, pairs eine Denkentscheidung). Ihre Drift bewacht
+  // `sync-blobs --check`, also ein buildCheck.
+  { constName: "CONFIG_EXAMPLE_DE_B64", source: join(root, "templates", "workflow.config.example.de.jsonc") },
+  { constName: "CONFIG_EXAMPLE_EN_B64", source: join(root, "templates", "workflow.config.example.en.jsonc") },
   { constName: "BOARD_MJS_B64", source: join(root, "kit", "board.mjs") },
   { constName: "NIGHT_MJS_B64", source: join(root, "kit", "night.mjs") },
   { constName: "CHECKS_MJS_B64", source: join(root, "kit", "checks.mjs") },
@@ -131,6 +132,8 @@ const BLOBS = [
   { constName: "KIT_ROLLEN_B64", sourceFiles: join(root, "kit", "rollen") },
   // Die Texttabellen der Module (Issue #1524): ein Teil wie night/ und board/.
   { constName: "KIT_TEXTE_B64", sourceFiles: join(root, "kit", "texte") },
+  // Die Messung der Verflechtung (Issue #1714, Plan #1713 A1): ein Teil wie night/ und board/.
+  { constName: "KIT_CHECKS_B64", sourceFiles: join(root, "kit", "checks") },
   { constName: "SKILLS_B64", sourceDir: join(root, "skills") },
   // Der Leser-Agent der Pruefer (Issue #1377, Plan #1375 A2): eine flache Quelle neben skills/.
   { constName: "AGENTS_B64", sourceFiles: join(root, "agents") },
@@ -155,10 +158,11 @@ const STAMPED_DOWNLOADS = ["settings.mjs"];
 // Teilverzeichnisse unter kit/ (Issue #1209, Plan #1199 E19): kopiert nach .claude/kit/<teil>/
 // wie die Werkzeuge, aber ungestempelt — KIT_VERSION steht nur im Einstieg. In STAMPED
 // brachen sie den Lauf ab, weil ein Teil keine Konstante traegt.
-const TEILE = ["night", "board", "rollen", "texte"];
+const TEILE = ["night", "board", "rollen", "texte", "checks"];
 
 // Was die Einstellungs-Oberflaeche eingebettet traegt: das Schema (Plan #674 E2) und die
-// Namenstabelle der Einstellungen (Issue #1437, Plan #1420 E10), dazu die englischen
+// Namenstabelle der Einstellungen (Issue #1437, Plan #1420 E10) samt ihrer Teile nach Zweck
+// (Issue #1736, Plan #1710 A5), dazu die englischen
 // Beschreibungen fuer ein englisches Projekt (Issue #1441) und der Texthelfer, ueber den
 // die Oberflaeche ihre Meldungen in der Projektsprache waehlt (Issue #1456, Plan #1420
 // E13). Eine eigene Datei mitzuliefern widerspraeche dem Download als einzelne Datei, und
@@ -167,6 +171,7 @@ const EINBETTUNG_ZIEL = "settings.mjs";
 const EINBETTUNGEN = [
   { konstante: "SCHEMA_B64", quelle: "templates/workflow.config.schema.json", meldung: "Schema eingebettet" },
   { konstante: "CONFIG_NAMEN_B64", quelle: "kit/board/config-namen.mjs", meldung: "Namenstabelle eingebettet" },
+  { konstante: "CONFIG_TEILE_B64", quelle: "kit/board/config-teile.mjs", meldung: "Teile nach Zweck eingebettet" },
   { konstante: "CONFIG_REFERENZ_EN_B64", quelle: "tools/config-referenz.en.json", meldung: "Englische Referenz eingebettet" },
   { konstante: "NAMEN_B64", quelle: "kit/board/namen.mjs", meldung: "Texthelfer eingebettet" },
 ];
@@ -359,8 +364,8 @@ function kopieSchreiben(ziel, soll, ordner) {
 // Die Ordner der Skill-Namen, die es seit Issue #1566 nicht mehr gibt (Plan #1548 E9). Geraeumt
 // wird ein Ordner nur, wenn seine SKILL.md den gleichnamigen `name:` traegt: Dann ist er die
 // Kopie des alten Kit-Skills und kein eigener Skill, der zufaellig so heisst. Er zaehlt als
-// veraltete Kopie, damit `--check` ihn meldet.
-const ALTE_SKILLS = ["fachplan", "kontext", "context", "review", "plan"];
+// veraltete Kopie, damit `--check` ihn meldet. `local-check` entfaellt mit Issue #1609 (Issue #1679).
+const ALTE_SKILLS = ["fachplan", "kontext", "context", "review", "plan", "local-check"];
 
 function alterKitSkill(name) {
   const datei = join(LOCAL_SKILLS, name, "SKILL.md");

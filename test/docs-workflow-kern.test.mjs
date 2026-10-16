@@ -11,9 +11,12 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), "utf-8");
+const VORLAGE_EN = readFileSync(join(repoRoot, "en", "templates", "CLAUDE-workflow.md"), "utf-8");
 
 // Die Grenze wandert nur mit einer beschlossenen Regel mit, nicht mit Zuwachs nebenbei:
-// Wer sie anhebt, fasst diesen Test an und begruendet es. Zuletzt +1 fuer die Zeile `/triage`
+// Wer sie anhebt, fasst diesen Test an und begruendet es. Zuletzt +14 fuer den Abschnitt
+// "Leitplanken der Pruefungen" (Issue #1675, Plan #1671/E9: mit `/local-check` entfaellt der Ort
+// der Leitplanken, die Vorlage liest jede Sitzung). Davor +1 fuer die Zeile `/triage`
 // in der Tabelle der Werkzeuge (Issue #1632, Fachplan #1620: der Prozesstext nennt den Weg einer
 // Idee; der Absatz "Ideen" bleibt ein Absatz und waechst nicht in Zeilen). Davor +25 fuer den Abschnitt
 // "Vorgeschichte" (Issue #1543, Plan #1534/E6: die Regel steht einmal ausfuehrlich hier,
@@ -45,9 +48,9 @@ const VORLAGE = readFileSync(join(repoRoot, "templates", "CLAUDE-workflow.md"), 
 // die Artenliste, dann die Skills). Davor +9 fuer den Abschnitt "Wirksamkeit der
 // Pruefungen" (Issue #783, Plan #782/E11: der Regeltext steht vor dem Werkzeug) und +5
 // fuer die Regel zur wartenden Sitzung (Issue #774).
-test("die Vorlage bleibt unter 439 Zeilen", () => {
+test("die Vorlage bleibt unter 453 Zeilen", () => {
   const zeilen = VORLAGE.split("\n").length;
-  assert.ok(zeilen <= 439, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 439`);
+  assert.ok(zeilen <= 453, `die Vorlage hat ${zeilen} Zeilen, erlaubt sind 453`);
 });
 
 // Der Weg einer Idee fuehrt ueber `/triage` (Issue #1632, Fachplan #1620). Direkt zum Plan
@@ -112,11 +115,25 @@ test("die bleibenden Abschnitte stehen je einmal", () => {
   }
 });
 
-test("Schritt 7 nennt reviewCommand statt eines festen Modells", () => {
-  const zeile = VORLAGE.split("\n").find((z) => z.startsWith("| 7. Code-Review"));
-  assert.ok(zeile, "die Zeile zu Schritt 7 fehlt");
+test("Schritt 6 nennt reviewCommand statt eines festen Modells", () => {
+  const zeile = VORLAGE.split("\n").find((z) => z.startsWith("| 6. Code-Review"));
+  assert.ok(zeile, "die Zeile zu Schritt 6 fehlt");
   assert.match(zeile, /reviewCommand/);
 });
+
+// Ohne die lokale Pruefung hat der Prozess acht fortlaufende Schritte (Issue #1676, Plan #1671 E11).
+for (const [sprache, text, kopf, alt] of [
+  ["de", VORLAGE, "## Die acht Schritte", /Lokale Pruefung|local-check/],
+  ["en", VORLAGE_EN, "## The eight steps", /Local check|local-check/],
+]) {
+  test(`die Schritt-Tabelle (${sprache}) zaehlt 1 bis 8 ohne lokale Pruefung`, () => {
+    const a = text.indexOf(`\n${kopf}\n`);
+    assert.ok(a >= 0, `${kopf} fehlt`);
+    const zeilen = text.slice(a + 1).split(/\n## /)[0].split("\n").filter((z) => /^\| \d+\. /.test(z));
+    assert.deepEqual(zeilen.map((z) => Number(z.match(/^\| (\d+)\./)[1])), [1, 2, 3, 4, 5, 6, 7, 8]);
+    for (const z of zeilen) assert.doesNotMatch(z, alt, z);
+  });
+}
 
 test("der Transport-Abschnitt traegt seine Belege und keinen Logdatei-Verweis", () => {
   const a = VORLAGE.indexOf("## Lange Texte ans Board");

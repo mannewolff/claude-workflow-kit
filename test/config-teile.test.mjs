@@ -22,26 +22,31 @@
 // und nicht ein Beispiel: Ein Beispiel bewiese die Regel, nicht den Zustand.
 //
 // Die Glob-Aufloesung kommt aus `kit/checks.mjs`, die Verflechtung aus
-// `tools/verflechtung.mjs`. Eine zweite Fassung hier beantwortete die Fragen
+// `kit/checks/verflechtung.mjs` (ihre Kopplung: „laedt" und „nennt" zusammen).
+// Eine zweite Fassung hier beantwortete die Fragen
 // „trifft dieses Muster diese Datei?" und „laedt dieser Test jene Quelle?" ein
 // zweites Mal — und ab der ersten Abweichung bescheinigte der Test eine
 // Abdeckung, die das ausfuehrende Kommando nicht sieht.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 import { globZuRegex, bereicheVorbereiten, anteilJeBereich, aufrufen } from "../kit/checks.mjs";
-import { verflechtungErheben } from "../tools/verflechtung.mjs";
+import { verflechtungErheben, kopplungVon } from "../kit/checks/verflechtung.mjs";
+import { normalisiereConfig } from "../kit/board/config-namen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-const config = JSON.parse(
+// Ueber normalisiereConfig gelesen: vor und nach der Umstellung auf englische Schluessel
+// dieselben Namen (Issue #1728).
+const { config } = normalisiereConfig(JSON.parse(
   readFileSync(join(repoRoot, ".claude", "workflow.config.json"), "utf-8"),
-);
+));
 
 /**
  * Die versionierten Dateien zu einer Pfadangabe — `:(glob)` davor, damit `*`
@@ -51,9 +56,13 @@ const config = JSON.parse(
  * Eine leere Antwort ist ein Fehler und kein leerer Fall: Sie entstuende, wenn
  * ein Verzeichnis umbenannt wird — und der Test bescheinigte dann die
  * Abdeckung einer Menge, die er gar nicht mehr sieht.
+ *
+ * Neu angelegte, nicht ignorierte Dateien zaehlen mit: Der Abschlusslauf eines Pakets
+ * steht vor dem Commit, und eine neue Testdatei ohne Aufruf bliebe sonst bis zum
+ * naechsten Paket unsichtbar (Issue #1741).
  */
 function versionierte(...pfadangaben) {
-  const res = spawnSync("git", ["ls-files", "-z", "--", ...pfadangaben], {
+  const res = spawnSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", ...pfadangaben], {
     cwd: repoRoot,
     encoding: "utf-8",
   });
@@ -137,8 +146,8 @@ const freistellungen = (config.ohnePruefung ?? []).map((eintrag) => ({
  * Die Geruest-Liste der Config (Issue #943, Plan #930): Pfade, die Testdateien nur
  * anlegen, ohne an ihnen etwas zu pruefen. Ihre Erwaehnung belegt keine Kopplung.
  *
- * Die Invariante weiter unten liest dieselbe Liste wie jede kuenftige
- * areas-Berechnung — sonst pruefte sie eine andere Verflechtung als die, nach der
+ * Die Invariante weiter unten liest dieselbe Liste wie `areas suggest` und
+ * `areas compare` — sonst pruefte sie eine andere Verflechtung als die, nach der
  * ausgewaehlt wird, und diese Zweiteilung ist genau das, was die Liste verhindert.
  */
 const geruestMuster = (config.nurGeruest ?? []).map((eintrag) => eintrag.muster);
@@ -209,52 +218,65 @@ test("keine Datei steht zugleich in ohnePruefung und in einem Teil", () => {
   );
 });
 
-test("jede gemessene Kopplung unter kit/ und tools/ hat ein Kommando, das sie ausloest", () => {
-  // Die Invariante aus E4 (Issue #933, Plan #930). Sie sagt, was die gefallene
-  // Zahl der Aufrufe nie sagen konnte:
-  //
-  //   Laedt eine Testdatei eine Quelldatei, dann gibt es fuer JEDES Muster, das
-  //   diese Quelldatei einem Bereich zuordnet, mindestens ein Pruefkommando, das
-  //   diesen Bereich in `areas` fuehrt UND dessen Globs diese Testdatei erfassen.
-  //
-  // Ohne sie ist der Bereichsschnitt frei erfindbar: Ein Bereich, dessen
-  // Testgruppe kein Kommando ausloest, ist still gruen — genau die Richtung, in
-  // der ein Fehler niemandem auffaellt. Die Zahl der Aufrufe war dafuer nur ein
-  // Stellvertreter; die Deckung ist die Sache selbst.
-  //
-  // Zunaechst nur fuer `kit/` und `tools/` — ausgeweitet mit Issue #936 und mit
-  // Issue #937 wieder eingeschraenkt. Die Ausweitung war richtig gedacht und
-  // messbar schaedlich: Sie erzwang breitere `areas`, weil die Erhebung JEDE
-  // Erwaehnung eines Quellpfads zaehlt und die Nacht-Tests in ihren Wegwerf-Repos
-  // `README.md` und `templates/CLAUDE-workflow.md` anlegen. Das Nacht-Kommando
-  // trug seither `skills-doku`, und eine Aenderung an einer Skill-Datei kostete
-  // 83 s statt 3 s (Referenzmessung R4 an Issue #937).
-  //
-  // Der Zielkonflikt ist nicht hier zu loesen: Invariante scharf heisst `areas`
-  // breit heisst Auswahl wirkungslos. Seit Issue #943 kann die Erhebung Geruest von
-  // Kopplung unterscheiden, und sie misst hier mit derselben Liste, nach der auch
-  // ausgewaehlt wird. Die Liste allein macht die Ausweitung aber noch nicht moeglich:
-  // Ein Muster gilt gegen den Quellpfad, also fuer ALLE Zeilen — und `.gitignore`,
-  // `README.md` und `.claude/workflow.config.json` werden je von mindestens einer
-  // Testdatei wirklich geprueft (Messung an Issue #943). Sie aufzunehmen machte die
-  // Invariante dort blind. Die Luecke ausserhalb der beiden Verzeichnisse bleibt
-  // deshalb offen; sie war es vor Issue #936 auch, und sie kostet nichts, waehrend die
-  // Ausweitung 80 Sekunden je Doku-Aenderung kostete.
-  const tabelle = verflechtungErheben({ repoRoot, nurGeruest: geruestMuster });
+// --- Die Invariante aus E4 (Issue #933, Plan #930), seit Issue #1722 ueber areas compare ---
+//
+// Sie sagt, was die gefallene Zahl der Aufrufe nie sagen konnte:
+//
+//   Laedt eine Testdatei eine Quelldatei, dann gibt es fuer JEDES Muster, das
+//   diese Quelldatei einem Bereich zuordnet, mindestens ein Pruefkommando, das
+//   diesen Bereich in `areas` fuehrt UND dessen Globs diese Testdatei erfassen.
+//
+// Ohne sie ist der Bereichsschnitt frei erfindbar: Ein Bereich, dessen
+// Testgruppe kein Kommando ausloest, ist still gruen — genau die Richtung, in
+// der ein Fehler niemandem auffaellt. Die Zahl der Aufrufe war dafuer nur ein
+// Stellvertreter; die Deckung ist die Sache selbst.
+//
+// Seit Issue #1722 (Plan #1713, Kriterium 5) rechnet sie nicht mehr selbst, sondern
+// liest die Luecken aus `areas compare --json` — demselben Werkzeug, das ein anderes
+// Projekt mitbekommt. Die bisherige Rechnung bleibt als Gegenprobe stehen: Sie muss am
+// Kit-Repo und mit einem entfernten Bereich dieselben Luecken finden.
+//
+// Nur fuer `kit/` und `tools/` — ausgeweitet mit Issue #936 und mit Issue #937
+// wieder eingeschraenkt. Die Ausweitung war richtig gedacht und messbar schaedlich:
+// Sie erzwang breitere `areas`, weil die Erhebung JEDE Erwaehnung eines Quellpfads
+// zaehlt und die Nacht-Tests in ihren Wegwerf-Repos `README.md` und
+// `templates/CLAUDE-workflow.md` anlegen. Das Nacht-Kommando trug seither
+// `skills-doku`, und eine Aenderung an einer Skill-Datei kostete 83 s statt 3 s
+// (Referenzmessung R4 an Issue #937).
+//
+// `areas compare` selbst bleibt ohne Pfadbeschraenkung (E14). Damit es am Kit-Repo
+// ruhig bleibt, stehen `.gitignore`, `README.md` und `.claude/workflow.config.json`
+// seit Issue #1722 in `nurGeruest` (E9): Die Wegwerf-Repos der Tests legen sie an, und
+// keine Testdatei laedt sie. Dass einzelne Tests sie wirklich pruefen (Messung an Issue
+// #943), sieht die Erhebung dadurch nicht mehr — das ist der Preis, den E9 bewusst
+// zahlt; breitere Bereiche kosteten 80 Sekunden je Doku-Aenderung.
+
+/** Liegt eine Quelle im Schnitt der Invariante? */
+const geschnitten = (quelle) => quelle.startsWith("kit/") || quelle.startsWith("tools/");
+
+/** Eine Luecke in der Form, in der beide Rechnungen sie nennen. */
+const lueckeText = (bereich, quelle, testdatei) => `${bereich}: ${quelle} braucht ${testdatei}`;
+
+/**
+ * Die bisherige Rechnung (Issue #933 bis #1722), nur noch als Gegenprobe: je gemessene
+ * Kopplung unter `kit/` und `tools/` jeder Bereich der Quelle, den kein Testaufruf fuehrt,
+ * dessen Globs die Testdatei erfassen.
+ */
+function bisherigeLuecken(cfg, wurzel) {
+  const nurGeruest = (cfg.nurGeruest ?? []).map((eintrag) => eintrag.muster);
+  const tabelle = kopplungVon(verflechtungErheben({ repoRoot: wurzel, nurGeruest }));
   assert.ok(tabelle.size > 0, "die Verflechtungserhebung lieferte keine Zeile");
 
-  const bereiche = bereicheVorbereiten(config.checkAreas ?? {});
-  assert.ok(bereiche.length > 0, ".claude/workflow.config.json traegt keine checkAreas");
+  const bereiche = bereicheVorbereiten(cfg.checkAreas ?? {});
+  assert.ok(bereiche.length > 0, "die Config traegt keine checkAreas");
 
-  const kommandos = testEintraege.map((eintrag) => ({
-    areas: new Set(eintrag.areas ?? []),
-    regexe: globeVon(eintrag),
-  }));
+  const kommandos = (cfg.buildChecks ?? [])
+    .filter((eintrag) => typeof eintrag === "object" && eintrag.cmd.startsWith("node --test"))
+    .map((eintrag) => ({ areas: new Set(eintrag.areas ?? []), regexe: globeVon(eintrag) }));
 
   // Die drei Schritte stehen als eigene Funktionen da, nicht als drei ineinander
   // geschachtelte Schleifen: Der Linter zaehlt die Verschachtelung, und die Namen
   // sagen ohnehin besser, was der Schritt bedeutet.
-  const geschnitten = (quelle) => quelle.startsWith("kit/") || quelle.startsWith("tools/");
   const bereicheVon = (quelle) => bereiche.filter((b) => b.regexe.some((r) => r.test(quelle)));
   const gedeckt = (bereich, testdatei) => kommandos.some(
     (k) => k.areas.has(bereich.name) && k.regexe.some((r) => r.test(testdatei)),
@@ -264,22 +286,102 @@ test("jede gemessene Kopplung unter kit/ und tools/ hat ein Kommando, das sie au
   for (const [testdatei, quellen] of tabelle) {
     for (const quelle of quellen.filter(geschnitten)) {
       for (const bereich of bereicheVon(quelle)) {
-        if (!gedeckt(bereich, testdatei)) luecken.add(`${bereich.name}: ${quelle} braucht ${testdatei}`);
+        if (!gedeckt(bereich, testdatei)) luecken.add(lueckeText(bereich.name, quelle, testdatei));
       }
     }
   }
+  return [...luecken].sort();
+}
 
+/** Der Abgleich `areas compare --json` ueber `kit/checks.mjs`, im selben Prozess. */
+async function abgleich(wurzel) {
+  const res = await aufrufen(["areas", "compare", "--json"], { cwd: wurzel });
+  assert.equal(res.status, 0, `checks.mjs areas compare schlug fehl: ${res.stderr}`);
+  return JSON.parse(res.stdout);
+}
+
+/**
+ * Die Luecken des Abgleichs unter `kit/` und `tools/`. `areas compare` nennt eine Luecke
+ * je Kommando des Tests; die Invariante fragt nur, ob es sie gibt.
+ */
+function abgleichLuecken(ergebnis) {
+  return [...new Set(ergebnis.luecken
+    .filter((l) => geschnitten(l.datei))
+    .map((l) => lueckeText(l.bereich, l.datei, l.test)))].sort();
+}
+
+test("jede gemessene Kopplung unter kit/ und tools/ hat ein Kommando, das sie ausloest (areas compare)", async () => {
+  const ergebnis = await abgleich(repoRoot);
+  assert.deepEqual(ergebnis.nichtBeurteilbar, [], "areas compare kann Kommandos des Kit-Repos nicht beurteilen");
   assert.deepEqual(
-    [...luecken].sort(),
+    abgleichLuecken(ergebnis),
     [],
     "Bereiche, deren Aenderung eine Testdatei nicht ausloest, die die Quelle laedt — still gruen",
   );
 });
 
+test("Gegenprobe: areas compare findet am Kit-Repo dieselben Luecken unter kit/ und tools/ wie die bisherige Rechnung", async () => {
+  assert.deepEqual(abgleichLuecken(await abgleich(repoRoot)), bisherigeLuecken(config, repoRoot));
+});
+
+test("die Wurzeldateien der Wegwerf-Repos aus E9 ergeben in areas compare keine Luecke", async () => {
+  // E9 (Plan #1713): `areas compare` laeuft ohne Pfadbeschraenkung. Ohne die drei Eintraege
+  // in `nurGeruest` meldete es am Kit-Repo jede Testdatei, die ein Wegwerf-Repo anlegt.
+  const wurzeldateien = new Set([".gitignore", "README.md", ".claude/workflow.config.json"]);
+  const gemeldet = (await abgleich(repoRoot)).luecken
+    .filter((l) => wurzeldateien.has(l.datei))
+    .map((l) => `${l.test}: ${l.datei}`);
+  assert.deepEqual([...new Set(gemeldet)].sort(), []);
+});
+
+/**
+ * Eine Kopie des Arbeitsstands in ein frisches Repo: die versionierten und die nicht
+ * ignorierten neuen Dateien, wie `areas compare` sie misst. Die Kopie braucht keinen
+ * Commit — die Messung liest auch nicht versionierte Dateien.
+ */
+function arbeitsstandKopieren(ziel) {
+  const res = spawnSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard"], {
+    cwd: repoRoot,
+    encoding: "utf-8",
+  });
+  assert.equal(res.status, 0, `git ls-files schlug fehl: ${(res.stderr || "").trim()}`);
+  for (const pfad of new Set(res.stdout.split("\0").filter((p) => p.length > 0))) {
+    if (!existsSync(join(repoRoot, pfad))) continue;
+    mkdirSync(dirname(join(ziel, pfad)), { recursive: true });
+    copyFileSync(join(repoRoot, pfad), join(ziel, pfad));
+  }
+  const init = spawnSync("git", ["init", "-q"], { cwd: ziel, encoding: "utf-8" });
+  assert.equal(init.status, 0, `git init schlug fehl: ${(init.stderr || "").trim()}`);
+}
+
+test("Gegenprobe: mit einem entfernten Bereich finden areas compare und die bisherige Rechnung dieselben Luecken", async () => {
+  // Ohne sie hinge die leere Liste oben an zwei Rechnungen, die beide nichts finden koennen.
+  // `board-einstieg` faellt aus dem einzigen Kommando, das die Ablauf-Tests des Boards faehrt:
+  // Jede ihrer Kopplungen an den Board-Einstieg wird damit eine Luecke.
+  const ziel = mkdtempSync(join(tmpdir(), "config-teile-"));
+  try {
+    arbeitsstandKopieren(ziel);
+    const ohneBereich = {
+      ...config,
+      buildChecks: (config.buildChecks ?? []).map((eintrag) => (
+        typeof eintrag === "object" && eintrag.cmd.includes("test/ablauf-board-*.test.mjs")
+          ? { ...eintrag, areas: eintrag.areas.filter((name) => name !== "board-einstieg") }
+          : eintrag)),
+    };
+    writeFileSync(join(ziel, ".claude", "workflow.config.json"), `${JSON.stringify(ohneBereich, null, 2)}\n`);
+
+    const bisher = bisherigeLuecken(ohneBereich, ziel);
+    assert.ok(bisher.some((l) => l.startsWith("board-einstieg: ")), `keine Luecke im Board-Einstieg: ${bisher.join(", ")}`);
+    assert.deepEqual(abgleichLuecken(await abgleich(ziel)), bisher);
+  } finally {
+    rmSync(ziel, { recursive: true, force: true });
+  }
+});
+
 test("die Erhebung der Invariante kennt die Geruest-Liste der Config", () => {
   assert.ok(geruestMuster.length > 0, ".claude/workflow.config.json traegt kein nurGeruest");
 
-  const mitListe = verflechtungErheben({ repoRoot, nurGeruest: geruestMuster });
+  const mitListe = kopplungVon(verflechtungErheben({ repoRoot, nurGeruest: geruestMuster }));
   const uebrig = [];
   for (const [testdatei, quellen] of mitListe) {
     for (const quelle of quellen.filter((q) => geruestRegexe.some((r) => r.test(q)))) {
@@ -291,7 +393,7 @@ test("die Erhebung der Invariante kennt die Geruest-Liste der Config", () => {
   // Und die Gegenrichtung: Ohne die Liste steht mindestens ein Eintrag noch in der
   // Tabelle. Ein Muster, das nie etwas trifft, waere kein Schutz, sondern Zierat — und
   // niemand merkte, wenn es beim naechsten Umbau seine Wirkung verloere.
-  const roh = verflechtungErheben({ repoRoot });
+  const roh = kopplungVon(verflechtungErheben({ repoRoot }));
   assert.ok(
     [...roh.values()].some((quellen) => quellen.some((q) => geruestRegexe.some((r) => r.test(q)))),
     `kein Muster aus nurGeruest kommt in der rohen Erhebung vor: ${geruestMuster.join(", ")}`,
@@ -391,7 +493,7 @@ test("jeder Eintrag in gekoppelteBereiche ist in jeder Gruppe, die ihn nennt, ge
     assert.ok(eintrag.grund?.length > 0, `${eintrag.bereich} nennt keinen Grund`);
   }
 
-  const tabelle = verflechtungErheben({ repoRoot, nurGeruest: geruestMuster });
+  const tabelle = kopplungVon(verflechtungErheben({ repoRoot, nurGeruest: geruestMuster }));
   assert.deepEqual(
     eintraegeOhneKopplung(config, tabelle),
     [],

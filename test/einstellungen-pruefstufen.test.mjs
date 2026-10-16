@@ -16,18 +16,19 @@ import { join } from "node:path";
 import { pruefe, ROLLEN_KATALOG } from "../kit/settings.mjs";
 import { mitServer, projekt, TEAM } from "./helpers/einstellungen-fixture.mjs";
 import { oberflaecheStarten } from "./helpers/oberflaeche-vm.mjs";
+import { normalisiereConfig } from "../kit/board/config-namen.mjs";
 
 /** Ein vollstaendiger, gueltiger Block: jede Stufe mit ihren Katalogrollen. */
 const KATALOG_BLOCK = Object.fromEntries(
   Object.entries(ROLLEN_KATALOG).map(([stufe, rollen]) => [stufe, { reviewer: rollen.length, rollen: [...rollen] }]),
 );
 
-/** Oeffnet das Projekt und stellt auf das Thema Review — dort stehen M1 bis M3. */
+/** Oeffnet das Projekt und stellt auf den Reiter Lohnt sich — dort steht M3 vorn (Issue #1736). */
 async function reviewThema(s, name = "alpha") {
   const seite = await oberflaecheStarten({ basis: s.basis, token: s.token });
   seite.klick(seite.projektKnopf(name));
   await seite.ruhe();
-  seite.klick(seite.knopf(seite.ids.themen, "Review"));
+  seite.klick(seite.knopf(seite.ids.themen, "Lohnt sich"));
   // Die Vorschau-Anforderungen des Aufbaus abraeumen, damit ein Test nur seine eigene misst.
   seite.feuere();
   await seite.ruhe();
@@ -36,31 +37,33 @@ async function reviewThema(s, name = "alpha") {
 
 /** Die Platte von M3 und ihre drei Stufen in der Reihenfolge fachlich, plan, issue. */
 function stufen(seite) {
-  const m3 = seite.platten()[2];
+  const m3 = seite.platten()[0];
   return { m3, plaetze: seite.alle(m3, (e) => e.klassen().includes("stufe")) };
 }
 
+// Gelesen wie im Kit: Die Oberflaeche schreibt englische Schluessel (Issue #1725).
 function konfig(s, name = "alpha") {
-  return JSON.parse(readFileSync(join(s.wurzel, name, ".claude", "workflow.config.json"), "utf-8"));
+  return normalisiereConfig(JSON.parse(readFileSync(join(s.wurzel, name, ".claude", "workflow.config.json"), "utf-8"))).config;
 }
 
-test("[einstellungen-20] eine Stufe ohne rollen bricht das Thema Review nicht ab", async () => {
+test("[einstellungen-20] eine Stufe ohne rollen bricht den Reiter Lohnt sich nicht ab", async () => {
   const team = { ...TEAM, reviewStufen: { ...KATALOG_BLOCK, plan: { reviewer: 1 } } };
   await mitServer((w) => projekt(w, "alpha", { team, stand: "5.0.0" }), async (s) => {
     const seite = await reviewThema(s);
     const { m3, plaetze } = stufen(seite);
 
-    // Das Thema baut vollstaendig auf: M3 steht da, und die Teile danach ebenso.
+    // Der Reiter baut vollstaendig auf: M3 steht da, und die Teile danach ebenso.
     const titel = seite.platten().map((p) => seite.alle(p, (e) => e.klassen().includes("platte-pfad"))[0].textContent);
-    assert.deepEqual(titel.slice(0, 3), ["Reviewer", "Paarungen", "Prüfstufen"], "die Teile des Themas Review fehlen");
-    assert.ok(titel.length > 3, "nach M3 bricht der Aufbau des Themas ab");
+    assert.equal(titel[0], "Prüfstufen", "M3 steht nicht vorn im Reiter Lohnt sich");
+    assert.ok(titel.length > 1, "nach M3 bricht der Aufbau des Reiters ab");
     assert.deepEqual(
       plaetze.map((p) => seite.alle(p, (e) => e.tagName === "H4")[0].textContent),
       ["Fachplan", "Plan", "Arbeitspaket"],
       "M3 zeichnet nicht alle drei Stufen",
     );
-    // Der Altfehler steht markiert da, statt den Aufbau abzureissen (Plan E6).
-    assert.ok(m3.textContent.includes("reviewStufen.plan.rollen: fehlt"), "der Befund zur Stufe fehlt an M3");
+    // Der Altfehler steht markiert da, statt den Aufbau abzureissen (Plan E6) — unter dem
+    // englischen Pfad, auch im deutschen Projekt (Issue #1736).
+    assert.ok(m3.textContent.includes("reviewStages.plan.roles: fehlt"), "der Befund zur Stufe fehlt an M3");
   });
 });
 

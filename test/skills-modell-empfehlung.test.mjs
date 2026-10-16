@@ -31,9 +31,9 @@ test("[skills-22] der Skill nennt die Zeile als Bestandteil des Kontext-Abschnit
   assert.ok(absatz, "kein Absatz verbindet die Zeile mit dem Kontext-Abschnitt");
 });
 
-test("[skills-22] der Skill nennt night.modelle als Quelle und die Ordnung der Liste", () => {
-  assert.match(SKILL, /night\.modelle/, "die Quelle des Namens fehlt");
-  const absatz = SKILL.split(/\n\n/).find((a) => /night\.modelle/.test(a));
+test("[skills-22] der Skill nennt night.models als Quelle und die Ordnung der Liste", () => {
+  assert.match(SKILL, /night\.models/, "die Quelle des Namens fehlt");
+  const absatz = SKILL.split(/\n\n/).find((a) => /night\.models/.test(a));
   assert.match(absatz, /erste/i, "die Rolle des ersten Eintrags steht nicht da");
   assert.match(absatz, /letzte/i, "die Rolle des letzten Eintrags steht nicht da");
 });
@@ -41,7 +41,7 @@ test("[skills-22] der Skill nennt night.modelle als Quelle und die Ordnung der L
 test("[skills-22] der Skill sagt, dass die Zeile ohne Liste ersatzlos entfaellt", () => {
   // Eine erfundene Angabe waere schlechter als keine: Der Runner faellt bei fehlender
   // Zeile ohnehin auf das Modell des Laufs zurueck.
-  const absatz = SKILL.split(/\n\n/).find((a) => /night\.modelle/.test(a) && /entf(ä|ae)llt/i.test(a));
+  const absatz = SKILL.split(/\n\n/).find((a) => /night\.models/.test(a) && /entf(ä|ae)llt/i.test(a));
   assert.ok(absatz, "es steht nicht, dass die Zeile ohne Liste entfaellt");
 });
 
@@ -69,13 +69,13 @@ test("[skills-22] /issues nennt beide Wege und die Zeilen Aufgabenstufe:/Stufeng
     "es steht nicht da, dass bei aktiver Einstellung keine Empfohlenes-Modell-Zeile entsteht");
 });
 
-test("[skills-22] /issues enthaelt den Regelabsatz mit allen drei Stufen und dem Verweis auf night.stufenRegel", () => {
+test("[skills-22] /issues enthaelt den Regelabsatz mit allen drei Stufen und dem Verweis auf night.tierRule", () => {
   const absatz = SKILL.split(/\n\n/).find((a) => /Aufgabenstufe:/.test(a) && /schwer/.test(a));
   assert.ok(absatz, "kein Absatz traegt die Regel");
   assert.match(absatz, /schwer/);
   assert.match(absatz, /mittel/);
   assert.match(absatz, /leicht/);
-  assert.match(absatz, /night\.stufenRegel/, "der Verweis auf night.stufenRegel fehlt");
+  assert.match(absatz, /night\.tierRule/, "der Verweis auf night.tierRule fehlt");
 });
 
 test("[skills-29] /task nennt beide Zeilen und verweist auf den Regelabsatz in /issues, ohne die Regel zu wiederholen", () => {

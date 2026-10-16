@@ -1,11 +1,11 @@
 ---
 name: techplan
-description: Step 2 of the 9-step process: creates an implementation plan, puts it up for discussion, and implements nothing. Use this skill when the user invokes /techplan, wants to create a plan, or starts step 2 of the process.
+description: Step 2 of the 8-step process: creates an implementation plan, puts it up for discussion, and implements nothing. Use this skill when the user invokes /techplan, wants to create a plan, or starts step 2 of the process.
 user-invocable: true
 ---
 
 # Plan
-Schritt 2 des 9-Schritt-Prozesses: Die KI erstellt einen Plan. Der Plan wird zur Diskussion gestellt, nicht zur Implementierung.
+Schritt 2 des 8-Schritt-Prozesses: Die KI erstellt einen Plan. Der Plan wird zur Diskussion gestellt, nicht zur Implementierung.
 
 ## Im Nachtbetrieb
 Erkennungsmerkmal ist **gesetztes `KIT_AGENT_MODEL`** und ausdrücklich kein zweites Signal — dieselbe Bedingung wie im Abschnitt „Im Nachtbetrieb" von `/issue-review`. Der Nacht-Runner stellt dem Auftrag zwar einen Satz voran, der die Betriebsart benennt. **Maßgeblich bleibt allein `KIT_AGENT_MODEL`; der Hinweis im Prompt wiederholt es nur** — sein Fehlen ist keine Entwarnung.
@@ -14,7 +14,7 @@ Gestartet wird der Skill nachts vom Nacht-Runner mit `node .claude/kit/night.mjs
 
 **Nachts wird nicht gefragt — in keiner Lage.** Das gilt für die Bahn (Schritt 0), für jede Unklarheit in der Anforderung (Schritt 1) und für die Diskussion des Plans (Schritt 4). Eine Session, die auf eine Antwort wartet, ist vom Runner nicht von einem Fehlschlag zu unterscheiden. Diese Regel gilt für **jeden unbeaufsichtigten Lauf**, nicht nur für diesen Runner — auch dann, wenn ein anderer Runner den Skill startet.
 
-**Offene Verträge nachts.** Trägt der Plan einen offenen Vertrag (Schritt 3), steht die Vertragsfrage über alle offenen Verträge als erste Zeile unter `## Offene Fragen` — daran hält die Kette die Planstufe an, bevor `/issues` Pakete schneidet. Eine andere Stopp-Frage folgt als weiterer Eintrag im selben Abschnitt und wird beim nächsten Halt gestellt: Jeder Halt trägt genau eine Frage. `Entschieden:` schreibt nur, wer die Antwort des Menschen hat — nachts nie die Sitzung.
+**Offene Verträge nachts.** Trägt der Plan einen offenen Vertrag (Schritt 3), steht die Vertragsfrage über alle offenen Verträge als erste Zeile unter `## Offene Fragen` — daran hält die Kette nach der Prüfung des Plans an, bevor `/issues` Pakete schneidet. Eine andere Stopp-Frage folgt als weiterer Eintrag im selben Abschnitt und wird beim nächsten Halt gestellt: Jeder Halt trägt genau eine Frage. `Entschieden:` schreibt nur, wer die Antwort des Menschen hat — nachts nie die Sitzung.
 
 Ein Widerspruch zur Vorgeschichte ist kein E-Eintrag und keine Stopp-Frage: Er steht als `- Widerspruch:`-Zeile in `### Vorgeschichte`, hält nichts an, und der Nachtbericht nennt ihn.
 
@@ -40,6 +40,8 @@ Wird der Skill mit einer Issue-Nummer aufgerufen und trägt dieses Issue das Tit
 ```bash
 node .claude/kit/board.mjs issue check-form <N>
 ```
+
+Trägt die Ausgabe das Feld `wartet`, wartet der Fachplan auf ein Ereignis. Dann nennt der Skill vor allem anderen „Fachplan #N wartet auf ein Ereignis: <Grund>. Der Plan entsteht trotzdem; das Warten bleibt.“ mit dem Grund aus dem Feld und macht weiter, auch unbeaufsichtigt. Das ist ein Hinweis, keine Sperre: Der Skill liest das Warten aus dem Feld, nicht aus dem Body, und ruft `issue hold` nicht auf.
 
 Nennt `verstoesse` das Gate `F12`, fehlen dem pflichtigen Fachplan die Szenarien, und es entsteht kein Plan: Der Skill nennt die `meldung` als Grund und den Weg `/groom #N`, der die Szenarien mit dem PO ergänzt, und endet. Unbeaufsichtigt (gesetztes `KIT_AGENT_MODEL`) gehen Grund und Weg als Kommentar an den Fachplan, nach der Transportregel aus `CLAUDE-workflow.md`, Abschnitt „Lange Texte ans Board“, als `<tmpdir>/<N>-szenarien.md` mit `issue comment <N> --text-file`. Die Szenarien ergänzt der Skill nie selbst — das gehört ins Grooming zum PO. Andere Verstöße halten hier nicht an, und ein Fachplan von vor dem Stichtag meldet kein F12.
 
@@ -85,12 +87,12 @@ Kläre zuerst: Was soll gebaut werden, welche Bereiche des Codes sind betroffen,
 ### 2. Relevante Dateien lesen
 Lies die betroffenen Dateien und vorhandene Muster. Nutze einen Explore-Agenten, wenn der Scope unklar ist. Suche aktiv nach wiederverwendbaren Funktionen und Mustern — vermeide neuen Code, wenn eine passende Implementierung bereits existiert.
 
-**Vorgeschichte** (nur bei gesetztem Schalter `vorgeschichte`, Regel in `CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“): Steht fest, welche Dateien betroffen sind, ruft der Skill das Kommando mit Begriffen aus Titel und Ziel, je Datei aus `## Betroffene Bereiche` ein `--files` und mit `--without` für die Fachliche Quelle:
+**Vorgeschichte** (außer `history` ist `false`, Regel in `CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“): Steht fest, welche Dateien betroffen sind, ruft der Skill das Kommando mit Begriffen aus Titel und Ziel, je Datei aus `## Betroffene Bereiche` ein `--files` und mit `--without` für die Fachliche Quelle:
 ```bash
 node .claude/kit/board.mjs issue history --terms <begriff> --files <pfad> --without <N>
 ```
 
-**Verträge mit dem anderen Repo** (nur wenn `vertragsRepos` in der Config ein Partnerrepo nennt, Gate P14 in `CLAUDE-Plan.md`): Legt der Plan etwas fest, das das andere Repo liest oder schreibt — einen Namen, ein Kennzeichen, ein Format —, holt der Skill je Festlegung den gebauten Stand und sucht die Fundstelle im Klon unter `path` mit Grep und Read:
+**Verträge mit dem anderen Repo** (nur wenn `contractRepos` in der Config ein Partnerrepo nennt, Gate P14 in `CLAUDE-Plan.md`): Legt der Plan etwas fest, das das andere Repo liest oder schreibt — einen Namen, ein Kennzeichen, ein Format —, holt der Skill je Festlegung den gebauten Stand und sucht die Fundstelle im Klon unter `path` mit Grep und Read:
 ```bash
 node .claude/kit/board.mjs code contract-repo <name>
 ```
@@ -111,7 +113,7 @@ Der Plan hat ein **verbindliches Format** — wie das Vier-Abschnitt-Format der 
 Die Überschriften sind der Anker, an dem die Plan-Prüfung und `/issues` arbeiten — **sinngemäß umformuliert wirken sie nicht**. Sie werden wörtlich übernommen: nicht umbenannt, nicht zusammengefasst, nicht umsortiert. **Die Reihenfolge ist begründet:** `## Offene Fragen` steht **vor** `## Verifizierung`. Offene Fragen sollen nicht am Ende vergraben werden — als letzter Abschnitt des Dokuments wären sie genau das. Was in die Abschnitte gehört:
 
 - `## Ziel` — was gebaut wird und welche Wirkung es für den Nutzer hat.
-- `## Betroffene Bereiche` — Dateien, Module, Schichten. Bei gesetztem Schalter `vorgeschichte` endet der Abschnitt mit dem Unterabschnitt `### Vorgeschichte`: die Zeilen `Suchbegriffe:` und `Dateien:`, die Fundstellen und Vermerke nach `CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“, und die `- Widerspruch:`-Zeilen aus `## Vorgeschichte` der Fachlichen Quelle wörtlich übernommen, neben den eigenen.
+- `## Betroffene Bereiche` — Dateien, Module, Schichten. Außer `history` ist `false`, endet der Abschnitt mit dem Unterabschnitt `### Vorgeschichte`: die Zeilen `Suchbegriffe:` und `Dateien:`, die Fundstellen und Vermerke nach `CLAUDE-workflow.md`, Abschnitt „Vorgeschichte“, und die `- Widerspruch:`-Zeilen aus `## Vorgeschichte` der Fachlichen Quelle wörtlich übernommen, neben den eigenen.
 - `## Architektonische Entscheidungen` — die getroffenen Entscheidungen, jede mit Begründung:
 
   > Jede architektonische Entscheidung muss eine Begründung tragen, damit ihre Annahmen und Abwägungen im Review geprüft und angegriffen werden können.
@@ -124,7 +126,7 @@ Die Überschriften sind der Anker, an dem die Plan-Prüfung und `/issues` arbeit
 
 **Neue Namen und kopierte Strukturen (Gate P13 in `CLAUDE-Plan.md`).** Führt der Plan Namen ein, die ein Mensch tippt — Skills, Kommandos, Optionen, Labels, Titel-Präfixe —, nennt er unter `## Architektonische Entscheidungen`, dass sie mit keinem eingebauten Kommando von Claude Code kollidieren. Erzeugt er gleich gebaute Kopien in mehreren Dateien, nennt er ihre Wirkung auf die Duplikatsmessung des Projekts und wie er sie auffängt.
 
-**Verträge (Gate P14 in `CLAUDE-Plan.md`).** Nennt `vertragsRepos` ein Partnerrepo, steht am Ende von `## Architektonische Entscheidungen` der Unterabschnitt `### Verträge`: je Festlegung zum anderen Repo ein Eintrag `- V<n>:` mit `Gebauter Stand:` und `Abgleich:` aus Schritt 2, ohne Festlegung die Leerform. Die festen Wörter — Zeilenanfänge, Abgleich-Werte, Richtungen, Leerform — schreibt der Skill in der Fassung aus `names` (Feld `contract`, Tabelle `VERTRAG`). Ein offener Vertrag (`weicht ab`, `fehlt`, `nicht prüfbar` ohne `Entschieden:`) braucht die Vertragsfrage unter `## Offene Fragen` (Schritt 4).
+**Verträge (Gate P14 in `CLAUDE-Plan.md`).** Nennt `contractRepos` ein Partnerrepo, steht am Ende von `## Architektonische Entscheidungen` der Unterabschnitt `### Verträge`: je Festlegung zum anderen Repo ein Eintrag `- V<n>:` mit `Gebauter Stand:` und `Abgleich:` aus Schritt 2, ohne Festlegung die Leerform. Die festen Wörter — Zeilenanfänge, Abgleich-Werte, Richtungen, Leerform — schreibt der Skill in der Fassung aus `names` (Feld `contract`, Tabelle `VERTRAG`). Ein offener Vertrag (`weicht ab`, `fehlt`, `nicht prüfbar` ohne `Entschieden:`) braucht die Vertragsfrage unter `## Offene Fragen` (Schritt 4).
 
 **Leere Pflichtabschnitte gibt es nicht.** Alle sechs bleiben erhalten, auch wenn es für einen nichts zu sagen gibt; in `## Architektonische Entscheidungen` und `## Offene Fragen` steht dann `- Keine.` **Die Metadaten zählen nicht mit.** Die Kopfzeilen `Plan-Modell: …` und, falls anwendbar, `Fachliche Quelle: Issue #N` stehen **vor** `## Ziel`. Sie sind keine Überschrift und damit kein siebter Abschnitt des Formats.
 

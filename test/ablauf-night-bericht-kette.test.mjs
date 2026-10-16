@@ -96,7 +96,7 @@ test("[night-21] nach abgebrochen steht der Grund im Bericht; ohne Plan gibt es 
   });
 });
 
-test("[night-21] eine Stopp-Frage im Plan haelt vor dem Review an — der Bericht nennt sie und die Einarbeitung fehlt", () => {
+test("[night-21] eine Stopp-Frage im Plan haelt nach der Pruefung an — der Bericht nennt sie, den Marker und die Einarbeitung", () => {
   mitProjekt((dir) => {
     const F = fachplan(dir);
     const env = umgebung(dir, {
@@ -107,8 +107,8 @@ test("[night-21] eine Stopp-Frage im Plan haelt vor dem Review an — der Berich
     assert.equal(res.status, 0, res.stderr);
     const text = fachplanText(dir, F);
     assert.match(text, /### Offene Stopp-Frage\n\n- Ist der Endpunkt ein Vertrag nach aussen\?/);
-    assert.match(text, /### Abgelehnte Befunde\n\n- keine Einarbeitung gefunden/);
-    assert.match(text, /Marker fehlt\./);
+    assert.ok(text.includes(`### Abgelehnte Befunde\n\n${EINARBEITUNG_ZEILE_ABGELEHNT}`), text);
+    assert.match(text, /Marker gesetzt\./);
   });
 });
 

@@ -75,16 +75,16 @@ test("[skills-979] beide Skills nennen `--timeout-min` als Massstab", () => {
   }
 });
 
-test("[skills-979] beide Skills grenzen `night.kette.umsetzungMin` ausdruecklich ab", () => {
+test("[skills-979] beide Skills grenzen `night.chain.implementationMin` ausdruecklich ab", () => {
   for (const [name, text] of SKILLS) {
     const treffer = absaetze(text).filter(
       (a) =>
-        a.includes("night.kette.umsetzungMin") &&
+        a.includes("night.chain.implementationMin") &&
         /nicht gemeint|nicht\b.*gemeint|ausdr(ü|ue)cklich nicht/i.test(a),
     );
     assert.ok(
       treffer.length >= 1,
-      `${name}: kein Absatz grenzt 'night.kette.umsetzungMin' als nicht gemeint ab — ` +
+      `${name}: kein Absatz grenzt 'night.chain.implementationMin' als nicht gemeint ab — ` +
         "das Stufenbudget wird nur zwischen zwei Sessions geprueft (E6)",
     );
   }

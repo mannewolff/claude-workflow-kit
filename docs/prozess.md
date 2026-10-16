@@ -1,8 +1,8 @@
 # Der Prozess
 
-Das Kit führt eine Anforderung in neun Schritten bis in die Produktion. Drei gehören dem Menschen: das GO, der Push und der Merge. Daneben gibt es Werkzeuge, die den Prozess ergänzen oder einen Schritt feiner gliedern.
+Das Kit führt eine Anforderung in acht Schritten bis in die Produktion. Drei gehören dem Menschen: das GO, der Push und der Merge. Daneben gibt es Werkzeuge, die den Prozess ergänzen oder einen Schritt feiner gliedern.
 
-## Die neun Schritte
+## Die acht Schritte
 
 | Schritt | Was | Wer | Skill |
 |---------|-----|-----|-------|
@@ -11,12 +11,11 @@ Das Kit führt eine Anforderung in neun Schritten bis in die Produktion. Drei ge
 | 3 | Issues anlegen | KI | /issues |
 | **4** | **GO: Issues nach Ready ziehen** | **Mensch** | (kein Skill) |
 | 5 | Ready-Issues implementieren | KI | /implement-ready |
-| 6 | Lokale Checks ausführen | KI | /local-check |
-| 7 | Review durchführen | KI | /kit-review |
-| **8** | **Push auf main** | **Mensch** | /push-main |
-| **9** | **Merge nach production** | **Mensch** | /merge-production |
+| 6 | Review durchführen | KI | /kit-review |
+| **7** | **Push auf main** | **Mensch** | /push-main |
+| **8** | **Merge nach production** | **Mensch** | /merge-production |
 
-Zwischen Schritt 8 und 9 prüfst du den Test-Server im Browser; dafür gibt es keinen Skill.
+Zwischen Schritt 7 und 8 prüfst du den Test-Server im Browser; dafür gibt es keinen Skill.
 
 ## Werkzeuge neben dem Prozess
 
@@ -50,7 +49,7 @@ Die Werkzeuge tragen keine Nummer, weil eine Nummer eine Reihenfolge und eine Pf
 
 ## Die Skills
 
-Die achtzehn Skills in der Reihenfolge des Ablaufs, je mit Zweck, Aufrufzeitpunkt und nächstem Schritt.
+Die siebzehn Skills in der Reihenfolge des Ablaufs, je mit Zweck, Aufrufzeitpunkt und nächstem Schritt.
 
 ### /session-start
 
@@ -84,11 +83,11 @@ Weißt du schon, was die Idee will, rufst du zwei dieser Wege direkt auf: Verlan
 
 **Wann:** nach `/requirement` am Fachplan und nach `/techplan` am Plandokument. Arbeitspakete prüft der Skill nur auf ausdrücklichen Aufruf.
 
-**Danach:** am Fachplan `/groom #N`, am Plandokument `/issues #N`. `review:done` ist zugleich Voraussetzung der Nacht-Kette. Das Label gibt den Inhalt nicht frei: Ändert sich ein Dokument danach wesentlich, lässt du es erneut prüfen.
+**Danach:** am Fachplan `/groom #N`, am Plandokument `/issues #N`. `review:done` ist zugleich Voraussetzung der Kette. Das Label gibt den Inhalt nicht frei: Ändert sich ein Dokument danach wesentlich, lässt du es erneut prüfen.
 
 ### /groom
 
-**Wofür:** Der Skill entscheidet mit dem PO die offenen Fragen eines geprüften Fachplans. Jede Frage unter `## Offene Fragen an den PO` kommt einzeln, mit Empfehlung und Begründung, und du entscheidest genau diese eine. Nach deiner Zustimmung schreibt die Session die Antwort sofort in den Body. Eine Frage lässt sich zurückstellen. Sind alle Fragen entschieden, setzt der Skill den Vermerk „Keine“; ihn liest die Nacht-Kette. Einen Fachplan ohne Szenarien ergänzt `/groom` ebenfalls.
+**Wofür:** Der Skill entscheidet mit dem PO die offenen Fragen eines geprüften Fachplans. Jede Frage unter `## Offene Fragen an den PO` kommt einzeln, mit Empfehlung und Begründung, und du entscheidest genau diese eine. Nach deiner Zustimmung schreibt die Session die Antwort sofort in den Body. Eine Frage lässt sich zurückstellen. Sind alle Fragen entschieden, setzt der Skill den Vermerk „Keine“; ihn liest die Kette. Einen Fachplan ohne Szenarien ergänzt `/groom` ebenfalls.
 
 **Wann:** nach `/issue-review` am Fachplan und vor `/techplan`. Eingang ist ein `[Requirement]` mit `review:done` oder `kit:clarify`; bei `kit:clarify` kommt die Stopp-Frage zuerst. Der Skill läuft nur interaktiv, schreibt nichts ohne Zustimmung und entfernt kein Label.
 
@@ -112,7 +111,7 @@ Weißt du schon, was die Idee will, rufst du zwei dieser Wege direkt auf: Verlan
 
 ### /issues
 
-**Wofür:** Schritt 3. Aus dem freigegebenen Plan entstehen Arbeitspakete im Vier-Abschnitt-Format: Kontext, Aufgabe, Akzeptanzkriterium, Abhängigkeiten. Jedes Paket ist eigenständig testbar und trägt im Kontext Rückverweise auf Plan und Fachplan sowie `Empfohlenes Modell:` oder, bei aktivem `night.stufen`, `Aufgabenstufe:` und `Stufengrund:`. Ab hier ist das Issue die Quelle der Wahrheit. Unklarheiten entscheidet der Skill als `Entscheidung:`-Zeile, `issue check-form` prüft jedes Paket vor dem Anlegen.
+**Wofür:** Schritt 3. Aus dem freigegebenen Plan entstehen Arbeitspakete im Vier-Abschnitt-Format: Kontext, Aufgabe, Akzeptanzkriterium, Abhängigkeiten. Jedes Paket ist eigenständig testbar und trägt im Kontext Rückverweise auf Plan und Fachplan sowie `Empfohlenes Modell:` oder, bei aktivem `night.tiers`, `Aufgabenstufe:` und `Stufengrund:`. Ab hier ist das Issue die Quelle der Wahrheit. Unklarheiten entscheidet der Skill als `Entscheidung:`-Zeile, `issue check-form` prüft jedes Paket vor dem Anlegen.
 
 **Wann:** nach Freigabe und Prüfung des Plans, mit `/issues #N` und der Nummer des Plandokuments.
 
@@ -120,7 +119,7 @@ Weißt du schon, was die Idee will, rufst du zwei dieser Wege direkt auf: Verlan
 
 Der Abschnitt `## Abhängigkeiten` enthält `Keine.` oder Verweise `Issue #N`. Jede lokale `#N` im Abschnitt zählt als Abhängigkeit, auch in Erläuterungen; nur Verweise `owner/repo#N` zählen nicht. Eine Verweiszeile beginnt mit `Issue #N` und trägt keine weitere Nummer. Beim Schreiben melden `issue check-form`, `issue create` und `issue update` jede Nummer aus Text und jeden Verweis auf ein Dokument unter `hinweise`; ein Dokument ist kein Arbeitspaket. Probelauf und Rückstell-Kommentar nennen je Abhängigkeit ihre Herkunft. Halten sich Pakete gegenseitig fest, steht dort `Kreis: #A -> #B -> #A`, und ein Paket dahinter wartet auf einen Kreis.
 
-**GO (Schritt 4, Mensch):** Du ziehst die Pakete, die in diesen Durchlauf kommen, am Board nach Ready. Die KI zieht nie selbst nach Ready, außer in der Nacht-Kette unter Variante B, für die du das GO vorab an der Karte gegeben hast.
+**GO (Schritt 4, Mensch):** Du ziehst die Pakete, die in diesen Durchlauf kommen, am Board nach Ready. Die KI zieht nie selbst nach Ready, außer in der Kette unter Variante B, für die du das GO vorab an der Karte gegeben hast.
 
 ### /implement-ready
 
@@ -128,15 +127,15 @@ Der Abschnitt `## Abhängigkeiten` enthält `Keine.` oder Verweise `Issue #N`. J
 
 **Wann:** nach dem GO.
 
-**Danach:** `/local-check`.
+**Danach:** `/kit-review`.
 
 ### /implement-next
 
 **Wofür:** genau ein Ready-Issue umsetzen, die betroffenen Prüfungen vor dem Commit laufen lassen, lokal committen, nach In review ziehen und enden. Ohne Argument nimmt der Skill das oberste Ready-Issue. `/implement-next #N` ist ein verbindlicher Auftrag: Liegt `#N` nicht in Ready, endet der Lauf ohne Ersatz.
 
-**Wann:** wenn du genau ein Paket umsetzen willst. Im Nachtbetrieb startet der Runner je Paket eine frische Session mit diesem Skill.
+**Wann:** wenn du genau ein Paket umsetzen willst. Unbeaufsichtigt startet der Runner je Paket eine frische Session mit diesem Skill.
 
-**Danach:** das nächste Paket oder `/local-check`.
+**Danach:** das nächste Paket oder `/kit-review`.
 
 ### /implement-test
 
@@ -152,29 +151,21 @@ Der Abschnitt `## Abhängigkeiten` enthält `Keine.` oder Verweise `Issue #N`. J
 
 **Wann:** nach `/implement-test`.
 
-**Danach:** `/local-check`.
-
-### /local-check
-
-**Wofür:** Schritt 6. Der Skill ruft `node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranch>)"` auf. Das Kommando wählt die betroffenen `buildChecks` aus und misst alles seit dem letzten Push. Danach läuft `mutationCommand`, sofern gesetzt. Gefahren wird die Paketstufe; Prüfungen der Stufe `push` oder `merge` stehen als Auslassung mit Grund in der Checkliste. Bei Frontend-Änderungen erinnert der Skill an die Prüfung im Browser. Ein roter Check hält den Prozess an.
-
-**Wann:** nach der Umsetzung, vor dem Review.
-
 **Danach:** `/kit-review`.
 
 ### /kit-review
 
-**Wofür:** Schritt 7. Ein Reviewer ohne den Kontext der Umsetzung liest den Code als Fremder. Je nach `reviewScope` liest er den Diff oder das ganze Repo, als Agent `kit-pruefer` im Modell aus `reviewModel` oder als CLI aus `reviewCommand`. Die Befunde landen als Kommentar am Issue. Scheitert der Aufruf, bricht der Skill sichtbar ab.
+**Wofür:** Schritt 6. Ein Reviewer ohne den Kontext der Umsetzung liest den Code als Fremder. Je nach `reviewScope` liest er den Diff oder das ganze Repo, als Agent `kit-pruefer` im Modell aus `reviewModel` oder als CLI aus `reviewCommand`. Die Befunde landen als Kommentar am Issue. Scheitert der Aufruf, bricht der Skill sichtbar ab.
 
-**Wann:** nach `/local-check`.
+**Wann:** nach der Umsetzung.
 
 **Danach:** Befunde einarbeiten (zurück zu Schritt 5) oder `push main`.
 
 ### /push-main
 
-**Wofür:** Schritt 8. Der Skill pusht den Commit-Batch auf main. Er reagiert nur auf die getippte Trigger-Phrase `push main`, und jeder Batch braucht eine eigene Freigabe. Er fährt `checks.mjs run --stage push` mit `--retry`, also jede Prüfung bis zur Stufe `push` ohne Auswahl nach Bereichen; wackelt eine, fragt er vor dem Commit nach. Erzeugungsschritte aus der `RELEASING.md` des Projekts, etwa Versionsbump und Changelog, fährt er vor dem Prüflauf; Vor- und Nach-Push-Schritte daraus um den Push herum.
+**Wofür:** Schritt 7. Der Skill pusht den Commit-Batch auf main. Er reagiert nur auf die getippte Trigger-Phrase `push main`, und jeder Batch braucht eine eigene Freigabe. Er fährt `checks.mjs run --stage push` mit `--retry`, also jede Prüfung bis zur Stufe `push` ohne Auswahl nach Bereichen; wackelt eine, fragt er vor dem Commit nach. Erzeugungsschritte aus der `RELEASING.md` des Projekts, etwa Versionsbump und Changelog, fährt er vor dem Prüflauf; Vor- und Nach-Push-Schritte daraus um den Push herum.
 
-**Vorbereitet in der Nacht.** Eine Nacht-Kette mit dem Ziel `goal:push-prepared` startet `/push-main prepare`. Diese Session pusht nicht: Sie fährt in einem eigenen Worktree die Erzeugungsschritte, den vollen Prüflauf der Stufe `push` und den Commit. Das Ergebnis `gruen`, `gruen-offen` oder `rot` liegt in `.claude/push-vorbereitung.json`. Tippst du morgens `push main` und hat sich seither nichts geändert, übernimmt der Skill den Stand mit der Zeile `Übernimmt den Stand der Nacht vom <zeitpunkt> (<commit>)` und prüft nicht erneut. Fährt das Projekt den vollen Lauf im Build-Dienst, bleibt in der Nacht der offene Punkt `voller Lauf im Build-Dienst (Prüfzweig <zweig>)`; morgens pusht der Skill den Commit auf den Prüfzweig, wartet auf den Build-Dienst und pusht main nur bei Grün.
+**Vom Runner vorbereitet.** Eine Kette mit dem Ziel `goal:push-prepared` startet `/push-main prepare`. Diese Session pusht nicht: Sie fährt in einem eigenen Worktree die Erzeugungsschritte, den vollen Prüflauf der Stufe `push` und den Commit. Das Ergebnis `gruen`, `gruen-offen` oder `rot` liegt in `.claude/push-vorbereitung.json`. Tippst du danach `push main` und hat sich seither nichts geändert, übernimmt der Skill den Stand mit der Zeile `Übernimmt den Stand der Nacht vom <zeitpunkt> (<commit>)` und prüft nicht erneut. Fährt das Projekt den vollen Lauf im Build-Dienst, bleibt bei der Vorbereitung der offene Punkt `voller Lauf im Build-Dienst (Prüfzweig <zweig>)`; danach pusht der Skill den Commit auf den Prüfzweig, wartet auf den Build-Dienst und pusht main nur bei Grün.
 
 **Notfallweg.** Fällt der Build-Dienst aus, pusht `/push-main emergency` nach einem vollen grünen Lauf auf dem eigenen Rechner trotz geschütztem main, nur interaktiv.
 
@@ -184,7 +175,7 @@ Der Abschnitt `## Abhängigkeiten` enthält `Keine.` oder Verweise `Issue #N`. J
 
 ### /merge-production
 
-**Wofür:** Schritt 9. Der Skill erstellt einen Pull Request (GitHub) oder Merge Request (GitLab) von main nach production; mergen tust du selbst. Er reagiert nur auf die Trigger-Phrase `merge production` und hält an, wenn dein lokales main Commits trägt, die noch nicht gepusht sind.
+**Wofür:** Schritt 8. Der Skill erstellt einen Pull Request (GitHub) oder Merge Request (GitLab) von main nach production; mergen tust du selbst. Er reagiert nur auf die Trigger-Phrase `merge production` und hält an, wenn dein lokales main Commits trägt, die noch nicht gepusht sind.
 
 Vor dem PR steht ein CI-Gate: `node .claude/kit/board.mjs code ci-status --commit <sha>` fragt den Zustand der CI für den Stand auf `origin/main` ab, vor Versionsbump und Release-Commit. Ist sie rot, entsteht kein PR, und der Skill nennt die roten Jobs. Läuft sie noch, fragt er einmal nach. Der Grund: Die lokalen `buildChecks` messen nicht, was die CI misst, etwa eine andere Laufzeitumgebung oder einen frischen Checkout. Danach fährt der Skill mit `checks.mjs run --stage merge` die Freigabestufe, also nur, was beim Push noch nicht geprüft wurde.
 
@@ -225,7 +216,6 @@ git tag -a vX.Y.Z <hash> -m "Release vX.Y.Z" && git push origin vX.Y.Z
 | Pakete | `/issue-review #N` am Plan, dann `/issues #N` | Arbeitspakete im Backlog, je mit Rückverweisen |
 | GO | Pakete am Board nach Ready ziehen | die Pakete in Ready, in deiner Reihenfolge |
 | Umsetzung | `/implement-ready` | lokale Commits, Pakete in In review, je ein Abschlussbericht |
-| Lokale Prüfung | `/local-check` | eine Checkliste, alles grün |
 | Code-Review | `/kit-review` | Befunde des Reviewers als Kommentar |
 | `push main` | die Trigger-Phrase tippen | main auf dem Remote aktuell, Test-Server zieht nach |
 | Test-Server | Golden Path und Randfälle im Browser | das Ergebnis läuft, oder du gehst zurück zu Schritt 5 |
@@ -252,9 +242,9 @@ Der Ablauf: `/requirement`, `/issue-review #N`, `/groom #N`, `/techplan #N`, `/i
   Fachliche Quelle: Issue #N
   ```
 
-  Die `Plan:`-Zeile nennt den Fundort des Plans, `Plan-Modell:` im Plan seinen Urheber. Beide Zeilen stehen nie in den Abhängigkeiten: Der Nacht-Runner läse sie als unerfüllte Abhängigkeit, und weil Plan und Fachplan erst nach ihren Paketen fertig sind, blieben die Pakete dauerhaft zurückgestellt.
-- **Vier Sorten Karte gehen nie in die Umsetzung.** Fachliche Issues (`[Requirement]`), Ideen (`[Idea]`), Plandokumente (`[Plan]`) und Menschenschritte (`[Human]`) stellen `/implement-ready`, `/implement-next` und der Nacht-Runner kommentiert ins Backlog zurück, ohne eine Session zu starten. Ein Menschenschritt ist ein Arbeitspaket, dessen Aufgabe außerhalb des Repositories liegt, etwa eine Einstellung, ein Konto, ein Zugang oder eine Freigabe; sein Kommentar sagt, dass die Karte wartet und nicht gescheitert ist.
-- **Lebenszyklus:** Fachliche Issues und Plandokumente zieht der Mensch aus dem Backlog nur nach Done oder gar nicht. In review heißt für sie „alles gebaut, Review dran“, und diese Spalte setzt das Kit: Sobald alle Pakete eines Plans in In review oder Done liegen, zieht es Plandokument und fachliche Anforderung dorthin. Die Nacht-Kette (`night.mjs --chain`) liest nur die Backlog-Spalte und legt Plan und Pakete dort ab. Wer ein fachliches Issue vor seiner Kette aus dem Backlog zieht, nimmt es dem Nachtlauf weg: Es ist dann kein Kandidat mehr, ohne dass etwas fehlschlägt. Der Ausweg ist der interaktive Weg mit Nummer, `/techplan #N`, `/issue-review #N`, `/issues #M`; er arbeitet unabhängig von Spalte und Marker.
+  Die `Plan:`-Zeile nennt den Fundort des Plans, `Plan-Modell:` im Plan seinen Urheber. Beide Zeilen stehen nie in den Abhängigkeiten: Der Runner läse sie als unerfüllte Abhängigkeit, und weil Plan und Fachplan erst nach ihren Paketen fertig sind, blieben die Pakete dauerhaft zurückgestellt.
+- **Vier Sorten Karte gehen nie in die Umsetzung.** Fachliche Issues (`[Requirement]`), Ideen (`[Idea]`), Plandokumente (`[Plan]`) und Menschenschritte (`[Human]`) stellen `/implement-ready`, `/implement-next` und der Runner kommentiert ins Backlog zurück, ohne eine Session zu starten. Ein Menschenschritt ist ein Arbeitspaket, dessen Aufgabe außerhalb des Repositories liegt, etwa eine Einstellung, ein Konto, ein Zugang oder eine Freigabe; sein Kommentar sagt, dass die Karte wartet und nicht gescheitert ist.
+- **Lebenszyklus:** Fachliche Issues und Plandokumente zieht der Mensch aus dem Backlog nur nach Done oder gar nicht. In review heißt für sie „alles gebaut, Review dran“, und diese Spalte setzt das Kit: Sobald alle Pakete eines Plans in In review oder Done liegen, zieht es Plandokument und fachliche Anforderung dorthin. Die Kette (`night.mjs --chain`) liest nur die Backlog-Spalte und legt Plan und Pakete dort ab. Wer ein fachliches Issue vor seiner Kette aus dem Backlog zieht, nimmt es dem Runner weg: Es ist dann kein Kandidat mehr, ohne dass etwas fehlschlägt. Der Ausweg ist der interaktive Weg mit Nummer, `/techplan #N`, `/issue-review #N`, `/issues #M`; er arbeitet unabhängig von Spalte und Marker.
 
 ### Szenarien im Fachplan
 
@@ -271,20 +261,20 @@ Vollständig ist ein Szenario mit Titel und je mindestens einer Zeile `Angenomme
 ## Szenarien
 
 ### Szenario: Fachplan ohne Szenarien wird abgewiesen
-- Angenommen ein Projekt hat den Stichtag szenarienAb gesetzt
+- Angenommen ein Projekt hat den Stichtag scenariosFrom gesetzt
 - Und ein Fachplan hat fachliche Akzeptanzkriterien, aber keinen Abschnitt Szenarien
 - Wenn er über das Kit angelegt wird
 - Dann wird er nicht angelegt
 - Und die Meldung sagt in einem Satz, was fehlt, und zeigt die Form eines Szenarios
 ```
 
-`issue check-form` und `issue create` weisen einen Fachplan ab, dem der Abschnitt fehlt, dessen Abschnitt leer ist oder kein vollständiges Szenario trägt; die Meldung zeigt die Form eines Szenarios. Für Karten am Board gilt die Pflicht ab dem Stichtag [`szenarienAb`](/einstellungen); `node .claude/kit/board.mjs scenarios baseline` nennt den passenden Wert. Ohne Szenarien entsteht kein technischer Plan; `/groom` ergänzt sie.
+`issue check-form` und `issue create` weisen einen Fachplan ab, dem der Abschnitt fehlt, dessen Abschnitt leer ist oder kein vollständiges Szenario trägt; die Meldung zeigt die Form eines Szenarios. Für Karten am Board gilt die Pflicht ab dem Stichtag [`scenariosFrom`](/einstellungen); `node .claude/kit/board.mjs scenarios baseline` nennt den passenden Wert. Ohne Szenarien entsteht kein technischer Plan; `/groom` ergänzt sie.
 
 ## Vorgeschichte
 
 Bevor `/requirement` einen Fachplan oder `/techplan` einen Plan schreibt, sucht das Kit frühere Fachpläne zum selben Gegenstand, archivierte eingeschlossen. So wird eine frühere Entscheidung nicht still überfahren. Die Suche sperrt nichts, sie macht nur sichtbar.
 
-**Einschalten.** Der Schalter [`history`](/einstellungen) steht in der Vorgabe auf aus; dann entsteht jedes Dokument ohne Abschnitt und ohne Vermerk. Die Suche braucht einen Tracker, der archivierte Karten durchsucht; das kann der Toolbox-Tracker (kanban-kit). Bei GitHub, GitLab und dem lokalen Datei-Tracker trägt das Dokument den Vermerk, dass keine Vorgeschichte gelesen wurde.
+**Ausschalten.** Der Schalter [`history`](/einstellungen) steht in der Vorgabe auf an; nur mit `false` ist er aus, dann entsteht jedes Dokument ohne Abschnitt und ohne Vermerk. Die Suche braucht einen Tracker, der archivierte Karten durchsucht; das kann der Toolbox-Tracker (kanban-kit). Bei GitHub, GitLab und dem lokalen Datei-Tracker trägt das Dokument den Vermerk, dass keine Vorgeschichte gelesen wurde.
 
 **Suchen.** Beide Skills rufen selbst auf:
 
@@ -300,7 +290,7 @@ Die Suchbegriffe kommen aus Titel und Ziel der neuen Anforderung. Der Plan gibt 
 - `Keine Vorgeschichte gelesen: <Grund>` — das Archiv war nicht erreichbar; das Dokument entsteht trotzdem.
 - `Weitere Treffer: <Zahl>` — es gab mehr Treffer, als das Dokument nennt.
 
-**Ein Widerspruch hält nichts an.** Widerspricht die neue Anforderung einer früheren PO-Antwort oder einem früheren Nicht-Ziel, steht der Widerspruch mit Zitat und Fundstelle im Abschnitt zur Vorgeschichte, nicht unter den offenen Fragen. Auch nachts läuft die Nacht-Kette weiter; der Nachtbericht nennt den Widerspruch.
+**Ein Widerspruch hält nichts an.** Widerspricht die neue Anforderung einer früheren PO-Antwort oder einem früheren Nicht-Ziel, steht der Widerspruch mit Zitat und Fundstelle im Abschnitt zur Vorgeschichte, nicht unter den offenen Fragen. Auch unbeaufsichtigt läuft die Kette weiter; der Laufbericht nennt den Widerspruch.
 
 ## Issue-Review über mehrere Modelle
 
@@ -316,7 +306,7 @@ Welche Stufe greift, entscheidet das Titel-Präfix:
 | `plan` | ein Plandokument `[Plan]` aus [/techplan](#techplan) | `Plan-Review: …` |
 | `issue` | ein Arbeitspaket aus [/issues](#issues) oder einen `[Task]` aus [/task](#task); `[Task]` ist kein Dokument-Präfix | `Issue-Review: …` |
 
-**Der Aufruf ist immer `/issue-review #N`.** Es gibt bewusst kein eigenes Kommando je Stufe; der Skill liest sie am Titel-Präfix ab. Das gilt interaktiv genauso wie im Nachtbetrieb, nur fragt die Session interaktiv vor dem Schreiben. Ohne Nummer nimmt der Skill alle Fachpläne und Plandokumente aus dem Backlog, die noch keinen Nachweis ihrer Stufe tragen. Arbeitspakete prüft er nur mit Nummer; was ein Paket falsch macht, fangen die Prüfungen vor dem Commit und der Code-Review. Eine `[Idea]` prüft er nie.
+**Der Aufruf ist immer `/issue-review #N`.** Es gibt bewusst kein eigenes Kommando je Stufe; der Skill liest sie am Titel-Präfix ab. Das gilt interaktiv genauso wie im Runner, nur fragt die Session interaktiv vor dem Schreiben. Ohne Nummer nimmt der Skill alle Fachpläne und Plandokumente aus dem Backlog, die noch keinen Nachweis ihrer Stufe tragen. Arbeitspakete prüft er nur mit Nummer; was ein Paket falsch macht, fangen die Prüfungen vor dem Commit und der Code-Review. Eine `[Idea]` prüft er nie.
 
 **Wo der Nachweis steht:** beim Arbeitspaket im Abschnitt `## Kontext`, bei der fachlichen Anforderung im Abschnitt `## Ziel` neben `Autor-Modell:`, beim Plandokument vor `## Ziel` neben `Plan-Modell:`. Er ist eine Spur, keine Freigabe.
 
@@ -330,7 +320,7 @@ Wie viele Reviewer welche Rollen tragen, sagt [`reviewStages`](/einstellungen). 
 
 ### Was du danach siehst
 
-Am Dokument steht ein Kommentar `## <Stufe>-Review, Runde 1` mit den Befunden und ein Kommentar `## Einarbeitung, Runde 1` mit der Liste übernommen oder abgelehnt samt Grund. Der neue Text steht im Body, mit der Nachweiszeile der Stufe, dazu das Label `review:done`. Hat ein Befund eine Frage der Stopp-Klasse, trägt das Dokument stattdessen `kit:clarify` und die Frage als Kommentar. Ist kein einziger Reviewer gelaufen, setzt der Skill `review:done` nicht. Eine zweite Runde gibt es nicht.
+Am Dokument steht ein Kommentar `## <Stufe>-Review, Runde 1` mit den Befunden und ein Kommentar `## Einarbeitung, Runde 1` mit der Liste übernommen oder abgelehnt samt Grund. Der neue Text steht im Body, mit der Nachweiszeile der Stufe, dazu das Label `review:done`. Hat ein Befund eine Frage der Stopp-Klasse, trägt ein Fachplan oder ein Arbeitspaket stattdessen `kit:clarify` und die Frage als Kommentar. Am Plandokument steht die Frage unbeaufsichtigt, etwa in der Kette, als Eintrag unter `## Offene Fragen` des Plans; die übrigen Befunde sind eingearbeitet, und `review:done` ist gesetzt. Ist kein einziger Reviewer gelaufen, setzt der Skill `review:done` nicht. Eine zweite Runde gibt es nicht.
 
 Ein Claude-Reviewer läuft als Agent `kit-pruefer` und darf nur lesen. Ein fremder Reviewer wie Codex läuft über sein Kommando mit dem Nur-Lese-Schalter seines Werkzeugs; ohne bekannten Schalter startet er nicht.
 
@@ -368,7 +358,7 @@ Jede Umsetzung endet mit `node .claude/kit/checks.mjs run`, bevor sie committet.
 
 | Stufe | Zeitpunkt | Skill |
 | --- | --- | --- |
-| `paket` | vor dem lokalen Commit eines Arbeitspakets | `/implement-ready`, `/implement-next`, `/implement-done`, `/local-check` |
+| `paket` | vor dem lokalen Commit eines Arbeitspakets | `/implement-ready`, `/implement-next`, `/implement-done` |
 | `push` | vor dem Veröffentlichen auf main | `/push-main` |
 | `merge` | vor der Freigabe nach production | `/merge-production` |
 
@@ -377,6 +367,18 @@ Die Stufen bauen aufeinander auf: `push main` fährt Paket- und Push-Stufe volls
 **Das Commit-Gate.** Ist es eingehängt, weist es jeden Commit ab, dem kein grüner Prüflauf auf demselben Stand vorausging. Es vergleicht die geprüften Dateien mit dem, was wirklich committet wird; eine Datei, die nach der Prüfung geändert wurde, lässt es nicht durch. Ein roter Lauf heißt: korrigieren und denselben Aufruf wiederholen. Er fährt zuerst die zuletzt roten Prüfungen und danach einmal den vollen Lauf.
 
 Wie man Bereiche, Stufen und das Gate einrichtet, steht unter [Die Config-Datei](/einrichtung#die-config-datei) und in den [Einstellungen](/einstellungen).
+
+### Prüflauf von Hand
+
+Willst du ohne Karte prüfen, etwa nach einer Änderung von Hand oder vor dem `push main`, rufst du das Kommando selbst auf:
+
+```bash
+node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranch>)"
+```
+
+`<mainBranch>` ist der Wert aus `.claude/workflow.config.json`. Der Anker ist der letzte gepushte Stand: Der Lauf misst alles seit dem letzten Push, also den Batch, der als Nächstes hinausgeht. Ohne `--since` misst das Kommando gegen `HEAD` und sähe auf committetem Stand nichts. Gefahren wird die Paketstufe; Prüfungen der Stufe `push` oder `merge` stehen als Auslassung mit Grund in der Ausgabe.
+
+**Leerer Anker.** Schlägt `git merge-base` fehl, etwa ohne `origin` oder ohne gemeinsamen Vorfahren, wird der Aufruf zu `--since ""`. Das Kommando behandelt einen leeren Anker wie einen nicht auflösbaren und fährt den vollen Umfang, nie gar keine Prüfung.
 
 ## Der Prüflauf
 
@@ -398,13 +400,13 @@ Eine Vorschau hat der Lauf nicht; `/issue-review --dry-run` zeigt Dokumente und 
 
 | Ergebnis | Spur an der Karte | als Nächstes |
 |---|---|---|
-| geprüft | `Fachplan-Review:` im Body, Label `review:done`, Befunde und Einarbeitung als Kommentare | nichts; die Karte kann in die Nacht-Kette |
+| geprüft | `Fachplan-Review:` im Body, Label `review:done`, Befunde und Einarbeitung als Kommentare | nichts; die Karte kann in die Kette |
 | wartende Entscheidung | `kit:clarify` und die Frage als Kommentar; der Text bleibt unverändert | die Frage beantworten und `kit:clarify` abnehmen |
 | unvollständig | Kommentar `## Pruefung unvollstaendig` mit Grund, erreichtem Schritt und Weg nach vorn | `/issue-review #N` von Hand fahren |
 
 **Budgets.** Zeit je Prüfer-Session und Kosten je Lauf stehen in [`checkRun`](/einstellungen). Ist das Kostenbudget erschöpft, bleiben die übrigen Karten liegen und behalten ihr Label.
 
-**Was der Lauf nicht tut.** Er bewegt keine Karte zwischen Spalten, zieht nichts nach Ready und setzt kein Kettenlabel. Das Kettenlabel für die Nacht-Kette setzt weiter ein Mensch.
+**Was der Lauf nicht tut.** Er bewegt keine Karte zwischen Spalten, zieht nichts nach Ready und setzt kein Kettenlabel. Das Kettenlabel für die Kette setzt weiter ein Mensch.
 
 Beim Tracker `local` liegt das Board im Repo, und die Sessions schreiben in `issues/` der Hauptkopie. Diese Änderungen an den Karten sind das Ergebnis und kein Rest.
 
@@ -413,7 +415,7 @@ Beim Tracker `local` liegt das Board im Repo, und die Sessions schreiben in `iss
 Sagst du der Session etwas über einen Sachverhalt, etwa was gerade läuft, ist das eine Mitteilung und kein Auftrag. Die Session übernimmt sie ungeprüft und prüft sie mit keinem Werkzeug nach. Sie antwortet in einer festen Form, die Reichweite und Folge nennt:
 
 ```
-Mitteilung übernommen, ungeprüft — gilt, bis du Entwarnung gibst. Folge: Ich starte keinen zweiten Nachtlauf.
+Mitteilung übernommen, ungeprüft — gilt, bis du Entwarnung gibst. Folge: Ich starte keinen zweiten Lauf.
 ```
 
-So ist eine falsche Einordnung sofort sichtbar. Eine Mitteilung ersetzt keinen Pflichtcheck, und eine zitierte Trigger-Phrase löst keinen Push aus. Nachts gibt es keine Mitteilungen. Der verbindliche Wortlaut steht in `CLAUDE-workflow.md`, Abschnitt „Mitteilungen des Menschen“.
+So ist eine falsche Einordnung sofort sichtbar. Eine Mitteilung ersetzt keinen Pflichtcheck, und eine zitierte Trigger-Phrase löst keinen Push aus. Unbeaufsichtigt gibt es keine Mitteilungen. Der verbindliche Wortlaut steht in `CLAUDE-workflow.md`, Abschnitt „Mitteilungen des Menschen“.

@@ -191,7 +191,7 @@ runner takes it for a work package ready for release and pulls it into the
 implementation.
 
 ## F12 — The section `## Scenarios` holds at least one complete scenario `[maschinell]`
-<!-- de: 86027bc3d264 -->
+<!-- de: 0383a305c5e1 -->
 
 The section `## Scenarios` (in a German project `## Szenarien`) is present, stands between
 `## Business acceptance criteria` and `## Non-goals` and contains at least one complete
@@ -225,7 +225,7 @@ update to this duty: they stay valid.
 ---
 
 ## Expressly no gate
-<!-- de: fb6c6ba4554d -->
+<!-- de: dac96582fdb4 -->
 
 So that the reviewer does not declare everything a gate:
 
@@ -242,6 +242,10 @@ So that the reviewer does not declare everything a gate:
   of the review, not a form violation.
 - **The number of scenarios above one.** Not every business acceptance criterion needs a
   scenario.
+- **The line `Waiting for event: <reason>` in the section `## Goal`.** It is an optional
+  marking, set and lifted with `node .claude/kit/board.mjs issue hold <N> --reason
+  "<reason>"` or `--lift`. The night chain goes by it, the form neither requires nor
+  forbids it; it is not an open question for the PO.
 
 A finding on these points is still a finding — it is applied or discarded. Whether it calls
 a human is decided by trigger 2 from A9, not by this register.

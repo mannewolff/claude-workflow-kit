@@ -4,44 +4,40 @@ Jeder Teil dieser Seite sagt, was du tust und was du danach siehst. Jede einzeln
 
 ## Installation
 
-**Was du tust.** Wechsle in deinen Projektordner und starte den Installer:
-
-```bash
-npx claude-workflow-kit
-```
-
-Ohne npm geht es auch so:
+**Was du tust.** Wechsle in deinen Projektordner, lade den Installer und starte ihn:
 
 ```bash
 curl -O https://docs.mwolff.org/install.mjs
 node install.mjs
 ```
 
+Was der Rechner dafür braucht, nennt der [Einstieg](/quickstart).
+
 Der Installer fragt der Reihe nach:
 
 1. **Sprache** des Kits, `de` oder `en`.
-2. **Global oder projektlokal.** Global landen die Skills in `~/.claude/skills/` und gelten in allen Projekten. Projektlokal landen sie in `./.claude/skills/`; das ist der Weg für ein Team.
+2. **Global oder projektlokal.** Global: `~/.claude/skills/`, gilt in allen Projekten. Projektlokal: `./.claude/skills/`, der Weg für ein Team.
 3. **Code-Host**: `github`, `gitlab` oder `local`.
-4. **Issue-Tracker**: Vorgabe ist der Code-Host, jede andere Wahl ist möglich.
+4. **Issue-Tracker**: `github`, `gitlab` oder `local`; Vorgabe `github`.
 5. **Main-Branch** (Ziel von `/push-main`) und **Production-Branch** (Ziel von `/merge-production`).
 6. **Review-Umfang**: `diff` zeigt dem Reviewer nur die geänderten Zeilen, `full` alle Dateien.
 7. **Review-Modell oder Review-Kommando**, genau eines von beiden. Ein Modell läuft als Subagent; ein Kommando startet ein fremdes Werkzeug, das den Prompt über stdin bekommt.
 8. **Commit-Gate** einhängen, nur projektlokal und nur, wenn kein anderer `core.hooksPath` gesetzt ist.
-9. **Bereiche** und je vorhandener Prüfung ihre Zuordnung, nur projektlokal (siehe [Bereiche](#bereichsbezogene-prufungen-checkareas)). Eine leere Eingabe lässt alles, wie es ist.
+9. **Bereiche** und je vorhandener Prüfung ihre Zuordnung, nur projektlokal (siehe [Bereiche](#bereichsbezogene-prufungen-checkareas)); beim ersten Einrichten mit dem Vorschlag aus `areas suggest`; leer lässt alles, wie es ist.
 10. **Vault-Pfad**, nur global. Mit Pfad schreibt der Installer `~/.claude/kontext.config.json`.
 
 Bei `github` und projektlokaler Installation folgen auf die Code-Host-Frage drei Fragen zum **Schutz des Hauptzweigs**: ob das Projekt GitHub Actions hat, ob die Prüfung vor dem Push dorthin wandern und Haupt- und Veröffentlichungszweig geschützt werden sollen, und welcher Prüfzweig gilt (Vorgabe `kit-pruefung`). Mit Ja pusht der Installer zur Probe auf den Prüfzweig, wartet auf den Build-Dienst und meldet `scharf` (Rulesets gesetzt), `anleitung` (Probe bestanden, die Ausgabe nennt die Schritte bei GitHub), `offen` (kein Lauf des Build-Dienstes) oder `nicht moeglich`.
 
-Ein bestehendes Projekt schaltet den Schutz mit `node install.mjs --protection` nachträglich ein; der Aufruf ändert nur `pushPruefung`. Den Zustand nennt jederzeit `node .claude/kit/board.mjs code protection status`.
+Ein bestehendes Projekt schaltet den Schutz mit `node install.mjs --protection` nachträglich ein; der Aufruf ändert nur `pushCheck`. Den Zustand nennt jederzeit `node .claude/kit/board.mjs code protection status`.
 
-**Was du danach siehst.** Starte Claude Code neu. Die achtzehn Skills erscheinen unter `/help`, und `/session-start` meldet den Stand des Projekts.
+**Was du danach siehst.** Starte Claude Code neu. Die siebzehn Skills erscheinen unter `/help`, und `/session-start` meldet den Stand des Projekts. Uncommittete Dateien meldet der Installer zuletzt mit `ACHTUNG`; vor dem Runner committen oder verwerfen, sonst hält er an.
 
 ### Was der Installer schreibt
 
 - die Skills unter `.claude/skills/`,
 - `.claude/workflow.config.json` mit deinen Antworten,
 - `CLAUDE-workflow.md` mit der Prozessbeschreibung und die Gate-Register `CLAUDE-Fachplan.md` und `CLAUDE-Plan.md`,
-- die Werkzeuge unter `.claude/kit/`: Board-Adapter `board.mjs`, Prüflauf `checks.mjs`, Nacht-Runner `night.mjs` und ihre Teile,
+- die Werkzeuge unter `.claude/kit/`: Board-Adapter `board.mjs`, Prüflauf `checks.mjs`, Runner `night.mjs` und ihre Teile,
 - bei projektlokaler Installation den Block in `.gitignore`, die Hooks in `.claude/settings.json` und das Commit-Gate unter `.githooks/`.
 
 Alles unter `.claude/` außer der Config ist Generat: Der nächste Installer-Lauf schreibt es neu. Es gehört deshalb nicht ins Repo. Der Block in `.gitignore` beginnt so:
@@ -58,13 +54,13 @@ Die erste Zeile muss `.claude/*` lauten, nicht `.claude/`: In ein ausgeschlossen
 
 **Abschalten.** Den Eintrag aus dem `hooks`-Block löschen. Die Datei ist nicht versioniert, die Entscheidung gilt für deine Maschine. Der nächste Installer-Lauf trägt ihn wieder ein; den Melder stellst du dauerhaft still, indem du ihm das Token nimmst.
 
-**Die bekannte Lücke: Worktrees.** Ein frisch angelegter `git worktree` trägt nur versionierte Dateien, also weder `settings.json` noch `.claude/kit/`. Eine Sitzung darin meldet nichts und hat keinen Hook. Abhilfe: beides aus dem Hauptarbeitsbaum hinüberkopieren. Die Worktrees der Nacht-Kette meldet der Runner selbst.
+**Die bekannte Lücke: Worktrees.** Ein frisch angelegter `git worktree` trägt nur versionierte Dateien, also weder `settings.json` noch `.claude/kit/`. Eine Sitzung darin meldet nichts und hat keinen Hook. Abhilfe: beides aus dem Hauptarbeitsbaum hinüberkopieren. Die Worktrees der Kette meldet der Runner selbst.
 
 ### Geschützte Dateien
 
 `.claude/settings.json`, `.claude/settings.local.json` und `.claude/hooks/` darf nur ein Mensch schreiben; Claude Code weist jeden Schreibzugriff darauf ab. Ein Arbeitspaket, das eine davon ändern muss, hält an. Das Label `kit:protected` ist wie `review:done` je Board einmal anzulegen; es zeigt anders als `kit:clarify` keine offene Frage, sondern eine wartende Handlung, und abnehmen darf es nur der Mensch. Der Halt-Kommentar beginnt mit `## Geschuetzte Datei` und nennt jede Datei samt der Zeile aus dem Paket.
 
-Schon beim Schreiben eines Pakets prüft `issue check-form` die Formgates I7 bis I9: Die Aufgabe nennt mindestens eine Datei (I7), keine davon ist geschützt (I8), und sie nennt die Quelle statt der installierten Kopie unter `.claude/kit/` (I9). Welche geschützten Dateien ein Paket nennt und wie der Halt-Kommentar lautet, liefert `issue check-protected <id>`; mit `--path <pfad>` kommt ein beim Schreiben abgewiesener Pfad dazu. Im Nachtbericht steht ein solcher Halt mit der Art `geschuetzt`, getrennt von den offenen Fragen.
+Schon beim Schreiben eines Pakets prüft `issue check-form` die Formgates I7 bis I9: Die Aufgabe nennt mindestens eine Datei (I7), keine davon ist geschützt (I8), und sie nennt die Quelle statt der installierten Kopie unter `.claude/kit/` (I9). Welche geschützten Dateien ein Paket nennt und wie der Halt-Kommentar lautet, liefert `issue check-protected <id>`; mit `--path <pfad>` kommt ein beim Schreiben abgewiesener Pfad dazu. Im Laufbericht steht ein solcher Halt mit der Art `geschuetzt`, getrennt von den offenen Fragen.
 
 **Was du dann tust.** Die Änderung an der Datei selbst vornehmen und `kit:protected` abnehmen. Beim nächsten Anlauf gilt das Paket als freigegeben.
 
@@ -83,7 +79,7 @@ Zwei versionierte Dateien tragen es: `.githooks/pre-commit` ruft `.githooks/gate
 3. Mit eigenem Hook-Manager hängt das Projekt den Aufruf selbst ein.
 4. Die Zusicherung gilt je committeter Datei, nicht für den Stand als Ganzes. Wer `A` committet und das zugehörige `B` liegen lässt, erzeugt einen Stand, den niemand geprüft hat.
 
-Nachts wertet der Nacht-Runner den Nachweis zusätzlich nach jeder Runde; fehlt er oder ist er rot, gilt die Runde als Fehlschlag. Interaktiv greift niemand, dort bleibt das Gate die Sicherung.
+Unbeaufsichtigt wertet der Runner den Nachweis zusätzlich nach jeder Runde; fehlt er oder ist er rot, gilt die Runde als Fehlschlag. Interaktiv greift niemand, dort bleibt das Gate die Sicherung.
 
 ### Welchen Stand hat meine Installation?
 
@@ -92,7 +88,7 @@ node .claude/kit/board.mjs --version
 node .claude/kit/night.mjs --version
 ```
 
-Beide nennen ihre Kit-Version; die aktuelle nennt `node install.mjs --version`. Liegt deine Kopie zurück, lässt du den Installer erneut laufen. Laufen die beiden Dateien auseinander, warnt der Nacht-Runner beim Start.
+Beide nennen ihre Kit-Version; die aktuelle nennt `node install.mjs --version`. Liegt deine Kopie zurück, lässt du den Installer erneut laufen. Laufen die beiden Dateien auseinander, warnt der Runner beim Start.
 
 ## Was ist der Vault?
 
@@ -131,7 +127,7 @@ Der Vault ist ein persönlicher Memory-Speicher außerhalb des Repos: Profil, Ar
 }
 ```
 
-`buildChecks` enthält die Prüfkommandos, die `node .claude/kit/checks.mjs run` vor jedem Commit und `/local-check` vor dem Push ausführt: die betroffenen, ausgewählt nach den Bereichen, die das Paket berührt. Jede ausgeführte muss grün sein. `mutationCommand` läuft in `/local-check` danach; leer schaltet es ab. `triggers` hält die Phrasen der drei Stop-Punkte. `columns` benennt die Spalten des Boards um.
+`buildChecks` enthält die Prüfkommandos, die `node .claude/kit/checks.mjs run` vor jedem Commit und `/push-main` vor dem Push ausführt: die betroffenen, ausgewählt nach den Bereichen, die das Paket berührt. Jede ausgeführte muss grün sein. `mutationCommand` läuft einmal in `checks.mjs run --stage push`, nach den `buildChecks`; sein Ergebnis wird nur berichtet und hält nicht an. Leer schaltet es ab. `triggers` hält die Phrasen der drei Stop-Punkte. `columns` benennt die Spalten des Boards um.
 
 Statt die Datei von Hand zu bearbeiten, kannst du die [Einstellungs-Oberfläche](/einstellungen) nutzen. Sie prüft vor dem Speichern.
 
@@ -161,7 +157,7 @@ String-Form und `always` verhalten sich gleich und sagen Verschiedenes: Der Stri
 
 `checkAreas` ordnet jedem Bereich Pfadmuster zu. `*` gilt innerhalb eines Pfadsegments, `**` über Segmentgrenzen hinweg; `/` ist der Trenner, auf den jeder Pfad normalisiert wird. Die Auswertung bringt das Kit mit, ohne Laufzeitabhängigkeit.
 
-Die implement-Skills prüfen vor dem Commit gegen `HEAD`: Der Diff ist genau dieses Arbeitspaket. `/local-check` prüft vor dem Push gegen `git merge-base HEAD origin/<mainBranch>` und misst alles seit dem letzten Push.
+Die implement-Skills prüfen vor dem Commit gegen `HEAD`: Der Diff ist genau dieses Arbeitspaket. `/push-main` prüft vor dem Push gegen `git merge-base HEAD origin/<mainBranch>` und misst alles seit dem letzten Push.
 
 Vertauscht ginge beides schief. `merge-base` vor dem Commit sammelte fremde Pakete ein, und ein Rot träfe das falsche Issue.
 
@@ -171,35 +167,37 @@ Vertauscht ginge beides schief. `merge-base` vor dem Commit sammelte fremde Pake
 
 Landen Änderungen oft im vollen Umfang, gehört die Zuordnung verbessert, nicht die Regel aufgeweicht.
 
-Dateien, zu denen es nichts zu prüfen gibt, stehen in `ohnePruefung`, je mit Muster und Pflichtgrund. Sie lösen keine Prüfung aus und stehen mit Grund im Bericht. Trifft eine Datei zugleich ein Muster aus `checkAreas`, gewinnt der Bereich. Eine JavaScript-Datei ohne Muster erbt die Bereiche der Dateien, die sie importieren.
+Dateien, zu denen es nichts zu prüfen gibt, stehen in `noCheck`, je mit Muster und Pflichtgrund. Sie lösen keine Prüfung aus und stehen mit Grund im Bericht. Trifft eine Datei zugleich ein Muster aus `checkAreas`, gewinnt der Bereich. Eine JavaScript-Datei ohne Muster erbt die Bereiche der Dateien, die sie importieren.
 
 Ohne `checkAreas` laufen alle Prüfungen unverändert; niemandem wird still Prüfung weggenommen.
 
-`mutationCommand` ist nicht Teil der Auswahl und läuft immer.
+`mutationCommand` ist nicht Teil der Auswahl und läuft an der Stufe `push` immer.
 
 `node .claude/kit/checks.mjs plan` zeigt die Auswahl, ohne etwas auszuführen.
 
-### Gestaffelte Prüfungen: `stufe`
+### Gestaffelte Prüfungen: `stage`
 
 Ein Eintrag kann sagen, wann er an der Reihe ist:
 
 ```json
-{ "cmd": "mvn verify -Pintegration", "stufe": "push" }
+{ "cmd": "mvn verify -Pintegration", "stage": "push" }
 ```
 
 | Stufe | Zeitpunkt | Skill |
 | --- | --- | --- |
-| `paket` | vor dem lokalen Commit | `/implement-next`, `/implement-ready`, `/implement-done`, `/local-check` |
+| `paket` | vor dem lokalen Commit | `/implement-next`, `/implement-ready`, `/implement-done` |
 | `push` | vor dem Veröffentlichen auf main | `/push-main` |
 | `merge` | vor der Freigabe nach production | `/merge-production` |
 
 Die Stufen sind kumulativ, und jede Prüfung läuft einmal vor der Freigabe: `push main` fährt Paket- und Push-Stufe vollständig, `merge production` nur, was `push main` nicht geprüft hat. Keine Prüfung entfällt; eine spätere erscheint vorher als Auslassung mit ihrer Stufe als Grund, beim `merge production` etwa als `Stufe push, geprueft beim push main`. Fehlt das Feld, gilt `paket`, und der Bestand bleibt unverändert.
 
+Ist ein Lauf der Paketstufe rot und `formatFixCommand` gesetzt, fährt `checks.mjs run` den Fix einmal und einen zweiten Durchgang; das ist keine Wiederholung im Sinn von `--retry`.
+
 **Kurze Freigabe.** Lange Prüfungen auf die Stufe `push` statt `merge` stellen; der Preis: Jedes `push main` dauert um sie länger.
 
-Mindestens eine Prüfung gehört auf die Paketstufe, sonst hat ein Arbeitspaket kein Gate, und der Nachtbetrieb startet nicht. `stufe` ist weder eine der `reviewStufen` noch die Aufgabenstufe der Nacht-Kette.
+Mindestens eine Prüfung gehört auf die Paketstufe, sonst hat ein Arbeitspaket kein Gate, und der Runner startet nicht. `stage` ist weder eine der `reviewStages` noch die Aufgabenstufe der Kette.
 
-### Abschluss und Veröffentlichen: `nichtBeimAbschluss`
+### Abschluss und Veröffentlichen: `notAtCompletion`
 
 Eine Prüfung der Stufe `paket` kann beim Abschluss einer einzelnen Karte entfallen und erst vor dem Veröffentlichen laufen:
 
@@ -207,13 +205,13 @@ Eine Prüfung der Stufe `paket` kann beim Abschluss einer einzelnen Karte entfal
 {
   "buildChecks": [
     { "cmd": "mvn -q test", "areas": ["backend"] },
-    { "cmd": "mvn -q verify -DskipUnitTests", "areas": ["backend"], "nichtBeimAbschluss": "zusammenspiel" },
-    { "cmd": "mvn -q verify jacoco:check", "areas": ["backend"], "nichtBeimAbschluss": "volleTestmenge" }
+    { "cmd": "mvn -q verify -DskipUnitTests", "areas": ["backend"], "notAtCompletion": "zusammenspiel" },
+    { "cmd": "mvn -q verify jacoco:check", "areas": ["backend"], "notAtCompletion": "volleTestmenge" }
   ]
 }
 ```
 
-Die Modultests (surefire) laufen bei jeder Karte. Die Integrationstests (failsafe) prüfen das Zusammenspiel, die Abdeckung (jacoco) braucht die volle Testmenge; beide laufen vor dem Veröffentlichen in `/push-main`. Auslassen darf nur der Abschlusslauf mit `--finish <kartennummer>`. Mit `abschlussBereiche` läuft die Prüfung trotzdem, wenn das Paket einen dieser Bereiche direkt berührt. Ein fehlendes Feld lässt alles, wie es ist.
+Die Modultests (surefire) laufen bei jeder Karte. Die Integrationstests (failsafe) prüfen das Zusammenspiel, die Abdeckung (jacoco) braucht die volle Testmenge; beide laufen vor dem Veröffentlichen in `/push-main`. Auslassen darf nur der Abschlusslauf mit `--finish <kartennummer>`. Mit `completionAreas` läuft die Prüfung trotzdem, wenn das Paket einen dieser Bereiche direkt berührt. Ein fehlendes Feld lässt alles, wie es ist.
 
 ### Wer war es? Die Verursachersuche
 
@@ -223,12 +221,12 @@ Wird ein Lauf mit `--stage push` rot, nennt er die Karten, deren Änderungen die
 
 `node .claude/kit/effectiveness.mjs evaluate` schreibt `.claude/wirksamkeit.md`. Ein Block nennt die mittlere Prüfzeit je Karte über ihre Abschlussläufe, daneben den Vergleichswert ohne Auslassungen. Er ist eine Auskunft und kein Gate.
 
-### Gütemessung und Marke: `guete`
+### Gütemessung und Marke: `quality`
 
-Höchstens ein Eintrag darf eine Gütemessung sein: Sie misst, wie viele absichtlich eingebaute Fehler die Tests bemerken. Der Block `guete` trägt ein `muster`, einen regulären Ausdruck mit genau einer Gruppe für den Prozentwert, und eine `marke` von 0 bis 100:
+Höchstens ein Eintrag darf eine Gütemessung sein: Sie misst, wie viele absichtlich eingebaute Fehler die Tests bemerken. Der Block `quality` trägt ein `pattern`, einen regulären Ausdruck mit genau einer Gruppe für den Prozentwert, und einen `marker` von 0 bis 100:
 
 ```json
-{ "cmd": "mvn -q org.pitest:pitest-maven:mutationCoverage", "stufe": "push", "guete": { "muster": "Killed \\d+ \\((\\d+)%\\)", "marke": 80 } }
+{ "cmd": "mvn -q org.pitest:pitest-maven:mutationCoverage", "stage": "push", "quality": { "pattern": "Killed \\d+ \\((\\d+)%\\)", "marker": 80 } }
 ```
 
 | Werkzeug | Ausgabe | Muster |
@@ -248,9 +246,9 @@ Das Kit spricht je Projekt Deutsch oder Englisch. Die Einstellung heißt `langua
 node install.mjs --language en
 ```
 
-Der Installer sichert die Config als `.claude/workflow.config.json.vor-umstellung`, setzt die Sprache und benennt die Einstellungen in beiden Config-Dateien in die Namen der neuen Sprache um. Selbst gewählte Werte wie eigene Labelnamen bleiben. Das Kit liest jede Einstellung unter ihrem deutschen und ihrem englischen Namen; stehen beide da, gilt der der Projektsprache.
+Der Installer sichert die Config als `.claude/workflow.config.json.vor-umstellung`, setzt die Sprache und stellt die Werte fester Aufzählungen in beiden Config-Dateien auf die neue Sprache um, etwa `stage` von `paket` auf `package`. Die Einstellungen selbst heißen in jeder Sprache englisch, die Umstellung benennt sie nicht um. Selbst gewählte Werte wie eigene Labelnamen bleiben. Das Kit liest jede Einstellung auch unter ihrem alten deutschen Namen; stehen beide da, gilt der englische.
 
-**Was du danach siehst.** Unter `Umbenannt` jede umbenannte Einstellung mit beiden Namen. Unter `Offen`, was die Umstellung nicht erledigt, etwa Karten mit einem Titel-Präfix der anderen Sprache oder Labels, die am Board noch fehlen. Die letzte Zeile nennt den Rückweg, `node install.mjs --language de`.
+**Was du danach siehst.** Unter `Umbenannt` jeder umgestellte Wert mit beiden Schreibweisen. Unter `Offen`, was die Umstellung nicht erledigt, etwa Karten mit einem Titel-Präfix der anderen Sprache oder Labels, die am Board noch fehlen. Die letzte Zeile nennt den Rückweg, `node install.mjs --language de`.
 
 Meldungen, Berichte, Kommentare an den Karten und die Oberflächen stehen ab dem nächsten Aufruf in der Projektsprache. Was schon am Board steht, bleibt. Zeilen, die das Kit später zurückliest, etwa `## Laufstand` oder `Autor-Modell:`, erkennt es in beiden Sprachen; welche Fassung es schreibt, gibt `node .claude/kit/board.mjs names` aus. JSON-Feldnamen, Dateinamen unter `.claude/` und die Formwörter der Befunde bleiben in beiden Sprachen gleich.
 
@@ -262,11 +260,12 @@ Labels und Titel-Präfixe haben in jedem Projekt den englischen Namen.
 |-------|------|
 | Frage wartet auf den Menschen | `kit:clarify` |
 | geschützte Datei wartet auf den Menschen | `kit:protected` |
-| Variante B der Nacht-Kette | `kit:carry-through` |
+| Variante B der Kette | `kit:carry-through` |
 | Prüflauf | `kit:check` |
 | Lauf läuft, abgebrochen, wartet | `run:running`, `run:aborted`, `run:waiting` |
 | Spur der Prüfung | `review:done` |
 | Fragen an den PO geklärt | `kit:clarified` |
+| Fachplan wartet auf ein Ereignis | `kit:on-hold` |
 | Ziel der Kette | `goal:plan`, `goal:packages`, `goal:implementation`, `goal:push-prepared` |
 | Präfixe | `[Requirement]`, `[Idea]`, `[Plan]`, `[Human]`, `[Task]` |
 
@@ -287,14 +286,14 @@ Aus der lokalen Datei gelten nur diese Felder:
 |---|---|
 | `reviewModel` | Modellwahl ist Geschmack und Budget |
 | `reviewCommand` | die fremde CLI ist lokal installiert |
-| `reviewLesegrenze` | der Nur-Lese-Schalter dieser CLI |
+| `reviewReadLimit` | der Nur-Lese-Schalter dieser CLI |
 | `reviewScope` | manche lesen lieber den vollen Quelltext |
 | `triggers` | Tippgewohnheit für die Stop-Phrasen |
 | `toolbox.tokenFile` | zeigt auf ein Token im eigenen Dateisystem |
 
 Alles andere ignoriert das Kit und meldet es auf stderr. `buildChecks` und `columns` muss das ganze Team gleich sehen: Wer sein Gate lokal wegkonfigurieren könnte, hätte keins, und abweichende Spalten ergeben eine leere Issue-Liste statt eines Fehlers.
 
-`reviewModel` und `reviewCommand` weichen als Paar. Setzt die lokale Datei eines davon, entfällt das andere aus der geteilten, und `reviewLesegrenze` fällt mit `reviewCommand`.
+`reviewModel` und `reviewCommand` weichen als Paar. Setzt die lokale Datei eines davon, entfällt das andere aus der geteilten, und `reviewReadLimit` fällt mit `reviewCommand`.
 
 **Was du tust.** Persönliche Werte in `.claude/workflow.config.local.json` schreiben. **Was du siehst.** `git status` bleibt sauber; eine Änderung an der geteilten Datei zeigt es dagegen an.
 
@@ -311,7 +310,7 @@ Zwei unabhängige Einstellungen: `codeHost` für Repo und Pull Requests, `issueT
 
 Das Board braucht fünf Spalten: Backlog, Ready, In progress, In review, Done. `issue list --status ready` liefert die Karten in der Reihenfolge der Spalte, oben zuerst; per Drag & Drop bestimmst du, was als Nächstes umgesetzt wird. Nur der Tracker `local` sortiert nach Nummer.
 
-Die Labels des Kits legst du je Board einmal an, mindestens `kit:clarify`, `kit:protected` und `review:done`, für die Nacht-Kette dazu deren Labels aus der Tabelle oben.
+Die Labels des Kits legst du je Board einmal an, mindestens `kit:clarify`, `kit:protected` und `review:done`, für die Kette dazu deren Labels aus der Tabelle oben.
 
 ### Herkunft am Board: `--derived-from`
 
@@ -378,7 +377,7 @@ echo "<token>" > .claude/tbx.token
 echo ".claude/tbx.token" >> .gitignore
 ```
 
-Die Spaltennamen sind fest. Neue Karten landen mit Nummer im Backlog; mit `ideaStored: true` landen sie stattdessen im Ideen-Pool. Endet ein Aufruf hinter einem Proxy mit „fetch failed“, fehlt `NODE_USE_ENV_PROXY=1`; `board.mjs` setzt es selbst, eigene Node-Aufrufe brauchen es auch.
+Die Spaltennamen sind fest. Neue Karten landen mit Nummer im Backlog. Endet ein Aufruf hinter einem Proxy mit „fetch failed“, fehlt `NODE_USE_ENV_PROXY=1`; `board.mjs` setzt es selbst, eigene Node-Aufrufe brauchen es auch.
 
 ### Tracker wechseln
 

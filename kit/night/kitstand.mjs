@@ -444,7 +444,7 @@ function verursacherKartennummern(verursacher) {
 }
 
 /**
- * Was die Zusammenfassung des Worktrees bezeugt: `{ ergebnis, stufe, rot, gewackelt }`. Gruen
+ * Was die Zusammenfassung des Worktrees bezeugt: `{ ergebnis, stufe, rot, gewackelt, mutation }`. Gruen
  * ist nur ein zu Ende gefahrener Lauf ohne rote und ohne ungestartete Pruefung. Fehlt die Datei
  * oder ist sie unlesbar, ist das Ergebnis rot — ohne Nachweis gibt es nichts zu uebernehmen.
  *
@@ -455,6 +455,9 @@ function verursacherKartennummern(verursacher) {
  * `rot` traegt die Verursacher nach `verursacherKarten` (E11): Nennt eine rote Pruefung
  * statt Karten einen `hinweis`, oder laesst sich gar keine Karte zuordnen, gelten alle
  * Pakete des Stands.
+ *
+ * `mutation` ist das Feld des Mutationstests aus dem Lauf an `--stage push` (Issue #1673,
+ * Plan #1671, E4), sonst `null`. Es faerbt nichts: Der Mutationstest wird nur berichtet.
  *
  * Exportiert fuer das Notfall-Gate in board/schutz.mjs (Plan #1405, E9): Es legt dieselbe
  * Frage, wann ein Lauf gruen ist, nicht ein zweites Mal fest.
@@ -469,7 +472,8 @@ export function zusammenfassungBezeugt(pfad, pakete) {
   const laufen = Array.isArray(daten?.laufen) ? daten.laufen : [];
   const offen = laufen.filter((e) => e.ergebnis === "rot" || e.ergebnis === "nicht gestartet");
   const gewackelt = laufen.filter((e) => e?.gewackelt).map((e) => e.cmd);
-  if (daten?.abgeschlossen === true && offen.length === 0) return { ergebnis: "gruen", stufe: daten.stufe ?? null, rot: null, gewackelt };
+  const mutation = daten?.mutation && typeof daten.mutation === "object" ? daten.mutation : null;
+  if (daten?.abgeschlossen === true && offen.length === 0) return { ergebnis: "gruen", stufe: daten.stufe ?? null, rot: null, gewackelt, mutation };
 
   const roteCmds = laufen.filter((e) => e.ergebnis === "rot").map((e) => e.cmd);
   const verursacher = (Array.isArray(daten?.verursacher) ? daten.verursacher : []).filter((v) => roteCmds.includes(v.cmd));
@@ -483,6 +487,7 @@ export function zusammenfassungBezeugt(pfad, pakete) {
     stufe: daten?.stufe ?? null,
     rot: { pruefung: roteCmds.length > 0 ? roteCmds.join(", ") : null, karten: alle ? pakete : karten, hinweis },
     gewackelt,
+    mutation,
   };
 }
 
@@ -552,6 +557,9 @@ export function vorbereitungFesthalten({ repoRoot, pfad, ergebnis, offen = [], f
     offen: offenGesamt,
     pakete,
     rot: bezeugt.rot,
+    // Der Mutationstest des naechtlichen Push-Laufs (Issue #1673, Plan #1671, E4): Uebernommen
+    // wird nur ein unveraenderter Stand, und genau ihn hat er gemessen — morgens laeuft er nicht neu.
+    mutation: bezeugt.mutation,
     fetch,
     zeitpunkt: abh.jetzt().toISOString(),
     laufId: env.KIT_NIGHT_RUN || null,
@@ -570,7 +578,8 @@ export function vorbereitungFesthalten({ repoRoot, pfad, ergebnis, offen = [], f
  * auf `commit` und das Ergebnis `gruen` oder `gruen-offen` ist. Kein eigenes `git fetch` —
  * das holt der Skill vorher.
  *
- * Rueckgabe: `{ uebernehmen, grund, commit, offen, zeitpunkt }`. Mit `verwerfen` stattdessen
+ * Rueckgabe: `{ uebernehmen, grund, commit, offen, zeitpunkt, mutation }` — `mutation` ist das
+ * festgehaltene Ergebnis des Mutationstests oder `null` (Issue #1673, E4). Mit `verwerfen` stattdessen
  * Datei und Referenz loeschen: `{ verworfen: { datei, referenz } }`, je ob es sie gab.
  */
 export function vorbereitungPruefen({ repoRoot, verwerfen = false }) {
@@ -587,9 +596,12 @@ export function vorbereitungPruefen({ repoRoot, verwerfen = false }) {
   try {
     daten = JSON.parse(readFileSync(pfad, "utf-8"));
   } catch {
-    return { uebernehmen: false, grund: t("keineVorbereitung", { datei: VORBEREITUNG_DATEI }), commit: null, offen: [], zeitpunkt: null };
+    return { uebernehmen: false, grund: t("keineVorbereitung", { datei: VORBEREITUNG_DATEI }), commit: null, offen: [], zeitpunkt: null, mutation: null };
   }
-  const urteil = (grund) => ({ uebernehmen: grund === null, grund, commit: daten.commit ?? null, offen: daten.offen ?? [], zeitpunkt: daten.zeitpunkt ?? null });
+  const urteil = (grund) => ({
+    uebernehmen: grund === null, grund, commit: daten.commit ?? null, offen: daten.offen ?? [], zeitpunkt: daten.zeitpunkt ?? null,
+    mutation: daten.mutation ?? null,
+  });
   const mainBranch = vorbereitungMainBranch(repoRoot);
   if (daten.ergebnis !== "gruen" && daten.ergebnis !== "gruen-offen") return urteil(t("nurGruen", { ergebnis: daten.ergebnis }));
   const kurz = (c) => (c ? c.slice(0, 12) : t("nichts"));

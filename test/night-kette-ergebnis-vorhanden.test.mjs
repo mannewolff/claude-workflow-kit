@@ -17,8 +17,10 @@ import { join } from "node:path";
 import { paketUmgesetzt } from "../kit/night/kette.mjs";
 import {
   ketteImProzess, fachplanKarte, planKarte, planBody, paketBody, GLATT, KETTE_LABEL,
+  jeStufe, planAnlegen, reviewMitFrage, paketeAnlegen, REVIEW_FRAGE,
 } from "./helpers/kette-fixture.mjs";
-import { REVIEW_FERTIG_LABEL } from "../kit/night/kette.mjs";
+import { PRUEFSTAND_ANKER, REVIEW_FERTIG_LABEL, ergebnisVorhanden, pruefstandVon } from "../kit/night/kette.mjs";
+import { abhaengigkeitenAbhaengigkeiten } from "../kit/night/abhaengigkeiten.mjs";
 
 const MARKER = "Plan-Review: opus (2026-09-28, Nachtlauf)";
 const F = "1";
@@ -73,6 +75,72 @@ test("[night-ergebnis] Plan mit Pruefvermerk: plan und review vorgefunden, keine
   assert.equal(einheit.stufen.review.vorgefunden, true);
   assert.equal(einheit.stufen.review.marker, true);
   assert.equal(einheit.stufen.plan.id, P);
+});
+
+test("[night-ergebnis] Neustart am Fachplan mit vorgefundenem, geändertem Plan: review laeuft erneut (Issue #1701, Plan #1697 E8)", async () => {
+  // Der Pruefstand stammt vom Halt ueber den Plan mit Marker; danach hat jemand eine Zeile
+  // unter `## Geplante Änderungen` geaendert — der Pruefstand ist veraltet.
+  const halt = planVorhanden(P, { marker: true });
+  const stand = pruefstandVon(halt.body);
+  const kommentar = [PRUEFSTAND_ANKER, "", MARKER, "Prüfer: ", `Rest: ${stand.rest}`, `Entscheidungen: ${stand.entscheidungen.join(" ")}`, ""].join("\n");
+  const plan = { ...halt, body: halt.body.replace("- src/plan.mjs: eine Funktion.", "- src/plan.mjs: zwei Funktionen."), comments: [{ body: kommentar }] };
+
+  const regel = (karte) => {
+    abhaengigkeitenAbhaengigkeiten({ boardRoh: () => ({ status: 0, json: structuredClone(karte) }) });
+    try {
+      return ergebnisVorhanden("review", { planId: P });
+    } finally {
+      abhaengigkeitenAbhaengigkeiten();
+    }
+  };
+  assert.equal(regel(plan), null, "die Ergebnisregel review liefert null");
+  assert.deepEqual(regel({ ...halt, comments: [{ body: kommentar }] }), {}, "ohne Aenderung bleibt der Marker das Ergebnis");
+
+  const r = await ketteImProzess({ karten: [fachplanKarte(F), plan], sitzung: GLATT });
+  assert.equal(r.code, 0, r.ausgabe);
+  assert.deepEqual(r.sitzungen.map((s) => s.stufe), ["review", "pakete", "abdeckung"], "die Review-Sitzung laeuft erneut");
+  const einheit = einheitVon(r, F);
+  assert.equal(einheit.ausgang, "fertig", einheit.grund);
+  assert.equal(einheit.stufen.plan.vorgefunden, true);
+  assert.equal("vorgefunden" in einheit.stufen.review, false, "die Stufe review lief selbst");
+});
+
+/** Die Session kam zustande, schrieb ihr Ergebnis und endete dann mit Exit 3 — ein Abbruch von aussen. */
+const EXIT_3 = { zeilen: [JSON.stringify({ type: "system", subtype: "init" })], ohneResult: true, ende: 3 };
+
+test("[night-ergebnis] vorgefundene Review-Stufe mit offener Frage nach Sitzungsabbruch (Issue #1702, Plan #1697 E15)", async () => {
+  // Die Einarbeitung hat Marker und Frage geschrieben, dann brach die Session ab: Das
+  // Vorfinden haelt an der Frage an wie `stufeReview`, nicht erst `pakete`.
+  const r = await ketteImProzess({
+    karten: [fachplanKarte(F)],
+    sitzung: jeStufe({ plan: planAnlegen(), review: (s) => { reviewMitFrage(s); return EXIT_3; }, pakete: paketeAnlegen }),
+  });
+  assert.equal(r.code, 0, r.ausgabe);
+
+  assert.deepEqual(r.sitzungen.map((s) => s.stufe), ["plan", "review"], "/issues startet nicht");
+  const einheit = einheitVon(r, F);
+  assert.equal(einheit.ausgang, "angehalten", einheit.grund);
+  assert.equal(einheit.grund, `Stopp-Frage im geprüften Plan #${P}`);
+  assert.equal(einheit.stufen.review.marker, true);
+  const halt = r.karte(F).comments.map((c) => c.body).find((k) => k.startsWith("## Kette angehalten"));
+  assert.ok(halt, "kein Halt-Kommentar am Fachplan");
+  assert.match(halt, new RegExp(`Stufe review, Dokument #${P}\\b`));
+  assert.ok(halt.includes(REVIEW_FRAGE.slice(2)), `die Frage fehlt im Halt-Kommentar:\n${halt}`);
+  assert.equal(r.karte(P).comments.filter((c) => c.body.startsWith(PRUEFSTAND_ANKER)).length, 1, "genau ein Pruefstand am Plan");
+});
+
+test("[night-ergebnis] vorgefundene Review-Stufe ohne offene Frage nach Sitzungsabbruch bleibt fertig", async () => {
+  const r = await ketteImProzess({
+    karten: [fachplanKarte(F)],
+    sitzung: jeStufe({ plan: planAnlegen(), review: (s) => { GLATT(s); return EXIT_3; }, pakete: paketeAnlegen }),
+  });
+  assert.equal(r.code, 0, r.ausgabe);
+
+  assert.deepEqual(r.sitzungen.map((s) => s.stufe), ["plan", "review", "pakete", "abdeckung"]);
+  const einheit = einheitVon(r, F);
+  assert.equal(einheit.ausgang, "fertig", einheit.grund);
+  assert.equal(einheit.stufen.review.vorgefunden, true);
+  assert.ok(!r.karte(P).comments.some((c) => c.body.startsWith(PRUEFSTAND_ANKER)), "kein Pruefstand ohne Frage");
 });
 
 test("[night-ergebnis] Laufstand 'pakete fertig fuer #M': pakete vorgefunden, nur die Abdeckung laeuft", async () => {

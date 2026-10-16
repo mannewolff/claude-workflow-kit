@@ -12,9 +12,9 @@ In local mode you only need git and Node.js: no remote repo, no board, no CLI of
 - A single person without a pull request process
 
 ## Installation
-<!-- de: aa594f07eda2 -->
+<!-- de: 7a9216bd9bd0 -->
 
-In the installer, choose `local` for code host and issue tracker. The config then contains:
+The [getting started guide](/en/quickstart) shows how to call the installer; there you choose `local` for code host and issue tracker. The config then contains:
 
 ```json
 {

@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
-const NACHT = lies("docs", "nachtbetrieb.md");
+const NACHT = lies("docs", "runner.md");
 const EINRICHTUNG = lies("docs", "einrichtung.md");
 const PROZESS = lies("docs", "prozess.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
@@ -102,8 +102,8 @@ test("die Doku ordnet jedem Anker seinen Ort zu", () => {
   assert.ok(vorCommit, "kein Absatz bindet HEAD an die implement-Skills vor dem Commit");
   assert.match(vorCommit, /Arbeitspaket/i, "es steht nicht, dass HEAD genau das eine Arbeitspaket misst");
 
-  const vorPush = absatzMit(abschnitt, /merge-base/, /local-check/, /Push/);
-  assert.ok(vorPush, "kein Absatz bindet merge-base an /local-check vor dem Push");
+  const vorPush = absatzMit(abschnitt, /merge-base/, /\/push-main/, /Push/);
+  assert.ok(vorPush, "kein Absatz bindet merge-base an /push-main vor dem Push");
   assert.match(vorPush, /seit dem letzten Push/i,
     "es steht nicht, dass merge-base alles seit dem letzten Push misst");
 });
@@ -181,19 +181,28 @@ test("die Doku weist mutationCommand als ausserhalb der Auswahl aus", () => {
 
 test("das Konfigurationskapitel behauptet nicht mehr den vollen Lauf", () => {
   const kapitel = EINRICHTUNG.slice(EINRICHTUNG.indexOf("## Die Config-Datei")).split(/\n## /)[0];
-  const absatz = absatzMit(kapitel, /`buildChecks`/, /local-check/);
+  const absatz = absatzMit(kapitel, /`buildChecks`/, /\/push-main/);
   assert.ok(absatz, "kein buildChecks-Absatz im Konfigurationskapitel");
   assert.doesNotMatch(absatz, /Alle müssen grün sein/,
     "der buildChecks-Absatz behauptet weiterhin, dass alle Kommandos gruen sein muessen");
   assert.match(absatz, /betroffen/i, "der buildChecks-Absatz nennt die Betroffenheit nicht");
 });
 
-test("der /local-check-Abschnitt beschreibt die Auswahl statt des vollen Laufs", () => {
-  const abschnitt = skillAbschnitt("/local-check");
-  assert.doesNotMatch(abschnitt, /führt alle Kommandos aus `buildChecks` sequenziell aus/,
-    "der Abschnitt behauptet weiterhin den vollen sequenziellen Lauf");
-  assert.match(abschnitt, /checks\.mjs/, "der Abschnitt nennt das Kommando checks.mjs nicht");
-  assert.match(abschnitt, /betroffen/i, "der Abschnitt nennt die betroffenen Pruefungen nicht");
+// Issue #1677: Den Schritt /local-check gibt es nicht mehr; der Pruefweg ohne Karte
+// steht als "Prueflauf von Hand" unter den Pruefungen vor dem Commit und traegt den
+// Batch-Anker, den frueher der Skill trug.
+test("der Prueflauf von Hand nennt den Batch-Anker und den leeren Anker", () => {
+  const abschnitt = skillAbschnitt("Prüflauf von Hand");
+  assert.match(abschnitt, /node \.claude\/kit\/checks\.mjs run --since "\$\(git merge-base HEAD origin\/<mainBranch>\)"/,
+    "der Abschnitt nennt den Aufruf mit merge-base nicht");
+  assert.match(abschnitt, /seit dem letzten Push/i, "es steht nicht, dass der Anker alles seit dem letzten Push misst");
+  assert.match(abschnitt, /leer/i, "der Randfall des leeren Ankers fehlt");
+  assert.match(abschnitt, /vollen Umfang|voller Umfang/i, "es steht nicht, dass ein leerer Anker den vollen Umfang faehrt");
+  assert.doesNotMatch(abschnitt, /local-check/, "der Abschnitt verweist noch auf /local-check");
+});
+
+test("die Prozessseite fuehrt keinen Abschnitt /local-check mehr", () => {
+  assert.ok(!PROZESS.includes("### /local-check\n"), "der Abschnitt '### /local-check' steht noch in docs/prozess.md");
 });
 
 test("die implement-Abschnitte erwaehnen die Pruefung vor dem Commit", () => {
@@ -206,7 +215,7 @@ test("die implement-Abschnitte erwaehnen die Pruefung vor dem Commit", () => {
 
 // --- Punkte 8 und 9: Nachtbetrieb ----------------------------------------
 
-test("die Seite Nachtbetrieb nennt beide Stellen, an denen Auslassungen sichtbar sind", () => {
+test("die Seite Runner nennt beide Stellen, an denen Auslassungen sichtbar sind", () => {
   const kapitel = NACHT;
   const absatz = absatzMit(kapitel, /Abschlussbericht/, /Lauf-Bericht|Bericht des Durchgangs/);
   assert.ok(absatz, "kein Absatz nennt Abschlussbericht und Lauf-Bericht gemeinsam");
@@ -289,4 +298,14 @@ test("das README nennt checkAreas und verweist im selben Absatz auf die Doku", (
   assert.ok(absatz, "das README nennt checkAreas nicht");
   assert.match(absatz, /docs\/einrichtung\.md|docs\.mwolff\.org/,
     "der Verweis auf das Doku-Kapitel fehlt im selben Absatz");
+});
+
+// Issue #1678: Ueberblick und Einrichtung nennen weder den Schritt /local-check noch
+// den Prozess in neun Schritten.
+test("Ueberblick und Einrichtung nennen weder /local-check noch neun Schritte", () => {
+  for (const seite of [["docs", "dokumentation.md"], ["docs", "en", "dokumentation.md"], ["docs", "einrichtung.md"], ["docs", "en", "einrichtung.md"]]) {
+    const text = lies(...seite);
+    assert.doesNotMatch(text, /local-check/, `${seite.join("/")} nennt noch /local-check`);
+    assert.doesNotMatch(text, /9-Schritt|neun Schritt|9-step|nine steps/i, `${seite.join("/")} zaehlt noch neun Schritte`);
+  }
 });

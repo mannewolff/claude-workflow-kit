@@ -85,13 +85,15 @@ for (const { name, text } of SKILLS) {
 }
 
 // Die Leitplanken-Verweise betreffen das WIE der Ausfuehrung (Timeout,
-// Hintergrund-Check, Modell-Fehler), nicht die Auswahl. Sie bleiben.
+// Hintergrund-Check, Modell-Fehler), nicht die Auswahl. Sie bleiben; seit Issue #1675
+// zeigen sie auf die Vorlage statt auf `/local-check`.
 for (const name of ["implement-next", "implement-ready"]) {
-  test(`${name}: die local-check-Leitplanken bleiben erhalten`, () => {
+  test(`${name}: die Leitplanken-Verweise bleiben erhalten`, () => {
     const text = SKILLS.find((s) => s.name === name).text;
-    assert.match(text, /Timeout-Leitplanke im `local-check`-Skill/);
-    assert.match(text, /Hintergrund-Check im `local-check`-Skill/);
-    assert.match(text, /Leitplanken-Prinzip im `local-check`-Skill/);
+    const ort = "in `CLAUDE-workflow.md`, Abschnitt „Leitplanken der Pruefungen“";
+    assert.ok(text.includes(`Timeout-Leitplanke ${ort}`));
+    assert.ok(text.includes(`Hintergrund-Check ${ort}`));
+    assert.ok(text.includes(`Leitplanken-Prinzip ${ort}`));
   });
 }
 
@@ -143,20 +145,6 @@ for (const name of ["implement-next", "implement-ready", "implement-done"]) {
   });
 }
 
-test("local-check: der Pruefaufruf setzt kein --finish", () => {
-  const text = skillText("local-check");
-  const zeilen = text
-    .split("\n")
-    .filter((z) => z.includes("checks.mjs run") && z.trimStart().startsWith("node "));
-  assert.ok(zeilen.length > 0, "der Aufruf `checks.mjs run` fehlt ganz");
-  for (const zeile of zeilen) {
-    assert.doesNotMatch(zeile, /--finish/,
-      "`/local-check` misst mehrere Pakete gegen den Merge-Base — das ist kein Kartenabschluss");
-  }
-  assert.match(text, /kein `--finish`/,
-    "es fehlt der Satz, warum hier kein `--finish` gesetzt wird — sonst liest ihn die naechste Session als Versehen");
-});
-
 test("push-main: der rote Zweig nennt die Verursacher-Karten und die neue Karte", () => {
   const text = skillText("push-main");
   assert.match(text, /Verursacher/,
@@ -190,7 +178,7 @@ for (const { name, text } of SKILLS) {
       text.search(/### \d+\. Lokal committen/));
     assert.match(pruefschritt, /voller Umfang/);
     assert.match(pruefschritt, /checkAreas/);
-    assert.match(pruefschritt, /ohnePruefung/);
+    assert.match(pruefschritt, /noCheck/);
     assert.match(pruefschritt, /### Hinweise/);
   });
 }
@@ -318,3 +306,17 @@ test("templates/CLAUDE-workflow.md: das Abschlussbericht-Format nennt je Szenari
   assert.notEqual(start, -1, "der Abschnitt '### Tests and checks' fehlt");
   assert.match(en.slice(start, en.indexOf("### Notes", start)), /- Scenario "<title>" → test <test name>/);
 });
+
+// Issue #1672 (Plan #1671, E1): `checks.mjs run` formatiert an der Paketstufe selbst nach.
+// Die Dateien, die der Fix aendert, gehoeren in den Commit des Pakets — das sagt jeder
+// Umsetzungs-Skill, der committet, an seinem Commit.
+const FORMAT_FIX_SATZ = "Nennt der Bericht `Format-Fix: … → ausgefuehrt`, gehören alle vom Fix geänderten Dateien (`git status`) in denselben Commit und in den Abschlussbericht.";
+
+for (const { name, text } of SKILLS) {
+  test(`[1672] ${name}: der Commit-Abschnitt nennt die Dateien des Format-Fix`, () => {
+    const commit = text.search(/### \d+\. Lokal committen/);
+    assert.notEqual(commit, -1, "der Commit-Abschnitt wurde nicht gefunden");
+    const satz = text.indexOf(FORMAT_FIX_SATZ);
+    assert.ok(satz > commit, "der Satz zum Format-Fix fehlt im Commit-Abschnitt");
+  });
+}

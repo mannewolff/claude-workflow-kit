@@ -274,11 +274,11 @@ test("nichtBeimAbschluss: die Beschreibung nennt --finish, das fehlende Feld und
   );
 });
 
-test("nichtBeimAbschluss: die Beschreibung des Eintrags zaehlt die Achse mit auf", () => {
+test("nichtBeimAbschluss: die Beschreibung des Eintrags zaehlt die Achse unter ihrem englischen Namen mit auf", () => {
   // Die Aufzaehlung der Achsen ist der einzige Ort, an dem ein Leser der Config
   // erfaehrt, dass es sie gibt — eine unvollstaendige Aufzaehlung ist schlimmer
   // als keine.
-  assert.match(eintragSchema.description, /nichtBeimAbschluss/,
+  assert.match(eintragSchema.description, /notAtCompletion/,
     "die Beschreibung des Eintrags nennt die vierte Achse nicht");
 });
 
@@ -429,7 +429,7 @@ test("testAblagen: kein default, die Beschreibung nennt Platzhalter, Vorgaben un
   const feld = schema.properties.testAblagen;
   assert.equal(Object.hasOwn(feld, "default"), false);
   const text = feld.description;
-  for (const teil of ["{pfad}", "{name}", "*", ".spec", "src/main/java", "src/test/java", "{ \"vorgaben\": true }", "[]"]) {
+  for (const teil of ["{pfad}", "{name}", "*", ".spec", "src/main/java", "src/test/java", "{ \"defaults\": true }", "[]"]) {
     assert.ok(text.includes(teil), `die Beschreibung nennt ${teil} nicht`);
   }
   assert.match(text, /Mehrmodul/);

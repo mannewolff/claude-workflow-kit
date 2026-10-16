@@ -31,20 +31,21 @@ import { existsSync, readFileSync, writeFileSync, rmSync, readdirSync } from "no
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
 
-import { ZUSTAND, NACHBAR_DIR, log, board, boardRoh, einheitAnlegen, einheitErgaenzen, gitClean, gitReste,
+import { ZUSTAND, NACHBAR_DIR, log, board, boardHerkunft, boardRoh, einheitAnlegen, einheitErgaenzen, gitClean, gitReste,
   laufMelden, resteText, schreibeErgebnisstand, schrittBeginnen, schrittEnden, vergleicheText,
   normalisiereConfig, vermerkeOhneArbeit } from "./grundlagen.mjs";
 import { ABBRUCH_BUDGET_MS, LAUF_KONTEXT, LAUF_ORDNER, RECHNER, abgeben, exitText, journalLesen, laufAnhalten,
   laufLebt, laufPositionSetzen, pulsZustandSetzen, standSetzen } from "./laufstand.mjs";
 import { UMSETZUNG_WARTEN_MS, VORBEREITUNG_DATEI, aufUmsetzungWarten, befundeZurueckUndVorschlagen, kitStandAbgeben, kitStandInBaum, prozessLaeuft,
   umsetzungLockNehmen, worktreeAnlegen, worktreeEntfernen, worktreesAufraeumen } from "./kitstand.mjs";
-import { ENTSCHEIDUNGEN_NAME, OFFENE_FRAGEN_NAME, OFFENE_FRAGEN_UEBERSCHRIFT, PO_FRAGEN_NAME, PO_FRAGEN_UEBERSCHRIFT,
-  abschnittLesen, leseKarte, wartetAufPush } from "./abhaengigkeiten.mjs";
+import { ABSCHNITTS_ENDE, ENTSCHEIDUNGEN_NAME, ENTSCHEIDUNGEN_UEBERSCHRIFT, OFFENE_FRAGEN_NAME, OFFENE_FRAGEN_UEBERSCHRIFT,
+  PO_FRAGEN_NAME, PO_FRAGEN_UEBERSCHRIFT, abschnittLesen, fenceLauf, leseKarte, wartetAufPush } from "./abhaengigkeiten.mjs";
 import { flatten, kennzahlenAddieren, ketteBudgetDefaults, kostenAddieren, KETTE_BUDGET_DEFAULTS, ladeKetteBudget,
   ladeKetteUebergaenge, ladePruefLaufBudget, leseErgebnisText, leseKennzahlen, neueKommentare, runSession,
   KETTE_ZIELE, PLANREVIEW_LABELS, pruefreihenVon, SESSION_ABHAENGIGKEITEN, varianteVon, zielVon, zielLabelName,
-  istZielLabel, kennzeichenName, kennzeichenNamen, kitLabel } from "./session.mjs";
+  istZielLabel, kennzeichenName, kennzeichenNamen, kitLabel, LOKALER_KOMMENTARKOPF } from "./session.mjs";
 import { berichtFuerKette, berichtSchreiben, hatPlanReviewMarker, kommentareVon, planReviewWert,
   pruefBericht, vorbereitungsBericht, wartendeMenschenschritte } from "./bericht.mjs";
 import { GRUND_WARTEND, KLAEREN_LABEL, WARTEND_ANKER, geschuetztAmBoardVermerken, hatKlaerenLabel, laufeRunde,
@@ -61,6 +62,9 @@ const namen = await import(pathToFileURL(join(NACHBAR_DIR, "board", "namen.mjs")
 // Der Leser fuer den Abschnitt Szenarien, ebenso abgefangen (Plan #1588 A7, Issue #1593): Fehlt
 // board/szenarien.mjs, prueft die Kette keine Szenarien und nennt keinen Stichtag.
 const szenarien = await import(pathToFileURL(join(NACHBAR_DIR, "board", "szenarien.mjs")).href).catch(() => null);
+// Der Leser der Wartezeile `Wartet auf Ereignis:`, ebenso abgefangen (Plan #1624 E5, E6, Issue
+// #1663): Fehlt board/ereignis.mjs, haelt das Warten keine Kette an.
+const ereignis = await import(pathToFileURL(join(NACHBAR_DIR, "board", "ereignis.mjs")).href).catch(() => null);
 
 function t(schluessel, werte = {}) {
   if (namen) return namen.text(TEXTE, schluessel, werte);
@@ -682,7 +686,8 @@ export function abdeckungPlanPrompt(planId, paketIds) {
  * wenn sie laeuft.
  *
  * Die Reihenfolge ist die Antwort: Erst die Spalte (E4: ausserhalb von Backlog ist ein
- * Versehen), dann `kit:klaeren` (A2: die Antwort auf die Stopp-Frage muss vorher am
+ * Versehen), dann das Warten auf ein Ereignis (Plan #1624, E5: der Wartegrund zuerst, und
+ * weil er kein Grund „Pruefung fehlt" ist, unterbleibt deren Kommentar), dann `kit:klaeren` (A2: die Antwort auf die Stopp-Frage muss vorher am
  * Fachplan stehen), dann die fehlende Pruefung (Fachplan #702), zuletzt die offenen
  * Fragen an den PO (Issue #916). Die Pruefung steht hinter `kit:klaeren`, damit ein
  * Fachplan mit offener Frage den spezifischeren Grund behaelt: Wer die Frage beantwortet,
@@ -695,6 +700,8 @@ export function abdeckungPlanPrompt(planId, paketIds) {
  */
 function kettenAusschluss(issue, kettenLabel, config) {
   if (issue.status !== "backlog") return t("nichtInBacklog", { status: issue.status ?? t("unbekannt") });
+  const wartet = ereignisGrundVon(issue);
+  if (wartet !== null) return t("ketteEreignis", { grund: wartet, id: issue.id });
   if (hatKlaerenLabel(issue)) return t("ketteKlaeren", { label: klaerenLabelName() });
   if (!hatReviewFertigLabel(issue)) return pruefungFehltGrund(issue.id, kettenLabel).text;
   // Zuletzt die offenen Fragen an den PO (Issue #916): Wer die Pruefung noch gar nicht
@@ -709,6 +716,11 @@ function kettenAusschluss(issue, kettenLabel, config) {
   // ohne vollstaendiges Szenario laeuft in keinen Plan; Altbestand und ein fehlender
   // Stichtag schliessen nicht aus (Kriterium 5, A6).
   return szenarienGrund(issue, config);
+}
+
+/** Der Grund aus der Wartezeile im Ziel einer Fachplan-Karte — `null`, wenn sie nicht wartet. */
+function ereignisGrundVon(karte) {
+  return ereignis ? ereignis.ereignisGrund(karte?.body || "") : null;
 }
 
 /** Der Grund, wenn ein pflichtiger Fachplan kein vollstaendiges Szenario traegt — sonst `null`. */
@@ -742,7 +754,8 @@ function stichtagNennen() {
  * spezifischere Grund gewinnt, damit die Karte morgens den Satz traegt, der den
  * naechsten Schritt nennt. Erst die Spalte (ausserhalb von Backlog ist ein Versehen),
  * dann die Herkunft (eine Zeile `Fachliche Quelle:`, die ins Leere verweist, haelt an),
- * dann `kit:klaeren` (die Entscheidung gehoert in den Plan), dann die offene Frage im Plan,
+ * dann das Warten des Fachplans (Plan #1624, E6: die Wartezeile der Fachplan-Karte aus
+ * `karten`, kein weiterer Abruf), dann `kit:klaeren` (die Entscheidung gehoert in den Plan), dann die offene Frage im Plan,
  * zuletzt die fehlende Pruefung. Die beiden letzten stehen in dieser Folge, weil wer die
  * Frage beantwortet weiterkommt, wer nur pruefen laesst nicht.
  *
@@ -756,6 +769,11 @@ export function planAusschluss(issue, kettenLabel, karten) {
   if (issue?.status !== "backlog") return t("nichtInBacklog", { status: issue?.status ?? t("unbekannt") });
   const quelle = quelleLage(issue?.body || "", karten);
   if (quelle.lage === "insLeere") return t("quelleInsLeere", { zeile: quelle.zeile });
+  if (quelle.lage === "karte") {
+    const fachplan = (karten || []).find((k) => String(k?.id) === quelle.nummer);
+    const wartet = ereignisGrundVon(fachplan);
+    if (wartet !== null) return t("planEreignis", { F: quelle.nummer, grund: wartet });
+  }
   if (hatKlaerenLabel(issue)) return t("planKlaeren", { label: klaerenLabelName() });
   const frage = stoppFragenGrund(issue?.body || "");
   if (frage !== null) {
@@ -957,7 +975,7 @@ export function korrekturPrompt(dokId, verstoesse) {
     "schreibe den vollstaendigen korrigierten Body stueckweise in eine Datei ausserhalb des Projektverzeichnisses",
     `und uebertrage ihn mit \`node .claude/kit/board.mjs issue update ${dokId} --body-file <pfad>\`.`,
     "Aendere sonst nichts: keinen Inhalt, keine anderen Karten, keine Dateien im Projekt.",
-    // Eine Frage ist Inhalt, P14 verlangt sie aber; `stoppFragenGrund` haelt danach an (Plan #1611, E5).
+    // Eine Frage ist Inhalt, P14 verlangt sie aber; `stoppFragenGrund` haelt nach der Pruefung an (Plan #1611, E5; Plan #1697, E1).
     "Verlangt eine Formmeldung eine Frage unter `## Offene Fragen`, schreibst du sie dorthin; eine Zeile `Entschieden:` schreibst du nie.",
     "",
     ketteZusatz(),
@@ -1126,7 +1144,9 @@ function kostenErschoepft(kette) {
 }
 
 /**
- * Stufe Plan: /techplan, Formpruefung mit Korrekturrunden, Stopp-Frage (Plan #638, A7, A8, E2).
+ * Stufe Plan: /techplan und Formpruefung mit Korrekturrunden (Plan #638, A7, E2). Eine offene
+ * Frage im Plan haelt hier nicht an: Erst die Stufe review prueft den Plan und haelt danach
+ * an (Plan #1697, E1).
  */
 async function stufePlan(kette) {
   const { F, budget } = kette;
@@ -1159,12 +1179,8 @@ async function stufePlan(kette) {
   const form = await formSicherstellen(kette, stand, stufeStart, budgetMs, summe);
   if (form !== null) return form;
 
-  // Die Stopp-Frage steht im Plan (A8): `## Offene Fragen` ohne `- Keine.`.
-  const body = abh.board("issue", "get", stand.id).body;
-  const grund = stoppFragenGrund(body);
-  if (grund !== null) {
-    return { ausgang: "angehalten", grund: t("stoppFrageImPlan", { plan: stand.id }), dokId: stand.id, frage: abschnittText(body, OFFENE_FRAGEN_UEBERSCHRIFT) || grund };
-  }
+  // Eine offene Frage im Plan haelt erst nach der Pruefung an (Plan #1697, E1).
+  if (stoppFragenGrund(abh.board("issue", "get", stand.id).body) !== null) log(t("planFrageWeiter", { plan: stand.id }));
   return { ausgang: "fertig", id: stand.id };
 }
 
@@ -1210,6 +1226,28 @@ async function formSicherstellen(kette, stand, stufeStart, budgetMs, summe) {
   }
 }
 
+/**
+ * Ein Vermerk der Kette als Kommentar an `dokId` (Issue #1698, Plan #1697 E12).
+ *
+ * Ueber eine Datei unter `tmpdir()`, weil der Text fremde Meldungen traegt und nicht als
+ * Argument an eine Kommandozeile geht; der Name aus `art`, Prozess, Dokument und Laufstempel.
+ * `boardRoh` statt `board`: Ein Vermerk ist Hinweis, kein Zustand, und ein totes Board darf
+ * die Kette nicht anhalten. Der Helfer wirft nie und protokolliert nicht selbst — das tut der
+ * Aufrufer mit dem Ergebnis `{ ok, text }`.
+ */
+function kommentarVermerken(dokId, art, zeilen) {
+  const pfad = join(tmpdir(), `night-${art}-${process.pid}-${dokId}-${ZUSTAND.LAUF_STEMPEL ?? abh.jetzt().getTime()}.md`);
+  try {
+    writeFileSync(pfad, zeilen.join("\n"), "utf-8");
+    const res = abh.boardRoh("issue", "comment", String(dokId), "--text-file", pfad);
+    return { ok: res.status === 0, text: String(res.text ?? "") };
+  } catch (e) {
+    return { ok: false, text: e.message };
+  } finally {
+    rmSync(pfad, { force: true });
+  }
+}
+
 /** Der Anker des Kommentars mit den Testhinweisen, die nach der Planungssitzung stehen bleiben. */
 export const TESTHINWEIS_ANKER = "## Testhinweise der Formpruefung";
 
@@ -1225,16 +1263,9 @@ export const TESTHINWEIS_ANKER = "## Testhinweise der Formpruefung";
  */
 function testhinweiseVermerken(dokId, hinweise) {
   if (!Array.isArray(hinweise) || hinweise.length === 0) return;
-  const pfad = join(tmpdir(), `night-testhinweise-${process.pid}-${dokId}-${ZUSTAND.LAUF_STEMPEL ?? abh.jetzt().getTime()}.md`);
-  const text = [TESTHINWEIS_ANKER, "", ...hinweise.map((h) => `- ${h.meldung}`), ""].join("\n");
-  writeFileSync(pfad, text, "utf-8");
-  try {
-    const res = abh.boardRoh("issue", "comment", dokId, "--text-file", pfad);
-    if (res.status === 0) log(t("testhinweiseGeschrieben", { anzahl: hinweise.length, anker: TESTHINWEIS_ANKER, id: dokId }));
-    else log(t("testhinweiseNicht", { id: dokId, text: res.text.slice(0, 200) }));
-  } finally {
-    rmSync(pfad, { force: true });
-  }
+  const res = kommentarVermerken(dokId, "testhinweise", [TESTHINWEIS_ANKER, "", ...hinweise.map((h) => `- ${h.meldung}`), ""]);
+  if (res.ok) log(t("testhinweiseGeschrieben", { anzahl: hinweise.length, anker: TESTHINWEIS_ANKER, id: dokId }));
+  else log(t("testhinweiseNicht", { id: dokId, text: res.text.slice(0, 200) }));
 }
 
 /** Der Anker des Vermerks, den ein Abbruch der Review-Stufe am Plandokument hinterlaesst. */
@@ -1255,8 +1286,7 @@ export const REVIEW_REST_ANKER = "## Review unvollstaendig";
  * seinem Grund, die Spur ist Hinweis, kein Zustand.
  */
 function reviewRestVermerken(kette, planId, grund) {
-  const pfad = join(tmpdir(), `night-review-rest-${process.pid}-${planId}-${ZUSTAND.LAUF_STEMPEL ?? abh.jetzt().getTime()}.md`);
-  const text = [
+  const res = kommentarVermerken(planId, "review-rest", [
     REVIEW_REST_ANKER,
     "",
     t("reviewRestGelaufen", { stempel: ZUSTAND.LAUF_STEMPEL ?? t("ohneStempel") }),
@@ -1265,20 +1295,144 @@ function reviewRestVermerken(kette, planId, grund) {
     "",
     t("reviewRestWeg", { id: planId }),
     "",
-  ].join("\n");
-  writeFileSync(pfad, text, "utf-8");
-  try {
-    abh.board("issue", "comment", planId, "--text-file", pfad);
-    log(t("reviewRestVermerkt", { id: planId, anker: REVIEW_REST_ANKER }));
-  } finally {
-    rmSync(pfad, { force: true });
+  ]);
+  if (res.ok) log(t("reviewRestVermerkt", { id: planId, anker: REVIEW_REST_ANKER }));
+  else log(t("reviewRestNicht", { id: planId, anker: REVIEW_REST_ANKER, text: res.text.slice(0, 200) }));
+}
+
+/** Der Anker des Pruefstands, den die Kette beim Halt nach der Pruefung an den Plan schreibt (Plan #1697 E12). */
+export const PRUEFSTAND_ANKER = "## Pruefstand der Kette";
+
+/** Die ersten `n` Hex-Zeichen von SHA-256 ueber `text`. */
+const hashVon = (text, n) => createHash("sha256").update(text, "utf-8").digest("hex").slice(0, n);
+
+/**
+ * Der Pruefstand eines Plan-Bodys: `rest` und `entscheidungen` (Issue #1699, Plan #1697 E6).
+ *
+ * Normiert vor jedem Hash — `\r\n` und `\r` zu `\n`, jede Zeile am Ende getrimmt, Leerzeilen
+ * am Ende weg —, weil ein Board Zeilenenden und Leerraum aendern kann, ohne dass jemand den
+ * Plan geaendert hat (`kit/night/bericht.mjs` kennt Bodys mit `\r`). Beim lokalen Tracker
+ * stehen die Kommentare im Body; sie gehoeren nicht zum Plan. `rest` laesst die Inhalte von
+ * `## Offene Fragen` und `## Architektonische Entscheidungen` und die Markerzeile aus, denn
+ * dort schreibt der Mensch seine Antwort und die Pruefung ihren Marker. `entscheidungen`
+ * traegt je nichtleere Zeile des Entscheidungsabschnitts einen Hash, damit ein Vergleich
+ * Ergaenzungen von Aenderungen trennen kann.
+ */
+export function pruefstandVon(body) {
+  const zeilen = String(body ?? "").split(LOKALER_KOMMENTARKOPF)[0].split(/\r\n|\r|\n/).map((z) => z.trimEnd());
+  while (zeilen.length > 0 && zeilen.at(-1) === "") zeilen.pop();
+  const rest = [];
+  const entscheidungen = [];
+  zeilenNachAbschnitt(zeilen, (zeile, abschnitt) => {
+    if (abschnitt === "entscheidungen") {
+      if (zeile !== "") entscheidungen.push(hashVon(zeile, 8));
+    } else if (abschnitt === null && planReviewWert(zeile) === null) {
+      rest.push(zeile);
+    }
+  });
+  return { rest: hashVon(rest.join("\n"), 12), entscheidungen };
+}
+
+/** Der Abschnitt, den eine Kopfzeile `## …` beginnt: `fragen`, `entscheidungen` oder `null` fuer jeden anderen. */
+function pruefstandAbschnitt(kopf) {
+  if (OFFENE_FRAGEN_UEBERSCHRIFT.test(kopf)) return "fragen";
+  if (ENTSCHEIDUNGEN_UEBERSCHRIFT.test(kopf)) return "entscheidungen";
+  return null;
+}
+
+/**
+ * Ruft `jeZeile(zeile, abschnitt)` fuer jede Zeile mit dem Abschnitt, in dem sie steht; eine
+ * Kopfzeile `## …` ausserhalb eines Codeblocks gehoert keinem (`null`), sie zaehlt im Rest mit.
+ */
+function zeilenNachAbschnitt(zeilen, jeZeile) {
+  const imFence = fenceLauf();
+  let abschnitt = null;
+  for (const zeile of zeilen) {
+    if (!imFence(zeile) && ABSCHNITTS_ENDE.test(zeile)) {
+      abschnitt = pruefstandAbschnitt(zeile);
+      jeZeile(zeile, null);
+    } else {
+      jeZeile(zeile, abschnitt);
+    }
   }
 }
 
 /**
- * Stufe Review: /issue-review am Plan, Halt an kit:klaeren (Plan #638, A8, A16).
+ * Ob der Plan seit dem Pruefstand `alt` nur die Antwort traegt (Plan #1697 E6): `rest` gleich,
+ * und die alten Entscheidungszeilen stehen in ihrer Reihenfolge als Teilfolge in den neuen.
  */
-async function stufeReview(kette, planId) {
+export function pruefstandUnveraendert(alt, neu) {
+  if (alt.rest !== neu.rest) return false;
+  let i = 0;
+  for (const h of neu.entscheidungen) if (i < alt.entscheidungen.length && h === alt.entscheidungen[i]) i++;
+  return i === alt.entscheidungen.length;
+}
+
+/**
+ * Der Pruefstand als Kommentar am Plan (Plan #1697 E6, E9, E12): Marker, Pruefer der Kette
+ * (leer bei Vorgabe des Projekts), `rest` und die Entscheidungs-Hashes. Wirft nie — der
+ * Pruefstand darf den Halt nicht verhindern; ob er steht, sagt die Rueckgabe.
+ */
+export function pruefstandVermerken(kette, planId, body) {
+  const stand = pruefstandVon(body);
+  const res = kommentarVermerken(planId, "pruefstand", [
+    PRUEFSTAND_ANKER,
+    "",
+    `Plan-Review: ${planReviewWert(body) ?? ""}`,
+    `Prüfer: ${kette?.planReviewer ?? ""}`,
+    `Rest: ${stand.rest}`,
+    `Entscheidungen: ${stand.entscheidungen.join(" ")}`,
+    "",
+  ].map((z) => z.trimEnd()));
+  if (res.ok) log(t("pruefstandVermerkt", { id: planId, anker: PRUEFSTAND_ANKER }));
+  else log(t("pruefstandNicht", { id: planId, anker: PRUEFSTAND_ANKER, text: res.text.slice(0, 200) }));
+  return res.ok;
+}
+
+/** Der Wert der Zeile `name:` eines Kommentars, am Ende getrimmt — `null` ohne die Zeile. */
+function zeilenWert(kommentar, name) {
+  const zeile = kommentar.split(/\r\n|\r|\n/).find((z) => z.startsWith(`${name}:`));
+  return zeile === undefined ? null : zeile.slice(name.length + 1).trim();
+}
+
+/** Der juengste Pruefstand am Plan — `null` ohne Kommentar mit dem Anker (Plan #1697 E7). */
+export function pruefstandLesen(plan) {
+  const kommentar = kommentareVon(plan).findLast((k) => k.trimStart().startsWith(PRUEFSTAND_ANKER));
+  if (kommentar === undefined) return null;
+  return {
+    planReview: zeilenWert(kommentar, "Plan-Review") ?? "",
+    pruefer: zeilenWert(kommentar, "Prüfer") ?? "",
+    rest: zeilenWert(kommentar, "Rest") ?? "",
+    entscheidungen: (zeilenWert(kommentar, "Entscheidungen") ?? "").split(/\s+/).filter(Boolean),
+  };
+}
+
+/**
+ * Ob die Antwort den Plan ueber das Eintragen hinaus geaendert hat (Plan #1697 E6, E7).
+ *
+ * Gilt nur der juengste Pruefstand und nur, wenn sein Marker dem im Body gleicht; ohne ihn
+ * gilt der Plan als unveraendert — ein Plan aus einem frueheren Lauf oder einer von Hand
+ * neu geprueften bekaeme sonst eine Pruefung, die niemand bestellt hat. `melden: false`
+ * laesst die Protokollzeile weg, fuer eine Vorfrage, nach der die Ergebnisregel sie schreibt.
+ */
+export function pruefstandVeraltet(plan, { melden = true } = {}) {
+  const stand = pruefstandLesen(plan);
+  const marker = planReviewWert(plan?.body);
+  if (!stand || marker === null || stand.planReview !== marker) return false;
+  if (pruefstandUnveraendert(stand, pruefstandVon(plan?.body))) return false;
+  if (melden) log(t("pruefstandVeraltetLog", { id: plan?.id }));
+  return true;
+}
+
+/**
+ * Stufe Review: /issue-review am Plan, danach der Halt vor dem Schnitt (Plan #638, A8, A16;
+ * Plan #1697, E1, E5, E9).
+ *
+ * Nach der fertigen Sitzung zuerst die offene Frage im Body — ob sie schon im Plan stand oder
+ * erst die Pruefung sie eintrug —, mit dem Pruefstand am Plan; danach `kit:klaeren` wie bisher.
+ * `planReviewer` ersetzt `kette.planReviewer` fuer `KIT_PLAN_REVIEWER` (genutzt vom Neustart).
+ */
+async function stufeReview(kette, planId, { planReviewer = kette.planReviewer } = {}) {
   const { budget } = kette;
   const stand = { dauerMs: 0, kennzahlen: null, marker: false };
   kette.stufen.review = stand;
@@ -1292,7 +1446,7 @@ async function stufeReview(kette, planId) {
     return wert !== null && wert !== planReviewWert(vorher.body);
   };
   const s = await ketteSession(kette, "review", `/issue-review #${planId}`, abh.jetzt().getTime(), budget.reviewMin * 60 * 1000, {
-    dokId: planId, ergebnisDa: markerNeu, extraEnv: kette.planReviewer ? { KIT_PLAN_REVIEWER: String(kette.planReviewer) } : undefined,
+    dokId: planId, ergebnisDa: markerNeu, extraEnv: planReviewer ? { KIT_PLAN_REVIEWER: String(planReviewer) } : undefined,
   });
   stand.dauerMs = s.dauerMs;
   stand.kennzahlen = s.kennzahlen;
@@ -1310,6 +1464,12 @@ async function stufeReview(kette, planId) {
   if (kostenErschoepft(kette)) return kostenErschoepft(kette);
   const nachher = abh.board("issue", "get", planId);
   stand.marker = hatPlanReviewMarker(nachher.body);
+  const grund = stoppFragenGrund(nachher.body);
+  if (grund !== null) {
+    // Scheitert der Vermerk, bleibt der Halt; das Protokoll nennt es.
+    pruefstandVermerken(kette, planId, nachher.body);
+    return { ausgang: "angehalten", grund: t("stoppFrageGeprueft", { plan: planId }), dokId: planId, frage: abschnittText(nachher.body, OFFENE_FRAGEN_UEBERSCHRIFT) || grund };
+  }
   if (hatKlaerenLabel(nachher)) {
     const neue = neueKommentare(vorher, nachher);
     return { ausgang: "angehalten", grund: t("reviewStoppFrage", { id: planId }), dokId: planId, frage: neue.at(-1) ?? t("letzterKommentar", { id: planId }) };
@@ -1819,8 +1979,9 @@ function aeltereUeberholen(kette, aeltere, neuerPlan) {
  * Fragen` und liesse den Plan allein bei `- Keine.` durch. Der Antworttext selbst waere
  * am naechsten Abend der Ausschlussgrund gewesen.
  *
- * `/issue-review` entfaellt beim Plan-Auftrag: Dort traegt der Plan sein
- * `review:fertig` schon, sonst haette `planAusschluss` ihn nie als Auftrag durchgelassen.
+ * Eine Pruefung von Hand nennt der Weg nicht (Plan #1697, E10): Jeder inhaltliche Halt liegt
+ * hinter der Pruefung, und hat die Antwort den Plan ueber sich hinaus geaendert, prueft die
+ * naechste Kette ihn vor dem Schnitt selbst erneut (`pruefstandVeraltet`).
  */
 function haltWegNachVorn(kette, planId) {
   const plan = t("planName", { id: planId });
@@ -1828,7 +1989,6 @@ function haltWegNachVorn(kette, planId) {
     t("wegAntwort", { entscheidungen: nameDerSprache("ueberschriftName", "architektonischeEntscheidungen", ENTSCHEIDUNGEN_NAME), plan }),
     t("wegOffen", { offen: nameDerSprache("ueberschriftName", "offeneFragen", OFFENE_FRAGEN_NAME), plan, keine: KEINE_STOPP_FRAGEN }),
   ];
-  if (kette.art !== "plan") schritte.push(t("wegReview", { id: planId }));
   // Beim Plan ohne Anforderung (Plan #1645) gibt es keine Anforderung, an der etwas haengt.
   const ohne = kette.ohneAnforderung === true;
   schritte.push(
@@ -2297,7 +2457,11 @@ const ERGEBNIS_REGELN = {
       .sort((a, b) => Number(b.id) - Number(a.id))[0];
     return plan ? { id: String(plan.id) } : null;
   },
-  review: (auftrag) => (hatPlanReviewMarker(leseKarte(auftrag.planId)?.body) ? {} : null),
+  // Der Marker zaehlt nur, solange kein gueltiger Pruefstand eine Aenderung meldet (Plan #1697 E8).
+  review: (auftrag) => {
+    const plan = leseKarte(auftrag.planId);
+    return hatPlanReviewMarker(plan?.body) && !pruefstandVeraltet(plan) ? {} : null;
+  },
   pakete: (auftrag) => {
     const texte = laufstandTexte(auftrag);
     const fertig = eintragDa(texte, "pakete", "fertig", auftrag.planId) || eintragDa(texte, "abdeckung", "fertig", auftrag.planId);
@@ -2561,6 +2725,72 @@ function nachDemReview(kette, review) {
 }
 
 /**
+ * Der vorgefundene Marker als Ergebnis der Stufe review, fuer beide Wege in sie (Fachplan-Kette
+ * und erneute Pruefung beim Plan-Auftrag). Wie `stufeReview` zuerst die offene Frage im Body
+ * (Plan #1697, E15): Nach einem Sitzungsabbruch kann die Einarbeitung Marker und Frage schon
+ * geschrieben haben — ohne diesen Halt liefe die Kette ohne Pruefstand bis `pakete`.
+ */
+const reviewVorfinden = (kette, planId) => (v, vorher) => {
+  kette.stufen.review = { dauerMs: 0, kennzahlen: null, ...vorher, marker: true, vorgefunden: true };
+  const body = leseKarte(planId)?.body || "";
+  const grund = stoppFragenGrund(body);
+  if (grund !== null) {
+    pruefstandVermerken(kette, planId, body);
+    return { ausgang: "angehalten", grund: t("stoppFrageGeprueft", { plan: planId }), dokId: planId, frage: abschnittText(body, OFFENE_FRAGEN_UEBERSCHRIFT) || grund };
+  }
+  return { ausgang: "fertig", vorgefunden: true };
+};
+
+/**
+ * Die Stufen vor pakete: `{ planId }`, wenn es mit pakete weitergeht, sonst `{ ende }` mit
+ * dem Ausgang der Kette.
+ */
+async function bisZuDenPaketen(kette, auftrag) {
+  if (kette.art === "plan") {
+    // Der Plan ist der Auftrag: Er steht schon da, geprueft und ohne offene Frage. Hat die
+    // Antwort auf eine Frage aus dem Halt nach der Pruefung ihn darueber hinaus geaendert
+    // (`pruefstandVeraltet`), prueft die Stufe review ihn vor dem Schnitt erneut, mit den
+    // Pruefern aus dem Pruefstand (Plan #1697 E8, E9) — danach folgt pakete ohne
+    // `nachDemReview`: `reviewPakete` und das Ziel gelten am Plan-Auftrag nicht (`grenzeVorZiel`).
+    // Traegt er aus einem frueheren Lauf bereits Arbeitspakete OHNE Laufstand-Eintrag,
+    // laeuft die Stufe trotzdem unveraendert und zaehlt nur die neu entstandenen Karten —
+    // ein hingenommener Fall (Issue #895): Die aelteren Pakete bleiben in Backlog stehen,
+    // und ein weiteres Tor davor sperrte den haeufigen Fall aus, um den seltenen zu
+    // verhindern. Mit Eintrag gelten sie als vorgefunden oder als Teilschnitt (#1086).
+    const planId = kette.stufen.plan.id;
+    const plan = leseKarte(planId);
+    if (!pruefstandVeraltet(plan, { melden: false })) return { planId };
+    // Die Protokollzeile schreibt die Ergebnisregel review; leere Pruefer: Vorgabe des Projekts.
+    const planReviewer = pruefstandLesen(plan).pruefer || null;
+    const review = await mitMeldung(() => stufeMitErgebnis(kette, "review", planId, {
+      auftrag: { ...auftrag, planId },
+      laufen: () => stufeReview(kette, planId, { planReviewer }),
+      vorfinden: reviewVorfinden(kette, planId),
+    }));
+    return review.ausgang === "fertig" ? { planId } : { ende: { ...review, stufe: "review" } };
+  }
+  const plan = await mitMeldung(() => stufeMitErgebnis(kette, "plan", kette.F, {
+    auftrag,
+    laufen: () => stufePlan(kette),
+    vorfinden: (v, vorher) => {
+      kette.stufen.plan = { dauerMs: 0, kennzahlen: null, korrekturrunden: 0, weitere: [], ...vorher, id: v.id, vorgefunden: true };
+      return { ausgang: "fertig", id: v.id, vorgefunden: true };
+    },
+  }));
+  if (plan.ausgang !== "fertig") return { ende: { ...plan, stufe: "plan" } };
+  const planId = plan.id;
+  if (uebergangGesperrt(kette, "planReview", plan)) return { ende: anDerGrenze(kette, "review", "planReview") };
+  const review = await mitMeldung(() => stufeMitErgebnis(kette, "review", planId, {
+    auftrag: { ...auftrag, planId },
+    laufen: () => stufeReview(kette, planId),
+    vorfinden: reviewVorfinden(kette, planId),
+  }));
+  if (review.ausgang !== "fertig") return { ende: { ...review, stufe: "review" } };
+  const ende = nachDemReview(kette, review);
+  return ende ? { ende } : { planId };
+}
+
+/**
  * Die Stufen einer Kette in Reihenfolge; die erste, die nicht fertig wird, ist der
  * Ausgang der Kette (mit ihrem Namen fuer den Halt-Kommentar). Unter Variante B kommt
  * hinter `abdeckung` die fuenfte Stufe `umsetzung` dazu (Plan #691, E12).
@@ -2575,39 +2805,9 @@ async function stufenDerKette(kette) {
   // Der Laufstand, den die Kette vorfand — VOR ihrem ersten eigenen, der ihn ersetzt.
   const auftrag = { F: kette.F, karte: kette.karte, repoRoot: kette.repoRoot, laufstandVorher: kette.laufstandVorher ?? laufstandAmBoard(kette.karte.id) };
   kette.laufstand ??= { begonnen: null, abgeschlossen: null };
-  let planId;
-  if (kette.art === "plan") {
-    // Der Plan ist der Auftrag: Er steht schon da, geprueft und ohne offene Frage.
-    // Traegt er aus einem frueheren Lauf bereits Arbeitspakete OHNE Laufstand-Eintrag,
-    // laeuft die Stufe trotzdem unveraendert und zaehlt nur die neu entstandenen Karten —
-    // ein hingenommener Fall (Issue #895): Die aelteren Pakete bleiben in Backlog stehen,
-    // und ein weiteres Tor davor sperrte den haeufigen Fall aus, um den seltenen zu
-    // verhindern. Mit Eintrag gelten sie als vorgefunden oder als Teilschnitt (#1086).
-    planId = kette.stufen.plan.id;
-  } else {
-    const plan = await mitMeldung(() => stufeMitErgebnis(kette, "plan", kette.F, {
-      auftrag,
-      laufen: () => stufePlan(kette),
-      vorfinden: (v, vorher) => {
-        kette.stufen.plan = { dauerMs: 0, kennzahlen: null, korrekturrunden: 0, weitere: [], ...vorher, id: v.id, vorgefunden: true };
-        return { ausgang: "fertig", id: v.id, vorgefunden: true };
-      },
-    }));
-    if (plan.ausgang !== "fertig") return { ...plan, stufe: "plan" };
-    planId = plan.id;
-    if (uebergangGesperrt(kette, "planReview", plan)) return anDerGrenze(kette, "review", "planReview");
-    const review = await mitMeldung(() => stufeMitErgebnis(kette, "review", planId, {
-      auftrag: { ...auftrag, planId },
-      laufen: () => stufeReview(kette, planId),
-      vorfinden: (v, vorher) => {
-        kette.stufen.review = { dauerMs: 0, kennzahlen: null, ...vorher, marker: true, vorgefunden: true };
-        return { ausgang: "fertig", vorgefunden: true };
-      },
-    }));
-    if (review.ausgang !== "fertig") return { ...review, stufe: "review" };
-    const endeNachReview = nachDemReview(kette, review);
-    if (endeNachReview) return endeNachReview;
-  }
+  const vorDenPaketen = await bisZuDenPaketen(kette, auftrag);
+  if (vorDenPaketen.ende) return vorDenPaketen.ende;
+  const { planId } = vorDenPaketen;
   const pakete = await mitMeldung(() => stufeMitErgebnis(kette, "pakete", planId, {
     auftrag: { ...auftrag, planId },
     laufen: () => stufePakete(kette, planId),
@@ -2763,6 +2963,10 @@ export const kennzeichenZurueckGrund = () => t("kennzeichenZurueck");
  * ist die Einstellung jetzt unpassend (E3), hat er das GO fuer diesen Stand zurueckgezogen.
  * Scheitert das Lesen, gilt der Stand vom Laufbeginn — ein Board-Fehler verhindert keine
  * Kette, die sonst liefe.
+ *
+ * Nach dem Kennzeichen das Warten auf ein Ereignis (Plan #1624, E7): Wartet die Karte oder —
+ * beim Plan-Auftrag — sein Fachplan inzwischen, ist die Rueckgabe `{ grund, nurUebersprung:
+ * true }`. Das GO steht dann noch; die Kette verbucht nur den Uebersprung (E8).
  */
 function karteBeimStart(auftrag) {
   const alt = auftrag.karte;
@@ -2780,8 +2984,40 @@ function karteBeimStart(auftrag) {
     return { karte: alt };
   }
   if (!kennzeichenName(karte?.labels, KETTE_BUDGET.label, "night")) return { grund: kennzeichenZurueckGrund() };
+  const wartet = wartegrundBeimStart(auftrag, karte);
+  if (wartet) return { grund: wartet, nurUebersprung: true };
   const grund = zielAusschluss(karte, auftrag.art, plan);
   return grund ? { grund } : { karte: { ...alt, ...karte } };
+}
+
+/**
+ * Der Wartegrund beim Kettenstart (Plan #1624, E7) — `null`, wenn nichts wartet. Beim
+ * Fachplan-Auftrag die Wartezeile der frisch gelesenen Karte, beim Plan-Auftrag die seines
+ * Fachplans aus einem zusaetzlichen `issue get`. Scheitert dieses Lesen, gilt der Stand vom
+ * Laufbeginn: Da wartete der Fachplan nicht, sonst stuende der Plan nicht unter den Ketten.
+ */
+function wartegrundBeimStart(auftrag, karte) {
+  if (auftrag.art !== "plan") {
+    const wartet = ereignisGrundVon(karte);
+    return wartet === null ? null : t("ketteEreignis", { grund: wartet, id: karte.id });
+  }
+  if (auftrag.ohneAnforderung) return null;
+  let fachplan;
+  try {
+    fachplan = abh.board("issue", "get", String(auftrag.F));
+  } catch (e) {
+    log(t("nichtFrischLesbar", { id: auftrag.F, text: e.message }));
+    return null;
+  }
+  const wartet = ereignisGrundVon(fachplan);
+  return wartet === null ? null : t("planEreignis", { F: auftrag.F, grund: wartet });
+}
+
+/** Die `zuletzt`-Zeilen des Laufstands vor diesem Lauf — an ihnen findet der naechste Lauf vorhandene Ergebnisse. */
+function zuletztZeilen(auftrag) {
+  // In beiden Sprachen: Der vorige Lauf kann in der anderen geschrieben haben.
+  const istZuletzt = (z) => Object.keys(TEXTE).some((sprache) => z.startsWith(textIn(sprache, "zuletztPraefix")));
+  return String((auftrag.laufstandVorher ?? []).at(-1) ?? "").split("\n").filter(istZuletzt).join("\n");
 }
 
 /**
@@ -2795,11 +3031,24 @@ function ketteNichtMehrFreigegeben(auftrag, nummer, args, grund) {
   const { id, title } = auftrag.karte;
   log(t("nichtMehrFreigegeben", { nummer, max: args.max, id }));
   uebersprungeneVerbuchen([{ id: String(id), title: title ?? "", grund }], [], KETTE_BUDGET.label, false);
-  // Die `zuletzt`-Zeilen in beiden Sprachen: Der vorige Lauf kann in der anderen geschrieben haben.
-  const istZuletzt = (z) => Object.keys(TEXTE).some((sprache) => z.startsWith(textIn(sprache, "zuletztPraefix")));
-  const zuletzt = String((auftrag.laufstandVorher ?? []).at(-1) ?? "").split("\n").filter(istZuletzt);
-  const text = [t("nichtGestartetStand", { zeit: abh.jetzt().toISOString(), grund }), zuletzt.join("\n")].filter(Boolean).join("\n\n");
+  const text = [t("nichtGestartetStand", { zeit: abh.jetzt().toISOString(), grund }), zuletztZeilen(auftrag)].filter(Boolean).join("\n\n");
   standSetzen(id, "abgebrochen", text, { budgetMs: ABBRUCH_BUDGET_MS });
+  return { ausgang: "uebersprungen", vorbereitung: false, kette: null };
+}
+
+/**
+ * Eine Kette, deren Karte oder Fachplan beim Start auf ein Ereignis wartet (Plan #1624, E7):
+ * nur der Uebersprung wie bei der Auswahl (E8), kein Laufstand `abgebrochen`. Den Vorab-Stand
+ * `laeuft` aus dem Beanspruchen loest der Stand `wartet` mit dem Wartegrund ab — bliebe er
+ * stehen, truege die Karte weiter das Label `laeuft`, und ein spaeterer Abbruch des Laufs
+ * schriebe an ihr doch `abgebrochen`. Die `zuletzt`-Zeilen bleiben wie beim Kennzeichen.
+ */
+function ketteWartetBeimStart(auftrag, nummer, args, grund) {
+  const { id, title } = auftrag.karte;
+  log(t("wartetBeimStart", { nummer, max: args.max, id }));
+  uebersprungeneVerbuchen([{ id: String(id), title: title ?? "", grund }], [], KETTE_BUDGET.label, false);
+  const text = [t("nichtGestartetStand", { zeit: abh.jetzt().toISOString(), grund }), zuletztZeilen(auftrag)].filter(Boolean).join("\n\n");
+  standSetzen(id, "wartet", text, { budgetMs: ABBRUCH_BUDGET_MS });
   return { ausgang: "uebersprungen", vorbereitung: false, kette: null };
 }
 
@@ -2818,6 +3067,7 @@ function ketteNichtMehrFreigegeben(auftrag, nummer, args, grund) {
  */
 async function laufeEineKette(auftrag, nummer, args) {
   const start = karteBeimStart(auftrag);
+  if (start.nurUebersprung) return ketteWartetBeimStart(auftrag, nummer, args, start.grund);
   if (start.grund) return ketteNichtMehrFreigegeben(auftrag, nummer, args, start.grund);
   return ketteMitKarte({ ...auftrag, karte: start.karte }, nummer, args);
 }
@@ -3149,6 +3399,7 @@ async function ketteFahren(args) {
   if (kandidaten.length === 0 && uebersprungen.length === 0 && !alle.some((i) => kennzeichenName(i.labels, budget.label, "night"))) {
     const vorhanden = [...new Set(alle.flatMap((i) => i.labels || []))];
     log(t("keinLabelWarnung", { label: budget.label }));
+    log(t("boardVon", boardHerkunft()));
     log(t("vorhandeneLabels", { labels: vorhanden.length ? vorhanden.join(", ") : t("keineLabels") }));
   }
 

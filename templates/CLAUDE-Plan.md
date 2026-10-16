@@ -155,7 +155,7 @@ Paket-Reviews hatten es gefunden.
 
 ## P14 — Ein Vertrag mit dem anderen Repo ist abgeglichen oder gefragt `[maschinell]`
 
-Nennt die Config in `vertragsRepos` ein Partnerrepo, steht am Ende von
+Nennt die Config in `contractRepos` ein Partnerrepo, steht am Ende von
 `## Architektonische Entscheidungen` der Unterabschnitt `### Verträge`. Je Festlegung, die
 das andere Repo liest oder schreibt — ein Name, ein Kennzeichen, ein Format —, traegt er
 einen Eintrag; legt der Plan keine fest, die Zeile `- Kein Vertrag.`:
@@ -168,7 +168,7 @@ einen Eintrag; legt der Plan keine fest, die Zeile `- Kein Vertrag.`:
 ```
 
 - Der Kopf endet auf `— <Repo>, liest` oder `— <Repo>, schreibt`; das Repo steht in
-  `vertragsRepos`.
+  `contractRepos`.
 - `Gebauter Stand:` nennt die Fundstelle auf dem Hauptzweig des anderen Repos, oder
   `fehlt, geprüft …` beziehungsweise `nicht prüfbar: …`. Maßgeblich ist der gebaute Stand,
   nicht der Plan des anderen Repos und nicht die im Projekt installierte Kit-Fassung; weicht
@@ -180,12 +180,12 @@ einen Eintrag; legt der Plan keine fest, die Zeile `- Kein Vertrag.`:
 - Ein offener Vertrag — `weicht ab`, `fehlt` oder `nicht prüfbar` ohne Zeile
   `Entschieden:` — steht in einer Frage unter `## Offene Fragen`, die alle offenen
   V-Nummern aufzählt; die erste Zeile dort ist dann nicht `- Keine.`. Damit haelt die
-  Nacht-Kette die Planstufe an, bevor `/issues` Pakete schneidet. `Entschieden:` mit
+  Nacht-Kette nach der Pruefung des Plans an, bevor `/issues` Pakete schneidet. `Entschieden:` mit
   `Plan angepasst`, `anderes Repo zieht nach` oder `Abweichung angenommen` schreibt nur,
   wer die Antwort des Menschen hat — nie die Sitzung, die den Verstoss behebt.
 
 `issue check-form` prueft die Form. Ob die Fundstelle stimmt und ob ein Mensch entschieden
-hat, ist Urteil (P10). Ohne `vertragsRepos` prueft P14 nichts.
+hat, ist Urteil (P10). Ohne `contractRepos` prueft P14 nichts.
 
 *Warum Gate:* Eine Festlegung, die beide Repos verstehen muessen, sieht im Plan aus wie eine
 interne Namenswahl. In kanban-kit waehlte Plan #1423 einen Namen fuer die Laufkennung,
@@ -212,7 +212,7 @@ Menschen zum Halt vor den Paketen.
 - **Laenge und Ton.**
 - **Testhinweise der Formpruefung.** `issue check-form` meldet beim Plan unter `hinweise`
   je eigenen Test eines gefuehrten Bausteins, den der Plan nirgends nennt (Ablagen aus
-  `testAblagen`). Sie beruehren weder `ok` noch den Exit-Code und tragen keine P-Nummer.
+  `testLocations`). Sie beruehren weder `ok` noch den Exit-Code und tragen keine P-Nummer.
   Nachts schreibt der Nacht-Runner, was stehen bleibt, als Kommentar
   `## Testhinweise der Formpruefung` an den Plan.
 - **Ob der Plan gut schneidbar ist.** Das prueft die Rolle `schnitt-abhaengigkeiten` im

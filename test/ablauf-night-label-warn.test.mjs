@@ -17,7 +17,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync, cpSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { basename, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { lfAttribute } from "./helpers/zeilenenden.mjs";
@@ -92,6 +92,9 @@ test("Vertipper: --label no warnt und nennt gesuchten Wert, vorhandene Labels un
     assert.match(res.stdout, /'no'/, "der gesuchte Label-Wert wird nicht genannt");
     assert.match(res.stdout, /kit:nightrun/, "die tatsaechlich vorhandenen Labels werden nicht genannt");
     assert.match(res.stdout, /--label none/, "der Ausweg ueber --label none wird nicht genannt");
+    assert.match(res.stdout, /\] WARNUNG: kein Ready-Issue traegt das Label 'no' — es wird nichts verarbeitet\.\n/, "die Warnzeile bleibt wortgleich");
+    assert.match(res.stdout, new RegExp(`verarbeitet\\.\\n[^\\n]*\\]   Board von: ${basename(dir)} \\(local\\)\\n`),
+      "unter der Warnung steht das Repo, dessen Board gelesen wurde (Issue #1744)");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -1,7 +1,7 @@
 // Der gekennzeichnete Zeitabbruch in Doku und Prozessvorlage (Issue #982, Plan #974,
 // fachliche Quelle #963).
 //
-// Geprueft werden `docs/nachtbetrieb.md` und `templates/CLAUDE-workflow.md` — die
+// Geprueft werden `docs/runner.md` und `templates/CLAUDE-workflow.md` — die
 // Vorlage und nicht die Kopie unter `.claude/`: Die ist Installer-Ausgabe und in CI nicht
 // vorhanden (siehe docs-wartende-sitzung.test.mjs).
 //
@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
-const DOKU = lies("docs", "nachtbetrieb.md");
+const DOKU = lies("docs", "runner.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
 const NIGHT = lies("kit", "night.mjs");
 
@@ -33,7 +33,7 @@ function abschnitt(text, ueberschrift) {
   return naechste === -1 ? rest : rest.slice(0, naechste);
 }
 
-test("[docs-zeitabbruch-1] die Seite Nachtbetrieb beschreibt Vermerk, Felder und Berichtszeile", () => {
+test("[docs-zeitabbruch-1] die Seite Runner beschreibt Vermerk, Felder und Berichtszeile", () => {
   const text = DOKU;
 
   for (const [was, muster] of [
@@ -45,14 +45,14 @@ test("[docs-zeitabbruch-1] die Seite Nachtbetrieb beschreibt Vermerk, Felder und
     ["das Feld im Lauf-Kopf", /`zielUmsetzungMin`/],
     ["die Berichtszeile der Kette", /Voraussichtlich über der Sitzungszeitgrenze/],
     ["den Massstab der Einschaetzung", /`--timeout-min`/],
-    ["die Abgrenzung gegen das Stufenbudget", /`night\.kette\.umsetzungMin`/],
+    ["die Abgrenzung gegen das Stufenbudget", /`night\.chain\.implementationMin`/],
   ]) {
     assert.match(text, muster, `das Nachtbetrieb-Kapitel nennt ${was} nicht`);
   }
 
   // Der Massstab und seine Abgrenzung stehen in EINEM Absatz: getrennt liest man die
   // Grenze, ohne zu erfahren, welche Zahl gerade nicht gemeint ist.
-  const absatz = text.split(/\n\n/).find((a) => a.includes("--timeout-min") && a.includes("night.kette.umsetzungMin"));
+  const absatz = text.split(/\n\n/).find((a) => a.includes("--timeout-min") && a.includes("night.chain.implementationMin"));
   assert.ok(absatz, "Massstab und Abgrenzung stehen nicht im selben Absatz");
   assert.match(absatz, /nicht/, "die Abgrenzung sagt nicht, dass das Stufenbudget nicht gemeint ist");
 });
@@ -91,7 +91,7 @@ test("[docs-zeitabbruch-3] die Prozessvorlage nennt Kennzahl und gekennzeichnete
   assert.ok(satz, "kein Absatz der Vorlage nennt den Anker '## Nachtlauf: Zeitgrenze erreicht'");
   for (const [was, muster] of [
     ["die Sitzungszeitgrenze als Massstab", /`--timeout-min`/],
-    ["die Abgrenzung gegen das Stufenbudget", /`night\.kette\.umsetzungMin`/],
+    ["die Abgrenzung gegen das Stufenbudget", /`night\.chain\.implementationMin`/],
     ["das Feld an der Einheit", /`zeitlimitBeendet[:`]/],
     ["dass der Abbruch kein inhaltlicher Fehlschlag ist", /kein inhaltlicher Fehlschlag/],
   ]) {
@@ -110,7 +110,7 @@ const URSACHENBEHAUPTUNGEN = [
 
 test("[docs-zeitabbruch-4] keine der drei Stellen behauptet die Ursache eines Zeitabbruchs", () => {
   for (const [name, datei, text] of [
-    ["Dokumentation", "docs/nachtbetrieb.md", DOKU],
+    ["Dokumentation", "docs/runner.md", DOKU],
     ["Runner", "kit/night.mjs", NIGHT],
   ]) {
     for (const [stelle, muster] of URSACHENBEHAUPTUNGEN) {

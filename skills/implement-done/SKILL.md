@@ -80,7 +80,7 @@ Lies alle Abschnitte der Aufgabe im Auftrag erneut; ein weiteres `issue get` bra
 
 1. Während der Arbeit laufen nur die Tests, die das Paket berührt — gezielt per Datei oder Filter des Test-Runners, zum Beispiel `node --test test/<datei>.test.mjs`. Dazu gehören auch die Tests dessen, was von der geänderten Datei abhängt — nicht nur die der Datei selbst. Gibt es die dafür nur als vollständige Gruppe, fährt die Session sie über `node .claude/kit/checks.mjs run --area <name>`; das ist dann kein Verstoß gegen die Zehn-Minuten-Marke, sondern der vorgesehene Weg.
 2. Die volle Suite startet die Session nicht selbst. Der eine volle Lauf ist `node .claude/kit/checks.mjs run --finish <kartennummer>` vor dem Commit. Sein Block `Fuer den Abschlussbericht:` beginnt mit der Zeile `Wartezeit:`, die wie der Rest wortgetreu in den Bericht geht. Die Abschlussprüfung wiederholt eine rote Prüfung selbst einmal auf demselben Stand — die Session wiederholt sie nicht zusätzlich; eine `Gewackelt:`-Zeile geht wortgetreu in den Bericht, und das Paket geht wie gewohnt nach In review.
-3. Ein zweiter `checks.mjs run` auf **unverändertem Stand** fährt kein Kommando mehr: Das Kommando übernimmt das Ergebnis des vorigen Laufs — auch ein rotes — samt Exitcode und meldet das. `--fresh` erzwingt den echten Lauf.
+3. Ein zweiter `checks.mjs run` auf **unverändertem Stand** fährt kein Kommando mehr: Das Kommando übernimmt das Ergebnis des vorigen Laufs samt Exitcode und meldet das — nur ein grünes; ein rotes misst es neu, weil seine Ursache außerhalb der versionierten Dateien liegen kann. `--fresh` erzwingt den echten Lauf.
 4. Hinweis dazu: Wer die Ausgabe eines langen Laufs mehrfach auswerten will, schreibt sie am einfachsten einmal in eine Datei außerhalb des Projektverzeichnisses (`<tmpdir>/…`, den Pfad wörtlich wie in der Transportregel) und liest sie daraus.
 5. Ist `checks.mjs run` rot, genügt nach der Korrektur derselbe Aufruf `checks.mjs run --finish <kartennummer>`: Er fährt selbst zuerst die zuletzt roten Prüfungen und erst, wenn sie grün sind, im selben Aufruf einmal den vollen Lauf. Gezielte Einzeltests während der Korrektur bleiben erlaubt.
 
@@ -114,7 +114,7 @@ Sie laeuft in `/push-main` beziehungsweise `/merge-production`. Im Bericht steht
 jede andere Auslassung.
 
 **`--finish <kartennummer>` — dies ist der Abschluss genau einer Karte.** Nur ein
-solcher Lauf darf die Pruefungen auslassen, die mit `nichtBeimAbschluss` als
+solcher Lauf darf die Pruefungen auslassen, die mit `notAtCompletion` als
 Zusammenspiel-Pruefung gekennzeichnet sind: Sie messen, was mehrere Pakete gemeinsam
 ergeben, und laufen vollstaendig vor dem Veroeffentlichen in `/push-main`. Die
 **Kartennummer** ist die des Issues, das dieser Lauf abschliesst — ohne sie koennte die
@@ -139,7 +139,7 @@ veraendert wurde" im Bericht, nicht als leere Liste.
 
 **Wer eine Datei anlegt, ordnet sie zu.** Nennt der Block `Fuer den Abschlussbericht:`
 `voller Umfang` wegen einer Datei, die dieses Paket angelegt hat, ergaenzt das Paket
-`checkAreas` um ein passendes Muster (oder begruendet einen Eintrag in `ohnePruefung`)
+`checkAreas` um ein passendes Muster (oder begruendet einen Eintrag in `noCheck`)
 und faehrt den Lauf erneut. Weist Claude Code den Schreibzugriff auf die Config ab
 (Nachtlauf, geschuetzte Datei), steht die Datei unter `### Hinweise` im Bericht — kein
 Anhalten, kein Umweg ueber die Shell.
@@ -159,7 +159,7 @@ Refs #N
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 ```
 
-Nur explizit veränderte Dateien stagen — kein `git add -A` oder `git add .`.
+Nur explizit veränderte Dateien stagen — kein `git add -A` oder `git add .`. Nennt der Bericht `Format-Fix: … → ausgefuehrt`, gehören alle vom Fix geänderten Dateien (`git status`) in denselben Commit und in den Abschlussbericht.
 
 **Kein `Closes`/`Fixes`/`Resolves #N` im Commit.** Diese Keywords schließen das Issue automatisch beim Push/Merge, und die Board-Automation zieht es dann sofort nach Done — noch bevor der Mensch getestet hat. `Refs #N` verlinkt, ohne zu schließen. Das Schließen macht ausschließlich der Mensch.
 

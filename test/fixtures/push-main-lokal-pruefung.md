@@ -28,6 +28,13 @@ zusaetzlich zur Paketstufe laeuft …`) — er wird darum spürbar **länger dau
 Lauf je Arbeitspaket in `/implement-next`. Das ist der vorgesehene Zeitpunkt und kein
 Grund, ihn abzukürzen.
 
+**Der Mutationstest verlängert den Vordergrundlauf.** Hat das Projekt `mutationCommand`
+eingerichtet, fährt der Lauf ihn nach allen `buildChecks` genau einmal, auch mit `--retry`
+kein zweites Mal; dieselbe Zeile `Stufe push:` kündigt ihn an. Er dauert oft länger als alle
+übrigen Prüfungen zusammen, und der Lauf bleibt dabei im Vordergrund. Ein roter
+Mutationstest hält nichts an: Der Berichtsblock trägt ihn als Zeile `Mutationstest: …` —
+nur berichtet, ohne Einfluss auf Exitcode und Ergebnis. Ist eine Prüfung rot, entfällt er.
+
 **Der Anker ist der Batch, nicht `HEAD`.** Er entscheidet nicht mehr, **was** läuft — an
 dieser Stufe läuft ohnehin alles —, sondern welchen Stand die Zusammenfassung **bezeugt**:
 `basis`, `geaendert` und die Blob-Hashes, gegen die das Commit-Gate den Index prüft. Ohne
@@ -83,9 +90,9 @@ Entscheidung liegt beim Menschen. **Ohne Wackler** ruft der Skill `effectiveness
 candidates` ebenfalls, an derselben Stelle: Reparaturkandidaten ohne Wackler werden genannt,
 halten aber nicht an.
 
-Warum überhaupt noch ein Lauf, wenn `/implement-ready` und `/local-check` je Issue schon
-prüften: Der Nachweis gehört zum **Commit**, und die Dateien aus Schritt 4 hat kein
-früherer Lauf gesehen. Ohne Nachweis für genau diesen Stand weist das Commit-Gate den
+Warum überhaupt noch ein Lauf, wenn `/implement-ready` je Issue schon prüfte: Der
+Nachweis gehört zum **Commit**, und die Dateien aus Schritt 4 hat kein früherer Lauf
+gesehen. Ohne Nachweis für genau diesen Stand weist das Commit-Gate den
 Commit ab.
 
 **Befunde buchen, wenn Code-Review-Befunde eingearbeitet wurden.** Sind vor diesem Push

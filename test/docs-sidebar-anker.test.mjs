@@ -24,7 +24,8 @@ const DOCS = join(repoRoot, "docs");
 
 /**
  * Der Anker einer Ueberschrift, nachgebildet nach VitePress: Unicode NFKD, Akzente weg,
- * klein, jede Folge anderer Zeichen als Buchstabe und Ziffer wird `-`, `-` am Rand weg.
+ * klein, jede Folge anderer Zeichen als Buchstabe und Ziffer wird `-`, `-` am Rand weg,
+ * vor einer fuehrenden Ziffer steht `_` (die nummerierten Schritte des Einstiegs, Issue #1757).
  */
 function slug(ueberschrift) {
   return ueberschrift
@@ -33,7 +34,8 @@ function slug(ueberschrift) {
     .toLowerCase()
     .replaceAll(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-/, "")
-    .replace(/-$/, "");
+    .replace(/-$/, "")
+    .replace(/^(\d)/, "_$1");
 }
 
 /** Alle Sidebar-Links mit Anker: `{ text, link: "/<seite>#<anker>" }`. */
@@ -82,6 +84,10 @@ test("slug bildet die Ueberschrift der Skills wie VitePress ab", () => {
     slug("Die sechzehn Skills und der 9-Schritt-Kernprozess"),
     "die-sechzehn-skills-und-der-9-schritt-kernprozess",
   );
+});
+
+test("slug setzt vor eine fuehrende Ziffer einen Unterstrich wie VitePress", () => {
+  assert.equal(slug("5. Kit installieren"), "_5-kit-installieren");
 });
 
 test("slug entfernt Umlaut-Punkte statt sie umzuschreiben", () => {

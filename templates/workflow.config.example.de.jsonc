@@ -1,0 +1,404 @@
+// Beispieldatei zu .claude/workflow.config.json: jede Einstellung, die das Kit kennt, mit dem Satz der Einstellungsseite.
+// Das Kit liest diese Datei nie, und jedes Update erneuert sie — Änderungen hier gehen verloren.
+// Aktiv stehen die Einstellungen, die beim Einrichten nötig sind, mit Beispielwerten; alle übrigen stehen auskommentiert mit ihrer Vorgabe.
+// Übernehmen: die Zeile nach .claude/workflow.config.json kopieren, das // davor entfernen und den Wert anpassen.
+{
+  // === Beim Einrichten nötig ===
+
+  // Sprache des Kits in diesem Projekt: de (Deutsch) oder en (Englisch). Gültig: `de`, `en`. Vorgabe: `de`. Stellt Texte, Board-Namen und Kommentare des Kits auf Englisch um; `en` setzen, wenn das Team englisch arbeitet.
+  "language": "de",
+
+  // Wo der Code liegt (Push, Pull Requests). Gültig: `github`, `gitlab`, `local`. Vorgabe: `github`. Legt fest, wohin gepusht wird und wo Pull Requests entstehen; beim Einrichten setzen, wenn der Code nicht auf GitHub liegt.
+  "codeHost": "github",
+
+  // Wo die Issues verwaltet werden. Gültig: `github`, `gitlab`, `local`, `toolbox`. Vorgabe: `github`. Legt fest, wo das Board liegt; beim Einrichten setzen, wenn die Issues nicht auf GitHub liegen, etwa `local` für Dateien im Repo.
+  "issueTracker": "github",
+
+  // Die Prüfkommandos des Projekts (Build, Tests). Vorgabe: `[]`. Bestimmt, was vor jedem Commit und vor `push main` geprüft wird; beim Einrichten die Build- und Testkommandos des Projekts eintragen.
+  // `buildChecks[]` — Ein Prüfkommando, als Kommandostring oder als Objekt mit `cmd` und den Feldern darunter. Keine Vorgabe.
+  // `buildChecks[].cmd` — Die Kommandozeile, wie sie in der String-Form stünde. Keine Vorgabe.
+  // `buildChecks[].areas` — Bereichsnamen aus `checkAreas`; die Prüfung läuft, wenn einer davon berührt ist. Keine Vorgabe.
+  // `buildChecks[].always` — true = entschieden immer laufend, unabhängig von den berührten Bereichen. Keine Vorgabe.
+  // `buildChecks[].stage` — Wann die Prüfung an der Reihe ist: "paket" beim Abschluss eines Arbeitspakets, "push" vor dem Veröffentlichen, "merge" vor der Freigabe. Gültig: `paket`, `push`, `merge`. Vorgabe: `paket`.
+  // `buildChecks[].notAtCompletion` — Warum die Prüfung beim Abschluss eines einzelnen Pakets entfallen darf. Gültig: `zusammenspiel`, `volleTestmenge`. Vorgabe: nicht gesetzt, die Prüfung läuft auch beim Abschluss.
+  // `buildChecks[].completionAreas` — Bereiche, deren Berührung die Prüfung auch beim Abschluss laufen lässt. Vorgabe: nicht gesetzt, die Prüfung entfällt beim Abschluss.
+  // `buildChecks[].quality` — Benennt diese Prüfung als Gütemessung, deren Wert unter der Marke das Veröffentlichen anhält. Keine Vorgabe.
+  // `buildChecks[].quality.pattern` — Regulärer Ausdruck mit genau einer Gruppe; sie greift den gemessenen Prozentwert aus der Ausgabe des Kommandos. Keine Vorgabe.
+  // `buildChecks[].quality.marker` — Der Prozentwert, ab dem die Messung genügt. Werte: 0 bis 100. Keine Vorgabe.
+  // `buildChecks[].concurrent` — Ob diese Prüfung in "checks.mjs run" neben anderen laufen darf. Vorgabe: `false`.
+  // `buildChecks[].upfront` — Ob diese Prüfung in "checks.mjs run" vor allen anderen läuft. Vorgabe: `false`.
+  // `buildChecks[].kind` — Mit `hinweis` meldet die Prüfung nur und hält nie an. Gültig: `hinweis`. Vorgabe: eine gewöhnliche Prüfung, deren Rot den Lauf anhält.
+  "buildChecks": [
+    "mvn verify",
+    {
+      "cmd": "npm --prefix frontend run build",
+      "areas": [
+        "frontend"
+      ]
+    }
+  ],
+
+  // Branch für lokale Commits und Push (Schritt 7). Vorgabe: `main`. Der Zweig für lokale Commits und `push main`; nur setzen, wenn er nicht `main` heißt.
+  "mainBranch": "main",
+
+  // Ziel-Branch für den PR in Schritt 8 (merge production). Vorgabe: `production`. Der Zweig, in den `merge production` den Pull Request stellt; nur setzen, wenn er nicht `production` heißt.
+  "productionBranch": "production",
+
+  // Einstellungen für den lokalen Issue-Tracker (issueTracker: 'local'). Vorgabe: die Werte der Felder darunter. Der Ordner, in dem der lokale Tracker seine Issues ablegt; nur mit `issueTracker` `local` und einem anderen Ordner als `issues` setzen.
+  "local": {
+    // Verzeichnis der Issue-Markdown-Dateien, relativ zum Projekt-Root. Vorgabe: `issues`.
+    "issuesDir": "issues"
+  },
+
+  // GitHub-spezifische Einstellungen. Keine Vorgabe. Das GitHub-Projekt, dessen Spalten das Board sind; beim Einrichten mit einem Board auf GitHub nötig, der Installer trägt es ein.
+  "github": {
+    // Nummer des GitHub Project Boards (gh project list). Werte: ab 1. Keine Vorgabe.
+    "projectNumber": 1
+  },
+
+  // Einstellungen für den Toolbox-Issue-Tracker (issueTracker: 'toolbox'). Keine Vorgabe. Der Zugang zum Toolbox-Tracker des Autors; nur mit `issueTracker` `toolbox` setzen.
+  // "toolbox": {
+    // Basis-URL der Toolbox-Instanz. Keine Vorgabe.
+    // "host": "",
+    // Pfad (relativ zum Projektverzeichnis) zu einer Datei mit dem projekt-/board-gebundenen Token. Keine Vorgabe.
+    // "tokenFile": ""
+  // },
+
+  // Issue-Review über mehrere Modelle. Keine Vorgabe. Legt fest, welche Modelle Fachplan, Plan und Pakete prüfen; beim Einrichten setzen, denn ohne Reviewer hält die Nacht-Kette vor dem Start an.
+  "issueReview": {
+    // Ist es true, stellt der Nacht-Runner Ready-Issues ohne Review-Marker kommentiert ins Backlog zurück. Vorgabe: `false`.
+    "requiredBeforeReady": false,
+    // Die Reviewer in der Reihenfolge, in der sie genommen werden; der Autor nie. Keine Vorgabe.
+    // `issueReview.reviewers[].name` — Kurzname, wird mit dem Autor-Modell des Issues verglichen. Keine Vorgabe.
+    // `issueReview.reviewers[].kind` — 'claude' läuft als Subagent über das Agent-Tool, 'command' als beliebiges fremdes CLI (Prompt über stdin). Gültig: `claude`, `command`. Keine Vorgabe.
+    // `issueReview.reviewers[].model` — Nur bei kind 'claude': Modell-Identifier. Keine Vorgabe.
+    // `issueReview.reviewers[].command` — Nur bei kind 'command': Kommandozeile, z.B. 'codex exec --model gpt-5'. Keine Vorgabe.
+    // `issueReview.reviewers[].readLimit` — Nur bei kind 'command': der Nur-Lese-Schalter des fremden Werkzeugs. Keine Vorgabe.
+    "reviewers": [
+      {
+        "name": "opus",
+        "kind": "claude",
+        "model": "claude-opus-5"
+      },
+      {
+        "name": "sonnet",
+        "kind": "claude",
+        "model": "claude-sonnet-5"
+      },
+      {
+        "name": "fable",
+        "kind": "claude",
+        "model": "claude-fable-5"
+      }
+    ],
+    // Explizite Zuordnung Autor -> Reviewer. Vorgabe: keine Zuordnung, es gilt die Reihenfolge in `reviewers`.
+    "pairs": {
+      "opus": [
+        "sonnet",
+        "fable"
+      ],
+      "sonnet": [
+        "opus",
+        "fable"
+      ],
+      "fable": [
+        "opus",
+        "sonnet"
+      ],
+      "haiku": [
+        "sonnet",
+        "opus"
+      ]
+    }
+  }
+
+  // === Lohnt sich ===
+
+  // Benannte Bereiche des Projekts. Keine Vorgabe. Ordnet Pfade benannten Bereichen zu, damit eine Prüfung nur läuft, wenn ihr Bereich berührt ist; setzen, sobald der volle Prüflauf zu lange dauert.
+  // "checkAreas": {
+  //   "frontend": [
+  //     "frontend/**"
+  //   ]
+  // },
+
+  // Dateien, die keine Prüfung liest. Vorgabe: `[]`. Nimmt Dateien, die keine Prüfung liest, aus dem vollen Prüflauf heraus; setzen, wenn etwa eine reine Textänderung alle Prüfungen auslöst.
+  // `noCheck[].pattern` — Pfadmuster wie in checkAreas: "*" innerhalb eines Segments, "**" über Segmentgrenzen hinweg, "/" als Trenner. Keine Vorgabe.
+  // `noCheck[].reason` — Warum keine Prüfung den Inhalt dieser Datei liest. Keine Vorgabe.
+  // "noCheck": [],
+
+  // Bereiche mit gemessener Kopplung. Vorgabe: `[]`. Vermerkt mit Grund, dass ein Bereich wegen einer gemessenen Kopplung fast alle Prüfungen auslöst; setzen, wenn die Auswertung einen solchen Bereich meldet und die Kopplung gewollt ist.
+  // `coupledAreas[].area` — Name des Bereichs, wie er in checkAreas steht. Keine Vorgabe.
+  // `coupledAreas[].reason` — Welche gemessene Kopplung den Bereich in fast alle Prüfkommandos zwingt. Keine Vorgabe.
+  // "coupledAreas": [],
+
+  // Wo die eigenen Tests eines Bausteins liegen. Vorgabe: die Ablagen des Kits für TypeScript und Java. Sagt dem Kit, wo die Tests eines Bausteins liegen, damit ein Plan Hinweise auf betroffene Tests bekommt; setzen, wenn die Ablage nicht dem TypeScript- oder Java-Muster folgt.
+  // `testLocations[].source` — Muster der Quelldatei, etwa src/{pfad}/{name}.ts. Keine Vorgabe.
+  // `testLocations[].test` — Muster ihres eigenen Tests, mit denselben Platzhaltern und * innerhalb eines Segments, etwa src/{pfad}/{name}*.test.ts. Keine Vorgabe.
+  // `testLocations[].defaults` — Fügt die Vorgaben des Kits an dieser Stelle ein. Wert: `true`. Keine Vorgabe.
+  // "testLocations": [],
+
+  // Kommando für Mutations-Tests (optional). Vorgabe: leer. Lässt vor jedem `push main` Mutationstests laufen, die nur berichten; setzen, wenn das Projekt ein Werkzeug wie PIT oder Stryker hat.
+  // "mutationCommand": "",
+
+  // Weitere Kommandos bzw. Kommando-Präfixe, die eine Gütemessung starten (optional). Vorgabe: `[]`. Hält weitere Gütemessungen aus den Akzeptanzkriterien der Pakete heraus; setzen, wenn das Projekt eine teure Messung hat, die keine Prüfung ist.
+  // "qualityCommands": [],
+
+  // Kommando, das Formatierungsverstöße behebt. Vorgabe: leer. Behebt Formatverstöße selbst und prüft einmal neu, statt den Lauf rot enden zu lassen; setzen, wenn das Projekt einen Formatierer hat.
+  // "formatFixCommand": "",
+
+  // Kommando, das die Abhängigkeiten herstellt. Vorgabe: leer. Stellt in einem frischen Worktree die Abhängigkeiten her; setzen, wenn das Projekt Worktrees nutzt und Pakete installieren muss, etwa mit `npm ci`.
+  // "installCommand": "",
+
+  // Wo der volle Prüflauf vor 'push main' stattfindet. Gültig: `lokal`. Vorgabe: `lokal`. Verlegt den vollen Prüflauf vor `push main` in den Build-Dienst; setzen, wenn er lokal zu lange dauert oder die CI ohnehin dasselbe prüft.
+  // `pushCheck.location` — Der Ort des vollen Laufs: der Build-Dienst des Projekts. Gültig: `buildDienst`. Keine Vorgabe.
+  // `pushCheck.branch` — Der Prüfzweig, den /push-main vor dem Push pusht und danach löscht. Keine Vorgabe.
+  // "pushCheck": "local",
+
+  // Umfang des Review-Materials. Gültig: `diff`, `full`. Vorgabe: `diff`. Bestimmt, ob das Code-Review nur den Diff seit dem letzten Push oder den ganzen Quelltext liest; `full` setzen für ein Review des ganzen Projekts.
+  // "reviewScope": "diff",
+
+  // Das Claude-Modell des Code-Reviews. Vorgabe: `claude-opus-4-8`. Das Claude-Modell, das den Code prüft; setzen, wenn ein anderes Modell als die Vorgabe prüfen soll.
+  // "reviewModel": "claude-opus-4-8",
+
+  // Eine fremde CLI als Code-Reviewer, Gegenstück zu reviewModel. Vorgabe: nicht gesetzt, es prüft `reviewModel`. Lässt eine fremde CLI statt Claude den Code prüfen; setzen, wenn ein Modell eines anderen Anbieters prüfen soll.
+  // "reviewCommand": "",
+
+  // Besetzung und Blickwinkel der drei Prüfstufen: das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Vorgabe: je Stufe die Rollen des Rollenkatalogs, ein Reviewer je Rolle, nur, wenn der ganze Block fehlt; fehlt in einem vorhandenen Block eine Stufe oder ein Feld, bricht die Prüfung der Config ab. Bestimmt, wie viele Reviewer mit welchen Rollen je Stufe prüfen; setzen, wenn eine Stufe gründlicher oder sparsamer geprüft werden soll.
+  // "reviewStages": {
+    // Prüfung des fachlichen Anliegens ([Requirement]-Issue), bevor daraus ein Plan wird. Keine Vorgabe.
+    // "requirement": {
+      // Wie viele Reviewer diese Stufe prüfen. Werte: ab 1. Vorgabe: `2`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
+      // "reviewer": 2,
+      // Ein Rollenname je Reviewer, in der Reihenfolge der Zuteilung. Vorgabe: `form-beobachtbarkeit`, `abgrenzung`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
+      // "roles": [
+      //   "form-beobachtbarkeit",
+      //   "abgrenzung"
+      // ]
+    // },
+    // Prüfung des Plandokuments ([Plan]-Issue), bevor es in Arbeitspakete zerfällt. Keine Vorgabe.
+    // "plan": {
+      // Wie viele Reviewer diese Stufe prüfen. Werte: ab 1. Vorgabe: `2`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
+      // "reviewer": 2,
+      // Ein Rollenname je Reviewer, in der Reihenfolge der Zuteilung. Vorgabe: `architektur-bestand`, `schnitt-abhaengigkeiten`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
+      // "roles": [
+      //   "architektur-bestand",
+      //   "schnitt-abhaengigkeiten"
+      // ]
+    // },
+    // Prüfung des einzelnen Arbeitspakets vor dem GO. Keine Vorgabe.
+    // "issue": {
+      // Wie viele Reviewer diese Stufe prüfen. Werte: ab 1. Vorgabe: `1`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
+      // "reviewer": 1,
+      // Ein Rollenname je Reviewer, in der Reihenfolge der Zuteilung. Vorgabe: `pruefbarkeit`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
+      // "roles": [
+      //   "pruefbarkeit"
+      // ]
+    // }
+  // },
+
+  // Frühere Fachpläne zum selben Gegenstand. Vorgabe: `true`. Lässt Fachplan und Plan frühere Fachpläne zum selben Gegenstand nennen; nur mit `false` ausschalten, wenn die Vorgeschichte des Boards nicht zählt.
+  // "history": true,
+
+  // Die Partnerrepos dieses Projekts. Vorgabe: `[]`, kein Partnerrepo. Verlangt von jedem Plan einen Abschnitt Verträge zu den Partnerrepos; eintragen, sobald ein anderes Repo einen Namen, ein Format oder ein Kennzeichen dieses Projekts liest oder schreibt.
+  // `contractRepos[].name` — Kurzname des Partnerrepos, etwa kanban-kit: Kleinbuchstaben und Ziffern, Wörter durch einzelne Bindestriche getrennt. Keine Vorgabe.
+  // `contractRepos[].url` — Adresse, von der sich das Partnerrepo klonen lässt, etwa https://github.com/mannewolff/kanban-kit.git. Keine Vorgabe.
+  // `contractRepos[].branch` — Hauptzweig des Partnerrepos: Gegen den gebauten Stand auf diesem Zweig wird ein Vertrag abgeglichen. Vorgabe: `main`.
+  // "contractRepos": [],
+
+  // === Vom Kit verwaltet ===
+
+  // _Vom Installer gesetzt._ Versionskennung x.y.z. Vorgabe: `1.4.0`.
+  // "version": "1.4.0",
+
+  // _Veraltet._ Wird beim Laden auf `codeHost` und `issueTracker` übertragen; neu nicht setzen. Gültig: `github`, `gitlab`, `local`. Keine Vorgabe.
+  // "provider": "",
+
+  // _Vom Installer gesetzt._ Stichtag der Szenarien-Pflicht als Kartennummer. Werte: ab 1. Vorgabe: nicht gesetzt, die Pflicht gilt für keine Karte am Board; der Installer setzt das Feld beim Update.
+  // "scenariosFrom": 0,
+
+  // === Feinabstimmung ===
+
+  // Ausnahmen für den Abgleich der Prüfbereiche; setzen, wenn areas suggest einen Pfad als Kandidaten für diese Liste nennt.
+  // Pfade, die Testdateien nur als Gerüst anlegen — ihre Erwähnung in einer Testdatei belegt keine Kopplung. Vorgabe: `[]`.
+  // `scaffoldOnly[].pattern` — Pfadmuster wie in checkAreas: "*" innerhalb eines Segments, "**" über Segmentgrenzen hinweg, "/" als Trenner. Keine Vorgabe.
+  // `scaffoldOnly[].reason` — Warum keine Testdatei diesen Pfad prüft, sondern ihn höchstens als Gerüst anlegt. Keine Vorgabe.
+  // "scaffoldOnly": [],
+
+  // Der Nur-Lese-Schalter der fremden CLI aus reviewCommand. Vorgabe: für codex der eingebaute Schalter.
+  // "reviewReadLimit": "",
+
+  // Die Phrasen, mit denen der Mensch an den drei Stop-Punkten freigibt.
+  // Trigger-Phrasen für die drei menschlichen Stop-Punkte. Vorgabe: die Werte der Felder darunter.
+  // "triggers": {
+    // Phrase für das GO zur Implementierung. Vorgabe: `GO`.
+    // "go": "GO",
+    // Phrase für Push auf mainBranch (Schritt 7). Vorgabe: `push main`.
+    // "push": "push main",
+    // Phrase für PR nach productionBranch (Schritt 8). Vorgabe: `merge production`.
+    // "merge": "merge production"
+  // },
+
+  // Die Namen der Spalten und Labels, wenn das Board sie anders nennt als das Kit.
+  // Mapping der internen Status auf Board-Spalten- bzw. Label-Namen. Vorgabe: die Werte der Felder darunter.
+  // "columns": {
+    // Name der Spalte bzw. des Labels für Backlog; auf GitLab macht `Open` daraus den offenen Zustand ohne Label. Vorgabe: `Backlog`.
+    // "backlog": "Backlog",
+    // Name der Spalte bzw. des Labels für Ready — freigegeben, das GO des Menschen. Vorgabe: `Ready`.
+    // "ready": "Ready",
+    // Name der Spalte bzw. des Labels für In progress — das Arbeitspaket, an dem gerade gearbeitet wird. Vorgabe: `In progress`.
+    // "in_progress": "In progress",
+    // Name der Spalte bzw. des Labels für In review — lokal fertig, noch nicht gepusht. Vorgabe: `In review`.
+    // "in_review": "In review",
+    // Name der Spalte für Done auf GitHub und lokal; GitLab nimmt immer den geschlossenen Zustand. Vorgabe: `Done`.
+    // "done": "Done"
+  // },
+
+  // Der Nachtbetrieb: welche Modelle laufen dürfen, wie lange eine Umsetzung dauern soll und wann ein Lauf als festgefahren gilt.
+  // Der Nachtbetrieb. Keine Vorgabe.
+  // "night": {
+    // Die Budgets der Nacht-Kette: Zeit, Kosten und Korrekturrunden je Schritt, bevor die Kette abbricht.
+    // Budgets und Kennzeichen der Nacht-Kette (night.mjs --chain). Keine Vorgabe.
+    // "chain": {
+      // Das Kennzeichen an der fachlichen Anforderung oder am Plandokument, das die Kette startet. Vorgabe: `kit:night`.
+      // "label": "kit:night",
+      // Das Kennzeichen, das die gekennzeichnete Karte für die Umsetzungsstufe der Kette (Variante B) kennzeichnet. Vorgabe: `kit:carry-through`.
+      // "variantBLabel": "kit:carry-through",
+      // Zeitbudget der Stufe Plan in Minuten, einschliesslich Korrekturrunden. Vorgabe: `20`.
+      // "planMin": 20,
+      // Zeitbudget der Stufe Pakete in Minuten, einschliesslich Korrekturrunden. Vorgabe: `15`.
+      // "packagesMin": 15,
+      // Zeitbudget der Prüfer-Session am Plan in Minuten. Vorgabe: `15`.
+      // "reviewMin": 15,
+      // Zeitbudget der Abdeckungs-Session in Minuten. Vorgabe: `10`.
+      // "coverageMin": 10,
+      // Zeitbudget der Umsetzungsstufe (Variante B) in Minuten, über alle Implementierungs-Sessions der Kette. Vorgabe: `120`.
+      // "implementationMin": 120,
+      // Frist der Vorbereitung des Push in Minuten, Warten und Prüflauf eingeschlossen. Vorgabe: `120`.
+      // "preparationMin": 120,
+      // Kostenbudget je Kette in US-Dollar, summiert über alle Sessions der Kette; geprüft nach jeder Session. Vorgabe: `50`.
+      // "costUsd": 50,
+      // Kostenbudget je Kette in US-Dollar für die Umsetzungsstufe (Variante B). Vorgabe: `150`.
+      // "costUsdB": 150,
+      // Höchstzahl der Korrektursessions je Dokument nach einer roten Formprüfung. Werte: ab 1. Vorgabe: `2`.
+      // "correctionRounds": 2,
+      // Welche Übergänge der Kette automatisch folgen dürfen. Vorgabe: jeder Übergang folgt, die Umsetzung nur an einer Karte mit dem Variante-B-Label.
+      // "transitions": {
+        // Nach dem Plan folgt die Prüfung des Plans automatisch. Vorgabe: `true`.
+        // "planReview": true,
+        // Nach der Prüfung des Plans folgen die Arbeitspakete automatisch. Vorgabe: `true`.
+        // "reviewPackages": true,
+        // Nach den Arbeitspaketen folgt die Abdeckung gegen die fachliche Anforderung oder gegen den Plan automatisch. Vorgabe: `true`.
+        // "packagesCoverage": true,
+        // Nach der Abdeckung folgt die Umsetzung automatisch. Vorgabe: nur eine Karte mit dem Variante-B-Label wird umgesetzt.
+        // "coverageImplementation": false,
+        // Ob nach der Umsetzung die Vorbereitung des Push folgt. Vorgabe: `true`.
+        // "implementationPreparation": true
+      // }
+    // },
+    // Wie eine Karte ihren Laufstand am Board zeigt: Labels, Frist und Pause.
+    // Der Laufstand einer Karte am Board. Vorgabe: die Werte der Felder darunter.
+    // "status": {
+      // Die Namen der drei Laufstand-Labels. Vorgabe: die Werte der Felder darunter.
+      // "labels": {
+        // Label einer Karte, an der ein Lauf gerade arbeitet. Vorgabe: `run:running`.
+        // "running": "run:running",
+        // Label einer technisch abgebrochenen Karte: Wiederholen genügt. Vorgabe: `run:aborted`.
+        // "aborted": "run:aborted",
+        // Label einer wartenden Karte; worauf sie wartet, steht wörtlich im Laufstand. Vorgabe: `run:waiting`.
+        // "waiting": "run:waiting"
+      // },
+      // Erkennungsfrist in Minuten ab dem letzten Lebenszeichen eines Laufs. Vorgabe: `10`.
+      // "deadlineMin": 10,
+      // Pause in Minuten vor dem einen automatischen Versuch nach einem Umgebungsfehler des lebenden Laufs. Vorgabe: `5`.
+      // "pauseMin": 5
+    // },
+    // Das Modell jeder Session des Nachtlaufs, die kein eigenes Modell hat. Vorgabe: das Modell, das der Nacht-Runner mitbringt.
+    // "model": "",
+    // Die Modellnamen, die der Nacht-Runner starten darf, das stärkste zuerst. Vorgabe: leer, jede Session startet mit dem Modell des Laufs.
+    // "models": [
+    //   "claude-opus-5",
+    //   "claude-sonnet-5"
+    // ],
+    // Welches Modell der Nachtlauf je Schwierigkeitsstufe eines Pakets startet.
+    // Modell oder Kommando je Schwierigkeitsstufe eines Arbeitspakets, geordnet hard/medium/easy. Vorgabe: keine Stufe, jedes Paket läuft mit dem Modell des Laufs.
+    // "tiers": {
+      // Modell oder Kommando für eine schwere Aufgabe. Keine Vorgabe.
+      // `night.tiers.hard.model` — Modell-ID für diese Stufe. Keine Vorgabe.
+      // `night.tiers.hard.effort` — Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Gültig: `low`, `medium`, `high`, `xhigh`, `max`. Vorgabe: die Voreinstellung der Claude-CLI.
+      // `night.tiers.hard.command` — Kommandozeile eines fremden Programms für diese Stufe. Keine Vorgabe.
+      // `night.tiers.hard.name` — Selbstauskunft des Programms neben command. Keine Vorgabe.
+      // "hard": {},
+      // Modell oder Kommando für eine mittelschwere Aufgabe. Keine Vorgabe.
+      // `night.tiers.medium.model` — Modell-ID für diese Stufe. Keine Vorgabe.
+      // `night.tiers.medium.effort` — Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Gültig: `low`, `medium`, `high`, `xhigh`, `max`. Vorgabe: die Voreinstellung der Claude-CLI.
+      // `night.tiers.medium.command` — Kommandozeile eines fremden Programms für diese Stufe. Keine Vorgabe.
+      // `night.tiers.medium.name` — Selbstauskunft des Programms neben command. Keine Vorgabe.
+      // "medium": {},
+      // Modell oder Kommando für eine leichte Aufgabe. Keine Vorgabe.
+      // `night.tiers.easy.model` — Modell-ID für diese Stufe. Keine Vorgabe.
+      // `night.tiers.easy.effort` — Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Gültig: `low`, `medium`, `high`, `xhigh`, `max`. Vorgabe: die Voreinstellung der Claude-CLI.
+      // `night.tiers.easy.command` — Kommandozeile eines fremden Programms für diese Stufe. Keine Vorgabe.
+      // `night.tiers.easy.name` — Selbstauskunft des Programms neben command. Keine Vorgabe.
+      // "easy": {}
+    // },
+    // Ersetzt die mitgelieferte Regel, nach der /issues und /task die Stufe eines Arbeitspakets bestimmen. Vorgabe: die Regel des Kits.
+    // "tierRule": "",
+    // Zahl gleich gescheiterter Läufe derselben Prüfung, nach der eine unbeaufsichtigte Sitzung gebremst wird. Werte: ab 2. Vorgabe: `3`.
+    // "stuckAfter": 3,
+    // Zielmarke für die Dauer einer Umsetzung in Minuten. Vorgabe: `10`.
+    // "goalImplementationMin": 10,
+    // Frist in Tagen, nach der der Nacht-Runner seine Protokolle löscht. Werte: ab 1. Vorgabe: `14`.
+    // "logRetentionDays": 14
+  // },
+
+  // Der tägliche Prüflauf: sein Label, seine Zeit und seine Kosten.
+  // Der tägliche Prüflauf. Vorgabe: die Werte der Felder darunter.
+  // "checkRun": {
+    // Das Kennzeichen an der fachlichen Anforderung, die der Lauf prüfen lässt. Vorgabe: `kit:check`.
+    // "label": "kit:check",
+    // Zeitbudget der Prüfer-Session je Karte in Minuten. Vorgabe: `25`.
+    // "checkMin": 25,
+    // Kostenbudget je Lauf in US-Dollar, geprüft nach jeder Session. Vorgabe: `25`.
+    // "costUsd": 25
+  // },
+
+  // Die Schwellen, ab denen die Aufwandsauswertung einen Befund meldet.
+  // Umfang und Schwellen der Aufwandsauswertung. Vorgabe: die Werte der Felder darunter.
+  // "workload": {
+    // Wie viele der jüngsten abgeschlossenen Ergebnisstände die Auswertung höchstens einbezieht, die jüngsten zuerst. Vorgabe: `10`.
+    // "runs": 10,
+    // Ab welchem Anteil die Auswertung einen Befund meldet. Vorgabe: die Werte der Felder darunter.
+    // "thresholds": {
+      // Höchster Anteil der größten Pflichtprüfung an der Prüfzeit ohne Befund. Werte: 0 bis 1. Vorgabe: `0.5`.
+      // "checkShare": 0.5,
+      // Ob ein Befund erscheint, wenn die Eingrenzung der Prüfungen über Bereiche gemessen, aber nie gegriffen hat. Vorgabe: `true`.
+      // "narrowingWithoutEffect": true,
+      // Anteil, den reine Werkzeugarbeit an der gesamten Laufzeit einnehmen darf, bevor ein Befund erscheint. Werte: 0 bis 1. Vorgabe: `0.5`.
+      // "toolShare": 0.5,
+      // Höchster Anteil der Schreibkosten an den Gesamtkosten ohne Befund. Werte: 0 bis 1. Vorgabe: `0.75`.
+      // "writeCostShare": 0.75
+    // }
+  // },
+
+  // Zeitfenster und Schwellen, nach denen die Wirksamkeitsauswertung eine Prüfung als wirkungslos meldet.
+  // Zeitfenster und Schwellen der Wirksamkeitsauswertung. Vorgabe: die Werte der Felder darunter.
+  // "effectiveness": {
+    // Wie viele Tage zurück die Auswertung zählt. Vorgabe: `30`.
+    // "windowDays": 30,
+    // Ab wie vielen Ausführungen im Fenster eine Prüfung, die nie beanstandet hat, zum Befund wird. Vorgabe: `10`.
+    // "neverFlaggedFromRuns": 10,
+    // Ab welcher Rückläuferquote ein Befund erscheint. Werte: 0 bis 1. Vorgabe: `0.2`.
+    // "rateThreshold": 0.2,
+    // Ab wie vielen gewerteten Arbeitspaketen im Fenster die Rückläuferquote einen Befund auslösen darf. Vorgabe: `10`.
+    // "rateFromPackages": 10,
+    // Wie viele Karten die Rückläuferquote höchstens wertet, die jüngsten Eintritte in In review zuerst. Vorgabe: `200`.
+    // "candidatesMax": 200
+  // },
+
+  // Ab wie vielen wiederkehrenden Funden der Modell-Prüfungen ein Vorschlag entsteht.
+  // Wiederkehrende Funde der Modell-Prüfungen: ab wie vielen Vorkommen aus ihnen ein Vorschlag entsteht. Vorgabe: die Werte der Felder darunter.
+  // "findings": {
+    // Ab wie vielen Vorkommen desselben Fundes ein Vorschlag entsteht. Vorgabe: `3`.
+    // "threshold": 3
+  // },
+}

@@ -100,6 +100,7 @@ test("festhalten schreibt die Datei, setzt die Referenz und nennt die Pakete aus
   assert.deepEqual(datei.offen, []);
   assert.deepEqual(datei.pakete, ["11", "12"]);
   assert.equal(datei.rot, null);
+  assert.equal(datei.mutation, null, "ohne Mutationstest im Lauf steht das Feld leer");
   assert.equal(datei.fetch, "ok");
   assert.equal(datei.zeitpunkt, JETZT.toISOString());
   assert.equal(git(s.repo, "rev-parse", REFERENZ), s.vorbereitet);
@@ -116,6 +117,17 @@ test("festhalten liest laufId und kitStand aus KIT_NIGHT_RUN und KIT_STAND", () 
   festhalten(s);
   assert.equal(gelesen(s).laufId, null);
   assert.equal(gelesen(s).kitStand, null);
+});
+
+test("[1673] festhalten uebernimmt den Mutationstest des Push-Laufs, pruefen gibt ihn aus (E4)", () => {
+  const s = setup();
+  const mutation = { cmd: "npm run mutation", ergebnis: "rot", exit: 3, dauerMs: 4200 };
+  zusammenfassung(s.pfad, { mutation });
+  festhalten(s);
+  const datei = gelesen(s);
+  assert.deepEqual(datei.mutation, mutation);
+  assert.equal(datei.ergebnis, "gruen", "ein roter Mutationstest faerbt die Vorbereitung nicht");
+  assert.deepEqual(vorbereitungPruefen({ repoRoot: s.repo }).mutation, mutation);
 });
 
 test("festhalten haelt einen gescheiterten Fetch fest", () => {
@@ -267,7 +279,7 @@ test("pruefen: der Wackler kommt nur als offener Punkt zurueck (Fund 8)", () => 
   festhalten(s);
   const urteil = vorbereitungPruefen({ repoRoot: s.repo });
   assert.equal(urteil.uebernehmen, true);
-  assert.deepEqual(Object.keys(urteil).sort(), ["commit", "grund", "offen", "uebernehmen", "zeitpunkt"]);
+  assert.deepEqual(Object.keys(urteil).sort(), ["commit", "grund", "mutation", "offen", "uebernehmen", "zeitpunkt"]);
   assert.deepEqual(urteil.offen, ["Gewackelt: npm test — Entscheidung beim push main"]);
 });
 
@@ -295,6 +307,7 @@ test("pruefen: ein unveraenderter Stand wird uebernommen", () => {
     commit: s.vorbereitet,
     offen: ["Sichtpruefung der Oberflaeche"],
     zeitpunkt: JETZT.toISOString(),
+    mutation: null,
   });
 });
 

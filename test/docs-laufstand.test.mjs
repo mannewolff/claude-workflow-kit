@@ -3,7 +3,7 @@
 //
 // Nach E20 des Plans kommt die bindende Quelle zuerst: Die Prozessvorlage beschreibt den
 // Laufstand, bevor das Werkzeug ihn baut. Geprueft werden `templates/CLAUDE-workflow.md`
-// und `docs/nachtbetrieb.md` — die Vorlage und nicht die Kopie unter `.claude/`: Die ist
+// und `docs/runner.md` — die Vorlage und nicht die Kopie unter `.claude/`: Die ist
 // Installer-Ausgabe und in CI nicht vorhanden (siehe docs-wartende-sitzung.test.mjs).
 //
 // Der dritte Test prueft den Test selbst: Fehlt in einer Kopie genau eine Angabe, muss die
@@ -20,7 +20,7 @@ import { englisch } from "./helpers/labels.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
-const DOKU = lies("docs", "nachtbetrieb.md");
+const DOKU = lies("docs", "runner.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
 
 /** Der Text eines Abschnitts bis zur naechsten Ueberschrift derselben Ebene. */
@@ -42,7 +42,7 @@ const ANGABEN = [
   ["das Label run:waiting (E1)", /`run:waiting`/],
   ["genau einen Kommentar `## Laufstand`, der ersetzt wird (E1)", /genau ein(?:en)? Kommentar `## Laufstand`[^.]*ersetzt/],
   ["Tafel, nicht Verlauf (E1)", /Tafel, nicht Verlauf/],
-  ["dass der Nachtbericht Verlauf bleibt (E1)", /Nachtbericht bleibt Verlauf/],
+  ["dass der Laufbericht Verlauf bleibt (E1)", /Laufbericht bleibt Verlauf/],
   [
     "die wartet-Form des gesperrten Uebergangs woertlich (E1, E12)",
     /wartet: Übergang <x> im Projekt nicht freigegeben — weiter mit kit:night/,
@@ -54,8 +54,8 @@ const ANGABEN = [
   ["die wartet-Form ohne kit:carry-through (E12)", /wartet: Karte ohne Freigabe zur Umsetzung/],
   ["den Start bei der ersten Stufe ohne Ergebnis (E11)", /`kit:night`[^.]*ersten Stufe ohne Ergebnis/],
   ["den frischen Plan erst nach Done des alten (E9)", /frische[nr]? Plan[^.]*erst[^.]*Done/],
-  ["die Uebergaenge im Projekt (E12)", /`night\.kette\.uebergaenge`/],
-  ["abdeckungUmsetzung nur mit kit:carry-through (E12)", /`abdeckungUmsetzung`[^.]*nur[^.]*`kit:carry-through`/],
+  ["die Uebergaenge im Projekt (E12)", /`night\.chain\.transitions`/],
+  ["coverageImplementation nur mit kit:carry-through (E12)", /`coverageImplementation`[^.]*nur[^.]*`kit:carry-through`/],
   [
     "den einen Versuch nur bei Umgebungsfehlern des lebenden Laufs (E13)",
     /(?:einen|ein) automatische[nr]? Versuch[^.]*nur bei Umgebungsfehlern[^.]*solange der Lauf lebt/i,
@@ -64,7 +64,9 @@ const ANGABEN = [
   ["dass ein gestorbener Lauf nicht wiederholt wird (E7, E13)", /gestorbene[rn]? Lauf wird nicht wiederholt/],
 ];
 // Der Regeltext nennt die Labels seit Issue #1571 englisch, die Doku bis zu ihrer Umstellung deutsch.
-const ANGABEN_VORLAGE = ANGABEN.map(([name, muster]) => [name, englisch(muster)]);
+// Den Bericht nennt der Regeltext Nachtbericht, die Doku seit Issue #1748 Laufbericht.
+const ANGABEN_VORLAGE = ANGABEN.map(([name, muster]) =>
+  [name, englisch(muster.source === "Laufbericht bleibt Verlauf" ? /Nachtbericht bleibt Verlauf/ : muster)]);
 
 // Das Geruest des Doku-Abschnitts: die Ueberschriften, unter die die folgenden Pakete
 // des Plans ihren Inhalt schreiben.
@@ -87,8 +89,8 @@ test("[docs-laufstand-1] der Nachtbetrieb-Abschnitt der Vorlage beschreibt den L
   assert.deepEqual(fehlend(NACHT_VORLAGE, ANGABEN_VORLAGE), [], "der Nachtbetrieb-Abschnitt der Vorlage nennt nicht alles");
 });
 
-test("[docs-laufstand-2] die Seite Nachtbetrieb hat den Abschnitt 'Der Laufstand' samt Geruest", () => {
-  assert.ok(LAUFSTAND_DOKU, "der Abschnitt '## Der Laufstand' fehlt in docs/nachtbetrieb.md");
+test("[docs-laufstand-2] die Seite Runner hat den Abschnitt 'Der Laufstand' samt Geruest", () => {
+  assert.ok(LAUFSTAND_DOKU, "der Abschnitt '## Der Laufstand' fehlt in docs/runner.md");
   assert.deepEqual(
     fehlend(LAUFSTAND_DOKU, [...ANGABEN, ...GERUEST]),
     [],
@@ -118,13 +120,13 @@ const BELEGFAELLE = [
   ["Fall 1 spurloser Lauf: nicht beendet, weiter mit kit:night", /^\| Spurlos[^\n]*`run:aborted`[^\n]*nicht beendet[^\n]*`kit:night`[^\n]*\|$/m],
   ["Fall 2 Abbruch obwohl fertig: vorgefunden, weiter mit kit:night", /^\| Abgebrochen, obwohl fertig[^\n]*`run:aborted`[^\n]*`kit:night`[^\n]*vorgefunden[^\n]*\|$/m],
   ["Fall 3 Ausgang unbekannt: 2. Versuch, sonst nicht begonnen", /^\| Ausgang unbekannt[^\n]*„2\. Versuch“[^\n]*nicht begonnen[^\n]*`kit:night`[^\n]*\|$/m],
-  ["Fall 4 ein Paket haelt die Nacht an: nur das Paket, Stash", /^\| Ein Paket hält die Nacht an[^\n]*`run:aborted`[^\n]*hängt an #N[^\n]*`nachtrest #<id> <lauf>`[^\n]*\|$/m],
+  ["Fall 4 ein Paket haelt den Lauf an: nur das Paket, Stash", /^\| Ein Paket hält den Lauf an[^\n]*`run:aborted`[^\n]*hängt an #N[^\n]*`nachtrest #<id> <lauf>`[^\n]*\|$/m],
   ["Fall 5 verschraenkte Protokolle: Zeile Protokoll", /^\| Verschränkte Protokolle[^\n]*`Protokoll:`[^\n]*`\.claude\/protokolle\/<lauf>\/<karte>-<stufe>\.log`[^\n]*\|$/m],
 ];
 
 // Punkt 3 des Pakets: Waechter und Frist, Journal und Nachtrag, Teilschnitt, Stash.
 const ZUSAETZE = [
-  ["die Frist des Waechters", /`night\.stand\.fristMin`/],
+  ["die Frist des Waechters", /`night\.status\.deadlineMin`/],
   ["dass ein lebender Lauf nie als verstummt gilt", /lebt[^.]*nie als verstummt/],
   ["das Journal", /`\.claude\/lauf\/<lauf>\.jsonl`/],
   ["den Nachtrag", /nachgetragen/],

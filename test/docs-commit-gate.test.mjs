@@ -85,7 +85,7 @@ test("[docs] die Doku sagt, dass interaktiv kein Netz greift", () => {
   const start = text.indexOf("### Das Commit-Gate");
   const abschnitt = text.slice(start, text.indexOf("\n## ", start));
   assert.match(abschnitt, beide("interaktiv"), "der interaktive Fall fehlt");
-  assert.match(abschnitt, /Nacht-Runner|Nachtlauf/, "der Verweis auf die nachtraegliche Wertung fehlt");
+  assert.match(abschnitt, /Runner/, "der Verweis auf die nachtraegliche Wertung fehlt");
 });
 
 test("[docs] das README nennt das Gate in einem Absatz und verweist auf die Doku", () => {

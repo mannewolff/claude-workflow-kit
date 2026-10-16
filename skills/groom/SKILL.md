@@ -59,7 +59,7 @@ Nach jeder Antwort zeigt der Skill, wie er sie einarbeitet:
 - die Änderung an Ziel, fachlichen Akzeptanzkriterien oder Nicht-Zielen, die aus der Antwort folgt;
 - erzwingt die Antwort eine Folgefrage, steht sie mit Begründung, warum sie nötig ist, in derselben Änderung — als neue Frage am Ende der Liste. Sie bleibt offen, bis sie beantwortet ist, und der Skill legt sie im selben Durchgang vor, mit Empfehlung. Steht der Vermerk „Keine“ schon im Abschnitt, nimmt dieselbe Änderung ihn heraus.
 
-Geschrieben wird **erst nach Zustimmung** des Menschen, dann **sofort** — nicht gesammelt am Ende. Bricht die Sitzung ab, bleiben alle bis dahin bestätigten Antworten erhalten. Der neue, vollständige Body entsteht als `<tmpdir>/<N>-groom-body.md` nach der Transportregel; die Kennzeichnungszeilen (`Autor-Modell:`, `Fachplan-Review:`, `Vorlage:`) bleiben unverändert. Vor dem Schreiben prüft das Kommando ihn gegen den Body am Board:
+Geschrieben wird **erst nach Zustimmung** des Menschen, dann **sofort** — nicht gesammelt am Ende. Bricht die Sitzung ab, bleiben alle bis dahin bestätigten Antworten erhalten. Der neue, vollständige Body entsteht als `<tmpdir>/<N>-groom-body.md` nach der Transportregel; die Kennzeichnungszeilen (`Autor-Modell:`, `Fachplan-Review:`, `Vorlage:`, `Wartet auf Ereignis:`) bleiben unverändert. Das Warten setzt und hebt allein der Mensch: `/groom` ruft `issue hold` nie auf. Vor dem Schreiben prüft das Kommando ihn gegen den Body am Board:
 
 ```bash
 node .claude/kit/board.mjs issue questions <N> --body-file <tmpdir>/<N>-groom-body.md

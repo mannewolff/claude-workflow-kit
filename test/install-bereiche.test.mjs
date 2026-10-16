@@ -154,7 +154,7 @@ test("Antwort mit Bereichen ordnet jede vorhandene Pruefung zu", () => {
     assert.deepEqual(c.checkAreas, { backend: ["src/**"], frontend: ["web/**"] });
     assert.deepEqual(c.buildChecks, [
       { cmd: "npm test", areas: ["backend", "frontend"] },
-      { cmd: "npx eslint .", stufe: "push", areas: ["frontend"] },
+      { cmd: "npx eslint .", stage: "push", areas: ["frontend"] },
       { cmd: "npm run e2e", always: true },
     ]);
   });

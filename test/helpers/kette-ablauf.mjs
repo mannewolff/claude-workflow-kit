@@ -12,6 +12,7 @@
 // den Plan an, repariert die Form, zeichnet mit kit:klaeren.
 
 import assert from "node:assert/strict";
+import { after } from "node:test";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, readdirSync, rmSync, cpSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -131,6 +132,56 @@ export function mitProjekt(fn, kette, praefix, configZusatz) {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+// --- Ein geteilter Lauf je Datei (Plan #1685, E9; Issue #1693) ---
+//
+// Mehrere Tests einer Datei, deren Lauf nach Fixture, Umgebung und Argumenten gleich ist,
+// lesen denselben Lauf, statt ihn je Test neu zu fahren. Jeder Test liest nur: Er bekommt
+// eine eingefrorene Kopie des Ergebnisses, und das Verzeichnis gehoert allein dem Helfer.
+// Anders als `mitProjekt` raeumt er es nicht im `finally` ab, sondern im `after()` der
+// Datei, nach dem letzten Leser. Wer einzeln mit `--test-name-pattern` laeuft, faehrt den
+// Lauf als erster Leser selbst.
+
+const LAEUFE = new Map();
+
+// Angemeldet beim Laden des Helfers, also auf oberster Ebene der Testdatei: Ein `after()`
+// aus einem Test heraus liefe schon nach diesem Test.
+after(() => {
+  for (const { dir } of LAEUFE.values()) if (dir) rmSync(dir, { recursive: true, force: true });
+  LAEUFE.clear();
+});
+
+function einfrieren(wert) {
+  if (wert && typeof wert === "object" && !Object.isFrozen(wert)) {
+    Object.freeze(wert);
+    for (const teil of Object.values(wert)) einfrieren(teil);
+  }
+  return wert;
+}
+
+/**
+ * Faehrt `fn(dir)` in einem frischen Fixture hoechstens einmal je `schluessel` und gibt
+ * `{ dir, ...ergebnis }` eingefroren zurueck. `projekt` reicht `kette`, `praefix` und
+ * `configZusatz` an `setupProjekt` weiter. `aufbau` ersetzt dieses Fixture durch ein
+ * eigenes: eine Funktion, die das Verzeichnis anlegt und zurueckgibt; abgeraeumt wird es
+ * ebenso vom Helfer (Issue #1738). Scheitert der Lauf, wirft jeder Aufruf mit diesem
+ * Schluessel denselben Fehler.
+ */
+export function einmalLaufen(schluessel, fn, { kette, praefix, configZusatz, aufbau } = {}) {
+  if (!LAEUFE.has(schluessel)) {
+    const lauf = {};
+    LAEUFE.set(schluessel, lauf);
+    try {
+      lauf.dir = aufbau ? aufbau() : setupProjekt(kette ?? {}, praefix, configZusatz);
+      lauf.ergebnis = einfrieren(structuredClone({ ...fn(lauf.dir), dir: lauf.dir }));
+    } catch (fehler) {
+      lauf.fehler = fehler;
+    }
+  }
+  const { ergebnis, fehler } = LAEUFE.get(schluessel);
+  if (fehler) throw fehler;
+  return ergebnis;
 }
 
 const FACHPLAN_BODY = fachplanBody();

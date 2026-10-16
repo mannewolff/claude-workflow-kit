@@ -55,7 +55,7 @@ import { TEXTE } from "./texte/worktree.mjs";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "5.2.0";
+const KIT_VERSION = "5.3.0";
 
 // Die Texttabelle liegt im Teil texte/ (Issue #1524); exportiert bleibt sie unter ihrem Namen.
 export { TEXTE };
@@ -306,6 +306,8 @@ function fuehreAus(kommando, cliArgs) {
   if (kommando === "remove") return entfernen(repoWurzel(), cliArgs);
   if (kommando === "return") return rueckweg(repoWurzel(), cliArgs);
   if (kommando === "record-preparation") return vorbereitungFesthaltenAufruf(repoWurzel(), cliArgs);
+  // Das Urteil traegt das Feld `mutation` mit (Issue #1673, Plan #1671, E4): `/push-main`
+  // nennt bei einer Uebernahme den Mutationstest der Nacht, statt ihn neu zu fahren.
   if (kommando === "check-preparation") {
     return { ok: true, ...vorbereitungPruefen({ repoRoot: repoWurzel(), verwerfen: cliArgs.includes("--discard") }) };
   }
@@ -329,6 +331,8 @@ function hilfe() {
                                                         .claude/push-vorbereitung.json
   check-preparation [--discard]                         May /push-main take over the prepared
                                                         state? No git fetch of its own.
+                                                        Field mutation: the mutation test of
+                                                        the nightly push run, or null
                                                         --discard deletes file and reference
   in <path> -- <command> [arguments]                    Starts <command> with <path> as
                                                         working directory, without a shell; output

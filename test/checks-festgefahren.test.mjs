@@ -216,14 +216,17 @@ test("Zaehlung je Pruefung ueber Abschluss-, Bereichs- und Teillauf; laufen[].fe
   });
 });
 
-test("eine Uebernahme zaehlt nicht und reicht das Feld unveraendert weiter", async () => {
+// Ein Rot wird seit Issue #1742 nie uebernommen: Derselbe Stand misst neu, und der neue
+// Versuch zaehlt mit.
+test("ein erneuter roter Lauf auf demselben Stand misst neu und zaehlt mit", async () => {
   await mitAufbau(async (dir) => {
     scheitert(dir, "a");
     await lauf(dir, INTERAKTIV);
-    const vorher = zusammenfassung(dir).festgefahren;
+    assert.equal(folge(dir, A).versuche, 1, "Vorbedingung: ein erster Versuch");
+    scheitert(dir, "a");
     const zweiter = await lauf(dir, INTERAKTIV);
-    assert.match(zweiter.stdout, /Ergebnis uebernommen/);
-    assert.deepEqual(zusammenfassung(dir).festgefahren, vorher);
+    assert.doesNotMatch(zweiter.stdout, /Ergebnis uebernommen/);
+    assert.equal(folge(dir, A).versuche, 2);
   });
 });
 

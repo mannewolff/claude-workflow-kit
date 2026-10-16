@@ -3,9 +3,11 @@
 // Intern arbeitet die Oberflaeche mit den deutschen Namen (E9). Gezeigt werden in einem
 // englischen Projekt die englischen Namen und die Beschreibungen aus
 // tools/config-referenz.en.json, die tools/sync-blobs.mjs einbettet wie das Schema und die
-// Namenstabelle (E10). Beim Schreiben bekommt ein neuer Schluessel den Namen der
-// Projektsprache; ein vorhandener behaelt seinen Namen, auch einen deutschen, den der Mensch
-// selbst geschrieben hat. Ein deutsches Projekt sieht aus wie vorher.
+// Namenstabelle (E10). Beim Schreiben bekommt jeder Schluessel seinen englischen Namen, auch
+// ein vorhandener deutscher (Issue #1725, Plan #1710 A2); ein vorhandener Aufzaehlungswert
+// behaelt seine Schreibweise. Auch ein deutsches Projekt zeigt die englischen Namen und schreibt
+// nur englische Schluessel (Issue #1736, #1705 Kriterien 1, 6, 7); die Beschreibungen bleiben
+// dort deutsch.
 // Ablauf-Pruefung: Einbettung und Drift zeigt nur sync-blobs als Programm in einem Wegwerf-Repo.
 
 import { test } from "node:test";
@@ -68,6 +70,19 @@ test("[1441-1] ein englisches Projekt traegt die englischen Namen und Beschreibu
   });
 });
 
+// Den Ideen-Speicher gibt es nicht mehr (Issue #1726, Plan #1710 A11): Die Oberflaeche kennt
+// seinen Schalter nicht, und eine Datei, die ihn noch traegt, zeigt ihn nicht als unbekanntes Feld.
+test("[1726-1] die Oberflaeche kennt toolbox.ideaStored nicht mehr", () => {
+  assert.equal(SCHEMA.properties.toolbox.properties.ideaStored, undefined);
+  assert.equal(SCHLUESSEL["toolbox.ideaStored"], undefined);
+  assert.equal(TEXTE["toolbox.ideaStored"], undefined);
+  mitProjekt({ ...ENGLISCH, issueTracker: "toolbox", toolbox: { host: "https://h", ideaStored: true } }, ({ projekt: p, optionen }) => {
+    const zustand = projektZustand(p, optionen);
+    assert.deepEqual(eintrag(zustand, "toolbox").team, { host: "https://h" });
+    assert.doesNotMatch(JSON.stringify(zustand), /ideaStored/);
+  });
+});
+
 test("[1441-2] anzeigePfad zeigt einen Pfad unter den Namen der Projektsprache", () => {
   assert.equal(anzeigePfad("ohnePruefung[0].muster", SCHLUESSEL), "noCheck[0].pattern");
   assert.equal(anzeigePfad("buildChecks[2].stufe", SCHLUESSEL), "buildChecks[2].stage");
@@ -99,7 +114,7 @@ test("[1441-3] ein neu gesetzter Schluessel landet unter dem englischen Namen, e
   });
 });
 
-test("[1441-4] ein vorhandener deutscher Name in einem englischen Projekt bleibt deutsch", () => {
+test("[1441-4] ein vorhandener deutscher Name in einem englischen Projekt wird englisch geschrieben (#1725)", () => {
   const gemischt = { ...ENGLISCH, noCheck: undefined, ohnePruefung: [{ muster: "docs/**", grund: "Doku" }], reviewLesegrenze: "--alt" };
   mitProjekt(gemischt, ({ projekt: p, optionen, pfad }) => {
     const r = speichere(p, {
@@ -112,19 +127,19 @@ test("[1441-4] ein vorhandener deutscher Name in einem englischen Projekt bleibt
     }, optionen);
     assert.equal(r.status, 200, JSON.stringify(r.body));
     const neu = datei(pfad);
-    assert.equal(neu.reviewLesegrenze, "--nur-lesen");
-    assert.equal(neu.reviewReadLimit, undefined);
-    assert.deepEqual(neu.ohnePruefung[0], { muster: "docs/**", grund: "Doku" }, "der vorhandene Eintrag behaelt seine Namen");
-    assert.equal(neu.noCheck, undefined);
+    assert.equal(neu.reviewReadLimit, "--nur-lesen");
+    assert.equal(neu.reviewLesegrenze, undefined);
+    assert.deepEqual(neu.noCheck[0], { pattern: "docs/**", reason: "Doku" }, "der vorhandene Eintrag bekommt englische Namen");
+    assert.equal(neu.ohnePruefung, undefined);
     assert.deepEqual(neu.buildChecks, ENGLISCH.buildChecks, "was nicht geaendert wurde, bleibt, wie es war");
   });
 });
 
-test("[1441-5] ein deutsches Projekt sieht unveraendert aus und schreibt deutsch", () => {
+test("[1441-5] ein deutsches Projekt zeigt englische Namen, deutsche Beschreibungen und schreibt englische Schluessel (#1725, #1736)", () => {
   const deutsch = { codeHost: "local", issueTracker: "local", buildChecks: ["node --test"], mainBranch: "main" };
   mitProjekt(deutsch, ({ projekt: p, optionen, pfad }) => {
     const zustand = projektZustand(p, optionen);
-    assert.equal(zustand.grundlagen.namen, null);
+    assert.deepEqual(zustand.grundlagen.namen, { ...SCHLUESSEL });
     const grenze = eintrag(zustand, "reviewLesegrenze");
     assert.equal(grenze.beschreibung, SCHEMA.properties.reviewLesegrenze.description);
     assert.deepEqual(grenze.schema, SCHEMA.properties.reviewLesegrenze);
@@ -135,8 +150,8 @@ test("[1441-5] ein deutsches Projekt sieht unveraendert aus und schreibt deutsch
     }, optionen);
     assert.equal(r.status, 200, JSON.stringify(r.body));
     const neu = datei(pfad);
-    assert.equal(neu.reviewLesegrenze, "--ro");
-    assert.deepEqual(neu.ohnePruefung, [{ muster: "*.md", grund: "Text" }]);
+    assert.equal(neu.reviewReadLimit, "--ro");
+    assert.deepEqual(neu.noCheck, [{ pattern: "*.md", reason: "Text" }]);
   });
 });
 
@@ -150,7 +165,7 @@ test("[1441-8] der Fuss eines Teils nennt den Pfad in der Projektsprache", () =>
   });
 });
 
-test("[1441-9] benenneWieVorlage: Neues in der Projektsprache, Vorhandenes unter seinem Namen, Doppelung bleibt stehen", () => {
+test("[1441-9] benenneWieVorlage: Schluessel englisch, vorhandene Werte unter ihrem Namen, Doppelung bleibt stehen", () => {
   const roh = { language: "en", noCheck: [{ pattern: "a", reason: "b" }], ohnePruefung: [{ muster: "x", grund: "y" }], buildChecks: [{ cmd: "t", stufe: "paket" }] };
   const de = normalisiereConfig(roh).config;
   de.buildChecks.push({ cmd: "u", stufe: "push" });
@@ -159,12 +174,58 @@ test("[1441-9] benenneWieVorlage: Neues in der Projektsprache, Vorhandenes unter
     language: "en",
     noCheck: [{ pattern: "a", reason: "b" }],
     ohnePruefung: [{ muster: "x", grund: "y" }],
-    buildChecks: [{ cmd: "t", stufe: "paket" }, { cmd: "u", stage: "push" }],
+    buildChecks: [{ cmd: "t", stage: "paket" }, { cmd: "u", stage: "push" }],
     mainBranch: "main",
   });
   delete de.ohnePruefung;
   assert.equal("ohnePruefung" in benenneWieVorlage(de, roh, "en"), false, "wer die Einstellung entfernt, entfernt beide Namen");
   assert.throws(() => benenneWieVorlage(de, roh, "fr"), /unbekannte Sprache/);
+});
+
+/** Jeder Schluessel einer Datei, ueber alle Ebenen und Listen. */
+function alleSchluessel(wert) {
+  if (Array.isArray(wert)) return wert.flatMap(alleSchluessel);
+  if (wert === null || typeof wert !== "object") return [];
+  return Object.entries(wert).flatMap(([k, v]) => [k, ...alleSchluessel(v)]);
+}
+
+/** Die deutschen Namen, die vom englischen abweichen — keiner davon darf geschrieben werden. */
+const NUR_DEUTSCHE_NAMEN = new Set(Object.entries(SCHLUESSEL).map(([pfad, en]) => [pfad.split(".").pop(), en]).filter(([de, en]) => de !== en).map(([de]) => de));
+
+test("[1736-5] der Pfad history wird auch im deutschen Projekt englisch angezeigt", () => {
+  mitProjekt({ codeHost: "local", issueTracker: "local", mainBranch: "main", vorgeschichte: true }, ({ projekt: p, optionen }) => {
+    const zustand = projektZustand(p, optionen);
+    assert.equal(zustand.sprache, "de");
+    assert.equal(eintrag(zustand, "vorgeschichte").team, true);
+    assert.equal(anzeigePfad("vorgeschichte", zustand.grundlagen.namen), "history");
+    assert.equal(anzeigePfad("ohnePruefung[0].muster", zustand.grundlagen.namen), "noCheck[0].pattern");
+    assert.equal(eintrag(zustand, "vorgeschichte").beschreibung, SCHEMA.properties.vorgeschichte.description, "die Beschreibung bleibt deutsch");
+  });
+});
+
+test("[1736-6] Speichern im deutschen Projekt schreibt nur englische Schluessel und laesst Aufzaehlungswerte stehen", () => {
+  mitProjekt({ codeHost: "local", issueTracker: "local", mainBranch: "main", vorgeschichte: true, buildChecks: [{ stufe: "paket" }] }, ({ projekt: p, optionen, pfad }) => {
+    const r = speichere(p, { ebene: "team", aenderungen: [{ pfad: "mainBranch", wert: "trunk" }], hashes: projektZustand(p, optionen).hashes }, optionen);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const neu = datei(pfad);
+    assert.equal(neu.history, true);
+    assert.deepEqual(neu.buildChecks, [{ stage: "paket" }], "der vorhandene Wert behaelt seine Schreibweise");
+    assert.equal(neu.mainBranch, "trunk");
+    const deutsch = alleSchluessel(neu).filter((k) => NUR_DEUTSCHE_NAMEN.has(k));
+    assert.deepEqual(deutsch, [], "kein deutscher Schluessel in der Datei");
+  });
+});
+
+test("[1736-7] ein neu geschriebener Aufzaehlungswert ist auch im deutschen Projekt englisch", () => {
+  mitProjekt({ codeHost: "local", issueTracker: "local", mainBranch: "main", buildChecks: [{ cmd: "node --test", stufe: "paket" }] }, ({ projekt: p, optionen, pfad }) => {
+    const r = speichere(p, {
+      ebene: "team",
+      aenderungen: [{ pfad: "buildChecks", wert: [{ cmd: "node --test", stufe: "paket" }, { cmd: "npm run e2e", stufe: "paket", nichtBeimAbschluss: "zusammenspiel" }] }],
+      hashes: projektZustand(p, optionen).hashes,
+    }, optionen);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual(datei(pfad).buildChecks, [{ cmd: "node --test", stage: "paket" }, { cmd: "npm run e2e", stage: "package", notAtCompletion: "interplay" }]);
+  });
 });
 
 // --- Einbettung der englischen Referenz durch tools/sync-blobs.mjs ---
@@ -175,7 +236,13 @@ test("[1441-6] die englische Referenz im Repo ist eingebettet und stimmt mit der
   assert.equal(Buffer.from(eingebettet(EINSTELLUNGEN) ?? "", "base64").toString("utf-8"), readFileSync(REFERENZ, "utf-8"));
 });
 
-const KONSTANTEN = ["CONFIG_EXAMPLE_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "PREISE_MJS_B64", "WORKTREE_MJS_B64", "FINDINGS_MJS_B64", "EFFORT_MJS_B64", "EFFECTIVENESS_MJS_B64", "KIT_NIGHT_B64", "KIT_BOARD_B64", "KIT_ROLLEN_B64", "KIT_TEXTE_B64", "GATE_MJS_B64", "PRE_COMMIT_B64", "SKILLS_B64", "AGENTS_B64", "TEMPLATES_EN_B64", "AGENTS_EN_B64", "KIT_ROLLEN_EN_B64"];
+// Die Zuordnung nach Zweck (Issue #1736, Plan #1710 A5): eingebettet wie die Namenstabelle.
+test("[1736-8] die Zuordnung nach Zweck ist eingebettet und stimmt mit der Quelle ueberein", () => {
+  const b64 = readFileSync(EINSTELLUNGEN, "utf-8").match(/const CONFIG_TEILE_B64 = "([^"]*)";/)?.[1];
+  assert.equal(Buffer.from(b64 ?? "", "base64").toString("utf-8"), readFileSync(join(repoRoot, "kit", "board", "config-teile.mjs"), "utf-8"));
+});
+
+const KONSTANTEN = ["CONFIG_EXAMPLE_DE_B64", "CONFIG_EXAMPLE_EN_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "PREISE_MJS_B64", "WORKTREE_MJS_B64", "FINDINGS_MJS_B64", "EFFORT_MJS_B64", "EFFECTIVENESS_MJS_B64", "KIT_NIGHT_B64", "KIT_BOARD_B64", "KIT_ROLLEN_B64", "KIT_TEXTE_B64", "KIT_CHECKS_B64", "GATE_MJS_B64", "PRE_COMMIT_B64", "SKILLS_B64", "AGENTS_B64", "TEMPLATES_EN_B64", "AGENTS_EN_B64", "KIT_ROLLEN_EN_B64"];
 
 /** Minimales Repo mit allem, was sync-blobs.mjs anfasst, und der echten englischen Referenz. */
 function fixture() {
@@ -184,16 +251,17 @@ function fixture() {
   writeFileSync(join(dir, ".githooks", "gate.mjs"), 'console.log("gate");\n');
   writeFileSync(join(dir, ".githooks", "pre-commit"), "#!/bin/sh\nexit 0\n");
   for (const d of ["CLAUDE-workflow.md", "CLAUDE-Fachplan.md", "CLAUDE-Plan.md"]) writeFileSync(join(dir, "templates", d), "# Vorlage\n");
-  writeFileSync(join(dir, "templates", "workflow.config.json"), "{}\n");
+  for (const sprache of ["de", "en"]) writeFileSync(join(dir, "templates", `workflow.config.example.${sprache}.jsonc`), "{}\n");
   writeFileSync(join(dir, "templates", "workflow.config.schema.json"), "{}\n");
   writeFileSync(join(dir, "skills", "beispiel", "SKILL.md"), "# Beispiel\n");
   for (const d of ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "effort.mjs", "effectiveness.mjs", "findings.mjs", "worktree.mjs"]) {
     writeFileSync(join(dir, "kit", d), `const KIT_VERSION = "1.0.0";\n`);
   }
   writeFileSync(join(dir, "kit", "board", "config-namen.mjs"), "export {};\n");
+  writeFileSync(join(dir, "kit", "board", "config-teile.mjs"), "export {};\n");
   writeFileSync(join(dir, "kit", "board", "namen.mjs"), "export {};\n");
   copyFileSync(REFERENZ, join(dir, "tools", "config-referenz.en.json"));
-  writeFileSync(join(dir, "kit", "settings.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
+  writeFileSync(join(dir, "kit", "settings.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_TEILE_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
   writeFileSync(join(dir, "install.mjs"), ['const VERSION = "1.0.0";', ...KONSTANTEN.map((k) => `const ${k} = "";`), ""].join("\n"));
   return dir;
 }
