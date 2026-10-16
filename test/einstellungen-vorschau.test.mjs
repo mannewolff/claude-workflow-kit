@@ -21,9 +21,11 @@ import { tmpdir } from "node:os";
 
 import { abgeleitet, aenderungsliste, projektZustand, ROLLEN_KATALOG, speichere, vorgabeAus, vorschau, waehleReviewer } from "../kit/settings.mjs";
 import { projekt } from "./helpers/einstellungen-fixture.mjs";
-import { SCHLUESSEL } from "../kit/board/config-namen.mjs";
+import { SCHLUESSEL, normalisiereConfig } from "../kit/board/config-namen.mjs";
 
-const ECHT = JSON.parse(readFileSync(new URL("../.claude/workflow.config.json", import.meta.url), "utf-8"));
+// Ueber normalisiereConfig gelesen: vor und nach der Umstellung auf englische Schluessel
+// greifen die Tests mit den deutschen Namen auf die Felder zu (Issue #1743).
+const { config: ECHT } = normalisiereConfig(JSON.parse(readFileSync(new URL("../.claude/workflow.config.json", import.meta.url), "utf-8")));
 
 /** Eine Konfiguration mit allen Lagen, die die abgeleiteten Anzeigen kennen muessen. */
 const BEISPIEL = {
