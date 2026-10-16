@@ -378,9 +378,9 @@ test("Globaler Install ohne Vault-Pfad legt keine kontext.config.json an", () =>
 // --- Die Sprache eines neuen Projekts (Issue #1430, Plan #1420 E2, E22) ---
 //
 // Die Frage steht zuerst und zweisprachig, weil gerade ein Mensch ohne Deutschkenntnisse sie
-// lesen muss. Die Antwort steht unter dem Namen ihrer Sprache in der Config.
+// lesen muss. Die Antwort steht in jeder Sprache unter `language` (Issue #1728, Plan #1710 A2).
 
-test("Die Sprachfrage steht bei einem neuen Projekt zuerst, die Antwort de schreibt sprache: de", () => {
+test("Die Sprachfrage steht bei einem neuen Projekt zuerst, die Antwort de schreibt language: de", () => {
   const dir = fixture("install-sprache-de-");
   try {
     const res = installiere(dir, PROJEKT_GITHUB);
@@ -388,8 +388,8 @@ test("Die Sprachfrage steht bei einem neuen Projekt zuerst, die Antwort de schre
     const sprachfrage = res.stdout.indexOf("Sprache / Language [de/en] (en): ");
     assert.ok(sprachfrage >= 0, "die Sprachfrage fehlt");
     assert.ok(sprachfrage < res.stdout.indexOf("[global/projekt]"), "die Sprachfrage muss vor der Scope-Frage stehen");
-    assert.equal(config(dir).sprache, "de");
-    assert.equal("language" in config(dir), false, "ein deutsches Projekt traegt den deutschen Namen");
+    assert.equal(config(dir).language, "de");
+    assert.equal("sprache" in config(dir), false, "auch ein deutsches Projekt traegt den englischen Namen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -735,9 +735,9 @@ test("[installer-1591] fehlt szenarienAb, setzt der Installer den Wert aus scena
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.deepEqual(JSON.parse(readFileSync(fake.log, "utf-8").trim()),
       [join(realpathSync(dir), ".claude", "kit", "board.mjs"), "scenarios", "baseline"]);
-    assert.equal(config(dir).szenarienAb, 42);
+    assert.equal(config(dir).scenariosFrom, 42);
     assert.equal(config(dir).codeHost, "github", "der Rest der Config bleibt");
-    assert.match(res.stdout, /szenarienAb eingetragen: 42/);
+    assert.match(res.stdout, /scenariosFrom eingetragen: 42/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -748,11 +748,11 @@ test("[installer-1591] steht szenarienAb, bleibt der Wert und das Board wird nic
   try {
     installiere(dir, PROJEKT_GITHUB);
     writeFileSync(join(dir, ".claude", "workflow.config.json"),
-      JSON.stringify({ ...config(dir), szenarienAb: 7 }, null, 2), "utf-8");
+      JSON.stringify({ ...config(dir), scenariosFrom: 7 }, null, 2), "utf-8");
     const fake = szenarienFake(dir, { ab: 42 }, "stichtag");
     const res = installiere(dir, PROJEKT_GITHUB_BESTAND, fake.env);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
-    assert.equal(config(dir).szenarienAb, 7);
+    assert.equal(config(dir).scenariosFrom, 7);
     assert.equal(existsSync(fake.log), false, "scenarios baseline darf nicht laufen");
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -765,7 +765,7 @@ test("[installer-1591] antwortet das Board nicht, fehlt szenarienAb, die Meldung
     const fake = szenarienFake(dir, null, "stichtag");
     const res = installiere(dir, PROJEKT_GITHUB, fake.env);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
-    assert.equal(Object.hasOwn(config(dir), "szenarienAb"), false);
+    assert.equal(Object.hasOwn(config(dir), "scenariosFrom"), false);
     assert.match(res.stdout, /node \.claude\/kit\/board\.mjs scenarios baseline/);
     assert.match(res.stdout, /Fertig|fertig/, "das Update laeuft weiter");
   } finally {

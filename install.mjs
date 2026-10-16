@@ -555,9 +555,10 @@ function richteSchutzEin(kitDir, configPfad, zweig) {
     return;
   }
   if (ergebnis === "scharf" || ergebnis === "anleitung") {
-    const { config } = normalisiereConfig(JSON.parse(readFileSync(configPfad, "utf-8")));
+    const roh = JSON.parse(readFileSync(configPfad, "utf-8"));
+    const { config } = normalisiereConfig(roh);
     config.pushPruefung = { ort: "buildDienst", zweig };
-    writeFileSync(configPfad, JSON.stringify(inProjektsprache(config), null, 2) + "\n", "utf-8");
+    writeFileSync(configPfad, JSON.stringify(zumSchreiben(config, roh), null, 2) + "\n", "utf-8");
     console.log(t("schutzEingetragen", { zweig }));
   } else if (ergebnis === "nicht moeglich") {
     console.log(t("schutzUnmoeglich", { spaeter: t("schutzSpaeter") }));
@@ -577,21 +578,22 @@ function richteSchutzEin(kitDir, configPfad, zweig) {
  */
 function setzeSzenarienAb(kitDir, configPfad, scope) {
   if (scope !== "projekt") return;
-  // Der Feldname in der Meldung ist der, unter dem das Feld in der Config steht.
-  const feld = (config) => Object.keys(benenneUm({ szenarienAb: 0 }, projektSprache(config)).config)[0];
+  // Der Feldname in der Meldung ist der, unter dem das Feld in der Config steht: der englische.
+  const feld = Object.keys(benenneUm({ szenarienAb: 0 }, "en").config)[0];
   if (Object.hasOwn(normalisiereConfig(JSON.parse(readFileSync(configPfad, "utf-8"))).config, "szenarienAb")) return;
   const res = cliSpawn(process.execPath, [join(kitDir, "board.mjs"), "scenarios", "baseline"],
     "INSTALL_SZENARIEN_FAKE", { encoding: "utf-8", timeout: 120000 });
   let ab = null;
   try { ab = res.status === 0 ? JSON.parse(res.stdout).ab : null; } catch { /* keine lesbare Antwort */ }
-  const { config } = normalisiereConfig(JSON.parse(readFileSync(configPfad, "utf-8")));
   if (!Number.isInteger(ab) || ab < 1) {
-    console.log(t("szenarienAbNicht", { feld: feld(config) }));
+    console.log(t("szenarienAbNicht", { feld }));
     return;
   }
+  const roh = JSON.parse(readFileSync(configPfad, "utf-8"));
+  const { config } = normalisiereConfig(roh);
   config.szenarienAb = ab;
-  writeFileSync(configPfad, JSON.stringify(inProjektsprache(config), null, 2) + "\n", "utf-8");
-  console.log(t("szenarienAbEingetragen", { feld: feld(config), ab }));
+  writeFileSync(configPfad, JSON.stringify(zumSchreiben(config, roh), null, 2) + "\n", "utf-8");
+  console.log(t("szenarienAbEingetragen", { feld, ab }));
 }
 
 /**
@@ -626,19 +628,20 @@ async function promptScope(rl) {
 
 // Die Sprache eines neuen Projekts (Issue #1430, Plan #1420 E2, E22). Sie ist die erste
 // Frage und zweisprachig: Lesen muss sie gerade der Mensch ohne Deutschkenntnisse. Die
-// Antwort steht unter dem Namen ihrer Sprache in der neuen Config, ein deutsches Projekt
-// traegt `sprache`, ein englisches `language`; die Leser erkennen beide (kit/board/namen.mjs).
+// Antwort steht in jeder Sprache unter `language` (Issue #1728, Plan #1710 A2); den Altnamen
+// `sprache` erkennen die Leser weiter (kit/board/namen.mjs).
 // Seit Version 5 schlaegt sie Englisch vor (Issue #1474, E19); ein bestehendes Projekt ohne
 // Feld wird nicht gefragt und bleibt deutsch (E2).
 const SPRACHVORGABE = "en";
 const SPRACHFRAGE = `Sprache / Language [de/en] (${SPRACHVORGABE}): `;
-const SPRACHFELD = Object.freeze({ de: "sprache", en: "language" });
+const SPRACHEN = Object.freeze(["de", "en"]);
+const SPRACHFELD = "language";
 
 async function frageSprache(rl) {
   while (true) {
     const antwort = (await ask(rl, SPRACHFRAGE)).trim().toLowerCase();
     const sprache = antwort === "" ? SPRACHVORGABE : antwort;
-    if (Object.hasOwn(SPRACHFELD, sprache)) return sprache;
+    if (SPRACHEN.includes(sprache)) return sprache;
     console.error("  Bitte 'de' oder 'en' eingeben. / Please enter 'de' or 'en'.");
   }
 }
@@ -661,7 +664,7 @@ async function kopfMitSprache(rl) {
 // eine schon vorhandene Config. Zu lesen, bevor die Config geschrieben ist.
 function sprachfeldNeu(sprache, configPfad) {
   if (!sprache || existsSync(configPfad)) return {};
-  return { [SPRACHFELD[sprache]]: sprache };
+  return { [SPRACHFELD]: sprache };
 }
 
 // Ohne Antwort auf die Sprachfrage spricht der Installer die Sprache der Config, die er
@@ -677,7 +680,7 @@ function spracheDesLaufs(sprache, existingConfig) {
 // Installer laedt sie daraus, statt eine zweite Kopie zu tragen.
 const BOARD_TEILE = JSON.parse(Buffer.from(KIT_BOARD_B64, "base64").toString("utf-8"));
 const ladeTeil = (datei) => import(`data:text/javascript;base64,${Buffer.from(BOARD_TEILE[datei], "utf-8").toString("base64")}`);
-const { normalisiereConfig, benenneUm } = await ladeTeil("config-namen.mjs");
+const { normalisiereConfig, benenneUm, benenneWieVorlage, mitEnglischenNamen } = await ladeTeil("config-namen.mjs");
 const { projektSprache, LABELS, PRAEFIXE, erkenneLabel, erkennePraefix, prozessSprache, spracheFestlegen, text, ALTNAMEN } = await ladeTeil("namen.mjs");
 
 // --- Texte an den Menschen (Issue #1455, Plan #1420 E13, E14, E22) ---
@@ -797,6 +800,7 @@ export const TEXTE = Object.freeze({
     hooksPathSchon: "✓ core.hooksPath steht bereits auf .githooks.",
     hooksPathNicht: "! core.hooksPath nicht gesetzt — das Gate ist nicht aktiv.",
     configGefunden: "  Bestehende workflow.config.json gefunden — Werte als Defaults uebernommen.\n",
+    namenUmgestellt: "✓ Einstellungsnamen auf Englisch umgestellt: {anzahl}",
     configUnlesbar: "  Hinweis: Bestehende workflow.config.json konnte nicht gelesen werden.\n",
     gitignoreKopf1: "# claude-workflow-kit (Issue #208): workflow.config.json gehoert ins Repo,",
     gitignoreKopf2: "# alles andere unter .claude/ ist lokaler Zustand.",
@@ -964,6 +968,7 @@ export const TEXTE = Object.freeze({
     hooksPathSchon: "✓ core.hooksPath already points to .githooks.",
     hooksPathNicht: "! core.hooksPath not set — the gate is not active.",
     configGefunden: "  Existing workflow.config.json found — values taken over as defaults.\n",
+    namenUmgestellt: "✓ Setting names switched to English: {anzahl}",
     configUnlesbar: "  Note: the existing workflow.config.json could not be read.\n",
     gitignoreKopf1: "# claude-workflow-kit (Issue #208): workflow.config.json belongs in the repo,",
     gitignoreKopf2: "# everything else under .claude/ is local state.",
@@ -1032,9 +1037,35 @@ const t = (schluessel, werte) => text(TEXTE, schluessel, werte);
 const JA = new Set(["j", "ja", "y", "yes"]);
 const NEIN = new Set(["n", "nein", "no"]);
 
-/** Die Config in den Namen ihrer Projektsprache — so schreibt der Installer jede Config. */
-function inProjektsprache(config) {
-  return benenneUm(config, projektSprache(config)).config;
+/**
+ * So schreibt der Installer jede Config (Issue #1728, Plan #1710 A2, E1): jede Einstellung unter
+ * ihrem englischen Namen, gleich in welcher Sprache das Projekt arbeitet, `sprache` als
+ * `language`. Ein Aufzaehlungswert, der in `roh` (der Datei vor dem Schreiben) steht, behaelt
+ * seine Schreibweise; ein neuer bekommt den englischen Wert.
+ */
+function zumSchreiben(config, roh) {
+  return mitEnglischenNamen(benenneWieVorlage(config, roh ?? {}, "en", { werte: "wie-vorlage" }));
+}
+
+/** Die Config-Datei, wie sie auf der Platte steht, oder `{}`, wenn es sie nicht gibt oder sie kein lesbares Objekt ist. */
+function leseRoh(configPfad) {
+  try {
+    const roh = JSON.parse(readFileSync(configPfad, "utf-8"));
+    return roh !== null && typeof roh === "object" && !Array.isArray(roh) ? roh : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Das Update nennt in einer Zeile, wie viele Eintraege der Datei `roh` das Schreiben auf ihren
+ * englischen Namen umbenannt hat; eine Ersteinrichtung hat nichts umzubenennen.
+ */
+function meldeUmbenannt(ersteinrichtung, roh) {
+  if (ersteinrichtung) return;
+  const { umbenannt } = benenneUm(roh, "en", { werte: "wie-vorlage" });
+  const sprache = Object.hasOwn(roh, "sprache") && !Object.hasOwn(roh, "language") ? 1 : 0;
+  console.log(t("namenUmgestellt", { anzahl: umbenannt.length + sprache }));
 }
 
 // Die Config-Felder, die Labelnamen tragen (E7). Ein gesetzter Wert bleibt, wie er ist; die
@@ -1095,7 +1126,7 @@ function umstellSprache(argv) {
     const treffer = /^--(language)(?:=(.*))?$/.exec(argv[i]);
     if (!treffer) continue;
     const wert = (treffer[2] ?? argv[i + 1] ?? "").trim().toLowerCase();
-    if (!Object.hasOwn(SPRACHFELD, wert)) throw new Error(t("spracheFalsch", { option: treffer[1], wert }));
+    if (!SPRACHEN.includes(wert)) throw new Error(t("spracheFalsch", { option: treffer[1], wert }));
     return wert;
   }
   return null;
@@ -1103,9 +1134,10 @@ function umstellSprache(argv) {
 
 /**
  * `node install.mjs --language en|de` (E12): stellt ein bestehendes Projekt um. Sichert die
- * Config nach `workflow.config.json.vor-umstellung`, benennt Schluessel und Aufzaehlungswerte
- * in Config und Override-Datei um, setzt das Sprachfeld und listet, was umbenannt wurde und
- * was offen bleibt. Labelwerte aendert sie nicht (E7). Regeltexte, Pruefer und Pruefrollen
+ * Config nach `workflow.config.json.vor-umstellung`, stellt die Aufzaehlungswerte in Config und
+ * Override-Datei um, setzt das Sprachfeld und listet, was umbenannt wurde und was offen bleibt.
+ * Schluessel stellt sie nicht um: Sie sind in jeder Sprache englisch (Issue #1728, Plan #1710 A4),
+ * und eine geschriebene Datei traegt sie so. Labelwerte aendert sie nicht (E7). Regeltexte, Pruefer und Pruefrollen
  * legt sie in der neuen Sprache ab; was davon deutsch bleibt, steht unter "Offen" (Issue #1464).
  * Skills tauscht sie nicht, die gibt es seit Issue #1566 nur in einer Fassung.
  */
@@ -1115,22 +1147,24 @@ function umstellModus(ziel) {
     throw new Error(t("umstellungOhneConfig"));
   }
   const original = readFileSync(configPfad, "utf-8");
-  const { config: umbenannt, umbenannt: liste } = benenneUm(JSON.parse(original), ziel);
-  const { language: _l, sprache: _s, ...rest } = umbenannt;
-  const config = { [SPRACHFELD[ziel]]: ziel, ...rest };
+  const { config: umbenannt, umbenannt: alle } = benenneUm(JSON.parse(original), ziel);
+  const liste = alle.filter((u) => u.art === "wert");
+  const { language: _l, sprache: _s, ...rest } = mitEnglischenNamen(umbenannt);
+  const config = { [SPRACHFELD]: ziel, ...rest };
 
   writeFileSync(`${configPfad}.vor-umstellung`, original, "utf-8");
   writeFileSync(configPfad, JSON.stringify(config, null, 2) + "\n", "utf-8");
   console.log(t("sicherung", { pfad: `${configPfad}.vor-umstellung` }));
-  console.log(t("spracheGesetzt", { feld: SPRACHFELD[ziel], ziel }));
+  console.log(t("spracheGesetzt", { feld: SPRACHFELD, ziel }));
   const rueckfall = schreibeSprachfassungen(resolve(".claude"), ziel);
 
   const zeilen = liste.map(umbenennungsZeile);
   const lokalPfad = resolve(".claude", "workflow.config.local.json");
   if (existsSync(lokalPfad)) {
     const lokal = benenneUm(JSON.parse(readFileSync(lokalPfad, "utf-8")), ziel);
-    if (lokal.umbenannt.length > 0) writeFileSync(lokalPfad, JSON.stringify(lokal.config, null, 2) + "\n", "utf-8");
-    zeilen.push(...lokal.umbenannt.map((u) => `workflow.config.local.json: ${umbenennungsZeile(u)}`));
+    const werte = lokal.umbenannt.filter((u) => u.art === "wert");
+    if (werte.length > 0) writeFileSync(lokalPfad, JSON.stringify(mitEnglischenNamen(lokal.config), null, 2) + "\n", "utf-8");
+    zeilen.push(...werte.map((u) => `workflow.config.local.json: ${umbenennungsZeile(u)}`));
   }
   console.log(t("umbenannt", { anzahl: zeilen.length }));
   for (const z of zeilen) console.log(`  ${z}`);
@@ -1560,7 +1594,7 @@ function loadExistingConfig(configPath) {
   let existingConfig = {};
   if (existsSync(configPath)) {
     try {
-      // Gelesen unter den deutschen Namen, geschrieben in der Projektsprache (Issue #1438).
+      // Gelesen unter den deutschen Namen (Issue #1438), geschrieben mit den englischen (Issue #1728).
       existingConfig = normalisiereConfig(JSON.parse(readFileSync(configPath, "utf-8"))).config;
       console.log(t("configGefunden"));
     } catch {
@@ -2105,6 +2139,7 @@ async function main() {
     : resolve(".claude", "workflow.config.json");
   const sprachfeld = sprachfeldNeu(sprache, existingConfigPath);
   const ersteinrichtung = !existsSync(existingConfigPath);
+  const roh = leseRoh(existingConfigPath);
   const existingConfig = loadExistingConfig(existingConfigPath);
   spracheDesLaufs(sprache, existingConfig);
   const D = { ...DEFAULTS, ...existingConfig };
@@ -2208,8 +2243,9 @@ async function main() {
     delete config.reviewModel;
   }
   mkdirSync(targetBase, { recursive: true });
-  writeFileSync(configTarget, JSON.stringify(inProjektsprache(config), null, 2) + "\n", "utf-8");
+  writeFileSync(configTarget, JSON.stringify(zumSchreiben(config, roh), null, 2) + "\n", "utf-8");
   console.log(t("configGeschrieben", { pfad: configTarget }));
+  meldeUmbenannt(ersteinrichtung, roh);
   // Der spec-Block ist eine Altlast aus Spec-Driven Development (entfallen mit
   // Idee #813, Plan #825). Ein vorhandener Block kommt ueber den
   // existingConfig-Spread unveraendert mit — kein Werkzeug liest ihn mehr, und der

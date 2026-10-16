@@ -14,13 +14,17 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mitRepo, plan, datei, kommandos } from "./helpers/checks-repo.mjs";
+import { normalisiereConfig } from "../kit/board/config-namen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const WAECHTER = "node --test test/checks-leichtigkeit.test.mjs";
 
-/** Die pruefrelevanten Teile der echten Config dieses Repos. */
+/**
+ * Die pruefrelevanten Teile der echten Config dieses Repos, gelesen ueber normalisiereConfig:
+ * Vor und nach der Umstellung auf englische Schluessel dieselben Namen (Issue #1728).
+ */
 function echteConfig() {
-  const c = JSON.parse(readFileSync(join(repoRoot, ".claude", "workflow.config.json"), "utf-8"));
+  const { config: c } = normalisiereConfig(JSON.parse(readFileSync(join(repoRoot, ".claude", "workflow.config.json"), "utf-8")));
   const { buildChecks, checkAreas, ohnePruefung, nurGeruest } = c;
   return { buildChecks, checkAreas, ohnePruefung, nurGeruest };
 }

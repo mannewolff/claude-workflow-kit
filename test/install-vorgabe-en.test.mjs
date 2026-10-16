@@ -74,6 +74,8 @@ test("[install-1474] ein bestehendes Projekt ohne Sprachfeld bleibt deutsch", ()
     assert.equal("language" in config(dir), false);
     assert.equal("sprache" in config(dir), false);
     assert.equal(projektSprache(config(dir)), "de");
+    assert.equal(config(dir).scenariosFrom, 1, "auch ein deutsches Projekt bekommt den englischen Namen (Issue #1728)");
+    assert.equal("szenarienAb" in config(dir), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

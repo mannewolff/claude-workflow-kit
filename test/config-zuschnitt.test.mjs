@@ -21,10 +21,13 @@ import { spawnSync } from "node:child_process";
 
 import { globZuRegex, bereicheVorbereiten, aufrufen } from "../kit/checks.mjs";
 import { verflechtungErheben, kopplungVon } from "../kit/checks/verflechtung.mjs";
+import { normalisiereConfig } from "../kit/board/config-namen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-const config = JSON.parse(readFileSync(join(repoRoot, ".claude", "workflow.config.json"), "utf-8"));
+// Ueber normalisiereConfig gelesen: vor und nach der Umstellung auf englische Schluessel
+// dieselben Namen (Issue #1728).
+const { config } = normalisiereConfig(JSON.parse(readFileSync(join(repoRoot, ".claude", "workflow.config.json"), "utf-8")));
 
 // Die Muster der beiden Gruppen vor dem Zuschnitt — die Testdateien, um die es geht.
 const BISHERIGE_MUSTER = [

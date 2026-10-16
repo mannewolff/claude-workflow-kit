@@ -192,7 +192,7 @@ test("[1455] Umstellung und Schutzmodus eines englischen Projekts melden englisc
     writeFileSync(boardFake, 'console.error("gh: not logged in"); process.exit(1);\n');
     const um = installiere(u, ["--language", "de"], [], { INSTALL_BOARD_FAKE: boardFake });
     assert.equal(um.status, 0, um.alles);
-    assert.equal(lies(u, "workflow.config.json").sprache, "de");
+    assert.equal(lies(u, "workflow.config.json").language, "de");
     assert.match(um.stdout, /=== claude-workflow-kit: switching to de ===/);
     assert.match(um.stdout, /✓ Backup created: /);
     assert.match(um.stdout, /Board not reachable \(gh: not logged in\)/);

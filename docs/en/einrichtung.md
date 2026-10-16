@@ -255,7 +255,7 @@ At most one entry may be a quality measurement: it measures how many deliberatel
 A value below the mark stops publishing like a red mandatory check, not a stop point of its own; so does a missing value. Without the designation there is neither measurement nor mark nor stop. `mutationCommand` is not a quality measurement: it carries no mark and stops nothing.
 
 ## Language of the kit
-<!-- de: cd14d510f5f7 -->
+<!-- de: 53d0a6943cbd -->
 
 The kit speaks German or English per project. The setting is called `language`, values `de` and `en`, default German. A new project chooses with the installer's first question.
 
@@ -265,9 +265,9 @@ The kit speaks German or English per project. The setting is called `language`, 
 node install.mjs --language en
 ```
 
-The installer backs up the config as `.claude/workflow.config.json.vor-umstellung`, sets the language and renames the settings in both config files to the names of the new language. Values you chose yourself, such as your own label names, stay. The kit reads every setting under its German and its English name; if both are there, the one of the project language applies.
+The installer backs up the config as `.claude/workflow.config.json.vor-umstellung`, sets the language and switches the values of fixed enumerations in both config files to the new language, for example `stage` from `paket` to `package`. The settings themselves carry their English name in every language; the switch does not rename them. Values you chose yourself, such as your own label names, stay. The kit also reads every setting under its old German name; if both are there, the English one applies.
 
-**What you see afterwards.** Under `Umbenannt` every renamed setting with both names. Under `Offen` what the switch does not take care of, for example cards with a title prefix of the other language or labels still missing on the board. The last line names the way back, `node install.mjs --language de`.
+**What you see afterwards.** Under `Umbenannt` every switched value with both spellings. Under `Offen` what the switch does not take care of, for example cards with a title prefix of the other language or labels still missing on the board. The last line names the way back, `node install.mjs --language de`.
 
 Messages, reports, comments on the cards and the interfaces are in the project language from the next call on. What is already on the board stays. Lines the kit reads back later, such as `## Laufstand` or `Autor-Modell:`, it recognises in both languages; `node .claude/kit/board.mjs names` outputs which version it writes. JSON field names, file names under `.claude/` and the form words of findings stay the same in both languages.
 

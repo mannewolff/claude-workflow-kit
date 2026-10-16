@@ -85,8 +85,10 @@ for (const [ergebnis, schreibt] of [["scharf", true], ["anleitung", true], ["off
       assert.match(res.stdout, /"grund": "Attrappe"/);
 
       const c = config(dir);
-      if (schreibt) assert.deepEqual(c.pushPruefung, { ort: "buildDienst", zweig: "mein-pruefzweig" });
-      else assert.equal(c.pushPruefung, undefined);
+      // Unter dem englischen Namen, ein neuer Wert englisch (Issue #1728, Plan #1710 A2).
+      if (schreibt) assert.deepEqual(c.pushCheck, { location: "buildService", branch: "mein-pruefzweig" });
+      else assert.equal(c.pushCheck, undefined);
+      assert.equal(c.pushPruefung, undefined);
       if (ergebnis === "nicht moeglich") assert.match(res.stdout, /node install\.mjs --protection/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -101,6 +103,7 @@ test("Abwahl des Schutzes ruft code schutz nicht auf und laesst die Config ohne 
     const res = installiere(dir, ["de", "projekt", "github", "j", "n", ...REST], fake.env);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
     assert.deepEqual(aufrufe(fake.log), []);
+    assert.equal(config(dir).pushCheck, undefined);
     assert.equal(config(dir).pushPruefung, undefined);
     assert.equal(config(dir).issueTracker, "github", "die Antworten danach muessen ankommen");
     assert.match(res.stdout, UNGESCHUETZT);
@@ -194,8 +197,8 @@ test("--protection aendert in der Config nur pushPruefung und schreibt keine Kit
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
     const nachher = config(dir);
-    assert.deepEqual(nachher.pushPruefung, { ort: "buildDienst", zweig: "kit-pruefung" });
-    delete nachher.pushPruefung;
+    assert.deepEqual(nachher.pushCheck, { location: "buildService", branch: "kit-pruefung" });
+    delete nachher.pushCheck;
     assert.deepEqual(nachher, vorher);
     assert.deepEqual(dateienUnter(join(dir, ".claude")), dateienVorher);
     assert.equal(readFileSync(join(dir, ".claude", "kit", "board.mjs"), "utf-8"), boardVorher);

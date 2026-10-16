@@ -16,6 +16,7 @@ import {
   gruppenZeilen, gruppeSetzen, GRUPPEN_AUSNAHMEN, SCHEMA,
 } from "../kit/settings.mjs";
 import { projekt } from "./helpers/einstellungen-fixture.mjs";
+import { normalisiereConfig } from "../kit/board/config-namen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -47,6 +48,9 @@ function mitEchterConfig(fn, lokal) {
 }
 
 const lokaleDatei = (pfad) => readFileSync(join(pfad, ".claude", "workflow.config.local.json"), "utf-8");
+// Die Team-Datei ueber normalisiereConfig: vor und nach der Umstellung auf englische Schluessel
+// dieselben Namen (Issue #1728).
+const teamDatei = (pfad) => normalisiereConfig(JSON.parse(readFileSync(join(pfad, ".claude", "workflow.config.json"), "utf-8"))).config;
 
 const TEAM = { codeHost: "github", reviewModel: "claude-opus-5", reviewScope: "diff", buildChecks: ["node --test"], toolbox: { host: "https://x" } };
 
@@ -149,13 +153,13 @@ test("[einstellungen-3] die Folge aus Plan E8 an der echten Einstellungsdatei di
   mitEchterConfig(({ projekt: p, optionen, pfad }) => {
     const stand = () => projektZustand(p, optionen);
     const dateien = () => {
-      const team = JSON.parse(readFileSync(join(pfad, ".claude", "workflow.config.json"), "utf-8"));
+      const team = teamDatei(pfad);
       const lokal = JSON.parse(lokaleDatei(pfad));
       return { team, lokal };
     };
 
     // 1. Persönliche Abweichung an triggers.push.
-    const team0 = JSON.parse(readFileSync(join(pfad, ".claude", "workflow.config.json"), "utf-8"));
+    const team0 = teamDatei(pfad);
     const gesetzt = gruppeSetzen(team0.triggers, ebenen(team0, null).triggers.gilt, "push", "pushen");
     const r1 = speichere(p, { ebene: "persoenlich", teil: "m7", aenderungen: [{ pfad: "triggers", wert: gesetzt.wert }], hashes: stand().hashes }, optionen);
     assert.equal(r1.status, 200, JSON.stringify(r1.body));
@@ -185,7 +189,7 @@ test("[einstellungen-3] das Zurücksetzen entfernt triggers aus der persönliche
 }
 `;
   mitEchterConfig(({ projekt: p, optionen, pfad }) => {
-    const team = JSON.parse(readFileSync(join(pfad, ".claude", "workflow.config.json"), "utf-8"));
+    const team = teamDatei(pfad);
     assert.deepEqual(abweichende(triggerZeilen(team, JSON.parse(lokalText))), ["push"], "die Ausgangslage weicht in genau einer Zeile ab");
     assert.deepEqual(gruppeSetzen(team.triggers, JSON.parse(lokalText).triggers, "push", undefined), { entfernen: true });
 
@@ -195,6 +199,6 @@ test("[einstellungen-3] das Zurücksetzen entfernt triggers aus der persönliche
   "reviewScope": "full"
 }
 `, "der Rest der persönlichen Datei hat sich geändert");
-    assert.equal(ebenen(JSON.parse(readFileSync(join(pfad, ".claude", "workflow.config.json"), "utf-8")), JSON.parse(lokaleDatei(pfad))).triggers.gilt.push, "push main");
+    assert.equal(ebenen(teamDatei(pfad), JSON.parse(lokaleDatei(pfad))).triggers.gilt.push, "push main");
   }, lokalText);
 });

@@ -250,9 +250,9 @@ Das Kit spricht je Projekt Deutsch oder Englisch. Die Einstellung heißt `langua
 node install.mjs --language en
 ```
 
-Der Installer sichert die Config als `.claude/workflow.config.json.vor-umstellung`, setzt die Sprache und benennt die Einstellungen in beiden Config-Dateien in die Namen der neuen Sprache um. Selbst gewählte Werte wie eigene Labelnamen bleiben. Das Kit liest jede Einstellung unter ihrem deutschen und ihrem englischen Namen; stehen beide da, gilt der der Projektsprache.
+Der Installer sichert die Config als `.claude/workflow.config.json.vor-umstellung`, setzt die Sprache und stellt die Werte fester Aufzählungen in beiden Config-Dateien auf die neue Sprache um, etwa `stage` von `paket` auf `package`. Die Einstellungen selbst heißen in jeder Sprache englisch, die Umstellung benennt sie nicht um. Selbst gewählte Werte wie eigene Labelnamen bleiben. Das Kit liest jede Einstellung auch unter ihrem alten deutschen Namen; stehen beide da, gilt der englische.
 
-**Was du danach siehst.** Unter `Umbenannt` jede umbenannte Einstellung mit beiden Namen. Unter `Offen`, was die Umstellung nicht erledigt, etwa Karten mit einem Titel-Präfix der anderen Sprache oder Labels, die am Board noch fehlen. Die letzte Zeile nennt den Rückweg, `node install.mjs --language de`.
+**Was du danach siehst.** Unter `Umbenannt` jeder umgestellte Wert mit beiden Schreibweisen. Unter `Offen`, was die Umstellung nicht erledigt, etwa Karten mit einem Titel-Präfix der anderen Sprache oder Labels, die am Board noch fehlen. Die letzte Zeile nennt den Rückweg, `node install.mjs --language de`.
 
 Meldungen, Berichte, Kommentare an den Karten und die Oberflächen stehen ab dem nächsten Aufruf in der Projektsprache. Was schon am Board steht, bleibt. Zeilen, die das Kit später zurückliest, etwa `## Laufstand` oder `Autor-Modell:`, erkennt es in beiden Sprachen; welche Fassung es schreibt, gibt `node .claude/kit/board.mjs names` aus. JSON-Feldnamen, Dateinamen unter `.claude/` und die Formwörter der Befunde bleiben in beiden Sprachen gleich.
 

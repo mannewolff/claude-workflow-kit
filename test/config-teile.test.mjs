@@ -38,12 +38,15 @@ import { spawnSync } from "node:child_process";
 
 import { globZuRegex, bereicheVorbereiten, anteilJeBereich, aufrufen } from "../kit/checks.mjs";
 import { verflechtungErheben, kopplungVon } from "../kit/checks/verflechtung.mjs";
+import { normalisiereConfig } from "../kit/board/config-namen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-const config = JSON.parse(
+// Ueber normalisiereConfig gelesen: vor und nach der Umstellung auf englische Schluessel
+// dieselben Namen (Issue #1728).
+const { config } = normalisiereConfig(JSON.parse(
   readFileSync(join(repoRoot, ".claude", "workflow.config.json"), "utf-8"),
-);
+));
 
 /**
  * Die versionierten Dateien zu einer Pfadangabe — `:(glob)` davor, damit `*`
