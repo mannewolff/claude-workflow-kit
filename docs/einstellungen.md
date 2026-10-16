@@ -115,10 +115,9 @@ _Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node
 
 - `reviewStages` — Besetzung und Blickwinkel der drei Prüfstufen: das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Vorgabe: je Stufe die Rollen des Rollenkatalogs, ein Reviewer je Rolle, nur, wenn der ganze Block fehlt; fehlt in einem vorhandenen Block eine Stufe oder ein Feld, bricht die Prüfung der Config ab.
 - `reviewStages.requirement` — Prüfung des fachlichen Anliegens ([Requirement]-Issue), bevor daraus ein Plan wird. Keine Vorgabe.
-- `reviewStages.requirement.reviewer` — Wie viele Reviewer diese Stufe prüfen. Werte: ab 1. Vorgabe: `2`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
+- `reviewStages.{requirement,plan}.reviewer` — Wie viele Reviewer diese Stufe prüfen. Werte: ab 1. Vorgabe: `2`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
 - `reviewStages.requirement.roles` — Ein Rollenname je Reviewer, in der Reihenfolge der Zuteilung. Vorgabe: `form-beobachtbarkeit`, `abgrenzung`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
 - `reviewStages.plan` — Prüfung des Plandokuments ([Plan]-Issue), bevor es in Arbeitspakete zerfällt. Keine Vorgabe.
-- `reviewStages.plan.reviewer` — Wie viele Reviewer diese Stufe prüfen. Werte: ab 1. Vorgabe: `2`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
 - `reviewStages.plan.roles` — Ein Rollenname je Reviewer, in der Reihenfolge der Zuteilung. Vorgabe: `architektur-bestand`, `schnitt-abhaengigkeiten`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
 - `reviewStages.issue` — Prüfung des einzelnen Arbeitspakets vor dem GO. Keine Vorgabe.
 - `reviewStages.issue.reviewer` — Wie viele Reviewer diese Stufe prüfen. Werte: ab 1. Vorgabe: `1`, nur, wenn der ganze Block `reviewStages` fehlt; ein vorhandener Block braucht das Feld.
@@ -154,20 +153,12 @@ _Dieser Abschnitt entsteht aus `templates/workflow.config.schema.json` mit `node
 - `night.models` — Die Modellnamen, die der Nacht-Runner starten darf — geordnet, absteigend nach Stärke: der erste Eintrag ist das stärkste, der letzte das schnellste Modell. Vorgabe: leer, jede Session startet mit dem Modell des Laufs.
 - `night.tiers` — Modell oder Kommando je Schwierigkeitsstufe eines Arbeitspakets, geordnet schwer/mittel/leicht. Vorgabe: keine Stufe, jedes Paket läuft mit dem Modell des Laufs.
 - `night.tiers.hard` — Modell oder Kommando für eine schwere Aufgabe. Keine Vorgabe.
-- `night.tiers.hard.model` — Modell-ID für diese Stufe. Keine Vorgabe.
-- `night.tiers.hard.effort` — Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Gültig: `low`, `medium`, `high`, `xhigh`, `max`. Vorgabe: die Voreinstellung der Claude-CLI.
-- `night.tiers.hard.command` — Kommandozeile eines fremden Programms für diese Stufe — ein Projekt-Artefakt derselben Vertrauensstufe wie reviewCommand, das pattern ^claude- gilt hier nicht. Keine Vorgabe.
-- `night.tiers.hard.name` — Selbstauskunft des Programms neben kommando. Keine Vorgabe.
+- `night.tiers.{hard,medium,easy}.model` — Modell-ID für diese Stufe. Keine Vorgabe.
+- `night.tiers.{hard,medium,easy}.effort` — Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Gültig: `low`, `medium`, `high`, `xhigh`, `max`. Vorgabe: die Voreinstellung der Claude-CLI.
+- `night.tiers.{hard,medium,easy}.command` — Kommandozeile eines fremden Programms für diese Stufe — ein Projekt-Artefakt derselben Vertrauensstufe wie reviewCommand, das pattern ^claude- gilt hier nicht. Keine Vorgabe.
+- `night.tiers.{hard,medium,easy}.name` — Selbstauskunft des Programms neben kommando. Keine Vorgabe.
 - `night.tiers.medium` — Modell oder Kommando für eine mittelschwere Aufgabe. Keine Vorgabe.
-- `night.tiers.medium.model` — Modell-ID für diese Stufe. Keine Vorgabe.
-- `night.tiers.medium.effort` — Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Gültig: `low`, `medium`, `high`, `xhigh`, `max`. Vorgabe: die Voreinstellung der Claude-CLI.
-- `night.tiers.medium.command` — Kommandozeile eines fremden Programms für diese Stufe — ein Projekt-Artefakt derselben Vertrauensstufe wie reviewCommand, das pattern ^claude- gilt hier nicht. Keine Vorgabe.
-- `night.tiers.medium.name` — Selbstauskunft des Programms neben kommando. Keine Vorgabe.
 - `night.tiers.easy` — Modell oder Kommando für eine leichte Aufgabe. Keine Vorgabe.
-- `night.tiers.easy.model` — Modell-ID für diese Stufe. Keine Vorgabe.
-- `night.tiers.easy.effort` — Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Gültig: `low`, `medium`, `high`, `xhigh`, `max`. Vorgabe: die Voreinstellung der Claude-CLI.
-- `night.tiers.easy.command` — Kommandozeile eines fremden Programms für diese Stufe — ein Projekt-Artefakt derselben Vertrauensstufe wie reviewCommand, das pattern ^claude- gilt hier nicht. Keine Vorgabe.
-- `night.tiers.easy.name` — Selbstauskunft des Programms neben kommando. Keine Vorgabe.
 - `night.tierRule` — Ersetzt die mitgelieferte Regel, nach der /issues und /task die Stufe eines Arbeitspakets bestimmen. Vorgabe: die Regel des Kits.
 - `night.stuckAfter` — Zahl gleich gescheiterter Läufe derselben Prüfung, nach der eine unbeaufsichtigte Sitzung beim nächsten Prüfaufruf gebremst wird; interaktiv gibt dieselbe Zahl nur einen Hinweis. Werte: ab 2. Vorgabe: `3`.
 - `night.goalImplementationMin` — Zielmarke für die Dauer einer Umsetzung in Minuten; der Bericht weist aus, wie viele Pakete darunter blieben. Vorgabe: `10`.

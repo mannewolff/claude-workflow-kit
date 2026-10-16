@@ -186,10 +186,36 @@ test("Kriterium 7: jede Einstellung steht mit englischem Pfad und Vorgabe in doc
   const text = readFileSync(join(DOCS, "einstellungen.md"), "utf-8");
   const pfade = einstellungen();
   assert.ok(pfade.length >= 154, `nur ${pfade.length} Einstellungen gefunden`);
+  const genannt = genanntePfade(text);
   for (const pfad of [...pfade.map(englisch), "vault", "always", "projectDocs", "project", "logPath", "parentProject"]) {
-    const zeile = new RegExp(String.raw`^- \`${maskiert(pfad)}\` — .*(Vorgabe: \S|Keine Vorgabe\.)`, "m");
-    assert.match(text, zeile, `${pfad} fehlt mit Vorgabe oder „Keine Vorgabe“`);
+    assert.ok(genannt.has(pfad), `${pfad} fehlt mit Vorgabe oder „Keine Vorgabe“`);
   }
+});
+
+/**
+ * Die Pfade, die eine Seite mit Vorgabe oder „Keine Vorgabe“ nennt. Eine zusammengezogene Zeile
+ * mit `{a,b,c}` im Pfad zählt als Zeile jedes genannten Pfads (Issue #1732).
+ */
+function genanntePfade(text) {
+  const genannt = new Set();
+  const ausgeklappt = (pfad) => {
+    const a = pfad.indexOf("{");
+    const b = pfad.indexOf("}", a);
+    return a < 0 || b < 0 ? [pfad] : pfad.slice(a + 1, b).split(",").flatMap((g) => ausgeklappt(pfad.slice(0, a) + g + pfad.slice(b + 1)));
+  };
+  for (const zeile of text.split("\n")) {
+    const ende = zeile.indexOf("` — ");
+    if (!zeile.startsWith("- `") || ende < 0) continue;
+    const rest = zeile.slice(ende);
+    if (!/Vorgabe: \S/.test(rest) && !rest.includes("Keine Vorgabe.")) continue;
+    for (const p of ausgeklappt(zeile.slice(3, ende))) genannt.add(p);
+  }
+  return genannt;
+}
+
+test("eine zusammengezogene Zeile zählt als Zeile jedes genannten Pfads", () => {
+  const genannt = genanntePfade("- `night.tiers.{hard,medium}.model` — Modell. Keine Vorgabe.\n- `ohne` — Text ohne Vorgabe\n");
+  assert.deepEqual([...genannt].sort(), ["night.tiers.hard.model", "night.tiers.medium.model"]);
 });
 
 test("Kriterium 5: die aktuellen deutschen Seiten haben zusammen höchstens 20.700 Wörter", (t) => {

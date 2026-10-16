@@ -136,7 +136,12 @@ test("der Abschnitt fuehrt je Wurzelfeld ausser version eine Zeile, keine Uebers
 test("jede Zeile traegt Vorgabe oder 'Keine Vorgabe' und nur den ersten Satz", () => {
   const doku = readFileSync(join(repoRoot, "docs", SEITE), "utf-8");
   const zeilen = erzeugt(doku).split("\n").filter((z) => z.startsWith("- `"));
-  assert.ok(zeilen.length >= 154, `nur ${zeilen.length} Zeilen`);
+  // Eine zusammengezogene Zeile mit `{a,b,c}` steht für jeden ihrer Pfade (Issue #1732).
+  const pfade = zeilen.reduce((n, z) => {
+    const pfad = z.slice(3, z.indexOf("` — "));
+    return n + (pfad.includes("{") ? pfad.slice(pfad.indexOf("{") + 1, pfad.indexOf("}")).split(",").length : 1);
+  }, 0);
+  assert.ok(pfade >= 154, `nur ${pfade} Pfade`);
   for (const zeile of zeilen) assert.match(zeile, /(Vorgabe: \S.*|Keine Vorgabe)\.$/, zeile);
   assert.equal(zeileVon(doku, "mainBranch"), "- `mainBranch` — Branch für lokale Commits und Push (Schritt 7). Vorgabe: `main`.");
   assert.equal(zeileVon(doku, "codeHost"), "- `codeHost` — Wo der Code liegt (Push, Pull Requests). Gültig: `github`, `gitlab`, `local`. Vorgabe: `github`.");

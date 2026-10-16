@@ -8,7 +8,8 @@
  * Zeile (Plan #1652 E3): englischer Pfad, erster Satz der Beschreibung, gültige Werte und
  * Vorgabe, dazu der Wertebereich aus `minimum`, `maximum` und `const`. Die Vorgabe kommt aus `default`, sonst aus tools/config-referenz.vorgaben.json,
  * sonst steht „Keine Vorgabe“. Dieselbe Datei ersetzt je Pfad den ersten Satz, wo er keine
- * Wirkung nennt. Geschrieben wird ausschließlich zwischen den beiden Markern; der übrige
+ * Wirkung nennt. Gleich gebaute Geschwister mit wörtlich gleicher Zeile stehen in einer Zeile
+ * mit `{a,b,c}` im Pfad (Issue #1732). Geschrieben wird ausschließlich zwischen den beiden Markern; der übrige
  * Text der Seite bleibt unberührt.
  *
  * Zwei Sprachen (Issue #1356, Plan #1348 E8): Die deutsche Fassung schneidet ihren Satz aus
@@ -215,15 +216,63 @@ function vorgabeSatz(e, sprache, tabelle) {
   return eintrag ? mitBedingung(eintrag[sprache]) : rahmen.keine;
 }
 
-/** Der Abschnitt zwischen den Markern, ohne die Marker selbst; `texte` liefert die Beschreibung je Eintrag. */
-function referenz(liste, sprache, texte, tabelle) {
-  const rahmen = RAHMEN[sprache];
-  const werte = (w) => (w ? ` ${rahmen.gueltig}: ${w.map((x) => "`" + x + "`").join(", ")}.` : "");
-  const teile = ["", rahmen.hinweis];
-  for (const e of liste) {
-    if (e.wurzel) teile.push("");
-    const satz = tabelle[e.pfad]?.satz?.[sprache] ?? ersterSatz(texte(e));
-    teile.push(`- \`${englischerPfad(e.pfad)}\` — ${entschaerft(satz)}${werte(e.werte)}${bereichSatz(e.knoten, sprache)} ${vorgabeSatz(e, sprache, tabelle)}`);
+/**
+ * Zieht gleich gebaute Geschwister zusammen (Issue #1732, Plan #1710 A14): Zeilen, deren Pfade
+ * sich in genau einem Glied unterscheiden, das weder das erste noch das letzte ist, und deren
+ * Text danach wörtlich gleich ist, werden eine Zeile mit `{a,b,c}` an dieser Stelle. Sie steht, wo die
+ * erste stand. `zeilen` trägt je Eintrag `pfad` (englisch), `rest` (alles hinter dem Pfad) und
+ * `gleich` (der Text, der übereinstimmen muss: der Rest beider Sprachen, damit beide Fassungen
+ * dieselben Zeilen zusammenziehen).
+ */
+function zusammengezogen(zeilen) {
+  const verbraucht = new Set();
+  const aus = [];
+  zeilen.forEach((z, i) => {
+    if (verbraucht.has(i)) return;
+    const glieder = z.pfad.split(".");
+    for (let stelle = 1; stelle < glieder.length - 1; stelle++) {
+      const muster = (pfad) => {
+        const g = pfad.split(".");
+        return g.length === glieder.length ? [...g.slice(0, stelle), "", ...g.slice(stelle + 1)].join(".") : null;
+      };
+      const gesucht = muster(z.pfad);
+      const gleiche = [];
+      for (let j = i + 1; j < zeilen.length; j++) {
+        if (!verbraucht.has(j) && zeilen[j].gleich === z.gleich && muster(zeilen[j].pfad) === gesucht) gleiche.push(j);
+      }
+      if (!gleiche.length) continue;
+      for (const j of gleiche) verbraucht.add(j);
+      const namen = [glieder[stelle], ...gleiche.map((j) => zeilen[j].pfad.split(".")[stelle])];
+      aus.push({ ...z, pfad: [...glieder.slice(0, stelle), `{${namen.join(",")}}`, ...glieder.slice(stelle + 1)].join(".") });
+      return;
+    }
+    aus.push(z);
+  });
+  return aus;
+}
+
+/** Alles hinter dem Pfad: Satz, gültige Werte, Wertebereich und Vorgabe. */
+function zeilenRest(e, sprache, texte, tabelle) {
+  const werte = e.werte ? ` ${RAHMEN[sprache].gueltig}: ${e.werte.map((x) => "`" + x + "`").join(", ")}.` : "";
+  const satz = tabelle[e.pfad]?.satz?.[sprache] ?? ersterSatz(texte(e));
+  return `${entschaerft(satz)}${werte}${bereichSatz(e.knoten, sprache)} ${vorgabeSatz(e, sprache, tabelle)}`;
+}
+
+/**
+ * Der Abschnitt zwischen den Markern, ohne die Marker selbst; `texte` liefert die Beschreibung je Eintrag.
+ * `andere` ({ sprache, texte }) ist die andere Fassung, soweit sie vorliegt: Zusammengezogen wird nur,
+ * was auch dort wörtlich gleich ist.
+ */
+function referenz(liste, sprache, texte, tabelle, andere = null) {
+  const zeilen = liste.map((e) => {
+    const rest = zeilenRest(e, sprache, texte, tabelle);
+    const gleich = andere ? `${rest}\n${zeilenRest(e, andere.sprache, andere.texte, tabelle)}` : rest;
+    return { pfad: englischerPfad(e.pfad), wurzel: e.wurzel, rest, gleich };
+  });
+  const teile = ["", RAHMEN[sprache].hinweis];
+  for (const z of zusammengezogen(zeilen)) {
+    if (z.wurzel) teile.push("");
+    teile.push(`- \`${z.pfad}\` — ${z.rest}`);
   }
   teile.push("");
   return teile.join("\n");
@@ -273,13 +322,14 @@ const doku = readFileSync(DOKU, "utf-8");
 const lage = marker(doku);
 if (doku.indexOf(START) < 0) fehler(`Marker ${START} fehlt in docs/einstellungen.md`);
 if (!lage) fehler(`Marker ${ENDE} fehlt in docs/einstellungen.md oder steht vor ${START}`);
-const neu = ersetzt(doku, lage, referenz(liste, "de", (e) => e.text, tabelle));
 
 // Die englische Fassung gilt erst, wenn docs/en/einstellungen.md beide Marker trägt.
 const dokuEn = existsSync(DOKU_EN) ? readFileSync(DOKU_EN, "utf-8") : null;
 const lageEn = dokuEn === null ? null : marker(dokuEn);
 let neuEn = null;
 const luecken = [];
+const deutsch = (e) => e.text;
+let englisch = null;
 if (lageEn) {
   const uebersetzung = existsSync(UEBERSETZUNG) ? JSON.parse(readFileSync(UEBERSETZUNG, "utf-8")) : {};
   for (const e of liste) {
@@ -287,8 +337,12 @@ if (lageEn) {
     if (!eintrag || typeof eintrag.text !== "string") luecken.push(`${e.pfad}: englischer Eintrag fehlt`);
     else if (eintrag.de !== stempelVon(e.text)) luecken.push(`${e.pfad}: Hash veraltet, erwartet ${stempelVon(e.text)} — die deutsche Beschreibung hat sich geändert`);
   }
-  if (!luecken.length) neuEn = ersetzt(dokuEn, lageEn, referenz(liste, "en", (e) => uebersetzung[e.pfad].text, tabelle));
+  if (!luecken.length) {
+    englisch = (e) => uebersetzung[e.pfad].text;
+    neuEn = ersetzt(dokuEn, lageEn, referenz(liste, "en", englisch, tabelle, { sprache: "de", texte: deutsch }));
+  }
 }
+const neu = ersetzt(doku, lage, referenz(liste, "de", deutsch, tabelle, englisch && { sprache: "en", texte: englisch }));
 
 const lueckenListe = luecken.map((l) => `  - ${l}`).join("\n");
 const abweichend = [];

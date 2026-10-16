@@ -2,7 +2,9 @@
 //
 // Die Einstellungszeile nennt den Wertebereich aus minimum, maximum und const des Schemas,
 // und die Vorgaben von reviewStages sagen, dass sie nur gelten, wenn der ganze Block fehlt
-// (Issue #1669, Code-Review zu #1653).
+// (Issue #1669, Code-Review zu #1653). Gleich gebaute Geschwister, deren Zeilen bis auf das
+// unterscheidende Pfadglied wörtlich gleich sind, stehen in einer Zeile mit `{a,b,c}` im Pfad
+// (Issue #1732).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -36,8 +38,20 @@ function erzeugt(tabelleAendern) {
   }
 }
 
-/** Die Zeile einer Einstellung im erzeugten Teil. */
-const zeile = (text, pfad) => text.split("\n").find((z) => z.startsWith(`- \`${pfad}\` — `)) ?? "";
+/** Die Pfade, für die ein Pfad mit `{a,b,c}` steht. */
+function ausgeklappt(pfad) {
+  const a = pfad.indexOf("{");
+  const b = pfad.indexOf("}", a);
+  if (a < 0 || b < 0) return [pfad];
+  return pfad.slice(a + 1, b).split(",").flatMap((glied) => ausgeklappt(pfad.slice(0, a) + glied + pfad.slice(b + 1)));
+}
+
+/** Die Zeile einer Einstellung im erzeugten Teil, auch eine zusammengezogene. */
+const zeile = (text, pfad) =>
+  text.split("\n").find((z) => {
+    const ende = z.indexOf("` — ");
+    return z.startsWith("- `") && ende > 0 && ausgeklappt(z.slice(3, ende)).includes(pfad);
+  }) ?? "";
 
 test("Wertebereich aus minimum und maximum steht in der Zeile", () => {
   const { res, de, en } = erzeugt();
@@ -77,4 +91,38 @@ test("eine Bedingung ohne englische Fassung ist ein Fehler der Tabelle", () => {
   const { res } = erzeugt((t) => ({ ...t, reviewStufen: { ...t.reviewStufen, bedingung: { de: "nur so" } } }));
   assert.equal(res.status, 1);
   assert.match(res.stderr, /reviewStufen: bedingung braucht de und en/);
+});
+
+test("gleich beschriebene Geschwister stehen in einer Zeile mit {a,b,c} im Pfad", () => {
+  const { res, de, en } = erzeugt();
+  assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+  for (const text of [de, en]) {
+    const z = zeile(text, "night.tiers.hard.model");
+    assert.ok(z.startsWith("- `night.tiers.{hard,medium,easy}.model` — "), z);
+    assert.equal(zeile(text, "night.tiers.medium.model"), z);
+    assert.equal(zeile(text, "night.tiers.easy.model"), z);
+    assert.equal(text.split("\n").filter((x) => x.includes("night.tiers.") && x.includes(".model`")).length, 1);
+  }
+  // Gleiche Zeilen verschiedener Wurzelfelder sind keine Geschwister und bleiben getrennt.
+  assert.ok(zeile(de, "noCheck[].pattern").startsWith("- `noCheck[].pattern` — "), zeile(de, "noCheck[].pattern"));
+  assert.ok(zeile(de, "scaffoldOnly[].pattern").startsWith("- `scaffoldOnly[].pattern` — "), zeile(de, "scaffoldOnly[].pattern"));
+  assert.ok(zeile(de, "reviewStages.requirement.reviewer").startsWith("- `reviewStages.{requirement,plan}.reviewer` — "), zeile(de, "reviewStages.requirement.reviewer"));
+});
+
+test("weicht eine Geschwisterzeile ab, bleibt sie für sich", () => {
+  const satz = { de: "Eigenes Modell der schweren Stufe.", en: "Own model of the hard tier." };
+  const { res, de, en } = erzeugt((t) => ({ ...t, "night.stufen.schwer.modell": { satz } }));
+  assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+  assert.ok(zeile(de, "night.tiers.hard.model").startsWith("- `night.tiers.hard.model` — Eigenes Modell"), zeile(de, "night.tiers.hard.model"));
+  assert.ok(zeile(en, "night.tiers.hard.model").startsWith("- `night.tiers.hard.model` — Own model"));
+  for (const text of [de, en]) assert.ok(zeile(text, "night.tiers.medium.model").startsWith("- `night.tiers.{medium,easy}.model` — "));
+});
+
+test("weicht nur die englische Fassung ab, bleiben die Zeilen in beiden Fassungen getrennt", () => {
+  const satz = { de: "Modell-ID für diese Stufe.", en: "Own model of the hard tier." };
+  const { res, de, en } = erzeugt((t) => ({ ...t, "night.stufen.schwer.modell": { satz } }));
+  assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+  assert.ok(zeile(de, "night.tiers.hard.model").startsWith("- `night.tiers.hard.model` — Modell-ID"), zeile(de, "night.tiers.hard.model"));
+  assert.ok(zeile(en, "night.tiers.hard.model").startsWith("- `night.tiers.hard.model` — Own model"));
+  for (const text of [de, en]) assert.ok(zeile(text, "night.tiers.medium.model").startsWith("- `night.tiers.{medium,easy}.model` — "));
 });

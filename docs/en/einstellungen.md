@@ -117,10 +117,9 @@ _This section is generated from `templates/workflow.config.schema.json` by `node
 
 - `reviewStages` — Staffing and perspective of the three review levels: the functional concern, the plan to get there, the single work package. Default: per tier the roles of the role catalogue, one reviewer per role, only if the whole block is missing; if a tier or a field is missing in a block that is present, the config check aborts.
 - `reviewStages.requirement` — Review of the functional concern ([Requirement] issue) before a plan is made from it. No default.
-- `reviewStages.requirement.reviewer` — How many reviewers review this level. Values: from 1. Default: `2`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
+- `reviewStages.{requirement,plan}.reviewer` — How many reviewers review this level. Values: from 1. Default: `2`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
 - `reviewStages.requirement.roles` — One role name per reviewer, in the order of assignment. Default: `form-beobachtbarkeit`, `abgrenzung`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
 - `reviewStages.plan` — Review of the plan document ([Plan] issue) before it is split into work packages. No default.
-- `reviewStages.plan.reviewer` — How many reviewers review this level. Values: from 1. Default: `2`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
 - `reviewStages.plan.roles` — One role name per reviewer, in the order of assignment. Default: `architektur-bestand`, `schnitt-abhaengigkeiten`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
 - `reviewStages.issue` — Review of the single work package before the GO. No default.
 - `reviewStages.issue.reviewer` — How many reviewers review this level. Values: from 1. Default: `1`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
@@ -156,20 +155,12 @@ _This section is generated from `templates/workflow.config.schema.json` by `node
 - `night.models` — The model names the night runner may start — ordered, descending by strength: the first entry is the strongest, the last the fastest model. Default: empty, every session starts with the model of the run.
 - `night.tiers` — Model or command per difficulty level of a work package, ordered schwer/mittel/leicht (hard/medium/easy). Default: no tier, every package runs with the model of the run.
 - `night.tiers.hard` — Model or command for a hard task. No default.
-- `night.tiers.hard.model` — Model ID for this level. No default.
-- `night.tiers.hard.effort` — Thinking effort for this level, passed to the Claude CLI as --effort. Valid: `low`, `medium`, `high`, `xhigh`, `max`. Default: the Claude CLI's own setting.
-- `night.tiers.hard.command` — Command line of a foreign program for this level — a project artefact with the same level of trust as reviewCommand; the pattern ^claude- does not apply here. No default.
-- `night.tiers.hard.name` — The program's self-description next to kommando. No default.
+- `night.tiers.{hard,medium,easy}.model` — Model ID for this level. No default.
+- `night.tiers.{hard,medium,easy}.effort` — Thinking effort for this level, passed to the Claude CLI as --effort. Valid: `low`, `medium`, `high`, `xhigh`, `max`. Default: the Claude CLI's own setting.
+- `night.tiers.{hard,medium,easy}.command` — Command line of a foreign program for this level — a project artefact with the same level of trust as reviewCommand; the pattern ^claude- does not apply here. No default.
+- `night.tiers.{hard,medium,easy}.name` — The program's self-description next to kommando. No default.
 - `night.tiers.medium` — Model or command for a medium task. No default.
-- `night.tiers.medium.model` — Model ID for this level. No default.
-- `night.tiers.medium.effort` — Thinking effort for this level, passed to the Claude CLI as --effort. Valid: `low`, `medium`, `high`, `xhigh`, `max`. Default: the Claude CLI's own setting.
-- `night.tiers.medium.command` — Command line of a foreign program for this level — a project artefact with the same level of trust as reviewCommand; the pattern ^claude- does not apply here. No default.
-- `night.tiers.medium.name` — The program's self-description next to kommando. No default.
 - `night.tiers.easy` — Model or command for an easy task. No default.
-- `night.tiers.easy.model` — Model ID for this level. No default.
-- `night.tiers.easy.effort` — Thinking effort for this level, passed to the Claude CLI as --effort. Valid: `low`, `medium`, `high`, `xhigh`, `max`. Default: the Claude CLI's own setting.
-- `night.tiers.easy.command` — Command line of a foreign program for this level — a project artefact with the same level of trust as reviewCommand; the pattern ^claude- does not apply here. No default.
-- `night.tiers.easy.name` — The program's self-description next to kommando. No default.
 - `night.tierRule` — Replaces the built-in rule by which /issues and /task determine the level of a work package. Default: the kit's rule.
 - `night.stuckAfter` — Number of identically failed runs of the same check after which an unattended session is stopped at the next check call; interactively the same number only produces a hint. Values: from 2. Default: `3`.
 - `night.goalImplementationMin` — Target for the duration of an implementation in minutes; the report shows how many packages stayed below it. Default: `10`.
