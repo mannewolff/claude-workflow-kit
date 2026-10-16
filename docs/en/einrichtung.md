@@ -4,7 +4,7 @@
 Each part of this page says what you do and what you see afterwards. Every single setting (Einstellung) is listed with its effect and default under [Settings](/en/einstellungen).
 
 ## Installation
-<!-- de: b32871dcf14d -->
+<!-- de: 9bc2fca777cc -->
 
 **What you do.** Change into your project folder and start the installer:
 
@@ -22,21 +22,21 @@ node install.mjs
 The installer asks in this order:
 
 1. **Language** of the kit, `de` or `en`.
-2. **Global or project-local.** Globally the skills land in `~/.claude/skills/` and apply in all projects. Project-locally they land in `./.claude/skills/`; that is the way for a team.
+2. **Global or project-local.** Global: `~/.claude/skills/`, applies in all projects. Project-local: `./.claude/skills/`, the way for a team.
 3. **Code host**: `github`, `gitlab` or `local`.
-4. **Issue tracker**: the default is the code host, any other choice is possible.
+4. **Issue tracker**: the default is the code host.
 5. **Main branch** (target of `/push-main`) and **production branch** (target of `/merge-production`).
 6. **Review scope**: `diff` shows the reviewer only the changed lines, `full` all files.
 7. **Review model or review command**, exactly one of the two. A model runs as a subagent; a command starts a foreign tool that receives the prompt via stdin.
 8. **Hook in the commit gate**, project-local only and only if no other `core.hooksPath` is set.
-9. **Areas** and, for each existing check, its assignment, project-local only (see [Areas](#area-based-checks-checkareas)); on first setup the installer offers the suggestion from `areas suggest` for this. An empty input leaves everything as it is.
+9. **Areas** and, for each existing check, its assignment, project-local only (see [Areas](#area-based-checks-checkareas)); on first setup with the suggestion from `areas suggest`; empty leaves everything as it is.
 10. **Vault path**, global only. With a path the installer writes `~/.claude/kontext.config.json`.
 
 With `github` and a project-local installation, three questions on **protecting the main branch** follow the code host question: whether the project has GitHub Actions, whether the check before the push should move there and the main and release branches be protected, and which check branch applies (default `kit-pruefung`). With yes the installer pushes to the check branch as a probe, waits for the build service and reports `scharf` (rulesets set), `anleitung` (probe passed, the output names the steps at GitHub), `offen` (no run of the build service) or `nicht moeglich`.
 
 An existing project switches protection on later with `node install.mjs --protection`; the call changes only `pushCheck`. `node .claude/kit/board.mjs code protection status` names the state at any time.
 
-**What you see afterwards.** Restart Claude Code. The seventeen skills appear under `/help`, and `/session-start` reports the state of the project.
+**What you see afterwards.** Restart Claude Code. The seventeen skills appear under `/help`, and `/session-start` reports the state of the project. The installer reports uncommitted files last with `WARNING`; commit or discard them before the runner, otherwise it stops.
 
 ### What the installer writes
 <!-- de: 810c9c44b3d4 -->

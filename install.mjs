@@ -886,6 +886,10 @@ export const TEXTE = Object.freeze({
     issueReview:
       "Fuer /issue-review: den 'issueReview'-Block aus workflow.config.example.jsonc\n" +
       "heruebernehmen und an die eigenen Modelle anpassen. Ohne ihn tut der Skill nichts.\n",
+    workspaceKopf: "ACHTUNG: Es liegen uncommittete Dateien im Workspace",
+    workspaceInstaller: "Vom Installer geändert:",
+    workspaceVorher: "Lag schon vorher:",
+    workspaceRunner: "Der Runner hält bei uncommitteten Dateien an. Vor dem Start committen oder verwerfen.",
   }),
   en: Object.freeze({
     fehlerZeile: "  Error: {fehler}",
@@ -1054,6 +1058,10 @@ export const TEXTE = Object.freeze({
     issueReview:
       "For /issue-review: copy the 'issueReview' block from workflow.config.example.jsonc\n" +
       "and adapt it to your own models. Without it the skill does nothing.\n",
+    workspaceKopf: "WARNING: There are uncommitted files in the workspace",
+    workspaceInstaller: "Changed by the installer:",
+    workspaceVorher: "Already there before:",
+    workspaceRunner: "The runner stops at uncommitted files. Commit or discard them before starting it.",
   }),
 });
 
@@ -2283,6 +2291,9 @@ async function main() {
   // Skills haben eine Fassung (Issue #1566).
   const projektSpracheLauf = prozessSprache();
 
+  // Vor dem ersten Schreiben: Was jetzt schon liegt, nennt der Schlussblock als vorgefunden.
+  const workspaceVorher = workspaceStand();
+
   // --- Skills kopieren ---
   console.log(t("kopiereSkills", { pfad: skillsTarget }));
   const skillAnzahl = copySkills(skillsTarget);
@@ -2445,6 +2456,8 @@ async function main() {
   console.log(t("naechsterSchritt"));
   console.log(t("pfad", { pfad: configTarget }));
   meldeIssueReview(config);
+  // Als allerletzte Ausgabe, nach der Label-Einrichtung: Weiter oben rutschte sie aus dem Bild.
+  meldeWorkspace(workspaceVorher);
 }
 
 /**
@@ -2454,6 +2467,45 @@ async function main() {
  */
 function meldeIssueReview(config) {
   if ((config.issueReview?.reviewers?.length ?? 0) === 0) console.log(t("issueReview"));
+}
+
+// --- Uncommittete Dateien im Workspace (Issue #1749) ---
+//
+// Der Runner haelt bei uncommitteten Dateien an. Der Installer zeigt darum jede Zeile von
+// `git status --porcelain`, ohne die Ausnahmen des Runners: Einmal zu oft gewarnt ist billiger
+// als ein abgebrochener Lauf.
+
+/** Die Zeilen von `git status --porcelain`, oder `null` ohne git-Repo oder ohne git. */
+function workspaceStand() {
+  // Nicht ueber gitAntwort: Es kuerzt den Leerraum, und die erste Zeile verloere ihre Spalte.
+  const res = cliSpawn("git", ["status", "--porcelain"], "INSTALL_GIT_FAKE", { encoding: "utf-8" });
+  if (res.error || res.status !== 0) return null;
+  return (res.stdout || "").split("\n").filter((zeile) => zeile.trim() !== "");
+}
+
+/**
+ * Der Block aus dem Stand vor dem ersten Schreiben und dem am Ende, oder `null`, wenn nichts
+ * liegt oder ein Stand fehlt. Eine Datei, die schon vorher in der Liste stand, gilt als
+ * vorgefunden, auch wenn der Installer sie weiter geaendert hat.
+ */
+export function workspaceBlock(vorher, nachher, farbe = false) {
+  if (!vorher || !nachher || nachher.length === 0) return null;
+  const pfad = (zeile) => zeile.slice(3);
+  const vorgefunden = new Set(vorher.map(pfad));
+  const vomInstaller = nachher.filter((zeile) => !vorgefunden.has(pfad(zeile)));
+  const lagVorher = nachher.filter((zeile) => vorgefunden.has(pfad(zeile)));
+  const linie = "=".repeat(72);
+  const kopf = farbe ? `\x1b[1;31m${t("workspaceKopf")}\x1b[0m` : t("workspaceKopf");
+  const zeilen = ["", "", linie, kopf, linie];
+  if (vomInstaller.length > 0) zeilen.push(t("workspaceInstaller"), ...vomInstaller.map((z) => `  ${z}`));
+  if (lagVorher.length > 0) zeilen.push(t("workspaceVorher"), ...lagVorher.map((z) => `  ${z}`));
+  zeilen.push("", t("workspaceRunner"), linie, "");
+  return zeilen.join("\n");
+}
+
+function meldeWorkspace(vorher) {
+  const block = workspaceBlock(vorher, vorher && workspaceStand(), Boolean(process.stdout.isTTY));
+  if (block) console.log(block);
 }
 
 // Nur als CLI ausfuehren, nicht beim Import (z. B. durch die node:test-Suite, #135).

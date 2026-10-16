@@ -20,21 +20,21 @@ node install.mjs
 Der Installer fragt der Reihe nach:
 
 1. **Sprache** des Kits, `de` oder `en`.
-2. **Global oder projektlokal.** Global landen die Skills in `~/.claude/skills/` und gelten in allen Projekten. Projektlokal landen sie in `./.claude/skills/`; das ist der Weg für ein Team.
+2. **Global oder projektlokal.** Global: `~/.claude/skills/`, gilt in allen Projekten. Projektlokal: `./.claude/skills/`, der Weg für ein Team.
 3. **Code-Host**: `github`, `gitlab` oder `local`.
-4. **Issue-Tracker**: Vorgabe ist der Code-Host, jede andere Wahl ist möglich.
+4. **Issue-Tracker**: Vorgabe ist der Code-Host.
 5. **Main-Branch** (Ziel von `/push-main`) und **Production-Branch** (Ziel von `/merge-production`).
 6. **Review-Umfang**: `diff` zeigt dem Reviewer nur die geänderten Zeilen, `full` alle Dateien.
 7. **Review-Modell oder Review-Kommando**, genau eines von beiden. Ein Modell läuft als Subagent; ein Kommando startet ein fremdes Werkzeug, das den Prompt über stdin bekommt.
 8. **Commit-Gate** einhängen, nur projektlokal und nur, wenn kein anderer `core.hooksPath` gesetzt ist.
-9. **Bereiche** und je vorhandener Prüfung ihre Zuordnung, nur projektlokal (siehe [Bereiche](#bereichsbezogene-prufungen-checkareas)); beim ersten Einrichten bietet der Installer dafür den Vorschlag aus `areas suggest` an. Eine leere Eingabe lässt alles, wie es ist.
+9. **Bereiche** und je vorhandener Prüfung ihre Zuordnung, nur projektlokal (siehe [Bereiche](#bereichsbezogene-prufungen-checkareas)); beim ersten Einrichten mit dem Vorschlag aus `areas suggest`; leer lässt alles, wie es ist.
 10. **Vault-Pfad**, nur global. Mit Pfad schreibt der Installer `~/.claude/kontext.config.json`.
 
 Bei `github` und projektlokaler Installation folgen auf die Code-Host-Frage drei Fragen zum **Schutz des Hauptzweigs**: ob das Projekt GitHub Actions hat, ob die Prüfung vor dem Push dorthin wandern und Haupt- und Veröffentlichungszweig geschützt werden sollen, und welcher Prüfzweig gilt (Vorgabe `kit-pruefung`). Mit Ja pusht der Installer zur Probe auf den Prüfzweig, wartet auf den Build-Dienst und meldet `scharf` (Rulesets gesetzt), `anleitung` (Probe bestanden, die Ausgabe nennt die Schritte bei GitHub), `offen` (kein Lauf des Build-Dienstes) oder `nicht moeglich`.
 
 Ein bestehendes Projekt schaltet den Schutz mit `node install.mjs --protection` nachträglich ein; der Aufruf ändert nur `pushCheck`. Den Zustand nennt jederzeit `node .claude/kit/board.mjs code protection status`.
 
-**Was du danach siehst.** Starte Claude Code neu. Die siebzehn Skills erscheinen unter `/help`, und `/session-start` meldet den Stand des Projekts.
+**Was du danach siehst.** Starte Claude Code neu. Die siebzehn Skills erscheinen unter `/help`, und `/session-start` meldet den Stand des Projekts. Uncommittete Dateien meldet der Installer zuletzt mit `ACHTUNG`; vor dem Runner committen oder verwerfen, sonst hält er an.
 
 ### Was der Installer schreibt
 
