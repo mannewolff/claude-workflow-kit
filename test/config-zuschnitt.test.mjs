@@ -14,7 +14,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -40,9 +41,14 @@ const BISHERIGE_MUSTER = [
 ];
 const bisherige = BISHERIGE_MUSTER.map((muster) => globZuRegex(muster));
 
-/** Die versionierten Testdateien dieses Repositories. */
-function testdateien() {
-  const res = spawnSync("git", ["ls-files", "-z", "--", ":(glob)test/**/*.test.mjs"], { cwd: repoRoot, encoding: "utf-8" });
+/**
+ * Die Testdateien des Arbeitsstands: versioniert und neu angelegt, soweit nicht ignoriert.
+ * Der Abschlusslauf eines Pakets steht vor dem Commit; nur die versionierten zu zaehlen,
+ * liess die neue Testdatei von #1727 in zwei Gruppen durch (Issue #1741).
+ */
+function testdateien(root = repoRoot) {
+  const res = spawnSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", ":(glob)test/**/*.test.mjs"],
+    { cwd: root, encoding: "utf-8" });
   assert.equal(res.status, 0, `git ls-files schlug fehl: ${(res.stderr || "").trim()}`);
   return res.stdout.split("\0").filter((pfad) => pfad.length > 0);
 }
@@ -53,6 +59,15 @@ const testaufrufe = (config.buildChecks ?? [])
   .map((eintrag) => ({ ...eintrag, regexe: [...eintrag.cmd.matchAll(/"([^"]+)"/g)].map((t) => globZuRegex(t[1])) }));
 
 const erfasst = (aufruf, pfad) => aufruf.regexe.some((regex) => regex.test(pfad));
+
+/** Die Testdateien der bisherigen Gruppen, die nicht in genau einer Gruppe laufen. */
+function nichtInGenauEinerGruppe(dateien, aufrufe) {
+  return dateien
+    .filter((pfad) => bisherige.some((regex) => regex.test(pfad)))
+    .map((pfad) => ({ pfad, n: aufrufe.filter((aufruf) => erfasst(aufruf, pfad)).length }))
+    .filter(({ n }) => n !== 1)
+    .map(({ pfad, n }) => `${pfad}: ${n} Gruppen`);
+}
 
 test("checks.mjs areas meldet kein Kommando mehr als jedem Bereich zugeordnet", () => {
   const res = aufrufen(["areas"], { cwd: repoRoot });
@@ -66,11 +81,21 @@ test("checks.mjs areas meldet kein Kommando mehr als jedem Bereich zugeordnet", 
 test("jede Testdatei der bisherigen Gruppen laeuft in genau einer Gruppe", () => {
   const dateien = testdateien().filter((pfad) => bisherige.some((regex) => regex.test(pfad)));
   assert.ok(dateien.length > 0, "keine Testdatei der bisherigen Gruppen gefunden");
-  const falsch = dateien
-    .map((pfad) => ({ pfad, n: testaufrufe.filter((aufruf) => erfasst(aufruf, pfad)).length }))
-    .filter(({ n }) => n !== 1)
-    .map(({ pfad, n }) => `${pfad}: ${n} Gruppen`);
-  assert.deepEqual(falsch, [], "Testdateien, die nicht in genau einer Gruppe laufen");
+  assert.deepEqual(nichtInGenauEinerGruppe(dateien, testaufrufe), [], "Testdateien, die nicht in genau einer Gruppe laufen");
+});
+
+test("eine neue, nicht committete Testdatei in zwei Gruppen wird gemeldet (Issue #1741)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "config-zuschnitt-"));
+  try {
+    assert.equal(spawnSync("git", ["init", "-q"], { cwd: dir }).status, 0);
+    mkdirSync(join(dir, "test"));
+    writeFileSync(join(dir, "test", "einstellungen-neu.test.mjs"), "");
+    const zweiGruppen = ["test/einstellungen-*.test.mjs", "test/einstellungen-neu*.test.mjs"]
+      .map((muster) => ({ regexe: [globZuRegex(muster)] }));
+    assert.deepEqual(nichtInGenauEinerGruppe(testdateien(dir), zweiGruppen), ["test/einstellungen-neu.test.mjs: 2 Gruppen"]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("die kitweiten Tests laufen in einer eigenen Gruppe, getrennt von Installer und Einstellungen", () => {

@@ -56,9 +56,13 @@ const { config } = normalisiereConfig(JSON.parse(
  * Eine leere Antwort ist ein Fehler und kein leerer Fall: Sie entstuende, wenn
  * ein Verzeichnis umbenannt wird — und der Test bescheinigte dann die
  * Abdeckung einer Menge, die er gar nicht mehr sieht.
+ *
+ * Neu angelegte, nicht ignorierte Dateien zaehlen mit: Der Abschlusslauf eines Pakets
+ * steht vor dem Commit, und eine neue Testdatei ohne Aufruf bliebe sonst bis zum
+ * naechsten Paket unsichtbar (Issue #1741).
  */
 function versionierte(...pfadangaben) {
-  const res = spawnSync("git", ["ls-files", "-z", "--", ...pfadangaben], {
+  const res = spawnSync("git", ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", ...pfadangaben], {
     cwd: repoRoot,
     encoding: "utf-8",
   });
