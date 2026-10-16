@@ -4,6 +4,8 @@ Die Doku erscheint auf Deutsch und auf Englisch. Die englische Fassung verwendet
 
 Befehle und wörtlich zitierte Meldungen bleiben in beiden Sprachen unverändert. Skills, Labels, Titel-Präfixe und Einstellungen tragen in beiden Sprachen englische Namen und stehen darum nicht hier, sondern unter [Namen für Umsteiger von Version 4](/dokumentation#namen-fur-umsteiger-von-version-4), [Labels und Titel-Präfixe](/einrichtung#labels-und-titel-prafixe) und [Alle Einstellungen](/einstellungen).
 
+Der **Runner** (`night.mjs`) läuft eigenständig, zu jeder Tageszeit.
+
 | Deutsch | Englisch |
 |---------|----------|
 | Ablauf-Prüfung | flow check |
@@ -24,14 +26,14 @@ Befehle und wörtlich zitierte Meldungen bleiben in beiden Sprachen unverändert
 | geschützte Datei | protected file |
 | Hinweis-Prüfung | advisory check |
 | Karte | card |
+| Kette | chain |
+| Lauf (des Runners) | run |
+| Laufbericht | run report |
 | Laufstand | run status |
 | Leitplanke | guardrail |
 | Leitstand | control centre |
 | Menschenschritt | human step |
 | Mitteilung | statement |
-| Nachtbetrieb | night mode |
-| Nacht-Kette | night chain |
-| Nacht-Runner | night runner |
 | Paketstufe | package stage |
 | Plan-Auftrag | plan order |
 | Plandokument | plan document |
@@ -39,6 +41,7 @@ Befehle und wörtlich zitierte Meldungen bleiben in beiden Sprachen unverändert
 | Prüfbereich | check area |
 | Prüflauf | check run |
 | Prüfung | check |
+| Runner | runner |
 | Sitzungs-Melder | session reporter |
 | Spalte | column |
 | Stop-Punkt | stop point |
@@ -46,7 +49,7 @@ Befehle und wörtlich zitierte Meldungen bleiben in beiden Sprachen unverändert
 | Stufe (einer Prüfung) | stage (of a check) |
 | Teil | part |
 | Überführungsgrad | degree of transfer |
-| Umsetzungsnacht | implementation night |
+| Umsetzungslauf | implementation run |
 | Ursprungsdokument | origin document |
 | Urteilsregel | judgement rule |
 | Variante (einer Kette) | variant (of a chain) |

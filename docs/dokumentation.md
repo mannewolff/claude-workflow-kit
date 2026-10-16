@@ -14,7 +14,7 @@ Wo was steht:
 
 - [Einrichtung](/einrichtung): Installation, Config, Issue-Tracker, Aktualisieren.
 - [Der Prozess](/prozess): die acht Schritte, jeder Skill mit Zweck und Folgeschritt, ein ganzer Durchlauf.
-- [Nachtbetrieb](/nachtbetrieb): Arbeitspakete ohne Aufsicht umsetzen lassen.
+- [Runner](/runner): Arbeitspakete ohne Aufsicht umsetzen lassen.
 - [Einstellungen](/einstellungen): jede Einstellung mit Wirkung und Vorgabe.
 
 ## Voraussetzungen
@@ -63,9 +63,9 @@ Die Zahl der Dateien entscheidet also nicht: Zwölf Dateien ohne Abwägung sind 
 
 ## Die drei menschlichen Stop-Punkte
 
-**Das GO (Schritt 4).** Du ziehst die Arbeitspakete nach Ready und legst damit fest, was als Nächstes gebaut wird, in welcher Reihenfolge und wie viel auf einmal. Für den Nachtbetrieb kannst du das GO vorab geben: Kennzeichnest du eine fachliche Anforderung oder einen Plan mit dem Label aus `night.chain.variantBLabel`, zieht die [Nacht-Kette](/nachtbetrieb#die-nacht-kette) die daraus geschnittenen Pakete selbst nach Ready und setzt sie um.
+**Das GO (Schritt 4).** Du ziehst die Arbeitspakete nach Ready und legst damit fest, was als Nächstes gebaut wird, in welcher Reihenfolge und wie viel auf einmal. Für den Runner kannst du das GO vorab geben: Kennzeichnest du eine fachliche Anforderung oder einen Plan mit dem Label aus `night.chain.variantBLabel`, zieht die [Kette](/runner#die-kette) die daraus geschnittenen Pakete selbst nach Ready und setzt sie um.
 
-**Der Push (Schritt 7).** Erst `push main` bringt die Commits auf den Test-Server. Jeder Push braucht deine eigene Freigabe; davor kannst du den Umfang noch ändern oder verwerfen, auch die Entscheidungen, die eine Nacht getroffen hat.
+**Der Push (Schritt 7).** Erst `push main` bringt die Commits auf den Test-Server. Jeder Push braucht deine eigene Freigabe; davor kannst du den Umfang noch ändern oder verwerfen, auch die Entscheidungen, die ein Lauf getroffen hat.
 
 **Der Merge (Schritt 8).** Nach deiner Prüfung auf dem Test-Server bringt `merge production` den Stand in die Produktion.
 
@@ -182,7 +182,7 @@ Das Kit setzt die englischen, erkennt die deutschen an offenen Karten und räumt
 | `ziel:umsetzung` | `goal:implementation` |
 | `ziel:push-vorbereitet` | `goal:push-prepared` |
 
-`kit:on-hold` ist neu und hat keinen deutschen Altnamen. Es zeigt am Board, dass eine fachliche Anforderung auf ein äußeres Ereignis wartet; maßgeblich ist die Zeile `Wartet auf Ereignis: <Grund>` im Abschnitt `## Ziel`. Beides setzt `node .claude/kit/board.mjs issue hold <N> --reason "<Grund>"`, beides hebt `issue hold <N> --lift` auf, siehe [Warten auf ein Ereignis](/nachtbetrieb#warten-auf-ein-ereignis).
+`kit:on-hold` ist neu und hat keinen deutschen Altnamen. Es zeigt am Board, dass eine fachliche Anforderung auf ein äußeres Ereignis wartet; maßgeblich ist die Zeile `Wartet auf Ereignis: <Grund>` im Abschnitt `## Ziel`. Beides setzt `node .claude/kit/board.mjs issue hold <N> --reason "<Grund>"`, beides hebt `issue hold <N> --lift` auf, siehe [Warten auf ein Ereignis](/runner#warten-auf-ein-ereignis).
 
 ## Lizenz
 

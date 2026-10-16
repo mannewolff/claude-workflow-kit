@@ -1,19 +1,19 @@
-# Nachtbetrieb
+# Runner
 
-Der Nachtbetrieb kennt zwei Betriebsarten: den **Nachtlauf**, der die Ready-Spalte unbeaufsichtigt abarbeitet, und die **Nacht-Kette**, die aus einer fachlichen Anforderung oder einem fertigen Plan den geprüften Plan und die Arbeitspakete macht. Der [Prüflauf](/prozess#der-pruflauf), der fachliche Anforderungen prüfen lässt, gehört dem Tag und steht auf der Prozessseite. Gepusht wird nachts nie; die drei Stop-Punkte bleiben beim Menschen.
+Der Runner läuft eigenständig, zu jeder Tageszeit, und kennt zwei Betriebsarten: den **Lauf**, der die Ready-Spalte abarbeitet, und die **Kette**, die aus einer fachlichen Anforderung oder einem fertigen Plan den geprüften Plan und die Arbeitspakete macht. Der [Prüflauf](/prozess#der-pruflauf), der fachliche Anforderungen prüfen lässt, steht auf der Prozessseite. Der Runner pusht nie; die drei Stop-Punkte bleiben beim Menschen.
 
-## Der Nachtlauf
+## Der Lauf
 
-Der Nacht-Runner `.claude/kit/night.mjs` startet je Ready-Karte eine frische Headless-Session mit `/implement-next #N`, damit sich kein Kontext ansammelt. Erfolg misst er allein am Board: Karte in In review heißt Erfolg.
+Der Runner `.claude/kit/night.mjs` startet je Ready-Karte eine frische Headless-Session mit `/implement-next #N`, damit sich kein Kontext ansammelt. Erfolg misst er allein am Board: Karte in In review heißt Erfolg.
 
 ```bash
 node .claude/kit/night.mjs --dry-run   # zeigt, was laufen würde, startet nichts
 node .claude/kit/night.mjs             # echter Lauf
 ```
 
-Flags: `--max <N>` (Sessions je Nacht, Vorgabe 10), `--model <id>`, `--timeout-min <N>` (Zeitgrenze je Runde, Vorgabe 60), `--label <name>`, `--verbose no` (ohne Live-Verlaufsprotokoll), `--no-checks-ok`, `--yolo` (alle Permission-Checks aus) und `--help`.
+Flags: `--max <N>` (Sessions je Lauf, Vorgabe 10), `--model <id>`, `--timeout-min <N>` (Zeitgrenze je Runde, Vorgabe 60), `--label <name>`, `--verbose no` (ohne Live-Verlaufsprotokoll), `--no-checks-ok`, `--yolo` (alle Permission-Checks aus) und `--help`.
 
-**Das Abend-Ritual ist das GO.** Du ziehst Karten nach Ready und bringst sie in Reihenfolge; der Runner arbeitet von oben nach unten. Er nimmt nur Karten mit dem Routing-Label `kit:nightrun`, die übrigen bleiben unberührt. `--label none` schaltet den Filter ab. Trägt keine Karte das Label, nennt die Warnung darunter Repo und Tracker-Host des gelesenen Boards: `Board von: <repo> (<host>)`. So fällt ein Start im falschen Repo sofort auf. Karten mit den Titel-Präfixen `[Requirement]`, `[Idea]`, `[Plan]` und `[Human]` gehen ohne Session kommentiert zurück ins Backlog; beim Menschenschritt sagt der Kommentar, dass die Karte wartet und nicht gescheitert ist.
+**Das Sortieren ist das GO.** Du ziehst Karten nach Ready und bringst sie in Reihenfolge; der Runner arbeitet von oben nach unten. Er nimmt nur Karten mit dem Routing-Label `kit:nightrun`, die übrigen bleiben unberührt. `--label none` schaltet den Filter ab. Trägt keine Karte das Label, nennt die Warnung darunter Repo und Tracker-Host des gelesenen Boards: `Board von: <repo> (<host>)`. So fällt ein Start im falschen Repo sofort auf. Karten mit den Titel-Präfixen `[Requirement]`, `[Idea]`, `[Plan]` und `[Human]` gehen ohne Session kommentiert zurück ins Backlog; beim Menschenschritt sagt der Kommentar, dass die Karte wartet und nicht gescheitert ist.
 
 **Abhängigkeiten.** Eine Karte, deren Abhängigkeit noch in Backlog, Ready oder In progress liegt, stellt der Runner mit einem Satz zurück. Darunter steht der Block `Abhaengigkeiten, wie der Nachtlauf sie liest:` mit einer Zeile je Abhängigkeit: Nummer, Titel, erfüllt oder nicht, Herkunft samt Textstelle, dazu gefundene Kreise als `Kreis: #A -> #B -> #A`. Der Probelauf zeigt dieselben Zeilen eingerückt unter der Zeile jedes Pakets. Die Konvention steht unter [/issues](/prozess#issues).
 
@@ -33,7 +33,7 @@ Flags: `--max <N>` (Sessions je Nacht, Vorgabe 10), `--model <id>`, `--timeout-m
 
 Der Hook `bash-check` weist Zeilen ab, in denen eine Pipe oder Umleitung die Ausnahme aufhebt, und unbeaufsichtigt jeden Bash-Aufruf im Hintergrund: Eine Headless-Session hat keinen Folgezug.
 
-### Was am Morgen am Board steht
+### Was danach am Board steht
 
 Jede Karte hat einen Ausgang:
 
@@ -50,11 +50,11 @@ Nach einem Halt geht es mit `/requirement #N` weiter; `kit:clarify` nimmt nur de
 
 **Der Ergebnisstand.** Neben dem Tagesprotokoll `.claude/night-run-<datum>.log` legt jeder Lauf `.claude/night-run-<datum>-<uhrzeit>.json` ab: je Paket Ausgang, Dauer, Commit, Modell, Kosten, Token und Prüfläufe, dazu der Abschluss des Laufs samt Grund eines harten Stopps. Der Block `Prueflaeufe und Zielmarke:` im Bericht nennt, wie viele Pakete unter `night.goalImplementationMin` blieben. Die Protokolle hält der Runner nicht ewig: Zu Beginn jedes Laufs löscht er die Tagesprotokolle `.claude/night-run-<datum>.log` und die Laufordner unter `.claude/protokolle/`, deren letzte Änderung länger zurückliegt als `night.logRetentionDays` Tage (Vorgabe 14), und nennt Anzahl und frei gewordenen Platz in einer Zeile des Tagesprotokolls. Die JSON-Dateien und die `.tsv`-Dateien mit den Kennzahlen bleiben.
 
-**Ein Lauf ohne Arbeit nennt seinen Grund.** Endet eine Nacht ohne Paket, trägt der Lauf-Kopf `noWorkReason` mit dem Satz aus dem Protokoll. Im Nachtlauf: `Ready ist leer — nichts zu tun.`, `Keine der <N> Karten in Ready traegt das Label '<name>' — nichts zu tun.`, `Alle <N> Karten in Ready wurden am Gate zurueckgestellt — …` oder `Die Umsetzung ist belegt: <grund> — der Lauf endet ohne Paket.` Bei `--chain`: `Keine Kette zu fahren: keine Karte traegt das Label '<name>'.` oder `Keine Kette zu fahren: alle <N> gekennzeichneten Karten mit dem Label '<name>' wurden uebersprungen, …`. Jeder Satz führt Label und Zahl mit. Der Rückstellungs-Satz hat Vorrang vor `Ready ist leer`. Trifft kein Fall zu, steht dort `Kein Grund ermittelbar — … bitte melden.` Ein belegter Lock ist ein ruhiger Lauf mit Grund; ein nicht schreibbarer Lock ist ein harter Stopp der Fehlerklasse `umgebung` mit `fehlerText`, ohne `noWorkReason`. Ein Lauf mit Arbeit trägt es nicht.
+**Ein Lauf ohne Arbeit nennt seinen Grund.** Endet ein Lauf ohne Paket, trägt der Lauf-Kopf `noWorkReason` mit dem Satz aus dem Protokoll. Ohne `--chain`: `Ready ist leer — nichts zu tun.`, `Keine der <N> Karten in Ready traegt das Label '<name>' — nichts zu tun.`, `Alle <N> Karten in Ready wurden am Gate zurueckgestellt — …` oder `Die Umsetzung ist belegt: <grund> — der Lauf endet ohne Paket.` Bei `--chain`: `Keine Kette zu fahren: keine Karte traegt das Label '<name>'.` oder `Keine Kette zu fahren: alle <N> gekennzeichneten Karten mit dem Label '<name>' wurden uebersprungen, …`. Jeder Satz führt Label und Zahl mit. Der Rückstellungs-Satz hat Vorrang vor `Ready ist leer`. Trifft kein Fall zu, steht dort `Kein Grund ermittelbar — … bitte melden.` Ein belegter Lock ist ein ruhiger Lauf mit Grund; ein nicht schreibbarer Lock ist ein harter Stopp der Fehlerklasse `umgebung` mit `fehlerText`, ohne `noWorkReason`. Ein Lauf mit Arbeit trägt es nicht.
 
 **Einlieferung ans Board.** Mit `issueTracker: toolbox` liefert der Runner den Ergebnisstand fortschreibend an kanban-kit, die erste Meldung vor dem ersten Paket. Ein harter Stopp geht als abgeschlossener Lauf mit `abortReason` ein. Scheitert die Einlieferung, bleibt die Datei der Rückfall.
 
-**Morgens:** Protokoll lesen, Backlog sichten, `/kit-review`, eigener Test, `push main`.
+**Danach:** Protokoll lesen, Backlog sichten, `/kit-review`, eigener Test, `push main`.
 
 ### Wenn etwas schiefgeht
 
@@ -76,9 +76,9 @@ Endet eine Session an der Zeitgrenze, hängt der Runner den Vermerk `## Nachtlau
 
 Aus dem Abbruch folgt keine Aussage über seine Ursache: Er sagt nicht, ob das Paket zu groß war oder die Sitzung sich verlaufen hat. Die Einheit im Ergebnisstand trägt `zeitlimitBeendet: true`, der Lauf-Kopf `zielUmsetzungMin`, die Marke, mit der dieser Lauf rechnete.
 
-Schon vorher sichtbar ist die Einschätzung am Paket: `/issues` schreibt `Sitzungsumfang: passt | reisst — <ein Satz>` in den Kontext, und der Nachtbericht der Kette schließt mit `- Voraussichtlich über der Sitzungszeitgrenze: #N, #M`.
+Schon vorher sichtbar ist die Einschätzung am Paket: `/issues` schreibt `Sitzungsumfang: passt | reisst — <ein Satz>` in den Kontext, und der Laufbericht der Kette schließt mit `- Voraussichtlich über der Sitzungszeitgrenze: #N, #M`.
 
-Maßstab ist die Zeitgrenze einer Sitzung, `--timeout-min`, Vorgabe 60 Minuten. Gemeint ist nicht `night.chain.implementationMin`, das Budget der ganzen Umsetzungsstufe, und ebenso wenig die Zielmarke `night.goalImplementationMin`.
+Maßstab ist die Zeitgrenze einer Sitzung, `--timeout-min`, Vorgabe 60 Minuten. Gemeint sind nicht `night.chain.implementationMin`, das Budget der Umsetzungsstufe, und die Zielmarke `night.goalImplementationMin`.
 
 ## Das festgefahrene Paket
 
@@ -86,9 +86,9 @@ Scheitert dieselbe Prüfung immer wieder auf dieselbe Weise, endet die Sitzung v
 
 Der Runner beendet die Sitzung, sichert Reste im Stash `nachtrest #<id> <lauf>`, setzt `run:aborted` mit `Grund: Session an einer Pruefung festgefahren` und zieht das Paket ins Backlog. Der Vermerk `## Nachtlauf: an einer Pruefung festgefahren` nennt Prüfung, Fehler, Versuche und Laufzeit. Weiter geht es so: Fehler lesen, Reste mit `git stash apply stash@{<n>}` zurückholen, nachbessern, wieder nach Ready ziehen.
 
-## Die Nacht-Kette
+## Die Kette
 
-Abends geht eine fachliche Anforderung hinein, morgens liegen geprüfter Plan, Arbeitspakete und Bericht an ihr. Unter **Variante A** bleiben die Pakete im Backlog. Unter **Variante B** zieht die Kette sie selbst nach Ready und setzt sie um; dein GO liegt dann in der Kennzeichnung der Karte.
+Eine fachliche Anforderung geht hinein, am Ende liegen geprüfter Plan, Arbeitspakete und Bericht an ihr. Unter **Variante A** bleiben die Pakete im Backlog. Unter **Variante B** zieht die Kette sie selbst nach Ready und setzt sie um; dein GO liegt dann in der Kennzeichnung der Karte.
 
 **Die Geste** ist das Label `kit:night` an einer gegroomten Karte im Backlog. Der Runner verbraucht das Label beim Start: Jedes Setzen erlaubt genau eine Kette, ein Abbruch braucht eine neue Geste. Lege das Label wie alle Kit-Labels je Board einmal an.
 
@@ -140,17 +140,17 @@ node .claude/kit/night.mjs --chain             # echter Lauf
 
 Die Minuten gelten je Stufe, `costUsd` je Kette, `costUsdB` für die Umsetzungsstufe; die Kosten prüft der Runner nach jeder Session, nie mittendrin.
 
-**Der Bericht.** Bei jedem Ausgang hängt die Kette einen Kommentar `## Nachtbericht, Kette <stempel>` an die gekennzeichnete Karte: Ausgang, Stufen, Pakete, alle Entscheidungen der Nacht, die Abdeckung, Kennzahlen. Er endet mit `Dieser Bericht ist Verlauf. Verbindlich fuer die naechste Kette wird eine Entscheidung erst als Satz im Fachplan.` Nimmt der Tracker ihn nicht an, liegt er als `.claude/night-bericht-<F>-<stempel>.md` bereit und wird beim nächsten Start nachgetragen.
+**Der Bericht.** Bei jedem Ausgang hängt die Kette einen Kommentar `## Nachtbericht, Kette <stempel>` an die gekennzeichnete Karte: Ausgang, Stufen, Pakete, alle Entscheidungen des Laufs, die Abdeckung, Kennzahlen. Er endet mit `Dieser Bericht ist Verlauf. Verbindlich fuer die naechste Kette wird eine Entscheidung erst als Satz im Fachplan.` Nimmt der Tracker ihn nicht an, liegt er als `.claude/night-bericht-<F>-<stempel>.md` bereit und wird beim nächsten Start nachgetragen.
 
 **Der Rückweg nach `angehalten`.** Eine offene Frage im Plan hält die Kette erst nach der Prüfung, vor dem Schnitt in Pakete: Die Befunde sind eingearbeitet, die Frage steht weiter unter `## Offene Fragen`, auch wenn erst die Prüfung sie dorthin geschrieben hat. Die Kette schreibt die Frage als `## Kette angehalten` an die gekennzeichnete Karte und setzt `kit:clarify`. Der Weg führt über den Plan: die Antwort als Eintrag unter `## Architektonische Entscheidungen`, `## Offene Fragen` wieder auf `- Keine.`, `kit:clarify` abnehmen, zuletzt `kit:night` an den Plan. Die nächste Kette nimmt ihn als Plan-Auftrag und beginnt bei `pakete`. Hast du mit der Antwort mehr am Plan geändert als den Eintrag selbst, prüft ihn die Kette vorher selbst erneut; eine Prüfung von Hand brauchst du in keinem Fall. Entsteht stattdessen ein neuer Plan, bekommen ältere den Kommentar `Ueberholt durch Plan #M2`.
 
-**Kette und Umsetzung nebeneinander.** Ein Lauf ist genau eine Betriebsart, aber Kette und Nachtlauf dürfen gleichzeitig fahren: die Kette im Worktree, der Nachtlauf in der Hauptkopie. Unter Variante B baut auch die Kette in der Hauptkopie; beide nehmen dafür den Lock `.claude/night-umsetzung.lock`. Die Kette wartet höchstens bis `night.chain.implementationMin` darauf und endet sonst `unvollstaendig`. Eine fachliche Wurzel bearbeitet immer nur ein Runner; er erkennt fremde an ihrem Laufstand mit Lauf-ID.
+**Kette und Umsetzung nebeneinander.** Ein Aufruf ist genau eine Betriebsart, aber Kette und Lauf dürfen gleichzeitig fahren: die Kette im Worktree, der Lauf in der Hauptkopie. Unter Variante B baut auch die Kette in der Hauptkopie; beide nehmen dafür den Lock `.claude/night-umsetzung.lock`. Die Kette wartet höchstens bis `night.chain.implementationMin` darauf und endet sonst `unvollstaendig`. Eine fachliche Wurzel bearbeitet immer nur ein Runner; er erkennt fremde an ihrem Laufstand mit Lauf-ID.
 
 ### Wie weit eine Kette läuft: das Ziel
 
 Ein Ziel-Label an derselben Karte wie `kit:night` legt fest, wo die Kette diesmal endet. Die Stufen bleiben in ihrer Reihenfolge.
 
-| Ziel | letzte Stufe | was morgens dir gehört |
+| Ziel | letzte Stufe | was danach dir gehört |
 |---|---|---|
 | `goal:plan` | `review` | Plan lesen, dann `kit:night` an den Plan. |
 | `goal:packages` | `abdeckung` | Pakete nach Ready ziehen. |
@@ -191,7 +191,7 @@ Das Warten ist keine offene Frage: Es fehlt keine Antwort, sondern ein Ereignis.
 node .claude/kit/board.mjs issue hold <N> --lift
 ```
 
-Das nimmt Zeile und Label ab, nichts sonst. Die nächste Nacht nimmt den Fachplan wieder auf, ohne neue Prüfung und ohne neues `kit:night`. Aufheben tut nur der Mensch, das Kit nie. Wer tagsüber mit `/techplan #N` einen Plan aus einem wartenden Fachplan macht, erfährt das zu Beginn und kann trotzdem weitermachen.
+Das nimmt Zeile und Label ab, nichts sonst. Die nächste Kette nimmt den Fachplan wieder auf, ohne neue Prüfung und ohne neues `kit:night`. Aufheben tut nur der Mensch, das Kit nie. Wer interaktiv mit `/techplan #N` einen Plan aus einem wartenden Fachplan macht, erfährt das zu Beginn und kann trotzdem weitermachen.
 
 ### Allowlist für fremde Reviewer
 
@@ -199,7 +199,7 @@ Ein Reviewer mit `kind: "command"` wird im Review vom Kit gestartet und braucht 
 
 ## Der Laufstand
 
-Der Stand eines Laufs steht am Board, nicht im Prozess. An der Karte hängt höchstens eines der Labels `run:running`, `run:aborted` und `run:waiting`, dazu genau ein Kommentar `## Laufstand`, der bei jedem Wechsel ersetzt wird. Der Kommentar ist Tafel, nicht Verlauf; der Nachtbericht bleibt Verlauf. Die Zeile `Protokoll:` nennt die Datei `.claude/protokolle/<lauf>/<karte>-<stufe>.log` des Schritts.
+Der Stand eines Laufs steht am Board, nicht im Prozess. An der Karte hängt höchstens eines der Labels `run:running`, `run:aborted` und `run:waiting`, dazu genau ein Kommentar `## Laufstand`, der bei jedem Wechsel ersetzt wird. Der Kommentar ist Tafel, nicht Verlauf; der Laufbericht bleibt Verlauf. Die Zeile `Protokoll:` nennt die Datei `.claude/protokolle/<lauf>/<karte>-<stufe>.log` des Schritts.
 
 `run:aborted` heißt technisch abgebrochen. `run:waiting` nennt, worauf die Karte wartet:
 
@@ -234,7 +234,7 @@ Reste eines gescheiterten Pakets holst du mit `git stash apply stash@{<n>}` zur�
 | Spurlos: der Lauf stirbt in der Vorabprüfung | nach der Frist `run:aborted` mit `nicht beendet, letztes Lebenszeichen <zeit>, Frist <n> min` | Ursache beheben, dann `kit:night` |
 | Abgebrochen, obwohl fertig: Zeitbudget gerissen, Ergebnis liegt vor | `run:aborted` mit Grund | `kit:night`: die Stufe gilt als vorgefunden |
 | Ausgang unbekannt: Board kurz nicht erreichbar | „2. Versuch“; scheitert er, die übrigen Karten `run:waiting` mit `nicht begonnen: …` | erneut starten bzw. `kit:night` |
-| Ein Paket hält die Nacht an | nur dieses Paket `run:aborted`, abhängige mit „hängt an #N“, Reste im Stash `nachtrest #<id> <lauf>` | nachbessern, wieder nach Ready |
+| Ein Paket hält den Lauf an | nur dieses Paket `run:aborted`, abhängige mit „hängt an #N“, Reste im Stash `nachtrest #<id> <lauf>` | nachbessern, wieder nach Ready |
 | Ein Paket fährt sich fest | `run:aborted` mit `Grund: Session an einer Pruefung festgefahren` | Vermerk lesen, nachbessern |
 | Verschränkte Protokolle: Kette und Prüflauf gleichzeitig | die Zeile `Protokoll:` nennt `.claude/protokolle/<lauf>/<karte>-<stufe>.log` | die genannte Datei öffnen |
 

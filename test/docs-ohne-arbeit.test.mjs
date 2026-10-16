@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
-const DOKU = lies("docs", "nachtbetrieb.md");
+const DOKU = lies("docs", "runner.md");
 const NIGHT = lies("kit", "night", "grundlagen.mjs") + lies("kit", "texte", "night-grundlagen.mjs");
 
 /** Die Darstellung — ab der fetten Ueberschrift bis zum naechsten Thema. Sie umfasst
@@ -44,7 +44,7 @@ const FALLSAETZE = [
 ];
 
 test("[docs-ohne-arbeit-1] der Absatz existiert und fuehrt den ueberholten Kettensatz nicht mehr", () => {
-  assert.ok(ABSATZ, "der Absatz 'Ein Lauf ohne Arbeit nennt seinen Grund' fehlt in docs/nachtbetrieb.md");
+  assert.ok(ABSATZ, "der Absatz 'Ein Lauf ohne Arbeit nennt seinen Grund' fehlt in docs/runner.md");
   assert.ok(
     !DOKU.includes("Keine Kette zu fahren — nichts zu tun"),
     "der ueberholte Wortlaut 'Keine Kette zu fahren — nichts zu tun' steht noch in der Doku"

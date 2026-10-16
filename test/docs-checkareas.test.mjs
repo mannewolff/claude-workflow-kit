@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
-const NACHT = lies("docs", "nachtbetrieb.md");
+const NACHT = lies("docs", "runner.md");
 const EINRICHTUNG = lies("docs", "einrichtung.md");
 const PROZESS = lies("docs", "prozess.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
@@ -215,7 +215,7 @@ test("die implement-Abschnitte erwaehnen die Pruefung vor dem Commit", () => {
 
 // --- Punkte 8 und 9: Nachtbetrieb ----------------------------------------
 
-test("die Seite Nachtbetrieb nennt beide Stellen, an denen Auslassungen sichtbar sind", () => {
+test("die Seite Runner nennt beide Stellen, an denen Auslassungen sichtbar sind", () => {
   const kapitel = NACHT;
   const absatz = absatzMit(kapitel, /Abschlussbericht/, /Lauf-Bericht|Bericht des Durchgangs/);
   assert.ok(absatz, "kein Absatz nennt Abschlussbericht und Lauf-Bericht gemeinsam");

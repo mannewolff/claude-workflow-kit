@@ -4,7 +4,7 @@
 The kit turns Claude Code into a workshop with a fixed sequence: a requirement passes through eight steps all the way to production. The AI plans, cuts work packages (Arbeitspakete), implements, checks and has its work reviewed. Three decisions stay with you. This page gives the overview and shows where the details are.
 
 ## Concept
-<!-- de: 73d478119b9d -->
+<!-- de: 358990252aaf -->
 
 The kit consists of three parts: seventeen skills, a config in the project and an installer. It is neither a platform nor an agent.
 
@@ -16,7 +16,7 @@ Where to find what:
 
 - [Setup](/en/einrichtung): installation, config, issue tracker, updating.
 - [The process](/en/prozess): the eight steps, every skill with purpose and next step, a complete pass.
-- [Night mode](/en/nachtbetrieb): have work packages implemented unattended.
+- [Runner](/en/runner): have work packages implemented unattended.
 - [Settings](/en/einstellungen): every setting with effect and default.
 
 ## Prerequisites
@@ -67,11 +67,11 @@ The choice follows three rules, in this order:
 So the number of files does not decide: twelve files with nothing to weigh up are lane 3, a single file with two defensible cuts is lane 2. Before every task the AI names its lane.
 
 ## The three human stop points
-<!-- de: 8c9815ba465c -->
+<!-- de: 27ef74dddf46 -->
 
-**The GO (step 4).** You pull the work packages to Ready and thereby decide what gets built next, in which order and how much at once. For night mode you can give the GO in advance: if you mark a business requirement or a plan with the label from `night.chain.variantBLabel`, the [night chain](/en/nachtbetrieb#the-night-chain) (Nacht-Kette) pulls the packages cut from it to Ready itself and implements them.
+**The GO (step 4).** You pull the work packages to Ready and thereby decide what gets built next, in which order and how much at once. For the runner you can give the GO in advance: if you mark a business requirement or a plan with the label from `night.chain.variantBLabel`, the [chain](/en/runner#the-chain) (Kette) pulls the packages cut from it to Ready itself and implements them.
 
-**The push (step 7).** Only `push main` brings the commits to the test server. Every push needs your own approval; before it you can still change or discard the scope, including the decisions a night has made.
+**The push (step 7).** Only `push main` brings the commits to the test server. Every push needs your own approval; before it you can still change or discard the scope, including the decisions a run has made.
 
 **The merge (step 8).** After your check on the test server, `merge production` brings the state to production.
 
@@ -179,7 +179,7 @@ New cards carry the English ones, the kit still recognises the German ones on op
 | `[Mensch]` | `[Human]` |
 
 ### Labels
-<!-- de: 132dc65edbac -->
+<!-- de: 43581c451548 -->
 
 The kit sets the English ones, recognises the German ones on open cards and removes them wherever it would remove the English one.
 
@@ -198,7 +198,7 @@ The kit sets the English ones, recognises the German ones on open cards and remo
 | `ziel:umsetzung` | `goal:implementation` |
 | `ziel:push-vorbereitet` | `goal:push-prepared` |
 
-`kit:on-hold` is new and has no old German name. It shows on the board that a business requirement waits for an external event; what counts is the line `Waiting for event: <reason>` in the section `## Goal`. `node .claude/kit/board.mjs issue hold <N> --reason "<reason>"` sets both, `issue hold <N> --lift` removes both, see [Waiting for an event](/en/nachtbetrieb#waiting-for-an-event).
+`kit:on-hold` is new and has no old German name. It shows on the board that a business requirement waits for an external event; what counts is the line `Waiting for event: <reason>` in the section `## Goal`. `node .claude/kit/board.mjs issue hold <N> --reason "<reason>"` sets both, `issue hold <N> --lift` removes both, see [Waiting for an event](/en/runner#waiting-for-an-event).
 
 ## License
 <!-- de: 2b0491623e20 -->

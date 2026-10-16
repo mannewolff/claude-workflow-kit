@@ -34,21 +34,21 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
-const DOKU = lies("docs", "nachtbetrieb.md");
+const DOKU = lies("docs", "runner.md");
 const HAUPTSEITE = lies("docs", "dokumentation.md");
 const SKILL = lies("skills", "techplan", "SKILL.md");
 
-const ABSCHNITT = "Die Nacht-Kette";
+const ABSCHNITT = "Die Kette";
 
-/** Ein `##`-Abschnitt aus der Seite Nachtbetrieb samt Unterabschnitten, bis zur naechsten
+/** Ein `##`-Abschnitt aus der Seite Runner samt Unterabschnitten, bis zur naechsten
  *  Ueberschrift gleicher Ebene. */
 function dokuAbschnitt(ueberschrift) {
   const idx = DOKU.indexOf(`## ${ueberschrift}\n`);
-  assert.ok(idx >= 0, `Abschnitt '## ${ueberschrift}' fehlt in docs/nachtbetrieb.md`);
+  assert.ok(idx >= 0, `Abschnitt '## ${ueberschrift}' fehlt in docs/runner.md`);
   return DOKU.slice(idx).split(/\n## /)[0];
 }
 
-test("die Doku fuehrt genau einen Abschnitt zur Nacht-Kette und die Einleitung nennt zwei Betriebsarten", () => {
+test("die Doku fuehrt genau einen Abschnitt zur Kette und die Einleitung nennt zwei Betriebsarten", () => {
   assert.equal(DOKU.split(`\n## ${ABSCHNITT}\n`).length - 1, 1);
   assert.match(DOKU.split(/\n\n/)[1], /zwei Betriebsarten/, "die Einleitung der Seite nennt die zwei Betriebsarten nicht");
 });
@@ -218,7 +218,7 @@ test("der dokumentierte Aufruf steht in der Doku: node .claude/kit/night.mjs --c
 // die einen Schalter nennt, den der Runner abweist, schickt den Leser in die Irre.
 test("kein Dokument nennt die entfallenen Modi, Flags oder Routing-Labels", () => {
   const alt = /Nacht-Review|Erzeugungsnacht|--erzeuge|--review-label|kit:nightreview|kit:nightplan|kit:nightissues/;
-  for (const [name, text] of [["docs/nachtbetrieb.md", DOKU], ["docs/dokumentation.md", HAUPTSEITE], ["templates/CLAUDE-workflow.md", VORLAGE], ["skills/techplan/SKILL.md", SKILL]]) {
+  for (const [name, text] of [["docs/runner.md", DOKU], ["docs/dokumentation.md", HAUPTSEITE], ["templates/CLAUDE-workflow.md", VORLAGE], ["skills/techplan/SKILL.md", SKILL]]) {
     assert.doesNotMatch(text, alt, `${name} nennt einen entfallenen Modus`);
   }
 });

@@ -85,18 +85,18 @@ If you already know what the idea wants, you call two of these routes directly: 
 **Next:** `/issue-review #N` on the business plan, then `/groom #N`. Without a PO you start directly with `/techplan`. What a business plan looks like is described under [PO loop](#po-loop-business-and-technical-issues).
 
 ### /issue-review
-<!-- de: 250678412893 -->
+<!-- de: 1ff063c4d2b7 -->
 
 **What for:** Models that did not write the document read a business plan, a plan document (Plandokument) or, on request, a work package and deliver findings as a comment. The calling session incorporates every finding or rejects it with one sentence. At the end it sets the label `review:done` as a trace on the board; a finding of the stop class (Stopp-Klasse) sets `kit:clarify` instead. The skill reads the stage from the title prefix; which roles review is said by `reviewStages`. Details under [Issue review across multiple models](#issue-review-across-multiple-models).
 
 **When:** after `/requirement` on the business plan and after `/techplan` on the plan document. Work packages are reviewed only on explicit request.
 
-**Next:** on the business plan `/groom #N`, on the plan document `/issues #N`. `review:done` is also a prerequisite of the night chain (Nacht-Kette). The label does not release the content: if a document changes substantially afterwards, have it reviewed again.
+**Next:** on the business plan `/groom #N`, on the plan document `/issues #N`. `review:done` is also a prerequisite of the chain (Kette). The label does not release the content: if a document changes substantially afterwards, have it reviewed again.
 
 ### /groom
-<!-- de: 46224877b7cd -->
+<!-- de: f7597cbf7c73 -->
 
-**What for:** The skill decides the open questions of a reviewed business plan with the PO. Every question under `## Offene Fragen an den PO` comes on its own, with recommendation and reason, and you decide exactly this one. After your approval the session writes the answer into the body right away. A question can be deferred. Once all questions are decided, the skill sets the note “Keine” (none); the night chain reads it. `/groom` also adds scenarios to a business plan without them.
+**What for:** The skill decides the open questions of a reviewed business plan with the PO. Every question under `## Offene Fragen an den PO` comes on its own, with recommendation and reason, and you decide exactly this one. After your approval the session writes the answer into the body right away. A question can be deferred. Once all questions are decided, the skill sets the note “Keine” (none); the chain reads it. `/groom` also adds scenarios to a business plan without them.
 
 **When:** after `/issue-review` on the business plan and before `/techplan`. Input is a `[Requirement]` with `review:done` or `kit:clarify`; with `kit:clarify` the stop question comes first. The skill runs only interactively, writes nothing without approval and removes no label.
 
@@ -121,7 +121,7 @@ If you already know what the idea wants, you call two of these routes directly: 
 **Next:** the GO, that is pulling the package to Ready.
 
 ### /issues
-<!-- de: 745f0c86d539 -->
+<!-- de: 0168a8868c1e -->
 
 **What for:** Step 3. The approved plan becomes work packages in the four-section format: context, task, acceptance criterion, dependencies. Every package can be tested on its own and carries in its context back references to plan and business plan as well as `Empfohlenes Modell:` or, with `night.tiers` active, `Aufgabenstufe:` and `Stufengrund:`. From here on the issue is the source of truth. The skill decides uncertainties as an `Entscheidung:` line; `issue check-form` checks every package before it is created.
 
@@ -131,7 +131,7 @@ If you already know what the idea wants, you call two of these routes directly: 
 
 The section `## Abhängigkeiten` contains `Keine.` or references `Issue #N`. Every local `#N` in the section counts as a dependency, also in explanations; only references `owner/repo#N` do not count. A reference line starts with `Issue #N` and carries no further number. When writing, `issue check-form`, `issue create` and `issue update` report every number from text and every reference to a document under `hinweise`; a document is not a work package. Dry run and deferral comment name the origin of each dependency. If packages hold each other, it says `Kreis: #A -> #B -> #A` there, and a package behind it waits for a cycle.
 
-**GO (step 4, human):** You pull the packages that go into this pass to Ready on the board. The AI never pulls to Ready itself, except in the night chain under variant B, for which you gave the GO in advance on the card.
+**GO (step 4, human):** You pull the packages that go into this pass to Ready on the board. The AI never pulls to Ready itself, except in the chain under variant B, for which you gave the GO in advance on the card.
 
 ### /implement-ready
 <!-- de: 0a4d70634316 -->
@@ -143,11 +143,11 @@ The section `## Abhängigkeiten` contains `Keine.` or references `Issue #N`. Eve
 **Next:** `/kit-review`.
 
 ### /implement-next
-<!-- de: 693640258d17 -->
+<!-- de: 7db0d3413e2c -->
 
 **What for:** implement exactly one Ready issue, run the affected checks before the commit, commit locally, move to In review and end. Without an argument the skill takes the top Ready issue. `/implement-next #N` is a binding order: if `#N` is not in Ready, the run ends without a substitute.
 
-**When:** when you want to implement exactly one package. In night mode the runner starts a fresh session with this skill per package.
+**When:** when you want to implement exactly one package. Unattended, the runner (Runner) starts a fresh session with this skill per package.
 
 **Next:** the next package or `/kit-review`.
 
@@ -179,11 +179,11 @@ The section `## Abhängigkeiten` contains `Keine.` or references `Issue #N`. Eve
 **Next:** work in the findings (back to step 5) or `push main`.
 
 ### /push-main
-<!-- de: 0519126b8a25 -->
+<!-- de: 87bf49f3fc83 -->
 
 **What for:** Step 7. The skill pushes the batch of commits to main. It reacts only to the typed trigger phrase `push main`, and every batch needs its own approval. It runs `checks.mjs run --stage push` with `--retry`, that is every check up to the stage `push` without selection by areas; if one wobbles, it asks before the commit. Generation steps from the project's `RELEASING.md`, such as version bump and changelog, it runs before the check run; pre- and post-push steps from it around the push.
 
-**Prepared at night.** A night chain with the goal `goal:push-prepared` starts `/push-main prepare`. This session does not push: in a worktree of its own it runs the generation steps, the full check run of the stage `push` and the commit. The result `gruen`, `gruen-offen` or `rot` lies in `.claude/push-vorbereitung.json`. If you type `push main` in the morning and nothing has changed since, the skill takes over the state with the line `Übernimmt den Stand der Nacht vom <zeitpunkt> (<commit>)` and does not check again. If the project runs the full run in the build service (Build-Dienst), the open item `voller Lauf im Build-Dienst (Prüfzweig <zweig>)` remains at night; in the morning the skill pushes the commit to the check branch (Prüfzweig), waits for the build service and pushes main only on green.
+**Prepared by the runner.** A chain with the goal `goal:push-prepared` starts `/push-main prepare`. This session does not push: in a worktree of its own it runs the generation steps, the full check run of the stage `push` and the commit. The result `gruen`, `gruen-offen` or `rot` lies in `.claude/push-vorbereitung.json`. If you type `push main` afterwards and nothing has changed since, the skill takes over the state with the line `Übernimmt den Stand der Nacht vom <zeitpunkt> (<commit>)` and does not check again. If the project runs the full run in the build service (Build-Dienst), the open item `voller Lauf im Build-Dienst (Prüfzweig <zweig>)` remains from the preparation; afterwards the skill pushes the commit to the check branch (Prüfzweig), waits for the build service and pushes main only on green.
 
 **Emergency route.** If the build service fails, `/push-main emergency` pushes despite a protected main after a full green run on your own machine, only interactively.
 
@@ -247,7 +247,7 @@ git tag -a vX.Y.Z <hash> -m "Release vX.Y.Z" && git push origin vX.Y.Z
 Without a PO the pass starts at `/techplan`. The kit moves plan and business plan to In review as soon as all packages are there; you move them to Done.
 
 ## PO loop: business and technical issues
-<!-- de: d8604542a560 -->
+<!-- de: aa8f43154bdb -->
 
 A product owner wants to accept the requirement on the business side before technology is created. For this the kit separates two kinds of issue:
 
@@ -265,9 +265,9 @@ The flow: `/requirement`, `/issue-review #N`, `/groom #N`, `/techplan #N`, `/iss
   Fachliche Quelle: Issue #N
   ```
 
-  The `Plan:` line names where the plan is found, `Plan-Modell:` in the plan its author. Neither line ever goes into the dependencies: the night runner would read them as an unfulfilled dependency, and since plan and business plan are finished only after their packages, the packages would stay deferred for good.
-- **Four kinds of card never go into implementation.** Business issues (`[Requirement]`), ideas (`[Idea]`), plan documents (`[Plan]`) and human steps (Menschenschritte, `[Human]`) are put back into the backlog with a comment by `/implement-ready`, `/implement-next` and the night runner, without starting a session. A human step is a work package whose task lies outside the repository, for instance a setting, an account, an access or an approval; its comment says that the card is waiting and has not failed.
-- **Life cycle:** The human moves business issues and plan documents out of the backlog only to Done or not at all. For them In review means “everything built, review due”, and this column is set by the kit: as soon as all packages of a plan are in In review or Done, it moves plan document and business requirement there. The night chain (`night.mjs --chain`) reads only the backlog column and places plan and packages there. Whoever moves a business issue out of the backlog before its chain takes it away from the night run: it is then no longer a candidate, without anything failing. The way out is the interactive route with a number, `/techplan #N`, `/issue-review #N`, `/issues #M`; it works regardless of column and marker.
+  The `Plan:` line names where the plan is found, `Plan-Modell:` in the plan its author. Neither line ever goes into the dependencies: the runner would read them as an unfulfilled dependency, and since plan and business plan are finished only after their packages, the packages would stay deferred for good.
+- **Four kinds of card never go into implementation.** Business issues (`[Requirement]`), ideas (`[Idea]`), plan documents (`[Plan]`) and human steps (Menschenschritte, `[Human]`) are put back into the backlog with a comment by `/implement-ready`, `/implement-next` and the runner, without starting a session. A human step is a work package whose task lies outside the repository, for instance a setting, an account, an access or an approval; its comment says that the card is waiting and has not failed.
+- **Life cycle:** The human moves business issues and plan documents out of the backlog only to Done or not at all. For them In review means “everything built, review due”, and this column is set by the kit: as soon as all packages of a plan are in In review or Done, it moves plan document and business requirement there. The chain (`night.mjs --chain`) reads only the backlog column and places plan and packages there. Whoever moves a business issue out of the backlog before its chain takes it away from the runner: it is then no longer a candidate, without anything failing. The way out is the interactive route with a number, `/techplan #N`, `/issue-review #N`, `/issues #M`; it works regardless of column and marker.
 
 ### Scenarios in the business plan
 <!-- de: ec6ae8c0bcf8 -->
@@ -295,7 +295,7 @@ A scenario is complete with a title and at least one line each of `Angenommen`, 
 `issue check-form` and `issue create` reject a business plan that lacks the section, whose section is empty or carries no complete scenario; the message shows the form of a scenario. For cards on the board the obligation applies from the cut-off date [`scenariosFrom`](/en/einstellungen); `node .claude/kit/board.mjs scenarios baseline` names the matching value. Without scenarios no technical plan is created; `/groom` adds them.
 
 ## History
-<!-- de: 58a216d1a368 -->
+<!-- de: eef1bf8d07a4 -->
 
 Before `/requirement` writes a business plan or `/techplan` a plan, the kit searches for earlier business plans on the same subject, archived ones included. That way an earlier decision is not silently overridden. The search (Vorgeschichte) locks nothing, it only makes things visible.
 
@@ -315,7 +315,7 @@ The search terms come from the title and goal of the new requirement. The plan a
 - `Keine Vorgeschichte gelesen: <Grund>` (no history read) — the archive was not reachable; the document arises anyway.
 - `Weitere Treffer: <Zahl>` (further hits) — there were more hits than the document names.
 
-**A contradiction stops nothing.** If the new requirement contradicts an earlier PO answer or an earlier non-goal, the contradiction stands with quote and reference in the history section, not under the open questions. At night, too, the night chain (Nacht-Kette) keeps running; the night report names the contradiction.
+**A contradiction stops nothing.** If the new requirement contradicts an earlier PO answer or an earlier non-goal, the contradiction stands with quote and reference in the history section, not under the open questions. Unattended, too, the chain keeps running; the run report (Laufbericht) names the contradiction.
 
 ## Issue review across multiple models
 <!-- de: fe75dcb46178 -->
@@ -323,7 +323,7 @@ The search terms come from the title and goal of the new requirement. The plan a
 A document is the source of truth for the next step. An error in it propagates, and its author does not see it, because they have the context in their head. `/issue-review` has models read it that did **not** write the document. They deliver findings; the calling session incorporates each one or rejects it with one sentence. Findings are support, not a gate.
 
 ### Three review stages
-<!-- de: 7481454964ea -->
+<!-- de: 1e7a9e3b1bb6 -->
 
 Which stage applies is decided by the title prefix:
 
@@ -333,7 +333,7 @@ Which stage applies is decided by the title prefix:
 | `plan` | a plan document `[Plan]` from [/techplan](#techplan) | `Plan-Review: …` |
 | `issue` | a work package from [/issues](#issues) or a `[Task]` from [/task](#task); `[Task]` is not a document prefix | `Issue-Review: …` |
 
-**The call is always `/issue-review #N`.** There is deliberately no command of its own per stage; the skill reads it from the title prefix. That applies interactively just as in night mode, only interactively the session asks before writing. Without a number the skill takes all business plans and plan documents from the backlog that do not yet carry a proof of their stage. It reviews work packages only with a number; what a package does wrong is caught by the checks before the commit and by the code review. It never reviews an `[Idea]`.
+**The call is always `/issue-review #N`.** There is deliberately no command of its own per stage; the skill reads it from the title prefix. That applies interactively just as in the runner, only interactively the session asks before writing. Without a number the skill takes all business plans and plan documents from the backlog that do not yet carry a proof of their stage. It reviews work packages only with a number; what a package does wrong is caught by the checks before the commit and by the code review. It never reviews an `[Idea]`.
 
 **Where the proof is:** for the work package in the section `## Kontext`, for the business requirement in the section `## Ziel` next to `Autor-Modell:`, for the plan document before `## Ziel` next to `Plan-Modell:`. It is a trace, not a release.
 
@@ -346,9 +346,9 @@ How many reviewers carry which roles is said by [`reviewStages`](/en/einstellung
 **Form before content.** The yardstick of every stage is its format: the sections of the business plan, the six headings of the plan, the four sections of the work package. The form is not checked by a model but by `issue check-form`; the session fixes violations before a reviewer starts.
 
 ### What you see afterwards
-<!-- de: 3379ed610e07 -->
+<!-- de: 9a34753e2bde -->
 
-On the document there is a comment `## <Stufe>-Review, Runde 1` (review, round 1) with the findings and a comment `## Einarbeitung, Runde 1` (incorporation, round 1) with the list adopted or rejected including the reason. The new text is in the body, with the proof line of the stage, plus the label `review:done`. If a finding raises a question of the stop class (Stopp-Klasse), a business plan or a work package carries `kit:clarify` instead and the question as a comment. On the plan document the question stands, when unattended, for instance in the night chain, as an entry under `## Offene Fragen` of the plan; the other findings are worked in, and `review:done` is set. If not a single reviewer ran, the skill does not set `review:done`. There is no second round.
+On the document there is a comment `## <Stufe>-Review, Runde 1` (review, round 1) with the findings and a comment `## Einarbeitung, Runde 1` (incorporation, round 1) with the list adopted or rejected including the reason. The new text is in the body, with the proof line of the stage, plus the label `review:done`. If a finding raises a question of the stop class (Stopp-Klasse), a business plan or a work package carries `kit:clarify` instead and the question as a comment. On the plan document the question stands, when unattended, for instance in the chain, as an entry under `## Offene Fragen` of the plan; the other findings are worked in, and `review:done` is set. If not a single reviewer ran, the skill does not set `review:done`. There is no second round.
 
 A Claude reviewer runs as the agent `kit-pruefer` and may only read. A third-party reviewer such as Codex runs via its command with its tool's read-only switch; without a known switch it does not start.
 
@@ -412,7 +412,7 @@ node .claude/kit/checks.mjs run --since "$(git merge-base HEAD origin/<mainBranc
 **Empty anchor.** If `git merge-base` fails, for instance without `origin` or without a common ancestor, the call becomes `--since ""`. The command treats an empty anchor like one that cannot be resolved and runs the full scope, never no check at all.
 
 ## The check run
-<!-- de: 527e753dba37 -->
+<!-- de: 74ac27a5b0a4 -->
 
 The check run (Prüflauf) has several business requirements reviewed one after another during the day, without anyone sitting next to it. For each card a session `/issue-review #N` runs. Afterwards every card shows where you stand: reviewed, or a decision is waiting. Everything outside the stop class was decided by the review and recorded in the document.
 
@@ -432,23 +432,23 @@ The run never removes `kit:clarify`. Only a human may do that, otherwise a run w
 
 | Result | Trace on the card | next |
 |---|---|---|
-| reviewed | `Fachplan-Review:` in the body, label `review:done`, findings and incorporation as comments | nothing; the card can go into the night chain |
+| reviewed | `Fachplan-Review:` in the body, label `review:done`, findings and incorporation as comments | nothing; the card can go into the chain |
 | pending decision | `kit:clarify` and the question as a comment; the text stays unchanged | answer the question and remove `kit:clarify` |
 | incomplete | comment `## Pruefung unvollstaendig` (review incomplete) with reason, step reached and route forward | run `/issue-review #N` by hand |
 
 **Budgets.** Time per reviewer session and cost per run are in [`checkRun`](/en/einstellungen). Once the cost budget is exhausted, the remaining cards stay and keep their label.
 
-**What the run does not do.** It moves no card between columns, pulls nothing to Ready and sets no chain label. The chain label for the night chain is still set by a human.
+**What the run does not do.** It moves no card between columns, pulls nothing to Ready and sets no chain label. The chain label for the chain is still set by a human.
 
 With the tracker `local` the board lies in the repo, and the sessions write to `issues/` of the main copy. These changes to the cards are the result and not a leftover.
 
 ## Statements: believe instead of checking
-<!-- de: ea25f7012643 -->
+<!-- de: af702be4812b -->
 
 If you tell the session something about a fact, such as what is running right now, that is a statement (Mitteilung) and not an order. The session takes it over unchecked and verifies it with no tool. It answers in a fixed form that names scope and consequence:
 
 ```
-Mitteilung übernommen, ungeprüft — gilt, bis du Entwarnung gibst. Folge: Ich starte keinen zweiten Nachtlauf.
+Mitteilung übernommen, ungeprüft — gilt, bis du Entwarnung gibst. Folge: Ich starte keinen zweiten Lauf.
 ```
 
-This makes a wrong classification visible at once. A statement does not replace a mandatory check, and a quoted trigger phrase does not trigger a push. At night there are no statements. The binding wording is in `CLAUDE-workflow.md`, section “Mitteilungen des Menschen”.
+This makes a wrong classification visible at once. A statement does not replace a mandatory check, and a quoted trigger phrase does not trigger a push. Unattended, there are no statements. The binding wording is in `CLAUDE-workflow.md`, section “Mitteilungen des Menschen”.

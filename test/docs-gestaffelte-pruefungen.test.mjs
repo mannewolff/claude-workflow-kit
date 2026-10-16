@@ -99,11 +99,11 @@ test("der Abschnitt sagt, dass ein fehlendes Feld die Paketstufe bedeutet", () =
 });
 
 // Eine Config, in der keine Pruefung die Paketstufe traegt, ist gueltig — und
-// nachts trotzdem ein Start ohne Gate. Wer das erst am abgewiesenen Nachtlauf
+// fuer den Runner trotzdem ein Start ohne Gate. Wer das erst am abgewiesenen Lauf
 // merkt, sucht den Grund in der falschen Datei.
 test("der Abschnitt verlangt mindestens eine Pruefung auf der Paketstufe", () => {
   const abschnitt = staffelAbschnitt();
-  assert.match(abschnitt, /Nacht|nächtlich/i, "der Nachtbetrieb als Grund fehlt");
+  assert.match(abschnitt, /Runner/, "der Runner als Grund fehlt");
   assert.match(abschnitt, /Gate|Prüfung vor dem Commit/i, "es steht nicht, dass die Umsetzung sonst kein Gate hat");
 });
 
@@ -135,11 +135,11 @@ test("die Stufentabelle der Prozessseite ordnet jeder Stufe ihre Skills zu", () 
 });
 
 // Die Stufen der Pflichtpruefungen sind nicht die Pruefstufen des Reviews und
-// nicht die Stufen der Nacht-Kette. Der Begriff ist im Kit dreifach besetzt.
+// nicht die Stufen der Kette. Der Begriff ist im Kit dreifach besetzt.
 test("der Abschnitt grenzt die Stufe gegen die anderen Stufenbegriffe ab", () => {
   const abschnitt = staffelAbschnitt();
   assert.match(abschnitt, /`reviewStages`/, "die Abgrenzung gegen reviewStages fehlt");
-  assert.match(abschnitt, /Nacht-Kette|Aufgabenstufe/, "die Abgrenzung gegen die Stufen der Nacht-Kette fehlt");
+  assert.match(abschnitt, /Kette|Aufgabenstufe/, "die Abgrenzung gegen die Stufen der Kette fehlt");
 });
 
 // Issue #1000: Die Freigabe prueft nur, was `push main` nicht geprueft hat — und wer

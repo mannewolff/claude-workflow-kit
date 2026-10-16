@@ -2,7 +2,7 @@
 // Dokumentation (Issue #1255, Plan #1243, fachliche Quelle #1192).
 //
 // Das Verhalten bauen #1249, #1251, #1253 und #1254; dieses Paket beschreibt es. Geprueft
-// werden `templates/CLAUDE-workflow.md` und `docs/nachtbetrieb.md` — die Vorlage und nicht
+// werden `templates/CLAUDE-workflow.md` und `docs/runner.md` — die Vorlage und nicht
 // die Kopie unter `.claude/`, die Installer-Ausgabe ist (siehe docs-laufstand.test.mjs).
 //
 // Die Werte, die das Werkzeug an die Karte schreibt (Ziel-Labels, Prueferzahl, die Saetze
@@ -24,7 +24,7 @@ import { englisch } from "./helpers/labels.mjs";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const lies = (...p) => readFileSync(join(repoRoot, ...p), "utf-8");
 
-const DOKU = lies("docs", "nachtbetrieb.md");
+const DOKU = lies("docs", "runner.md");
 const VORLAGE = lies("templates", "CLAUDE-workflow.md");
 
 /** Der Text eines Abschnitts bis zur naechsten Ueberschrift derselben oder hoeheren Ebene. */
@@ -101,7 +101,7 @@ test("[ziel-3] der Nachtbetrieb-Abschnitt der Vorlage beschreibt Ziel, Grenze un
   assert.deepEqual(fehlend(NACHT_VORLAGE, NACHT_ANGABEN), [], "der Nachtbetrieb-Abschnitt nennt nicht alles");
 });
 
-const KETTE_DOKU = abschnitt(DOKU, "## Die Nacht-Kette");
+const KETTE_DOKU = abschnitt(DOKU, "## Die Kette");
 const ZIEL_DOKU = abschnitt(KETTE_DOKU, "### Wie weit eine Kette läuft: das Ziel");
 const LAUFSTAND_DOKU = abschnitt(DOKU, "## Der Laufstand");
 const PUSH_DOKU = abschnitt(lies("docs", "prozess.md"), "### /push-main");
@@ -144,7 +144,7 @@ const PUSH_ANGABEN = [
   ["den Build-Dienst-Punkt als offene Pruefung (E17)", /voller Lauf im Build-Dienst \(Prüfzweig <zweig>\)/],
 ];
 
-test("[ziel-4] die Nacht-Kette hat den Unterabschnitt zum Ziel mit Tabelle, Prueferzahl und Ablehnungen", () => {
+test("[ziel-4] die Kette hat den Unterabschnitt zum Ziel mit Tabelle, Prueferzahl und Ablehnungen", () => {
   assert.ok(ZIEL_DOKU, "der Unterabschnitt '### Wie weit eine Kette läuft: das Ziel' fehlt");
   assert.deepEqual(fehlend(ZIEL_DOKU, ZIEL_ANGABEN), [], "der Unterabschnitt nennt nicht alles");
 });

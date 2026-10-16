@@ -4,13 +4,13 @@
 A work package (Arbeitspaket) checks what it touches, not the whole suite. This page shows how a project assigns its checks (Prüfungen) for that; the basics are in the [documentation](/en/dokumentation).
 
 ## Setting up and maintaining areas
-<!-- de: 4ffff97756cb -->
+<!-- de: c1129abd0ed1 -->
 
 1. **Get the suggestion:** `node .claude/kit/checks.mjs areas suggest` measures which files every test loads or mentions, in JavaScript, TypeScript and Java. It names per area the patterns together with the tests and files behind them, and per check command the areas that should trigger it. Without a config, the folders of the test files form the groups.
 2. **Read:** Trace every area through the tests named. The suggestion gives reasons for merging and splitting as well; a command whose tests load separate areas is named with the test files per part, without a command line.
 3. **Adopt:** The suggestion never changes the config. What fits, the human enters into `checkAreas` and into the `areas` of the `buildChecks`, fully, partly or not at all.
 4. **Scaffold paths:** If many tests only mention a path without loading it, the suggestion names it as a candidate for `nurGeruest`. An entry carries a pattern and a reason; the measurement then does not count the path as loaded.
-5. **Compare:** `node .claude/kit/checks.mjs areas compare` compares the config with the measurement. If a test loads a file whose area its command does not trigger, that is a gap and a risk; an area none of the tests loads is only a notice. The same comparison runs as `hinweis:` in the check run of every package that creates or changes a test file, and at night the night report collects it. It never stops and changes nothing.
+5. **Compare:** `node .claude/kit/checks.mjs areas compare` compares the config with the measurement. If a test loads a file whose area its command does not trigger, that is a gap and a risk; an area none of the tests loads is only a notice. The same comparison runs as `hinweis:` in the check run of every package that creates or changes a test file, and in the runner the run report (Laufbericht) collects it. It never stops and changes nothing.
 6. **Cannot be assessed:** If it cannot be determined which tests a command runs, for example with another language, it keeps its areas and is shown with a reason as "nicht beurteilbar" (cannot be assessed). Linters and commands with `always` count as "nicht aus der Auswertung abgeleitet" (not derived from the evaluation). A missing measurement is never an all-clear.
 
 ## Parts and areas

@@ -25,7 +25,7 @@ const themeDe: DefaultTheme.Config = {
         { text: "Überblick", link: "/dokumentation" },
         { text: "Einrichtung", link: "/einrichtung" },
         { text: "Der Prozess", link: "/prozess" },
-        { text: "Nachtbetrieb", link: "/nachtbetrieb" },
+        { text: "Runner", link: "/runner" },
         { text: "Einstellungen", link: "/einstellungen" },
       ],
     },
@@ -75,12 +75,12 @@ const themeDe: DefaultTheme.Config = {
       ],
     },
     {
-      text: "Nachtbetrieb",
+      text: "Runner",
       items: [
-        { text: "Der Nachtlauf", link: "/nachtbetrieb" },
-        { text: "Die Nacht-Kette", link: "/nachtbetrieb#die-nacht-kette" },
-        { text: "Der Laufstand", link: "/nachtbetrieb#der-laufstand" },
-        { text: "Aufwand des Prozesses", link: "/nachtbetrieb#aufwand-des-prozesses" },
+        { text: "Der Lauf", link: "/runner" },
+        { text: "Die Kette", link: "/runner#die-kette" },
+        { text: "Der Laufstand", link: "/runner#der-laufstand" },
+        { text: "Aufwand des Prozesses", link: "/runner#aufwand-des-prozesses" },
       ],
     },
     {
@@ -120,7 +120,7 @@ const themeEn: DefaultTheme.Config = {
         { text: "Overview", link: "/en/dokumentation" },
         { text: "Setup", link: "/en/einrichtung" },
         { text: "The process", link: "/en/prozess" },
-        { text: "Night mode", link: "/en/nachtbetrieb" },
+        { text: "Runner", link: "/en/runner" },
         { text: "Settings", link: "/en/einstellungen" },
       ],
     },
@@ -170,12 +170,12 @@ const themeEn: DefaultTheme.Config = {
       ],
     },
     {
-      text: "Night mode",
+      text: "Runner",
       items: [
-        { text: "The night run", link: "/en/nachtbetrieb" },
-        { text: "The night chain", link: "/en/nachtbetrieb#the-night-chain" },
-        { text: "The run status", link: "/en/nachtbetrieb#the-run-status" },
-        { text: "Effort of the process", link: "/en/nachtbetrieb#effort-of-the-process" },
+        { text: "The run", link: "/en/runner" },
+        { text: "The chain", link: "/en/runner#the-chain" },
+        { text: "The run status", link: "/en/runner#the-run-status" },
+        { text: "Effort of the process", link: "/en/runner#effort-of-the-process" },
       ],
     },
     {

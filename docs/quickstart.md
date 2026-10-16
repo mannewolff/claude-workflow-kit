@@ -67,6 +67,6 @@ Ist eine Anforderung mehr als eine Kleinigkeit, gibt es aber nichts abzuwägen, 
 
 Das Ziehen nach Ready, der Push, der Merge. Diese drei automatisiert das Kit nicht.
 
-## Nachts arbeiten lassen
+## Den Runner arbeiten lassen
 
-Abends sortierst du Karten in Ready und startest `node .claude/kit/night.mjs`. Der Nacht-Runner setzt jede Karte in einer frischen Sitzung um, committet lokal und pusht nie. Mehr unter [Nachtbetrieb](./nachtbetrieb.md).
+Du sortierst Karten in Ready und startest `node .claude/kit/night.mjs`. Der Runner setzt jede Karte in einer frischen Sitzung um, committet lokal und pusht nie. Mehr unter [Runner](./runner.md).

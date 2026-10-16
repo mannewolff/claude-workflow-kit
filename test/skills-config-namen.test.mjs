@@ -19,7 +19,7 @@ import { SCHLUESSEL } from "../kit/board/config-namen.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-const SEITEN = ["nachtbetrieb", "einrichtung", "prozess", "dokumentation"];
+const SEITEN = ["runner", "einrichtung", "prozess", "dokumentation"];
 const DATEIEN = [
   ...["CLAUDE-workflow.md", "CLAUDE-Plan.md", "CLAUDE-Fachplan.md"].flatMap((n) => [`templates/${n}`, `en/templates/${n}`]),
   ...["requirement", "techplan", "issue-review", "issues", "task", "push-main", "merge-production",

@@ -41,7 +41,7 @@ Ein bestehendes Projekt schaltet den Schutz mit `node install.mjs --protection` 
 - die Skills unter `.claude/skills/`,
 - `.claude/workflow.config.json` mit deinen Antworten,
 - `CLAUDE-workflow.md` mit der Prozessbeschreibung und die Gate-Register `CLAUDE-Fachplan.md` und `CLAUDE-Plan.md`,
-- die Werkzeuge unter `.claude/kit/`: Board-Adapter `board.mjs`, Prüflauf `checks.mjs`, Nacht-Runner `night.mjs` und ihre Teile,
+- die Werkzeuge unter `.claude/kit/`: Board-Adapter `board.mjs`, Prüflauf `checks.mjs`, Runner `night.mjs` und ihre Teile,
 - bei projektlokaler Installation den Block in `.gitignore`, die Hooks in `.claude/settings.json` und das Commit-Gate unter `.githooks/`.
 
 Alles unter `.claude/` außer der Config ist Generat: Der nächste Installer-Lauf schreibt es neu. Es gehört deshalb nicht ins Repo. Der Block in `.gitignore` beginnt so:
@@ -58,13 +58,13 @@ Die erste Zeile muss `.claude/*` lauten, nicht `.claude/`: In ein ausgeschlossen
 
 **Abschalten.** Den Eintrag aus dem `hooks`-Block löschen. Die Datei ist nicht versioniert, die Entscheidung gilt für deine Maschine. Der nächste Installer-Lauf trägt ihn wieder ein; den Melder stellst du dauerhaft still, indem du ihm das Token nimmst.
 
-**Die bekannte Lücke: Worktrees.** Ein frisch angelegter `git worktree` trägt nur versionierte Dateien, also weder `settings.json` noch `.claude/kit/`. Eine Sitzung darin meldet nichts und hat keinen Hook. Abhilfe: beides aus dem Hauptarbeitsbaum hinüberkopieren. Die Worktrees der Nacht-Kette meldet der Runner selbst.
+**Die bekannte Lücke: Worktrees.** Ein frisch angelegter `git worktree` trägt nur versionierte Dateien, also weder `settings.json` noch `.claude/kit/`. Eine Sitzung darin meldet nichts und hat keinen Hook. Abhilfe: beides aus dem Hauptarbeitsbaum hinüberkopieren. Die Worktrees der Kette meldet der Runner selbst.
 
 ### Geschützte Dateien
 
 `.claude/settings.json`, `.claude/settings.local.json` und `.claude/hooks/` darf nur ein Mensch schreiben; Claude Code weist jeden Schreibzugriff darauf ab. Ein Arbeitspaket, das eine davon ändern muss, hält an. Das Label `kit:protected` ist wie `review:done` je Board einmal anzulegen; es zeigt anders als `kit:clarify` keine offene Frage, sondern eine wartende Handlung, und abnehmen darf es nur der Mensch. Der Halt-Kommentar beginnt mit `## Geschuetzte Datei` und nennt jede Datei samt der Zeile aus dem Paket.
 
-Schon beim Schreiben eines Pakets prüft `issue check-form` die Formgates I7 bis I9: Die Aufgabe nennt mindestens eine Datei (I7), keine davon ist geschützt (I8), und sie nennt die Quelle statt der installierten Kopie unter `.claude/kit/` (I9). Welche geschützten Dateien ein Paket nennt und wie der Halt-Kommentar lautet, liefert `issue check-protected <id>`; mit `--path <pfad>` kommt ein beim Schreiben abgewiesener Pfad dazu. Im Nachtbericht steht ein solcher Halt mit der Art `geschuetzt`, getrennt von den offenen Fragen.
+Schon beim Schreiben eines Pakets prüft `issue check-form` die Formgates I7 bis I9: Die Aufgabe nennt mindestens eine Datei (I7), keine davon ist geschützt (I8), und sie nennt die Quelle statt der installierten Kopie unter `.claude/kit/` (I9). Welche geschützten Dateien ein Paket nennt und wie der Halt-Kommentar lautet, liefert `issue check-protected <id>`; mit `--path <pfad>` kommt ein beim Schreiben abgewiesener Pfad dazu. Im Laufbericht steht ein solcher Halt mit der Art `geschuetzt`, getrennt von den offenen Fragen.
 
 **Was du dann tust.** Die Änderung an der Datei selbst vornehmen und `kit:protected` abnehmen. Beim nächsten Anlauf gilt das Paket als freigegeben.
 
@@ -83,7 +83,7 @@ Zwei versionierte Dateien tragen es: `.githooks/pre-commit` ruft `.githooks/gate
 3. Mit eigenem Hook-Manager hängt das Projekt den Aufruf selbst ein.
 4. Die Zusicherung gilt je committeter Datei, nicht für den Stand als Ganzes. Wer `A` committet und das zugehörige `B` liegen lässt, erzeugt einen Stand, den niemand geprüft hat.
 
-Nachts wertet der Nacht-Runner den Nachweis zusätzlich nach jeder Runde; fehlt er oder ist er rot, gilt die Runde als Fehlschlag. Interaktiv greift niemand, dort bleibt das Gate die Sicherung.
+Unbeaufsichtigt wertet der Runner den Nachweis zusätzlich nach jeder Runde; fehlt er oder ist er rot, gilt die Runde als Fehlschlag. Interaktiv greift niemand, dort bleibt das Gate die Sicherung.
 
 ### Welchen Stand hat meine Installation?
 
@@ -92,7 +92,7 @@ node .claude/kit/board.mjs --version
 node .claude/kit/night.mjs --version
 ```
 
-Beide nennen ihre Kit-Version; die aktuelle nennt `node install.mjs --version`. Liegt deine Kopie zurück, lässt du den Installer erneut laufen. Laufen die beiden Dateien auseinander, warnt der Nacht-Runner beim Start.
+Beide nennen ihre Kit-Version; die aktuelle nennt `node install.mjs --version`. Liegt deine Kopie zurück, lässt du den Installer erneut laufen. Laufen die beiden Dateien auseinander, warnt der Runner beim Start.
 
 ## Was ist der Vault?
 
@@ -199,7 +199,7 @@ Ist ein Lauf der Paketstufe rot und `formatFixCommand` gesetzt, fährt `checks.m
 
 **Kurze Freigabe.** Lange Prüfungen auf die Stufe `push` statt `merge` stellen; der Preis: Jedes `push main` dauert um sie länger.
 
-Mindestens eine Prüfung gehört auf die Paketstufe, sonst hat ein Arbeitspaket kein Gate, und der Nachtbetrieb startet nicht. `stage` ist weder eine der `reviewStages` noch die Aufgabenstufe der Nacht-Kette.
+Mindestens eine Prüfung gehört auf die Paketstufe, sonst hat ein Arbeitspaket kein Gate, und der Runner startet nicht. `stage` ist weder eine der `reviewStages` noch die Aufgabenstufe der Kette.
 
 ### Abschluss und Veröffentlichen: `notAtCompletion`
 
@@ -264,7 +264,7 @@ Labels und Titel-Präfixe haben in jedem Projekt den englischen Namen.
 |-------|------|
 | Frage wartet auf den Menschen | `kit:clarify` |
 | geschützte Datei wartet auf den Menschen | `kit:protected` |
-| Variante B der Nacht-Kette | `kit:carry-through` |
+| Variante B der Kette | `kit:carry-through` |
 | Prüflauf | `kit:check` |
 | Lauf läuft, abgebrochen, wartet | `run:running`, `run:aborted`, `run:waiting` |
 | Spur der Prüfung | `review:done` |
@@ -314,7 +314,7 @@ Zwei unabhängige Einstellungen: `codeHost` für Repo und Pull Requests, `issueT
 
 Das Board braucht fünf Spalten: Backlog, Ready, In progress, In review, Done. `issue list --status ready` liefert die Karten in der Reihenfolge der Spalte, oben zuerst; per Drag & Drop bestimmst du, was als Nächstes umgesetzt wird. Nur der Tracker `local` sortiert nach Nummer.
 
-Die Labels des Kits legst du je Board einmal an, mindestens `kit:clarify`, `kit:protected` und `review:done`, für die Nacht-Kette dazu deren Labels aus der Tabelle oben.
+Die Labels des Kits legst du je Board einmal an, mindestens `kit:clarify`, `kit:protected` und `review:done`, für die Kette dazu deren Labels aus der Tabelle oben.
 
 ### Herkunft am Board: `--derived-from`
 

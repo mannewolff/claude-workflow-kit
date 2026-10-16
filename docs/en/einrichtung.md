@@ -39,12 +39,12 @@ An existing project switches protection on later with `node install.mjs --protec
 **What you see afterwards.** Restart Claude Code. The seventeen skills appear under `/help`, and `/session-start` reports the state of the project.
 
 ### What the installer writes
-<!-- de: 5860da125e14 -->
+<!-- de: 810c9c44b3d4 -->
 
 - the skills under `.claude/skills/`,
 - `.claude/workflow.config.json` with your answers,
 - `CLAUDE-workflow.md` with the process description and the gate registers `CLAUDE-Fachplan.md` and `CLAUDE-Plan.md`,
-- the tools under `.claude/kit/`: board adapter (Board-Adapter) `board.mjs`, check run (Prüflauf) `checks.mjs`, night runner (Nacht-Runner) `night.mjs` and their parts,
+- the tools under `.claude/kit/`: board adapter (Board-Adapter) `board.mjs`, check run (Prüflauf) `checks.mjs`, runner (Runner) `night.mjs` and their parts,
 - with a project-local installation, the block in `.gitignore`, the hooks in `.claude/settings.json` and the commit gate under `.githooks/`.
 
 Everything under `.claude/` except the config is generated: the next installer run writes it anew. It therefore does not belong in the repo. The block in `.gitignore` begins like this:
@@ -61,19 +61,19 @@ The first line must read `.claude/*`, not `.claude/`: git does not descend into 
 
 **Switching off.** Delete the entry from the `hooks` block. The file is not under version control, so the decision applies to your machine. The next installer run enters it again; you silence the reporter permanently by taking away its token.
 
-**The known gap: worktrees.** A freshly created `git worktree` carries only versioned files, so neither `settings.json` nor `.claude/kit/`. A session in it reports nothing and has no hook. Remedy: copy both over from the main working tree. The night chain's worktrees are reported by the runner itself.
+**The known gap: worktrees.** A freshly created `git worktree` carries only versioned files, so neither `settings.json` nor `.claude/kit/`. A session in it reports nothing and has no hook. Remedy: copy both over from the main working tree. The worktrees of the chain (Kette) are reported by the runner itself.
 
 ### Protected files
-<!-- de: 66bd03f73a0c -->
+<!-- de: 46247ea1a23d -->
 
 `.claude/settings.json`, `.claude/settings.local.json` and `.claude/hooks/` may only be written by a human; Claude Code rejects every write access to them. A work package (Arbeitspaket) that has to change one of them stops. The label `kit:protected`, like `review:done`, has to be created once per board; unlike `kit:clarify` it shows not an open question but a waiting action, and only the human may remove it. The halt comment begins with `## Geschuetzte Datei` and names every file together with the line from the package.
 
-Already when a package is written, `issue check-form` checks the form gates I7 to I9: the task names at least one file (I7), none of them is protected (I8), and it names the source instead of the installed copy under `.claude/kit/` (I9). Which protected files a package names and what the halt comment says is supplied by `issue check-protected <id>`; with `--path <pfad>` a path rejected while writing is added. In the night report such a halt appears with the kind `geschuetzt`, separate from the open questions.
+Already when a package is written, `issue check-form` checks the form gates I7 to I9: the task names at least one file (I7), none of them is protected (I8), and it names the source instead of the installed copy under `.claude/kit/` (I9). Which protected files a package names and what the halt comment says is supplied by `issue check-protected <id>`; with `--path <pfad>` a path rejected while writing is added. In the run report (Laufbericht) such a halt appears with the kind `geschuetzt`, separate from the open questions.
 
 **What you do then.** Make the change to the file yourself and remove `kit:protected`. At the next attempt the package counts as released.
 
 ### The commit gate
-<!-- de: db34961bfabb -->
+<!-- de: 41ff43506ad9 -->
 
 The commit gate rejects every commit that was not preceded by a green `node .claude/kit/checks.mjs run` on the same state. It applies to every commit in the repo: from the skills, by hand, from a GUI client. A tool without `node` in the PATH is rejected.
 
@@ -88,17 +88,17 @@ Two versioned files carry it: `.githooks/pre-commit` calls `.githooks/gate.mjs`.
 3. With its own hook manager the project hooks in the call itself.
 4. The assurance applies per committed file, not to the state as a whole. Whoever commits `A` and leaves the matching `B` lying around creates a state nobody has checked.
 
-At night the night runner additionally evaluates the evidence after every round; if it is missing or red, the round counts as a failure. Interactively nobody steps in; there the gate remains the safeguard.
+Unattended, the runner additionally evaluates the evidence after every round; if it is missing or red, the round counts as a failure. Interactively nobody steps in; there the gate remains the safeguard.
 
 ### Which version is my installation?
-<!-- de: 7b0f456c6fc5 -->
+<!-- de: 78154ab831df -->
 
 ```bash
 node .claude/kit/board.mjs --version
 node .claude/kit/night.mjs --version
 ```
 
-Both name their kit version; `node install.mjs --version` names the current one. If your copy lags behind, you run the installer again. If the two files drift apart, the night runner warns at start.
+Both name their kit version; `node install.mjs --version` names the current one. If your copy lags behind, you run the installer again. If the two files drift apart, the runner warns at start.
 
 ## What is the vault?
 <!-- de: f6ec8611314a -->
@@ -189,7 +189,7 @@ Without `checkAreas` all checks run unchanged; nobody silently loses a check.
 `node .claude/kit/checks.mjs plan` shows the selection without executing anything.
 
 ### Staged checks: `stage`
-<!-- de: ff417e3549ab -->
+<!-- de: fe0c9241ae76 -->
 
 An entry can say when its turn comes (stage, Stufe):
 
@@ -209,7 +209,7 @@ If a run of the package stage is red and `formatFixCommand` is set, `checks.mjs 
 
 **Short release.** Put long checks on the stage `push` instead of `merge`; the price: every `push main` takes longer by them.
 
-At least one check belongs on the package stage (Paketstufe), otherwise a work package has no gate, and night mode (Nachtbetrieb) does not start. `stage` is neither one of the `reviewStages` nor the task level (Aufgabenstufe) of the night chain.
+At least one check belongs on the package stage (Paketstufe), otherwise a work package has no gate, and the runner does not start. `stage` is neither one of the `reviewStages` nor the task level (Aufgabenstufe) of the chain.
 
 ### Completion and publishing: `notAtCompletion`
 <!-- de: 3cffcf2694c0 -->
@@ -272,7 +272,7 @@ The installer backs up the config as `.claude/workflow.config.json.vor-umstellun
 Messages, reports, comments on the cards and the interfaces are in the project language from the next call on. What is already on the board stays. Lines the kit reads back later, such as `## Laufstand` or `Autor-Modell:`, it recognises in both languages; `node .claude/kit/board.mjs names` outputs which version it writes. JSON field names, file names under `.claude/` and the form words of findings stay the same in both languages.
 
 ### Labels and title prefixes
-<!-- de: bd18195764e8 -->
+<!-- de: 986beddb886a -->
 
 Labels and title prefixes carry the English name in every project.
 
@@ -280,7 +280,7 @@ Labels and title prefixes carry the English name in every project.
 |-------|------|
 | question waits for the human | `kit:clarify` |
 | protected file waits for the human | `kit:protected` |
-| variant B of the night chain | `kit:carry-through` |
+| variant B of the chain | `kit:carry-through` |
 | check run | `kit:check` |
 | run is running, aborted, waiting | `run:running`, `run:aborted`, `run:waiting` |
 | trace of the review | `review:done` |
@@ -327,13 +327,13 @@ Every file in the vault that a skill writes to by itself belongs to exactly one 
 - **The shared umbrella note** is never written by `/document` by itself. With an effect beyond one project, the skill proposes an entry and writes only after your consent.
 
 ## Issue tracker and code host
-<!-- de: 9f56567c3436 -->
+<!-- de: 2ffb8d8656d9 -->
 
 Two independent settings: `codeHost` for repo and pull requests, `issueTracker` for issues and board. All skills talk only to the board adapter `.claude/kit/board.mjs`; when the values change, they follow at the next call.
 
 The board needs five columns (Spalten): Backlog, Ready, In progress, In review, Done. `issue list --status ready` returns the cards in the column's order, top first; with drag and drop you decide what gets implemented next. Only the tracker `local` sorts by number.
 
-You create the kit's labels once per board, at least `kit:clarify`, `kit:protected` and `review:done`, and for the night chain (Nacht-Kette) its labels from the table above as well.
+You create the kit's labels once per board, at least `kit:clarify`, `kit:protected` and `review:done`, and for the chain its labels from the table above as well.
 
 ### Origin on the board: `--derived-from`
 <!-- de: 0c4d11d93653 -->
