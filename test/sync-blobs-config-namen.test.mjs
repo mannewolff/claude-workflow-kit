@@ -36,9 +36,10 @@ function fixture() {
     writeFileSync(join(dir, "kit", datei), `const KIT_VERSION = "1.0.0";\n`);
   }
   copyFileSync(CONFIG_NAMEN, join(dir, "kit", "board", "config-namen.mjs"));
+  writeFileSync(join(dir, "kit", "board", "config-teile.mjs"), "export {};\n");
   writeFileSync(join(dir, "kit", "board", "namen.mjs"), "export {};\n");
   writeFileSync(join(dir, "tools", "config-referenz.en.json"), "{}\n");
-  writeFileSync(join(dir, "kit", "settings.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
+  writeFileSync(join(dir, "kit", "settings.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_TEILE_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
   writeFileSync(join(dir, "install.mjs"), ['const VERSION = "1.0.0";', ...KONSTANTEN.map((k) => `const ${k} = "";`), ""].join("\n"));
   return dir;
 }

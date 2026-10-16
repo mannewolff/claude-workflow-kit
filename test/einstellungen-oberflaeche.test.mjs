@@ -17,8 +17,9 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Script } from "node:vm";
 
-import { aenderungsliste, bereichsFolgen, checkSetzen, GRUPPEN_AUSNAHMEN, gruppenZeilen, gruppeSetzen, LAUFARTEN, paarungsFolgen, persoenlichErlaubt, ROLLEN_KATALOG, SCHEMA, schluesselUmbenennen, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE, TEXTE, THEMEN, vorgabeAus } from "../kit/settings.mjs";
+import { aenderungsliste, bereichsFolgen, checkSetzen, GRUPPEN_AUSNAHMEN, gruppenZeilen, gruppeSetzen, LAUFARTEN, paarungsFolgen, persoenlichErlaubt, ROLLEN_KATALOG, SCHEMA, schluesselUmbenennen, SCHRIFTEN, SEITEN_BAUSTEINE, TEILE, TEXTE, vorgabeAus } from "../kit/settings.mjs";
 import { mitServer, projekt } from "./helpers/einstellungen-fixture.mjs";
+import { oberflaecheStarten } from "./helpers/oberflaeche-vm.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -170,7 +171,6 @@ test("[einstellungen-7] fuer ein bekanntes zusammengesetztes Feld entsteht kein 
   // pushPruefung, Issue #1216 — ein fester Wert oder ein Objekt; vertragsRepos, Issue #1614).
   const textTeil = TEILE.find((t) => t.redaktor === "text");
   assert.deepEqual(textTeil.pfade, ["night.modelle", "night.stufenRegel", "testAblagen", "pushPruefung", "vertragsRepos"]);
-  assert.equal(THEMEN.testAblagen, "Prüfungen");
   for (const pfad of ["buildChecks", "checkAreas", "reviewStufen", "night.kette", "issueReview.reviewers", "issueReview.pairs", "triggers"]) {
     const teil = TEILE.find((t) => t.pfade.includes(pfad));
     assert.notEqual(teil.redaktor, "text", `${pfad} zeigt noch die Dateischreibweise`);
@@ -724,4 +724,54 @@ test("M6 zeigt abdeckungUmsetzung ohne Eintrag als Vorgabe-Zustand einer Auswahl
   assert.match(rumpf, /wahl\.value = typeof wert === "boolean" \? String\(wert\) : "";/, "ohne Eintrag steht die Auswahl nicht auf der Vorgabe");
   assert.match(rumpf, /if \(wahl\.value === ""\) delete neu\[feld\];/, "die Vorgabe zu waehlen entfernt den Eintrag nicht");
   assert.match(rumpf.slice(0, rumpf.indexOf('addEventListener("change"')), /^(?![\s\S]*ketteAendern)/, "die Auswahl schreibt schon beim Aufbau");
+});
+
+// --- Gliederung nach Zweck (Issue #1736, Plan #1710 A5 bis A7) ---
+
+const DEUTSCH = { codeHost: "local", issueTracker: "local", buildChecks: [{ cmd: "node --test", stufe: "paket" }], checkAreas: { web: ["src/**"] }, mainBranch: "main", vorgeschichte: true };
+
+/** Die Aufschriften der Reiter, nachdem die Seite das Projekt geoeffnet hat. */
+async function geoeffnet(team, fn) {
+  await mitServer((w) => projekt(w, "alpha", { team, stand: "5.0.0" }), async (s) => {
+    const seite = await oberflaecheStarten({ basis: s.basis, token: s.token });
+    seite.klick(seite.projektKnopf("alpha"));
+    await seite.ruhe();
+    await fn(seite);
+  });
+}
+
+const reiter = (seite) => seite.alle(seite.ids.themen, (e) => e.tagName === "BUTTON");
+
+test("[1736-9] die Seite zeigt einem deutschen Projekt vier Reiter in der Reihenfolge der Seite", async () => {
+  await geoeffnet(DEUTSCH, (seite) => {
+    assert.deepEqual(reiter(seite).map((b) => b.textContent), ["Beim Einrichten nötig", "Lohnt sich", "Vom Kit verwaltet", "Feinabstimmung"]);
+    assert.equal(reiter(seite)[0].getAttribute("aria-selected"), "true", "der erste Reiter ist offen");
+  });
+});
+
+test("[1736-10] unter Beim Einrichten nötig steht m4 mit englischen Namen und dem Teil neben checkAreas", async () => {
+  await geoeffnet(DEUTSCH, (seite) => {
+    const text = seite.ids.einstellungen.textContent;
+    assert.ok(text.includes("Prüfkommandos und Bereiche"), "m4 steht nicht unter dem ersten Reiter");
+    assert.ok(text.includes("checkAreas (Lohnt sich)"), text.slice(0, 400));
+    assert.ok(text.includes("noCheck (Lohnt sich)"), "der englische Name fehlt");
+    assert.ok(text.includes("scaffoldOnly (Vom Kit verwaltet, intern)"));
+    assert.ok(!text.includes("ohnePruefung"), "ein deutscher Pfad erscheint");
+  });
+});
+
+test("[1736-11] der Reiter Vom Kit verwaltet nennt jedes Kennzeichen neben dem Namen", async () => {
+  await geoeffnet(DEUTSCH, async (seite) => {
+    seite.klick(seite.knopf(seite.ids.themen, "Vom Kit verwaltet"));
+    await seite.ruhe();
+    const text = seite.ids.einstellungen.textContent;
+    assert.ok(text.includes("provider (veraltet)"), text.slice(0, 400));
+    assert.ok(text.includes("scenariosFrom (vom Installer gesetzt)"));
+  });
+});
+
+test("[1736-12] ein unbekanntes Feld oeffnet einen fuenften Reiter am Ende", async () => {
+  await geoeffnet({ ...DEUTSCH, erfundenesFeld: 1 }, (seite) => {
+    assert.deepEqual(reiter(seite).map((b) => b.textContent), ["Beim Einrichten nötig", "Lohnt sich", "Vom Kit verwaltet", "Feinabstimmung", "Unbekannt"]);
+  });
 });

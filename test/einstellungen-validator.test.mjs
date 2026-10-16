@@ -10,7 +10,8 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { pruefeSchema, pruefe, zusatzregeln, vorgabeAus, aenderungAnwenden, THEMEN, SCHEMA, SCHLUESSELWOERTER } from "../kit/settings.mjs";
+import { pruefeSchema, pruefe, zusatzregeln, vorgabeAus, aenderungAnwenden, SCHEMA, SCHLUESSELWOERTER } from "../kit/settings.mjs";
+import { teilVon } from "../kit/board/config-teile.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const VORLAGE = JSON.parse(readFileSync(join(repoRoot, "templates", "workflow.config.schema.json"), "utf-8"));
@@ -228,9 +229,11 @@ test("[einstellungen-1] ein gespeicherter ungültiger Wert trägt denselben Grun
   assert.equal(grund(geaendert), grund(geladen));
 });
 
-test("[einstellungen-1] jedes Wurzelfeld des Schemas außer version hat genau ein Thema", () => {
-  const felder = Object.keys(VORLAGE.properties).filter((f) => f !== "version").sort();
-  assert.deepEqual(Object.keys(THEMEN).sort(), felder);
+// Die Themen entfielen mit der Gliederung nach Zweck (Issue #1736): Jedes Wurzelfeld steht unter
+// dem Reiter seines Teils aus kit/board/config-teile.mjs.
+test("[einstellungen-1] jedes Wurzelfeld des Schemas hat einen Teil nach Zweck", () => {
+  const ohne = Object.keys(VORLAGE.properties).filter((f) => teilVon(f) === null);
+  assert.deepEqual(ohne, []);
 });
 
 test("[einstellungen-14] eine Config ohne aufwand-Block ist gültig", () => {

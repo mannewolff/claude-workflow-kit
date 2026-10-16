@@ -5,7 +5,9 @@
 // tools/config-referenz.en.json, die tools/sync-blobs.mjs einbettet wie das Schema und die
 // Namenstabelle (E10). Beim Schreiben bekommt jeder Schluessel seinen englischen Namen, auch
 // ein vorhandener deutscher (Issue #1725, Plan #1710 A2); ein vorhandener Aufzaehlungswert
-// behaelt seine Schreibweise. Ein deutsches Projekt sieht aus wie vorher.
+// behaelt seine Schreibweise. Auch ein deutsches Projekt zeigt die englischen Namen und schreibt
+// nur englische Schluessel (Issue #1736, #1705 Kriterien 1, 6, 7); die Beschreibungen bleiben
+// dort deutsch.
 // Ablauf-Pruefung: Einbettung und Drift zeigt nur sync-blobs als Programm in einem Wegwerf-Repo.
 
 import { test } from "node:test";
@@ -133,11 +135,11 @@ test("[1441-4] ein vorhandener deutscher Name in einem englischen Projekt wird e
   });
 });
 
-test("[1441-5] ein deutsches Projekt sieht unveraendert aus und schreibt englische Schluessel (#1725)", () => {
+test("[1441-5] ein deutsches Projekt zeigt englische Namen, deutsche Beschreibungen und schreibt englische Schluessel (#1725, #1736)", () => {
   const deutsch = { codeHost: "local", issueTracker: "local", buildChecks: ["node --test"], mainBranch: "main" };
   mitProjekt(deutsch, ({ projekt: p, optionen, pfad }) => {
     const zustand = projektZustand(p, optionen);
-    assert.equal(zustand.grundlagen.namen, null);
+    assert.deepEqual(zustand.grundlagen.namen, { ...SCHLUESSEL });
     const grenze = eintrag(zustand, "reviewLesegrenze");
     assert.equal(grenze.beschreibung, SCHEMA.properties.reviewLesegrenze.description);
     assert.deepEqual(grenze.schema, SCHEMA.properties.reviewLesegrenze);
@@ -180,12 +182,64 @@ test("[1441-9] benenneWieVorlage: Schluessel englisch, vorhandene Werte unter ih
   assert.throws(() => benenneWieVorlage(de, roh, "fr"), /unbekannte Sprache/);
 });
 
+/** Jeder Schluessel einer Datei, ueber alle Ebenen und Listen. */
+function alleSchluessel(wert) {
+  if (Array.isArray(wert)) return wert.flatMap(alleSchluessel);
+  if (wert === null || typeof wert !== "object") return [];
+  return Object.entries(wert).flatMap(([k, v]) => [k, ...alleSchluessel(v)]);
+}
+
+/** Die deutschen Namen, die vom englischen abweichen — keiner davon darf geschrieben werden. */
+const NUR_DEUTSCHE_NAMEN = new Set(Object.entries(SCHLUESSEL).map(([pfad, en]) => [pfad.split(".").pop(), en]).filter(([de, en]) => de !== en).map(([de]) => de));
+
+test("[1736-5] der Pfad history wird auch im deutschen Projekt englisch angezeigt", () => {
+  mitProjekt({ codeHost: "local", issueTracker: "local", mainBranch: "main", vorgeschichte: true }, ({ projekt: p, optionen }) => {
+    const zustand = projektZustand(p, optionen);
+    assert.equal(zustand.sprache, "de");
+    assert.equal(eintrag(zustand, "vorgeschichte").team, true);
+    assert.equal(anzeigePfad("vorgeschichte", zustand.grundlagen.namen), "history");
+    assert.equal(anzeigePfad("ohnePruefung[0].muster", zustand.grundlagen.namen), "noCheck[0].pattern");
+    assert.equal(eintrag(zustand, "vorgeschichte").beschreibung, SCHEMA.properties.vorgeschichte.description, "die Beschreibung bleibt deutsch");
+  });
+});
+
+test("[1736-6] Speichern im deutschen Projekt schreibt nur englische Schluessel und laesst Aufzaehlungswerte stehen", () => {
+  mitProjekt({ codeHost: "local", issueTracker: "local", mainBranch: "main", vorgeschichte: true, buildChecks: [{ stufe: "paket" }] }, ({ projekt: p, optionen, pfad }) => {
+    const r = speichere(p, { ebene: "team", aenderungen: [{ pfad: "mainBranch", wert: "trunk" }], hashes: projektZustand(p, optionen).hashes }, optionen);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    const neu = datei(pfad);
+    assert.equal(neu.history, true);
+    assert.deepEqual(neu.buildChecks, [{ stage: "paket" }], "der vorhandene Wert behaelt seine Schreibweise");
+    assert.equal(neu.mainBranch, "trunk");
+    const deutsch = alleSchluessel(neu).filter((k) => NUR_DEUTSCHE_NAMEN.has(k));
+    assert.deepEqual(deutsch, [], "kein deutscher Schluessel in der Datei");
+  });
+});
+
+test("[1736-7] ein neu geschriebener Aufzaehlungswert ist auch im deutschen Projekt englisch", () => {
+  mitProjekt({ codeHost: "local", issueTracker: "local", mainBranch: "main", buildChecks: [{ cmd: "node --test", stufe: "paket" }] }, ({ projekt: p, optionen, pfad }) => {
+    const r = speichere(p, {
+      ebene: "team",
+      aenderungen: [{ pfad: "buildChecks", wert: [{ cmd: "node --test", stufe: "paket" }, { cmd: "npm run e2e", stufe: "paket", nichtBeimAbschluss: "zusammenspiel" }] }],
+      hashes: projektZustand(p, optionen).hashes,
+    }, optionen);
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual(datei(pfad).buildChecks, [{ cmd: "node --test", stage: "paket" }, { cmd: "npm run e2e", stage: "package", notAtCompletion: "interplay" }]);
+  });
+});
+
 // --- Einbettung der englischen Referenz durch tools/sync-blobs.mjs ---
 
 const eingebettet = (pfad) => readFileSync(pfad, "utf-8").match(/const CONFIG_REFERENZ_EN_B64 = "([^"]*)";/)?.[1];
 
 test("[1441-6] die englische Referenz im Repo ist eingebettet und stimmt mit der Quelle ueberein", () => {
   assert.equal(Buffer.from(eingebettet(EINSTELLUNGEN) ?? "", "base64").toString("utf-8"), readFileSync(REFERENZ, "utf-8"));
+});
+
+// Die Zuordnung nach Zweck (Issue #1736, Plan #1710 A5): eingebettet wie die Namenstabelle.
+test("[1736-8] die Zuordnung nach Zweck ist eingebettet und stimmt mit der Quelle ueberein", () => {
+  const b64 = readFileSync(EINSTELLUNGEN, "utf-8").match(/const CONFIG_TEILE_B64 = "([^"]*)";/)?.[1];
+  assert.equal(Buffer.from(b64 ?? "", "base64").toString("utf-8"), readFileSync(join(repoRoot, "kit", "board", "config-teile.mjs"), "utf-8"));
 });
 
 const KONSTANTEN = ["CONFIG_EXAMPLE_DE_B64", "CONFIG_EXAMPLE_EN_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "PREISE_MJS_B64", "WORKTREE_MJS_B64", "FINDINGS_MJS_B64", "EFFORT_MJS_B64", "EFFECTIVENESS_MJS_B64", "KIT_NIGHT_B64", "KIT_BOARD_B64", "KIT_ROLLEN_B64", "KIT_TEXTE_B64", "KIT_CHECKS_B64", "GATE_MJS_B64", "PRE_COMMIT_B64", "SKILLS_B64", "AGENTS_B64", "TEMPLATES_EN_B64", "AGENTS_EN_B64", "KIT_ROLLEN_EN_B64"];
@@ -204,9 +258,10 @@ function fixture() {
     writeFileSync(join(dir, "kit", d), `const KIT_VERSION = "1.0.0";\n`);
   }
   writeFileSync(join(dir, "kit", "board", "config-namen.mjs"), "export {};\n");
+  writeFileSync(join(dir, "kit", "board", "config-teile.mjs"), "export {};\n");
   writeFileSync(join(dir, "kit", "board", "namen.mjs"), "export {};\n");
   copyFileSync(REFERENZ, join(dir, "tools", "config-referenz.en.json"));
-  writeFileSync(join(dir, "kit", "settings.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
+  writeFileSync(join(dir, "kit", "settings.mjs"), `const KIT_VERSION = "1.0.0";\nconst SCHEMA_B64 = "";\nconst CONFIG_NAMEN_B64 = "";\nconst CONFIG_TEILE_B64 = "";\nconst CONFIG_REFERENZ_EN_B64 = "";\nconst NAMEN_B64 = "";\n`);
   writeFileSync(join(dir, "install.mjs"), ['const VERSION = "1.0.0";', ...KONSTANTEN.map((k) => `const ${k} = "";`), ""].join("\n"));
   return dir;
 }

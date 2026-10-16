@@ -15,8 +15,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  aenderungAnwenden, pruefe, pruefeSchema, teilFuer, THEMEN, vorgabeAus,
+  aenderungAnwenden, pruefe, pruefeSchema, teilFuer, vorgabeAus,
 } from "../kit/settings.mjs";
+import { teilVon } from "../kit/board/config-teile.mjs";
 
 const fehler = (befunde) => befunde.filter((b) => b.art === "fehler");
 
@@ -75,11 +76,11 @@ test("[einstellungen-17] ein unbekanntes Feld in wirksamkeit ist eine Warnung mi
   assert.deepEqual(fehler(befunde).filter((b) => b.pfad === "wirksamkeit.erfunden"), []);
 });
 
-test("[einstellungen-17] wirksamkeit ist ein eigener Teil im Thema Nachtbetrieb, nicht in Dateischreibweise", () => {
-  assert.equal(THEMEN.wirksamkeit, "Nachtbetrieb");
+test("[einstellungen-17] wirksamkeit ist ein eigener Teil der Feinabstimmung, nicht in Dateischreibweise", () => {
+  // Der Reiter folgt dem Zweck (Issue #1736): wirksamkeit (`effectiveness`) gehoert zur Feinabstimmung.
+  assert.equal(teilVon("wirksamkeit"), "fein");
   const teil = teilFuer("wirksamkeit");
   assert.notEqual(teil.redaktor, "text", "wirksamkeit zeigt noch die Dateischreibweise");
-  assert.equal(teil.thema, "Nachtbetrieb");
   assert.ok(teil.titel, "der Teil hat keinen Titel");
   assert.notEqual(teil.kennung, teilFuer("aufwand").kennung, "wirksamkeit teilt sich den Teil mit aufwand");
 });

@@ -26,12 +26,12 @@ function konfig(s, name = "alpha") {
   return normalisiereConfig(JSON.parse(readFileSync(join(s.wurzel, name, ".claude", "workflow.config.json"), "utf-8"))).config;
 }
 
-/** Oeffnet das Projekt und stellt auf das Thema Nachtbetrieb — dort steht M11. */
+/** Oeffnet das Projekt und stellt auf den Reiter Feinabstimmung — dort steht M11. */
 async function nachtThema(s, name = "alpha") {
   const seite = await oberflaecheStarten({ basis: s.basis, token: s.token });
   seite.klick(seite.projektKnopf(name));
   await seite.ruhe();
-  seite.klick(seite.knopf(seite.ids.themen, "Nachtbetrieb"));
+  seite.klick(seite.knopf(seite.ids.themen, "Feinabstimmung"));
   // Die Vorschau-Anforderungen des Aufbaus abraeumen, damit ein Test nur seine eigene misst.
   seite.feuere();
   await seite.ruhe();
@@ -42,7 +42,7 @@ async function nachtThema(s, name = "alpha") {
 function stufenTeil(seite) {
   const titel = TEILE.find((t) => t.kennung === "m11").titel;
   const platte = seite.platten().find((p) => seite.alle(p, (e) => e.klassen().includes("platte-pfad"))[0].textContent === titel);
-  assert.ok(platte, `der Teil '${titel}' steht nicht im Thema Nachtbetrieb`);
+  assert.ok(platte, `der Teil '${titel}' steht nicht im Reiter Feinabstimmung`);
   return { platte, bloecke: seite.alle(platte, (e) => e.klassen().includes("stufe")) };
 }
 
@@ -61,7 +61,7 @@ async function speichere(seite, platte) {
   await seite.ruhe();
 }
 
-test("[einstellungen-21] der Teil Aufgabenstufen steht unter Nachtbetrieb mit einem Block je Stufe", async () => {
+test("[einstellungen-21] der Teil Aufgabenstufen steht unter Feinabstimmung mit einem Block je Stufe", async () => {
   await mitServer((w) => projekt(w, "alpha", { team: teamMit({ schwer: { modell: "claude-opus-5" } }), stand: "5.0.0" }), async (s) => {
     const seite = await nachtThema(s);
     const { platte, bloecke } = stufenTeil(seite);
@@ -199,7 +199,8 @@ test("[einstellungen-21] ein Modell, das night.modelle nicht kennt, bleibt waehl
     const { platte, bloecke } = stufenTeil(seite);
 
     assert.equal(auswahlen(seite, bloecke[1])[0].value, "claude-unbekannt", "die Modellwahl zeigt den Bestand nicht");
-    assert.match(platte.textContent, /night\.stufen\.mittel\.modell/, "der Altbefund steht nicht am Teil");
+    // Der Pfad steht englisch da, auch im deutschen Projekt (Issue #1736).
+    assert.match(platte.textContent, /night\.tiers\.medium\.model/, "der Altbefund steht nicht am Teil");
     assert.ok(platte.textContent.includes("keine offene Änderung"), "das Zeichnen hat eine Aenderung angelegt");
   });
 });

@@ -16,8 +16,9 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
-import { LAUFARTEN, TEILE, TEXTE, THEMEN, aenderungsliste, projektZustand, pruefeSchema, speichere, vorschau } from "../kit/settings.mjs";
+import { LAUFARTEN, TEILE, TEXTE, aenderungsliste, projektZustand, pruefeSchema, speichere, vorschau } from "../kit/settings.mjs";
 import { pruefeParitaet } from "../kit/board/namen.mjs";
+import { TEILE as ZWECKE } from "../kit/board/config-teile.mjs";
 import { mitServer, projekt } from "./helpers/einstellungen-fixture.mjs";
 import { oberflaecheStarten } from "./helpers/oberflaeche-vm.mjs";
 
@@ -61,9 +62,9 @@ test("[1456-1] TEXTE traegt je Sprache dieselben Schluessel und Platzhalter", ()
   assert.deepEqual(pruefeParitaet(TEXTE), []);
 });
 
-test("[1456-2] Titel der Teile, Themen und Laufarten stehen deutsch in der Tabelle wie in ihren Konstanten", () => {
+test("[1456-2] Titel der Teile, Reiter und Laufarten stehen deutsch in der Tabelle wie in ihren Konstanten", () => {
   for (const teil of TEILE.filter((t) => t.titel !== null)) assert.equal(TEXTE.de[`teil.${teil.kennung}`], teil.titel, teil.kennung);
-  for (const thema of new Set([...Object.values(THEMEN), "Unbekannt"])) assert.equal(TEXTE.de[`thema.${thema}`], thema, thema);
+  for (const zweck of [...ZWECKE, "unbekannt"]) assert.ok(TEXTE.de[`zweck.${zweck}`] && TEXTE.en[`zweck.${zweck}`], zweck);
   for (const [kennung, aufschrift] of LAUFARTEN) assert.equal(TEXTE.de[`laufart.${kennung}`], aufschrift, kennung);
 });
 
@@ -77,7 +78,7 @@ test("[1456-3] ein englisches Projekt bekommt Befunde, Titel und Hinweise auf En
     assert.ok(gruende.includes("'model' is missing — a reviewer of kind 'claude' does not run without a model identifier"), gruende.join(" | "));
     assert.ok(gruende.includes("lists no pattern and so covers nothing — checks that point to this area never run"), gruende.join(" | "));
     for (const g of gruende) assert.doesNotMatch(g, UMLAUTE, g);
-    assert.deepEqual(Object.keys(zustand.themen).sort(), ["Board", "Nachtbetrieb", "Prüfungen", "Release", "Review"].sort(), "die Themen bleiben Schluessel unter den deutschen Namen (E14)");
+    assert.deepEqual(Object.keys(zustand.themen), ["einrichten", "lohnt", "verwaltet", "fein"], "die Reiter bleiben Schluessel unter ihren Kennungen (E14, Issue #1736)");
     const titel = Object.values(zustand.themen).flat().map((t) => t.titel).filter(Boolean);
     assert.ok(titel.includes("Check commands and areas") && titel.includes("Pairings"), titel.join(" | "));
     assert.deepEqual(befundeVon(zustand).map((b) => b.art).sort(), befundeVon(zustand).map((b) => b.art).sort().filter((a) => ["fehler", "warnung", "unbekannt"].includes(a)), "die Befundart bleibt Vertragswert");
@@ -128,7 +129,7 @@ test("[1456-6] die Seite zeigt in einem englischen Projekt in keinem Thema einen
     seite.klick(seite.projektKnopf("alpha"));
     await seite.ruhe();
     const themen = seite.alle(seite.ids.themen, (e) => e.tagName === "BUTTON");
-    assert.deepEqual(themen.map((b) => b.textContent), ["Checks", "Board", "Review", "Night operation", "Release"]);
+    assert.deepEqual(themen.map((b) => b.textContent), ["Needed at setup", "Worth setting", "Managed by the kit", "Fine-tuning"]);
     for (const knopf of themen) {
       seite.klick(knopf);
       await seite.ruhe();
@@ -147,7 +148,7 @@ test("[1456-7] dieselbe Seite bleibt in einem deutschen Projekt deutsch", async 
     assert.equal(seite.ids.stand.textContent, "Oberfläche 5.0.0");
     seite.klick(seite.projektKnopf("alpha"));
     await seite.ruhe();
-    assert.deepEqual(seite.alle(seite.ids.themen, (e) => e.tagName === "BUTTON").map((b) => b.textContent), ["Prüfungen", "Board", "Review", "Nachtbetrieb", "Release"]);
+    assert.deepEqual(seite.alle(seite.ids.themen, (e) => e.tagName === "BUTTON").map((b) => b.textContent), ["Beim Einrichten nötig", "Lohnt sich", "Vom Kit verwaltet", "Feinabstimmung"]);
     assert.ok(seite.ids.einstellungen.textContent.includes("Prüfkommandos und Bereiche"));
   });
 });
