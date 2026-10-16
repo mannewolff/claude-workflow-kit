@@ -147,7 +147,7 @@ test("Gegenprobe: die Erkennung fehlender Einstellungen greift bei Name oder Dat
   ].join("\n")).length, 2);
   // Der frühere Schlusshinweis des Installers, umgebrochen nach dem Dateinamen.
   assert.equal(fehlendeEinstellungen([
-    "Fuer /issue-review: den 'issueReview'-Block aus workflow.config.example.json",
+    "Fuer /issue-review: den 'issueReview'-Block aus workflow.config.example.jsonc",
     "heruebernehmen und an die eigenen Modelle anpassen. Ohne ihn tut der Skill nichts.",
   ].join("\n")).length, 1);
 });
@@ -230,5 +230,51 @@ test("Szenario: Neues Projekt einrichten", () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
     rmSync(home, { recursive: true, force: true });
+  }
+});
+
+// --- Szenario: Einstellung aus der Beispieldatei übernehmen (Issue #1735, Plan #1710 A9, E3) ---
+
+test("Szenario: Einstellung aus der Beispieldatei übernehmen", () => {
+  // Angenommen ein Projekt hat die Vorgeschichte nicht gesetzt
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "einstellungen-beispiel-")));
+  try {
+    mkdirSync(join(dir, "home"), { recursive: true });
+    mkdirSync(join(dir, ".claude"), { recursive: true });
+    const configPfad = join(dir, ".claude", "workflow.config.json");
+    writeFileSync(configPfad, JSON.stringify({ language: "de", codeHost: "github", issueTracker: "github" }, null, 2) + "\n");
+    const fake = join(dir, "szenarien-fake.mjs");
+    writeFileSync(fake, "console.log(JSON.stringify({ ab: 1 }));\n");
+    const res = spawnSync(process.execPath, [join(repoRoot, "install.mjs")], {
+      cwd: dir,
+      input: ["projekt", "github", "j", "n", "github", "", "", "", "", "", "", ""].join("\n") + "\n",
+      encoding: "utf-8",
+      env: { ...process.env, HOME: join(dir, "home"), USERPROFILE: join(dir, "home"), INSTALL_SZENARIEN_FAKE: fake },
+    });
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    const beispielPfad = join(dir, ".claude", "workflow.config.example.jsonc");
+    const vorher = readFileSync(beispielPfad);
+    const zeilen = vorher.toString("utf-8").split("\n");
+
+    // Wenn der Mensch in der Beispieldatei seines Projekts die Vorgeschichte findet,
+    const i = zeilen.findIndex((z) => /^\s*\/\/ "history": /.test(z));
+    assert.ok(i > 0, "die Vorgeschichte steht nicht auskommentiert in der Beispieldatei");
+    // den Kommentar liest
+    assert.match(zeilen[i - 1], /^\s*\/\/ \S/, "über der Zeile steht kein Kommentar");
+    const seite = readFileSync(join(repoRoot, "docs", "einstellungen.md"), "utf-8");
+    const seitenZeile = seite.split("\n").find((z) => z.startsWith("- `history` — "));
+    assert.equal(zeilen[i - 1].trim(), `// ${seitenZeile.slice("- `history` — ".length)}`, "der Kommentar sagt nicht dasselbe wie die Seite");
+    // und die Zeile in seine Einstellungsdatei übernimmt
+    const uebernommen = zeilen[i].replace(/^\s*\/\/ /, "").replace(/,$/, "").replace("true", "false");
+    const config = { ...JSON.parse(readFileSync(configPfad, "utf-8")), ...JSON.parse(`{${uebernommen}}`) };
+    writeFileSync(configPfad, JSON.stringify(config, null, 2) + "\n");
+
+    // Dann gilt der übernommene Wert,
+    const { config: gelesen } = normalisiereConfig(JSON.parse(readFileSync(configPfad, "utf-8")));
+    assert.equal(vorgeschichteAktiv(gelesen), false);
+    // und die Beispieldatei ist unverändert
+    assert.ok(readFileSync(beispielPfad).equals(vorher), "die Beispieldatei hat sich verändert");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

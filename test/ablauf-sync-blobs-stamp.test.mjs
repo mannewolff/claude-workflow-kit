@@ -51,7 +51,7 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
   writeFileSync(join(dir, "templates", "CLAUDE-workflow.md"), "# Vorlage\n");
   writeFileSync(join(dir, "templates", "CLAUDE-Fachplan.md"), "# Fachplan-Gates\n");
   writeFileSync(join(dir, "templates", "CLAUDE-Plan.md"), "# Plan-Gates\n");
-  writeFileSync(join(dir, "templates", "workflow.config.json"), JSON.stringify({ codeHost: "github" }) + "\n");
+  for (const sprache of ["de", "en"]) writeFileSync(join(dir, "templates", `workflow.config.example.${sprache}.jsonc`), JSON.stringify({ codeHost: "github" }) + "\n");
   writeFileSync(join(dir, "skills", "beispiel", "SKILL.md"), "# Beispiel-Skill\n");
   // Seit Issue #676: die Download-Datei mit Stempel und eingebettetem Schema.
   writeFileSync(join(dir, "templates", "workflow.config.schema.json"), JSON.stringify({ properties: { codeHost: { type: "string" } } }) + "\n");
@@ -70,7 +70,8 @@ function setupFixture(installVersion, kitVersion, { lokaleKopie = false } = {}) 
   }
   writeFileSync(join(dir, "install.mjs"), [
     `const VERSION = "${installVersion}";`,
-    `const CONFIG_EXAMPLE_B64 = "";`,
+    `const CONFIG_EXAMPLE_DE_B64 = "";`,
+    `const CONFIG_EXAMPLE_EN_B64 = "";`,
     `const CLAUDE_WORKFLOW_MD_B64 = "";`,
     `const CLAUDE_FACHPLAN_MD_B64 = "";`,
     `const CLAUDE_PLAN_MD_B64 = "";`,

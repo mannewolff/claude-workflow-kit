@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const SYNC = join(repoRoot, "tools", "sync-blobs.mjs");
 
-const KONSTANTEN = ["CONFIG_EXAMPLE_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "PREISE_MJS_B64", "WORKTREE_MJS_B64", "FINDINGS_MJS_B64", "EFFORT_MJS_B64", "EFFECTIVENESS_MJS_B64", "KIT_NIGHT_B64", "KIT_BOARD_B64", "KIT_ROLLEN_B64", "KIT_TEXTE_B64", "KIT_CHECKS_B64", "GATE_MJS_B64", "PRE_COMMIT_B64", "SKILLS_B64", "AGENTS_B64", "TEMPLATES_EN_B64", "AGENTS_EN_B64", "KIT_ROLLEN_EN_B64"];
+const KONSTANTEN = ["CONFIG_EXAMPLE_DE_B64", "CONFIG_EXAMPLE_EN_B64", "CLAUDE_WORKFLOW_MD_B64", "CLAUDE_FACHPLAN_MD_B64", "CLAUDE_PLAN_MD_B64", "BOARD_MJS_B64", "NIGHT_MJS_B64", "CHECKS_MJS_B64", "PREISE_MJS_B64", "WORKTREE_MJS_B64", "FINDINGS_MJS_B64", "EFFORT_MJS_B64", "EFFECTIVENESS_MJS_B64", "KIT_NIGHT_B64", "KIT_BOARD_B64", "KIT_ROLLEN_B64", "KIT_TEXTE_B64", "KIT_CHECKS_B64", "GATE_MJS_B64", "PRE_COMMIT_B64", "SKILLS_B64", "AGENTS_B64", "TEMPLATES_EN_B64", "AGENTS_EN_B64", "KIT_ROLLEN_EN_B64"];
 
 /** Minimales Repo mit allem, was sync-blobs.mjs anfasst; `spiegel` legt en/ mit Inhalt an. */
 function fixture({ spiegel = true } = {}) {
@@ -26,7 +26,7 @@ function fixture({ spiegel = true } = {}) {
   writeFileSync(join(dir, ".githooks", "gate.mjs"), 'console.log("gate");\n');
   writeFileSync(join(dir, ".githooks", "pre-commit"), "#!/bin/sh\nexit 0\n");
   for (const datei of ["CLAUDE-workflow.md", "CLAUDE-Fachplan.md", "CLAUDE-Plan.md"]) writeFileSync(join(dir, "templates", datei), "# Vorlage\n");
-  writeFileSync(join(dir, "templates", "workflow.config.json"), "{}\n");
+  for (const sprache of ["de", "en"]) writeFileSync(join(dir, "templates", `workflow.config.example.${sprache}.jsonc`), "{}\n");
   writeFileSync(join(dir, "templates", "workflow.config.schema.json"), "{}\n");
   writeFileSync(join(dir, "skills", "requirement", "SKILL.md"), "# Requirement\n");
   writeFileSync(join(dir, "agents", "kit-pruefer.md"), "# Pruefer\n");

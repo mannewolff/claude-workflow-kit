@@ -83,13 +83,14 @@ const BLOBS = [
   { constName: "CLAUDE_WORKFLOW_MD_B64", source: join(root, "templates", "CLAUDE-workflow.md") },
   { constName: "CLAUDE_FACHPLAN_MD_B64", source: join(root, "templates", "CLAUDE-Fachplan.md") },
   { constName: "CLAUDE_PLAN_MD_B64", source: join(root, "templates", "CLAUDE-Plan.md") },
-  // Beispiel-Config, die der Installer als .claude/workflow.config.example.json ablegt.
-  // Sie ist der einzige Ort, an dem ein Nutzer den issueReview-Block zu sehen bekommt,
-  // ohne die Doku zu lesen — der Installer fragt ihn nicht ab (reviewers ist
-  // maschinenabhaengig, pairs eine Denkentscheidung). Nebeneffekt: Die Vorlage stand
-  // vorher in keiner Blob-Liste, wurde von niemandem gelesen und driftete unbemerkt;
-  // jetzt bewacht sie `sync-blobs --check`, also ein buildCheck.
-  { constName: "CONFIG_EXAMPLE_B64", source: join(root, "templates", "workflow.config.json") },
+  // Die kommentierte Beispieldatei, die der Installer in der Projektsprache als
+  // .claude/workflow.config.example.jsonc ablegt (Issue #1735, Plan #1710 E3); beide Fassungen
+  // erzeugt tools/config-referenz.mjs. Sie sind der einzige Ort, an dem ein Nutzer den
+  // issueReview-Block zu sehen bekommt, ohne die Doku zu lesen — der Installer fragt ihn nicht
+  // ab (reviewers ist maschinenabhaengig, pairs eine Denkentscheidung). Ihre Drift bewacht
+  // `sync-blobs --check`, also ein buildCheck.
+  { constName: "CONFIG_EXAMPLE_DE_B64", source: join(root, "templates", "workflow.config.example.de.jsonc") },
+  { constName: "CONFIG_EXAMPLE_EN_B64", source: join(root, "templates", "workflow.config.example.en.jsonc") },
   { constName: "BOARD_MJS_B64", source: join(root, "kit", "board.mjs") },
   { constName: "NIGHT_MJS_B64", source: join(root, "kit", "night.mjs") },
   { constName: "CHECKS_MJS_B64", source: join(root, "kit", "checks.mjs") },

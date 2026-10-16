@@ -46,6 +46,10 @@ function mitKopie(fn) {
     mkdirSync(join(dir, "docs"));
     mkdirSync(join(dir, "tools"));
     copyFileSync(join(repoRoot, "templates", "workflow.config.schema.json"), join(dir, "templates", "workflow.config.schema.json"));
+    // Vorlage und Beispieldateien gehoeren zum Abbild des Schemas (Issue #1735).
+    for (const datei of ["workflow.config.json", "workflow.config.example.de.jsonc", "workflow.config.example.en.jsonc"]) {
+      copyFileSync(join(repoRoot, "templates", datei), join(dir, "templates", datei));
+    }
     copyFileSync(join(repoRoot, "docs", "einstellungen.md"), join(dir, "docs", "einstellungen.md"));
     copyFileSync(VORGABEN, join(dir, "tools", "config-referenz.vorgaben.json"));
     return fn(dir);

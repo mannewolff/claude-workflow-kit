@@ -874,26 +874,35 @@ test("GitLab-Install ohne Label-Anlage zeigt die manuelle Anleitung", () => {
   }
 });
 
-// --- Beispiel-Config (Ad-hoc-Fix nach Issue #237/#233) ---
+// --- Beispieldatei (Ad-hoc-Fix nach Issue #237/#233, kommentiert seit Issue #1735) ---
 //
 // Der Installer fragt den issueReview-Block nicht ab: `reviewers` haengt davon ab,
 // welche CLIs auf der Maschine liegen, `pairs` ist eine Entscheidung. Stattdessen legt
 // er eine Datei zum Abschreiben daneben. Sie ist der einzige Ort, an dem ein Nutzer den
-// Block zu sehen bekommt, ohne die Doku zu lesen.
+// Block zu sehen bekommt, ohne die Doku zu lesen. Seit Issue #1735 traegt sie jede
+// Einstellung mit ihrem Satz als Kommentar; aktiv stehen nur die des ersten Teils.
 
-test("Installer legt eine gueltige workflow.config.example.json ab", () => {
+/** Die aktiven Zeilen einer Beispieldatei als Objekt: ganze Kommentarzeilen fallen weg. */
+function aktiverTeil(text) {
+  return JSON.parse(text.split("\n").filter((z) => !z.trimStart().startsWith("//")).join("\n"));
+}
+
+test("Installer legt eine gueltige workflow.config.example.jsonc ab", () => {
   const dir = fixture("install-example-");
   try {
     const res = installiere(dir, PROJEKT_GITHUB);
     assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
 
-    const pfad = join(dir, ".claude", "workflow.config.example.json");
-    assert.ok(existsSync(pfad), "Beispiel-Config fehlt");
-    const bsp = JSON.parse(readFileSync(pfad, "utf-8"));
+    const pfad = join(dir, ".claude", "workflow.config.example.jsonc");
+    assert.ok(existsSync(pfad), "Beispieldatei fehlt");
+    const text = readFileSync(pfad, "utf-8");
+    // Die Fassung der Projektsprache: deutsche Teilueberschrift, deutscher Satz.
+    assert.match(text, /\/\/ === Beim Einrichten nötig ===/);
+    const bsp = aktiverTeil(text);
 
-    // Der Grund, aus dem die Datei existiert.
-    assert.ok(Array.isArray(bsp.issueReview?.reviewers) && bsp.issueReview.reviewers.length > 0,
-      "issueReview.reviewers fehlt oder ist leer");
+    // Der Grund, aus dem die Datei existiert: der Block steht aktiv, nicht auskommentiert.
+    assert.ok(Array.isArray(bsp.issueReview?.reviewers) && bsp.issueReview.reviewers.length === 3,
+      "issueReview.reviewers steht nicht aktiv mit drei Reviewern");
     assert.ok(bsp.issueReview?.pairs && Object.keys(bsp.issueReview.pairs).length > 0,
       "issueReview.pairs fehlt oder ist leer");
 
@@ -913,32 +922,63 @@ test("Installer legt eine gueltige workflow.config.example.json ab", () => {
     assert.ok(bsp.issueReview.reviewers.every((r) => r.kind === "claude"),
       "die Vorlage darf keinen kind:command-Reviewer enthalten");
 
-    // Abgeschafftes Feld (RELEASING.md: install.mjs ist alleinige Versionsquelle).
-    assert.ok(!("version" in bsp), "die Vorlage traegt noch ein version-Feld");
+    // Aktiv stehen nur die Einstellungen des ersten Teils; die Installer-Felder wie
+    // version stehen auskommentiert (RELEASING.md: install.mjs ist alleinige Versionsquelle).
+    assert.ok(!("version" in bsp), "die Vorlage traegt version aktiv");
+    assert.ok(!("history" in bsp), "die Vorlage traegt history aktiv");
+    assert.ok(text.split("\n").some((z) => z.trim() === '// "history": true,'), "history steht nicht auskommentiert mit ihrer Vorgabe");
 
     // Die echte Config bleibt davon unberuehrt — sie bekommt den Block NICHT.
     assert.equal("issueReview" in config(dir), false,
       "der Installer darf issueReview nicht in die echte Config schreiben");
 
-    assert.match(res.stdout, /workflow\.config\.example\.json/);
+    assert.match(res.stdout, /workflow\.config\.example\.jsonc/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("Beispiel-Config wird beim Re-Install aufgefrischt", () => {
+test("ein englisches Projekt bekommt die englische Beispieldatei", () => {
+  const dir = fixture("install-example-en-");
+  try {
+    const res = installiere(dir, ["en", ...PROJEKT_GITHUB_BESTAND]);
+    assert.equal(res.status, 0, `${res.stderr}\n${res.stdout}`);
+    const text = readFileSync(join(dir, ".claude", "workflow.config.example.jsonc"), "utf-8");
+    assert.match(text, /\/\/ === Needed at setup ===/);
+    assert.equal(aktiverTeil(text).language, "en");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Beispieldatei wird beim Re-Install aufgefrischt", () => {
   // Sie enthaelt keine Nutzerdaten; eine veraltete Vorlage zeigt Felder, die es nicht
   // mehr gibt. Das ist der Unterschied zur echten Config, die erhalten bleiben muss (#125).
   const dir = fixture("install-example-reinstall-");
   try {
     assert.equal(installiere(dir, PROJEKT_GITHUB).status, 0);
-    const pfad = join(dir, ".claude", "workflow.config.example.json");
+    const pfad = join(dir, ".claude", "workflow.config.example.jsonc");
     const original = readFileSync(pfad, "utf-8");
 
     writeFileSync(pfad, '{"veraltet": true}\n', "utf-8");
     assert.equal(installiere(dir, PROJEKT_GITHUB_BESTAND).status, 0);
 
-    assert.equal(readFileSync(pfad, "utf-8"), original, "Beispiel-Config wurde nicht aufgefrischt");
+    assert.equal(readFileSync(pfad, "utf-8"), original, "Beispieldatei wurde nicht aufgefrischt");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("das Update ersetzt die alte workflow.config.example.json durch die .jsonc", () => {
+  const dir = fixture("install-example-alt-");
+  try {
+    assert.equal(installiere(dir, PROJEKT_GITHUB).status, 0);
+    const alt = join(dir, ".claude", "workflow.config.example.json");
+    writeFileSync(alt, '{"codeHost": "github"}\n', "utf-8");
+    assert.equal(installiere(dir, PROJEKT_GITHUB_BESTAND).status, 0);
+
+    const beispiele = readdirSync(join(dir, ".claude")).filter((d) => d.startsWith("workflow.config.example"));
+    assert.deepEqual(beispiele, ["workflow.config.example.jsonc"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

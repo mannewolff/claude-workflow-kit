@@ -249,7 +249,7 @@ test("[1481] englisch: Pruefzahl des Laufs und Probelauf", () => {
 test("[1481] englisch: check nennt fehlende Reviewer und Werkzeuge; die Vertragswerte bleiben", () => {
   spracheFestlegen("en");
   const leer = issueReviewCheck({}, { config: {} });
-  assert.match(leer.grund, /^issueReview\.reviewers is empty or missing — copy the block from \.claude\/workflow\.config\.example\.json$/);
+  assert.match(leer.grund, /^issueReview\.reviewers is empty or missing — copy the block from \.claude\/workflow\.config\.example\.jsonc$/);
   const config = { issueReview: { reviewers: [
     { name: "fremd", kind: "command", command: "fremdwerkzeug" },
     { name: "astra", kind: "command", command: "codex exec" },

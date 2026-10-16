@@ -39,7 +39,7 @@ function setupFixture({
   writeFileSync(join(dir, "templates", "CLAUDE-workflow.md"), "# Vorlage\n");
   writeFileSync(join(dir, "templates", "CLAUDE-Fachplan.md"), "# Fachplan-Gates\n");
   writeFileSync(join(dir, "templates", "CLAUDE-Plan.md"), "# Plan-Gates\n");
-  writeFileSync(join(dir, "templates", "workflow.config.json"), `${JSON.stringify({ codeHost: "github" })}\n`);
+  for (const sprache of ["de", "en"]) writeFileSync(join(dir, "templates", `workflow.config.example.${sprache}.jsonc`), `${JSON.stringify({ codeHost: "github" })}\n`);
   for (const datei of ["board.mjs", "night.mjs", "checks.mjs", "preise.mjs", "effort.mjs", "effectiveness.mjs", "findings.mjs", "worktree.mjs"]) {
     writeFileSync(join(dir, "kit", datei), `const KIT_VERSION = "1.0.0";\nconsole.log("${datei}");\n`);
   }
@@ -59,7 +59,8 @@ function setupFixture({
   writeFileSync(join(dir, ".githooks", "pre-commit"), "#!/bin/sh\nexit 0\n");
   writeFileSync(join(dir, "install.mjs"), [
     'const VERSION = "1.0.0";',
-    'const CONFIG_EXAMPLE_B64 = "";',
+    'const CONFIG_EXAMPLE_DE_B64 = "";',
+    'const CONFIG_EXAMPLE_EN_B64 = "";',
     'const CLAUDE_WORKFLOW_MD_B64 = "";',
     'const CLAUDE_FACHPLAN_MD_B64 = "";',
     'const CLAUDE_PLAN_MD_B64 = "";',

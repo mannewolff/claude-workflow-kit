@@ -18,9 +18,9 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TOOL = join(repoRoot, "tools", "config-referenz.mjs");
-const DATEIEN = ["templates/workflow.config.schema.json", "docs/einstellungen.md", "docs/en/einstellungen.md", "tools/config-referenz.en.json", "tools/config-referenz.vorgaben.json"];
+const DATEIEN = ["templates/workflow.config.schema.json", "templates/workflow.config.json", "docs/einstellungen.md", "docs/en/einstellungen.md", "tools/config-referenz.en.json", "tools/config-referenz.vorgaben.json"];
 
-function erzeugt(tabelleAendern) {
+function erzeugt(tabelleAendern, nachher) {
   const dir = mkdtempSync(join(tmpdir(), "config-referenz-werte-"));
   try {
     for (const d of ["templates", "docs", join("docs", "en"), "tools"]) mkdirSync(join(dir, d), { recursive: true });
@@ -30,8 +30,15 @@ function erzeugt(tabelleAendern) {
       writeFileSync(pfad, JSON.stringify(tabelleAendern(JSON.parse(readFileSync(pfad, "utf-8")))));
     }
     const res = spawnSync(process.execPath, [TOOL], { encoding: "utf-8", env: { ...process.env, KIT_ROOT: dir } });
+    const beispiel = (sprache) => {
+      const pfad = join(dir, "templates", `workflow.config.example.${sprache}.jsonc`);
+      return res.status === 0 ? readFileSync(pfad, "utf-8") : "";
+    };
     return {
       res,
+      check: nachher ? nachher(dir) : null,
+      beispielDe: beispiel("de"),
+      beispielEn: beispiel("en"),
       de: res.status === 0 ? readFileSync(join(dir, "docs", "einstellungen.md"), "utf-8") : "",
       en: res.status === 0 ? readFileSync(join(dir, "docs", "en", "einstellungen.md"), "utf-8") : "",
     };
@@ -39,6 +46,9 @@ function erzeugt(tabelleAendern) {
     rmSync(dir, { recursive: true, force: true });
   }
 }
+
+/** Der Text einer Beispieldatei ohne ganze Kommentarzeilen, als Objekt. */
+const aktiv = (text) => JSON.parse(text.split("\n").filter((z) => !z.trimStart().startsWith("//")).join("\n"));
 
 /** Die Pfade, für die ein Pfad mit `{a,b,c}` steht. */
 function ausgeklappt(pfad) {
@@ -269,4 +279,56 @@ test("der Teil „Vom Kit verwaltet“ trägt das Kennzeichen, version hat eine 
   }
   // Das Kennzeichen steht nur an der Zeile des Wurzelfelds.
   assert.doesNotMatch(zeile(de, "scaffoldOnly[].pattern"), /_Intern\._/);
+});
+
+// --- Die kommentierte Beispieldatei (Issue #1735, Plan #1710 A9, E3) ---
+
+test("die Beispieldatei trägt die Einstellungen des ersten Teils aktiv mit Beispielwerten", () => {
+  const { res, beispielDe, beispielEn } = erzeugt();
+  assert.equal(res.status, 0, `${res.stdout}\n${res.stderr}`);
+  const vorlage = JSON.parse(readFileSync(join(repoRoot, "templates", "workflow.config.json"), "utf-8"));
+  for (const [sprache, text] of [["de", beispielDe], ["en", beispielEn]]) {
+    const bsp = aktiv(text);
+    assert.equal(bsp.language, sprache);
+    assert.deepEqual(bsp.issueReview, vorlage.issueReview, `${sprache}: issueReview steht nicht als Block der Vorlage`);
+    assert.equal(bsp.issueReview.reviewers.length, 3);
+    assert.deepEqual(bsp.buildChecks, vorlage.buildChecks);
+    assert.equal(bsp.mainBranch, vorlage.mainBranch);
+    // Alles außerhalb des ersten Teils steht nicht aktiv.
+    for (const feld of ["history", "night", "triggers", "version", "mutationCommand"]) assert.ok(!(feld in bsp), `${sprache}: ${feld} steht aktiv`);
+  }
+});
+
+test("über jeder Einstellung steht derselbe Satz wie auf der Seite", () => {
+  const { de, en, beispielDe, beispielEn } = erzeugt();
+  for (const [seite, text, teil] of [[de, beispielDe, "Lohnt sich"], [en, beispielEn, "Worth setting"]]) {
+    const zeilen = text.split("\n");
+    assert.ok(zeilen.includes(`  // === ${teil} ===`), teil);
+    for (const [feld, wert] of [["history", "true"], ["reviewScope", '"diff"'], ["mainBranch", '"main"']]) {
+      const i = zeilen.findIndex((z) => new RegExp(`^  (// )?"${feld}": `).test(z));
+      assert.ok(i > 0, `${feld} fehlt`);
+      if (feld !== "mainBranch") assert.equal(zeilen[i], `  // "${feld}": ${wert},`);
+      const satz = zeile(seite, feld).slice(`- \`${feld}\` — `.length);
+      assert.equal(zeilen[i - 1], `  // ${satz}`, feld);
+    }
+  }
+});
+
+test("Unterfelder stehen mit ihrem Satz an ihrer Stelle, Gruppen mit ihrem gruppe-Satz", () => {
+  const { de, beispielDe } = erzeugt();
+  const zeilen = beispielDe.split("\n");
+  const i = zeilen.findIndex((z) => /^\s*\/\/ "label": "kit:night",?$/.test(z));
+  assert.ok(i > 0, "night.chain.label fehlt");
+  assert.equal(zeilen[i - 1].trim(), `// ${zeile(de, "night.chain.label").slice("- `night.chain.label` — ".length)}`);
+  assert.ok(zeilen.includes(`  // ${TABELLE.night.gruppe.de}`), "der gruppe-Satz von night fehlt");
+});
+
+test("--check meldet eine veränderte Beispieldatei", () => {
+  const { check } = erzeugt(null, (dir) => {
+    const pfad = join(dir, "templates", "workflow.config.example.en.jsonc");
+    writeFileSync(pfad, readFileSync(pfad, "utf-8") + "// angehängt\n");
+    return spawnSync(process.execPath, [TOOL, "--check"], { encoding: "utf-8", env: { ...process.env, KIT_ROOT: dir } });
+  });
+  assert.equal(check.status, 1);
+  assert.match(check.stderr, /workflow\.config\.example\.en\.jsonc/);
 });

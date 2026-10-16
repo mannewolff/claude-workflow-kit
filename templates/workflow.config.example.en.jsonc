@@ -1,0 +1,403 @@
+// Example file for .claude/workflow.config.json: every setting the kit knows, with the sentence from the settings page.
+// The kit never reads this file, and every update renews it — changes made here are lost.
+// The settings needed at setup are active with example values; all others are commented out with their default.
+// To take one over: copy the line into .claude/workflow.config.json, remove the leading // and adjust the value.
+{
+  // === Needed at setup ===
+
+  // Language of the kit in this project: de (German) or en (English). Valid: `de`, `en`. Default: `de`. Switches the kit's texts, board names and comments to English; set `en` when the team works in English.
+  "language": "en",
+
+  // Where the code lives (push, pull requests). Valid: `github`, `gitlab`, `local`. Default: `github`. Decides where pushes go and where pull requests are opened; set it at setup when the code is not on GitHub.
+  "codeHost": "github",
+
+  // Where the issues are managed. Valid: `github`, `gitlab`, `local`, `toolbox`. Default: `github`. Decides where the board lives; set it at setup when the issues are not on GitHub, for example `local` for files in the repo.
+  "issueTracker": "github",
+
+  // The project's check commands (build, tests). Default: `[]`. Decides what is checked before each commit and before `push main`; enter the project's build and test commands at setup.
+  // `buildChecks[]` — A check command, as a command string or as an object with `cmd` and the fields below. No default.
+  // `buildChecks[].cmd` — The command line as it would appear in the string form. No default.
+  // `buildChecks[].areas` — Area names from `checkAreas`; the check runs when one of them is touched. No default.
+  // `buildChecks[].always` — true = always runs, by decision, regardless of the touched areas. No default.
+  // `buildChecks[].stage` — When the check is due: "paket" at the completion of a work package, "push" before publishing, "merge" before the release. Valid: `paket`, `push`, `merge`. Default: `paket`.
+  // `buildChecks[].notAtCompletion` — Why the check may be skipped at the completion of a single package. Valid: `zusammenspiel`, `volleTestmenge`. Default: not set, the check also runs at completion.
+  // `buildChecks[].completionAreas` — Areas whose touch makes the check run at completion too. Default: not set, the check is skipped at completion.
+  // `buildChecks[].quality` — Marks this check as a quality measurement whose value below the threshold stops publishing. No default.
+  // `buildChecks[].quality.pattern` — Regular expression with exactly one group; it picks the measured percentage from the command's output. No default.
+  // `buildChecks[].quality.marker` — The percentage from which the measurement suffices. Values: 0 to 100. No default.
+  // `buildChecks[].concurrent` — Whether this check may run alongside others in "checks.mjs run". Default: `false`.
+  // `buildChecks[].upfront` — Whether this check runs in "checks.mjs run" before all others. Default: `false`.
+  // `buildChecks[].kind` — With `hinweis` the check only reports and never stops. Valid: `hinweis`. Default: an ordinary check whose red result stops the run.
+  "buildChecks": [
+    "mvn verify",
+    {
+      "cmd": "npm --prefix frontend run build",
+      "areas": [
+        "frontend"
+      ]
+    }
+  ],
+
+  // Branch for local commits and push (step 7). Default: `main`. The branch for local commits and `push main`; set it only when it is not called `main`.
+  "mainBranch": "main",
+
+  // Target branch for the PR in step 8 (merge production). Default: `production`. The branch `merge production` opens the pull request against; set it only when it is not called `production`.
+  "productionBranch": "production",
+
+  // Settings for the local issue tracker (issueTracker: 'local'). Default: the values of the fields below. The folder where the local tracker keeps its issues; set it only with `issueTracker` `local` and a folder other than `issues`.
+  "local": {
+    // Directory of the issue Markdown files, relative to the project root. Default: `issues`.
+    "issuesDir": "issues"
+  },
+
+  // GitHub-specific settings. No default. The GitHub project whose columns are the board; needed at setup with a board on GitHub, the installer enters it.
+  "github": {
+    // Number of the GitHub Project board (gh project list). Values: from 1. No default.
+    "projectNumber": 1
+  },
+
+  // Settings for the Toolbox issue tracker (issueTracker: 'toolbox'). No default. Access to the author's Toolbox tracker; set it only with `issueTracker` `toolbox`.
+  // "toolbox": {
+    // Base URL of the Toolbox instance. No default.
+    // "host": "",
+    // Path (relative to the project directory) to a file holding the project- or board-bound token. No default.
+    // "tokenFile": ""
+  // },
+
+  // Issue review across several models. No default. Decides which models review requirement, plan and packages; set it at setup, because without reviewers the night chain stops before it starts.
+  "issueReview": {
+    // If true, the night runner moves Ready issues without a review marker back to the backlog with a comment. Default: `false`.
+    "requiredBeforeReady": false,
+    // The reviewers in the order in which they are taken; never the author. No default.
+    // `issueReview.reviewers[].name` — Short name, compared with the issue's author model. No default.
+    // `issueReview.reviewers[].kind` — 'claude' runs as a subagent via the Agent tool, 'command' as any foreign CLI (prompt via stdin). Valid: `claude`, `command`. No default.
+    // `issueReview.reviewers[].model` — Only for kind 'claude': model identifier. No default.
+    // `issueReview.reviewers[].command` — Only for kind 'command': command line, e.g. 'codex exec --model gpt-5'. No default.
+    // `issueReview.reviewers[].readLimit` — Only for kind 'command': the read-only switch of the third-party tool. No default.
+    "reviewers": [
+      {
+        "name": "opus",
+        "kind": "claude",
+        "model": "claude-opus-5"
+      },
+      {
+        "name": "sonnet",
+        "kind": "claude",
+        "model": "claude-sonnet-5"
+      },
+      {
+        "name": "fable",
+        "kind": "claude",
+        "model": "claude-fable-5"
+      }
+    ],
+    // Explicit mapping author -> reviewer. Default: no assignment, the order in `reviewers` applies.
+    "pairs": {
+      "opus": [
+        "sonnet",
+        "fable"
+      ],
+      "sonnet": [
+        "opus",
+        "fable"
+      ],
+      "fable": [
+        "opus",
+        "sonnet"
+      ],
+      "haiku": [
+        "sonnet",
+        "opus"
+      ]
+    }
+  }
+
+  // === Worth setting ===
+
+  // Named areas of the project. No default. Maps paths to named areas so that a check runs only when its area is touched; set it as soon as the full check run takes too long.
+  // "checkAreas": {
+  //   "frontend": [
+  //     "frontend/**"
+  //   ]
+  // },
+
+  // Files that no check reads. Default: `[]`. Takes files that no check reads out of the full check run; set it when, for example, a plain text change triggers every check.
+  // `noCheck[].pattern` — Path pattern as in checkAreas: "*" within a segment, "**" across segment boundaries, "/" as separator. No default.
+  // `noCheck[].reason` — Why no check reads the content of this file. No default.
+  // "noCheck": [],
+
+  // Areas with a measured coupling. Default: `[]`. Records with a reason that an area triggers almost every check because of a measured coupling; set it when the evaluation reports such an area and the coupling is intended.
+  // `coupledAreas[].area` — Name of the area as it appears in checkAreas. No default.
+  // `coupledAreas[].reason` — Which measured coupling forces the area into almost every check command. No default.
+  // "coupledAreas": [],
+
+  // Where a component's own tests live. Default: the kit's locations for TypeScript and Java. Tells the kit where a component's tests live, so that a plan gets hints about affected tests; set it when the layout does not follow the TypeScript or Java pattern.
+  // `testLocations[].source` — Pattern of the source file, for example src/{pfad}/{name}.ts. No default.
+  // `testLocations[].test` — Pattern of its own test, with the same placeholders and * within a segment, for example src/{pfad}/{name}*.test.ts. No default.
+  // `testLocations[].defaults` — Inserts the kit's defaults at this position. Value: `true`. No default.
+  // "testLocations": [],
+
+  // Command for mutation tests (optional). Default: empty. Runs mutation tests before each `push main` that only report; set it when the project has a tool such as PIT or Stryker.
+  // "mutationCommand": "",
+
+  // Further commands or command prefixes that start a quality measurement (optional). Default: `[]`. Keeps further quality measurements out of the packages' acceptance criteria; set it when the project has an expensive measurement that is not a check.
+  // "qualityCommands": [],
+
+  // Command that fixes formatting violations. Default: empty. Fixes formatting violations itself and checks once more instead of ending the run red; set it when the project has a formatter.
+  // "formatFixCommand": "",
+
+  // Command that installs the dependencies. Default: empty. Installs the dependencies in a fresh worktree; set it when the project uses worktrees and has to install packages, for example with `npm ci`.
+  // "installCommand": "",
+
+  // Where the full check run before 'push main' takes place. Valid: `lokal`. Default: `lokal`. Moves the full check run before `push main` to the build service; set it when it takes too long locally or the CI checks the same anyway.
+  // `pushCheck.location` — The place of the full run: the project's build service. Valid: `buildDienst`. No default.
+  // `pushCheck.branch` — The check branch that /push-main pushes before the push and deletes afterwards. No default.
+  // "pushCheck": "local",
+
+  // Scope of the review material. Valid: `diff`, `full`. Default: `diff`. Decides whether the code review reads only the diff since the last push or the whole source; set `full` for a review of the whole project.
+  // "reviewScope": "diff",
+
+  // The Claude model of the code review. Default: `claude-opus-4-8`. The Claude model that reviews the code; set it when a model other than the default is to review.
+  // "reviewModel": "claude-opus-4-8",
+
+  // A third-party CLI as code reviewer, counterpart of reviewModel. Default: not set, `reviewModel` reviews. Lets a third-party CLI review the code instead of Claude; set it when a model from another provider is to review.
+  // "reviewCommand": "",
+
+  // Staffing and perspective of the three review levels: the functional concern, the plan to get there, the single work package. Default: per tier the roles of the role catalogue, one reviewer per role, only if the whole block is missing; if a tier or a field is missing in a block that is present, the config check aborts. Decides how many reviewers with which roles review at each stage; set it when a stage is to be reviewed more thoroughly or more sparingly.
+  // "reviewStages": {
+    // Review of the functional concern ([Requirement] issue) before a plan is made from it. No default.
+    // "requirement": {
+      // How many reviewers review this level. Values: from 1. Default: `2`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
+      // "reviewer": 2,
+      // One role name per reviewer, in the order of assignment. Default: `form-beobachtbarkeit`, `abgrenzung`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
+      // "roles": [
+      //   "form-beobachtbarkeit",
+      //   "abgrenzung"
+      // ]
+    // },
+    // Review of the plan document ([Plan] issue) before it is split into work packages. No default.
+    // "plan": {
+      // How many reviewers review this level. Values: from 1. Default: `2`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
+      // "reviewer": 2,
+      // One role name per reviewer, in the order of assignment. Default: `architektur-bestand`, `schnitt-abhaengigkeiten`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
+      // "roles": [
+      //   "architektur-bestand",
+      //   "schnitt-abhaengigkeiten"
+      // ]
+    // },
+    // Review of the single work package before the GO. No default.
+    // "issue": {
+      // How many reviewers review this level. Values: from 1. Default: `1`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
+      // "reviewer": 1,
+      // One role name per reviewer, in the order of assignment. Default: `pruefbarkeit`, only if the whole `reviewStages` block is missing; a block that is present needs the field.
+      // "roles": [
+      //   "pruefbarkeit"
+      // ]
+    // }
+  // },
+
+  // Earlier requirements on the same subject. Default: `true`. Lets requirement and plan name earlier requirements on the same subject; switch it off with `false` only when the board's history does not matter.
+  // "history": true,
+
+  // The partner repos of this project. Default: `[]`, no partner repo. Requires every plan to have a contracts section on the partner repos; add an entry as soon as another repo reads or writes a name, a format or a marker of this project.
+  // `contractRepos[].name` — Short name of the partner repo, for example kanban-kit: lowercase letters and digits, words separated by single hyphens. No default.
+  // `contractRepos[].url` — Address from which the partner repo can be cloned, for example https://github.com/mannewolff/kanban-kit.git. No default.
+  // `contractRepos[].branch` — Main branch of the partner repo: a contract is checked against the built state on this branch. Default: `main`.
+  // "contractRepos": [],
+
+  // === Managed by the kit ===
+
+  // _Set by the installer._ Version identifier x.y.z. Default: `1.4.0`.
+  // "version": "1.4.0",
+
+  // _Deprecated._ Is carried over to `codeHost` and `issueTracker` on loading; do not set it in a new config. Valid: `github`, `gitlab`, `local`. No default.
+  // "provider": "",
+
+  // _Internal._ Paths that test files only create as scaffolding — mentioning them in a test file proves no coupling. Default: `[]`.
+  // `scaffoldOnly[].pattern` — Path pattern as in checkAreas: "*" within a segment, "**" across segment boundaries, "/" as separator. No default.
+  // `scaffoldOnly[].reason` — Why no test file checks this path but at most creates it as scaffolding. No default.
+  // "scaffoldOnly": [],
+
+  // _Set by the installer._ Cut-off of the scenario requirement, as a card number. Values: from 1. Default: not set, the obligation applies to no card on the board; the installer sets the field on update.
+  // "scenariosFrom": 0,
+
+  // === Fine-tuning ===
+
+  // The read-only switch of the third-party CLI from reviewCommand. Default: the built-in switch for codex.
+  // "reviewReadLimit": "",
+
+  // The phrases the human uses to release the three stop points.
+  // Trigger phrases for the three human stop points. Default: the values of the fields below.
+  // "triggers": {
+    // Phrase for the GO to implement. Default: `GO`.
+    // "go": "GO",
+    // Phrase for the push to mainBranch (step 7). Default: `push main`.
+    // "push": "push main",
+    // Phrase for the PR to productionBranch (step 8). Default: `merge production`.
+    // "merge": "merge production"
+  // },
+
+  // The names of the columns and labels, when the board calls them differently from the kit.
+  // Mapping of the internal statuses to board column or label names. Default: the values of the fields below.
+  // "columns": {
+    // Name of the column or label for Backlog; on GitLab, `Open` turns it into the open state without a label. Default: `Backlog`.
+    // "backlog": "Backlog",
+    // Name of the column or label for Ready — released, the human's GO. Default: `Ready`.
+    // "ready": "Ready",
+    // Name of the column or label for In progress — the work package currently being worked on. Default: `In progress`.
+    // "in_progress": "In progress",
+    // Name of the column or label for In review — done locally, not yet pushed. Default: `In review`.
+    // "in_review": "In review",
+    // Name of the Done column on GitHub and locally; GitLab always uses the closed state. Default: `Done`.
+    // "done": "Done"
+  // },
+
+  // Night mode: which models may run, how long an implementation should take and when a run counts as stuck.
+  // Night mode. No default.
+  // "night": {
+    // The budgets of the night chain: time, cost and correction rounds per step before the chain stops.
+    // Budgets and markers of the night chain (night.mjs --chain). No default.
+    // "chain": {
+      // The marker on the functional requirement or the plan document that starts the chain. Default: `kit:night`.
+      // "label": "kit:night",
+      // The marker that flags the marked card for the chain's implementation stage (variant B). Default: `kit:carry-through`.
+      // "variantBLabel": "kit:carry-through",
+      // Time budget of the plan stage in minutes, including correction rounds. Default: `20`.
+      // "planMin": 20,
+      // Time budget of the packages stage in minutes, including correction rounds. Default: `15`.
+      // "packagesMin": 15,
+      // Time budget of the reviewer session on the plan in minutes. Default: `15`.
+      // "reviewMin": 15,
+      // Time budget of the coverage session in minutes. Default: `10`.
+      // "coverageMin": 10,
+      // Time budget of the implementation stage (variant B) in minutes, across all implementation sessions of the chain. Default: `120`.
+      // "implementationMin": 120,
+      // Time limit of the push preparation in minutes, waiting and check run included. Default: `120`.
+      // "preparationMin": 120,
+      // Cost budget per chain in US dollars, summed over all sessions of the chain; checked after every session. Default: `50`.
+      // "costUsd": 50,
+      // Cost budget per chain in US dollars for the implementation stage (variant B). Default: `150`.
+      // "costUsdB": 150,
+      // Maximum number of correction sessions per document after a red form check. Values: from 1. Default: `2`.
+      // "correctionRounds": 2,
+      // Which transitions of the chain may follow automatically. Default: every transition follows, implementation only for a card with the variant B label.
+      // "transitions": {
+        // After the plan, the review of the plan follows automatically. Default: `true`.
+        // "planReview": true,
+        // After the review of the plan, the work packages follow automatically. Default: `true`.
+        // "reviewPackages": true,
+        // After the work packages, the coverage against the functional requirement or against the plan follows automatically. Default: `true`.
+        // "packagesCoverage": true,
+        // After the coverage, the implementation follows automatically. Default: only a card with the variant B label is implemented.
+        // "coverageImplementation": false,
+        // Whether the push preparation follows the implementation. Default: `true`.
+        // "implementationPreparation": true
+      // }
+    // },
+    // How a card shows its run status on the board: labels, deadline and pause.
+    // A card's run status on the board. Default: the values of the fields below.
+    // "status": {
+      // The names of the three run status labels. Default: the values of the fields below.
+      // "labels": {
+        // Label of a card a run is currently working on. Default: `run:running`.
+        // "running": "run:running",
+        // Label of a card aborted for technical reasons: repeating is enough. Default: `run:aborted`.
+        // "aborted": "run:aborted",
+        // Label of a waiting card; what it is waiting for is stated verbatim in the run status. Default: `run:waiting`.
+        // "waiting": "run:waiting"
+      // },
+      // Detection period in minutes after a run's last sign of life. Default: `10`.
+      // "deadlineMin": 10,
+      // Pause in minutes before the one automatic attempt after an environment error of the live run. Default: `5`.
+      // "pauseMin": 5
+    // },
+    // The model of every night-run session that has no model of its own. Default: the model built into the night runner.
+    // "model": "",
+    // The model names the night runner may start, strongest first. Default: empty, every session starts with the model of the run.
+    // "models": [
+    //   "claude-opus-5",
+    //   "claude-sonnet-5"
+    // ],
+    // Which model the night run starts for each difficulty tier of a package.
+    // Model or command per difficulty level of a work package, ordered schwer/mittel/leicht (hard/medium/easy). Default: no tier, every package runs with the model of the run.
+    // "tiers": {
+      // Model or command for a hard task. No default.
+      // `night.tiers.hard.model` — Model ID for this level. No default.
+      // `night.tiers.hard.effort` — Thinking effort for this level, passed to the Claude CLI as --effort. Valid: `low`, `medium`, `high`, `xhigh`, `max`. Default: the Claude CLI's own setting.
+      // `night.tiers.hard.command` — Command line of a third-party program for this tier. No default.
+      // `night.tiers.hard.name` — The program's self-description next to kommando. No default.
+      // "hard": {},
+      // Model or command for a medium task. No default.
+      // `night.tiers.medium.model` — Model ID for this level. No default.
+      // `night.tiers.medium.effort` — Thinking effort for this level, passed to the Claude CLI as --effort. Valid: `low`, `medium`, `high`, `xhigh`, `max`. Default: the Claude CLI's own setting.
+      // `night.tiers.medium.command` — Command line of a third-party program for this tier. No default.
+      // `night.tiers.medium.name` — The program's self-description next to kommando. No default.
+      // "medium": {},
+      // Model or command for an easy task. No default.
+      // `night.tiers.easy.model` — Model ID for this level. No default.
+      // `night.tiers.easy.effort` — Thinking effort for this level, passed to the Claude CLI as --effort. Valid: `low`, `medium`, `high`, `xhigh`, `max`. Default: the Claude CLI's own setting.
+      // `night.tiers.easy.command` — Command line of a third-party program for this tier. No default.
+      // `night.tiers.easy.name` — The program's self-description next to kommando. No default.
+      // "easy": {}
+    // },
+    // Replaces the built-in rule by which /issues and /task determine the level of a work package. Default: the kit's rule.
+    // "tierRule": "",
+    // Number of identically failed runs of the same check after which an unattended session is stopped. Values: from 2. Default: `3`.
+    // "stuckAfter": 3,
+    // Target for the duration of an implementation in minutes. Default: `10`.
+    // "goalImplementationMin": 10,
+    // Period in days after which the night runner deletes its logs. Values: from 1. Default: `14`.
+    // "logRetentionDays": 14
+  // },
+
+  // The daily check run: its label, its time and its cost.
+  // The daily check run. Default: the values of the fields below.
+  // "checkRun": {
+    // The marker on the functional requirement that the run has reviewed. Default: `kit:check`.
+    // "label": "kit:check",
+    // Time budget of the reviewer session per card in minutes. Default: `25`.
+    // "checkMin": 25,
+    // Cost budget per run in US dollars, checked after every session. Default: `25`.
+    // "costUsd": 25
+  // },
+
+  // The thresholds from which the workload evaluation reports a finding.
+  // Scope and thresholds of the workload evaluation. Default: the values of the fields below.
+  // "workload": {
+    // The maximum number of the most recent completed result records the evaluation includes, most recent first. Default: `10`.
+    // "runs": 10,
+    // From which share the evaluation reports a finding. Default: the values of the fields below.
+    // "thresholds": {
+      // Highest share of the largest mandatory check in the check time without a finding. Values: 0 to 1. Default: `0.5`.
+      // "checkShare": 0.5,
+      // Whether a finding appears when narrowing the checks by area was measured but never took effect. Default: `true`.
+      // "narrowingWithoutEffect": true,
+      // Share of the total running time that pure tool work may take before a finding appears. Values: 0 to 1. Default: `0.5`.
+      // "toolShare": 0.5,
+      // Highest share of the writing costs in the total costs without a finding. Values: 0 to 1. Default: `0.75`.
+      // "writeCostShare": 0.75
+    // }
+  // },
+
+  // Time window and thresholds by which the effectiveness evaluation reports a check as ineffective.
+  // Time window and thresholds of the effectiveness evaluation. Default: the values of the fields below.
+  // "effectiveness": {
+    // How many days back the evaluation counts. Default: `30`.
+    // "windowDays": 30,
+    // From how many executions in the window a check that has never objected becomes a finding. Default: `10`.
+    // "neverFlaggedFromRuns": 10,
+    // From which return rate a finding appears. Values: 0 to 1. Default: `0.2`.
+    // "rateThreshold": 0.2,
+    // From how many evaluated work packages in the window the return rate may trigger a finding. Default: `10`.
+    // "rateFromPackages": 10,
+    // The maximum number of cards the return rate evaluates, most recent entries into In review first. Default: `200`.
+    // "candidatesMax": 200
+  // },
+
+  // From how many recurring findings of the model reviews a proposal arises.
+  // Recurring findings of the model reviews: from how many occurrences a proposal arises from them. Default: the values of the fields below.
+  // "findings": {
+    // From how many occurrences of the same finding a proposal arises. Default: `3`.
+    // "threshold": 3
+  // },
+}
