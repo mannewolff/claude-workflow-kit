@@ -272,7 +272,9 @@ test("ein gescheiterter git-Aufruf haelt den Lauf nicht an und nennt seinen Grun
   });
 });
 
-test("ein uebernommenes rotes Ergebnis nennt die Verursacher weiter", async () => {
+// Ein Rot wird seit Issue #1742 nie uebernommen: Der zweite Lauf misst neu und nennt die
+// Verursacher wieder.
+test("ein erneuter roter Lauf auf demselben Stand nennt die Verursacher wieder", async () => {
   await mitRepo({ config: ROT_BACKEND }, async (dir) => {
     const basis = anker(dir);
     datei(dir, "backend/src/Dienst.java");
@@ -281,8 +283,8 @@ test("ein uebernommenes rotes Ergebnis nennt die Verursacher weiter", async () =
     await pushLauf(dir, basis);
     const zweiter = await run(dir, "--since", basis, "--stage", "push");
 
-    assert.equal(zweiter.status, 1, `das rote Ergebnis wird uebernommen: ${zweiter.stdout}`);
-    assert.match(zweiter.stdout, /Ergebnis uebernommen/);
+    assert.equal(zweiter.status, 1, `der rote Befund bleibt: ${zweiter.stdout}`);
+    assert.doesNotMatch(zweiter.stdout, /Ergebnis uebernommen/);
     assert.deepEqual(zusammenfassung(dir).verursacher, [
       { cmd: "exit 1", karten: [{ karte: "915", shas: [sha] }] },
     ]);

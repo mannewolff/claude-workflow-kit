@@ -74,18 +74,41 @@ test("[checks-11] ein zweiter run auf unveraendertem Stand startet kein Kommando
   });
 });
 
-test("[checks-11] ein rotes Ergebnis wird ebenso uebernommen — mit Exitcode und rotem Kommando in der Meldung", async () => {
+test("[checks-11] ein rotes Ergebnis wird nie uebernommen — der Lauf startet seine Pruefungen neu (Issue #1742)", async () => {
   await mitRepo({ config: mitZaehler() }, async (dir) => {
     zaehlerAnlegen(dir, 1);
     datei(dir, "src/a.txt");
 
     const erster = await run(dir);
+    // Die Korrektur liegt ausserhalb der versionierten Dateien: Der Stand bleibt gleich.
+    zaehlerAnlegen(dir, 0);
     const zweiter = await run(dir);
 
     assert.notEqual(erster.status, 0, "Vorbedingung: der erste Lauf ist rot");
-    assert.equal(laeufe(dir), 1, "derselbe Stand liefert dasselbe Rot, ein zweiter Lauf ist verschwendet");
-    assert.equal(zweiter.status, erster.status);
-    assert.match(zweiter.stdout, /Ergebnis uebernommen \(rot: node \.claude\/zaehler\.mjs\)/);
+    assert.equal(laeufe(dir), 2, "nach einem Rot wird neu gemessen");
+    assert.equal(zweiter.status, 0, zweiter.stderr);
+    assert.doesNotMatch(zweiter.stdout, /uebernommen/);
+    assert.equal(zusammenfassung(dir).uebernommen, undefined);
+  });
+});
+
+test("[checks-11] ein nicht gestartetes Kommando hinter einem roten zaehlt nicht als gruen (Issue #1742)", async () => {
+  await mitRepo({ config: mitZaehler() }, async (dir) => {
+    zaehlerAnlegen(dir);
+    datei(dir, "src/a.txt");
+
+    await run(dir);
+    const summary = zusammenfassung(dir);
+    const [eintrag] = summary.laufen;
+    summary.laufen = [{ ...eintrag, ergebnis: "rot" }, { ...eintrag, ergebnis: "nicht gestartet" }];
+    writeFileSync(join(dir, ".claude", "checks-summary.json"), JSON.stringify(summary, null, 2) + "\n", "utf-8");
+    await run(dir);
+
+    summary.laufen = [{ ...eintrag, ergebnis: "nicht gestartet" }];
+    writeFileSync(join(dir, ".claude", "checks-summary.json"), JSON.stringify(summary, null, 2) + "\n", "utf-8");
+    await run(dir);
+
+    assert.equal(laeufe(dir), 3, "weder rot noch nicht gestartet wird uebernommen");
   });
 });
 

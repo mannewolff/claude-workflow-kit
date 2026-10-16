@@ -154,15 +154,15 @@ test("eine Aenderung, die die Auswahl aendert, faehrt direkt voll", async () => 
   });
 });
 
-test("unveraenderter Stand uebernimmt wie heute; ein gruener Vorlauf loest keinen Teillauf aus", async () => {
+test("unveraenderter Stand nach Rot faehrt voll ohne Teillauf; ein gruener Vorlauf loest keinen Teillauf aus", async () => {
   await mitAufbau(async (dir) => {
     rotMachen(dir, "b");
     await run(dir);
     gefahren(dir);
-    const uebernommen = await run(dir);
-    assert.equal(uebernommen.status, 1);
-    assert.deepEqual(gefahren(dir), [], "derselbe Stand faehrt nichts");
-    assert.match(uebernommen.stdout, /Ergebnis uebernommen \(rot: node \.claude\/k\.mjs b\)/);
+    const wiederholt = await run(dir);
+    assert.equal(wiederholt.status, 1);
+    assert.deepEqual(gefahren(dir), ["a", "b"], "ein Rot wird nie uebernommen (Issue #1742)");
+    assert.doesNotMatch(wiederholt.stdout, /uebernommen|Teillauf/);
 
     gruenMachen(dir, "b");
     datei(dir, "src/a.txt", "gruen\n");
@@ -193,7 +193,7 @@ test("--fresh faehrt direkt voll, ohne Teillauf", async () => {
   });
 });
 
-test("nach einem roten Teillauf nennt die Uebernahme die tatsaechlich rote Gruppe", async () => {
+test("nach einem roten Teillauf faehrt derselbe Stand voll, ohne Uebernahme (Issue #1742)", async () => {
   await mitAufbau(async (dir) => {
     rotMachen(dir, "b");
     await run(dir);
@@ -205,8 +205,9 @@ test("nach einem roten Teillauf nennt die Uebernahme die tatsaechlich rote Grupp
     assert.equal(zusammenfassung(dir).laufen[0].ergebnis, "nicht gestartet",
       "Vorbedingung: vor der roten Gruppe steht eine nicht gestartete");
 
-    const uebernommen = await run(dir);
-    assert.match(uebernommen.stdout, /Ergebnis uebernommen \(rot: node \.claude\/k\.mjs b\)/);
-    assert.equal(zusammenfassung(dir).teillauf, true, "die Uebernahme reicht die Teillauf-Marke weiter");
+    const wiederholt = await run(dir);
+    assert.deepEqual(gefahren(dir), ["a", "b"]);
+    assert.doesNotMatch(wiederholt.stdout, /uebernommen|Teillauf/);
+    assert.equal(zusammenfassung(dir).uebernommen, undefined);
   });
 });

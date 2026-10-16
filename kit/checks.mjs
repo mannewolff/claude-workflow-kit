@@ -3195,6 +3195,13 @@ export function hashesGleich(a, b) {
  * Zusammenfassung — die eines abgebrochenen Laufs bezeugt keinen fertigen Stand,
  * sie ist gerade der Nachweis, dass eine Pruefung ihr Ende nicht erreicht hat.
  *
+ * Und bewusst nur ein GRUENES Ergebnis (Issue #1742): Jeder Eintrag in `laufen` muss
+ * `gruen` sein — Ausgelassenes steht nicht in `laufen`, ein `nicht gestartet` zaehlt
+ * nicht als gruen. Die Uebernahme sieht nur versionierte Dateien und die Config; ein
+ * Rot, dessen Ursache ausserhalb liegt (installierte Kopie, Abhaengigkeiten,
+ * Umgebung), bliebe sonst stehen, bis jemand `--fresh` kennt. Ein Rot zu uebernehmen
+ * spart ohnehin nichts: Nach einer Korrektur will man gerade neu messen.
+ *
  * Jeder Zweifel faellt auf `null` zurueck und damit in den vollen Weg: fehlende
  * Datei, kaputtes JSON, fehlendes Feld, ein Stand aus einer aelteren Fassung ohne
  * `configHash`. Das ist dieselbe Richtung, in die dieses Kommando ueberall irrt —
@@ -3202,6 +3209,7 @@ export function hashesGleich(a, b) {
  */
 function frueheresErgebnis(alt, auswahl, hashes, configHash) {
   if (!gleicheAuswahlBasis(alt, auswahl, configHash)) return null;
+  if (!alt.laufen.every((e) => e?.ergebnis === "gruen")) return null;
   if (!listenGleich(alt.geaendert, auswahl.geaendert)) return null;
   if (!hashesGleich(alt.hashes, hashes)) return null;
   return alt;
