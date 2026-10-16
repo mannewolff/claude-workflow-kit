@@ -2,6 +2,15 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [5.2.4] - 2026-10-16
+- Die WSL2-Anleitung führt nur bis zum bereitstehenden WSL2 und nennt Firmenrechner und Runner unter Windows (#1758)
+- Der Einstieg „Die erste Stunde“ führt vom Rechner bis zur geprüften Karte in Done (#1757)
+- Die Doku nennt genau einen Installationsweg und die richtige Vorgabe des Issue-Trackers (#1756)
+- Die Runner-Seite verweist für Einstellungen auf einstellungen statt sie zu wiederholen (#1755)
+- Der Installer meldet am Ende laut uncommittete Dateien im Workspace (#1749)
+- Die Doku spricht vom Runner statt von Nacht, Nachtlauf und Nachtbetrieb (#1748)
+- Änderungen in der Konfiguration durch install.mjs 5.2.3
+
 ## [5.2.3] - 2026-10-16
 - Warnung ohne Label nennt das Repo, dessen Board gelesen wurde (#1744)
 - Die Einstellung scaffoldOnly steht im Teil Feinabstimmung (#1723)
