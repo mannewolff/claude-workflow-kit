@@ -96,14 +96,16 @@ Die Konfiguration liegt in `.claude/workflow.config.json` (im Repository, gilt f
 Gelesen werden:
 - `mainBranch`: Ziel-Branch (Default: `main`)
 - `buildChecks`: Liste der Pflicht-Checks
-- `pushPruefung`: wo der volle Lauf stattfindet — `"lokal"` ist die Vorgabe, ein Objekt
-  `{ "ort": "buildDienst", "zweig": "<name>" }` verlegt ihn in den Build-Dienst. Der Skill
-  liest den Wert nicht selbst aus der Config, sondern aus dem Feld `pushPruefung` von:
+- `pushCheck`: wo der volle Lauf stattfindet — `"lokal"` ist die Vorgabe, ein Objekt
+  `{ "location": "buildDienst", "branch": "<name>" }` verlegt ihn in den Build-Dienst. Der Skill
+  liest den Wert nicht selbst aus der Config, sondern aus der Ausgabe von:
 
   ```bash
   node .claude/kit/checks.mjs plan --stage push
   ```
 
+  Die Ausgabe nennt ihn im Feld `"pushPruefung"` mit den internen Namen: `"lokal"` oder
+  `{ "ort": "buildDienst", "zweig": "<name>" }`, gleich, mit welchen Namen die Datei ihn schreibt.
   Bei `"lokal"` gelten die Schritte unten unverändert. Bei `buildDienst` ersetzt der
   Abschnitt „Weg über den Build-Dienst" den Prüflauf in Schritt 5 und den Push in
   Schritt 7; alle anderen Schritte bleiben. Endet der Aufruf mit einem Fehler (ungültiger
@@ -547,13 +549,13 @@ Haupt-Working-Tree unberührt geblieben ist.
 Hinweis auf nächsten Schritt:
 > "Commit-Batch gepusht. Wenn der Test-Server automatisch zieht: dort prüfen. Dann auf Wunsch \`merge production\` für den PR nach production."
 
-## Weg über den Build-Dienst (`pushPruefung`)
+## Weg über den Build-Dienst (`pushCheck`)
 
-Gilt nur, wenn `checks.mjs plan --stage push` in Schritt 1 `pushPruefung` als Objekt mit
+Gilt nur, wenn `checks.mjs plan --stage push` in Schritt 1 im Feld `"pushPruefung"` ein Objekt mit
 `"ort": "buildDienst"` meldet (Issue #1216, Plan #1199 E14). Der volle Lauf findet dann im
 Build-Dienst des Projekts statt statt auf diesem Rechner. **Die Pflicht ist dieselbe:**
 Grün vor dem Push auf `<mainBranch>`, ein Rot hält an, `productionBranch` bleibt
-unberührt. `<zweig>` ist der Wert aus `pushPruefung.zweig`. Schritte, Zählung `von 9` und
+unberührt. `<zweig>` ist der Wert aus `"zweig"` dieses Objekts, in der Config `pushCheck.branch`. Schritte, Zählung `von 9` und
 Fortschrittszeilen bleiben; anders sind nur Schritt 5 und Schritt 7.
 
 **Was der Build-Dienst fahren muss.** Ein Push auf `<zweig>` startet dort den Lauf der
@@ -656,7 +658,7 @@ Worktree, kein Lauf, kein Push. `code protection suspend` bricht ohne Aufsicht o
 (E8); der Halt im Skill kommt dem zuvor. Auch hier braucht es die getippte Trigger-Phrase
 des Menschen.
 
-**Schritte 1 bis 6 wie auf dem lokalen Weg**, auch wenn `pushPruefung` den Build-Dienst
+**Schritte 1 bis 6 wie auf dem lokalen Weg**, auch wenn `pushCheck` den Build-Dienst
 nennt: Schritt 5 ist der volle lokale Lauf der Stufe `push` mit `--retry` im
 Worktree, die Ersatzprüfung für den ausgefallenen Build-Dienst. Ein roter Lauf hält an wie
 dort. Ein Wackler hält vor dem Commit an und wird erfragt wie dort.

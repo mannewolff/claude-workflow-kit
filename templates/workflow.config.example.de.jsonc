@@ -319,25 +319,25 @@
     //   "claude-sonnet-5"
     // ],
     // Welches Modell der Nachtlauf je Schwierigkeitsstufe eines Pakets startet.
-    // Modell oder Kommando je Schwierigkeitsstufe eines Arbeitspakets, geordnet schwer/mittel/leicht. Vorgabe: keine Stufe, jedes Paket läuft mit dem Modell des Laufs.
+    // Modell oder Kommando je Schwierigkeitsstufe eines Arbeitspakets, geordnet hard/medium/easy. Vorgabe: keine Stufe, jedes Paket läuft mit dem Modell des Laufs.
     // "tiers": {
       // Modell oder Kommando für eine schwere Aufgabe. Keine Vorgabe.
       // `night.tiers.hard.model` — Modell-ID für diese Stufe. Keine Vorgabe.
       // `night.tiers.hard.effort` — Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Gültig: `low`, `medium`, `high`, `xhigh`, `max`. Vorgabe: die Voreinstellung der Claude-CLI.
       // `night.tiers.hard.command` — Kommandozeile eines fremden Programms für diese Stufe. Keine Vorgabe.
-      // `night.tiers.hard.name` — Selbstauskunft des Programms neben kommando. Keine Vorgabe.
+      // `night.tiers.hard.name` — Selbstauskunft des Programms neben command. Keine Vorgabe.
       // "hard": {},
       // Modell oder Kommando für eine mittelschwere Aufgabe. Keine Vorgabe.
       // `night.tiers.medium.model` — Modell-ID für diese Stufe. Keine Vorgabe.
       // `night.tiers.medium.effort` — Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Gültig: `low`, `medium`, `high`, `xhigh`, `max`. Vorgabe: die Voreinstellung der Claude-CLI.
       // `night.tiers.medium.command` — Kommandozeile eines fremden Programms für diese Stufe. Keine Vorgabe.
-      // `night.tiers.medium.name` — Selbstauskunft des Programms neben kommando. Keine Vorgabe.
+      // `night.tiers.medium.name` — Selbstauskunft des Programms neben command. Keine Vorgabe.
       // "medium": {},
       // Modell oder Kommando für eine leichte Aufgabe. Keine Vorgabe.
       // `night.tiers.easy.model` — Modell-ID für diese Stufe. Keine Vorgabe.
       // `night.tiers.easy.effort` — Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Gültig: `low`, `medium`, `high`, `xhigh`, `max`. Vorgabe: die Voreinstellung der Claude-CLI.
       // `night.tiers.easy.command` — Kommandozeile eines fremden Programms für diese Stufe. Keine Vorgabe.
-      // `night.tiers.easy.name` — Selbstauskunft des Programms neben kommando. Keine Vorgabe.
+      // `night.tiers.easy.name` — Selbstauskunft des Programms neben command. Keine Vorgabe.
       // "easy": {}
     // },
     // Ersetzt die mitgelieferte Regel, nach der /issues und /task die Stufe eines Arbeitspakets bestimmen. Vorgabe: die Regel des Kits.

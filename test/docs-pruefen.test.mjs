@@ -102,7 +102,7 @@ test("der Prueflauf-Block der Vorlage nennt Geste, Aufruf, Ausgaenge und das Ver
   for (const anker of [
     `\`${PRUEFLAUF_LABEL}\``,
     "node .claude/kit/night.mjs --check",
-    "`pruefLauf`",
+    "`checkRun`",
     `\`${REVIEW_FERTIG_LABEL}\``,
     `\`${KLAEREN_LABEL}\``,
     PRUEFLAUF_REST_ANKER,

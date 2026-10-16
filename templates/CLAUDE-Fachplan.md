@@ -194,7 +194,7 @@ englischen Projekt `### Scenario: <title>` mit `Given`, `When`, `Then`, `And`.
 **Geltung:** Beim Pruefen einer Datei (`issue check-form --body-file`) und beim Anlegen
 (`issue create` mit `--art requirement` oder dem Fachplan-Praefix im Titel) immer — ein
 Verstoss legt nichts an und endet mit Exit 1. Beim Pruefen einer Karte am Board
-(`issue check-form <id>`) nur, wenn ihre Nummer mindestens `szenarienAb` aus der
+(`issue check-form <id>`) nur, wenn ihre Nummer mindestens `scenariosFrom` aus der
 `workflow.config.json` ist. Fehlt das Feld, gilt F12 fuer keine Karte am Board, und die
 Pruefung nennt den fehlenden Stichtag als Hinweis. F1 bleibt bei vier Abschnitten.
 

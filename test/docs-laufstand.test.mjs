@@ -54,8 +54,8 @@ const ANGABEN = [
   ["die wartet-Form ohne kit:carry-through (E12)", /wartet: Karte ohne Freigabe zur Umsetzung/],
   ["den Start bei der ersten Stufe ohne Ergebnis (E11)", /`kit:night`[^.]*ersten Stufe ohne Ergebnis/],
   ["den frischen Plan erst nach Done des alten (E9)", /frische[nr]? Plan[^.]*erst[^.]*Done/],
-  ["die Uebergaenge im Projekt (E12)", /`night\.kette\.uebergaenge`/],
-  ["abdeckungUmsetzung nur mit kit:carry-through (E12)", /`abdeckungUmsetzung`[^.]*nur[^.]*`kit:carry-through`/],
+  ["die Uebergaenge im Projekt (E12)", /`night\.chain\.transitions`/],
+  ["coverageImplementation nur mit kit:carry-through (E12)", /`coverageImplementation`[^.]*nur[^.]*`kit:carry-through`/],
   [
     "den einen Versuch nur bei Umgebungsfehlern des lebenden Laufs (E13)",
     /(?:einen|ein) automatische[nr]? Versuch[^.]*nur bei Umgebungsfehlern[^.]*solange der Lauf lebt/i,
@@ -124,7 +124,7 @@ const BELEGFAELLE = [
 
 // Punkt 3 des Pakets: Waechter und Frist, Journal und Nachtrag, Teilschnitt, Stash.
 const ZUSAETZE = [
-  ["die Frist des Waechters", /`night\.stand\.fristMin`/],
+  ["die Frist des Waechters", /`night\.status\.deadlineMin`/],
   ["dass ein lebender Lauf nie als verstummt gilt", /lebt[^.]*nie als verstummt/],
   ["das Journal", /`\.claude\/lauf\/<lauf>\.jsonl`/],
   ["den Nachtrag", /nachgetragen/],

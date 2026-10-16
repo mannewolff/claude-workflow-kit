@@ -106,23 +106,23 @@ test("W3 haelt fest, dass jede Pruefung jeder Stufe einmal vor der Freigabe laeu
 
 // --- Die Config-Feldliste ---
 
-test("die Config-Feldliste nennt die optionale Stufenangabe stufe", () => {
+test("die Config-Feldliste nennt die optionale Stufenangabe stage", () => {
   const text = abschnitt("## Config (.claude/workflow.config.json)");
-  assert.match(text, /`buildChecks`[\s\S]{0,200}`stufe`/,
-    "die Feldliste nennt `stufe` nicht bei `buildChecks`");
+  assert.match(text, /`buildChecks`[\s\S]{0,200}`stage`/,
+    "die Feldliste nennt `stage` nicht bei `buildChecks`");
   assert.match(text, /`checkAreas`/,
     "die Feldliste hat `checkAreas` bei `buildChecks` verloren");
 });
 
 // --- Die Abgrenzung der drei Stufenbegriffe ---
 
-test("der Regeltext grenzt stufe gegen reviewStufen und die Nacht-Kette ab", () => {
+test("der Regeltext grenzt stage gegen reviewStages und die Nacht-Kette ab", () => {
   // Der eigentliche Zweck dieses Pakets neben der Staffelung selbst: Drei
   // verschiedene Dinge heissen im Kit „Stufe". Wer sie verwechselt, prueft zum
   // falschen Zeitpunkt oder liest ein Gate falsch.
   const text = abschnitt("## Pflichtchecks vor Push");
-  assert.match(text, /`stufe`/, "der Abgrenzungsabsatz nennt `stufe` nicht");
-  assert.match(text, /`reviewStufen`/, "der Abgrenzungsabsatz nennt `reviewStufen` nicht");
+  assert.match(text, /`stage`/, "der Abgrenzungsabsatz nennt `stage` nicht");
+  assert.match(text, /`reviewStages`/, "der Abgrenzungsabsatz nennt `reviewStages` nicht");
   assert.match(text, /Nacht-Kette/, "der Abgrenzungsabsatz nennt die Stufen der Nacht-Kette nicht");
 });
 
@@ -135,8 +135,8 @@ test("der Satz 'unabhaengig von der Pruefstufe' steht weiterhin vor W3 und meint
   // Sie anderswo zu fuehren hiesse, dass genau der Leser sie verpasst, der ueber
   // den Satz stolpert.
   const absatz = VORLAGE.slice(satz).split("\n")[0];
-  assert.match(absatz, /`reviewStufen`/,
+  assert.match(absatz, /`reviewStages`/,
     "der Absatz sagt nicht, dass die Pruefstufe hier das Review meint");
-  assert.match(absatz, /`stufe`/,
+  assert.match(absatz, /`stage`/,
     "der Absatz grenzt die Pruefstufe nicht gegen die Stufe einer Pflichtpruefung ab");
 });

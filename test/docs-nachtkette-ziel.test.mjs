@@ -65,12 +65,12 @@ const NACHT_ANGABEN = [
   ["den Verbrauch von Ziel und planreview beim Start (E1)", /verbrauch[^.]*(?:Ziel[^.]*`planreview:\*`|`planreview:\*`[^.]*Ziel)/],
   ["das Ende am Ziel mit fertig bis (E5)", /`fertig bis <Ziel>`/],
   ["die Projektgrenze (E6)", /Projektgrenze/],
-  ["den Uebergang umsetzungVorbereitung (E7)", /`umsetzungVorbereitung`/],
+  ["den Uebergang implementationPreparation (E7)", /`implementationPreparation`/],
   ["die Stufe vorbereitung", /Stufe `vorbereitung`/],
   ["das Warten, bis nichts mehr baut (E8)", /wartet[^.]*bis nichts mehr baut/],
   ["den eigenen Worktree der Vorbereitung", /`vorbereitung`[^.]*eigenen Worktree/],
   ["kein Push in der Vorbereitung", /`vorbereitung`[^.]*(?:pusht nicht|ohne Push)/],
-  ["den Nachweislauf der Paketstufe bei pushPruefung im Build-Dienst (E17)", /`pushPruefung`[^.]*Build-Dienst[^.]*Nachweislauf der Paketstufe/],
+  ["den Nachweislauf der Paketstufe bei pushCheck im Build-Dienst (E17)", /`pushCheck`[^.]*Build-Dienst[^.]*Nachweislauf der Paketstufe/],
   ["den vollen Lauf im Build-Dienst als offenen Punkt (E17)", /voller Lauf im Build-Dienst \(Prüfzweig <zweig>\)/],
   ["die feste Stelle .claude/push-vorbereitung.json", /`\.claude\/push-vorbereitung\.json`/],
 ].map(([name, muster]) => [name, englisch(muster)]);
@@ -93,7 +93,7 @@ test("[ziel-2] Pflichtchecks und W3 tragen den Wortlaut nach E14 und E17", () =>
     assert.ok(text, `der Abschnitt ${ort} fehlt in der Vorlage`);
     assert.deepEqual(fehlend(text, W3_ANGABEN), [], `${ort} nennt nicht alles`);
   }
-  assert.match(PFLICHT_VORLAGE, /mit `pushPruefung` in seinen Build-Dienst/, "der vorhandene Satz zu pushPruefung fehlt");
+  assert.match(PFLICHT_VORLAGE, /mit `pushCheck` in seinen Build-Dienst/, "der vorhandene Satz zu pushCheck fehlt");
 });
 
 test("[ziel-3] der Nachtbetrieb-Abschnitt der Vorlage beschreibt Ziel, Grenze und Vorbereitung", () => {

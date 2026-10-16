@@ -114,7 +114,7 @@ Sie laeuft in `/push-main` beziehungsweise `/merge-production`. Im Bericht steht
 jede andere Auslassung.
 
 **`--finish <kartennummer>` — dies ist der Abschluss genau einer Karte.** Nur ein
-solcher Lauf darf die Pruefungen auslassen, die mit `nichtBeimAbschluss` als
+solcher Lauf darf die Pruefungen auslassen, die mit `notAtCompletion` als
 Zusammenspiel-Pruefung gekennzeichnet sind: Sie messen, was mehrere Pakete gemeinsam
 ergeben, und laufen vollstaendig vor dem Veroeffentlichen in `/push-main`. Die
 **Kartennummer** ist die des Issues, das dieser Lauf abschliesst — ohne sie koennte die
@@ -139,7 +139,7 @@ veraendert wurde" im Bericht, nicht als leere Liste.
 
 **Wer eine Datei anlegt, ordnet sie zu.** Nennt der Block `Fuer den Abschlussbericht:`
 `voller Umfang` wegen einer Datei, die dieses Paket angelegt hat, ergaenzt das Paket
-`checkAreas` um ein passendes Muster (oder begruendet einen Eintrag in `ohnePruefung`)
+`checkAreas` um ein passendes Muster (oder begruendet einen Eintrag in `noCheck`)
 und faehrt den Lauf erneut. Weist Claude Code den Schreibzugriff auf die Config ab
 (Nachtlauf, geschuetzte Datei), steht die Datei unter `### Hinweise` im Bericht — kein
 Anhalten, kein Umweg ueber die Shell.

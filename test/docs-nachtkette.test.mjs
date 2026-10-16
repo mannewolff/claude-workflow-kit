@@ -19,6 +19,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { KETTE_BUDGET_DEFAULTS as KETTE_VORGABEN } from "../kit/night/session.mjs";
 import { LABELS } from "../kit/board/namen.mjs";
+import { SCHLUESSEL, normalisiereConfig } from "../kit/board/config-namen.mjs";
 import { englisch } from "./helpers/labels.mjs";
 import { BERICHT_ANKER } from "../kit/night/bericht.mjs";
 import { KETTE_HALT_ANKER, KETTE_UNGEPRUEFT_ANKER } from "../kit/night/kette.mjs";
@@ -70,7 +71,7 @@ test("der Abschnitt nennt Geste, Bedingung, Ausgaenge, Rueckweg, Budget-Felder u
     ["das Flag des Modus", "--chain"],
     ["den Halt-Kommentar", `\`${KETTE_HALT_ANKER}\``],
     ["den Anker des Berichts", `\`${BERICHT_ANKER} <stempel>\``],
-    ["den Config-Block", "`night.kette`"],
+    ["den Config-Block", "`night.chain`"],
     // Der Rueckweg fuehrt seit Issue #896 ueber den Plan, nicht mehr 'von vorn' ueber
     // einen neuen: Die naechste Kette uebernimmt das angehaltene Dokument als Auftrag.
     ["den Rueckweg", "Plan-Auftrag"],
@@ -90,17 +91,18 @@ test("der Abschnitt nennt Geste, Bedingung, Ausgaenge, Rueckweg, Budget-Felder u
   for (const [was, anker] of erwartet) {
     assert.ok(abschnitt.includes(anker), `der Abschnitt nennt ${was} ('${anker}') nicht`);
   }
-  for (const feld of Object.keys(KETTE_BUDGET_DEFAULTS)) {
+  for (const feld of Object.keys(KETTE_BUDGET_DEFAULTS).map((n) => SCHLUESSEL[`night.kette.${n}`])) {
     assert.ok(abschnitt.includes(`"${feld}"`), `das Budget-Feld ${feld} fehlt im Config-Beispiel`);
   }
 });
 
-// Der dokumentierte Startwert muss der sein, den der Runner ohne Config nimmt.
+// Der dokumentierte Startwert muss der sein, den der Runner ohne Config nimmt. Die Doku nennt
+// die Felder englisch (Issue #1737); eingelesen wird wie eine Config, auf die internen Namen.
 test("die dokumentierten Startwerte der Budgets sind die des Programms", () => {
   const abschnitt = dokuAbschnitt(ABSCHNITT);
   const block = abschnitt.slice(abschnitt.indexOf("```json"), abschnitt.indexOf("```", abschnitt.indexOf("```json") + 7));
   const json = JSON.parse(block.replace(/^```json\n/, ""));
-  assert.deepEqual(json.night.kette, KETTE_BUDGET_DEFAULTS);
+  assert.deepEqual(normalisiereConfig(json).config.night.kette, KETTE_BUDGET_DEFAULTS);
 });
 
 // Der Label-Verbrauch ist die eine Regel, die man nicht raten kann: Das Label ist
@@ -225,7 +227,7 @@ test("der Nachtbetrieb-Block der Vorlage nennt beide Routing-Labels und den Beri
   const idx = VORLAGE.indexOf("## Nachtbetrieb");
   assert.ok(idx >= 0, "kein Nachtbetrieb-Abschnitt in der Vorlage");
   const abschnitt = VORLAGE.slice(idx).split(/\n## /)[0];
-  for (const anker of ["`kit:night`", "`kit:nightrun`", "`kit:carry-through`", "--chain", "Nachtbericht", "`night.kette`", "nebeneinander",
+  for (const anker of ["`kit:night`", "`kit:nightrun`", "`kit:carry-through`", "--chain", "Nachtbericht", "`night.chain`", "nebeneinander",
     // Seit Issue #898 nennt der Block auch die zweite Auftragsart.
     "`[Plan]`", "Plan-Auftrag"]) {
     // Der Regeltext nennt die Labels seit Issue #1571 englisch.

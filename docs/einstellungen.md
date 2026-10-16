@@ -187,12 +187,12 @@ Wie eine Karte ihren Laufstand am Board zeigt: Labels, Frist und Pause.
 
 Welches Modell der Nachtlauf je Schwierigkeitsstufe eines Pakets startet.
 
-- `night.tiers` — Modell oder Kommando je Schwierigkeitsstufe eines Arbeitspakets, geordnet schwer/mittel/leicht. Vorgabe: keine Stufe, jedes Paket läuft mit dem Modell des Laufs.
+- `night.tiers` — Modell oder Kommando je Schwierigkeitsstufe eines Arbeitspakets, geordnet hard/medium/easy. Vorgabe: keine Stufe, jedes Paket läuft mit dem Modell des Laufs.
 - `night.tiers.hard` — Modell oder Kommando für eine schwere Aufgabe. Keine Vorgabe.
 - `night.tiers.{hard,medium,easy}.model` — Modell-ID für diese Stufe. Keine Vorgabe.
 - `night.tiers.{hard,medium,easy}.effort` — Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Gültig: `low`, `medium`, `high`, `xhigh`, `max`. Vorgabe: die Voreinstellung der Claude-CLI.
 - `night.tiers.{hard,medium,easy}.command` — Kommandozeile eines fremden Programms für diese Stufe. Keine Vorgabe.
-- `night.tiers.{hard,medium,easy}.name` — Selbstauskunft des Programms neben kommando. Keine Vorgabe.
+- `night.tiers.{hard,medium,easy}.name` — Selbstauskunft des Programms neben command. Keine Vorgabe.
 - `night.tiers.medium` — Modell oder Kommando für eine mittelschwere Aufgabe. Keine Vorgabe.
 - `night.tiers.easy` — Modell oder Kommando für eine leichte Aufgabe. Keine Vorgabe.
 - `night.tierRule` — Ersetzt die mitgelieferte Regel, nach der /issues und /task die Stufe eines Arbeitspakets bestimmen. Vorgabe: die Regel des Kits.

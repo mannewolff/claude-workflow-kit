@@ -55,7 +55,7 @@ The eight steps above are the process from the white paper. What stands here is 
 ---
 
 ## The three stop points (never automated)
-<!-- de: ebca8bcd3862 -->
+<!-- de: 36c3fe6934e7 -->
 
 1. **GO (step 4):** move the issue to Ready. Claude waits. Exception, exclusively in the implementation stage of the night chain under variant B: there the night runner itself moves the work packages of the marked card to Ready and starts their implementation without a release per package. The human gave the GO on the marked card — on the requirement or on the plan document — when marking it for variant B. Outside this stage the sentence before applies without restriction — also for packages of a card that ran under variant B earlier. The GO on the marked card is given by `kit:carry-through` or by a goal from `implementation` on (`goal:implementation`, `goal:push-prepared`); both only take effect together with `kit:night`. The push in the morning (step 7) takes the decisions of the night along.
 2. **Push (step 7):** trigger phrase `push main`. Claude does not push autonomously.
@@ -150,14 +150,14 @@ A message is recognised by its content; whoever wants to be unambiguous writes "
 ---
 
 ## The check run (optional)
-<!-- de: aba044a6ab1f -->
+<!-- de: facbe4b4ff6e -->
 
 The check run (`node .claude/kit/night.mjs --check`) has several requirements checked one after another without anyone watching — by day, beside the working human and beside a night chain. The gesture is the label `kit:check` (field `checkRun.label`) on the `[Requirement]` card; the run consumes it right before its session, every setting authorises exactly one check. Per card one session `/issue-review #N` runs, all in one worktree per run. Three outcomes: `geprueft` (checked: requirement review marker in the body and `review:done` on the card), waiting decision (`kit:clarify` and the question as a comment; the text of the requirement stays unchanged) and incomplete (the comment `## Check incomplete` with reason and step reached, because the check is paid for and its result never reached the body). A marked card without the `[Requirement]` prefix and one with `kit:clarify` is skipped with a reason and keeps its marker; the run never removes `kit:clarify` — only a human may do that. It moves no card, changes nothing about the check itself, answers no question that belongs to a human and leaves no change in the project. Budgets — minutes per check, costs per run — stand in the root block `checkRun` of `workflow.config.json`, not under `night`: the run belongs to the day. Relation to the night chain: it creates the chain's precondition by leaving the card checked; the chain label remains the gesture of the human. Details: chapter "The check run" in the kit documentation. **The run works with a fixed kit revision.** Like the night, every unattended run binds itself at the start to the commit `origin/<mainBranch>` points to — the last push, read without `git fetch`. Fixed with it are the tools including the check before every commit, the skills and the rule texts; what a package of the same night changes in them takes effect only after `push main`. What is checked remains the configuration of the project and its tests; they come from the state of the respective package. The revision stands as the line `Kit-Revision: <commit> (origin/<mainBranch> of <time>)` in the run report (`kitStand` in `.claude/night-run-*.json`), in the night report and on every comment of the run. After a run in the main copy, its installed copy stays at that revision until `node tools/sync-blobs.mjs` brings it to the working copy; until then `sync-blobs --check` names it as outdated.
 
 ---
 
 ## Night mode (optional)
-<!-- de: 2ccde11b8be9 -->
+<!-- de: 587c192d35d6 -->
 
 The night runner (`node .claude/kit/night.mjs`) works through the Ready column unattended: per issue with the routing label `kit:nightrun` a fresh headless session with `/implement-next #N`. Success is measured on the board (issue in In review); failures wander into the backlog with a comment, with an unclean working tree the run stops hard. At night there are commits, never pushes — review, test and `push main` happen in the morning through the human.
 
@@ -172,9 +172,9 @@ The second mode is the night chain (`node .claude/kit/night.mjs --chain`). The g
 ---
 
 ## Effort of the process
-<!-- de: f752273093f6 -->
+<!-- de: 433117c98a1a -->
 
-Every unattended run writes its evaluation to `.claude/aufwand.md`; it lies there completely, even if nothing stands out. A finding appears unasked at exactly two places: in the closing block of the run log `.claude/night-run-<date>.log` and at the start of `/push-main`. The finding holds nothing up anywhere and is no gate. At the start of every run the runner deletes the daily logs `.claude/night-run-<date>.log` and the run folders under `.claude/protokolle/` that are older than `night.protokollFristTage` days (default 14); `night-run-*.json` and the `.tsv` files with the key figures remain.
+Every unattended run writes its evaluation to `.claude/aufwand.md`; it lies there completely, even if nothing stands out. A finding appears unasked at exactly two places: in the closing block of the run log `.claude/night-run-<date>.log` and at the start of `/push-main`. The finding holds nothing up anywhere and is no gate. At the start of every run the runner deletes the daily logs `.claude/night-run-<date>.log` and the run folders under `.claude/protokolle/` that are older than `night.logRetentionDays` days (default 14); `night-run-*.json` and the `.tsv` files with the key figures remain.
 
 Three terms carry the evaluation: **thinking** is the time in which the model works; **tool work** is the time in which something else works for the run; a **check** is an entry from `buildChecks`, multiple executions of the same entry are summed up. Time that cannot be assigned to either side is a third item of its own.
 
@@ -185,7 +185,7 @@ Number of runs and thresholds stand optionally in the config block `workload`; i
 ---
 
 ## Effectiveness of the checks
-<!-- de: 50d140066321 -->
+<!-- de: 26e74f44249c -->
 
 What the mandatory checks yield stands in `.claude/wirksamkeit.md` for humans and in `.claude/wirksamkeit.json` for the output places; both lie there completely, even if nothing stands out. Per check it says how often it ran, how often it objected and how much time it cost, plus the rate of returns from "In review". A finding appears unasked at the same two places as the effort finding: in the closing block of the run log and at the start of `/push-main`. The finding holds nothing up anywhere and is no gate.
 
@@ -307,14 +307,14 @@ Absolutely binding:
 ---
 
 ## Config (.claude/workflow.config.json)
-<!-- de: ae8edcde47a3 -->
+<!-- de: 0678feb888e5 -->
 
-The file is the only project-local place the skills read from. Fields: `codeHost` (github | gitlab | local) and `issueTracker` (github | gitlab | local | toolbox); `buildChecks` with optional `checkAreas` for area-related checks, optional stage `stage`, optional quality measurement `quality` and optional `notAtCompletion` for checks the completion of a single work package does not have to carry; `mutationCommand` (or empty); `mainBranch` and `productionBranch`; `reviewScope` (`diff` or `all`) and exactly one of `reviewCommand` (foreign CLI) or `reviewModel`; `triggers` for GO, push and merge; `local.issuesDir`; optionally `issueReview` with `reviewers`, `pairs` and `reviewStages`. Personal deviations belong in `.claude/workflow.config.local.json`. An example per stack and the field description stand in the kit documentation, section "The config file". The German field names (`stufe`, `guete`, `nichtBeimAbschluss`, `reviewStufen` and so on) remain valid as old names.
+The file is the only project-local place the skills read from. Fields: `codeHost` (github | gitlab | local) and `issueTracker` (github | gitlab | local | toolbox); `buildChecks` with optional `checkAreas` for area-related checks, optional stage `stage`, optional quality measurement `quality` and optional `notAtCompletion` for checks the completion of a single work package does not have to carry; `mutationCommand` (or empty); `mainBranch` and `productionBranch`; `reviewScope` (`diff` or `all`) and exactly one of `reviewCommand` (foreign CLI) or `reviewModel`; `triggers` for GO, push and merge; `local.issuesDir`; optionally `issueReview` with `reviewers`, `pairs` and `reviewStages`. Personal deviations belong in `.claude/workflow.config.local.json`. An example per stack and the field description stand in the kit documentation, section "The config file". A file that still carries the German field names keeps working; the kit writes only the English ones.
 
 ---
 
 ## Mandatory checks before push
-<!-- de: 8f40224311f5 -->
+<!-- de: 00620d60a0c3 -->
 
 All **affected** `buildChecks` from the config run green; untouched areas are left out with evidence. Red checks still block the push mechanically. For UI changes: start the dev server, check the golden path and at least one edge case manually. If a check cannot be run locally: note it in the completion report, do not conceal it. **The checks run staggered:** each carries a stage — `package` at the completion of a work package, `push` before publishing, `merge` before the release; without a value `package` applies. A later stage does **not run along** with the earlier one (a check of the stage `push` stays out at the completion of a work package), and `push` runs the **preceding stage** along (`push` executes `package` and `push`). `merge` only checks what `push main` did not check, because there is never a `merge production` without a preceding `push main`: the stage `merge` always, the package stage by areas over the release files, the stage `push` not. **No mandatory check drops out of the overall process with this**; it only runs at the point in time at which its result counts, and not twice for the same state. Which check belongs in which stage is decided by the project. The stage of a mandatory check (`stage`) is something different from the review stages (`reviewStages`) and from the stages of the night chain: it says *when* a check runs, not how thoroughly is read and not which section of an unattended run is due. **One** of its checks a project may also name as a **quality measurement** (`quality` with `pattern` and `marker`): it measures how many deliberately inserted faults the tests notice. If the measured share lies below the mark, that is **the same halt as a red mandatory check** — no new stop point, no exception, no personal mark (the mark applies team-wide, a deviation in `workflow.config.local.json` stays ineffective). The halt costs no work: it is a red run **before commit and push**, the already finished packages stay committed locally, and the version bump of `/push-main` stays in place idempotently — after the rework the same batch continues. **Without naming there is neither measurement nor mark nor halt.**
 
@@ -443,7 +443,7 @@ An issue without a prefix is a work package in the four-section format above. Fo
 ---
 
 ## Gates (process-wide)
-<!-- de: 7541a4957eb1 -->
+<!-- de: c1677789a820 -->
 
 Four rules that apply independently of the review stage and carry the frame of the process — meant is the review stage (`reviewStages`), not the stage of a mandatory check (`stage`) and not the stage of the night chain. They quote sentences that stand further up in this file; a proposal that overrides one of them is no change of detail but a change of the design — and with that a question of the stop class.
 

@@ -191,7 +191,7 @@ runner takes it for a work package ready for release and pulls it into the
 implementation.
 
 ## F12 — The section `## Scenarios` holds at least one complete scenario `[maschinell]`
-<!-- de: 86027bc3d264 -->
+<!-- de: 0383a305c5e1 -->
 
 The section `## Scenarios` (in a German project `## Szenarien`) is present, stands between
 `## Business acceptance criteria` and `## Non-goals` and contains at least one complete

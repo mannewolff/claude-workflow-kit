@@ -19,7 +19,7 @@ Flags: `--max <N>` (Sessions je Nacht, Vorgabe 10), `--model <id>`, `--timeout-m
 
 **Fester Kit-Stand.** Jeder unbeaufsichtigte Lauf bindet Werkzeuge, Skills und Regeltexte beim Start an den Commit von `origin/<mainBranch>`; was ein Paket daran ändert, wirkt erst nach `push main`.
 
-**Das Modell einer Session.** Zuerst gilt `Empfohlenes Modell: <name>` der Karte, wenn der Name in `night.modelle` steht; diese Liste ist ein Sicherheitsgatter für Werte aus Karten. Dann gilt bei belegten `night.stufen` die `Aufgabenstufe:`, wobei der Runner nur nach oben ausweicht. Sonst gilt das Modell des Laufs aus `--model` oder `night.modell`. Jede Session bekommt `KIT_AGENT_MODEL` mit ihrem Modell.
+**Das Modell einer Session.** Zuerst gilt `Empfohlenes Modell: <name>` der Karte, wenn der Name in `night.models` steht; diese Liste ist ein Sicherheitsgatter für Werte aus Karten. Dann gilt bei belegten `night.tiers` die `Aufgabenstufe:`, wobei der Runner nur nach oben ausweicht. Sonst gilt das Modell des Laufs aus `--model` oder `night.model`. Jede Session bekommt `KIT_AGENT_MODEL` mit ihrem Modell.
 
 **Permissions, Sandbox, Umgebung.** Die Sessions laufen mit `--permission-mode auto --permission-prompts none`: Was die Allowlist in `.claude/settings.json` nicht erlaubt, wird abgelehnt. Erlaube Werkzeuge statt einzelner Kommandos, etwa `Bash(mvn:*)`. Kommandos, die einen Socket oder das Board brauchen, gehören nach `sandbox.excludedCommands`, Variablen in den `env`-Block:
 
@@ -48,7 +48,7 @@ Nach einem Halt geht es mit `/requirement #N` weiter; `kit:clarify` nimmt nur de
 
 **Was geprüft wurde und was nicht.** Die Auslassungen stehen an zwei Stellen: im Abschlussbericht am Arbeitspaket, wo die Session gelaufene und ausgelassene Prüfungen mit Grund aufführt, und im Lauf-Bericht des Durchgangs mit je Session eine Zeile und einer Summenzeile über den Lauf. Der Runner liest das aus `.claude/checks-summary.json`, nicht aus dem Text der Session, und hält es gegen den Commit: Passt der Nachweis nicht zum Commit, prüft er selbst nach und meldet `nachgeprueft` oder rot.
 
-**Der Ergebnisstand.** Neben dem Tagesprotokoll `.claude/night-run-<datum>.log` legt jeder Lauf `.claude/night-run-<datum>-<uhrzeit>.json` ab: je Paket Ausgang, Dauer, Commit, Modell, Kosten, Token und Prüfläufe, dazu der Abschluss des Laufs samt Grund eines harten Stopps. Der Block `Prueflaeufe und Zielmarke:` im Bericht nennt, wie viele Pakete unter `night.zielUmsetzungMin` blieben. Die Protokolle hält der Runner nicht ewig: Zu Beginn jedes Laufs löscht er die Tagesprotokolle `.claude/night-run-<datum>.log` und die Laufordner unter `.claude/protokolle/`, deren letzte Änderung länger zurückliegt als `night.protokollFristTage` Tage (Vorgabe 14), und nennt Anzahl und frei gewordenen Platz in einer Zeile des Tagesprotokolls. Die JSON-Dateien und die `.tsv`-Dateien mit den Kennzahlen bleiben.
+**Der Ergebnisstand.** Neben dem Tagesprotokoll `.claude/night-run-<datum>.log` legt jeder Lauf `.claude/night-run-<datum>-<uhrzeit>.json` ab: je Paket Ausgang, Dauer, Commit, Modell, Kosten, Token und Prüfläufe, dazu der Abschluss des Laufs samt Grund eines harten Stopps. Der Block `Prueflaeufe und Zielmarke:` im Bericht nennt, wie viele Pakete unter `night.goalImplementationMin` blieben. Die Protokolle hält der Runner nicht ewig: Zu Beginn jedes Laufs löscht er die Tagesprotokolle `.claude/night-run-<datum>.log` und die Laufordner unter `.claude/protokolle/`, deren letzte Änderung länger zurückliegt als `night.logRetentionDays` Tage (Vorgabe 14), und nennt Anzahl und frei gewordenen Platz in einer Zeile des Tagesprotokolls. Die JSON-Dateien und die `.tsv`-Dateien mit den Kennzahlen bleiben.
 
 **Ein Lauf ohne Arbeit nennt seinen Grund.** Endet eine Nacht ohne Paket, trägt der Lauf-Kopf `noWorkReason` mit dem Satz aus dem Protokoll. Im Nachtlauf: `Ready ist leer — nichts zu tun.`, `Keine der <N> Karten in Ready traegt das Label '<name>' — nichts zu tun.`, `Alle <N> Karten in Ready wurden am Gate zurueckgestellt — …` oder `Die Umsetzung ist belegt: <grund> — der Lauf endet ohne Paket.` Bei `--chain`: `Keine Kette zu fahren: keine Karte traegt das Label '<name>'.` oder `Keine Kette zu fahren: alle <N> gekennzeichneten Karten mit dem Label '<name>' wurden uebersprungen, …`. Jeder Satz führt Label und Zahl mit. Der Rückstellungs-Satz hat Vorrang vor `Ready ist leer`. Trifft kein Fall zu, steht dort `Kein Grund ermittelbar — … bitte melden.` Ein belegter Lock ist ein ruhiger Lauf mit Grund; ein nicht schreibbarer Lock ist ein harter Stopp der Fehlerklasse `umgebung` mit `fehlerText`, ohne `noWorkReason`. Ein Lauf mit Arbeit trägt es nicht.
 
@@ -78,11 +78,11 @@ Aus dem Abbruch folgt keine Aussage über seine Ursache: Er sagt nicht, ob das P
 
 Schon vorher sichtbar ist die Einschätzung am Paket: `/issues` schreibt `Sitzungsumfang: passt | reisst — <ein Satz>` in den Kontext, und der Nachtbericht der Kette schließt mit `- Voraussichtlich über der Sitzungszeitgrenze: #N, #M`.
 
-Maßstab ist die Zeitgrenze einer Sitzung, `--timeout-min`, Vorgabe 60 Minuten. Gemeint ist nicht `night.kette.umsetzungMin`, das Budget der ganzen Umsetzungsstufe, und ebenso wenig die Zielmarke `night.zielUmsetzungMin`.
+Maßstab ist die Zeitgrenze einer Sitzung, `--timeout-min`, Vorgabe 60 Minuten. Gemeint ist nicht `night.chain.implementationMin`, das Budget der ganzen Umsetzungsstufe, und ebenso wenig die Zielmarke `night.goalImplementationMin`.
 
 ## Das festgefahrene Paket
 
-Scheitert dieselbe Prüfung immer wieder auf dieselbe Weise, endet die Sitzung vor ihrer Zeitgrenze. `checks.mjs run` merkt sich je rotem Kommando einen Fehlerabdruck: die Namen der gescheiterten Tests, sonst die erste Fehlermeldung. Erreicht die Folge gleicher Fehlschläge `night.festgefahrenNach` (Vorgabe 3), fährt der nächste Aufruf unbeaufsichtigt nichts mehr: Er meldet `Pruefung festgefahren: <Kommando> — <Fehler>` und endet mit Exitcode 3. Interaktiv erscheint nur ein Hinweis.
+Scheitert dieselbe Prüfung immer wieder auf dieselbe Weise, endet die Sitzung vor ihrer Zeitgrenze. `checks.mjs run` merkt sich je rotem Kommando einen Fehlerabdruck: die Namen der gescheiterten Tests, sonst die erste Fehlermeldung. Erreicht die Folge gleicher Fehlschläge `night.stuckAfter` (Vorgabe 3), fährt der nächste Aufruf unbeaufsichtigt nichts mehr: Er meldet `Pruefung festgefahren: <Kommando> — <Fehler>` und endet mit Exitcode 3. Interaktiv erscheint nur ein Hinweis.
 
 Der Runner beendet die Sitzung, sichert Reste im Stash `nachtrest #<id> <lauf>`, setzt `run:aborted` mit `Grund: Session an einer Pruefung festgefahren` und zieht das Paket ins Backlog. Der Vermerk `## Nachtlauf: an einer Pruefung festgefahren` nennt Prüfung, Fehler, Versuche und Laufzeit. Weiter geht es so: Fehler lesen, Reste mit `git stash apply stash@{<n>}` zurückholen, nachbessern, wieder nach Ready ziehen.
 
@@ -108,7 +108,7 @@ node .claude/kit/night.mjs --chain             # echter Lauf
 | Stufe | Session | wann die Kette hier endet |
 |---|---|---|
 | plan | `/techplan #F` schreibt den Plan | kein Plan: `abgebrochen` |
-| Formprüfung | `issue check-form`, bei Rot eine Korrektursession | nach `korrekturrunden` weiter rot: `abgebrochen` |
+| Formprüfung | `issue check-form`, bei Rot eine Korrektursession | nach `correctionRounds` weiter rot: `abgebrochen` |
 | review | `/issue-review #M`, der Prüfer der Stufe `plan` | offene Frage im geprüften Plan: `angehalten` |
 | pakete | `/issues #M` | kein Paket: `abgebrochen` oder `angehalten` |
 | abdeckung | eine lesende Session hält die Pakete gegen die Anforderung | nie, sie ist eine Auskunft |
@@ -116,35 +116,35 @@ node .claude/kit/night.mjs --chain             # echter Lauf
 
 **Vier Ausgänge**, je Kette einer: `fertig`, `unvollstaendig` (die bestellte Umsetzung blieb aus, die Pakete liegen im Backlog), `angehalten` (eine Frage wartet auf dich) und `abgebrochen` (technisch oder am Budget gescheitert, mit Grund). Ein Abbruch beendet nur diese Kette.
 
-**Budgets** stehen in `night.kette`, alle optional, mit diesen Vorgaben:
+**Budgets** stehen in `night.chain`, alle optional, mit diesen Vorgaben:
 
 ```json
 {
   "night": {
-    "kette": {
+    "chain": {
       "label": "kit:night",
-      "varianteBLabel": "kit:carry-through",
+      "variantBLabel": "kit:carry-through",
       "planMin": 20,
       "reviewMin": 15,
-      "paketeMin": 15,
-      "abdeckungMin": 10,
-      "umsetzungMin": 120,
-      "vorbereitungMin": 120,
-      "kostenUsd": 50,
-      "kostenUsdB": 150,
-      "korrekturrunden": 2
+      "packagesMin": 15,
+      "coverageMin": 10,
+      "implementationMin": 120,
+      "preparationMin": 120,
+      "costUsd": 50,
+      "costUsdB": 150,
+      "correctionRounds": 2
     }
   }
 }
 ```
 
-Die Minuten gelten je Stufe, `kostenUsd` je Kette, `kostenUsdB` für die Umsetzungsstufe; die Kosten prüft der Runner nach jeder Session, nie mittendrin.
+Die Minuten gelten je Stufe, `costUsd` je Kette, `costUsdB` für die Umsetzungsstufe; die Kosten prüft der Runner nach jeder Session, nie mittendrin.
 
 **Der Bericht.** Bei jedem Ausgang hängt die Kette einen Kommentar `## Nachtbericht, Kette <stempel>` an die gekennzeichnete Karte: Ausgang, Stufen, Pakete, alle Entscheidungen der Nacht, die Abdeckung, Kennzahlen. Er endet mit `Dieser Bericht ist Verlauf. Verbindlich fuer die naechste Kette wird eine Entscheidung erst als Satz im Fachplan.` Nimmt der Tracker ihn nicht an, liegt er als `.claude/night-bericht-<F>-<stempel>.md` bereit und wird beim nächsten Start nachgetragen.
 
 **Der Rückweg nach `angehalten`.** Eine offene Frage im Plan hält die Kette erst nach der Prüfung, vor dem Schnitt in Pakete: Die Befunde sind eingearbeitet, die Frage steht weiter unter `## Offene Fragen`, auch wenn erst die Prüfung sie dorthin geschrieben hat. Die Kette schreibt die Frage als `## Kette angehalten` an die gekennzeichnete Karte und setzt `kit:clarify`. Der Weg führt über den Plan: die Antwort als Eintrag unter `## Architektonische Entscheidungen`, `## Offene Fragen` wieder auf `- Keine.`, `kit:clarify` abnehmen, zuletzt `kit:night` an den Plan. Die nächste Kette nimmt ihn als Plan-Auftrag und beginnt bei `pakete`. Hast du mit der Antwort mehr am Plan geändert als den Eintrag selbst, prüft ihn die Kette vorher selbst erneut; eine Prüfung von Hand brauchst du in keinem Fall. Entsteht stattdessen ein neuer Plan, bekommen ältere den Kommentar `Ueberholt durch Plan #M2`.
 
-**Kette und Umsetzung nebeneinander.** Ein Lauf ist genau eine Betriebsart, aber Kette und Nachtlauf dürfen gleichzeitig fahren: die Kette im Worktree, der Nachtlauf in der Hauptkopie. Unter Variante B baut auch die Kette in der Hauptkopie; beide nehmen dafür den Lock `.claude/night-umsetzung.lock`. Die Kette wartet höchstens bis `night.kette.umsetzungMin` darauf und endet sonst `unvollstaendig`. Eine fachliche Wurzel bearbeitet immer nur ein Runner; er erkennt fremde an ihrem Laufstand mit Lauf-ID.
+**Kette und Umsetzung nebeneinander.** Ein Lauf ist genau eine Betriebsart, aber Kette und Nachtlauf dürfen gleichzeitig fahren: die Kette im Worktree, der Nachtlauf in der Hauptkopie. Unter Variante B baut auch die Kette in der Hauptkopie; beide nehmen dafür den Lock `.claude/night-umsetzung.lock`. Die Kette wartet höchstens bis `night.chain.implementationMin` darauf und endet sonst `unvollstaendig`. Eine fachliche Wurzel bearbeitet immer nur ein Runner; er erkennt fremde an ihrem Laufstand mit Lauf-ID.
 
 ### Wie weit eine Kette läuft: das Ziel
 
@@ -161,7 +161,7 @@ Ein Ziel ab `umsetzung` ist zugleich das GO für die Pakete, wie `kit:carry-thro
 
 Abgelehnt mit dem Kommentar `## Kette nicht gestartet: unpassende Einstellung` wird eine Karte mit mehr als ein `goal:*` oder beiden `planreview:*`, mit `goal:plan` an einem Plandokument, mit `planreview:*` an einem Plandokument und mit `planreview:*`, wenn ihr Plan schon `Plan-Review:` trägt.
 
-Das Projekt bleibt Obergrenze: Sperrt `night.kette.uebergaenge` einen Übergang, endet die Kette dort an der Projektgrenze. Mit dem Ziel `push-vorbereitet` folgt nach allen Ketten einmal die Stufe `vorbereitung`, die `/push-main prepare` fährt, ohne zu pushen; Näheres unter [/push-main](/prozess#push-main).
+Das Projekt bleibt Obergrenze: Sperrt `night.chain.transitions` einen Übergang, endet die Kette dort an der Projektgrenze. Mit dem Ziel `push-vorbereitet` folgt nach allen Ketten einmal die Stufe `vorbereitung`, die `/push-main prepare` fährt, ohne zu pushen; Näheres unter [/push-main](/prozess#push-main).
 
 ### Ein fertiger Plan als Auftrag
 
@@ -211,13 +211,13 @@ Trug die Karte ein Ziel, stehen `Ziel: <plan|pakete|umsetzung|push-vorbereitet>`
 
 **Wiederholen.** `kit:night` startet die Kette bei der ersten Stufe ohne Ergebnis; was vorliegt, entsteht nicht doppelt. Ein frischer Plan entsteht erst, wenn der alte in Done steht.
 
-**Übergänge.** `night.kette.uebergaenge` gibt die Übergänge einzeln frei. `abdeckungUmsetzung` wirkt nur zusammen mit `kit:carry-through` an der Karte.
+**Übergänge.** `night.chain.transitions` gibt die Übergänge einzeln frei. `coverageImplementation` wirkt nur zusammen mit `kit:carry-through` an der Karte.
 
 **Ein Versuch.** Einen automatischen Versuch gibt es nur bei Umgebungsfehlern, solange der Lauf lebt; der Laufstand vermerkt „2. Versuch“. Ein gestorbener Lauf wird nicht wiederholt.
 
 ### Der Wächter
 
-Ein abgekoppelter Wächter sieht jede Minute nach. Verstummt ist ein Lauf erst, wenn sein Puls älter als `night.stand.fristMin` ist (Vorgabe 10 Minuten) und sein Prozess nicht mehr existiert; ein Lauf, der lebt, gilt nie als verstummt. Dann setzt der Wächter jede laufende Karte auf `run:aborted` mit `nicht beendet, letztes Lebenszeichen <zeit>, Frist <n> min`.
+Ein abgekoppelter Wächter sieht jede Minute nach. Verstummt ist ein Lauf erst, wenn sein Puls älter als `night.status.deadlineMin` ist (Vorgabe 10 Minuten) und sein Prozess nicht mehr existiert; ein Lauf, der lebt, gilt nie als verstummt. Dann setzt der Wächter jede laufende Karte auf `run:aborted` mit `nicht beendet, letztes Lebenszeichen <zeit>, Frist <n> min`.
 
 ### Das Journal
 
@@ -242,7 +242,7 @@ Reste eines gescheiterten Pakets holst du mit `git stash apply stash@{<n>}` zur�
 
 > **Ungetestet.** Der Weg folgt aus der Architektur des Runners, ist aber nicht praktisch erprobt.
 
-Eine Stufe in `night.stufen` kann mit `kommando` ein eigenes Programm starten, das liefert, was eine Session liefert: Commit, Karte in In review, Bericht. Oder Claude Code spricht über einen Proxy wie [LiteLLM](https://docs.litellm.ai/) mit einem lokalen Modell:
+Eine Stufe in `night.tiers` kann mit `command` ein eigenes Programm starten, das liefert, was eine Session liefert: Commit, Karte in In review, Bericht. Oder Claude Code spricht über einen Proxy wie [LiteLLM](https://docs.litellm.ai/) mit einem lokalen Modell:
 
 ```bash
 ANTHROPIC_BASE_URL=http://localhost:4000 \
@@ -265,7 +265,7 @@ Die Variable vor dem Kommando gilt nur für diesen Lauf, ein eigenes Routing-Lab
 
 **Werkzeugbasis je Stufe.** Der Bericht zählt die Pakete, die Session-Dauer und Werkzeugzeit beide tragen, und davon die der Stufe mittel. Die Tabelle nach Aufgabenstufe nennt je Stufe die Werkzeugzeit je Paket und ihren Anteil an der Paketzeit.
 
-Laufzahl und Schwellen: Block `aufwand` (siehe [Einstellungen](/einstellungen)).
+Laufzahl und Schwellen: Block `workload` (siehe [Einstellungen](/einstellungen)).
 
 ## Verbrauch interaktiver Sitzungen
 

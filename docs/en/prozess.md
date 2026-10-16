@@ -121,9 +121,9 @@ If you already know what the idea wants, you call two of these routes directly: 
 **Next:** the GO, that is pulling the package to Ready.
 
 ### /issues
-<!-- de: ff34263675ef -->
+<!-- de: 745f0c86d539 -->
 
-**What for:** Step 3. The approved plan becomes work packages in the four-section format: context, task, acceptance criterion, dependencies. Every package can be tested on its own and carries in its context back references to plan and business plan as well as `Empfohlenes Modell:` or, with `night.stufen` active, `Aufgabenstufe:` and `Stufengrund:`. From here on the issue is the source of truth. The skill decides uncertainties as an `Entscheidung:` line; `issue check-form` checks every package before it is created.
+**What for:** Step 3. The approved plan becomes work packages in the four-section format: context, task, acceptance criterion, dependencies. Every package can be tested on its own and carries in its context back references to plan and business plan as well as `Empfohlenes Modell:` or, with `night.tiers` active, `Aufgabenstufe:` and `Stufengrund:`. From here on the issue is the source of truth. The skill decides uncertainties as an `Entscheidung:` line; `issue check-form` checks every package before it is created.
 
 **When:** after approval and review of the plan, with `/issues #N` and the number of the plan document.
 
@@ -270,7 +270,7 @@ The flow: `/requirement`, `/issue-review #N`, `/groom #N`, `/techplan #N`, `/iss
 - **Life cycle:** The human moves business issues and plan documents out of the backlog only to Done or not at all. For them In review means “everything built, review due”, and this column is set by the kit: as soon as all packages of a plan are in In review or Done, it moves plan document and business requirement there. The night chain (`night.mjs --chain`) reads only the backlog column and places plan and packages there. Whoever moves a business issue out of the backlog before its chain takes it away from the night run: it is then no longer a candidate, without anything failing. The way out is the interactive route with a number, `/techplan #N`, `/issue-review #N`, `/issues #M`; it works regardless of column and marker.
 
 ### Scenarios in the business plan
-<!-- de: 4241c04041f5 -->
+<!-- de: ec6ae8c0bcf8 -->
 
 Every business plan carries, between `## Fachliche Akzeptanzkriterien` and `## Nicht-Ziele`, a section `## Szenarien` with at least one scenario. A scenario has a heading `### Szenario: <Titel>` and list lines below it:
 
@@ -285,14 +285,14 @@ A scenario is complete with a title and at least one line each of `Angenommen`, 
 ## Szenarien
 
 ### Szenario: Fachplan ohne Szenarien wird abgewiesen
-- Angenommen ein Projekt hat den Stichtag szenarienAb gesetzt
+- Angenommen ein Projekt hat den Stichtag scenariosFrom gesetzt
 - Und ein Fachplan hat fachliche Akzeptanzkriterien, aber keinen Abschnitt Szenarien
 - Wenn er über das Kit angelegt wird
 - Dann wird er nicht angelegt
 - Und die Meldung sagt in einem Satz, was fehlt, und zeigt die Form eines Szenarios
 ```
 
-`issue check-form` and `issue create` reject a business plan that lacks the section, whose section is empty or carries no complete scenario; the message shows the form of a scenario. For cards on the board the obligation applies from the cut-off date [`szenarienAb`](/en/einstellungen); `node .claude/kit/board.mjs scenarios baseline` names the matching value. Without scenarios no technical plan is created; `/groom` adds them.
+`issue check-form` and `issue create` reject a business plan that lacks the section, whose section is empty or carries no complete scenario; the message shows the form of a scenario. For cards on the board the obligation applies from the cut-off date [`scenariosFrom`](/en/einstellungen); `node .claude/kit/board.mjs scenarios baseline` names the matching value. Without scenarios no technical plan is created; `/groom` adds them.
 
 ## History
 <!-- de: 58a216d1a368 -->

@@ -45,14 +45,14 @@ test("[docs-zeitabbruch-1] die Seite Nachtbetrieb beschreibt Vermerk, Felder und
     ["das Feld im Lauf-Kopf", /`zielUmsetzungMin`/],
     ["die Berichtszeile der Kette", /Voraussichtlich über der Sitzungszeitgrenze/],
     ["den Massstab der Einschaetzung", /`--timeout-min`/],
-    ["die Abgrenzung gegen das Stufenbudget", /`night\.kette\.umsetzungMin`/],
+    ["die Abgrenzung gegen das Stufenbudget", /`night\.chain\.implementationMin`/],
   ]) {
     assert.match(text, muster, `das Nachtbetrieb-Kapitel nennt ${was} nicht`);
   }
 
   // Der Massstab und seine Abgrenzung stehen in EINEM Absatz: getrennt liest man die
   // Grenze, ohne zu erfahren, welche Zahl gerade nicht gemeint ist.
-  const absatz = text.split(/\n\n/).find((a) => a.includes("--timeout-min") && a.includes("night.kette.umsetzungMin"));
+  const absatz = text.split(/\n\n/).find((a) => a.includes("--timeout-min") && a.includes("night.chain.implementationMin"));
   assert.ok(absatz, "Massstab und Abgrenzung stehen nicht im selben Absatz");
   assert.match(absatz, /nicht/, "die Abgrenzung sagt nicht, dass das Stufenbudget nicht gemeint ist");
 });
@@ -91,7 +91,7 @@ test("[docs-zeitabbruch-3] die Prozessvorlage nennt Kennzahl und gekennzeichnete
   assert.ok(satz, "kein Absatz der Vorlage nennt den Anker '## Nachtlauf: Zeitgrenze erreicht'");
   for (const [was, muster] of [
     ["die Sitzungszeitgrenze als Massstab", /`--timeout-min`/],
-    ["die Abgrenzung gegen das Stufenbudget", /`night\.kette\.umsetzungMin`/],
+    ["die Abgrenzung gegen das Stufenbudget", /`night\.chain\.implementationMin`/],
     ["das Feld an der Einheit", /`zeitlimitBeendet[:`]/],
     ["dass der Abbruch kein inhaltlicher Fehlschlag ist", /kein inhaltlicher Fehlschlag/],
   ]) {

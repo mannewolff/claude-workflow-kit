@@ -38,7 +38,7 @@ function staffelAbschnitt() {
 
 test("die Doku fuehrt einen Abschnitt zu den gestaffelten Pruefungen und nennt das Feld", () => {
   const abschnitt = staffelAbschnitt();
-  assert.match(abschnitt, /`stufe`/, "der Abschnitt nennt das Feld `stufe` nicht");
+  assert.match(abschnitt, /`stage`/, "der Abschnitt nennt das Feld `stage` nicht");
 });
 
 test("der Abschnitt ordnet jeder Stufe ihren Zeitpunkt und ihren Skill zu", () => {
@@ -138,7 +138,7 @@ test("die Stufentabelle der Prozessseite ordnet jeder Stufe ihre Skills zu", () 
 // nicht die Stufen der Nacht-Kette. Der Begriff ist im Kit dreifach besetzt.
 test("der Abschnitt grenzt die Stufe gegen die anderen Stufenbegriffe ab", () => {
   const abschnitt = staffelAbschnitt();
-  assert.match(abschnitt, /`reviewStufen`/, "die Abgrenzung gegen reviewStufen fehlt");
+  assert.match(abschnitt, /`reviewStages`/, "die Abgrenzung gegen reviewStages fehlt");
   assert.match(abschnitt, /Nacht-Kette|Aufgabenstufe/, "die Abgrenzung gegen die Stufen der Nacht-Kette fehlt");
 });
 

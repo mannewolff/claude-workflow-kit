@@ -111,7 +111,7 @@ Weißt du schon, was die Idee will, rufst du zwei dieser Wege direkt auf: Verlan
 
 ### /issues
 
-**Wofür:** Schritt 3. Aus dem freigegebenen Plan entstehen Arbeitspakete im Vier-Abschnitt-Format: Kontext, Aufgabe, Akzeptanzkriterium, Abhängigkeiten. Jedes Paket ist eigenständig testbar und trägt im Kontext Rückverweise auf Plan und Fachplan sowie `Empfohlenes Modell:` oder, bei aktivem `night.stufen`, `Aufgabenstufe:` und `Stufengrund:`. Ab hier ist das Issue die Quelle der Wahrheit. Unklarheiten entscheidet der Skill als `Entscheidung:`-Zeile, `issue check-form` prüft jedes Paket vor dem Anlegen.
+**Wofür:** Schritt 3. Aus dem freigegebenen Plan entstehen Arbeitspakete im Vier-Abschnitt-Format: Kontext, Aufgabe, Akzeptanzkriterium, Abhängigkeiten. Jedes Paket ist eigenständig testbar und trägt im Kontext Rückverweise auf Plan und Fachplan sowie `Empfohlenes Modell:` oder, bei aktivem `night.tiers`, `Aufgabenstufe:` und `Stufengrund:`. Ab hier ist das Issue die Quelle der Wahrheit. Unklarheiten entscheidet der Skill als `Entscheidung:`-Zeile, `issue check-form` prüft jedes Paket vor dem Anlegen.
 
 **Wann:** nach Freigabe und Prüfung des Plans, mit `/issues #N` und der Nummer des Plandokuments.
 
@@ -261,14 +261,14 @@ Vollständig ist ein Szenario mit Titel und je mindestens einer Zeile `Angenomme
 ## Szenarien
 
 ### Szenario: Fachplan ohne Szenarien wird abgewiesen
-- Angenommen ein Projekt hat den Stichtag szenarienAb gesetzt
+- Angenommen ein Projekt hat den Stichtag scenariosFrom gesetzt
 - Und ein Fachplan hat fachliche Akzeptanzkriterien, aber keinen Abschnitt Szenarien
 - Wenn er über das Kit angelegt wird
 - Dann wird er nicht angelegt
 - Und die Meldung sagt in einem Satz, was fehlt, und zeigt die Form eines Szenarios
 ```
 
-`issue check-form` und `issue create` weisen einen Fachplan ab, dem der Abschnitt fehlt, dessen Abschnitt leer ist oder kein vollständiges Szenario trägt; die Meldung zeigt die Form eines Szenarios. Für Karten am Board gilt die Pflicht ab dem Stichtag [`szenarienAb`](/einstellungen); `node .claude/kit/board.mjs scenarios baseline` nennt den passenden Wert. Ohne Szenarien entsteht kein technischer Plan; `/groom` ergänzt sie.
+`issue check-form` und `issue create` weisen einen Fachplan ab, dem der Abschnitt fehlt, dessen Abschnitt leer ist oder kein vollständiges Szenario trägt; die Meldung zeigt die Form eines Szenarios. Für Karten am Board gilt die Pflicht ab dem Stichtag [`scenariosFrom`](/einstellungen); `node .claude/kit/board.mjs scenarios baseline` nennt den passenden Wert. Ohne Szenarien entsteht kein technischer Plan; `/groom` ergänzt sie.
 
 ## Vorgeschichte
 

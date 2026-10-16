@@ -4,7 +4,7 @@
 Each part of this page says what you do and what you see afterwards. Every single setting (Einstellung) is listed with its effect and default under [Settings](/en/einstellungen).
 
 ## Installation
-<!-- de: 9bdcbbc4384e -->
+<!-- de: b32871dcf14d -->
 
 **What you do.** Change into your project folder and start the installer:
 
@@ -34,7 +34,7 @@ The installer asks in this order:
 
 With `github` and a project-local installation, three questions on **protecting the main branch** follow the code host question: whether the project has GitHub Actions, whether the check before the push should move there and the main and release branches be protected, and which check branch applies (default `kit-pruefung`). With yes the installer pushes to the check branch as a probe, waits for the build service and reports `scharf` (rulesets set), `anleitung` (probe passed, the output names the steps at GitHub), `offen` (no run of the build service) or `nicht moeglich`.
 
-An existing project switches protection on later with `node install.mjs --protection`; the call changes only `pushPruefung`. `node .claude/kit/board.mjs code protection status` names the state at any time.
+An existing project switches protection on later with `node install.mjs --protection`; the call changes only `pushCheck`. `node .claude/kit/board.mjs code protection status` names the state at any time.
 
 **What you see afterwards.** Restart Claude Code. The seventeen skills appear under `/help`, and `/session-start` reports the state of the project.
 
@@ -144,7 +144,7 @@ You create `Projekte/` and `Log/` once by hand.
 Instead of editing the file by hand, you can use the [settings interface](/en/einstellungen) (Einstellungs-Oberfläche). It checks before saving.
 
 ### Area-based checks: `checkAreas`
-<!-- de: 1fcc84ea6ee0 -->
+<!-- de: b31188404278 -->
 
 An entry in `buildChecks` can say which areas (Bereiche) it is responsible for:
 
@@ -180,7 +180,7 @@ Swapped, both would go wrong. `merge-base` before the commit would collect forei
 
 If changes often end up in the full scope, the assignment should be improved, not the rule softened.
 
-Files with nothing to check go into `ohnePruefung`, each with a pattern and a mandatory reason. They trigger no check and appear in the report with their reason. If a file also matches a pattern from `checkAreas`, the area wins. A JavaScript file without a pattern inherits the areas of the files that import it.
+Files with nothing to check go into `noCheck`, each with a pattern and a mandatory reason. They trigger no check and appear in the report with their reason. If a file also matches a pattern from `checkAreas`, the area wins. A JavaScript file without a pattern inherits the areas of the files that import it.
 
 Without `checkAreas` all checks run unchanged; nobody silently loses a check.
 
@@ -188,13 +188,13 @@ Without `checkAreas` all checks run unchanged; nobody silently loses a check.
 
 `node .claude/kit/checks.mjs plan` shows the selection without executing anything.
 
-### Staged checks: `stufe`
-<!-- de: f9c884f6bc32 -->
+### Staged checks: `stage`
+<!-- de: ff417e3549ab -->
 
 An entry can say when its turn comes (stage, Stufe):
 
 ```json
-{ "cmd": "mvn verify -Pintegration", "stufe": "push" }
+{ "cmd": "mvn verify -Pintegration", "stage": "push" }
 ```
 
 | Stage | Point in time | Skill |
@@ -209,10 +209,10 @@ If a run of the package stage is red and `formatFixCommand` is set, `checks.mjs 
 
 **Short release.** Put long checks on the stage `push` instead of `merge`; the price: every `push main` takes longer by them.
 
-At least one check belongs on the package stage (Paketstufe), otherwise a work package has no gate, and night mode (Nachtbetrieb) does not start. `stufe` is neither one of the `reviewStufen` nor the task level (Aufgabenstufe) of the night chain.
+At least one check belongs on the package stage (Paketstufe), otherwise a work package has no gate, and night mode (Nachtbetrieb) does not start. `stage` is neither one of the `reviewStages` nor the task level (Aufgabenstufe) of the night chain.
 
-### Completion and publishing: `nichtBeimAbschluss`
-<!-- de: d57da8fbaf36 -->
+### Completion and publishing: `notAtCompletion`
+<!-- de: 3cffcf2694c0 -->
 
 A check of stage `paket` can be left out when a single card (Karte) is completed and run only before publishing:
 
@@ -220,13 +220,13 @@ A check of stage `paket` can be left out when a single card (Karte) is completed
 {
   "buildChecks": [
     { "cmd": "mvn -q test", "areas": ["backend"] },
-    { "cmd": "mvn -q verify -DskipUnitTests", "areas": ["backend"], "nichtBeimAbschluss": "zusammenspiel" },
-    { "cmd": "mvn -q verify jacoco:check", "areas": ["backend"], "nichtBeimAbschluss": "volleTestmenge" }
+    { "cmd": "mvn -q verify -DskipUnitTests", "areas": ["backend"], "notAtCompletion": "zusammenspiel" },
+    { "cmd": "mvn -q verify jacoco:check", "areas": ["backend"], "notAtCompletion": "volleTestmenge" }
   ]
 }
 ```
 
-The unit tests (surefire) run for every card. The integration tests (failsafe) check the interplay, the coverage (jacoco) needs the full set of tests; both run before publishing in `/push-main`. Only the completion run with `--finish <kartennummer>` may leave them out. With `abschlussBereiche` the check runs anyway when the package touches one of these areas directly. A missing field leaves everything as it is.
+The unit tests (surefire) run for every card. The integration tests (failsafe) check the interplay, the coverage (jacoco) needs the full set of tests; both run before publishing in `/push-main`. Only the completion run with `--finish <kartennummer>` may leave them out. With `completionAreas` the check runs anyway when the package touches one of these areas directly. A missing field leaves everything as it is.
 
 ### Who was it? The culprit search
 <!-- de: 9f9dc8266644 -->
@@ -238,13 +238,13 @@ If a run with `--stage push` turns red, it names the cards whose changes touch t
 
 `node .claude/kit/effectiveness.mjs evaluate` writes `.claude/wirksamkeit.md`. One block names the average check time per card across its completion runs, next to the comparison value without omissions. It is information and not a gate.
 
-### Quality measurement and mark: `guete`
-<!-- de: 72eb0e0d9301 -->
+### Quality measurement and mark: `quality`
+<!-- de: 257fe0f69a97 -->
 
-At most one entry may be a quality measurement: it measures how many deliberately inserted faults the tests notice. The block `guete` carries a `muster`, a regular expression with exactly one group for the percentage, and a `marke` from 0 to 100:
+At most one entry may be a quality measurement: it measures how many deliberately inserted faults the tests notice. The block `quality` carries a `pattern`, a regular expression with exactly one group for the percentage, and a `marker` from 0 to 100:
 
 ```json
-{ "cmd": "mvn -q org.pitest:pitest-maven:mutationCoverage", "stufe": "push", "guete": { "muster": "Killed \\d+ \\((\\d+)%\\)", "marke": 80 } }
+{ "cmd": "mvn -q org.pitest:pitest-maven:mutationCoverage", "stage": "push", "quality": { "pattern": "Killed \\d+ \\((\\d+)%\\)", "marker": 80 } }
 ```
 
 | Tool | Output | Pattern |
@@ -292,7 +292,7 @@ Labels and title prefixes carry the English name in every project.
 In addition there are `kit:night`, `kit:nightrun`, `planreview:1` and `planreview:2`. The kit also recognises the German names on open cards; the mapping is under [Names for those moving up from version 4](/en/dokumentation#names-for-those-moving-up-from-version-4). `issue create --art requirement|plan|idea|human|task` sets the matching prefix itself.
 
 ## Team config and personal deviations
-<!-- de: 9e81507c8080 -->
+<!-- de: 73cbad4f7ad3 -->
 
 The config consists of two files:
 
@@ -307,14 +307,14 @@ From the local file only these fields apply:
 |---|---|
 | `reviewModel` | choice of model is taste and budget |
 | `reviewCommand` | the foreign CLI is installed locally |
-| `reviewLesegrenze` | the read-only switch of this CLI |
+| `reviewReadLimit` | the read-only switch of this CLI |
 | `reviewScope` | some prefer reading the full source |
 | `triggers` | typing habit for the stop phrases |
 | `toolbox.tokenFile` | points to a token in your own file system |
 
 The kit ignores everything else and reports it on stderr. The whole team must see `buildChecks` and `columns` the same: whoever could configure their gate away locally would have none, and deviating columns produce an empty issue list instead of an error.
 
-`reviewModel` and `reviewCommand` give way as a pair. If the local file sets one of them, the other drops out of the shared one, and `reviewLesegrenze` goes with `reviewCommand`.
+`reviewModel` and `reviewCommand` give way as a pair. If the local file sets one of them, the other drops out of the shared one, and `reviewReadLimit` goes with `reviewCommand`.
 
 **What you do.** Write personal values into `.claude/workflow.config.local.json`. **What you see.** `git status` stays clean; a change to the shared file, by contrast, shows up there.
 

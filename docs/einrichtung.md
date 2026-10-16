@@ -32,7 +32,7 @@ Der Installer fragt der Reihe nach:
 
 Bei `github` und projektlokaler Installation folgen auf die Code-Host-Frage drei Fragen zum **Schutz des Hauptzweigs**: ob das Projekt GitHub Actions hat, ob die Prüfung vor dem Push dorthin wandern und Haupt- und Veröffentlichungszweig geschützt werden sollen, und welcher Prüfzweig gilt (Vorgabe `kit-pruefung`). Mit Ja pusht der Installer zur Probe auf den Prüfzweig, wartet auf den Build-Dienst und meldet `scharf` (Rulesets gesetzt), `anleitung` (Probe bestanden, die Ausgabe nennt die Schritte bei GitHub), `offen` (kein Lauf des Build-Dienstes) oder `nicht moeglich`.
 
-Ein bestehendes Projekt schaltet den Schutz mit `node install.mjs --protection` nachträglich ein; der Aufruf ändert nur `pushPruefung`. Den Zustand nennt jederzeit `node .claude/kit/board.mjs code protection status`.
+Ein bestehendes Projekt schaltet den Schutz mit `node install.mjs --protection` nachträglich ein; der Aufruf ändert nur `pushCheck`. Den Zustand nennt jederzeit `node .claude/kit/board.mjs code protection status`.
 
 **Was du danach siehst.** Starte Claude Code neu. Die siebzehn Skills erscheinen unter `/help`, und `/session-start` meldet den Stand des Projekts.
 
@@ -171,7 +171,7 @@ Vertauscht ginge beides schief. `merge-base` vor dem Commit sammelte fremde Pake
 
 Landen Änderungen oft im vollen Umfang, gehört die Zuordnung verbessert, nicht die Regel aufgeweicht.
 
-Dateien, zu denen es nichts zu prüfen gibt, stehen in `ohnePruefung`, je mit Muster und Pflichtgrund. Sie lösen keine Prüfung aus und stehen mit Grund im Bericht. Trifft eine Datei zugleich ein Muster aus `checkAreas`, gewinnt der Bereich. Eine JavaScript-Datei ohne Muster erbt die Bereiche der Dateien, die sie importieren.
+Dateien, zu denen es nichts zu prüfen gibt, stehen in `noCheck`, je mit Muster und Pflichtgrund. Sie lösen keine Prüfung aus und stehen mit Grund im Bericht. Trifft eine Datei zugleich ein Muster aus `checkAreas`, gewinnt der Bereich. Eine JavaScript-Datei ohne Muster erbt die Bereiche der Dateien, die sie importieren.
 
 Ohne `checkAreas` laufen alle Prüfungen unverändert; niemandem wird still Prüfung weggenommen.
 
@@ -179,12 +179,12 @@ Ohne `checkAreas` laufen alle Prüfungen unverändert; niemandem wird still Prü
 
 `node .claude/kit/checks.mjs plan` zeigt die Auswahl, ohne etwas auszuführen.
 
-### Gestaffelte Prüfungen: `stufe`
+### Gestaffelte Prüfungen: `stage`
 
 Ein Eintrag kann sagen, wann er an der Reihe ist:
 
 ```json
-{ "cmd": "mvn verify -Pintegration", "stufe": "push" }
+{ "cmd": "mvn verify -Pintegration", "stage": "push" }
 ```
 
 | Stufe | Zeitpunkt | Skill |
@@ -199,9 +199,9 @@ Ist ein Lauf der Paketstufe rot und `formatFixCommand` gesetzt, fährt `checks.m
 
 **Kurze Freigabe.** Lange Prüfungen auf die Stufe `push` statt `merge` stellen; der Preis: Jedes `push main` dauert um sie länger.
 
-Mindestens eine Prüfung gehört auf die Paketstufe, sonst hat ein Arbeitspaket kein Gate, und der Nachtbetrieb startet nicht. `stufe` ist weder eine der `reviewStufen` noch die Aufgabenstufe der Nacht-Kette.
+Mindestens eine Prüfung gehört auf die Paketstufe, sonst hat ein Arbeitspaket kein Gate, und der Nachtbetrieb startet nicht. `stage` ist weder eine der `reviewStages` noch die Aufgabenstufe der Nacht-Kette.
 
-### Abschluss und Veröffentlichen: `nichtBeimAbschluss`
+### Abschluss und Veröffentlichen: `notAtCompletion`
 
 Eine Prüfung der Stufe `paket` kann beim Abschluss einer einzelnen Karte entfallen und erst vor dem Veröffentlichen laufen:
 
@@ -209,13 +209,13 @@ Eine Prüfung der Stufe `paket` kann beim Abschluss einer einzelnen Karte entfal
 {
   "buildChecks": [
     { "cmd": "mvn -q test", "areas": ["backend"] },
-    { "cmd": "mvn -q verify -DskipUnitTests", "areas": ["backend"], "nichtBeimAbschluss": "zusammenspiel" },
-    { "cmd": "mvn -q verify jacoco:check", "areas": ["backend"], "nichtBeimAbschluss": "volleTestmenge" }
+    { "cmd": "mvn -q verify -DskipUnitTests", "areas": ["backend"], "notAtCompletion": "zusammenspiel" },
+    { "cmd": "mvn -q verify jacoco:check", "areas": ["backend"], "notAtCompletion": "volleTestmenge" }
   ]
 }
 ```
 
-Die Modultests (surefire) laufen bei jeder Karte. Die Integrationstests (failsafe) prüfen das Zusammenspiel, die Abdeckung (jacoco) braucht die volle Testmenge; beide laufen vor dem Veröffentlichen in `/push-main`. Auslassen darf nur der Abschlusslauf mit `--finish <kartennummer>`. Mit `abschlussBereiche` läuft die Prüfung trotzdem, wenn das Paket einen dieser Bereiche direkt berührt. Ein fehlendes Feld lässt alles, wie es ist.
+Die Modultests (surefire) laufen bei jeder Karte. Die Integrationstests (failsafe) prüfen das Zusammenspiel, die Abdeckung (jacoco) braucht die volle Testmenge; beide laufen vor dem Veröffentlichen in `/push-main`. Auslassen darf nur der Abschlusslauf mit `--finish <kartennummer>`. Mit `completionAreas` läuft die Prüfung trotzdem, wenn das Paket einen dieser Bereiche direkt berührt. Ein fehlendes Feld lässt alles, wie es ist.
 
 ### Wer war es? Die Verursachersuche
 
@@ -225,12 +225,12 @@ Wird ein Lauf mit `--stage push` rot, nennt er die Karten, deren Änderungen die
 
 `node .claude/kit/effectiveness.mjs evaluate` schreibt `.claude/wirksamkeit.md`. Ein Block nennt die mittlere Prüfzeit je Karte über ihre Abschlussläufe, daneben den Vergleichswert ohne Auslassungen. Er ist eine Auskunft und kein Gate.
 
-### Gütemessung und Marke: `guete`
+### Gütemessung und Marke: `quality`
 
-Höchstens ein Eintrag darf eine Gütemessung sein: Sie misst, wie viele absichtlich eingebaute Fehler die Tests bemerken. Der Block `guete` trägt ein `muster`, einen regulären Ausdruck mit genau einer Gruppe für den Prozentwert, und eine `marke` von 0 bis 100:
+Höchstens ein Eintrag darf eine Gütemessung sein: Sie misst, wie viele absichtlich eingebaute Fehler die Tests bemerken. Der Block `quality` trägt ein `pattern`, einen regulären Ausdruck mit genau einer Gruppe für den Prozentwert, und einen `marker` von 0 bis 100:
 
 ```json
-{ "cmd": "mvn -q org.pitest:pitest-maven:mutationCoverage", "stufe": "push", "guete": { "muster": "Killed \\d+ \\((\\d+)%\\)", "marke": 80 } }
+{ "cmd": "mvn -q org.pitest:pitest-maven:mutationCoverage", "stage": "push", "quality": { "pattern": "Killed \\d+ \\((\\d+)%\\)", "marker": 80 } }
 ```
 
 | Werkzeug | Ausgabe | Muster |
@@ -290,14 +290,14 @@ Aus der lokalen Datei gelten nur diese Felder:
 |---|---|
 | `reviewModel` | Modellwahl ist Geschmack und Budget |
 | `reviewCommand` | die fremde CLI ist lokal installiert |
-| `reviewLesegrenze` | der Nur-Lese-Schalter dieser CLI |
+| `reviewReadLimit` | der Nur-Lese-Schalter dieser CLI |
 | `reviewScope` | manche lesen lieber den vollen Quelltext |
 | `triggers` | Tippgewohnheit für die Stop-Phrasen |
 | `toolbox.tokenFile` | zeigt auf ein Token im eigenen Dateisystem |
 
 Alles andere ignoriert das Kit und meldet es auf stderr. `buildChecks` und `columns` muss das ganze Team gleich sehen: Wer sein Gate lokal wegkonfigurieren könnte, hätte keins, und abweichende Spalten ergeben eine leere Issue-Liste statt eines Fehlers.
 
-`reviewModel` und `reviewCommand` weichen als Paar. Setzt die lokale Datei eines davon, entfällt das andere aus der geteilten, und `reviewLesegrenze` fällt mit `reviewCommand`.
+`reviewModel` und `reviewCommand` weichen als Paar. Setzt die lokale Datei eines davon, entfällt das andere aus der geteilten, und `reviewReadLimit` fällt mit `reviewCommand`.
 
 **Was du tust.** Persönliche Werte in `.claude/workflow.config.local.json` schreiben. **Was du siehst.** `git status` bleibt sauber; eine Änderung an der geteilten Datei zeigt es dagegen an.
 

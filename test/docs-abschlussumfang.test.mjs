@@ -46,15 +46,15 @@ function dokuAbschnitt(muster) {
 
 test("der Config-Abschnitt zaehlt die vierte Achse mit auf", () => {
   const text = abschnitt("## Config (.claude/workflow.config.json)");
-  assert.match(text, /`nichtBeimAbschluss`/,
-    "die Aufzaehlung der buildChecks-Achsen nennt `nichtBeimAbschluss` nicht");
+  assert.match(text, /`notAtCompletion`/,
+    "die Aufzaehlung der buildChecks-Achsen nennt `notAtCompletion` nicht");
 });
 
 // --- Prozesstext: die vierte Achse und ihre zwei Zusicherungen ---
 
-test("der Abschnitt zu den Pflichtchecks beschreibt die Achse nichtBeimAbschluss", () => {
+test("der Abschnitt zu den Pflichtchecks beschreibt die Achse notAtCompletion", () => {
   const text = abschnitt("## Pflichtchecks vor Push");
-  assert.match(text, /`nichtBeimAbschluss`/, "die Achse fehlt im Abschnitt");
+  assert.match(text, /`notAtCompletion`/, "die Achse fehlt im Abschnitt");
   assert.match(text, /zusammenspiel/, "der Wert `zusammenspiel` fehlt");
   assert.match(text, /volleTestmenge/, "der Wert `volleTestmenge` fehlt");
   assert.match(text, /--finish/,
@@ -64,7 +64,7 @@ test("der Abschnitt zu den Pflichtchecks beschreibt die Achse nichtBeimAbschluss
 test("der Abschnitt sichert zu, dass jede verschobene Pruefung vor dem Veroeffentlichen laeuft", () => {
   // Die Zusicherung, die die Verkleinerung tragbar macht: verschoben, nicht erlassen.
   const text = abschnitt("## Pflichtchecks vor Push");
-  assert.match(text, /`nichtBeimAbschluss`[\s\S]{0,900}vor dem Veroeffentlichen/,
+  assert.match(text, /`notAtCompletion`[\s\S]{0,900}vor dem Veroeffentlichen/,
     "dass jede verschobene Pruefung vor dem Veroeffentlichen laeuft, steht nicht im Abschnitt");
 });
 
@@ -93,34 +93,34 @@ test("Gate W3 bleibt unveraendert ohne die neue Achse", () => {
   const idx = VORLAGE.indexOf("### W3 —");
   assert.ok(idx >= 0, "Gate W3 fehlt in templates/CLAUDE-workflow.md");
   const regel = VORLAGE.slice(idx).split(/\n### /)[0];
-  assert.doesNotMatch(regel, /nichtBeimAbschluss/,
+  assert.doesNotMatch(regel, /nichtBeimAbschluss|notAtCompletion/,
     "W3 traegt die neue Achse — es sollte unveraendert bleiben");
 });
 
 // --- Doku: der Unterabschnitt zur Achse ---
 
-test("die Doku fuehrt den Unterabschnitt zu nichtBeimAbschluss hinter dem zu `stufe`", () => {
-  const stufe = DOKU.indexOf("### Gestaffelte Prüfungen: `stufe`");
-  const achse = DOKU.search(/^### Abschluss und Veröffentlichen: `nichtBeimAbschluss`$/m);
-  assert.ok(stufe >= 0, "der Abschnitt zu `stufe` fehlt");
-  assert.ok(achse >= 0, "der Unterabschnitt zu `nichtBeimAbschluss` fehlt");
-  assert.ok(achse > stufe, "der neue Unterabschnitt steht nicht hinter dem zu `stufe`");
+test("die Doku fuehrt den Unterabschnitt zu notAtCompletion hinter dem zu `stage`", () => {
+  const stufe = DOKU.indexOf("### Gestaffelte Prüfungen: `stage`");
+  const achse = DOKU.search(/^### Abschluss und Veröffentlichen: `notAtCompletion`$/m);
+  assert.ok(stufe >= 0, "der Abschnitt zu `stage` fehlt");
+  assert.ok(achse >= 0, "der Unterabschnitt zu `notAtCompletion` fehlt");
+  assert.ok(achse > stufe, "der neue Unterabschnitt steht nicht hinter dem zu `stage`");
 });
 
 test("der Unterabschnitt zeigt das Maven-Beispiel mit surefire, failsafe und jacoco", () => {
   // Der Gebrauchswert: An der Testart entlang wird die Aufteilung erst anschaulich.
-  const text = dokuAbschnitt(/^### Abschluss und Veröffentlichen: `nichtBeimAbschluss`$/m);
+  const text = dokuAbschnitt(/^### Abschluss und Veröffentlichen: `notAtCompletion`$/m);
   assert.match(text, /surefire/, "das Kommando der Modultests (surefire) fehlt");
   assert.match(text, /failsafe/, "das Kommando der Integrationstests (failsafe) fehlt");
   assert.match(text, /jacoco/, "das Kommando der Abdeckung (jacoco) fehlt");
-  assert.match(text, /"nichtBeimAbschluss": "zusammenspiel"/,
+  assert.match(text, /"notAtCompletion": "zusammenspiel"/,
     "der Wert `zusammenspiel` steht nicht im Beispiel");
-  assert.match(text, /"nichtBeimAbschluss": "volleTestmenge"/,
+  assert.match(text, /"notAtCompletion": "volleTestmenge"/,
     "der Wert `volleTestmenge` steht nicht im Beispiel");
 });
 
 test("der Unterabschnitt nennt die Bedingungen der Achse", () => {
-  const text = dokuAbschnitt(/^### Abschluss und Veröffentlichen: `nichtBeimAbschluss`$/m);
+  const text = dokuAbschnitt(/^### Abschluss und Veröffentlichen: `notAtCompletion`$/m);
   assert.match(text, /`--finish/, "dass nur der Abschlusslauf auslaesst, fehlt");
   assert.match(text, /`paket`/, "dass die Achse an der Paketstufe gilt, fehlt");
   assert.match(text, /fehlende[sn]? Feld|[Oo]hne (das )?Feld/,

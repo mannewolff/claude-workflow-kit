@@ -7,7 +7,7 @@ user-invocable: true
 # Issue Review
 Werkzeug neben dem Prozess. Ein Dokument wird von Modellen gelesen, die es nicht geschrieben haben und seine Entstehungsgeschichte nicht kennen: Sie lesen, was dasteht, und stolpern dort, wo später der Plan oder die Implementierung stolpert. Den Bestand dürfen sie dabei lesen. Befunde sind Zuarbeit an den Autor der Stufe, kein Gate: Die Session, die den Skill aufgerufen hat, arbeitet sie ein oder lehnt sie mit einem Satz ab. Ob eine Stufe fertig ist, sagt ein Kommando oder ein Mensch, nie ein Modell-Marker.
 
-Vorbedingung: `.claude/workflow.config.json` trägt den Block `issueReview` mit `reviewers` (optional `pairs`) und den Block `reviewStufen` mit Rollen und Reviewer-Zahl je Stufe. Fehlt einer, sag das und beende — ohne Reviewer gibt es nichts zu tun.
+Vorbedingung: `.claude/workflow.config.json` trägt den Block `issueReview` mit `reviewers` (optional `pairs`) und den Block `reviewStages` mit Rollen und Reviewer-Zahl je Stufe. Fehlt einer, sag das und beende — ohne Reviewer gibt es nichts zu tun.
 
 ## Aufruf
 ```

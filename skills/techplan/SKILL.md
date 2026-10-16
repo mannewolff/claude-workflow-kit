@@ -92,7 +92,7 @@ Lies die betroffenen Dateien und vorhandene Muster. Nutze einen Explore-Agenten,
 node .claude/kit/board.mjs issue history --terms <begriff> --files <pfad> --without <N>
 ```
 
-**Verträge mit dem anderen Repo** (nur wenn `vertragsRepos` in der Config ein Partnerrepo nennt, Gate P14 in `CLAUDE-Plan.md`): Legt der Plan etwas fest, das das andere Repo liest oder schreibt — einen Namen, ein Kennzeichen, ein Format —, holt der Skill je Festlegung den gebauten Stand und sucht die Fundstelle im Klon unter `path` mit Grep und Read:
+**Verträge mit dem anderen Repo** (nur wenn `contractRepos` in der Config ein Partnerrepo nennt, Gate P14 in `CLAUDE-Plan.md`): Legt der Plan etwas fest, das das andere Repo liest oder schreibt — einen Namen, ein Kennzeichen, ein Format —, holt der Skill je Festlegung den gebauten Stand und sucht die Fundstelle im Klon unter `path` mit Grep und Read:
 ```bash
 node .claude/kit/board.mjs code contract-repo <name>
 ```
@@ -126,7 +126,7 @@ Die Überschriften sind der Anker, an dem die Plan-Prüfung und `/issues` arbeit
 
 **Neue Namen und kopierte Strukturen (Gate P13 in `CLAUDE-Plan.md`).** Führt der Plan Namen ein, die ein Mensch tippt — Skills, Kommandos, Optionen, Labels, Titel-Präfixe —, nennt er unter `## Architektonische Entscheidungen`, dass sie mit keinem eingebauten Kommando von Claude Code kollidieren. Erzeugt er gleich gebaute Kopien in mehreren Dateien, nennt er ihre Wirkung auf die Duplikatsmessung des Projekts und wie er sie auffängt.
 
-**Verträge (Gate P14 in `CLAUDE-Plan.md`).** Nennt `vertragsRepos` ein Partnerrepo, steht am Ende von `## Architektonische Entscheidungen` der Unterabschnitt `### Verträge`: je Festlegung zum anderen Repo ein Eintrag `- V<n>:` mit `Gebauter Stand:` und `Abgleich:` aus Schritt 2, ohne Festlegung die Leerform. Die festen Wörter — Zeilenanfänge, Abgleich-Werte, Richtungen, Leerform — schreibt der Skill in der Fassung aus `names` (Feld `contract`, Tabelle `VERTRAG`). Ein offener Vertrag (`weicht ab`, `fehlt`, `nicht prüfbar` ohne `Entschieden:`) braucht die Vertragsfrage unter `## Offene Fragen` (Schritt 4).
+**Verträge (Gate P14 in `CLAUDE-Plan.md`).** Nennt `contractRepos` ein Partnerrepo, steht am Ende von `## Architektonische Entscheidungen` der Unterabschnitt `### Verträge`: je Festlegung zum anderen Repo ein Eintrag `- V<n>:` mit `Gebauter Stand:` und `Abgleich:` aus Schritt 2, ohne Festlegung die Leerform. Die festen Wörter — Zeilenanfänge, Abgleich-Werte, Richtungen, Leerform — schreibt der Skill in der Fassung aus `names` (Feld `contract`, Tabelle `VERTRAG`). Ein offener Vertrag (`weicht ab`, `fehlt`, `nicht prüfbar` ohne `Entschieden:`) braucht die Vertragsfrage unter `## Offene Fragen` (Schritt 4).
 
 **Leere Pflichtabschnitte gibt es nicht.** Alle sechs bleiben erhalten, auch wenn es für einen nichts zu sagen gibt; in `## Architektonische Entscheidungen` und `## Offene Fragen` steht dann `- Keine.` **Die Metadaten zählen nicht mit.** Die Kopfzeilen `Plan-Modell: …` und, falls anwendbar, `Fachliche Quelle: Issue #N` stehen **vor** `## Ziel`. Sie sind keine Überschrift und damit kein siebter Abschnitt des Formats.
 

@@ -163,12 +163,12 @@ function schritt(text, n) {
   return ende < 0 ? text.slice(start) : text.slice(start, start + 4 + ende);
 }
 
-test("[1410] Schritt 7 von merge production pusht bei pushPruefung im Build-Dienst über den Prüfzweig-Weg von push-main", () => {
+test("[1410] Schritt 7 von merge production pusht bei pushCheck im Build-Dienst über den Prüfzweig-Weg von push-main", () => {
   const s = schritt(lies(...MERGE_PRODUCTION).replaceAll("\r\n", "\n"), 7).replaceAll(/\s+/g, " ");
-  assert.match(s, /pushPruefung/, "Schritt 7 nennt pushPruefung nicht");
+  assert.match(s, /pushCheck/, "Schritt 7 nennt pushCheck nicht");
   assert.match(s, /Build-Dienst/, "Schritt 7 nennt den Build-Dienst nicht");
   assert.match(s, /\/push-main[^.]*„Weg über den Build-Dienst“/, "Schritt 7 verweist nicht auf den Abschnitt „Weg über den Build-Dienst“ von /push-main");
-  assert.match(s, /[Oo]hne `pushPruefung` im Build-Dienst[^.]*direkt/, "Schritt 7 sagt nicht, dass ohne pushPruefung direkt gepusht wird");
+  assert.match(s, /[Oo]hne `pushCheck` im Build-Dienst[^.]*direkt/, "Schritt 7 sagt nicht, dass ohne pushCheck direkt gepusht wird");
 });
 
 test("[1410] Schritt 8 von merge production löscht den Prüfzweig, auch nach abgewiesenem Push", () => {

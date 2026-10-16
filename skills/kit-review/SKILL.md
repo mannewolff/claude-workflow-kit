@@ -65,7 +65,7 @@ Welcher der beiden Wege gilt, entscheidet das gesetzte Feld aus der Vorbedingung
 
 **Bei gesetztem `reviewModel` — Subagent über das Agent-Tool** mit `subagent_type: kit-pruefer` und dem Modell aus `reviewModel` (Opus-Pin), in frischer Session ohne Implementierungs-Kontext. Der Auftrag lautet nur `Lies <tmpdir>/review-auftrag.md`, mit wörtlichem Pfad. Der Agent darf nur lesen, seine Abschlussnachricht ist der Befund.
 
-**Bei gesetztem `reviewCommand` — das Kit startet das konfigurierte Kommando** an seiner Lesegrenze (`reviewLesegrenze`), den Auftrag über stdin, die Antwort von stdout in die Ausgabedatei:
+**Bei gesetztem `reviewCommand` — das Kit startet das konfigurierte Kommando** an seiner Lesegrenze (`reviewReadLimit`), den Auftrag über stdin, die Antwort von stdout in die Ausgabedatei:
 
 ```bash
 node .claude/kit/board.mjs issue-review start --code-review --brief <tmpdir>/review-auftrag.md --output <tmpdir>/review-antwort.md

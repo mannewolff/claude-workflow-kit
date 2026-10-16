@@ -178,7 +178,7 @@ for (const { name, text } of SKILLS) {
       text.search(/### \d+\. Lokal committen/));
     assert.match(pruefschritt, /voller Umfang/);
     assert.match(pruefschritt, /checkAreas/);
-    assert.match(pruefschritt, /ohnePruefung/);
+    assert.match(pruefschritt, /noCheck/);
     assert.match(pruefschritt, /### Hinweise/);
   });
 }

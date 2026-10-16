@@ -68,7 +68,7 @@ test("der Nachtbetrieb-Abschnitt der Vorlage beschreibt die Nacht-Kette statt ei
     assert.ok(idx >= 0, `${name}: kein Nachtbetrieb-Abschnitt`);
     const abschnitt = text.slice(idx).split(/\n## /)[0];
     assert.match(abschnitt, /--chain/, `${name}: --chain fehlt im Nachtbetrieb-Abschnitt`);
-    assert.match(abschnitt, /night\.kette/, `${name}: der Config-Block night.kette fehlt`);
+    assert.match(abschnitt, /night\.chain/, `${name}: der Config-Block night.chain fehlt`);
     assert.doesNotMatch(abschnitt, /--stufe|--review|--erzeuge/, `${name}: ein entfallener Schalter steht noch da`);
   }
 });

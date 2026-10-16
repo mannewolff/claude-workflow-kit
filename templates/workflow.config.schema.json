@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "claude-workflow-kit workflow.config",
-  "description": "Projekt-spezifische Konfiguration für die claude-workflow-kit-Skill-Bibliothek. Liegt als .claude/workflow.config.json im Repository und gilt teamweit. Persönliche Abweichungen gehören in .claude/workflow.config.local.json (nicht im Repository); daraus gewinnen nur reviewModel, reviewCommand, reviewLesegrenze, reviewScope, triggers und toolbox.tokenFile, alles andere wird ignoriert und gemeldet. Setzt die persönliche Datei eines der beiden Reviewer-Felder, weicht das andere aus der geteilten Config — die Oder-Regel gilt auch nach dem Merge; mit reviewModel weicht auch reviewLesegrenze.",
+  "description": "Projekt-spezifische Konfiguration für die claude-workflow-kit-Skill-Bibliothek. Liegt als .claude/workflow.config.json im Repository und gilt teamweit. Persönliche Abweichungen gehören in .claude/workflow.config.local.json (nicht im Repository); daraus gewinnen nur reviewModel, reviewCommand, reviewReadLimit, reviewScope, triggers und toolbox.tokenFile, alles andere wird ignoriert und gemeldet. Setzt die persönliche Datei eines der beiden Reviewer-Felder, weicht das andere aus der geteilten Config — die Oder-Regel gilt auch nach dem Merge; mit reviewModel weicht auch reviewReadLimit.",
   "type": "object",
   "properties": {
     "version": {
@@ -52,7 +52,7 @@
     "buildChecks": {
       "type": "array",
       "items": {
-        "description": "Ein Eintrag hat eine von vier Formen. (1) Der bloße Kommandostring \"npx eslint .\": nicht zugeordnet, Paketstufe, läuft immer. (2) { \"cmd\": \"...\", \"areas\": [\"backend\"] }: läuft, wenn einer der genannten Bereiche berührt ist; die Bereichsnamen stehen in checkAreas. (3) { \"cmd\": \"...\", \"always\": true }: entschieden immer laufend. (4) { \"cmd\": \"...\", \"stufe\": \"push\" }: läuft erst zum genannten Zeitpunkt — ein fehlendes Feld \"stufe\" bedeutet \"paket\" und damit unverändertes Verhalten. Form 1 und Form 3 verhalten sich gleich, bedeuten aber Verschiedenes — vergessen gegen entschieden. Ein Objekt nur mit \"cmd\" bedeutet dasselbe wie die String-Form. \"areas\" und \"always\" schließen sich aus (eine Vorrangregel würde niemand lesen), und \"areas\" braucht mindestens einen Eintrag (ein leeres Array liefe nie). \"stufe\" steht auf einer eigenen Achse und verträgt sich mit beiden: areas und always sagen, ob eine Prüfung betroffen ist, stufe sagt, wann sie an der Reihe ist. Auf einer dritten Achse steht \"guete\": Höchstens ein Eintrag der Liste darf den Block tragen, und er sagt, was gemessen wird — nicht ob und nicht wann. Auf einer vierten Achse steht \"nichtBeimAbschluss\": Es sagt, WARUM eine Prüfung den Abschluss eines einzelnen Arbeitspakets nicht tragen muss — sie wirkt nur beim Lauf mit \"--finish\", und ein fehlendes Feld bedeutet unverändertes Verhalten.",
+        "description": "Ein Eintrag hat eine von vier Formen. (1) Der bloße Kommandostring \"npx eslint .\": nicht zugeordnet, Paketstufe, läuft immer. (2) { \"cmd\": \"...\", \"areas\": [\"backend\"] }: läuft, wenn einer der genannten Bereiche berührt ist; die Bereichsnamen stehen in checkAreas. (3) { \"cmd\": \"...\", \"always\": true }: entschieden immer laufend. (4) { \"cmd\": \"...\", \"stage\": \"push\" }: läuft erst zum genannten Zeitpunkt — ein fehlendes Feld \"stage\" bedeutet \"paket\" und damit unverändertes Verhalten. Form 1 und Form 3 verhalten sich gleich, bedeuten aber Verschiedenes — vergessen gegen entschieden. Ein Objekt nur mit \"cmd\" bedeutet dasselbe wie die String-Form. \"areas\" und \"always\" schließen sich aus (eine Vorrangregel würde niemand lesen), und \"areas\" braucht mindestens einen Eintrag (ein leeres Array liefe nie). \"stage\" steht auf einer eigenen Achse und verträgt sich mit beiden: areas und always sagen, ob eine Prüfung betroffen ist, stage sagt, wann sie an der Reihe ist. Auf einer dritten Achse steht \"quality\": Höchstens ein Eintrag der Liste darf den Block tragen, und er sagt, was gemessen wird — nicht ob und nicht wann. Auf einer vierten Achse steht \"notAtCompletion\": Es sagt, WARUM eine Prüfung den Abschluss eines einzelnen Arbeitspakets nicht tragen muss — sie wirkt nur beim Lauf mit \"--finish\", und ein fehlendes Feld bedeutet unverändertes Verhalten.",
         "oneOf": [
           {
             "type": "string"
@@ -86,7 +86,7 @@
                   "merge"
                 ],
                 "default": "paket",
-                "description": "Wann die Prüfung an der Reihe ist: \"paket\" beim Abschluss eines Arbeitspakets, \"push\" vor dem Veröffentlichen, \"merge\" vor der Freigabe. Fehlendes Feld = \"paket\" = unverändertes Verhalten. Die Stufen sind kumulativ — push fährt paket mit, merge fährt beide mit; keine Pflichtprüfung entfällt damit aus dem Gesamtprozess, sie läuft nur zu dem Zeitpunkt, an dem ihr Ergebnis zählt. Nicht zu verwechseln mit reviewStufen (den Prüfstufen des Reviews) und den Stufen der Nacht-Kette."
+                "description": "Wann die Prüfung an der Reihe ist: \"paket\" beim Abschluss eines Arbeitspakets, \"push\" vor dem Veröffentlichen, \"merge\" vor der Freigabe. Fehlendes Feld = \"paket\" = unverändertes Verhalten. Die Stufen sind kumulativ — push fährt paket mit, merge fährt beide mit; keine Pflichtprüfung entfällt damit aus dem Gesamtprozess, sie läuft nur zu dem Zeitpunkt, an dem ihr Ergebnis zählt. Nicht zu verwechseln mit reviewStages (den Prüfstufen des Reviews) und den Stufen der Nacht-Kette."
               },
               "nichtBeimAbschluss": {
                 "type": "string",
@@ -94,7 +94,7 @@
                   "zusammenspiel",
                   "volleTestmenge"
                 ],
-                "description": "Warum diese Pr\u00fcfung den Abschluss eines einzelnen Arbeitspakets nicht tragen muss: \"zusammenspiel\" = sie pr\u00fcft das Zusammenspiel mehrerer Teile, \"volleTestmenge\" = sie gewinnt ihren Befund aus der vollst\u00e4ndigen Testmenge. Die vierte Achse neben \"areas\"/\"always\" (ob eine Pr\u00fcfung betroffen ist), \"stufe\" (wann sie an der Reihe ist) und \"guete\" (was sie misst) \u2014 dieses Feld sagt nichts davon, sondern warum sie beim Abschluss entfallen darf. Sie wirkt nur, wenn der Aufruf \"--finish\" tr\u00e4gt: den setzen allein die implement-Skills beim Abschluss genau einer Karte. Jeder andere Lauf f\u00e4hrt die Pr\u00fcfung mit, und sp\u00e4testens vor dem Ver\u00f6ffentlichen l\u00e4uft sie in jedem Fall. Nur an einem Eintrag der Stufe \"paket\" sinnvoll \u2014 an \"push\" oder \"merge\" l\u00e4uft die Pr\u00fcfung beim Abschluss ohnehin nicht, und der Pr\u00fcflauf bricht dort ab. Tr\u00e4gt jeder Eintrag der Paketstufe dieses Feld oder einen guete-Block, hat der Abschluss kein Gate mehr; auch das bricht ab. Fehlendes Feld = die Pr\u00fcfung l\u00e4uft auch beim Abschluss = unver\u00e4ndertes Verhalten. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
+                "description": "Warum diese Pr\u00fcfung den Abschluss eines einzelnen Arbeitspakets nicht tragen muss: \"zusammenspiel\" = sie pr\u00fcft das Zusammenspiel mehrerer Teile, \"volleTestmenge\" = sie gewinnt ihren Befund aus der vollst\u00e4ndigen Testmenge. Die vierte Achse neben \"areas\"/\"always\" (ob eine Pr\u00fcfung betroffen ist), \"stage\" (wann sie an der Reihe ist) und \"quality\" (was sie misst) \u2014 dieses Feld sagt nichts davon, sondern warum sie beim Abschluss entfallen darf. Sie wirkt nur, wenn der Aufruf \"--finish\" tr\u00e4gt: den setzen allein die implement-Skills beim Abschluss genau einer Karte. Jeder andere Lauf f\u00e4hrt die Pr\u00fcfung mit, und sp\u00e4testens vor dem Ver\u00f6ffentlichen l\u00e4uft sie in jedem Fall. Nur an einem Eintrag der Stufe \"paket\" sinnvoll \u2014 an \"push\" oder \"merge\" l\u00e4uft die Pr\u00fcfung beim Abschluss ohnehin nicht, und der Pr\u00fcflauf bricht dort ab. Tr\u00e4gt jeder Eintrag der Paketstufe dieses Feld oder einen quality-Block, hat der Abschluss kein Gate mehr; auch das bricht ab. Fehlendes Feld = die Pr\u00fcfung l\u00e4uft auch beim Abschluss = unver\u00e4ndertes Verhalten. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
               },
               "abschlussBereiche": {
                 "type": "array",
@@ -103,7 +103,7 @@
                   "type": "string",
                   "minLength": 1
                 },
-                "description": "Bereichsnamen aus checkAreas, bei deren direkter Berührung eine Prüfung mit \"nichtBeimAbschluss\" auch beim Abschluss eines Arbeitspakets läuft. Direkt berührt ist ein Bereich, wenn eine geänderte Datei eines seiner Muster trifft oder ihn über die Ableitung aus ihren Importeuren trägt — nicht über die abhängigen Bereiche und nicht über Dateien, deren jede geänderte Zeile Blob oder Stempel ist. Nur zusammen mit \"nichtBeimAbschluss\"; jeder Name muss in checkAreas stehen und, wenn der Eintrag \"areas\" trägt, auch dort. Jede andere Form bricht den Prüflauf beim Start ab. Fehlendes Feld = die Prüfung entfällt beim Abschluss wie bisher. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
+                "description": "Bereichsnamen aus checkAreas, bei deren direkter Berührung eine Prüfung mit \"notAtCompletion\" auch beim Abschluss eines Arbeitspakets läuft. Direkt berührt ist ein Bereich, wenn eine geänderte Datei eines seiner Muster trifft oder ihn über die Ableitung aus ihren Importeuren trägt — nicht über die abhängigen Bereiche und nicht über Dateien, deren jede geänderte Zeile Blob oder Stempel ist. Nur zusammen mit \"notAtCompletion\"; jeder Name muss in checkAreas stehen und, wenn der Eintrag \"areas\" trägt, auch dort. Jede andere Form bricht den Prüflauf beim Start ab. Fehlendes Feld = die Prüfung entfällt beim Abschluss wie bisher. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
               },
               "guete": {
                 "type": "object",
@@ -125,7 +125,7 @@
                   "marke"
                 ],
                 "additionalProperties": false,
-                "description": "Benennt diese Prüfung als Gütemessung: Sie misst, wie viele absichtlich eingebauten Fehler die Tests bemerken, und ein Wert unter der Marke hält das Veröffentlichen an. Höchstens ein Eintrag der Liste trägt den Block; trägt er ihn, darf seine \"stufe\" nicht \"merge\" sein — eine Messung erst vor der Freigabe käme zu spät, um noch etwas zu ändern. Ohne den Block gibt es weder Messung noch Marke noch Halt; \"mutationCommand\" ist etwas anderes und löst keinen Halt aus. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
+                "description": "Benennt diese Prüfung als Gütemessung: Sie misst, wie viele absichtlich eingebauten Fehler die Tests bemerken, und ein Wert unter der Marke hält das Veröffentlichen an. Höchstens ein Eintrag der Liste trägt den Block; trägt er ihn, darf seine \"stage\" nicht \"merge\" sein — eine Messung erst vor der Freigabe käme zu spät, um noch etwas zu ändern. Ohne den Block gibt es weder Messung noch Marke noch Halt; \"mutationCommand\" ist etwas anderes und löst keinen Halt aus. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
               },
               "gleichzeitig": {
                 "type": "boolean",
@@ -135,7 +135,7 @@
               "vorab": {
                 "type": "boolean",
                 "default": false,
-                "description": "Ob diese Prüfung in \"checks.mjs run\" vor allen anderen läuft. Gekennzeichnete Einträge laufen in einer Vorphase nacheinander in Config-Reihenfolge, noch vor den mit \"gleichzeitig\" gekennzeichneten; ein Rot dort startet keine weitere Prüfung. Gedacht für schnelle Prüfungen (Lint, kurze Tests), deren Rot nach Sekunden bekannt sein soll statt erst nach den langen gleichzeitigen. Ein Eintrag mit \"vorab\" und \"gleichzeitig\" zugleich ist ein Fehler. Fehlendes Feld = false = die Prüfung läuft in ihrer bisherigen Phase. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
+                "description": "Ob diese Prüfung in \"checks.mjs run\" vor allen anderen läuft. Gekennzeichnete Einträge laufen in einer Vorphase nacheinander in Config-Reihenfolge, noch vor den mit \"concurrent\" gekennzeichneten; ein Rot dort startet keine weitere Prüfung. Gedacht für schnelle Prüfungen (Lint, kurze Tests), deren Rot nach Sekunden bekannt sein soll statt erst nach den langen gleichzeitigen. Ein Eintrag mit \"upfront\" und \"concurrent\" zugleich ist ein Fehler. Fehlendes Feld = false = die Prüfung läuft in ihrer bisherigen Phase. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert."
               },
               "art": {
                 "type": "string",
@@ -158,7 +158,7 @@
           }
         ]
       },
-      "description": "Kommandos, die checks.mjs run bei der Abschlussprüfung eines Pakets und bei push main ausführt (Build, Tests): zuerst die mit \"vorab\" gekennzeichneten nacheinander, dann die mit \"gleichzeitig\" gekennzeichneten gleichzeitig, danach die übrigen nacheinander in Config-Reihenfolge. Leer-Array = keine automatisierten Checks. Ein Eintrag ist entweder ein Kommandostring oder ein Objekt mit Bereichszuordnung (siehe items und checkAreas). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Kommandos, die checks.mjs run bei der Abschlussprüfung eines Pakets und bei push main ausführt (Build, Tests): zuerst die mit \"upfront\" gekennzeichneten nacheinander, dann die mit \"concurrent\" gekennzeichneten gleichzeitig, danach die übrigen nacheinander in Config-Reihenfolge. Leer-Array = keine automatisierten Checks. Ein Eintrag ist entweder ein Kommandostring oder ein Objekt mit Bereichszuordnung (siehe items und checkAreas). Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": []
     },
     "checkAreas": {
@@ -224,7 +224,7 @@
     },
     "testAblagen": {
       "type": "array",
-      "description": "Wo die eigenen Tests eines Bausteins liegen — daraus meldet issue check-form bei einem Plan Testhinweise: je eigener Test eines geführten Bausteins, den der Plan nicht nennt, ein Hinweis, der weder ok noch den Exit-Code berührt. Jeder Eintrag ist ein Paar aus quelle und test. Platzhalter: {pfad} steht für null oder mehr Verzeichnisse ({pfad}/ darf leer sein), {name} für den Dateinamen ohne Endung, * im Test-Muster für beliebige Zeichen innerhalb eines Pfadsegments. Ohne das Feld gelten die Vorgaben des Kits: TypeScript {pfad}/{name}.ts und .tsx mit {name}.test und {name}.spec daneben, Java src/main/java/{pfad}/{name}.java mit src/test/java/{pfad}/{name}Test.java. Ein Array ersetzt die Vorgaben; der Eintrag { \"vorgaben\": true } fügt sie an seiner Stelle ein, statt sie abzuschreiben; [] schaltet die Testhinweise ab. Mehrmodulprojekte tragen je Modul eine Ablage mit festem Präfix ein, etwa backend/src/main/java/{pfad}/{name}.java → backend/src/test/java/{pfad}/{name}Test.java. Bewusst ohne Vorgabewert: Fehlt das Feld, gelten die Vorgaben, und das ist etwas anderes als [].",
+      "description": "Wo die eigenen Tests eines Bausteins liegen — daraus meldet issue check-form bei einem Plan Testhinweise: je eigener Test eines geführten Bausteins, den der Plan nicht nennt, ein Hinweis, der weder ok noch den Exit-Code berührt. Jeder Eintrag ist ein Paar aus source und test. Platzhalter: {pfad} steht für null oder mehr Verzeichnisse ({pfad}/ darf leer sein), {name} für den Dateinamen ohne Endung, * im Test-Muster für beliebige Zeichen innerhalb eines Pfadsegments. Ohne das Feld gelten die Vorgaben des Kits: TypeScript {pfad}/{name}.ts und .tsx mit {name}.test und {name}.spec daneben, Java src/main/java/{pfad}/{name}.java mit src/test/java/{pfad}/{name}Test.java. Ein Array ersetzt die Vorgaben; der Eintrag { \"defaults\": true } fügt sie an seiner Stelle ein, statt sie abzuschreiben; [] schaltet die Testhinweise ab. Mehrmodulprojekte tragen je Modul eine Ablage mit festem Präfix ein, etwa backend/src/main/java/{pfad}/{name}.java → backend/src/test/java/{pfad}/{name}Test.java. Bewusst ohne Vorgabewert: Fehlt das Feld, gelten die Vorgaben, und das ist etwas anderes als [].",
       "items": {
         "oneOf": [
           {
@@ -299,7 +299,7 @@
         "type": "string",
         "minLength": 1
       },
-      "description": "Weitere Kommandos bzw. Kommando-Präfixe, die eine Gütemessung starten (optional). Gate I6 von \"issue check-form\" weist ein Arbeitspaket ab, dessen Akzeptanzkriterium eines davon nennt — zusätzlich zu \"mutationCommand\" und dem Kommando eines buildChecks-Eintrags mit \"guete\"-Block. Der Weg für einen Mess-Treiber, den das Projekt erst baut: Er kann noch keine Prüfung sein, sein Präfix steht aber schon hier, und ein Vollauf wandert damit nicht ins Akzeptanzkriterium eines Pakets. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Weitere Kommandos bzw. Kommando-Präfixe, die eine Gütemessung starten (optional). Gate I6 von \"issue check-form\" weist ein Arbeitspaket ab, dessen Akzeptanzkriterium eines davon nennt — zusätzlich zu \"mutationCommand\" und dem Kommando eines buildChecks-Eintrags mit \"quality\"-Block. Der Weg für einen Mess-Treiber, den das Projekt erst baut: Er kann noch keine Prüfung sein, sein Präfix steht aber schon hier, und ein Vollauf wandert damit nicht ins Akzeptanzkriterium eines Pakets. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": []
     },
     "formatFixCommand": {
@@ -325,7 +325,7 @@
       "default": "production"
     },
     "pushPruefung": {
-      "description": "Wo der volle Prüflauf vor 'push main' stattfindet. 'lokal' (Vorgabe): /push-main fährt ihn mit 'checks.mjs run --stage push' auf dem eigenen Rechner. Ein Objekt mit ort 'buildDienst' verlegt ihn in den Build-Dienst des Projekts: /push-main pusht den Stand auf den Prüfzweig, wartet über 'board.mjs code ci-status --commit' auf das Ergebnis und pusht mainBranch nur bei Grün. Die Pflicht ist an beiden Orten dieselbe — grün vor dem Push; productionBranch bleibt unberührt. Der Build-Dienst muss auf dem Prüfzweig dieselben Pflichtprüfungen fahren wie der lokale Lauf der Stufe push. Den Schutz von Haupt- und Veröffentlichungszweig richtet 'board.mjs code protection setup' ein; der Installer schreibt 'pushPruefung' erst, wenn dessen Probe auf dem Prüfzweig bestanden ist. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Wo der volle Prüflauf vor 'push main' stattfindet. 'lokal' (Vorgabe): /push-main fährt ihn mit 'checks.mjs run --stage push' auf dem eigenen Rechner. Ein Objekt mit location 'buildDienst' verlegt ihn in den Build-Dienst des Projekts: /push-main pusht den Stand auf den Prüfzweig, wartet über 'board.mjs code ci-status --commit' auf das Ergebnis und pusht mainBranch nur bei Grün. Die Pflicht ist an beiden Orten dieselbe — grün vor dem Push; productionBranch bleibt unberührt. Der Build-Dienst muss auf dem Prüfzweig dieselben Pflichtprüfungen fahren wie der lokale Lauf der Stufe push. Den Schutz von Haupt- und Veröffentlichungszweig richtet 'board.mjs code protection setup' ein; der Installer schreibt 'pushCheck' erst, wenn dessen Probe auf dem Prüfzweig bestanden ist. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "default": "lokal",
       "oneOf": [
         {
@@ -381,7 +381,7 @@
     },
     "reviewLesegrenze": {
       "type": "string",
-      "description": "Gehört zu reviewCommand: der Nur-Lese-Schalter der fremden CLI, den das Kit an die Kommandozeile hängt (z.B. '--sandbox read-only'), am Leerraum zerlegt wie reviewCommand. Für codex kennt das Kit den Schalter selbst; für jedes andere Werkzeug steht er hier. Darf in workflow.config.local.json persönlich überschrieben werden; setzt die persönliche Datei reviewModel, weicht reviewLesegrenze mit reviewCommand."
+      "description": "Gehört zu reviewCommand: der Nur-Lese-Schalter der fremden CLI, den das Kit an die Kommandozeile hängt (z.B. '--sandbox read-only'), am Leerraum zerlegt wie reviewCommand. Für codex kennt das Kit den Schalter selbst; für jedes andere Werkzeug steht er hier. Darf in workflow.config.local.json persönlich überschrieben werden; setzt die persönliche Datei reviewModel, weicht reviewReadLimit mit reviewCommand."
     },
     "triggers": {
       "type": "object",
@@ -509,7 +509,7 @@
     },
     "issueReview": {
       "type": "object",
-      "description": "Issue-Review über mehrere Modelle. Reviewer, die das Dokument nicht geschrieben haben, lesen es; wie viele je Stufe, sagt reviewStufen. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert. Die früheren Felder rounds und statusLabels sind seit Stufe 2 des Prozess-Umbaus entfallen und werden in einer Bestandsconfig ohne Fehler ignoriert.",
+      "description": "Issue-Review über mehrere Modelle. Reviewer, die das Dokument nicht geschrieben haben, lesen es; wie viele je Stufe, sagt reviewStages. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert. Die früheren Felder rounds und statusLabels sind seit Stufe 2 des Prozess-Umbaus entfallen und werden in einer Bestandsconfig ohne Fehler ignoriert.",
       "properties": {
         "requiredBeforeReady": {
           "type": "boolean",
@@ -518,7 +518,7 @@
         },
         "reviewers": {
           "type": "array",
-          "description": "Reihenfolge ist die Steuerung: Genommen werden die vordersten Einträge, die nicht der Autor sind; wie viele, sagt reviewStufen.",
+          "description": "Reihenfolge ist die Steuerung: Genommen werden die vordersten Einträge, die nicht der Autor sind; wie viele, sagt reviewStages.",
           "items": {
             "type": "object",
             "properties": {
@@ -567,7 +567,7 @@
     },
     "reviewStufen": {
       "type": "object",
-      "description": "Besetzung und Blickwinkel der drei Prüfstufen: das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Während issueReview beschreibt, WER überhaupt prüft, steht hier, wie viele und mit welchen Rollen je Stufe geprüft wird. 'rollen' muss genau 'reviewer' verschiedene, nicht leere Namen enthalten — sonst harter Fehler. Fehlt der gesamte Block, gelten je Stufe die Rollen des Rollenkatalogs mit einem Reviewer je Rolle: fachlich 'form-beobachtbarkeit' und 'abgrenzung', plan 'architektur-bestand' und 'schnitt-abhaengigkeiten', issue 'pruefbarkeit'; fehlt nur eine Stufe im vorhandenen Block, ist das ein Fehler. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Besetzung und Blickwinkel der drei Prüfstufen: das fachliche Anliegen, der Plan dorthin, das einzelne Arbeitspaket. Während issueReview beschreibt, WER überhaupt prüft, steht hier, wie viele und mit welchen Rollen je Stufe geprüft wird. 'roles' muss genau 'reviewer' verschiedene, nicht leere Namen enthalten — sonst harter Fehler. Fehlt der gesamte Block, gelten je Stufe die Rollen des Rollenkatalogs mit einem Reviewer je Rolle: requirement 'form-beobachtbarkeit' und 'abgrenzung', plan 'architektur-bestand' und 'schnitt-abhaengigkeiten', issue 'pruefbarkeit'; fehlt nur eine Stufe im vorhandenen Block, ist das ein Fehler. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "properties": {
         "fachlich": {
           "type": "object",
@@ -660,7 +660,7 @@
     },
     "night": {
       "type": "object",
-      "description": "Der Nachtbetrieb. Die Nacht-Kette unter kette, die Liste erlaubter Modellnamen unter modelle. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Der Nachtbetrieb. Die Nacht-Kette unter chain, die Liste erlaubter Modellnamen unter models. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "properties": {
         "kette": {
           "type": "object",
@@ -812,7 +812,7 @@
           "type": "string",
           "minLength": 1,
           "pattern": "^claude-",
-          "description": "Das Modell des Nachtlaufs: Es startet jede Session ohne eigenes Modell — die Stufen Plan, Review und Abdeckung der Kette, die Korrekturrunden und jedes Paket ohne Aufgabenstufe. Vorrang: --model beim Aufruf, dann dieses Feld, dann die Vorgabe des Runners. Muss auch in night.modelle stehen, sonst endet der Runner vor dem Start. Gilt nur aus der geteilten Konfiguration, ein Wert in der persönlichen Datei wird ignoriert."
+          "description": "Das Modell des Nachtlaufs: Es startet jede Session ohne eigenes Modell — die Stufen Plan, Review und Abdeckung der Kette, die Korrekturrunden und jedes Paket ohne Aufgabenstufe. Vorrang: --model beim Aufruf, dann dieses Feld, dann die Vorgabe des Runners. Muss auch in night.models stehen, sonst endet der Runner vor dem Start. Gilt nur aus der geteilten Konfiguration, ein Wert in der persönlichen Datei wird ignoriert."
         },
         "modelle": {
           "type": "array",
@@ -825,7 +825,7 @@
         },
         "stufen": {
           "type": "object",
-          "description": "Modell oder Kommando je Schwierigkeitsstufe eines Arbeitspakets, geordnet schwer/mittel/leicht. Fehlt eine Stufe, weicht der Nachtlauf zur nächststärkeren aus, bis notfalls zum Modell des Laufs selbst. Wirkt nur im nächtlichen Lauf — tagsüber wählt der Mensch sein Modell selbst. Ein modell muss auch in night.modelle stehen (sonst Fehler bei der Konfigurationsprüfung).",
+          "description": "Modell oder Kommando je Schwierigkeitsstufe eines Arbeitspakets, geordnet hard/medium/easy. Fehlt eine Stufe, weicht der Nachtlauf zur nächststärkeren aus, bis notfalls zum Modell des Laufs selbst. Wirkt nur im nächtlichen Lauf — tagsüber wählt der Mensch sein Modell selbst. Ein model muss auch in night.models stehen (sonst Fehler bei der Konfigurationsprüfung).",
           "properties": {
             "schwer": {
               "type": "object",
@@ -835,7 +835,7 @@
                   "type": "string",
                   "minLength": 1,
                   "pattern": "^claude-",
-                  "description": "Modell-ID für diese Stufe. Muss auch in night.modelle stehen."
+                  "description": "Modell-ID für diese Stufe. Muss auch in night.models stehen."
                 },
                 "effort": {
                   "type": "string",
@@ -846,7 +846,7 @@
                     "xhigh",
                     "max"
                   ],
-                  "description": "Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Ohne Feld gilt die Voreinstellung der CLI. Nur neben modell erlaubt — einem fremden Programm neben kommando kann das Kit keine Gründlichkeit setzen."
+                  "description": "Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Ohne Feld gilt die Voreinstellung der CLI. Nur neben model erlaubt — einem fremden Programm neben command kann das Kit keine Gründlichkeit setzen."
                 },
                 "kommando": {
                   "type": "string",
@@ -855,7 +855,7 @@
                 },
                 "name": {
                   "type": "string",
-                  "description": "Selbstauskunft des Programms neben kommando."
+                  "description": "Selbstauskunft des Programms neben command."
                 }
               },
               "additionalProperties": false,
@@ -893,7 +893,7 @@
                   "type": "string",
                   "minLength": 1,
                   "pattern": "^claude-",
-                  "description": "Modell-ID für diese Stufe. Muss auch in night.modelle stehen."
+                  "description": "Modell-ID für diese Stufe. Muss auch in night.models stehen."
                 },
                 "effort": {
                   "type": "string",
@@ -904,7 +904,7 @@
                     "xhigh",
                     "max"
                   ],
-                  "description": "Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Ohne Feld gilt die Voreinstellung der CLI. Nur neben modell erlaubt — einem fremden Programm neben kommando kann das Kit keine Gründlichkeit setzen."
+                  "description": "Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Ohne Feld gilt die Voreinstellung der CLI. Nur neben model erlaubt — einem fremden Programm neben command kann das Kit keine Gründlichkeit setzen."
                 },
                 "kommando": {
                   "type": "string",
@@ -913,7 +913,7 @@
                 },
                 "name": {
                   "type": "string",
-                  "description": "Selbstauskunft des Programms neben kommando."
+                  "description": "Selbstauskunft des Programms neben command."
                 }
               },
               "additionalProperties": false,
@@ -951,7 +951,7 @@
                   "type": "string",
                   "minLength": 1,
                   "pattern": "^claude-",
-                  "description": "Modell-ID für diese Stufe. Muss auch in night.modelle stehen."
+                  "description": "Modell-ID für diese Stufe. Muss auch in night.models stehen."
                 },
                 "effort": {
                   "type": "string",
@@ -962,7 +962,7 @@
                     "xhigh",
                     "max"
                   ],
-                  "description": "Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Ohne Feld gilt die Voreinstellung der CLI. Nur neben modell erlaubt — einem fremden Programm neben kommando kann das Kit keine Gründlichkeit setzen."
+                  "description": "Gründlichkeit des Nachdenkens für diese Stufe, wird als --effort an die Claude-CLI gegeben. Ohne Feld gilt die Voreinstellung der CLI. Nur neben model erlaubt — einem fremden Programm neben command kann das Kit keine Gründlichkeit setzen."
                 },
                 "kommando": {
                   "type": "string",
@@ -971,7 +971,7 @@
                 },
                 "name": {
                   "type": "string",
-                  "description": "Selbstauskunft des Programms neben kommando."
+                  "description": "Selbstauskunft des Programms neben command."
                 }
               },
               "additionalProperties": false,
@@ -1018,7 +1018,7 @@
           "type": "integer",
           "exclusiveMinimum": 0,
           "default": 10,
-          "description": "Zielmarke für die Dauer einer Umsetzung in Minuten; der Bericht weist aus, wie viele Pakete darunter blieben. Die Marke gilt für die Umsetzungsstufe der Kette und für die Umsetzungsnacht, darum steht sie neben night.kette und nicht darin. Abschalten ist nicht vorgesehen — fehlt das Feld, gilt die Vorgabe."
+          "description": "Zielmarke für die Dauer einer Umsetzung in Minuten; der Bericht weist aus, wie viele Pakete darunter blieben. Die Marke gilt für die Umsetzungsstufe der Kette und für die Umsetzungsnacht, darum steht sie neben night.chain und nicht darin. Abschalten ist nicht vorgesehen — fehlt das Feld, gilt die Vorgabe."
         },
         "protokollFristTage": {
           "type": "integer",
@@ -1167,7 +1167,7 @@
     },
     "vertragsRepos": {
       "type": "array",
-      "description": "Die Partnerrepos dieses Projekts: Repos, die etwas lesen oder schreiben, das auch dieses Projekt festlegt — einen Namen, ein Kennzeichen, ein Format. Nennt das Feld ein Partnerrepo, verlangt Gate P14 von jedem Plan am Ende von „Architektonische Entscheidungen“ den Unterabschnitt Verträge, und jeder Vertrag dort nennt eines dieser Repos beim Namen. Jeder Eintrag nennt name, url und wahlweise zweig. Fehlendes Feld oder [] = kein Partnerrepo, P14 prüft nichts. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
+      "description": "Die Partnerrepos dieses Projekts: Repos, die etwas lesen oder schreiben, das auch dieses Projekt festlegt — einen Namen, ein Kennzeichen, ein Format. Nennt das Feld ein Partnerrepo, verlangt Gate P14 von jedem Plan am Ende von „Architektonische Entscheidungen“ den Unterabschnitt Verträge, und jeder Vertrag dort nennt eines dieser Repos beim Namen. Jeder Eintrag nennt name, url und wahlweise branch. Fehlendes Feld oder [] = kein Partnerrepo, P14 prüft nichts. Gilt teamweit; ein abweichender Wert in workflow.config.local.json wird ignoriert.",
       "items": {
         "type": "object",
         "properties": {

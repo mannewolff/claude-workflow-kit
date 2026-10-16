@@ -189,12 +189,12 @@ How a card shows its run status on the board: labels, deadline and pause.
 
 Which model the night run starts for each difficulty tier of a package.
 
-- `night.tiers` — Model or command per difficulty level of a work package, ordered schwer/mittel/leicht (hard/medium/easy). Default: no tier, every package runs with the model of the run.
+- `night.tiers` — Model or command per difficulty level of a work package, ordered hard/medium/easy. Default: no tier, every package runs with the model of the run.
 - `night.tiers.hard` — Model or command for a hard task. No default.
 - `night.tiers.{hard,medium,easy}.model` — Model ID for this level. No default.
 - `night.tiers.{hard,medium,easy}.effort` — Thinking effort for this level, passed to the Claude CLI as --effort. Valid: `low`, `medium`, `high`, `xhigh`, `max`. Default: the Claude CLI's own setting.
 - `night.tiers.{hard,medium,easy}.command` — Command line of a third-party program for this tier. No default.
-- `night.tiers.{hard,medium,easy}.name` — The program's self-description next to kommando. No default.
+- `night.tiers.{hard,medium,easy}.name` — The program's self-description next to command. No default.
 - `night.tiers.medium` — Model or command for a medium task. No default.
 - `night.tiers.easy` — Model or command for an easy task. No default.
 - `night.tierRule` — Replaces the built-in rule by which /issues and /task determine the level of a work package. Default: the kit's rule.
