@@ -2,6 +2,27 @@
 
 Alle nennenswerten Änderungen an diesem Projekt. Automatisch aus der Git-Historie generiert (`tools/changelog.mjs`) — nicht von Hand pflegen. Die Einträge sind die Commit-Betreffzeilen. Folgen mehrere Versions-Bumps unmittelbar aufeinander, stehen die Änderungen unter der höchsten davon — der Version, mit der sie veröffentlicht wurden; die internen Zwischenstände dazwischen erscheinen nicht. Was seit dem letzten Versions-Commit dazugekommen ist, steht unter `[Unreleased]`.
 
+## [5.2.3] - 2026-10-16
+- Warnung ohne Label nennt das Repo, dessen Board gelesen wurde (#1744)
+- Die Einstellung scaffoldOnly steht im Teil Feinabstimmung (#1723)
+- Regeltexte, Skills und Doku nennen Einstellungen mit ihrem englischen Namen (#1737)
+- Die Einstellungs-Oberfläche gliedert nach Zweck und schreibt englische Namen (#1736)
+- Jedes Projekt bekommt eine kommentierte Beispieldatei seiner Einstellungen (#1735)
+- Die Einstellungsseite gliedert die Einstellungen nach ihrem Zweck (#1734)
+- Jede Einstellung der ersten beiden Teile sagt, wann man sie setzt (#1733)
+- Die Einstellungsseite zieht wörtlich gleiche Geschwisterzeilen zusammen (#1732)
+- Eine Tabelle ordnet jede Einstellung einem Zweck zu (#1731)
+- Einstellungsdatei des Kit-Repos auf englische Schlüssel umgestellt (#1730)
+- einstellungen-vorschau liest die Einstellungsdatei ueber normalisiereConfig (#1743)
+- checks.mjs run uebernimmt nie ein rotes Ergebnis (#1742)
+- Das Update migriert auch die persoenliche Einstellungsdatei und sichert sie vorher (#1729)
+- config-zuschnitt zaehlt auch neue, noch nicht committete Testdateien (#1741)
+- Ein Hook weist Schreibwerkzeuge an geschuetzten Dateien ab, auch im Modus auto (#1740)
+- Das Update schreibt die geteilte Einstellungsdatei mit englischen Namen und erhaelt jeden Wert (#1728)
+- Die Vorgeschichte ist an, ausser ein Projekt hat sie ausgeschaltet (#1727)
+- Der Schalter fuer den Ideen-Speicher entfaellt und wirkt in alten Dateien nicht mehr (#1726)
+- Das Namensmodul schreibt englische Schluessel und laesst Werte unveraendert (#1725)
+
 ## [5.2.2] - 2026-10-15
 - Die Pruefgruppe der Nacht-Runner-Tests laeuft mit vier Tests gleichzeitig (#1694)
 - Langsame Nacht-Runner-Tests teilen sich einen gleichen Lauf je Datei, Teil 3 (#1739)

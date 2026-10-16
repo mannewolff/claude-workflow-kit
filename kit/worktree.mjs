@@ -55,7 +55,7 @@ import { TEXTE } from "./texte/worktree.mjs";
 // Kit-Stand, aus dem diese Datei stammt (Issue #170). Bewusst KEINE eigene
 // Versionsachse: der Wert ist die Kit-Version aus install.mjs und wird von
 // tools/sync-blobs.mjs eingestempelt. Nicht von Hand aendern.
-const KIT_VERSION = "5.2.2";
+const KIT_VERSION = "5.2.3";
 
 // Die Texttabelle liegt im Teil texte/ (Issue #1524); exportiert bleibt sie unter ihrem Namen.
 export { TEXTE };
